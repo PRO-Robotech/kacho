@@ -7,10 +7,10 @@ package kaname.cloud.iam.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/timestamp.proto";
-import "kacho/cloud/api/operation.proto";
-import "kacho/cloud/api/secret_options.proto";
+import "corelib/api/v1/operation.proto";
 import "kaname/cloud/iam/v1/service_account.proto";
 import "kaname/cloud/iam/v1/user.proto";
+import "kaname/cloud/iam/v1/secret_options.proto";
 import "kacho/cloud/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
 
@@ -97,7 +97,7 @@ service InternalIAMService {
   // get notified. Async: returns Operation; the LISTEN/NOTIFY fan-out then
   // updates every api-gateway pod's revocation cache ≤ 1s.
   rpc ForceLogout (ForceLogoutRequest) returns (kacho.cloud.operation.Operation) {
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "ForceLogoutMetadata"
       response: "ForceLogoutResult"
     };
@@ -576,7 +576,7 @@ message ResolveBasicCredentialRequest {
   //
   // Помечена носителем секрета: значение не имеет права осесть ни в строке
   // операции, ни в журнале, ни в ленте.
-  string presented = 1 [(kacho.cloud.api.secret_bearing) = true];
+  string presented = 1 [(kaname.cloud.iam.v1.secret_bearing) = true];
 }
 
 // ResolveBasicCredentialResponse — вердикт о годном удостоверении.

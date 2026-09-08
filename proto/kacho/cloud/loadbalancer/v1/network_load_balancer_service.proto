@@ -7,7 +7,7 @@ package kacho.cloud.loadbalancer.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/cloud/loadbalancer/v1/network_load_balancer.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -54,7 +54,7 @@ service NetworkLoadBalancerService {
       post: "/nlb/v1/networkLoadBalancers"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateNetworkLoadBalancerMetadata"
       response: "NetworkLoadBalancer"
     };
@@ -72,7 +72,7 @@ service NetworkLoadBalancerService {
       patch: "/nlb/v1/networkLoadBalancers/{network_load_balancer_id}"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateNetworkLoadBalancerMetadata"
       response: "NetworkLoadBalancer"
     };
@@ -87,7 +87,7 @@ service NetworkLoadBalancerService {
 
   rpc Delete(DeleteNetworkLoadBalancerRequest) returns (operation.Operation) {
     option (google.api.http) = {delete: "/nlb/v1/networkLoadBalancers/{network_load_balancer_id}"};
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteNetworkLoadBalancerMetadata"
       response: "google.protobuf.Empty"
     };
@@ -109,7 +109,7 @@ service NetworkLoadBalancerService {
       post: "/nlb/v1/networkLoadBalancers/{network_load_balancer_id}:move"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "MoveNetworkLoadBalancerMetadata"
       response: "NetworkLoadBalancer"
     };

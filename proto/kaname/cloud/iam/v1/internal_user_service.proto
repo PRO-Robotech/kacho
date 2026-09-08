@@ -6,7 +6,7 @@ syntax = "proto3";
 package kaname.cloud.iam.v1;
 
 import "google/api/annotations.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kaname/cloud/iam/v1/user.proto";
 import "kaname/cloud/iam/v1/user_service.proto";
 import "kacho/cloud/operation/operation.proto";
@@ -35,7 +35,7 @@ service InternalUserService {
       post: "/iam/v1/internal/users:upsertFromIdentity"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpsertFromIdentityMetadata"
       response: "User"
     };
@@ -58,7 +58,7 @@ service InternalUserService {
   // Idempotent on `(external_id, recovery_jti)` — duplicate webhook delivery
   // does NOT spawn duplicate revocations.
   rpc OnRecoveryCompleted (OnRecoveryCompletedRequest) returns (kacho.cloud.operation.Operation) {
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "OnRecoveryCompletedMetadata"
       response: "User"
     };

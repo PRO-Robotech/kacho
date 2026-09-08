@@ -45,7 +45,7 @@ import (
 
 	"google.golang.org/protobuf/reflect/protoreflect"
 
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"

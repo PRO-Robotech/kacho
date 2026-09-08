@@ -7,7 +7,7 @@ package kacho.cloud.vpc.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kacho/cloud/vpc/v1/cidr_group.proto";
 import "kacho/cloud/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -57,7 +57,7 @@ service CidrGroupService {
   // Method starts an asynchronous operation that can be cancelled while it is in progress.
   rpc Create (CreateCidrGroupRequest) returns (operation.Operation) {
     option (google.api.http) = { post: "/vpc/v1/cidrGroups" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateCidrGroupMetadata"
       response: "CidrGroup"
     };
@@ -81,7 +81,7 @@ service CidrGroupService {
   // current size.
   rpc Update (UpdateCidrGroupRequest) returns (operation.Operation) {
     option (google.api.http) = { patch: "/vpc/v1/cidrGroups/{cidr_group_id}" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateCidrGroupMetadata"
       response: "CidrGroup"
     };
@@ -102,7 +102,7 @@ service CidrGroupService {
       post: "/vpc/v1/cidrGroups/{cidr_group_id}:add-cidr-blocks"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateCidrGroupMetadata"
       response: "CidrGroup"
     };
@@ -127,7 +127,7 @@ service CidrGroupService {
       post: "/vpc/v1/cidrGroups/{cidr_group_id}:remove-cidr-blocks"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateCidrGroupMetadata"
       response: "CidrGroup"
     };
@@ -145,7 +145,7 @@ service CidrGroupService {
   // and rules hold it, never which.
   rpc Delete (DeleteCidrGroupRequest) returns (operation.Operation) {
     option (google.api.http) = { delete: "/vpc/v1/cidrGroups/{cidr_group_id}" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteCidrGroupMetadata"
       response: "google.protobuf.Empty"
     };

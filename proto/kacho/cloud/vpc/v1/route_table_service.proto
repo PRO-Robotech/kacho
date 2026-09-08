@@ -7,7 +7,7 @@ package kacho.cloud.vpc.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kacho/cloud/vpc/v1/route_table.proto";
 import "kacho/cloud/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -54,7 +54,7 @@ service RouteTableService {
   // Method starts an asynchronous operation that can be cancelled while it is in progress.
   rpc Create (CreateRouteTableRequest) returns (operation.Operation) {
     option (google.api.http) = { post: "/vpc/v1/routeTables" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateRouteTableMetadata"
       response: "RouteTable"
     };
@@ -71,7 +71,7 @@ service RouteTableService {
   // Method starts an asynchronous operation that can be cancelled while it is in progress.
   rpc Update (UpdateRouteTableRequest) returns (operation.Operation) {
     option (google.api.http) = { patch: "/vpc/v1/routeTables/{route_table_id}" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateRouteTableMetadata"
       response: "RouteTable"
     };
@@ -87,7 +87,7 @@ service RouteTableService {
   // Deletes the specified route table.
   rpc Delete (DeleteRouteTableRequest) returns (operation.Operation) {
     option (google.api.http) = { delete: "/vpc/v1/routeTables/{route_table_id}" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteRouteTableMetadata"
       response: "google.protobuf.Empty"
     };

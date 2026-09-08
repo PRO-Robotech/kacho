@@ -12,7 +12,7 @@ import (
 	// `scope_filtered` выводится из их аннотаций, и пустой реестр дал бы пустую
 	// полосу — то есть стражу, которой нечего охранять, неотличимую от стражи,
 	// у которой всё в порядке.
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"

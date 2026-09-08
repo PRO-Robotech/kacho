@@ -44,7 +44,7 @@ message CreateWidgetRequest {
   // производится ничем, и проба доказывала бы разбор входа, которого не бывает.
   // Обе оставшиеся формы хвоста в контрактах — эти две.
   oneof anchor {
-    string zone_id = 3 [(kacho.cloud.api.secret_bearing) = true];
+    string zone_id = 3 [(kaname.cloud.iam.v1.secret_bearing) = true];
     string region_id = 4 [deprecated = true];
   }
 }

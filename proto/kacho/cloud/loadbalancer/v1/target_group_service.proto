@@ -8,7 +8,7 @@ package kacho.cloud.loadbalancer.v1;
 import "google/api/annotations.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kacho/cloud/loadbalancer/v1/health_check.proto";
 import "kacho/cloud/loadbalancer/v1/target_group.proto";
 import "kacho/cloud/operation/operation.proto";
@@ -52,7 +52,7 @@ service TargetGroupService {
       post: "/nlb/v1/targetGroups"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateTargetGroupMetadata"
       response: "TargetGroup"
     };
@@ -70,7 +70,7 @@ service TargetGroupService {
       patch: "/nlb/v1/targetGroups/{target_group_id}"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateTargetGroupMetadata"
       response: "TargetGroup"
     };
@@ -85,7 +85,7 @@ service TargetGroupService {
 
   rpc Delete(DeleteTargetGroupRequest) returns (operation.Operation) {
     option (google.api.http) = {delete: "/nlb/v1/targetGroups/{target_group_id}"};
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteTargetGroupMetadata"
       response: "google.protobuf.Empty"
     };
@@ -105,7 +105,7 @@ service TargetGroupService {
       post: "/nlb/v1/targetGroups/{target_group_id}:move"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "MoveTargetGroupMetadata"
       response: "TargetGroup"
     };
@@ -125,7 +125,7 @@ service TargetGroupService {
       post: "/nlb/v1/targetGroups/{target_group_id}:addTargets"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "AddTargetsMetadata"
       response: "TargetGroup"
     };
@@ -146,7 +146,7 @@ service TargetGroupService {
       post: "/nlb/v1/targetGroups/{target_group_id}:removeTargets"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "RemoveTargetsMetadata"
       response: "TargetGroup"
     };

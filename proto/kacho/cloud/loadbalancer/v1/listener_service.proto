@@ -7,7 +7,7 @@ package kacho.cloud.loadbalancer.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kacho/cloud/loadbalancer/v1/listener.proto";
 import "kacho/cloud/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -59,7 +59,7 @@ service ListenerService {
       post: "/nlb/v1/listeners"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateListenerMetadata"
       response: "Listener"
     };
@@ -79,7 +79,7 @@ service ListenerService {
       patch: "/nlb/v1/listeners/{listener_id}"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateListenerMetadata"
       response: "Listener"
     };
@@ -94,7 +94,7 @@ service ListenerService {
 
   rpc Delete(DeleteListenerRequest) returns (operation.Operation) {
     option (google.api.http) = {delete: "/nlb/v1/listeners/{listener_id}"};
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteListenerMetadata"
       response: "google.protobuf.Empty"
     };

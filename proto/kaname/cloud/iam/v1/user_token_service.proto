@@ -7,10 +7,10 @@ package kaname.cloud.iam.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/timestamp.proto";
-import "kacho/cloud/api/operation.proto";
-import "kacho/cloud/api/secret_options.proto";
+import "corelib/api/v1/operation.proto";
 import "kaname/cloud/iam/v1/credential_kind.proto";
 import "kaname/cloud/iam/v1/user_oauth_client.proto";
+import "kaname/cloud/iam/v1/secret_options.proto";
 import "kacho/cloud/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
 
@@ -78,7 +78,7 @@ service UserTokenService {
       post: "/iam/v1/users/{user_id}/tokens"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "IssueUserTokenMetadata"
       response: "IssueUserTokenResponse"
     };
@@ -108,7 +108,7 @@ service UserTokenService {
     option (google.api.http) = {
       delete: "/iam/v1/users/{user_id}/tokens/{token_id}"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "RevokeUserTokenMetadata"
       response: "RevokeUserTokenResponse"
     };
@@ -180,7 +180,7 @@ message IssueUserTokenResponse {
   //
   // Помечен носителем секрета: приватная половина — предъявительский секрет
   // ровно в том же смысле, что и однострочный базовый.
-  string private_key_pem = 3 [(kacho.cloud.api.secret_bearing) = true];
+  string private_key_pem = 3 [(kaname.cloud.iam.v1.secret_bearing) = true];
   // PEM-encoded SPKI публичный ключ (информационно; каноническая копия — в
   // строке реестра, по ней и проверяется подпись утверждения).
   string public_key_pem = 4;
@@ -199,7 +199,7 @@ message IssueUserTokenResponse {
   //
   // Помечен носителем секрета: значение не имеет права осесть НИ В СТРОКЕ
   // ОПЕРАЦИИ, ни в журнале аудита, ни в ленте подписки, ни в строке ресурса.
-  string secret = 7 [(kacho.cloud.api.secret_bearing) = true];
+  string secret = 7 [(kaname.cloud.iam.v1.secret_bearing) = true];
 }
 
 message IssueUserTokenMetadata {

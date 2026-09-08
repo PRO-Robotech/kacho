@@ -7,7 +7,7 @@ package kacho.cloud.storage.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/cloud/storage/v1/snapshot.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -48,7 +48,7 @@ service SnapshotService {
       post: "/storage/v1/snapshots"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateSnapshotMetadata"
       response: "Snapshot"
     };
@@ -95,7 +95,7 @@ service SnapshotService {
       post: "/storage/v1/snapshots/{snapshot_id}:copy"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CopySnapshotMetadata"
       response: "Snapshot"
     };
@@ -116,7 +116,7 @@ service SnapshotService {
       patch: "/storage/v1/snapshots/{snapshot_id}"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateSnapshotMetadata"
       response: "Snapshot"
     };
@@ -132,7 +132,7 @@ service SnapshotService {
   // Deletes the specified snapshot.
   rpc Delete(DeleteSnapshotRequest) returns (operation.Operation) {
     option (google.api.http) = {delete: "/storage/v1/snapshots/{snapshot_id}"};
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteSnapshotMetadata"
       response: "google.protobuf.Empty"
     };

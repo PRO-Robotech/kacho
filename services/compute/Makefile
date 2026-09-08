@@ -91,7 +91,7 @@ proto-vendor:
 	@set -e; src=../kacho-corelib/proto; \
 	for f in google/api/annotations.proto google/api/field_behavior.proto \
 	         google/api/http.proto google/rpc/status.proto \
-	         kacho/cloud/api/operation.proto kacho/cloud/operation/operation.proto \
+	         corelib/api/v1/operation.proto kacho/cloud/operation/operation.proto \
 	         kacho/cloud/validation.proto corelib/authz/v1/authz_options.proto; do \
 	  mkdir -p "proto/$$(dirname $$f)"; \
 	  cp "$$src/$$f" "proto/$$f"; \

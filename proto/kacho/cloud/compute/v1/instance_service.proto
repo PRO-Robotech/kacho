@@ -8,7 +8,7 @@ package kacho.cloud.compute.v1;
 import "google/api/annotations.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kacho/cloud/compute/v1/instance.proto";
 import "kacho/cloud/compute/v1/maintenance.proto";
 import "kacho/cloud/operation/operation.proto";
@@ -59,7 +59,7 @@ service InstanceService {
       post: "/compute/v1/instances"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateInstanceMetadata"
       response: "Instance"
     };
@@ -78,7 +78,7 @@ service InstanceService {
       patch: "/compute/v1/instances/{instance_id}"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateInstanceMetadata"
       response: "Instance"
     };
@@ -94,7 +94,7 @@ service InstanceService {
   // Deletes the specified instance.
   rpc Delete(DeleteInstanceRequest) returns (operation.Operation) {
     option (google.api.http) = {delete: "/compute/v1/instances/{instance_id}"};
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteInstanceMetadata"
       response: "google.protobuf.Empty"
     };
@@ -124,7 +124,7 @@ service InstanceService {
   // You can start the instance later using the [InstanceService.Start] method.
   rpc Stop(StopInstanceRequest) returns (operation.Operation) {
     option (google.api.http) = {post: "/compute/v1/instances/{instance_id}:stop"};
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "StopInstanceMetadata"
       response: "google.protobuf.Empty"
     };
@@ -140,7 +140,7 @@ service InstanceService {
   // Starts the stopped instance.
   rpc Start(StartInstanceRequest) returns (operation.Operation) {
     option (google.api.http) = {post: "/compute/v1/instances/{instance_id}:start"};
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "StartInstanceMetadata"
       response: "Instance"
     };
@@ -156,7 +156,7 @@ service InstanceService {
   // Restarts the running instance.
   rpc Restart(RestartInstanceRequest) returns (operation.Operation) {
     option (google.api.http) = {post: "/compute/v1/instances/{instance_id}:restart"};
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "RestartInstanceMetadata"
       response: "google.protobuf.Empty"
     };
@@ -175,7 +175,7 @@ service InstanceService {
       post: "/compute/v1/instances/{instance_id}:attachDisk"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "AttachInstanceDiskMetadata"
       response: "Instance"
     };
@@ -194,7 +194,7 @@ service InstanceService {
       post: "/compute/v1/instances/{instance_id}:detachDisk"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DetachInstanceDiskMetadata"
       response: "Instance"
     };
@@ -218,7 +218,7 @@ service InstanceService {
       post: "/compute/v1/instances/{instance_id}:attachNetworkInterface"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "AttachInstanceNetworkInterfaceMetadata"
       response: "Instance"
     };
@@ -240,7 +240,7 @@ service InstanceService {
       post: "/compute/v1/instances/{instance_id}:detachNetworkInterface"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DetachInstanceNetworkInterfaceMetadata"
       response: "Instance"
     };
@@ -272,7 +272,7 @@ service InstanceService {
       post: "/compute/v1/instances/{instance_id}:simulateMaintenanceEvent"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "SimulateInstanceMaintenanceEventMetadata"
       response: "google.protobuf.Empty"
     };

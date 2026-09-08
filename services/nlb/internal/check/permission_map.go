@@ -8,7 +8,7 @@ import (
 	// строится из их аннотаций, и пустой реестр дал бы карту без единой записи —
 	// то есть отказ на каждом вызове. Импорт делает предпосылку вывода
 	// принадлежностью пакета, а не удачей чужого графа импортов.
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"

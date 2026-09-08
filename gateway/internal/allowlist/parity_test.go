@@ -71,7 +71,7 @@ import (
 	// домена в protoregistry.GlobalFiles. Список сверяется с диском в
 	// TestAllowlist_CensusCoversEveryProtoFile — новый домен без импорта тут
 	// краснеет там.
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"

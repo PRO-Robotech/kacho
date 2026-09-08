@@ -7,7 +7,7 @@ package kaname.cloud.iam.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kaname/cloud/iam/v1/account.proto";
 import "kacho/cloud/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -57,7 +57,7 @@ service AccountService {
   // Method starts an asynchronous operation that can be cancelled while it is in progress.
   rpc Create (CreateAccountRequest) returns (kacho.cloud.operation.Operation) {
     option (google.api.http) = { post: "/iam/v1/accounts" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateAccountMetadata"
       response: "Account"
     };
@@ -89,7 +89,7 @@ service AccountService {
   // update_mask returns InvalidArgument.
   rpc Update (UpdateAccountRequest) returns (kacho.cloud.operation.Operation) {
     option (google.api.http) = { patch: "/iam/v1/accounts/{account_id}" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateAccountMetadata"
       response: "Account"
     };
@@ -106,7 +106,7 @@ service AccountService {
   // Account with non-empty Projects returns FailedPrecondition.
   rpc Delete (DeleteAccountRequest) returns (kacho.cloud.operation.Operation) {
     option (google.api.http) = { delete: "/iam/v1/accounts/{account_id}" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteAccountMetadata"
       response: "google.protobuf.Empty"
     };

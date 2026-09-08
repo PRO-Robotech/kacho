@@ -29,7 +29,7 @@ __pycache__/
 # Not committed here; `make proto-vendor` copies them in before `buf generate`
 # (needed only for buf import-resolution of the domain proto; Go-stubs live in corelib).
 /proto/google/
-/proto/kacho/cloud/api/
+/proto/corelib/api/
 /proto/kacho/cloud/operation/
 /proto/kacho/cloud/validation.proto
 /proto/kacho/iam/

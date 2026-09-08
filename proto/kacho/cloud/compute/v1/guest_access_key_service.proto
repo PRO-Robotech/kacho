@@ -7,7 +7,7 @@ package kacho.cloud.compute.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kacho/cloud/compute/v1/guest_access_key.proto";
 import "kacho/cloud/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -52,7 +52,7 @@ service GuestAccessKeyService {
       post: "/compute/v1/guestAccessKeys"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateGuestAccessKeyMetadata"
       response: "GuestAccessKey"
     };
@@ -77,7 +77,7 @@ service GuestAccessKeyService {
       patch: "/compute/v1/guestAccessKeys/{guest_access_key_id}"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateGuestAccessKeyMetadata"
       response: "GuestAccessKey"
     };
@@ -115,7 +115,7 @@ service GuestAccessKeyService {
     option (google.api.http) = {
       delete: "/compute/v1/guestAccessKeys/{guest_access_key_id}"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteGuestAccessKeyMetadata"
       response: "google.protobuf.Empty"
     };

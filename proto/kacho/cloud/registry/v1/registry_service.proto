@@ -7,7 +7,7 @@ package kacho.cloud.registry.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/cloud/registry/v1/registry.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -55,7 +55,7 @@ service RegistryService {
       post: "/registry/v1/registries"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateRegistryMetadata"
       response: "Registry"
     };
@@ -80,7 +80,7 @@ service RegistryService {
       patch: "/registry/v1/registries/{registry_id}"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateRegistryMetadata"
       response: "Registry"
     };
@@ -101,7 +101,7 @@ service RegistryService {
   // no `deny_reasons` echo (security.md #6). Mirrors the v_get read-deny hide.
   rpc Delete(DeleteRegistryRequest) returns (operation.Operation) {
     option (google.api.http) = {delete: "/registry/v1/registries/{registry_id}"};
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteRegistryMetadata"
       response: "google.protobuf.Empty"
     };
@@ -190,7 +190,7 @@ service RegistryService {
       post: "/registry/v1/registries/{registry_id}/repositories"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateRepositoryMetadata"
       response: "Repository"
     };
@@ -209,7 +209,7 @@ service RegistryService {
       patch: "/registry/v1/registries/{registry_id}/repositories/{repository=**}"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateRepositoryMetadata"
       response: "Repository"
     };
@@ -226,7 +226,7 @@ service RegistryService {
   // Bare `{repository=**}` catch-all — объявлен ПЕРЕД sub-resource'ами (precedence).
   rpc DeleteRepository(DeleteRepositoryRequest) returns (operation.Operation) {
     option (google.api.http) = {delete: "/registry/v1/registries/{registry_id}/repositories/{repository=**}"};
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteRepositoryMetadata"
       response: "google.protobuf.Empty"
     };
@@ -252,7 +252,7 @@ service RegistryService {
   // ПОСЛЕ DeleteRepository catch-all'а → пробуется РАНЬШЕ, не затеняется.
   rpc DeleteTag(DeleteTagRequest) returns (operation.Operation) {
     option (google.api.http) = {delete: "/registry/v1/registries/{registry_id}/repositories/{repository}/tags/{tag}"};
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteTagMetadata"
       response: "google.protobuf.Empty"
     };
@@ -277,7 +277,7 @@ service RegistryService {
       post: "/registry/v1/registries/{registry_id}/repositories/{repository=**}:rename"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "RenameRepositoryMetadata"
       response: "Repository"
     };

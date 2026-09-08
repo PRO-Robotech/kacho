@@ -55,7 +55,7 @@ var (
 	// Поле контракта: тип, имя, номер и НЕОБЯЗАТЕЛЬНЫЙ хвост опций. Без хвоста
 	// разбор молча терял бы ветви, объявленные с блоком опций, — то есть
 	// возвращал бы «ветвей нет» и зеленил бы сверку целиком. Живых форм хвоста в
-	// дереве две: `[deprecated = true]` и `[(kacho.cloud.api.secret_bearing) = true]`.
+	// дереве две: `[deprecated = true]` и `[(kaname.cloud.iam.v1.secret_bearing) = true]`.
 	reProtoField = regexp.MustCompile(`^\s*(?:repeated\s+|optional\s+)?([\w.]+)\s+([a-z_][\w]*)\s*=\s*\d+\s*(?:\[[^\]]*\])?\s*;`)
 	reProtoRPC   = regexp.MustCompile(`^\s*rpc\s+(\w+)\s*\(\s*([\w.]+)\s*\)`)
 	reHTTPRule   = regexp.MustCompile(`(?:post|put|patch)\s*:\s*"([^"]+)"`)
