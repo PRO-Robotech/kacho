@@ -153,7 +153,7 @@ message GetImageRequest {
 
 message ListImagesRequest {
   // ID of the project to list images in.
-  // To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+  // To get the project ID, use a [kaname.cloud.iam.v1.ProjectService.List] request.
   string project_id = 1;
 
   // The maximum number of results per page to return. If the number of available
@@ -194,7 +194,7 @@ message ListImagesResponse {
 
 message CreateImageRequest {
   // ID of the project to create an image in.
-  // To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+  // To get the project ID, use a [kaname.cloud.iam.v1.ProjectService.List] request.
   string project_id = 1;
 
   // ID of the region the image lives in (REGIONAL/anycast). Peer-validated against

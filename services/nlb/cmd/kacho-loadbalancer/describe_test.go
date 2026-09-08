@@ -62,9 +62,17 @@ func bootConfig(t *testing.T, env map[string]string) *config.Config {
 	base := map[string]string{
 		"KACHO_NLB_MODE":                          "dev",
 		"KACHO_NLB_REPOSITORY__POSTGRES__URL":     "postgres://u:p@pg-nlb:5432/kacho_nlb?sslmode=require",
-		"KACHO_NLB_EXTAPI__IAM__INTERNAL_ADDR":    "kacho-iam-internal:9091",
-		"KACHO_NLB_EXTAPI__IAM__ADDR":             "kacho-iam:9090",
+		"KACHO_NLB_EXTAPI__IAM__INTERNAL_ADDR":    "kaname-internal:9091",
+		"KACHO_NLB_EXTAPI__IAM__ADDR":             "kaname:9090",
 		"KACHO_NLB_AUTHZ__TRUSTED-FORWARDER-SANS": probeGatewaySAN,
+		// Имя ЭТОЙ переменной — с подчёркиваниями, и это не описка рядом с дефисами
+		// выше: ключ домена привязан явным BindEnv (defaults.go), а круг выше
+		// приезжает общей заменой приставки, которая дефисы не трогает. Померено
+		// загрузкой обоих написаний.
+		"KACHO_NLB_AUTHZ__TRUST_DOMAIN": "kacho.cloud",
+		// Объявление домена величин — часть законной посадки: у ручки ровно два
+		// законных значения, и незаданное среди них не значится.
+		"KACHO_NLB_QUOTA__AUTHORITY": "not-deployed",
 	}
 	for k, v := range env {
 		base[k] = v
@@ -116,7 +124,7 @@ func TestDescribeIsAcceptedByTheConstructor(t *testing.T) {
 	if !ok {
 		because, na := s.DenyBudget.NotApplicableBecause()
 		t.Fatalf("бюджет отказов объявлен изъятием (%q, na=%v), а решение о доступе nlb принимает "+
-			"вопросом к kacho-iam — шторм отказов есть кому ронять", because, na)
+			"вопросом к kaname — шторм отказов есть кому ронять", because, na)
 	}
 	if budget != 100 {
 		t.Fatalf("темп отсечки шторма отказов %v/с, а до перевода на носитель он был 100/с: "+
@@ -200,8 +208,11 @@ func TestDeclaredCircleIsTheOneTheProcessCarries(t *testing.T) {
 	// круг не доживает до слушателей», а какая из двух страж его остановит, для
 	// вызывающего безразлично. Обе читают ОДИН предикат (`IsNarrowed`).
 	t.Setenv("KACHO_NLB_MODE", "dev")
+	// Объявление домена величин — часть законной посадки: у ручки ровно два
+	// законных значения, и незаданное среди них не значится.
+	t.Setenv("KACHO_NLB_QUOTA__AUTHORITY", "not-deployed")
 	t.Setenv("KACHO_NLB_REPOSITORY__POSTGRES__URL", "postgres://u:p@pg-nlb:5432/kacho_nlb?sslmode=require")
-	t.Setenv("KACHO_NLB_EXTAPI__IAM__INTERNAL_ADDR", "kacho-iam-internal:9091")
+	t.Setenv("KACHO_NLB_EXTAPI__IAM__INTERNAL_ADDR", "kaname-internal:9091")
 	t.Setenv("KACHO_NLB_AUTHZ__TRUSTED-FORWARDER-SANS", "")
 	if _, lerr := config.Load(""); lerr == nil {
 		t.Fatal("пустой круг принят без явного опт-ина — сужения нет, а выглядит оно как есть")

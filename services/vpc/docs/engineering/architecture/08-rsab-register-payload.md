@@ -3,7 +3,7 @@
 Контекст: resource-scoped AccessBinding. При мутации ресурса VPC эмитит owner-hierarchy
 FGA-tuple(ы) + mirror-feed (labels + parent_project_id + source_version) в
 `fga_register_outbox` (writer-TX), откуда дренер форвардит их в
-`kacho-iam InternalIAMService.RegisterResource`. Та же кросс-сервисная форма у compute и nlb.
+`kaname InternalIAMService.RegisterResource`. Та же кросс-сервисная форма у compute и nlb.
 
 ## Расхождение формы payload (осознанное)
 
@@ -35,7 +35,7 @@ compute/nlb такого «два объекта за один lifecycle event»
 
 Wire-форма (`Payload` JSONB в `fga_register_outbox`) у всех трех сервисов **идентична**
 (embed `Tuple` + `labels` + `parent_project_id` + `source_version`) и одинаково
-декодируется приемником `kacho-iam`. Расхождение — только во ВНУТРЕННЕМ emitter-API
+декодируется приемником `kaname`. Расхождение — только во ВНУТРЕННЕМ emitter-API
 (где живут labels: на Item или на Intent), не в контракте на проводе.
 
 ## Замечание для maintainer'а

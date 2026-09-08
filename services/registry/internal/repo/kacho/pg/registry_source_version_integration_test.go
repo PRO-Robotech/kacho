@@ -8,7 +8,7 @@
 //
 // Почему не BIGSERIAL (как было с 0002 до 0011): вторым путём доставки той же
 // регистрации идёт синхронный registrar в процессе сервиса — у него нет outbox-id, а
-// kacho-iam хранит маркер как timestamptz и принимает его как protobuf.Timestamp. Пока
+// kaname хранит маркер как timestamptz и принимает его как protobuf.Timestamp. Пока
 // шкалы расходились, маркер не доставлялся ВООБЩЕ ни одним путём, и gate редоставки в
 // iam — намеренно требующий положительного доказательства редоставки — открывался в
 // сторону работы: registry платил за обе доставки.
@@ -55,7 +55,7 @@ func decodeLastIntent(t *testing.T, pool *pgxpool.Pool, resourceID string) domai
 
 // TestRepo_SourceVersion_IsDecodableTimestamp — маркер, застампленный триггером,
 // доезжает до drainer'а как НЕПУСТОЕ время. Это и есть предусловие экономии: без
-// доставленной версии gate редоставки в kacho-iam доказательства не имеет и
+// доставленной версии gate редоставки в kaname доказательства не имеет и
 // открывается в сторону работы.
 func TestRepo_SourceVersion_IsDecodableTimestamp(t *testing.T) {
 	pool := setupTestDB(t)
@@ -101,7 +101,7 @@ func TestRepo_SourceVersion_MonotonicAcrossUpdates(t *testing.T) {
 }
 
 // TestRepo_SourceVersion_UnregisterTombstoneNotOlderThanRegister — снятие регистрации
-// несёт маркер НЕ СТАРШЕ последней регистрации того же объекта. kacho-iam сносит строку
+// несёт маркер НЕ СТАРШЕ последней регистрации того же объекта. kaname сносит строку
 // зеркала под `source_version <= $tombstone`, поэтому более старый tombstone оставил бы
 // зеркало (и tuple'ы, которые level-triggered реконсайлер с него ре-материализует)
 // пережившими удаление реестра. Снятие регистрации обязано удалять строку целиком.

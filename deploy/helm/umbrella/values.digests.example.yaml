@@ -9,9 +9,9 @@
 #
 # HOW TO USE
 #   1. Resolve the digest of each image you actually deploy, e.g.:
-#        docker buildx imagetools inspect docker.io/prorobotech/kacho-iam:main-<sha> \
+#        docker buildx imagetools inspect docker.io/prorobotech/kaname:main-<sha> \
 #          --format '{{.Manifest.Digest}}'
-#      or:  crane digest docker.io/prorobotech/kacho-iam:main-<sha>
+#      or:  crane digest docker.io/prorobotech/kaname:main-<sha>
 #   2. Paste the REAL sha256:... values below (replace every REPLACE_WITH_REAL_DIGEST).
 #   3. Layer this file LAST so it wins over the tag-based defaults:
 #        helm upgrade --install kacho-umbrella ./helm/umbrella -n kacho \
@@ -24,8 +24,8 @@
 # MECHANISM этого же файла; других мест у него нет.
 #
 # MECHANISM
-#   - kacho-iam: `kacho-iam.image.digest` — when set, the container image renders
-#     as `<repository>@<digest>` (tag ignored). Helper: kacho-iam.image.
+#   - kaname: `kaname.image.digest` — when set, the container image renders
+#     as `<repository>@<digest>` (tag ignored). Helper: kaname.image.
 #   - kacho-geo: `kacho-geo.imageDigest` — when set, the trailing `:tag` of
 #     `image` is stripped and `@<digest>` appended. Helper: kacho-geo.image.
 #   - sibling charts (vpc / compute / api-gateway / ui / kacho-nlb) are vendored
@@ -34,9 +34,9 @@
 #     `image.digest` field upstream (tracked per sibling chart).
 # ─────────────────────────────────────────────────────────────────────────────
 
-kacho-iam:
+kaname:
   image:
-    repository: docker.io/prorobotech/kacho-iam
+    repository: docker.io/prorobotech/kaname
     digest: "sha256:REPLACE_WITH_REAL_DIGEST"
 
 kacho-geo:

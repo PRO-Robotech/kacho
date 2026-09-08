@@ -4,7 +4,7 @@
 terraform {
   required_version = ">= 1.6"
   required_providers {
-    kacho = {
+    kaname = {
       source = "PRO-Robotech/kacho"
     }
   }
@@ -13,10 +13,10 @@ terraform {
 locals {
   # Идентификаторы ролей, определённых ЭТИМ модулем, по их именам. Выдача, назвавшая роль
   # по имени, резолвится через эту карту — то есть ссылается на идентификатор, а не на имя.
-  own_role_ids = { for k, r in kacho_iam_role.this : k => r.id }
+  own_role_ids = { for k, r in kaname_role.this : k => r.id }
 }
 
-resource "kacho_iam_role" "this" {
+resource "kaname_role" "this" {
   for_each = var.roles
 
   # Уровень определения роли — тот же якорь, что у выдач модуля: роль, определённая на
@@ -53,7 +53,7 @@ resource "kacho_iam_role" "this" {
 # Привязка ссылается на роль ПО ИДЕНТИФИКАТОРУ, а не по имени: ссылка строит граф, и снос
 # идёт в обратном порядке — выдачи раньше роли, которую они держат. Порядок здесь несущий:
 # роль, на которую ссылается живая выдача, край удалять не станет.
-resource "kacho_iam_access_binding" "group" {
+resource "kaname_access_binding" "group" {
   for_each = var.group_grants
 
   role_id = each.value.role_id != null ? each.value.role_id : local.own_role_ids[each.value.role]
@@ -100,7 +100,7 @@ resource "kacho_iam_access_binding" "group" {
 # Разные ресурсы, а не один с объединённой картой: так перечень исключений установки виден
 # и в плане, и в состоянии одним адресом, а обзор «кому у нас выдано лично» не требует
 # разбирать содержимое каждой записи.
-resource "kacho_iam_access_binding" "subject" {
+resource "kaname_access_binding" "subject" {
   for_each = var.subject_grants
 
   role_id = each.value.role_id != null ? each.value.role_id : local.own_role_ids[each.value.role]

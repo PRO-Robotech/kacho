@@ -22,12 +22,12 @@ import (
 //
 // `loadbalancer.listeners` is a declared label-selectable type
 // (services/iam/internal/domain/feed_registry.go) and it is MIRROR-fed: an
-// ARM_LABELS grant selects listeners by matching `kacho_iam.resource_mirror.labels`
+// ARM_LABELS grant selects listeners by matching `kaname.resource_mirror.labels`
 // against the rule's matchLabels. The mirror is written ONLY as a side effect of
-// kacho-iam's InternalIAMService.RegisterResource — the labels ride along on the
+// kaname's InternalIAMService.RegisterResource — the labels ride along on the
 // RegisterResource call as an additive payload field.
 //
-// THE PART THAT MAKES THIS MORE THAN "did we emit something". kacho-iam guards
+// THE PART THAT MAKES THIS MORE THAN "did we emit something". kaname guards
 // that proxy write-path with a least-privilege rule over the whole tuple
 // (pkg/authz/proxytuple.ValidateTuple). It runs BEFORE the mirror UPSERT, so a
 // RegisterResource carrying a tuple the rule refuses is rejected and its
@@ -50,7 +50,7 @@ import (
 // Update emitted only the rejected parent-link).
 
 // requireCarriesProxyRegistrableTuple asserts the intent carries at least one
-// tuple kacho-iam will actually accept — i.e. that the labels/parent payload
+// tuple kaname will actually accept — i.e. that the labels/parent payload
 // reaches resource_mirror instead of being rejected before the UPSERT.
 //
 // It asks the RECEIVING SIDE'S OWN RULE, by import (pkg/authz/proxytuple), and
@@ -72,13 +72,13 @@ func requireCarriesProxyRegistrableTuple(t *testing.T, intent domain.FGARegister
 		}
 	}
 	t.Fatalf("mirror-feed intent carries no proxy-registrable tuple: relations=%v; "+
-		"kacho-iam refuses all of these BEFORE the resource_mirror UPSERT, so the "+
+		"kaname refuses all of these BEFORE the resource_mirror UPSERT, so the "+
 		"refreshed labels never land and an ARM_LABELS grant is never revoked "+
 		"(allowed stays true)", seen)
 }
 
 // findListenerMirrorTuple returns the project-hierarchy tuple for the listener,
-// which is the carrier kacho-iam accepts (parity with lbMirrorIntent/tgMirrorIntent).
+// which is the carrier kaname accepts (parity with lbMirrorIntent/tgMirrorIntent).
 func findListenerMirrorTuple(intent domain.FGARegisterIntent) (domain.FGATuple, bool) {
 	for _, tu := range intent.Tuples {
 		if tu.Relation == domain.FGARelationProject {
@@ -88,7 +88,7 @@ func findListenerMirrorTuple(intent domain.FGARegisterIntent) (domain.FGATuple, 
 	return domain.FGATuple{}, false
 }
 
-// Removing the matching label must produce a mirror-refresh kacho-iam actually
+// Removing the matching label must produce a mirror-refresh kaname actually
 // applies. This is the revoke half of T31-LBLREVOKE-NLB-LISTENER-04.
 func TestUpdateListener_LabelRemoval_EmitsApplicableMirrorRefresh(t *testing.T) {
 	t.Parallel()
@@ -116,7 +116,7 @@ func TestUpdateListener_LabelRemoval_EmitsApplicableMirrorRefresh(t *testing.T) 
 	require.Equal(t, domain.FGAEventRegister, fga[0].EventType)
 	intent := fga[0].Intent
 
-	// ...and kacho-iam can actually apply it (the whole point — an intent made only
+	// ...and kaname can actually apply it (the whole point — an intent made only
 	// of proxy-rejected relations refreshes nothing).
 	requireCarriesProxyRegistrableTuple(t, intent)
 
@@ -231,7 +231,7 @@ func requireEveryTupleProxyRegistrable(t *testing.T, intent domain.FGARegisterIn
 	require.NotEmpty(t, intent.Tuples, "durable intent carries no tuples at all")
 	for _, tu := range intent.Tuples {
 		if proxytuple.ValidateTuple("nlb", tu.SubjectID, tu.Relation, tu.Object) != nil {
-			t.Fatalf("durable intent carries a tuple kacho-iam always rejects: relation=%q object=%q; "+
+			t.Fatalf("durable intent carries a tuple kaname always rejects: relation=%q object=%q; "+
 				"a refusal from the model owner is TERMINAL (drainer.ErrPermanent), so the applier stops "+
 				"at that tuple and the row poisons on its first attempt — the registration this object "+
 				"depends on (its mirror row, and with it every materialised verb) never lands until "+
@@ -244,7 +244,7 @@ func requireEveryTupleProxyRegistrable(t *testing.T, intent domain.FGARegisterIn
 //
 // This is the second half of why revoke-by-label never took effect, and it was a
 // head-of-line wedge rather than a lag. nlb's creator (`admin`) and parent-link
-// (`load_balancer`) relations are refused by kacho-iam's least-privilege proxy
+// (`load_balancer`) relations are refused by kaname's least-privilege proxy
 // policy — privilege relations are writable only by the AccessBinding flow, never
 // by a module proxy.
 //

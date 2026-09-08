@@ -280,7 +280,7 @@ describe("полоса отказа читается по признаку, а �
     // права — то есть прозаический разбор его НЕ поймает. Признак поймает.
     // Это и есть смена тона, которая сегодня проходит молча.
     const p = presentError(
-      new ApiError(403, 7, refusalDetails("AUTHZ_DENIED", "kacho.cloud.iam.v1", {
+      new ApiError(403, 7, refusalDetails("AUTHZ_DENIED", "kaname.cloud.iam.v1", {
         action: "iam.limits.list",
         resource: "project:prj-1",
       }), "доступ к iam.limits.list закрыт"),
@@ -306,7 +306,7 @@ describe("полоса отказа читается по признаку, а �
     // Край отвечает `unauthenticated: credentials required`. Арендатору это не
     // сообщает ни что произошло, ни что делать: сессия истекла — надо войти.
     const p = presentError(
-      new ApiError(401, 16, refusalDetails("AUTHN_REQUIRED", "kacho.cloud.iam.v1"),
+      new ApiError(401, 16, refusalDetails("AUTHN_REQUIRED", "kaname.cloud.iam.v1"),
         "unauthenticated: credentials required"),
     );
 

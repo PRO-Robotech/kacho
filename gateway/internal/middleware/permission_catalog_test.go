@@ -41,7 +41,7 @@ func TestPermissionCatalog_LoadFromBytes_ObjectShape(t *testing.T) {
 	raw := []byte(`{
 		"entries": [
 			{
-				"fqn": "kacho.cloud.iam.v1.AuthorizeService/Check",
+				"fqn": "kaname.cloud.iam.v1.AuthorizeService/Check",
 				"permission": "iam.authorize.check",
 				"required_relation": "viewer",
 				"risk_level": "MEDIUM"
@@ -52,7 +52,7 @@ func TestPermissionCatalog_LoadFromBytes_ObjectShape(t *testing.T) {
 	c := middleware.NewPermissionCatalog()
 	require.NoError(t, c.LoadFromBytes(raw))
 
-	entry, ok := c.Lookup("kacho.cloud.iam.v1.AuthorizeService/Check")
+	entry, ok := c.Lookup("kaname.cloud.iam.v1.AuthorizeService/Check")
 	require.True(t, ok)
 	assert.Equal(t, "iam.authorize.check", entry.Permission)
 	assert.Equal(t, "MEDIUM", entry.RiskLevel)
@@ -275,7 +275,7 @@ func TestPermissionCatalog_LookupKnownEntries_FromEmbed(t *testing.T) {
 		// below. What must never come back is a scope derived from the request
 		// `subject` (the query target, not the reader), which would re-derive the
 		// FGA check from tenant-controlled input.
-		{"kacho.cloud.iam.v1.AuthorizeService/BatchCheck", "iam.authorize.batchCheck", "scope_id", "project"},
+		{"kaname.cloud.iam.v1.AuthorizeService/BatchCheck", "iam.authorize.batchCheck", "scope_id", "project"},
 	} {
 		t.Run(want.fqn, func(t *testing.T) {
 			entry, ok := c.Lookup(want.fqn)
@@ -289,7 +289,7 @@ func TestPermissionCatalog_LookupKnownEntries_FromEmbed(t *testing.T) {
 	// The three AuthorizeService reads that answer "may X do Y to Z" and
 	// "who can reach Z" declare the scope-filtered lane: the subject arrives
 	// as an ARN and the resource as a nested ref carrying its own type, so the edge
-	// can build no object at all. kacho-iam decides — self-query, cluster
+	// can build no object at all. kaname decides — self-query, cluster
 	// administrator, or `admin` on the resource actually named.
 	//
 	// A fourth read used to stand here — "what can X reach". It is gone from the
@@ -301,9 +301,9 @@ func TestPermissionCatalog_LookupKnownEntries_FromEmbed(t *testing.T) {
 	// every authenticated subject on the surface that describes who can reach what
 	// across the platform.
 	for _, fqn := range []string{
-		"kacho.cloud.iam.v1.AuthorizeService/Check",
-		"kacho.cloud.iam.v1.AuthorizeService/ListSubjects",
-		"kacho.cloud.iam.v1.AuthorizeService/ExpandRelations",
+		"kaname.cloud.iam.v1.AuthorizeService/Check",
+		"kaname.cloud.iam.v1.AuthorizeService/ListSubjects",
+		"kaname.cloud.iam.v1.AuthorizeService/ExpandRelations",
 	} {
 		t.Run(fqn+"/scope-filtered", func(t *testing.T) {
 			entry, ok := c.Lookup(fqn)
@@ -330,7 +330,7 @@ func TestPermissionCatalog_ListAssignableRoles_ScopePolymorphic(t *testing.T) {
 	c, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
 
-	entry, ok := c.Lookup("kacho.cloud.iam.v1.AccessBindingService/ListAssignableRoles")
+	entry, ok := c.Lookup("kaname.cloud.iam.v1.AccessBindingService/ListAssignableRoles")
 	require.True(t, ok, "ListAssignableRoles missing from embedded catalog")
 	assert.Equal(t, "iam.access_bindings_by_resources.listAssignableRoles", entry.Permission)
 	assert.Equal(t, "viewer", entry.RequiredRelation,
@@ -353,7 +353,7 @@ func TestPermissionCatalog_ListByScope_ScopePolymorphic(t *testing.T) {
 	c, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
 
-	entry, ok := c.Lookup("kacho.cloud.iam.v1.AccessBindingService/ListByScope")
+	entry, ok := c.Lookup("kaname.cloud.iam.v1.AccessBindingService/ListByScope")
 	require.True(t, ok, "ListByScope missing from embedded catalog (RBAC rules-model F)")
 	assert.Equal(t, "iam.access_bindings_by_resources.listByScope", entry.Permission)
 	assert.Equal(t, "viewer", entry.RequiredRelation,
@@ -368,11 +368,11 @@ func TestPermissionCatalog_ListByScope_ScopePolymorphic(t *testing.T) {
 
 	// The removed target/selector RPCs must NOT be present.
 	for _, gone := range []string{
-		"kacho.cloud.iam.v1.AccessBindingService/AddTargetResources",
-		"kacho.cloud.iam.v1.AccessBindingService/RemoveTargetResources",
-		"kacho.cloud.iam.v1.AccessBindingService/ReplaceTargetSelector",
-		"kacho.cloud.iam.v1.AccessBindingService/ListGrantableResources",
-		"kacho.cloud.iam.v1.AccessBindingService/ListByResource",
+		"kaname.cloud.iam.v1.AccessBindingService/AddTargetResources",
+		"kaname.cloud.iam.v1.AccessBindingService/RemoveTargetResources",
+		"kaname.cloud.iam.v1.AccessBindingService/ReplaceTargetSelector",
+		"kaname.cloud.iam.v1.AccessBindingService/ListGrantableResources",
+		"kaname.cloud.iam.v1.AccessBindingService/ListByResource",
 	} {
 		_, present := c.Lookup(gone)
 		assert.False(t, present, "removed/renamed RPC must NOT be in catalog: %s", gone)
@@ -391,7 +391,7 @@ func TestPermissionCatalog_AccessBindingUpdate_VerbBearing(t *testing.T) {
 	c, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
 
-	entry, ok := c.Lookup("kacho.cloud.iam.v1.AccessBindingService/Update")
+	entry, ok := c.Lookup("kaname.cloud.iam.v1.AccessBindingService/Update")
 	require.True(t, ok, "AccessBindingService/Update missing from embedded catalog")
 	assert.Equal(t, "iam.access_bindings.update", entry.Permission)
 	assert.Equal(t, "v_update", entry.RequiredRelation, "Update is an object-self mutation — verb-bearing v_update (Design B), not editor tier")
@@ -415,10 +415,10 @@ func TestPermissionCatalog_InternalClusterService_LockedSystemAdmin(t *testing.T
 		fqn  string
 		perm string
 	}{
-		{"kacho.cloud.iam.v1.InternalClusterService/Get", "iam.cluster_admins.get"},
-		{"kacho.cloud.iam.v1.InternalClusterService/ListAdmins", "iam.cluster_admins.list"},
-		{"kacho.cloud.iam.v1.InternalClusterService/GrantAdmin", "iam.cluster_admins.grant"},
-		{"kacho.cloud.iam.v1.InternalClusterService/RevokeAdmin", "iam.cluster_admins.revoke"},
+		{"kaname.cloud.iam.v1.InternalClusterService/Get", "iam.cluster_admins.get"},
+		{"kaname.cloud.iam.v1.InternalClusterService/ListAdmins", "iam.cluster_admins.list"},
+		{"kaname.cloud.iam.v1.InternalClusterService/GrantAdmin", "iam.cluster_admins.grant"},
+		{"kaname.cloud.iam.v1.InternalClusterService/RevokeAdmin", "iam.cluster_admins.revoke"},
 	}
 
 	for _, w := range want {
@@ -458,7 +458,7 @@ func TestPermissionCatalog_ListPermissionCatalog_ExemptAndTombstones(t *testing.
 	c, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
 
-	entry, ok := c.Lookup("kacho.cloud.iam.v1.PermissionCatalogService/ListPermissionCatalog")
+	entry, ok := c.Lookup("kaname.cloud.iam.v1.PermissionCatalogService/ListPermissionCatalog")
 	require.True(t, ok, "ListPermissionCatalog missing from embedded catalog (resync not run?)")
 	assert.False(t, entry.IsExempt(),
 		"ListPermissionCatalog must stand on a produced relation, not on the exempt lane")
@@ -468,8 +468,8 @@ func TestPermissionCatalog_ListPermissionCatalog_ExemptAndTombstones(t *testing.
 		"the platform permission dictionary is anchored on the cluster singleton")
 
 	for _, gone := range []string{
-		"kacho.cloud.iam.v1.InternalIAMService/ListPermissions",
-		"kacho.cloud.iam.v1.InternalAuthorizeService/RunRegoTest",
+		"kaname.cloud.iam.v1.InternalIAMService/ListPermissions",
+		"kaname.cloud.iam.v1.InternalAuthorizeService/RunRegoTest",
 	} {
 		_, present := c.Lookup(gone)
 		assert.False(t, present, "tombstoned RPC must NOT be in embedded catalog (proto-G): %s", gone)
@@ -501,7 +501,7 @@ func TestPermissionCatalog_ListPermissionCatalog_ExemptAndTombstones(t *testing.
 // storage rows below close that instance; the CLASS is held elsewhere, by a probe
 // that derives its population from the catalog itself and asks the emitter what a
 // one-verb grant actually resolves:
-// services/iam/internal/apps/kacho/api/access_binding/reconcile,
+// services/iam/internal/apps/kaname/api/access_binding/reconcile,
 // TestCreateOnlyGrantOpensNoObjectSelfRPC. A new domain landing on tiers is caught
 // there without anyone remembering to add a row here.
 func TestPermissionCatalog_VBC22_VerbBearingFlip(t *testing.T) {
@@ -514,7 +514,7 @@ func TestPermissionCatalog_VBC22_VerbBearingFlip(t *testing.T) {
 		note     string
 	}{
 		// object-self reads → v_get / v_list
-		{"kacho.cloud.iam.v1.UserService/Get", "v_get", "object-self get"},
+		{"kaname.cloud.iam.v1.UserService/Get", "v_get", "object-self get"},
 		{"kacho.cloud.vpc.v1.NetworkService/Get", "v_get", "object-self get"},
 		{"kacho.cloud.compute.v1.InstanceService/Get", "v_get", "object-self get"},
 		// Object-self LIST means "list what hangs off THIS object", so its scope is the
@@ -534,8 +534,8 @@ func TestPermissionCatalog_VBC22_VerbBearingFlip(t *testing.T) {
 		{"kacho.cloud.vpc.v1.SubnetService/List", "viewer", "top-level project list → read tier"},
 		{"kacho.cloud.storage.v1.VolumeService/List", "viewer", "top-level project list → read tier (unchanged, the convention this follows)"},
 		// account/project get → v_get (List stays use-case viewer∪v_list)
-		{"kacho.cloud.iam.v1.AccountService/Get", "v_get", "account get → v_get (R6)"},
-		{"kacho.cloud.iam.v1.ProjectService/Get", "v_get", "project get → v_get (R6)"},
+		{"kaname.cloud.iam.v1.AccountService/Get", "v_get", "account get → v_get (R6)"},
+		{"kaname.cloud.iam.v1.ProjectService/Get", "v_get", "project get → v_get (R6)"},
 		// object-self mutations → v_update / v_delete
 		// User/Update ЗДЕСЬ БОЛЬШЕ НЕ СТОИТ, и это не пропуск (#1102). Конвенция
 		// «пообъектная мутация → v_update» описывает ресурсы, которыми распоряжается
@@ -546,10 +546,10 @@ func TestPermissionCatalog_VBC22_VerbBearingFlip(t *testing.T) {
 		// в этой же строке — объявить `record_writer` частью конвенции, которой он
 		// не принадлежит. Форму его гейта держит своя проба:
 		// services/iam/internal/authzmap/governing_the_identity_is_not_an_account_right_test.go.
-		{"kacho.cloud.iam.v1.GroupService/Update", "v_update", "object-self update"},
+		{"kaname.cloud.iam.v1.GroupService/Update", "v_update", "object-self update"},
 		{"kacho.cloud.vpc.v1.NetworkService/Update", "v_update", "object-self update"},
 		{"kacho.cloud.vpc.v1.NetworkService/Delete", "v_delete", "object-self delete"},
-		{"kacho.cloud.iam.v1.AccessBindingService/Delete", "v_delete", "object-self delete"},
+		{"kaname.cloud.iam.v1.AccessBindingService/Delete", "v_delete", "object-self delete"},
 		// storage — the domain this table used to describe by a single row (List),
 		// which is the one storage RPC the convention leaves on a tier. Everything
 		// object-self was outside the table's reach, so the gate declared the
@@ -567,11 +567,11 @@ func TestPermissionCatalog_VBC22_VerbBearingFlip(t *testing.T) {
 		{"kacho.cloud.vpc.v1.NetworkService/Create", "editor", "create-child → editor on parent (F-7)"},
 		{"kacho.cloud.compute.v1.InstanceService/Create", "editor", "create-child → editor on parent (F-7)"},
 		// Internal.* admin RPCs unchanged — system_admin
-		{"kacho.cloud.iam.v1.InternalClusterService/Get", "system_admin", "Internal admin — no downgrade"},
+		{"kaname.cloud.iam.v1.InternalClusterService/Get", "system_admin", "Internal admin — no downgrade"},
 		{"kacho.cloud.geo.v1.InternalRegionService/Create", "system_admin", "Internal admin — no downgrade"},
 		// scope-polymorphic AB reads stay viewer (handler is the precise gate)
-		{"kacho.cloud.iam.v1.AccessBindingService/ListByScope", "viewer", "scope-polymorphic read floor"},
-		{"kacho.cloud.iam.v1.AccessBindingService/ListAssignableRoles", "viewer", "scope-polymorphic read floor"},
+		{"kaname.cloud.iam.v1.AccessBindingService/ListByScope", "viewer", "scope-polymorphic read floor"},
+		{"kaname.cloud.iam.v1.AccessBindingService/ListAssignableRoles", "viewer", "scope-polymorphic read floor"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.fqn, func(t *testing.T) {
@@ -593,12 +593,12 @@ func TestPermissionCatalog_VBC22_VerbBearingFlip(t *testing.T) {
 	// на отношение, которое производит СИСТЕМНАЯ ВЫДАЧА (#893/#895), — доступ стал
 	// виден в перечне выдач и отзываем там же.
 	for _, fqn := range []string{
-		"kacho.cloud.iam.v1.AccountService/List",
-		"kacho.cloud.iam.v1.GroupService/List",
-		"kacho.cloud.iam.v1.ProjectService/List",
-		"kacho.cloud.iam.v1.RoleService/List",
-		"kacho.cloud.iam.v1.ServiceAccountService/List",
-		"kacho.cloud.iam.v1.UserService/List",
+		"kaname.cloud.iam.v1.AccountService/List",
+		"kaname.cloud.iam.v1.GroupService/List",
+		"kaname.cloud.iam.v1.ProjectService/List",
+		"kaname.cloud.iam.v1.RoleService/List",
+		"kaname.cloud.iam.v1.ServiceAccountService/List",
+		"kaname.cloud.iam.v1.UserService/List",
 	} {
 		entry, ok := c.Lookup(fqn)
 		require.True(t, ok, "запись каталога отсутствует: %s", fqn)

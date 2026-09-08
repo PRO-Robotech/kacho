@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
-# kacho-iam Hydra/Kratos hooks listener (:9092) + Prometheus /metrics listener
+# kaname Hydra/Kratos hooks listener (:9092) + Prometheus /metrics listener
 # (:9095) — per-edge server-side TLS, reusing the SEC-F internal-CA server cert.
 #
 # Sub-phase 5.5 (kacho-iam#137, supersedes the OFF-gate #122/#136): the hooks edge
@@ -22,7 +22,7 @@
 # его ключей и потому переживёт его уход.
 #
 # DETERMINISM NOTE: `helm template` on this large multi-subchart umbrella renders
-# the kacho-iam subchart Deployment NON-deterministically (values coalescing — the
+# the kaname subchart Deployment NON-deterministically (values coalescing — the
 # httpListeners-gated env block is present/absent across repeated renders; this
 # PRE-DATES #137 and is why the prior guard asserted prod-OFF via env-ABSENCE and
 # capability via the TEMPLATE SOURCE). So the prod-ON DECISION is asserted from
@@ -33,14 +33,14 @@
 # are asserted by render.
 #
 # This guard asserts:
-#   - PROD values DECISION → kacho-iam.mtls.httpListeners=true with both
+#   - PROD values DECISION → kaname.mtls.httpListeners=true with both
 #     {hooks,metrics}ClientAuthMode=server-tls-only (gate ON, server-tls-only);
 #   - PROD Hydra render → token/refresh webhook URLs https://…:9092 (encrypted),
 #     HMAC X-Kacho-Hook-Token kept, Hydra pod mounts the SEC-F internal-CA bundle
-#     (kacho-iam-server-tls) + SSL_CERT_FILE so it trusts the kacho-iam server cert;
+#     (kaname-server-tls) + SSL_CERT_FILE so it trusts the kaname server cert;
 #   - DEV → httpListeners off (unset/false) + Hydra hook URLs stay plaintext
 #     http://…:9092 (newman stand byte-identical);
-#   - CAPABILITY INTACT → the kacho-iam deployment TEMPLATE emits every per-edge env
+#   - CAPABILITY INTACT → the kaname deployment TEMPLATE emits every per-edge env
 #     incl. CLIENTAUTHMODE, reusing the mounted SEC-F server cert (no new PKI).
 #
 # Offline manifest-assertion harness (no kind cluster). Mirrors tests/helm/*.
@@ -62,7 +62,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 UMBRELLA="$REPO_ROOT/helm/umbrella"
 PROD="$UMBRELLA/values.prod.yaml"
 DEV="$UMBRELLA/values.dev.yaml"
-TPL="$UMBRELLA/charts/kacho-iam/templates/deployment.yaml"
+TPL="$UMBRELLA/charts/kaname/templates/deployment.yaml"
 
 # ТРИ ИСХОДА (0 зелено · 1 находка о дереве · 2 условие не создано) — общей
 # реализацией на весь каталог. До #1195 отказ helm по причине, НЕ относящейся к
@@ -79,7 +79,7 @@ require_mikefarah_yq
 
 [ -f "$PROD" ] || fatal "values.prod.yaml нет на диске ($PROD)"
 [ -f "$DEV" ]  || fatal "values.dev.yaml нет на диске ($DEV)"
-[ -f "$TPL" ]  || fatal "шаблона kacho-iam нет на диске ($TPL)"
+[ -f "$TPL" ]  || fatal "шаблона kaname нет на диске ($TPL)"
 
 # render_only <values> <show-only-template> — результат в $HELM_OUT.
 render_only() {
@@ -91,31 +91,31 @@ render_only() {
 # knew only ENABLE/CERTFILE/KEYFILE/CLIENTCAFILES — adding CLIENTAUTHMODE makes the
 # capability-intact section RED against a template that does not yet emit it.
 HOOKS_METRICS_ENV=(
-  KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE
-  KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTAUTHMODE
-  KACHO_IAM_HOOKS_SERVER_MTLS_CERTFILE
-  KACHO_IAM_HOOKS_SERVER_MTLS_KEYFILE
-  KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTCAFILES
-  KACHO_IAM_METRICS_SERVER_MTLS_ENABLE
-  KACHO_IAM_METRICS_SERVER_MTLS_CLIENTAUTHMODE
-  KACHO_IAM_METRICS_SERVER_MTLS_CERTFILE
-  KACHO_IAM_METRICS_SERVER_MTLS_KEYFILE
-  KACHO_IAM_METRICS_SERVER_MTLS_CLIENTCAFILES
+  KANAME_HOOKS_SERVER_MTLS_ENABLE
+  KANAME_HOOKS_SERVER_MTLS_CLIENTAUTHMODE
+  KANAME_HOOKS_SERVER_MTLS_CERTFILE
+  KANAME_HOOKS_SERVER_MTLS_KEYFILE
+  KANAME_HOOKS_SERVER_MTLS_CLIENTCAFILES
+  KANAME_METRICS_SERVER_MTLS_ENABLE
+  KANAME_METRICS_SERVER_MTLS_CLIENTAUTHMODE
+  KANAME_METRICS_SERVER_MTLS_CERTFILE
+  KANAME_METRICS_SERVER_MTLS_KEYFILE
+  KANAME_METRICS_SERVER_MTLS_CLIENTCAFILES
 )
 
 # ── 1. PROD values DECISION — gate ON in server-tls-only mode (deterministic yq) ─
-prod_http="$(yq '.["kacho-iam"].mtls.httpListeners' "$PROD")"
+prod_http="$(yq '.["kaname"].mtls.httpListeners' "$PROD")"
 [ "$prod_http" = "true" ] \
-  || fail "prod: kacho-iam.mtls.httpListeners=$prod_http (want true — hooks/metrics transport hardening ON, kacho-iam#137)"
-prod_hooks_mode="$(yq '.["kacho-iam"].mtls.hooksClientAuthMode' "$PROD")"
-prod_metrics_mode="$(yq '.["kacho-iam"].mtls.metricsClientAuthMode' "$PROD")"
+  || fail "prod: kaname.mtls.httpListeners=$prod_http (want true — hooks/metrics transport hardening ON, kacho-iam#137)"
+prod_hooks_mode="$(yq '.["kaname"].mtls.hooksClientAuthMode' "$PROD")"
+prod_metrics_mode="$(yq '.["kaname"].mtls.metricsClientAuthMode' "$PROD")"
 [ "$prod_hooks_mode" = "server-tls-only" ] \
   || fail "prod: hooksClientAuthMode=$prod_hooks_mode (want server-tls-only — Ory webhooks present no client cert)"
 [ "$prod_metrics_mode" = "server-tls-only" ] \
   || fail "prod: metricsClientAuthMode=$prod_metrics_mode (want server-tls-only — no scrape client cert wired)"
 # enable=true is the precondition (the SEC-F server cert-trio is mounted only then).
-prod_enable="$(yq '.["kacho-iam"].mtls.enable' "$PROD")"
-[ "$prod_enable" = "true" ] || fail "prod: kacho-iam.mtls.enable=$prod_enable (httpListeners requires enable=true — no new PKI)"
+prod_enable="$(yq '.["kaname"].mtls.enable' "$PROD")"
+[ "$prod_enable" = "true" ] || fail "prod: kaname.mtls.enable=$prod_enable (httpListeners requires enable=true — no new PKI)"
 ok
 
 # ── 2. PROD Hydra — token/refresh webhook URLs https://…:9092 + HMAC kept ────
@@ -132,19 +132,19 @@ fi
   || fail "prod: Hydra webhook must still carry the HMAC header X-Kacho-Hook-Token (caller-auth unchanged)"
 ok
 
-# ── 3. PROD Hydra pod mounts the internal-CA bundle (trusts kacho-iam server cert) ─
+# ── 3. PROD Hydra pod mounts the internal-CA bundle (trusts kaname server cert) ─
 render_only "$PROD" charts/hydra/templates/deployment.yaml; HYDRA_DEPLOY_PROD="$HELM_OUT"
 [ -n "$HYDRA_DEPLOY_PROD" ] || fail "hydra deployment did not render in prod profile"
-[[ "$HYDRA_DEPLOY_PROD" == *'kacho-iam-server-tls'* ]] \
-  || fail "prod: Hydra pod must mount the SEC-F internal-CA bundle (kacho-iam-server-tls) for webhook CA-trust"
+[[ "$HYDRA_DEPLOY_PROD" == *'kaname-server-tls'* ]] \
+  || fail "prod: Hydra pod must mount the SEC-F internal-CA bundle (kaname-server-tls) for webhook CA-trust"
 any_line_matches "$HYDRA_DEPLOY_PROD" 'name: SSL_CERT_FILE|name: SSL_CERT_DIR' \
   || fail "prod: Hydra must set SSL_CERT_FILE/SSL_CERT_DIR so its webhook client trusts the internal-CA server cert"
 ok
 
 # ── 4. DEV — httpListeners off + Hydra hook URLs stay plaintext ──────────────
-dev_http="$(yq '.["kacho-iam"].mtls.httpListeners // false' "$DEV")"
+dev_http="$(yq '.["kaname"].mtls.httpListeners // false' "$DEV")"
 [ "$dev_http" != "true" ] \
-  || fail "dev: kacho-iam.mtls.httpListeners=$dev_http (dev hooks/metrics listener must stay PLAINTEXT — regression!)"
+  || fail "dev: kaname.mtls.httpListeners=$dev_http (dev hooks/metrics listener must stay PLAINTEXT — regression!)"
 render_only "$DEV" charts/hydra/templates/configmap.yaml; HYDRA_CM_DEV="$HELM_OUT"
 any_line_matches "$HYDRA_CM_DEV" 'http://[^"]*:9092/iam/v1/hooks/token' \
   || fail "dev: Hydra token_hook URL must stay plaintext http://…:9092 (newman stand unchanged)"
@@ -163,13 +163,13 @@ ok
 # Рендерится ПОД-ЧАРТ отдельно — в отличие от умбреллы (см. DETERMINISM NOTE выше) он
 # детерминирован: пять подряд рендеров дают один и тот же состав ручек.
 gate_render() {
-  helm_try iam "$UMBRELLA/charts/kacho-iam" --set mtls.enable=true "$@" \
+  helm_try iam "$UMBRELLA/charts/kaname" --set mtls.enable=true "$@" \
     --show-only templates/deployment.yaml
-  render_or_fatal "под-чарт kacho-iam standalone${*:+ [$*]}"
+  render_or_fatal "под-чарт kaname standalone${*:+ [$*]}"
 }
 gate_render --set mtls.httpListeners=true; GATE_ON="$HELM_OUT"
 gate_render; GATE_OFF="$HELM_OUT"
-for name in KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE KACHO_IAM_METRICS_SERVER_MTLS_ENABLE; do
+for name in KANAME_HOOKS_SERVER_MTLS_ENABLE KANAME_METRICS_SERVER_MTLS_ENABLE; do
   [[ "$GATE_ON" == *"name: $name"* ]] \
     || fail "capability: mtls.httpListeners=true НЕ включает $name — способность потеряна, боевой профиль отгрузил бы открытый листенер"
   if [[ "$GATE_OFF" == *"name: $name"* ]]; then
@@ -181,12 +181,12 @@ for name in "${HOOKS_METRICS_ENV[@]}"; do
     || fail "capability: env $name missing from template — server-side TLS support / CLIENTAUTHMODE not emitted"
 done
 # Both CLIENTAUTHMODE env default to server-tls-only in the template.
-[[ "$(grep -A1 'KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTAUTHMODE' "$TPL")" == *'hooksClientAuthMode'* ]] \
+[[ "$(grep -A1 'KANAME_HOOKS_SERVER_MTLS_CLIENTAUTHMODE' "$TPL")" == *'hooksClientAuthMode'* ]] \
   || fail "capability: hooks CLIENTAUTHMODE must derive from .Values.mtls.hooksClientAuthMode"
-[[ "$(grep -A1 'KACHO_IAM_METRICS_SERVER_MTLS_CLIENTAUTHMODE' "$TPL")" == *'metricsClientAuthMode'* ]] \
+[[ "$(grep -A1 'KANAME_METRICS_SERVER_MTLS_CLIENTAUTHMODE' "$TPL")" == *'metricsClientAuthMode'* ]] \
   || fail "capability: metrics CLIENTAUTHMODE must derive from .Values.mtls.metricsClientAuthMode"
 # The hooks/metrics block must REUSE the mounted server cert-trio (no new PKI).
-[[ "$(grep -A1 'KACHO_IAM_HOOKS_SERVER_MTLS_CERTFILE' "$TPL")" == *'tls.crt'* ]] \
+[[ "$(grep -A1 'KANAME_HOOKS_SERVER_MTLS_CERTFILE' "$TPL")" == *'tls.crt'* ]] \
   || fail "capability: hooks certfile must reuse the mounted server tls.crt (SEC-F)"
 ok
 

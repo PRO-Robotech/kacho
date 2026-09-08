@@ -49,8 +49,8 @@ import (
 // SAN входит в круг доверенных отправителей этого теста.
 func forwarderPeerCtx(t *testing.T, ctx context.Context) context.Context {
 	t.Helper()
-	return grpcsrv.WithCertIdentity(
-		peer.NewContext(ctx, &peer.Peer{AuthInfo: credentials.TLSInfo{State: tls.ConnectionState{}}}),
+	return grpcsrv.WithCertIdentityIn(
+		peer.NewContext(ctx, &peer.Peer{AuthInfo: credentials.TLSInfo{State: tls.ConnectionState{}}}), grpcsrv.NewTrustDomain("kacho.cloud"),
 		testForwarderSAN, true)
 }
 

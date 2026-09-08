@@ -19,7 +19,7 @@
 //     treated fail-closed: an unprovable backstop is a finding;
 //  3. the body of that same use-case List runs the page it just read through a
 //     per-object visibility filter (listnarrow.Page /
-//     listnarrow.IDs → kacho-iam AuthorizeService.BatchCheck).
+//     listnarrow.IDs → kaname AuthorizeService.BatchCheck).
 //
 // (1)+(2) are project scope. They answer "whose project is this", never "may
 // this caller see THESE objects" — without (3) every project member sees every
@@ -810,7 +810,7 @@ Every public project-scoped List<Resource> must:
   (1) narrow rows by project_id in the repo.List body;
   (2) reject an empty projectId in the use-case List (in-service backstop);
   (3) filter the page it just read per-object via FilterVisiblePage/
-      FilterVisibleIDs (kacho-iam BatchCheck, on the same relation Get enforces).
+      FilterVisibleIDs (kaname BatchCheck, on the same relation Get enforces).
 (1)+(2) are project scope — they do NOT answer 'may this caller see THESE
 objects'; without (3) every project member sees every row of the project.
 Enumerating all allowed ids (ListAllowedIDs/ListObjects) is not a substitute.

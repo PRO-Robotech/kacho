@@ -98,14 +98,14 @@ var Profile = listfiltergate.Profile{
 	// Copying iam's answer here would have been wrong twice over: iam's sources are
 	// its own — the store's port and a paged verdict resolver over its own tables —
 	// and kacho-nlb has neither. It holds grants nowhere; every authorization
-	// question it asks goes to kacho-iam, through the ports below.
+	// question it asks goes to kaname, through the ports below.
 	EnumerationSources: []listfiltergate.EnumerationSource{
-		// The peer port to kacho-iam — where a new authorization RPC would land —
+		// The peer port to kaname — where a new authorization RPC would land —
 		// and the adapter service code actually holds. Both are named because a
 		// widening could be written at either, and each expires with its own subject.
 		{Dir: "internal/clients/iam", Type: "CheckClient", Role: listfiltergate.AsksVerdicts},
 		{Dir: "internal/check", Type: "IAMCheckClient", Role: listfiltergate.AsksVerdicts},
-		// The SHARED narrow port to kacho-iam's AuthorizeService, resolved from the
+		// The SHARED narrow port to kaname's AuthorizeService, resolved from the
 		// module root because it is foundation rather than service code. It is the
 		// shortest path from "narrow this page" to "enumerate the universe": the RPC
 		// it fronts is the one that enumerates (AuthorizeService.ListObjects).

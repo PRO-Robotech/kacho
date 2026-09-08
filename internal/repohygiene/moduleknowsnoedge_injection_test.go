@@ -114,8 +114,8 @@ authz:
 // анализатора) и vpc (модуль, которого он не судил).
 func cleanTwoModuleTree() map[string]string {
 	return map[string]string{
-		"services/iam/legal.go":           strings.ReplaceAll(legalModuleGoTwin, "KACHO_VPC_", "KACHO_IAM_"),
-		"services/iam/deploy/values.yaml": strings.ReplaceAll(legalModuleChartTwin, "KACHO_VPC_", "KACHO_IAM_"),
+		"services/iam/legal.go":           strings.ReplaceAll(legalModuleGoTwin, "KACHO_VPC_", "KANAME_"),
+		"services/iam/deploy/values.yaml": strings.ReplaceAll(legalModuleChartTwin, "KACHO_VPC_", "KANAME_"),
 		"services/vpc/legal.go":           legalModuleGoTwin,
 		"services/vpc/deploy/values.yaml": legalModuleChartTwin,
 	}
@@ -162,7 +162,7 @@ func TestModuleKnowsNoEdgeInjectionOutsideIamRedsOnlyThatModule(t *testing.T) {
 // прогон.
 func TestModuleKnowsNoEdgeInjectionInsideIamRedsOnlyThatModule(t *testing.T) {
 	files := cleanTwoModuleTree()
-	files["services/iam/wiring.go"] = "package svc\n\nconst envEdge = \"KACHO_IAM_GATEWAY_INTERNAL_ADDR\"\n"
+	files["services/iam/wiring.go"] = "package svc\n\nconst envEdge = \"KANAME_GATEWAY_INTERNAL_ADDR\"\n"
 	findings := auditModuleTree(t, moduleKnowsNoEdgeTree(t, files))
 
 	iam := findingsOf(findings, "iam")
@@ -316,7 +316,7 @@ func TestModuleKnowsNoEdgeDerivesTheModuleListFromTheTree(t *testing.T) {
 // разошлась бы с первой молча.
 func TestModuleKnowsNoEdgeKnobPrefixIsDerived(t *testing.T) {
 	for module, want := range map[string]string{
-		"iam": "KACHO_IAM_GATEWAY",
+		"iam": "KANAME_GATEWAY",
 		"vpc": "KACHO_VPC_GATEWAY",
 		"nlb": "KACHO_NLB_GATEWAY",
 	} {

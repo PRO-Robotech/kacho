@@ -190,7 +190,7 @@ func (a *AuthInterceptor) revocationCheck(ctx context.Context, vt *VerifiedToken
 	// the jti. Our provider mints JWT access tokens, which always carry one (the
 	// profiles pin that strategy — see gateway/deploy/token_shape_test.go), and
 	// the platform already depends on it end to end: sign-out revokes BY jti and
-	// kacho-iam refuses to refresh a token that has none. So this branch is not
+	// kaname refuses to refresh a token that has none. So this branch is not
 	// reachable with a credential this deployment issued — but it is not silent
 	// either, because "the control did not run" must never look like "the control
 	// passed".

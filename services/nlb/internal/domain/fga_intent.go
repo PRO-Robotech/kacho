@@ -17,7 +17,7 @@ import (
 // writing tuples to FGA after Commit, the worker serialises the resource's
 // owner-hierarchy tuples into a FGARegisterIntent and persists it in the SAME
 // writer-tx as the resource INSERT/DELETE (one commit, no dual-write). A
-// register-drainer later applies each tuple through kacho-iam
+// register-drainer later applies each tuple through kaname
 // InternalIAMService.RegisterResource / UnregisterResource by mTLS.
 //
 // This file is pure Go (stdlib only) per architecture.md domain-layer rule —
@@ -41,7 +41,7 @@ const (
 //
 // ONLY `project` is emitted in a register-intent, and it is NAMED FROM THE
 // RECEIVING SIDE'S DECLARATION (pkg/authz/proxytuple) rather than spelled again
-// here: the accepted set belongs to kacho-iam, and a second spelling of somebody
+// here: the accepted set belongs to kaname, and a second spelling of somebody
 // else's closed set is a copy that drifts silently. Privilege relations are
 // reserved for the AccessBinding flow — "admin" (formerly emitted as a creator
 // tuple) was refused on every delivery and is no longer emitted at all. It stays
@@ -62,11 +62,11 @@ const (
 
 // FGAObjectTypeProject — FGA object type of the IAM project resource. Used as the
 // destination-project object ("project:<id>") for the Move destination-authz
-// Check. Mirrors kacho-iam / api-gateway permission_catalog.
+// Check. Mirrors kaname / api-gateway permission_catalog.
 const FGAObjectTypeProject = "project"
 
 // FGA register-intent event types (parity with the CHECK constraint in
-// migration 0002 and with kacho-iam RegisterResource/UnregisterResource).
+// migration 0002 and with kaname RegisterResource/UnregisterResource).
 const (
 	FGAEventRegister   = "fga.register"
 	FGAEventUnregister = "fga.unregister"
@@ -103,7 +103,7 @@ type FGARegisterIntent struct {
 
 	// ---- tenant labels + parent-scope mirror feed ----
 	//
-	// nlb forwards these to kacho-iam InternalIAMService.RegisterResource so IAM
+	// nlb forwards these to kaname InternalIAMService.RegisterResource so IAM
 	// populates its output-only `resource_mirror` (label+parent zeркало; source of
 	// truth = nlb), which feeds the γ `bySelector{matchLabels}` selector and
 	// containment gate SAME-DB in IAM (no iam→nlb edge — data is pushed by the
@@ -126,7 +126,7 @@ type FGARegisterIntent struct {
 	// repo/kacho/pg fgaRegisterEmitter). For sequential mutations of one object a
 	// later mutation's tx commits-after the earlier, so its now is strictly
 	// greater → monotonic per-object. The register-drainer forwards it as
-	// RegisterResourceRequest.source_version so kacho-iam applies the mirror UPSERT
+	// RegisterResourceRequest.source_version so kaname applies the mirror UPSERT
 	// last-SOURCE-state-wins (a reordered stale intent → no-op, not an overwrite).
 	// Zero (legacy payload / decode of an old row) → IAM treats as '-infinity'.
 	SourceVersion time.Time `json:"source_version,omitempty"`

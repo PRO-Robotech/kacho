@@ -101,6 +101,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/PRO-Robotech/kacho/pkg/contractroot"
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
@@ -203,7 +204,15 @@ var (
 func adviceIsOurs(body string) bool {
 	for _, ln := range strings.Split(body, "\n") {
 		if m := adPackageRe.FindStringSubmatch(ln); m != nil {
-			return strings.HasPrefix(m[1], "kacho.")
+			// Приставка берётся из ОБЪЯВЛЕННОГО множества корней: литерал
+			// `kacho.` объявил бы чужим наш же контракт, переехавший под
+			// второй корень, и корпус сузился бы молча.
+			for _, root := range contractroot.Roots {
+				if strings.HasPrefix(m[1], root+".") {
+					return true
+				}
+			}
+			return false
 		}
 	}
 	return false

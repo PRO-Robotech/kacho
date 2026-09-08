@@ -12,7 +12,7 @@ export const RESTRICTIONS = {
   ],
   projectId: [
     'обязателен при Create',
-    'ссылка на Project домена kacho-iam (существование проверяется вызовом ProjectService.Get)',
+    'ссылка на Project домена kaname (существование проверяется вызовом ProjectService.Get)',
     'immutable после Create',
   ],
   zoneId: [

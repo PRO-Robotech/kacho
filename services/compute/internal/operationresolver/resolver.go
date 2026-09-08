@@ -3,7 +3,7 @@
 
 // Package operationresolver — доменный resolver осиротевших LRO для kacho-compute.
 //
-// Движок reconciler'а живёт в kacho-corelib/operations (сканирует таблицу
+// Движок reconciler'а живёт в pkg/operations (сканирует таблицу
 // operations по grace-окну, клеймит orphan'ы под FOR UPDATE SKIP LOCKED). Сам
 // resolver — доменная часть в сервисе: он знает типы метаданных compute
 // (*computev1.<Verb><Resource>Metadata) и сверяет осиротевшую операцию с

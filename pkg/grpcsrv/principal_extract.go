@@ -30,27 +30,26 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/principalwire"
 )
 
+// Ключи ЛИЧНОСТИ на проводе объявлены ОДИН раз — в `pkg/principalwire`, откуда
+// их берёт и край. Здесь они только переименованы под привычные вызывающему
+// имена: имя ключа, написанное тут своей рукой, было бы вторым объявлением
+// одного предмета, а расходятся такие два МОЛЧА — переименование одной стороны
+// собирается чисто и кончается потерей личности, а не отказом. Единственность
+// объявления держит гейт дерева `internal/repohygiene`
+// `TestIdentityWireNamespaceIsDeclaredOnce`.
 const (
-	MDKeyPrincipalType    = "x-kacho-principal-type"
-	MDKeyPrincipalID      = "x-kacho-principal-id"
-	MDKeyPrincipalDisplay = "x-kacho-principal-display-name"
+	MDKeyPrincipalType    = principalwire.MetaPrincipalType
+	MDKeyPrincipalID      = principalwire.MetaPrincipalID
+	MDKeyPrincipalDisplay = principalwire.MetaPrincipalDisplay
 
-	// MDKeyPrincipalDisplayBin — ДВОИЧНАЯ форма того же значения.
-	//
-	// Значение обычного метаданного ключа gRPC ограничено печатаемой латиницей
-	// (0x20–0x7E), и библиотека отвергает ВЕСЬ вызов, не дойдя до обработчика.
-	// Продукт русскоязычный: арендатор называет себя по-русски, и это законный
-	// ввод — значит имя обязано ехать формой, которая произвольные байты
-	// допускает. Суффикс `-bin` и есть эта форма: gRPC кодирует такое значение
-	// сам, а мост HTTP→gRPC декодирует его перед передачей, поэтому тракт
-	// работает целиком, а не наполовину.
-	//
-	// Тип и идентификатор остаются обычными ключами намеренно: они латиница
-	// by construction (`usr-`+крокфорд, закрытый словарь типов), и переводить
-	// их значило бы платить кодированием за то, что кодирования не требует.
-	MDKeyPrincipalDisplayBin = "x-kacho-principal-display-name-bin"
+	// MDKeyPrincipalDisplayBin — ДВОИЧНАЯ форма того же значения: значение
+	// обычного ключа метаданных ограничено печатаемой латиницей, и имя,
+	// записанное кириллицей, роняет ВЕСЬ вызов, не дойдя до обработчика.
+	// Разбор — у объявления, `principalwire.MetaPrincipalDisplayBin`.
+	MDKeyPrincipalDisplayBin = principalwire.MetaPrincipalDisplayBin
 )
 
 // SetPrincipalDisplayMD кладёт отображаемое имя в метаданные ЕДИНСТВЕННЫМ
@@ -162,6 +161,20 @@ func warnUnconditionalTrust(l *slog.Logger) {
 
 // UnaryPrincipalExtract — gRPC unary interceptor для backend-сервисов.
 // Должен стоять РАНЬШЕ бизнес-handler'ов в цепочке interceptor'ов.
+//
+// # Отказа при объявленной и не приехавшей личности здесь НЕТ, и это решение
+//
+// Отказ (identity_arrival.go) утверждает: пир, чью пересылку слушатель ПОЧИТАЕТ,
+// назвал личность именем, которого эта сборка не читает. У безусловного
+// извлекателя решения о доверии нет вовсе — он читает заголовки, не глядя ни на
+// транспорт, ни на личность сертификата, — поэтому его посылка здесь
+// НЕВЫРАЗИМА, а не опущена.
+//
+// Провязок у него в дереве ноль (предикат: обращения к
+// `grpcsrv.Unary/StreamPrincipalExtract` вне проб и вне этого файла), и у службы
+// личности их отсутствие держит своя проба. Появится провязка — вместе с ней
+// придётся завести и решение о доверии, то есть перейти на trust-aware пару,
+// которая отказ несёт.
 //
 // ВНИМАНИЕ (trust): этот extractor читает x-kacho-principal-* БЕЗУСЛОВНО, без
 // проверки транспорта/cert-identity форвардера — он доверяет, что заголовки

@@ -311,7 +311,7 @@ message GetInstanceRequest {
 
 message ListInstancesRequest {
   // ID of the project to list instances in.
-  // To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+  // To get the project ID, use a [kaname.cloud.iam.v1.ProjectService.List] request.
   string project_id = 1;
 
   // The maximum number of results per page to return. If the number of available

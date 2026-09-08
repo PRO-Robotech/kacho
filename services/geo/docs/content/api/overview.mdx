@@ -119,7 +119,7 @@ RFC 3339 (`2026-06-24T10:00:00Z`).
 ## Авторизация
 
 Авторизация — **per-RPC**: интерсептор перед выполнением метода вызывает
-`InternalIAMService.Check` в kacho-iam, и это одинаково для **обоих** listener'ов
+`InternalIAMService.Check` в kaname, и это одинаково для **обоих** listener'ов
 (internal не освобождён). Публичное чтение каталога исключением НЕ является — оно
 проверяется, как и всё остальное:
 
@@ -131,7 +131,7 @@ RFC 3339 (`2026-06-24T10:00:00Z`).
 - **admin** (`InternalRegionService` / `InternalZoneService` Create/Update/Delete) — требуют
   отношение `system_admin`.
 
-Если отношения нет → `PERMISSION_DENIED` (HTTP `403`). Недоступность kacho-iam на request-path —
+Если отношения нет → `PERMISSION_DENIED` (HTTP `403`). Недоступность kaname на request-path —
 `UNAVAILABLE` (fail-closed). Подробнее — [Архитектура](/architecture/overview).
 
 ```mermaid
@@ -139,7 +139,7 @@ flowchart LR
   cli["Клиент"] -->|"Bearer JWT"| agw["api-gateway"]
   agw -->|"verify JWT"| agw
   agw -->|"geo.v1.* + subject"| geo["kacho-geo"]
-  geo -->|"Check(subject, relation, cluster)"| iam["kacho-iam"]
+  geo -->|"Check(subject, relation, cluster)"| iam["kaname"]
   iam -->|"allow / deny"| geo
   geo -->|"SQL"| pg[("kacho_geo")]
 ```
@@ -168,7 +168,7 @@ flowchart LR
     <tr><td><code>NOT_FOUND</code></td><td>404</td><td>Корректный по формату, но несуществующий регион/зона</td></tr>
     <tr><td><code>ALREADY_EXISTS</code></td><td>409</td><td>Занят <code>id</code> — единственный уникальный ключ каталога (PK). Глобальной уникальности имени больше нет: поле снято вместе с дублем (#716)</td></tr>
     <tr><td><code>FAILED_PRECONDITION</code></td><td>400</td><td>Состояние не позволяет (например, удаление региона с зонами — FK <code>RESTRICT</code>)</td></tr>
-    <tr><td><code>UNAVAILABLE</code></td><td>503</td><td>Peer (kacho-iam) недоступен — fail-closed</td></tr>
+    <tr><td><code>UNAVAILABLE</code></td><td>503</td><td>Peer (kaname) недоступен — fail-closed</td></tr>
     <tr><td><code>UNAUTHENTICATED</code></td><td>401</td><td>Нет / невалиден JWT</td></tr>
     <tr><td><code>PERMISSION_DENIED</code></td><td>403</td><td>Нет нужного отношения в authz-Check</td></tr>
     <tr><td><code>INTERNAL</code></td><td>500</td><td>Внутренняя ошибка (фиксированный текст, без утечки SQL)</td></tr>

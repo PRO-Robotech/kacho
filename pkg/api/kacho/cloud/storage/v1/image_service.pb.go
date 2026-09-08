@@ -78,7 +78,7 @@ func (x *GetImageRequest) GetImageId() string {
 type ListImagesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the project to list images in.
-	// To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+	// To get the project ID, use a [kaname.cloud.iam.v1.ProjectService.List] request.
 	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// The maximum number of results per page to return. If the number of available
 	// results is larger than [page_size], the service returns a
@@ -210,7 +210,7 @@ func (x *ListImagesResponse) GetNextPageToken() string {
 type CreateImageRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the project to create an image in.
-	// To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+	// To get the project ID, use a [kaname.cloud.iam.v1.ProjectService.List] request.
 	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// ID of the region the image lives in (REGIONAL/anycast). Peer-validated against
 	// kacho-geo.

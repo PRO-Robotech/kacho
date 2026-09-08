@@ -129,12 +129,12 @@ func TestInterceptor_Unary_Unavailable_FailClosed(t *testing.T) {
 }
 
 func TestInterceptor_Unary_MachineTypeList_ClusterCatalog(t *testing.T) {
-	// Catalog object — "cluster:cluster_kacho_root": FGA model имеет `type cluster`
+	// Catalog object — "cluster:cluster_root": FGA model имеет `type cluster`
 	// с user:* viewer cascade.
 	intr, _ := newTestInterceptor(t, func(_ context.Context, subject, relation, object string) (bool, error) {
 		require.Equal(t, "user:usr_alice", subject)
 		require.Equal(t, "viewer", relation)
-		require.Equal(t, "cluster:cluster_kacho_root", object, "MachineType/Zone/Region — viewer on cluster:cluster_kacho_root")
+		require.Equal(t, "cluster:cluster_root", object, "MachineType/Zone/Region — viewer on cluster:cluster_root")
 		return true, nil
 	})
 	uIntr := intr.Unary()

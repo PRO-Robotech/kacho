@@ -6,8 +6,8 @@ title: Авторизация
 
 # Авторизация
 
-Эта страница описывает модель доступа Kachō NLB: per-RPC authz-Check через kacho-iam на **обоих**
-listener'ах, verb-bearing отношения, scope-filtered List и регистрацию владения в kacho-iam.
+Эта страница описывает модель доступа Kachō NLB: per-RPC authz-Check через kaname на **обоих**
+listener'ах, verb-bearing отношения, scope-filtered List и регистрацию владения в kaname.
 Общий обзор устройства сервиса — на странице [Архитектура](/architecture/overview).
 
 ## AuthN + AuthZ на каждом запросе
@@ -19,7 +19,7 @@ public, ни на internal порту.
   service→service транспорт — **mTLS** (verified client-cert). Internal `:9091` не освобождён:
   mTLS обязателен.
 - **AuthZ** — каждый RPC (public и internal) проходит per-RPC `InternalIAMService.Check` в
-  kacho-iam. Internal-периметр **не считается доверенным**
+  kaname. Internal-периметр **не считается доверенным**
   (defense-in-depth против lateral movement).
 
 ## Verb-bearing отношения
@@ -40,7 +40,7 @@ tier'ом): доступ к конкретному действию провер
 наследует доступ от `nlb_network_load_balancer` (иерархия tuple
 `nlb_listener#load_balancer@nlb_network_load_balancer:<lb_id>`).
 
-Нет нужного отношения → `PERMISSION_DENIED` (HTTP 403). Недоступность kacho-iam на request-path
+Нет нужного отношения → `PERMISSION_DENIED` (HTTP 403). Недоступность kaname на request-path
 → `UNAVAILABLE` (fail-closed).
 
 ```mermaid
@@ -48,7 +48,7 @@ flowchart LR
   cli["Клиент"] -->|"Bearer JWT"| agw["api-gateway"]
   agw -->|"verify JWT"| agw
   agw -->|"loadbalancer.v1.* + principal"| nlb["kacho-nlb"]
-  nlb -->|"Check(principal, relation, scope-object)"| iam["kacho-iam"]
+  nlb -->|"Check(principal, relation, scope-object)"| iam["kaname"]
   iam -->|"allow / deny"| nlb
   nlb -->|"SQL"| pg[("kacho_nlb")]
 ```
@@ -93,27 +93,27 @@ per-RPC Check для `Get` называют **одно и то же** отнош
 | Ситуация | Ответ |
 |---|---|
 | Вызывающий не назван (нет принципала) | `UNAUTHENTICATED` — **безусловно**, независимо от того, подключён ли фильтр |
-| kacho-iam недоступен | `UNAVAILABLE` (fail-closed, никогда не нефильтрованная страница) |
+| kaname недоступен | `UNAVAILABLE` (fail-closed, никогда не нефильтрованная страница) |
 | Ничего не видно | пустая страница (no-leak) |
 
 `v_list` при этом **остаётся** отношением модели и продолжает гейтить списки, вложенные **в**
 объект (`ListOperations` на самом ресурсе): там вопрос задаётся о родителе, и это другой вопрос,
 не членство страницы.
 
-## Регистрация владения в kacho-iam
+## Регистрация владения в kaname
 
 Объектные типы домена в модели прав: `nlb_network_load_balancer`, `nlb_listener`,
 `nlb_target_group`. При создании ресурса сервис через `InternalIAMService.RegisterResource`
 регистрирует владение и место ресурса в цепи областей (project / owner) — модули не пишут в
-модель прав напрямую, только через kacho-iam.
+модель прав напрямую, только через kaname.
 
 Доставка идемпотентна и at-least-once через **transactional outbox**: намерение зарегистрировать
 ресурс пишется в
 `kacho_nlb.fga_register_outbox` в той же транзакции, что и ресурс; corelib-drainer (канал
-`kacho_nlb_fga_register_outbox`) досылает его в kacho-iam с ретраями.
+`kacho_nlb_fga_register_outbox`) досылает его в kaname с ретраями.
 
 :::note Domain-binding: object-префикс ≠ имя сервиса
-Сервис `kacho-nlb` владеет FGA-доменом с префиксом **`lb_`** (не `nlb_`). kacho-iam при
+Сервис `kacho-nlb` владеет FGA-доменом с префиксом **`lb_`** (не `nlb_`). kaname при
 валидации proxy-tuple биндит caller-домен (из mTLS SAN) к object-префиксу через явный mapping
 (`nlb` → `lb`). Это важно под production-strict mTLS: без корректного mapping'а owner-tuples
 были бы отклонены и ресурсы стали бы невидимы в authz-filtered List.
@@ -122,6 +122,6 @@ per-RPC Check для `Get` называют **одно и то же** отнош
 :::warning Least-privilege proxy-tuples
 Через `RegisterResource` модуль вправе писать **только** hierarchy-отношения
 (`project`/`owner`), но не `admin`/`editor`/`viewer` — это защита от privilege-escalation,
-энфорсится в kacho-iam. Модель ресурса обязана иметь `owner`-relation, иначе creator-tuple
+энфорсится в kaname. Модель ресурса обязана иметь `owner`-relation, иначе creator-tuple
 застрянет неотправленным в outbox.
 :::

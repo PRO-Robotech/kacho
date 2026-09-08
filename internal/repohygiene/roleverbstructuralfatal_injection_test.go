@@ -23,7 +23,7 @@ import "testing"
 // Это тот самый вход, которым свойство снималось молча: шесть строк из корня,
 // сборка проходит, соседние гейты полосы зелены.
 func TestIAMRV108_InjectionRedWhenTheStructuralBranchIsGone(t *testing.T) {
-	src := bootSrc(`		verbs, verr := seed.ReseedSystemRoleVerbs(ctx, kachoRepo, pool, obs)
+	src := bootSrc(`		verbs, verr := seed.ReseedSystemRoleVerbs(ctx, kanameRepo, pool, obs)
 		if verr != nil {
 			logger.Error("пересчёт отказал", slog.Any("err", verr))
 		}
@@ -48,7 +48,7 @@ func TestIAMRV108_InjectionRedWhenTheStructuralBranchIsGone(t *testing.T) {
 // Ось коварнее первой: блок на месте, читается как исполненное решение, и
 // отличить его от исполненного можно только по тому, ЧТО в теле.
 func TestIAMRV108_InjectionRedOnABranchThatOnlyReports(t *testing.T) {
-	src := bootSrc(`		verbs, _ := seed.ReseedSystemRoleVerbs(ctx, kachoRepo, pool, obs)
+	src := bootSrc(`		verbs, _ := seed.ReseedSystemRoleVerbs(ctx, kanameRepo, pool, obs)
 		if verbs.Structural() {
 			logger.Error("пересеяно 0", slog.Int("roles_examined", verbs.Examined))
 		}`)
@@ -73,7 +73,7 @@ func TestIAMRV108_InjectionRedOnABranchThatOnlyReports(t *testing.T) {
 // гейт, требующий прерывания от всякой ветки после вызова, краснел бы на ней, а
 // она обязана оставаться непрерывающей.
 func TestIAMRV108_InjectionSilentOnTheLawfulForm(t *testing.T) {
-	src := bootSrc(`		verbs, verr := seed.ReseedSystemRoleVerbs(ctx, kachoRepo, pool, obs)
+	src := bootSrc(`		verbs, verr := seed.ReseedSystemRoleVerbs(ctx, kanameRepo, pool, obs)
 		if verr != nil {
 			logger.Error("пересчёт отказал", slog.Any("err", verr))
 		}
@@ -101,7 +101,7 @@ func TestIAMRV108_InjectionSilentOnTheLawfulForm(t *testing.T) {
 // Распознаватель, знающий одну форму, оставил бы вторую вне наблюдения — и всё
 // записанное в ней оказалось бы не нарушением, а невидимостью.
 func TestIAMRV108_InjectionSilentOnProcessExitForm(t *testing.T) {
-	src := bootSrc(`		verbs, _ := seed.ReseedSystemRoleVerbs(ctx, kachoRepo, pool, obs)
+	src := bootSrc(`		verbs, _ := seed.ReseedSystemRoleVerbs(ctx, kanameRepo, pool, obs)
 		if verbs.Structural() {
 			logger.Fatalf("осмотрено %d, пересеяно 0", verbs.Examined)
 		}`)
@@ -121,7 +121,7 @@ func TestIAMRV108_InjectionSilentOnProcessExitForm(t *testing.T) {
 // замеров. Признак, судящий по ИМЕНИ МЕТОДА, зачёл бы чужой вызов за исполненное
 // решение; признак, судящий по имени вместе с ПОЛУЧАТЕЛЕМ переписи, — не зачтёт.
 func TestIAMRV108_InjectionSilentOnAForeignStructuralCall(t *testing.T) {
-	src := bootSrc(`		verbs, _ := seed.ReseedSystemRoleVerbs(ctx, kachoRepo, pool, obs)
+	src := bootSrc(`		verbs, _ := seed.ReseedSystemRoleVerbs(ctx, kanameRepo, pool, obs)
 		if scenario.Structural() {
 			logger.Info("чужой предмет, старт не роняет")
 		}
@@ -150,7 +150,7 @@ func TestIAMRV108_InjectionSilentOnAForeignStructuralCall(t *testing.T) {
 // структурную ветку от него — то есть краснел на исправном дереве. Найдено
 // собственной инъекцией, а не чтением, и записано осью, чтобы не вернулось.
 func TestIAMRV108_InjectionCensusIsBoundInsideTheClosureNotOutside(t *testing.T) {
-	src := bootSrc(`		verbs, _ := seed.ReseedSystemRoleVerbs(ctx, kachoRepo, pool, obs)
+	src := bootSrc(`		verbs, _ := seed.ReseedSystemRoleVerbs(ctx, kanameRepo, pool, obs)
 		if verbs.Structural() {
 			return fmt.Errorf("пересеяно 0")
 		}`)

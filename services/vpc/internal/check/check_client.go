@@ -9,7 +9,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
@@ -42,7 +42,7 @@ type ResourceExistenceProbe interface {
 var vpcObjectTypes = catalogderive.ObjectScopedTypes(PermissionMap())
 
 // IAMCheckClient — gRPC adapter, реализующий port `authz.CheckClient`
-// поверх `kacho-iam.InternalIAMService.Check`.
+// поверх `kaname.InternalIAMService.Check`.
 //
 // corelib/authz намеренно не зависит от доменных proto-stubs, поэтому adapter
 // живет здесь, в сервисе, как любой другой adapter.
@@ -56,8 +56,8 @@ type IAMCheckClient struct {
 
 // NewIAMCheckClientWithProbe создаёт adapter с (опционально) подключенным
 // existence-probe (Decision 1 existence-hiding). conn — `*grpc.ClientConn`/
-// `ClientConnInterface` к internal-port'у kacho-iam (обычно
-// `kacho-iam.kacho.svc:9091`). probe может быть nil — тогда deny
+// `ClientConnInterface` к internal-port'у kaname (обычно
+// `kaname.kacho.svc:9091`). probe может быть nil — тогда deny
 // на object-scoped ресурс не существенно-скрывается, применяется лишь прежнее
 // поведение (reason-substring "no path" → ErrNoPath).
 func NewIAMCheckClientWithProbe(conn grpc.ClientConnInterface, probe ResourceExistenceProbe) *IAMCheckClient {

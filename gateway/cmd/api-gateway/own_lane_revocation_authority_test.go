@@ -48,7 +48,7 @@ import (
 // Фикстура НАШЕГО авторитета отзыва: годная во всех четырёх осях. Случаи ниже
 // портят РОВНО ОДНУ.
 const (
-	ourAuthorityURL  = "https://kacho-iam-internal.kacho.svc:9097/internal/tokens/introspect"
+	ourAuthorityURL  = "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
 	ourAuthorityCA   = "/etc/api-gateway/platform-revocation-ca/ca.crt"
 	ourAuthorityCert = "/etc/api-gateway/platform-revocation-identity/tls.crt"
 	ourAuthorityKey  = "/etc/api-gateway/platform-revocation-identity/tls.key"
@@ -163,7 +163,7 @@ func TestExternalLaneNeedsNoAuthorityOfOurOwn(t *testing.T) {
 // он не идёт ни на одной полосе.
 func TestOurAuthorityHopIsRefusedInPlaintext(t *testing.T) {
 	cfg := ownLane()
-	cfg.PlatformRevocationURL = "http://kacho-iam-internal.kacho.svc:9097/internal/tokens/introspect"
+	cfg.PlatformRevocationURL = "http://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
 	err := validateProductionRevocationConfig("production", cfg)
 	if err == nil {
 		t.Fatal("открытый хоп к нашему авторитету обязан отвергать старт")

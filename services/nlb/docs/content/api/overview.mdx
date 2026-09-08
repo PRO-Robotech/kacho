@@ -97,7 +97,7 @@ suffix-`:verb` на конкретном ресурсе (`.../{id}:move`), а п
 
 ## Авторизация
 
-Авторизация — **per-RPC**, проверяется через `InternalIAMService.Check` в kacho-iam. Каждый RPC несёт в proto аннотации `permission` и `required_relation`, а также
+Авторизация — **per-RPC**, проверяется через `InternalIAMService.Check` в kaname. Каждый RPC несёт в proto аннотации `permission` и `required_relation`, а также
 `scope_extractor` (по какому объекту проверять доступ). Verb-bearing relations:
 
 - **read** (`Get`, `GetTargetStates`) — `v_get`; `ListOperations` — `v_list`;
@@ -111,7 +111,7 @@ suffix-`:verb` на конкретном ресурсе (`.../{id}:move`), а п
 вправе прочитать её одиночным `Get` — предикат страницы и Check для `Get` называют одно и то же
 отношение `v_get`. Модель спрашивается про идентификаторы **этой** страницы (батчами ≤ 100,
 параллельно, под бюджетом запроса), а не «что субъекту вообще можно». Вызывающий не назван →
-`UNAUTHENTICATED` безусловно; kacho-iam недоступен → `UNAVAILABLE` (fail-closed, не
+`UNAUTHENTICATED` безусловно; kaname недоступен → `UNAVAILABLE` (fail-closed, не
 нефильтрованный ответ). Подробнее — [Авторизация](/architecture/authz).
 
 ## Формат ошибок

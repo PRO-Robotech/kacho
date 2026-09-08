@@ -78,15 +78,15 @@ func referenceCatalogueRPCs() map[string]string {
 		"арендаторских строк не содержит; отношение выполняется подстановочным " +
 		"субъектом СИСТЕМНОЙ ВЫДАЧИ, которая видна перечислением выдач и отзывается штатно"
 	return map[string]string{
-		"kacho.cloud.geo.v1.RegionService/Get":                              why + " (каталог размещения: регионы)",
-		"kacho.cloud.geo.v1.RegionService/List":                             why + " (каталог размещения: регионы)",
-		"kacho.cloud.geo.v1.ZoneService/Get":                                why + " (каталог размещения: зоны)",
-		"kacho.cloud.geo.v1.ZoneService/List":                               why + " (каталог размещения: зоны)",
-		"kacho.cloud.compute.v1.MachineTypeService/Get":                     why + " (инвентарь: типы машин)",
-		"kacho.cloud.compute.v1.MachineTypeService/List":                    why + " (инвентарь: типы машин)",
-		"kacho.cloud.storage.v1.DiskTypeService/Get":                        why + " (инвентарь: типы дисков)",
-		"kacho.cloud.storage.v1.DiskTypeService/List":                       why + " (инвентарь: типы дисков)",
-		"kacho.cloud.iam.v1.PermissionCatalogService/ListPermissionCatalog": why + " (словарь прав платформы)",
+		"kacho.cloud.geo.v1.RegionService/Get":                               why + " (каталог размещения: регионы)",
+		"kacho.cloud.geo.v1.RegionService/List":                              why + " (каталог размещения: регионы)",
+		"kacho.cloud.geo.v1.ZoneService/Get":                                 why + " (каталог размещения: зоны)",
+		"kacho.cloud.geo.v1.ZoneService/List":                                why + " (каталог размещения: зоны)",
+		"kacho.cloud.compute.v1.MachineTypeService/Get":                      why + " (инвентарь: типы машин)",
+		"kacho.cloud.compute.v1.MachineTypeService/List":                     why + " (инвентарь: типы машин)",
+		"kacho.cloud.storage.v1.DiskTypeService/Get":                         why + " (инвентарь: типы дисков)",
+		"kacho.cloud.storage.v1.DiskTypeService/List":                        why + " (инвентарь: типы дисков)",
+		"kaname.cloud.iam.v1.PermissionCatalogService/ListPermissionCatalog": why + " (словарь прав платформы)",
 	}
 }
 
@@ -174,7 +174,7 @@ var (
 func wildcardSatisfiableRelations(t *testing.T) map[typeRelation]struct{} {
 	t.Helper()
 
-	raw, err := os.ReadFile(filepath.Join(repoRootForWildcardGate(t), "proto/kacho/cloud/iam/v1/fga_model.fga"))
+	raw, err := os.ReadFile(filepath.Join(repoRootForWildcardGate(t), "proto/kaname/cloud/iam/v1/fga_model.fga"))
 	require.NoError(t, err, "the canonical authorization model must be readable — it is what defines the class")
 
 	// type -> relation -> expression

@@ -10,7 +10,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	iampb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iampb "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
 	"github.com/PRO-Robotech/kacho/pkg/peer"
 	"github.com/PRO-Robotech/kacho/pkg/retry"
@@ -25,7 +25,7 @@ import (
 // вызывающую горутину навсегда (round-6 audit sweep).
 const DefaultProjectGetTimeout = 5 * time.Second
 
-// Project — projection ресурса kacho-iam.Project, ограниченная полями
+// Project — projection ресурса kaname.Project, ограниченная полями
 // необходимыми consumer'ам. NLB зовёт ProjectClient.Get только как
 // existence-precheck (все callers отбрасывают результат в `_`), поэтому
 // проекция несёт лишь ID/Name — по образцу sibling geo.Region.
@@ -46,7 +46,7 @@ type Project struct {
 // ниже (`projectClient`) и mock-структурой в тестах use-case'ов.
 type ProjectClient interface {
 	// Get возвращает Project metadata. Семантика ошибок:
-	//   - kacho-iam NotFound          → domain.ErrNotFound
+	//   - kaname NotFound          → domain.ErrNotFound
 	//   - PermissionDenied            → domain.ErrFailedPrecondition (мапится
 	//     в "Project... not found"; tenant не должен видеть разницу между
 	//     "не существует" и "нет доступа" — leak'ы про authz tenant'у запрещены).

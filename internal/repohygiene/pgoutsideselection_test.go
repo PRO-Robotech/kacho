@@ -129,7 +129,7 @@ func countPGOutsideExemptions(exemptions map[string]string) int {
 // же он выглядел бы, не умей вердикт краснеть.
 func TestPGOutsideSeamJudgeFiresAndStaysSilent(t *testing.T) {
 	const a = "services/nlb/internal/apps/kacho/jobs"
-	const b = "services/iam/internal/apps/kacho/api/bootstrap_token"
+	const b = "services/iam/internal/apps/kaname/api/bootstrap_token"
 
 	t.Run("согласованная пара — молчит", func(t *testing.T) {
 		got := judgePGOutsideSeam(

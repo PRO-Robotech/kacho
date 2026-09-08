@@ -24,20 +24,20 @@ import (
 var componentsFixture = map[string]bool{"vpc": true, "gateway": true, "iam": true}
 
 const (
-	saVPC = `INSERT INTO kacho_iam.service_accounts (id, account_id, name, description, created_at, enabled, labels) ` +
+	saVPC = `INSERT INTO kaname.service_accounts (id, account_id, name, description, created_at, enabled, labels) ` +
 		`VALUES ('sva0000000000000vpc', 'acc0', 'kacho-vpc', 'Module SA: kacho-vpc (SEC-C least-priv)', now(), true, '{}')`
-	saOperator = `INSERT INTO kacho_iam.service_accounts (id, account_id, name, description, created_at, enabled, labels) ` +
+	saOperator = `INSERT INTO kaname.service_accounts (id, account_id, name, description, created_at, enabled, labels) ` +
 		`VALUES ('sva000000000000oper', 'acc0', 'kacho-vpc-operator', 'Module SA: kacho-vpc-operator (SEC-C least-priv)', now(), true, '{}')`
-	saGateway = `INSERT INTO kacho_iam.service_accounts (id, account_id, name, description, created_at, enabled, labels) ` +
+	saGateway = `INSERT INTO kaname.service_accounts (id, account_id, name, description, created_at, enabled, labels) ` +
 		`VALUES ('sva00000000000gw001', 'acc0', 'kacho-api-gateway', 'Module SA: kacho-api-gateway (SEC-C identity-only)', now(), true, '{}')`
-	saBootstrap = `INSERT INTO kacho_iam.service_accounts (id, account_id, name, description, created_at, enabled, labels) ` +
+	saBootstrap = `INSERT INTO kaname.service_accounts (id, account_id, name, description, created_at, enabled, labels) ` +
 		`VALUES ('sva00000000000boot1', 'acc0', 'kacho-bootstrap-admin', 'Bootstrap admin ServiceAccount (#58)', now(), true, '{}')`
-	saVPCUnmarked = `INSERT INTO kacho_iam.service_accounts (id, account_id, name, description, created_at, enabled, labels) ` +
+	saVPCUnmarked = `INSERT INTO kaname.service_accounts (id, account_id, name, description, created_at, enabled, labels) ` +
 		`VALUES ('sva0000000000000vpc', 'acc0', 'kacho-vpc', 'least-priv account', now(), true, '{}')`
-	saRetireByID   = `DELETE FROM kacho_iam.service_accounts WHERE id = 'sva000000000000oper'`
-	saRetireByName = `DELETE FROM kacho_iam.service_accounts WHERE name IN ('kacho-vpc-operator')`
-	saUnknownForm  = `UPDATE kacho_iam.service_accounts SET enabled = false WHERE name LIKE 'kacho-%'`
-	saTableDDL     = `CREATE TABLE kacho_iam.service_accounts (id text NOT NULL, name text NOT NULL)`
+	saRetireByID   = `DELETE FROM kaname.service_accounts WHERE id = 'sva000000000000oper'`
+	saRetireByName = `DELETE FROM kaname.service_accounts WHERE name IN ('kacho-vpc-operator')`
+	saUnknownForm  = `UPDATE kaname.service_accounts SET enabled = false WHERE name LIKE 'kacho-%'`
+	saTableDDL     = `CREATE TABLE kaname.service_accounts (id text NOT NULL, name text NOT NULL)`
 )
 
 func judgeSeed(t *testing.T, files ...[2]string) (findings, unknown []string, alive int) {
@@ -115,7 +115,7 @@ func TestModuleSAGateFollowsRetirementInBothForms(t *testing.T) {
 	// Обратная сторона: снятие ЧУЖОЙ строки находку не гасит.
 	other, _, aliveOther := judgeSeed(t,
 		[2]string{"0001_initial.sql", saOperator},
-		[2]string{"20260101000000_retire.sql", `DELETE FROM kacho_iam.service_accounts WHERE id = 'sva0000000000000vpc'`},
+		[2]string{"20260101000000_retire.sql", `DELETE FROM kaname.service_accounts WHERE id = 'sva0000000000000vpc'`},
 	)
 	require.Equal(t, 1, aliveOther)
 	require.Len(t, other, 1)

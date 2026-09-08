@@ -47,7 +47,7 @@ func FuzzKeyIDNeverReachesTheKeySetSource(f *testing.F) {
 	}))
 	f.Cleanup(srv.Close)
 
-	const issuer = "https://iam.kacho.local"
+	const issuer = "https://kaname.kacho.local"
 	v, err := jwks.New([]jwks.KeySetSource{{
 		Issuer: issuer, URL: srv.URL, TokenType: "at+jwt",
 	}}, "registry.kacho.local")

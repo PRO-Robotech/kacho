@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	iampb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iampb "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
@@ -67,7 +67,7 @@ func TestCheckClient_NoPath(t *testing.T) {
 }
 
 func TestCheckClient_NoPath_AlternateMarker(t *testing.T) {
-	// kacho-iam may emit "no_path" instead of "no path"
+	// kaname may emit "no_path" instead of "no path"
 	fake := &fakeInternalIAMForCheck{resp: &iampb.CheckResponse{Allowed: false, Reason: "no_path: tuple missing"}}
 	conn := startFakeIAM(t, nil, fake)
 	c := NewCheckClient(conn)

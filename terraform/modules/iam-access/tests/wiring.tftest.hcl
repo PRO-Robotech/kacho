@@ -17,7 +17,7 @@
 # которых схема НЕ вычисляет, и у каждого такого отрицания обязан стоять рядом
 # положительный близнец — иначе оно зеленеет и на модуле, который поле вовсе не передаёт.
 
-mock_provider "kacho" {}
+mock_provider "kaname" {}
 
 variables {
   scope = { type = "iam.project", id = "prjprobe000000000000" }
@@ -49,10 +49,10 @@ run "role_and_grant_share_one_anchor" {
 
   assert {
     condition = alltrue([
-      kacho_iam_role.this["net-operator"].definition_tier.tier_type == var.scope.type,
-      kacho_iam_role.this["net-operator"].definition_tier.tier_id == var.scope.id,
-      kacho_iam_access_binding.group["net-operators"].scope_type == var.scope.type,
-      kacho_iam_access_binding.group["net-operators"].scope_id == var.scope.id,
+      kaname_role.this["net-operator"].definition_tier.tier_type == var.scope.type,
+      kaname_role.this["net-operator"].definition_tier.tier_id == var.scope.id,
+      kaname_access_binding.group["net-operators"].scope_type == var.scope.type,
+      kaname_access_binding.group["net-operators"].scope_id == var.scope.id,
     ])
     error_message = "якорь разошёлся между определением роли и её выдачей"
   }
@@ -65,7 +65,7 @@ run "grant_references_the_role_by_id" {
   command = plan
 
   assert {
-    condition     = kacho_iam_access_binding.group["net-operators"].role_id == kacho_iam_role.this["net-operator"].id
+    condition     = kaname_access_binding.group["net-operators"].role_id == kaname_role.this["net-operator"].id
     error_message = "выдача не связана с ролью модуля по идентификатору"
   }
 }
@@ -75,17 +75,17 @@ run "group_grant_binds_a_group_subject" {
   command = plan
 
   assert {
-    condition     = one(kacho_iam_access_binding.group["net-operators"].subjects).type == "SUBJECT_TYPE_GROUP"
+    condition     = one(kaname_access_binding.group["net-operators"].subjects).type == "SUBJECT_TYPE_GROUP"
     error_message = "получателем групповой выдачи оказалась не группа"
   }
   assert {
-    condition     = one(kacho_iam_access_binding.group["net-operators"].subjects).id == "grpprobe000000000000"
+    condition     = one(kaname_access_binding.group["net-operators"].subjects).id == "grpprobe000000000000"
     error_message = "идентификатор группы не доехал до выдачи"
   }
   # Ровно один получатель: состав выдачи у края неизменяем, и «добавить второго» означает
   # пересоздание привязки — то есть работу для группы, а не для перечисления.
   assert {
-    condition     = length(kacho_iam_access_binding.group["net-operators"].subjects) == 1
+    condition     = length(kaname_access_binding.group["net-operators"].subjects) == 1
     error_message = "в групповой выдаче оказалось несколько получателей"
   }
 }
@@ -127,26 +127,26 @@ run "role_rules_survive_assembly" {
 
   assert {
     condition = alltrue([
-      kacho_iam_role.this["net-operator"].rules[0].module == "vpc",
-      kacho_iam_role.this["net-operator"].rules[0].verbs == tolist(["get", "list"]),
-      one(kacho_iam_role.this["net-operator"].rules[0].resource_names) == "netprobe00000000000",
+      kaname_role.this["net-operator"].rules[0].module == "vpc",
+      kaname_role.this["net-operator"].rules[0].verbs == tolist(["get", "list"]),
+      one(kaname_role.this["net-operator"].rules[0].resource_names) == "netprobe00000000000",
     ])
     error_message = "правило роли потеряно при сборке"
   }
   # Порядок правил край сохраняет, поэтому второе правило обязано остаться вторым.
   assert {
-    condition     = kacho_iam_role.this["net-operator"].rules[1].module == "compute"
+    condition     = kaname_role.this["net-operator"].rules[1].module == "compute"
     error_message = "порядок правил не сохранён при сборке"
   }
   # Заданный отбор по меткам доезжает — положительный близнец к отрицанию ниже.
   assert {
-    condition     = kacho_iam_role.this["net-operator"].rules[2].match_labels["tier"] == "front"
+    condition     = kaname_role.this["net-operator"].rules[2].match_labels["tier"] == "front"
     error_message = "отбор по меткам потерян при сборке"
   }
   # Незаданное сужение остаётся ОПУЩЕННЫМ: пустое значение — второе написание отсутствия,
   # край вернул бы его отсутствующим, и Terraform увидел бы расхождение на законной настройке.
   assert {
-    condition     = kacho_iam_role.this["net-operator"].rules[1].match_labels == null
+    condition     = kaname_role.this["net-operator"].rules[1].match_labels == null
     error_message = "незаданное сужение появилось из ниоткуда"
   }
 }
@@ -173,16 +173,16 @@ run "target_branches_survive_assembly" {
   }
 
   assert {
-    condition     = kacho_iam_access_binding.group["net-operators"].target.all_in_scope == true
+    condition     = kaname_access_binding.group["net-operators"].target.all_in_scope == true
     error_message = "широчайшая ветвь цели не доехала до выдачи"
   }
   assert {
-    condition     = one(kacho_iam_access_binding.group["db-readers"].target.resources).id == "netprobe00000000000"
+    condition     = one(kaname_access_binding.group["db-readers"].target.resources).id == "netprobe00000000000"
     error_message = "пообъектная ветвь цели потеряна при сборке"
   }
   # Ветви взаимоисключающи: у пообъектной выдачи широчайшая не появляется сама собой.
   assert {
-    condition     = kacho_iam_access_binding.group["db-readers"].target.all_in_scope == null
+    condition     = kaname_access_binding.group["db-readers"].target.all_in_scope == null
     error_message = "у пообъектной выдачи проставилась широчайшая ветвь"
   }
 }
@@ -204,11 +204,11 @@ run "external_role_is_taken_by_id" {
   }
 
   assert {
-    condition     = kacho_iam_access_binding.group["viewers"].role_id == "rolprobe00000000000"
+    condition     = kaname_access_binding.group["viewers"].role_id == "rolprobe00000000000"
     error_message = "готовая роль не доехала до выдачи"
   }
   assert {
-    condition     = length(kacho_iam_role.this) == 0
+    condition     = length(kaname_role.this) == 0
     error_message = "модуль завёл роль, которой у него не просили"
   }
 }
@@ -240,17 +240,17 @@ run "protection_defaults_to_off_and_explicit_values_reach_the_binding" {
   }
 
   assert {
-    condition     = kacho_iam_access_binding.group["net-operators"].deletion_protection == false
+    condition     = kaname_access_binding.group["net-operators"].deletion_protection == false
     error_message = "умолчание защиты от удаления не выключено — замена выдачи упёрлась бы в неё"
   }
   assert {
-    condition     = kacho_iam_access_binding.group["net-operators"].expires_at == null
+    condition     = kaname_access_binding.group["net-operators"].expires_at == null
     error_message = "невыданный срок появился из ниоткуда — бессрочная выдача стала срочной"
   }
   assert {
     condition = alltrue([
-      kacho_iam_access_binding.group["auditors"].deletion_protection == true,
-      kacho_iam_access_binding.group["auditors"].expires_at == "2026-12-31T23:59:59Z",
+      kaname_access_binding.group["auditors"].deletion_protection == true,
+      kaname_access_binding.group["auditors"].expires_at == "2026-12-31T23:59:59Z",
     ])
     error_message = "заданные срок и защита не доехали до выдачи"
   }
@@ -272,15 +272,15 @@ run "subject_grant_names_one_principal" {
   }
 
   assert {
-    condition     = one(kacho_iam_access_binding.subject["ci-deployer"].subjects).type == "SUBJECT_TYPE_SERVICE_ACCOUNT"
+    condition     = one(kaname_access_binding.subject["ci-deployer"].subjects).type == "SUBJECT_TYPE_SERVICE_ACCOUNT"
     error_message = "вид принципала именной выдачи не доехал"
   }
   assert {
-    condition     = length(kacho_iam_access_binding.subject["ci-deployer"].subjects) == 1
+    condition     = length(kaname_access_binding.subject["ci-deployer"].subjects) == 1
     error_message = "в именной выдаче оказалось несколько получателей"
   }
   assert {
-    condition     = kacho_iam_access_binding.subject["ci-deployer"].role_id == kacho_iam_role.this["net-operator"].id
+    condition     = kaname_access_binding.subject["ci-deployer"].role_id == kaname_role.this["net-operator"].id
     error_message = "именная выдача не связана с ролью модуля по идентификатору"
   }
   # Обоснование не остаётся украшением настройки: все исключения установки видны одним выходом.
@@ -307,9 +307,9 @@ run "labels_reach_every_resource" {
 
   assert {
     condition = alltrue([
-      kacho_iam_role.this["net-operator"].labels["origin"] == "terraform",
-      kacho_iam_access_binding.group["net-operators"].labels["origin"] == "terraform",
-      kacho_iam_access_binding.subject["ci-deployer"].labels["origin"] == "terraform",
+      kaname_role.this["net-operator"].labels["origin"] == "terraform",
+      kaname_access_binding.group["net-operators"].labels["origin"] == "terraform",
+      kaname_access_binding.subject["ci-deployer"].labels["origin"] == "terraform",
     ])
     error_message = "метки доехали не до всех ресурсов модуля"
   }
@@ -321,7 +321,7 @@ run "cluster_anchor_is_rejected" {
   command = plan
 
   variables {
-    scope = { type = "iam.cluster", id = "cluster_kacho_root" }
+    scope = { type = "iam.cluster", id = "cluster_root" }
   }
 
   expect_failures = [var.scope]
@@ -560,5 +560,5 @@ run "unknown_role_name_is_rejected" {
     }
   }
 
-  expect_failures = [kacho_iam_access_binding.group]
+  expect_failures = [kaname_access_binding.group]
 }

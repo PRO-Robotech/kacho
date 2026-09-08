@@ -103,7 +103,7 @@ func issueTestPKI(t *testing.T) testPKI {
 		return certFile, keyFile, pair
 	}
 
-	_, _, serverPair := leaf("kacho-iam-internal", 2, true)
+	_, _, serverPair := leaf("kaname-internal", 2, true)
 	clientCert, clientKey, _ := leaf("kacho-registry", 3, false)
 
 	pool := x509.NewCertPool()
@@ -169,7 +169,7 @@ func TestF1_25_RevocationEdgePresentsItsClientCertificate(t *testing.T) {
 		CAFiles:    []string{pki.caFile},
 		CertFile:   pki.clientCert,
 		KeyFile:    pki.clientKey,
-		ServerName: "kacho-iam-internal",
+		ServerName: "kaname-internal",
 	}, WithIntrospectionClock(func() time.Time { return at }))
 	require.NoError(t, err)
 
@@ -201,7 +201,7 @@ func TestF1_25_CallWithoutAClientCertificateIsRefused(t *testing.T) {
 		Timeout: introspectionTimeout,
 		Transport: &http.Transport{TLSClientConfig: &tls.Config{
 			RootCAs:    pki.pool,
-			ServerName: "kacho-iam-internal",
+			ServerName: "kaname-internal",
 			MinVersion: tls.VersionTLS12,
 		}},
 	}
@@ -210,7 +210,7 @@ func TestF1_25_CallWithoutAClientCertificateIsRefused(t *testing.T) {
 		CAFiles:    []string{pki.caFile},
 		CertFile:   pki.clientCert,
 		KeyFile:    pki.clientKey,
-		ServerName: "kacho-iam-internal",
+		ServerName: "kaname-internal",
 	},
 		WithIntrospectionClock(func() time.Time { return at }),
 		WithIntrospectionHTTPClient(bare))
@@ -239,9 +239,9 @@ func TestF1_25_UnusableAnchorRefusesTheStart(t *testing.T) {
 		CAFiles:    []string{pki.caFile},
 		CertFile:   pki.clientCert,
 		KeyFile:    pki.clientKey,
-		ServerName: "kacho-iam-internal",
+		ServerName: "kaname-internal",
 	}
-	const authorityURL = "https://kacho-iam-internal:9097/internal/tokens/introspect"
+	const authorityURL = "https://kaname-internal:9097/internal/tokens/introspect"
 
 	cases := map[string]func(tr *RevocationTransport){
 		"якорь не объявлен":             func(tr *RevocationTransport) { tr.CAFiles = nil },

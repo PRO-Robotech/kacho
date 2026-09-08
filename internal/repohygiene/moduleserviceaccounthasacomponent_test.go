@@ -59,11 +59,11 @@ const moduleSAMarker = "Module SA:"
 
 var (
 	reSAInsert = regexp.MustCompile(
-		`(?is)^INSERT\s+INTO\s+kacho_iam\.service_accounts\s*\(([^)]*)\)\s*VALUES\s*\((.*)\)$`)
+		`(?is)^INSERT\s+INTO\s+kaname\.service_accounts\s*\(([^)]*)\)\s*VALUES\s*\((.*)\)$`)
 	reSADeleteByID = regexp.MustCompile(
-		`(?is)^DELETE\s+FROM\s+kacho_iam\.service_accounts\s+WHERE\s+id\s*(?:=|IN)\s*\(?\s*(.+?)\s*\)?$`)
+		`(?is)^DELETE\s+FROM\s+kaname\.service_accounts\s+WHERE\s+id\s*(?:=|IN)\s*\(?\s*(.+?)\s*\)?$`)
 	reSADeleteByName = regexp.MustCompile(
-		`(?is)^DELETE\s+FROM\s+kacho_iam\.service_accounts\s+WHERE\s+name\s*(?:=|IN)\s*\(?\s*(.+?)\s*\)?$`)
+		`(?is)^DELETE\s+FROM\s+kaname\.service_accounts\s+WHERE\s+name\s*(?:=|IN)\s*\(?\s*(.+?)\s*\)?$`)
 	reSQLLineComment = regexp.MustCompile(`--.*`)
 	reSQLSpaceRun    = regexp.MustCompile(`\s+`)
 	reSQLLiteral     = regexp.MustCompile(`'((?:[^']|'')*)'`)
@@ -96,7 +96,7 @@ func foldSeededServiceAccounts(ordered []string, bodies map[string]string) (
 		code := reSQLLineComment.ReplaceAllString(body, "")
 		for _, raw := range strings.Split(code, ";") {
 			stmt := strings.TrimSpace(reSQLSpaceRun.ReplaceAllString(raw, " "))
-			if stmt == "" || !strings.Contains(stmt, "kacho_iam.service_accounts") {
+			if stmt == "" || !strings.Contains(stmt, "kaname.service_accounts") {
 				continue
 			}
 			verb := strings.ToUpper(strings.Fields(stmt)[0])

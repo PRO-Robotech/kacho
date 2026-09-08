@@ -62,13 +62,13 @@ func TestValidateTuple_PublicReadIsWildcardOnly(t *testing.T) {
 		{"wildcard but a tier relation", "registry", "user:*", "viewer", "registry_repository:reg1/app", false},
 		{"wildcard read on a foreign domain", "registry", "user:*", "v_get", "vpc_network:net1", false},
 		{"wildcard read on an iam object", "registry", "user:*", "v_get", "account:acc1", false},
-		{"wildcard read on the cluster", "registry", "user:*", "v_get", "cluster:cluster_kacho_root", false},
+		{"wildcard read on the cluster", "registry", "user:*", "v_get", "cluster:cluster_root", false},
 		// dev-mode (caller domain unknown): the domain binding cannot apply, but
 		// the relation and object-type limits still do.
 		{"unknown domain, wildcard read on a publishable object", "", "user:*", "v_get", "registry_repository:reg1/app", true},
 		{"unknown domain, wildcard read on a non-publishable object", "", "user:*", "v_get", "vpc_network:net1", false},
 		{"unknown domain, named subject read", "", "user:usr00000000000000a1", "v_get", "registry_repository:reg1/app", false},
-		{"unknown domain, wildcard read on the cluster", "", "user:*", "v_get", "cluster:cluster_kacho_root", false},
+		{"unknown domain, wildcard read on the cluster", "", "user:*", "v_get", "cluster:cluster_root", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateTuple(tt.domain, tt.subject, tt.relation, tt.object)

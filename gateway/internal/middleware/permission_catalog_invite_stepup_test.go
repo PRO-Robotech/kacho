@@ -34,14 +34,14 @@ func TestPermissionCatalog_UserInvite_RequiresStepUp(t *testing.T) {
 	c, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
 
-	inv, ok := c.Lookup("kacho.cloud.iam.v1.UserService/Invite")
+	inv, ok := c.Lookup("kaname.cloud.iam.v1.UserService/Invite")
 	require.True(t, ok, "UserService/Invite must exist in the catalog")
 	assert.Equal(t, "2", inv.RequiredACRMin,
 		"Invite creates an AccessBinding atomically (project_id+role_id) → privilege grant → step-up required")
 
 	// Parity anchor: the RPC Invite inlines already demands step-up. If that
 	// changes, the comparison above stops meaning what it says.
-	ab, ok := c.Lookup("kacho.cloud.iam.v1.AccessBindingService/Create")
+	ab, ok := c.Lookup("kaname.cloud.iam.v1.AccessBindingService/Create")
 	require.True(t, ok)
 	assert.Equal(t, "2", ab.RequiredACRMin,
 		"AccessBindingService/Create is the grant-surface anchor Invite must match")
@@ -49,9 +49,9 @@ func TestPermissionCatalog_UserInvite_RequiresStepUp(t *testing.T) {
 	// Non-grant User lifecycle stays routine — the fix must not blanket-raise
 	// the whole service (step-up is sensitive-only, not blanket).
 	for _, fqn := range []string{
-		"kacho.cloud.iam.v1.UserService/Get",
-		"kacho.cloud.iam.v1.UserService/Update",
-		"kacho.cloud.iam.v1.UserService/Delete",
+		"kaname.cloud.iam.v1.UserService/Get",
+		"kaname.cloud.iam.v1.UserService/Update",
+		"kaname.cloud.iam.v1.UserService/Delete",
 	} {
 		e, ok := c.Lookup(fqn)
 		require.True(t, ok, "missing from catalog: %s", fqn)

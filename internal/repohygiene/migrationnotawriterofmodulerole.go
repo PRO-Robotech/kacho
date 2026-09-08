@@ -80,7 +80,7 @@ type MigrationRoleSite struct {
 
 // MigrationRoleCensus — объём осмотренного.
 type MigrationRoleCensus struct {
-	// Blocks — блоков `INSERT INTO kacho_iam.roles` прочитано.
+	// Blocks — блоков `INSERT INTO kaname.roles` прочитано.
 	Blocks int
 	// Names — имён ролей извлечено.
 	Names int
@@ -99,7 +99,7 @@ var (
 	// manifestModuleRe — имя модуля в оболочке манифеста верхнего уровня.
 	manifestModuleRe = regexp.MustCompile(`(?m)^module:\s*["']?([a-z][a-z0-9-]*)["']?\s*$`)
 	// roleInsertRe — начало блока вставки роли.
-	roleInsertRe = regexp.MustCompile(`INSERT\s+INTO\s+kacho_iam\.roles\b`)
+	roleInsertRe = regexp.MustCompile(`INSERT\s+INTO\s+kaname\.roles\b`)
 	// roleSeedNameRe — имя роли как аргумент деривации идентификатора
 	// (рукописная форма: идентификатор ВЫВОДИТСЯ из имени).
 	roleSeedNameRe = regexp.MustCompile(`md5\('([^']+)'\)`)
@@ -124,7 +124,7 @@ func ScanModuleManifest(path string, src []byte) (ModuleManifestSite, bool) {
 
 // ScanMigrationRoleInserts извлекает имена ролей, вставляемых миграцией.
 //
-// Блок — от `INSERT INTO kacho_iam.roles` до первой строки, оканчивающейся `;`.
+// Блок — от `INSERT INTO kaname.roles` до первой строки, оканчивающейся `;`.
 // Привязка к блоку обязательна: тот же образец идентификатора встречается во
 // вставках в ЧУЖИЕ таблицы (селекторы, выдачи служебным учёткам), и предикат
 // без привязки мерил бы упоминания идентификатора, а не строки роли.
@@ -132,7 +132,7 @@ func ScanModuleManifest(path string, src []byte) (ModuleManifestSite, bool) {
 // # Форм записи имени ДВЕ, и обе законны
 //
 //	… VALUES ('rol' || substr(md5('iam.account.admin'),1,17), …, 'iam.account.admin', …)
-//	INSERT INTO kacho_iam.roles (id, account_id, name, …) VALUES ('rol6307…', NULL, 'iam.account.admin', …)
+//	INSERT INTO kaname.roles (id, account_id, name, …) VALUES ('rol6307…', NULL, 'iam.account.admin', …)
 //
 // Первая — рукописная: идентификатор ВЫВОДИТСЯ из имени, поэтому имя стоит
 // аргументом деривации и берётся оттуда. Вторая пришла со сводом миграций iam

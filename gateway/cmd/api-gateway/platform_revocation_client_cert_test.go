@@ -38,7 +38,7 @@ func authorityRequiringClientCert(t *testing.T, ca *testCA) *httptest.Server {
 	t.Helper()
 
 	srvCert, srvKey := ca.issueLeaf(t, leafOpts{
-		commonName:  "kacho-iam-internal",
+		commonName:  "kaname-internal",
 		dnsNames:    []string{"localhost"},
 		ipAddresses: []net.IP{net.ParseIP("127.0.0.1")},
 		isServer:    true,

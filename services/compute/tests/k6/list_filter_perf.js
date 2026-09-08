@@ -7,7 +7,7 @@
 //   - cache hit ratio ≥ 80% (verified via dedicated metric exported by compute)
 //
 // Pre-conditions (operator):
-//   1. kacho-compute and kacho-iam are running with KACHO_COMPUTE_LIST_FILTER_ENABLED=true.
+//   1. kacho-compute and kaname are running with KACHO_COMPUTE_LIST_FILTER_ENABLED=true.
 //   2. Test project has ≥1000 Instances seeded (use seed script).
 //   3. K6_API_GATEWAY_URL points at REST api-gateway (e.g. https://api.kacho.local).
 //   4. K6_BEARER_TOKEN is a valid JWT (passkey + dpop) for `usr_k6_loadtest`.

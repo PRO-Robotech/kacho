@@ -128,7 +128,7 @@ CASES.append(Case(
 # ЗДЕСЬ СТОЯЛО «RED until the #71 FGA model+wiring deploys … GREEN after» И ПОМЕТКА
 # `# verifies #71` НА САМОМ КЕЙСЕ. Оба пережили свой предмет: типы `storage_volume` /
 # `storage_snapshot` / `storage_image` в модели есть
-# (`proto/kacho/cloud/iam/v1/fga_model.fga`), тикет `kacho#71` закрыт COMPLETED
+# (`proto/kaname/cloud/iam/v1/fga_model.fga`), тикет `kacho#71` закрыт COMPLETED
 # 2026-08-06 — значит объявление «ожидаемо красный» стало ЛОЖНЫМ утверждением о
 # продукте, а пометка выкупала из «всё обязано быть зелёным» кейс, который обязан быть
 # зелёным. Отдельно: пометка называла тикет БЕЗ репозитория (`#71`), а такую ссылку

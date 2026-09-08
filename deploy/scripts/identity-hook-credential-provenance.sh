@@ -73,10 +73,10 @@
 set -uo pipefail
 
 NS="${1:-kacho}"
-SECRET_NAME="${KACHO_HOOK_SECRET_NAME:-kacho-iam-hook-token}"
+SECRET_NAME="${KACHO_HOOK_SECRET_NAME:-kaname-hook-token}"
 SECRET_KEY="${KACHO_HOOK_SECRET_KEY:-token}"
 HEADER_NAME="${KACHO_HOOK_HEADER_NAME:-X-Kacho-Hook-Token}"
-RENDERED="${KACHO_IDENTITY_RENDERED_PATH:-/etc/kacho-identity-rendered/kratos.yaml}"
+RENDERED="${KACHO_IDENTITY_RENDERED_PATH:-/etc/kaname-identity-rendered/kratos.yaml}"
 
 say() { printf '%s\n' "$*"; }
 
@@ -134,7 +134,7 @@ for p in data.get('items', []):
             owned = ''
             for ic in spec.get('initContainers', []):
                 for e in ic.get('env', []):
-                    if e.get('name') == 'KACHO_IDENTITY_SUBSTITUTED_VARS':
+                    if e.get('name') == 'KANAME_IDENTITY_SUBSTITUTED_VARS':
                         owned = e.get('value', '')
             print('\t'.join((p['metadata']['name'], c['name'], owned)))
 PY

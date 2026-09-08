@@ -112,7 +112,7 @@ type Operation struct {
 	// его при конструировании операции.
 	ResourceID string
 
-	// Principal — кто инициировал операцию (kacho-iam-resolved). Без auth
+	// Principal — кто инициировал операцию (kaname-resolved). Без auth
 	// заполняется SystemPrincipal(); при наличии auth-ctx — из него через
 	// PrincipalFromContext.
 	Principal Principal

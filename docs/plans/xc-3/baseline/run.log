@@ -143,7 +143,7 @@ deployment.apps/kacho-umbrella-openfga scaled
 [failclosed] реплик не осталось; жду 12s (кэш решений шлюза)
 newman
 
-kacho-iam / newman / authz-failclosed
+kaname / newman / authz-failclosed
 
 ❏ AUTHZ-FAILCLOSED-OPENFGA-DOWN — gateway returns 503 Unavailable when the authorization store is unreachable (fail-closed)
 ↳ AUTHZ-FAILCLOSED-OPENFGA-DOWN :: any-authz-gated-rpc-during-openfga-outage

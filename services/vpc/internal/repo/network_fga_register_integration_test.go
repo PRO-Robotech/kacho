@@ -11,7 +11,7 @@ package repo_test
 // Это testcontainers integration-тесты, гоняющие реальный Network use-case
 // (Handler → UpdateNetworkUseCase → kachopg writer-tx) на Postgres 16 и
 // проверяющие строки fga_register_outbox, которые позже применяет IAM
-// register-drainer. resource_mirror живет в kacho-iam; здесь наблюдаем только
+// register-drainer. resource_mirror живет в kaname; здесь наблюдаем только
 // consumer-side intent.
 
 import (

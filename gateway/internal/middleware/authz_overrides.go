@@ -14,7 +14,7 @@
 //	# /etc/kacho/api-gateway/authz_overrides.yaml
 //	version: 1
 //	overrides:
-//	  - fqn: "kacho.cloud.iam.v1.AccessBindingService/Upsert"
+//	  - fqn: "kaname.cloud.iam.v1.AccessBindingService/Upsert"
 //	    decision: "deny"   # emergency lock — no one can mutate role grants
 //	    reason: "incident response: freeze role-grant mutations"
 //	  - fqn: "kacho.cloud.vpc.v1.NetworkService/Get"

@@ -12,7 +12,7 @@
 # Такое предусловие живёт в манифесте, а исполняется — в Makefile, и эти два места
 # расходятся молча.
 #
-# Реальный случай: values.dev-prod.yaml ссылался на `kacho-iam-hook-token`
+# Реальный случай: values.dev-prod.yaml ссылался на `kaname-hook-token`
 # обязательной ссылкой из пода Hydra и её automigrate-Job'а; ни один шаблон его не
 # создаёт; заводит только scripts/dev-prod-secrets.sh — которого цель `dev-prod-up`
 # не звала. Требование существовало одним комментарием в values. Профиль `dev`
@@ -133,7 +133,7 @@ self_test() {
 
   # (A) ИНЪЕКЦИЯ: цель перестала звать скрипт секретов (ровно исходный дефект)
   local out; out="$(unmet "$render" "")"
-  if [[ "$out" == *'kacho-iam-hook-token'* ]]; then
+  if [[ "$out" == *'kaname-hook-token'* ]]; then
     echo "  (A) цель не зовёт scripts/dev-prod-secrets.sh → КРАСНЫЙ с координатой: $(printf '%s' "$out" | tr '\n' ';')"
   else
     echo "  (A) цель не зовёт scripts/dev-prod-secrets.sh → ПРОПУСТИЛ"; rc=1

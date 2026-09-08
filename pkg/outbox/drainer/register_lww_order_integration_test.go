@@ -42,7 +42,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 )
 
-// mirrorState models iam's kacho_iam.resource_mirror: a per-object row carrying
+// mirrorState models iam's kaname.resource_mirror: a per-object row carrying
 // the producer's source_version, written LWW and deleted without a tombstone.
 type mirrorState struct {
 	mu      sync.Mutex

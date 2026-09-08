@@ -92,8 +92,8 @@ type addressResource struct{ c *client.Client }
 // NewVPCAddressResource — конструктор для реестра провайдера.
 func NewVPCAddressResource() resource.Resource { return &addressResource{} }
 
-func (r *addressResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_vpc_address"
+func (r *addressResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = typeNameVPCAddress
 }
 
 func (r *addressResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -740,7 +740,7 @@ func (r *addressResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	id, err := awaitCreate(ctx, r.c, addressesPath, "addressId", "kacho_vpc_address",
+	id, err := awaitCreate(ctx, r.c, addressesPath, "addressId", typeNameVPCAddress,
 		plan.ProjectID.ValueString()+"/"+plan.Name.ValueString(), body)
 	if err != nil {
 		resp.Diagnostics.AddError("Создание адреса не завершилось", err.Error())

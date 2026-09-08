@@ -35,8 +35,8 @@ func TestResolver_RoutesToIAM(t *testing.T) {
 	resolve := proxy.Resolver(backends)
 
 	for _, m := range []string{
-		"/kacho.cloud.iam.v1.AccountService/List",
-		"/kacho.cloud.iam.v1.UserService/Update",
+		"/kaname.cloud.iam.v1.AccountService/List",
+		"/kaname.cloud.iam.v1.UserService/Update",
 	} {
 		_, conn, ok := resolve(m)
 		if !ok {
@@ -129,7 +129,7 @@ func TestResolver_BlocksInternalService(t *testing.T) {
 	resolve := proxy.Resolver(backends)
 	for _, m := range []string{
 		"/kacho.cloud.vpc.v1.NetworkInternalService/Exists",
-		"/kacho.cloud.iam.v1.InternalUserService/UpsertFromIdentity",
+		"/kaname.cloud.iam.v1.InternalUserService/UpsertFromIdentity",
 	} {
 		if _, _, ok := resolve(m); ok {
 			t.Errorf("Internal метод %q должен быть заблокирован", m)

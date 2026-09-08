@@ -707,7 +707,7 @@ CASES.append(Case(
         # Здесь стояло `closedVerbs ⊇ [get,list,update,delete]`. Это утверждение не про
         # nlb: `closed_verbs` — ПЕРЕСЕЧЕНИЕ наборов ВСЕХ типов платформы, и его
         # собственный контракт объявляет СУЖЕНИЕ нормой, а не поломкой
-        # (proto/kacho/cloud/iam/v1/permission_catalog_service.proto, поле `closed_verbs`).
+        # (proto/kaname/cloud/iam/v1/permission_catalog_service.proto, поле `closed_verbs`).
         # Сняв `v_update` у ОДНОГО чужого типа (`iam_user` — правку его записи
         # спрашивает другое отношение), платформа вынула глагол из пересечения —
         # и эта проба покраснела, не изменившись в том, что она измеряла.
@@ -929,9 +929,9 @@ CASES.append(Case(
     title="iam.Role.Create naming a permission outside the catalog → refused, never created",
     classes=["AZD"], priority="P1",
     steps=[
-        # The iam Role.Create endpoint lives in kacho-iam, not nlb; this case
+        # The iam Role.Create endpoint lives in kaname, not nlb; this case
         # is a placeholder that asserts the symbolic contract by attempting a
-        # request that, in a fully wired stand, would hit kacho-iam through
+        # request that, in a fully wired stand, would hit kaname through
         # the api-gateway. If the route is absent in this stand the assertion
         # tolerates 404. Drift test in kacho-iam/internal/authzmap is the
         # authoritative enforcement.

@@ -15,7 +15,7 @@
 // Здесь INTENT на tuple пишется outbox-строкой в той же writer-TX, что
 // вставляет/удаляет ресурс (один commit, без dual-write). Отдельный
 // register-drainer (corelib outbox/drainer) позже применяет каждый intent через
-// kacho-iam InternalIAMService.RegisterResource/UnregisterResource по mTLS
+// kaname InternalIAMService.RegisterResource/UnregisterResource по mTLS
 // (idempotent, at-least-once, retry на Unavailable — tuple durable и не теряется).
 // Writer-сторона — FGARegister-emitter в internal/repo/kacho; drainer-сторона —
 // IAM register-applier в internal/clients.
@@ -35,7 +35,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
 )
 
-// Registrar — порт синхронной регистрации owner-tuple'ов в kacho-iam. Create-flow
+// Registrar — порт синхронной регистрации owner-tuple'ов в kaname. Create-flow
 // после успешного коммита ресурса синхронно регистрирует те же Item'ы, что
 // эмитятся в outbox-intent, чтобы owner-grant был доступен сразу — без гонки с
 // async register-drainer'ом. Реализация — adapter поверх
@@ -117,7 +117,7 @@ type Intent struct {
 // Payload — JSONB-форма одной строки fga_register_outbox: tuple, развернутый на
 // верхний уровень (back-compat с прежней «голой» Tuple-строкой), плюс mirror-feed
 // (labels + parent_project_id + монотонный source_version). На эту форму
-// опираются и repo-writer (emit), и clients-applier (forward в kacho-iam
+// опираются и repo-writer (emit), и clients-applier (forward в kaname
 // RegisterResource).
 //
 // Tuple встроен (embedded), поэтому legacy-строка {"subject_id","relation","object"}
@@ -167,7 +167,7 @@ func Decode(b []byte) (Payload, error) {
 // objectType — FGA-тип vpc_* ("vpc_network", "vpc_subnet", ...).
 //
 // Отношение НАЗЫВАЕТСЯ из объявления приёмной стороны (pkg/authz/proxytuple), а не
-// пишется здесь литералом: закрытый набор принадлежит kacho-iam, и второе написание
+// пишется здесь литералом: закрытый набор принадлежит kaname, и второе написание
 // чужого набора — копия, которая разойдётся молча.
 func ProjectHierarchy(projectID, objectType, objectID string) Tuple {
 	return Tuple{

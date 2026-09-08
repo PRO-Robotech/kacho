@@ -13,7 +13,7 @@
 // JWT (claim plumbing) and renders the verdict as an RFC 6750 challenge
 // (protocol plumbing); the DECISION — the ACR ranking, the machine-principal
 // exemption and the MFA-freshness window — lives once in
-// grpcsrv.EvaluateStepUp, which the cluster-internal arm (kacho-iam
+// grpcsrv.EvaluateStepUp, which the cluster-internal arm (kaname
 // authzguard.ACRFloor) calls too. This gate must never re-derive any arm of it:
 // a local ranking table or a local exemption is exactly the divergence that let
 // a machine principal pass the front door and then be denied forever inside.
@@ -90,7 +90,7 @@ func NewStepUpGate(now func() time.Time) *StepUpGate {
 // grpcsrv.StepUpInput: подставленный клиентом уровень или тип принципала купил
 // бы освобождение.
 type StepUpAssurance struct {
-	// PrincipalType — `kacho_principal_type` предъявителя либо тип субъекта,
+	// PrincipalType — `kaname_principal_type` предъявителя либо тип субъекта,
 	// резолвленного полосой сессии. Единственное значение, снимающее пол, —
 	// grpcsrv.PrincipalTypeServiceAccount; решает это общее правило, не полоса.
 	PrincipalType string
@@ -107,7 +107,7 @@ type StepUpAssurance struct {
 // края и Hydra, поэтому разбор остаётся здесь; вердикт по нему — нет.
 func assuranceFromVerifiedToken(token *VerifiedToken) StepUpAssurance {
 	return StepUpAssurance{
-		PrincipalType: verifiedClaim(token, "kacho_principal_type"),
+		PrincipalType: verifiedClaim(token, "kaname_principal_type"),
 		ACR:           token.ACR,
 		AuthTime:      token.AuthTime,
 	}

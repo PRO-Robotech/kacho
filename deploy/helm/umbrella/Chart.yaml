@@ -3,10 +3,10 @@
 apiVersion: v2
 name: kacho-umbrella
 version: 2.0.0
-description: "Kachō Cloud Control Plane — umbrella chart (flat API + Operations). Bundles the control-plane services (api-gateway, vpc, compute, kacho-iam, kacho-nlb, ui) with their per-service Postgres instances, the Ory identity tier (Kratos + Hydra), plus dev infrastructure (ingress-nginx, in-cluster. Matches the kind dev stand brought up by `make dev-up` (values.dev.yaml)."
+description: "Kachō Cloud Control Plane — umbrella chart (flat API + Operations). Bundles the control-plane services (api-gateway, vpc, compute, kaname, kacho-nlb, ui) with their per-service Postgres instances, the Ory identity tier (Kratos + Hydra), plus dev infrastructure (ingress-nginx, in-cluster. Matches the kind dev stand brought up by `make dev-up` (values.dev.yaml)."
 #
 # ТРИ ЧАРТА ЛЕЖАТ В `charts/` И НАМЕРЕННО НЕ ОБЪЯВЛЕНЫ ЗАВИСИМОСТЯМИ:
-# kacho-iam, kacho-geo, kratos-selfservice-ui. Их исходники
+# kaname, kacho-geo, kratos-selfservice-ui. Их исходники
 # версионируются здесь же, а `charts/` — это и есть каталог сабчартов: helm
 # загружает оттуда всё, что является чартом, без всякого объявления.
 #

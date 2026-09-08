@@ -169,6 +169,51 @@ func (p *PgProjection) SaveCursor(ctx context.Context, cursor string, appliedRow
 	return nil
 }
 
+// RecordAuthority записывает в строку курсора то, что оператор объявил этому
+// потребителю о домене величин.
+//
+// # Зачем состояние, если есть накопительные счётчики
+//
+// Счётчики заведены затем, чтобы тянущий, не применивший ни строки, не выглядел
+// здоровым. После снятия авторитета «ни строки не применено» становится штатным
+// и ВЕЧНЫМ: сигнал застоя срабатывал бы всегда, а проверку, кричащую на
+// нормальной работе, перестают читать вместе с настоящими находками. Поэтому
+// причина НАЗЫВАЕТСЯ, а не выводится из нуля.
+//
+// # Чего оператор НЕ трогает — и это несущее
+//
+// Ни курсор, ни оба накопительных счётчика, ни отметку занятости прохода.
+// Первые три — потому что перевод объявления в «не развёрнут» не есть работа
+// тянущего: обнулить их значило бы стереть свидетельство того, что он работал
+// (KAN-Q4-13). Отметку — потому что она служит арендой прохода: сдвинув её на
+// подъёме, мы отложили бы первый проход после возврата авторитета на целый срок
+// аренды, причём у КАЖДОЙ реплики.
+func (p *PgProjection) RecordAuthority(ctx context.Context, state AuthorityState) error {
+	var b binder
+	stmt := fmt.Sprintf(`
+		UPDATE %s.quota_sync_cursor
+		   SET authority_state = %s
+		 WHERE id = 'limits'`, p.schema, b.bind(string(state)))
+	if _, err := p.db.Exec(ctx, stmt, b.args...); err != nil {
+		return fmt.Errorf("record quota limit authority state: %w", err)
+	}
+	return nil
+}
+
+// LoadAuthority читает объявленное состояние домена величин, ничего не занимая.
+//
+// Существует ради наблюдаемости и проб: «почему тянущий молчит» обязано быть
+// доступно, не двигая отметку занятости.
+func (p *PgProjection) LoadAuthority(ctx context.Context) (AuthorityState, error) {
+	stmt := fmt.Sprintf(
+		`SELECT authority_state FROM %s.quota_sync_cursor WHERE id = 'limits'`, p.schema)
+	var state string
+	if err := p.db.QueryRow(ctx, stmt).Scan(&state); err != nil {
+		return "", fmt.Errorf("read quota limit authority state: %w", err)
+	}
+	return AuthorityState(state), nil
+}
+
 // Heartbeat отмечает состоявшийся проход, не трогая ни курсор, ни счётчик
 // работы.
 //

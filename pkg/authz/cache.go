@@ -212,7 +212,7 @@ func (c *Cache) Get(subjectID, relation, objectType, objectID string) (allowed b
 //
 // Зачем: между RUnlock и Lock в Get конкурентный SetAllowed мог записать свежий
 // entry (новый expiresAt в будущем). Безусловный delete выкинул бы этот валидный
-// positive-результат (потеря → лишний Check round-trip в kacho-iam). Сравнение
+// positive-результат (потеря → лишний Check round-trip в kaname). Сравнение
 // expiresAt гарантирует, что мы удаляем именно ту stale-запись, а не свежую.
 func (c *Cache) evictIfStale(subjectID string, key entryKey, observedExpiresAt time.Time) {
 	c.mu.Lock()

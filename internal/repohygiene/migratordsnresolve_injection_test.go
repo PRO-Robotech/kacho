@@ -28,7 +28,7 @@ import (
 	"os"
 
 	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
-	"github.com/PRO-Robotech/kacho/services/svc/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho/services/svc/internal/apps/kaname/config"
 )
 
 const envDSN = migratorcli.EnvDSN
@@ -54,7 +54,7 @@ import (
 	"strings"
 
 	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
-	"github.com/PRO-Robotech/kacho/services/svc/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho/services/svc/internal/apps/kaname/config"
 )
 
 const envDSN = migratorcli.EnvDSN

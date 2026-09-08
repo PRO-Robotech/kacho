@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // catalogwriterlock_test.go — держатель Г1: всякий прод-писатель строк
-// `kacho_iam.catalog_*` берёт глобальный транзакционный замок каталога
+// `kaname.catalog_*` берёт глобальный транзакционный замок каталога
 // (приёмка `plan-confirms-what-apply-withdraws.md` §7, объём О11).
 //
 // Способность гейта упасть и смолчать доказана инъекцией —

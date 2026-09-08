@@ -74,9 +74,6 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/grpc"
-
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
@@ -88,13 +85,12 @@ import (
 // поля, а не работа сужателя. Здесь ответ строится только из запроса.
 type benchPeer struct{ allow bool }
 
-func (p benchPeer) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeCheckRequest,
-	_ ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error) {
-	out := make([]*iamv1.AuthorizeCheckResponse, 0, len(in.GetChecks()))
-	for range in.GetChecks() {
-		out = append(out, &iamv1.AuthorizeCheckResponse{Allowed: p.allow})
+func (p benchPeer) BatchCheck(_ context.Context, checks []listnarrow.Check) ([]bool, error) {
+	out := make([]bool, 0, len(checks))
+	for range checks {
+		out = append(out, p.allow)
 	}
-	return &iamv1.BatchAuthorizeCheckResponse{Responses: out}, nil
+	return out, nil
 }
 
 // countingPeer — сосед, считающий ОБРАЩЕНИЯ и ВОПРОСЫ.
@@ -111,15 +107,14 @@ type countingPeer struct {
 	checks atomic.Int64
 }
 
-func (p *countingPeer) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeCheckRequest,
-	_ ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error) {
+func (p *countingPeer) BatchCheck(_ context.Context, checks []listnarrow.Check) ([]bool, error) {
 	p.calls.Add(1)
-	p.checks.Add(int64(len(in.GetChecks())))
-	out := make([]*iamv1.AuthorizeCheckResponse, 0, len(in.GetChecks()))
-	for range in.GetChecks() {
-		out = append(out, &iamv1.AuthorizeCheckResponse{Allowed: p.allow})
+	p.checks.Add(int64(len(checks)))
+	out := make([]bool, 0, len(checks))
+	for range checks {
+		out = append(out, p.allow)
 	}
-	return &iamv1.BatchAuthorizeCheckResponse{Responses: out}, nil
+	return out, nil
 }
 
 // benchClock — управляемые часы: замер обязан быть детерминирован, а окно

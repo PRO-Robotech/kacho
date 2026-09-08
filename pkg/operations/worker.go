@@ -20,7 +20,7 @@
 //   - panic в fn перехватывается recover() → durable MarkError, процесс не падает.
 //
 // Durable terminal-write:
-//   - финальные MarkDone/MarkError идут через retry+backoff (kacho-corelib/backoff)
+//   - финальные MarkDone/MarkError идут через retry+backoff (pkg/backoff)
 //     поверх CAS-on-`done`; transient DB-сбой ретраится, метрики retries/failures
 //     не проглатываются; при исчерпании budget строка остается done=false и
 //     добирается reconciler'ом.

@@ -185,7 +185,7 @@ external TLS endpoint. Они предназначены для peer-серви�
 Авторизация — **per-RPC**, по отношению субъекта к ресурсу или его проекту.
 Интерсептор перед выполнением метода проверяет, что субъект имеет нужное отношение (`relation`)
 на целевой ресурс или его проект (`viewer` для чтения, `editor` для мутаций). Если
-отношения нет → `PERMISSION_DENIED` (HTTP `403`). Проверка идет к `kacho-iam` (RPC
+отношения нет → `PERMISSION_DENIED` (HTTP `403`). Проверка идет к `kaname` (RPC
 `InternalIAMService.Check`); вердикт о доступе вычисляет реляционная форма в базе iam по
 модели прав. Недоступность peer-сервиса на
 request-path — `UNAVAILABLE` (fail-closed для мутаций).
@@ -195,7 +195,7 @@ flowchart LR
   cli["Клиент"] -->|"Bearer JWT"| agw["api-gateway"]
   agw -->|"verify JWT"| agw
   agw -->|"vpc.v1.* + subject"| vpc["kacho-vpc"]
-  vpc -->|"Check(subject, relation, object)"| iamsvc["kacho-iam"]
+  vpc -->|"Check(subject, relation, object)"| iamsvc["kaname"]
   iamsvc -->|"allow / deny"| vpc
   vpc -->|"SQL"| pg[("kacho_vpc")]
 ```
@@ -343,7 +343,7 @@ backend (остальные RPC маршрутизируются по REST-пу�
     <tr><td><code>nic</code></td><td>NetworkInterface</td><td><code>nic3v5x7z9b1d4f6h8j0</code></td></tr>
     <tr><td><code>apl</code></td><td>AddressPool <em>(internal/admin)</em></td><td><code>apl0m7r4x2h9wb6n5t1c</code></td></tr>
     <tr><td><code>enp</code></td><td>Operation (VPC)</td><td><code>enpk3xe746h019hnz182</code></td></tr>
-    <tr><td><code>prj</code></td><td>Project (домен kacho-iam; ссылка)</td><td><code>prj9j6y00msn65vcfdq3</code></td></tr>
+    <tr><td><code>prj</code></td><td>Project (домен kaname; ссылка)</td><td><code>prj9j6y00msn65vcfdq3</code></td></tr>
   </tbody>
 </table>
 

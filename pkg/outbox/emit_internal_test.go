@@ -16,7 +16,7 @@ func TestSanitizeTable(t *testing.T) {
 		want string
 	}{
 		{name: "plain", in: "vpc_outbox", want: `"vpc_outbox"`},
-		{name: "schema-qualified", in: "kacho_iam.fga_outbox", want: `"kacho_iam"."fga_outbox"`},
+		{name: "schema-qualified", in: "kaname.fga_outbox", want: `"kaname"."fga_outbox"`},
 		{name: "injection-attempt", in: `x(a) VALUES(1); DROP TABLE users; --`,
 			want: `"x(a) VALUES(1); DROP TABLE users; --"`},
 		{name: "embedded-quote", in: `a"b`, want: `"a""b"`},

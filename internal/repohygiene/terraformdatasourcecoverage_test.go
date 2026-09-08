@@ -94,6 +94,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/pkg/contractroot"
 )
 
 // dsReadingVerbs — глаголы, читающие РЕСУРС.
@@ -196,7 +198,7 @@ var tfDataSourceExempt = map[string]dsExemption{
 	},
 
 	"MembershipService": {
-		refutedBy: []string{"kacho_iam_membership", "kacho_iam_memberships"},
+		refutedBy: []string{"kaname_membership", "kaname_memberships"},
 		why: "членство — СВЯЗЬ, чьё состояние меняет событие вне всякой конфигурации: первый " +
 			"вход человека переводит в «состоит» ВСЕ его приглашённые членства разом, и ни " +
 			"один `apply` при этом не исполняется. Источник над ним делал бы план " +
@@ -215,7 +217,7 @@ var tfDataSourceExempt = map[string]dsExemption{
 	},
 
 	"PermissionCatalogService": {
-		refutedBy: []string{"kacho_iam_permission_catalog", "kacho_iam_permissions"},
+		refutedBy: []string{"kaname_permission_catalog", "kaname_permissions"},
 		why: "каталог прав — словарь САМОЙ ПЛАТФОРМЫ, а не ландшафт арендатора: он генерируется " +
 			"из контрактов, ставится байт-в-байт одинаковым в посев iam и в посредник края и " +
 			"меняется вместе с версией платформы. Источник над ним втянул бы версию платформы в " +
@@ -365,7 +367,14 @@ type dsServiceCensus struct {
 func readOnlyServiceCensus(t *testing.T, root string) dsServiceCensus {
 	t.Helper()
 	out := dsServiceCensus{verbsSeen: map[string]bool{}}
-	for _, rel := range trackedFilesUnder(t, root, "proto/kacho/cloud", ".proto") {
+	// Обход по ОБЪЯВЛЕННЫМ корням: домен под вторым корнем выпал бы из популяции,
+	// и гейт объявил бы, что служба «больше не создаёт ресурс», — находка про
+	// собственную слепоту, а не про дерево.
+	var contractRels []string
+	for _, r := range contractroot.Roots {
+		contractRels = append(contractRels, trackedFilesUnder(t, root, "proto/"+r+"/cloud", ".proto")...)
+	}
+	for _, rel := range contractRels {
 		src, err := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- путь из индекса репозитория
 		if err != nil {
 			t.Fatalf("чтение %s: %v", rel, err)

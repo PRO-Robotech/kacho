@@ -85,7 +85,7 @@ func GooseApplied(ctx context.Context, db Querier) AppliedSet {
 	return func(version int64) (bool, error) {
 		if !resolved {
 			// Unqualified on purpose: goose puts its table in whatever schema the
-			// DSN's search_path selects (kacho_vpc, kacho_iam, …), and to_regclass
+			// DSN's search_path selects (kacho_vpc, kaname, …), and to_regclass
 			// resolves through search_path exactly as the migrations themselves do.
 			if err := db.QueryRowContext(ctx,
 				`SELECT to_regclass('goose_db_version') IS NOT NULL`).Scan(&present); err != nil {
@@ -407,8 +407,14 @@ func Preflight(ctx context.Context, count Counter, inv Inv, applied AppliedSet, 
 			}
 			rep.Violations = append(rep.Violations, Violation{
 				Kind: ViolationRowCount, Service: inv.Service, Version: drop.Version, Table: drop.Table,
-				Detail: fmt.Sprintf("holds %d row(s) on this database, and %s:%d destroys the table. Those rows are gone the moment the migration runs, and the down migration brings back the shape, not the data. Establish where they come from; to destroy them deliberately, name this drop: %s=%s",
-					rows, drop.File, drop.Line, ApprovalEnv, Approval{Version: drop.Version, Table: drop.Table}),
+				// SAVING IS NAMED BEFORE DESTROYING, and both are named as commands.
+				// The message used to offer one executable step — approve the drop —
+				// and leave the other as "establish where they come from", which is
+				// research, not a step. An operator reading a stopped deploy takes the
+				// step that can be pasted, so the only pasteable step must not be the
+				// one that loses the rows.
+				Detail: fmt.Sprintf("holds %d row(s) on this database, and %s:%d destroys the table. Those rows are gone the moment the migration runs, and the down migration brings back the shape, not the data. Save them first, with DSN set to this database's connection string: %s — then establish where they come from; to destroy them deliberately, name this drop: %s=%s",
+					rows, drop.File, drop.Line, PreserveCommand(drop.Table), ApprovalEnv, Approval{Version: drop.Version, Table: drop.Table}),
 			})
 		}
 	}

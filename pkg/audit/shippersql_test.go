@@ -24,7 +24,7 @@ import (
 // снятые состояния не встречаются нигде. Без второй половины она зеленела бы на
 // операторе, который пишет состояние, которого в словаре таблицы уже нет.
 func TestShipperSQLSpeaksTheDeclaredStates(t *testing.T) {
-	s := buildShipperSQL("kacho_iam.audit_outbox")
+	s := buildShipperSQL("kaname.audit_outbox")
 
 	if want := "status <> '" + StatusSent + "'"; !strings.Contains(s.claim, want) {
 		t.Errorf("клейм не несёт предиката %q дословно — частичный индекс журнала\n"+

@@ -180,7 +180,7 @@ message GetSubnetRequest {
 
 message ListSubnetsRequest {
   // ID of the project to list subnets in.
-  // To get the project ID use a [kacho.cloud.iam.v1.ProjectService.List] request.
+  // To get the project ID use a [kaname.cloud.iam.v1.ProjectService.List] request.
   string project_id = 1;
 
   // The maximum number of results per page to return. If the number of available
@@ -235,7 +235,7 @@ message CreateSubnetRequest {
   reserved 7, 8, 10, 11;
   reserved "dhcp_options", "v4_cidr_blocks", "v6_cidr_blocks";
   // ID of the project to create a subnet in.
-  // To get project ID use a [kacho.cloud.iam.v1.ProjectService.List] request.
+  // To get project ID use a [kaname.cloud.iam.v1.ProjectService.List] request.
   string project_id = 1;
 
   // Name of the subnet.

@@ -34,6 +34,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/internal/productnaming"
 	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
@@ -41,10 +42,30 @@ import (
 // Разбор ссылок на образы. Форма объявления у подчартов разная (плоская строка
 // либо карта {repository,tag}), и обе — деталь их чартов, а не предмет проверок.
 
-// productImageRe — ссылка на образ ПРОДУКТА в любом файле значений.
-// Хвост тега необязателен: в слое стенда образ объявлен как `kacho-vpc:dev`,
-// на управляемом кластере — как `docker.io/prorobotech/kacho-vpc:main-<коммит>`.
-var productImageRe = regexp.MustCompile(`([A-Za-z0-9._/-]*\bkacho-[a-z0-9-]+):([A-Za-z0-9._-]+)`)
+// imageRefRe — разбор ссылки на образ на репозиторий и тег. О принадлежности
+// образа продукту она НЕ судит: это отдельный вопрос, и у него отдельный
+// владелец (см. productImageRef ниже).
+var imageRefRe = regexp.MustCompile(`^([A-Za-z0-9._/-]+):([A-Za-z0-9._-]+)$`)
+
+// productImageRef — ссылка называет образ ПРОДУКТА; возвращает репозиторий и тег.
+//
+// Принадлежность спрашивается у ЕДИНСТВЕННОГО владельца имён
+// (`internal/productnaming`), а НЕ выводится приставкой `kacho-`, как было до
+// #2076. Разница здесь не косметическая: распознаватель по приставке образ с
+// собственным именем продукта (`kaname`) не отвергал — он его НЕ ВИДЕЛ, то есть
+// пин такого образа уходил из-под проверки свежести молча, а гейт при этом
+// оставался зелёным.
+//
+// Хвост тега обязателен: без него это не пин, а объявление репозитория, и
+// свежести у него нет. В слое стенда образ объявлен как `kaname:dev`, на
+// управляемом кластере — как `docker.io/prorobotech/kaname:main-<коммит>`.
+func productImageRef(ref string) (repo, tag string, ok bool) {
+	m := imageRefRe.FindStringSubmatch(strings.TrimSpace(ref))
+	if m == nil || !productnaming.IsProductImageRepo(m[1]) {
+		return "", "", false
+	}
+	return m[1], m[2], true
+}
 
 // productImageRefs — ссылки на образы продукта, найденные в дереве значений.
 // Обход рекурсивный: образы лежат и на верхнем уровне (`vpc.image`), и внутри
@@ -162,7 +183,7 @@ func TestStandPullingFromARegistryTakesLayerStoreCredentialByReference(t *testin
 		values := effectiveValues(t, stacks[name])
 		fromRegistry := false
 		for _, ref := range productImageRefs(values) {
-			if !productImageRe.MatchString(ref) {
+			if _, _, ok := productImageRef(ref); !ok {
 				continue
 			}
 			refs++
@@ -349,11 +370,10 @@ func TestProductImagePinsAreDerivedFromTheRecordedCommit(t *testing.T) {
 		pinned := map[string]bool{}
 		profilePins, derivedHere := 0, 0
 		for _, ref := range productImageRefs(readYAML(t, filepath.Join(umbrellaDir, name))) {
-			m := productImageRe.FindStringSubmatch(ref)
-			if m == nil || !pulledFromARegistry(ref) {
+			repo, tag, ok := productImageRef(ref)
+			if !ok || !pulledFromARegistry(ref) {
 				continue // образ стенда либо сторонний: коммита этого дерева он не называет
 			}
-			repo, tag := m[1], m[2]
 			image := repo[strings.LastIndex(repo, "/")+1:]
 			pinned[image] = true
 			profilePins++

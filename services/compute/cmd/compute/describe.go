@@ -26,6 +26,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
 	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
@@ -150,8 +151,20 @@ func describe(
 			OptIn:    cfg.AuthZTrustAnyForwarder,
 		},
 
-		Authz:        servicecontract.AuthzViaIAM,
-		CheckEdge:    servicecontract.NewPeerEdge(cfg.AuthZIAMGRPCAddr, checkCreds),
+		// Домен доверия — ЗНАЧЕНИЕ: личность клиентского сертификата этот процесс
+		// разбирает, и разбирает её ОТНОСИТЕЛЬНО домена. Читается из той же
+		// функции, значение которой уезжает в пару звеньев извлечения личности,
+		// поэтому «страж пропустил» ⟺ «домен реально объявлен».
+		TrustDomain:     servicecontract.Value(cfg.TrustDomain()),
+		TrustDomainKnob: "KACHO_COMPUTE_AUTHZ_TRUST_DOMAIN",
+
+		Authz:     servicecontract.AuthzViaIAM,
+		CheckEdge: servicecontract.NewPeerEdge(cfg.AuthZIAMGRPCAddr, checkCreds),
+		// Перевод вопроса в контракт службы доступа приносит СЕРВИС: носитель
+		// принадлежит фундаменту и чужого контракта не знает. Знай он его,
+		// после разъезда на модули фундамент потребовал бы службу, а она уже
+		// требует фундамент, — цикл, который Go не собирает.
+		PeerCheck:    authziam.NewCheckClient,
 		CacheWindow:  cfg.AuthZCacheTTL,
 		ClientBudget: cfg.AuthZCheckTimeout,
 		// Приёмник величин кеша вердиктов: носитель строит кеш, а
@@ -167,7 +180,7 @@ func describe(
 
 		// Верхняя граница обработки вызова и бюджет отказов — обе ВЕЛИЧИНЫ, обе с
 		// обоснованием у своих ручек конфигурации. «Не применимо» здесь незаконно:
-		// решение о доступе compute принимает не у себя, а вопросом к kacho-iam, —
+		// решение о доступе compute принимает не у себя, а вопросом к kaname, —
 		// то есть сетевой сосед, которого шторм отказов может уронить, у него ЕСТЬ.
 		HandlingBudget: cfg.HandlingBudget,
 		DenyBudget:     servicecontract.Value(cfg.AuthZDenyBudgetPerSec),

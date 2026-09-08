@@ -28,7 +28,7 @@ const gatewaySAN = "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
 
 // fwdCfg — минимально-валидный production Config с заданным списком отправителей.
 func fwdCfg(mode Mode, sans []string) Config {
-	c := prodCfg(mode, "kacho-iam-internal.kacho.svc:9091")
+	c := prodCfg(mode, "kaname-internal.kacho.svc:9091")
 	c.AuthZ.TrustedForwarderSANs = sans
 	return c
 }

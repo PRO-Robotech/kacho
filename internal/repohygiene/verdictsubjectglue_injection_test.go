@@ -18,8 +18,8 @@ import (
 // injectedGlueSQL — форма, стоявшая в дереве до починки, дословно.
 const injectedGlueSQL = "`\n" + `
 SELECT ''::text AS cond_name
-  FROM kacho_iam.access_bindings b
-  JOIN kacho_iam.access_binding_subjects bs ON bs.binding_id = b.id
+  FROM kaname.access_bindings b
+  JOIN kaname.access_binding_subjects bs ON bs.binding_id = b.id
   JOIN speaker sp ON sp.subject = bs.subject_type || ':' || bs.subject_id
  WHERE b.status = 'ACTIVE'` + "\n`"
 
@@ -27,7 +27,7 @@ SELECT ''::text AS cond_name
 // Обратный вопрос называет ею субъекта в ответе, а не отбирает по ней строки.
 const twinProjectionSQL = "`\n" + `
 SELECT bs.subject_type || ':' || bs.subject_id AS subject
-  FROM kacho_iam.access_binding_subjects bs
+  FROM kaname.access_binding_subjects bs
   JOIN scope sc ON sc.s_type = bs.resource_type AND sc.s_id = bs.resource_id` + "\n`"
 
 // twinMemberGlueSQL — ВТОРОЙ ЗАКОННЫЙ БЛИЗНЕЦ, названный приёмкой поимённо:
@@ -35,14 +35,14 @@ SELECT bs.subject_type || ':' || bs.subject_id AS subject
 // даже в предикате — иначе он дал бы находку вне предмета.
 const twinMemberGlueSQL = "`\n" + `
 SELECT gm.group_id
-  FROM kacho_iam.group_members gm
+  FROM kaname.group_members gm
   JOIN speaker sp ON sp.subject = gm.member_type || ':' || gm.member_id` + "\n`"
 
 // twinCommentSQL — склейка, стоящая в КОММЕНТАРИИ, который объясняет запрет.
 // Гейт читает исполняемую часть; иначе он краснел бы на собственном объяснении.
 const twinCommentSQL = "`\n" + `
 -- Прежде здесь стояло sp.subject = bs.subject_type || ':' || bs.subject_id.
-SELECT 1 FROM kacho_iam.access_binding_subjects bs
+SELECT 1 FROM kaname.access_binding_subjects bs
  WHERE bs.subject_type = $1 AND bs.subject_id = $2` + "\n`"
 
 func auditInjected(t *testing.T, name, lit string) ([]glueFinding, glueCensus) {

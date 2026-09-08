@@ -428,7 +428,7 @@ func (u *UpdateUseCase) doUpdate(ctx context.Context, next domain.Listener, expe
 
 // listenerMirrorIntent builds the mirror-feed register-intent for an
 // UPDATED Listener: the project-hierarchy tuple (re-register is idempotent in IAM)
-// carrying the refreshed labels + parent-project so kacho-iam updates its
+// carrying the refreshed labels + parent-project so kaname updates its
 // resource_mirror. No creator tuple — Update never re-assigns ownership; this is a
 // pure labels-refresh feed (parity with lbMirrorIntent / tgMirrorIntent). Empty
 // labels (full removal) is a valid upsert payload — it stales the label selector
@@ -436,7 +436,7 @@ func (u *UpdateUseCase) doUpdate(ctx context.Context, next domain.Listener, expe
 // outbox emitter from the DB clock inside the writer-tx.
 //
 // THE TUPLE MUST BE THE PROJECT ONE, and that is the whole substance of this feed.
-// kacho-iam writes resource_mirror only as a side effect of RegisterResource, and
+// kaname writes resource_mirror only as a side effect of RegisterResource, and
 // it guards that proxy write-path with a least-privilege rule over the whole tuple
 // (pkg/authz/proxytuple.ValidateTuple) evaluated BEFORE the mirror UPSERT. nlb's
 // parent-link relation `load_balancer` is not accepted by it (see

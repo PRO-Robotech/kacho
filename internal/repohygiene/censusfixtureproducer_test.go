@@ -56,7 +56,7 @@ import (
 // # Производитель узнаётся ИМЕНЕМ ПАКЕТА, а не одним лишь именем функции
 //
 // `UpsertTx` в дереве не одна: одноимённую экспортирует
-// `services/iam/internal/repo/kacho/pg/target_members`. Предикат «встретилось
+// `services/iam/internal/repo/kaname/pg/target_members`. Предикат «встретилось
 // слово UpsertTx» признал бы производителем вызов, который к рёбрам отношения
 // не имеет, — то есть зеленел бы на фикстуре, ничего не посеявшей. Поэтому
 // селектор обязан ссылаться на импорт ИМЕННО пакета-производителя.
@@ -87,9 +87,9 @@ const (
 	// Первая редакция приметы искала одно лишь чтение зеркала и пометила ШЕСТЬ
 	// проб, читающих зеркало по конкретному объекту, — предикат ловил форму
 	// (обращение к таблице), а не существо (квантор).
-	censusMirrorTable  = "kacho_iam.resource_mirror"
-	censusEdgeTable    = "kacho_iam.resource_parent_edge"
-	rawEdgeWriteMarker = "INSERT INTO kacho_iam.resource_parent_edge"
+	censusMirrorTable  = "kaname.resource_mirror"
+	censusEdgeTable    = "kaname.resource_parent_edge"
+	rawEdgeWriteMarker = "INSERT INTO kaname.resource_parent_edge"
 	edgeProducerCall   = "UpsertTx"
 
 	// Пакет-производитель назван ДВАЖДЫ, и это не дубль: у двух величин разные
@@ -100,12 +100,12 @@ const (
 	//
 	// Пока служба лежала в единственном модуле дерева, хвост импорта совпадал с
 	// каталогом, и одной константы хватало. Служба получила свой модуль
-	// (`github.com/PRO-Robotech/kacho-iam`), и сегмент `services/iam` из пути
+	// (`github.com/PRO-Robotech/kaname`), и сегмент `services/iam` из пути
 	// импорта пропал: хвост перестал совпадать с каталогом. Прежний комментарий
 	// обещал устойчивость к переименованию модуля — обещание было верно
 	// наполовину, потому что величина несла оба смысла сразу.
-	edgeProducerDir    = "services/iam/internal/repo/kacho/pg/resource_mirror"
-	edgeProducerImport = "kacho-iam/internal/repo/kacho/pg/resource_mirror"
+	edgeProducerDir    = "services/iam/internal/repo/kaname/pg/resource_mirror"
+	edgeProducerImport = "kaname/internal/repo/kaname/pg/resource_mirror"
 )
 
 // censusFileFacts — то, что гейт узнаёт об одном файле.

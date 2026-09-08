@@ -10,7 +10,7 @@ more: this module produces real RS256 tokens through the SAME machinery the plat
 uses, no dev-bypass, no direct Hydra-admin:
 
   1. bootstrap admin  — InternalBootstrapTokenService.MintBootstrapToken, called by
-     a DIRECT mTLS gRPC dial to kacho-iam :9091 (there is no REST route — see
+     a DIRECT mTLS gRPC dial to kaname :9091 (there is no REST route — see
      `mint_bootstrap`). A cluster `system_admin` ServiceAccount Bearer (acr-EXEMPT),
      the entry point that seeds everything else.
   2. per-subject      — with the admin Bearer, UserTokenService.Issue /
@@ -18,7 +18,7 @@ uses, no dev-bypass, no direct Hydra-admin:
      приватный ключ ОДИН раз. Мы подписываем им утверждение клиента
      (private_key_jwt, RFC 7521/7523) и обмениваем его У НАШЕГО ИЗДАТЕЛЯ
      (`POST /iam/v1/token`, `aud=https://{API_DOMAIN}`) → токен субъекта нашей
-     чеканки, чьи утверждения `kacho_principal_*` резолвятся в его User/SA и
+     чеканки, чьи утверждения `kaname_principal_*` резолвятся в его User/SA и
      привязки.
 
 ОБА ШАГА ЧЕКАНИМ МЫ, И ЭТО НЕ ДЕТАЛЬ (задачи #1119, #1120, #1121). Шаг 1: iam
@@ -52,7 +52,7 @@ STATUS (Phase C, #59) — UNBLOCKED + PROVEN end-to-end:
 
     Осталось верным и не изменилось: SAKeyService.Issue принимает
     `audience:[https://api.kacho.cloud]` (resolveAudience служебного ключа
-    считается с адресатами вызывающего); утверждение `kacho_principal_type=
+    считается с адресатами вызывающего); утверждение `kaname_principal_type=
     service_account` от обогащения делает токен acr-EXEMPT (stepup_gate O-1) и
     достижимым на ручках с acr=1. Блокер `created_by` (#60) для служебных ключей
     закрыт: вызывающий-машина записывает `created_by` = владелец аккаунта целевой
@@ -89,9 +89,9 @@ import uuid
 import jwt as pyjwt
 
 
-# ── bootstrap-mint transport (direct mTLS gRPC to kacho-iam :9091) ──────────
+# ── bootstrap-mint transport (direct mTLS gRPC to kaname :9091) ──────────
 # MintBootstrapToken has NO REST route — the mint is reachable ONLY over mTLS
-# gRPC, and only from a client certificate whose SPIFFE SAN kacho-iam allow-lists
+# gRPC, and only from a client certificate whose SPIFFE SAN kaname allow-lists
 # (`authn.bootstrap-mint.allowed-client-sans`). Defaults mirror the ports the
 # newman drivers port-forward (deploy/scripts/newman-{e2e,parallel}.sh) and the
 # Secret the umbrella issues for exactly this purpose.
@@ -107,7 +107,7 @@ BOOTSTRAP_MINT_MTLS_KEY = os.environ.get(
 
 
 # ── gateway-identity client cert (gateway-fronted internal RPCs) ────────────
-# A SECOND, DIFFERENT identity from the bootstrap-operator above. kacho-iam :9091
+# A SECOND, DIFFERENT identity from the bootstrap-operator above. kaname :9091
 # admits the gateway SAN for the ordinary internal RPCs the seed drives through
 # grpcurl (InternalUserService.UpsertFromIdentity, InternalIAMService.LookupSubject)
 # but deliberately NOT for the bootstrap-token mint. Keep the two apart: pointing
@@ -220,7 +220,7 @@ def ensure_client_cert(secret: str, cert_path: str, key_path: str,
 def ensure_iam_internal_cert() -> bool:
     """Provision the GATEWAY-identity client cert used for the internal :9091 RPCs.
 
-    kacho-iam's internal listener requires a verified client certificate in every
+    kaname's internal listener requires a verified client certificate in every
     posture (security.md: internal is NOT exempt), so every grpcurl the seed makes
     must present one. This is the identity for the ordinary internal RPCs — NOT for
     the bootstrap-token mint, which admits only the dedicated operator SAN.
@@ -250,11 +250,11 @@ def mint_bootstrap(*, grpc_addr: str | None = None,
                    cert: str | None = None, key: str | None = None) -> str:
     """MintBootstrapToken → cluster system_admin SA RS256 Bearer (acr-exempt).
 
-    Transport is a DIRECT mTLS gRPC dial to kacho-iam :9091 — the mint has no REST
+    Transport is a DIRECT mTLS gRPC dial to kaname :9091 — the mint has no REST
     route anywhere (#58 hardening). It mints a cluster `system_admin` Bearer, so it
     cannot be gated by a ReBAC relation (it exists to obtain the FIRST token) and
     must not be gated by network position; the gate is the CALLER'S CERTIFICATE:
-    kacho-iam admits only the SPIFFE SANs in `authn.bootstrap-mint.allowed-client-sans`
+    kaname admits only the SPIFFE SANs in `authn.bootstrap-mint.allowed-client-sans`
     (deny-all by default, in every mode). We therefore present the dedicated
     bootstrap-operator client cert, NOT the api-gateway one — the gateway is
     deliberately not a minter.
@@ -272,7 +272,7 @@ def mint_bootstrap(*, grpc_addr: str | None = None,
     # tombstone (`reserved 1; reserved "ttl_seconds"`) — the lifetime belongs to the
     # issuer's client configuration, so a per-request value only ever changed the
     # number in the RESPONSE, understating the expiry of a cluster-admin credential.
-    # See proto/kacho/cloud/iam/v1/internal_bootstrap_token_service.proto.
+    # See proto/kaname/cloud/iam/v1/internal_bootstrap_token_service.proto.
     #
     # This function kept sending `{"ttlSeconds": N}` after that removal, so every
     # attempt died at the request encoder — `has no known field named ttlSeconds` —
@@ -305,7 +305,7 @@ def mint_bootstrap(*, grpc_addr: str | None = None,
     args = ["grpcurl", "-insecure", "-max-time", "20",
             "-cert", cert_path, "-key", key_path,
             "-d", "{}", addr,
-            "kacho.cloud.iam.v1.InternalBootstrapTokenService/MintBootstrapToken"]
+            "kaname.cloud.iam.v1.InternalBootstrapTokenService/MintBootstrapToken"]
     proc = subprocess.run(args, capture_output=True, text=True, timeout=45)
     if proc.returncode != 0:
         raise RuntimeError(
@@ -438,14 +438,14 @@ def sign_client_assertion(client_id: str, private_key_pem: str, key_id: str,
 # совпадение: обе полосы обслуживает ОДИН выданный ключ. Поэтому здесь нет
 # второй подписи и второго разбора ответа операции; переиспользуются те же.
 PLATFORM_ASSERTION_AUDIENCE = os.environ.get(
-    "PLATFORM_ASSERTION_AUDIENCE", "https://iam.kacho.local")
+    "PLATFORM_ASSERTION_AUDIENCE", "https://kaname.kacho.local")
 # Умолчание — порт, который прогонщики newman пробрасывают ВСЕГДА
 # (deploy/scripts/newman-{parallel,e2e}.sh, IAM_REGTOKEN_PORT).
 PLATFORM_TOKEN_URL = os.environ.get(
     "PLATFORM_TOKEN_URL", "https://127.0.0.1:19096/iam/v1/token")
 
-IAM_SERVER_SECRET = os.environ.get("IAM_SERVER_SECRET", "kacho-iam-server-tls")
-_IAM_SERVER_CA_DIR = os.environ.get("IAM_SERVER_CA_DIR", "/tmp/kacho-iam-server-ca")
+IAM_SERVER_SECRET = os.environ.get("IAM_SERVER_SECRET", "kaname-server-tls")
+_IAM_SERVER_CA_DIR = os.environ.get("IAM_SERVER_CA_DIR", "/tmp/kaname-server-ca")
 IAM_SERVER_CA_FILE = os.environ.get(
     "IAM_SERVER_CA_FILE", os.path.join(_IAM_SERVER_CA_DIR, "ca.crt"))
 
@@ -476,8 +476,8 @@ def platform_tls_context(ca_file: str | None = None) -> ssl.SSLContext:
 
     ПРОВЕРКА ПОДПИСИ СЕРТИФИКАТА ОСТАЁТСЯ, ПРОВЕРКА ИМЕНИ — СНЯТА, и это не
     послабление ради удобства, а следствие измеренного факта: у листа
-    `kacho-iam-server-tls` в SAN ТОЛЬКО имена служб кластера
-    (`kacho-iam.kacho.svc…`), адреса петли там нет и быть не может, а проброс
+    `kaname-server-tls` в SAN ТОЛЬКО имена служб кластера
+    (`kaname.kacho.svc…`), адреса петли там нет и быть не может, а проброс
     ходит на `127.0.0.1`. Снятие ПОДПИСИ приняло бы любой сертификат, включая
     самоподписанный посторонним, — вот это было бы послаблением; здесь пир
     по-прежнему обязан предъявить лист НАШЕГО внутреннего удостоверяющего.
@@ -529,7 +529,7 @@ def user_platform_token(base_url: str, admin_token: str, user_id: str,
 
     Полоса та же, что у `sa_platform_token`, и субъект — другой: человек, а не
     машина. Держать обе нужно именно поэтому — принципал у них разный, и краю
-    он приезжает разными утверждениями (`kacho_principal_type` = `user` против
+    он приезжает разными утверждениями (`kaname_principal_type` = `user` против
     `service_account`).
 
     ОДНО ИМЯ, А НЕ ДВА (#1121). Выпуск персонального токена больше не заводит
@@ -617,12 +617,12 @@ def assert_bootstrap_accepted_by_the_edge(base_url: str, token: str) -> dict:
 # ── CLI ─────────────────────────────────────────────────────────────────────
 def main() -> int:
     p = argparse.ArgumentParser(description="Production-mode RS256 token minter (#59)")
-    # MintBootstrapToken transport — direct mTLS gRPC to kacho-iam :9091. There is
+    # MintBootstrapToken transport — direct mTLS gRPC to kaname :9091. There is
     # NO gateway REST route (a route on the plain-HTTP internal listener would be a
     # credential-free cluster-admin mint), and the caller is gated on the SPIFFE SAN
     # of the certificate below.
     p.add_argument("--iam-grpc", default=IAM_INTERNAL_GRPC,
-                   help="kacho-iam internal gRPC host:port (MintBootstrapToken)")
+                   help="kaname internal gRPC host:port (MintBootstrapToken)")
     p.add_argument("--mtls-cert", default=BOOTSTRAP_MINT_MTLS_CERT,
                    help="bootstrap-operator client certificate (allow-listed SPIFFE SAN)")
     p.add_argument("--mtls-key", default=BOOTSTRAP_MINT_MTLS_KEY,

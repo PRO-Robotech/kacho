@@ -18,7 +18,7 @@ export const RESTRICTIONS = {
   ],
   projectId: [
     'обязателен при Create; immutable после Create',
-    'существование проверяется через kacho-iam ProjectService.Get',
+    'существование проверяется через kaname ProjectService.Get',
     'обязателен и в List — пустое значение отвергается синхронно («projectId is required»)',
   ],
   zoneId: [

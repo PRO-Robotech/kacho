@@ -68,10 +68,10 @@ func mergeManifestPairDecl(bodies [][]byte) (manifestPairDecl, error) {
 		if err := yaml.Unmarshal(raw, &tree); err != nil {
 			return out, fmt.Errorf("профиль не разобран: %w", err)
 		}
-		if v, ok := nestedString(tree, "kacho-iam", "manifests", "configMapName"); ok {
+		if v, ok := nestedString(tree, "kaname", "manifests", "configMapName"); ok {
 			out.Name, out.NameSeen = v, true
 		}
-		if v, ok := nestedString(tree, "kacho-iam", "manifests", "required"); ok {
+		if v, ok := nestedString(tree, "kaname", "manifests", "required"); ok {
 			out.Required, out.RequiredSeen = v == "true", true
 		}
 	}
@@ -176,7 +176,7 @@ func TestEveryStackDeclaresTheManifestPairWhole(t *testing.T) {
 func TestManifestPairAuditFindsEitherHalf(t *testing.T) {
 	body := func(name, required string) []byte {
 		var b strings.Builder
-		b.WriteString("kacho-iam:\n  manifests:\n")
+		b.WriteString("kaname:\n  manifests:\n")
 		if name != "-" {
 			fmt.Fprintf(&b, "    configMapName: %q\n", name)
 		}
@@ -221,7 +221,7 @@ func TestManifestPairAuditFindsEitherHalf(t *testing.T) {
 	}{
 		{"пара объявлена целиком", [][]byte{body("kacho-module-manifests", "true")}},
 		{"доставка не заведена осознанно", [][]byte{body("", "false")}},
-		{"цепочка не объявляет ни одной половины", [][]byte{[]byte("kacho-iam: {}\n")}},
+		{"цепочка не объявляет ни одной половины", [][]byte{[]byte("kaname: {}\n")}},
 		{"последнее объявление цепочки достраивает пару", [][]byte{
 			body("kacho-module-manifests", "-"), body("-", "true"),
 		}},

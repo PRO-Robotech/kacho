@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	iampb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iampb "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
@@ -120,7 +120,7 @@ func TestProjectClient_NilConn(t *testing.T) {
 type fakeProjectServiceStub struct{ iampb.ProjectServiceClient }
 
 // blockingProjectService — fake ProjectServiceServer that never returns from
-// Get until explicitly released (simulates a hung/stalled kacho-iam peer).
+// Get until explicitly released (simulates a hung/stalled kaname peer).
 type blockingProjectService struct {
 	iampb.UnimplementedProjectServiceServer
 	release chan struct{}
@@ -133,7 +133,7 @@ func (f *blockingProjectService) Get(_ context.Context, _ *iampb.GetProjectReque
 
 // TestProjectClient_Get_HangingPeer_BoundsToConfiguredTimeout — regression for
 // the missing per-call deadline (round-6 audit finding 2, sibling client
-// check_client.go DefaultCheckTimeout): a stalled kacho-iam peer must not park
+// check_client.go DefaultCheckTimeout): a stalled kaname peer must not park
 // the calling goroutine forever. Get is called with a deadline-less caller
 // ctx (context.Background()) — the client itself must bound the call to ~its
 // configured per-call timeout and fail closed (DeadlineExceeded ->

@@ -106,7 +106,7 @@ mig_pw="$(echo "$DEP" | yq '.spec.template.spec.initContainers[0].env[] | select
 
 # ── 3. geo→iam authz Check addr targets iam-internal :9091 ───────────────────
 authz_addr="$(env_val KACHO_GEO_AUTHZ_IAM_GRPC_ADDR "$DEF")"
-case "$authz_addr" in *kacho-iam-internal*:9091) ;; *) fail "KACHO_GEO_AUTHZ_IAM_GRPC_ADDR=$authz_addr (want iam-internal :9091)";; esac; ok
+case "$authz_addr" in *kaname-internal*:9091) ;; *) fail "KACHO_GEO_AUTHZ_IAM_GRPC_ADDR=$authz_addr (want iam-internal :9091)";; esac; ok
 
 # ── 4. AUTH_MODE: умолчание чарта — production (secure-by-default) ───────────
 # Утверждение развёрнуто вместе с чартом (8476d4b4, core rule #16): умолчанием

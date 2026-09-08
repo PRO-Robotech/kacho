@@ -321,7 +321,7 @@ func Scan(o Options) (Report, error) {
 			if len(r.issues) == 0 {
 				rep.Findings = append(rep.Findings, fmt.Sprintf(
 					"%s:%d: known-failing declaration names no issue with its repository "+
-						"(expected `kacho#N` / `kacho-iam#N` / an issue URL) — a declaration nobody "+
+						"(expected `kacho#N` / `kaname#N` / an issue URL) — a declaration nobody "+
 						"can check never expires", r.doc, r.line))
 			}
 			if f, counted := judgeRetirement(o.Root, r, idx); counted {

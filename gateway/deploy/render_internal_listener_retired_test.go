@@ -43,7 +43,7 @@ const retiredInternalListenerEnvPrefix = "KACHO_API_GATEWAY_INTERNAL_GRPC_"
 var retiredInternalListenerValues = []string{
 	"internalListener.mtls.enable=true",
 	"internalListener.reflection=true",
-	"internalListener.allowedSpiffe[0]=spiffe://kacho.cloud/ns/kacho/sa/kacho-iam",
+	"internalListener.allowedSpiffe[0]=spiffe://kacho.cloud/ns/kacho/sa/kaname",
 }
 
 // TestRender_RetiredInternalListenerKnobIsInert — снятые значения не доезжают до

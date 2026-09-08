@@ -201,8 +201,8 @@ func TestRetentionSweeperGate_Injection_RecognisesAndSpares(t *testing.T) {
 		{"сравнение со временем без удаления — не уборщик", injectedTimeReadWithoutDelete, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := scanInjected(t, "services/iam/internal/repo/kacho/pg/x.go",
-				"services/iam/internal/repo/kacho/pg", tc.src)
+			got := scanInjected(t, "services/iam/internal/repo/kaname/pg/x.go",
+				"services/iam/internal/repo/kaname/pg", tc.src)
 			if len(got) != tc.want {
 				t.Fatalf("распознано уборщиков %d, ожидалось %d: %+v", len(got), tc.want, got)
 			}
@@ -216,8 +216,8 @@ func TestRetentionSweeperGate_Injection_RecognisesAndSpares(t *testing.T) {
 // Имя обязательно: находка без координаты неотличима от промаха разбора, и
 // чинить по ней нечего.
 func TestRetentionSweeperGate_Injection_FindsTheOrphanByName(t *testing.T) {
-	sw := scanInjected(t, "services/iam/internal/repo/kacho/pg/x.go",
-		"services/iam/internal/repo/kacho/pg", injectedSweeperWithoutCaller)
+	sw := scanInjected(t, "services/iam/internal/repo/kaname/pg/x.go",
+		"services/iam/internal/repo/kaname/pg", injectedSweeperWithoutCaller)
 
 	findings, stale, wired := retentionSweeperVerdict(sw,
 		map[string]map[string][]string{}, map[string]string{})
@@ -242,8 +242,8 @@ func TestRetentionSweeperGate_Injection_FindsTheOrphanByName(t *testing.T) {
 // Без этой половины гейт ловил бы форму, а не существо: он краснел бы на всякой
 // уборке, включая живую, и первый же ложный срабат его отключил бы.
 func TestRetentionSweeperGate_Injection_SilentWhenWired(t *testing.T) {
-	sw := scanInjected(t, "services/iam/internal/repo/kacho/pg/x.go",
-		"services/iam/internal/repo/kacho/pg", injectedSweeperWithoutCaller)
+	sw := scanInjected(t, "services/iam/internal/repo/kaname/pg/x.go",
+		"services/iam/internal/repo/kaname/pg", injectedSweeperWithoutCaller)
 
 	callers := map[string]map[string][]string{
 		"Reap": {"services/iam": {"Sweeper.Pass"}},
@@ -264,8 +264,8 @@ func TestRetentionSweeperGate_Injection_SilentWhenWired(t *testing.T) {
 // без границы вызывающий шлюза покрывал бы уборщика iam — то есть гейт молчал
 // бы ровно на том состоянии, ради которого написан.
 func TestRetentionSweeperGate_Injection_CallerInAnotherServiceDoesNotCount(t *testing.T) {
-	sw := scanInjected(t, "services/iam/internal/repo/kacho/pg/x.go",
-		"services/iam/internal/repo/kacho/pg", injectedSweeperWithoutCaller)
+	sw := scanInjected(t, "services/iam/internal/repo/kaname/pg/x.go",
+		"services/iam/internal/repo/kaname/pg", injectedSweeperWithoutCaller)
 
 	callers := map[string]map[string][]string{
 		"Reap": {"gateway": {"Store.reapLoop"}},
@@ -279,8 +279,8 @@ func TestRetentionSweeperGate_Injection_CallerInAnotherServiceDoesNotCount(t *te
 // TestRetentionSweeperGate_Injection_SelfCallIsNotACaller — уборщик, зовущий сам
 // себя, вызывающим себе не является.
 func TestRetentionSweeperGate_Injection_SelfCallIsNotACaller(t *testing.T) {
-	sw := scanInjected(t, "services/iam/internal/repo/kacho/pg/x.go",
-		"services/iam/internal/repo/kacho/pg", injectedSweeperWithoutCaller)
+	sw := scanInjected(t, "services/iam/internal/repo/kaname/pg/x.go",
+		"services/iam/internal/repo/kaname/pg", injectedSweeperWithoutCaller)
 
 	callers := map[string]map[string][]string{
 		"Reap": {"services/iam": {"OrphanRepo.Reap"}},
@@ -296,8 +296,8 @@ func TestRetentionSweeperGate_Injection_SelfCallIsNotACaller(t *testing.T) {
 // Запись ведомости, у которой уборщик ПОЛУЧИЛ вызывающего либо ИСЧЕЗ, — находка.
 // Послабление, которое не истекает само, унаследует следующая слепая зона.
 func TestRetentionSweeperGate_Injection_LedgerExpiresByItself(t *testing.T) {
-	sw := scanInjected(t, "services/iam/internal/repo/kacho/pg/x.go",
-		"services/iam/internal/repo/kacho/pg", injectedSweeperWithoutCaller)
+	sw := scanInjected(t, "services/iam/internal/repo/kaname/pg/x.go",
+		"services/iam/internal/repo/kaname/pg", injectedSweeperWithoutCaller)
 	ledger := map[string]string{"OrphanRepo.Reap": "#0000"}
 
 	t.Run("запись с ЖИВЫМ предметом молчит", func(t *testing.T) {
@@ -336,8 +336,8 @@ func TestRetentionSweeperGate_Injection_LedgerExpiresByItself(t *testing.T) {
 // доказывают пробы ВЫШЕ — на синтетике, а не на живой записи ведомости: иначе
 // доказательство исчезло бы вместе с целью.
 func TestRetentionSweeperGate_Injection_EmptyLedgerPasses(t *testing.T) {
-	sw := scanInjected(t, "services/iam/internal/repo/kacho/pg/x.go",
-		"services/iam/internal/repo/kacho/pg", injectedSweeperMultiline)
+	sw := scanInjected(t, "services/iam/internal/repo/kaname/pg/x.go",
+		"services/iam/internal/repo/kaname/pg", injectedSweeperMultiline)
 	callers := map[string]map[string][]string{"SweepStale": {"services/iam": {"Sweeper.Pass"}}}
 
 	findings, stale, wired := retentionSweeperVerdict(sw, callers, map[string]string{})

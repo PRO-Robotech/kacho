@@ -32,7 +32,7 @@ const anchorCopySrc = `      cp "$src" "$out"`
 
 // anchorEvalToken — присвоение величины подставляемой переменной. Тот самый
 // оператор, чья форма и была предметом #1786.
-const anchorEvalToken = `        eval "KACHO_SUBST_TOKEN=\${$n-}"`
+const anchorEvalToken = `        eval "KANAME_SUBST_TOKEN=\${$n-}"`
 
 func expansionFindings(t *testing.T, f stepFixture) []string {
 	t.Helper()
@@ -59,7 +59,7 @@ func TestStepExpansionGateFailsOnAReturnedDefect(t *testing.T) {
 		// Удвоение собирается из двух половин НАМЕРЕННО: записанное здесь
 		// литералом, оно попало бы в этот же файл и объясняло бы класс формой,
 		// которую сам класс и запрещает.
-		doubled := `        eval "KACHO_SUBST_TOKEN=\` + "$" + `$n"`
+		doubled := `        eval "KANAME_SUBST_TOKEN=\` + "$" + `$n"`
 		f.replaceOnce(t, anchorEvalToken, doubled)
 		got := expansionFindings(t, f)
 		if len(got) == 0 {
@@ -72,27 +72,27 @@ func TestStepExpansionGateFailsOnAReturnedDefect(t *testing.T) {
 		if !strings.Contains(joined, "identity-config-render") {
 			t.Errorf("находка не называет КОНТЕЙНЕР: %v", got)
 		}
-		if !strings.Contains(joined, "KACHO_SUBST_TOKEN") {
+		if !strings.Contains(joined, "KANAME_SUBST_TOKEN") {
 			t.Errorf("находка не показывает саму строку — читатель пойдёт искать её сам: %v", got)
 		}
 	})
 
 	t.Run("инъекция: ссылка по ОБЪЯВЛЕННОЙ переменной — вторая форма класса", func(t *testing.T) {
 		f := newStepFixture(t)
-		ref := "        echo \"перечень: " + "$" + "(KACHO_IDENTITY_SUBSTITUTED_VARS)\""
+		ref := "        echo \"перечень: " + "$" + "(KANAME_IDENTITY_SUBSTITUTED_VARS)\""
 		f.replaceOnce(t, anchorCopySrc, anchorCopySrc+"\n"+ref)
 		got := expansionFindings(t, f)
 		if len(got) == 0 {
 			t.Fatalf("гейт МОЛЧИТ на ссылке, которую kubelet подставляет величиной")
 		}
-		if !strings.Contains(strings.Join(got, "\n"), "KACHO_IDENTITY_SUBSTITUTED_VARS") {
+		if !strings.Contains(strings.Join(got, "\n"), "KANAME_IDENTITY_SUBSTITUTED_VARS") {
 			t.Errorf("находка не называет подставленное имя: %v", got)
 		}
 	})
 
 	t.Run("близнец: форма ${ИМЯ} — Kubernetes её не трогает, молчание", func(t *testing.T) {
 		f := newStepFixture(t)
-		twin := "        left_over=\"${KACHO_IDENTITY_SUBSTITUTED_VARS}\"; : \"$left_over\""
+		twin := "        left_over=\"${KANAME_IDENTITY_SUBSTITUTED_VARS}\"; : \"$left_over\""
 		f.replaceOnce(t, anchorCopySrc, anchorCopySrc+"\n"+twin)
 		if got := expansionFindings(t, f); len(got) != 0 {
 			t.Errorf("гейт краснеет на ЗАКОННОЙ форме `${ИМЯ}` — он ловит знак, а не исход: %v", got)

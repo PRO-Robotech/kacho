@@ -52,7 +52,7 @@ security-ручки приезжают через `envFrom` и читаются 
 Production-путь (`prodseed_all.py` → `prodseed_matrix.py` → `mint_rs256.py`):
 
 1. **admin** — iam `InternalBootstrapTokenService.MintBootstrapToken`, прямой mTLS-gRPC
-   на `kacho-iam :9091` с **bootstrap-operator** client-cert (у mint нет REST-маршрута;
+   на `kaname :9091` с **bootstrap-operator** client-cert (у mint нет REST-маршрута;
    credential — SPIFFE SAN сертификата вызывающего);
 2. **каждый субъект** — iam `SAKeyService.Issue` (iam заводит Hydra OAuth-клиента и
    ОДИН раз отдаёт ES256-ключ) → подписываем `private_key_jwt` client_assertion →
@@ -65,7 +65,7 @@ Production-путь (`prodseed_all.py` → `prodseed_matrix.py` → `mint_rs256.
 отдаёт `<prefix>/user/<id>`, что не может совпасть с `ExpectedAudience` шлюза; а токен
 `client_credentials` не несёт `acr`, тогда как 292 из 357 RPC каталога требуют
 `required_acr_min ≥ 1`, и `StepUpGate.Check` освобождает от acr **только**
-`kacho_principal_type == "service_account"`. User с `acr` требует интерактивного
+`kaname_principal_type == "service_account"`. User с `acr` требует интерактивного
 Kratos→Hydra логина, который машинный харнесс не проводит.
 
 **Намеренно НЕ чеканится в production**: `jwtAccountAdminAStepUp` и статические
@@ -162,7 +162,7 @@ internal-RPC) в файлы `0600` под `/tmp`. В репозиторий кл
   `client_secret` возвращается ОДИН раз и **не персистится** в реестр фикстур
   (`OUT_DIR`, см. таблицу выше — каталог целиком под `.gitignore`)
 - токены (HS256 dev-equivalents Hydra-issued JWT — api-gateway dev-mode authn):
-  - `jwtSAA` — SA-A токен (`kacho_principal_type=service_account`, `sub=<svaAId>`)
+  - `jwtSAA` — SA-A токен (`kaname_principal_type=service_account`, `sub=<svaAId>`)
   - `jwtSANoGrant` — SA без grant'ов
   - `apiTokenValid` — статический API-token, scope `vpc.* project:<A1>`
   - `apiTokenRevoked` — валиден по подписи, но SA-key отозван `SAKeyService.Revoke` → 401

@@ -217,7 +217,7 @@ proto, ни в маршрутах, ни в дескрипторе сервиса
 
 К четырём методам NIC-поверхности добавляются три **привязки доступа** —
 `ListAccessBindings`, `SetAccessBindings`, `UpdateAccessBindings`. Основание то же по форме
-и другое по владельцу: `AccessBinding` — ресурс домена **kacho-iam** со своим сервисом и
+и другое по владельцу: `AccessBinding` — ресурс домена **kaname** со своим сервисом и
 закрытым словарём целей; поверхность на инстансе задваивала бы выдачу прав и разошлась бы
 с ней при первом же изменении модели. Правило одного владельца на тип ресурса
 (`data-integrity.md`) запрещает держать её здесь.
@@ -361,7 +361,7 @@ newman); `internal/handler/instance_dropped_fields_test.go` (седьмое по
 
 Эпик **Resource-scoped AccessBinding**, под-фаза **β** (label+parent sync
 `compute→iam`). compute проталкивает копию labels + parent-scope каждого ресурса
-в kacho-iam по **существующему** ребру `compute→iam` (FGA-proxy `RegisterResource`,
+в kaname по **существующему** ребру `compute→iam` (FGA-proxy `RegisterResource`,
 SEC-D) — IAM наполняет output-only зеркало `resource_mirror` (источник истины =
 compute), которое γ будет читать для selector-матчинга и containment-гейта.
 Граф остаётся ацикличным: данные **push-ит** consumer (compute), IAM ничего не
@@ -621,7 +621,7 @@ sentinel→code в отдельный слой (если когда-либо) �
   found"`**~~ — **ЗАКРЫТО** (audit 2026-07). Обоснование «паритет с контрактом
   стороннего облака» само по себе нарушало core-правило #2 (проектируем в терминах
   Kachō, без оглядки на чужие облака), поэтому пункт снят, а не продлён. Ресурс
-  называется **`Project`** (`proto/kacho/cloud/iam/v1/project.proto`), клиент шлёт
+  называется **`Project`** (`proto/kaname/cloud/iam/v1/project.proto`), клиент шлёт
   `projectId` — прежнее имя не называет ничего на публичной поверхности, искать его в
   доке бесполезно. `internal/apps/kacho/shared/peercheck/project.go` отдаёт конвенционные
   `NotFound "Project %s not found"` и `Unavailable "project check: upstream project
@@ -871,7 +871,7 @@ sentinel→code в отдельный слой (если когда-либо) �
   первой странице, а клиентский лимит был лишь обрезкой уже усечённого ответа: при
   числе объектов типа больше потолка собственный ресурс тенанта выпадал из выдачи
   (List пуст, `Image.GetLatestByFamily` → NotFound) при живой строке и живом гранте.
-  Сегодня внешнего движка нет — вердикт вычисляет реляционная форма в базе kacho-iam, —
+  Сегодня внешнего движка нет — вердикт вычисляет реляционная форма в базе kaname, —
   а перечислительный RPC снят с контракта; решение compute от этого не меняется.
   compute задаёт ПРЯМОЙ per-object вопрос по прочитанной странице
   (`AuthorizeService.BatchCheck`, ≤100/батч, `viewer ∪ v_list` — тот же предикат).

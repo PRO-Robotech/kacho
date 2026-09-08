@@ -12,9 +12,9 @@
 # не существует: пропуск в списке означает не «строже», а «сервис отрезан».
 #
 # Реальный случай: `opa-sidecar-egress-allowlist` выбирает поды по метке
-# `kacho.cloud/opa-sidecar=true`. Метка рендерилась БЕЗУСЛОВНО на kacho-iam, при
+# `kacho.cloud/opa-sidecar=true`. Метка рендерилась БЕЗУСЛОВНО на kaname, при
 # том что сайдкар выключен во всех профилях, а values.prod включает эту политику.
-# На CNI, который NetworkPolicy энфорсит, kacho-iam остался бы без доступа к
+# На CNI, который NetworkPolicy энфорсит, kaname остался бы без доступа к
 # СОБСТВЕННОЙ Postgres и к Hydra — то есть весь authN/authZ-ярус лёг бы. Дефект
 # латентный: единственный профиль, включающий политику, ни разу не поднимали, а
 # оверлей боевого кластера её выключает.
@@ -85,11 +85,13 @@ for d in docs:
     ))
 
 # на что политика разрешает выходить: множество (порт) и наличие DNS
+policies = judged = 0
 for d in docs:
     if d.get('kind') != 'NetworkPolicy':
         continue
     if 'Egress' not in (d['spec'].get('policyTypes') or []):
         continue
+    policies += 1
     np = d['metadata']['name']
     sel = d['spec'].get('podSelector') or {}
     rules = d['spec'].get('egress') or []
@@ -112,6 +114,20 @@ for d in docs:
         # 3. DNS
         if 53 not in ports:
             print(f"{np}: под '{name}' выбран Egress-политикой, но DNS (:53) не разрешён")
+        judged += 1
+
+# ОБЪЁМ ОСМОТРЕННОГО — ОТДЕЛЬНОЙ СТРОКОЙ, И ОН НЕ НАХОДКА.
+#
+# Все три утверждения выше ОТРИЦАТЕЛЬНЫЕ: каждое срабатывает на паре
+# «Egress-политика × выбранный ею под». Пар ноль — и все три молчат, будучи
+# совершенно исправными; «находок нет» становится неотличимо от «осматривать
+# было нечего». Наблюдалось ровно это: единственная Egress-политика дерева
+# снята вместе со своим предметом (#2141), и гейт продолжил печатать зелёное,
+# не осмотрев ни одной пары.
+#
+# Строка идёт в stderr: находки вызывающий читает из stdout, и перепись,
+# попав туда, была бы принята за нарушение.
+print(f"SCOPE политик Egress {policies}, пар «политика × под» {judged}", file=sys.stderr)
 PY
 }
 
@@ -132,133 +148,119 @@ render() {
 
 if [ "${1:-}" = "--self-test" ]; then
   rc=0
-  # ── ИНЪЕКЦИЯ ИДЁТ В КОПИЮ ДЕРЕВА, А НЕ В ЖИВУЮ РАБОЧУЮ КОПИЮ (#696) ──────────
+  # ── ВХОД САМОПРОВЕРКИ — СИНТЕТИЧЕСКИЙ, А НЕ ИНЪЕКЦИЯ В ШАБЛОН ──────────────
   #
-  # Обе инъекции ниже правят чарты на месте. Прежняя редакция правила ЖИВЫЕ,
-  # отслеживаемые файлы и возвращала их ловушкой на EXIT/INT/TERM. Ловушка
-  # закрывает три пути мимо возврата — сигнал, срок ожидания, собственный `fail`
-  # внутри окна, — но НЕ закрывает четвёртый: снятие, которое не перехватывается
-  # (`SIGKILL`, нехватка памяти, нехватка места). Проверено прерыванием: после
-  # него в дереве оставались `M …/kacho-iam/templates/deployment.yaml` и
-  # `M …/templates/networkpolicy-authz.yaml`.
+  # Здесь инъекция шла ПРАВКОЙ живых шаблонов: она снимала условие у метки
+  # сайдкара и вырезала правило :5432 из `templates/networkpolicy-authz.yaml`.
+  # Оба шаблона сняты вместе со своим потребителем (#2141) — наложение правил
+  # пережило его и было убрано из поставки, — и самопроверка разом потеряла
+  # предмет: две её оси печатали «ПРОПУСТИЛ», а `cp` отказывал на несуществующем
+  # файле.
   #
-  # Хуже всего то, что остаётся ровно тот дефект, который ЭТА проверка и ловит:
-  # следующий прогон краснеет по-настоящему, на закладке, которую сам гейт и
-  # оставил.
+  # Восстановлена она НЕ возвратом шаблонов, а сменой входа: предмет `check` —
+  # не конкретная политика дерева, а СВОЙСТВО любой Egress-политики («сужать, а
+  # не отрезать»). Свойство переживает снятие первой своей политики, а инъекция
+  # в живой шаблон — нет: она доказывала способность падать ровно до тех пор,
+  # пока в дереве стоял тот самый шаблон.
   #
-  # Копия закрывает класс по построению: живого дерева самопроверка не касается
-  # вовсе, поэтому её прерывание на ЛЮБОМ шаге не оставляет следов. Ловушка
-  # возврата ниже остаётся — но её предмет теперь ПОРЯДОК СЛУЧАЕВ (случай
-  # A-контроль обязан видеть неинъектированный сабчарт), а не сохранность дерева.
-  WORK="$(mktemp -d)"
-  trap 'rm -rf "$WORK"' EXIT
-  cp -r "$REPO_ROOT/helm" "$WORK/helm" || fail "копия чартов не собрана — инъекциям некуда идти"
-  UMBRELLA="$WORK/helm/umbrella"
-  [ -d "$UMBRELLA" ] || fail "в копии нет умбреллы ($UMBRELLA)"
+  # Синтетика кормит ТУ ЖЕ функцию `check`, которой судятся настоящие рендеры,
+  # поэтому доказанное здесь верно для дерева. Каждая ось меняет РОВНО ОДИН факт
+  # против своего близнеца.
 
-  SELFTEST_RESTORE=()
-  restore_injected() {
-    local i
-    for ((i = ${#SELFTEST_RESTORE[@]} - 2; i >= 0; i -= 2)); do
-      [ -f "${SELFTEST_RESTORE[i]}" ] && cp "${SELFTEST_RESTORE[i]}" "${SELFTEST_RESTORE[i+1]}"
-      rm -f "${SELFTEST_RESTORE[i]}"
-    done
-    SELFTEST_RESTORE=()
+  # synth <контейнеры> <порты> [метка] — документ из пары «под × Egress-политика».
+  # Политика ВСЕГДА выбирает этот под: предмет проверки — что она ему разрешает,
+  # а не кого выбирает.
+  synth() {
+    local ctrs="$1" ports="$2" label="${3:-}"
+    {
+      echo "apiVersion: apps/v1"
+      echo "kind: Deployment"
+      echo "metadata:"
+      echo "  name: synth-workload"
+      echo "spec:"
+      echo "  template:"
+      echo "    metadata:"
+      echo "      labels:"
+      echo "        app: synth"
+      [ -n "$label" ] && echo "        $label"
+      echo "    spec:"
+      echo "      containers:"
+      local c
+      for c in $ctrs; do echo "        - name: $c"; done
+      echo "---"
+      echo "apiVersion: networking.k8s.io/v1"
+      echo "kind: NetworkPolicy"
+      echo "metadata:"
+      echo "  name: synth-egress"
+      echo "spec:"
+      echo "  podSelector:"
+      echo "    matchLabels:"
+      echo "      app: synth"
+      echo "  policyTypes:"
+      echo "    - Egress"
+      echo "  egress:"
+      local prt
+      for prt in $ports; do
+        echo "    - to: []"
+        echo "      ports:"
+        echo "        - protocol: TCP"
+        echo "          port: $prt"
+      done
+    }
   }
-  trap 'restore_injected; rm -rf "$WORK"' EXIT
-  trap 'restore_injected; rm -rf "$WORK"; exit 130' INT TERM
-  # inject_backup <файл> — снять копию ВНЕ templates/ (helm рендерит всё,
-  # что там лежит), возврат назначается тем же действием, что и копирование.
-  # Файл здесь всегда лежит в КОПИИ дерева ($WORK), живого не касаемся.
-  inject_backup() {
-    local b; b="$(mktemp)"; cp "$1" "$b"
-    SELFTEST_RESTORE+=("$b" "$1")
-    printf '%s' "$b"
+
+  axis() { # имя · RED|GREEN · документ
+    local name="$1" want="$2" doc="$3" f out got
+    f="$(mktemp)"; printf '%s\n' "$doc" > "$f"
+    out="$(check "$f")"; rm -f "$f"
+    if [ -n "$out" ]; then got=RED; else got=GREEN; fi
+    if [ "$got" = "$want" ]; then
+      printf '  ✓ %-52s → ждали %s\n' "$name" "$want"
+    else
+      printf '  ✗ %-52s → ждали %s, получили %s\n' "$name" "$want" "$got"
+      [ -n "$out" ] && printf '      %s\n' "$out"
+      rc=1
+    fi
   }
-  # (0) профиль, включающий политику, — как есть
-  render "профиль values.prod (самопроверка, случай 0)" -f "$UMBRELLA/values.prod.yaml"
+
+  # (0) ДЕРЕВО КАК ЕСТЬ — положительный контроль на настоящем рендере.
+  render "контроль 0 (боевой профиль как есть)" -f "$UMBRELLA/values.prod.yaml"
   r="$RENDER_FILE"
   out="$(check "$r")"
-  [ -z "$out" ] && echo "  (0) values.prod как есть                       → МОЛЧИТ" \
-                || { echo "  (0) values.prod как есть                       → красный: $out"; rc=1; }
+  [ -z "$out" ] && echo "  ✓ (0) боевой профиль как есть                         → МОЛЧИТ" \
+                || { echo "  ✗ (0) боевой профиль как есть → ЛОЖНОЕ СРАБАТЫВАНИЕ: $out"; rc=1; }
   rm -f "$r"
 
-  # (A) ИНЪЕКЦИЯ: вернуть безусловную метку сайдкара (исходный дефект).
-  # Рендерим сабчарт kacho-iam СТАНДАЛОН из каталога-исходника: умбрелла собирает
-  # его в `charts/*.tgz`, и правка каталога без `helm dep update` в её рендер не
-  # попадает. Проверяемое свойство — «метка соответствует составу пода» —
-  # принадлежит именно сабчарту, поэтому и проверяется на нём.
-  IAM="$UMBRELLA/charts/kacho-iam"
-  dep="$IAM/templates/deployment.yaml"
-  # Копия — через inject_backup: она ложится ВНЕ templates/ (helm рендерит всё,
-  # что там лежит, и файл-бэкап превращался во второй под с тем же именем —
-  # поймано на себе, самопроверка тогда «проходила», осматривая не тот под) И
-  # сразу назначает возврат ловушке.
-  inject_backup "$dep" >/dev/null
-  python3 - "$dep" <<'PY'
-import re, sys
-p = sys.argv[1]; s = open(p).read()
-s = s.replace('{{- if .Values.opaSidecar.enabled }}\n        # KAC-127', '        # KAC-127', 1)
-s = re.sub(r'(kacho\.cloud/opa-sidecar: "true"\n)        \{\{- end \}\}\n', r'\1', s, count=1)
-open(p, 'w').write(s)
-PY
-  # Политика живёт в умбрелле, а под — в сабчарте, поэтому склеиваем оба рендера:
-  # проверяемое утверждение связывает именно их.
-  pol="$(mktemp)"
-  helm template kacho-umbrella "$UMBRELLA" -f "$UMBRELLA/values.prod.yaml" \
-    --show-only templates/networkpolicy-authz.yaml 2>/dev/null > "$pol"
-  ri="$(mktemp)"
-  { helm template kacho-iam "$IAM" 2>/dev/null; echo '---'; cat "$pol"; } > "$ri"
-  out="$(check "$ri")"
-  if [[ "$out" == *"контейнера OPA в нём нет"* ]]; then
-    echo "  (A) метка сайдкара безусловна                  → КРАСНЫЙ с координатой"
-  else echo "  (A) метка сайдкара безусловна                  → ПРОПУСТИЛ"; rc=1; fi
-  restore_injected
+  # (A) метка объявляет сайдкар, которого в поде НЕТ.
+  axis "метка сайдкара при отсутствующем контейнере" RED \
+    "$(synth "kaname" "53 5432" 'kacho.cloud/opa-sidecar: "true"')"
+  axis "близнец: та же метка, контейнер НА МЕСТЕ" GREEN \
+    "$(synth "kaname opa" "53 5432" 'kacho.cloud/opa-sidecar: "true"')"
 
-  # (A-контроль) тот же сабчарт БЕЗ инъекции: метка отсутствует ⇒ политика его не
-  # выбирает ⇒ гейт молчит. Без этой половины (A) доказывала бы лишь то, что гейт
-  # умеет краснеть.
-  { helm template kacho-iam "$IAM" 2>/dev/null; echo '---'; cat "$pol"; } > "$ri"
-  out="$(check "$ri")"
-  [ -z "$out" ] && echo "  (A-контроль) сабчарт без инъекции             → МОЛЧИТ" \
-                || { echo "  (A-контроль) сабчарт без инъекции             → ЛОЖНОЕ СРАБАТЫВАНИЕ: $out"; rc=1; }
-  rm -f "$ri" "$pol"
+  # (A2) под отрезан от собственной базы.
+  axis "выбран Egress-политикой, :5432 НЕ разрешён" RED "$(synth "kaname" "53")"
+  axis "близнец: :5432 разрешён" GREEN "$(synth "kaname" "53 5432")"
 
-  # (A2) ИНЪЕКЦИЯ: снять правило на :5432 при включённом сайдкаре
-  npf="$UMBRELLA/templates/networkpolicy-authz.yaml"
-  inject_backup "$npf" >/dev/null   # тоже ВНЕ templates/ + возврат под ловушкой
-  python3 - "$npf" <<'PY'
-import re, sys
-p = sys.argv[1]; s = open(p).read()
-s = re.sub(r'    - to:\n        - podSelector:\n            \{\{- toYaml \.Values\.opaSidecar\.networkPolicy\.datastorePodSelector[^\n]*\n      ports:\n        - protocol: TCP\n          port: 5432\n', '', s, count=1)
-open(p, 'w').write(s)
-PY
-  render "инъекция A2 (боевой профиль, сайдкар включён)" \
-    -f "$UMBRELLA/values.prod.yaml" --set kacho-iam.opaSidecar.enabled=true
-  r="$RENDER_FILE"
-  out="$(check "$r")"
-  if [[ "$out" == *"отрезан от собственной базы"* ]]; then
-    echo "  (A2) снято правило :5432 (сайдкар включён)     → КРАСНЫЙ с координатой"
-  else echo "  (A2) снято правило :5432 (сайдкар включён)     → ПРОПУСТИЛ"; rc=1; fi
-  rm -f "$r"; restore_injected
+  # (A3) под отрезан от разрешения имён.
+  axis "выбран Egress-политикой, DNS :53 НЕ разрешён" RED "$(synth "kaname" "5432")"
+  axis "близнец: DNS разрешён" GREEN "$(synth "kaname" "53 5432")"
 
-  # (B) КОНТРОЛЬ той же формы: сайдкар ВКЛЮЧЁН, список полон — законная
-  #     конструкция, ради которой политика и написана. Гейт обязан смолчать.
-  render "контроль B (боевой профиль, сайдкар включён)" \
-    -f "$UMBRELLA/values.prod.yaml" --set kacho-iam.opaSidecar.enabled=true
-  r="$RENDER_FILE"
-  out="$(check "$r")"
-  [ -z "$out" ] && echo "  (B) сайдкар включён, список полон             → МОЛЧИТ" \
-                || { echo "  (B) сайдкар включён, список полон             → ЛОЖНОЕ СРАБАТЫВАНИЕ: $out"; rc=1; }
-  rm -f "$r"
-
-  # (C) КОНТРОЛЬ: профиль, где политика выключена вовсе — молчит
-  render "контроль C (профиль dev)" -f "$UMBRELLA/values.dev.yaml"
-  r="$RENDER_FILE"
-  out="$(check "$r")"
-  [ -z "$out" ] && echo "  (C) политика выключена (dev)                  → МОЛЧИТ" \
-                || { echo "  (C) политика выключена (dev)                  → ЛОЖНОЕ СРАБАТЫВАНИЕ: $out"; rc=1; }
-  rm -f "$r"
+  # (C) АНТИМАСКА: пар нет вовсе — молчание ЗАКОННО, но обязано быть ВИДНО.
+  #
+  # Ось спрашивает не «чисто ли», а «различимо ли пустое от чистого»: без строки
+  # переписи оба состояния печатают одно и то же, и гейт, потерявший предмет,
+  # выглядит исправным. Ровно это и случилось после снятия наложения правил.
+  scope="$(check <(printf 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: nothing\n') 2>&1 >/dev/null)"
+  # Сравнение БЕЗ внешнего процесса: под `pipefail` вердикт из трубы с `grep -q`
+  # лжёт НА СОВПАДЕНИИ — `grep` выходит до конца входа, писатель слева получает
+  # SIGPIPE, и статус конвейера объявляет найденное ненайденным (#658). Здесь это
+  # особенно коварно: ось — АНТИМАСКА, её ложное красное читалось бы как дефект
+  # переписи. Поймано гейтом дерева, а не глазом.
+  if [[ $scope == *"SCOPE политик Egress 0, пар «политика × под» 0"* ]]; then
+    echo "  ✓ (C) Egress-политик нет                              → МОЛЧИТ, и перепись это НАЗЫВАЕТ"
+  else
+    echo "  ✗ (C) Egress-политик нет: перепись не назвала пустой обход: $scope"; rc=1
+  fi
 
   echo "самопроверка: $( [ $rc -eq 0 ] && echo ПРОЙДЕНА || echo ПРОВАЛЕНА )"
   exit $rc
@@ -271,13 +273,23 @@ fi
 STACKS="$(stacks_names)"
 EXPECTED_ASSERTIONS="$(printf '%s\n' "$STACKS" | grep -c . || true)"
 [ "$EXPECTED_ASSERTIONS" -ge 1 ] || fatal "таблица стеков не дала ни одного имени — обходить нечего"
+TOT_POL=0
+TOT_PAIRS=0
 for stack in $STACKS; do
   prof="$(stacks_chain "$stack" ' ')"
   # shellcheck disable=SC2046,SC2086
   render "стек $stack" $(stacks_args "$stack" "$UMBRELLA")
   r="$RENDER_FILE"
-  out="$(check "$r")"
-  rm -f "$r"
+  scope_f="$(mktemp)"
+  out="$(check "$r" 2>"$scope_f")"
+  # Перепись СУММИРУЕТСЯ по стекам и печатается в вердикте: три утверждения
+  # `check` отрицательные, поэтому на нуле пар они молчат исправными, и «находок
+  # нет» без этой величины неотличимо от «осматривать было нечего».
+  p_n="$(sed -n 's/^SCOPE политик Egress \([0-9]*\).*/\1/p' "$scope_f" | head -1)"
+  q_n="$(sed -n 's/^SCOPE политик Egress [0-9]*, пар «политика × под» \([0-9]*\)$/\1/p' "$scope_f" | head -1)"
+  TOT_POL=$((TOT_POL + ${p_n:-0}))
+  TOT_PAIRS=$((TOT_PAIRS + ${q_n:-0}))
+  rm -f "$scope_f" "$r"
   if [ -n "$out" ]; then
     {
       printf '        %s\n' "$out"
@@ -289,4 +301,4 @@ for stack in $STACKS; do
   ok
 done
 
-outcome_verdict "стеков осмотрено: $N"
+outcome_verdict "стеков осмотрено: $N; Egress-политик в рендерах $TOT_POL, пар «политика × под» $TOT_PAIRS (ноль означает, что предмета в дереве сейчас нет — не то же самое, что «нарушений нет»)"

@@ -150,7 +150,7 @@ func (u *UpdateSubnetUseCase) doUpdate(ctx context.Context, in UpdateInput) (*an
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 	}
 	// Если labels были в update_mask (или это full-object PATCH), пере-эмитим
-	// register-intent с обновленными labels в ТОЙ ЖЕ writer-TX, чтобы kacho-iam
+	// register-intent с обновленными labels в ТОЙ ЖЕ writer-TX, чтобы kaname
 	// держал resource_mirror актуальным для label-селектора (reconcile при смене
 	// label'ов). Update без labels → re-emit не делаем.
 	var syncItems []fgaregister.Item

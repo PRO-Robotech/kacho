@@ -8,7 +8,7 @@
 {{- $issuerKind := $issuer.kind | default "ClusterIssuer" }}
 {{- $ns := .Release.Namespace }}
 {{- $sp := $m.spiffe | default dict }}
-{{- $trust := $sp.trustDomain | default "kacho.cloud" }}
+{{- $trust := include "compute.trustDomain" . }}
 {{- $spNs := $sp.namespace | default $ns }}
 {{- $sa := $sp.saName | default .Chart.Name }}
 {{- $dur := $m.leafDuration | default "2160h" }}

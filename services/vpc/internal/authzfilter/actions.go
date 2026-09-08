@@ -19,7 +19,7 @@ package authzfilter
 // нечего.
 
 // FGA object types VPC-домена (передаются в AuthorizeService.ListObjects как
-// resource_type). Должны совпадать с closed-table objectTypes в kacho-iam
+// resource_type). Должны совпадать с closed-table objectTypes в kaname
 // (например "vpc.subnet" → "vpc_subnet").
 const (
 	ResourceTypeNetwork          = "vpc_network"

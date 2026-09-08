@@ -5,7 +5,7 @@ package repo_test
 
 // Регистрация owner-tuple в FGA для Gateway должна нести labels на двух путях:
 // (a) Create эмитит register-intent с labels + parent_project_id (иначе
-// resource_mirror в kacho-iam без labels и label-селектор не матчит даже
+// resource_mirror в kaname без labels и label-селектор не матчит даже
 // свежесозданный Gateway); (b) Update при смене labels переэмитит
 // register-intent с обновленными labels. Не-label Update нового intent не
 // порождает.

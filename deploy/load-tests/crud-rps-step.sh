@@ -11,8 +11,8 @@
 # поэтому доля «проверка доступа» получается ДЕЛЕНИЕМ ИЗМЕРЕННОГО НА
 # ИЗМЕРЕННОЕ, а не оценкой:
 #
-#   проверок службы на операцию = Δ kacho_iam_authz_check_duration_seconds_count / Δ операций
-#   времени службы на операцию  = Δ kacho_iam_authz_check_duration_seconds_sum   / Δ операций
+#   проверок службы на операцию = Δ kaname_authz_check_duration_seconds_count / Δ операций
+#   времени службы на операцию  = Δ kaname_authz_check_duration_seconds_sum   / Δ операций
 #   проверок КРАЯ на операцию   = Δ kacho_api_gateway_authz_check_decisions_total / Δ операций
 #
 # ПРОВЕРОК ДВЕ, И СЧИТАТЬ НАДО ОБЕ (#772). На пути чтения по id край решает
@@ -80,7 +80,7 @@ cpu_usec() {
 . "$(dirname "${BASH_SOURCE[0]}")/lib/restart-verdict.sh"
 
 pod_of() { k get pod -l "$1" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true; }
-iam_pods() { k get pod -l app.kubernetes.io/name=kacho-iam -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'; }
+iam_pods() { k get pod -l app.kubernetes.io/name=kaname -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'; }
 vpc_pods() { k get pod -l app=vpc -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'; }
 
 # authz_counters — ПРИБОР РАЗЛОЖЕНИЯ ЦЕНЫ. Суммарно по всем репликам iam.
@@ -89,11 +89,11 @@ authz_counters() {
   total_c=0; total_s=0
   for p in $(iam_pods); do
     local m
-    m=$(k exec "$p" -c kacho-iam -- sh -c 'wget -qO- http://127.0.0.1:9095/metrics 2>/dev/null' 2>/dev/null) || m=""
+    m=$(k exec "$p" -c kaname -- sh -c 'wget -qO- http://127.0.0.1:9095/metrics 2>/dev/null' 2>/dev/null) || m=""
     if [ -z "$m" ]; then echo "checks=NA sum=NA"; return 0; fi
     local c s
-    c=$(echo "$m" | awk '/^kacho_iam_authz_check_duration_seconds_count/{t+=$2} END{printf "%.0f", t+0}')
-    s=$(echo "$m" | awk '/^kacho_iam_authz_check_duration_seconds_sum/{t+=$2}   END{printf "%.6f", t+0}')
+    c=$(echo "$m" | awk '/^kaname_authz_check_duration_seconds_count/{t+=$2} END{printf "%.0f", t+0}')
+    s=$(echo "$m" | awk '/^kaname_authz_check_duration_seconds_sum/{t+=$2}   END{printf "%.6f", t+0}')
     total_c=$(awk -v a="$total_c" -v b="$c" 'BEGIN{printf "%.0f", a+b}')
     total_s=$(awk -v a="$total_s" -v b="$s" 'BEGIN{printf "%.6f", a+b}')
   done
@@ -108,7 +108,7 @@ authz_counters() {
 # занижено — и занижено МОЛЧА: половина просто не участвовала в делении.
 #
 # Серия края одноимённа по форме (`kacho_api_gateway_authz_*` против
-# `kacho_iam_authz_*`), поэтому складывать их законно, а держать порознь —
+# `kaname_authz_*`), поэтому складывать их законно, а держать порознь —
 # обязательно: доля попаданий кеша у них своя, и смешение скрыло бы, чей именно
 # кеш промахивается.
 #
@@ -136,8 +136,8 @@ edge_authz_counters() {
 pool_stats() {
   local p
   for p in $(iam_pods); do
-    k exec "$p" -c kacho-iam -- sh -c \
-      'wget -qO- http://127.0.0.1:9095/metrics 2>/dev/null | grep -E "^kacho_iam_db_pool_" || true' 2>/dev/null | sed "s|^|$p |"
+    k exec "$p" -c kaname -- sh -c \
+      'wget -qO- http://127.0.0.1:9095/metrics 2>/dev/null | grep -E "^kaname_db_pool_" || true' 2>/dev/null | sed "s|^|$p |"
   done
 }
 
@@ -150,7 +150,7 @@ snapshot() {
   gw=$(pod_of app=api-gateway)
   {
     echo "ts_ns=$(date +%s%N)"
-    for p in $(iam_pods); do echo "iam:$p=$(cpu_usec "$p" kacho-iam)"; done
+    for p in $(iam_pods); do echo "iam:$p=$(cpu_usec "$p" kaname)"; done
     for p in $(vpc_pods); do echo "vpc:$p=$(cpu_usec "$p" vpc)"; done
     echo "gateway:$gw=$(cpu_usec "$gw" api-gateway)"
     echo "pgiam=$(cpu_usec kacho-umbrella-pg-iam-0 postgresql)"
@@ -165,16 +165,16 @@ snapshot() {
 # выполнившейся»: её число нельзя истолковывать ни как зелёное, ни как красное.
 restarts() {
   k get pod -o jsonpath='{range .items[*]}{.metadata.name}={.status.containerStatuses[0].restartCount}{"\n"}{end}' 2>/dev/null \
-    | grep -E 'kacho-iam|pg-iam|pg-vpc|^vpc-|api-gateway' || true
+    | grep -E 'kaname|pg-iam|pg-vpc|^vpc-|api-gateway' || true
 }
 
 VPC_REPL=$(k get deploy vpc -o jsonpath='{.spec.replicas}')
-IAM_REPL=$(k get deploy kacho-iam -o jsonpath='{.spec.replicas}')
+IAM_REPL=$(k get deploy kaname -o jsonpath='{.spec.replicas}')
 echo "=== прогон '$LABEL' · полоса=$OP · vpc реплик=$VPC_REPL · iam реплик=$IAM_REPL · ступени=$STEPS · $DUR ==="
 {
   echo "label=$LABEL op=$OP steps=$STEPS duration=$DUR token_key=$TOKEN_KEY"
   echo "vpc_replicas=$VPC_REPL iam_replicas=$IAM_REPL"
-  k get pod -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.containerStatuses[0].imageID}{"\n"}{end}' 2>/dev/null | grep -E 'kacho-iam|^vpc-|api-gateway' || true
+  k get pod -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.containerStatuses[0].imageID}{"\n"}{end}' 2>/dev/null | grep -E 'kaname|^vpc-|api-gateway' || true
 } > "$OUT/meta.txt"
 
 # settle — ДОЖДАТЬСЯ ТИШИНЫ ПЕРЕД ЗАМЕРОМ.
@@ -197,7 +197,7 @@ echo "=== прогон '$LABEL' · полоса=$OP · vpc реплик=$VPC_REP
 # не как чистая.
 settle() {
   local limit=${SETTLE_CORES:-0.35} maxwait=${SETTLE_MAXWAIT:-240} quiet=0 waited=0 cid path a b cores
-  cid=$(k get pod -l app.kubernetes.io/name=kacho-iam -o jsonpath='{.items[0].status.containerStatuses[0].containerID}' 2>/dev/null | sed 's|.*://||') || cid=""
+  cid=$(k get pod -l app.kubernetes.io/name=kaname -o jsonpath='{.items[0].status.containerStatuses[0].containerID}' 2>/dev/null | sed 's|.*://||') || cid=""
   if [ -z "$cid" ] || [ -z "${NODE_CTR:-}" ]; then echo "  (тишину проверить нечем — пропускаю)"; return 0; fi
   path=$(docker exec "$NODE_CTR" sh -c "find /sys/fs/cgroup -maxdepth 6 -type d -name '*${cid}*' 2>/dev/null | head -1" 2>/dev/null) || path=""
   [ -z "$path" ] && { echo "  (cgroup службы прав не найден — пропускаю)"; return 0; }

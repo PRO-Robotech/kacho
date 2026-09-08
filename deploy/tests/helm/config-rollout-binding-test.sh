@@ -382,7 +382,7 @@ echo "=== $SCRIPT: рендер с включёнными OPA-сайдкарам
 helm_try kacho-umbrella "$UMBRELLA" -f "$DEV" -f "$DEVPROD" \
   --set vpc.opa.enabled=true \
   --set compute.opa.enabled=true \
-  --set kacho-iam.opaSidecar.enabled=true
+  --set kaname.opaSidecar.enabled=true
 render_or_fatal "профиль с включёнными OPA-сайдкарами"
 printf '%s\n' "$HELM_OUT" >"$TMPD/opa.yaml"
 

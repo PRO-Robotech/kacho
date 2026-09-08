@@ -60,6 +60,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/pkg/contractroot"
+
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 
@@ -72,7 +74,6 @@ import (
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/reference"
@@ -80,17 +81,55 @@ import (
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 )
 
-// routableDescriptorPrefix — резолвер маршрутизирует ТОЛЬКО этот префикс
-// (proxy/server.go: `strings.HasPrefix(method, "/kacho.cloud.")`), поэтому и
-// население гейта ограничено им же. Файл дескриптора несёт путь без ведущего
-// "proto/": "kacho/cloud/vpc/v1/network_service.proto".
-const (
-	routableFilePrefix = "kacho/cloud/"
-	routablePkgPrefix  = "/kacho.cloud."
-	protoDirOnDisk     = "../../../proto/" + routableFilePrefix
-)
+// Резолвер маршрутизирует ТОЛЬКО объявленные корни контракта
+// (proxy/contract_roots.go), поэтому и население гейта ограничено ими же.
+// Корней ДВА, и перечень их выводится из общего словаря, а не пишется
+// литералом: литерал одного корня оставил бы контракт второго вне населения, и
+// каждая его запись объявлялась бы «не соответствующей ни одному RPC» — то есть
+// находкой про собственную слепоту гейта, а не про дерево.
+//
+// Файл дескриптора несёт путь без ведущего "proto/":
+// "kacho/cloud/vpc/v1/network_service.proto", "kaname/cloud/iam/v1/role.proto".
+const protoDirOnDiskBase = "../../../proto/"
+
+// protoDirsOnDisk — каталоги, по которым идёт обход, для сообщений об отказе:
+// назвать надо ВСЕ корни, иначе читатель пойдёт искать причину не там.
+func protoDirsOnDisk() string {
+	dirs := make([]string, 0, len(contractroot.Roots))
+	for _, p := range routableFilePrefixes() {
+		dirs = append(dirs, filepath.Clean(protoDirOnDiskBase+p))
+	}
+	return strings.Join(dirs, ", ")
+}
+
+func routableFilePrefixes() []string {
+	out := make([]string, 0, len(contractroot.Roots))
+	for _, r := range contractroot.Roots {
+		out = append(out, r+"/cloud/")
+	}
+	return out
+}
+
+func hasRoutableFilePrefix(path string) bool {
+	for _, p := range routableFilePrefixes() {
+		if strings.HasPrefix(path, p) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasRoutablePkgPrefix(fullMethod string) bool {
+	for _, r := range contractroot.Roots {
+		if strings.HasPrefix(fullMethod, "/"+r+".cloud.") {
+			return true
+		}
+	}
+	return false
+}
 
 // descriptorSurface — то, что дескрипторы говорят о маршрутизируемой
 // поверхности: пути файлов (для переписи) и полные пути методов, разделённые
@@ -112,7 +151,7 @@ func readDescriptorSurface(t *testing.T) descriptorSurface {
 	}
 	protoregistry.GlobalFiles.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
 		path := string(fd.Path())
-		if !strings.HasPrefix(path, routableFilePrefix) {
+		if !hasRoutableFilePrefix(path) {
 			return true
 		}
 		s.files[path] = struct{}{}
@@ -123,7 +162,7 @@ func readDescriptorSurface(t *testing.T) descriptorSurface {
 			methods := svc.Methods()
 			for j := 0; j < methods.Len(); j++ {
 				full := "/" + string(svc.FullName()) + "/" + string(methods.Get(j).Name())
-				if !strings.HasPrefix(full, routablePkgPrefix) {
+				if !hasRoutablePkgPrefix(full) {
 					continue
 				}
 				if allowlist.HasInternalSuffix(full) {
@@ -144,23 +183,35 @@ func readDescriptorSurface(t *testing.T) descriptorSurface {
 func protoFilesOnDisk(t *testing.T) map[string]struct{} {
 	t.Helper()
 	out := map[string]struct{}{}
-	root := filepath.Clean(protoDirOnDisk)
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
+	// Обход по КАЖДОМУ объявленному корню: ключ собирается из приставки того
+	// корня, под которым файл найден, — иначе путь дескриптора не совпал бы с
+	// тем, что отдаёт реестр.
+	for _, prefix := range routableFilePrefixes() {
+		root := filepath.Clean(protoDirOnDiskBase + prefix)
+		if _, statErr := os.Stat(root); statErr != nil {
+			continue
 		}
-		if d.IsDir() || !strings.HasSuffix(path, ".proto") {
+		err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() || !strings.HasSuffix(path, ".proto") {
+				return nil
+			}
+			rel, relErr := filepath.Rel(root, path)
+			if relErr != nil {
+				return relErr
+			}
+			out[prefix+filepath.ToSlash(rel)] = struct{}{}
 			return nil
+		})
+		if err != nil {
+			t.Fatalf("обход %s: %v — гейт не может утверждать объём осмотренного", root, err)
 		}
-		rel, relErr := filepath.Rel(root, path)
-		if relErr != nil {
-			return relErr
-		}
-		out[routableFilePrefix+filepath.ToSlash(rel)] = struct{}{}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("обход %s: %v — гейт не может утверждать объём осмотренного", root, err)
+	}
+	if len(out) == 0 {
+		t.Fatal("на диске не найдено ни одного контракта под объявленными корнями — " +
+			"обход беспредметен, и «ноль расхождений» означало бы «ноль прочитанного»")
 	}
 	return out
 }
@@ -203,7 +254,7 @@ func TestAllowlist_CensusCoversEveryProtoFile(t *testing.T) {
 	if len(disk) < minProtoFiles {
 		t.Fatalf("на диске под %s найдено %d .proto (< %d) — гейт читает не то дерево; "+
 			"пока это не починено, любой его зелёный вердикт беспредметен",
-			protoDirOnDisk, len(disk), minProtoFiles)
+			protoDirsOnDisk(), len(disk), minProtoFiles)
 	}
 	if surface.services < minServices {
 		t.Fatalf("в дескрипторах %d сервисов (< %d) — реестр пуст или домены не слинкованы",
@@ -222,7 +273,7 @@ func TestAllowlist_CensusCoversEveryProtoFile(t *testing.T) {
 	}
 	if extra := sortedDiff(surface.files, disk); len(extra) > 0 {
 		t.Errorf("%d дескрипторов не имеют .proto на диске под %s — перепись читает не то дерево:\n  %s",
-			len(extra), protoDirOnDisk, strings.Join(extra, "\n  "))
+			len(extra), protoDirsOnDisk(), strings.Join(extra, "\n  "))
 	}
 }
 

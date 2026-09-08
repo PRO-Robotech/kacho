@@ -17,7 +17,7 @@ func clientTruthIAMModuleSetOptions(t *testing.T) ClientTruthIAMModuleSetOptions
 		// «анализатор не отработал» вместо вердикта (#1927, #1944).
 		ModuleSetPkg: "services/iam/internal/authzmap",
 		ModuleSetVar: "objectTypes",
-		Surfaces:     []string{"services/iam/docs/content", "proto/kacho/cloud/iam"},
+		Surfaces:     []string{"services/iam/docs/content", "proto/kaname/cloud/iam"},
 		SurfaceExts:  []string{".mdx", ".md", ".proto"},
 	}
 }

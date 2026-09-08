@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package proxytuple holds the ONE declaration of what a resource-owning module
-// may write into the authorization model through kacho-iam's FGA proxy —
+// may write into the authorization model through kaname's FGA proxy —
 // RegisterResource / UnregisterResource. (A third RPC, WriteCreatorTuple, shared
 // this rule and was retired with zero callers — #788.)
 //
 // WHY THIS LIVES IN THE SHARED FOUNDATION AND NOT UNDER THE OWNER'S `internal/`.
-// The rule has two sides that must never disagree: kacho-iam decides whether to
+// The rule has two sides that must never disagree: kaname decides whether to
 // ACCEPT a delivered tuple, and five consumers decide what to EMIT. While the rule
 // lived under `services/iam/internal/`, Go's visibility rule forbade a consumer
 // from importing it, so every consumer knew the rule only as prose — six files
@@ -322,7 +322,7 @@ func WithTypeOwner(o TypeOwner) Option {
 // | sort -u` → 21 каталог, из них шесть служб сверх iam), поэтому «перенести его
 // туда, где перечень виден» невыразимо: перечень виден только внутри
 // `services/iam/`. Вызывающий у `ValidateTuple` в прод-коде ровно ОДИН, и он в iam
-// (`services/iam/internal/apps/kacho/api/internal_iam/handler.go`, предикат:
+// (`services/iam/internal/apps/kaname/api/internal_iam/handler.go`, предикат:
 // `git grep -n 'ValidateTuple(' -- '*.go' ':!*_test.go'`), — он словарь и подаёт.
 //
 // ПОРЯДОК БЫЛ НАЗВАН ЗАРАНЕЕ И СОБЛЮДЁН. Здесь стояло «порт сегодня не заводится»,

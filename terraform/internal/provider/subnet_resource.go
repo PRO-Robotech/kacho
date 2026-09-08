@@ -49,8 +49,8 @@ type subnetResource struct{ c *client.Client }
 // NewSubnetResource — конструктор для реестра провайдера.
 func NewSubnetResource() resource.Resource { return &subnetResource{} }
 
-func (r *subnetResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_vpc_subnet"
+func (r *subnetResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = typeNameVPCSubnet
 }
 
 func (r *subnetResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -180,7 +180,7 @@ func (r *subnetResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 	hdr := &client.Headers{IdempotencyKey: client.IdempotencyKey(
-		"kacho_vpc_subnet", plan.ProjectID.ValueString()+"/"+plan.Name.ValueString(), raw)}
+		typeNameVPCSubnet, plan.ProjectID.ValueString()+"/"+plan.Name.ValueString(), raw)}
 
 	httpResp, err := r.c.Do(ctx, http.MethodPost, subnetsPath, body, hdr)
 	if err != nil {

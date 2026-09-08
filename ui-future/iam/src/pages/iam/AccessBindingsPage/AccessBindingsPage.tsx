@@ -30,11 +30,11 @@ import {
 } from "@/components/organisms/iam/AccessBindingCreateForm";
 
 // Высокоуровневые скоупы, принимаемые backend validResourceTypes. "cluster" — для
-// unified cluster-admin grant (resource_id = "cluster_kacho_root").
+// unified cluster-admin grant (resource_id = "cluster_root").
 export const RESOURCE_TYPES: ResourceType[] = ["account", "project", "cluster"];
 
 /** Cluster singleton id для resource_type="cluster". */
-export const CLUSTER_RESOURCE_ID = "cluster_kacho_root";
+export const CLUSTER_RESOURCE_ID = "cluster_root";
 
 /** Cluster admin role id (для preset'ов / quick-grant link'ов). */
 export const CLUSTER_ADMIN_ROLE_ID = "roles/admin";

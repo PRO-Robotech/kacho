@@ -97,7 +97,7 @@ var roleScopeChainBranchRe = regexp.MustCompile(
 // спрашивает ни одного ярусного столбца и потому не может быть ни (5a), ни (5b).
 // Всякое её появление — находка независимо от текста рядом.
 var roleScopeChainDirectRe = regexp.MustCompile(
-	`(?is)insert\s+into\s+(?:kacho_iam\.)?` + roleScopeChainTable + `\b[^;]*?values[^;]*?'` +
+	`(?is)insert\s+into\s+(?:kaname\.)?` + roleScopeChainTable + `\b[^;]*?values[^;]*?'` +
 		roleScopeChainType + `'`)
 
 // RoleScopeChainSite — координата одной находки.

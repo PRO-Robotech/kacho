@@ -39,8 +39,8 @@ type guestAccessKeyResource struct{ c *client.Client }
 // NewGuestAccessKeyResource — конструктор для реестра провайдера.
 func NewGuestAccessKeyResource() resource.Resource { return &guestAccessKeyResource{} }
 
-func (r *guestAccessKeyResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_compute_guest_access_key"
+func (r *guestAccessKeyResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = typeNameComputeGuestAccessKey
 }
 
 func (r *guestAccessKeyResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -112,7 +112,7 @@ func (r *guestAccessKeyResource) Create(ctx context.Context, req resource.Create
 		"projectId": body.ProjectId, "name": body.Name, "publicKey": body.PublicKey,
 	})
 	hdr := &client.Headers{IdempotencyKey: client.IdempotencyKey(
-		"kacho_compute_guest_access_key", plan.ProjectID.ValueString()+"/"+plan.Name.ValueString(), raw)}
+		typeNameComputeGuestAccessKey, plan.ProjectID.ValueString()+"/"+plan.Name.ValueString(), raw)}
 
 	httpResp, err := r.c.Do(ctx, http.MethodPost, guestAccessKeysPath, body, hdr)
 	if err != nil {

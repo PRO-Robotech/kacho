@@ -136,7 +136,7 @@ func TestEveryRelationGrantedByMigrationsExistsInTheAppliedModel(t *testing.T) {
 // до чужого хранилища, теперь со ВСТРОЕННОЙ, то есть ровно с той, по которой
 // принимается решение.
 //
-// Каноническая копия (`proto/kacho/cloud/iam/v1/fga_model.fga`) сюда по-прежнему не
+// Каноническая копия (`proto/kaname/cloud/iam/v1/fga_model.fga`) сюда по-прежнему не
 // подставляется намеренно: две копии держит байт-идентичными своя цель, и гейт
 // обязан читать ту, которая ИСПОЛНЯЕТСЯ.
 const appliedModelRelPath = "services/iam/internal/authzmodel/fga_model.fga"

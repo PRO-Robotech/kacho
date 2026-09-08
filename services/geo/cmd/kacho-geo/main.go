@@ -4,7 +4,7 @@
 // Command kacho-geo — gRPC control-plane Geography (Region / Zone).
 //
 // Leaf-сервис платформенной топологии: по build не зависит ни от чего в Kachō,
-// в runtime — consumer authz Check у kacho-iam. Публичный :9090 — read-only
+// в runtime — consumer authz Check у kaname. Публичный :9090 — read-only
 // (RegionService/ZoneService Get/List); cluster-internal :9091 — admin CRUD
 // (InternalRegion/ZoneService), никогда не на внешнем TLS endpoint (только
 // cluster-internal).

@@ -101,7 +101,7 @@ case "${KSTUB_MODE:-}" in
   healthy)
     case "$args" in
       *"get deployment -o name"*) echo "deployment.apps/api-gateway"; echo "deployment.apps/vpc"; exit 0 ;;
-      *"get statefulset -o name"*) echo "statefulset.apps/kacho-umbrella-pg-vpc"; exit 0 ;;
+      *"get statefulset -o name"*) echo "statefulset.apps/kaname-umbrella-pg-vpc"; exit 0 ;;
       *"rollout status"*) echo "deployment \"x\" successfully rolled out"; exit 0 ;;
       *"get jobs -o json"*|*"get cronjobs -o json"*) echo '{"items":[]}'; exit 0 ;;
       *) exit 0 ;;

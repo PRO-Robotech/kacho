@@ -14,7 +14,7 @@
 // # Why this exists
 //
 // vpc/compute per-RPC authz interceptor calls
-// `kacho-iam.InternalIAMService.Check` from `clients/check_client.go` adapter.
+// `kaname.InternalIAMService.Check` from `clients/check_client.go` adapter.
 // Without this wrap, outgoing gRPC carries no `x-kacho-principal-*` MD →
 // iam-server-side `grpcsrv.UnaryPrincipalExtract` falls back to
 // `operations.SystemPrincipal() = user:bootstrap` → every iam handler that
@@ -101,7 +101,7 @@ func PropagateOutgoing(ctx context.Context) context.Context {
 //
 // Use INSTEAD of `operations.SystemPrincipal()` for any cross-service call
 // originating from such a worker — `bootstrap` is reserved for the
-// kacho-iam bootstrap-admin seed and should not appear on the wire as the
+// kaname bootstrap-admin seed and should not appear on the wire as the
 // caller of normal operational traffic.
 //
 //   - service: "vpc" | "compute" | "iam" | "api-gateway" | ...

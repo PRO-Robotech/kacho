@@ -35,7 +35,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
@@ -63,7 +63,7 @@ func (c *unscopedDenyChecker) Check(_ context.Context, in middleware.AuthzCheckI
 func roleCreateHTTPMiddleware(t *testing.T, checker middleware.AuthorizeChecker) http.Handler {
 	t.Helper()
 	router := &fakeRestRouter{m: map[string]string{
-		"POST /iam/v1/roles": "kacho.cloud.iam.v1.RoleService/Create",
+		"POST /iam/v1/roles": "kaname.cloud.iam.v1.RoleService/Create",
 	}}
 	mw := buildAuthzMiddleware(t, buildCatalog(t, roleCreateEntry), checker, func(c *middleware.AuthzMiddlewareConfig) {
 		c.RestRouter = router
@@ -106,7 +106,7 @@ func TestAuthz_HTTP_RoleCreate_LegacyProjectId_NotDeniedAsUnscoped(t *testing.T)
 	checker := &unscopedDenyChecker{}
 	served := false
 	router := &fakeRestRouter{m: map[string]string{
-		"POST /iam/v1/roles": "kacho.cloud.iam.v1.RoleService/Create",
+		"POST /iam/v1/roles": "kaname.cloud.iam.v1.RoleService/Create",
 	}}
 	mw := buildAuthzMiddleware(t, buildCatalog(t, roleCreateEntry), checker, func(c *middleware.AuthzMiddlewareConfig) {
 		c.RestRouter = router
@@ -130,7 +130,7 @@ func TestAuthz_HTTP_RoleCreate_LegacyProjectId_StillEnforced(t *testing.T) {
 	checker := &fakeChecker{allowed: false, reasons: []string{"no path"}}
 	served := false
 	router := &fakeRestRouter{m: map[string]string{
-		"POST /iam/v1/roles": "kacho.cloud.iam.v1.RoleService/Create",
+		"POST /iam/v1/roles": "kaname.cloud.iam.v1.RoleService/Create",
 	}}
 	mw := buildAuthzMiddleware(t, buildCatalog(t, roleCreateEntry), checker, func(c *middleware.AuthzMiddlewareConfig) {
 		c.RestRouter = router
@@ -162,7 +162,7 @@ func TestAuthz_RoleCreate_NoAnchor_StaysUnscopedDeny(t *testing.T) {
 	checker := &unscopedDenyChecker{}
 	served := false
 	router := &fakeRestRouter{m: map[string]string{
-		"POST /iam/v1/roles": "kacho.cloud.iam.v1.RoleService/Create",
+		"POST /iam/v1/roles": "kaname.cloud.iam.v1.RoleService/Create",
 	}}
 	mw := buildAuthzMiddleware(t, buildCatalog(t, roleCreateEntry), checker, func(c *middleware.AuthzMiddlewareConfig) {
 		c.RestRouter = router
@@ -188,7 +188,7 @@ func TestAuthz_GRPC_RoleCreate_LegacyProjectIdResolvesScope(t *testing.T) {
 	mw := buildAuthzMiddleware(t, buildCatalog(t, roleCreateEntry), checker)
 	_, err := mw.Unary()(withTokenMD("usr_author", "user"),
 		&iamv1.CreateRoleRequest{Name: "reader", ProjectId: "prj_beta"},
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.RoleService/Create"},
+		&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.RoleService/Create"},
 		func(ctx context.Context, req any) (any, error) { return "ok", nil })
 	require.NoError(t, err)
 
@@ -207,7 +207,7 @@ func TestAuthz_RoleCreate_AccountIdWins_WhenBothScopesSet(t *testing.T) {
 	mw := buildAuthzMiddleware(t, buildCatalog(t, roleCreateEntry), checker)
 	_, err := mw.Unary()(withTokenMD("usr_attacker", "user"),
 		&iamv1.CreateRoleRequest{Name: "reader", AccountId: "acc_victim", ProjectId: "prj_attacker"},
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.RoleService/Create"},
+		&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.RoleService/Create"},
 		func(ctx context.Context, req any) (any, error) { return "ok", nil })
 	require.NoError(t, err)
 
@@ -245,7 +245,7 @@ func TestAuthz_RoleCreate_DefinitionTierWins_OverLegacyProjectId(t *testing.T) {
 			ProjectId:      "prj_legacy",
 			DefinitionTier: &iamv1.DefinitionTier{TierType: "iam.account", TierId: "acc_alpha"},
 		},
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.RoleService/Create"},
+		&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.RoleService/Create"},
 		func(ctx context.Context, req any) (any, error) { return "ok", nil })
 	require.NoError(t, err)
 
@@ -280,7 +280,7 @@ func TestAuthz_RoleCreate_DefinitionTierWins_OverLegacyProjectId_HTTP(t *testing
 func TestAuthz_HTTP_ProjectIdInBody_DoesNotRedirectScope_UnrelatedFQN(t *testing.T) {
 	checker := &fakeChecker{allowed: true}
 	router := &fakeRestRouter{m: map[string]string{
-		"POST /iam/v1/users:invite": "kacho.cloud.iam.v1.UserService/Invite",
+		"POST /iam/v1/users:invite": "kaname.cloud.iam.v1.UserService/Invite",
 	}}
 	mw := buildAuthzMiddleware(t, buildCatalog(t, inviteEntry), checker, func(c *middleware.AuthzMiddlewareConfig) {
 		c.RestRouter = router
@@ -309,7 +309,7 @@ func TestAuthz_HTTP_ProjectIdInBody_DoesNotRedirectScope_UnrelatedFQN(t *testing
 func TestAuthz_HTTP_ProjectIdInBody_UnrelatedFQN_StillDeniesOnCatalogScope(t *testing.T) {
 	checker := &unscopedDenyChecker{}
 	router := &fakeRestRouter{m: map[string]string{
-		"POST /iam/v1/users:invite": "kacho.cloud.iam.v1.UserService/Invite",
+		"POST /iam/v1/users:invite": "kaname.cloud.iam.v1.UserService/Invite",
 	}}
 	mw := buildAuthzMiddleware(t, buildCatalog(t, inviteEntry), checker, func(c *middleware.AuthzMiddlewareConfig) {
 		c.RestRouter = router
@@ -343,11 +343,11 @@ func TestAuthz_HTTP_ProjectIdInBody_UnrelatedFQN_StillDeniesOnCatalogScope(t *te
 // legacy pair).
 func TestAuthz_GRPC_ProjectIdBearingMessage_OnUnrelatedFQN_KeepsCatalogScope(t *testing.T) {
 	checker := &fakeChecker{allowed: true}
-	const otherEntry = `{"fqn":"kacho.cloud.iam.v1.RoleService/CreateLike","permission":"iam.roles.create","required_relation":"editor","scope_extractor":{"object_type":"account","from_request_field":"account_id"},"required_acr_min":"1","risk_level":"HIGH"}`
+	const otherEntry = `{"fqn":"kaname.cloud.iam.v1.RoleService/CreateLike","permission":"iam.roles.create","required_relation":"editor","scope_extractor":{"object_type":"account","from_request_field":"account_id"},"required_acr_min":"1","risk_level":"HIGH"}`
 	mw := buildAuthzMiddleware(t, buildCatalog(t, otherEntry), checker)
 	_, err := mw.Unary()(withTokenMD("usr_attacker", "user"),
 		&iamv1.CreateRoleRequest{Name: "reader", ProjectId: "prj_attacker"},
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.RoleService/CreateLike"},
+		&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.RoleService/CreateLike"},
 		func(ctx context.Context, req any) (any, error) { return "ok", nil })
 	require.NoError(t, err)
 

@@ -27,6 +27,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
 	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
 	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
@@ -166,7 +167,7 @@ func describe(
 	if err != nil {
 		return servicecontract.Descriptor{}, fmt.Errorf("internal listener tls creds: %w", err)
 	}
-	// Ребро решения о доступе идёт на ВНУТРЕННИЙ листенер kacho-iam (:9091): там
+	// Ребро решения о доступе идёт на ВНУТРЕННИЙ листенер kaname (:9091): там
 	// живёт InternalIAMService.Check. Ручка его транспорта — та же
 	// `IAM_AUTHZ_MTLS`, которой раньше дилился общий authz-conn, поэтому
 	// дескриптор и проводка объявляют ОДНО ребро, а не два похожих.
@@ -198,8 +199,18 @@ func describe(
 			OptIn:    cfg.AuthZ.TrustAnyForwarder,
 		},
 
-		Authz:        servicecontract.AuthzViaIAM,
-		CheckEdge:    servicecontract.NewPeerEdge(cfg.AuthZ.IAMEndpoint, checkCreds),
+		// Домен доверия — ЗНАЧЕНИЕ: личность клиентского сертификата этот процесс
+		// разбирает, и разбирает её ОТНОСИТЕЛЬНО домена. Читается из той же
+		// функции, значение которой уезжает в пару звеньев извлечения личности,
+		// поэтому «страж пропустил» ⟺ «домен реально объявлен».
+		TrustDomain:     servicecontract.Value(cfg.TrustDomain()),
+		TrustDomainKnob: "authz.trust-domain (env KACHO_VPC_AUTHZ__TRUST_DOMAIN)",
+
+		Authz:     servicecontract.AuthzViaIAM,
+		CheckEdge: servicecontract.NewPeerEdge(cfg.AuthZ.IAMEndpoint, checkCreds),
+		// Перевод вопроса в контракт службы доступа приносит СЕРВИС: носитель
+		// принадлежит фундаменту и чужого контракта не знает (приёмка K3-1 §7.2).
+		PeerCheck:    authziam.NewCheckClient,
 		CacheWindow:  cfg.AuthZ.CacheTTL,
 		ClientBudget: cfg.AuthZ.CheckTimeout,
 
@@ -249,7 +260,7 @@ func describe(
 		StreamBudget: servicecontract.Value(cfg.APIServer.SubscriptionStreamBudget),
 
 		// Бюджет отказов — ВЕЛИЧИНА, а не изъятие: решение о доступе vpc принимает
-		// не у себя, а вопросом к kacho-iam, — то есть сетевой сосед, которого
+		// не у себя, а вопросом к kaname, — то есть сетевой сосед, которого
 		// шторм отказов может уронить, у него ЕСТЬ, и на том же соединении живут
 		// пообъектный сужатель и регистрация владельца. Изъятие («ронять некого»)
 		// законно только у владельца модели, решающего в своём процессе.

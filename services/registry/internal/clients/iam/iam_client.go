@@ -1,13 +1,13 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// Package iam — adapter-клиент к kacho-registry-консумируемым RPC kacho-iam.
+// Package iam — adapter-клиент к kacho-registry-консумируемым RPC kaname.
 // Реализует порт registry.IAMClient: cross-domain валидация project'а на Create
 // (ProjectService.Get). ProjectService живёт ТОЛЬКО на iam PUBLIC-листенере (:9090),
 // поэтому conn сюда подаётся именно на :9090 (отдельный от authz/register conn'а на
 // :9091). Owner-tuple lifecycle (RegisterResource/UnregisterResource) живёт в
 // register_applier.go (drainer-half, iam internal :9091), а per-RPC authz-Check — в
-// internal/check (iam internal :9091) — это разные консумируемые поверхности kacho-iam.
+// internal/check (iam internal :9091) — это разные консумируемые поверхности kaname.
 package iam
 
 import (
@@ -17,7 +17,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
 	"github.com/PRO-Robotech/kacho/pkg/peer"
 	"github.com/PRO-Robotech/kacho/pkg/retry"
@@ -34,16 +34,16 @@ import (
 // внешнем вызове"). Никогда не полагаемся на inbound ctx deadline вызывающего.
 const iamCallTimeout = 5 * time.Second
 
-// Client — adapter к kacho-iam ProjectService поверх grpc-conn к PUBLIC-листенеру (:9090).
+// Client — adapter к kaname ProjectService поверх grpc-conn к PUBLIC-листенеру (:9090).
 type Client struct {
 	conn grpc.ClientConnInterface
 }
 
-// New оборачивает grpc-conn к kacho-iam PUBLIC-листенеру (:9090 — ProjectService.Get).
+// New оборачивает grpc-conn к kaname PUBLIC-листенеру (:9090 — ProjectService.Get).
 // nil conn → методы отвечают Unavailable (мутация fail-closed).
 func New(conn grpc.ClientConnInterface) *Client { return &Client{conn: conn} }
 
-// ready — conn к kacho-iam обязан быть подан (иначе fail-closed Unavailable).
+// ready — conn к kaname обязан быть подан (иначе fail-closed Unavailable).
 func (c *Client) ready() error {
 	if c.conn == nil {
 		return regerrors.ErrUnavailable

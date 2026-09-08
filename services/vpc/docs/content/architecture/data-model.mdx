@@ -64,7 +64,7 @@ Soft-ref-связи (по id, без FK — например <code>network\_inte
 
 :::note Владелец ресурса — `projectId`
 Все ресурсы привязаны к проекту: в публичном API поле `projectId`, на уровне БД колонка
-`project_id`. Это id владельца ресурса — cross-service-ссылка на `kacho-iam` без FK (см. ниже).
+`project_id`. Это id владельца ресурса — cross-service-ссылка на `kaname` без FK (см. ниже).
 Иерархия владения — **Account → Project**; ресурс всегда живёт в проекте.
 :::
 
@@ -101,7 +101,7 @@ Soft-ref-связи (по id, без FK — например <code>network\_inte
     <tr><td><code>ipv6\_pool\_cursors</code></td><td>Курсор последовательной выдачи IPv6 по пулу</td><td><code>pool\_id</code></td><td>PK</td><td>нет</td></tr>
     <tr><td><code>ipv6\_allocated\_ips</code></td><td>Выданные IPv6 пула</td><td><code>(pool\_id, ip)</code></td><td>PK + <code>UNIQUE (pool\_id, offset)</code></td><td>нет</td></tr>
     <tr><td><code>ipv6\_released\_offsets</code></td><td>Освобождённые смещения IPv6 (возврат в оборот)</td><td><code>(pool\_id, offset)</code></td><td>PK</td><td>нет</td></tr>
-    <tr><td><code>fga\_register\_outbox</code></td><td>Транзакционный outbox для регистрации owner-tuple в FGA (через kacho-iam)</td><td><code>id</code></td><td>—</td><td>нет</td></tr>
+    <tr><td><code>fga\_register\_outbox</code></td><td>Транзакционный outbox для регистрации owner-tuple в FGA (через kaname)</td><td><code>id</code></td><td>—</td><td>нет</td></tr>
     <tr><td><code>project\_resource\_quotas</code></td><td>Списанные величины и потолки по видам ресурсов домена</td><td><code>(carrier\_type, carrier\_id, kind)</code></td><td>PK</td><td>нет</td></tr>
     <tr><td><code>nested\_quota\_defaults</code></td><td>Умолчания потолков для вложенных носителей проекта</td><td><code>(project\_id, kind)</code></td><td>PK</td><td>нет</td></tr>
     <tr><td><code>quota\_sync\_cursor</code></td><td>Позиция догоняющего чтения величин у владельца пределов</td><td><code>id</code></td><td>—</td><td>нет</td></tr>
@@ -308,7 +308,7 @@ flowchart LR
 <table>
   <thead><tr><th>Колонка</th><th>Owner-сервис</th><th>Валидация</th></tr></thead>
   <tbody>
-    <tr><td><code>&#42;.project\_id</code> (все ресурсы)</td><td><code>kacho-iam</code></td><td><code>ProjectService.Get</code> на Create</td></tr>
+    <tr><td><code>&#42;.project\_id</code> (все ресурсы)</td><td><code>kaname</code></td><td><code>ProjectService.Get</code> на Create</td></tr>
     <tr><td><code>subnets.zone\_id</code></td><td><code>kacho-geo</code></td><td><code>geo.v1.ZoneService.Get</code> на Create (TTL-кэш положительного результата)</td></tr>
     <tr><td><code>addresses.external\_ipv4/6-&gt;&gt;'zone\_id'</code></td><td><code>kacho-geo</code></td><td><code>geo.v1.ZoneService.Get</code> (graceful dangling на чтении)</td></tr>
     <tr><td><code>address\_pools.zone\_id</code></td><td><code>kacho-geo</code></td><td><code>geo.v1.ZoneService.Get</code></td></tr>

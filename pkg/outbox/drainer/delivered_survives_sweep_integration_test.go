@@ -46,7 +46,7 @@ func Test_DeliveredTotal_SurvivesTheSweepOfDeliveredRows(t *testing.T) {
 	fa := newFakeApplier()
 	fa.setDefaultErr(nil) // всё применяется с первого раза
 
-	const table = "kacho_iam.fga_outbox"
+	const table = "kaname.fga_outbox"
 	rec := metrics.NewMemRecorder()
 	col := metrics.NewCollector(pool, rec, metrics.CollectorConfig{
 		Table:      table,

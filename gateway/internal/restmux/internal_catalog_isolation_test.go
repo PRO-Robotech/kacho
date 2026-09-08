@@ -232,7 +232,7 @@ func internalServiceRESTBindings(t *testing.T) []restBinding {
 	t.Helper()
 	var out []restBinding
 	protoregistry.GlobalFiles.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
-		if !strings.HasPrefix(string(fd.Package()), "kacho.") {
+		if !underDeclaredRoot(string(fd.Package())) {
 			return true
 		}
 		svcs := fd.Services()

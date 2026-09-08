@@ -269,7 +269,7 @@ func TestDocsEnumGateReadsEveryLegalExampleForm(t *testing.T) {
 func TestDocsEnumProducerWalkSeesKachoEnums(t *testing.T) {
 	found := 0
 	protoregistry.GlobalFiles.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
-		if !strings.HasPrefix(string(fd.Package()), "kacho.") {
+		if !underDeclaredRoot(string(fd.Package())) {
 			return true
 		}
 		found += fd.Enums().Len()

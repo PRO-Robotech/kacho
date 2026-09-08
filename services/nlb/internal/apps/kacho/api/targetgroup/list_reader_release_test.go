@@ -11,11 +11,9 @@ import (
 
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
-	"google.golang.org/grpc"
 )
 
 // Same property as loadbalancer/list_reader_release_test.go: the pooled read-TX
@@ -63,7 +61,7 @@ func (rd *releaseTrackingReader) Close() error {
 //
 // Наблюдение переехало на СОСЕДА: сужатель теперь один на дерево, и подставлять
 // его целиком значило бы наблюдать не тот момент. Момент, ради которого проба
-// написана, — сетевой вопрос к kacho-iam, и он здесь и перехватывается.
+// написана, — сетевой вопрос к kaname, и он здесь и перехватывается.
 type readerStateProbe struct {
 	repo         *releaseTrackingRepo
 	calls        int
@@ -73,15 +71,14 @@ type readerStateProbe struct {
 
 var _ listnarrow.AuthorizeClient = (*readerStateProbe)(nil)
 
-func (p *readerStateProbe) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeCheckRequest,
-	_ ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error) {
+func (p *readerStateProbe) BatchCheck(_ context.Context, checks []listnarrow.Check) ([]bool, error) {
 	p.calls++
 	p.openedAtCall, p.closedAtCall = p.repo.opened, p.repo.closed
-	out := make([]*iamv1.AuthorizeCheckResponse, 0, len(in.GetChecks()))
-	for range in.GetChecks() {
-		out = append(out, &iamv1.AuthorizeCheckResponse{Allowed: true})
+	out := make([]bool, 0, len(checks))
+	for range checks {
+		out = append(out, true)
 	}
-	return &iamv1.BatchAuthorizeCheckResponse{Responses: out}, nil
+	return out, nil
 }
 
 // TestListTargetGroups_ReleasesReaderBeforeAuthz — pooled read-TX released first.

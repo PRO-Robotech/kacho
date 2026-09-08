@@ -73,6 +73,8 @@ package repohygiene
 import (
 	"regexp"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/pkg/contractroot"
 )
 
 // VendoredNoticeFinding — координата находки.
@@ -116,10 +118,25 @@ type VendoredNoticeCensus struct {
 	MismatchChecked int
 }
 
-// ourPackagePrefix — первый сегмент объявленного пакета, по которому файл
-// признаётся нашим. Строчный: имена пакетов контрактов в этом дереве строчные
-// (`kacho.cloud.<domain>.v1`, `kacho.cloud.subscription`).
-const ourPackagePrefix = "kacho"
+// isOurPackage — признаётся ли объявленный пакет НАШИМ.
+//
+// Первый сегмент сверяется с ОБЪЯВЛЕННЫМ множеством корней, а не с одним
+// литералом. Литерал здесь особенно опасен: всё, что ему не совпало, гейт
+// объявляет ВЕНДОРЕННЫМ — то есть требует уведомления об авторстве и копии
+// чужой лицензии. После переезда службы доступа под собственный корень
+// (KAN-PKG-1) её контракт стал бы «чужим кодом» в собственном дереве, и гейт
+// потребовал бы приложить к нему копию Apache-2.0.
+//
+// Имена корней строчные: имена пакетов контрактов в этом дереве строчные
+// (`kacho.cloud.<domain>.v1`, `kaname.cloud.iam.v1`).
+func isOurPackage(pkg string) bool {
+	for _, root := range contractroot.Roots {
+		if pkg == root || strings.HasPrefix(pkg, root+".") {
+			return true
+		}
+	}
+	return false
+}
 
 // packageStmt — оператор объявления пакета. Судится СТРОКА оператора уже после
 // снятия комментариев, поэтому слово `package` из прозы сюда не доходит.
@@ -202,7 +219,7 @@ func DeclaredPackage(src string) string {
 
 // IsOurPackage — объявленный пакет принадлежит нам.
 func IsOurPackage(pkg string) bool {
-	return pkg == ourPackagePrefix || strings.HasPrefix(pkg, ourPackagePrefix+".")
+	return isOurPackage(pkg)
 }
 
 // LeadingComment — головной блок комментария файла: всё до первого оператора.

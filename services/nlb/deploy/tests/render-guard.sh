@@ -66,7 +66,7 @@ echo "[extapi peer addrs — всегда в config.yaml]"
 OUT_PLAIN="$(render)"
 assert_contains "$OUT_PLAIN" 'addr: "kacho-vpc.kacho.svc:9090"'      "vpc extapi addr рендерится"
 assert_contains "$OUT_PLAIN" 'addr: "kacho-compute.kacho.svc:9090"'  "compute extapi addr рендерится"
-assert_contains "$OUT_PLAIN" 'addr: "kacho-iam.kacho.svc:9090"'      "iam extapi addr рендерится"
+assert_contains "$OUT_PLAIN" 'addr: "kaname.kacho.svc:9090"'      "iam extapi addr рендерится"
 # geo — новое ребро nlb→geo (epic kacho-geo). Паритет с compute: addr на public :9090.
 assert_contains "$OUT_PLAIN" 'addr: "kacho-geo.kacho.svc:9090"'      "geo extapi addr рендерится"
 

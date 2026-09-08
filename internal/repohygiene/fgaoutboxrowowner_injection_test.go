@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // fgaoutboxrowowner_injection_test.go — доказательство, что гейт формы строки
-// `kacho_iam.fga_outbox` СПОСОБЕН упасть, и что он падает на существе, а не на форме.
+// `kaname.fga_outbox` СПОСОБЕН упасть, и что он падает на существе, а не на форме.
 //
 // Инъекция в ОБЕ стороны на СИНТЕТИЧЕСКОМ дереве: репозиторием оно не является, индекса
 // у него нет, и состав берётся у `newSyntheticTree` — там файловая система и есть
@@ -46,21 +46,21 @@ func writeInjected(t *testing.T, root, rel, body string) {
 const ownerFile = `package fga_outbox
 
 func emit() string {
-	return ` + "`INSERT INTO kacho_iam.fga_outbox (event_type, payload) VALUES ($1, $2)`" + `
+	return ` + "`INSERT INTO kaname.fga_outbox (event_type, payload) VALUES ($1, $2)`" + `
 }
 `
 
 func TestFGAOutboxRowOwnerGate_CatchesASecondRenderer(t *testing.T) {
 	root := t.TempDir()
 	writeInjected(t, root, filepath.Join(fgaOutboxRowOwnerDir, "emitter.go"), ownerFile)
-	writeInjected(t, root, filepath.Join("services", "iam", "internal", "repo", "kacho", "pg", "rogue.go"),
+	writeInjected(t, root, filepath.Join("services", "iam", "internal", "repo", "kaname", "pg", "rogue.go"),
 		`package pg
 
-import "github.com/PRO-Robotech/kacho-iam/internal/clients"
+import "github.com/PRO-Robotech/kaname/internal/clients"
 
 func emitRogue(tuples []clients.RelationTuple) string {
 	_ = tuples
-	return `+"`INSERT INTO kacho_iam.fga_outbox (event_type, payload) VALUES ($1, $2::jsonb)`"+`
+	return `+"`INSERT INTO kaname.fga_outbox (event_type, payload) VALUES ($1, $2::jsonb)`"+`
 }
 `)
 
@@ -79,11 +79,11 @@ func TestFGAOutboxRowOwnerGate_SilentOnLegitimateTwins(t *testing.T) {
 	writeInjected(t, root, filepath.Join(fgaOutboxRowOwnerDir, "emitter.go"), ownerFile)
 
 	// Близнец 1: посев с КОНСТАНТНЫМ отношением — набора нет, расщеплять нечего.
-	writeInjected(t, root, filepath.Join("services", "iam", "internal", "apps", "kacho", "seed", "seed.go"),
+	writeInjected(t, root, filepath.Join("services", "iam", "internal", "apps", "kaname", "seed", "seed.go"),
 		`package seed
 
 func seedOne() string {
-	return `+"`INSERT INTO kacho_iam.fga_outbox (event_type, payload) VALUES ('fga.tuple.write', jsonb_build_object('relation','system_admin'))`"+`
+	return `+"`INSERT INTO kaname.fga_outbox (event_type, payload) VALUES ('fga.tuple.write', jsonb_build_object('relation','system_admin'))`"+`
 }
 `)
 	// Близнец 2: ЧТЕНИЕ той же таблицы кодом, который работает с кортежами (сканер
@@ -91,10 +91,10 @@ func seedOne() string {
 	writeInjected(t, root, filepath.Join("services", "iam", "internal", "diag", "scan.go"),
 		`package diag
 
-import "github.com/PRO-Robotech/kacho-iam/internal/clients"
+import "github.com/PRO-Robotech/kaname/internal/clients"
 
 func pending() (string, []clients.RelationTuple) {
-	return `+"`SELECT count(*) FROM kacho_iam.fga_outbox WHERE sent_at IS NULL`"+`, nil
+	return `+"`SELECT count(*) FROM kaname.fga_outbox WHERE sent_at IS NULL`"+`, nil
 }
 `)
 

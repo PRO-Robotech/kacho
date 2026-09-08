@@ -52,7 +52,7 @@ tests/k6/
    kubectl -n kacho port-forward svc/api-gateway 18080:8080
    ```
 4. **IAM token** with `loadbalancer.*` permissions on the target project.
-   Acquire via `kacho-iam` `CreateAccessToken` RPC and export:
+   Acquire via `kaname` `CreateAccessToken` RPC and export:
    ```bash
    export IAM_TOKEN=...
    ```
@@ -64,7 +64,7 @@ tests/k6/
 | `K6_BASE_URL` / `BASE_URL` | no  | API gateway base URL. Default `http://localhost:18080`. |
 | `IAM_TOKEN`                | yes | Bearer token (sent as `Authorization: Bearer ...`). |
 | `ACTOR`                    | no  | Audit-trail actor id. Default `k6-load-test@kacho`. |
-| `EXISTING_PROJECT_ID`      | yes | kacho-iam project id with editor scope. |
+| `EXISTING_PROJECT_ID`      | yes | kaname project id with editor scope. |
 | `EXISTING_REGION_ID`       | yes | e.g. `ru-central1`. |
 | `EXISTING_SUBNET_ID`       | opt | For Listener INTERNAL + `ip_ref` Target tests. |
 | `EXISTING_ADDRESS_ID`      | opt | BYO VIP for Listener tests. |

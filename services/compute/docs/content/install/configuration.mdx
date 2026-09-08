@@ -39,8 +39,8 @@ kacho-compute конфигурируется переменными окруже
 
 | Переменная | Назначение |
 |---|---|
-| `KACHO_COMPUTE_IAM_GRPC_ADDR` | Адрес kacho-iam (`ProjectService.Get`, регистрация owner-tuple) |
-| `KACHO_COMPUTE_AUTHZ_IAM_GRPC_ADDR` | Адрес kacho-iam для authz-Check (может отличаться от общего) |
+| `KACHO_COMPUTE_IAM_GRPC_ADDR` | Адрес kaname (`ProjectService.Get`, регистрация owner-tuple) |
+| `KACHO_COMPUTE_AUTHZ_IAM_GRPC_ADDR` | Адрес kaname для authz-Check (может отличаться от общего) |
 | `KACHO_COMPUTE_GEO_GRPC_ADDR` | Адрес kacho-geo (`ZoneService.Get`) |
 | `KACHO_COMPUTE_VPC_GRPC_ADDR` | Адрес kacho-vpc (валидация NIC-spec) |
 | `KACHO_COMPUTE_SKIP_PEER_VALIDATION` | `true` → existence-check project/zone/vpc становится no-op (только для локальных тестов) |
@@ -50,10 +50,10 @@ kacho-compute конфигурируется переменными окруже
 | Переменная | Назначение |
 |---|---|
 | `KACHO_COMPUTE_AUTH_MODE` | Режим аутентификации; в проде — production-strict (anonymous fail-closed) |
-| `KACHO_COMPUTE_REQUIRE_IAM` | Fail-closed boot-gate: пока дренер регистраций не связался с kacho-iam, сервис **NotReady** и **отказывает мутирующему Create** (процесс при этом жив — падение при старте лишило бы оператора диагностики) |
+| `KACHO_COMPUTE_REQUIRE_IAM` | Fail-closed boot-gate: пока дренер регистраций не связался с kaname, сервис **NotReady** и **отказывает мутирующему Create** (процесс при этом жив — падение при старте лишило бы оператора диагностики) |
 | `KACHO_COMPUTE_AUTHZ_BREAKGLASS` | Аварийный обход authz (используется осознанно; по умолчанию выключен) |
 | `KACHO_COMPUTE_AUTHZ_TRUSTED_FORWARDER_SANS` | Разрешённые SAN доверенного forwarder'а (api-gateway) |
-| `KACHO_COMPUTE_IAM_AUTHZ_MTLS_*` | mTLS для authz-канала к kacho-iam (`ENABLE`/`CERTFILE`/`KEYFILE`/`CAFILES`/`SERVERNAME`) |
+| `KACHO_COMPUTE_IAM_AUTHZ_MTLS_*` | mTLS для authz-канала к kaname (`ENABLE`/`CERTFILE`/`KEYFILE`/`CAFILES`/`SERVERNAME`) |
 | `KACHO_COMPUTE_IAM_REGISTER_MTLS_*` | mTLS для канала регистрации owner-tuple |
 | `KACHO_COMPUTE_GEO_MTLS_*` | mTLS для канала к kacho-geo |
 

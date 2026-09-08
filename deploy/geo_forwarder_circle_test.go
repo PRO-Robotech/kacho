@@ -34,7 +34,7 @@
 // потребитель справочника — он попадёт в перечень сам и потребует записи в
 // круге; исчезнет потребитель — требование снимется само.
 //
-// СЛОВАРЬ SAN'ов ТОЖЕ НЕ ПИШЕТСЯ ЗДЕСЬ. Он берётся из круга kacho-iam — того
+// СЛОВАРЬ SAN'ов ТОЖЕ НЕ ПИШЕТСЯ ЗДЕСЬ. Он берётся из круга kaname — того
 // единственного списка в дереве, чей состав выводит рендером peer-чартов
 // deploy/tests/helm/iam-trusted-forwarder-test.sh. iam зовут все, поэтому его
 // круг — надмножество, и второй копии словаря не заводится. Это существенно:
@@ -125,11 +125,11 @@ func sanBlock(body, key string) []string {
 }
 
 // spiffeSANByService — словарь «сервис → SAN, который он ПРЕДЪЯВЛЯЕТ», взятый из
-// круга kacho-iam (единственный список дерева, чей состав выводится рендером
+// круга kaname (единственный список дерева, чей состав выводится рендером
 // peer-чартов). Ключ — часть имени после `sa/kacho-`.
 func spiffeSANByService(t *testing.T) map[string]string {
 	t.Helper()
-	const rel = "deploy/helm/umbrella/charts/kacho-iam/values.yaml"
+	const rel = "deploy/helm/umbrella/charts/kaname/values.yaml"
 	sans := sanBlock(readFile(t, rel), "trustedForwarderSANs")
 	if len(sans) == 0 {
 		t.Fatalf("в %s не прочитано ни одного SAN — словарь пуст, и любое утверждение "+

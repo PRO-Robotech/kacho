@@ -31,13 +31,13 @@ import (
 // производителя. Положительный контроль: без него всякое отрицание ниже зеленело
 // бы на распознавателе, не находящем НИЧЕГО.
 const roleScopeChainLegalBranches = `
-INSERT INTO kacho_iam.resource_parent_edge (object_type, object_id, parent_type, parent_id, depth)
+INSERT INTO kaname.resource_parent_edge (object_type, object_id, parent_type, parent_id, depth)
   SELECT 'iam_role'::text, o.id, 'account'::text, o.account_id, 1
-    FROM kacho_iam.roles o
+    FROM kaname.roles o
    WHERE COALESCE(o.account_id, '') <> ''
 UNION ALL
   SELECT 'iam_role'::text, o.id, 'project'::text, o.project_id, 1
-    FROM kacho_iam.roles o
+    FROM kaname.roles o
    WHERE COALESCE(o.project_id, '') <> '';
 `
 
@@ -73,7 +73,7 @@ func TestRoleScopeChainGateRedsOnAThirdProducer(t *testing.T) {
 	injected := roleScopeChainLegalBranches + `
 UNION ALL
   SELECT 'iam_role'::text, o.id, 'cluster'::text, o.cluster_id, 1
-    FROM kacho_iam.roles o
+    FROM kaname.roles o
    WHERE COALESCE(o.cluster_id, '') <> '';
 `
 	found, census := ScanRoleScopeChain("services/iam/internal/migrations/injected.sql", injected)
@@ -106,7 +106,7 @@ UNION ALL
 // от исправной работы.
 func TestRoleScopeChainGateRedsOnADirectSeed(t *testing.T) {
 	injected := `
-INSERT INTO kacho_iam.resource_parent_edge (object_type, object_id, parent_type, parent_id, depth)
+INSERT INTO kaname.resource_parent_edge (object_type, object_id, parent_type, parent_id, depth)
 VALUES ('iam_role', 'rol_probe', 'account', 'acc_probe', 1);
 `
 	found, census := ScanRoleScopeChain("services/iam/internal/migrations/seed.sql", injected)
@@ -125,7 +125,7 @@ VALUES ('iam_role', 'rol_probe', 'account', 'acc_probe', 1);
 // строке, которая не производит ничего.
 func TestRoleScopeChainGateIgnoresANonProducer(t *testing.T) {
 	dictionary := `
-INSERT INTO kacho_iam.scope_chain_type_dictionary (dotted, model_type) VALUES
+INSERT INTO kaname.scope_chain_type_dictionary (dotted, model_type) VALUES
   ('iam.role', 'iam_role');
 `
 	found, census := ScanRoleScopeChain("services/iam/internal/migrations/dict.sql", dictionary)

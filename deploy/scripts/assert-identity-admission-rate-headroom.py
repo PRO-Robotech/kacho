@@ -78,7 +78,7 @@ PEAK_GATE = "deploy/scripts/assert-identity-account-peak-under-ceiling.py"
 # разбора разошлась бы с первой молча — и разошлась бы именно там, где обе
 # отвечают «валидно» на валидном входе. Ровно тем же доводом сосед объявлен
 # единственным источником форм заведения и порядка волны.
-RATE_TABLE = "kacho_iam.account_admission_rate_limits"
+RATE_TABLE = "kaname.account_admission_rate_limits"
 RATE_WHERE = {"kind": "iam.account", "withdrawn_at": "NULL"}
 
 # ТРЕБУЕМЫЙ ЗАПАС. Одна единица, а не две, как у объёма, и различие обосновано: у
@@ -371,7 +371,7 @@ def self_test() -> int:
     # ровно один факт — затравка темпа.
     import shutil, tempfile  # noqa: PLC0415 — нужны только здесь
 
-    _RATE_ROW = ("INSERT INTO kacho_iam.account_admission_rate_limits "
+    _RATE_ROW = ("INSERT INTO kaname.account_admission_rate_limits "
                  "(id, kind, max_events, window_seconds, withdrawn_at, created_at) "
                  "VALUES (1, 'iam.account', 3, 3600, NULL, now());\n")
 
@@ -393,7 +393,7 @@ def self_test() -> int:
         note(False, f"законный близнец: {exc}")
 
     # Та же ось, что сломала гейт: колонки переставлены — величина обязана уцелеть.
-    _shuffled = ("INSERT INTO kacho_iam.account_admission_rate_limits "
+    _shuffled = ("INSERT INTO kaname.account_admission_rate_limits "
                  "(window_seconds, kind, created_at, max_events, id, withdrawn_at) "
                  "VALUES (3600, 'iam.account', now(), 3, 1, NULL);\n")
     try:

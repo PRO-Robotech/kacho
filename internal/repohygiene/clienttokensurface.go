@@ -255,5 +255,5 @@ func RegistrationsOf(regs []SurfaceRegistration, path string) []SurfaceRegistrat
 
 // CompositionRootDir — каталог композиционного корня iam.
 func CompositionRootDir(repoRoot string) string {
-	return filepath.Join(repoRoot, "services", "iam", "cmd", "kacho-iam")
+	return filepath.Join(repoRoot, "services", "iam", "cmd", "kaname")
 }

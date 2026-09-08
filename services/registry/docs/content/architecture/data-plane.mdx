@@ -25,7 +25,7 @@ flowchart LR
   docker["docker / helm"] -->|"Bearer identity-JWT"| h["data-plane handler"]
   h -->|"1 verify JWT (JWKS + aud + iss)"| jwks["Hydra JWKS"]
   h -->|"2 parse OCI path → registry/repo/ref"| h
-  h -->|"3 Check verb@object"| iam["kacho-iam"]
+  h -->|"3 Check verb@object"| iam["kaname"]
   h -->|"4 reverse-proxy"| zot[("zot")]
   h -.->|"register-on-first-push"| outbox["registry_outbox → iam"]
 ```
@@ -44,7 +44,7 @@ flowchart LR
 
 Docker сам получает Bearer-токен по протоколу Registry token-auth: при `401` с заголовком
 `WWW-Authenticate: Bearer realm="…/iam/token",service="registry.kacho.local"` он идёт в realm за
-токеном. Realm указывает на **token-шим kacho-iam** (`/iam/token`), который брокерит настоящий токен у
+токеном. Realm указывает на **token-шим kaname** (`/iam/token`), который брокерит настоящий токен у
 Ory Hydra (федерация — Variant H).
 
 ```mermaid

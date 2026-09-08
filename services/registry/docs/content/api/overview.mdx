@@ -159,7 +159,7 @@ Data-plane аутентифицирует `docker`/`helm` по отдельно�
 ## Авторизация
 
 Авторизация — **per-RPC**, проверяется на **обеих** control-plane-поверхностях
-и в data-plane. Интерсептор перед выполнением метода вызывает `InternalIAMService.Check` в kacho-iam.
+и в data-plane. Интерсептор перед выполнением метода вызывает `InternalIAMService.Check` в kaname.
 Модель — verb-bearing: каждому действию соответствует verb-relation (`v_get` / `v_list` / `v_create`
 / `v_update` / `v_delete`) на объекте `registry_registry` (реестр) или `registry_repository`
 (репозиторий). Коллекционные RPC (`List` / `ListRepositories` / `ListTags`) дополнительно
@@ -167,7 +167,7 @@ row-фильтруются в хендлере (existence-hiding: чужое —
 [Авторизация](/architecture/authz).
 
 Если отношения нет → `PERMISSION_DENIED` (HTTP `403`) на interceptor-gated RPC, либо `NOT_FOUND` на
-scope-filtered (existence-hiding). Недоступность kacho-iam на request-path — `UNAVAILABLE`
+scope-filtered (existence-hiding). Недоступность kaname на request-path — `UNAVAILABLE`
 (fail-closed).
 
 ## Формат ошибок
@@ -194,7 +194,7 @@ scope-filtered (existence-hiding). Недоступность kacho-iam на req
     <tr><td><code>ALREADY_EXISTS</code></td><td>409</td><td>Create с уже занятым именем среди живых реестров project'а (<code>"registry %s already exists"</code>)</td></tr>
     <tr><td><code>FAILED_PRECONDITION</code></td><td>400</td><td>Состояние не позволяет: Delete непустого реестра (<code>"registry is not empty"</code>); потолок квоты на вид не назван ни на одной области видимости (признак <code>QUOTA_NOT_PROVISIONED</code>)</td></tr>
     <tr><td><code>RESOURCE_EXHAUSTED</code></td><td>429</td><td>Исчерпана квота на число ресурсов вида: потолок назван и выбран полностью (признак <code>QUOTA_EXCEEDED</code>) — см. <a href="/api/quotas">Квоты</a></td></tr>
-    <tr><td><code>UNAVAILABLE</code></td><td>503</td><td>Peer недоступен (kacho-iam / zot) — fail-closed для мутаций</td></tr>
+    <tr><td><code>UNAVAILABLE</code></td><td>503</td><td>Peer недоступен (kaname / zot) — fail-closed для мутаций</td></tr>
     <tr><td><code>UNAUTHENTICATED</code></td><td>401</td><td>Нет / невалиден JWT</td></tr>
     <tr><td><code>PERMISSION_DENIED</code></td><td>403</td><td>Нет нужного отношения в authz-Check (interceptor-gated RPC)</td></tr>
     <tr><td><code>INTERNAL</code></td><td>500</td><td>Внутренняя ошибка (фиксированный текст, <strong>без утечки SQL/pgx</strong>)</td></tr>

@@ -214,7 +214,7 @@ describe("внутренний словарь не выходит на поль�
     const cases = [
       'export const C = { description: "Балансировщик-родитель. Within-service FK → load_balancers." };',
       'export const C = { description: "Зона размещения (immutable после Create)." };',
-      'export const C = () => <Result subTitle="Требуется FGA-relation admin@cluster:cluster_kacho_root." />;',
+      'export const C = () => <Result subTitle="Требуется FGA-relation admin@cluster:cluster_root." />;',
       'export const C = { message: "Backend не вернул ответа" };',
       'export const C = { title: "Смотри KAC-246" };',
       'export const C = { label: "Значение project_id" };',

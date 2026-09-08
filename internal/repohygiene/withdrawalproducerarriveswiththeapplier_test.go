@@ -30,7 +30,7 @@ const (
 	// стережёт обвал обхода, а не рост дерева.
 	withdrawalCensusFloor = 300
 	// reconcileDeclFile — файл, объявляющий вид расхождения без исхода.
-	reconcileDeclFile = "services/iam/internal/apps/kacho/moduleroles/reconcile.go"
+	reconcileDeclFile = "services/iam/internal/apps/kaname/moduleroles/reconcile.go"
 	// liveNotDeclaredKind — сам вид. Предмет гейта — именно он: строка живёт,
 	// объявления нет, снять нечем.
 	liveNotDeclaredKind = "LiveNotDeclared"

@@ -79,6 +79,32 @@ COLLECTION_GLOBS = (
 )
 
 
+# SHARD_DOC — документ, из которого выведено разбиение. Его таблица §2 несёт вес
+# каждой суиты, а §4 берёт из неё долю раннера.
+SHARD_DOC = "deploy/E2E-SHARDS.md"
+
+# SHARD_DOC_ROW — размеченная строка таблицы весов: имя суиты, коллекции, запросы.
+# Итоговая строка выделена жирным и потому разбирается отдельным образцом: одна
+# грамматика на обе дала бы «итого» суитой.
+SHARD_DOC_ROW = re.compile(r'^\|\s*([a-z][a-z0-9-]*)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|')
+SHARD_DOC_TOTAL = re.compile(r'^\|\s*\*\*итого\*\*\s*\|\s*\*\*(\d+)\*\*\s*\|\s*\*\*(\d+)\*\*\s*\|')
+
+
+def shard_doc_weights(text: str) -> tuple[dict[str, tuple[int, int]], tuple[int, int] | None]:
+    """Строки таблицы весов документа: suite -> (коллекций, запросов) плюс итог."""
+    rows: dict[str, tuple[int, int]] = {}
+    total: tuple[int, int] | None = None
+    for line in text.splitlines():
+        m = SHARD_DOC_ROW.match(line)
+        if m:
+            rows[m.group(1)] = (int(m.group(2)), int(m.group(3)))
+            continue
+        m = SHARD_DOC_TOTAL.match(line)
+        if m:
+            total = (int(m.group(1)), int(m.group(2)))
+    return rows, total
+
+
 def _transports_module():
     """Тот же вывод спроса, что исполняет прогонщик, — не вторая его реализация.
 
@@ -154,8 +180,54 @@ def _ban6_module():
     return _BAN6_MOD
 
 
+# ЛИДИРУЮЩАЯ пара «N коллекций / M запросов» в пояснении шарда.
+#
+# ЯКОРЬ `^` — НЕСУЩИЙ, а не косметика. Дальше в тех же пояснениях стоят ЧУЖИЕ
+# числа той же формы: «(122 запроса в коллекциях)» у nlb, «vpc 21, storage 11,
+# nlb 3 запроса» у iam. Разборщик без якоря схватил бы их и объявил находку там,
+# где число верно и относится к другому предмету.
+#
+# Слева бывает СУММА («7+9», «7+4+1») — по одному слагаемому на суиту шарда, в
+# порядке их объявления. Форм именно три, и все выведены из дерева, а не из
+# памяти; форма, о которой разборщик не знает, уходит из-под наблюдения молча,
+# поэтому нераспознанное пояснение — НАХОДКА, а не тишина.
+SHARD_WEIGHT = re.compile(
+    r'^(?P<colls>\d+(?:\s*\+\s*\d+)*)\s+коллекц\S*\s*/\s*(?P<reqs>\d+)\s+запрос')
+
+# Число коллекций, названное в прозе НЕ парой, а знаменателем предиката:
+# «→ 0 при 88 коллекциях». Тот же класс — выписанное число о дереве без
+# владельца, — только оно свидетельствует об ОБЪЁМЕ ОСМОТРЕННОГО, и устаревший
+# знаменатель говорит о полноте предиката неправду.
+PROSE_TOTAL = re.compile(r'при\s+(?P<total>\d+)\s+коллекц')
+
+
+def _requests_in(path: pathlib.Path) -> int:
+    """Листья коллекции — элементы, несущие `request` (та же единица, что у
+    прочих читателей коллекций дерева; папки вложены произвольно)."""
+    def walk(items) -> int:
+        n = 0
+        for it in items or []:
+            if "request" in it:
+                n += 1
+            if "item" in it:
+                n += walk(it["item"])
+        return n
+    return walk(json.loads(path.read_text(encoding="utf-8")).get("item", []))
+
+
+def tracked_requests(root: pathlib.Path, tree: dict[str, list[str]]) -> dict[str, int]:
+    """suite -> число запросов в её ОТСЛЕЖИВАЕМЫХ коллекциях."""
+    out: dict[str, int] = {}
+    for suite, stems in tree.items():
+        base = (root / "gateway" if suite == "api-gateway" else root / "services" / suite)
+        base = base / "tests" / "newman" / "collections"
+        out[suite] = sum(_requests_in(base / f"{st}.postman_collection.json") for st in stems)
+    return out
+
+
 def check(root: pathlib.Path, manifest_path: pathlib.Path, *,
-          ban6: dict | None = None) -> tuple[list[str], dict]:
+          ban6: dict | None = None,
+          shard_doc: pathlib.Path | None = None) -> tuple[list[str], dict]:
     """`ban6` — перепись популяции запрета #6; по умолчанию берётся из дерева.
 
     Параметр существует ради самопроверки: инъекция на СИНТЕТИЧЕСКОЙ переписи
@@ -430,6 +502,79 @@ def check(root: pathlib.Path, manifest_path: pathlib.Path, *,
                     f"компонент НЕ поднимает: полоса проверялась бы транспортом, "
                     f"которого на стенде нет")
 
+    # 10. ЧИСЛА, ВЫПИСАННЫЕ В ПРОЗЕ МАНИФЕСТА, СХОДЯТСЯ С ДЕРЕВОМ.
+    #
+    # Пояснение шарда открывается его весом («N коллекций / M запросов»), и вес
+    # этот читается как факт о СЕГОДНЯШНЕМ дереве: по нему судят, стоит ли шард
+    # отдельного раннера и не пора ли его делить. Выписанное число владельца не
+    # имеет — правит его тот, кто наткнётся, — поэтому стареет молча и утаскивает
+    # за собой выводы, сделанные из него.
+    #
+    # Замер, из которого пункт заведён (#2207): число КОЛЛЕКЦИЙ разошлось у трёх
+    # шардов из пяти, число ЗАПРОСОВ — у ПЯТИ из пяти.
+    reqs_tree = tracked_requests(root, tree)
+    weights_read = 0
+    for sh in shards:
+        why = sh.get("why", "")
+        m = SHARD_WEIGHT.match(why)
+        if not m:
+            findings.append(
+                f"шард '{sh['id']}': пояснение не открывается весом вида "
+                f"«N коллекций / M запросов» — форма, о которой разборщик не знает, "
+                f"уходит из-под наблюдения молча, поэтому это находка, а не тишина")
+            continue
+        weights_read += 1
+        parts = [int(x) for x in re.split(r'\s*\+\s*', m.group("colls"))]
+        want_parts = [len(tree.get(su, [])) for su in sh["suites"]]
+        want_colls, want_reqs = sum(want_parts), sum(reqs_tree.get(su, 0) for su in sh["suites"])
+        # Слагаемые судятся ПОРАЗДЕЛЬНО, если их несколько: сумма сходится и при
+        # том, что одна суита выросла ровно на столько, на сколько усохла другая.
+        if len(parts) > 1 and parts != want_parts:
+            findings.append(
+                f"шард '{sh['id']}': пояснение называет коллекции по суитам "
+                f"{'+'.join(map(str, parts))}, дерево — {'+'.join(map(str, want_parts))} "
+                f"({', '.join(sh['suites'])})")
+        elif sum(parts) != want_colls:
+            findings.append(
+                f"шард '{sh['id']}': пояснение называет {sum(parts)} коллекций, "
+                f"в дереве {want_colls}")
+        if int(m.group("reqs")) != want_reqs:
+            findings.append(
+                f"шард '{sh['id']}': пояснение называет {m.group('reqs')} запросов, "
+                f"в дереве {want_reqs}")
+    if shards and weights_read == 0:
+        findings.append("ни у одного шарда вес не прочитан — предикат ослеп, "
+                        "и «ноль находок» здесь было бы свойством разборщика")
+
+    # То же для знаменателя предиката в прозе манифеста: «→ 0 при N коллекциях».
+    # Числитель предиката прогоняется его автором; знаменатель — объём
+    # осмотренного, и устаревший он говорит о полноте предиката неправду.
+    # Обход РЕКУРСИВНЫЙ, а не по верхнему уровню. Сегодня знаменатель в манифесте
+    # один и лежит наверху, поэтому перепись от этого не меняется — сказано
+    # затем, чтобы расширение не приняли за находку. Обход верхнего уровня был бы
+    # слепой зоной by construction: знаменатель, записанный в пояснении
+    # транспорта, не попал бы под наблюдение НИ КРАСНЫМ, НИ ЗЕЛЁНЫМ.
+    def _prose(node, path=""):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                yield from _prose(v, f"{path}.{k}" if path else k)
+        elif isinstance(node, list):
+            for i, v in enumerate(node):
+                yield from _prose(v, f"{path}[{i}]")
+        elif isinstance(node, str):
+            yield path, node
+
+    prose_totals = 0
+    for where, line in _prose(manifest):
+        m = PROSE_TOTAL.search(line)
+        if m:
+            prose_totals += 1
+            if int(m.group("total")) != tree_total:
+                findings.append(
+                    f"поле '{where}': предикат объявляет знаменатель {m.group('total')} "
+                    f"коллекций, в дереве {tree_total} — объём осмотренного назван "
+                    f"неверно, и полнота предиката читается шире, чем есть")
+
     # Поперечный домен НАЗЫВАЕТСЯ переписью: у него нет своего сервиса, и
     # «на каком шарде он измеряется» иначе восстанавливается только чтением
     # манифеста вместе с картой носителей — то есть не восстанавливается.
@@ -442,6 +587,68 @@ def check(root: pathlib.Path, manifest_path: pathlib.Path, *,
                 "shards": [sh["id"] for sh in shards
                            if any(d in gate_b6.get(c, []) for c in sh["components"])],
             }
+
+    # 11. ТАБЛИЦА ВЕСОВ В ДОКУМЕНТЕ РАЗБИЕНИЯ СХОДИТСЯ С ДЕРЕВОМ.
+    #
+    # Документ честнее прочих: он называет ревизию своего замера, поэтому его
+    # числа читаются как свидетельство о ней. Но таблица §2 подписана «Числа —
+    # запросы коллекций суиты, не догадка», а §4 выводит из неё долю раннера —
+    # то есть из свидетельства делается вывод о СЕГОДНЯШНЕМ стенде. Владельца у
+    # выписанного числа нет: правит его тот, кто наткнётся.
+    #
+    # Замер, из которого пункт заведён (#2226): расходились ВСЕ ВОСЕМЬ строк
+    # таблицы и итог. Исходов у задачи было два — вывести таблицу из дерева либо
+    # объявить её свидетельством явно; выбран первый: тогда у неё появляется
+    # держатель, а не дата.
+    #
+    # Судится РАЗМЕЧЕННАЯ строка таблицы, а не текст: имена суит стоят в этом же
+    # документе прозой и в перечнях, и поиск по подстроке считал бы объяснение
+    # предметом.
+    # Путь документа — ПАРАМЕТР ради инъекции: подменить его нельзя ничем, кроме
+    # явного аргумента, поэтому боевой прогон читает ровно то, что объявлено.
+    doc_path = shard_doc if shard_doc is not None else root / SHARD_DOC
+    if not doc_path.is_file():
+        findings.append(
+            f"документ разбиения {SHARD_DOC} не прочитан: таблица весов осталась бы "
+            f"вне наблюдения молча, а «ноль находок» здесь означало бы «ноль прочитанного»")
+        doc_rows: dict[str, tuple[int, int]] = {}
+        doc_total: tuple[int, int] | None = None
+    else:
+        doc_rows, doc_total = shard_doc_weights(doc_path.read_text(encoding="utf-8"))
+        if not doc_rows:
+            findings.append(
+                f"в {SHARD_DOC} не прочитано НИ ОДНОЙ строки таблицы весов — разборщик "
+                f"перестал её видеть, и молчание пункта ничего не означает")
+    for suite in sorted(doc_rows):
+        colls, reqs = doc_rows[suite]
+        if suite not in tree:
+            findings.append(
+                f"{SHARD_DOC}: таблица называет суиту '{suite}', которой в дереве нет — "
+                f"строка пережила свой предмет")
+            continue
+        want_c, want_r = len(tree[suite]), reqs_tree.get(suite, 0)
+        if (colls, reqs) != (want_c, want_r):
+            findings.append(
+                f"{SHARD_DOC}: суита '{suite}' объявлена как {colls}/{reqs} "
+                f"(коллекций/запросов), в дереве {want_c}/{want_r} — §4 выводит из этой "
+                f"таблицы долю раннера, то есть из устаревшего числа делается вывод о "
+                f"сегодняшнем стенде")
+    for suite in sorted(tree):
+        if suite not in doc_rows:
+            findings.append(
+                f"{SHARD_DOC}: суита '{suite}' есть в дереве и НЕ названа таблицей — "
+                f"её вес не участвует ни в одном выводе документа")
+    if doc_total is not None:
+        want = (sum(len(v) for v in tree.values()), sum(reqs_tree.values()))
+        if doc_total != want:
+            findings.append(
+                f"{SHARD_DOC}: итог таблицы {doc_total[0]}/{doc_total[1]}, "
+                f"в дереве {want[0]}/{want[1]}")
+    elif doc_rows:
+        findings.append(
+            f"{SHARD_DOC}: строка итога таблицы не прочитана — сумма, сходящаяся с "
+            f"самой собой при разошедшихся строках, и есть тот случай, ради которого "
+            f"итог судится отдельно")
 
     stats = {
         "ban6_cross_domains": cross_b6,
@@ -460,6 +667,10 @@ def check(root: pathlib.Path, manifest_path: pathlib.Path, *,
         "shards": len(shards),
         "gates": len(gates),
         "per_suite": {s: len(tree[s]) for s in sorted(tree)},
+        "requests_tree": sum(reqs_tree.values()),
+        "shard_weights_read": weights_read,
+        "prose_totals_read": prose_totals,
+        "doc_weight_rows_read": len(doc_rows),
     }
     return findings, stats
 
@@ -469,6 +680,10 @@ def report(root: pathlib.Path, manifest_path: pathlib.Path) -> int:
     print("=== покрытие шардов (единица счёта — отслеживаемая git коллекция) ===")
     print(f"осмотрено: суит {st['suites_tree']}, коллекций {st['collections_tree']}, "
           f"шардов {st['shards']}, переключаемых компонентов {st['gates']}")
+    # Строки таблицы весов НАЗЫВАЮТСЯ числом: «расхождений ноль» обязано быть
+    # отличимо от «таблицу не прочитали».
+    print(f"вес суит: строк таблицы {SHARD_DOC} прочитано {st['doc_weight_rows_read']}, "
+          f"запросов в дереве {st['requests_tree']}")
     print(f"ban #6: прочитано .proto {st['ban6_proto_files_read']}, регистраций "
           f"Internal*-служб в прод-коде {st['ban6_registrations_found']}")
     print(f"ban #6: доменов с Internal*-контрактом {st['ban6_domains_with_contract']}, "
@@ -491,6 +706,9 @@ def report(root: pathlib.Path, manifest_path: pathlib.Path) -> int:
     for var, dialers in sorted(st["transport_dialers"].items()):
         print(f"   {var} ← набирают: {', '.join(dialers) if dialers else '—'}")
     print(f"назначено: суит {st['suites_assigned']}, коллекций {st['collections_assigned']}")
+    print(f"числа прозы манифеста: весов шардов прочитано {st['shard_weights_read']} "
+          f"из {st['shards']}, знаменателей предиката {st['prose_totals_read']}; "
+          f"в дереве коллекций {st['collections_tree']}, запросов {st['requests_tree']}")
     for s, n in st["per_suite"].items():
         owner = next((sh["id"] for sh in json.loads(manifest_path.read_text())["shards"]
                       if s in sh["suites"]), "—")
@@ -648,7 +866,7 @@ def _self_test() -> int:
     ok = True
 
     def run(m: dict, label: str, want_red: bool, expect: str | None = None,
-            ban6: dict | None = None) -> None:
+            ban6: dict | None = None, shard_doc: pathlib.Path | None = None) -> None:
         """`expect` — подстрока, которая ОБЯЗАНА встретиться среди находок.
 
         Без неё инъекция доказывает лишь чувствительность гейта к правке манифеста,
@@ -663,7 +881,7 @@ def _self_test() -> int:
             json.dump(m, fh)
             p = pathlib.Path(fh.name)
         try:
-            findings, _ = check(ROOT, p, ban6=ban6)
+            findings, _ = check(ROOT, p, ban6=ban6, shard_doc=shard_doc)
         finally:
             p.unlink(missing_ok=True)
         red = bool(findings)
@@ -683,6 +901,65 @@ def _self_test() -> int:
     print("=== самопроверка гейта (инъекция в обе стороны) ===")
     run(base, "законный близнец: дерево как есть", want_red=False)
 
+    # (п.11) РАСПОЗНАВАТЕЛЬ таблицы весов — сперва он сам, потом сравнение.
+    # Форма, о которой он не знает, даёт не красное и не зелёное, а молчание:
+    # строки просто не попадают в перепись, и «ноль расхождений» становится
+    # свойством разборщика.
+    sample = ("| суита | коллекций | запросов |\n"
+              "|---|---:|---:|\n"
+              "| vpc | 18 | 3709 |\n"
+              "| **итого** | **98** | **9391** |\n")
+    rows, total = shard_doc_weights(sample)
+    good = rows == {"vpc": (18, 3709)} and total == (98, 9391)
+    ok = ok and good
+    print(f"  [{'ok ' if good else 'FAIL'}] (п.11) разборщик читает строку суиты и "
+          f"строку итога раздельно — строк={rows}, итог={total}")
+    # Итог выделен жирным и суитой быть не должен: одна грамматика на обе дала бы
+    # «итого» суитой, и перепись выросла бы на строку, которой нет.
+    good = "итого" not in rows
+    ok = ok and good
+    print(f"  [{'ok ' if good else 'FAIL'}] (п.11) строка итога суитой не считается")
+
+    def _doc_with(rel_changes: dict[str, tuple[int, int]]) -> pathlib.Path:
+        """Копия боевого документа с подменёнными числами названных суит."""
+        body = (ROOT / SHARD_DOC).read_text(encoding="utf-8")
+        out = []
+        for line in body.splitlines():
+            m = SHARD_DOC_ROW.match(line)
+            if m and m.group(1) in rel_changes:
+                c, r = rel_changes[m.group(1)]
+                line = re.sub(r'^(\|\s*[a-z][a-z0-9-]*\s*\|\s*)\d+(\s*\|\s*)\d+(\s*\|)',
+                              rf'\g<1>{c}\g<2>{r}\g<3>', line)
+            out.append(line)
+        fh = tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8")
+        fh.write("\n".join(out) + "\n")
+        fh.close()
+        return pathlib.Path(fh.name)
+
+    stale = _doc_with({"vpc": (16, 3384)})
+    try:
+        run(base, "(п.11) вес суиты в документе разошёлся с деревом", want_red=True,
+            expect="суита 'vpc' объявлена как 16/3384", shard_doc=stale)
+    finally:
+        stale.unlink(missing_ok=True)
+
+    missing = pathlib.Path(tempfile.mkdtemp()) / "нет-такого.md"
+    run(base, "(п.11) документа разбиения нет — отказ, а не тишина", want_red=True,
+        expect="осталась бы вне наблюдения молча", shard_doc=missing)
+
+    empty = tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8")
+    empty.write("# без таблицы\n")
+    empty.close()
+    try:
+        run(base, "(п.11) таблицы в документе нет — разборщик ослеп, и это находка",
+            want_red=True, expect="НИ ОДНОЙ строки таблицы весов",
+            shard_doc=pathlib.Path(empty.name))
+    finally:
+        pathlib.Path(empty.name).unlink(missing_ok=True)
+
+    run(base, "(п.11) законный близнец: боевой документ сходится с деревом",
+        want_red=False, shard_doc=ROOT / SHARD_DOC)
+
     # (а) шард потерял суиту целиком
     m = copy.deepcopy(base)
     m["shards"] = [s for s in m["shards"] if s["id"] != "edge"]
@@ -700,7 +977,7 @@ def _self_test() -> int:
 
     # (г) компонент объявлен включённым, но выключить его нечем
     m = copy.deepcopy(base)
-    m["shards"][0]["components"] = m["shards"][0]["components"] + ["kacho-iam"]
+    m["shards"][0]["components"] = m["shards"][0]["components"] + ["kaname"]
     run(m, "(г) компонент вне gates", want_red=True)
 
     # (д) предпосылка гейта: gates обязаны быть условны в Chart.yaml
@@ -874,6 +1151,84 @@ def _self_test() -> int:
                   proto_files_read=live["proto_files_read"])
     run(base, "(р) контракты есть, провязок ноль ⇒ отказ предиката", want_red=True,
         expect="предикат провязки не нашёл предмет", ban6=broken)
+
+    # ── (т…) ПУНКТ 10: числа прозы манифеста сходятся с деревом.
+    #
+    # Инъекции правят ТОЛЬКО пояснение шарда, а прочие пункты читают `suites`,
+    # `components` и `gates` — значит красное здесь не может прийти от соседа
+    # by construction, и ожидание у каждой инъекции ИМЕНОВАННОЕ.
+
+    def _rewrite_why(m: dict, shard_id: str, why: str) -> dict:
+        for sh in m["shards"]:
+            if sh["id"] == shard_id:
+                sh["why"] = why
+        return m
+
+    # (т1) число КОЛЛЕКЦИЙ разошлось.
+    m = copy.deepcopy(base)
+    _rewrite_why(m, "vpc", "999 коллекций / 3709 запросов — вес выписан неверно.")
+    run(m, "(т1) вес шарда называет чужое число коллекций", want_red=True,
+        expect="называет 999 коллекций")
+
+    # (т2) число ЗАПРОСОВ разошлось. Коллекции при этом верны — значит красное
+    # приходит от второй половины пары, а не от первой.
+    m = copy.deepcopy(base)
+    _rewrite_why(m, "vpc", "18 коллекций / 999 запросов — вес выписан неверно.")
+    run(m, "(т2) вес шарда называет чужое число запросов", want_red=True,
+        expect="называет 999 запросов")
+
+    # (т3) СУММА СХОДИТСЯ, а слагаемые переставлены. Без поразрядной сверки это
+    # молчало бы: одна суита выросла ровно на столько, на сколько усохла соседняя.
+    m = copy.deepcopy(base)
+    _rewrite_why(m, "compute-storage", "9+7 коллекций / 1334 запроса — слагаемые переставлены.")
+    run(m, "(т3) сумма верна, слагаемые по суитам — нет", want_red=True,
+        expect="по суитам 9+7")
+
+    # (т4) ЗАКОННЫЙ БЛИЗНЕЦ: вес переписан ДРУГИМИ СЛОВАМИ, числа верны. Гейт
+    # обязан молчать — иначе он ловил бы правку прозы, а не расхождение с деревом.
+    m = copy.deepcopy(base)
+    _rewrite_why(m, "vpc", "18 коллекций / 3709 запросов — довод переписан целиком, "
+                           "числа не тронуты.")
+    run(m, "(т4) близнец: та же пара, другая проза", want_red=False)
+
+    # (т5) ФОРМА, О КОТОРОЙ РАЗБОРЩИК НЕ ЗНАЕТ, — находка, а не тишина. Иначе
+    # достаточно было бы переписать пояснение иначе, чтобы вес ушёл из-под
+    # наблюдения, и «ноль находок» стало бы свойством разборщика.
+    m = copy.deepcopy(base)
+    _rewrite_why(m, "vpc", "самая тяжёлая суита по объёму, отдельный раннер.")
+    run(m, "(т5) пояснение не открывается весом", want_red=True,
+        expect="уходит из-под наблюдения молча")
+
+    # (т6) ЧУЖИЕ ЧИСЛА ТОЙ ЖЕ ФОРМЫ В ХВОСТЕ пояснения гейт не судит — они про
+    # другой предмет («122 запроса в коллекциях» у nlb — это запросы В ЧУЖОЙ
+    # домен). Разборщик без якоря `^` схватил бы их и объявил находку там, где
+    # число верно.
+    m = copy.deepcopy(base)
+    _rewrite_why(m, "vpc", "18 коллекций / 3709 запросов — из них 7 коллекций / "
+                           "12 запросов ходят в geo.")
+    run(m, "(т6) близнец: числа той же формы в хвосте не судятся", want_red=False)
+
+    # (т7) ЗНАМЕНАТЕЛЬ ПРЕДИКАТА в прозе манифеста. Числитель прогоняет автор;
+    # знаменатель — объём осмотренного, и устаревший он говорит о полноте
+    # предиката неправду.
+    m = copy.deepcopy(base)
+    m["_uif"] = [ln.replace("при 98 коллекциях", "при 7 коллекциях") for ln in m["_uif"]]
+    run(m, "(т7) знаменатель предиката разошёлся с деревом", want_red=True,
+        expect="объём осмотренного назван неверно")
+
+    # (т8) СЛЕПАЯ ЗОНА, СНЯТАЯ РЕКУРСИВНЫМ ОБХОДОМ. Знаменатель, записанный не
+    # на верхнем уровне манифеста, а в пояснении вложенного объявления. Обход
+    # верхнего уровня не увидел бы его НИ КРАСНЫМ, НИ ЗЕЛЁНЫМ — то есть молчание
+    # было бы свойством разборщика. Сегодня такого знаменателя в дереве нет,
+    # поэтому перепись расширение не меняет; способность его увидеть держит
+    # ЭТА инъекция, а не наличие предмета.
+    m = copy.deepcopy(base)
+    m["optional_transports"] = dict(m["optional_transports"])
+    first = sorted(m["optional_transports"])[0]
+    m["optional_transports"][first] = dict(m["optional_transports"][first],
+                                           why="набирают его при 7 коллекциях")
+    run(m, "(т8) знаменатель в ГЛУБИНЕ манифеста тоже судится", want_red=True,
+        expect="объём осмотренного назван неверно")
 
     print("\n=== самопроверка предиката популяции (синтетическое дерево) ===")
     ok = _self_test_population() and ok

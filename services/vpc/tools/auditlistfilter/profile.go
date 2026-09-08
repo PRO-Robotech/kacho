@@ -115,11 +115,11 @@ const quotaIsAProjectProperty = "Quota rows are a property of the project, not o
 // every narrowing listing the day it is written, rather than after the incident that
 // revealed it (#651, #684).
 var vpcEnumerationSources = []listfiltergate.EnumerationSource{
-	// vpc's own client to kacho-iam: "may this subject act on this object"
+	// vpc's own client to kaname: "may this subject act on this object"
 	// (InternalIAMService.Check). One method along from it is "which objects may this
 	// subject act on" — the form the ban must already refuse when it is written.
 	{Dir: "internal/check", Type: "IAMCheckClient", Role: listfiltergate.AsksVerdicts},
-	// The SHARED narrow port to kacho-iam's AuthorizeService, resolved from the
+	// The SHARED narrow port to kaname's AuthorizeService, resolved from the
 	// module root because it is foundation rather than service code. It is the
 	// shortest path from "narrow this page" to "enumerate the universe": the RPC it
 	// fronts is the one that enumerates (AuthorizeService.ListObjects), so a profile
@@ -159,11 +159,11 @@ var Profile = listfiltergate.Profile{
 	// Copying iam's answer here would have been wrong twice over: iam's sources are
 	// its own — the store's port and a paged verdict resolver over its own tables —
 	// and kacho-vpc has neither. It holds grants nowhere; every authorization
-	// question it asks goes to kacho-iam, through the ports below.
+	// question it asks goes to kaname, through the ports below.
 	EnumerationSources: vpcEnumerationSources,
 	SubjectScopers:     []string{"ListForCaller"},
 	ProtoFiles:         []string{"kacho/cloud/vpc/v1/address_service.proto"},
-	FGAModel:           "kacho/cloud/iam/v1/fga_model.fga",
+	FGAModel:           "kaname/cloud/iam/v1/fga_model.fga",
 
 	Listings: map[string]listfiltergate.Listing{
 		"address.List":          {Shape: listfiltergate.RowFilter},

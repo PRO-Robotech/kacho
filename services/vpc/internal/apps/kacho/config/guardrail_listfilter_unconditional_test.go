@@ -36,9 +36,9 @@ func TestScopeFilteredRPCs_AreReadByTheGuardItself(t *testing.T) {
 
 	// Мягкий проход запрещён, пока метки есть, — и отказ обязан назвать, ЧТО
 	// именно останется без авторизации, иначе оператор снимет стража, а не ручку.
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.AuthZ.ListFilter.Enabled = true
-	c.AuthZ.ListFilter.AuthorizeEndpoint = "kacho-iam:9090"
+	c.AuthZ.ListFilter.AuthorizeEndpoint = "kaname:9090"
 	c.AuthZ.ListFilter.FailOpen = true
 
 	err := c.ValidateListFilter()
@@ -57,7 +57,7 @@ func TestScopeFilteredRPCs_AreReadByTheGuardItself(t *testing.T) {
 // «фильтр не нужен» никем не обеспечено, и в тот момент, когда метки уйдут из
 // карты, страж молча перестанет требовать фильтр для семи публичных List.
 func TestValidateListFilter_RequiresFilter_EvenWithNoScopeFilteredMarks(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.AuthZ.ListFilter.Enabled = false
 
 	err := c.validateListFilterAgainst(nil)
@@ -90,7 +90,7 @@ func TestValidateListFilter_RequiresEndpoint_EvenWithNoScopeFilteredMarks(t *tes
 // процессе, которому dev-посадка запрещена отдельным правилом. Фикстуры его не
 // зовут вовсе, поэтому покрытие dev ничего в них не ломает.
 func TestValidateListFilter_Dev_IsGuardedToo(t *testing.T) {
-	c := prodCfg(ModeDev, "kacho-iam:9091")
+	c := prodCfg(ModeDev, "kaname:9091")
 	c.AuthZ.ListFilter.Enabled = false
 
 	err := c.ValidateListFilter()
@@ -107,9 +107,9 @@ func TestValidateListFilter_Dev_IsGuardedToo(t *testing.T) {
 // то, что страж проверяет.
 func TestValidateListFilter_LegitimateConfiguration_IsAccepted(t *testing.T) {
 	for _, mode := range []Mode{ModeDev, ModeProduction, ModeProductionStrict} {
-		c := prodCfg(mode, "kacho-iam:9091")
+		c := prodCfg(mode, "kaname:9091")
 		c.AuthZ.ListFilter.Enabled = true
-		c.AuthZ.ListFilter.AuthorizeEndpoint = "kacho-iam:9090"
+		c.AuthZ.ListFilter.AuthorizeEndpoint = "kaname:9090"
 		c.AuthZ.ListFilter.FailOpen = false
 
 		require.NoErrorf(t, c.ValidateListFilter(),
@@ -125,7 +125,7 @@ func TestValidateListFilter_LegitimateConfiguration_IsAccepted(t *testing.T) {
 // агрегатный валидатор был ловушкой — тот, кто перевёл бы композиционный корень на
 // него вместо явной пары, тихо остался бы без проверки фильтра.
 func TestValidateBoot_IncludesTheListFilterGuard(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091")
+	c := prodCfg(ModeProduction, "kaname:9091")
 	c.AuthZ.ListFilter.Enabled = false // ровно одно ослабленное измерение
 	var m MTLSConfig
 	m.PublicServerMTLS.Enable = true

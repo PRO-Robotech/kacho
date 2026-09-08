@@ -20,6 +20,7 @@ import (
 
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
 	"github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
 	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
@@ -41,10 +42,8 @@ import (
 	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/config"
-	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/quota"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/check"
 	geoclient "github.com/PRO-Robotech/kacho/services/registry/internal/clients/geo"
 	iamclient "github.com/PRO-Robotech/kacho/services/registry/internal/clients/iam"
@@ -230,7 +229,7 @@ func runServe(cfg config.Config) error {
 			grpc.WithTransportCredentials(authzCreds),
 			grpcclient.KeepaliveDialOption(true))
 		if err != nil {
-			return fmt.Errorf("dial kacho-iam internal: %w", err)
+			return fmt.Errorf("dial kaname internal: %w", err)
 		}
 		defer func() { _ = authzConn.Close() }()
 		// Носитель зависимости, объявленной посадкой выше. До этой строки
@@ -242,7 +241,7 @@ func runServe(cfg config.Config) error {
 	// ── ребро registry→iam PUBLIC (:9090, mTLS): ProjectService.Get (existence-
 	// валидация project на Create). ОТДЕЛЬНЫЙ conn — ProjectService зарегистрирован
 	// только на public :9090; вызов на :9091 (authzConn) вернул бы Unimplemented →
-	// фикс. INTERNAL на Create. ServerName public dial-host'а (kacho-iam.*) ≠ internal,
+	// фикс. INTERNAL на Create. ServerName public dial-host'а (kaname.*) ≠ internal,
 	// поэтому раздельные mTLS-creds (IAMProjectMTLS vs IAMAuthzMTLS) обязательны.
 	var projectConn *grpc.ClientConn
 	if cfg.IAMProjectGRPCAddr != "" {
@@ -254,7 +253,7 @@ func runServe(cfg config.Config) error {
 			grpc.WithTransportCredentials(projectCreds),
 			grpcclient.KeepaliveDialOption(true))
 		if err != nil {
-			return fmt.Errorf("dial kacho-iam project: %w", err)
+			return fmt.Errorf("dial kaname project: %w", err)
 		}
 		defer func() { _ = projectConn.Close() }()
 	}
@@ -330,44 +329,35 @@ func runServe(cfg config.Config) error {
 	}
 
 	// ── совещательная полоса учёта числа ресурсов ────────────────────────────
-	// Величины живут у kacho-iam на ВНУТРЕННЕМ слушателе (:9091) — админская
+	// Величины живут у kaname на ВНУТРЕННЕМ слушателе (:9091) — админская
 	// поверхность, которой на публичном нет и быть не должно. Зеркало аккаунта
 	// берётся из УЖЕ существующего вызова к соседу за проектом (:9090), новым
 	// ребром работа не обзаводится.
 	//
-	// Полоса собирается ТОЛЬКО когда есть оба соседа и база: typed-nil в
-	// интерфейсном поле означал бы non-nil интерфейс с nil внутри, и проверка
-	// `!= nil` у вызывающего пропустила бы вызов. Её отсутствие НЕ означает «нет
-	// предела»: списание остаётся за триггером, теряется ровно ранний
-	// синхронный отказ — и это состояние объявлено в журнале, чтобы «полосы нет»
-	// было отличимо от «полоса есть и молчит».
-	var quotaHandler *handler.QuotaHandler
-	if limitClient := iamclient.NewLimitClient(iamConn); limitClient != nil {
-		if store := pg.NewQuotaStore(pool); store != nil {
-			quotaGuard := quota.NewGuard(store, limitClient, iamAdapter, "registry")
-			registryUC.WithQuotaGuard(quotaGuard)
-			// Чтение квот арендатором — та же полоса, что и ранний отказ: у чтения
-			// и у полосы ровно два источника, и они одни и те же.
-			quotaHandler = handler.NewQuotaHandler(quotaGuard)
-		}
-
-		// Снимок величины обязан ДОГОНЯТЬ авторитет: без тянущего строка учёта,
-		// заведённая один раз, живёт со своей величиной вечно, и смена предела
-		// администратором не доезжает до проекта никогда. Показывать арендатору
-		// такой снимок значило бы громко назвать число, которое не догонит
-		// назначенное, — поэтому чтение и тянущий едут вместе.
-		stopQuotaSync, qerr := corequota.StartLimitSyncer(
-			ctx, pool, limitClient, pg.QuotaSchema, corequota.Config{}, logger)
-		if qerr != nil {
-			return fmt.Errorf("start quota limit syncer: %w", qerr)
-		}
-		defer stopQuotaSync()
-	} else {
-		logger.Warn("resource-count quota: no internal iam endpoint, the limit snapshot will " +
-			"NEVER catch up with the authority — the charging trigger still enforces, but an " +
-			"administrator raising or lowering a ceiling has no effect on this process")
+	// Ребро registry→домен величин: ОДНО ребро, ДВЕ полосы — разрешение величины
+	// на пути запроса и фоновая дельта, которой снимок догоняет авторитет.
+	//
+	// Адрес ОБЪЯВЛЕН ручкой, а не выведен из адреса авторизации. Ветки «полоса не
+	// собирается, потому что соседа не задали» здесь БОЛЬШЕ НЕТ: незаданное
+	// объявление отвергает страж старта, а объявленное отсутствие — законная
+	// посадка, в которой тянущий не заводится, а состояние курсора называет
+	// причину. Приёмка
+	// `docs/specs/sub-phase-KAN-QUOTA-1-limit-authority-leaves-iam-acceptance.md`,
+	// стадия S1.
+	quotaEdge, stopQuotaEdge, qerr := buildQuotaAuthorityEdge(ctx, cfg, pool, iamAdapter, logger)
+	if qerr != nil {
+		return qerr
 	}
-	logger.Info("quota_guard", "wired", iamConn != nil)
+	defer stopQuotaEdge()
+
+	var quotaHandler *handler.QuotaHandler
+	if quotaEdge.Guard != nil {
+		registryUC.WithQuotaGuard(quotaEdge.Guard)
+		// Чтение квот арендатором — та же полоса, что и ранний отказ: у чтения
+		// и у полосы ровно два источника, и они одни и те же.
+		quotaHandler = handler.NewQuotaHandler(quotaEdge.Guard)
+	}
+	logger.Info("quota_guard", "wired", quotaEdge.Guard != nil)
 
 	// ── разрешитель осиротевших операций (durable LRO recovery) ───────────────
 	// Дренаж на SIGTERM ниже закрывает только штатное завершение. Всё остальное —
@@ -382,7 +372,7 @@ func runServe(cfg config.Config) error {
 	go lroReconciler.Run(ctx)
 
 	// ── register-drainer: owner-tuple register/unregister intent из registry_outbox
-	// применяется через kacho-iam fga-proxy (:9091, mTLS, идемпотентно, at-least-once,
+	// применяется через kaname fga-proxy (:9091, mTLS, идемпотентно, at-least-once,
 	// exactly-once claim FOR UPDATE SKIP LOCKED между репликами). iam недоступен →
 	// intent durable + retry (owner-tuple не теряется). Без него созданные реестры не
 	// получат owner/project-tuple → невидимы в authz-filtered List.
@@ -449,7 +439,7 @@ func runServe(cfg config.Config) error {
 		}
 	}()
 	// Отравление обязано быть паузой, а не потерей: без периодического redrive
-	// недоставленная регистрация оставляет объект без mirror-строки в kacho-iam, а
+	// недоставленная регистрация оставляет объект без mirror-строки в kaname, а
 	// значит без owner-tuple и без материализованных глаголов — невидимым в
 	// authz-фильтрованном List до ручной правки БД. См. redrive_backstop.go.
 	if rerr := startRedriveBackstop(ctx, pool, logger); rerr != nil {
@@ -879,7 +869,7 @@ func validateAuthMode(cfg config.Config, logger *slog.Logger) error {
 }
 
 // validateSecurityConfig — secure-by-default: операции без авторизации и mTLS
-// запрещены. Per-RPC authz Check (адрес kacho-iam) и mTLS на ОБОИХ листенерах
+// запрещены. Per-RPC authz Check (адрес kaname) и mTLS на ОБОИХ листенерах
 // обязательны; обойти их можно ТОЛЬКО в dev через
 // KACHO_REGISTRY_AUTHZ_BREAKGLASS=true.
 //
@@ -901,7 +891,7 @@ func validateSecurityConfig(cfg config.Config) error {
 	}
 	if cfg.AuthZIAMGRPCAddr == "" {
 		return fmt.Errorf("%sauthz Check required on both listeners: set "+
-			"KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR to the internal endpoint of kacho-iam (:9091)%s",
+			"KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR to the internal endpoint of kaname (:9091)%s",
 			bootRefusalModePrefix(cfg.Posture()), breakglassBypassHint(cfg.Posture()))
 	}
 	if !cfg.PublicServerMTLS.Enable || !cfg.InternalServerMTLS.Enable {
@@ -1081,8 +1071,18 @@ func describe(cfg config.Config, mode servicecontract.Mode, logger *slog.Logger,
 			OptIn:    cfg.AuthZTrustAnyForwarder,
 		},
 
+		// Домен доверия — ЗНАЧЕНИЕ: личность клиентского сертификата этот процесс
+		// разбирает, и разбирает её ОТНОСИТЕЛЬНО домена. Читается из той же
+		// функции, значение которой уезжает в пару звеньев извлечения личности,
+		// поэтому «страж пропустил» ⟺ «домен реально объявлен».
+		TrustDomain:     servicecontract.Value(cfg.TrustDomain()),
+		TrustDomainKnob: "KACHO_REGISTRY_AUTHZ_TRUST_DOMAIN",
+
 		Authz:     servicecontract.AuthzViaIAM,
 		CheckEdge: servicecontract.NewPeerEdge(cfg.AuthZIAMGRPCAddr, checkCreds),
+		// Перевод вопроса в контракт службы доступа приносит СЕРВИС: носитель
+		// принадлежит фундаменту и чужого контракта не знает (приёмка K3-1 §7.2).
+		PeerCheck: authziam.NewCheckClient,
 		// Окно кэша положительных вердиктов — оно же окно отзыва. Читается через
 		// `check.CacheWindow`, потому что ручка реестра несёт landed-значение
 		// «ноль = кэш выключен, отзыв немедленный», а носитель требует строго
@@ -1119,7 +1119,7 @@ func describe(cfg config.Config, mode servicecontract.Mode, logger *slog.Logger,
 		StreamBudget: servicecontract.Value(cfg.SubscriptionStreamBudget),
 
 		// Бюджет отказов объявляется ВЕЛИЧИНОЙ, а не изъятием: решение о доступе
-		// реестр принимает не у себя, а вопросом к kacho-iam, — то есть сетевой
+		// реестр принимает не у себя, а вопросом к kaname, — то есть сетевой
 		// сосед, которого шторм отказов может уронить, у него ЕСТЬ. До носителя
 		// этой отсечки у реестра не было вовсе (поле не заполнялось, а механизм
 		// читает неположительное как «ограничения нет»).

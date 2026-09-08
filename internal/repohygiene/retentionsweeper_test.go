@@ -233,7 +233,7 @@ func TestRetentionSweeperGateIsSilentOnForeignInjectionFixtures(t *testing.T) {
 }
 
 // retentionLoopFile — координата фоновой петли уборки.
-const retentionLoopFile = "services/iam/internal/apps/kacho/retention/sweeper.go"
+const retentionLoopFile = "services/iam/internal/apps/kaname/retention/sweeper.go"
 
 // TestRetentionLoopIsVisibleToTheFanoutGate — RET-SWP-09.
 //

@@ -27,7 +27,7 @@ const injectedChainlessRegister = `package clients
 import (
 	"context"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 )
 
 func apply(ctx context.Context, cli Client, p Payload) error {
@@ -49,7 +49,7 @@ const lawfulChainNamed = `package clients
 import (
 	"context"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 )
 
@@ -79,7 +79,7 @@ const lawfulRootObject = `package clients
 import (
 	"context"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 )
 
 func apply(ctx context.Context, cli Client, p Payload) error {
@@ -102,7 +102,7 @@ const lawfulUnregisterHasNoChain = `package clients
 import (
 	"context"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 )
 
 func apply(ctx context.Context, cli Client, p Payload) error {
@@ -144,7 +144,7 @@ const forwardOnly = `package clients
 import (
 	"context"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 )
 
 func apply(ctx context.Context, cli Client, p Payload) error {

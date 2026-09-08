@@ -305,7 +305,7 @@ func (RepositoryLifecycle) EnumDescriptor() ([]byte, []int) {
 // fga-proxy (RegisterResource), object-type `registry_registry`.
 type Registry struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID реестра. Prefix "reg" (kacho-corelib/ids.NewID). Immutable PK.
+	// ID реестра. Prefix "reg" (pkg/ids.NewID). Immutable PK.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// ID project-владельца (iam). Immutable после Create.
 	ProjectId string `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`

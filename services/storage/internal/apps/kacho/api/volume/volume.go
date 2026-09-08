@@ -111,7 +111,7 @@ type GeoClient interface {
 	RegionOfZone(ctx context.Context, zoneID string) (string, error)
 }
 
-// IAMClient — порт peer-валидации project_id через kacho-iam (ProjectService.Get,
+// IAMClient — порт peer-валидации project_id через kaname (ProjectService.Get,
 // fail-closed). Ребро storage→iam (one-way).
 type IAMClient interface {
 	EnsureProjectExists(ctx context.Context, projectID string) error
@@ -159,7 +159,7 @@ type UseCase struct {
 	iam       IAMClient
 	ops       operations.Repo
 	errStatus ErrToStatus
-	// registrar — синхронная регистрация owner-tuple в kacho-iam после commit
+	// registrar — синхронная регистрация owner-tuple в kaname после commit
 	// (immediate анти-BOLA-резолв; nil → sync-путь пропускается, остаётся async
 	// register-drainer как at-least-once backstop). Инжектится WithRegistrar.
 	registrar fgaregister.Registrar
@@ -171,7 +171,7 @@ type UseCase struct {
 	// dataPlane — объявлена ли плоскость данных. Тот же признак, что читает
 	// проводка сверщика: два решения об одном предмете не должны разъезжаться.
 	dataPlane bool
-	// listFilter — per-object фильтр видимости страницы List (kacho-iam
+	// listFilter — per-object фильтр видимости страницы List (kaname
 	// AuthorizeService.BatchCheck). nil → passthrough (dev / list-filter disabled;
 	// production boot-guard такую посадку запрещает). Инжектится WithListFilter.
 	listFilter *listnarrow.Narrower
@@ -300,7 +300,7 @@ func (u *UseCase) List(ctx context.Context, p Pagination) ([]*domain.Volume, str
 	if err != nil {
 		return nil, "", u.errStatus(err)
 	}
-	// Per-object видимость: страница уже прочитана курсором — спрашиваем kacho-iam
+	// Per-object видимость: страница уже прочитана курсором — спрашиваем kaname
 	// БАТЧЕМ про её id (`viewer` — то же отношение, что энфорсит Get; read==enforce). Обратный порядок
 	// («перечисли все разрешённые id → сузь ими SQL») запрещён: перечисление
 	// разрешённого усекалось без продолжения, и собственный ресурс тенанта молча

@@ -32,7 +32,7 @@ Measured on the retirement of the tenant condition surface:
 | after | 294 | 24 | 207 | 63 |
 
 The six removed entries are exactly `ConditionsService/{Get,List,Create,Update,Delete,Evaluate}`;
-nothing was added. Both embedded catalog copies (gateway `gateway/internal/middleware/embed/` + iam `services/iam/internal/apps/kacho/seed/embedded/`) are byte-identical (CI gate `make permission-catalog-check`).
+nothing was added. Both embedded catalog copies (gateway `gateway/internal/middleware/embed/` + iam `services/iam/internal/apps/kaname/seed/embedded/`) are byte-identical (CI gate `make permission-catalog-check`).
 
 The sensitive set, enumerated from the file rather than recalled (24 entries): 4 credential
 (UserToken Issue/Revoke, SAKey Issue/Revoke) · 4 AccessBinding Create/Update/Delete/Revoke ·

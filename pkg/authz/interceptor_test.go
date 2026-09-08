@@ -267,7 +267,7 @@ func TestInterceptor_UnmappedInternalRPCFailClosed(t *testing.T) {
 		Client: stub,
 	})
 	ctx := ctxWithPrincipal(t, "usr_alice", "user")
-	_, err := runUnary(intr, ctx, "/kacho.cloud.iam.v1.InternalIAMService/Check", &fakeReq{id: "x"})
+	_, err := runUnary(intr, ctx, "/kaname.cloud.iam.v1.InternalIAMService/Check", &fakeReq{id: "x"})
 	if err == nil {
 		t.Fatalf("expected fail-closed deny for unmapped Internal* RPC")
 	}
@@ -283,10 +283,10 @@ func TestInterceptor_MappedPublicRPCExempt(t *testing.T) {
 		return false, nil
 	})
 	m := makeMap()
-	m["/kacho.cloud.iam.v1.InternalIAMService/Check"] = authz.RPCEntry{Public: true}
+	m["/kaname.cloud.iam.v1.InternalIAMService/Check"] = authz.RPCEntry{Public: true}
 	intr := authz.NewInterceptor(authz.InterceptorOptions{Cache: authz.NewCache(0), Map: m, Client: stub})
 	ctx := ctxWithPrincipal(t, "usr_alice", "user")
-	resp, err := runUnary(intr, ctx, "/kacho.cloud.iam.v1.InternalIAMService/Check", &fakeReq{id: "x"})
+	resp, err := runUnary(intr, ctx, "/kaname.cloud.iam.v1.InternalIAMService/Check", &fakeReq{id: "x"})
 	if err != nil {
 		t.Fatalf("expected Public RPC to pass, got %v", err)
 	}

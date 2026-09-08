@@ -34,7 +34,7 @@ func MachineType(mt *domain.MachineType) *computev1.MachineType {
 		Id:          mt.ID,
 		Name:        mt.Name,
 		Description: mt.Description,
-		Family:      computev1.MachineType_Family(mt.Family), // #nosec G115 -- domain.MachineTypeFamily зеркалит computev1.MachineType_Family (малые константы)
+		Family:      computev1.MachineType_Family(mt.Family), // domain.MachineTypeFamily зеркалит computev1.MachineType_Family (малые константы)
 		EffectiveResources: &computev1.EffectiveResources{
 			VCpu:      mt.EffectiveResources.VCPU,
 			MemoryMib: mt.EffectiveResources.MemoryMiB,
@@ -42,7 +42,7 @@ func MachineType(mt *domain.MachineType) *computev1.MachineType {
 			GpuType:   mt.EffectiveResources.GPUType,
 		},
 		AvailableZones: mt.AvailableZones,
-		Status:         computev1.MachineType_Status(mt.Status), // #nosec G115 -- domain.MachineTypeStatus зеркалит computev1.MachineType_Status
+		Status:         computev1.MachineType_Status(mt.Status), // domain.MachineTypeStatus зеркалит computev1.MachineType_Status
 		Labels:         mt.Labels,
 		CreatedAt:      ts(mt.CreatedAt),
 	}
@@ -66,7 +66,7 @@ func Instance(in *domain.Instance) *computev1.Instance {
 		Fqdn:                in.FQDN,
 		GuestAccessKeyIds:   in.GuestAccessKeyIDs,
 		CpuGuaranteePercent: in.CPUGuaranteePercent,
-		InstanceKind:        computev1.InstanceKind(in.InstanceKind), // #nosec G115 -- domain.InstanceKind зеркалит computev1.InstanceKind
+		InstanceKind:        computev1.InstanceKind(in.InstanceKind), // domain.InstanceKind зеркалит computev1.InstanceKind
 		MachineTypeId:       in.MachineTypeID,
 		EffectiveResources: &computev1.EffectiveResources{
 			VCpu:      in.EffectiveResources.VCPU,
@@ -114,7 +114,7 @@ func bootSource(bs domain.BootSource) *computev1.BootSource {
 		Id:             bs.ID,
 		Name:           bs.Name,
 		ResolvedDigest: bs.ResolvedDigest,
-		ImageKind:      computev1.ImageKind(bs.ImageKind), // #nosec G115 -- domain.ImageKind зеркалит computev1.ImageKind
+		ImageKind:      computev1.ImageKind(bs.ImageKind), // domain.ImageKind зеркалит computev1.ImageKind
 	}
 	if mv := bs.MaterializedVolume; mv != nil {
 		out.MaterializedVolume = &computev1.MaterializedVolume{
@@ -131,7 +131,7 @@ func vmSpec(v *domain.VMSpec) *computev1.VmSpec {
 	out := &computev1.VmSpec{UserData: v.UserData}
 	if v.MetadataEndpoint != domain.MetadataOptionUnspecified {
 		out.MetadataOptions = &computev1.MetadataOptions{
-			MetadataEndpoint: computev1.MetadataOption(v.MetadataEndpoint), // #nosec G115 -- domain.MetadataOption зеркалит computev1.MetadataOption
+			MetadataEndpoint: computev1.MetadataOption(v.MetadataEndpoint), // domain.MetadataOption зеркалит computev1.MetadataOption
 		}
 	}
 	return out
@@ -143,7 +143,7 @@ func containerSpec(c *domain.ContainerSpec) *computev1.ContainerSpec {
 		Args:          c.Args,
 		Env:           c.Env,
 		WorkingDir:    c.WorkingDir,
-		RestartPolicy: computev1.RestartPolicy(c.RestartPolicy), // #nosec G115 -- domain.RestartPolicy зеркалит computev1.RestartPolicy
+		RestartPolicy: computev1.RestartPolicy(c.RestartPolicy), // domain.RestartPolicy зеркалит computev1.RestartPolicy
 		ExitCode:      c.ExitCode,
 	}
 	for i := range c.Ports {
@@ -234,8 +234,8 @@ func PlacementGroup(g *domain.PlacementGroup) *computev1.PlacementGroup {
 		Description:   g.Description,
 		CreatedAt:     ts(g.CreatedAt),
 		Labels:        g.Labels,
-		Strategy:      computev1.PlacementGroup_Strategy(g.Strategy),           // #nosec G115 -- domain зеркалит контракт
-		PlacementType: computev1.PlacementGroup_PlacementType(g.PlacementType), // #nosec G115 -- domain зеркалит контракт
+		Strategy:      computev1.PlacementGroup_Strategy(g.Strategy),           // domain зеркалит контракт
+		PlacementType: computev1.PlacementGroup_PlacementType(g.PlacementType), // domain зеркалит контракт
 		ZoneId:        g.ZoneID,
 		RegionId:      g.RegionID,
 	}

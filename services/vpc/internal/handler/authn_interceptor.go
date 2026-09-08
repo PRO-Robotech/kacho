@@ -58,7 +58,7 @@ const errAuthNRequired = "AuthN required (production mode): forward an authentic
 
 // principalForwarded сообщает, несёт ли ctx реальный forwarded end-user principal
 // (`x-kacho-principal-*`, положенный в ctx `grpcsrv.UnaryPrincipalExtract` выше по
-// цепочке). Зеркалит kacho-iam `authzguard.IsAnonymous`.
+// цепочке). Зеркалит kaname `authzguard.IsAnonymous`.
 //
 // Анонимность не является личностью: `{system, anonymous}` (его подставляет
 // api-gateway) и `SystemPrincipal()`-fallback `{system, bootstrap}` (principal-headers

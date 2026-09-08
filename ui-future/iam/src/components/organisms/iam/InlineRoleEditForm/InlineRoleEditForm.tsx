@@ -32,7 +32,7 @@ import type { SetReplacementDraft } from "@shared/lib/set-replacement-draft";
  */
 export const ROLE_RULES_REPLACEMENT: SetReplacementDraft = {
   field: "rules",
-  contract: "kacho/cloud/iam/v1/role.proto",
+  contract: "kaname/cloud/iam/v1/role.proto",
   message: "Rule",
   drafts: ["Rule"],
 };

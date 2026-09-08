@@ -66,7 +66,7 @@ const minProseChunk = 24
 // reportGlobs — где лежат отчёты приборов. Перечень ЗДЕСЬ, потому что имя
 // каталога — свойство прибора, а не дерева, и вывести его неоткуда.
 var reportGlobs = []string{
-	"services/iam/internal/repo/kacho/pg/scalegrid/REPORT-*.txt",
+	"services/iam/internal/repo/kaname/pg/scalegrid/REPORT-*.txt",
 	"services/iam/tools/authzformbench/REPORT-*.txt",
 	"services/iam/tests/k6/results/*.md",
 	"services/vpc/tests/k6/results/*.md",

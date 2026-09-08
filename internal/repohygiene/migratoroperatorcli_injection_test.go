@@ -127,6 +127,112 @@ func TestMigratorCLINameGateStaysSilentOnLegitimateTwins(t *testing.T) {
 	}
 }
 
+// ── имя бинаря: ось ПРОДУКТА (#2245) ──────────────────────────────────────
+//
+// Переустройство гейта требует ПОВТОРНОЙ инъекции: сошедшаяся перепись
+// доказывает, что не сузился предмет, и не говорит ничего о том, сохранилась ли
+// способность падать. Прогонов ТРИ, и третий обязателен — без него молчание
+// существующей оси неотличимо от молчания мёртвой.
+//
+// Одно-фактность соблюдена: у каждого случая от близнеца отличается РОВНО
+// каталог продукта либо ровно имя, но не то и другое сразу.
+
+func TestMigratorCLINameGateJudgesPerProduct(t *testing.T) {
+	// Контроль: обе оси целы — молчат обе.
+	t.Run("контроль: у каждого продукта своё имя — молчат обе оси", func(t *testing.T) {
+		for _, tc := range []struct{ rel, src string }{
+			{"services/vpc/Makefile", "MIGRATOR_BIN   := kacho-migrator\n"},
+			{"services/iam/Makefile", "MIGRATOR_BIN   := kaname-migrator\n"},
+		} {
+			mentions := migratorCLIMentions(tc.rel, tc.src)
+			if len(mentions) == 0 {
+				t.Fatalf("%s: форма не распознана — контроль беспредметен", tc.rel)
+			}
+			if f := migratorCLINameFindings(mentions); len(f) != 0 {
+				t.Fatalf("%s: законное имя объявлено находкой: %v", tc.rel, f)
+			}
+		}
+	})
+
+	// Инъекция НОВОЙ оси: имя ПЛАТФОРМЫ в дереве Kaname. До #2245 гейт на этом
+	// молчал — это и был предмет задачи.
+	t.Run("новая ось: имя платформы в дереве Kaname — находка", func(t *testing.T) {
+		for _, tc := range []struct{ name, rel, src string }{
+			{"переменная сборки", "services/iam/Makefile",
+				"MIGRATOR_BIN   := kacho-migrator\n"},
+			{"путь установки в чарте поставки", "services/iam/deploy/templates/deployment.yaml",
+				"          command: [\"/usr/local/bin/kacho-migrator\", \"up\"]\n"},
+			{"путь установки в подчарте зонта", "deploy/helm/umbrella/charts/kaname/values.yaml",
+				"    command: [\"/usr/local/bin/kacho-migrator\", \"up\"]\n"},
+			{"выход сборки", "services/iam/Dockerfile",
+				"RUN go build -o /kacho-migrator ./cmd/migrator\n"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				mentions := migratorCLIMentions(tc.rel, tc.src)
+				if len(mentions) == 0 {
+					t.Fatalf("форма не распознана вовсе — она была бы не находкой, а невидимостью")
+				}
+				findings := migratorCLINameFindings(mentions)
+				if len(findings) == 0 {
+					t.Fatalf("имя платформы в дереве Kaname принято молча: %+v", mentions)
+				}
+				joined := strings.Join(findings, "\n")
+				if !strings.Contains(joined, "kaname-migrator") {
+					t.Errorf("находка не называет, каким имя обязано быть: %s", joined)
+				}
+			})
+		}
+	})
+
+	// Инъекция СТАРОЙ оси: чужое имя в дереве платформы. Проверяется, что
+	// переустройство не убило то, что гейт держал до него.
+	t.Run("существующая ось: чужое имя в дереве платформы — по-прежнему находка", func(t *testing.T) {
+		mentions := migratorCLIMentions("services/vpc/Makefile", "MIGRATOR_BIN   := migrator\n")
+		if len(mentions) == 0 {
+			t.Fatal("форма не распознана вовсе")
+		}
+		findings := migratorCLINameFindings(mentions)
+		if len(findings) == 0 {
+			t.Fatalf("чужое имя в дереве платформы принято молча: %+v", mentions)
+		}
+		if joined := strings.Join(findings, "\n"); !strings.Contains(joined, "kacho-migrator") {
+			t.Errorf("находка не называет платформенное имя: %s", joined)
+		}
+	})
+
+	// Хозяин не выведен — тоже находка, а не умолчание в пользу платформы:
+	// молчаливое приписывание платформе объявило бы имя переименованной части
+	// нарушением, ничего в дереве не сломав.
+	t.Run("хозяин места не выводится — находка, а не умолчание", func(t *testing.T) {
+		mentions := migratorCLIMentions("deploy/helm/umbrella/values.dev.yaml",
+			"  command: [\"/usr/local/bin/kacho-migrator\", \"up\"]\n")
+		if len(mentions) == 0 {
+			t.Fatal("форма не распознана вовсе")
+		}
+		findings := migratorCLINameFindings(mentions)
+		if len(findings) == 0 {
+			t.Fatalf("место без выводимого хозяина принято молча: %+v", mentions)
+		}
+		if joined := strings.Join(findings, "\n"); !strings.Contains(joined, "не выводится") {
+			t.Errorf("находка не называет ПРИЧИНУ — читатель пойдёт чинить имя вместо привязки: %s", joined)
+		}
+	})
+
+	// Тот же файл, но ключ подчарта над строкой — хозяин выведен, и имя судится
+	// по НЕМУ. Одно-фактное отличие от случая выше: добавлен ключ.
+	t.Run("ключ подчарта называет хозяина — имя судится по нему", func(t *testing.T) {
+		src := "kaname:\n  initContainer:\n    migrator:\n" +
+			"      command: [\"/usr/local/bin/kaname-migrator\", \"up\"]\n"
+		mentions := migratorCLIMentions("deploy/helm/umbrella/values.dev.yaml", src)
+		if len(mentions) == 0 {
+			t.Fatal("форма не распознана вовсе")
+		}
+		if f := migratorCLINameFindings(mentions); len(f) != 0 {
+			t.Fatalf("законное имя под своим ключом подчарта объявлено находкой: %v", f)
+		}
+	})
+}
+
 // ── разбор аргументов: гейт говорит ────────────────────────────────────────
 
 const (

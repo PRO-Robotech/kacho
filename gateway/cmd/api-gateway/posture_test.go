@@ -19,7 +19,11 @@ import (
 
 func gatewayPosture(t *testing.T, authnMode string) (servicecontract.Descriptor, error) {
 	t.Helper()
-	cfg := config.Config{AuthNMode: authnMode}
+	// Домен доверия — величина установки, и без неё дескриптор не принимается:
+	// край, не назвавший домена, не признаёт своим ни одного предъявителя
+	// сертификата. Здесь он назван затем, чтобы отрицания ниже проверяли СВОЮ
+	// ось, а не эту.
+	cfg := config.Config{AuthNMode: authnMode, AuthNTrustDomain: "kacho.cloud"}
 	return describePosture(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 

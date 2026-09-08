@@ -37,10 +37,8 @@ func TestContextExtractor_BuildHTTP_ExtractsFromVerifiedToken(t *testing.T) {
 		JTI:      "jti-1",
 		Cnf:      middleware.TokenConfirmation{Jkt: "abc", HasJkt: true},
 		ExtClaims: map[string]any{
-			"kacho_mfa_at":            float64(mfaAt.Unix()),
-			"kacho_device_compliance": "tpm-attested",
-			"kacho_passkey_aaguid":    "aaguid-x",
-			"kacho_device_id":         "dev-1",
+			"kaname_mfa_at":            float64(mfaAt.Unix()),
+			"kaname_device_compliance": "tpm-attested",
 		},
 	}
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -53,8 +51,12 @@ func TestContextExtractor_BuildHTTP_ExtractsFromVerifiedToken(t *testing.T) {
 	assert.Equal(t, []string{"webauthn", "pwd"}, ctx["amr_claims"])
 	assert.Equal(t, mfaAt.Unix(), ctx["mfa_at"])
 	assert.Equal(t, "tpm-attested", ctx["device_attestation"])
-	assert.Equal(t, "aaguid-x", ctx["passkey_aaguid"])
-	assert.Equal(t, "dev-1", ctx["device_id"])
+	// `passkey_aaguid` и `device_id` здесь утверждались как отдельные ключи
+	// условия. Оба сняты вместе со своим предметом: ни одно из двух клейм не
+	// чеканит ни один путь выпуска, а закрытый словарь условий модели прав их
+	// не читает ни одним предикатом. Приходящее клеймо этих имён теперь едет
+	// насквозь под своим именем — как всякое незнакомое (см.
+	// TestContextExtractor_PreservesUnknownKachoClaims).
 	assert.Equal(t, "abc", ctx["dpop_jkt"])
 	assert.Equal(t, "jti-1", ctx["jti"])
 	assert.Equal(t, "user", ctx["subject_kind"])
@@ -166,28 +168,28 @@ func TestContextExtractor_PreservesUnknownKachoClaims(t *testing.T) {
 	e := middleware.NewContextExtractor(time.Now, false)
 	tok := &middleware.VerifiedToken{
 		ExtClaims: map[string]any{
-			"kacho_future_thing": "hello",
+			"kaname_future_thing": "hello",
 		},
 	}
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	ctx := e.BuildHTTP(tok, r, middleware.ResolvedSubject{})
-	assert.Equal(t, "hello", ctx["kacho_future_thing"])
+	assert.Equal(t, "hello", ctx["kaname_future_thing"])
 }
 
 func TestContextExtractor_DropsResolvedKachoFields(t *testing.T) {
 	e := middleware.NewContextExtractor(time.Now, false)
 	tok := &middleware.VerifiedToken{
 		ExtClaims: map[string]any{
-			"kacho_user_id":        "usr_x", // already resolved by SubjectExtractor; do not duplicate
-			"kacho_principal_type": "user",
-			"kacho_principal_id":   "usr_x",
+			"kaname_user_id":        "usr_x", // already resolved by SubjectExtractor; do not duplicate
+			"kaname_principal_type": "user",
+			"kaname_principal_id":   "usr_x",
 		},
 	}
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	ctx := e.BuildHTTP(tok, r, middleware.ResolvedSubject{})
-	_, leak := ctx["kacho_user_id"]
+	_, leak := ctx["kaname_user_id"]
 	assert.False(t, leak)
-	_, leak2 := ctx["kacho_principal_id"]
+	_, leak2 := ctx["kaname_principal_id"]
 	assert.False(t, leak2)
 }
 

@@ -40,10 +40,24 @@ import (
 // запрос, те же сто строк, ноль продвижения, и всё это внутри занятого слота.
 // То же правило, по которому страничные списки выводят следующий курсор из
 // последней ПРОСМОТРЕННОЙ строки.
+//
+// # ИСКЛЮЧЕНИЕ ровно одно: ОКНО МАТЕРИАЛИЗАЦИИ ГРАНТА
+//
+// Пообъектное «нет» бывает ВРЕМЕННЫМ: кортеж владения кладётся ПОСЛЕ фиксации
+// ресурсной строки, а пробуждение приходит НА фиксации. Правило выше делало
+// такое «нет» окончательным — строка уезжала под курсор, и открытый поток не
+// отдавал её больше никогда, тихо (задача продукта #2264). Поэтому курсор НЕ
+// переходит первую такую строку, пока её окно не истрачено; окно и его цена —
+// `grant.go`, и здесь они не пересказываются.
+//
+// Вечного перечитывания это не возвращает: окно конечно, по его истечении
+// строка снимается, а расхождение «прочитано против отдано» называется
+// переписью ([delivery.census]).
 func (s *Server) drain(
 	ctx context.Context,
 	conn *pgx.Conn,
 	h *Watermark,
+	d *delivery,
 	cursor int64,
 	filter Filter,
 	stream subscriptionv1.InternalSubscriptionService_SubscribeServer,
@@ -158,30 +172,114 @@ func (s *Server) drain(
 		}
 
 		scanned := rows[len(rows)-1].Position
+		d.read(rows)
 
 		events, err := s.mapRows(rows, filter)
 		if err != nil {
 			return cursor, err
 		}
-		visible, err := s.narrow(ctx, rows, events, filter)
+		verdicts, err := s.narrow(ctx, rows, events, filter)
 		if err != nil {
 			// Модель не ответила — это НЕ «да». Позиция не двигается, строки не
 			// уходят.
 			return cursor, err
 		}
-		for _, ev := range visible {
-			if err := stream.Send(&subscriptionv1.SubscriptionMessage{
-				Message: &subscriptionv1.SubscriptionMessage_Event{Event: ev},
-			}); err != nil {
-				return cursor, err
+
+		// ОТСРОЧКА СУЖДЕНИЯ О ВИДИМОСТИ — окно материализации гранта (`grant.go`).
+		//
+		// Кортеж владения кладётся ПОСЛЕ фиксации ресурсной строки, а пробуждение
+		// приходит НА фиксации: пообъектное «нет», полученное в этот миг,
+		// законно и при этом ВРЕМЕННО. Курсор идёт по прочитанной строке, поэтому
+		// без отсрочки такая строка уезжает под него и открытый поток не отдаёт
+		// её больше никогда — тихо, без пропуска в нумерации и без отказа.
+		//
+		// Отсрочка держит партию С ПЕРВОЙ такой строки: отдать то, что за ней, и
+		// вернуться к ней позже нельзя — позиция едет клиенту заголовком
+		// возобновления, и меньшая после большей отбросила бы его назад.
+		//
+		// Она НЕ расширяет видимость: наружу не уходит ни одна строка, которой
+		// модель не сказала «да». Истратив окно, строка снимается и попадает в
+		// перепись — расхождение «прочитано против отдано» остаётся видимым.
+		reachesHead := len(rows) < readBatch || scanned >= settled
+		if first := firstWithheld(verdicts); first >= 0 {
+			held := rows[first].Position - 1
+			d.released(held)
+			if d.holds(held, reachesHead, s.now()) {
+				if err := s.sendVisible(events, verdicts[:first], d, stream); err != nil {
+					return cursor, err
+				}
+				return held, nil
 			}
+			d.rowsWithheld += int64(countWithheld(verdicts))
+		}
+
+		if err := s.sendVisible(events, verdicts, d, stream); err != nil {
+			return cursor, err
 		}
 		cursor = scanned
+		d.released(cursor)
+		d.atHead = reachesHead
 
 		if len(rows) < readBatch {
 			return cursor, nil
 		}
 	}
+}
+
+// sendVisible отправляет события, которым модель сказала «да», СОХРАНЯЯ порядок.
+//
+// Длина `verdicts` задаёт ГРАНИЦУ отправки: удержанная партия отдаёт только
+// префикс до первой невидимой строки, полная — весь батч. Граница передаётся
+// срезом вердиктов, а не индексом, потому что срез нельзя перепутать местами с
+// длиной батча.
+func (s *Server) sendVisible(
+	events []*subscriptionv1.SubscriptionEvent,
+	verdicts []rowVerdict,
+	d *delivery,
+	stream subscriptionv1.InternalSubscriptionService_SubscribeServer,
+) error {
+	for i, v := range verdicts {
+		if v != rowDeliver {
+			continue
+		}
+		if err := stream.Send(&subscriptionv1.SubscriptionMessage{
+			Message: &subscriptionv1.SubscriptionMessage_Event{Event: events[i]},
+		}); err != nil {
+			return err
+		}
+		d.eventsSent++
+	}
+	return nil
+}
+
+// firstWithheld — индекс первой строки, чьё «нет» может ещё стать «да»
+// (-1, если такой нет).
+//
+// Ищется ИМЕННО пообъектный отказ. Строка недоставляемая ([rowDrop]) не станет
+// доставляемой ни через какое время: у неё нет типа объекта, рода изменения либо
+// якоря, а отказ по якорю относится к ЧУЖОМУ проекту, доступ к которому этим
+// событием не создаётся. Держать поток на них значило бы платить окном за то,
+// что не изменится.
+func firstWithheld(verdicts []rowVerdict) int {
+	for i, v := range verdicts {
+		if v == rowWithhold {
+			return i
+		}
+	}
+	return -1
+}
+
+// countWithheld — сколько строк партии снимается по истечении окна. Считается
+// вся партия, а не одна первая: окно они простояли вместе, потому что каждый
+// проход перечитывает ТО ЖЕ окно и спрашивает о них заново.
+func countWithheld(verdicts []rowVerdict) int {
+	n := 0
+	for _, v := range verdicts {
+		if v == rowWithhold {
+			n++
+		}
+	}
+	return n
 }
 
 // regate переспрашивает стража проектной оси ПЕРЕД отправкой порции.
@@ -469,8 +567,17 @@ func setStateCarrier(
 	}
 }
 
-// narrow оставляет только те события, которые вызывающий вправе видеть,
-// СОХРАНЯЯ порядок: журнал упорядочен по номеру, и перестановка сломала бы
+// narrow выносит вердикт по КАЖДОЙ строке партии, ПОЗИЦИОННО: `out[i]` отвечает
+// `rows[i]`.
+//
+// Отфильтрованный список здесь не годится, и это не стиль. Вызывающему нужно
+// отличить «нет сейчас» от «нет никогда»: первое снимается материализацией
+// гранта и потому подлежит отсрочке, второе — не изменится ни через какое время
+// (см. [rowVerdict] и `grant.go`). Список видимых оба «нет» сводит в одно —
+// отсутствие элемента, — и выбор между потерей события и вечным удержанием
+// становится невыразим.
+//
+// Порядок СОХРАНЯЕТСЯ: журнал упорядочен по номеру, и перестановка сломала бы
 // монотонность потока.
 //
 // Вопрос задаётся партиями не больше [visibilityBatch] и группируется по типу
@@ -523,7 +630,7 @@ func (s *Server) narrow(
 	rows []Row,
 	events []*subscriptionv1.SubscriptionEvent,
 	filter Filter,
-) ([]*subscriptionv1.SubscriptionEvent, error) {
+) ([]rowVerdict, error) {
 	// Требование заявляется ТАМ, ГДЕ строки используются, а не только у входа, и
 	// заявляется ЦЕЛИКОМ. Половина условия была бы хуже целого отсутствия
 	// проверки: она закрывала бы ШУМНЫЙ подслучай (нет сужателя — паника) и
@@ -573,24 +680,49 @@ func (s *Server) narrow(
 		allowed[kind] = seen
 	}
 
-	out := make([]*subscriptionv1.SubscriptionEvent, 0, len(events))
+	out := make([]rowVerdict, len(events))
 	for i, ev := range events {
 		if ev == nil {
+			out[i] = rowDrop
 			continue
 		}
 		switch anchored[i] {
 		case verdictAllowed:
-			out = append(out, ev)
+			out[i] = rowDeliver
 			continue
 		case verdictRefused:
+			out[i] = rowDrop
 			continue
 		}
 		if _, ok := allowed[rows[i].Kind][rows[i].ID]; ok {
-			out = append(out, ev)
+			out[i] = rowDeliver
+			continue
 		}
+		// Пообъектное «нет». Оно бывает ВРЕМЕННЫМ — кортеж владения кладётся
+		// после фиксации ресурсной строки, — поэтому от [rowDrop] оно отделено:
+		// решение, отдавать ли строку сейчас или подождать окно, принимает
+		// вызывающий (см. `grant.go`), и слить два «нет» в одно значило бы
+		// отнять у него этот выбор.
+		out[i] = rowWithhold
 	}
 	return out, nil
 }
+
+// rowVerdict — что делать со строкой партии. Состояния ТРИ, и третье не сводится
+// к второму: «не отдаём сейчас» и «не отдадим никогда» ведут к разным действиям
+// сервера, а слитые в одно дают либо потерю события, либо вечное удержание.
+type rowVerdict uint8
+
+const (
+	// rowDrop — строка не будет доставлена НИКОГДА: у неё нет типа объекта, рода
+	// изменения или якоря, либо якорь указывает на чужой проект.
+	rowDrop rowVerdict = iota
+	// rowDeliver — модель сказала «да».
+	rowDeliver
+	// rowWithhold — модель сказала «нет» ПООБЪЕКТНО. Ответ может стать
+	// положительным, когда владелец доложит кортеж владения.
+	rowWithhold
+)
 
 // anchorVerdict — исход суждения ПО ЯКОРЮ. Состояния три, и «не судили» названо
 // отдельно от «отказано»: слить их значило бы отдать пообъектной ветке строку,

@@ -69,8 +69,8 @@ func (h *PlacementGroupHandler) Create(ctx context.Context, req *computev1.Creat
 		Name:          req.Name,
 		Description:   req.Description,
 		Labels:        req.Labels,
-		Strategy:      domain.PlacementStrategy(req.Strategy),        // #nosec G115 -- proto зеркалит domain
-		PlacementType: domain.PlacementAnchorType(req.PlacementType), // #nosec G115 -- proto зеркалит domain
+		Strategy:      domain.PlacementStrategy(req.Strategy),        // proto зеркалит domain
+		PlacementType: domain.PlacementAnchorType(req.PlacementType), // proto зеркалит domain
 		ZoneID:        req.ZoneId,
 		RegionID:      req.RegionId,
 	})

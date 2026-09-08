@@ -98,7 +98,7 @@ func scanDefaultAudienceMembership(profiles map[string]map[string]any) (findings
 	sort.Strings(names)
 
 	for _, name := range names {
-		ct, _ := dig(profiles[name], "kacho-iam", "config", "authn", "clientToken").(map[string]any)
+		ct, _ := dig(profiles[name], "kaname", "config", "authn", "clientToken").(map[string]any)
 		if ct == nil {
 			continue
 		}
@@ -168,7 +168,7 @@ func TestClientTokenDefaultAudienceIsInsideTheDeclaredList(t *testing.T) {
 // всякий профиль, прошёл бы первую половину и был бы бесполезен.
 func TestDefaultAudienceScannerSeesTheDriftAndIsSilentOnMembership(t *testing.T) {
 	profile := func(audiences, def string, endpointOn bool) map[string]any {
-		return map[string]any{"kacho-iam": map[string]any{"config": map[string]any{
+		return map[string]any{"kaname": map[string]any{"config": map[string]any{
 			"authn": map[string]any{"clientToken": map[string]any{
 				"enabled":          endpointOn,
 				"allowedAudiences": audiences,

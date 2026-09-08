@@ -25,7 +25,7 @@ func TestAuthz_MutationDeny_NoDenyReasonLeak(t *testing.T) {
 	checker := &fakeChecker{allowed: false, reasons: []string{"no path: account:acc_secret has no v_delete for user:usr_x"}}
 	mw := buildAuthzMiddleware(t, buildCatalog(t, accountDeleteEntry), checker)
 	_, err := mw.Unary()(withTokenMD("usr_x", "user"), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.AccountService/Delete"},
+		&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.AccountService/Delete"},
 		func(ctx context.Context, req any) (any, error) { return nil, nil })
 	require.Error(t, err)
 	st, _ := status.FromError(err)

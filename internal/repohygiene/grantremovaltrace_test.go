@@ -70,7 +70,7 @@ func TestMigrationRemovingGrantsLeavesATrace(t *testing.T) {
 	// (TestGrantRemovalTraceGateInjection): она подаёт вход сама, поэтому форма
 	// корпуса её не касается.
 	if mentions == 0 {
-		t.Fatalf("ПРЕДПОСЫЛКА ЛОЖНА: во всём корпусе %s таблица kacho_iam.access_bindings не "+
+		t.Fatalf("ПРЕДПОСЫЛКА ЛОЖНА: во всём корпусе %s таблица kaname.access_bindings не "+
 			"названа НИ ОДНИМ оператором. Выдача существует только в схеме iam, поэтому ноль "+
 			"означает либо нечитаемый корпус, либо разбор, разъехавшийся со схемой, — и "+
 			"молчание вердикта было бы сказано о нём, а не о дереве", grantRemovalMigrationsDir)
@@ -125,7 +125,7 @@ func TestNoMigrationMovesGrantsBetweenRoles(t *testing.T) {
 	// доказывает инъекция в обе стороны
 	// (TestGrantRoleReassignmentDiscriminatorCutsBothWays).
 	if mentions == 0 {
-		t.Fatalf("ПРЕДПОСЫЛКА ЛОЖНА: во всём корпусе %s таблица kacho_iam.access_bindings не "+
+		t.Fatalf("ПРЕДПОСЫЛКА ЛОЖНА: во всём корпусе %s таблица kaname.access_bindings не "+
 			"названа НИ ОДНИМ оператором — отрицание «переносов не бывает» выполняется "+
 			"тождественно, и его молчание сказано о разборе, а не о дереве",
 			grantRemovalMigrationsDir)

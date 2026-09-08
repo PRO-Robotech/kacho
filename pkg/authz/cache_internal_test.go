@@ -12,7 +12,7 @@ import (
 // lazy-eviction: Get отпускает RLock, увидев expired-entry, затем берёт write
 // lock и удаляет ключ. Между RUnlock и Lock конкурентный SetAllowed мог
 // записать свежий entry — безусловный delete выкидывал бы его (потеря валидного
-// positive-результата → лишний Check round-trip в kacho-iam).
+// positive-результата → лишний Check round-trip в kaname).
 //
 // evictIfStale должен удалять запись ТОЛЬКО если сохранённый expiresAt всё ещё
 // равен наблюдённому (stale) значению. Здесь мы эмулируем interleave: кладём

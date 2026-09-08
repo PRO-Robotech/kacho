@@ -93,6 +93,11 @@ data:
         dial-duration: {{ .Values.peers.iam.dialDuration }}
         tls: {{ .Values.peers.iam.tls }}
 
+    # Объявление домена величин: одно на обе полосы ребра. Пустое значение
+    # отвергает страж старта — умолчания у него нет by construction.
+    quota:
+      authority: {{ required "quota.authority is required: address host:port or the word not-deployed" .Values.quota.authority | quote }}
+
     authz:
       iam:
         # Адреса здесь нет: per-RPC Check идёт по соединению `iam-internal`,
@@ -104,7 +109,7 @@ data:
         ttl: {{ .Values.config.authz.cache.ttl }}
       deny-budget-per-sec: {{ .Values.config.authz.denyBudgetPerSec }}
       # RBAC sub-phase D §11 (issue #111): per-object filtered List via
-      # kacho-iam AuthorizeService.BatchCheck (iam conn reuse). default on.
+      # kaname AuthorizeService.BatchCheck (iam conn reuse). default on.
       list-filter:
         enabled: {{ .Values.config.authz.listFilter.enabled }}
         timeout: {{ .Values.config.authz.listFilter.timeout }}
@@ -118,6 +123,12 @@ data:
         {{- toYaml . | nindent 8 }}
         {{- else }} []
         {{- end }}
+      # Домен доверия установки: то, чьи сертификаты процесс признаёт своими.
+      # Круг выше называет, КОМУ позволено говорить за пользователя; домен
+      # отвечает на предыдущий вопрос — чьи предъявители вообще наши. Берётся из
+      # ТОГО ЖЕ объявления, под которым чеканится собственный сертификат
+      # (certificate.yaml): взятые по отдельности, стороны расходятся молча.
+      trust-domain: {{ include "kacho-nlb.trustDomain" . | quote }}
 
     fga:
       # endpoint / store-id / model-id / tuple-write здесь были и СНЯТЫ
@@ -128,7 +139,7 @@ data:
       # TestEveryRenderedConfigKeyHasAFieldThatReadsIt покраснеет.
       # require-iam — fail-closed загрузочный гейт (pkg/outbox/bootgate):
       # мутирующий Create отвергается, а под остаётся NotReady, пока
-      # register-drainer не подключён к kacho-iam. Ресурс не создаётся, пока его
+      # register-drainer не подключён к kaname. Ресурс не создаётся, пока его
       # намерение о владении некуда доставить, — иначе созданный в этом окне
       # балансировщик остаётся без владельца, а его создатель получает отказ на
       # собственном ресурсе.
@@ -167,9 +178,9 @@ data:
         servername: {{ .Values.mtls.serverName.iamRegister | quote }}
         {{- end }}
       # SEC-I — nlb→iam PUBLIC read edge (:9090, ProjectService.Get). Separate
-      # ServerName=kacho-iam.* (∈ iam SAN) so it verifies the :9090 dial-host
+      # ServerName=kaname.* (∈ iam SAN) so it verifies the :9090 dial-host
       # correctly under SEC-H — the internal iam-register edge above is
-      # kacho-iam-internal.* (:9091). Reuses the SAME mounted kacho-nlb-client-tls
+      # kaname-internal.* (:9091). Reuses the SAME mounted kacho-nlb-client-tls
       # ($cli) — no new secret/mount (I1).
       iam-project:
         enable: {{ .Values.mtls.edges.iamProject }}
@@ -179,6 +190,17 @@ data:
         cafiles:
           - {{ printf "%s/ca.crt" $cli | quote }}
         servername: {{ .Values.mtls.serverName.iamProject | quote }}
+        {{- end }}
+      # nlb→домен величин: ОБЕ полосы одного ребра (Resolve на пути запроса и
+      # ListChangedSince фоновой дельтой) — удостоверение одно.
+      quota-authority:
+        enable: {{ .Values.mtls.edges.quotaAuthority }}
+        {{- if .Values.mtls.edges.quotaAuthority }}
+        certfile: {{ printf "%s/tls.crt" $cli | quote }}
+        keyfile: {{ printf "%s/tls.key" $cli | quote }}
+        cafiles:
+          - {{ printf "%s/ca.crt" $cli | quote }}
+        servername: {{ .Values.mtls.serverName.quotaAuthority | quote }}
         {{- end }}
       vpc:
         enable: {{ .Values.mtls.edges.vpc }}

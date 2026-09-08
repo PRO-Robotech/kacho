@@ -45,17 +45,17 @@ import (
 // retiredPaths — файлы и каталоги, существовавшие ТОЛЬКО ради снятой поверхности.
 // Путь, вернувшийся в дерево, — возврат поверхности, а не «похожий файл».
 var retiredPaths = []string{
-	"proto/kacho/cloud/iam/v1/condition.proto",
-	"proto/kacho/cloud/iam/v1/conditions_service.proto",
-	"proto/kacho/cloud/iam/v1/access_binding_condition.proto",
-	"pkg/api/kacho/cloud/iam/v1/condition.pb.go",
-	"pkg/api/kacho/cloud/iam/v1/access_binding_condition.pb.go",
-	"pkg/api/kacho/cloud/iam/v1/conditions_service.pb.go",
-	"pkg/api/kacho/cloud/iam/v1/conditions_service.pb.gw.go",
-	"pkg/api/kacho/cloud/iam/v1/conditions_service_grpc.pb.go",
-	"services/iam/internal/apps/kacho/api/conditions",
-	"services/iam/internal/repo/kacho/condition",
-	"services/iam/internal/repo/kacho/pg/conditions_repo.go",
+	"proto/kaname/cloud/iam/v1/condition.proto",
+	"proto/kaname/cloud/iam/v1/conditions_service.proto",
+	"proto/kaname/cloud/iam/v1/access_binding_condition.proto",
+	"pkg/api/kaname/cloud/iam/v1/condition.pb.go",
+	"pkg/api/kaname/cloud/iam/v1/access_binding_condition.pb.go",
+	"pkg/api/kaname/cloud/iam/v1/conditions_service.pb.go",
+	"pkg/api/kaname/cloud/iam/v1/conditions_service.pb.gw.go",
+	"pkg/api/kaname/cloud/iam/v1/conditions_service_grpc.pb.go",
+	"services/iam/internal/apps/kaname/api/conditions",
+	"services/iam/internal/repo/kaname/condition",
+	"services/iam/internal/repo/kaname/pg/conditions_repo.go",
 	"services/iam/internal/service/conditions_crud_service.go",
 	"services/iam/internal/service/conditions_evaluator.go",
 	"services/iam/internal/service/conditions_audit.go",
@@ -79,25 +79,25 @@ type surfaceFile struct {
 var surfaceFiles = []surfaceFile{
 	{
 		path:    "gateway/internal/middleware/rest_route_table_gen.go",
-		genre:   "kacho.cloud.iam.v1.AccessBindingService/",
+		genre:   "kaname.cloud.iam.v1.AccessBindingService/",
 		forbid:  "ConditionsService/",
 		whatFor: "таблица REST-маршрутов края",
 	},
 	{
 		path:    "gateway/internal/allowlist/list.go",
-		genre:   "/kacho.cloud.iam.v1.AccessBindingService/",
+		genre:   "/kaname.cloud.iam.v1.AccessBindingService/",
 		forbid:  "ConditionsService/",
 		whatFor: "список обхода края",
 	},
 	{
 		path:    "gateway/internal/middleware/embed/permission_catalog.json",
-		genre:   "kacho.cloud.iam.v1.AccessBindingService/",
+		genre:   "kaname.cloud.iam.v1.AccessBindingService/",
 		forbid:  "ConditionsService/",
 		whatFor: "каталог прав, вшитый в край",
 	},
 	{
-		path:    "services/iam/internal/apps/kacho/seed/embedded/permission_catalog.json",
-		genre:   "kacho.cloud.iam.v1.AccessBindingService/",
+		path:    "services/iam/internal/apps/kaname/seed/embedded/permission_catalog.json",
+		genre:   "kaname.cloud.iam.v1.AccessBindingService/",
 		forbid:  "ConditionsService/",
 		whatFor: "каталог прав, вшитый в iam (вторая копия)",
 	},
@@ -142,7 +142,7 @@ var surfaceFiles = []surfaceFile{
 		whatFor: "доменная привязка",
 	},
 	{
-		path:    "services/iam/internal/repo/kacho/pg/access_binding_repo.go",
+		path:    "services/iam/internal/repo/kaname/pg/access_binding_repo.go",
 		genre:   "granted_by_user_id",
 		forbid:  "condition_id",
 		whatFor: "хранилище привязки",
@@ -183,8 +183,8 @@ const (
 	// модель прав, ищи утверждения о ней ОБОИМИ обходами, а не тем, который
 	// запускается из твоего каталога.
 	liveMFARestrictions = 2
-	fgaModelPath        = "proto/kacho/cloud/iam/v1/fga_model.fga"
-	accessBindingPth    = "proto/kacho/cloud/iam/v1/access_binding.proto"
+	fgaModelPath        = "proto/kaname/cloud/iam/v1/fga_model.fga"
+	accessBindingPth    = "proto/kaname/cloud/iam/v1/access_binding.proto"
 )
 
 var (
@@ -336,7 +336,7 @@ func TestTenantConditionSurface_IsGone(t *testing.T) {
 		// # Признак — СОСТОЯНИЕ схемы, а не история цепи
 		//
 		// Прежде здесь требовалось, чтобы в миграциях нашёлся
-		// `DROP TABLE IF EXISTS kacho_iam.conditions`, а рядом — запись о нём в
+		// `DROP TABLE IF EXISTS kaname.conditions`, а рядом — запись о нём в
 		// `dropguard.json` с числом уничтожаемых строк. Оба референта были из
 		// ИСТОРИИ, и оба исчезли вместе с ней: цепь iam сведена в одну первичную
 		// миграцию. У свода истории нет by construction — он одно состояние, —
@@ -398,7 +398,7 @@ func TestTenantConditionSurface_IsGone(t *testing.T) {
 		// КОНТРОЛЬ. Без него «поверхности нет» зеленело бы на пустом файле, на
 		// каталоге, который перестали читать, и на схеме, из которой вынесли всё.
 		// Якорь — таблица, которая обязана быть и к наложению отношения не имеет.
-		const anchor = "kacho_iam.access_bindings"
+		const anchor = "kaname.access_bindings"
 		if !strings.Contains(body, anchor) {
 			t.Fatalf("якорь %s не найден в %d файле(ах) миграций: читается не то либо не читается "+
 				"ничего, и отсутствие поверхности ниже было бы отсутствием чтения", anchor, files)
@@ -409,7 +409,7 @@ func TestTenantConditionSurface_IsGone(t *testing.T) {
 		// существующей таблицы, а таблица — под другим оператором.
 		mentions := 0
 		for _, gone := range []string{
-			"kacho_iam.conditions",
+			"kaname.conditions",
 			"access_binding_conditions",
 			"condition_id",
 			"builtin_condition",

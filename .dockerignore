@@ -102,10 +102,10 @@ kubeconfig*
 deploy/helm/*/charts
 # бинари сервисов от локального `go build` — имя совпадает с именем каталога
 /bin
-/kacho-iam
+/kaname
 services/*/vpc
 services/*/compute
-services/*/kacho-iam
+services/*/kaname
 gateway/bin
 # кэш инкрементальной сборки TypeScript
 **/*.tsbuildinfo
@@ -153,3 +153,9 @@ deploy/helm/*/values.*-ory.yaml
 # ловит by construction: его единица счёта — файл, который git ИГНОРИРУЕТ, а каталог
 # провайдера отслеживается.
 terraform
+
+# Локальный мост кросс-модульной разработки (polyrepo.md §replace ЗАПРЕЩЁН →
+# git-ignored go.work). Ни один Dockerfile дерева его не читает, а в контексте
+# сборки он промахивает слой `COPY . .` мимо кэша на КАЖДОМ прогоне.
+go.work
+go.work.sum

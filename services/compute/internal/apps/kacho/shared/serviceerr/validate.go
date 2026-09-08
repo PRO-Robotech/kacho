@@ -12,7 +12,7 @@ import (
 )
 
 // InvalidArg формирует gRPC InvalidArgument с FieldViolation-деталью.
-// Зеркалит kacho-vpc/internal/apps/kacho/shared/serviceerr/build.go::InvalidArg.
+// Зеркалит services/vpc/internal/apps/kacho/shared/serviceerr/build.go::InvalidArg.
 func InvalidArg(field, desc string) error {
 	st := status.New(codes.InvalidArgument, desc)
 	br := &errdetails.BadRequest{

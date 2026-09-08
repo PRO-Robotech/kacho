@@ -26,6 +26,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
 	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
@@ -93,7 +94,7 @@ func describe(
 	if err != nil {
 		return servicecontract.Descriptor{}, fmt.Errorf("build server TLS creds: %w", err)
 	}
-	// Ребро решения о доступе идёт на ВНУТРЕННИЙ листенер kacho-iam: там живёт
+	// Ребро решения о доступе идёт на ВНУТРЕННИЙ листенер kaname: там живёт
 	// InternalIAMService.Check. Ручка его транспорта — `mtls.iam-register`, та же,
 	// что закрывает соединение дренажа регистраций (это одно соединение). Адрес
 	// резолвится ровно тем же правилом, что в таблице соединений (`peerDialSpecs`,
@@ -125,8 +126,18 @@ func describe(
 			OptIn:    cfg.Authz.TrustAnyForwarder,
 		},
 
-		Authz:        servicecontract.AuthzViaIAM,
-		CheckEdge:    servicecontract.NewPeerEdge(checkAddr, checkCreds),
+		// Домен доверия — ЗНАЧЕНИЕ: личность клиентского сертификата этот процесс
+		// разбирает, и разбирает её ОТНОСИТЕЛЬНО домена. Читается из той же
+		// функции, значение которой уезжает в пару звеньев извлечения личности,
+		// поэтому «страж пропустил» ⟺ «домен реально объявлен».
+		TrustDomain:     servicecontract.Value(cfg.TrustDomain()),
+		TrustDomainKnob: "authz.trust-domain (env KACHO_NLB_AUTHZ__TRUST_DOMAIN)",
+
+		Authz:     servicecontract.AuthzViaIAM,
+		CheckEdge: servicecontract.NewPeerEdge(checkAddr, checkCreds),
+		// Перевод вопроса в контракт службы доступа приносит СЕРВИС: носитель
+		// принадлежит фундаменту и чужого контракта не знает (приёмка K3-1 §7.2).
+		PeerCheck:    authziam.NewCheckClient,
 		CacheWindow:  cfg.Authz.Cache.TTL,
 		ClientBudget: cfg.Authz.IAM.RequestTimeout,
 		// Приёмник величин кеша вердиктов: носитель строит кеш, а
@@ -143,7 +154,7 @@ func describe(
 		// Верхняя граница обработки вызова и бюджет отказов — обе ВЕЛИЧИНЫ, обе с
 		// обоснованием у своих ручек конфигурации (`api-server.handling-budget`,
 		// `authz.deny-budget-per-sec`). «Не применимо» здесь незаконно: решение о
-		// доступе nlb принимает не у себя, а вопросом к kacho-iam, — то есть
+		// доступе nlb принимает не у себя, а вопросом к kaname, — то есть
 		// сетевой сосед, которого шторм отказов может уронить, у него ЕСТЬ.
 		HandlingBudget: cfg.APIServer.HandlingBudget,
 		DenyBudget:     servicecontract.Value(cfg.Authz.DenyBudgetPerSec),

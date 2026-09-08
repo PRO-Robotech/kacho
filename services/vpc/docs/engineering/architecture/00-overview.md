@@ -131,7 +131,7 @@ internal/
 - `kacho-compute` — валидация NIC-spec (Subnet/SecurityGroup) + IPAM-аллокация Address.
 
 **Outbound** (кого дергает kacho-vpc):
-- `kacho-iam.ProjectService.Get` — existence check владельца-проекта
+- `kaname.ProjectService.Get` — existence check владельца-проекта
   (`project_id` — id владельца-проекта) в Create-мутациях (канонический error
   `"Project X not found"`); `InternalIAMService.Check` — per-RPC authz-gate;
   `RegisterResource`/`UnregisterResource` — регистрация владения через IAM.
@@ -158,7 +158,7 @@ internal/
 
 ## Что НЕ owns kacho-vpc
 
-- Account/Project — это `kacho-iam`. VPC только проверяет существование
+- Account/Project — это `kaname`. VPC только проверяет существование
   владельца-проекта через ProjectClient.
 - Region/Zone — это `kacho-geo` (leaf-домен Geography). VPC ссылается на `zone_id`
   по TEXT-id без FK, валидирует через `geo.v1.ZoneService.Get`.

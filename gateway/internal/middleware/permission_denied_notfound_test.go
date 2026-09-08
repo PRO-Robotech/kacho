@@ -37,7 +37,7 @@ func TestNotFoundMessage_ContractTone(t *testing.T) {
 		{"nlb load balancer", "nlb_network_load_balancer", id, "NetworkLoadBalancer " + id + " not found"},
 		{"nlb listener", "nlb_listener", id, "Listener " + id + " not found"},
 		{"nlb target group", "nlb_target_group", id, "TargetGroup " + id + " not found"},
-		// iam — must equal services/iam/internal/repo/kacho/pg/*_repo.go.
+		// iam — must equal services/iam/internal/repo/kaname/pg/*_repo.go.
 		{"iam account", "account", id, "Account " + id + " not found"},
 		{"iam project", "project", id, "Project " + id + " not found"},
 		{"iam user", "iam_user", id, "User " + id + " not found"},

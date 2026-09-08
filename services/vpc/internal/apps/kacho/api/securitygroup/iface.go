@@ -72,7 +72,7 @@ type SecurityGroupReader interface {
 	GetMany(ctx context.Context, ids []string) (map[string]*kachorepo.SecurityGroupRecord, error)
 }
 
-// ProjectClient — peer-сервис kacho-iam: проверка существования
+// ProjectClient — peer-сервис kaname: проверка существования
 // project'а на request-path и в worker'е.
 type ProjectClient interface {
 	Exists(ctx context.Context, projectID string) (bool, error)

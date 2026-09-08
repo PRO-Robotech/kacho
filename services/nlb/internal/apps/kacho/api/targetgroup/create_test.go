@@ -305,7 +305,7 @@ func TestCreate_PeerProject_NotFound(t *testing.T) {
 
 // Create writes a fga.register-intent (project-hierarchy) into the writer-tx
 // outbox. It carries ONLY that tuple even for an authenticated user: the former
-// creator (`admin`) tuple was refused by kacho-iam's least-privilege proxy policy
+// creator (`admin`) tuple was refused by kaname's least-privilege proxy policy
 // on every delivery (privilege relations belong to the AccessBinding flow), and a
 // refusal from the model owner is TERMINAL (drainer.ErrPermanent, both at the
 // applier and in the shared drainer) — the applier stops at the rejected tuple and
@@ -333,7 +333,7 @@ func TestCreate_EmitsFGARegisterIntent(t *testing.T) {
 	require.Equal(t, "project:prj-fga", ev.Intent.Tuples[0].SubjectID)
 
 	// (nlb-side): the Create register-intent carries the
-	// tenant labels + parent-project so kacho-iam feeds resource_mirror for the
+	// tenant labels + parent-project so kaname feeds resource_mirror for the
 	// γ selector matchLabels.
 	require.Equal(t, map[string]string{"tier": "web"}, ev.Intent.Labels, "labels in create intent")
 	require.Equal(t, "prj-fga", ev.Intent.ParentProjectID, "parent_project_id in create intent")

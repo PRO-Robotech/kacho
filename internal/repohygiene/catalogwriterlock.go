@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // catalogwriterlock.go — разбор прод-дерева на предмет писателя строк
-// `kacho_iam.catalog_*`, который НЕ берёт глобальный транзакционный замок
+// `kaname.catalog_*`, который НЕ берёт глобальный транзакционный замок
 // каталога (приёмка
 // `services/iam/docs/engineering/acceptance/plan-confirms-what-apply-withdraws.md`
 // §7, держатель Г1; объём О11; предпосылки П43 и П1).
@@ -18,7 +18,7 @@
 //
 // Свойство сегодня истинно и НЕ УДЕРЖАНО НИЧЕМ. Замер дня заведения гейта:
 // текстовый предикат по операторам записи даёт **2** прод-файла, исполняющий
-// среди них **1** (`repo/kacho/pg/catalog_writer.go`), и он замок берёт;
+// среди них **1** (`repo/kaname/pg/catalog_writer.go`), и он замок берёт;
 // `grep -rln 'CatalogLockKey' internal/repohygiene/` → **0**.
 //
 // Истечёт свойство МОЛЧА. Заведут второго писателя — отпечаток продолжит
@@ -30,7 +30,7 @@
 //
 // `services/iam/internal/check/catalog_seed_parity.go` несёт РОВНО ТЕ ЖЕ
 // операторы: он разбирает текст миграции и сверяет посев с манифестом, поэтому
-// строки `INSERT INTO kacho_iam.catalog_module (module) VALUES` лежат у него
+// строки `INSERT INTO kaname.catalog_module (module) VALUES` лежат у него
 // литералами и константами. Он обязан МОЛЧАТЬ: разбирать оператор и исполнять
 // его — разные вещи, а гейт, судящий подстроку, краснел бы на файле, который
 // ничего не нарушает, и был бы снят первым читателем.
@@ -160,7 +160,7 @@ type CatalogWriteCensus struct {
 // предложения. Три таблицы перечислены поимённо: `catalog_*` без перечня накрыл
 // бы любую будущую таблицу с этим префиксом, о запирании которой никто не решал.
 var catalogWriteStmtRe = regexp.MustCompile(
-	`(?im)^\s*(with\b[^\n]*\n\s*)?(insert\s+into|update)\s+(kacho_iam\.)?catalog_(module|resource|verb)\b`)
+	`(?im)^\s*(with\b[^\n]*\n\s*)?(insert\s+into|update)\s+(kaname\.)?catalog_(module|resource|verb)\b`)
 
 // catalogXactLockRe — ТРАНЗАКЦИОННЫЙ консультативный замок. Сессионная форма под
 // образец не подпадает намеренно (шапка файла).
@@ -175,7 +175,7 @@ const catalogLockKeyIdent = "CatalogLockKey"
 
 // catalogLockKeyValue — её значение. Принимается и литералом: проба, состязающаяся
 // за замок, вправе назвать ключ прямо, и объявлять это находкой не за что.
-const catalogLockKeyValue = "kacho_iam.module_catalog"
+const catalogLockKeyValue = "kaname.module_catalog"
 
 // catalogExecSelectors — методы, ИСПОЛНЯЮЩИЕ оператор.
 //

@@ -6,7 +6,7 @@ package drainer
 // Integration test: the partition-head-only CLAIM must stay CONSTANT-cost in
 // backlog depth.
 //
-// # Root cause this locks (throughput inversion of kacho-iam fga_outbox)
+// # Root cause this locks (throughput inversion of kaname fga_outbox)
 //
 //	The partition-head-only claim (Config.PartitionColumn) reads
 //
@@ -71,7 +71,7 @@ import (
 )
 
 // claimPlanTable is the canonical outbox table under test, created with EXACTLY
-// the index set kacho-iam ships for kacho_iam.fga_outbox (migrations 0002 + 0063 +
+// the index set kaname ships for kaname.fga_outbox (migrations 0002 + 0063 +
 // 0067). Kept in sync with services/iam/internal/migrations — the iam side owns
 // the migration, this mirror lets the drainer prove the claim plan the index set
 // produces.
@@ -121,7 +121,7 @@ func Test_ClaimPlan_DoesNotScaleWithBacklogDepth(t *testing.T) {
 	const (
 		shallowBacklog = 5_000
 		deepBacklog    = 40_000 // 8x deeper
-		// rowsPerPartition mirrors the live stand: kacho_iam.fga_outbox carried
+		// rowsPerPartition mirrors the live stand: kaname.fga_outbox carried
 		// ~25-40 rows per object during the burst, so only ~1 row in 30 is a
 		// claimable partition head. A claim must still find its 16 heads without
 		// reading the backlog.
@@ -180,7 +180,7 @@ func Test_ClaimPlan_DoesNotScaleWithBacklogDepth(t *testing.T) {
 //	the Sort must consume the WHOLE pending set, so the anti-join runs once per
 //	pending row and the claim becomes O(backlog^2)-ish.
 //
-//	Measured on the live stand (Postgres 16, kacho_iam.fga_outbox, 8 600 pending)
+//	Measured on the live stand (Postgres 16, kaname.fga_outbox, 8 600 pending)
 //	with the extra `(created_at) WHERE sent_at IS NULL` index present: 6 990 ms for
 //	ONE claim. With it removed and nothing else changed: 29 ms. The drainer was
 //	observed applying exactly one 16-row batch every ~11.5 s for 46 s — 1.4 rows/s
@@ -204,7 +204,7 @@ func Test_ClaimPlan_DoesNotScaleWithBacklogDepth(t *testing.T) {
 //	Sort present ⟺ early stop lost ⟺ O(backlog) claim.
 //
 // RED if a decoy partial index over `sent_at IS NULL` is (re)introduced on this
-// table; GREEN with the two-index set kacho-iam ships.
+// table; GREEN with the two-index set kaname ships.
 func Test_ClaimPlan_StaleStatistics_DoesNotCollapse(t *testing.T) {
 	if testing.Short() || os.Getenv("SKIP_INTEGRATION") == "1" {
 		t.Skip("integration tests skipped (SKIP_INTEGRATION=1)")
@@ -269,7 +269,7 @@ func setupClaimPlanPG(ctx context.Context, t *testing.T) *pgxpool.Pool {
 // decides, because "how fresh are the planner's statistics" is itself one of the
 // properties under test (see Test_ClaimPlan_StaleStatistics_DoesNotCollapse).
 //
-// The partition key is materialised on the row exactly as kacho-iam's trigger
+// The partition key is materialised on the row exactly as kaname's trigger
 // does it (`user || ' ' || relation || ' ' || object`), so the seeded shape has a
 // realistic tuple/object ratio: many subjects per object, few rows per tuple.
 func seedBacklog(ctx context.Context, t *testing.T, pool *pgxpool.Pool, from, to, rowsPerPartition int) {
@@ -310,7 +310,7 @@ func seedDrained(ctx context.Context, t *testing.T, pool *pgxpool.Pool, from, to
 }
 
 // analyzeOutbox refreshes planner statistics — what a healthy autovacuum does
-// DURING a burst (kacho-iam pins the per-table analyze threshold in migration 0064
+// DURING a burst (kaname pins the per-table analyze threshold in migration 0064
 // precisely to make that happen).
 func analyzeOutbox(ctx context.Context, t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()

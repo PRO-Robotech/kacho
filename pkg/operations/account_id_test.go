@@ -24,7 +24,7 @@ var metaTestFileSeq atomic.Int64
 
 // buildMetadata строит синтетическое proto-сообщение с указанными string-полями
 // по их exact-именам (через dynamicpb), чтобы протестировать рефлексию
-// extractResourceID / extractAccountID без зависимости от kacho-iam proto-stubs.
+// extractResourceID / extractAccountID без зависимости от kaname proto-stubs.
 // fields — упорядоченный список (имя, значение); порядок задает field-number 1..N,
 // что важно для проверки «account_id — non-first поле, первое _id дает resource_id».
 //

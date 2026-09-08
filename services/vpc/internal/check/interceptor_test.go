@@ -243,12 +243,12 @@ func TestInterceptor_Unary_InternalAddressService_Checked(t *testing.T) {
 
 // TestInterceptor_Unary_InternalMappedRPC_Checked — cluster-scoped internal RPC
 // из Map проходит FGA Check (authN+authZ на internal listener :9091). DENY →
-// handler НЕ вызывается, Check вызван с (subject, relation, cluster:cluster_kacho_root).
+// handler НЕ вызывается, Check вызван с (subject, relation, cluster:cluster_root).
 func TestInterceptor_Unary_InternalMappedRPC_Checked(t *testing.T) {
 	intr, calls := newTestInterceptor(t, func(_ context.Context, subject, relation, object string) (bool, error) {
 		require.Equal(t, "service_account:sva_operator", subject)
 		require.Equal(t, "system_viewer", relation)
-		require.Equal(t, "cluster:cluster_kacho_root", object)
+		require.Equal(t, "cluster:cluster_root", object)
 		return false, nil
 	})
 	uIntr := intr.Unary()

@@ -22,7 +22,7 @@
 //   - Delete              — async; free VIP back to pool (auto-alloc) либо
 //     clear used_by (BYO); DELETE listener row; emit DELETED + LB UPDATED.
 //   - ListOperations      — sync; per-resource history wrapper над
-//     `kacho-corelib/operations.Repo.List(filter=resource_id)`.
+//     `pkg/operations.Repo.List(filter=resource_id)`.
 //
 // Architectural pillars (Clean Architecture):
 //
@@ -60,7 +60,7 @@
 //     `w.FGARegisterOutbox.Emit(fga.register, …)` in the SAME writer-tx as the
 //     listener INSERT (one commit, no dual-write).
 //   - the register-drainer (`cmd/kacho-loadbalancer/main.go`) later applies each
-//     tuple through kacho-iam `InternalIAMService.RegisterResource` by mTLS;
+//     tuple through kaname `InternalIAMService.RegisterResource` by mTLS;
 //     IAM-down → intent stays durable and is retried (tuple is never lost).
 //   - Delete emits the symmetric `fga.unregister` intent (parent-link) →
 //     `UnregisterResource`.

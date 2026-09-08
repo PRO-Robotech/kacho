@@ -297,7 +297,7 @@ Family-aware фильтр действует и в IPAM-каскаде резо�
 :::info Durable change-log — он же источник потока наружу
 Каждая успешная мутация в той же транзакции пишет событие в transactional-outbox
 `vpc_outbox` (монотонный `sequence_no` + `pg_notify`). Этот durable change-log служит сразу
-двум предметам: асинхронной доставке внутри сервиса (register-outbox, owner-tuple в kacho-iam,
+двум предметам: асинхронной доставке внутри сервиса (register-outbox, owner-tuple в kaname,
 см. [Наблюдаемость](/advanced/observability)) — и **проекции наружу**: он же есть журнал,
 который край отдаёт арендатору потоком, потому что vpc объявлен владельцем платформенной
 подписки. Объявление журнала — `services/vpc/internal/subscriptionjournal/journal.go`; там же

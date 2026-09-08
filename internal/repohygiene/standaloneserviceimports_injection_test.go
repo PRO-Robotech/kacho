@@ -67,7 +67,7 @@ func injStandaloneScan(t *testing.T, c injStandaloneCorpus) ([]standaloneImportF
 // До разреза так импортировали 145 файлов iam — это и был вес отвязки.
 func TestStandaloneGate_RedsOnTheRootInternalImportItWasBuiltFor(t *testing.T) {
 	corpus := injStandaloneCorpus{
-		"services/iam/cmd/kacho-iam/testmain_pgtest_test.go": injGoFile("main_test",
+		"services/iam/cmd/kaname/testmain_pgtest_test.go": injGoFile("main_test",
 			"testing",
 			injStandaloneModule+"/internal/pgtest",
 		),
@@ -78,7 +78,7 @@ func TestStandaloneGate_RedsOnTheRootInternalImportItWasBuiltFor(t *testing.T) {
 	}
 	got := findings[0].String()
 	for _, want := range []string{
-		"services/iam/cmd/kacho-iam/testmain_pgtest_test.go",
+		"services/iam/cmd/kaname/testmain_pgtest_test.go",
 		":5", // строка импорта, а не файла: `package`, пустая, `import (`, "testing", затем он
 		injStandaloneModule + "/internal/pgtest",
 	} {
@@ -121,7 +121,7 @@ func TestStandaloneGate_RedsOnRootToolsWithTheWeakerGround(t *testing.T) {
 // предикат и сделан положительным.
 func TestStandaloneGate_RedsOnAForeignServiceImportNoBlacklistWouldHaveNamed(t *testing.T) {
 	corpus := injStandaloneCorpus{
-		"services/iam/internal/apps/kacho/api/x.go": injGoFile("api",
+		"services/iam/internal/apps/kaname/api/x.go": injGoFile("api",
 			injStandaloneModule+"/services/vpc/internal/domain",
 		),
 	}
@@ -159,10 +159,10 @@ func TestStandaloneGate_RedsEvenWhenLawfulImportsStandBeside(t *testing.T) {
 // ── сторона (б): законный близнец обязан молчать ─────────────────────────────
 
 // Тот же файл дерева ПОСЛЕ отвязки — дословная форма из
-// services/iam/cmd/kacho-iam/testmain_pgtest_test.go.
+// services/iam/cmd/kaname/testmain_pgtest_test.go.
 func TestStandaloneGate_SilentOnTheSharedFoundation(t *testing.T) {
 	corpus := injStandaloneCorpus{
-		"services/iam/cmd/kacho-iam/testmain_pgtest_test.go": injGoFile("main_test",
+		"services/iam/cmd/kaname/testmain_pgtest_test.go": injGoFile("main_test",
 			"testing",
 			injStandaloneModule+"/pkg/pgtest",
 		),
@@ -201,8 +201,8 @@ func TestStandaloneGate_SilentOnItsOwnInternalSubtree(t *testing.T) {
 // дословная: их импортируют 92 прод-файла iam.
 func TestStandaloneGate_SilentOnGeneratedContractStubs(t *testing.T) {
 	corpus := injStandaloneCorpus{
-		"services/iam/internal/apps/kacho/api/user/handler.go": injGoFile("user",
-			injStandaloneModule+"/pkg/api/kacho/cloud/iam/v1",
+		"services/iam/internal/apps/kaname/api/user/handler.go": injGoFile("user",
+			injStandaloneModule+"/pkg/api/kaname/cloud/iam/v1",
 			injStandaloneModule+"/pkg/api/kacho/cloud/operation",
 		),
 	}
@@ -219,7 +219,7 @@ func TestStandaloneGate_SilentOnGeneratedContractStubs(t *testing.T) {
 // каждом файле дерева.
 func TestStandaloneGate_SilentOnStdlibAndThirdParty(t *testing.T) {
 	corpus := injStandaloneCorpus{
-		"services/iam/internal/repo/kacho/pg/x.go": injGoFile("pg",
+		"services/iam/internal/repo/kaname/pg/x.go": injGoFile("pg",
 			"context",
 			"github.com/jackc/pgx/v5",
 			"google.golang.org/grpc",

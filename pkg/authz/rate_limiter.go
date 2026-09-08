@@ -10,8 +10,8 @@ import (
 
 // rateLimiter — token-bucket per-Principal на storm-protection. При flooding
 // `GET /vpc/v1/networks/*` от unauthorized user'а positive cache не помогает
-// (негативы не кэшируются) → каждый запрос идёт в `kacho-iam.Check` →
-// потенциальный DoS на kacho-iam.
+// (негативы не кэшируются) → каждый запрос идёт в `kaname.Check` →
+// потенциальный DoS на kaname.
 //
 // Что именно он ограничивает: темп проверок, чей исход кэш НЕ поглощает, — их
 // список задаёт вызывающий (Interceptor.authorize), а не этот тип. Разрешение

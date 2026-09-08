@@ -9,7 +9,7 @@
 //
 // Слияние двух работ склеило две строки объявления в одну:
 //
-//	optional: true    - name: KACHO_IAM_HOOK_TOKEN
+//	optional: true    - name: KANAME_HOOK_TOKEN
 //
 // Со стороны это выглядит правкой отступа. На деле разбор обрывается на ней
 // («mapping values are not allowed in this context»), то есть чарт НЕ

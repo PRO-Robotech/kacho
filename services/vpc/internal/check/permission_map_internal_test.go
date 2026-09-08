@@ -13,13 +13,13 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/check"
 )
 
-// clusterRootID — singleton cluster object id (FGA object `cluster:cluster_kacho_root`),
-// дублирует константу из kacho-iam (source of truth). Internal cluster-scoped RPC'и
+// clusterRootID — singleton cluster object id (FGA object `cluster:cluster_root`),
+// дублирует константу из kaname (source of truth). Internal cluster-scoped RPC'и
 // vpc гейтятся на этом объекте.
-const clusterRootID = "cluster_kacho_root"
+const clusterRootID = "cluster_root"
 
 // TestPermissionMap_InternalNetwork_GetNetwork проверяет FGA-гейт internal GetNetwork:
-// relation `system_viewer`, object `cluster:cluster_kacho_root` (proto-аннотация
+// relation `system_viewer`, object `cluster:cluster_root` (proto-аннотация
 // required_relation=system_viewer, object_type=cluster, from_request_field="*").
 // Потребитель — оператор сети с least-priv system_viewer@cluster.
 func TestPermissionMap_InternalNetwork_GetNetwork(t *testing.T) {
@@ -69,7 +69,7 @@ func TestPermissionMap_InternalAddressPool_AllSystemAdmin(t *testing.T) {
 }
 
 // TestPermissionMap_InternalAddressPool_Get_ClusterObject — представитель
-// AddressPool RPC: object извлекается как cluster:cluster_kacho_root.
+// AddressPool RPC: object извлекается как cluster:cluster_root.
 func TestPermissionMap_InternalAddressPool_Get_ClusterObject(t *testing.T) {
 	m := check.PermissionMap()
 	e, ok := m.Lookup("/kacho.cloud.vpc.v1.InternalAddressPoolService/Get")

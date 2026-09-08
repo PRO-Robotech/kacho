@@ -26,6 +26,14 @@ const gatewaySAN = "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
 
 func loadEnv(t *testing.T, env map[string]string) config.Config {
 	t.Helper()
+	// Объявление домена величин — часть законной посадки: у ручки ровно два
+	// законных значения, и незаданное среди них не значится. Отправная точка,
+	// его не несущая, отличалась бы от законной ДВУМЯ фактами сразу, и красное
+	// ниже перестало бы означать то, что объявлено. Случай, которому нужно
+	// иное значение, задаёт его сам.
+	if _, ok := env["KACHO_REGISTRY_QUOTA_AUTHORITY"]; !ok {
+		env["KACHO_REGISTRY_QUOTA_AUTHORITY"] = "not-deployed"
+	}
 	var c config.Config
 	if err := config.LoadInto(&c, env); err != nil {
 		t.Fatalf("LoadInto err = %v", err)

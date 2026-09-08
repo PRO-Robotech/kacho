@@ -56,6 +56,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/allowlist"
@@ -276,15 +277,15 @@ func (m *AuthzMiddleware) Metrics() *AuthzMetrics { return m.metrics }
 //
 // Набор доступен только на чтение после инициализации пакета — не менять в рантайме.
 var subjectChangingFQNs = map[string]struct{}{
-	"kacho.cloud.iam.v1.AccessBindingService/Create": {},
-	"kacho.cloud.iam.v1.AccessBindingService/Delete": {},
+	"kaname.cloud.iam.v1.AccessBindingService/Create": {},
+	"kaname.cloud.iam.v1.AccessBindingService/Delete": {},
 	// Мягкий отзыв: строка привязки остаётся, набор отношений снимается — для
 	// вердикта это то же, что удаление, и кэш обязан погаснуть так же.
-	"kacho.cloud.iam.v1.AccessBindingService/Revoke": {},
+	"kaname.cloud.iam.v1.AccessBindingService/Revoke": {},
 	// Членство в группе меняет права, не трогая ни одной привязки: право выдано
 	// ГРУППЕ, а состав её здесь и меняется.
-	"kacho.cloud.iam.v1.GroupService/AddMember":    {},
-	"kacho.cloud.iam.v1.GroupService/RemoveMember": {},
+	"kaname.cloud.iam.v1.GroupService/AddMember":    {},
+	"kaname.cloud.iam.v1.GroupService/RemoveMember": {},
 }
 
 // MaybeFlushOnMutation flushes the decision cache when fqn is a grant-changing
@@ -574,7 +575,7 @@ const (
 	// outcomeNotFound — an authz deny on a hide-existence read RPC (catalog
 	// HideExistence / IAM verb-bearing `v_get` read). Maps to gRPC NotFound(5) /
 	// HTTP 404 with NO deny reasons. The gateway Check runs BEFORE the resource
-	// owner (kacho-iam), which itself returns NotFound for a denied read; surfacing
+	// owner (kaname), which itself returns NotFound for a denied read; surfacing
 	// a 403 here would override that hide-existence contract and leak both existence
 	// and the deny reasons. Enforcement is unchanged — the deny still blocks the
 	// request and the handler is never reached; only the surfaced code/body differ.
@@ -692,7 +693,7 @@ func (m *AuthzMiddleware) phaseAllowlist(dr decisionRequest) (decision, bool) {
 
 // phaseInternalOriginExempt admits an `<exempt>` Internal* RPC ONLY when it
 // arrived on the cluster-internal listener (not the advertised external TLS
-// listener). Internal callers (api-gateway self-call, kacho-iam drainer,
+// listener). Internal callers (api-gateway self-call, kaname drainer,
 // port-forward admin) carry no external user JWT, so the catalog's authN-
 // enforcing exempt path would otherwise 401 them. Gated Internal* RPCs (a real
 // `required_relation`, e.g. InternalClusterService) are NOT bypassed — they run
@@ -1054,18 +1055,20 @@ func (m *AuthzMiddleware) phaseResource(dr decisionRequest, entry CatalogEntry, 
 		}
 	}
 
-	// cluster — это singleton (`cluster_kacho_root`,
-	// см. kacho-iam/internal/domain/cluster.go::ClusterSingletonID).
+	// cluster — это singleton; его написание объявлено константой
+	// catalogderive.ClusterSingletonID и берётся ОТТУДА, а не повторяется
+	// строкой: переход написания правит объявление, а повторённая рукой строка
+	// продолжила бы спрашивать про прежний объект молча.
 	// Catalog для reference-data (compute.Region/Zone, etc.) задает
 	// scope_extractor: {object_type: cluster, from_request_field: '*'}.
-	// Extractor выдает ResourceID("*") → object="cluster:*" → kacho-iam
+	// Extractor выдает ResourceID("*") → object="cluster:*" → kaname
 	// AuthorizeService.Check отбивает с "no path: unscoped resource"
 	// (authorize_service.go блокирует req.Resource.ID == "*"). Тут
 	// substitute'им wildcard на канонический singleton id, чтобы Check
-	// шел на cluster:cluster_kacho_root, где tuple-cascade
+	// шел на объект якоря, где tuple-cascade
 	// `define viewer: [user, user:*, ...]` действительно работает.
 	if resourceType == "cluster" && resourceID.IsWildcard() {
-		resourceID = ResourceID("cluster_kacho_root")
+		resourceID = ResourceID(catalogderive.ClusterSingletonID)
 	}
 
 	descriptor := permissionDeniedDescriptor{

@@ -101,6 +101,8 @@ DECLARED="
 .github/scripts/install-pinned-browser.sh
 .github/scripts/newman-live.py
 .github/scripts/run-python-probes.py
+.github/scripts/stand-revision-verdict.sh
+.github/scripts/stand-up.sh
 deploy/scripts/assert-admin-hop-transport.sh
 deploy/scripts/assert-alt-fixtures-are-another.py
 deploy/scripts/assert-ban6-external-isolation.py
@@ -117,6 +119,7 @@ deploy/scripts/assert-legacy-issuer-acceptance-has-a-subject.py
 deploy/scripts/assert-machine-minter-has-no-dead-exchange-lane.py
 deploy/scripts/assert-metrics-surfaces-answer.sh
 deploy/scripts/assert-outbox-autovacuum.sh
+deploy/scripts/assert-own-front-address-is-read.py
 deploy/scripts/assert-posture-branches-can-be-taken.py
 deploy/scripts/assert-refusal-lane-has-a-reader.py
 deploy/scripts/assert-report-readers-use-the-summary.py
@@ -128,8 +131,10 @@ deploy/scripts/assert-verdict-aggregators-honest.sh
 deploy/scripts/assert-waiters-name-their-target.sh
 deploy/scripts/assert-wave-scheduler-terminates.sh
 deploy/scripts/classify-integration-outcome.sh
+deploy/scripts/classify-pg-outside-selection.sh
 deploy/scripts/gen-managed-image-pins.sh
 deploy/scripts/helm-umbrella-deps.sh
+deploy/scripts/own-rest-front-address.py
 deploy/scripts/remeasure-provider-listener-tls.sh
 deploy/scripts/run-injection-proofs.sh
 deploy/scripts/stand-provenance.sh
@@ -152,6 +157,7 @@ deploy/tests/helm/three-outcomes-distinguishable-test.sh
 deploy/tests/helm/trusted-forwarder-profiles-test.sh
 gateway/tests/newman/scripts/selftest_tamper_mutation.py
 services/compute/tests/newman/scripts/validate-cases.py
+services/iam/tests/newman/scripts/body_capture_form_test.py
 services/iam/tests/newman/scripts/exec-coverage.py
 services/iam/tests/newman/scripts/selftest_basic_access_token.py
 tests/authz-fixtures/ceremony_credentials.py

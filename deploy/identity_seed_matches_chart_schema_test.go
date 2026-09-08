@@ -51,8 +51,8 @@ const (
 	// содержимое обеих карт настроек. Карты-обёртки сами по себе ничего не
 	// объявляют: они зовут именованный шаблон, чтобы отпечаток содержимого и
 	// сама карта считались по одному тексту (см. _kratos-identity.tpl).
-	identitySchemaTemplate = "helm/umbrella/charts/kacho-iam/templates/_kratos-identity.tpl"
-	identityConfigTemplate = "helm/umbrella/charts/kacho-iam/templates/_kratos-identity.tpl"
+	identitySchemaTemplate = "helm/umbrella/charts/kaname/templates/_kratos-identity.tpl"
+	identityConfigTemplate = "helm/umbrella/charts/kaname/templates/_kratos-identity.tpl"
 	// Посев церемонии — единственный производитель личности через админский API
 	// (предикат: `grep -rn 'admin/identities' --include=*.py --include=*.sh .`).
 	ceremonySeed = "../tests/authz-fixtures/prodseed_ceremony.py"

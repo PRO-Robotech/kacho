@@ -75,7 +75,7 @@ API-сервер поднимает два независимых gRPC-listener'
 
 Internal listener **не публикуется** на external endpoint — его REST-проекция в `api-gateway`
 доступна только на cluster-internal mux. В production оба listener'а обязаны работать по mTLS,
-а per-RPC authz-Check к kacho-iam — быть сконфигурированным (иначе сервис не стартует).
+а per-RPC authz-Check к kaname — быть сконфигурированным (иначе сервис не стартует).
 
 ```mermaid
 flowchart LR
@@ -83,7 +83,7 @@ flowchart LR
   agw -->|"internal mux"| int["kacho-geo :9091<br/>admin CRUD (mTLS)"]
   pub --> pg[("kacho_geo")]
   int --> pg
-  pub -->|"authz"| iam["kacho-iam"]
+  pub -->|"authz"| iam["kaname"]
   int -->|"authz"| iam
 ```
 

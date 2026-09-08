@@ -16,7 +16,6 @@ import (
 	"go.uber.org/multierr"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 )
@@ -91,6 +90,11 @@ var validLogLevels = map[string]struct{}{
 // `viper.Unmarshal` в `Load`.
 func (c Config) Validate() error {
 	var errs error
+
+	// Объявление домена величин судится на ЛЮБОМ старте: незаданное объявление
+	// означает, что оператор не выбрал между «потолки действуют» и «потолков
+	// нет», и подставить за него разумное умолчание нельзя ни в каком режиме.
+	errs = multierr.Append(errs, c.ValidateQuotaAuthority())
 
 	// Круг отправителей чужой личности обязан быть сужен на ЛЮБОМ старте — не
 	// только в боевом режиме, и не только когда включён server-mTLS.
@@ -341,12 +345,11 @@ func (c Config) Validate() error {
 		// у nlb они совпадают по `sslmode` (DSN дописывает только `pool_*`), но
 		// спрашивать надо исход, иначе первое же изменение сборки строки
 		// разведёт стража с пулом молча.
-		if dsn := strings.TrimSpace(c.DSN()); dsn != "" && !coredb.SSLModeSecure(coredb.SSLModeFromDSN(dsn)) {
-			errs = multierr.Append(errs, fmt.Errorf(
-				"production mode: insecure Postgres transport — repository.postgres.url sslmode must be %s "+
-					"(disable/allow/prefer or unset permits a plaintext DB connection; forbidden)",
-				strings.Join(coredb.SecureSSLModes(), "|")))
-		}
+		//
+		// Сам предикат и текст отказа живут в ОДНОМ месте на обе двери
+		// конфигурации (`migrate_dsn.go`): точка наката судит ту же ось на своей
+		// строке подключения, и две редакции одного текста разошлись бы молча.
+		errs = multierr.Append(errs, postgresTransportRefusal(c.DSN()))
 	}
 
 	// Jobs.target-drain (фаза B drain runner). Interval должен быть > 0;

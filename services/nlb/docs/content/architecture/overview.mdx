@@ -133,7 +133,7 @@ flowchart LR
 ```
 
 Отдельный **register-outbox** (канал `kacho_nlb_fga_register_outbox`) через corelib
-drainer доставляет владение и место ресурса в цепи областей в kacho-iam (at-least-once,
+drainer доставляет владение и место ресурса в цепи областей в kaname (at-least-once,
 идемпотентно). Подробнее — [Авторизация](/architecture/authz).
 
 :::warning Principal в фоновом воркере
@@ -154,7 +154,7 @@ free-ip reconciler) работают под явным SA-principal.
     <tr><td><code>nlb → kacho-geo</code></td><td><code>RegionService.Get</code> — валидация <code>regionId</code></td><td>sync precheck</td></tr>
     <tr><td><code>nlb → kacho-vpc</code></td><td>Address / Subnet / NIC: IPAM-аллокация VIP, валидация ссылок таргетов</td><td>sync + IPAM</td></tr>
     <tr><td><code>nlb → kacho-compute</code></td><td><code>InstanceService.Get</code> — резолв Instance-таргетов</td><td>sync</td></tr>
-    <tr><td><code>nlb → kacho-iam</code></td><td><code>ProjectService.Get</code> (existence), <code>InternalIAMService.Check</code> (authz), <code>RegisterResource</code> (FGA owner-tuples)</td><td>sync + drainer</td></tr>
+    <tr><td><code>nlb → kaname</code></td><td><code>ProjectService.Get</code> (existence), <code>InternalIAMService.Check</code> (authz), <code>RegisterResource</code> (FGA owner-tuples)</td><td>sync + drainer</td></tr>
   </tbody>
 </table>
 

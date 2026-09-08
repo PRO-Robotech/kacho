@@ -38,11 +38,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 )
 
@@ -82,8 +80,7 @@ func newStub(allow ...string) *stubClient {
 	return s
 }
 
-func (s *stubClient) BatchCheck(ctx context.Context, in *iamv1.BatchAuthorizeCheckRequest,
-	_ ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error) {
+func (s *stubClient) BatchCheck(ctx context.Context, checks []Check) ([]bool, error) {
 	cur := s.inflight.Add(1)
 	for {
 		peak := s.peak.Load()
@@ -96,12 +93,12 @@ func (s *stubClient) BatchCheck(ctx context.Context, in *iamv1.BatchAuthorizeChe
 	s.mu.Lock()
 	s.calls++
 	n := s.calls
-	s.checks += len(in.GetChecks())
-	if len(in.GetChecks()) > s.maxBatch {
-		s.maxBatch = len(in.GetChecks())
+	s.checks += len(checks)
+	if len(checks) > s.maxBatch {
+		s.maxBatch = len(checks)
 	}
-	for _, c := range in.GetChecks() {
-		s.relSeen[c.GetRequiredRelation()]++
+	for _, c := range checks {
+		s.relSeen[c.RequiredRelation]++
 	}
 	err, short := s.err, s.short
 	s.mu.Unlock()
@@ -119,14 +116,14 @@ func (s *stubClient) BatchCheck(ctx context.Context, in *iamv1.BatchAuthorizeChe
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*iamv1.AuthorizeCheckResponse, 0, len(in.GetChecks()))
-	for _, c := range in.GetChecks() {
-		out = append(out, &iamv1.AuthorizeCheckResponse{Allowed: s.allow[c.GetResource().GetId()]})
+	out := make([]bool, 0, len(checks))
+	for _, c := range checks {
+		out = append(out, s.allow[c.ResourceID])
 	}
 	if short && len(out) > 0 {
 		out = out[:len(out)-1]
 	}
-	return &iamv1.BatchAuthorizeCheckResponse{Responses: out}, nil
+	return out, nil
 }
 
 func (s *stubClient) stats() (calls, checks, maxBatch int) {

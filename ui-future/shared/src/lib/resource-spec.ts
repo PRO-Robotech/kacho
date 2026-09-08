@@ -284,7 +284,7 @@ export interface ResourceSpec {
   childRoute?: string;
   // skeleton-объект для Create-формы.
   // projectId — выбранный Project (VPC/Compute scope).
-  // accountId — выбранный Account (kacho.cloud.iam.v1.Project.account_id).
+  // accountId — выбранный Account (kaname.cloud.iam.v1.Project.account_id).
   template: (ctx: { projectId?: string; accountId?: string }) => unknown;
   // Опциональная нормализация payload перед отправкой на API.
   // Используется для конвертации form-internal представления (wrapper-объекты, toggle-поля)

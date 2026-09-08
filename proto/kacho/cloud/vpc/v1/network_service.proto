@@ -181,7 +181,7 @@ message GetNetworkRequest {
 
 message ListNetworksRequest {
   // ID of the project to list networks in.
-  // To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+  // To get the project ID, use a [kaname.cloud.iam.v1.ProjectService.List] request.
   string project_id = 1;
 
   // The maximum number of results per page to return. If the number of available
@@ -223,7 +223,7 @@ message ListNetworksResponse {
 
 message CreateNetworkRequest {
   // ID of the project for this request to create a network in.
-  // To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+  // To get the project ID, use a [kaname.cloud.iam.v1.ProjectService.List] request.
   string project_id = 1;
 
   // Name of the network.

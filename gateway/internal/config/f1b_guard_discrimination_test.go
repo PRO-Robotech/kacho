@@ -191,7 +191,7 @@ func f1bGuardCases() []f1bGuardCase {
 			Cfg: func() config.Config {
 				c := f1bBase("production")
 				c.TokenIssuers = f1bLegacy
-				c.TokenIssuerKeySets = f1bLegacy + "=http://kacho-iam-internal.kacho.svc:9097/x"
+				c.TokenIssuerKeySets = f1bLegacy + "=http://kaname-internal.kacho.svc:9097/x"
 				return c
 			}(),
 			Discriminator: "trust anchor of signature verification",
@@ -270,7 +270,7 @@ func f1bGuardCases() []f1bGuardCase {
 				c.TokenIssuers = f1bOurs
 				c.TokenIssuerKeySets = f1bOurs + "=" + f1bOursKS
 				c.PlatformTokenIssuer = f1bOurs
-				c.PlatformTokenRevocationURL = "http://kacho-iam-internal.kacho.svc:9097/x"
+				c.PlatformTokenRevocationURL = "http://kaname-internal.kacho.svc:9097/x"
 				return c
 			}(),
 			Discriminator: "the answer decides access",

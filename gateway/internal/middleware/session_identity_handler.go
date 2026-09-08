@@ -61,7 +61,7 @@ type SessionIdentityHandler struct {
 	// kratos resolves the deployed identity provider's session cookie. When nil
 	// the route answers anonymous — it never falls back to another carrier.
 	kratos        *KratosClient
-	subjectLookup SubjectLookuper // resolves identity.id → User/SA mirror in kacho-iam
+	subjectLookup SubjectLookuper // resolves identity.id → User/SA mirror in kaname
 	adminCheck    AdminChecker    // optional admin-tuple lookup
 	// sessionCutoff — НАШ авторитет отзыва. См. WithSessionCutoff.
 	sessionCutoff SessionCutoffReader

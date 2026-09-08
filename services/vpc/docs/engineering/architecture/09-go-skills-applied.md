@@ -87,7 +87,7 @@
 - **Connection pool.** `KACHO_VPC_DB_MAX_CONNS` прокидывается в DSN только для pgxpool;
   `migrate` использует отдельный `MigrateDSN` без этого параметра (иначе `database/sql`
   шлет серверу неизвестный PG-параметр → `FATAL`).
-- **TLS к kacho-iam / БД.** `KACHO_VPC_IAM_TLS`, `KACHO_VPC_DB_SSLMODE`. `disable`
+- **TLS к kaname / БД.** `KACHO_VPC_IAM_TLS`, `KACHO_VPC_DB_SSLMODE`. `disable`
   допустим только во внутрипроцессных фикстурах; на **любом развёрнутом** стенде
   boot-guard требует не-`disable` (`security.md` §Production-mode обязателен ВЕЗДЕ).
 - **Default SG.** Inline-создание default-SG включается конфигом

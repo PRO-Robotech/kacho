@@ -20,7 +20,7 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/health"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
@@ -193,7 +193,7 @@ func TestGateway_E1_InternalServiceBlockedAtGateway(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	// InternalUserService — admin endpoint, не должен быть доступен через api-gateway public mux.
-	err = gwConn.Invoke(ctx, "/kacho.cloud.iam.v1.InternalUserService/UpsertFromIdentity",
+	err = gwConn.Invoke(ctx, "/kaname.cloud.iam.v1.InternalUserService/UpsertFromIdentity",
 		&iamv1.ListAccountsRequest{}, &iamv1.ListAccountsResponse{})
 	if err == nil {
 		t.Fatal("ожидали NOT_FOUND для InternalService")

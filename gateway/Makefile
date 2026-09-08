@@ -77,7 +77,7 @@ permission-catalog-apply: permission-catalog
 	cp $(PERMISSION_CATALOG_BUILD) $(PERMISSION_CATALOG_TARGET)
 	@echo "Applied regenerated catalog to $(PERMISSION_CATALOG_TARGET)."
 
-IAM_CATALOG := ../services/iam/internal/apps/kacho/seed/embedded/permission_catalog.json
+IAM_CATALOG := ../services/iam/internal/apps/kaname/seed/embedded/permission_catalog.json
 
 # Сверка ДВУХ вшитых копий каталога прав — отдельная цель, и исполняется она
 # БЕЗУСЛОВНО.

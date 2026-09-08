@@ -463,7 +463,7 @@ func TestRevocationEdgeTemplatePremise_SelfTest(t *testing.T) {
 func TestDeclaredRevocationTransport_SelfTest(t *testing.T) {
 	mountDir := materialiseEdgeCredentials(t)
 	const (
-		secureURL = "https://kacho-iam-internal.kacho.svc:9097/internal/tokens/introspect"
+		secureURL = "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
 		plainURL  = "http://127.0.0.1:9097/internal/tokens/introspect"
 	)
 	reg := func(enable, edge bool, serverName string) map[string]any {
@@ -476,7 +476,7 @@ func TestDeclaredRevocationTransport_SelfTest(t *testing.T) {
 			},
 		}
 	}
-	const sn = "kacho-iam-internal.kacho.svc"
+	const sn = "kaname-internal.kacho.svc"
 
 	cases := []struct {
 		name    string

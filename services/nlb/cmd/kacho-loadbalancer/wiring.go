@@ -61,7 +61,7 @@ type grpcWiring struct {
 	pool    *pgxpool.Pool
 	cfg     *config.Config
 	logger  *slog.Logger
-	// syncRegistrar — синхронный регистратор владельца ресурса у kacho-iam.
+	// syncRegistrar — синхронный регистратор владельца ресурса у kaname.
 	// Собирается в композиционном корне ДО подъёма слушателей: его сборка умеет
 	// отказать, а регистратор носителя возврата ошибки не имеет — и не должен,
 	// отказ обязан случиться раньше первого принятого соединения.
@@ -107,7 +107,7 @@ func buildQuotaGuard(repo *kachopg.Repository, peers *peerClients) *quota.Guard 
 }
 
 // buildSyncRegistrar собирает синхронный регистратор owner-tuple поверх того же
-// mTLS-соединения с внутренним листенером kacho-iam, которым идёт дренаж
+// mTLS-соединения с внутренним листенером kaname, которым идёт дренаж
 // регистраций. Пира нет (dev / без iam) → nil-регистратор, синхронный путь
 // пропускается; durable-намерение в очереди остаётся at-least-once backstop'ом.
 //
@@ -133,7 +133,7 @@ func buildSyncRegistrar(peers *peerClients) (iamclient.Registrar, error) {
 // быть не может, поэтому «зарегистрировать и приделать своё звено» невыразимо.
 //
 // Owner-tuple ресурса материализуется eventually-consistent (намерение в
-// writer-TX → дренаж → kacho-iam RegisterResource → реконсайлер-backstop) и НЕ
+// writer-TX → дренаж → kaname RegisterResource → реконсайлер-backstop) и НЕ
 // гейтит `Operation.done`. Синхронный регистратор дополнительно регистрирует его
 // сразу после коммита, закрывая read-your-writes окно; durable-намерение остаётся
 // at-least-once backstop'ом (ban #9).

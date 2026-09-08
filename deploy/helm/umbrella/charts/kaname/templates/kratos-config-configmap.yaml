@@ -1,0 +1,90 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+{{/*
+KAC-127 Phase 2 — Kratos config ConfigMap (WebAuthn / Passkey enabled).
+
+Соответствует acceptance §5.1 (sub-phase 3.2):
+
+  - webauthn passwordless=true, rp.id = {{ .Values.kacho.domain }} (root domain WebAuthn-RP);
+    rp.origin = https://{app-subdomain}.{{ .Values.kacho.domain }} (UI origin).
+  - password fallback с Argon2id (m=64MB t=3 p=4) + HIBP k-anonymity check;
+  - totp secondary (RFC 6238) для AAL2 fallback;
+  - lookup_secret (backup codes) для recovery-edge;
+  - recovery: magic-link, lifespan 5min (acceptance §2.8 — IP-bound enforced на use-time);
+  - post-registration/post-login web_hook → kaname provisioning HTTP route
+    `/iam/v1/hooks/provision` on the :9092 hooks listener (Service kaname-internal).
+    C4 fix: the previous target was the PURE gRPC :9091 port with a REST-style
+    path that does not exist there → every hook failed silently → users were
+    never mirrored into kaname (no project/namespace). Body = identity-payload.jsonnet
+    (kaname-kratos-hooks ConfigMap), emitting {external_id, email, display_name}.
+  - post-recovery web_hook → `/iam/v1/hooks/recovery` на том же :9092. Прежде он
+    указывал на легаси :9091 с REST-подобным путём и падал молча, а объяснение
+    ссылалось на «нереализованный» RPC — тот был реализован, не хватало маршрута.
+
+Файл маунтится в Kratos pod как `/etc/kaname-identity/kratos.yaml`. Hydra/Kratos
+helm subchart'ы умеют читать config из этого ConfigMap через `config.fromConfigMap`
+или через volume-mount + `kratos --config /etc/kaname-identity/kratos.yaml`.
+В Phase 2 предпочитаем второй вариант (явный mount) — даёт нам полный контроль
+над структурой YAML без оборачивания в `kratos.config.*` (sub-chart wrapper).
+
+ПОДСТАНОВКИ `${ИМЯ}` В ЗНАЧЕНИЯХ ЭТОЙ КОНФИГУРАЦИИ НЕ ПРОИСХОДИТ. Здесь стояло
+обратное — что служба личности выполнит её на старте, а в dev это «работает
+через переменные, проброшенные в под». Оба утверждения неверны, и они и есть
+корень задачи #948: ссылка ниже уезжала бы в заголовок ДОСЛОВНО.
+
+Измерено, а не выведено из документации: oryd/kratos:v26.2.0 при переменной,
+ЗАВЕДЁННОЙ в поде, вернул ссылку дословно в адресе действия потока регистрации;
+oryd/hydra:v26.2.0 на том же входе не прошёл проверку схемы («"${…}" is not
+valid "uri"»). Переменными служба переопределяет ключи ПО ПУТИ КЛЮЧА, а величина
+обратного вызова здесь лежит внутри МАССИВА хуков — такой путь именем переменной
+невыразим. Значит источника у ссылки нет и не может быть: конфигурацию обязан
+подготовить шаг ДО старта процесса.
+
+ЭТА КАРТА НАСТРОЕК СМОНТИРОВАНА, и здесь стояло обратное («на этом дереве её не
+монтирует ни один профиль, и ссылка ниже поэтому мертва»). Утверждение пережило
+свой предмет. Перемерено 2026-08-24, единица счёта — СТРОКА ПРОФИЛЯ:
+
+  for f in $(git ls-files 'deploy/helm/umbrella/values*.yaml'); do
+    n=$(grep -cE '/etc/kaname-identity|kratos-config|--config' "$f")
+    [ "$n" -gt 0 ] && echo "$n  $f"
+  done
+
+Даёт ДВЕ строки по 9 попаданий: профиль разработки и БОЕВОЙ профиль. Оба несут и
+довод `--config`, и том с картой, и путь монтирования.
+
+Число монтирующих профилей с тех пор держит ГЕЙТ, а не эта перепись:
+deploy/identity_config_mount_census_test.go выводит множество обходом и роняет
+прогон, когда объявление за деревом не следует. Здесь оно оставлено как замер, из
+которого поправка выведена, — повторить его можно командой выше.
+
+СЛЕДСТВИЕ, КОТОРОЕ ВАЖНЕЕ САМОЙ ПОПРАВКИ. Процесс службы личности получает ДВА
+источника настроек и сливает их ПО ПОРЯДКУ; наш — ВТОРОЙ. Значит всякий раздел,
+который объявляем мы, ЗАМЕЩАЕТ одноимённый раздел поставщика ЦЕЛИКОМ, а не
+дополняет его. Файл, который прежде никто не читал, был мёртвым текстом; став
+читаемым, он стал ломающим изменением, даже если сам не менялся. Правя здесь
+раздел, сверь его с тем, что процесс получал от поставщика по умолчанию, — иначе
+пропажа будет выглядеть дефектом продукта, а не следствием монтирования.
+*/}}
+{{- if .Values.kratos.config.enabled }}
+{{- /* Схема обратных вызовов обязана быть ОБЪЯВЛЕНА: без неё адрес отрендерился
+     бы как `<no value>://…`, служба личности молча не дозвонилась бы до слушателя
+     хуков, и заведение пользователя не доехало бы НИКОГДА. Отказ рендера называет
+     ручку прямо — иначе стенд не поднять. */ -}}
+{{- if not ((.Values.global.kacho).identity).hooks.scheme }}
+{{- fail "kaname: global.kacho.identity.hooks.scheme не объявлен — транспорт обратных вызовов службы личности к слушателю хуков :9092 задаётся значением профиля (http|https), а не константой шаблона" }}
+{{- end }}
+{{- if not ((.Values.global.kacho).identity).domain }}
+{{- fail "kaname: global.kacho.identity.domain не объявлен — адреса службы личности и rp.id ключей доступа собираются из него; пустой домен даёт адрес вида https://app./, по которому вход не работает" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kaname.fullname" . }}-kratos-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kaname.labels" . | nindent 4 }}
+    kacho.cloud/component: kratos-config
+data:
+  kratos.yaml: |
+    {{- include "kacho.identity.configYaml" . | nindent 4 }}
+{{- end }}

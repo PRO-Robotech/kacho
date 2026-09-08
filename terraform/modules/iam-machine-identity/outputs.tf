@@ -9,7 +9,7 @@ output "service_account_id" {
     Право выдаётся на этот идентификатор, а не на имя: имя косметическое и может
     меняться, а выдача обязана пережить переименование.
   EOT
-  value       = kacho_iam_service_account.this.id
+  value       = kaname_service_account.this.id
 }
 
 output "key_ids" {
@@ -19,7 +19,7 @@ output "key_ids" {
     Ими ключ отзывается — и только ими: идентификатор подписи (`kid`) для отзыва не
     годится, это другое значение того же ключа.
   EOT
-  value       = { for k, key in kacho_iam_service_account_key.this : k => key.id }
+  value       = { for k, key in kaname_service_account_key.this : k => key.id }
 }
 
 output "client_ids" {
@@ -30,12 +30,12 @@ output "client_ids" {
     Выведен рядом с материалом намеренно: одного закрытого ключа для входа мало, и
     отсутствие второй половины обнаруживается уже в конвейере.
   EOT
-  value       = { for k, key in kacho_iam_service_account_key.this : k => key.client_id }
+  value       = { for k, key in kaname_service_account_key.this : k => key.client_id }
 }
 
 output "public_key_pems" {
   description = "Открытые ключи в PEM по ключам входной карты. Секрета не несут."
-  value       = { for k, key in kacho_iam_service_account_key.this : k => key.public_key_pem }
+  value       = { for k, key in kaname_service_account_key.this : k => key.public_key_pem }
 }
 
 output "key_expires_at" {
@@ -47,7 +47,7 @@ output "key_expires_at" {
     случае: `ttl_seconds = 0` встретил установку, где умолчание срока не настроено. Там,
     где оно настроено, ноль означает его, а не «никогда».
   EOT
-  value       = { for k, key in kacho_iam_service_account_key.this : k => key.expires_at }
+  value       = { for k, key in kaname_service_account_key.this : k => key.expires_at }
 }
 
 output "private_key_pems" {
@@ -62,6 +62,6 @@ output "private_key_pems" {
     Прочитать значение осознанно: `tofu output -json private_key_pems`. Печатать его в лог
     конвейера не нужно — лог переживает и ключ, и того, кто его выпускал.
   EOT
-  value       = { for k, key in kacho_iam_service_account_key.this : k => key.private_key_pem }
+  value       = { for k, key in kaname_service_account_key.this : k => key.private_key_pem }
   sensitive   = true
 }

@@ -31,7 +31,7 @@ import (
 // боевая посадка» — одна величина, и второе её описание разошлось бы с первым на
 // первом же новом требовании.
 func prodReservedCfg(mode Mode) Config {
-	return prodCfg(mode, "kacho-iam.kacho.svc:9091")
+	return prodCfg(mode, "kaname.kacho.svc:9091")
 }
 
 // S6-01 (положительный контроль): объявленный перечень проходит.
@@ -77,7 +77,7 @@ func TestValidateReservedPrefixes_ProductionStrict_NotDeclared_Fails(t *testing.
 // боевом режиме (core rule #16). Отдельно: испорченное ОБЪЯВЛЕНИЕ отвергается и
 // на dev — см. S6-06, где предмет не посадка, а невозможное значение.
 func TestValidateReservedPrefixes_Dev_NotDeclared_Passes(t *testing.T) {
-	c := prodCfg(ModeDev, "kacho-iam.kacho.svc:9091")
+	c := prodCfg(ModeDev, "kaname.kacho.svc:9091")
 	c.Dataplane.ReservedPrefixes = nil
 
 	require.NoError(t, c.ValidateReservedPrefixes())
@@ -111,7 +111,7 @@ func TestValidateReservedPrefixes_Production_LoneCommaReadsAsEmpty(t *testing.T)
 // поверх него была бы принята.
 func TestValidateReservedPrefixes_UnusableEntry_FailsInAnyMode(t *testing.T) {
 	for _, mode := range []Mode{ModeDev, ModeProduction, ModeProductionStrict} {
-		c := prodCfg(mode, "kacho-iam.kacho.svc:9091")
+		c := prodCfg(mode, "kaname.kacho.svc:9091")
 		c.Dataplane.ReservedPrefixes = []string{"169.254.0.0/16", "10.0.0.0/33"}
 
 		err := c.ValidateReservedPrefixes()

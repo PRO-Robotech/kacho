@@ -21,14 +21,14 @@ import (
 // prefix is stripped on the way out by that service's error mapper, so the
 // repo format IS the wire text):
 //
-//	iam       services/iam/internal/repo/kacho/pg/*.go        (shared.MapRepoErr → iamerr.StripSentinel)
+//	iam       services/iam/internal/repo/kaname/pg/*.go        (shared.MapRepoErr → iamerr.StripSentinel)
 //	compute   services/compute/internal/repo/instance_repo.go  (service.mapRepoErr → stripSentinel)
 //	vpc       services/vpc/internal/repo/kacho/pg/*.go
 //	storage   services/storage/internal/repo/pg/*.go          (serviceerr strip)
 //	nlb       services/nlb/internal/repo/kacho/pg/*.go        (shared.StripSentinel)
 //	registry  services/registry/internal/repo/kacho/pg/errmap.go    (wrapPgErr, resource "Registry")
 var hideExistenceReachableTypes = map[string]string{
-	// iam — services/iam/internal/repo/kacho/pg/*.go
+	// iam — services/iam/internal/repo/kaname/pg/*.go
 	"account":             "Account %s not found",        // account_repo.go
 	"project":             "Project %s not found",        // project_repo.go
 	"iam_user":            "User %s not found",           // user_pool_repo.go

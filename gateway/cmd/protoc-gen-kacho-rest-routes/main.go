@@ -7,7 +7,7 @@
 //
 // Зачем: authz-middleware api-gateway на HTTP-пути обязана превратить входящий
 // REST-запрос (`POST /iam/v1/accounts`) в канонический gRPC-FQN
-// (`kacho.cloud.iam.v1.AccountService/Create`), чтобы найти метод в
+// (`kaname.cloud.iam.v1.AccountService/Create`), чтобы найти метод в
 // permission-каталоге. Без соответствия path->FQN каждый REST-вызов упирается в
 // «no entry for method» и отклоняется. Таблица должна покрывать ВСЕ
 // http-аннотированные RPC всех доменов — поэтому генерируется здесь, где
@@ -264,7 +264,7 @@ const fileHeader = `// Copyright (c) PRO-Robotech
 //
 // The middleware needs this to translate an incoming REST request
 // (` + "`POST /iam/v1/accounts`" + `) into the canonical gRPC FQN
-// (` + "`kacho.cloud.iam.v1.AccountService/Create`" + `) so it can look the method up
+// (` + "`kaname.cloud.iam.v1.AccountService/Create`" + `) so it can look the method up
 // in the embedded permission catalog. Without it, REST requests never match
 // catalog keys and every authenticated REST call is denied.
 package middleware

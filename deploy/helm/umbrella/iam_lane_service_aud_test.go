@@ -27,9 +27,9 @@ import (
 	"testing"
 )
 
-const iamChartDir = "charts/kacho-iam"
+const iamChartDir = "charts/kaname"
 
-// renderIAM рендерит подчарт kacho-iam САМ ПО СЕБЕ (зависимостей у него нет,
+// renderIAM рендерит подчарт kaname САМ ПО СЕБЕ (зависимостей у него нет,
 // сеть не нужна). Отсутствие helm в CI — жёсткий провал, а не пропуск: гейт,
 // молча ставший инертным на джобе, гейтящей мёрж, не является гейтом.
 func renderIAM(t *testing.T, sets ...string) (string, error) {

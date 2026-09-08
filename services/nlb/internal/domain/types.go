@@ -31,7 +31,7 @@ type (
 	// в service-слое (corevalidate.ResourceID).
 	ResourceID string
 
-	// ProjectID — id ресурса kacho-iam Project, "prj" + 17.
+	// ProjectID — id ресурса kaname Project, "prj" + 17.
 	ProjectID string
 
 	// RegionID — семантический id региона (напр. "<region>"); владелец Geography — kacho-geo.

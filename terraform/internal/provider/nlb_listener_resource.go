@@ -46,8 +46,8 @@ type listenerResource struct{ c *client.Client }
 // NewNLBListenerResource — конструктор для реестра провайдера.
 func NewNLBListenerResource() resource.Resource { return &listenerResource{} }
 
-func (r *listenerResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_nlb_listener"
+func (r *listenerResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = typeNameNLBListener
 }
 
 func (r *listenerResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -161,7 +161,7 @@ func (r *listenerResource) Create(ctx context.Context, req resource.CreateReques
 		TargetGroupId:  plan.TargetGroupID.ValueString(),
 	}
 
-	id, err := awaitCreate(ctx, r.c, listenersPath, "listenerId", "kacho_nlb_listener",
+	id, err := awaitCreate(ctx, r.c, listenersPath, "listenerId", typeNameNLBListener,
 		plan.LoadBalancerID.ValueString()+"/"+plan.Name.ValueString(), body)
 	if err != nil {
 		resp.Diagnostics.AddError("Создание слушателя не завершилось", err.Error())

@@ -120,7 +120,7 @@ func mergeComposeAdmissionDecl(bodies [][]byte) (composeAdmissionDecl, error) {
 		if err := yaml.Unmarshal(raw, &tree); err != nil {
 			return out, fmt.Errorf("профиль не разобран: %w", err)
 		}
-		if v, ok := nestedString(tree, "kacho-iam", "manifests", "composeModel"); ok {
+		if v, ok := nestedString(tree, "kaname", "manifests", "composeModel"); ok {
 			out.ComposeRaw, out.ComposeSeen = v, true
 			if trimmed := strings.TrimSpace(v); trimmed == "" {
 				// Ключ объявлен без значения. Рендер донесёт до процесса пустое,
@@ -133,7 +133,7 @@ func mergeComposeAdmissionDecl(bodies [][]byte) (composeAdmissionDecl, error) {
 				out.Compose, out.ComposeSane = b, err == nil
 			}
 		}
-		if v, ok := nestedString(tree, "kacho-iam", "manifests", "admission"); ok {
+		if v, ok := nestedString(tree, "kaname", "manifests", "admission"); ok {
 			out.Admission, out.AdmissionSeen = v, true
 		}
 	}
@@ -443,7 +443,7 @@ func TestComposedModelAdmissionAuditFindsCompositionWithoutAdmission(t *testing.
 	// это не то же самое, что объявленный пустым, и различие проверяется ниже.
 	body := func(compose, admission string) []byte {
 		var b strings.Builder
-		b.WriteString("kacho-iam:\n  manifests:\n")
+		b.WriteString("kaname:\n  manifests:\n")
 		if compose != "-" {
 			fmt.Fprintf(&b, "    composeModel: %s\n", compose)
 		}
@@ -522,27 +522,27 @@ func TestComposedModelAdmissionAuditFindsCompositionWithoutAdmission(t *testing.
 		chain [][]byte
 	}{
 		{"сборка не заведена", [][]byte{body("false", "")}},
-		{"сборка не заведена, ключей нет вовсе", [][]byte{[]byte("kacho-iam: {}\n")}},
+		{"сборка не заведена, ключей нет вовсе", [][]byte{[]byte("kaname: {}\n")}},
 		{"сборка объявлена целиком", [][]byte{body("true", "content")}},
 		{"последнее объявление цепочки достраивает пару", [][]byte{
 			body("true", "-"), body("-", "content"),
 		}},
 		{"последняя накладка ВЫКЛЮЧАЕТ сборку", [][]byte{body("true", "content"), body("false", "")}},
-		{"узел manifests объявлен не картой", [][]byte{[]byte("kacho-iam:\n  manifests: \"опечатка\"\n")}},
+		{"узел manifests объявлен не картой", [][]byte{[]byte("kaname:\n  manifests: \"опечатка\"\n")}},
 		{"ключ с припиской справа сборкой не является", [][]byte{
-			[]byte("kacho-iam:\n  manifests:\n    composeModelXX: true\n")}},
+			[]byte("kaname:\n  manifests:\n    composeModelXX: true\n")}},
 		{"ключ лежит не в том узле", [][]byte{
-			[]byte("kacho-iam:\n  kacho:\n    composeModel: true\n")}},
+			[]byte("kaname:\n  kacho:\n    composeModel: true\n")}},
 		// Ключ объявлен без значения. Посадка исполняет это как «сборки нет»
 		// (рендер донесёт пустое, разбор прочитает выключено), и проверка обязана
 		// читать так же — иначе она ловит форму записи, а не существо.
 		{"сборка объявлена без значения", [][]byte{
-			[]byte("kacho-iam:\n  manifests:\n    composeModel:\n")}},
+			[]byte("kaname:\n  manifests:\n    composeModel:\n")}},
 		// Тот же случай рядом с НАЗВАННЫМ допуском: чтение пустой сборки не
 		// вправе съесть второй ключ ТОГО ЖЕ тела.
 		{"сборка без значения не съедает допуск того же профиля", [][]byte{
-			[]byte("kacho-iam:\n  manifests:\n    composeModel:\n    admission: \"content\"\n"),
-			[]byte("kacho-iam:\n  manifests:\n    composeModel: true\n"),
+			[]byte("kaname:\n  manifests:\n    composeModel:\n    admission: \"content\"\n"),
+			[]byte("kaname:\n  manifests:\n    composeModel: true\n"),
 		}},
 	}
 	for _, tw := range twins {
@@ -567,7 +567,7 @@ func TestComposedModelAdmissionAuditFindsCompositionWithoutAdmission(t *testing.
 // красное приходит от проверяемого, а не от соседа.
 func TestCompositionOfferAuditFindsEveryMissingHalf(t *testing.T) {
 	whole := compositionOfferDecls{
-		values: "manifests:\n  configMapName: \"\"\n  mountPath: /etc/kacho-iam/manifests\n" +
+		values: "manifests:\n  configMapName: \"\"\n  mountPath: /etc/kaname/manifests\n" +
 			"  required: false\n  composeModel: false\n  admission: \"\"\n",
 		configmap: "data:\n  config.yaml: |\n    manifests:\n" +
 			"      dir: \"\"\n      required: {{ .Values.manifests.required }}\n" +

@@ -50,7 +50,7 @@ func wiredConfig(mode string) config.Config {
 	return config.Config{
 		AuthMode:           mode,
 		DBSSLMode:          "require",
-		AuthZIAMGRPCAddr:   "kacho-iam-internal.kacho.svc:9091",
+		AuthZIAMGRPCAddr:   "kaname-internal.kacho.svc:9091",
 		PublicServerMTLS:   grpcsrv.TLSServer{Enable: true},
 		InternalServerMTLS: grpcsrv.TLSServer{Enable: true},
 	}

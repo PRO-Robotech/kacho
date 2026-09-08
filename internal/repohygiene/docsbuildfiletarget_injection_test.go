@@ -155,7 +155,7 @@ func TestDocsBuildGate_TreatsPlaceholdersAsSamplesNotFindings(t *testing.T) {
 
 func TestDocsBuildGate_CountsBuildWithoutTheFileFlagButDoesNotAccuseIt(t *testing.T) {
 	corpus := injBuildCorpus{
-		"services/vpc/docs/page.md": "```sh\ndocker build -t kacho-iam:dev .\n```\n",
+		"services/vpc/docs/page.md": "```sh\ndocker build -t kaname:dev .\n```\n",
 	}
 	findings, census := injBuildScan(t, corpus)
 	if len(findings) != 0 {

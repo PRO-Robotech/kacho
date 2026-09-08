@@ -50,7 +50,7 @@ func TestGeo_MTLS_EnabledClientCredsBuild(t *testing.T) {
 		"KACHO_COMPUTE_GEO_MTLS_CERTFILE":   certFile,
 		"KACHO_COMPUTE_GEO_MTLS_KEYFILE":    keyFile,
 		"KACHO_COMPUTE_GEO_MTLS_CAFILES":    caFile,
-		"KACHO_COMPUTE_GEO_MTLS_SERVERNAME": "kacho-iam.kacho.svc",
+		"KACHO_COMPUTE_GEO_MTLS_SERVERNAME": "kaname.kacho.svc",
 	})
 	assert.True(t, cfg.GeoMTLS.Enable)
 	opt, err := cfg.GeoClientCreds()

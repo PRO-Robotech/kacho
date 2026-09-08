@@ -36,7 +36,7 @@ Region и Zone — **admin-каталог**: пользователи тольк
 Мутации каталога **синхронны** — возвращают ресурс сразу (это осознанное решение для
 admin-managed справочника с админ-назначаемыми неизменяемыми `id`), а не асинхронный
 `Operation`. Admin-методы и весь internal-листенер `9091` **не публикуются** на внешнем
-endpoint. Каждый RPC обоих листенеров проходит per-RPC авторизацию через kacho-iam.
+endpoint. Каждый RPC обоих листенеров проходит per-RPC авторизацию через kaname.
 
 ```bash
 # Публичное чтение зоны (REST через api-gateway)
@@ -64,7 +64,7 @@ bin/kacho-geo serve
 `InternalRegionService`/`InternalZoneService` (встроенного seed нет).
 
 Конфигурация — через YAML/ENV (префикс `KACHO_GEO_`). По умолчанию сервис **secure
-by default**: per-RPC авторизация через kacho-iam и mTLS на обоих листенерах
+by default**: per-RPC авторизация через kaname и mTLS на обоих листенерах
 обязательны, иначе он не стартует. Единственный способ запустить без них —
 обхода нет вовсе: цепочка без звена решения о доступе в носителе не выражается.
 
@@ -82,7 +82,7 @@ repo ────┘                ↑ (только структуры)
 - `internal/apps/kacho/api/{region,zone}` — use-case'ы и port-интерфейсы;
 - `internal/repo/kacho/pg` — адаптер Postgres (handwritten pgx, без ORM);
 - `internal/handler` — тонкий transport (public + internal);
-- `internal/check` — per-RPC авторизация через kacho-iam;
+- `internal/check` — per-RPC авторизация через kaname;
 - `cmd/kacho-geo` — точка сборки; `cmd/migrator` — мигратор схемы.
 
 **Целостность данных — на уровне БД:** связь зон с регионами выражена FK
@@ -92,7 +92,7 @@ software-проверками. Admin-мутации атомарно (в той 
 
 **Место в платформе.** kacho-geo — **leaf-сервис**: по сборке зависит только от
 `proto/` и `pkg/`, ни от одного другого сервиса. В runtime обращается
-лишь к kacho-iam за авторизацией. Остальные сервисы ссылаются на `zoneId`/`regionId`
+лишь к kaname за авторизацией. Остальные сервисы ссылаются на `zoneId`/`regionId`
 по значению (без cross-service FK) и валидируют их через `ZoneService.Get` /
 `RegionService.Get`.
 

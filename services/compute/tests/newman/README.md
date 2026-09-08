@@ -96,4 +96,4 @@ python3 services/compute/tests/newman/scripts/gen.py        # все ресур�
 - **Risk-prioritization**: high-risk зоны (security, data-integrity FK, Instance state-машина, Disk-delete-while-attached) — P0, больше кейсов.
 
 См. подробности в `docs/TAXONOMY.md`. Cross-service зависимости (Instance NIC → kacho-vpc subnet/SG;
-`project_id` → kacho-iam) и флаг `KACHO_COMPUTE_SKIP_PEER_VALIDATION` — см. там же и в `docs/RESULTS.md` §«Деплоймент-замечания».
+`project_id` → kaname) и флаг `KACHO_COMPUTE_SKIP_PEER_VALIDATION` — см. там же и в `docs/RESULTS.md` §«Деплоймент-замечания».

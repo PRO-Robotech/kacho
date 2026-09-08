@@ -177,7 +177,7 @@ type ZotClient interface {
 	ListReferrers(ctx context.Context, registryID, repository, subjectDigest, artifactType string) ([]*domain.Referrer, error)
 }
 
-// IAMClient — порт к kacho-iam: cross-domain валидация project (ProjectService.Get)
+// IAMClient — порт к kaname: cross-domain валидация project (ProjectService.Get)
 // на Create. Owner-tuple lifecycle идёт НЕ отсюда, а через registry_outbox +
 // register-drainer (fga-proxy) — чтобы атомарно с DML и at-least-once.
 type IAMClient interface {
@@ -208,7 +208,7 @@ type RepoRegistrar interface {
 }
 
 // SyncRegistrar — порт СИНХРОННОЙ регистрации owner/parent/public-grant tuple'ов в
-// kacho-iam СРАЗУ после durable-commit ресурса (immediate materialization). Реализуется
+// kaname СРАЗУ после durable-commit ресурса (immediate materialization). Реализуется
 // clients/iam.SyncRegistrar поверх InternalIAMService.RegisterResource (idempotent).
 //
 // Отличие от RepoRegistrar (durable outbox-emit в writer-tx): SyncRegistrar применяет тот
@@ -239,7 +239,7 @@ type UseCase struct {
 	repoReg      RepoRegistrar
 	ops          operations.Repo
 	endpointBase string
-	// syncReg — синхронная регистрация owner-tuple в kacho-iam после durable-commit
+	// syncReg — синхронная регистрация owner-tuple в kaname после durable-commit
 	// (immediate materialization; nil → sync-путь пропускается, остаётся async
 	// register-drainer как at-least-once backstop). Инжектится WithSyncRegistrar.
 	syncReg SyncRegistrar

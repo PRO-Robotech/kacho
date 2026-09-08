@@ -1,7 +1,7 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 
-"""Case-set for `kacho.cloud.iam.v1.InternalClusterService` — cluster-RBAC admin.
+"""Case-set for `kaname.cloud.iam.v1.InternalClusterService` — cluster-RBAC admin.
 
 Covered RPCs: Get, GrantAdmin, RevokeAdmin, ListAdmins.
 
@@ -42,7 +42,7 @@ This suite deliberately consumes only fixture keys that BOTH seeding paths alrea
 emit — tests/authz-fixtures/setup.sh (dev posture) and prodseed_matrix.py /
 prodseed_all.py (production posture):
 
-  jwtBootstrap           — holds `system_admin` on `cluster:cluster_kacho_root`.
+  jwtBootstrap           — holds `system_admin` on `cluster:cluster_root`.
   jwtPureNoBindings      — the dedicated NEVER-granted subject (read-only negatives).
   baseUrl / internalBaseUrl / externalBaseUrl — injected by the newman runner.
 
@@ -104,9 +104,9 @@ CASES.append(Case(
             auth="jwtBootstrap",
             test_script=[
                 *assert_status(200),
-                "pm.test('cluster id is the singleton cluster_kacho_root', () => {",
+                "pm.test('cluster id is the singleton cluster_root', () => {",
                 "  const j = pm.response.json();",
-                "  pm.expect(j.id, JSON.stringify(j)).to.eql('cluster_kacho_root');",
+                "  pm.expect(j.id, JSON.stringify(j)).to.eql('cluster_root');",
                 "});",
                 "pm.test('cluster carries a createdAt timestamp (string, RFC3339)', () => {",
                 "  const j = pm.response.json();",
@@ -122,9 +122,9 @@ CASES.append(Case(
 # ---------------------------------------------------------------------------
 # CLUSTER-ADMIN-GET-403-ORDINARY
 # ---------------------------------------------------------------------------
-# The gateway authz middleware refuses BEFORE the request reaches kacho-iam: the
+# The gateway authz middleware refuses BEFORE the request reaches kaname: the
 # catalog entry `required_relation=system_admin` fails the OpenFGA Check against
-# `cluster:cluster_kacho_root`. Non-admins must not observe the cluster resource.
+# `cluster:cluster_root`. Non-admins must not observe the cluster resource.
 CASES.append(Case(
     id="CLUSTER-ADMIN-GET-403-ORDINARY",
     title="GET /iam/v1/internal/cluster as a never-granted user → 403 PermissionDenied",
@@ -248,7 +248,7 @@ CASES.append(Case(
 # ---------------------------------------------------------------------------
 # CLUSTER-ADMIN-GRANT-400-INVALID-USER
 # ---------------------------------------------------------------------------
-# Well-formed id that exists in no `kacho_iam.users` row → the existence check in
+# Well-formed id that exists in no `kaname.users` row → the existence check in
 # GrantAdmin.Execute returns ErrInvalidArg, mapped to InvalidArgument (grpc 3 →
 # HTTP 400) with the canonical text. Synchronous: the check runs BEFORE the
 # Operation row is persisted, so this is an HTTP-level 400, not an op.error.
@@ -574,9 +574,9 @@ CASES.append(Case(
 #    or pass on some OTHER error — the precise failure mode this cleanup exists to
 #    remove.
 #
-#    Covered by: services/iam/internal/apps/kacho/api/cluster/handler_integration_test.go
+#    Covered by: services/iam/internal/apps/kaname/api/cluster/handler_integration_test.go
 #    ::TestCluster_6_07_RevokeAdmin_SelfRevoke (codes.FailedPrecondition + message)
-#    and services/iam/internal/repo/kacho/pg/cluster_admin_grant_integration_test.go
+#    and services/iam/internal/repo/kaname/pg/cluster_admin_grant_integration_test.go
 #    ::TestRevoke_Self (ErrSelfRevoke sentinel + proof no row was mutated — stricter
 #    than any black-box check could be).
 #

@@ -26,7 +26,7 @@
 erDiagram
   NETWORKS {
     text id PK
-    text project_id "id владельца-проекта → kacho-iam.projects.id (cross-service, no FK)"
+    text project_id "id владельца-проекта → kaname.projects.id (cross-service, no FK)"
     text name "UNIQUE (project_id, name)"
     text description
     jsonb labels
@@ -393,7 +393,7 @@ resource может быть удален до завершения op). `accoun
 законным путём, а исход операции узнаётся только им.
 
 #### `fga_register_outbox` (миграция 0006/0008)
-Отдельный transactional-outbox для регистрации владения через `kacho-iam`. Независим
+Отдельный transactional-outbox для регистрации владения через `kaname`. Независим
 от доменного `vpc_outbox`. Одна строка == одно намерение. LISTEN/NOTIFY-канал
 `kacho_vpc_fga_register_outbox` будит register-drainer на INSERT. Колонки `resource_kind` /
 `resource_id` (миграция 0008) нужны reconciler'у для адресации intent по ресурсу.
@@ -408,14 +408,14 @@ resource может быть удален до завершения op). `accoun
 
 | Колонка                                       | Owner-сервис             | Owner-метод                                | ON DELETE-симуляция         |
 |-----------------------------------------------|--------------------------|--------------------------------------------|------------------------------|
-| `networks.project_id`                         | `kacho-iam`              | `ProjectService.Get`                       | n/a (validate-on-write only) |
-| `subnets.project_id` / `.zone_id`             | `kacho-iam` / `kacho-geo` | `ProjectService.Get` / `ZoneService.Get`  | n/a                          |
-| `addresses.project_id`                        | `kacho-iam`              | `ProjectService.Get`                       | n/a                          |
+| `networks.project_id`                         | `kaname`              | `ProjectService.Get`                       | n/a (validate-on-write only) |
+| `subnets.project_id` / `.zone_id`             | `kaname` / `kacho-geo` | `ProjectService.Get` / `ZoneService.Get`  | n/a                          |
+| `addresses.project_id`                        | `kaname`              | `ProjectService.Get`                       | n/a                          |
 | `addresses.external_ipv4->>'zone_id'`         | `kacho-geo`              | `ZoneService.Get`                          | n/a (graceful dangling)      |
 | `addresses.external_ipv6->>'zone_id'`         | `kacho-geo`              | `ZoneService.Get`                          | n/a (graceful dangling)      |
 | `address_pools.zone_id`                       | `kacho-geo`              | `ZoneService.Get`                          | n/a                          |
 | `network_interfaces.used_by_id`               | varies (typically `kacho-compute.instances`) | (no peer call; tenant-facing reference) | n/a (denormalized mirror) |
-| `route_tables.project_id` / `security_groups.project_id` / `gateways.project_id` / `network_interfaces.project_id` | `kacho-iam` | `ProjectService.Get` | n/a |
+| `route_tables.project_id` / `security_groups.project_id` / `gateways.project_id` / `network_interfaces.project_id` | `kaname` | `ProjectService.Get` | n/a |
 
 `subnets.route_table_id` — **внутри одной БД**, FK ON DELETE SET NULL (не cross-service).
 

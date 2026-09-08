@@ -415,7 +415,7 @@ func f1bReadMintDecls(t *testing.T) []f1bMintDecl {
 
 // f1bClientTokenOf — объявление токен-эндпоинта в подчарте личности.
 func f1bClientTokenOf(tree map[string]any) map[string]any {
-	iam, ok := tree["kacho-iam"].(map[string]any)
+	iam, ok := tree["kaname"].(map[string]any)
 	if !ok {
 		return nil
 	}

@@ -8,7 +8,7 @@
 // traits.email, и возвращает их как (subject_id, display_name).
 //
 // Subject_id используется как `external_id` для существующего SubjectLookup
-// (User mirror в kacho-iam UPSERT'ится из Kratos identity по identity.id).
+// (User mirror в kaname UPSERT'ится из Kratos identity по identity.id).
 //
 // Кэширование: TTL=30s positive, TTL=5s negative (см. corelib/authz/cache pattern).
 // Без кэша каждый REST-запрос делал бы whoami call — недопустимо для hot-path.

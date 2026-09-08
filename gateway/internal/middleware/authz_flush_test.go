@@ -20,13 +20,13 @@ func TestAuthzMiddleware_MaybeFlushOnMutation(t *testing.T) {
 	m.cache.put("user:nob|iam.projects.get|project|prj1|")
 
 	// Non-mutation / non-2xx — cache untouched.
-	m.MaybeFlushOnMutation("kacho.cloud.iam.v1.ProjectService/Get", 200)
+	m.MaybeFlushOnMutation("kaname.cloud.iam.v1.ProjectService/Get", 200)
 	require.Equal(t, 1, m.cache.Size())
-	m.MaybeFlushOnMutation("kacho.cloud.iam.v1.AccessBindingService/Delete", 500)
+	m.MaybeFlushOnMutation("kaname.cloud.iam.v1.AccessBindingService/Delete", 500)
 	require.Equal(t, 1, m.cache.Size())
 
 	// Successful AccessBinding mutation — full flush.
-	m.MaybeFlushOnMutation("kacho.cloud.iam.v1.AccessBindingService/Delete", 200)
+	m.MaybeFlushOnMutation("kaname.cloud.iam.v1.AccessBindingService/Delete", 200)
 	require.Equal(t, 0, m.cache.Size())
 }
 
@@ -58,11 +58,11 @@ func TestAuthzMiddleware_SelfFlushCoversEveryGrantChangingVerb(t *testing.T) {
 	// субъекта; сходимость обоих перечней держит гейт дерева
 	// TestSelfFlushCoversEveryProducerOfTheSubjectChangeQueue.
 	for _, fqn := range []string{
-		"kacho.cloud.iam.v1.AccessBindingService/Create",
-		"kacho.cloud.iam.v1.AccessBindingService/Delete",
-		"kacho.cloud.iam.v1.AccessBindingService/Revoke",
-		"kacho.cloud.iam.v1.GroupService/AddMember",
-		"kacho.cloud.iam.v1.GroupService/RemoveMember",
+		"kaname.cloud.iam.v1.AccessBindingService/Create",
+		"kaname.cloud.iam.v1.AccessBindingService/Delete",
+		"kaname.cloud.iam.v1.AccessBindingService/Revoke",
+		"kaname.cloud.iam.v1.GroupService/AddMember",
+		"kaname.cloud.iam.v1.GroupService/RemoveMember",
 	} {
 		t.Run(fqn, func(t *testing.T) {
 			m, err := NewAuthzMiddleware(AuthzMiddlewareConfig{Enabled: false})
@@ -88,7 +88,7 @@ func TestAuthzMiddleware_SelfFlushCoversEveryGrantChangingVerb(t *testing.T) {
 		m.cache = newDecisionCache(100, 5*time.Second, time.Now)
 		m.cache.put(key)
 
-		m.MaybeFlushOnMutation("kacho.cloud.iam.v1.AccessBindingService/Update", 200)
+		m.MaybeFlushOnMutation("kaname.cloud.iam.v1.AccessBindingService/Update", 200)
 
 		require.Equal(t, 1, m.cache.Size(),
 			"Update правит метки и защиту от удаления, строки в журнал не пишет — "+

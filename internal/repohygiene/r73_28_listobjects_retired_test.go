@@ -65,7 +65,7 @@ func TestR7_3_28_RetiredEnumerationSurfaceIsGoneEverywhere(t *testing.T) {
 		ProtoRoot: "proto",
 		CatalogPaths: []string{
 			"gateway/internal/middleware/embed/permission_catalog.json",
-			"services/iam/internal/apps/kacho/seed/embedded/permission_catalog.json",
+			"services/iam/internal/apps/kaname/seed/embedded/permission_catalog.json",
 		},
 		Retired: retired,
 	}, io.Discard)

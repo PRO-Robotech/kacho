@@ -73,7 +73,7 @@
 | SimulateMaintenanceEvent | CRUD-OK (no-op) | INST-SME-CRUD-OK | ◐ |
 
 **KAC-266: Move + all NIC-coupled RPCs (Attach/Detach/UpdateNetworkInterface, AddOneToOneNat/RemoveOneToOneNat) removed from the active test surface — NIC binding is no longer part of the Instance lifecycle (no auto-NIC).**
-Кросс-сервис: INST-* CRUD требуют поднятого kacho-iam (project existence); NEG-PROJECT-NOTFOUND требует `KACHO_COMPUTE_SKIP_PEER_VALIDATION!=true`.
+Кросс-сервис: INST-* CRUD требуют поднятого kaname (project existence); NEG-PROJECT-NOTFOUND требует `KACHO_COMPUTE_SKIP_PEER_VALIDATION!=true`.
 
 ## DiskTypeService (2 RPC — read-only)
 

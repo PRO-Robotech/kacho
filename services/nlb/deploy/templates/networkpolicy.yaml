@@ -23,7 +23,7 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.ports.grpc }}
-    # Internal gRPC :9091 — only peer services (kacho-iam / kacho-vpc /
+    # Internal gRPC :9091 — only peer services (kaname / kacho-vpc /
     # kacho-compute / admin tooling). Selector labels picked from values.
     - from:
         - podSelector:

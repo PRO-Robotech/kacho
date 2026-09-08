@@ -67,7 +67,7 @@ func TestAuthUnary_StripsForgedTokenMetadata(t *testing.T) {
 
 	var seen metadata.MD
 	interceptor := auth.Unary()
-	_, err := interceptor(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.ProjectService/Create"},
+	_, err := interceptor(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.ProjectService/Create"},
 		func(c context.Context, _ any) (any, error) {
 			seen, _ = metadata.FromIncomingContext(c)
 			return nil, nil

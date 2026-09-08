@@ -45,7 +45,7 @@ func TestSomething(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(second.Close)
 
-	r := kachopg.New(pool, nil)
+	r := kanamepg.New(pool, nil)
 	defer r.Close()
 }
 `
@@ -72,7 +72,7 @@ func TestSomething(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, second)
 
-	r := kachopg.New(pool, nil)
+	r := kanamepg.New(pool, nil)
 	defer r.Close()
 
 	conn, err := pool.Acquire(ctx)

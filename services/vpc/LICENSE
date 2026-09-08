@@ -10,7 +10,12 @@ Parameters
 Licensor:             PRO-Robotech
 
 Licensed Work:        Kachō VPC (kacho-vpc) and all source code, configuration,
-                      documentation, and other materials in this repository.
+                      documentation, and other materials in the directory that
+                      contains this License file, including its subdirectories,
+                      EXCEPT any subdirectory that contains its own LICENSE
+                      file and everything within it. Each such subdirectory is
+                      licensed solely under the LICENSE file it contains and
+                      forms no part of the Licensed Work.
                       The Licensed Work is (c) PRO-Robotech.
 
 Additional Use Grant: You are granted the right to use, copy, modify, create

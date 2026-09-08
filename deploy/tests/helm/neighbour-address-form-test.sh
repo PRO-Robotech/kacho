@@ -63,7 +63,96 @@
 # по своей координате в структуре, а не по соседству слов.
 #
 # ─────────────────────────────────────────────────────────────────────────────
+# ВИДОВ ЗНАЧЕНИЙ ТРИ, А НЕ ДВА: РЕЗОЛВИТ LIBC · РЕЗОЛВИТ NGINX · НЕ РЕЗОЛВИТ НИКТО
+#
+# Первые два вида различает вопрос «КТО резолвит». Третий вид отвечает на него
+# иначе: имя НЕ РЕЗОЛВИТСЯ ВОВСЕ — оно СРАВНИВАЕТСЯ. Это `ServerName` клиента
+# TLS: библиотека кладёт его в SNI и сверяет с SAN серверного листа, DNS-запроса
+# по нему не делается НИ ОДНОГО. Поисковый список к такому значению отношения не
+# имеет, и правило формы адреса к нему не применимо: гейт, судящий его правилом
+# для адресов, требует изменить величину по основанию, которого у неё нет.
+#
+# Наблюдалось на этом дереве: `KANAME_REST_UPSTREAM_MTLS_SERVERNAME`. Дозвон у
+# этого ребра идёт в ПЕТЛЮ — `restfront.DialTarget` отдаёт `127.0.0.1:<порт>`,
+# литеральный адрес, — а лист выписан на имя Service. То есть DNS на ребре не
+# участвует вообще, и единственное имя на нём существует ровно затем, чтобы его
+# сверили побайтово.
+#
+# ПРИЗНАК ТРЕТЬЕГО ВИДА — КОНЪЮНКЦИЯ ДВУХ УСЛОВИЙ, И НИ ОДНО НЕ ДАЁТСЯ
+# ПЕРЕИМЕНОВАНИЕМ:
+#
+#   1. КТО ЧИТАЕТ — имя оканчивается на `_<ТЕГ>_SERVERNAME`, где `<ТЕГ>` есть
+#      envconfig-тег поля, чей ТИП имеет форму TLS-клиента (в одном struct поля
+#      `ServerName` и `CAFiles`). Перечень тегов ВЫВОДИТСЯ обходом
+#      `git ls-files '*.go'`, а не выписан здесь: выписанный разошёлся бы с
+#      деревом молча, и разошёлся бы он там, где это не видно.
+#   2. КАК УПОТРЕБЛЕНО ЗДЕСЬ — в ТОМ ЖЕ списке `env` того же контейнера объявлен
+#      `<та же голова>_CAFILES`: набор CA, ПРОТИВ которого имя и сверяется. Без
+#      него сверять не с чем, и одинокий `_SERVERNAME` прощению не подлежит.
+#
+# ЧЕГО ПРИЗНАК НЕ ПРЕДОТВРАЩАЕТ — СКАЗАНО ПРЯМО, ЧТОБЫ ЕГО НЕ ЧИТАЛИ ШИРЕ.
+#
+# Условие 1 гранит СУФФИКС, а не полное имя: годится ЛЮБАЯ голова, оканчивающаяся
+# одним из выведенных тегов. Значит выдуманный префикс перед объявленным тегом
+# плюс соседний `_CAFILES` прощается, хотя такой переменной не читает ни одно
+# поле Go:
+#
+#   KACHO_STORAGE_TOTALLY_FAKE_GEO_CLIENT_MTLS_CAFILES    = "/etc/tls/ca.crt"
+#   KACHO_STORAGE_TOTALLY_FAKE_GEO_CLIENT_MTLS_SERVERNAME = "…svc.cluster.local"
+#     → findings=0
+#
+# Это не побочный эффект, а несущее свойство: на нём построена ПОЛОЖИТЕЛЬНАЯ
+# проба самопроверки ниже (`KACHO_SELFTEST_<ТЕГ>_SERVERNAME`), и она работает
+# именно потому, что объявления не требуется — `git grep -c SELFTEST -- '*.go'`
+# не даёт ни одного вхождения.
+#
+# ПОЧЕМУ ПОЛНОГО ИМЕНИ НЕ ТРЕБУЕТСЯ. Восстановить полное имя значит разрешить
+# КОНСТАНТУ префикса службы (`corecfg.LoadPrefixed(envPrefix, &c)`; префикс
+# объявлен своей константой у каждой службы) — то есть завести ВТОРУЮ реализацию
+# разрешения имён envconfig, второе место об одном предмете. Решение о такой цене
+# здесь НЕ ПРИНЯТО и подразумеваться не должно: строгость по полному имени —
+# отдельное изменение со своим предикатом.
+#
+# ЧТО ПРИЗНАК ВСЁ ЖЕ ДАЁТ, и это проверено, а не заявлено:
+#   · перечень тегов ВЫВЕДЕН и потому ИСТЕКАЕТ САМ — снятие одного тега из дерева
+#     убирает ровно своё прощение (замер: прощено 136 → 131) и возвращает ровно
+#     свои пять находок;
+#   · прощение требует ПАРЫ: чарт обязан объявить набор CA того же ребра В ТОМ ЖЕ
+#     контейнере, поэтому одинокое `_SERVERNAME` не прощается никогда;
+#   · переименование адреса дозвона в `..._SERVERNAME` без обоих условий не даёт
+#     ничего.
+#
+# ОТВЕРГНУТО, И ЗАМЕРОМ, А НЕ ВКУСОМ: признак «значение побайтово равно записи
+# `Certificate.spec.dnsNames` того же рендера». Он выглядит структурным и
+# маскирует настоящую находку: SAN базы несёт полную форму, а ручка `_DB_HOST`
+# несёт ГОЛЫЙ хост того же пира, без порта и схемы, — то есть написание полной
+# формы в ней есть ровно тот дефект, ради которого гейт заведён, и такой признак
+# простил бы его молча. Два предиката, каждый в одну команду:
+#
+#   git grep -hoE 'KACHO_[A-Z]+_DB_HOST' -- 'deploy/helm/umbrella/**' \
+#     'services/*/deploy/**' | sort -u        → 4 ручки объявлено; в шести
+#     рендерах присутствуют 3 (compute, geo, registry), и у всех трёх значение —
+#     ГОЛЫЙ хост Service базы, без порта и схемы
+#   рендер `prod`, документ Certificate/kacho-umbrella-pg-compute-server-tls
+#     → dnsNames несут `kacho-umbrella-pg-compute.kacho.svc.cluster.local`
+#
+# Прочих SAN-равных ручек в шести рендерах больше (в совпадения попадают и
+# внешние имена площадки), но довод несут именно `_DB_HOST`: их резолвит клиент
+# libc, и поисковый список к ним применяется.
+#
+# ─────────────────────────────────────────────────────────────────────────────
 # ПРЕДПОСЫЛКА — ОТКАЗ, А НЕ ПРОПУСК
+#
+# ГРАНИЦА ЭТОГО ИСХОДА НАЗВАНА, А НЕ ПОДРАЗУМЕВАЕТСЯ: код 2 сводит ТРИ разных
+# мира — нет инструмента · дерево не прочитано · структура фундамента изменилась
+# так, что выведенных тегов ноль (переименовали `CAFiles` в общем типе). Третий
+# от второго этот гейт не отличает: «прочитано 2131 файл, типов 4, тегов 0» он
+# трактует как «дерево не читали», и шаг конвейера падает с «условие не создано».
+# Сведение осознанное: гейт с пустым перечнем объявил бы находкой КАЖДОЕ из
+# двадцати трёх имён-для-сверки — то есть вынес бы вердикт о дереве по перечню,
+# которого не читал, — а молчаливое прощение всех хуже обоих. Второй предикат,
+# различающий «переименовали» и «обход не работает», — отдельное решение; здесь
+# его нет, и его отсутствие сказано вслух.
 #
 # Несобравшийся рендер, ноль документов, ноль прочитанных исходников — код 2
 # («не выполнилось»), а не «чисто». Печатаются число стеков, документов, строк,
@@ -127,8 +216,10 @@ note() { echo "    · $1"; }
 # helm и потребовать покраснеть на дефекте и промолчать на законном близнеце.
 # ─────────────────────────────────────────────────────────────────────────────
 CLASSIFIER="$(mktemp)"
-trap 'rm -f "$CLASSIFIER"' EXIT
+DERIVER="$(mktemp)"
+trap 'rm -f "$CLASSIFIER" "$DERIVER"' EXIT
 cat >"$CLASSIFIER" <<'PYEOF'
+import os
 import re
 import sys
 
@@ -150,6 +241,42 @@ ADDR = re.compile(r'[A-Za-z0-9][A-Za-z0-9.-]*\.svc\.cluster\.local(?!\.)')
 NGINX_RESOLVED = re.compile(r'KACHO_UI_[A-Z0-9_]*UPSTREAM|_UPSTREAM$')
 nginx_hits = {}
 
+# ТРЕТИЙ ВИД — имя, которое НЕ резолвится, а СРАВНИВАЕТСЯ (TLS ServerName).
+# Перечень тегов приезжает ИЗ ОБХОДА ДЕРЕВА (см. шапку и блок вывода в оболочке),
+# здесь он не выписан НИ ОДНОЙ строкой: выписанный был бы вторым местом об одном
+# предмете. Пустой перечень означает «дерево не читали» — оболочка на нём
+# отказывается выносить вердикт ДО того, как классификатор будет позван.
+VERIFY_TAGS = tuple(t for t in os.environ.get('KACHO_TLS_VERIFY_NAME_TAGS', '').split() if t)
+verify_hits = {}
+
+
+def is_verification_name(envname, siblings):
+    """Имя-для-сверки TLS: оба условия обязательны (см. шапку скрипта)."""
+    if not envname.endswith('_SERVERNAME'):
+        return False
+    head = envname[:-len('_SERVERNAME')]
+    # (1) КТО ЧИТАЕТ: голова оканчивается объявленным в дереве тегом.
+    if not any(head == t or head.endswith('_' + t) for t in VERIFY_TAGS):
+        return False
+    # (2) КАК УПОТРЕБЛЕНО: рядом объявлен набор CA, против которого сверяют.
+    return (head + '_CAFILES') in siblings
+
+
+def env_entry_names(node):
+    """Имена соседей по списку env — по ФОРМЕ записи, а не по имени ключа.
+
+    Запись окружения узнаётся тем, что она несёт `name` и один из `value` /
+    `valueFrom`. Привязка к ключу `env` была бы привязкой к имени, а не к виду.
+    """
+    names = set()
+    for item in node:
+        if not isinstance(item, dict) or not isinstance(item.get('name'), str):
+            continue
+        if 'value' in item or 'valueFrom' in item:
+            names.add(item['name'])
+    return frozenset(names)
+
+
 ALLOWED = {
     'kubernetes.default.svc.cluster.local':
         'идентификатор издателя API-сервера (--service-account-issuer), сверяется '
@@ -169,7 +296,7 @@ def classify(path, stack):
     strings = 0
     allow_hits = {}
 
-    def walk(node, kind, where, ctx=''):
+    def walk(node, kind, where, ctx='', siblings=frozenset()):
         nonlocal findings, strings
         if isinstance(node, dict):
             # Пара {name, value} у переменной окружения: имя стоит рядом со
@@ -177,6 +304,11 @@ def classify(path, stack):
             envname = node.get('name') if isinstance(node.get('name'), str) else ''
             if envname and NGINX_RESOLVED.search(envname):
                 nginx_hits[envname] = nginx_hits.get(envname, 0) + 1
+                return
+            # ТРЕТИЙ ВИД: значение не резолвится, а сверяется с SAN. Правило
+            # формы адреса к нему не применимо — предмета у него нет.
+            if envname and is_verification_name(envname, siblings):
+                verify_hits[envname] = verify_hits.get(envname, 0) + 1
                 return
             for key, val in node.items():
                 # SAN — перечень предъявляемых имён, а не адрес вызова.
@@ -190,10 +322,14 @@ def classify(path, stack):
                 if isinstance(key, str) and NGINX_RESOLVED.search(key):
                     nginx_hits[key] = nginx_hits.get(key, 0) + 1
                     continue
-                walk(val, kind, where + '.' + str(key), str(key))
+                walk(val, kind, where + '.' + str(key), str(key), siblings)
         elif isinstance(node, list):
+            # Список записей окружения задаёт КРУГ СОСЕДЕЙ для условия (2):
+            # набор CA ищется в том же контейнере, а не где угодно в документе.
+            here = env_entry_names(node)
+            below = here if here else siblings
             for i, val in enumerate(node):
-                walk(val, kind, '%s[%d]' % (where, i), ctx)
+                walk(val, kind, '%s[%d]' % (where, i), ctx, below)
         elif isinstance(node, str):
             strings += 1
             if NGINX_RESOLVED.search(ctx or ''):
@@ -224,17 +360,120 @@ if __name__ == '__main__':
     n, ndocs, nstr, hits = classify(render_path, stack_name)
     for name, cnt in sorted(hits.items()):
         print("  allow %s ×%d — %s" % (name, cnt, ALLOWED[name]))
-    print("SCOPE docs=%d strings=%d findings=%d" % (ndocs, nstr, n))
+    # ОДНА строка на стек, а не строка на имя: перечень целиком печатается
+    # ОДИН раз в конце обхода (машинная строка VERIFY собирает его в оболочке).
+    # Сто тридцать шесть одинаковых строк перестают читать на третьем стеке, и
+    # вместе с ними перестают читать настоящую находку.
+    if verify_hits:
+        print("  verify имён-для-сверки: %d (сверяются с SAN, не резолвятся; "
+              "различных %d)" % (sum(verify_hits.values()), len(verify_hits)))
+        print("VERIFY %s" % " ".join(sorted(verify_hits)))
+    print("SCOPE docs=%d strings=%d findings=%d verify=%d"
+          % (ndocs, nstr, n, sum(verify_hits.values())))
     sys.exit(1 if n else 0)
 PYEOF
 
 require_python_yaml
 
 # ─────────────────────────────────────────────────────────────────────────────
+# ВЫВОД ПЕРЕЧНЯ ИМЁН-ДЛЯ-СВЕРКИ ИЗ ДЕРЕВА (третий вид, см. шапку).
+#
+# Читается ОБЪЯВЛЕНИЕ, а не слово: тип формы TLS-клиента опознаётся по составу
+# полей (`ServerName` рядом с `CAFiles`) в одном struct, а тег — по `envconfig`
+# у поля ЭТОГО типа. Тип берётся ПАКЕТ-КВАЛИФИЦИРОВАННЫМ: в дереве по два разных
+# `TLSServer` и `TLSClient` в разных пакетах, и сопоставление по короткому имени
+# прощало бы теги серверных рёбер, у которых `_SERVERNAME` не бывает вовсе, —
+# прощение шире предмета.
+# ─────────────────────────────────────────────────────────────────────────────
+cat >"$DERIVER" <<'DERIVEEOF'
+import re
+import subprocess
+import sys
+
+FIELD = re.compile(r'^\s*(\w+)\s+([\w\.\[\]\*]+)(?:\s+`([^`]*)`)?', re.M)
+PKG = re.compile(r'^package\s+(\w+)', re.M)
+STRUCT = re.compile(r'type\s+(\w+)\s+struct\s*\{')
+ENVCONFIG = re.compile(r'envconfig:"([^"]*)"')
+
+out = subprocess.run(['git', 'ls-files', '*.go'], capture_output=True, text=True)
+if out.returncode != 0:
+    sys.stderr.write('git ls-files не выполнился: %s\n' % out.stderr.strip())
+    sys.exit(2)
+files = [f for f in out.stdout.split() if not f.endswith('_test.go')]
+
+types = set()          # пакет.Тип — форма TLS-клиента
+decls = []             # (пакет.Тип поля, envconfig-тег)
+for path in files:
+    try:
+        src = open(path, encoding='utf-8', errors='replace').read()
+    except OSError:
+        continue
+    pkgm = PKG.search(src)
+    if not pkgm:
+        continue
+    pkg = pkgm.group(1)
+    for m in STRUCT.finditer(src):
+        i = m.end()
+        depth = 1
+        j = i
+        while j < len(src) and depth:
+            if src[j] == '{':
+                depth += 1
+            elif src[j] == '}':
+                depth -= 1
+            j += 1
+        body = src[i:j - 1]
+        fields = {fm.group(1): (fm.group(2), fm.group(3)) for fm in FIELD.finditer(body)}
+        if 'ServerName' in fields and 'CAFiles' in fields:
+            types.add(pkg + '.' + m.group(1))
+        for ftype, tag in fields.values():
+            if not tag or 'envconfig:' not in tag:
+                continue
+            bare = ftype.lstrip('*[]')
+            decls.append((bare if '.' in bare else pkg + '.' + bare,
+                          ENVCONFIG.search(tag).group(1)))
+
+tags = sorted({tag for qual, tag in decls if qual in types and tag not in ('', '-')})
+
+for t in sorted(types):
+    print('TYPE %s' % t)
+for t in tags:
+    print('TAG %s' % t)
+print('DERIVE gofiles=%d types=%d tags=%d' % (len(files), len(types), len(tags)))
+
+# «Ноль тегов» и «дерево не читали» обязаны быть различимы: на пустом перечне
+# прощение выключено целиком, и гейт объявил бы находкой каждое имя-для-сверки —
+# то есть вынес бы вердикт о дереве, которого не читал.
+if not files:
+    sys.stderr.write('не прочитано ни одного не-тестового .go\n')
+    sys.exit(2)
+if not types:
+    sys.stderr.write('в дереве не найдено ни одного типа формы TLS-клиента '
+                     '(ServerName рядом с CAFiles) — перечень выводить не из чего\n')
+    sys.exit(2)
+if not tags:
+    sys.stderr.write('ни одно envconfig-поле не имеет типа формы TLS-клиента — '
+                     'перечень имён-для-сверки пуст\n')
+    sys.exit(2)
+DERIVEEOF
+
+derive_out="$(cd "$REPO_ROOT" && python3 "$DERIVER" 2>&1)" || {
+  printf '%s\n' "$derive_out" | sed 's/^/      /'
+  fatal "перечень имён-для-сверки НЕ ВЫВЕДЕН из дерева — прощать по нему нельзя, вердикт НЕ ВЫНЕСЕН"
+}
+DERIVE_SCOPE="$(printf '%s\n' "$derive_out" | sed -n 's/^DERIVE //p' | tail -1)"
+KACHO_TLS_VERIFY_NAME_TAGS="$(printf '%s\n' "$derive_out" | sed -n 's/^TAG //p' | tr '\n' ' ')"
+export KACHO_TLS_VERIFY_NAME_TAGS
+DERIVED_TYPES="$(printf '%s\n' "$derive_out" | sed -n 's/^TYPE //p' | tr '\n' ' ')"
+
+# ─────────────────────────────────────────────────────────────────────────────
 # САМОПРОВЕРКА
 # ─────────────────────────────────────────────────────────────────────────────
 if [ "${1:-}" = "--self-test" ]; then
   echo "=== $SCRIPT --self-test: классификатор против синтетических рендеров ==="
+  echo "  перечень имён-для-сверки выведен из дерева: $DERIVE_SCOPE"
+  echo "    типы формы TLS-клиента: $DERIVED_TYPES"
+  echo "    теги: $KACHO_TLS_VERIFY_NAME_TAGS"
   st_rc=0
   probe() {
     local title="$1" body="$2" want="$3" grep_for="${4:-}"
@@ -268,7 +507,7 @@ spec:
         - name: gw
           env:
             - name: KACHO_API_GATEWAY_IAM_GRPC
-              value: "kacho-iam.kacho.svc.cluster.local:9090"' 1 "kacho-iam.kacho.svc.cluster.local"
+              value: "kaname.kacho.svc.cluster.local:9090"' 1 "kaname.kacho.svc.cluster.local"
 
   probe "дефект: полная форма в data настроек → красный" \
 'apiVersion: v1
@@ -293,7 +532,7 @@ spec:
         - name: gw
           env:
             - name: KACHO_API_GATEWAY_IAM_GRPC
-              value: "kacho-iam.kacho.svc:9090"' 0
+              value: "kaname.kacho.svc:9090"' 0
 
   probe "законно: абсолютная форма (точка в конце) → молчит" \
 'apiVersion: apps/v1
@@ -307,7 +546,7 @@ spec:
         - name: gw
           env:
             - name: KACHO_API_GATEWAY_IAM_GRPC
-              value: "kacho-iam.kacho.svc.cluster.local.:9090"' 0
+              value: "kaname.kacho.svc.cluster.local.:9090"' 0
 
   # САМЫЙ ВАЖНЫЙ БЛИЗНЕЦ: SAN обязан остаться полной формой.
   # Без этой пробы гейт потребовал бы снять имя, которое обязано быть в
@@ -316,12 +555,12 @@ spec:
 'apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: kacho-iam-server
+  name: kaname-server
 spec:
   dnsNames:
-    - kacho-iam.kacho.svc.cluster.local
-    - kacho-iam.kacho.svc
-    - kacho-iam.kacho' 0
+    - kaname.kacho.svc.cluster.local
+    - kaname.kacho.svc
+    - kaname.kacho' 0
 
   probe "законно: внешний издатель kubernetes.default → молчит (внешний контракт)" \
 'apiVersion: v1
@@ -340,6 +579,89 @@ metadata:
 data:
   trust.yaml: |
     issuer: "https://token.actions.githubusercontent.com"' 0
+
+  # ── ТРЕТИЙ ВИД: ИМЯ, КОТОРОЕ СРАВНИВАЮТ, А НЕ РЕЗОЛВЯТ ────────────────────
+  #
+  # Тег для фикстур берётся ИЗ ВЫВЕДЕННОГО ПЕРЕЧНЯ, а не выписан: фикстура,
+  # назвавшая тег литералом, пережила бы снятие этого тега из дерева и молча
+  # доказывала бы работу прощения, которого больше нет.
+  ST_TAG="$(printf '%s' "$KACHO_TLS_VERIFY_NAME_TAGS" | tr ' ' '\n' | grep . | sort | head -1)"
+  if [ -z "$ST_TAG" ]; then
+    echo "  ✗ перечень тегов пуст — пробы третьего вида были бы вакуумными"
+    st_rc=1
+  fi
+  # Заведомо НЕ объявленный тег: если он вдруг окажется в перечне, пробу
+  # «незаявленный тег → красный» доказывать нечем, и это отказ, а не пропуск.
+  ST_UNDECLARED="ZZ_NOT_DECLARED_IN_TREE_MTLS"
+  case " $KACHO_TLS_VERIFY_NAME_TAGS " in
+    *" $ST_UNDECLARED "*)
+      echo "  ✗ синтетический тег $ST_UNDECLARED объявлен в дереве — проба вакуумна"
+      st_rc=1 ;;
+  esac
+
+  probe "законно: имя-для-сверки (тег $ST_TAG из дерева + рядом CAFILES) → молчит" \
+"apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: peer-client
+spec:
+  template:
+    spec:
+      containers:
+        - name: svc
+          env:
+            - name: KACHO_SELFTEST_${ST_TAG}_CAFILES
+              value: \"/etc/tls/ca.crt\"
+            - name: KACHO_SELFTEST_${ST_TAG}_SERVERNAME
+              value: \"kaname.kacho.svc.cluster.local\"" 0
+
+  probe "дефект: тот же тег, но БЕЗ соседнего CAFILES → красный (сверять не с чем)" \
+"apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: peer-client
+spec:
+  template:
+    spec:
+      containers:
+        - name: svc
+          env:
+            - name: KACHO_SELFTEST_${ST_TAG}_SERVERNAME
+              value: \"kaname.kacho.svc.cluster.local\"" 1 "kaname.kacho.svc.cluster.local"
+
+  probe "дефект: _SERVERNAME с НЕобъявленным в дереве тегом → красный" \
+"apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: peer-client
+spec:
+  template:
+    spec:
+      containers:
+        - name: svc
+          env:
+            - name: KACHO_SELFTEST_${ST_UNDECLARED}_CAFILES
+              value: \"/etc/tls/ca.crt\"
+            - name: KACHO_SELFTEST_${ST_UNDECLARED}_SERVERNAME
+              value: \"kaname.kacho.svc.cluster.local\"" 1 "kaname.kacho.svc.cluster.local"
+
+  probe "дефект: набор CA есть, но у СОСЕДНЕГО контейнера → красный (круг соседей — свой env)" \
+"apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: peer-client
+spec:
+  template:
+    spec:
+      containers:
+        - name: a
+          env:
+            - name: KACHO_SELFTEST_${ST_TAG}_CAFILES
+              value: \"/etc/tls/ca.crt\"
+        - name: b
+          env:
+            - name: KACHO_SELFTEST_${ST_TAG}_SERVERNAME
+              value: \"kaname.kacho.svc.cluster.local\"" 1 "kaname.kacho.svc.cluster.local"
 
   # ДОКАЗАТЕЛЬСТВО, ЧТО ПРОПУСК SAN ИМЕННО СТРУКТУРНЫЙ, А НЕ ПО ИМЕНИ ПОЛЯ:
   # то же имя поля в НЕ-Certificate документе пропуску не подлежит.
@@ -392,6 +714,8 @@ trap 'rm -rf "$work"; rm -f "$CLASSIFIER"' EXIT
 tot_docs=0
 tot_strings=0
 tot_find=0
+tot_verify=0
+verify_names=""
 rendered=0
 
 while IFS= read -r line; do
@@ -420,17 +744,20 @@ while IFS= read -r line; do
   d=$(printf '%s' "$scope" | sed -nE 's/.*docs=([0-9]+).*/\1/p')
   s=$(printf '%s' "$scope" | sed -nE 's/.*strings=([0-9]+).*/\1/p')
   n=$(printf '%s' "$scope" | sed -nE 's/.*findings=([0-9]+).*/\1/p')
+  v=$(printf '%s' "$scope" | sed -nE 's/.*verify=([0-9]+).*/\1/p')
   tot_docs=$((tot_docs + ${d:-0}))
   tot_strings=$((tot_strings + ${s:-0}))
   tot_find=$((tot_find + ${n:-0}))
+  tot_verify=$((tot_verify + ${v:-0}))
+  verify_names="$verify_names $(printf '%s\n' "$out" | sed -n 's/^VERIFY //p' | tr '\n' ' ')"
 
   if [ "$rc" -ne 0 ]; then
-    printf '%s\n' "$out" | grep -v '^SCOPE ' | grep -v '^  allow '
+    printf '%s\n' "$out" | grep -v '^SCOPE ' | grep -v '^VERIFY ' | grep -v '^  allow ' | grep -v '^  verify '
     violation "[$stack] адресов дефектной формы: ${n:-?} (документов $d, строк $s)"
   else
     good "[$stack] чисто: 0 находок (документов $d, строк $s)"
   fi
-  printf '%s\n' "$out" | grep '^  allow ' | sed 's/^/  /' || true
+  printf '%s\n' "$out" | grep -E '^  (allow|verify) ' | sed 's/^/  /' || true
 done <<<"$STACKS"
 
 assertion
@@ -441,6 +768,15 @@ if [ "$tot_docs" -lt 1 ]; then
   fatal "прочитано 0 документов — обходить было нечего"
 fi
 good "объём половины 1: стеков $rendered/$stack_n, документов $tot_docs, строк $tot_strings"
+assertion
+uniq_verify="$(printf '%s' "$verify_names" | tr ' ' '\n' | grep . | sort -u)"
+uniq_verify_n="$(printf '%s\n' "$uniq_verify" | grep -c . || true)"
+good "перечень имён-для-сверки выведен из дерева: $DERIVE_SCOPE; вхождений в рендерах $tot_verify, различных ${uniq_verify_n:-0}"
+note "типы формы TLS-клиента: $DERIVED_TYPES"
+note "теги: $KACHO_TLS_VERIFY_NAME_TAGS"
+# Перечень печатается ЦЕЛИКОМ и ровно один раз: прощённое обязано быть видно
+# поимённо, иначе новое прощение приезжает неотличимо от старого.
+printf '%s\n' "$uniq_verify" | sed 's/^/    · /'
 
 # ── исключение живёт, пока у него есть ПРЕДМЕТ ───────────────────────────────
 #
@@ -537,5 +873,5 @@ fi
 
 echo
 echo "=== вердикт: утверждений $ASSERTIONS, находок $VIOLATIONS ==="
-echo "=== объём: стеков $rendered, документов $tot_docs, строк $tot_strings, файлов .go $go_n ==="
-findings_verdict "стеков $rendered, документов $tot_docs, строк $tot_strings, файлов .go $go_n"
+echo "=== объём: стеков $rendered, документов $tot_docs, строк $tot_strings, файлов .go $go_n; $DERIVE_SCOPE, имён-для-сверки прощено $tot_verify ==="
+findings_verdict "стеков $rendered, документов $tot_docs, строк $tot_strings, файлов .go $go_n, $DERIVE_SCOPE, имён-для-сверки прощено $tot_verify"

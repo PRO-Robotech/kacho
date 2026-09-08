@@ -45,7 +45,10 @@ func edgeSpec(t *testing.T, specs []peerDialSpec, name string) peerDialSpec {
 // the edge is enabled the dial presents the kacho-nlb client-cert (NOT insecure).
 // RED until dialPeers exposes peerDialSpecs wiring cfg.MTLS.VPC / cfg.MTLS.Compute.
 func TestPeerDialSpecs_VPCComputeWiredToPerEdgeMTLS(t *testing.T) {
-	t.Setenv("KACHO_NLB_MODE", "dev")                        // dev-opt-in: default mode is fail-closed production
+	t.Setenv("KACHO_NLB_MODE", "dev") // dev-opt-in: default mode is fail-closed production
+	// Объявление домена величин — часть законной посадки: у ручки ровно два
+	// законных значения, и незаданное среди них не значится.
+	t.Setenv("KACHO_NLB_QUOTA__AUTHORITY", "not-deployed")
 	t.Setenv("KACHO_NLB_AUTHZ__TRUST_ANY_FORWARDER", "true") // локальная фикстура: круг не сужаем ЯВНО
 	t.Setenv("KACHO_NLB_REPOSITORY__POSTGRES__URL", "postgres://u:p@h/kacho_nlb")
 	// Enable the vpc + compute edges with distinct ServerNames so a zero-value
@@ -88,7 +91,10 @@ func TestPeerDialSpecs_VPCComputeWiredToPerEdgeMTLS(t *testing.T) {
 // that the vpc/compute edges are modelled on. Pins that no edge accidentally
 // shares another edge's TLSClient.
 func TestPeerDialSpecs_IAMPerListenerMTLS(t *testing.T) {
-	t.Setenv("KACHO_NLB_MODE", "dev")                        // dev-opt-in: default mode is fail-closed production
+	t.Setenv("KACHO_NLB_MODE", "dev") // dev-opt-in: default mode is fail-closed production
+	// Объявление домена величин — часть законной посадки: у ручки ровно два
+	// законных значения, и незаданное среди них не значится.
+	t.Setenv("KACHO_NLB_QUOTA__AUTHORITY", "not-deployed")
 	t.Setenv("KACHO_NLB_AUTHZ__TRUST_ANY_FORWARDER", "true") // локальная фикстура: круг не сужаем ЯВНО
 	t.Setenv("KACHO_NLB_REPOSITORY__POSTGRES__URL", "postgres://u:p@h/kacho_nlb")
 	cfg, err := config.Load("")
@@ -107,7 +113,10 @@ func TestPeerDialSpecs_IAMPerListenerMTLS(t *testing.T) {
 // cert paths are never read (viper seeds CAFiles to an empty string default,
 // which is functionally equivalent to nil for an off edge).
 func TestPeerDialSpecs_DisabledEdgesInsecure(t *testing.T) {
-	t.Setenv("KACHO_NLB_MODE", "dev")                        // dev-opt-in: default mode is fail-closed production
+	t.Setenv("KACHO_NLB_MODE", "dev") // dev-opt-in: default mode is fail-closed production
+	// Объявление домена величин — часть законной посадки: у ручки ровно два
+	// законных значения, и незаданное среди них не значится.
+	t.Setenv("KACHO_NLB_QUOTA__AUTHORITY", "not-deployed")
 	t.Setenv("KACHO_NLB_AUTHZ__TRUST_ANY_FORWARDER", "true") // локальная фикстура: круг не сужаем ЯВНО
 	t.Setenv("KACHO_NLB_REPOSITORY__POSTGRES__URL", "postgres://u:p@h/kacho_nlb")
 	cfg, err := config.Load("")

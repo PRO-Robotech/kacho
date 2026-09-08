@@ -1,5 +1,5 @@
 // Wire-level contract lock for the iam client calls that hand-write a request
-// body. Ground truth: proto/kacho/cloud/iam/v1/access_binding_service.proto.
+// body. Ground truth: proto/kaname/cloud/iam/v1/access_binding_service.proto.
 //
 // The builder tests below read the snake_case body it returns; the two marked
 // "on the wire" push that body through api/client.ts and read what fetch actually
@@ -38,7 +38,7 @@ describe("buildCreateAccessBindingBody", () => {
   });
 
   // Ground truth: CreateAccessBindingRequest in
-  // proto/kacho/cloud/iam/v1/access_binding_service.proto.
+  // proto/kaname/cloud/iam/v1/access_binding_service.proto.
   //   required : subjects[] (or the legacy subject_type/subject_id pair),
   //              role_id, scope_type (dotted), scope_id, target
   //   tombstone: tags 9/10/11 with the names target_ref / scope_ref — a body
@@ -70,7 +70,7 @@ describe("buildCreateAccessBindingBody", () => {
       scopeId: "",
     });
     expect(body.scope_type).toBe("iam.cluster");
-    expect(body.scope_id).toBe("cluster_kacho_root");
+    expect(body.scope_id).toBe("cluster_root");
   });
 
   it("uses the project tier's dotted name", () => {

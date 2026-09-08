@@ -17,33 +17,33 @@ import (
 
 const unboundedMirrorSQL = "`\n" + `
 SELECT m.object_id
-  FROM kacho_iam.resource_mirror m
-  JOIN kacho_iam.access_bindings b ON b.resource_id = m.object_id
+  FROM kaname.resource_mirror m
+  JOIN kaname.access_bindings b ON b.resource_id = m.object_id
  WHERE b.status = 'ACTIVE'` + "\n`"
 
 const boundedMirrorSQL = "`\n" + `
 WITH scope(s_type, s_id) AS (SELECT $1::text, $2::text)
 SELECT m.object_id
-  FROM kacho_iam.resource_mirror m
+  FROM kaname.resource_mirror m
   JOIN scope sc ON sc.s_type = m.object_type AND sc.s_id = m.object_id
-  JOIN kacho_iam.access_bindings b ON b.resource_id = m.object_id
+  JOIN kaname.access_bindings b ON b.resource_id = m.object_id
  WHERE b.status = 'ACTIVE'` + "\n`"
 
 // registryValueSQL — ЗАКОННЫЙ БЛИЗНЕЦ: имя таблицы как ЗНАЧЕНИЕ реестра, а не
 // как чтение. Гейт, считающий его чтением, объявил бы находкой каждую строку
 // справочника «где лежат метки этого типа».
-const registryValueSQL = `"kacho_iam.accounts"`
+const registryValueSQL = `"kaname.accounts"`
 
 // assembledSQL — ЗАКОННЫЙ БЛИЗНЕЦ: запрос, собранный склейкой. Кусок сам по
 // себе ни параметров, ни предикатов не несёт — они в соседних слагаемых.
-const assembledSQL = "\"SELECT m.labels FROM kacho_iam.resource_mirror m WHERE m.object_id = \" + idParam + \"::text\""
+const assembledSQL = "\"SELECT m.labels FROM kaname.resource_mirror m WHERE m.object_id = \" + idParam + \"::text\""
 
 // commaJoinedSQL — чтение, приписанное ЧЕРЕЗ ЗАПЯТУЮ. Форма законная и в
 // продукте не встречающаяся; гейт обязан находить её так же, как через JOIN,
 // иначе перечисление вернётся именно этим способом.
 const commaJoinedSQL = "`\n" + `
 SELECT m.object_id
-  FROM kacho_iam.access_bindings b, kacho_iam.resource_mirror m
+  FROM kaname.access_bindings b, kaname.resource_mirror m
  WHERE b.id = $1::text` + "\n`"
 
 // TestG6RedOnACommaJoinedRead — гейт видит запятую как соединение.
@@ -71,7 +71,7 @@ func auditInjectedSQL(t *testing.T, lit string) ([]enumFinding, enumCensus) {
 	)
 	c.tables = map[string]bool{}
 	for _, l := range sqlLiteralsOf("injected.go", []byte(src)) {
-		if !strings.Contains(l.sql, "kacho_iam.") {
+		if !strings.Contains(l.sql, "kaname.") {
 			continue
 		}
 		c.literals++
@@ -130,7 +130,7 @@ func TestG6SilentOnTheSameReadOnceBound(t *testing.T) {
 // (он устроен ровно так) выпал бы из-под гейта целиком.
 func TestVerdictEnumerationLateralRuleAddsOnlyWhatIsAnchorByConstruction(t *testing.T) {
 	readsATable := "SELECT 1 FROM x CROSS JOIN LATERAL (\n" +
-		"  SELECT pe.parent_type FROM kacho_iam.resource_scope_edge pe\n" +
+		"  SELECT pe.parent_type FROM kaname.resource_scope_edge pe\n" +
 		"   WHERE pe.object_type = s.s_type) e"
 	if got := computedLateralAliasesOf(readsATable); len(got) != 0 {
 		t.Fatalf("соединение вбок, ЧИТАЮЩЕЕ таблицу схемы, попало в якоря (%v): гейт перестал бы "+

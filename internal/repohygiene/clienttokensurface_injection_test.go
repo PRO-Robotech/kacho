@@ -28,8 +28,8 @@ func syntheticRoot(t *testing.T, mountOn string) string {
 
 import (
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
-	"github.com/PRO-Robotech/kacho-iam/internal/handler/clienttokenhttp"
-	"github.com/PRO-Robotech/kacho-iam/internal/handler/tokenintrospecthttp"
+	"github.com/PRO-Robotech/kaname/internal/handler/clienttokenhttp"
+	"github.com/PRO-Robotech/kaname/internal/handler/tokenintrospecthttp"
 )
 
 func run() {

@@ -228,7 +228,7 @@ func applierPortVerbDeletesTheRoleRow(name string) (bool, string) {
 // стало бы находкой. Форма редкая, чинится перефразированием, и цена ошибки
 // здесь — лишний разбор, а не пропущенное удаление.
 var applierDeleteSQLRe = regexp.MustCompile(
-	`(?im)^\s*(with\b[^\n]*\n\s*)?delete\s+from\s+(kacho_iam\.)?` + applierRoleRowNoun + `s\b`)
+	`(?im)^\s*(with\b[^\n]*\n\s*)?delete\s+from\s+(kaname\.)?` + applierRoleRowNoun + `s\b`)
 
 // ScanApplierDeletes разбирает один файл пакета применителя.
 func ScanApplierDeletes(path string, src []byte) (sites []ApplierDeleteSite, census ApplierDeleteCensus, err error) {

@@ -92,8 +92,8 @@ Kachō VPC управляет **намерением и состоянием** �
   </div>
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>🔑</span>
-    <span className={hero.featureTitle}>Авторизация через kacho-iam</span>
-    <span className={hero.featureBody}>Per-RPC authz-гейт через kacho-iam: вердикт по отношению субъекта к ресурсу или его проекту.</span>
+    <span className={hero.featureTitle}>Авторизация через kaname</span>
+    <span className={hero.featureBody}>Per-RPC authz-гейт через kaname: вердикт по отношению субъекта к ресурсу или его проекту.</span>
   </div>
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>▤</span>
@@ -123,7 +123,7 @@ flowchart LR
   end
   subgraph cp["Control plane"]
     vpc["kacho-vpc<br/>:9090 public · :9091 internal"]
-    iam["kacho-iam<br/>Project / authz"]
+    iam["kaname<br/>Project / authz"]
     geo["kacho-geo<br/>Geography (Region/Zone)"]
   end
   subgraph store["Хранилище"]

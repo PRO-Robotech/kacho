@@ -11,7 +11,7 @@ import (
 )
 
 // marshalJSONB сериализует v в JSONB-байты. Возвращает обёрнутую ports.ErrInternal
-// при ошибке. Парная форма к unmarshalJSONB. Зеркалит kacho-vpc/internal/repo/jsonb.go.
+// при ошибке. Парная форма к unmarshalJSONB. Зеркалит services/vpc/internal/repo/helpers/jsonb.go.
 func marshalJSONB(v any, field string) ([]byte, error) {
 	b, err := json.Marshal(v)
 	if err != nil {

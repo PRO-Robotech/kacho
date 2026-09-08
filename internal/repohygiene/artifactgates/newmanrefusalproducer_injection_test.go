@@ -35,6 +35,8 @@
 package artifactgates
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -307,4 +309,73 @@ func TestRP_RemovingARealProducerFromTheTreeRedsTheGate(t *testing.T) {
 			"гейт не поймал бы РОВНО того инцидента, ради которого заведён (не установлено: %d)",
 			removed, len(cen.unproven))
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ФОРМА, КОТОРОЙ РАСПОЗНАВАТЕЛЬ ДОЛГО НЕ ЗНАЛ: текст отказа объявлен
+// ИМЕНОВАННОЙ КОНСТАНТОЙ и отдаётся по имени.
+//
+// Форма законна и распространена — единственный текст отказа выносят в
+// константу именно затем, чтобы он был один. Пока распознаватель знал только
+// вызовы конструкторов отказа, он на ней МОЛЧАЛ, и верное утверждение кейса о
+// существующем тексте объявлялось утверждением без производителя.
+//
+// Сужение проверяется отдельной осью: всякая строковая константа корпусом НЕ
+// становится — иначе он раздулся бы именами таблиц, ключей и путей, и гейт
+// перестал бы находить настоящее.
+
+func rpProducersOfSource(t *testing.T, src string) map[string]bool {
+	t.Helper()
+	root := t.TempDir()
+	rel := filepath.Join("services", "iam", "internal", "probe", "refusal.go")
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(root, rel)), 0o750); err != nil {
+		t.Fatalf("синтетическое дерево не создано: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, rel), []byte(src), 0o600); err != nil {
+		t.Fatalf("синтетика не записана: %v", err)
+	}
+	byOwner, err := rtProducers(root, []string{filepath.ToSlash(rel)})
+	if err != nil {
+		t.Fatalf("сбор производителей не состоялся: %v", err)
+	}
+	return byOwner["iam"]
+}
+
+func TestRP_NamedConstantIsRecognisedAsAProducer(t *testing.T) {
+	t.Run("новая форма: текст объявлен константой сообщения", func(t *testing.T) {
+		got := rpProducersOfSource(t, `package probe
+
+const RefusalMessage = "credential is not accepted"
+`)
+		if !got["credential is not accepted"] {
+			t.Fatalf("текст, объявленный константой сообщения, не признан производимым: %v", got)
+		}
+	})
+
+	t.Run("прежняя форма по-прежнему читается", func(t *testing.T) {
+		// Контроль сохранности: расширение распознавателя не имеет права
+		// вытеснить то, что он читал раньше.
+		got := rpProducersOfSource(t, `package probe
+
+import "errors"
+
+var errGone = errors.New("account is not empty")
+`)
+		if !got["account is not empty"] {
+			t.Fatalf("прежняя форма перестала читаться: %v", got)
+		}
+	})
+
+	t.Run("сужение: обычная строковая константа корпусом НЕ становится", func(t *testing.T) {
+		// Без этой оси расширение было бы не расширением, а ослаблением: корпус
+		// принял бы имена таблиц и путей, и гейт замолчал бы на настоящем.
+		got := rpProducersOfSource(t, `package probe
+
+const tableName = "kacho_iam.accounts"
+const defaultPath = "/iam/v1/accounts"
+`)
+		if got["kacho_iam.accounts"] || got["/iam/v1/accounts"] {
+			t.Fatalf("корпус принял строки, отказом не являющиеся: %v", got)
+		}
+	})
 }

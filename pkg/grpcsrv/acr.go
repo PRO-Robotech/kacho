@@ -8,7 +8,7 @@
 //
 //   - the public front door — api-gateway `middleware.StepUpGate.Check`
 //     (RFC 9470 `401` + `WWW-Authenticate: acr_values`);
-//   - the cluster-internal listener — kacho-iam `authzguard.ACRFloor` (:9091,
+//   - the cluster-internal listener — kaname `authzguard.ACRFloor` (:9091,
 //     gateway-fronted internal RPCs → `PERMISSION_DENIED` + step-up detail),
 //     because the gateway re-dials :9091 and "internal = trusted" is a forbidden
 //     assumption.
@@ -40,16 +40,22 @@
 // requirement.
 package grpcsrv
 
-import "time"
+import (
+	"time"
+
+	"github.com/PRO-Robotech/kacho/pkg/principalwire"
+)
 
 // MDKeyTokenACR is the trusted metadata key carrying the validated JWT `acr`
 // claim, forwarded by the api-gateway on the mTLS-verified gateway→iam re-dial
 // (alongside x-kacho-principal-*). It is read ONLY under the trust invariant
 // (see UnaryTrustedPrincipalExtract) — on an unverified peer it is dropped with
 // the principal (anti-spoof).
-const MDKeyTokenACR = "x-kacho-token-acr" // #nosec G101 -- gRPC metadata header key, not a credential (the "token" substring is a false positive)
+// Имя ключа объявлено ОДИН раз — в `pkg/principalwire`; здесь оно только
+// переименовано под привычное вызывающему имя (см. разбор у MDKeyPrincipalType).
+const MDKeyTokenACR = principalwire.MetaTokenACR
 
-// PrincipalTypeServiceAccount is the `kacho_principal_type` value identifying a
+// PrincipalTypeServiceAccount is the `kaname_principal_type` value identifying a
 // MACHINE principal — the claim value stamped by the iam token-hook on a
 // client_credentials service-account token, and the
 // MDKeyPrincipalType metadata value the api-gateway forwards for it.
@@ -106,7 +112,7 @@ func ACRSatisfies(presented, required string) bool {
 // transport plumbing and stays with the caller; DECIDING on them is this
 // package's job.
 type StepUpInput struct {
-	// PrincipalType — the caller's `kacho_principal_type`
+	// PrincipalType — the caller's `kaname_principal_type`
 	// ("user" | "service_account" | "system"). MUST already be trust-filtered by
 	// the caller: pass "" whenever the type came from an unverified peer, so a
 	// forged `service_account` can never buy the exemption (anti-spoof).

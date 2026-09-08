@@ -11,13 +11,13 @@
 # ReBAC gate (it exists to obtain the FIRST token, before any relation exists) and
 # no api-gateway REST route (on the plain-HTTP internal listener a route would be a
 # credential-free takeover). Its only credential is the CALLER'S CLIENT CERTIFICATE:
-# kacho-iam admits the SPIFFE SANs in `authn.bootstrap-mint.allowed-client-sans`
+# kaname admits the SPIFFE SANs in `authn.bootstrap-mint.allowed-client-sans`
 # (authzguard.CallerPolicy arm 3 — enforced in EVERY mode, empty list = deny all).
 #
 # That splits the operator path across two independently-rendered manifests:
 #   (a) umbrella templates/bootstrap-operator-certificate.yaml — issues the
 #       client-auth leaf whose URI-SAN identifies the operator;
-#   (b) charts/kacho-iam configmap — the allow-list kacho-iam actually enforces.
+#   (b) charts/kaname configmap — the allow-list kaname actually enforces.
 # Drift between them is SILENT and fails CLOSED: the mint denies every caller (no
 # alarm), and in production the boot-guard then refuses to start a stand that looks
 # configured. Worse, the usual "fix" for a mint nobody can call is to reopen the
@@ -39,7 +39,7 @@ UMBRELLA="$REPO_ROOT/helm/umbrella"
 DEV="$UMBRELLA/values.dev.yaml"
 DEVPROD="$UMBRELLA/values.dev-prod.yaml"
 CERT_TPL="templates/bootstrap-operator-certificate.yaml"
-IAM_CM_TPL="charts/kacho-iam/templates/configmap.yaml"
+IAM_CM_TPL="charts/kaname/templates/configmap.yaml"
 GATEWAY_SAN="spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
 # ТРИ ИСХОДА (0 зелено · 1 находка о дереве · 2 условие не создано) — общей
 # реализацией на весь каталог. До #1195 отказ helm по причине, НЕ относящейся к
@@ -105,13 +105,13 @@ CERT_SAN="$(spiffe_uris "$CERT")"
 [ "$CERT_SAN" != "$GATEWAY_SAN" ] \
   || fail "bootstrap-operator reuses the api-gateway SAN ($GATEWAY_SAN) — 'is the api-gateway' must never license a cluster-admin mint"; ok
 
-# ── 3. kacho-iam allow-lists EXACTLY that SAN (dev-prod) ─────────────────────
+# ── 3. kaname allow-lists EXACTLY that SAN (dev-prod) ─────────────────────
 render "$IAM_CM_TPL" "$DEV" "$DEVPROD"; IAM_CM="$HELM_OUT"
 [[ "$IAM_CM" == *"allowed-client-sans"* ]] \
-  || fail "kacho-iam config.yaml has no authn.bootstrap-mint.allowed-client-sans — the mint gate is unconfigurable"; ok
+  || fail "kaname config.yaml has no authn.bootstrap-mint.allowed-client-sans — the mint gate is unconfigurable"; ok
 ALLOWED="$(allowlist_of "$IAM_CM")"
 [ -n "$ALLOWED" ] \
-  || fail "values.dev-prod leaves the bootstrap-mint allow-list EMPTY while the mint is enabled — kacho-iam refuses to boot (core rule #16)"; ok
+  || fail "values.dev-prod leaves the bootstrap-mint allow-list EMPTY while the mint is enabled — kaname refuses to boot (core rule #16)"; ok
 line_in "$ALLOWED" "$CERT_SAN" \
   || fail "allow-list ($ALLOWED) does not contain the issued operator SAN ($CERT_SAN) — the mint would deny its own operator"; ok
 if line_in "$ALLOWED" "$GATEWAY_SAN"; then
@@ -133,7 +133,7 @@ render "$CERT_TPL" "$DEV"; DEV_CERT_SAN="$(spiffe_uris "$HELM_OUT")"
 # carries no SAN at all (but still carries the key, so the fail-closed setting
 # stays visible in the deployed config rather than silently vanishing).
 helm_try kacho-umbrella "$UMBRELLA" -f "$DEV" \
-  --set-json 'kacho-iam.config.authn.bootstrapMint.allowedClientSANs=[]' \
+  --set-json 'kaname.config.authn.bootstrapMint.allowedClientSANs=[]' \
   --show-only "$IAM_CM_TPL"
 render_or_fatal "values.dev.yaml + пустой allowedClientSANs → $IAM_CM_TPL"
 EMPTY_CM="$HELM_OUT"

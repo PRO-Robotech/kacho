@@ -41,7 +41,7 @@ func TestAuth_Unauthenticated_NonOracleMessage(t *testing.T) {
 	stBad, _ := status.FromError(errBad)
 	assert.Equal(t, codes.Unauthenticated, stBad.Code())
 
-	// Case B — validly-signed token, subject NOT provisioned in kacho-iam. The
+	// Case B — validly-signed token, subject NOT provisioned in kaname. The
 	// lookup error carries distinctive internal detail that must NOT leak.
 	const secretDetail = "rpc error: code = NotFound desc = user zit-absent not mirrored"
 	lookup := &fakeLookup{err: stderrors.New(secretDetail)}

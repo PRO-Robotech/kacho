@@ -21,7 +21,7 @@ func TestPrefixToBackend_BoundToCorelibConstants(t *testing.T) {
 		ids.PrefixOperationVPC:     "vpc",          // enp
 		prefixOperationVPCSubnet:   "vpc",          // e9b (no corelib const yet)
 		ids.PrefixOperationCompute: "compute",      // epd
-		prefixOperationIAM:         "iam",          // iop (kacho-iam domain, not importable)
+		prefixOperationIAM:         "iam",          // iop (kaname domain, not importable)
 		ids.PrefixOperationNLB:     "loadbalancer", // nlb
 		ids.PrefixOperationReg:     "registry",     // rop
 		ids.PrefixOperationStorage: "storage",      // sop

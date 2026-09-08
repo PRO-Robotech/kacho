@@ -41,7 +41,7 @@ import (
 // `generate_unbound_methods` default route.
 var bootstrapMintRESTPaths = []struct{ method, path string }{
 	{"POST", "/iam/v1/internal/bootstrapToken:mint"},
-	{"POST", "/kacho.cloud.iam.v1.InternalBootstrapTokenService/MintBootstrapToken"},
+	{"POST", "/kaname.cloud.iam.v1.InternalBootstrapTokenService/MintBootstrapToken"},
 }
 
 // TestBootstrapMint_NoRESTRoute_OnInternalListener — the mint is unrouted on the

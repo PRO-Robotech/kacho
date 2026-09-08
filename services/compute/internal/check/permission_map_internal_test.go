@@ -14,7 +14,7 @@ import (
 )
 
 // catalogAdminMutations — internal catalog-admin RPC, которые ОБЯЗАНЫ быть
-// замаплены на FGA-relation `system_admin` @ `cluster:cluster_kacho_root`
+// замаплены на FGA-relation `system_admin` @ `cluster:cluster_root`
 // (proto-аннотация `required_relation=system_admin`, object_type=cluster в
 // internal_catalog_service.proto). Эти RPC живут на internal listener'е :9091 —
 // он гоняет тот же authzIntr, что и public, поэтому каждая catalog-мутация должна
@@ -32,7 +32,7 @@ var catalogAdminMutations = []string{
 }
 
 // TestPermissionMap_CatalogAdmin_SystemAdminOnCluster — каждая catalog-admin
-// мутация замаплена → relation "system_admin", object "cluster:cluster_kacho_root".
+// мутация замаплена → relation "system_admin", object "cluster:cluster_root".
 func TestPermissionMap_CatalogAdmin_SystemAdminOnCluster(t *testing.T) {
 	m := check.PermissionMap()
 	for _, fullMethod := range catalogAdminMutations {
@@ -45,7 +45,7 @@ func TestPermissionMap_CatalogAdmin_SystemAdminOnCluster(t *testing.T) {
 		objType, objID, err := entry.Extract(nil)
 		require.NoErrorf(t, err, "%s: cluster-scoped extractor must not error on any request", fullMethod)
 		require.Equalf(t, "cluster", objType, "%s: object_type must be cluster", fullMethod)
-		require.Equalf(t, "cluster_kacho_root", objID, "%s: object_id must be cluster singleton", fullMethod)
+		require.Equalf(t, "cluster_root", objID, "%s: object_id must be cluster singleton", fullMethod)
 	}
 }
 
@@ -91,7 +91,7 @@ func TestPermissionMap_CatalogAdmin_EnforcedByInterceptor(t *testing.T) {
 	intr, calls := newTestInterceptor(t, func(_ context.Context, subject, relation, object string) (bool, error) {
 		require.Equal(t, "user:usr_admin", subject)
 		require.Equal(t, "system_admin", relation)
-		require.Equal(t, "cluster:cluster_kacho_root", object)
+		require.Equal(t, "cluster:cluster_root", object)
 		return true, nil
 	})
 	uIntr := intr.Unary()

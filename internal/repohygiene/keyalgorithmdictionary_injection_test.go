@@ -23,12 +23,12 @@ import (
 // строка со значением, которого проверяющий не признаёт, вставляется без
 // возражений, а клиент, ею заведённый, аутентифицироваться не может.
 const algInjectedExtraValue = `-- +goose Up
-CREATE TABLE kacho_iam.user_oauth_clients (
+CREATE TABLE kaname.user_oauth_clients (
     key_algorithm text DEFAULT ''::text NOT NULL,
     CONSTRAINT user_oauth_clients_key_algorithm_check CHECK ((key_algorithm IN ('', 'ES256', 'RS256', 'EdDSA', 'HS256')))
 );
 -- +goose Down
-DROP TABLE kacho_iam.user_oauth_clients;
+DROP TABLE kaname.user_oauth_clients;
 `
 
 // algInjectedLawful — словарь схемы, совпадающий с перечнем кода.
@@ -42,7 +42,7 @@ DROP TABLE kacho_iam.user_oauth_clients;
 //     читать её значило бы судить схему по тому, чего в ней нет;
 //   - второй столбец с похожим именем и своим словарём.
 const algInjectedLawful = `-- +goose Up
-CREATE TABLE kacho_iam.user_oauth_clients (
+CREATE TABLE kaname.user_oauth_clients (
     -- Словарь намеренно не содержит HS256: симметричное семейство здесь
     -- неприменимо, и объяснение это лежит в комментарии, а не в ограничении.
     key_algorithm text DEFAULT ''::text NOT NULL,
@@ -51,21 +51,21 @@ CREATE TABLE kacho_iam.user_oauth_clients (
     CONSTRAINT user_oauth_clients_key_algorithm_legacy_check CHECK ((key_algorithm_legacy IN ('', 'RS1')))
 );
 -- +goose Down
-ALTER TABLE kacho_iam.user_oauth_clients
+ALTER TABLE kaname.user_oauth_clients
     ADD CONSTRAINT user_oauth_clients_key_algorithm_check CHECK ((key_algorithm IN ('', 'HS256')));
 `
 
 // algInjectedNoEmpty — словарь, из которого пропало пустое значение.
 const algInjectedNoEmpty = `-- +goose Up
-ALTER TABLE kacho_iam.user_oauth_clients
+ALTER TABLE kaname.user_oauth_clients
     ADD CONSTRAINT user_oauth_clients_key_algorithm_check CHECK ((key_algorithm IN ('ES256', 'RS256', 'EdDSA')));
 `
 
 // algInjectedRedeclared — ограничение снято и объявлено заново.
 const algInjectedRedeclared = `-- +goose Up
-ALTER TABLE kacho_iam.user_oauth_clients
+ALTER TABLE kaname.user_oauth_clients
     DROP CONSTRAINT user_oauth_clients_key_algorithm_check;
-ALTER TABLE kacho_iam.user_oauth_clients
+ALTER TABLE kaname.user_oauth_clients
     ADD CONSTRAINT user_oauth_clients_key_algorithm_check CHECK ((key_algorithm IN ('', 'ES256')));
 `
 
@@ -184,7 +184,7 @@ func TestAlgorithmScannerReadsTheLastDeclaration(t *testing.T) {
 //   - столбец, чьё имя ОКАНЧИВАЕТСЯ на наше, со своим словарём;
 //   - приведение типа на каждом литерале — значением оно не является.
 const algInjectedDumpForm = `-- +goose Up
-CREATE TABLE kacho_iam.user_oauth_clients (
+CREATE TABLE kaname.user_oauth_clients (
     key_algorithm text DEFAULT ''::text NOT NULL,
     legacy_key_algorithm text DEFAULT ''::text NOT NULL,
     CONSTRAINT user_oauth_clients_key_algorithm_check CHECK ((key_algorithm = ANY (ARRAY[''::text, 'ES256'::text, 'RS256'::text, 'EdDSA'::text]))),
@@ -195,7 +195,7 @@ CREATE TABLE kacho_iam.user_oauth_clients (
 
 // algInjectedDumpFormWider — форма `pg_dump`, словарь ШИРЕ перечня кода.
 const algInjectedDumpFormWider = `-- +goose Up
-ALTER TABLE ONLY kacho_iam.user_oauth_clients
+ALTER TABLE ONLY kaname.user_oauth_clients
     ADD CONSTRAINT user_oauth_clients_key_algorithm_check CHECK ((key_algorithm = ANY (ARRAY[''::text, 'ES256'::text, 'RS256'::text, 'EdDSA'::text, 'HS256'::text])));
 `
 

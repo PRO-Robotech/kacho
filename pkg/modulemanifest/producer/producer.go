@@ -85,7 +85,7 @@ const ConfigMapDataLimit = 1 << 20
 // объявлением на производителя и на чарт, иначе они разойдутся молча — под
 // смонтирует один объект, производитель положит другой, каталог доставки
 // приедет пустым, и снаружи это неотличимо от «модулей нет».
-var chartValuesPath = []string{"kacho-iam", "manifests", "configMapName"}
+var chartValuesPath = []string{"kaname", "manifests", "configMapName"}
 
 // ErrNotDeclared — цепочка профилей доставку не объявляет.
 //

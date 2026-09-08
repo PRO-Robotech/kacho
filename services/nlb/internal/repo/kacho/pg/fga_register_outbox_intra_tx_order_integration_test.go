@@ -25,7 +25,7 @@ import (
 // intents about the SAME object emitted in ONE writer-tx must be distinguishable
 // AND correctly ordered by source_version.
 //
-// kacho-iam resolves competing intents by comparing that version: a register
+// kaname resolves competing intents by comparing that version: a register
 // applies only when strictly newer than the stored one, and an unregister deletes
 // only when the stored one is not newer than its tombstone. Equal versions
 // therefore mean "whichever is applied last wins", which turns emission order

@@ -13,7 +13,7 @@
 #  от `v_update`, а не от яруса.
 #
 #  Раздел `resources` порождает блоки типов модели доступов; сверка с каноном
-#  `proto/kacho/cloud/iam/v1/fga_model.fga` ПОБАЙТОВАЯ:
+#  `proto/kaname/cloud/iam/v1/fga_model.fga` ПОБАЙТОВАЯ:
 #      make -C services/iam model-canon-check
 #  Форму документа судит один разбор:
 #      make -C services/iam module-manifest-check
@@ -167,7 +167,7 @@ resources:
 #  сверяется с ЖИВОЙ базой прогоном, а не чтением миграций:
 #      go test -C services/iam ./internal/moduleroleparity/
 #  Гейт поднимает Postgres, играет цепочку миграций дерева и сравнивает строки
-#  `kacho_iam.roles` с тем, что произвёл бы применитель из ЭТОГО раздела.
+#  `kaname.roles` с тем, что произвёл бы применитель из ЭТОГО раздела.
 #  Расхождение по идентификатору, назначению либо праву — находка с именем роли.
 #
 #  Почему `description` по-английски и почему его нельзя «причесать»: текст
@@ -190,7 +190,7 @@ roles:
     description: "NLB operator (start/stop/getTargetStates/listOperations + viewer on LB hierarchy)"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: loadbalancer
         resources: [networkLoadBalancers]
@@ -206,7 +206,7 @@ roles:
     description: "NLB target manager (addTargets/removeTargets/getTargetStates + viewer on LB hierarchy)"
     tier:
       tierType: iam.cluster
-      tierId: cluster_kacho_root
+      tierId: cluster_root
     rules:
       - module: loadbalancer
         resources: [targetGroups]

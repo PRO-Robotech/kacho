@@ -146,7 +146,7 @@ func TestRetiredBlockStorageIsUnreachable(t *testing.T) {
 	surfaces := []string{
 		filepath.Join(root, "gateway", "internal", "middleware", "rest_route_table_gen.go"),
 		filepath.Join(root, "gateway", "internal", "middleware", "embed", "permission_catalog.json"),
-		filepath.Join(root, "services", "iam", "internal", "apps", "kacho", "seed", "embedded", "permission_catalog.json"),
+		filepath.Join(root, "services", "iam", "internal", "apps", "kaname", "seed", "embedded", "permission_catalog.json"),
 		filepath.Join(root, "gateway", "internal", "allowlist", "list.go"),
 	}
 	for _, path := range surfaces {

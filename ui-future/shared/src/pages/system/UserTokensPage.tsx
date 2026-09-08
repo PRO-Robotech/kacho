@@ -1,5 +1,5 @@
 // UserTokensPage — Stage 4. Выпуск/список/отзыв персональных access-токенов
-// пользователя (kacho.cloud.iam.v1.UserTokenService, private_key_jwt).
+// пользователя (kaname.cloud.iam.v1.UserTokenService, private_key_jwt).
 //
 // Users — глобальный список (GET /iam/v1/users). Приватный ключ выдаётся один раз.
 

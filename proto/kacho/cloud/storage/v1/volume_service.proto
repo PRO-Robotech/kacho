@@ -164,7 +164,7 @@ message GetVolumeRequest {
 
 message ListVolumesRequest {
   // ID of the project to list volumes in.
-  // To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+  // To get the project ID, use a [kaname.cloud.iam.v1.ProjectService.List] request.
   string project_id = 1;
 
   // The maximum number of results per page to return. If the number of available
@@ -205,7 +205,7 @@ message ListVolumesResponse {
 
 message CreateVolumeRequest {
   // ID of the project to create a volume in.
-  // To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
+  // To get the project ID, use a [kaname.cloud.iam.v1.ProjectService.List] request.
   string project_id = 1;
 
   // Name of the volume.

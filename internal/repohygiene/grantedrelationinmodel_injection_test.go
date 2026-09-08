@@ -57,12 +57,12 @@ type cluster
 		{
 			// (б) ЗАКОННЫЙ БЛИЗНЕЦ — ровно та же форма записи, отношение существует.
 			name: "законная выдача существующего отношения — гейт молчит",
-			sql: `INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at) VALUES
+			sql: `INSERT INTO kaname.fga_outbox (event_type, payload, created_at) VALUES
   ('fga.tuple.write',
    jsonb_build_object(
      'user',     'group:grp1#member',
      'relation', 'quota_reader',
-     'object',   'cluster:cluster_kacho_root'),
+     'object',   'cluster:cluster_root'),
    now());`,
 			wantFinding: false,
 			wantPair:    "cluster#quota_reader",
@@ -70,12 +70,12 @@ type cluster
 		{
 			// (а) ВОЗВРАЩЁННЫЙ ДЕФЕКТ — отношения в модели нет.
 			name: "выдача отношения, которого в модели нет — находка",
-			sql: `INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at) VALUES
+			sql: `INSERT INTO kaname.fga_outbox (event_type, payload, created_at) VALUES
   ('fga.tuple.write',
    jsonb_build_object(
      'user',     'group:grp1#member',
      'relation', 'phantom_reader',
-     'object',   'cluster:cluster_kacho_root'),
+     'object',   'cluster:cluster_root'),
    now());`,
 			wantFinding: true,
 			wantPair:    "cluster#phantom_reader",
@@ -83,7 +83,7 @@ type cluster
 		{
 			// Тип целиком неизвестен — тоже находка, и с ДРУГИМ текстом.
 			name: "выдача на типе, которого в модели нет — находка",
-			sql: `INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at) VALUES
+			sql: `INSERT INTO kaname.fga_outbox (event_type, payload, created_at) VALUES
   ('fga.tuple.write',
    jsonb_build_object(
      'user',     'user:u1',

@@ -190,7 +190,7 @@ sizing-каталог (`machine_type_id`), из которого выводит�
 - `network_interfaces[].security_group_ids[]` → VPC `SecurityGroup` (НЕ FK; denorm-зеркало).
 - `network_interfaces[].primary_v4_address.one_to_one_nat.address` → VPC
   `Address` (НЕ FK; при Remove/Delete освобождается best-effort).
-- `instances.project_id` → kacho-iam `Project` (НЕ FK, валидируется gRPC).
+- `instances.project_id` → kaname `Project` (НЕ FK, валидируется gRPC).
 - `boot_source` (`storage.image` / `registry.image`) → peer-резолв у владельца
   (kacho-storage / kacho-registry), не локальная таблица.
 

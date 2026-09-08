@@ -307,7 +307,7 @@ def go():
 SEED_WITHOUT_EXCHANGE = '''\
 """докстрока посева: путь /oauth2/token назван тут ПРОЗОЙ."""
 def go():
-    return post("https://iam.kacho.local" + "/kacho/tokens:mint")
+    return post("https://kaname.kacho.local" + "/kacho/tokens:mint")
 '''
 
 DICT_STUB = 'var ProviderSurfaces = []ProviderSurface{{{{Path: "{path}"}}}}\n'
@@ -332,23 +332,23 @@ def _plant(root: str, *, seed_src: str, profile: str, presenters: str = '{"jwtHu
 
 TWO_ISSUERS = ("api-gateway:\n"
                "  tokenAcceptance:\n"
-               "    issuers: \"https://iam.kacho.local,https://provider\"\n"
-               "    platformIssuer: \"https://iam.kacho.local\"\n")
+               "    issuers: \"https://kaname.kacho.local,https://provider\"\n"
+               "    platformIssuer: \"https://kaname.kacho.local\"\n")
 ONE_ISSUER = ("api-gateway:\n"
               "  tokenAcceptance:\n"
-              "    issuers: \"https://iam.kacho.local\"\n"
-              "    platformIssuer: \"https://iam.kacho.local\"\n")
+              "    issuers: \"https://kaname.kacho.local\"\n"
+              "    platformIssuer: \"https://kaname.kacho.local\"\n")
 # Близнец с ПОХОЖИМ именем ручки: предикат обязан читать имя целиком, а не
 # вхождением — иначе переименование остаётся незамеченным.
 LOOKALIKE_KNOB = ("api-gateway:\n"
                   "  tokenAcceptanceLegacy:\n"
-                  "    issuers: \"https://iam.kacho.local,https://provider\"\n"
-                  "    platformIssuer: \"https://iam.kacho.local\"\n")
+                  "    issuers: \"https://kaname.kacho.local,https://provider\"\n"
+                  "    platformIssuer: \"https://kaname.kacho.local\"\n")
 # Близнец с похожим именем ЧАРТА: `api-gateway-canary` — не край.
 LOOKALIKE_CHART = ("api-gateway-canary:\n"
                    "  tokenAcceptance:\n"
-                   "    issuers: \"https://iam.kacho.local,https://provider\"\n"
-                   "    platformIssuer: \"https://iam.kacho.local\"\n")
+                   "    issuers: \"https://kaname.kacho.local,https://provider\"\n"
+                   "    platformIssuer: \"https://kaname.kacho.local\"\n")
 
 
 def self_test() -> int:

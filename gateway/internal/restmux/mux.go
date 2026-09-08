@@ -90,7 +90,7 @@
 //     все RPC public под /iam/v1/*.
 //   - iam.v1 admin (kacho-only): InternalUserService.Get — для admin tooling; зарегистрирован
 //     в internal mux pro-forma (proto-аннотации `google.api.http` отсутствуют → real-трафик
-//     идет только через gRPC-direct до kacho-iam:9091) + REST для UpsertFromIdentity.
+//     идет только через gRPC-direct до kaname:9091) + REST для UpsertFromIdentity.
 //     InternalIAMService: LookupSubject и Check ИМЕЮТ http-аннотации, поэтому
 //     RegisterInternalIAMServiceHandlerFromEndpoint (ниже, ветка internalMux) заводит им
 //     REST-маршруты `/iam/v1/internal/iam:lookupSubject` и `:check` — они есть в
@@ -124,8 +124,8 @@ import (
 	computepb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	// geo.v1 — Region/Zone leaf-сервис kacho-geo.
 	geopb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
-	iampb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	quotapb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1"
+	iampb "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 
 	// kacho-nlb (loadbalancer.v1) — public RPC под /nlb/v1/*.
 	lbpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
@@ -202,6 +202,17 @@ func principalHeaderMatcher(key string) (string, bool) {
 		if principalmeta.IsGatewayProducedKey(name) {
 			return name, true
 		}
+		return "", false
+	}
+	// Имя ФОРМЫ личности под чужой приставкой мост не пропускает.
+	//
+	// Сужение выше ключуется на НАШУ приставку и о чужой не знает ничего,
+	// поэтому `Grpc-Metadata-X-<чужое>-Principal-Id` уезжал бы слушателю
+	// умолчанием библиотеки. Пока такое имя никто не читал, оно было
+	// безобидно; оно перестало быть безобидным, когда слушатель научился
+	// отличать «личность объявлена и не приехала» от законной безымянности —
+	// с тех пор клиент мог бы прислать его и получить отказ на свой же запрос.
+	if principalmeta.IsForeignIdentityKey(key) {
 		return "", false
 	}
 	return runtime.DefaultHeaderMatcher(key)
@@ -295,8 +306,8 @@ func isInternalPath(path string) bool {
 //
 // addrs — карта domain → адрес gRPC backend:
 //
-//	"iam"                  → kacho-iam.kacho.svc:9090
-//	"iamInternal"          → kacho-iam.kacho.svc:9091
+//	"iam"                  → kaname.kacho.svc:9090
+//	"iamInternal"          → kaname.kacho.svc:9091
 //	"vpc"                  → vpc.kacho.svc:9090
 //	"vpcInternal"          → vpc.kacho.svc:9091 (admin internal-порт)
 //	"compute"              → compute.kacho.svc:9090
@@ -708,7 +719,7 @@ func NewMux(
 			// Квоты личности — сколько аккаунтов вызывающему позволено и сколько
 			// уже занято. Публичная поверхность и ТОЛЬКО чтение о себе: величину
 			// меняет администратор облака через iam.v1.InternalLimitService на
-			// внутреннем слушателе. Обслуживает её kacho-iam, поэтому адрес тот же.
+			// внутреннем слушателе. Обслуживает её kaname, поэтому адрес тот же.
 			if err := quotapb.RegisterIdentityQuotaServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
 				return nil, fmt.Errorf("register iam IdentityQuotaService: %w", err)
 			}
@@ -820,7 +831,7 @@ func NewMux(
 			// /iam/v1/internal/cluster/...  Internal-only;
 			// isInternalRoute sends these paths to the internal sub-mux. Catalog gate
 			// (`required_relation: admin`) enforces the FGA computed-alias
-			// `system_admin OR emergency_admin` on `cluster:cluster_kacho_root`.
+			// `system_admin OR emergency_admin` on `cluster:cluster_root`.
 			if err := iampb.RegisterInternalClusterServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
 				return nil, fmt.Errorf("register iam InternalClusterService: %w", err)
 			}
@@ -832,7 +843,7 @@ func NewMux(
 			// dispatcher 404s them on the external TLS listener, hiding
 			// existence. Registering a client at the identity provider decides
 			// where an authorization code may be delivered, so the catalog gate
-			// requires `system_admin` on `cluster:cluster_kacho_root` and the
+			// requires `system_admin` on `cluster:cluster_root` and the
 			// three mutations additionally carry the step-up floor acr=2.
 			if err := iampb.RegisterInternalInteractiveClientServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
 				return nil, fmt.Errorf("register iam InternalInteractiveClientService: %w", err)
@@ -843,7 +854,7 @@ func NewMux(
 			// Internal-only; isInternalRoute sends these paths to the internal
 			// sub-mux and the dispatcher 404s them on the external TLS listener,
 			// hiding existence. The five CRUD verbs are catalog-gated on
-			// `system_admin` @ cluster:cluster_kacho_root (mutations additionally
+			// `system_admin` @ cluster:cluster_root (mutations additionally
 			// at acr=2); the two reads carry the NARROW `quota_reader` relation,
 			// because an owner service must not need the whole cluster read tier
 			// to learn its tenant's ceiling.
@@ -857,7 +868,7 @@ func NewMux(
 			// listener. The gRPC router's HasInternalSuffix also blocks the
 			// InternalOperationsService suffix on the public listener.
 			// admin-tier is enforced by the permission-catalog entry
-			// (required_relation: system_admin, scope cluster:cluster_kacho_root, acr 2),
+			// (required_relation: system_admin, scope cluster:cluster_root, acr 2),
 			// parity with InternalClusterService/*; the iam :9091 backend additionally
 			// runs its own per-RPC authz-Check.
 			if err := iampb.RegisterInternalOperationsServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
@@ -900,7 +911,7 @@ func NewMux(
 			// Network position is not a credential (security.md — "internal = trusted"
 			// is a forbidden assumption).
 			//
-			// The mint keeps exactly ONE door: a direct mTLS gRPC dial to kacho-iam
+			// The mint keeps exactly ONE door: a direct mTLS gRPC dial to kaname
 			// :9091, where authzguard.CallerPolicy checks the caller's verified
 			// client-certificate SAN against an explicit allow-list
 			// (`authn.bootstrap-mint.allowed-client-sans`). The proto carries no

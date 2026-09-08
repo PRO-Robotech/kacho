@@ -19,10 +19,10 @@ import (
 // from the edge). They must NOT be a global FQN allowlist entry — internal
 // callers are admitted by the internal-listener-origin gate instead.
 var removedInternalFQNs = []string{
-	"kacho.cloud.iam.v1.InternalIAMService/Check",
-	"kacho.cloud.iam.v1.InternalIAMService/ListPermissions",
-	"kacho.cloud.iam.v1.InternalIAMService/LookupSubject",
-	"kacho.cloud.iam.v1.InternalUserService/UpsertFromIdentity",
+	"kaname.cloud.iam.v1.InternalIAMService/Check",
+	"kaname.cloud.iam.v1.InternalIAMService/ListPermissions",
+	"kaname.cloud.iam.v1.InternalIAMService/LookupSubject",
+	"kaname.cloud.iam.v1.InternalUserService/UpsertFromIdentity",
 }
 
 // TestDefaultPublicAllowlist_NoInternalFQNs (P0, RED→GREEN) — the public
@@ -124,7 +124,7 @@ func TestInternalExempt_InternalOrigin_Allowed(t *testing.T) {
 	assert.Zero(t, checker.calls.Load(), "internal-origin exempt Internal* call must not invoke FGA Check")
 }
 
-const internalCheckExempt = `{"fqn":"kacho.cloud.iam.v1.InternalIAMService/Check","permission":"<exempt>"}`
+const internalCheckExempt = `{"fqn":"kaname.cloud.iam.v1.InternalIAMService/Check","permission":"<exempt>"}`
 
 // TestInternalGated_InternalOrigin_StillChecked (regression guard) — a GATED
 // Internal* RPC (catalog has required_relation, NOT <exempt>) on the INTERNAL
@@ -158,4 +158,4 @@ func TestInternalGated_InternalOrigin_StillChecked(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, w.Code, "gated Internal* RPC denied by FGA → 403, even on internal listener")
 }
 
-const internalClusterGetGated = `{"fqn":"kacho.cloud.iam.v1.InternalClusterService/Get","permission":"iam.cluster_admins.get","required_relation":"system_admin","scope_extractor":{"object_type":"cluster","from_request_field":"*"},"required_acr_min":"2"}`
+const internalClusterGetGated = `{"fqn":"kaname.cloud.iam.v1.InternalClusterService/Get","permission":"iam.cluster_admins.get","required_relation":"system_admin","scope_extractor":{"object_type":"cluster","from_request_field":"*"},"required_acr_min":"2"}`

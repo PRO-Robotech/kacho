@@ -41,6 +41,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"testing"
 
@@ -60,12 +61,56 @@ import (
 // terraform: поэтому предпосылка (исполнитель найден) проверяется здесь, а не восемнадцатью
 // вызовами, один из которых однажды забудут. Юнитовые пробы этого пакета сюда не заходят и
 // исполнителя не требуют.
+//
+// # Локальных имён столько же, сколько семейств имён типов
+//
+// Их ДВА, и оба обязательны. Библиотека строит `required_providers` из ключей
+// этой карты, а исполнитель резолвит провайдера по приставке имени типа: `kacho_vpc_network`
+// требует локального имени `kacho`, `kaname_role` — `kaname`. Карта с одним ключом делает
+// пробы второго семейства неисполнимыми, и отказ приходит не от провайдера, а от
+// разрешения зависимостей («required by this configuration but no version is selected») —
+// то есть говорит не о том, что сломано.
 func accProviderFactories(t *testing.T) map[string]func() (tfprotov6.ProviderServer, error) {
 	t.Helper()
 	accRequireCLI(t)
-	return map[string]func() (tfprotov6.ProviderServer, error){
-		"kacho": providerserver.NewProtocol6WithError(New()),
+	factories := map[string]func() (tfprotov6.ProviderServer, error){}
+	for _, localName := range accProviderLocalNames() {
+		factories[localName] = providerserver.NewProtocol6WithError(New())
 	}
+	return factories
+}
+
+// accProviderLocalNames — локальные имена, под которыми провайдер приезжает в настройку.
+//
+// ВЫВОДЯТСЯ из имён типов, а не выписываются: семейство, заведённое завтра, попадёт сюда
+// само, а рукописный перечень разошёлся бы с реестром молча — и разошёлся бы именно там,
+// где расхождение не видно: на пробе, которая просто перестанет исполняться.
+func accProviderLocalNames() []string {
+	seen := map[string]bool{}
+	var out []string
+	p := New().(*kachoProvider)
+	for _, ctor := range p.Resources(context.Background()) {
+		addLocalNameOf(typeNameOfResource(ctor()), seen, &out)
+	}
+	for _, ctor := range p.DataSources(context.Background()) {
+		addLocalNameOf(typeNameOfDataSource(ctor()), seen, &out)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// addLocalNameOf — приставка имени типа как локальное имя провайдера, без повторов.
+func addLocalNameOf(typeName string, seen map[string]bool, out *[]string) {
+	i := strings.Index(typeName, "_")
+	if i <= 0 {
+		return
+	}
+	name := typeName[:i]
+	if seen[name] {
+		return
+	}
+	seen[name] = true
+	*out = append(*out, name)
 }
 
 // accProvider — блок настройки провайдера, нацеленный на поддельный край.
@@ -73,13 +118,20 @@ func accProviderFactories(t *testing.T) map[string]func() (tfprotov6.ProviderSer
 // Значения заданы ЯВНО, а не через окружение: провайдер читает окружение запасным путём,
 // и проба, полагающаяся на него, зеленела бы или краснела в зависимости от того, что у
 // запускающего в оболочке.
+// Блок пишется на КАЖДОЕ локальное имя. Имя, объявленное без своего блока, получает
+// ненастроенный провайдер, и план отказывает «requires explicit configuration» — отказ,
+// который проба списала бы на ресурс.
 func accProvider(e *fakeEdge) string {
-	return fmt.Sprintf(`
-provider "kacho" {
+	var b strings.Builder
+	for _, localName := range accProviderLocalNames() {
+		fmt.Fprintf(&b, `
+provider %q {
   endpoint = %q
   token    = "acceptance-token"
 }
-`, e.URL())
+`, localName, e.URL())
+	}
+	return b.String()
 }
 
 // ---- пробы самого поддельного края -------------------------------------------------------

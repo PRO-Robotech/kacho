@@ -108,13 +108,13 @@ go list -f '{{join .Imports " "}}' ./services/iam/... \
 
 | стаб | прод-файлов iam | прод-файлов прочих | прочих компонентов |
 |---|---:|---:|---|
-| `pkg/api/kacho/cloud/iam/v1` | **92** | 48 | 9 |
+| `pkg/api/kaname/cloud/iam/v1` | **92** | 48 | 9 |
 | `pkg/api/kacho/cloud/operation` | 28 | 132 | 8 |
 | `pkg/api/kacho/cloud/quota/v1` | 2 | 7 | 2 |
 
 `quota/v1` здесь не случайность: iam **служит** `IdentityQuotaService` — читатели
-`services/iam/cmd/kacho-iam/grpc_register.go` и
-`services/iam/internal/apps/kacho/api/identityquota/handler.go`.
+`services/iam/cmd/kaname/grpc_register.go` и
+`services/iam/internal/apps/kaname/api/identityquota/handler.go`.
 
 ### 1.3 Что нужно ТОЛЬКО пробам
 
@@ -136,7 +136,7 @@ go list -f '{{join .Imports " "}}' ./services/iam/... \
 
 | каталог | файлов |
 |---|---:|
-| `kacho/cloud/iam/v1` | 39 |
+| `kaname/cloud/iam/v1` | 39 |
 | `proto/google/` (восемь файлов стандартных опций) | 8 |
 | `kacho/cloud/operation` | 3 |
 | `kacho/cloud/api` | 2 |
@@ -155,7 +155,7 @@ go list -f '{{join .Imports " "}}' ./services/iam/... \
 
 **Второй, менее заметный вход генерации — каталог прав.** Файлы
 `gateway/internal/middleware/embed/permission_catalog.json` и
-`services/iam/internal/apps/kacho/seed/embedded/permission_catalog.json` **побайтово
+`services/iam/internal/apps/kaname/seed/embedded/permission_catalog.json` **побайтово
 одинаковы** (`md5sum` обоих → `7b125fa181546f546045580977a34939`), а производит их
 `gateway/scripts/gen-permission-catalog.sh` плагином
 `gateway/cmd/protoc-gen-kacho-permissions`. Скрипт в своей же шапке говорит, что
@@ -208,9 +208,9 @@ services/iam/internal/domain  → use of internal package ... not allowed   rc=1
 | `services/iam/internal/authzmodel/relationsubjects.go` | `internal/authzplan` |
 | `services/iam/internal/modelcompose/compose.go` | `internal/authzplan` |
 | `services/iam/internal/modelrender/sweep.go` | `internal/authzplan` |
-| `services/iam/internal/repo/kacho/pg/relverdict/query.go` | `internal/authzplan` |
-| `services/iam/internal/repo/kacho/pg/scalegrid/report.go` | `internal/gitenv` |
-| `services/iam/internal/repo/kacho/pg/scalegrid/strength.go` | `internal/gitenv` |
+| `services/iam/internal/repo/kaname/pg/relverdict/query.go` | `internal/authzplan` |
+| `services/iam/internal/repo/kaname/pg/scalegrid/report.go` | `internal/gitenv` |
+| `services/iam/internal/repo/kaname/pg/scalegrid/strength.go` | `internal/gitenv` |
 | `services/iam/internal/testsupport/iampgtest/iampgtest.go` | `internal/pgtest` |
 | `services/iam/tools/auditlistfilter/profile.go` | `tools/listfiltergate` |
 | `services/iam/tools/auditlistfilter/cmd/audit-list-filter/main.go` | `tools/listfiltergate` |
@@ -302,11 +302,11 @@ awk -F'\t' '$1 ~ /^pkg\// && $2 ~ /kacho\/services\//' <таблица разб�
 
 **Это НЕ цикл — и посылка задания здесь неверна.** Она исходила из того, что контракт
 iam уедет вместе с iam; решение владельца 2026-09-04 говорит обратное: `proto/`
-остаётся в `kacho`, а с ним остаются и стабы `pkg/api/kacho/cloud/iam/v1`. Тогда
+остаётся в `kacho`, а с ним остаются и стабы `pkg/api/kaname/cloud/iam/v1`. Тогда
 `pkg → pkg/api/.../iam/v1` — ребро **внутри** `kacho`, и снимать его не нужно.
 
 Что при этом надо знать и сказать вслух: **iam перестаёт владеть собственным
-контрактом.** Правка `proto/kacho/cloud/iam/v1/*` становится изменением в `kacho`,
+контрактом.** Правка `proto/kaname/cloud/iam/v1/*` становится изменением в `kacho`,
 которое iam получает выпуском версии. Ровно поэтому здесь есть предмет для решения
 владельца — см. §6, шаг 0.
 
@@ -380,7 +380,7 @@ by construction тоже.
 
 ```sh
 grep -rl 'kacho/iam/authz/v1/authz_options.proto' --include='*.proto' proto/ | wc -l   # 68
-… | grep -vc '^proto/kacho/cloud/iam/'                                                # 46
+… | grep -vc '^proto/kaname/cloud/iam/'                                                # 46
 ```
 
 По доменам: iam 22 · vpc 14 · storage 9 · compute 8 · loadbalancer 5 · registry 3 ·
@@ -443,7 +443,7 @@ geo 3 · subscription 1 · quota 1 · operation 1 · api 1.
 
 ### Чего эта перепись НЕ покрывает
 
-- **Не-Go поверхность.** Чарт `deploy/helm/umbrella/charts/kacho-iam` (42 файла с `iam`
+- **Не-Go поверхность.** Чарт `deploy/helm/umbrella/charts/kaname` (42 файла с `iam`
   в пути под `deploy/`), консоль (141 файл под `ui-future/`), документация. Консоль по
   решению владельца остаётся в `kacho` — значит появляется ещё одна связь «продукт iam ↔
   его консоль в чужом репозитории», и она здесь не разобрана.
@@ -484,15 +484,15 @@ awk -F'\t' -v m=$M '$1 ~ /^services\/iam\// &&
 
 # 5. обратная привязка: pkg → iam
 awk -F'\t' -v m=$M '$1 ~ /^pkg\// && index($2,m"/services/")==1' imports.tsv      # пусто
-awk -F'\t' -v m=$M '$1 ~ /^pkg\// && $2==m"/pkg/api/kacho/cloud/iam/v1" {print $1}' imports.tsv | sort -u
+awk -F'\t' -v m=$M '$1 ~ /^pkg\// && $2==m"/pkg/api/kaname/cloud/iam/v1" {print $1}' imports.tsv | sort -u
 
 # 6. цена для соседей
 awk -F'\t' -v m=$M '$1 !~ /^services\/iam\// && index($2,m"/services/iam/")==1' imports.tsv   # пусто
-awk -F'\t' -v m=$M '$1 !~ /^services\/iam\// && index($2,m"/pkg/api/kacho/cloud/iam/")==1 {print $1}' imports.tsv | sort -u | wc -l
+awk -F'\t' -v m=$M '$1 !~ /^services\/iam\// && index($2,m"/pkg/api/kaname/cloud/iam/")==1 {print $1}' imports.tsv | sort -u | wc -l
 
 # 7. разметка прав
 grep -rl 'kacho/iam/authz/v1/authz_options.proto' --include='*.proto' proto/ | wc -l
-grep -rl 'kacho/iam/authz/v1/authz_options.proto' --include='*.proto' proto/ | grep -vc '^proto/kacho/cloud/iam/'
+grep -rl 'kacho/iam/authz/v1/authz_options.proto' --include='*.proto' proto/ | grep -vc '^proto/kaname/cloud/iam/'
 
 # 8. доказательство недостижимости корневого internal/ из чужого модуля
 #    отдельный модуль с replace на дерево; меняется РОВНО один факт — путь импорта

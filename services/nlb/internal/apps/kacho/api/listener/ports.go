@@ -21,11 +21,11 @@ import (
 // Aliased from `internal/repo/kacho.Repository` to keep package boundary clean.
 type RepoFactory = kachorepo.Repository
 
-// OperationsRepo — async LRO repo (shared `kacho-corelib/operations.Repo`).
+// OperationsRepo — async LRO repo (shared `pkg/operations.Repo`).
 // Aliased to local name so use-cases don't reach into corelib by full path.
 type OperationsRepo = operations.Repo
 
-// Registrar — sync-primary owner-tuple registrar (kacho-iam
+// Registrar — sync-primary owner-tuple registrar (kaname
 // InternalIAMService.RegisterResource). Create после durable commit листенера +
 // его `fga_register_outbox`-intent'а синхронно регистрирует containment-tuple,
 // чтобы grant создателя был виден сразу (закрывает async-only окно). BEST-EFFORT:

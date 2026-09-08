@@ -74,7 +74,7 @@ def _await(resp, token, key):
 def upsert_user(ext_id):
     body = json.dumps({"externalId": ext_id, "email": ext_id, "displayName": ext_id})
     args = ["grpcurl", "-insecure", "-cert", MTLS_CERT, "-key", MTLS_KEY,
-            "-d", body, IAM_GRPC, "kacho.cloud.iam.v1.InternalUserService/UpsertFromIdentity"]
+            "-d", body, IAM_GRPC, "kaname.cloud.iam.v1.InternalUserService/UpsertFromIdentity"]
     out = subprocess.run(args, capture_output=True, text=True).stdout
     d = json.loads(out or "{}")
     op = d.get("id")
@@ -87,13 +87,13 @@ def db_lookup(ext_id):
     """Discover a user's personal account + default project via the iam DB
     (read-only discovery of ids the production upsert created; every actual auth
     stays production-strict RS256)."""
-    sql = (f"SET search_path=kacho_iam,public; "
+    sql = (f"SET search_path=kaname,public; "
            f"SELECT a.id||'|'||p.id FROM accounts a "
            f"JOIN users u ON u.id=a.owner_user_id "
            f"JOIN projects p ON p.account_id=a.id AND p.name='default' "
            f"WHERE u.external_id='{ext_id}' LIMIT 1;")
     args = ["kubectl", "-n", "kacho", "exec", "kacho-umbrella-pg-iam-0", "-c", "postgresql",
-            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kacho_iam -h 127.0.0.1 -tAc "{sql}"']
+            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kaname -h 127.0.0.1 -tAc "{sql}"']
     # The personal account/project is created in the async upsert worker; retry to
     # absorb the post-upsert lag.
     for _ in range(20):

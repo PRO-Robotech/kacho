@@ -11,7 +11,7 @@
 // Источник генерации — proto всех доменов Kachō. api-gateway импортирует
 // proto-stubs всех доменов, поэтому каталог собирается именно здесь
 // (cmd/protoc-gen-kacho-permissions + scripts/gen-permission-catalog.sh),
-// обходя service/method каждого домена-владельца (kacho-iam / kacho-vpc /
+// обходя service/method каждого домена-владельца (kaname / kacho-vpc /
 // kacho-compute / kacho-geo / kacho-nlb) + общую инфраструктуру kacho-corelib.
 //
 // Регенерация (требует рабочую копию workspace с соседними репозиториями):

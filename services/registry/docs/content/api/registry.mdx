@@ -135,7 +135,7 @@ authz-Check.
 Создаёт реестр в проекте. Это **create-child**: authz-Check выполняется на parent-проекте
 (`editor`-tier на `project`, объекта реестра ещё нет). `projectId` валидируется через
 `ProjectService.Get`; не найден → `INVALID_ARGUMENT` (`"project <id> not found"`). Владение
-эмитится в outbox (материализуется в kacho-iam). Ответ — `Operation`; `response` содержит созданный
+эмитится в outbox (материализуется в kaname). Ответ — `Operation`; `response` содержит созданный
 Registry.
 
 `regionId` **обязателен**: без него запрос отвергается синхронно —
@@ -264,7 +264,7 @@ zot-namespace и owner/repo-tuple (UnregisterResource). Если в namespace о
     <tr><td>Update с <code>projectId</code> в mask</td><td><code>INVALID_ARGUMENT</code></td><td><code>"projectId is immutable after Registry.Create"</code></td></tr>
     <tr><td>Update с unknown полем в mask</td><td><code>INVALID_ARGUMENT</code></td><td>Поле вне whitelist (name/description/labels)</td></tr>
     <tr><td><strong>Delete непустого реестра</strong></td><td><code>FAILED_PRECONDITION</code></td><td><code>"registry is not empty"</code> — сначала удалить образы</td></tr>
-    <tr><td>kacho-iam / zot недоступны на Create</td><td><code>UNAVAILABLE</code></td><td>fail-closed для мутаций</td></tr>
+    <tr><td>kaname / zot недоступны на Create</td><td><code>UNAVAILABLE</code></td><td>fail-closed для мутаций</td></tr>
   </tbody>
 </table>
 

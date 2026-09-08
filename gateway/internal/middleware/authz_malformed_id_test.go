@@ -16,7 +16,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
@@ -33,12 +33,12 @@ import (
 // acbGetEntry — concrete per-resource id scope (from_request_field is the
 // access_binding_id field, no object_type_from_request_field). Mirrors the
 // embedded permission_catalog.json AccessBindingService/Get entry.
-const acbGetEntry = `{"fqn":"kacho.cloud.iam.v1.AccessBindingService/Get","permission":"iam.access_bindings.get","required_relation":"viewer","scope_extractor":{"object_type":"iam_access_binding","from_request_field":"access_binding_id"},"required_acr_min":"2","risk_level":"LOW"}`
+const acbGetEntry = `{"fqn":"kaname.cloud.iam.v1.AccessBindingService/Get","permission":"iam.access_bindings.get","required_relation":"viewer","scope_extractor":{"object_type":"iam_access_binding","from_request_field":"access_binding_id"},"required_acr_min":"2","risk_level":"LOW"}`
 
 // acbListByScopeEntry — scope-polymorphic (object_type_from_request_field).
 // MUST NOT be id-validated: resource_id may be an account/project/cluster id of
 // a foreign family, and the malformed-id guard explicitly excludes this path.
-const acbListByScopeEntry = `{"fqn":"kacho.cloud.iam.v1.AccessBindingService/ListByScope","permission":"iam.access_bindings_by_resources.listByScope","required_relation":"viewer","scope_extractor":{"object_type":"project","from_request_field":"resource_id","object_type_from_request_field":"resource_type"},"required_acr_min":"2"}`
+const acbListByScopeEntry = `{"fqn":"kaname.cloud.iam.v1.AccessBindingService/ListByScope","permission":"iam.access_bindings_by_resources.listByScope","required_relation":"viewer","scope_extractor":{"object_type":"project","from_request_field":"resource_id","object_type_from_request_field":"resource_type"},"required_acr_min":"2"}`
 
 const malformedACB = "not-a-valid-acb-id-at-all-verylongstring"
 const wellFormedNonexistentACB = "acb00000000000notfnd"
@@ -50,7 +50,7 @@ func TestAuthz_GRPC_MalformedResourceId_InvalidArgument(t *testing.T) {
 	mw := buildAuthzMiddleware(t, buildCatalog(t, acbGetEntry), checker)
 	req := &iamv1.GetAccessBindingRequest{AccessBindingId: malformedACB}
 	_, err := mw.Unary()(withTokenMD("usr_x", "user"), req,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.AccessBindingService/Get"},
+		&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.AccessBindingService/Get"},
 		func(ctx context.Context, req any) (any, error) {
 			t.Fatal("handler must not run for malformed id")
 			return nil, nil
@@ -69,12 +69,12 @@ func TestAuthz_GRPC_MalformedResourceId_InvalidArgument(t *testing.T) {
 func TestAuthz_HTTP_MalformedResourceId_Returns400(t *testing.T) {
 	checker := &fakeChecker{allowed: false, reasons: []string{"no path"}}
 	router := &fakeRestRouter{m: map[string]string{
-		"GET /iam/v1/accessBindings/" + malformedACB: "kacho.cloud.iam.v1.AccessBindingService/Get",
+		"GET /iam/v1/accessBindings/" + malformedACB: "kaname.cloud.iam.v1.AccessBindingService/Get",
 	}}
 	mw := buildAuthzMiddleware(t, buildCatalog(t, acbGetEntry), checker, func(c *middleware.AuthzMiddlewareConfig) {
 		c.RestRouter = router
 		c.Resources = middleware.NewResourceExtractor(map[string]string{
-			"kacho.cloud.iam.v1.AccessBindingService/Get": "/iam/v1/accessBindings/{access_binding_id}",
+			"kaname.cloud.iam.v1.AccessBindingService/Get": "/iam/v1/accessBindings/{access_binding_id}",
 		})
 	})
 	h := mw.HTTP(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -102,7 +102,7 @@ func TestAuthz_GRPC_WellFormedDeny_StillPermissionDenied(t *testing.T) {
 	mw := buildAuthzMiddleware(t, buildCatalog(t, acbGetEntry), checker)
 	req := &iamv1.GetAccessBindingRequest{AccessBindingId: wellFormedNonexistentACB}
 	_, err := mw.Unary()(withTokenMD("usr_x", "user"), req,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.AccessBindingService/Get"},
+		&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.AccessBindingService/Get"},
 		func(ctx context.Context, req any) (any, error) { return "ok", nil })
 	require.Error(t, err)
 	st, _ := status.FromError(err)
@@ -116,12 +116,12 @@ func TestAuthz_GRPC_WellFormedDeny_StillPermissionDenied(t *testing.T) {
 func TestAuthz_HTTP_WellFormedDeny_StillReturns403(t *testing.T) {
 	checker := &fakeChecker{allowed: false, reasons: []string{"no path"}}
 	router := &fakeRestRouter{m: map[string]string{
-		"GET /iam/v1/accessBindings/" + wellFormedNonexistentACB: "kacho.cloud.iam.v1.AccessBindingService/Get",
+		"GET /iam/v1/accessBindings/" + wellFormedNonexistentACB: "kaname.cloud.iam.v1.AccessBindingService/Get",
 	}}
 	mw := buildAuthzMiddleware(t, buildCatalog(t, acbGetEntry), checker, func(c *middleware.AuthzMiddlewareConfig) {
 		c.RestRouter = router
 		c.Resources = middleware.NewResourceExtractor(map[string]string{
-			"kacho.cloud.iam.v1.AccessBindingService/Get": "/iam/v1/accessBindings/{access_binding_id}",
+			"kaname.cloud.iam.v1.AccessBindingService/Get": "/iam/v1/accessBindings/{access_binding_id}",
 		})
 	})
 	h := mw.HTTP(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -149,7 +149,7 @@ func TestAuthz_GRPC_ScopePolymorphicMalformed_NotShortCircuited(t *testing.T) {
 		ResourceId:   malformedACB,
 	}
 	_, err := mw.Unary()(withTokenMD("usr_x", "user"), req,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.AccessBindingService/ListByScope"},
+		&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.AccessBindingService/ListByScope"},
 		func(ctx context.Context, req any) (any, error) { return "ok", nil })
 	require.Error(t, err)
 	st, _ := status.FromError(err)

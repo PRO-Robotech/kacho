@@ -44,7 +44,7 @@ mtls:
 # без-вывода: kacho-ui-future-host kacho-ui-future-dashboard kacho-ui-future-vpc kacho-ui-future-iam kacho-ui-future-nlb kacho-ui-future-registry kacho-ui-future-system kacho-ui-future-compute kacho-ui-future-storage — коммит master-ветки прежнего репозитория консоли, в этом дереве не разрешается
 # Reconciled to CURRENTLY-LIVE fe3455 images 2026-07-15 (kubectl get deploy,statefulset
 # -n kacho, verified working). NOTE ON LAYER PRECEDENCE: for the 6 core control-plane
-# services (vpc/compute/kacho-geo/api-gateway/kacho-iam/kacho-nlb) the EFFECTIVE image
+# services (vpc/compute/kacho-geo/api-gateway/kaname/kacho-nlb) the EFFECTIVE image
 # override is carried by values.fe3455-prod.yaml, which layers AFTER this file
 # (-f values.prod -f values.fe3455 -f values.fe3455-prod -f values.fe3455-ory). The
 # pins BELOW are kept in sync with the live tags too so this file is not a stale
@@ -151,9 +151,9 @@ uif:
   storage:
     name: uif-storage
     image: docker.io/prorobotech/kacho-ui-future-storage:master-e6001c77
-kacho-iam:
+kaname:
   image:
-    repository: docker.io/prorobotech/kacho-iam
+    repository: docker.io/prorobotech/kaname
     # FORWARD ROLL: main-c744f956 (#321 audience-union + #323 :9097 JWKS + #325 RG-1
     # 418-catalog + #326 docker-login issued_at). Kept in sync with the authoritative
     # override in values.fe3455-prod.yaml (layers AFTER this file).

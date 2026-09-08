@@ -96,7 +96,7 @@ type RepositoryWriter interface {
 	// fga_register_outbox в той же tx-области writer'а. DML ресурса +
 	// register-intent коммитятся атомарно (один commit, без dual-write):
 	// orphan-tuple-окно закрыто. register-drainer применяет intent через
-	// kacho-iam InternalIAMService.RegisterResource/Unregister.
+	// kaname InternalIAMService.RegisterResource/Unregister.
 	FGARegister() FGARegisterEmitter
 	// Commit финализирует tx. После Commit вызов Abort — no-op.
 	Commit() error

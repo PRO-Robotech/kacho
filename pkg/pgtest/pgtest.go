@@ -15,7 +15,7 @@
 // idle the machine.
 //
 // This package is the generalisation of the fix already landed by hand in
-// services/iam/internal/repo/kacho/pg, services/nlb/internal/repo/kacho/pg and
+// services/iam/internal/repo/kaname/pg, services/nlb/internal/repo/kacho/pg and
 // services/vpc/internal/repo — three byte-for-byte copies of the same 150 lines.
 // It is not a new invention; it is those three with the service-specific parts
 // (the name, and how the schema is applied) lifted into Config.
@@ -97,7 +97,7 @@ type Config struct {
 	Image string
 
 	// SearchPath — значение клаузы `search_path`, которое получает КАЖДЫЙ DSN,
-	// выданный этим пакетом (`kacho_iam,public`). Пусто — приведение не
+	// выданный этим пакетом (`kaname,public`). Пусто — приведение не
 	// дописывается, и поведение прежнее.
 	//
 	// Предмет принадлежит выдающему базу, а не спрашивающему её: схему создаёт
@@ -293,7 +293,7 @@ func (s *state) dsnFor(name string) string {
 // пробел как `+`, и выданный DSN перестал бы совпадать байт в байт с формой,
 // которая уже проверена на живом сервере всеми прежними местами дерева.
 // Экранируется при этом ЗНАЧЕНИЕ (`url.QueryEscape`), иначе запятая внутри
-// `kacho_iam,public` осталась бы голой и разделила параметры DSN.
+// `kaname,public` осталась бы голой и разделила параметры DSN.
 //
 // Клауза, уже стоящая в DSN, не удваивается: двух `options` в одном DSN не
 // бывает — вторая либо молча замещает первую, либо отвергается драйвером, и оба

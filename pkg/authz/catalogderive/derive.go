@@ -63,7 +63,7 @@ const (
 	// (iam domain, Cluster.id is pinned to this literal), so an annotation that
 	// anchors on `cluster` names that object and nothing else.
 	ClusterObjectType  = "cluster"
-	ClusterSingletonID = "cluster_kacho_root"
+	ClusterSingletonID = "cluster_root"
 
 	// WildcardField — `from_request_field: "*"` says the scope is not carried by
 	// the request at all: either the deployment-wide cluster singleton, or an

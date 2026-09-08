@@ -35,7 +35,7 @@ func writeTestCert(t *testing.T) (certFile, keyFile, caFile string) {
 		NotAfter:              time.Now().Add(time.Hour),
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-		DNSNames:              []string{"kacho-iam.kacho.svc"},
+		DNSNames:              []string{"kaname.kacho.svc"},
 		IsCA:                  true,
 		BasicConstraintsValid: true,
 	}
@@ -93,7 +93,7 @@ func TestMTLS_SEC_I_01_DisabledDefaultInsecure(t *testing.T) {
 }
 
 // TestMTLS_SEC_I_02_ProjectEdgeClientCredsBuild — enable=true с валидной тройкой
-// и ServerName=kacho-iam (dial-host :9090) строит client-transport-creds для ребра
+// и ServerName=kaname (dial-host :9090) строит client-transport-creds для ребра
 // ProjectService.Get (existence/leaf-owner).
 func TestMTLS_SEC_I_02_ProjectEdgeClientCredsBuild(t *testing.T) {
 	certFile, keyFile, caFile := writeTestCert(t)
@@ -101,19 +101,19 @@ func TestMTLS_SEC_I_02_ProjectEdgeClientCredsBuild(t *testing.T) {
 	t.Setenv("KACHO_VPC_IAM_PROJECT_MTLS_CERTFILE", certFile)
 	t.Setenv("KACHO_VPC_IAM_PROJECT_MTLS_KEYFILE", keyFile)
 	t.Setenv("KACHO_VPC_IAM_PROJECT_MTLS_CAFILES", caFile)
-	t.Setenv("KACHO_VPC_IAM_PROJECT_MTLS_SERVERNAME", "kacho-iam.kacho.svc")
+	t.Setenv("KACHO_VPC_IAM_PROJECT_MTLS_SERVERNAME", "kaname.kacho.svc")
 
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)
 	assert.True(t, m.IAMProjectMTLS.Enable)
-	assert.Equal(t, "kacho-iam.kacho.svc", m.IAMProjectMTLS.ServerName)
+	assert.Equal(t, "kaname.kacho.svc", m.IAMProjectMTLS.ServerName)
 	opt, err := m.IAMProjectClientCreds()
 	require.NoError(t, err, "valid cert trio → client creds build")
 	require.NotNil(t, opt)
 }
 
 // TestMTLS_SEC_I_03_AuthzEdgeClientCredsBuild — enable=true с валидной тройкой
-// и ServerName=kacho-iam-internal (dial-host :9091) строит client-transport-creds для
+// и ServerName=kaname-internal (dial-host :9091) строит client-transport-creds для
 // ребра InternalIAMService.Check (общего для per-RPC gate и list-filter).
 func TestMTLS_SEC_I_03_AuthzEdgeClientCredsBuild(t *testing.T) {
 	certFile, keyFile, caFile := writeTestCert(t)
@@ -121,12 +121,12 @@ func TestMTLS_SEC_I_03_AuthzEdgeClientCredsBuild(t *testing.T) {
 	t.Setenv("KACHO_VPC_IAM_AUTHZ_MTLS_CERTFILE", certFile)
 	t.Setenv("KACHO_VPC_IAM_AUTHZ_MTLS_KEYFILE", keyFile)
 	t.Setenv("KACHO_VPC_IAM_AUTHZ_MTLS_CAFILES", caFile)
-	t.Setenv("KACHO_VPC_IAM_AUTHZ_MTLS_SERVERNAME", "kacho-iam-internal.kacho.svc")
+	t.Setenv("KACHO_VPC_IAM_AUTHZ_MTLS_SERVERNAME", "kaname-internal.kacho.svc")
 
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)
 	assert.True(t, m.IAMAuthzMTLS.Enable)
-	assert.Equal(t, "kacho-iam-internal.kacho.svc", m.IAMAuthzMTLS.ServerName)
+	assert.Equal(t, "kaname-internal.kacho.svc", m.IAMAuthzMTLS.ServerName)
 	opt, err := m.IAMAuthzClientCreds()
 	require.NoError(t, err, "valid cert trio → client creds build")
 	require.NotNil(t, opt)
@@ -159,7 +159,7 @@ func TestMTLS_SEC_D_17_EnabledClientCredsBuild(t *testing.T) {
 	t.Setenv("KACHO_VPC_IAM_REGISTER_MTLS_CERTFILE", certFile)
 	t.Setenv("KACHO_VPC_IAM_REGISTER_MTLS_KEYFILE", keyFile)
 	t.Setenv("KACHO_VPC_IAM_REGISTER_MTLS_CAFILES", caFile)
-	t.Setenv("KACHO_VPC_IAM_REGISTER_MTLS_SERVERNAME", "kacho-iam.kacho.svc")
+	t.Setenv("KACHO_VPC_IAM_REGISTER_MTLS_SERVERNAME", "kaname.kacho.svc")
 
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)

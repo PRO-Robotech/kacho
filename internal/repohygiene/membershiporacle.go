@@ -52,7 +52,7 @@ import (
 )
 
 // oracleProtoDir — поверхность, которую судит гейт.
-const oracleProtoDir = "proto/kacho/cloud/iam/v1"
+const oracleProtoDir = "proto/kaname/cloud/iam/v1"
 
 // oracleFilterRoots — прод-код, где объявляются белые списки фильтра.
 var oracleFilterRoots = []string{"services/iam/internal"}
@@ -641,7 +641,7 @@ const oracleNarrowingCall = "visibleOnNarrowedPage"
 var oracleQuenchedByNarrowing = []oracleQuench{
 	{
 		FQN:    "AccessBindingService/ListBySubject",
-		File:   "services/iam/internal/apps/kacho/api/access_binding/list_by_subject.go",
+		File:   "services/iam/internal/apps/kaname/api/access_binding/list_by_subject.go",
 		Marker: oracleNarrowingCall,
 		Why: "страница полосы распорядителя аккаунта проходит пообъектный вопрос к модели " +
 			"прав, а полосы собственного чтения и надзора облака шире принадлежащего им не " +
@@ -650,7 +650,7 @@ var oracleQuenchedByNarrowing = []oracleQuench{
 	},
 	{
 		FQN:    "AccessBindingService/ListSubjectPrivileges",
-		File:   "services/iam/internal/apps/kacho/api/access_binding/list_subject_privileges.go",
+		File:   "services/iam/internal/apps/kaname/api/access_binding/list_subject_privileges.go",
 		Marker: oracleNarrowingCall,
 		Why: "то же сужение и ТЕМ ЖЕ вызовом, что у соседнего чтения: допуск решается по " +
 			"домашнему аккаунту субъекта, а строки ответа проходят пообъектный вопрос по " +

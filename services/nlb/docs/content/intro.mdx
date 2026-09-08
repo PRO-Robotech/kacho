@@ -126,7 +126,7 @@ flowchart LR
   end
   subgraph cp["Control plane"]
     nlb["kacho-nlb<br/>:9090 public · :9091 internal"]
-    iam["kacho-iam<br/>authz Check · Project · RegisterResource"]
+    iam["kaname<br/>authz Check · Project · RegisterResource"]
   end
   subgraph store["Хранилище"]
     pg[("PostgreSQL<br/>kacho_nlb · outbox")]
@@ -182,7 +182,7 @@ API владельца на request-path. Подробнее — [Архитек
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>🔑</span>
     <span className={hero.featureTitle}>Авторизация на обоих портах</span>
-    <span className={hero.featureBody}>Per-RPC authz Check через kacho-iam — и на public (:9090), и на internal (:9091).</span>
+    <span className={hero.featureBody}>Per-RPC authz Check через kaname — и на public (:9090), и на internal (:9091).</span>
   </div>
 </div>
 

@@ -29,7 +29,7 @@ import (
 // украшение: без него запись бессрочна, и снять её будет некому.
 var providerSurfaceLedger = []ProviderLedgerEntry{
 	{
-		File:     "services/iam/internal/apps/kacho/config/required_settings.go",
+		File:     "services/iam/internal/apps/kaname/config/required_settings.go",
 		Surfaces: []string{"/oauth2/token"},
 		Why: "ОБРАЗЕЦ значения в декларативном перечне обязательных величин, из которого " +
 			"порождается документ установки: оператор чужого облака копирует адрес целиком, " +
@@ -64,7 +64,7 @@ var providerSurfaceLedger = []ProviderLedgerEntry{
 		Until: "вход человека перестал заводить сессию у поставщика",
 	},
 	{
-		File:     "services/iam/internal/apps/kacho/config/authn.go",
+		File:     "services/iam/internal/apps/kaname/config/authn.go",
 		Surfaces: []string{"/oauth2/token"},
 		Why:      "вывод адреса его токен-эндпоинта из объявленного издателя",
 		Until: "ни один контур выдачи не обменивает утверждение у поставщика: сегодня " +

@@ -145,7 +145,7 @@ func readPostureDeclarations(t *testing.T) []postureDeclaration {
 		}
 		out = append(out, postureDeclaration{
 			Profile: name,
-			IAM:     readNested(t, name, "kacho-iam", "config", "authn", "identityProvider"),
+			IAM:     readNested(t, name, "kaname", "config", "authn", "identityProvider"),
 			Edge:    readNested(t, name, "api-gateway", "authn", "identityProvider"),
 		})
 	}

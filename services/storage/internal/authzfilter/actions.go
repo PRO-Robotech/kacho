@@ -25,7 +25,7 @@ const (
 // принимается по явному `required_relation`, который фильтр пинит на батч
 // (`viewer` — см. visibilityRelations), а не по server-side
 // деривации verb→relation. Но verb всё равно ОБЯЗАН быть из числа тех, что
-// kacho-iam умеет резолвить (канонические get/list), иначе запрос падает на
+// kaname умеет резолвить (канонические get/list), иначе запрос падает на
 // action-валидации ещё до проверки отношения.
 //
 // Значения — ровно те `Permission`, что несут List-RPC в permission_map.go

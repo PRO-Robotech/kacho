@@ -4,7 +4,7 @@
 // Package clients — register-drainer FGA transactional-outbox.
 //
 // Декодирует одну строку fga_register_outbox в tuple и применяет его к FGA ЧЕРЕЗ
-// kacho-iam — модули в FGA напрямую не ходят. Apply — это один sync unary-вызов
+// kaname — модули в FGA напрямую не ходят. Apply — это один sync unary-вызов
 // InternalIAMService.RegisterResource (event_type fga.register) либо
 // UnregisterResource (fga.unregister); оба — Internal-only :9091 RPC, идемпотентные
 // по контракту (повтор того же tuple → OK, НЕ AlreadyExists).
@@ -37,7 +37,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/fgaregister"
@@ -80,7 +80,7 @@ func DecodeFGARegisterPayload(payload []byte) (FGARegisterPayload, error) {
 // NewIAMRegisterApplier строит corelib-drainer Applier[FGARegisterPayload] поверх
 // клиента IAMRegisterRPC. eventType выбирает register или unregister. Register
 // прокидывает mirror-feed (labels + parent_project_id + source_version), чтобы
-// kacho-iam материализовал resource_mirror для селектора; unregister прокидывает
+// kaname материализовал resource_mirror для селектора; unregister прокидывает
 // только идентичность tuple (+ source_version-tombstone).
 func NewIAMRegisterApplier(c IAMRegisterRPC) drainer.Applier[FGARegisterPayload] {
 	return func(ctx context.Context, eventType string, p FGARegisterPayload) error {
@@ -159,7 +159,7 @@ func sourceVersionPB(t time.Time) *timestamppb.Timestamp {
 // переживший удаление ресурса. Отравление, наоборот, отказывает закрыто:
 // отвергнутая запись не состоялась, партиция разблокирована. Само по себе оно НЕ
 // самоисцеляется — недоставленная регистрация оставляет ресурс без mirror-строки в
-// kacho-iam, а значит без owner-tuple, — поэтому идёт в паре с периодическим
+// kaname, а значит без owner-tuple, — поэтому идёт в паре с периодическим
 // redrive-бэкстопом, который превращает отравление в ограниченную паузу, а не в
 // безвозвратную потерю.
 func classifyRegisterErr(err error) error {

@@ -119,7 +119,7 @@ func DefaultPublicAllowlist() []string {
 		// user-enumeration / user-mutation priv-esc.
 		//
 		// Internal callers (api-gateway auth-interceptor self-call, admin tooling
-		// via port-forward, kacho-iam subject-change drainer) still carry no
+		// via port-forward, kaname subject-change drainer) still carry no
 		// external user JWT — but they arrive on the cluster-internal listener.
 		// They are admitted by the LISTENER-ORIGIN gate in decide()
 		// (allowlist.HasInternalSuffix + !listenerorigin.IsExternal) instead of a

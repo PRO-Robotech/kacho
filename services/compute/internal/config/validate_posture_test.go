@@ -3,7 +3,11 @@
 
 package config
 
-import "testing"
+import (
+	"testing"
+
+	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+)
 
 // Свидетель отказа: страж посадки обязан ОТВЕРГАТЬ несуженный круг отправителей.
 //
@@ -30,6 +34,10 @@ func TestValidateRefusesUnnarrowedForwarderCircle(t *testing.T) {
 func TestValidateAcceptsNarrowedForwarderCircle(t *testing.T) {
 	var c Config
 	c.AuthMode = "production"
+	// Объявление домена величин — часть законной посадки: без него конфигурация
+	// отличалась бы от законной ДВУМЯ фактами, и красное выше означало бы не то,
+	// что объявлено.
+	c.QuotaAuthority = corequota.NotDeployed
 	c.AuthZTrustedForwarderSANs = []string{"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"}
 	if err := c.Validate(); err != nil {
 		t.Fatalf("суженный круг отвергнут — тогда красное выше означает не то, что объявлено: %v", err)

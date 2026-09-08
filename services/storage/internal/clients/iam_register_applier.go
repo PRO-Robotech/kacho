@@ -4,7 +4,7 @@
 // Package clients — register-drainer FGA transactional-outbox (storage→iam).
 //
 // Декодирует одну строку kacho_storage.fga_register_outbox в owner-tuple и применяет
-// его к FGA ЧЕРЕЗ kacho-iam — storage в FGA напрямую не ходит. Apply — один sync
+// его к FGA ЧЕРЕЗ kaname — storage в FGA напрямую не ходит. Apply — один sync
 // unary-вызов InternalIAMService.RegisterResource (event_type fga.register) либо
 // UnregisterResource (fga.unregister); оба — Internal-only :9091 RPC, идемпотентные
 // по контракту (повтор того же tuple → OK, НЕ AlreadyExists).
@@ -38,7 +38,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 
@@ -147,7 +147,7 @@ func sourceVersionPB(t time.Time) *timestamppb.Timestamp {
 // переживший удаление ресурса. Отравление, наоборот, отказывает закрыто:
 // отвергнутая запись не состоялась, партиция разблокирована. Само по себе оно НЕ
 // самоисцеляется — недоставленная регистрация оставляет ресурс без mirror-строки в
-// kacho-iam, а значит без owner-tuple, — поэтому идёт в паре с периодическим
+// kaname, а значит без owner-tuple, — поэтому идёт в паре с периодическим
 // redrive-бэкстопом, который превращает отравление в ограниченную паузу, а не в
 // безвозвратную потерю.
 func classifyRegisterErr(err error) error {

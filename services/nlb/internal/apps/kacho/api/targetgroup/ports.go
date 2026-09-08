@@ -67,7 +67,7 @@ type ZoneRegionClient interface {
 	RegionOfZone(ctx context.Context, zoneID string) (string, error)
 }
 
-// Registrar — sync-primary owner-tuple registrar (kacho-iam
+// Registrar — sync-primary owner-tuple registrar (kaname
 // InternalIAMService.RegisterResource). Create после durable commit TG + его
 // `fga_register_outbox`-intent'а синхронно регистрирует owner/containment-tuple,
 // чтобы grant создателя был виден сразу (закрывает async-only окно). BEST-EFFORT:

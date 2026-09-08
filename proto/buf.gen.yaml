@@ -19,3 +19,4 @@ inputs:
   - directory: .
     paths:
       - kacho
+      - kaname

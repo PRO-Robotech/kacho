@@ -59,7 +59,7 @@ func FuzzJWTVerify(f *testing.F) {
 	if err != nil {
 		f.Fatalf("сгенерировать ключ подписи: %v", err)
 	}
-	verifier, err := mw.NewJWTVerifier(mw.JWTVerifierConfig{Issuers: []mw.IssuerKeySet{{Issuer: fuzzJWTIssuer, KeySetURL: "https://iam.kacho.local/.well-known/jwks.json", TokenTypes: []string{mw.LegacyTokenType, mw.PlatformTokenType}, TolerateAbsentTokenType: true}},
+	verifier, err := mw.NewJWTVerifier(mw.JWTVerifierConfig{Issuers: []mw.IssuerKeySet{{Issuer: fuzzJWTIssuer, KeySetURL: "https://kaname.kacho.local/.well-known/jwks.json", TokenTypes: []string{mw.LegacyTokenType, mw.PlatformTokenType}, TolerateAbsentTokenType: true}},
 
 		JWKSCacheTTL: time.Hour,
 		HTTPClient:   &http.Client{Transport: staticJWKS(f, &key.PublicKey)},

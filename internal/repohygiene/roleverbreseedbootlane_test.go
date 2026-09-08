@@ -52,7 +52,7 @@ import (
 )
 
 // bootCompositionRoot — композиционный корень iam.
-const bootCompositionRoot = "services/iam/cmd/kacho-iam/serve.go"
+const bootCompositionRoot = "services/iam/cmd/kaname/serve.go"
 
 // seedPackageIdent — имя, под которым композиционный корень импортирует досев.
 const seedPackageIdent = "seed"

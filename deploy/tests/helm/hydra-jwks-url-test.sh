@@ -89,7 +89,7 @@ WANT="http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json"
 # провайдеру (core #16), по защищённому транспорту с якорем доверия. Адрес пинится
 # здесь ЛИТЕРАЛОМ: вычитывать ожидание из того же профиля, который и рендерится,
 # значило бы сверять файл сам с собой.
-WANT_PROD="https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+WANT_PROD="https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
 # Написания адреса ПРОВАЙДЕРА: любое из них в боевом профиле — обход фасада.
 PROVIDER_SPELLING='hydra-public|hydra\.api\.'
 # env_val <ENV_NAME> <render> — value of the named container env entry ("" if absent).

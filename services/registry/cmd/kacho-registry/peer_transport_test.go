@@ -34,8 +34,8 @@ func armedProdCfg(mode string) config.Config {
 	return config.Config{
 		AuthMode:                  mode,
 		DBSSLMode:                 "require",
-		AuthZIAMGRPCAddr:          "kacho-iam-internal.kacho.svc:9091",
-		IAMProjectGRPCAddr:        "kacho-iam.kacho.svc:9090",
+		AuthZIAMGRPCAddr:          "kaname-internal.kacho.svc:9091",
+		IAMProjectGRPCAddr:        "kaname.kacho.svc:9090",
 		GeoGRPCAddr:               "kacho-geo.kacho.svc:9090",
 		PublicServerMTLS:          grpcsrv.TLSServer{Enable: true},
 		InternalServerMTLS:        grpcsrv.TLSServer{Enable: true},
@@ -43,6 +43,9 @@ func armedProdCfg(mode string) config.Config {
 		IAMProjectMTLS:            grpcclient.TLSClient{Enable: true},
 		GeoMTLS:                   grpcclient.TLSClient{Enable: true},
 		AuthZTrustedForwarderSANs: []string{"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"},
+		// Домен доверия — величина установки, и конструктор дескриптора требует её
+		// названной: процесс, не назвавший домена, своим не признаёт никого.
+		AuthZTrustDomain: "kacho.cloud",
 	}
 }
 

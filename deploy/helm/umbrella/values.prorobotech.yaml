@@ -36,12 +36,12 @@
 # порождено-от: main 5e8318c826754719f6e7db6312e1b2cbdde9274f
 #
 # Пять остальных выведены быть НЕ МОГУТ: их теги называют коммиты прежних
-# полирепозиториев (kacho-vpc / kacho-compute / kacho-api-gateway / kacho-iam /
+# полирепозиториев (kacho-vpc / kacho-compute / kacho-api-gateway / kaname /
 # kacho-nlb), собиравших эти образы своими конвейерами. В этом дереве таких
 # объектов нет — ни проверить, ни перевывести их здесь нечем. Исход принадлежит
 # оператору стенда: пере-пин на коммит этого дерева одним заходом, после чего
 # запись ниже станет находкой сама.
-# без-вывода: kacho-vpc kacho-compute kacho-api-gateway kacho-iam kacho-nlb — коммит прежнего полирепозитория, в этом дереве не разрешается
+# без-вывода: kacho-vpc kacho-compute kacho-api-gateway kaname kacho-nlb — коммит прежнего полирепозитория, в этом дереве не разрешается
 #
 # Здесь стоял блок `ui:` — чарта с таким именем в дереве нет: консоль называется
 # `uif` и держит образ ПОМОДУЛЬНО (`uif.host.image`, `uif.dashboard.image`, …),
@@ -49,7 +49,7 @@
 # закрепляющей образ, которого она не касалась.
 #
 # Image-shape: sibling sub-charts (vpc/compute/api-gateway) take a flat `image:`
-# string; the vendored sub-charts (kacho-iam/kacho-nlb) take map {repository,tag,pullPolicy}.
+# string; the vendored sub-charts (kaname/kacho-nlb) take map {repository,tag,pullPolicy}.
 # NB: the sub-chart values KEY must equal the Chart.yaml dependency name — `api-gateway`
 # (hyphen), NOT `apiGateway`.
 
@@ -68,9 +68,9 @@ api-gateway:
   image: docker.io/prorobotech/kacho-api-gateway:main-1adc9d12
   imagePullPolicy: IfNotPresent
 
-kacho-iam:
+kaname:
   image:
-    repository: docker.io/prorobotech/kacho-iam
+    repository: docker.io/prorobotech/kaname
     tag: main-a1b28f4c
     pullPolicy: IfNotPresent
 

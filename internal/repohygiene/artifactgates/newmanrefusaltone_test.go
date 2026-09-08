@@ -161,6 +161,27 @@ var (
 	rtSprintfText = regexp.MustCompile(`fmt\.Sprintf\(\s*"((?:[^"\\]|\\.)*)"`)
 	// Сигнальная ошибка с постоянным текстом: `errors.New("network is not empty")`.
 	rtErrorsNew = regexp.MustCompile(`errors\.New\(\s*"((?:[^"\\]|\\.)*)"`)
+
+	// rtConstText — текст отказа, объявленный ИМЕНОВАННОЙ КОНСТАНТОЙ и
+	// отдаваемый по имени.
+	//
+	// Форма законна и распространена: единственный текст отказа выносят в
+	// константу именно затем, чтобы он был один и чтобы на него можно было
+	// сослаться из пробы. Распознаватель, знающий только вызовы конструкторов
+	// отказа, на ней МОЛЧИТ — и тогда утверждение кейса о существующем тексте
+	// объявляется утверждением без производителя, то есть верный кейс
+	// становится находкой, а автора посылают править то, что верно.
+	//
+	// Замер, из которого выведено: текст отказа предъявления удостоверения
+	// объявлен константой в службе доступа и отдаётся её единственным
+	// производителем отказа; шесть прежних форм его не видели.
+	//
+	// Сужено намеренно: читается только `имя = "литерал"` внутри `const`, и
+	// только когда имя похоже на имя СООБЩЕНИЯ. Брать всякую строковую
+	// константу нельзя — корпус производителей раздулся бы именами таблиц,
+	// ключей и путей, и гейт перестал бы находить настоящее.
+	rtConstText = regexp.MustCompile(
+		`(?m)^\s*(?:const\s+)?[A-Za-z][A-Za-z0-9_]*(?:Message|Msg|Text|Refusal|Reason)\s*=\s*"((?:[^"\\]|\\.)*)"`)
 	// `iamerr.Wrapf(iamerr.ErrNotFound, "%s %s is not an active cluster admin", …)`
 	// — текст стоит ВТОРЫМ аргументом, за сигнальной ошибкой.
 	rtWrapArg = regexp.MustCompile(`\bWrapf?\(\s*[\w.]+\s*,\s*"((?:[^"\\]|\\.)*)"`)
@@ -217,7 +238,7 @@ func rtProducers(root string, goFiles []string) (map[string]map[string]bool, err
 		}
 		whole := joined.String()
 		for _, re := range []*regexp.Regexp{rtStatusText, rtWrapText, rtInvalidArg,
-			rtSprintfText, rtErrorsNew, rtWrapArg} {
+			rtSprintfText, rtErrorsNew, rtWrapArg, rtConstText} {
 			for _, m := range re.FindAllStringSubmatch(whole, -1) {
 				add(owner, strings.ReplaceAll(m[1], "%q", `"%s"`))
 			}

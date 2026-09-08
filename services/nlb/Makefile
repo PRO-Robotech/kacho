@@ -88,7 +88,7 @@ proto-gen: proto-vendor
 	cd proto && buf generate
 
 # audit-list-filter — CI gate for the public List<Resource> surface: a caller must
-# receive only the rows it may see (per-object, kacho-iam AuthorizeService.BatchCheck
+# receive only the rows it may see (per-object, kaname AuthorizeService.BatchCheck
 # over the page just read), not every row of its project.
 #
 # The backend is BatchCheck, not ListObjects: the older comment here named the latter

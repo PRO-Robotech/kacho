@@ -23,10 +23,17 @@ data:
   KACHO_STORAGE_GEO_GRPC_ADDR: {{ .Values.config.geoGrpcAddr | quote }}
   KACHO_STORAGE_IAM_GRPC_ADDR: {{ .Values.config.iamGrpcAddr | quote }}
   KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR: {{ .Values.config.authzIamGrpcAddr | quote }}
+  # Объявление домена величин: одно на обе полосы ребра. Пустое значение
+  # отвергает страж старта — умолчания у него нет by construction.
+  KACHO_STORAGE_QUOTA_AUTHORITY: {{ required "quota.authority is required: address host:port or the word not-deployed" .Values.quota.authority | quote }}
   # Круг отправителей, которым разрешено передавать личность конечного пользователя.
   # Пустая строка = «принимаем от любого пира с сертификатом» (контракт corelib), и
   # боевой режим на ней не стартует — см. values.yaml config.trustedForwarderSANs.
   KACHO_STORAGE_AUTHZ_TRUSTED_FORWARDER_SANS: {{ .Values.config.trustedForwarderSANs | quote }}
+  # Домен доверия установки: то, чьи сертификаты процесс признаёт своими. Берётся
+  # из ТОГО ЖЕ объявления, под которым чеканится его собственный сертификат
+  # (certificate.yaml): взятые по отдельности, стороны расходятся молча.
+  KACHO_STORAGE_AUTHZ_TRUST_DOMAIN: {{ include "storage.trustDomain" . | quote }}
   KACHO_STORAGE_FGA_REGISTER_DRAINER_ENABLED: {{ .Values.config.fgaRegisterDrainerEnabled | quote }}
   KACHO_STORAGE_LIST_FILTER_ENABLED: {{ .Values.config.listFilter.enabled | quote }}
   KACHO_STORAGE_LIST_FILTER_TIMEOUT_MS: {{ .Values.config.listFilter.timeoutMs | quote }}

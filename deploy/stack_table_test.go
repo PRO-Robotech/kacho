@@ -480,7 +480,7 @@ func TestStackTablePredicates_RecogniseTheRealTree(t *testing.T) {
 	}
 	// Отрицание — только в паре с положительным: множество, в которое попадает
 	// что угодно, зеленит проверку выше.
-	for _, notAProfile := range []string{"Chart.yaml", "values.schema.json", "kacho-iam"} {
+	for _, notAProfile := range []string{"Chart.yaml", "values.schema.json", "kaname"} {
 		if known[notAProfile] {
 			t.Errorf("%q засчитан профилем умбреллы — предикат стал слишком широким", notAProfile)
 		}

@@ -36,7 +36,7 @@ func TestUpdate_HappyPath_PatchName(t *testing.T) {
 	require.Equal(t, "edge-v2", string(repo.lbs[lbID].Name))
 }
 
-// Update(labels) re-emits the FGA-register mirror-feed intent so kacho-iam keeps
+// Update(labels) re-emits the FGA-register mirror-feed intent so kaname keeps
 // its resource_mirror current under label-change reconcile.
 func TestUpdate_LabelsMask_EmitsMirrorIntent(t *testing.T) {
 	t.Parallel()

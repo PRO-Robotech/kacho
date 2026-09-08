@@ -84,13 +84,13 @@
 //
 // # Relationship to the other gates of this class
 //
-// kacho-storage, kacho-registry and kacho-iam own bespoke analysers of the same class
+// kacho-storage, kacho-registry and kaname own bespoke analysers of the same class
 // (services/{storage,registry,iam}/tools/auditlistfilter) and are NOT driven from here.
 // Storage asserts more than this package does — its repo adapter must narrow by
 // project_id and its use-case must reject an empty projectId — because its layout
 // puts both within reach of one walk. Registry's List surface is not project-scoped
 // at all (grants live on the registry and the repository; tags are not grantable
-// objects), so it declares a per-RPC enforcement shape instead. kacho-iam has the
+// objects), so it declares a per-RPC enforcement shape instead. kaname has the
 // widest listing surface in the repository (30 methods) and, until 2026-08, no
 // analyser of this class at all.
 //
@@ -276,7 +276,7 @@ type EnumerationSource struct {
 	// Shared marks a declaration that is NOT service code — the shared foundation
 	// under pkg/, resolved from the module root instead of Options.Root.
 	//
-	// Every consumer service asks kacho-iam through the same narrow port, and that
+	// Every consumer service asks kaname through the same narrow port, and that
 	// port fronts the RPC that enumerates. Leaving it out would mean each consumer
 	// watched only the client it declares itself, while the shortest path from
 	// "narrow this page" to "enumerate the universe" ran through a package no
@@ -787,7 +787,7 @@ func checkListing(
 		if !anyOf(called, p.Filters) {
 			findings = append(findings, fmt.Sprintf(
 				"%s — declared RowFilter, but hands back its page without a per-object visibility "+
-					"filter: nothing along the calls it makes reaches %s (kacho-iam BatchCheck; предикат "+
+					"filter: nothing along the calls it makes reaches %s (kaname BatchCheck; предикат "+
 					"страницы объявляет сам сервис — PageRelations)\n  declared: %s",
 				key, orList(p.Filters), a.pos))
 		}
@@ -1689,7 +1689,7 @@ func finish(p Profile, rep Report, out io.Writer) (Report, error) {
 const explanation = `
 Every public List<Resource> RPC must read its page from the service's own DB and
 then narrow that page to the rows the caller may actually see — a batched
-per-object check against kacho-iam (AuthorizeService.BatchCheck, on the same
+per-object check against kaname (AuthorizeService.BatchCheck, on the same
 relation Get enforces). Project scope alone does NOT answer "may this caller see
 THESE objects": without the per-object filter every project member sees every row
 of the project.

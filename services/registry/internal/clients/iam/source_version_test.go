@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // source_version_test.go — registry must carry the monotonic source_version on BOTH
-// delivery paths so kacho-iam's redelivery gate can recognise the second delivery.
+// delivery paths so kaname's redelivery gate can recognise the second delivery.
 //
 // Every registration reaches iam TWICE: the synchronous registrar right after the
 // writer-tx commits, and the register-drainer replaying the same durable outbox row.

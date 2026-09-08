@@ -108,6 +108,10 @@ type standOpts struct {
 	budget     time.Duration
 	journal    *subscription.Journal
 	caller     context.Context
+	// logger — журнал процесса, когда проба УТВЕРЖДАЕТ о том, что он напечатал.
+	// Ноль отправляет вывод в никуда: прочим пробам он не нужен, а печатать его
+	// в поток проб значило бы утопить их отказы в чужих строках.
+	logger *slog.Logger
 }
 
 func newStand(t testing.TB, o standOpts) *stand {
@@ -137,6 +141,11 @@ func newStand(t testing.TB, o standOpts) *stand {
 		caller = narrowtest.Caller()
 	}
 
+	log := o.logger
+	if log == nil {
+		log = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+
 	gate := probeProjectGate()
 	if j.Storage.Project == subscription.ProjectAbsent {
 		gate = subscription.ProjectGate{}
@@ -150,7 +159,7 @@ func newStand(t testing.TB, o standOpts) *stand {
 		MaxStreams:   o.maxStreams,
 		StreamBudget: o.budget,
 		IdlePoll:     o.idlePoll,
-		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Logger:       log,
 	})
 	if err != nil {
 		t.Fatalf("сервер не поднялся: %v", err)

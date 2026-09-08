@@ -4,14 +4,14 @@
   ─── bootstrap-operator client identity (internal-CA leaf, client auth only) ───
 
   A DEDICATED operator identity for the cluster-admin token mint
-  (`iam.v1.InternalBootstrapTokenService/MintBootstrapToken`, kacho-iam :9091).
+  (`iam.v1.InternalBootstrapTokenService/MintBootstrapToken`, kaname :9091).
 
   WHY IT EXISTS AT ALL. The mint hands out a Hydra-signed RS256 Bearer for a
   cluster `system_admin` ServiceAccount. It cannot be gated by a ReBAC relation
   (it exists to obtain the FIRST token, when no relation exists yet) and it must
   NOT be gated by network position ("internal = trusted" is a forbidden premise,
   security.md). Its ONLY credential is therefore the CALLER'S CLIENT CERTIFICATE:
-  kacho-iam admits exactly the SPIFFE SANs listed in
+  kaname admits exactly the SPIFFE SANs listed in
   `authn.bootstrap-mint.allowed-client-sans` (authzguard.CallerPolicy arm 3,
   enforced in EVERY mode; an empty list denies everyone).
 
@@ -25,13 +25,13 @@
 
   Consumers are OPERATOR TOOLING, not pods — nothing mounts this Secret. The
   seed/fixture path reads it out of the cluster (`kubectl get secret
-  kacho-bootstrap-operator-client-tls`) and dials kacho-iam :9091 directly over
+  kacho-bootstrap-operator-client-tls`) and dials kaname :9091 directly over
   mTLS (tests/authz-fixtures/mint_rs256.py). A real cluster hands the material to
   a human/CI operator the same way.
 
-  Issuing the cert grants NOTHING on its own: kacho-iam must ALSO carry this SAN
+  Issuing the cert grants NOTHING on its own: kaname must ALSO carry this SAN
   in its allow-list (values.dev.yaml / values.dev-prod.yaml →
-  kacho-iam.config.authn.bootstrapMint.allowedClientSANs). The two halves are
+  kaname.config.authn.bootstrapMint.allowedClientSANs). The two halves are
   locked together by deploy/tests/helm/bootstrap-mint-operator-identity-test.sh.
 
   Rendered only when the internal-CA PKI is up (mtls.enabled) and the identity is
@@ -46,7 +46,7 @@
 {{- $ca := $mtls.internalCA | default dict -}}
 {{- $issuerName := $ca.clusterIssuerName | default "kacho-internal-ca" -}}
 {{- $sp := $op.spiffe | default dict -}}
-{{- $trust := $sp.trustDomain | default "kacho.cloud" -}}
+{{- $trust := include "umbrella.trustDomain" . -}}
 {{- $spNs := $sp.namespace | default .Release.Namespace -}}
 {{- $sa := $sp.saName | default "kacho-bootstrap-operator" -}}
 {{- $secret := $op.secretName | default "kacho-bootstrap-operator-client-tls" }}

@@ -5,7 +5,7 @@ package middleware_test
 
 // auth_jwks_test.go — AuthInterceptor validates real Hydra RS256 access
 // JWTs through the JWKS verifier (a second strategy alongside the HMAC-dev
-// path) and derives the Kachō Principal from the verified `kacho_principal_*`
+// path) and derives the Kachō Principal from the verified `kaname_principal_*`
 // claims (top-level OR ext_claims), falling back to SubjectLookuper only when
 // those claims are absent.
 //
@@ -70,8 +70,8 @@ func rs256Verifier(t *testing.T, fix *jwksFixture) *middleware.JWTVerifier {
 func hydraClaims(pType, pID string) jwt.MapClaims {
 	c := standardClaims()
 	c["sub"] = pID
-	c["kacho_principal_type"] = pType
-	c["kacho_principal_id"] = pID
+	c["kaname_principal_type"] = pType
+	c["kaname_principal_id"] = pID
 	return c
 }
 
@@ -101,7 +101,7 @@ func TestAuthJWKS_RS256_PrincipalFromClaims_NoLookup(t *testing.T) {
 	_, err := auth.Unary()(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/iam/WhoAmI"}, handler)
 	require.NoError(t, err)
 	assert.True(t, called, "handler must run for a valid Hydra token")
-	assert.Equal(t, 0, lookup.called, "verified kacho_principal_* claims must NOT trigger a SubjectLookuper round-trip")
+	assert.Equal(t, 0, lookup.called, "verified kaname_principal_* claims must NOT trigger a SubjectLookuper round-trip")
 }
 
 // A2 — service-account token: type=service_account, id=svaId, no User lookup.
@@ -136,8 +136,8 @@ func TestAuthJWKS_RS256_PrincipalFromExtClaims(t *testing.T) {
 	claims := standardClaims()
 	claims["sub"] = "usr_bob_acc_c3d4"
 	claims["ext_claims"] = map[string]any{
-		"kacho_principal_type": "user",
-		"kacho_principal_id":   "usr_bob_acc_c3d4",
+		"kaname_principal_type": "user",
+		"kaname_principal_id":   "usr_bob_acc_c3d4",
 	}
 	token := fix.sign(t, claims)
 	ctx := metadata.NewIncomingContext(context.Background(),
@@ -163,7 +163,7 @@ func TestAuthJWKS_RS256_FallbackToLookupWhenClaimsAbsent(t *testing.T) {
 
 	claims := standardClaims()
 	claims["sub"] = "krt_external_id_xyz"
-	// no kacho_principal_* claims at all.
+	// no kaname_principal_* claims at all.
 	token := fix.sign(t, claims)
 	ctx := metadata.NewIncomingContext(context.Background(),
 		metadata.Pairs("authorization", "Bearer "+token))

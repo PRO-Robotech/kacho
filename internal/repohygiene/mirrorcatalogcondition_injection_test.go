@@ -32,7 +32,7 @@ func injWrites(t *testing.T, src string) []mirrorWrite {
 const srcReferenceBare = `package resource_mirror
 
 func UpsertTx(ctx context.Context, tx pgx.Tx, row Row) error {
-	_, err := tx.Exec(ctx, ` + "`" + `INSERT INTO kacho_iam.resource_mirror
+	_, err := tx.Exec(ctx, ` + "`" + `INSERT INTO kaname.resource_mirror
 	   (object_type, object_id) VALUES ($1, $2)` + "`" + `, row.ObjectType, row.ObjectID)
 	return err
 }
@@ -43,10 +43,10 @@ func UpsertTx(ctx context.Context, tx pgx.Tx, row Row) error {
 const srcReferenceWithCondition = `package resource_mirror
 
 func UpsertTx(ctx context.Context, tx pgx.Tx, row Row) error {
-	_, err := tx.Exec(ctx, ` + "`" + `INSERT INTO kacho_iam.resource_mirror
+	_, err := tx.Exec(ctx, ` + "`" + `INSERT INTO kaname.resource_mirror
 	   (object_type, object_id)
 	 SELECT $1, $2
-	  WHERE EXISTS (SELECT 1 FROM kacho_iam.catalog_resource c
+	  WHERE EXISTS (SELECT 1 FROM kaname.catalog_resource c
 	                 WHERE c.dotted = $1 AND c.live)` + "`" + `, row.ObjectType, row.ObjectID)
 	return err
 }
@@ -56,7 +56,7 @@ func UpsertTx(ctx context.Context, tx pgx.Tx, row Row) error {
 const srcSecondWriterBare = `package pg
 
 func (a *BackfillAdapter) SeedSmokeMirrorObject(ctx context.Context, objectType, objectID string) error {
-	_, err := a.pool.Exec(ctx, ` + "`" + `INSERT INTO kacho_iam.resource_mirror
+	_, err := a.pool.Exec(ctx, ` + "`" + `INSERT INTO kaname.resource_mirror
 	   (object_type, object_id) VALUES ($1, $2)` + "`" + `, objectType, objectID)
 	return err
 }
@@ -66,18 +66,18 @@ func (a *BackfillAdapter) SeedSmokeMirrorObject(ctx context.Context, objectType,
 const srcSecondWriterWithCondition = `package pg
 
 func (a *BackfillAdapter) SeedSmokeMirrorObject(ctx context.Context, objectType, objectID string) error {
-	_, err := a.pool.Exec(ctx, ` + "`" + `INSERT INTO kacho_iam.resource_mirror
+	_, err := a.pool.Exec(ctx, ` + "`" + `INSERT INTO kaname.resource_mirror
 	   (object_type, object_id)
 	 SELECT $1, $2
-	  WHERE EXISTS (SELECT 1 FROM kacho_iam.catalog_resource c
+	  WHERE EXISTS (SELECT 1 FROM kaname.catalog_resource c
 	                 WHERE c.dotted = $1 AND c.live)` + "`" + `, objectType, objectID)
 	return err
 }
 `
 
 const (
-	refPath    = "services/iam/internal/repo/kacho/pg/resource_mirror/emitter.go"
-	secondPath = "services/iam/internal/repo/kacho/pg/backfill_adapter.go"
+	refPath    = "services/iam/internal/repo/kaname/pg/resource_mirror/emitter.go"
+	secondPath = "services/iam/internal/repo/kaname/pg/backfill_adapter.go"
 )
 
 // taggedWrites — записи распознавателя, приписанные пути.
@@ -122,7 +122,7 @@ func TestMirrorCondition_InjectionSeesTheCondition(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("операторов вставки %d, ожидалась 1: %+v", len(got), got)
 	}
-	if strings.Join(got[0].Catalog, ",") != "kacho_iam.catalog_resource" {
+	if strings.Join(got[0].Catalog, ",") != "kaname.catalog_resource" {
 		t.Fatalf("условие каталога НЕ распознано (%v) — гейт не отличит писателя с условием "+
 			"от писателя без него, то есть не сможет покраснеть никогда", got[0].Catalog)
 	}
@@ -134,7 +134,7 @@ func TestMirrorCondition_LegitimateTwin_ReadIsNotAWrite(t *testing.T) {
 	src := `package relverdict
 
 func listObjects(ctx context.Context, tx pgx.Tx) error {
-	_, err := tx.Query(ctx, ` + "`" + `SELECT object_type, object_id FROM kacho_iam.resource_mirror
+	_, err := tx.Query(ctx, ` + "`" + `SELECT object_type, object_id FROM kaname.resource_mirror
 	  WHERE parent_project_id = $1` + "`" + `)
 	return err
 }
@@ -150,8 +150,8 @@ func listObjects(ctx context.Context, tx pgx.Tx) error {
 func TestMirrorCondition_LegitimateTwin_CommentIsNotAStatement(t *testing.T) {
 	src := `package pg
 
-// Здесь НЕ делается INSERT INTO kacho_iam.resource_mirror — строку заводит
-// производитель, и условие по kacho_iam.catalog_resource стоит у него.
+// Здесь НЕ делается INSERT INTO kaname.resource_mirror — строку заводит
+// производитель, и условие по kaname.catalog_resource стоит у него.
 func onlyProse(ctx context.Context) error { return nil }
 `
 	if got := injWrites(t, src); len(got) != 0 {
@@ -165,8 +165,8 @@ func TestMirrorCondition_CommentedCatalogIsNotACondition(t *testing.T) {
 	src := `package pg
 
 func sneaky(ctx context.Context, tx pgx.Tx) error {
-	// условие по kacho_iam.catalog_resource здесь ПОДРАЗУМЕВАЕТСЯ вызывающим
-	_, err := tx.Exec(ctx, ` + "`" + `INSERT INTO kacho_iam.resource_mirror (object_type, object_id)
+	// условие по kaname.catalog_resource здесь ПОДРАЗУМЕВАЕТСЯ вызывающим
+	_, err := tx.Exec(ctx, ` + "`" + `INSERT INTO kaname.resource_mirror (object_type, object_id)
 	 VALUES ($1, $2)` + "`" + `)
 	return err
 }
@@ -188,7 +188,7 @@ func TestMirrorCondition_UpdateDoesNotIntroduceARow(t *testing.T) {
 	src := `package pg
 
 func bump(ctx context.Context, tx pgx.Tx) error {
-	_, err := tx.Exec(ctx, ` + "`" + `UPDATE kacho_iam.resource_mirror SET source_version = $1
+	_, err := tx.Exec(ctx, ` + "`" + `UPDATE kaname.resource_mirror SET source_version = $1
 	  WHERE object_type = $2` + "`" + `)
 	return err
 }
@@ -241,7 +241,7 @@ func TestMirrorCondition_InjectionRedWhenReferenceGainsTheCondition(t *testing.T
 			len(rep.Findings), rep.Findings)
 	}
 	f := rep.Findings[0]
-	for _, want := range []string{secondPath, "SeedSmokeMirrorObject", "kacho_iam.catalog_resource"} {
+	for _, want := range []string{secondPath, "SeedSmokeMirrorObject", "kaname.catalog_resource"} {
 		if !strings.Contains(f, want) {
 			t.Errorf("находка не называет %q: %q — читатель пойдёт искать координату и не найдёт", want, f)
 		}
@@ -308,7 +308,7 @@ func TestMirrorCondition_StaleExemptionIsAFinding(t *testing.T) {
 func TestMirrorCondition_ExemptionForAVanishedWriterIsAFinding(t *testing.T) {
 	writes := taggedWrites(t, refPath, srcReferenceWithCondition)
 	led := map[string]string{
-		"services/iam/internal/repo/kacho/pg/gone.go::Gone.Write": "причина: писатель, которого сняли",
+		"services/iam/internal/repo/kaname/pg/gone.go::Gone.Write": "причина: писатель, которого сняли",
 	}
 	rep := mirrorConditionReport(writes, led)
 	if len(rep.Stale) != 1 {

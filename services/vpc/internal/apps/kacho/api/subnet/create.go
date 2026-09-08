@@ -65,7 +65,7 @@ func (u *CreateSubnetUseCase) WithReservedPrefixes(r domain.ReservedPrefixes) *C
 }
 
 // WithRegistrar подключает синхронный owner-tuple registrar (Decision 2): после
-// commit Subnet тот же owner-tuple синхронно регистрируется в kacho-iam (грант
+// commit Subnet тот же owner-tuple синхронно регистрируется в kaname (грант
 // доступен сразу). Nil → sync-путь пропускается, остается только async drainer.
 func (u *CreateSubnetUseCase) WithRegistrar(r fgaregister.Registrar) *CreateSubnetUseCase {
 	u.registrar = r
@@ -365,7 +365,7 @@ func (u *CreateSubnetUseCase) doCreate(ctx context.Context, subID string, s doma
 	}
 	// Публикуем intent на vpc_subnet→project hierarchy-tuple в той же writer-TX
 	// (один commit, без dual-write). register-drainer применяет его через
-	// kacho-iam. Intent несет subnet labels + parent_project_id, чтобы kacho-iam
+	// kaname. Intent несет subnet labels + parent_project_id, чтобы kaname
 	// материализовал resource_mirror для label-селектора.
 	items := []fgaregister.Item{
 		fgaregister.ProjectHierarchyItem(string(s.ProjectID), "vpc_subnet", created.ID,

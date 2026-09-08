@@ -28,17 +28,17 @@ func TestPeerTargetKeepsResolutionOfTheRetiredBuilder(t *testing.T) {
 		// Голый host:port резолвился поведением `DialContext` — схема
 		// `passthrough`: имя отдаётся сетевому набирателю как есть. Схема
 		// названа ЯВНО, потому что умолчание `grpc.NewClient` другое (`dns`).
-		{"голый адрес", "kacho-iam.kacho.svc:9090", false, "passthrough:///kacho-iam.kacho.svc:9090"},
+		{"голый адрес", "kaname.kacho.svc:9090", false, "passthrough:///kaname.kacho.svc:9090"},
 		// Схему `tcp://` снятый строитель срезал сам. Оператор, задавший её
 		// сегодня, обязан продолжать работать.
 		{"схема tcp срезается", "tcp://kacho-geo.kacho.svc:9090", false, "passthrough:///kacho-geo.kacho.svc:9090"},
 		// Адрес, сам назвавший резолвер, не трогается.
 		{"unix проходит как есть", "unix:///var/run/kacho.sock", false, "unix:///var/run/kacho.sock"},
-		{"dns проходит как есть", "dns:///kacho-iam.kacho.svc:9090", false, "dns:///kacho-iam.kacho.svc:9090"},
+		{"dns проходит как есть", "dns:///kaname.kacho.svc:9090", false, "dns:///kaname.kacho.svc:9090"},
 		// Распределение по адресам требует резолвера, отдающего ВСЕ адреса;
 		// `passthrough` отдаёт один, поэтому здесь схема другая.
-		{"распределение требует dns", "kacho-iam.kacho.svc:9090", true, "dns:///kacho-iam.kacho.svc:9090"},
-		{"пробелы срезаются", "  kacho-iam.kacho.svc:9090  ", false, "passthrough:///kacho-iam.kacho.svc:9090"},
+		{"распределение требует dns", "kaname.kacho.svc:9090", true, "dns:///kaname.kacho.svc:9090"},
+		{"пробелы срезаются", "  kaname.kacho.svc:9090  ", false, "passthrough:///kaname.kacho.svc:9090"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -133,7 +133,7 @@ func TestPeerServiceConfigDeclaresRoundRobinWhenAsked(t *testing.T) {
 // доступность соседа.
 func TestDialPeerBuildsAConnectionWithoutReachingThePeer(t *testing.T) {
 	cc, err := DialPeer(PeerDialOptions{
-		Endpoint:      "kacho-iam.kacho.svc:9090",
+		Endpoint:      "kaname.kacho.svc:9090",
 		Retries:       3,
 		DialTimeout:   10 * time.Second,
 		KeepAliveTime: 30 * time.Second,
@@ -145,7 +145,7 @@ func TestDialPeerBuildsAConnectionWithoutReachingThePeer(t *testing.T) {
 	defer func() { _ = cc.Close() }()
 	// Target() отдаёт адрес ВМЕСТЕ со схемой — она и есть предмет утверждения:
 	// молчаливый переход на умолчание `grpc.NewClient` сменил бы её на `dns`.
-	if got := cc.Target(); got != "passthrough:///kacho-iam.kacho.svc:9090" {
+	if got := cc.Target(); got != "passthrough:///kaname.kacho.svc:9090" {
 		t.Fatalf("Target() = %q", got)
 	}
 }

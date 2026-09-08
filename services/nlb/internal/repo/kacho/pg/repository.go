@@ -39,7 +39,7 @@ type Repository struct {
 //   - slavePool  — RO pgxpool на streaming-replica; если nil → Reader идёт на
 //     master (fallback).
 //
-// Pools создаются в composition root (kacho-corelib/db.NewPool).
+// Pools создаются в composition root (pkg/db.NewPool).
 func New(masterPool, slavePool *pgxpool.Pool) *Repository {
 	if slavePool == nil {
 		slavePool = masterPool

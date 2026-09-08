@@ -32,7 +32,7 @@ type UserOAuthClientRepo struct{ pool *pgxpool.Pool }
 // Продлить срок клиента: expires_at сдвигается вперёд.
 func (r *UserOAuthClientRepo) Extend(ctx context.Context, id string) error {
 	_, err := r.pool.Exec(ctx,
-		` + "`" + `UPDATE kacho_iam.user_oauth_clients
+		` + "`" + `UPDATE kaname.user_oauth_clients
 		   SET last_used_at = now(), expires_at = $2
 		 WHERE id = $1` + "`" + `, id, nil)
 	return err
@@ -172,13 +172,13 @@ func TestExpiryScannerIsSilentOnLawfulStatements(t *testing.T) {
 // молчать по построению.
 func TestExpiryPremiseReadsTheColumnOfTheTable(t *testing.T) {
 	const withColumn = `-- +goose Up
-CREATE TABLE kacho_iam.user_oauth_clients (
+CREATE TABLE kaname.user_oauth_clients (
     id text NOT NULL,
     expires_at timestamp with time zone,
     CONSTRAINT user_oauth_clients_pkey PRIMARY KEY (id)
 );
 -- +goose Down
-DROP TABLE kacho_iam.user_oauth_clients;
+DROP TABLE kaname.user_oauth_clients;
 `
 	body := SQLCreateTableBody(withColumn, "user_oauth_clients")
 	if body == "" {
@@ -189,12 +189,12 @@ DROP TABLE kacho_iam.user_oauth_clients;
 	}
 
 	const withoutColumn = `-- +goose Up
-CREATE TABLE kacho_iam.user_oauth_clients (
+CREATE TABLE kaname.user_oauth_clients (
     id text NOT NULL,
     CONSTRAINT user_oauth_clients_pkey PRIMARY KEY (id)
 );
 -- +goose Down
-CREATE TABLE kacho_iam.user_oauth_clients (id text, expires_at timestamp with time zone);
+CREATE TABLE kaname.user_oauth_clients (id text, expires_at timestamp with time zone);
 `
 	body2 := SQLCreateTableBody(withoutColumn, "user_oauth_clients")
 	if body2 == "" {

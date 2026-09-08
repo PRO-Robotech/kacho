@@ -7,7 +7,7 @@
 # Материала ключа пробы не касаются: под подменённым провайдером он случайный, и любое
 # утверждение о нём говорило бы о подмене, а не о модуле.
 
-mock_provider "kacho" {}
+mock_provider "kaname" {}
 
 variables {
   account_id         = "accprobe0000000000000"
@@ -21,15 +21,15 @@ run "account_and_key_arrive_together" {
   command = plan
 
   assert {
-    condition     = kacho_iam_service_account.this.account_id == var.account_id
+    condition     = kaname_service_account.this.account_id == var.account_id
     error_message = "учётка заведена не в заданном аккаунте"
   }
   assert {
-    condition     = length(kacho_iam_service_account_key.this) == 1
+    condition     = length(kaname_service_account_key.this) == 1
     error_message = "умолчание не выдало учётке ни одного ключа — войти ею нечем"
   }
   assert {
-    condition     = kacho_iam_service_account_key.this["default"].name == "probe-machine-default"
+    condition     = kaname_service_account_key.this["default"].name == "probe-machine-default"
     error_message = "имя ключа не выведено из основы и ключа записи"
   }
 }
@@ -41,11 +41,11 @@ run "key_references_the_service_account_by_id" {
   command = plan
 
   assert {
-    condition     = kacho_iam_service_account_key.this["default"].service_account_id == kacho_iam_service_account.this.id
+    condition     = kaname_service_account_key.this["default"].service_account_id == kaname_service_account.this.id
     error_message = "ключ не связан с учёткой модуля"
   }
   assert {
-    condition     = kacho_iam_service_account_key.this["default"].created_by_user_id == var.created_by_user_id
+    condition     = kaname_service_account_key.this["default"].created_by_user_id == var.created_by_user_id
     error_message = "ответственный за выпуск не доехал до ключа"
   }
 }
@@ -59,7 +59,7 @@ run "key_ttl_defaults_to_a_finite_window" {
   command = plan
 
   assert {
-    condition     = kacho_iam_service_account_key.this["default"].ttl_seconds == 7776000
+    condition     = kaname_service_account_key.this["default"].ttl_seconds == 7776000
     error_message = "умолчание срока не 90 дней — ключ достался бы бессрочным по невнимательности"
   }
 }
@@ -78,27 +78,27 @@ run "per_key_values_survive_assembly" {
   }
 
   assert {
-    condition     = kacho_iam_service_account_key.this["current"].ttl_seconds == 2592000
+    condition     = kaname_service_account_key.this["current"].ttl_seconds == 2592000
     error_message = "незаданный срок записи не унаследовал умолчание модуля"
   }
   assert {
-    condition     = kacho_iam_service_account_key.this["next"].ttl_seconds == 604800
+    condition     = kaname_service_account_key.this["next"].ttl_seconds == 604800
     error_message = "заданный срок записи не перекрыл умолчание модуля"
   }
   assert {
-    condition     = kacho_iam_service_account_key.this["next"].description == "на смену"
+    condition     = kaname_service_account_key.this["next"].description == "на смену"
     error_message = "описание ключа потеряно при сборке"
   }
   assert {
-    condition     = kacho_iam_service_account_key.this["next"].audience[0] == "kacho"
+    condition     = kaname_service_account_key.this["next"].audience[0] == "kacho"
     error_message = "назначение токена потеряно при сборке"
   }
   # Оба ключа висят на ОДНОЙ учётке: смена ключа требует двух живых одновременно, и вторая
   # учётка вместо второго ключа сменой не является.
   assert {
     condition = alltrue([
-      kacho_iam_service_account_key.this["current"].service_account_id == kacho_iam_service_account.this.id,
-      kacho_iam_service_account_key.this["next"].service_account_id == kacho_iam_service_account.this.id,
+      kaname_service_account_key.this["current"].service_account_id == kaname_service_account.this.id,
+      kaname_service_account_key.this["next"].service_account_id == kaname_service_account.this.id,
     ])
     error_message = "ключи смены висят на разных учётках"
   }
@@ -117,9 +117,9 @@ run "labels_reach_the_account_and_every_key" {
 
   assert {
     condition = alltrue([
-      kacho_iam_service_account.this.labels["origin"] == "terraform",
-      kacho_iam_service_account_key.this["current"].labels["origin"] == "terraform",
-      kacho_iam_service_account_key.this["next"].labels["origin"] == "terraform",
+      kaname_service_account.this.labels["origin"] == "terraform",
+      kaname_service_account_key.this["current"].labels["origin"] == "terraform",
+      kaname_service_account_key.this["next"].labels["origin"] == "terraform",
     ])
     error_message = "метки доехали не до всех ресурсов модуля"
   }
@@ -160,11 +160,11 @@ run "machine_caller_needs_no_issuer" {
   }
 
   assert {
-    condition     = length(kacho_iam_service_account_key.this) == 1
+    condition     = length(kaname_service_account_key.this) == 1
     error_message = "без названного ответственного план не собрался — конвейер модуль не применит"
   }
   assert {
-    condition     = kacho_iam_service_account_key.this["default"].name == "probe-machine-default"
+    condition     = kaname_service_account_key.this["default"].name == "probe-machine-default"
     error_message = "ключ собран не из основы и ключа записи"
   }
 }
@@ -210,7 +210,7 @@ run "ttl_exactly_at_the_edge_ceiling_is_accepted" {
   }
 
   assert {
-    condition     = kacho_iam_service_account_key.this["default"].ttl_seconds == 31536000
+    condition     = kaname_service_account_key.this["default"].ttl_seconds == 31536000
     error_message = "ровно потолок отвергнут — проверка режет законный вход"
   }
 }
@@ -261,7 +261,7 @@ run "per_key_ttl_exactly_at_the_edge_ceiling_is_accepted" {
   }
 
   assert {
-    condition     = kacho_iam_service_account_key.this["at_ceiling"].ttl_seconds == 31536000
+    condition     = kaname_service_account_key.this["at_ceiling"].ttl_seconds == 31536000
     error_message = "ровно потолок отвергнут у записи — проверка записи расходится с проверкой умолчания"
   }
 }

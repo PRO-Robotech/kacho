@@ -31,8 +31,8 @@ func TestResolver_RedesignReg_PublicVsInternal(t *testing.T) {
 		{"/kacho.cloud.storage.v1.ImageService/ListOperations", "storage"},
 		{"/kacho.cloud.vpc.v1.NetworkService/AddCidrBlocks", "vpc"},
 		{"/kacho.cloud.vpc.v1.NetworkService/RemoveCidrBlocks", "vpc"},
-		{"/kacho.cloud.iam.v1.AccessBindingService/List", "iam"},
-		{"/kacho.cloud.iam.v1.AccessBindingService/Revoke", "iam"},
+		{"/kaname.cloud.iam.v1.AccessBindingService/List", "iam"},
+		{"/kaname.cloud.iam.v1.AccessBindingService/Revoke", "iam"},
 	}
 	for _, tc := range public {
 		_, conn, ok := resolve(tc.method)
@@ -46,7 +46,7 @@ func TestResolver_RedesignReg_PublicVsInternal(t *testing.T) {
 		"/kacho.cloud.compute.v1.InternalMachineTypeService/Update",
 		"/kacho.cloud.compute.v1.InternalMachineTypeService/Delete",
 		"/kacho.cloud.storage.v1.InternalImageService/GetInternal",
-		"/kacho.cloud.iam.v1.InternalIAMService/GetRoleCompiled",
+		"/kaname.cloud.iam.v1.InternalIAMService/GetRoleCompiled",
 	}
 	for _, m := range internal {
 		if _, _, ok := resolve(m); ok {

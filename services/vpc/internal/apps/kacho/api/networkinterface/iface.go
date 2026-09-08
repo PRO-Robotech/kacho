@@ -58,7 +58,7 @@ type AddressRepo interface {
 }
 
 // ProjectClient — то, что use-case'ам NIC нужно от peer-сервиса
-// kacho-iam: проверка существования project'а.
+// kaname: проверка существования project'а.
 type ProjectClient interface {
 	Exists(ctx context.Context, projectID string) (bool, error)
 }

@@ -34,7 +34,7 @@ package drainer_test
 //	over-serialisation, no correctness gained. Measured on the live stand during a
 //	packed e2e run: 8 643 pending rows spread over 1 439 objects but 8 641 distinct
 //	tuples, and a single revoke sat behind up to 632 same-object predecessors.
-//	kacho-iam therefore partitions on `tuple_key` (migration 0067).
+//	kaname therefore partitions on `tuple_key` (migration 0067).
 //
 // Run: go test ./pkg/outbox/drainer/... -race -p 1
 
@@ -56,9 +56,9 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
-// iamPartitionKey mirrors the partition key kacho-iam ships for
-// kacho_iam.fga_outbox (drainer.Config.PartitionColumn in
-// services/iam/cmd/kacho-iam/serve.go): the FULL tuple identity
+// iamPartitionKey mirrors the partition key kaname ships for
+// kaname.fga_outbox (drainer.Config.PartitionColumn in
+// services/iam/cmd/kaname/serve.go): the FULL tuple identity
 // (user, relation, object), materialised by migration 0067 into the `tuple_key`
 // column and indexed by fga_outbox_tuple_head_idx. Every test below runs the
 // SHIPPED key, so a widening of it (back to `payload->>'object'`, or to any other
@@ -91,7 +91,7 @@ type tupleState struct {
 func newTupleState() *tupleState { return &tupleState{present: map[string]bool{}} }
 
 // tupleKeyOf renders the (user, relation, object) triple that identifies one
-// tuple — the model's state key and, byte-for-byte, the value kacho-iam's
+// tuple — the model's state key and, byte-for-byte, the value kaname's
 // fga_outbox trigger stores in its `tuple_key` column (migration 0067). The
 // separator is a space: no component of a tuple key may contain whitespace,
 // and the rendering matches the canonical `user relation object` notation, so
@@ -168,7 +168,7 @@ func insertOutboxRowAttempt(t *testing.T, ctx context.Context, pool *pgxpool.Poo
 	t.Helper()
 	var id int64
 	err := pool.QueryRow(ctx,
-		`INSERT INTO kacho_iam.fga_outbox (event_type, payload, attempt_count)
+		`INSERT INTO kaname.fga_outbox (event_type, payload, attempt_count)
 		 VALUES ($1, $2::jsonb, $3) RETURNING id`,
 		eventType, payload, attempt,
 	).Scan(&id)
@@ -183,7 +183,7 @@ func insertOutboxRowAged(t *testing.T, ctx context.Context, pool *pgxpool.Pool, 
 	t.Helper()
 	var id int64
 	err := pool.QueryRow(ctx,
-		`INSERT INTO kacho_iam.fga_outbox (event_type, payload, attempt_count, created_at)
+		`INSERT INTO kaname.fga_outbox (event_type, payload, attempt_count, created_at)
 		 VALUES ($1, $2::jsonb, $3, now() - make_interval(secs => $4)) RETURNING id`,
 		eventType, payload, attempt, age.Seconds(),
 	).Scan(&id)

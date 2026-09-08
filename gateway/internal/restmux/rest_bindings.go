@@ -78,7 +78,7 @@ func loadedHTTPBindings() []httpBinding {
 func buildHTTPBindings() []httpBinding {
 	var out []httpBinding
 	protoregistry.GlobalFiles.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
-		if !strings.HasPrefix(string(fd.Package()), "kacho.") {
+		if !underDeclaredRoot(string(fd.Package())) {
 			return true
 		}
 		svcs := fd.Services()

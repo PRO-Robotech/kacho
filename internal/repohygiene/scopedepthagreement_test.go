@@ -38,7 +38,7 @@ import (
 )
 
 const (
-	scopeDepthConstFile = "services/iam/internal/repo/kacho/pg/relverdict/query.go"
+	scopeDepthConstFile = "services/iam/internal/repo/kaname/pg/relverdict/query.go"
 
 	// scopeDepthMigration — файл, в котором граница глубины ОБЪЯВЛЕНА СЕГОДНЯ.
 	//

@@ -15,9 +15,9 @@ import (
 )
 
 // CachedProjectClient — TTL+LRU декоратор поверх любого repo.ProjectClient
-// (port-интерфейс). Убирает gRPC RTT к kacho-iam из hot-path
+// (port-интерфейс). Убирает gRPC RTT к kaname из hot-path
 // Network.Create/Subnet.Create/... при burst-нагрузке: без кеша каждый
-// запрос делает hop в kacho-iam и упирает throughput в потолок RTT.
+// запрос делает hop в kaname и упирает throughput в потолок RTT.
 //
 // Семантика кеширования Exists:
 //   - Положительный результат (Exists=true) кешируется на полный TTL
@@ -26,10 +26,10 @@ import (
 //   - Negative-результат (Exists=false / underlying NotFound) кешируется
 //     на короткий negative-TTL (default 5s) — чтобы свеже-созданный
 //     project быстро стал виден, но повторные «project не найден» не
-//     хаммерили kacho-iam.
+//     хаммерили kaname.
 //   - Любая другая ошибка (Unavailable, Internal, DeadlineExceeded) —
 //     НЕ кешируется, fail-open: следующий запрос попробует снова. Это
-//     корректное поведение для transient ошибок kacho-iam.
+//     корректное поведение для transient ошибок kaname.
 //
 // LRU bounded — защита от unbounded memory growth: при достижении
 // MaxSize самый старый (по recency) entry вытесняется. Без bound на

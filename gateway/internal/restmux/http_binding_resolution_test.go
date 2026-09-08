@@ -68,12 +68,12 @@ func TestHTTPBindingResolutionPicksTheServingTemplate(t *testing.T) {
 		},
 		{
 			method: "GET", path: "/iam/v1/groups/x:listMembers",
-			wantFQN: "kacho.cloud.iam.v1.GroupService/ListMembers",
+			wantFQN: "kaname.cloud.iam.v1.GroupService/ListMembers",
 			why:     "тот же класс у второго сервиса — предмет не единичный",
 		},
 		{
 			method: "GET", path: "/iam/v1/groups/x",
-			wantFQN: "kacho.cloud.iam.v1.GroupService/Get",
+			wantFQN: "kaname.cloud.iam.v1.GroupService/Get",
 			why:     "ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ к предыдущему",
 		},
 		{

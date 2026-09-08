@@ -184,7 +184,7 @@ func AuditClientDocsExampleFields(
 
 	var findings []ClientDocsExampleFieldsFinding
 	for _, rel := range pages {
-		// #nosec G304 -- путь получен обходом дерева документации ЭТОГО репозитория
+		// путь получен обходом дерева документации ЭТОГО репозитория
 		raw, rerr := os.ReadFile(filepath.Join(opts.Root, filepath.FromSlash(rel)))
 		if rerr != nil {
 			return nil, census, fmt.Errorf("%s: %w", rel, rerr)

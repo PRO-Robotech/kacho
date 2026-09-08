@@ -20,7 +20,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	iampb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iampb "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 
@@ -29,7 +29,7 @@ import (
 )
 
 // fga_register_drainer_integration_test.go — register-drainer applies
-// FGA-register/unregister intents through kacho-iam InternalIAMService.Register-
+// FGA-register/unregister intents through kaname InternalIAMService.Register-
 // Resource / UnregisterResource by mTLS. Scenarios.
 //
 // The drainer mechanics themselves (claim / mark / poison / NOTIFY) are covered

@@ -305,7 +305,7 @@ func TestImageOverlayPredicates_RecogniseTheRealTree(t *testing.T) {
 	// Отрицание — только в паре с положительным: предикат, признающий локальным
 	// что угодно, зеленит проверку выше.
 	for _, published := range []string{
-		"docker.io/prorobotech/kacho-vpc:main-1", "bitnamilegacy/postgresql", "docker.io/prorobotech/kacho-iam:main-1",
+		"docker.io/prorobotech/kacho-vpc:main-1", "bitnamilegacy/postgresql", "docker.io/prorobotech/kaname:main-1",
 	} {
 		if imageIsLocalToTheStand(published) {
 			t.Errorf("%q опознан локальным для стенда — предикат стал слишком широким", published)

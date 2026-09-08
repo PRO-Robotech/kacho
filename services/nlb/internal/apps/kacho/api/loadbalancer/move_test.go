@@ -54,7 +54,7 @@ func TestMove_HappyPath(t *testing.T) {
 // FGA intent must mirror lbMirrorIntent semantics (Labels from the moved record +
 // ParentProjectID=dst), NOT reuse the bare lbUnregisterIntent (which drops both).
 // Previously Move emitted register(dst) with Labels=nil / ParentProjectID="",
-// wiping the kacho-iam resource_mirror row feeding the γ label/parent selector →
+// wiping the kaname resource_mirror row feeding the γ label/parent selector →
 // label-based grants and parent-scoped queries silently excluded the moved LB in
 // the destination project until an unrelated Update repaired the mirror.
 func TestMove_RegisterDstCarriesLabelsAndParent(t *testing.T) {

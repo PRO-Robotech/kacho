@@ -26,12 +26,12 @@ import (
 // Положительный контроль всех случаев ниже: пока он молчит, красное соседних
 // проб приходит от инъекции, а не от самой формы входа.
 const baseMigration = `-- +goose Up
-CREATE TABLE kacho_iam.relation_fact (
+CREATE TABLE kaname.relation_fact (
     id bigint NOT NULL,
     CONSTRAINT relation_fact_pkey PRIMARY KEY (id)
 );
 -- +goose Down
-DROP TABLE IF EXISTS kacho_iam.relation_fact;
+DROP TABLE IF EXISTS kaname.relation_fact;
 `
 
 func scanOrFail(t *testing.T, sources map[string]string) ([]string, RetiredEngineDatabaseCensus) {
@@ -72,12 +72,12 @@ func TestInjection_RedOnANewObjectTakingTheRetiredName(t *testing.T) {
 	sources := map[string]string{
 		"services/iam/internal/migrations/0001_initial.sql": baseMigration,
 		"services/iam/internal/migrations/0102_fga_replay_journal.sql": `-- +goose Up
-CREATE TABLE kacho_iam.fga_replay_journal (
+CREATE TABLE kaname.fga_replay_journal (
     id bigint NOT NULL
 );
-CREATE INDEX fga_replay_journal_pending_idx ON kacho_iam.fga_replay_journal (id);
+CREATE INDEX fga_replay_journal_pending_idx ON kaname.fga_replay_journal (id);
 -- +goose Down
-DROP TABLE IF EXISTS kacho_iam.fga_replay_journal;
+DROP TABLE IF EXISTS kaname.fga_replay_journal;
 `,
 	}
 	objects, census, err := FindRetiredEngineDatabaseObjects(sources)
@@ -131,14 +131,14 @@ func TestInjection_SilentOnTheRetiredNameInProse(t *testing.T) {
 		"services/iam/internal/migrations/0001_initial.sql": baseMigration,
 		"services/iam/internal/migrations/0103_history.sql": `-- +goose Up
 -- Журнал намерений внешнего движка заводился так:
---     CREATE TABLE kacho_iam.fga_outbox (id bigint NOT NULL);
---     CREATE INDEX fga_outbox_pending_idx ON kacho_iam.fga_outbox (created_at);
+--     CREATE TABLE kaname.fga_outbox (id bigint NOT NULL);
+--     CREATE INDEX fga_outbox_pending_idx ON kaname.fga_outbox (created_at);
 -- Движок снят стадией S6; строки выше оставлены как история, а не как описание
 -- сегодняшнего тракта.
-/* CREATE SEQUENCE kacho_iam.fga_outbox_id_seq; — и это тоже история */
-CREATE TABLE kacho_iam.relation_fact_conditioned (id bigint NOT NULL);
+/* CREATE SEQUENCE kaname.fga_outbox_id_seq; — и это тоже история */
+CREATE TABLE kaname.relation_fact_conditioned (id bigint NOT NULL);
 -- +goose Down
-DROP TABLE IF EXISTS kacho_iam.relation_fact_conditioned;
+DROP TABLE IF EXISTS kaname.relation_fact_conditioned;
 `,
 	}
 	keys, census := scanOrFail(t, sources)
@@ -158,9 +158,9 @@ DROP TABLE IF EXISTS kacho_iam.relation_fact_conditioned;
 func TestInjection_SilentOnAnObjectDeclaredOnlyInDown(t *testing.T) {
 	keys, _ := scanOrFail(t, map[string]string{
 		"services/iam/internal/migrations/0104_retire.sql": `-- +goose Up
-DROP TABLE IF EXISTS kacho_iam.relation_fact_conditioned;
+DROP TABLE IF EXISTS kaname.relation_fact_conditioned;
 -- +goose Down
-CREATE TABLE kacho_iam.fga_outbox (id bigint NOT NULL);
+CREATE TABLE kaname.fga_outbox (id bigint NOT NULL);
 `,
 	})
 	if len(keys) != 0 {
@@ -176,12 +176,12 @@ CREATE TABLE kacho_iam.fga_outbox (id bigint NOT NULL);
 func TestInjection_DropRemovesTheObjectFromTheLiveSet(t *testing.T) {
 	keys, _ := scanOrFail(t, map[string]string{
 		"services/iam/internal/migrations/0001_initial.sql": `-- +goose Up
-CREATE TABLE kacho_iam.fga_outbox (id bigint NOT NULL);
-CREATE TRIGGER fga_outbox_notify_trigger AFTER INSERT ON kacho_iam.fga_outbox FOR EACH ROW EXECUTE FUNCTION kacho_iam.noop();
+CREATE TABLE kaname.fga_outbox (id bigint NOT NULL);
+CREATE TRIGGER fga_outbox_notify_trigger AFTER INSERT ON kaname.fga_outbox FOR EACH ROW EXECUTE FUNCTION kaname.noop();
 -- +goose Down
 `,
 		"services/iam/internal/migrations/0105_channel_retires.sql": `-- +goose Up
-DROP TRIGGER IF EXISTS fga_outbox_notify_trigger ON kacho_iam.fga_outbox;
+DROP TRIGGER IF EXISTS fga_outbox_notify_trigger ON kaname.fga_outbox;
 -- +goose Down
 `,
 	})
@@ -199,16 +199,16 @@ DROP TRIGGER IF EXISTS fga_outbox_notify_trigger ON kacho_iam.fga_outbox;
 // перестало бы встречаться в CREATE.
 func TestInjection_RenameIsUnderstoodInBothDirections(t *testing.T) {
 	const created = `-- +goose Up
-CREATE TABLE kacho_iam.fga_outbox (id bigint NOT NULL);
-ALTER TABLE kacho_iam.fga_outbox ADD CONSTRAINT fga_outbox_pkey PRIMARY KEY (id);
+CREATE TABLE kaname.fga_outbox (id bigint NOT NULL);
+ALTER TABLE kaname.fga_outbox ADD CONSTRAINT fga_outbox_pkey PRIMARY KEY (id);
 -- +goose Down
 `
 	// Прочь из семьи движка: объект уходит из живого состава.
 	keys, _ := scanOrFail(t, map[string]string{
 		"services/iam/internal/migrations/0001_initial.sql": created,
 		"services/iam/internal/migrations/0106_rename_away.sql": `-- +goose Up
-ALTER TABLE kacho_iam.fga_outbox RENAME TO relation_intent_journal;
-ALTER TABLE kacho_iam.relation_intent_journal RENAME CONSTRAINT fga_outbox_pkey TO relation_intent_journal_pkey;
+ALTER TABLE kaname.fga_outbox RENAME TO relation_intent_journal;
+ALTER TABLE kaname.relation_intent_journal RENAME CONSTRAINT fga_outbox_pkey TO relation_intent_journal_pkey;
 -- +goose Down
 `,
 	})
@@ -220,7 +220,7 @@ ALTER TABLE kacho_iam.relation_intent_journal RENAME CONSTRAINT fga_outbox_pkey 
 	keys, _ = scanOrFail(t, map[string]string{
 		"services/iam/internal/migrations/0001_initial.sql": created,
 		"services/iam/internal/migrations/0107_rename_within.sql": `-- +goose Up
-ALTER TABLE kacho_iam.fga_outbox RENAME TO fga_intent_outbox;
+ALTER TABLE kaname.fga_outbox RENAME TO fga_intent_outbox;
 -- +goose Down
 `,
 	})

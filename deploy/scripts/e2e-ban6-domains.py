@@ -46,7 +46,13 @@ import subprocess
 # Каталог доменных контрактов. Обходится ЦЕЛИКОМ, а не по образцу `*/v1/*.proto`:
 # раскладка `v1/` — соглашение, а не инвариант, и домен, положивший контракт
 # рядом, выпадал бы из популяции молча.
-PROTO_BASE = ("proto", "kacho", "cloud")
+# Корни дерева контрактов объявлены ЗАКРЫТЫМ множеством: их два — платформа
+# называет себя `kacho`, служба доступа `kaname` (KAN-PKG-1). Литерал одного
+# корня оставил бы домены второго вне охвата, и проба напечатала бы меньше
+# доменов, не покраснев нигде, — то есть ровно тот класс, против которого она
+# и заведена.
+PROTO_ROOTS = ("kacho", "kaname")
+PROTO_BASES = tuple(("proto", r, "cloud") for r in PROTO_ROOTS)
 
 # Объявление gRPC-службы, чьё имя выводит её из внешнего маршрутизатора
 # (`gateway/internal/allowlist` судит по префиксу имени).
@@ -103,18 +109,19 @@ def internal_services(root: pathlib.Path) -> tuple[dict[str, list[str]], int]:
     """
     out: dict[str, list[str]] = {}
     files_read = 0
-    base = root.joinpath(*PROTO_BASE)
-    if not base.is_dir():
-        return out, 0
-    for dom in sorted(base.iterdir()):
-        if not dom.is_dir():
+    for parts in PROTO_BASES:
+        base = root.joinpath(*parts)
+        if not base.is_dir():
             continue
-        found: set[str] = set()
-        for f in sorted(dom.rglob("*.proto")):
-            files_read += 1
-            found |= set(SERVICE_DECL.findall(f.read_text(encoding="utf-8")))
-        if found:
-            out[dom.name] = sorted(found)
+        for dom in sorted(base.iterdir()):
+            if not dom.is_dir():
+                continue
+            found: set[str] = set()
+            for f in sorted(dom.rglob("*.proto")):
+                files_read += 1
+                found |= set(SERVICE_DECL.findall(f.read_text(encoding="utf-8")))
+            if found:
+                out[dom.name] = sorted(found)
     return out, files_read
 
 

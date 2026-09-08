@@ -63,9 +63,9 @@ export interface WhoAmIResponse {
   user_id?: string;
   email?: string;
   display_name?: string;
-  /** True если у user'а FGA-relation `admin@cluster:cluster_kacho_root` (KAC item #4). */
+  /** True если у user'а FGA-relation `admin@cluster:cluster_root` (KAC item #4). */
   system_admin: boolean;
-  /** True если у user'а FGA-relation `viewer@cluster:cluster_kacho_root`. */
+  /** True если у user'а FGA-relation `viewer@cluster:cluster_root`. */
   cluster_viewer: boolean;
   /** Аккаунты, в которых user является членом (с ролями). */
   accounts: AccountMembership[];

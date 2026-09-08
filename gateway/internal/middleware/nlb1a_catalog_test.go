@@ -112,7 +112,7 @@ func TestNLB1a02_CatalogCopiesByteIdentical(t *testing.T) {
 	root := repoRoot(t)
 	gw, err := os.ReadFile(filepath.Join(root, "gateway", "internal", "middleware", "embed", "permission_catalog.json"))
 	require.NoError(t, err)
-	iam, err := os.ReadFile(filepath.Join(root, "services", "iam", "internal", "apps", "kacho", "seed", "embedded", "permission_catalog.json"))
+	iam, err := os.ReadFile(filepath.Join(root, "services", "iam", "internal", "apps", "kaname", "seed", "embedded", "permission_catalog.json"))
 	require.NoError(t, err)
 	require.Truef(t, bytes.Equal(gw, iam),
 		"embedded permission_catalog.json copies drifted (gateway=%d bytes, iam=%d bytes) — both must be renamed in lockstep",

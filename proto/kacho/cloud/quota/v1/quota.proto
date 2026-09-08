@@ -5,8 +5,6 @@ syntax = "proto3";
 
 package kacho.cloud.quota.v1;
 
-import "kacho/cloud/iam/v1/limit.proto";
-
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1;quotav1";
 
 // Quota — one ceiling as the tenant sees it: the limit, what is already spent
@@ -20,12 +18,21 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1;
 // and the SHAPE of the answer is stated once, here, so eight domains cannot drift
 // into eight dialects of the same three numbers.
 //
-// WHY `source_scope` IS IMPORTED AND NOT RESTATED. A tenant who hits a ceiling
-// needs to know whose ceiling it is before they know who can raise it. That is
-// exactly what `iam.v1.Limit.Scope` already says, and a second enumeration about
-// one subject drifts silently — one side gains an arm, the other keeps compiling.
-// All contracts live in one tree under one `buf`, so the import costs nothing by
-// construction.
+// WHY `Scope` IS STATED HERE AND NOT IMPORTED. A tenant who hits a ceiling needs
+// to know whose ceiling it is before they know who can raise it. The access
+// service is being carved out into a product of its own, so borrowing the arm
+// from ITS contract would mean the platform no longer builds without it — and
+// that its contract could not be removed while this import lives. The arms are
+// therefore stated here, with the same names and the same numbers they have
+// always had on the wire: the tenant sees no change, and neither does JSON,
+// which encodes an enum by its NAME.
+//
+// The drift a shared enumeration was meant to prevent is prevented differently
+// now, and by construction rather than by hope: whoever states a value is a
+// SOURCE for this field, and a source that gains an arm this enumeration does
+// not have cannot map it — the translation is total by type, and a new arm shows
+// up as a compile error at the one place the mapping lives, not as a silently
+// widened answer.
 //
 // READ-ONLY BY CONSTRUCTION. This message never appears in a request body. The
 // tenant reads; only the cloud administrator changes a value, through
@@ -53,7 +60,7 @@ message Quota {
   // Without it "you are at 16 of 16" does not tell the tenant whether the number
   // is their own override, their account's, or the platform's, and therefore does
   // not tell them who can change it.
-  kacho.cloud.iam.v1.Limit.Scope source_scope = 4;
+  Scope source_scope = 4;
 
   // Id of the object the winning scope names: an account id for ACCOUNT, a
   // project id for PROJECT. Empty when the winner is DEFAULT, and empty ONLY
@@ -71,4 +78,30 @@ message Quota {
 
   // Id of the carrier — the project id when `carrier_type` is `project`.
   string carrier_id = 7;
+
+  // Scope — where the winning value was stated, ordered by specificity:
+  // PROJECT beats ACCOUNT beats DEFAULT.
+  //
+  // Names and numbers are the ones this field has carried since it was
+  // introduced, and they are not free to change: JSON encodes an enum by its
+  // NAME and the wire by its NUMBER, so a rename or a renumber is a breaking
+  // change for every tenant already reading the field.
+  //
+  // `SCOPE_UNSPECIFIED` is not a fourth place a value may be stated at — it is
+  // what an unreadable stored row maps to. Mapping such a row to `DEFAULT`
+  // instead would assert "the platform stated this", which is a claim about who
+  // can raise the ceiling, made on a row nobody managed to read.
+  enum Scope {
+    SCOPE_UNSPECIFIED = 0;
+
+    // Platform-wide fallback. Exactly one value per kind.
+    DEFAULT = 1;
+
+    // Stated for one account; applies to every project of that account unless
+    // the project states its own.
+    ACCOUNT = 2;
+
+    // Stated for one project. The most specific arm.
+    PROJECT = 3;
+  }
 }

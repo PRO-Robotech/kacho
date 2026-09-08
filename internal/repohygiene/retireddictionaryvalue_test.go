@@ -21,7 +21,7 @@ import (
 var retiredDictionaryValues = []RetiredDictionaryValue{
 	{
 		Value:      "jit_revoke",
-		Dictionary: "kacho_iam.subject_change_outbox.op",
+		Dictionary: "kaname.subject_change_outbox.op",
 		By:         "754001_subject_change_dictionary_admits_only_what_is_produced.sql",
 		Reason: "подсистемы выдачи доступа по требованию в дереве нет вовсе " +
 			"(предикат: git grep -rln 'JITAccess\\|jit_access\\|JustInTime' → ноль файлов); " +
@@ -29,7 +29,7 @@ var retiredDictionaryValues = []RetiredDictionaryValue{
 	},
 	{
 		Value:      "bg_revoke",
-		Dictionary: "kacho_iam.subject_change_outbox.op",
+		Dictionary: "kaname.subject_change_outbox.op",
 		By:         "754001_subject_change_dictionary_admits_only_what_is_produced.sql",
 		Reason: "фонового отзыва как подсистемы в дереве нет; производителя у значения " +
 			"не было ни одного",

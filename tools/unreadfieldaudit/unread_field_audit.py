@@ -14,7 +14,7 @@
 сообщение целиком, поэтому «принято и выброшено» одинаково относится и к
 вложенному полю.
 
-ЧТО СЧИТАЕТСЯ ЧИТАТЕЛЕМ — ДВЕ ОСНОВЫ, И ОНИ РАЗНОЙ СИЛЫ.
+ЧТО СЧИТАЕТСЯ ЧИТАТЕЛЕМ — ТРИ ОСНОВЫ, И ОНИ РАЗНОЙ СИЛЫ.
 
   1. ЧТЕНИЕ У ЭТОГО СООБЩЕНИЯ (сильная, основная). Вызов геттера `x.GetFoo()` или
      обращение к полю `x.Foo`, где ТИП `x` — именно это сообщение. Тип резолвится
@@ -26,15 +26,42 @@
      (`switch x.(type)` / `x.(*T)`) — для члена с пустой полезной нагрузкой
      (`message X {}`) второе есть единственно возможное чтение. Конструирование
      ветки (`&pb.M_Foo{…}` на пути ответа) чтением НЕ считается.
-  2. ИМЯ ПОЛЯ СТРОКОЙ (слабая). `"<snake>"` в прод-коде: known-set маски
-     обновления, whitelist фильтра, `from_request_field` каталога прав — край
-     читает поле РЕФЛЕКСИЕЙ ПО ИМЕНИ, и это настоящий читатель. Но у строки нет
+  2. КАТАЛОГ ПРАВ НАЗЫВАЕТ ПОЛЕ У ЭТОГО МЕТОДА (сильная). Край читает поле
+     запроса РЕФЛЕКСИЕЙ ПО ИМЕНИ, взяв имя из `scope_extractor.from_request_field`
+     либо `object_type_from_request_field`
+     (`gateway/internal/middleware/resource_extractor.go`, `ExtractFromProto` →
+     `extractByProtoReflect`): им выбирается объект, на котором стоит проверка
+     доступа. Основа СИЛЬНАЯ, и причина ровно одна — у записи каталога ЕСТЬ
+     получатель: она ключуется FQN метода, а тип запроса метода объявлен в том же
+     .proto. Совпадение имени поля с полем соседнего сообщения закрыть ничего не
+     может by construction. Составной путь (`address.project_id`) резолвится по
+     звеньям — так же, как его резолвит сам край.
+  3. ИМЯ ПОЛЯ СТРОКОЙ (слабая). `"<snake>"` в прод-коде: known-set маски
+     обновления, whitelist фильтра, перечень неизменяемых полей — сервис читает
+     поле РЕФЛЕКСИЕЙ ПО ИМЕНИ, и это настоящий читатель. Но у строки нет
      получателя, поэтому приписать её конкретному сообщению нечем: если такое имя
      объявлено не в одном сообщении домена, читатель мог принадлежать другому.
      Поля, закрытые ТОЛЬКО этой формой, печатаются поимённо, а не прячутся в
      «закрыто». Сюда же попадает явный отказ по имени (`AddFieldViolation`):
      он такой же именной, значит и слабость у него та же — отдельной корзины у
      него нет намеренно, она была бы пуста всегда by construction.
+
+ПОЧЕМУ ЗАВЕДЕНА ОСНОВА №2 (issue #2115). Каталог не читался предикатом ВООБЩЕ:
+строковый поиск ходит по `.go`-файлам индекса, а каталог лежит рядом JSON'ом, и
+резолв типа его не видит тем более. Цена незнания этой формы — два разных исхода,
+и оба тихие: поле, чей ЕДИНСТВЕННЫЙ читатель каталог, стало бы ЛОЖНОЙ НАХОДКОЙ;
+поле, чьё имя вдобавок встречается строкой у соседнего сообщения, уезжало в слабую
+корзину, то есть измерялось совпадением имён. Второе и наблюдалось:
+`BatchAuthorizeCheckRequest.scope_id` закрывался строками `"scope_id"`, которые
+объявляли СОСЕДНИЕ сообщения домена (маска правки привязки, неизменяемые поля
+предела), — при том что настоящий его читатель край, и промах атрибуции ничем не
+проявлялся. Замер: закрыто каталогом 1, слабая корзина 2 → 1.
+
+ЗАПИСЬ КАТАЛОГА, ЧЬЁ ИМЯ ПОЛЯ У ЗАПРОСА НЕ ОБЪЯВЛЕНО, НАЗЫВАЕТСЯ ОТДЕЛЬНО. Имя в
+опции proto пишется РУКОЙ; поле переименовали, опцию забыли — край читает пустоту,
+`ExtractFromProto` отдаёт подстановочный знак, и проверка доступа уходит на
+`<тип>:*` вместо названного объекта. Проглотить такую запись значило бы измерить её
+как «поле закрыто», то есть выдать несуществующего читателя за существующего.
 
 ПОЧЕМУ ОСНОВА СМЕНИЛАСЬ (issue kacho#110). Прежде все формы искали ИМЯ, и имя
 между сообщениями одного домена не уникально (`filter`, `name`, `labels`,
@@ -71,8 +98,24 @@
   * сообщения ключуются Go-ИМЕНЕМ ТИПА (вложенное — `Parent_Nested`), тем же,
     каким их называют индекс чтений и сгенерированные геттеры. Пока ключом было
     короткое имя, вложенное сообщение не сходилось ни с тем, ни с другим;
-  * у домена найдено хоть одно дерево прод-кода (имя proto-домена не равно имени
-    каталога сервиса — см. DOMAIN_SERVICE_DIR).
+  * у домена найдено хоть одно дерево прод-кода И НЕПУСТО ЕГО СОБСТВЕННОЕ.
+    Проверяются оба, и второе — потому, что первое о пропаже дерева службы не
+    спрашивает: `prod_sources` берёт ещё край и общий `internal/`, поэтому
+    остаётся непустым, пока жив край. Имя proto-домена не равно имени каталога
+    сервиса — см. DOMAIN_SERVICE_DIR;
+  * КАТАЛОГ ПРАВ ПРОЧИТАН И НЕПУСТ. Пустой либо нечитаемый каталог — отказ
+    (rc=2), а не «каталог о полях не говорит»: молчаливая пустота вернула бы
+    прежнее состояние, и отличить «основа не сработала» от «каталог их не
+    называет» было бы нечем;
+  * КАЖДЫЙ обойденный Go-модуль дал хоть один пакет, и объём осмотренного
+    печатается ПО МОДУЛЯМ ПОРОЗНЬ. Дерево несёт больше одного модуля, а `go list`
+    в каталог со своим `go.mod` не спускается by construction: пока перепись знала
+    одно суммарное число, обход одного дерева был неотличим от обхода обоих.
+    Замер, из которого выведено (issue #2093): после выноса службы в модуль
+    `github.com/PRO-Robotech/kaname` её 136 пакетов стали НЕВИДИМЫ — не
+    «непрочитанными» и не «находками», а ничем, — и вместе с ними исчезли
+    обработчики её типов запроса, отчего все 268 полей домена уехали в полосу
+    `RPC-НЕ-РЕАЛИЗОВАН`. Со стороны это выглядело исправным деревом.
 
 ОТСУТСТВИЕ ЧИТАТЕЛЯ — НЕ ВСЕГДА НАХОДКА, И ДВЕ ПРИЧИНЫ ВЫЧИСЛЯЮТСЯ ПО ДЕРЕВУ, а не
 предполагаются (иначе перепись выдаётся за вердикт):
@@ -119,13 +162,45 @@ PROTO_ROOT = "proto/kacho/cloud"
 GEN_ROOT = "pkg/api/kacho/cloud"
 MODULE = "github.com/PRO-Robotech/kacho"
 INDEXER = "./tools/unreadfieldaudit/cmd/proto-field-readers"
+PERMISSION_CATALOG = "gateway/internal/middleware/embed/permission_catalog.json"
 
 # ИМЯ PROTO-ДОМЕНА НЕ РАВНО ИМЕНИ КАТАЛОГА СЕРВИСА, и это не мелочь предпосылки:
 # домен `loadbalancer` реализован в `services/nlb`, поэтому вывод пути по имени
 # домена давал ПУСТОЕ дерево прод-кода — и предикат объявлял «без читателя» ВСЕ 87
 # полей домена, ни одного файла не прочитав. Соответствие задаётся явно, а пустое
 # дерево — отказ (см. ниже), а не тихий поток находок.
-DOMAIN_SERVICE_DIR = {"loadbalancer": "nlb"}
+#
+# `quota` — второй экземпляр того же класса, найденный при укреплении предпосылки
+# (2026-09-06): публичный `IdentityQuotaService` объявлен в домене `quota`, а
+# реализован в `services/iam` (`internal/apps/kaname/api/identityquota`). Каталога
+# `services/quota` в дереве нет, поэтому прод-дерево домена выводилось пустым, и
+# домен мерился одним лишь читателем края. Сегодня у него ноль полей (запрос пуст
+# by design — см. его контракт), поэтому цена нулевая, а мерка была неверна.
+DOMAIN_SERVICE_DIR = {"loadbalancer": "nlb", "quota": "iam"}
+
+# Объявление модуля в go.mod — по нему выводится путь пакетов вынесенного сервиса.
+RE_GO_MODULE = re.compile(r"^module\s+(\S+)", re.M)
+
+
+def service_module_path(svc_dir):
+    """Путь Go-модуля службы, если она вынесена в СВОЙ модуль; иначе None.
+
+    ЗАЧЕМ. Служба, вынесенная в собственный модуль, живёт под ЕГО путём пакетов, а
+    не под `<корневой модуль>/services/<имя>`. Пока префикс выводился из корневого
+    модуля, читатели вынесенной службы были ПРОЧИТАНЫ индексом и не приписаны
+    никому: перепись выросла вдвое, а вердикт не сдвинулся ни на одно поле — то
+    есть прибавка целиком легла в слепую зону.
+
+    Выводится из дерева, а не выписывается: перечень вынесенных служб, записанный
+    руками, разошёлся бы с деревом молча — ровно так эта слепота и завелась.
+    """
+    try:
+        with open(os.path.join(svc_dir, "go.mod"), encoding="utf-8") as f:
+            body = f.read()
+    except OSError:
+        return None
+    m = RE_GO_MODULE.search(body)
+    return m.group(1) if m else None
 
 
 # Деревья прод-кода, где законно живёт читатель поля запроса: сам сервис, край
@@ -135,7 +210,9 @@ DOMAIN_SERVICE_DIR = {"loadbalancer": "nlb"}
 # не по пути.
 def prod_pkg_prefixes(domain):
     svc = DOMAIN_SERVICE_DIR.get(domain, domain)
-    return (f"{MODULE}/services/{svc}", f"{MODULE}/gateway", f"{MODULE}/internal")
+    own = service_module_path(f"services/{svc}")
+    return (own or f"{MODULE}/services/{svc}",
+            f"{MODULE}/gateway", f"{MODULE}/internal")
 
 
 def prod_trees(domain):
@@ -143,6 +220,7 @@ def prod_trees(domain):
     return [f"services/{svc}", "gateway", "internal"]
 
 
+RE_PACKAGE = re.compile(r"^\s*package\s+([\w.]+)\s*;", re.M)
 RE_SERVICE = re.compile(r"^service\s+(\w+)\s*\{", re.M)
 RE_RPC = re.compile(r"\brpc\s+(\w+)\s*\(\s*([\w.]+)\s*\)")
 # message-объявление верхнего или вложенного уровня.
@@ -165,6 +243,20 @@ SCALARS = {
 def strip_comments(s):
     out = re.sub(r"/\*.*?\*/", "", s, flags=re.S)
     return re.sub(r"//[^\n]*", "", out)
+
+
+def proto_package(path):
+    """Объявленный `package` файла — левая часть FQN метода в каталоге прав.
+
+    Читается ИЗ ФАЙЛА, а не выводится из каталога на диске: `kacho.cloud.<домен>.v1`
+    верно для сегодняшней раскладки и перестанет быть верным у первого же пакета
+    без сегмента версии (`kacho.cloud.subscription` уже такой). Вывод по имени
+    каталога дал бы FQN, который не совпадёт с каталожным НИ ОДНОЙ записью, и
+    основа закрылась бы молча — ноль закрытых был бы неотличим от «каталог о них
+    не говорит».
+    """
+    m = RE_PACKAGE.search(strip_comments(open(path, encoding="utf-8").read()))
+    return m.group(1) if m else ""
 
 
 def parse_proto(path):
@@ -375,6 +467,24 @@ def prod_sources(index, domain):
     return files
 
 
+def own_tree_packages(index, domain):
+    """Пакеты СОБСТВЕННОГО прод-дерева домена в индексе.
+
+    ОТДЕЛЬНАЯ ПРЕДПОСЫЛКА, А НЕ ПОДМНОЖЕСТВО `prod_sources`, и различие несущее.
+    `prod_sources` берёт три дерева — сам сервис, край и общий `internal/`, — и
+    непустым оказывается, пока жив хоть край. Значит вопрос «прочитали ли мы
+    сервис» она не задаёт ВООБЩЕ: дерево вынесенной службы исчезло из обхода
+    целиком, а предпосылка молчала, потому что край на месте.
+
+    Собственное дерево — то место, где читатель поля запроса живёт прежде всего:
+    его отсутствие означает, что «читателя нет» здесь читается как «читать было
+    негде», и печатать находки нельзя.
+    """
+    pref = prod_pkg_prefixes(domain)[0]
+    return [p["path"] for p in index["packages"]
+            if p["path"] == pref or p["path"].startswith(pref + "/")]
+
+
 def typed_readers(index, domain):
     """{(GoТип, GoПоле)} — прочитано у ЭТОГО сообщения в деревьях домена.
 
@@ -428,28 +538,37 @@ def typed_readers(index, domain):
 def has_handler(request_msg, sources):
     """Есть ли в прод-коде сигнатура обработчика, ПРИНИМАЮЩАЯ этот тип запроса?
 
-    Форма — `context.Context, req *<pkg>v1.<Request>)`: именно так объявлен каждый
-    handler/use-case-вход этого дерева. Тип-ассершен в карте прав
-    (`req.(*vpcv1.XRequest)`) сюда НЕ попадает намеренно: authz резолвит область по
-    чужому полю и о чтении остальных полей ничего не говорит.
+    Форма — параметр `*<pkg>.<Request>` сразу за `context.Context`, и ФОРМ ЭТИХ
+    ТРИ, а не одна:
+
+      * `ctx context.Context, req *iamv1.GetUserRequest)` — каноническая;
+      * `ctx context.Context, _ *iamv1.WhoAmIRequest)` — параметр назван `_`,
+        законная форма для запроса без полей;
+      * сигнатура, перенесённая на строки: после типа стоит ЗАПЯТАЯ, а не `)`.
+
+    Тип-ассершен в карте прав (`req.(*vpcv1.XRequest)`) сюда НЕ попадает
+    намеренно: authz резолвит область по чужому полю и о чтении остальных полей
+    ничего не говорит.
 
     ЗАЧЕМ. RPC, у которого обработчика нет, отвечает `Unimplemented` — его запрос не
     читает НИКТО и не может: поля внутри такого запроса не «приняты и выброшены»,
     они не приняты вовсе. Считать их находками того же класса — врать в обе стороны:
     завышать число и прятать за ним настоящие.
+
+    ПОЧЕМУ ФОРМ СТАЛО ТРИ (issue #2093). Прежняя редакция искала подстроку
+    `"context.Context, req *"` и требовала `)` сразу за типом, а шапка утверждала,
+    что «именно так объявлен каждый handler/use-case-вход этого дерева». Утверждение
+    пережило свой предмет: на 04feea5aa4 четыре типа запроса в пяти доменах
+    объявлены двумя другими формами, и каждый объявлялся НЕПРИНЯТЫМ. Сегодня цена
+    нулевая — все четыре запроса пусты либо их поля читаются и так, — но полоса
+    ложного освобождения была открыта: поле такого запроса без читателя уехало бы
+    в `RPC-НЕ-РЕАЛИЗОВАН` при живом обработчике, то есть выглядело бы «не находкой».
     """
-    needle = "context.Context, req *"
-    tail = f".{request_msg})"
+    rx = re.compile(r"context\.Context\s*,\s*[A-Za-z_]\w*\s+\*\s*\w+\." +
+                    re.escape(request_msg) + r"\s*[,)]")
     for _p, text in sources:
-        i = 0
-        while True:
-            i = text.find(needle, i)
-            if i < 0:
-                break
-            seg = text[i:i + len(needle) + 80]
-            if tail in seg:
-                return True
-            i += len(needle)
+        if rx.search(text):
+            return True
     return False
 
 
@@ -544,6 +663,114 @@ def excused_sets(messages, roots_impl, roots_unimpl, refused):
                 by_refusal.add(msg)
                 changed = True
     return by_unimpl, by_refusal
+
+
+def load_permission_catalog(path=PERMISSION_CATALOG):
+    """Записи каталога прав — ТОТ ЖЕ файл, который читает край.
+
+    ЗАЧЕМ ОН ЗДЕСЬ. Край читает поле запроса РЕФЛЕКСИЕЙ ПО ИМЕНИ, взяв имя из
+    `scope_extractor.from_request_field` (`gateway/internal/middleware/resource_extractor.go`,
+    `ExtractFromProto` → `extractByProtoReflect`). Это настоящий читатель: им
+    выбирается объект, на котором стоит проверка доступа. До этой основы каталог
+    не читался ВООБЩЕ — ни одним из двух прежних способов: строковый поиск ходит
+    по `.go`-файлам индекса, а каталог лежит рядом JSON'ом.
+
+    ПУСТОЙ ЛИБО НЕЧИТАЕМЫЙ КАТАЛОГ — ОТКАЗ, а не «каталог о полях не говорит».
+    Молчаливая пустота вернула бы прежнее состояние (поля уезжают в слабую
+    корзину или в находки), и отличить «основа не сработала» от «каталог их не
+    называет» было бы нечем — ровно тот класс, ради которого перепись и
+    печатается. Каталог порождается из proto (`make permission-catalog`) и
+    обязан существовать; его отсутствие означает поломку края, а не факт о полях.
+    """
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    entries = data.get("entries") if isinstance(data, dict) else data
+    if not isinstance(entries, list) or not entries:
+        raise ValueError(f"каталог прав {path!r} пуст либо не разобран — край "
+                         f"читает поля запроса ПО НЕМУ, и без него основа "
+                         f"«назван каталогом» не утверждает ничего")
+    return entries
+
+
+def _catalog_field_paths(entry):
+    """Пути полей запроса, которые край читает по этой записи каталога.
+
+    Их два: `scope_extractor.from_request_field` (объект проверки) и
+    `object_type_from_request_field` (его ТИП — scope-полиморфная форма). Оба
+    читаются одной и той же рефлексией, поэтому оба — читатели.
+
+    `"*"` полем не является: это объявленный подстановочный знак, при котором
+    край в сообщение не заглядывает вовсе.
+    """
+    se = entry.get("scope_extractor") or {}
+    out = []
+    for key in ("from_request_field", "object_type_from_request_field"):
+        val = (se.get(key) or "").strip()
+        if val and val != "*":
+            out.append(val)
+    return out
+
+
+def catalog_readers(entries, package, services, messages):
+    """({(GoИмяСообщения, snake-поле)}, [нерезолвящиеся пути]) — по каталогу прав.
+
+    АТРИБУЦИЯ ТОЧНАЯ, И ЭТО ЕДИНСТВЕННАЯ ПРИЧИНА СЧИТАТЬ ОСНОВУ СИЛЬНОЙ. Запись
+    каталога ключуется FQN метода (`<пакет>.<Сервис>/<Rpc>`), а тип запроса
+    метода объявлен в том же .proto. Значит пара «сообщение × поле» выводится, а
+    не угадывается: совпадение имени поля с полем соседнего сообщения закрыть
+    ничего не может by construction — ровно как у чтения с резолвленным типом.
+
+    Мерится ТА ЖЕ публичная поверхность, что и предикатом: сервисы, чьё имя
+    начинается с `Internal`, пропускаются (ban #6 — они живут на внутреннем
+    слушателе и в публичную поверхность не входят).
+
+    Составной путь (`address.project_id`) резолвится ПО ЗВЕНЬЯМ, как его
+    резолвит сам край (`extractByProtoReflect` рекурсивен): читаются ОБА поля —
+    и ссылка у запроса, и поле у вложенного сообщения.
+
+    НЕРЕЗОЛВЯЩИЙСЯ ПУТЬ ВОЗВРАЩАЕТСЯ ОТДЕЛЬНО, а не проглатывается. Имя в опции
+    proto пишется РУКОЙ; поле переименовали, опцию забыли — край читает пустоту,
+    и область проверки молча становится подстановочной. Проглотить такую запись
+    значило бы измерить её как «поле закрыто», то есть выдать несуществующего
+    читателя за существующего.
+    """
+    want = {}
+    for sname, rpcs in (services or {}).items():
+        if sname.startswith("Internal"):
+            continue
+        for rpc, req in rpcs:
+            want[f"{package}.{sname}/{rpc}"] = req.split(".")[-1]
+
+    pairs, unresolved = set(), []
+    for entry in entries:
+        msg = want.get((entry.get("fqn") or "").strip())
+        if msg is None:
+            continue
+        for path in _catalog_field_paths(entry):
+            cur = msg
+            for seg in path.split("."):
+                fields = messages.get(cur)
+                if fields is None:
+                    # Сообщение этим доменом НЕ РАЗОБРАНО (тип из чужого пакета).
+                    # Судить его полем нельзя — но и молчать нельзя: край по этой
+                    # записи что-то читает, а предикат об этом не утверждает
+                    # ничего. Называется той же строкой и другим текстом, чтобы
+                    # причина была видна с первого взгляда.
+                    unresolved.append(
+                        f"{msg}: {path} (сообщение {cur!r} этим доменом не разобрано)")
+                    break
+                typ = None
+                found = False
+                for fname, ftyp, _rep in fields:
+                    if fname == seg:
+                        typ, found = ftyp, True
+                        break
+                if not found:
+                    unresolved.append(f"{msg}: {path} (нет поля {seg!r} у {cur})")
+                    break
+                pairs.add((cur, seg))
+                cur = typ
+    return pairs, unresolved
 
 
 def homonym_names(messages):
@@ -712,6 +939,208 @@ message Target {
           ("HealthCheck_TcpOptions", "Port") in got and
           ("HealthCheck", "Port") not in got, f"пары: {sorted(got)}")
 
+    # ── ПРОД-ДЕРЕВО ДОМЕНА, ВЫНЕСЕННОГО В СВОЙ Go-МОДУЛЬ ────────────────────
+    #
+    # Вторая форма записи читателя, о которой распознаватель не знал. Сервис,
+    # вынесенный в собственный модуль, живёт под ЕГО путём пакетов
+    # (`github.com/PRO-Robotech/kaname/...`), а не под `<корневой модуль>/services/<имя>`.
+    # Пока префикс выводился из корневого модуля, читатели вынесенного сервиса
+    # были прочитаны индексом и не приписаны никому — вердикт не менялся ни на
+    # одно поле при выросшей вдвое переписи.
+    #
+    # Отличие между двумя фикстурами РОВНО ОДНО — наличие `go.mod` у каталога
+    # сервиса; всё остальное совпадает побайтово.
+    with tempfile.TemporaryDirectory() as root:
+        os.makedirs(os.path.join(root, "services", "alpha"))
+        os.makedirs(os.path.join(root, "services", "beta"))
+        with open(os.path.join(root, "services", "alpha", "go.mod"), "w",
+                  encoding="utf-8") as f:
+            f.write("module github.com/PRO-Robotech/alpha\n\ngo 1.26.0\n")
+        prev = os.getcwd()
+        os.chdir(root)
+        try:
+            own_pref = prod_pkg_prefixes("alpha")[0]
+            twin_pref = prod_pkg_prefixes("beta")[0]
+        finally:
+            os.chdir(prev)
+
+    # (11) КРАСНОЕ до фикса: вынесенный сервис адресуется путём СВОЕГО модуля.
+    check("прод-дерево вынесенного сервиса адресуется путём ЕГО модуля",
+          own_pref == "github.com/PRO-Robotech/alpha", f"префикс: {own_pref}")
+    # (12) МОЛЧАНИЕ, законный близнец: сервис БЕЗ своего go.mod адресуется
+    #      прежним путём корневого модуля. Без этой половины «выводи из дерева»
+    #      было бы неотличимо от «выводи что угодно».
+    check("сервис без своего go.mod адресуется прежним путём корневого модуля",
+          twin_pref == f"{MODULE}/services/beta", f"префикс: {twin_pref}")
+
+    # ── ФОРМЫ ОБЪЯВЛЕНИЯ ОБРАБОТЧИКА ───────────────────────────────────────
+    #
+    # `has_handler` кормит освобождение `RPC-НЕ-РЕАЛИЗОВАН`: тип запроса, чьего
+    # обработчика распознаватель не увидел, объявляется непринятым, и все его поля
+    # перестают меряться. Значит форма, которой распознаватель не знает, даёт не
+    # находку и не закрытие, а ЛОЖНОЕ ОСВОБОЖДЕНИЕ — самый дорогой из трёх
+    # исходов, потому что выглядит он как «не находка».
+    #
+    # Форм в дереве три, а знал распознаватель одну (замер 2026-09-06: четыре типа
+    # запроса в пяти доменах объявлены остальными двумя).
+    handler_src = [("h.go", """
+func (h *Handler) Get(ctx context.Context, req *iamv1.GetUserRequest) (*iamv1.User, error) {
+func (h *Handler) WhoAmI(ctx context.Context, _ *iamv1.WhoAmIRequest) (*iamv1.WhoAmIResponse, error) {
+func (h *Handler) List(
+	ctx context.Context, req *computev1.ListQuotasRequest,
+) (*computev1.ListQuotasResponse, error) {
+""")]
+    # Законный близнец ложной формы: тип-ассершен карты прав. Он называет тот же
+    # тип запроса и обработчиком НЕ является — authz резолвит область по ЧУЖОМУ
+    # полю и о чтении остальных не говорит ничего.
+    assertion_src = [("authz.go", '\tif r, ok := req.(*vpcv1.DeleteSubnetRequest); ok {\n')]
+
+    # (11a) ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: каноническая форма по-прежнему находится.
+    #       Без него распознаватель, отвечающий «нет» на всё, прошёл бы отрицания.
+    check("каноническая форма объявления обработчика находится",
+          has_handler("GetUserRequest", handler_src))
+    # (13) КРАСНОЕ до фикса: параметр запроса назван `_` — законная форма для
+    #      запроса без полей, и именно её несут WhoAmI и List квот.
+    check("обработчик с параметром запроса `_` находится",
+          has_handler("WhoAmIRequest", handler_src))
+    # (14) КРАСНОЕ до фикса: сигнатура перенесена на строки — после типа стоит
+    #      запятая, а не `)`.
+    check("обработчик с перенесённой на строки сигнатурой находится",
+          has_handler("ListQuotasRequest", handler_src))
+    # (15) МОЛЧАНИЕ: тип-ассершен карты прав обработчиком не считается.
+    check("тип-ассершен карты прав обработчиком не считается",
+          not has_handler("DeleteSubnetRequest", assertion_src))
+    # (16) МОЛЧАНИЕ: тип запроса, которого в источниках нет, не находится.
+    check("не объявленный в источниках тип запроса не находится",
+          not has_handler("CreateNetworkRequest", handler_src))
+
+    # ── КАТАЛОГ ПРАВ — ЧИТАТЕЛЬ, ПРИПИСЫВАЕМЫЙ ТОЧНО ────────────────────────
+    #
+    # Третья форма записи читателя, о которой распознаватель не знал вовсе. Край
+    # читает поле запроса РЕФЛЕКСИЕЙ ПО ИМЕНИ, взяв имя из каталога прав
+    # (`scope_extractor.from_request_field`), и это настоящий читатель — им
+    # выбирается объект, на котором стоит проверка доступа.
+    #
+    # ОТЛИЧИЕ ОТ СЛАБОЙ ОСНОВЫ — НЕСУЩЕЕ. У строкового литерала получателя нет,
+    # поэтому приписать его сообщению нечем. У записи каталога получатель ЕСТЬ:
+    # запись ключуется FQN метода, а тип запроса метода объявлен в том же .proto.
+    # Омонимия здесь не закрывает ничего by construction — ровно как у чтения с
+    # резолвленным типом.
+    #
+    # ЦЕНА НЕЗНАНИЯ ЭТОЙ ФОРМЫ: поле, чей ЕДИНСТВЕННЫЙ читатель — каталог, было
+    # бы ЛОЖНОЙ НАХОДКОЙ; поле, чьё имя вдобавок встречается строкой у соседнего
+    # сообщения, уезжало в слабую корзину, то есть измерялось совпадением имён.
+    # Второе и наблюдалось: `BatchAuthorizeCheckRequest.scope_id` (issue #2115).
+    cat_src = """
+syntax = "proto3";
+package kacho.cloud.fixture.v1;
+
+service ScopedService {
+  rpc BatchCheck (BatchScopedRequest) returns (BatchScopedResponse);
+  rpc Peer (PeerScopedRequest) returns (PeerScopedResponse);
+}
+
+service InternalScopedService {
+  rpc Sweep (SweepScopedRequest) returns (SweepScopedResponse);
+}
+
+message Anchor { string project_id = 1; }
+message BatchScopedRequest {
+  string scope_id = 1;
+  Anchor anchor = 2;
+}
+message BatchScopedResponse { string ok = 1; }
+message PeerScopedRequest { string scope_id = 1; }
+message PeerScopedResponse { string ok = 1; }
+message SweepScopedRequest { string scope_id = 1; }
+message SweepScopedResponse { string ok = 1; }
+"""
+    with tempfile.TemporaryDirectory() as d:
+        cat_path = os.path.join(d, "fixture.proto")
+        open(cat_path, "w", encoding="utf-8").write(cat_src)
+        cat_svcs, cat_raw, cat_scopes = parse_proto(cat_path)
+        cat_pkg = proto_package(cat_path)
+    cat_msgs = resolve_types(cat_raw, cat_scopes)
+
+    entries = [
+        # Предмет: запись называет ПОЛЕ у ЭТОГО метода.
+        {"fqn": "kacho.cloud.fixture.v1.ScopedService/BatchCheck",
+         "scope_extractor": {"object_type": "project",
+                             "from_request_field": "scope_id"}},
+        # Законный близнец №1 — ТО ЖЕ ИМЯ ПОЛЯ у ДРУГОГО метода, чья запись
+        # называет подстановочный знак. Приписаться `PeerScopedRequest` оно не
+        # вправе: иначе основа снова мерила бы совпадение имён.
+        {"fqn": "kacho.cloud.fixture.v1.ScopedService/Peer",
+         "scope_extractor": {"from_request_field": "*"}},
+        # Законный близнец №2 — та же пара «сервис/метод» в ЧУЖОМ пакете, и она
+        # называет ДРУГОЕ поле здешнего запроса. Назови она то же самое, что и
+        # предмет, — близнец стал бы неотличим от него, и атрибуция по хвосту
+        # «Сервис/Метод» прошла бы проверку молча.
+        {"fqn": "kacho.cloud.other.v1.ScopedService/BatchCheck",
+         "scope_extractor": {"from_request_field": "anchor"}},
+        # Законный близнец №3 — Internal-сервис: он вне публичной поверхности,
+        # которую мерит предикат, и закрывать в ней ничего не может.
+        {"fqn": "kacho.cloud.fixture.v1.InternalScopedService/Sweep",
+         "scope_extractor": {"from_request_field": "scope_id"}},
+    ]
+    cat_pairs, cat_unresolved = catalog_readers(entries, cat_pkg, cat_svcs, cat_msgs)
+
+    # (17) КРАСНОЕ до фикса: поле, названное каталогом у ЭТОГО метода, закрыто.
+    check("поле, названное каталогом у этого метода, приписано его запросу",
+          ("BatchScopedRequest", "scope_id") in cat_pairs,
+          f"пары: {sorted(cat_pairs)}")
+    # (18) МОЛЧАНИЕ, законный близнец: то же имя у другого метода не закрывается.
+    check("то же имя поля у другого метода каталогом не закрывается",
+          ("PeerScopedRequest", "scope_id") not in cat_pairs,
+          f"пары: {sorted(cat_pairs)}")
+    # (19) МОЛЧАНИЕ: запись чужого пакета не закрывает ничего — атрибуция идёт по
+    #      FQN целиком, а не по хвосту «сервис/метод».
+    check("запись каталога из чужого пакета не закрывает ничего",
+          ("BatchScopedRequest", "anchor") not in cat_pairs,
+          f"пары: {sorted(cat_pairs)}")
+    # (19а) МОЛЧАНИЕ: Internal-сервис вне публичной поверхности предиката (ban #6),
+    #       и его запись каталога закрыть в ней ничего не может.
+    check("запись каталога Internal-сервиса не закрывает ничего",
+          ("SweepScopedRequest", "scope_id") not in cat_pairs,
+          f"пары: {sorted(cat_pairs)}")
+    # (20) КРАСНОЕ до фикса: составной путь резолвится ПО ЗВЕНЬЯМ — читаются оба.
+    dotted = [{"fqn": "kacho.cloud.fixture.v1.ScopedService/BatchCheck",
+               "scope_extractor": {"from_request_field": "anchor.project_id"}}]
+    dot_pairs, _dot_unres = catalog_readers(dotted, cat_pkg, cat_svcs, cat_msgs)
+    check("составной путь каталога резолвится по звеньям",
+          ("BatchScopedRequest", "anchor") in dot_pairs and
+          ("Anchor", "project_id") in dot_pairs,
+          f"пары: {sorted(dot_pairs)}")
+    # (21) МОЛЧАНИЕ: подстановочный знак полем не является и не закрывает ничего.
+    star_pairs, star_unres = catalog_readers(
+        [{"fqn": "kacho.cloud.fixture.v1.ScopedService/BatchCheck",
+          "scope_extractor": {"from_request_field": "*"}}],
+        cat_pkg, cat_svcs, cat_msgs)
+    check("подстановочный знак каталога не закрывает ни одного поля",
+          not star_pairs and not star_unres,
+          f"пары: {sorted(star_pairs)}; не резолвится: {star_unres}")
+    # (22) КРАСНОЕ до фикса: имя, которого у запроса НЕТ, названо отдельно, а не
+    #      проглочено. Такая запись означает, что край читает пустоту и область
+    #      проверки молча становится подстановочной.
+    ghost_pairs, ghost_unres = catalog_readers(
+        [{"fqn": "kacho.cloud.fixture.v1.ScopedService/BatchCheck",
+          "scope_extractor": {"from_request_field": "no_such_field"}}],
+        cat_pkg, cat_svcs, cat_msgs)
+    check("имя, которого у запроса нет, названо отдельной строкой",
+          not ghost_pairs and len(ghost_unres) == 1,
+          f"пары: {sorted(ghost_pairs)}; не резолвится: {ghost_unres}")
+    # (23) МОЛЧАНИЕ: пустой каталог — ОТКАЗ предпосылки, а не «чисто».
+    with tempfile.TemporaryDirectory() as d:
+        empty = os.path.join(d, "empty.json")
+        open(empty, "w", encoding="utf-8").write("[]")
+        try:
+            load_permission_catalog(empty)
+            empty_refused = False
+        except (RuntimeError, OSError, ValueError):
+            empty_refused = True
+    check("пустой каталог прав — отказ предпосылки, а не чистый обход",
+          empty_refused)
+
     print(f"проверок исполнено: {checks}; разобрано фикстур: 1; "
           f"сообщений в фикстуре: {len(msgs)}; ключей индекса-фикстуры: "
           f"{len(idx['reads'])}")
@@ -738,6 +1167,14 @@ def main():
     except (RuntimeError, OSError, ValueError) as e:
         print(f"ПРЕДПОСЫЛКА НЕ ВЫПОЛНЕНА: {e}", file=sys.stderr)
         return 2
+    # КАТАЛОГ ПРАВ — ВТОРОЙ ВХОД ПРЕДИКАТА, и его отсутствие есть отказ, а не
+    # факт о полях: по нему край читает поле запроса рефлексией, и без него
+    # третья основа закрывала бы ноль полей МОЛЧА.
+    try:
+        catalog = load_permission_catalog()
+    except (RuntimeError, OSError, ValueError) as e:
+        print(f"ПРЕДПОСЫЛКА НЕ ВЫПОЛНЕНА: {e}", file=sys.stderr)
+        return 2
     if index.get("errors"):
         for e in index["errors"]:
             print(f"ПРЕДПОСЫЛКА НЕ ВЫПОЛНЕНА (пакет не протипизирован, его чтения "
@@ -749,10 +1186,24 @@ def main():
         print("ПРЕДПОСЫЛКА НЕ ВЫПОЛНЕНА: индекс чтений пуст — прод-код не прочитан",
               file=sys.stderr)
         return 2
+    # ОБЪЁМ ОСМОТРЕННОГО ПЕЧАТАЕТСЯ ПОРОЗНЬ ПО МОДУЛЯМ, и пустой обход ЛЮБОГО из
+    # них — отказ. Дерево несёт больше одного Go-модуля; пока перепись знала одно
+    # суммарное число, обход одного дерева был неотличим от обхода обоих —
+    # суммарное росло от чего угодно.
+    idx_mods = index.get("modules") or []
+    empty_mods = [m for m in idx_mods if not m.get("packages")]
+    if empty_mods:
+        for m in empty_mods:
+            print(f"ПРЕДПОСЫЛКА НЕ ВЫПОЛНЕНА: модуль {m.get('path')!r} "
+                  f"({m.get('dir')}) обойдён по {m.get('patterns')} и не дал ни "
+                  f"одного пакета — его чтения НЕВИДИМЫ", file=sys.stderr)
+        return 2
 
     protos_read = svc_public = rpc_public = 0
     msgs_expanded = fields_seen = 0
     closed_typed = 0
+    closed_catalog = 0
+    catalog_unresolved = []
     without_gen = []
     premise_failures = []
     findings = []
@@ -765,12 +1216,16 @@ def main():
         if not proto_paths:
             continue
         services, raw_messages, scopes = {}, {}, {}
+        packages = set()
         for p in proto_paths:
             protos_read += 1
             s, m, sc = parse_proto(p)
             services.update(s)
             raw_messages.update(m)
             scopes.update(sc)
+            pkg = proto_package(p)
+            if pkg:
+                packages.add(pkg)
         # Резолв типов — ПОСЛЕ слияния всех файлов домена: поле одного файла
         # ссылается на сообщение другого, и по одному файлу такая ссылка не
         # резолвится (обход достижимости остановился бы на границе файла).
@@ -800,14 +1255,31 @@ def main():
 
         getters, declared = load_getters(domain)
         sources = prod_sources(index, domain)
-        if not sources:
+        own_pkgs = own_tree_packages(index, domain)
+        if not sources or not own_pkgs:
             # ПРЕДПОСЫЛКА НЕ ВЫПОЛНЕНА: дерево прод-кода этого домена не найдено, а
             # значит «читателя нет» здесь означает «читать было негде». Молчать нельзя
             # и находки этого домена печатать нельзя — они были бы утверждением о
             # непрочитанном.
-            premise_failures.append(domain)
+            #
+            # СОБСТВЕННОЕ ДЕРЕВО ПРОВЕРЯЕТСЯ ОТДЕЛЬНО ОТ `sources`, и без этого
+            # предпосылка не срабатывала ни разу: `sources` берёт ещё край и общий
+            # `internal/`, поэтому оставалась непустой при ПОЛНОСТЬЮ исчезнувшем
+            # дереве службы. Ровно так 268 полей домена iam и уехали в полосу
+            # «RPC-НЕ-РЕАЛИЗОВАН»: их обработчики стали невидимы, а предикат об
+            # этом не сказал ничего.
+            premise_failures.append((domain, prod_pkg_prefixes(domain)[0],
+                                     len(sources), len(own_pkgs)))
             continue
         typed = typed_readers(index, domain)
+        # ТРЕТЬЯ ОСНОВА — чтение краем по каталогу прав; атрибуция точная (FQN
+        # метода → его тип запроса), поэтому она стоит рядом с сильной, а не
+        # рядом со слабой.
+        cat_pairs = set()
+        for pkg in sorted(packages):
+            pp, unres = catalog_readers(catalog, pkg, services, messages)
+            cat_pairs |= pp
+            catalog_unresolved.extend(unres)
         # Две причины отсутствия читателя, которые находкой НЕ являются, —
         # вычисляются по дереву, а не предполагаются (см. godoc обеих функций).
         roots_impl = [r for r in set(roots) if has_handler(r, sources)]
@@ -841,6 +1313,16 @@ def main():
                     # Сильная основа: чтение у ЭТОГО сообщения, тип получателя
                     # резолвлен. Омонимия ничего здесь не закрывает.
                     closed_typed += 1
+                    continue
+                if (name, fname) in cat_pairs:
+                    # ТОЖЕ СИЛЬНАЯ ОСНОВА: поле названо каталогом прав у ЭТОГО
+                    # метода, и край читает его рефлексией. Получатель у записи
+                    # есть — FQN метода, — поэтому омонимия не закрывает ничего
+                    # и здесь. Печатается отдельной строкой переписи, а не
+                    # сливается с чтением по типу: «резолвлен тип получателя»
+                    # про эту форму неверно, а перепись обязана называть то, что
+                    # действительно измерено.
+                    closed_catalog += 1
                     continue
                 # СТРУКТУРНЫЕ ОСВОБОЖДЕНИЯ — ПЕРЕД слабой основой, и порядок здесь
                 # содержателен. Оба вычислены по ДЕРЕВУ (есть ли обработчик у типа
@@ -880,6 +1362,10 @@ def main():
     print(f"протипизировано пакетов прод-кода: {len(idx_pkgs)}; файлов: {idx_files} "
           f"(пакетов без непроверочных файлов: "
           f"{len(index.get('skipped_no_prod_files') or [])})")
+    print(f"обойдено Go-модулей: {len(idx_mods)}")
+    for m in idx_mods:
+        print(f"    модуль {m.get('path')} ({m.get('dir')}, {m.get('patterns')}): "
+              f"пакетов {m.get('packages')}, файлов {m.get('files')}")
     print(f"раскрыто сообщений публичного запроса: {msgs_expanded} "
           f"(без сгенерированного кода, НЕ осмотрены: {len(without_gen)})")
     for name in without_gen:
@@ -888,12 +1374,27 @@ def main():
         # слепую зону.
         print(f"    НЕ ОСМОТРЕНО (нет .pb.go): {name}")
     print(f"осмотрено полей: {fields_seen}")
-    for d in premise_failures:
-        print(f"ПРЕДПОСЫЛКА НЕ ВЫПОЛНЕНА: у домена {d!r} не найдено ни одного файла "
-              f"прод-кода в {prod_trees(d)} — домен НЕ измерен (сопоставь его каталог "
-              f"сервиса в DOMAIN_SERVICE_DIR)")
+    for d, pref, nsrc, nown in premise_failures:
+        print(f"ПРЕДПОСЫЛКА НЕ ВЫПОЛНЕНА: у домена {d!r} прочитано файлов прод-кода "
+              f"{nsrc}, пакетов СОБСТВЕННОГО дерева {nown} (искали под {pref!r}, "
+              f"деревья {prod_trees(d)}) — домен НЕ измерен. Либо каталог сервиса "
+              f"не сопоставлен домену в DOMAIN_SERVICE_DIR, либо служба вынесена в "
+              f"свой Go-модуль, а обход в него не спустился")
     print(f"закрыто ЧТЕНИЕМ У ЭТОГО СООБЩЕНИЯ (тип получателя резолвлен): "
           f"{closed_typed} из {fields_seen}")
+    print(f"записей каталога прав прочитано: {len(catalog)}")
+    print(f"закрыто КАТАЛОГОМ ПРАВ (поле названо у ЭТОГО метода): "
+          f"{closed_catalog} из {fields_seen}")
+    # Запись каталога, чьё имя поля у запроса НЕ объявлено, — не «поле закрыто»
+    # и не молчание: край читает по ней пустоту, и объект проверки молча
+    # становится подстановочным. Сюда же — запись, чьё сообщение этим доменом не
+    # разобрано: судить её нечем, и молчать об этом тоже нельзя. Называется
+    # поимённо; ноль печатается тоже, иначе пустая строка была бы неотличима от
+    # неисполненной проверки.
+    print(f"запись каталога без предмета (нет поля либо сообщение не разобрано): "
+          f"{len(catalog_unresolved)}")
+    for row in catalog_unresolved:
+        print(f"    {row}")
     for label in ("RPC-НЕ-РЕАЛИЗОВАН", "ПРЕДОК-ОТВЕРГАЕТСЯ"):
         rows = buckets[label]
         print(f"НЕ находка ({label}): {len(rows)}")

@@ -113,11 +113,12 @@ func TestTrustedForwardersSANsCannotBeMutatedThroughTheReturnedSlice(t *testing.
 // принимать ли переданные заголовки. Собранная вручную пара позволяет и потерять
 // звено, и переставить их местами; собранная конструктором — нет.
 func TestPrincipalExtractChainKeepsThePairInOrder(t *testing.T) {
+	d := NewTrustDomain("kacho.cloud")
 	f := NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway")
-	if got := len(PrincipalExtractUnary(f)); got != 2 {
+	if got := len(PrincipalExtractUnary(d, f)); got != 2 {
 		t.Fatalf("PrincipalExtractUnary returned %d interceptor(s), want the pair (2)", got)
 	}
-	if got := len(PrincipalExtractStream(f)); got != 2 {
+	if got := len(PrincipalExtractStream(d, f)); got != 2 {
 		t.Fatalf("PrincipalExtractStream returned %d interceptor(s), want the pair (2)", got)
 	}
 }

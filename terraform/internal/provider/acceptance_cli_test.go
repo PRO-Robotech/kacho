@@ -38,6 +38,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
@@ -45,9 +46,11 @@ import (
 
 // accProviderNamespace — пространство имён провайдера в адресе source.
 //
-// Значение не выдумано: его объявляют required_providers модулей и примеров, и на него же
-// нацелен dev_overrides конвейера. Расхождение ловит проба ниже.
-const accProviderNamespace = "PRO-Robotech"
+// Значение не выдумано и не вписано: его объявляют required_providers модулей и примеров,
+// на него же нацелен dev_overrides конвейера, и его же сверяет провайдер у источника
+// переезда состояния. Берётся ИЗ прод-объявления (iam_type_names.go), чтобы у одного
+// предмета не стало двух мест; расхождение прод-объявления с деревом ловит проба ниже.
+var accProviderNamespace = strings.SplitN(providerSourceAddress, "/", 2)[0]
 
 // accCLIPath — исполнитель цикла terraform, найденный один раз на пакет.
 // Пустая строка означает «не найден» и приводит к отказу ПРИЁМОЧНЫХ проб; юнитовые пробы
@@ -74,7 +77,15 @@ func TestMain(m *testing.M) {
 		}
 	}
 
-	os.Exit(m.Run())
+	code := m.Run()
+
+	// Каталог собранного провайдера живёт дольше отдельной пробы (сборка одна на прогон
+	// пакета), поэтому убирается здесь, а не через t.Cleanup.
+	if accPluginDir != "" {
+		_ = os.RemoveAll(accPluginDir)
+	}
+
+	os.Exit(code)
 }
 
 // accRequireCLI — отказ с названным предметом вместо чужого отказа про ключ подписи.

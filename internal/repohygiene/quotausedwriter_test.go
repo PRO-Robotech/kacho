@@ -167,6 +167,22 @@ var quotaTriggerDefiningFiles = map[string][]string{
 		// потому что отображение «вид → таблица» он не выписывает, а читает у
 		// триггеров. Поэтому и записей здесь пять, а не одна: дефект был общим,
 		// и лечится он у каждого владельца своей применённой миграцией.
+		// Объявленное отсутствие домена величин доезжает до пути запроса
+		// (`PRO-Robotech/kacho#2216`): при `not-deployed` предикат потолка снимается
+		// с самого списывающего оператора, и потому запись `used` живёт ещё в одном
+		// файле у каждого из пятерых. Предикат снять было НЕЛЬЗЯ у общего
+		// производителя отказа — он рендерится одним шаблоном шести владельцам,
+		// включая службу доступа, у которой курсора синхронизации нет и быть не
+		// должно; списывающий же оператор шаблоном не порождается и свой у каждого.
+		//
+		// Записи самоистекают тем же механизмом, что и остальные: перестанет файл
+		// писать `used` — гейт назовёт запись находкой.
+		"services/vpc/internal/migrations/20260908041500_quota_absent_authority_charges_unconditionally.sql",
+		"services/storage/internal/migrations/20260908041500_quota_absent_authority_charges_unconditionally.sql",
+		"services/nlb/internal/migrations/20260908041500_quota_absent_authority_charges_unconditionally.sql",
+		"services/registry/internal/migrations/20260908041500_quota_absent_authority_charges_unconditionally.sql",
+		"services/compute/internal/migrations/20260908041500_quota_absent_authority_charges_unconditionally.sql",
+
 		"services/vpc/internal/migrations/0042_quota_usage_seeded_from_rows.sql",
 		"services/storage/internal/migrations/0024_quota_usage_seeded_from_rows.sql",
 		"services/nlb/internal/migrations/0033_quota_usage_seeded_from_rows.sql",

@@ -54,7 +54,7 @@ command -v python3 >/dev/null 2>&1 || {
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/bin" "$TMP/rendered"
 
-NAME="KACHO_IAM_HOOK_TOKEN"
+NAME="KANAME_HOOK_TOKEN"
 HEADER="X-Kacho-Hook-Token"
 RENDERED="$TMP/rendered/kratos.yaml"
 # Величина той же формы, что чеканит посев стенда: 48 знаков, ни одного,
@@ -122,7 +122,7 @@ if sender:
         "spec": {
             "initContainers": [{
                 "name": "identity-config-render",
-                "env": [{"name": "KACHO_IDENTITY_SUBSTITUTED_VARS", "value": owned}],
+                "env": [{"name": "KANAME_IDENTITY_SUBSTITUTED_VARS", "value": owned}],
             }],
             "containers": [{
                 "name": "kratos",
@@ -132,13 +132,13 @@ if sender:
         },
     })
 items.append({
-    "metadata": {"name": "kacho-iam-0"},
+    "metadata": {"name": "kaname-0"},
     "status": {"phase": "Running"},
     "spec": {"initContainers": [], "containers": [{
         "name": "iam",
         "volumeMounts": [],
-        "env": [{"name": "KACHO_IAM_HOOK_TOKEN", "valueFrom": {
-            "secretKeyRef": {"name": "kacho-iam-hook-token", "key": "token"}}}],
+        "env": [{"name": "KANAME_HOOK_TOKEN", "valueFrom": {
+            "secretKeyRef": {"name": "kaname-hook-token", "key": "token"}}}],
     }]},
 })
 json.dump({"items": items}, open(out, "w"))
@@ -166,7 +166,7 @@ run_case() { # <имя> <файл-подов> <ожидание rc>
   CASE_OUT="$(env PATH="$TMP/bin:$PATH" \
     STUB_PODS="$2" STUB_SECRET_B64="$(printf %s "$TOKEN" | base64 | tr -d '\n')" \
     KACHO_IDENTITY_RENDERED_PATH="$RENDERED" \
-    KACHO_IAM_HOOK_TOKEN="$TOKEN" \
+    KANAME_HOOK_TOKEN="$TOKEN" \
     bash "$SCRIPT" kacho 2>&1)"
   CASE_RC=$?
   if [ "$CASE_RC" != "$3" ]; then

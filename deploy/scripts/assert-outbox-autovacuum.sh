@@ -17,7 +17,7 @@
 # статистика устаревшая.
 #
 # ЭТО ВЕРНО ДЛЯ ОЧЕРЕДЕЙ С ДОСТАВКОЙ, И НЕ ДЛЯ ВСЕХ ТАБЛИЦ НИЖЕ.
-# `kacho_iam.fga_outbox` доставки больше не несёт: дренаж снят вместе с внешним
+# `kaname.fga_outbox` доставки больше не несёт: дренаж снят вместе с внешним
 # движком прав, величины `sent_at`/`attempt_count`/`last_error` сняты миграцией
 # (kacho#917), и клейма у него нет — строку читает триггер проекции в той же
 # транзакции, что и вставку. Настройки миграции 0064 на таблице ОСТАЮТСЯ (снять их
@@ -84,13 +84,13 @@ MAX_NAPTIME_S="${MAX_NAPTIME_S:-5}"
 # Последняя колонка — известный и НАЗВАННЫЙ пробел, а не молчание: обе таблицы iam
 # так же append-and-retain, но своей миграции с per-table порогом у них нет.
 # Клеймится из этих двух только `resource_reconcile_outbox`; `subject_change_outbox`
-# — журнал, который край читает курсором, и признака доставки у него нет вовсе. Это чинится в kacho-iam (миграция вида 0064), а
+# — журнал, который край читает курсором, и признака доставки у него нет вовсе. Это чинится в kaname (миграция вида 0064), а
 # не здесь; гейт их печатает, чтобы пробел был виден, и НЕ валит на них — иначе
 # гейт этой правки был бы красным с момента посадки по чужой причине.
 INSTANCES="
 pg-vpc|kacho_vpc|kacho_vpc.fga_register_outbox|
 pg-compute|kacho_compute|public.compute_fga_register_outbox|
-pg-iam|kacho_iam|kacho_iam.fga_outbox|kacho_iam.subject_change_outbox,kacho_iam.resource_reconcile_outbox
+pg-iam|kaname|kaname.fga_outbox|kaname.subject_change_outbox,kaname.resource_reconcile_outbox
 pg-nlb|kacho_nlb|kacho_nlb.fga_register_outbox|
 pg-storage|kacho_storage|kacho_storage.fga_register_outbox|
 pg-registry|kacho_registry|kacho_registry.registry_outbox|
@@ -202,7 +202,7 @@ while IFS='|' read -r alias db tuned untuned; do
   for t in ${untuned//,/ }; do
     [ -z "$t" ] && continue
     warn "$alias: $t клеймится тем же дренажем, но своей табличной настройки НЕ несёт"
-    echo "       (известный пробел; чинится миграцией в kacho-iam, здесь не валит)"
+    echo "       (известный пробел; чинится миграцией в kaname, здесь не валит)"
   done
 done <<EOF
 $(printf '%s\n' "$INSTANCES" | grep -v '^[[:space:]]*$')

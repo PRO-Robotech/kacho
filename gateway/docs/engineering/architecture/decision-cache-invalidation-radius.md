@@ -39,7 +39,7 @@
 (`services/iam/internal/domain/access_binding.go:143` — отказ под условием
 `b.SubjectID == "*" && !(b.System && b.SubjectType == "user")`), и контракт называет её
 «единственный субъект, которого нельзя ни назвать, ни отозвать поимённо»
-(`proto/kacho/cloud/iam/v1/access_binding.proto`).
+(`proto/kaname/cloud/iam/v1/access_binding.proto`).
 
 ## Замер, на котором решение стоит
 

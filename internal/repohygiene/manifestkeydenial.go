@@ -193,9 +193,9 @@ func AuditManifestKeyDenial(opts ManifestKeyDenialOptions, log io.Writer) ([]Man
 	sort.Strings(manifests)
 
 	for _, rel := range manifests {
-		// #nosec G304 -- путь склеен из корня осматриваемого дерева и ОТНОСИТЕЛЬНОГО
-		// имени, пришедшего из обхода этого же дерева; подставить посторонний файл
-		// извне нечем.
+		// Путь склеен из корня осматриваемого дерева и ОТНОСИТЕЛЬНОГО имени,
+		// пришедшего из обхода этого же дерева; подставить посторонний файл извне
+		// нечем.
 		raw, rderr := os.ReadFile(filepath.Join(opts.Root, filepath.FromSlash(rel)))
 		if rderr != nil {
 			// Файл, названный обходом и не прочитанный, — НАХОДКА, а не пропуск:
@@ -218,9 +218,9 @@ func AuditManifestKeyDenial(opts ManifestKeyDenialOptions, log io.Writer) ([]Man
 	}
 
 	for _, rel := range docs {
-		// #nosec G304 -- путь склеен из корня осматриваемого дерева и ОТНОСИТЕЛЬНОГО
-		// имени, пришедшего из обхода этого же дерева; подставить посторонний файл
-		// извне нечем.
+		// Путь склеен из корня осматриваемого дерева и ОТНОСИТЕЛЬНОГО имени,
+		// пришедшего из обхода этого же дерева; подставить посторонний файл извне
+		// нечем.
 		raw, rderr := os.ReadFile(filepath.Join(opts.Root, filepath.FromSlash(rel)))
 		if rderr != nil {
 			return nil, census, rderr

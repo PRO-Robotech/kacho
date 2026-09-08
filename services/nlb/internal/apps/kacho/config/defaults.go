@@ -23,6 +23,16 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("mode", "production")
 
 	// Logger
+	// Объявление домена величин. Умолчание — ПУСТАЯ строка, то есть «оператор не
+	// выбрал», и посадка на ней не поднимается: у ручки ровно два законных
+	// значения, и незаданное среди них не значится.
+	//
+	// Ключ объявлен здесь ещё и затем, чтобы его видел ENV-override: viper
+	// подхватывает переменную окружения только для ИЗВЕСТНОГО ключа, поэтому без
+	// SetDefault `KACHO_NLB_QUOTA__AUTHORITY` не доехал бы до поля ВОВСЕ — ручка
+	// принималась бы профилем и не читалась процессом.
+	v.SetDefault("quota.authority", "")
+
 	v.SetDefault("logger.level", "DEBUG")
 
 	// API-server
@@ -126,6 +136,18 @@ func RegisterDefaults(v *viper.Viper) {
 	// процесс с пустым кругом; в боевом НЕ действует.
 	v.SetDefault("authz.trust-any-forwarder", false)
 	_ = v.BindEnv("authz.trust-any-forwarder", "KACHO_NLB_AUTHZ__TRUST_ANY_FORWARDER")
+
+	// trust-domain — домен доверия установки. Пусто по умолчанию, и это самое
+	// строгое прочтение: по необъявленному домену не опознаётся ни один
+	// предъявитель, а посадка на нём не принимается конструктором дескриптора.
+	//
+	// Привязка ЯВНАЯ по той же причине, что у соседки: viper связывает с
+	// переменной окружения только ключи, которые он уже видел, а имя ключа
+	// несёт дефис — общий заменитель приставки его не покрывает. Без этой
+	// строки имя переменной в тексте отказа было бы обещанием возможности,
+	// которой нет.
+	v.SetDefault("authz.trust-domain", "")
+	_ = v.BindEnv("authz.trust-domain", "KACHO_NLB_AUTHZ__TRUST_DOMAIN")
 
 	// FGA register-drainer (Вариант A).: default-on — drainer
 	// is an in-process goroutine; without it created resources never get an

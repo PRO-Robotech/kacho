@@ -29,7 +29,7 @@ erDiagram
 ```
 КЛИЕНТСКАЯ                            СИСТЕМНАЯ
 ───────────                            ─────────
-Account  ─ kacho-iam                   (no parent)
+Account  ─ kaname                   (no parent)
    └─ Project ◄────────┐               Zone (домен kacho-geo, admin)
         └─ Network     │                   └─ AddressPool (admin, kacho-vpc)
             └─ Subnet  │                        │
@@ -39,7 +39,7 @@ Account  ─ kacho-iam                   (no parent)
             external_ipv4.address_pool_id
 ```
 
-- **Клиентская** — `kacho-iam` (Account/Project) + публичная VPC API.
+- **Клиентская** — `kaname` (Account/Project) + публичная VPC API.
 - **Системная** — admin-managed. AddressPool не принадлежит клиенту, но
   external IP клиента берется оттуда. Region/Zone — отдельный leaf-домен
   `kacho-geo`; в kacho-vpc `zone_id` хранится как `TEXT`-id без FK.

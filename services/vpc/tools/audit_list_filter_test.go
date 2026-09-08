@@ -76,7 +76,7 @@ func runGate(t *testing.T, root string, args ...string) (string, error) {
 var treesRead = []string{anchorDir, "internal/handler", "internal/check"}
 
 // sharedTreesRead are the directories under the MODULE root the gate parses. The
-// port through which every consumer service asks kacho-iam the authorization
+// port through which every consumer service asks kaname the authorization
 // question is shared foundation, not service code — so a copy holding only the
 // service would make the derivation unresolvable, and every injection below would
 // fail on that instead of on its own subject.
@@ -370,7 +370,7 @@ func TestAuditListFilter_DerivedBanRefusesAPageTakenFromAnEnumeration(t *testing
 		wantSource string
 	}{
 		{
-			// vpc's own client to kacho-iam: "which networks may this subject see"
+			// vpc's own client to kaname: "which networks may this subject see"
 			// written one method along from "may this subject see this network".
 			name: "own iam client",
 			widen: func(t *testing.T, root string) {
@@ -384,7 +384,7 @@ func TestAuditListFilter_DerivedBanRefusesAPageTakenFromAnEnumeration(t *testing
 			wantSource: "internal/check.IAMCheckClient",
 		},
 		{
-			// the SHARED port to kacho-iam's AuthorizeService — the surface that
+			// the SHARED port to kaname's AuthorizeService — the surface that
 			// already carries ListObjects on the iam side, so this is the shortest
 			// path from "narrow the page" to "enumerate the universe".
 			name: "shared authorize port",

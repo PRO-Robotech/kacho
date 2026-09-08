@@ -38,8 +38,8 @@ func TestGateway_RedesignReg_PublicVsInternal(t *testing.T) {
 		"/kacho.cloud.vpc.v1.NetworkService/AddCidrBlocks",
 		"/kacho.cloud.vpc.v1.NetworkService/RemoveCidrBlocks",
 		// iam AccessBindingService unified List + soft-revoke
-		"/kacho.cloud.iam.v1.AccessBindingService/List",
-		"/kacho.cloud.iam.v1.AccessBindingService/Revoke",
+		"/kaname.cloud.iam.v1.AccessBindingService/List",
+		"/kaname.cloud.iam.v1.AccessBindingService/Revoke",
 	}
 	for _, m := range publicMethods {
 
@@ -62,7 +62,7 @@ func TestGateway_RedesignReg_PublicVsInternal(t *testing.T) {
 		"/kacho.cloud.storage.v1.InternalImageService/GetInternal",
 		// iam InternalIAMService.GetRoleCompiled (compiled-role read, :9091) —
 		// MUST NEVER reach the external endpoint (task hard requirement).
-		"/kacho.cloud.iam.v1.InternalIAMService/GetRoleCompiled",
+		"/kaname.cloud.iam.v1.InternalIAMService/GetRoleCompiled",
 	}
 	for _, m := range internalMethods {
 

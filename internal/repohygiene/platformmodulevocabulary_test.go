@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/pkg/contractroot"
 	"github.com/PRO-Robotech/kacho/pkg/platformmodules"
 )
 
@@ -31,7 +32,7 @@ func TestPlatformModuleVocabularyMatchesTheTree(t *testing.T) {
 	faults, census := judgePlatformVocabulary(
 		declared,
 		dirNamesUnder(t, filepath.Join(root, "services")),
-		dirNamesUnder(t, filepath.Join(root, "proto", "kacho", "cloud")),
+		contractDomainSet(filepath.Join(root, "proto")),
 		collectModelObjectTypes(t, root),
 	)
 
@@ -60,6 +61,18 @@ func dirNamesUnder(t *testing.T, dir string) map[string]struct{} {
 	if len(out) == 0 {
 		t.Fatalf("в %s не найдено ни одного подкаталога — обход пуст, и вердикт "+
 			"относился бы к непрочитанному", dir)
+	}
+	return out
+}
+
+// contractDomainSet — имена деревьев доменов под ВСЕМИ объявленными корнями.
+// Заменяет обход одного литерального каталога: домен, переехавший под второй
+// корень, выпал бы из словаря, и гейт объявил бы расхождением собственную
+// слепоту, а не находку дерева.
+func contractDomainSet(protoDir string) map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, d := range contractroot.Domains(protoDir) {
+		out[d] = struct{}{}
 	}
 	return out
 }

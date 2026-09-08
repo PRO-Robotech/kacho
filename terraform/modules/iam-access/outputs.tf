@@ -8,17 +8,17 @@ output "role_ids" {
     Ими роль и адресуется дальше — в выдачах других модулей и при импорте: имя роли
     косметическое и меняется свободно, идентификатор неизменяем.
   EOT
-  value       = { for k, r in kacho_iam_role.this : k => r.id }
+  value       = { for k, r in kaname_role.this : k => r.id }
 }
 
 output "group_binding_ids" {
   description = "Идентификаторы групповых выдач по именам групп."
-  value       = { for k, b in kacho_iam_access_binding.group : k => b.id }
+  value       = { for k, b in kaname_access_binding.group : k => b.id }
 }
 
 output "subject_binding_ids" {
   description = "Идентификаторы именных выдач по ключам их записей."
-  value       = { for k, b in kacho_iam_access_binding.subject : k => b.id }
+  value       = { for k, b in kaname_access_binding.subject : k => b.id }
 }
 
 output "subject_grant_justifications" {
@@ -50,7 +50,7 @@ output "binding_status" {
     выдаче: пока доступ не материализовался, отказ у получателя может быть временным.
   EOT
   value = merge(
-    { for k, b in kacho_iam_access_binding.group : "group/${k}" => b.status },
-    { for k, b in kacho_iam_access_binding.subject : "subject/${k}" => b.status },
+    { for k, b in kaname_access_binding.group : "group/${k}" => b.status },
+    { for k, b in kaname_access_binding.subject : "subject/${k}" => b.status },
   )
 }

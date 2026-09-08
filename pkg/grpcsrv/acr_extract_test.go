@@ -63,7 +63,7 @@ func TestTrustedACR_VerifiedPeer_Carried(t *testing.T) {
 	// mTLS-verified peer: ctx carries a verified cert-identity (set by
 	// UnaryCertIdentityExtract on a verified peer). With principal+acr metadata,
 	// the trust-aware extract must expose the acr downstream.
-	ctx := grpcsrv.WithCertIdentity(context.Background(),
+	ctx := grpcsrv.WithCertIdentityIn(context.Background(), grpcsrv.NewTrustDomain("kacho.cloud"),
 		"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway", true)
 	ctx = metadata.NewIncomingContext(ctx, metadata.Pairs(
 		grpcsrv.MDKeyPrincipalType, "user",
@@ -106,7 +106,7 @@ func TestTrustedACR_UnverifiedPeer_Dropped(t *testing.T) {
 		return nil, nil
 	}
 	chained := chainUnary(
-		grpcsrv.UnaryCertIdentityExtract(),
+		grpcsrv.UnaryCertIdentityExtract(grpcsrv.NewTrustDomain("kacho.cloud")),
 		grpcsrv.UnaryTrustedPrincipalExtract(),
 	)
 	_, err := chained(ctx, nil, nil, final)

@@ -40,6 +40,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/pkg/contractroot"
+
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 )
 
@@ -111,7 +113,7 @@ func probePath(tmpl string) string {
 func publicBindingsFromDescriptors() []publicBinding {
 	var out []publicBinding
 	for _, b := range loadedHTTPBindings() {
-		if b.internal || !strings.HasPrefix(b.fqn, "kacho.cloud.") {
+		if b.internal || !underDeclaredRoot(b.fqn) {
 			continue
 		}
 		out = append(out, publicBinding{method: b.method, path: probePath(b.template), fqn: b.fqn})
@@ -214,7 +216,7 @@ func TestPublicBindingProbe_SeesAMissingRouteAsMissing(t *testing.T) {
 	subject := publicBindingsFromDescriptors()
 	var ofDropped, untouched []publicBinding
 	for _, b := range subject {
-		if strings.HasPrefix(b.fqn, "kacho.cloud."+dropped+".") {
+		if belongsToDomain(b.fqn, dropped) {
 			ofDropped = append(ofDropped, b)
 		} else {
 			untouched = append(untouched, b)
@@ -240,4 +242,16 @@ func TestPublicBindingProbe_SeesAMissingRouteAsMissing(t *testing.T) {
 	}
 	t.Logf("контроль: %d биндингов домена %q исчезают без его адреса, %d чужих не задеты",
 		len(ofDropped), dropped, len(untouched))
+}
+
+// belongsToDomain — принадлежит ли полное имя домену, под КАКИМ БЫ корнем тот ни
+// лежал. Литерал одного корня не узнал бы домена второго, и проба «выброшенный
+// домен исчезает из таблицы» зеленела бы, ничего не выбросив.
+func belongsToDomain(fqn, domain string) bool {
+	for _, root := range contractroot.Roots {
+		if strings.HasPrefix(fqn, root+".cloud."+domain+".") {
+			return true
+		}
+	}
+	return false
 }

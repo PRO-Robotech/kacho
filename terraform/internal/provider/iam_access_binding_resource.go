@@ -26,7 +26,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/terraform/internal/client"
 )
 
@@ -100,8 +100,17 @@ var (
 	_ resource.ResourceWithConfigure      = (*accessBindingResource)(nil)
 )
 
-func (r *accessBindingResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_iam_access_binding"
+// MoveState — переезд состояния с прежнего имени типа.
+//
+// Объявление обязательно: одного блока `moved` в настройке оператора НЕДОСТАТОЧНО —
+// исполнитель шлёт запрос переезда целевому типу, и тип, не объявивший поддержки, роняет
+// план. Что именно принимается и почему — iam_type_names.go.
+func (r *accessBindingResource) MoveState(ctx context.Context) []resource.StateMover {
+	return movedFromRetiredTypeName(ctx, r)
+}
+
+func (r *accessBindingResource) Metadata(_ context.Context, _ resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = typeNameIAMAccessBinding
 }
 
 func (r *accessBindingResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -138,7 +147,7 @@ func (r *accessBindingResource) Schema(_ context.Context, _ resource.SchemaReque
 			"**где** (`scope_type` + `scope_id`) и **на что** под этим якорем (`target`).\n\n" +
 			":::warning Право на многих выдаётся ГРУППЕ, а не перечислением субъектов\n" +
 			"Если получателей больше одного — или состав может измениться, — заведите " +
-			"`kacho_iam_group`, выдайте право ей и добавляйте людей и служебные учётки в группу. " +
+			"`kaname_group`, выдайте право ей и добавляйте людей и служебные учётки в группу. " +
 			"Цена перечисления видна на снятии: убрать одного из группы — одна строка членства; " +
 			"убрать одного из `subjects` — снятие выданных кортежей по всем объектам роли, а так " +
 			"как состав неизменяем, ещё и пересоздание самой привязки. Перечисление законно ровно " +
@@ -166,7 +175,7 @@ func (r *accessBindingResource) Schema(_ context.Context, _ resource.SchemaReque
 					"на что именно под ним — отдельно, в `target`."},
 
 			"scope_id": schema.StringAttribute{Required: true, PlanModifiers: replaceStr,
-				MarkdownDescription: "Идентификатор объекта-якоря: `cluster_kacho_root` для " +
+				MarkdownDescription: "Идентификатор объекта-якоря: `cluster_root` для " +
 					"`iam.cluster`, `acc…` для `iam.account`, `prj…` для `iam.project`."},
 
 			// НАБОР, а не список: получатели — множество, порядок между ними ничего не
@@ -789,7 +798,7 @@ func (r *accessBindingResource) Create(ctx context.Context, req resource.CreateR
 	// Адрес для ключа идемпотентности — якорь и роль: имени у привязки нет, а эта пара
 	// вместе с телом запроса описывает выдачу однозначно.
 	id, err := awaitCreate(ctx, r.c, accessBindingsPath, "accessBindingId",
-		"kacho_iam_access_binding",
+		typeNameIAMAccessBinding,
 		plan.ScopeID.ValueString()+"/"+plan.RoleID.ValueString(), body)
 	if err != nil {
 		resp.Diagnostics.AddError("Выдача прав не завершилась", err.Error())

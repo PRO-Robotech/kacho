@@ -55,7 +55,7 @@ type CreateUseCase struct {
 
 	repo    RepoFactory
 	opsRepo OperationsRepo
-	// registrar — sync-primary owner-tuple registrar (kacho-iam RegisterResource),
+	// registrar — sync-primary owner-tuple registrar (kaname RegisterResource),
 	// вызывается BEST-EFFORT после durable commit листенера. nil → только async
 	// register-drainer. См. WithRegistrar.
 	registrar Registrar
@@ -82,7 +82,7 @@ func NewCreateUseCase(
 
 // WithRegistrar подключает sync-primary owner-tuple registrar. После durable
 // commit листенера (+ его `fga_register_outbox`-intent'а) containment-tuple
-// синхронно регистрируется в kacho-iam — grant создателя доступен сразу.
+// синхронно регистрируется в kaname — grant создателя доступен сразу.
 // BEST-EFFORT: сбой sync-Register логируется и глотается (durable intent +
 // drainer — backstop), Operation.done НЕ гейтится (ban #9). Возвращает self.
 func (u *CreateUseCase) WithRegistrar(r Registrar) *CreateUseCase {
@@ -211,7 +211,7 @@ func (u *CreateUseCase) Run(ctx context.Context, req *lbv1.CreateListenerRequest
 	}
 	// Durable commit → op done сразу. Owner-tuple Listener материализуется
 	// eventually-consistent (writer-TX fga_register_outbox intent → register-
-	// drainer → kacho-iam RegisterResource → reconciler backstop); Operation.done
+	// drainer → kaname RegisterResource → reconciler backstop); Operation.done
 	// означает durability ресурса, не видимость owner-tuple в FGA.
 	operations.Run(ctx, u.opsRepo, op.ID, func(workerCtx context.Context) (*anypb.Any, error) {
 		return u.doCreate(workerCtx, in)
@@ -376,11 +376,11 @@ func (u *CreateUseCase) syncRegister(ctx context.Context, intent domain.FGARegis
 }
 
 // listenerRegisterIntent — FGA-register-intent для созданного Listener:
-// project-hierarchy tuple, несущий labels + parent-project, чтобы kacho-iam
+// project-hierarchy tuple, несущий labels + parent-project, чтобы kaname
 // обновил resource_mirror (γ-селекторы matchLabels). source_version штампует
 // outbox-emitter из DB-clock.
 //
-// ONLY PROXY-REGISTRABLE TUPLES BELONG IN A DURABLE INTENT. kacho-iam's
+// ONLY PROXY-REGISTRABLE TUPLES BELONG IN A DURABLE INTENT. kaname's
 // least-privilege proxy policy is declared in pkg/authz/proxytuple and decides the
 // whole tuple, not the relation alone; privilege relations are writable only by the
 // AccessBinding flow, never by a module proxy. So the creator (`admin`) and

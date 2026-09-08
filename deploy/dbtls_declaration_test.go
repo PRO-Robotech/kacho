@@ -15,7 +15,7 @@
 // стенде, и только пока клиент подключён.
 //
 // Четыре чарта из семи несут в своих значениях умолчание `disable`
-// (kacho-geo, kacho-iam, registry, vpc — предикат в dbTLSKnobs ниже
+// (kacho-geo, kaname, registry, vpc — предикат в dbTLSKnobs ниже
 // перечисляет их из дерева, а не отсюда). Значит профиль, который просто НЕ
 // НАЗЫВАЕТ `sslmode`, получает открытый текст — молча и с видом настройки по
 // умолчанию. Ровно так и было: `values.prod.yaml` объявлял `sslmode` источника
@@ -687,7 +687,7 @@ func TestDBTLSPredicates_RecogniseTheRealTree(t *testing.T) {
 		have = append(have, k.coord())
 	}
 	for _, want := range []string{
-		"kacho-iam.config.repository.postgres.sslMode",
+		"kaname.config.repository.postgres.sslMode",
 		"vpc.repository.postgres.sslMode",
 		"kacho-geo.dataMigration.source.sslMode",
 	} {

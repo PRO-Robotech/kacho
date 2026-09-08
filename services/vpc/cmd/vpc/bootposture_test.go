@@ -47,7 +47,7 @@ func TestBootPosture_Production(t *testing.T) {
 	cfg.AuthN.Mode = config.ModeProduction
 	cfg.Repository.Postgres.URL = "postgres://u:p@pg-vpc:5432/kacho_vpc"
 	cfg.Repository.Postgres.SSLMode = "require"
-	cfg.AuthZ.IAMEndpoint = "kacho-iam-internal:9091"
+	cfg.AuthZ.IAMEndpoint = "kaname-internal:9091"
 	var mtls config.MTLSConfig
 	mtls.PublicServerMTLS.Enable = true
 	mtls.InternalServerMTLS.Enable = true

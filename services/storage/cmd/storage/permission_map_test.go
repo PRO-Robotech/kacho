@@ -135,7 +135,7 @@ func TestPermissionMapCoversEveryServedRPC(t *testing.T) {
 		}
 		own++
 		if entry.Permission == "" && !entry.Public {
-			t.Errorf("%s: строка права пуста — аудит kacho-iam не отличит этот вызов ни от чего", fullMethod)
+			t.Errorf("%s: строка права пуста — аудит kaname не отличит этот вызов ни от чего", fullMethod)
 		}
 
 		// `scope_filtered` — авторизация ПЕРЕЕХАЛА на данные (пообъектное сужение
@@ -419,7 +419,7 @@ func TestNoTenantDataOnTheClusterSingleton(t *testing.T) {
 // админ-отношение, обессмыслила бы разделение выше — и сделала бы это молча.
 func wildcardSatisfiableClusterRelations(t *testing.T) map[string]bool {
 	t.Helper()
-	const modelPath = "../../../../proto/kacho/cloud/iam/v1/fga_model.fga"
+	const modelPath = "../../../../proto/kaname/cloud/iam/v1/fga_model.fga"
 	raw, err := os.ReadFile(modelPath)
 	if err != nil {
 		t.Fatalf("модель прав не прочитана (%s): %v", modelPath, err)
@@ -607,6 +607,10 @@ func TestScopeFilteredRPCsAreBackedByTheProductionBootGuard(t *testing.T) {
 		"KACHO_STORAGE_BLOCK_BACKEND_CALL_TIMEOUT":       "30s",
 		"KACHO_STORAGE_BLOCK_BACKEND_RECONCILE_INTERVAL": "15s",
 		"KACHO_STORAGE_BLOCK_BACKEND_RECONCILE_BATCH":    "100",
+		// Объявление домена величин — часть законной посадки. Без него посадка
+		// отличалась бы от законной ДВУМЯ фактами, и красное перестало бы
+		// означать то, что объявлено этой пробой.
+		"KACHO_STORAGE_QUOTA_AUTHORITY": "not-deployed",
 	})
 	err := cfg.Validate()
 	if err == nil {

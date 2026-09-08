@@ -12,7 +12,7 @@
 //	"enp" → vpc               (операции по Network / RouteTable / SecurityGroup)
 //	"e9b" → vpc               (операции по Subnet / Address)
 //	"epd" → compute           (ВСЕ операции compute-домена: Instance/MachineType —
-//	                           PrefixOperationCompute == PrefixInstance, см. kacho-corelib/ids.
+//	                           PrefixOperationCompute == PrefixInstance, см. pkg/ids.
 //	                           Блочное хранение здесь БОЛЬШЕ НЕ значится: Volume/Snapshot/Image/
 //	                           DiskType принадлежат kacho-storage и несут собственный op-префикс)
 //	"iop" → iam               (ВСЕ операции iam-домена: Account/Project/User/SA/Group/Role/AccessBinding)
@@ -54,8 +54,8 @@ import (
 //   - prefixOperationVPCSubnet ("e9b"): vpc's secondary op-prefix
 //     (Subnet/Address). It exists only as a validate-package literal in
 //     kacho-vpc — no exported ids.* constant yet.
-//   - prefixOperationIAM ("iop"): mirrors kacho-iam domain.PrefixOperationIAM;
-//     the gateway must not import kacho-iam internal packages, so it is pinned
+//   - prefixOperationIAM ("iop"): mirrors kaname domain.PrefixOperationIAM;
+//     the gateway must not import kaname internal packages, so it is pinned
 //     here.
 //   - prefixOperationGeo ("geo"): mirrors kacho-geo lro.OperationPrefix; geo has
 //     no exported ids.PrefixOperation* constant (its op-prefix lives as an

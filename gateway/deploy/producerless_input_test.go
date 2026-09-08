@@ -80,7 +80,18 @@ func parseConfigFields(t *testing.T, path string) map[string]configField {
 	return out
 }
 
-var envNameRe = regexp.MustCompile(`name:\s*"?(KACHO_[A-Z0-9_]+)"?`)
+// envNameRe — имя переменной окружения, объявленное шаблоном.
+//
+// Приставкой имени платформы НЕ сужается, и это решение. Вопрос гейта —
+// «существует ли производитель у ЭТОГО ключа», и на такой вопрос сторона
+// производителей обязана быть ПОЛНОЙ: лишний собранный ключ может только
+// снять обвинение, а пропущенный — предъявить ложное.
+//
+// Сужение по `KACHO_` было именно таким пропуском и сработало молча: часть
+// продукта получила собственное имя (Kaname, #2076), её ключи стали
+// `KANAME_*`, и гейт объявил производителя несуществующим при ДВУХ живых
+// объявлениях в шаблонах. Приставка — не признак производителя.
+var envNameRe = regexp.MustCompile(`name:\s*"?([A-Z][A-Z0-9_]{2,})"?`)
 
 // renderedEnvKeys is the union of env keys ANY chart template can emit. Union is
 // the right operator: the question is whether a producer exists at all, not

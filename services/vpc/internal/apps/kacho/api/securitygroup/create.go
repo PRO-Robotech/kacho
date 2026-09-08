@@ -50,7 +50,7 @@ type CreateSecurityGroupUseCase struct {
 }
 
 // WithRegistrar подключает синхронный owner-tuple registrar (Decision 2): после
-// commit SecurityGroup owner-tuple синхронно регистрируется в kacho-iam. Nil →
+// commit SecurityGroup owner-tuple синхронно регистрируется в kaname. Nil →
 // sync-путь пропускается (только async drainer).
 func (u *CreateSecurityGroupUseCase) WithRegistrar(r fgaregister.Registrar) *CreateSecurityGroupUseCase {
 	u.registrar = r
@@ -267,7 +267,7 @@ func (u *CreateSecurityGroupUseCase) doCreate(ctx context.Context, sgID string, 
 	// Публикуем INTENT на vpc_security_group→project hierarchy-tuple в той же
 	// writer-TX (at-least-once через transactional-outbox, не теряется на ошибке).
 	// В mirror-feed несем labels SG + parent_project_id (ProjectHierarchyItem), а
-	// не голый tuple — иначе resource_mirror в kacho-iam остается без labels и
+	// не голый tuple — иначе resource_mirror в kaname остается без labels и
 	// ARM_LABELS-селектор не матчит даже только что созданную SG. Симметрично
 	// network/create.go и subnet/create.go.
 	items := []fgaregister.Item{

@@ -22,7 +22,7 @@ import (
 )
 
 // concatOldReverseJoin — форма, стоявшая в обратных вопросах до #758, дословно.
-const concatOldReverseJoin = "\n  JOIN kacho_iam.group_members gm ON g.subject IN " +
+const concatOldReverseJoin = "\n  JOIN kaname.group_members gm ON g.subject IN " +
 	"('group:' || gm.group_id, 'group:' || gm.group_id || '#member')"
 
 // concatOldCensusPredicate — форма, стоявшая в приборе замера до #758, дословно.

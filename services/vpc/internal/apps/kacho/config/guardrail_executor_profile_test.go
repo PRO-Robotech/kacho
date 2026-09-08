@@ -36,7 +36,7 @@ import (
 // первом же новом требовании. Обёртка оставлена ради читаемости случаев ниже — она
 // называет, ОТ ЧЕГО отступает каждый из них.
 func prodExecutorCfg(mode Mode) Config {
-	return prodCfg(mode, "kacho-iam.kacho.svc:9091")
+	return prodCfg(mode, "kaname.kacho.svc:9091")
 }
 
 // S5-01 (положительный контроль): полностью объявленный профиль проходит.
@@ -76,7 +76,7 @@ func TestValidateExecutorProfile_ProductionStrict_OverlapNotDeclared_Fails(t *te
 // датаплейна нет. Отдельно: испорченное ОБЪЯВЛЕНИЕ отвергается и на dev — см.
 // S5-08/S5-09, где предмет не посадка, а невозможное значение.
 func TestValidateExecutorProfile_Dev_NoProfile_Passes(t *testing.T) {
-	c := prodCfg(ModeDev, "kacho-iam.kacho.svc:9091")
+	c := prodCfg(ModeDev, "kaname.kacho.svc:9091")
 	require.NoError(t, c.ValidateExecutorProfile())
 }
 
@@ -268,7 +268,7 @@ func TestValidateExecutorProfile_Production_PayloadAboveProductFloor_Passes(t *t
 // отвергается в любом режиме, а 1200 — объявление годное, но недостаточное для
 // обещания, то есть требование к посадке.
 func TestValidateExecutorProfile_Dev_PayloadBelowProductFloor_Passes(t *testing.T) {
-	c := prodCfg(ModeDev, "kacho-iam.kacho.svc:9091")
+	c := prodCfg(ModeDev, "kaname.kacho.svc:9091")
 	c.Dataplane.Executor.GuaranteedPayloadBytes = domain.GuaranteedPayloadFloorBytes - 200
 
 	require.NoError(t, c.ValidateExecutorProfile())
@@ -346,7 +346,7 @@ func TestValidateExecutorProfile_Production_BandExactlyProductFloor_Passes(t *te
 // S5-22: на dev нижняя граница полосы не требуется — по той же причине, что и у
 // размера кадра (S5-17): исполнителя там нет вовсе.
 func TestValidateExecutorProfile_Dev_BandBelowProductFloor_Passes(t *testing.T) {
-	c := prodCfg(ModeDev, "kacho-iam.kacho.svc:9091")
+	c := prodCfg(ModeDev, "kaname.kacho.svc:9091")
 	c.Dataplane.Executor.GuaranteedBandwidthPerInterfaceMbps = domain.GuaranteedInterfaceBandwidthFloorMbps - 100
 
 	require.NoError(t, c.ValidateExecutorProfile())

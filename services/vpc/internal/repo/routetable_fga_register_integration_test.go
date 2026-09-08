@@ -5,7 +5,7 @@ package repo_test
 
 // Регистрация owner-tuple в FGA для RouteTable должна нести labels на двух путях:
 // (a) Create эмитит register-intent с labels + parent_project_id (иначе
-// resource_mirror в kacho-iam без labels и label-селектор не матчит даже
+// resource_mirror в kaname без labels и label-селектор не матчит даже
 // свежесозданную RouteTable — granted-юзер видит 0 в List и 403 на detail);
 // (b) Update при смене labels переэмитит register-intent с обновленными labels
 // (revoke старого селектора). Не-label Update нового intent не порождает.

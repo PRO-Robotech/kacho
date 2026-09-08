@@ -57,7 +57,7 @@ package listfiltergate
 // # Where a source is resolved from
 //
 // A service's own declarations are resolved from Options.Root. The port through
-// which consumer services ask kacho-iam is NOT service code — it is shared
+// which consumer services ask kaname is NOT service code — it is shared
 // foundation (pkg/…), and it is the shortest path from "narrow this page" to
 // "enumerate the universe", because the RPC it fronts is the one that enumerates.
 // Such a source declares Shared, and is resolved from the MODULE root, which is
@@ -69,6 +69,7 @@ import (
 	"go/ast"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -345,7 +346,13 @@ func anyShared(sources []EnumerationSource) bool {
 	return false
 }
 
-// moduleRootOf walks up from root until it finds the directory holding go.mod.
+// sharedFoundationModule is the module a Shared source resolves against. Today's
+// only Shared source (pkg/listnarrow) lives here, at the outer kacho module —
+// never inside a service's own nested one (services/iam declares module kaname).
+const sharedFoundationModule = "github.com/PRO-Robotech/kacho"
+
+// moduleRootOf walks up from root until it finds the directory whose go.mod
+// declares sharedFoundationModule.
 //
 // The module root is a FACT about the tree — a file that is there or is not —
 // rather than a count of path segments above the service. "services/<x> is two
@@ -353,9 +360,19 @@ func anyShared(sources []EnumerationSource) bool {
 // change what the gate reads; a missing go.mod, by contrast, says plainly that the
 // tree it was pointed at is not a module.
 //
-// Not finding one is a FINDING, never an empty answer: a shared source that
-// silently resolved to nothing would take its whole derived ban with it while the
-// run went on printing OK — the exact shape this gate exists to refuse.
+// A go.mod that exists but declares a DIFFERENT module is not a skip either — it
+// is walked PAST, not trusted (PRO-Robotech/kacho#2211, census row 2). A service
+// can sit inside its own nested module (services/iam does, module kaname) while
+// declaring no Shared source today; the day one is added, stopping at the first
+// go.mod met would resolve pkg/listnarrow under the WRONG root. Anything that
+// happens to exist at the same relative path there is then read as if it were the
+// shared foundation port — not a loud "could not be read" finding, a silent wrong
+// derivation from a file nobody meant to name.
+//
+// Not finding the declaring go.mod at all is a FINDING, never an empty answer: a
+// shared source that silently resolved to nothing would take its whole derived ban
+// with it while the run went on printing OK — the exact shape this gate exists to
+// refuse.
 func moduleRootOf(root string) (string, error) {
 	abs, err := filepath.Abs(root)
 	if err != nil {
@@ -365,16 +382,43 @@ func moduleRootOf(root string) (string, error) {
 				"nothing removes the ban it derives while the run reports OK", root, err)
 	}
 	for dir := abs; ; {
-		if st, serr := os.Stat(filepath.Join(dir, "go.mod")); serr == nil && !st.IsDir() {
-			return dir, nil
+		if raw, rerr := os.ReadFile(filepath.Join(dir, "go.mod")); rerr == nil { // #nosec G304 -- walk-up path under the tree the caller named
+			switch decl := moduleDeclOf(raw); decl {
+			case "":
+				return "", fmt.Errorf(
+					"Profile.EnumerationSources declares a Shared source, and %s declares a go.mod, "+
+						"but it names no `module` line — the module root it is resolved from cannot "+
+						"be confirmed, so a source that resolves to nothing removes the ban it derives "+
+						"while the run reports OK", filepath.Join(dir, "go.mod"))
+			case sharedFoundationModule:
+				return dir, nil
+			default:
+				// A REAL module, just not this one — a service nested in its own
+				// module (services/iam) sits inside a go.mod exactly like this.
+				// Walked past, not trusted: the shared foundation is further up.
+			}
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			return "", fmt.Errorf(
-				"Profile.EnumerationSources declares a Shared source, but no go.mod was found walking "+
-					"up from %s — the module root it is resolved from does not exist here, so the ban "+
-					"it derives would silently disappear while the gate reported OK", abs)
+				"Profile.EnumerationSources declares a Shared source, but no go.mod declaring %s was "+
+					"found walking up from %s — the module root it is resolved from does not exist "+
+					"here, so the ban it derives would silently disappear while the gate reported OK",
+				sharedFoundationModule, abs)
 		}
 		dir = parent
 	}
+}
+
+// moduleDeclRe matches the `module` directive's argument, the same form
+// tools/unreadfieldaudit/protofieldreaders reads its own go.mod files with.
+var moduleDeclRe = regexp.MustCompile(`(?m)^module\s+(\S+)`)
+
+// moduleDeclOf returns the module path raw declares, or "" if there is none.
+func moduleDeclOf(raw []byte) string {
+	m := moduleDeclRe.FindSubmatch(raw)
+	if m == nil {
+		return ""
+	}
+	return string(m[1])
 }

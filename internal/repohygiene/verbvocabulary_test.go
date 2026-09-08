@@ -46,7 +46,7 @@ import (
 // canonicalVerbModelRelPath — каноническая модель прав относительно корня репо.
 // Тот же файл, который сторожит гейт дрейфа iam; здесь он читается независимо,
 // потому что гейт не импортирует ни один пакет сервиса.
-const canonicalVerbModelRelPath = "proto/kacho/cloud/iam/v1/fga_model.fga"
+const canonicalVerbModelRelPath = "proto/kaname/cloud/iam/v1/fga_model.fga"
 
 // verbRelationPrefix — приставка, по которой имя отношения модели опознаётся как
 // глагольное. Она же — форма, в которой глагол попадает в кортеж.
@@ -85,7 +85,7 @@ var verbLiteralRoster = []verbLiteral{
 	// (authzmapgen: TestGeneratedTablesAreFresh), а согласие наборов с моделью
 	// по-прежнему требует гейт дрейфа (TestDrift_TypeVerbSetsMatchModelExactly).
 	{
-		path:    "services/iam/internal/apps/kacho/api/permission_catalog/resource_verbs_test.go",
+		path:    "services/iam/internal/apps/kaname/api/permission_catalog/resource_verbs_test.go",
 		varName: "previouslyOfferedToEveryResource",
 		claims: "что выпадающий список редактора ролей предлагал КАЖДОМУ ресурсу до появления " +
 			"словаря по ресурсу (#1128) — база сравнения «никто не потерял», а не словарь платформы. " +
@@ -173,7 +173,7 @@ var verbLiteralRoster = []verbLiteral{
 			"`catalog.Facts.RolePreviewLookup` — вместо того чтобы объявлять его литералом)",
 	},
 	{
-		path:    "services/iam/internal/repo/kacho/pg/applied_type_reaches_the_verdict_integration_test.go",
+		path:    "services/iam/internal/repo/kaname/pg/applied_type_reaches_the_verdict_integration_test.go",
 		varName: "verdictProbeVerbs",
 		claims: "набор действий СИНТЕТИЧЕСКОГО ресурса, объявляемого манифестом в пробе " +
 			"последней мили DoD-1 (#1968); ни полноты словаря платформы, ни набора живого типа " +
@@ -189,7 +189,7 @@ var verbLiteralRoster = []verbLiteral{
 			"а не объявляет его)",
 	},
 	{
-		path: "services/iam/internal/repo/kacho/pg/relverdict/xc12f5_labelcost_test.go", varName: "f5Verbs",
+		path: "services/iam/internal/repo/kaname/pg/relverdict/xc12f5_labelcost_test.go", varName: "f5Verbs",
 		claims: "множитель M замера стоимости XC-12 Ф5 — сколько глаголов раздаёт ОДНА роль " +
 			"в измеряемом сценарии; ни полноты платформы, ни набора типа НЕ утверждает. Кривая " +
 			"снимается по N при неизменных M и S, поэтому величина здесь — параметр замера, " +

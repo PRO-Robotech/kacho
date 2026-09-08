@@ -29,7 +29,7 @@ func TestValidateSecurityConfig(t *testing.T) {
 	bothMTLS := func() config.Config {
 		return config.Config{
 			AuthMode:           "dev",
-			AuthZIAMGRPCAddr:   "kacho-iam-internal.kacho.svc:9091",
+			AuthZIAMGRPCAddr:   "kaname-internal.kacho.svc:9091",
 			PublicServerMTLS:   grpcsrv.TLSServer{Enable: true},
 			InternalServerMTLS: grpcsrv.TLSServer{Enable: true},
 		}
@@ -92,7 +92,7 @@ func TestValidateSecurityConfig_BreakglassInProduction_MessageNamesKnob(t *testi
 			cfg := config.Config{
 				AuthMode:           mode,
 				AuthZBreakglass:    true,
-				AuthZIAMGRPCAddr:   "kacho-iam-internal.kacho.svc:9091",
+				AuthZIAMGRPCAddr:   "kaname-internal.kacho.svc:9091",
 				PublicServerMTLS:   grpcsrv.TLSServer{Enable: true},
 				InternalServerMTLS: grpcsrv.TLSServer{Enable: true},
 			}
@@ -140,7 +140,7 @@ func TestMTLSOnBothListenersIsRefusedInAnyMode(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				cfg := config.Config{
 					AuthMode:           "dev",
-					AuthZIAMGRPCAddr:   "kacho-iam-internal.kacho.svc:9091",
+					AuthZIAMGRPCAddr:   "kaname-internal.kacho.svc:9091",
 					PublicServerMTLS:   grpcsrv.TLSServer{Enable: true},
 					InternalServerMTLS: grpcsrv.TLSServer{Enable: true},
 				}
@@ -276,7 +276,7 @@ func TestValidateSecurityConfig_Production_BreakglassRefusesBoot(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			cfg := config.Config{
 				AuthMode:           mode,
-				AuthZIAMGRPCAddr:   "kacho-iam-internal.kacho.svc:9091",
+				AuthZIAMGRPCAddr:   "kaname-internal.kacho.svc:9091",
 				PublicServerMTLS:   grpcsrv.TLSServer{Enable: true},
 				InternalServerMTLS: grpcsrv.TLSServer{Enable: true},
 				AuthZBreakglass:    true,

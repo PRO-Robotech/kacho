@@ -122,7 +122,7 @@ message GetRouteTableRequest {
 
 message ListRouteTablesRequest {
   // ID of the project that the route table belongs to.
-  // To get the project ID use a [kacho.cloud.iam.v1.ProjectService.List] request.
+  // To get the project ID use a [kaname.cloud.iam.v1.ProjectService.List] request.
   string project_id = 1;
 
   // The maximum number of results per page to return. If the number of available
@@ -164,7 +164,7 @@ message ListRouteTablesResponse {
 
 message CreateRouteTableRequest {
   // ID of the project that the route table belongs to.
-  // To get the project ID use a [kacho.cloud.iam.v1.ProjectService.List] request.
+  // To get the project ID use a [kaname.cloud.iam.v1.ProjectService.List] request.
   string project_id = 1;
 
   // Name of the route table.

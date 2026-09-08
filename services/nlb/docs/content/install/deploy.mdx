@@ -63,7 +63,7 @@ API-сервер поднимает два независимых gRPC-listener'
 </table>
 
 Дополнительно поднимаются метрики (`/metrics`, порт `:9101`) и gRPC health-check. В production
-оба listener'а обязаны работать по mTLS, а адрес kacho-iam для per-RPC authz — быть
+оба listener'а обязаны работать по mTLS, а адрес kaname для per-RPC authz — быть
 сконфигурированным (иначе валидация конфига не пройдёт).
 
 ## Фоновые worker'ы
@@ -75,14 +75,14 @@ API-сервер поднимает два независимых gRPC-listener'
   <tbody>
     <tr><td>target-drain runner</td><td>Двухфазный drain: удаляет истёкшие DRAINING-таргеты, эмитит lifecycle-событие группы</td><td>10s</td></tr>
     <tr><td>free-ip reconciler</td><td>Реконсайл застрявших балансировщиков/листенеров (create-orphan CREATING, незавершённый DELETING)</td><td>30s (порог возраста 5m)</td></tr>
-    <tr><td>FGA register-drainer</td><td>Досылает owner/hierarchy-tuples в kacho-iam из <code>fga_register_outbox</code></td><td>по NOTIFY</td></tr>
+    <tr><td>FGA register-drainer</td><td>Досылает owner/hierarchy-tuples в kaname из <code>fga_register_outbox</code></td><td>по NOTIFY</td></tr>
   </tbody>
 </table>
 
 ## Boot-gate REQUIRE_IAM
 
 Fail-closed boot-gate: при `KACHO_NLB_REQUIRE_IAM=true` мутирующий `Create` отклоняется, а
-readiness остаётся `NotReady`, пока сервис не убедился, что kacho-iam достижим (соединение
+readiness остаётся `NotReady`, пока сервис не убедился, что kaname достижим (соединение
 установлено). Так сервис не принимает мутации, для которых не сможет записать owner-tuples.
 Production-профиль включает этот флаг.
 
@@ -104,7 +104,7 @@ flowchart LR
   peers["vpc / compute / geo / iam"] -->|"internal mTLS"| int["kacho-nlb :9091"]
   pub --> pg[("kacho_nlb")]
   int --> pg
-  pub -->|"authz Check"| iam["kacho-iam"]
+  pub -->|"authz Check"| iam["kaname"]
 ```
 
 :::tip Дальше

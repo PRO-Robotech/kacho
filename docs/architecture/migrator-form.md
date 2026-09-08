@@ -265,7 +265,7 @@ construction. Обход всего `internal/` дал четыре находк
 | сервис | источники, которые он ЧИТАЕТ | что называл текст | чего не называл |
 |---|---|---|---|
 | `vpc` | `--dsn` · `KACHO_MIGRATOR_DSN` · `config.Load(KACHO_VPC_CONFIG_PATH)` | первые два | запасную конфигурацию |
-| `iam` | `--dsn` · `KACHO_MIGRATOR_DSN` · `config.Load(KACHO_IAM_CONFIG_PATH)` | первые два | запасную конфигурацию |
+| `iam` | `--dsn` · `KACHO_MIGRATOR_DSN` · `config.Load(KANAME_CONFIG_PATH)` | первые два | запасную конфигурацию |
 | `nlb` | `--dsn` · `KACHO_MIGRATOR_DSN` · `--config` | первый и третий | **второй** — тот, что перебивает третий |
 
 Хуже всех оказался случай, который довод и защищал: `nlb` после #1461 резолвит

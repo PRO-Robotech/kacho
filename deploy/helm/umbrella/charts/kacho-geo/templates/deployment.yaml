@@ -42,7 +42,7 @@ spec:
         {{- end }}
         # ПРИВЯЗКА ПОДА К СОДЕРЖИМОМУ ОБРАЗА.
         #
-        # Тег локального образа (`kacho-*:dev`) неизменен, поэтому пересборка под
+        # Тег локального образа (`:dev`) неизменен, поэтому пересборка под
         # тем же тегом НЕ меняет шаблон пода: Kubernetes не видит разницы и под не
         # перекатывается — процесс продолжает работать СТАРЫМ бинарником под новым
         # тегом. Ровно тот же разрыв между намерением и исходом, что и у настроек,
@@ -131,6 +131,12 @@ spec:
             # AuthN fail-closed gate (dev | production | production-strict).
             - name: KACHO_GEO_AUTH_MODE
               value: "{{ .Values.authMode }}"
+            # Домен доверия установки: то, чьи сертификаты процесс признаёт своими.
+            # Берётся из ТОГО ЖЕ объявления, под которым чеканится его собственный
+            # сертификат (certificate.yaml) — иначе выпускающая и принимающая
+            # стороны разойдутся молча.
+            - name: KACHO_GEO_AUTHZ_TRUST_DOMAIN
+              value: {{ include "kacho-geo.trustDomain" . | quote }}
             # geo→iam per-RPC authz Check (InternalIAMService.Check on iam :9091).
             - name: KACHO_GEO_AUTHZ_IAM_GRPC_ADDR
               value: "{{ .Values.authzIamGrpcAddr }}"
@@ -158,7 +164,7 @@ spec:
               value: {{ printf "%s/ca.crt" $srv | quote }}
             {{- if .Values.mtls.edges.iamAuthz }}
             # geo→iam Check (internal :9091) client-creds — grpcclient.TLSClient.
-            # ServerName = kacho-iam-internal (∈ iam server-SAN).
+            # ServerName = kaname-internal (∈ iam server-SAN).
             - name: KACHO_GEO_IAM_AUTHZ_MTLS_ENABLE
               value: "true"
             - name: KACHO_GEO_IAM_AUTHZ_MTLS_CERTFILE

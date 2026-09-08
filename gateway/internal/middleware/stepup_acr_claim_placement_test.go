@@ -8,10 +8,10 @@ package middleware_test
 // provider used to carry it.
 //
 // Why this file exists, stated plainly so nobody deletes it as noise: our own
-// token hook emits the level as `kacho_acr` INSIDE the enrichment map, while the
+// token hook emits the level as `kaname_acr` INSIDE the enrichment map, while the
 // verifier used to read only the standard top-level `acr`. Hydra promotes to the
 // top level only what `oauth2.allowed_top_level_claims` whitelists, and neither
-// `acr` nor `kacho_acr` is on that list on any deployed profile — so the level
+// `acr` nor `kaname_acr` is on that list on any deployed profile — so the level
 // arrived at the edge, in the signed token, and was dropped on the floor. The
 // gate then ranked every human caller at 0 and refused every RPC with a floor.
 //
@@ -47,10 +47,10 @@ import (
 // reads, carrying the level under the name our own hook stamps it with.
 func ceremonyEnrichment(acr string) map[string]any {
 	return map[string]any{
-		"kacho_principal_type": "user",
-		"kacho_principal_id":   "usr_alice_acc_a1b2",
-		"kacho_user_id":        "usr_alice_acc_a1b2",
-		"kacho_acr":            acr,
+		"kaname_principal_type": "user",
+		"kaname_principal_id":   "usr_alice_acc_a1b2",
+		"kaname_user_id":        "usr_alice_acc_a1b2",
+		"kaname_acr":            acr,
 	}
 }
 
@@ -93,9 +93,9 @@ func TestVerifiedTokenACR_ReadsPromotedEnrichmentMap(t *testing.T) {
 	vt := verifyClaims(t, fix, promotedCeremonyClaims("2"))
 
 	assert.Equal(t, "2", vt.ACR,
-		"the level our own token hook emits (kacho_acr, inside the enrichment map) "+
+		"the level our own token hook emits (kaname_acr, inside the enrichment map) "+
 			"must reach the step-up gate; reading only the standard top-level `acr` "+
-			"discards it, because Hydra promotes neither `acr` nor `kacho_acr`")
+			"discards it, because Hydra promotes neither `acr` nor `kaname_acr`")
 }
 
 // --- 2. prod profile: enrichment map NOT promoted, nested under `ext` -------
@@ -138,8 +138,8 @@ func TestVerifiedTokenACR_AbsentEverywhere_StaysEmpty_PairedWithPresent(t *testi
 	absent := standardClaims()
 	delete(absent, "acr")
 	absent["ext_claims"] = map[string]any{
-		"kacho_principal_type": "user",
-		"kacho_principal_id":   "usr_alice_acc_a1b2",
+		"kaname_principal_type": "user",
+		"kaname_principal_id":   "usr_alice_acc_a1b2",
 	}
 
 	assert.Equal(t, "", verifyClaims(t, fix, absent).ACR,
@@ -163,8 +163,8 @@ func TestStepUp_CeremonyToken_LevelOnlyInEnrichmentMap_PassesFloor(t *testing.T)
 	claims := promotedCeremonyClaims("2")
 	// The principal claims are promoted on this profile too — keep the shape
 	// faithful so the case exercises the token the stand actually issues.
-	claims["kacho_principal_type"] = "user"
-	claims["kacho_principal_id"] = "usr_alice_acc_a1b2"
+	claims["kaname_principal_type"] = "user"
+	claims["kaname_principal_id"] = "usr_alice_acc_a1b2"
 
 	rec, _, hit := serveREST(t, auth, http.MethodPost,
 		"https://api.kacho.cloud/iam/v1/users/usr-abc/tokens",
@@ -184,9 +184,9 @@ func TestStepUp_CeremonyToken_NoLevelAnywhere_StillRefused(t *testing.T) {
 	auth := alwaysOnAuth(t, fix)
 
 	claims := promotedCeremonyClaims("2")
-	claims["kacho_principal_type"] = "user"
-	claims["kacho_principal_id"] = "usr_alice_acc_a1b2"
-	delete(claims["ext_claims"].(map[string]any), "kacho_acr")
+	claims["kaname_principal_type"] = "user"
+	claims["kaname_principal_id"] = "usr_alice_acc_a1b2"
+	delete(claims["ext_claims"].(map[string]any), "kaname_acr")
 
 	rec, _, hit := serveREST(t, auth, http.MethodPost,
 		"https://api.kacho.cloud/iam/v1/users/usr-abc/tokens",
@@ -200,7 +200,7 @@ func TestStepUp_CeremonyToken_NoLevelAnywhere_StillRefused(t *testing.T) {
 
 // --- 6. the enrichment map is read the same way for every claim in it -------
 
-// The gate's machine-principal exemption reads `kacho_principal_type` out of the
+// The gate's machine-principal exemption reads `kaname_principal_type` out of the
 // SAME map by the same resolution. Pinning it on the nested placement keeps the
 // two from drifting apart: a resolution that finds the level but not the
 // principal type would leave every service account ranked as an interactive
@@ -210,13 +210,13 @@ func TestVerifiedToken_NestedEnrichmentMap_ResolvesPrincipalClaimsToo(t *testing
 	fix := newJWKSFixture(t, "RS256")
 
 	claims := nestedCeremonyClaims("0")
-	claims["ext"].(map[string]any)["ext_claims"].(map[string]any)["kacho_principal_type"] = "service_account"
-	claims["ext"].(map[string]any)["ext_claims"].(map[string]any)["kacho_principal_id"] = "sva_robot_acc_a1b2"
+	claims["ext"].(map[string]any)["ext_claims"].(map[string]any)["kaname_principal_type"] = "service_account"
+	claims["ext"].(map[string]any)["ext_claims"].(map[string]any)["kaname_principal_id"] = "sva_robot_acc_a1b2"
 
 	vt := verifyClaims(t, fix, claims)
 
 	require.NotNil(t, vt.ExtClaims,
 		"the enrichment map nested under `ext` is the same signed map as the promoted one")
-	assert.Equal(t, "service_account", vt.ExtClaims["kacho_principal_type"])
-	assert.Equal(t, "sva_robot_acc_a1b2", vt.ExtClaims["kacho_principal_id"])
+	assert.Equal(t, "service_account", vt.ExtClaims["kaname_principal_type"])
+	assert.Equal(t, "sva_robot_acc_a1b2", vt.ExtClaims["kaname_principal_id"])
 }

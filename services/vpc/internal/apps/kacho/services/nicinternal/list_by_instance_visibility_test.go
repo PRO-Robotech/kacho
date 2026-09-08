@@ -26,7 +26,7 @@ import (
 // the interface id, its subnet, its MAC and its resolved primary addresses.
 //
 // The per-RPC question that used to guard it was `viewer` on the singleton
-// `cluster:cluster_kacho_root`. That relation exists for the global reference
+// `cluster:cluster_root`. That relation exists for the global reference
 // catalogue — regions, zones, disk types — and the cluster bootstrap writes
 // `cluster:<root>#viewer@user:*` precisely so that every authenticated subject can
 // read it. Asking it here therefore admitted every authenticated subject in the

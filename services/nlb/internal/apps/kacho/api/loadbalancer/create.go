@@ -52,7 +52,7 @@ type CreateLoadBalancerUseCase struct {
 	zoneRegion    ZoneRegionClient      // авторитетный zone→region (geo)
 	addressReader AddressClient         // public AddressService.Get — link-resolution
 	addressClient InternalAddressClient // VIP alloc/link/release
-	// registrar — sync-primary owner-tuple registrar (kacho-iam RegisterResource)
+	// registrar — sync-primary owner-tuple registrar (kaname RegisterResource)
 	// вызывается BEST-EFFORT после durable commit LB. nil → только async
 	// register-drainer (dev/no-iam). См. WithRegistrar.
 	registrar Registrar
@@ -83,7 +83,7 @@ func NewCreateLoadBalancerUseCase(
 
 // WithRegistrar подключает sync-primary owner-tuple registrar. После durable
 // commit LB (+ его `fga_register_outbox`-intent'а) те же owner/containment-tuple'ы
-// синхронно регистрируются в kacho-iam — grant создателя доступен сразу, без
+// синхронно регистрируются в kaname — grant создателя доступен сразу, без
 // гонки с async register-drainer'ом. BEST-EFFORT: сбой sync-Register логируется
 // и глотается (durable intent + drainer — backstop), Operation.done НЕ гейтится
 // на видимость (ban #9). nil registrar → sync-путь пропускается. Возвращает self
@@ -257,7 +257,7 @@ func (u *CreateLoadBalancerUseCase) Execute(
 
 	// Durable commit → op done сразу. Owner-tuple LB материализуется eventually-
 	// consistent (writer-TX fga_register_outbox intent → register-drainer →
-	// kacho-iam RegisterResource → reconciler backstop); Operation.done означает
+	// kaname RegisterResource → reconciler backstop); Operation.done означает
 	// durability ресурса, не видимость owner-tuple в FGA.
 	operations.Run(ctx, u.opsRepo, op.ID, func(workerCtx context.Context) (*anypb.Any, error) {
 		return u.doCreate(workerCtx, lb, principal, specs)

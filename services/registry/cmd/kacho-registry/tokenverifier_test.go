@@ -31,11 +31,11 @@ import (
 )
 
 const (
-	probePlatformIssuer = "https://iam.kacho.local"
+	probePlatformIssuer = "https://kaname.kacho.local"
 	probeLegacyIssuer   = "https://hydra.api.kacho.cloud"
-	probePlatformKeySet = "https://kacho-iam-internal.kacho.svc:9097/.well-known/kacho/jwks.json"
-	probeLegacyKeySet   = "https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
-	probeRevocationURL  = "https://kacho-iam-internal.kacho.svc:9097/internal/tokens/introspect"
+	probePlatformKeySet = "https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
+	probeLegacyKeySet   = "https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
+	probeRevocationURL  = "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
 )
 
 // probeClientCreds выкладывает файлами якорь и пару клиентского сертификата
@@ -92,7 +92,7 @@ func probeClientCreds(t *testing.T) grpcclient.TLSClient {
 		CAFiles:    []string{caFile},
 		CertFile:   certFile,
 		KeyFile:    keyFile,
-		ServerName: "kacho-iam-internal.kacho.svc",
+		ServerName: "kaname-internal.kacho.svc",
 	}
 }
 
@@ -291,7 +291,7 @@ func TestF1_25_RevocationAuthorityIsRequiredWhenOurIssuerIsAccepted(t *testing.T
 	})
 
 	t.Run("адрес авторитета не абсолютный", func(t *testing.T) {
-		for _, bad := range []string{"/internal/tokens/introspect", "kacho-iam-internal:9097", "   "} {
+		for _, bad := range []string{"/internal/tokens/introspect", "kaname-internal:9097", "   "} {
 			cfg := prodConfig(t)
 			cfg.TokenRevocationURL = bad
 			_, err := buildTokenVerifier(cfg)
@@ -301,7 +301,7 @@ func TestF1_25_RevocationAuthorityIsRequiredWhenOurIssuerIsAccepted(t *testing.T
 
 	t.Run("адрес авторитета по открытому HTTP", func(t *testing.T) {
 		cfg := prodConfig(t)
-		cfg.TokenRevocationURL = "http://kacho-iam-internal.kacho.svc:9097/internal/tokens/introspect"
+		cfg.TokenRevocationURL = "http://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
 		_, err := buildTokenVerifier(cfg)
 		require.Error(t, err, "ответ авторитета решает вопрос доступа и не транзитит открытым текстом")
 	})
@@ -338,12 +338,12 @@ func TestKeySetURLMustBeSecureInProduction(t *testing.T) {
 		keySetURL string
 		wantErr   bool
 	}{
-		{"dev-http-ok", "dev", "http://kacho-iam-internal.kacho.svc:9097/keys", false},
-		{"dev-https-ok", "dev", "https://kacho-iam-internal.kacho.svc:9097/keys", false},
-		{"prod-http-rejected", "production", "http://kacho-iam-internal.kacho.svc:9097/keys", true},
-		{"prod-https-ok", "production", "https://kacho-iam-internal.kacho.svc:9097/keys", false},
-		{"prod-strict-http-rejected", "production-strict", "http://kacho-iam-internal.kacho.svc:9097/keys", true},
-		{"prod-strict-https-ok", "production-strict", "https://kacho-iam-internal.kacho.svc:9097/keys", false},
+		{"dev-http-ok", "dev", "http://kaname-internal.kacho.svc:9097/keys", false},
+		{"dev-https-ok", "dev", "https://kaname-internal.kacho.svc:9097/keys", false},
+		{"prod-http-rejected", "production", "http://kaname-internal.kacho.svc:9097/keys", true},
+		{"prod-https-ok", "production", "https://kaname-internal.kacho.svc:9097/keys", false},
+		{"prod-strict-http-rejected", "production-strict", "http://kaname-internal.kacho.svc:9097/keys", true},
+		{"prod-strict-https-ok", "production-strict", "https://kaname-internal.kacho.svc:9097/keys", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

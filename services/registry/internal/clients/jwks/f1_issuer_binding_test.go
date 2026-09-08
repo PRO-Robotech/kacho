@@ -108,7 +108,7 @@ func TestF1_46_IssuerWithoutADeclaredRecordIsRejected(t *testing.T) {
 func TestF1_46_DeclaredIssuerIsAnUntrustedInput(t *testing.T) {
 	hostile := map[string]string{
 		"разделители пути":       "https://evil.example/../../keys",
-		"управляющие символы":    "https://iam.kacho.local\x00\r\nX-Injected: 1",
+		"управляющие символы":    "https://kaname.kacho.local\x00\r\nX-Injected: 1",
 		"разметка":               `<script>alert(1)</script>`,
 		"схема file":             "file:///etc/passwd",
 		"четыре килобайта":       "https://" + strings.Repeat("a", 4096) + ".example",

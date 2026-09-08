@@ -60,8 +60,8 @@ permission-каталог. Ключи конфигурации (ENV `KACHO_API_G
 
 :::note Четвёртой строки здесь больше нет
 Гейтвей поднимал ещё и собственный cluster-internal **gRPC**-listener — ради единственной службы
-сброса authz-кэша, которую вызывал `kacho-iam`. Служба и listener сняты вместе: кэш решений
-гейтвей гасит сам, читая журнал смены субъекта у `kacho-iam`. Порт под приём больше не
+сброса authz-кэша, которую вызывал `kaname`. Служба и listener сняты вместе: кэш решений
+гейтвей гасит сам, читая журнал смены субъекта у `kaname`. Порт под приём больше не
 открывается и в профиле не объявляется.
 :::
 
@@ -104,7 +104,7 @@ versioned-модулями из GitHub (`go.mod` без `replace`), build-contex
 <CodeBlock language="bash">
   {dedent`
     curl http://<gateway>/healthz    # liveness — 200, если процесс запущен
-    curl http://<gateway>/readyz     # readiness — 200, если доступен kacho-iam
+    curl http://<gateway>/readyz     # readiness — 200, если доступен kaname
   `}
 </CodeBlock>
 

@@ -121,7 +121,7 @@ flowchart LR
   end
   subgraph cp["Control plane"]
     geo["kacho-geo<br/>:9090 public · :9091 internal"]
-    iam["kacho-iam<br/>authz Check"]
+    iam["kaname<br/>authz Check"]
   end
   subgraph store["Хранилище"]
     pg[("PostgreSQL<br/>kacho_geo · outbox")]
@@ -170,7 +170,7 @@ flowchart LR
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>🔑</span>
     <span className={hero.featureTitle}>Аутентификация на обоих портах</span>
-    <span className={hero.featureBody}>AuthN обязательна везде; per-RPC authz Check через kacho-iam — на всех RPC, кроме публичного чтения справочника (задокументированное исключение).</span>
+    <span className={hero.featureBody}>AuthN обязательна везде; per-RPC authz Check через kaname — на всех RPC, кроме публичного чтения справочника (задокументированное исключение).</span>
   </div>
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>📓</span>

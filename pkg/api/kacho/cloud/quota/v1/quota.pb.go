@@ -10,7 +10,6 @@
 package quotav1
 
 import (
-	v1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -25,6 +24,74 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Scope — where the winning value was stated, ordered by specificity:
+// PROJECT beats ACCOUNT beats DEFAULT.
+//
+// Names and numbers are the ones this field has carried since it was
+// introduced, and they are not free to change: JSON encodes an enum by its
+// NAME and the wire by its NUMBER, so a rename or a renumber is a breaking
+// change for every tenant already reading the field.
+//
+// `SCOPE_UNSPECIFIED` is not a fourth place a value may be stated at — it is
+// what an unreadable stored row maps to. Mapping such a row to `DEFAULT`
+// instead would assert "the platform stated this", which is a claim about who
+// can raise the ceiling, made on a row nobody managed to read.
+type Quota_Scope int32
+
+const (
+	Quota_SCOPE_UNSPECIFIED Quota_Scope = 0
+	// Platform-wide fallback. Exactly one value per kind.
+	Quota_DEFAULT Quota_Scope = 1
+	// Stated for one account; applies to every project of that account unless
+	// the project states its own.
+	Quota_ACCOUNT Quota_Scope = 2
+	// Stated for one project. The most specific arm.
+	Quota_PROJECT Quota_Scope = 3
+)
+
+// Enum value maps for Quota_Scope.
+var (
+	Quota_Scope_name = map[int32]string{
+		0: "SCOPE_UNSPECIFIED",
+		1: "DEFAULT",
+		2: "ACCOUNT",
+		3: "PROJECT",
+	}
+	Quota_Scope_value = map[string]int32{
+		"SCOPE_UNSPECIFIED": 0,
+		"DEFAULT":           1,
+		"ACCOUNT":           2,
+		"PROJECT":           3,
+	}
+)
+
+func (x Quota_Scope) Enum() *Quota_Scope {
+	p := new(Quota_Scope)
+	*p = x
+	return p
+}
+
+func (x Quota_Scope) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Quota_Scope) Descriptor() protoreflect.EnumDescriptor {
+	return file_kacho_cloud_quota_v1_quota_proto_enumTypes[0].Descriptor()
+}
+
+func (Quota_Scope) Type() protoreflect.EnumType {
+	return &file_kacho_cloud_quota_v1_quota_proto_enumTypes[0]
+}
+
+func (x Quota_Scope) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Quota_Scope.Descriptor instead.
+func (Quota_Scope) EnumDescriptor() ([]byte, []int) {
+	return file_kacho_cloud_quota_v1_quota_proto_rawDescGZIP(), []int{0, 0}
+}
+
 // Quota — one ceiling as the tenant sees it: the limit, what is already spent
 // against it, and WHERE the limit came from.
 //
@@ -36,12 +103,21 @@ const (
 // and the SHAPE of the answer is stated once, here, so eight domains cannot drift
 // into eight dialects of the same three numbers.
 //
-// WHY `source_scope` IS IMPORTED AND NOT RESTATED. A tenant who hits a ceiling
-// needs to know whose ceiling it is before they know who can raise it. That is
-// exactly what `iam.v1.Limit.Scope` already says, and a second enumeration about
-// one subject drifts silently — one side gains an arm, the other keeps compiling.
-// All contracts live in one tree under one `buf`, so the import costs nothing by
-// construction.
+// WHY `Scope` IS STATED HERE AND NOT IMPORTED. A tenant who hits a ceiling needs
+// to know whose ceiling it is before they know who can raise it. The access
+// service is being carved out into a product of its own, so borrowing the arm
+// from ITS contract would mean the platform no longer builds without it — and
+// that its contract could not be removed while this import lives. The arms are
+// therefore stated here, with the same names and the same numbers they have
+// always had on the wire: the tenant sees no change, and neither does JSON,
+// which encodes an enum by its NAME.
+//
+// The drift a shared enumeration was meant to prevent is prevented differently
+// now, and by construction rather than by hope: whoever states a value is a
+// SOURCE for this field, and a source that gains an arm this enumeration does
+// not have cannot map it — the translation is total by type, and a new arm shows
+// up as a compile error at the one place the mapping lives, not as a silently
+// widened answer.
 //
 // READ-ONLY BY CONSTRUCTION. This message never appears in a request body. The
 // tenant reads; only the cloud administrator changes a value, through
@@ -67,7 +143,7 @@ type Quota struct {
 	// Without it "you are at 16 of 16" does not tell the tenant whether the number
 	// is their own override, their account's, or the platform's, and therefore does
 	// not tell them who can change it.
-	SourceScope v1.Limit_Scope `protobuf:"varint,4,opt,name=source_scope,json=sourceScope,proto3,enum=kacho.cloud.iam.v1.Limit_Scope" json:"source_scope,omitempty"`
+	SourceScope Quota_Scope `protobuf:"varint,4,opt,name=source_scope,json=sourceScope,proto3,enum=kacho.cloud.quota.v1.Quota_Scope" json:"source_scope,omitempty"`
 	// Id of the object the winning scope names: an account id for ACCOUNT, a
 	// project id for PROJECT. Empty when the winner is DEFAULT, and empty ONLY
 	// then — the pairing mirrors `iam.v1.Limit`, where a DB CHECK enforces it.
@@ -137,11 +213,11 @@ func (x *Quota) GetUsed() int64 {
 	return 0
 }
 
-func (x *Quota) GetSourceScope() v1.Limit_Scope {
+func (x *Quota) GetSourceScope() Quota_Scope {
 	if x != nil {
 		return x.SourceScope
 	}
-	return v1.Limit_Scope(0)
+	return Quota_SCOPE_UNSPECIFIED
 }
 
 func (x *Quota) GetSourceScopeId() string {
@@ -169,16 +245,21 @@ var File_kacho_cloud_quota_v1_quota_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_quota_v1_quota_proto_rawDesc = "" +
 	"\n" +
-	" kacho/cloud/quota/v1/quota.proto\x12\x14kacho.cloud.quota.v1\x1a\x1ekacho/cloud/iam/v1/limit.proto\"\xf3\x01\n" +
+	" kacho/cloud/quota/v1/quota.proto\x12\x14kacho.cloud.quota.v1\"\xbc\x02\n" +
 	"\x05Quota\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x03R\x05limit\x12\x12\n" +
-	"\x04used\x18\x03 \x01(\x03R\x04used\x12B\n" +
-	"\fsource_scope\x18\x04 \x01(\x0e2\x1f.kacho.cloud.iam.v1.Limit.ScopeR\vsourceScope\x12&\n" +
+	"\x04used\x18\x03 \x01(\x03R\x04used\x12D\n" +
+	"\fsource_scope\x18\x04 \x01(\x0e2!.kacho.cloud.quota.v1.Quota.ScopeR\vsourceScope\x12&\n" +
 	"\x0fsource_scope_id\x18\x05 \x01(\tR\rsourceScopeId\x12!\n" +
 	"\fcarrier_type\x18\x06 \x01(\tR\vcarrierType\x12\x1d\n" +
 	"\n" +
-	"carrier_id\x18\a \x01(\tR\tcarrierIdBDZBgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1;quotav1b\x06proto3"
+	"carrier_id\x18\a \x01(\tR\tcarrierId\"E\n" +
+	"\x05Scope\x12\x15\n" +
+	"\x11SCOPE_UNSPECIFIED\x10\x00\x12\v\n" +
+	"\aDEFAULT\x10\x01\x12\v\n" +
+	"\aACCOUNT\x10\x02\x12\v\n" +
+	"\aPROJECT\x10\x03BDZBgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1;quotav1b\x06proto3"
 
 var (
 	file_kacho_cloud_quota_v1_quota_proto_rawDescOnce sync.Once
@@ -192,13 +273,14 @@ func file_kacho_cloud_quota_v1_quota_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_quota_v1_quota_proto_rawDescData
 }
 
+var file_kacho_cloud_quota_v1_quota_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_kacho_cloud_quota_v1_quota_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_kacho_cloud_quota_v1_quota_proto_goTypes = []any{
-	(*Quota)(nil),       // 0: kacho.cloud.quota.v1.Quota
-	(v1.Limit_Scope)(0), // 1: kacho.cloud.iam.v1.Limit.Scope
+	(Quota_Scope)(0), // 0: kacho.cloud.quota.v1.Quota.Scope
+	(*Quota)(nil),    // 1: kacho.cloud.quota.v1.Quota
 }
 var file_kacho_cloud_quota_v1_quota_proto_depIdxs = []int32{
-	1, // 0: kacho.cloud.quota.v1.Quota.source_scope:type_name -> kacho.cloud.iam.v1.Limit.Scope
+	0, // 0: kacho.cloud.quota.v1.Quota.source_scope:type_name -> kacho.cloud.quota.v1.Quota.Scope
 	1, // [1:1] is the sub-list for method output_type
 	1, // [1:1] is the sub-list for method input_type
 	1, // [1:1] is the sub-list for extension type_name
@@ -216,13 +298,14 @@ func file_kacho_cloud_quota_v1_quota_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_quota_v1_quota_proto_rawDesc), len(file_kacho_cloud_quota_v1_quota_proto_rawDesc)),
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   1,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_kacho_cloud_quota_v1_quota_proto_goTypes,
 		DependencyIndexes: file_kacho_cloud_quota_v1_quota_proto_depIdxs,
+		EnumInfos:         file_kacho_cloud_quota_v1_quota_proto_enumTypes,
 		MessageInfos:      file_kacho_cloud_quota_v1_quota_proto_msgTypes,
 	}.Build()
 	File_kacho_cloud_quota_v1_quota_proto = out.File

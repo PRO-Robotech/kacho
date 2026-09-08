@@ -4,7 +4,7 @@
 
 # audit-list-filter.sh — CI gate for kacho-compute's public List<Resource>: the page
 # a caller receives must be narrowed to the rows that caller may see (per-object,
-# kacho-iam BatchCheck), not merely to their project.
+# kaname BatchCheck), not merely to their project.
 #
 # This is a THIN wrapper. What is checked, and why the analysis parses the tree
 # instead of searching its text, is documented on pkg/listfiltergate; how this

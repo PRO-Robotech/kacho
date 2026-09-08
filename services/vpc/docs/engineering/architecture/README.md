@@ -26,13 +26,13 @@
 
 ## TL;DR — что это за сервис
 
-Один из доменных сервисов Kachō (владелец Account/Project — `kacho-iam`).
+Один из доменных сервисов Kachō (владелец Account/Project — `kaname`).
 Owns два слоя:
 
 - **VPC ресурсы** (7): Network, Subnet, Address (v4/v6),
   `NetworkInterface` (first-class NIC), RouteTable, SecurityGroup,
   Gateway. Public API на gRPC `:9090`, через край → REST
-  `/vpc/v1/...`. Project-scoped (ссылка на kacho-iam.Project). Admin-операции
+  `/vpc/v1/...`. Project-scoped (ссылка на kaname.Project). Admin-операции
   (default-SG setter, IPAM, привязка NIC↔Instance) — через `Internal*` на `:9091`.
 - **IPAM (kacho-only, admin)**: AddressPool + network-default binding.
   Internal-only API на gRPC `:9091`. Глобальные ресурсы — не привязаны к
@@ -57,7 +57,7 @@ internal-RPC аллокации (`allocate.go`) через общий `alloc_sha
        │  │  service layer   │            │
        │  └─┬────────┬───────┘            │
        │    │        │ ProjectClient      │
-       │    │        └──→ kacho-iam        │
+       │    │        └──→ kaname        │
        │    │             (gRPC)           │
        │    │             ProjectService.Get
        │    │             project_id → account_id
@@ -70,7 +70,7 @@ internal-RPC аллокации (`allocate.go`) через общий `alloc_sha
 ```
 
 Внешние зависимости:
-- `kacho-iam` — `ProjectService.Get` (existence check владельца-проекта),
+- `kaname` — `ProjectService.Get` (existence check владельца-проекта),
   `InternalIAMService.Check` (per-RPC authz-gate на **обоих** листенерах),
   `RegisterResource`/`UnregisterResource` (owner-tuple в модель прав).
 - `kacho-geo` — `ZoneService.Get` / `RegionService.Get`: существование

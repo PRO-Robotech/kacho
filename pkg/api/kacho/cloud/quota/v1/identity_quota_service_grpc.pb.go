@@ -34,7 +34,7 @@ const (
 // # Why this one service lives beside the shape instead of inside its owner
 //
 // Every other owner declares its `QuotaService` in its own package. This one
-// cannot: the shared answer shape imports `kacho.cloud.iam.v1` for the scope of a
+// cannot: the shared answer shape imports `kaname.cloud.iam.v1` for the scope of a
 // stated value, so declaring the service inside `iam.v1` would make the two
 // packages depend on each other — and a package cycle is refused by `buf lint`,
 // not by taste. It therefore lives beside the message it returns.
@@ -103,7 +103,7 @@ func (c *identityQuotaServiceClient) List(ctx context.Context, in *ListIdentityQ
 // # Why this one service lives beside the shape instead of inside its owner
 //
 // Every other owner declares its `QuotaService` in its own package. This one
-// cannot: the shared answer shape imports `kacho.cloud.iam.v1` for the scope of a
+// cannot: the shared answer shape imports `kaname.cloud.iam.v1` for the scope of a
 // stated value, so declaring the service inside `iam.v1` would make the two
 // packages depend on each other — and a package cycle is refused by `buf lint`,
 // not by taste. It therefore lives beside the message it returns.

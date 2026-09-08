@@ -33,14 +33,14 @@ import (
 
 const (
 	// IAM read Get entries (verb-bearing, concrete scope) — hide existence on deny.
-	accountGetEntry = `{"fqn":"kacho.cloud.iam.v1.AccountService/Get","permission":"iam.accounts.get","required_relation":"v_get","scope_extractor":{"object_type":"account","from_request_field":"account_id"},"required_acr_min":"2"}`
-	projectGetEntry = `{"fqn":"kacho.cloud.iam.v1.ProjectService/Get","permission":"iam.projects.get","required_relation":"v_get","scope_extractor":{"object_type":"project","from_request_field":"project_id"},"required_acr_min":"2"}`
-	userGetEntry    = `{"fqn":"kacho.cloud.iam.v1.UserService/Get","permission":"iam.users.get","required_relation":"v_get","scope_extractor":{"object_type":"iam_user","from_request_field":"user_id"},"required_acr_min":"2"}`
-	saGetEntry      = `{"fqn":"kacho.cloud.iam.v1.ServiceAccountService/Get","permission":"iam.service_accounts.get","required_relation":"v_get","scope_extractor":{"object_type":"iam_service_account","from_request_field":"service_account_id"},"required_acr_min":"2"}`
-	groupGetEntry   = `{"fqn":"kacho.cloud.iam.v1.GroupService/Get","permission":"iam.groups.get","required_relation":"v_get","scope_extractor":{"object_type":"iam_group","from_request_field":"group_id"},"required_acr_min":"2"}`
+	accountGetEntry = `{"fqn":"kaname.cloud.iam.v1.AccountService/Get","permission":"iam.accounts.get","required_relation":"v_get","scope_extractor":{"object_type":"account","from_request_field":"account_id"},"required_acr_min":"2"}`
+	projectGetEntry = `{"fqn":"kaname.cloud.iam.v1.ProjectService/Get","permission":"iam.projects.get","required_relation":"v_get","scope_extractor":{"object_type":"project","from_request_field":"project_id"},"required_acr_min":"2"}`
+	userGetEntry    = `{"fqn":"kaname.cloud.iam.v1.UserService/Get","permission":"iam.users.get","required_relation":"v_get","scope_extractor":{"object_type":"iam_user","from_request_field":"user_id"},"required_acr_min":"2"}`
+	saGetEntry      = `{"fqn":"kaname.cloud.iam.v1.ServiceAccountService/Get","permission":"iam.service_accounts.get","required_relation":"v_get","scope_extractor":{"object_type":"iam_service_account","from_request_field":"service_account_id"},"required_acr_min":"2"}`
+	groupGetEntry   = `{"fqn":"kaname.cloud.iam.v1.GroupService/Get","permission":"iam.groups.get","required_relation":"v_get","scope_extractor":{"object_type":"iam_group","from_request_field":"group_id"},"required_acr_min":"2"}`
 
 	// IAM mutation entry — must stay PermissionDenied(403) on deny.
-	accountDeleteEntry = `{"fqn":"kacho.cloud.iam.v1.AccountService/Delete","permission":"iam.accounts.delete","required_relation":"v_delete","scope_extractor":{"object_type":"account","from_request_field":"account_id"},"required_acr_min":"2"}`
+	accountDeleteEntry = `{"fqn":"kaname.cloud.iam.v1.AccountService/Delete","permission":"iam.accounts.delete","required_relation":"v_delete","scope_extractor":{"object_type":"account","from_request_field":"account_id"},"required_acr_min":"2"}`
 )
 
 func iamReadGetEntries() []struct {
@@ -53,11 +53,11 @@ func iamReadGetEntries() []struct {
 		fqn  string
 		js   string
 	}{
-		{"account", "/kacho.cloud.iam.v1.AccountService/Get", accountGetEntry},
-		{"project", "/kacho.cloud.iam.v1.ProjectService/Get", projectGetEntry},
-		{"user", "/kacho.cloud.iam.v1.UserService/Get", userGetEntry},
-		{"service_account", "/kacho.cloud.iam.v1.ServiceAccountService/Get", saGetEntry},
-		{"group", "/kacho.cloud.iam.v1.GroupService/Get", groupGetEntry},
+		{"account", "/kaname.cloud.iam.v1.AccountService/Get", accountGetEntry},
+		{"project", "/kaname.cloud.iam.v1.ProjectService/Get", projectGetEntry},
+		{"user", "/kaname.cloud.iam.v1.UserService/Get", userGetEntry},
+		{"service_account", "/kaname.cloud.iam.v1.ServiceAccountService/Get", saGetEntry},
+		{"group", "/kaname.cloud.iam.v1.GroupService/Get", groupGetEntry},
 	}
 }
 
@@ -88,7 +88,7 @@ func TestAuthz_GRPC_ReadDeny_NoDenyReasonsLeak(t *testing.T) {
 	checker := &fakeChecker{allowed: false, reasons: []string{"no path: account:acc_secret has no v_get for user:usr_x"}}
 	mw := buildAuthzMiddleware(t, buildCatalog(t, accountGetEntry), checker)
 	_, err := mw.Unary()(withTokenMD("usr_x", "user"), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.AccountService/Get"},
+		&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.AccountService/Get"},
 		func(ctx context.Context, req any) (any, error) { return nil, nil })
 	require.Error(t, err)
 	st, _ := status.FromError(err)
@@ -109,7 +109,7 @@ func TestAuthz_GRPC_MutationDeny_StaysPermissionDenied(t *testing.T) {
 	checker := &fakeChecker{allowed: false, reasons: []string{"no path"}}
 	mw := buildAuthzMiddleware(t, buildCatalog(t, accountDeleteEntry), checker)
 	_, err := mw.Unary()(withTokenMD("usr_x", "user"), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.AccountService/Delete"},
+		&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.AccountService/Delete"},
 		func(ctx context.Context, req any) (any, error) { return nil, nil })
 	require.Error(t, err)
 	st, _ := status.FromError(err)
@@ -126,7 +126,7 @@ func TestAuthz_GRPC_ReadDeny_ExistingDeniedEqualsNonexistent(t *testing.T) {
 	mw := buildAuthzMiddleware(t, buildCatalog(t, accountGetEntry), checker)
 	run := func() codes.Code {
 		_, err := mw.Unary()(withTokenMD("usr_x", "user"), nil,
-			&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.AccountService/Get"},
+			&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.AccountService/Get"},
 			func(ctx context.Context, req any) (any, error) { return nil, nil })
 		st, _ := status.FromError(err)
 		return st.Code()
@@ -143,7 +143,7 @@ func TestAuthz_GRPC_ReadDeny_ExistingDeniedEqualsNonexistent(t *testing.T) {
 func TestAuthz_HTTP_ReadDeny_Returns404(t *testing.T) {
 	checker := &fakeChecker{allowed: false, reasons: []string{"no path: secret reason"}}
 	router := &fakeRestRouter{m: map[string]string{
-		"GET /iam/v1/accounts/acc_x": "kacho.cloud.iam.v1.AccountService/Get",
+		"GET /iam/v1/accounts/acc_x": "kaname.cloud.iam.v1.AccountService/Get",
 	}}
 	mw := buildAuthzMiddleware(t, buildCatalog(t, accountGetEntry), checker, func(c *middleware.AuthzMiddlewareConfig) {
 		c.RestRouter = router
@@ -172,7 +172,7 @@ func TestAuthz_HTTP_ReadDeny_Returns404(t *testing.T) {
 func TestAuthz_HTTP_MutationDeny_Stays403(t *testing.T) {
 	checker := &fakeChecker{allowed: false, reasons: []string{"no path"}}
 	router := &fakeRestRouter{m: map[string]string{
-		"DELETE /iam/v1/accounts/acc_x": "kacho.cloud.iam.v1.AccountService/Delete",
+		"DELETE /iam/v1/accounts/acc_x": "kaname.cloud.iam.v1.AccountService/Delete",
 	}}
 	mw := buildAuthzMiddleware(t, buildCatalog(t, accountDeleteEntry), checker, func(c *middleware.AuthzMiddlewareConfig) {
 		c.RestRouter = router
@@ -194,7 +194,7 @@ func TestAuthz_GRPC_ReadAllow_PassesThrough(t *testing.T) {
 	mw := buildAuthzMiddleware(t, buildCatalog(t, accountGetEntry), checker)
 	called := false
 	_, err := mw.Unary()(withTokenMD("usr_x", "user"), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.AccountService/Get"},
+		&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.AccountService/Get"},
 		func(ctx context.Context, req any) (any, error) { called = true; return "ok", nil })
 	require.NoError(t, err)
 	assert.True(t, called, "granted read must reach the handler")

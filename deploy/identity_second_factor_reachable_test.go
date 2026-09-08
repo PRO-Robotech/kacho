@@ -67,7 +67,7 @@ const (
 	// identityRenderedConfigPath — путь, по которому процесс службы личности
 	// ЧИТАЕТ наши настройки. Профиль, называющий его, доводит объявление до
 	// процесса; не называющий — оставляет процесс на умолчаниях поставщика.
-	identityRenderedConfigPath = "/etc/kacho-identity-rendered/kratos.yaml"
+	identityRenderedConfigPath = "/etc/kaname-identity-rendered/kratos.yaml"
 )
 
 // identityMethodDecl — объявление одного метода службы личности.

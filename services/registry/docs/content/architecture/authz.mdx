@@ -15,7 +15,7 @@ Kachō Registry не заводит собственную систему пра
 объекты, verb-relations, как гейтятся control-plane RPC и data-plane push/pull.
 
 Авторизация — **per-RPC / per-request**, вызывается как `InternalIAMService.Check`
-в kacho-iam. Проверяется на **всех** поверхностях: public control-plane
+в kaname. Проверяется на **всех** поверхностях: public control-plane
 (`:9090`), internal (`:9091`) и data-plane. Внутренний периметр не доверенный (defense-in-depth).
 
 ## Два объекта авторизации
@@ -105,7 +105,7 @@ label-scoped доступ.
 ## Owner-tuple и видимость создателя
 
 Чтобы создатель видел свой реестр сразу после Create, сервис регистрирует владение и проект
-реестра в kacho-iam через transactional-outbox (см. [Архитектура](/architecture/overview#owner-registration)).
+реестра в kaname через transactional-outbox (см. [Архитектура](/architecture/overview#owner-registration)).
 Модель `registry_registry` несёт relation `owner`, поэтому creator-tuple успешно материализуется.
 Через proxy (`RegisterResource`) разрешены **только** hierarchy-relations (`project`/`owner`) —
 `admin/editor/viewer` через proxy запрещены (privilege-guard в iam).
@@ -132,9 +132,9 @@ label-scoped доступ.
 <table>
   <thead><tr><th>Что</th><th>Где</th></tr></thead>
   <tbody>
-    <tr><td>FGA-типы <code>registry_registry</code> / <code>registry_repository</code> + relations</td><td>FGA-модель kacho-iam</td></tr>
+    <tr><td>FGA-типы <code>registry_registry</code> / <code>registry_repository</code> + relations</td><td>FGA-модель kaname</td></tr>
     <tr><td>PermissionMap (per-RPC verb + extractor)</td><td><code>internal/check/permission_map.go</code></td></tr>
     <tr><td>id-префикс <code>reg</code> (валидатор)</td><td><code>pkg/validate</code></td></tr>
-    <tr><td>SA сервиса как <code>fga_writer@iam_fgaproxy:system</code></td><td>seed kacho-iam (owner-tuple через proxy)</td></tr>
+    <tr><td>SA сервиса как <code>fga_writer@iam_fgaproxy:system</code></td><td>seed kaname (owner-tuple через proxy)</td></tr>
   </tbody>
 </table>

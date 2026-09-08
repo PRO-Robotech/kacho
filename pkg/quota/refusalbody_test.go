@@ -39,7 +39,7 @@ $$;
 		// одну строку и переносит LANGUAGE. Форма другая, предмет тот же —
 		// распознаватель, знающий лишь одну из них, молчал бы на сведённой схеме.
 		got := quota.RefusalFunctionBodies(
-			"CREATE FUNCTION kacho_iam.kacho_quota_admit(v_carrier_type text, v_kind text) RETURNS void\n" +
+			"CREATE FUNCTION kaname.kacho_quota_admit(v_carrier_type text, v_kind text) RETURNS void\n" +
 				"    LANGUAGE plpgsql\n    AS $$\nBEGIN RETURN; END;\n$$;\n")
 		if _, ok := got["kacho_quota_admit"]; !ok {
 			t.Fatalf("форма свода не узнана — записанное в ней прошло бы ВНЕ наблюдения: %v", got)
@@ -51,8 +51,8 @@ $$;
 		// четырьмя `PERFORM`. Предикат по одному имени принял бы вызов за
 		// определение и сверял бы тело чужой функции.
 		got := quota.RefusalFunctionBodies(`
-CREATE FUNCTION kacho_iam.kacho_quota_count() RETURNS trigger AS $$
-BEGIN PERFORM kacho_iam.kacho_quota_refuse('identity', v_identity, v_kind); END;
+CREATE FUNCTION kaname.kacho_quota_count() RETURNS trigger AS $$
+BEGIN PERFORM kaname.kacho_quota_refuse('identity', v_identity, v_kind); END;
 $$;
 `)
 		if len(got) != 0 {

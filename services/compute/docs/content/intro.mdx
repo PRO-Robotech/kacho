@@ -97,8 +97,8 @@ Kachō Compute управляет **намерением и состоянием
   </div>
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>🔑</span>
-    <span className={hero.featureTitle}>Авторизация через kacho-iam</span>
-    <span className={hero.featureBody}>Per-RPC authz-гейт через kacho-iam: вердикт по отношению субъекта к ресурсу или его проекту.</span>
+    <span className={hero.featureTitle}>Авторизация через kaname</span>
+    <span className={hero.featureBody}>Per-RPC authz-гейт через kaname: вердикт по отношению субъекта к ресурсу или его проекту.</span>
   </div>
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>◉</span>
@@ -115,7 +115,7 @@ Kachō Compute управляет **намерением и состоянием
 ## Архитектура
 
 Kachō Compute — один из доменных сервисов платформы. Tenant-запросы проходят через
-`api-gateway`; peer-сервисы (kacho-iam, kacho-vpc, kacho-geo) зовутся напрямую с
+`api-gateway`; peer-сервисы (kaname, kacho-vpc, kacho-geo) зовутся напрямую с
 request-path для валидации ссылок.
 
 ```mermaid
@@ -128,7 +128,7 @@ flowchart LR
   end
   subgraph cp["Control plane"]
     cmp["kacho-compute<br/>:9090 public · :9091 internal"]
-    iam["kacho-iam<br/>Project / authz"]
+    iam["kaname<br/>Project / authz"]
     vpc["kacho-vpc<br/>Subnet / SG / Address"]
     geo["kacho-geo<br/>Geography (Region/Zone)"]
     stg["kacho-storage<br/>Volume / Image / Snapshot"]

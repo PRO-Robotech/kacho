@@ -41,7 +41,7 @@ func TestY(t *testing.T) {
 	const holderRefComment = `package p
 
 // Отбор проверяется на настоящей базе:
-// services/iam/internal/apps/kacho/api/holder — там снисходительного дублёра нет.
+// services/iam/internal/apps/kaname/api/holder — там снисходительного дублёра нет.
 
 import "testing"
 

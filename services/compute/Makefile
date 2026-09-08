@@ -29,7 +29,7 @@ vet:
 	go vet ./...
 
 # audit-list-filter — CI gate for the public List<Resource> surface: a caller must
-# receive only the rows it may see (per-object, kacho-iam BatchCheck), not every row
+# receive only the rows it may see (per-object, kaname BatchCheck), not every row
 # of its project. The check parses the tree, so a resource is recognised by what its
 # declaration IS — a `List` method on a `<X>Handler` type — and never by what the
 # receiver variable is called; see pkg/listfiltergate for the whole contract.

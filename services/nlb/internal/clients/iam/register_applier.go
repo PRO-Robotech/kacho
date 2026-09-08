@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// register_applier.go — register-drainer applier over kacho-iam
+// register_applier.go — register-drainer applier over kaname
 // InternalIAMService.RegisterResource / UnregisterResource.
 //
 // This is the kacho-nlb half of the fga_register_outbox drainer (Вариант A).
@@ -9,7 +9,7 @@
 // iam.HierarchyWriter.WriteCreatorTuple after Commit). The worker now persists
 // a FGARegisterIntent in the
 // resource writer-tx; this applier drains each row and applies its tuple set
-// through kacho-iam by mTLS, mapping the gRPC reply onto the drainer's
+// through kaname by mTLS, mapping the gRPC reply onto the drainer's
 // three-way classification:
 //
 //	nil                       → drainer marks sent_at (happy path)
@@ -38,7 +38,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	iampb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iampb "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
@@ -47,7 +47,7 @@ import (
 )
 
 // RegisterResourceClient — narrow port the register-applier needs from the
-// kacho-iam Internal FGA-proxy. Implemented by the generated
+// kaname Internal FGA-proxy. Implemented by the generated
 // InternalIAMServiceClient; a fake in tests records calls and scripts replies.
 //
 // Defined here (consumer side) so use-case / drainer code depends on the port,
@@ -58,7 +58,7 @@ type RegisterResourceClient interface {
 	UnregisterResource(ctx context.Context, in *iampb.UnregisterResourceRequest, opts ...grpc.CallOption) (*iampb.UnregisterResourceResponse, error)
 }
 
-// NewRegisterResourceClient wraps a grpc conn (to the kacho-iam INTERNAL
+// NewRegisterResourceClient wraps a grpc conn (to the kaname INTERNAL
 // listener :9091 — RegisterResource/UnregisterResource are Internal-only)
 // into the RegisterResourceClient port. nil conn → nil.
 func NewRegisterResourceClient(conn grpc.ClientConnInterface) RegisterResourceClient {
@@ -91,7 +91,7 @@ func DecodeFGARegisterIntent(payload []byte) (domain.FGARegisterIntent, error) {
 }
 
 // NewRegisterApplier returns a drainer.Applier[domain.FGARegisterIntent] backed
-// by the kacho-iam Internal FGA-proxy. Caller wires it into
+// by the kaname Internal FGA-proxy. Caller wires it into
 // drainer.New[domain.FGARegisterIntent](pool, cfg, iam.DecodeFGARegisterIntent,
 // iam.NewRegisterApplier(cli), logger).
 //
@@ -113,7 +113,7 @@ func NewRegisterApplier(cli RegisterResourceClient) drainer.Applier[domain.FGARe
 		ctx = auth.PropagateOutgoing(ctx)
 
 		// forward the owner labels + parent-scope + monotonic
-		// source_version so kacho-iam populates its output-only resource_mirror
+		// source_version so kaname populates its output-only resource_mirror
 		// (label+parent sync feeding the γ selector). Fields are additive/optional —
 		// empty values mirror gracefully; zero source_version → nil (IAM '-infinity').
 		srcVer := sourceVersionPB(intent.SourceVersion)
@@ -172,7 +172,7 @@ func NewRegisterApplier(cli RegisterResourceClient) drainer.Applier[domain.FGARe
 
 // sourceVersionPB converts the decoded intent source_version to a proto
 // Timestamp. A zero time (legacy payload / decode of an old outbox row) → nil,
-// which kacho-iam treats as '-infinity' (applies unconditionally — back-compat).
+// which kaname treats as '-infinity' (applies unconditionally — back-compat).
 func sourceVersionPB(t time.Time) *timestamppb.Timestamp {
 	if t.IsZero() {
 		return nil
@@ -180,7 +180,7 @@ func sourceVersionPB(t time.Time) *timestamppb.Timestamp {
 	return timestamppb.New(t)
 }
 
-// classifyRegisterErr maps the kacho-iam RegisterResource/UnregisterResource
+// classifyRegisterErr maps the kaname RegisterResource/UnregisterResource
 // gRPC reply onto the drainer's three-way classification.
 //
 //	nil                              → nil (applied; or idempotent OK)

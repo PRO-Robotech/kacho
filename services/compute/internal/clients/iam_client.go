@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // Package clients содержит gRPC-адаптеры к peer-сервисам (Clean Architecture
-// outbound adapters): kacho-iam (ProjectService) для project-existence-check и
+// outbound adapters): kaname (ProjectService) для project-existence-check и
 // kacho-geo (ZoneService) для zone-валидации, плюс fgaproxy owner-tuple адаптеры
 // (iam_register_applier, fga_reconcile_adapter). Реализуют port-интерфейсы из
 // internal/ports.
 //
-// peer для project-existence-check — kacho-iam.ProjectService.Get; peer для
+// peer для project-existence-check — kaname.ProjectService.Get; peer для
 // zone-валидации — kacho-geo.ZoneService.Get (см. geo_client.go).
 //
 // outgoing ctx обёрнут `auth.PropagateOutgoing` — peer-call несёт
@@ -22,7 +22,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
 	"github.com/PRO-Robotech/kacho/pkg/peer"
 	"github.com/PRO-Robotech/kacho/pkg/retry"
@@ -48,7 +48,7 @@ const projectExistsCacheMaxEntries = 10000
 // edge yet), per architecture.md's documented fallback.
 const defaultProjectCallTimeout = 5 * time.Second
 
-// ProjectClient реализует service.ProjectClient через gRPC к kacho-iam
+// ProjectClient реализует service.ProjectClient через gRPC к kaname
 // с TTL-кешем для Exists (hot path: каждый Create/Move).
 type ProjectClient struct {
 	cli iamv1.ProjectServiceClient
@@ -86,7 +86,7 @@ func NewProjectClientWith(cli iamv1.ProjectServiceClient) *ProjectClient {
 	}
 }
 
-// Exists проверяет существование Project через kacho-iam.ProjectService.Get.
+// Exists проверяет существование Project через kaname.ProjectService.Get.
 // Положительный результат кешируется на projectExistsTTL (убирает gRPC RTT
 // из hot-path при burst-нагрузке). NotFound НЕ кешируется (свеже-созданный
 // project быстро становится виден).
@@ -141,7 +141,7 @@ func (c *ProjectClient) Exists(ctx context.Context, projectID string) (bool, err
 //
 // # Почему берётся отсюда, а не из резолва величин
 //
-// Старшинство `PROJECT > ACCOUNT > DEFAULT` разрешается в kacho-iam и только там:
+// Старшинство `PROJECT > ACCOUNT > DEFAULT` разрешается в kaname и только там:
 // владелец типа ресурса аккаунта своего проекта не знает. Но адресовать
 // АККАУНТНУЮ дельту он обязан уметь — иначе изменение аккаунтной величины
 // пришлось бы разносить пересчётом ВСЕХ строк вида, то есть всплеском вызовов к
@@ -204,7 +204,7 @@ func (c *ProjectClient) putExists(projectID string) {
 }
 
 // NoopProjectClient — заглушка для KACHO_COMPUTE_SKIP_PEER_VALIDATION=true
-// (Exists всегда true) и для unit/newman без поднятого kacho-iam.
+// (Exists всегда true) и для unit/newman без поднятого kaname.
 type NoopProjectClient struct{}
 
 // Exists всегда возвращает (true, nil).

@@ -80,7 +80,7 @@ func edgeKindUserTokenAs(machineCaller bool) *edgeKind {
 
 		Create: func(_ *fakeEdge, id string, req edgeObject) (edgeObject, error) {
 			// СТРАЖ ЛИЧНОСТИ КРАЯ — воспроизведён дословно, включая расхождение полос
-			// (services/iam/internal/apps/kacho/api/user_tokens/handler.go, Issue).
+			// (services/iam/internal/apps/kaname/api/user_tokens/handler.go, Issue).
 			by, err := edgeUserTokenIssuer(machineCaller, edgeStr(req, "userId"),
 				edgeStr(req, "createdByUserId"))
 			if err != nil {
@@ -120,7 +120,7 @@ func edgeKindUserTokenAs(machineCaller bool) *edgeKind {
 		//
 		// Идентификатор клиента и идентификатор ключа РАВНЫ `id` строки, и это не
 		// упрощение подделки, а измеренный контракт: у удостоверения одно имя, а не три
-		// (proto/kacho/cloud/iam/v1/user_token_service.proto, IssueUserTokenResponse —
+		// (proto/kaname/cloud/iam/v1/user_token_service.proto, IssueUserTokenResponse —
 		// `client_id` совпадает с `key_id` дословно).
 		OpResponse: func(row *edgeRow) edgeObject {
 			return edgeObject{
@@ -206,7 +206,7 @@ func accTokenConfigIssuedBy(e *fakeEdge, name string, ttl int64, issuer string) 
 		line = fmt.Sprintf("\n  created_by_user_id = %q", issuer)
 	}
 	return accProvider(e) + fmt.Sprintf(`
-resource "kacho_iam_user_token" "t" {
+resource "kaname_user_token" "t" {
   user_id     = %q%s
   name        = %q
   ttl_seconds = %d
@@ -382,12 +382,12 @@ func TestAcceptanceIAMUserToken_MachineCallerIssuesWithoutNamingTheIssuer(t *tes
 		Steps: []resource.TestStep{{
 			Config: accTokenConfig(e, "acc-token-machine", 3600),
 			Check: resource.ComposeAggregateTestCheckFunc(
-				resource.TestCheckResourceAttrSet("kacho_iam_user_token.t", "id"),
-				resource.TestCheckResourceAttrSet("kacho_iam_user_token.t", "private_key_pem"),
+				resource.TestCheckResourceAttrSet("kaname_user_token.t", "id"),
+				resource.TestCheckResourceAttrSet("kaname_user_token.t", "private_key_pem"),
 				// КТО заполняет поле, которого настройка не называла: край, и его ответ
 				// доезжает до состояния. Без этого утверждения проба зеленела бы и на
 				// провайдере, который поле принял, но потерял.
-				resource.TestCheckResourceAttr("kacho_iam_user_token.t",
+				resource.TestCheckResourceAttr("kaname_user_token.t",
 					"created_by_user_id", accTokenUser),
 			),
 		}},
@@ -434,10 +434,10 @@ func TestAcceptanceIAMUserToken_SecretSurvivesRefresh(t *testing.T) {
 			{
 				Config: accTokenConfig(e, "acc-token-secret", 3600),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					accCaptureAttr("kacho_iam_user_token.t", "id", &tokenID),
-					accCaptureAttr("kacho_iam_user_token.t", "private_key_pem", &secret),
-					resource.TestCheckResourceAttr("kacho_iam_user_token.t", "algorithm", "ES256"),
-					resource.TestCheckResourceAttrSet("kacho_iam_user_token.t", "public_key_pem"),
+					accCaptureAttr("kaname_user_token.t", "id", &tokenID),
+					accCaptureAttr("kaname_user_token.t", "private_key_pem", &secret),
+					resource.TestCheckResourceAttr("kaname_user_token.t", "algorithm", "ES256"),
+					resource.TestCheckResourceAttrSet("kaname_user_token.t", "public_key_pem"),
 					func(s *tfstate.State) error {
 						// Секрет в состоянии — ТОТ, что край выдал, а не пустая строка,
 						// которая тоже прошла бы проверку «атрибут задан».
@@ -446,7 +446,7 @@ func TestAcceptanceIAMUserToken_SecretSurvivesRefresh(t *testing.T) {
 						}
 						// Идентификатор клиента и ключа — АДРЕСУЕМЫЙ идентификатор строки,
 						// а не что-то похожее: по нему токен и отзывается.
-						rs := s.RootModule().Resources["kacho_iam_user_token.t"]
+						rs := s.RootModule().Resources["kaname_user_token.t"]
 						for _, attr := range []string{"client_id", "key_id"} {
 							if got := rs.Primary.Attributes[attr]; got != tokenID {
 								return fmt.Errorf("%s = %q, а строка токена — %q", attr, got, tokenID)
@@ -459,9 +459,9 @@ func TestAcceptanceIAMUserToken_SecretSurvivesRefresh(t *testing.T) {
 			{
 				RefreshState: true,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					accCheckAttrLate("kacho_iam_user_token.t", "id", &tokenID),
+					accCheckAttrLate("kaname_user_token.t", "id", &tokenID),
 					func(s *tfstate.State) error {
-						rs := s.RootModule().Resources["kacho_iam_user_token.t"]
+						rs := s.RootModule().Resources["kaname_user_token.t"]
 						if got := rs.Primary.Attributes["private_key_pem"]; got != secret {
 							return fmt.Errorf("обновление состояния изменило материал: было %q, стало %q",
 								secret, got)
@@ -489,13 +489,13 @@ func TestAcceptanceIAMUserToken_RevokedOutsideIsDroppedFromState(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config: accTokenConfig(e, "acc-token-revoked", 3600),
-				Check:  accCaptureAttr("kacho_iam_user_token.t", "id", &tokenID),
+				Check:  accCaptureAttr("kaname_user_token.t", "id", &tokenID),
 			},
 			{
 				PreConfig:          func() { e.Forget(tokenID) },
 				RefreshState:       true,
 				ExpectNonEmptyPlan: true,
-				Check:              accAbsentFromState("kacho_iam_user_token.t"),
+				Check:              accAbsentFromState("kaname_user_token.t"),
 			},
 		},
 	})
@@ -524,9 +524,9 @@ func TestAcceptanceIAMUserTokenSchemaSaysTheSameAsItsRefusals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("схема не получена: %v", err)
 	}
-	res, ok := schemas.ResourceSchemas["kacho_iam_user_token"]
+	res, ok := schemas.ResourceSchemas["kaname_user_token"]
 	if !ok {
-		t.Fatal("в схеме провайдера нет kacho_iam_user_token — ресурс не зарегистрирован")
+		t.Fatal("в схеме провайдера нет kaname_user_token — ресурс не зарегистрирован")
 	}
 	if res.Block == nil || strings.TrimSpace(res.Block.Description) == "" {
 		t.Fatal("у ресурса нет описания: судить не о чем")

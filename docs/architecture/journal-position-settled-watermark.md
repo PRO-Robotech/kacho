@@ -89,8 +89,8 @@ WHERE sequence_no > $1 ORDER BY sequence_no ASC
 
 | что | чем |
 |---|---|
-| гарантия исполнена | `pkg/subscription/watermark.go`; чтение — окно `(курсор, устоявшееся]` в `pkg/subscription/drain.go` и в `services/iam/internal/repo/kacho/pg/subject_change_repo.go` |
-| гарантия доказана | `pkg/subscription/commitorder_integration_test.go` — три подслучая: инверсный порядок фиксаций, откат писателя, писатель без идентификатора транзакции; `services/iam/internal/repo/kacho/pg/subject_change_commit_order_integration_test.go` — те же окно и откат на журнале изменений субъекта плюс урезание позиции на полной странице |
+| гарантия исполнена | `pkg/subscription/watermark.go`; чтение — окно `(курсор, устоявшееся]` в `pkg/subscription/drain.go` и в `services/iam/internal/repo/kaname/pg/subject_change_repo.go` |
+| гарантия доказана | `pkg/subscription/commitorder_integration_test.go` — три подслучая: инверсный порядок фиксаций, откат писателя, писатель без идентификатора транзакции; `services/iam/internal/repo/kaname/pg/subject_change_commit_order_integration_test.go` — те же окно и откат на журнале изменений субъекта плюс урезание позиции на полной странице |
 | наблюдатель один и в фундаменте | гейт `settledwatermarksingularity`; общее состояние защищено замком, и это доказано `pkg/subscription`.`TestWatermarkSurvivesConcurrentPasses` |
 | **никто не читает по голому номеру** | гейт `journalcursorupperbound` — судит по дереву, а не по перечню |
 

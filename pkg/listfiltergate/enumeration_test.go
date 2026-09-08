@@ -381,7 +381,7 @@ type AuthorizeClient interface {
 // TestDeriveEnumerations_SharedSourceIsResolvedFromTheModuleRoot — a source that is
 // NOT service code.
 //
-// Every consumer service reaches kacho-iam through one shared port, so a derivation
+// Every consumer service reaches kaname through one shared port, so a derivation
 // that could only read the service's own tree would leave the shortest path from
 // "narrow this page" to "enumerate the universe" watched by nobody: each profile
 // would name its own client and none would name the port they all share.
@@ -434,11 +434,64 @@ func TestDeriveEnumerations_SharedSourceWithNoModuleRootIsAFinding(t *testing.T)
 		{Dir: "pkg/listnarrow", Type: "AuthorizeClient", Role: AsksVerdicts, Shared: true},
 	})
 
-	if len(got.Findings) != 1 || !strings.Contains(got.Findings[0], "no go.mod was found") {
+	if len(got.Findings) != 1 || !strings.Contains(got.Findings[0], "no go.mod declaring") {
 		t.Fatalf("a shared source whose module root cannot be found must be a finding; got %v", got.Findings)
 	}
 	if len(got.Sources) != 0 {
 		t.Fatalf("a source that was never read must not appear in the census as read; got %v", got.Sources)
+	}
+}
+
+// TestDeriveEnumerations_SharedSourceIsResolvedFromTheOuterModuleNotANestedOne —
+// PRO-Robotech/kacho#2211 (census row 2, moduleRootOf). The walk-up stops at the
+// FIRST go.mod it meets on the way up and never asks which module it declares.
+// services/iam sits inside its OWN go.mod today (module kaname, not kacho) — it
+// just declares no Shared source yet, so the gap has no live consequence. This
+// fixture makes it live: the service root itself carries a go.mod, and a decoy
+// exists at the SAME relative path a Shared source resolves to under it. Left
+// unchecked, moduleRootOf would stop at the nested go.mod immediately (zero
+// climbs) and the decoy would be read as if it were the shared foundation port —
+// not a loud "could not be read" finding (the sibling test above locks that one),
+// but a SILENT wrong derivation from someone else's file.
+func TestDeriveEnumerations_SharedSourceIsResolvedFromTheOuterModuleNotANestedOne(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, content string) {
+		t.Helper()
+		p := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+	write("go.mod", "module github.com/PRO-Robotech/kacho\n\ngo 1.24\n")
+	write("pkg/listnarrow/narrower.go", strings.Replace(sharedPort,
+		"type AuthorizeClient interface {",
+		"type AuthorizeClient interface {\n\tVisibleObjectIDs(ctx context.Context, subject string) ([]string, error)", 1))
+
+	svcRoot := filepath.Join(root, "services", "fixture")
+	write("services/fixture/go.mod", "module github.com/PRO-Robotech/kaname\n\ngo 1.24\n")
+	write("services/fixture/pkg/listnarrow/narrower.go", `package listnarrow
+
+type AuthorizeClient interface {
+	DecoyEnumerate(ctx context.Context) ([]string, error)
+}
+`)
+
+	got := deriveEnumerations(svcRoot, []EnumerationSource{
+		{Dir: "pkg/listnarrow", Type: "AuthorizeClient", Role: AsksVerdicts, Shared: true},
+	})
+
+	for _, n := range got.Names {
+		if n == "DecoyEnumerate" {
+			t.Fatalf("resolved the SERVICE's own nested go.mod instead of the outer shared "+
+				"foundation module — derived %v from the decoy under services/fixture/pkg/listnarrow, "+
+				"not the real port at the tree root (sources: %v)", got.Names, got.Sources)
+		}
+	}
+	if strings.Join(got.Names, ",") != "VisibleObjectIDs" {
+		t.Fatalf("the OUTER shared port's method must be derived; got %v (sources: %v)", got.Names, got.Sources)
 	}
 }
 

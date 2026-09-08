@@ -82,7 +82,7 @@ assert "профили дерева как есть" GREEN "$TMP/asis"
 # (2) дефект #1137 возвращён: требование связанного токена включено на
 #     ПЕРЕВЕДЁННОМ контуре — у него там нет читателя вовсе.
 mkprofiles "$TMP/no-reader"
-setval "$TMP/no-reader/values.prod.yaml" '.["kacho-iam"].kacho.iam.saKey.bindDpop = true'
+setval "$TMP/no-reader/values.prod.yaml" '.["kaname"].kacho.iam.saKey.bindDpop = true'
 assert "ручка включена на переведённом контуре" RED "$TMP/no-reader"
 says "values.prod.yaml"
 
@@ -90,7 +90,7 @@ says "values.prod.yaml"
 #     Читатель у неё там есть — регистрация клиента у прежнего издателя, —
 #     и проба обязана молчать.
 mkprofiles "$TMP/has-reader"
-setval "$TMP/has-reader/values.dev.yaml" '.["kacho-iam"].kacho.iam.saKey.bindDpop = true'
+setval "$TMP/has-reader/values.dev.yaml" '.["kaname"].kacho.iam.saKey.bindDpop = true'
 assert "та же ручка на непереведённом контуре" GREEN "$TMP/has-reader"
 
 # (4) секция 4 по-прежнему способна упасть — и теперь по ЛЮБОМУ профилю, а не

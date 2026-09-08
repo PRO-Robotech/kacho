@@ -23,7 +23,7 @@ import (
 
 // (nlb-side): Update(labels) re-emits the FGA-register
 // mirror-feed intent (carrying the new labels + parent) in the writer-tx so
-// kacho-iam keeps its resource_mirror current under label-change reconcile.
+// kaname keeps its resource_mirror current under label-change reconcile.
 func TestUpdate_LabelsMask_EmitsMirrorIntent(t *testing.T) {
 	repo := newFakeRepo()
 	tg := makeTG("prj-acme", "tg-mirror")

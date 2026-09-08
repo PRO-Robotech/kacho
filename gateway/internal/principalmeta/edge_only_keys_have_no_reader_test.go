@@ -26,6 +26,20 @@ package principalmeta_test
 // поиск по подстроке краснел бы на чужом объяснении. Гейт судит по строковому
 // литералу разобранного дерева.
 //
+// ФОРМ ЧТЕНИЯ ДВЕ, И РАЗБОР ЗНАЕТ ОБЕ. С тех пор как пространство имён личности
+// сведено в ОДНО объявление (`pkg/principalwire`), читатель ключа пишет не
+// литерал, а `principalwire.MetaTokenAMR`. Распознаватель, знающий только
+// литерал, о таком читателе не сказал бы ни красного, ни зелёного — он молчал
+// бы, и молчание читалось бы как «читателя нет». Поэтому здесь опознаются обе
+// формы: строковый литерал и обращение к константе пакета-объявления, приведённое
+// к ПОЛНОМУ ПУТИ ИМПОРТА (псевдоним пишется так же коротко, и разбор по имени
+// пакета обходился бы одной буквой в объявлении импорта).
+//
+// САМО ОБЪЯВЛЕНИЕ ЧИТАТЕЛЕМ НЕ ЯВЛЯЕТСЯ. Пакет `pkg/principalwire` из обхода
+// исключён: он называет имена, а не читает значения, и он лежит в фундаменте
+// потому, что край импортирует фундамент, а не наоборот. Запрет объявлять имя
+// там, где его можно объявить, означал бы, что объявить его негде.
+//
 // СОСТАВ БЕРЁТСЯ У ИНДЕКСА, А НЕ У ДИСКА. Обход диском подхватывает то, что на
 // машине со стендом лежит рядом с деревом и деревом не является — распакованные
 // чарты, сборочные каталоги, отчёты прогонов, — и находка из такого каталога
@@ -46,6 +60,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
+	"github.com/PRO-Robotech/kacho/pkg/principalwire"
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
@@ -82,7 +97,20 @@ func TestEdgeOnlyKeys_HaveNoReaderOutsideTheEdge(t *testing.T) {
 	keys := edgeOnlyKeyNames()
 	require.NotEmpty(t, keys, "перечень ключей края пуст — гейту нечего осматривать")
 
-	var filesRead, literalsSeen int
+	// Имена констант, под которыми те же ключи читаются ПОСЛЕ сведения
+	// объявления в одно. Берутся у каталога, а не выписываются: второй перечень
+	// имён разошёлся бы с первым молча — ровно тот класс, который этот гейт и
+	// сторожит, только этажом выше.
+	edgeOnlyIdents := map[string]string{}
+	for _, k := range principalwire.Keys() {
+		if k.EdgeOnly && k.Ident != "" {
+			edgeOnlyIdents[k.Ident] = k.Meta
+		}
+	}
+	require.NotEmpty(t, edgeOnlyIdents, "каталог не назвал ни одной константы ключа края — "+
+		"вторая форма чтения осталась бы невидимой, и гейт молчал бы на ней")
+
+	var filesRead, literalsSeen, selectorsSeen int
 	var findings []string
 	for _, sub := range []string{"services", "pkg"} {
 		files, err := treecorpus.UnderWithSuffix(filepath.Join(root, sub), ".go")
@@ -101,26 +129,59 @@ func TestEdgeOnlyKeys_HaveNoReaderOutsideTheEdge(t *testing.T) {
 			if strings.HasPrefix(rel, "pkg/api/") {
 				continue
 			}
+			// Пакет-ОБЪЯВЛЕНИЕ: он называет имена, а не читает значения.
+			if strings.HasPrefix(rel, "pkg/principalwire/") {
+				continue
+			}
 			fset := token.NewFileSet()
 			f, perr := parser.ParseFile(fset, path, nil, 0)
 			if perr != nil {
 				continue // не наш предмет: несобирающийся файл поймает сборка
 			}
 			filesRead++
+			// Псевдонимы пакета-объявления в ЭТОМ файле: обращение опознаётся по
+			// полному пути импорта, а не по имени пакета.
+			declAliases := map[string]bool{}
+			for _, imp := range f.Imports {
+				ip, uerr := strconv.Unquote(imp.Path.Value)
+				if uerr != nil || ip != principalwire.ImportPath {
+					continue
+				}
+				name := principalwire.ImportPath[strings.LastIndex(principalwire.ImportPath, "/")+1:]
+				if imp.Name != nil {
+					if imp.Name.Name == "." || imp.Name.Name == "_" {
+						continue
+					}
+					name = imp.Name.Name
+				}
+				declAliases[name] = true
+			}
 			ast.Inspect(f, func(n ast.Node) bool {
-				lit, ok := n.(*ast.BasicLit)
-				if !ok || lit.Kind != token.STRING {
-					return true
-				}
-				literalsSeen++
-				v, uerr := strconv.Unquote(lit.Value)
-				if uerr != nil {
-					return true
-				}
-				for _, k := range keys {
-					if strings.EqualFold(strings.TrimSpace(v), k) {
+				switch node := n.(type) {
+				case *ast.BasicLit:
+					if node.Kind != token.STRING {
+						return true
+					}
+					literalsSeen++
+					v, uerr := strconv.Unquote(node.Value)
+					if uerr != nil {
+						return true
+					}
+					for _, k := range keys {
+						if strings.EqualFold(strings.TrimSpace(v), k) {
+							findings = append(findings,
+								rel+":"+strconv.Itoa(fset.Position(node.Pos()).Line)+" — "+k)
+						}
+					}
+				case *ast.SelectorExpr:
+					pkg, ok := node.X.(*ast.Ident)
+					if !ok || !declAliases[pkg.Name] {
+						return true
+					}
+					selectorsSeen++
+					if meta, ok := edgeOnlyIdents[node.Sel.Name]; ok {
 						findings = append(findings,
-							rel+":"+strconv.Itoa(fset.Position(lit.Pos()).Line)+" — "+k)
+							rel+":"+strconv.Itoa(fset.Position(node.Pos()).Line)+" — "+meta)
 					}
 				}
 				return true
@@ -131,8 +192,9 @@ func TestEdgeOnlyKeys_HaveNoReaderOutsideTheEdge(t *testing.T) {
 	require.NotZero(t, filesRead, "прочитано ноль файлов Go — «ноль находок» здесь означало бы "+
 		"«ноль прочитанного», и гейт был бы зелёным ни о чём")
 	require.NotZero(t, literalsSeen, "осмотрено ноль строковых литералов — разбор сломан")
-	t.Logf("перепись: файлов Go прочитано %d · строковых литералов осмотрено %d · ключей края %d",
-		filesRead, literalsSeen, len(keys))
+	t.Logf("перепись: файлов Go прочитано %d · строковых литералов осмотрено %d · "+
+		"обращений к пакету-объявлению осмотрено %d · ключей края %d (имён констант %d)",
+		filesRead, literalsSeen, selectorsSeen, len(keys), len(edgeOnlyIdents))
 
 	for _, f := range findings {
 		t.Errorf("%s: ключ объявлен остающимся на краю, а за краем у него появился читатель. "+
