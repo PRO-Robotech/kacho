@@ -1305,13 +1305,58 @@ ifndef SVC
 endif
 	kubectl logs -n kacho -f deploy/$(SVC)
 
+# ─── Имя базы и пользователь службы: ОБЪЯВЛЕНЫ, а не выведены ────────────────
+#
+# Цель `psql` собирала имя базы сама — приставкой платформы плюс именем службы, —
+# и потому вела не туда. Служба прав зовёт свою базу `kaname` (собственное имя
+# продукта), пользователь nlb зовётся `kacho_nlb`, а не `nlb`: выведение
+# расходилось с профилем МОЛЧА, и заметить это мог только тот, кто цель позвал.
+#
+# Таблица ниже — ВЫБОР по имени службы, а не сборка из него. Её согласие с тем,
+# что объявляет профиль (`pg-<служба>.auth.database` / `.username`), держит
+# deploy/stand_psql_names_the_declared_database_test.go: правка одной половины
+# без другой — находка с координатой, а не совпадение.
+#
+# Приставка платформы у соседних служб здесь ЗАКОННА (`kacho_vpc`): те службы
+# остаются Kachō. Запрещено не написание, а происхождение — величина, собранная
+# рецептом из $(SVC).
+PSQL_DB_compute   := kacho_compute
+PSQL_DB_geo       := kacho_geo
+PSQL_DB_hydra     := hydra
+PSQL_DB_iam       := kaname
+PSQL_DB_kratos    := kratos
+PSQL_DB_nlb       := kacho_nlb
+PSQL_DB_registry  := kacho_registry
+PSQL_DB_storage   := kacho_storage
+PSQL_DB_vpc       := kacho_vpc
+
+PSQL_USER_compute  := compute
+PSQL_USER_geo      := geo
+PSQL_USER_hydra    := hydra
+PSQL_USER_iam      := iam
+PSQL_USER_kratos   := kratos
+PSQL_USER_nlb      := kacho_nlb
+PSQL_USER_registry := registry
+PSQL_USER_storage  := storage
+PSQL_USER_vpc      := vpc
+
 # guard-kind-context: интерактивная psql-сессия — не чтение, а произвольная запись
 # в базу активного контекста; учётные данные здесь стендовые.
+#
+# Имя узла базы ВЫВОДИТСЯ законно: helm именует StatefulSet подчарта
+# `<релиз>-<псевдоним>`, и это правило принадлежит helm, а не нам. Прежний
+# рецепт звал его `pg-<служба>` — такого объекта в кластере нет ни для одной
+# службы, то есть общая цель не работала вовсе.
 psql: guard-kind-context
 ifndef SVC
 	$(error SVC variable is required)
 endif
-	kubectl exec -it -n kacho statefulset/pg-$(SVC) -- psql -U $(SVC) -d kacho_$(SVC)
+ifeq ($(strip $(PSQL_DB_$(SVC))),)
+	$(error служба '$(SVC)' не объявлена в таблице PSQL_DB_*/PSQL_USER_* — \
+	  имя базы не выводится из имени службы: объявите его рядом с целью psql)
+endif
+	kubectl exec -it -n $(STACK_NAMESPACE) statefulset/$(STACK_RELEASE)-pg-$(SVC) -- \
+	    psql -U $(PSQL_USER_$(SVC)) -d $(PSQL_DB_$(SVC))
 
 e2e-test:
 	@for sh in e2e/0.1/*.sh; do \
