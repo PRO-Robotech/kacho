@@ -54,6 +54,47 @@ func kanameSurfaceCorpus(t *testing.T) map[string][]byte {
 			corpus[rel] = body
 		}
 	}
+
+	// Наложения значений зонта входят в поверхность ЧАСТЬЮ: один файл настраивает
+	// все подчарты, и имя платформы в блоке соседа законно. Оставляются строки
+	// подчарта Kaname, прочие заменяются пустыми — номера строк сохраняются,
+	// потому что они и есть координата находки.
+	overlaysRead, overlayLinesKept := 0, 0
+	overlays, err := treecorpus.Glob(filepath.Join(root, filepath.FromSlash(KanameOverlayGlob)))
+	if err != nil {
+		t.Fatalf("состав наложений зонта: %v — «ноль находок» здесь означало бы "+
+			"«ноль прочитанного»", err)
+	}
+	if len(overlays) == 0 {
+		t.Fatalf("наложений значений зонта по образцу %q не найдено НИ ОДНОГО — "+
+			"образец переехал либо назван неверно, и блок kaname остался бы вне "+
+			"переписи молча", KanameOverlayGlob)
+	}
+	for _, abs := range overlays {
+		rel, relErr := filepath.Rel(root, abs)
+		if relErr != nil {
+			t.Fatalf("путь %s: %v", abs, relErr)
+		}
+		rel = filepath.ToSlash(rel)
+		if _, seen := corpus[rel]; seen {
+			continue
+		}
+		body, readErr := os.ReadFile(abs) // #nosec G304 -- путь из индекса своего дерева
+		if readErr != nil {
+			t.Fatalf("чтение %s: %v", rel, readErr)
+		}
+		filtered, kept := KanameLinesOfOverlay(rel, body)
+		corpus[rel] = filtered
+		overlaysRead++
+		overlayLinesKept += kept
+	}
+	t.Logf("перепись наложений зонта: файлов по образцу %q прочитано %d · строк подчарта "+
+		"Kaname оставлено %d", KanameOverlayGlob, overlaysRead, overlayLinesKept)
+	if overlayLinesKept == 0 {
+		t.Fatalf("ни одна строка наложений не признана принадлежащей подчарту Kaname "+
+			"при %d прочитанных файлах — привязка строки к подчарту перестала работать, "+
+			"и «ноль находок» по этой полосе означает «ноль прочитанного»", overlaysRead)
+	}
 	return corpus
 }
 
