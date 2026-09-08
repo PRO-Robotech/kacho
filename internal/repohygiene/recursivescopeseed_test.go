@@ -69,6 +69,7 @@ var recursiveScopeRoots = []string{"services", "pkg", "gateway"}
 
 // TestRecursiveScopeChainCostsTheRequestNotTheSet — свойство дерева.
 func TestRecursiveScopeChainCostsTheRequestNotTheSet(t *testing.T) {
+	t.Parallel()
 	findings, c := collectUnboundedRecursiveScopeSeeds(t, repoRoot(t))
 
 	// Проверка СВОЕЙ предпосылки. Запрет обоснован тем, что в дереве есть

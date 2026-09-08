@@ -40,6 +40,7 @@ func roleDeleteFindings(sites []RoleDeleteSite) []string {
 
 // TestSystemRoleRowIsNeverDeleted — сам гейт.
 func TestSystemRoleRowIsNeverDeleted(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

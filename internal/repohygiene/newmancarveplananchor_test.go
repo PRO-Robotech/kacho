@@ -73,6 +73,7 @@ type carveAnchorScan struct {
 // TestOutOfCaseCarveTakesItsCidrFromThePublishedPlan — ни один шаг, режущий подсеть
 // в сети из посева, не выводит адрес сам.
 func TestOutOfCaseCarveTakesItsCidrFromThePublishedPlan(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	files := 0
@@ -354,6 +355,7 @@ func carveShape(producer string) []byte {
 // TestCarvePlanAnchorGateRedOnInjectedDefect — адрес, выведённый мимо плана,
 // краснит гейт И называет координату.
 func TestCarvePlanAnchorGateRedOnInjectedDefect(t *testing.T) {
+	t.Parallel()
 	got := analyzeCarvePlanAnchoring(t, "injected.json", carveShape(
 		`"pm.environment.set('subCidr6', 'fd' + (10 + (Date.now() % 80)).toString(16) + ':1::/64');"`))
 
@@ -373,6 +375,7 @@ func TestCarvePlanAnchorGateRedOnInjectedDefect(t *testing.T) {
 // опубликованного плана. Без этой стороны гейт запрещал бы нарезку как таковую и
 // был бы снят первым же ложным срабатыванием.
 func TestCarvePlanAnchorGateSilentOnLawfulSameShape(t *testing.T) {
+	t.Parallel()
 	got := analyzeCarvePlanAnchoring(t, "lawful.json", carveShape(
 		`"var __p = pm.environment.get('`+publishedPlanV6+`');",`+
 			`"pm.environment.set('subCidr6', __carve6(__p));"`))
@@ -400,6 +403,7 @@ func TestCarvePlanAnchorGateSilentOnLawfulSameShape(t *testing.T) {
 // пишут как раз тогда, когда рядом делают исключение, — самый вероятный вход
 // (`testing.md` §«Гейт читает исполняемую часть, а не текст»).
 func TestCarvePlanAnchorGateReadsCodeNotComment(t *testing.T) {
+	t.Parallel()
 	got := analyzeCarvePlanAnchoring(t, "commented.json", carveShape(
 		`"// адрес согласован с pm.environment.get('`+publishedPlanV6+`') вручную",`+
 			`"pm.environment.set('subCidr6', 'fd00:1::/64');"`))

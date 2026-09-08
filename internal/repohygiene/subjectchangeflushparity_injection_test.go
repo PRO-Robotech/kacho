@@ -93,6 +93,7 @@ func auditParity(t *testing.T, opts SubjectChangeFlushParityOptions) []SubjectCh
 // TestFlushParityGateFallsWhenAProducerHasNoFlush — производитель добавлен, полоса
 // самосброса не пополнена.
 func TestFlushParityGateFallsWhenAProducerHasNoFlush(t *testing.T) {
+	t.Parallel()
 	opts := flushParityTree(t,
 		[]string{producerBody, producerBody, producerTwin},
 		[]string{"kaname.cloud.iam.v1.GroupService/AddMember"})
@@ -109,6 +110,7 @@ func TestFlushParityGateFallsWhenAProducerHasNoFlush(t *testing.T) {
 // нарушением, а НЕВИДИМОСТЬЮ: полоса пополнялась, перепись не менялась, и гейт
 // краснел ровно наоборот — на дереве, где полосы сошлись.
 func TestFlushParityGateSeesTheValueForm(t *testing.T) {
+	t.Parallel()
 	opts := flushParityTree(t,
 		[]string{producerValueBody, producerValueBody, producerTwin},
 		[]string{"kaname.cloud.iam.v1.GroupService/AddMember"})
@@ -122,6 +124,7 @@ func TestFlushParityGateSeesTheValueForm(t *testing.T) {
 // сочтена дважды: вызов СОДЕРЖИТ узел обращения, поэтому наивное расширение дало
 // бы двойной счёт именно на первой форме.
 func TestFlushParityGateCountsMixedFormsOnce(t *testing.T) {
+	t.Parallel()
 	opts := flushParityTree(t,
 		[]string{producerBody, producerValueBody, producerTwin},
 		[]string{
@@ -136,6 +139,7 @@ func TestFlushParityGateCountsMixedFormsOnce(t *testing.T) {
 // TestFlushParityGateFallsOnAnUnresolvableName — имя, которого нет в контракте:
 // счёт сошёлся бы, а самосброс не сработал бы ни разу.
 func TestFlushParityGateFallsOnAnUnresolvableName(t *testing.T) {
+	t.Parallel()
 	opts := flushParityTree(t,
 		[]string{producerBody},
 		[]string{"kaname.cloud.iam.v1.GroupService/NoSuchMethod"})
@@ -148,6 +152,7 @@ func TestFlushParityGateFallsOnAnUnresolvableName(t *testing.T) {
 // TestFlushParityGateStaysSilentWhenLanesAgree — контроль в обратную сторону.
 // Без него гейт был бы зелен только на пустом дереве.
 func TestFlushParityGateStaysSilentWhenLanesAgree(t *testing.T) {
+	t.Parallel()
 	opts := flushParityTree(t,
 		[]string{producerBody, producerBody, producerTwin},
 		[]string{
@@ -163,6 +168,7 @@ func TestFlushParityGateStaysSilentWhenLanesAgree(t *testing.T) {
 // самосброса существует. Пропав, он сделал бы вердикт беспредметным, а гейт —
 // вечно зелёным.
 func TestFlushParityGateRefusesWhenItsOwnPremiseIsGone(t *testing.T) {
+	t.Parallel()
 	opts := flushParityTree(t, []string{producerBody}, nil)
 	p := filepath.Join(opts.Root, "edge", "authz.go")
 	if err := os.WriteFile(p, []byte("package mw\n"), 0o600); err != nil {

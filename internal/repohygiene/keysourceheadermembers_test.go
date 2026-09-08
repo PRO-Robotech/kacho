@@ -56,6 +56,7 @@ const (
 
 // TestKeySourceHeaderMembersAreDeclaredOnce — сам гейт.
 func TestKeySourceHeaderMembersAreDeclaredOnce(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

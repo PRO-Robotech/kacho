@@ -94,6 +94,7 @@ func findShebangLine(t *testing.T, path string) int {
 // TestShebangScriptsAreExecutable — каждый файл с shebang'ом обязан лежать в индексе как
 // 100755. Иначе в чистом клоне/CI он не запустится.
 func TestShebangScriptsAreExecutable(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	var broken []string
 	indexed, withShebang, fixtures := 0, 0, 0
@@ -139,6 +140,7 @@ func TestShebangScriptsAreExecutable(t *testing.T) {
 // (напр. под вставленным копирайт-хедером) — файл как исполняемый мёртв, хотя
 // синтаксически валиден и тесты/компиляторы молчат.
 func TestShebangIsFirstLine(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	var broken []string
 	scripts, withShebang, fixtures := 0, 0, 0

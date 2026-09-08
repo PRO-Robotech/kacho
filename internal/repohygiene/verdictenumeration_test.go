@@ -73,6 +73,7 @@ type enumCensus struct {
 }
 
 func TestVerdictPathReadsNothingUnbounded(t *testing.T) {
+	t.Parallel()
 	findings, c := collectUnboundedVerdictReads(t, filepath.Join(repoRoot(t), verdictGlueRoot))
 
 	if c.files == 0 || c.literals == 0 || c.reads == 0 {

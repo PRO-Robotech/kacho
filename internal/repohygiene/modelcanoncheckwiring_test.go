@@ -61,6 +61,7 @@ const modelCanonCheckTarget = "model-canon-check"
 // провязки нельзя: сверка побайтовая именно затем, чтобы не измерять согласие
 // двух разборщиков.
 func TestModelCanonCheckTargetHasACaller(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	w, err := readJudgeTargetWiring(root, modelCanonCheckTarget)
 	if err != nil {

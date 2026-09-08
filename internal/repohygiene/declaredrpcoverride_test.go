@@ -12,6 +12,7 @@ import (
 // TestEveryDeclaredRPCIsOverridden — свойство дерева: у каждого объявленного
 // RPC есть написанный рукой ответ.
 func TestEveryDeclaredRPCIsOverridden(t *testing.T) {
+	t.Parallel()
 	rep, err := auditDeclaredRPCOverride(repoRoot(t))
 	if err != nil {
 		t.Fatalf("обход дерева: %v", err)
@@ -113,6 +114,7 @@ func (h *XHandler) Beta(req int) int { return 0 }
 
 // Сторона дефекта: непереопределённый метод — находка С КООРДИНАТОЙ.
 func TestOverrideGateRedOnInheritedMethod(t *testing.T) {
+	t.Parallel()
 	root := synthOverrideTree(t, map[string]string{"services/x/handler.go": overrideSrcPartial})
 	rep, err := auditDeclaredRPCOverride(root)
 	if err != nil {
@@ -134,6 +136,7 @@ func TestOverrideGateRedOnInheritedMethod(t *testing.T) {
 // Без этой половины гейт ловил бы факт встраивания заглушки, а не отсутствие
 // метода, и краснел бы на КАЖДОМ обработчике дерева.
 func TestOverrideGateSilentWhenAllOverridden(t *testing.T) {
+	t.Parallel()
 	root := synthOverrideTree(t, map[string]string{"services/x/handler.go": overrideSrcFull})
 	rep, err := auditDeclaredRPCOverride(root)
 	if err != nil {

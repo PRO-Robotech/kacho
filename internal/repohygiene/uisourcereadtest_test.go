@@ -858,6 +858,7 @@ func uiProbeHelperSources(t *testing.T, root string) map[string]string {
 // TestUITestsDoNotReadTheirOwnSourceAsText — проба интерфейса не вправе
 // подтверждать себя чтением модуля консоли как текста.
 func TestUITestsDoNotReadTheirOwnSourceAsText(t *testing.T) {
+	t.Parallel()
 	root := uiProbeTreeRoot(t)
 	// Корень называется ДО вердикта: «ноль находок» на дереве, которого гейт не
 	// открывал, иначе неотличимо от чистого дерева.

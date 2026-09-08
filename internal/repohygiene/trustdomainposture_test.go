@@ -49,6 +49,7 @@ func trustDomainDeployRootOf(rel string) bool {
 
 // TestAcceptedTrustDomainMatchesIssued — сам гейт.
 func TestAcceptedTrustDomainMatchesIssued(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

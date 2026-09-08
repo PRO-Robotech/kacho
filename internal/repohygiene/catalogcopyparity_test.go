@@ -164,6 +164,7 @@ func trackedTreeFiles(t *testing.T, root string) []string {
 // `if [[ -s A && -s B ]]; then … else finding … fi`), и вменять ей обёртку
 // значило бы краснеть на коде, который никто не ломал.
 func TestNoRecipeOrScriptRunsAComparisonOnlyIfAFileExists(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// ── ПОПУЛЯЦИЯ 1: РЕЦЕПТЫ make ───────────────────────────────────────────
@@ -313,6 +314,7 @@ func runCatalogParity(t *testing.T, root string, overrides ...string) (string, i
 // Это положительный контроль ко всем отрицаниям инъекции: без него «отсутствие
 // копии даёт отказ» было бы верно и у цели, которая отказывает всегда.
 func TestCatalogCopyParityPassesOnTheWholeTree(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	out, code := runCatalogParity(t, root)
 	if code != 0 {
@@ -343,6 +345,7 @@ func TestCatalogCopyParityPassesOnTheWholeTree(t *testing.T) {
 // целей, вызов которых исполняет сверку. Две копии этого предиката разошлись бы
 // молча — и разошлись бы там, где обе зелены.
 func TestCatalogCheckInvokesTheCopyParityTarget(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	reach, err := makefileTargetsReaching(
 		filepath.Join(root, catalogMakefileDir, "Makefile"), catalogParityTarget)

@@ -96,6 +96,7 @@ func syntheticService(t *testing.T, root, name string, registers, docsNameHandle
 // TestOwnerDocsGateFindsAnOwnerWhoseDocsAreSilent — владелец есть, документация
 // молчит.
 func TestOwnerDocsGateFindsAnOwnerWhoseDocsAreSilent(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	syntheticService(t, root, "compute", true, false) // дефект
 	syntheticService(t, root, "nlb", true, true)      // законный владелец рядом
@@ -135,6 +136,7 @@ func TestOwnerDocsGateFindsAnOwnerWhoseDocsAreSilent(t *testing.T) {
 // Без этого утверждения гейт мог бы судить подстроку и требовать документации от
 // сервиса, который владельцем не является, — то есть краснеть на верном дереве.
 func TestOwnerDocsGateStaysSilentOnAServiceThatOnlyMENTIONSTheRegistrar(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	syntheticService(t, root, "storage", false, false) // только упоминание, документация молчит
 	syntheticService(t, root, "compute", true, true)   // настоящий владелец
@@ -160,6 +162,7 @@ func TestOwnerDocsGateStaysSilentOnAServiceThatOnlyMENTIONSTheRegistrar(t *testi
 // становится невыполнимым by construction, и молчаливый пропуск такого владельца
 // сделал бы гейт зелёным ровно там, где смотреть было не на что.
 func TestOwnerDocsGateFindsAnOwnerWithoutClientDocsAtAll(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	syntheticService(t, root, "compute", true, true)
 	// Владелец без каталога документации: кладём только исходник.

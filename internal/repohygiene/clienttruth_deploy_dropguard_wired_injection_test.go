@@ -38,6 +38,7 @@ func writeGoFile(t *testing.T, dir, name, src string) {
 // пакета, вызов другой функции того же пакета) обязаны молчать: гейт, краснеющий
 // на объяснении стража, сняли бы первым, а объяснений этих в миграторах много.
 func TestDropguardCallDetectorSeesCodeAndIgnoresProse(t *testing.T) {
+	t.Parallel()
 	const head = "package migrator\n\n"
 
 	cases := []struct {
@@ -129,6 +130,7 @@ func up() error { return goose.Up(db, ".") }`,
 // сама и о накате не говорит ничего. (б) Каталог без исходников обязан вернуть
 // ноль прочитанных — иначе «не нашли» слилось бы с «не читали».
 func TestDropguardCallDetectorSkipsTestsAndReportsEmptyScan(t *testing.T) {
+	t.Parallel()
 	t.Run("вызов только в _test.go — не провязка", func(t *testing.T) {
 		dir := t.TempDir()
 		writeGoFile(t, dir, "runner_test.go", "package migrator\n\nfunc TestX() {\n\t_ = dropguard.Gate(ctx, db, \"svc\", fs, out, scope)\n}")

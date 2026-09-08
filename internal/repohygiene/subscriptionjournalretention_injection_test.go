@@ -47,6 +47,7 @@ func laneRetainingOK() JournalLane {
 }
 
 func TestLaneRuleIsSilentOnBothLegalForms(t *testing.T) {
+	t.Parallel()
 	got := JournalLaneFindings([]JournalLane{laneOK(), laneRetainingOK()}, ageAlwaysOK)
 	if len(got) != 0 {
 		t.Fatalf("правило нашло дефект на ЗАКОННЫХ полосах — оно ловит форму, а не существо:\n  %s",
@@ -55,6 +56,7 @@ func TestLaneRuleIsSilentOnBothLegalForms(t *testing.T) {
 }
 
 func TestLaneRuleFindsEachDefectSeparately(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		lane    JournalLane
@@ -137,6 +139,7 @@ func TestLaneRuleFindsEachDefectSeparately(t *testing.T) {
 // в комментарии и в строке — нет. Без второй половины предикат по подстроке
 // прошёл бы эту пробу и краснел бы на собственном объяснении в дереве.
 func TestLaneScannerReadsDeclarationAsASyntaxNode(t *testing.T) {
+	t.Parallel()
 	src := []byte(`package subscriptionjournal
 
 import "github.com/PRO-Robotech/kacho/pkg/subscription"
@@ -182,6 +185,7 @@ func Journal() subscription.Journal {
 // предикате по подстроке, который в этом дереве краснел бы на прозе обоих
 // владельцев.
 func TestSweepWiringIsRecognisedByTheCallNotTheWord(t *testing.T) {
+	t.Parallel()
 	prose := []byte(`package main
 
 // Уборка журнала поднимается вызовом StartJournalRetentionSweep — но не здесь.
@@ -220,6 +224,7 @@ func run(ctx any, db any, j any, cfg any, log any) {
 // состояния перепись гейта, а не правило: правило, падающее на пустом входе,
 // заставило бы держать полосу ради зелёного.
 func TestLaneRuleOnEmptyInputFindsNothing(t *testing.T) {
+	t.Parallel()
 	if got := JournalLaneFindings(nil, ageAlwaysOK); len(got) != 0 {
 		t.Fatalf("правило нашло дефект на пустом входе: %v", got)
 	}

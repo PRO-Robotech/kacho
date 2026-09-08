@@ -70,6 +70,7 @@ var (
 )
 
 func TestVerdictScopeFormIsTheSameOnEveryEntryPoint(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(repoRoot(t), verdictGlueRoot)
 
 	forms := map[string]string{}
@@ -181,6 +182,7 @@ func normalizeScopeBody(s string) string {
 // (то, чем одна точка входа уже расходилась с тремя), справа — тот же обход с
 // ДРУГИМ носителем (страница вместо объекта), на котором гейт обязан молчать.
 func TestVerdictScopeFormGateRedsOnADivergedStep(t *testing.T) {
+	t.Parallel()
 	const walk = `    SELECT $2::text, $3::text, 0
   UNION
     SELECT e.parent_type, e.parent_id, s.depth + 1

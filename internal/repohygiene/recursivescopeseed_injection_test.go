@@ -43,6 +43,7 @@ func goFileWith(sql string) string {
 }
 
 func TestRecursiveScopeGateFiresOnTheStateThisChangeFixed(t *testing.T) {
+	t.Parallel()
 	// Заход БЕЗ предела и обычное соединение в рекурсивной ветви — дословная
 	// форма перечисления до перехода.
 	const beforeBoth = `

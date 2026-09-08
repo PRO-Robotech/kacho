@@ -99,6 +99,7 @@ var pendingHandoff = []string{}
 // `-nosec=true` отключает обработку подавлений, поэтому вопрос диалекта в этом
 // прогоне не стоит: строка либо даёт находку, либо нет.
 func TestNoInertGosecSuppressions(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	var hits []string
@@ -151,6 +152,7 @@ func TestNoInertGosecSuppressions(t *testing.T) {
 // Поэтому пустое исключение здесь считается ошибкой, а не «просто больше не
 // нужно».
 func TestPendingHandoffExemptionsStillHaveSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// «Ноль находок» обязано быть отличимо от «ноль прочитанного»: на пустой
@@ -185,6 +187,7 @@ func TestPendingHandoffExemptionsStillHaveSubject(t *testing.T) {
 // Без этой проверки запрет пережил бы своё обоснование молча. Гейт обязан падать
 // на смене предпосылки, а не продолжать требовать своё.
 func TestGosecDialectBanPremiseHolds(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	raw, err := os.ReadFile(filepath.Join(root, ".golangci.yml"))
@@ -335,6 +338,7 @@ const synthGosecMixed = "package p\n" +
 // директив в литералах, поэтому «отсеяно 0» одинаково читается и как «отсев
 // работает», и как «отсева нет».
 func TestGosecGateDistinguishesCodeFromStringLiteral(t *testing.T) {
+	t.Parallel()
 	hits, skipped := inertGosecHits("synth/p.go", []byte(synthGosecMixed))
 
 	if len(hits) != 1 {
@@ -352,6 +356,7 @@ func TestGosecGateDistinguishesCodeFromStringLiteral(t *testing.T) {
 // Битый синтаксис не превращает файл в слепое пятно: разбор не удался — весь
 // файл считается кодом, и директива остаётся находкой.
 func TestUnparsableFileIsTreatedAsCodeNotAsLiteral(t *testing.T) {
+	t.Parallel()
 	broken := []byte("package p\nfunc (((\nvar x = 1 //nolint:gosec\n")
 	hits, skipped := inertGosecHits("synth/broken.go", broken)
 	if len(hits) != 1 || skipped != 0 {

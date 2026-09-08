@@ -88,6 +88,7 @@ const synthTsconfigBroken = `{ "include": [ "specs/**/*.ts" `
 // TestConsoleProbeTypeCoverageSeparatesUnreadFromUnwatched — сердце инъекции:
 // один и тот же состав пакета, два объявления проекта, разные вердикты.
 func TestConsoleProbeTypeCoverageSeparatesUnreadFromUnwatched(t *testing.T) {
+	t.Parallel()
 	files := []string{
 		"specs/mutate.spec.ts",
 		"specs/fixtures.ts",
@@ -136,6 +137,7 @@ func TestConsoleProbeTypeCoverageSeparatesUnreadFromUnwatched(t *testing.T) {
 // знать ВСЕ законные формы записи предмета: форма, о которой он не знает, даёт
 // находку там, где читатель есть.
 func TestConsoleProbeTypeCoverageKnowsEveryLegalPatternForm(t *testing.T) {
+	t.Parallel()
 	// Голое имя каталога — рекурсивное чтение.
 	_, findings, err := auditConsoleProbeTypeCoverage(synthTsconfigBareDir,
 		[]string{"specs/mutate.spec.ts", "specs/nested/deep.spec.ts", "scripts/verdict.ts"})
@@ -175,6 +177,7 @@ func TestConsoleProbeTypeCoverageKnowsEveryLegalPatternForm(t *testing.T) {
 // TestConsoleProbeTypeCoverageRefusesToJudgeWithoutADeclaration — предпосылка
 // гейта заявляется, а не подразумевается.
 func TestConsoleProbeTypeCoverageRefusesToJudgeWithoutADeclaration(t *testing.T) {
+	t.Parallel()
 	// Пустой include: гейт по дереву на этом Fatal'ит, а чистая функция обязана
 	// показать ноль шаблонов — иначе «непокрыто всё» читалось бы как находка о
 	// дереве, хотя это поломка объявления.
@@ -202,6 +205,7 @@ func TestConsoleProbeTypeCoverageRefusesToJudgeWithoutADeclaration(t *testing.T)
 // TestConsoleProbeTypeCoverageFindingNamesTheSubject — находка обязана называть
 // предмет прямо: по её тексту читатель понимает, что чинить.
 func TestConsoleProbeTypeCoverageFindingNamesTheSubject(t *testing.T) {
+	t.Parallel()
 	_, findings, err := auditConsoleProbeTypeCoverage(synthTsconfigWithoutAwaiting,
 		[]string{"specs-awaiting-journal-owner/subscription-stream.spec.ts"})
 	if err != nil {

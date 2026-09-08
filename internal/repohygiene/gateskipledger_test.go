@@ -44,6 +44,7 @@ var gateSkipRoots = []string{"internal/repohygiene"}
 // этом проходит и печатает перепись; падение на достигнутой цели подталкивало бы
 // держать запись ради зелёного.
 func TestGateSkipLedgerEntriesHaveASubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	raw, err := os.ReadFile(filepath.Join(root, GateSkipLedgerFile))

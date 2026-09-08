@@ -32,6 +32,7 @@ func clientDocsContractDriftOptions(t *testing.T) ClientDocsContractDriftOptions
 // Способность падать доказывает не этот прогон, а инъекция
 // (`clientdocscontractdrift_injection_test.go`): здесь только вердикт.
 func TestClientDocsExamplesDoNotShowRetiredFields(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditClientDocsRetiredFieldInExample(clientDocsContractDriftOptions(t), &log)
 	if err != nil {
@@ -84,6 +85,7 @@ func TestClientDocsExamplesDoNotShowRetiredFields(t *testing.T) {
 // исчезает, гейт остаётся зелёным, а запись продолжает создавать впечатление
 // покрытия, которого нет, — и унаследует следующую слепую зону.
 func TestClientDocsRetiredFieldLedgerHasSubject(t *testing.T) {
+	t.Parallel()
 	opts := clientDocsContractDriftOptions(t)
 	if len(clientDocsRetiredFieldLedger) == 0 {
 		t.Log("ведомость пуста — прощать нечего; это цель, а не поломка")
@@ -150,6 +152,7 @@ func TestClientDocsRetiredFieldLedgerHasSubject(t *testing.T) {
 
 // TestClientDocsDoNotPresentDeprecatedVerbsAsCurrent — вердикт о НАСТОЯЩЕМ дереве.
 func TestClientDocsDoNotPresentDeprecatedVerbsAsCurrent(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditClientDocsDeprecationParity(clientDocsContractDriftOptions(t), &log)
 	if err != nil {

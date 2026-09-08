@@ -55,6 +55,7 @@ import (
 // свойство самого goose, и оно от опции не зависит. И что миграция корректна:
 // приём пропущенной означает «применить», а не «пропустить».
 func TestEveryMigrationRunnerAdmitsANonChronologicalNumber(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	var paths []string
 	for _, sub := range []string{"services", sharedApplyPkg} {

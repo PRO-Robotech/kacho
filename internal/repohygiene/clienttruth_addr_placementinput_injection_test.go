@@ -90,6 +90,7 @@ func (s *placementStand) run(
 
 // TestPlacementInputInjection_CleanStandIsSilent — КОНТРОЛЬ.
 func TestPlacementInputInjection_CleanStandIsSilent(t *testing.T) {
+	t.Parallel()
 	s := newPlacementStand(t)
 	findings, census := s.run(t)
 	if len(findings) != 0 {
@@ -109,6 +110,7 @@ func TestPlacementInputInjection_CleanStandIsSilent(t *testing.T) {
 // TestPlacementInputInjection_RequiredInputIsFound — снято ОДНО свойство: поле
 // объявлено обязательным входом вместо выводимого.
 func TestPlacementInputInjection_RequiredInputIsFound(t *testing.T) {
+	t.Parallel()
 	s := newPlacementStand(t)
 	s.write(t, "proto/kacho/cloud/probecompute/v1/group_service.proto",
 		"syntax = \"proto3\";\n"+
@@ -141,6 +143,7 @@ func TestPlacementInputInjection_RequiredInputIsFound(t *testing.T) {
 // дереве рядом с каждой координатой: распознаватель по подстроке нашёл бы здесь
 // поле и вынес вердикт о том, чего нет.
 func TestPlacementInputInjection_CommentOfANeighbourDoesNotCount(t *testing.T) {
+	t.Parallel()
 	s := newPlacementStand(t)
 	s.write(t, "proto/kacho/cloud/probeother/v1/thing_service.proto",
 		"syntax = \"proto3\";\n"+
@@ -164,6 +167,7 @@ func TestPlacementInputInjection_CommentOfANeighbourDoesNotCount(t *testing.T) {
 // Без обнуления накопленного комментария объявление, стоящее сразу за законным
 // соседом, наследовало бы его оправдание — и требование поля прошло бы молча.
 func TestPlacementInputInjection_DerivedClaimOfANeighbourDoesNotCarry(t *testing.T) {
+	t.Parallel()
 	s := newPlacementStand(t)
 	s.write(t, "proto/kacho/cloud/probeother/v1/thing_service.proto",
 		"syntax = \"proto3\";\n"+
@@ -188,6 +192,7 @@ func TestPlacementInputInjection_DerivedClaimOfANeighbourDoesNotCarry(t *testing
 // невидимым ровно у того ресурса, ради которого гейт написан. Поймало это
 // самоистечение послабления, а не чтение.
 func TestPlacementInputInjection_CanonQuotedBelowTheOpeningDoesNotCount(t *testing.T) {
+	t.Parallel()
 	s := newPlacementStand(t)
 	s.write(t, "proto/kacho/cloud/probecompute/v1/group_service.proto",
 		"syntax = \"proto3\";\n"+
@@ -217,6 +222,7 @@ func TestPlacementInputInjection_CanonQuotedBelowTheOpeningDoesNotCount(t *testi
 // TestPlacementInputInjection_LiveExemptionSuppresses — послабление с ЖИВЫМ
 // предметом снимает находку и считается переписью.
 func TestPlacementInputInjection_LiveExemptionSuppresses(t *testing.T) {
+	t.Parallel()
 	s := newPlacementStand(t)
 	s.write(t, "proto/kacho/cloud/probecompute/v1/group_service.proto",
 		"syntax = \"proto3\";\n"+
@@ -240,6 +246,7 @@ func TestPlacementInputInjection_LiveExemptionSuppresses(t *testing.T) {
 // TestPlacementInputInjection_StaleExemptionIsAFinding — послабление, которому
 // нечего исключать, обязано быть находкой.
 func TestPlacementInputInjection_StaleExemptionIsAFinding(t *testing.T) {
+	t.Parallel()
 	s := newPlacementStand(t)
 	findings, _ := s.run(t, PlacementInputExemption{
 		File:    "proto/kacho/cloud/probecompute/v1/group_service.proto",
@@ -257,6 +264,7 @@ func TestPlacementInputInjection_StaleExemptionIsAFinding(t *testing.T) {
 // TestPlacementInputInjection_EmptyWalkIsNotSilentSuccess — «ноль находок»
 // обязано быть отличимо от «ноль прочитанного».
 func TestPlacementInputInjection_EmptyWalkIsNotSilentSuccess(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "proto"), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)

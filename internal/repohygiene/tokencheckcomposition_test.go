@@ -122,6 +122,7 @@ type tokenCheckPackage struct {
 
 // TestMandatoryTokenChecksAreDeclaredOnceAndConsumed — сам гейт.
 func TestMandatoryTokenChecksAreDeclaredOnceAndConsumed(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

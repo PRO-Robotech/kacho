@@ -220,6 +220,7 @@ const (
 // (край отвергает запрос без удостоверения) держит гейт честным: без него
 // «всё отказывает» читалось бы как исправность.
 func TestSeedPostureFromEdgeRefusal(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		obs  probeObservation
@@ -306,6 +307,7 @@ func TestSeedPostureFromEdgeRefusal(t *testing.T) {
 // обращается вовсе, поэтому упоминание kubectl в её отказе может означать
 // только возврат прежнего дефекта.
 func TestSeedPostureRefusalNamesTheRealCause(t *testing.T) {
+	t.Parallel()
 	got := runSeedOnObservation(t, probeObservation{controlCode: "000", decidingCode: "000", curlExit: 7})
 	if got.code != seedEvidenceMissing {
 		t.Fatalf("недостижимый край обязан дать код %d («не выполнилось»), а дал %d.\nstderr:\n%s",
@@ -329,6 +331,7 @@ func TestSeedPostureRefusalNamesTheRealCause(t *testing.T) {
 // снят, но и НЕ ПРИМЕНИМ МОЛЧА: переменная, которая тихо игнорируется, читается
 // как «я продавил», и оператор уверен в том, чего не происходило.
 func TestSeedPostureCannotBeForcedByEnvironment(t *testing.T) {
+	t.Parallel()
 	t.Run("продавить расслабленный край не выходит", func(t *testing.T) {
 		got := runSeedOnObservation(t,
 			probeObservation{controlCode: "401", decidingCode: "200"},

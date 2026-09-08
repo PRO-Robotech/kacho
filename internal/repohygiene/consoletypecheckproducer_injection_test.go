@@ -50,6 +50,7 @@ var consoleFormattedPkgs = []string{
 
 // TestConsoleTypecheckGateControl — ПРОГОН 1: всё цело, молчат оба судьи.
 func TestConsoleTypecheckGateControl(t *testing.T) {
+	t.Parallel()
 	if f := judgeConsoleTypecheckProducers(
 		consoleTypecheckedPkgs, consoleTypecheckedPkgs, consoleTypecheckedPkgs); len(f) != 0 {
 		t.Errorf("НОВЫЙ судья краснеет на целом входе — он ловит форму, а не существо: %v", f)
@@ -66,6 +67,7 @@ func TestConsoleTypecheckGateControl(t *testing.T) {
 // которого гейт стоит, — и в корневую цепочку он не попал. Его `format:check`
 // при этом в порядке, поэтому существующий гейт обязан молчать.
 func TestConsoleTypecheckGateInjectsTheNewProperty(t *testing.T) {
+	t.Parallel()
 	withTSConfig := append(append([]string{}, consoleTypecheckedPkgs...), "quota")
 	declaring := append(append([]string{}, consoleTypecheckedPkgs...), "quota")
 
@@ -90,6 +92,7 @@ func TestConsoleTypecheckGateInjectsTheNewProperty(t *testing.T) {
 // Проверка типов у всех одиннадцати на месте, но `registry` выпал из корневой
 // цепочки `format:check`. Красное обязано прийти ТОЛЬКО от существующего гейта.
 func TestConsoleTypecheckGateInjectsTheExistingProperty(t *testing.T) {
+	t.Parallel()
 	var called []string
 	for _, p := range consoleFormattedPkgs {
 		if p == "registry" {
@@ -120,6 +123,7 @@ func TestConsoleTypecheckGateInjectsTheExistingProperty(t *testing.T) {
 // Односторонняя проба зеленела бы на ПУСТОМ перечне, а пустой перечень означает
 // «типы не проверяет никто» — ровно то, ради чего гейт стоит.
 func TestConsoleTypecheckGateJudgesAllThreeSeams(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name         string
 		withTSConfig []string

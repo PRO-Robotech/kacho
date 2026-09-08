@@ -59,6 +59,7 @@ const rtURL = "{{baseUrl}}/storage/v1/volumes/{{garbageStorageId}}"
 // ─── ось 1: расхождение регистра с производителем ────────────────────────────
 
 func TestRT_FoldedLiteralDivergingFromProducerIsAFinding(t *testing.T) {
+	t.Parallel()
 	step := nmStep("del-nx", "DELETE", rtURL,
 		"pm.test('text', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('illegal argument addressid'));",
 	)
@@ -87,6 +88,7 @@ func TestRT_FoldedLiteralDivergingFromProducerIsAFinding(t *testing.T) {
 
 // Законный близнец №1: написание производителя утверждается как есть.
 func TestRT_ProducerSpellingWithoutFoldingIsLawfulAndSilent(t *testing.T) {
+	t.Parallel()
 	step := nmStep("del-nx", "DELETE", rtURL,
 		"pm.test('text', () => pm.expect(pm.response.json().message||'').to.eql('Illegal argument addressId'));",
 	)
@@ -101,6 +103,7 @@ func TestRT_ProducerSpellingWithoutFoldingIsLawfulAndSilent(t *testing.T) {
 
 // Законный близнец №2: ОТРИЦАНИЕ. Приведение регистра там РАСШИРЯЕТ проверку.
 func TestRT_NegationWithFoldingIsLawfulAndSilent(t *testing.T) {
+	t.Parallel()
 	step := nmStep("del-nx", "DELETE", rtURL,
 		"pm.test('no leak', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.not.include('illegal argument addressid'));",
 	)
@@ -118,6 +121,7 @@ func TestRT_NegationWithFoldingIsLawfulAndSilent(t *testing.T) {
 // нет. Молчание здесь обязано быть ВИДНЫМ в переписи, иначе оно неотличимо от
 // проверки этих мест.
 func TestRT_FoldingOverAnAllLowercaseProducerIsOutOfScopeAndCounted(t *testing.T) {
+	t.Parallel()
 	step := nmStep("get-nx", "GET", rtURL,
 		"pm.test('text', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('permission denied'));",
 	)
@@ -135,6 +139,7 @@ func TestRT_FoldingOverAnAllLowercaseProducerIsOutOfScopeAndCounted(t *testing.T
 // ─── ось 2: заглавные, объявленные заголовком ────────────────────────────────
 
 func TestRT_TitleDeclaredUppercaseUnderFoldingIsAFinding(t *testing.T) {
+	t.Parallel()
 	step := nmStep("del-nx", "DELETE", rtURL,
 		"pm.test('text', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('not found'));",
 	)
@@ -159,6 +164,7 @@ func TestRT_TitleDeclaredUppercaseUnderFoldingIsAFinding(t *testing.T) {
 
 // Законный близнец: тот же заголовок, утверждение регистр НЕ приводит.
 func TestRT_TitleDeclaredUppercaseAssertedVerbatimIsSilent(t *testing.T) {
+	t.Parallel()
 	step := nmStep("del-nx", "DELETE", rtURL,
 		"pm.test('text', () => pm.expect(pm.response.json().message||'').to.include('Volume '));",
 	)
@@ -175,6 +181,7 @@ func TestRT_TitleDeclaredUppercaseAssertedVerbatimIsSilent(t *testing.T) {
 // Законный близнец: в кавычках заголовка стоит ПРОЗА, а не текст отказа. Судить
 // по ней значило бы краснеть на собственном объяснении.
 func TestRT_QuotedProseInTitleIsNotADeclaredTextAndIsSilent(t *testing.T) {
+	t.Parallel()
 	step := nmStep("del-nx", "DELETE", rtURL,
 		"pm.test('text', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('permission denied'));",
 	)
@@ -197,6 +204,7 @@ func TestRT_QuotedProseInTitleIsNotADeclaredTextAndIsSilent(t *testing.T) {
 // применим к ТОМУ ЖЕ дереву, которое судит гейт: заголовок берётся из
 // закоммиченных коллекций, текст — из производителей дерева.
 func TestRT_RestoredDefectOnARealTreeTitleIsAFinding(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 
@@ -288,6 +296,7 @@ const rtImmutableTitle = "NLB-UPD-STATE-IMMUTABLE-TYPE — Update with mask=type
 	"InvalidArgument 'type is immutable' (Verifies REQ-NLB-IMMUTABLE-TYPE)"
 
 func TestRT_AssertingLessThanTheTitleDeclaredIsAFinding(t *testing.T) {
+	t.Parallel()
 	step := nmStep("upd-type", "PATCH", rtURL,
 		"pm.test('text', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('immutable'));",
 	)
@@ -316,6 +325,7 @@ func TestRT_AssertingLessThanTheTitleDeclaredIsAFinding(t *testing.T) {
 // утверждается ВЕСЬ объявленный текст. Проверять больше объявленного шаг не
 // обязан, поэтому гейт молчит.
 func TestRT_AssertingExactlyWhatTheTitleDeclaredIsSilent(t *testing.T) {
+	t.Parallel()
 	step := nmStep("upd-type", "PATCH", rtURL,
 		"pm.test('text', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('type is immutable'));",
 	)
@@ -332,6 +342,7 @@ func TestRT_AssertingExactlyWhatTheTitleDeclaredIsSilent(t *testing.T) {
 // буквы и такие объявления отвергала целиком — вид, записанный этой формой, был
 // не находкой, а невидимостью.
 func TestRT_DeclarationOpeningWithASubstitutionIsStillRead(t *testing.T) {
+	t.Parallel()
 	corpus := rtCorpusOf(
 		"bootSource name/resolvedDigest/materializedVolume are output-only and must not be set on input",
 	)
@@ -358,6 +369,7 @@ func TestRT_DeclarationOpeningWithASubstitutionIsStillRead(t *testing.T) {
 // контроль — проза в комментарии производителем НЕ становится, иначе гейт
 // доказывал бы предпосылку её собственным пересказом.
 func TestRT_ProducerRecognizerReadsEveryFormInThisTree(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	rel := filepath.Join("services", "nlb", "internal", "producer.go")
 	if err := os.MkdirAll(filepath.Join(dir, filepath.Dir(rel)), 0o755); err != nil {
@@ -465,6 +477,7 @@ const rtGenericTitle = "COMP-1-20: MachineType.Get well-formed-но-нет → 4
 	"'<Resource> <id> not found' (через repo.Get; тон-контракт)"
 
 func TestRT_GenericDeclarationAssertedAsItsOwnConstPartIsAFinding(t *testing.T) {
+	t.Parallel()
 	step := nmStep("get-absent", "GET", rtURL,
 		"pm.test('text mentions not found', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('not found'));",
 	)
@@ -492,6 +505,7 @@ func TestRT_GenericDeclarationAssertedAsItsOwnConstPartIsAFinding(t *testing.T) 
 }
 
 func TestRT_GenericDeclarationWithASingleRicherProducerIsSilent(t *testing.T) {
+	t.Parallel()
 	// ЗАКОННЫЙ БЛИЗНЕЦ по условию «два производителя»: у владельца «not found»
 	// несёт ОДИН отказ, поэтому утверждение однозначно в его пределах, и находка
 	// была бы суждением о прозе, а не доказательством.
@@ -514,6 +528,7 @@ func TestRT_GenericDeclarationWithASingleRicherProducerIsSilent(t *testing.T) {
 }
 
 func TestRT_ConcreteDeclarationAssertedWhollyIsSilent(t *testing.T) {
+	t.Parallel()
 	// ЗАКОННЫЙ БЛИЗНЕЦ по условию «есть отказ БОГАЧЕ утверждаемого»: шаг
 	// утверждает текст владельца ЦЕЛИКОМ, поэтому отказа, который нёс бы ту же
 	// часть и вдобавок называл, чей он, не существует — соседний
@@ -550,6 +565,7 @@ func TestRT_ConcreteDeclarationAssertedWhollyIsSilent(t *testing.T) {
 // 20 утверждениях в 19 шагах, из которых у девяти заголовок при этом обещал
 // «verbatim text».
 func TestRT_UndeclaredTitleWithTwoRicherProducersIsAFinding(t *testing.T) {
+	t.Parallel()
 	title := "SECD-DEL-NEG-NOT-FOUND — Delete несуществующего instance отвергнут"
 	step := nmStep("delete-missing", "DELETE", rtURL,
 		"pm.test('text mentions not found', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('not found'));",
@@ -581,6 +597,7 @@ func TestRT_UndeclaredTitleWithTwoRicherProducersIsAFinding(t *testing.T) {
 // часть несёт ОДИН отказ. Доказательства неразличимости нет, и снятие требования
 // объявления не должно было превратить вид в суждение о прозе.
 func TestRT_UndeclaredTitleWithASingleRicherProducerIsSilent(t *testing.T) {
+	t.Parallel()
 	title := "SECD-DEL-NEG-NOT-FOUND — Delete несуществующего instance отвергнут"
 	step := nmStep("delete-missing", "DELETE", rtURL,
 		"pm.test('text mentions not found', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('not found'));",
@@ -603,6 +620,7 @@ func TestRT_UndeclaredTitleWithASingleRicherProducerIsSilent(t *testing.T) {
 // производители её владельца. Синтетика доказывала бы свойство вчерашнего
 // дерева; смена формы записи заголовков обязана краснеть здесь, а не молчать.
 func TestRT_GenericDeclarationRestoredOnARealTreeTitleIsAFinding(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

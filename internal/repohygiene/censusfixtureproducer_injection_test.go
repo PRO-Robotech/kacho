@@ -60,6 +60,7 @@ func injCensusFacts(t *testing.T, rel, src string) censusFileFacts {
 // TestInjection_CensusWithoutAProducerAnywhereInItsPackageIsFound — настоящий
 // класс: перепись есть, производителя не зовёт НИКТО в пакете.
 func TestInjection_CensusWithoutAProducerAnywhereInItsPackageIsFound(t *testing.T) {
+	t.Parallel()
 	byDir := map[string][]censusFileFacts{
 		"svc/pkg": {injCensusFacts(t, "svc/pkg/census_test.go", injCensusQuery)},
 	}
@@ -76,6 +77,7 @@ func TestInjection_CensusWithoutAProducerAnywhereInItsPackageIsFound(t *testing.
 // предмет #778: производитель зовётся из соседнего файла того же тестового
 // пакета. Прежняя редакция гейта краснела здесь, и это красное держало линию.
 func TestInjection_CensusSeededByASiblingHelperIsSilent(t *testing.T) {
+	t.Parallel()
 	byDir := map[string][]censusFileFacts{
 		"svc/pkg": {
 			injCensusFacts(t, "svc/pkg/census_test.go", injCensusQuery),
@@ -91,6 +93,7 @@ func TestInjection_CensusSeededByASiblingHelperIsSilent(t *testing.T) {
 // TestInjection_CensusCallingTheProducerItselfIsSilent — положительный контроль
 // прямого вызова: без него отрицания выше зеленели бы на гейте, отвергающем всё.
 func TestInjection_CensusCallingTheProducerItselfIsSilent(t *testing.T) {
+	t.Parallel()
 	byDir := map[string][]censusFileFacts{
 		"svc/pkg": {injCensusFacts(t, "svc/pkg/census_test.go",
 			injProducerImport+injCensusQuery+injProducerCall)},
@@ -104,6 +107,7 @@ func TestInjection_CensusCallingTheProducerItselfIsSilent(t *testing.T) {
 // остаётся производителем. Иначе гейт краснел бы на переименовании импорта,
 // то есть ловил бы написание, а не вызов.
 func TestInjection_AliasedProducerImportIsStillRecognised(t *testing.T) {
+	t.Parallel()
 	src := `import rm "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/resource_mirror"
 ` + injCensusQuery + `func seed() { _, _ = rm.UpsertTx(nil, nil, rm.Row{}) }
 `
@@ -123,6 +127,7 @@ func TestInjection_AliasedProducerImportIsStillRecognised(t *testing.T) {
 // такой вызов посевом рёбер — то есть зеленел бы на фикстуре, не посеявшей
 // ничего. Это единственная сторона, где новая редакция СТРОЖЕ прежней.
 func TestInjection_SameNamedFunctionOfAnotherPackageIsNotTheProducer(t *testing.T) {
+	t.Parallel()
 	src := `import "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/target_members"
 ` + injCensusQuery + `func seed() { _ = target_members.UpsertTx(nil, nil, target_members.Member{}) }
 `
@@ -138,6 +143,7 @@ func TestInjection_SameNamedFunctionOfAnotherPackageIsNotTheProducer(t *testing.
 // TestInjection_CensusThatWritesEdgesItselfIsFound — вторая форма находки:
 // перепись сама кладёт рёбра прямой записью.
 func TestInjection_CensusThatWritesEdgesItselfIsFound(t *testing.T) {
+	t.Parallel()
 	src := injProducerImport + injCensusQuery +
 		`const ins = "INSERT INTO kaname.resource_parent_edge (object_id) VALUES ($1)"
 ` + injProducerCall
@@ -154,6 +160,7 @@ func TestInjection_CensusThatWritesEdgesItselfIsFound(t *testing.T) {
 // TestInjection_ReaderProbeMayWriteEdgesDirectly — законный близнец второй
 // формы: проба ЧИТАТЕЛЯ (без переписи) вправе класть рёбра прямо.
 func TestInjection_ReaderProbeMayWriteEdgesDirectly(t *testing.T) {
+	t.Parallel()
 	src := `const ins = "INSERT INTO kaname.resource_parent_edge (object_id) VALUES ($1)"
 `
 	byDir := map[string][]censusFileFacts{
@@ -168,6 +175,7 @@ func TestInjection_ReaderProbeMayWriteEdgesDirectly(t *testing.T) {
 // TestInjection_ProducerInAnotherPackageDoesNotCoverThisOne — пакеты не делят
 // помощников: производитель в ЧУЖОМ каталоге не оправдывает перепись здесь.
 func TestInjection_ProducerInAnotherPackageDoesNotCoverThisOne(t *testing.T) {
+	t.Parallel()
 	byDir := map[string][]censusFileFacts{
 		"svc/pkg":   {injCensusFacts(t, "svc/pkg/census_test.go", injCensusQuery)},
 		"svc/other": {injFacts(t, "svc/other/helper_test.go", injProducerImport+injProducerCall)},
@@ -185,6 +193,7 @@ func TestInjection_ProducerInAnotherPackageDoesNotCoverThisOne(t *testing.T) {
 // Переедет или переименуется — падает здесь, с одним внятным отказом, вместо
 // того чтобы объявить находкой каждую пробу-перепись сразу.
 func TestCensusGatePremise_ProducerPackageIsWhereTheGateThinksItIs(t *testing.T) {
+	t.Parallel()
 	if got := producerPackageName(t, repoRoot(t)); got != "resource_mirror" {
 		t.Fatalf("имя пакета-производителя изменилось на %q: сверь его с приметой гейта", got)
 	}

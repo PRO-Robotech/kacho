@@ -29,6 +29,7 @@ const concatOldReverseJoin = "\n  JOIN kaname.group_members gm ON g.subject IN "
 const concatOldCensusPredicate = "\n\t\t  WHERE bs.subject_type || ':' || bs.subject_id = ANY($1::text[])"
 
 func TestReadPathConcatGateCanFailAndCanStaySilent(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files, dirs := readPathGoFiles(t, root)
 

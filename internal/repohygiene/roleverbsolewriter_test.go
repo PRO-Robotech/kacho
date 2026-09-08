@@ -238,6 +238,7 @@ func projectionWritesIn(filename, src, table string) ([]projectionOp, int, error
 // ОДНА функция вносит строку проекции роли, всякий снимающий не-автор переселяет
 // снятое, и все они лежат в слое репозитория.
 func TestIAMRV112_RoleVerbProjectionHasASoleWriter(t *testing.T) {
+	t.Parallel()
 	// Таблиц ДВЕ (kacho#1030, требование Т5 приёмки
 	// rule-segments-have-a-referent): у каждой проекции одного и того же
 	// объявления автор обязан быть один. Подпроба на таблицу, а не один проход по

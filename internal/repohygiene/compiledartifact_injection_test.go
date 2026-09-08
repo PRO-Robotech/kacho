@@ -13,6 +13,7 @@ package repohygiene
 import "testing"
 
 func TestCompiledArtifactPredicateRecognisesEachKind(t *testing.T) {
+	t.Parallel()
 	cases := map[compiledArtifactKind][]byte{
 		kindELF:     {0x7f, 'E', 'L', 'F', 2, 1, 1, 0},
 		kindMachO:   {0xcf, 0xfa, 0xed, 0xfe, 7, 0, 0, 1},
@@ -30,6 +31,7 @@ func TestCompiledArtifactPredicateRecognisesEachKind(t *testing.T) {
 }
 
 func TestCompiledArtifactPredicateIsSilentOnLegitimateNeighbours(t *testing.T) {
+	t.Parallel()
 	// Законные соседи той же формы: файлы, которые гейт обходит каждым прогоном
 	// и обязан пропускать. Среди них намеренно есть короче магии и пустой —
 	// именно на них предикат по длине падал бы паникой, а не молчанием.

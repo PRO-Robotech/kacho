@@ -39,6 +39,7 @@ import (
 // перечень он не переписывает. Место проверки в порядке старта (до открытия
 // пула или после) — предмет другой и здесь не решается.
 func TestSSLModeAllowlistHasASingleSource(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	var files []string

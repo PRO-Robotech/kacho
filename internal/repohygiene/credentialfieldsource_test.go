@@ -176,6 +176,7 @@ func (f openCredentialFieldFinding) id() string { return f.carrier + "." + f.fie
 
 // TestBAT1_68_EveryReadCredentialFieldNamesItsSource — сам гейт.
 func TestBAT1_68_EveryReadCredentialFieldNamesItsSource(t *testing.T) {
+	t.Parallel()
 	facts, scanned := readCredentialTree(t)
 	if scanned == 0 {
 		t.Fatal("обход прочитал НОЛЬ файлов — вердикта нет ни одного. «Находок ноль» " +

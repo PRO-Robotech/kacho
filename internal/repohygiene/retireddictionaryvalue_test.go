@@ -56,6 +56,7 @@ func contractCorpus(t *testing.T) (root string, files []string) {
 // TestRetiredDictionaryValue_ContractNamesNoRetiredValue — положительная сторона
 // на НАСТОЯЩЕМ дереве: контракт не называет ни одного снятого значения.
 func TestRetiredDictionaryValue_ContractNamesNoRetiredValue(t *testing.T) {
+	t.Parallel()
 	root, files := contractCorpus(t)
 
 	findings, census, err := AuditRetiredDictionaryValues(root, files, retiredDictionaryValues)
@@ -92,6 +93,7 @@ func TestRetiredDictionaryValue_ContractNamesNoRetiredValue(t *testing.T) {
 // сторона самоистечения: надгробие, чьё значение снова стоит в живом словаре,
 // лжёт о дереве.
 func TestRetiredDictionaryValue_LedgerDoesNotContradictLiveDictionary(t *testing.T) {
+	t.Parallel()
 	back := LiveIn(retiredDictionaryValues, declaredQueueEventDictionary)
 	if len(back) > 0 {
 		t.Errorf("надгробие называет снятыми значения, которые стоят в ЖИВОМ словаре: %s — "+
@@ -108,6 +110,7 @@ func TestRetiredDictionaryValue_LedgerDoesNotContradictLiveDictionary(t *testing
 // TestRetiredDictionaryValue_LedgerIsWellFormed — сама перепись обязана быть
 // переписью: без дублей и с причиной на каждой записи.
 func TestRetiredDictionaryValue_LedgerIsWellFormed(t *testing.T) {
+	t.Parallel()
 	seen := map[string]struct{}{}
 	names := make([]string, 0, len(retiredDictionaryValues))
 	for _, r := range retiredDictionaryValues {

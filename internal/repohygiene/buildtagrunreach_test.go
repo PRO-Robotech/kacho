@@ -639,6 +639,7 @@ func auditTaggedPackagesAreExecuted(root, modulePath string) ([]tagRunFinding, t
 // Отказом является «ноль прочитанных файлов» и «ноль прочитанных объявлений»:
 // тогда молчание означает, что судья не работал.
 func TestBuildTagPackagesAreReachedByADeclaredRun(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	findings, census, err := auditTaggedPackagesAreExecuted(root, "github.com/PRO-Robotech/kacho")

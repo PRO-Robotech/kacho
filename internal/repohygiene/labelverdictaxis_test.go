@@ -86,6 +86,7 @@ const iamDirectPrefix = "iam."
 
 // TestEveryLabelSelectableTypeHasAVerdictAxis — гейт.
 func TestEveryLabelSelectableTypeHasAVerdictAxis(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	tree := clientTruthRepoTree(t)

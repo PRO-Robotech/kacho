@@ -72,6 +72,7 @@ func consoleOneJudgeLocked() map[string][]string {
 // Без этого прогона краснота двух следующих ничего не значила бы: гейт,
 // краснеющий на любом входе, свойства не измеряет.
 func TestConsoleFormatterVersionGateControl(t *testing.T) {
+	t.Parallel()
 	if f := judgeConsoleFormatterVersions(consoleOneJudgeDeclared(), consoleOneJudgeLocked()); len(f) != 0 {
 		t.Errorf("НОВЫЙ судья краснеет на целом входе — он ловит форму, а не существо: %v", f)
 	}
@@ -87,6 +88,7 @@ func TestConsoleFormatterVersionGateControl(t *testing.T) {
 // стояло в дереве до сведения, — а производителем он по-прежнему назван. Красное
 // обязано прийти ТОЛЬКО от нового гейта.
 func TestConsoleFormatterVersionGateInjectsTheNewProperty(t *testing.T) {
+	t.Parallel()
 	declared := consoleOneJudgeDeclared()
 	declared["host"] = "^3.8.3"
 
@@ -113,6 +115,7 @@ func TestConsoleFormatterVersionGateInjectsTheNewProperty(t *testing.T) {
 // Красное обязано прийти ТОЛЬКО от существующего гейта — иначе его молчание в
 // прогонах 1 и 2 доказывало бы не исправность, а смерть.
 func TestConsoleFormatterVersionGateInjectsTheExistingProperty(t *testing.T) {
+	t.Parallel()
 	var called []string
 	for _, p := range consoleFormatterJudgedPkgs {
 		if p == "host" {
@@ -143,6 +146,7 @@ func TestConsoleFormatterVersionGateInjectsTheExistingProperty(t *testing.T) {
 // Проба, проверившая одну, оставила бы вторую недоказанной — а именно вторая
 // ловит сегодняшнее расхождение дерева.
 func TestConsoleFormatterVersionGateSeparatesTheTwoSides(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name     string
 		declared map[string]string

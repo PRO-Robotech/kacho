@@ -104,6 +104,7 @@ func (s *anyTypeStand) audit(t *testing.T) ([]ClientDocsAnyTypeFinding, ClientDo
 // Законный близнец: верные полные имена — анализатор молчит, но ЧИТАЕТ их.
 // Молчание без переписи было бы неотличимо от пустого обхода.
 func TestAnyType_LawfulNamesAreSilentAndCounted(t *testing.T) {
+	t.Parallel()
 	s := newAnyTypeStand(t)
 	f, c := s.audit(t)
 	if len(f) != 0 {
@@ -125,6 +126,7 @@ func TestAnyType_LawfulNamesAreSilentAndCounted(t *testing.T) {
 // Ось 1: типа нет вовсе — находка с координатой и без ложного «живёт в другом
 // пакете» (у выдуманного имени соседа не бывает).
 func TestAnyType_TypeThatExistsNowhereIsAFinding(t *testing.T) {
+	t.Parallel()
 	s := newAnyTypeStand(t)
 	s.write(t, "services/probecompute/docs/content/api/operations.mdx", `
         "@type": "type.googleapis.com/kacho.cloud.probecompute.v1.ProbeCreateDiskMetadata"
@@ -148,6 +150,7 @@ func TestAnyType_TypeThatExistsNowhereIsAFinding(t *testing.T) {
 // обязана называть, где тип живёт: починка тут другая — сменить пакет, а не
 // завести сообщение.
 func TestAnyType_RightNameInTheWrongPackageIsAFinding(t *testing.T) {
+	t.Parallel()
 	s := newAnyTypeStand(t)
 	s.write(t, "services/probecompute/docs/content/api/operations.mdx", `
         "@type": "type.googleapis.com/kacho.cloud.probecompute.v1.ProbeCreateVolumeMetadata"
@@ -166,6 +169,7 @@ func TestAnyType_RightNameInTheWrongPackageIsAFinding(t *testing.T) {
 // блочном), в словарь не попадает. Иначе анализатор молчал бы на документе,
 // называющем тип, которого нет, — доказывая предпосылку её же пересказом.
 func TestAnyType_MessageNamedOnlyInACommentIsNotInTheDictionary(t *testing.T) {
+	t.Parallel()
 	for _, ghost := range []string{"ProbeGhostFromBlockComment", "ProbeGhostFromLineComment"} {
 		t.Run(ghost, func(t *testing.T) {
 			s := newAnyTypeStand(t)
@@ -183,6 +187,7 @@ func TestAnyType_MessageNamedOnlyInACommentIsNotInTheDictionary(t *testing.T) {
 // (`clienttruth_computedoctype_test.go`) читает именно эти величины, поэтому
 // нули обязаны БЫТЬ нулями, а не растворяться в зелёном.
 func TestAnyType_EmptyWalkIsVisibleInTheCensus(t *testing.T) {
+	t.Parallel()
 	s := &anyTypeStand{root: t.TempDir()}
 	s.write(t, "proto/keep.txt", "контрактов нет\n")
 	f, c := s.audit(t)

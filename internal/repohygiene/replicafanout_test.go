@@ -48,6 +48,7 @@ import (
 )
 
 func TestBackgroundLoopDeclaresItsReplicaFanout(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	c, err := scanBackgroundLoops(root)

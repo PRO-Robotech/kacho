@@ -51,6 +51,7 @@ const foundationIssueMissing = "Could not resolve to an issue or pull request"
 // неотличимым от «сверено и всё в порядке» — то есть завёл бы ровно тот класс,
 // против которого гейт и написан.
 func TestFoundationLedgerIssuesAreStillOpen(t *testing.T) {
+	t.Parallel()
 	r := foundationRoster()
 	issues := r.LedgerIssues()
 	if len(issues) == 0 {
@@ -118,6 +119,7 @@ func resolveFoundationIssueStates(issues []int) (map[int]string, int, int, strin
 // TestFoundationClosedIssueUnderALiveRecordIsAFinding — способность упасть,
 // доказанная БЕЗ сети, в обе стороны.
 func TestFoundationClosedIssueUnderALiveRecordIsAFinding(t *testing.T) {
+	t.Parallel()
 	r := FoundationRoster{Ledger: []FoundationLedgerEntry{
 		{Capability: "звено", Listener: "services/a", Issue: 11, Why: "работа впереди"},
 		{Capability: "звено", Listener: "services/b", Issue: 22, Why: "работа впереди"},

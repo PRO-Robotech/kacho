@@ -72,6 +72,7 @@ ALTER TABLE kaname.user_oauth_clients
 // TestAlgorithmScannerFindsAWiderDictionary — сторона (а): словарь шире кода
 // становится находкой, и находка несёт координату.
 func TestAlgorithmScannerFindsAWiderDictionary(t *testing.T) {
+	t.Parallel()
 	found, dropped, census := ScanKeyAlgorithmConstraints(
 		"synthetic/0046_user_oauth_clients.sql", algInjectedExtraValue, keyAlgorithmColumn)
 	if census.Statements != 1 || len(found) != 1 {
@@ -102,6 +103,7 @@ func TestAlgorithmScannerFindsAWiderDictionary(t *testing.T) {
 
 // TestAlgorithmScannerIsSilentOnAMatchingDictionary — сторона (б).
 func TestAlgorithmScannerIsSilentOnAMatchingDictionary(t *testing.T) {
+	t.Parallel()
 	found, _, census := ScanKeyAlgorithmConstraints(
 		"synthetic/0046_user_oauth_clients.sql", algInjectedLawful, keyAlgorithmColumn)
 	if census.Statements == 0 {
@@ -133,6 +135,7 @@ func TestAlgorithmScannerIsSilentOnAMatchingDictionary(t *testing.T) {
 // Это не «схема стала строже»: на пустом значении стоит целый вид клиента,
 // заведённый без ключевого материала.
 func TestAlgorithmScannerFindsAMissingEmptyValue(t *testing.T) {
+	t.Parallel()
 	found, _, _ := ScanKeyAlgorithmConstraints(
 		"synthetic/0900_narrow.sql", algInjectedNoEmpty, keyAlgorithmColumn)
 	if len(found) != 1 {
@@ -157,6 +160,7 @@ func TestAlgorithmScannerFindsAMissingEmptyValue(t *testing.T) {
 // Применённая миграция не правится (ban #5), поэтому словарь меняют новой; гейт,
 // читающий первое объявление, стерёг бы словарь, которого в схеме давно нет.
 func TestAlgorithmScannerReadsTheLastDeclaration(t *testing.T) {
+	t.Parallel()
 	found, dropped, census := ScanKeyAlgorithmConstraints(
 		"synthetic/0900_redeclare.sql", algInjectedRedeclared, keyAlgorithmColumn)
 	if census.Drops != 1 || len(dropped) != 1 {
@@ -216,6 +220,7 @@ ALTER TABLE ONLY kaname.user_oauth_clients
 // Обе половины В ОДНОЙ пробе: форма дампа обязана читаться, а её соседи —
 // перечень запрещённого и чужой столбец — обязаны в словарь НЕ попасть.
 func TestAlgorithmScannerReadsTheDumpForm(t *testing.T) {
+	t.Parallel()
 	found, _, census := ScanKeyAlgorithmConstraints(
 		"synthetic/0001_initial.sql", algInjectedDumpForm, keyAlgorithmColumn)
 	if census.Statements != 1 || len(found) != 1 {
@@ -246,6 +251,7 @@ func TestAlgorithmScannerReadsTheDumpForm(t *testing.T) {
 // Без этой половины «форма читается» было бы неотличимо от «форма читается, но
 // расхождение в ней не ловится».
 func TestAlgorithmScannerFindsAWiderDictionaryInTheDumpForm(t *testing.T) {
+	t.Parallel()
 	found, _, _ := ScanKeyAlgorithmConstraints(
 		"synthetic/0900_wider.sql", algInjectedDumpFormWider, keyAlgorithmColumn)
 	if len(found) != 1 {

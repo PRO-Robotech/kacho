@@ -48,6 +48,7 @@ var opSourceExempt = map[string]string{}
 // ЧТО ГЕЙТ СУДИТ. Только то, что у предмета ОДНО место. Как этот предмет
 // реализован — работа проб `pkg/operations/operationspb`.
 func TestOperationHandlerHasASingleSource(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Охват: ВСЁ дерево Go, а не только сервисы. Прежде обход шёл по

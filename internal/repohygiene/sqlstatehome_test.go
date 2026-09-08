@@ -92,6 +92,7 @@ var sqlStateExceptions = []sqlStateException{
 // TestIntegritySQLStateIsDecidedInOnePlace — сам гейт, сторона первая: МЕСТО
 // решения.
 func TestIntegritySQLStateIsDecidedInOnePlace(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 
@@ -208,6 +209,7 @@ func TestIntegritySQLStateIsDecidedInOnePlace(t *testing.T) {
 // Отображение опознаётся ИСХОДОМ (производит больше одного кода gRPC), а не
 // именем: имя задаёт автор, и восьмое отображение он назовёт иначе.
 func TestErrorMappersTailReturnsAFixedText(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 
@@ -339,6 +341,7 @@ var textFaultExceptions []textFaultException
 // уезжает в ветку «неклассифицированный отказ». Со стороны это выглядит как
 // внутренний сбой, а не как поломка классификации.
 func TestStorageFaultKindIsNeverDecidedByDatabaseText(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

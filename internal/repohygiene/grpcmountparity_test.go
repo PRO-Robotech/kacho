@@ -67,6 +67,7 @@ func mountOptions(t *testing.T) MountOptions {
 // TestGRPCMountParity_EveryDeclaredServiceIsMounted — положительная сторона на
 // НАСТОЯЩЕМ дереве.
 func TestGRPCMountParity_EveryDeclaredServiceIsMounted(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditGRPCMountParity(mountOptions(t), &log)
 	if err != nil {
@@ -157,6 +158,7 @@ func tinyOptions(root string, allow ...string) MountOptions {
 // положительным: тот же анализатор на дереве, где один сервис не смонтирован, а
 // объясняющая его фраза осталась (обычная форма удаления).
 func TestGRPCMountParity_SeesAnUnmountedServiceAsUnmounted(t *testing.T) {
+	t.Parallel()
 	// Законный близнец: то же дерево, оба сервиса подняты — анализатор молчит.
 	if f, _, err := AuditGRPCMountParity(tinyOptions(tinyTree(t, true, "")), nil); err != nil || len(f) != 0 {
 		t.Fatalf("на исправном дереве анализатор нашёл %v (err=%v) — он реагирует не на предмет", f, err)
@@ -175,6 +177,7 @@ func TestGRPCMountParity_SeesAnUnmountedServiceAsUnmounted(t *testing.T) {
 // пакетов последний сегмент пути «v1», поэтому имя импорта обязано браться из
 // алиаса либо из объявления пакета. Проба разом на обе формы.
 func TestGRPCMountParity_ReadsTheImportAliasAndNotThePathTail(t *testing.T) {
+	t.Parallel()
 	for _, alias := range []string{"", "demopb"} {
 		root := tinyTree(t, true, alias)
 		src := filepath.Join(root, "services/demo/cmd/demo/main.go")
@@ -201,6 +204,7 @@ func TestGRPCMountParity_ReadsTheImportAliasAndNotThePathTail(t *testing.T) {
 // TestGRPCMountParity_AStaleAllowIsItselfAFinding — исключение живёт, пока у него
 // есть предмет. Обе формы протухания: сервис смонтирован и сервиса нет в контракте.
 func TestGRPCMountParity_AStaleAllowIsItselfAFinding(t *testing.T) {
+	t.Parallel()
 	root := tinyTree(t, true, "")
 	for _, tc := range []struct{ name, allow string }{
 		{"сервис смонтирован", "kacho.cloud.demo.v1.BetaService"},
@@ -231,6 +235,7 @@ func TestGRPCMountParity_AStaleAllowIsItselfAFinding(t *testing.T) {
 // TestGRPCMountParity_EmptySubjectIsAnError — «ничего не прочитано» не должно
 // быть неотличимо от «расхождений нет».
 func TestGRPCMountParity_EmptySubjectIsAnError(t *testing.T) {
+	t.Parallel()
 	if _, _, err := AuditGRPCMountParity(tinyOptions(t.TempDir()), nil); err == nil {
 		t.Fatal("на пустом дереве анализатор вернул успех — ноль находок стал неотличим от нуля прочитанного")
 	}
@@ -254,6 +259,7 @@ func TestGRPCMountParity_EmptySubjectIsAnError(t *testing.T) {
 // второй послабление перестало бы истекать — а истечение и есть то, ради чего
 // ведомость ведут.
 func TestGRPCMountParity_AnAllowForAnUnownedPackageIsOutOfSubject(t *testing.T) {
+	t.Parallel()
 	root := tinyTree(t, true, "")
 	write := func(rel, content string) {
 		t.Helper()

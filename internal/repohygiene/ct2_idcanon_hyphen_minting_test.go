@@ -15,6 +15,7 @@ import (
 // Способность падать доказывает не этот прогон, а инъекция
 // (`ct2_idcanon_hyphen_minting_injection_test.go`): здесь только вердикт.
 func TestEveryHyphenMintedPrefixIsInTheCanon(t *testing.T) {
+	t.Parallel()
 	opts := DocsIDFormOptions{Root: repoRoot(t), ModulePath: "github.com/PRO-Robotech/kacho"}
 
 	var log strings.Builder

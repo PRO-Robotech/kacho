@@ -62,6 +62,7 @@ func transportMessageOptions(t *testing.T, allow []TransportMessageAllowance) Tr
 // TestTransportMessageIsTouchedByAVerb — главный гейт: у каждого транспортного
 // сообщения контракта есть глагол, который его называет.
 func TestTransportMessageIsTouchedByAVerb(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditTransportMessageReach(
 		transportMessageOptions(t, transportMessageAllow), &log)
@@ -81,6 +82,7 @@ func TestTransportMessageIsTouchedByAVerb(t *testing.T) {
 
 // Гейт обязан УМЕТЬ находить: сообщение без глагола называется поимённо.
 func TestTransportMessageReach_RedOnAnUntouchedMessage(t *testing.T) {
+	t.Parallel()
 	dir := transportFixture(t, `
 service S { rpc Get (GetThingRequest) returns (Thing); }
 message GetThingRequest { string id = 1; }
@@ -100,6 +102,7 @@ message OrphanedThingRequest { string id = 1; }
 // …и обязан МОЛЧАТЬ на законной форме. Без этой половины гейт ловил бы имя, а
 // не существо, и первый же ложный срабат его отключил бы.
 func TestTransportMessageReach_SilentOnTouchedMessages(t *testing.T) {
+	t.Parallel()
 	dir := transportFixture(t, `
 service S {
   rpc Get (GetThingRequest) returns (GetThingResponse);
@@ -131,6 +134,7 @@ message Operation { string id = 1; }
 
 // Послабление извиняет свой предмет — и истекает, когда предмета не стало.
 func TestTransportMessageReach_AllowanceExcusesAndThenExpires(t *testing.T) {
+	t.Parallel()
 	dir := transportFixture(t, `
 service S { rpc Get (GetThingRequest) returns (Thing); }
 message GetThingRequest { string id = 1; }
@@ -174,6 +178,7 @@ message Thing { string id = 1; }
 // такую форму: тогда исчезла бы не находка, а доказательство, что гейт её
 // понимает.
 func TestTransportMessageReach_StreamingAndWrappedRPCDeclarationsAreCounted(t *testing.T) {
+	t.Parallel()
 	dir := transportFixture(t, `
 service S {
   rpc Watch (WatchRequest) returns (stream Event) {
@@ -209,6 +214,7 @@ message UploadResponse { string id = 1; }
 // Имя, упомянутое только в ПРОЗЕ, ссылкой не является: иначе комментарий,
 // объясняющий снятие сообщения, сам бы это снятие и прятал.
 func TestTransportMessageReach_MentionInProseIsNotAReference(t *testing.T) {
+	t.Parallel()
 	dir := transportFixture(t, `
 service S { rpc Get (GetThingRequest) returns (Thing); }
 message GetThingRequest { string id = 1; }
@@ -229,6 +235,7 @@ message OrphanedThingRequest { string id = 1; }
 // Гейт проверяет СВОЮ предпосылку: на пустом дереве он обязан отказать, а не
 // отчитаться нулём находок.
 func TestTransportMessageReach_EmptyTreeIsAnError(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "proto"), 0o755); err != nil {
 		t.Fatalf("подготовка: %v", err)
@@ -243,6 +250,7 @@ func TestTransportMessageReach_EmptyTreeIsAnError(t *testing.T) {
 // остаток файла читался бы как вложенный, и сообщения верхнего уровня после неё
 // стали бы невидимы гейту.
 func TestTransportMessageReach_BraceInProseDoesNotShiftNesting(t *testing.T) {
+	t.Parallel()
 	dir := transportFixture(t, `
 service S { rpc Get (GetThingRequest) returns (Thing); }
 // Здесь скобка в прозе: { и она не открывает тела.

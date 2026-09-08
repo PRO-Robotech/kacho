@@ -50,6 +50,7 @@ import (
 // сколько из них несут человеческий текст, — поэтому «ноль находок» отличимо
 // от «ноль прочитанного».
 func TestHumanTextGoesInBinaryMetadataKey(t *testing.T) {
+	t.Parallel()
 	census, findings, err := auditMetadataHumanText(t, "../..")
 	if err != nil {
 		t.Fatalf("%v", err)

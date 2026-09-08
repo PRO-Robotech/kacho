@@ -201,6 +201,7 @@ func auditRunnerStemSets(sharedSrc string, runners map[string]string, stemsOfSui
 // и это законно, пока сам НАБОР выводится из дерева, а остаток подбирается и
 // называется. Предмет гейта — множество, а не порядок.
 func TestNewmanRunnerDerivesItsCollectionSet(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Состав берётся из ИНДЕКСА git, а не обходом диска: под корнем лежат
@@ -421,6 +422,7 @@ func classifySuiteStemDiff(lane stemLane, suite string, got, want []string,
 // индексе». Причины разведены `classifySuiteStemDiff`, и перепись печатает их
 // ПОРОЗНЬ — одно суммарное число вернуло бы ту же неразличимость.
 func TestNewmanSharedStemSelectorMatchesTheGenerator(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 	if !tt.files[sharedStemsRel] {

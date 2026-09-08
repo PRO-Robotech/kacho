@@ -44,6 +44,7 @@ func writeInj(t *testing.T, dir, name, body string) string {
 }
 
 func TestClusterRelationProducerGate_FailsOnAnUnproducedRelation(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	files := []string{
 		writeInj(t, dir, "0001_seed.sql", injSeedSQL),
@@ -93,6 +94,7 @@ func TestClusterRelationProducerGate_FailsOnAnUnproducedRelation(t *testing.T) {
 }
 
 func TestClusterRelationProducerGate_IgnoresANonClusterObject(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	// Тот же посев, но объект НЕ кластерный: гейт не вправе считать это
 	// производством кластерного отношения.
@@ -113,6 +115,7 @@ func TestClusterRelationProducerGate_IgnoresANonClusterObject(t *testing.T) {
 }
 
 func TestClusterRelationProducerGate_TestFilesAreNotProducers(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	// Посев в ПРОБЕ производителем не является: иначе фикстура соседнего теста
 	// маскировала бы отсутствие настоящего посева.
@@ -145,6 +148,7 @@ const injSeedDumpRow = `INSERT INTO kaname.relation_fact (object_type, object_id
 	`('cluster', 'cluster_root', 'system_admin', 'group:grpX#member');`
 
 func TestClusterRelationProducerGate_ReadsTheDumpJSONOrder(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	produced, read, err := relationsProducedOnCluster([]string{
 		writeInj(t, dir, "0001_initial.sql", injSeedDumpJSON),
@@ -163,6 +167,7 @@ func TestClusterRelationProducerGate_ReadsTheDumpJSONOrder(t *testing.T) {
 }
 
 func TestClusterRelationProducerGate_ReadsTheColumnarRelationRow(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	produced, _, err := relationsProducedOnCluster([]string{
 		writeInj(t, dir, "0001_initial.sql", injSeedDumpRow),
@@ -182,6 +187,7 @@ func TestClusterRelationProducerGate_ReadsTheColumnarRelationRow(t *testing.T) {
 // обе пробы выше зеленели бы и на разборе, объявляющем произведённым всякое
 // отношение, какое встретит.
 func TestClusterRelationProducerGate_DumpFormsStillMissWhatIsAbsent(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	produced, _, err := relationsProducedOnCluster([]string{
 		writeInj(t, dir, "0001_initial.sql", injSeedDumpJSON+"\n"+injSeedDumpRow),
@@ -201,6 +207,7 @@ func TestClusterRelationProducerGate_DumpFormsStillMissWhatIsAbsent(t *testing.T
 // зачлось бы объекту, у которого своего отношения нет вовсе, — и гейт молчал бы
 // ровно там, где обязан находить.
 func TestClusterRelationProducerGate_JSONWindowStopsAtTheObjectEnd(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	// Первый кортеж называет кластерный объект и НЕ несёт отношения; второй
 	// несёт отношение, но объект у него другой.

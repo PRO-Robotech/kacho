@@ -128,6 +128,7 @@ var commutativeDrainExempt = map[string]string{
 // проводки; две очереди с записью о коммутативности он пропускает молча, как и
 // проводку, где ключ задан константой соседнего файла того же сервиса.
 func TestEveryDrainedOutboxDeclaresItsOrdering(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	inv := outboxWiringInventory(t, root)
 
@@ -205,6 +206,7 @@ func TestEveryDrainedOutboxDeclaresItsOrdering(t *testing.T) {
 // предмет: очередь, переставшая дрениться или получившая ключ порядка,
 // унаследует следующую слепую зону.
 func TestCommutativeDrainExemptionsHaveSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	inv := outboxWiringInventory(t, root)
 
@@ -278,6 +280,7 @@ const (
 // стоит в точке, где видно отсутствие поля, — но названа здесь, чтобы не
 // выглядеть проверенной.
 func TestCommutativeDrainWiringDelegatesTheDecision(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	inv := outboxWiringInventory(t, root)
 
@@ -372,6 +375,7 @@ func sortedKeys1s(m map[string]string) []string {
 // (`fga_register_outbox` живёт в vpc, nlb и storage) обязаны нести ОДИН ключ, и
 // расхождение между ними — тоже находка этого гейта.
 func TestPartitionedOutboxKeyMatchesIndexTier(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	inv := outboxWiringInventory(t, root)
 

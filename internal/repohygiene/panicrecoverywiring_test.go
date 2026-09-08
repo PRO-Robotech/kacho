@@ -118,6 +118,7 @@ const serverConstructorName = "NewServer"
 // из шестнадцати листенеров даёт находку с точной координатой и указанием
 // недостающего вида.
 func TestEveryGRPCListenerRecoversHandlerPanics(t *testing.T) {
+	t.Parallel()
 	res := auditPanicRecoveryWiring(t, repoRoot(t))
 	t.Log(res.summary)
 	if len(res.findings) > 0 {

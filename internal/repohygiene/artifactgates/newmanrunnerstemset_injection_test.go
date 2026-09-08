@@ -58,6 +58,7 @@ func nmRunnerAudit(t *testing.T, runner string) ([]string, runnerStemCensus) {
 // ─── красное на настоящем дефекте: ПЕРЕЧЕНЬ ВЫПИСАН ──────────────────────────
 
 func TestRunnerStemSetInjectionWrittenListIsFound(t *testing.T) {
+	t.Parallel()
 	// Возвращаем ровно тот дефект, ради которого гейт заведён: набор снова
 	// объявляет перечень коллекций у себя.
 	injected := strings.Replace(nmCleanRunner, `stems=()`,
@@ -83,6 +84,7 @@ func TestRunnerStemSetInjectionWrittenListIsFound(t *testing.T) {
 // ─── красное на настоящем дефекте: ОТБИРАЕТ САМ ─────────────────────────────
 
 func TestRunnerStemSetInjectionOwnSelectionIsFound(t *testing.T) {
+	t.Parallel()
 	injected := strings.Replace(nmCleanRunner,
 		`. "$(_stems_lib)"   # tests/newman/kacholib/stems.sh`,
 		"for f in collections/*.postman_collection.json; do echo \"$f\"; done", 1)
@@ -101,6 +103,7 @@ func TestRunnerStemSetInjectionOwnSelectionIsFound(t *testing.T) {
 // ─── молчание на ЗАКОННОМ близнеце: порядок вызовов рукописный ──────────────
 
 func TestRunnerStemSetLegitimateOrderedCallsAreSilent(t *testing.T) {
+	t.Parallel()
 	// Форма iam: ПОРЯДОК вызовов назван поимённо осознанно (посев, зависимость
 	// между коллекциями), а сам НАБОР выводится из общего слоя. Предмет гейта —
 	// множество, а не порядок, и требовать здесь красного значило бы запрещать
@@ -123,6 +126,7 @@ run_one "snapshot"
 // ─── молчание на ЗАКОННОМ близнеце: прогонщик ничего не отбирает ────────────
 
 func TestRunnerStemSetLegitimateWrapperIsSilent(t *testing.T) {
+	t.Parallel()
 	// Форма vpc/compute `run-incremental.sh`: обёртка над пошаговым прогоном.
 	// Она не отбирает коллекций вовсе, и требовать от неё общего отбора значило
 	// бы требовать отбора там, где его нет.
@@ -143,6 +147,7 @@ exec node "${SCRIPT_DIR}/run-incremental.js" "$@"
 // ─── молчание на СВОЁМ ОБЪЯСНЕНИИ: распознаватель читает исполняемое ────────
 
 func TestRunnerStemSetProseAboutTheBanIsNotTheBan(t *testing.T) {
+	t.Parallel()
 	// Шапка прогонщика ОБЯЗАНА называть предмет запрета — иначе следующий снимет
 	// его как непонятный. Распознаватель по подстроке краснел бы ровно на этом
 	// объяснении, а заодно считал бы упоминание слоя в комментарии за то, что
@@ -168,6 +173,7 @@ set -euo pipefail
 // ─── молчание на ПОРОГЕ: одиночное присваивание перечнем не является ────────
 
 func TestRunnerStemSetSingleElementAssignmentIsSilent(t *testing.T) {
+	t.Parallel()
 	// `stems=("$SERVICE")` и `EXTRA=()` — разбор аргументов, а не перечень.
 	// Гейт, считающий их перечнем, краснел бы на коде, к предмету отношения не
 	// имеющем, — и его сняли бы первым.
@@ -187,6 +193,7 @@ one=(volume)
 // ─── ОТБОР: узкое правило снова расходится с генератором ────────────────────
 
 func TestSharedStemSelectorInjectionNarrowRuleIsFound(t *testing.T) {
+	t.Parallel()
 	// Возвращаем правило, которое лежало в трёх копиях прогонщиков: пропускаются
 	// только `__init__`/`__main__`. На наборе с `_helpers.py` оно объявляет
 	// помощника ОЖИДАЕМОЙ коллекцией — суита доложила бы MISSING и покраснела бы
@@ -281,6 +288,7 @@ func nmIndexOf(suite string, stems ...string) func(string) bool {
 // ─── причина ИНДЕКС: файл на диске есть, в индексе его нет ──────────────────
 
 func TestSharedStemSelectorUntrackedNameIsNamedByTheIndex(t *testing.T) {
+	t.Parallel()
 	// Ровно тот способ воспроизведения, что назван в #1780: модуль кейсов создан
 	// и НЕ добавлен в индекс. Прежняя редакция называла это «расхождением
 	// отбора» и печатала два списка имён — читатель шёл искать дефект в
@@ -319,6 +327,7 @@ func TestSharedStemSelectorUntrackedNameIsNamedByTheIndex(t *testing.T) {
 // ─── причина ИНДЕКС: имя в индексе есть, файла на диске нет ─────────────────
 
 func TestSharedStemSelectorVanishedNameIsNamedByTheIndex(t *testing.T) {
+	t.Parallel()
 	// Зеркало предыдущей: `git rm --cached` не делали, а файл из рабочего дерева
 	// исчез. Сторона слоя (диск) о нём молчит, сторона генератора (индекс) — нет.
 	root := repoRoot(t)
@@ -344,6 +353,7 @@ func TestSharedStemSelectorVanishedNameIsNamedByTheIndex(t *testing.T) {
 // ─── причина ПРАВИЛА: обе стороны видят файл одинаково ──────────────────────
 
 func TestSharedStemSelectorRuleDriftIsStillNamedByTheRule(t *testing.T) {
+	t.Parallel()
 	// Свойство не снято вместе с симптомом: настоящее расхождение ПРАВИЛ
 	// по-прежнему называется правилами. Инъекция — та же, что у соседней пробы:
 	// узкое правило (`__init__`/`__main__`), при котором помощник становится
@@ -394,6 +404,7 @@ func TestSharedStemSelectorRuleDriftIsStillNamedByTheRule(t *testing.T) {
 // ─── ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: стороны сходятся — обе полосы молчат ───────────
 
 func TestSharedStemSelectorAgreeingSidesAreSilent(t *testing.T) {
+	t.Parallel()
 	// Без этой пробы молчание классификатора на чистом дереве было бы неотличимо
 	// от классификатора, который не смотрит вовсе: обе полосы отрицательные.
 	root := repoRoot(t)

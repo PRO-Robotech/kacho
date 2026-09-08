@@ -35,6 +35,7 @@ ANY_POOL_V6="2001:db8:ffff::/64"
 // на согласных объявлениях расхождений нет. Без него всякое «краснеет» ниже
 // было бы неотличимо от «краснеет всегда».
 func TestStandPoolIdentityDiffIsSilentWhenDeclarationsAgree(t *testing.T) {
+	t.Parallel()
 	a, err := ParseStandPoolIdentityFromSQL(injSQL)
 	if err != nil {
 		t.Fatalf("разбор посева стенда отказал на законном входе: %v", err)
@@ -55,6 +56,7 @@ func TestStandPoolIdentityDiffIsSilentWhenDeclarationsAgree(t *testing.T) {
 // разойдясь, обязана быть НАЗВАНА. Гейт, который краснеет одним общим «не
 // совпало», не говорит, что чинить.
 func TestStandPoolIdentityDiffNamesEveryDivergence(t *testing.T) {
+	t.Parallel()
 	base, err := ParseStandPoolIdentityFromSQL(injSQL)
 	if err != nil {
 		t.Fatalf("разбор посева стенда отказал: %v", err)
@@ -78,6 +80,7 @@ func TestStandPoolIdentityDiffNamesEveryDivergence(t *testing.T) {
 // ОТКАЗАТЬ, а не вернуть пустую личность: пустая сравнялась бы сама с собой, и
 // гейт зеленел бы на файле, который перестал объявлять предмет.
 func TestStandPoolIdentityParsersRefuseUnreadableDeclarations(t *testing.T) {
+	t.Parallel()
 	for _, body := range []string{"", "-- посев переписан и личности больше не объявляет\n"} {
 		if _, err := ParseStandPoolIdentityFromSQL(body); err == nil {
 			t.Errorf("разбор посева стенда принял вход без личности (%d байт) — гейт стал бы вакуумным", len(body))

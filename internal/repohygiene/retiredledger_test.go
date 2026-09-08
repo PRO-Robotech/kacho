@@ -36,6 +36,7 @@ import (
 )
 
 func TestRetiredMigrationLedgerNeverCoversALiveMigration(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	dirs := migrationDirs(t, root)
 

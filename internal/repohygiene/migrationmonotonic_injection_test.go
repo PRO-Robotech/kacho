@@ -16,6 +16,7 @@ import (
 // «зелёное» ничего не доказывало бы.
 
 func TestMigrationMonotonic_CanFailAndStaysSilent(t *testing.T) {
+	t.Parallel()
 	// Индекс каталога: унаследованные номера по задаче плюс одна метка времени.
 	// Ширина унаследованного берётся ЖИВАЯ — четыре цифры: их в дереве 169 против
 	// двадцати шестизначных, и распознаватель обязан знать обе формы.
@@ -129,6 +130,7 @@ func TestMigrationMonotonic_CanFailAndStaysSilent(t *testing.T) {
 // индекса не прочитан. «Ноль находок» обязано быть отличимо от «ноль
 // прочитанного».
 func TestMigrationMonotonicCensus_TellsBothNumbers(t *testing.T) {
+	t.Parallel()
 	added := []string{"services/iam/internal/migrations/20260905090000_next.sql"}
 	tracked := []string{"services/iam/internal/migrations/20260904135459_prev.sql"}
 

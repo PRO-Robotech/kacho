@@ -104,6 +104,7 @@ type concatCensus struct {
 // TestReadPathComparesColumnsNotConcatenations — на пути чтения нет условия,
 // сравнивающего склейку колонки.
 func TestReadPathComparesColumnsNotConcatenations(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files, dirs := readPathGoFiles(t, root)
 

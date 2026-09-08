@@ -48,6 +48,7 @@ func injHealthyPrecondRoots() []newmanPrecondRoot {
 }
 
 func TestNewmanPrecondMark_ProvenByInjection(t *testing.T) {
+	t.Parallel()
 	t.Run("законный близнец: все объявили и все помечены — гейт молчит", func(t *testing.T) {
 		if found := adjudicateNewmanPrecondMark(injHealthyPrecondRoots()); len(found) != 0 {
 			t.Fatalf("ложное срабатывание на исправном дереве: %v", found)

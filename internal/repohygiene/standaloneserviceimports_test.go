@@ -237,6 +237,7 @@ func scanStandaloneServiceImports(
 // ── гейт на дереве ───────────────────────────────────────────────────────────
 
 func TestStandaloneServiceImportsOnlyTheSharedFoundation(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	module := moduleImportPath(t, root)
 

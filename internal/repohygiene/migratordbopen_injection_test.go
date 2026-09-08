@@ -128,6 +128,7 @@ func auditDBOpenSource(t *testing.T, rel, src string) []string {
 // TestDBOpenInjectionRunOne_Control — ПРОГОН 1 из трёх: всё цело, молчат ОБА
 // гейта. Без него молчание соседа в прогоне 2 неотличимо от молчания мёртвого.
 func TestDBOpenInjectionRunOne_Control(t *testing.T) {
+	t.Parallel()
 	if got := auditDBOpenSource(t, relDBOpenProbe, srcDBOpenConverged); len(got) != 0 {
 		t.Errorf("новый гейт краснеет на сведённой точке наката: %v", got)
 	}
@@ -140,6 +141,7 @@ func TestDBOpenInjectionRunOne_Control(t *testing.T) {
 // (шаг открытия базы объявлен на месте), СТАРОЕ цело — предусловия и разбор
 // цели по-прежнему общие. Краснеет только новый гейт.
 func TestDBOpenInjectionRunTwo_NewPropertyOnly(t *testing.T) {
+	t.Parallel()
 	t.Run("своё открытие базы в точке наката", func(t *testing.T) {
 		got := auditDBOpenSource(t, relDBOpenProbe, srcDBOpenInline)
 		if len(got) != 5 {
@@ -179,6 +181,7 @@ func TestDBOpenInjectionRunTwo_NewPropertyOnly(t *testing.T) {
 // СУЩЕСТВУЮЩЕЕ свойство (свой текст отказа предусловий), НОВОЕ цело — открытие
 // базы делегировано. Краснеет только сосед, новый гейт молчит.
 func TestDBOpenInjectionRunThree_ExistingPropertyOnly(t *testing.T) {
+	t.Parallel()
 	const src = `package migrator
 
 import (
@@ -211,6 +214,7 @@ func open(dsn string) error {
 // TestDBOpenGateIsSilentOnLegalTwins — гейт СПОСОБЕН смолчать. Без этого он
 // ловил бы форму, а не существо, и первый же ложный срабат его отключил бы.
 func TestDBOpenGateIsSilentOnLegalTwins(t *testing.T) {
+	t.Parallel()
 	t.Run("шаг назван только в прозе", func(t *testing.T) {
 		if got := auditDBOpenSource(t, relDBOpenProbe, srcDBOpenProseOnly); len(got) != 0 {
 			t.Errorf("гейт краснеет на комментарии, объясняющем его же запрет: %v", got)

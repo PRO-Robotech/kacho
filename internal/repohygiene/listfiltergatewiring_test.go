@@ -129,6 +129,7 @@ func servicesTheWorkflowRuns(t *testing.T, root string) []string {
 
 // Оба множества обязаны совпадать — в ОБЕ стороны.
 func TestListFilterGate_EveryDeclaringServiceIsRunByCI(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	declared := servicesDeclaringTheGate(t, root)
 	run := servicesTheWorkflowRuns(t, root)

@@ -85,6 +85,7 @@ func (s *keyDenialStand) audit(t *testing.T) ([]ManifestKeyDenialFinding, Manife
 // TestKeyDenialStandIsSilentOnTheLegalTwins — КОНТРОЛЬ. Без него всякая инъекция
 // ниже доказывала бы лишь то, что покраснело хоть что-то.
 func TestKeyDenialStandIsSilentOnTheLegalTwins(t *testing.T) {
+	t.Parallel()
 	s := newKeyDenialStand(t)
 	findings, census := s.audit(t)
 
@@ -113,6 +114,7 @@ func TestKeyDenialStandIsSilentOnTheLegalTwins(t *testing.T) {
 // TestKeyDenialInjectionLiveKeyWithoutAMarker — ИНЪЕКЦИЯ 1: живой ключ объявлен
 // незаводимым, маркера нет.
 func TestKeyDenialInjectionLiveKeyWithoutAMarker(t *testing.T) {
+	t.Parallel()
 	s := newKeyDenialStand(t)
 	s.write(t, "services/probe/docs/engineering/acceptance/injected.md", `# Инъекция
 
@@ -137,6 +139,7 @@ func TestKeyDenialInjectionLiveKeyWithoutAMarker(t *testing.T) {
 // TestKeyDenialInjectionMarkerSilencesTheSameClaim — ИНЪЕКЦИЯ 2, обратная
 // сторона: то же утверждение под маркером состояния — молчание.
 func TestKeyDenialInjectionMarkerSilencesTheSameClaim(t *testing.T) {
+	t.Parallel()
 	s := newKeyDenialStand(t)
 	s.write(t, "services/probe/docs/engineering/acceptance/injected.md", `# Та же строка под маркером
 
@@ -164,6 +167,7 @@ func TestKeyDenialInjectionMarkerSilencesTheSameClaim(t *testing.T) {
 // без ревизии маркером не является. Утверждение о дереве без ревизии проверить
 // нечем, и «состояние» без неё было бы вторым утверждением того же рода.
 func TestKeyDenialInjectionMarkerWithoutARevisionDoesNotCount(t *testing.T) {
+	t.Parallel()
 	s := newKeyDenialStand(t)
 	s.write(t, "services/probe/docs/engineering/acceptance/injected.md", `# Маркер без ревизии
 
@@ -185,6 +189,7 @@ func TestKeyDenialInjectionMarkerWithoutARevisionDoesNotCount(t *testing.T) {
 // ОБРАТНУЮ сторону. Ключ снят с манифеста, маркер остался: послабление, которому
 // нечего снимать, унаследует следующая слепая зона.
 func TestKeyDenialInjectionMarkerOutlivesItsSubject(t *testing.T) {
+	t.Parallel()
 	s := newKeyDenialStand(t)
 	s.write(t, "services/probe/docs/engineering/acceptance/injected.md", `# Маркер пережил предмет
 
@@ -205,6 +210,7 @@ func TestKeyDenialInjectionMarkerOutlivesItsSubject(t *testing.T) {
 // верным, и находки быть не должно. Без этой пробы гейт судил бы слово, а не
 // расхождение слова с деревом.
 func TestKeyDenialInjectionRemovingTheKeyFromTheManifestSilencesTheClaim(t *testing.T) {
+	t.Parallel()
 	s := newKeyDenialStand(t)
 	s.write(t, "services/probe/docs/engineering/acceptance/injected.md", `# Утверждение без маркера
 

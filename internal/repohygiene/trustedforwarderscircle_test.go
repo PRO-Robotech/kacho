@@ -108,6 +108,7 @@ func circleServiceOf(rel string) string {
 // поэтому список из одних пустых строк проходил стражу и возвращал «доверяем
 // любому».
 func TestRawTrustedForwarderCircleIsReadInExactlyOnePlacePerService(t *testing.T) {
+	t.Parallel()
 	files, read := circleSourceFiles(t)
 	if read == 0 {
 		t.Fatal("предпосылка гейта нарушена: не разобрано ни одного исходника сервисов")
@@ -188,6 +189,7 @@ func TestRawTrustedForwarderCircleIsReadInExactlyOnePlacePerService(t *testing.T
 // она, а отказ старта. Сервис, объявивший ручку и не заведший стражу, выглядит
 // сузившим круг и не сужает ничего.
 func TestEveryServiceDeclaringTheCircleRefusesToStartUnnarrowed(t *testing.T) {
+	t.Parallel()
 	files, read := circleSourceFiles(t)
 	if read == 0 {
 		t.Fatal("предпосылка гейта нарушена: не разобрано ни одного исходника сервисов")

@@ -80,6 +80,7 @@ func handleC(w http.ResponseWriter, r *http.Request, srv *server) {
 // TestBodyCapScannerFindsASecondImplementation — сторона (а): внесённый дефект
 // становится находкой, и находка несёт координату.
 func TestBodyCapScannerFindsASecondImplementation(t *testing.T) {
+	t.Parallel()
 	impls, consumers, census, err := ScanBodyCapCalls(
 		"synthetic/tokenhttp/handler.go", []byte(bodyCapInjectedSecondImplementation),
 		bodyCapImplementation, bodyCapConsumer)
@@ -126,6 +127,7 @@ func TestBodyCapScannerFindsASecondImplementation(t *testing.T) {
 // TestBodyCapScannerIsSilentOnConsumers — сторона (б): законные потребители,
 // сколько бы их ни было, находкой не становятся.
 func TestBodyCapScannerIsSilentOnConsumers(t *testing.T) {
+	t.Parallel()
 	impls, consumers, census, err := ScanBodyCapCalls(
 		"synthetic/tokenhttp/handler.go", []byte(bodyCapInjectedLegitimateConsumers),
 		bodyCapImplementation, bodyCapConsumer)
@@ -158,6 +160,7 @@ func TestBodyCapScannerIsSilentOnConsumers(t *testing.T) {
 // Счётчик точечных импортов при этом ОБЯЗАН вырасти: молчание разбора должно
 // быть заметно тому, кто читает перепись.
 func TestBodyCapScannerNamesItsBlindSpot(t *testing.T) {
+	t.Parallel()
 	const src = `package tokenhttp
 
 import . "net/http"

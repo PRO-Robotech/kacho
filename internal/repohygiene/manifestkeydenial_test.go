@@ -18,6 +18,7 @@ import (
 // рецензент. Обязателен МАРКЕР СОСТОЯНИЯ — своя ревизия и свой предикат рядом с
 // пережившим предмет утверждением.
 func TestAcceptanceDoesNotDenyALiveManifestKey(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditManifestKeyDenial(DefaultManifestKeyDenialOptions(repoRoot(t)), &log)
 	if err != nil {

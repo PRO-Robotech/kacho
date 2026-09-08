@@ -243,6 +243,7 @@ func injectedSources(pairs ...string) map[string][]byte {
 // входу. Первый даёт два файла, второй — трёх держателей, и третий из них лежит
 // в пробе соседнего семейства.
 func TestInjectedBothFormsRecogniserFindsTheHolderTheNamePredicateMisses(t *testing.T) {
+	t.Parallel()
 	sources := injectedSources(
 		"services/iam/internal/presentedcred/harness_test.go", injectedPresentedHarness,
 		"services/iam/internal/presentedcred/reader_test.go",
@@ -294,6 +295,7 @@ func TestInjectedBothFormsRecogniserFindsTheHolderTheNamePredicateMisses(t *test
 // TestInjectedBothFormsSingleExpressionFormIsFoundAndItsTwinIsSilent — форма 1
 // в обе стороны, на ПОЛНОМ корпусе трёх файлов.
 func TestInjectedBothFormsSingleExpressionFormIsFoundAndItsTwinIsSilent(t *testing.T) {
+	t.Parallel()
 	withBranch := injectedSources(
 		"services/iam/internal/presentedcred/harness_test.go", injectedPresentedHarness,
 		"services/iam/internal/presentedcred/reader_test.go",
@@ -345,6 +347,7 @@ func TestInjectedBothFormsSingleExpressionFormIsFoundAndItsTwinIsSilent(t *testi
 // выражение», на накапливающем носителе не даёт ни красного, ни зелёного — он
 // МОЛЧИТ, и записанное этой формой оказывается вне наблюдения.
 func TestInjectedBothFormsAccumulatingCarrierFormIsFoundAndItsTwinIsSilent(t *testing.T) {
+	t.Parallel()
 	defect := injectedSources("gateway/internal/principalmeta/strip_test.go", injectedAccumulatingCarrier)
 	holders, census := injectedHolders(t, defect)
 	t.Logf("накапливающий носитель: держателей %d (%s); носителей запроса %d",
@@ -373,6 +376,7 @@ func TestInjectedBothFormsAccumulatingCarrierFormIsFoundAndItsTwinIsSilent(t *te
 // TestInjectedBothFormsBlindRecogniserIsNotGreen — пустой обход и слепой
 // разборщик не выглядят чистым деревом.
 func TestInjectedBothFormsBlindRecogniserIsNotGreen(t *testing.T) {
+	t.Parallel()
 	// (а) пустой корпус: ноль функций и ноль мест обеих форм. Именно на этих
 	// величинах гейт роняет прогон, а не на числе держателей.
 	empty := injectedSources()
@@ -424,6 +428,7 @@ func forwardedIdentity(ctx context.Context, userID string) context.Context {
 // вердикт, и наоборот. Инъекция гоняет ту же `AdjudicateBothFormsProducers`,
 // которую зовёт гейт.
 func TestInjectedBothFormsAdjudicationCallsTheFindingAndTheOrphanApart(t *testing.T) {
+	t.Parallel()
 	allowed := map[string]string{"gateway/internal/principalmeta": "пробы снятия на крае"}
 
 	atTheEdge := BothFormsSite{

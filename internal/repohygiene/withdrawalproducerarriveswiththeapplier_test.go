@@ -57,6 +57,7 @@ func withdrawalSiteLines(sites []RoleWithdrawalSite) []string {
 
 // TestWithdrawalProducerArrivesWithTheApplier — сам гейт.
 func TestWithdrawalProducerArrivesWithTheApplier(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

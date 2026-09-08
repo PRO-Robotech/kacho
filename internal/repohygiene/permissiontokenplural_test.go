@@ -254,6 +254,7 @@ func permTokFindings(recs []permTokRecord) []permTokRecord {
 // TestVpcPermissionTokenPluralizedExactlyOnce — гейт домена vpc: ни одного
 // искажённого имени ресурса в аннотациях права.
 func TestVpcPermissionTokenPluralizedExactlyOnce(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files, recs := permTokReadDomain(t, root, "vpc")
 
@@ -307,6 +308,7 @@ func TestVpcPermissionTokenPluralizedExactlyOnce(t *testing.T) {
 // аннотация файла, которая на момент написания УЖЕ несла `vpc.gatewaies.get`,
 // поэтому подстановка была тождественной и не проверяла ничего.
 func TestVpcPermissionTokenPluralInjection(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	const rel = "proto/kacho/cloud/vpc/v1/gateway_service.proto"
 	body, err := os.ReadFile(filepath.Join(root, rel))
@@ -382,6 +384,7 @@ func TestVpcPermissionTokenPluralInjection(t *testing.T) {
 // стороны. `addresses` стоит здесь не для полноты: суффиксная редакция этого
 // гейта дала на нём 13 ложных находок.
 func TestPermissionTokenPluralPredicateControls(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		seg  string
 		want permTokVerdict
@@ -441,6 +444,7 @@ var permTokRemainderOutsideVpc = map[string]int{
 // Отдельным тестом от гейта vpc: устаревшая запись остатка не должна прятать
 // свойство, которое держит гейт домена.
 func TestPermissionTokenDistortionRemainderOutsideVpc(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	for _, domain := range []string{"compute", "iam"} {
 		files, recs := permTokReadDomain(t, root, domain)

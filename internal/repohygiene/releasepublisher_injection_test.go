@@ -55,6 +55,7 @@ func syntheticRunner() string {
 }
 
 func TestReleasePublisherGateStaysSilentOnALegitimateTree(t *testing.T) {
+	t.Parallel()
 	a := auditReleasePublisher(syntheticPublisherTree(t), syntheticRunner())
 	t.Logf("законный близнец: файлов прочитано %d, утверждений %d, находок %d",
 		a.filesRead, a.assertions, len(a.findings))
@@ -72,6 +73,7 @@ func TestReleasePublisherGateStaysSilentOnALegitimateTree(t *testing.T) {
 // доказательством. Гейт, считающий файлы, на нём бы сработал; гейт, судящий
 // названные предметы, — нет.
 func TestReleasePublisherGateIgnoresAnUnrelatedScript(t *testing.T) {
+	t.Parallel()
 	root := syntheticPublisherTree(t)
 	if err := os.WriteFile(filepath.Join(root, "scripts", "release", "unrelated.sh"),
 		[]byte("#!/usr/bin/env bash\n"), 0o755); err != nil {
@@ -83,6 +85,7 @@ func TestReleasePublisherGateIgnoresAnUnrelatedScript(t *testing.T) {
 }
 
 func TestReleasePublisherGateRedOnAMissingMechanism(t *testing.T) {
+	t.Parallel()
 	root := syntheticPublisherTree(t)
 	victim := releaseArtifacts[0].mechanism
 	if err := os.Remove(filepath.Join(root, victim)); err != nil {
@@ -96,6 +99,7 @@ func TestReleasePublisherGateRedOnAMissingMechanism(t *testing.T) {
 }
 
 func TestReleasePublisherGateRedOnANonExecutableFile(t *testing.T) {
+	t.Parallel()
 	root := syntheticPublisherTree(t)
 	victim := releaseArtifacts[1].mechanism
 	if err := os.Chmod(filepath.Join(root, victim), 0o644); err != nil {
@@ -114,6 +118,7 @@ func TestReleasePublisherGateRedOnANonExecutableFile(t *testing.T) {
 // исполняется. Ровно этот класс здесь уже наблюдался: инъекция, которую никто
 // не зовёт, ломается в тот же день и молчит об этом.
 func TestReleasePublisherGateRedWhenTheRunnerStopsCallingAnInjection(t *testing.T) {
+	t.Parallel()
 	root := syntheticPublisherTree(t)
 	victim := releaseArtifacts[0].injection
 	runner := strings.ReplaceAll(syntheticRunner(), victim, "scripts/release/something-else.sh")
@@ -129,6 +134,7 @@ func TestReleasePublisherGateRedWhenTheRunnerStopsCallingAnInjection(t *testing.
 // «Ноль находок» и «ноль прочитанного» обязаны быть различимы: пустое дерево
 // даёт находку по каждому предмету, а не тишину.
 func TestReleasePublisherGateRedOnAnEmptyTree(t *testing.T) {
+	t.Parallel()
 	a := auditReleasePublisher(t.TempDir(), "")
 	if a.filesRead != 0 {
 		t.Fatalf("в пустом дереве прочитанных файлов быть не может, прочитано %d", a.filesRead)

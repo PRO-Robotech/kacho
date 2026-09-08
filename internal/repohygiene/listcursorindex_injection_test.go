@@ -97,6 +97,7 @@ func findingNames(t *testing.T, tree *treecorpus.Tree) []string {
 // Test_CursorIndexGate_RedsOnMixedDirection — ВОЗВРАЩЁННЫЙ дефект nlb: ключи те,
 // направление второго — обратное. Гейт обязан покраснеть и назвать таблицу.
 func Test_CursorIndexGate_RedsOnMixedDirection(t *testing.T) {
+	t.Parallel()
 	tree := cursorInjectionTree(t,
 		"CREATE INDEX widgets_project_created_idx ON kacho_alpha.widgets (project_id, created_at DESC, id);",
 		pageRead)
@@ -112,6 +113,7 @@ func Test_CursorIndexGate_RedsOnMixedDirection(t *testing.T) {
 // Без этой половины предыдущее утверждение зеленело бы на гейте, объявляющем
 // находкой любой составной индекс.
 func Test_CursorIndexGate_SilentOnMatchingDirection(t *testing.T) {
+	t.Parallel()
 	tree := cursorInjectionTree(t,
 		"CREATE INDEX widgets_project_cursor_idx ON kacho_alpha.widgets (project_id, created_at, id);",
 		pageRead)
@@ -125,6 +127,7 @@ func Test_CursorIndexGate_SilentOnMatchingDirection(t *testing.T) {
 // индекс порядок отдаёт. Гейт, требующий дословного совпадения направлений,
 // краснел бы на исправной схеме — а ложно краснеющий гейт снимают.
 func Test_CursorIndexGate_SilentOnFullyInvertedIndex(t *testing.T) {
+	t.Parallel()
 	tree := cursorInjectionTree(t,
 		"CREATE INDEX widgets_project_cursor_idx ON kacho_alpha.widgets (project_id, created_at DESC, id DESC);",
 		pageRead)
@@ -138,6 +141,7 @@ func Test_CursorIndexGate_SilentOnFullyInvertedIndex(t *testing.T) {
 // фикса (`<t>_created_at_idx (created_at)`): ничьи не разрешаются, предикат
 // продолжения диапазоном не выражается, порядок достраивается сортировкой.
 func Test_CursorIndexGate_RedsOnLeadingKeyOnly(t *testing.T) {
+	t.Parallel()
 	tree := cursorInjectionTree(t,
 		"CREATE INDEX widgets_created_at_idx ON kacho_alpha.widgets (created_at);",
 		pageRead)
@@ -150,6 +154,7 @@ func Test_CursorIndexGate_RedsOnLeadingKeyOnly(t *testing.T) {
 // как СВОЙСТВО, а не остаётся заявлением в шапке: частичный индекс покрытием не
 // считается. Парный положительный контроль — тот же индекс без предиката.
 func Test_CursorIndexGate_RedsOnPartialIndex(t *testing.T) {
+	t.Parallel()
 	partial := cursorInjectionTree(t,
 		"CREATE INDEX widgets_project_cursor_idx ON kacho_alpha.widgets (project_id, created_at, id) WHERE project_id <> '';",
 		pageRead)
@@ -172,6 +177,7 @@ func Test_CursorIndexGate_RedsOnPartialIndex(t *testing.T) {
 // индекс с тем же чтением МИНУС предикат обязан снова стать находкой. Иначе
 // «засчитан» было бы неотличимо от «частичные засчитываются всегда».
 func Test_CursorIndexGate_SilentOnPartialIndexWhosePredicateTheReadCarries(t *testing.T) {
+	t.Parallel()
 	const partialIdx = "CREATE INDEX widgets_live_cursor_idx ON kacho_alpha.widgets " +
 		"(created_at, id) WHERE project_id <> '';"
 
@@ -217,6 +223,7 @@ func Test_CursorIndexGate_SilentOnPartialIndexWhosePredicateTheReadCarries(t *te
 // другим условием обязан по-прежнему засчитываться. Без него проба зеленела бы
 // на послаблении, снятом целиком.
 func Test_CursorIndexGate_PartialIndexEasingIsNoWiderThanImplication(t *testing.T) {
+	t.Parallel()
 	const partialIdx = "CREATE INDEX widgets_live_cursor_idx ON kacho_alpha.widgets " +
 		"(created_at, id) WHERE project_id <> '';"
 	const tail = " ORDER BY created_at ASC, id ASC LIMIT $9"
@@ -254,6 +261,7 @@ func Test_CursorIndexGate_PartialIndexEasingIsNoWiderThanImplication(t *testing.
 // естественной «нормализацией» и молча расширило бы его на индекс, построенный
 // по другому множеству.
 func Test_CursorIndexGate_PredicateComparisonKeepsLiteralCase(t *testing.T) {
+	t.Parallel()
 	const idx = "CREATE INDEX widgets_live_cursor_idx ON kacho_alpha.widgets " +
 		"(created_at, id) WHERE project_id <> 'SENT';"
 	same := cursorInjectionTree(t, idx,
@@ -288,6 +296,7 @@ func Test_CursorIndexGate_PredicateComparisonKeepsLiteralCase(t *testing.T) {
 // с ИНЫМ предикатом — остаться находкой. Иначе «засчитан» было бы неотличимо
 // от «приведение снимает различие вообще».
 func Test_CursorIndexGate_SilentOnPredicateWrittenInTheDumpForm(t *testing.T) {
+	t.Parallel()
 	// Скобки вокруг предиката и приведение на литерале — ровно то, что пишет `pg_dump`.
 	const dumpIdx = "CREATE INDEX widgets_live_cursor_idx ON kacho_alpha.widgets " +
 		"USING btree (created_at, id) WHERE (project_id <> ''::text);"
@@ -326,6 +335,7 @@ func Test_CursorIndexGate_SilentOnPredicateWrittenInTheDumpForm(t *testing.T) {
 // проверяется это не прочтением, а входом: значение, тип и предмет сравнения
 // обязаны уцелеть. Три оси, каждая своим случаем.
 func Test_CursorIndexGate_CastStrippingDoesNotEquateDifferentLiterals(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name, idx, read string
 		covered         bool
@@ -383,6 +393,7 @@ func Test_CursorIndexGate_CastStrippingDoesNotEquateDifferentLiterals(t *testing
 // такой индекс БЫЛ — постраничный по паре (проект, подсеть), снят по #963
 // именно потому, что второе равенство несёт не всякое чтение).
 func Test_CursorIndexGate_RedsOnDeepEqualityPrefix(t *testing.T) {
+	t.Parallel()
 	tree := cursorInjectionTree(t,
 		"CREATE INDEX widgets_deep_idx ON kacho_alpha.widgets (project_id, zone_id, created_at, id);",
 		pageRead)
@@ -396,6 +407,7 @@ func Test_CursorIndexGate_RedsOnDeepEqualityPrefix(t *testing.T) {
 // перестройка «снять и тут же создать заново» ДВУМЯ раздельными проходами
 // читалась бы как «снят», и гейт покраснел бы на ПРАВИЛЬНОЙ схеме.
 func Test_CursorIndexGate_SilentOnDroppedIndexBeingRebuilt(t *testing.T) {
+	t.Parallel()
 	tree := cursorInjectionTree(t,
 		"CREATE INDEX widgets_project_cursor_idx ON kacho_alpha.widgets (project_id, created_at, id);\n"+
 			"DROP INDEX widgets_project_cursor_idx;\n"+
@@ -410,6 +422,7 @@ func Test_CursorIndexGate_SilentOnDroppedIndexBeingRebuilt(t *testing.T) {
 // индекс СНЯТ и заново не создан, находка обязана быть. Без неё предыдущее
 // утверждение зеленело бы на разборе, который `DROP INDEX` не читает вовсе.
 func Test_CursorIndexGate_RedsOnDroppedIndex(t *testing.T) {
+	t.Parallel()
 	tree := cursorInjectionTree(t,
 		"CREATE INDEX widgets_project_cursor_idx ON kacho_alpha.widgets (project_id, created_at, id);\n"+
 			"DROP INDEX widgets_project_cursor_idx;",
@@ -425,6 +438,7 @@ func Test_CursorIndexGate_RedsOnDroppedIndex(t *testing.T) {
 // Test_CursorIndexGate_SilentOnMatchingDirection: тот же текст, стоящий в коде,
 // покрытием засчитывается.
 func Test_CursorIndexGate_RedsOnIndexNamedOnlyInAComment(t *testing.T) {
+	t.Parallel()
 	tree := cursorInjectionTree(t,
 		"-- CREATE INDEX widgets_project_cursor_idx ON kacho_alpha.widgets (project_id, created_at, id);",
 		pageRead)
@@ -439,6 +453,7 @@ func Test_CursorIndexGate_RedsOnIndexNamedOnlyInAComment(t *testing.T) {
 // нёс бы две находки без предмета уже на дереве продукта, а перечень с
 // беспредметными записями перестают читать целиком.
 func Test_CursorIndexGate_SilentOnSingleRowLookup(t *testing.T) {
+	t.Parallel()
 	lookup := `SELECT id FROM kacho_alpha.widgets WHERE project_id = $1 ` +
 		`ORDER BY created_at ASC, id ASC LIMIT 1`
 	tree := cursorInjectionTree(t, "-- индексов нет вовсе", lookup)
@@ -458,6 +473,7 @@ func Test_CursorIndexGate_SilentOnSingleRowLookup(t *testing.T) {
 // таблицы не «пропускается»: именно на нём прежний замер потерял семь таблиц.
 // Гейт обязан отдать его отдельным перечнем, а объявление рядом — снять вопрос.
 func Test_CursorIndexGate_ReportsUnresolvedTable(t *testing.T) {
+	t.Parallel()
 	computed := "SELECT id FROM %s ORDER BY created_at ASC, id ASC LIMIT $1"
 
 	tree := cursorInjectionTree(t,
@@ -513,6 +529,7 @@ func Test_CursorIndexGate_ReportsUnresolvedTable(t *testing.T) {
 // собирается форматированием из неё (`diskTypeSelect`, `snapshotFrom`).
 // Псевдоним ключа связывается по ВСЕМУ файлу, а не по одному литералу.
 func Test_CursorIndexGate_ResolvesAliasBoundInAnotherLiteral(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mig := filepath.Join(root, "services", "alpha", "internal", "migrations")
 	if err := os.MkdirAll(mig, 0o750); err != nil {

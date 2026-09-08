@@ -96,6 +96,7 @@ func taggedWrites(t *testing.T, path, src string) []mirrorWrite {
 // TestMirrorCondition_InjectionRecognisesTheWrite — оператор вставки в зеркало
 // НАХОДИТСЯ и приписывается функции. Без этого гейт вакуумен.
 func TestMirrorCondition_InjectionRecognisesTheWrite(t *testing.T) {
+	t.Parallel()
 	got := injWrites(t, srcReferenceBare)
 	if len(got) != 1 {
 		t.Fatalf("признак нашёл %d операторов вставки, ожидалась 1 — распознаватель "+
@@ -118,6 +119,7 @@ func TestMirrorCondition_InjectionRecognisesTheWrite(t *testing.T) {
 // TestMirrorCondition_InjectionSeesTheCondition — условие каталога В ТОМ ЖЕ
 // операторе распознаётся и называется таблицей.
 func TestMirrorCondition_InjectionSeesTheCondition(t *testing.T) {
+	t.Parallel()
 	got := injWrites(t, srcReferenceWithCondition)
 	if len(got) != 1 {
 		t.Fatalf("операторов вставки %d, ожидалась 1: %+v", len(got), got)
@@ -131,6 +133,7 @@ func TestMirrorCondition_InjectionSeesTheCondition(t *testing.T) {
 // TestMirrorCondition_LegitimateTwin_ReadIsNotAWrite — чтение зеркала записью НЕ
 // является: читателей у таблицы много, и все обязаны остаться законными.
 func TestMirrorCondition_LegitimateTwin_ReadIsNotAWrite(t *testing.T) {
+	t.Parallel()
 	src := `package relverdict
 
 func listObjects(ctx context.Context, tx pgx.Tx) error {
@@ -148,6 +151,7 @@ func listObjects(ctx context.Context, tx pgx.Tx) error {
 // КОММЕНТАРИИ (в том числе в комментарии, объясняющем эту самую защиту) записью
 // не является. Гейт по подстроке краснел бы на собственном объяснении.
 func TestMirrorCondition_LegitimateTwin_CommentIsNotAStatement(t *testing.T) {
+	t.Parallel()
 	src := `package pg
 
 // Здесь НЕ делается INSERT INTO kaname.resource_mirror — строку заводит
@@ -162,6 +166,7 @@ func onlyProse(ctx context.Context) error { return nil }
 // TestMirrorCondition_CommentedCatalogIsNotACondition — упоминание каталога в
 // комментарии РЯДОМ с оператором условием не является: судится литерал, а не файл.
 func TestMirrorCondition_CommentedCatalogIsNotACondition(t *testing.T) {
+	t.Parallel()
 	src := `package pg
 
 func sneaky(ctx context.Context, tx pgx.Tx) error {
@@ -185,6 +190,7 @@ func sneaky(ctx context.Context, tx pgx.Tx) error {
 // нового типа не вводит, и предмета у условия там нет. Это законный близнец:
 // пометить её нарушением значило бы требовать сверки там, где сверять нечего.
 func TestMirrorCondition_UpdateDoesNotIntroduceARow(t *testing.T) {
+	t.Parallel()
 	src := `package pg
 
 func bump(ctx context.Context, tx pgx.Tx) error {
@@ -213,6 +219,7 @@ func bump(ctx context.Context, tx pgx.Tx) error {
 // гейт спрашивает «решал ли кто-нибудь, что они различаются», а не «каким
 // свойство должно быть».
 func TestMirrorCondition_ControlNoConditionAnywhere(t *testing.T) {
+	t.Parallel()
 	writes := append(taggedWrites(t, refPath, srcReferenceBare),
 		taggedWrites(t, secondPath, srcSecondWriterBare)...)
 	rep := mirrorConditionReport(writes, nil)
@@ -233,6 +240,7 @@ func TestMirrorCondition_ControlNoConditionAnywhere(t *testing.T) {
 // писателе, называя его файл, функцию и недостающую таблицу. Ровно этого не
 // случилось бы, останься инвариант свойством одной полосы.
 func TestMirrorCondition_InjectionRedWhenReferenceGainsTheCondition(t *testing.T) {
+	t.Parallel()
 	writes := append(taggedWrites(t, refPath, srcReferenceWithCondition),
 		taggedWrites(t, secondPath, srcSecondWriterBare)...)
 	rep := mirrorConditionReport(writes, nil)
@@ -254,6 +262,7 @@ func TestMirrorCondition_InjectionRedWhenReferenceGainsTheCondition(t *testing.T
 // TestMirrorCondition_LegitimateTwin_BothCarryTheCondition — оба писателя несут
 // условие → МОЛЧАНИЕ. Без этого прогона гейт ловил бы форму, а не существо.
 func TestMirrorCondition_LegitimateTwin_BothCarryTheCondition(t *testing.T) {
+	t.Parallel()
 	writes := append(taggedWrites(t, refPath, srcReferenceWithCondition),
 		taggedWrites(t, secondPath, srcSecondWriterWithCondition)...)
 	rep := mirrorConditionReport(writes, nil)
@@ -271,6 +280,7 @@ func TestMirrorCondition_LegitimateTwin_BothCarryTheCondition(t *testing.T) {
 // TestMirrorCondition_ExemptionSilencesItsOwnWriter — названное исключение
 // гасит находку по СВОЕМУ писателю и ни по какому другому.
 func TestMirrorCondition_ExemptionSilencesItsOwnWriter(t *testing.T) {
+	t.Parallel()
 	writes := append(taggedWrites(t, refPath, srcReferenceWithCondition),
 		taggedWrites(t, secondPath, srcSecondWriterBare)...)
 	led := map[string]string{
@@ -289,6 +299,7 @@ func TestMirrorCondition_ExemptionSilencesItsOwnWriter(t *testing.T) {
 // исключать (писатель условие получил), — НАХОДКА. Послабление обязано истекать
 // само, иначе оно переживает свой предмет и остаётся слепой зоной.
 func TestMirrorCondition_StaleExemptionIsAFinding(t *testing.T) {
+	t.Parallel()
 	writes := append(taggedWrites(t, refPath, srcReferenceWithCondition),
 		taggedWrites(t, secondPath, srcSecondWriterWithCondition)...)
 	led := map[string]string{
@@ -306,6 +317,7 @@ func TestMirrorCondition_StaleExemptionIsAFinding(t *testing.T) {
 // TestMirrorCondition_ExemptionForAVanishedWriterIsAFinding — писателя больше
 // нет в дереве, а запись о нём осталась: тоже находка.
 func TestMirrorCondition_ExemptionForAVanishedWriterIsAFinding(t *testing.T) {
+	t.Parallel()
 	writes := taggedWrites(t, refPath, srcReferenceWithCondition)
 	led := map[string]string{
 		"services/iam/internal/repo/kaname/pg/gone.go::Gone.Write": "причина: писатель, которого сняли",
@@ -320,6 +332,7 @@ func TestMirrorCondition_ExemptionForAVanishedWriterIsAFinding(t *testing.T) {
 // ведомость есть цель, ради которой ведомость заведена; отказ на ней толкал бы
 // держать запись ради зелёного.
 func TestMirrorCondition_EmptyLedgerIsTheGoal(t *testing.T) {
+	t.Parallel()
 	writes := append(taggedWrites(t, refPath, srcReferenceWithCondition),
 		taggedWrites(t, secondPath, srcSecondWriterWithCondition)...)
 	rep := mirrorConditionReport(writes, map[string]string{})
@@ -332,6 +345,7 @@ func TestMirrorCondition_EmptyLedgerIsTheGoal(t *testing.T) {
 // исключением не является: следующий читатель снимет его как непонятное либо
 // оставит навсегда, не зная предмета.
 func TestMirrorCondition_ExemptionWithoutAReasonIsAFinding(t *testing.T) {
+	t.Parallel()
 	writes := append(taggedWrites(t, refPath, srcReferenceWithCondition),
 		taggedWrites(t, secondPath, srcSecondWriterBare)...)
 	led := map[string]string{secondPath + "::BackfillAdapter.SeedSmokeMirrorObject": "  "}
@@ -349,6 +363,7 @@ func TestMirrorCondition_ExemptionWithoutAReasonIsAFinding(t *testing.T) {
 // Сверять «тем же условием» не с чем, и молчание здесь означало бы, что гейт
 // умер вместе с координатой.
 func TestMirrorCondition_NoReferenceLaneIsARefusal(t *testing.T) {
+	t.Parallel()
 	writes := taggedWrites(t, secondPath, srcSecondWriterBare)
 	rep := mirrorConditionReport(writes, nil)
 	if !rep.ReferenceMissing {
@@ -360,6 +375,7 @@ func TestMirrorCondition_NoReferenceLaneIsARefusal(t *testing.T) {
 // services/iam: зеркало — таблица iam, и запись в неё из чужого сервиса означает
 // общую БД (ban #8). Ось вооружена СЕГОДНЯ, до всякого условия.
 func TestMirrorCondition_WriterOutsideIAMIsAFinding(t *testing.T) {
+	t.Parallel()
 	writes := append(taggedWrites(t, refPath, srcReferenceBare),
 		taggedWrites(t, "services/vpc/internal/repo/mirror.go", srcSecondWriterBare)...)
 	rep := mirrorConditionReport(writes, nil)
@@ -372,6 +388,7 @@ func TestMirrorCondition_WriterOutsideIAMIsAFinding(t *testing.T) {
 // исходник без единого упоминания таблицы даёт ноль. «Ноль находок» обязано быть
 // отличимо от «ноль прочитанного».
 func TestMirrorCondition_MentionsCountedForThePremise(t *testing.T) {
+	t.Parallel()
 	_, mentions, err := mirrorWritesIn("zz.go", "package p\n\nfunc f() {}\n")
 	if err != nil {
 		t.Fatalf("разбор: %v", err)

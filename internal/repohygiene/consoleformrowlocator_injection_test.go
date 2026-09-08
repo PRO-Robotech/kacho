@@ -19,6 +19,7 @@ import (
 )
 
 func TestFormRowLocatorFindsTheUnguardedChain(t *testing.T) {
+	t.Parallel()
 	const src = `
 function поле(page: Page, подпись: string) {
   return page.locator(".ant-form-item", { has: page.getByText(подпись, { exact: true }) }).first();
@@ -45,6 +46,7 @@ function поле(page: Page, подпись: string) {
 // упал на собственной предпосылке, а не на находке). Форма записи менялась,
 // класс — нет.
 func TestFormRowLocatorFindsTheAncestorAxisWithoutIndex(t *testing.T) {
+	t.Parallel()
 	const src = `
 function ряд(page: Page, подпись: string) {
   return page
@@ -63,6 +65,7 @@ function ряд(page: Page, подпись: string) {
 }
 
 func TestFormRowLocatorIsSilentOnGuardedAndOnUnrelatedForms(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct{ name, src string }{
 		{
 			"отсечение вложенных строк есть",
@@ -110,6 +113,7 @@ func TestFormRowLocatorIsSilentOnGuardedAndOnUnrelatedForms(t *testing.T) {
 // помощников и в этом файле. Гейт по сырому тексту краснел бы на собственном
 // объяснении: записанный класс (`testing.md` §«Гейт на класс», п.4).
 func TestFormRowLocatorReadsCodeNotProse(t *testing.T) {
+	t.Parallel()
 	const src = `
 // Прежняя редакция звала page.locator(".ant-form-item", { has: page.getByText(x) }).first()
 // и попадала в объемлющий блок.
@@ -129,6 +133,7 @@ const ничего = 1;
 // указывать на строку файла, а не на строку очищенного текста: комментарии
 // вырезаются, и без сохранения переводов строк номера уехали бы вверх.
 func TestFormRowLocatorKeepsLineNumbersAcrossComments(t *testing.T) {
+	t.Parallel()
 	const src = `const a = 1;
 /* пояснение
    в три
@@ -147,6 +152,7 @@ return page.locator(".ant-form-item", { has: page.getByText(x) }).first();
 // TestStripTSCommentsKeepsStringLiterals — селектор живёт в строковом литерале,
 // и вырезать его вместе с комментариями значило бы ослепить гейт полностью.
 func TestStripTSCommentsKeepsStringLiterals(t *testing.T) {
+	t.Parallel()
 	const src = `const s = "// не комментарий, а текст"; // а это комментарий`
 	out := StripTSComments(src)
 	if !strings.Contains(out, `"// не комментарий, а текст"`) {

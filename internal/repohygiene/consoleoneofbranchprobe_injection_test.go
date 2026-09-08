@@ -83,6 +83,7 @@ export const REGISTRY = {
 `
 
 func TestConsoleOneofProbeGateParsesContract(t *testing.T) {
+	t.Parallel()
 	pf := parseProtoFile(injProto)
 
 	if len(pf.Creates) != 1 || pf.Creates[0].Path != "/demo/v1/widgets" {
@@ -105,6 +106,7 @@ func TestConsoleOneofProbeGateParsesContract(t *testing.T) {
 }
 
 func TestConsoleOneofProbeGateParsesRegistry(t *testing.T) {
+	t.Parallel()
 	specs := parseConsoleRegistry("demo", "demo/src/lib/resource-registry.tsx", injRegistry)
 	if len(specs) != 2 {
 		t.Fatalf("спеков распознано %d, ждали 2: %+v", len(specs), specs)
@@ -127,6 +129,7 @@ func TestConsoleOneofProbeGateParsesRegistry(t *testing.T) {
 }
 
 func TestConsoleOneofProbeGateDiscriminatesCoverage(t *testing.T) {
+	t.Parallel()
 	// Дефект: проба модуля есть, но про ЭТОТ спек молчит.
 	foreignProbe := `oneofBranches("demo/v1/other.proto", "X", "y"); REGISTRY["gadgets"]`
 	if coveredBySomeProbe([]string{foreignProbe}, "widgets") {

@@ -70,6 +70,7 @@ func opSrc(alias, body string) string {
 // остальных. Число форм здесь не выписано — оно зависит от популяции и
 // печатается переписью гейта на каждом прогоне.
 func TestInjectionAliasDoesNotHideTheSubject(t *testing.T) {
+	t.Parallel()
 	for _, alias := range []string{"operationpb", "oppb", "operationv1", "opv1"} {
 		t.Run(alias, func(t *testing.T) {
 			src := opSrc(alias, `
@@ -98,6 +99,7 @@ func (h *OpsHandler) Get(c context.Context, in *`+alias+`.GetOperationRequest) (
 // Прежняя редакция требовала дословных `ctx`/`req`. Имена параметров — привычка,
 // а не контракт.
 func TestInjectionParameterNamesDoNotHideTheSubject(t *testing.T) {
+	t.Parallel()
 	src := opSrc("operationpb", `
 type H struct{}
 
@@ -116,6 +118,7 @@ func (h *H) Cancel(whatever context.Context, anything *operationpb.CancelOperati
 // Прежняя редакция искала `func [Oo]perationToProto(`. Имя переименовывается,
 // пара «принимает доменную строку → возвращает контракт» — нет.
 func TestInjectionConverterNameDoesNotHideTheSubject(t *testing.T) {
+	t.Parallel()
 	src := opSrc("operationpb", `
 func toProtoOperation(op *operations.Operation) *operationpb.Operation {
 	out := &operationpb.Operation{Id: op.ID}
@@ -137,6 +140,7 @@ func toProtoOperation(op *operations.Operation) *operationpb.Operation {
 // подстроку `ToProto(`. Своя `legacyToProto` со своим телом проезжала — отстояв
 // от отрицательной фикстуры гейта на одну букву.
 func TestInjectionDelegationMustLeadToTheSharedLayer(t *testing.T) {
+	t.Parallel()
 	src := opSrc("operationpb", `
 func operationToProto(op *operations.Operation) *operationpb.Operation {
 	return legacyToProto(op)
@@ -156,6 +160,7 @@ func legacyToProto(op *operations.Operation) *operationpb.Operation {
 // ─── полоса владения ─────────────────────────────────────────────────────────
 
 func TestInjectionOwnershipLaneIsFound(t *testing.T) {
+	t.Parallel()
 	src := opSrc("operationpb", `
 func lane(ctx context.Context, repo operations.Repo) {
 	owned, _ := operations.AsOwned(repo)
@@ -176,6 +181,7 @@ func lane(ctx context.Context, repo operations.Repo) {
 // ─── ЗАКОННЫЕ БЛИЗНЕЦЫ: гейт обязан молчать ─────────────────────────────────
 
 func TestLegitimateShapesAreSilent(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{
 		"прослойка в общий слой": `
 func operationToProto(op *operations.Operation) *operationpb.Operation {
@@ -226,6 +232,7 @@ func nothing() {}
 // Запись, которой больше нечего исключать, наследует следующую слепую зону,
 // поэтому она — находка, а не мелочь.
 func TestExemptionWithoutSubjectIsAFinding(t *testing.T) {
+	t.Parallel()
 	f, _ := opInjectAudit2(t,
 		map[string]string{"services/x/internal/handler/ok.go": opSrc("operationpb", "\nfunc nothing() {}\n")},
 		map[string]string{"gateway/internal/opsproxy": "предмет давно снят"})
@@ -269,6 +276,7 @@ func opInjectAudit2(t *testing.T, files, exempt map[string]string) ([]opSourceFi
 // Форк компилируется, регистрируется сервером операций, а перепись прежней
 // редакции совпадала с чистым деревом ПОБАЙТОВО — сигнала не было никакого.
 func TestInjectionTypeAliasDoesNotHideTheSubject(t *testing.T) {
+	t.Parallel()
 	src := opSrc("operationpb", `
 type getReq = operationpb.GetOperationRequest
 type unimpl = operationpb.UnimplementedOperationServiceServer
@@ -289,6 +297,7 @@ func (h *H) Get(ctx context.Context, req *getReq) (*operationpb.Operation, error
 // Точечный импорт: типы контракта попадают в местное пространство имён и стоят
 // голыми идентификаторами.
 func TestInjectionDotImportDoesNotHideTheSubject(t *testing.T) {
+	t.Parallel()
 	src := `package handler
 
 import (
@@ -314,6 +323,7 @@ func (h *H) Cancel(ctx context.Context, req *CancelOperationRequest) (*Operation
 // расхождение полосы внутри (владелец стёрт). Прежняя редакция засчитывала это
 // как образцовое делегирование.
 func TestInjectionDelegationMustPassItsOwnArgumentUnchanged(t *testing.T) {
+	t.Parallel()
 	src := opSrc("operationpb", `
 func operationToProto(op *operations.Operation) *operationpb.Operation {
 	return operationspb.ToProto(stripOwner(op))
@@ -338,6 +348,7 @@ func stripOwner(op *operations.Operation) *operations.Operation {
 // тела. Отметка «запись сработала» ставилась при совпадении ПУТИ, поэтому запись
 // переживала исчезновение предмета, пока в каталоге лежал хоть один файл.
 func TestExemptionSurvivingItsSubjectIsAFinding(t *testing.T) {
+	t.Parallel()
 	// Файл под исключённым префиксом ЕСТЬ, но предмета в нём нет.
 	f, _ := opInjectAudit2(t,
 		map[string]string{"gateway/internal/opsproxy/proxy.go": opSrc("operationpb", "\nfunc nothing() {}\n")},
@@ -353,6 +364,7 @@ func TestExemptionSurvivingItsSubjectIsAFinding(t *testing.T) {
 
 // Положительный контроль к предыдущей: пока предмет есть, запись молчит.
 func TestExemptionWithLiveSubjectIsSilent(t *testing.T) {
+	t.Parallel()
 	src := opSrc("operationpb", `
 type H struct{}
 
@@ -387,6 +399,7 @@ func (h *H) Get(ctx context.Context, req *operationpb.GetOperationRequest) (*ope
 // пропускали его молча. Это законный Go и в эффекте неотличимо от объявления
 // рядом.
 func TestInjectionCrossFileAliasDoesNotHideTheSubject(t *testing.T) {
+	t.Parallel()
 	alias := `package handler
 
 import operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
@@ -413,6 +426,7 @@ func (h *H) Get(ctx context.Context, req *getReq) (interface{}, error) { return 
 // Преобразователь, принимающий доменную строку ПО ЗНАЧЕНИЮ. `operations.New`
 // возвращает значение, поэтому такая форма естественнее принятой.
 func TestInjectionValueParameterDoesNotHideTheSubject(t *testing.T) {
+	t.Parallel()
 	src := opSrc("operationpb", `
 func toPB(op operations.Operation) *operationpb.Operation {
 	return &operationpb.Operation{Id: op.ID}
@@ -426,6 +440,7 @@ func toPB(op operations.Operation) *operationpb.Operation {
 
 // Псевдоним типа в ВОЗВРАТЕ и псевдоним ДОМЕННОГО типа во входе.
 func TestInjectionAliasedTypesDoNotHideTheConverter(t *testing.T) {
+	t.Parallel()
 	for name, body := range map[string]string{
 		"псевдоним возврата": `
 type opPB = operationpb.Operation
@@ -455,6 +470,7 @@ func toPB(op *domOp) *operationpb.Operation {
 // входов, преобразователем НЕ является. Без этой пробы сужение выглядело бы
 // произволом, а его отсутствие давало две ложные находки из двух новых.
 func TestUseCaseMethodTakingAnOperationIsNotAConverter(t *testing.T) {
+	t.Parallel()
 	src := opSrc("operationpb", `
 type UC struct{}
 
@@ -478,6 +494,7 @@ func (uc *UC) finish(ctx context.Context, op operations.Operation, extra string)
 // находится. Это ровно то, что проверяет страж, и здесь оно закреплено отдельно
 // от него — иначе «страж есть» неотличимо от «страж вакуумен».
 func TestGuardSyntheticProbesAreFoundOnEveryAxis(t *testing.T) {
+	t.Parallel()
 	for axis, src := range map[string]string{
 		"обработчик": opSrc("operationpb", `
 type H struct{}
@@ -516,6 +533,7 @@ func lane(ctx context.Context, repo operations.Repo) {
 // страж покраснел бы на достижении цели — закрылась бы задача #1370, опустела
 // ведомость, и гейт упал бы, ничего не найдя.
 func TestGuardDoesNotDependOnTreeContents(t *testing.T) {
+	t.Parallel()
 	// Дерево без единого предмета — законное состояние полностью сведённого
 	// продукта. Находок ноль, и это НЕ повод падать.
 	f, cen := opInjectAudit(t, map[string]string{
@@ -540,6 +558,7 @@ func TestGuardDoesNotDependOnTreeContents(t *testing.T) {
 // открывает обычную форму Go. Условие, ничего не покупающее и не покрытое
 // пробой, — слепая зона, выданная вперёд.
 func TestInjectionConverterAsMethodDoesNotHideTheSubject(t *testing.T) {
+	t.Parallel()
 	src := opSrc("operationpb", `
 type mapper struct{}
 
@@ -556,6 +575,7 @@ func (m mapper) toPB(op *operations.Operation) *operationpb.Operation {
 // Цепочка псевдонимов: `type wire = opPB` при `type opPB = pb.Operation`.
 // Одного лишнего звена было довольно, чтобы снять обе оси.
 func TestInjectionAliasChainIsResolvedToFixpoint(t *testing.T) {
+	t.Parallel()
 	src := opSrc("operationpb", `
 type opPB = operationpb.Operation
 type wire = opPB
@@ -580,6 +600,7 @@ func toPB(op *operations.Operation) *wire {
 
 // Ведомость обязана прощать СВОЙ каталог, а не всё, что начинается так же.
 func TestExemptionRespectsPathBoundary(t *testing.T) {
+	t.Parallel()
 	src := opSrc("operationpb", `
 type H struct{}
 
@@ -617,6 +638,7 @@ func (h *H) Get(ctx context.Context, req *operationpb.GetOperationRequest) (*ope
 // с деревом, то есть воспроизведён ровно тот случай, ради которого страж и
 // заведён.
 func TestGuardGoesRedWhenTheRecogniserGoesBlind(t *testing.T) {
+	t.Parallel()
 	// Синтетика с ПЕРЕИМЕНОВАННЫМ путём стабов: распознаватель, ключующийся на
 	// `operationStubsPath`, не увидит в ней ничего.
 	blind := `package handler
@@ -654,6 +676,7 @@ func (h *H) Get(ctx context.Context, req *operationpb.GetOperationRequest) (*ope
 
 // Законная прослойка с ДВУМЯ возвращаемыми значениями — не находка.
 func TestTwoValueDelegationIsLegitimate(t *testing.T) {
+	t.Parallel()
 	src := opSrc("operationpb", `
 func toPB(op *operations.Operation) (*operationpb.Operation, error) {
 	return operationspb.ToProto(op), nil
@@ -705,6 +728,7 @@ func (p *P) Get(ctx context.Context, req *operationpb.GetOperationRequest) (*ope
 // обработчика. Близнец отличается ОДНИМ полем — тем самым, которое и делает тип
 // прокси, — поэтому инъекция роняет ровно проверяемое и ничего кроме.
 func TestProxyIsDerivedOutOfTheHandlerAxisButOnlyProxy(t *testing.T) {
+	t.Parallel()
 	// Прокси: пара «серверная заглушка + клиент того же контракта» — молчит.
 	f, cen := opInjectAudit(t, map[string]string{"gateway/internal/x/p.go": opProxySrc(true)})
 	if len(f) != 0 {
@@ -745,6 +769,7 @@ type P struct {
 
 // Полоса, решающая по прочитанной строке САМА, — находка.
 func TestInjectionRecordedOwnerLaneDecidingItselfIsAFinding(t *testing.T) {
+	t.Parallel()
 	src := opRecordedOwnerSrc(`
 func check(callerID string, op *operationpb.Operation) error {
 	if callerID != op.GetPrincipalId() {
@@ -769,6 +794,7 @@ var errDenied error
 
 // Законный близнец: та же функция ОТДАЁТ решение санкционированному глаголу.
 func TestRecordedOwnerLaneDelegatingIsSilent(t *testing.T) {
+	t.Parallel()
 	src := opRecordedOwnerSrc(`
 func check(callerType, callerID string, op *operationpb.Operation) error {
 	return operations.CheckRecordedOwnership(
@@ -791,6 +817,7 @@ func check(callerType, callerID string, op *operationpb.Operation) error {
 // Присутствия вызова недостаточно, и это не педантизм: собственный ранний
 // возврат и есть та форма, ради которой полосы расходятся.
 func TestInjectionEarlyReturnBesideTheSanctionedVerbIsAFinding(t *testing.T) {
+	t.Parallel()
 	src := opRecordedOwnerSrc(`
 func check(callerType, callerID string, op *operationpb.Operation) error {
 	if callerType == "system" {
@@ -815,6 +842,7 @@ func check(callerType, callerID string, op *operationpb.Operation) error {
 // отношения не имеет. Без этого контроля ось краснела бы на соседнем предмете,
 // и её сняли бы первым же прочтением.
 func TestRecordedOwnerAxisIgnoresForeignContracts(t *testing.T) {
+	t.Parallel()
 	src := `package middleware
 
 import (

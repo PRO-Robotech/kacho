@@ -332,6 +332,7 @@ func scanFoundationProse(tree *treecorpus.Tree) (polyrepoCensus, []polyrepoFindi
 
 // TestFoundationProseNamesNoPolyrepoCoordinate — гейт класса.
 func TestFoundationProseNamesNoPolyrepoCoordinate(t *testing.T) {
+	t.Parallel()
 	tree, err := treecorpus.NewTree(repoRoot(t))
 	if err != nil {
 		t.Fatalf("состав дерева не собран — вердикт беспредметен: %v", err)

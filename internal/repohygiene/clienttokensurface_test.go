@@ -20,6 +20,7 @@ import (
 const clientTokenPath = "clienttokenhttp.TokenPath"
 
 func TestClientTokenEndpointIsRegisteredOnAnExternallyReachableSurface(t *testing.T) {
+	t.Parallel()
 	regs, census, findings, err := repohygiene.ScanSurfaceRegistrations(
 		repohygiene.CompositionRootDir(repoRootFor(t)))
 	if err != nil {

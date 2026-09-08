@@ -262,6 +262,7 @@ func licensedWorkLine(body string) (string, bool) {
 }
 
 func TestLicenseSubjectMatchesItsDirectory(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	var paths []string

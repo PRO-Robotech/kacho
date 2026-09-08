@@ -19,6 +19,7 @@ import (
 // падать и молчать доказана инъекцией:
 // clienttruth_nlb_documented_routes_injection_test.go.
 func TestNlbDocumentedRoutesAreProducedByTheContract(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Состав дерева — ИНДЕКС git, а не обход диска: под services/ и proto/ на

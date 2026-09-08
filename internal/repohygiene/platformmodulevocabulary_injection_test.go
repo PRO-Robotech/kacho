@@ -44,6 +44,7 @@ func vocabularyFixture() ([]platformmodules.Module,
 }
 
 func TestVocabularyJudgeIsSilentOnADeclarationThatMatchesTheTree(t *testing.T) {
+	t.Parallel()
 	declared, serviceDirs, protoDirs, modelTypes := vocabularyFixture()
 
 	faults, census := judgePlatformVocabulary(declared, serviceDirs, protoDirs, modelTypes)
@@ -62,6 +63,7 @@ func TestVocabularyJudgeIsSilentOnADeclarationThatMatchesTheTree(t *testing.T) {
 }
 
 func TestVocabularyJudgeCatchesAServiceNameWithNoDirectory(t *testing.T) {
+	t.Parallel()
 	declared, serviceDirs, protoDirs, modelTypes := vocabularyFixture()
 	declared[0].Service = "vpcs" // каталога services/vpcs нет
 
@@ -80,6 +82,7 @@ func TestVocabularyJudgeCatchesAServiceNameWithNoDirectory(t *testing.T) {
 }
 
 func TestVocabularyJudgeCatchesACatalogModuleWithNoProtoDirectory(t *testing.T) {
+	t.Parallel()
 	declared, serviceDirs, protoDirs, modelTypes := vocabularyFixture()
 	declared[1].CatalogModule = "nlb" // наивная сверка «служба == модуль каталога»
 
@@ -95,6 +98,7 @@ func TestVocabularyJudgeCatchesACatalogModuleWithNoProtoDirectory(t *testing.T) 
 }
 
 func TestVocabularyJudgeCatchesAnObjectDomainTheModelDoesNotDeclare(t *testing.T) {
+	t.Parallel()
 	declared, serviceDirs, protoDirs, modelTypes := vocabularyFixture()
 	declared[1].ObjectDomain = "loadbalancer" // типы модели зовутся `nlb_*`
 
@@ -116,6 +120,7 @@ func TestVocabularyJudgeCatchesAnObjectDomainTheModelDoesNotDeclare(t *testing.T
 // TestVocabularyJudgeCatchesAnEmptyObjectDomainThatIsNotTrue — пустая строка не
 // должна становиться способом снять проверку с колонки.
 func TestVocabularyJudgeCatchesAnEmptyObjectDomainThatIsNotTrue(t *testing.T) {
+	t.Parallel()
 	declared, serviceDirs, protoDirs, modelTypes := vocabularyFixture()
 	modelTypes["geo_region"] = struct{}{} // у geo появился свой тип
 
@@ -131,6 +136,7 @@ func TestVocabularyJudgeCatchesAnEmptyObjectDomainThatIsNotTrue(t *testing.T) {
 }
 
 func TestVocabularyJudgeCatchesAServiceOfTheTreeWithNoEntry(t *testing.T) {
+	t.Parallel()
 	declared, serviceDirs, protoDirs, modelTypes := vocabularyFixture()
 	serviceDirs["storage"] = struct{}{} // служба заведена, записи нет
 

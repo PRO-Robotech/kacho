@@ -256,6 +256,7 @@ func subscriptionOwnershipFindings(
 
 // TestEveryDomainEitherServesSubscriptionOrRecordsWhyNot — гейт.
 func TestEveryDomainEitherServesSubscriptionOrRecordsWhyNot(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	list := subscriptionDocsLister(treecorpus.UnderWithSuffix)
 

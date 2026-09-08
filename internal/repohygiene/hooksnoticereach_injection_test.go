@@ -23,6 +23,7 @@ import (
 )
 
 func TestHooksNoticeReach_ProvenByInjection(t *testing.T) {
+	t.Parallel()
 	full := hooksNoticeReach{
 		TargetDeclared: true, VarDeclared: true,
 		MakeTargets: []string{"test-unit", "test-integration"}, RunnerCalls: 1,

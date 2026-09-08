@@ -157,6 +157,7 @@ func providerSurfaceSources(t *testing.T) map[string]string {
 // Разбор класса и граница предиката — в шапке providersurface.go. Здесь только
 // обход дерева и вердикт.
 func TestProviderSurfaceIsBoundedByTheLedger(t *testing.T) {
+	t.Parallel()
 	sources := providerSurfaceSources(t)
 
 	findings, census, err := FindProviderSurface(sources, providerSurfaceLedger, exemptFromProviderSurface)
@@ -221,6 +222,7 @@ func TestProviderSurfaceIsBoundedByTheLedger(t *testing.T) {
 // прогоняется БЕЗ послаблений, и от каждой записи требуется хотя бы одна
 // находка под её префиксом.
 func TestProviderSurfaceExemptionsStillHaveASubject(t *testing.T) {
+	t.Parallel()
 	sources := providerSurfaceSources(t)
 
 	bare, census, err := FindProviderSurface(sources, providerSurfaceLedger, nil)

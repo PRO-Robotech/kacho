@@ -58,6 +58,7 @@ func sortedFuncNames(byFunc map[string]FunctionDatabaseCalls) []string {
 
 // TestAssertionAdmissionIsASingleDatabaseCall — сам гейт.
 func TestAssertionAdmissionIsASingleDatabaseCall(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

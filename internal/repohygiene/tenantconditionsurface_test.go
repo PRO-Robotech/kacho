@@ -267,6 +267,7 @@ func readTreeFile(t *testing.T, root, rel string) string {
 
 // TestTenantConditionSurface_IsGone — отрицательная половина.
 func TestTenantConditionSurface_IsGone(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	t.Run("файлов снятой поверхности нет", func(t *testing.T) {
@@ -434,6 +435,7 @@ func TestTenantConditionSurface_IsGone(t *testing.T) {
 // Без неё отрицания выше зеленели бы и на дереве, из которого вынесли ВСЁ, что
 // называется условием, включая механизм, который никто не просил трогать.
 func TestTupleConditionMechanism_StaysLive(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	model := codeOnly(fgaModelPath, readTreeFile(t, root, fgaModelPath))

@@ -85,6 +85,7 @@ func sqlCommentText(s string) []string {
 // Отрицательная половина без положительной зеленела бы на функции, забеливающей
 // ВСЁ; положительная без отрицательной — на функции, не делающей ничего.
 func Test_SqlBlankComments_KeepsCodeAndOffsets(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		in      string
@@ -192,6 +193,7 @@ DROP TABLE kacho_alpha.q;
 // вообще перестал видеть свои конструкции; половина «код» без половины
 // «комментарий» — на разборе, который читает текст целиком, как читал раньше.
 func TestInventoriesReadExecutablePartNotComments(t *testing.T) {
+	t.Parallel()
 	asComment := syntheticCommentedTree(t, "-- ")
 	asCode := syntheticCommentedTree(t, "")
 
@@ -252,6 +254,7 @@ var (
 // либо снять забеливание как беспредметное, либо признать, что предикат больше
 // не читает то, что читал.
 func TestMigrationCommentsCarryParseableConstructs(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files, err := migrationFiles(root)
 	if err != nil {

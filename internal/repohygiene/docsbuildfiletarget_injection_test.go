@@ -70,6 +70,7 @@ func mdxRegion(lines ...string) string {
 // ── сторона (а): дефект обязан краснеть и называть координату ────────────────
 
 func TestDocsBuildGate_RedsOnASiblingRepositoryPath(t *testing.T) {
+	t.Parallel()
 	corpus := injBuildCorpus{
 		"services/vpc/docs/page.mdx": mdxRegion(
 			"docker build -f kacho-vpc/Dockerfile -t kacho-vpc:dev .",
@@ -100,6 +101,7 @@ func TestDocsBuildGate_RedsOnASiblingRepositoryPath(t *testing.T) {
 // ── сторона (б): законный близнец ТОЙ ЖЕ формы обязан молчать ────────────────
 
 func TestDocsBuildGate_SilentOnThePathTheTreeActuallyHas(t *testing.T) {
+	t.Parallel()
 	corpus := injBuildCorpus{
 		"services/vpc/docs/page.mdx": mdxRegion(
 			"docker build -f services/vpc/Dockerfile -t kacho-vpc:dev .",
@@ -120,6 +122,7 @@ func TestDocsBuildGate_SilentOnThePathTheTreeActuallyHas(t *testing.T) {
 // ui-future/deploy/README.md пишет `-f host/Dockerfile`, и это верно из
 // ui-future/. Предпосылка гейта намеренно слабая.
 func TestDocsBuildGate_SilentOnAPathResolvedFromAnAncestorDirectory(t *testing.T) {
+	t.Parallel()
 	corpus := injBuildCorpus{
 		"ui-future/deploy/README.md": "```sh\ndocker build -f host/Dockerfile -t x:dev .\n```\n",
 	}
@@ -136,6 +139,7 @@ func TestDocsBuildGate_SilentOnAPathResolvedFromAnAncestorDirectory(t *testing.T
 // ── границы распознавателя: что находкой НЕ является ─────────────────────────
 
 func TestDocsBuildGate_TreatsPlaceholdersAsSamplesNotFindings(t *testing.T) {
+	t.Parallel()
 	corpus := injBuildCorpus{
 		"services/vpc/docs/page.mdx": mdxRegion(
 			"docker build -f $DOCKERFILE -t x .",
@@ -154,6 +158,7 @@ func TestDocsBuildGate_TreatsPlaceholdersAsSamplesNotFindings(t *testing.T) {
 }
 
 func TestDocsBuildGate_CountsBuildWithoutTheFileFlagButDoesNotAccuseIt(t *testing.T) {
+	t.Parallel()
 	corpus := injBuildCorpus{
 		"services/vpc/docs/page.md": "```sh\ndocker build -t kaname:dev .\n```\n",
 	}
@@ -170,6 +175,7 @@ func TestDocsBuildGate_CountsBuildWithoutTheFileFlagButDoesNotAccuseIt(t *testin
 // `docker buildx bake` — другая команда; читать её как `docker build` значило бы
 // обвинять на пустом месте.
 func TestDocsBuildGate_DoesNotReadBuildxAsBuild(t *testing.T) {
+	t.Parallel()
 	corpus := injBuildCorpus{
 		"services/vpc/docs/page.md": "```sh\ndocker buildx bake -f kacho-vpc/docker-bake.hcl\n```\n",
 	}
@@ -182,6 +188,7 @@ func TestDocsBuildGate_DoesNotReadBuildxAsBuild(t *testing.T) {
 // ── предпосылка: ноль цитат — это «не прочитано», а не «чисто» ───────────────
 
 func TestDocsBuildGate_ZeroCitationsIsDistinguishableFromZeroFindings(t *testing.T) {
+	t.Parallel()
 	corpus := injBuildCorpus{
 		"services/vpc/docs/page.md": "страница без единой команды сборки\n",
 	}

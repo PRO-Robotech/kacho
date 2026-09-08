@@ -22,6 +22,7 @@ import (
 )
 
 func TestMigratorDbFreeTractIsDeclaredOnce(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	census, findings, err := auditMigratorSharedTract(root)

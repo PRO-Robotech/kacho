@@ -110,6 +110,7 @@ var (
 // TestSeedAddressPlanParityAcrossAuthors — планы всех авторов одной фикстурной
 // координаты покрывают друг друга.
 func TestSeedAddressPlanParityAcrossAuthors(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	scan := scanSeedAddressPlans(t, root)
 
@@ -325,6 +326,7 @@ func seedAuthorOf(body string) (seedPlanAuthor, bool) {
 // TestSeedAddressPlanGateRedOnDivergingAuthors — два автора, разные планы: гейт
 // краснеет и называет ОБА файла и оба плана.
 func TestSeedAddressPlanGateRedOnDivergingAuthors(t *testing.T) {
+	t.Parallel()
 	shell, okShell := seedAuthorOf(`
 NET_SUPERNET_V4="10.0.0.0/8"
 NET_SUPERNET_V6="fd00::/8"
@@ -358,6 +360,7 @@ out["existingNetworkId"] = net
 // литерала), и файл, который координату не публикует вовсе, — он не автор, и его
 // собственный план к делу не относится.
 func TestSeedAddressPlanGateSilentOnAgreeingAuthors(t *testing.T) {
+	t.Parallel()
 	shell, _ := seedAuthorOf(`
 NET_SUPERNET_V4="10.0.0.0/8"
 NET_SUPERNET_V6="fd00::/8"

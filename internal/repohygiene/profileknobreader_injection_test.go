@@ -87,6 +87,7 @@ func knobJoin(findings []knobFinding) string {
 // Форма инъекции взята с натуры: ровно так `breakglass: false` стоял у
 // `kacho-nlb` в трёх профилях, не имея читателя ни в шаблоне, ни в процессе.
 func TestKnobReaderGateRedOnDeclaredButUnread(t *testing.T) {
+	t.Parallel()
 	root := synthKnobTree(t, map[string]string{
 		"deploy/umbrella/values.prod.yaml": "sub:\n  config:\n    read: yes\n    breakglass: false\n",
 	})
@@ -115,6 +116,7 @@ func TestKnobReaderGateRedOnDeclaredButUnread(t *testing.T) {
 
 // (б) Законная сторона: тот же профиль, но шаблон ключ читает — гейт молчит.
 func TestKnobReaderGateSilentWhenTemplateReadsTheKey(t *testing.T) {
+	t.Parallel()
 	root := synthKnobTree(t, map[string]string{
 		"deploy/umbrella/values.prod.yaml": "sub:\n  config:\n    read: yes\n    breakglass: false\n",
 		"svc/deploy/templates/cm.yaml": "kind: ConfigMap\ndata:\n" +
@@ -133,6 +135,7 @@ func TestKnobReaderGateSilentWhenTemplateReadsTheKey(t *testing.T) {
 // Без этой половины гейт краснел бы на каждом блоке, отрендеренном через
 // `with`/`toYaml`, — то есть на самой распространённой законной записи чарта.
 func TestKnobReaderGateSilentOnScopeEnteringReference(t *testing.T) {
+	t.Parallel()
 	root := synthKnobTree(t, map[string]string{
 		"deploy/umbrella/values.prod.yaml": "sub:\n  mtls:\n    certfile: /a\n    keyfile: /b\n",
 		"svc/deploy/templates/cm.yaml": "kind: ConfigMap\ndata:\n" +
@@ -150,6 +153,7 @@ func TestKnobReaderGateSilentOnScopeEnteringReference(t *testing.T) {
 // `index .Values "имя" "ключ"` — единственная запись, доступная ему, когда имя
 // сабчарта содержит дефис. Точечная форма такое имя не разбирает вовсе.
 func TestKnobReaderGateSilentOnIndexedParentReference(t *testing.T) {
+	t.Parallel()
 	root := synthKnobTree(t, map[string]string{
 		"deploy/umbrella/values.prod.yaml":  "sub:\n  federationIn:\n    enabled: true\n",
 		"deploy/umbrella/templates/cm.yaml": "kind: ConfigMap\ndata:\n  own: {{ .Values.parentOwn.value }}\n  f: {{ (index .Values \"sub\" \"federationIn\").enabled }}\n",
@@ -165,6 +169,7 @@ func TestKnobReaderGateSilentOnIndexedParentReference(t *testing.T) {
 // `condition:` — шаблону он не виден by construction. Без этой половины гейт
 // объявлял бы находкой каждое `<сабчарт>.enabled`.
 func TestKnobReaderGateSilentOnDependencyCondition(t *testing.T) {
+	t.Parallel()
 	root := synthKnobTree(t, map[string]string{
 		"deploy/umbrella/values.prod.yaml": "sub:\n  enabled: false\n",
 	})
@@ -179,6 +184,7 @@ func TestKnobReaderGateSilentOnDependencyCondition(t *testing.T) {
 // СОСЧИТАН. Иначе «ноль находок» покрывало бы и «шаблонов этого чарта в дереве
 // нет, искать читателя было негде».
 func TestKnobReaderGateCountsForeignSubchartInsteadOfJudgingIt(t *testing.T) {
+	t.Parallel()
 	root := synthKnobTree(t, map[string]string{
 		"deploy/umbrella/values.prod.yaml": "pg:\n  primary:\n    persistence:\n      size: 8Gi\n",
 	})
@@ -199,6 +205,7 @@ func TestKnobReaderGateCountsForeignSubchartInsteadOfJudgingIt(t *testing.T) {
 // Без этого запрет пережил бы своё обоснование: дерево изменилось бы, а
 // проверка продолжала бы отвечать «чисто» с прежней уверенностью.
 func TestKnobReaderGateRefusesWhenItsPremiseIsRevoked(t *testing.T) {
+	t.Parallel()
 	root := synthKnobTree(t, map[string]string{
 		"deploy/umbrella/Chart.yaml": `apiVersion: v2
 name: umb
@@ -225,6 +232,7 @@ dependencies:
 // Собственные ключи чарта (его `values.yaml`) под тем же требованием: именно там
 // живут умолчания, которые переживают снятие своего читателя.
 func TestKnobReaderGateCoversChartOwnValues(t *testing.T) {
+	t.Parallel()
 	root := synthKnobTree(t, map[string]string{
 		"svc/deploy/values.yaml": "config:\n  read: yes\nautoscaling:\n  minReplicas: 2\n",
 	})

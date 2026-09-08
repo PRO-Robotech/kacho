@@ -41,6 +41,7 @@ func classify(rel, src string) (sites int, wired bool, transport bool) {
 }
 
 func TestConsoleMutationGateRedOnInjectedDefect(t *testing.T) {
+	t.Parallel()
 	const defect = `
 import { api } from "@shared/api/client";
 export function CreateThing() {
@@ -67,6 +68,7 @@ export function CreateThing() {
 }
 
 func TestConsoleMutationGateSilentOnLawfulTwin(t *testing.T) {
+	t.Parallel()
 	// Тот же вызов, тот же файл-компонент — но исход проходит через механизм.
 	const lawful = `
 import { api } from "@shared/api/client";
@@ -91,6 +93,7 @@ export function CreateThing() {
 }
 
 func TestConsoleMutationGateIgnoresReadsAndInertText(t *testing.T) {
+	t.Parallel()
 	// Чтения не мутируют — требовать от них сигнала об исходе не за что.
 	const reads = `
 import { api } from "@shared/api/client";
@@ -115,6 +118,7 @@ export const TPL = ` + "`api.post( внутри шаблонного литер�
 }
 
 func TestConsoleMutationGateSkipsTransport(t *testing.T) {
+	t.Parallel()
 	// Тонкий однострочник над клиентом переносит запрос; решает вызывающий.
 	const wrapper = `
 import { api } from "@shared/api/client";
@@ -133,6 +137,7 @@ export const networksApi = {
 }
 
 func TestConsoleMutationLedgerGateRedOnEntryWithoutSubject(t *testing.T) {
+	t.Parallel()
 	// Ведомость обязана истекать сама. Запись, чей файл больше не мутирует,
 	// описывает несуществующий долг — и это находка, а не мелочь: именно так
 	// послабление переживает свой предмет.
@@ -154,6 +159,7 @@ func TestConsoleMutationLedgerGateRedOnEntryWithoutSubject(t *testing.T) {
 // самим. Признак, переставший ловить предмет, обязан РОНЯТЬ прогон, а не молча
 // объявлять дерево чистым: «ноль находок» и «ноль прочитанного» — разные вещи.
 func TestConsoleMutationGatePremiseIsChecked(t *testing.T) {
+	t.Parallel()
 	broken := regexp.MustCompile(`\bapi\.thisMethodDoesNotExist\s*\(`)
 	const real = `export const f = () => api.create("/vpc/v1/networks", {});`
 	if broken.MatchString(real) {

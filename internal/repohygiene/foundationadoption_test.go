@@ -271,6 +271,7 @@ func foundationSurveyTree(t *testing.T, root string, r FoundationRoster) foundat
 
 // TestFoundationCapabilitiesAreAdoptedOrAccountedFor — сама перепись.
 func TestFoundationCapabilitiesAreAdoptedOrAccountedFor(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	r := foundationRoster()
 

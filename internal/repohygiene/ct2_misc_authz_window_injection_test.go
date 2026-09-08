@@ -98,6 +98,7 @@ const ct2PageUnrelated = `# Операции
 
 // (а) НАСТОЯЩИЙ ДЕФЕКТ: названа половина окна — у КАЖДОГО владельца.
 func TestCt2WindowInjection_HalfWindowIsAFinding(t *testing.T) {
+	t.Parallel()
 	for idx, o := range ct2WindowOwners {
 		t.Run(o.Name, func(t *testing.T) {
 			root := writeCt2WindowTree(t, ct2WindowFixture{
@@ -133,6 +134,7 @@ func TestCt2WindowInjection_HalfWindowIsAFinding(t *testing.T) {
 // Проверяется на ОБОИХ владельцах сразу: умолчание одного объявлено числом,
 // другого — ДЛИТЕЛЬНОСТЬЮ, и обе формы обязаны привестись к секундам.
 func TestCt2WindowInjection_LawfulPagesAreSilent(t *testing.T) {
+	t.Parallel()
 	root := writeCt2WindowTree(t,
 		ct2WindowFixture{owner: 0, configDefault: "5",
 			pageBody:  ct2WindowPageBody(ct2WindowOwners[0].Knob, "5"),
@@ -159,6 +161,7 @@ func TestCt2WindowInjection_LawfulPagesAreSilent(t *testing.T) {
 // ОТДЕЛЬНОЙ и называть ВЛАДЕЛЬЦА — иначе на двух владельцах читатель не поймёт,
 // чью конфигурацию открывать.
 func TestCt2WindowInjection_DriftedValueIsItsOwnFinding(t *testing.T) {
+	t.Parallel()
 	root := writeCt2WindowTree(t,
 		ct2WindowFixture{owner: 1, configDefault: "2s",
 			pageBody: ct2WindowPageBody(ct2WindowOwners[1].Knob, "30")})
@@ -188,6 +191,7 @@ func TestCt2WindowInjection_DriftedValueIsItsOwnFinding(t *testing.T) {
 // комментарий называет 99, тег — 5. Поиск по подстроке взял бы 99 и объявил бы
 // исправную страницу разошедшейся.
 func TestCt2WindowInjection_DefaultComesFromTheTagNotTheComment(t *testing.T) {
+	t.Parallel()
 	root := writeCt2WindowTree(t, ct2WindowFixture{owner: 0, configDefault: "5",
 		pageBody: ct2WindowPageBody(ct2WindowOwners[0].Knob, "5")})
 	c, _ := ct2WindowRun(t, root)
@@ -199,6 +203,7 @@ func TestCt2WindowInjection_DefaultComesFromTheTagNotTheComment(t *testing.T) {
 // (г) ВЛАДЕЛЕЦ БЕЗ КОНФИГУРАЦИИ — слепая зона, названная находкой: без умолчания
 // сверять названное не с чем, и молчание тут было бы ложным «всё в порядке».
 func TestCt2WindowInjection_OwnerWithoutADefaultIsAFinding(t *testing.T) {
+	t.Parallel()
 	root := writeCt2WindowTree(t, ct2WindowFixture{owner: 0, noConfig: true,
 		pageBody: ct2WindowPageBody(ct2WindowOwners[0].Knob, "5")})
 	_, findings := ct2WindowRun(t, root)
@@ -217,6 +222,7 @@ func TestCt2WindowInjection_OwnerWithoutADefaultIsAFinding(t *testing.T) {
 // которые гейт падает своей проверкой предпосылки, а находки называют КАЖДОГО
 // владельца, чьё умолчание не выведено.
 func TestCt2WindowInjection_EmptyWalkIsDistinguishable(t *testing.T) {
+	t.Parallel()
 	c, findings := ct2WindowRun(t, t.TempDir())
 	if c.PagesRead != 0 || len(c.Pages) != 0 {
 		t.Fatalf("на пустом дереве обход обязан быть пуст: страниц %d, относящихся %d",

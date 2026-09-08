@@ -41,6 +41,7 @@ func subscriptionServerOptions(t *testing.T) SubscriptionServerOptions {
 // Способность падать доказывает не этот прогон, а инъекция
 // (`subscriptionserversingularity_injection_test.go`): здесь только вердикт.
 func TestSubscriptionServerIsSingularAndLivesInTheFoundation(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditSubscriptionServerSingularity(subscriptionServerOptions(t), &log)
 	if err != nil {

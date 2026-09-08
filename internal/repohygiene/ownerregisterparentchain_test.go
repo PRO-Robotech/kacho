@@ -79,6 +79,7 @@ func init() {
 //
 // Проверено инъекцией в обе стороны — см. ownerregisterparentchain_injection_test.go.
 func TestEveryRegisterResourceProducerCarriesParentChain(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	var missingField []string

@@ -246,6 +246,7 @@ func importsSharedName(src, name string) bool {
 }
 
 func TestOwnFreshReadWrapPredicateWiredInEveryNewmanGenerator(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Состав берётся из ИНДЕКСА git, а не обходом диска: под корнем лежат

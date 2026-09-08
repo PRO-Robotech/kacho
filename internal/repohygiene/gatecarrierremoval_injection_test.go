@@ -156,6 +156,7 @@ func injWriteLedger(t *testing.T, root string, rows ...GateCarrierRetirement) {
 // ── КОНТРОЛЬ: целый корпус молчит ──────────────────────────────────────────
 
 func TestGateCarrierRemoval_ControlIntactCorpusIsSilent(t *testing.T) {
+	t.Parallel()
 	root, base := injGateRepo(t)
 
 	// Мир движется, носителей не теряя: добавлен третий. Без этого коммита
@@ -172,6 +173,7 @@ func TestGateCarrierRemoval_ControlIntactCorpusIsSilent(t *testing.T) {
 // ── ИНЪЕКЦИЯ: носитель снят МОЛЧА ──────────────────────────────────────────
 
 func TestGateCarrierRemoval_SilentRemovalIsFoundByName(t *testing.T) {
+	t.Parallel()
 	root, base := injGateRepo(t)
 
 	injGit(t, root, "rm", "--quiet", gateCorpusDir+"/beta_test.go")
@@ -193,6 +195,7 @@ func TestGateCarrierRemoval_SilentRemovalIsFoundByName(t *testing.T) {
 // ── ЗАКОННЫЙ БЛИЗНЕЦ: снятие ОБЪЯВЛЕНО ─────────────────────────────────────
 
 func TestGateCarrierRemoval_DeclaredRemovalIsSilent(t *testing.T) {
+	t.Parallel()
 	root, base := injGateRepo(t)
 
 	injGit(t, root, "rm", "--quiet", gateCorpusDir+"/beta_test.go")
@@ -216,6 +219,7 @@ func TestGateCarrierRemoval_DeclaredRemovalIsSilent(t *testing.T) {
 // Сходство считает git, а не порог, придуманный здесь.
 
 func TestGateCarrierRemoval_RenameIsNotARemoval(t *testing.T) {
+	t.Parallel()
 	root, base := injGateRepo(t)
 
 	injGit(t, root, "mv", gateCorpusDir+"/beta_test.go", gateCorpusDir+"/betarenamed_test.go")
@@ -229,6 +233,7 @@ func TestGateCarrierRemoval_RenameIsNotARemoval(t *testing.T) {
 // ── САМОИСТЕЧЕНИЕ: запись, чей носитель ЖИВ ────────────────────────────────
 
 func TestGateCarrierRemoval_LedgerRowOverALiveCarrierExpires(t *testing.T) {
+	t.Parallel()
 	root, base := injGateRepo(t)
 
 	// Ничего не снято. Надгробие числит снятым носитель, который в дереве ЕСТЬ,
@@ -253,6 +258,7 @@ func TestGateCarrierRemoval_LedgerRowOverALiveCarrierExpires(t *testing.T) {
 // ── ЗАПИСЬ БЕЗ СОДЕРЖАНИЯ: объявление, которое ничего не объявляет ──────────
 
 func TestGateCarrierRemoval_DeclarationWithoutSubstanceIsAFinding(t *testing.T) {
+	t.Parallel()
 	root, base := injGateRepo(t)
 
 	injGit(t, root, "rm", "--quiet", gateCorpusDir+"/beta_test.go")
@@ -280,6 +286,7 @@ func TestGateCarrierRemoval_DeclarationWithoutSubstanceIsAFinding(t *testing.T) 
 // на нём объявлен здесь, в [gateCarrierCensus], и доказывается отдельно.
 
 func TestGateCarrierRemoval_EmptyWalkRefusesInsteadOfReportingNoFindings(t *testing.T) {
+	t.Parallel()
 	newRepo := func(t *testing.T) string {
 		t.Helper()
 		root := t.TempDir()
@@ -360,6 +367,7 @@ func injLineRepo(t *testing.T) string {
 }
 
 func TestGateCarrierRemoval_CarrierBornAndKilledInsideTheLineIsFound(t *testing.T) {
+	t.Parallel()
 	root := injLineRepo(t)
 
 	// Живая полоса линии снимает носитель, которого ствол не видел никогда.
@@ -394,6 +402,7 @@ func TestGateCarrierRemoval_CarrierBornAndKilledInsideTheLineIsFound(t *testing.
 // совпала бы с HEAD либо уехала за него, поэтому базой становится `HEAD^`.
 
 func TestGateCarrierRemoval_LandedChangeIsJudgedAgainstItsParent(t *testing.T) {
+	t.Parallel()
 	root := injLineRepo(t)
 
 	injGit(t, root, "rm", "--quiet", gateCorpusDir+"/born_test.go")
@@ -417,6 +426,7 @@ func TestGateCarrierRemoval_LandedChangeIsJudgedAgainstItsParent(t *testing.T) {
 // неопровержимой: дельта её уже не проверяет, а носителя в дереве и так нет.
 
 func TestGateCarrierRemoval_LedgerRowOverANeverRemovedPathExpires(t *testing.T) {
+	t.Parallel()
 	root, base := injGateRepo(t)
 
 	injWriteLedger(t, root, GateCarrierRetirement{
@@ -443,6 +453,7 @@ func TestGateCarrierRemoval_LedgerRowOverANeverRemovedPathExpires(t *testing.T) 
 // Законный близнец предыдущего: путь, который ДЕЙСТВИТЕЛЬНО снимали, молчит
 // даже когда снятие уехало за базу — история помнит его всегда.
 func TestGateCarrierRemoval_LedgerRowSurvivesWhenItsRemovalLeavesTheDelta(t *testing.T) {
+	t.Parallel()
 	root, _ := injGateRepo(t)
 
 	injGit(t, root, "rm", "--quiet", gateCorpusDir+"/beta_test.go")

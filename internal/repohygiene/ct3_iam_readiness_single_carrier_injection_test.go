@@ -57,6 +57,7 @@ func checkers(ping func(context.Context) error) []health.Checker {
 // собственный тип. Иначе красное приходило бы от соседней оси, и вакуумность
 // проверяемой осталась бы незамеченной (`testing.md` §«Гейт на класс», п.2в).
 func TestReadinessSingleCarrierInjectionCutsBothWays(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name  string
 		files map[string]string
@@ -235,6 +236,7 @@ type Step struct {
 // (`testing.md` §«Гейт на класс», п.9). Отличить это от чистого дерева нечем,
 // кроме положительного контроля, и здесь доказывается, что контроль работает.
 func TestReadinessSingleCarrierNoticesItsOwnPremiseIsGone(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	// Носитель СМЕНИЛ форму: поле переименовано, распознаватель его не узнаёт.
 	carrierRel := "pkg/observability/health/health.go"

@@ -117,6 +117,7 @@ type wrapperScanReport struct {
 // булева обёртка, у которой есть парная форма с исходом, из чужого пакета не
 // зовётся.
 func TestAuthzBoolWrapperIsNotCalledWhereAnOutcomeFormExists(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	roots, err := prodGoRoots(root)

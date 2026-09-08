@@ -150,6 +150,7 @@ var tokenPolicyQuantities = []tokenPolicyQuantity{
 
 // TestTokenPolicyQuantityIsDeclaredOnce — сам гейт.
 func TestTokenPolicyQuantityIsDeclaredOnce(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

@@ -224,6 +224,7 @@ func foreignSystemOf(rel string) string {
 // Гейт судит код, КОТОРОГО ЕЩЁ НЕТ: сегодняшнее дерево он проходит, а следующего,
 // кто заведёт свой `switch status.Code(err)` в клиенте, назовёт координатой.
 func TestPeerLaneIsNotReadOutsideTheCarrier(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	sites, filesRead, inScope := collectPeerCodeReads(t, root)
 
@@ -258,6 +259,7 @@ func TestPeerLaneIsNotReadOutsideTheCarrier(t *testing.T) {
 // исключать, не безобидна: она создаёт впечатление покрытия, которого нет, и её
 // унаследует следующая слепая зона.
 func TestExemptionsHaveSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	sites, _, _ := collectPeerCodeReads(t, root)
 
@@ -282,6 +284,7 @@ func TestExemptionsHaveSubject(t *testing.T) {
 // Граница «внешняя система» обязана иметь предмет по каждой записи — иначе она
 // исключает не то, что объявляет.
 func TestForeignSystemDirsHaveSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	seen := map[string]int{}

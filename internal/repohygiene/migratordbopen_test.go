@@ -22,6 +22,7 @@ import (
 )
 
 func TestMigratorDatabaseOpeningIsDeclaredOnce(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	census, findings, err := auditMigratorDBOpen(root)

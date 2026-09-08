@@ -99,6 +99,7 @@ func existsAllBut(missing ...string) func(string, string) bool {
 }
 
 func TestConsoleSuiteOrderGateFailsOnUnpinnedOrder(t *testing.T) {
+	t.Parallel()
 	findings, good := auditConsoleSuiteOrder(map[string]string{
 		"ui-future/x/jest.config.cjs": synthJestConfigNoSequencer,
 		"ui-future/y/jest.config.cjs": synthJestConfigSequencerOnlyInComment,
@@ -147,6 +148,7 @@ func TestConsoleSuiteOrderGateFailsOnUnpinnedOrder(t *testing.T) {
 }
 
 func TestConsoleSuiteOrderGateStaysSilentOnPinnedOrder(t *testing.T) {
+	t.Parallel()
 	findings, good := auditConsoleSuiteOrder(map[string]string{
 		"ui-future/x/jest.config.cjs": synthJestConfigGoodResolve,
 		"ui-future/y/jest.config.cjs": synthJestConfigGoodRootDir,

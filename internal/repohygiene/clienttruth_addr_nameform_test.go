@@ -26,6 +26,7 @@ func nameFormClaimOptions(t *testing.T) NameFormClaimOptions {
 // Способность падать доказывает не этот прогон, а инъекция
 // (`clienttruth_addr_nameform_injection_test.go`): здесь только вердикт.
 func TestDeclaredNameFormMatchesTheEnforcedOne(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditNameFormClaims(nameFormClaimOptions(t), &log)
 	if err != nil {

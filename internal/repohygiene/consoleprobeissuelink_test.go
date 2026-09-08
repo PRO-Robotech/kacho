@@ -436,6 +436,7 @@ func consoleProbeSpecSources(t *testing.T, root string) map[string]string {
 // TestConsoleProbeIssueLinksNameATaskAndLiveInsideTheProbe — гейт нормы
 // `ui.md` §«Правило 12».
 func TestConsoleProbeIssueLinksNameATaskAndLiveInsideTheProbe(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	sources := consoleProbeSpecSources(t, root)
 

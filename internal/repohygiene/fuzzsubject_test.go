@@ -62,6 +62,7 @@ import (
 // «Доработаем позже» исходом не является: пока цель стоит в матрице, она
 // утверждает, что предмет проверяется.
 func TestEveryFuzzTargetDrivesProductionCode(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	targets, census := analyzeFuzzSubjects(t, newTrackedTree(t, root), moduleImportPaths(t, root))
 
@@ -110,6 +111,7 @@ func TestEveryFuzzTargetDrivesProductionCode(t *testing.T) {
 // Обратное направление (цель в коде, но не в матрице) — в
 // TestScheduledMatrixCoversEveryFuzzTarget ниже, на том же разборе.
 func TestFuzzSubjectAnalyzerSeesEveryScheduledTarget(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	targets, census := analyzeFuzzSubjects(t, newTrackedTree(t, root), moduleImportPaths(t, root))
 	t.Logf("%s; фаз-целей найдено %d", census, len(targets))
@@ -149,6 +151,7 @@ func TestFuzzSubjectAnalyzerSeesEveryScheduledTarget(t *testing.T) {
 // разъезжаются, а разбор здесь строже — он требует ПОДПИСЬ `func Fuzz…(f
 // *testing.F)`, а не совпадение текста `func Fuzz` где угодно.
 func TestScheduledMatrixCoversEveryFuzzTarget(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	targets, census := analyzeFuzzSubjects(t, newTrackedTree(t, root), moduleImportPaths(t, root))
@@ -189,6 +192,7 @@ func TestScheduledMatrixCoversEveryFuzzTarget(t *testing.T) {
 // который расхождения не умеет видеть, — ровно то, чем этот контроль и был, пока
 // висел на расписании.
 func TestMatrixDivergenceIsSymmetric(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name              string
 		inCode, inMatrix  []string
@@ -277,6 +281,7 @@ func matrixDivergence(inCode, inMatrix []string) (missingFromMatrix, missingFrom
 // живёт здесь, а не в самом workflow, потому что workflow о себе ничего
 // утверждать не может: его вердикт и есть предмет спора.
 func TestFuzzWorkflowDoesNotSwallowExitCode(t *testing.T) {
+	t.Parallel()
 	raw, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "continuous-fuzz.yml"))
 	if err != nil {
 		t.Fatalf("не прочитан continuous-fuzz.yml: %v", err)
@@ -304,6 +309,7 @@ func TestFuzzWorkflowDoesNotSwallowExitCode(t *testing.T) {
 // оставался зелёным, читая собственное объяснение. Проверка формы без предмета
 // на месте проверки предмета.
 func TestPipefailCheckReadsCodeNotProse(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name      string
 		body      string
@@ -432,6 +438,7 @@ func shellRunBlocks(body string) []shellRunBlock {
 // зовёт из него ничего (импорт-без-вызова гейт обойти не должен), пятая
 // раскодирует вход только в сгенерированный стаб.
 func TestFuzzSubjectAnalyzerFlagsAStub(t *testing.T) {
+	t.Parallel()
 	const mod = "example.com/m"
 	root := t.TempDir()
 
@@ -515,6 +522,7 @@ import (
 // НАЗВАН, здоровый из того же каталога — по-прежнему разобран (иначе отсев
 // грубее своего предмета и роняет весь пакет из-за одного соседа).
 func TestFuzzCensusNamesUnparsedFiles(t *testing.T) {
+	t.Parallel()
 	const mod = "example.com/m"
 	root := t.TempDir()
 

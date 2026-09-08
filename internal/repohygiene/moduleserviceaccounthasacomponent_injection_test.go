@@ -53,6 +53,7 @@ func judgeSeed(t *testing.T, files ...[2]string) (findings, unknown []string, al
 }
 
 func TestModuleSAGateFindsAnAccountWithoutAComponent(t *testing.T) {
+	t.Parallel()
 	findings, unknown, alive := judgeSeed(t, [2]string{"0001_initial.sql", saOperator})
 	require.Empty(t, unknown)
 	require.Equal(t, 1, alive)
@@ -62,6 +63,7 @@ func TestModuleSAGateFindsAnAccountWithoutAComponent(t *testing.T) {
 }
 
 func TestModuleSAGateIsSilentOnLawfulAccounts(t *testing.T) {
+	t.Parallel()
 	// Законные близнецы: компонент есть прямо; компонент есть последним токеном;
 	// учётка не модульная и компонентом не названа.
 	findings, unknown, alive := judgeSeed(t,
@@ -72,6 +74,7 @@ func TestModuleSAGateIsSilentOnLawfulAccounts(t *testing.T) {
 }
 
 func TestModuleSAGateFindsAnAccountThatDroppedTheMarker(t *testing.T) {
+	t.Parallel()
 	// Блиндаж признака: снять `Module SA:` и тем уйти из популяции нельзя.
 	findings, unknown, _ := judgeSeed(t, [2]string{"0001_initial.sql", saVPCUnmarked})
 	require.Empty(t, unknown)
@@ -84,6 +87,7 @@ func TestModuleSAGateFindsAnAccountThatDroppedTheMarker(t *testing.T) {
 }
 
 func TestModuleSAGateNamesAFormItDoesNotKnow(t *testing.T) {
+	t.Parallel()
 	_, unknown, _ := judgeSeed(t, [2]string{"20260101000000_x.sql", saUnknownForm})
 	require.Len(t, unknown, 1, "незнакомая форма обязана быть находкой, а не молчанием")
 	require.Contains(t, unknown[0], "20260101000000_x.sql")
@@ -95,6 +99,7 @@ func TestModuleSAGateNamesAFormItDoesNotKnow(t *testing.T) {
 }
 
 func TestModuleSAGateFollowsRetirementInBothForms(t *testing.T) {
+	t.Parallel()
 	// Так и закрывается находка: поздняя миграция снимает строку.
 	byID, unknownID, aliveID := judgeSeed(t,
 		[2]string{"0001_initial.sql", saOperator},
@@ -122,6 +127,7 @@ func TestModuleSAGateFollowsRetirementInBothForms(t *testing.T) {
 }
 
 func TestModuleSAGateDerivesComponentsFromTheTreeInBothDirections(t *testing.T) {
+	t.Parallel()
 	got := componentsOfTree([]string{
 		"services/vpc/cmd/vpc/main.go",
 		"services/geo/internal/x.go",
@@ -144,6 +150,7 @@ func TestModuleSAGateDerivesComponentsFromTheTreeInBothDirections(t *testing.T) 
 }
 
 func TestModuleSAGateRefusesAnEmptySweep(t *testing.T) {
+	t.Parallel()
 	alive, unknown, stmts := foldSeededServiceAccounts(nil, map[string]string{})
 	require.Empty(t, alive)
 	require.Empty(t, unknown)

@@ -91,6 +91,7 @@ func knobDebtDefects(entries []knobDebtEntry) []string {
 // Прогон печатает объём осмотренного всегда: «ноль новых находок» обязано быть
 // отличимо от «ноль прочитанного».
 func TestDeclaredKnobHasAReader(t *testing.T) {
+	t.Parallel()
 	findings, census, err := auditProfileKnobReaders(repoRoot(t))
 	if err != nil {
 		t.Fatalf("перепись профилей не выполнена: %v", err)
@@ -155,6 +156,7 @@ func knobDebtStale(entries []knobDebtEntry, live map[string]bool) []string {
 // бы в списке, следующий читатель принял бы его за действующий долг, а
 // освободившееся место унаследовал бы новый дефект с тем же путём.
 func TestKnobDebtExpiresOnItsOwn(t *testing.T) {
+	t.Parallel()
 	findings, census, err := auditProfileKnobReaders(repoRoot(t))
 	if err != nil {
 		t.Fatalf("перепись профилей не выполнена: %v", err)
@@ -182,6 +184,7 @@ func TestKnobDebtExpiresOnItsOwn(t *testing.T) {
 // истечь. Сегодня ведомость пуста, поэтому тест ничего не находит — его
 // способность находить показана инъекцией ниже, а не этим прогоном.
 func TestKnobDebtIsWellFormed(t *testing.T) {
+	t.Parallel()
 	t.Logf("ведомость: %d записей", len(knobDebt))
 	for _, bad := range knobDebtDefects(knobDebt) {
 		t.Error(bad)
@@ -196,6 +199,7 @@ func TestKnobDebtIsWellFormed(t *testing.T) {
 // в ТУ ЖЕ функцию, которая судит дерево, — иначе проверялась бы копия правил, а
 // не они сами.
 func TestKnobDebtRulesCatchABareEntry(t *testing.T) {
+	t.Parallel()
 	lawful := knobDebtEntry{
 		File:  "deploy/helm/example/values.yaml",
 		Key:   "sub.knob",

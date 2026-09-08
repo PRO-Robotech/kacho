@@ -88,6 +88,7 @@ func verdictOn(scans []MigrationScan, goRemovals []SQLRemoval, registry []TableG
 // Имя обязательно: находка без координаты неотличима от промаха разбора, и
 // чинить по ней нечего.
 func TestTableGrowthGate_Injection_FindsTheTableAndNamesIt(t *testing.T) {
+	t.Parallel()
 	scan := scanInjectedMigration(t, "services/synthetic/internal/migrations/0001_ledger.sql", createLedger)
 	if scan.Census.Creates != 1 {
 		t.Fatalf("объявлений таблицы распознано %d, ожидалось 1", scan.Census.Creates)
@@ -116,6 +117,7 @@ func TestTableGrowthGate_Injection_FindsTheTableAndNamesIt(t *testing.T) {
 // перепись вовсе и требований не получает. Поэтому каждая форма — свой случай,
 // и рядом стоят близнецы, на которых объявления нет.
 func TestTableGrowthGate_Injection_KnowsEveryFormOfDeclaration(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -229,6 +231,7 @@ func TestTableGrowthGate_Injection_KnowsEveryFormOfDeclaration(t *testing.T) {
 // словом DELETE», а не механизм: слово стоит и в прозе, и в разовой правке
 // данных, и в операторе, чьё имя таблицы подставляется в рантайме.
 func TestTableGrowthGate_Injection_KnowsEveryFormOfRemoval(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		// goSrc — синтетический прод-файл Go («» — нет).
@@ -360,6 +363,7 @@ func TestTableGrowthGate_Injection_KnowsEveryFormOfRemoval(t *testing.T) {
 // забывшая владельца, объявила бы одну убираемую таблицу за все восемь — то
 // есть замолчала бы ровно там, где положена находка.
 func TestTableGrowthGate_Injection_OwnerIsPartOfTheUnitOfCount(t *testing.T) {
+	t.Parallel()
 	first := ScanMigrationSQL("services/first", "services/first/internal/migrations/0001.sql",
 		[]byte("-- +goose Up\nCREATE TABLE kacho_first.ledger (id text);\n"))
 	second := ScanMigrationSQL("services/second", "services/second/internal/migrations/0001.sql",
@@ -389,6 +393,7 @@ func TestTableGrowthGate_Injection_OwnerIsPartOfTheUnitOfCount(t *testing.T) {
 // объявил бы предел там, где строка переживает родителя, — и это было бы
 // молчание, а не находка.
 func TestTableGrowthGate_Injection_KnowsEveryFormOfCascade(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name         string
 		src          string
@@ -465,6 +470,7 @@ func TestTableGrowthGate_Injection_KnowsEveryFormOfCascade(t *testing.T) {
 // Без этой половины гейт ловил бы форму, а не существо: он краснел бы на всякой
 // таблице дерева, и первый же ложный срабат его отключил бы.
 func TestTableGrowthGate_Injection_SilentOnEachOfThreeOutcomes(t *testing.T) {
+	t.Parallel()
 	base := scanInjectedMigration(t, "services/synthetic/internal/migrations/0001_ledger.sql", createLedger)
 
 	for _, tc := range []struct {
@@ -535,6 +541,7 @@ func TestTableGrowthGate_Injection_SilentOnEachOfThreeOutcomes(t *testing.T) {
 // записью «механизма нет, задача заведена» окажется таблица, у которой механизм
 // давно есть, и никто об этом не узнает.
 func TestTableGrowthGate_Injection_RegistryExpiresByItself(t *testing.T) {
+	t.Parallel()
 	base := scanInjectedMigration(t, "services/synthetic/internal/migrations/0001_ledger.sql", createLedger)
 	debt := TableGrowthDecl{
 		Owner: injectedOwner, Table: "ledger",
@@ -589,6 +596,7 @@ func TestTableGrowthGate_Injection_RegistryExpiresByItself(t *testing.T) {
 // Запись без причины и долг без номера — это «подразумевается» в оболочке
 // решения: выглядит как вынесенное суждение и им не является.
 func TestTableGrowthGate_Injection_RegistryFormIsChecked(t *testing.T) {
+	t.Parallel()
 	base := scanInjectedMigration(t, "services/synthetic/internal/migrations/0001_ledger.sql", createLedger)
 
 	for _, tc := range []struct {
@@ -654,6 +662,7 @@ func TestTableGrowthGate_Injection_RegistryFormIsChecked(t *testing.T) {
 // отсутствие проверки. Гейт, падающий на достижении своей цели, подталкивал бы
 // держать запись ради зелёного.
 func TestTableGrowthGate_Injection_EmptyRegistryOnCleanTreeIsGreen(t *testing.T) {
+	t.Parallel()
 	base := scanInjectedMigration(t, "services/synthetic/internal/migrations/0001_ledger.sql", createLedger)
 	goRemovals := scanInjectedGo(t, "services/synthetic/internal/repo/pg/x.go",
 		growthGoFileWith("\t_, _ = r.pool.Exec(ctx, `DELETE FROM kacho_synth.ledger WHERE seen_at <= now()`)"))
@@ -678,6 +687,7 @@ func TestTableGrowthGate_Injection_EmptyRegistryOnCleanTreeIsGreen(t *testing.T)
 // ловит новый гейт, соседнему НЕВИДИМО by construction, и наоборот. Ни один из
 // двух не покрывает другого.
 func TestTableGrowthGate_Injection_TouchesOnlyThisGate(t *testing.T) {
+	t.Parallel()
 	// Соседний гейт судит уборщиков, объявленных в Go. Его вердикт берётся тем
 	// же кодом, каким он судит дерево, — своей копии предиката здесь нет.
 	sweeperVerdict := func(t *testing.T, goSrc string, withCaller bool) int {
@@ -781,6 +791,7 @@ func (r *R) Reap(ctx context.Context) error {
 // `stale`. Без него проверка доказывала бы лишь, что гейт умеет ругаться на
 // всякую появившуюся уборку, — то есть ловила бы форму, а не существо.
 func TestTableGrowthGate_Injection_BlockedRemovalIsAFindingNotAResolvedEntry(t *testing.T) {
+	t.Parallel()
 	base := scanInjectedMigration(t, "services/synthetic/internal/migrations/0001_ledger.sql", createLedger)
 	sweep := func(t *testing.T) []SQLRemoval {
 		t.Helper()

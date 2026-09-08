@@ -178,6 +178,7 @@ type secretSurfaceCensus struct {
 
 // TestBAT1_73_Axis2_NoUnmarkedSecretOnTheSurface — сама ось.
 func TestBAT1_73_Axis2_NoUnmarkedSecretOnTheSurface(t *testing.T) {
+	t.Parallel()
 	assertDescriptorSetCoversTheContractTree(t)
 
 	fields, census := collectSecretSurfaceFields()

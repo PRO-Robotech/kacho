@@ -251,6 +251,7 @@ func consoleProbeTypeSources(t *testing.T, root string) []string {
 
 // TestConsoleProbesAreReadByTheTypeChecker — гейт: у пробы консоли есть читатель.
 func TestConsoleProbesAreReadByTheTypeChecker(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	body, err := os.ReadFile(filepath.Join(root, consoleProbeTsconfigPath))

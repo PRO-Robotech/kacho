@@ -20,6 +20,7 @@ import (
 )
 
 func TestProseGateSeesTheDriftAndKeepsQuietWithoutIt(t *testing.T) {
+	t.Parallel()
 	const (
 		oldProse = "R7-3 — ПРИБОР ОБЪЁМА: ОДНА ОПЕРАЦИЯ ПРОТИВ НАЛИТОЙ МАТРИЦЫ"
 		newProse = "R7-3 — ПРИБОР ОБЪЁМА: ОДНА ОПЕРАЦИЯ ПРОТИВ НАЛИТОЙ СЕТКИ"

@@ -94,6 +94,7 @@ func auditSynthReach(t *testing.T, root string) ([]tagRunFinding, tagRunCensus) 
 // integration` в `internal/apps/…` невидим всем прогонам, потому что отбор
 // интеграционной джобы идёт по пути.
 func TestTagRunGateRedOnPackageOutsideEverySelection(t *testing.T) {
+	t.Parallel()
 	root := synthReachTree(t, makefileWithScope(), []string{"internal/apps/thing"})
 
 	findings, census := auditSynthReach(t, root)
@@ -122,6 +123,7 @@ func TestTagRunGateRedOnPackageOutsideEverySelection(t *testing.T) {
 //
 // Без этой стороны гейт ловил бы форму «в дереве есть признак сборки».
 func TestTagRunGateSilentOnPackageInsideSelection(t *testing.T) {
+	t.Parallel()
 	root := synthReachTree(t, makefileWithScope(), []string{"services/x/internal/repo"})
 
 	findings, census := auditSynthReach(t, root)
@@ -142,6 +144,7 @@ func TestTagRunGateSilentOnPackageInsideSelection(t *testing.T) {
 // покрытым всё, что под неё подпадает: копия отбора, разошедшаяся с объявлением,
 // отвечает «покрыт» ровно там, где расхождение не видно.
 func TestTagRunGateAppliesTheDeclaredFilter(t *testing.T) {
+	t.Parallel()
 	root := synthReachTree(t, makefileWithScope(), []string{"services/x/internal/usecase"})
 
 	findings, census := auditSynthReach(t, root)
@@ -165,6 +168,7 @@ func TestTagRunGateAppliesTheDeclaredFilter(t *testing.T) {
 // объясняющему покрытие, — то есть был бы проверкой с формой, но без содержания
 // ровно на том дереве, ради которого написан.
 func TestTagRunGateDoesNotCountACommentAsARun(t *testing.T) {
+	t.Parallel()
 	commented := "# Прогон когда-то звался так:\n" +
 		"#\t$(GO) test -tags=synthtag ./internal/...\n" +
 		"test-nothing:\n\t@echo нечего\n"

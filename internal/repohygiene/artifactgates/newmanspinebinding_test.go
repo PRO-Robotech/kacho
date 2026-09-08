@@ -211,6 +211,7 @@ func auditNewmanSpineBinding(consumers map[string]string, kinds map[string]strin
 // именем, и не проверяет, ЧТО в него связано: это решение набора. Предмет здесь
 // один — что решения записаны в ОДНОМ месте, а потребитель берёт их оттуда.
 func TestNewmanConsumersReachTheSpineThroughTheSuiteBinding(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Состав — из индекса git, а не обходом диска: под корнем лежат рабочие

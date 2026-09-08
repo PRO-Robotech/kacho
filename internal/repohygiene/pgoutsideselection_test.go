@@ -48,6 +48,7 @@ const pgOutsideMakeTarget = "make test-pg-outside-selection"
 
 // TestPGOutsideOwnStepDeclarationsPointAtTheList — шов с соседним гейтом.
 func TestPGOutsideOwnStepDeclarationsPointAtTheList(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	// ПЕРЕЧНЕЙ ДВА, И ЧИТАТЬ НАДО ОБА.
 	//
@@ -128,6 +129,7 @@ func countPGOutsideExemptions(exemptions map[string]string) int {
 // Гейт выше на дереве зелёный, и зелёный сам по себе не значит ничего: ровно так
 // же он выглядел бы, не умей вердикт краснеть.
 func TestPGOutsideSeamJudgeFiresAndStaysSilent(t *testing.T) {
+	t.Parallel()
 	const a = "services/nlb/internal/apps/kacho/jobs"
 	const b = "services/iam/internal/apps/kaname/api/bootstrap_token"
 

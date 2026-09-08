@@ -233,6 +233,7 @@ jobs:
 // ──────────────────────────────── ПРОБЫ ─────────────────────────────────────
 
 func TestClusterDiagnosticsGateRedsOnTheDefect(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		yaml string
@@ -266,6 +267,7 @@ func TestClusterDiagnosticsGateRedsOnTheDefect(t *testing.T) {
 }
 
 func TestClusterDiagnosticsGateStaysQuietOnLawfulShapes(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name        string
 		yaml        string
@@ -300,6 +302,7 @@ func TestClusterDiagnosticsGateStaysQuietOnLawfulShapes(t *testing.T) {
 // без предмета перепись даёт ноль, и тогда обход по дереву обязан упасть, а не
 // зазеленеть.
 func TestClusterDiagnosticsCensusSeparatesQuietFromUnread(t *testing.T) {
+	t.Parallel()
 	findings, census := checkClusterDiagnosticsEcho("пусто.yml", "name: пусто\njobs: {}\n")
 	if len(findings) != 0 {
 		t.Errorf("на пустом корпусе гейт нашёл: %v", findings)
@@ -322,6 +325,7 @@ func TestClusterDiagnosticsCensusSeparatesQuietFromUnread(t *testing.T) {
 // разобрался, обязан стать НАХОДКОЙ, а не молча выпасть из обхода: иначе первая
 // же опечатка в YAML выводит конвейер из-под правила без единого слова.
 func TestClusterDiagnosticsGateRejectsUnparsableWorkflow(t *testing.T) {
+	t.Parallel()
 	findings, _ := checkClusterDiagnosticsEcho("битый.yml", "jobs: [ не yaml\n  - совсем")
 	if len(findings) == 0 {
 		t.Fatal("неразбираемый YAML прошёл молча — файл выпал из обхода незамеченным")

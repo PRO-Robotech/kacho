@@ -77,6 +77,7 @@ func (w *roleWriter) ReplaceRuleRefs(ctx context.Context, id string) error {
 // TestRoleDeleteGateStaysSilentOnTheGuardedStatement — КОНТРОЛЬ. Без него
 // молчание гейта на инъекции было бы неотличимо от молчания мёртвого гейта.
 func TestRoleDeleteGateStaysSilentOnTheGuardedStatement(t *testing.T) {
+	t.Parallel()
 	const rel = "services/iam/internal/repo/kaname/pg/role_repo.go"
 
 	sites, census, err := ScanRoleDeletes(rel, []byte(roleDeleteGuardedSrc))
@@ -99,6 +100,7 @@ func TestRoleDeleteGateStaysSilentOnTheGuardedStatement(t *testing.T) {
 // TestRoleDeleteGateRedsOnAnUnguardedStatement — инъекция обязана краснеть и
 // НАЗЫВАТЬ координату: находка, называющая симптом, посылает читателя не туда.
 func TestRoleDeleteGateRedsOnAnUnguardedStatement(t *testing.T) {
+	t.Parallel()
 	const rel = "services/iam/internal/repo/kaname/pg/role_repo.go"
 
 	sites, census, err := ScanRoleDeletes(rel, []byte(roleDeleteUnguardedSrc))
@@ -125,6 +127,7 @@ func TestRoleDeleteGateRedsOnAnUnguardedStatement(t *testing.T) {
 
 // TestRoleDeleteGateKnowsBothGuardForms — вторая законная форма сужения.
 func TestRoleDeleteGateKnowsBothGuardForms(t *testing.T) {
+	t.Parallel()
 	sites, census, err := ScanRoleDeletes("services/iam/internal/repo/kaname/pg/role_repo.go",
 		[]byte(roleDeleteTierGuardSrc))
 	if err != nil {
@@ -143,6 +146,7 @@ func TestRoleDeleteGateKnowsBothGuardForms(t *testing.T) {
 // TestRoleDeleteGateStaysSilentOnProse — законный близнец: слово в комментарии и
 // в тексте отказа.
 func TestRoleDeleteGateStaysSilentOnProse(t *testing.T) {
+	t.Parallel()
 	sites, census, err := ScanRoleDeletes("services/iam/internal/repo/kaname/pg/doc.go",
 		[]byte(roleDeleteProseSrc))
 	if err != nil {
@@ -164,6 +168,7 @@ func TestRoleDeleteGateStaysSilentOnProse(t *testing.T) {
 // TestRoleDeleteGateStaysSilentOnProjectionDelete — законный близнец: удаляется
 // проекция правила, а не строка роли.
 func TestRoleDeleteGateStaysSilentOnProjectionDelete(t *testing.T) {
+	t.Parallel()
 	sites, census, err := ScanRoleDeletes("services/iam/internal/repo/kaname/pg/role_repo.go",
 		[]byte(roleDeleteProjectionSrc))
 	if err != nil {
@@ -195,6 +200,7 @@ func (w *roleWriter) wipe(ctx context.Context) error {
 
 // TestRoleDeleteGateRedsOnAnUnconditionalStatement — оператор без условия.
 func TestRoleDeleteGateRedsOnAnUnconditionalStatement(t *testing.T) {
+	t.Parallel()
 	sites, census, err := ScanRoleDeletes("services/iam/internal/repo/kaname/pg/role_repo.go",
 		[]byte(roleDeleteBareSrc))
 	if err != nil {

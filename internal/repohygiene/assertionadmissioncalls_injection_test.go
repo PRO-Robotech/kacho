@@ -122,6 +122,7 @@ func (r *ClientAssertionReplayRepo) Observe(ctx context.Context) {
 // дефект становится находкой, находка несёт координату, и она указывает на
 // ДОПУСК, а не на сборщика.
 func TestAdmissionScannerFindsTheReturnedCheckThenAct(t *testing.T) {
+	t.Parallel()
 	byFunc, census, err := ScanDatabaseCallsByFunction(
 		"synthetic/pg/replay.go", []byte(admissionInjectedCheckThenAct))
 	if err != nil {
@@ -161,6 +162,7 @@ func TestAdmissionScannerFindsTheReturnedCheckThenAct(t *testing.T) {
 // Сборщик с ДВУМЯ вызовами находкой не становится, а допуск с одним — тем более.
 // Без этой стороны гейт ловил бы число, а не предмет.
 func TestAdmissionScannerIsSilentOnTheReaper(t *testing.T) {
+	t.Parallel()
 	byFunc, census, err := ScanDatabaseCallsByFunction(
 		"synthetic/pg/replay.go", []byte(admissionInjectedLawfulPair))
 	if err != nil {

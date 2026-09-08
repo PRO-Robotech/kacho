@@ -70,6 +70,7 @@ import (
 )
 
 func TestEveryJournalWriteFormIsCensusedPerOwner(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tree := newTrackedTree(t, root)
 

@@ -136,6 +136,7 @@ func ocrFullTree(t *testing.T) ocrResult {
 
 // Сторона дефекта: способность без исполнителя названа поимённо, с координатой.
 func TestOutboxCapabilityGateRedOnACapabilityNobodyDrives(t *testing.T) {
+	t.Parallel()
 	res := ocrFullTree(t)
 
 	if len(res.Findings) != 1 {
@@ -157,6 +158,7 @@ func TestOutboxCapabilityGateRedOnACapabilityNobodyDrives(t *testing.T) {
 // разнесение их по двум пробам скрыло бы, что молчание достигнуто разными путями
 // ОДНОВРЕМЕННО — то есть ровно то, ради чего критерий сделан двойным.
 func TestOutboxCapabilityGateSilentOnAllThreeLegitimateShapes(t *testing.T) {
+	t.Parallel()
 	res := ocrFullTree(t)
 
 	for _, f := range res.Findings {
@@ -181,6 +183,7 @@ func TestOutboxCapabilityGateSilentOnAllThreeLegitimateShapes(t *testing.T) {
 // делает. Перепись обязана показать ноль конструируемых типов — тогда гейт по
 // дереву падает на предпосылке, а не отчитывается тихим успехом.
 func TestOutboxCapabilityGatePremiseEmptyWhenNothingIsConstructed(t *testing.T) {
+	t.Parallel()
 	root := ocrSynthTree(t, map[string]string{
 		"pkg/outbox/widget/widget.go": ocrPkgSrc,
 		"services/x/cmd/x/main.go":    ocrRootNoCtorSrc,

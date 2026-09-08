@@ -58,6 +58,7 @@ func subscriptionSingularityOptions(t *testing.T) SubscriptionSingularityOptions
 // расширение, а украшение; прибавка, изменившая находки на исправном дереве, —
 // ложные срабатывания.
 func TestSubscriptionFormIsDeclaredOnce(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditSubscriptionFormSingularity(subscriptionSingularityOptions(t), &log)
 	if err != nil {

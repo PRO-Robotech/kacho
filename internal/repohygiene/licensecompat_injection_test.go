@@ -60,6 +60,7 @@ const (
 // BUSL — тогда вынесенный под AGPL продукт сошёл бы за монорепо, и ровно те
 // рёбра, ради которых гейт заведён, стали бы законными. Молча.
 func TestLicenseTierForDirResolvesTheDirectoryOfEachTier(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		dir  string
 		want string
@@ -86,6 +87,7 @@ func TestLicenseTierForDirResolvesTheDirectoryOfEachTier(t *testing.T) {
 // TestLicenseCompatibleAnswersEveryPairOfTiers — правило совместимости целиком,
 // обе стороны по каждой паре.
 func TestLicenseCompatibleAnswersEveryPairOfTiers(t *testing.T) {
+	t.Parallel()
 	tiers := map[string]licenseTier{
 		"apache": {Name: "фундамент", SPDX: licenseApache},
 		"busl":   {Name: "монорепо", SPDX: licenseBUSL},
@@ -131,6 +133,7 @@ func TestLicenseCompatibleAnswersEveryPairOfTiers(t *testing.T) {
 // По одному кейсу на каждое запрещённое направление, и у каждого — законный
 // близнец, отличающийся РОВНО импортируемым путём.
 func TestInjectedIncompatibleEdgeIsAFindingWithItsCoordinate(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name     string
 		bad      licenseEdge
@@ -222,6 +225,7 @@ func TestInjectedIncompatibleEdgeIsAFindingWithItsCoordinate(t *testing.T) {
 //
 // Без него молчание гейта было бы неотличимо от молчания мёртвого гейта.
 func TestLicenseCompatControlAndCensus(t *testing.T) {
+	t.Parallel()
 	legal := []licenseEdge{
 		injEdge(injBuslDir, injApachePkg, licenseEdgeProd),
 		injEdge(injAgplDir, injApachePkg, licenseEdgeProd),
@@ -260,6 +264,7 @@ func TestLicenseCompatControlAndCensus(t *testing.T) {
 // Сам отказ выносит гейт дерева (у него есть, с чем сравнить); задача разбора —
 // сделать пустоту НАБЛЮДАЕМОЙ, а не сообщить о ней нулём находок.
 func TestLicenseCompatEmptyInputIsNotAVerdict(t *testing.T) {
+	t.Parallel()
 	findings, census := scanLicenseCompat(nil, 0, 0)
 	if len(findings) != 0 {
 		t.Fatalf("на пустом входе находок %d — их неоткуда взять", len(findings))
@@ -280,6 +285,7 @@ func TestLicenseCompatEmptyInputIsNotAVerdict(t *testing.T) {
 // находка меняла бы текст отказа от прогона к прогону при неизменном дереве, и
 // разбор красного превратился бы в сличение перестановок.
 func TestLicenseCompatFindingsAreDeterministic(t *testing.T) {
+	t.Parallel()
 	a := []licenseEdge{
 		injEdge(injBuslDir, injAgplPkg, licenseEdgeProd),
 		injEdge(injApacheDir, injBuslPkg, licenseEdgeProd),

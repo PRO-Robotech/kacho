@@ -105,6 +105,7 @@ func roleOpStateInjRun(t *testing.T, src string) ([]RoleOperationResponseStateFi
 
 // TestRoleOperationResponseStateInjection — способность падать и молчать.
 func TestRoleOperationResponseStateInjection(t *testing.T) {
+	t.Parallel()
 	// ОСЬ 0 (положительный контроль, первым). Законное дерево молчит, и перепись
 	// доказывает, что обход не был пуст и что признак отобрал ОДИН переводчик из
 	// пяти функций: без этого молчание было бы достижимо анализатором, который

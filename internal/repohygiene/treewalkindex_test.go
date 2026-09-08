@@ -536,6 +536,7 @@ func renderExpr(fset *token.FileSet, e ast.Expr) string {
 // объяснены тем, что читают правила игнорирования собственными силами, и это
 // вторая реализация предмета, а не дыра. Четвёртой такой записи быть не должно.
 func TestTreeWalkersAskTheIndex(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 
@@ -743,6 +744,7 @@ func TestTreeWalkersAskTheIndex(t *testing.T) {
 // Убери прослеживание источника — покраснеет вторая половина; убери разбор в
 // пользу поиска подстроки — покраснеют литерал и комментарий.
 func TestDiskRootWalkDiscriminatorCutsBothWays(t *testing.T) {
+	t.Parallel()
 	const src = `package p
 
 import (

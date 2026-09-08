@@ -48,6 +48,7 @@ func MissingChecks(declared []tokenpolicy.Check) []tokenpolicy.Check { return ni
 
 // TestCheckListScannerFindsASecondDeclaration — сторона (а) первого утверждения.
 func TestCheckListScannerFindsASecondDeclaration(t *testing.T) {
+	t.Parallel()
 	found, census, err := ScanCheckListDeclarations(
 		"synthetic/verifier.go", []byte(tokenCheckInjectedSecondList), tokenCheckListName)
 	if err != nil {
@@ -69,6 +70,7 @@ func TestCheckListScannerFindsASecondDeclaration(t *testing.T) {
 // Ни функция ПРО перечень, ни константа с похожим именем объявлением перечня не
 // являются. Без этой половины гейт ловил бы слово, а не предмет.
 func TestCheckListScannerIsSilentOnNeighboursOfTheList(t *testing.T) {
+	t.Parallel()
 	const src = `package verifier
 
 import "github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
@@ -101,6 +103,7 @@ func mandatoryChecksOf(v any) []tokenpolicy.Check { return nil }
 // Псевдоним пакета задаёт вызывающий. Разбор, ключующийся на имя в исходнике,
 // потерял бы построение от одного переименования импорта — и молчал бы об этом.
 func TestVerifierConstructionScannerResolvesTheAlias(t *testing.T) {
+	t.Parallel()
 	const src = `package main
 
 import (
@@ -140,6 +143,7 @@ func build() {
 // по имени `jwks.New` спутал бы их — и словарь производителей пришлось бы
 // держать в двух написаниях.
 func TestVerifierConstructionScannerIsSilentOnASameNamedStranger(t *testing.T) {
+	t.Parallel()
 	const src = `package main
 
 import jwks "github.com/some/other/jwks"
@@ -268,6 +272,7 @@ func declaredOf(t *testing.T, src string, consts map[string]string) ([]TokenChec
 
 // TestCheckCompositionScannerFindsAMissingMandatoryCheck — сторона (а).
 func TestCheckCompositionScannerFindsAMissingMandatoryCheck(t *testing.T) {
+	t.Parallel()
 	consts := tokenCheckInjectedConstants(t)
 	decls, _, declared := declaredOf(t, tokenCheckInjectedIncomplete, consts)
 	if len(decls) != 1 {
@@ -282,6 +287,7 @@ func TestCheckCompositionScannerFindsAMissingMandatoryCheck(t *testing.T) {
 
 // TestCheckCompositionScannerIsSilentOnACompleteComposition — сторона (б).
 func TestCheckCompositionScannerIsSilentOnACompleteComposition(t *testing.T) {
+	t.Parallel()
 	consts := tokenCheckInjectedConstants(t)
 	decls, _, declared := declaredOf(t, tokenCheckInjectedComplete, consts)
 	if len(decls) != 1 {
@@ -298,6 +304,7 @@ func TestCheckCompositionScannerIsSilentOnACompleteComposition(t *testing.T) {
 // сторона того же утверждения: файл, не импортирующий политику, о составе
 // ничего не объявляет, и приписывать ему состав нельзя.
 func TestCheckCompositionScannerIgnoresAFileThatDoesNotImportThePolicy(t *testing.T) {
+	t.Parallel()
 	const src = `package jwks
 
 type tokenpolicy struct{}
@@ -319,6 +326,7 @@ func (v *Verifier) DeclaredChecks() []tokenpolicy.Check { return nil }
 
 // TestCheckCompositionScannerFlagsAnUnreasonedExtra — сторона (а).
 func TestCheckCompositionScannerFlagsAnUnreasonedExtra(t *testing.T) {
+	t.Parallel()
 	const src = `package jwks
 
 import "github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
@@ -356,6 +364,7 @@ func (v *Verifier) DeclaredChecks() []tokenpolicy.Check { return implementedChec
 // Расхождение поверхностей законно, пока оно ОБЪЯВЛЕНО. Без этой половины гейт
 // запрещал бы всякое отличие, и первое же законное отличие его отключило бы.
 func TestCheckCompositionScannerAcceptsAReasonedExtra(t *testing.T) {
+	t.Parallel()
 	const src = `package jwks
 
 import "github.com/PRO-Robotech/kacho/pkg/tokenpolicy"

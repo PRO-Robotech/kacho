@@ -53,6 +53,7 @@ type computedCidrScan struct {
 // TestComputedSubnetCidrStartsOnAFieldBoundary — ни одно выражение, собирающее
 // адрес подсети, не обрывает литеральную голову в середине поля.
 func TestComputedSubnetCidrStartsOnAFieldBoundary(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	files := 0
@@ -267,6 +268,7 @@ func analyzeComputedCidrHeads(t *testing.T, rel string, body []byte) computedCid
 // TestComputedCidrHeadGateRedOnInjectedDefect — голова, оборванная в середине
 // поля, краснит гейт И называет координату (кейс, шаг, переменную, саму голову).
 func TestComputedCidrHeadGateRedOnInjectedDefect(t *testing.T) {
+	t.Parallel()
 	got := analyzeComputedCidrHeads(t, "injected.json", []byte(`{"item":[{
       "name":"ZC-X — carve a v6 subnet from computed entropy",
       "item":[
@@ -301,6 +303,7 @@ func TestComputedCidrHeadGateRedOnInjectedDefect(t *testing.T) {
 // Без этой стороны гейт запрещал бы вычисление адреса как таковое — и первым же
 // ложным срабатыванием на законной v4-нарезке был бы снят.
 func TestComputedCidrHeadGateSilentOnLawfulSameShape(t *testing.T) {
+	t.Parallel()
 	got := analyzeComputedCidrHeads(t, "lawful.json", []byte(`{"item":[
       {"name":"A — v4 head reaches the dot","item":[
         {"name":"mk-v4","request":{"method":"POST","url":{"raw":"{{baseUrl}}/vpc/v1/subnets"},

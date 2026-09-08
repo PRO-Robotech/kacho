@@ -241,6 +241,7 @@ func forEachQuotaScannedFile(t *testing.T, root string, fn func(rel string, body
 // TestQuotaUsedIsWrittenOnlyByItsTrigger — потребление двигает только механизм,
 // который его и определяет.
 func TestQuotaUsedIsWrittenOnlyByItsTrigger(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	scannedFiles := 0

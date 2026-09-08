@@ -719,6 +719,7 @@ const credentialFixMessage = "" +
 
 // TestNoCommittedCredentialMaterial — ось МАТЕРИАЛА по всему индексу.
 func TestNoCommittedCredentialMaterial(t *testing.T) {
+	t.Parallel()
 	scan := mustRepoCredentialScan(t)
 
 	// Предпосылка 1: индекс непуст.
@@ -784,6 +785,7 @@ func TestNoCommittedCredentialMaterial(t *testing.T) {
 
 // TestNewmanEnvCredentialSlotsAreEmpty — ось СЛОТА по окружениям newman.
 func TestNewmanEnvCredentialSlotsAreEmpty(t *testing.T) {
+	t.Parallel()
 	scan := mustRepoCredentialScan(t)
 
 	if scan.envFiles == 0 {
@@ -809,6 +811,7 @@ func TestNewmanEnvCredentialSlotsAreEmpty(t *testing.T) {
 // подогнанное под сегодняшнее дерево число зеленело бы ровно до следующего
 // коммита.
 func TestCredentialVocabularyStillHasSubject(t *testing.T) {
+	t.Parallel()
 	scan := mustRepoCredentialScan(t)
 	if scan.envFiles == 0 {
 		t.Fatal("окружений newman в индексе нет — судить о предпосылке словаря не по чему")
@@ -845,6 +848,7 @@ func TestCredentialVocabularyStillHasSubject(t *testing.T) {
 // всеразрешающим — строки, токенами не являющиеся, кандидатов не дают. Без неё
 // набор из одной пустой тройки прошёл бы «проверку полноты» с блеском.
 func TestJWSHeaderPrefixSetIsComplete(t *testing.T) {
+	t.Parallel()
 	covered := func(encoded string) bool {
 		for _, p := range jwsHeaderPrefixes {
 			if strings.HasPrefix(encoded, string(p)) {
@@ -1000,6 +1004,7 @@ func reportCredentialFindings(t *testing.T, scan credentialScan, axis, headline 
 // подстановка окружения, затравка фаззера — то, что в живых данных лежит
 // вплотную к предмету и на чём предикат уже один раз ошибся.
 func TestCommittedCredentialGateCutsBothWays(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	git := func(args ...string) {
 		t.Helper()

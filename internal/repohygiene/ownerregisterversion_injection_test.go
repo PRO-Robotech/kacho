@@ -138,6 +138,7 @@ func clocksInRequestBuilders(t *testing.T, src string) []string {
 // координату. Без имени места находка бесполезна: гейт, печатающий «где-то в
 // дереве что-то не так», снимают следующим коммитом.
 func TestGateRedOnInjectedDeliveryClock(t *testing.T) {
+	t.Parallel()
 	hits := clocksInRequestBuilders(t, injectedDefect)
 	if len(hits) == 0 {
 		t.Fatal("гейт НЕ увидел часы момента доставки в функции, собирающей запрос регистрации — " +
@@ -155,6 +156,7 @@ func TestGateRedOnInjectedDeliveryClock(t *testing.T) {
 // отключат при первом же ложном срабатывании, и тогда он не поймает и настоящий
 // дефект.
 func TestGateSilentOnLawfulTwin(t *testing.T) {
+	t.Parallel()
 	if hits := clocksInRequestBuilders(t, lawfulTwin); len(hits) != 0 {
 		t.Fatalf("гейт краснеет на ЗАКОННОЙ форме (версия из writer-транзакции параметром): %v", hits)
 	}
@@ -167,6 +169,7 @@ func TestGateSilentOnLawfulTwin(t *testing.T) {
 // доставкой законно и обычно (логирование длительности), и гейт по файлу
 // запрещал бы это без всякого основания.
 func TestGateSilentOnClockOutsideTheRequestBuilder(t *testing.T) {
+	t.Parallel()
 	if hits := clocksInRequestBuilders(t, lawfulClockElsewhere); len(hits) != 0 {
 		t.Fatalf("гейт краснеет на часах в функции, которая запроса регистрации НЕ собирает: %v", hits)
 	}
@@ -180,6 +183,7 @@ func TestGateSilentOnClockOutsideTheRequestBuilder(t *testing.T) {
 // оба лишены литерала запроса, обе пробы прошли бы, а гейт не был бы проверен
 // ничем (реальный класс — «гейт читает свой недетерминизм как свойство»).
 func TestInjectionInputsAreDistinguishable(t *testing.T) {
+	t.Parallel()
 	for name, src := range map[string]string{"дефект": injectedDefect, "близнец": lawfulTwin, "часы рядом": lawfulClockElsewhere} {
 		fset := token.NewFileSet()
 		file, err := parser.ParseFile(fset, "x.go", src, parser.SkipObjectResolution)

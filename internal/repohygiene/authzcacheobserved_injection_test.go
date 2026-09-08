@@ -36,6 +36,7 @@ func wire() { _ = authzmetrics.New("x", nil) }
 
 // Сторона дефекта: сервис у носителя, коллектора нет — гейт называет сервис.
 func TestVerdictCacheGateRedOnACarrierWithoutACollector(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/cmd/x/main.go": observedProdSrc,
 	})
@@ -57,6 +58,7 @@ func TestVerdictCacheGateRedOnACarrierWithoutACollector(t *testing.T) {
 // Законный близнец той же формы: тот же сервис у носителя — плюс файл,
 // строящий коллектор.
 func TestVerdictCacheGateSilentWhenTheCollectorIsBuilt(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/cmd/x/main.go":                             observedProdSrc,
 		"services/x/internal/observability/metrics/metrics.go": observerSrc,
@@ -82,6 +84,7 @@ func TestVerdictCacheGateSilentWhenTheCollectorIsBuilt(t *testing.T) {
 // Отрицательный контроль распознавания: обращение к пакету наблюдения, не
 // строящее коллектора, наблюдателем не делает.
 func TestVerdictCacheGateIgnoresANonConstructorCall(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/cmd/x/main.go": observedProdSrc,
 		"services/x/internal/observability/metrics/metrics.go": `package metrics
@@ -110,6 +113,7 @@ func name() string { return authzmetrics.MetricName("x") }
 // текстовый поиск принял бы объяснение за исполнение — тот самый класс, ради
 // которого гейт разбирает синтаксическое дерево.
 func TestVerdictCacheGateIgnoresTheNameInAComment(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/cmd/x/main.go": observedProdSrc,
 		"services/x/internal/observability/metrics/metrics.go": `package metrics

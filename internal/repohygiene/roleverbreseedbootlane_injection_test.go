@@ -25,6 +25,7 @@ func bootSrc(body string) string {
 //
 // Это сегодняшнее состояние дерева, воспроизведённое синтетикой.
 func TestIAMRV107_InjectionRedWhenTheReseedHasNoOwnCall(t *testing.T) {
+	t.Parallel()
 	src := bootSrc(`		if oerr := seed.BackfillOwnerBindings(ctx, pool); oerr != nil {
 			logger.Warn("p8 backfill: owner-binding data-backfill failed", slog.Any("err", oerr))
 		}
@@ -46,6 +47,7 @@ func TestIAMRV107_InjectionRedWhenTheReseedHasNoOwnCall(t *testing.T) {
 // TestIAMRV107_InjectionRedOnASwallowedFailure — полоса есть, но отказ печатается
 // `Warn` → находка, называющая уровень.
 func TestIAMRV107_InjectionRedOnASwallowedFailure(t *testing.T) {
+	t.Parallel()
 	src := bootSrc(`		if rerr := seed.ReseedSystemRoleVerbs(ctx, kanameRepo, logger); rerr != nil {
 			logger.Warn("пересчёт проекции ролей не удался", slog.Any("err", rerr))
 		}`)
@@ -71,6 +73,7 @@ func TestIAMRV107_InjectionRedOnASwallowedFailure(t *testing.T) {
 // TestIAMRV107_InjectionSilentOnTheLawfulForm — ЗАКОННЫЙ БЛИЗНЕЦ: собственная
 // полоса, уровень `Error`. Гейт обязан молчать.
 func TestIAMRV107_InjectionSilentOnTheLawfulForm(t *testing.T) {
+	t.Parallel()
 	src := bootSrc(`		if rerr := seed.ReseedSystemRoleVerbs(ctx, kanameRepo, logger); rerr != nil {
 			logger.Error("пересчёт проекции ролей не удался", slog.Any("err", rerr))
 		}`)
@@ -96,6 +99,7 @@ func TestIAMRV107_InjectionSilentOnTheLawfulForm(t *testing.T) {
 // рода: присваивание и отдельный `if`. Обе формы живут в этом корне, и признак,
 // знающий одну, оставил бы вторую вне наблюдения — не находкой, а невидимостью.
 func TestIAMRV107_InjectionSilentOnTheTwoStatementForm(t *testing.T) {
+	t.Parallel()
 	src := bootSrc(`		census, rerr := seed.ReseedSystemRoleVerbs(ctx, kanameRepo)
 		if rerr != nil {
 			logger.Error("пересчёт проекции ролей не удался",
@@ -121,6 +125,7 @@ func TestIAMRV107_InjectionSilentOnTheTwoStatementForm(t *testing.T) {
 // Без него гейт краснел бы на каждом «best-effort» досеве корня — то есть на том,
 // что решением уже является.
 func TestIAMRV107_InjectionSilentOnANeighbouringLane(t *testing.T) {
+	t.Parallel()
 	src := bootSrc(`		if oerr := seed.BackfillOwnerBindings(ctx, pool); oerr != nil {
 			logger.Warn("p8 backfill: owner-binding data-backfill failed", slog.Any("err", oerr))
 		}
@@ -142,6 +147,7 @@ func TestIAMRV107_InjectionSilentOnANeighbouringLane(t *testing.T) {
 // TestIAMRV107_InjectionRedOnASilentFailureBranch — ветка отказа пуста: отказ
 // проглочен полнее любого `Warn`.
 func TestIAMRV107_InjectionRedOnASilentFailureBranch(t *testing.T) {
+	t.Parallel()
 	src := bootSrc(`		if rerr := seed.ReseedSystemRoleVerbs(ctx, kanameRepo, logger); rerr != nil {
 			_ = rerr
 		}`)

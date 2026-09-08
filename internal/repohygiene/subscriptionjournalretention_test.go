@@ -37,6 +37,7 @@ const journalLaneServicesRoot = "../../services"
 // TestSubscriptionJournalLanesAgreeOnRetention — объявление удержания и провязка
 // уборщика суть одно решение.
 func TestSubscriptionJournalLanesAgreeOnRetention(t *testing.T) {
+	t.Parallel()
 	lanes, census := collectJournalLanes(t, journalLaneServicesRoot)
 
 	if census.Lanes == 0 {

@@ -60,6 +60,7 @@ func TestIntegration_NameForm(t *testing.T) {
 }
 
 func TestNameFormDBCoverage_FailsOnInjectedDefect(t *testing.T) {
+	t.Parallel()
 	t.Run("законный близнец: миграция и вызов у одного сервиса — находок ноль", func(t *testing.T) {
 		mig, body := injMigration("alpha", true)
 		files := map[string]string{

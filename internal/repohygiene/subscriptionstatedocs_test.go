@@ -56,6 +56,7 @@ const subscriptionClientPageRel = "gateway/docs/content/api/subscription.mdx"
 // TestSubscriptionOwnerPageSaysWhatItsJournalDoes — таблица владельцев обещает
 // ровно то, что журнал владельца делает.
 func TestSubscriptionOwnerPageSaysWhatItsJournalDoes(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	list := subscriptionDocsLister(treecorpus.UnderWithSuffix)
 

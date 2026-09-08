@@ -106,6 +106,7 @@ func scanWithdrawal(t *testing.T, files map[string]string) (drive, mark []RoleWi
 // TestWithdrawalGateRedsOnlyWhenTheApplierIsDrivenWithoutAProducer — таблица
 // согласия целиком: четыре клетки, красная ровно одна.
 func TestWithdrawalGateRedsOnlyWhenTheApplierIsDrivenWithoutAProducer(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name   string
 		files  map[string]string
@@ -156,6 +157,7 @@ func TestWithdrawalGateRedsOnlyWhenTheApplierIsDrivenWithoutAProducer(t *testing
 
 // TestWithdrawalGateBindsTheImportRatherThanTheLastPathSegment — псевдоним.
 func TestWithdrawalGateBindsTheImportRatherThanTheLastPathSegment(t *testing.T) {
+	t.Parallel()
 	drive, _, census := scanWithdrawal(t, map[string]string{
 		"services/iam/cmd/iam/serve.go": withdrawalDriveAliased,
 	})
@@ -170,6 +172,7 @@ func TestWithdrawalGateBindsTheImportRatherThanTheLastPathSegment(t *testing.T) 
 // TestWithdrawalGateReadsTheProseAsProse — законный близнец приведения, взятый
 // из формы, которая в дереве ЕСТЬ.
 func TestWithdrawalGateReadsTheProseAsProse(t *testing.T) {
+	t.Parallel()
 	drive, _, census := scanWithdrawal(t, map[string]string{
 		"services/iam/internal/moduleroleparity/parity.go": withdrawalDriveInProse,
 	})
@@ -187,6 +190,7 @@ func TestWithdrawalGateReadsTheProseAsProse(t *testing.T) {
 
 // TestWithdrawalGateKnowsBothWritingsOfTheMark — обе законные формы пометки.
 func TestWithdrawalGateKnowsBothWritingsOfTheMark(t *testing.T) {
+	t.Parallel()
 	for name, src := range map[string]string{
 		"присвоение в UPDATE":      withdrawalMarkWriter,
 		"присвоение в ON CONFLICT": withdrawalMarkOnConflict,
@@ -206,6 +210,7 @@ func TestWithdrawalGateKnowsBothWritingsOfTheMark(t *testing.T) {
 // TestWithdrawalGateDoesNotMistakeAReadForAWrite — законный близнец
 // производителя: та же колонка в УСЛОВИИ.
 func TestWithdrawalGateDoesNotMistakeAReadForAWrite(t *testing.T) {
+	t.Parallel()
 	_, mark, census := scanWithdrawal(t, map[string]string{
 		"services/iam/internal/repo/kaname/pg/role.go": withdrawalMarkRead,
 	})

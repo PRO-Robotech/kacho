@@ -61,6 +61,7 @@ var errNoDelete = errors.New("moduleroles: DELETE FROM roles здесь не п�
 
 // TestApplierDeleteGateRedsOnAPortVerb — ось 1: инъекция обязана краснеть.
 func TestApplierDeleteGateRedsOnAPortVerb(t *testing.T) {
+	t.Parallel()
 	const rel = applierPackageDir + "apply.go"
 
 	base, census, err := ScanApplierDeletes(rel, []byte(applierPortClean))
@@ -94,6 +95,7 @@ func TestApplierDeleteGateRedsOnAPortVerb(t *testing.T) {
 
 // TestApplierDeleteGateRedsOnASQLLiteral — ось 2.
 func TestApplierDeleteGateRedsOnASQLLiteral(t *testing.T) {
+	t.Parallel()
 	sites, census, err := ScanApplierDeletes(applierPackageDir+"sweep.go", []byte(applierSQLDelete))
 	if err != nil {
 		t.Fatalf("разбор инъекции: %v", err)
@@ -112,6 +114,7 @@ func TestApplierDeleteGateRedsOnASQLLiteral(t *testing.T) {
 
 // TestApplierDeleteGateStaysSilentOnProse — законный близнец обеих осей.
 func TestApplierDeleteGateStaysSilentOnProse(t *testing.T) {
+	t.Parallel()
 	sites, census, err := ScanApplierDeletes(applierPackageDir+"doc.go", []byte(applierDeleteInProse))
 	if err != nil {
 		t.Fatalf("разбор близнеца: %v", err)
@@ -177,6 +180,7 @@ func (w *roleWriter) RetireSystemRole(id string) error {
 // Ось, судящая слово, ошибается на нём в обе стороны сразу — и вторую сторону
 // (`WithdrawSystemRole`, который удаляет) она не ловила никогда.
 func TestApplierDeleteGateStaysSilentOnTheWithdrawalMarkVerb(t *testing.T) {
+	t.Parallel()
 	const rel = applierPackageDir + "apply.go"
 
 	// Контроль: чистый порт молчит. Без него молчание на инъекции неотличимо от
@@ -228,6 +232,7 @@ func TestApplierDeleteGateStaysSilentOnTheWithdrawalMarkVerb(t *testing.T) {
 // он судит оператор. Именно этого ось 1 не умела никогда — `WithdrawSystemRole`
 // с удалением внутри под её перечень не подпадал.
 func TestTheDeletingImplementationIsHeldWhateverTheVerbIsCalled(t *testing.T) {
+	t.Parallel()
 	const rel = "services/iam/internal/repo/kaname/pg/role_repo.go"
 
 	sites, census, err := ScanRoleDeletes(rel, []byte(applierAdapterRetireDeletes))
@@ -329,6 +334,7 @@ type RoleWriter interface {
 //	инъекция           `Purge`                   — находка (предмет не назван, fail-closed)
 //	контроль           `DeleteSystemRole`        — находка (ось не выхолощена)
 func TestApplierDeleteGateReadsTheSubjectOfTheVerbNotOnlyTheVerb(t *testing.T) {
+	t.Parallel()
 	const rel = applierPackageDir + "apply.go"
 
 	scan := func(t *testing.T, what string, src string, wantMethods int) []string {

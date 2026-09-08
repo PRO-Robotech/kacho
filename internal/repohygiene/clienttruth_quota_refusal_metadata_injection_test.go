@@ -156,6 +156,7 @@ func runQuotaMeta(t *testing.T, owner string, f quotaMetaFixture) (quotaMetadata
 // ── (б) ЗАКОННЫЙ БЛИЗНЕЦ МОЛЧИТ ────────────────────────────────────────────
 
 func TestQuotaMetadataGate_SilentWhenAmountsFlow(t *testing.T) {
+	t.Parallel()
 	c, findings := runQuotaMeta(t, "alpha",
 		quotaMetaFixture{bridge: "attach", outward: "literal", twin: true})
 
@@ -175,6 +176,7 @@ func TestQuotaMetadataGate_SilentWhenAmountsFlow(t *testing.T) {
 // Вторая законная форма доставки поля обязана распознаваться наравне с первой:
 // распознаватель, знающий одну, всё записанное второй оставил бы ВНЕ наблюдения.
 func TestQuotaMetadataGate_SilentOnTheAssignmentForm(t *testing.T) {
+	t.Parallel()
 	_, findings := runQuotaMeta(t, "alpha",
 		quotaMetaFixture{bridge: "attach", outward: "assign"})
 
@@ -185,6 +187,7 @@ func TestQuotaMetadataGate_SilentOnTheAssignmentForm(t *testing.T) {
 
 // Псевдоним импорта на исход не влияет: имя в исходнике задаёт вызывающий.
 func TestQuotaMetadataGate_SilentOnAnAliasedImport(t *testing.T) {
+	t.Parallel()
 	_, findings := runQuotaMeta(t, "alpha",
 		quotaMetaFixture{bridge: "alias", outward: "literal"})
 
@@ -196,6 +199,7 @@ func TestQuotaMetadataGate_SilentOnAnAliasedImport(t *testing.T) {
 // ── (а) ВЕРНУТЬ ДЕФЕКТ — КРАСНЕЕТ И НАЗЫВАЕТ КООРДИНАТУ ────────────────────
 
 func TestQuotaMetadataGate_RedWhenTheBridgeDropsTheAmounts(t *testing.T) {
+	t.Parallel()
 	_, findings := runQuotaMeta(t, "beta",
 		quotaMetaFixture{bridge: "none", outward: "literal"})
 
@@ -212,6 +216,7 @@ func TestQuotaMetadataGate_RedWhenTheBridgeDropsTheAmounts(t *testing.T) {
 // Упоминание вызова в комментарии вызовом НЕ является: гейт судит узлы, а не
 // текст, — иначе он зеленел бы на собственном объяснении.
 func TestQuotaMetadataGate_RedWhenTheCallLivesOnlyInAComment(t *testing.T) {
+	t.Parallel()
 	_, findings := runQuotaMeta(t, "beta",
 		quotaMetaFixture{bridge: "comment", outward: "literal"})
 
@@ -223,6 +228,7 @@ func TestQuotaMetadataGate_RedWhenTheCallLivesOnlyInAComment(t *testing.T) {
 
 // Одноимённый пакет чужого происхождения — не наш единственный разбор.
 func TestQuotaMetadataGate_RedOnAForeignPackageOfTheSameName(t *testing.T) {
+	t.Parallel()
 	_, findings := runQuotaMeta(t, "beta",
 		quotaMetaFixture{bridge: "foreign", outward: "literal"})
 
@@ -233,6 +239,7 @@ func TestQuotaMetadataGate_RedOnAForeignPackageOfTheSameName(t *testing.T) {
 }
 
 func TestQuotaMetadataGate_RedWhenTheAnswerHasNowhereToPutThem(t *testing.T) {
+	t.Parallel()
 	_, findings := runQuotaMeta(t, "beta",
 		quotaMetaFixture{bridge: "attach", outward: "none", twin: true})
 
@@ -248,6 +255,7 @@ func TestQuotaMetadataGate_RedWhenTheAnswerHasNowhereToPutThem(t *testing.T) {
 // Обе половины сломаны — обе находки, а не одна: гейт не останавливается на
 // первой, иначе вторая чинилась бы вторым кругом прогона.
 func TestQuotaMetadataGate_RedOnBothHalvesAtOnce(t *testing.T) {
+	t.Parallel()
 	_, findings := runQuotaMeta(t, "beta",
 		quotaMetaFixture{bridge: "none", outward: "none"})
 
@@ -260,6 +268,7 @@ func TestQuotaMetadataGate_RedOnBothHalvesAtOnce(t *testing.T) {
 // ── (в) ПУСТОЙ ОБХОД ОТЛИЧИМ ОТ «НАРУШЕНИЙ НЕТ» ───────────────────────────
 
 func TestQuotaMetadataGate_EmptyTraversalIsDistinguishableFromClean(t *testing.T) {
+	t.Parallel()
 	tree := mustSyntheticTree(t, t.TempDir())
 
 	c, err := collectQuotaRefusalMetadata(tree, []string{"alpha"})

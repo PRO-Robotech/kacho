@@ -26,6 +26,7 @@ func workspaceFindingKinds(fs []workspaceFinding) []string {
 }
 
 func TestCrossModuleWorkspaceGateCanFailAndCanStaySilent(t *testing.T) {
+	t.Parallel()
 	const good = "go 1.26.0\n\nuse (\n\t.\n\t./services/iam\n)\n"
 
 	cases := []struct {

@@ -99,6 +99,7 @@ func (s *prefixStand) run(
 // TestProtoPrefixInjection_CleanStandIsSilent — контроль. Без него всякая
 // последующая краснота неотличима от анализатора, краснеющего на всём.
 func TestProtoPrefixInjection_CleanStandIsSilent(t *testing.T) {
+	t.Parallel()
 	s := newPrefixStand(t)
 	findings, census := s.run(t)
 	if len(findings) != 0 {
@@ -127,6 +128,7 @@ func TestProtoPrefixInjection_CleanStandIsSilent(t *testing.T) {
 // TestProtoPrefixInjection_WrongPrefixIsFound — ИНЪЕКЦИЯ: у существующего
 // утверждения меняется ОДНО свойство — названный префикс. Остальное цело.
 func TestProtoPrefixInjection_WrongPrefixIsFound(t *testing.T) {
+	t.Parallel()
 	s := newPrefixStand(t)
 	s.write(t, "proto/kacho/cloud/probevpc/v1/nic_service.proto", `
 syntax = "proto3";
@@ -152,6 +154,7 @@ message AttachRequest {
 // же формы: тот же префикс `psi` у образа ХРАНИЛИЩА верен, а у образа соседнего
 // домена — нет. Пара доказывает, что судится предмет, а не форма строки.
 func TestProtoPrefixInjection_DomainQualifiedTwinStaysSilent(t *testing.T) {
+	t.Parallel()
 	s := newPrefixStand(t)
 	// Тот же текст, тот же префикс — но домен другой, и голая константа даёт
 	// "pim". Это находка.
@@ -183,6 +186,7 @@ message ProbeImage { string id = 1; }
 // строка стала бы многоимённой и дефект ушёл бы в молчание — то есть защита
 // выродилась бы ровно на том входе, ради которого написана.
 func TestProtoPrefixInjection_LongestNameWins(t *testing.T) {
+	t.Parallel()
 	s := newPrefixStand(t)
 	s.write(t, "proto/kacho/cloud/probevpc/v1/nic_service.proto", `
 syntax = "proto3";
@@ -204,6 +208,7 @@ message AttachRequest {
 // именами не судится: о котором из них сказано, неизвестно. Без этой ветви
 // анализатор краснел бы наугад.
 func TestProtoPrefixInjection_AmbiguousLineIsNotJudged(t *testing.T) {
+	t.Parallel()
 	s := newPrefixStand(t)
 	s.write(t, "proto/kacho/cloud/probevpc/v1/nic_service.proto", `
 syntax = "proto3";
@@ -225,6 +230,7 @@ message AttachRequest {
 // TestProtoPrefixInjection_ExemptionSilencesItsOwnSubject — послабление снимает
 // РОВНО свою находку.
 func TestProtoPrefixInjection_ExemptionSilencesItsOwnSubject(t *testing.T) {
+	t.Parallel()
 	s := newPrefixStand(t)
 	s.write(t, "proto/kacho/cloud/probevpc/v1/nic_service.proto", `
 syntax = "proto3";
@@ -252,6 +258,7 @@ message AttachRequest {
 // БОЛЬШЕ НЕЧЕГО исключать, обязано краснеть. Без этой ветви слепая зона пережила
 // бы свой предмет и досталась следующему как «тут так принято».
 func TestProtoPrefixInjection_StaleExemptionIsAFinding(t *testing.T) {
+	t.Parallel()
 	s := newPrefixStand(t) // стенд ЗАКОННЫЙ — исключать нечего
 	ex := ProtoPrefixClaimExemption{
 		File:   "proto/kacho/cloud/probevpc/v1/nic_service.proto",
@@ -272,6 +279,7 @@ func TestProtoPrefixInjection_StaleExemptionIsAFinding(t *testing.T) {
 // отличимо от «ноль прочитанного»: на дереве без контрактов перепись обязана
 // показать ноль, и вердикт по ней выносить нельзя.
 func TestProtoPrefixInjection_EmptyWalkIsAFinding(t *testing.T) {
+	t.Parallel()
 	s := &prefixStand{root: t.TempDir()}
 	s.write(t, "pkg/ids/ids.go", "package ids\n")
 	s.write(t, "proto/.keep", "")

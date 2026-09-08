@@ -53,6 +53,7 @@ import (
 const probeCall = "oneofBranches("
 
 func TestConsoleCreatableSpecWithBranchingHasCoverageProbe(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	protoDir := filepath.Join(root, "proto", "kacho")
 	uiDir := filepath.Join(root, "ui-future")
@@ -189,6 +190,7 @@ func coveredBySomeProbe(bodies []string, specID string) bool {
 
 // repoRootExists — предпосылка гейта: дерево консоли и контракта на месте.
 func TestConsoleOneofProbeGatePremise(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	for _, p := range []string{
 		filepath.Join(root, "proto", "kacho"),

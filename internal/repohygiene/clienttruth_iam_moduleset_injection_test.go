@@ -88,6 +88,7 @@ func (s *moduleSetStand) run(t *testing.T) ([]ClientTruthIAMModuleSetFinding, Cl
 // TestModuleSetGate_SilentOnCompleteEnumerations — контроль: всё цело, гейт молчит.
 // Без него любое «краснеет» ниже доказывало бы лишь то, что он краснеет всегда.
 func TestModuleSetGate_SilentOnCompleteEnumerations(t *testing.T) {
+	t.Parallel()
 	s := newModuleSetStand(t)
 	findings, census := s.run(t)
 	if len(findings) != 0 {
@@ -115,6 +116,7 @@ func TestModuleSetGate_SilentOnCompleteEnumerations(t *testing.T) {
 // TestModuleSetGate_RedOnIncompleteDocEnumeration — инъекция: перечень документа
 // теряет одно имя. Гейт обязан покраснеть и НАЗВАТЬ координату и недостающее имя.
 func TestModuleSetGate_RedOnIncompleteDocEnumeration(t *testing.T) {
+	t.Parallel()
 	s := newModuleSetStand(t)
 	s.write(t, "docs/role.mdx", `# Роль
 
@@ -136,6 +138,7 @@ func TestModuleSetGate_RedOnIncompleteDocEnumeration(t *testing.T) {
 // Отдельным прогоном, потому что поверхности разные и распознаватель у них разный
 // (обратные кавычки против <code>).
 func TestModuleSetGate_RedOnIncompleteProtoEnumeration(t *testing.T) {
+	t.Parallel()
 	s := newModuleSetStand(t)
 	s.write(t, "proto/role.proto", "// член набора (`alpha`/`beta`/`gamma`).\nstring module = 6;\n")
 	findings, _ := s.run(t)
@@ -152,6 +155,7 @@ func TestModuleSetGate_RedOnIncompleteProtoEnumeration(t *testing.T) {
 // названы полностью. Это ровно тот случай, в котором прежняя проба набора молчала
 // незаконно; здесь молчание ЗАКОННО, и гейт обязан его сохранить.
 func TestModuleSetGate_SilentWhenSetGrowsAndEnumerationsFollow(t *testing.T) {
+	t.Parallel()
 	s := newModuleSetStand(t)
 	s.write(t, "svc/authzmap/fga_types.go", grownTypeTable)
 	s.write(t, "docs/role.mdx",
@@ -169,6 +173,7 @@ func TestModuleSetGate_SilentWhenSetGrowsAndEnumerationsFollow(t *testing.T) {
 // TestModuleSetGate_RedWhenSetGrowsAndEnumerationsDoNot — та же смена набора, но
 // перечни за ней НЕ пошли: ровно дефект #1627. Обязаны покраснеть ОБА места.
 func TestModuleSetGate_RedWhenSetGrowsAndEnumerationsDoNot(t *testing.T) {
+	t.Parallel()
 	s := newModuleSetStand(t)
 	s.write(t, "svc/authzmap/fga_types.go", grownTypeTable)
 	findings, _ := s.run(t)
@@ -190,6 +195,7 @@ func TestModuleSetGate_RedWhenSetGrowsAndEnumerationsDoNot(t *testing.T) {
 // «анализатор не отработал», то есть третьей категорией, поданной как красное.
 // Здесь он обязан вынести тот же вердикт, что и до переезда.
 func TestModuleSetGate_SilentWhenTheDeclarationMovesWithinItsPackage(t *testing.T) {
+	t.Parallel()
 	s := newModuleSetStand(t)
 	// В прежнем файле остаётся ПРОЗА, называющая имя и неполный перечень: гейт,
 	// читающий текст, вывел бы набор из неё и разошёлся бы с действительностью.
@@ -229,6 +235,7 @@ var objectTypes = map[string]string{
 // набор при переезде вырос, а перечни за ним не пошли. Без этой пробы «молчит
 // после переезда» доказывало бы лишь то, что гейт после переезда молчит всегда.
 func TestModuleSetGate_RedWhenTheDeclarationMovedAndTheSetGrew(t *testing.T) {
+	t.Parallel()
 	s := newModuleSetStand(t)
 	s.write(t, "svc/authzmap/fga_types.go", "package authzmap\n\nfunc unrelated() {}\n")
 	s.write(t, "svc/authzmap/tables_gen.go", grownTypeTable)
@@ -249,6 +256,7 @@ func TestModuleSetGate_RedWhenTheDeclarationMovedAndTheSetGrew(t *testing.T) {
 // TestModuleSetGate_FailsOnEmptyTraversal — «ноль находок» обязано быть отличимо
 // от «прочитано ноль»: объявления нет вовсе.
 func TestModuleSetGate_FailsOnEmptyTraversal(t *testing.T) {
+	t.Parallel()
 	s := newModuleSetStand(t)
 	if err := os.Remove(filepath.Join(s.root, "svc/authzmap/fga_types.go")); err != nil {
 		t.Fatal(err)
@@ -270,6 +278,7 @@ func TestModuleSetGate_FailsOnEmptyTraversal(t *testing.T) {
 // объявление есть, но названо неверно. Молчаливый ноль здесь означал бы гейт,
 // переживший переименование своего предмета.
 func TestModuleSetGate_FailsWhenVarNameIsWrong(t *testing.T) {
+	t.Parallel()
 	s := newModuleSetStand(t)
 	var log strings.Builder
 	_, _, err := AuditClientTruthIAMModuleSet(ClientTruthIAMModuleSetOptions{

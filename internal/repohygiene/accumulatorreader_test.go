@@ -541,6 +541,7 @@ const narrowTestHarness = "pkg/listnarrow/narrowtest"
 // TestDeclaredAccumulatorsHaveANonTestReader — у КАЖДОГО накопителя, объявленного
 // где угодно в дереве, есть не-тестовый читатель величин.
 func TestDeclaredAccumulatorsHaveANonTestReader(t *testing.T) {
+	t.Parallel()
 	facts, scanned := readAccumulatorTree(t)
 	accs := collectAccumulators(t, facts)
 	readers := collectAccumulatorReaders(facts)

@@ -157,6 +157,7 @@ func useCaseWriterImportFindings(apps []useCaseFileImports, writerPkgs map[strin
 // TestRoleVerbWriterIsReachedFromUseCaseThroughThePort — слой use-case не
 // импортирует пакет единственного писателя проекции роли.
 func TestRoleVerbWriterIsReachedFromUseCaseThroughThePort(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files := treeGoFiles(t, root)
 
@@ -352,6 +353,7 @@ func roleVerbReseedRefsIn(filename, src string, entries map[string]bool) ([]stri
 // вдвое больше транзакций на полусотне системных ролей и перепись, затирающая
 // первую. Оба прогона по отдельности выглядят исправно.
 func TestRoleVerbReseedHasOneReferenceInTheTreeAndItIsTheBootRoot(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files := treeGoFiles(t, root)
 

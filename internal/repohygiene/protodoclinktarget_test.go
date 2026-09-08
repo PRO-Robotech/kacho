@@ -338,6 +338,7 @@ func classifyProtoDocLink(target string, sites map[string]docSite) (class, why s
 // ── гейт на дереве ───────────────────────────────────────────────────────────
 
 func TestProtoDocLinksResolveToPagesTheTreeHas(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 
@@ -513,6 +514,7 @@ func protoDocLinkFixture(t *testing.T, comment string) ([]protoSource, map[strin
 }
 
 func TestProtoDocLinkGate_ProvenByInjection(t *testing.T) {
+	t.Parallel()
 	// Первые две подпробы — пара «дефект вернулся / законный близнец той же формы».
 	// Близнец обязателен: без него гейт нельзя отличить от такого, который
 	// краснеет на любой ссылке вообще.

@@ -78,6 +78,7 @@ const (
 
 // (а) НАСТОЯЩИЙ ДЕФЕКТ: контракт объявляет отсутствие правила.
 func TestCt2FilterInjection_DeniedRuleIsAFinding(t *testing.T) {
+	t.Parallel()
 	root := writeCt2FilterTree(t, ct2FilterFixture{comment: ct2FilterDeniesRule})
 	c, findings := ct2FilterRun(t, root, 256)
 
@@ -98,6 +99,7 @@ func TestCt2FilterInjection_DeniedRuleIsAFinding(t *testing.T) {
 // (б) РАЗОШЕДШЕЕСЯ ЧИСЛО — отдельная находка; слить её с (а) значило бы
 // потерять одну из двух половин.
 func TestCt2FilterInjection_DriftedNumberIsItsOwnFinding(t *testing.T) {
+	t.Parallel()
 	root := writeCt2FilterTree(t, ct2FilterFixture{comment: ct2FilterStatesWrong})
 	c, findings := ct2FilterRun(t, root, 256)
 
@@ -117,6 +119,7 @@ func TestCt2FilterInjection_DriftedNumberIsItsOwnFinding(t *testing.T) {
 
 // (в) ЗАКОННЫЙ БЛИЗНЕЦ обязан молчать.
 func TestCt2FilterInjection_AgreeingContractIsSilent(t *testing.T) {
+	t.Parallel()
 	root := writeCt2FilterTree(t, ct2FilterFixture{comment: ct2FilterStatesRight})
 	c, findings := ct2FilterRun(t, root, 256)
 	if len(findings) != 0 {
@@ -131,6 +134,7 @@ func TestCt2FilterInjection_AgreeingContractIsSilent(t *testing.T) {
 // (г) ЧУЖАЯ ПРОЗА о длинах в том же файле невидима: обход сужен до ленты
 // комментариев над полем. Без сужения гейт краснел бы на соседнем сообщении.
 func TestCt2FilterInjection_UnrelatedProseInTheSameFileIsInvisible(t *testing.T) {
+	t.Parallel()
 	root := writeCt2FilterTree(t, ct2FilterFixture{
 		comment:   ct2FilterSaysNothing,
 		elsewhere: "// Description is refused when longer than 4096 characters.",
@@ -149,6 +153,7 @@ func TestCt2FilterInjection_UnrelatedProseInTheSameFileIsInvisible(t *testing.T)
 
 // (д) ПУСТОЙ ОБХОД отличим от «нарушений нет».
 func TestCt2FilterInjection_EmptyWalkIsDistinguishable(t *testing.T) {
+	t.Parallel()
 	c, findings := ct2FilterRun(t, t.TempDir(), 256)
 	if c.Files != 0 || c.Fields != 0 || len(c.Claims) != 0 {
 		t.Fatalf("на пустом дереве обход обязан быть пуст: файлов %d, полей %d, объявлений %d",

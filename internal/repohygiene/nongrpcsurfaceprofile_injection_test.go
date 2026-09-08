@@ -170,6 +170,7 @@ func synthSurfaceTree(t *testing.T, svc string, files map[string]string) string 
 // TestSurfaceGateRedOnOwnListener — направление (а), первый вид дефекта: корень
 // собирает сервер сам → гейт находит это И НАЗЫВАЕТ КООРДИНАТУ.
 func TestSurfaceGateRedOnOwnListener(t *testing.T) {
+	t.Parallel()
 	root := synthSurfaceTree(t, "demo", map[string]string{"observability.go": synthRootOwnListener})
 	res := auditSurfaceProfile(t, root)
 	t.Log(res.summary)
@@ -194,6 +195,7 @@ func TestSurfaceGateRedOnOwnListener(t *testing.T) {
 // были (плоскость данных поднималась в горутине, транспорт надевался вручную в
 // четырёх местах).
 func TestSurfaceGateRedOnAsyncListenAndOnHandRolledTLS(t *testing.T) {
+	t.Parallel()
 	t.Run("привязка порта в горутине", func(t *testing.T) {
 		res := auditSurfaceProfile(t, synthSurfaceTree(t, "demo",
 			map[string]string{"dataplane.go": synthRootAsyncListen}))
@@ -217,6 +219,7 @@ func TestSurfaceGateRedOnAsyncListenAndOnHandRolledTLS(t *testing.T) {
 // TestSurfaceGateSilentOnConvertedRoot — направление (б): переведённый корень
 // той же формы гейта не задевает.
 func TestSurfaceGateSilentOnConvertedRoot(t *testing.T) {
+	t.Parallel()
 	res := auditSurfaceProfile(t, synthSurfaceTree(t, "demo",
 		map[string]string{"observability.go": synthRootOnProfile}))
 	t.Log(res.summary)
@@ -237,6 +240,7 @@ func TestSurfaceGateSilentOnConvertedRoot(t *testing.T) {
 // Эта проба и есть доказательство, что распознавание идёт по исполняемой части:
 // без неё «гейт читает AST, а не текст» осталось бы утверждением о намерении.
 func TestSurfaceGateIgnoresProseDecoyEvenNextToADefect(t *testing.T) {
+	t.Parallel()
 	quiet := auditSurfaceProfile(t, synthSurfaceTree(t, "demo",
 		map[string]string{"doc.go": synthSurfaceDecoy}))
 	if len(quiet.findings) != 0 {
@@ -269,6 +273,7 @@ func TestSurfaceGateIgnoresProseDecoyEvenNextToADefect(t *testing.T) {
 // Проба заведена потому, что предпосылка гейта («локальное имя берётся из
 // объявления импорта») иначе осталась бы утверждением о намерении.
 func TestSurfaceGateAliasedImportIsNotABlindSpot(t *testing.T) {
+	t.Parallel()
 	const aliased = `package main
 
 import (
@@ -295,6 +300,7 @@ func raise(addr string) *stdhttp.Server {
 // проба это фиксирует, а не пропускает молча: пустой перечень есть утверждение
 // о дереве, и если завтра запись появится, она обязана падать, потеряв предмет.
 func TestSurfaceExceptionsExpireWhenTheirSubjectIsGone(t *testing.T) {
+	t.Parallel()
 	if len(surfaceProfileExceptions) == 0 {
 		res := auditSurfaceProfile(t, repoRoot(t))
 		if len(res.findings) != 0 {

@@ -113,6 +113,7 @@ func oarWith(extra string) map[string]string {
 }
 
 func TestOverAppliedRenameScanIsProvenByInjection(t *testing.T) {
+	t.Parallel()
 	control, controlFindings, err := scanOverAppliedRename(oarRootWith(t, oarWith("")))
 	if err != nil {
 		t.Fatalf("контроль: обход: %v", err)
@@ -273,6 +274,7 @@ func TestOverAppliedRenameScanIsProvenByInjection(t *testing.T) {
 // TestOverAppliedRenameRefusesAnEmptyWalk — обход без единого файла есть ОТКАЗ,
 // а не тихий успех: иначе «находок ноль» неотличимо от «прочитано ноль».
 func TestOverAppliedRenameRefusesAnEmptyWalk(t *testing.T) {
+	t.Parallel()
 	tree := oarRootWith(t, map[string]string{})
 	_, _, err := scanOverAppliedRename(tree)
 	if err == nil {
@@ -287,6 +289,7 @@ func TestOverAppliedRenameRefusesAnEmptyWalk(t *testing.T) {
 // гейта: если имя продукта ушло из координат вовсе, перепись обязана дать ноль,
 // и гейт дерева просит себя перечитать (Fatal), а не зеленеет.
 func TestOverAppliedRenameSelfExpiresWhenTheNameLeavesCoordinates(t *testing.T) {
+	t.Parallel()
 	tree := oarRootWith(t, map[string]string{
 		"services/demo/internal/repo/kacho/pg/repo.go": "package pg\n",
 		"Makefile": "# demo/internal/repo/kacho/pg 312 с\n",
@@ -313,6 +316,7 @@ func TestOverAppliedRenameSelfExpiresWhenTheNameLeavesCoordinates(t *testing.T) 
 // настоящем дереве объявления есть всегда, поэтому подмена авторитета
 // константой прошла бы зелёной.
 func TestOverAppliedRenameModuleAuthorityComesFromTheTree(t *testing.T) {
+	t.Parallel()
 	with := oarWith("github.com/PRO-Robotech/kacho/services/demo/internal/repo/kaname/pg")
 
 	withDecl, withFindings, err := scanOverAppliedRename(oarRootWith(t, with))

@@ -226,6 +226,7 @@ func readValues(t *testing.T, root, chartDir string) map[string]any {
 // объявлен сбор, порт объявления совпадает с портом его конфигурации, а
 // объявление лежит в рендерящемся чарте.
 func TestEveryRenderedChartDeclaresItsScrape(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	rendered := renderedCharts(t, root)
 	processes := processesWithASurface(t, root)
@@ -371,6 +372,7 @@ func scrapeDeclarationsOutside(t *testing.T, root string, rendered map[string]bo
 // сборщик — отдельный предмет, и подменять его этой проверкой значило бы
 // объявить наблюдаемость достигнутой ровно там, где её нет.
 func TestScrapeIsDeclaredByExactlyOneMechanism(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Второй механизм ищется по имени вида объекта в объявлениях чартов —

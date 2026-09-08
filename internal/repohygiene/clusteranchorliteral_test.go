@@ -49,6 +49,7 @@ func clusterAnchorSources(t *testing.T) map[string]string {
 // Разбор класса и граница предиката — в шапке clusteranchorliteral.go. Здесь
 // только обход дерева и вердикт.
 func TestClusterAnchorIsNamedOnlyByItsDeclaration(t *testing.T) {
+	t.Parallel()
 	decls, findings, census, err := FindClusterAnchorLiterals(clusterAnchorSources(t))
 	if err != nil {
 		t.Fatalf("разбор: %v", err)
@@ -87,6 +88,7 @@ func TestClusterAnchorIsNamedOnlyByItsDeclaration(t *testing.T) {
 // спрашивают про разные объекты — и вопрос о доступе не совпадает ни с одним
 // ответом.
 func TestClusterAnchorDeclarationsAgree(t *testing.T) {
+	t.Parallel()
 	decls, _, census, err := FindClusterAnchorLiterals(clusterAnchorSources(t))
 	if err != nil {
 		t.Fatalf("разбор: %v", err)

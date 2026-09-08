@@ -160,6 +160,7 @@ func auditUIRemoteBuildBase(dfs []string) (findings []uiPathFinding, checked, do
 }
 
 func TestUIRemoteAssetPathsDoNotShadowConsoleRoutes(t *testing.T) {
+	t.Parallel()
 	findings, declared, err := auditUIRemoteAssetPaths(repoRoot(t))
 	if err != nil {
 		t.Fatalf("%v — предпосылка гейта исчезла, а не дерево стало чистым", err)
@@ -200,6 +201,7 @@ func TestUIRemoteAssetPathsDoNotShadowConsoleRoutes(t *testing.T) {
 // журнале браузера (`__federation_expose_*.js` → 404). Поймано проходом
 // headless-браузером, не проверкой HTTP.
 func TestUIRemoteBuildBaseMatchesItsServedPath(t *testing.T) {
+	t.Parallel()
 	findings, checked, dockerfiles, err := auditUIRemoteBuildBase(uiDockerfilesInTree(t, repoRoot(t)))
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -249,6 +251,7 @@ func synthUITree(t *testing.T, files map[string]string) string {
 
 // Сторона дефекта: путь модуля лежит в пространстве маршрутов консоли.
 func TestUIRemotePathGateRedOnAShadowingPath(t *testing.T) {
+	t.Parallel()
 	root := synthUITree(t, map[string]string{
 		uiHostDockerfile: "FROM nginx\n" +
 			"ARG KACHO_VPC_REMOTE=/vpc-remote/assets/remoteEntry.js\n" +
@@ -272,6 +275,7 @@ func TestUIRemotePathGateRedOnAShadowingPath(t *testing.T) {
 // Без этой половины гейт был бы неотличим от проверки «объявление существует» и
 // краснел бы на КАЖДОМ модуле консоли — то есть был бы снят первым.
 func TestUIRemotePathGateSilentOnTheLawfulTwin(t *testing.T) {
+	t.Parallel()
 	root := synthUITree(t, map[string]string{
 		uiHostDockerfile: "FROM nginx\n" +
 			"ARG KACHO_VPC_REMOTE=/vpc-remote/assets/remoteEntry.js\n" +
@@ -291,6 +295,7 @@ func TestUIRemotePathGateSilentOnTheLawfulTwin(t *testing.T) {
 
 // Сторона дефекта второго гейта: модуль собран с базой, по которой его не отдают.
 func TestUIRemoteBuildBaseGateRedOnAMismatch(t *testing.T) {
+	t.Parallel()
 	root := synthUITree(t, map[string]string{
 		"ui-future/host/Dockerfile":      "FROM nginx\n",
 		"ui-future/dashboard/Dockerfile": "FROM node\nARG KACHO_PUBLIC_BASE=/dashboard/\n",
@@ -311,6 +316,7 @@ func TestUIRemoteBuildBaseGateRedOnAMismatch(t *testing.T) {
 // Законный близнец: база совпадает с путём отдачи, а оболочка базы не несёт —
 // и это не находка, а её роль.
 func TestUIRemoteBuildBaseGateSilentOnTheLawfulTwin(t *testing.T) {
+	t.Parallel()
 	root := synthUITree(t, map[string]string{
 		"ui-future/host/Dockerfile":      "FROM nginx\n",
 		"ui-future/dashboard/Dockerfile": "FROM node\nARG KACHO_PUBLIC_BASE=/dashboard-remote/\n",

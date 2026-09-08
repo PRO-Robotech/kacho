@@ -61,6 +61,7 @@ const nmDeleteDefaultAssertMark = "УТВЕРЖДЕНИЕ ПО УМОЛЧАНИ�
 var nmRetryWindowRe = regexp.MustCompile(`if \(\[([\d,\s]+)\]\.includes\(pm\.response\.code\) && _arc`)
 
 func TestNewmanDeleteStepAssertingOkAlsoWaitsOutHideExistence(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Состав — из ИНДЕКСА git, а не обходом диска: под корнем лежат рабочие копии

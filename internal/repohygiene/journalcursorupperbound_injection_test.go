@@ -110,6 +110,7 @@ func journalCursorKinds(findings []JournalCursorFinding, kind string) []JournalC
 // TestJournalCursorGateStaysSilentOnLegitimateTwins — КОНТРОЛЬ. Без него
 // отрицание ниже зеленело бы на анализаторе, который не смотрит никуда.
 func TestJournalCursorGateStaysSilentOnLegitimateTwins(t *testing.T) {
+	t.Parallel()
 	s := newJournalCursorStand(t)
 	findings, census := s.audit(t)
 
@@ -138,6 +139,7 @@ func TestJournalCursorGateStaysSilentOnLegitimateTwins(t *testing.T) {
 // не трогаются, счётчик остаётся счётчиком, клейма не появляется. Инъекция вида
 // «завести ещё один файл» нарушала бы всё, что требуется от файлов вообще.
 func TestJournalCursorGateCatchesABareNumberCursor(t *testing.T) {
+	t.Parallel()
 	s := newJournalCursorStand(t)
 	s.write(t, "services/probe/internal/repo/feed.go", "package repo\n\n"+
 		"const pollSQL = `SELECT sequence_no FROM journal"+
@@ -163,6 +165,7 @@ func TestJournalCursorGateCatchesABareNumberCursor(t *testing.T) {
 // TestJournalCursorGateAcceptsAnAllowanceAndExpiresIt — послабление закрывает
 // СВОЙ предмет и становится находкой, когда предмета не стало.
 func TestJournalCursorGateAcceptsAnAllowanceAndExpiresIt(t *testing.T) {
+	t.Parallel()
 	s := newJournalCursorStand(t)
 	s.write(t, "services/probe/internal/repo/feed.go", "package repo\n\n"+
 		"const pollSQL = `SELECT sequence_no FROM journal"+
@@ -207,6 +210,7 @@ func TestJournalCursorGateAcceptsAnAllowanceAndExpiresIt(t *testing.T) {
 // ОТКАЗ, а не молчание: колонка, которой нет ни в одной схеме, не может быть
 // объявлена безопасной по умолчанию.
 func TestJournalCursorGateRefusesAnUnresolvedColumn(t *testing.T) {
+	t.Parallel()
 	s := newJournalCursorStand(t)
 	s.write(t, "services/probe/internal/repo/ghost.go", "package repo\n\n"+
 		"const ghostSQL = `SELECT tick FROM nowhere"+
@@ -225,6 +229,7 @@ func TestJournalCursorGateRefusesAnUnresolvedColumn(t *testing.T) {
 // TestJournalCursorGateFailsOnAnEmptyWalk — «ноль находок» обязано быть отличимо
 // от «ноль прочитанного».
 func TestJournalCursorGateFailsOnAnEmptyWalk(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	_, _, err := AuditJournalCursorUpperBound(JournalCursorOptions{
 		Root:     t.TempDir(),
@@ -247,6 +252,7 @@ func TestJournalCursorGateFailsOnAnEmptyWalk(t *testing.T) {
 // Поэтому каждый случай утверждает ДВЕ величины сразу: сдвинулась ли перепись и
 // появилась ли находка. Одной первой мало — она молчит ровно там, где гейт слеп.
 func TestJournalCursorGateKnowsEveryLegalFormOfTheSameRead(t *testing.T) {
+	t.Parallel()
 	const (
 		head = "package repo\n\nconst q = `SELECT sequence_no FROM journal WHERE "
 		tail = " LIMIT 200`\n"
@@ -305,6 +311,7 @@ func TestJournalCursorGateKnowsEveryLegalFormOfTheSameRead(t *testing.T) {
 // покраснеет и заставит поправить шапку. Молчаливая слепота тем и опасна, что
 // неотличима от отсутствия предмета.
 func TestJournalCursorGateDeclaresItsBlindSpots(t *testing.T) {
+	t.Parallel()
 	blind := []struct{ name, body string }{
 		{
 			"склейка запроса из нескольких литералов",
@@ -396,6 +403,7 @@ func jcOrderedStand(t *testing.T, writer string) ([]JournalCursorFinding, Journa
 // молчит распознаватель, переставший читать триггеры вовсе, — и тогда молчание
 // означало бы не закрытость, а слепоту.
 func TestJournalCursorGateReadsClosednessOnTheWriterSide(t *testing.T) {
+	t.Parallel()
 	findings, census := jcOrderedStand(t,
 		jcOrderedWriter(jcXactLockCall, "", jcStampCall, "BEFORE", "INSERT OR UPDATE", ""))
 
@@ -423,6 +431,7 @@ func TestJournalCursorGateReadsClosednessOnTheWriterSide(t *testing.T) {
 // снят; текст `pg_advisory_xact_lock` при этом в большинстве случаев остаётся на
 // месте. Гейт, судящий по слову, прошёл бы их все.
 func TestJournalCursorGateJudgesTheShapeNotTheWord(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name   string
 		writer string
@@ -489,6 +498,7 @@ func TestJournalCursorGateJudgesTheShapeNotTheWord(t *testing.T) {
 // нашла НОЛЬ закрытых колонок при живом триггере в дереве: миграция, заведшая
 // триггер, в своей нисходящей части его же и снимает.
 func TestJournalCursorGateHonoursTheOrderOfMigrations(t *testing.T) {
+	t.Parallel()
 	legit := jcOrderedWriter(jcXactLockCall, "", jcStampCall, "BEFORE", "INSERT OR UPDATE", "")
 
 	t.Run("нисходящая часть закрытость НЕ снимает", func(t *testing.T) {
@@ -544,6 +554,7 @@ func TestJournalCursorGateHonoursTheOrderOfMigrations(t *testing.T) {
 // у неё есть и будет всегда), и следующий читатель ведомости не отличит «ещё не
 // починили» от «чинить нечего».
 func TestJournalCursorAllowanceExpiresOnClosednessBecomingVisible(t *testing.T) {
+	t.Parallel()
 	s := newJournalCursorStand(t)
 	s.write(t, "services/probe/internal/migrations/0092_limits.sql",
 		jcOrderedWriter(jcXactLockCall, "", jcStampCall, "BEFORE", "INSERT OR UPDATE", ""))

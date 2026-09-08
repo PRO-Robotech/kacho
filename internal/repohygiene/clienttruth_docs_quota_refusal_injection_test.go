@@ -163,6 +163,7 @@ func docsQuotaInjectionFindings(t *testing.T, f docsQuotaFixture) (docsQuotaCens
 }
 
 func TestDocsQuotaRefusalGateInjection(t *testing.T) {
+	t.Parallel()
 	t.Run("КОНТРОЛЬ: обе формы подачи целы — гейт молчит", func(t *testing.T) {
 		c, f := docsQuotaInjectionFindings(t, docsQuotaControlFixture())
 		if c.FormLiteral != 1 || c.FormComponent != 1 {

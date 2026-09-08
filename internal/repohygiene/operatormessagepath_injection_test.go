@@ -39,6 +39,7 @@ func operatorMessageTree(t *testing.T, message string) string {
 
 // (а) ВЕРНУТЬ ДЕФЕКТ: координата с корнем дерева, которой нет → находка с именем.
 func TestOperatorMessagePathInjection_MissingPathIsFound(t *testing.T) {
+	t.Parallel()
 	root := operatorMessageTree(t, "  объявите слом там, где он объявляется (proto/breaking-declared.txt);\n")
 	c := CollectOperatorMessagePaths(root)
 
@@ -59,6 +60,7 @@ func TestOperatorMessagePathInjection_MissingPathIsFound(t *testing.T) {
 
 // (б) ЗАКОННЫЙ БЛИЗНЕЦ — три формы, на каждой гейт обязан МОЛЧАТЬ.
 func TestOperatorMessagePathInjection_LegitimateFormsAreSilent(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		message string
@@ -102,6 +104,7 @@ func TestOperatorMessagePathInjection_LegitimateFormsAreSilent(t *testing.T) {
 
 // (в) ПРЕДПОСЫЛКА: перечень, указывающий в пустоту, обязан быть ВИДЕН.
 func TestOperatorMessagePathInjection_MovedSubjectIsReported(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir() // ни одного файла перечня
 	c := CollectOperatorMessagePaths(root)
 	if len(c.FilesAbsent) != len(OperatorFacingScripts) {

@@ -203,6 +203,7 @@ func stringSliceLiteral(e ast.Expr) ([]string, bool) {
 // TestMultiFieldFilterOwnerAppliesTheParsedField — владелец, объявивший больше
 // одного фильтруемого поля, обязан применять РАЗОБРАННОЕ поле.
 func TestMultiFieldFilterOwnerAppliesTheParsedField(t *testing.T) {
+	t.Parallel()
 	sites, filesRead := collectFilterParseSites(t, []string{"services", "gateway", "pkg"})
 
 	multi := 0

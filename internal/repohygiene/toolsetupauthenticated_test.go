@@ -65,6 +65,7 @@ type stepUsingAction struct {
 
 // TestToolSetupActionsAuthenticate — обход дерева.
 func TestToolSetupActionsAuthenticate(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	steps, scanned := stepsUsingTokenNeedingAction(t, root)
 
@@ -207,6 +208,7 @@ func indentOf(s string) int {
 // не умей он краснеть. Каждый случай, который разбор ОБЯЗАН поймать, и каждый,
 // который обязан пропустить, — настоящим содержимым рабочего процесса.
 func TestToolSetupJudgeFiresAndStaysSilent(t *testing.T) {
+	t.Parallel()
 	const withToken = `jobs:
   proto:
     steps:

@@ -178,6 +178,7 @@ func slShorten(s string) string {
 }
 
 func TestStandLogCollectionDerivesItsListFromTheStand(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	steps, workflows, err := slReadWorkflowSteps(filepath.Join(root, ".github", "workflows"))
 	if err != nil {
@@ -216,6 +217,7 @@ func TestStandLogCollectionDerivesItsListFromTheStand(t *testing.T) {
 // которого никто не зовёт, — та же форма без содержания, поэтому проверяется
 // обе стороны: скрипт существует И его зовут из конвейера.
 func TestStandLogCollectorExistsAndIsWiredIn(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	script := filepath.Join(root, ".github", "scripts", standLogsCollector)
 	if _, err := os.Stat(script); err != nil {

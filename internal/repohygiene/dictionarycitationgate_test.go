@@ -83,6 +83,7 @@ import (
 //     сказать это прямо и не называть ограничение: имя ограничения превращает
 //     фразу в утверждение о полном наборе.
 func TestCommentCitingDictionaryConstraintQuotesItWhole(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	dicts := enumDictionaryInventory(t, root, trackedMigrationSQL)
 

@@ -220,6 +220,7 @@ func readinessProbesPath(t *testing.T, tplPath string) []string {
 // сервиса, который его обслуживает; на шаблоне без блока готовности вовсе; и на
 // пустом обходе любой из двух полос.
 func TestReadinessProbeAsksWhatTheServiceActuallyServes(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	charts := deploymentTemplates(t, root)
 

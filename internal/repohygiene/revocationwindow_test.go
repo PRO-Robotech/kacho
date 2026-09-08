@@ -59,6 +59,7 @@ var revocationScanRoots = []string{
 // TestRevocationWindowIsDeclaredPolicy — окно отзыва объявлено в одном месте, и
 // дерево ему соответствует.
 func TestRevocationWindowIsDeclaredPolicy(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	rep := &revocationwindowgate.Report{}
 
@@ -156,6 +157,7 @@ func TestRevocationWindowIsDeclaredPolicy(t *testing.T) {
 // значение было безымянным литералом внутри NewCacheWithLimit, «окно отзыва
 // этих трёх» не было записано нигде: ни в их конфиге, ни в политике.
 func TestCorelibDefaultIsTheDeclaredWindow(t *testing.T) {
+	t.Parallel()
 	c := authz.NewCache(0)
 	if got := c.TTL(); got != authz.RevocationPolicy.Default {
 		t.Errorf("ttl≤0 даёт %s, политика объявляет умолчанием %s.\n"+
@@ -231,6 +233,7 @@ const gatewayProcess = "api-gateway"
 //     Величину спрашивает без словаря TestEveryAuthzWindowKnobIsDeclared, у
 //     которого единица — ОКНО.
 func TestEveryVerdictCacheServiceIsDeclared(t *testing.T) {
+	t.Parallel()
 	held, filesRead, err := verdictCacheHoldersUnder(repoRoot(t))
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -278,6 +281,7 @@ func TestEveryVerdictCacheServiceIsDeclared(t *testing.T) {
 // не по перечню каталогов конфигурации: перечень каталогов был бы третьим
 // местом того же класса, где ручка, объявленная не там, невидима.
 func TestEveryAuthzWindowKnobIsDeclared(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files, err := treecorpus.UnderWithSuffix(root, ".go")
 	if err != nil {
@@ -350,6 +354,7 @@ func TestEveryAuthzWindowKnobIsDeclared(t *testing.T) {
 // повтор DPoP, кеш чужих фактов, сетевые сроки, размер кеша) обязана НЕ
 // находиться.
 func TestKnobShapePredicateHasControlsBothWays(t *testing.T) {
+	t.Parallel()
 	declared := revocationwindowgate.KnobNames()
 	if len(declared) == 0 {
 		t.Fatal("предпосылка пробы нарушена: политика не объявляет ни одной ручки")
@@ -414,6 +419,7 @@ var implicitScanRoots = []string{"services", "pkg", "gateway"}
 // раньше и точнее: он называет файл и строку тогда, когда процесс ещё никто не
 // поднимал.
 func TestNoServiceTakesTheWindowImplicitly(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	filesRead := 0
@@ -511,6 +517,7 @@ func TestNoServiceTakesTheWindowImplicitly(t *testing.T) {
 // в которой это доказать нечем, — находка, потому что «не смог посмотреть» не
 // есть «чисто».
 func TestNoCallSiteTakesTheWindowUnprovably(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	filesRead := 0
@@ -632,6 +639,7 @@ func TestNoCallSiteTakesTheWindowUnprovably(t *testing.T) {
 // находок вынесены в revocationwindowgate.JudgeOwnKnobs, которому вход можно
 // подать; инъекция в обе стороны — в revocationwindowownknob_injection_test.go.
 func TestEveryVerdictCacheProcessDeclaresItsOwnKnob(t *testing.T) {
+	t.Parallel()
 	held, filesRead, err := verdictCacheHoldersUnder(repoRoot(t))
 	if err != nil {
 		t.Fatalf("%v", err)

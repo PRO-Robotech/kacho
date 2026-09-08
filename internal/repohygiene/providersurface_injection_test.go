@@ -37,6 +37,7 @@ func injectRun(t *testing.T, src map[string]string, ledger []ProviderLedgerEntry
 // TestProviderSurfaceInjection_UnledgeredReachIsFound — А: новое место разговора
 // краснеет и называет координату.
 func TestProviderSurfaceInjection_UnledgeredReachIsFound(t *testing.T) {
+	t.Parallel()
 	src := map[string]string{
 		"services/x/internal/clients/new_reacher.go": `package clients
 func reach(base string) string { return base + "/admin/clients" }
@@ -60,6 +61,7 @@ func reach(base string) string { return base + "/admin/clients" }
 // Разбор переезда обязан называть пути прямо (иначе он непонятен), и гейт,
 // краснеющий на собственном объяснении, был бы снят первым же обходом.
 func TestProviderSurfaceInjection_ProseTwinIsSilent(t *testing.T) {
+	t.Parallel()
 	src := map[string]string{
 		"services/x/internal/doc.go": `package x
 
@@ -86,6 +88,7 @@ const kept = "ничего общего"
 // Гейт, включивший его в словарь, краснел бы на нашем обработчике — то есть на
 // коде, ради которого переезд и делается.
 func TestProviderSurfaceInjection_OurOwnKeySetPathIsSilent(t *testing.T) {
+	t.Parallel()
 	src := map[string]string{
 		"services/iam/internal/handler/jwksproxyhttp/handler.go": `package jwksproxyhttp
 const WellKnownJWKSPath = "/.well-known/jwks.json"
@@ -104,6 +107,7 @@ const OurOwn = "/.well-known/kaname/jwks.json"
 // Это и есть способ, каким поверхность растёт незамеченной: файл в ведомости
 // уже стоит, обзор диффа видит одну строку.
 func TestProviderSurfaceInjection_UndeclaredSurfaceAtALedgeredFile(t *testing.T) {
+	t.Parallel()
 	const file = "services/iam/internal/clients/hydra_oauth_clients.go"
 	src := map[string]string{file: `package clients
 func a(b string) string { return b + "/admin/clients" }
@@ -132,6 +136,7 @@ func c(b string) string { return b + "/admin/oauth2/introspect" }
 // Без этого ведомость не сокращалась бы: код сняли, запись осталась и молча
 // разрешает следующий разговор в том же файле.
 func TestProviderSurfaceInjection_StaleEntryIsFound(t *testing.T) {
+	t.Parallel()
 	src := map[string]string{
 		"services/iam/internal/clients/hydra_login_sessions.go": `package clients
 const nothing = "уже ничего не просит"
@@ -156,6 +161,7 @@ const nothing = "уже ничего не просит"
 //
 // Проверка только по файлу зеленела бы здесь и продолжала разрешать снятое.
 func TestProviderSurfaceInjection_PartlyStaleEntryIsFound(t *testing.T) {
+	t.Parallel()
 	const file = "gateway/cmd/api-gateway/revocation_validation.go"
 	src := map[string]string{file: `package main
 const p = "/admin/oauth2/introspect"
@@ -180,6 +186,7 @@ const p = "/admin/oauth2/introspect"
 // Ноль мест разговора при пустой ведомости — исход, к которому ведёт задача
 // #900. Проба, падающая на нём, подталкивала бы держать запись ради зелёного.
 func TestProviderSurfaceInjection_EmptyTreeAndEmptyLedgerPass(t *testing.T) {
+	t.Parallel()
 	src := map[string]string{
 		"services/x/internal/ok.go": `package x
 const s = "/iam/v1/token"
@@ -201,6 +208,7 @@ const s = "/iam/v1/token"
 // с обратными кавычками — а это ровно тот способ, каким запись обходят, не
 // заметив, что обходят.
 func TestProviderSurfaceInjection_LiteralFormDoesNotDecideTheVerdict(t *testing.T) {
+	t.Parallel()
 	src := map[string]string{
 		"services/x/internal/raw.go": "package x\nconst s = `" + "/admin/trust/grants/jwt-bearer/issuers" + "`\n",
 	}
@@ -215,6 +223,7 @@ func TestProviderSurfaceInjection_LiteralFormDoesNotDecideTheVerdict(t *testing.
 //
 // Печатается затем, чтобы «ноль находок» не читалось как «слова в дереве нет».
 func TestProviderSurfaceInjection_ProseCounterCountsTheProvidersName(t *testing.T) {
+	t.Parallel()
 	src := map[string]string{
 		"services/x/internal/p.go": "package x\n\n// Зеркало клиента у Hydra снимается вместе со строкой.\nconst s = \"\"\n",
 		"services/x/internal/q.go": "package x\n\n// Ни о чём.\nconst t = \"\"\n",
@@ -231,6 +240,7 @@ func TestProviderSurfaceInjection_ProseCounterCountsTheProvidersName(t *testing.
 // Молчаливый пропуск превратил бы «не прочитали» в «нарушений нет» — тот самый
 // класс, который гейт ловит.
 func TestProviderSurfaceInjection_UnparseableSourceIsAnError(t *testing.T) {
+	t.Parallel()
 	src := map[string]string{"services/x/internal/broken.go": "не Go вовсе {{{"}
 	if _, _, err := FindProviderSurface(src, nil, nil); err == nil {
 		t.Fatal("нечитаемый исходник пропущен молча")
@@ -243,6 +253,7 @@ func TestProviderSurfaceInjection_UnparseableSourceIsAnError(t *testing.T) {
 // Молча пропущенный файл превратил бы «не смотрели» в «нарушений нет» — то
 // самое различие, ради которого перепись и печатается.
 func TestProviderSurfaceInjection_ExemptFileIsSkippedAndCounted(t *testing.T) {
+	t.Parallel()
 	src := map[string]string{
 		"internal/repohygiene/providersurface.go": `package repohygiene
 const dict = "/admin/clients"

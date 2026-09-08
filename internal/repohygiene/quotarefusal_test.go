@@ -53,6 +53,7 @@ import (
 // TestQuotaRefusalIsRenderedFromOneSource — файл каждого владельца совпадает с
 // рендером шаблона побайтово.
 func TestQuotaRefusalIsRenderedFromOneSource(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	owners := quota.RefusalOwners()
@@ -179,6 +180,7 @@ func lastRefusalBodiesInChain(dir string) (map[string]string, int, error) {
 // Без него «расхождений нет» неотличимо от «сравнение всегда согласно»: гейт,
 // сличающий строку саму с собой, зеленел бы при любом состоянии дерева.
 func TestQuotaRefusalGate_NamesTheLineItDisagreesOn(t *testing.T) {
+	t.Parallel()
 	// Инъекция: подан текст, отличающийся ровно одной строкой.
 	base := "первая\nвторая\nтретья\n"
 	drifted := "первая\nВТОРАЯ\nтретья\n"

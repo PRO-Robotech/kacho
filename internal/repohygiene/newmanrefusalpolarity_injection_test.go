@@ -81,6 +81,7 @@ func carveWithAssertions(t *testing.T, name string, execLines ...string) subnetS
 // Без красной различитель ничего не требует; без зелёной он объявил бы фикстурой
 // каждую пробу отказа и был бы снят первым же ложным срабатыванием.
 func TestRefusalDiscriminatorTellsNegationFromAssertion(t *testing.T) {
+	t.Parallel()
 	neg := carveWithAssertions(t, "polarity-negation.json",
 		"pm.test('[ALLOW] not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));")
 	if neg.refusalProbes != 0 {
@@ -126,6 +127,7 @@ func TestRefusalDiscriminatorTellsNegationFromAssertion(t *testing.T) {
 // и опираться на такой шаг соседи продолжают. Зелёная сторона держит различитель от
 // вырождения в «любое упоминание кода в комментарии снимает шаг с наблюдения».
 func TestRefusalDiscriminatorReadsCodeNotComments(t *testing.T) {
+	t.Parallel()
 	commented := carveWithAssertions(t, "comment-only-refusal.json",
 		"// pm.test('DENY', () => pm.expect(pm.response.code).to.equal(403));",
 		"/* pm.expect(pm.response.code).to.eql(404) */",
@@ -162,6 +164,7 @@ func TestRefusalDiscriminatorReadsCodeNotComments(t *testing.T) {
 // допускающий 200, то есть как фикстуру, и требовала от него правильной нарезки —
 // хотя нарезки там не происходит вовсе.
 func TestRefusalDiscriminatorReadsCodeNotMessageStrings(t *testing.T) {
+	t.Parallel()
 	inMessage := carveWithAssertions(t, "code-in-message.json",
 		"pm.test('DENY', () => pm.expect(pm.response.code, 'unexpected 200: ' + pm.response.text()).to.eql(404));")
 	if inMessage.refusalProbes != 1 {
@@ -192,6 +195,7 @@ func TestRefusalDiscriminatorReadsCodeNotMessageStrings(t *testing.T) {
 // это утверждение отменить (красная сторона прежней редакции — она отменяла), а
 // петля рядом с утверждением успеха не смеет превратить шаг в пробу отказа.
 func TestRefusalDiscriminatorIgnoresPollingControlFlow(t *testing.T) {
+	t.Parallel()
 	polled := carveWithAssertions(t, "polling-then-refusal.json",
 		"let c = 0; if (pm.response.code === 200 && c < 50) { c++; postman.setNextRequest(pm.info.requestName); }",
 		"pm.test('gone', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.be.oneOf([404, 403]));")
@@ -226,6 +230,7 @@ func TestRefusalDiscriminatorIgnoresPollingControlFlow(t *testing.T) {
 // Обе стороны на одной форме: отказ через перенос — проба; успех через перенос —
 // фикстура.
 func TestRefusalDiscriminatorReadsChainsBrokenAcrossLines(t *testing.T) {
+	t.Parallel()
 	wrapped := carveWithAssertions(t, "wrapped-refusal.json",
 		"pm.test('DENY', () => {",
 		"  pm.expect(pm.response.code,",

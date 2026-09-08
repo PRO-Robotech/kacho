@@ -80,6 +80,7 @@ var labelMirrorServices = []string{"vpc", "nlb", "compute", "storage"}
 // TestLabelMirrorIsDeliveredNotOnlyQueued — смена меток доставляется синхронно
 // везде, где она вообще различается.
 func TestLabelMirrorIsDeliveredNotOnlyQueued(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	sites, filesRead := scanLabelMirrorSites(t, root)
 

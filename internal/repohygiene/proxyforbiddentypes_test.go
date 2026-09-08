@@ -21,6 +21,7 @@ import (
 // оригинала, расходится молча — ровно тот довод, по которому правило и переехало
 // в общий фундамент.
 func TestForbiddenProxyObjectTypesAgreeWithTheModel(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	entries := proxytuple.ForbiddenObjectTypes()

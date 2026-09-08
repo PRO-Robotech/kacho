@@ -55,6 +55,7 @@ func derivedIDFindings(sites []DerivedIDImportSite) []string {
 
 // TestDeterministicIDDerivationIsDeclaredOnce — сам гейт.
 func TestDeterministicIDDerivationIsDeclaredOnce(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

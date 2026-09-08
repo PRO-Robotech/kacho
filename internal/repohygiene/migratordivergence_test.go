@@ -89,6 +89,7 @@ func collectMigratorServiceFacts(t *testing.T, root string) []migratorServiceFac
 // TestEveryDeclaredMigratorDivergenceStillHasASubject — ведомость различий
 // истекает сама.
 func TestEveryDeclaredMigratorDivergenceStillHasASubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	facts := collectMigratorServiceFacts(t, root)
 

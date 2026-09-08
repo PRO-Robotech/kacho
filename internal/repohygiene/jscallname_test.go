@@ -46,6 +46,7 @@ export function outerOk() { return scan(); }
 `
 
 func TestWalkingHelperClosureJudgesWholeNamesNotTails(t *testing.T) {
+	t.Parallel()
 	tail, _, _ := walkingHelperExports(map[string]string{"h.ts": helperWithTailNeighbour})
 
 	// Положительный контроль: без него отрицание ниже зеленело бы на пустом
@@ -68,6 +69,7 @@ func TestWalkingHelperClosureJudgesWholeNamesNotTails(t *testing.T) {
 }
 
 func TestProbeForgivenessRequiresAWholeNameCall(t *testing.T) {
+	t.Parallel()
 	helpers := map[string]string{"h.ts": helperWithRealCall}
 
 	// Проба ЧИТАЕТ модуль консоли по своей же координате — то есть находка, если
@@ -114,6 +116,7 @@ scan();
 }
 
 func TestMockFactoryDynamicImportIsAWholeName(t *testing.T) {
+	t.Parallel()
 	// Настоящий динамический импорт — находка.
 	findings, calls, _ := auditModuleMockFactories(map[string]string{
 		"ui-future/x/a.ts": "jest.unstable_mockModule(\"m\", () => import(\"./m\"));\n",

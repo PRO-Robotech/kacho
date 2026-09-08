@@ -21,6 +21,7 @@ import (
 // доказывает не этот прогон, а инъекция
 // (platformmodulevocabulary_injection_test.go).
 func TestPlatformModuleVocabularyMatchesTheTree(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	declared := platformmodules.All()

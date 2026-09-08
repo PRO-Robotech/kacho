@@ -75,6 +75,7 @@ type dropGuardOwner struct {
 
 // TestEveryDropGuardManifestHasAProducer — вердикт на настоящем дереве.
 func TestEveryDropGuardManifestHasAProducer(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	owners := dropGuardOwners(t, root)
 	if len(owners) == 0 {
@@ -194,6 +195,7 @@ func dirCallsDropGuardRunner(t *testing.T, dir string) bool {
 // проверяется ОТДЕЛЬНО — инъекция, роняющая всё разом, не отличила бы гейт,
 // умеющий одно, от гейта, умеющего три.
 func TestDropGuardProducerJudgeFiresAndStaysSilent(t *testing.T) {
+	t.Parallel()
 	const pkg = "services/storage/internal/migrations"
 	const other = "services/vpc/internal/migrations"
 	wired := []dropGuardOwner{{Pkg: pkg, HasProbe: true}, {Pkg: other, HasProbe: true}}

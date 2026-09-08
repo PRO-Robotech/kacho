@@ -41,6 +41,7 @@ func placementInputOptions(t *testing.T) PlacementInputOptions {
 // Способность падать доказывает не этот прогон, а инъекция
 // (`clienttruth_addr_placementinput_injection_test.go`).
 func TestPlacementDiscriminatorIsDeclaredDerived(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditPlacementInput(placementInputOptions(t), &log)
 	if err != nil {

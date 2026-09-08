@@ -22,6 +22,7 @@ import (
 )
 
 func TestMigratorEntryPointsDoNotResolveDSNThemselves(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	census, findings, notDelegating, err := auditMigratorDSNResolve(root)

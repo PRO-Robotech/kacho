@@ -48,6 +48,7 @@ func mux(agg *health.Aggregator, m http.Handler) *http.ServeMux {
 // на месте, — иначе красное приходило бы от соседней оси, и вакуумность
 // проверяемой осталась бы незамеченной (`testing.md` §«Гейт на класс», п.2в).
 func TestReadinessBuiltInjectionCutsBothWays(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name  string
 		files map[string]string
@@ -271,6 +272,7 @@ func mux(agg *health.Aggregator, m http.Handler) *http.ServeMux {
 
 // Способность гейта «слот живости не спрашивает готовность» упасть и смолчать.
 func TestLivenessSlotInjectionCutsBothWays(t *testing.T) {
+	t.Parallel()
 	const legitTemplate = `spec:
   template:
     spec:

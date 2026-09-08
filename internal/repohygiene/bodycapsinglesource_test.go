@@ -53,6 +53,7 @@ const (
 
 // TestBodyCapIsDeclaredExactlyOnce — сам гейт.
 func TestBodyCapIsDeclaredExactlyOnce(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

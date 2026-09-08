@@ -184,6 +184,7 @@ func consoleJestConfigs(t *testing.T, root string) (configs map[string]string, j
 
 // TestConsoleSuiteOrderIsAPropertyOfTheTree — порядок суит консоли задан деревом.
 func TestConsoleSuiteOrderIsAPropertyOfTheTree(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	configs, jestPackages := consoleJestConfigs(t, root)
 

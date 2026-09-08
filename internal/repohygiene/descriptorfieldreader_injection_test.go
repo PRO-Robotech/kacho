@@ -137,6 +137,7 @@ func joinFindings(res fieldReaderResult) string {
 // краснеет на КАЖДОЙ из трёх клеток и НАЗЫВАЕТ КООРДИНАТУ объявления. Без
 // координаты находка не является действием.
 func TestDescriptorFieldGateRedOnEachOfTheThreeCells(t *testing.T) {
+	t.Parallel()
 	root := synthDescriptorTree(t, synthCarrierUnwired)
 	res := auditDescriptorFieldReaders(t, root)
 	t.Log(res.summary)
@@ -170,6 +171,7 @@ func TestDescriptorFieldGateRedOnEachOfTheThreeCells(t *testing.T) {
 // TestDescriptorFieldGateSilentOnAWiredCarrier — направление (б): тот же
 // дескриптор с провязанным носителем гейта не задевает.
 func TestDescriptorFieldGateSilentOnAWiredCarrier(t *testing.T) {
+	t.Parallel()
 	root := synthDescriptorTree(t, synthCarrierWired)
 	res := auditDescriptorFieldReaders(t, root)
 	t.Log(res.summary)
@@ -191,6 +193,7 @@ func TestDescriptorFieldGateSilentOnAWiredCarrier(t *testing.T) {
 // Без этой пробы «гейт читает AST, а не текст» осталось бы утверждением о
 // намерении: приманка — единственный вход, на котором два предиката расходятся.
 func TestDescriptorFieldGateIgnoresProseDecoy(t *testing.T) {
+	t.Parallel()
 	root := synthDescriptorTree(t, synthCarrierDecoy)
 	res := auditDescriptorFieldReaders(t, root)
 	t.Log(res.summary)
@@ -211,6 +214,7 @@ func TestDescriptorFieldGateIgnoresProseDecoy(t *testing.T) {
 // дать находку: иначе запись переживает свой предмет и укрывает следующую
 // декоративную ось, которую здесь заведут.
 func TestDecorativeAxisExceptionsAllStillHaveASubject(t *testing.T) {
+	t.Parallel()
 	// Имя берётся из САМОГО перечня, а не выписывается: выписанное пережило бы
 	// правку перечня, и проба стала бы вакуумной.
 	var excused string

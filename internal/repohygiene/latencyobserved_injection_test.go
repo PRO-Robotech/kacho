@@ -49,6 +49,7 @@ func main() { _ = servicehost.Serve(nil, nil) }
 
 // Сторона дефекта: свой конструктор, измерителя нет — гейт называет сервис.
 func TestLatencyGateRedOnADirectListenerWithoutAMeter(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/cmd/x/main.go": directRaiserSrc,
 	})
@@ -71,6 +72,7 @@ func TestLatencyGateRedOnADirectListenerWithoutAMeter(t *testing.T) {
 // Законный близнец той же формы: тот же собственный подъём — плюс файл,
 // собирающий измеритель.
 func TestLatencyGateSilentWhenTheDirectListenerBuildsAMeter(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/cmd/x/main.go":    directRaiserSrc,
 		"services/x/cmd/x/metrics.go": latencyMeterSrc,
@@ -97,6 +99,7 @@ func TestLatencyGateSilentWhenTheDirectListenerBuildsAMeter(t *testing.T) {
 // не проходит конструктор (О13). Требовать здесь второй, ручной сборки значило
 // бы объявить находкой исполнение правила.
 func TestLatencyGateSilentOnACarrierServiceThatBuildsNoMeterItself(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/cmd/x/main.go": carrierRaiserSrc,
 	})
@@ -116,6 +119,7 @@ func TestLatencyGateSilentOnACarrierServiceThatBuildsNoMeterItself(t *testing.T)
 // Отрицательный контроль РАСПОЗНАВАНИЯ: обращение к пакету, не строящее ни
 // сервера, ни измерителя, ни тем, ни другим не делает.
 func TestLatencyGateIgnoresANonConstructorCall(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/cmd/x/main.go": directRaiserSrc,
 		"services/x/cmd/x/other.go": `package main
@@ -141,6 +145,7 @@ func limits() any { return grpcsrv.DefaultServerLimits() }
 // поиск принял бы объяснение за исполнение — тот самый класс, ради которого
 // гейт разбирает синтаксическое дерево.
 func TestLatencyGateIgnoresTheNameInAComment(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/cmd/x/main.go": directRaiserSrc,
 		"services/x/cmd/x/why.go": `package main
@@ -162,6 +167,7 @@ const why = "grpcsrv.NewServerLatency"
 // Отрицательный контроль ПСЕВДОНИМА: импорт под другим именем слепым пятном не
 // становится.
 func TestLatencyGateFollowsAnImportAlias(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/cmd/x/main.go": `package main
 
@@ -197,6 +203,7 @@ func main() { _ = grpc.NewServer() }
 // считала, потому что край строит оба слушателя библиотечным. Перепись при этом
 // печатала «семь из семи» и выглядела исчерпывающей.
 func TestLatencyGateSeesTheLibraryConstructorToo(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"gateway/cmd/api-gateway/main.go": libraryRaiserSrc,
 	})
@@ -219,6 +226,7 @@ func TestLatencyGateSeesTheLibraryConstructorToo(t *testing.T) {
 
 // TestLatencyGateSilentWhenTheLibraryRaiserBuildsAMeter — законный близнец.
 func TestLatencyGateSilentWhenTheLibraryRaiserBuildsAMeter(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"gateway/cmd/api-gateway/main.go":    libraryRaiserSrc,
 		"gateway/cmd/api-gateway/metrics.go": latencyMeterSrc,
@@ -238,6 +246,7 @@ func TestLatencyGateSilentWhenTheLibraryRaiserBuildsAMeter(t *testing.T) {
 // а «читать было нечего». Молчаливый успех здесь означал бы, что переехавший
 // каталог выглядит как исправное дерево.
 func TestLatencyGateRefusesATreeWithNoRootsAtAll(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"pkg/somewhere/else.go": "package somewhere\n",
 	})

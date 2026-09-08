@@ -41,6 +41,7 @@ func formFindingsFor(t *testing.T, rel, body string) []string {
 }
 
 func TestMigrationFormDecl_ProvenByInjection(t *testing.T) {
+	t.Parallel()
 	t.Run("обычное место называет отвергнутую форму — краснеет с координатой", func(t *testing.T) {
 		rel := "services/widget/internal/migrations/README.md"
 		out := formFindingsFor(t, rel, synthPlainLine+"\n"+synthLegacyLine+"\n")
@@ -144,6 +145,7 @@ func TestMigrationFormDecl_ProvenByInjection(t *testing.T) {
 // TestMigrationFormCanonIsReadFromTheEnforcingGate — канон берётся из гейта,
 // который его требует, а не выписан рядом.
 func TestMigrationFormCanonIsReadFromTheEnforcingGate(t *testing.T) {
+	t.Parallel()
 	t.Run("ширина берётся у ПРИНИМАЮЩЕЙ регулярки, а не у первой попавшейся", func(t *testing.T) {
 		// У гейта их две: принимающая (14) и отвергающая (6). Текстовый поиск
 		// взял бы любую — разбор берёт связанную с именем принимающей.

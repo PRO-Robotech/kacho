@@ -89,6 +89,7 @@ const (
 // TestIdentityWireScannerFindsASecondDeclaration — сторона (а): внесённое
 // второе объявление становится находкой, и находка несёт координату и вид.
 func TestIdentityWireScannerFindsASecondDeclaration(t *testing.T) {
+	t.Parallel()
 	decls, _, census, err := ScanIdentityWireDeclarations(
 		"services/iam/internal/restfront/headermatcher_test.go", []byte(identityWireInjectedDefect))
 	if err != nil {
@@ -131,6 +132,7 @@ func TestIdentityWireScannerFindsASecondDeclaration(t *testing.T) {
 // TestIdentityWireScannerIsSilentOnALegitimateTwin — сторона (б): законный
 // близнец молчание не теряет.
 func TestIdentityWireScannerIsSilentOnALegitimateTwin(t *testing.T) {
+	t.Parallel()
 	decls, bindings, census, err := ScanIdentityWireDeclarations(
 		"services/iam/internal/restfront/front.go", []byte(identityWireInjectedLegitimate))
 	if err != nil {
@@ -156,6 +158,7 @@ func TestIdentityWireScannerIsSilentOnALegitimateTwin(t *testing.T) {
 // Без него молчание первого утверждения было бы неотличимо от молчания мёртвого
 // разбора: файл, где имя ВЗЯТО у объявления, находок не даёт по построению.
 func TestIdentityWireScannerReadsTheFundamentBinding(t *testing.T) {
+	t.Parallel()
 	decls, bindings, _, err := ScanIdentityWireDeclarations(
 		"pkg/grpcsrv/principal_extract.go", []byte(identityWireInjectedBinding))
 	if err != nil {
@@ -191,6 +194,7 @@ func TestIdentityWireScannerReadsTheFundamentBinding(t *testing.T) {
 // Он утверждает то, что на дереве утверждать нечем: сегодня согласие полное, и
 // «сошлось» неотличимо от «не сверялось».
 func TestIdentityWireCatalogueNamesOnlyRealFundamentKeys(t *testing.T) {
+	t.Parallel()
 	_, bindings, _, err := ScanIdentityWireDeclarations(
 		"pkg/grpcsrv/acr.go", []byte("package grpcsrv\n\nimport pw \"github.com/PRO-Robotech/kacho/pkg/principalwire\"\n\nconst MDKeyTokenACR = pw.MetaTokenACR\n"))
 	if err != nil {
@@ -228,6 +232,7 @@ func TestIdentityWireCatalogueNamesOnlyRealFundamentKeys(t *testing.T) {
 // ключа и краснел бы на решении, принятом осознанно, — то есть его сняли бы
 // первым же законным срабатыванием.
 func TestIdentityWireEdgeOnlyKeyDoesNotDemandAFundamentReader(t *testing.T) {
+	t.Parallel()
 	var edgeOnly, demanded []string
 	for _, k := range principalwire.Keys() {
 		if !k.EdgeOnly {

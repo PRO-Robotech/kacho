@@ -24,6 +24,7 @@ func clientDocsExampleFieldsOptions(t *testing.T) ClientDocsExampleFieldsOptions
 // Способность падать доказывает не этот прогон, а инъекция
 // (`clientdocsexamplefields_injection_test.go`): здесь только вердикт.
 func TestClientDocsExampleCarriesEveryFieldTheTableNames(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditClientDocsExampleFields(clientDocsExampleFieldsOptions(t), &log)
 	if err != nil {

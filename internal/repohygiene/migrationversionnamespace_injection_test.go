@@ -74,6 +74,7 @@ const (
 )
 
 func TestMigrationVersionNamespace_ProvenByInjection(t *testing.T) {
+	t.Parallel()
 	t.Run("законная конструкция той же формы — разбор молчит", func(t *testing.T) {
 		// Замороженная эра дословно + миграция новой формы + ВТОРАЯ миграция той
 		// же задачи (порядковый 002). Всё это законно и обязано пройти, иначе
@@ -254,6 +255,7 @@ func twoLinesMerge(t *testing.T, base []string, lineA, lineB string) []string {
 }
 
 func TestTwoLinesFromOneBaseMergeWithoutVersionCollision(t *testing.T) {
+	t.Parallel()
 	base := []string{synthA, synthB, synthC}
 
 	// ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: прежняя процедура. Обе линии смотрят на последний

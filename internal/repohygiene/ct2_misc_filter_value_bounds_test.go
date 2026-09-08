@@ -19,6 +19,7 @@ import (
 // Способность гейта упасть и смолчать доказана инъекцией в обе стороны:
 // ct2_misc_filter_value_bounds_injection_test.go.
 func TestContractsAgreeWithTheFilterValueLimitTheParserApplies(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	tree, err := treecorpus.NewTree(root)

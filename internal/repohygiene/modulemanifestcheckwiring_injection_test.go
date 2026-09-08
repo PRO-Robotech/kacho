@@ -68,6 +68,7 @@ func intactTree() judgeWiringTree {
 
 // TestModuleManifestCheckWiringGate_Injection — обе способности по каждой оси.
 func TestModuleManifestCheckWiringGate_Injection(t *testing.T) {
+	t.Parallel()
 	// ── КОНТРОЛЬ: всё цело — гейт обязан молчать ────────────────────────────
 	//
 	// Стоит первым и не является формальностью: без него всякая находка ниже

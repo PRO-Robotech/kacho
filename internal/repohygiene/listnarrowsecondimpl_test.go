@@ -32,6 +32,7 @@ import (
 // Молчаливое сохранение обеих после этого — то же, что оставить в документе
 // фундамента слово «единственная»: утверждение, пережившее свой предмет.
 func TestListNarrowSecondImplementationKeepsItsReason(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	const (

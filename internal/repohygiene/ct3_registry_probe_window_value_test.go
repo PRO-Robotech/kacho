@@ -18,6 +18,7 @@ import (
 // смолчать доказана инъекцией в обе стороны, по КАЖДОЙ известной форме записи:
 // ct3_registry_probe_window_value_injection_test.go.
 func TestRegistryProbeCorpusDoesNotCiteARetiredWindowValue(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	tree, err := treecorpus.NewTree(root)

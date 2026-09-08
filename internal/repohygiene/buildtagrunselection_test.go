@@ -190,6 +190,7 @@ func auditTaggedTestsAreSelected(root, modulePath string) ([]tagSelectionFinding
 // Отказом является «ноль прочитанных файлов» и «ноль прочитанных объявлений»:
 // тогда молчание означает, что судья не работал.
 func TestBuildTagTestsAreSelectedByTheDeclaredRun(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	findings, census, err := auditTaggedTestsAreSelected(root, "github.com/PRO-Robotech/kacho")

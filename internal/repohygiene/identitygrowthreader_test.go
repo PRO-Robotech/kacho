@@ -60,6 +60,7 @@ var (
 // TestIdentityGrowthMetricsHaveANamedReader — каждый ряд семейства назван хотя
 // бы одним выражением правила оповещения.
 func TestIdentityGrowthMetricsHaveANamedReader(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	declared := readIdentityGrowthMetricNames(t, root)
@@ -110,6 +111,7 @@ func TestIdentityGrowthMetricsHaveANamedReader(t *testing.T) {
 // где комментарий, а где `#`, комментария не открывающий, — и по каждой оси
 // утверждается ОБЕ стороны.
 func TestIdentityGrowthReaderGate_CanFailAndJudgesOnlyExecutableText(t *testing.T) {
+	t.Parallel()
 	// Инъекция: документ, где ряд назван ТОЛЬКО в пояснении. Пояснение не
 	// срабатывает, поэтому читателем не является.
 	const proseOnly = "```yaml\n" +

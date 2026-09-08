@@ -22,6 +22,7 @@ const projectDeletionDecisionDoc = "docs/architecture/project-deletion-and-live-
 
 // TestProjectDeletionSurfacesNameTheSameSuccessor — сам гейт.
 func TestProjectDeletionSurfacesNameTheSameSuccessor(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	doc, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(projectDeletionDecisionDoc)))

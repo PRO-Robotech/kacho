@@ -48,6 +48,7 @@ import (
 // TestRedriveAndDrainKeyTheSameOutboxTheSameWay — две половины одного правила
 // обязаны стоять на одном ключе.
 func TestRedriveAndDrainKeyTheSameOutboxTheSameWay(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	inv := outboxWiringInventory(t, root)
 
@@ -182,6 +183,7 @@ var outboxRedriveDebt = map[string]string{}
 // объявляется здесь, поэтому очередь, сменившая политику, немедленно меняет и
 // требование к себе.
 func TestEveryPoisoningOutboxHasARedrive(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	inv := outboxWiringInventory(t, root)
 
@@ -264,6 +266,7 @@ func TestEveryPoisoningOutboxHasARedrive(t *testing.T) {
 // проверяемо по дереву и что первым сломается при заведении следующей такой
 // очереди.
 func TestRetryPermanentQueuesCannotBePoisonedByDecode(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	inv := outboxWiringInventory(t, root)
 
@@ -399,6 +402,7 @@ var (
 // зелёным: следующий читатель видит очередь в списке долга и не проверяет, что
 // долг уже закрыт.
 func TestRedriveDebtEntriesHaveSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	inv := outboxWiringInventory(t, root)
 

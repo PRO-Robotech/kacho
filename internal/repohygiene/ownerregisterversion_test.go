@@ -79,6 +79,7 @@ var deliveryClockCalls = map[string]string{
 // законный близнец той же формы — сборка того же запроса с версией из параметра
 // — его не задевает.
 func TestOwnerRegistrationCarriesWriterTxVersion(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	var hits []string
@@ -140,6 +141,7 @@ func TestOwnerRegistrationCarriesWriterTxVersion(t *testing.T) {
 // Считаем по ВСЕМУ дереву (не только по путям регистрации): предмет словаря —
 // «так читают часы в Go», а не «так их читают здесь».
 func TestDeliveryClockDictionaryHasSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	seen := map[string]int{}
 	files := 0

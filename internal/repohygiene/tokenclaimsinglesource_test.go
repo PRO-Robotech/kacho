@@ -211,6 +211,7 @@ func scanClaimTree(t *testing.T) claimTreeScan {
 
 // TestTokenClaimsAreAssembledInOnePlace — сам гейт.
 func TestTokenClaimsAreAssembledInOnePlace(t *testing.T) {
+	t.Parallel()
 	scan := scanClaimTree(t)
 
 	lanes := map[string]bool{}
@@ -307,6 +308,7 @@ func TestTokenClaimsAreAssembledInOnePlace(t *testing.T) {
 // TestClaimDebtIsWellFormed — каждая запись ведомости несёт координату,
 // обоснование и предикат снятия.
 func TestClaimDebtIsWellFormed(t *testing.T) {
+	t.Parallel()
 	t.Logf("ведомость: %d записей", len(claimDebt))
 	for _, bad := range claimDebtDefects(claimDebt) {
 		t.Error(bad)
@@ -316,6 +318,7 @@ func TestClaimDebtIsWellFormed(t *testing.T) {
 // TestClaimDebtExpiresOnItsOwn — запись, которой больше нечего исключать, роняет
 // прогон.
 func TestClaimDebtExpiresOnItsOwn(t *testing.T) {
+	t.Parallel()
 	scan := scanClaimTree(t)
 	live := map[string]bool{}
 	for _, a := range scan.Assemblies {

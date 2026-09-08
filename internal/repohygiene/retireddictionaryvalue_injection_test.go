@@ -33,6 +33,7 @@ var retiredValueTinyLedger = []RetiredDictionaryValue{{
 // ВХОДОМ: та самая форма, в которой дефект жил в дереве (#796) — перечисление
 // «Canonical values», где снятое значение стоит между живыми.
 func TestRetiredDictionaryValueInjection_RedOnTheRealShape(t *testing.T) {
+	t.Parallel()
 	root, files := retiredValueTinyContract(t, `syntax = "proto3";
 package kacho.cloud.demo.v1;
 
@@ -65,6 +66,7 @@ message InvalidateSubjectRequest {
 // контроля: ТА ЖЕ форма, тот же файл, то же перечисление — но все значения
 // живые. Гейт, ключующийся на форме («Canonical values»), здесь покраснеет.
 func TestRetiredDictionaryValueInjection_SilentOnTheLegitimateTwin(t *testing.T) {
+	t.Parallel()
 	root, files := retiredValueTinyContract(t, `syntax = "proto3";
 package kacho.cloud.demo.v1;
 
@@ -92,6 +94,7 @@ message InvalidateSubjectRequest {
 // TestRetiredDictionaryValueInjection_EmptyInputsAreRefusals — обе предпосылки
 // анализатора обязаны быть отказом, а не «нулём находок».
 func TestRetiredDictionaryValueInjection_EmptyInputsAreRefusals(t *testing.T) {
+	t.Parallel()
 	root, files := retiredValueTinyContract(t, "syntax = \"proto3\";\n")
 
 	if _, _, err := AuditRetiredDictionaryValues(root, files, nil); err == nil {
@@ -109,6 +112,7 @@ func TestRetiredDictionaryValueInjection_EmptyInputsAreRefusals(t *testing.T) {
 // TestRetiredDictionaryValueInjection_LiveDictionaryContradictionIsSeen —
 // самоистечение в обратную сторону: значение, вернувшееся в живой словарь.
 func TestRetiredDictionaryValueInjection_LiveDictionaryContradictionIsSeen(t *testing.T) {
+	t.Parallel()
 	live := map[string]map[string][]string{
 		"demo.q": {"op": {"binding_grant", "jit_revoke"}},
 	}

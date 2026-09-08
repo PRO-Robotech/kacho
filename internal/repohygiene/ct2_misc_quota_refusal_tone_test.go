@@ -21,6 +21,7 @@ import (
 // гейта упасть и смолчать доказана инъекцией в обе стороны:
 // ct2_misc_quota_refusal_tone_injection_test.go.
 func TestQuotaRefusalToneIsDerivedFromTheSentinelNotAPrefixList(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Состав дерева — ИНДЕКС git, а не обход диска: под services/ на машине, где

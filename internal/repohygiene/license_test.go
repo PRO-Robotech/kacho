@@ -248,6 +248,7 @@ func scanLicenseHeaders(paths []string, read func(string) ([]byte, error)) ([]li
 }
 
 func TestLicenseFileExists(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	if _, err := os.Stat(filepath.Join(root, "LICENSE")); err != nil {
 		t.Fatalf("root LICENSE missing: %v", err)
@@ -259,6 +260,7 @@ func TestLicenseFileExists(t *testing.T) {
 // заголовков: заголовок ссылается на текст лицензии, и уровень, чьи файлы
 // объявляют Apache-2.0 при отсутствующем `pkg/LICENSE`, ссылается в пустоту.
 func TestLicenseTierRootsCarryTheirLicenseFile(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	checked := 0
 	for _, tier := range licenseTiers {
@@ -281,6 +283,7 @@ func TestLicenseTierRootsCarryTheirLicenseFile(t *testing.T) {
 
 // TestLicenseHeadersMatchTheirTier — обе проверки над деревом.
 func TestLicenseHeadersMatchTheirTier(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Ходим по ИНДЕКСУ git, а не по диску (filepath.WalkDir). Причина: на диске лежат

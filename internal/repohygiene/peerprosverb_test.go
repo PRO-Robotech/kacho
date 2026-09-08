@@ -18,6 +18,7 @@ import (
 // Гейт на класс, а не на три известных объявления: следующее ребро к соседу
 // заведёт свою прозу, и расхождение обязано краснеть в момент появления.
 func TestPeerProseVerbMatchesItsLane(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	findings, census, err := auditPeerProse(root)
 	if err != nil {
@@ -42,6 +43,7 @@ func TestPeerProseVerbMatchesItsLane(t *testing.T) {
 // ложью, поэтому гейт проверяет собственную предпосылку, а не полагается на
 // память автора.
 func TestPeerProseGatePremiseStillHolds(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(repoRoot(t), "pkg", "peer", "outcome.go")
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, path, nil, 0)
@@ -194,6 +196,7 @@ func synthPeerTree(t *testing.T, extra map[string]string) string {
 // вычисляется в рантайме (его гейт не видит и обязан это назвать, а не выдумать
 // находку).
 func TestPeerProseGateStaysSilentOnLawfulProse(t *testing.T) {
+	t.Parallel()
 	findings, census := synthPeerAudit(t, synthPeerTree(t, nil))
 	if len(findings) != 0 {
 		t.Fatalf("гейт нашёл дефект в законной прозе: %+v", findings)
@@ -208,6 +211,7 @@ func TestPeerProseGateStaysSilentOnLawfulProse(t *testing.T) {
 
 // Сторона дефекта: гейт краснеет и НАЗЫВАЕТ координату.
 func TestPeerProseGateCatchesTheVerbMismatch(t *testing.T) {
+	t.Parallel()
 	root := synthPeerTree(t, map[string]string{"services/nlb/internal/clients/geo/broken.go": synthDefect})
 	findings, _ := synthPeerAudit(t, root)
 	if len(findings) != 1 {
@@ -221,6 +225,7 @@ func TestPeerProseGateCatchesTheVerbMismatch(t *testing.T) {
 // Обёртка не проносит дефект мимо гейта: текст приходит с вызова, и гейт
 // доходит до вызова.
 func TestPeerProseGateSeesThroughAWrapper(t *testing.T) {
+	t.Parallel()
 	root := synthPeerTree(t, map[string]string{"services/nlb/internal/clients/wrapped/lane.go": synthWrapperDefect})
 	findings, census := synthPeerAudit(t, root)
 	if len(findings) != 1 || !strings.Contains(findings[0].Where, "lane.go") {

@@ -64,6 +64,7 @@ func nmSharedHelperAudit(t *testing.T, generator string) ([]string, sharedHelper
 // ─── красное на настоящем дефекте: ФУНКЦИЯ ───────────────────────────────────
 
 func TestSharedHelperInjectionFunctionForkIsFound(t *testing.T) {
+	t.Parallel()
 	// Возвращаем ровно тот дефект, ради которого гейт заведён: набор снова
 	// объявляет общий помощник у себя.
 	injected := nmCleanGenerator + `
@@ -90,6 +91,7 @@ def js_str(value):
 // ─── красное на настоящем дефекте: КОНСТАНТА ─────────────────────────────────
 
 func TestSharedHelperInjectionConstantForkIsFound(t *testing.T) {
+	t.Parallel()
 	// Отдельная ось. До расширения распознавателя эта проба была бы зелёной при
 	// живом форке — константы не наблюдались вовсе.
 	injected := nmCleanGenerator + `
@@ -113,6 +115,7 @@ _FIELD_DONE = "готово"
 // ─── молчание на ЗАКОННОМ близнеце ───────────────────────────────────────────
 
 func TestSharedHelperCleanGeneratorIsSilent(t *testing.T) {
+	t.Parallel()
 	findings, cen := nmSharedHelperAudit(t, nmCleanGenerator)
 	if len(findings) != 0 {
 		t.Fatalf("гейт краснеет на сведённом генераторе — он ловит ФОРМУ, а не существо,\n"+
@@ -132,6 +135,7 @@ func TestSharedHelperCleanGeneratorIsSilent(t *testing.T) {
 // Собственный помощник набора, чьего имени в общем слое НЕТ, — не форк.
 // Без этой пробы гейт мог бы запрещать наборам иметь свои функции вообще.
 func TestSharedHelperSuiteOwnNamesAreNotForks(t *testing.T) {
+	t.Parallel()
 	own := nmCleanGenerator + `
 
 def _suite_only_helper(step):
@@ -153,6 +157,7 @@ _SUITE_ONLY_TABLE = {"a": 1}
 // Упоминание общего имени в вызове, строке и комментарии форком не является:
 // распознаватель по подстроке краснел бы на собственном объяснении гейта.
 func TestSharedHelperMentionIsNotDeclaration(t *testing.T) {
+	t.Parallel()
 	mentions := nmCleanGenerator + `
 
 MESSAGE = "чинится в gen_shared: def js_str( — общий слой"
@@ -166,6 +171,7 @@ MESSAGE = "чинится в gen_shared: def js_str( — общий слой"
 
 // Вложенное определение принадлежит своей функции и форком не является.
 func TestSharedHelperNestedDefinitionIsNotAFork(t *testing.T) {
+	t.Parallel()
 	nested := nmCleanGenerator + `
 
 def outer(case):
@@ -196,6 +202,7 @@ def outer(case):
 // Присваивание набора перекрывает функцию общего слоя. Каноническая форма, ради
 // которой ось и заведена: связывание общего помощника с умолчаниями набора.
 func TestSharedHelperInjectionAssignmentShadowingFunctionIsFound(t *testing.T) {
+	t.Parallel()
 	injected := nmCleanGenerator + `
 
 js_str = _suite_bind(js_str, quote="'")
@@ -218,6 +225,7 @@ js_str = _suite_bind(js_str, quote="'")
 
 // Та же ось с другой стороны: функция набора перекрывает константу общего слоя.
 func TestSharedHelperInjectionFunctionShadowingConstantIsFound(t *testing.T) {
+	t.Parallel()
 	injected := nmCleanGenerator + `
 
 def _FIELD_DONE(step):
@@ -240,6 +248,7 @@ def _FIELD_DONE(step):
 // себе новая. Без этой пробы молчание прежней половины было бы неотличимо от её
 // смерти.
 func TestSharedHelperSameKindForkIsNotCountedAsCrossKind(t *testing.T) {
+	t.Parallel()
 	injected := nmCleanGenerator + `
 
 def js_str(value):
@@ -259,6 +268,7 @@ def js_str(value):
 // Законный близнец новой оси: имя, которого в общем слое НЕТ, набор вправе
 // связывать присваиванием — это его собственное имя, а не перекрытие.
 func TestSharedHelperOwnAssignmentIsNotCrossKind(t *testing.T) {
+	t.Parallel()
 	own := nmCleanGenerator + `
 
 _suite_retry = _suite_bind(None, quote="'")

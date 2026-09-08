@@ -25,6 +25,7 @@ func sitesOfSource(t *testing.T, src string) []quotaStartSite {
 // TestQuotaStartSite_ConditionalIsAFinding — форма, ради которой гейт написан:
 // подъём под наличием соединения соседа.
 func TestQuotaStartSite_ConditionalIsAFinding(t *testing.T) {
+	t.Parallel()
 	sites := sitesOfSource(t, `package main
 func run() error {
 	if authzConn != nil {
@@ -42,6 +43,7 @@ func run() error {
 //
 // Без него «находок нет» было бы неотличимо от «гейт ничего не различает».
 func TestQuotaStartSite_UnconditionalIsSilent(t *testing.T) {
+	t.Parallel()
 	sites := sitesOfSource(t, `package main
 func run() error {
 	stop, err := corequota.StartLimitSync(ctx, pool, authority, src, "kacho_vpc", corequota.Config{}, logger)
@@ -57,6 +59,7 @@ func run() error {
 // Имя глагола стоит в комментариях, объясняющих сам запрет; гейт, судящий
 // подстроку, краснел бы на собственном объяснении.
 func TestQuotaStartSite_MentionInACommentIsNotACall(t *testing.T) {
+	t.Parallel()
 	sites := sitesOfSource(t, `package main
 // StartLimitSync заводит тянущего под объявлением. Строка ниже — литерал, а не вызов.
 const doc = "StartLimitSync"
@@ -66,6 +69,7 @@ func run() { _ = doc }`)
 
 // TestQuotaStartSite_ForAndSwitchAreFindingsToo — ветвление бывает не только `if`.
 func TestQuotaStartSite_ForAndSwitchAreFindingsToo(t *testing.T) {
+	t.Parallel()
 	for name, src := range map[string]string{
 		"switch": `package main
 func run() {

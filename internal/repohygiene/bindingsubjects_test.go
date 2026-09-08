@@ -41,6 +41,7 @@ import (
 // TestBindingInsertAlwaysWritesItsSubjects — у каждого вызова Insert выдачи в
 // прод-коде есть вызов InsertSubjects в той же функции.
 func TestBindingInsertAlwaysWritesItsSubjects(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	dir := filepath.Join(root, "services", "iam", "internal", "apps")
 

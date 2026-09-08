@@ -208,6 +208,7 @@ func readColumnTypes(t *testing.T) map[string]map[string]string {
 }
 
 func TestListFilterWhitelistFieldsAreUsableColumns(t *testing.T) {
+	t.Parallel()
 	sites := readFilterSites(t)
 	types := readColumnTypes(t)
 
@@ -248,6 +249,7 @@ func TestListFilterWhitelistFieldsAreUsableColumns(t *testing.T) {
 // отнимает у арендатора возможность «таблицы этой сети» и не даёт замены. У
 // подсети и группы правил такое сужение есть, поэтому их снятия замену имеют.
 func TestRouteTableFilterCarriesNetworkID(t *testing.T) {
+	t.Parallel()
 	sites := readFilterSites(t)
 	var found bool
 	for _, s := range sites {
@@ -276,6 +278,7 @@ func TestRouteTableFilterCarriesNetworkID(t *testing.T) {
 // TestFilterWhitelistGateCanFail — положительный контроль САМОГО гейта: без него
 // «ноль находок» неотличимо от «предикат ничего не ищет».
 func TestFilterWhitelistGateCanFail(t *testing.T) {
+	t.Parallel()
 	cols := map[string]map[string]string{
 		"addresses": {"name": "text", "ip_version": "smallint NOT NULL DEFAULT 0", "reserved": "boolean"},
 	}

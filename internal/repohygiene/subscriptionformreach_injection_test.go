@@ -201,6 +201,7 @@ func baseStand() map[string]string {
 
 // TestSubscriptionReachDecisionCanFail — РЕШЕНИЕ, четыре стороны, без сети.
 func TestSubscriptionReachDecisionCanFail(t *testing.T) {
+	t.Parallel()
 	t.Run("ноль ссылок + задача ЗАКРЫТА — краснеет и называет каждый тип", func(t *testing.T) {
 		types, census := reachAudit(t, baseStand())
 		if census.CommonTypes != 3 || census.Unreferenced != 3 {
@@ -258,6 +259,7 @@ func TestSubscriptionReachDecisionCanFail(t *testing.T) {
 // TestSubscriptionReachCountsOnlyRealReferrers — что считается ссылкой, а что
 // нет. Каждая строка таблицы — отдельная ось, и у каждой свой законный близнец.
 func TestSubscriptionReachCountsOnlyRealReferrers(t *testing.T) {
+	t.Parallel()
 	t.Run("прод-код Go, употребляющий типы, — ССЫЛКА", func(t *testing.T) {
 		files := baseStand()
 		files["services/demo/server/serve.go"] = reachGoReferrer
@@ -380,6 +382,7 @@ func reachWalkableStand(files map[string]string) map[string]string {
 // же, как у своего. Каждая подпроба называет СВОЁ сообщение — иначе снятый
 // отказ молча подхватывается чужим, и краснеет не та подпроба, а то и никакая.
 func TestSubscriptionReachRefusesAnEmptyWalk(t *testing.T) {
+	t.Parallel()
 	t.Run("контрактов ноль", func(t *testing.T) {
 		root := subscriptionStand(t, reachWalkableStand(map[string]string{"proto/.keep": ""}))
 		_, _, err := AuditSubscriptionFormReach(reachOptions(root), nil)

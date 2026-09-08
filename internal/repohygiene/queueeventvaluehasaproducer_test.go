@@ -74,6 +74,7 @@ var retiredQueueEventValues = map[string]string{
 // TestQueueEventValueHasAProducer — каждое значение закрытого словаря очереди
 // пишется хоть чем-то в прод-коде своего сервиса.
 func TestQueueEventValueHasAProducer(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	dicts := enumDictionaryInventory(t, root, trackedMigrationSQL)
 	wiring := outboxWiringInventory(t, root)

@@ -64,6 +64,7 @@ func isUmbrellaProfile(rel string) bool {
 // Проваливается на: прежнем адресе в любом файле значений и на пустом обходе
 // (гейт, не нашедший ни одного объявления посадки, не утверждает ничего).
 func TestSecurityPostureKnobHasOneAddress(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files := valuesFiles(t, root)
 

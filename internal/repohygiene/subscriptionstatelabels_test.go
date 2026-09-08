@@ -48,6 +48,7 @@ const (
 
 // TestSubscriptionStateCarriesLabelsForEveryKind — сам гейт.
 func TestSubscriptionStateCarriesLabelsForEveryKind(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

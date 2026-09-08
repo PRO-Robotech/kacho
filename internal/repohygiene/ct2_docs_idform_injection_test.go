@@ -122,6 +122,7 @@ func (s *idFormStand) run(t *testing.T) ([]DocsIDFormFinding, DocsIDFormCensus) 
 // TestDocsIDFormInjection_SilentOnALawfulTree — положительный контроль.
 // Без него «краснеет на инъекции» было бы неотличимо от «краснеет всегда».
 func TestDocsIDFormInjection_SilentOnALawfulTree(t *testing.T) {
+	t.Parallel()
 	s := newIDFormStand(t)
 	findings, census := s.run(t)
 	if len(findings) != 0 {
@@ -144,6 +145,7 @@ func TestDocsIDFormInjection_SilentOnALawfulTree(t *testing.T) {
 // TestDocsIDFormInjection_UnknownPrefixIsNotAFinding — молчание на неизвестном
 // префиксе означает «не знаю» и обязано быть СЧИТАНО, а не проглочено.
 func TestDocsIDFormInjection_UnknownPrefixIsNotAFinding(t *testing.T) {
+	t.Parallel()
 	s := newIDFormStand(t)
 	_, census := s.run(t)
 	if census.UnknownPrefix == 0 {
@@ -186,6 +188,7 @@ func requireOneFinding(t *testing.T, findings []DocsIDFormFinding, wantFile, wan
 // TestDocsIDFormInjection_HyphenWrittenWhereConcatMinted — форма 1: страница
 // пишет дефисом то, что чеканится слитно. Ровно дефект kacho#1641.
 func TestDocsIDFormInjection_HyphenWrittenWhereConcatMinted(t *testing.T) {
+	t.Parallel()
 	s := newIDFormStand(t)
 	got := s.injectPage(t, "services/probe/docs/content/api/injected.mdx",
 		"Идентификатор тома — `thg-a1b2c3d4e5f6g7h8j`.\n")
@@ -195,6 +198,7 @@ func TestDocsIDFormInjection_HyphenWrittenWhereConcatMinted(t *testing.T) {
 // TestDocsIDFormInjection_ConcatWrittenWhereHyphenMinted — форма 2, обратная
 // сторона той же оси: страница пишет слитно то, что чеканится дефисом.
 func TestDocsIDFormInjection_ConcatWrittenWhereHyphenMinted(t *testing.T) {
+	t.Parallel()
 	s := newIDFormStand(t)
 	got := s.injectPage(t, "services/probe/docs/content/api/injected.mdx",
 		"Идентификатор типа машины — `hypa1b2c3d4e5f6g7h8j`.\n")
@@ -205,6 +209,7 @@ func TestDocsIDFormInjection_ConcatWrittenWhereHyphenMinted(t *testing.T) {
 // чеканку ПАРАМЕТРОМ через посредника, обязан судиться наравне с прямым.
 // Без транзитивного резолва эта инъекция осталась бы зелёной — молча.
 func TestDocsIDFormInjection_TransitivePrefixIsJudged(t *testing.T) {
+	t.Parallel()
 	s := newIDFormStand(t)
 	got := s.injectPage(t, "services/probe/docs/content/api/injected.mdx",
 		"Идентификатор операции — `tho-a1b2c3d4e5f6g7h8j`.\n")
@@ -214,6 +219,7 @@ func TestDocsIDFormInjection_TransitivePrefixIsJudged(t *testing.T) {
 // TestDocsIDFormInjection_AliasedConstantIsJudged — префикс, объявленный через
 // ДРУГУЮ константу, тоже обязан судиться.
 func TestDocsIDFormInjection_AliasedConstantIsJudged(t *testing.T) {
+	t.Parallel()
 	s := newIDFormStand(t)
 	got := s.injectPage(t, "services/probe/docs/content/api/injected.mdx",
 		"Идентификатор — `tal-a1b2c3d4e5f6g7h8j`.\n")
@@ -223,6 +229,7 @@ func TestDocsIDFormInjection_AliasedConstantIsJudged(t *testing.T) {
 // TestDocsIDFormInjection_EmptyWalkIsVisible — обход, которому нечего читать,
 // обязан быть ОТЛИЧИМ от обхода без находок: премиса вердикта опирается на это.
 func TestDocsIDFormInjection_EmptyWalkIsVisible(t *testing.T) {
+	t.Parallel()
 	s := newIDFormStand(t)
 	opts := s.opts()
 	opts.JudgedDomains = []string{"services/probe/docs/nothing-here"}

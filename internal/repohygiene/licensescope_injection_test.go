@@ -92,6 +92,7 @@ func injScopeScan(c injScopeCorpus) ([]licenseScopeFinding, licenseScopeCensus) 
 // Наблюдавшийся дефект kacho#2161: корневой текст объявляет предметом ВСЁ, при
 // поддереве под другой лицензией.
 func TestLicenseScopeGate_RedsWhenRootSwallowsAPermissiveSubtree(t *testing.T) {
+	t.Parallel()
 	findings, census := injScopeScan(injScopeCorpus{
 		"LICENSE":     injScopeBody("Kachō (kacho)", injScopeWholeRepo),
 		"pkg/LICENSE": injScopeApacheBody,
@@ -111,6 +112,7 @@ func TestLicenseScopeGate_RedsWhenRootSwallowsAPermissiveSubtree(t *testing.T) {
 // копированием и объявляет своей областью весь репозиторий — то есть чужие
 // уровни. В дереве таких оказалось семь, и поодиночке каждый выглядит верным.
 func TestLicenseScopeGate_RedsWhenAComponentClaimsTheWholeRepository(t *testing.T) {
+	t.Parallel()
 	findings, _ := injScopeScan(injScopeCorpus{
 		"services/vpc/LICENSE": injScopeBody("Kachō VPC (kacho-vpc)", injScopeWholeRepo),
 		"services/nlb/LICENSE": injScopeBody("Kachō NLB (kacho-nlb)", injScopeWholeRepo),
@@ -131,6 +133,7 @@ func TestLicenseScopeGate_RedsWhenAComponentClaimsTheWholeRepository(t *testing.
 // этой ветви первая же правка текста вывела бы файл из наблюдения молча: гейт
 // не дал бы ни красного, ни зелёного.
 func TestLicenseScopeGate_RedsOnAnUnrecognisedScopeForm(t *testing.T) {
+	t.Parallel()
 	findings, census := injScopeScan(injScopeCorpus{
 		"LICENSE":     injScopeBody("Kachō (kacho)", "wherever they may be found."),
 		"pkg/LICENSE": injScopeApacheBody,
@@ -149,6 +152,7 @@ func TestLicenseScopeGate_RedsOnAnUnrecognisedScopeForm(t *testing.T) {
 
 // Оговорка узнаётся ПАРОЙ. Половина первая: отрицание есть, механизм не назван.
 func TestLicenseScopeGate_RedsOnANegationWithoutTheMechanism(t *testing.T) {
+	t.Parallel()
 	findings, _ := injScopeScan(injScopeCorpus{
 		"LICENSE":     injScopeBody("Kachō (kacho)", "in this repository, except as noted elsewhere."),
 		"pkg/LICENSE": injScopeApacheBody,
@@ -161,6 +165,7 @@ func TestLicenseScopeGate_RedsOnANegationWithoutTheMechanism(t *testing.T) {
 // Половина вторая: механизм назван, отрицания нет — такая фраза способна и
 // РАСШИРЯТЬ область, поэтому оговоркой не считается.
 func TestLicenseScopeGate_RedsOnTheMechanismWithoutANegation(t *testing.T) {
+	t.Parallel()
 	findings, _ := injScopeScan(injScopeCorpus{
 		"LICENSE": injScopeBody("Kachō (kacho)",
 			"in this repository, including any directory that contains its own\n"+
@@ -177,6 +182,7 @@ func TestLicenseScopeGate_RedsOnTheMechanismWithoutANegation(t *testing.T) {
 // ровно такую фразу ниже по файлу — без сужения до абзаца гейт молчал бы здесь
 // и на всём живом дереве.
 func TestLicenseScopeGate_RedsWhenTheYieldSitsOutsideTheParameterBlock(t *testing.T) {
+	t.Parallel()
 	body := injScopeBody("Kachō (kacho)", injScopeWholeRepo)
 	if !strings.Contains(body, "its own LICENSE file") {
 		t.Fatal("фикстура утратила фразу вне абзаца — ось перестала что-либо доказывать")
@@ -195,6 +201,7 @@ func TestLicenseScopeGate_RedsWhenTheYieldSitsOutsideTheParameterBlock(t *testin
 // Верное дерево: корень уступает вложенным, компоненты привязаны к своему
 // каталогу и тоже уступают.
 func TestLicenseScopeGate_SilentOnACorrectTree(t *testing.T) {
+	t.Parallel()
 	findings, census := injScopeScan(injScopeCorpus{
 		"LICENSE":              injScopeBody("Kachō (kacho)", injScopeOwnDirYielding),
 		"gateway/LICENSE":      injScopeBody("Kachō API Gateway (kacho-api-gateway)", injScopeOwnDirYielding),
@@ -218,6 +225,7 @@ func TestLicenseScopeGate_SilentOnACorrectTree(t *testing.T) {
 // Тот же корневой якорь «весь репозиторий», но с оговоркой — законный близнец
 // первой оси: отличается ОДНИМ фактом.
 func TestLicenseScopeGate_SilentOnAWholeRepoScopeThatYields(t *testing.T) {
+	t.Parallel()
 	findings, census := injScopeScan(injScopeCorpus{
 		"LICENSE":     injScopeBody("Kachō (kacho)", injScopeWholeRepoYielding),
 		"pkg/LICENSE": injScopeApacheBody,
@@ -234,6 +242,7 @@ func TestLicenseScopeGate_SilentOnAWholeRepoScopeThatYields(t *testing.T) {
 // краснеет выше, молчит в дереве, где уступать некому. Без этой оси гейт был бы
 // поиском фразы и краснел бы независимо от того, что в дереве лежит.
 func TestLicenseScopeGate_SilentOnTheSameTextWhenNothingIsSwallowed(t *testing.T) {
+	t.Parallel()
 	body := injScopeBody("Kachō (kacho)", injScopeWholeRepo)
 	findings, census := injScopeScan(injScopeCorpus{"LICENSE": body})
 	if len(findings) != 0 {
@@ -252,6 +261,7 @@ func TestLicenseScopeGate_SilentOnTheSameTextWhenNothingIsSwallowed(t *testing.T
 // область в них не объявляется ВОВСЕ, требовать её значило бы требовать строки,
 // которой в лицензии не бывает.
 func TestLicenseScopeGate_SilentOnFormsThatDeclareNoScopeAtAll(t *testing.T) {
+	t.Parallel()
 	findings, census := injScopeScan(injScopeCorpus{
 		"pkg/LICENSE":          injScopeApacheBody,
 		"proto/LICENSE":        injScopeApacheBody,
@@ -269,6 +279,7 @@ func TestLicenseScopeGate_SilentOnFormsThatDeclareNoScopeAtAll(t *testing.T) {
 // Пустой обход не даёт зелёного: перепись обязана показать ноль, и обходчик
 // в licensescope_test.go на этом Fatal'ит.
 func TestLicenseScopeGate_EmptyTraversalIsNotAPass(t *testing.T) {
+	t.Parallel()
 	findings, census := injScopeScan(injScopeCorpus{})
 	if len(findings) != 0 {
 		t.Fatalf("на пустом корпусе находок быть не может: %v", findings)

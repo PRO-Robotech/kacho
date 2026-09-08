@@ -54,6 +54,7 @@ func scanOrFail(t *testing.T, sources map[string]string) ([]string, RetiredEngin
 // Без этого случая «ноль находок» ниже было бы неотличимо от «ноль
 // прочитанного».
 func TestInjection_ControlCleanTreeIsSilent(t *testing.T) {
+	t.Parallel()
 	keys, census := scanOrFail(t, map[string]string{
 		"services/iam/internal/migrations/0001_initial.sql": baseMigration,
 	})
@@ -69,6 +70,7 @@ func TestInjection_ControlCleanTreeIsSilent(t *testing.T) {
 // TestInjection_RedOnANewObjectTakingTheRetiredName — новый объект схемы взял
 // имя снятого движка → гейт КРАСНЕЕТ и НАЗЫВАЕТ КООРДИНАТУ.
 func TestInjection_RedOnANewObjectTakingTheRetiredName(t *testing.T) {
+	t.Parallel()
 	sources := map[string]string{
 		"services/iam/internal/migrations/0001_initial.sql": baseMigration,
 		"services/iam/internal/migrations/0102_fga_replay_journal.sql": `-- +goose Up
@@ -127,6 +129,7 @@ DROP TABLE IF EXISTS kaname.fga_replay_journal;
 // Ровно та форма, которая стоит в шапках миграций этого дерева. Гейт по слову
 // покраснел бы на ней — то есть на исправном дереве.
 func TestInjection_SilentOnTheRetiredNameInProse(t *testing.T) {
+	t.Parallel()
 	sources := map[string]string{
 		"services/iam/internal/migrations/0001_initial.sql": baseMigration,
 		"services/iam/internal/migrations/0103_history.sql": `-- +goose Up
@@ -156,6 +159,7 @@ DROP TABLE IF EXISTS kaname.relation_fact_conditioned;
 // Down описывает возврат, а не сегодняшнюю схему; читать его значило бы считать
 // снятое заведённым.
 func TestInjection_SilentOnAnObjectDeclaredOnlyInDown(t *testing.T) {
+	t.Parallel()
 	keys, _ := scanOrFail(t, map[string]string{
 		"services/iam/internal/migrations/0104_retire.sql": `-- +goose Up
 DROP TABLE IF EXISTS kaname.relation_fact_conditioned;
@@ -174,6 +178,7 @@ CREATE TABLE kaname.fga_outbox (id bigint NOT NULL);
 // Обратная сторона: без неё гейт объявлял бы живым всё, что когда-либо
 // заводилось, и ведомость никогда бы не сходилась.
 func TestInjection_DropRemovesTheObjectFromTheLiveSet(t *testing.T) {
+	t.Parallel()
 	keys, _ := scanOrFail(t, map[string]string{
 		"services/iam/internal/migrations/0001_initial.sql": `-- +goose Up
 CREATE TABLE kaname.fga_outbox (id bigint NOT NULL);
@@ -198,6 +203,7 @@ DROP TRIGGER IF EXISTS fga_outbox_notify_trigger ON kaname.fga_outbox;
 // стеречь имя, которого больше нет, — и МОЛЧА, потому что старое имя просто
 // перестало бы встречаться в CREATE.
 func TestInjection_RenameIsUnderstoodInBothDirections(t *testing.T) {
+	t.Parallel()
 	const created = `-- +goose Up
 CREATE TABLE kaname.fga_outbox (id bigint NOT NULL);
 ALTER TABLE kaname.fga_outbox ADD CONSTRAINT fga_outbox_pkey PRIMARY KEY (id);
@@ -237,6 +243,7 @@ ALTER TABLE kaname.fga_outbox RENAME TO fga_intent_outbox;
 // Без этой стороны ведомость пережила бы свой предмет и стерегла бы имя,
 // которого в дереве нет, оставаясь на вид рабочей.
 func TestInjection_RedWhenTheLedgerOutlivesItsSubject(t *testing.T) {
+	t.Parallel()
 	keys, _ := scanOrFail(t, map[string]string{
 		"services/iam/internal/migrations/0001_initial.sql": baseMigration,
 	})
@@ -256,6 +263,7 @@ func TestInjection_RedWhenTheLedgerOutlivesItsSubject(t *testing.T) {
 // прогон, а не молчит: иначе «имён движка не прибавилось» означало бы «ничего не
 // прочитано».
 func TestInjection_EmptyWalkIsNotAVerdict(t *testing.T) {
+	t.Parallel()
 	keys, census := scanOrFail(t, map[string]string{})
 	if len(keys) != 0 {
 		t.Fatalf("на пустом входе найдены объекты: %v", keys)
@@ -271,6 +279,7 @@ func TestInjection_EmptyWalkIsNotAVerdict(t *testing.T) {
 // Иначе под предикат попало бы всякое имя, внутри которого эти три буквы
 // оказались случайно, и гейт краснел бы на своём же дереве.
 func TestInjection_TokenIsASegmentNotASubstring(t *testing.T) {
+	t.Parallel()
 	keys, census := scanOrFail(t, map[string]string{
 		"services/vpc/internal/migrations/0001_initial.sql": `-- +goose Up
 CREATE TABLE kacho_vpc.config_gateway (id bigint NOT NULL);

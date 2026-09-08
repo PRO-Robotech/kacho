@@ -38,6 +38,7 @@ func TestProbe(t *testing.T) {
 `
 
 func TestSearchPathGateFallsAndStaysSilentOnItsTwin(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		body string
@@ -128,6 +129,7 @@ func TestSearchPathGateFallsAndStaysSilentOnItsTwin(t *testing.T) {
 // функция умеет считать до нуля. Здесь подан дословный текст помощника, стоявший
 // в десяти файлах дерева до правки.
 func TestSearchPathGateWouldHaveCaughtTheTreeBeforeTheFix(t *testing.T) {
+	t.Parallel()
 	const before = `package probe
 
 import "strings"

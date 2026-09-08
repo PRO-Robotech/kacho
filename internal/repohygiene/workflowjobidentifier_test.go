@@ -149,6 +149,7 @@ func mappingValue(mapping *yaml.Node, key string) *yaml.Node {
 
 // TestWorkflowJobAndStepIdentifiersAreMachineReadable — прогон по дереву.
 func TestWorkflowJobAndStepIdentifiersAreMachineReadable(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files := listWorkflows(t, root)
 

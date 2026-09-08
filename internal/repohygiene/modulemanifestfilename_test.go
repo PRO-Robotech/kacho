@@ -69,6 +69,7 @@ var moduleManifestSpellings = map[string]string{
 
 // TestModuleManifestFileNameIsDeclaredExactlyOnce — сам гейт.
 func TestModuleManifestFileNameIsDeclaredExactlyOnce(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

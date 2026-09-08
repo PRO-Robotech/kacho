@@ -18,6 +18,7 @@ import (
 // clienttruth_docs_nameform.go. Способность падать и молчать доказана инъекцией:
 // clienttruth_docs_nameform_injection_test.go.
 func TestDocsNameFormMatchesTheTree(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Состав дерева — ИНДЕКС git: под docs/ на машине, где собирали сайт, лежат

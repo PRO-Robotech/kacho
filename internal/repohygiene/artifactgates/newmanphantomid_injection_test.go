@@ -109,6 +109,7 @@ func nmAudit(t *testing.T, folders ...nmItem) ([]nmFinding, nmCensus) {
 // ─── красное на настоящем дефекте ────────────────────────────────────────────
 
 func TestPhantomIdGateRedOnInjectedDefect(t *testing.T) {
+	t.Parallel()
 	findings, cen := nmAudit(t, nmFolder("NET-CR-CRUD-OK — создание сети",
 		nmCreateStep("create-net", "netId"),
 		nmPollStep(), // исход не назван — только done
@@ -133,6 +134,7 @@ func TestPhantomIdGateRedOnInjectedDefect(t *testing.T) {
 // снятую защиту. Гейт по сырому тексту нашёл бы в нём и `pm.expect`, и `j.error`,
 // и промолчал бы — тем увереннее, чем лучше защита описана.
 func TestPhantomIdGateReadsCodeNotComment(t *testing.T) {
+	t.Parallel()
 	findings, cen := nmAudit(t, nmFolder("NET-CR-CRUD-OK — создание сети",
 		nmCreateStep("create-net", "netId"),
 		nmPollStep(
@@ -151,6 +153,7 @@ func TestPhantomIdGateReadsCodeNotComment(t *testing.T) {
 // ─── молчание на законных близнецах той же формы ─────────────────────────────
 
 func TestPhantomIdGateSilentOnLawfulSameShape(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		folders []nmItem
@@ -225,6 +228,7 @@ func TestPhantomIdGateSilentOnLawfulSameShape(t *testing.T) {
 // этого гейта не является. Без учёта области видимости локальной `const v` он был
 // бы принят за публикацию ресурса, и проход дописывал бы защиту в пустоту.
 func TestPhantomIdGateIgnoresOperationHandleCapture(t *testing.T) {
+	t.Parallel()
 	findings, cen := nmAudit(t, nmFolder("NET-DEL-CRUD-OK",
 		nmStep("del-net", "DELETE", "{{baseUrl}}/vpc/v1/networks/{{netId}}",
 			"pm.environment.set('opId', '');",
@@ -248,6 +252,7 @@ func TestPhantomIdGateIgnoresOperationHandleCapture(t *testing.T) {
 // операции. Правило «опрос принадлежит последней мутации» отдало бы опрос отмене,
 // и создание осталось бы без читателя исхода: гейт молчал бы на настоящем дефекте.
 func TestPhantomIdGateAttributesPollByOperationVariable(t *testing.T) {
+	t.Parallel()
 	build := func(tail ...string) []nmItem {
 		return []nmItem{nmFolder("AZD-OP-CANCEL-NON-CREATOR-DENIED",
 			nmCreateStep("cr-as-A", "netId"),

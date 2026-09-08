@@ -177,6 +177,7 @@ func scanDocBuildFileTargets(docs []string, files map[string]bool, read func(rel
 // ── гейт на дереве ───────────────────────────────────────────────────────────
 
 func TestDocsBuildCommandsNameADockerfileTheTreeHas(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	docs, files := trackedDocsAndFiles(t, root)
 

@@ -150,6 +150,7 @@ const synthLimitsReader = "" +
 // («≤ 63 байт» у значения метки). Гейт обязан её пропускать — иначе он ловит цифры,
 // а не обещание продукта.
 func TestInterfaceLimitsGateSilentOnLegitimateForm(t *testing.T) {
+	t.Parallel()
 	root := synthLimitsTree(t, map[string]string{
 		"services/vpc/docs/content/api/security-group.mdx": "" +
 			"# Группа\n\nЗначение метки — не длиннее 63 байт, ключ — 1..63 байт.\n",
@@ -175,6 +176,7 @@ func TestInterfaceLimitsGateSilentOnLegitimateForm(t *testing.T) {
 // пробелом («1 000 Мбит/с»). Обещанием быть от этого не перестаёт — без нормализации
 // единиц гейт краснел бы на верной странице и был бы снят как шумный.
 func TestInterfaceLimitsGateSilentOnOtherUnitAndTypographicNumber(t *testing.T) {
+	t.Parallel()
 	root := synthLimitsTree(t, map[string]string{
 		"services/vpc/docs/content/architecture/data-plane.mdx": synthLimitsDocPage(
 			":::info Гарантированная полоса на интерфейс — не менее 1 000 Мбит/с\n"+
@@ -195,6 +197,7 @@ func TestInterfaceLimitsGateSilentOnOtherUnitAndTypographicNumber(t *testing.T) 
 // не является, и гейт обязан молчать — иначе утверждение «величина не зависит от зоны»
 // стало бы непроизносимым.
 func TestInterfaceLimitsGateSilentOnSameNumberInAnyZone(t *testing.T) {
+	t.Parallel()
 	root := synthLimitsTree(t, map[string]string{
 		"services/vpc/docs/content/architecture/data-plane.mdx": synthLimitsDocPage(
 			":::info Гарантированная полоса на интерфейс — не менее 1 Гбит/с\n"+
@@ -217,6 +220,7 @@ func TestInterfaceLimitsGateSilentOnSameNumberInAnyZone(t *testing.T) {
 // (страж старта), и реестр это говорит. Гейт обязан молчать — иначе долг нельзя было
 // бы закрыть, и запись пережила бы свой предмет уже с другой стороны.
 func TestInterfaceLimitsGateSilentWhenDebtMatchesANewReader(t *testing.T) {
+	t.Parallel()
 	root := synthLimitsTree(t, map[string]string{
 		"services/vpc/internal/apps/kacho/config/validate.go": synthLimitsReader,
 		limitsDebtRegisterPath: synthLimitsRegister(map[string]string{
@@ -238,6 +242,7 @@ func TestInterfaceLimitsGateSilentWhenDebtMatchesANewReader(t *testing.T) {
 // (а1) Дефект: документация называет ДРУГОЕ число. Ровно так расходится пара «код +
 // проза», и расходится молча — ни сборка, ни слияние об этом не скажут.
 func TestInterfaceLimitsGateRedOnDocNumberDrift(t *testing.T) {
+	t.Parallel()
 	root := synthLimitsTree(t, map[string]string{
 		"services/vpc/docs/content/architecture/data-plane.mdx": synthLimitsDocPage(
 			":::info Гарантированная полоса на интерфейс — не менее 2 Гбит/с\n"+
@@ -261,6 +266,7 @@ func TestInterfaceLimitsGateRedOnDocNumberDrift(t *testing.T) {
 // (а2) Дефект: второе объявление той же величины. Два места об одном предмете — и
 // первая же правка разведёт их.
 func TestInterfaceLimitsGateRedOnSecondDeclaration(t *testing.T) {
+	t.Parallel()
 	root := synthLimitsTree(t, map[string]string{
 		"services/vpc/internal/handler/limits.go": "" +
 			"package handler\n\nconst InterfaceConnectionCeiling = 10000\n",
@@ -280,6 +286,7 @@ func TestInterfaceLimitsGateRedOnSecondDeclaration(t *testing.T) {
 // (а3) Дефект: формулировка обещания стоит, числа рядом нет — сверять нечем. Страница
 // при этом выглядит дающей обещание, и потому случай отдельный от «обещания нет вовсе».
 func TestInterfaceLimitsGateRedOnAnchorWithoutItsNumber(t *testing.T) {
+	t.Parallel()
 	root := synthLimitsTree(t, map[string]string{
 		"services/vpc/docs/content/architecture/data-plane.mdx": synthLimitsDocPage(
 			":::info Гарантированная полоса на интерфейс — величина постоянная\n"+
@@ -301,6 +308,7 @@ func TestInterfaceLimitsGateRedOnAnchorWithoutItsNumber(t *testing.T) {
 // невидимо по существу — оно переживёт правку величины. Сюда же попадает измеренное
 // значение, публиковать которое нельзя.
 func TestInterfaceLimitsGateRedOnUnanchoredNumber(t *testing.T) {
+	t.Parallel()
 	root := synthLimitsTree(t, map[string]string{
 		"services/vpc/docs/content/api/subnet.mdx": "" +
 			"# Подсеть\n\nЗамер на нашем стенде показал 40 Гбит/с через один интерфейс.\n",
@@ -323,6 +331,7 @@ func TestInterfaceLimitsGateRedOnUnanchoredNumber(t *testing.T) {
 // (а5) Дефект: обещание не названо всеобщим. Число есть, совпадает — и читается как
 // свойство СВОЕЙ сети или зоны, после чего первое исключение станет законным.
 func TestInterfaceLimitsGateRedOnPromiseNotStatedAsUniversal(t *testing.T) {
+	t.Parallel()
 	root := synthLimitsTree(t, map[string]string{
 		"services/vpc/docs/content/architecture/data-plane.mdx": synthLimitsDocPage(
 			":::info Гарантированная полоса на интерфейс — не менее 1 Гбит/с\n"+
@@ -344,6 +353,7 @@ func TestInterfaceLimitsGateRedOnPromiseNotStatedAsUniversal(t *testing.T) {
 // семейство адресов умолчали. Умолчание о любом из них оставляет дверь для «а у нас
 // исключение», и находка обязана сказать, КАКОГО предмета не хватает.
 func TestInterfaceLimitsGateRedOnPartialInvarianceClause(t *testing.T) {
+	t.Parallel()
 	root := synthLimitsTree(t, map[string]string{
 		"services/vpc/docs/content/architecture/data-plane.mdx": synthLimitsDocPage(
 			":::info Гарантированная полоса на интерфейс — не менее 1 Гбит/с\n"+
@@ -366,6 +376,7 @@ func TestInterfaceLimitsGateRedOnPartialInvarianceClause(t *testing.T) {
 // сверки чисел, а не проверки формы, и утверждение «не зависит от зоны» осталось бы
 // непроверенным.
 func TestInterfaceLimitsGateRedOnZoneQualifiedFigureWithTheSameNumber(t *testing.T) {
+	t.Parallel()
 	root := synthLimitsTree(t, map[string]string{
 		"services/vpc/docs/content/architecture/data-plane.mdx": synthLimitsDocPage(
 			":::info Гарантированная полоса на интерфейс — не менее 1 Гбит/с\n"+
@@ -390,6 +401,7 @@ func TestInterfaceLimitsGateRedOnZoneQualifiedFigureWithTheSameNumber(t *testing
 // (а7) Дефект: рядом с обещанием назван его ВЫВОД. По плотности и бюджету узла
 // опознаётся конкретная реализация фабрики — публичной странице это не адресовано.
 func TestInterfaceLimitsGateRedOnDerivationPublished(t *testing.T) {
+	t.Parallel()
 	root := synthLimitsTree(t, map[string]string{
 		"services/vpc/docs/content/architecture/data-plane.mdx": synthLimitsDocPage(
 			":::info Гарантированная полоса на интерфейс — не менее 1 Гбит/с\n"+
@@ -411,6 +423,7 @@ func TestInterfaceLimitsGateRedOnDerivationPublished(t *testing.T) {
 // (а8) Предпосылка гейта проверяет СЕБЯ: величина, заданная не литералом, лишает его
 // возможности сверить документацию — и он обязан упасть, а не промолчать.
 func TestInterfaceLimitsGateRedOnNonLiteralDeclaration(t *testing.T) {
+	t.Parallel()
 	root := synthLimitsTree(t, map[string]string{
 		"services/vpc/internal/domain/interface_limits.go": "" +
 			"package domain\n\n" +
@@ -437,6 +450,7 @@ func TestInterfaceLimitsGateRedOnNonLiteralDeclaration(t *testing.T) {
 // установления соединений не опубликован нигде. Тогда арендатор догадывается, а
 // догадка у каждого своя.
 func TestInterfaceLimitsGateRedOnPromiseMissingFromDocs(t *testing.T) {
+	t.Parallel()
 	root := synthLimitsTree(t, map[string]string{
 		"services/vpc/docs/content/architecture/data-plane.mdx": synthLimitsDocPage(
 			synthLimitsBandwidthBlock, synthLimitsConnectionBlock),
@@ -456,6 +470,7 @@ func TestInterfaceLimitsGateRedOnPromiseMissingFromDocs(t *testing.T) {
 // (а10) Дефект восьмого утверждения, первая сторона: реестра долга нет вовсе. Величины
 // объявлены и выглядят гарантированными, хотя за них на нашей стороне не отвечает ничто.
 func TestInterfaceLimitsGateRedOnMissingDebtRegister(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	for rel, body := range map[string]string{
 		"services/vpc/internal/domain/interface_limits.go": "" +
@@ -493,6 +508,7 @@ func TestInterfaceLimitsGateRedOnMissingDebtRegister(t *testing.T) {
 // УТВЕРЖДАЕТ, что наша сторона сверяет обещание при старте, а читателя в прод-коде нет.
 // Это и есть «объявление, выданное за исполнение»: запись выглядит закрытым долгом.
 func TestInterfaceLimitsGateRedOnDebtClaimingWorkThatIsNotThere(t *testing.T) {
+	t.Parallel()
 	root := synthLimitsTree(t, map[string]string{
 		limitsDebtRegisterPath: synthLimitsRegister(map[string]string{
 			"InterfaceConnectionCeiling": "- **Наша сторона:** " + limitsSelfChecked + "\n" +
@@ -515,6 +531,7 @@ func TestInterfaceLimitsGateRedOnDebtClaimingWorkThatIsNotThere(t *testing.T) {
 // появился страж старта, а реестр по-прежнему говорит «не проверяет ничего». Долг
 // пережил свой предмет; такую запись обязан снимать гейт, а не память.
 func TestInterfaceLimitsGateRedOnDebtThatOutlivedItsSubject(t *testing.T) {
+	t.Parallel()
 	root := synthLimitsTree(t, map[string]string{
 		"services/vpc/internal/apps/kacho/config/validate.go": synthLimitsReader,
 	})
@@ -533,6 +550,7 @@ func TestInterfaceLimitsGateRedOnDebtThatOutlivedItsSubject(t *testing.T) {
 // (а13) Дефект: у долга нет предиката снятия. Долг без условия снятия снять некому — он
 // переживёт и того, кто его завёл, и причину, по которой он заведён.
 func TestInterfaceLimitsGateRedOnDebtWithoutRemovalPredicate(t *testing.T) {
+	t.Parallel()
 	root := synthLimitsTree(t, map[string]string{
 		limitsDebtRegisterPath: synthLimitsRegister(map[string]string{
 			"InterfaceConnectionRateBurstCeiling": "- **Наша сторона:** " + limitsNotChecked + "\n" +
@@ -553,6 +571,7 @@ func TestInterfaceLimitsGateRedOnDebtWithoutRemovalPredicate(t *testing.T) {
 // (а14) Дефект: в реестре записан долг по величине, которой в периметре нет. Запись,
 // которой больше нечего исключать, наследуется следующей слепой зоной.
 func TestInterfaceLimitsGateRedOnDebtWithoutSubject(t *testing.T) {
+	t.Parallel()
 	root := synthLimitsTree(t, map[string]string{
 		limitsDebtRegisterPath: synthLimitsRegister(map[string]string{
 			"RetiredInterfaceMagicNumber": "- **Наша сторона:** " + limitsNotChecked + "\n" +
@@ -573,6 +592,7 @@ func TestInterfaceLimitsGateRedOnDebtWithoutSubject(t *testing.T) {
 // (а15) Дефект: величина не объявлена вовсе. Обещание документации не закреплено ничем,
 // и сверять его число не с чем.
 func TestInterfaceLimitsGateRedOnMissingDeclaration(t *testing.T) {
+	t.Parallel()
 	root := synthLimitsTree(t, map[string]string{
 		"services/vpc/internal/domain/interface_limits.go": "" +
 			"package domain\n\n" +

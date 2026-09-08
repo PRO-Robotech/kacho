@@ -88,6 +88,7 @@ const (
 )
 
 func TestReleaseWiringGateStaysSilentOnALegitimateTree(t *testing.T) {
+	t.Parallel()
 	root := syntheticProducerTree(t,
 		producerYAML(noExtraTriggers, threeInputs, callProducer),
 		releaseProducerMechanism)
@@ -102,6 +103,7 @@ func TestReleaseWiringGateStaysSilentOnALegitimateTree(t *testing.T) {
 }
 
 func TestReleaseWiringGateRedWhenTheProducerDeclarationIsMissing(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	a := auditReleaseWiring(root, releaseProducerFile)
 	if len(a.findings) != 1 || !strings.Contains(a.findings[0], releaseProducerFile) {
@@ -119,6 +121,7 @@ func TestReleaseWiringGateRedWhenTheProducerDeclarationIsMissing(t *testing.T) {
 // никто. Ровно это состояние линия выпуска и занимала: механизм в дереве, звал
 // его ноль объявлений.
 func TestReleaseWiringGateRedWhenNoStepCallsTheProducer(t *testing.T) {
+	t.Parallel()
 	root := syntheticProducerTree(t,
 		producerYAML(noExtraTriggers, threeInputs, "echo 'выпускаю'"),
 		releaseProducerMechanism)
@@ -140,6 +143,7 @@ func TestReleaseWiringGateRedWhenNoStepCallsTheProducer(t *testing.T) {
 // которого заведён. Комментарий узлом разобранного документа не является, и
 // подмены текстом здесь быть не может by construction.
 func TestReleaseWiringGateIgnoresTheMechanismNamedOnlyInAComment(t *testing.T) {
+	t.Parallel()
 	wf := "# Здесь объясняется, зачем нужен scripts/release/publish-tag.sh\n" +
 		producerYAML(noExtraTriggers, threeInputs, "echo 'выпускаю'")
 	root := syntheticProducerTree(t, wf, releaseProducerMechanism)
@@ -151,6 +155,7 @@ func TestReleaseWiringGateIgnoresTheMechanismNamedOnlyInAComment(t *testing.T) {
 }
 
 func TestReleaseWiringGateRedOnAnAutomaticTrigger(t *testing.T) {
+	t.Parallel()
 	for _, trig := range []string{"  push:\n    branches: [main]\n", "  schedule:\n    - cron: '0 3 * * *'\n"} {
 		root := syntheticProducerTree(t,
 			producerYAML(trig, threeInputs, callProducer),
@@ -164,6 +169,7 @@ func TestReleaseWiringGateRedOnAnAutomaticTrigger(t *testing.T) {
 }
 
 func TestReleaseWiringGateRedWhenTheIrreversibleStepNeedsNoConfirmation(t *testing.T) {
+	t.Parallel()
 	two := "      version: {required: true}\n      publish: {required: true, type: boolean, default: false}\n"
 	root := syntheticProducerTree(t,
 		producerYAML(noExtraTriggers, two, callProducer),
@@ -178,6 +184,7 @@ func TestReleaseWiringGateRedWhenTheIrreversibleStepNeedsNoConfirmation(t *testi
 // TestReleaseWiringGateRedOnAWiringIntoTheVoid — шаг зовёт механизм, которого в
 // дереве нет. Объявление при этом валидно, разбирается и выглядит исправным.
 func TestReleaseWiringGateRedOnAWiringIntoTheVoid(t *testing.T) {
+	t.Parallel()
 	root := syntheticProducerTree(t,
 		producerYAML(noExtraTriggers, threeInputs, callProducer))
 	a := auditReleaseWiring(root, releaseProducerFile)
@@ -188,6 +195,7 @@ func TestReleaseWiringGateRedOnAWiringIntoTheVoid(t *testing.T) {
 }
 
 func TestReleaseWiringGateRedOnANonExecutableMechanism(t *testing.T) {
+	t.Parallel()
 	root := syntheticProducerTree(t,
 		producerYAML(noExtraTriggers, threeInputs, callProducer),
 		releaseProducerMechanism)
@@ -205,6 +213,7 @@ func TestReleaseWiringGateRedOnANonExecutableMechanism(t *testing.T) {
 // близнец: посторонний механизм линии, позванный рядом с производителем,
 // нарушением не является. Без этой оси гейт мог бы требовать «ровно один вызов».
 func TestReleaseWiringGateIgnoresAnUnrelatedScriptCalledAlongside(t *testing.T) {
+	t.Parallel()
 	const other = "scripts/release/probe-published.sh"
 	wf := producerYAML(noExtraTriggers, threeInputs, callProducer) +
 		"      - name: проба годности\n        run: " + other + " 'v0.1.0'\n"

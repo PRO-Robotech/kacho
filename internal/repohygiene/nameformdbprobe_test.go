@@ -77,6 +77,7 @@ import (
 const nameFormEnginePkgDir = "pkg/nameformdb"
 
 func TestNameFormConstraintIsProvenWhereItIsDeclared(t *testing.T) {
+	t.Parallel()
 	tt := newTrackedTree(t, repoRoot(t))
 	canonPattern := readCanonPattern(t, tt.root)
 	entryMethods := readNameFormEngineEntries(t, tt.root)

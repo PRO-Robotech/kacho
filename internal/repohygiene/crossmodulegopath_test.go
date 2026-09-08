@@ -128,6 +128,7 @@ func findCrossModuleGoPaths(
 
 // TestNamedGoPathsResolveInTheModuleThatOwnsThem — гейт на дереве.
 func TestNamedGoPathsResolveInTheModuleThatOwnsThem(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tree := newTrackedTree(t, root)
 

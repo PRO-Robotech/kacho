@@ -51,6 +51,7 @@ func ct3ComputeSources(t *testing.T) map[string]string {
 // Отказ compute обязан ОБЪЯВЛЯТЬ то поле, о котором говорит его текст. Говорит о
 // подполях — объявляет подполе, а не обязательного родителя.
 func TestCt3ComputeRefusalDeclaresTheFieldItsTextIsAbout(t *testing.T) {
+	t.Parallel()
 	idx, contractFields := ct3ComputeChildIndex()
 	if contractFields == 0 {
 		t.Fatal("ПРЕДПОСЫЛКА НЕВЕРНА: в дескрипторах compute ноль полей-сообщений — " +

@@ -46,6 +46,7 @@ func realTreeInputs(t *testing.T) ([]ContractOperation, map[string]string) {
 //
 // Без него «дефект найден» неотличимо от «анализатор находит всё подряд».
 func TestApiSurfaceInjection_RealTreeIsSilent(t *testing.T) {
+	t.Parallel()
 	ops, pages := realTreeInputs(t)
 	missing, census := UndocumentedOperations(ops, pages)
 	if len(missing) != 0 {
@@ -58,6 +59,7 @@ func TestApiSurfaceInjection_RealTreeIsSilent(t *testing.T) {
 // НАСТОЯЩИЙ вход: снимаем со страницы объявление `:rename` — ровно тот глагол,
 // умолчание о котором и завело #1600.
 func TestApiSurfaceInjection_RemovingARealOperationIsFound(t *testing.T) {
+	t.Parallel()
 	ops, pages := realTreeInputs(t)
 
 	const victim = `endpoint="/registry/v1/registries/{registryId}/repositories/{repository}:rename"`
@@ -94,6 +96,7 @@ func TestApiSurfaceInjection_RemovingARealOperationIsFound(t *testing.T) {
 // анализатор, не снимающий различия, объявил бы описанное неописанным — и его
 // находки были бы ложными все до одной, то есть его перестали бы читать.
 func TestApiSurfaceInjection_NormalizationMatchesTheTwoWritingStyles(t *testing.T) {
+	t.Parallel()
 	const proto = `
 service RegistryService {
   rpc GetRepository(GetRepositoryRequest) returns (Repository) {
@@ -135,6 +138,7 @@ service RegistryService {
 // судится gRPC-формой `Служба/Метод`. Пара: недокументированный — находка,
 // документированный той формой, какой его пишут страницы, — молчание.
 func TestApiSurfaceInjection_GrpcOnlyRPCIsJudgedByItsOwnForm(t *testing.T) {
+	t.Parallel()
 	const proto = `
 service RegistryService {
   rpc SomeStreamingThing(Req) returns (Resp);
@@ -170,6 +174,7 @@ service RegistryService {
 // одного вердикта СЕЙЧАС. Оно про завтра: автор, написавший иначе, узнал бы о
 // слепоте только через пропущенную находку.
 func TestApiSurfaceInjection_EveryWritingFormOfADeclarationIsRead(t *testing.T) {
+	t.Parallel()
 	forms := map[string]string{
 		"канон дерева":          `<ApiOperation method="GET" endpoint="/x">`,
 		"перенос строк":         "<ApiOperation\n  method=\"GET\"\n  endpoint=\"/x\">",
@@ -201,6 +206,7 @@ func TestApiSurfaceInjection_EveryWritingFormOfADeclarationIsRead(t *testing.T) 
 // комментариях контракта (там их десятки), поэтому разбор по подстроке краснел бы
 // на собственном объяснении.
 func TestApiSurfaceInjection_CommentsAreNotDeclarations(t *testing.T) {
+	t.Parallel()
 	const proto = `
 service RegistryService {
   // Здесь был метод:
@@ -225,6 +231,7 @@ service RegistryService {
 // подпадает: ban #6 держит её вне внешней поверхности, и требовать от неё клиентской
 // страницы значило бы требовать документировать недостижимое.
 func TestApiSurfaceInjection_OtherServicesAreOutOfScope(t *testing.T) {
+	t.Parallel()
 	const proto = `
 service InternalRegistryService {
   rpc GetRegistryStats(Req) returns (Resp) {
@@ -247,6 +254,7 @@ service RegistryService {
 // быть отличим от чистого дерева: «ноль находок» и «ноль прочитанного» дают один и
 // тот же пустой перечень, и именно на этом гейт становится мёртвым незаметно.
 func TestApiSurfaceInjection_EmptyInputIsNotSilentSuccess(t *testing.T) {
+	t.Parallel()
 	ops, rpcs, _ := ParseContractOperations("", registryPublicService)
 	if len(ops) != 0 || rpcs != 0 {
 		t.Fatalf("пустой контракт обязан дать ноль операций, получено %d/%d", len(ops), rpcs)

@@ -55,6 +55,7 @@ const keyProjectionCensusFloor = 500
 
 // TestPublishedKeyFormCarriesNoPrivateHalf — сам гейт.
 func TestPublishedKeyFormCarriesNoPrivateHalf(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 
