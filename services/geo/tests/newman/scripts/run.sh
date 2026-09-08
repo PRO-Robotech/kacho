@@ -108,7 +108,7 @@ run_one() {
 #
 # Возвращает 1, если у любого stem: нет out/<stem>.json (MISSING), assertions.failed>0,
 # requests.failed>0 (UNANSWERED), assertions.total==0 (MUTE) или rc!=0. Эталон формы —
-# services/iam/tests/newman/scripts/assert-suites-green.sh.
+# tests/newman/scripts/assert-suites-green.sh.
 aggregate_verdict() {
   local out_dir="$1"; shift
   local bad=0 stem json rcfile rc total failed requests unanswered

@@ -725,7 +725,7 @@ func TestStaleClaimPremiseHolds(t *testing.T) {
 	})
 
 	t.Run("вычитание_из_вердикта_не_исполняется", func(t *testing.T) {
-		const gate = "services/iam/tests/newman/scripts/assert-suites-green.sh"
+		const gate = "tests/newman/scripts/assert-suites-green.sh"
 		body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(gate)))
 		if err != nil {
 			t.Fatalf("чтение %s: %v — предпосылку проверять не на чем", gate, err)

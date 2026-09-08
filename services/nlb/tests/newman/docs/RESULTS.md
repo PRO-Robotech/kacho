@@ -2,7 +2,7 @@
 
 ## Known-RED subtraction removed from the shared gate (2026-07-30)
 
-`services/iam/tests/newman/scripts/assert-suites-green.sh` is the shared verdict for every
+`tests/newman/scripts/assert-suites-green.sh` is the shared verdict for every
 suite, nlb included. It used to deduct a "known-RED" set before deciding; that deduction is
 gone. It reports what newman reported.
 

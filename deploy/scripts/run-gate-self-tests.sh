@@ -163,7 +163,7 @@ services/iam/.github/scripts/classify-integration-outcome.sh
 services/iam/.github/scripts/go-test-verdict.py
 services/iam/.github/scripts/gosec-gate.sh
 services/iam/tests/newman/scripts/body_capture_form_test.py
-services/iam/tests/newman/scripts/exec-coverage.py
+tests/newman/scripts/exec-coverage.py
 services/iam/tests/newman/scripts/selftest_basic_access_token.py
 tests/authz-fixtures/ceremony_credentials.py
 tests/authz-fixtures/prodseed_all.py

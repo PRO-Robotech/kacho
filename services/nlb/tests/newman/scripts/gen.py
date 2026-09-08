@@ -1122,7 +1122,7 @@ def conf_alreadyexists_block(prefix: str, create_path: str, name_template: str,
 # автором.
 #
 # ТЕКСТ ОБЯЗАН СОВПАДАТЬ С ОСТАЛЬНЫМИ НАБОРАМИ ДОСЛОВНО. Вердикт по КАЖДОЙ
-# суите выносит один скрипт (services/iam/tests/newman/scripts/assert-suites-green.sh,
+# суите выносит один скрипт (tests/newman/scripts/assert-suites-green.sh,
 # запускается с cwd = каталог проверяемой суиты), а метку он читает у ОДНОГО
 # производителя — services/iam/tests/newman/scripts/gen.py, — потому что берёт её
 # по `dirname "${BASH_SOURCE[0]}"`, а не по cwd. Набор, объявивший другой текст,
@@ -1157,7 +1157,7 @@ def _auth_pre_script(auth: str) -> List[str]:
         # then still holds, so the case passes FOR THE WRONG REASON and the subject
         # under test is never exercised. Missing subject = misconfigured harness:
         # FAIL naming the variable, THEN SKIP — the sanctioned shape, declared by
-        # services/iam/tests/newman/scripts/exec-coverage.py (section STATIC BANS) and
+        # tests/newman/scripts/exec-coverage.py (section STATIC BANS) and
         # implemented there as gen.py::require_env_url; this generator carries no such
         # helper, so the shape is written out here. Dropping the header and sending
         # anyway is NOT the

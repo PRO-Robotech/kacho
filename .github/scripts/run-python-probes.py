@@ -6,9 +6,17 @@
 
 ПРЕДМЕТ
 -------
-`services/*/tests/newman/scripts/*_test.py` — регрессионные пробы вокруг оснастки
-сюит: генератора коллекций (`gen.py`), гейта покрытия (`coverage.py`) и гейта
-ИСПОЛНЕННОСТИ прогона (`exec-coverage.py`). Их не запускал НИКТО: ни workflow, ни
+Регрессионные пробы вокруг оснастки наборов newman. Живут они на ДВУХ уровнях, и
+образцов состава поэтому два (см. `DEFAULT_PATTERNS` ниже):
+
+  * `services/*/tests/newman/scripts/*_test.py` — пробы генератора коллекций
+    (`gen.py`) и формы кейсов СВОЕГО набора;
+  * `tests/newman/scripts/*_test.py` — пробы ВЕРДИКТНОГО СЛОЯ, общего на дерево:
+    гейта суиты (`assert-suites-green.sh`), гейта ИСПОЛНЕННОСТИ прогона
+    (`exec-coverage.py`) и гейта покрытия (`coverage.py`). Слой судит все восемь
+    наборов и потому не принадлежит ни одному.
+
+Их не запускал НИКТО: ни workflow, ни
 Makefile, ни другой гейт. Слово `pytest` встречалось во всём дереве один раз — в
 `.dockerignore`, где закрыт кэш его прогонов, то есть кто-то гонял их руками и
 след остался только от кэша.
@@ -77,10 +85,34 @@ import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-# Образец состава. Тот же вид, что у сверщиков переписи кейсов
+# Образцы состава. Тот же вид, что у сверщиков переписи кейсов
 # (`services/*/tests/newman/scripts/validate-cases.py`): сюита названа звёздочкой,
 # поэтому новая попадает под гейт сама.
-DEFAULT_PATTERN = "services/*/tests/newman/scripts/*_test.py"
+#
+# ОБРАЗЦОВ ДВА, И ЭТО НЕ УДОБСТВО. Пробы оснастки живут в `tests/newman/scripts/`
+# двух разных уровней: у каждой суиты — свои (`services/<svc>/…`), и ОДИН на
+# дерево — вокруг вердиктного слоя (`<корень>/tests/newman/scripts/`), который
+# судит все восемь наборов и потому не принадлежит ни одному.
+#
+# ПОЧЕМУ НЕ ОДИН ОБРАЗЕЦ СО ЗВЁЗДОЧКОЙ ВПЕРЕДИ. `*` в pathspec git пересекает
+# `/`, в `fnmatch` — пересекает, а в `filepath.Match` (гейт проводки
+# `tools/pythonprobes`) — НЕ пересекает. Один образец `*/tests/newman/…` читался
+# бы прогонщиком и его гейтом ПО-РАЗНОМУ, и разошлись бы они молча: гейт
+# объявил бы пробу невидимой там, где прогонщик её видит. Перечень явных
+# образцов, ни один из которых не пересекает `/`, читается всеми тремя
+# одинаково.
+#
+# ОБРАЗЕЦ, НЕ НАХОДЯЩИЙ НИЧЕГО, — НАХОДКА, а не мелочь: расширение обхода, не
+# изменившее переписи, выглядит покрытием и им не является. Гейт проводки
+# (`tools/pythonprobes`) требует от каждого образца хотя бы одну пробу дерева.
+# Сегодня первый образец несут пробы ровно ОДНОГО набора; если этот набор
+# когда-нибудь уедет из дерева, образец останется без предмета и гейт
+# потребует решения — снять его либо назвать набор, ради которого он держится.
+# Это не поломка, а вопрос, который иначе был бы решён молчанием.
+DEFAULT_PATTERNS = (
+    "services/*/tests/newman/scripts/*_test.py",
+    "tests/newman/scripts/*_test.py",
+)
 
 # Виды файла проб.
 KIND_PYTEST = "набор pytest"
@@ -91,30 +123,33 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def list_tracked(root: Path, pattern: str) -> list[str]:
+def list_tracked(root: Path, patterns: tuple[str, ...]) -> list[str]:
     """Состав — по содержимому репозитория, с откатом на обход ФС.
 
     Для репозитория авторитет — версионный контроль (то же множество, что у CI на
     свежем checkout'е). В синтетическом дереве самопроверки git недоступен, и тогда
     обход идёт по файловой системе: тот же приём и по той же причине, что в
     `deploy/scripts/run-gate-self-tests.sh`.
+
+    Образцы объединяются, а не выбираются: файл, попавший под два сразу, считается
+    один раз — иначе перепись «файлов проб найдено» назвала бы больше, чем есть.
     """
     try:
         out = subprocess.run(
-            ["git", "-C", str(root), "ls-files", "-z", "--", pattern],
+            ["git", "-C", str(root), "ls-files", "-z", "--", *patterns],
             capture_output=True, text=True, timeout=60, check=True).stdout
-        names = [n for n in out.split("\0") if n]
+        names = sorted({n for n in out.split("\0") if n})
         if names:
-            return sorted(names)
+            return names
     except (subprocess.SubprocessError, OSError):
         pass
-    found = []
+    found = set()
     for dirpath, _dirs, files in os.walk(root):
         for f in files:
             rel = os.path.relpath(os.path.join(dirpath, f), root)
             rel = rel.replace(os.sep, "/")
-            if fnmatch.fnmatch(rel, pattern):
-                found.append(rel)
+            if any(fnmatch.fnmatch(rel, pat) for pat in patterns):
+                found.add(rel)
     return sorted(found)
 
 
@@ -205,17 +240,25 @@ def run_script(root: Path, rel: str) -> tuple[int, list[str]]:
     return 1, []
 
 
-def execute(root: Path, pattern: str) -> int:
-    files = list_tracked(root, pattern)
+def execute(root: Path, patterns: tuple[str, ...]) -> int:
+    files = list_tracked(root, patterns)
 
+    shown = ", ".join(patterns)
     print("===== регрессионные пробы python: перепись состава =====")
-    print(f"образец: {pattern}")
+    print(f"образцов: {len(patterns)} — {shown}")
+    # Перепись ПО КАЖДОМУ образцу отдельно. Одно суммарное число скрывает ровно
+    # тот случай, ради которого образцов два: образец, переставший что-либо
+    # находить, не меняет суммы, пока второй жив, — и его смерть неотличима от
+    # исправной работы.
+    for pat in patterns:
+        n = sum(1 for rel in files if fnmatch.fnmatch(rel, pat))
+        print(f"  по образцу {pat}: {n}")
     print(f"файлов проб найдено: {len(files)}")
 
     # Ноль файлов — ОТКАЗ. Пустой состав отчитался бы «всё чисто», и именно так
     # 48 проб прожили в дереве, не исполнившись ни разу.
     if not files:
-        print(f"ОТКАЗ: по образцу {pattern} не найдено ни одного файла проб — "
+        print(f"ОТКАЗ: по образцам {shown} не найдено ни одного файла проб — "
               f"обход сломан либо пробы переехали. Пустой обход не является "
               f"доказательством чистоты.", file=sys.stderr)
         return 1
@@ -351,6 +394,16 @@ def _at(name: str, body: str) -> dict[str, str]:
     return {f"services/x/tests/newman/scripts/{name}": body}
 
 
+def _at_root(name: str, body: str) -> dict[str, str]:
+    """Проба вердиктного слоя: она не принадлежит ни одной суите и лежит в корне."""
+    return {f"tests/newman/scripts/{name}": body}
+
+
+def _elsewhere(name: str, body: str) -> dict[str, str]:
+    """Место, которого нет НИ В ОДНОМ образце, — контроль против бланкетного обхода."""
+    return {f"tools/x/{name}": body}
+
+
 def self_test() -> int:
     failures = []
 
@@ -369,7 +422,7 @@ def self_test() -> int:
         buf = io.StringIO()
         try:
             with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
-                rc = execute(root, DEFAULT_PATTERN)
+                rc = execute(root, DEFAULT_PATTERNS)
         finally:
             shutil.rmtree(root, ignore_errors=True)
         return rc, buf.getvalue()
@@ -408,6 +461,34 @@ def self_test() -> int:
     check("пропущенная проба роняет прогон", rc == 1, out)
     check("пропуск назван", "ПРОПУЩЕНО" in out, out)
 
+    # ── (g) ВТОРОЙ ОБРАЗЕЦ ЖИВ, И ОН НЕ БЛАНКЕТНЫЙ ───────────────────────────
+    #
+    # Образец, добавленный и ничего не находящий, — расширение вхолостую: он
+    # выглядит как покрытие и им не является. Ось доказывается ПАРОЙ: проба
+    # вердиктного слоя (корень дерева) обязана быть найдена и исполнена, а такая
+    # же проба в месте, которого не называет НИ ОДИН образец, — не найдена.
+    # Без второй половины «нашёл» означало бы «беру всё подряд».
+    print("(g) образец вердиктного слоя жив, и обход не бланкетный")
+    rc, out = run(_at_root("verdict_layer_test.py", _OK_PROBE))
+    check("проба вердиктного слоя найдена и зелена", rc == 0, out)
+    check("названа координатой корня",
+          "tests/newman/scripts/verdict_layer_test.py" in out, out)
+    check("перепись по образцу вердиктного слоя не нулевая",
+          "по образцу tests/newman/scripts/*_test.py: 1" in out, out)
+    rc, out = run(_elsewhere("stray_test.py", _OK_PROBE))
+    check("проба вне обоих образцов НЕ засчитывается", rc == 1, out)
+    check("пустой обход назван отказом", "не найдено ни одного файла" in out, out)
+
+    print("(h) обе полосы разом — перепись называет каждую своим числом")
+    rc, out = run({**_at("alpha_test.py", _OK_PROBE),
+                   **_at_root("verdict_layer_test.py", _OK_PROBE)})
+    check("оба образца дали по файлу", rc == 0, out)
+    check("перепись суиты не схлопнута",
+          "по образцу services/*/tests/newman/scripts/*_test.py: 1" in out, out)
+    check("перепись вердиктного слоя не схлопнута",
+          "по образцу tests/newman/scripts/*_test.py: 1" in out, out)
+    check("проб исполнено 2", "проб исполнено 2" in out, out)
+
     print()
     if failures:
         print(f"САМОПРОВЕРКА ПРОВАЛЕНА: {len(failures)} — {', '.join(failures)}",
@@ -422,8 +503,9 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--root", default=None,
                     help="корень обхода (по умолчанию — корень репозитория)")
-    ap.add_argument("--pattern", default=DEFAULT_PATTERN,
-                    help="образец состава файлов проб")
+    ap.add_argument("--pattern", action="append", default=None,
+                    help="образец состава файлов проб (можно повторять; "
+                         "по умолчанию — объявленный перечень)")
     ap.add_argument("--self-test", action="store_true",
                     help="доказать инъекцией: прогонщик краснеет на дефекте и молчит на законной форме")
     args = ap.parse_args(argv)
@@ -431,7 +513,7 @@ def main(argv=None) -> int:
     if args.self_test:
         return self_test()
     return execute(Path(args.root).resolve() if args.root else repo_root(),
-                   args.pattern)
+                   tuple(args.pattern) if args.pattern else DEFAULT_PATTERNS)
 
 
 if __name__ == "__main__":

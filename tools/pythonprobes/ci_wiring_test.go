@@ -4,8 +4,11 @@
 // Package pythonprobes держит половину вопроса «настоящая ли эта проба?», на которую
 // сама проба ответить не может: зовёт ли её кто-нибудь.
 //
-// ПРЕДМЕТ. `services/*/tests/newman/scripts/*_test.py` — регрессионные пробы вокруг
-// оснастки сюит (генератор коллекций, гейт покрытия, гейт ИСПОЛНЕННОСТИ прогона).
+// ПРЕДМЕТ. Регрессионные пробы вокруг оснастки наборов newman. Каталогов у них
+// ДВА, и это не дубль: `services/*/tests/newman/scripts/` — пробы генератора
+// коллекций СВОЕГО набора; `tests/newman/scripts/` — пробы ВЕРДИКТНОГО СЛОЯ
+// (гейт суиты, гейт покрытия, гейт ИСПОЛНЕННОСТИ прогона), который судит все
+// восемь наборов и потому не принадлежит ни одному.
 // Их не запускал НИКТО: ни workflow, ни Makefile, ни другой гейт. Слово `pytest`
 // встречалось во всём дереве ОДИН раз — в `.dockerignore`, где закрыт кэш его
 // прогонов; то есть их гоняли руками, и след остался только от кэша.
@@ -22,6 +25,13 @@
 // Тот же приём и по той же причине — `tools/newmancensus/ci_wiring_test.go`
 // (сверщики переписи кейсов). Разница в предмете: там сверщик на сюиту, здесь
 // набор проб на сюиту.
+//
+// ОБРАЗЕЦ, НЕ НАХОДЯЩИЙ НИЧЕГО, — НАХОДКА. Расширение обхода, не изменившее
+// переписи, есть расширение вхолостую: оно выглядит покрытием и им не является.
+// Поэтому каждый объявленный образец обязан назвать хотя бы одну пробу дерева, а
+// перепись печатается ПО КАЖДОМУ отдельно: одно суммарное число скрывает ровно
+// тот случай, ради которого образцов два, — образец, переставший что-либо
+// находить, суммы не меняет, пока второй жив.
 package pythonprobes
 
 import (
@@ -46,9 +56,23 @@ const runner = ".github/scripts/run-python-probes.py"
 // сверяется на них обоих (TestRunnerPatternCoversEveryTrackedProbeFile).
 const probeSuffix = "_test.py"
 
-// probeDirGlob — где живут пробы сюит. Каталог, а не имя файла: `scripts/` заведён
-// под оснастку сюиты, и другого назначения у файла проб здесь нет.
-const probeDirGlob = "services/*/tests/newman/scripts"
+// probeDirGlobs — где живут пробы оснастки. Каталог, а не имя файла: `scripts/`
+// заведён под оснастку набора, и другого назначения у файла проб здесь нет.
+//
+// Каталогов ДВА, и второй не дубль первого: пробы вокруг ВЕРДИКТНОГО СЛОЯ
+// (`assert-suites-green.sh`, `exec-coverage.py`, `coverage.py`) судят все восемь
+// наборов сразу и потому не принадлежат ни одному — они лежат в корневом
+// `tests/newman/scripts/`, рядом со своим предметом.
+//
+// ЭТОТ ПЕРЕЧЕНЬ ОБЪЯВЛЕН ЗДЕСЬ И НЕ ВЫВОДИТСЯ ИЗ ПРОГОНЩИКА — намеренно.
+// Перепись, выведенная из того, что она проверяет, вакуумна by construction:
+// прогонщик, потерявший образец, потерял бы вместе с ним и половину переписи, и
+// `TestRunnerPatternCoversEveryTrackedProbeFile` остался бы зелёным. Два
+// независимых объявления, которые гейт сличает, — и есть его предмет.
+var probeDirGlobs = []string{
+	"services/*/tests/newman/scripts",
+	"tests/newman/scripts",
+}
 
 func repoRoot(t *testing.T) string {
 	t.Helper()
@@ -134,7 +158,7 @@ func runnerSteps(t *testing.T, root string) []string {
 // файла. Отслеживаемое множество — то же, что увидит CI на свежем checkout'е.
 func findProbeFiles(t *testing.T, root string) []string {
 	t.Helper()
-	cmd := gitenv.Command(root, "ls-files", "-z", "--", "services/")
+	cmd := gitenv.Command(root, "ls-files", "-z", "--", "services/", "tests/")
 	raw, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("git ls-files сорвался: %v — предпосылка гейта не выполняется", err)
@@ -144,8 +168,8 @@ func findProbeFiles(t *testing.T, root string) []string {
 		if rel == "" || !strings.HasSuffix(rel, probeSuffix) {
 			continue
 		}
-		// Только пробы оснастки сюит: `*_test.py` в другом месте — не наш предмет.
-		if ok, _ := filepath.Match(probeDirGlob, path.Dir(rel)); ok {
+		// Только пробы оснастки: `*_test.py` в другом месте — не наш предмет.
+		if matchesAnyDir(path.Dir(rel)) {
 			out = append(out, rel)
 		}
 	}
@@ -153,22 +177,40 @@ func findProbeFiles(t *testing.T, root string) []string {
 	return out
 }
 
-// declaredPattern — образец состава, ОБЪЯВЛЕННЫЙ самим прогонщиком.
+// matchesAnyDir — каталог назван хотя бы одним из объявленных выше.
+func matchesAnyDir(dir string) bool {
+	for _, g := range probeDirGlobs {
+		if ok, _ := filepath.Match(g, dir); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// declaredPatterns — образцы состава, ОБЪЯВЛЕННЫЕ самим прогонщиком.
 //
 // Читается из его исходника, а не выписывается здесь второй раз: два места об одном
 // предмете расходятся молча, и разойдутся они именно там, где расхождение не видно.
-func declaredPattern(t *testing.T, root string) string {
+func declaredPatterns(t *testing.T, root string) []string {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(runner)))
 	if err != nil {
 		t.Fatalf("прогонщик %s не читается: %v — проводить нечего", runner, err)
 	}
-	m := regexp.MustCompile(`(?m)^DEFAULT_PATTERN\s*=\s*"([^"]+)"`).FindSubmatch(raw)
-	if m == nil {
-		t.Fatalf("в %s не найдено объявление DEFAULT_PATTERN — прогонщик перестал "+
-			"называть свой образец состава, и сверять его с деревом больше нечем", runner)
+	block := regexp.MustCompile(`(?ms)^DEFAULT_PATTERNS\s*=\s*\((.*?)\)`).FindSubmatch(raw)
+	if block == nil {
+		t.Fatalf("в %s не найдено объявление DEFAULT_PATTERNS — прогонщик перестал "+
+			"называть свои образцы состава, и сверять их с деревом больше нечем", runner)
 	}
-	return string(m[1])
+	var out []string
+	for _, m := range regexp.MustCompile(`"([^"]+)"`).FindAllSubmatch(block[1], -1) {
+		out = append(out, string(m[1]))
+	}
+	if len(out) == 0 {
+		t.Fatalf("объявление DEFAULT_PATTERNS в %s пусто — обход не нашёл бы ничего, "+
+			"а прогон отчитался бы отказом по причине, которой нет в дереве", runner)
+	}
+	return out
 }
 
 // TestCIRunsThePythonProbeRunner — конвейер зовёт прогонщика, и его отказ доезжает.
@@ -222,7 +264,7 @@ func TestCIRunsThePythonProbeRunner(t *testing.T) {
 // невидимая проба выглядит исполненной.
 func TestRunnerPatternCoversEveryTrackedProbeFile(t *testing.T) {
 	root := repoRoot(t)
-	pattern := declaredPattern(t, root)
+	patterns := declaredPatterns(t, root)
 	all := findProbeFiles(t, root)
 
 	// Перепись — ОТДЕЛЬНОЕ утверждение. Обход, переставший доходить до проб
@@ -230,18 +272,38 @@ func TestRunnerPatternCoversEveryTrackedProbeFile(t *testing.T) {
 	// множестве — ровно тот класс, который здесь искореняют.
 	if len(all) == 0 {
 		t.Fatalf("в дереве не найдено ни одной пробы %q в %q — обход сломан, "+
-			"а не дерево чисто", probeSuffix, probeDirGlob)
+			"а не дерево чисто", probeSuffix, probeDirGlobs)
 	}
-	t.Logf("проб-файлов в дереве: %d; образец прогонщика: %q", len(all), pattern)
+	t.Logf("проб-файлов в дереве: %d; образцов прогонщика: %d — %q",
+		len(all), len(patterns), patterns)
 
+	// Перепись ПО КАЖДОМУ образцу. Одного суммарного числа мало: образец,
+	// переставший что-либо находить, суммы не меняет, пока второй жив, — и его
+	// смерть неотличима от исправной работы.
+	covered := make(map[string]int, len(patterns))
 	for _, rel := range all {
-		ok, err := filepath.Match(pattern, rel)
-		if err != nil {
-			t.Fatalf("образец %q не разбирается: %v", pattern, err)
+		hit := false
+		for _, pat := range patterns {
+			ok, err := filepath.Match(pat, rel)
+			if err != nil {
+				t.Fatalf("образец %q не разбирается: %v", pat, err)
+			}
+			if ok {
+				covered[pat]++
+				hit = true
+			}
 		}
-		if !ok {
-			t.Errorf("проба %s лежит вне образца %q — прогонщик её не увидит, "+
-				"а сюита будет выглядеть проверенной", rel, pattern)
+		if !hit {
+			t.Errorf("проба %s лежит вне ВСЕХ образцов %q — прогонщик её не увидит, "+
+				"а набор будет выглядеть проверенным", rel, patterns)
+		}
+	}
+	for _, pat := range patterns {
+		t.Logf("  по образцу %q: %d", pat, covered[pat])
+		if covered[pat] == 0 {
+			t.Errorf("образец %q не находит НИ ОДНОЙ пробы дерева — расширение "+
+				"вхолостую: оно выглядит покрытием и им не является. Снимите "+
+				"образец либо назовите предмет, ради которого он объявлен", pat)
 		}
 	}
 }
