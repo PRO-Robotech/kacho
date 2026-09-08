@@ -77,6 +77,8 @@ var deliveryRoster = []string{
 	"operator_keys_carry_no_foreign_prefix_injection_test.go",
 	"operator_keys_carry_no_foreign_prefix_test.go",
 	"prod_profile_injection_test.go",
+	"prod_profile_render_injection_test.go",
+	"prod_profile_render_test.go",
 	"prod_profile_test.go",
 	"provider_hops_test.go",
 	"release_namespace_test.go",
