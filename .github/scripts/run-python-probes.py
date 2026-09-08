@@ -6,15 +6,19 @@
 
 ПРЕДМЕТ
 -------
-Регрессионные пробы вокруг оснастки наборов newman. Живут они на ДВУХ уровнях, и
-образцов состава поэтому два (см. `DEFAULT_PATTERNS` ниже):
+Регрессионные пробы вокруг оснастки наборов newman. Живут они на ТРЁХ уровнях, и
+образцов состава поэтому три (см. `DEFAULT_PATTERNS` ниже):
 
   * `services/*/tests/newman/scripts/*_test.py` — пробы генератора коллекций
     (`gen.py`) и формы кейсов СВОЕГО набора;
   * `tests/newman/scripts/*_test.py` — пробы ВЕРДИКТНОГО СЛОЯ, общего на дерево:
     гейта суиты (`assert-suites-green.sh`), гейта ИСПОЛНЕННОСТИ прогона
     (`exec-coverage.py`) и гейта покрытия (`coverage.py`). Слой судит все восемь
-    наборов и потому не принадлежит ни одному.
+    наборов и потому не принадлежит ни одному;
+  * `tests/authz-fixtures/*_test.py` — пробы ПОСЕВА, который поднимает фикстуры
+    боевой посадки для всех наборов сразу. Слой третий, а не тот же самый: посев
+    исполняется ДО первой коллекции, и его отказ не даёт ни одного отчёта — то
+    есть вердиктный слой ему не судья, он лишь сообщает, что судить нечего.
 
 Их не запускал НИКТО: ни workflow, ни
 Makefile, ни другой гейт. Слово `pytest` встречалось во всём дереве один раз — в
@@ -112,6 +116,7 @@ from pathlib import Path
 DEFAULT_PATTERNS = (
     "services/*/tests/newman/scripts/*_test.py",
     "tests/newman/scripts/*_test.py",
+    "tests/authz-fixtures/*_test.py",
 )
 
 # Виды файла проб.
@@ -399,6 +404,11 @@ def _at_root(name: str, body: str) -> dict[str, str]:
     return {f"tests/newman/scripts/{name}": body}
 
 
+def _at_seed(name: str, body: str) -> dict[str, str]:
+    """Проба ПОСЕВА: её предмет исполняется до первой коллекции любой суиты."""
+    return {f"tests/authz-fixtures/{name}": body}
+
+
 def _elsewhere(name: str, body: str) -> dict[str, str]:
     """Место, которого нет НИ В ОДНОМ образце, — контроль против бланкетного обхода."""
     return {f"tools/x/{name}": body}
@@ -479,15 +489,32 @@ def self_test() -> int:
     check("проба вне обоих образцов НЕ засчитывается", rc == 1, out)
     check("пустой обход назван отказом", "не найдено ни одного файла" in out, out)
 
-    print("(h) обе полосы разом — перепись называет каждую своим числом")
+    # ── (i) ТРЕТИЙ ОБРАЗЕЦ ЖИВ ───────────────────────────────────────────────
+    #
+    # Та же ось и по той же причине, что (g): образец, добавленный и ничего не
+    # находящий, есть расширение вхолостую. Вторая половина пары — та же, что у
+    # (g): `_elsewhere` вне ВСЕХ образцов по-прежнему не засчитывается, поэтому
+    # «нашёл» здесь не означает «беру всё подряд».
+    print("(i) образец слоя посева жив, и обход не бланкетный")
+    rc, out = run(_at_seed("prodseed_synthetic_test.py", _SCRIPT_OK))
+    check("проба посева найдена и зелена", rc == 0, out)
+    check("названа координатой посева",
+          "tests/authz-fixtures/prodseed_synthetic_test.py" in out, out)
+    check("перепись по образцу посева не нулевая",
+          "по образцу tests/authz-fixtures/*_test.py: 1" in out, out)
+
+    print("(h) все три полосы разом — перепись называет каждую своим числом")
     rc, out = run({**_at("alpha_test.py", _OK_PROBE),
-                   **_at_root("verdict_layer_test.py", _OK_PROBE)})
-    check("оба образца дали по файлу", rc == 0, out)
+                   **_at_root("verdict_layer_test.py", _OK_PROBE),
+                   **_at_seed("prodseed_synthetic_test.py", _SCRIPT_OK)})
+    check("все три образца дали по файлу", rc == 0, out)
     check("перепись суиты не схлопнута",
           "по образцу services/*/tests/newman/scripts/*_test.py: 1" in out, out)
     check("перепись вердиктного слоя не схлопнута",
           "по образцу tests/newman/scripts/*_test.py: 1" in out, out)
-    check("проб исполнено 2", "проб исполнено 2" in out, out)
+    check("перепись слоя посева не схлопнута",
+          "по образцу tests/authz-fixtures/*_test.py: 1" in out, out)
+    check("проб исполнено 3", "проб исполнено 3" in out, out)
 
     print()
     if failures:
