@@ -33,7 +33,10 @@ func injLicenseBody(subject string) string {
 		"Licensor:             PRO-Robotech\n" +
 		"\n" +
 		"Licensed Work:        " + subject + " and all source code, configuration,\n" +
-		"                      documentation, and other materials in this repository.\n" +
+		"                      documentation, and other materials in the directory that\n" +
+		"                      contains this License file, including its subdirectories,\n" +
+		"                      EXCEPT any subdirectory that contains its own LICENSE\n" +
+		"                      file and everything within it.\n" +
 		"                      The Licensed Work is (c) PRO-Robotech.\n" +
 		"\n" +
 		"Change Date:          2029-01-01\n"
