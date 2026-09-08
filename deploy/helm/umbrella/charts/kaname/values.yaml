@@ -6,9 +6,9 @@
 
 # Phase 2 (KAC-127) — `kacho.domain` пробрасывается из umbrella values.yaml
 # через subchart-import (см. dependencies в umbrella Chart.yaml). Sub-chart
-# читает `.Values.kacho.domain`, но fallback (если subchart запускается
+# читает `.Values.platform.domain`, но fallback (если subchart запускается
 # standalone, без umbrella) — `api.kacho.cloud`.
-kacho:
+platform:
   domain: api.kacho.cloud
   subdomains:
     # `app` и `kratos` ПЕРЕЕХАЛИ в `global.kacho.identity` вместе с содержимым
@@ -278,6 +278,23 @@ kratos:
 
 name: kaname
 replicas: 1
+
+# АВТОМАСШТАБИРОВАНИЕ — ключ ОБЪЯВЛЕН, хотя и выключен, и это не украшение.
+#
+# Шаблон карты настроек его ЧИТАЕТ (`replica-budget`), а объявлен он не был ни
+# здесь, ни одним профилем: ключ, которого нет ни в одном файле значений чарта,
+# оператор не может ни найти, ни прочесть — он виден только тому, кто открыл
+# наш шаблон. Из шести чартов дерева, читающих этот ключ, объявляли его пять.
+#
+# Величины подобраны так, чтобы обе ветви шаблона остались прежними:
+#   `enabled: false`   — бюджет реплик берётся из `replicas`, как и до объявления;
+#   `maxReplicas: ""`  — пустое значение сохраняет отказ рендера с его текстом,
+#                        если автомасштабирование включат, не назвав потолка.
+# Своего объекта автомасштабирования этот чарт не несёт: ключ описывает, из чего
+# считается бюджет соединений, а не поднимает масштабирование.
+autoscaling:
+  enabled: false
+  maxReplicas: ""
 image:
   repository: kaname
   tag: dev

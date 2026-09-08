@@ -46,7 +46,7 @@ kacho:
   # Корневой домен Kachō Cloud. Читается шаблонами зонтика (ingress, сертификаты).
   # Override per-cluster:
   #   helm upgrade … --set kacho.domain=test.example.com \
-  #                  --set kaname.kacho.domain=test.example.com
+  #                  --set kaname.platform.domain=test.example.com
   domain: api.kacho.cloud
 
 # ─── kaname sub-chart ─────────────────────────────────────────────────
@@ -59,7 +59,7 @@ kaname:
     repository: docker.io/prorobotech/kaname
     tag: main-be5a45a2
     pullPolicy: IfNotPresent
-  kacho:
+  platform:
     domain: api.kacho.cloud
     subdomains:
       # `app` и `kratos` ПЕРЕЕХАЛИ в `global.kacho.identity` вместе с содержимым

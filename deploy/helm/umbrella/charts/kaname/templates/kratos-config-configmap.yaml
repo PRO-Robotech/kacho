@@ -5,8 +5,8 @@ KAC-127 Phase 2 — Kratos config ConfigMap (WebAuthn / Passkey enabled).
 
 Соответствует acceptance §5.1 (sub-phase 3.2):
 
-  - webauthn passwordless=true, rp.id = {{ .Values.kacho.domain }} (root domain WebAuthn-RP);
-    rp.origin = https://{app-subdomain}.{{ .Values.kacho.domain }} (UI origin).
+  - webauthn passwordless=true, rp.id = {{ .Values.platform.domain }} (root domain WebAuthn-RP);
+    rp.origin = https://{app-subdomain}.{{ .Values.platform.domain }} (UI origin).
   - password fallback с Argon2id (m=64MB t=3 p=4) + HIBP k-anonymity check;
   - totp secondary (RFC 6238) для AAL2 fallback;
   - lookup_secret (backup codes) для recovery-edge;

@@ -486,7 +486,7 @@ kaname:
     # :9099 — внутренний периметр доверенным не считается (защита в глубину против
     # бокового движения).
     internalRest: true
-  kacho:
+  platform:
     iam:
       # Provider-ADMIN hop: declared (never derived) and over TLS with the anchor
       # pinned — the internal-CA bundle already mounted for mTLS is the same CA

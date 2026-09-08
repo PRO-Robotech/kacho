@@ -586,7 +586,7 @@ kaname:
     # Both HTTP edges run server-tls-only (default; restated here for prod clarity).
     hooksClientAuthMode: server-tls-only
     metricsClientAuthMode: server-tls-only
-  kacho:
+  platform:
     iam:
       # Route to the provider's ADMIN API. DECLARED, never derived: the fallback
       # derivation yields the PUBLIC ingress hostname, which does not resolve
