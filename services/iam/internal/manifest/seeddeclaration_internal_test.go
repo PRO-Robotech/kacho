@@ -63,6 +63,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // seedSubsectionFields — четыре подраздела посева. Перечень выводится из САМОГО
@@ -104,7 +106,7 @@ type seedProducerCensus struct {
 // взгляд человека. Недосчёт был бы опасен, и его здесь нет by construction.
 func findSeedRowProducers(t *testing.T) seedProducerCensus {
 	t.Helper()
-	root := treeRootFromPackage
+	root := platformtree.Require(t)
 	var census seedProducerCensus
 	fset := token.NewFileSet()
 

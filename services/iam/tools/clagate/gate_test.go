@@ -25,14 +25,33 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 
+	"github.com/PRO-Robotech/kaname/internal/treeroot"
 	"github.com/PRO-Robotech/kaname/tools/clagate"
 )
 
-// repoRoot — корень дерева продукта (пакет лежит в services/iam/tools/clagate).
-const repoRoot = "../../../.."
+// ledgerName — имя ведомости. Имя, а не путь: путь ВЫВОДИТСЯ из посадки.
+const ledgerName = "cla-ledger.yaml"
 
-// ledgerPath — ведомость, объявляющая своих, подписавших и машинные личности.
-const ledgerPath = "services/iam/cla-ledger.yaml"
+// placement — дерево, которое судит этот модуль, и путь ведомости в нём.
+//
+// Здесь стояли ДВА литерала — подъём `"../../../.."` и координата
+// `"services/iam/cla-ledger.yaml"`. Оба верны ровно для одной посадки: четыре
+// уровня вверх есть координата РАСКЛАДКИ монорепо, а не свойство модуля. Вне
+// дерева выражение резолвится МОЛЧА и даёт чужой каталог — и существенно не то,
+// что проба при этом падает, а то, что дерево, где по вычисленному пути лежит
+// годная ведомость, дало бы ЗЕЛЁНЫЙ вердикт о ЧУЖОЙ истории (kacho#2239).
+//
+// Теперь корень спрашивается у ИНДЕКСА, а принадлежность каталога этому дереву
+// проверяется отдельно; путь модуля в дереве выводится и потому верен в обеих
+// посадках: `services/iam` в монорепо, `.` в самостоятельном клоне.
+func placement(t *testing.T) (root, ledgerRel string) {
+	t.Helper()
+	wd, err := os.Getwd()
+	require.NoError(t, err, "проверка НЕ ИСПОЛНЯЛАСЬ: рабочий каталог не установлен")
+	pl, err := treeroot.Locate(wd)
+	require.NoError(t, err, "проверка НЕ ИСПОЛНЯЛАСЬ: посадка модуля не установлена")
+	return pl.RepoRoot, filepath.ToSlash(filepath.Join(pl.ModuleDir, ledgerName))
+}
 
 // TestGate_IamHistoryIsConfirmed — боевой прогон по истории домена.
 //
@@ -40,7 +59,8 @@ const ledgerPath = "services/iam/cla-ledger.yaml"
 // быть отличимо от «ноль прочитанного». Поэтому проверяются ОБЕ величины —
 // сколько осмотрено и сколько найдено.
 func TestGate_IamHistoryIsConfirmed(t *testing.T) {
-	rep, err := clagate.Inspect(repoRoot, ledgerPath, "HEAD")
+	root, ledgerRel := placement(t)
+	rep, err := clagate.Inspect(root, ledgerRel, "HEAD")
 	require.NoError(t, err)
 
 	require.Empty(t, rep.PremiseFailures,
@@ -493,4 +513,80 @@ func TestGate_LedgerInsideTheJudgedTreeIsRead(t *testing.T) {
 	if err != nil && strings.Contains(err.Error(), "вне судимого дерева") {
 		t.Fatalf("ведомость ВНУТРИ дерева отвергнута как внешняя: %v", err)
 	}
+}
+
+// --- Резолв посадки: инъекция в обе стороны ---------------------------------
+
+// TestPlacement_ModuleInsideAForeignRepositoryIsRefused — ИНЪЕКЦИЯ.
+//
+// Клон модуля положен внутрь ПОСТОРОННЕГО репозитория, и по вычисляемому пути
+// там лежит вполне годная ведомость. Прежний резолв (подъём на четыре уровня)
+// нашёл бы её и вынес бы зелёный вердикт о ЧУЖОЙ истории — отличить его от
+// настоящего нечем. Здесь предпосылка проверяется, и отказ НАЗЫВАЕТ её.
+//
+// Против положительного близнеца ниже отличается РОВНО ОДНИМ фактом: каталог
+// модуля этим репозиторием не отслеживается.
+func TestPlacement_ModuleInsideAForeignRepositoryIsRefused(t *testing.T) {
+	foreign := writeRepo(t, []commit{
+		{name: "Чужой", email: "stranger@example.org", message: "feat: чужое дерево"},
+	})
+
+	// Модуль распакован ВНУТРЬ чужого дерева и им не отслеживается.
+	mod := filepath.Join(foreign, "unpacked-module")
+	require.NoError(t, os.MkdirAll(mod, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(mod, "go.mod"),
+		[]byte("module example.org/unpacked\n\ngo 1.24\n"), 0o600))
+	// Ведомость лежит по тому пути, который дал бы подъём литералом.
+	require.NoError(t, os.WriteFile(filepath.Join(mod, ledgerName), []byte(minimalLedger), 0o600))
+
+	_, err := treeroot.Locate(mod)
+	require.Error(t, err, "резолв принял ЧУЖОЕ дерево за своё — вердикт был бы о его истории")
+	require.Contains(t, err.Error(), "не отслеживает каталог",
+		"отказ не называет предпосылки: читатель не отличит чужое дерево от отсутствия дерева")
+}
+
+// TestPlacement_ModuleTrackedByItsOwnRepositoryIsAccepted — ПОЛОЖИТЕЛЬНЫЙ
+// БЛИЗНЕЦ. Отличие ровно одно: каталог модуля этим репозиторием отслеживается.
+//
+// Без него отказ выше зеленел бы и на резолве, отвергающем всякое дерево.
+func TestPlacement_ModuleTrackedByItsOwnRepositoryIsAccepted(t *testing.T) {
+	dir := writeRepo(t, []commit{
+		{name: "Свой", email: "owner@example.com", message: "feat: своё дерево"},
+	})
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"),
+		[]byte("module example.org/own\n\ngo 1.24\n"), 0o600))
+
+	pl, err := treeroot.Locate(dir)
+	require.NoError(t, err, "своё дерево отвергнуто: резолв отвергает всякое, и инъекция вакуумна")
+	require.Equal(t, ".", pl.ModuleDir,
+		"модуль сам является корнем — путь в дереве обязан выводиться в «.», а не выписываться")
+}
+
+// TestPlacement_DirectoryOutsideAnyRepositoryIsNotAFinding — третий исход.
+//
+// Каталог вне всякого репозитория — «проверка НЕ ИСПОЛНЯЛАСЬ», а не находка о
+// дереве: истории здесь нет by construction, и красное у всякого, кто
+// распакует архив, вердиктом о продукте не является.
+func TestPlacement_DirectoryOutsideAnyRepositoryIsNotAFinding(t *testing.T) {
+	dir := t.TempDir()
+	// Предпосылка пробы: временный каталог сам не лежит внутри репозитория.
+	// Если лежит — условие не создано, и это ПРОПУСК с названной причиной, а не
+	// красное: вердикт был бы о том дереве.
+	for cur := dir; ; {
+		if _, err := os.Stat(filepath.Join(cur, ".git")); err == nil {
+			t.Skipf("УСЛОВИЕ НЕ СОЗДАНО (не находка): временный каталог лежит внутри "+
+				"репозитория %s — назовите TMPDIR вне всякого дерева", cur)
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			break
+		}
+		cur = parent
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"),
+		[]byte("module example.org/loose\n\ngo 1.24\n"), 0o600))
+
+	_, err := treeroot.Locate(dir)
+	require.ErrorIs(t, err, treeroot.ErrTreeNotResolved,
+		"каталог без репозитория обязан давать «проверка НЕ ИСПОЛНЯЛАСЬ», а не находку")
 }

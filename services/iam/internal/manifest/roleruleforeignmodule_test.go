@@ -33,6 +33,8 @@ import (
 
 	"github.com/PRO-Robotech/kaname/internal/domain"
 	"github.com/PRO-Robotech/kaname/internal/manifest"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // roleRuleModuleFixture — манифест модуля `vpc` с одной ролью своего модуля;
@@ -119,7 +121,7 @@ func TestRoleRulesOfEveryManifestNameTheirOwnModule(t *testing.T) {
 	// Обход — ПРОД-ПУТЬ (`CheckTree`), тот самый, которым судит
 	// `make -C services/iam module-manifest-check`. Свой обходчик рядом
 	// разошёлся бы с ним молча на первом же новом месте манифеста.
-	rep := manifest.CheckTree(repoRootFromManifestPackage)
+	rep := manifest.CheckTree(platformtree.Require(t))
 	if len(rep.Findings) > 0 {
 		t.Fatalf("дерево не прочитано целиком, вердикта нет ни по одному манифесту: %v",
 			rep.Findings)
@@ -147,7 +149,6 @@ func TestRoleRulesOfEveryManifestNameTheirOwnModule(t *testing.T) {
 		rep.Summary(), roles, rules, foreign)
 }
 
-// repoRootFromManifestPackage — корень дерева относительно каталога этого
-// пакета. Пробы Go исполняются из каталога своего пакета, поэтому путь
-// относительный и от места запуска не зависит.
-const repoRootFromManifestPackage = "../../../.."
+// Корень дерева здесь не выписывается: он спрашивается у объявленного владельца
+// (`internal/testsupport/platformtree`). Литерал-подъём был координатой
+// РАСКЛАДКИ монорепо и вне её приводил к чужому дереву (kacho#2254).

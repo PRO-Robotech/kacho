@@ -64,14 +64,12 @@ package authzplan
 // обёртки.
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/kaname/internal/treeroot"
 )
 
 // fgaModelRelPath — the canonical authorization model, relative to the tree root.
@@ -224,33 +222,15 @@ func canonAboveTree(root string) string {
 
 // treeRootOf — корень дерева, которому принадлежит start.
 //
-// Исходов ДВА, третьего нет: предпосылка выполнена — корень назван; не выполнена
-// — отказ, НАЗЫВАЮЩИЙ её словами. Молчаливое вычисление чужого пути исходом не
-// является: «не знаю» не выдаётся ни за «нет находок», ни за «находка».
+// Резолв объявлен ОДИН раз и живёт у владельца (`internal/treeroot`): вторая
+// копия разошлась бы с первой молча — и разошлась бы ровно на предпосылке
+// «дерево ОТСЛЕЖИВАЕТ каталог, из которого спрашивают», без которой модуль,
+// распакованный внутрь постороннего репозитория, получает корень того
+// репозитория (kacho#2239).
 func treeRootOf(start string) (string, error) {
-	out, err := gitenv.Command(start, "rev-parse", "--show-toplevel").Output()
-	root := strings.TrimSpace(string(out))
-	if err != nil || root == "" {
-		return "", fmt.Errorf(
-			"%w: каталог не принадлежит репозиторию\n  осмотрено:        %s\n"+
-				"  ожидался признак: git отвечает на rev-parse --show-toplevel\n"+
-				"  на распакованном архиве вердикта о каноне нет и быть не может — это\n"+
-				"  «проверка НЕ ИСПОЛНЯЛАСЬ», а не «канона нет»",
-			ErrTreeNotResolved, start)
-	}
-
-	// Предпосылка, несущая: найденное дерево содержит ТО МЕСТО, откуда спрашивают,
-	// своим отслеживаемым составом. Без неё модуль, распакованный внутрь чужого
-	// репозитория, получил бы корень ЧУЖОГО дерева — и канон того дерева.
-	tracked, terr := gitenv.Command(start, "ls-files", "--", ".").Output()
-	if terr != nil || len(bytes.TrimSpace(tracked)) == 0 {
-		return "", fmt.Errorf(
-			"%w: дерево %s не отслеживает каталог, из которого спрашивают\n"+
-				"  осмотрено:        %s\n"+
-				"  ожидался признак: непустой ответ git ls-files в этом каталоге\n"+
-				"  его нет — значит каталог лежит внутри ПОСТОРОННЕГО репозитория и им не\n"+
-				"  отслеживается; канон того дерева к этому коду отношения не имеет",
-			ErrTreeNotResolved, root, start)
+	root, err := treeroot.Of(start)
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", ErrTreeNotResolved, err)
 	}
 	return root, nil
 }

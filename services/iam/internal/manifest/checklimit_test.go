@@ -23,6 +23,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // manifestOfSize — годный манифест, дополненный комментарием до РОВНО size байт.
@@ -103,9 +105,18 @@ func TestCheckTreeReadsAManifestExactlyAtTheLimit(t *testing.T) {
 	t.Logf("перепись: %s (предел %d байт)", report.Summary(), manifestSizeLimit)
 }
 
-// treeRootFromPackage — корень дерева относительно каталога пакета. Пробы Go
-// исполняются из каталога своего пакета, поэтому путь относительный.
-const treeRootFromPackage = "../../../.."
+// treeRoot — корень дерева платформы, спрошенный у объявленного владельца.
+//
+// Здесь стоял литерал `"../../../.."`. Он верен ровно для одной посадки: в
+// самостоятельном клоне модуля это ДОМАШНИЙ КАТАЛОГ того, кто клонировал, и
+// обход уходил в исходники тулчейна Go, разбирая 38 секунд заведомо негодные
+// файлы (kacho#2254). Существенно не то, что проба падала, а то, что дерево, где
+// по вычисленному пути лежит нечто разбираемое, дало бы ЗЕЛЁНЫЙ — вердикт о
+// чужом дереве, неотличимый от настоящего.
+func treeRoot(t *testing.T) string {
+	t.Helper()
+	return platformtree.Require(t)
+}
 
 // manifestHeadroomDivisor — во сколько раз предел обязан превосходить САМЫЙ
 // БОЛЬШОЙ манифест дерева.
@@ -142,7 +153,8 @@ const manifestHeadroomDivisor = 4
 // Иначе «запас достаточен» стало бы неотличимо от «манифестов не нашлось»:
 // у пустого множества максимума нет, и утверждение о нём тривиально истинно.
 func TestManifestSizeLimitOutgrowsTheBiggestManifestOfThisTree(t *testing.T) {
-	rep := CheckTree(treeRootFromPackage)
+	root := treeRoot(t)
+	rep := CheckTree(root)
 	if len(rep.Findings) > 0 {
 		t.Fatalf("дерево не прочитано целиком, вердикта о размере нет ни по одному "+
 			"манифесту: %v", rep.Findings)
@@ -154,7 +166,7 @@ func TestManifestSizeLimitOutgrowsTheBiggestManifestOfThisTree(t *testing.T) {
 
 	biggest, biggestPath := 0, ""
 	for _, p := range rep.Paths {
-		size, err := treeFileSize(t, p)
+		size, err := treeFileSize(t, root, p)
 		if err != nil {
 			t.Fatalf("размер %s не прочитан: %v", p, err)
 		}
@@ -179,9 +191,9 @@ func TestManifestSizeLimitOutgrowsTheBiggestManifestOfThisTree(t *testing.T) {
 
 // treeFileSize — размер файла, найденного обходом. Путь приходит от CheckTree
 // относительно корня обхода, поэтому корень возвращается к нему здесь.
-func treeFileSize(t *testing.T, rel string) (int, error) {
+func treeFileSize(t *testing.T, root, rel string) (int, error) {
 	t.Helper()
-	fi, err := os.Stat(filepath.Join(treeRootFromPackage, rel))
+	fi, err := os.Stat(filepath.Join(root, rel))
 	if err != nil {
 		return 0, err
 	}

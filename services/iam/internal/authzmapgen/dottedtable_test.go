@@ -97,7 +97,7 @@ func mapLiteralOf(t *testing.T, src []byte, name string) map[string]string {
 // а потерянный тип не резолвится каталогом — вопрос о нём не задаётся вовсе, и
 // проверка выглядит пройденной.
 func TestRenderedFileCarriesTheDottedNameTable(t *testing.T) {
-	tables, err := authzmapgen.Collect(repoRoot)
+	tables, err := authzmapgen.Collect(treeRoot(t))
 	if err != nil {
 		t.Fatalf("обход манифестов не состоялся (%v) — предпосылка пробы исчезла, "+
 			"а не дерево стало чистым", err)
@@ -141,7 +141,7 @@ func TestRenderedFileCarriesTheDottedNameTable(t *testing.T) {
 // доехавший до продукта (либо доехавший рядом со вторым, рукописным объявлением),
 // прошёл бы первую и не проходит эту.
 func TestExportedCatalogIsTheManifestTree(t *testing.T) {
-	tables, err := authzmapgen.Collect(repoRoot)
+	tables, err := authzmapgen.Collect(treeRoot(t))
 	if err != nil {
 		t.Fatalf("обход манифестов не состоялся (%v)", err)
 	}

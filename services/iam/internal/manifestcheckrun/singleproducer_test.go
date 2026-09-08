@@ -8,13 +8,14 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // singleproducer_test.go — у проверки манифестов ОДНА композиция и тонкие
@@ -154,17 +155,16 @@ func walkCalls(t *testing.T, tree *treecorpus.Tree, want map[string]string) (map
 	return found, filesRead
 }
 
+// repoRoot — корень дерева платформы, спрошенный у объявленного владельца.
+//
+// Здесь стоял подъём литералом плюс проверка `go.mod` рядом. Проверка не
+// спасала: `go.mod` лежит в корне ВСЯКОГО модуля Go, поэтому клон, распакованный
+// внутрь чужого дерева, её проходил, и вердикт выносился о том дереве
+// (kacho#2254). Владелец судит по признаку, ради которого дерево и нужно, —
+// лежат ли рядом модули платформы.
 func repoRoot(t *testing.T) string {
 	t.Helper()
-	// Пакет лежит на четыре уровня ниже корня монорепо.
-	root, err := filepath.Abs("../../../..")
-	if err != nil {
-		t.Fatalf("обход НЕ ИСПОЛНЕН: корень не разрешён: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
-		t.Fatalf("обход НЕ ИСПОЛНЕН: корень %s не похож на монорепо: %v", root, err)
-	}
-	return root
+	return platformtree.Require(t)
 }
 
 // auditCallers — сами утверждения, отдающие НАХОДКИ, а не роняющие пробу.

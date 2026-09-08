@@ -45,8 +45,9 @@ import (
 const minManifestsRead = 5
 
 func TestPlaneAgreementJudgesADifferingInputOnTheTree(t *testing.T) {
-	// `../../../..` от этого пакета — каталог `services` монорепо.
-	paths, err := filepath.Glob(filepath.Join("../../../..", "*", "manifest.yaml"))
+	// Каталог соседних модулей спрашивается у владельца резолва: литерал-подъём
+	// был координатой РАСКЛАДКИ монорепо и вне её давал чужой каталог (kacho#2254).
+	paths, err := filepath.Glob(filepath.Join(treeRoot(t), "services", "*", "manifest.yaml"))
 	if err != nil {
 		t.Fatalf("обход дерева: %v", err)
 	}
