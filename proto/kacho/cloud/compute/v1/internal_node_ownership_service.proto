@@ -6,7 +6,7 @@ syntax = "proto3";
 package kacho.cloud.compute.v1;
 
 import "google/protobuf/timestamp.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1";
 
@@ -35,13 +35,13 @@ service InternalNodeOwnershipService {
   // не ошибкой: это штатный исход гонки, при котором проигравший просто ничего
   // не делает.
   rpc ClaimInstance(ClaimInstanceRequest) returns (ClaimInstanceResponse) {
-    option (kacho.iam.authz.v1.permission)        = "compute.internal_instances.claim";
-    option (kacho.iam.authz.v1.required_relation) = "realization_writer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.internal_instances.claim";
+    option (corelib.authz.v1.required_relation) = "realization_writer";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // RenewLease — узел продлевает аренду.
@@ -51,13 +51,13 @@ service InternalNodeOwnershipService {
   // намеренно: оно было бы записью без условия, то есть возвращало бы владение
   // тому, у кого его отобрали.
   rpc RenewLease(RenewLeaseRequest) returns (ClaimInstanceResponse) {
-    option (kacho.iam.authz.v1.permission)        = "compute.internal_instances.renewLease";
-    option (kacho.iam.authz.v1.required_relation) = "realization_writer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.internal_instances.renewLease";
+    option (corelib.authz.v1.required_relation) = "realization_writer";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // ReleaseInstance — узел отпускает машину.
@@ -70,13 +70,13 @@ service InternalNodeOwnershipService {
   // повторяющий отпускание после обрыва ответа, не должен получать ошибку на
   // действие, которое уже исполнено.
   rpc ReleaseInstance(ReleaseInstanceRequest) returns (ReleaseInstanceResponse) {
-    option (kacho.iam.authz.v1.permission)        = "compute.internal_instances.release";
-    option (kacho.iam.authz.v1.required_relation) = "realization_writer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.internal_instances.release";
+    option (corelib.authz.v1.required_relation) = "realization_writer";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

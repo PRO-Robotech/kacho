@@ -10,9 +10,9 @@
 package geov1
 
 import (
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -789,7 +789,7 @@ var File_kacho_cloud_geo_v1_internal_catalog_service_proto protoreflect.FileDesc
 
 const file_kacho_cloud_geo_v1_internal_catalog_service_proto_rawDesc = "" +
 	"\n" +
-	"1kacho/cloud/geo/v1/internal_catalog_service.proto\x12\x12kacho.cloud.geo.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a#kacho/cloud/geo/v1/geo_common.proto\x1a\x1fkacho/cloud/geo/v1/region.proto\x1a\x1dkacho/cloud/geo/v1/zone.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xc2\x01\n" +
+	"1kacho/cloud/geo/v1/internal_catalog_service.proto\x12\x12kacho.cloud.geo.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a#kacho/cloud/geo/v1/geo_common.proto\x1a\x1fkacho/cloud/geo/v1/region.proto\x1a\x1dkacho/cloud/geo/v1/zone.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"\xc2\x01\n" +
 	"\x13CreateRegionRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fcountry_code\x18\x03 \x01(\tR\vcountryCode\x125\n" +

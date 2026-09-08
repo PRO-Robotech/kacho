@@ -10,7 +10,7 @@
 package storagev1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -772,7 +772,7 @@ var File_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto protore
 
 const file_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto_rawDesc = "" +
 	"\n" +
-	"?kacho/cloud/storage/v1/internal_disk_type_binding_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/api/annotations.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xa1\x04\n" +
+	"?kacho/cloud/storage/v1/internal_disk_type_binding_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/api/annotations.proto\x1a$corelib/authz/v1/authz_options.proto\"\xa1\x04\n" +
 	"\x0fDiskTypeBinding\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12 \n" +
 	"\fdisk_type_id\x18\x02 \x01(\tR\n" +

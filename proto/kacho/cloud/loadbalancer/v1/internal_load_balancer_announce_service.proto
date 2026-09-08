@@ -7,7 +7,7 @@ package kacho.cloud.loadbalancer.v1;
 
 import "google/protobuf/timestamp.proto";
 import "kacho/cloud/loadbalancer/v1/network_load_balancer.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1";
 
@@ -34,13 +34,13 @@ service InternalLoadBalancerAnnounceService {
   // а Internal.* RPC не несёт verb-bearing (v_*) relation. Precedent —
   // vpc InternalNetworkService/GetNetwork.
   rpc GetAnnounceState(GetLoadBalancerAnnounceStateRequest) returns (LoadBalancerAnnounceState) {
-    option (kacho.iam.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.getAnnounceState";
-    option (kacho.iam.authz.v1.required_relation) = "system_viewer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.getAnnounceState";
+    option (corelib.authz.v1.required_relation) = "system_viewer";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // ReportAnnounceState — inbound write-канал data-plane→nlb (новое одностороннее
@@ -53,13 +53,13 @@ service InternalLoadBalancerAnnounceService {
   // контракт фиксирован независимо от формы). Writer-relation `announce_writer`
   // в FGA-модели — часть iam-стороны интеграции (отдельная задача).
   rpc ReportAnnounceState(ReportLoadBalancerAnnounceStateRequest) returns (ReportLoadBalancerAnnounceStateResponse) {
-    option (kacho.iam.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.reportAnnounceState";
-    option (kacho.iam.authz.v1.required_relation) = "announce_writer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.reportAnnounceState";
+    option (corelib.authz.v1.required_relation) = "announce_writer";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

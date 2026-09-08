@@ -7,7 +7,7 @@ package kaname.cloud.iam.v1;
 
 import "google/api/annotations.proto";
 import "kaname/cloud/iam/v1/membership.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1;iamv1";
 
@@ -59,25 +59,25 @@ service MembershipService {
   // «человек × аккаунт», то есть перебирать для оракула ничего не надо.
   rpc Get (GetMembershipRequest) returns (Membership) {
     option (google.api.http) = { get: "/iam/v1/accounts/{account_id}/memberships/{membership_id}" };
-    option (kacho.iam.authz.v1.permission)        = "iam.memberships.get";
-    option (kacho.iam.authz.v1.required_relation) = "viewer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.memberships.get";
+    option (corelib.authz.v1.required_relation) = "viewer";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "account"
       from_request_field: "account_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of Memberships within the named Account.
   rpc List (ListMembershipsRequest) returns (ListMembershipsResponse) {
     option (google.api.http) = { get: "/iam/v1/accounts/{account_id}/memberships" };
-    option (kacho.iam.authz.v1.permission)        = "iam.memberships.list";
-    option (kacho.iam.authz.v1.required_relation) = "viewer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.memberships.list";
+    option (corelib.authz.v1.required_relation) = "viewer";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "account"
       from_request_field: "account_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

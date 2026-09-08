@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	authzv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
+	authzv1 "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
 )
@@ -82,7 +82,7 @@ func TestExtractEntry_FullyAnnotated(t *testing.T) {
 }
 
 // TestExtractEntry_HideExistence pins that the generator maps the
-// (kacho.iam.authz.v1.hide_existence) option into the catalog entry — the wiring
+// (corelib.authz.v1.hide_existence) option into the catalog entry — the wiring
 // that lets a verb-bearing mutation (registry Update/Delete) opt into gateway
 // hide-existence on deny (opaque NotFound, no deny_reasons echo — security.md #6).
 func TestExtractEntry_HideExistence(t *testing.T) {
@@ -100,7 +100,7 @@ func TestExtractEntry_HideExistence(t *testing.T) {
 		t.Fatalf("unexpected warning: %s", warn)
 	}
 	if !entry.HideExistence {
-		t.Errorf("HideExistence must be true when (kacho.iam.authz.v1.hide_existence) = true")
+		t.Errorf("HideExistence must be true when (corelib.authz.v1.hide_existence) = true")
 	}
 }
 
@@ -257,7 +257,7 @@ func TestExtractEntry_ScopeFiltered(t *testing.T) {
 		t.Fatalf("a scope-filtered RPC must not warn about the missing relation/scope: %s", warn)
 	}
 	if !entry.ScopeFiltered {
-		t.Errorf("ScopeFiltered must be true when (kacho.iam.authz.v1.scope_filtered) = true")
+		t.Errorf("ScopeFiltered must be true when (corelib.authz.v1.scope_filtered) = true")
 	}
 	if entry.Permission != "vpc.network_interfaces.listByInstance" {
 		t.Errorf("the permission string must survive the lane, got %q", entry.Permission)

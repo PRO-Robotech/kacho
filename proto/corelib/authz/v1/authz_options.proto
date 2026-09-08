@@ -3,26 +3,43 @@
 
 syntax = "proto3";
 
-package kacho.iam.authz.v1;
+package corelib.authz.v1;
 
 import "google/protobuf/descriptor.proto";
 
-option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1;authzv1";
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1;authzv1";
 
 // Authz options — per-RPC annotations consumed by `protoc-gen-kacho-permissions`
-// to build the canonical `permission_catalog.json` and by the kacho-iam authz
+// to build the canonical `permission_catalog.json` and by the iam authz
 // middleware at runtime.
+//
+// WHY THIS FILE LIVES UNDER A NEUTRAL ROOT (owner decision Р12, 2026-09-06, #2089)
+// -------------------------------------------------------------------------------
+// The vocabulary belongs to NEITHER product: every domain annotates its own
+// methods with it, and the access service is one consumer among the rest. While it
+// sat under a product root, 22 contracts of the access service depended on that
+// product's tree for annotation alone — an arrow against the target layout, in
+// which every product depends on the foundation and none on another product.
+// Under `corelib/` both sides depend on it DOWNWARD, and markup creates no edge
+// between product roots at all.
+//
+// The file names no consumer of its own on purpose: a neutral vocabulary that
+// spells out who uses it stops being neutral the day the list changes.
+//
+// The Go import path still carries the monorepo module, because the foundation has
+// not been published as its own module yet. When it is, only `go_package` below
+// changes; the proto coordinate every importer writes down is already final.
 //
 // Usage on an RPC:
 //
 //   rpc Create(CreateNetworkRequest) returns (operation.Operation) {
-//     option (kacho.iam.authz.v1.permission)        = "vpc.networks.create";
-//     option (kacho.iam.authz.v1.required_relation) = "editor";
-//     option (kacho.iam.authz.v1.scope_extractor)   = {
+//     option (corelib.authz.v1.permission)        = "vpc.networks.create";
+//     option (corelib.authz.v1.required_relation) = "editor";
+//     option (corelib.authz.v1.scope_extractor)   = {
 //       object_type:        "project"
 //       from_request_field: "project_id"
 //     };
-//     option (kacho.iam.authz.v1.required_acr_min)  = "2";
+//     option (corelib.authz.v1.required_acr_min)  = "2";
 //   }
 //
 // All options are emitted into the catalog. `permission`,
@@ -31,9 +48,15 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1;au
 // optional and defaults to "2". `hide_existence` is optional and defaults to
 // false.
 //
-// Extension field numbers are inside the kacho.iam-reserved range
-// `[50000, 50999]` to avoid collision with `kacho.cloud.api` (87334) and
+// Extension field numbers occupy the reserved range `[50000, 50999]`, chosen to
+// avoid collision with `kacho.cloud.api` (87334) and the retired
 // `kacho.cloud.validation` (101400+).
+//
+// THE NUMBERS DID NOT CHANGE WHEN THE PACKAGE MOVED, AND THAT IS LOAD-BEARING.
+// Two `extend google.protobuf.MethodOptions` blocks carrying the same numbers in
+// one image collide at DESCRIPTOR REGISTRATION — a runtime failure, not a compile
+// error. So this is a move, not a copy: no second declaration of these numbers
+// exists anywhere in the tree.
 
 // permission — canonical permission string in `<domain>.<resource>.<verb>` form,
 // or the literal `"<exempt>"` for RPCs that intentionally bypass authz
@@ -186,7 +209,7 @@ extend google.protobuf.MethodOptions {
   string exempt_reason = 50007;
 }
 
-// ScopeExtractor describes how the kacho-iam authz middleware extracts an
+// ScopeExtractor describes how the iam authz middleware extracts an
 // scope object from an incoming RPC request.
 message ScopeExtractor {
   // Object type of the authorization model the scope id resolves to. Either a hierarchy scope

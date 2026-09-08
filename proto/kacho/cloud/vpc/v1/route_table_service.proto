@@ -10,7 +10,7 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/vpc/v1/route_table.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
 
@@ -21,19 +21,19 @@ service RouteTableService {
   // To get the list of available RouteTable resources, make a [List] request.
   rpc Get (GetRouteTableRequest) returns (RouteTable) {
     option (google.api.http) = { get: "/vpc/v1/routeTables/{route_table_id}" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.route_tables.get";
-    option (kacho.iam.authz.v1.required_relation) = "v_get";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.route_tables.get";
+    option (corelib.authz.v1.required_relation) = "v_get";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_route_table"
       from_request_field: "route_table_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of RouteTable resources in the specified project.
   rpc List (ListRouteTablesRequest) returns (ListRouteTablesResponse) {
     option (google.api.http) = { get: "/vpc/v1/routeTables" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.route_tables.list";
+    option (corelib.authz.v1.permission)        = "vpc.route_tables.list";
     // Top-level List is gated by the READ TIER on the parent project, not by the
     // project's own `v_list` verb. In the model those are independent sets, and
     // `project#v_list` means object-level access to the PROJECT ITSELF — the model
@@ -42,12 +42,12 @@ service RouteTableService {
     // axis Create already takes here (`editor`), and the same convention the
     // storage/iam project-scoped List RPCs carry. Rows stay narrowed per object by
     // the owning service's list filter; this option only decides who may ask.
-    option (kacho.iam.authz.v1.required_relation) = "viewer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.required_relation) = "viewer";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Creates a route table in the specified project and network.
@@ -58,13 +58,13 @@ service RouteTableService {
       metadata: "CreateRouteTableMetadata"
       response: "RouteTable"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.route_tables.create";
-    option (kacho.iam.authz.v1.required_relation) = "editor";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.route_tables.create";
+    option (corelib.authz.v1.required_relation) = "editor";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the specified route table.
@@ -75,13 +75,13 @@ service RouteTableService {
       metadata: "UpdateRouteTableMetadata"
       response: "RouteTable"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.route_tables.update";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.route_tables.update";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_route_table"
       from_request_field: "route_table_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Deletes the specified route table.
@@ -91,25 +91,25 @@ service RouteTableService {
       metadata: "DeleteRouteTableMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.route_tables.delete";
-    option (kacho.iam.authz.v1.required_relation) = "v_delete";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.route_tables.delete";
+    option (corelib.authz.v1.required_relation) = "v_delete";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_route_table"
       from_request_field: "route_table_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // List operations for the specified route table.
   rpc ListOperations (ListRouteTableOperationsRequest) returns (ListRouteTableOperationsResponse) {
     option (google.api.http) = { get: "/vpc/v1/routeTables/{route_table_id}/operations" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.route_table_operations.listOperations";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.route_table_operations.listOperations";
+    option (corelib.authz.v1.required_relation) = "v_list";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_route_table"
       from_request_field: "route_table_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
 }

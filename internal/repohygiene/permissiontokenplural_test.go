@@ -69,13 +69,23 @@ import (
 	"strings"
 	"testing"
 
+	authzv1 "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	"github.com/PRO-Robotech/kacho/pkg/contractroot"
 )
 
 // permTokAnnotation — строка аннотации права в .proto. Аннотация односложна
 // (одна строка на запись), поэтому разбор идёт по строкам и несёт номер строки:
 // находка без координаты заставляет искать её глазами по всему домену.
-var permTokAnnotation = regexp.MustCompile(`\(kacho\.iam\.authz\.v1\.permission\)\s*=\s*"([^"]*)"`)
+//
+// ПОЛНОЕ ИМЯ РАСШИРЕНИЯ ВЫВОДИТСЯ ИЗ ДЕСКРИПТОРА, А НЕ ВЫПИСАНО. Здесь стоял
+// литерал `kacho.iam.authz.v1.permission`, и он был верен ровно до переезда
+// словаря аннотаций под нейтральный корень (#2089). Переезд не покраснил бы эту
+// пробу и не позеленил: образец перестал бы совпадать, записей стало бы НОЛЬ, а
+// «ноль записей» неотличимо от «домен вычищен». Поймала это только перепись,
+// печатающая объём осмотренного, — и ловить второй раз не придётся: имя теперь
+// приезжает из того же дескриптора, что и сама аннотация.
+var permTokAnnotation = regexp.MustCompile(
+	`\(` + regexp.QuoteMeta(string(authzv1.E_Permission.TypeDescriptor().FullName())) + `\)\s*=\s*"([^"]*)"`)
 
 // permTokVerdict — классификация имени ресурса в токене.
 type permTokVerdict string

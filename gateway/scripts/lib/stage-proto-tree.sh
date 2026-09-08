@@ -49,7 +49,7 @@
 # KACHO_PROTO_ROOTS — объявленное закрытое множество корней дерева контрактов.
 # Пусто означало бы «ни одного корня», то есть пустую стадию, и обход ниже роняет
 # прогон на нуле скопированных деревьев.
-KACHO_PROTO_ROOTS=(kacho kaname)
+KACHO_PROTO_ROOTS=(kacho kaname corelib)
 
 # kacho_proto_tree_root — корень, под которым лежит дерево домена. Резолвится
 # ОБХОДОМ объявленных корней, а не выводится из имени: имя домена о своём корне
@@ -188,7 +188,7 @@ stage_proto_tree() {
   for _root in "${KACHO_PROTO_ROOTS[@]}"; do
     mkdir -p "${stage}/${_root}/cloud"
   done
-  mkdir -p "${stage}/kacho/iam/authz"
+  mkdir -p "${stage}/corelib/authz"
 
   # --- общая инфраструктура ---
   #
@@ -200,7 +200,7 @@ stage_proto_tree() {
   # `buf breaking`, ни перепись читателей на Go этого пути не видят — он живой и
   # единственный такой.
   cp -R "${proto_root}/google"             "${stage}/google"
-  cp -R "${proto_root}/kacho/iam/authz/v1" "${stage}/kacho/iam/authz/v1"
+  cp -R "${proto_root}/corelib/authz/v1" "${stage}/corelib/authz/v1"
 
   # --- исключения обязаны иметь предмет ---
   local excluded

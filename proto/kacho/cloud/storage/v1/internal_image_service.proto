@@ -8,7 +8,7 @@ package kacho.cloud.storage.v1;
 import "google/protobuf/timestamp.proto";
 import "kacho/cloud/storage/v1/image.proto";
 import "kacho/cloud/storage/v1/status_reason.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1";
 
@@ -24,13 +24,13 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v
 service InternalImageService {
   // GetInternal — полная (инфра) проекция образа, только внутри кластера.
   rpc GetInternal(GetInternalImageRequest) returns (ImageInternal) {
-    option (kacho.iam.authz.v1.permission)        = "storage.images.getInternal";
-    option (kacho.iam.authz.v1.required_relation) = "viewer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "storage.images.getInternal";
+    option (corelib.authz.v1.required_relation) = "viewer";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "storage_image"
       from_request_field: "image_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Register — регистрация образа, внесённого в хранилище командой провайдера.
@@ -51,13 +51,13 @@ service InternalImageService {
   // взято уровнем кластера намеренно — предмет регистрации появляется ДО того, как у
   // него есть собственный объект, про который можно спросить.
   rpc Register(RegisterImageRequest) returns (Image) {
-    option (kacho.iam.authz.v1.permission)        = "storage.images.register";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "storage.images.register";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

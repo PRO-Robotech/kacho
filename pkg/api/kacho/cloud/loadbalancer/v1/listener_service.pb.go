@@ -10,9 +10,9 @@
 package loadbalancerv1
 
 import (
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -764,7 +764,7 @@ var File_kacho_cloud_loadbalancer_v1_listener_service_proto protoreflect.FileDes
 
 const file_kacho_cloud_loadbalancer_v1_listener_service_proto_rawDesc = "" +
 	"\n" +
-	"2kacho/cloud/loadbalancer/v1/listener_service.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a*kacho/cloud/loadbalancer/v1/listener.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"5\n" +
+	"2kacho/cloud/loadbalancer/v1/listener_service.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a*kacho/cloud/loadbalancer/v1/listener.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"5\n" +
 	"\x12GetListenerRequest\x12\x1f\n" +
 	"\vlistener_id\x18\x01 \x01(\tR\n" +
 	"listenerId\"\xb3\x01\n" +

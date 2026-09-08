@@ -7,7 +7,7 @@ package kacho.cloud.quota.v1;
 
 import "google/api/annotations.proto";
 import "kacho/cloud/quota/v1/quota.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1;quotav1";
 
@@ -71,9 +71,9 @@ service IdentityQuotaService {
     //
     // authN is NOT waived: the edge's exempt branch still requires a valid
     // principal, and an anonymous call has no identity to answer about.
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
-    option (kacho.iam.authz.v1.exempt_reason)  = "SELF_SERVICE";
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.permission) = "<exempt>";
+    option (corelib.authz.v1.exempt_reason)  = "SELF_SERVICE";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

@@ -10,7 +10,7 @@
 package iamv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -380,7 +380,7 @@ var File_kaname_cloud_iam_v1_permission_catalog_service_proto protoreflect.FileD
 
 const file_kaname_cloud_iam_v1_permission_catalog_service_proto_rawDesc = "" +
 	"\n" +
-	"4kaname/cloud/iam/v1/permission_catalog_service.proto\x12\x13kaname.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\x1e\n" +
+	"4kaname/cloud/iam/v1/permission_catalog_service.proto\x12\x13kaname.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a$corelib/authz/v1/authz_options.proto\"\x1e\n" +
 	"\x1cListPermissionCatalogRequest\"\xce\x01\n" +
 	"\x1dListPermissionCatalogResponse\x12<\n" +
 	"\amodules\x18\x01 \x03(\v2\".kaname.cloud.iam.v1.CatalogModuleR\amodules\x12!\n" +

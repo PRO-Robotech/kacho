@@ -6,7 +6,7 @@ syntax = "proto3";
 package kacho.cloud.subscription;
 
 import "kacho/cloud/subscription/subscription.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription;subscriptionv1";
 
@@ -111,8 +111,8 @@ service InternalSubscriptionService {
   // ресурсная строка, поэтому при отказе операции события нет ВОВСЕ, и
   // наблюдатель ресурсов не отличит «ещё делается» от «упало».
   rpc Subscribe(SubscriptionRequest) returns (stream SubscriptionMessage) {
-    option (kacho.iam.authz.v1.permission)       = "platform.subscription.subscribe";
-    option (kacho.iam.authz.v1.scope_filtered)   = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.permission)       = "platform.subscription.subscribe";
+    option (corelib.authz.v1.scope_filtered)   = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }

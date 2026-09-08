@@ -74,7 +74,7 @@ VENDORED_PROTOS := \
 	kacho/cloud/api/operation.proto \
 	kacho/cloud/operation/operation.proto \
 	kacho/cloud/validation.proto \
-	kacho/iam/authz/v1/authz_options.proto
+	corelib/authz/v1/authz_options.proto
 
 proto-vendor:
 	@test -d "$(CORELIB_PROTO)" || { echo "corelib proto не найден: $(CORELIB_PROTO) (переопредели CORELIB_PROTO=...)"; exit 1; }

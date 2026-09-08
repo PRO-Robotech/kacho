@@ -5,7 +5,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        (unknown)
-// source: kacho/iam/authz/v1/authz_options.proto
+// source: corelib/authz/v1/authz_options.proto
 
 package authzv1
 
@@ -25,7 +25,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// ScopeExtractor describes how the kacho-iam authz middleware extracts an
+// ScopeExtractor describes how the iam authz middleware extracts an
 // scope object from an incoming RPC request.
 type ScopeExtractor struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -58,7 +58,7 @@ type ScopeExtractor struct {
 
 func (x *ScopeExtractor) Reset() {
 	*x = ScopeExtractor{}
-	mi := &file_kacho_iam_authz_v1_authz_options_proto_msgTypes[0]
+	mi := &file_corelib_authz_v1_authz_options_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -70,7 +70,7 @@ func (x *ScopeExtractor) String() string {
 func (*ScopeExtractor) ProtoMessage() {}
 
 func (x *ScopeExtractor) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_iam_authz_v1_authz_options_proto_msgTypes[0]
+	mi := &file_corelib_authz_v1_authz_options_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -83,7 +83,7 @@ func (x *ScopeExtractor) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScopeExtractor.ProtoReflect.Descriptor instead.
 func (*ScopeExtractor) Descriptor() ([]byte, []int) {
-	return file_kacho_iam_authz_v1_authz_options_proto_rawDescGZIP(), []int{0}
+	return file_corelib_authz_v1_authz_options_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *ScopeExtractor) GetObjectType() string {
@@ -107,88 +107,88 @@ func (x *ScopeExtractor) GetObjectTypeFromRequestField() string {
 	return ""
 }
 
-var file_kacho_iam_authz_v1_authz_options_proto_extTypes = []protoimpl.ExtensionInfo{
+var file_corelib_authz_v1_authz_options_proto_extTypes = []protoimpl.ExtensionInfo{
 	{
 		ExtendedType:  (*descriptorpb.MethodOptions)(nil),
 		ExtensionType: (*string)(nil),
 		Field:         50001,
-		Name:          "kacho.iam.authz.v1.permission",
+		Name:          "corelib.authz.v1.permission",
 		Tag:           "bytes,50001,opt,name=permission",
-		Filename:      "kacho/iam/authz/v1/authz_options.proto",
+		Filename:      "corelib/authz/v1/authz_options.proto",
 	},
 	{
 		ExtendedType:  (*descriptorpb.MethodOptions)(nil),
 		ExtensionType: (*string)(nil),
 		Field:         50002,
-		Name:          "kacho.iam.authz.v1.required_relation",
+		Name:          "corelib.authz.v1.required_relation",
 		Tag:           "bytes,50002,opt,name=required_relation",
-		Filename:      "kacho/iam/authz/v1/authz_options.proto",
+		Filename:      "corelib/authz/v1/authz_options.proto",
 	},
 	{
 		ExtendedType:  (*descriptorpb.MethodOptions)(nil),
 		ExtensionType: (*ScopeExtractor)(nil),
 		Field:         50003,
-		Name:          "kacho.iam.authz.v1.scope_extractor",
+		Name:          "corelib.authz.v1.scope_extractor",
 		Tag:           "bytes,50003,opt,name=scope_extractor",
-		Filename:      "kacho/iam/authz/v1/authz_options.proto",
+		Filename:      "corelib/authz/v1/authz_options.proto",
 	},
 	{
 		ExtendedType:  (*descriptorpb.MethodOptions)(nil),
 		ExtensionType: (*string)(nil),
 		Field:         50004,
-		Name:          "kacho.iam.authz.v1.required_acr_min",
+		Name:          "corelib.authz.v1.required_acr_min",
 		Tag:           "bytes,50004,opt,name=required_acr_min",
-		Filename:      "kacho/iam/authz/v1/authz_options.proto",
+		Filename:      "corelib/authz/v1/authz_options.proto",
 	},
 	{
 		ExtendedType:  (*descriptorpb.MethodOptions)(nil),
 		ExtensionType: (*bool)(nil),
 		Field:         50005,
-		Name:          "kacho.iam.authz.v1.hide_existence",
+		Name:          "corelib.authz.v1.hide_existence",
 		Tag:           "varint,50005,opt,name=hide_existence",
-		Filename:      "kacho/iam/authz/v1/authz_options.proto",
+		Filename:      "corelib/authz/v1/authz_options.proto",
 	},
 	{
 		ExtendedType:  (*descriptorpb.MethodOptions)(nil),
 		ExtensionType: (*bool)(nil),
 		Field:         50006,
-		Name:          "kacho.iam.authz.v1.scope_filtered",
+		Name:          "corelib.authz.v1.scope_filtered",
 		Tag:           "varint,50006,opt,name=scope_filtered",
-		Filename:      "kacho/iam/authz/v1/authz_options.proto",
+		Filename:      "corelib/authz/v1/authz_options.proto",
 	},
 	{
 		ExtendedType:  (*descriptorpb.MethodOptions)(nil),
 		ExtensionType: (*string)(nil),
 		Field:         50007,
-		Name:          "kacho.iam.authz.v1.exempt_reason",
+		Name:          "corelib.authz.v1.exempt_reason",
 		Tag:           "bytes,50007,opt,name=exempt_reason",
-		Filename:      "kacho/iam/authz/v1/authz_options.proto",
+		Filename:      "corelib/authz/v1/authz_options.proto",
 	},
 }
 
 // Extension fields to descriptorpb.MethodOptions.
 var (
 	// optional string permission = 50001;
-	E_Permission = &file_kacho_iam_authz_v1_authz_options_proto_extTypes[0]
+	E_Permission = &file_corelib_authz_v1_authz_options_proto_extTypes[0]
 	// optional string required_relation = 50002;
-	E_RequiredRelation = &file_kacho_iam_authz_v1_authz_options_proto_extTypes[1]
-	// optional kacho.iam.authz.v1.ScopeExtractor scope_extractor = 50003;
-	E_ScopeExtractor = &file_kacho_iam_authz_v1_authz_options_proto_extTypes[2]
+	E_RequiredRelation = &file_corelib_authz_v1_authz_options_proto_extTypes[1]
+	// optional corelib.authz.v1.ScopeExtractor scope_extractor = 50003;
+	E_ScopeExtractor = &file_corelib_authz_v1_authz_options_proto_extTypes[2]
 	// optional string required_acr_min = 50004;
-	E_RequiredAcrMin = &file_kacho_iam_authz_v1_authz_options_proto_extTypes[3]
+	E_RequiredAcrMin = &file_corelib_authz_v1_authz_options_proto_extTypes[3]
 	// optional bool hide_existence = 50005;
-	E_HideExistence = &file_kacho_iam_authz_v1_authz_options_proto_extTypes[4]
+	E_HideExistence = &file_corelib_authz_v1_authz_options_proto_extTypes[4]
 	// optional bool scope_filtered = 50006;
-	E_ScopeFiltered = &file_kacho_iam_authz_v1_authz_options_proto_extTypes[5]
+	E_ScopeFiltered = &file_corelib_authz_v1_authz_options_proto_extTypes[5]
 	// optional string exempt_reason = 50007;
-	E_ExemptReason = &file_kacho_iam_authz_v1_authz_options_proto_extTypes[6]
+	E_ExemptReason = &file_corelib_authz_v1_authz_options_proto_extTypes[6]
 )
 
-var File_kacho_iam_authz_v1_authz_options_proto protoreflect.FileDescriptor
+var File_corelib_authz_v1_authz_options_proto protoreflect.FileDescriptor
 
-const file_kacho_iam_authz_v1_authz_options_proto_rawDesc = "" +
+const file_corelib_authz_v1_authz_options_proto_rawDesc = "" +
 	"\n" +
-	"&kacho/iam/authz/v1/authz_options.proto\x12\x12kacho.iam.authz.v1\x1a google/protobuf/descriptor.proto\"\xa3\x01\n" +
+	"$corelib/authz/v1/authz_options.proto\x12\x10corelib.authz.v1\x1a google/protobuf/descriptor.proto\"\xa3\x01\n" +
 	"\x0eScopeExtractor\x12\x1f\n" +
 	"\vobject_type\x18\x01 \x01(\tR\n" +
 	"objectType\x12,\n" +
@@ -197,39 +197,39 @@ const file_kacho_iam_authz_v1_authz_options_proto_rawDesc = "" +
 	"\n" +
 	"permission\x12\x1e.google.protobuf.MethodOptions\x18ц\x03 \x01(\tR\n" +
 	"permission:M\n" +
-	"\x11required_relation\x12\x1e.google.protobuf.MethodOptions\x18҆\x03 \x01(\tR\x10requiredRelation:m\n" +
-	"\x0fscope_extractor\x12\x1e.google.protobuf.MethodOptions\x18ӆ\x03 \x01(\v2\".kacho.iam.authz.v1.ScopeExtractorR\x0escopeExtractor:J\n" +
+	"\x11required_relation\x12\x1e.google.protobuf.MethodOptions\x18҆\x03 \x01(\tR\x10requiredRelation:k\n" +
+	"\x0fscope_extractor\x12\x1e.google.protobuf.MethodOptions\x18ӆ\x03 \x01(\v2 .corelib.authz.v1.ScopeExtractorR\x0escopeExtractor:J\n" +
 	"\x10required_acr_min\x12\x1e.google.protobuf.MethodOptions\x18Ԇ\x03 \x01(\tR\x0erequiredAcrMin:G\n" +
 	"\x0ehide_existence\x12\x1e.google.protobuf.MethodOptions\x18Ն\x03 \x01(\bR\rhideExistence:G\n" +
 	"\x0escope_filtered\x12\x1e.google.protobuf.MethodOptions\x18ֆ\x03 \x01(\bR\rscopeFiltered:E\n" +
-	"\rexempt_reason\x12\x1e.google.protobuf.MethodOptions\x18׆\x03 \x01(\tR\fexemptReasonBBZ@github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1;authzv1b\x06proto3"
+	"\rexempt_reason\x12\x1e.google.protobuf.MethodOptions\x18׆\x03 \x01(\tR\fexemptReasonB@Z>github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1;authzv1b\x06proto3"
 
 var (
-	file_kacho_iam_authz_v1_authz_options_proto_rawDescOnce sync.Once
-	file_kacho_iam_authz_v1_authz_options_proto_rawDescData []byte
+	file_corelib_authz_v1_authz_options_proto_rawDescOnce sync.Once
+	file_corelib_authz_v1_authz_options_proto_rawDescData []byte
 )
 
-func file_kacho_iam_authz_v1_authz_options_proto_rawDescGZIP() []byte {
-	file_kacho_iam_authz_v1_authz_options_proto_rawDescOnce.Do(func() {
-		file_kacho_iam_authz_v1_authz_options_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_kacho_iam_authz_v1_authz_options_proto_rawDesc), len(file_kacho_iam_authz_v1_authz_options_proto_rawDesc)))
+func file_corelib_authz_v1_authz_options_proto_rawDescGZIP() []byte {
+	file_corelib_authz_v1_authz_options_proto_rawDescOnce.Do(func() {
+		file_corelib_authz_v1_authz_options_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_corelib_authz_v1_authz_options_proto_rawDesc), len(file_corelib_authz_v1_authz_options_proto_rawDesc)))
 	})
-	return file_kacho_iam_authz_v1_authz_options_proto_rawDescData
+	return file_corelib_authz_v1_authz_options_proto_rawDescData
 }
 
-var file_kacho_iam_authz_v1_authz_options_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
-var file_kacho_iam_authz_v1_authz_options_proto_goTypes = []any{
-	(*ScopeExtractor)(nil),             // 0: kacho.iam.authz.v1.ScopeExtractor
+var file_corelib_authz_v1_authz_options_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_corelib_authz_v1_authz_options_proto_goTypes = []any{
+	(*ScopeExtractor)(nil),             // 0: corelib.authz.v1.ScopeExtractor
 	(*descriptorpb.MethodOptions)(nil), // 1: google.protobuf.MethodOptions
 }
-var file_kacho_iam_authz_v1_authz_options_proto_depIdxs = []int32{
-	1, // 0: kacho.iam.authz.v1.permission:extendee -> google.protobuf.MethodOptions
-	1, // 1: kacho.iam.authz.v1.required_relation:extendee -> google.protobuf.MethodOptions
-	1, // 2: kacho.iam.authz.v1.scope_extractor:extendee -> google.protobuf.MethodOptions
-	1, // 3: kacho.iam.authz.v1.required_acr_min:extendee -> google.protobuf.MethodOptions
-	1, // 4: kacho.iam.authz.v1.hide_existence:extendee -> google.protobuf.MethodOptions
-	1, // 5: kacho.iam.authz.v1.scope_filtered:extendee -> google.protobuf.MethodOptions
-	1, // 6: kacho.iam.authz.v1.exempt_reason:extendee -> google.protobuf.MethodOptions
-	0, // 7: kacho.iam.authz.v1.scope_extractor:type_name -> kacho.iam.authz.v1.ScopeExtractor
+var file_corelib_authz_v1_authz_options_proto_depIdxs = []int32{
+	1, // 0: corelib.authz.v1.permission:extendee -> google.protobuf.MethodOptions
+	1, // 1: corelib.authz.v1.required_relation:extendee -> google.protobuf.MethodOptions
+	1, // 2: corelib.authz.v1.scope_extractor:extendee -> google.protobuf.MethodOptions
+	1, // 3: corelib.authz.v1.required_acr_min:extendee -> google.protobuf.MethodOptions
+	1, // 4: corelib.authz.v1.hide_existence:extendee -> google.protobuf.MethodOptions
+	1, // 5: corelib.authz.v1.scope_filtered:extendee -> google.protobuf.MethodOptions
+	1, // 6: corelib.authz.v1.exempt_reason:extendee -> google.protobuf.MethodOptions
+	0, // 7: corelib.authz.v1.scope_extractor:type_name -> corelib.authz.v1.ScopeExtractor
 	8, // [8:8] is the sub-list for method output_type
 	8, // [8:8] is the sub-list for method input_type
 	7, // [7:8] is the sub-list for extension type_name
@@ -237,27 +237,27 @@ var file_kacho_iam_authz_v1_authz_options_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for field type_name
 }
 
-func init() { file_kacho_iam_authz_v1_authz_options_proto_init() }
-func file_kacho_iam_authz_v1_authz_options_proto_init() {
-	if File_kacho_iam_authz_v1_authz_options_proto != nil {
+func init() { file_corelib_authz_v1_authz_options_proto_init() }
+func file_corelib_authz_v1_authz_options_proto_init() {
+	if File_corelib_authz_v1_authz_options_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_iam_authz_v1_authz_options_proto_rawDesc), len(file_kacho_iam_authz_v1_authz_options_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_corelib_authz_v1_authz_options_proto_rawDesc), len(file_corelib_authz_v1_authz_options_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   1,
 			NumExtensions: 7,
 			NumServices:   0,
 		},
-		GoTypes:           file_kacho_iam_authz_v1_authz_options_proto_goTypes,
-		DependencyIndexes: file_kacho_iam_authz_v1_authz_options_proto_depIdxs,
-		MessageInfos:      file_kacho_iam_authz_v1_authz_options_proto_msgTypes,
-		ExtensionInfos:    file_kacho_iam_authz_v1_authz_options_proto_extTypes,
+		GoTypes:           file_corelib_authz_v1_authz_options_proto_goTypes,
+		DependencyIndexes: file_corelib_authz_v1_authz_options_proto_depIdxs,
+		MessageInfos:      file_corelib_authz_v1_authz_options_proto_msgTypes,
+		ExtensionInfos:    file_corelib_authz_v1_authz_options_proto_extTypes,
 	}.Build()
-	File_kacho_iam_authz_v1_authz_options_proto = out.File
-	file_kacho_iam_authz_v1_authz_options_proto_goTypes = nil
-	file_kacho_iam_authz_v1_authz_options_proto_depIdxs = nil
+	File_corelib_authz_v1_authz_options_proto = out.File
+	file_corelib_authz_v1_authz_options_proto_goTypes = nil
+	file_corelib_authz_v1_authz_options_proto_depIdxs = nil
 }

@@ -10,7 +10,7 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kaname/cloud/iam/v1/role.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1;iamv1";
 
@@ -43,8 +43,8 @@ service RoleService {
     //
     // Поведение обработчика не меняется ни на строку — меняется то, что
     // объявлено о нём краю.
-    option (kacho.iam.authz.v1.permission)     = "iam.roles.get";
-    option (kacho.iam.authz.v1.scope_filtered) = true;
+    option (corelib.authz.v1.permission)     = "iam.roles.get";
+    option (corelib.authz.v1.scope_filtered) = true;
   }
 
   // Retrieves the list of Role resources. Поддерживает фильтры:
@@ -67,8 +67,8 @@ service RoleService {
     // справочника, и его перевод требует ВЫДАЧИ с подстановочным субъектом, а не
     // смены лотка (словарь причин намеренно не содержит «глобального
     // справочника», см. `authz_options.proto`).
-    option (kacho.iam.authz.v1.permission)     = "iam.roles.list";
-    option (kacho.iam.authz.v1.scope_filtered) = true;
+    option (corelib.authz.v1.permission)     = "iam.roles.list";
+    option (corelib.authz.v1.scope_filtered) = true;
   }
 
   // Creates a custom role in the specified account.
@@ -79,8 +79,8 @@ service RoleService {
       metadata: "CreateRoleMetadata"
       response: "Role"
     };
-    option (kacho.iam.authz.v1.permission)        = "iam.roles.create";
-    option (kacho.iam.authz.v1.required_relation) = "editor";
+    option (corelib.authz.v1.permission)        = "iam.roles.create";
+    option (corelib.authz.v1.required_relation) = "editor";
     // Scope = the role's home anchor. A custom role is account- XOR
     // project-scoped, and `scope_extractor` can name only ONE request field, so
     // the catalog entry below states the ACCOUNT arm
@@ -96,11 +96,11 @@ service RoleService {
     // the scope TYPE; the type follows from which anchor is set.
     // Neither anchor set → `account:*` → "no path: unscoped resource" 403 at the
     // edge (fail-closed); the XOR message itself comes from the use-case.
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "account"
       from_request_field: "account_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the specified custom role.
@@ -111,13 +111,13 @@ service RoleService {
       metadata: "UpdateRoleMetadata"
       response: "Role"
     };
-    option (kacho.iam.authz.v1.permission)        = "iam.roles.update";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.roles.update";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "iam_role"
       from_request_field: "role_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (corelib.authz.v1.required_acr_min)  = "2";
   }
 
   // Deletes the specified custom role.
@@ -129,25 +129,25 @@ service RoleService {
       metadata: "DeleteRoleMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission)        = "iam.roles.delete";
-    option (kacho.iam.authz.v1.required_relation) = "v_delete";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.roles.delete";
+    option (corelib.authz.v1.required_relation) = "v_delete";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "iam_role"
       from_request_field: "role_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (corelib.authz.v1.required_acr_min)  = "2";
   }
 
   // Lists operations for the specified role.
   rpc ListOperations (ListRoleOperationsRequest) returns (ListRoleOperationsResponse) {
     option (google.api.http) = { get: "/iam/v1/roles/{role_id}/operations" };
-    option (kacho.iam.authz.v1.permission)        = "iam.role_operationses.listOperations";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.role_operationses.listOperations";
+    option (corelib.authz.v1.required_relation) = "v_list";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "iam_role"
       from_request_field: "role_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

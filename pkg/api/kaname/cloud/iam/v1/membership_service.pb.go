@@ -10,7 +10,7 @@
 package iamv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -226,7 +226,7 @@ var File_kaname_cloud_iam_v1_membership_service_proto protoreflect.FileDescripto
 
 const file_kaname_cloud_iam_v1_membership_service_proto_rawDesc = "" +
 	"\n" +
-	",kaname/cloud/iam/v1/membership_service.proto\x12\x13kaname.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a$kaname/cloud/iam/v1/membership.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"Z\n" +
+	",kaname/cloud/iam/v1/membership_service.proto\x12\x13kaname.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a$kaname/cloud/iam/v1/membership.proto\x1a$corelib/authz/v1/authz_options.proto\"Z\n" +
 	"\x14GetMembershipRequest\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12#\n" +

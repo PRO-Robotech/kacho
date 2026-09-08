@@ -10,9 +10,9 @@
 package vpcv1
 
 import (
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -234,7 +234,7 @@ var File_kacho_cloud_vpc_v1_address_pool_service_proto protoreflect.FileDescript
 
 const file_kacho_cloud_vpc_v1_address_pool_service_proto_rawDesc = "" +
 	"\n" +
-	"-kacho/cloud/vpc/v1/address_pool_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a6kacho/cloud/vpc/v1/internal_address_pool_service.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"C\n" +
+	"-kacho/cloud/vpc/v1/address_pool_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a6kacho/cloud/vpc/v1/internal_address_pool_service.proto\x1a$corelib/authz/v1/authz_options.proto\"C\n" +
 	"\x19CreateAddressPoolMetadata\x12&\n" +
 	"\x0faddress_pool_id\x18\x01 \x01(\tR\raddressPoolId\"C\n" +
 	"\x19UpdateAddressPoolMetadata\x12&\n" +

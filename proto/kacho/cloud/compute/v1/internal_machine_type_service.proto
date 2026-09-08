@@ -10,7 +10,7 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/compute/v1/machine_type.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1";
 
@@ -31,13 +31,13 @@ service InternalMachineTypeService {
       metadata: "CreateMachineTypeMetadata"
       response: "MachineType"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.machineTypes.create";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.machineTypes.create";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
   rpc Update (UpdateMachineTypeRequest) returns (operation.Operation) {
     option (google.api.http) = { patch: "/compute/v1/internal/machineTypes/{machine_type_id}" body: "*" };
@@ -45,13 +45,13 @@ service InternalMachineTypeService {
       metadata: "UpdateMachineTypeMetadata"
       response: "MachineType"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.machineTypes.update";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.machineTypes.update";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
   rpc Delete (DeleteMachineTypeRequest) returns (operation.Operation) {
     option (google.api.http) = { delete: "/compute/v1/internal/machineTypes/{machine_type_id}" };
@@ -59,13 +59,13 @@ service InternalMachineTypeService {
       metadata: "DeleteMachineTypeMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.machineTypes.delete";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.machineTypes.delete";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

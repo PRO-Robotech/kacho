@@ -10,9 +10,9 @@
 package computev1
 
 import (
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -418,7 +418,7 @@ var File_kacho_cloud_compute_v1_internal_machine_type_service_proto protoreflect
 
 const file_kacho_cloud_compute_v1_internal_machine_type_service_proto_rawDesc = "" +
 	"\n" +
-	":kacho/cloud/compute/v1/internal_machine_type_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a)kacho/cloud/compute/v1/machine_type.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xef\x03\n" +
+	":kacho/cloud/compute/v1/internal_machine_type_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a)kacho/cloud/compute/v1/machine_type.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"\xef\x03\n" +
 	"\x18CreateMachineTypeRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12B\n" +

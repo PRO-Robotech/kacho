@@ -7,7 +7,7 @@ package kacho.cloud.geo.v1;
 
 import "google/api/annotations.proto";
 import "kacho/cloud/geo/v1/region.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1";
 
@@ -29,13 +29,13 @@ service RegionService {
     // НИКТО, и проверка отвечала отказом каждому. Освобождение это чинило, но
     // делало доступ невидимым — он не показывался перечислением выдач и
     // закрывался только выкаткой. Теперь верны оба свойства сразу (#893/#895).
-    option (kacho.iam.authz.v1.permission) = "geo.regions.get";
-    option (kacho.iam.authz.v1.required_relation) = "viewer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission) = "geo.regions.get";
+    option (corelib.authz.v1.required_relation) = "viewer";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of regions.
@@ -43,13 +43,13 @@ service RegionService {
     option (google.api.http) = { get: "/geo/v1/regions" };
     // Ambient placement-catalog read — то же отношение и тот же производитель,
     // что у соседнего чтения этого сервиса (#893/#895).
-    option (kacho.iam.authz.v1.permission) = "geo.regions.list";
-    option (kacho.iam.authz.v1.required_relation) = "viewer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission) = "geo.regions.list";
+    option (corelib.authz.v1.required_relation) = "viewer";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 
