@@ -2,20 +2,31 @@
 
 Identity / Access Management control-plane service for Kachō Cloud.
 Account / Project / User / ServiceAccount / Group / Role / AccessBinding +
-WebAuthn/Passkey AuthN (Phase 2) + ReBAC + OPA AuthZ (Phase 3).
+WebAuthn/Passkey AuthN (Phase 2) + ReBAC AuthZ.
 
 This sub-chart is owned by the `kacho-umbrella` chart (`deploy/helm/umbrella/`) and is not intended
-for standalone deployment. The umbrella manages cross-cutting Phase 3 concerns
-(OPA sidecar shared ConfigMap, NetworkPolicies) at the parent level; this
-sub-chart only declares the kaname Deployment + its supporting
-ConfigMap / RBAC / Service objects.
+for standalone deployment. The umbrella manages cross-cutting concerns
+(NetworkPolicies) at the parent level; this sub-chart only declares the kaname
+Deployment + its supporting ConfigMap / RBAC / Service objects.
 
 ## Phase 3 additions
 
-| Feature | Manifestation |
-|---|---|
-| OPA sidecar | `templates/deployment.yaml` injects container `opa` when `opaSidecar.enabled=true`. |
-| Pod label `kacho.cloud/opa-sidecar=true` | Matched by umbrella NetworkPolicy `opa-sidecar-egress-allowlist`. |
+> [!note] Наложение правил снято вместе со своим потребителем (#2141).
+> Служба объявляет в собственном исходнике, что решение о доступе принимает
+> единственный механизм — модель прав. Поставка при этом продолжала возить
+> боковой контейнер правил, пять файлов правил, карты его настроек, ручки в
+> профилях и две сетевые политики. Ни один профиль контейнер не включал, то
+> есть механизм не работал ни на одной посадке, — но обещание «правила
+> применяются» стояло в поставке и читалось как действующее.
+>
+> Ушли: контейнер и его карты, каталог `files/opa-policies/`, метка пода,
+> ручка включения во всех профилях и сетевые политики выдачи пакета правил.
+> Имя снятой ручки здесь намеренно не воспроизводится в обратных кавычках:
+> так оно читается как живая настройка, и оператор задал бы её, не получив
+> ничего.
+> Отсутствие остатков держит `deploy/rules_overlay_left_no_remnant_test.go`;
+> он же читает ПРЕДПОСЫЛКУ и отказывает другим текстом, если потребитель
+> вернётся.
 
 > [!note] Внешний движок отношений снят вместе со своей посадкой (S6 эпика #747).
 > Решение о доступе вычисляет реляционная форма в собственной базе iam, поэтому
@@ -27,92 +38,22 @@ ConfigMap / RBAC / Service objects.
 > больше не с чем. Сама МОДЕЛЬ прав (`fga_model.fga`) остаётся: она источник
 > истины формы и разбирается службой, а не движком.
 
-## Bundle signing key rotation (180d schedule)
+## Подпись пакета правил — раздела больше нет, и вот почему
 
-> [!warning] Этот раздел описывает НЕреализованный замысел — читать как план, не как факт.
-> **Ротатора JWKS в чарте нет** — cronjob-шаблон, который его нёс, снят как
-> вестигиальный, и его имя здесь намеренно не воспроизводится: путь в обратных
-> кавычках читается следующим как живая координата, даже внутри абзаца,
-> объясняющего, что файла нет. **Никто не наполняет** ConfigMap `kaname-jwks` —
-> в нём остаётся пустой placeholder-PEM, а подписи бандлов в коде iam нет ни в
-> одном пакете. Раздел оставлен как описание намерения; прежде чем на него
-> опираться — реализовать подпись бандлов и её собственный key-lifecycle. Весь
-> текст ниже про «rotator» относится к этому нереализованному плану.
->
-> **Прежняя редакция объясняла снятие тем, что iam не владеет ключом подписи
-> токенов. С задачи #897 это неверно:** платформа чеканит свои токены сама, у iam
-> есть ключница подписных ключей со своим сроком, ротацией и публикуемым набором
-> (`config.authn.tokenSigning.*`). На этот раздел смена ничего не переносит:
-> подпись БАНДЛА и подпись ТОКЕНА — разные предметы с разными адресатами и разной
-> ротацией, и ключница токенов под подпись бандлов не переиспользуется.
+Здесь стоял разбор ротации ключа подписи пакета правил на 180 дней: расписание,
+процедура на день ноль, аварийный порядок при утечке приватной половины. Весь он
+описывал **нереализованный замысел** и сам это оговаривал — ни ротатора, ни
+подписи пакетов в коде службы не существовало ни одного пакета.
 
-The OPA bundle is (per the above plan) signed with JWS ES256; the public half
-would live in ConfigMap `kaname-jwks`, rendered by
-`templates/jwks-configmap.yaml` of this chart, which OPA sidecars across the
-fleet load at startup to verify each downloaded bundle. (Прежняя редакция называла
-шаблон длинным именем с префиксом сервиса и объявляла его umbrella-managed — ни такого
-файла, ни такого расположения в дереве нет: шаблон лежит в этом же чарте и называется
-короче. Снятое имя здесь не воспроизводится: в обратных кавычках оно читается как живая
-координата — именно на этом прежняя редакция абзаца сама и попалась.)
+Раздел снят вместе со своим предметом (#2141): наложение правил убрано из
+поставки, потому что у него не осталось потребителя. Плана без исполнителя не
+держим — ban #11 не различает отсрочку в коде и отсрочку в тексте: и та и другая
+переживает своё основание и читается следующим как действующая.
 
-### Rotation cadence
-
-- **180d** is the **public-key** rotation cadence (acceptance §5.6) for the
-  bundle-signing key of this unimplemented plan.
-- The knob that used to be named here for setting that cadence was removed: no
-  line of code ever read it. It is deliberately not reproduced — a knob name in
-  backticks reads as a live setting, and an operator would set it and get
-  nothing. An implementation of bundle signing declares its own cadence knob.
-- The lifetime of the TOKEN signing key is a different setting for a different
-  key: `config.authn.tokenSigning.keyLifetime` (see `values.yaml`). Rotation of
-  that key runs inside the service, not from a CronJob.
-
-### Rotation procedure
-
-Day 0:
-1. JWKS rotator CronJob hits `rotation-days` threshold for the current key.
-2. Rotator generates a new ES256 keypair, wraps the private half and stores it.
-   (The store this step used to name was dropped by a migration; a real
-   implementation of bundle signing brings its own. It must NOT reuse the token
-   signing key store — that one holds the keys the platform mints ITS OWN tokens
-   with, and a bundle-signing key sharing that store would share its rotation,
-   its published key set and its revocation, none of which are about bundles.)
-3. Rotator marks the new row current, demotes the old one but keeps it usable
-   for verification.
-4. Rotator updates ConfigMap `kaname-jwks` — both old kid and new kid
-   PEM entries present.
-5. `kaname` bundle server would sign bundles with the new key during a
-   grace window. (The knobs that carried that window were removed — nothing
-   read them; a real implementation brings its own.)
-
-Day 0 + 2h (grace expiry):
-6. Rotator marks old row `valid=false`. Bundle server stops accepting old kid.
-7. Sidecars that have not pulled a new bundle within the grace window fail
-   signature verification → fail-closed → alert `opa_bundle_signature_failures_total`.
-8. Operator's runbook: force rolling restart of all kacho-* pods. New pods
-   re-load the latest PEM ConfigMap and successfully pull/verify the new
-   bundle.
-
-Day 0 + 180d (public-key audit cycle):
-9. Operator reviews the bundle-signing key audit log. A key older than 180d that
-   has been unusable for verification for more than 7d is safe to purge — no
-   in-flight verification against it is possible any more.
-
-### Disaster: signing key compromise
-
-If the **private** signing key leaks (e.g., dev-cluster Secret leak):
-
-1. Trigger immediate rotation — **CronJob'а для этого больше нет** (снят как
-   вестигиальный, см. предупреждение выше); при реализации bundle-signing здесь
-   должен появиться его собственный механизм ротации.
-2. After rotation completes, force rolling restart of every kacho-*
-   pod: `kubectl rollout restart deployment -n kacho-system -l app.kubernetes.io/part-of=kacho`.
-3. Compress the rotation grace window for the duration of incident response
-   (accept temporary fail-closed during sidecar pull lag).
-4. Invalidate ALL existing OPA bundles in CDN/cache (force re-pull) by making
-   the pod template change, so sidecars detect a new revision and re-pull.
-5. Audit: list the bundle-signing keys still usable for verification and
-   compare their age against the incident timestamp — anything older is suspect.
+Понадобится подпись пакетов — она приходит вместе со своим ключом, своей
+ротацией и своим механизмом, и описывается тогда же. Ключ шифрования набора
+ключей (`kaname-jwks-enc-key`, раздел ниже) к этому отношения не имеет: это
+другой предмет с другим сроком жизни.
 
 ## Sealed-secret integration (operator setup)
 
@@ -262,15 +203,14 @@ connecting the two. Pin it, and drive changes through the list above.
 
 | Symptom | Likely cause | Remediation |
 |---|---|---|
-| `OPA sidecar /health returns {"bundles":{"...":{"active_revision":""}}}` | First bundle pull pending | Wait ≤90s on dev / ≤65min on prod (OPA pollMinDelaySeconds). |
-| `OPA sidecar logs: signature verification failed: invalid key` | Public-key ConfigMap stale | `kubectl rollout restart deployment -n kacho-system -l app.kubernetes.io/part-of=kacho`. |
 | `Backend gRPC returns Unavailable: "authorization service unavailable"` | решение о доступе не принято (база iam недоступна / вычисление сорвалось) | `kubectl get po -n kacho-system -l app=kaname` и его Postgres. Код `UNAVAILABLE`, а не `PERMISSION_DENIED`: не решено ничего, значит тот же вызов имеет смысл повторить. `PERMISSION_DENIED` здесь означает, что модель ОТВЕТИЛА — смотреть надо на выдачи, а не на поды. |
-| `Backend gRPC returns PermissionDenied: "policy: <msg>"` | OPA deny-rule fired (expected) | Review `<msg>` against acceptance §4.6 Rego rules. |
 
 ## See also
 
-- `docs/specs/sub-phase-3.3-iam-authz-fga-conditions-opa-acceptance.md` — full design + GWT.
-- Umbrella templates (Phase 3): `helm/umbrella/templates/opa-*.yaml`.
+Здесь стояли две ссылки на приёмку и шаблоны наложения правил. Механизм снят
+вместе со своим потребителем (#2141), а ссылка на снятый шаблон в обратных
+кавычках читается следующим как живая координата — поэтому она не
+воспроизводится даже в абзаце, объясняющем её отсутствие.
 
 Здесь стояла вторая ссылка — на проектный документ iam из каталога сторонних
 артефактов под `docs/`. Каталог удалён целиком решением владельца 2026-06-11

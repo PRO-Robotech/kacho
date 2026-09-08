@@ -97,65 +97,6 @@ kaname:
     hooks:
       tokenHookSecretName: kaname-hook-token
       tokenHookSecretKey: token
-  # OPA sidecar pipeline (deny-only Rego guardrails + signed bundle pulled from
-  # kaname Internal RPC). Full defaults live in charts/kaname/values.yaml;
-  # this override block flips the dev-relevant knobs. Disabled by default — the
-  # whole opa/jwks ConfigMap set (now owned by the kaname sub-chart) renders
-  # only when opaSidecar.enabled=true.
-  opaSidecar:
-    enabled: false
-    image: openpolicyagent/opa:1.0.0-rootless
-    logLevel: info
-    jwks:
-      configMapName: kaname-jwks
-    resources:
-      requests:
-        cpu: 20m
-        memory: 64Mi
-      limits:
-        cpu: 200m
-        memory: 256Mi
-
-# ─── Cross-cutting authz NetworkPolicy (umbrella template networkpolicy-authz) ─
-# Defense-in-depth pod-to-pod allowlist spanning kaname + api-gateway
-# + backends — no single owning chart, so the selectors live at umbrella level.
-# Disabled by default (would block :9091 port-forward debugging in dev). The rest
-# of the OPA sidecar config now lives in the kaname sub-chart.
-opaSidecar:
-  networkPolicy:
-    enabled: false
-    iamPodSelector:
-      matchLabels:
-        app.kubernetes.io/name: kaname
-    apiGatewayPodSelector:
-      matchLabels:
-        app: api-gateway
-    # Backend services that dial kaname :9091 (per-RPC Check + fga-register).
-    # A service missing from this list is fail-CLOSED on every RPC once
-    # these policies are enforced — it is an allowlist, not a hint. `kacho-storage` is
-    # the storage control-plane pod label (chart fullnameOverride, `app: kacho-storage`).
-    # `kacho-geo` and `registry` dial kaname :9091 exactly like the others
-    # (per-RPC Check; registry additionally uses the fga-register edge). Both were
-    # missing, so once these policies are enforced every geo and registry RPC was
-    # refused at the network layer — the same fail-closed omission storage had.
-    # Labels are the pods' own `app` values: geo → `kacho-geo`, registry →
-    # `registry` (registry chart `.Values.name`, NOT `kacho-registry`).
-    backendPodSelector:
-      matchExpressions:
-        - key: app
-          operator: In
-          values: [vpc, compute, kacho-nlb, kacho-storage, kacho-geo, registry]
-    # Egress-сторона (policy 3). NetworkPolicy действует на ПОД, а не на контейнер,
-    # поэтому список исходящих правил обязан покрывать зависимости ОСНОВНОГО
-    # контейнера помеченного пода, а не только OPA-сайдкара. Для kaname это его
-    # собственная Postgres и Hydra, фасадом к которой он является; без них политика
-    # не «сужает трафик», а роняет весь authN/authZ-ярус.
-    datastorePodSelector:
-      matchLabels:
-        app.kubernetes.io/name: pg-iam
-    hydraPodSelector:
-      matchLabels:
-        app.kubernetes.io/name: hydra
 
 # ─── Per-datastore Postgres ingress allowlist (templates/networkpolicy-datastore) ─
 # Each backing Postgres StatefulSet (bitnami sub-chart, pod label
