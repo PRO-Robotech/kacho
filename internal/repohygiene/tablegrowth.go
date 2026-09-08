@@ -388,6 +388,65 @@ func splitDollarBodies(src []byte) (bodies, top []byte) {
 	return bodies, top
 }
 
+// anonymousDoBlockRe — начало АНОНИМНОГО блока `DO [LANGUAGE …] $tag$`.
+//
+// Ищется от начала оператора (после предыдущей `;`), поэтому слово `DO` внутри
+// чужого текста началом блока не считается.
+var anonymousDoBlockRe = regexp.MustCompile(`(?is)^\s*do\s+(?:language\s+[\w"]+\s+)?$`)
+
+// reclassifyDoBlocksAsTopLevel переносит тела АНОНИМНЫХ блоков `DO $$ … $$` из
+// `bodies` в `top`.
+//
+// ПОЧЕМУ ЭТО НЕСУЩЕЕ РАЗЛИЧЕНИЕ, А НЕ ПРИДИРКА К СИНТАКСИСУ. Полоса «триггер»
+// объявлена так: «тело функции — исполняемый код, срабатывающий на КАЖДОМ
+// событии, поэтому оператор снятия строк в нём есть действующий механизм».
+// Для тела ФУНКЦИИ это верно. Для анонимного блока `DO` — нет: он исполняется
+// РОВНО ОДИН РАЗ, при накатке миграции, и ничем не отличается по смыслу от
+// разовой правки данных на верхнем уровне, кроме того, что записан в
+// долларовых кавычках ради переменных и переписи.
+//
+// Различал их разбор по КАВЫЧКАМ, а не по тому, что это такое, — то есть по
+// признаку оформления. Цена измерена, а не предположена: на дереве таких
+// операторов снятия ТРИ (`kaname.limits`, `kaname.project_resource_quotas`,
+// `kacho_vpc.gateways`) против восьми в настоящих телах функций, и первый из
+// них дал ЛОЖНУЮ находку — гейт объявил запись реестра потерявшей предмет и
+// предложил её снять, тогда как у таблицы по-прежнему нет ни одного
+// действующего механизма снятия строк: её величины отзываются надгробием
+// (`withdrawn_at`), а разовая миграция сняла шесть видов вместе с каталогом.
+//
+// Снять запись по такому совету значило бы отдать таблицу из-под наблюдения
+// молча — ровно тот исход, против которого реестр и заведён.
+func reclassifyDoBlocksAsTopLevel(clean, bodies, top []byte) {
+	pos := 0
+	stmtStart := 0
+	for pos < len(clean) {
+		loc := dollarTagRe.FindIndex(clean[pos:])
+		if loc == nil {
+			break
+		}
+		start := pos + loc[0]
+		tag := string(clean[start : pos+loc[1]])
+		rest := pos + loc[1]
+		idx := strings.Index(string(clean[rest:]), tag)
+		if idx < 0 {
+			break
+		}
+		bodyEnd := rest + idx
+		// Начало оператора — после последней `;` перед открывающей меткой.
+		if i := strings.LastIndexByte(string(clean[:start]), ';'); i >= 0 {
+			stmtStart = i + 1
+		} else {
+			stmtStart = 0
+		}
+		if anonymousDoBlockRe.MatchString(string(clean[stmtStart:start])) {
+			// Тело анонимного блока судится как верхний уровень: разовая правка.
+			copy(top[rest:bodyEnd], clean[rest:bodyEnd])
+			blankSpan(bodies, rest, bodyEnd)
+		}
+		pos = bodyEnd + len(tag)
+	}
+}
+
 // identifierRe — имя объекта: необязательная схема плюс имя. Кавычки и
 // подстановка (`%s`) допускаются в разборе намеренно — подстановка отмечается
 // вызывающим и уходит в счётчик неразрешимых, а не в тишину.
@@ -472,6 +531,9 @@ func ScanMigrationSQL(owner, path string, src []byte) MigrationScan {
 	}
 	clean := blankSQLComments(up)
 	bodies, top := splitDollarBodies(clean)
+	// Анонимный `DO $$ … $$` — разовая правка, а не механизм: см. шапку
+	// reclassifyDoBlocksAsTopLevel.
+	reclassifyDoBlocksAsTopLevel(clean, bodies, top)
 
 	for _, m := range createTableRe.FindAllSubmatchIndex(top, -1) {
 		schema := ""
