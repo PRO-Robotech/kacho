@@ -122,7 +122,7 @@ func (u *DeleteAccountUseCase) doDelete(ctx context.Context, id domain.AccountID
 		}); err != nil {
 		return nil, err
 	}
-	// DeleteOperation.response = Empty (parity с kacho-vpc/internal/apps/.../delete.go).
+	// DeleteOperation.response = Empty (parity с services/vpc/internal/apps/.../delete.go).
 	return anypb.New(&emptypb.Empty{})
 }
 

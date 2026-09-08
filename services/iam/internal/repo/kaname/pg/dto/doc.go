@@ -15,5 +15,5 @@
 //	user.go, service_account.go, group.go, group_member.go, role.go, access_binding.go.
 //
 // JSONB Labels десериализуется `json.Unmarshal([]byte, &map[string]string)`
-// + cast в domain.Labels — по образцу kacho-vpc/internal/repo/kacho/pg/dto/.
+// + cast в domain.Labels — по образцу services/vpc/internal/dto/.
 package dto

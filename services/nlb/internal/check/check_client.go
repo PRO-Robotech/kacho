@@ -15,8 +15,8 @@ import (
 // IAMCheckClient — adapter, реализующий port `authz.CheckClient` поверх
 // уже существующего peer-клиента `iam.CheckClient` (`internal/clients/iam`).
 //
-// Decoupling: kacho-corelib/authz НЕ зависит от kacho-proto stubs (см.
-// `kacho-corelib/authz/check_client.go`); peer-client уже инкапсулирует
+// Decoupling: pkg/authz НЕ зависит от kacho-proto stubs (см.
+// `pkg/authz/check_client.go`); peer-client уже инкапсулирует
 // gRPC вызов `InternalIAMService.Check` + auth.PropagateOutgoing + retry
 // + sentinel mapping (`authz.ErrNoPath` для FGA "no path", domain.ErrUnavailable
 // для transport-level fail).

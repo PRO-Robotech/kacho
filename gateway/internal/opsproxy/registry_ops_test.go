@@ -15,7 +15,7 @@ import (
 
 // TestOpsProxy_Get_NewFormatRegistry проверяет роутинг 20-char id с 3-char
 // prefix rop (registry — все операции домена делят этот prefix,
-// PrefixOperationReg == "rop" в kacho-corelib/ids). Operation.Get/Cancel для
+// PrefixOperationReg == "rop" в pkg/ids). Operation.Get/Cancel для
 // registry-операций должны маршрутизироваться в registry backend.
 func TestOpsProxy_Get_NewFormatRegistry(t *testing.T) {
 	id := "rop0123456789abcdefg" // 20 chars, rop prefix

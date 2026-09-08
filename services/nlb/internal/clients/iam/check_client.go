@@ -23,7 +23,7 @@ import (
 // DefaultCheckTimeout — per-call deadline применяемый к
 // InternalIAMService.Check, когда client построен без явного timeout'а
 // (`NewCheckClient` / `NewCheckClientFromStub`). Значение мирроит fallback
-// самого `authz.Interceptor` (`kacho-corelib/authz/interceptor.go`,
+// самого `authz.Interceptor` (`pkg/authz/interceptor.go`,
 // CheckTimeout<=0 → 2s) — интерцептор применяет CheckTimeout только к
 // вызовам, которые проходят через него; handler-side прямые Check-вызовы
 // (attach_target_group.go, move.go) вне интерцептора без этого поля висели
@@ -157,7 +157,7 @@ func (c *checkClient) check(ctx context.Context, subjectID, relation, object str
 	return false, nil
 }
 
-// isNoPathReason — повторяет detection-логику kacho-corelib/authz: сравнивает
+// isNoPathReason — повторяет detection-логику pkg/authz: сравнивает
 // `CheckResponse.reason` с известными "no path"-маркерами FGA.
 func isNoPathReason(reason string) bool {
 	r := strings.ToLower(reason)

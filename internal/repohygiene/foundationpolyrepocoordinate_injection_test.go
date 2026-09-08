@@ -263,17 +263,28 @@ func TestFpcInjection_TheSameLineWithoutTheGeneratedMarkIsFound(t *testing.T) {
 	}
 }
 
-// ── Полоса популяции: молчит ВНЕ фундамента, находка ВНУТРИ него ───────────
+// ── Полоса популяции: молчит ВНЕ четырёх корней, находка ВНУТРИ них ───────
+//
+// Здесь стояло «дерево служб судится проверкой фундамента» с ожиданием
+// МОЛЧАНИЯ: популяция была `pkg/` и `proto/`, и утверждение было верно. Оно
+// пережило свой предмет — популяция расширена решением (`#2198`, см. шапку
+// проверки), и служба теперь судится намеренно.
+//
+// Утверждение не снято, а ПЕРЕВЕДЕНО на признак, который дерево производит:
+// граница популяции есть по-прежнему, она просто проходит в другом месте.
+// Корень вне четырёх объявленных обязан молчать — иначе «расширили популяцию»
+// значило бы «сняли границу», а перечень `foundationProseRoots` перестал бы
+// что-либо решать.
 
-func TestFpcInjection_OutsideTheFoundationStaysSilent(t *testing.T) {
+func TestFpcInjection_OutsideTheDeclaredRootsStaysSilent(t *testing.T) {
 	files := fpcSoundTree()
-	files["services/compute/internal/repo/jsonb.go"] = "// Зеркалит kacho-vpc/internal/repo/jsonb.go.\npackage repo\n"
+	files["deploy/tools/mirror.go"] = "// Зеркалит kacho-vpc/internal/repo/jsonb.go.\npackage tools\n"
 	census, findings, err := scanFoundationProse(fpcRootWith(t, files))
 	if err != nil {
 		t.Fatalf("обход: %v", err)
 	}
 	if len(findings) != 0 {
-		t.Fatalf("дерево служб судится проверкой фундамента: популяция шире объявленной: %v", findings)
+		t.Fatalf("корень вне объявленных судится проверкой: популяция шире объявленной: %v", findings)
 	}
 	if census.filesRead != 2 {
 		t.Fatalf("файл вне популяции сосчитан прочитанным: %s", census)
@@ -301,5 +312,244 @@ func TestFpcInjection_EmptyWalkIsDistinguishableFromZeroFindings(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "обход пуст") {
 		t.Fatalf("отказ не называет причину: %v", err)
+	}
+}
+
+// ── Полоса СЛУЖБ и КРАЯ: популяция расширена, и расширение НЕ вакуумно ─────
+//
+// Пара обязательна по той же причине, что у контракта: первая половина
+// доказывает, что дефект в новом корне краснеет и называет координату; вторая —
+// что расширен ВИД файла, а не каталог целиком.
+
+func TestFpcInjection_DeadCoordinateInAServiceIsFound(t *testing.T) {
+	files := fpcSoundTree()
+	files["services/compute/internal/repo/jsonb.go"] = "" +
+		"// Зеркалит kacho-vpc/internal/repo/jsonb.go.\n" +
+		"package repo\n"
+	census, findings, err := scanFoundationProse(fpcRootWith(t, files))
+	if err != nil {
+		t.Fatalf("обход: %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("мёртвая координата в дереве служб не найдена — расширение популяции "+
+			"вакуумно: %v (%s)", findings, census)
+	}
+	got := findings[0].String()
+	for _, want := range []string{"services/compute/internal/repo/jsonb.go:1", "kacho-vpc/internal/repo/jsonb.go"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("находка не называет %q: %s", want, got)
+		}
+	}
+}
+
+func TestFpcInjection_DeadCoordinateAtTheEdgeIsFound(t *testing.T) {
+	files := fpcSoundTree()
+	files["gateway/internal/opsproxy/proxy.go"] = "" +
+		"// Префикс идентификатора берётся у kacho-corelib/ids.\n" +
+		"package opsproxy\n"
+	_, findings, err := scanFoundationProse(fpcRootWith(t, files))
+	if err != nil {
+		t.Fatalf("обход: %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("мёртвая координата у края не найдена — край в популяции не участвует: %v", findings)
+	}
+}
+
+func TestFpcInjection_TheSameLineInANonGoFileOfAServiceStaysSilent(t *testing.T) {
+	files := fpcSoundTree()
+	files["services/compute/internal/repo/README.md"] = "Зеркалит kacho-vpc/internal/repo/jsonb.go.\n"
+	census, findings, err := scanFoundationProse(fpcRootWith(t, files))
+	if err != nil {
+		t.Fatalf("обход: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("файл вне вида популяции объявлен находкой — расширен каталог, а не вид: %v", findings)
+	}
+	if census.filesRead != 2 {
+		t.Fatalf("молчание не объяснено: прочитано %d файлов вместо 2 контроля: %s",
+			census.filesRead, census)
+	}
+}
+
+// ── Полоса ДЕРЕВА ГЕЙТА: синтетика инъекции обязана уцелеть ────────────────
+//
+// Дефект в фикстуре гейта ЗАКОННЫЙ: без него инъекция беспредметна. Пара
+// доказывает, что пропускается дерево гейта, а не строка: та же строка вне его
+// остаётся находкой.
+
+func TestFpcInjection_TheGateOwnTreeIsSkipped(t *testing.T) {
+	files := fpcSoundTree()
+	files["services/iam/internal/supplyhygiene/directory_name_injection_test.go"] = "" +
+		"// Фикстура: kacho-vpc/internal/apps/kacho/shared\n" +
+		"package supplyhygiene\n"
+	census, findings, err := scanFoundationProse(fpcRootWith(t, files))
+	if err != nil {
+		t.Fatalf("обход: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("синтетика гейта объявлена находкой — инъекция соседа стала бы "+
+			"беспредметной: %v", findings)
+	}
+	if census.filesGateOwn != 1 {
+		t.Fatalf("полоса не названа числом: пропущено %d файлов дерева гейта вместо 1: %s",
+			census.filesGateOwn, census)
+	}
+}
+
+func TestFpcInjection_TheSameFixtureLineOutsideTheGateTreeIsFound(t *testing.T) {
+	files := fpcSoundTree()
+	files["services/iam/internal/domain/constants.go"] = "" +
+		"// Фикстура: kacho-vpc/internal/apps/kacho/shared\n" +
+		"package domain\n"
+	_, findings, err := scanFoundationProse(fpcRootWith(t, files))
+	if err != nil {
+		t.Fatalf("обход: %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("вне дерева гейта та же строка обязана быть находкой — иначе полоса есть "+
+			"маска: %v", findings)
+	}
+}
+
+// ── Полоса ЛИЧНОСТИ НАГРУЗКИ: SPIFFE-имя путём не является ────────────────
+
+func TestFpcInjection_WorkloadIdentityStaysSilent(t *testing.T) {
+	files := fpcSoundTree()
+	files["services/iam/internal/authzguard/fgaproxy_test.go"] = "" +
+		"// Круг доверенных: spiffe://kacho.cloud/ns/kacho-storage/sa/kacho-storage\n" +
+		"package authzguard\n"
+	census, findings, err := scanFoundationProse(fpcRootWith(t, files))
+	if err != nil {
+		t.Fatalf("обход: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("имя нагрузки объявлено мёртвой координатой — слепая замена сломала бы "+
+			"объявленный круг: %v", findings)
+	}
+	if census.exWorkload != 1 {
+		t.Fatalf("полоса не названа числом: личностей нагрузки %d вместо 1: %s",
+			census.exWorkload, census)
+	}
+}
+
+func TestFpcInjection_TheSameNameWithoutTheWorkloadSegmentIsFound(t *testing.T) {
+	files := fpcSoundTree()
+	files["services/iam/internal/authzguard/fgaproxy_test.go"] = "" +
+		"// Реализация — kacho-storage/internal/clients/iam.go\n" +
+		"package authzguard\n"
+	_, findings, err := scanFoundationProse(fpcRootWith(t, files))
+	if err != nil {
+		t.Fatalf("обход: %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("та же приставка без сегмента нагрузки обязана быть находкой — иначе "+
+			"полоса накрывает адреса: %v", findings)
+	}
+}
+
+// ── Полоса ПУТИ МОНТИРОВАНИЯ: координата в контейнере, а не в дереве ──────
+
+func TestFpcInjection_MountPathStaysSilent(t *testing.T) {
+	files := fpcSoundTree()
+	files["services/nlb/cmd/migrator/main.go"] = "" +
+		"//\t--config  /etc/kacho-nlb/config.yaml\n" +
+		"package main\n"
+	census, findings, err := scanFoundationProse(fpcRootWith(t, files))
+	if err != nil {
+		t.Fatalf("обход: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("путь монтирования объявлен мёртвой координатой дерева: %v", findings)
+	}
+	if census.exMountPath != 1 {
+		t.Fatalf("полоса не названа числом: путей монтирования %d вместо 1: %s",
+			census.exMountPath, census)
+	}
+}
+
+func TestFpcInjection_TheSamePathWithoutTheMountPrefixIsFound(t *testing.T) {
+	files := fpcSoundTree()
+	files["services/nlb/cmd/migrator/main.go"] = "" +
+		"//\tУмолчание читается из kacho-nlb/config.yaml\n" +
+		"package main\n"
+	_, findings, err := scanFoundationProse(fpcRootWith(t, files))
+	if err != nil {
+		t.Fatalf("обход: %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("тот же путь без приставки монтирования обязан быть находкой — иначе "+
+			"полоса накрывает адреса дерева: %v", findings)
+	}
+}
+
+// ── Полоса ПЕРЕЧИСЛЕНИЯ ВЛАДЕЛЬЦЕВ: за косой чертой вторая служба ─────────
+
+func TestFpcInjection_OwnerEnumerationStaysSilent(t *testing.T) {
+	files := fpcSoundTree()
+	files["services/compute/internal/apps/kacho/api/instance/instance.go"] = "" +
+		"// Зеркало output-only (source of truth = kacho-vpc/kacho-storage).\n" +
+		"package instance\n"
+	census, findings, err := scanFoundationProse(fpcRootWith(t, files))
+	if err != nil {
+		t.Fatalf("обход: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("перечисление двух владельцев объявлено адресом: %v", findings)
+	}
+	if census.exOwnerEnum != 1 {
+		t.Fatalf("полоса не названа числом: перечислений %d вместо 1: %s",
+			census.exOwnerEnum, census)
+	}
+}
+
+func TestFpcInjection_TheSameFormWithAPathTailIsFound(t *testing.T) {
+	files := fpcSoundTree()
+	files["services/compute/internal/apps/kacho/api/instance/instance.go"] = "" +
+		"// Зеркало читает kacho-vpc/internal/dto/mirror.go.\n" +
+		"package instance\n"
+	_, findings, err := scanFoundationProse(fpcRootWith(t, files))
+	if err != nil {
+		t.Fatalf("обход: %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("та же приставка с путём за ней обязана быть находкой — иначе полоса "+
+			"накрывает адреса: %v", findings)
+	}
+}
+
+// ── Полоса КАТАЛОГА СБОРКИ: совпало имя двоичного файла, а не топология ───
+
+func TestFpcInjection_LiveBuildDirStaysSilent(t *testing.T) {
+	files := fpcSoundTree()
+	files["services/registry/internal/apps/kacho/config/config.go"] = "" +
+		"// см. cmd/kacho-registry/describe\n" +
+		"package config\n"
+	files["services/registry/cmd/kacho-registry/main.go"] = "package main\n"
+	census, findings, err := scanFoundationProse(fpcRootWith(t, files))
+	if err != nil {
+		t.Fatalf("обход: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("ссылка внутрь службы объявлена полирепо-координатой: %v", findings)
+	}
+	if census.exBuildDir != 1 {
+		t.Fatalf("полоса не названа числом: каталогов сборки %d вместо 1: %s",
+			census.exBuildDir, census)
+	}
+}
+
+func TestFpcInjection_TheSameCoordinateWithoutItsBuildDirIsFound(t *testing.T) {
+	files := fpcSoundTree()
+	files["services/registry/internal/apps/kacho/config/config.go"] = "" +
+		"// см. cmd/kacho-registry/describe\n" +
+		"package config\n"
+	_, findings, err := scanFoundationProse(fpcRootWith(t, files))
+	if err != nil {
+		t.Fatalf("обход: %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("без живого каталога сборки та же координата обязана быть находкой — "+
+			"иначе полоса есть маска: %v", findings)
 	}
 }

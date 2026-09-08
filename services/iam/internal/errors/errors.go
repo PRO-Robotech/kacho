@@ -22,7 +22,7 @@ import (
 	"strings"
 )
 
-// Sentinel error family (parity with kacho-vpc/service.Err*).
+// Sentinel error family (parity with services/vpc/internal/repo/helpers.Err*).
 var (
 	ErrNotFound           = stderrors.New("not found")
 	ErrAlreadyExists      = stderrors.New("already exists")
@@ -249,7 +249,7 @@ func nodeWithSentinelPrefix(err error) (error, error, string) {
 // StripSentinel — extracts the "useful" part of the message (after
 // "sentinel: ") so the handler layer can show the client the canonical Kachō text
 // without the internal prefix (parity with
-// kacho-vpc/internal/handler/mapping.go::stripSentinel).
+// services/vpc/internal/apps/kacho/shared/serviceerr/map.go::stripSentinel).
 //
 // # Имя признака снимается ГДЕ БЫ ОНО НИ СТОЯЛО, а не только в начале
 //

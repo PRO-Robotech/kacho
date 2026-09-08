@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package dto — table-driven generic-based DTO transfers for kaname
-// (parity with kacho-vpc/internal/dto/base.go).
+// (parity with services/vpc/internal/dto/base.go).
 //
 // Layout:
 //   - dto/base.go (this file): generic Interface, RegTransfer / FindTransfer,

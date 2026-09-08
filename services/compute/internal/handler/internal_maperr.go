@@ -14,7 +14,7 @@ import (
 
 // internalMapErr — admin/Internal-handler error mapper. Гарантирует что raw
 // pgx-text (хранит hostname/db/query) не уходит в response даже на
-// cluster-internal listener (:9091). Зеркалит kacho-vpc/internal/handler/internal_maperr.go.
+// cluster-internal listener (:9091). Зеркалит services/vpc/internal/handler/internal_maperr.go.
 //
 // Порядок веток — сначала pass-through, потом sentinel-switch (форма kacho-nlb).
 // Он несущий, а не косметический: pkg/validate кладёт имя поля ТОЛЬКО в

@@ -216,7 +216,7 @@ func (u *CreateAccountUseCase) Execute(ctx context.Context, a domain.Account) (*
 
 	// ID generation: используем literal-prefix через domain.PrefixAccount.
 	// Future: переключиться на `ids.PrefixAccount` после его добавления
-	// в kacho-corelib/ids.
+	// в pkg/ids.
 	//
 	// Идентификатор рождается ДО проверки имени намеренно: пустое имя — законный
 	// вход создания и означает «назови сам», а умолчание производится ОТ

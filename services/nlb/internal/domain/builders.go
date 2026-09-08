@@ -105,7 +105,7 @@ func NewTargetGroup(
 
 // TruncateID возвращает первые ShortIDLen символов id (или весь, если короче).
 // Используется builder'ами derived-имён (`default-tg-<short>` и т.п.). Зеркалит
-// kacho-vpc/internal/domain.TruncateID.
+// services/vpc/internal/domain.TruncateID.
 func TruncateID(id ResourceID) string {
 	s := string(id)
 	if len(s) > ShortIDLen {

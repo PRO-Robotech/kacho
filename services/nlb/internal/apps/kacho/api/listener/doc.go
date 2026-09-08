@@ -22,7 +22,7 @@
 //   - Delete              — async; free VIP back to pool (auto-alloc) либо
 //     clear used_by (BYO); DELETE listener row; emit DELETED + LB UPDATED.
 //   - ListOperations      — sync; per-resource history wrapper над
-//     `kacho-corelib/operations.Repo.List(filter=resource_id)`.
+//     `pkg/operations.Repo.List(filter=resource_id)`.
 //
 // Architectural pillars (Clean Architecture):
 //

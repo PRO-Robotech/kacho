@@ -6,7 +6,7 @@
 // unit-тестами `internal/service`, `internal/handler` и use-case-пакетов
 // `internal/apps/kacho/api/*`.
 //
-// Зависит только от `internal/repo`, `internal/domain` и `kacho-corelib/operations`
+// Зависит только от `internal/repo`, `internal/domain` и `pkg/operations`
 // — НЕ от `internal/service`/use-case-пакетов, поэтому white-box service-тесты
 // (`package service`) могут импортировать repomock без import-cycle.
 package repomock
@@ -800,7 +800,7 @@ func (m *RegionRegistry) Get(_ context.Context, id string) (*domain.Region, erro
 
 // ---- operations.Repo ----
 
-// OpsRepo — in-memory реализация kacho-corelib/operations.Repo.
+// OpsRepo — in-memory реализация pkg/operations.Repo.
 type OpsRepo struct {
 	mu  sync.Mutex
 	ops map[string]*operations.Operation
