@@ -714,9 +714,41 @@ if [ -n "$zero_report_suites" ]; then
 fi
 if [ "$RC" -eq 0 ]; then echo "[parallel] runner verdict: ALL SUITES GREEN"; else echo "[parallel] runner verdict: one or more suites RED (see per-suite out/summary.txt + out/*.json)"; fi
 
-if [ "$GATE" != "true" ] || [ ! -f "$GATE_SCRIPT" ]; then
-  echo "[parallel] CI gate skipped (GATE=$GATE, script=$GATE_SCRIPT) — grading on the per-suite roll-up"
+# ─────────────────────────────────────────────────────────────────────────────
+# ДВА РАЗНЫХ СОСТОЯНИЯ, И РАНЬШЕ ОНИ БЫЛИ ОДНИМ УСЛОВИЕМ
+#
+# `GATE != true` — гейт выключен РУЧКОЙ. Это решение оператора, оно объявлено, и
+# сырой счёт по суитам здесь законный вердикт.
+#
+# `! -f "$GATE_SCRIPT"` — гейта НЕТ ПО АДРЕСУ. Это не решение и не вердикт: три
+# исхода, перепись исполненности и отказ на немом отчёте не исполнились, а
+# прогон при этом выглядит ровно так же, как прогон с исполненным гейтом. Гейт
+# один на все наборы и лежит в каталоге вынесенной службы — то есть уезжает
+# вместе с ней, и ветвь «файла нет ⇒ пропущено» после переезда стала бы
+# истинной НАВСЕГДА: послабление без предиката снятия.
+#
+# Поэтому исходов теперь три, и код возврата у каждого свой:
+#
+#	0/RC  вердикт вынесен (гейтом либо, при GATE!=true, сырым счётом);
+#	1     гейт вынес красный вердикт;
+#	2     ГЕЙТА НЕТ — «не выполнилось»: не зелено, не красно, вердикта нет вовсе.
+#
+# Код 2 — СОБСТВЕННЫЙ словарь этого прогонщика: им он уже дважды объявляет
+# «ПРОГОН НЕДЕЙСТВИТЕЛЕН» (не встал проброс, упал посев), и конвейер читает
+# именно его. Заводить здесь третий код значило бы завести ВТОРОЙ словарь для
+# той же категории — тот, которого никто не читает: ветвь конвейера сверяет
+# ровно 2, и код 3 прошёл бы мимо неё молча.
+if [ "$GATE" != "true" ]; then
+  echo "[parallel] CI gate switched OFF by the knob (GATE=$GATE; script=$GATE_SCRIPT) — grading on the per-suite roll-up"
   exit "$RC"
+fi
+if [ ! -f "$GATE_SCRIPT" ]; then
+  echo "[parallel] DID NOT RUN: the verdict gate is not at $GATE_SCRIPT." >&2
+  echo "           This is NOT a skip and NOT a verdict: nothing here says the suites are green." >&2
+  echo "           The per-suite roll-up above is a RAW count — it has no three-outcome split," >&2
+  echo "           no executed-vs-declared census and no refusal on a mute report." >&2
+  echo "           Fix the path or switch the gate off deliberately with GATE=false." >&2
+  exit 2
 fi
 
 echo
