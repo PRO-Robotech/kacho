@@ -669,7 +669,7 @@ fi
 echo
 # ─── Verdict: RAW (what newman reported) + GATED (what CI grades) ────────────
 # Local runners used to grade on RAW only, while CI graded through
-# services/iam/tests/newman/scripts/assert-suites-green.sh — so the two disagreed by
+# tests/newman/scripts/assert-suites-green.sh — so the two disagreed by
 # construction. Both now grade with the same script.
 #
 # The example that used to stand here is worth keeping as a warning rather than as
@@ -682,7 +682,7 @@ echo
 # evidence. The endpoint is now forwarded (GW_TLS_PORT) so the probes execute, and the
 # gate reports an unanswered request as UNANSWERED instead of subtracting it.
 GATE="${GATE:-true}"
-GATE_SCRIPT="$REPO_ROOT/services/iam/tests/newman/scripts/assert-suites-green.sh"
+GATE_SCRIPT="$REPO_ROOT/tests/newman/scripts/assert-suites-green.sh"
 
 echo "===== PER-SUITE TOTALS (nothing is subtracted; the gate below agrees by construction) ====="
 printf "%-12s %10s %10s %10s\n" "SUITE" "ASSERT-F" "REQ-F" "REPORTS"
@@ -723,9 +723,9 @@ if [ "$RC" -eq 0 ]; then echo "[parallel] runner verdict: ALL SUITES GREEN"; els
 # `! -f "$GATE_SCRIPT"` — гейта НЕТ ПО АДРЕСУ. Это не решение и не вердикт: три
 # исхода, перепись исполненности и отказ на немом отчёте не исполнились, а
 # прогон при этом выглядит ровно так же, как прогон с исполненным гейтом. Гейт
-# один на все наборы и лежит в каталоге вынесенной службы — то есть уезжает
-# вместе с ней, и ветвь «файла нет ⇒ пропущено» после переезда стала бы
-# истинной НАВСЕГДА: послабление без предиката снятия.
+# один на все наборы и лежит ОТДЕЛЬНО от суит (tests/newman/scripts): ветвь
+# «файла нет ⇒ пропущено» была бы послаблением без предиката снятия —
+# после любого переезда гейта её условие стало бы истинным навсегда.
 #
 # Поэтому исходов теперь три, и код возврата у каждого свой:
 #

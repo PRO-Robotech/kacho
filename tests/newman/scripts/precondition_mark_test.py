@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # Copyright (c) PRO-Robotech
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: BUSL-1.1
 
 """Гейт: у метки третьего исхода ОДИН производитель, и вердикт читает её у него.
 
@@ -52,7 +52,8 @@
 каждой оси с законным близнецом).
 
 КТО ЭТУ ПРОБУ ИСПОЛНЯЕТ: `.github/scripts/run-python-probes.py`. Состав он
-собирает ОБХОДОМ дерева по образцу `services/*/tests/newman/scripts/*_test.py` и
+собирает ОБХОДОМ дерева по образцам `services/*/tests/newman/scripts/*_test.py`
+и `tests/newman/scripts/*_test.py` (эта проба — во втором) и
 НИ ОДИН файл проб по имени не называет — поэтому отдельного шага в конвейере файл
 не требует, а искать вызывающего предикатом `git grep <имя файла>` бесполезно:
 вызова по имени нет ни у кого. Код возврата при этом доезжает до вердикта шага.
@@ -64,7 +65,24 @@ import pathlib
 import re
 import sys
 
-NEWMAN = pathlib.Path(__file__).resolve().parents[1]
+SCRIPTS = pathlib.Path(__file__).resolve().parent
+REPO = SCRIPTS.parents[2]
+
+# ВЕРДИКТНЫЙ ГЕЙТ ОДИН НА ДЕРЕВО и лежит рядом с этой пробой, а не внутри
+# набора. Прежде он адресовался как `<набор>/scripts/assert-suites-green.sh` —
+# верно ровно пока гейт жил в одном из наборов и был для него своим.
+GATE = SCRIPTS / "assert-suites-green.sh"
+
+
+def newman_roots() -> list[pathlib.Path]:
+    """Наборы сквозных проб — ОБХОДОМ, а не перечнем имён.
+
+    Выписанный перечень разошёлся бы с деревом на первом же новом наборе, и
+    разошёлся бы молча: новый в него просто не попал бы.
+    """
+    roots = sorted(REPO.glob("services/*/tests/newman"))
+    roots += sorted(r for r in REPO.glob("*/tests/newman") if r.is_dir())
+    return [r for r in roots if (r / "scripts" / "gen.py").is_file()]
 
 # Присвоение константы — то, что ПРОИЗВОДИТ метку. Упоминание имени константы в
 # прозе производителем не является, поэтому образец требует присвоения строки.
@@ -134,10 +152,11 @@ def audit_guards(collections_dir, mark):
 
 
 
-def audit(newman_root):
+def audit(newman_root, gate=None):
+    """Судит ОДИН набор. Вердиктный гейт передаётся: он общий, а не набора."""
     findings, census = [], {}
     gen = newman_root / "scripts" / "gen.py"
-    gate = newman_root / "scripts" / "assert-suites-green.sh"
+    gate = GATE if gate is None else gate
     cases_dir = newman_root / "cases"
 
     if not gen.is_file():
@@ -181,7 +200,7 @@ def audit(newman_root):
 
     # 2. Читает ли вердикт метку у производителя, а не выписывает.
     if not gate.is_file():
-        findings.append("вердиктного гейта нет (scripts/assert-suites-green.sh) — "
+        findings.append(f"вердиктного гейта нет ({gate}) — "
                         "категорию третьего исхода читать нечем")
     else:
         gate_text = gate.read_text(encoding="utf-8")
@@ -198,10 +217,37 @@ def audit(newman_root):
 
 
 def main():
-    census, findings = audit(NEWMAN)
-    print("перепись: " + " · ".join(f"{k} {v}" for k, v in census.items()))
-    if census.get("файлов кейсов осмотрено", 0) == 0:
-        print("ОТКАЗ: файлов кейсов не прочитано — вердикт беспредметен", file=sys.stderr)
+    roots = newman_roots()
+    if not roots:
+        print("ОТКАЗ: наборов сквозных проб не найдено ни одного "
+              "(*/tests/newman/scripts/gen.py) — обход сломан, а не дерево чисто",
+              file=sys.stderr)
+        return 1
+
+    # ВЕРДИКТ ПО ВСЕМ НАБОРАМ СРАЗУ. Гейт один на дерево, значит и утверждение
+    # «вердикт читает метку у производителя» — о дереве, а не об одном наборе.
+    # Судить один набор и молчать об остальных значило бы объявить проверенным
+    # то, о чём не спрашивали: ровно тот класс, который эта проба и ловит.
+    total, findings = {}, []
+    seen_cases = 0
+    for root in roots:
+        census, found = audit(root)
+        rel = root.relative_to(REPO)
+        seen_cases += census.get("файлов кейсов осмотрено", 0)
+        for k, v in census.items():
+            # Гейт ОДИН на дерево: его размер — не сумма по наборам, и сложить
+            # его восемь раз значило бы напечатать число, которого нет.
+            if k == "строк вердиктного гейта":
+                total[k] = v
+                continue
+            total[k] = total.get(k, 0) + v
+        findings += [f"{rel}: {x}" for x in found]
+
+    print(f"перепись: наборов {len(roots)} · " +
+          " · ".join(f"{k} {v}" for k, v in total.items()))
+    if seen_cases == 0:
+        print("ОТКАЗ: файлов кейсов не прочитано ни в одном наборе — "
+              "вердикт беспредметен", file=sys.stderr)
         return 1
     if findings:
         # Перечень усекается, а ЧИСЛО — нет: находок этого класса бывают тысячи

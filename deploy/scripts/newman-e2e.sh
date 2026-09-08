@@ -263,7 +263,7 @@ else
   # roll-up you can read at a glance, and if the two blocks ever disagree, THAT is
   # the finding — something has started subtracting again.
   GATE="${GATE:-true}"
-  GATE_SCRIPT="$REPO_ROOT/services/iam/tests/newman/scripts/assert-suites-green.sh"
+  GATE_SCRIPT="$REPO_ROOT/tests/newman/scripts/assert-suites-green.sh"
   echo
   echo "[e2e] RAW verdict (run.sh): rc=$RAW_RC — see out/summary.txt"
   # Три исхода, а не два — см. разбор в newman-parallel.sh рядом с тем же

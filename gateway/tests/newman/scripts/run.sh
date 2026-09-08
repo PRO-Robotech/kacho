@@ -112,7 +112,7 @@ run_one() {
 #
 # Returns 1 when for ANY stem: out/<stem>.json is absent (MISSING),
 # assertions.failed>0, requests.failed>0 (UNANSWERED), assertions.total==0 (MUTE),
-# or rc!=0. Shape mirrors services/iam/tests/newman/scripts/assert-suites-green.sh.
+# or rc!=0. Shape mirrors tests/newman/scripts/assert-suites-green.sh.
 aggregate_verdict() {
   local out_dir="$1"; shift
   local bad=0 stem json rcfile rc total failed requests unanswered

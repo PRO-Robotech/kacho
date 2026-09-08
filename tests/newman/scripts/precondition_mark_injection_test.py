@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # Copyright (c) PRO-Robotech
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: BUSL-1.1
 
 """Доказательство, что гейт единственности метки СПОСОБЕН упасть и смолчать.
 
@@ -14,7 +14,8 @@
 предмете.
 
 КТО ЭТУ ПРОБУ ИСПОЛНЯЕТ: `.github/scripts/run-python-probes.py`. Состав он
-собирает ОБХОДОМ дерева по образцу `services/*/tests/newman/scripts/*_test.py` и
+собирает ОБХОДОМ дерева по образцам `services/*/tests/newman/scripts/*_test.py`
+и `tests/newman/scripts/*_test.py` (эта проба — во втором) и
 НИ ОДИН файл проб по имени не называет — поэтому отдельного шага в конвейере файл
 не требует, а искать вызывающего предикатом `git grep <имя файла>` бесполезно:
 вызова по имени нет ни у кого. Код возврата при этом доезжает до вердикта шага.
@@ -63,12 +64,25 @@ def collection(guard_lines):
 
 
 def run(producers, case_bodies, gate_body, guards=None):
+    """Гоняет НАСТОЯЩУЮ судящую функцию на синтетическом дереве.
+
+    Гейт передаётся явно и берётся ИЗ синтетического дерева: он один на дерево и
+    более не выводится из набора, а инъекция ось «вердикт выписал метку своим
+    литералом» проверяет именно на подставном теле гейта.
+    """
     with tempfile.TemporaryDirectory() as tmp:
-        return gate.audit(build(tmp, producers, case_bodies, gate_body, guards))
+        root = build(tmp, producers, case_bodies, gate_body, guards)
+        return gate.audit(root, root / "scripts" / "assert-suites-green.sh")
 
 
-# Метка — у производителя дерева, не выписана здесь.
-MARK = gate.read_mark(gate.NEWMAN / "scripts" / "gen.py")[0]
+# Метка — у производителя ДЕРЕВА, не выписана здесь. Набор берётся обходом, а не
+# координатой: названный поимённо, он унёс бы доказательство при первом переезде.
+_ROOTS = gate.newman_roots()
+if not _ROOTS:
+    print("ОТКАЗ: наборов сквозных проб в дереве не найдено — доказывать нечего",
+          file=sys.stderr)
+    raise SystemExit(1)
+MARK = gate.read_mark(_ROOTS[0] / "scripts" / "gen.py")[0]
 ONE = f'PRECONDITION_MARK = "{MARK}"\n'
 GOOD_GATE = 'echo hi\nPRECONDITION_MARK="$(python3 -c \'import gen; print(gen.PRECONDITION_MARK)\')"\n'
 GOOD_CASES = {"a.py": "CASES = []\n", "b.py": "CASES = []\n"}
@@ -104,8 +118,12 @@ def main():
     print("ось 5 — вердиктного гейта нет вовсе")
     with tempfile.TemporaryDirectory() as tmp:
         root = build(tmp, ONE, GOOD_CASES, GOOD_GATE)
-        (root / "scripts" / "assert-suites-green.sh").unlink()
-        _, f = gate.audit(root)
+        missing = root / "scripts" / "assert-suites-green.sh"
+        missing.unlink()
+        # Гейт передаётся тем же путём, что и в законном близнеце: снят РОВНО
+        # ОДИН факт — сам файл. Умолчание подставило бы настоящий гейт дерева, и
+        # ось проверяла бы не то, что объявляет.
+        _, f = gate.audit(root, missing)
     check("инъекция: находка", any("вердиктного гейта нет" in x for x in f), str(f))
 
     print("ось 6 — производитель формы не ставит метку (по порождённым коллекциям)")
