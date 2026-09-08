@@ -489,8 +489,19 @@ spec:
               value: {{ printf "%s/tls.key" $cli | quote }}
             - name: KANAME_REST_UPSTREAM_MTLS_CAFILES
               value: {{ printf "%s/ca.crt" $cli | quote }}
+            # ИМЯ ДЛЯ СВЕРКИ — КОРОТКОЙ СЛУЖЕБНОЙ ФОРМОЙ, как остальные 22 ребра.
+            # Здесь стояла полная форма с доменом кластера. Обе работают: лист
+            # выписан на три имени каждого хоста, поэтому рукопожатие проходило
+            # при любой, и расхождение было ТИХИМ — единственное ребро из
+            # двадцати трёх, о различии которого никто не решал (#2179). Сломать
+            # его смог бы день, когда состав SAN сузят: отказало бы ровно оно, а
+            # остальные продолжили бы работать, и причина была бы неочевидна.
+            #
+            # Короткая форма не зависит от домена кластера. Это НЕ адрес — по нему
+            # не делается ни одного запроса DNS: значение кладётся в SNI и
+            # сравнивается с SAN серверного листа, дозвон же идёт в петлю.
             - name: KANAME_REST_UPSTREAM_MTLS_SERVERNAME
-              value: {{ printf "%s.%s.svc.cluster.local" (include "kaname.fullname" .) .Release.Namespace | quote }}
+              value: {{ printf "%s.%s.svc" (include "kaname.fullname" .) .Release.Namespace | quote }}
             {{- end }}
             {{- if (dig "registryToken" .Values.mtls.httpListeners .Values.mtls) }}
             # docker-token listener (:9096, `/iam/token`) server-TLS. По этому хопу
