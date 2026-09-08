@@ -131,7 +131,33 @@ func authzUnary() grpc.UnaryServerInterceptor { return nil }
 // где она исполняется).
 func synthTree(t *testing.T, rootGo string, extra map[string]string) string {
 	t.Helper()
-	root := t.TempDir()
+	return synthTreeAt(t, t.TempDir(), rootGo, extra)
+}
+
+// synthTreeNested — ТО ЖЕ дерево, но вложенное в каталог со своим `go.mod`.
+//
+// Отличается от synthTree РОВНО одним фактом — где лежит копия, — и в этом весь
+// смысл: вердикт обязан совпасть. Объемлющий модуль назван путём продукта
+// намеренно: в жизни это другой checkout того же продукта (рабочая копия под
+// `project/kacho/tmp/`), а не посторонний проект. Пакетов он не несёт, поэтому
+// разрешение импорта, ушедшее за границу, попадает в несуществующий каталог —
+// ровно то, что наблюдалось (#2429).
+func synthTreeNested(t *testing.T, rootGo string, extra map[string]string) string {
+	t.Helper()
+	parent := t.TempDir()
+	if err := os.WriteFile(filepath.Join(parent, "go.mod"),
+		[]byte("module github.com/PRO-Robotech/kacho\n\ngo 1.25\n"), 0o644); err != nil {
+		t.Fatalf("объемлющий go.mod: %v", err)
+	}
+	inner := filepath.Join(parent, "inner")
+	if err := os.MkdirAll(inner, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", inner, err)
+	}
+	return synthTreeAt(t, inner, rootGo, extra)
+}
+
+func synthTreeAt(t *testing.T, root, rootGo string, extra map[string]string) string {
+	t.Helper()
 	write := func(rel, body string) {
 		p := filepath.Join(root, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -439,4 +465,92 @@ func TestPanicRecoveryGateStillSeesAListenerWhoseConstructorReturnsAPair(t *test
 			res.serviceBuilders)
 	}
 	t.Logf("направление (а): %s", strings.Join(res.findings, "\n"))
+}
+
+// ── ОСЬ: РАСПОЛОЖЕНИЕ КОПИИ НЕ МЕНЯЕТ ВЕРДИКТА (#2429) ───────────────────────
+//
+// Гейт судит ТО дерево, которое ему назвали. Где при этом лежит рабочая копия —
+// его не касается: вложена она в другой checkout продукта или нет, ответ обязан
+// быть один и тот же.
+//
+// Ось заведена по цене. Прежняя редакция разрешала импорты подъёмом к САМОМУ
+// ВНЕШНЕМУ `go.mod`, то есть во вложенной копии читала ЧУЖОЙ checkout, ничего
+// там не находила и объявляла все листенеры беззвенными. Отказ был уверенным и
+// адресным — три координаты, — и по нему завели P0 о продакшн-дефекте (#2427),
+// которого нет. Подтвердили его две независимые полосы: обе работали во
+// вложенных копиях, то есть тиражировали одну систематическую ошибку, а не
+// проверили находку дважды.
+//
+// Пара ниже отличается РОВНО одним фактом — расположением копии. Обе половины
+// обязательны: без «вложенная молчит на исправном» ось не ловила бы дефект, без
+// «вложенная краснеет на снятом звене» она зеленела бы на гейте, разучившемся
+// падать вообще.
+
+// TestPanicRecoveryGateIsIndifferentToWhereTheWorktreeLies — несущее утверждение
+// оси: вердикт вложенной копии СОВПАДАЕТ с вердиктом невложенной. Сравниваются
+// числа, а не «обе зелены»: гейт, переставший видеть листенеры, тоже «зелен».
+func TestPanicRecoveryGateIsIndifferentToWhereTheWorktreeLies(t *testing.T) {
+	t.Parallel()
+	plain := auditPanicRecoveryWiring(t, synthTree(t, synthRootWired, nil))
+	nested := auditPanicRecoveryWiring(t, synthTreeNested(t, synthRootWired, nil))
+	t.Log("невложенная: " + plain.summary)
+	t.Log("вложенная:   " + nested.summary)
+
+	if plain.listeners == 0 || plain.covered == 0 {
+		t.Fatalf("контроль пуст: невложенная копия не дала ни листенеров, ни "+
+			"засчитанных звеньев — сравнивать нечего.\n%s", plain.summary)
+	}
+	if nested.listeners != plain.listeners || nested.covered != plain.covered {
+		t.Fatalf("расположение копии изменило вердикт: невложенная — листенеров %d, "+
+			"со звеном %d; вложенная — %d и %d. Гейт заглянул за границу судимого "+
+			"дерева.\nневложенная: %s\nвложенная:   %s",
+			plain.listeners, plain.covered, nested.listeners, nested.covered,
+			plain.summary, nested.summary)
+	}
+	if len(nested.findings) != len(plain.findings) {
+		t.Fatalf("расположение копии изменило число находок: %d против %d.\n%s",
+			len(nested.findings), len(plain.findings), strings.Join(nested.findings, "\n"))
+	}
+	t.Logf("вердикт не зависит от расположения: листенеров %d, со звеном %d, находок %d",
+		nested.listeners, nested.covered, len(nested.findings))
+}
+
+// TestPanicRecoveryGateStillRedInsideANestedWorktree — вторая половина пары: во
+// вложенной копии гейт обязан СОХРАНИТЬ способность падать. Без неё предыдущая
+// проба зеленела бы на гейте, который молчит всегда.
+func TestPanicRecoveryGateStillRedInsideANestedWorktree(t *testing.T) {
+	t.Parallel()
+	res := auditPanicRecoveryWiring(t, synthTreeNested(t, synthRootUnwired, nil))
+	t.Log(res.summary)
+
+	if len(res.findings) == 0 {
+		t.Fatalf("звено снято, копия вложена — а гейт молчит: во вложенности он "+
+			"перестал быть способен упасть.\n%s", res.summary)
+	}
+	joined := strings.Join(res.findings, "\n")
+	if !strings.Contains(joined, "services/demo/cmd/demo/main.go") {
+		t.Fatalf("находка не называет файл — по ней нечего чинить:\n%s", joined)
+	}
+	t.Logf("во вложенной копии гейт по-прежнему краснеет и называет координату:\n%s", joined)
+}
+
+// TestPanicRecoveryCensusNamesTheTreeItWalked — перепись обязана называть, КАКОЕ
+// дерево осмотрено.
+//
+// Ложность была неотличима от настоящей находки именно потому, что из вывода не
+// было видно, чьё дерево прочитано: семь чисел переписи совпадали дословно,
+// расходилось одно. Названное дерево — то, по чему это видно сразу.
+func TestPanicRecoveryCensusNamesTheTreeItWalked(t *testing.T) {
+	t.Parallel()
+	root := synthTree(t, synthRootWired, nil)
+	res := auditPanicRecoveryWiring(t, root)
+
+	if !strings.Contains(res.summary, root) {
+		t.Fatalf("перепись не называет осмотренное дерево %q — по её выводу нельзя "+
+			"сказать, чьё дерево прочитано:\n%s", root, res.summary)
+	}
+	if !strings.Contains(res.summary, "листенеров ") {
+		t.Fatalf("перепись не называет числа листенеров:\n%s", res.summary)
+	}
+	t.Logf("перепись называет дерево и числа: %s", res.summary)
 }
