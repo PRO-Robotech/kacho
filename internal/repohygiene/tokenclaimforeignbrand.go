@@ -101,7 +101,12 @@ type ClaimNameUse struct {
 	Namespace string
 	// Name — имя целиком.
 	Name string
-	Form ClaimNameForm
+	// Ident — имя Go, которым объявлено это клеймо. Заполнено ТОЛЬКО у формы
+	// «объявление константы»: она одна связывает имя клейма с идентификатором,
+	// под которым его ставит чеканка. Без этой связи ключ состава, записанный
+	// константой, читается как «имени никто не чеканит».
+	Ident string
+	Form  ClaimNameForm
 }
 
 // ClaimNameCensus — объём осмотренного.
@@ -149,6 +154,10 @@ func ScanTokenClaimNames(path string, src []byte, namespaces map[string]bool) (
 	// позиции, и решать о нём надо по узлу-родителю, а не по самому литералу.
 	positions := map[*ast.BasicLit]ClaimNameForm{}
 	prefixArgs := map[*ast.BasicLit]bool{}
+	// constIdent — идентификатор Go, которым объявлено имя. Собирается по
+	// ПОЗИЦИИ в объявлении: `Names[i]` отвечает `Values[i]`, поэтому связь имени
+	// с идентификатором есть свойство узла, а не совпадение соседства.
+	constIdent := map[*ast.BasicLit]string{}
 
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch node := n.(type) {
@@ -180,9 +189,14 @@ func ScanTokenClaimNames(path string, src []byte, namespaces map[string]bool) (
 				}
 			}
 		case *ast.ValueSpec:
-			for _, v := range node.Values {
-				if lit, ok := v.(*ast.BasicLit); ok && lit.Kind == token.STRING {
-					positions[lit] = ClaimFormConst
+			for i, v := range node.Values {
+				lit, ok := v.(*ast.BasicLit)
+				if !ok || lit.Kind != token.STRING {
+					continue
+				}
+				positions[lit] = ClaimFormConst
+				if i < len(node.Names) {
+					constIdent[lit] = node.Names[i].Name
 				}
 			}
 		case *ast.CallExpr:
@@ -270,7 +284,7 @@ func ScanTokenClaimNames(path string, src []byte, namespaces map[string]bool) (
 		census.ByForm[form]++
 		out = append(out, ClaimNameUse{
 			File: path, Line: line, Func: enclosing(lit.Pos()),
-			Namespace: m[1], Name: v, Form: form,
+			Namespace: m[1], Name: v, Ident: constIdent[lit], Form: form,
 		})
 		return true
 	})
@@ -279,11 +293,24 @@ func ScanTokenClaimNames(path string, src []byte, namespaces map[string]bool) (
 	return out, census, nil
 }
 
+// ClaimMint — что место чеканки ставит ключом состава.
+//
+// Ключи разделены не по вкусу, а по тому, ЧЕМ они разрешаются: литерал несёт
+// имя клейма сам, идентификатор — нет, и чем он объявлен, знает дерево. Свести
+// их в один перечень значило бы выдать нераскрытое имя за раскрытое.
+type ClaimMint struct {
+	// Keys — имена клейм, стоящие ключом ЛИТЕРАЛОМ.
+	Keys []string
+	// Idents — имена Go, стоящие ключом вместо литерала. Именем клейма каждое
+	// становится только через объявление константы, найденное в дереве.
+	Idents []string
+}
+
 // ClaimFileScan — что разбор нашёл в одном файле.
 type ClaimFileScan struct {
 	// Assembled — ключи СОСТАВОВ: место, где клеймо чеканят. Это семя словаря,
 	// и оно единственное, о чём разбор знает без вывода.
-	Assembled []string
+	Assembled ClaimMint
 	// Uses — все позиции имени клейма в этом файле.
 	Uses []ClaimNameUse
 }
@@ -294,6 +321,14 @@ type ClaimVocabulary struct {
 	Names map[string]ClaimNameUse
 	// Minted — из них те, что стоят ключом состава: их продукт чеканит сам.
 	Minted map[string]bool
+	// MintedByIdent — из чеканимых те, чьё имя стоит ключом ИДЕНТИФИКАТОРОМ, а
+	// не литералом. Считается отдельно, чтобы расширение распознавателя было
+	// видно переписью: полоса, не изменившая ни одного числа, холостая.
+	MintedByIdent map[string]bool
+	// AmbiguousIdents — идентификаторы, объявленные в дереве под ДВУМЯ разными
+	// именами клейм. Такой ключ не раскрывается ни в одно из них: раскрыть его
+	// значило бы выбрать за автора, а выбор здесь ничем не обоснован.
+	AmbiguousIdents []string
 	// Files — файлы, признанные несущими клеймо.
 	Files map[string]bool
 	// Rounds — за сколько кругов словарь перестал расти.
@@ -325,9 +360,10 @@ type ClaimVocabulary struct {
 // своём файле, и имя, которое только ЧИТАЮТ, ни разу не чеканя.
 func DeriveClaimVocabulary(files map[string]ClaimFileScan) ClaimVocabulary {
 	v := ClaimVocabulary{
-		Names:  map[string]ClaimNameUse{},
-		Minted: map[string]bool{},
-		Files:  map[string]bool{},
+		Names:         map[string]ClaimNameUse{},
+		Minted:        map[string]bool{},
+		MintedByIdent: map[string]bool{},
+		Files:         map[string]bool{},
 	}
 	// Обход — по УПОРЯДОЧЕННЫМ путям: неподвижная точка от порядка не зависит,
 	// а число кругов зависит, и печатается оно переписью. Перепись, гуляющая
@@ -338,17 +374,55 @@ func DeriveClaimVocabulary(files map[string]ClaimFileScan) ClaimVocabulary {
 	}
 	sort.Strings(paths)
 
+	// Чем объявлен идентификатор, знает ДЕРЕВО, а не файл: чеканка зовёт
+	// объявление из чужого пакета, и разбор одного файла его не видит. Поэтому
+	// связь «идентификатор → имя клейма» собирается по всему обходу ДО семени.
+	identOf := map[string]string{}
+	ambiguous := map[string]bool{}
+	for _, path := range paths {
+		for _, u := range files[path].Uses {
+			if u.Form != ClaimFormConst || u.Ident == "" {
+				continue
+			}
+			if prev, seen := identOf[u.Ident]; seen && prev != u.Name {
+				ambiguous[u.Ident] = true
+				continue
+			}
+			identOf[u.Ident] = u.Name
+		}
+	}
+	for id := range ambiguous {
+		delete(identOf, id)
+		v.AmbiguousIdents = append(v.AmbiguousIdents, id)
+	}
+	sort.Strings(v.AmbiguousIdents)
+
 	// Семя: ключи составов.
 	for _, path := range paths {
 		fs := files[path]
-		if len(fs.Assembled) == 0 {
+		if len(fs.Assembled.Keys) == 0 {
 			continue
 		}
 		v.Files[path] = true
-		for _, k := range fs.Assembled {
+		mint := func(k string, byIdent bool) {
 			v.Minted[k] = true
+			if byIdent {
+				v.MintedByIdent[k] = true
+			}
 			if _, seen := v.Names[k]; !seen {
 				v.Names[k] = ClaimNameUse{File: path, Name: k, Form: ClaimFormKey}
+			}
+		}
+		for _, k := range fs.Assembled.Keys {
+			mint(k, false)
+		}
+		// Ключ-идентификатор чеканит РОВНО ТО ЖЕ, что ключ-литерал: разница
+		// между ними в записи, а не в том, попадёт ли клеймо в токен. Имя без
+		// объявления в дереве не раскрывается и автора не получает — молча
+		// принять его за чеканку значило бы выдумать автора.
+		for _, id := range fs.Assembled.Idents {
+			if name, ok := identOf[id]; ok {
+				mint(name, true)
 			}
 		}
 	}
@@ -532,14 +606,14 @@ func isMembershipSet(mt *ast.MapType) bool {
 // имён, а не молча. Обратно: состав клейм, записанный множеством, семенем НЕ
 // станет — но клеймом величина, у которой значения нет, и не бывает.
 func ScanClaimMint(path string, src []byte, namespaces map[string]bool, minKeys int) (
-	[]string, error,
+	ClaimMint, error,
 ) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, path, src, 0)
 	if err != nil {
-		return nil, err
+		return ClaimMint{}, err
 	}
-	var out []string
+	var out ClaimMint
 	ast.Inspect(f, func(n ast.Node) bool {
 		cl, ok := n.(*ast.CompositeLit)
 		if !ok {
@@ -557,6 +631,7 @@ func ScanClaimMint(path string, src []byte, namespaces map[string]bool, minKeys 
 		}
 		var (
 			keys     = map[string]bool{}
+			idents   = map[string]bool{}
 			computed bool
 		)
 		for _, elt := range cl.Elts {
@@ -569,6 +644,11 @@ func ScanClaimMint(path string, src []byte, namespaces map[string]bool, minKeys 
 			}
 			lit, ok := kv.Key.(*ast.BasicLit)
 			if !ok || lit.Kind != token.STRING {
+				// Ключ, стоящий ИДЕНТИФИКАТОРОМ. Именем клейма он станет не
+				// здесь: чем объявлен идентификатор, знает дерево, а не файл.
+				if id := claimKeyIdentName(kv.Key); id != "" {
+					idents[id] = true
+				}
 				continue
 			}
 			name, err := strconv.Unquote(lit.Value)
@@ -581,14 +661,92 @@ func ScanClaimMint(path string, src []byte, namespaces map[string]bool, minKeys 
 			}
 			keys[name] = true
 		}
+		// Порог считается по ключам-ЛИТЕРАЛАМ, и это не упущение: признание
+		// места чеканкой остаётся ровно тем же, каким было. Идентификаторы
+		// добираются у литерала, УЖЕ признанного составом, поэтому новых семян
+		// они не заводят и словарь ими не расширяется.
 		if !computed || len(keys) < minKeys {
 			return true
 		}
 		for k := range keys {
-			out = append(out, k)
+			out.Keys = append(out.Keys, k)
+		}
+		for id := range idents {
+			out.Idents = append(out.Idents, id)
 		}
 		return true
 	})
-	sort.Strings(out)
+	sort.Strings(out.Keys)
+	sort.Strings(out.Idents)
 	return out, nil
+}
+
+// claimKeyIdentName — имя Go, которым записан ключ состава.
+//
+// Читается и `X`, и `pkg.X`: чеканка зовёт объявление из СВОЕГО пакета и из
+// чужого, и различие между двумя записями одного идентификатора здесь ничего
+// не значит. Всё прочее — вызов, приведение, выражение — именем не является.
+func claimKeyIdentName(e ast.Expr) string {
+	switch k := e.(type) {
+	case *ast.Ident:
+		return k.Name
+	case *ast.SelectorExpr:
+		return k.Sel.Name
+	}
+	return ""
+}
+
+// ClaimAuthorAudit — исход разбора АВТОРСТВА имён клейм.
+type ClaimAuthorAudit struct {
+	// Area — имена, названные не-тестовым деревом: словарь продукта.
+	Area []string
+	// Missing — из них те, у кого нет ни чеканщика, ни записи ведомости.
+	Missing []string
+	// Stale — записи ведомости, которым больше нечего исключать, с причиной.
+	Stale []string
+}
+
+// AuditClaimAuthors судит, у каждого ли имени словаря есть автор.
+//
+// Функция ЧИСТАЯ и живёт рядом с разбором намеренно: суждение, спрятанное внутрь
+// тела пробы, доказывается только деревом — то есть ровно тем состоянием, ради
+// которого проверка и заведена. Инъекция подаёт сюда синтетический словарь и
+// получает тот же вердикт, что гейт получает от дерева.
+//
+// inArea отвечает, называет ли имя хоть один НЕ-тестовый файл: синтетика проб
+// объявляет имена нарочно, и требовать для них чеканщика значило бы краснеть на
+// собственном доказательстве.
+func AuditClaimAuthors(v ClaimVocabulary, inArea func(string) bool, ledger map[string]string) ClaimAuthorAudit {
+	var out ClaimAuthorAudit
+	used := map[string]bool{}
+	names := make([]string, 0, len(v.Names))
+	for name := range v.Names {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if !inArea(name) {
+			continue
+		}
+		out.Area = append(out.Area, name)
+		if v.Minted[name] {
+			continue
+		}
+		if _, recorded := ledger[name]; recorded {
+			used[name] = true
+			continue
+		}
+		out.Missing = append(out.Missing, name)
+	}
+	for name := range ledger {
+		switch {
+		case used[name]:
+		case v.Minted[name]:
+			out.Stale = append(out.Stale, name+" — уже чеканится")
+		default:
+			out.Stale = append(out.Stale, name+" — не-тестовое дерево его не читает")
+		}
+	}
+	sort.Strings(out.Stale)
+	return out
 }

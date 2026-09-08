@@ -34,15 +34,21 @@ import (
 )
 
 // makeSAForgeryJWT mints a validly-HS256-signed token asserting a
-// service_account principal (kaname_principal_type=service_account + kaname_sa_id).
-// This is the forgery payload: on the HMAC-dev path it is injected as a
-// service_account with NO IAM lookup.
+// service_account principal (kaname_principal_type=service_account +
+// kaname_principal_id). This is the forgery payload: on the HMAC-dev path it is
+// injected as a service_account with NO IAM lookup.
+//
+// Полезная нагрузка обязана называть машину ТЕМ ЖЕ именем, каким её называет
+// выпуск, — иначе подделка не подделывает ничего: состав, не называющий
+// принципала, отвергается по своей собственной пустоте, и проба зеленела бы
+// даже на крае, который симметричную подпись принимает. Здесь стояло
+// `kaname_sa_id` — имя, которого не чеканит ни один путь выпуска.
 func makeSAForgeryJWT(t *testing.T, secret, saID string) string {
 	t.Helper()
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":                   saID,
 		"kaname_principal_type": "service_account",
-		"kaname_sa_id":          saID,
+		"kaname_principal_id":   saID,
 		"exp":                   time.Now().Add(15 * time.Minute).Unix(),
 		"iat":                   time.Now().Unix(),
 	})

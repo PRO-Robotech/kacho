@@ -90,14 +90,18 @@ func TestMinimalClaims_IsTypedAsAPerson(t *testing.T) {
 // that the permission model has no object type for and therefore always denies.
 // Adding any one of them here would turn the set from a label into a grant, and
 // nothing at the edge would object.
+//
+// Перечень нёс ещё `kaname_sa_id` и `kaname_workload_id`. Их полосы резолва
+// сняты вместе со своим предметом: ни то, ни другое имя не чеканит ни один путь
+// выпуска — включая этот, — поэтому утверждение о них было утверждением о
+// полосе, которой нет. Перечень обязан оставаться ТОЧНЫМ: имя лишнее делает
+// пробу зелёной по причине, к её предмету не относящейся.
 func TestMinimalClaims_NameNoPrincipal(t *testing.T) {
 	claims := minimalClaimsFor(t, "kratos-identity-just-registered")
 
 	for _, key := range []string{
 		"kaname_principal_id",
 		"kaname_user_id",
-		"kaname_sa_id",
-		"kaname_workload_id",
 	} {
 		assert.Empty(t, claims[key],
 			"%s is one of the keys a subject is resolved from; the reduced set must name no principal", key)

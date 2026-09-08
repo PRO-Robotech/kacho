@@ -292,10 +292,16 @@ CASES.append(Case(
 # перепутать с настоящим: правдоподобная фикстура прячет ровно тот дефект,
 # ради которого её подставляют.
 #
-# Утверждения (`kaname_principal_type=service_account` + `kaname_sa_id`) стоят в
-# теле НАМЕРЕННО: это полезная нагрузка подделки принципала — на симметричной
-# ветке такие утверждения принимались бы БЕЗ обращения к iam. Пустое тело
-# проверяло бы «мусор отвергнут», а не «подделка принципала отвергнута».
+# Утверждения (`kaname_principal_type=service_account` + `kaname_principal_id`)
+# стоят в теле НАМЕРЕННО: это полезная нагрузка подделки принципала — на
+# симметричной ветке такие утверждения принимались бы БЕЗ обращения к iam.
+# Пустое тело проверяло бы «мусор отвергнут», а не «подделка принципала
+# отвергнута».
+#
+# Здесь стояло `kaname_sa_id`, и это ослабляло пробу до бессмыслицы: имя не
+# чеканит ни один путь выпуска и не читает ни один резолвер, поэтому состав не
+# называл принципала вовсе — и отвергался бы по собственной пустоте даже краем,
+# который симметричную подпись принимает.
 # ---------------------------------------------------------------------------
 CASES.append(Case(
     id="IBT-10-HS256-FORGED-REJECTED",
@@ -314,7 +320,7 @@ CASES.append(Case(
                 "const _p = _b64uStr(JSON.stringify({",
                 "  sub: 'sva-forged-by-the-conformance-probe',",
                 "  kaname_principal_type: 'service_account',",
-                "  kaname_sa_id: 'sva-forged-by-the-conformance-probe',",
+                "  kaname_principal_id: 'sva-forged-by-the-conformance-probe',",
                 "  iat: _now, exp: _now + 900,",
                 "}));",
                 "const _si = _h + '.' + _p;",
@@ -360,7 +366,7 @@ CASES.append(Case(
                 "const _p = _b64uStr(JSON.stringify({",
                 "  sub: 'sva-forged-by-the-conformance-probe',",
                 "  kaname_principal_type: 'service_account',",
-                "  kaname_sa_id: 'sva-forged-by-the-conformance-probe',",
+                "  kaname_principal_id: 'sva-forged-by-the-conformance-probe',",
                 "  iat: _now, exp: _now + 900,",
                 "}));",
                 # Третий сегмент пустой — так предписывает RFC 7519 для `none`;

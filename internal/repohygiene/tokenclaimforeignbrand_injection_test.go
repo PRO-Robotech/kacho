@@ -108,11 +108,11 @@ func claimInjScan(t *testing.T, path, src string) ClaimFileScan {
 		t.Fatalf("%s: прочитано ноль литералов — синтетика не разобрана, "+
 			"и вердикт по ней беспредметен", path)
 	}
-	keys, err := ScanClaimMint(path, []byte(src), claimNamespaces, claimMinKeys)
+	mint, err := ScanClaimMint(path, []byte(src), claimNamespaces, claimMinKeys)
 	if err != nil {
 		t.Fatalf("разбор составов %s: %v", path, err)
 	}
-	return ClaimFileScan{Uses: uses, Assembled: keys}
+	return ClaimFileScan{Uses: uses, Assembled: mint}
 }
 
 // claimInjForeign — имена чужого словаря в выведенном словаре.
@@ -318,11 +318,12 @@ func TestClaimBrandControl_MembershipSetIsNotAMint(t *testing.T) {
 		"значение bool":     claimInjSetLedger,
 		"значение struct{}": claimInjSetLedgerAsStructSet,
 	} {
-		keys, err := ScanClaimMint("synthetic/repohygiene/ledger.go", []byte(src),
+		mint, err := ScanClaimMint("synthetic/repohygiene/ledger.go", []byte(src),
 			claimNamespaces, claimMinKeys)
 		if err != nil {
 			t.Fatalf("%s: разбор ведомости: %v", name, err)
 		}
+		keys := mint.Keys
 		if len(keys) != 0 {
 			t.Fatalf("%s: ведомость членства принята за состав — семенем стали %v.\n\n"+
 				"У множества значения нет: величина стоит ключом, а значение лишь "+
@@ -348,11 +349,12 @@ func TestClaimBrandControl_MembershipSetIsNotAMint(t *testing.T) {
 // чеканку вовсе, — и его молчание на ведомости было бы неотличимо от молчания
 // мёртвого разбора.
 func TestClaimBrandInjection_CompositionOfTheSameNamesIsAMint(t *testing.T) {
-	keys, err := ScanClaimMint("synthetic/repohygiene/ledger.go",
+	mint, err := ScanClaimMint("synthetic/repohygiene/ledger.go",
 		[]byte(claimInjSetLedgerAsComposition), claimNamespaces, claimMinKeys)
 	if err != nil {
 		t.Fatalf("разбор состава: %v", err)
 	}
+	keys := mint.Keys
 	if len(keys) != 4 {
 		t.Fatalf("состав из четырёх ключей дал %d — различитель закрыл вместе с "+
 			"ведомостью и настоящую чеканку: %v", len(keys), keys)
@@ -368,5 +370,307 @@ func TestClaimBrandInjection_CompositionOfTheSameNamesIsAMint(t *testing.T) {
 	}
 	if u := v.Names["kacho_quota_admit"]; u.File != "synthetic/repohygiene/ledger.go" {
 		t.Fatalf("находка обязана нести координату, получено %+v", u)
+	}
+}
+
+// ============================================================================
+// Ось В: у имени клейма есть АВТОР.
+//
+// Инъекции гоняют ТЕ ЖЕ функции, что и гейт (`ScanClaimMint`,
+// `DeriveClaimVocabulary`, `AuditClaimAuthors`): доказательство, читающее свою
+// копию суждения, доказывает свойство копии.
+// ============================================================================
+
+// claimInjMintByConst — место чеканки, где часть ключей стоит КОНСТАНТОЙ.
+//
+// Не выдумка: ровно так собирает состав выпуск — вид и идентификатор принципала
+// приезжают объявлением из соседнего пакета, а прочее стоит литералом.
+const claimInjMintByConst = `package service
+
+import "svc/domain"
+
+func (s *Svc) saClaims(a acct) map[string]any {
+	return map[string]any{
+		"kaname_external_id":       a.Subject,
+		"kaname_sa_key_id":         a.KeyID,
+		"kaname_audience":          s.cfg.Domain,
+		domain.ClaimPrincipalType:  "service_account",
+		domain.ClaimPrincipalID:    a.SvaID,
+	}
+}
+`
+
+// claimInjConstHome — единственный дом имени, которым пользуются оба конца.
+const claimInjConstHome = `package domain
+
+const (
+	ClaimPrincipalType = "kaname_principal_type"
+	ClaimPrincipalID   = "kaname_principal_id"
+)
+`
+
+// claimInjOwnReaderOnly — читатель СВОЕГО словаря, чеканщика у имени нет.
+// Изменённый факт против чистого дерева ровно один: лишнее читаемое имя.
+const claimInjOwnReaderOnly = `package middleware
+
+func (e *Extractor) fill(ext map[string]any, out map[string]any) {
+	if v, ok := ext["kaname_external_id"].(string); ok {
+		out["external_id"] = v
+	}
+	if v, ok := ext["kaname_device_id"].(string); ok {
+		out["device_id"] = v
+	}
+}
+`
+
+// claimInjName — имя клейма для утверждений СОБИРАЕТСЯ, а не пишется литералом.
+//
+// Не украшение, а необходимость, и цена измерена. Разбор читает ЭТОТ файл как
+// всякий другой: имя клейма, записанное здесь литералом в позиции (ключ
+// отображения, чтение по индексу, довод вызова), делает файл членом области —
+// а членство области втягивает в словарь ВСЕ имена файла, включая те, что
+// синтетика называет нарочно. На первом же заходе это дало каскад: словарь
+// вырос с 23 имён до 35, ось А нашла 10 «чужих» имён, ось Б — 28 двойников, и
+// все 38 находок были фикстурами гейта и ведомостями схемы соседних гейтов.
+//
+// Собранное из частей имя ни одной позиции не занимает: `"kaname"` и `"_"`
+// формы имени клейма не имеют, а хвост вроде `"device_id"` имеет её со
+// словарём `device`, которого в словарях клейм нет.
+//
+// Фикстуры-исходники этого не требуют: они лежат в СЫРЫХ строках, а сырая
+// строка есть один литерал целиком, и имена внутри неё узлами не являются.
+func claimInjName(body string) string { return claimOwnNamespace + "_" + body }
+
+// claimInjAuthorTree — дерево оси В: чеканка ключами-константами, её дом и
+// читатель. Пути НЕ несут суффикса проб: область оси В — не-тестовое дерево.
+func claimInjAuthorTree(t *testing.T, withReader bool) (ClaimVocabulary, map[string]ClaimFileScan) {
+	t.Helper()
+	files := map[string]ClaimFileScan{
+		"synthetic/service/mint.go":  claimInjScan(t, "synthetic/service/mint.go", claimInjMintByConst),
+		"synthetic/domain/claims.go": claimInjScan(t, "synthetic/domain/claims.go", claimInjConstHome),
+	}
+	if withReader {
+		files["synthetic/middleware/read.go"] = claimInjScan(t,
+			"synthetic/middleware/read.go", claimInjOwnReaderOnly)
+	}
+	return DeriveClaimVocabulary(files), files
+}
+
+// claimInjArea — область: имя названо НЕ-тестовым файлом. Тот же разрез, что у
+// гейта, только на синтетике.
+func claimInjArea(files map[string]ClaimFileScan) func(string) bool {
+	return func(name string) bool {
+		for path, fs := range files {
+			if strings.HasSuffix(path, "_test.go") {
+				continue
+			}
+			for _, u := range fs.Uses {
+				if u.Form != ClaimFormPrefix && u.Name == name {
+					return true
+				}
+			}
+		}
+		return false
+	}
+}
+
+// TestClaimAuthorControl_MintedTreeIsSilent — контроль: у каждого имени есть
+// чеканщик, ведомость пуста, гейт молчит.
+//
+// Без него краснота инъекций ничего не доказывает: проверка, краснеющая всегда,
+// находит и на чистом дереве.
+func TestClaimAuthorControl_MintedTreeIsSilent(t *testing.T) {
+	v, files := claimInjAuthorTree(t, false)
+	a := AuditClaimAuthors(v, claimInjArea(files), map[string]string{})
+	if len(a.Missing) != 0 {
+		t.Fatalf("на дереве, где чеканится всё, найдено %d имён без автора: %v",
+			len(a.Missing), a.Missing)
+	}
+	if len(a.Stale) != 0 {
+		t.Fatalf("пустая ведомость дала %d записей без предмета: %v", len(a.Stale), a.Stale)
+	}
+	if len(a.Area) != 5 {
+		t.Fatalf("область выведена из %d имён, ожидалось 5: %v", len(a.Area), a.Area)
+	}
+}
+
+// TestClaimAuthorControl_ConstKeyIsAMint — сторона (б) распознавателя: ключ,
+// стоящий КОНСТАНТОЙ, есть чеканка.
+//
+// Различие между двумя записями ключа лежит в тексте, а не в том, попадёт ли
+// клеймо в токен. Распознаватель, знающий одну запись, объявил бы чеканимое имя
+// читаемым — и гейт потребовал бы автора у имени, у которого автор есть.
+func TestClaimAuthorControl_ConstKeyIsAMint(t *testing.T) {
+	mint, err := ScanClaimMint("synthetic/service/mint.go", []byte(claimInjMintByConst),
+		claimNamespaces, claimMinKeys)
+	if err != nil {
+		t.Fatalf("разбор состава: %v", err)
+	}
+	if len(mint.Keys) != 3 {
+		t.Fatalf("ключей-литералов %d, ожидалось 3: %v", len(mint.Keys), mint.Keys)
+	}
+	sort.Strings(mint.Idents)
+	if len(mint.Idents) != 2 ||
+		mint.Idents[0] != "ClaimPrincipalID" || mint.Idents[1] != "ClaimPrincipalType" {
+		t.Fatalf("ключей-идентификаторов ожидалось два поимённо, получено %v", mint.Idents)
+	}
+
+	v, _ := claimInjAuthorTree(t, false)
+	for _, name := range []string{claimInjName("principal_type"), claimInjName("principal_id")} {
+		if !v.Minted[name] {
+			t.Fatalf("%s объявлено читаемым, хотя стоит ключом состава через "+
+				"константу; выведено: %v", name, v.Minted)
+		}
+		if !v.MintedByIdent[name] {
+			t.Fatalf("%s не отмечено пришедшим через ключ-константу — перепись "+
+				"перестала различать формы, и расширение распознавателя невидимо", name)
+		}
+	}
+}
+
+// TestClaimAuthorInjection_UnresolvedIdentInventsNoAuthor — сторона (а) того же
+// распознавателя, одно-фактная инъекция В ОБРАТНУЮ сторону: дом константы
+// СНЯТ, всё прочее на месте.
+//
+// Без неё распознаватель мог бы объявлять чеканкой любой идентификатор — и его
+// молчание на настоящей чеканке было бы неотличимо от молчания разбора,
+// выдумывающего авторов.
+func TestClaimAuthorInjection_UnresolvedIdentInventsNoAuthor(t *testing.T) {
+	v := DeriveClaimVocabulary(map[string]ClaimFileScan{
+		"synthetic/service/mint.go": claimInjScan(t, "synthetic/service/mint.go", claimInjMintByConst),
+	})
+	for _, name := range []string{claimInjName("principal_type"), claimInjName("principal_id")} {
+		if v.Minted[name] {
+			t.Fatalf("%s объявлено чеканимым при СНЯТОМ доме константы — "+
+				"распознаватель выдумал автора", name)
+		}
+	}
+	if !v.Minted[claimInjName("external_id")] {
+		t.Fatal("вместе с домом константы разбор потерял и чеканку литералом — " +
+			"инъекция уронила не только проверяемое")
+	}
+}
+
+// TestClaimAuthorInjection_AmbiguousIdentIsNotResolved — идентификатор,
+// объявленный в дереве под ДВУМЯ разными именами, не раскрывается ни в одно из
+// них: раскрыть его значило бы выбрать за автора.
+func TestClaimAuthorInjection_AmbiguousIdentIsNotResolved(t *testing.T) {
+	const otherHome = `package other
+
+const ClaimPrincipalType = "kaname_audience"
+`
+	v := DeriveClaimVocabulary(map[string]ClaimFileScan{
+		"synthetic/service/mint.go":  claimInjScan(t, "synthetic/service/mint.go", claimInjMintByConst),
+		"synthetic/domain/claims.go": claimInjScan(t, "synthetic/domain/claims.go", claimInjConstHome),
+		"synthetic/other/claims.go":  claimInjScan(t, "synthetic/other/claims.go", otherHome),
+	})
+	if v.MintedByIdent[claimInjName("principal_type")] {
+		t.Fatal("неоднозначный идентификатор раскрыт — разбор выбрал автора за дерево")
+	}
+	if len(v.AmbiguousIdents) != 1 || v.AmbiguousIdents[0] != "ClaimPrincipalType" {
+		t.Fatalf("неоднозначность обязана называться поимённо, получено %v", v.AmbiguousIdents)
+	}
+	if !v.MintedByIdent[claimInjName("principal_id")] {
+		t.Fatal("однозначный идентификатор перестал раскрываться — инъекция уронила " +
+			"не только проверяемое")
+	}
+}
+
+// TestClaimAuthorInjection_ReadWithoutMinterIsFound — сторона (а) самого гейта:
+// имя, которое дерево только читает, становится находкой.
+//
+// Изменённый факт против контроля ровно один: добавлен файл-читатель.
+func TestClaimAuthorInjection_ReadWithoutMinterIsFound(t *testing.T) {
+	v, files := claimInjAuthorTree(t, true)
+	a := AuditClaimAuthors(v, claimInjArea(files), map[string]string{})
+	deviceClaim := claimInjName("device_id")
+	if len(a.Missing) != 1 || a.Missing[0] != deviceClaim {
+		t.Fatalf("ожидалась ровно одна находка %s, получено %v", deviceClaim, a.Missing)
+	}
+	if u := v.Names[deviceClaim]; u.File != "synthetic/middleware/read.go" || u.Line == 0 {
+		t.Fatalf("находка обязана нести координату, получено %+v", u)
+	}
+}
+
+// TestClaimAuthorControl_RecordedDecisionIsSilent — законный близнец: то же
+// дерево, но у имени есть ЗАПИСЬ решения. Изменённый факт ровно один —
+// ведомость.
+//
+// Без него гейт не имел бы способа принять законный случай, и его снял бы
+// первый, кто на такой случай наткнётся.
+func TestClaimAuthorControl_RecordedDecisionIsSilent(t *testing.T) {
+	v, files := claimInjAuthorTree(t, true)
+	a := AuditClaimAuthors(v, claimInjArea(files), map[string]string{
+		claimInjName("device_id"): "решено там-то",
+	})
+	if len(a.Missing) != 0 {
+		t.Fatalf("запись решения не принята: %v", a.Missing)
+	}
+	if len(a.Stale) != 0 {
+		t.Fatalf("запись С предметом объявлена истёкшей: %v", a.Stale)
+	}
+}
+
+// TestClaimAuthorInjection_LedgerExpiresByItself — послабление ИСТЕКАЕТ САМО, и
+// обе формы истечения проверяются порознь:
+//
+//   - имя начало чеканиться — запись больше ничего не исключает;
+//   - не-тестовое дерево перестало имя читать — предмета нет вовсе.
+//
+// Без самоистечения запись переживает свой предмет и молча прощает следующего,
+// кто унаследует ровно эту слепую зону.
+func TestClaimAuthorInjection_LedgerExpiresByItself(t *testing.T) {
+	v, files := claimInjAuthorTree(t, true)
+	area := claimInjArea(files)
+
+	minted := claimInjName("external_id")
+	a := AuditClaimAuthors(v, area, map[string]string{minted: "оно чеканится"})
+	if len(a.Stale) != 1 || !strings.Contains(a.Stale[0], minted) ||
+		!strings.Contains(a.Stale[0], "уже чеканится") {
+		t.Fatalf("запись на чеканимое имя обязана истечь с причиной, получено %v", a.Stale)
+	}
+
+	a = AuditClaimAuthors(v, area, map[string]string{claimInjName("never_read"): "выдумка"})
+	if len(a.Stale) != 1 || !strings.Contains(a.Stale[0], "не читает") {
+		t.Fatalf("запись на нечитаемое имя обязана истечь с причиной, получено %v", a.Stale)
+	}
+}
+
+// TestClaimAuthorControl_TestOnlyNameIsOutOfArea — законный близнец разреза:
+// имя, названное ТОЛЬКО пробой, автора не требует.
+//
+// Синтетика проб объявляет имена нарочно — так доказывается, что край проносит
+// незнакомое клеймо насквозь. Судя её, гейт краснел бы на собственном
+// доказательстве, а починка состояла бы в том, чтобы доказательство
+// обессмыслить.
+func TestClaimAuthorControl_TestOnlyNameIsOutOfArea(t *testing.T) {
+	files := map[string]ClaimFileScan{
+		"synthetic/service/mint.go":  claimInjScan(t, "synthetic/service/mint.go", claimInjMintByConst),
+		"synthetic/domain/claims.go": claimInjScan(t, "synthetic/domain/claims.go", claimInjConstHome),
+		// ТОТ ЖЕ файл-читатель, изменён ровно один факт: имя пути.
+		"synthetic/middleware/read_test.go": claimInjScan(t,
+			"synthetic/middleware/read_test.go", claimInjOwnReaderOnly),
+	}
+	v := DeriveClaimVocabulary(files)
+	if _, known := v.Names[claimInjName("device_id")]; !known {
+		t.Fatal("имя из пробы обязано войти в СЛОВАРЬ — иначе молчание гейта " +
+			"объясняется слепотой разбора, а не разрезом области")
+	}
+	a := AuditClaimAuthors(v, claimInjArea(files), map[string]string{})
+	if len(a.Missing) != 0 {
+		t.Fatalf("имя, названное только пробой, потребовало чеканщика: %v", a.Missing)
+	}
+}
+
+// TestClaimAuthorControl_EmptyVocabularyIsNotGreen — пустой обход НЕ есть
+// чистота: область пуста, и порог гейта обязан это поймать.
+func TestClaimAuthorControl_EmptyVocabularyIsNotGreen(t *testing.T) {
+	a := AuditClaimAuthors(DeriveClaimVocabulary(map[string]ClaimFileScan{}),
+		func(string) bool { return true }, map[string]string{})
+	if len(a.Area) != 0 {
+		t.Fatalf("на пустом дереве область обязана быть пуста, получено %v", a.Area)
+	}
+	if len(a.Area) >= claimAuthorFloor {
+		t.Fatal("порог гейта не поймал бы пустой обход")
 	}
 }

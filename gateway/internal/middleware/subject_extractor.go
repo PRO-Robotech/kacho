@@ -17,15 +17,14 @@
 //     the form "a subject came out ⇒ authenticated" read true for exactly the
 //     caller those gates exist to stop.
 //  1. `ext_claims.kaname_principal_type` + `ext_claims.kaname_principal_id`
-//     — explicit unified shape, populated by token_hook for both User and
-//     ServiceAccount flows. A stated principal whose type is not an
-//     authenticable kind (`system`, …) does not resolve, but rules 2-4 still
-//     get their turn — those are positive identity assertions. Rule 5 does not:
+//     — explicit unified shape, populated by token_hook for EVERY flow it
+//     mints: interactive User, ServiceAccount client_credentials, federated
+//     assertion and personal access token. A stated principal whose type is not
+//     an authenticable kind (`system`, …) does not resolve, but rule 2 still
+//     gets its turn — it is a positive identity assertion. Rule 3 does not:
 //     see below.
 //  2. `ext_claims.kaname_user_id` (User flow).
-//  3. `ext_claims.kaname_sa_id` (ServiceAccount flow).
-//  4. `ext_claims.kaname_workload_id` (federated Workload identity).
-//  5. Hydra `sub` claim as the final fallback when none of the above are
+//  3. Hydra `sub` claim as the final fallback when none of the above are
 //     present — yields an `external:<sub>` subject for diagnostic purposes.
 //     Skipped when rule 1 stated a non-authenticable principal: this rule mints
 //     a subject out of a bare `sub`, and doing so there would overrule the
@@ -33,6 +32,22 @@
 //     Nothing downstream gates on SubjectKindExternal today, so this fallback
 //     ONLY carries a stable identifier into the access log; FGA denies it by
 //     construction (no such object type). Enabled by allowExternalFallback.
+//
+// # Здесь стояли ещё две полосы, и снятие их — не сокращение, а приведение к факту
+//
+// `ext_claims.kaname_sa_id` и `ext_claims.kaname_workload_id` читались как
+// самостоятельные полосы резолва. Ни одно из двух имён НЕ ЧЕКАНИТСЯ: машинную
+// личность — и клиентскую, и федеративную — выпуск называет единой формой
+// (`kaname_principal_type=service_account` + `kaname_principal_id=<svaId>`),
+// которую разбирает правило 1, и оно же выигрывает всегда. Полосы не срабатывали
+// ни на одном токене, который этот продукт выпускает.
+//
+// У второй из них цена была выше пустой ветви: `workload` не является типом
+// субъекта модели прав ВОВСЕ, поэтому `workload:<id>` отвергался бы by
+// construction — ровно как диагностический `external:<sub>`. Но, в отличие от
+// него, полоса не объявляла себя диагностической и стояла ВЫШЕ него: сработав,
+// она молча подменила бы опознаваемый в журнале идентификатор на тот, который
+// модель назвать не может.
 //
 // Empty / structurally-invalid claims return ok=false; the middleware then
 // treats this as "no subject" (401 Unauthenticated).
@@ -111,10 +126,9 @@ func NewSubjectExtractor(allowExternalFallback bool) *SubjectExtractor {
 	return &SubjectExtractor{allowExternalFallback: allowExternalFallback}
 }
 
-// Extract reads kaname_principal_* / kaname_user_id / kaname_sa_id /
-// kaname_workload_id from the verified token's ext_claims and returns the
-// most-specific resolution. Returns ok=false when nothing matches and
-// allowExternalFallback=false.
+// Extract reads kaname_principal_* / kaname_user_id from the verified token's
+// ext_claims and returns the most-specific resolution. Returns ok=false when
+// nothing matches and allowExternalFallback=false.
 func (e *SubjectExtractor) Extract(t *VerifiedToken) (ResolvedSubject, bool) {
 	if t == nil {
 		return ResolvedSubject{}, false
@@ -130,9 +144,9 @@ func (e *SubjectExtractor) Extract(t *VerifiedToken) (ResolvedSubject, bool) {
 	}
 
 	// statedNonTenant records that rule 1 found an explicit principal whose type
-	// is not an authenticable kind (`system`, …). Rules 2-4 may still resolve —
-	// they are POSITIVE identity assertions and outrank a malformed rule-1 shape.
-	// Rule 5 may not: it invents `external:<sub>` out of a bare `sub`, which
+	// is not an authenticable kind (`system`, …). Rule 2 may still resolve — it
+	// is a POSITIVE identity assertion and outranks a malformed rule-1 shape.
+	// Rule 3 may not: it invents `external:<sub>` out of a bare `sub`, which
 	// would overrule the token's own declaration of not being a tenant.
 	statedNonTenant := false
 
@@ -171,31 +185,7 @@ func (e *SubjectExtractor) Extract(t *VerifiedToken) (ResolvedSubject, bool) {
 		}
 	}
 
-	// 3. ext_claims.kaname_sa_id.
-	if ext != nil {
-		if said, ok := ext["kaname_sa_id"].(string); ok && said != "" {
-			return ResolvedSubject{
-				FGA:    subjectPrefixServiceAccount + ":" + said,
-				Kind:   SubjectKindServiceAccount,
-				ID:     said,
-				Source: "ext_claims.kaname_sa_id",
-			}, true
-		}
-	}
-
-	// 4. ext_claims.kaname_workload_id (federated Workload identity).
-	if ext != nil {
-		if wid, ok := ext["kaname_workload_id"].(string); ok && wid != "" {
-			return ResolvedSubject{
-				FGA:    subjectPrefixWorkload + ":" + wid,
-				Kind:   SubjectKindWorkload,
-				ID:     wid,
-				Source: "ext_claims.kaname_workload_id",
-			}, true
-		}
-	}
-
-	// 5. Hydra `sub` fallback — diagnostic only, and never over a token that
+	// 3. Hydra `sub` fallback — diagnostic only, and never over a token that
 	// already declared itself a non-tenant principal (see statedNonTenant).
 	if e.allowExternalFallback && !statedNonTenant && t.Subject != "" {
 		return ResolvedSubject{
