@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: BUSL-1.1
 
 package repohygiene
 
@@ -8,13 +8,12 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/PRO-Robotech/kacho/pkg/contractroot"
+	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // ContractRootLiteralFinding — одно место, где популяция отбирается ЛИТЕРАЛОМ
@@ -125,22 +124,20 @@ func AuditContractRootLiterals(root string, dirs []string) ([]ContractRootLitera
 	fset := token.NewFileSet()
 
 	for _, dir := range dirs {
-		abs := filepath.Join(root, filepath.FromSlash(dir))
-		if st, err := os.Stat(abs); err != nil || !st.IsDir() {
+		// Состав берётся у ИНДЕКСА, а не с диска: под этими каталогами на всякой
+		// машине, где поднимали стенд или собирали фронтенд, лежат распаковки
+		// чартов, сборочные каталоги и отчёты прогонов. Обход по диску сделал бы
+		// вердикт свойством рабочего каталога, а не коммита.
+		files, ferr := treecorpus.UnderWithSuffix(filepath.Join(root, filepath.FromSlash(dir)), ".go")
+		if ferr != nil {
 			return nil, census, fmt.Errorf(
-				"каталог обхода %s не разрешается: обход был бы пуст, а «ноль находок» "+
-					"неотличимо от «ноль прочитанного»", dir)
+				"состав каталога обхода %s НЕ ИЗМЕРЕН (%w): обход был бы пуст, а «ноль "+
+					"находок» неотличимо от «ноль прочитанного»", dir, ferr)
 		}
-		err := filepath.WalkDir(abs, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() || !strings.HasSuffix(d.Name(), ".go") {
-				return nil
-			}
+		for _, path := range files {
 			rel, rerr := filepath.Rel(root, path)
 			if rerr != nil {
-				return rerr
+				return nil, census, rerr
 			}
 			rel = filepath.ToSlash(rel)
 			census.FilesRead++
@@ -148,7 +145,7 @@ func AuditContractRootLiterals(root string, dirs []string) ([]ContractRootLitera
 			f, perr := parser.ParseFile(fset, path, nil, 0)
 			if perr != nil {
 				census.Unparsed = append(census.Unparsed, rel)
-				return nil
+				continue
 			}
 			ast.Inspect(f, func(n ast.Node) bool {
 				call, ok := n.(*ast.CallExpr)
@@ -184,10 +181,6 @@ func AuditContractRootLiterals(root string, dirs []string) ([]ContractRootLitera
 				})
 				return true
 			})
-			return nil
-		})
-		if err != nil {
-			return nil, census, err
 		}
 	}
 

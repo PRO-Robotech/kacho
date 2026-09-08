@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: BUSL-1.1
 
 // contractrootliteral_injection_test.go — способность гейта упасть и смолчать
 // доказывается ИНЪЕКЦИЕЙ настоящим входом, а не прочтением.
@@ -14,9 +14,17 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/pkg/contractroot"
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 // synthGoTree — синтетическое дерево из одного файла с заданным телом.
+//
+// Дерево — НАСТОЯЩИЙ репозиторий, и файл в нём отслеживается: состав обхода
+// берётся у индекса, а не с диска, поэтому неотслеживаемая фикстура дала бы
+// пустую популяцию — то есть зелёную инъекцию, доказывающую ноль.
+//
+// Репозиторий свой и изолированный: проба, заводящая его без изоляции, пишет в
+// индекс того дерева, из которого запущена.
 func synthGoTree(t *testing.T, body string) (root string, dirs []string) {
 	t.Helper()
 	root = t.TempDir()
@@ -27,6 +35,11 @@ func synthGoTree(t *testing.T, body string) (root string, dirs []string) {
 	src := "package probe\n\nimport \"strings\"\n\nfunc judge(s string) bool {\n\t" + body + "\n}\n"
 	if err := os.WriteFile(filepath.Join(dir, "probe.go"), []byte(src), 0o600); err != nil {
 		t.Fatalf("фикстура не собрана: %v", err)
+	}
+	for _, args := range [][]string{{"init", "-q", "."}, {"add", "-A"}} {
+		if out, err := gitenv.Command(root, args...).CombinedOutput(); err != nil {
+			t.Fatalf("фикстура не собрана (git %v): %v\n%s", args, err, out)
+		}
 	}
 	return root, []string{"internal/probe"}
 }
