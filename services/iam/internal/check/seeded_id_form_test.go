@@ -15,6 +15,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 	"github.com/PRO-Robotech/kaname/internal/apps/kaname/shared"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // Идентификатор, ПОСЕЯННЫЙ миграцией, обязан проходить проверку формы, которую
@@ -259,8 +261,7 @@ const kac127BodyLen = 17
 
 // TestSeededResourceIDsPassTheServiceOwnFormCheck — несущее утверждение.
 func TestSeededResourceIDsPassTheServiceOwnFormCheck(t *testing.T) {
-	root := monorepoRoot(t)
-	paths, err := treecorpus.UnderWithSuffix(root+"/"+iamMigrationsDir, ".sql")
+	paths, err := treecorpus.UnderWithSuffix(platformtree.RequirePath(t, iamMigrationsDir), ".sql")
 	require.NoError(t, err)
 
 	migrations := map[string]string{}

@@ -127,6 +127,7 @@ scripts/overwritten-work-inject.sh
 scripts/hooks/install-inject.sh
 scripts/hooks/prepush-groups-inject.sh
 scripts/hooks/prepush-range-inject.sh
+scripts/release/assert-pin-agrees-inject.sh
 scripts/release/assert-trunk-green-inject.sh
 scripts/release/probe-published-inject.sh
 scripts/release/publish-service-artifact-inject.sh

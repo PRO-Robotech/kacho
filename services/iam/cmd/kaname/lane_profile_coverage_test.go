@@ -61,10 +61,17 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/PRO-Robotech/kaname/internal/apps/kaname/config"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // umbrellaDirFromCmd — каталог зонтичного чарта относительно этого пакета.
-const umbrellaDirFromCmd = "../../../../deploy/helm/umbrella"
+// umbrellaDirRel — зонтичный чарт стенда, координатой от корня ПЛАТФОРМЫ.
+//
+// Подъёма каталогами здесь нет: число шагов вверх верно ровно для одной посадки.
+// Чарт в поставку модуля не входит by construction, поэтому его отсутствие —
+// «условие не создано», а не находка.
+const umbrellaDirRel = "deploy/helm/umbrella"
 
 // laneFact — что известно об ОДНОЙ полосе.
 type laneFact struct {
@@ -208,7 +215,7 @@ func profilesDeclaringALane(t *testing.T) map[string][]string {
 		out[lane] = append(out[lane], profile)
 	}
 
-	entries, err := os.ReadDir(umbrellaDirFromCmd)
+	entries, err := os.ReadDir(platformtree.RequirePath(t, umbrellaDirRel))
 	if err != nil {
 		t.Fatalf("каталог зонтичного чарта не прочитан: %v", err)
 	}
@@ -220,7 +227,7 @@ func profilesDeclaringALane(t *testing.T) map[string][]string {
 			continue
 		}
 		seen++
-		lane, ok := nestedString(filepath.Join(umbrellaDirFromCmd, name),
+		lane, ok := nestedString(filepath.Join(platformtree.RequirePath(t, umbrellaDirRel), name),
 			"kaname", "config", "authn", "identityProvider")
 		if !ok {
 			unreadable = append(unreadable, name)
@@ -232,7 +239,7 @@ func profilesDeclaringALane(t *testing.T) map[string][]string {
 
 	const subchart = "charts/kaname/values.yaml"
 	seen++
-	if lane, ok := nestedString(filepath.Join(umbrellaDirFromCmd, subchart),
+	if lane, ok := nestedString(filepath.Join(platformtree.RequirePath(t, umbrellaDirRel), subchart),
 		"config", "authn", "identityProvider"); ok {
 		parsed++
 		add(lane, subchart)

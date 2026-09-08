@@ -73,6 +73,8 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/scalegrid"
+
+	"github.com/PRO-Robotech/kaname/internal/treeposture"
 )
 
 // chainViewName — имя представления цепи. Названо здесь ЯВНО, потому что гейт
@@ -169,7 +171,11 @@ func chainTableNamesIn(src string) []string {
 func chainTablesOfTheView(root string, migrations []string) ([]string, string, error) {
 	bestVersion, bestPath, bestStmt := -1, "", ""
 	for _, rel := range migrations {
-		body, err := os.ReadFile(filepath.Join(root, rel))
+		abs, perr := treeposture.PathUnder(root, rel)
+		if perr != nil {
+			return nil, "", fmt.Errorf("координата %s не приведена к посадке корня %s: %w", rel, root, perr)
+		}
+		body, err := os.ReadFile(abs)
 		if err != nil {
 			return nil, "", fmt.Errorf("чтение миграции %s: %w", rel, err)
 		}
@@ -331,7 +337,11 @@ func TestR7_4_16_ChainTableUnnamedByTheReadCatalogueIsAFinding(t *testing.T) {
 	{
 		var joined strings.Builder
 		for _, rel := range catalogueFiles {
-			body, rerr := os.ReadFile(filepath.Join(root, rel))
+			abs, perr := treeposture.PathUnder(root, rel)
+			if perr != nil {
+				t.Fatalf("координата %s не приведена к посадке: %v", rel, perr)
+			}
+			body, rerr := os.ReadFile(abs)
 			if rerr != nil {
 				t.Fatalf("чтение файла каталога %s: %v", rel, rerr)
 			}
@@ -525,7 +535,10 @@ func chainSyntheticRoot(t *testing.T, root, drop string) string {
 		{"services/iam/internal/migrations", ".sql", false},
 	}
 	for _, d := range dirs {
-		src := filepath.Join(root, d.rel)
+		src, perr := treeposture.PathUnder(root, d.rel)
+		if perr != nil {
+			t.Fatalf("координата %s не приведена к посадке: %v", d.rel, perr)
+		}
 		dst := filepath.Join(tmp, filepath.FromSlash(d.rel))
 		if err := os.MkdirAll(dst, 0o750); err != nil {
 			t.Fatalf("синтетический корень: %v", err)

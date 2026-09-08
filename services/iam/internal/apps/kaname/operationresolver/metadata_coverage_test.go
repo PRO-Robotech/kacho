@@ -36,6 +36,8 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // resolverFile — файл, чей переключатель и есть предмет проверки.
@@ -194,7 +196,10 @@ func TestEveryOperationMetadataIsResolvedOrPinned(t *testing.T) {
 // ветку под то, чего не существует.
 func declaredOperationMetadata(t *testing.T, root string) ([]string, []string) {
 	t.Helper()
-	files, err := treecorpus.Glob(filepath.Join(root, protoGlob))
+	// Читается ДЕРЕВО ПЛАТФОРМЫ: манифесты соседних модулей, каталог
+	// контрактов и канон модели в поставку нашего модуля не входят by
+	// construction. Их отсутствие — «условие не создано», а не находка.
+	files, err := treecorpus.Glob(platformtree.RequirePath(t, protoGlob))
 	if err != nil {
 		t.Fatalf("обход %s: %v", protoGlob, err)
 	}
@@ -230,7 +235,7 @@ func declaredOperationMetadata(t *testing.T, root string) ([]string, []string) {
 // объяснении вместо кода.
 func resolverHandledMetadata(t *testing.T, root string) []string {
 	t.Helper()
-	path := filepath.Join(root, "services/iam/internal/apps/kaname/operationresolver", resolverFile)
+	path := filepath.Join(platformtree.RequirePath(t, "services/iam/internal/apps/kaname/operationresolver"), resolverFile)
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, path, nil, 0)
 	if err != nil {

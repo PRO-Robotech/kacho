@@ -18,10 +18,15 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kaname/internal/publicauthzcensus"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 func TestEveryPublicRPCCarriesAnObjectQuestion(t *testing.T) {
-	root := repoRoot(t)
+	// Перепись читает КАТАЛОГ КОНТРАКТОВ платформы. В поставку модуля он не
+	// входит by construction: контракты приезжают зависимостью, а не деревом.
+	// Красное у каждого, кто склонирует, вердиктом о продукте не является.
+	root := platformtree.Require(t)
 	c, err := publicauthzcensus.Collect(root)
 	if err != nil {
 		t.Fatalf("перепись не состоялась: %v", err)

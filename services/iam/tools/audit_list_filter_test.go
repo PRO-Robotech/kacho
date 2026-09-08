@@ -50,6 +50,8 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // treesRead are the directories the gate parses for iam: the listing surface, and
@@ -89,7 +91,7 @@ func runGate(t *testing.T, root string, args ...string) (string, error) {
 	argv := append([]string{
 		filepath.Join(serviceRoot(t), "tools", "audit-list-filter.sh"),
 		"--root=" + root,
-		"--proto-root=" + filepath.Join(repoRoot(t), "proto"),
+		"--proto-root=" + platformtree.RequirePath(t, "proto"),
 	}, args...)
 	cmd := exec.Command("bash", argv...)
 	cmd.Dir = root

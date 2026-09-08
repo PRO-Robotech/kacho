@@ -53,11 +53,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 	"github.com/PRO-Robotech/kaname/internal/authzcascade"
 	"github.com/PRO-Robotech/kaname/internal/authzmap"
 	"github.com/PRO-Robotech/kaname/internal/domain"
 	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // scopeEdgeMigrationDir — каталог миграций сервиса.
@@ -81,8 +81,12 @@ var scopeEdgeViewAnchor = regexp.MustCompile(`CREATE\s+(OR\s+REPLACE\s+)?VIEW\s+
 // потому, что гейт зелен: он читает файл, который никто не менял.
 func actingScopeEdgeMigration(t *testing.T) (name, body string) {
 	t.Helper()
-	root := scopeEdgeRepoRoot(t)
-	dir := filepath.Join(root, scopeEdgeMigrationDir)
+	// Координата приводится к ПОСАДКЕ, а не складывается с корнем дерева:
+	// миграции едут вместе с модулем, поэтому в самостоятельном клоне они лежат
+	// от его корня, без приставки `services/iam`. Сложенный путь был бы верен
+	// ровно для монорепо и в клоне указывал бы в несуществующий подкаталог —
+	// отказ «нет файла» там, где файл есть.
+	dir := platformtree.RequirePath(t, scopeEdgeMigrationDir)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("каталог миграций не прочитан (%v): источник, который гейт не смог "+
@@ -189,16 +193,6 @@ var legalDifferences = []legalDifference{
 var exactSourceTypes = map[string]string{
 	"iam_group":           "o.account_id",
 	"iam_service_account": "o.account_id",
-}
-
-func scopeEdgeRepoRoot(t *testing.T) string {
-	t.Helper()
-	out, err := gitenv.Command("", "rev-parse", "--show-toplevel").Output()
-	if err != nil {
-		t.Fatalf("корень дерева не установлен (%v): гейту негде искать миграцию, и его "+
-			"молчание не означало бы согласия источников", err)
-	}
-	return strings.TrimSpace(string(out))
 }
 
 // upBlock возвращает исполняемый блок `Up` БЕЗ строк комментария.

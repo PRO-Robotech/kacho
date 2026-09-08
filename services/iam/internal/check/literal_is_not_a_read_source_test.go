@@ -90,6 +90,8 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+
+	"github.com/PRO-Robotech/kaname/internal/treeposture"
 )
 
 // authzmapImportPath — импортируемый пакет-литерал.
@@ -288,7 +290,14 @@ func authzmapUses(root string, files []string, want map[string]bool) (
 // сервиса.
 func authzmapImportersOfTree(root string, want map[string]bool) (
 	uses []catalogFactUse, importers int, err error) {
-	files, ferr := treecorpus.UnderWithSuffix(filepath.Join(root, iamTreeRel), ".go")
+	// Координата приводится к ПОСАДКЕ по НАЗВАННОМУ корню: помощник не получает
+	// `*testing.T`, поэтому третий исход он возвращает ошибкой, а не пропуском —
+	// решает его вызывающий.
+	dir, perr := treeposture.PathUnder(root, iamTreeRel)
+	if perr != nil {
+		return nil, 0, perr
+	}
+	files, ferr := treecorpus.UnderWithSuffix(dir, ".go")
 	if ferr != nil {
 		return nil, 0, ferr
 	}

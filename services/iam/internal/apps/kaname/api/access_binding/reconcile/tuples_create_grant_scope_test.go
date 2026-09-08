@@ -36,6 +36,8 @@ import (
 
 	"github.com/PRO-Robotech/kaname/internal/authzmap"
 	"github.com/PRO-Robotech/kaname/internal/testsupport/catalogfixture"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // --- артефакты дерева, из которых выводится population ---------------------
@@ -91,9 +93,12 @@ func repoRootFromTest(t *testing.T) string {
 	}
 }
 
-func readCatalog(t *testing.T, root, rel string) []catalogRow {
+func readCatalog(t *testing.T, rel string) []catalogRow {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(root, rel))
+	// Координата приводится к ПОСАДКЕ. Копия каталога у КРАЯ живёт у платформы и
+	// в поставку модуля не входит — её отсутствие «условие не создано», а не
+	// находка; копия модуля едет вместе с ним и резолвится в обеих посадках.
+	raw, err := os.ReadFile(platformtree.RequirePath(t, rel))
 	if err != nil {
 		t.Fatalf("копия каталога прав %s не прочитана: %v — у пробы нет источника истины", rel, err)
 	}
@@ -337,14 +342,16 @@ var hierarchyAnchors = map[string]bool{"account": true, "project": true, "cluste
 // он ТРЕБУЕТ, не должно резолвиться у субъекта, чьё правило назвало ровно один
 // глагол `create`.
 func TestCreateOnlyGrantOpensNoObjectSelfRPC(t *testing.T) {
-	root := repoRootFromTest(t)
-	dsl, err := os.ReadFile(filepath.Join(root, modelRelPath))
+	// Читается ДЕРЕВО ПЛАТФОРМЫ: манифесты соседних модулей, каталог
+	// контрактов и канон модели в поставку нашего модуля не входят by
+	// construction. Их отсутствие — «условие не создано», а не находка.
+	dsl, err := os.ReadFile(platformtree.RequirePath(t, modelRelPath))
 	if err != nil {
 		t.Fatalf("каноническая модель %s не прочитана: %v", modelRelPath, err)
 	}
 
 	for _, rel := range []string{catalogRelPathGateway, catalogRelPathIAM} {
-		rows := readCatalog(t, root, rel)
+		rows := readCatalog(t, rel)
 		population := objectSelfPublicRows(rows, hierarchyAnchors)
 		t.Logf("осмотрено: %s — %d записей, из них публичных object-self (не Create): %d",
 			rel, len(rows), len(population))
@@ -444,8 +451,10 @@ func TestCreateOnlyGrantOpensNoObjectSelfRPC(t *testing.T) {
 // Без (б) «ярус есть» было бы неотличимо от «v_* сломаны на всём типе», а именно
 // на `v_*` и держится запрет соседней пробы.
 func TestCreateOnlyGrantMaterializesSomething(t *testing.T) {
-	root := repoRootFromTest(t)
-	dsl, err := os.ReadFile(filepath.Join(root, modelRelPath))
+	// Читается ДЕРЕВО ПЛАТФОРМЫ: манифесты соседних модулей, каталог
+	// контрактов и канон модели в поставку нашего модуля не входят by
+	// construction. Их отсутствие — «условие не создано», а не находка.
+	dsl, err := os.ReadFile(platformtree.RequirePath(t, modelRelPath))
 	if err != nil {
 		t.Fatalf("каноническая модель %s не прочитана: %v", modelRelPath, err)
 	}

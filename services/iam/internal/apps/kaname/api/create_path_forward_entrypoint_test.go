@@ -49,7 +49,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -58,6 +57,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 const (
@@ -194,24 +195,9 @@ func forwardCallsIn(t *testing.T, path string) []forwardCall {
 
 func apiDirForForwardGate(t *testing.T) string {
 	t.Helper()
-	wd, err := os.Getwd()
-	require.NoError(t, err)
-	dir := wd
-	// Корнем берётся САМЫЙ ВНЕШНИЙ `go.mod`, а не первый встречный: у службы
-	// теперь СВОЙ модуль, и подъём «до первого» останавливался бы в её каталоге,
-	// а пути ниже называют место В ДЕРЕВЕ МОНОРЕПО — от корня.
-	outermost := ""
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			outermost = dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			if outermost != "" {
-				return filepath.Join(outermost, "services", "iam", "internal", "apps", "kaname", "api")
-			}
-			t.Fatalf("корень монорепо (go.mod) не найден от %s", wd)
-		}
-		dir = parent
-	}
+	// Каталог СВОЙ: он едет вместе с модулем. Координата от корня платформы
+	// приводится к посадке, поэтому верна и в монорепо, и в самостоятельном
+	// клоне — в отличие от подъёма до самого внешнего `go.mod`, который в клоне
+	// находил корень клона и приписывал к нему несуществующий `services/iam`.
+	return platformtree.RequirePath(t, "services/iam/internal/apps/kaname/api")
 }

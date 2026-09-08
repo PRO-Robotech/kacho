@@ -57,6 +57,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // isRevokedMethod — имя метода, чьих вызывающих считает перепись.
@@ -140,7 +142,9 @@ func TestIsRevokedDocDescribesTheTree(t *testing.T) {
 	root := monorepoRootForDoc(t)
 
 	callers, filesScanned, filesParsed := isRevokedCallSites(t, root, true)
-	edge := fileDeclaresMethod(t, filepath.Join(root, edgeClientFile), edgeReadMethod)
+	// Клиент КРАЯ живёт у платформы: в поставку модуля он не входит by
+	// construction, поэтому его отсутствие — «условие не создано», а не находка.
+	edge := fileDeclaresMethod(t, platformtree.RequirePath(t, edgeClientFile), edgeReadMethod)
 	comments := laneComments(t, root)
 
 	// ПРЕДПОСЫЛКИ. «Ноль находок» обязано быть отличимо от «ноль прочитанного»:
@@ -246,7 +250,9 @@ func laneComments(t *testing.T, root string) map[string]string {
 	out := make(map[string]string, len(laneFiles))
 	fset := token.NewFileSet()
 	for _, rel := range laneFiles {
-		abs := filepath.Join(root, filepath.FromSlash(rel))
+		// Координата набора записана от корня ПЛАТФОРМЫ и приводится к посадке:
+		// перечисленные файлы — собственные файлы модуля, они едут с ним.
+		abs := platformtree.RequirePath(t, rel)
 		_, serr := os.Stat(abs)
 		require.NoErrorf(t, serr, "файл набора %q не найден: набор пережил своё дерево, "+
 			"и гейт молча перестал бы судить это место", rel)

@@ -54,14 +54,14 @@ package relverdict_test
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/scalegrid"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // matrixReportMaxAge — предел возраста отчёта.
@@ -249,13 +249,21 @@ func matrixJoinOrDash(xs []string) string {
 	return strings.Join(xs, ", ")
 }
 
+// matrixRepoRoot — корень ДЕРЕВА ПЛАТФОРМЫ.
+//
+// Именно платформы, а не «репозитория, в котором идёт прогон». Отпечаток замера
+// поставлен на её дереве, и словарь координат, которым прибор нормализует
+// значащее содержимое, выводится из состава КОРНЯ: в монорепо это `services`,
+// `proto`, `pkg`, в самостоятельном клоне — `internal`, `cmd`, `docs`. Словари
+// разные, значит разные и отпечатки одного и того же кода.
+//
+// В клоне это «условие не создано», а не находка: отчёт снят на стенде монорепо,
+// а пересъёмка требует стенда, которого у арендатора нет. Что отпечаток вообще
+// ЗАВИСИТ ОТ ПОСАДКИ — отдельный предмет: прибор объявляет себя неподвижным при
+// переезде каталога, и здесь это обещание не держится.
 func matrixRepoRoot(t *testing.T) string {
 	t.Helper()
-	out, err := gitenv.Command("", "rev-parse", "--show-toplevel").Output()
-	if err != nil {
-		t.Fatalf("корень дерева не установлен: %v", err)
-	}
-	return strings.TrimSpace(string(out))
+	return platformtree.Require(t)
 }
 
 // ── ГЕЙТ НАД НАСТОЯЩИМ ОТЧЁТОМ ──────────────────────────────────────────────
@@ -263,7 +271,7 @@ func matrixRepoRoot(t *testing.T) string {
 // TestMatrixVolumeReportIsFreshAndItsSubjectHasNotMoved — гейт свежести.
 func TestMatrixVolumeReportIsFreshAndItsSubjectHasNotMoved(t *testing.T) {
 	root := matrixRepoRoot(t)
-	path := filepath.Join(root, matrixReportPath)
+	path := platformtree.RequirePath(t, matrixReportPath)
 
 	body, err := os.ReadFile(path)
 	if err != nil {

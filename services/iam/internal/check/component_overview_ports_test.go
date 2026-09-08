@@ -9,13 +9,14 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // Таблица «Зарегистрированные RPC-сервисы» в обзоре компонентов обязана СХОДИТЬСЯ
@@ -193,11 +194,10 @@ func sortedKeys(m map[string]bool) []string {
 
 // TestOverviewPortTableMatchesRegistration — несущее утверждение.
 func TestOverviewPortTableMatchesRegistration(t *testing.T) {
-	root := monorepoRoot(t)
 
-	registerSrc, err := os.ReadFile(filepath.Join(root, iamRegisterFileRel)) // #nosec G304 -- путь собран из корня собственного модуля
+	registerSrc, err := os.ReadFile(platformtree.RequirePath(t, iamRegisterFileRel)) // #nosec G304 -- путь собран из корня собственного модуля
 	require.NoError(t, err)
-	doc, err := os.ReadFile(filepath.Join(root, iamOverviewDocRel)) // #nosec G304 -- путь собран из корня собственного модуля
+	doc, err := os.ReadFile(platformtree.RequirePath(t, iamOverviewDocRel)) // #nosec G304 -- путь собран из корня собственного модуля
 	require.NoError(t, err)
 
 	findings, c, err := auditPortTable(string(registerSrc), string(doc))

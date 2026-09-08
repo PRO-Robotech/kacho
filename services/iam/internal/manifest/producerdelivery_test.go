@@ -63,6 +63,8 @@ import (
 	manifestproducer "github.com/PRO-Robotech/kacho/pkg/modulemanifest/producer"
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 	"github.com/PRO-Robotech/kaname/internal/manifest"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // stacksTablePath — единственное объявление состава стендов, от корня дерева.
@@ -145,7 +147,7 @@ func repoRootFromTest(t *testing.T) string {
 // различимы, иначе проба объявит дерево осмотренным, не прочитав ни строки.
 func deliveryStacksOfTree(t *testing.T, root string) []deliveryStack {
 	t.Helper()
-	table := filepath.Join(root, stacksTablePath)
+	table := platformtree.RequirePath(t, stacksTablePath)
 	// #nosec G304 -- путь собран из корня дерева и константы.
 	raw, err := os.ReadFile(table)
 	if err != nil {
