@@ -159,6 +159,9 @@ deploy/tests/helm/three-outcomes-distinguishable-test.sh
 deploy/tests/helm/trusted-forwarder-profiles-test.sh
 gateway/tests/newman/scripts/selftest_tamper_mutation.py
 services/compute/tests/newman/scripts/validate-cases.py
+services/iam/.github/scripts/classify-integration-outcome.sh
+services/iam/.github/scripts/go-test-verdict.py
+services/iam/.github/scripts/gosec-gate.sh
 services/iam/tests/newman/scripts/body_capture_form_test.py
 services/iam/tests/newman/scripts/exec-coverage.py
 services/iam/tests/newman/scripts/selftest_basic_access_token.py
