@@ -86,10 +86,20 @@ func StartLimitSync(
 				"домен величин объявлен как %q, но источник дельты собран: потребитель "+
 					"дозвонился туда, куда по объявлению обращаться не должен", NotDeployed)
 		}
-		logger.Info("resource-count quota: limit authority declared absent, "+
-			"the delta puller is not started at all",
+		// Строка говорит о ДВУХ следствиях, а не об одном. Прежняя редакция
+		// называла только тянущего — а оператор, прочитавший «тянущий не нужен»,
+		// получал ещё и путь запроса, ведущий себя иначе, чем он ожидал. Следствие
+		// для пути запроса ему приходилось узнавать из отказов арендатора
+		// (`PRO-Robotech/kacho#2216`; `security.md` §Hardening п. 8 — сообщать о
+		// следствии для фонового механизма, умалчивая о следствии для пути
+		// запроса, значит не отличать настройку от сбоя).
+		logger.Info("resource-count quota: limit authority declared absent — "+
+			"on the REQUEST PATH no ceiling applies at all (mutations of counted "+
+			"kinds are charged but never refused: no ceiling is stateable in this "+
+			"installation), and the delta puller is not started",
 			slog.String("schema", schema),
-			slog.String("authority_state", string(AuthorityAbsent)))
+			slog.String("authority_state", string(AuthorityAbsent)),
+			slog.Bool("ceilings_enforced", false))
 		return func() {}, nil
 	}
 
