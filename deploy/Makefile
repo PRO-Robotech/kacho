@@ -616,7 +616,6 @@ dev-up: preflight
 	  --wait --timeout 12m; \
 	kubectl -n kacho rollout status deploy/kaname --timeout=180s || true; \
 	kubectl -n kacho rollout status deploy/api-gateway --timeout=180s || true; \
-	$(MAKE) --no-print-directory assert-production-posture POSTURE_SKIP="$(POSTURE_SKIP)"; \
 	echo "=== базовый каталог geo (Region/Zone) ==="; \
 	echo "    Каталог geo стартует ПУСТЫМ, и пока он пуст, КАЖДОЕ создание зонального"; \
 	echo "    или регионального ресурса отвечает «зона/регион не найдены» (peer-validate"; \
@@ -636,6 +635,16 @@ dev-up: preflight
 	echo "    balancer address», сага сносит handle компенсацией, а GET по названному"; \
 	echo "    идентификатору отдаёт настоящий 404. Ни один «под Ready» этого не показывает."; \
 	$(MAKE) --no-print-directory seed-vpc-pools; \
+	echo "=== посадка безопасности: ЖИВОЙ процесс, а не объявление ==="; \
+	echo "    Гейт градуирует ЧЕТЫРЕ измерения: самоотчёт живого процесса, свидетельство"; \
+	echo "    самой базы о шифровании соединений, сохранённые настройки по всем путям"; \
+	echo "    доставки и административный переход к провайдеру личности."; \
+	echo "    ЗДЕСЬ ОН СТОИТ ПОСЛЕ ПОСЕВОВ НАМЕРЕННО. Измерение по базе спрашивает"; \
+	echo "    pg_stat_ssl о ЖИВЫХ клиентских соединениях, а пул сервиса открывает их"; \
+	echo "    лениво: сразу после переката служба Ready и к базе ещё не ходила, и гейт"; \
+	echo "    отказал бы на «ни одного TCP-соединения» — то есть на несозданном условии,"; \
+	echo "    а не на посадке. Посевы это условие и создают."; \
+	$(MAKE) --no-print-directory assert-production-posture POSTURE_SKIP="$(POSTURE_SKIP)"; \
 	end=$$(date +%s); \
 	echo "dev-up complete in $$((end-start))s"; \
 	echo; \
