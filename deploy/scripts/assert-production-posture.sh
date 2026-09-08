@@ -70,8 +70,8 @@
 #
 # ЧТО ЭТОТ ГЕЙТ ДОКАЗЫВАЕТ: каждый сервис стенда СЕЙЧАС ИСПОЛНЯЕТСЯ в
 # production-посадке (authMode=production*, DB под TLS, mTLS на обоих gRPC-
-# листенерах, per-RPC authz-Check подключён), и это подтверждено независимо от
-# самого сервиса.
+# листенерах, собственные REST-фронты либо под транспортом, либо не подняты,
+# per-RPC authz-Check подключён), и это подтверждено независимо от самого сервиса.
 # ЧЕГО НЕ ДОКАЗЫВАЕТ: функциональной корректности authz/токенов — это e2e-newman.
 #
 # Структурную (chart-level) причину класса — ConfigMap, потребляемый подом без
@@ -308,7 +308,41 @@ for row in $SERVICES; do
         # ОТКАЗ, а не пропуск: так выглядит процесс со СТАРЫМ образом, и
         # молчание тут читалось бы как согласие.
         (if (.identity_provider // "" | test("^(external|own|n/a)$")) then empty
-         else "identity_provider=\(shown("identity_provider"))" end)
+         else "identity_provider=\(shown("identity_provider"))" end),
+        # СОБСТВЕННЫЕ REST-ФРОНТЫ ПРОЦЕССА — ТРИ СОСТОЯНИЯ У КАЖДОГО (задача #2108).
+        #
+        # Служба, вынесенная отдельным продуктом, края платформы не имеет by
+        # construction: её HTTP-поверхность обязана существовать сама. До этой
+        # задачи посадку фронтов сообщали ОТДЕЛЬНЫЕ строки подъёма поверхностей,
+        # а гейт читает ровно одну — «boot security posture». То есть измерение
+        # существовало и не имело читателя: контроль присутствовал и не работал,
+        # и по зелёному прогону это неотличимо от исправного.
+        #
+        # Осей ДВЕ, а не одна: фронты поднимаются разными ручками, досягаемы из
+        # разных мест и несут разный материал. Одно значение на двоих скрывало бы
+        # ровно тот случай, ради которого ось заведена, — один фронт под
+        # транспортом, другой открытым текстом.
+        #
+        #   "true" — фронт поднят, провод под транспортом → проход;
+        #   "n/a"  — собственного фронта НЕТ: адрес не объявлен профилем либо
+        #            такой поверхности у процесса не бывает вовсе (край проксирует
+        #            ЧУЖИЕ слушатели, своего gRPC-API у него нет) → проход;
+        #   "false"— фронт поднят и работает ОТКРЫТЫМ ТЕКСТОМ → ОТКАЗ;
+        #   ""     — величина не из трёх объявленных (процесс поле не заполнил) → ОТКАЗ;
+        #   ключа нет → ОТКАЗ: так выглядит СТАРЫЙ образ, и молчание тут читалось
+        #            бы как согласие. Сюда же попадает процесс, собранный против
+        #            фундамента БЕЗ этого поля (у службы со своим модулем Go это
+        #            означает, что её пин фундамента поле ещё не несёт). Отказ и в
+        #            этом случае ВЕРЕН: посадка его фронтов не доказана — он о ней
+        #            не отчитался, а «не знаю» не выдаётся за «да».
+        #
+        # Сравнение РАВЕНСТВОМ, а не test(): булево `true` старого образа не равно
+        # строке "true" (наполовину перекатившийся флот виден), а test() на булевом
+        # значении УРОНИЛ бы программу вердикта целиком.
+        (if ($all_dims | not) or (.own_rest_public_tls == "true") or (.own_rest_public_tls == "n/a") then empty
+         else "own_rest_public_tls=\(shown("own_rest_public_tls"))" end),
+        (if ($all_dims | not) or (.own_rest_internal_tls == "true") or (.own_rest_internal_tls == "n/a") then empty
+         else "own_rest_internal_tls=\(shown("own_rest_internal_tls"))" end)
       ] | join(", ")')"
 
     if [ -n "$verdict" ]; then
@@ -337,7 +371,7 @@ for row in $SERVICES; do
       # у сервисов без этого измерения).
       ok "$svc/$p $(printf '%s' "$line" | jq -r '
         def shown($k): if has($k) then (.[$k] | tostring) else "<нет>" end;
-        "auth_mode=\(shown("auth_mode")) db_sslmode=\(shown("db_sslmode")) public_mtls=\(shown("public_mtls")) internal_mtls=\(shown("internal_mtls")) authz_check=\(shown("authz_check")) trusted_forwarders=\(shown("trusted_forwarders")) identity_provider=\(shown("identity_provider"))"')"
+        "auth_mode=\(shown("auth_mode")) db_sslmode=\(shown("db_sslmode")) public_mtls=\(shown("public_mtls")) internal_mtls=\(shown("internal_mtls")) authz_check=\(shown("authz_check")) trusted_forwarders=\(shown("trusted_forwarders")) identity_provider=\(shown("identity_provider")) own_rest_public_tls=\(shown("own_rest_public_tls")) own_rest_internal_tls=\(shown("own_rest_internal_tls"))"')"
     fi
   done
 done
