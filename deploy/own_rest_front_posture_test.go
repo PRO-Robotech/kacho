@@ -47,9 +47,6 @@
 package deploy_test
 
 import (
-	"encoding/json"
-	"os"
-	"os/exec"
 	"strings"
 	"testing"
 )
@@ -174,35 +171,12 @@ func TestPostureVerdict_OwnRESTFrontsAreJudged(t *testing.T) {
 	}
 }
 
-// TestPostureVerdict_OwnRESTFrontsSkippedInDevProfile — граница послабления с
-// другой стороны: в dev-профиле измерение не судится вовсе.
+// ЗДЕСЬ БЫЛА ПРОБА «в dev-профиле измерение не судится вовсе» — СНЯТА ВМЕСТЕ С
+// ПРЕДМЕТОМ (задача #2390). Профиля `dev` у гейта посадки больше нет: его довод
+// («стенд расслабляет посадку») пережил предмет, подъём заканчивается боевой
+// посадкой, и градуируются все измерения всегда.
 //
-// Иначе «n/a проходит» могло бы означать «программа перестала градуировать», а
-// не «величина принята». Транспорт dev-профиль расслабляет осознанно — ровно как
-// у соседних public_mtls и internal_mtls, — и требовать его здесь значило бы
-// красить гейт на каждом dev-стенде до полной бесполезности.
-func TestPostureVerdict_OwnRESTFrontsSkippedInDevProfile(t *testing.T) {
-	requireJQ(t)
-	prog := postureVerdictProgram(t)
-	control := controlLine(t, prog)
-
-	for _, dim := range ownRESTFrontDimensions {
-		t.Run(dim, func(t *testing.T) {
-			cmd := exec.Command("jq", "-r", "--argjson", "need_fwd", "false", prog)
-			body, err := json.Marshal(withDimension(control, dim, "false"))
-			if err != nil {
-				t.Fatalf("фикстура самоотчёта не сериализовалась: %v", err)
-			}
-			cmd.Stdin = strings.NewReader(string(body))
-			cmd.Env = append(os.Environ(), "POSTURE_PROFILE=dev")
-			out, err := cmd.CombinedOutput()
-			if err != nil {
-				t.Fatalf("jq не отработал: %v\n%s", err, out)
-			}
-			if strings.Contains(string(out), dim) {
-				t.Fatalf("dev-профиль стал судить %s: %q — гейт красил бы каждый dev-стенд, "+
-					"и его перестали бы читать", dim, strings.TrimSpace(string(out)))
-			}
-		})
-	}
-}
+// Что проба давала и КЕМ это теперь держится: она была вторым доказательством
+// того, что «n/a проходит» не означает «программа перестала градуировать».
+// Первое — и оставшееся — стоит рядом: то же измерение со значением "false"
+// обязано давать ОТКАЗ. Односторонняя половина снята, двусторонняя осталась.

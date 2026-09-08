@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: BUSL-1.1
 .PHONY: dev-up dev-down dev-prod-up generated-scripts-parse assert-rollout-ready assert-jobs-healthy assert-production-posture \
 	assert-metrics-surfaces-answer \
-        assert-forwarder-narrowing assert-outbox-autovacuum helm-manifest-test \
+        assert-outbox-autovacuum helm-manifest-test \
         reload-svc logs-svc psql preflight e2e-test helm-lint \
         loadtest-address-allocate loadtest-address-allocate-clean \
         reload-svc-iam psql-iam logs-iam build-services fga-model-embed \
@@ -616,7 +616,6 @@ dev-up: preflight
 	  --wait --timeout 12m; \
 	kubectl -n kacho rollout status deploy/kaname --timeout=180s || true; \
 	kubectl -n kacho rollout status deploy/api-gateway --timeout=180s || true; \
-	$(MAKE) --no-print-directory assert-forwarder-narrowing; \
 	echo "=== базовый каталог geo (Region/Zone) ==="; \
 	echo "    Каталог geo стартует ПУСТЫМ, и пока он пуст, КАЖДОЕ создание зонального"; \
 	echo "    или регионального ресурса отвечает «зона/регион не найдены» (peer-validate"; \
@@ -636,6 +635,16 @@ dev-up: preflight
 	echo "    balancer address», сага сносит handle компенсацией, а GET по названному"; \
 	echo "    идентификатору отдаёт настоящий 404. Ни один «под Ready» этого не показывает."; \
 	$(MAKE) --no-print-directory seed-vpc-pools; \
+	echo "=== посадка безопасности: ЖИВОЙ процесс, а не объявление ==="; \
+	echo "    Гейт градуирует ЧЕТЫРЕ измерения: самоотчёт живого процесса, свидетельство"; \
+	echo "    самой базы о шифровании соединений, сохранённые настройки по всем путям"; \
+	echo "    доставки и административный переход к провайдеру личности."; \
+	echo "    ЗДЕСЬ ОН СТОИТ ПОСЛЕ ПОСЕВОВ НАМЕРЕННО. Измерение по базе спрашивает"; \
+	echo "    pg_stat_ssl о ЖИВЫХ клиентских соединениях, а пул сервиса открывает их"; \
+	echo "    лениво: сразу после переката служба Ready и к базе ещё не ходила, и гейт"; \
+	echo "    отказал бы на «ни одного TCP-соединения» — то есть на несозданном условии,"; \
+	echo "    а не на посадке. Посевы это условие и создают."; \
+	$(MAKE) --no-print-directory assert-production-posture POSTURE_SKIP="$(POSTURE_SKIP)"; \
 	end=$$(date +%s); \
 	echo "dev-up complete in $$((end-start))s"; \
 	echo; \
@@ -899,8 +908,14 @@ assert-jobs-healthy:
 # `POSTURE_PROFILE=dev make assert-production-posture` сузил бы боевой гейт до
 # одного измерения и увёл бы его в зелёное — ручка, снимающая защиту, которую
 # никто не проверяет. Профиль выбирает ЦЕЛЬ, а не тот, кто её зовёт.
+#
+# POSTURE_SKIP ПРОБРАСЫВАЕТСЯ, и без этого цель неприменима к стенду шарда.
+# Гейт держит ЖЁСТКИЙ перечень ожидаемых служб намеренно: не развернувшаяся
+# служба обязана быть красной, а не незамеченной. Стенд шарда поднимает
+# подмножество ОСОЗНАННО, и осознанность выражается ровно тем способом, который
+# гейт для этого и завёл, — явным исключением по имени.
 assert-production-posture: guard-kind-context
-	@POSTURE_PROFILE=production bash scripts/assert-production-posture.sh
+	@POSTURE_PROFILE=production POSTURE_SKIP="$(POSTURE_SKIP)" bash scripts/assert-production-posture.sh
 
 # assert-metrics-surfaces-answer — диагностическая поверхность КАЖДОГО процесса
 # отвечает, а не только объявлена.
@@ -915,28 +930,18 @@ assert-production-posture: guard-kind-context
 assert-metrics-surfaces-answer: guard-kind-context
 	@bash scripts/assert-metrics-surfaces-answer.sh
 
-# assert-forwarder-narrowing — тот же гейт, но по ОДНОМУ измерению, и он ходит
-# на КАЖДЫЙ стенд, а не только на боевой.
+# ЗДЕСЬ БЫЛА ЦЕЛЬ assert-forwarder-narrowing — СНЯТА ВМЕСТЕ С ПРЕДМЕТОМ (#2390).
 #
-# Зачем отдельная цель: гейт посадки целиком описывает боевой профиль, поэтому
-# исполнялся только из dev-prod-up. Одно его измерение от посадки не зависит —
-# круг отправителей, которым разрешено говорить за пользователя. Пустой круг
-# принимает переданную личность от ЛЮБОГО пира с сертификатом внутреннего CA, а
-# mTLS на dev-стенде включён. Итог: dev-профиль был единственным местом, где
-# несужённый круг мог жить, и единственным, куда гейт не приходил — так kacho-nlb
-# и работал на dev с пустым кругом, пока шесть его соседей были сужены.
+# Она звала тот же гейт профилем `dev`, то есть по ОДНОМУ измерению из четырёх, и
+# обосновывалась тем, что стенд подъёма расслабляет посадку. Довод пережил свой
+# предмет: фаза боевой посадки переехала в рецепт `dev-up`, каждая цепочка
+# stacks.txt заканчивается боевым профилем, и расслаблять стало нечего — а стенд
+# шарда сквозных проб при этом поднимал боевую посадку и проверял четверть её.
 #
-# Вызывается из dev-up (и, как часть полного гейта, из dev-prod-up). Профиль
-# задан ЗДЕСЬ, а не в окружении вызывающего, и боевая цель выше пинит свой
-# так же явно — иначе `POSTURE_PROFILE=dev make assert-production-posture`
-# сузил бы боевой гейт до одного измерения. Область выбирает ЦЕЛЬ.
-# POSTURE_SKIP пробрасывается, потому что гейт посадки намеренно держит ЖЁСТКИЙ
-# список ожидаемых сервисов: не развернувшийся сервис обязан быть красным, а не
-# незамеченным. Стенд шарда поднимает подмножество компонентов ОСОЗНАННО, и
-# осознанность выражается ровно тем способом, который гейт для этого и завёл, —
-# явным исключением по имени, а не молчаливым отсутствием в кластере.
-assert-forwarder-narrowing: guard-kind-context
-	@POSTURE_PROFILE=dev POSTURE_SKIP="$(POSTURE_SKIP)" bash scripts/assert-production-posture.sh
+# Единственный вызывающий (`dev-up`) переведён на боевой профиль выше; узкое
+# измерение он не потерял — круг отправителей градуируется независимо от профиля
+# (`needs_forwarder_narrowing` в скрипте). Оставлять цель без вызывающего значило
+# бы держать вход, ведущий к сужению, которого больше никто не выбирает.
 
 # assert-outbox-autovacuum — базы с очередями обязаны РАБОТАТЬ со свежей
 # статистикой, а не просто быть так описаны в values.
@@ -1440,7 +1445,7 @@ psql-iam: guard-kind-context
 #
 # guard-kind-context — единственная разрушающая цель файла была ЕДИНСТВЕННОЙ, кто
 # от него не зависел, при том что от него зависят все ЧИТАЮЩИЕ гейты рядом
-# (assert-production-posture, assert-forwarder-narrowing, assert-outbox-autovacuum).
+# (assert-production-posture, assert-metrics-surfaces-answer, assert-outbox-autovacuum).
 # Асимметрия ровно наоборот: имена namespace, пода и базы на управляемом кластере
 # те же самые, поэтому промах контекстом здесь стоит не утечки диагностики, а
 # безвозвратного сноса аккаунтов, проектов, пользователей и привязок.
