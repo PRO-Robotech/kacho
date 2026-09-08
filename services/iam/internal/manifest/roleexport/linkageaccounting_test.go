@@ -41,11 +41,6 @@ import (
 	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
-// treeRootFromPackage — корень дерева относительно каталога пакета.
-// Объявлен ОДИН раз: второе объявление разошлось бы с первым при переносе
-// пакета, и неверное отвечало бы «манифестов ноль» — то есть зелёным.
-const treeRootFromPackage = "../../../../.."
-
 // realManifests — шесть манифестов дерева, прочитанных настоящим загрузчиком.
 func realManifests(t *testing.T) []*manifest.Manifest {
 	t.Helper()

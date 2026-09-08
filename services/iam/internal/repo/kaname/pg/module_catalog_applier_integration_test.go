@@ -55,6 +55,8 @@ import (
 	"github.com/PRO-Robotech/kaname/internal/domain"
 	"github.com/PRO-Robotech/kaname/internal/manifest"
 	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // applierProbeModule — модуль, на котором ставятся сценарии применителя.
@@ -226,8 +228,10 @@ func TestModuleCatalogApplierAgreesWithTheSeededCatalog(t *testing.T) {
 	ctx, pool := catalogPool(t)
 	applier := applierOver(t, pool)
 
-	// `../../../../..` от этого пакета — каталог `services` монорепо.
-	paths, err := filepath.Glob(filepath.Join("../../../../..", "*", "manifest.yaml"))
+	// Каталог соседних модулей спрашивается у владельца резолва
+	// (`internal/testsupport/platformtree`): литерал-подъём был координатой
+	// РАСКЛАДКИ монорепо, и вне её вердикт выносился бы о чужом дереве (kacho#2254).
+	paths, err := filepath.Glob(filepath.Join(platformtree.Require(t), "services", "*", "manifest.yaml"))
 	require.NoError(t, err)
 	require.NotEmpty(t, paths, "обход дерева не нашёл манифестов: вердикт беспредметен")
 

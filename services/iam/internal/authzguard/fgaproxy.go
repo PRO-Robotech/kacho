@@ -57,6 +57,13 @@ const (
 	sanSAInfix = "/sa/"
 	// svcNamePrefix — module SAN service segment is always `kacho-<svc>`.
 	svcNamePrefix = "kacho-"
+	// saPrefix — приставка идентификатора служебной учётки.
+	//
+	// Объявлена именем, а не вписана в формулу литералом: круговая сверка с
+	// посевом (module_identity_seed_test.go) читает её ОТСЮДА, и вписанный
+	// литерал был бы вторым местом об одном предмете — с тем же исходом, ради
+	// которого сверка и заведена.
+	saPrefix = "sva"
 )
 
 // RelationWriteGate authorizes RegisterResource / UnregisterResource via ReBAC.
@@ -191,5 +198,5 @@ func SANToServiceAccountID(d grpcsrv.TrustDomain, san string) (string, bool) {
 // разошлась бы с постгресовой молча — полученный идентификатор остался бы
 // синтаксически верным и перестал бы находить строку.
 func ServiceAccountIDForService(svc string) string {
-	return "sva" + domain.DerivedIDSuffix(svcNamePrefix+svc)
+	return saPrefix + domain.DerivedIDSuffix(svcNamePrefix+svc)
 }

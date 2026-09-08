@@ -52,36 +52,61 @@ func repoRoot(t *testing.T) string {
 	}
 }
 
-// applyPoints — точки наката, ВЫВЕДЕННЫЕ из дерева. Список не выписывается: он
-// разошёлся бы с деревом молча, и разошёлся бы именно на новом сервисе — там, где
-// слепая зона дороже всего.
+// applyPoints — точки наката, ВЫВЕДЕННЫЕ ИЗ ДЕРЕВА.
+//
+// Из дерева, а не из `go list ./services/...`, и различие несущее. `go list`
+// границу Go-модуля НЕ ПЕРЕСЕКАЕТ: `services/iam` объявляет собственный модуль
+// (`github.com/PRO-Robotech/kaname`), поэтому его точка наката не попадала в
+// перечень BY CONSTRUCTION. Перепись при этом сходилась сама с собой — «точек
+// наката 6, форма выведена для 6», — и «шесть из шести» читалось как полнота
+// (kacho#2183, kacho#2255).
+//
+// Тот же класс, что «ноль находок неотличимо от ноль прочитанного», только на
+// уровне ЕДИНИЦЫ СЧЁТА: осмотренное сходится с найденным, а осматривать надо
+// было больше. Индекс git модульной границы не знает и потому отвечает о ДЕРЕВЕ.
 func applyPoints(t *testing.T, root string) []string {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer cancel()
-
-	list := exec.CommandContext(ctx, "go", "list", "./services/...")
-	// Обход идёт от КОРНЯ репозитория: рабочий каталог пробы — её собственный
-	// пакет, и относительный образец резолвился бы там в пустоту.
-	list.Dir = root
-	var stderr strings.Builder
-	list.Stderr = &stderr
-	out, err := list.Output()
+	files, err := treecorpus.Glob(filepath.Join(root, "services", "*", "cmd", "migrator", "main.go"))
 	if err != nil {
-		t.Fatalf("go list сорвался — состав точек наката НЕ ИЗМЕРЕН, "+
-			"а пустой перечень здесь означал бы зелёную пробу с нулём доказанного: %v\n%s",
-			err, stderr.String())
+		t.Fatalf("состав точек наката НЕ ИЗМЕРЕН (%v) — а пустой перечень здесь "+
+			"означал бы зелёную пробу с нулём доказанного", err)
 	}
-	const modulePrefix = "github.com/PRO-Robotech/kacho/"
 	var points []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		rel := strings.TrimPrefix(strings.TrimSpace(line), modulePrefix)
-		if strings.HasPrefix(rel, "services/") && strings.HasSuffix(rel, "/cmd/migrator") {
-			points = append(points, rel)
+	for _, abs := range files {
+		rel, rerr := filepath.Rel(root, abs)
+		if rerr != nil {
+			t.Fatalf("относительный путь для %s: %v", abs, rerr)
 		}
+		points = append(points, filepath.ToSlash(filepath.Dir(rel)))
 	}
 	sort.Strings(points)
 	return points
+}
+
+// moduleOfPoint — модуль, которому принадлежит точка наката, и путь пакета
+// ОТНОСИТЕЛЬНО этого модуля.
+//
+// Существует ровно потому же, почему перечень берётся у дерева: сборка идёт из
+// модуля-владельца. `go build ./services/iam/cmd/migrator` из корня отвечает
+// «main module does not contain package» — тот модуль этого пакета не содержит.
+func moduleOfPoint(t *testing.T, root, pkg string) (moduleDir, pkgInModule string) {
+	t.Helper()
+	dir := filepath.Join(root, filepath.FromSlash(pkg))
+	for {
+		if st, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil && st.Mode().IsRegular() {
+			rel, rerr := filepath.Rel(dir, filepath.Join(root, filepath.FromSlash(pkg)))
+			if rerr != nil {
+				t.Fatalf("пакет %s не сводится под модуль %s: %v", pkg, dir, rerr)
+			}
+			return dir, "./" + filepath.ToSlash(rel)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir || len(dir) <= len(root) {
+			t.Fatalf("модуль точки наката %s не найден подъёмом за маркером go.mod — "+
+				"собрать её нечем, и это отказ, а не пропуск", pkg)
+		}
+		dir = parent
+	}
 }
 
 // chainLength — сколько миграций объявляет цепочка сервиса. Это ЭТАЛОН, с которым
@@ -148,7 +173,7 @@ func runMigrator(t *testing.T, bin string, args ...string) (string, error) {
 // Окружение — параметр, а не константа, потому что DSN приходит накату ТРЕМЯ
 // источниками (`--dsn` > `KACHO_MIGRATOR_DSN` > конфигурация), и доказательство
 // формы вызова (invocation_test.go) гоняет последний из них — тот, которым
-// пользуются все семь развёртываний.
+// пользуются развёртывания ВСЕХ точек наката дерева.
 func runMigratorEnv(t *testing.T, bin string, env []string, args ...string) (string, error) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), applyBudget)
@@ -167,8 +192,9 @@ func buildApplyPoint(t *testing.T, root, binDir, pkg, service string) string {
 	bin := filepath.Join(binDir, service)
 	ctx, cancel := context.WithTimeout(context.Background(), applyBudget)
 	defer cancel()
-	build := exec.CommandContext(ctx, "go", "build", "-o", bin, "./"+pkg)
-	build.Dir = root
+	moduleDir, pkgInModule := moduleOfPoint(t, root, pkg)
+	build := exec.CommandContext(ctx, "go", "build", "-o", bin, pkgInModule)
+	build.Dir = moduleDir
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("точка наката %s НЕ СОБИРАЕТСЯ — сервис не развернётся: %v\n%s", pkg, err, out)
 	}

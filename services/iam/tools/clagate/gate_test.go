@@ -25,6 +25,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 
+	"github.com/PRO-Robotech/kaname/internal/treeroot"
 	"github.com/PRO-Robotech/kaname/tools/clagate"
 
 	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
@@ -53,12 +54,11 @@ func TestGate_IamHistoryIsConfirmed(t *testing.T) {
 
 	// ПРЕДПОСЫЛКА ГЕЙТА — ИСТОРИЯ ДОМЕНА, и она есть не у всякого дерева.
 	//
-	// Ведомость объявляет ОБЛАСТЬ (`scope`) координатой платформы, и её же
-	// комментарий говорит, что после выноса репозитория там будет «.». Пока обе
-	// посадки живы, область резолвится не везде: в дереве, собранном из состава
-	// коммита без истории (проверка поставки, свежий `git init` у арендатора),
-	// обход не находит ни одного коммита — и гейт честно называет это отказом
-	// предпосылки.
+	// Ведомость объявляет ОБЛАСТЬ (`scope`) ОТНОСИТЕЛЬНО СЕБЯ (`.`), и к корню
+	// судимого дерева её сводит `Inspect`. Область поэтому резолвится в обеих
+	// посадках; не резолвится ИСТОРИЯ: в дереве, собранном из состава коммита без
+	// неё (проверка поставки, свежий `git init` у арендатора), обход не находит ни
+	// одного коммита — и гейт честно называет это отказом предпосылки.
 	//
 	// Отказ предпосылки — «условие не создано», а не находка о продукте:
 	// вердикта о подтверждении соглашения такой прогон не выносит ВОВСЕ, и
@@ -516,4 +516,84 @@ func TestGate_LedgerInsideTheJudgedTreeIsRead(t *testing.T) {
 	if err != nil && strings.Contains(err.Error(), "вне судимого дерева") {
 		t.Fatalf("ведомость ВНУТРИ дерева отвергнута как внешняя: %v", err)
 	}
+}
+
+// --- Резолв посадки: инъекция в обе стороны ---------------------------------
+
+// TestPlacement_ModuleInsideAForeignRepositoryIsRefused — ИНЪЕКЦИЯ.
+//
+// Клон модуля положен внутрь ПОСТОРОННЕГО репозитория, и по вычисляемому пути
+// там лежит вполне годная ведомость. Прежний резолв (подъём на четыре уровня)
+// нашёл бы её и вынес бы зелёный вердикт о ЧУЖОЙ истории — отличить его от
+// настоящего нечем. Здесь предпосылка проверяется, и отказ НАЗЫВАЕТ её.
+//
+// Против положительного близнеца ниже отличается РОВНО ОДНИМ фактом: каталог
+// модуля этим репозиторием не отслеживается.
+func TestPlacement_ModuleInsideAForeignRepositoryIsRefused(t *testing.T) {
+	foreign := writeRepo(t, []commit{
+		{name: "Чужой", email: "stranger@example.org", message: "feat: чужое дерево"},
+	})
+
+	// Модуль распакован ВНУТРЬ чужого дерева и им не отслеживается.
+	mod := filepath.Join(foreign, "unpacked-module")
+	require.NoError(t, os.MkdirAll(mod, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(mod, "go.mod"),
+		[]byte("module example.org/unpacked\n\ngo 1.24\n"), 0o600))
+	// Ведомость лежит по тому пути, который дал бы подъём литералом.
+	// Имя ведомости ВЫВОДИТСЯ из объявленной координаты, а не пишется вторым
+	// литералом: два места об одном имени разошлись бы молча, и фикстура тогда
+	// клала бы файл мимо того пути, который резолв ищет.
+	require.NoError(t, os.WriteFile(
+		filepath.Join(mod, filepath.Base(ledgerRel)), []byte(minimalLedger), 0o600))
+
+	_, err := treeroot.Locate(mod)
+	require.Error(t, err, "резолв принял ЧУЖОЕ дерево за своё — вердикт был бы о его истории")
+	require.Contains(t, err.Error(), "не отслеживает каталог",
+		"отказ не называет предпосылки: читатель не отличит чужое дерево от отсутствия дерева")
+}
+
+// TestPlacement_ModuleTrackedByItsOwnRepositoryIsAccepted — ПОЛОЖИТЕЛЬНЫЙ
+// БЛИЗНЕЦ. Отличие ровно одно: каталог модуля этим репозиторием отслеживается.
+//
+// Без него отказ выше зеленел бы и на резолве, отвергающем всякое дерево.
+func TestPlacement_ModuleTrackedByItsOwnRepositoryIsAccepted(t *testing.T) {
+	dir := writeRepo(t, []commit{
+		{name: "Свой", email: "owner@example.com", message: "feat: своё дерево"},
+	})
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"),
+		[]byte("module example.org/own\n\ngo 1.24\n"), 0o600))
+
+	pl, err := treeroot.Locate(dir)
+	require.NoError(t, err, "своё дерево отвергнуто: резолв отвергает всякое, и инъекция вакуумна")
+	require.Equal(t, ".", pl.ModuleDir,
+		"модуль сам является корнем — путь в дереве обязан выводиться в «.», а не выписываться")
+}
+
+// TestPlacement_DirectoryOutsideAnyRepositoryIsNotAFinding — третий исход.
+//
+// Каталог вне всякого репозитория — «проверка НЕ ИСПОЛНЯЛАСЬ», а не находка о
+// дереве: истории здесь нет by construction, и красное у всякого, кто
+// распакует архив, вердиктом о продукте не является.
+func TestPlacement_DirectoryOutsideAnyRepositoryIsNotAFinding(t *testing.T) {
+	dir := t.TempDir()
+	// Предпосылка пробы: временный каталог сам не лежит внутри репозитория.
+	// Если лежит — условие не создано, и это ПРОПУСК с названной причиной, а не
+	// красное: вердикт был бы о том дереве.
+	for cur := dir; ; {
+		if _, err := os.Stat(filepath.Join(cur, ".git")); err == nil {
+			t.Skipf("УСЛОВИЕ НЕ СОЗДАНО (не находка): временный каталог лежит внутри "+
+				"репозитория %s — назовите TMPDIR вне всякого дерева", cur)
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			break
+		}
+		cur = parent
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"),
+		[]byte("module example.org/loose\n\ngo 1.24\n"), 0o600))
+
+	_, err := treeroot.Locate(dir)
+	require.ErrorIs(t, err, treeroot.ErrTreeNotResolved,
+		"каталог без репозитория обязан давать «проверка НЕ ИСПОЛНЯЛАСЬ», а не находку")
 }

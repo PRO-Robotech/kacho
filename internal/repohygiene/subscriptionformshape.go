@@ -111,6 +111,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/pkg/contractroot"
 )
 
 // SubscriptionAxisRole — роль поля запроса подписки.
@@ -548,7 +550,11 @@ func AuditSubscriptionFormShape(
 	}
 	for _, imp := range f.Imports {
 		c.Assertions++
-		if !strings.HasPrefix(imp, "kacho/") {
+		// Отбор по ОБЪЯВЛЕННОМУ множеству корней. Утверждение здесь
+		// ОТРИЦАТЕЛЬНОЕ («форма не зависит от домена»), а такое молчит особенно
+		// тихо: импорт под корнем, о котором литерал не знал, не находился
+		// вовсе — и форма считалась общей, будучи зависимой (kacho#2138).
+		if !contractroot.HasAnyPrefix(imp, contractroot.PathPrefixes()) {
 			continue
 		}
 		add("foreign-contract-dependency", 0,

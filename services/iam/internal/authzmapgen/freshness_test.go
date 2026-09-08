@@ -37,9 +37,6 @@ import (
 	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
-// repoRoot — корень репозитория от каталога этого пакета.
-const repoRoot = "../../../.."
-
 func renderTree(t *testing.T, root string) ([]byte, authzmapgen.Census) {
 	t.Helper()
 	tables, err := authzmapgen.CollectSynthetic(root)

@@ -39,6 +39,7 @@ var waivers = []standalonetargets.Waiver{
 	{Target: "migrate-down", Reason: "требует живую базу: предпосылку создаёт стенд, а не дерево"},
 	{Target: "migrate-status", Reason: "требует живую базу: предпосылку создаёт стенд, а не дерево"},
 	{Target: "proto-install-plugins", Reason: "тянет плагины генерации из сети; сеть — предпосылка стенда, а не свойство рецепта"},
+	{Target: "cla-check", Reason: "судит ИСТОРИЮ дерева, а фикстура — распакованный состав коммита ВНЕ всякого репозитория (AssertOutsideAnyRepository выше): истории у неё нет by construction. В настоящем клоне арендатора история есть, и цель работает — потому пометки [монорепо] у неё и нет"},
 }
 
 // TestStandaloneTargetsWorkInAStandaloneClone — боевой прогон: каждая цель,

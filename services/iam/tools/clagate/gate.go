@@ -72,9 +72,14 @@ type Entry struct {
 // Ledger — ведомость: кто свой, кто подтвердил соглашение вне коммита и чья
 // личность освобождена от вопроса.
 type Ledger struct {
-	// Scope — пути, чьи коммиты судятся. В монорепо это каталог продукта; в
-	// вынесенном репозитории — корень. Поле есть именно поэтому: без него гейт
-	// пришлось бы править при выносе.
+	// Scope — пути, чьи коммиты судятся, ОТНОСИТЕЛЬНО КАТАЛОГА САМОЙ ВЕДОМОСТИ.
+	//
+	// Относительно ведомости, а не корня дерева, — и различие несущее. Координата
+	// от корня (`services/iam`) верна ровно в одной посадке: ведомость ЕДЕТ с
+	// модулем, поэтому в самостоятельном клоне тот же файл объявлял бы область,
+	// которой там нет, обход был бы пуст, а ноль находок неотличим от чистого
+	// дерева (kacho#2239). Относительно себя ведомость верна в ОБЕИХ посадках без
+	// правки: `.` означает «модуль», где бы он ни лежал.
 	Scope []string `yaml:"scope"`
 	// Owners — личности правообладателя. Соглашение к ним не применяется:
 	// нельзя заключить его с самим собой.
@@ -196,7 +201,18 @@ func Inspect(repoRoot, ledgerRel, revRange string) (Report, error) {
 	if err := dec.Decode(&ledger); err != nil {
 		return rep, fmt.Errorf("ведомость %s не разобрана: %w", ledgerRel, err)
 	}
-	rep.Scope = ledger.Scope
+	// Область сводится к корню судимого дерева ЗДЕСЬ: ведомость объявляет её
+	// относительно себя, а git спрашивают путями от корня.
+	ledgerDir := filepath.Dir(filepath.Clean(ledgerRel))
+	scope := make([]string, 0, len(ledger.Scope))
+	for _, p := range ledger.Scope {
+		joined := filepath.ToSlash(filepath.Join(ledgerDir, p))
+		if joined == "" {
+			joined = "."
+		}
+		scope = append(scope, joined)
+	}
+	rep.Scope = scope
 
 	owners, ownerFails := index(ledger.Owners, "owners")
 	signatories, signFails := index(ledger.Signatories, "signatories")
@@ -209,18 +225,18 @@ func Inspect(repoRoot, ledgerRel, revRange string) (Report, error) {
 		rep.PremiseFailures = append(rep.PremiseFailures,
 			"ведомость не называет ни одной своей личности: различать своего и стороннего станет нечем")
 	}
-	if len(ledger.Scope) == 0 {
+	if len(scope) == 0 {
 		rep.PremiseFailures = append(rep.PremiseFailures,
 			"ведомость не называет области: обход будет пуст, а вердикт беспредметен")
 	}
-	for _, p := range ledger.Scope {
+	for _, p := range scope {
 		if _, err := os.Stat(filepath.Join(repoRoot, p)); err != nil {
 			rep.PremiseFailures = append(rep.PremiseFailures, fmt.Sprintf(
 				"область %q в дереве не разрешается: обход будет пуст, ноль находок станет неотличим от чистого дерева", p))
 		}
 	}
 
-	commits, err := gitLog(repoRoot, revRange, ledger.Scope)
+	commits, err := gitLog(repoRoot, revRange, scope)
 	if err != nil {
 		return rep, err
 	}
@@ -230,14 +246,14 @@ func Inspect(repoRoot, ledgerRel, revRange string) (Report, error) {
 	// диапазон законно бывает пустым (изменение области не касалось); пустая
 	// ПОЛНАЯ история означает, что область объявлена мимо дерева, и это уже
 	// слепота.
-	if len(ledger.Scope) > 0 {
-		all, err := gitLog(repoRoot, "HEAD", ledger.Scope)
+	if len(scope) > 0 {
+		all, err := gitLog(repoRoot, "HEAD", scope)
 		if err != nil {
 			return rep, err
 		}
 		if len(all) == 0 {
 			rep.PremiseFailures = append(rep.PremiseFailures, fmt.Sprintf(
-				"у объявленных областей %v нет ни одного коммита во всей истории: гейт слеп", ledger.Scope))
+				"у объявленных областей %v нет ни одного коммита во всей истории: гейт слеп", scope))
 		}
 	}
 

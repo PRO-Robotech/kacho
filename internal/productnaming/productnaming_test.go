@@ -228,3 +228,54 @@ func TestMigratorBinaryFollowsTheProductNotThePart(t *testing.T) {
 			"переименование не различает продукты")
 	}
 }
+
+// TestPartOfLineStopsAtTheFirstTopLevelKey — подъём останавливается на ПЕРВОМ
+// ключе верхнего уровня, а не на первом ПОХОЖЕМ НА ПОДЧАРТ.
+//
+// Три случая, и каждый отличается от соседа РОВНО ОДНИМ фактом:
+//
+//	строка под ключом подчарта          → часть названа;
+//	строка под общим блоком             → часть НЕ названа (прежде приписывалась
+//	                                      предыдущему подчарту — соседу);
+//	строка под ключом, чьё имя записано
+//	иначе (`opaSidecar`)                → тоже НЕ названа: узкий образец такой
+//	                                      ключ не видел вовсе.
+//
+// Без второго и третьего первый зеленел бы и на подъёме, который вообще не
+// останавливается: строка любого блока после `kaname:` приписывалась бы Kaname.
+func TestPartOfLineStopsAtTheFirstTopLevelKey(t *testing.T) {
+	// Наложение зонта: путь части НЕ называет, её называет ключ над строкой.
+	const rel = "deploy/helm/umbrella/values.dev.yaml"
+	lines := []string{
+		"kaname:",             // 0
+		"  image:",            // 1
+		"    tag: dev",        // 2  ← подчарт Kaname
+		"opaSidecar:",         // 3
+		"  image:",            // 4
+		"    repo: kacho/opa", // 5  ← общий блок, часть НЕ названа
+		"security:",           // 6
+		"  mode: production",  // 7  ← общий блок, часть НЕ названа
+		"kacho-nlb:",          // 8
+		"  replicas: 2",       // 9  ← подчарт платформы
+	}
+
+	for _, tc := range []struct {
+		at      int
+		want    string
+		wantOK  bool
+		because string
+	}{
+		{2, "iam", true, "строка внутри блока подчарта Kaname"},
+		{5, "", false, "общий блок `opaSidecar` — его имя записано иначе, и узкий образец его не видел"},
+		{7, "", false, "общий блок `security` — образцу подходит, но частью продукта не является"},
+		{9, "nlb", true, "строка внутри блока платформенного подчарта"},
+	} {
+		got, ok := productnaming.PartOfLine(rel, lines, tc.at)
+		if ok != tc.wantOK || got != tc.want {
+			t.Errorf("строка %d (%s): PartOfLine дал (%q, %v), ждали (%q, %v). "+
+				"Приписать строку соседу хуже, чем остановиться: покрытой оказалась "+
+				"бы не та часть продукта",
+				tc.at, tc.because, got, ok, tc.want, tc.wantOK)
+		}
+	}
+}

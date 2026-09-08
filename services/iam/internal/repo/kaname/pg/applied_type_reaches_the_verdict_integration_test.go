@@ -127,6 +127,8 @@ import (
 	kanamerepo "github.com/PRO-Robotech/kaname/internal/repo/kaname"
 	kanamepg "github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
 	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg/relverdict"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // Предмет ПЕРВОЙ пробы: ресурс ПОСТАВЛЯЕМОГО модуля. Блок его типа пришёл со
@@ -412,9 +414,11 @@ func askVerdict(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 // применителя, п. 1).
 func shippedManifest(t *testing.T, module, drop string) *manifest.Manifest {
 	t.Helper()
-	// `../../../../..` от этого пакета — каталог `services` монорепо.
+	// Каталог соседних модулей спрашивается у владельца резолва
+	// (`internal/testsupport/platformtree`): литерал-подъём был координатой
+	// РАСКЛАДКИ монорепо, и вне её вердикт выносился бы о чужом дереве (kacho#2254).
 	body, err := os.ReadFile(filepath.Clean( // #nosec G304 -- путь собран из констант пробы
-		filepath.Join("../../../../..", module, "manifest.yaml")))
+		filepath.Join(platformtree.Require(t), "services", module, "manifest.yaml")))
 	require.NoError(t, err, "прочитать манифест модуля %s", module)
 	m, err := manifest.Load(body)
 	require.NoError(t, err, "разобрать манифест модуля %s", module)

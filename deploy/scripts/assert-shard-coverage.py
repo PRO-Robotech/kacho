@@ -79,6 +79,32 @@ COLLECTION_GLOBS = (
 )
 
 
+# SHARD_DOC — документ, из которого выведено разбиение. Его таблица §2 несёт вес
+# каждой суиты, а §4 берёт из неё долю раннера.
+SHARD_DOC = "deploy/E2E-SHARDS.md"
+
+# SHARD_DOC_ROW — размеченная строка таблицы весов: имя суиты, коллекции, запросы.
+# Итоговая строка выделена жирным и потому разбирается отдельным образцом: одна
+# грамматика на обе дала бы «итого» суитой.
+SHARD_DOC_ROW = re.compile(r'^\|\s*([a-z][a-z0-9-]*)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|')
+SHARD_DOC_TOTAL = re.compile(r'^\|\s*\*\*итого\*\*\s*\|\s*\*\*(\d+)\*\*\s*\|\s*\*\*(\d+)\*\*\s*\|')
+
+
+def shard_doc_weights(text: str) -> tuple[dict[str, tuple[int, int]], tuple[int, int] | None]:
+    """Строки таблицы весов документа: suite -> (коллекций, запросов) плюс итог."""
+    rows: dict[str, tuple[int, int]] = {}
+    total: tuple[int, int] | None = None
+    for line in text.splitlines():
+        m = SHARD_DOC_ROW.match(line)
+        if m:
+            rows[m.group(1)] = (int(m.group(2)), int(m.group(3)))
+            continue
+        m = SHARD_DOC_TOTAL.match(line)
+        if m:
+            total = (int(m.group(1)), int(m.group(2)))
+    return rows, total
+
+
 def _transports_module():
     """Тот же вывод спроса, что исполняет прогонщик, — не вторая его реализация.
 
@@ -200,7 +226,8 @@ def tracked_requests(root: pathlib.Path, tree: dict[str, list[str]]) -> dict[str
 
 
 def check(root: pathlib.Path, manifest_path: pathlib.Path, *,
-          ban6: dict | None = None) -> tuple[list[str], dict]:
+          ban6: dict | None = None,
+          shard_doc: pathlib.Path | None = None) -> tuple[list[str], dict]:
     """`ban6` — перепись популяции запрета #6; по умолчанию берётся из дерева.
 
     Параметр существует ради самопроверки: инъекция на СИНТЕТИЧЕСКОЙ переписи
@@ -561,6 +588,68 @@ def check(root: pathlib.Path, manifest_path: pathlib.Path, *,
                            if any(d in gate_b6.get(c, []) for c in sh["components"])],
             }
 
+    # 11. ТАБЛИЦА ВЕСОВ В ДОКУМЕНТЕ РАЗБИЕНИЯ СХОДИТСЯ С ДЕРЕВОМ.
+    #
+    # Документ честнее прочих: он называет ревизию своего замера, поэтому его
+    # числа читаются как свидетельство о ней. Но таблица §2 подписана «Числа —
+    # запросы коллекций суиты, не догадка», а §4 выводит из неё долю раннера —
+    # то есть из свидетельства делается вывод о СЕГОДНЯШНЕМ стенде. Владельца у
+    # выписанного числа нет: правит его тот, кто наткнётся.
+    #
+    # Замер, из которого пункт заведён (#2226): расходились ВСЕ ВОСЕМЬ строк
+    # таблицы и итог. Исходов у задачи было два — вывести таблицу из дерева либо
+    # объявить её свидетельством явно; выбран первый: тогда у неё появляется
+    # держатель, а не дата.
+    #
+    # Судится РАЗМЕЧЕННАЯ строка таблицы, а не текст: имена суит стоят в этом же
+    # документе прозой и в перечнях, и поиск по подстроке считал бы объяснение
+    # предметом.
+    # Путь документа — ПАРАМЕТР ради инъекции: подменить его нельзя ничем, кроме
+    # явного аргумента, поэтому боевой прогон читает ровно то, что объявлено.
+    doc_path = shard_doc if shard_doc is not None else root / SHARD_DOC
+    if not doc_path.is_file():
+        findings.append(
+            f"документ разбиения {SHARD_DOC} не прочитан: таблица весов осталась бы "
+            f"вне наблюдения молча, а «ноль находок» здесь означало бы «ноль прочитанного»")
+        doc_rows: dict[str, tuple[int, int]] = {}
+        doc_total: tuple[int, int] | None = None
+    else:
+        doc_rows, doc_total = shard_doc_weights(doc_path.read_text(encoding="utf-8"))
+        if not doc_rows:
+            findings.append(
+                f"в {SHARD_DOC} не прочитано НИ ОДНОЙ строки таблицы весов — разборщик "
+                f"перестал её видеть, и молчание пункта ничего не означает")
+    for suite in sorted(doc_rows):
+        colls, reqs = doc_rows[suite]
+        if suite not in tree:
+            findings.append(
+                f"{SHARD_DOC}: таблица называет суиту '{suite}', которой в дереве нет — "
+                f"строка пережила свой предмет")
+            continue
+        want_c, want_r = len(tree[suite]), reqs_tree.get(suite, 0)
+        if (colls, reqs) != (want_c, want_r):
+            findings.append(
+                f"{SHARD_DOC}: суита '{suite}' объявлена как {colls}/{reqs} "
+                f"(коллекций/запросов), в дереве {want_c}/{want_r} — §4 выводит из этой "
+                f"таблицы долю раннера, то есть из устаревшего числа делается вывод о "
+                f"сегодняшнем стенде")
+    for suite in sorted(tree):
+        if suite not in doc_rows:
+            findings.append(
+                f"{SHARD_DOC}: суита '{suite}' есть в дереве и НЕ названа таблицей — "
+                f"её вес не участвует ни в одном выводе документа")
+    if doc_total is not None:
+        want = (sum(len(v) for v in tree.values()), sum(reqs_tree.values()))
+        if doc_total != want:
+            findings.append(
+                f"{SHARD_DOC}: итог таблицы {doc_total[0]}/{doc_total[1]}, "
+                f"в дереве {want[0]}/{want[1]}")
+    elif doc_rows:
+        findings.append(
+            f"{SHARD_DOC}: строка итога таблицы не прочитана — сумма, сходящаяся с "
+            f"самой собой при разошедшихся строках, и есть тот случай, ради которого "
+            f"итог судится отдельно")
+
     stats = {
         "ban6_cross_domains": cross_b6,
         "transports_declared": len(transports),
@@ -581,6 +670,7 @@ def check(root: pathlib.Path, manifest_path: pathlib.Path, *,
         "requests_tree": sum(reqs_tree.values()),
         "shard_weights_read": weights_read,
         "prose_totals_read": prose_totals,
+        "doc_weight_rows_read": len(doc_rows),
     }
     return findings, stats
 
@@ -590,6 +680,10 @@ def report(root: pathlib.Path, manifest_path: pathlib.Path) -> int:
     print("=== покрытие шардов (единица счёта — отслеживаемая git коллекция) ===")
     print(f"осмотрено: суит {st['suites_tree']}, коллекций {st['collections_tree']}, "
           f"шардов {st['shards']}, переключаемых компонентов {st['gates']}")
+    # Строки таблицы весов НАЗЫВАЮТСЯ числом: «расхождений ноль» обязано быть
+    # отличимо от «таблицу не прочитали».
+    print(f"вес суит: строк таблицы {SHARD_DOC} прочитано {st['doc_weight_rows_read']}, "
+          f"запросов в дереве {st['requests_tree']}")
     print(f"ban #6: прочитано .proto {st['ban6_proto_files_read']}, регистраций "
           f"Internal*-служб в прод-коде {st['ban6_registrations_found']}")
     print(f"ban #6: доменов с Internal*-контрактом {st['ban6_domains_with_contract']}, "
@@ -772,7 +866,7 @@ def _self_test() -> int:
     ok = True
 
     def run(m: dict, label: str, want_red: bool, expect: str | None = None,
-            ban6: dict | None = None) -> None:
+            ban6: dict | None = None, shard_doc: pathlib.Path | None = None) -> None:
         """`expect` — подстрока, которая ОБЯЗАНА встретиться среди находок.
 
         Без неё инъекция доказывает лишь чувствительность гейта к правке манифеста,
@@ -787,7 +881,7 @@ def _self_test() -> int:
             json.dump(m, fh)
             p = pathlib.Path(fh.name)
         try:
-            findings, _ = check(ROOT, p, ban6=ban6)
+            findings, _ = check(ROOT, p, ban6=ban6, shard_doc=shard_doc)
         finally:
             p.unlink(missing_ok=True)
         red = bool(findings)
@@ -806,6 +900,65 @@ def _self_test() -> int:
 
     print("=== самопроверка гейта (инъекция в обе стороны) ===")
     run(base, "законный близнец: дерево как есть", want_red=False)
+
+    # (п.11) РАСПОЗНАВАТЕЛЬ таблицы весов — сперва он сам, потом сравнение.
+    # Форма, о которой он не знает, даёт не красное и не зелёное, а молчание:
+    # строки просто не попадают в перепись, и «ноль расхождений» становится
+    # свойством разборщика.
+    sample = ("| суита | коллекций | запросов |\n"
+              "|---|---:|---:|\n"
+              "| vpc | 18 | 3709 |\n"
+              "| **итого** | **98** | **9391** |\n")
+    rows, total = shard_doc_weights(sample)
+    good = rows == {"vpc": (18, 3709)} and total == (98, 9391)
+    ok = ok and good
+    print(f"  [{'ok ' if good else 'FAIL'}] (п.11) разборщик читает строку суиты и "
+          f"строку итога раздельно — строк={rows}, итог={total}")
+    # Итог выделен жирным и суитой быть не должен: одна грамматика на обе дала бы
+    # «итого» суитой, и перепись выросла бы на строку, которой нет.
+    good = "итого" not in rows
+    ok = ok and good
+    print(f"  [{'ok ' if good else 'FAIL'}] (п.11) строка итога суитой не считается")
+
+    def _doc_with(rel_changes: dict[str, tuple[int, int]]) -> pathlib.Path:
+        """Копия боевого документа с подменёнными числами названных суит."""
+        body = (ROOT / SHARD_DOC).read_text(encoding="utf-8")
+        out = []
+        for line in body.splitlines():
+            m = SHARD_DOC_ROW.match(line)
+            if m and m.group(1) in rel_changes:
+                c, r = rel_changes[m.group(1)]
+                line = re.sub(r'^(\|\s*[a-z][a-z0-9-]*\s*\|\s*)\d+(\s*\|\s*)\d+(\s*\|)',
+                              rf'\g<1>{c}\g<2>{r}\g<3>', line)
+            out.append(line)
+        fh = tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8")
+        fh.write("\n".join(out) + "\n")
+        fh.close()
+        return pathlib.Path(fh.name)
+
+    stale = _doc_with({"vpc": (16, 3384)})
+    try:
+        run(base, "(п.11) вес суиты в документе разошёлся с деревом", want_red=True,
+            expect="суита 'vpc' объявлена как 16/3384", shard_doc=stale)
+    finally:
+        stale.unlink(missing_ok=True)
+
+    missing = pathlib.Path(tempfile.mkdtemp()) / "нет-такого.md"
+    run(base, "(п.11) документа разбиения нет — отказ, а не тишина", want_red=True,
+        expect="осталась бы вне наблюдения молча", shard_doc=missing)
+
+    empty = tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8")
+    empty.write("# без таблицы\n")
+    empty.close()
+    try:
+        run(base, "(п.11) таблицы в документе нет — разборщик ослеп, и это находка",
+            want_red=True, expect="НИ ОДНОЙ строки таблицы весов",
+            shard_doc=pathlib.Path(empty.name))
+    finally:
+        pathlib.Path(empty.name).unlink(missing_ok=True)
+
+    run(base, "(п.11) законный близнец: боевой документ сходится с деревом",
+        want_red=False, shard_doc=ROOT / SHARD_DOC)
 
     # (а) шард потерял суиту целиком
     m = copy.deepcopy(base)

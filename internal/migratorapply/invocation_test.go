@@ -18,10 +18,52 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
-// migratorBinaryPath — путь бинаря внутри образа. Им зовут накат все манифесты
-// развёртывания, поэтому он же служит признаком, по которому форма вызова
-// узнаётся в манифесте.
-const migratorBinaryPath = "/usr/local/bin/kacho-migrator"
+// migratorBinDir — каталог, в который образ кладёт накатчик. Общий у всех
+// продуктов; различается ИМЯ файла, и его называет владелец имён.
+const migratorBinDir = "/usr/local/bin/"
+
+// migratorBinaryPathOf — путь накатчика службы, ВЫВЕДЕННЫЙ у владельца имён.
+//
+// Здесь стоял литерал `"/usr/local/bin/kacho-migrator"` — второе место об одном
+// предмете. После #2245 имя накатчика одно на ПРОДУКТ, и продуктов два:
+// `kacho-migrator` у шести служб платформы, `kaname-migrator` у Kaname. Литерал
+// был верен ровно для шести, а седьмую форму НЕ ВИДЕЛ — и это молчание, а не
+// находка (kacho#2183).
+func migratorBinaryPathOf(serviceDir string) string {
+	return migratorBinDir + productnaming.MigratorBinary(serviceDir)
+}
+
+// migratorBinaryPaths — все пути накатчиков дерева. Выводятся из перечня
+// продуктов, а не выписываются: выписанный разошёлся бы с ним на следующем
+// вынесенном продукте — молча, как разошёлся литерал.
+func migratorBinaryPaths() []string {
+	names := productnaming.ProductNames()
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		out = append(out, migratorBinDir+n+"-migrator")
+	}
+	return out
+}
+
+// isMigratorPath — принадлежит ли argv[0] какому-нибудь накатчику дерева.
+func isMigratorPath(p string) bool {
+	for _, known := range migratorBinaryPaths() {
+		if p == known {
+			return true
+		}
+	}
+	return false
+}
+
+// mentionsAnyMigrator — упоминает ли манифест накатчик хоть одного продукта.
+func mentionsAnyMigrator(body string) bool {
+	for _, known := range migratorBinaryPaths() {
+		if strings.Contains(body, known) {
+			return true
+		}
+	}
+	return false
+}
 
 // manifestRoots — каталоги, под которыми ищется объявление формы вызова.
 //
@@ -44,7 +86,7 @@ type invocationForm struct {
 
 func (f invocationForm) String() string { return strings.Join(f.argv, " ") }
 
-// commandLine / argsLine — объявление формы в манифесте. Все семь пишут его
+// commandLine / argsLine — объявление формы в манифесте. Все точки наката пишут его
 // потоковым стилем в одну строку; форму, записанную блочным стилем, разбор не
 // прочитает — и потому НЕ МОЛЧИТ о ней: строка, называющая бинарь, но не давшая
 // ни одного аргумента, роняет перепись (см. manifestForms).
@@ -161,7 +203,7 @@ func manifestForms(t *testing.T, root string) (map[string][]invocationForm, int)
 				t.Fatalf("манифест %s не прочитан: %v", abs, err)
 			}
 			filesRead++
-			if !strings.Contains(string(body), migratorBinaryPath) {
+			if !mentionsAnyMigrator(string(body)) {
 				continue
 			}
 			rel, relErr := filepath.Rel(root, abs)
@@ -170,10 +212,10 @@ func manifestForms(t *testing.T, root string) (map[string][]invocationForm, int)
 			}
 			for _, form := range formsInManifest(t, rel, string(body)) {
 				if form.service == "" {
-					t.Fatalf("%s объявляет форму вызова %s, но ЧЬЮ — не выводится ни из "+
-						"пути, ни из ключа подчарта. Приписать форму соседу хуже, чем "+
+					t.Fatalf("%s объявляет форму вызова накатчика (%v), но ЧЬЮ — не выводится "+
+						"ни из пути, ни из ключа подчарта. Приписать форму соседу хуже, чем "+
 						"остановиться: покрытой оказалась бы не та точка наката",
-						form.origin, migratorBinaryPath)
+						form.origin, migratorBinaryPaths())
 				}
 				forms[form.service] = append(forms[form.service], form)
 			}
@@ -198,12 +240,12 @@ func formsInManifest(t *testing.T, rel, body string) []invocationForm {
 			continue
 		}
 		argv, ok := parseFlowSequence(m[1])
-		if !ok || argv[0] != migratorBinaryPath {
-			if !ok && strings.Contains(line, migratorBinaryPath) {
-				t.Fatalf("%s:%d объявляет форму вызова %s, но разбор её НЕ ПРОЧИТАЛ. "+
+		if !ok || !isMigratorPath(argv[0]) {
+			if !ok && mentionsAnyMigrator(line) {
+				t.Fatalf("%s:%d объявляет форму вызова накатчика (%v), но разбор её НЕ ПРОЧИТАЛ. "+
 					"Молчаливый пропуск оставил бы форму вне наблюдения — то есть дал бы "+
 					"ровно ту слепую зону, ради которой эта проба написана:\n%s",
-					rel, i+1, migratorBinaryPath, line)
+					rel, i+1, migratorBinaryPaths(), line)
 			}
 			continue
 		}
@@ -219,8 +261,8 @@ func formsInManifest(t *testing.T, rel, body string) []invocationForm {
 			}
 		}
 		if len(argv) == 0 {
-			t.Fatalf("%s:%d зовёт %s БЕЗ единого аргумента — пустая командная строка "+
-				"мигратора есть отказ, а не накат", rel, i+1, migratorBinaryPath)
+			t.Fatalf("%s:%d зовёт накатчик БЕЗ единого аргумента — пустая командная строка "+
+				"мигратора есть отказ, а не накат", rel, i+1)
 		}
 		out = append(out, invocationForm{
 			service: serviceForForm(rel, lines, i),
@@ -270,8 +312,32 @@ func TestEveryApplyPointHasItsInvocationFormDerived(t *testing.T) {
 		}
 	}
 
-	t.Logf("перепись: манифестов прочитано %d, точек наката %d, форма выведена для %d",
-		filesRead, len(points), covered)
+	// ОБРАТНАЯ сторона, и без неё перепись сходилась бы сама с собой. Прежде цикл
+	// шёл только по точкам наката: форма, у которой точки нет, не доказывалась и
+	// НЕ РОНЯЛА перепись. Ровно так седьмая точка выпала из наблюдения молча —
+	// её форма в манифестах была, а точки в перечне не было (kacho#2183).
+	inPoints := make(map[string]bool, len(points))
+	for _, pkg := range points {
+		service, _ := migrationsDirOf(pkg)
+		inPoints[service] = true
+	}
+	orphan := make([]string, 0)
+	for service := range forms {
+		if !inPoints[service] {
+			orphan = append(orphan, service)
+		}
+	}
+	sort.Strings(orphan)
+	for _, service := range orphan {
+		t.Errorf("манифесты объявляют форму вызова накатчика службы %q (%v), а точки "+
+			"наката у неё в дереве НЕТ. Исходов два: точка есть и обход её не видит "+
+			"(тогда слеп обход — так выпала седьмая, kacho#2183), либо формы объявлены "+
+			"на несуществующий накат. Молчание здесь неотличимо от полноты",
+			service, forms[service])
+	}
+
+	t.Logf("перепись: манифестов прочитано %d, точек наката в дереве %d, форма выведена "+
+		"для %d, форм без точки наката %d", filesRead, len(points), covered, len(orphan))
 }
 
 // dsnParts — разобранный DSN пробы. Нужен той полосе доставки конфигурации, где
@@ -305,9 +371,22 @@ func splitDSN(t *testing.T, dsn string) dsnParts {
 	return dsnParts{user: user, password: password, host: host, port: port, name: name}
 }
 
-// serviceEnvPrefix — приставка переменных окружения сервиса (`KACHO_VPC`).
+// serviceEnvPrefix — приставка переменных окружения службы, спрошенная у
+// ОБЪЯВЛЕННОГО ВЛАДЕЛЬЦА имён.
+//
+// Здесь стояло `"KACHO_" + strings.ToUpper(service)`. Литерал был верен для
+// шести служб платформы и НЕВЕРЕН для седьмой: часть, получившая собственное имя,
+// объявляет окружение с приставкой своего продукта (`iam` → `KANAME`), и владелец
+// имён это прямо говорит. Второй словарь об одном предмете разошёлся с первым — и
+// разошёлся МОЛЧА, ровно как обещает godoc самого владельца.
+//
+// Цена расхождения измерена: `configPathEnvOf` строился из этой приставки, поэтому
+// полоса доставки конфигурации у седьмой службы не опознавалась вовсе. Проба
+// уходила в полосу окружения, ставила `KACHO_IAM_DB_*`, которых накатчик не
+// читает, и он поднимался на УМОЛЧАНИЯХ — то есть шёл в `127.0.0.1:5432` вместо
+// базы пробы. Отказ выглядел как недоступность базы, а был расхождением словарей.
 func serviceEnvPrefix(service string) string {
-	return "KACHO_" + strings.ToUpper(service)
+	return productnaming.EnvPrefix(service)
 }
 
 // configPathEnvOf — имя переменной, которой манифест называет путь конфигурации.
@@ -341,7 +420,7 @@ func serviceConfigYAML(dsn string) string {
 //
 // Флаг `--dsn` не подставляется НИКОГДА, и это предмет: первый источник приоритета
 // (`--dsn` > `KACHO_MIGRATOR_DSN` > конфигурация) доказан пробой наката рядом, а
-// последний — тот, которым пользуются все семь развёртываний, — не был доказан
+// последний — тот, которым пользуются все развёртывания дерева, — не был доказан
 // ничем. Именно его и гоняет эта полоса.
 func invocationEnv(t *testing.T, service string, form invocationForm, dsn, dir string) ([]string, []string) {
 	t.Helper()
@@ -414,7 +493,7 @@ func manifestNamesConfigPath(t *testing.T, service string) bool {
 // ФОРМЕ, КОТОРОЙ НАКАТ ЗОВУТ.
 //
 // Проба наката рядом (apply_test.go) гоняет `up --dsn <DSN>` — форму, которой в
-// дереве не зовёт НИ ОДИН манифест и НИ ОДИН Makefile. Все семь развёртываний
+// дереве не зовёт НИ ОДИН манифест и НИ ОДИН Makefile. Все развёртывания дерева
 // берут DSN из конфигурации, то есть из ПОСЛЕДНЕГО источника приоритета, и эта
 // ветка не была доказана ничем. Здесь она и доказывается — каждым сервисом в его
 // собственной форме, выведенной из его манифеста.

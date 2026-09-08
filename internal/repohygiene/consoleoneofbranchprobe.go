@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/pkg/contractroot"
 )
 
 // Разбор контракта и реестров консоли для гейта «ветвь контракта, достижимая из
@@ -173,7 +175,9 @@ func branchingsReachable(messages map[string][]protoField, root string) []string
 }
 
 func resolveMessage(messages map[string][]protoField, pkg, typeName string) string {
-	if !strings.HasPrefix(pkg, "kacho.") {
+	// Отбор по ОБЪЯВЛЕННОМУ множеству корней: литерал приставки оставлял дерево
+	// второго корня вне наблюдения молча (kacho#2138).
+	if !contractroot.HasAnyPrefix(pkg, contractroot.NamePrefixes()) {
 		return ""
 	}
 	if _, ok := messages[typeName]; ok {
@@ -183,7 +187,7 @@ func resolveMessage(messages map[string][]protoField, pkg, typeName string) stri
 		return cand
 	}
 	for k := range messages {
-		if strings.HasSuffix(k, "."+typeName) && strings.HasPrefix(k, "kacho.") {
+		if strings.HasSuffix(k, "."+typeName) && contractroot.HasAnyPrefix(k, contractroot.NamePrefixes()) {
 			return k
 		}
 	}

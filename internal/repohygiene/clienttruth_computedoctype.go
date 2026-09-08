@@ -70,6 +70,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/pkg/contractroot"
 )
 
 // ClientDocsAnyTypeOptions — вход анализатора.
@@ -158,7 +160,11 @@ func AuditClientDocsAnyType(
 			for _, m := range clientDocsAnyTypeURLRe.FindAllStringSubmatch(line, -1) {
 				fqn := m[1]
 				census.TypeURLs++
-				if !strings.HasPrefix(fqn, "kacho.") {
+				// Популяция отбирается по ОБЪЯВЛЕННОМУ множеству корней, а не по
+				// литералу приставки: литерал был верен, пока корень был один, и
+				// после появления второго перестал ВИДЕТЬ дерево второго — не
+				// покраснел и не позеленел, а замолчал (kacho#2138).
+				if !contractroot.HasAnyPrefix(fqn, contractroot.NamePrefixes()) {
 					outside[fqn] = true
 					census.OutsideCount++
 					continue
@@ -184,10 +190,10 @@ func AuditClientDocsAnyType(
 		_, _ = fmt.Fprintf(log,
 			"перепись: контрактов %d · типов в словаре %d (из них вложенных %d) · "+
 				"страниц документации %d · полных имён встречено %d · рассужено %d · "+
-				"вне пространства kacho., НЕ судятся: %d %v\n",
+				"вне объявленных корней %v, НЕ судятся: %d %v\n",
 			census.ProtoFiles, census.ContractTypes, census.NestedTypes,
 			census.DocFiles, census.TypeURLs, census.Judged,
-			census.OutsideCount, census.OutsideNames)
+			contractroot.NamePrefixes(), census.OutsideCount, census.OutsideNames)
 	}
 
 	sort.Slice(findings, func(i, j int) bool {
