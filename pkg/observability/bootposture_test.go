@@ -165,3 +165,115 @@ func TestInternalMTLSConstants_AreTheParsedContract(t *testing.T) {
 		}
 	}
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// СОБСТВЕННЫЕ REST-ФРОНТЫ ПРОЦЕССА (задача #2108)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ownRESTFrontStub — объявление поверхности, поданное пробой напрямую.
+//
+// Узкий интерфейс самоотчёта позволяет подать посадку, не собирая ни слушателя,
+// ни удостоверения: проба меняет РОВНО ОДИН факт против своего положительного
+// близнеца.
+type ownRESTFrontStub struct{ raised, tls bool }
+
+func (s ownRESTFrontStub) Enabled() bool  { return s.raised }
+func (s ownRESTFrontStub) UnderTLS() bool { return s.tls }
+
+// TestLogBootPosture_OwnRESTFrontsHaveThreeDeclaredStates — оба фронта обязаны
+// выражать ТРИ объявленные величины, а не две.
+//
+// Предмет тот же, что у internal_mtls: «фронта нет вовсе» обязано быть отличимо
+// от «фронт поднят и работает открытым текстом». Схлопнуть их значило бы
+// разрешить открытый текст молчанием.
+//
+// Четвёртое состояние — ПУСТАЯ строка — объявленным не является и обязано
+// доезжать до гейта как есть: гейт посадки судит его отказом.
+func TestLogBootPosture_OwnRESTFrontsHaveThreeDeclaredStates(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		give string
+		want string
+	}{
+		{"фронт поднят, провод под транспортом", observability.OwnRESTFrontTLS, "true"},
+		{"фронт поднят, провод открытым текстом", observability.OwnRESTFrontPlaintext, "false"},
+		{"фронта нет вовсе", observability.OwnRESTFrontNotRaised, "n/a"},
+		{"незаполненное поле доезжает как есть", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			observability.LogBootPosture(observability.NewSlogger(&buf), observability.BootPosture{
+				Service:            "iam",
+				AuthMode:           "production",
+				DBSSLMode:          "require",
+				InternalMTLS:       observability.InternalMTLSEnabled,
+				OwnRESTPublicTLS:   tc.give,
+				OwnRESTInternalTLS: tc.give,
+			})
+			var line map[string]any
+			if err := json.Unmarshal(buf.Bytes(), &line); err != nil {
+				t.Fatalf("строка самоотчёта не разобралась: %v (raw=%q)", err, buf.String())
+			}
+			for _, key := range []string{"own_rest_public_tls", "own_rest_internal_tls"} {
+				got, ok := line[key]
+				if !ok {
+					t.Fatalf("ключ %s не эмитится вовсе: %v", key, line)
+				}
+				if got != tc.want {
+					t.Fatalf("%s = %#v (%T), ждали %q — величина обязана доезжать до гейта "+
+						"дословно, без подмены", key, got, got, tc.want)
+				}
+			}
+		})
+	}
+}
+
+// TestOwnRESTFrontConstants_AreTheParsedContract — величины парсит гейт посадки
+// (deploy/scripts/assert-production-posture.sh), поэтому их литералы — контракт,
+// а не удобство. Переименование молча ослепляет гейт.
+func TestOwnRESTFrontConstants_AreTheParsedContract(t *testing.T) {
+	for _, tc := range []struct{ got, want string }{
+		{observability.OwnRESTFrontTLS, "true"},
+		{observability.OwnRESTFrontPlaintext, "false"},
+		{observability.OwnRESTFrontNotRaised, "n/a"},
+	} {
+		if tc.got != tc.want {
+			t.Fatalf("величина собственного REST-фронта = %q, контракт гейта требует %q",
+				tc.got, tc.want)
+		}
+	}
+}
+
+// TestOwnRESTFrontFrom_DerivesFromTheDeclarationThatRaisesTheSurface — величина
+// ВЫВОДИТСЯ из того же объявления поверхности, по которому она поднимается.
+//
+// Почему это важнее удобства: самоотчёт и доклад поверхности при подъёме — два
+// утверждения об одном предмете. Выведенные из ОДНОГО объявления, разойтись они
+// не могут by construction; вписанные порознь — разойдутся молча, и верным
+// окажется одно (класс #2194).
+//
+// Случая «фронта нет вовсе» здесь НЕТ намеренно, ровно как у InternalMTLSFrom:
+// он не выводится из объявления, потому что объявления у такого процесса не
+// существует. Он называется константой прямо в композиционном корне — там, где
+// видно, что поверхность не поднимается.
+func TestOwnRESTFrontFrom_DerivesFromTheDeclarationThatRaisesTheSurface(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		give ownRESTFrontStub
+		want string
+	}{
+		{"поднят под транспортом", ownRESTFrontStub{raised: true, tls: true}, observability.OwnRESTFrontTLS},
+		{"поднят открытым текстом", ownRESTFrontStub{raised: true, tls: false}, observability.OwnRESTFrontPlaintext},
+		{"не поднят", ownRESTFrontStub{raised: false, tls: false}, observability.OwnRESTFrontNotRaised},
+		// Транспорт объявлен, а поверхность не поднимается: величина обязана
+		// говорить о ПОВЕРХНОСТИ, а не о ручке транспорта — иначе самоотчёт
+		// сообщал бы о защите того, чего нет.
+		{"не поднят, транспорт объявлен", ownRESTFrontStub{raised: false, tls: true}, observability.OwnRESTFrontNotRaised},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := observability.OwnRESTFrontFrom(tc.give); got != tc.want {
+				t.Fatalf("OwnRESTFrontFrom(%+v) = %q, ждали %q", tc.give, got, tc.want)
+			}
+		})
+	}
+}

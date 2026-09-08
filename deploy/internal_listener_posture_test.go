@@ -151,6 +151,11 @@ func controlLine(t *testing.T, prog string) map[string]any {
 		"authz_check":        true,
 		"trusted_forwarders": true,
 		"identity_provider":  "own",
+		// Собственного REST-фронта у края НЕТ: он проксирует ЧУЖИЕ слушатели,
+		// своего gRPC-API у него нет. Величина «n/a» здесь не удобство
+		// фикстуры, а то, что этот процесс и докладывает.
+		"own_rest_public_tls":   "n/a",
+		"own_rest_internal_tls": "n/a",
 	}
 	var missing []string
 	for _, d := range judgedDimensions(prog) {
