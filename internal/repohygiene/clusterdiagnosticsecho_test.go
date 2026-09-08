@@ -498,6 +498,7 @@ func clusterDiagShorten(s string) string {
 
 // TestClusterDiagnosticsNeverEchoAMissingStand — по дереву.
 func TestClusterDiagnosticsNeverEchoAMissingStand(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files := listWorkflows(t, root)
 	if len(files) == 0 {
@@ -544,6 +545,7 @@ func TestClusterDiagnosticsNeverEchoAMissingStand(t *testing.T) {
 // на отказе страж бесполезен, а кричащий на живом кластере зашумил бы каждый
 // прогон и был бы снят первым же, кому помешал.
 func TestStandPresentOrExplainScriptDoesNotFailAndDoesNotStayQuiet(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	script := filepath.Join(root, ".github", "scripts", clusterDiagGuard)
 	if _, err := os.Stat(script); err != nil {

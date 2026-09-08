@@ -39,6 +39,7 @@ import (
 const compiledArtifactCensusFloor = 1000
 
 func TestNoCompiledArtifactIsTracked(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

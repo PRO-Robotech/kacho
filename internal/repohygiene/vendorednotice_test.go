@@ -37,6 +37,7 @@ func readLicenseAt(root, repo string) string {
 }
 
 func TestVendoredContractsCarryTheirUpstreamNotice(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	var files []VendoredFile

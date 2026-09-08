@@ -85,6 +85,7 @@ func probeCorpus(t *testing.T, files map[string]string) []string {
 }
 
 func TestConsoleDropdownGateFailsOnTheMirrorForm(t *testing.T) {
+	t.Parallel()
 	// (а) ИНЪЕКЦИЯ: настоящая форма промаха обязана быть найдена и НАЗВАНА.
 	found, read, touching, err := consoleDropdownFindings(
 		probeCorpus(t, map[string]string{"mirror.spec.ts": probeWithMirror}))

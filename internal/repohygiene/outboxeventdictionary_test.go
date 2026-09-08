@@ -522,6 +522,7 @@ func sortedKeys1(m map[string]sqlEnumDict) []string {
 // Без него «словарь пуст» было бы неотличимо от «разбор сломался», и гейт ниже
 // молчал бы «чисто» на любой записке.
 func TestEnumDictionaryInventoryReadsTheTree(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	inv := enumDictionaryInventory(t, root, trackedMigrationSQL)
 
@@ -569,6 +570,7 @@ func TestEnumDictionaryInventoryReadsTheTree(t *testing.T) {
 // входы (координаты не цитируются: имя файла миграции в обратных кавычках
 // читается как живое утверждение о дереве, а формы важнее адресов).
 func Test_SqlEnumOf_RecognisesDictionaryAndRefusesLookalikes(t *testing.T) {
+	t.Parallel()
 	dictionaries := []struct {
 		name string
 		expr string
@@ -804,6 +806,7 @@ func exemptQueueService(coords []string) (string, error) {
 // закрытого словаря сверить не с чем — и это находка, а не молчание: иначе
 // освобождение снова сертифицировало бы само себя, только теперь тише.
 func TestCommutativeDrainExemptionMatchesEventDictionary(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	wiring := outboxWiringInventory(t, root)
 	dicts := enumDictionaryInventory(t, root, trackedMigrationSQL)

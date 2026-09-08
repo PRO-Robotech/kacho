@@ -80,6 +80,7 @@ func kanameShowcaseCorpus(t *testing.T) map[string]string {
 // дереве нет чужого слова» — внутренние упоминания законны и изъяты поимённо с
 // причиной (см. перепись).
 func TestKanameShowcaseNamesItsOwnMigrator(t *testing.T) {
+	t.Parallel()
 	files := kanameShowcaseCorpus(t)
 	findings, census := repohygiene.KanameMigratorShowcaseScan(files)
 

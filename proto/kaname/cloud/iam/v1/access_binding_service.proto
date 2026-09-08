@@ -11,7 +11,7 @@ import "google/protobuf/timestamp.proto";
 import "kacho/cloud/api/operation.proto";
 import "kaname/cloud/iam/v1/access_binding.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1;iamv1";
 
@@ -24,13 +24,13 @@ service AccessBindingService {
   // Returns the specified AccessBinding resource.
   rpc Get (GetAccessBindingRequest) returns (AccessBinding) {
     option (google.api.http) = { get: "/iam/v1/accessBindings/{access_binding_id}" };
-    option (kacho.iam.authz.v1.permission)        = "iam.access_bindings.get";
-    option (kacho.iam.authz.v1.required_relation) = "v_get";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.access_bindings.get";
+    option (corelib.authz.v1.required_relation) = "v_get";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "iam_access_binding"
       from_request_field: "access_binding_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Creates an access binding.
@@ -52,9 +52,9 @@ service AccessBindingService {
     // per-resource_type check (owner of the owning Account OR FGA `admin` on
     // the actual scope object). Anonymous is still rejected by the IAM
     // anti-anonymous interceptor.
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
-    option (kacho.iam.authz.v1.exempt_reason)  = "HANDLER_DECIDES";
-    option (kacho.iam.authz.v1.required_acr_min) = "2";
+    option (corelib.authz.v1.permission) = "<exempt>";
+    option (corelib.authz.v1.exempt_reason)  = "HANDLER_DECIDES";
+    option (corelib.authz.v1.required_acr_min) = "2";
   }
 
   // Deletes the specified access binding.
@@ -64,13 +64,13 @@ service AccessBindingService {
       metadata: "DeleteAccessBindingMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission)        = "iam.access_bindings.delete";
-    option (kacho.iam.authz.v1.required_relation) = "v_delete";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.access_bindings.delete";
+    option (corelib.authz.v1.required_relation) = "v_delete";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "iam_access_binding"
       from_request_field: "access_binding_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (corelib.authz.v1.required_acr_min)  = "2";
   }
 
   // Updates mutable fields of the specified access binding. The ONLY mutable
@@ -86,13 +86,13 @@ service AccessBindingService {
       metadata: "UpdateAccessBindingMetadata"
       response: "AccessBinding"
     };
-    option (kacho.iam.authz.v1.permission)        = "iam.access_bindings.update";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.access_bindings.update";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "iam_access_binding"
       from_request_field: "access_binding_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (corelib.authz.v1.required_acr_min)  = "2";
   }
 
   // Lists access bindings (redesign-2026 F11). The single, plain List that
@@ -128,9 +128,9 @@ service AccessBindingService {
     // "cluster-scoped catalog gate". `viewer` on the cluster is the relation of the
     // global reference catalogue, granted to `user:*` by the bootstrap, so the
     // check admitted every authenticated subject and narrowed nothing.
-    option (kacho.iam.authz.v1.permission)       = "iam.access_bindings.list";
-    option (kacho.iam.authz.v1.scope_filtered)   = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.permission)       = "iam.access_bindings.list";
+    option (corelib.authz.v1.scope_filtered)   = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // DEPRECATED — use `List` with `filter=scope="iam.<tier>"` +
@@ -142,19 +142,19 @@ service AccessBindingService {
   // `resource_type`/`resource_id` pair remains accepted as the fallback.
   rpc ListByScope (ListAccessBindingsByScopeRequest) returns (ListAccessBindingsResponse) {
     option (google.api.http) = { get: "/iam/v1/accessBindings:listByScope" };
-    option (kacho.iam.authz.v1.permission)        = "iam.access_bindings_by_resources.listByScope";
-    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (corelib.authz.v1.permission)        = "iam.access_bindings_by_resources.listByScope";
+    option (corelib.authz.v1.required_relation) = "viewer";
     // Scope-polymorphic: the FGA object type is carried by the request's
     // `resource_type` field (project|account|cluster). `object_type` is only
     // the fallback; `object_type_from_request_field` makes the gateway derive
     // the real type per request (a static `project` made account/
     // cluster-scoped reads check `project:<id>` → 403).
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:                    "project"
       from_request_field:             "resource_id"
       object_type_from_request_field: "resource_type"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // DEPRECATED — use `List` with `filter=subject="<id>"`. Retained for
@@ -191,9 +191,9 @@ service AccessBindingService {
   // failure.
   rpc ListBySubject (ListAccessBindingsBySubjectRequest) returns (ListAccessBindingsResponse) {
     option (google.api.http) = { get: "/iam/v1/accessBindings:listBySubject" };
-    option (kacho.iam.authz.v1.permission)       = "iam.access_bindings_by_subjects.listBySubject";
-    option (kacho.iam.authz.v1.scope_filtered)   = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.permission)       = "iam.access_bindings_by_subjects.listBySubject";
+    option (corelib.authz.v1.scope_filtered)   = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Lists the privileges (enriched access bindings) attached to the specified
@@ -254,9 +254,9 @@ service AccessBindingService {
   // такие строки помечены `system`.
   rpc ListSubjectPrivileges (ListSubjectPrivilegesRequest) returns (ListSubjectPrivilegesResponse) {
     option (google.api.http) = { get: "/iam/v1/accessBindings:listSubjectPrivileges" };
-    option (kacho.iam.authz.v1.permission)       = "iam.access_bindings_by_subjects.listSubjectPrivileges";
-    option (kacho.iam.authz.v1.scope_filtered)   = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.permission)       = "iam.access_bindings_by_subjects.listSubjectPrivileges";
+    option (corelib.authz.v1.scope_filtered)   = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Lists the roles that are assignable on the specified resource.
@@ -284,20 +284,20 @@ service AccessBindingService {
   // same gate as `AccessBinding.Create` on this resource.
   rpc ListAssignableRoles (ListAssignableRolesRequest) returns (ListAssignableRolesResponse) {
     option (google.api.http) = { get: "/iam/v1/accessBindings:listAssignableRoles" };
-    option (kacho.iam.authz.v1.permission)        = "iam.access_bindings_by_resources.listAssignableRoles";
-    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (corelib.authz.v1.permission)        = "iam.access_bindings_by_resources.listAssignableRoles";
+    option (corelib.authz.v1.required_relation) = "viewer";
     // Scope-polymorphic: the FGA object type is carried by the request's
     // `resource_type` field (account|project|cluster). `object_type` is only
     // the fallback; `object_type_from_request_field` makes the gateway derive
     // the real type per request (parity with `ListByScope` —
     // a static `project` would make account/cluster-scoped reads check
     // `project:<id>` → 403).
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:                    "project"
       from_request_field:             "resource_id"
       object_type_from_request_field: "resource_type"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Lists the access bindings that carry a given Role (audit "who holds role R").
@@ -317,9 +317,9 @@ service AccessBindingService {
   // paginated.
   rpc ListByRole (ListAccessBindingsByRoleRequest) returns (ListAccessBindingsResponse) {
     option (google.api.http) = { get: "/iam/v1/accessBindings:listByRole" };
-    option (kacho.iam.authz.v1.permission)       = "iam.access_bindings_by_roles.listByRole";
-    option (kacho.iam.authz.v1.scope_filtered)   = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.permission)       = "iam.access_bindings_by_roles.listByRole";
+    option (corelib.authz.v1.scope_filtered)   = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Expands a userset on an object+relation into the concrete principals that
@@ -337,9 +337,9 @@ service AccessBindingService {
   // exist and for one that belongs to someone else.
   rpc ExpandAccess (ExpandAccessRequest) returns (ExpandAccessResponse) {
     option (google.api.http) = { get: "/iam/v1/accessBindings:expandAccess" };
-    option (kacho.iam.authz.v1.permission)       = "iam.access_bindings_by_resources.expandAccess";
-    option (kacho.iam.authz.v1.scope_filtered)   = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.permission)       = "iam.access_bindings_by_resources.expandAccess";
+    option (corelib.authz.v1.scope_filtered)   = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Lists access bindings in an account (all subjects). Requires `admin`
@@ -370,25 +370,25 @@ service AccessBindingService {
   //     its class.
   rpc ListByAccount (ListAccessBindingsByAccountRequest) returns (ListAccessBindingsResponse) {
     option (google.api.http) = { get: "/iam/v1/accounts/{account_id}/accessBindings" };
-    option (kacho.iam.authz.v1.permission)        = "iam.access_bindings_by_account.list";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.access_bindings_by_account.list";
+    option (corelib.authz.v1.required_relation) = "v_list";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "account"
       from_request_field: "account_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Lists operations for the specified access binding.
   rpc ListOperations (ListAccessBindingOperationsRequest) returns (ListAccessBindingOperationsResponse) {
     option (google.api.http) = { get: "/iam/v1/accessBindings/{access_binding_id}/operations" };
-    option (kacho.iam.authz.v1.permission)        = "iam.access_binding_operationses.listOperations";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.access_binding_operationses.listOperations";
+    option (corelib.authz.v1.required_relation) = "v_list";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "iam_access_binding"
       from_request_field: "access_binding_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Soft-revokes the specified access binding (redesign-2026 F10 IAM-1-28).
@@ -414,13 +414,13 @@ service AccessBindingService {
       metadata: "RevokeAccessBindingMetadata"
       response: "AccessBinding"
     };
-    option (kacho.iam.authz.v1.permission)        = "iam.access_bindings.revoke";
-    option (kacho.iam.authz.v1.required_relation) = "v_delete";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.access_bindings.revoke";
+    option (corelib.authz.v1.required_relation) = "v_delete";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "iam_access_binding"
       from_request_field: "access_binding_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (corelib.authz.v1.required_acr_min)  = "2";
   }
 
 }

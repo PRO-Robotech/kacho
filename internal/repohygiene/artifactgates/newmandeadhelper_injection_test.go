@@ -33,6 +33,7 @@ func nmDeadReport(scanned int, calls map[string]int) deadHelperReport {
 
 // Законный близнец: у каждого впрыскиваемого помощника есть вызывающий — МОЛЧИТ.
 func TestDeadHelperAllCalledIsSilent(t *testing.T) {
+	t.Parallel()
 	findings, cen := auditDeadInjectedHelpers(map[string]deadHelperReport{
 		"services/probe/tests/newman/scripts/gen.py": nmDeadReport(9, map[string]int{
 			"malformed_body_block": 3, "retry_until_present": 1,
@@ -50,6 +51,7 @@ func TestDeadHelperAllCalledIsSilent(t *testing.T) {
 // Это ровно та форма, что жила в дереве: таблица впрыска доставляла имя, а
 // звать его было некому.
 func TestDeadHelperInjectionUncalledHelperIsFound(t *testing.T) {
+	t.Parallel()
 	findings, cen := auditDeadInjectedHelpers(map[string]deadHelperReport{
 		"services/probe/tests/newman/scripts/gen.py": nmDeadReport(9, map[string]int{
 			"malformed_body_block": 0, "retry_until_present": 1,
@@ -76,6 +78,7 @@ func TestDeadHelperInjectionUncalledHelperIsFound(t *testing.T) {
 // Мёртвые в РАЗНЫХ наборах называются порознь: один список на всё дерево не
 // сказал бы, чей набор чинить.
 func TestDeadHelperFindingsAreGroupedBySuite(t *testing.T) {
+	t.Parallel()
 	findings, cen := auditDeadInjectedHelpers(map[string]deadHelperReport{
 		"services/a/tests/newman/scripts/gen.py": nmDeadReport(3, map[string]int{"x": 0}),
 		"services/b/tests/newman/scripts/gen.py": nmDeadReport(4, map[string]int{"y": 0}),
@@ -92,6 +95,7 @@ func TestDeadHelperFindingsAreGroupedBySuite(t *testing.T) {
 // тело гейта на этом отказывает. Без такой ветви гейт, потерявший предмет,
 // был бы вечнозелёным.
 func TestDeadHelperEmptyInjectionTableIsMeasuredNotSilent(t *testing.T) {
+	t.Parallel()
 	findings, cen := auditDeadInjectedHelpers(map[string]deadHelperReport{
 		"services/probe/tests/newman/scripts/gen.py": nmDeadReport(9, map[string]int{}),
 	})
@@ -149,6 +153,7 @@ func nmRunDeadDriver(t *testing.T, gen, caseSrc string) deadHelperReport {
 
 // Настоящий вызов считается вызовом.
 func TestDeadHelperDriverCountsARealCall(t *testing.T) {
+	t.Parallel()
 	gen := "def helper():\n    return 1\n\n\n" + strings.Replace(nmDeadGen, "alive_placeholder", "helper", 1)
 	r := nmRunDeadDriver(t, gen, "CASES = [helper()]\n")
 	if r.Calls["helper"] != 1 {
@@ -160,6 +165,7 @@ func TestDeadHelperDriverCountsARealCall(t *testing.T) {
 // Упоминание в прозе и в строке вызовом НЕ считается — иначе мёртвая копия
 // объявлялась бы живой своим же комментарием, и гейт молчал бы всегда.
 func TestDeadHelperDriverDoesNotCountProse(t *testing.T) {
+	t.Parallel()
 	gen := "def helper():\n    return 1\n\n\n" + strings.Replace(nmDeadGen, "alive_placeholder", "helper", 1)
 	caseSrc := "\"\"\"Модуль кейсов.\n\nЗдесь мог бы стоять helper(), но не стоит.\n\"\"\"\n" +
 		"# helper() тоже упоминается комментарием\n" +
@@ -181,6 +187,7 @@ func TestDeadHelperDriverDoesNotCountProse(t *testing.T) {
 // потребляет его. Без этой ветви каждый впрыскиваемый помощник считался бы
 // живым by construction — то есть гейт был бы вакуумным.
 func TestDeadHelperDriverDoesNotCountAValueReference(t *testing.T) {
+	t.Parallel()
 	gen := "def helper():\n    return 1\n\n\n" + strings.Replace(nmDeadGen, "alive_placeholder", "helper", 1)
 	r := nmRunDeadDriver(t, gen, "HOOK = helper\nCASES = []\n")
 	if r.Calls["helper"] != 0 {
@@ -200,6 +207,7 @@ func TestDeadHelperDriverDoesNotCountAValueReference(t *testing.T) {
 
 // Помощник, которого зовёт только чужой набор, находкой НЕ является.
 func TestDeadHelperCrossSuiteCallerCountsAsACaller(t *testing.T) {
+	t.Parallel()
 	findings, cen := auditDeadInjectedHelpers(map[string]deadHelperReport{
 		"services/probe/tests/newman/scripts/gen.py": {
 			Scanned: 9, CrossScanned: 4,
@@ -223,6 +231,7 @@ func TestDeadHelperCrossSuiteCallerCountsAsACaller(t *testing.T) {
 // КОНТРОЛЬ ТРЕТЬИМ ПРОГОНОМ: прежняя половина продолжает краснеть на СВОЁМ
 // предмете. Без него молчание прежней проверки неотличимо от её смерти.
 func TestDeadHelperNoCallerAnywhereIsStillFound(t *testing.T) {
+	t.Parallel()
 	findings, cen := auditDeadInjectedHelpers(map[string]deadHelperReport{
 		"services/probe/tests/newman/scripts/gen.py": {
 			Scanned: 9, CrossScanned: 4,
@@ -242,6 +251,7 @@ func TestDeadHelperNoCallerAnywhereIsStillFound(t *testing.T) {
 
 // Ось разбора: драйвер отличает свою полосу от межнаборной и НЕ складывает их.
 func TestDeadHelperDriverSeparatesTheCrossSuiteLane(t *testing.T) {
+	t.Parallel()
 	python, err := exec.LookPath("python3")
 	if err != nil {
 		t.Skipf("python3 не найден (%v): ось разбора не проверена", err)

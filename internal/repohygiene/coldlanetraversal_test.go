@@ -102,6 +102,7 @@ func degeneracyPeriod(pool, stride int) int {
 // что одна без другой не объясняет ничего: почему СЛОМАЛОСЬ при 1113 и почему
 // НЕ БЫЛО ВИДНО при 515.
 func TestColdLaneTraversalDegeneracyIsArithmetic(t *testing.T) {
+	t.Parallel()
 	const stride = 100003
 
 	// Прежняя посадка: пул 515, нитей 32 · 50 · 100. Период вырождения БОЛЬШЕ
@@ -154,6 +155,7 @@ func TestColdLaneTraversalDegeneracyIsArithmetic(t *testing.T) {
 // Чем она НЕ является — доказательством корректности; чем является — гейтом на
 // возврат ИМЕННО ТОЙ формы, которая уже стоила замера.
 func TestColdLaneWalksDisjointShardsAndCountsThem(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(repoRoot(t), coldLaneFile)
 	body, err := os.ReadFile(path)
 	require.NoError(t, err, "полосы замера нет в дереве — предмет гейта отпал: "+

@@ -151,6 +151,11 @@ func controlLine(t *testing.T, prog string) map[string]any {
 		"authz_check":        true,
 		"trusted_forwarders": true,
 		"identity_provider":  "own",
+		// Собственного REST-фронта у края НЕТ: он проксирует ЧУЖИЕ слушатели,
+		// своего gRPC-API у него нет. Величина «n/a» здесь не удобство
+		// фикстуры, а то, что этот процесс и докладывает.
+		"own_rest_public_tls":   "n/a",
+		"own_rest_internal_tls": "n/a",
 	}
 	var missing []string
 	for _, d := range judgedDimensions(prog) {
@@ -267,25 +272,12 @@ func TestPostureVerdict_InternalMTLSThreeStates(t *testing.T) {
 	}
 }
 
-// TestPostureVerdict_DevProfileStillSkipsTheDimension — граница послабления с
-// другой стороны: в dev-профиле измерение не судится вовсе, и правка выше этого
-// не изменила. Иначе «n/a проходит» могло бы означать «программа перестала
-// градуировать», а не «величина принята».
-func TestPostureVerdict_DevProfileStillSkipsTheDimension(t *testing.T) {
-	requireJQ(t)
-	prog := postureVerdictProgram(t)
-	control := controlLine(t, prog)
-
-	cmd := exec.Command("jq", "-r", "--argjson", "need_fwd", "false", prog)
-	body, _ := json.Marshal(withInternalMTLS(control, "false"))
-	cmd.Stdin = strings.NewReader(string(body))
-	cmd.Env = append(os.Environ(), "POSTURE_PROFILE=dev")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("jq не отработал: %v\n%s", err, out)
-	}
-	if strings.Contains(string(out), "internal_mtls") {
-		t.Fatalf("dev-профиль стал судить internal_mtls: %q — гейт красил бы каждый "+
-			"dev-стенд, и его перестали бы читать", strings.TrimSpace(string(out)))
-	}
-}
+// ЗДЕСЬ БЫЛА ПРОБА «в dev-профиле измерение не судится вовсе» — СНЯТА ВМЕСТЕ С
+// ПРЕДМЕТОМ (задача #2390). Профиля `dev` у гейта посадки больше нет: его довод
+// («стенд расслабляет посадку») пережил предмет, подъём заканчивается боевой
+// посадкой, и градуируются все измерения всегда.
+//
+// Что проба давала и КЕМ это теперь держится: она была вторым доказательством
+// того, что «n/a проходит» не означает «программа перестала градуировать».
+// Первое — и оставшееся — стоит рядом: то же измерение со значением "false"
+// обязано давать ОТКАЗ. Односторонняя половина снята, двусторонняя осталась.

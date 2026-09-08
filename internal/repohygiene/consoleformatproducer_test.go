@@ -81,6 +81,7 @@ var consolePrefixCallRe = regexp.MustCompile(`--prefix\s+([A-Za-z0-9._-]+)`)
 
 // TestEveryConsoleFormatCheckHasAProducer — вердикт на настоящем дереве.
 func TestEveryConsoleFormatCheckHasAProducer(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	uiRoot := filepath.Join(root, "ui-future")
 

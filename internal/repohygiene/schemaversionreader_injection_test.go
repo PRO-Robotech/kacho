@@ -58,6 +58,7 @@ func buildReadinessCheckers() []health.Checker { return nil }
 `
 
 func TestSchemaVersionReaderInjection_MissingWiringIsFoundAndTwinIsSilent(t *testing.T) {
+	t.Parallel()
 	// ── прогон 1: КОНТРОЛЬ ────────────────────────────────────────────────
 	//
 	// Два сервиса: один с набором миграций и провязкой, второй БЕЗ набора и
@@ -128,6 +129,7 @@ func TestSchemaVersionReaderInjection_MissingWiringIsFoundAndTwinIsSilent(t *tes
 // (`pkg/schemaguard`), молчание старого контроля можно было бы получить не
 // только исправностью дерева, но и мёртвым распознавателем.
 func TestSchemaVersionReaderInjection_ExistingControlStillReds(t *testing.T) {
+	t.Parallel()
 	marked := "-- +goose Up\n" + schemaguard.PointOfNoReturnMarker +
 		" снимается колонка legacy_id\nALTER TABLE a DROP COLUMN legacy_id;\n"
 	unmarked := "-- +goose Up\nALTER TABLE a DROP COLUMN legacy_id;\n"

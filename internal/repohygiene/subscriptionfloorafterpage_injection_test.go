@@ -154,6 +154,7 @@ func runFloorOrderAudit(t *testing.T, tree floorOrderTree) (
 // Здесь же утверждается и вторая половина: три законных близнеца молчат, а
 // объём осмотренного НЕ нулевой.
 func TestSubscriptionFloorOrderGateIsSilentOnTheHealthyTree(t *testing.T) {
+	t.Parallel()
 	findings, census, err := runFloorOrderAudit(t, floorOrderTree{})
 	if err != nil {
 		t.Fatalf("обход синтетики: %v", err)
@@ -186,6 +187,7 @@ func TestSubscriptionFloorOrderGateIsSilentOnTheHealthyTree(t *testing.T) {
 // Переставлены РОВНО ДВА оператора одного тела. Состав файлов, вызовы и запрос
 // те же самые, поэтому красное не может прийти ни от какого соседа.
 func TestSubscriptionFloorOrderGateFindsTheFloorTakenFirst(t *testing.T) {
+	t.Parallel()
 	findings, census, err := runFloorOrderAudit(t, floorOrderTree{floorBeforePage: true})
 	if err != nil {
 		t.Fatalf("обход синтетики: %v", err)
@@ -213,6 +215,7 @@ func TestSubscriptionFloorOrderGateFindsTheFloorTakenFirst(t *testing.T) {
 // нарушением, а невидимостью, — и перенос выборки внутрь функции молча снимал бы
 // гейт, не меняя поведения.
 func TestSubscriptionFloorOrderGateFindsItInTheInlineForm(t *testing.T) {
+	t.Parallel()
 	ok, _, err := runFloorOrderAudit(t, floorOrderTree{inlineWindow: true})
 	if err != nil {
 		t.Fatalf("обход синтетики (порядок верен): %v", err)
@@ -241,6 +244,7 @@ func TestSubscriptionFloorOrderGateFindsItInTheInlineForm(t *testing.T) {
 // предпосылочных проверок было бы неотличимо от их отсутствия — то есть «ноль
 // находок» от «ноль прочитанного».
 func TestSubscriptionFloorOrderGateRefusesAPremiselessTree(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		tree floorOrderTree

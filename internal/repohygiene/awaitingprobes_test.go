@@ -111,6 +111,7 @@ func kindsNamedByProbe(body string) []string {
 
 // TestProbesAwaitingTheirConditionExpireWhenItArrives — долг истекает от факта.
 func TestProbesAwaitingTheirConditionExpireWhenItArrives(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// ── половина первая: объявлен ли владелец журнала хоть где-нибудь ────────

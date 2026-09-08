@@ -74,6 +74,7 @@ var tfModuleExempt = map[string]string{
 }
 
 func TestEveryProviderResourceIsDescribedByAModule(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	registered := registeredTerraformResources(t, root)
@@ -226,6 +227,7 @@ func resourceTypesInHCL(src string) []string {
 // блок в том же тексте обязан быть найден. Литерал написан так, чтобы законный и незаконный
 // близнецы отличались ровно одним признаком — знаком комментария.
 func TestModuleResourceScanReadsDeclarationsNotProse(t *testing.T) {
+	t.Parallel()
 	const src = `
 resource "kacho_vpc_network" "this" {
   name = "netto"

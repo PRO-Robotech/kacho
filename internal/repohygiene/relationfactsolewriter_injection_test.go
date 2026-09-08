@@ -33,6 +33,7 @@ func findFactMutations(body string) []string {
 // TestR7_3_27_InjectionRedOnASecondProducer — завели писателя факта из кода →
 // признак КРАСНЕЕТ.
 func TestR7_3_27_InjectionRedOnASecondProducer(t *testing.T) {
+	t.Parallel()
 	body := `package pg
 
 const backfill = ` + "`" + `INSERT INTO kaname.relation_fact (object_type, object_id, relation, subject)
@@ -51,6 +52,7 @@ const backfill = ` + "`" + `INSERT INTO kaname.relation_fact (object_type, objec
 // Без этой половины гейт краснел бы на самой реляционной форме: она читает эту
 // таблицу на КАЖДОМ вопросе о доступе, и первый же ложный срабат его отключил бы.
 func TestR7_3_27_InjectionSilentOnAReader(t *testing.T) {
+	t.Parallel()
 	body := `package relverdict
 
 const groundsSQL = ` + "`" + `SELECT f.relation, f.subject
@@ -65,6 +67,7 @@ const groundsSQL = ` + "`" + `SELECT f.relation, f.subject
 
 // TestR7_3_27_InjectionSilentWithoutTheTable — файл, не называющий таблицу вовсе.
 func TestR7_3_27_InjectionSilentWithoutTheTable(t *testing.T) {
+	t.Parallel()
 	if got := findFactMutations("package pg\n\nconst q = `INSERT INTO kaname.accounts (id) VALUES ($1)`\n"); len(got) != 0 {
 		t.Fatalf("признак краснеет на записи в ЧУЖУЮ таблицу (%v)", got)
 	}

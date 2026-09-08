@@ -73,6 +73,7 @@ func classifyForProbe(t *testing.T, src string) migratorForm {
 // TestMigratorFormGateSpeaksOnADefect — гейт КРАСНЕЕТ на каждой настоящей форме
 // дефекта и НАЗЫВАЕТ координату.
 func TestMigratorFormGateSpeaksOnADefect(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -122,6 +123,7 @@ func TestMigratorFormGateSpeaksOnADefect(t *testing.T) {
 // трогает. Без этой половины он ловил бы форму записи, а не существо, и первый
 // же ложный срабат его отключил бы.
 func TestMigratorFormGateStaysSilentOnLegitimateTwins(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string

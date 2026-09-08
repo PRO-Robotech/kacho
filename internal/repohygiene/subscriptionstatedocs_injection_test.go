@@ -99,6 +99,7 @@ func judgeSynthetic(t *testing.T, root, page string) []string {
 //
 // Это ровно тот дефект, что приехал слиянием линии эпика и жил в стволе.
 func TestSubscriptionStateDocsGateCatchesAPageThatDeniesAProducedState(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	syntheticJournal(t, root, "vpc", true, false)
 
@@ -127,6 +128,7 @@ func TestSubscriptionStateDocsGateCatchesAPageThatDeniesAProducedState(t *testin
 // Обратная сторона первой оси, и она про клиента дороже: он отберёт по меткам,
 // которых не получал, и увидит пустой список вместо своих ресурсов.
 func TestSubscriptionStateDocsGateCatchesAPagePromisingStateThatIsNotProduced(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	syntheticJournal(t, root, "storage", false, false)
 
@@ -154,6 +156,7 @@ func TestSubscriptionStateDocsGateCatchesAPagePromisingStateThatIsNotProduced(t 
 // Без этой оси гейт был бы сверкой по подстроке и краснел бы на объявлениях,
 // которые ОБЪЯСНЯЮТ, почему состояния нет, — то есть на собственном объяснении.
 func TestSubscriptionStateDocsGateJudgesTheNodeNotTheProse(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	syntheticJournal(t, root, "nlb", false, true)
 
@@ -183,6 +186,7 @@ func TestSubscriptionStateDocsGateJudgesTheNodeNotTheProse(t *testing.T) {
 // без неё шестой владелец и переименование пятого прошли бы молча, оставив
 // строку вне наблюдения.
 func TestSubscriptionStateDocsGateHoldsTheBijection(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	syntheticJournal(t, root, "compute", true, false)
 
@@ -218,6 +222,7 @@ func TestSubscriptionStateDocsGateHoldsTheBijection(t *testing.T) {
 // Без этой находки шестой владелец остался бы ВНЕ НАБЛЮДЕНИЯ молча: гейт не
 // нашёл бы для него строки и не сказал бы об этом ничего.
 func TestSubscriptionStateDocsGateCatchesAServiceOutsideTheOwnerVocabulary(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	syntheticJournal(t, root, "geo", true, false)
 
@@ -240,6 +245,7 @@ func TestSubscriptionStateDocsGateCatchesAServiceOutsideTheOwnerVocabulary(t *te
 // возвращает пустоту, а проба на этом падает (`t.Fatal` в самом гейте), а не
 // одобряет любую страницу.
 func TestSubscriptionStateDocsReaderFindsNoRowsWhenTheSectionIsGone(t *testing.T) {
+	t.Parallel()
 	page := syntheticPage(map[string]string{"vpc": claimStateful}, []string{"vpc"})
 	if got := len(subscriptionOwnerRows(page)); got != 1 {
 		t.Fatalf("контроль: на целой странице прочитано строк %d, ожидалась 1 — разбор "+
@@ -304,6 +310,7 @@ func syntheticJournalPackingBehindACall(t *testing.T, root, service string, gene
 // краснеет); помощник не упаковывает — «не собирает» (наоборот). Без второй
 // половины ось доказывала бы лишь, что гейт стал сговорчивее.
 func TestSubscriptionStateDocsGateFollowsPackingBehindAPackageCall(t *testing.T) {
+	t.Parallel()
 	for _, form := range []struct {
 		name    string
 		generic bool
@@ -364,6 +371,7 @@ func TestSubscriptionStateDocsGateFollowsPackingBehindAPackageCall(t *testing.T)
 // на вид исправным. Это тот же класс, что привёл к этой правке, поэтому
 // предпосылка истекает сама, а не держится памятью.
 func TestSubscriptionStateDocsGateSaysWhenItsOwnPremiseBreaks(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	syntheticJournal(t, root, "vpc", true, false)
 

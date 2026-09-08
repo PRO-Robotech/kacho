@@ -88,6 +88,7 @@ func fldcovRun(t *testing.T, root string, aliases map[string]string) (
 const fldcovPageComplete = "<code>id</code> <code>displayName</code> <code>aSpec</code> <code>part</code>\n"
 
 func TestInjectionFieldCoverageCompletePageIsSilent(t *testing.T) {
+	t.Parallel()
 	root := fldcovWriteTree(t, "demo", "demo", fldcovPageComplete)
 	findings, census := fldcovRun(t, root, nil)
 	if len(findings) != 0 {
@@ -110,6 +111,7 @@ func TestInjectionFieldCoverageCompletePageIsSilent(t *testing.T) {
 }
 
 func TestInjectionFieldCoverageMissingFieldIsAFinding(t *testing.T) {
+	t.Parallel()
 	root := fldcovWriteTree(t, "demo", "demo", "<code>id</code> <code>aSpec</code> <code>part</code>\n")
 	findings, _ := fldcovRun(t, root, nil)
 	if len(findings) != 1 {
@@ -124,6 +126,7 @@ func TestInjectionFieldCoverageMissingFieldIsAFinding(t *testing.T) {
 
 // Ветвь `oneof` — такое же поле контракта: вызывающий получает её тем же чтением.
 func TestInjectionFieldCoverageOneofArmIsJudged(t *testing.T) {
+	t.Parallel()
 	root := fldcovWriteTree(t, "demo", "demo", "<code>id</code> <code>displayName</code> <code>part</code>\n")
 	findings, _ := fldcovRun(t, root, nil)
 	if len(findings) != 1 || findings[0].Field != "aSpec" {
@@ -134,6 +137,7 @@ func TestInjectionFieldCoverageOneofArmIsJudged(t *testing.T) {
 // Проза упоминанием ПОЛЯ не является: гейт, принимавший бы её, зеленел бы на
 // любой странице, где слово встречается в предложении.
 func TestInjectionFieldCoverageProseIsNotANaming(t *testing.T) {
+	t.Parallel()
 	root := fldcovWriteTree(t, "demo", "demo",
 		"<code>id</code> <code>aSpec</code> <code>part</code>\nПоле displayName описано прозой и только прозой.\n")
 	findings, _ := fldcovRun(t, root, nil)
@@ -145,6 +149,7 @@ func TestInjectionFieldCoverageProseIsNotANaming(t *testing.T) {
 // Исходная форма контракта тоже засчитывается: страница вправе называть поле
 // так, как оно объявлено.
 func TestInjectionFieldCoverageContractFormCounts(t *testing.T) {
+	t.Parallel()
 	root := fldcovWriteTree(t, "demo", "demo",
 		"<code>id</code> <code>display_name</code> `aSpec` <code>part</code>\n")
 	findings, _ := fldcovRun(t, root, nil)
@@ -156,6 +161,7 @@ func TestInjectionFieldCoverageContractFormCounts(t *testing.T) {
 // Страница, которой не отвечает сообщение домена, ВНЕ ОХВАТА, а не находка:
 // обзор, операции, пределы. Число печатает перепись.
 func TestInjectionFieldCoveragePageWithoutAMessageIsOutOfScope(t *testing.T) {
+	t.Parallel()
 	root := fldcovWriteTree(t, "demo", "demo", fldcovPageComplete)
 	apiDir := filepath.Join(root, "services", "demo", "docs", "content", "api")
 	if err := os.WriteFile(filepath.Join(apiDir, "overview.mdx"), []byte("обзор\n"), 0o600); err != nil {
@@ -173,6 +179,7 @@ func TestInjectionFieldCoveragePageWithoutAMessageIsOutOfScope(t *testing.T) {
 // Домен контракта назван иначе, чем каталог сервиса: пара берётся из карты
 // псевдонимов, и без неё страница молча ушла бы вне охвата.
 func TestInjectionFieldCoverageDomainAliasIsHonoured(t *testing.T) {
+	t.Parallel()
 	root := fldcovWriteTree(t, "otherdomain", "shortname", "<code>id</code> <code>aSpec</code> <code>part</code>\n")
 
 	if findings, census := fldcovRun(t, root, map[string]string{"shortname": "otherdomain"}); len(findings) != 1 ||
@@ -192,6 +199,7 @@ func TestInjectionFieldCoverageDomainAliasIsHonoured(t *testing.T) {
 // Пустой обход — ОТКАЗ, а не «находок ноль»: иначе переезд каталога читался бы
 // как чистое дерево.
 func TestInjectionFieldCoverageEmptyWalkRefuses(t *testing.T) {
+	t.Parallel()
 	t.Run("страниц ноль", func(t *testing.T) {
 		root := fldcovWriteTree(t, "demo", "demo", fldcovPageComplete)
 		if err := os.Remove(filepath.Join(root, "services", "demo", "docs", "content", "api", "thing.mdx")); err != nil {
@@ -216,6 +224,7 @@ func TestInjectionFieldCoverageEmptyWalkRefuses(t *testing.T) {
 // обязано стать находкой. Без этой оси молчание гейта на снятом поле было бы
 // неотличимо от молчания гейта, не видящего полей вовсе.
 func TestInjectionFieldCoverageRetiredMarkerIsWhatBuysTheSilence(t *testing.T) {
+	t.Parallel()
 	root := fldcovWriteTree(t, "demo", "demo", fldcovPageComplete)
 	proto := filepath.Join(root, "proto", "kacho", "cloud", "demo", "v1", "thing.proto")
 	raw, err := os.ReadFile(proto) // #nosec G304 -- путь построен этим же тестом

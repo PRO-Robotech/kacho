@@ -27,6 +27,7 @@ func clientTruthIAMModuleSetOptions(t *testing.T) ClientTruthIAMModuleSetOptions
 // Способность падать доказывает не этот прогон, а инъекция
 // (`clienttruth_iam_moduleset_injection_test.go`): здесь только вердикт.
 func TestClientTruthIAMModuleSetEnumerationsAreComplete(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditClientTruthIAMModuleSet(clientTruthIAMModuleSetOptions(t), &log)
 	if err != nil {

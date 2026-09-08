@@ -515,6 +515,7 @@ func pipefailShellSources(t *testing.T, root string) map[string]string {
 
 // TestPipefailVerdictNeverComesFromAPipe — гейт задачи #658.
 func TestPipefailVerdictNeverComesFromAPipe(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	sources := pipefailShellSources(t, root)
 

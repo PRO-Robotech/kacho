@@ -20,6 +20,7 @@ import (
 // скрыло бы ровно тот случай, ради которого гейт заведён, — службу, у которой
 // подъёма нет вовсе.
 func TestQuotaSyncStartsUnderTheDeclaration(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	consumers, err := quotaConsumers(root)

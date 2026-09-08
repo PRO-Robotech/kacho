@@ -223,6 +223,60 @@ else
 fi
 restore
 
+echo "== ось 8: разбор импортов ослеп — замыкание молча пусто =="
+# Возвращается ИСХОДНЫЙ дефект: перечень корней склеен знаком `|` и подставлен
+# в s-команду sed с тем же знаком в разделителе. sed умирает на каждом вызове,
+# замыкание возвращает пустоту, стадия собирается неполной — а перепись честно
+# печатает «добрано: (нечего)», то есть форму, НЕОТЛИЧИМУЮ от «ничего не нужно».
+python3 - "$LIB" <<'PYX'
+import sys
+p = sys.argv[1]; s = open(p, encoding='utf-8').read()
+old = '    | awk -F\'"\' \'{ n = split($2, seg, "/"); if (n >= 4 && seg[2] == "cloud" && seg[3] != "") print seg[3] }\' \\'
+new = '    | sed -E "s|.*\\"(${alt})/cloud/([^/\\"]+)/.*|\\\\2|" \\'
+assert old in s, 'ось 8: место инъекции не найдено'
+open(p, 'w', encoding='utf-8').write(s.replace(old, new, 1))
+PYX
+gate_axis "разбор импортов ослеп — гейт краснеет и называет ПРИЧИНУ, а не симптом" \
+    red "разбор импортов дерева"
+restore
+python3 - "$LIB" <<'PYX'
+import sys
+p = sys.argv[1]; s = open(p, encoding='utf-8').read()
+old = '    | awk -F\'"\' \'{ n = split($2, seg, "/"); if (n >= 4 && seg[2] == "cloud" && seg[3] != "") print seg[3] }\' \\'
+new = '    | awk -F\'"\' \'{ print $2 }\' | cut -d/ -f3 \\'
+assert old in s, 'близнец 8: место правки не найдено'
+open(p, 'w', encoding='utf-8').write(s.replace(old, new, 1))
+PYX
+gate_axis "близнец 8: то же извлечение другой записью — гейт молчит" green
+restore
+
+echo "== ось 9: распознаватель эмитированных доменов слеп на втором корне =="
+# Возвращается ИСХОДНЫЙ дефект: корень сверяется с ЛИТЕРАЛОМ `kacho` вместо
+# объявленного перечня. Домены второго корня выпадают из перечня ЦЕЛИКОМ, и
+# утверждение «все эмитированные объявлены» (A7) выполняется тем вернее, чем
+# шире слепота, — поэтому ловит это только A10, у которой независимая половина.
+python3 - "$LIB" <<'PYX'
+import sys
+p = sys.argv[1]; s = open(p, encoding='utf-8').read()
+old = '        { m = split($0, seg, "."); if (m >= 3 && (seg[1] in known) && seg[2] == "cloud" && seg[3] != "") print seg[1] "\\t" seg[3] }'
+new = '        { m = split($0, seg, "."); if (m >= 3 && seg[1] == "kacho" && seg[2] == "cloud" && seg[3] != "") print seg[1] "\\t" seg[3] }'
+assert old in s, 'ось 9: место инъекции не найдено'
+open(p, 'w', encoding='utf-8').write(s.replace(old, new, 1))
+PYX
+gate_axis "распознаватель прибит к одному корню — гейт краснеет и называет корень" \
+    red "распознаватель на нём слеп"
+restore
+python3 - "$LIB" <<'PYX'
+import sys
+p = sys.argv[1]; s = open(p, encoding='utf-8').read()
+old = 'KACHO_PROTO_ROOTS=(kacho kaname)'
+new = 'KACHO_PROTO_ROOTS=(kaname kacho)'
+assert old in s, 'близнец 9: место правки не найдено'
+open(p, 'w', encoding='utf-8').write(s.replace(old, new, 1))
+PYX
+gate_axis "близнец 9: тот же набор корней в другом порядке — гейт молчит" green
+restore
+
 echo "== контроль в обратную сторону: дерево восстановлено =="
 gate_axis "восстановленное дерево — снова зелено" green
 

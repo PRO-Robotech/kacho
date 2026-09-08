@@ -48,6 +48,7 @@ SELECT m.object_id
 
 // TestG6RedOnACommaJoinedRead — гейт видит запятую как соединение.
 func TestG6RedOnACommaJoinedRead(t *testing.T) {
+	t.Parallel()
 	found, c := auditInjectedSQL(t, commaJoinedSQL)
 	var named bool
 	for _, f := range found {
@@ -85,6 +86,7 @@ func auditInjectedSQL(t *testing.T, lit string) ([]enumFinding, enumCensus) {
 
 // TestG6RedOnAReadWithNoBoundToTheSubject — гейт краснеет и НАЗЫВАЕТ координату.
 func TestG6RedOnAReadWithNoBoundToTheSubject(t *testing.T) {
+	t.Parallel()
 	found, c := auditInjectedSQL(t, unboundedMirrorSQL)
 	if len(found) == 0 {
 		t.Fatalf("чтение зеркала без привязки к предмету запроса находкой не признано "+
@@ -105,6 +107,7 @@ func TestG6RedOnAReadWithNoBoundToTheSubject(t *testing.T) {
 
 // TestG6SilentOnTheSameReadOnceBound — вторая сторона инъекции.
 func TestG6SilentOnTheSameReadOnceBound(t *testing.T) {
+	t.Parallel()
 	for _, tw := range []struct{ name, sql, why string }{
 		{"то же чтение с привязкой к цепи областей", boundedMirrorSQL,
 			"привязка есть — стоимость принадлежит запросу, а не набору"},
@@ -129,6 +132,7 @@ func TestG6SilentOnTheSameReadOnceBound(t *testing.T) {
 // читает, обязано по-прежнему судиться как чтение — иначе обход цепи областей
 // (он устроен ровно так) выпал бы из-под гейта целиком.
 func TestVerdictEnumerationLateralRuleAddsOnlyWhatIsAnchorByConstruction(t *testing.T) {
+	t.Parallel()
 	readsATable := "SELECT 1 FROM x CROSS JOIN LATERAL (\n" +
 		"  SELECT pe.parent_type FROM kaname.resource_scope_edge pe\n" +
 		"   WHERE pe.object_type = s.s_type) e"

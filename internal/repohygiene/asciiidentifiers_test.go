@@ -46,6 +46,7 @@ import (
 // заведении гейта, занизила счёт на четверть — она не увидела имён из
 // деструктуризации. Разбор видит каждое объявленное имя by construction.
 func TestIdentifiersAreASCII(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	out, err := gitenv.Command(root, "ls-files", "-z", "*.go").Output()
@@ -131,6 +132,7 @@ func nonASCIIIdents(name string, src []byte) (seen int, findings []string, err e
 // латинские», и «разбор ничего не увидел». Обе стороны утверждаются по каждой
 // оси — дефект обязан находиться, законный близнец обязан молчать.
 func TestIdentifiersASCIIGateTellsNameFromText(t *testing.T) {
+	t.Parallel()
 	const withDefect = `package p
 
 func собрать(вход string) string { return вход }

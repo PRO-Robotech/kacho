@@ -209,6 +209,7 @@ func inspectBootRoleVerbReseed(filename, src string) (bootReseedReport, error) {
 // TestIAMRV107_BootReportsRoleVerbReseedFailureAtErrorLevel — отказ пересчёта
 // проекции роли сообщается оператору уровнем `Error` из собственной полосы.
 func TestIAMRV107_BootReportsRoleVerbReseedFailureAtErrorLevel(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	path := root + "/" + bootCompositionRoot
 	b, err := os.ReadFile(path) // #nosec G304 -- путь из этого же дерева

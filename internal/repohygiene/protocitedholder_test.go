@@ -13,6 +13,7 @@ import (
 // TestProtoContractsCiteOnlyHoldersThatExist — координата, названная
 // комментарием контракта, разрешается в составе дерева.
 func TestProtoContractsCiteOnlyHoldersThatExist(t *testing.T) {
+	t.Parallel()
 	tree := newTrackedTree(t, repoRoot(t))
 	c, err := SurveyProtoCitedHolders(tree.Tree)
 	if err != nil {
@@ -32,6 +33,7 @@ func TestProtoContractsCiteOnlyHoldersThatExist(t *testing.T) {
 // доказанная на СИНТЕТИЧЕСКОМ дереве: правка настоящих контрактов ради пробы
 // оборвала бы соседнюю сессию в том же дереве.
 func TestProtoCitedHolders_CanFailAndStaysSilent(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name     string
 		contract string

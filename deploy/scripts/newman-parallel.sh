@@ -194,6 +194,7 @@ kubectl -n "$NS" port-forward svc/kaname "$IAM_REGTOKEN_PORT:9096" >/tmp/e2e-pp-
 # «условия нет», а не «проброс не встал», и объявить его ожидаемым значило бы
 # уронить прогон блоком живости на предмете, которого в этой посадке не бывает.
 OWN_FRONT_ENV_ARGS=()
+OWN_FRONT_TLS_ARGS=()   # --ssl-client-* для взаимного ребра внутреннего фронта
 own_front_forward() {  # <public|internal> <локальный порт> <имя переменной проб>
   local front="$1" local_port="$2" var="$3" addr scheme port svc
   if ! addr="$(python3 "$SCRIPT_DIR/own-rest-front-address.py" "$front" --namespace "$NS")"; then
@@ -205,6 +206,34 @@ own_front_forward() {  # <public|internal> <локальный порт> <имя
   PF_PIDS+=($!); PF_WHAT+=("$local_port|$var → svc/$svc (:$port, $scheme)|/tmp/e2e-pp-$var.log")
   OWN_FRONT_ENV_ARGS+=(--env-var "$var=$scheme://127.0.0.1:$local_port")
   echo "[parallel] собственный фронт: $var → svc/$svc :$port ($scheme) на 127.0.0.1:$local_port"
+
+  # ВНУТРЕННИЙ фронт требует ПРОВЕРЕННОГО клиентского листа: ребро переведено во
+  # взаимный режим, и рукопожатие без листа не состоится вовсе — запрос не
+  # уходит, а прогонщик видит «ответа нет», а не отказ по существу.
+  #
+  # Лист берётся у ПОСАДКИ, как и адрес: тот же идиом, что у соседнего
+  # прогонщика, и по той же причине — служба принимает любой лист, подписанный
+  # внутренним центром, а выписывать его сюда значило бы завести вторую правду
+  # о том, чем сегодня удостоверяются.
+  #
+  # Секрета нет — флаги НЕ добавляются: это «условие не создано», и кейс скажет
+  # об этом сам третьим исходом. Подсовывать лист, которого посадка не давала,
+  # значило бы позеленеть на непроверенном.
+  if [ "$front" = internal ] && [ "${#OWN_FRONT_TLS_ARGS[@]}" -eq 0 ]; then
+    if kubectl -n "$NS" get secret api-gateway-client-tls >/dev/null 2>&1; then
+      OWN_FRONT_CERT_DIR="$(mktemp -d)"; TMP_DIRS+=("$OWN_FRONT_CERT_DIR")
+      kubectl -n "$NS" get secret api-gateway-client-tls -o jsonpath='{.data.tls\.crt}' \
+        | base64 -d > "$OWN_FRONT_CERT_DIR/client.crt"
+      kubectl -n "$NS" get secret api-gateway-client-tls -o jsonpath='{.data.tls\.key}' \
+        | base64 -d > "$OWN_FRONT_CERT_DIR/client.key"
+      chmod 600 "$OWN_FRONT_CERT_DIR"/*
+      OWN_FRONT_TLS_ARGS=(--ssl-client-cert "$OWN_FRONT_CERT_DIR/client.crt"
+                          --ssl-client-key  "$OWN_FRONT_CERT_DIR/client.key")
+      echo "[parallel] внутренний фронт: клиентский лист взят из secret/api-gateway-client-tls"
+    else
+      echo "[parallel] внутренний фронт: секрета листа нет — кейсы скажут «условие не создано» сами"
+    fi
+  fi
 }
 own_front_forward public   "$OWN_REST_PORT"           ownRestBaseUrl
 own_front_forward internal "$OWN_INTERNAL_REST_PORT"  ownInternalRestBaseUrl
@@ -509,6 +538,7 @@ launch_wave() {  # $@ = суиты волны; одновременно испо
         --env-var "providerPublicBaseUrl=http://localhost:$HYDRA_PORT" \
         --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
         "${OWN_FRONT_ENV_ARGS[@]}" \
+        ${OWN_FRONT_TLS_ARGS[@]+"${OWN_FRONT_TLS_ARGS[@]}"} \
         "${OPT_ENV_ARR[@]}" \
         >"$d/out/suite.log" 2>&1; echo "$?" > "$d/out/suite.rc" ) &
     SUITE_PID[$svc]=$!
@@ -669,7 +699,7 @@ fi
 echo
 # ─── Verdict: RAW (what newman reported) + GATED (what CI grades) ────────────
 # Local runners used to grade on RAW only, while CI graded through
-# services/iam/tests/newman/scripts/assert-suites-green.sh — so the two disagreed by
+# tests/newman/scripts/assert-suites-green.sh — so the two disagreed by
 # construction. Both now grade with the same script.
 #
 # The example that used to stand here is worth keeping as a warning rather than as
@@ -682,7 +712,7 @@ echo
 # evidence. The endpoint is now forwarded (GW_TLS_PORT) so the probes execute, and the
 # gate reports an unanswered request as UNANSWERED instead of subtracting it.
 GATE="${GATE:-true}"
-GATE_SCRIPT="$REPO_ROOT/services/iam/tests/newman/scripts/assert-suites-green.sh"
+GATE_SCRIPT="$REPO_ROOT/tests/newman/scripts/assert-suites-green.sh"
 
 echo "===== PER-SUITE TOTALS (nothing is subtracted; the gate below agrees by construction) ====="
 printf "%-12s %10s %10s %10s\n" "SUITE" "ASSERT-F" "REQ-F" "REPORTS"
@@ -714,9 +744,41 @@ if [ -n "$zero_report_suites" ]; then
 fi
 if [ "$RC" -eq 0 ]; then echo "[parallel] runner verdict: ALL SUITES GREEN"; else echo "[parallel] runner verdict: one or more suites RED (see per-suite out/summary.txt + out/*.json)"; fi
 
-if [ "$GATE" != "true" ] || [ ! -f "$GATE_SCRIPT" ]; then
-  echo "[parallel] CI gate skipped (GATE=$GATE, script=$GATE_SCRIPT) — grading on the per-suite roll-up"
+# ─────────────────────────────────────────────────────────────────────────────
+# ДВА РАЗНЫХ СОСТОЯНИЯ, И РАНЬШЕ ОНИ БЫЛИ ОДНИМ УСЛОВИЕМ
+#
+# `GATE != true` — гейт выключен РУЧКОЙ. Это решение оператора, оно объявлено, и
+# сырой счёт по суитам здесь законный вердикт.
+#
+# `! -f "$GATE_SCRIPT"` — гейта НЕТ ПО АДРЕСУ. Это не решение и не вердикт: три
+# исхода, перепись исполненности и отказ на немом отчёте не исполнились, а
+# прогон при этом выглядит ровно так же, как прогон с исполненным гейтом. Гейт
+# один на все наборы и лежит ОТДЕЛЬНО от суит (tests/newman/scripts): ветвь
+# «файла нет ⇒ пропущено» была бы послаблением без предиката снятия —
+# после любого переезда гейта её условие стало бы истинным навсегда.
+#
+# Поэтому исходов теперь три, и код возврата у каждого свой:
+#
+#	0/RC  вердикт вынесен (гейтом либо, при GATE!=true, сырым счётом);
+#	1     гейт вынес красный вердикт;
+#	2     ГЕЙТА НЕТ — «не выполнилось»: не зелено, не красно, вердикта нет вовсе.
+#
+# Код 2 — СОБСТВЕННЫЙ словарь этого прогонщика: им он уже дважды объявляет
+# «ПРОГОН НЕДЕЙСТВИТЕЛЕН» (не встал проброс, упал посев), и конвейер читает
+# именно его. Заводить здесь третий код значило бы завести ВТОРОЙ словарь для
+# той же категории — тот, которого никто не читает: ветвь конвейера сверяет
+# ровно 2, и код 3 прошёл бы мимо неё молча.
+if [ "$GATE" != "true" ]; then
+  echo "[parallel] CI gate switched OFF by the knob (GATE=$GATE; script=$GATE_SCRIPT) — grading on the per-suite roll-up"
   exit "$RC"
+fi
+if [ ! -f "$GATE_SCRIPT" ]; then
+  echo "[parallel] DID NOT RUN: the verdict gate is not at $GATE_SCRIPT." >&2
+  echo "           This is NOT a skip and NOT a verdict: nothing here says the suites are green." >&2
+  echo "           The per-suite roll-up above is a RAW count — it has no three-outcome split," >&2
+  echo "           no executed-vs-declared census and no refusal on a mute report." >&2
+  echo "           Fix the path or switch the gate off deliberately with GATE=false." >&2
+  exit 2
 fi
 
 echo

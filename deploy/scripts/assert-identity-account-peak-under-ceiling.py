@@ -93,10 +93,31 @@ QUOTA_WHERE = {"scope": "DEFAULT", "scope_id": "", "kind": "iam.account",
                "withdrawn_at": "NULL"}
 
 # Затравка миграции — оператор ОДНОЙ СТРОКОЙ со списком колонок. Форма измерена,
-# а не предположена: в каталоге 449 операторов вставки, все этой формы, ноль без
-# списка колонок и ноль `INSERT … SELECT`. Оператор, который разбор НЕ ПРОЧЁЛ, —
+# а не предположена: в секции НАКАТА 449 операторов вставки, все этой формы, ноль
+# без списка колонок и ноль `INSERT … SELECT`. Оператор, который разбор НЕ ПРОЧЁЛ, —
 # находка, а не молчание: иначе новая форма записи увела бы величину из-под
 # наблюдения, оставив гейт зелёным.
+#
+# ПОПУЛЯЦИЯ — ТОЛЬКО НАКАТ (`-- +goose Up`), И ЭТО НЕ СУЖЕНИЕ РАДИ ЗЕЛЁНОГО.
+# Оператор в ОТКАТЕ затравкой действующей величины НЕ является: он восстанавливает
+# снятое, если накат отменят, и ни в одном развёрнутом дереве его строк нет. Читать
+# его наравне с накатом значит мерить величину, которой не существует, — популяция
+# шире предмета.
+#
+# Дефект был ЛАТЕНТНЫМ, а не новым: секцию разбор не различал никогда, и число 449
+# выше получено на каталоге, где операторов отката было РОВНО НОЛЬ. То есть премиса
+# «все этой формы» держалась совпадением, а не устройством. Первый же оператор в
+# откате (миграция снятия шести несписываемых видов) это обнажил — честным отказом,
+# как и задумано.
+#
+# Замер на дереве: накат 449 · откат 1 · строк `kaname.limits` из наката 33, из
+# отката 0. Сужение популяции читаемую величину НЕ меняет — оно снимает с
+# наблюдения то, что наблюдать не следовало.
+#
+# Пропуск отката МОЛЧАЛИВЫМ не делается: он идёт в перепись отдельным числом,
+# поэтому «ноль прочитанного отката» отличимо от «отката не встретилось».
+_GOOSE_UP = re.compile(r"^--\s*\+goose\s+Up\b", re.I)
+_GOOSE_DOWN = re.compile(r"^--\s*\+goose\s+Down\b", re.I)
 _INSERT = re.compile(
     r"^INSERT\s+INTO\s+(?P<table>[\w.]+)\s*\((?P<cols>[^)]*)\)\s*"
     r"VALUES\s*\((?P<vals>.*)\)\s*;\s*$")
@@ -224,7 +245,7 @@ def seeded_rows(root: str, table: str) -> tuple[list[dict[str, str]], dict[str, 
             f"каталога миграций iam нет: {d} — читать величину неоткуда, и это "
             f"ОТКАЗ, а не «чисто»")
     files = sorted(f for f in os.listdir(d) if f.endswith(".sql"))
-    census = {"files": len(files), "inserts": 0, "rows": 0}
+    census = {"files": len(files), "inserts": 0, "rows": 0, "inserts_down": 0}
     if not files:
         raise PremiseError(
             f"в {IAM_MIGRATIONS} ноль файлов .sql — обход пуст, вердикт был бы "
@@ -233,8 +254,17 @@ def seeded_rows(root: str, table: str) -> tuple[list[dict[str, str]], dict[str, 
     census["bodies"] = 0
     for name in files:
         body: str | None = None
+        # До первой метки секции считаем НАКАТОМ: файл без меток целиком
+        # накатный, и обратное решение молча выбросило бы его затравки —
+        # ровно та потеря, против которой этот разбор и написан.
+        in_down = False
         with open(os.path.join(d, name), encoding="utf-8") as fh:
             for lineno, line in enumerate(fh, 1):
+                if body is None:
+                    if _GOOSE_DOWN.match(line.strip()):
+                        in_down = True
+                    elif _GOOSE_UP.match(line.strip()):
+                        in_down = False
                 tags = _DOLLAR_TAG.findall(line)
                 inside_at_start = body is not None
                 for t in tags:
@@ -247,6 +277,10 @@ def seeded_rows(root: str, table: str) -> tuple[list[dict[str, str]], dict[str, 
                     continue          # тело функции — не затравка
                 line = line.strip()
                 if not _INSERT_HEAD.match(line):
+                    continue
+                if in_down:
+                    # Откат — не затравка. Считаем, чтобы пропуск был ВИДЕН.
+                    census["inserts_down"] += 1
                     continue
                 census["inserts"] += 1
                 m = _INSERT.match(line)
@@ -584,8 +618,9 @@ def main(argv=None) -> int:
               f"пик {ipeak}, запас {ceiling - ipeak}")
     mc = census["migrations"]
     print(f"величина потолка: осмотрено файлов миграций {mc['files']}, операторов "
-          f"затравки {mc['inserts']}, из них строк {QUOTA_TABLE} {mc['rows']}, "
-          f"подошло под условие {mc['matched']}")
+          f"затравки (накат) {mc['inserts']}, из них строк {QUOTA_TABLE} {mc['rows']}, "
+          f"подошло под условие {mc['matched']}; операторов отката пропущено "
+          f"{mc['inserts_down']} — откат затравкой действующей величины не является")
     print(f"потолок {ceiling} ({QUOTA_TABLE} @ {IAM_MIGRATIONS}); "
           f"наибольший пик одновременно живых "
           f"{peak}, наименьший запас {ceiling - peak}")
@@ -837,6 +872,63 @@ def self_test() -> int:
             note(False, f"{label}: прошло молча (вернул {got})")
         except PremiseError:
             note(True, f"{label}: ОТКАЗ")
+
+    # ── ПОПУЛЯЦИЯ: НАКАТ СУДИТСЯ, ОТКАТ — НЕТ
+    #
+    # Каждый случай меняет РОВНО ОДИН факт против законного близнеца — СЕКЦИЮ, —
+    # поэтому красное нельзя списать на форму записи, а зелёное на её знакомость.
+    print("── затравка читается из НАКАТА; откат затравкой не является")
+
+    _UP = "-- +goose Up\n"
+    _DOWN = "-- +goose Down\n"
+
+    # Законный близнец: тот же оператор в накате — читается.
+    try:
+        note(read_ceiling(_tree(_UP + _CANON)) == 5, "накат с меткой → 5")
+    except PremiseError as exc:
+        note(False, f"накат с меткой: {exc}")
+
+    # ОДИН изменённый факт — секция. Величины в откате НЕТ: строк отката нет ни
+    # в одном развёрнутом дереве, и прочитать их значило бы назвать потолком
+    # число, которого не существует.
+    try:
+        got = read_ceiling(_tree(_UP + _DOWN + _CANON))
+        note(False, f"затравка в откате прочитана как {got} — популяция шире предмета")
+    except PremiseError:
+        note(True, "затравка ТОЛЬКО в откате → величины нет (ОТКАЗ)")
+
+    # Накат ПОСЛЕ отката снова судится: секция переключается в обе стороны, а не
+    # «первая метка на файл». Иначе один откат посреди файла увёл бы из-под
+    # наблюдения всё, что за ним.
+    try:
+        note(read_ceiling(_tree(_DOWN + _UP + _CANON)) == 5,
+             "откат, затем накат → 5 (секция переключается обратно)")
+    except PremiseError as exc:
+        note(False, f"переключение секции: {exc}")
+
+    # Настоящий случай дерева: многострочный `VALUES` в ОТКАТЕ. До сужения
+    # популяции он давал отказ на исправном дереве — незнакомая форма там, где
+    # её и не следовало читать.
+    _MULTILINE = ("INSERT INTO kaname.limits (id, created_at, scope, scope_id, "
+                  "kind, limit_value, withdrawn_at, revision) VALUES\n"
+                  "    ('lim-1', now(), 'DEFAULT', '', 'iam.project', 16, NULL, 9),\n"
+                  "    ('lim-2', now(), 'DEFAULT', '', 'iam.user', 128, NULL, 14)\n"
+                  "ON CONFLICT DO NOTHING;\n")
+    try:
+        note(read_ceiling(_tree(_UP + _CANON + _DOWN + _MULTILINE)) == 5,
+             "многострочный VALUES в откате не мешает читать накат")
+    except PremiseError as exc:
+        note(False, f"многострочный VALUES в откате: {exc}")
+
+    # ИНЪЕКЦИЯ В СУЩЕСТВУЮЩИЙ КОНТРОЛЬ: сужение популяции НЕ должно было отнять
+    # у разбора способность отказываться на незнакомой форме. Та же многострочная
+    # запись, но в НАКАТЕ, обязана давать ОТКАЗ — иначе величина ушла бы
+    # из-под наблюдения молча, и сужение стало бы маской.
+    try:
+        got = read_ceiling(_tree(_UP + _MULTILINE))
+        note(False, f"многострочный VALUES в НАКАТЕ прошёл молча (вернул {got})")
+    except PremiseError:
+        note(True, "многострочный VALUES в НАКАТЕ → ОТКАЗ (форма по-прежнему судится)")
 
     print("── предпосылки: пустое и нечитаемое суть ОТКАЗ, а не «чисто»")
     for label, fn in (

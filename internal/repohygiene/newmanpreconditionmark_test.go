@@ -332,6 +332,7 @@ func collectNewmanPrecondRoots(t *testing.T, root string) []newmanPrecondRoot {
 }
 
 func TestNewmanHarnessGuardsCarryTheThirdOutcomeMark(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	roots := collectNewmanPrecondRoots(t, root)
 

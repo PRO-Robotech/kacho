@@ -44,6 +44,7 @@ func showcaseBoundaryNameFindings(rel, body string) []string {
 }
 
 func TestShowcaseAndNameGatesJudgeDisjointSubjects(t *testing.T) {
+	t.Parallel()
 	// ── прогон 1: контроль ───────────────────────────────────────────────────
 	//
 	// Оба входа законны: документ называет свой накатчик, сборка кладёт его же.

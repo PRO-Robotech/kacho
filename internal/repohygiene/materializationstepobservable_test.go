@@ -50,6 +50,7 @@ const (
 // Провязка ищется как ФАКТ О ДЕРЕВЕ (вызов конструктора, чей результат уходит в
 // приёмник), а не по имени файла: корень композиции переезжает, свойство — нет.
 func TestMaterializationStepCounterIsWiredAtBoot(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	ctorSites, sinkSites := 0, 0
@@ -124,6 +125,7 @@ func TestMaterializationStepCounterIsWiredAtBoot(t *testing.T) {
 // давший ноль срабатываний доказанного входа: чтобы он что-то значил, надо было
 // сперва установить, что эмиттер у входа есть.
 func TestEveryDeclaredMaterializationStepHasAnEmitter(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	declared := declaredPostCommitSteps(t, root)

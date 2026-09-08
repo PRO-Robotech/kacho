@@ -69,6 +69,7 @@ func requireOnlyLane(t *testing.T, findings []ModuleKnowsNoEdgeFinding, lane, mo
 // законных близнецов молчит и новая полоса. Прогон доказывает, что расширение
 // распознавателя не покраснело на том, что в дереве живёт и обязано жить.
 func TestEdgeAddressControlAllThreeLanesSilent(t *testing.T) {
+	t.Parallel()
 	findings := auditModuleTree(t, moduleKnowsNoEdgeTree(t, cleanTwoModuleTree()))
 	if len(findings) != 0 {
 		t.Fatalf("законные близнецы объявлены находками: %v", findings)
@@ -82,6 +83,7 @@ func TestEdgeAddressControlAllThreeLanesSilent(t *testing.T) {
 // вызов края по сырому адресу. Контракта края он не требует, конвенции имён ручек
 // не следует, и до этой правки анализатор молчал.
 func TestEdgeAddressInjectionRawDialInGoRedsOnlyTheAddressLane(t *testing.T) {
+	t.Parallel()
 	files := cleanTwoModuleTree()
 	files["services/vpc/edgecall.go"] = "package svc\n\n" +
 		"import \"net/http\"\n\n" +
@@ -101,6 +103,7 @@ func TestEdgeAddressInjectionRawDialInGoRedsOnlyTheAddressLane(t *testing.T) {
 // ЖДЁТ край. Это дословно «модуль не поднимется там, где края нет вовсе» — вторая
 // половина предмета из шапки гейта, к которой он был слеп.
 func TestEdgeAddressInjectionChartWaitsForEdgeRedsOnlyTheAddressLane(t *testing.T) {
+	t.Parallel()
 	files := cleanTwoModuleTree()
 	files["services/vpc/deploy/deployment.yaml"] = "spec:\n  template:\n    spec:\n" +
 		"      initContainers:\n        - name: wait-for-edge\n          image: busybox\n" +
@@ -120,6 +123,7 @@ func TestEdgeAddressInjectionChartWaitsForEdgeRedsOnlyTheAddressLane(t *testing.
 // только её. Без этого прогона молчание существующей полосы после моей правки
 // было бы неотличимо от того, что я её сломал.
 func TestEdgeAddressInjectionOfTheTypeLaneLeavesTheAddressLaneSilent(t *testing.T) {
+	t.Parallel()
 	files := cleanTwoModuleTree()
 	files["services/vpc/typed.go"] = "package svc\n\n" +
 		"import edge \"github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/apigateway/v1\"\n\n" +
@@ -132,6 +136,7 @@ func TestEdgeAddressInjectionOfTheTypeLaneLeavesTheAddressLaneSilent(t *testing.
 // TestEdgeAddressInjectionOfTheKnobLaneLeavesTheAddressLaneSilent — то же для
 // второй существующей полосы: ручка адреса края по конвенции имён.
 func TestEdgeAddressInjectionOfTheKnobLaneLeavesTheAddressLaneSilent(t *testing.T) {
+	t.Parallel()
 	files := cleanTwoModuleTree()
 	files["services/vpc/wiring.go"] = "package svc\n\nconst envEdge = \"KACHO_VPC_GATEWAY_INTERNAL_ADDR\"\n"
 
@@ -169,6 +174,7 @@ func twinSilent(t *testing.T, name string, files map[string]string) {
 // ресурсом Gateway. Общее у него с краем — только слово; токен хоста `api-gateway`
 // в нём не встречается, поэтому близнец закрыт by construction, а не перечнем.
 func TestEdgeAddressStaysSilentOnTheVpcGatewayResource(t *testing.T) {
+	t.Parallel()
 	files := cleanTwoModuleTree()
 	files["services/vpc/gateway_resource.go"] = "package svc\n\n" +
 		"import vpcgw \"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/gateway\"\n\n" +
@@ -186,6 +192,7 @@ func TestEdgeAddressStaysSilentOnTheVpcGatewayResource(t *testing.T) {
 // отправителям — то есть модуль ОБЯЗАН знать край по имени. Схема `spiffe` означает
 // личность и не дозванивается никуда.
 func TestEdgeAddressStaysSilentOnTheTrustedForwarderCircle(t *testing.T) {
+	t.Parallel()
 	files := cleanTwoModuleTree()
 	files["services/vpc/trust.go"] = "package svc\n\n" +
 		"const san = \"spiffe://kacho.cloud/ns/kacho-system/sa/kacho-api-gateway\"\n" +
@@ -203,6 +210,7 @@ func TestEdgeAddressStaysSilentOnTheTrustedForwarderCircle(t *testing.T) {
 // токена. Это идентификатор издателя OIDC и realm в заголовке отказа, который
 // модуль ОБЪЯВЛЯЕТ докер-клиентам, — строка-идентификатор, а не исходящий вызов.
 func TestEdgeAddressStaysSilentOnTheTokenIssuerAddress(t *testing.T) {
+	t.Parallel()
 	files := cleanTwoModuleTree()
 	files["services/iam/issuer.go"] = "package svc\n\n" +
 		"// Издатель объявляется внешним адресом платформы; края в нём нет, и\n" +
@@ -218,6 +226,7 @@ func TestEdgeAddressStaysSilentOnTheTokenIssuerAddress(t *testing.T) {
 // распознаватель НАПРЯМУЮ: она о нём, а не о дереве, и потому перечисляет обе
 // стороны по каждой оси.
 func TestEdgeAddressKnowsEveryFormItClaims(t *testing.T) {
+	t.Parallel()
 	red := []struct{ in, want string }{
 		{"http://api-gateway.kacho.svc:8080/x", "http://api-gateway.kacho.svc:8080"},
 		{"https://kacho-api-gateway:443", "https://kacho-api-gateway:443"},

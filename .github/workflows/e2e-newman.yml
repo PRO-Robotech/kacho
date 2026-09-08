@@ -736,15 +736,21 @@ jobs:
       # умолчанием скрипта: ручка, от которой зависит смысл прогона, называется в
       # том месте, где её читают.
       #
-      # `|| true` — НЕ проглатывание: код возврата прогона здесь ни на что не влияет
-      # by design, вердикт выносят шаги-гейты ниже по СОДЕРЖИМОМУ отчётов (и считают
-      # отсутствие отчёта провалом). Ранний обрыв прогона спрятать нельзя.
+      # ЛОГИКА ЖИВЁТ В СКРИПТЕ, И ЭТО НЕ СТИЛЬ (#2346). Здесь стояло тело `run:`,
+      # которое запускало наблюдателя, читало код возврата прогонщика и ветвилось
+      # по нему на три исхода. Провайдер исполняет `run:` под `bash -e`, поэтому
+      # ненулевой код обрывал оболочку НЕМЕДЛЕННО — до присваивания `rc=$?`, до
+      # `case`, до аннотации «Прогон недействителен». Развилка не исполнялась ни
+      # разу, и вместе с ней не исполнялась остановка наблюдателя.
       #
-      # Наблюдатель пишет таблицу прогресса в ЭТОТ ЖЕ стримящийся лог: прогон, за
-      # которым нельзя следить, отлаживают следующим прогоном, а цена ошибки в
-      # фикстуре — полный цикл стенда. Вердикта он не выносит и говорит это первой
-      # строкой: второй вердикт рядом с первым — способ получить два разных ответа
-      # на один вопрос.
+      # Развилку нельзя было и проверить: блок `run:` не запускает ни одна проба,
+      # поэтому дефект такого рода виден только на живом прогоне. Тот же класс
+      # уже чинили тем же способом у сводного вердикта (#1073).
+      #
+      # Три исхода прогонщика, чтение их как ДАННЫХ и аннотация третьей категории
+      # — в `.github/scripts/newman-shard-run.sh`. Пробы поведения (все три кода)
+      # и доказательство того, что зовётся именно этот скрипт, —
+      # internal/repohygiene/newmanshardrun*_test.go.
       #
       # ПРОПУСКАЕТСЯ ПРИ НЕСОЗДАННОМ УСЛОВИИ (#2250). Прежде шаг обходился без
       # условия by construction: шаг подъёма выходил ненулевым и работа обрывалась
@@ -760,39 +766,7 @@ jobs:
           JOBS: "1"
           WAVE_JOBS: "1"
           SERVICES: ${{ matrix.shard.suites }}
-        run: |
-          rm -f /tmp/newman-live.stop
-          # --services сужает наблюдателя до состава ШАРДА. Без этого он читал бы
-          # умолчание прогонщика (все восемь суит) и печатал бы «0 отчётов» по тем,
-          # которых этот шард не гоняет, — числа, выглядящие как потеря.
-          python3 "${GITHUB_WORKSPACE}/.github/scripts/newman-live.py" watch \
-            --services "$SERVICES" --interval 20 &
-          live_pid=$!
-          ./scripts/newman-parallel.sh; rc=$?
-          touch /tmp/newman-live.stop
-          wait "$live_pid" || true
-
-          # ТРЕТЬЯ КАТЕГОРИЯ ВАЛИТ ТОТ ШАГ, НА КОТОРОМ ПРОИЗОШЛА.
-          #
-          # Здесь стояло `|| true`, и оно НЕ различало два разных исхода:
-          #   rc=1 — суиты ИСПОЛНИЛИСЬ, часть красная. Вердикт по ним выносят
-          #          шаги-гейты ниже, и он обязан остаться за ними: второй вердикт
-          #          рядом с первым — способ получить два разных ответа на один
-          #          вопрос. Поэтому rc=1 здесь действительно проглатывается.
-          #   rc=2 — прогон НЕДЕЙСТВИТЕЛЕН: суиты не запускались вовсе (не встал
-          #          проброс, упал посев). Результата нет — ни красного, ни зелёного.
-          # Проглатывая оба, шаг отчитывался `success`, не исполнив ничего, а красным
-          # становился ШАГ ЧЕРЕЗ ДВА — гейт суиты, докладывающий «нет отчётов». Разбор
-          # после этого начинался не с той стороны: упавшее утверждение искали там, где
-          # не исполнилось ни одного запроса (прогон 31344367968, четыре шарда).
-          #
-          # Гейты ниже (`if: always()`) от этого не теряются: они всё равно отработают и
-          # всё равно доложат «нет отчётов». Меняется только то, ГДЕ впервые виден
-          # незапуск — на своём шаге, а не двумя шагами позже.
-          if [ "$rc" -eq 2 ]; then
-            echo "::error title=Прогон недействителен::Суиты НЕ запускались (rc=2): результата нет — ни красного, ни зелёного. Причина названа выше, в выводе newman-parallel.sh."
-            exit 2
-          fi
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/newman-shard-run.sh"
 
       # Условие не создано ⇒ отчётов нет by construction, и сводка напечатала бы
       # «0 отчётов» — числа, выглядящие как потеря. Пропуск здесь ничего не
@@ -818,49 +792,49 @@ jobs:
         working-directory: services/iam/tests/newman
         env:
           SUITE_LABEL: iam
-        run: bash scripts/assert-suites-green.sh
+        run: bash "${GITHUB_WORKSPACE}/tests/newman/scripts/assert-suites-green.sh"
 
       - name: гейт — newman зелёный (vpc)
         if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' vpc ') }}
         working-directory: services/vpc/tests/newman
         env:
           SUITE_LABEL: vpc
-        run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
+        run: bash "${GITHUB_WORKSPACE}/tests/newman/scripts/assert-suites-green.sh"
 
       - name: гейт — newman зелёный (compute)
         if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' compute ') }}
         working-directory: services/compute/tests/newman
         env:
           SUITE_LABEL: compute
-        run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
+        run: bash "${GITHUB_WORKSPACE}/tests/newman/scripts/assert-suites-green.sh"
 
       - name: гейт — newman зелёный (nlb)
         if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' nlb ') }}
         working-directory: services/nlb/tests/newman
         env:
           SUITE_LABEL: nlb
-        run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
+        run: bash "${GITHUB_WORKSPACE}/tests/newman/scripts/assert-suites-green.sh"
 
       - name: гейт — newman зелёный (storage)
         if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' storage ') }}
         working-directory: services/storage/tests/newman
         env:
           SUITE_LABEL: storage
-        run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
+        run: bash "${GITHUB_WORKSPACE}/tests/newman/scripts/assert-suites-green.sh"
 
       - name: гейт — newman зелёный (registry)
         if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' registry ') }}
         working-directory: services/registry/tests/newman
         env:
           SUITE_LABEL: registry
-        run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
+        run: bash "${GITHUB_WORKSPACE}/tests/newman/scripts/assert-suites-green.sh"
 
       - name: гейт — newman зелёный (geo)
         if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' geo ') }}
         working-directory: services/geo/tests/newman
         env:
           SUITE_LABEL: geo
-        run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
+        run: bash "${GITHUB_WORKSPACE}/tests/newman/scripts/assert-suites-green.sh"
 
       # api-gateway: суита живёт в gateway/, а не в services/ — отсюда отдельный
       # working-directory и отдельная строка в маске артефактов ниже. Она покрывает
@@ -871,7 +845,7 @@ jobs:
         working-directory: gateway/tests/newman
         env:
           SUITE_LABEL: api-gateway
-        run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
+        run: bash "${GITHUB_WORKSPACE}/tests/newman/scripts/assert-suites-green.sh"
 
       # ban #6 на внешнем листенере — свойство ЛИСТЕНЕРА, а не суиты, и гоняется на
       # КАЖДОМ шарде по СВОЕМУ набору доменов.
@@ -914,7 +888,7 @@ jobs:
         env:
           COVERAGE_MIN: "30"
         run: |
-          python3 scripts/coverage.py \
+          python3 "${GITHUB_WORKSPACE}/tests/newman/scripts/coverage.py" \
             --proto-glob "${GITHUB_WORKSPACE}/proto/kaname/cloud/iam/v1/*.proto" \
             --collections-glob 'collections/*.postman_collection.json' \
             --min "$COVERAGE_MIN"

@@ -133,9 +133,9 @@ func TestStacks_GatewayAdminHopIsNotInTheClear(t *testing.T) {
 func TestStacks_IAMProviderAdminHopIsDeclaredAndNotInTheClear(t *testing.T) {
 	for name, stack := range deployableStacks(t) {
 		t.Run(name, func(t *testing.T) {
-			got, ok := resolveStackAt(t, stack, "kaname", "kacho", "iam", "hydraAdminUrl")
+			got, ok := resolveStackAt(t, stack, "kaname", "platform", "iam", "hydraAdminUrl")
 			if !ok {
-				t.Fatalf("%s: kaname.kacho.iam.hydraAdminUrl is not declared — iam then "+
+				t.Fatalf("%s: kaname.platform.iam.hydraAdminUrl is not declared — iam then "+
 					"DERIVES it from the issuer, which names the public ingress host and does "+
 					"not resolve inside the cluster; the derivation is never empty, so the "+
 					"facade reads as configured while addressing a host nobody chose", name)
@@ -144,10 +144,10 @@ func TestStacks_IAMProviderAdminHopIsDeclaredAndNotInTheClear(t *testing.T) {
 				return // declared is required everywhere; TLS only where production posture applies
 			}
 			if err := requireTLSHop(got); err != nil {
-				t.Errorf("%s: kaname.kacho.iam.hydraAdminUrl %v", name, err)
+				t.Errorf("%s: kaname.platform.iam.hydraAdminUrl %v", name, err)
 			}
-			if _, ok := resolveStackAt(t, stack, "kaname", "kacho", "iam", "hydraAdminCaFile"); !ok {
-				t.Errorf("%s: kaname.kacho.iam.hydraAdminCaFile is not declared while the hop "+
+			if _, ok := resolveStackAt(t, stack, "kaname", "platform", "iam", "hydraAdminCaFile"); !ok {
+				t.Errorf("%s: kaname.platform.iam.hydraAdminCaFile is not declared while the hop "+
 					"is https — iam would verify against the system roots and every call on the "+
 					"hop would fail with an unknown authority", name)
 			}
@@ -199,7 +199,7 @@ func requireTLSHop(raw string) error {
 var adminHopConsumers = map[string][]string{
 	"api-gateway.hydra.introspectionUrl":  {"api-gateway", "hydra", "introspectionUrl"},
 	"api-gateway.hydra.adminUrl":          {"api-gateway", "hydra", "adminUrl"},
-	"kaname.kacho.iam.hydraAdminUrl":      {"kaname", "kacho", "iam", "hydraAdminUrl"},
+	"kaname.platform.iam.hydraAdminUrl":   {"kaname", "platform", "iam", "hydraAdminUrl"},
 	"kratos-selfservice-ui…hydraAdminUrl": {"kratos-selfservice-ui", "kratosSelfServiceUI", "hydraAdminUrl"},
 }
 

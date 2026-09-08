@@ -18,6 +18,7 @@ import (
 )
 
 func TestCheckViolationToneDiscriminatorSeparatesCodeFromProse(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name  string
 		src   string

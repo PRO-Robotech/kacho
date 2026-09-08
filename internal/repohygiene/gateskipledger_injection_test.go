@@ -84,6 +84,7 @@ func TestConcatVar(t *testing.T) {
 `
 
 func TestInjection_LedgerEntryWithoutACallIsAFinding(t *testing.T) {
+	t.Parallel()
 	root := synthSkipTree(t, map[string]string{"a/x_test.go": synthSkipCall})
 	c, err := CollectSkipSites([]string{root})
 	if err != nil {
@@ -110,6 +111,7 @@ func TestInjection_LedgerEntryWithoutACallIsAFinding(t *testing.T) {
 }
 
 func TestInjection_ReasonOnlyInProseDoesNotCoverAnEntry(t *testing.T) {
+	t.Parallel()
 	root := synthSkipTree(t, map[string]string{
 		"a/prose_test.go": synthReasonOnlyInProse,
 		"a/live_test.go":  synthSkipCall,
@@ -136,6 +138,7 @@ func TestInjection_ReasonOnlyInProseDoesNotCoverAnEntry(t *testing.T) {
 }
 
 func TestInjection_SkipfAndConcatenationAreRead(t *testing.T) {
+	t.Parallel()
 	root := synthSkipTree(t, map[string]string{
 		"a/f_test.go": synthSkipfCall,
 		"a/c_test.go": synthConcatCall,
@@ -162,6 +165,7 @@ func TestInjection_SkipfAndConcatenationAreRead(t *testing.T) {
 }
 
 func TestInjection_AVariableTruncatesTheConstantPrefix(t *testing.T) {
+	t.Parallel()
 	root := synthSkipTree(t, map[string]string{"a/v_test.go": synthConcatWithVarCall})
 	c, err := CollectSkipSites([]string{root})
 	if err != nil {
@@ -184,6 +188,7 @@ func TestInjection_AVariableTruncatesTheConstantPrefix(t *testing.T) {
 }
 
 func TestInjection_EmptyLedgerIsTheGoalNotABreakage(t *testing.T) {
+	t.Parallel()
 	root := synthSkipTree(t, map[string]string{"a/x_test.go": synthSkipCall})
 	c, err := CollectSkipSites([]string{root})
 	if err != nil {
@@ -202,6 +207,7 @@ func TestInjection_EmptyLedgerIsTheGoalNotABreakage(t *testing.T) {
 }
 
 func TestInjection_EmptyCensusIsDistinguishableFromZeroFindings(t *testing.T) {
+	t.Parallel()
 	root := synthSkipTree(t, map[string]string{"a/notatest.go": "package synth\n"})
 	c, err := CollectSkipSites([]string{root})
 	if err != nil {

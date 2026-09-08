@@ -54,6 +54,7 @@ func vpcSchemaFixture() (live, diagram, services []string, rows []vpcSchemaPageR
 //
 // Без него отрицания ниже зеленели бы на предикате, который ругается на всё.
 func TestVpcSchemaGateStaysSilentOnAConsistentTree(t *testing.T) {
+	t.Parallel()
 	live, diagram, services, rows := vpcSchemaFixture()
 	if got := vpcSchemaAdjudicate(live, diagram, rows, services); len(got) > 0 {
 		t.Fatalf("на согласованном дереве находок быть не должно, получено %d: %v", len(got), got)
@@ -61,6 +62,7 @@ func TestVpcSchemaGateStaysSilentOnAConsistentTree(t *testing.T) {
 }
 
 func TestVpcSchemaGateFindsALiveTableMissingFromTheList(t *testing.T) {
+	t.Parallel()
 	live, diagram, services, rows := vpcSchemaFixture()
 	// Снимаем строку перечня, оставляя таблицу живой: перечень объявляет себя
 	// полным и полным быть перестаёт.
@@ -70,6 +72,7 @@ func TestVpcSchemaGateFindsALiveTableMissingFromTheList(t *testing.T) {
 }
 
 func TestVpcSchemaGateFindsAListedTableTheTreeDoesNotCreate(t *testing.T) {
+	t.Parallel()
 	live, diagram, services, rows := vpcSchemaFixture()
 	// Строка пережила свою таблицу: миграция её сняла, страница — нет.
 	rows = append(rows, vpcSchemaPageRow{Table: "vpc_watch_cursors", OnDiagram: vpcSchemaDiagramNo})
@@ -78,6 +81,7 @@ func TestVpcSchemaGateFindsAListedTableTheTreeDoesNotCreate(t *testing.T) {
 }
 
 func TestVpcSchemaGateFindsAColumnThatLiesAboutTheDiagram(t *testing.T) {
+	t.Parallel()
 	live, diagram, services, rows := vpcSchemaFixture()
 	// Столбец «На диаграмме» — единственное, чем объявлено различие проекций.
 	// Соврав, он возвращает ровно то расхождение, ради снятия которого заведён.
@@ -91,6 +95,7 @@ func TestVpcSchemaGateFindsAColumnThatLiesAboutTheDiagram(t *testing.T) {
 }
 
 func TestVpcSchemaGateFindsTheBoundaryTurningIntoAnEnumeration(t *testing.T) {
+	t.Parallel()
 	live, diagram, services, rows := vpcSchemaFixture()
 	// Дорисована живая таблица, которой свойство не требует: именно так граница
 	// перестаёт быть свойством и становится списком.
@@ -105,6 +110,7 @@ func TestVpcSchemaGateFindsTheBoundaryTurningIntoAnEnumeration(t *testing.T) {
 }
 
 func TestVpcSchemaGateFindsAResourceTableAbsentFromTheDiagram(t *testing.T) {
+	t.Parallel()
 	live, diagram, services, rows := vpcSchemaFixture()
 	// Ресурс с полным набором глаголов есть, таблицы на диаграмме нет — то самое
 	// отставание, с которого задача началась.
@@ -119,6 +125,7 @@ func TestVpcSchemaGateFindsAResourceTableAbsentFromTheDiagram(t *testing.T) {
 }
 
 func TestVpcSchemaGateFindsANamingRuleItDoesNotCover(t *testing.T) {
+	t.Parallel()
 	live, diagram, services, rows := vpcSchemaFixture()
 	// Новая служба, чьё множественное число правилом не выводится. Гейт обязан
 	// назвать ПРАВИЛО, а не тихо пропустить ресурс мимо диаграммы.

@@ -72,8 +72,8 @@ SCAN_CONFIG = ROOT / "trivy.yaml"
 # Чарты, которым цель не требуется, — с причиной. Причина обязана быть проверяемой
 # (см. reason_still_holds), иначе через полгода это будет фольклор.
 EXEMPT = {
-    "deploy/helm/umbrella/": "не рендерится без `helm dependency update` — "
-                             "зависимости в git не вендорятся",
+    "deploy/helm/umbrella/": "не рендерится без сборки ЛОКАЛЬНЫХ сабчартов из "
+                             "исходников — они в git не вендорятся by construction",
 }
 
 
@@ -108,6 +108,45 @@ def scan_targets():
     return {(res.get("Target") or "") for res in doc.get("Results") or []}
 
 
+def local_dependency_names(chart_yaml):
+    """→ множество имён зависимостей, чей источник ЛОКАЛЬНЫЙ (`file://…`).
+
+    Разбор построчный, без yaml: этот гейт зовётся в job'е скана, у которого
+    зависимость от разбора YAML не объявлена, и заводить её ради двух полей
+    значило бы платить за неё на каждом прогоне. Читаются пары «- name:» и
+    следующий за ней «repository:» того же элемента.
+    """
+    names, cur, in_deps = set(), None, False
+    for raw in chart_yaml.read_text(encoding="utf-8").splitlines():
+        s = raw.strip()
+        if s.startswith("#"):
+            continue  # проза шапки объявлением не является
+        if raw.startswith("dependencies:"):
+            in_deps = True
+            continue
+        if in_deps and raw and not raw[0].isspace():
+            break  # вышли из блока зависимостей
+        if not in_deps:
+            continue
+        if s.startswith("- name:"):
+            cur = s.split(":", 1)[1].strip().strip("\"'")
+        elif s.startswith("repository:") and cur:
+            if s.split(":", 1)[1].strip().strip("\"'").startswith("file://"):
+                names.add(cur)
+    return names
+
+
+def archive_chart_name(archive):
+    """`vpc-1.0.0.tgz` → `vpc`; `cert-manager-v1.16.5.tgz` → `cert-manager`.
+
+    Имя чарта дефис содержать вправе, версия — нет, поэтому режется ПОСЛЕДНИЙ
+    дефис, а не первый. Иначе `cert-manager` читался бы как `cert`, и
+    вендоренный внешний архив попал бы в счёт локальных.
+    """
+    stem = archive[: -len(".tgz")] if archive.endswith(".tgz") else archive
+    return stem.rsplit("-", 1)[0] if "-" in stem else stem
+
+
 def reason_still_holds(chart_dir):
     """→ (вердикт, пояснение). Вердикт: True — причина верна, False — больше не
     верна (находка), None — в этом прогоне НЕ СУДИМА.
@@ -126,15 +165,25 @@ def reason_still_holds(chart_dir):
                         for line in chart_yaml.read_text(encoding="utf-8").splitlines())
     if not declares_deps:
         return False, "чарт больше не объявляет зависимостей"
+    local_deps = local_dependency_names(chart_yaml)
+    if not local_deps:
+        return False, ("чарт больше не объявляет ЛОКАЛЬНЫХ сабчартов — сборка из "
+                       "исходников ему не нужна, и рендер обязан удаваться")
     tracked = git_ls(chart_dir + "charts/*.tgz")
-    if tracked:
-        return False, ("зависимости провендорены В GIT (%d .tgz) — рендер обязан удаваться"
-                       % len(tracked))
-    on_disk = list((ROOT / chart_dir / "charts").glob("*.tgz")) \
-        if (ROOT / chart_dir / "charts").is_dir() else []
+    tracked_local = sorted(a for a in tracked
+                           if archive_chart_name(a.rsplit("/", 1)[-1]) in local_deps)
+    if tracked_local:
+        return False, ("локальные сабчарты провендорены В GIT (%d .tgz: %s) — рендер "
+                       "обязан удаваться, а вендоренная копия исходника означала бы "
+                       "«правка есть в файле, а в стенд не попала»"
+                       % (len(tracked_local),
+                          ", ".join(a.rsplit("/", 1)[-1] for a in tracked_local)))
+    on_disk = [f for f in ((ROOT / chart_dir / "charts").glob("*.tgz")
+                           if (ROOT / chart_dir / "charts").is_dir() else [])
+               if archive_chart_name(f.name) in local_deps]
     if on_disk:
-        return None, ("в рабочем дереве лежат %d .tgz, которых git не отслеживает, — "
-                      "это местный результат `helm dependency update`" % len(on_disk))
+        return None, ("в рабочем дереве лежат %d .tgz локальных сабчартов, которых git "
+                      "не отслеживает, — это местный результат материализации" % len(on_disk))
     return True, ""
 
 

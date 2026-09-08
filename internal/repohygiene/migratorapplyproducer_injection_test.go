@@ -19,6 +19,7 @@ import (
 )
 
 func TestMigratorApplyProducerJudgeFiresAndStaysSilent(t *testing.T) {
+	t.Parallel()
 	// Дерево, на котором свойство ДЕРЖИТСЯ. Каждый случай ниже отличается от него
 	// ровно одной осью.
 	migrators := []string{"services/geo/cmd/migrator", "services/vpc/cmd/migrator"}

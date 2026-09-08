@@ -30,8 +30,8 @@ title: Права и полосы доступа
 
 ```protobuf
 rpc Get(GetVolumeRequest) returns (Volume) {
-  option (kacho.iam.authz.v1.required_relation) = "v_get";
-  option (kacho.iam.authz.v1.scope_extractor)   = {
+  option (corelib.authz.v1.required_relation) = "v_get";
+  option (corelib.authz.v1.scope_extractor)   = {
     object_type:        "storage_volume"
     from_request_field: "volume_id"
   };

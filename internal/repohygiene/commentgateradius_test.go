@@ -56,6 +56,7 @@ const (
 
 // TestServiceLocalCommentProhibitionListDeclaresItsRadius — сам гейт.
 func TestServiceLocalCommentProhibitionListDeclaresItsRadius(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

@@ -37,6 +37,7 @@ import (
 
 // TestEveryCursorPageReadGetsItsOrderFromAnIndex — сам гейт.
 func TestEveryCursorPageReadGetsItsOrderFromAnIndex(t *testing.T) {
+	t.Parallel()
 	// Состав дерева берётся у ИНДЕКСА git, а не обходом диска: под `services/`
 	// и `gateway/` на машине, где поднимали стенд, лежат игнорируемые каталоги,
 	// и вердикт стал бы свойством рабочего каталога, а не коммита.

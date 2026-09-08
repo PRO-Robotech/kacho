@@ -8,7 +8,7 @@ package kacho.cloud.vpc.v1;
 import "google/protobuf/timestamp.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/cloud/vpc/v1/address_service.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
 
@@ -33,26 +33,26 @@ service InternalAddressService {
   //     возвращает Ok с existing IP без error'а).
   //   - ResourceExhausted: subnet exhausted (нет free IP после max retries).
   rpc AllocateInternalIP(AllocateInternalIPRequest) returns (AllocateIPResponse) {
-    option (kacho.iam.authz.v1.permission) = "vpc.addresses.allocateInternalIp";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "vpc.addresses.allocateInternalIp";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "vpc_address"
       from_request_field: "address_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // AllocateInternalIPv6 — как AllocateInternalIP, но для internal_ipv6 Address:
   // резолвит target subnet через addresses.internal_ipv6.subnet_id, выбирает
   // адрес из subnet.v6_cidr_blocks[0] (random-from-prefix + retry на UNIQUE).
   rpc AllocateInternalIPv6(AllocateInternalIPRequest) returns (AllocateIPResponse) {
-    option (kacho.iam.authz.v1.permission) = "vpc.addresses.allocateInternalIpv6";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "vpc.addresses.allocateInternalIpv6";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "vpc_address"
       from_request_field: "address_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // AllocateExternalIP резолвит pool через cascade:
@@ -62,13 +62,13 @@ service InternalAddressService {
   //   3. region default pool (AddressPool.is_default=true в данном region).
   // Атомарно вставляет в БД под защитой UNIQUE (pool_id, external_ip) constraint.
   rpc AllocateExternalIP(AllocateExternalIPRequest) returns (AllocateIPResponse) {
-    option (kacho.iam.authz.v1.permission) = "vpc.addresses.allocateExternalIp";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "vpc.addresses.allocateExternalIp";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "vpc_address"
       from_request_field: "address_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // AllocateExternalIPv6 — как AllocateExternalIP, но для external_ipv6 Address:
@@ -83,13 +83,13 @@ service InternalAddressService {
   //     v6_cidr_blocks, либо pool исчерпан. Idempotent повтор на уже-allocated
   //     address возвращает Ok с existing IP без error'а.
   rpc AllocateExternalIPv6(AllocateExternalIPRequest) returns (AllocateIPResponse) {
-    option (kacho.iam.authz.v1.permission) = "vpc.addresses.allocateExternalIpv6";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "vpc.addresses.allocateExternalIpv6";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "vpc_address"
       from_request_field: "address_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // SetAddressReference устанавливает (upsert) referrer для адреса — кто его
@@ -101,13 +101,13 @@ service InternalAddressService {
   //   - NotFound: address не существует.
   //   - InvalidArgument: пустой address_id / referrer_type / referrer_id.
   rpc SetAddressReference(SetAddressReferenceRequest) returns (AddressReference) {
-    option (kacho.iam.authz.v1.permission) = "vpc.addresses.setReference";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "vpc.addresses.setReference";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "vpc_address"
       from_request_field: "address_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // ClearAddressReference удаляет referrer-запись адреса (если есть) и
@@ -117,13 +117,13 @@ service InternalAddressService {
   //   - NotFound: address не существует.
   //   - InvalidArgument: пустой address_id.
   rpc ClearAddressReference(ClearAddressReferenceRequest) returns (ClearAddressReferenceResponse) {
-    option (kacho.iam.authz.v1.permission) = "vpc.addresses.clearReference";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "vpc.addresses.clearReference";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "vpc_address"
       from_request_field: "address_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // GetAddressReference возвращает referrer-запись адреса.
@@ -132,13 +132,13 @@ service InternalAddressService {
   //   - NotFound: address не существует ИЛИ у него нет referrer'а.
   //   - InvalidArgument: пустой address_id.
   rpc GetAddressReference(GetAddressReferenceRequest) returns (AddressReference) {
-    option (kacho.iam.authz.v1.permission) = "vpc.addresses.getReference";
-    option (kacho.iam.authz.v1.required_relation) = "v_get";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "vpc.addresses.getReference";
+    option (corelib.authz.v1.required_relation) = "v_get";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "vpc_address"
       from_request_field: "address_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // MarkAddressEphemeralInUse атомарно (в одной tx): выставляет
@@ -153,13 +153,13 @@ service InternalAddressService {
   //   - NotFound: address не существует.
   //   - InvalidArgument: пустой address_id / referrer_type / referrer_id.
   rpc MarkAddressEphemeralInUse(MarkAddressEphemeralInUseRequest) returns (MarkAddressEphemeralInUseResponse) {
-    option (kacho.iam.authz.v1.permission) = "vpc.addresses.markEphemeralInUse";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "vpc.addresses.markEphemeralInUse";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "vpc_address"
       from_request_field: "address_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // CreateOwnedAddress — создать адрес СРАЗУ привязанным к владельцу: вставка
@@ -188,13 +188,13 @@ service InternalAddressService {
   // откатывает ВСЮ транзакцию, поэтому half-allocated адреса и компенсации у
   // вызывающего больше не существует by construction.
   rpc CreateOwnedAddress(CreateOwnedAddressRequest) returns (operation.Operation) {
-    option (kacho.iam.authz.v1.permission) = "vpc.addresses.createOwned";
-    option (kacho.iam.authz.v1.required_relation) = "editor";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "vpc.addresses.createOwned";
+    option (corelib.authz.v1.required_relation) = "editor";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "project"
       from_request_field: "address.project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // ReleaseOwnedAddress снимает аренду адреса ПО ПРЕДЪЯВЛЕНИЮ ВЛАДЕНИЯ ею и
@@ -234,13 +234,13 @@ service InternalAddressService {
   //     принадлежит другому проекту.
   //   - Unavailable: хранилище недоступно (fail-closed — НИКОГДА не успех).
   rpc ReleaseOwnedAddress(ReleaseOwnedAddressRequest) returns (ReleaseOwnedAddressResponse) {
-    option (kacho.iam.authz.v1.permission) = "vpc.addresses.releaseOwned";
-    option (kacho.iam.authz.v1.required_relation) = "editor";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "vpc.addresses.releaseOwned";
+    option (corelib.authz.v1.required_relation) = "editor";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

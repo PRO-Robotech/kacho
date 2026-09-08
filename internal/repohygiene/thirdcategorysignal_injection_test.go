@@ -19,6 +19,7 @@ import (
 )
 
 func TestThirdCategorySignal_ProvenByInjection(t *testing.T) {
+	t.Parallel()
 	full := thirdCategoryWiring{
 		VerdictStepFound: true, EmitsUnmetOutput: true, NamesCodeThree: true,
 		CategoryFound: true, PassesFlag: true, ReadsVerdictStep: true,

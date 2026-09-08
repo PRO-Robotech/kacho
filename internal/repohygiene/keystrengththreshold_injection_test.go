@@ -74,6 +74,7 @@ func strengthOf(pub any) int {
 
 // TestKeyStrengthScannerFailsOnASecondFloor — сторона (а).
 func TestKeyStrengthScannerFailsOnASecondFloor(t *testing.T) {
+	t.Parallel()
 	_, compares, census, err := ScanKeyStrengthThresholds(
 		"synthetic/keystore.go", []byte(keyStrengthInjectedSecondFloor), keyStrengthDeclName)
 	if err != nil {
@@ -101,6 +102,7 @@ func TestKeyStrengthScannerFailsOnASecondFloor(t *testing.T) {
 
 // TestKeyStrengthScannerIsSilentOnLegitimateNumbersNearKeys — сторона (б).
 func TestKeyStrengthScannerIsSilentOnLegitimateNumbersNearKeys(t *testing.T) {
+	t.Parallel()
 	_, compares, census, err := ScanKeyStrengthThresholds(
 		"synthetic/keystore.go", []byte(keyStrengthInjectedLegitimate), keyStrengthDeclName)
 	if err != nil {
@@ -128,6 +130,7 @@ func TestKeyStrengthScannerIsSilentOnLegitimateNumbersNearKeys(t *testing.T) {
 // Без этой стороны утверждение «порог объявлен числом» проверялось бы разбором,
 // который чисел не читает вовсе, и было бы зелёным при любом объявлении.
 func TestKeyStrengthScannerReadsTheDeclaredNumbers(t *testing.T) {
+	t.Parallel()
 	const src = `package domain
 
 func (a SigningAlgorithm) MinBits() int {
@@ -169,6 +172,7 @@ func (a SigningAlgorithm) MinBits() int {
 // утверждение честным — вырастет радиус, и здесь станет видно, что заголовок
 // пора править.
 func TestKeyStrengthScannerNamesItsBlindSpot(t *testing.T) {
+	t.Parallel()
 	const src = `package keystore
 
 const rsaFloor = 2048

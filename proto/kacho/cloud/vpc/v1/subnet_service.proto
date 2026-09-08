@@ -11,7 +11,7 @@ import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/cloud/reference/reference.proto";
 import "kacho/cloud/vpc/v1/subnet.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
 
@@ -22,19 +22,19 @@ service SubnetService {
   // To get the list of available Subnet resources, make a [List] request.
   rpc Get(GetSubnetRequest) returns (Subnet) {
     option (google.api.http) = {get: "/vpc/v1/subnets/{subnet_id}"};
-    option (kacho.iam.authz.v1.permission)        = "vpc.subnets.get";
-    option (kacho.iam.authz.v1.required_relation) = "v_get";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.subnets.get";
+    option (corelib.authz.v1.required_relation) = "v_get";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_subnet"
       from_request_field: "subnet_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of Subnet resources in the specified project.
   rpc List(ListSubnetsRequest) returns (ListSubnetsResponse) {
     option (google.api.http) = {get: "/vpc/v1/subnets"};
-    option (kacho.iam.authz.v1.permission)        = "vpc.subnets.list";
+    option (corelib.authz.v1.permission)        = "vpc.subnets.list";
     // Top-level List is gated by the READ TIER on the parent project, not by the
     // project's own `v_list` verb. In the model those are independent sets, and
     // `project#v_list` means object-level access to the PROJECT ITSELF — the model
@@ -43,12 +43,12 @@ service SubnetService {
     // axis Create already takes here (`editor`), and the same convention the
     // storage/iam project-scoped List RPCs carry. Rows stay narrowed per object by
     // the owning service's list filter; this option only decides who may ask.
-    option (kacho.iam.authz.v1.required_relation) = "viewer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.required_relation) = "viewer";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Creates a subnet in the specified project and network.
@@ -62,13 +62,13 @@ service SubnetService {
       metadata: "CreateSubnetMetadata"
       response: "Subnet"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.subnets.create";
-    option (kacho.iam.authz.v1.required_relation) = "editor";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.subnets.create";
+    option (corelib.authz.v1.required_relation) = "editor";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the specified subnet.
@@ -82,13 +82,13 @@ service SubnetService {
       metadata: "UpdateSubnetMetadata"
       response: "Subnet"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.subnets.update";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.subnets.update";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_subnet"
       from_request_field: "subnet_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Adds CIDR blocks to the specified subnet.
@@ -102,13 +102,13 @@ service SubnetService {
       metadata: "UpdateSubnetMetadata"
       response: "Subnet"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.subnet_cidr_blocks.addCidrBlocks";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.subnet_cidr_blocks.addCidrBlocks";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_subnet"
       from_request_field: "subnet_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Removes CIDR blocks from the specified subnet.
@@ -122,13 +122,13 @@ service SubnetService {
       metadata: "UpdateSubnetMetadata"
       response: "Subnet"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.subnet_cidr_blocks.removeCidrBlocks";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.subnet_cidr_blocks.removeCidrBlocks";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_subnet"
       from_request_field: "subnet_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Deletes the specified subnet.
@@ -138,37 +138,37 @@ service SubnetService {
       metadata: "DeleteSubnetMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.subnets.delete";
-    option (kacho.iam.authz.v1.required_relation) = "v_delete";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.subnets.delete";
+    option (corelib.authz.v1.required_relation) = "v_delete";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_subnet"
       from_request_field: "subnet_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // List operations for the specified subnet.
   rpc ListOperations(ListSubnetOperationsRequest) returns (ListSubnetOperationsResponse) {
     option (google.api.http) = {get: "/vpc/v1/subnets/{subnet_id}/operations"};
-    option (kacho.iam.authz.v1.permission)        = "vpc.subnet_operations.listOperations";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.subnet_operations.listOperations";
+    option (corelib.authz.v1.required_relation) = "v_list";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_subnet"
       from_request_field: "subnet_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // List used addresses in specified subnet.
   rpc ListUsedAddresses(ListUsedAddressesRequest) returns (ListUsedAddressesResponse) {
     option (google.api.http) = {get: "/vpc/v1/subnets/{subnet_id}/addresses"};
-    option (kacho.iam.authz.v1.permission)        = "vpc.used_addresses.listUsedAddresses";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "vpc.used_addresses.listUsedAddresses";
+    option (corelib.authz.v1.required_relation) = "v_list";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "vpc_subnet"
       from_request_field: "subnet_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

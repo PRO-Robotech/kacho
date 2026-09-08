@@ -197,6 +197,7 @@ func declaredInValues(t *testing.T, svc, path string) bool {
 
 // TestEveryBootGateCarrierHasAKnobProducerInItsChart — ядро гейта.
 func TestEveryBootGateCarrierHasAKnobProducerInItsChart(t *testing.T) {
+	t.Parallel()
 	carriers := bootGateCarriers(t)
 	if len(carriers) == 0 {
 		t.Fatal("no service constructs bootgate.New — either the gate package was retired (then retire " +

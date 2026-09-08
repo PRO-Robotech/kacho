@@ -211,6 +211,7 @@ func listPackagesWithDeps(root string) ([]listedPackage, error) {
 }
 
 func TestProdBinaryDoesNotLinkAContainerRuntimeClient(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	pkgs, err := listPackagesWithDeps(root)

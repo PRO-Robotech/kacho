@@ -99,6 +99,7 @@ func adjudicateHooksNoticeReach(r hooksNoticeReach) []string {
 }
 
 func TestUnwiredCloneStaysAudible(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	read := func(rel string) string {

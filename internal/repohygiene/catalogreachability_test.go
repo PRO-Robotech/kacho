@@ -74,6 +74,7 @@ func catalogReachabilityOptions(t *testing.T, allow []string) CatalogReachabilit
 // TestCatalogReachability_EveryRowResolvesToAServedMethod — положительная сторона
 // на настоящем дереве.
 func TestCatalogReachability_EveryRowResolvesToAServedMethod(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditCatalogReachability(catalogReachabilityOptions(t, mountAllow), &log)
 	if err != nil {
@@ -128,6 +129,7 @@ func TestCatalogReachability_EveryRowResolvesToAServedMethod(t *testing.T) {
 // исход, и он обязан быть отличим от «ничего не прочитано», поэтому перепись
 // проверяется отдельно.
 func TestCatalogReachability_InertRowsAreExactlyTheAllowedServices(t *testing.T) {
+	t.Parallel()
 	findings, census, err := AuditCatalogReachability(catalogReachabilityOptions(t, nil), nil)
 	if err != nil {
 		t.Fatalf("анализатор не отработал: %v", err)
@@ -277,6 +279,7 @@ func auditTiny(t *testing.T, root string, allow []string) []CatalogReachabilityF
 // называющая метод СМОНТИРОВАННОГО сервиса, обязана проходить молча, иначе гейт
 // ловит форму, а не существо, и первый же ложный срабат его отключит.
 func TestCatalogReachability_SilentOnAServedMethod(t *testing.T) {
+	t.Parallel()
 	root := catalogTinyTree(t, []map[string]any{
 		row("kacho.cloud.demo.v1.AlphaService/Get"),
 		row("kacho.cloud.demo.v1.AlphaService/Follow"), // потоковый метод — тоже обслуживается
@@ -289,6 +292,7 @@ func TestCatalogReachability_SilentOnAServedMethod(t *testing.T) {
 // TestCatalogReachability_RedOnAnUnmountedService — настоящий вход: сервис есть в
 // контракте, но композиционный корень его не монтирует.
 func TestCatalogReachability_RedOnAnUnmountedService(t *testing.T) {
+	t.Parallel()
 	root := catalogTinyTree(t, []map[string]any{
 		row("kacho.cloud.demo.v1.AlphaService/Get"),
 		row("kacho.cloud.demo.v1.BetaService/Ping"),
@@ -305,6 +309,7 @@ func TestCatalogReachability_RedOnAnUnmountedService(t *testing.T) {
 // TestCatalogReachability_RedOnAMethodTheContractDoesNotHave — строка пережила
 // снятие метода: сервис смонтирован, а метода у него нет.
 func TestCatalogReachability_RedOnAMethodTheContractDoesNotHave(t *testing.T) {
+	t.Parallel()
 	root := catalogTinyTree(t, []map[string]any{
 		row("kacho.cloud.demo.v1.AlphaService/Get"),
 		row("kacho.cloud.demo.v1.AlphaService/Vanished"),
@@ -318,6 +323,7 @@ func TestCatalogReachability_RedOnAMethodTheContractDoesNotHave(t *testing.T) {
 // TestCatalogReachability_RedOnAServiceTheContractDoesNotHave — строка пережила
 // снятие сервиса целиком.
 func TestCatalogReachability_RedOnAServiceTheContractDoesNotHave(t *testing.T) {
+	t.Parallel()
 	root := catalogTinyTree(t, []map[string]any{
 		row("kacho.cloud.demo.v1.AlphaService/Get"),
 		row("kacho.cloud.demo.v1.GammaService/Get"),
@@ -332,6 +338,7 @@ func TestCatalogReachability_RedOnAServiceTheContractDoesNotHave(t *testing.T) {
 // сервиса не должен считаться методом другого. Именно здесь текстовый разбор
 // («ищем MethodName в файле») дал бы ложно-зелёное: `Ping` лежит в том же файле.
 func TestCatalogReachability_MethodsAreNotBorrowedBetweenDescriptors(t *testing.T) {
+	t.Parallel()
 	root := catalogTinyTree(t, []map[string]any{
 		row("kacho.cloud.demo.v1.AlphaService/Ping"), // Ping принадлежит Beta, не Alpha
 	})
@@ -345,6 +352,7 @@ func TestCatalogReachability_MethodsAreNotBorrowedBetweenDescriptors(t *testing.
 // TestCatalogReachability_AllowExcusesAndThenExpires — послабление работает и
 // само истекает.
 func TestCatalogReachability_AllowExcusesAndThenExpires(t *testing.T) {
+	t.Parallel()
 	const beta = "kacho.cloud.demo.v1.BetaService"
 
 	// (а) есть что исключать — молчит.
@@ -370,6 +378,7 @@ func TestCatalogReachability_AllowExcusesAndThenExpires(t *testing.T) {
 // TestCatalogReachability_EmptyCatalogIsAnError — предпосылка гейта. Пустой (или
 // не тот) каталог обязан быть ошибкой, а не «ноль находок».
 func TestCatalogReachability_EmptyCatalogIsAnError(t *testing.T) {
+	t.Parallel()
 	root := catalogTinyTree(t, []map[string]any{})
 	_, _, err := AuditCatalogReachability(CatalogReachabilityOptions{
 		Root: root, CatalogPath: "catalog.json", APIRoot: "pkg/api",

@@ -167,6 +167,7 @@ func treeGoModules(t *testing.T, root string) []string {
 
 // TestGosecScanListsEveryGoModuleOfTheTree — половина A: перечень выводится.
 func TestGosecScanListsEveryGoModuleOfTheTree(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	want := treeGoModules(t, root)
@@ -214,6 +215,7 @@ func TestGosecScanListsEveryGoModuleOfTheTree(t *testing.T) {
 
 // TestSecurityScanCallsTheModuleCensus — половина B: перечень кто-то зовёт.
 func TestSecurityScanCallsTheModuleCensus(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	body, err := os.ReadFile(filepath.Join(root, securityScanWorkflow))

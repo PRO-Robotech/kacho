@@ -27,6 +27,7 @@ var (
 // ─── ОСЬ 1: запрос против прозы ──────────────────────────────────────────────
 
 func TestMarkerQueryRedsOnExecutableShellQuery(t *testing.T) {
+	t.Parallel()
 	src := []byte("#!/usr/bin/env bash\n" +
 		`Q="SELECT count(*) FROM kacho_x.x_journal WHERE sent_at IS NULL;"` + "\n")
 	f, census := ScanMarkerQueries("fix/drain.sh", src, []JournalTable{journalFixture})
@@ -47,6 +48,7 @@ func TestMarkerQueryRedsOnExecutableShellQuery(t *testing.T) {
 }
 
 func TestMarkerQuerySilentOnTheSameTextInAComment(t *testing.T) {
+	t.Parallel()
 	// ЗАКОННЫЙ БЛИЗНЕЦ: изменён РОВНО ОДИН факт — тот же текст стоит
 	// комментарием. Правильная правка этого класса оставляет в дереве именно
 	// такое объяснение в прошедшем времени, и разбор, судящий по слову, покраснел
@@ -65,6 +67,7 @@ func TestMarkerQuerySilentOnTheSameTextInAComment(t *testing.T) {
 // ─── ОСЬ 2: журнал против очереди ────────────────────────────────────────────
 
 func TestMarkerQuerySilentOnAQueueThatCarriesTheMarker(t *testing.T) {
+	t.Parallel()
 	// Изменён РОВНО ОДИН факт: та же строка спрашивает таблицу, у которой признак
 	// ЕСТЬ. Без этой пары гейт краснел бы на каждом законном дренаже дерева.
 	src := []byte(`Q="SELECT count(*) FROM kacho_x.x_queue WHERE sent_at IS NULL;"` + "\n")
@@ -82,6 +85,7 @@ func TestMarkerQuerySilentOnAQueueThatCarriesTheMarker(t *testing.T) {
 // ─── ОСЬ 3: разметка — блок команд против прозы ──────────────────────────────
 
 func TestMarkerQueryRedsInsideAFencedBlockAndIsSilentOutsideIt(t *testing.T) {
+	t.Parallel()
 	inside := []byte("Руководство.\n\n```bash\npsql -c \"SELECT 1 FROM kacho_x.x_journal WHERE sent_at IS NULL;\"\n```\n")
 	f, _ := ScanMarkerQueries("docs/runbook.md", inside, []JournalTable{journalFixture})
 	if len(f) != 1 {
@@ -101,6 +105,7 @@ func TestMarkerQueryRedsInsideAFencedBlockAndIsSilentOutsideIt(t *testing.T) {
 // ─── ОСЬ 4: единица суждения — ОПЕРАТОР, а не весь фрагмент ──────────────────
 
 func TestMarkerQueryBlamesOnlyTheBranchThatAsksForTheMarker(t *testing.T) {
+	t.Parallel()
 	src := []byte("```bash\npsql -c \"\n" +
 		"SELECT count(*) FILTER (WHERE sent_at IS NULL) FROM kacho_x.x_journal\n" +
 		"UNION ALL SELECT count(*) FROM kacho_x.x_other\n\"\n```\n")
@@ -117,6 +122,7 @@ func TestMarkerQueryBlamesOnlyTheBranchThatAsksForTheMarker(t *testing.T) {
 // ─── ОСЬ 5: «не носитель» ОТЛИЧИМО от «носитель без находок» ─────────────────
 
 func TestMarkerQueryDistinguishesANonCarrierFromACleanCarrier(t *testing.T) {
+	t.Parallel()
 	q := []byte(`SELECT 1 FROM kacho_x.x_journal WHERE sent_at IS NULL;`)
 	_, unknown := ScanMarkerQueries("fix/thing.bin", q, []JournalTable{journalFixture})
 	if unknown.Carrier || unknown.Chunks != 0 {
@@ -135,6 +141,7 @@ func TestMarkerQueryDistinguishesANonCarrierFromACleanCarrier(t *testing.T) {
 // ─── ОСЬ 6: словарь журналов ВЫВОДИТСЯ из миграции, а не выписан ─────────────
 
 func TestJournalDictionaryComesFromTheMigrationAndCarriesTheSchema(t *testing.T) {
+	t.Parallel()
 	sql := []byte(`-- +goose Up
 CREATE TABLE kacho_x.x_journal (id bigserial PRIMARY KEY, created_at timestamptz);
 CREATE TABLE kacho_x.x_queue (id bigserial PRIMARY KEY, sent_at timestamptz);

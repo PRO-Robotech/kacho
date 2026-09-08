@@ -785,6 +785,187 @@ case_rollback_on_a_line_named_outside_release_is_named() {
   rm -rf "$r"
 }
 
+# ── Случай 12а. ДОГОН СТВОЛА накопительной линией — вердикт ОБЯЗАН быть ──────
+# Предмет: `git merge origin/main` с накопительной линии. Первым родителем стоит
+# прежняя вершина линии (она на первородительской цепи `origin/release/*`),
+# вторым — вершина ствола (она на цепи `origin/main`). ОБА родителя лежат на
+# опорных линиях, и плоский счёт давал 2, то есть «не знаю», — на КАЖДОМ догоне.
+#
+# Почему это несущий случай, а не край. Догон обязателен перед агрегирующим MR,
+# иначе линия конфликтует; значит судья молчал ровно на той операции, ради
+# которой заведён — шапка `drift.sh`: «ветка, отставшая от ствола на сотни
+# файлов, при переносе может ВЕРНУТЬ содержимое базы». Замер 2026-09-08: у трёх
+# живых линий из восьми посадка догона вердикта не получала, у двух из них она в
+# диапазоне единственная — гейт выходил кодом 5, и вливание останавливалось.
+#
+# Случай ОТРИЦАТЕЛЬНЫЙ (гейт обязан промолчать), поэтому рядом обязателен 12б с
+# настоящим откатом на той же раскладке: без него «промолчал» неотличимо от
+# «ослеп на догонах».
+case_line_catching_up_with_trunk_gets_a_verdict() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  echo "база" > "$r/shared.txt"; echo "прочее" > "$r/other.txt"; commit "$r" "база"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+
+  # Ствол уходит вперёд по файлу, которого линия не касается.
+  echo "СТВОЛ" > "$r/shared.txt"; commit "$r" "ствол правит общий файл"
+  local trunk_tip; trunk_tip=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b release/line "$base"
+  echo "правка линии" > "$r/other.txt"; commit "$r" "линия правит своё"
+  local line_before; line_before=$(git -C "$r" rev-parse HEAD)
+
+  # ДОГОН: линия вливает ствол В СЕБЯ. Содержимое ствола сохранено.
+  git -C "$r" merge -q --no-ff --no-edit main -m "линия догоняет ствол" >/dev/null 2>&1
+  local head; head=$(git -C "$r" rev-parse HEAD)
+  git -C "$r" update-ref refs/remotes/origin/main "$trunk_tip"
+  git -C "$r" update-ref refs/remotes/origin/release/line "$head"
+
+  # Предпосылка случая: оба родителя на опорных линиях и на РАЗНЫХ рангах.
+  # Без этой проверки случай зеленел бы на графе, который его предмета не несёт.
+  local p1 p2 mainchain linechain
+  read -r _ p1 p2 <<<"$(git -C "$r" rev-list --parents -n1 "$head")"
+  mainchain="$(git -C "$r" rev-list --first-parent refs/remotes/origin/main)"
+  linechain="$(git -C "$r" rev-list --first-parent refs/remotes/origin/release/line)"
+  if ! line_in "$linechain" "$p1" || ! line_in "$mainchain" "$p2"; then
+    no "предпосылка случая 12а не выполнена: родители не на разных рангах опор" ""
+    rm -rf "$r"; return
+  fi
+  if [ "$p1" != "$line_before" ] || [ "$p2" != "$trunk_tip" ]; then
+    no "предпосылка случая 12а не выполнена: стороны посадки не в нужной форме" ""
+    rm -rf "$r"; return
+  fi
+
+  local out rc
+  out=$(cd "$r" && BEFORE="$base" HEAD_SHA="$head" bash -e -o pipefail "$JUDGE" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] \
+     && [[ "$out" != *"сторону ствола установить нечем"* ]] \
+     && [[ "$out" != *"ни одна посадка прогона не получила вердикта"* ]] \
+     && [[ "$out" != *"ОТКАТ"* ]] \
+     && [[ "$out" == *"сторона решена РАНГОМ"* ]] \
+     && [[ "$out" == *"стволом взят $(git -C "$r" log -1 --format=%h "$trunk_tip")"* ]] \
+     && any_line_matches "$out" 'сверено чисто 1' \
+     && any_line_matches "$out" 'сторона ствола не установлена 0'; then
+    ok "догон ствола получил вердикт: сторона решена рангом, стволом взят ствол"
+  else
+    no "посадка догона ствола вердикта не получила (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 12б. Настоящий откат В ДОГОНЕ — гейт ОБЯЗАН заговорить ────────────
+# Положительный близнец 12а и единственное, что делает его молчание осмысленным.
+# Отличается РОВНО ОДНИМ фактом: догон возвращает общий файл к содержимому базы.
+# Граф, имена и ссылки совпадают дословно.
+#
+# Он же отвечает на вопрос, которым ранжирование опорных линий обязано
+# сопровождаться: не куплен ли вердикт ценой слепоты к откату. Пока этот случай
+# зелен — не куплен. И он же ловит перепутанные стороны: если стволом взять
+# линию, откаченным окажется файл ЛИНИИ, и координата будет другой.
+case_rollback_while_catching_up_with_trunk_is_named() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  echo "база" > "$r/shared.txt"; echo "прочее" > "$r/other.txt"; commit "$r" "база"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+
+  echo "СТВОЛ" > "$r/shared.txt"; commit "$r" "ствол правит общий файл"
+  local trunk_tip; trunk_tip=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b release/line "$base"
+  echo "правка линии" > "$r/other.txt"; commit "$r" "линия правит своё"
+  local line_before; line_before=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" merge -q --no-ff --no-commit main >/dev/null 2>&1
+  echo "база" > "$r/shared.txt"          # ОТКАТ: догон вернул содержимое базы
+  commit "$r" "линия догоняет ствол"
+  local head; head=$(git -C "$r" rev-parse HEAD)
+  git -C "$r" update-ref refs/remotes/origin/main "$trunk_tip"
+  git -C "$r" update-ref refs/remotes/origin/release/line "$head"
+
+  local p1 p2
+  read -r _ p1 p2 <<<"$(git -C "$r" rev-list --parents -n1 "$head")"
+  if [ "$p1" != "$line_before" ] || [ "$p2" != "$trunk_tip" ]; then
+    no "предпосылка случая 12б не выполнена: стороны посадки не в нужной форме" ""
+    rm -rf "$r"; return
+  fi
+
+  local out rc
+  out=$(cd "$r" && BEFORE="$base" HEAD_SHA="$head" bash -e -o pipefail "$JUDGE" 2>&1); rc=$?
+  if [ "$rc" -ne 0 ] && [[ "$out" == *"ОТКАТ: shared.txt"* ]]; then
+    ok "откат, внесённый догоном ствола, назван, и координата напечатана"
+  else
+    no "откат в посадке догона ствола НЕ пойман (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 12в. ДВЕ накопительные линии — третья категория НЕ схлопнута ──────
+# Граница послабления, которое вводят 12а/12б. Ранг снимает неопределённость
+# только там, где ранги РАЗНЫЕ: ствол выше линии. Если оба родителя на линиях
+# ОДНОГО ранга, граф по-прежнему не отвечает, и вердикт не выносится.
+#
+# Без этого случая ранжирование было бы неотличимо от «решать всегда, лишь бы не
+# краснеть»: тогда судья на паре линий молча взял бы первого родителя — ровно то,
+# что шапка `judge.sh` объявляет закрытым.
+#
+# Обе посадки стоят в ОДНОМ прогоне намеренно: так видно, что судья решает
+# разрешимое и отказывается от неразрешимого в один заход, а не молчит нацело.
+case_two_lines_of_one_rank_stay_undecided() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  echo "база" > "$r/shared.txt"; echo "прочее" > "$r/other.txt"; commit "$r" "база"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+
+  echo "СТВОЛ" > "$r/shared.txt"; commit "$r" "ствол правит общий файл"
+  local trunk_tip; trunk_tip=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b release/line "$base"
+  echo "правка линии" > "$r/other.txt"; commit "$r" "линия правит своё"
+
+  # Посадка первая — догон ствола, разрешимая рангом.
+  git -C "$r" merge -q --no-ff --no-edit main -m "линия догоняет ствол" >/dev/null 2>&1
+  local catchup; catchup=$(git -C "$r" rev-parse HEAD)
+
+  # Посадка вторая — вторая накопительная линия, слитая в первую. Обе ранга 1.
+  git -C "$r" checkout -q -b release/second "$catchup"
+  echo "вторая линия" > "$r/second.txt"; commit "$r" "вторая линия правит своё"
+  local second_tip; second_tip=$(git -C "$r" rev-parse HEAD)
+  git -C "$r" checkout -q release/line
+  git -C "$r" merge -q --no-ff --no-edit release/second -m "две линии слиты между собой" >/dev/null 2>&1
+  local head; head=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" update-ref refs/remotes/origin/main "$trunk_tip"
+  git -C "$r" update-ref refs/remotes/origin/release/line "$head"
+  git -C "$r" update-ref refs/remotes/origin/release/second "$second_tip"
+
+  # Предпосылка: у второй посадки оба родителя на линиях и НИ ОДИН — на стволе.
+  local p1 p2 mainchain
+  read -r _ p1 p2 <<<"$(git -C "$r" rev-list --parents -n1 "$head")"
+  mainchain="$(git -C "$r" rev-list --first-parent refs/remotes/origin/main)"
+  if line_in "$mainchain" "$p1" || line_in "$mainchain" "$p2"; then
+    no "предпосылка случая 12в не выполнена: сторона лежит на стволе" ""
+    rm -rf "$r"; return
+  fi
+  if [ "$p1" != "$catchup" ] || [ "$p2" != "$second_tip" ]; then
+    no "предпосылка случая 12в не выполнена: стороны посадки не в нужной форме" ""
+    rm -rf "$r"; return
+  fi
+
+  local out rc
+  out=$(cd "$r" && BEFORE="$base" HEAD_SHA="$head" bash -e -o pipefail "$JUDGE" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] \
+     && [[ "$out" == *"сторону ствола установить нечем"* ]] \
+     && [[ "$out" == *"на наивысшем присутствующем ранге 1"* ]] \
+     && [[ "$out" != *"ОТКАТ"* ]] \
+     && any_line_matches "$out" 'сверено чисто 1' \
+     && any_line_matches "$out" 'сторона ствола не установлена 1'; then
+    ok "две линии одного ранга остались без вердикта, а догон рядом — разобран"
+  else
+    no "ранг схлопнул третью категорию либо не разобрал догон (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
 # ── Случай 10. Опорных линий НЕТ ВОВСЕ — обход пуст, и гейт падает ───────────
 # Близнец к случаю 9 и граница послабления, которое он вводит. Там граф не
 # отвечал на вопрос о КОНКРЕТНОЙ посадке; здесь спрашивать не у чего вообще:
@@ -1731,6 +1912,9 @@ case_no_trunk_reference_is_an_empty_traversal
 case_nothing_judged_at_all_is_loud
 case_line_named_outside_release_is_still_a_trunk_line
 case_rollback_on_a_line_named_outside_release_is_named
+case_line_catching_up_with_trunk_gets_a_verdict
+case_rollback_while_catching_up_with_trunk_is_named
+case_two_lines_of_one_rank_stay_undecided
 case_declaration_outlives_the_push_that_used_it
 case_declaration_without_subject_anywhere_still_reds
 case_finding_outlives_the_push_that_found_it

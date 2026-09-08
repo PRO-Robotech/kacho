@@ -176,6 +176,7 @@ func consoleTypeScriptSources(t *testing.T, root string) map[string]string {
 // TestModuleMockFactoryResolvesItsDoubleStatically — фабрика подмены модуля не
 // добывает замену динамическим импортом.
 func TestModuleMockFactoryResolvesItsDoubleStatically(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	sources := consoleTypeScriptSources(t, root)
 

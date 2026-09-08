@@ -171,6 +171,7 @@ func auditConsoleConfirmProbes(root string, roster map[string]string) ([]confirm
 
 // TestConsoleConfirmationsAreProbedOrNamed — гейт класса.
 func TestConsoleConfirmationsAreProbedOrNamed(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	findings, census, err := auditConsoleConfirmProbes(root, confirmRoster)

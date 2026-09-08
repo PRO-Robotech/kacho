@@ -237,6 +237,7 @@ func scanManualOnlyJobs(dir string) (finds []wfJob, files, jobs, autoFiles int, 
 }
 
 func TestManualOnlyJobNeverHidesInsideAutomaticWorkflow(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(repoRoot(t), ".github", "workflows")
 	finds, files, jobs, autoFiles, err := scanManualOnlyJobs(dir)
 	if err != nil {
@@ -295,6 +296,7 @@ func scanActorExemptions(dir string) (finds []wfJob, selfHosted, files, jobs int
 }
 
 func TestActorExemptionRequiresAScarceRunnerThatExists(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(repoRoot(t), ".github", "workflows")
 	finds, selfHosted, files, jobs, err := scanActorExemptions(dir)
 	if err != nil {
@@ -349,6 +351,7 @@ func writeWorkflow(t *testing.T, dir, name, body string) {
 }
 
 func TestManualOnlyGateProvenByInjection(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 
 	// ЛОВИТСЯ: работа замкнута на ручной запуск, а конвейер идёт автоматически.
@@ -420,6 +423,7 @@ jobs:
 }
 
 func TestActorExemptionGateProvenByInjection(t *testing.T) {
+	t.Parallel()
 	exempt := `
 name: exempt
 on:
@@ -546,6 +550,7 @@ func relaxationsWithoutReason(dir string) (finds []string, files, relaxations in
 }
 
 func TestCiRelaxationSaysWhyItIsThere(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(repoRoot(t), ".github", "workflows")
 	finds, files, relaxations, err := relaxationsWithoutReason(dir)
 	if err != nil {
@@ -567,6 +572,7 @@ func TestCiRelaxationSaysWhyItIsThere(t *testing.T) {
 
 // Собственная предпосылка: гейт ловит молчаливое послабление и молчит на объяснённом.
 func TestCiRelaxationGateProvenByInjection(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	write := func(name, body string) {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {

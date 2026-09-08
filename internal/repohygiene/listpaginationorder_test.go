@@ -147,6 +147,7 @@ var listPaginationScanRoots = []string{"services", "gateway", "pkg"}
 // (TestGateIgnoresOrdinaryErrorReturnsThatAreNotPrechecks,
 // TestGateIgnoresAssignedCallThatIsNotAPrecheck).
 func TestEmptyPageNeverPrecedesPaginationValidation(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	var hits []string
@@ -204,6 +205,7 @@ func TestEmptyPageNeverPrecedesPaginationValidation(t *testing.T) {
 // Форма, которой в дереве больше нет, создаёт впечатление покрытия, которого
 // нет: следующий читатель увидит запись и решит, что этот случай гейт ловит.
 func TestIdentityPredicateVocabularyHasSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	seen := map[string]int{}
@@ -233,6 +235,7 @@ func TestIdentityPredicateVocabularyHasSubject(t *testing.T) {
 // Гейт переводит места на вызов проверки формата. Если ни одного такого имени в
 // дереве нет, требование невыполнимо, а гейт продолжит требовать своё.
 func TestPaginationValidatorNamesHaveSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	seen := map[string]int{}
@@ -265,6 +268,7 @@ func TestPaginationValidatorNamesHaveSubject(t *testing.T) {
 // TestGateRedOnInjectedDefect — возвращённый дефект краснит гейт И называет
 // координату.
 func TestGateRedOnInjectedDefect(t *testing.T) {
+	t.Parallel()
 	const src = `package x
 
 func (u *uc) Execute(ctx ctxT, subjectID string, f filterT, p pageT) ([]row, string, error) {
@@ -305,6 +309,7 @@ func (u *uc) Execute(ctx ctxT, subjectID string, f filterT, p pageT) ([]row, str
 // назван ли вызывающий. Без этой пары расширение словаря было бы объявлением, а не
 // проверкой.
 func TestGateRedOnInjectedRefusalBeforeFormat(t *testing.T) {
+	t.Parallel()
 	const src = `package x
 
 func (u *uc) Execute(ctx ctxT, f filterT, p pageT) ([]row, string, error) {
@@ -334,6 +339,7 @@ func (u *uc) Execute(ctx ctxT, f filterT, p pageT) ([]row, string, error) {
 // отказ, поставленный ПОСЛЕ проверки формата, гейт не задевает. Без этой половины
 // проверка ловила бы форму, а не существо, и первый же ложный срабат её отключил бы.
 func TestGateSilentOnLawfulRefusalAfterFormat(t *testing.T) {
+	t.Parallel()
 	const src = `package x
 
 func (u *uc) Execute(ctx ctxT, f filterT, p pageT) ([]row, string, error) {
@@ -361,6 +367,7 @@ func (u *uc) Execute(ctx ctxT, f filterT, p pageT) ([]row, string, error) {
 // сужения не является и в перепись не попадает. Иначе счётчик замыканий раздулся бы
 // каждым проверенным вызовом, а нижняя граница перестала бы ловить усадку словаря.
 func TestGateIgnoresOrdinaryErrorReturnsThatAreNotPrechecks(t *testing.T) {
+	t.Parallel()
 	const src = `package x
 
 func (u *uc) Execute(ctx ctxT, f filterT, p pageT) ([]row, string, error) {
@@ -389,6 +396,7 @@ func (u *uc) Execute(ctx ctxT, f filterT, p pageT) ([]row, string, error) {
 // НЕсписочной функции (iam user.Get / WhoAmI) — последнее не является предметом
 // запрета вовсе.
 func TestGateSilentOnLawfulSameShape(t *testing.T) {
+	t.Parallel()
 	lawful := map[string]string{
 		"проверка первым стейтментом": `package x
 
@@ -450,6 +458,7 @@ func (u *uc) Execute(ctx ctxT, id string, p pageT) ([]row, string, error) {
 // Без этого «на пути» выродилось бы в «где-то раньше в файле», и гейт зеленел бы
 // на коде, где проверка не исполняется.
 func TestGateIgnoresValidationHiddenInAnotherBranch(t *testing.T) {
+	t.Parallel()
 	const src = `package x
 
 func (u *uc) Execute(ctx ctxT, subjectID string, f filterT, p pageT) ([]row, string, error) {
@@ -1009,6 +1018,7 @@ func forEachProductionGoFileForPagination(t *testing.T, root string, fn func(rel
 // печатает объём осмотренного, поэтому «ноль находок» отличимо от «ноль
 // прочитанного».
 func TestNarrowingPrecheckNamesHaveSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	counts := map[string]int{}
 	files := 0
@@ -1046,6 +1056,7 @@ func TestNarrowingPrecheckNamesHaveSubject(t *testing.T) {
 // Имя предусловия здесь заведомо известное (`Precheck`), поэтому красное может
 // прийти только от распознавания формы — ось изолирована.
 func TestGateRedOnInjectedRefusalAssignedThenChecked(t *testing.T) {
+	t.Parallel()
 	const src = `package x
 
 func (u *uc) Execute(ctx ctxT, f filterT, p pageT) ([]row, string, error) {
@@ -1080,6 +1091,7 @@ func (u *uc) Execute(ctx ctxT, f filterT, p pageT) ([]row, string, error) {
 // Форма записи здесь заведомо известная (вызов в `Init` инструкции `if`), поэтому
 // красное может прийти только от словаря имён — ось изолирована.
 func TestGateRedOnInjectedSubjectReadAuthority(t *testing.T) {
+	t.Parallel()
 	const src = `package x
 
 func (u *uc) Execute(ctx ctxT, f filterT, p pageT) ([]row, string, error) {
@@ -1109,6 +1121,7 @@ func (u *uc) Execute(ctx ctxT, f filterT, p pageT) ([]row, string, error) {
 // расширение ловило бы форму, а не существо, и первый же ложный срабат его
 // отключил бы.
 func TestGateSilentOnLawfulAssignedRefusalAfterFormat(t *testing.T) {
+	t.Parallel()
 	const src = `package x
 
 func (u *uc) Execute(ctx ctxT, f filterT, p pageT) ([]row, string, error) {
@@ -1140,6 +1153,7 @@ func (u *uc) Execute(ctx ctxT, f filterT, p pageT) ([]row, string, error) {
 // Без него счётчик замыканий раздулся бы каждым проверенным вызовом — а он и есть
 // объём гейта, по которому судят об усадке словаря.
 func TestGateIgnoresAssignedCallThatIsNotAPrecheck(t *testing.T) {
+	t.Parallel()
 	const src = `package x
 
 func (u *uc) Execute(ctx ctxT, f filterT, p pageT) ([]row, string, error) {

@@ -184,6 +184,7 @@ func scanFGAOutboxRenderers(t *testing.T, tree *trackedTree) fgaOutboxScan {
 }
 
 func TestFGAOutboxRowsAreRenderedOnlyByTheirOwner(t *testing.T) {
+	t.Parallel()
 	sc := scanFGAOutboxRenderers(t, newTrackedTree(t, repoRoot(t)))
 	filesScanned, literalsSeen := sc.filesScanned, sc.literalsSeen
 	insertsFound, ownerInserts := sc.insertsFound, sc.ownerInserts

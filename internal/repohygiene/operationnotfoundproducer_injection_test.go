@@ -33,6 +33,7 @@ import (
 // проверенное только на литералах, зеленело бы на всякой склейке — то есть
 // ровно там, где заведена эта половина.
 func TestOperationNotFoundDiscriminatorKnowsEveryLegalForm(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name  string
 		src   string
@@ -164,6 +165,7 @@ func TestOperationNotFoundDiscriminatorKnowsEveryLegalForm(t *testing.T) {
 // месту (ложное «производителей 2» на исправном дереве); а склейка, которую
 // перепись не считает, была бы вне наблюдения молча.
 func TestOperationNotFoundConcatIsJudgedOnceWholeAndCounted(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	p := filepath.Join(dir, "synthetic.go")
 	src := `package x` + "\n" +
@@ -195,6 +197,7 @@ func TestOperationNotFoundConcatIsJudgedOnceWholeAndCounted(t *testing.T) {
 // Расширение, не изменившее осмотренного, холостое; изменившее только находки —
 // не отличимо от регрессии дерева (`testing.md` §«Гейт на класс», п. 7).
 func TestOperationNotFoundCensusCountsWhatItJudges(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 
 	plain := filepath.Join(dir, "plain.go")
@@ -230,6 +233,7 @@ func TestOperationNotFoundCensusCountsWhatItJudges(t *testing.T) {
 // тот же текст, что владелец. Именно такую вторую запись прежний распознаватель
 // не видел, отвечая «производителей найдено: 1» над деревом, где их два.
 func TestOperationNotFoundCensusNamesTheSecondRecord(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 
 	producer := filepath.Join(dir, "notfound.go")

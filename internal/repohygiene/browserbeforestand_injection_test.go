@@ -91,6 +91,7 @@ jobs:
 `
 
 func TestBrowserBeforeStandGateRedsOnTheDefect(t *testing.T) {
+	t.Parallel()
 	findings, census := checkBrowserBeforeStand("проба.yml", injBrowserAfterStand)
 	if len(findings) == 0 {
 		t.Fatal("гейт СМОЛЧАЛ на внесённом дефекте — он ничего не сторожит")
@@ -110,6 +111,7 @@ func TestBrowserBeforeStandGateRedsOnTheDefect(t *testing.T) {
 }
 
 func TestBrowserBeforeStandGateStaysSilentOnLegitimateForms(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name        string
 		raw         string
@@ -140,6 +142,7 @@ func TestBrowserBeforeStandGateStaysSilentOnLegitimateForms(t *testing.T) {
 // Неразобранный файл — находка, а не тихий зелёный: иначе гейт «проходит» ровно
 // там, где он ничего не прочитал.
 func TestBrowserBeforeStandGateReportsUnparsableFile(t *testing.T) {
+	t.Parallel()
 	findings, census := checkBrowserBeforeStand("битый.yml", "jobs: [ это не отображение")
 	if len(findings) == 0 {
 		t.Fatal("неразобранный YAML принят молча — «ноль находок» стало неотличимо от «ноль прочитанного»")
@@ -159,6 +162,7 @@ func TestBrowserBeforeStandGateReportsUnparsableFile(t *testing.T) {
 // самопроверку впереди подъёма стенда, а настоящую добычу увести за него.
 // Порядок при этом «соблюдён» — по шагу, который браузера не добывает.
 func TestSelfTestStepIsNotCountedAsAcquisition(t *testing.T) {
+	t.Parallel()
 	// (а) ДЕФЕКТ: настоящая добыча ПОСЛЕ стенда, самопроверка — до.
 	broken := `
 jobs:

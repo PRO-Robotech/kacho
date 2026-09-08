@@ -107,6 +107,7 @@ func (s *ownerStand) run(t *testing.T) ([]ClientDocsResourceOwnerFinding, Client
 // TestClientDocsOwnerInjection_CleanStandIsSilent — контроль. Без него всякая
 // последующая краснота неотличима от анализатора, краснеющего на всём.
 func TestClientDocsOwnerInjection_CleanStandIsSilent(t *testing.T) {
+	t.Parallel()
 	s := newOwnerStand(t)
 	findings, census := s.run(t)
 	if len(findings) != 0 {
@@ -134,6 +135,7 @@ func TestClientDocsOwnerInjection_CleanStandIsSilent(t *testing.T) {
 // ресурс хранения приписан вычислениям. Ровно тот текст, что жил в дереве до
 // kacho#1392.
 func TestClientDocsOwnerInjection_ForeignResourceIsFound(t *testing.T) {
+	t.Parallel()
 	s := newOwnerStand(t)
 	s.write(t, "gateway/docs/content/intro.mdx", `
 <table>
@@ -166,6 +168,7 @@ func TestClientDocsOwnerInjection_ForeignResourceIsFound(t *testing.T) {
 // нет ни у кого) не судится и находкой не становится. Проба стоит здесь, чтобы
 // слепая зона была доказана, а не заявлена.
 func TestClientDocsOwnerInjection_RetiredNameIsNotJudged(t *testing.T) {
+	t.Parallel()
 	s := newOwnerStand(t)
 	s.write(t, "gateway/docs/content/intro.mdx", `
 <table>
@@ -186,6 +189,7 @@ func TestClientDocsOwnerInjection_RetiredNameIsNotJudged(t *testing.T) {
 // TestClientDocsOwnerInjection_TwoDomainsInOneRowAreNotJudged — законный близнец
 // той же формы: строка, называющая ДВА домена, говорит о связи, а не о владении.
 func TestClientDocsOwnerInjection_TwoDomainsInOneRowAreNotJudged(t *testing.T) {
+	t.Parallel()
 	s := newOwnerStand(t)
 	s.write(t, "gateway/docs/content/intro.mdx", `
 <table>
@@ -208,6 +212,7 @@ func TestClientDocsOwnerInjection_TwoDomainsInOneRowAreNotJudged(t *testing.T) {
 // документации (`nlb` при каталоге контракта `loadbalancer`) не делает верную
 // строку находкой.
 func TestClientDocsOwnerInjection_AliasIsHonoured(t *testing.T) {
+	t.Parallel()
 	s := newOwnerStand(t)
 	s.write(t, "proto/kacho/cloud/probeloadbalancer/v1/lb_service.proto", `
 syntax = "proto3";
@@ -238,6 +243,7 @@ service ProbeTargetGroupService { rpc Get(R) returns (S); }
 // многовладельческие и перестал судиться ВООБЩЕ — то есть настоящий дефект стал
 // бы невидим.
 func TestClientDocsOwnerInjection_ServiceNamedOnlyInCommentIsNotOwnership(t *testing.T) {
+	t.Parallel()
 	s := newOwnerStand(t)
 	_, census := s.run(t)
 	if census.AmbiguousOut != 1 {
@@ -249,6 +255,7 @@ func TestClientDocsOwnerInjection_ServiceNamedOnlyInCommentIsNotOwnership(t *tes
 // TestClientDocsOwnerInjection_EmptyTreeIsRefusal — пустой обход обязан быть
 // ОТКАЗОМ, а не успехом: «находок ноль» иначе неотличимо от «прочитано ноль».
 func TestClientDocsOwnerInjection_EmptyTreeIsRefusal(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	var log strings.Builder
 	_, _, err := AuditClientDocsResourceOwner(ClientDocsResourceOwnerOptions{

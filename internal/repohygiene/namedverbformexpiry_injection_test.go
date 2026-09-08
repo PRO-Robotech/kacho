@@ -70,6 +70,7 @@ func refuseRuleVerbs() error {
 
 // TestVerbFormSentinelIsJudgedByReturnNotByMention — распознаватель, обе стороны.
 func TestVerbFormSentinelIsJudgedByReturnNotByMention(t *testing.T) {
+	t.Parallel()
 	returned, err := ScanVerbFormSentinel("returned.go", []byte(sentinelReturnedSrc))
 	if err != nil {
 		t.Fatalf("разбор источника с возвратом: %v", err)
@@ -111,6 +112,7 @@ func probeNamesWithAllSix() []string {
 
 // TestNamedVerbFormExpiryGateFallsAndStaysSilentOnItsLegalTwins — ТРИ ПРОГОНА.
 func TestNamedVerbFormExpiryGateFallsAndStaysSilentOnItsLegalTwins(t *testing.T) {
+	t.Parallel()
 	// Сегодняшний перечень проб дерева: пятого и двадцать второго сценариев — да,
 	// шести отсроченных — нет.
 	todayProbes := []string{

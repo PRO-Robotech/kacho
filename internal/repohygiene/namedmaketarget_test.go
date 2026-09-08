@@ -188,6 +188,7 @@ func checkNamedMakeTargets(path, raw string, known map[string]bool) (findings []
 
 // TestNamedMakeTargetExists — по дереву.
 func TestNamedMakeTargetExists(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	out, err := gitenv.Command(root, "ls-files", "-z").Output()
@@ -273,6 +274,7 @@ func gitShowFile(t *testing.T, root, rel string) (string, error) {
 
 // TestNamedMakeTargetDetectorSeesBothForms — инъекция в обе стороны.
 func TestNamedMakeTargetDetectorSeesBothForms(t *testing.T) {
+	t.Parallel()
 	// bt — обратная кавычка. Фикстуры собираются конкатенацией, а не пишутся
 	// литералом: иначе гейт нашёл бы СВОИ ЖЕ фикстуры при обходе дерева и
 	// покраснел бы на несуществующих целях, которые здесь заведены нарочно.
@@ -372,6 +374,7 @@ func TestNamedMakeTargetDetectorSeesBothForms(t *testing.T) {
 // TestNamedMakeTargetParserReadsRules — разбор объявлений Makefile: без него
 // множество известных целей молча оскудеет, и гейт начнёт краснеть на законном.
 func TestNamedMakeTargetParserReadsRules(t *testing.T) {
+	t.Parallel()
 	body := strings.Join([]string{
 		"SHELL := bash",
 		".PHONY: test test-unit help",

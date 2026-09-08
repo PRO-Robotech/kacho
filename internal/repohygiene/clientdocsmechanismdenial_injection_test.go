@@ -56,6 +56,7 @@ var historicalDenials = []struct {
 
 // TestClientDocsDenialGateFallsOnEachHistoricalDenial — инъекция нового.
 func TestClientDocsDenialGateFallsOnEachHistoricalDenial(t *testing.T) {
+	t.Parallel()
 	domains := []string{"compute", "geo", "iam", "nlb", "registry", "storage", "vpc"}
 	for _, c := range historicalDenials {
 		findings, census := clientDocsDenialFindings(
@@ -79,6 +80,7 @@ func TestClientDocsDenialGateFallsOnEachHistoricalDenial(t *testing.T) {
 // документации и все до одного истинны. Гейт, краснеющий хоть на одном, был бы снят
 // первым же, кто его прочитает.
 func TestClientDocsDenialGateIsSilentOnLegitimateTwins(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	pages, domains, err := clientDocPages(root, subscriptionDocsLister(treecorpus.UnderWithSuffix))
 	if err != nil {
@@ -102,6 +104,7 @@ func TestClientDocsDenialGateIsSilentOnLegitimateTwins(t *testing.T) {
 // глагол, и истинно. Без этой пары нельзя утверждать, что гейт судит ПРЕДМЕТ
 // отрицания, а не его форму, — он мог бы краснеть на любом «нет» рядом с «подписк».
 func TestClientDocsDenialDiscriminatorIsOneWordWide(t *testing.T) {
+	t.Parallel()
 	domains := []string{"compute", "vpc"}
 	false_, _ := clientDocsDenialFindings(
 		[]denialPage{{rel: "a.mdx", body: "Подписки на журнал снаружи нет.\n"}}, domains)
@@ -124,6 +127,7 @@ func TestClientDocsDenialDiscriminatorIsOneWordWide(t *testing.T) {
 // предпосылкой. Здесь проверяется, что предпосылка ИЗМЕРЯЕТСЯ по дереву, а не
 // подразумевается: подложный состав контрактов даёт ноль объявлений.
 func TestClientDocsDenialPremiseIsMeasuredNotAssumed(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	declared, protoRead, err := denialMechanismDeclared(root, subscriptionDocsLister(treecorpus.UnderWithSuffix))
 	if err != nil {
@@ -149,6 +153,7 @@ func TestClientDocsDenialPremiseIsMeasuredNotAssumed(t *testing.T) {
 // ноль кандидатов — то самое состояние, на котором гейт падает отдельным
 // утверждением, а не докладывает чистоту.
 func TestClientDocsDenialRecognizerReportsAnEmptyWalk(t *testing.T) {
+	t.Parallel()
 	findings, census := clientDocsDenialFindings(nil, []string{"vpc"})
 	if len(findings) != 0 || census.pages != 0 || census.sentences != 0 || census.candidates != 0 {
 		t.Errorf("пустой корпус дал страниц %d, предложений %d, кандидатов %d, находок %d — "+

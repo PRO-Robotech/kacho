@@ -70,6 +70,7 @@ const oneEntryCatalog = `[
 // отсутствующем операнде и на расхождении, и обязана молчать на сошедшихся
 // копиях.
 func TestCatalogCopyParityTarget_Injection(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// ── КОНТРОЛЬ: два одинаковых законных операнда — цель обязана МОЛЧАТЬ ────
@@ -221,6 +222,7 @@ func guardedFindingsOn(t *testing.T, body string) (found []guardedComparison, co
 // TestGuardedComparisonRecognizer_Injection — распознаватель обязан находить
 // обёртку и молчать на каждой из трёх законных форм.
 func TestGuardedComparisonRecognizer_Injection(t *testing.T) {
+	t.Parallel()
 	// ── НАХОДКА: обёртка условием существования ─────────────────────────────
 	found, comparisons := guardedFindingsOn(t, guardedMakefile)
 	if len(found) != 1 {
@@ -413,6 +415,7 @@ func shellFindingsOn(t *testing.T, body string) (found []guardedComparison, comp
 // обязан находить обёртку, называть КООРДИНАТУ и молчать на каждом законном
 // близнеце.
 func TestBlockGuardedComparisonRecognizer_Injection(t *testing.T) {
+	t.Parallel()
 	// ── НАХОДКИ ─────────────────────────────────────────────────────────────
 	for _, tc := range []struct {
 		name string
@@ -482,6 +485,7 @@ func TestBlockGuardedComparisonRecognizer_Injection(t *testing.T) {
 // ни красного, ни зелёного. Две из перечисленных ниже форм живут в дереве
 // (`if cmp` и `! diff`), и до расширения командной позиции обе были невидимы.
 func TestComparisonCommandPositionsAreAllKnown_Injection(t *testing.T) {
+	t.Parallel()
 	const shebang = "#!/usr/bin/env bash\n"
 	for _, tc := range []struct {
 		name string

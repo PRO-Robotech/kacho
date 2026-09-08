@@ -119,6 +119,7 @@ it("форма имени совпадает с платформенной", () 
 `
 
 func TestConsoleFilesystemGateFailsOnWrites(t *testing.T) {
+	t.Parallel()
 	findings, scanned, fsAware, readers, tailRejected, stale := auditConsoleFilesystemWrites(map[string]string{
 		"ui-future/x/src/A.test.ts": synthProbeWritesSync,
 		"ui-future/x/src/B.test.ts": synthProbeWritesPromise,
@@ -146,6 +147,7 @@ func TestConsoleFilesystemGateFailsOnWrites(t *testing.T) {
 }
 
 func TestConsoleFilesystemGateStaysSilentOnReadsAndDomainVerbs(t *testing.T) {
+	t.Parallel()
 	findings, scanned, fsAware, readers, _, _ := auditConsoleFilesystemWrites(map[string]string{
 		"ui-future/x/src/Contract.test.ts": synthProbeReadsTree,
 		"ui-future/x/src/Rename.test.tsx":  synthProbeDomainRename,
@@ -171,6 +173,7 @@ func TestConsoleFilesystemGateStaysSilentOnReadsAndDomainVerbs(t *testing.T) {
 }
 
 func TestConsoleFilesystemGateFailsOnAllowanceWithoutSubject(t *testing.T) {
+	t.Parallel()
 	// Исключение выдано файлу, который ничего не пишет: у послабления не осталось
 	// предмета. Оставленное, оно станет слепой зоной для следующей записи.
 	findings, _, _, _, _, stale := auditConsoleFilesystemWrites(map[string]string{
@@ -209,6 +212,7 @@ func TestConsoleFilesystemGateFailsOnAllowanceWithoutSubject(t *testing.T) {
 // не находит вообще ничего, поэтому рядом стоит положительная половина на том же
 // имени `rm` — и обе в одном прогоне.
 func TestConsoleFilesystemGateSeparatesIdentifierTailFromCall(t *testing.T) {
+	t.Parallel()
 	// (а) ОТРИЦАНИЕ — хвост чужого имени. Файл `node:fs` импортирует, значит
 	// предпосылка его не отсекает: молчание обязано прийти от целости имени.
 	findings, _, fsAware, readers, tailRejected, _ := auditConsoleFilesystemWrites(map[string]string{

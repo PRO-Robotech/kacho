@@ -65,6 +65,7 @@ func (s *TokenEnrichmentService) EnrichClaims(subject string) map[string]any {
 // TestClaimScannerFindsASecondAssembly — сторона (а): вторая сборка становится
 // находкой, и находка несёт координату и функцию.
 func TestClaimScannerFindsASecondAssembly(t *testing.T) {
+	t.Parallel()
 	as, census, err := ScanClaimAssemblies(
 		"synthetic/iamhooks/refresh.go", []byte(claimInjectedSecondAssembly),
 		claimKeyPrefix, claimMinKeys)
@@ -130,6 +131,7 @@ func claims() map[string]string {
 // TestClaimScannerIsSilentOnConsumers — сторона (б): потребители единственной
 // сборки, сколько бы их ни было, находкой не становятся.
 func TestClaimScannerIsSilentOnConsumers(t *testing.T) {
+	t.Parallel()
 	as, census, err := ScanClaimAssemblies(
 		"synthetic/service/own_lane.go", []byte(claimInjectedLawfulConsumers),
 		claimKeyPrefix, claimMinKeys)
@@ -179,6 +181,7 @@ func TestClaimScannerIsSilentOnConsumers(t *testing.T) {
 // TestClaimDebtRulesCatchABareEntry — правила ведомости обязаны краснеть на
 // голой записи и МОЛЧАТЬ на полной.
 func TestClaimDebtRulesCatchABareEntry(t *testing.T) {
+	t.Parallel()
 	lawful := claimDebtEntry{
 		File:  "services/iam/internal/handler/x/handler.go",
 		Func:  "H.claims",
@@ -208,6 +211,7 @@ func TestClaimDebtRulesCatchABareEntry(t *testing.T) {
 // TestClaimDebtStaleRuleCatchesAnEntryWithoutSubject — запись без предмета
 // роняет прогон, живая молчит, пустая ведомость молчит.
 func TestClaimDebtStaleRuleCatchesAnEntryWithoutSubject(t *testing.T) {
+	t.Parallel()
 	entries := []claimDebtEntry{
 		{File: "a.go", Func: "A.claims", Why: "w", Until: "u"},
 		{File: "b.go", Func: "B.claims", Why: "w", Until: "u"},

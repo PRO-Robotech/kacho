@@ -10,9 +10,9 @@
 package iamv1
 
 import (
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -522,7 +522,7 @@ var File_kaname_cloud_iam_v1_session_revocations_service_proto protoreflect.File
 
 const file_kaname_cloud_iam_v1_session_revocations_service_proto_rawDesc = "" +
 	"\n" +
-	"5kaname/cloud/iam/v1/session_revocations_service.proto\x12\x13kaname.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a,kaname/cloud/iam/v1/session_revocation.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xd4\x01\n" +
+	"5kaname/cloud/iam/v1/session_revocations_service.proto\x12\x13kaname.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a,kaname/cloud/iam/v1/session_revocation.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"\xd4\x01\n" +
 	"\rRevokeRequest\x12\x1b\n" +
 	"\ttoken_jti\x18\x01 \x01(\tR\btokenJti\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x16\n" +

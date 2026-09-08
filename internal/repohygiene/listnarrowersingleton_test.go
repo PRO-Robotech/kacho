@@ -95,6 +95,7 @@ var narrowerConstructionExceptions = map[string]string{}
 //  3. это законное исключение (сторона, отвечающая на вопрос) → внести запись с
 //     ПРИЧИНОЙ в narrowerConstructionExceptions.
 func TestListNarrowingHasExactlyOneImplementation(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	var findings []string
@@ -154,6 +155,7 @@ func TestListNarrowingHasExactlyOneImplementation(t *testing.T) {
 
 // TestListNarrowerExceptionsHaveSubject — исключение живёт, пока у него есть предмет.
 func TestListNarrowerExceptionsHaveSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	for rel, why := range narrowerConstructionExceptions {
 		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
@@ -176,6 +178,7 @@ func TestListNarrowerExceptionsHaveSubject(t *testing.T) {
 // читает его, — конструктором не считается. Без второй половины гейт краснел бы на
 // стороне, отвечающей на вопрос, и его отключили бы первым.
 func TestListNarrowerGateDiscriminates(t *testing.T) {
+	t.Parallel()
 	constructs := `package x
 
 func ask(cli C) {

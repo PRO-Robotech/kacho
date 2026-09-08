@@ -28,6 +28,7 @@ import (
 	// построению (импорт — литерал), поэтому его полноту проверяет НЕ он сам, а
 	// сверка с деревом внутри анализатора: новый домен без строки здесь роняет
 	// гейт с именем пакета, а не проходит молча.
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
@@ -39,7 +40,6 @@ import (
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 )
 
@@ -91,6 +91,7 @@ func readBudgetOptions(t *testing.T) ReadBudgetOptions {
 
 // TestNoMutationBuysTheReadBudget — ядро гейта, на НАСТОЯЩЕМ дереве.
 func TestNoMutationBuysTheReadBudget(t *testing.T) {
+	t.Parallel()
 	findings, census, err := AuditReadBudgetClassification(readBudgetOptions(t), os.Stdout)
 	require.NoError(t, err)
 	require.Empty(t, findings,
@@ -114,6 +115,7 @@ func TestNoMutationBuysTheReadBudget(t *testing.T) {
 // назван по-читательски», а его молчание выше есть следствие ЗАПИСАННОГО решения,
 // а не слепоты. Обратная сторона — сам гейт выше: с исключением он молчит.
 func TestReadBudgetGate_SeesTheRealTreeFormWhenNotExempt(t *testing.T) {
+	t.Parallel()
 	opts := readBudgetOptions(t)
 	opts.Exempt = nil
 

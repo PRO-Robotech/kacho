@@ -19,6 +19,7 @@ package repohygiene
 import "testing"
 
 func TestCalledFuncNamesJudgesCallNodesNotSubstrings(t *testing.T) {
+	t.Parallel()
 	files := map[string]string{
 		"a.go": "package p\nfunc buildReconciler() {}\nfunc newBuildReconciler() {}\n",
 		"b.go": "package p\nfunc use() { newBuildReconciler() }\n",

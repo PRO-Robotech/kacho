@@ -252,6 +252,7 @@ func consoleProbeSources(t *testing.T, root string) map[string]string {
 
 // TestConsoleProbesDoNotWriteToTheFilesystem — проба не переносит состояние соседке.
 func TestConsoleProbesDoNotWriteToTheFilesystem(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	sources := consoleProbeSources(t, root)
 

@@ -45,5 +45,11 @@ func bootPosture(cfg config.Config) observability.BootPosture {
 		// проверенного вызывающего. Литерал, а не пустая строка: «измерения
 		// нет» обязано быть отличимо от «поле не заполнено».
 		IdentityProvider: observability.IdentityProviderNotApplicable,
+		// Собственного REST-фронта у этого процесса НЕТ: пока служба стоит за
+		// краем платформы, её HTTP-поверхность принадлежит краю. Литерал, а не
+		// пустая строка: «поверхности нет» обязано быть отличимо от «поле не
+		// заполнено» — пустую величину гейт посадки судит отказом.
+		OwnRESTPublicTLS:   observability.OwnRESTFrontNotRaised,
+		OwnRESTInternalTLS: observability.OwnRESTFrontNotRaised,
 	}
 }

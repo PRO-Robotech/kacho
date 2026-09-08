@@ -99,6 +99,7 @@ func rpLaneFolder(assertion string) nmItem {
 }
 
 func TestRP_Run1_ControlBothGatesSilent(t *testing.T) {
+	t.Parallel()
 	folder := rpLaneFolder(rpEql("Network with name net-dup- already exists"))
 
 	f, cen := rpAudit(t, rpSynthCorpus(), folder)
@@ -118,6 +119,7 @@ func TestRP_Run1_ControlBothGatesSilent(t *testing.T) {
 }
 
 func TestRP_Run2_MissingProducerRedsOnlyTheNewGate(t *testing.T) {
+	t.Parallel()
 	// Осознанная правка тона: продукт развёл слитый отказ, кейс пинит прежний.
 	folder := rpLaneFolder(rpEql("referenced resource not found or still in use"))
 
@@ -156,6 +158,7 @@ func TestRP_Run2_MissingProducerRedsOnlyTheNewGate(t *testing.T) {
 }
 
 func TestRP_Run3_CaseDivergenceRedsOnlyTheToneGate(t *testing.T) {
+	t.Parallel()
 	// Расхождение регистра — предмет СОСЕДА. Производитель у текста есть.
 	folder := nmFolder("VOL-DEL-NEG — обычный заголовок без кавычек",
 		nmStep("del-nx", "DELETE", rpURL,
@@ -176,6 +179,7 @@ func TestRP_Run3_CaseDivergenceRedsOnlyTheToneGate(t *testing.T) {
 // ─── ось: обе формы помощника ────────────────────────────────────────────────
 
 func TestRP_ContainsFormIsRecognisedAndLawfulWindowIsSilent(t *testing.T) {
+	t.Parallel()
 	// Вхождением утверждается ОКНО в тексте владельца: сообщение доезжает с
 	// хвостом, который статически не вычисляется.
 	folder := rpLaneFolder(rpHas(" already exists"))
@@ -191,6 +195,7 @@ func TestRP_ContainsFormIsRecognisedAndLawfulWindowIsSilent(t *testing.T) {
 }
 
 func TestRP_ContainsFormWithNoProducerIsAFinding(t *testing.T) {
+	t.Parallel()
 	folder := rpLaneFolder(rpHas("still in use by another tenant"))
 	f, cen := rpAudit(t, rpSynthCorpus(), folder)
 	if cen.containsAsserts != 1 {
@@ -204,6 +209,7 @@ func TestRP_ContainsFormWithNoProducerIsAFinding(t *testing.T) {
 // ─── ось: обе формы кавычек ──────────────────────────────────────────────────
 
 func TestRP_DoubleQuotedDeclarationIsReadWhole(t *testing.T) {
+	t.Parallel()
 	// Сериализатор общего слоя берёт двойные кавычки, как только текст несёт
 	// апостроф. Распознаватель, знающий одни одинарные, вычитал бы отсюда
 	// внутренний кусок `'not-an-id'` и объявил бы находку на исправном кейсе.
@@ -221,6 +227,7 @@ func TestRP_DoubleQuotedDeclarationIsReadWhole(t *testing.T) {
 // ─── ось: значение, написанное ЛИТЕРАЛОМ, поглощается глаголом формата ───────
 
 func TestRP_LiteralSubstitutionIsAbsorbedByTheVerb(t *testing.T) {
+	t.Parallel()
 	// Кейс вправе написать подставляемое значение литералом, когда оно
 	// постоянно. Мерка по ДОЛЕ покрытия объявляла здесь находку при полном
 	// совпадении по существу — потому доля и заменена пересечением образцов.
@@ -237,6 +244,7 @@ func TestRP_LiteralSubstitutionIsAbsorbedByTheVerb(t *testing.T) {
 // ─── ось: шаблон без постоянной части в счёт не идёт ─────────────────────────
 
 func TestRP_ProducerWithoutAConstantAnchorDoesNotCoverAnything(t *testing.T) {
+	t.Parallel()
 	// В корпусе есть `%w: %s` — образец, описывающий любое сообщение. Если он
 	// пойдёт в счёт, гейт станет вакуумным: покрыто будет всё.
 	folder := rpLaneFolder(rpEql("subject: quota exceeded for tenant"))
@@ -250,6 +258,7 @@ func TestRP_ProducerWithoutAConstantAnchorDoesNotCoverAnything(t *testing.T) {
 // ─── ось: близкий производитель даёт «не установлено», а не находку ──────────
 
 func TestRP_NearProducerYieldsUnprovenNotAFinding(t *testing.T) {
+	t.Parallel()
 	// Текст, собранный из аргументов: слово «region» приезжает значением, а не
 	// шаблоном. Доказательства нет ни в одну сторону — и это отдельный исход.
 	folder := rpLaneFolder(rpHasEnv("region ", " not found"))
@@ -266,6 +275,7 @@ func TestRP_NearProducerYieldsUnprovenNotAFinding(t *testing.T) {
 // ─── ось: фикстура привязана к ДЕРЕВУ ────────────────────────────────────────
 
 func TestRP_RemovingARealProducerFromTheTreeRedsTheGate(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 	byOwner, err := rtProducers(root, optGoFiles(tt))
@@ -342,6 +352,7 @@ func rpProducersOfSource(t *testing.T, src string) map[string]bool {
 }
 
 func TestRP_NamedConstantIsRecognisedAsAProducer(t *testing.T) {
+	t.Parallel()
 	t.Run("новая форма: текст объявлен константой сообщения", func(t *testing.T) {
 		got := rpProducersOfSource(t, `package probe
 

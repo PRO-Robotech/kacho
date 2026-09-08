@@ -45,6 +45,7 @@ import (
 )
 
 func TestOperatorMessagePathsExist(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	c := CollectOperatorMessagePaths(root)
 

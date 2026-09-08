@@ -73,6 +73,7 @@ const verdictHeader = "# Приёмка\n\n- **Статус:** **✅ APPROVED** 
 
 // TestInjection_EditedAfterVerdictWithoutANoteIsAFinding — ИНЪЕКЦИЯ.
 func TestInjection_EditedAfterVerdictWithoutANoteIsAFinding(t *testing.T) {
+	t.Parallel()
 	root, dir := acceptanceFixtureRepo(t)
 	writeDoc(t, root, dir, "a.md", verdictHeader+"тело\n")
 	commitFixture(t, root, "вердикт", "2026-01-01T00:00:00+00:00")
@@ -100,6 +101,7 @@ func TestInjection_EditedAfterVerdictWithoutANoteIsAFinding(t *testing.T) {
 //
 // Отличие от инъекции РОВНО ОДНО: в теле стоит запись о правке.
 func TestInjection_EditedAfterVerdictWithANoteIsSilent(t *testing.T) {
+	t.Parallel()
 	root, dir := acceptanceFixtureRepo(t)
 	writeDoc(t, root, dir, "a.md", verdictHeader+"тело\n")
 	commitFixture(t, root, "вердикт", "2026-01-01T00:00:00+00:00")
@@ -122,6 +124,7 @@ func TestInjection_EditedAfterVerdictWithANoteIsSilent(t *testing.T) {
 // TestInjection_DocumentNotEditedAfterItsVerdictIsSilent — ТРЕТИЙ случай, и без
 // него гейт краснел бы на всяком доме, где всё в порядке.
 func TestInjection_DocumentNotEditedAfterItsVerdictIsSilent(t *testing.T) {
+	t.Parallel()
 	root, dir := acceptanceFixtureRepo(t)
 	writeDoc(t, root, dir, "a.md", verdictHeader+"тело\n")
 	commitFixture(t, root, "вердикт вместе с телом", "2026-01-01T00:00:00+00:00")
@@ -145,6 +148,7 @@ func TestInjection_DocumentNotEditedAfterItsVerdictIsSilent(t *testing.T) {
 // нечего. Распознаватель, знающий одну форму, объявил бы находкой документ,
 // который своё движение как раз назвал.
 func TestInjection_SecondFormOfTheNoteIsAlsoRecognised(t *testing.T) {
+	t.Parallel()
 	root, dir := acceptanceFixtureRepo(t)
 	const draft = "# Приёмка\n\n- **Статус:** DRAFT — вердикт не вынесен\n\n"
 	writeDoc(t, root, dir, "a.md", draft+"тело\n")
@@ -165,6 +169,7 @@ func TestInjection_SecondFormOfTheNoteIsAlsoRecognised(t *testing.T) {
 
 // TestInjection_MissingHomeIsRefusedNotSilent — дома приёмок нет: отказ.
 func TestInjection_MissingHomeIsRefusedNotSilent(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	if _, _, err := AuditAcceptanceEditsAfterVerdict(root, "нет/такого"); err == nil {
 		t.Fatal("несуществующий дом приёмок принят молча — «ноль находок» стало бы " +

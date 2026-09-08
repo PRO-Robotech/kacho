@@ -205,6 +205,7 @@ var verbLiteralRoster = []verbLiteral{
 
 // TestVerbVocabularyLiteralsMatchModel — несущий гейт оси глаголов.
 func TestVerbVocabularyLiteralsMatchModel(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// --- предпосылка гейта: модель действительно разобрана ---
@@ -271,6 +272,7 @@ func TestVerbVocabularyLiteralsMatchModel(t *testing.T) {
 // было в реестре. Без этого реестр описывал бы вчерашнее дерево: новый литерал
 // въезжал бы молча — ровно тем способом, которым въехали нынешние.
 func TestVerbVocabularyRosterCoversEveryLiteral(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	model, _ := modelVerbVocabulary(t, root)
 	if len(model) == 0 {
@@ -312,6 +314,7 @@ func TestVerbVocabularyRosterCoversEveryLiteral(t *testing.T) {
 // наблюдаемому рядом, — иначе предикат снятия отменяется тем же изменением,
 // которое его вызвало.
 func TestVerbVocabularyRosterEntriesStillHaveSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	if len(verbLiteralRoster) == 0 {
 		t.Fatalf("реестр пуст — самоистечению нечего проверять")
@@ -350,6 +353,7 @@ func TestVerbVocabularyRosterEntriesStillHaveSubject(t *testing.T) {
 // бесшумно — с этого момента следующий контрибьютор вправе «упростить» гейт,
 // подставив символ вместо разбора.
 func TestVerbVocabularyGateCannotImportEitherSide(t *testing.T) {
+	t.Parallel()
 	const gateDir = "internal/repohygiene"
 	if len(verbLiteralRoster) == 0 {
 		t.Fatalf("реестр пуст — проверять недостижимость нечего")
@@ -391,6 +395,7 @@ func importForbiddenFrom(filePath, fromDir string) bool {
 // Без случая, который предикат обязан ПРОПУСТИТЬ, он ловил бы форму («в пути есть
 // слово internal»), а не существо («компилятор запретит импорт»).
 func TestImportForbiddenFrom_HasBothControls(t *testing.T) {
+	t.Parallel()
 	const gate = "internal/repohygiene"
 	cases := []struct {
 		path string

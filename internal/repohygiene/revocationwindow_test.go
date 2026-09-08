@@ -59,6 +59,7 @@ var revocationScanRoots = []string{
 // TestRevocationWindowIsDeclaredPolicy — окно отзыва объявлено в одном месте, и
 // дерево ему соответствует.
 func TestRevocationWindowIsDeclaredPolicy(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	rep := &revocationwindowgate.Report{}
 
@@ -156,6 +157,7 @@ func TestRevocationWindowIsDeclaredPolicy(t *testing.T) {
 // значение было безымянным литералом внутри NewCacheWithLimit, «окно отзыва
 // этих трёх» не было записано нигде: ни в их конфиге, ни в политике.
 func TestCorelibDefaultIsTheDeclaredWindow(t *testing.T) {
+	t.Parallel()
 	c := authz.NewCache(0)
 	if got := c.TTL(); got != authz.RevocationPolicy.Default {
 		t.Errorf("ttl≤0 даёт %s, политика объявляет умолчанием %s.\n"+
@@ -187,102 +189,21 @@ func serviceOfPath(rel string) string {
 // gatewayProcess — имя края в переписи политики.
 const gatewayProcess = "api-gateway"
 
-// checkFactoryFiles — композиционные площадки, где строится кеш вердиктов
-// пообъектной проверки. Сервис, у которого своего числа нет, строит его как
-// NewCache(0) и берёт умолчание политики.
+// Здесь стояли перечень композиционных площадок и проверка
+// TestInheritedWindowsAreDeclared — они требовали, чтобы держатель окна БЕЗ
+// своей ручки был записан в pkg/authz.RevocationPolicy.Inherited.
 //
-// СЕГОДНЯ КАРТА ПУСТА, и это измерение, а не забытый перечень. Площадок этого
-// вида в дереве не осталось: собственные фабрики звена сняты у всех — кеш
-// вердиктов строит носитель (`pkg/servicehost`) по значению `Spec.CacheWindow`,
-// которое приезжает из СВОЕЙ ручки каждого сервиса. Уходили они по одной —
-// сперва geo и storage, последним compute, — и каждый раз запись, оставленная
-// здесь, искала бы удалённый файл и роняла гейт на предпосылке, то есть на
-// ВЕРНОМ дереве.
+// Сняты вместе с предметом (задача #2298). Предмета было два, и не стало обоих:
+// перечень площадок стоял пустым (собственные фабрики звена сняты у всех, кеш
+// строит носитель контура), а само состояние «держатель без своей ручки»
+// объявлено недостижимым — процесс, не назвавший величину окна, не поднимается
+// (`pkg/servicecontract`), и его находит TestEveryVerdictCacheProcessDeclaresItsOwnKnob
+// ниже. То есть проверка требовала записывать состояние, которое соседняя
+// проверка в том же файле объявляет находкой: возможность, объявленная и
+// неисполнимая ни при каком входе.
 //
-// Карта остаётся, потому что её предмет — не «эти трое», а вид площадки:
-// вернётся фабрика, строящая кеш сама, — её место здесь. И пустота не делает
-// проверку слепой: место, берущее окно неявно, ловит обход дерева
-// (TestNoServiceTakesTheWindowImplicitly), который перечня не спрашивает.
-var checkFactoryFiles = map[string]string{}
-
-// TestInheritedWindowsAreDeclared — сервис без своей ручки объявлен как таковой.
-//
-// Три сервиса берут окно из умолчания. Это не «отсутствие настройки», а само
-// окно отзыва — и пока оно не записано, его смена не видна ниоткуда: в конфиге
-// этих сервисов искать нечего. Проверка идёт в ОБЕ стороны, потому что
-// одностороннее утверждение здесь зеленеет сильнее всего именно когда всё
-// сломано: перепись без предмета так же плоха, как предмет без переписи.
-func TestInheritedWindowsAreDeclared(t *testing.T) {
-	root := repoRoot(t)
-
-	filesRead := 0
-	found := map[string]bool{}
-	for service, rel := range checkFactoryFiles {
-		src, err := os.ReadFile(filepath.Join(root, rel))
-		if err != nil {
-			t.Fatalf("предпосылка гейта нарушена: композиционная площадка %s не читается: %v", rel, err)
-		}
-		sites, read, err := revocationwindowgate.ScanInherit(service, rel, string(src))
-		if err != nil {
-			t.Fatalf("%v", err)
-		}
-		filesRead += read
-		for _, s := range sites {
-			key := s.Service + " authz.cache-ttl"
-			found[key] = true
-			if !authz.RevocationPolicy.Inherited[key] {
-				t.Errorf("окно унаследовано, но не объявлено: %s (%s:%d) строит кеш с ttl≤0 "+
-					"и потому держит умолчание %s, но записи «%s» в "+
-					"pkg/authz.RevocationPolicy.Inherited нет.\n"+
-					"У этого сервиса своего числа нет — значит его окно не записано НИГДЕ, "+
-					"пока не записано здесь.",
-					key, s.File, s.Line, authz.RevocationPolicy.Default, key)
-			}
-		}
-	}
-
-	t.Logf("осмотрено: композиционных площадок прочитано=%d, унаследованных площадок найдено=%d, "+
-		"записей Inherited=%d", filesRead, len(found), len(authz.RevocationPolicy.Inherited))
-
-	// «Ни одной прочитанной площадки» перестало быть признаком сломанного
-	// обхода: площадок этого вида в дереве нет вовсе (см. checkFactoryFiles).
-	// Требовать «прочитай хотя бы одну» значило бы держать проверку, которую
-	// можно починить только заведением новой фабрики — то есть ровно того
-	// дефекта, ради устранения которого площадки и уходили.
-	//
-	// Обход дерева при этом никуда не делся: неявное окно ловит
-	// TestNoServiceTakesTheWindowImplicitly, а обратная сторона — запись
-	// Inherited без площадки — проверяется ниже и на пустой карте работает
-	// строже всего: там ЛЮБАЯ запись оказывается без предмета.
-	if len(checkFactoryFiles) > 0 && filesRead == 0 {
-		t.Fatalf("предпосылка гейта нарушена: перечень площадок непуст (%d), "+
-			"но не прочитано ни одной", len(checkFactoryFiles))
-	}
-	// «Ни одной унаследованной площадки» — законное состояние дерева, а не
-	// сломанный обход: сегодня все площадки завели собственные ручки. Предпосылка
-	// проверяется одна — что композиционные площадки ПРОЧИТАНЫ (выше); требовать
-	// сверх этого «найди хотя бы одну» значило бы держать проверку, которую можно
-	// починить только заведением нового дефекта.
-	//
-	// Двусторонность от этого не теряется: площадка без записи роняет гейт выше,
-	// запись без площадки — ниже, и обе ветки исполняются, как только восьмой
-	// сервис возьмёт окно умолчанием.
-
-	// Обратная сторона: запись Inherited, под которой в дереве больше нет
-	// площадки, — находка, а не безобидный остаток.
-	var stale []string
-	for key := range authz.RevocationPolicy.Inherited {
-		if !found[key] {
-			stale = append(stale, key)
-		}
-	}
-	sort.Strings(stale)
-	for _, key := range stale {
-		t.Errorf("запись Inherited без предмета: «%s» объявлена, но такой площадки "+
-			"(NewCache с ttl≤0) в дереве нет. Сервис завёл свою ручку или кеш убран — "+
-			"перенеси запись в Windows либо сними.", key)
-	}
-}
+// Утверждение о держателе без своей ручки в дереве теперь ОДНО, и живёт оно
+// ниже.
 
 // TestEveryVerdictCacheServiceIsDeclared — процесс, ДЕРЖАЩИЙ окно отзыва,
 // объявлен политикой, каким бы именем он свою ручку ни назвал.
@@ -312,6 +233,7 @@ func TestInheritedWindowsAreDeclared(t *testing.T) {
 //     Величину спрашивает без словаря TestEveryAuthzWindowKnobIsDeclared, у
 //     которого единица — ОКНО.
 func TestEveryVerdictCacheServiceIsDeclared(t *testing.T) {
+	t.Parallel()
 	held, filesRead, err := verdictCacheHoldersUnder(repoRoot(t))
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -319,9 +241,6 @@ func TestEveryVerdictCacheServiceIsDeclared(t *testing.T) {
 
 	declared := map[string]bool{}
 	for key := range authz.RevocationPolicy.Windows {
-		declared[strings.SplitN(key, " ", 2)[0]] = true
-	}
-	for key := range authz.RevocationPolicy.Inherited {
 		declared[strings.SplitN(key, " ", 2)[0]] = true
 	}
 
@@ -340,8 +259,9 @@ func TestEveryVerdictCacheServiceIsDeclared(t *testing.T) {
 	for _, svc := range undeclaredHolders(held, declared) {
 		t.Errorf("процесс держит кеш вердиктов, но политикой не объявлен: «%s» (%s).\n"+
 			"Кешируется положительный вердикт ⇒ у процесса есть окно отзыва. "+
-			"Внеси его в pkg/authz.RevocationPolicy (Windows — если у него своя ручка, "+
-			"Inherited — если он берёт умолчание).", svc, formsOf(held[svc]))
+			"Внеси его в pkg/authz.RevocationPolicy.Windows вместе с именем СВОЕЙ ручки: "+
+			"держателя без собственной ручки политика законным не объявляет, и второго "+
+			"множества разрешённых у неё нет.", svc, formsOf(held[svc]))
 	}
 }
 
@@ -361,6 +281,7 @@ func TestEveryVerdictCacheServiceIsDeclared(t *testing.T) {
 // не по перечню каталогов конфигурации: перечень каталогов был бы третьим
 // местом того же класса, где ручка, объявленная не там, невидима.
 func TestEveryAuthzWindowKnobIsDeclared(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files, err := treecorpus.UnderWithSuffix(root, ".go")
 	if err != nil {
@@ -433,6 +354,7 @@ func TestEveryAuthzWindowKnobIsDeclared(t *testing.T) {
 // повтор DPoP, кеш чужих фактов, сетевые сроки, размер кеша) обязана НЕ
 // находиться.
 func TestKnobShapePredicateHasControlsBothWays(t *testing.T) {
+	t.Parallel()
 	declared := revocationwindowgate.KnobNames()
 	if len(declared) == 0 {
 		t.Fatal("предпосылка пробы нарушена: политика не объявляет ни одной ручки")
@@ -497,6 +419,7 @@ var implicitScanRoots = []string{"services", "pkg", "gateway"}
 // раньше и точнее: он называет файл и строку тогда, когда процесс ещё никто не
 // поднимал.
 func TestNoServiceTakesTheWindowImplicitly(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	filesRead := 0
@@ -594,6 +517,7 @@ func TestNoServiceTakesTheWindowImplicitly(t *testing.T) {
 // в которой это доказать нечем, — находка, потому что «не смог посмотреть» не
 // есть «чисто».
 func TestNoCallSiteTakesTheWindowUnprovably(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	filesRead := 0
@@ -688,10 +612,34 @@ func TestNoCallSiteTakesTheWindowUnprovably(t *testing.T) {
 // что число стало выбранным.
 //
 // Гейт самоистекающий в обе стороны: он краснеет и когда процесс кеширует без
-// своей ручки, и когда запись Windows потеряла процесс. Восьмой сервис, который
-// решит взять умолчание, упрётся в красное и обязан будет либо завести ручку,
-// либо записать исключение осознанно — то есть решением, а не умолчанием.
+// своей ручки, и когда запись Windows потеряла процесс.
+//
+// # Выход ОДИН — ручка; ведомости исключений у этого правила нет
+//
+// Здесь стояло «либо завести ручку, либо записать исключение осознанно».
+// Ведомости исключений у гейта не было ни одной, и обещание проверки простить
+// то, чего она не умеет, — тот самый класс, который этот файл ловит в других
+// местах. Хуже: «исключение» тогда указывало на карту
+// pkg/authz.RevocationPolicy.Inherited, а площадка, записанная туда, ЭТИМ ЖЕ
+// гейтом становилась находкой — множество разрешённых он строит только из
+// Windows. Одно состояние было объявлено законным и запрещено by construction.
+//
+// Карта снята (задача #2298), обещание — вместе с ней. Выход из красного один:
+// своя ручка. Он не сужение, а совпадение с решением, уже стоящим в дереве, —
+// pkg/servicecontract объявляет у окна отзыва, что «умолчания быть не может», и
+// ОТКАЗЫВАЕТ В СТАРТЕ процессу, не назвавшему величину. Понадобится исключение —
+// заводить придётся ведомость, каждая запись которой несёт обоснование и
+// истекает сама; сегодня у такой ведомости нет ни одного кандидата: ручку имеют
+// все восемь держателей дерева.
+//
+// # Вердикт живёт в функции, а не в этой пробе
+//
+// Утверждение сегодня МОЛЧИТ — все держатели свою ручку имеют, — поэтому его
+// способность падать зелёным прогоном не доказывается никак. Вердикт и тексты
+// находок вынесены в revocationwindowgate.JudgeOwnKnobs, которому вход можно
+// подать; инъекция в обе стороны — в revocationwindowownknob_injection_test.go.
 func TestEveryVerdictCacheProcessDeclaresItsOwnKnob(t *testing.T) {
+	t.Parallel()
 	held, filesRead, err := verdictCacheHoldersUnder(repoRoot(t))
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -703,42 +651,25 @@ func TestEveryVerdictCacheProcessDeclaresItsOwnKnob(t *testing.T) {
 	}
 
 	byCtor, byDescriptor := ownershipByForm(held)
+	verdict := revocationwindowgate.JudgeOwnKnobs(held, withOwnKnob)
 	t.Logf("осмотрено: файлов процессов прочитано=%d, процессов держит окно=%d "+
-		"(формой «%s»=%d, формой «%s»=%d), процессов со своей ручкой=%d, площадок в Inherited=%d",
+		"(формой «%s»=%d, формой «%s»=%d), процессов со своей ручкой=%d; "+
+		"держателей без ручки=%d, ручек без держателя=%d",
 		filesRead, len(held),
 		revocationwindowgate.OwnershipFormNames()[0], byCtor,
 		revocationwindowgate.OwnershipFormNames()[1], byDescriptor,
-		len(withOwnKnob), len(authz.RevocationPolicy.Inherited))
+		len(withOwnKnob),
+		len(verdict.HoldersWithoutKnob), len(verdict.KnobsWithoutHolder))
 
 	assertHolderCensusIsNotVacuous(t, filesRead, held)
 
-	var inherited []string
-	for svc := range held {
-		if !withOwnKnob[svc] {
-			inherited = append(inherited, svc)
-		}
+	for _, svc := range verdict.HoldersWithoutKnob {
+		t.Errorf("%s", revocationwindowgate.HolderWithoutKnobFinding(svc, formsOf(held[svc])))
 	}
-	sort.Strings(inherited)
-	for _, svc := range inherited {
-		t.Errorf("процесс держит кеш вердиктов, но своей ручки окна у него нет: «%s» (%s).\n"+
-			"Окно отзыва этого процесса принадлежит платформе: оператор не может сузить его "+
-			"на конкретной посадке, и в конфигурации сервиса о нём нет ни строки. Заведи ручку "+
-			"KACHO_<SVC>_AUTHZ_CACHE_TTL и запись в pkg/authz.RevocationPolicy.Windows.",
-			svc, formsOf(held[svc]))
-	}
-
 	// Обратная сторона: запись Windows, под которой в дереве нет процесса,
 	// строящего кеш вердиктов, — находка. Иначе перепись переживёт свой предмет.
-	var stale []string
-	for svc := range withOwnKnob {
-		if _, holds := held[svc]; !holds {
-			stale = append(stale, svc)
-		}
-	}
-	sort.Strings(stale)
-	for _, svc := range stale {
-		t.Errorf("запись Windows без процесса: «%s» объявлен, но такого процесса, строящего кеш "+
-			"вердиктов, в дереве нет. Кеш убран или процесс переименован — сними запись.", svc)
+	for _, svc := range verdict.KnobsWithoutHolder {
+		t.Errorf("%s", revocationwindowgate.KnobWithoutHolderFinding(svc))
 	}
 }
 

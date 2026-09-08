@@ -7,7 +7,7 @@ package kacho.cloud.storage.v1;
 
 import "google/protobuf/timestamp.proto";
 import "kacho/cloud/storage/v1/volume.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1";
 
@@ -33,25 +33,25 @@ service InternalVolumeService {
   // on replay (already-ours → OK). Self-describing payload; storage validates its own
   // `volumes` row (state READY, same zone/project) and never calls compute.
   rpc Attach(AttachVolumeRequest) returns (AttachVolumeResponse) {
-    option (kacho.iam.authz.v1.permission)        = "storage.volumes.attach";
-    option (kacho.iam.authz.v1.required_relation) = "editor";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "storage.volumes.attach";
+    option (corelib.authz.v1.required_relation) = "editor";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "storage_volume"
       from_request_field: "volume_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Detach — idempotent delete of the volume_attachments row; 0 rows deleted → the
   // volume is already detached → OK.
   rpc Detach(DetachVolumeRequest) returns (DetachVolumeResponse) {
-    option (kacho.iam.authz.v1.permission)        = "storage.volumes.detach";
-    option (kacho.iam.authz.v1.required_relation) = "editor";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "storage.volumes.detach";
+    option (corelib.authz.v1.required_relation) = "editor";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "storage_volume"
       from_request_field: "volume_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // ListAttachments — batched read of attachments for the given instances, used by
@@ -70,9 +70,9 @@ service InternalVolumeService {
   // check admitted everyone and returned the attachments of any named instance,
   // across projects and accounts. Volume attachments are not reference data.
   rpc ListAttachments(ListAttachmentsRequest) returns (ListAttachmentsResponse) {
-    option (kacho.iam.authz.v1.permission)       = "storage.volumes.listAttachments";
-    option (kacho.iam.authz.v1.scope_filtered)   = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.permission)       = "storage.volumes.listAttachments";
+    option (corelib.authz.v1.scope_filtered)   = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // GetInternal — full (infra) projection of a Volume, internal-only.
@@ -83,13 +83,13 @@ service InternalVolumeService {
   // embeds the public Volume; infra fields are declared as a reserved range and are
   // not populated in this increment.
   rpc GetInternal(GetInternalVolumeRequest) returns (VolumeInternal) {
-    option (kacho.iam.authz.v1.permission)        = "storage.volumes.getInternal";
-    option (kacho.iam.authz.v1.required_relation) = "viewer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "storage.volumes.getInternal";
+    option (corelib.authz.v1.required_relation) = "viewer";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "storage_volume"
       from_request_field: "volume_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

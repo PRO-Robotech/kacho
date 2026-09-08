@@ -67,6 +67,7 @@ const guardName = "CachedVerdictRefusal"
 const realIndexReader = "listFilesCached"
 
 func TestTreeVerdictIsNeverServedFromTheTestCache(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	pkgs, pkgsRead := collectTestMainFacts(t, root)

@@ -116,6 +116,11 @@ var releaseArtifacts = []releaseArtifact{
 		injection: "scripts/release/publish-service-artifact-inject.sh",
 		why:       "производитель ПОСТАВКИ: дерево службы уезжает в репозиторий артефакта одним коммитом, и его выкладка перестаёт быть ручным снимком",
 	},
+	{
+		mechanism: "scripts/release/assert-no-module-reciprocity.sh",
+		injection: "scripts/release/assert-no-module-reciprocity-inject.sh",
+		why:       "предпосылка «порядок выпуска существует»: граф ОБЪЯВЛЕННЫХ модулей ацикличен — мерится require/replace, а не подстрокой в пути импорта",
+	},
 }
 
 // releaseAudit — исход осмотра. Возвращается СТРУКТУРОЙ, а не печатается на
@@ -159,6 +164,7 @@ func auditReleasePublisher(root, runner string) releaseAudit {
 }
 
 func TestMonorepoCarriesAVersionPublisher(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	runnerPath := filepath.Join(root, "scripts", "ci-local.sh")

@@ -12,6 +12,7 @@ import "testing"
 // Без второй половины гейт ловил бы форму, а не существо, и первый же законный
 // набор его отключил бы.
 func TestUpdateMaskFormParityGateCanFailAndCanStayQuiet(t *testing.T) {
+	t.Parallel()
 	const head = "package p\n\nfunc UpdateMask(a, b string, k map[string]struct{}) error { return nil }\n\n"
 
 	cases := []struct {

@@ -69,6 +69,7 @@ func poolParamTreeSources(t *testing.T) map[string]string {
 
 // TestPoolParamPredicateHasASingleHome — предикат пулового ключа один на дерево.
 func TestPoolParamPredicateHasASingleHome(t *testing.T) {
+	t.Parallel()
 	findings, census := FindPoolParamSubstringChecks(poolParamTreeSources(t))
 	if census.Files == 0 {
 		t.Fatal("разобрано ноль файлов Go — гейт беспредметен, «ноль находок» " +

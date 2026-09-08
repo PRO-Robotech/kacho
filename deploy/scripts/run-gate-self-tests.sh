@@ -107,6 +107,7 @@ deploy/scripts/assert-admin-hop-transport.sh
 deploy/scripts/assert-alt-fixtures-are-another.py
 deploy/scripts/assert-ban6-external-isolation.py
 deploy/scripts/assert-burst-waits-for-materialization.py
+deploy/scripts/assert-declared-posture-is-raisable.py
 deploy/scripts/assert-cocreated-child-is-torn-down.py
 deploy/scripts/assert-delete-operation-outcome.py
 deploy/scripts/assert-delete-steps-are-asserted.py
@@ -127,6 +128,7 @@ deploy/scripts/assert-shard-coverage.py
 deploy/scripts/assert-stand-precondition-wiring.py
 deploy/scripts/assert-step-up-bearer-matches-catalog.py
 deploy/scripts/assert-teardown-frees-parent.py
+deploy/scripts/assert-vendored-external-charts.py
 deploy/scripts/assert-verdict-aggregators-honest.sh
 deploy/scripts/assert-waiters-name-their-target.sh
 deploy/scripts/assert-wave-scheduler-terminates.sh
@@ -157,8 +159,11 @@ deploy/tests/helm/three-outcomes-distinguishable-test.sh
 deploy/tests/helm/trusted-forwarder-profiles-test.sh
 gateway/tests/newman/scripts/selftest_tamper_mutation.py
 services/compute/tests/newman/scripts/validate-cases.py
+services/iam/.github/scripts/classify-integration-outcome.sh
+services/iam/.github/scripts/go-test-verdict.py
+services/iam/.github/scripts/gosec-gate.sh
 services/iam/tests/newman/scripts/body_capture_form_test.py
-services/iam/tests/newman/scripts/exec-coverage.py
+tests/newman/scripts/exec-coverage.py
 services/iam/tests/newman/scripts/selftest_basic_access_token.py
 tests/authz-fixtures/ceremony_credentials.py
 tests/authz-fixtures/prodseed_all.py
@@ -409,7 +414,7 @@ if ! any_line_matches "$YQ_VER" 'mikefarah|version v?4'; then
   echo "       молча отдаёт ПУСТО — утверждения пройдут, ничего не сверив."
   exit 2
 fi
-echo "=== зависимости умбреллы (самопроверки рендерят её; charts/*.tgz не в git) ==="
+echo "=== зависимости умбреллы (самопроверки рендерят её; ВНЕШНИЕ архивы вендорены в git, локальные сабчарты собираются из исходников) ==="
 bash "$DEPLOY_ROOT/scripts/helm-umbrella-deps.sh" "$DEPLOY_ROOT/helm/umbrella" \
   || { echo "FATAL: зависимости не материализованы — рендер будет неполным, проверки НЕ ВЫПОЛНЕНЫ"; exit 2; }
 rm -rf "$DEPLOY_ROOT"/helm/umbrella/tmpcharts-*

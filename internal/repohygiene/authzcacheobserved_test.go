@@ -59,6 +59,7 @@ const (
 // TestEveryCarrierServiceExportsItsVerdictCacheHitRate — у каждого сервиса,
 // отдавшего входящий путь носителю, доля попаданий кеша вердиктов выставлена.
 func TestEveryCarrierServiceExportsItsVerdictCacheHitRate(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	carriers, observers, scanned, err := scanVerdictCacheObservers(root)
 	if err != nil {

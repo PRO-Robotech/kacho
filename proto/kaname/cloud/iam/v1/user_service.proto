@@ -10,7 +10,7 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kaname/cloud/iam/v1/user.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1;iamv1";
 
@@ -26,13 +26,13 @@ service UserService {
   // Returns the specified User resource.
   rpc Get (GetUserRequest) returns (User) {
     option (google.api.http) = { get: "/iam/v1/users/{user_id}" };
-    option (kacho.iam.authz.v1.permission)        = "iam.users.get";
-    option (kacho.iam.authz.v1.required_relation) = "v_get";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.users.get";
+    option (corelib.authz.v1.required_relation) = "v_get";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "iam_user"
       from_request_field: "user_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of User resources scoped by Account.
@@ -55,8 +55,8 @@ service UserService {
     // ВООБЩЕ БЕЗ ПРИНЦИПАЛА, на основании сетевого положения. Пообъектный фильтр
     // ниже по стеку без принципала бессмыслен, поэтому лоток обязан быть тот,
     // который идёт ПОСЛЕ его извлечения.
-    option (kacho.iam.authz.v1.permission)     = "iam.users.list";
-    option (kacho.iam.authz.v1.scope_filtered) = true;
+    option (corelib.authz.v1.permission)     = "iam.users.list";
+    option (corelib.authz.v1.scope_filtered) = true;
   }
 
   // Invite a user by email. Если user уже invited в этот Account
@@ -72,9 +72,9 @@ service UserService {
       response: "User"
     };
     // CanInviteUsers == `editor` on the target Account.
-    option (kacho.iam.authz.v1.permission)        = "iam.users.invite";
-    option (kacho.iam.authz.v1.required_relation) = "editor";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.users.invite";
+    option (corelib.authz.v1.required_relation) = "editor";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "account"
       from_request_field: "account_id"
     };
@@ -85,7 +85,7 @@ service UserService {
     // AAL1 floor while Create demands acr=2 would be a step-up BYPASS — the same
     // grant issued through the cheaper door. Step-up stays sensitive-only (the
     // routine User lifecycle Get/Update/Delete keeps "1").
-    option (kacho.iam.authz.v1.required_acr_min) = "2";
+    option (corelib.authz.v1.required_acr_min) = "2";
   }
 
   // Updates the specified User. Единственное mutable-поле — `labels` (User —
@@ -110,13 +110,13 @@ service UserService {
       metadata: "UpdateUserMetadata"
       response: "User"
     };
-    option (kacho.iam.authz.v1.permission)        = "iam.users.update";
-    option (kacho.iam.authz.v1.required_relation) = "record_writer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.users.update";
+    option (corelib.authz.v1.required_relation) = "record_writer";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "iam_user"
       from_request_field: "user_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Deletes the specified person: the identity row itself, everywhere.
@@ -157,13 +157,13 @@ service UserService {
       metadata: "DeleteUserMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission)        = "iam.users.delete";
-    option (kacho.iam.authz.v1.required_relation) = "identity_remover";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.users.delete";
+    option (corelib.authz.v1.required_relation) = "identity_remover";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "iam_user"
       from_request_field: "user_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Removes the specified person from the specified Account: the MEMBERSHIP
@@ -222,13 +222,13 @@ service UserService {
       metadata: "RemoveUserFromAccountMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission)        = "iam.users.removeFromAccount";
-    option (kacho.iam.authz.v1.required_relation) = "member_remover";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.users.removeFromAccount";
+    option (corelib.authz.v1.required_relation) = "member_remover";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "account"
       from_request_field: "account_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (corelib.authz.v1.required_acr_min)  = "2";
   }
 
   // Blocks the specified person: the identity may no longer authenticate
@@ -334,13 +334,13 @@ service UserService {
       metadata: "BlockUserMetadata"
       response: "User"
     };
-    option (kacho.iam.authz.v1.permission)        = "iam.users.block";
-    option (kacho.iam.authz.v1.required_relation) = "identity_suspender";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.users.block";
+    option (corelib.authz.v1.required_relation) = "identity_suspender";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "iam_user"
       from_request_field: "user_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (corelib.authz.v1.required_acr_min)  = "2";
   }
 
   // Unblocks the specified User membership: it may authenticate into that
@@ -363,25 +363,25 @@ service UserService {
       metadata: "UnblockUserMetadata"
       response: "User"
     };
-    option (kacho.iam.authz.v1.permission)        = "iam.users.unblock";
-    option (kacho.iam.authz.v1.required_relation) = "identity_suspender";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.users.unblock";
+    option (corelib.authz.v1.required_relation) = "identity_suspender";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "iam_user"
       from_request_field: "user_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+    option (corelib.authz.v1.required_acr_min)  = "2";
   }
 
   // Lists operations for the specified user.
   rpc ListOperations (ListUserOperationsRequest) returns (ListUserOperationsResponse) {
     option (google.api.http) = { get: "/iam/v1/users/{user_id}/operations" };
-    option (kacho.iam.authz.v1.permission)        = "iam.user_operationses.listOperations";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "iam.user_operationses.listOperations";
+    option (corelib.authz.v1.required_relation) = "v_list";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "iam_user"
       from_request_field: "user_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

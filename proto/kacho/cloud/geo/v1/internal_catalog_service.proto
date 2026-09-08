@@ -12,7 +12,7 @@ import "kacho/cloud/geo/v1/geo_common.proto";
 import "kacho/cloud/geo/v1/region.proto";
 import "kacho/cloud/geo/v1/zone.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1";
 
@@ -37,13 +37,13 @@ service InternalRegionService {
       metadata: "CreateRegionMetadata"
       response: "Region"
     };
-    option (kacho.iam.authz.v1.permission)        = "geo.regions.create";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "geo.regions.create";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
   rpc Update (UpdateRegionRequest) returns (operation.Operation) {
     option (google.api.http) = { patch: "/geo/v1/internal/regions/{region_id}" body: "*" };
@@ -51,13 +51,13 @@ service InternalRegionService {
       metadata: "UpdateRegionMetadata"
       response: "Region"
     };
-    option (kacho.iam.authz.v1.permission)        = "geo.regions.update";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "geo.regions.update";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
   rpc Delete (DeleteRegionRequest) returns (operation.Operation) {
     option (google.api.http) = { delete: "/geo/v1/internal/regions/{region_id}" };
@@ -65,24 +65,24 @@ service InternalRegionService {
       metadata: "DeleteRegionMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission)        = "geo.regions.delete";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "geo.regions.delete";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
   // GetInternal returns the FULL Internal projection (raw status + infra°).
   rpc GetInternal (GetInternalRegionRequest) returns (InternalRegion) {
     option (google.api.http) = { get: "/geo/v1/internal/regions/{region_id}" };
-    option (kacho.iam.authz.v1.permission)        = "geo.regions.getInternal";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "geo.regions.getInternal";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 
@@ -150,13 +150,13 @@ service InternalZoneService {
       metadata: "CreateZoneMetadata"
       response: "Zone"
     };
-    option (kacho.iam.authz.v1.permission)        = "geo.zones.create";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "geo.zones.create";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
   rpc Update (UpdateZoneRequest) returns (operation.Operation) {
     option (google.api.http) = { patch: "/geo/v1/internal/zones/{zone_id}" body: "*" };
@@ -164,13 +164,13 @@ service InternalZoneService {
       metadata: "UpdateZoneMetadata"
       response: "Zone"
     };
-    option (kacho.iam.authz.v1.permission)        = "geo.zones.update";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "geo.zones.update";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
   rpc Delete (DeleteZoneRequest) returns (operation.Operation) {
     option (google.api.http) = { delete: "/geo/v1/internal/zones/{zone_id}" };
@@ -178,24 +178,24 @@ service InternalZoneService {
       metadata: "DeleteZoneMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission)        = "geo.zones.delete";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "geo.zones.delete";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
   // GetInternal returns the FULL Internal projection (raw status + infra°).
   rpc GetInternal (GetInternalZoneRequest) returns (InternalZone) {
     option (google.api.http) = { get: "/geo/v1/internal/zones/{zone_id}" };
-    option (kacho.iam.authz.v1.permission)        = "geo.zones.getInternal";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "geo.zones.getInternal";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

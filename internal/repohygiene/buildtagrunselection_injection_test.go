@@ -116,6 +116,7 @@ var synthTwoProbes = []string{"TestAlpha", "TestBeta"}
 //
 // Это ровно тот дефект, ради которого гейт написан (#1678).
 func TestSelectionGateRedOnAProbeTheRunDoesNotName(t *testing.T) {
+	t.Parallel()
 	root := synthSelectTree(t, "-run 'TestAlpha'", "deploy", synthTwoProbes)
 
 	findings, census := auditSynthSelect(t, root)
@@ -148,6 +149,7 @@ func TestSelectionGateRedOnAProbeTheRunDoesNotName(t *testing.T) {
 // TestSelectionGateSilentWhenTheRunNamesEveryProbe — направление (б): законный
 // близнец. Всё то же самое, `-run` называет ОБА имени — гейт МОЛЧИТ.
 func TestSelectionGateSilentWhenTheRunNamesEveryProbe(t *testing.T) {
+	t.Parallel()
 	root := synthSelectTree(t, "-run 'TestAlpha|TestBeta'", "deploy", synthTwoProbes)
 
 	findings, census := auditSynthSelect(t, root)
@@ -170,6 +172,7 @@ func TestSelectionGateSilentWhenTheRunNamesEveryProbe(t *testing.T) {
 // `-run` как «не отбирает никого» — он краснел бы на КАЖДОМ пакете под
 // признаком, то есть был бы отключён в первый же день.
 func TestSelectionGateReadsAnAbsentRunAsAll(t *testing.T) {
+	t.Parallel()
 	root := synthSelectTree(t, "", "deploy", synthTwoProbes)
 
 	findings, census := auditSynthSelect(t, root)
@@ -192,6 +195,7 @@ func TestSelectionGateReadsAnAbsentRunAsAll(t *testing.T) {
 // ни зелёного (`testing.md` §«Гейт на класс» п.7). Поэтому каждая форма
 // проверяется своим прогоном, а не одной.
 func TestSelectionGateRecognisesEveryLegalFormOfTheFlag(t *testing.T) {
+	t.Parallel()
 	forms := []struct{ name, flag string }{
 		{"кавычки одинарные", "-run 'TestAlpha'"},
 		{"кавычки двойные", `-run "TestAlpha"`},
@@ -225,6 +229,7 @@ func TestSelectionGateRecognisesEveryLegalFormOfTheFlag(t *testing.T) {
 // Послабление «не смогли прочесть — считаем, что берёт всё» зеленело бы ровно
 // там, где объявление сломано. Направление отказа обязано быть обратным.
 func TestSelectionGateRefusesAnUnreadablePattern(t *testing.T) {
+	t.Parallel()
 	root := synthSelectTree(t, "-run 'Test(Alpha'", "deploy", synthTwoProbes)
 
 	findings, census := auditSynthSelect(t, root)
@@ -248,6 +253,7 @@ func TestSelectionGateRefusesAnUnreadablePattern(t *testing.T) {
 // закрыта ВПЕРЁД: она законна, и появись она — проба, исключённая ею, оказалась
 // бы вне наблюдения молча, ровно как это случилось с `-run`.
 func TestSelectionGateAppliesTheDeclaredSkip(t *testing.T) {
+	t.Parallel()
 	root := synthSelectTree(t, "-run 'TestAlpha|TestBeta' -skip 'TestBeta'", "deploy", synthTwoProbes)
 
 	findings, census := auditSynthSelect(t, root)
@@ -270,6 +276,7 @@ func TestSelectionGateAppliesTheDeclaredSkip(t *testing.T) {
 // гейт по образцу над текстом требовал бы их отбора, то есть производил бы
 // находки, которые нечем закрыть.
 func TestSelectionGateCountsOnlyRealProbes(t *testing.T) {
+	t.Parallel()
 	root := synthSelectTree(t, "-run 'TestAlpha|TestBeta'", "deploy", synthTwoProbes)
 
 	findings, census := auditSynthSelect(t, root)
@@ -292,6 +299,7 @@ func TestSelectionGateCountsOnlyRealProbes(t *testing.T) {
 // содержит те же слова. Гейт по сырому тексту принял бы прозу за второй прогон
 // и счёл бы `TestProse` неотобранной пробой, а `TestBeta` — покрытой.
 func TestSelectionGateDoesNotCountACommentAsARun(t *testing.T) {
+	t.Parallel()
 	root := synthSelectTree(t, "-run 'TestAlpha'", "deploy", synthTwoProbes)
 
 	_, census := auditSynthSelect(t, root)
@@ -313,6 +321,7 @@ func TestSelectionGateDoesNotCountACommentAsARun(t *testing.T) {
 // обязана ронять существующий контроль и НЕ ронять новый. Без него молчание
 // соседнего гейта неотличимо от молчания мёртвого.
 func TestSelectionGateLeavesTheUnreachedPackageToItsOwner(t *testing.T) {
+	t.Parallel()
 	root := synthSelectTree(t, "-run 'TestAlpha|TestBeta'", "internal/apps/thing", synthTwoProbes)
 	// Объявление называет область `./internal/apps/thing/`, поэтому уведём вызов
 	// в сторону: пакет останется под признаком, а прогон перестанет его покрывать.

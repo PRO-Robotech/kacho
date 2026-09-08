@@ -51,6 +51,7 @@ func readMigrationSources(t testing.TB, root string, rel []string) []schemaRollb
 // единственный машинный распознаватель необратимости (`dropguard`) знает
 // `DROP TABLE` и о снятии колонки не спрашивает.
 func TestMigrationsRemovingAColumnDeclareThePointOfNoReturn(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	tree, err := treecorpus.NewTree(root)

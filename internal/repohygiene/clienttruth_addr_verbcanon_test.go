@@ -72,6 +72,7 @@ func verbCanonOptions(t *testing.T) VerbCanonOptions {
 // Способность падать доказывает не этот прогон, а инъекция
 // (`clienttruth_addr_verbcanon_injection_test.go`): здесь только вердикт.
 func TestSuffixActionsAreWrittenInTheCanon(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditVerbCanon(verbCanonOptions(t), &log)
 	if err != nil {

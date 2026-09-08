@@ -121,6 +121,7 @@ func auditSharedHelperForks(sharedSrc string, generators map[string]string) ([]s
 // задачей. Предмет здесь — перечень УЖЕ вынесенного: раз имя объявлено в общем
 // слое, второе его объявление есть форк, а не полоса набора.
 func TestNewmanSharedHelperIsDeclaredOnce(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Состав — из индекса git, а не обходом диска: под корнем лежат рабочие

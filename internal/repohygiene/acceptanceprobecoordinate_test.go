@@ -296,6 +296,7 @@ func declaredProbesOfTree(t *testing.T, root string) []string {
 // свой предмет», в его самой проверяемой форме: адрес, названный документом,
 // обязан существовать.
 func TestAcceptanceProbeCoordinateResolves(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	docs := acceptanceDocsOfTree(t, root)

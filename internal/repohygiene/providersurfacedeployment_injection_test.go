@@ -16,6 +16,7 @@ import (
 // то есть ровно тогда, когда цель гейта достигнута.
 
 func TestDeploymentExecutablePart_InjectionBothWays(t *testing.T) {
+	t.Parallel()
 	const surface = "/admin/trust/grants/jwt-bearer/issuers"
 
 	// (а) ВНЕСЁННЫЙ ДЕФЕКТ: рабочая нагрузка обращается к поверхности из своей
@@ -74,6 +75,7 @@ func TestDeploymentExecutablePart_InjectionBothWays(t *testing.T) {
 // Предпосылка гейта: словарь поверхностей ОБЩИЙ, а не копия. Проверяется тем,
 // что отбор административных путей выводится из него и непуст.
 func TestAdminSurfaces_DerivedFromTheSharedDictionary(t *testing.T) {
+	t.Parallel()
 	admin := adminSurfaces()
 	if len(admin) == 0 {
 		t.Fatal("административных поверхностей ноль — отбор перестал узнавать словарь, " +

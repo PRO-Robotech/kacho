@@ -235,6 +235,7 @@ func executableLines(body string) string {
 // утверждением о дереве — ровно тот класс, который эти гейты и ловят. Поэтому
 // он проверяется, а не предполагается.
 func TestSelfTestRunnerStillOnlySelfTests(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(selfTestOnlyRunner)))
 	if err != nil {
@@ -249,6 +250,7 @@ func TestSelfTestRunnerStillOnlySelfTests(t *testing.T) {
 
 // TestEveryToolScriptGateIsInvoked — ни один гейт-скрипт tools/ не остаётся немым.
 func TestEveryToolScriptGateIsInvoked(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	gates := findToolScriptGates(t, root)
@@ -289,6 +291,7 @@ func TestEveryToolScriptGateIsInvoked(t *testing.T) {
 // запись описывает то, чего не существует, и следующий читатель примет её за
 // действующее разрешение.
 func TestDeclaredDebtGatesStillHaveSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	for g := range declaredDebtGates {
 		if _, err := os.Stat(filepath.Join(root, g)); err != nil {

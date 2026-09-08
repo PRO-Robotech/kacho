@@ -115,6 +115,7 @@ func carriedSyntheticTree(paths ...string) func(string) bool {
 // TestCarriedLedgerRulesCatchAnEntryThatCannotExpire — сторона (а): запись без
 // предиката снятия становится находкой, и находка несёт координату.
 func TestCarriedLedgerRulesCatchAnEntryThatCannotExpire(t *testing.T) {
+	t.Parallel()
 	rows, sections, census := ParseCarriedCoordinateLedger(carriedInjectedNoPredicate)
 	if census.Tables != 1 || census.Rows != 1 {
 		t.Fatalf("разбор синтетики прочитал таблиц %d, строк %d — ожидалось 1 и 1: %+v",
@@ -148,6 +149,7 @@ func TestCarriedLedgerRulesCatchAnEntryThatCannotExpire(t *testing.T) {
 // TestCarriedLedgerRulesAreSilentOnALawfulEntry — сторона (б): запись с
 // предикатом снятия, которой ещё есть что переносить, находкой не является.
 func TestCarriedLedgerRulesAreSilentOnALawfulEntry(t *testing.T) {
+	t.Parallel()
 	rows, sections, census := ParseCarriedCoordinateLedger(carriedInjectedLawful)
 	if census.Tables != 1 {
 		t.Fatalf("таблиц прочитано %d, ожидалась 1 — огороженный блок с вертикальными "+
@@ -186,6 +188,7 @@ func TestCarriedLedgerRulesAreSilentOnALawfulEntry(t *testing.T) {
 // TestCarriedLedgerRulesCatchAnEntryWithNothingLeftToCarry — самоистечение:
 // запись, чьей координаты в дереве нет.
 func TestCarriedLedgerRulesCatchAnEntryWithNothingLeftToCarry(t *testing.T) {
+	t.Parallel()
 	rows, sections, _ := ParseCarriedCoordinateLedger(carriedInjectedStale)
 	findings := AdjudicateCarriedLedger("ledger.md", rows, sections,
 		carriedSyntheticTree("services/iam/internal/live.go"),
@@ -207,6 +210,7 @@ func TestCarriedLedgerRulesCatchAnEntryWithNothingLeftToCarry(t *testing.T) {
 // Без этой стороны ведомость молчала бы ровно о том, что забыли, — то есть о
 // четвёртом исходе, которого не существует.
 func TestCarriedLedgerRulesCatchAnUnnamedCoordinate(t *testing.T) {
+	t.Parallel()
 	rows, sections, _ := ParseCarriedCoordinateLedger(carriedInjectedLawful)
 	findings := AdjudicateCarriedLedger("ledger.md", rows, sections,
 		carriedSyntheticTree("services/iam/internal/live.go", "services/iam/internal/forgotten.go"),
@@ -225,6 +229,7 @@ func TestCarriedLedgerRulesCatchAnUnnamedCoordinate(t *testing.T) {
 // подталкивал бы держать запись ради зелёного — ровно к тому, что гейт и ловит
 // (`testing.md` §«Гейт на класс» п. 5).
 func TestCarriedLedgerRulesPassOnAnEmptyLedger(t *testing.T) {
+	t.Parallel()
 	rows, sections, census := ParseCarriedCoordinateLedger(carriedInjectedEmpty)
 	if census.Rows != 1 {
 		t.Fatalf("строк прочитано %d, ожидалась 1: %+v", census.Rows, rows)
@@ -259,6 +264,7 @@ func TestCarriedLedgerRulesPassOnAnEmptyLedger(t *testing.T) {
 // TestCarriedLedgerRulesCatchAnOutcomeOutsideTheVocabulary — словарь исходов
 // закрыт: «прочее» не является корзиной приёма.
 func TestCarriedLedgerRulesCatchAnOutcomeOutsideTheVocabulary(t *testing.T) {
+	t.Parallel()
 	rows, sections, _ := ParseCarriedCoordinateLedger(carriedInjectedUnknownOutcome)
 	if len(rows) != 1 || rows[0].Outcome != "" {
 		t.Fatalf("исход вне словаря опознан как %q — тогда «пока оставим на всякий случай» "+

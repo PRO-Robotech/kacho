@@ -10,7 +10,7 @@
 package subscriptionv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -139,7 +139,7 @@ var File_kacho_cloud_subscription_subscription_service_proto protoreflect.FileDe
 
 const file_kacho_cloud_subscription_subscription_service_proto_rawDesc = "" +
 	"\n" +
-	"3kacho/cloud/subscription/subscription_service.proto\x12\x18kacho.cloud.subscription\x1a+kacho/cloud/subscription/subscription.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xad\x01\n" +
+	"3kacho/cloud/subscription/subscription_service.proto\x12\x18kacho.cloud.subscription\x1a+kacho/cloud/subscription/subscription.proto\x1a$corelib/authz/v1/authz_options.proto\"\xad\x01\n" +
 	"\x13SubscriptionMessage\x12F\n" +
 	"\x06opened\x18\x01 \x01(\v2,.kacho.cloud.subscription.SubscriptionOpenedH\x00R\x06opened\x12C\n" +
 	"\x05event\x18\x02 \x01(\v2+.kacho.cloud.subscription.SubscriptionEventH\x00R\x05eventB\t\n" +

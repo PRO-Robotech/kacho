@@ -107,6 +107,7 @@ test("вход выполняется", async ({ page }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 func TestConsoleProbeIssueLinkPredicateSeparatesDefectFromLegalForm(t *testing.T) {
+	t.Parallel()
 	const (
 		noNumber  = "ui-future/e2e/specs/injected-no-number.spec.ts"
 		outside   = "ui-future/e2e/specs/injected-outside.spec.ts"
@@ -217,6 +218,7 @@ func TestConsoleProbeIssueLinkPredicateSeparatesDefectFromLegalForm(t *testing.T
 // измерение по умолчанию выключено, и без этой проверки `#0` доехал бы до
 // перечня как настоящая связь.
 func TestConsoleProbeIssueLinkRejectsNumbersThatCannotBeATask(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct{ name, link string }{
 		{"ноль", "// verifies #0"},
 		{"ведущий ноль", "// verifies #0416"},
@@ -262,6 +264,7 @@ func TestConsoleProbeIssueLinkRejectsNumbersThatCannotBeATask(t *testing.T) {
 // ПЕРЕЧЕНЬ ссылок — разные вещи, и гейт обязан различать их: ноль спек означает
 // «не прочитал», ноль ссылок — «нечего было находить».
 func TestConsoleProbeIssueLinkCorpusIsEmptyByRefusal(t *testing.T) {
+	t.Parallel()
 	census, findings := auditConsoleProbeIssueLinks(map[string]string{})
 	if len(findings) != 0 {
 		t.Errorf("на пустом корпусе получены находки %v — их неоткуда взять", findings)

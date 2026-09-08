@@ -3,7 +3,7 @@
 
 // protoc-gen-kacho-permissions emits a deterministic JSON catalog
 // (`gen/permission_catalog.json`) of every gRPC RPC across the kacho-proto tree,
-// annotated with the four `kacho.iam.authz.v1.*` MethodOptions.
+// annotated with the four `corelib.authz.v1.*` MethodOptions.
 //
 // Pipeline:
 //
@@ -37,7 +37,7 @@ import (
 	"sort"
 	"strings"
 
-	authzv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
+	authzv1 "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
@@ -53,17 +53,17 @@ type CatalogEntry struct {
 	RequiredRelation string         `json:"required_relation"`
 	ScopeExtractor   ScopeExtractor `json:"scope_extractor"`
 	RequiredAcrMin   string         `json:"required_acr_min,omitempty"`
-	// HideExistence — mirror of the (kacho.iam.authz.v1.hide_existence) option.
+	// HideExistence — mirror of the (corelib.authz.v1.hide_existence) option.
 	// Omitted from JSON when false so the catalog diff stays minimal (only the
 	// opted-in RPCs carry the key). The gateway authz middleware surfaces a deny
 	// on such an RPC as NotFound (no deny reasons) instead of PermissionDenied.
 	HideExistence bool `json:"hide_existence,omitempty"`
-	// ScopeFiltered — mirror of the (kacho.iam.authz.v1.scope_filtered) option.
+	// ScopeFiltered — mirror of the (corelib.authz.v1.scope_filtered) option.
 	// Declares the lane in which the OWNING SERVICE authorizes the call over the
 	// data it answers with, so the edge authenticates and runs no per-RPC Check.
 	// Omitted from JSON when false so the catalog diff stays minimal.
 	ScopeFiltered bool `json:"scope_filtered,omitempty"`
-	// ExemptReason — mirror of the (kacho.iam.authz.v1.exempt_reason) option.
+	// ExemptReason — mirror of the (corelib.authz.v1.exempt_reason) option.
 	// Required exactly when Permission == ExemptSentinel and forbidden otherwise:
 	// the sentinel alone stands for four incomparable lanes, and telling them
 	// apart used to require reading each RPC's implementation. Omitted from JSON
@@ -88,7 +88,7 @@ const (
 	DefaultRequiredAcrMin = "2"
 
 	// ExemptSentinel is the literal value an RPC sets to opt out of authz
-	// (e.g. `option (kacho.iam.authz.v1.permission) = "<exempt>";`). The row
+	// (e.g. `option (corelib.authz.v1.permission) = "<exempt>";`). The row
 	// still appears in the catalog with this exact string for coverage audit.
 	ExemptSentinel = "<exempt>"
 
@@ -176,7 +176,7 @@ func run(stdin io.Reader, stdout io.Writer) error {
 			// jobs can grep and humans can review. The file is removed
 			// (by the same plugin run) when no warnings exist.
 			warningsContent := "# protoc-gen-kacho-permissions warnings\n" +
-				"# RPCs missing required `(kacho.iam.authz.v1.*)` options.\n" +
+				"# RPCs missing required `(corelib.authz.v1.*)` options.\n" +
 				"# Once annotated, this file disappears on the next `buf generate`.\n" +
 				"# Set KACHO_PERMISSIONS_STRICT=1 to fail the build instead.\n\n" +
 				strings.Join(warnings, "\n") + "\n"
@@ -321,20 +321,20 @@ func extractEntry(rpcFQN string, opts *descriptorpb.MethodOptions) (CatalogEntry
 		// action even though no relation gates it.
 		var problems []string
 		if permission == "" {
-			problems = append(problems, "(kacho.iam.authz.v1.permission) is required")
+			problems = append(problems, "(corelib.authz.v1.permission) is required")
 		}
 		if permission == ExemptSentinel {
-			problems = append(problems, "(kacho.iam.authz.v1.permission) must not be \""+ExemptSentinel+"\"")
+			problems = append(problems, "(corelib.authz.v1.permission) must not be \""+ExemptSentinel+"\"")
 		}
 		if requiredRelation != "" {
-			problems = append(problems, "(kacho.iam.authz.v1.required_relation) must be omitted")
+			problems = append(problems, "(corelib.authz.v1.required_relation) must be omitted")
 		}
 		if scope.ObjectType != "" || scope.FromRequestField != "" || scope.ObjectTypeFromRequestField != "" {
-			problems = append(problems, "(kacho.iam.authz.v1.scope_extractor) must be omitted")
+			problems = append(problems, "(corelib.authz.v1.scope_extractor) must be omitted")
 		}
 		if len(problems) > 0 {
 			return entry, fmt.Sprintf(
-				"%s: (kacho.iam.authz.v1.scope_filtered) conflicts with %s",
+				"%s: (corelib.authz.v1.scope_filtered) conflicts with %s",
 				rpcFQN,
 				strings.Join(problems, ", "),
 			)
@@ -350,7 +350,7 @@ func extractEntry(rpcFQN string, opts *descriptorpb.MethodOptions) (CatalogEntry
 		// вообще названо.
 		if exemptReason == "" {
 			return entry, fmt.Sprintf(
-				"%s: (kacho.iam.authz.v1.exempt_reason) is required alongside permission = %q",
+				"%s: (corelib.authz.v1.exempt_reason) is required alongside permission = %q",
 				rpcFQN, ExemptSentinel)
 		}
 		return entry, ""
@@ -359,26 +359,26 @@ func extractEntry(rpcFQN string, opts *descriptorpb.MethodOptions) (CatalogEntry
 		// Причина освобождения у НЕосвобождённого RPC — утверждение о полосе,
 		// которой у него нет. Каталог обязан говорить правду про полосу.
 		return entry, fmt.Sprintf(
-			"%s: (kacho.iam.authz.v1.exempt_reason) is set on a non-exempt RPC (permission = %q)",
+			"%s: (corelib.authz.v1.exempt_reason) is set on a non-exempt RPC (permission = %q)",
 			rpcFQN, permission)
 	}
 
 	if permission == "" {
 		return entry, fmt.Sprintf(
-			"%s: missing required option (kacho.iam.authz.v1.permission)",
+			"%s: missing required option (corelib.authz.v1.permission)",
 			rpcFQN,
 		)
 	}
 
 	var problems []string
 	if requiredRelation == "" {
-		problems = append(problems, "(kacho.iam.authz.v1.required_relation)")
+		problems = append(problems, "(corelib.authz.v1.required_relation)")
 	}
 	if scope.ObjectType == "" {
-		problems = append(problems, "(kacho.iam.authz.v1.scope_extractor).object_type")
+		problems = append(problems, "(corelib.authz.v1.scope_extractor).object_type")
 	}
 	if scope.FromRequestField == "" {
-		problems = append(problems, "(kacho.iam.authz.v1.scope_extractor).from_request_field")
+		problems = append(problems, "(corelib.authz.v1.scope_extractor).from_request_field")
 	}
 	if len(problems) > 0 {
 		return entry, fmt.Sprintf(

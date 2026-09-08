@@ -129,6 +129,7 @@ func retentionSweeperVerdict(
 
 // TestDeclaredRetentionSweepersHaveAProductionCaller — сам гейт (RET-SWP-10).
 func TestDeclaredRetentionSweepersHaveAProductionCaller(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	var (
@@ -209,6 +210,7 @@ func TestDeclaredRetentionSweepersHaveAProductionCaller(t *testing.T) {
 // пропускать пробы, объявил бы находкой чужую фикстуру, а её «починка»
 // сломала бы гейт, которому она принадлежит.
 func TestRetentionSweeperGateIsSilentOnForeignInjectionFixtures(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	const foreign = "internal/repohygiene/assertionadmissioncalls_injection_test.go"
 
@@ -254,6 +256,7 @@ const retentionLoopFile = "services/iam/internal/apps/kaname/retention/sweeper.g
 // формы тикера видны одинаково. Видимость держит теперь ДВИЖИТЕЛЬ: тик, пауза
 // или ожидание уведомления, — а не узел, которым тик записан.
 func TestRetentionLoopIsVisibleToTheFanoutGate(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 	if !tt.hasFile(retentionLoopFile) {
@@ -328,6 +331,7 @@ func TestRetentionLoopIsVisibleToTheFanoutGate(t *testing.T) {
 // оно судит гейт целиком, на синтетическом дереве. Здесь — ровно то, что
 // связывает соседнее утверждение о петле УБОРКИ, и потому живёт рядом с ним.
 func TestRetentionLoopFormIsTheRecognisedOne(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name   string
 		params string

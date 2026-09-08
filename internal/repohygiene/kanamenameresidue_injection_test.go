@@ -123,8 +123,22 @@ func nameResidueBorderTwins() map[string]struct{ Path, Body string } {
 			"services/iam/internal/repo/kaname/pg/probe_quota.go",
 			"const fn = \"kacho_quota_refuse\"\n",
 		},
+		borderTrackerReference: {
+			"services/iam/internal/apps/kaname/api/probe/tracker_ref.go",
+			"// Разбор класса — задача kacho" + trackerRefMark + "2260.\n",
+		},
 	}
 }
+
+// trackerRefMark — знак номера, отделённый от литерала.
+//
+// Отделён НАМЕРЕННО, и это не украшение: строка `kacho` со знаком номера и
+// цифрой есть ровно та форма, которую держатель остатка признаёт ссылкой на
+// задачу. Написанная слитно в файле дерева, она попала бы в перепись СВОЕЙ
+// границей — то есть проба меняла бы вердикт о дереве самим фактом своего
+// существования. Здесь она собирается из двух частей и живёт только в памяти
+// прогона.
+const trackerRefMark = "#"
 
 // nameResidueOwnNameTwin — файл, где продукт называет себя СВОИМ именем.
 // Держатель обязан молчать о нём целиком: ни одной полосы, ни одной границы.
@@ -176,6 +190,7 @@ func nameResidueLanes(t *testing.T, world map[string][]byte) map[string]int {
 // Прогон первый из трёх. Без него «инъекция покрасила полосу» ничего не
 // доказывает: полоса могла краснеть и до неё.
 func TestKanameNameResidueControlWorldIsSound(t *testing.T) {
+	t.Parallel()
 	got := nameResidueLanes(t, nameResidueWorld())
 	subjects := nameResidueSubjects()
 	twins := nameResidueBorderTwins()
@@ -217,6 +232,7 @@ func TestKanameNameResidueControlWorldIsSound(t *testing.T) {
 // своим вхождением» выбрана потому, что она меняет ровно один факт: у мира
 // прибавляется одно вхождение известной формы, и больше ничего.
 func TestKanameNameResidueInjectionRaisesOnlyItsOwnLane(t *testing.T) {
+	t.Parallel()
 	base := nameResidueLanes(t, nameResidueWorld())
 
 	for lane, subject := range nameResidueSubjects() {
@@ -264,6 +280,7 @@ func nameResidueSiblingPath(path string) string {
 // Без него держатель ловил бы «слово похожей формы», а не имя платформы, и
 // первое же срабатывание на собственном имени продукта его бы отключило.
 func TestKanameNameResidueOwnProductNameStaysSilent(t *testing.T) {
+	t.Parallel()
 	base := nameResidueLanes(t, nameResidueWorld())
 
 	world := nameResidueWorld()
@@ -288,6 +305,7 @@ func TestKanameNameResidueOwnProductNameStaysSilent(t *testing.T) {
 // теряет диакритическую форму МОЛЧА, и потеря приходится на прозу — туда, где
 // бренд платформы стоит как своё имя продукта.
 func TestKanameNameResidueReadsTheMacronFormAnAsciiPredicateMisses(t *testing.T) {
+	t.Parallel()
 	const macronOnly = "Консоль остаётся частью Kachō.\n"
 	const asciiOnly = "Консоль остаётся частью Kacho.\n"
 
@@ -341,6 +359,7 @@ func TestKanameNameResidueReadsTheMacronFormAnAsciiPredicateMisses(t *testing.T)
 // TestKanameNameResidueStayLedgerExpiresWithItsSubject — ведомость решённого
 // остаться прощает точное число и истекает вместе с предметом.
 func TestKanameNameResidueStayLedgerExpiresWithItsSubject(t *testing.T) {
+	t.Parallel()
 	subject := nameResidueSubjects()[laneSchemaName]
 
 	cases := []struct {
@@ -424,6 +443,7 @@ func TestKanameNameResidueStayLedgerExpiresWithItsSubject(t *testing.T) {
 // то же изменение, которое остаток сняло. Потолок (`не больше чем`) запрещён:
 // он не краснеет никогда и потому не истекает.
 func TestKanameNameResidueDebtLedgerIsExactInBothDirections(t *testing.T) {
+	t.Parallel()
 	world := nameResidueWorld()
 	base := nameResidueLanes(t, world)
 
@@ -494,6 +514,7 @@ func ledgerFindingSays(findings []NameResidueLedgerFinding, lane, want string) b
 // TestKanameNameResidueRefusesOnBeingBeyondItsPredicate — держатель ОТКАЗЫВАЕТ
 // там, где вердикт был бы беспредметен, а не выдаёт тихий ноль.
 func TestKanameNameResidueRefusesOnBeingBeyondItsPredicate(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name  string
 		world map[string][]byte
@@ -573,6 +594,7 @@ func TestKanameNameResidueRefusesOnBeingBeyondItsPredicate(t *testing.T) {
 // Появись седьмая ось — доказательства по ней не было бы, и её молчание не
 // отличалось бы от молчания мёртвой проверки.
 func TestKanameNameResidueEveryAxisHasASubjectInTheInjection(t *testing.T) {
+	t.Parallel()
 	subjects := nameResidueSubjects()
 	covered := map[NameResidueAxis]int{}
 	for lane := range subjects {
@@ -592,5 +614,87 @@ func TestKanameNameResidueEveryAxisHasASubjectInTheInjection(t *testing.T) {
 	t.Logf("предметов инъекции по осям — %s", strings.Join(names, "; "))
 	if len(KanameAxes) != 6 {
 		t.Fatalf("осей объявлено %d, а директива владельца называет шесть", len(KanameAxes))
+	}
+}
+
+// TestKanameNameResidueTrackerReferenceIsToldByForm — граница ссылки на задачу
+// узнаётся ФОРМОЙ, а не словом.
+//
+// ПОЧЕМУ ЭТА ПРОБА ОТДЕЛЬНАЯ. Контрольный мир доказывает, что ссылку граница
+// ЗАБИРАЕТ; он ничего не говорит о том, не забирает ли она лишнего. Граница по
+// форме — самый дешёвый способ завести маску: она освобождает всё, что на
+// форму похоже. Поэтому здесь по каждому близнецу меняется РОВНО ОДИН факт
+// против ссылки, и каждый обязан остаться на СВОЕЙ полосе.
+//
+// Мир для каждого случая берётся общий и дополняется ОДНИМ файлом: так
+// «полоса выросла» означает «выросла от этого файла», а не «была такой».
+func TestKanameNameResidueTrackerReferenceIsToldByForm(t *testing.T) {
+	t.Parallel()
+	base := nameResidueLanes(t, nameResidueWorld())
+
+	cases := []struct {
+		name string
+		body string
+		lane string
+		why  string
+	}{
+		{
+			name: "ссылка на задачу — граница",
+			body: "// Предмет назван в задаче kacho" + trackerRefMark + "1024.\n",
+			lane: borderTrackerReference,
+			why:  "имя называет репозиторий учёта, и за ним стоит знак номера с цифрой",
+		},
+		{
+			name: "знак номера без цифры — не ссылка",
+			body: "// Ключ записывается как kacho" + trackerRefMark + "имя.\n",
+			lane: lanePlatformName,
+			why: "знак номера сам по себе ссылкой не делает: без цифры это " +
+				"обычное соседство знаков, и имя остаётся именем платформы",
+		},
+		{
+			name: "имя платформы без знака номера — не ссылка",
+			body: "// Пространство имён стенда зовётся kacho, и это чужое имя\n",
+			lane: lanePlatformName,
+			why:  "положительный контроль: та же полоса, тот же файл, разница только в знаке",
+		},
+		{
+			name: "токен длиннее имени — судится ТОКЕН, а не сегмент",
+			body: "// Каталог apps/kacho" + trackerRefMark + "1024 предметом ссылки не является\n",
+			lane: lanePlatformName,
+			why: "условие «токен есть имя платформы целиком» держит ПРЕДИКАТ: подмени " +
+				"токен сегментом пути — и вхождение уедет на границу ссылки, оставшись " +
+				"координатой каталога",
+		},
+		{
+			name: "путь модуля со знаком номера — своя граница, не эта",
+			body: "// Смотри PRO-Robotech/kacho" + trackerRefMark + "1024.\n",
+			lane: borderFoundationModule,
+			why: "вхождение остаётся за границей пути модуля фундамента, и держит его " +
+				"ПОРЯДОК правил, а не предикат ссылки: Б1 стоит раньше. Названо отдельным " +
+				"случаем, потому что подмена токена сегментом здесь молчит",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			world := nameResidueWorld()
+			world["services/iam/internal/apps/kaname/api/probe/tracker_form.go"] = []byte(tc.body)
+			got := nameResidueLanes(t, world)
+
+			if got[tc.lane] != base[tc.lane]+1 {
+				t.Fatalf("%s: полоса %q была %d, стала %d — ожидалась %d (%s)",
+					tc.name, tc.lane, base[tc.lane], got[tc.lane], base[tc.lane]+1, tc.why)
+			}
+			for other := range kanameLanes {
+				if other == tc.lane {
+					continue
+				}
+				if got[other] != base[other] {
+					t.Errorf("%s: сдвинулась ЧУЖАЯ полоса %q (%d → %d) — "+
+						"дискриминатор ловит не то, что объявляет",
+						tc.name, other, base[other], got[other])
+				}
+			}
+		})
 	}
 }

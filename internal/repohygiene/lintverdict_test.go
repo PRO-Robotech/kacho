@@ -154,6 +154,7 @@ type lintSite struct {
 // ─────────────────────────────────────────────────────────────────────────────
 
 func TestLintRunCannotInheritAnotherCheckoutsCache(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	r, err := os.OpenRoot(root)
 	if err != nil {
@@ -369,6 +370,7 @@ func lineOfRun(body, run string) int {
 // ─────────────────────────────────────────────────────────────────────────────
 
 func TestLintVerdictIsNotSilentlyTruncated(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	r, err := os.OpenRoot(root)
 	if err != nil {
@@ -419,6 +421,7 @@ func TestLintVerdictIsNotSilentlyTruncated(t *testing.T) {
 // дефекте и молчать на законной конструкции той же формы. Без второй половины
 // он ловил бы форму, а не существо, и первый же ложный срабат его бы снял.
 func TestLintCachePredicateCutsBothWays(t *testing.T) {
+	t.Parallel()
 	t.Run("значение ручки", func(t *testing.T) {
 		for _, tc := range []struct {
 			value string

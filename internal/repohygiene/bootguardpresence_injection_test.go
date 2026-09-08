@@ -113,6 +113,7 @@ func main() {
 // ── направление (а): ручки объявлены, дескриптор не принят ─────────────────
 
 func TestPostureReachGateRedWhenKnobsNeverReachTheDescriptor(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/demo/internal/config/config.go": injPostureKnobsSrc,
 		"services/demo/cmd/demo/main.go":          injLocalGuardOnlySrc,
@@ -140,6 +141,7 @@ func TestPostureReachGateRedWhenKnobsNeverReachTheDescriptor(t *testing.T) {
 // ── направление (б): законный близнец — дескриптор принят, гейт молчит ─────
 
 func TestPostureReachGateSilentWhenTheDescriptorIsAccepted(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/demo/internal/config/config.go": injPostureKnobsSrc,
 		"services/demo/cmd/demo/describe.go":      injDescriptorAcceptedSrc,
@@ -189,6 +191,7 @@ func runServe(cfg Config) error {
 // потому ничего не говорила о форме, которая бывает: подделка у вызывающего
 // проходила и её, и весь набор `internal/repohygiene`.
 func TestPostureReachGateRedWhenTheDescriptorRefusalIsDiscarded(t *testing.T) {
+	t.Parallel()
 	t.Run("живая форма: гашение у ВЫЗЫВАЮЩЕГО поставщика", func(t *testing.T) {
 		root := synthCarrierTree(t, map[string]string{
 			"services/demo/internal/config/config.go": injPostureKnobsSrc,
@@ -245,6 +248,7 @@ func TestPostureReachGateRedWhenTheDescriptorRefusalIsDiscarded(t *testing.T) {
 // на синтетической ведомости: запись против компонента, который дескриптор УЖЕ
 // принимает, — находка, а не тишина.
 func TestPostureRelaxationExpiresWhenItsSubjectIsGone(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/demo/internal/config/config.go": injPostureKnobsSrc,
 		"services/demo/cmd/demo/describe.go":      injDescriptorAcceptedSrc,
@@ -289,6 +293,7 @@ func TestPostureRelaxationExpiresWhenItsSubjectIsGone(t *testing.T) {
 // ── ПУСТОЙ ОБХОД — ОТКАЗ, А НЕ УСПЕХ ──────────────────────────────────────
 
 func TestPostureReachRefusesAnEmptyTraversal(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"README.md": "дерево без единого компонента\n",
 	})
@@ -499,6 +504,7 @@ func synthWitnessDir(t *testing.T, files map[string]string) []string {
 // ── направление (а): свидетеля НЕТ, хотя файл выглядит как свидетельство ───
 
 func TestRefusalWitnessGateRedOnAFileLevelDecoy(t *testing.T) {
+	t.Parallel()
 	paths := synthWitnessDir(t, map[string]string{"decoy_test.go": injWitnessDecoySrc})
 	w, err := scanContractRefusalWitness(paths)
 	if err != nil {
@@ -519,6 +525,7 @@ func TestRefusalWitnessGateRedOnAFileLevelDecoy(t *testing.T) {
 
 // Подделка в ОДНОМ теле: утверждение на чужой ошибке.
 func TestRefusalWitnessGateRedWhenTheAssertionRidesAnotherError(t *testing.T) {
+	t.Parallel()
 	paths := synthWitnessDir(t, map[string]string{"w_test.go": injWitnessWrongErrSrc})
 	w, err := scanContractRefusalWitness(paths)
 	if err != nil {
@@ -536,6 +543,7 @@ func TestRefusalWitnessGateRedWhenTheAssertionRidesAnotherError(t *testing.T) {
 // ── направление (б): каждая ЗАКОННАЯ форма признаётся ─────────────────────
 
 func TestRefusalWitnessGateKnowsEveryLawfulForm(t *testing.T) {
+	t.Parallel()
 	forms := []struct {
 		name string
 		src  string
@@ -567,6 +575,7 @@ func TestRefusalWitnessGateKnowsEveryLawfulForm(t *testing.T) {
 
 // Делегация на один уровень — та форма, которой пользуется настоящий пакет.
 func TestRefusalWitnessGateFollowsOneLevelOfDelegation(t *testing.T) {
+	t.Parallel()
 	paths := synthWitnessDir(t, map[string]string{"w_test.go": injWitnessDelegatedSrc})
 	w, err := scanContractRefusalWitness(paths)
 	if err != nil {
@@ -591,6 +600,7 @@ func TestRefusalWitnessGateFollowsOneLevelOfDelegation(t *testing.T) {
 // свидетелем ОТКАЗА он не является. Без этой пробы гейт зеленел бы на пакете,
 // где дескриптор не отвергает ничего, а пробы лишь подтверждают приём.
 func TestRefusalWitnessGateDoesNotMistakeAcceptanceForRefusal(t *testing.T) {
+	t.Parallel()
 	const acceptOnly = `package servicecontract_test
 
 import "testing"
@@ -615,6 +625,7 @@ func TestLawfulIsAccepted(t *testing.T) {
 
 // ПУСТОЙ ПАКЕТ — перепись обязана это показать, а гейт выше — отказать.
 func TestRefusalWitnessRefusesAnEmptyPackage(t *testing.T) {
+	t.Parallel()
 	paths := synthWitnessDir(t, map[string]string{"README.md": "проб нет\n"})
 	w, err := scanContractRefusalWitness(paths)
 	if err != nil {
@@ -701,6 +712,7 @@ func scanWiring(t *testing.T, body string) postureReach {
 // Стоит первым намеренно: пока он красный, каждая подделка ниже краснеет по
 // причине, не имеющей отношения к своему предмету.
 func TestSpecWiringSilentWhenEveryPostureFieldComesFromConfig(t *testing.T) {
+	t.Parallel()
 	reach := scanWiring(t, injWiredBody)
 	if len(reach.literalFields["demo"]) != 0 {
 		t.Fatalf("исправная провязка объявлена находкой — гейт краснел бы на "+
@@ -716,6 +728,7 @@ func TestSpecWiringSilentWhenEveryPostureFieldComesFromConfig(t *testing.T) {
 // ТИХИЕ ПОДДЕЛКИ — по одной на каждое посадочное поле. Каждая собирается и
 // каждая правдоподобна.
 func TestSpecWiringRedOnAQuietConstantInEveryPostureField(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name  string
 		body  string
@@ -778,6 +791,7 @@ func TestSpecWiringRedOnAQuietConstantInEveryPostureField(t *testing.T) {
 // знает, уходит в НЕВИДИМОСТЬ либо в ложную находку — второе случилось на живом
 // дереве при первой редакции этой оси.
 func TestSpecWiringKnowsEveryLawfulDerivation(t *testing.T) {
+	t.Parallel()
 	forms := []struct {
 		name string
 		body string
@@ -801,6 +815,7 @@ func TestSpecWiringKnowsEveryLawfulDerivation(t *testing.T) {
 
 // Промежуточная переменная — цепочкой, а не одним шагом.
 func TestSpecWiringFollowsAChainOfIntermediates(t *testing.T) {
+	t.Parallel()
 	src := `package main
 
 import "github.com/PRO-Robotech/kacho/pkg/servicecontract"
@@ -862,6 +877,7 @@ func describe(cfg Config, mode servicecontract.Mode) (servicecontract.Descriptor
 `
 
 func TestSpecWiringResolvesAParameterAtItsCaller(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		caller  string
@@ -926,6 +942,7 @@ func TestSpecWiringResolvesAParameterAtItsCaller(t *testing.T) {
 // не назовёт оператору, что править), и гейт на них молчит by construction.
 // Без этой пробы закрытость перечня держалась бы только комментарием.
 func TestSpecWiringStaysSilentOnKnobNamesWhichAreRightlyLiteral(t *testing.T) {
+	t.Parallel()
 	body := strings.Replace(injWiredBody,
 		`SANs:     "KACHO_DEMO_AUTHZ_TRUSTED_FORWARDER_SANS",`,
 		`SANs:     "СОВСЕМ ДРУГОЕ ИМЯ",`, 1)
@@ -1014,6 +1031,7 @@ func scanReach(t *testing.T, caller string) postureReach {
 // ЗАКОННЫЕ ФОРМЫ — гейт МОЛЧИТ. Стоят первыми намеренно: пока законный близнец
 // красный, каждая подделка ниже краснеет не по своему предмету.
 func TestRefusalReachKnowsEveryLawfulHandlingForm(t *testing.T) {
+	t.Parallel()
 	forms := []struct {
 		name   string
 		calls  int // вызовов поставщика в фикстуре — перепись обязана назвать РОВНО столько
@@ -1164,6 +1182,7 @@ func runServe(cfg Config) error {
 // выглядит обычным кодом: громкая подделка (сломанная сборка, снятая переменная)
 // доказывала бы не то — она проверяла бы компилятор, а не гейт.
 func TestRefusalReachRedOnEveryQuenchingForm(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name   string
 		caller string
@@ -1361,6 +1380,7 @@ func runServe(cfg Config) error {
 // Находка обязана ДОЕХАТЬ ДО ВЕРДИКТА гейта, а не осесть в переписи. Проба
 // гоняет ТУ ЖЕ ветку решения, что и гейт, — иначе доказывала бы свойство копии.
 func TestRefusalReachSurfacesInTheGateVerdict(t *testing.T) {
+	t.Parallel()
 	reach := scanReach(t, `func runServe(cfg Config) error {
 	desc, _ := describe(cfg)
 	_ = desc
@@ -1381,6 +1401,7 @@ func TestRefusalReachSurfacesInTheGateVerdict(t *testing.T) {
 // неэкспортированное — из своего пакета вызвать его больше неоткуда, поэтому
 // это НАХОДКА, а не «судить нечем».
 func TestRefusalReachRedWhenTheProviderIsNeverCalled(t *testing.T) {
+	t.Parallel()
 	reach := scanReach(t, ``)
 	q := strings.Join(reach.quenched["demo"], "\n")
 	if !strings.Contains(q, "не вызывается НИ РАЗУ") {
@@ -1485,6 +1506,7 @@ func scanWithdrawn(t *testing.T, knobs, body string) postureReach {
 // Стоит первым: пока он красный, обе стороны ниже краснеют по причине, не
 // имеющей отношения к своему предмету.
 func TestWithdrawnAxis_ControlWiredFromItsKnobIsSilent(t *testing.T) {
+	t.Parallel()
 	reach := scanWithdrawn(t, injDBKnob, injDBWired)
 	if lits := reach.literalFields["demo"]; len(lits) != 0 {
 		t.Fatalf("исправная провязка объявлена находкой:\n%s", strings.Join(lits, "\n"))
@@ -1504,6 +1526,7 @@ func TestWithdrawnAxis_ControlWiredFromItsKnobIsSilent(t *testing.T) {
 // адресовано» стало бы неотличимо от «выведено из настройки», и послабление
 // растворилось бы в числе, которое читают как успех.
 func TestWithdrawnAxis_SilentWhenTheComponentDeclaresNoSuchKnob(t *testing.T) {
+	t.Parallel()
 	reach := scanWithdrawn(t, "", injDBWithdrawn)
 	if lits := reach.literalFields["demo"]; len(lits) != 0 {
 		t.Fatalf("изъятие с причиной объявлено подставленной константой — гейт краснел "+
@@ -1529,6 +1552,7 @@ func TestWithdrawnAxis_SilentWhenTheComponentDeclaresNoSuchKnob(t *testing.T) {
 // объявлением ручки. Всё прочее в фикстуре законно, поэтому красное приходит от
 // проверяемого свойства, а не от соседа.
 func TestWithdrawnAxis_RedWhenTheKnobItWithdrawsIsDeclared(t *testing.T) {
+	t.Parallel()
 	reach := scanWithdrawn(t, injDBKnob, injDBWithdrawn)
 	st := strings.Join(reach.staleWithdrawals["demo"], "\n")
 	if st == "" {
@@ -1550,6 +1574,7 @@ func TestWithdrawnAxis_RedWhenTheKnobItWithdrawsIsDeclared(t *testing.T) {
 // остаться в поле разбора. Без этой пробы предыдущая доказывала бы свойство
 // СКАНЕРА, о котором вердикт не утверждает ничего.
 func TestWithdrawnAxis_SurfacesInTheGateVerdict(t *testing.T) {
+	t.Parallel()
 	reach := scanWithdrawn(t, injDBKnob, injDBWithdrawn)
 	v := adjudicatePostureReachFull(reach, nil)
 	joined := strings.Join(v.findings, "\n")

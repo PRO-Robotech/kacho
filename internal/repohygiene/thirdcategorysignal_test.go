@@ -96,6 +96,7 @@ func adjudicateThirdCategorySignal(w thirdCategoryWiring) []string {
 }
 
 func TestThirdCategorySignalReachesTheSummary(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	path := filepath.Join(root, thirdCategoryWorkflow)
 	raw, err := os.ReadFile(path)

@@ -339,6 +339,7 @@ func consoleProbeOperationIDSources(t *testing.T, root string) map[string]string
 // TestProbeIdentifiersFromOperationMetadataAreConfirmedByReading — гейт нормы
 // `testing.md` §«Fixture-seed обязан проверять `op.error`…».
 func TestProbeIdentifiersFromOperationMetadataAreConfirmedByReading(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	sources := consoleProbeOperationIDSources(t, root)
 	if len(sources) == 0 {

@@ -54,6 +54,7 @@ func rootPrefix(sep string) string { return contractroot.Roots[0] + sep }
 
 // TestInjection_RootPrefixLiteralIsAFinding — ИНЪЕКЦИЯ.
 func TestInjection_RootPrefixLiteralIsAFinding(t *testing.T) {
+	t.Parallel()
 	root, dirs := synthGoTree(t, `return strings.HasPrefix(s, "`+rootPrefix(".")+`")`)
 	findings, census, err := AuditContractRootLiterals(root, dirs)
 	if err != nil {
@@ -75,6 +76,7 @@ func TestInjection_RootPrefixLiteralIsAFinding(t *testing.T) {
 // TestInjection_PathFormOfTheRootPrefixIsAlsoAFinding — вторая ФОРМА записи той
 // же приставки. Форма, о которой распознаватель не знает, даёт молчание.
 func TestInjection_PathFormOfTheRootPrefixIsAlsoAFinding(t *testing.T) {
+	t.Parallel()
 	root, dirs := synthGoTree(t, `return strings.HasPrefix(s, "`+rootPrefix("/")+`")`)
 	findings, _, err := AuditContractRootLiterals(root, dirs)
 	if err != nil {
@@ -92,6 +94,7 @@ func TestInjection_PathFormOfTheRootPrefixIsAlsoAFinding(t *testing.T) {
 // отбирает ДОМЕН, а не корень. Без этого утверждения гейт ловил бы форму, а не
 // существо, и первый же ложный срабат его отключил бы.
 func TestInjection_DomainPrefixIsLegitimateAndSilent(t *testing.T) {
+	t.Parallel()
 	root, dirs := synthGoTree(t, `return strings.HasPrefix(s, "`+rootPrefix(".")+`cloud.compute")`)
 	findings, census, err := AuditContractRootLiterals(root, dirs)
 	if err != nil {
@@ -108,6 +111,7 @@ func TestInjection_DomainPrefixIsLegitimateAndSilent(t *testing.T) {
 // TestInjection_DeclaredDictionaryIsSilent — ВТОРОЙ законный близнец: отбор взят
 // у объявленного словаря, литерала нет вовсе.
 func TestInjection_DeclaredDictionaryIsSilent(t *testing.T) {
+	t.Parallel()
 	root, dirs := synthGoTree(t, `return len(s) > 0 && strings.HasPrefix(s, prefixFromDictionary())`)
 	// Функции нет — файл не соберётся, но РАЗБОР его читает: гейт судит узлы, а
 	// не сборку. Существенно, что аргумент не литерал.
@@ -126,6 +130,7 @@ func TestInjection_DeclaredDictionaryIsSilent(t *testing.T) {
 // TestInjection_MissingWalkDirIsRefusedNotSilent — каталог обхода, которого нет,
 // даёт ОТКАЗ, а не пустой зелёный.
 func TestInjection_MissingWalkDirIsRefusedNotSilent(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	_, _, err := AuditContractRootLiterals(root, []string{"internal/nosuchdir"})
 	if err == nil {

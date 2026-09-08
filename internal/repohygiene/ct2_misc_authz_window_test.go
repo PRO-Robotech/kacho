@@ -18,6 +18,7 @@ import (
 // Способность гейта упасть и смолчать доказана инъекцией в обе стороны:
 // ct2_misc_authz_window_injection_test.go.
 func TestEdgePagesNameTheirOwnHalfOfTheAuthzVisibilityWindow(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	tree, err := treecorpus.NewTree(root)

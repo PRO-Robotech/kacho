@@ -1754,6 +1754,7 @@ func auditShellProbeWritesToLiveTreeWith(
 
 // TestShellProbesDoNotWriteIntoTheTreeTheyRunFrom — гейт по дереву.
 func TestShellProbesDoNotWriteIntoTheTreeTheyRunFrom(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	sources, outside := shellProbeSources(t, root)
 

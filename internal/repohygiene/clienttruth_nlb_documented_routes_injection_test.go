@@ -53,6 +53,7 @@ service NetworkLoadBalancerService {
 }
 
 func TestNlbDocumentedRoutesGateInjection(t *testing.T) {
+	t.Parallel()
 	t.Run("КОНТРОЛЬ: показаны только живые маршруты — гейт молчит", func(t *testing.T) {
 		root := writeNlbRouteTree(t,
 			"/nlb/v1/networkLoadBalancers/nlb...",

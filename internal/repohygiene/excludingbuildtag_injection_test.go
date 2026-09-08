@@ -98,6 +98,7 @@ func auditSynthExcluding(t *testing.T, root string, wantVetRuns bool) ([]excludi
 // определён в файле, который тег выводит из сборки, а зовущий его файл остаётся, —
 // гейт КРАСНЕЕТ и НАЗЫВАЕТ КООРДИНАТУ. Находка без координаты не есть действие.
 func TestExcludingBuildTagGateRedOnInjectedDefect(t *testing.T) {
+	t.Parallel()
 	root := synthExcludingModule(t, "//go:build !synthexclude\n\n", "")
 
 	findings, census := auditSynthExcluding(t, root, true)
@@ -131,6 +132,7 @@ func TestExcludingBuildTagGateRedOnInjectedDefect(t *testing.T) {
 // Это и есть законное употребление исключающего признака: он уносит связку
 // целиком, а не половину.
 func TestExcludingBuildTagGateSilentOnLawfulTwin(t *testing.T) {
+	t.Parallel()
 	root := synthExcludingModule(t,
 		"//go:build !synthexclude\n\n",
 		"//go:build !synthexclude\n\n")
@@ -156,6 +158,7 @@ func TestExcludingBuildTagGateSilentOnLawfulTwin(t *testing.T) {
 // дала находку на совершенно законном коде. Имя платформы гейт обязан отбросить —
 // и обязан СКАЗАТЬ, что отбросил, иначе молчание неотличимо от непрочтения.
 func TestExcludingBuildTagGateSilentOnPlatformSplit(t *testing.T) {
+	t.Parallel()
 	root := synthExcludingModule(t, "//go:build !windows\n\n", "")
 
 	findings, census := auditSynthExcluding(t, root, false)
@@ -180,6 +183,7 @@ func TestExcludingBuildTagGateSilentOnPlatformSplit(t *testing.T) {
 // позвать сборку с тегом, которого в дереве нет: вызов прошёл бы молча, и гейт
 // стал бы проверкой с формой, но без содержания.
 func TestExcludingBuildTagGateReadsOnlyTheHeader(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	files := map[string]string{
 		"go.mod": "module synthexcluding\n\ngo 1.25\n",

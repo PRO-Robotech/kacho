@@ -45,6 +45,7 @@ import (
 )
 
 func TestScopeDepthAgreement_ProvenByInjection(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// ── КОНТРОЛЬ. Без него краснота ниже неотличима от красноты дерева ──────
@@ -129,6 +130,7 @@ func TestScopeDepthAgreement_ProvenByInjection(t *testing.T) {
 // несуществующий файл. Ровно этот класс #918 и был — сообщение о границе,
 // пережившее свою границу.
 func TestScopeDepthPlanFileCoordinateIsAlive(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tree, err := treecorpus.NewTree(root)
 	if err != nil {
@@ -161,6 +163,7 @@ func TestScopeDepthPlanFileCoordinateIsAlive(t *testing.T) {
 // совпадения и падает на нуле), но у следующего сведённого сервиса тот же промах
 // пришёл бы снова — предикат чинили бы координатой, а не формой.
 func TestScopeDepthRecogniserKnowsBothLegalFormsOfTheBound(t *testing.T) {
+	t.Parallel()
 	// ── КАЖДАЯ форма обязана быть узнана и отдать своё число ────────────────
 	for _, c := range []struct {
 		what string

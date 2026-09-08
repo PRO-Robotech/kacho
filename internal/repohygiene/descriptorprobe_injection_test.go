@@ -77,6 +77,7 @@ func newClient() *http.Client {
 `
 
 func TestGateFindsARootWithoutAProbe(t *testing.T) {
+	t.Parallel()
 	root := syntheticTree(t, map[string]string{
 		"cmd/svc/serve.go": rootSource,
 		// Тест в пакете ЕСТЬ, и он зелёный — но корень он не зовёт. Ровно то
@@ -98,6 +99,7 @@ func TestGateFindsARootWithoutAProbe(t *testing.T) {
 }
 
 func TestGateStaysSilentWhenTheProbeCallsTheRoot(t *testing.T) {
+	t.Parallel()
 	root := syntheticTree(t, map[string]string{
 		"cmd/svc/serve.go": rootSource,
 		"cmd/svc/describe_test.go": "package main\n\nimport \"testing\"\n\n" +
@@ -116,6 +118,7 @@ func TestGateStaysSilentWhenTheProbeCallsTheRoot(t *testing.T) {
 // TestGateIgnoresACallOfSomebodyElsesNew — вторая половина законного близнеца:
 // вызов чужого `New` корнем не является.
 func TestGateIgnoresACallOfSomebodyElsesNew(t *testing.T) {
+	t.Parallel()
 	root := syntheticTree(t, map[string]string{
 		"cmd/svc/client.go": decoySource,
 	})
@@ -132,6 +135,7 @@ func TestGateIgnoresACallOfSomebodyElsesNew(t *testing.T) {
 // TestGateReadsCodeNotComments — предикат обязан отличать исполняемую часть от
 // комментария: имя конструктора стоит в шапках чаще, чем в коде.
 func TestGateReadsCodeNotComments(t *testing.T) {
+	t.Parallel()
 	root := syntheticTree(t, map[string]string{
 		"cmd/svc/doc.go": "package main\n\n" +
 			"// describe зовёт servicecontract.New(spec) и отдаёт дескриптор.\n" +

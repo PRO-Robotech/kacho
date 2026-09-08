@@ -146,6 +146,7 @@ func cdefAssertFinds(t *testing.T, name string, p cdefPage, want ...string) {
 
 // TestClientDocsExampleFieldsInjection — способность падать и молчать.
 func TestClientDocsExampleFieldsInjection(t *testing.T) {
+	t.Parallel()
 	// ОСЬ 0 (положительный контроль, первым). Согласованная страница молчит, и
 	// перепись доказывает, что обход не был пуст: без неё молчание было бы
 	// достижимо анализатором, который ничего не читает.

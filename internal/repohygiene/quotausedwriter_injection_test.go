@@ -19,6 +19,7 @@ package repohygiene
 import "testing"
 
 func TestQuotaUsedWriterGate_FailsOnBypassAndIsSilentOnItsLegalTwin(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name  string
 		stmt  string
@@ -63,6 +64,7 @@ func TestQuotaUsedWriterGate_FailsOnBypassAndIsSilentOnItsLegalTwin(t *testing.T
 // дереве; здесь закреплено, что предикат существования вообще спрашивается — без
 // этого «самоистечение» было бы словом в комментарии.
 func TestQuotaUsedWriterGate_SelfExpiryHasTeeth(t *testing.T) {
+	t.Parallel()
 	if len(quotaTriggerDefiningFiles) == 0 {
 		t.Fatal("перечень определяющих файлов пуст: гейт разрешал бы писать used отовсюду")
 	}

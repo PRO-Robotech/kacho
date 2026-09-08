@@ -100,6 +100,7 @@ var bothFormsExtraCorpusDirs = []string{"gateway/internal/principalmeta"}
 const bothFormsRootEnv = "KACHO_BOTH_FORMS_ROOT"
 
 func TestBothIdentityFormsHaveNoProducerBehindTheEdge(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	rootSource := "дерево этой рабочей копии"
 	if v := os.Getenv(bothFormsRootEnv); v != "" {

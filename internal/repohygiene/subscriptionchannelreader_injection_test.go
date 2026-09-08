@@ -78,6 +78,7 @@ func wake(conn *pgx.Conn) error {
 // TestChannelReadScanFindsOperators — первая сторона: оператор находится, и
 // находка называет КООРДИНАТУ.
 func TestChannelReadScanFindsOperators(t *testing.T) {
+	t.Parallel()
 	sites, census, err := ScanChannelReads(
 		"services/compute/internal/repo/kacho/pg/journal_notify.go",
 		[]byte(channelReadInjectedOperators))
@@ -117,6 +118,7 @@ func TestChannelReadScanFindsOperators(t *testing.T) {
 // он отвечал «нет» независимо от состояния дерева, и оценивать по нему DoD было
 // нельзя.
 func TestChannelReadScanIsSilentOnLegitimateTwins(t *testing.T) {
+	t.Parallel()
 	sites, census, err := ScanChannelReads(
 		"services/nlb/internal/apps/kacho/api/listener/update.go",
 		[]byte(channelReadInjectedLegitimateTwins))
@@ -147,6 +149,7 @@ func TestChannelReadScanIsSilentOnLegitimateTwins(t *testing.T) {
 // Таблица держит обе стороны рядом, чтобы правка правила не могла сдвинуть одну
 // из них молча.
 func TestChannelReadGrammarSeparatesOperatorFromProse(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		literal  string
 		operator bool

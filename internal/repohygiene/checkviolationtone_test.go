@@ -57,6 +57,7 @@ const nameFormConstraintSuffix = "_name_check"
 // в godoc самих отображений), и текстовый поиск принял бы объяснение за
 // производство — ровно тот класс, который гейт и ловит.
 func TestCheckViolationNeverSpeaksTheDBTone(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files := trackedGoFiles(t, root)
 	if len(files) == 0 {
@@ -104,6 +105,7 @@ func TestCheckViolationNeverSpeaksTheDBTone(t *testing.T) {
 // живёт в `nameformcanon.go` и общий с гейтом имён фикстур: два места об одном
 // предмете разошлись бы молча, и разошлись бы они именно так, как разошлись.
 func TestNameFormConstraintSuffixMatchesMigrations(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	adoptions, err := nameFormCanonAdoptions(root)

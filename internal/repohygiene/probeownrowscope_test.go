@@ -312,6 +312,7 @@ func probeScopeSources(t *testing.T, tt *trackedTree) map[string]string {
 }
 
 func TestProbeSelectsItsOwnRowsPositively(t *testing.T) {
+	t.Parallel()
 	tt := newTrackedTree(t, repoRoot(t))
 	sources := probeScopeSources(t, tt)
 

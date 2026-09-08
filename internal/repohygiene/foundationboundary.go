@@ -95,31 +95,37 @@ var foundationClasses = map[string]foundationClass{
 	"migratorcli":     classCorelib,
 	"migratorrun":     classCorelib,
 	"modulemanifest":  classKacho,
-	"nameformdb":      classToolchain,
-	"observability":   classCorelib,
-	"operations":      classCorelib,
-	"option":          classCorelib,
-	"outbox":          classCorelib,
-	"ownerregister":   classKaname,
-	"pagetoken":       classCorelib,
-	"peer":            classCorelib,
-	"pgtest":          classToolchain,
-	"platformmodules": classCorelib,
-	"principalwire":   classCorelib,
-	"quota":           classCorelib,
-	"retention":       classCorelib,
-	"retry":           classCorelib,
-	"safeconv":        classCorelib,
-	"schemaguard":     classCorelib,
-	"servicecontract": classCorelib,
-	"servicehost":     classCorelib,
-	"shutdown":        classCorelib,
-	"singlepass":      classCorelib,
-	"subjectchange":   classKaname,
-	"subscription":    classCorelib,
-	"tokenpolicy":     classKaname,
-	"treecorpus":      classToolchain,
-	"validate":        classCorelib,
+	// moduleselfgating — общий словарь ОБОИХ продуктов, как и platformmodules
+	// рядом: платформа его сверяет со своим прод-кодом, служба доступа читает
+	// как источник третьей полосы читателей отношения. Ни одна сторона не может
+	// вывести его сама — у одной нет модели, у другой нет чужого кода, — поэтому
+	// каталог общий, а не kaname и не kacho.
+	"moduleselfgating": classCorelib,
+	"nameformdb":       classToolchain,
+	"observability":    classCorelib,
+	"operations":       classCorelib,
+	"option":           classCorelib,
+	"outbox":           classCorelib,
+	"ownerregister":    classKaname,
+	"pagetoken":        classCorelib,
+	"peer":             classCorelib,
+	"pgtest":           classToolchain,
+	"platformmodules":  classCorelib,
+	"principalwire":    classCorelib,
+	"quota":            classCorelib,
+	"retention":        classCorelib,
+	"retry":            classCorelib,
+	"safeconv":         classCorelib,
+	"schemaguard":      classCorelib,
+	"servicecontract":  classCorelib,
+	"servicehost":      classCorelib,
+	"shutdown":         classCorelib,
+	"singlepass":       classCorelib,
+	"subjectchange":    classKaname,
+	"subscription":     classCorelib,
+	"tokenpolicy":      classKaname,
+	"treecorpus":       classToolchain,
+	"validate":         classCorelib,
 }
 
 // foundationSubtrees — каталоги, уезжающие НЕ ЦЕЛИКОМ (приёмка §5, знак †).
@@ -146,7 +152,7 @@ var foundationSubtrees = []struct {
 	{"pkg/api/kacho/cloud/operation", classCorelib},
 	{"pkg/api/kacho/cloud/subscription", classCorelib},
 	{"pkg/api/kacho/cloud/quota", classCorelib},
-	{"pkg/api/kacho/iam/authz", classCorelib},
+	{"pkg/api/corelib/authz", classCorelib},
 	{"pkg/quota/quotaiam", classKaname},
 	{"pkg/quota/quotapb", classKaname},
 
@@ -299,6 +305,17 @@ var knownBoundaryEdges = []knownBoundaryEdge{
 	// не изменились. Запись снята ТЕМ ЖЕ изменением, что импорт: ведомость несёт
 	// точный счёт и краснеет сама, когда прощать становится нечего.
 	{"pkg/api/kaname/cloud/iam/v1", "pkg/api/kacho/cloud/api", 18, 0, "K3-НОВОЕ"},
+
+	// #2089 — словарь аннотаций доступа переехал под нейтральный корень
+	// (`pkg/api/kacho/iam/authz/v1` → `pkg/api/corelib/authz/v1`). Здесь стояли ДВЕ
+	// записи: пакеты службы называли прежний путь, потому что модуль службы резолвит
+	// платформу опубликованной версией, а нового пути в ней ещё не было.
+	//
+	// Записи СНЯТЫ вместе со своим предметом (задача #2131): пин сдвинут на ревизию,
+	// несущую новый путь, оба импорта переведены, и прежнего пути в замыкании службы
+	// больше нет НИ ОДНИМ ребром — ни прямым, ни транзитивным. Ведомость краснела на
+	// этих строках сама («исключению нечего исключать»), и снятие — её вердикт, а не
+	// решение автора.
 }
 
 // boundaryCensus — объём осмотренного. Печатается ВСЕГДА: «ноль находок»

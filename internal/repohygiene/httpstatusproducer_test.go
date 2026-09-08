@@ -120,6 +120,7 @@ func stripJSLineComment(s string) string {
 }
 
 func TestNoCaseAssertsAStatusTheEdgeCannotProduce(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	producible := producibleStatuses()
@@ -239,6 +240,7 @@ func TestNoCaseAssertsAStatusTheEdgeCannotProduce(t *testing.T) {
 // в файле, а совпадение в комментарии предметом не считается, иначе шапка,
 // объясняющая запрет, вечно доказывала бы его предпосылку.
 func TestEdgeOwnStatusesStillHaveAProducer(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	checked := 0

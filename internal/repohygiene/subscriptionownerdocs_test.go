@@ -173,6 +173,7 @@ func ownerDocReports(root string, owners []string, list subscriptionDocsLister) 
 // TestSubscriptionOwnersSaySoInTheirClientDocs — владелец журнала обязан назвать
 // адрес ручки в своей клиентской документации.
 func TestSubscriptionOwnersSaySoInTheirClientDocs(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	list := subscriptionDocsLister(treecorpus.UnderWithSuffix)
 
@@ -251,6 +252,7 @@ func ownerDocFindings(reports []ownerReport) []string {
 // этому пакету хода нет. Повторённая величина расходится молча — поэтому здесь
 // стоит утверждение, а не доверие.
 func TestSubscriptionHandlePathHereMatchesTheEdgeDeclaration(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	path := filepath.Join(root, subscriptionPathDeclRel)
 	raw, err := os.ReadFile(path) // #nosec G304 -- обход собственного дерева

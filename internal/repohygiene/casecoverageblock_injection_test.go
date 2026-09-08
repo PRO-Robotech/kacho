@@ -55,6 +55,7 @@ func scanCoverageOne(t *testing.T, src string) ([]string, CaseCoverageCensus) {
 }
 
 func TestCaseCoverageGateCanFail(t *testing.T) {
+	t.Parallel()
 	// ── КОНТРОЛЬ: перечень сходится — находок нет.
 	if f, c := scanCoverageOne(t, coverageWorld); len(f) != 0 {
 		t.Errorf("на сошедшемся перечне гейт нашёл %d: %v — он краснеет на исправном", len(f), f)

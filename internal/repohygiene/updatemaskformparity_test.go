@@ -19,6 +19,7 @@ import (
 // updatemaskformparity.go. Здесь только обход дерева: скопируют набор рядом —
 // свойство обязано требоваться и от копии.
 func TestUpdateMaskKnownSetKnowsBothFormsOfAField(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Состав дерева спрашивается У ИНДЕКСА, а не у диска: обход диска судил бы

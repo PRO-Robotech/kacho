@@ -127,12 +127,6 @@ const KIND_ENTITY: Record<string, EntityKey | null> = {
   "vpc.network.routeTable": "route-tables",
   "vpc.network.securityGroup": "security-groups",
   "iam.account": "accounts",
-  "iam.project": "projects",
-  "iam.user": "users",
-  "iam.serviceAccount": "service-accounts",
-  "iam.group": "groups",
-  "iam.role": "roles",
-  "iam.accessBinding": "access-bindings",
   // Удостоверение принципала разделом консоли не является: его показывает панель
   // на карточке пользователя и сервисного аккаунта, у него нет ни сегмента
   // адреса, ни записи реестра ресурсов — то есть нет и ключа словаря подписей.

@@ -118,6 +118,10 @@ func docsNameFormInjectionCensus(t *testing.T, f docsNameFormFixture) docsNameFo
 }
 
 func TestDocsNameFormGateInjection(t *testing.T) {
+	// БЕЗ t.Parallel() — намеренно, запись стоит в ведомости последовательных
+	// проб (probeparallelism_test.go, sequentialProbes). Подпробы ВРЕМЕННО
+	// правят пакетную ведомость исключений, а её читает гейт по дереву того же
+	// пакета: под параллелью он видит чужую временную запись.
 	t.Run("КОНТРОЛЬ: все три формы записи несут канон — гейт молчит", func(t *testing.T) {
 		c := docsNameFormInjectionCensus(t, docsNameFormControlFixture())
 		for _, s := range []docsNameFormShape{

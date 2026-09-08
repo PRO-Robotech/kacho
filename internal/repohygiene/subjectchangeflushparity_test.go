@@ -44,6 +44,7 @@ func subjectChangeFlushParityOptions(t *testing.T) SubjectChangeFlushParityOptio
 // Способность падать доказывает не этот прогон, а инъекция
 // (`subjectchangeflushparity_injection_test.go`).
 func TestSelfFlushCoversEveryProducerOfTheSubjectChangeQueue(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditSubjectChangeFlushParity(subjectChangeFlushParityOptions(t), &log)
 	if err != nil {

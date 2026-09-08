@@ -78,6 +78,7 @@ func verifyProof(hdr dpopHeader, cnf map[string]any) error {
 // TestKeySourceScannerFindsASecondList — сторона (а): вторая копия перечня
 // становится находкой, и находка несёт координату.
 func TestKeySourceScannerFindsASecondList(t *testing.T) {
+	t.Parallel()
 	members := tokenpolicy.KeySourceHeaderMembers()
 	sites, census, err := ScanKeySourceHeaderMembers(
 		"synthetic/clientassertion/header.go", []byte(keySourceInjectedSecondList), members)
@@ -132,6 +133,7 @@ func TestKeySourceScannerFindsASecondList(t *testing.T) {
 // TestKeySourceScannerIsSilentOnADeliberateSingleMember — сторона (б): место,
 // где ключ берётся из предъявленного материала НАМЕРЕННО, находкой не является.
 func TestKeySourceScannerIsSilentOnADeliberateSingleMember(t *testing.T) {
+	t.Parallel()
 	members := tokenpolicy.KeySourceHeaderMembers()
 	sites, census, err := ScanKeySourceHeaderMembers(
 		"synthetic/middleware/dpop.go", []byte(keySourceInjectedDeliberateSingleMember), members)
@@ -206,6 +208,7 @@ func TestKeySourceScannerIsSilentOnADeliberateSingleMember(t *testing.T) {
 // Без этой пробы гейт мог бы стеречь перечень, разошедшийся с тем, которым
 // пользуется проверяющий, — и молчать ровно о том члене, который добавили.
 func TestKeySourceScannerReadsTheSingleDeclarationItself(t *testing.T) {
+	t.Parallel()
 	members := tokenpolicy.KeySourceHeaderMembers()
 	if len(members) < keySourceListArity {
 		t.Fatalf("единственное объявление называет %d член(а) — перечнем оно быть перестало",

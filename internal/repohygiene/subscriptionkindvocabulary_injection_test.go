@@ -40,13 +40,13 @@ package kacho.cloud.probe.v1;
 // Анализатор, считающий сырой текст, объявил бы призрак известным платформе.
 service ProbeService {
   rpc Get(GetRequest) returns (Probe) {
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.scope_extractor) = {
       object_type:        "probe_machine"
       from_request_field: "machine_id"
     };
   }
   rpc List(ListRequest) returns (ListResponse) {
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.scope_extractor) = {
       object_type:        "probe_balancer"
       from_request_field: "project_id"
     };
@@ -198,6 +198,7 @@ func kindFindingsOf(findings []SubscriptionKindFinding, kind string) []Subscript
 // краснеет всегда. Заодно утверждается, что ОБЕ половины вердикта вынесены: ноль
 // разрешённых типов означал бы, что вторая не спрашивалась ни разу.
 func TestKindVocabularyGateIsSilentOnTheLawfulTree(t *testing.T) {
+	t.Parallel()
 	findings, census := newKindStand(t).audit(t)
 	if len(findings) != 0 {
 		t.Fatalf("на законном дереве найдено %d: %v", len(findings), findings)
@@ -221,6 +222,7 @@ func TestKindVocabularyGateIsSilentOnTheLawfulTree(t *testing.T) {
 // Это главный вид находки: литерал есть второе написание чужого словаря, и
 // расходится оно молча.
 func TestKindVocabularyGateCatchesALiteral(t *testing.T) {
+	t.Parallel()
 	s := newKindStand(t)
 	s.writeJournal(t, `
 			Kinds: map[string]subscription.Kind{
@@ -250,6 +252,7 @@ func TestKindVocabularyGateCatchesALiteral(t *testing.T) {
 // Голое имя есть та же копия чужого словаря, только шагом дальше: константа
 // рядом расходится с производителем ровно так же молча.
 func TestKindVocabularyGateCatchesALocalName(t *testing.T) {
+	t.Parallel()
 	s := newKindStand(t)
 	// Страница называет только то, что разрешилось: у местного имени значение не
 	// добывается, и требовать его от страницы было бы требованием к тому, чего
@@ -300,6 +303,7 @@ func Journal() subscription.Journal {
 // нарушает: без этого красное пришло бы от соседа, и о второй половине не было
 // бы сказано ничего.
 func TestKindVocabularyGateCatchesATypeThePlatformDoesNotDeclare(t *testing.T) {
+	t.Parallel()
 	s := newKindStand(t)
 	s.writePage(t, "<code>probe&#95;ghost</code>")
 	s.writeJournal(t, `
@@ -332,6 +336,7 @@ func TestKindVocabularyGateCatchesATypeThePlatformDoesNotDeclare(t *testing.T) {
 // (`Instance`, с заглавной и без домена) уехало клиенту. Имя взято у
 // производителя, поэтому первая половина вердикта не задета.
 func TestKindVocabularyGateCatchesAWordWrittenTheOtherWay(t *testing.T) {
+	t.Parallel()
 	s := newKindStand(t)
 	s.writePage(t, "<code>Probe&#95;Machine</code>")
 	s.writeJournal(t, `
@@ -364,6 +369,7 @@ func TestKindVocabularyGateCatchesAWordWrittenTheOtherWay(t *testing.T) {
 // Такую пишут ради общего префикса, и она законна — незаконно молчать о том, что
 // её значение не прочитано.
 func TestKindVocabularyGateSaysWhenItCouldNotRead(t *testing.T) {
+	t.Parallel()
 	s := newKindStand(t)
 	s.write(t, "services/probe/internal/authzfilter/derived.go", `package authzfilter
 
@@ -411,6 +417,7 @@ const ResourceTypeDerived = prefix + "machine"
 // Журнал здесь НЕ трогается: инъекция вносится только в страницу, поэтому первая
 // половина вердикта заведомо цела, и красное не может прийти от неё.
 func TestKindVocabularyGateCatchesAKindThePageOmits(t *testing.T) {
+	t.Parallel()
 	s := newKindStand(t)
 	s.writePage(t, "<code>probe&#95;machine</code>")
 
@@ -441,6 +448,7 @@ func TestKindVocabularyGateCatchesAKindThePageOmits(t *testing.T) {
 // свете. Клиент, взявший такой вид, получит отказ, а документ будет его
 // советовать.
 func TestKindVocabularyGateCatchesAKindThePageInvents(t *testing.T) {
+	t.Parallel()
 	s := newKindStand(t)
 	s.writePage(t,
 		"<code>probe&#95;machine</code>",
@@ -471,6 +479,7 @@ func TestKindVocabularyGateCatchesAKindThePageInvents(t *testing.T) {
 // «страница называет ровно то же» было бы получено даром. Проверяются ОБА
 // способа лишиться предмета — нет раздела и нет строк таблицы.
 func TestKindVocabularyGateRefusesAPageItCannotParse(t *testing.T) {
+	t.Parallel()
 	for name, body := range map[string]string{
 		"нет раздела":       "# Подписка\n\n## Что-то другое\n\nПроза.\n",
 		"таблица без строк": "# Подписка\n\n## Словарь владельцев и видов\n\n<table><tbody></tbody></table>\n",
@@ -499,6 +508,7 @@ func TestKindVocabularyGateRefusesAPageItCannotParse(t *testing.T) {
 // вовсе; без объявленных типов не выносится вторая половина; без объявлений
 // журнала разбор сломан либо форма сменилась.
 func TestKindVocabularyGateFailsOnAnEmptyWalk(t *testing.T) {
+	t.Parallel()
 	for name, prepare := range map[string]func(t *testing.T, s *kindStand){
 		"нет файлов Go": func(t *testing.T, s *kindStand) {
 			t.Helper()

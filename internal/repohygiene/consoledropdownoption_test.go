@@ -114,6 +114,7 @@ func consoleDropdownFindings(files []string) ([]consoleProbeDropdownFinding, int
 }
 
 func TestConsoleProbePicksADropdownOptionByItsOptionClass(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files, err := consoleProbeSourcesUnder(root)
 	if err != nil {

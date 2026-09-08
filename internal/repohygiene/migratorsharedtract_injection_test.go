@@ -112,6 +112,7 @@ const relProbe = "services/svc/internal/apps/migrator/runner.go"
 // ОБА гейта. Без него молчание существующего контроля в прогоне 2 неотличимо от
 // молчания мёртвого (testing.md §«Гейт на класс», п. 2в).
 func TestSharedTractInjectionRunOne_Control(t *testing.T) {
+	t.Parallel()
 	if got := auditSource(t, relProbe, srcTractConverged); len(got) != 0 {
 		t.Errorf("новый гейт краснеет на сведённой обёртке: %v", got)
 	}
@@ -124,6 +125,7 @@ func TestSharedTractInjectionRunOne_Control(t *testing.T) {
 // TestSharedTractInjectionRunTwo_NewPropertyOnly — ПРОГОН 2: снято НОВОЕ
 // свойство, старое цело. Краснеет только новый гейт.
 func TestSharedTractInjectionRunTwo_NewPropertyOnly(t *testing.T) {
+	t.Parallel()
 	t.Run("свой текст отказа", func(t *testing.T) {
 		got := auditSource(t, relProbe, srcTractRedeclaresRefusal)
 		if len(got) != 1 {
@@ -161,6 +163,7 @@ func TestSharedTractInjectionRunTwo_NewPropertyOnly(t *testing.T) {
 // СУЩЕСТВУЮЩЕЕ свойство (третья форма наката). Краснеет только соседний гейт,
 // новый молчит.
 func TestSharedTractInjectionRunThree_ExistingPropertyOnly(t *testing.T) {
+	t.Parallel()
 	form := classifyForProbe(t, srcTractThirdForm)
 	if form.Recognised() {
 		t.Fatalf("существующий гейт не увидел третьей формы — он мёртв, и прогон 2 ничего не доказывал")
@@ -173,6 +176,7 @@ func TestSharedTractInjectionRunThree_ExistingPropertyOnly(t *testing.T) {
 // TestSharedTractGateIsSilentOnLegalTwins — гейт СПОСОБЕН смолчать. Без этого он
 // ловил бы форму, а не существо, и первый же ложный срабат его отключил бы.
 func TestSharedTractGateIsSilentOnLegalTwins(t *testing.T) {
+	t.Parallel()
 	t.Run("текст отказа только в прозе", func(t *testing.T) {
 		if got := auditSource(t, relProbe, srcTractRefusalOnlyInProse); len(got) != 0 {
 			t.Errorf("гейт краснеет на комментарии, объясняющем его же запрет: %v", got)

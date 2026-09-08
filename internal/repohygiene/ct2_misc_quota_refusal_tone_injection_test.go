@@ -329,6 +329,7 @@ func ct2ToneRun(t *testing.T, root string, owners []string) (ct2ToneCensus, []st
 
 // (а) НАСТОЯЩИЙ ДЕФЕКТ обязан дать находку и назвать координату.
 func TestCt2ToneInjection_PrefixListIsAFinding(t *testing.T) {
+	t.Parallel()
 	root := writeCt2ToneTree(t, ct2ToneFixture{owner: "nlb", body: "перечень-строк"})
 	c, findings := ct2ToneRun(t, root, []string{"nlb"})
 
@@ -353,6 +354,7 @@ func TestCt2ToneInjection_PrefixListIsAFinding(t *testing.T) {
 // (б) КАЖДАЯ законная форма обязана МОЛЧАТЬ — иначе гейт ловит форму записи, а
 // не существо, и первый же ложный срабат его отключит.
 func TestCt2ToneInjection_LawfulFormsAreSilent(t *testing.T) {
+	t.Parallel()
 	for _, form := range []string{
 		"склейка-на-месте", "перечень-sentinel", "через-переменную", "вывод-в-помощнике",
 	} {
@@ -376,6 +378,7 @@ func TestCt2ToneInjection_LawfulFormsAreSilent(t *testing.T) {
 // префиксов-СТРОК. Односторонняя правка сделала бы гейт обходимым переносом
 // перечня на строку ниже, и обход был бы НЕ ВИДЕН: гейт остался бы зелёным.
 func TestCt2ToneInjection_CallClosureHasBothSides(t *testing.T) {
+	t.Parallel()
 	t.Run("вывод у помощника в СОСЕДНЕМ ФАЙЛЕ — молчит", func(t *testing.T) {
 		root := writeCt2ToneTree(t, ct2ToneFixture{
 			owner:       "vpc",
@@ -415,6 +418,7 @@ func TestCt2ToneInjection_CallClosureHasBothSides(t *testing.T) {
 
 // (б2) Литеральный префикс В КОММЕНТАРИИ находкой не является: гейт судит узлы.
 func TestCt2ToneInjection_PrefixInACommentIsSilent(t *testing.T) {
+	t.Parallel()
 	root := writeCt2ToneTree(t,
 		ct2ToneFixture{owner: "vpc", body: "склейка-на-месте", commentOnly: true})
 	_, findings := ct2ToneRun(t, root, []string{"vpc"})
@@ -426,6 +430,7 @@ func TestCt2ToneInjection_PrefixInACommentIsSilent(t *testing.T) {
 // (в) СЛЕПЫЕ ЗОНЫ названы находкой, а не молчанием: «о владельце ничего не
 // известно» и «у владельца всё в порядке» обязаны быть различимы.
 func TestCt2ToneInjection_BlindSpotsAreFindingsNotSilence(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		fixture ct2ToneFixture
@@ -464,6 +469,7 @@ func TestCt2ToneInjection_BlindSpotsAreFindingsNotSilence(t *testing.T) {
 // (г) ПУСТОЙ ОБХОД отличим от «нарушений нет»: перепись обязана показать нули,
 // на которые гейт и падает своей проверкой предпосылки.
 func TestCt2ToneInjection_EmptyWalkIsDistinguishable(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	c, findings := ct2ToneRun(t, root, []string{"nlb"})
 	if c.Files != 0 || c.Outward != 0 {
@@ -487,6 +493,7 @@ func TestCt2ToneInjection_EmptyWalkIsDistinguishable(t *testing.T) {
 // (е) ОСЬ 2 — ПУСТОЙ ОСТАТОК. Дефект и ЛОЖНЫЙ БЛИЗНЕЦ судятся раздельно:
 // сравнение с пустой строкой, относящееся не к остатку, ограждением НЕ является.
 func TestCt2ToneInjection_EmptyRemainderAxis(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		body    string
@@ -528,6 +535,7 @@ func TestCt2ToneInjection_EmptyRemainderAxis(t *testing.T) {
 // (ж) ОСЬ 3 — СЛОВАРЬ SENTINEL'ОВ. Расхождение называет ОБА текста, отсутствие
 // объявления называется отдельно, совпадение молчит.
 func TestCt2ToneInjection_SentinelVocabularyAxis(t *testing.T) {
+	t.Parallel()
 	t.Run("разошёлся", func(t *testing.T) {
 		root := writeCt2ToneTree(t, ct2ToneFixture{
 			owner: "compute", body: "склейка-на-месте", vocabulary: "quota exceeded"})
@@ -570,6 +578,7 @@ func TestCt2ToneInjection_SentinelVocabularyAxis(t *testing.T) {
 // (д) РАЗДЕЛЬНОСТЬ ВЛАДЕЛЬЦЕВ: дефект одного не красит остальных, и перепись
 // показывает обе величины — сколько осмотрено и сколько соответствует.
 func TestCt2ToneInjection_OneBadOwnerDoesNotTaintTheRest(t *testing.T) {
+	t.Parallel()
 	root := writeCt2ToneTree(t,
 		ct2ToneFixture{owner: "nlb", body: "перечень-строк"},
 		ct2ToneFixture{owner: "vpc", body: "склейка-на-месте"},

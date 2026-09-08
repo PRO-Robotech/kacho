@@ -456,6 +456,7 @@ func slpGoFilesOf(tt *trackedTree) []string {
 }
 
 func TestNoCaseAllowsAStatusItsOwnLaneCannotProduce(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Предпосылка первая: отображение кода в статус вычисляется библиотекой.

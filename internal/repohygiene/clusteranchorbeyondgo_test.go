@@ -82,6 +82,7 @@ func clusterAnchorDeclared(t *testing.T) string {
 // Разбор класса, границы и устройство ведомости — в шапке
 // clusteranchorbeyondgo.go. Здесь только обход дерева, перепись и вердикт.
 func TestClusterAnchorBeyondGoMatchesItsDeclaration(t *testing.T) {
+	t.Parallel()
 	declared := clusterAnchorDeclared(t)
 	findings, ledgerFindings, census, err := FindClusterAnchorBeyondGo(
 		clusterAnchorBeyondGoCorpus(t), declared, ClusterAnchorBeyondGoLedger)
@@ -163,6 +164,7 @@ func anchorKindCensusLine(c BeyondGoCensus) string {
 // Проба переживает сам переход by construction: она не называет ни сегодняшнего
 // написания, ни целевого — только заведомо отсутствующее.
 func TestClusterAnchorBeyondGoWouldCatchTheTransition(t *testing.T) {
+	t.Parallel()
 	const absent = "cluster_probe_root" // образцу подходит, в дереве отсутствует
 
 	// Ведомость здесь НЕ подаётся намеренно: её записи выданы против
@@ -210,6 +212,7 @@ func TestClusterAnchorBeyondGoWouldCatchTheTransition(t *testing.T) {
 // было бы, и его молчание не отличалось бы от молчания мёртвой проверки.
 // Поэтому вид дерева без своего предмета в инъекции — НАХОДКА, а не пробел.
 func TestClusterAnchorBeyondGoInjectionCoversEveryKindInTheTree(t *testing.T) {
+	t.Parallel()
 	declared := clusterAnchorDeclared(t)
 	_, _, census, err := FindClusterAnchorBeyondGo(
 		clusterAnchorBeyondGoCorpus(t), declared, ClusterAnchorBeyondGoLedger)

@@ -118,6 +118,7 @@ func subscriptionShapeOptions(t *testing.T) SubscriptionShapeOptions {
 
 // TestSubscriptionFormShape — WATCH-1-06/07/10/11/22/27/30/33/35 на дереве.
 func TestSubscriptionFormShape(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditSubscriptionFormShape(subscriptionShapeOptions(t), &log)
 	if err != nil {

@@ -158,8 +158,65 @@ import re
 import subprocess
 import sys
 
-PROTO_ROOT = "proto/kacho/cloud"
-GEN_ROOT = "pkg/api/kacho/cloud"
+PROTO_DIR = "proto"
+GEN_DIR = "pkg/api"
+
+
+# ── КОРНИ ДЕРЕВА КОНТРАКТОВ: ВЫВОДЯТСЯ, А НЕ ВЫПИСЫВАЮТСЯ ────────────────────
+#
+# Здесь стояло `PROTO_ROOT = "proto/kacho/cloud"` — ОДИН корень литералом. Это
+# было верно, пока корень был один; со вторым (`kaname`, вынос службы доступа)
+# литерал перестал находить дерево службы и НЕ ПОКРАСНЕЛ при этом: обход просто
+# не перечислял её домен, а перепись честно печатала ноль по опустевшей
+# популяции. Замер 2026-09-08: под наблюдением было 727 полей, вне его — 269
+# (домен `iam`, 39 контрактов, 61 стаб). Это тот же класс, что #2093, и он
+# вернулся ровно потому, что литерал пережил своё основание.
+#
+# Перечень ВЫВОДИТСЯ обходом, а не объявляется здесь: третья рукописная копия
+# (первые две — `pkg/contractroot.Roots` и `KACHO_PROTO_ROOTS` в оболочке)
+# разошлась бы с ними молча, а расхождение перечней корней — ровно та слепота,
+# которую этот предикат обязан не иметь.
+def contract_roots():
+    """Корни дерева контрактов — те каталоги `proto/*`, под которыми есть `cloud`.
+
+    Пустой перечень означал бы пустую популяцию у КАЖДОГО читателя ниже, поэтому
+    он здесь ОТКАЗ, а не факт о полях: вызывающий обязан остановиться, а не
+    выдать «ноль находок» на «ноль прочитанного».
+    """
+    roots = sorted(
+        os.path.basename(os.path.dirname(d))
+        for d in glob.glob(os.path.join(PROTO_DIR, "*", "cloud"))
+        if os.path.isdir(d))
+    if not roots:
+        raise RuntimeError(
+            f"под {PROTO_DIR}/*/cloud нет ни одного корня дерева контрактов — "
+            "смотреть не на что; «ноль полей» здесь неотличимо от чистого дерева")
+    return roots
+
+
+def domain_root(domain):
+    """Корень, под которым лежит домен. None — ни под одним.
+
+    Резолвится ОБХОДОМ, а не выводом из имени: имя домена о своём корне не
+    сообщает ничего, и всякий вывод по имени был бы четвёртой копией перечня.
+    """
+    for r in contract_roots():
+        if os.path.isdir(os.path.join(PROTO_DIR, r, "cloud", domain)):
+            return r
+    return None
+
+
+def proto_glob(domain):
+    r = domain_root(domain)
+    if r is None:
+        return None
+    return os.path.join(PROTO_DIR, r, "cloud", domain, "v1", "*.proto")
+
+
+def gen_root(domain):
+    """Каталог сгенерированных стабов домена (`pkg/api/<корень>/cloud`)."""
+    r = domain_root(domain)
+    return os.path.join(GEN_DIR, r if r else contract_roots()[0], "cloud")
 MODULE = "github.com/PRO-Robotech/kacho"
 INDEXER = "./tools/unreadfieldaudit/cmd/proto-field-readers"
 PERMISSION_CATALOG = "gateway/internal/middleware/embed/permission_catalog.json"
@@ -170,13 +227,17 @@ PERMISSION_CATALOG = "gateway/internal/middleware/embed/permission_catalog.json"
 # полей домена, ни одного файла не прочитав. Соответствие задаётся явно, а пустое
 # дерево — отказ (см. ниже), а не тихий поток находок.
 #
-# `quota` — второй экземпляр того же класса, найденный при укреплении предпосылки
-# (2026-09-06): публичный `IdentityQuotaService` объявлен в домене `quota`, а
-# реализован в `services/iam` (`internal/apps/kaname/api/identityquota`). Каталога
-# `services/quota` в дереве нет, поэтому прод-дерево домена выводилось пустым, и
-# домен мерился одним лишь читателем края. Сегодня у него ноль полей (запрос пуст
-# by design — см. его контракт), поэтому цена нулевая, а мерка была неверна.
-DOMAIN_SERVICE_DIR = {"loadbalancer": "nlb", "quota": "iam"}
+# ЗДЕСЬ БЫЛА ВТОРАЯ ЗАПИСЬ — `"quota": "iam"`, — И ЕЁ ПРЕДМЕТ СНЯТ. Она заводилась
+# (2026-09-06) потому, что публичный `IdentityQuotaService` объявлялся в домене
+# `quota`, а реализован в `services/iam`: каталога `services/quota` в дереве нет,
+# и прод-дерево домена выводилось пустым.
+#
+# Объявление службы переехало в собственный контракт службы доступа
+# (`kaname.cloud.iam.v1`, kacho#2362, решение `Д9`) — то есть домен и каталог
+# службы сошлись, и выводить одно из другого больше не надо. Запись снята ТЕМ ЖЕ
+# изменением, что и её предмет; замер на день снятия: вердикт прогона с записью и
+# без неё ИДЕНТИЧЕН (полей без читателя 0 в обоих).
+DOMAIN_SERVICE_DIR = {"loadbalancer": "nlb"}
 
 # Объявление модуля в go.mod — по нему выводится путь пакетов вынесенного сервиса.
 RE_GO_MODULE = re.compile(r"^module\s+(\S+)", re.M)
@@ -413,7 +474,7 @@ def load_getters(domain):
     сторожил не то, что называл.
     """
     getters, declared = {}, set()
-    for path in sorted(glob.glob(os.path.join(GEN_ROOT, domain, "v1", "*.pb.go"))):
+    for path in sorted(glob.glob(os.path.join(gen_root(domain), domain, "v1", "*.pb.go"))):
         body = open(path, encoding="utf-8").read()
         for m in RE_GETTER.finditer(body):
             getters.setdefault(m.group(1), set()).add(m.group(2))
@@ -501,7 +562,7 @@ def typed_readers(index, domain):
     имя типа посимвольно равно `<родитель>_<Поле>` — форма, которую генератор
     производит ровно для члена `oneof`.
     """
-    stub = f"{MODULE}/{GEN_ROOT}/{domain}/v1|"
+    stub = f"{MODULE}/{gen_root(domain)}/{domain}/v1|"
     prefixes = prod_pkg_prefixes(domain)
     out = set()
     for key, readers in index["reads"].items():
@@ -922,7 +983,7 @@ message Target {
     # Канонический разбор в дереве — переключатель по типу и `v.Foo`, поэтому
     # получателем чтения `go/types` называет `M_Foo`, а не `M`. Без правила
     # засчитывания настоящий читатель не виден сильной основой.
-    pkg = f"{MODULE}/{GEN_ROOT}/loadbalancer/v1"
+    pkg = f"{MODULE}/{gen_root('loadbalancer')}/loadbalancer/v1"
     reader = f"{MODULE}/services/nlb/internal/apps/kacho/api/targetgroup"
     idx = {"packages": [], "reads": {
         f"{pkg}|HealthCheck_Tcp|Tcp": [reader],
@@ -1160,7 +1221,8 @@ def main():
             index_path = a.split("=", 1)[1]
     domains = [a for a in args if not a.startswith("-")] or [
         os.path.basename(os.path.dirname(d))
-        for d in sorted(glob.glob(os.path.join(PROTO_ROOT, "*", "v1")))]
+        for r in contract_roots()
+        for d in sorted(glob.glob(os.path.join(PROTO_DIR, r, "cloud", "*", "v1")))]
 
     try:
         index = build_reader_index(index_path)
@@ -1212,9 +1274,23 @@ def main():
     unimpl_rpcs = {}
 
     for domain in domains:
-        proto_paths = sorted(glob.glob(os.path.join(PROTO_ROOT, domain, "v1", "*.proto")))
+        # Домен, не резолвящийся НИ ПОД ОДНИМ корнем, — ОТКАЗ, а не тихий
+        # пропуск. Прежде здесь стоял `continue`, и он давал ровно то молчание,
+        # ради которого предикат написан: `unread_field_audit.py iam` перечислял
+        # ноль контрактов, ничего не утверждал и выходил успехом. Молчание
+        # источника не читается как «полей нет».
+        pglob = proto_glob(domain)
+        if pglob is None:
+            print(f"ПРЕДПОСЫЛКА НЕ ВЫПОЛНЕНА: домен {domain!r} не найден ни под одним "
+                  f"корнем дерева контрактов ({', '.join(contract_roots())}) — "
+                  "поля его сообщений не осмотрены, и «ноль находок» по нему "
+                  "неотличимо от чистого домена", file=sys.stderr)
+            return 2
+        proto_paths = sorted(glob.glob(pglob))
         if not proto_paths:
-            continue
+            print(f"ПРЕДПОСЫЛКА НЕ ВЫПОЛНЕНА: под {pglob} нет ни одного контракта — "
+                  "домен объявлен, но не прочитан", file=sys.stderr)
+            return 2
         services, raw_messages, scopes = {}, {}, {}
         packages = set()
         for p in proto_paths:

@@ -90,6 +90,7 @@ var retiredEngineDatabaseLedger = []string{
 // описывает их как факт. Прибавка — находка; убыль — тоже находка, потому что
 // ведомость, которой больше нечего описывать, переживает свой предмет.
 func TestRetiredEngineNameTakesNoNewDatabaseObject(t *testing.T) {
+	t.Parallel()
 	root := retiredEngineRepoRoot(t)
 	sources := readServiceMigrations(t, root)
 

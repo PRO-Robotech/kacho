@@ -274,6 +274,7 @@ func retiredRPCSurfaceOptions(t *testing.T) RetiredRPCSurfaceOptions {
 // TestRetiredRPCSurface_NoRetiredNameCameBack — положительная сторона на
 // НАСТОЯЩЕМ дереве.
 func TestRetiredRPCSurface_NoRetiredNameCameBack(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditRetiredRPCSurface(retiredRPCSurfaceOptions(t), &log)
 	if err != nil {
@@ -367,6 +368,7 @@ service BetaService {
 // снятое имя, вернувшееся каждым из трёх путей, обязано быть найдено с
 // координатой.
 func TestRetiredRPCSurface_CatchesEachReturnPath(t *testing.T) {
+	t.Parallel()
 	// Имя, объявленное всюду: и в контракте, и в стабах, и в каталоге.
 	root := retiredTinyTree(t, retiredTinyProto, retiredTinyStubs,
 		[]string{"kacho.cloud.demo.v1.AlphaService/Ping"})
@@ -402,6 +404,7 @@ func TestRetiredRPCSurface_CatchesEachReturnPath(t *testing.T) {
 // только имена сервисов. Гейт, ключующийся на имени метода или на имени файла,
 // здесь покраснеет.
 func TestRetiredRPCSurface_SilentOnLegitimateTwin(t *testing.T) {
+	t.Parallel()
 	root := retiredTinyTree(t, retiredTinyProto, retiredTinyStubs,
 		[]string{"kacho.cloud.demo.v1.AlphaService/Ping", "kacho.cloud.demo.v1.BetaService/Pong"})
 
@@ -427,6 +430,7 @@ func TestRetiredRPCSurface_SilentOnLegitimateTwin(t *testing.T) {
 // TestRetiredRPCSurface_EmptyLedgerIsAnError — пустое надгробие не «ноль
 // находок», а ошибка: инертный гейт зеленеет на любом дереве.
 func TestRetiredRPCSurface_EmptyLedgerIsAnError(t *testing.T) {
+	t.Parallel()
 	root := retiredTinyTree(t, retiredTinyProto, retiredTinyStubs, []string{"kacho.cloud.demo.v1.AlphaService/Ping"})
 	if _, _, err := AuditRetiredRPCSurface(retiredTinyOptions(root), nil); err == nil {
 		t.Fatal("пустая перепись прошла как «ноль находок» — гейт инертен и об этом не сообщает")
@@ -436,6 +440,7 @@ func TestRetiredRPCSurface_EmptyLedgerIsAnError(t *testing.T) {
 // TestRetiredRPCSurface_ReadsEveryCatalogCopy — копия, которую забыли
 // перегенерировать, обязана быть найдена. Именно ради этого случая читаются обе.
 func TestRetiredRPCSurface_ReadsEveryCatalogCopy(t *testing.T) {
+	t.Parallel()
 	root := retiredTinyTree(t, retiredTinyProto, retiredTinyStubs, nil)
 	// Первая копия чистая, вторая — со снятым именем.
 	if err := os.WriteFile(filepath.Join(root, "catalog.json"),
@@ -467,6 +472,7 @@ func TestRetiredRPCSurface_ReadsEveryCatalogCopy(t *testing.T) {
 // TestRetiredRPCSurface_LedgerNamesAreWellFormedAndUnique — сама перепись
 // обязана быть переписью: форма имени и отсутствие дублей.
 func TestRetiredRPCSurface_LedgerNamesAreWellFormedAndUnique(t *testing.T) {
+	t.Parallel()
 	seen := map[string]struct{}{}
 	for _, r := range retiredRPCSurface {
 		if _, _, ok := splitFQN(r.FQN); !ok {

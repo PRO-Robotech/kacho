@@ -99,6 +99,7 @@ func syntheticOptions(t *testing.T) ReadBudgetOptions {
 // TestReadBudget_SeesAMutationWearingAReaderName — ОПАСНАЯ сторона: анализатор
 // обязан покраснеть и назвать координату.
 func TestReadBudget_SeesAMutationWearingAReaderName(t *testing.T) {
+	t.Parallel()
 	findings, census, err := AuditReadBudgetClassification(syntheticOptions(t), io.Discard)
 	require.NoError(t, err, "предпосылки синтетического контракта обязаны выполняться")
 
@@ -118,6 +119,7 @@ func TestReadBudget_SeesAMutationWearingAReaderName(t *testing.T) {
 // по-читательски и чтением является. Ни один не находка. Без этой пробы гейт
 // ловил бы форму («метод возвращает Operation»), а не существо.
 func TestReadBudget_StaysSilentOnTheLegalTwin(t *testing.T) {
+	t.Parallel()
 	opts := syntheticOptions(t)
 	// Оставляем в контракте только законные формы — тот же вход, снятый предмет.
 	opts.Files = sliceRanger{syntheticContractWithout(t, "GetThing")}
@@ -149,6 +151,7 @@ func syntheticContractWithout(t *testing.T, drop string) protoreflect.FileDescri
 // смолчать, когда его собственная предпосылка не выполнена. Четыре формы отказа,
 // и каждая — та, при которой молчание было бы даровым.
 func TestReadBudget_RefusesWhenItsPremiseFails(t *testing.T) {
+	t.Parallel()
 	t.Run("имя конверта разошлось с деревом", func(t *testing.T) {
 		opts := syntheticOptions(t)
 		opts.OperationMessage = "kacho.cloud.operation.v1.Operation" // опечатка вида «лишний v1»
@@ -180,6 +183,7 @@ func TestReadBudget_RefusesWhenItsPremiseFails(t *testing.T) {
 // предмет. Записи, которой больше нечего исключать, полагается быть находкой:
 // иначе она унаследует следующую слепую зону.
 func TestReadBudget_ExemptionExpiresOnItsOwn(t *testing.T) {
+	t.Parallel()
 	opts := syntheticOptions(t)
 	opts.Files = sliceRanger{syntheticContractWithout(t, "GetThing")}
 	opts.Exempt = map[string]string{"kacho.cloud.synthetic.v1": "предмета больше нет"}

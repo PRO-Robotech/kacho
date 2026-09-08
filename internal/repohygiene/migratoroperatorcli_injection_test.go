@@ -20,6 +20,7 @@ import (
 // ── имя бинаря: гейт говорит ───────────────────────────────────────────────
 
 func TestMigratorCLINameGateSpeaksOnEveryFormOfTheName(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		rel  string
@@ -69,6 +70,7 @@ func TestMigratorCLINameGateSpeaksOnEveryFormOfTheName(t *testing.T) {
 // ── имя бинаря: гейт молчит на законных близнецах ──────────────────────────
 
 func TestMigratorCLINameGateStaysSilentOnLegitimateTwins(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name        string
 		rel         string
@@ -138,6 +140,7 @@ func TestMigratorCLINameGateStaysSilentOnLegitimateTwins(t *testing.T) {
 // каталог продукта либо ровно имя, но не то и другое сразу.
 
 func TestMigratorCLINameGateJudgesPerProduct(t *testing.T) {
+	t.Parallel()
 	// Контроль: обе оси целы — молчат обе.
 	t.Run("контроль: у каждого продукта своё имя — молчат обе оси", func(t *testing.T) {
 		for _, tc := range []struct{ rel, src string }{
@@ -272,6 +275,7 @@ func newUpCmd() *cobra.Command {
 )
 
 func TestMigratorCLIParserGateSpeaksOnADefect(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -355,6 +359,7 @@ func newUpCmd() *cobra.Command {
 )
 
 func TestMigratorCLIParserGateStaysSilentOnLegitimateTwins(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		// Прямая форма и сегодня зовёт goose сама — импорт goose рядом с общим
 		// разбором законен и третьей формой НЕ является.
@@ -383,6 +388,7 @@ func TestMigratorCLIParserGateStaysSilentOnLegitimateTwins(t *testing.T) {
 // молчат ОБА разбора сразу. Без него каждая проба выше зеленела бы на гейте,
 // объявляющем находкой всё подряд.
 func TestMigratorCLIGatesAreSilentOnAHealthyCorpus(t *testing.T) {
+	t.Parallel()
 	mentions := migratorCLIMentions("services/x/Dockerfile",
 		"RUN go build -o /out/kacho-migrator ./services/x/cmd/migrator\n"+
 			"COPY --from=builder /out/kacho-migrator /usr/local/bin/kacho-migrator\n")
@@ -415,6 +421,7 @@ func TestMigratorCLIGatesAreSilentOnAHealthyCorpus(t *testing.T) {
 // она даёт НЕВИДИМОСТЬ, и молчание гейта читается как «имя одно».
 
 func TestMigratorCLINameGateSpeaksOnTheNameTheToolPrintsOfItself(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -479,6 +486,7 @@ func newRootCmd() *cobra.Command {
 }
 
 func TestMigratorCLINameGateStaysSilentOnLegitimateSelfNames(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name        string
 		src         string
@@ -572,6 +580,7 @@ func newServeCmd() *cobra.Command {
 // запрещал ровно то сведение, ради которого он заведён.
 
 func TestMigratorCLIParserGateJudgesTheCallNotTheImport(t *testing.T) {
+	t.Parallel()
 	const cobraBorrowingSharedConstants = `package main
 
 import (
@@ -603,6 +612,7 @@ func newRootCmd() *cobra.Command {
 }
 
 func TestMigratorCLIParserGateStillSpeaksOnTwoRealParsers(t *testing.T) {
+	t.Parallel()
 	// Законный близнец предыдущей пробы: тот же импорт, но общий разбор ЗОВЁТСЯ
 	// рядом с деревом cobra. Вот это — действительно два разбора в одной точке,
 	// и по коду не сказать, какой исполняется.
@@ -636,6 +646,7 @@ func main() {
 // ── пустая командная строка: гейт говорит и молчит ─────────────────────────
 
 func TestMigratorCLIGateSpeaksOnARootThatSucceedsOnAnEmptyCommandLine(t *testing.T) {
+	t.Parallel()
 	// Инъекция ломает РОВНО ОДНО свойство: у корня снято исполнение, всё
 	// остальное (имя, Args подкоманды, разбор) на месте.
 	const rootWithoutRun = `package main
@@ -672,6 +683,7 @@ func newRootCmd() *cobra.Command {
 }
 
 func TestMigratorCLIGateDoesNotMistakeASubcommandForTheRoot(t *testing.T) {
+	t.Parallel()
 	// Законный близнец: подкоманда без исполнения (её `Use` бинаря не называет)
 	// корнем не является и требования не наследует. Без этой пробы гейт ловил бы
 	// форму «команда без Run», а не существо «корень выходит успехом».
@@ -697,6 +709,7 @@ func newHelpersCmd() *cobra.Command {
 // ── производитель текстов отказа: гейт говорит и молчит ────────────────────
 
 func TestMigratorCLIRefusalGateSpeaksOnASecondEdition(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -759,6 +772,7 @@ var errEmpty = errors.New("no command given")`,
 }
 
 func TestMigratorCLIRefusalGateStaysSilentOnLegitimateTwins(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{
 			// Точка наката ЗОВЁТ производителя — это и есть требуемое.
@@ -806,6 +820,7 @@ func note() string { return fmt.Sprintf("migrate %s: done", "up") }`,
 // ── подача отказа: гейт говорит и молчит ───────────────────────────────────
 
 func TestMigratorCLIRefusalGateSpeaksOnAJournalledRefusal(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{
 			name: "log.Fatal",
@@ -845,6 +860,7 @@ func main() { log.Fatalf("open db: %v", nil) }`,
 }
 
 func TestMigratorCLIRefusalGateStaysSilentOnLegitimateOutput(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, src string }{
 		{
 			name: "общая форма подачи",

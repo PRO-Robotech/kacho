@@ -129,6 +129,7 @@ func invocationsOf(script string, bodies []string) int {
 
 // TestBasicCredentialFormProofIsProducedByARun — по дереву.
 func TestBasicCredentialFormProofIsProducedByARun(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// ── Предпосылка. Гейт стережёт предмет; исчез предмет — гейт обязан сказать
@@ -204,6 +205,7 @@ func TestBasicCredentialFormProofIsProducedByARun(t *testing.T) {
 // Без второй стороны гейт мерил бы наличие СЛОВА: сырой файл содержит имя
 // скрипта и в прозе, и в шапке шага, который его объясняет.
 func TestBasicCredentialProofDetectorSeesBothForms(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name     string
 		yaml     string

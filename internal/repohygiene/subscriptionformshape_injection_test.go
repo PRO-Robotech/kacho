@@ -243,6 +243,7 @@ func kinds(findings []SubscriptionShapeFinding) []string {
 // Без него всякое «дефект покраснел» было бы недоказуемо: гейт мог краснеть на
 // самом стенде, а не на внесённом дефекте.
 func TestSubscriptionShapeStandIsCleanBeforeInjection(t *testing.T) {
+	t.Parallel()
 	findings, census := shapeAudit(t, baseShapeForm(), shapeStandLedger(), shapeStandAbsent())
 	requireSilence(t, findings)
 	if census.Axes != 3 || census.TopTypes != 4 {
@@ -257,6 +258,7 @@ func TestSubscriptionShapeStandIsCleanBeforeInjection(t *testing.T) {
 
 // TestSubscriptionShapeAxisLedgerCanFail — ЗАКРЫТЫЙ перечень полей, три стороны.
 func TestSubscriptionShapeAxisLedgerCanFail(t *testing.T) {
+	t.Parallel()
 	t.Run("поле вне перечня — краснеет и называет ПОЛЕ", func(t *testing.T) {
 		f := baseShapeForm()
 		f.Axes += "\n\n  // label_selector — отбор по меткам. Категория: УДОБСТВА.\n" +
@@ -302,6 +304,7 @@ func TestSubscriptionShapeAxisLedgerCanFail(t *testing.T) {
 
 // TestSubscriptionShapeCategoryMarkCanFail — признак категории оси.
 func TestSubscriptionShapeCategoryMarkCanFail(t *testing.T) {
+	t.Parallel()
 	t.Run("признак не проставлен — краснеет с координатой", func(t *testing.T) {
 		f := baseShapeForm()
 		f.Axes = strings.Replace(f.Axes,
@@ -341,6 +344,7 @@ func TestSubscriptionShapeCategoryMarkCanFail(t *testing.T) {
 
 // TestSubscriptionShapeAbsentAxisCanFail — ось, которой нет ПО РЕШЕНИЮ.
 func TestSubscriptionShapeAbsentAxisCanFail(t *testing.T) {
+	t.Parallel()
 	t.Run("объявленная отсутствующей ось ЗАВЕДЕНА — находка", func(t *testing.T) {
 		f := baseShapeForm()
 		f.Axes += "\n\n  // name — имя ресурса. Категория: УДОБСТВА.\n  string name = 5;"
@@ -373,6 +377,7 @@ func TestSubscriptionShapeAbsentAxisCanFail(t *testing.T) {
 
 // TestSubscriptionShapeUnsetOutcomeCanFail — исход НЕЗАДАННОГО начала.
 func TestSubscriptionShapeUnsetOutcomeCanFail(t *testing.T) {
+	t.Parallel()
 	t.Run("исход не назван — находка", func(t *testing.T) {
 		f := baseShapeForm()
 		f.Start = strings.Replace(f.Start,
@@ -415,6 +420,7 @@ func TestSubscriptionShapeUnsetOutcomeCanFail(t *testing.T) {
 
 // TestSubscriptionShapeCarrierCanFail — носитель нагрузки: ветвление и тип.
 func TestSubscriptionShapeCarrierCanFail(t *testing.T) {
+	t.Parallel()
 	t.Run("носитель не ветвление — находка", func(t *testing.T) {
 		f := baseShapeForm()
 		f.Event = strings.Replace(f.Event,
@@ -471,6 +477,7 @@ func TestSubscriptionShapeCarrierCanFail(t *testing.T) {
 
 // TestSubscriptionShapeAnchorCanFail — авторизуемый якорь оболочки.
 func TestSubscriptionShapeAnchorCanFail(t *testing.T) {
+	t.Parallel()
 	t.Run("якоря в оболочке нет — находка", func(t *testing.T) {
 		f := baseShapeForm()
 		f.Event = strings.Replace(f.Event,
@@ -512,6 +519,7 @@ func TestSubscriptionShapeAnchorCanFail(t *testing.T) {
 
 // TestSubscriptionShapeHorizonCanFail — горизонт выразим служебным сообщением.
 func TestSubscriptionShapeHorizonCanFail(t *testing.T) {
+	t.Parallel()
 	t.Run("поля горизонта нет — находка", func(t *testing.T) {
 		f := baseShapeForm()
 		f.Opened = strings.Replace(f.Opened, "  string earliest_resumable_position = 4;\n", "", 1)
@@ -532,6 +540,7 @@ func TestSubscriptionShapeHorizonCanFail(t *testing.T) {
 
 // TestSubscriptionShapeStopReasonCanFail — исход остановки не загоняется в данные.
 func TestSubscriptionShapeStopReasonCanFail(t *testing.T) {
+	t.Parallel()
 	t.Run("причина остановки полем события — находка", func(t *testing.T) {
 		f := baseShapeForm()
 		f.Event = strings.Replace(f.Event, "  string kind = 2;",
@@ -555,6 +564,7 @@ func TestSubscriptionShapeStopReasonCanFail(t *testing.T) {
 
 // TestSubscriptionShapePerimeterCanFail — ни глагола, ни зависимости от домена.
 func TestSubscriptionShapePerimeterCanFail(t *testing.T) {
+	t.Parallel()
 	t.Run("объявлен глагол — находка", func(t *testing.T) {
 		f := baseShapeForm()
 		f.Verbs = "service SubscriptionService {\n" +
@@ -592,6 +602,7 @@ import "google/protobuf/timestamp.proto";`
 
 // TestSubscriptionShapeOwnerVocabularyCanFail — словарь видов принадлежит владельцу.
 func TestSubscriptionShapeOwnerVocabularyCanFail(t *testing.T) {
+	t.Parallel()
 	t.Run("словарь закрыт контрактом — находка", func(t *testing.T) {
 		f := baseShapeForm()
 		f.AnchorEnum += "\n\n// ResourceKind — словарь видов, закрытый КОНТРАКТОМ.\nenum ResourceKind {\n" +
@@ -622,6 +633,7 @@ func TestSubscriptionShapeOwnerVocabularyCanFail(t *testing.T) {
 // каждая называет СВОЁ сообщение, и снятие отказа краснит ту подпробу, которая
 // его и проверяет.
 func TestSubscriptionShapeRefusesAnEmptyRead(t *testing.T) {
+	t.Parallel()
 	t.Run("контракта нет", func(t *testing.T) {
 		root := subscriptionStand(t, map[string]string{"proto/.keep": ""})
 		_, _, err := AuditSubscriptionFormShape(SubscriptionShapeOptions{
@@ -693,6 +705,7 @@ package kacho.cloud.subscription;
 // проходил бы молча — утверждения о нём просто не на чем было бы проверить, и
 // «находок ноль» означало бы «предмета ноль».
 func TestSubscriptionShapeMissingMessageCanFail(t *testing.T) {
+	t.Parallel()
 	t.Run("служебного сообщения нет — находка", func(t *testing.T) {
 		f := baseShapeForm()
 		f.Opened = ""

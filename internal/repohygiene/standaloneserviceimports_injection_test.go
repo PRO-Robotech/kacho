@@ -66,6 +66,7 @@ func injStandaloneScan(t *testing.T, c injStandaloneCorpus) ([]standaloneImportF
 // Возвращённый дефект в его САМОЙ ЧАСТОЙ форме: тестовая поддержка Postgres.
 // До разреза так импортировали 145 файлов iam — это и был вес отвязки.
 func TestStandaloneGate_RedsOnTheRootInternalImportItWasBuiltFor(t *testing.T) {
+	t.Parallel()
 	corpus := injStandaloneCorpus{
 		"services/iam/cmd/kaname/testmain_pgtest_test.go": injGoFile("main_test",
 			"testing",
@@ -99,6 +100,7 @@ func TestStandaloneGate_RedsOnTheRootInternalImportItWasBuiltFor(t *testing.T) {
 // перепись обязана их различать — иначе гейт объявляет «сборка откажет» там, где
 // она не откажет, и первый же проверивший снимет его как неверный.
 func TestStandaloneGate_RedsOnRootToolsWithTheWeakerGround(t *testing.T) {
+	t.Parallel()
 	corpus := injStandaloneCorpus{
 		"services/iam/tools/auditlistfilter/profile.go": injGoFile("auditlistfilter",
 			injStandaloneModule+"/tools/listfiltergate",
@@ -120,6 +122,7 @@ func TestStandaloneGate_RedsOnRootToolsWithTheWeakerGround(t *testing.T) {
 // Ось, которой перечень запрещённого не имел бы вовсе: чужой сервис. Ради неё
 // предикат и сделан положительным.
 func TestStandaloneGate_RedsOnAForeignServiceImportNoBlacklistWouldHaveNamed(t *testing.T) {
+	t.Parallel()
 	corpus := injStandaloneCorpus{
 		"services/iam/internal/apps/kaname/api/x.go": injGoFile("api",
 			injStandaloneModule+"/services/vpc/internal/domain",
@@ -138,6 +141,7 @@ func TestStandaloneGate_RedsOnAForeignServiceImportNoBlacklistWouldHaveNamed(t *
 // Антимаска: находка обязана быть названа И ТОГДА, когда рядом в том же файле
 // стоят законные импорты. Иначе один разрешённый сосед глушил бы дефект.
 func TestStandaloneGate_RedsEvenWhenLawfulImportsStandBeside(t *testing.T) {
+	t.Parallel()
 	corpus := injStandaloneCorpus{
 		"services/iam/internal/authzmodel/admit.go": injGoFile("authzmodel",
 			"fmt",
@@ -161,6 +165,7 @@ func TestStandaloneGate_RedsEvenWhenLawfulImportsStandBeside(t *testing.T) {
 // Тот же файл дерева ПОСЛЕ отвязки — дословная форма из
 // services/iam/cmd/kaname/testmain_pgtest_test.go.
 func TestStandaloneGate_SilentOnTheSharedFoundation(t *testing.T) {
+	t.Parallel()
 	corpus := injStandaloneCorpus{
 		"services/iam/cmd/kaname/testmain_pgtest_test.go": injGoFile("main_test",
 			"testing",
@@ -182,6 +187,7 @@ func TestStandaloneGate_SilentOnTheSharedFoundation(t *testing.T) {
 // после переезда `authzplan` под iam. Элемент `internal` в пути ЕСТЬ, и гейт
 // обязан не спутать его с корневым: правило языка про свой модуль не действует.
 func TestStandaloneGate_SilentOnItsOwnInternalSubtree(t *testing.T) {
+	t.Parallel()
 	corpus := injStandaloneCorpus{
 		"services/iam/internal/authzmodel/admit.go": injGoFile("authzmodel",
 			injStandaloneModule+"/services/iam/internal/authzplan",
@@ -200,6 +206,7 @@ func TestStandaloneGate_SilentOnItsOwnInternalSubtree(t *testing.T) {
 // Стабы контракта — подкаталог `pkg/`, отдельной записи не требуют. Форма
 // дословная: их импортируют 92 прод-файла iam.
 func TestStandaloneGate_SilentOnGeneratedContractStubs(t *testing.T) {
+	t.Parallel()
 	corpus := injStandaloneCorpus{
 		"services/iam/internal/apps/kaname/api/user/handler.go": injGoFile("user",
 			injStandaloneModule+"/pkg/api/kaname/cloud/iam/v1",
@@ -218,6 +225,7 @@ func TestStandaloneGate_SilentOnGeneratedContractStubs(t *testing.T) {
 // Чужой модуль и stdlib предметом не являются вовсе — иначе гейт краснел бы на
 // каждом файле дерева.
 func TestStandaloneGate_SilentOnStdlibAndThirdParty(t *testing.T) {
+	t.Parallel()
 	corpus := injStandaloneCorpus{
 		"services/iam/internal/repo/kaname/pg/x.go": injGoFile("pg",
 			"context",
@@ -240,6 +248,7 @@ func TestStandaloneGate_SilentOnStdlibAndThirdParty(t *testing.T) {
 // которой гейт дерева ОБЯЗАН упасть с диагнозом «сломан разбор», а не отчитаться
 // зелёным. Здесь проверяется, что величина действительно приходит нулём.
 func TestStandaloneGate_CensusSeparatesNothingFoundFromNothingRead(t *testing.T) {
+	t.Parallel()
 	empty := injStandaloneCorpus{"services/iam/x.go": injGoFile("x")}
 	_, census := injStandaloneScan(t, empty)
 	if census.Files != 1 {
@@ -252,6 +261,7 @@ func TestStandaloneGate_CensusSeparatesNothingFoundFromNothingRead(t *testing.T)
 
 // Непрочитанный файл — ОТКАЗ, а не молчаливый ноль.
 func TestStandaloneGate_UnreadableFileIsARefusalNotAZero(t *testing.T) {
+	t.Parallel()
 	_, _, err := scanStandaloneServiceImports(
 		"services/iam",
 		[]string{"services/iam/нет-такого.go"},
@@ -266,6 +276,7 @@ func TestStandaloneGate_UnreadableFileIsARefusalNotAZero(t *testing.T) {
 // ── дискриминатор оснований — обе ветви ──────────────────────────────────────
 
 func TestStandaloneGate_GroundDiscriminatorNamesBothBranches(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		rel  string
 		want string

@@ -263,19 +263,34 @@ else
   # roll-up you can read at a glance, and if the two blocks ever disagree, THAT is
   # the finding — something has started subtracting again.
   GATE="${GATE:-true}"
-  GATE_SCRIPT="$REPO_ROOT/services/iam/tests/newman/scripts/assert-suites-green.sh"
+  GATE_SCRIPT="$REPO_ROOT/tests/newman/scripts/assert-suites-green.sh"
   echo
   echo "[e2e] RAW verdict (run.sh): rc=$RAW_RC — see out/summary.txt"
-  if [ "$GATE" = "true" ] && [ -f "$GATE_SCRIPT" ]; then
-    echo "[e2e] GATED verdict (the gate CI runs):"
-    set +e
-    bash "$GATE_SCRIPT"
-    GATE_RC=$?
-    set -e
-    [ "$GATE_RC" -eq 0 ] && [ "$RAW_RC" -ne 0 ] && \
-      echo "[e2e] INCONSISTENT: the gate is green while run.sh is red, and nothing is deducted from the verdict any more — read the raw failures, do not trust this GREEN."
-    exit "$GATE_RC"
+  # Три исхода, а не два — см. разбор в newman-parallel.sh рядом с тем же
+  # условием. Коротко: «выключено ручкой» есть решение оператора, «файла нет» —
+  # НЕ ВЫПОЛНИЛОСЬ. Прежняя редакция сливала их в одну ветвь, а её сообщение не
+  # называло даже пути, поэтому две причины были неразличимы для читателя
+  # журнала вовсе.
+  if [ "$GATE" != "true" ]; then
+    echo "[e2e] CI gate switched OFF by the knob (GATE=$GATE; script=$GATE_SCRIPT) — grading on RAW"
+    exit "$RAW_RC"
   fi
-  echo "[e2e] CI gate skipped (GATE=$GATE) — grading on RAW"
-  exit "$RAW_RC"
+  if [ ! -f "$GATE_SCRIPT" ]; then
+    echo "[e2e] DID NOT RUN: the verdict gate is not at $GATE_SCRIPT." >&2
+    echo "      This is NOT a skip and NOT a verdict: RAW is a bare count, without the" >&2
+    echo "      three-outcome split, the executed-vs-declared census or the refusal on a mute report." >&2
+    echo "      Fix the path or switch the gate off deliberately with GATE=false." >&2
+    # Тот же код, что у newman-parallel.sh: «не выполнилось» обязано быть ОДНИМ
+    # кодом на оба прогонщика, иначе читателю придётся помнить, какой из них он
+    # запустил, чтобы истолковать число.
+    exit 2
+  fi
+  echo "[e2e] GATED verdict (the gate CI runs):"
+  set +e
+  bash "$GATE_SCRIPT"
+  GATE_RC=$?
+  set -e
+  [ "$GATE_RC" -eq 0 ] && [ "$RAW_RC" -ne 0 ] && \
+    echo "[e2e] INCONSISTENT: the gate is green while run.sh is red, and nothing is deducted from the verdict any more — read the raw failures, do not trust this GREEN."
+  exit "$GATE_RC"
 fi

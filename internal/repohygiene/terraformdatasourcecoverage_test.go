@@ -228,6 +228,7 @@ var tfDataSourceExempt = map[string]dsExemption{
 }
 
 func TestEveryReadOnlyAPIServiceHasATerraformDataSource(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	census := readOnlyServiceCensus(t, root)
@@ -367,11 +368,21 @@ type dsServiceCensus struct {
 func readOnlyServiceCensus(t *testing.T, root string) dsServiceCensus {
 	t.Helper()
 	out := dsServiceCensus{verbsSeen: map[string]bool{}}
-	// Обход по ОБЪЯВЛЕННЫМ корням: домен под вторым корнем выпал бы из популяции,
-	// и гейт объявил бы, что служба «больше не создаёт ресурс», — находка про
-	// собственную слепоту, а не про дерево.
+	// Обход по ОБЪЯВЛЕННЫМ ДОМЕННЫМ корням: домен под вторым корнем выпал бы из
+	// популяции, и гейт объявил бы, что служба «больше не создаёт ресурс», —
+	// находка про собственную слепоту, а не про дерево.
+	//
+	// Спрашиваются именно ДОМЕННЫЕ корни, а не все объявленные: корень, не
+	// несущий дерева доменов (нейтральный словарь аннотаций `corelib`, #2089),
+	// ронял обход на несуществующем каталоге. Условие «корень без доменов
+	// законен» объявлено ОДНИМ местом — `contractroot.DomainRoots`.
 	var contractRels []string
-	for _, r := range contractroot.Roots {
+	domainRoots := contractroot.DomainRoots(filepath.Join(root, "proto"))
+	if len(domainRoots) == 0 {
+		t.Fatal("доменных корней дерева контрактов не найдено — обходчик судил бы о пустой " +
+			"популяции; ноль здесь означает сломанный обход, а не чистое дерево")
+	}
+	for _, r := range domainRoots {
 		contractRels = append(contractRels, trackedFilesUnder(t, root, "proto/"+r+"/cloud", ".proto")...)
 	}
 	for _, rel := range contractRels {
@@ -884,6 +895,7 @@ func dsDedupPlain(in []string) []string {
 // комментарии стоят над КАЖДЫМ конструктором («NewGeoRegionDataSource — kacho_geo_region»), и
 // текстовый разбор объявил бы покрытым непровязанное.
 func TestDataSourceRegistryReadsTheRegistryNotTheDeclaration(t *testing.T) {
+	t.Parallel()
 	const src = `package provider
 
 type kachoProvider struct{}
@@ -987,6 +999,7 @@ func (p *kachoProvider) DataSources(_ context.Context) []func() datasource.DataS
 // объявлял бы находки по каждому сервису вместо честного отказа — то есть лгал бы уверенно и
 // подробно.
 func TestDataSourceRegistryAbsenceDiffersFromEmptiness(t *testing.T) {
+	t.Parallel()
 	const empty = `package provider
 
 type kachoProvider struct{}
@@ -1019,6 +1032,7 @@ func (p *kachoProvider) Resources(_ context.Context) []func() resource.Resource 
 // факт изменится — запрет обязан сказать об этом сам, а не выдать ложные находки по каждому
 // сервису.
 func TestDataSourceRegistryNamesTheFormItDoesNotKnow(t *testing.T) {
+	t.Parallel()
 	const src = `package provider
 
 type kachoProvider struct{}
@@ -1046,6 +1060,7 @@ func (p *kachoProvider) DataSources(_ context.Context) []func() datasource.DataS
 // публичный; сервис с глаголом `ListNamespaces` отличается от справочника только ИМЕНЕМ глагола
 // — и обязан не потеряться, а потребовать классификации.
 func TestReadOnlyServiceCensusCutsBothWays(t *testing.T) {
+	t.Parallel()
 	const src = `
 service ZoneService {
   rpc Get(GetZoneRequest) returns (Zone);

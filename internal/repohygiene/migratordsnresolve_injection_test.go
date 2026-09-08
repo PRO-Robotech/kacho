@@ -151,6 +151,7 @@ func auditDSNSource(t *testing.T, rel, src string) (bool, []string) {
 // ОБА гейта. Без него молчание существующего контроля в прогоне 2 неотличимо от
 // молчания мёртвого (testing.md §«Гейт на класс», п. 2в).
 func TestDSNResolveInjectionRunOne_Control(t *testing.T) {
+	t.Parallel()
 	delegates, got := auditDSNSource(t, relDSNEntry, srcDSNConverged)
 	if !delegates {
 		t.Error("сведённая точка наката не опознана делегирующей — гейт краснел бы на верном коде")
@@ -167,6 +168,7 @@ func TestDSNResolveInjectionRunOne_Control(t *testing.T) {
 // свойство, старое цело. Краснеет только новый гейт, и по каждому из ТРЁХ
 // законных написаний предмета порознь (testing.md §«Гейт на класс», п. 7).
 func TestDSNResolveInjectionRunTwo_NewPropertyOnly(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		src  string
@@ -225,6 +227,7 @@ func TestDSNResolveInjectionRunTwo_NewPropertyOnly(t *testing.T) {
 // СУЩЕСТВУЮЩЕЕ свойство (свой текст отказа предусловий). Краснеет только
 // соседний гейт; новый молчит и по-прежнему считает точку делегирующей.
 func TestDSNResolveInjectionRunThree_ExistingPropertyOnly(t *testing.T) {
+	t.Parallel()
 	const src = `package main
 
 import (
@@ -258,6 +261,7 @@ func buildRunner(flagDSN string) (string, error) {
 // TestDSNResolveGateIsSilentOnLegalTwins — гейт СПОСОБЕН смолчать. Без этого он
 // ловил бы форму, а не существо, и первый же ложный срабат его отключил бы.
 func TestDSNResolveGateIsSilentOnLegalTwins(t *testing.T) {
+	t.Parallel()
 	t.Run("имя переменной только в прозе и в подсказке флага", func(t *testing.T) {
 		delegates, got := auditDSNSource(t, relDSNEntry, srcDSNNamesEnvOnlyInProse)
 		if !delegates {

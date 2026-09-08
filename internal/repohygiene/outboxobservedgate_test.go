@@ -134,6 +134,7 @@ var outboxObservedWithoutDrainer = map[string]string{}
 // гейт и печатает имя таблицы и сервис; добавление дренажа со сканером он
 // пропускает молча.
 func TestEveryDrainedOutboxIsObserved(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	inv := outboxWiringInventory(t, root)
 
@@ -189,6 +190,7 @@ func TestEveryDrainedOutboxIsObserved(t *testing.T) {
 // происходило со второй половиной. «Работает» и «ни разу не отозвано» дают
 // ОДИНАКОВУЮ картину.
 func TestEveryDrainedOutboxIsSplitByDirection(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	inv := outboxWiringInventory(t, root)
 
@@ -223,6 +225,7 @@ func TestEveryDrainedOutboxIsSplitByDirection(t *testing.T) {
 // TestOutboxDirectionExemptionsHaveSubject — исключение живёт, пока у него есть
 // предмет: очередь, исчезнувшая из дерева, унаследует следующую слепую зону.
 func TestOutboxDirectionExemptionsHaveSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	inv := outboxWiringInventory(t, root)
 
@@ -242,6 +245,7 @@ func TestOutboxDirectionExemptionsHaveSubject(t *testing.T) {
 // исчезновение сканера — плохая, при которой очередь снова замолчала, а запись
 // продолжает утверждать, что за ней смотрят.
 func TestObservedWithoutDrainerEntriesHaveSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	inv := outboxWiringInventory(t, root)
 
@@ -1109,6 +1113,7 @@ func classifyDeliveryColumns(advanced, drained, observed, observedNoted, declare
 // собственным оператором, очередь под дренажом и очередь со сканером и записью —
 // молчат.
 func TestEveryDeliveryColumnHasSomeoneWhoMovesItOrSaysNobodyDoes(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	inv := outboxWiringInventory(t, root)
 	decls, advancers, filesRead := deliveryColumnInventory(t, root)
@@ -1170,6 +1175,7 @@ func TestEveryDeliveryColumnHasSomeoneWhoMovesItOrSaysNobodyDoes(t *testing.T) {
 // Два способа истечь, и оба роняют гейт: у очереди появился движитель (её судят
 // общие правила) либо таблица исчезла из миграций.
 func TestDeliveryColumnDeclarationsHaveSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	inv := outboxWiringInventory(t, root)
 	decls, advancers, filesRead := deliveryColumnInventory(t, root)

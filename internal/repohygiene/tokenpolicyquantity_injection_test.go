@@ -93,6 +93,7 @@ const (
 
 // TestQuantityScannerFindsASecondDeclarationOfTheSameQuantity — сторона (а).
 func TestQuantityScannerFindsASecondDeclarationOfTheSameQuantity(t *testing.T) {
+	t.Parallel()
 	decls, census, err := ScanDurationDeclarations(
 		"synthetic/clientassertion/policy.go", []byte(quantityInjectedSecondSkew))
 	if err != nil {
@@ -146,6 +147,7 @@ func TestQuantityScannerFindsASecondDeclarationOfTheSameQuantity(t *testing.T) {
 // TestQuantityScannerIsSilentOnDistinctQuantities — сторона (б): разные
 // величины, объявленные каждая по одному разу, находкой не являются.
 func TestQuantityScannerIsSilentOnDistinctQuantities(t *testing.T) {
+	t.Parallel()
 	decls, census, err := ScanDurationDeclarations(
 		"synthetic/tokenpolicy/policy.go", []byte(quantityInjectedDistinctQuantities))
 	if err != nil {

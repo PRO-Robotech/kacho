@@ -190,6 +190,7 @@ func scanInjected(t *testing.T, name, dir, src string) []RetentionSweeper {
 // TestRetentionSweeperGate_Injection_RecognisesAndSpares — распознаватель:
 // уборщик признан, законные близнецы — нет.
 func TestRetentionSweeperGate_Injection_RecognisesAndSpares(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -216,6 +217,7 @@ func TestRetentionSweeperGate_Injection_RecognisesAndSpares(t *testing.T) {
 // Имя обязательно: находка без координаты неотличима от промаха разбора, и
 // чинить по ней нечего.
 func TestRetentionSweeperGate_Injection_FindsTheOrphanByName(t *testing.T) {
+	t.Parallel()
 	sw := scanInjected(t, "services/iam/internal/repo/kaname/pg/x.go",
 		"services/iam/internal/repo/kaname/pg", injectedSweeperWithoutCaller)
 
@@ -242,6 +244,7 @@ func TestRetentionSweeperGate_Injection_FindsTheOrphanByName(t *testing.T) {
 // Без этой половины гейт ловил бы форму, а не существо: он краснел бы на всякой
 // уборке, включая живую, и первый же ложный срабат его отключил бы.
 func TestRetentionSweeperGate_Injection_SilentWhenWired(t *testing.T) {
+	t.Parallel()
 	sw := scanInjected(t, "services/iam/internal/repo/kaname/pg/x.go",
 		"services/iam/internal/repo/kaname/pg", injectedSweeperWithoutCaller)
 
@@ -264,6 +267,7 @@ func TestRetentionSweeperGate_Injection_SilentWhenWired(t *testing.T) {
 // без границы вызывающий шлюза покрывал бы уборщика iam — то есть гейт молчал
 // бы ровно на том состоянии, ради которого написан.
 func TestRetentionSweeperGate_Injection_CallerInAnotherServiceDoesNotCount(t *testing.T) {
+	t.Parallel()
 	sw := scanInjected(t, "services/iam/internal/repo/kaname/pg/x.go",
 		"services/iam/internal/repo/kaname/pg", injectedSweeperWithoutCaller)
 
@@ -279,6 +283,7 @@ func TestRetentionSweeperGate_Injection_CallerInAnotherServiceDoesNotCount(t *te
 // TestRetentionSweeperGate_Injection_SelfCallIsNotACaller — уборщик, зовущий сам
 // себя, вызывающим себе не является.
 func TestRetentionSweeperGate_Injection_SelfCallIsNotACaller(t *testing.T) {
+	t.Parallel()
 	sw := scanInjected(t, "services/iam/internal/repo/kaname/pg/x.go",
 		"services/iam/internal/repo/kaname/pg", injectedSweeperWithoutCaller)
 
@@ -296,6 +301,7 @@ func TestRetentionSweeperGate_Injection_SelfCallIsNotACaller(t *testing.T) {
 // Запись ведомости, у которой уборщик ПОЛУЧИЛ вызывающего либо ИСЧЕЗ, — находка.
 // Послабление, которое не истекает само, унаследует следующая слепая зона.
 func TestRetentionSweeperGate_Injection_LedgerExpiresByItself(t *testing.T) {
+	t.Parallel()
 	sw := scanInjected(t, "services/iam/internal/repo/kaname/pg/x.go",
 		"services/iam/internal/repo/kaname/pg", injectedSweeperWithoutCaller)
 	ledger := map[string]string{"OrphanRepo.Reap": "#0000"}
@@ -336,6 +342,7 @@ func TestRetentionSweeperGate_Injection_LedgerExpiresByItself(t *testing.T) {
 // доказывают пробы ВЫШЕ — на синтетике, а не на живой записи ведомости: иначе
 // доказательство исчезло бы вместе с целью.
 func TestRetentionSweeperGate_Injection_EmptyLedgerPasses(t *testing.T) {
+	t.Parallel()
 	sw := scanInjected(t, "services/iam/internal/repo/kaname/pg/x.go",
 		"services/iam/internal/repo/kaname/pg", injectedSweeperMultiline)
 	callers := map[string]map[string][]string{"SweepStale": {"services/iam": {"Sweeper.Pass"}}}
@@ -362,6 +369,7 @@ func TestRetentionSweeperGate_Injection_EmptyLedgerPasses(t *testing.T) {
 // Утверждение идёт ЧЕТВЕРНЁЙ: дефект и три законных близнеца. Одного мало —
 // каждый закрывает свою ось, и все три оси реальны.
 func TestRetentionSweeperGate_Injection_NamedValueBand(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name        string
 		src         string
@@ -400,6 +408,7 @@ func TestRetentionSweeperGate_Injection_NamedValueBand(t *testing.T) {
 // в теле функции, и находка без него была бы неотличима от промаха разбора —
 // читателю пришлось бы искать, что именно гейт счёл уборкой.
 func TestRetentionSweeperGate_Injection_NamedValueSweeperIsFoundByName(t *testing.T) {
+	t.Parallel()
 	sw := scanInjected(t, "gateway/internal/x/x.go", "gateway/internal/x", injectedSweeperViaNamedConst)
 
 	findings, stale, wired := retentionSweeperVerdict(sw,
@@ -431,6 +440,7 @@ func TestRetentionSweeperGate_Injection_NamedValueSweeperIsFoundByName(t *testin
 // Сказала об этом перепись, а не проба: литералов 28210 → 27971, удалений
 // 84 → 75. Утверждение стоит здесь, чтобы обрыв не вернулся молча.
 func TestRetentionSweeperGate_Injection_SelectorReceiverLiteralsStillCounted(t *testing.T) {
+	t.Parallel()
 	const src = `package pg
 
 import "context"

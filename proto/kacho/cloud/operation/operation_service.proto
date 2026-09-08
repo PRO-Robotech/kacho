@@ -7,7 +7,7 @@ package kacho.cloud.operation;
 
 import "google/api/annotations.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation;operationv1";
 
@@ -16,8 +16,8 @@ service OperationService {
   // Returns the specified Operation resource.
   rpc Get (GetOperationRequest) returns (Operation) {
     option (google.api.http) = { get: "/operations/{operation_id}" };
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
-    option (kacho.iam.authz.v1.exempt_reason)  = "HANDLER_DECIDES";
+    option (corelib.authz.v1.permission) = "<exempt>";
+    option (corelib.authz.v1.exempt_reason)  = "HANDLER_DECIDES";
   }
 
   // Cancels the specified operation.
@@ -25,8 +25,8 @@ service OperationService {
   // Note that currently Object Storage API does not support cancelling operations.
   rpc Cancel (CancelOperationRequest) returns (Operation) {
     option (google.api.http) = { post: "/operations/{operation_id}:cancel" body: "*" };
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
-    option (kacho.iam.authz.v1.exempt_reason)  = "HANDLER_DECIDES";
+    option (corelib.authz.v1.permission) = "<exempt>";
+    option (corelib.authz.v1.exempt_reason)  = "HANDLER_DECIDES";
   }
 }
 

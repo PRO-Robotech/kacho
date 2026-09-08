@@ -249,6 +249,7 @@ func carveBandOwnerKeys(m map[string]int) []string {
 
 // TestCarvedSubnetsOfOneRunCanNotCollide — по дереву.
 func TestCarvedSubnetsOfOneRunCanNotCollide(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	corpus := map[string][]byte{}
 	for _, sub := range subnetSupernetScanRoots {
@@ -364,6 +365,7 @@ const computedBody = `"  var span = Math.pow(2, 24 - L);",` +
 // Правдоподобный вход: номер правят руками, и снятие набора из `CIDR_BANDS` без
 // перенумерации оставляет дырку в конце — ровно эту форму.
 func TestCarveBandGateRedOnBandOutsideDeclaredCount(t *testing.T) {
+	t.Parallel()
 	got := scanCarveBands(t, map[string][]byte{
 		"a.postman_collection.json": bandShape("setup-subnet", bandDecls(0, 5), computedBody),
 		"b.postman_collection.json": bandShape("setup-subnet", bandDecls(7, 5), computedBody),
@@ -387,6 +389,7 @@ func TestCarveBandGateRedOnBandOutsideDeclaredCount(t *testing.T) {
 // объявленного числа. Без этой стороны проверку выше можно было бы написать как
 // запрет полос вообще, и первый же ложный срабат снял бы её.
 func TestCarveBandGateSilentOnLawfulBands(t *testing.T) {
+	t.Parallel()
 	got := scanCarveBands(t, map[string][]byte{
 		"a.postman_collection.json": bandShape("setup-subnet", bandDecls(0, 5), computedBody),
 		"b.postman_collection.json": bandShape("setup-subnet", bandDecls(4, 5), computedBody),
@@ -409,6 +412,7 @@ func TestCarveBandGateSilentOnLawfulBands(t *testing.T) {
 // две коллекции с ОДНОЙ полосой. Стояло в гейте и раньше, но без стоящей пробы,
 // поэтому снятие условия прошло бы молча.
 func TestCarveBandGateRedOnSharedBand(t *testing.T) {
+	t.Parallel()
 	got := scanCarveBands(t, map[string][]byte{
 		"a.postman_collection.json": bandShape("setup-subnet", bandDecls(1, 5), computedBody),
 		"b.postman_collection.json": bandShape("setup-subnet", bandDecls(1, 5), computedBody),
@@ -426,6 +430,7 @@ func TestCarveBandGateRedOnSharedBand(t *testing.T) {
 // разыгрывается»: тело `__carve4`, зовущее `__ent`. Это возврат к исходному дефекту
 // задачи, и он обязан краснеть даже при верно объявленных полосах.
 func TestCarveBandGateRedOnDrawnAddress(t *testing.T) {
+	t.Parallel()
 	got := scanCarveBands(t, map[string][]byte{
 		"a.postman_collection.json": bandShape("setup-subnet", bandDecls(0, 5),
 			`"  return __ent(0) + '.' + __ent(1) + '.0/24';",`),
@@ -447,6 +452,7 @@ func TestCarveBandGateRedOnDrawnAddress(t *testing.T) {
 // розыгрыш пишут ровно там, где от него отказались, — то есть в законном коде
 // (`testing.md` §«Гейт читает исполняемую часть, а не текст»).
 func TestCarveBandGateReadsCodeNotComment(t *testing.T) {
+	t.Parallel()
 	got := scanCarveBands(t, map[string][]byte{
 		"a.postman_collection.json": bandShape("setup-subnet", bandDecls(0, 5),
 			`"  // позиция больше НЕ разыгрывается: тут стоял __ent(k), см. issue #477",`+

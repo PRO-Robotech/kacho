@@ -28,7 +28,7 @@ projects, users, bindings, seed networks) и патчит env-файл:
     на время своего прогона → под параллельным fan-out'ом account→project containment
     транзитно авторизовывал NOB → AUTHZ-*-LS-{OWN,CROSS}-NOB ложно краснели, и это
     вычиталось из вердикта списком освобождений прогонщика. Список СНЯТ целиком
-    (`services/iam/tests/newman/scripts/assert-suites-green.sh`: вычитания больше нет),
+    (`tests/newman/scripts/assert-suites-green.sh`: вычитания больше нет),
     а с pure-субъектом эти LIST-DENY leak-guard'ы строгие и зелёные без всяких
     освобождений. verifies kacho-iam#276)
 

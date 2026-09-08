@@ -78,6 +78,7 @@ func schemaReaderTreeFacts(t *testing.T) (services []string, withMigrations []st
 
 // TestEveryServiceWithMigrationsReadsItsSchemaVersionOnStartup — ядро гейта.
 func TestEveryServiceWithMigrationsReadsItsSchemaVersionOnStartup(t *testing.T) {
+	t.Parallel()
 	services, withMigrations, roots := schemaReaderTreeFacts(t)
 
 	census, missing := findServicesMissingSchemaReader(withMigrations, roots)

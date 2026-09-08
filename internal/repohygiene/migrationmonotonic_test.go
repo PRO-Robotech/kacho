@@ -228,6 +228,7 @@ func auditAddedMigrationVersions(added, tracked []string) ([]string, addedMigrat
 // checkout), а не отсутствие предмета, и такой исход обязан быть красным. Разбор
 // и цена — [requireTrunkRef].
 func TestNewMigrationOutranksEveryAppliedOne(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	base := requireTrunkRef(t, root)
 

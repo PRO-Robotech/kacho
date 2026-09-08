@@ -9,7 +9,7 @@ import "google/api/annotations.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/cloud/vpc/v1/internal_address_pool_service.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
 
@@ -65,13 +65,13 @@ service AddressPoolService {
 
   rpc Get(GetAddressPoolRequest) returns (AddressPool) {
     option (google.api.http) = {get: "/vpc/v1/addressPools/{pool_id}"};
-    option (kacho.iam.authz.v1.permission) = "vpc.address_pools.get";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "vpc.address_pools.get";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // List — межпроектный по построению: пул адресов глобален, `project_id` у него
@@ -82,37 +82,37 @@ service AddressPoolService {
   // системе.
   rpc List(ListAddressPoolsRequest) returns (ListAddressPoolsResponse) {
     option (google.api.http) = {get: "/vpc/v1/addressPools"};
-    option (kacho.iam.authz.v1.permission) = "vpc.address_pools.list";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "vpc.address_pools.list";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // ListAddresses — адреса ВСЕХ проектов, получившие IP из этого пула.
   // Межпроектность намеренна и является предметом глагола.
   rpc ListAddresses(ListAddressPoolAddressesRequest) returns (ListAddressPoolAddressesResponse) {
     option (google.api.http) = {get: "/vpc/v1/addressPools/{pool_id}/addresses"};
-    option (kacho.iam.authz.v1.permission) = "vpc.address_pools.list_addresses";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "vpc.address_pools.list_addresses";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc GetUtilization(GetAddressPoolUtilizationRequest) returns (AddressPoolUtilization) {
     option (google.api.http) = {get: "/vpc/v1/addressPools/{pool_id}/utilization"};
-    option (kacho.iam.authz.v1.permission) = "vpc.address_pools.get_utilization";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "vpc.address_pools.get_utilization";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // -- Мутации (async, Operation) --
@@ -126,13 +126,13 @@ service AddressPoolService {
       metadata: "CreateAddressPoolMetadata"
       response: "AddressPool"
     };
-    option (kacho.iam.authz.v1.permission) = "vpc.address_pools.create";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "vpc.address_pools.create";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc Update(UpdateAddressPoolRequest) returns (operation.Operation) {
@@ -144,13 +144,13 @@ service AddressPoolService {
       metadata: "UpdateAddressPoolMetadata"
       response: "AddressPool"
     };
-    option (kacho.iam.authz.v1.permission) = "vpc.address_pools.update";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "vpc.address_pools.update";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc Delete(DeleteAddressPoolRequest) returns (operation.Operation) {
@@ -159,13 +159,13 @@ service AddressPoolService {
       metadata: "DeleteAddressPoolMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission) = "vpc.address_pools.delete";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "vpc.address_pools.delete";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc AddCidrBlocks(AddAddressPoolCidrBlocksRequest) returns (operation.Operation) {
@@ -177,13 +177,13 @@ service AddressPoolService {
       metadata: "UpdateAddressPoolMetadata"
       response: "AddressPool"
     };
-    option (kacho.iam.authz.v1.permission) = "vpc.address_pools.add_cidr_blocks";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "vpc.address_pools.add_cidr_blocks";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc RemoveCidrBlocks(RemoveAddressPoolCidrBlocksRequest) returns (operation.Operation) {
@@ -195,13 +195,13 @@ service AddressPoolService {
       metadata: "UpdateAddressPoolMetadata"
       response: "AddressPool"
     };
-    option (kacho.iam.authz.v1.permission) = "vpc.address_pools.remove_cidr_blocks";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "vpc.address_pools.remove_cidr_blocks";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc BindAsNetworkDefault(BindAsNetworkDefaultRequest) returns (operation.Operation) {
@@ -213,13 +213,13 @@ service AddressPoolService {
       metadata: "AddressPoolBindingMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission) = "vpc.address_pools.bind";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "vpc.address_pools.bind";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc UnbindNetworkDefault(UnbindNetworkDefaultRequest) returns (operation.Operation) {
@@ -228,13 +228,13 @@ service AddressPoolService {
       metadata: "AddressPoolBindingMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission) = "vpc.address_pools.unbind";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor) = {
+    option (corelib.authz.v1.permission) = "vpc.address_pools.unbind";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor) = {
       object_type: "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

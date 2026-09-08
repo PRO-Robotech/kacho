@@ -35,6 +35,7 @@ func protoPrefixClaimOptions(t *testing.T) ProtoPrefixClaimOptions {
 // Способность падать доказывает не этот прогон, а инъекция
 // (`clienttruth_vpc_protoprefix_injection_test.go`): здесь только вердикт.
 func TestProtoCommentsAttributePrefixesToTheirType(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditProtoPrefixClaims(protoPrefixClaimOptions(t), &log)
 	if err != nil {

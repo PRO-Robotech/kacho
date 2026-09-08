@@ -73,6 +73,7 @@ var scanRoots = []string{"services", "gateway", "pkg"}
 // красит гейт и печатает координату; законные два места яруса он пропускает
 // молча.
 func TestNoUnscopedOperationsListOutsideAdminTier(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	var hits []string
@@ -114,6 +115,7 @@ func TestNoUnscopedOperationsListOutsideAdminTier(t *testing.T) {
 // туда можно вернуть его незамеченным. Поэтому пустое исключение здесь считается
 // ошибкой, а не «просто больше не нужно».
 func TestAdminTierExemptionsStillHaveSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	for rel, why := range adminTierUnscopedList {
@@ -143,6 +145,7 @@ func TestAdminTierExemptionsStillHaveSubject(t *testing.T) {
 // требовать своё. Поэтому предпосылка проверяется отдельно — по факту наличия
 // объявления в дереве, а не по памяти автора.
 func TestNarrowedEntrypointPremiseHolds(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	body, err := os.ReadFile(filepath.Join(root, "pkg/operations/list_for_caller.go"))
 	if err != nil {

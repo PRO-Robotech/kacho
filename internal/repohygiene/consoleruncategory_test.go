@@ -232,6 +232,7 @@ func checkRunCategory(path, raw string) ([]string, runCategoryCensus) {
 
 // TestEveryStepOfTheProbeJobIsVisibleToTheCategoriser — по дереву.
 func TestEveryStepOfTheProbeJobIsVisibleToTheCategoriser(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files := listWorkflows(t, root)
 
@@ -270,6 +271,7 @@ func TestEveryStepOfTheProbeJobIsVisibleToTheCategoriser(t *testing.T) {
 // TestRunCategoryDetectorSeesBothWays — инъекция в обе стороны: заведомый
 // экземпляр обязан быть пойман, законный близнец той же формы — пропущен.
 func TestRunCategoryDetectorSeesBothWays(t *testing.T) {
+	t.Parallel()
 	// Законная джоба: прогон проб, у всех шагов есть id, разметчик переживает
 	// красное и назван верно.
 	legit := "jobs:\n  p:\n    steps:\n" +

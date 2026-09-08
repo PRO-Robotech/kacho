@@ -39,6 +39,7 @@ import (
 //
 // Единственное законное место — `pkg/pagetoken`. Всё прочее обязано звать его.
 func TestPageCursorFormIsDeclaredOnce(t *testing.T) {
+	t.Parallel()
 	const home = "pkg/pagetoken"
 
 	roots := []string{"../../pkg", "../../services", "../../gateway"}

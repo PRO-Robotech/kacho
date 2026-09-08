@@ -10,8 +10,8 @@
 package vpcv1
 
 import (
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	v1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -138,7 +138,7 @@ var File_kacho_cloud_vpc_v1_quota_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_quota_service_proto_rawDesc = "" +
 	"\n" +
-	"&kacho/cloud/vpc/v1/quota_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a kacho/cloud/quota/v1/quota.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"2\n" +
+	"&kacho/cloud/vpc/v1/quota_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a kacho/cloud/quota/v1/quota.proto\x1a$corelib/authz/v1/authz_options.proto\"2\n" +
 	"\x11ListQuotasRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\"I\n" +

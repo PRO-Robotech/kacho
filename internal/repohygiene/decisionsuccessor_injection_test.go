@@ -30,6 +30,7 @@ const decisionDocFixture = `# Решение
 // ─── ОСЬ 1: объявление преемника ─────────────────────────────────────────────
 
 func TestSuccessorIsReadFromTheDeclarationAndNotFromProse(t *testing.T) {
+	t.Parallel()
 	if got := DeclaredSuccessor([]byte(decisionDocFixture)); got != 1231 {
 		t.Fatalf("объявленный преемник прочитан как #%d, ожидалось #1231", got)
 	}
@@ -45,6 +46,7 @@ func TestSuccessorIsReadFromTheDeclarationAndNotFromProse(t *testing.T) {
 // ─── ОСЬ 2: поверхности берутся из объявления, а не со всего документа ───────
 
 func TestSurfacesComeFromTheDeclaredParagraphOnly(t *testing.T) {
+	t.Parallel()
 	got := DeclaredCoordinates([]byte(decisionDocFixture))
 	want := map[string]bool{"proto/x/y.proto": true, "services/x/docs/page.mdx": true}
 	if len(got) != 2 {
@@ -61,6 +63,7 @@ func TestSurfacesComeFromTheDeclaredParagraphOnly(t *testing.T) {
 // ─── ОСЬ 3: находка против молчания ──────────────────────────────────────────
 
 func TestCitesSuccessorRedsOnAStaleReferenceAndIsSilentOnAHistoricalOne(t *testing.T) {
+	t.Parallel()
 	stale := []byte("// см. PRO-Robotech/kacho#1594.")
 	cites, found := CitesSuccessor(stale, 1231)
 	if cites {
@@ -80,6 +83,7 @@ func TestCitesSuccessorRedsOnAStaleReferenceAndIsSilentOnAHistoricalOne(t *testi
 // ─── ОСЬ 4: литера разметки — не задача ──────────────────────────────────────
 
 func TestHtmlEntityIsNotReadAsAnIssueNumber(t *testing.T) {
+	t.Parallel()
 	// Дефект найден этим гейтом на его ПЕРВОМ прогоне: `&#91;` читалось задачей
 	// №91, и страница арендатора объявлялась называющей четыре несуществующие.
 	entity := []byte("В коде: &#91;array&#93; и &#123;obj&#125;.")
@@ -98,6 +102,7 @@ func TestHtmlEntityIsNotReadAsAnIssueNumber(t *testing.T) {
 // ─── ОСЬ 5: текст находки называет координату и оба номера ───────────────────
 
 func TestSuccessorFindingNamesThePathAndWhatWasCitedInstead(t *testing.T) {
+	t.Parallel()
 	msg := SuccessorFinding(DecisionSurface{Path: "proto/x/y.proto", Found: []int{1594}}, 1231)
 	for _, want := range []string{"proto/x/y.proto", "#1231", "#1594"} {
 		if !strings.Contains(msg, want) {

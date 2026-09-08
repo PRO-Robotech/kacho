@@ -65,6 +65,7 @@ func clientTruthRequestBodyOptions(t *testing.T) ClientTruthRequestBodyOptions {
 // сервис с клиентской документацией окажется вне наблюдения, и «находок ноль»
 // станет неотличимо от «не смотрели».
 func TestClientTruthRequestBodyRosterCoversEveryDocumentedService(t *testing.T) {
+	t.Parallel()
 	tree := clientTruthRepoTree(t)
 
 	documented := map[string]bool{}
@@ -124,6 +125,7 @@ func TestClientTruthRequestBodyRosterCoversEveryDocumentedService(t *testing.T) 
 // Способность падать доказывает не этот прогон, а инъекция
 // (`clienttruth_requestbody_injection_test.go`): здесь только вердикт.
 func TestClientTruthRequestBodyKeysExistInTheRequestMessage(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditClientTruthRequestBody(clientTruthRequestBodyOptions(t), &log)
 	if err != nil {

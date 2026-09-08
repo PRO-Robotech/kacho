@@ -87,6 +87,7 @@ type laneInjection struct {
 }
 
 func TestPeerLaneCanonJudgesTheTokenNotTheForm(t *testing.T) {
+	t.Parallel()
 	cases := []laneInjection{
 		{
 			name:   "контроль: все действующие требования выполнены",
@@ -262,6 +263,7 @@ func TestPeerLaneCanonJudgesTheTokenNotTheForm(t *testing.T) {
 // объявлением: на сегодняшнем дереве она молчит, и молчание мёртвой неотличимо
 // от молчания исправной.
 func TestOwnerSidePremiseGateFiresWhenTheOwnerBecomesAConsumer(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name         string
 		overlay      map[string]string

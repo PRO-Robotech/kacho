@@ -55,6 +55,7 @@ var tfResourceRe = regexp.MustCompile(`kacho_([a-z]+)_[a-z_]+`)
 // ct2_registry_provider_edge_denial.go; здесь они не пересказываются, иначе
 // разойдутся.
 func TestProviderDoesNotMisstateTheEdgeVerbs(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	aliases := providerDomainAliases(t, root)

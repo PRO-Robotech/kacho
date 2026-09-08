@@ -10,7 +10,7 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/cloud/loadbalancer/v1/network_load_balancer.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1";
 
@@ -21,13 +21,13 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalan
 service NetworkLoadBalancerService {
   rpc Get(GetNetworkLoadBalancerRequest) returns (NetworkLoadBalancer) {
     option (google.api.http) = {get: "/nlb/v1/networkLoadBalancers/{network_load_balancer_id}"};
-    option (kacho.iam.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.get";
-    option (kacho.iam.authz.v1.required_relation) = "v_get";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.get";
+    option (corelib.authz.v1.required_relation) = "v_get";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc List(ListNetworkLoadBalancersRequest) returns (ListNetworkLoadBalancersResponse) {
@@ -44,9 +44,9 @@ service NetworkLoadBalancerService {
     // объекты и отфильтровать ими. Перечисление снято: у него жёсткий серверный
     // предел и нет продолжения, поэтому ресурсы сверх предела становились владельцу
     // невидимы при живых правах.
-    option (kacho.iam.authz.v1.permission) = "loadbalancer.networkLoadBalancers.list";
-    option (kacho.iam.authz.v1.scope_filtered) = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.permission) = "loadbalancer.networkLoadBalancers.list";
+    option (corelib.authz.v1.scope_filtered) = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc Create(CreateNetworkLoadBalancerRequest) returns (operation.Operation) {
@@ -58,13 +58,13 @@ service NetworkLoadBalancerService {
       metadata: "CreateNetworkLoadBalancerMetadata"
       response: "NetworkLoadBalancer"
     };
-    option (kacho.iam.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.create";
-    option (kacho.iam.authz.v1.required_relation) = "editor";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.create";
+    option (corelib.authz.v1.required_relation) = "editor";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc Update(UpdateNetworkLoadBalancerRequest) returns (operation.Operation) {
@@ -76,13 +76,13 @@ service NetworkLoadBalancerService {
       metadata: "UpdateNetworkLoadBalancerMetadata"
       response: "NetworkLoadBalancer"
     };
-    option (kacho.iam.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.update";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.update";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc Delete(DeleteNetworkLoadBalancerRequest) returns (operation.Operation) {
@@ -91,13 +91,13 @@ service NetworkLoadBalancerService {
       metadata: "DeleteNetworkLoadBalancerMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.delete";
-    option (kacho.iam.authz.v1.required_relation) = "v_delete";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.delete";
+    option (corelib.authz.v1.required_relation) = "v_delete";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Move the load balancer to another project in the same region (design §4.7).
@@ -113,15 +113,15 @@ service NetworkLoadBalancerService {
       metadata: "MoveNetworkLoadBalancerMetadata"
       response: "NetworkLoadBalancer"
     };
-    option (kacho.iam.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.move";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.move";
+    option (corelib.authz.v1.required_relation) = "v_update";
     // Source-project scope check; destination-project editor check is added
     // by a scope-conditional extractor in kacho-nlb (design §6.5).
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // GetTargetStates — computed deterministic snapshot (design §4.6).
@@ -130,24 +130,24 @@ service NetworkLoadBalancerService {
   // requested independently of the parent NLB.
   rpc GetTargetStates(GetTargetStatesRequest) returns (GetTargetStatesResponse) {
     option (google.api.http) = {get: "/nlb/v1/networkLoadBalancers/{network_load_balancer_id}/targetStates"};
-    option (kacho.iam.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.getTargetStates";
-    option (kacho.iam.authz.v1.required_relation) = "v_get";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.getTargetStates";
+    option (corelib.authz.v1.required_relation) = "v_get";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc ListOperations(ListNetworkLoadBalancerOperationsRequest) returns (ListNetworkLoadBalancerOperationsResponse) {
     option (google.api.http) = {get: "/nlb/v1/networkLoadBalancers/{network_load_balancer_id}/operations"};
-    option (kacho.iam.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.listOperations";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "loadbalancer.networkLoadBalancers.listOperations";
+    option (corelib.authz.v1.required_relation) = "v_list";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "nlb_network_load_balancer"
       from_request_field: "network_load_balancer_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

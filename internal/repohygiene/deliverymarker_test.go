@@ -183,6 +183,7 @@ func readDeliveryMarkerTree(t *testing.T, root string) (map[TableRef]bool, Deliv
 
 // TestGrowthRegistryFamilyMatchesTheSchema — сам гейт.
 func TestGrowthRegistryFamilyMatchesTheSchema(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	marker, census := readDeliveryMarkerTree(t, root)
 	findings, classified, queues, journals := deliveryMarkerVerdict(marker, tableGrowthRegistry)

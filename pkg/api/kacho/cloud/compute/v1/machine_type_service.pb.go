@@ -10,7 +10,7 @@
 package computev1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -210,7 +210,7 @@ var File_kacho_cloud_compute_v1_machine_type_service_proto protoreflect.FileDesc
 
 const file_kacho_cloud_compute_v1_machine_type_service_proto_rawDesc = "" +
 	"\n" +
-	"1kacho/cloud/compute/v1/machine_type_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a)kacho/cloud/compute/v1/machine_type.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"?\n" +
+	"1kacho/cloud/compute/v1/machine_type_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a)kacho/cloud/compute/v1/machine_type.proto\x1a$corelib/authz/v1/authz_options.proto\"?\n" +
 	"\x15GetMachineTypeRequest\x12&\n" +
 	"\x0fmachine_type_id\x18\x01 \x01(\tR\rmachineTypeId\"\x9c\x01\n" +
 	"\x17ListMachineTypesRequest\x12\x1b\n" +

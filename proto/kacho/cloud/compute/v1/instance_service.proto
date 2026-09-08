@@ -12,7 +12,7 @@ import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/compute/v1/instance.proto";
 import "kacho/cloud/compute/v1/maintenance.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1";
 
@@ -23,19 +23,19 @@ service InstanceService {
   // To get the list of available Instance resources, make a [List] request.
   rpc Get(GetInstanceRequest) returns (Instance) {
     option (google.api.http) = {get: "/compute/v1/instances/{instance_id}"};
-    option (kacho.iam.authz.v1.permission)        = "compute.instances.get";
-    option (kacho.iam.authz.v1.required_relation) = "v_get";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.instances.get";
+    option (corelib.authz.v1.required_relation) = "v_get";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of Instance resources in the specified project.
   rpc List(ListInstancesRequest) returns (ListInstancesResponse) {
     option (google.api.http) = {get: "/compute/v1/instances"};
-    option (kacho.iam.authz.v1.permission)        = "compute.instanceses.list";
+    option (corelib.authz.v1.permission)        = "compute.instanceses.list";
     // Top-level List is gated by the READ TIER on the parent project, not by the
     // project's own `v_list` verb. In the model those are independent sets, and
     // `project#v_list` means object-level access to the PROJECT ITSELF — the model
@@ -44,12 +44,12 @@ service InstanceService {
     // axis Create already takes here (`editor`), and the same convention the
     // storage/iam project-scoped List RPCs carry. Rows stay narrowed per object by
     // the owning service's list filter; this option only decides who may ask.
-    option (kacho.iam.authz.v1.required_relation) = "viewer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.required_relation) = "viewer";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Creates an instance in the specified project.
@@ -63,13 +63,13 @@ service InstanceService {
       metadata: "CreateInstanceMetadata"
       response: "Instance"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.instances.create";
-    option (kacho.iam.authz.v1.required_relation) = "editor";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.instances.create";
+    option (corelib.authz.v1.required_relation) = "editor";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "project"
       from_request_field: "project_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Updates the specified instance.
@@ -82,13 +82,13 @@ service InstanceService {
       metadata: "UpdateInstanceMetadata"
       response: "Instance"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.instances.update";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.instances.update";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Deletes the specified instance.
@@ -98,25 +98,25 @@ service InstanceService {
       metadata: "DeleteInstanceMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.instances.delete";
-    option (kacho.iam.authz.v1.required_relation) = "v_delete";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.instances.delete";
+    option (corelib.authz.v1.required_relation) = "v_delete";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Returns the serial port output of the specified Instance resource.
   rpc GetSerialPortOutput(GetInstanceSerialPortOutputRequest) returns (GetInstanceSerialPortOutputResponse) {
     option (google.api.http) = {get: "/compute/v1/instances/{instance_id}:serialPortOutput"};
-    option (kacho.iam.authz.v1.permission)        = "compute.instance_serial_port_outputs.getSerialPortOutput";
-    option (kacho.iam.authz.v1.required_relation) = "v_get";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.instance_serial_port_outputs.getSerialPortOutput";
+    option (corelib.authz.v1.required_relation) = "v_get";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Stops the running instance.
@@ -128,13 +128,13 @@ service InstanceService {
       metadata: "StopInstanceMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.instances.stop";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.instances.stop";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Starts the stopped instance.
@@ -144,13 +144,13 @@ service InstanceService {
       metadata: "StartInstanceMetadata"
       response: "Instance"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.instances.start";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.instances.start";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Restarts the running instance.
@@ -160,13 +160,13 @@ service InstanceService {
       metadata: "RestartInstanceMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.instances.restart";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.instances.restart";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Attaches the disk to the instance.
@@ -179,13 +179,13 @@ service InstanceService {
       metadata: "AttachInstanceDiskMetadata"
       response: "Instance"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.instance_disks.attachDisk";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.instance_disks.attachDisk";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Detaches the disk from the instance.
@@ -198,13 +198,13 @@ service InstanceService {
       metadata: "DetachInstanceDiskMetadata"
       response: "Instance"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.instance_disks.detachDisk";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.instance_disks.detachDisk";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Attaches an existing kacho-vpc NetworkInterface (NIC) to the instance by id.
@@ -222,13 +222,13 @@ service InstanceService {
       metadata: "AttachInstanceNetworkInterfaceMetadata"
       response: "Instance"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.instance_network_interfaces.attachNetworkInterface";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.instance_network_interfaces.attachNetworkInterface";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Detaches a network interface (NIC) from the instance, by nic_id or slot index.
@@ -244,25 +244,25 @@ service InstanceService {
       metadata: "DetachInstanceNetworkInterfaceMetadata"
       response: "Instance"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.instance_network_interfaces.detachNetworkInterface";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.instance_network_interfaces.detachNetworkInterface";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Lists operations for the specified instance.
   rpc ListOperations(ListInstanceOperationsRequest) returns (ListInstanceOperationsResponse) {
     option (google.api.http) = {get: "/compute/v1/instances/{instance_id}/operations"};
-    option (kacho.iam.authz.v1.permission)        = "compute.instance_operationses.listOperations";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.instance_operationses.listOperations";
+    option (corelib.authz.v1.required_relation) = "v_list";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // maintenance
@@ -276,13 +276,13 @@ service InstanceService {
       metadata: "SimulateInstanceMaintenanceEventMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission)        = "compute.instance_maintenance_events.simulateMaintenanceEvent";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "compute.instance_maintenance_events.simulateMaintenanceEvent";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

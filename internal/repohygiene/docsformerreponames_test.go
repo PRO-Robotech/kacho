@@ -247,6 +247,7 @@ func scanFormerRepoNames(docs []string, read func(rel string) ([]byte, error)) (
 // ── гейт на дереве ───────────────────────────────────────────────────────────
 
 func TestFormerRepositoryNamesInDocsNameTheCurrentTree(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	docs := trackedProseDocs(t, root)
 

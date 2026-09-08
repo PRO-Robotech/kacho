@@ -437,6 +437,7 @@ func auditRefusalProducer(root string, cols []string,
 }
 
 func TestNewmanAssertedRefusalTextHasAProducer(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Состав дерева — из ИНДЕКСА git: под корнем лежат рабочие копии агентов и

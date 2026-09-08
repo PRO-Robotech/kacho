@@ -136,6 +136,43 @@ run_sut() { # <каталог> → печатает вывод, возвраща
     (cd "$tmp/$1" && python3 "$SUT" HEAD --rename kacho=kaname --since HEAD~2) 2>&1
 }
 
+# ── Мир «работа ВЕРНУЛАСЬ»: перезапись, а следом восстанавливающий коммит ──
+# Он нужен режиму сверки: тот спрашивает не «что снято», а «что не вернулось»,
+# и различить эти два вопроса можно только на дереве, где возврат состоялся.
+build_restored() { # <каталог>
+    local d="$tmp/$1"
+    build "$1" overwrite
+    cat > "$d/pkg/root.go" <<'GO'
+package kanameroot
+
+func Existing() string { return "kaname.cloud.iam.v1" }
+
+func PeerCheckRequired() bool { return true }
+GO
+    cat > "$d/pkg/root_test.go" <<'GO'
+package kanameroot
+
+import "testing"
+
+func TestPeerCheckIsRequiredWhereTheNeighbourDecides(t *testing.T) {
+	if !PeerCheckRequired() {
+		t.Fatal("KANAME_PEER_MODE")
+	}
+}
+GO
+    cat > "$d/scripts/lib.sh" <<'SH'
+#!/usr/bin/env bash
+existing_helper() { echo kaname; }
+product_platform_prefix() { echo "${KANAME_TREE_ROOT:-.}"; }
+SH
+    git -C "$d" add -A && git -C "$d" commit -q -m "возврат: работа предшественника посажена заново"
+}
+
+run_against() { # <каталог> <ревизия сверки> → печатает вывод, возвращает код
+    (cd "$tmp/$1" && python3 "$SUT" HEAD~1 --rename kacho=kaname \
+        --since HEAD~3 --against "$2") 2>&1
+}
+
 echo "── инъекция A: перезапись посаженной работы обязана быть НАХОДКОЙ ─────"
 build overwrite overwrite
 out_a="$(run_sut overwrite)"; rc_a=$?
@@ -179,6 +216,49 @@ out_c="$( (cd "$d" && python3 "$SUT" HEAD) 2>&1 )"; rc_c=$?
 assert "дерево без разбираемых имён даёт находку (код 1)" "1" "$rc_c"
 assert "находка называет пустой обход, а не ноль находок" "yes" \
        "$(grep -q 'обход пуст' <<<"$out_c" && echo yes || echo no)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ИНЪЕКЦИЯ E — РЕЖИМ СВЕРКИ. Различие двух прогонов РОВНО ОДНО: ревизия, по
+# которой меряется остаток. Дерево, изменение, переименование и окно — те же.
+# Односторонняя проверка здесь была бы бесполезна вдвойне: режим, отвечающий
+# «не вернулось ничего» при любом дереве, неотличим от исправного ровно так же,
+# как режим, отвечающий «не вернулось всё».
+echo "── инъекция E: работа НЕ вернулась — находка; вернулась — молчание ────"
+build_restored restored
+out_e1="$(run_against restored 'HEAD~1')"; rc_e1=$?
+assert "остаток на самом изменении — находка (код 1)" "1" "$rc_e1"
+assert "находка называет НЕ ВЕРНУВШЕЕСЯ имя PeerCheckRequired" "yes" \
+       "$(grep -q 'PeerCheckRequired' <<<"$out_e1" && echo yes || echo no)"
+assert "вердикт назван остатком, а не снятием" "yes" \
+       "$(grep -q 'не вернулось' <<<"$out_e1" && echo yes || echo no)"
+assert "перепись называет объём ревизии сверки" "yes" \
+       "$(grep -q 'перепись: файлов у ревизии сверки' <<<"$out_e1" && echo yes || echo no)"
+
+out_e2="$(run_against restored 'HEAD')"; rc_e2=$?
+assert "возврат работы — молчание (код 0)" "0" "$rc_e2"
+assert "молчание режима сверки не содержит слова НАХОДКА" "no" \
+       "$(grep -q 'НАХОДКА' <<<"$out_e2" && echo yes || echo no)"
+assert "молчание говорит о возврате, а не о том, что ничего не снято" "yes" \
+       "$(grep -q 'вернулось к ревизии сверки' <<<"$out_e2" && echo yes || echo no)"
+assert "перепись объёма напечатана и на молчании режима сверки" "yes" \
+       "$(grep -q 'перепись: файлов у ревизии сверки' <<<"$out_e2" && echo yes || echo no)"
+
+# Пустой обход ревизии сверки — «об остатке не прочитано ничего». Выдать это за
+# «всё вернулось» значит объявить работу целой по молчанию непрочитанного дерева.
+echo "── контроль E2: пустой обход ревизии сверки — находка, не молчание ───"
+git -C "$tmp/restored" checkout -q --orphan bare
+git -C "$tmp/restored" rm -rq --cached . 2>/dev/null
+rm -f "$tmp/restored/pkg/root.go" "$tmp/restored/pkg/root_test.go" "$tmp/restored/scripts/lib.sh"
+echo hi > "$tmp/restored/README"
+git -C "$tmp/restored" add -A && git -C "$tmp/restored" commit -q -m "голое дерево"
+git -C "$tmp/restored" checkout -q master 2>/dev/null || git -C "$tmp/restored" checkout -q main
+out_e3="$(run_against restored 'bare')"; rc_e3=$?
+assert "пустой обход ревизии сверки — находка (код 1)" "1" "$rc_e3"
+assert "находка называет пустой обход ревизии сверки" "yes" \
+       "$(grep -q 'обход ревизии сверки пуст' <<<"$out_e3" && echo yes || echo no)"
+
+out_e4="$(run_against restored '0000000000000000000000000000000000000000')"; rc_e4=$?
+assert "неразрешимая ревизия сверки — НЕ ВЫПОЛНИЛОСЬ (код 3)" "3" "$rc_e4"
 
 echo "── контроль D: спросить не удалось — это 3, а не 1 ───────────────────"
 out_d="$( (cd "$tmp/lawful" && python3 "$SUT" 0000000000000000000000000000000000000000) 2>&1 )"; rc_d=$?

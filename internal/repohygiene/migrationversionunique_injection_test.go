@@ -104,6 +104,7 @@ func dirPreviouslyInvisible(t *testing.T, census migrationUniqueCensus, files []
 }
 
 func TestMigrationVersionUnique_ProvenByInjection(t *testing.T) {
+	t.Parallel()
 	files := realCorpus(t)
 	baseCensus, baseFindings := findMigrationVersionCollisions(files)
 

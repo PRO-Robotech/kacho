@@ -73,6 +73,7 @@ type participationSite struct {
 //     уточнить распознавание, а не заводить исключение: перечня исключений у
 //     этого гейта нет намеренно.
 func TestEveryCarrierParticipantIsRaisedByAProbe(t *testing.T) {
+	t.Parallel()
 	participants, proven, missing, files, err := auditCarrierParticipation(repoRoot(t))
 	if err != nil {
 		t.Fatalf("обход композиционных корней: %v", err)
@@ -261,6 +262,7 @@ func TestCarrierStarts(t *testing.T) { _ = servicehost.Serve(nil, nil) }
 
 // Сторона дефекта: участник есть, пробы подъёма нет — гейт называет участника.
 func TestCarrierParticipationGateRedOnAParticipantWithoutAProbe(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/cmd/x/main.go": carrierProdSrc,
 	})
@@ -282,6 +284,7 @@ func TestCarrierParticipationGateRedOnAParticipantWithoutAProbe(t *testing.T) {
 // Законный близнец той же формы: тот же участник, та же сборка — плюс проба,
 // зовущая носитель.
 func TestCarrierParticipationGateSilentWhenTheProbeRaisesIt(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/cmd/x/main.go":               carrierProdSrc,
 		"services/x/cmd/x/carrier_start_test.go": carrierProbeSrc,
@@ -307,6 +310,7 @@ func TestCarrierParticipationGateSilentWhenTheProbeRaisesIt(t *testing.T) {
 // Без него гейт ловил бы «корень тронул носитель», а не «корень им поднимается»,
 // и любой сервис, читающий из пакета константу, становился бы участником.
 func TestCarrierParticipationGateIgnoresANonServeCall(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/cmd/x/main.go": `package main
 

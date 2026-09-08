@@ -77,6 +77,7 @@ var consoleTailwindAtRules = []string{"apply", "tailwind"}
 
 // TestConsoleStylelintConfigIsSingle — судья стилей один на все модули.
 func TestConsoleStylelintConfigIsSingle(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	uiRoot := filepath.Join(root, "ui-future")
 
@@ -182,6 +183,7 @@ func judgeConsoleStylelintConfigs(declaring []string, configs map[string]string)
 
 // TestConsoleStylelintTailwindRelaxationHasASubject — послабление истекает само.
 func TestConsoleStylelintTailwindRelaxationHasASubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	uiRoot := filepath.Join(root, "ui-future")
 

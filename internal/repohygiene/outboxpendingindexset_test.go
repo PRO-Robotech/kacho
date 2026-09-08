@@ -104,6 +104,7 @@ var nonPartitionDrainedOutboxes = map[string]string{
 // индекс той же формы (без предиката по sent_at) он пропускает молча, как и
 // одиночный (id) у очереди с собственной выборкой по id.
 func TestOutboxPendingIndexSetIsExactlyTwo(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	inv, files := pendingIndexInventory(t, root, trackedMigrationSQL)
 
@@ -184,6 +185,7 @@ func TestOutboxPendingIndexSetIsExactlyTwo(t *testing.T) {
 // у неё есть предмет: очередь, исчезнувшая из дерева, унаследует следующую
 // слепую зону.
 func TestNonPartitionOutboxExemptionsHaveSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	inv, _ := pendingIndexInventory(t, root, trackedMigrationSQL)
 

@@ -112,6 +112,7 @@ type proxyIntentSite struct {
 // чтения registry, которая живёт в дереве и которую гейт «по отношению» отверг
 // бы) — молчит.
 func TestProxyRegistrationTriplesAreAcceptedByOwner(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	sites, files := collectProxyIntentSites(t, root)
 
@@ -163,6 +164,7 @@ func TestProxyRegistrationTriplesAreAcceptedByOwner(t *testing.T) {
 // Публичное чтение в этот счёт входит наравне с иерархическими: это тоже запись
 // набора приёма, и без эмитента она означала бы возможность, которой нет.
 func TestEveryAcceptedRelationHasAnEmitter(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	sites, _ := collectProxyIntentSites(t, root)
 
@@ -205,6 +207,7 @@ func TestEveryAcceptedRelationHasAnEmitter(t *testing.T) {
 // перепись, означал бы, что первые две пробы его просто не читали, а их «ноль
 // находок» относилось бы к меньшему, чем кажется.
 func TestProxyIntentCensusMatchesExpectedConsumers(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	sites, _ := collectProxyIntentSites(t, root)
 
@@ -250,6 +253,7 @@ func TestProxyIntentCensusMatchesExpectedConsumers(t *testing.T) {
 //
 // Инъекция в обе стороны — proxytupleintent_injection_test.go.
 func TestProxyIntentCensusPrintsIdentityCarriersToo(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	sites, files := collectProxyIntentSites(t, root)
 

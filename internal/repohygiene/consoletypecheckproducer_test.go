@@ -53,6 +53,7 @@ const consoleTypecheckScript = "typecheck"
 
 // TestEveryConsoleTypecheckHasAProducer — вердикт на настоящем дереве.
 func TestEveryConsoleTypecheckHasAProducer(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	uiRoot := filepath.Join(root, "ui-future")
 

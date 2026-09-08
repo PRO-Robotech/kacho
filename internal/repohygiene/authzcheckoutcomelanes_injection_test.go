@@ -154,6 +154,7 @@ const why = "if allowed, err := c.Check(ctx, s, r, o); err == nil && allowed { r
 // TestCheckLaneGateRedOnACollapsedOutcome — сторона дефекта: гейт краснеет и
 // называет координату.
 func TestCheckLaneGateRedOnACollapsedOutcome(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/internal/apps/kaname/api/limit/gate.go": collapsedSrc,
 	})
@@ -181,6 +182,7 @@ func TestCheckLaneGateRedOnACollapsedOutcome(t *testing.T) {
 // TestCheckLaneGateRedOnADiscardedError — второй вид того же схлопывания: ошибку
 // выбросили явно. Без этой стороны гейт чинился бы заменой имени на `_`.
 func TestCheckLaneGateRedOnADiscardedError(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/internal/gate.go": discardedSrc,
 	})
@@ -196,6 +198,7 @@ func TestCheckLaneGateRedOnADiscardedError(t *testing.T) {
 // TestCheckLaneGateSilentWhenTheOutcomesAreSeparated — законный близнец: тот же
 // вопрос, ошибка доступна ниже по функции.
 func TestCheckLaneGateSilentWhenTheOutcomesAreSeparated(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/internal/apps/kaname/api/limit/gate.go": separatedSrc,
 	})
@@ -217,6 +220,7 @@ func TestCheckLaneGateSilentWhenTheOutcomesAreSeparated(t *testing.T) {
 // TestCheckLaneGateSilentOnABranchOverTheError — законный близнец ФОРМЫ: ошибка
 // связана в `Init`, но условие называет её одну. Ветвь по ошибке и есть исход.
 func TestCheckLaneGateSilentOnABranchOverTheError(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/internal/gate.go": branchOnErrorSrc,
 	})
@@ -236,6 +240,7 @@ func TestCheckLaneGateSilentOnABranchOverTheError(t *testing.T) {
 // TestCheckLaneGateIgnoresAnUnrelatedCheck — отрицательный контроль
 // распознавания: одноимённый метод другой формы вопросом о правах не является.
 func TestCheckLaneGateIgnoresAnUnrelatedCheck(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/internal/health.go": unrelatedCheckSrc,
 	})
@@ -253,6 +258,7 @@ func TestCheckLaneGateIgnoresAnUnrelatedCheck(t *testing.T) {
 
 // TestCheckLaneGateIgnoresTheFormInAComment — отрицательный контроль ТЕКСТА.
 func TestCheckLaneGateIgnoresTheFormInAComment(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/internal/doc.go": commentOnlySrc,
 	})
@@ -273,6 +279,7 @@ func TestCheckLaneGateIgnoresTheFormInAComment(t *testing.T) {
 // они цитируют намеренно (см. соседний файл инъекции), и обвинение по ним
 // сделало бы гейт неспособным доказать самого себя.
 func TestCheckLaneGateIgnoresProbes(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/internal/gate_test.go": collapsedSrc,
 	})
@@ -393,6 +400,7 @@ func request(ctx context.Context, c checker, subject string) bool {
 
 // TestCheckLaneGateRedOnASeparateAssignment — Б1: форма B краснеет.
 func TestCheckLaneGateRedOnASeparateAssignment(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/internal/apps/kaname/api/access_binding/helpers.go": separateAssignCollapsedSrc,
 		"services/x/internal/apps/kaname/api/account/list_all.go":       separateAssignNestedSrc,
@@ -417,6 +425,7 @@ func TestCheckLaneGateRedOnASeparateAssignment(t *testing.T) {
 
 // TestCheckLaneGateSilentWhenTheErrorLeavesAsAValue — законный близнец формы B.
 func TestCheckLaneGateSilentWhenTheErrorLeavesAsAValue(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/internal/ab/holds.go": separateAssignLegitSrc,
 	})
@@ -436,6 +445,7 @@ func TestCheckLaneGateSilentWhenTheErrorLeavesAsAValue(t *testing.T) {
 // TestCheckLaneGateSurvivesRenamingTheContext — Б2: переименование переменной
 // гейт не снимает.
 func TestCheckLaneGateSurvivesRenamingTheContext(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/internal/authz/gate.go": renamedCtxSrc,
 	})
@@ -461,6 +471,7 @@ func TestCheckLaneGateSurvivesRenamingTheContext(t *testing.T) {
 // каталог, которого в том литерале не было ВОВСЕ (`tools`), — и обязано быть
 // найдено.
 func TestCheckLaneGateWatchesEveryProdRootOfTheTree(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"tools/x/gate.go":     separateAssignCollapsedSrc,
 		"terraform/y/gate.go": renamedCtxSrc,
@@ -485,6 +496,7 @@ func TestCheckLaneGateWatchesEveryProdRootOfTheTree(t *testing.T) {
 // TestCheckLaneGateDoesNotCountGeneratedFiles — перепись не завышается
 // порождённым кодом.
 func TestCheckLaneGateDoesNotCountGeneratedFiles(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"pkg/api/x/service.pb.gw.go": generatedSrc,
 	})
@@ -504,6 +516,7 @@ func TestCheckLaneGateDoesNotCountGeneratedFiles(t *testing.T) {
 // TestCheckLaneGateFailsOnAnEmptyTree — предпосылка обхода: пустое дерево не
 // выдаётся за чистое.
 func TestCheckLaneGateFailsOnAnEmptyTree(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{"docs/readme.md": "нет кода"})
 	roots, err := prodGoRoots(root)
 	if err != nil {
@@ -539,6 +552,7 @@ func run(cfg conf, p pkg, fset, syn, info int) {
 // РАСПОЗНАВАНИЯ для расширенной формы: снятие привязки к имени `ctx` не должно
 // втягивать посторонние методы.
 func TestCheckLaneGateIgnoresATypeCheckerOfTheSameArity(t *testing.T) {
+	t.Parallel()
 	root := synthCarrierTree(t, map[string]string{
 		"tools/unreadfieldaudit/index.go": typeCheckerSrc,
 	})

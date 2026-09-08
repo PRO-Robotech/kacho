@@ -33,6 +33,7 @@ var liveProbeNames = []string{
 // TestAcceptanceProbeCoordinateInjection — три прогона на одной оси: контроль,
 // инъекция, законный близнец.
 func TestAcceptanceProbeCoordinateInjection(t *testing.T) {
+	t.Parallel()
 	findings := func(body string) []string {
 		return judgeProbeCoordinates(
 			map[string]string{"services/iam/docs/engineering/acceptance/x.md": body},
@@ -106,6 +107,7 @@ func TestAcceptanceProbeCoordinateInjection(t *testing.T) {
 // действительно находят корпус и объявления. Ядро выше судит поданные значения
 // и о том, ОТКУДА они взялись, не утверждает ничего.
 func TestAcceptanceProbeCoordinateWalkersInjection(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	run := func(args ...string) {
 		t.Helper()

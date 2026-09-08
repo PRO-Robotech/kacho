@@ -64,6 +64,7 @@ func journalSource(n int) []byte {
 
 // TestLabelsGateFiresOnlyOnTheMissingLabels — три прогона.
 func TestLabelsGateFiresOnlyOnTheMissingLabels(t *testing.T) {
+	t.Parallel()
 	// ── ПРОГОН 1: контроль. Метки на месте, числа сходятся.
 	t.Run("контроль: метки на месте — молчание", func(t *testing.T) {
 		labels, found := MessageCarriesLabels(protoWithLabels, "Widget")
@@ -120,6 +121,7 @@ func TestLabelsGateFiresOnlyOnTheMissingLabels(t *testing.T) {
 // TestLabelsGateStaysSilentOnLegitimateTwins — законные близнецы. Без них гейт
 // ловит форму, а не существо.
 func TestLabelsGateStaysSilentOnLegitimateTwins(t *testing.T) {
+	t.Parallel()
 	t.Run("мёртвая координата отличима от недостачи меток", func(t *testing.T) {
 		labels, found := MessageCarriesLabels(protoWithLabels, "NoSuchMessage")
 		if found {

@@ -10,7 +10,7 @@
 package geov1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -195,7 +195,7 @@ var File_kacho_cloud_geo_v1_region_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_geo_v1_region_service_proto_rawDesc = "" +
 	"\n" +
-	"'kacho/cloud/geo/v1/region_service.proto\x12\x12kacho.cloud.geo.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fkacho/cloud/geo/v1/region.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"/\n" +
+	"'kacho/cloud/geo/v1/region_service.proto\x12\x12kacho.cloud.geo.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fkacho/cloud/geo/v1/region.proto\x1a$corelib/authz/v1/authz_options.proto\"/\n" +
 	"\x10GetRegionRequest\x12\x1b\n" +
 	"\tregion_id\x18\x01 \x01(\tR\bregionId\"~\n" +
 	"\x12ListRegionsRequest\x12\x1b\n" +

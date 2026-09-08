@@ -35,6 +35,7 @@ func ct3ComputeInjAudit(t *testing.T, body string) ([]ct3ComputeFinding, ct3Comp
 // Гейт обязан покраснеть И НАЗВАТЬ КООРДИНАТУ: находка, называющая симптом вместо
 // места, посылает читателя искать не там.
 func TestCt3ComputeInj_ParentDeclaredWhileTextNamesChildren_IsFound(t *testing.T) {
+	t.Parallel()
 	findings, cen := ct3ComputeInjAudit(t, `	return serviceerr.InvalidArg("boot_source",
 		"bootSource name/resolvedDigest/materializedVolume/imageKind are output-only and must not be set on input")`)
 	if len(findings) != 1 {
@@ -56,6 +57,7 @@ func TestCt3ComputeInj_ParentDeclaredWhileTextNamesChildren_IsFound(t *testing.T
 // (б) ЗАКОННЫЙ БЛИЗНЕЦ — тот же предмет в починенной форме. Гейт обязан молчать,
 // иначе он ловит форму, а не существо, и первый же ложный срабат его отключит.
 func TestCt3ComputeInj_ChildDeclaredAndTextAboutThatChild_IsSilent(t *testing.T) {
+	t.Parallel()
 	findings, cen := ct3ComputeInjAudit(t, `	return serviceerr.InvalidArgFields(serviceerr.FieldViolation{})`+"\n"+
 		`	_ = serviceerr.InvalidArg("boot_source.image_kind", "bootSource.imageKind is output-only and must not be set on input")`)
 	if len(findings) != 0 {
@@ -66,6 +68,7 @@ func TestCt3ComputeInj_ChildDeclaredAndTextAboutThatChild_IsSilent(t *testing.T)
 // (в) Форма А — точечная запись подполя. Знать надо ОБЕ формы: форма, о которой
 // распознаватель не знает, даёт не находку, а невидимость.
 func TestCt3ComputeInj_DottedChildFormIsAlsoRead(t *testing.T) {
+	t.Parallel()
 	findings, _ := ct3ComputeInjAudit(t,
 		`	return serviceerr.InvalidArg("boot_source", "bootSource.imageKind is output-only and must not be set on input")`)
 	if len(findings) != 1 || len(findings[0].Children) != 1 || findings[0].Children[0] != "imageKind" {
@@ -77,6 +80,7 @@ func TestCt3ComputeInj_DottedChildFormIsAlsoRead(t *testing.T) {
 // у `primary_v4_address_spec` существует, и слово `address` в тексте есть, но
 // ПОДЛЕЖАЩИМ там является родитель. Без якоря это была бы ложная находка.
 func TestCt3ComputeInj_ChildNameInProseIsNotASubject(t *testing.T) {
+	t.Parallel()
 	findings, cen := ct3ComputeInjAudit(t,
 		`	add("network_interface_specs.primary_v4_address_spec", "networkInterfaceSpecs[].primaryV4AddressSpec is not supported: the address is allocated by the subnet's IPAM, compute cannot pin a requested one")`)
 	if cen.Judgeable != 1 {
@@ -91,6 +95,7 @@ func TestCt3ComputeInj_ChildNameInProseIsNotASubject(t *testing.T) {
 // сразу за именем поля, то есть форму B удовлетворяют; исключает их то, что
 // объявленное поле СКАЛЯРНОЕ и подполей не имеет вовсе.
 func TestCt3ComputeInj_EnumValueAfterScalarFieldIsNotAChild(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, body string }{
 		{"значение перечисления", `	return serviceerr.InvalidArg("instance_kind", "instanceKind CONTAINER is not creatable yet: a registry image has no durable address today")`},
 		{"значение с точкой", `	return serviceerr.InvalidArg("boot_source.type", "bootSource.type registry.image is not accepted yet: a registry image has no durable address today")`},
@@ -110,6 +115,7 @@ func TestCt3ComputeInj_EnumValueAfterScalarFieldIsNotAChild(t *testing.T) {
 // (е) Перепись обязана двигаться вместе с охватом: «судимых 0» означает, что
 // правило не применялось ни разу, и молчание тогда ничего не значит.
 func TestCt3ComputeInj_CensusSeparatesReadFromJudgeable(t *testing.T) {
+	t.Parallel()
 	_, cen := ct3ComputeInjAudit(t,
 		`	_ = serviceerr.InvalidArg("project_id", "projectId is required")`+"\n"+
 			`	return serviceerr.InvalidArg("boot_source", "bootSource is required")`)

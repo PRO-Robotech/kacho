@@ -51,6 +51,7 @@ func emit() string {
 `
 
 func TestFGAOutboxRowOwnerGate_CatchesASecondRenderer(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	writeInjected(t, root, filepath.Join(fgaOutboxRowOwnerDir, "emitter.go"), ownerFile)
 	writeInjected(t, root, filepath.Join("services", "iam", "internal", "repo", "kaname", "pg", "rogue.go"),
@@ -75,6 +76,7 @@ func emitRogue(tuples []clients.RelationTuple) string {
 }
 
 func TestFGAOutboxRowOwnerGate_SilentOnLegitimateTwins(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	writeInjected(t, root, filepath.Join(fgaOutboxRowOwnerDir, "emitter.go"), ownerFile)
 

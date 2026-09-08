@@ -69,13 +69,23 @@ import (
 	"strings"
 	"testing"
 
+	authzv1 "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	"github.com/PRO-Robotech/kacho/pkg/contractroot"
 )
 
 // permTokAnnotation — строка аннотации права в .proto. Аннотация односложна
 // (одна строка на запись), поэтому разбор идёт по строкам и несёт номер строки:
 // находка без координаты заставляет искать её глазами по всему домену.
-var permTokAnnotation = regexp.MustCompile(`\(kacho\.iam\.authz\.v1\.permission\)\s*=\s*"([^"]*)"`)
+//
+// ПОЛНОЕ ИМЯ РАСШИРЕНИЯ ВЫВОДИТСЯ ИЗ ДЕСКРИПТОРА, А НЕ ВЫПИСАНО. Здесь стоял
+// литерал `kacho.iam.authz.v1.permission`, и он был верен ровно до переезда
+// словаря аннотаций под нейтральный корень (#2089). Переезд не покраснил бы эту
+// пробу и не позеленил: образец перестал бы совпадать, записей стало бы НОЛЬ, а
+// «ноль записей» неотличимо от «домен вычищен». Поймала это только перепись,
+// печатающая объём осмотренного, — и ловить второй раз не придётся: имя теперь
+// приезжает из того же дескриптора, что и сама аннотация.
+var permTokAnnotation = regexp.MustCompile(
+	`\(` + regexp.QuoteMeta(string(authzv1.E_Permission.TypeDescriptor().FullName())) + `\)\s*=\s*"([^"]*)"`)
 
 // permTokVerdict — классификация имени ресурса в токене.
 type permTokVerdict string
@@ -254,6 +264,7 @@ func permTokFindings(recs []permTokRecord) []permTokRecord {
 // TestVpcPermissionTokenPluralizedExactlyOnce — гейт домена vpc: ни одного
 // искажённого имени ресурса в аннотациях права.
 func TestVpcPermissionTokenPluralizedExactlyOnce(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files, recs := permTokReadDomain(t, root, "vpc")
 
@@ -307,6 +318,7 @@ func TestVpcPermissionTokenPluralizedExactlyOnce(t *testing.T) {
 // аннотация файла, которая на момент написания УЖЕ несла `vpc.gatewaies.get`,
 // поэтому подстановка была тождественной и не проверяла ничего.
 func TestVpcPermissionTokenPluralInjection(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	const rel = "proto/kacho/cloud/vpc/v1/gateway_service.proto"
 	body, err := os.ReadFile(filepath.Join(root, rel))
@@ -382,6 +394,7 @@ func TestVpcPermissionTokenPluralInjection(t *testing.T) {
 // стороны. `addresses` стоит здесь не для полноты: суффиксная редакция этого
 // гейта дала на нём 13 ложных находок.
 func TestPermissionTokenPluralPredicateControls(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		seg  string
 		want permTokVerdict
@@ -441,6 +454,7 @@ var permTokRemainderOutsideVpc = map[string]int{
 // Отдельным тестом от гейта vpc: устаревшая запись остатка не должна прятать
 // свойство, которое держит гейт домена.
 func TestPermissionTokenDistortionRemainderOutsideVpc(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	for _, domain := range []string{"compute", "iam"} {
 		files, recs := permTokReadDomain(t, root, domain)

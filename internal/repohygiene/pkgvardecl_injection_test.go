@@ -67,6 +67,7 @@ func (s *pkgDeclStand) write(t *testing.T, rel, body string) {
 // TestPkgVarDecl_FindsTheDeclarationWhereverInThePackageItLives — КОНТРОЛЬ и
 // одновременно предмет задачи #1944: объявление найдено во втором файле пакета.
 func TestPkgVarDecl_FindsTheDeclarationWhereverInThePackageItLives(t *testing.T) {
+	t.Parallel()
 	s := newPkgDeclStand(t)
 	lit, census, err := findPackageVarLiteral(
 		clientTruthSyntheticTree(t, s.root), "svc/authzmap", "objectTypes")
@@ -90,6 +91,7 @@ func TestPkgVarDecl_FindsTheDeclarationWhereverInThePackageItLives(t *testing.T)
 // пакета целиком. Проза о нём в соседнем файле остаётся, и разрешатель по тексту
 // принял бы её за объявление.
 func TestPkgVarDecl_RefusesWhenTheDeclarationIsGone(t *testing.T) {
+	t.Parallel()
 	s := newPkgDeclStand(t)
 	if err := os.Remove(filepath.Join(s.root, "svc/authzmap/tables_gen.go")); err != nil {
 		t.Fatal(err)
@@ -114,6 +116,7 @@ func TestPkgVarDecl_RefusesWhenTheDeclarationIsGone(t *testing.T) {
 // пакет на месте, имя другое. Молчаливый ноль означал бы гейт, переживший
 // переименование своего предмета.
 func TestPkgVarDecl_RefusesWhenTheNameWasRenamed(t *testing.T) {
+	t.Parallel()
 	s := newPkgDeclStand(t)
 	if _, _, err := findPackageVarLiteral(
 		clientTruthSyntheticTree(t, s.root), "svc/authzmap", "renamedTypes"); err == nil {
@@ -123,6 +126,7 @@ func TestPkgVarDecl_RefusesWhenTheNameWasRenamed(t *testing.T) {
 
 // TestPkgVarDecl_RefusesOnAnEmptyPackage — обход пуст: каталога нет вовсе.
 func TestPkgVarDecl_RefusesOnAnEmptyPackage(t *testing.T) {
+	t.Parallel()
 	s := newPkgDeclStand(t)
 	if _, _, err := findPackageVarLiteral(
 		clientTruthSyntheticTree(t, s.root), "svc/nosuchpkg", "objectTypes"); err == nil {
@@ -134,6 +138,7 @@ func TestPkgVarDecl_RefusesOnAnEmptyPackage(t *testing.T) {
 // несёт файл ВТОРОГО пакета (`_test`-суффикс имени пакета — законная форма Go),
 // и в нём то же имя. Взять первое молча значило бы вынести вердикт о половине.
 func TestPkgVarDecl_RefusesOnTwoDeclarations(t *testing.T) {
+	t.Parallel()
 	s := newPkgDeclStand(t)
 	s.write(t, "svc/authzmap/fga_types.go", `package authzmap
 
@@ -155,6 +160,7 @@ var objectTypes = map[string]string{"gamma.one": "gamma_one"}
 // вложенный каталог — ДРУГОЙ пакет, и его объявление здешним не считается.
 // Без этой пробы разрешение по каталогу тихо расширилось бы на поддерево.
 func TestPkgVarDecl_IgnoresNestedPackages(t *testing.T) {
+	t.Parallel()
 	s := newPkgDeclStand(t)
 	s.write(t, "svc/authzmap/nested/other.go", `package nested
 

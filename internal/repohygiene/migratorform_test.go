@@ -21,6 +21,7 @@ import (
 )
 
 func TestMigratorFormIsOneAndItIsDeclared(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	paths, err := treecorpus.UnderWithSuffix(filepath.Join(root, "services"), ".go")

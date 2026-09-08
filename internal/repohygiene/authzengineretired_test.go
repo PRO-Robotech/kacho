@@ -73,6 +73,7 @@ func engineRetirementSources(t *testing.T) (string, map[string]string) {
 // Разбор класса и граница предиката — в шапке authzengineretired.go. Здесь только
 // обход дерева и вердикт.
 func TestR7_3_26_EngineIsNotInTheDecisionPath(t *testing.T) {
+	t.Parallel()
 	_, sources := engineRetirementSources(t)
 
 	findings, census, err := FindRetiredEngineSurface(sources, exemptFromEngineRetirement)
@@ -116,6 +117,7 @@ func TestR7_3_26_EngineIsNotInTheDecisionPath(t *testing.T) {
 // прогоняется БЕЗ послаблений, и от каждой записи требуется хотя бы одна находка
 // под её префиксом.
 func TestR7_3_26_EngineExemptionsStillHaveASubject(t *testing.T) {
+	t.Parallel()
 	_, sources := engineRetirementSources(t)
 
 	// Разбор БЕЗ послаблений: что гейт увидел бы, не будь их вовсе.

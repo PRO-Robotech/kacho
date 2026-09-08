@@ -96,6 +96,7 @@ const sharedSigningLiteralGateFile = "internal/repohygiene/sharedsigningliteral_
 
 // TestNoSharedSymmetricSigningLiteralInTrackedTree — сам запрет.
 func TestNoSharedSymmetricSigningLiteralInTrackedTree(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 
@@ -145,6 +146,7 @@ func TestNoSharedSymmetricSigningLiteralInTrackedTree(t *testing.T) {
 // находок» на пустом или нечитаемом дереве, выглядел бы точно так же, как гейт,
 // действительно осмотревший дерево.
 func TestSharedSigningLiteralGateInjection(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 
 	// (а) НАСТОЯЩИЙ дефект: тот самый литерал в оснастке, в форме, в которой он

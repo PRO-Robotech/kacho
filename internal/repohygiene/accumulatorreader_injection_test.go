@@ -98,6 +98,7 @@ func (r *Refusals) Counts() (refused, passed uint64) {
 
 // TestAccumulatorGateFindsACarrierWithoutAReader — НАХОДКА, названная координатой.
 func TestAccumulatorGateFindsACarrierWithoutAReader(t *testing.T) {
+	t.Parallel()
 	accs, findings, stale := judge(t, map[string]string{"gateway/internal/acc/acc.go": carrierSrc}, nil)
 
 	if len(accs) != 1 {
@@ -119,6 +120,7 @@ func TestAccumulatorGateFindsACarrierWithoutAReader(t *testing.T) {
 
 // TestAccumulatorGateIsSilentOnACarrierWithAReader — МОЛЧАНИЕ на законном близнеце.
 func TestAccumulatorGateIsSilentOnACarrierWithAReader(t *testing.T) {
+	t.Parallel()
 	_, findings, _ := judge(t, map[string]string{
 		"gateway/internal/acc/acc.go": carrierSrc,
 		"gateway/internal/rd/rd.go": `package rd
@@ -145,6 +147,7 @@ func Report(r *acc.Refusals) uint64 { a, b := r.Counts(); return a + b }
 // именно эта проба показала, что она недостижима: при её снятии проба
 // оставалась зелёной, то есть доказывала не то, что заявляла.
 func TestAccumulatorGateDoesNotCountAReadInTheDeclaringPackage(t *testing.T) {
+	t.Parallel()
 	_, findings, _ := judge(t, map[string]string{
 		"gateway/internal/acc/acc.go": carrierSrc,
 		"gateway/internal/acc/self.go": `package acc
@@ -160,6 +163,7 @@ func (r *Refusals) Announce() uint64 { a, b := r.Counts(); return a + b }
 // TestAccumulatorGateDoesNotCountANameCollision — совпадение имени без импорта
 // объявителя читателем не является.
 func TestAccumulatorGateDoesNotCountANameCollision(t *testing.T) {
+	t.Parallel()
 	_, findings, _ := judge(t, map[string]string{
 		"gateway/internal/acc/acc.go": carrierSrc,
 		"gateway/internal/other/other.go": `package other
@@ -181,6 +185,7 @@ func Use(u Unrelated) uint64 { a, b := u.Counts(); return a + b }
 // Форма не экзотическая, а основная: композиционный корень отдаёт читателя
 // именно значением метода. Гейт, требующий скобок, требовал бы ритуала.
 func TestAccumulatorGateCountsAMethodValueAsAReader(t *testing.T) {
+	t.Parallel()
 	_, findings, _ := judge(t, map[string]string{
 		"gateway/internal/acc/acc.go": carrierSrc,
 		"gateway/internal/rd/rd.go": `package rd
@@ -204,6 +209,7 @@ func Wire(r *acc.Refusals) reg { return reg{read: r.Counts} }
 // защёлках `closed`/`stopped`/`ready`, которых в дереве десятки, — и такой гейт
 // сняли бы следующим как ложный.
 func TestAccumulatorGateIgnoresALatch(t *testing.T) {
+	t.Parallel()
 	accs, findings, _ := judge(t, map[string]string{
 		"gateway/internal/acc/latch.go": `package acc
 
@@ -229,6 +235,7 @@ func (l *Latch) Closed() bool { return l.closed.Load() }
 // Обратная сторона предыдущей оси. Без неё вычет съел бы кэш вердиктов базовой
 // полосы — тот самый предмет, ради которого гейт трогали (#1221).
 func TestAccumulatorGateKeepsASnapshotBuiltAroundALatch(t *testing.T) {
+	t.Parallel()
 	accs, findings, _ := judge(t, map[string]string{
 		"gateway/internal/acc/lane.go": `package acc
 
@@ -255,6 +262,7 @@ func (l *Lane) CacheStats() Stats { return Stats{AtCapacity: l.atCapacity.Load()
 // TestAccumulatorGateIgnoresAMethodThatTakesArguments — метод с параметром
 // слепком не является: слепок отвечает «каковы величины», а не «какова эта».
 func TestAccumulatorGateIgnoresAMethodThatTakesArguments(t *testing.T) {
+	t.Parallel()
 	accs, _, _ := judge(t, map[string]string{
 		"gateway/internal/acc/acc.go": `package acc
 
@@ -278,6 +286,7 @@ func (b *Buckets) At(i int) uint64 { _ = i; return b.n.Load() }
 // гейт в этот раз и трогали, — а перепись назвала на один накопитель меньше, чем
 // есть, что от исправной работы неотличимо.
 func TestAccumulatorGateSeesAGenericCarrier(t *testing.T) {
+	t.Parallel()
 	accs, findings, _ := judge(t, map[string]string{
 		"gateway/internal/acc/cache.go": `package acc
 
@@ -301,6 +310,7 @@ func (c *Cache[K, V]) Evictions() uint64 { return c.evictions.Load() }
 // TestOpenFindingWithAReaderIsStale — САМОИСТЕЧЕНИЕ, форма первая: у записи
 // появился читатель.
 func TestOpenFindingWithAReaderIsStale(t *testing.T) {
+	t.Parallel()
 	_, findings, stale := judge(t, map[string]string{
 		"gateway/internal/acc/acc.go": carrierSrc,
 		"gateway/internal/rd/rd.go": `package rd
@@ -323,6 +333,7 @@ func Report(r *acc.Refusals) uint64 { a, b := r.Counts(); return a + b }
 // TestOpenFindingWithoutASubjectIsStale — САМОИСТЕЧЕНИЕ, форма вторая: носителя
 // в дереве больше нет.
 func TestOpenFindingWithoutASubjectIsStale(t *testing.T) {
+	t.Parallel()
 	_, _, stale := judge(t, map[string]string{"gateway/internal/acc/acc.go": carrierSrc},
 		[]openAccumulatorFinding{{
 			dir: "gateway/internal/nowhere", typ: "Ghost", accessor: "Counts", owner: "проба",
@@ -337,6 +348,7 @@ func TestOpenFindingWithoutASubjectIsStale(t *testing.T) {
 //
 // Без неё самоистечение зеленело бы на таблице, объявляющей просроченным всё.
 func TestOpenFindingWithALiveSubjectIsSilent(t *testing.T) {
+	t.Parallel()
 	_, findings, stale := judge(t, map[string]string{"gateway/internal/acc/acc.go": carrierSrc},
 		[]openAccumulatorFinding{{
 			dir: "gateway/internal/acc", typ: "Refusals", accessor: "Counts", owner: "проба",

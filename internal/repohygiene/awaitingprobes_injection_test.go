@@ -15,6 +15,7 @@ import "testing"
 //
 // Каждый случай снимает у входа РОВНО ОДНО свойство; остальные на месте.
 func TestAwaitingProbeJudgeExpiresOnlyWhenBothHalvesAreCreated(t *testing.T) {
+	t.Parallel()
 	// Словарь писанных видов синтетический и одинаков во всех случаях:
 	// различие между ними обязано быть только во входе.
 	served := map[string]struct{}{"compute_instance": {}, "vpc_network": {}}
@@ -115,6 +116,7 @@ func TestAwaitingProbeJudgeExpiresOnlyWhenBothHalvesAreCreated(t *testing.T) {
 // а не поведение гейта: следующий вызывающий вправе прийти с другим источником
 // словаря.
 func TestAwaitingProbeJudgeRefusesToBlessAnEmptyDictionary(t *testing.T) {
+	t.Parallel()
 	got := judgeAwaitingProbes(
 		map[string]string{"a.spec.ts": "kinds=compute_instance"}, true, map[string]struct{}{})
 	t.Logf("перепись: писанных видов 0 · проб 1 · истекло %v · ждут вида %v",

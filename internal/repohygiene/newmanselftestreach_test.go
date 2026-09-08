@@ -197,6 +197,7 @@ func collectNewmanSelftestSuites(t *testing.T, root string) []newmanSelftestSuit
 }
 
 func TestNewmanSelftestIsReachableFromItsRunner(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	suites := collectNewmanSelftestSuites(t, root)
 

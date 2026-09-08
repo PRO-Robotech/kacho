@@ -46,6 +46,7 @@ func injFormerScan(t *testing.T, c injFormerCorpus) ([]formerRepoFinding, former
 // ── сторона (а): дефект краснеет и называет координату ───────────────────────
 
 func TestFormerRepoGate_RedsOnAPresentTenseCodeHome(t *testing.T) {
+	t.Parallel()
 	corpus := injFormerCorpus{
 		"services/geo/docs/content/intro.mdx": "Источник истины — Protocol Buffers в `kacho-proto`.\n",
 	}
@@ -62,6 +63,7 @@ func TestFormerRepoGate_RedsOnAPresentTenseCodeHome(t *testing.T) {
 }
 
 func TestFormerRepoGate_RedsOnCorelibToo(t *testing.T) {
+	t.Parallel()
 	corpus := injFormerCorpus{
 		"a.md": "Переиспользуемое приходит из `kacho-corelib` — не дублируется.\n",
 	}
@@ -76,6 +78,7 @@ func TestFormerRepoGate_RedsOnCorelibToo(t *testing.T) {
 // Эталон, оставленный намеренно при закрытии #1448: прежнее имя рядом с
 // нынешней координатой. Гейт не судит время глагола — он судит соседство.
 func TestFormerRepoGate_SilentWhenTheCurrentCoordinateStandsBeside(t *testing.T) {
+	t.Parallel()
 	corpus := injFormerCorpus{
 		"services/vpc/docs/engineering/architecture/README.md": "" +
 			"- `pkg/` монорепо — `ids`, `operations`, … (прежде отдельный репозиторий `kacho-corelib`).\n" +
@@ -94,6 +97,7 @@ func TestFormerRepoGate_SilentWhenTheCurrentCoordinateStandsBeside(t *testing.T)
 
 // Проза переносится по ширине, поэтому координата бывает на соседней строке.
 func TestFormerRepoGate_SilentWhenTheCoordinateIsOnTheNeighbouringLine(t *testing.T) {
+	t.Parallel()
 	corpus := injFormerCorpus{
 		"a.md": "Общие пакеты лежат в `pkg/` монорепо\n(прежде отдельный репозиторий `kacho-corelib`).\n",
 	}
@@ -119,6 +123,7 @@ func TestFormerRepoGate_SilentWhenTheCoordinateIsOnTheNeighbouringLine(t *testin
 // оказывается на третьей. Прежнее окно (±1) объявляло такой текст находкой, хотя
 // он и есть эталон: имя названо историей, место названо рядом.
 func TestFormerRepoGate_SilentWhenTheCoordinateIsTwoLinesDownInTheSameParagraph(t *testing.T) {
+	t.Parallel()
 	corpus := injFormerCorpus{
 		"services/vpc/docs/content/intro.mdx": "" +
 			":::note Здесь стояла таблица репозиториев — топологии, которой нет\n" +
@@ -143,6 +148,7 @@ func TestFormerRepoGate_SilentWhenTheCoordinateIsTwoLinesDownInTheSameParagraph(
 // Обратная сторона того же расширения: окно НЕ протекает через границу абзаца.
 // Иначе координата из соседнего рассуждения оправдывала бы живое утверждение.
 func TestFormerRepoGate_WindowDoesNotLeakAcrossAParagraphBoundary(t *testing.T) {
+	t.Parallel()
 	corpus := injFormerCorpus{
 		"a.md": "" +
 			"Источник истины контрактов — `kacho-proto`, туда и ходить за схемой.\n" +
@@ -163,6 +169,7 @@ func TestFormerRepoGate_WindowDoesNotLeakAcrossAParagraphBoundary(t *testing.T) 
 // Расширение окна не сделало гейт вакуумным: вхождение без координаты ГДЕ БЫ ТО
 // НИ БЫЛО в своём абзаце по-прежнему находка, и она называет координату.
 func TestFormerRepoGate_StillRedsWhenTheParagraphNamesNoCoordinateAtAll(t *testing.T) {
+	t.Parallel()
 	corpus := injFormerCorpus{
 		"services/nlb/docs/content/intro.mdx": "" +
 			"Переиспользуемое приходит из `kacho-corelib` и не дублируется по сервисам.\n" +
@@ -185,6 +192,7 @@ func TestFormerRepoGate_StillRedsWhenTheParagraphNamesNoCoordinateAtAll(t *testi
 // `proto/` внутри `kacho-proto/...` — часть самого прежнего имени. Засчитать её
 // за нынешнюю координату значило бы дать дефекту оправдать себя.
 func TestFormerRepoGate_DoesNotAcceptTheDefectAsItsOwnJustification(t *testing.T) {
+	t.Parallel()
 	corpus := injFormerCorpus{
 		"a.md": "Тексты сверены с proto (kacho-proto/.../compute/v1) и кодом.\n",
 	}
@@ -209,6 +217,7 @@ func TestFormerRepoGate_DoesNotAcceptTheDefectAsItsOwnJustification(t *testing.T
 // маскирование отдаёт дефекту оправдание. Маскируется поэтому имя ВМЕСТЕ с
 // путём, который за ним следует.
 func TestFormerRepoGate_DoesNotAcceptTheDefectAsItsOwnJustification_RealTreeForm(t *testing.T) {
+	t.Parallel()
 	corpus := injFormerCorpus{
 		"services/vpc/docs/README.md": "- `kacho-proto/proto/kacho/cloud/vpc/v1/*.proto` — контракт API;\n",
 	}
@@ -223,6 +232,7 @@ func TestFormerRepoGate_DoesNotAcceptTheDefectAsItsOwnJustification_RealTreeForm
 // обязан зачитываться. Без этой стороны маскирование пути ловило бы форму
 // «слэш после имени», а не существо.
 func TestFormerRepoGate_AcceptsAFullCurrentPathNextToTheFormerName(t *testing.T) {
+	t.Parallel()
 	corpus := injFormerCorpus{
 		"a.md": "- `proto/kacho/cloud/vpc/v1/*.proto` — контракт API (прежде `kacho-proto`);\n",
 	}
@@ -234,6 +244,7 @@ func TestFormerRepoGate_AcceptsAFullCurrentPathNextToTheFormerName(t *testing.T)
 
 // Зеркало предыдущего: настоящая координата в той же форме обязана зачитываться.
 func TestFormerRepoGate_AcceptsARealPathNextToTheFormerName(t *testing.T) {
+	t.Parallel()
 	corpus := injFormerCorpus{
 		"a.md": "Контракты лежат в proto/kacho/cloud/compute/v1 (прежде `kacho-proto`).\n",
 	}
@@ -247,6 +258,7 @@ func TestFormerRepoGate_AcceptsARealPathNextToTheFormerName(t *testing.T) {
 // перечня имён, а не выписано под одно из них. `pkg/` в хвосте
 // `kacho-corelib/pkg/ids` — часть дефектной координаты, а не нынешнее место.
 func TestFormerRepoGate_MaskingCoversEveryNameInTheLedger(t *testing.T) {
+	t.Parallel()
 	corpus := injFormerCorpus{
 		"a.md": "- `kacho-corelib/pkg/ids` — генерация идентификаторов;\n",
 	}
@@ -261,6 +273,7 @@ func TestFormerRepoGate_MaskingCoversEveryNameInTheLedger(t *testing.T) {
 // ── предпосылка: ноль вхождений — «не прочитано», а не «чисто» ───────────────
 
 func TestFormerRepoGate_ZeroOccurrencesIsDistinguishableFromZeroFindings(t *testing.T) {
+	t.Parallel()
 	corpus := injFormerCorpus{"a.md": "страница без единого прежнего имени\n"}
 	findings, census := injFormerScan(t, corpus)
 	if len(findings) != 0 {
@@ -278,6 +291,7 @@ func TestFormerRepoGate_ZeroOccurrencesIsDistinguishableFromZeroFindings(t *test
 
 // Имя сервиса прежним именем репозитория не является и находкой быть не должно.
 func TestFormerRepoGate_DoesNotAccuseServiceNames(t *testing.T) {
+	t.Parallel()
 	corpus := injFormerCorpus{
 		"a.md": "Ребро `kacho-vpc` → `kacho-geo`; SPIFFE ns/kacho-api-gateway.\n",
 	}

@@ -160,6 +160,7 @@ func exclusionKinds(findings []ClientTruthKanameExclusionFormFinding) []string {
 // Без этого прогона любое «краснеет» ниже доказывало бы лишь то, что он
 // краснеет всегда.
 func TestExclusionFormGate_SilentOnTheLegalStand(t *testing.T) {
+	t.Parallel()
 	f, c := newExclusionStand(t).run(t)
 	if len(f) != 0 {
 		t.Fatalf("гейт краснеет на законном стенде: %v", exclusionKinds(f))
@@ -197,6 +198,7 @@ const exclusionGuidePromisesRefusal = `# Установка
 `
 
 func TestExclusionFormGate_PromisedRefusalWithoutAProducerIsFound(t *testing.T) {
+	t.Parallel()
 	s := newExclusionStand(t)
 	s.write(t, "guide/INSTALL.md", exclusionGuidePromisesRefusal)
 
@@ -224,6 +226,7 @@ func TestExclusionFormGate_PromisedRefusalWithoutAProducerIsFound(t *testing.T) 
 // остаётся решением владельца, и гейт его не запрещает. Вернётся ветвь —
 // утверждение A умолкнет само.
 func TestExclusionFormGate_PromisedRefusalWithAProducerIsSilent(t *testing.T) {
+	t.Parallel()
 	s := newExclusionStand(t)
 	s.write(t, "guide/INSTALL.md", exclusionGuidePromisesRefusal)
 	s.write(t, "svc/presentedcred/reader.go", `package presentedcred
@@ -252,6 +255,7 @@ func (r *Reader) decide(raw string) error {
 // Требуются ВСЕ слова: иначе производителем сочтётся любой отказ, говорящий
 // «presented», а таких у читателя большинство.
 func TestExclusionFormGate_RefusalNamingOneFormIsNotAProducer(t *testing.T) {
+	t.Parallel()
 	s := newExclusionStand(t)
 	s.write(t, "guide/INSTALL.md", exclusionGuidePromisesRefusal)
 	s.write(t, "svc/presentedcred/reader.go", `package presentedcred
@@ -274,6 +278,7 @@ func (r *Reader) decide(raw string) error {
 // Страница пишет `ОБЕ` прописными; предикат, читающий написанное, промолчал бы
 // на живом производителе. Та же слепота, что четырежды за жизнь приёмки.
 func TestExclusionFormGate_UppercaseClaimIsJudged(t *testing.T) {
+	t.Parallel()
 	s := newExclusionStand(t)
 	s.write(t, "guide/INSTALL.md", `# Установка
 
@@ -291,6 +296,7 @@ func TestExclusionFormGate_UppercaseClaimIsJudged(t *testing.T) {
 // B. ПОСТРОЕНИЕ ЖИВО, А СТРАНИЦА ЕГО НЕ НАЗЫВАЕТ
 
 func TestExclusionFormGate_UnnamedConstructionIsFound(t *testing.T) {
+	t.Parallel()
 	s := newExclusionStand(t)
 	// Один изменённый факт: абзац предмета перестал называть построение.
 	// Отказа он не обещает — иначе краснели бы оба утверждения разом.
@@ -317,6 +323,7 @@ func TestExclusionFormGate_UnnamedConstructionIsFound(t *testing.T) {
 // не говорит такого-то слова») здесь ЗАМОЛЧАЛО БЫ — вход, на котором оно находит
 // нарушение, перестал быть представимым.
 func TestExclusionFormGate_VanishedSubjectIsFound(t *testing.T) {
+	t.Parallel()
 	s := newExclusionStand(t)
 	s.write(t, "guide/INSTALL.md", "# Установка\n\nПоднимите службу и позовите её.\n")
 
@@ -339,6 +346,7 @@ func TestExclusionFormGate_VanishedSubjectIsFound(t *testing.T) {
 // зелёный вердикт, а отсутствие предмета, обязан сказать ВЫЗЫВАЮЩИЙ переписью:
 // прогон по дереву падает на `StripCalls == 0` премисой.
 func TestExclusionFormGate_NoStripInTheTreeSilencesB(t *testing.T) {
+	t.Parallel()
 	s := newExclusionStand(t)
 	s.write(t, "guide/INSTALL.md", `# Установка
 
@@ -364,6 +372,7 @@ func TestExclusionFormGate_NoStripInTheTreeSilencesB(t *testing.T) {
 // сигнатурах. Проверка по подстроке объявила бы механизм живым при снятой
 // провязке — то есть дала бы зелёное ровно там, где предмет уехал.
 func TestExclusionFormGate_DeclarationAloneIsNotAWiring(t *testing.T) {
+	t.Parallel()
 	s := newExclusionStand(t)
 	if err := os.Remove(filepath.Join(s.root, "edge/cmd/api-gateway/main.go")); err != nil {
 		t.Fatal(err)
@@ -388,6 +397,7 @@ func TestExclusionFormGate_DeclarationAloneIsNotAWiring(t *testing.T) {
 // материал для отличия анализатор обязан ему дать — перепись, у которой на
 // пустом обходе нули по КАЖДОЙ оси. Здесь утверждается ровно это.
 func TestExclusionFormGate_EmptyTraversalIsNotASilentSuccess(t *testing.T) {
+	t.Parallel()
 	s := &exclusionStand{root: t.TempDir()}
 	s.write(t, "guide/INSTALL.md", "# Установка\n")
 
@@ -408,6 +418,7 @@ func TestExclusionFormGate_EmptyTraversalIsNotASilentSuccess(t *testing.T) {
 //
 // Молчаливый ноль здесь означал бы гейт, переживший переезд своего предмета.
 func TestExclusionFormGate_MissingGuideIsAnError(t *testing.T) {
+	t.Parallel()
 	s := newExclusionStand(t)
 	if err := os.Remove(filepath.Join(s.root, "guide/INSTALL.md")); err != nil {
 		t.Fatal(err)

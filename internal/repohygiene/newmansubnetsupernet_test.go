@@ -170,6 +170,7 @@ func familiesIn(text string) planFamilies {
 // TestSubnetFixtureNeverCarvesFromAPlanlessNetwork — ни одна фикстура не режет
 // подсеть с адресом в сети, которая к этому моменту плана не объявила.
 func TestSubnetFixtureNeverCarvesFromAPlanlessNetwork(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	files := 0
@@ -803,6 +804,7 @@ func forEachCollectionForSubnetSupernet(t *testing.T, root string, fn func(rel s
 // TestSubnetSupernetGateRedOnInjectedDefect — фикстура без плана краснит гейт И
 // называет координату (кейс и шаг).
 func TestSubnetSupernetGateRedOnInjectedDefect(t *testing.T) {
+	t.Parallel()
 	got := analyzeSubnetSupernetFixtures(t, "injected.json", []byte(`{"item":[{
       "name":"SUB-X — carve without a plan",
       "item":[
@@ -842,6 +844,7 @@ func TestSubnetSupernetGateRedOnInjectedDefect(t *testing.T) {
 // запрещал бы нарезку v4 в сети, объявившей план только v4, — и был бы снят первым
 // же ложным срабатыванием.
 func TestSubnetSupernetGateSeesFamiliesApart(t *testing.T) {
+	t.Parallel()
 	const shape = `{"item":[{"name":"F — %s carve on a %s-only plan","item":[
       {"name":"mk-net","request":{"method":"POST","url":{"raw":"{{baseUrl}}/vpc/v1/networks"},
         "body":{"raw":"{\"name\":\"n\",\"%sCidrBlocks\":[\"%s\"]}"}},
@@ -901,6 +904,7 @@ func TestSubnetSupernetGateSeesFamiliesApart(t *testing.T) {
 // Без этой стороны гейт запрещал бы создание сети без плана как таковое — и первым
 // же ложным срабатыванием (на кейсе, чей предмет и есть отказ) был бы снят.
 func TestSubnetSupernetGateSilentOnLawfulSameShape(t *testing.T) {
+	t.Parallel()
 	got := analyzeSubnetSupernetFixtures(t, "lawful.json", []byte(`{"item":[
       {"name":"A — plan declared in the create body","item":[
         {"name":"pre-net","request":{"method":"POST","url":{"raw":"{{baseUrl}}/vpc/v1/networks"},

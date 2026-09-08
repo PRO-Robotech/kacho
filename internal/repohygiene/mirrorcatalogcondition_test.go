@@ -346,6 +346,7 @@ func mirrorConditionReport(writes []mirrorWrite, ledger map[string]string) mirro
 // оператор, ВВОДЯЩИЙ строку зеркала ресурсов, спрашивает каталог тем же условием,
 // каким его спрашивает эталонная полоса, либо назван исключением с причиной.
 func TestMirrorRowCatalogConditionReachesEveryWriter(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	out, err := gitenv.Command(root, "ls-files", "-z", "--", "*.go").Output()
 	if err != nil {

@@ -212,6 +212,7 @@ describe("InjectedWidget", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 func TestUISourceReadPredicateSeparatesDefectFromCensus(t *testing.T) {
+	t.Parallel()
 	const (
 		defectSelf  = "ui-future/shared/src/components/organisms/InjectedWidget/InjectedWidget.test.tsx"
 		defectNamed = "ui-future/nlb/src/injected-dev-proxy.test.ts"
@@ -302,6 +303,7 @@ func TestUISourceReadPredicateSeparatesDefectFromCensus(t *testing.T) {
 // Третий случай — путь, собранный СТРОКОЙ ВЫШЕ: без него сужение оставило бы
 // дыру шириной в одну строку.
 func TestUISourceReadPredicateTellsCoordinateFromLabel(t *testing.T) {
+	t.Parallel()
 	const (
 		labelPath    = "ui-future/shared/src/test/injected-synthetic-labels.test.ts"
 		labelReadRel = "ui-future/shared/src/test/injected-label-really-read.test.ts"
@@ -365,6 +367,7 @@ func TestUISourceReadPredicateTellsCoordinateFromLabel(t *testing.T) {
 // Без этого гейт нашёл бы `readFileSync` в абзаце, который сам же объясняет
 // запрет, и остался бы зелёным при снятой защите.
 func TestUISourceReadPredicateReadsCodeNotText(t *testing.T) {
+	t.Parallel()
 	const rel = "ui-future/shared/src/components/organisms/Decoy/Decoy.test.tsx"
 
 	t.Run("запрещённая форма в КОММЕНТАРИИ — не находка", func(t *testing.T) {
@@ -520,6 +523,7 @@ func writeUIProbes(t *testing.T, root string, files map[string]string) {
 }
 
 func TestUISourceReadGateOnTreeFailsOnInjectedDefect(t *testing.T) {
+	t.Parallel()
 	// Краткого режима здесь НЕТ намеренно: пропуск сделал бы весь пакет
 	// краткогейтящим, а он не входит ни в один отбор интеграционной джобы —
 	// то есть доказательство способности гейта упасть не исполнялось бы нигде.
@@ -602,6 +606,7 @@ func TestUISourceReadGateOnTreeFailsOnInjectedDefect(t *testing.T) {
 // НАЗЫВАЕТ, а не его вердикт: вердикт про живое дерево даёт сам гейт в этом же
 // пакете, и дублировать его здесь значило бы завести два места об одном.
 func TestUISourceReadGateJudgesTheLiveTreeByDefault(t *testing.T) {
+	t.Parallel()
 	module := repoRoot(t)
 	_, judged, log, _ := runTreeGate(t, module, "")
 	if judged != module {
@@ -743,6 +748,7 @@ describe("OwnWidget", () => {
 // законные формы записи обхода, и различает их по тому, ДОХОДИТ ли проба до
 // обхода, а не по факту импорта помощника.
 func TestUISourceReadPredicateSeesTreeWalkBehindAHelper(t *testing.T) {
+	t.Parallel()
 	const (
 		helperPath = "ui-future/shared/src/test/shared-symbol-sweep.ts"
 		censusPath = "ui-future/compute/src/api/injected-helper-census.test.ts"
@@ -863,6 +869,7 @@ describe("носители обряда объявлены один раз", () 
 // обхода через местную функцию, обходящим не признаётся, и перепись, записанная
 // этой формой, снова объявляется дефектом.
 func TestUISourceReadPredicateFollowsWalksThroughLocalHelpers(t *testing.T) {
+	t.Parallel()
 	const (
 		helperPath = "ui-future/shared/src/test/identity-ceremony-carriers.ts"
 		censusPath = "ui-future/shared/src/test/injected-ceremony-census.test.ts"

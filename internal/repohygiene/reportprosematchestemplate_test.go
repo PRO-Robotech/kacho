@@ -73,6 +73,7 @@ var reportGlobs = []string{
 }
 
 func TestReportProseMatchesTheTemplateThatPrintsIt(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// ── отчёты ──

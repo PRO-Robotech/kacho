@@ -73,6 +73,7 @@ func nothing() {}
 `
 
 func TestMigrationNameProducer_ProvenByInjection(t *testing.T) {
+	t.Parallel()
 	scan := func(t *testing.T, name, src string) ([]nameProducerFinding, bool, int) {
 		t.Helper()
 		got, imports, checked, err := scanNameProducers(token.NewFileSet(), name, src)

@@ -10,7 +10,7 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/loadbalancer/v1/listener.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1";
 
@@ -20,13 +20,13 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalan
 service ListenerService {
   rpc Get(GetListenerRequest) returns (Listener) {
     option (google.api.http) = {get: "/nlb/v1/listeners/{listener_id}"};
-    option (kacho.iam.authz.v1.permission)        = "loadbalancer.listeners.get";
-    option (kacho.iam.authz.v1.required_relation) = "v_get";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "loadbalancer.listeners.get";
+    option (corelib.authz.v1.required_relation) = "v_get";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "nlb_listener"
       from_request_field: "listener_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc List(ListListenersRequest) returns (ListListenersResponse) {
@@ -46,9 +46,9 @@ service ListenerService {
     // and filter by them. That enumeration is gone: it carries a hard server-side
     // cap and has no continuation, so resources past the cap became invisible to
     // their own owner while the grants were live.
-    option (kacho.iam.authz.v1.permission) = "loadbalancer.listeners.list";
-    option (kacho.iam.authz.v1.scope_filtered) = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.permission) = "loadbalancer.listeners.list";
+    option (corelib.authz.v1.scope_filtered) = true;
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Creates a listener under the specified load balancer. VIP allocation
@@ -63,15 +63,15 @@ service ListenerService {
       metadata: "CreateListenerMetadata"
       response: "Listener"
     };
-    option (kacho.iam.authz.v1.permission)        = "loadbalancer.listeners.create";
-    option (kacho.iam.authz.v1.required_relation) = "editor";
+    option (corelib.authz.v1.permission)        = "loadbalancer.listeners.create";
+    option (corelib.authz.v1.required_relation) = "editor";
     // Scope on parent LB rather than project: nlb_listener inherits from
     // nlb_load_balancer (design §6.1).
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "nlb_network_load_balancer"
       from_request_field: "load_balancer_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc Update(UpdateListenerRequest) returns (operation.Operation) {
@@ -83,13 +83,13 @@ service ListenerService {
       metadata: "UpdateListenerMetadata"
       response: "Listener"
     };
-    option (kacho.iam.authz.v1.permission)        = "loadbalancer.listeners.update";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "loadbalancer.listeners.update";
+    option (corelib.authz.v1.required_relation) = "v_update";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "nlb_listener"
       from_request_field: "listener_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc Delete(DeleteListenerRequest) returns (operation.Operation) {
@@ -98,24 +98,24 @@ service ListenerService {
       metadata: "DeleteListenerMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission)        = "loadbalancer.listeners.delete";
-    option (kacho.iam.authz.v1.required_relation) = "v_delete";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "loadbalancer.listeners.delete";
+    option (corelib.authz.v1.required_relation) = "v_delete";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "nlb_listener"
       from_request_field: "listener_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   rpc ListOperations(ListListenerOperationsRequest) returns (ListListenerOperationsResponse) {
     option (google.api.http) = {get: "/nlb/v1/listeners/{listener_id}/operations"};
-    option (kacho.iam.authz.v1.permission)        = "loadbalancer.listeners.listOperations";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "loadbalancer.listeners.listOperations";
+    option (corelib.authz.v1.required_relation) = "v_list";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "nlb_listener"
       from_request_field: "listener_id"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

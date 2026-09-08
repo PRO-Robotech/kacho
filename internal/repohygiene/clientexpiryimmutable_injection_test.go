@@ -92,6 +92,7 @@ func (r *UserOAuthClientRepo) Revoke(ctx context.Context, id string) error {
 // TestExpiryScannerFindsAnUpdateOfTheColumn — сторона (а): правка срока
 // становится находкой, и находка несёт координату.
 func TestExpiryScannerFindsAnUpdateOfTheColumn(t *testing.T) {
+	t.Parallel()
 	updates, census, err := ScanSQLUpdates(
 		"synthetic/pg/user_oauth_clients_repos.go", []byte(expiryInjectedUpdate), clientExpiryTables)
 	if err != nil {
@@ -132,6 +133,7 @@ func TestExpiryScannerFindsAnUpdateOfTheColumn(t *testing.T) {
 
 // TestExpiryScannerIsSilentOnLawfulStatements — сторона (б).
 func TestExpiryScannerIsSilentOnLawfulStatements(t *testing.T) {
+	t.Parallel()
 	updates, census, err := ScanSQLUpdates(
 		"synthetic/pg/user_oauth_clients_repos.go", []byte(expiryInjectedLawful), clientExpiryTables)
 	if err != nil {
@@ -171,6 +173,7 @@ func TestExpiryScannerIsSilentOnLawfulStatements(t *testing.T) {
 // Без этой пробы гейт мог бы стеречь неизменяемость столбца, которого нет, и
 // молчать по построению.
 func TestExpiryPremiseReadsTheColumnOfTheTable(t *testing.T) {
+	t.Parallel()
 	const withColumn = `-- +goose Up
 CREATE TABLE kaname.user_oauth_clients (
     id text NOT NULL,

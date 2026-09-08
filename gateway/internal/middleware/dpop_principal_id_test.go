@@ -33,7 +33,7 @@ func newDPoPProbeMiddleware(t *testing.T) *DPoPMiddleware {
 	}
 }
 
-func TestInjectVerifiedTokenHeaders_PrefersKachoPrincipalIDOverSub(t *testing.T) {
+func TestInjectVerifiedTokenHeaders_PrefersKanamePrincipalIDOverSub(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/iam/v1/users/x", nil)
 	vt := &VerifiedToken{
 		Subject: "zitadel-uuid-999", // raw OIDC sub — must NOT win

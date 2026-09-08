@@ -15,6 +15,7 @@ import (
 // `subjectchangegapdetection.go`; здесь он не пересказывается, иначе два места об
 // одном предмете разошлись бы молча.
 func TestSubjectChangeJournalDetectsAGapOnBothSides(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	var log strings.Builder
 

@@ -146,10 +146,6 @@ type Site struct {
 	File    string
 	Line    int
 	Window  time.Duration
-	// Inherited is true when the site passes a non-positive TTL and therefore
-	// takes the corelib default. Such a site has no number of its own; the
-	// number it uses is the policy's, which is exactly the shape we want.
-	Inherited bool
 }
 
 // Report is the outcome, including what was examined.
@@ -492,62 +488,6 @@ func parseWindow(knob, def string) (time.Duration, bool) {
 		return 0, false
 	}
 	return d, true
-}
-
-// InheritSite is a construction site that passes a NON-POSITIVE ttl and
-// therefore takes the policy default. Such a service has no number of its own,
-// which is precisely why it has to be recorded: "this service's window is the
-// policy default" is a fact about the tree, and a fact nobody wrote down is one
-// nobody can notice changing.
-type InheritSite struct {
-	Service string
-	File    string
-	Line    int
-}
-
-// ScanInherit parses one Go file and appends every `NewCache(<non-positive
-// literal>)` construction site.
-//
-// It matches the literal argument only. A site passing a VARIABLE (registry's
-// `authzCache(opts.CacheTTL)`) is deliberately not an inherit site: its window
-// comes from a knob, and the knob is what the census then has to declare. That
-// distinction is the whole point — "has no number" and "has a number I did not
-// read" must not collapse into the same answer.
-func ScanInherit(service, path, src string) ([]InheritSite, int, error) {
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, path, src, parser.ParseComments)
-	if err != nil {
-		return nil, 0, fmt.Errorf("parse %s: %w", path, err)
-	}
-	var out []InheritSite
-	ast.Inspect(f, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok || len(call.Args) == 0 {
-			return true
-		}
-		// authz.NewCache(x) or NewCache(x)
-		switch fn := call.Fun.(type) {
-		case *ast.SelectorExpr:
-			if fn.Sel.Name != "NewCache" {
-				return true
-			}
-		case *ast.Ident:
-			if fn.Name != "NewCache" {
-				return true
-			}
-		default:
-			return true
-		}
-		n0, ok := intLit(call.Args[0])
-		if !ok || n0 > 0 {
-			return true
-		}
-		out = append(out, InheritSite{
-			Service: service, File: path, Line: fset.Position(call.Pos()).Line,
-		})
-		return true
-	})
-	return out, 1, nil
 }
 
 // ScanConstructors reports whether the file constructs a corelib verdict cache

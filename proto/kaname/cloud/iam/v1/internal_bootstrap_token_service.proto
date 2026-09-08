@@ -59,7 +59,7 @@ package kaname.cloud.iam.v1;
 
 import "google/protobuf/timestamp.proto";
 import "kacho/cloud/api/secret_options.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1;iamv1";
 
@@ -89,8 +89,8 @@ service InternalBootstrapTokenService {
     // token, before any relation exists). The caller gate is the explicit
     // client-certificate SAN allow-list enforced by authzguard.CallerPolicy on
     // :9091 — see the file-level comment.
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
-    option (kacho.iam.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
+    option (corelib.authz.v1.permission) = "<exempt>";
+    option (corelib.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
   }
 }
 

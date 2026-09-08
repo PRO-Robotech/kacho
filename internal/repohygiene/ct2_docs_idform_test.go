@@ -38,6 +38,7 @@ func docsIDFormOptions(t *testing.T) DocsIDFormOptions {
 // Способность падать доказывает не этот прогон, а инъекция
 // (`ct2_docs_idform_injection_test.go`): здесь только вердикт.
 func TestDocsIDFormMatchesWhatTheCodeMints(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditDocsIDForm(docsIDFormOptions(t), &log)
 	if err != nil {

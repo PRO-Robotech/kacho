@@ -92,6 +92,7 @@ jobs:
 `
 
 func TestSecurityScanWiringGateCatchesDirectGosec(t *testing.T) {
+	t.Parallel()
 	w, err := auditSecurityScanWiring([]byte(synthScanDirectGosec))
 	if err != nil {
 		t.Fatalf("синтетика не разобралась: %v", err)
@@ -113,6 +114,7 @@ func TestSecurityScanWiringGateCatchesDirectGosec(t *testing.T) {
 }
 
 func TestSecurityScanWiringGateStaysSilentOnCensus(t *testing.T) {
+	t.Parallel()
 	w, err := auditSecurityScanWiring([]byte(synthScanViaCensus))
 	if err != nil {
 		t.Fatalf("близнец не разобрался: %v", err)
@@ -134,6 +136,7 @@ func TestSecurityScanWiringGateStaysSilentOnCensus(t *testing.T) {
 }
 
 func TestSecurityScanWiringGateReadsCodeNotComments(t *testing.T) {
+	t.Parallel()
 	w, err := auditSecurityScanWiring([]byte(synthScanMentionsGlobInComment))
 	if err != nil {
 		t.Fatalf("синтетика не разобралась: %v", err)
@@ -149,6 +152,7 @@ func TestSecurityScanWiringGateReadsCodeNotComments(t *testing.T) {
 }
 
 func TestSecurityScanWiringGateSeesMissingVerdict(t *testing.T) {
+	t.Parallel()
 	w, err := auditSecurityScanWiring([]byte(synthScanWithoutVerdict))
 	if err != nil {
 		t.Fatalf("синтетика не разобралась: %v", err)
@@ -162,6 +166,7 @@ func TestSecurityScanWiringGateSeesMissingVerdict(t *testing.T) {
 }
 
 func TestSecurityScanWiringGateSeesEmptyPremise(t *testing.T) {
+	t.Parallel()
 	w, err := auditSecurityScanWiring([]byte(synthScanNoRunSteps))
 	if err != nil {
 		t.Fatalf("синтетика не разобралась: %v", err)
@@ -176,6 +181,7 @@ func TestSecurityScanWiringGateSeesEmptyPremise(t *testing.T) {
 }
 
 func TestSecurityScanWiringGateFailsOnUnparsableDeclaration(t *testing.T) {
+	t.Parallel()
 	if _, err := auditSecurityScanWiring([]byte("jobs: [ это не карта\n")); err == nil {
 		t.Fatal("неразбираемое объявление принято молча. Файл, который НЕ проверен, " +
 			"обязан давать ошибку, а не тишину: тишина здесь читается как чистота.")

@@ -71,6 +71,7 @@ func nmDeleteStep(name string, script ...string) nmItem {
 
 // Утверждает 200, ждёт только 403 — ровно та форма, что упала на стволе.
 func TestDeleteRetryWindowGate_FailsOnAssert200WithoutWaiting404(t *testing.T) {
+	t.Parallel()
 	script := append(nmRetryGuard("403"), "pm.environment.set('opId', pm.response.json().id);")
 	script = append(script, nmDefaultDeleteAssert()...)
 
@@ -92,6 +93,7 @@ func TestDeleteRetryWindowGate_FailsOnAssert200WithoutWaiting404(t *testing.T) {
 
 // Тот же шаг, но окно ждёт и 404 — починенная форма.
 func TestDeleteRetryWindowGate_SilentWhenDeleteWaitsOut404(t *testing.T) {
+	t.Parallel()
 	script := append(nmRetryGuard("403,404"), "pm.environment.set('opId', pm.response.json().id);")
 	script = append(script, nmDefaultDeleteAssert()...)
 
@@ -111,6 +113,7 @@ func TestDeleteRetryWindowGate_SilentWhenDeleteWaitsOut404(t *testing.T) {
 // утверждения у него нет по построению — своё утверждение есть. Гейт обязан
 // молчать: иначе он требовал бы пережидать ровно то, ради чего проба написана.
 func TestDeleteRetryWindowGate_SilentWhenStepDeclares404AsItsOutcome(t *testing.T) {
+	t.Parallel()
 	script := append(nmRetryGuard("403"),
 		"pm.test('already gone', () => pm.expect(pm.response.code).to.eql(404));")
 
@@ -131,6 +134,7 @@ func TestDeleteRetryWindowGate_SilentWhenStepDeclares404AsItsOutcome(t *testing.
 // предмет (его держит `newmanfreshreadwrap_test.go`), и здесь он находкой не
 // является — иначе гейт судил бы о том, о чём не заявлял.
 func TestDeleteRetryWindowGate_SilentWhenStepIsNotWrappedAtAll(t *testing.T) {
+	t.Parallel()
 	script := append([]string{"pm.environment.set('opId', pm.response.json().id);"},
 		nmDefaultDeleteAssert()...)
 
@@ -151,6 +155,7 @@ func TestDeleteRetryWindowGate_SilentWhenStepIsNotWrappedAtAll(t *testing.T) {
 // коллекциях. Пропадут — синтетика выше продолжит зеленеть, доказывая свойство
 // вчерашнего дерева; эта проба скажет об этом прямо.
 func TestDeleteRetryWindowGate_MechanismsPresentInRealCollections(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 	var cols []string

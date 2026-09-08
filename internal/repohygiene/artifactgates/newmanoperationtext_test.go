@@ -417,6 +417,7 @@ func optCollections(tt *trackedTree) []string {
 }
 
 func TestOperationLaneMessageIsAssertedVerbatim(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Состав дерева — из ИНДЕКСА git: под корнем лежат рабочие копии агентов и

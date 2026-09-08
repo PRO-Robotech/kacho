@@ -104,6 +104,7 @@ func deployPages(t *testing.T, root string) []string {
 // Проваливается на: странице без раздела отката; разделе без `helm rollback`;
 // разделе, молчащем о том, что данные не возвращаются; и на пустом обходе.
 func TestEveryDeployPageDocumentsRollbackAndItsIrreversibleHalf(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	pages := deployPages(t, root)
 

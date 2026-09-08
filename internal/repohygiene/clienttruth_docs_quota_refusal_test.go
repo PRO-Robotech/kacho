@@ -19,6 +19,7 @@ import (
 // clienttruth_docs_quota_refusal.go. Способность падать и молчать доказана
 // инъекцией: clienttruth_docs_quota_refusal_injection_test.go.
 func TestDocsDescribeQuotaRefusalExactlyAtItsOwners(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Состав дерева — ИНДЕКС git, а не обход диска: под services/ на машине, где

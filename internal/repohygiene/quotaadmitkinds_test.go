@@ -63,6 +63,7 @@ var (
 )
 
 func TestQuotaAdvisoryBandAsksAboutTheKindsTheTriggerCharges(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Сторона авторитетной полосы.

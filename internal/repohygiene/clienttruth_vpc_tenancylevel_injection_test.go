@@ -138,6 +138,7 @@ func (s *tenancyStand) run(t *testing.T) ([]TenancyLevelFinding, TenancyLevelCen
 // TestTenancyLevelInjection_CleanStandIsSilent — контроль. Без него всякая
 // последующая краснота неотличима от анализатора, краснеющего на всём.
 func TestTenancyLevelInjection_CleanStandIsSilent(t *testing.T) {
+	t.Parallel()
 	s := newTenancyStand(t)
 	findings, census := s.run(t)
 	if len(findings) != 0 {
@@ -172,6 +173,7 @@ func TestTenancyLevelInjection_CleanStandIsSilent(t *testing.T) {
 // TestTenancyLevelInjection_MissingContainerIsFound — ИНЪЕКЦИЯ: у существующего
 // утверждения меняется ОДНО свойство — названный контейнер. Остальное цело.
 func TestTenancyLevelInjection_MissingContainerIsFound(t *testing.T) {
+	t.Parallel()
 	s := newTenancyStand(t)
 	s.write(t, "proto/kacho/cloud/probevpc/v1/net.proto", `
 syntax = "proto3";
@@ -215,6 +217,7 @@ message ProbeNic {
 // названный уровень ПО-НАСТОЯЩЕМУ, и анализатор замолчит сам. Без этой ветви
 // гейт требовал бы вечного умолчания об уровне, который однажды появится.
 func TestTenancyLevelInjection_RealLevelSilencesTheGate(t *testing.T) {
+	t.Parallel()
 	s := newTenancyStand(t)
 	s.write(t, "proto/kacho/cloud/probevpc/v1/net.proto", `
 syntax = "proto3";
@@ -242,6 +245,7 @@ message ProbeNet {
 // нашёлся бы ни разу, и анализатор краснел бы на ВЕРНЫХ комментариях. Инъекция
 // снимает поле `nic_id`, оставив утверждение на месте.
 func TestTenancyLevelInjection_AcronymTraceIsFound(t *testing.T) {
+	t.Parallel()
 	s := newTenancyStand(t)
 	s.write(t, "proto/kacho/cloud/probevpc/v1/net.proto", `
 syntax = "proto3";
@@ -265,6 +269,7 @@ message ProbeNic {
 // из текста. Поле, упомянутое только комментарием, следом не является: иначе
 // анализатор замолчал бы ровно на том входе, ради которого написан.
 func TestTenancyLevelInjection_DeclarationNotProse(t *testing.T) {
+	t.Parallel()
 	s := newTenancyStand(t)
 	s.write(t, "proto/kacho/cloud/probevpc/v1/net.proto", `
 syntax = "proto3";
@@ -285,6 +290,7 @@ message ProbeNet {
 // TestTenancyLevelInjection_EmptyWalkIsVisible — «ноль находок» обязано быть
 // отличимо от «ноль прочитанного».
 func TestTenancyLevelInjection_EmptyWalkIsVisible(t *testing.T) {
+	t.Parallel()
 	s := &tenancyStand{root: t.TempDir()}
 	s.write(t, "proto/.keep", "")
 	findings, census := s.run(t)
@@ -305,6 +311,7 @@ func TestTenancyLevelInjection_EmptyWalkIsVisible(t *testing.T) {
 // первое слово (`PARENT`) и следа ему не находил. Пара «поле есть — молчит /
 // поля нет — находка» доказывает, что судится ПРЕДМЕТ, а не длина фразы.
 func TestTenancyLevelInjection_QualifiedNameTracesByItsHead(t *testing.T) {
+	t.Parallel()
 	s := newTenancyStand(t)
 	s.write(t, "proto/kacho/cloud/probelb/v1/listener.proto", `
 syntax = "proto3";
@@ -343,6 +350,7 @@ message ProbeListener {
 // Инъекция снимает след (`probe_membership_row_id`), оставив всё прочее целым;
 // утверждение обязано и распознаться, и покраснеть.
 func TestTenancyLevelInjection_ThreeWordNameIsSeenAtAll(t *testing.T) {
+	t.Parallel()
 	s := newTenancyStand(t)
 	s.write(t, "proto/kacho/cloud/probelb/v1/listener.proto", `
 syntax = "proto3";
@@ -375,6 +383,7 @@ message ProbeListener {
 // наблюдение молча. Здесь утверждается обратное: находка на месте, и её имя —
 // `drawer`, а не `drawer and net`.
 func TestTenancyLevelInjection_StopWordKeepsTheGateHonest(t *testing.T) {
+	t.Parallel()
 	s := newTenancyStand(t)
 	s.write(t, "proto/kacho/cloud/probevpc/v1/net.proto", `
 syntax = "proto3";
@@ -404,6 +413,7 @@ message ProbeNet {
 // составной. Без этой ветви «ноль находок» после расширения было бы неотличимо
 // от анализатора, который перестал судить.
 func TestTenancyLevelInjection_InventedContainerStillFound(t *testing.T) {
+	t.Parallel()
 	s := newTenancyStand(t)
 	s.write(t, "proto/kacho/cloud/probevpc/v1/net.proto", `
 syntax = "proto3";

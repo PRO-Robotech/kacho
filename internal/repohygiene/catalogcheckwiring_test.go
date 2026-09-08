@@ -76,6 +76,7 @@ const catalogMakefileDir = "gateway"
 // тоже нельзя — локальный прогонщик этой цели не зовёт, и тогда у неё не
 // остаётся вызывающих вовсе.
 func TestCatalogCopyParityTargetIsCalledByThePipeline(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	w, err := readMakeTargetWiring(root, catalogMakefileDir, catalogParityTarget)
 	if err != nil {

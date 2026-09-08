@@ -84,6 +84,7 @@ type nameFormFinding struct {
 // TestResourceNameFormIsDeclaredOnce — форма имени объявлена ровно один раз, в
 // общем фундаменте, и её байт-идентичной копии в дереве нет.
 func TestResourceNameFormIsDeclaredOnce(t *testing.T) {
+	t.Parallel()
 	tt := newTrackedTree(t, repoRoot(t))
 	canonDecls, copies, scanned := scanNameFormDecls(t, tt)
 	assertNameFormSingle(t, canonDecls, copies, scanned)
@@ -165,6 +166,7 @@ func assertNameFormSingle(t *testing.T, canonDecls, copies []nameFormFinding, sc
 // TestDefaultNameDerivationIsDeclaredOnce — производство имени по умолчанию и
 // точка его подстановки объявлены ровно по одному разу на всё дерево.
 func TestDefaultNameDerivationIsDeclaredOnce(t *testing.T) {
+	t.Parallel()
 	tt := newTrackedTree(t, repoRoot(t))
 	decls, scanned := scanDerivationDecls(t, tt)
 	assertDerivationSingle(t, decls, scanned)

@@ -95,6 +95,7 @@ func release(rerr error) error {
 `
 
 func TestGateReds_WhenARefusalIsReturnedAsSuccess(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -176,6 +177,7 @@ func release(rerr error) (outcome, error) {
 `
 
 func TestGateStaysSilent_OnLegitimateTwins(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -238,6 +240,7 @@ func (c *client) read(ctx context.Context) error {
 `
 
 func TestGateReds_WhenPublicAddressDeleteIsCalled(t *testing.T) {
+	t.Parallel()
 	files := synthPkg(t, "publicdelete", injPublicDelete)
 	hits, census := scanPublicAddressDelete(t, files)
 	if census.files == 0 {
@@ -250,6 +253,7 @@ func TestGateReds_WhenPublicAddressDeleteIsCalled(t *testing.T) {
 }
 
 func TestGateStaysSilent_OnPublicRead(t *testing.T) {
+	t.Parallel()
 	files := synthPkg(t, "publicget", twinPublicGet)
 	hits, census := scanPublicAddressDelete(t, files)
 	if census.files == 0 {

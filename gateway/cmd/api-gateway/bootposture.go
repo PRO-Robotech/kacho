@@ -49,5 +49,13 @@ func bootPosture(cfg config.Config, lane identityposture.Provider) observability
 		// до этой строки не доживают — страж старта на них не пускает. Значит
 		// поле отчитывается об исходе, а не о намерении профиля (задача #1125).
 		IdentityProvider: lane.String(),
+		// Собственного REST-фронта у края НЕТ by construction, и это не описка:
+		// ось называет HTTP-поверхность, которую процесс поднимает НАД СВОИМИ ЖЕ
+		// gRPC-слушателями, а край проксирует ЧУЖИЕ — своего gRPC-API у него нет.
+		// Транспорт его собственной поверхности — это public_mtls выше, и он в
+		// этой же строке уже назван; вторая ось о том же предмете разошлась бы с
+		// первой молча.
+		OwnRESTPublicTLS:   observability.OwnRESTFrontNotRaised,
+		OwnRESTInternalTLS: observability.OwnRESTFrontNotRaised,
 	}
 }

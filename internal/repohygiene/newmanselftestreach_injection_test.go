@@ -23,6 +23,7 @@ import (
 )
 
 func TestNewmanSelftestReach_ProvenByInjection(t *testing.T) {
+	t.Parallel()
 	healthy := []newmanSelftestSuite{
 		{Owner: "services/geo", RunnerPath: "services/geo/tests/newman/scripts/run.sh", Calls: 1},
 		{Owner: "services/nlb", RunnerPath: "services/nlb/tests/newman/scripts/run.sh", Calls: 1},

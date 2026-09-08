@@ -59,6 +59,7 @@ var guardedIdentifiers = []guardedIdentifier{
 var guardScanRoots = []string{"services", "internal", "gateway"}
 
 func TestCommentsNamingAGuardHaveItInScope(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	if len(guardedIdentifiers) == 0 {
 		t.Fatalf("реестр защит пуст — гейту нечего проверять")
@@ -189,6 +190,7 @@ func TestCommentsNamingAGuardHaveItInScope(t *testing.T) {
 // TestGuardedIdentifiersStillHaveSubject — самоистечение реестра: запись про
 // идентификатор, которого в дереве больше нет, исключать нечего.
 func TestGuardedIdentifiersStillHaveSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	alive := map[string]bool{}
 	files := 0

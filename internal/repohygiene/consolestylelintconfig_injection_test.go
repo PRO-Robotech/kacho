@@ -71,6 +71,7 @@ func consoleUniformStylelintConfigs() map[string]string {
 
 // TestConsoleStylelintGateControl — ПРОГОН 1: всё цело, молчат оба судьи.
 func TestConsoleStylelintGateControl(t *testing.T) {
+	t.Parallel()
 	if f := judgeConsoleStylelintConfigs(consoleStyledPkgs, consoleUniformStylelintConfigs()); len(f) != 0 {
 		t.Errorf("судья ЕДИНСТВЕННОСТИ краснеет на целом входе — он ловит форму, "+
 			"а не существо: %v", f)
@@ -83,6 +84,7 @@ func TestConsoleStylelintGateControl(t *testing.T) {
 
 // TestConsoleStylelintGateFailsOnASecondJudge — ПРОГОН 2: внесён второй вариант.
 func TestConsoleStylelintGateFailsOnASecondJudge(t *testing.T) {
+	t.Parallel()
 	cfgs := consoleUniformStylelintConfigs()
 	cfgs["host"] = consoleLegacyStrictStylelint
 	cfgs["dashboard"] = consoleLegacyStrictStylelint
@@ -110,6 +112,7 @@ func TestConsoleStylelintGateFailsOnASecondJudge(t *testing.T) {
 
 // TestConsoleStylelintGateFailsOnAJudgeWithoutACommand — обратная сторона шва.
 func TestConsoleStylelintGateFailsOnAJudgeWithoutACommand(t *testing.T) {
+	t.Parallel()
 	// Судья есть, команды нет: стили не читает ничто, а на вид проверка стоит.
 	cfgs := consoleUniformStylelintConfigs()
 	cfgs["shared"] = consoleUnifiedStylelint
@@ -129,6 +132,7 @@ func TestConsoleStylelintGateFailsOnAJudgeWithoutACommand(t *testing.T) {
 
 // TestConsoleStylelintRelaxationDetectorSeesBothSides — ПРОГОН 3, форма предмета.
 func TestConsoleStylelintRelaxationDetectorSeesBothSides(t *testing.T) {
+	t.Parallel()
 	// Послабления нет — судья истечения не имеет к нему претензий by construction.
 	if consoleStylelintIgnoresTailwind(t, "legacy", []byte(consoleLegacyStrictStylelint)) {
 		t.Error("распознаватель нашёл послабление там, где его нет — судья истечения " +
@@ -147,6 +151,7 @@ func TestConsoleStylelintRelaxationDetectorSeesBothSides(t *testing.T) {
 // Двумя независимыми признаками: файл настройки фреймворка и объявленная
 // зависимость. Выписанный перечень модулей разошёлся бы с деревом молча.
 func TestConsoleTailwindSubjectDetectorReadsTheTree(t *testing.T) {
+	t.Parallel()
 	bare := t.TempDir()
 	if consolePackageUsesTailwind(bare, consolePackageFacts{Name: "bare"}) {
 		t.Error("предмет найден у пакета, который фреймворк не настраивает — " +

@@ -302,6 +302,7 @@ func operationNotFoundInsideConcat(stack []ast.Node, consts map[string]string) b
 // TestOperationNotFoundHasOneProducer — записей этого текста в прод-дереве ровно
 // одна, и она там, где объявлена.
 func TestOperationNotFoundHasOneProducer(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files := trackedGoFiles(t, root)
 	if len(files) == 0 {

@@ -103,6 +103,7 @@ func (s *refusedValueStand) run(t *testing.T) ([]DocsRefusedValueFinding, DocsRe
 
 // TestDocsRefusedValueInjection_SilentOnALawfulTree — положительный контроль.
 func TestDocsRefusedValueInjection_SilentOnALawfulTree(t *testing.T) {
+	t.Parallel()
 	s := newRefusedValueStand(t)
 	findings, census := s.run(t)
 	if len(findings) != 0 {
@@ -125,6 +126,7 @@ func TestDocsRefusedValueInjection_SilentOnALawfulTree(t *testing.T) {
 // является. Без среза подлежащего единственный рабочий источник загрузки попал
 // бы в словарь отвергаемых, и гейт краснел бы на каждой верной странице.
 func TestDocsRefusedValueInjection_ValueInTheExplanationIsNotRefused(t *testing.T) {
+	t.Parallel()
 	s := newRefusedValueStand(t)
 	_, census := s.run(t)
 	for _, got := range census.RefusedNames {
@@ -150,6 +152,7 @@ func TestDocsRefusedValueInjection_ValueInTheExplanationIsNotRefused(t *testing.
 // ошибиться: значение из ПЕРЕЧНЯ ДОПУСТИМЫХ попало бы в словарь отвергаемых, и
 // гейт краснел бы на каждой странице, называющей `SPREAD` или `PACK`.
 func TestDocsRefusedValueInjection_AllowedValuesAreNotRefused(t *testing.T) {
+	t.Parallel()
 	s := newRefusedValueStand(t)
 	_, census := s.run(t)
 	for _, allowed := range []string{"SPREAD", "PACK"} {
@@ -199,6 +202,7 @@ func requireRefusedFinding(t *testing.T, findings []DocsRefusedValueFinding, wan
 // TestDocsRefusedValueInjection_EnumValueNamedWithoutTheRefusal — форма 1:
 // значение перечисления названо, отказ не проговорён. Ровно дефект kacho#1642.
 func TestDocsRefusedValueInjection_EnumValueNamedWithoutTheRefusal(t *testing.T) {
+	t.Parallel()
 	s := newRefusedValueStand(t)
 	got := s.injectPage(t, "services/probe/docs/content/api/instance.mdx",
 		"Род инстанса — `VM` или `CONTAINER`.\n")
@@ -208,6 +212,7 @@ func TestDocsRefusedValueInjection_EnumValueNamedWithoutTheRefusal(t *testing.T)
 // TestDocsRefusedValueInjection_DottedValueNamedWithoutTheRefusal — форма 2:
 // точечный дискриминатор назван, отказ не проговорён.
 func TestDocsRefusedValueInjection_DottedValueNamedWithoutTheRefusal(t *testing.T) {
+	t.Parallel()
 	s := newRefusedValueStand(t)
 	got := s.injectPage(t, "services/probe/docs/content/api/boot.mdx",
 		"Источник загрузки: `storage.image` либо `registry.image`.\n")
@@ -218,6 +223,7 @@ func TestDocsRefusedValueInjection_DottedValueNamedWithoutTheRefusal(t *testing.
 // ПЕРЕНЕСЁННОЕ по строкам, обязано засчитываться. Без свёртки пробелов гейт
 // краснел бы на верной странице — а такую проверку отключают первой.
 func TestDocsRefusedValueInjection_WrappedMessageCounts(t *testing.T) {
+	t.Parallel()
 	s := newRefusedValueStand(t)
 	got := s.injectPage(t, "services/probe/docs/content/api/instance.mdx",
 		"Род `CONTAINER` отвергается: `INVALID_ARGUMENT \"instanceKind CONTAINER is not\n"+
@@ -230,6 +236,7 @@ func TestDocsRefusedValueInjection_WrappedMessageCounts(t *testing.T) {
 // TestDocsRefusedValueInjection_WholeWordOnly — `CONTAINER` внутри
 // `containerSpec` упоминанием значения не является.
 func TestDocsRefusedValueInjection_WholeWordOnly(t *testing.T) {
+	t.Parallel()
 	s := newRefusedValueStand(t)
 	got := s.injectPage(t, "services/probe/docs/content/api/spec.mdx",
 		"Среда исполнения — `CONTAINERD`; конфигурация рода — `containerSpec`.\n")
@@ -241,6 +248,7 @@ func TestDocsRefusedValueInjection_WholeWordOnly(t *testing.T) {
 // TestDocsRefusedValueInjection_EmptyWalkIsVisible — обход, которому нечего
 // читать, обязан быть ОТЛИЧИМ от обхода без находок.
 func TestDocsRefusedValueInjection_EmptyWalkIsVisible(t *testing.T) {
+	t.Parallel()
 	s := newRefusedValueStand(t)
 	var log strings.Builder
 	findings, census, err := AuditDocsRefusedValue(DocsRefusedValueOptions{

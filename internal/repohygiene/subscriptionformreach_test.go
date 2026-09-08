@@ -53,6 +53,7 @@ func subscriptionReachOptions(t *testing.T) SubscriptionReachOptions {
 // сузила бы наблюдение до одного типа, а сколько их сейчас — печатает перепись
 // ниже, а не это утверждение.
 func TestSubscriptionFormHasSomeoneToTakeIt(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	types, census, err := AuditSubscriptionFormReach(subscriptionReachOptions(t), &log)
 	if err != nil {

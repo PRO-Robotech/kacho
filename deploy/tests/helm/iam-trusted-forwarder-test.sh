@@ -256,7 +256,11 @@ line() { # line <trusted_forwarders-фрагмент>
   # нет вовсе, и «нет листенера» обязано быть отличимо от «листенер без mTLS».
   # У ЭТОГО сервиса листенер есть, поэтому величина — "true".
   printf '"db_sslmode":"require","public_mtls":true,"internal_mtls":"true","authz_check":true,'
-  printf '"identity_provider":"own"%s}' "$1"
+  # own_rest_*_tls — состояние СОБСТВЕННЫХ REST-фронтов службы (задача #2108),
+  # три величины: "true" | "false" | "n/a". Здесь «n/a» выбрано только чтобы
+  # измерение было ЗАЯВЛЕНО: какая посадка фронтов верна для конкретного
+  # стенда, этот тест не решает и не проверяет — его предмет круг отправителей.
+  printf '"identity_provider":"own","own_rest_public_tls":"n/a","own_rest_internal_tls":"n/a"%s}' "$1"
 }
 verdict() { echo "$1" | jq -r --argjson need_fwd "$2" "$JQPROG"; }
 

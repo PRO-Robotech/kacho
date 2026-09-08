@@ -10,7 +10,7 @@
 package vpcv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -467,7 +467,7 @@ var File_kacho_cloud_vpc_v1_internal_network_interface_service_proto protoreflec
 
 const file_kacho_cloud_vpc_v1_internal_network_interface_service_proto_rawDesc = "" +
 	"\n" +
-	";kacho/cloud/vpc/v1/internal_network_interface_service.proto\x12\x12kacho.cloud.vpc.v1\x1a*kacho/cloud/vpc/v1/network_interface.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xdb\x01\n" +
+	";kacho/cloud/vpc/v1/internal_network_interface_service.proto\x12\x12kacho.cloud.vpc.v1\x1a*kacho/cloud/vpc/v1/network_interface.proto\x1a$corelib/authz/v1/authz_options.proto\"\xdb\x01\n" +
 	"\x1dAttachNetworkInterfaceRequest\x12\x15\n" +
 	"\x06nic_id\x18\x01 \x01(\tR\x05nicId\x12\x1f\n" +
 	"\vinstance_id\x18\x02 \x01(\tR\n" +

@@ -42,6 +42,7 @@ import (
 // НЕ судит, ЧТО вызывающий делает с ответом разбора. Свой перечень посадок у
 // сервиса законен; незаконны свои ПИСЬМЕНА для них.
 func TestPostureVocabularyHasASingleSource(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	var files []string

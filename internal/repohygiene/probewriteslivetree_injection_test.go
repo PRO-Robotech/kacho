@@ -279,6 +279,7 @@ func TestExplainsTheBanWithoutCommittingIt(t *testing.T) {
 `
 
 func TestProbeWriteGateSeparatesLiveWritesFromReads(t *testing.T) {
+	t.Parallel()
 	const (
 		producerRel = "internal/synth/producer_test.go"
 		defWrite    = "internal/synth/writes_live_test.go"
@@ -414,6 +415,7 @@ func TestProbeWriteGateSeparatesLiveWritesFromReads(t *testing.T) {
 // а не как случайность: иначе «ноль находок» на дереве без производителей
 // читалось бы как чистота, и гейт молчал бы именно там, где сломан.
 func TestProbeWriteGateNeedsAProducerToSayAnything(t *testing.T) {
+	t.Parallel()
 	withProducer, census := auditProbeWritesToLiveTree(map[string]string{
 		"internal/synth/producer_test.go":    synthLiveRootProducer,
 		"internal/synth/writes_live_test.go": synthWritesLiveFile,
@@ -506,6 +508,7 @@ func parentOf(p string) string {
 // оно просто делает половину форм невидимой, и «ноль находок» перестаёт значить
 // «ноль записей». Поэтому свойство закрепляется пробой, а не комментарием.
 func TestProbeWriteGateKnowsBothFormsOfLiveRootProducer(t *testing.T) {
+	t.Parallel()
 	const (
 		producerRel = "internal/synth2/caller_producer_test.go"
 		helperRel   = "internal/synth2/path_helper_test.go"

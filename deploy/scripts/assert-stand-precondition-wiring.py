@@ -102,7 +102,7 @@ VERDICT_RUNNERS = (
     "assert-ban6-external-isolation.py",   # спрашивает листенер, которого нет
     "coverage.py",                         # считает по отчётам, которых нет
     "newman-live.py report",               # печатает «0 отчётов» как потерю
-    "newman-parallel.sh",                  # сам прогон суит: без кластера падает на первом запросе
+    "newman-shard-run.sh",                 # прогон суит шарда: без кластера падает на первом запросе
     "npx playwright test",                 # то же для консоли
     "assert-console-probes-verdict.py",    # гейт по отчёту проб консоли
     "browser-reach.mjs",                   # браузер идёт на адрес стенда

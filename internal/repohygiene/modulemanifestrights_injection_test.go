@@ -106,6 +106,7 @@ func namesOnly(t *testing.T, faults []manifestRightFinding, wants ...string) {
 // Без него всякое «краснеет» ниже зеленело бы и на гейте, который краснеет
 // ВСЕГДА.
 func TestManifestRightsGateControlIsSilent(t *testing.T) {
+	t.Parallel()
 	faults := faultsOn(t, rightsManifest("derived", "authored", "vpc_address_pool", "read"))
 	if len(faults) != 0 {
 		t.Fatalf("законный манифест дал находки: %v", faults)
@@ -115,6 +116,7 @@ func TestManifestRightsGateControlIsSilent(t *testing.T) {
 // TestManifestRightsGateFindsDerivedWithoutAProducer — ось 1: `derived` там, где
 // аннотации не якорят ни одной строки.
 func TestManifestRightsGateFindsDerivedWithoutAProducer(t *testing.T) {
+	t.Parallel()
 	namesOnly(t, faultsOn(t, rightsManifest("derived", "derived", "vpc_address_pool", "read")),
 		"services/vpc/manifest.yaml", "resources[1]", "addressPool", "vpc_address_pool", "producer: authored")
 }
@@ -123,6 +125,7 @@ func TestManifestRightsGateFindsDerivedWithoutAProducer(t *testing.T) {
 // там, где аннотация ПОЯВИЛАСЬ. Зеркало первой оси; без него пометка жила бы
 // вечно.
 func TestManifestRightsGateFindsAuthoredThatOutlivedItsSubject(t *testing.T) {
+	t.Parallel()
 	namesOnly(t, faultsOn(t, rightsManifest("authored", "authored", "vpc_address_pool", "read")),
 		"resources[0]", "network", "vpc_network", "пережила свой предмет")
 }
@@ -130,6 +133,7 @@ func TestManifestRightsGateFindsAuthoredThatOutlivedItsSubject(t *testing.T) {
 // TestManifestRightsGateFindsATypeTheModelDoesNotDeclare — ось 3: право на тип,
 // которого не существует.
 func TestManifestRightsGateFindsATypeTheModelDoesNotDeclare(t *testing.T) {
+	t.Parallel()
 	namesOnly(t, faultsOn(t, rightsManifest("derived", "authored", "vpc_addresz_pool", "read")),
 		"resources[1]", "vpc_addresz_pool", "не объявлен каноническим текстом модели")
 }
@@ -137,6 +141,7 @@ func TestManifestRightsGateFindsATypeTheModelDoesNotDeclare(t *testing.T) {
 // TestManifestRightsGateFindsADeprecatedVerbThatIsProducedAgain — ось 4: глагол
 // объявлен устаревшим, а каталог его производит.
 func TestManifestRightsGateFindsADeprecatedVerbThatIsProducedAgain(t *testing.T) {
+	t.Parallel()
 	namesOnly(t, faultsOn(t, rightsManifest("derived", "authored", "vpc_address_pool", "get")),
 		"deprecatedVerbs.get", "каталог его ПРОИЗВОДИТ")
 }
@@ -146,6 +151,7 @@ func TestManifestRightsGateFindsADeprecatedVerbThatIsProducedAgain(t *testing.T)
 //
 // Обе половины обязательны: одна даёт послабление, которое не истечёт.
 func TestManifestRightsGateFindsADeprecatedVerbWithoutASubject(t *testing.T) {
+	t.Parallel()
 	namesOnly(t, faultsOn(t, rightsManifest("derived", "authored", "vpc_address_pool", "browse")),
 		"deprecatedVerbs.browse", "не осталось предмета")
 }
@@ -157,6 +163,7 @@ func TestManifestRightsGateFindsADeprecatedVerbWithoutASubject(t *testing.T) {
 // случай». Перепись печатает числа ПО КАЖДОЙ форме отдельно: одно число скрыло
 // бы ровно тот случай, ради которого гейт заведён.
 func TestManifestRightsRecognizerChangedWhatIsInspected(t *testing.T) {
+	t.Parallel()
 	root := syntheticRightsTree(t, rightsManifest("derived", "authored", "vpc_address_pool", "read"))
 	tt := newSyntheticTree(t, root)
 
@@ -282,6 +289,7 @@ const catalogWithoutMultiWord = `[
 // делает поиск промахом, находка «каталог его ПРОИЗВОДИТ» исчезает — и запись,
 // которая лжёт, живёт дальше молча.
 func TestManifestRightsGateJoinsMultiWordVerbSpellingsOnTheCatalogSide(t *testing.T) {
+	t.Parallel()
 	faults := faultsOnWith(t, catalogProducingMultiWord, `"get","set_default_security_group"`,
 		multiWordManifest("setDefaultSecurityGroup"))
 	namesOnly(t, faults, "deprecatedVerbs.setDefaultSecurityGroup", "каталог его ПРОИЗВОДИТ")
@@ -296,6 +304,7 @@ func TestManifestRightsGateJoinsMultiWordVerbSpellingsOnTheCatalogSide(t *testin
 // предмета» — то есть отнимает предмет у ЖИВОЙ записи, ровно чего шапка
 // `normalizeVerb` и называет причиной своего существования.
 func TestManifestRightsGateJoinsMultiWordVerbSpellingsOnTheRoleRuleSide(t *testing.T) {
+	t.Parallel()
 	faults := faultsOnWith(t, catalogWithoutMultiWord, `"get","set_default_security_group"`,
 		multiWordManifest("setDefaultSecurityGroup"))
 	if len(faults) != 0 {
@@ -308,6 +317,7 @@ func TestManifestRightsGateJoinsMultiWordVerbSpellingsOnTheRoleRuleSide(t *testi
 // близнец предыдущей: без положительного контроля выше она зеленела бы и на
 // гейте, который молчит ВСЕГДА.
 func TestManifestRightsGateStillFindsAMultiWordVerbWithoutASubject(t *testing.T) {
+	t.Parallel()
 	namesOnly(t, faultsOnWith(t, catalogWithoutMultiWord, `"get"`,
 		multiWordManifest("setDefaultSecurityGroup")),
 		"deprecatedVerbs.setDefaultSecurityGroup", "не осталось предмета")
@@ -319,6 +329,7 @@ func TestManifestRightsGateStillFindsAMultiWordVerbWithoutASubject(t *testing.T)
 // Без неё следующий читатель расширил бы приведение до «одинаковый набор букв» и
 // склеил бы `get_internal` с `internalGet` — разные права.
 func TestManifestRightsGateDoesNotJoinDifferentWordOrder(t *testing.T) {
+	t.Parallel()
 	namesOnly(t, faultsOnWith(t, catalogWithoutMultiWord, `"get","internal_get"`,
 		multiWordManifest("getInternal")),
 		"deprecatedVerbs.getInternal", "не осталось предмета")

@@ -142,6 +142,7 @@ const synthProbeNoMutationAtAll = `test("чтение списка", async ({ pa
 `
 
 func TestConsoleProbeOperationIDSeparatesConfirmedFromPhantom(t *testing.T) {
+	t.Parallel()
 	// ── ДЕФЕКТ: идентификатор не подтверждён ─────────────────────────────────
 	census, findings := auditConsoleProbeOperationIDs(map[string]string{
 		"specs-awaiting/subscription-stream.spec.ts": synthProbeUnconfirmedID,
@@ -179,6 +180,7 @@ func TestConsoleProbeOperationIDSeparatesConfirmedFromPhantom(t *testing.T) {
 }
 
 func TestConsoleProbeOperationIDJudgesSubstanceNotShape(t *testing.T) {
+	t.Parallel()
 	cases := map[string]struct {
 		src  string
 		want int
@@ -199,6 +201,7 @@ func TestConsoleProbeOperationIDJudgesSubstanceNotShape(t *testing.T) {
 }
 
 func TestConsoleProbeOperationIDCountsOnlyWhatCodeDoes(t *testing.T) {
+	t.Parallel()
 	census, findings := auditConsoleProbeOperationIDs(map[string]string{
 		"specs/listing.spec.ts": synthProbeNoMutationAtAll,
 	})
@@ -308,6 +311,7 @@ const synthProbeVarDeclaration = `async function outer(page, response) {
 `
 
 func TestConsoleProbeOperationIDRespectsScopeNotJustFileOrder(t *testing.T) {
+	t.Parallel()
 	// ── ДЕФЕКТ: подтверждение живёт в ЧУЖОЙ области видимости ───────────────
 	for name, src := range map[string]string{
 		"чужой помощник ниже по файлу": synthProbeMaskedByAnotherScope,
@@ -348,6 +352,7 @@ func TestConsoleProbeOperationIDRespectsScopeNotJustFileOrder(t *testing.T) {
 }
 
 func TestConsoleProbeOperationIDDeclaresItsOwnPremiseAboutVar(t *testing.T) {
+	t.Parallel()
 	census, findings := auditConsoleProbeOperationIDs(map[string]string{"specs/x.spec.ts": synthProbeVarDeclaration})
 	if census.WiderThanBlock != 1 {
 		t.Errorf("объявление через `var` не отмечено: WiderThanBlock=%d. Оценка по блоку для него "+
@@ -411,6 +416,7 @@ const synthProbeQueryAlongsideForeignPath = `test("чужой путь, наш �
 `
 
 func TestConsoleProbeOperationIDDoesNotCountAListFilterAsAResourceRead(t *testing.T) {
+	t.Parallel()
 	// ── ДЕФЕКТ: идентификатор стоит фильтром, а не адресом ──────────────────
 	for name, src := range map[string]string{
 		"фильтр списка":            synthProbeConfirmedByQueryFilterOnly,

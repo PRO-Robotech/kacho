@@ -56,6 +56,7 @@ import (
 // находок» означает «у каждого снисходительного назван живой держатель», а не
 // «снисходительных нет»: перепись печатает оба числа.
 func TestLenientScopeDoubleNamesALiveHolder(t *testing.T) {
+	t.Parallel()
 	lenientScopeAudit(t, "../../services/iam/internal/apps/kaname/api")
 }
 

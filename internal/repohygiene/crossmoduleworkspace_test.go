@@ -42,6 +42,26 @@
 // Сверка двусторонняя: модуль без записи `use` (пространство его не видит, и
 // правка фундамента до него не доедет) и запись `use` без модуля (координата
 // пережила свой предмет) — обе находки.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ДВЕ ОСИ ЖИВУТ ПО РАЗНЫМ ПРАВИЛАМ, И СМЕШИВАТЬ ИХ НЕЛЬЗЯ
+//
+// До 2026-09-08 обе оси гейтились одним условием «модулей больше одного», и
+// законной из двух была только первая:
+//
+//   - МОДУЛЬ БЕЗ `use` — при одном модуле предмета действительно нет:
+//     кросс-модульной разработки не бывает, и молчание верно;
+//   - `use` БЕЗ МОДУЛЯ — предмет есть при ЛЮБОМ числе модулей. Образец,
+//     называющий несуществующий каталог, вводит в заблуждение ровно того, кто
+//     им воспользуется: `cp go.work.example go.work` и `go` отказывает на
+//     несуществующем `use`. Такая координата не истекает сама никогда.
+//
+// Класс — тот, что корпус ловит у негативных проверок (`testing.md` §«Гейт на
+// класс», п. 9): предмет уезжает НЕ правкой самой проверки, поэтому автор
+// снятия о ней не узнаёт, а проверка замолкает — находок ноль, перепись ноль,
+// вердикт зелёный. Отличить это от исправной работы нельзя ничем.
+//
+// Условие «модулей больше одного» осталось у первой оси и снято со второй.
 package repohygiene
 
 import (
@@ -59,6 +79,26 @@ import (
 // `./...` для всякого, кто окажется в дереве, поэтому он игнорируется, а в
 // индексе лежит образец, который берут копией.
 const workspaceExampleName = "go.work.example"
+
+// workspaceCensus — объём осмотренного ПО КАЖДОЙ ОСИ отдельно.
+//
+// Числа здесь — ИСХОД, а не объявление. Строка «ось судится» ничего не
+// доказывает: она печатается одинаково и когда ось судилась, и когда её тело не
+// звалось вовсе, — то есть ровно в том случае, ради которого оси разведены.
+// Поэтому перепись считает осмотренное каждой осью и позволяет вызывающему
+// потребовать, чтобы вторая ось осмотрела все директивы образца.
+type workspaceCensus struct {
+	// Modules — модулей подано на вход.
+	Modules int
+	// Uses — директив `use` прочитано из образца.
+	Uses int
+	// ModulesJudged — модулей осмотрено осью «модуль без use». Ноль при одном
+	// модуле — предмета у оси нет.
+	ModulesJudged int
+	// UsesJudged — директив осмотрено осью «use без модуля». Ноль при непустом
+	// Uses означает, что ось не звалась, — и это находка о ГЕЙТЕ, а не о дереве.
+	UsesJudged int
+}
 
 // workspaceFinding — одно расхождение образца с деревом.
 type workspaceFinding struct {
@@ -124,21 +164,33 @@ func normalizeUse(s string) string {
 
 // checkCrossModuleWorkspace — ТЕЛО гейта. Вынесено, чтобы инъекция звала то же,
 // что исполняется на дереве.
-func checkCrossModuleWorkspace(modules []string, exampleSrc string, examplePresent bool) []workspaceFinding {
+func checkCrossModuleWorkspace(modules []string, exampleSrc string, examplePresent bool) ([]workspaceFinding, workspaceCensus) {
 	var out []workspaceFinding
+	census := workspaceCensus{Modules: len(modules)}
+
+	// Кросс-модульная разработка имеет предмет только при нескольких модулях.
+	// Ось «модуль без `use`» и требование самого образца привязаны к этому
+	// факту; ось «`use` без модуля» — НЕТ, и ниже она судится безусловно.
+	multiModule := len(modules) > 1
 
 	if !examplePresent {
-		out = append(out, workspaceFinding{
-			Kind: "нет-образца",
-			What: workspaceExampleName,
-			Why: "модулей в дереве больше одного, а образца рабочего пространства нет: " +
-				"средство локальной кросс-модульной разработки названо и не предъявлено",
-		})
-		return out
+		// Образца нет и модуль один — законное состояние дерева, а не находка:
+		// снять образец вместе с предметом есть один из объявленных исходов.
+		if multiModule {
+			out = append(out, workspaceFinding{
+				Kind: "нет-образца",
+				What: workspaceExampleName,
+				Why: "модулей в дереве больше одного, а образца рабочего пространства нет: " +
+					"средство локальной кросс-модульной разработки названо и не предъявлено",
+			})
+		}
+		return out, census
 	}
 
+	parsed := parseWorkspaceUses(exampleSrc)
+	census.Uses = len(parsed)
 	uses := map[string]bool{}
-	for _, u := range parseWorkspaceUses(exampleSrc) {
+	for _, u := range parsed {
 		uses[u] = true
 	}
 	have := map[string]bool{}
@@ -146,7 +198,12 @@ func checkCrossModuleWorkspace(modules []string, exampleSrc string, examplePrese
 		have[m] = true
 	}
 
+	// ОСЬ ПЕРВАЯ — только при нескольких модулях (см. шапку).
 	for _, m := range modules {
+		if !multiModule {
+			break
+		}
+		census.ModulesJudged++
 		if !uses[m] {
 			out = append(out, workspaceFinding{
 				Kind: "модуль-без-use",
@@ -156,12 +213,16 @@ func checkCrossModuleWorkspace(modules []string, exampleSrc string, examplePrese
 			})
 		}
 	}
+	// ОСЬ ВТОРАЯ — БЕЗУСЛОВНО. Директива на несуществующий каталог ломает
+	// образец у того, кто взял его копией, независимо от того, сколько модулей
+	// осталось в дереве.
 	var named []string
 	for u := range uses {
 		named = append(named, u)
 	}
 	sort.Strings(named)
 	for _, u := range named {
+		census.UsesJudged++
 		if !have[u] {
 			out = append(out, workspaceFinding{
 				Kind: "use-без-модуля",
@@ -170,11 +231,12 @@ func checkCrossModuleWorkspace(modules []string, exampleSrc string, examplePrese
 			})
 		}
 	}
-	return out
+	return out, census
 }
 
 // TestCrossModuleWorkspaceExampleNamesEveryModule — гейт на дереве.
 func TestCrossModuleWorkspaceExampleNamesEveryModule(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tree := newTrackedTree(t, root)
 
@@ -193,10 +255,11 @@ func TestCrossModuleWorkspaceExampleNamesEveryModule(t *testing.T) {
 		t.Fatal("обход пуст: объявлений модуля в составе дерева не найдено ни одного — вердикт беспредметен")
 	}
 
-	// Один модуль — предмета у гейта нет, и это ЗАКОННОЕ состояние дерева, а не
-	// отказ: кросс-модульной разработки при одном модуле не бывает. Перепись
-	// ниже называет это числом, поэтому «ноль находок» отличимо от «ноль
-	// прочитанного».
+	// Один модуль снимает предмет с ОДНОЙ из двух осей, а не с гейта целиком:
+	// кросс-модульной разработки при одном модуле не бывает, а вот директива на
+	// несуществующий каталог остаётся ложью для всякого, кто возьмёт образец
+	// копией. Разведение — в checkCrossModuleWorkspace; перепись ниже называет
+	// оба числа порознь, поэтому «ноль находок» отличимо от «ноль прочитанного».
 	examplePresent := tree.hasFile(workspaceExampleName)
 	src := ""
 	if examplePresent {
@@ -208,15 +271,31 @@ func TestCrossModuleWorkspaceExampleNamesEveryModule(t *testing.T) {
 		src = string(b)
 	}
 
-	var found []workspaceFinding
-	if len(modules) > 1 {
-		found = checkCrossModuleWorkspace(modules, src, examplePresent)
-	}
+	// Тело зовётся БЕЗУСЛОВНО: решение «у какой оси есть предмет» принимается
+	// внутри него, по одному месту на ось. Условие здесь означало бы третье
+	// место об одном предмете — и именно оно молча снимало вторую ось.
+	found, census := checkCrossModuleWorkspace(modules, src, examplePresent)
 
-	t.Logf("осмотрено: состав %d файлов -> модулей %d (%s); образец %s: %s; директив use %d; находок %d",
+	// Перепись печатает модули и директивы ПОРОЗНЬ и называет ОСМОТРЕННОЕ
+	// каждой осью: одно число «находок 0» скрыло бы ровно тот случай, ради
+	// которого оси разведены.
+	t.Logf("осмотрено: состав %d файлов -> модулей %d (%s); образец %s: %s; директив use %d (%s); "+
+		"ось «модуль без use» осмотрела модулей %d; ось «use без модуля» осмотрела директив %d; находок %d",
 		tree.count(), len(modules), strings.Join(modules, ", "),
 		workspaceExampleName, map[bool]string{true: "есть", false: "НЕТ"}[examplePresent],
-		len(parseWorkspaceUses(src)), len(found))
+		census.Uses, strings.Join(parseWorkspaceUses(src), ", "),
+		census.ModulesJudged, census.UsesJudged, len(found))
+
+	// ИСХОД, а не объявление: если образец есть и несёт директивы, вторая ось
+	// обязана была осмотреть их ВСЕ. Ноль осмотренных при непустом образце
+	// означает, что ось не звалась, — и это находка о гейте, которую с
+	// «находок 0» не спутать.
+	if examplePresent && census.Uses > 0 && census.UsesJudged != census.Uses {
+		t.Fatalf("ось «use без модуля» осмотрела %d директив из %d: она не звалась либо "+
+			"звалась под условием. Эта ось судится при ЛЮБОМ числе модулей — "+
+			"директива на несуществующий каталог ломает образец у того, кто взял его копией",
+			census.UsesJudged, census.Uses)
+	}
 
 	for _, f := range found {
 		t.Errorf("%s %q — %s.\n"+
@@ -233,6 +312,7 @@ func TestCrossModuleWorkspaceExampleNamesEveryModule(t *testing.T) {
 // `go.work` молча поменял бы смысл `./...` для всех, а игнорируемый образец
 // нельзя было бы взять копией — его бы просто не было в свежем клоне.
 func TestCrossModuleWorkspaceItselfStaysOutOfTheIndex(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tree := newTrackedTree(t, root)
 

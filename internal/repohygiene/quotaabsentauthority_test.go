@@ -153,6 +153,7 @@ func upBlock(body string) string {
 // СТАРШЕЕ определение списывающего триггера читает объявление домена величин и
 // не отвергает, когда домен объявлен отсутствующим.
 func TestQuotaChargeTriggerReadsTheAuthorityDeclaration(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	census, findings := auditQuotaAbsentAuthority(t, root)
 

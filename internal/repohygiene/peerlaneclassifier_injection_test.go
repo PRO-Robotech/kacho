@@ -36,6 +36,7 @@ type injectionCase struct {
 const injectionHeader = "package clients\n\nimport (\n\t\"google.golang.org/grpc/codes\"\n\t\"google.golang.org/grpc/status\"\n\n\t\"github.com/PRO-Robotech/kacho/pkg/peer\"\n)\n\nvar _ = codes.OK\nvar _ = peer.OutcomeOK\n\n"
 
 func TestPeerLaneGateFiresOnTheStateThisChangeFixed(t *testing.T) {
+	t.Parallel()
 	cases := []injectionCase{
 		{
 			name: "инъекция: разбор через status.FromError + st.Code() (форма vpc/compute/nlb)",
@@ -195,6 +196,7 @@ var errNotFound = status.Error(codes.NotFound, "x")
 // означать «в фикстуре ничего нет». Здесь молчание относится к дереву, и перепись
 // названа числом.
 func TestConvertedClientsCarryNoHandRolledLaneRead(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	converted := []string{
 		"services/storage/internal/clients/geo_client.go",

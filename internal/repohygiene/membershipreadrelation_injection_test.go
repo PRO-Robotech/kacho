@@ -84,6 +84,7 @@ func mrrFindings(t *testing.T, catalog, model string) []string {
 // TestMRR_SilentOnTheLawfulDeclaration — КОНТРОЛЬ. Без него всякое красное ниже
 // доказывало бы лишь то, что гейт краснеет всегда.
 func TestMRR_SilentOnTheLawfulDeclaration(t *testing.T) {
+	t.Parallel()
 	got := mrrFindings(t, mrrCatalogWith("viewer", false), mrrModelLawful)
 	if len(got) != 0 {
 		t.Fatalf("гейт краснеет на законном объявлении: %v", got)
@@ -92,6 +93,7 @@ func TestMRR_SilentOnTheLawfulDeclaration(t *testing.T) {
 
 // TestMRR_RedWhenTheEntryIsMissing — первый возврат: запись каталога снята.
 func TestMRR_RedWhenTheEntryIsMissing(t *testing.T) {
+	t.Parallel()
 	only := `[{"fqn":"kaname.cloud.iam.v1.MembershipService/Get","permission":"p",` +
 		`"required_relation":"viewer",` +
 		`"scope_extractor":{"object_type":"account","from_request_field":"account_id"}}]`
@@ -104,6 +106,7 @@ func TestMRR_RedWhenTheEntryIsMissing(t *testing.T) {
 // TestMRR_RedOnAWildcardSatisfiableRelation — второй возврат: отношение,
 // выполнимое подстановочным кортежем.
 func TestMRR_RedOnAWildcardSatisfiableRelation(t *testing.T) {
+	t.Parallel()
 	model := strings.Replace(mrrModelLawful,
 		"define viewer: [user, service_account, group#member] or editor",
 		"define viewer: [user, user:*, service_account] or editor", 1)
@@ -117,6 +120,7 @@ func TestMRR_RedOnAWildcardSatisfiableRelation(t *testing.T) {
 // обязателен: подмена выглядит уместной (глагольное отношение на глагольном
 // чтении), проходит все прочие проверки каталога и ломает ровно адресата.
 func TestMRR_RedWhenTheVerbRelationIsSubstituted(t *testing.T) {
+	t.Parallel()
 	got := mrrFindings(t, mrrCatalogWith("v_list", false), mrrModelLawful)
 	joined := strings.Join(got, " ")
 	if !mrrNames(got, "MembershipService/List") || !strings.Contains(joined, "v_list") {
@@ -130,6 +134,7 @@ func TestMRR_RedWhenTheVerbRelationIsSubstituted(t *testing.T) {
 // TestMRR_RedOnDataNarrowingLane — полоса сужения на данных у этих чтений
 // объявлена быть не может.
 func TestMRR_RedOnDataNarrowingLane(t *testing.T) {
+	t.Parallel()
 	got := mrrFindings(t, mrrCatalogWith("viewer", true), mrrModelLawful)
 	if len(got) == 0 {
 		t.Fatal("гейт принял полосу сужения на данных у аккаунт-скоупного чтения")
@@ -142,6 +147,7 @@ func TestMRR_RedOnDataNarrowingLane(t *testing.T) {
 // Утверждается ПРЯМО, а не выводится из молчания контроля: молчание могло бы
 // означать и «граница предмета проведена», и «гейт вообще ничего не читает».
 func TestMRR_LegalTwinIsNotJudged(t *testing.T) {
+	t.Parallel()
 	c, err := SurveyMembershipReadRelation(mrrTree(t, mrrCatalogWith("viewer", false), mrrModelLawful))
 	if err != nil {
 		t.Fatalf("обход: %v", err)
@@ -161,6 +167,7 @@ func TestMRR_LegalTwinIsNotJudged(t *testing.T) {
 // TestMRR_ComparisonOfTwoDeclarationsIsLive — если глагольные отношения начнут
 // читать ярус, сравнение перестанет различать, и гейт обязан это сказать.
 func TestMRR_ComparisonOfTwoDeclarationsIsLive(t *testing.T) {
+	t.Parallel()
 	c, err := SurveyMembershipReadRelation(mrrTree(t, mrrCatalogWith("viewer", false), mrrModelLawful))
 	if err != nil {
 		t.Fatalf("обход: %v", err)

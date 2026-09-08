@@ -16,6 +16,7 @@ import (
 // СПОСОБНА упасть и способна смолчать. Инъекция зовёт ту же функцию, что и
 // проверка дерева, а не свою копию.
 func TestHumanTextMetadataKey_Injection(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		decl    string

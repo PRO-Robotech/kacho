@@ -13,6 +13,7 @@ import (
 // TestOperationTimestampsAreTruncatedEverywhere — свойство дерева, а не двух
 // исправленных файлов.
 func TestOperationTimestampsAreTruncatedEverywhere(t *testing.T) {
+	t.Parallel()
 	rep, err := auditOperationTimestampTruncation(repoRoot(t))
 	if err != nil {
 		t.Fatalf("обход дерева: %v", err)
@@ -147,6 +148,7 @@ func toProto(op struct{ CreatedAt, ModifiedAt time.Time }) *operationpb.Operatio
 
 // Сторона дефекта: неусечённое значение роняет гейт И называет координату.
 func TestTruncationGateRedOnBareTimestamp(t *testing.T) {
+	t.Parallel()
 	root := synthTruncationTree(t, map[string]string{"services/x/mapping.go": truncSrcBare})
 	rep, err := auditOperationTimestampTruncation(root)
 	if err != nil {
@@ -165,6 +167,7 @@ func TestTruncationGateRedOnBareTimestamp(t *testing.T) {
 
 // Законный близнец I: прямое усечение — гейт молчит.
 func TestTruncationGateSilentOnDirectTruncation(t *testing.T) {
+	t.Parallel()
 	root := synthTruncationTree(t, map[string]string{"services/x/mapping.go": truncSrcDirect})
 	rep, err := auditOperationTimestampTruncation(root)
 	if err != nil {
@@ -184,6 +187,7 @@ func TestTruncationGateSilentOnDirectTruncation(t *testing.T) {
 // Без этой половины гейт ловил бы форму записи, а не свойство: compute и iam
 // усекают именно так, и первый же прогон покрасил бы два исправных сервиса.
 func TestTruncationGateSilentOnHelperThatTruncates(t *testing.T) {
+	t.Parallel()
 	root := synthTruncationTree(t, map[string]string{"services/x/mapping.go": truncSrcViaHelper})
 	rep, err := auditOperationTimestampTruncation(root)
 	if err != nil {
@@ -200,6 +204,7 @@ func TestTruncationGateSilentOnHelperThatTruncates(t *testing.T) {
 
 // Посредник-пустышка: вызов есть, усечения нет — находка.
 func TestTruncationGateRedOnHollowHelper(t *testing.T) {
+	t.Parallel()
 	root := synthTruncationTree(t, map[string]string{"services/x/mapping.go": truncSrcHollowHelper})
 	rep, err := auditOperationTimestampTruncation(root)
 	if err != nil {

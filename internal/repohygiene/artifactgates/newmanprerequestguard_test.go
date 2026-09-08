@@ -477,6 +477,7 @@ func regexLiteralCanStart(prev byte) bool {
 // «Пока оставим как есть» исходом не является: пока утверждение стоит в pre-request
 // без пропуска, шаг продолжает уезжать без того, чего у него нет.
 func TestPreRequestAssertionIsPairedWithSkip(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	all, census := analyzeNewmanPrerequestGuards(t, newTrackedTree(t, root))
 
@@ -556,6 +557,7 @@ if (__t) {
 // TestPreRequestGuardGateRedOnInjectedDefect — возвращённый дефект краснит гейт И
 // называет координату.
 func TestPreRequestGuardGateRedOnInjectedDefect(t *testing.T) {
+	t.Parallel()
 	got := scanPreRequestAssertions(injectedDeviantGuard)
 	if len(got) != 1 {
 		t.Fatalf("утверждение не распознано: %+v", got)
@@ -578,6 +580,7 @@ func TestPreRequestGuardGateRedOnInjectedDefect(t *testing.T) {
 // TestPreRequestGuardGateSilentOnLawfulSameShape — законные конструкции ТОЙ ЖЕ формы
 // гейт не задевает. Все четыре встречаются в дереве.
 func TestPreRequestGuardGateSilentOnLawfulSameShape(t *testing.T) {
+	t.Parallel()
 	lawful := map[string]string{
 		"страж предъявителя в санкционированной форме": `const __t = pm.environment.get('jwtStranger') || '';
 if (__t) {
@@ -645,6 +648,7 @@ if (__cfgUrl) {
 // КОММЕНТАРИИ, который её объясняет; та же строка внутри СТРОКОВОГО ЛИТЕРАЛА; и
 // скобки внутри литерала, сбивающие счёт вложенности.
 func TestPreRequestGuardGateReadsCodeNotText(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		src     string
@@ -724,6 +728,7 @@ if (!pm.environment.get('opId')) {
 // безусловно, а переадресовать — только если значение есть. При пустом значении шаг
 // уезжал на ПУБЛИЧНЫЙ листенер, где внутреннего маршрута нет и быть не должно.
 func TestPreRequestGuardGateFlagsUnconditionalAssertion(t *testing.T) {
+	t.Parallel()
 	const src = `const intBase = pm.environment.get('internalBaseUrl') || '';
 pm.test('harness config: internalBaseUrl is set (internal Check probe target)', () => pm.expect(intBase, 'пусто').to.not.equal(''));
 if (intBase) { pm.request.url = intBase + '/iam/v1/internal/iam:check'; }`
@@ -748,6 +753,7 @@ if (intBase) { pm.request.url = intBase + '/iam/v1/internal/iam:check'; }`
 // здесь искореняют. Поэтому разобранное множество сверяется с индексом git:
 // каждая коллекция, лежащая в дереве, обязана быть прочитана.
 func TestPreRequestGuardAnalyzerSeesEveryCollection(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 
@@ -806,6 +812,7 @@ func TestPreRequestGuardAnalyzerSeesEveryCollection(t *testing.T) {
 // дефект на каждом ярусе, и гейт обязан найти ВСЕ три: ярус, выпавший из обхода,
 // уменьшит это число, и тест назовёт, какой именно.
 func TestPreRequestGuardCoversEveryTier(t *testing.T) {
+	t.Parallel()
 	const deviant = `if (!pm.environment.get('jwtStranger')) {
   pm.test('harness config: jwtStranger is set', () => pm.expect.fail('нет'));
 }`

@@ -111,6 +111,7 @@ func findingNaming(findings []SettledWatermarkFinding, kind, where string) bool 
 // Без него всякое отрицание ниже зеленело бы и на анализаторе, который считает
 // находкой всё подряд.
 func TestWatermarkGateIsSilentOnTheLawfulTree(t *testing.T) {
+	t.Parallel()
 	s := newWatermarkStand(t)
 	findings, census := s.audit(t)
 	if len(findings) != 0 {
@@ -127,6 +128,7 @@ func TestWatermarkGateIsSilentOnTheLawfulTree(t *testing.T) {
 // Направление, ради которого гейт заведён: снятие мёртвого читателя не должно
 // уносить единственный написанный ответ на класс.
 func TestWatermarkGateRedsWhenTheTechniqueIsGone(t *testing.T) {
+	t.Parallel()
 	s := newWatermarkStand(t)
 	if err := os.Remove(filepath.Join(s.root, "pkg/subscription/watermark.go")); err != nil {
 		t.Fatalf("снять наблюдателя: %v", err)
@@ -141,6 +143,7 @@ func TestWatermarkGateRedsWhenTheTechniqueIsGone(t *testing.T) {
 // TestWatermarkGateRedsOnASecondObserverOutsideTheFoundation — ВТОРАЯ половина:
 // форк. Это ровно состояние дерева до снятия мёртвого читателя nlb (kacho#1043).
 func TestWatermarkGateRedsOnASecondObserverOutsideTheFoundation(t *testing.T) {
+	t.Parallel()
 	s := newWatermarkStand(t)
 	s.write(t, "services/nlb/internal/repo/kacho/pg/lifecycle_feed.go",
 		"package pg\n\nconst feedSQL = "+observerSQL+"\n")
@@ -159,6 +162,7 @@ func TestWatermarkGateRedsOnASecondObserverOutsideTheFoundation(t *testing.T) {
 // Два наблюдателя в самом фундаменте — то же расхождение; гейт, судящий только
 // «лежит ли вне pkg/», его пропустил бы.
 func TestWatermarkGateRedsOnASecondObserverInsideTheFoundation(t *testing.T) {
+	t.Parallel()
 	s := newWatermarkStand(t)
 	s.write(t, "pkg/feed/watermark.go",
 		"package feed\n\nconst feedSQL = "+observerSQL+"\n")
@@ -175,6 +179,7 @@ func TestWatermarkGateRedsOnASecondObserverInsideTheFoundation(t *testing.T) {
 // Так устроена шапка самого анализатора. Гейт, читающий текст, покраснел бы на
 // собственном объяснении.
 func TestWatermarkGateIsSilentWhenTheMarkersLiveInAComment(t *testing.T) {
+	t.Parallel()
 	s := newWatermarkStand(t)
 	s.write(t, "services/nlb/internal/repo/kacho/pg/doc.go", `package pg
 
@@ -196,6 +201,7 @@ func TestWatermarkGateIsSilentWhenTheMarkersLiveInAComment(t *testing.T) {
 // текста запроса — молчит. Эта проба и есть охрана уточнения: верни счёт по
 // файлу — она покраснеет.
 func TestWatermarkGateIsSilentWhenTheMarkersAreSeparateLiterals(t *testing.T) {
+	t.Parallel()
 	s := newWatermarkStand(t)
 	s.write(t, "internal/repohygiene/markers.go", `package repohygiene
 
@@ -218,6 +224,7 @@ var markers = []string{
 // Файл с ОДНИМ признаком техникой не является: сними любой из трёх — наблюдение
 // перестаёт быть верным, оставаясь похожим.
 func TestWatermarkGateIsSilentOnAPartialMarkerSet(t *testing.T) {
+	t.Parallel()
 	s := newWatermarkStand(t)
 	s.write(t, "services/nlb/internal/jobs/locks.go",
 		"package jobs\n\nconst q = `SELECT pid FROM pg_locks WHERE mode = 'RowExclusiveLock'`\n")
@@ -232,6 +239,7 @@ func TestWatermarkGateIsSilentOnAPartialMarkerSet(t *testing.T) {
 // TestWatermarkGateRefusesAnEmptyWalk — «ноль находок» обязано быть отличимо от
 // «ноль прочитанного».
 func TestWatermarkGateRefusesAnEmptyWalk(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	_, census, err := AuditSettledWatermarkSingularity(SettledWatermarkOptions{
 		Root:    t.TempDir(),
@@ -245,6 +253,7 @@ func TestWatermarkGateRefusesAnEmptyWalk(t *testing.T) {
 // TestWatermarkAllowanceWithoutAReasonIsItselfAFinding — послабление обязано
 // нести причину и предикат истечения.
 func TestWatermarkAllowanceWithoutAReasonIsItselfAFinding(t *testing.T) {
+	t.Parallel()
 	s := newWatermarkStand(t)
 	s.write(t, "services/nlb/internal/repo/kacho/pg/lifecycle_feed.go",
 		"package pg\n\nconst feedSQL = "+observerSQL+"\n")
@@ -262,6 +271,7 @@ func TestWatermarkAllowanceWithoutAReasonIsItselfAFinding(t *testing.T) {
 // Без этой половины предыдущая проба зеленела бы и на ведомости, которая не
 // действует вовсе.
 func TestWatermarkAllowanceSilencesItsOwnSubject(t *testing.T) {
+	t.Parallel()
 	s := newWatermarkStand(t)
 	s.write(t, "services/nlb/internal/repo/kacho/pg/lifecycle_feed.go",
 		"package pg\n\nconst feedSQL = "+observerSQL+"\n")
@@ -280,6 +290,7 @@ func TestWatermarkAllowanceSilencesItsOwnSubject(t *testing.T) {
 // Запись, которой больше нечего исключать, переживёт своё снятие и разрешит
 // следующему завести свой наблюдатель под тем же оправданием.
 func TestWatermarkAllowanceWithNothingToExcuseIsAFinding(t *testing.T) {
+	t.Parallel()
 	s := newWatermarkStand(t)
 	findings, _ := s.audit(t, SettledWatermarkAllowance{
 		File:    "services/nlb/internal/repo/kacho/pg/lifecycle_feed.go",

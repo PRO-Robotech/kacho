@@ -126,6 +126,7 @@ var assertionFuncRe = regexp.MustCompile(`^(Equal|Equalf|NotEqual|NotEqualf|Equa
 // ceiling: молчание гейта не является доказательством, что проверка различает
 // два состояния — это по-прежнему устанавливается чтением.
 func TestNoBlindPrincipalAbsenceAssertions(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	var hits []string
@@ -181,6 +182,7 @@ func TestNoBlindPrincipalAbsenceAssertions(t *testing.T) {
 // туда можно внести слепую проверку, и никто не возразит. Поэтому пустое
 // исключение здесь считается ошибкой, а не «просто больше не нужно».
 func TestContractOwnerExemptionsStillHaveSubject(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	for _, rel := range contractOwners {
@@ -215,6 +217,7 @@ func TestContractOwnerExemptionsStillHaveSubject(t *testing.T) {
 // ПЕРЕВОДИТ, обязан различать эти состояния. Если и он перестанет — переводить
 // будет некуда, и требование гейта станет невыполнимым.
 func TestPrincipalFallbackPremiseHolds(t *testing.T) {
+	t.Parallel()
 	cleared := operations.WithoutPrincipal(context.Background())
 	explicit := operations.WithPrincipal(context.Background(), operations.SystemPrincipal())
 

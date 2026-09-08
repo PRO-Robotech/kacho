@@ -58,6 +58,7 @@ func injGoDepScan(t *testing.T, c injGoDepCorpus) ([]goDepFinding, goDepCensus) 
 
 // Настоящая форма дерева, слово в слово из services/vpc/docs/content/architecture.
 func TestGoDepGate_RedsOnAContractDirectoryWithoutGoCode(t *testing.T) {
+	t.Parallel()
 	corpus := injGoDepCorpus{
 		"services/vpc/docs/content/architecture/overview.mdx": "" +
 			"      <td>только stdlib + <code>proto/</code></td>\n",
@@ -80,6 +81,7 @@ func TestGoDepGate_RedsOnAContractDirectoryWithoutGoCode(t *testing.T) {
 // Проза переносится по ширине: предписание и координата оказываются на разных
 // строках. Настоящий экземпляр — известные расхождения nlb.
 func TestGoDepGate_RedsWhenTheCoordinateIsOnTheNeighbouringLine(t *testing.T) {
+	t.Parallel()
 	corpus := injGoDepCorpus{
 		"a.md": "**Что.** `architecture.md` предписывает `domain/` импортировать ТОЛЬКО stdlib +\n" +
 			"`proto/`. Фактически `internal/domain/` импортирует\n",
@@ -96,6 +98,7 @@ func TestGoDepGate_RedsWhenTheCoordinateIsOnTheNeighbouringLine(t *testing.T) {
 // Эталон дерева: services/vpc/docs/engineering/ARCHITECTURE.md — единственное
 // место, где перечисление разрешённого названо верно.
 func TestGoDepGate_SilentOnGeneratedStubsWhichDoHaveGoCode(t *testing.T) {
+	t.Parallel()
 	corpus := injGoDepCorpus{
 		"services/vpc/docs/engineering/ARCHITECTURE.md": "" +
 			"2. Никаких импортов кроме stdlib и сгенерённых стабов `pkg/api/...` (если нужны enum-зеркала).\n",
@@ -115,6 +118,7 @@ func TestGoDepGate_SilentOnGeneratedStubsWhichDoHaveGoCode(t *testing.T) {
 // читатель приземляется верно, а `.proto` действительно лежат в `proto/`. Это
 // настоящая форма дерева после починки, а не сочинённая.
 func TestGoDepGate_SilentWhenAGoDirectoryIsNamedBesideTheContractDirectory(t *testing.T) {
+	t.Parallel()
 	corpus := injGoDepCorpus{
 		"services/geo/docs/content/architecture/overview.mdx": "" +
 			"зависит от домена, а домен не зависит ни от чего, кроме stdlib и сгенерённых стабов контракта\n" +
@@ -134,6 +138,7 @@ func TestGoDepGate_SilentWhenAGoDirectoryIsNamedBesideTheContractDirectory(t *te
 // источника не названо ни одного. Без этой стороны правило «хотя бы один с
 // Go-кодом» вырождалось бы во всеразрешение.
 func TestGoDepGate_RedsWhenEveryNamedDirectoryLacksGoCode(t *testing.T) {
+	t.Parallel()
 	corpus := injGoDepCorpus{
 		"a.md": "домен не зависит ни от чего, кроме stdlib и контракта в `proto/`\n" +
 			"(схемы — `proto/kacho/`).\n",
@@ -150,6 +155,7 @@ func TestGoDepGate_RedsWhenEveryNamedDirectoryLacksGoCode(t *testing.T) {
 // Перечисление БЕЗ координаты законно и находкой быть не должно; перепись обязана
 // отличать его от перечисления с координатой отдельным числом.
 func TestGoDepGate_SilentWhenNoCoordinateIsNamedAtAll(t *testing.T) {
+	t.Parallel()
 	corpus := injGoDepCorpus{
 		"a.md": "Domain зависит только от stdlib; бизнес-логика — в use-case'ах.\n",
 	}
@@ -167,6 +173,7 @@ func TestGoDepGate_SilentWhenNoCoordinateIsNamedAtAll(t *testing.T) {
 // длинному существующему префиксу зачёл бы её за `internal/` и молчал бы по
 // неверной причине; здесь она пропускается явно.
 func TestGoDepGate_SilentOnACoordinateThatDoesNotResolveFromTheRoot(t *testing.T) {
+	t.Parallel()
 	corpus := injGoDepCorpus{
 		"services/vpc/README.md": "- `internal/domain` — сущности и newtypes (только stdlib);\n",
 	}
@@ -183,6 +190,7 @@ func TestGoDepGate_SilentOnACoordinateThatDoesNotResolveFromTheRoot(t *testing.T
 // Строка без маркера не судится вовсе: `proto/` сам по себе координатой ошибки
 // не является — ошибочно лишь утверждение о зависимости от него.
 func TestGoDepGate_SilentOnACoordinateWithoutTheDependencyClaim(t *testing.T) {
+	t.Parallel()
 	corpus := injGoDepCorpus{
 		"a.md": "Контракты домена лежат в `proto/kacho/cloud/vpc/v1/`.\n",
 	}
@@ -198,6 +206,7 @@ func TestGoDepGate_SilentOnACoordinateWithoutTheDependencyClaim(t *testing.T) {
 // ── предпосылка и перепись ───────────────────────────────────────────────────
 
 func TestGoDepGate_ZeroMarkerLinesIsDistinguishableFromZeroFindings(t *testing.T) {
+	t.Parallel()
 	corpus := injGoDepCorpus{"a.md": "страница без единого перечисления импортов\n"}
 	findings, census := injGoDepScan(t, corpus)
 	if len(findings) != 0 {
@@ -213,6 +222,7 @@ func TestGoDepGate_ZeroMarkerLinesIsDistinguishableFromZeroFindings(t *testing.T
 }
 
 func TestGoDepGate_UnreadableDocIsARefusalNotASilentZero(t *testing.T) {
+	t.Parallel()
 	_, _, err := scanGoDependencyClaims([]string{"нет-такого.md"}, injGoDepCorpus{}.read, injGoDepTree())
 	if err == nil {
 		t.Fatal("непрочитанный документ прошёл молчаливым нулём — тогда сломанный обход " +
@@ -223,6 +233,7 @@ func TestGoDepGate_UnreadableDocIsARefusalNotASilentZero(t *testing.T) {
 // ── нормализация координаты ──────────────────────────────────────────────────
 
 func TestGoDepGate_NormalizesTrailingWildcards(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct{ in, want string }{
 		{"pkg/api/...", "pkg/api"},
 		{"proto/", "proto"},
@@ -238,6 +249,7 @@ func TestGoDepGate_NormalizesTrailingWildcards(t *testing.T) {
 // Текст находки режется по рунам: байтовый срез рвёт кириллицу пополам, и
 // диагностика заканчивается заменяющим символом там, где нужен предмет.
 func TestGoDepGate_FindingTextIsCutOnRuneBoundary(t *testing.T) {
+	t.Parallel()
 	long := strings.Repeat("зависимость ", 30)
 	got := trimDocLineForFinding(long)
 	if strings.ContainsRune(got, '�') {

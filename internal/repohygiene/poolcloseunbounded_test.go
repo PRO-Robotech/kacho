@@ -117,6 +117,7 @@ var poolCloseDebt = map[string]int{
 
 // TestPoolCloseInTestsIsBounded — гейт.
 func TestPoolCloseInTestsIsBounded(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

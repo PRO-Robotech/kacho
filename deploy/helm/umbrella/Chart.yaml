@@ -29,7 +29,7 @@ description: "Kachō Cloud Control Plane — umbrella chart (flat API + Operatio
 # чарты её воспроизводили. Запрет держит гейт internal/repohygiene/subchartdup_test.go.
 dependencies:
   - name: ingress-nginx
-    version: 4.x
+    version: 4.15.1
     repository: https://kubernetes.github.io/ingress-nginx
     # condition-gated: clusters that expose via LoadBalancer Services disable the
     # kind-style ingress-nginx via `ingress-nginx.enabled: false`. Without the
@@ -48,29 +48,29 @@ dependencies:
   # профиль не меняется.
   - name: postgresql
     alias: pg-vpc
-    version: 13.x
+    version: 13.4.4
     repository: https://charts.bitnami.com/bitnami
     condition: pg-vpc.enabled
   - name: postgresql
     alias: pg-compute
-    version: 13.x
+    version: 13.4.4
     repository: https://charts.bitnami.com/bitnami
     condition: pg-compute.enabled
   - name: postgresql
     alias: pg-iam
-    version: 13.x
+    version: 13.4.4
     repository: https://charts.bitnami.com/bitnami
   # kacho-geo owns its own Postgres instance (schema kacho_geo, goose migrator).
   # database-per-service (ban #8). Always on (geo is a core leaf-service like iam).
   - name: postgresql
     alias: pg-geo
-    version: 13.x
+    version: 13.4.4
     repository: https://charts.bitnami.com/bitnami
   # kacho-nlb owns its own Postgres instance (schema `kacho_nlb`, goose migrator).
   # Condition-gated so lean clusters can stay without NLB.
   - name: postgresql
     alias: pg-nlb
-    version: 13.x
+    version: 13.4.4
     repository: https://charts.bitnami.com/bitnami
     condition: pg-nlb.enabled
 
@@ -123,7 +123,7 @@ dependencies:
     condition: registry.enabled
   - name: postgresql
     alias: pg-registry
-    version: 13.x
+    version: 13.4.4
     repository: https://charts.bitnami.com/bitnami
     condition: pg-registry.enabled
 
@@ -138,7 +138,7 @@ dependencies:
     condition: storage.enabled
   - name: postgresql
     alias: pg-storage
-    version: 13.x
+    version: 13.4.4
     repository: https://charts.bitnami.com/bitnami
     condition: pg-storage.enabled
 
@@ -175,12 +175,12 @@ dependencies:
     condition: hydra.enabled
   - name: postgresql
     alias: pg-kratos
-    version: 13.x
+    version: 13.4.4
     repository: https://charts.bitnami.com/bitnami
     condition: pg-kratos.enabled
   - name: postgresql
     alias: pg-hydra
-    version: 13.x
+    version: 13.4.4
     repository: https://charts.bitnami.com/bitnami
     condition: pg-hydra.enabled
 
@@ -193,7 +193,7 @@ dependencies:
   # post-install/post-upgrade hooks so they are admitted only after the
   # cert-manager webhook is Ready. Gated on the master mtls.enabled flag.
   - name: cert-manager
-    version: v1.16.x
+    version: v1.16.5
     repository: https://charts.jetstack.io
     # Gated separately from mtls.enabled so `make dev-up` can bring the controller
     # up FIRST (phase 1, mtls off) and only then apply the Issuer/Certificate CRs

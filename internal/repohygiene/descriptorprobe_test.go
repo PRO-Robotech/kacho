@@ -92,6 +92,7 @@ func (r descriptorProbeResult) summary() string {
 // Молчаливого третьего («потом напишем») нет намеренно: именно он и стоил
 // блокера, из-за которого гейт написан.
 func TestEveryDescriptorHasAProbe(t *testing.T) {
+	t.Parallel()
 	res := auditDescriptorProbes(t, repoRoot(t))
 	t.Log(res.summary())
 

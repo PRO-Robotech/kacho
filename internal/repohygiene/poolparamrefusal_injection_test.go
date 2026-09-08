@@ -18,6 +18,7 @@ const injectedGuardFile = "services/vpc/cmd/vpc/main.go"
 // TestInjectionRedOnAReturnedSubstringGuard — вернули подстрочную проверку на
 // месте вызова → гейт КРАСНЕЕТ и НАЗЫВАЕТ КООРДИНАТУ.
 func TestInjectionRedOnAReturnedSubstringGuard(t *testing.T) {
+	t.Parallel()
 	findings, census := FindPoolParamSubstringChecks(map[string]string{
 		injectedGuardFile: `package main
 
@@ -54,6 +55,7 @@ func guard(dsn string) error {
 // Каждый подаётся ОТДЕЛЬНО: в общей куче молчание по одному неотличимо от
 // молчания по всем.
 func TestInjectionSilentOnTheLegitimateTwins(t *testing.T) {
+	t.Parallel()
 	twins := map[string]string{
 		"дом предиката: pkg/db вправе искать ключ как угодно": `package db
 
@@ -100,6 +102,7 @@ func name() string { return marker }
 // быть отличимо от «ноль прочитанного»: неразобранный файл не судится, и его
 // молчание не имеет права читаться как чистота.
 func TestInjectionCensusDistinguishesUnparsedFromClean(t *testing.T) {
+	t.Parallel()
 	_, census := FindPoolParamSubstringChecks(map[string]string{
 		"services/vpc/cmd/vpc/broken.go": "это не Go",
 	})

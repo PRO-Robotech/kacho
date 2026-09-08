@@ -44,6 +44,7 @@ func count(ctx context.Context) error {
 // TestReseedWiring_WriterPackageIsRecognisedAndReaderIsNot — ось «кто писатель»
 // различает ЗАПИСЬ и ЧТЕНИЕ: без этого весь гейт указывал бы на чужой пакет.
 func TestReseedWiring_WriterPackageIsRecognisedAndReaderIsNot(t *testing.T) {
+	t.Parallel()
 	pkg, isWriter := writerPkgOf(t, "services/iam/internal/repo/kaname/pg/role_repo.go", injWriterSrc)
 	if !isWriter {
 		t.Fatal("признак МОЛЧИТ на файле, который пишет проекцию, — гейт не способен " +
@@ -63,6 +64,7 @@ func TestReseedWiring_WriterPackageIsRecognisedAndReaderIsNot(t *testing.T) {
 // TestReseedWiring_InjectionRedOnAUseCaseImportingTheWriter — файл use-case,
 // импортирующий пакет писателя, → находка С КООРДИНАТОЙ.
 func TestReseedWiring_InjectionRedOnAUseCaseImportingTheWriter(t *testing.T) {
+	t.Parallel()
 	writerPkgs := map[string]string{
 		importOfTreeRel("services/iam/internal/repo/kaname/pg/roleverb"): "services/iam/internal/repo/kaname/pg/roleverb/roleverb.go",
 	}
@@ -88,6 +90,7 @@ func TestReseedWiring_InjectionRedOnAUseCaseImportingTheWriter(t *testing.T) {
 // близнец: use-case импортирует ДРУГОЙ пакет того же слоя адаптера, писателем
 // не являющийся. Гейт обязан молчать: он запрещает импорт ПИСАТЕЛЯ, а не слоя.
 func TestReseedWiring_InjectionSilentOnANeighbouringAdapterImport(t *testing.T) {
+	t.Parallel()
 	writerPkgs := map[string]string{
 		importOfTreeRel("services/iam/internal/repo/kaname/pg"): "services/iam/internal/repo/kaname/pg/role_repo.go",
 	}
@@ -108,6 +111,7 @@ func TestReseedWiring_InjectionSilentOnANeighbouringAdapterImport(t *testing.T) 
 // TestReseedWiring_LayerPredicateSeparatesUseCaseFromRepo — сам писатель лежит в
 // `repo/` и обязан оставаться вне выборки: иначе гейт краснел бы на себе.
 func TestReseedWiring_LayerPredicateSeparatesUseCaseFromRepo(t *testing.T) {
+	t.Parallel()
 	if !isUseCaseLayer("services/iam/internal/apps/kaname/seed/role_verb_reseed.go") {
 		t.Error("файл слоя use-case не опознан — выборка гейта пуста, и его молчание " +
 			"ничего не значит")
@@ -140,6 +144,7 @@ func BackfillOwnerBindings(ctx context.Context, pool *pgxpool.Pool) error {
 // TestReseedWiring_InjectionRedOnAnInPackageReseedCall — вызов пересчёта изнутри
 // чужого досева → находка, названная объемлющей функцией.
 func TestReseedWiring_InjectionRedOnAnInPackageReseedCall(t *testing.T) {
+	t.Parallel()
 	entries := map[string]bool{"ReseedSystemRoleVerbs": true}
 	got, err := roleVerbReseedRefsIn("migrate_backfill.go", injSeedInsideCallSrc, entries)
 	if err != nil {
@@ -157,6 +162,7 @@ func TestReseedWiring_InjectionRedOnAnInPackageReseedCall(t *testing.T) {
 // TestReseedWiring_InjectionSilentOnANeighbouringSeedCall — законный близнец:
 // тот же пакет зовёт ДРУГОЙ свой досев. Это не предмет оси, и гейт молчит.
 func TestReseedWiring_InjectionSilentOnANeighbouringSeedCall(t *testing.T) {
+	t.Parallel()
 	entries := map[string]bool{"ReseedSystemRoleVerbs": true}
 	got, err := roleVerbReseedRefsIn("migrate_backfill.go", injSeedNeighbourCallSrc, entries)
 	if err != nil {
@@ -171,6 +177,7 @@ func TestReseedWiring_InjectionSilentOnANeighbouringSeedCall(t *testing.T) {
 // TestReseedWiring_InjectionSilentOnTheDeclarationItself — объявление самой точки
 // входа вызовом не является: иначе гейт краснел бы всегда, включая верное дерево.
 func TestReseedWiring_InjectionSilentOnTheDeclarationItself(t *testing.T) {
+	t.Parallel()
 	src := `package seed
 
 func ReseedSystemRoleVerbs(ctx context.Context, repo kanamerepo.Repository) error {
@@ -193,6 +200,7 @@ func ReseedSystemRoleVerbs(ctx context.Context, repo kanamerepo.Repository) erro
 // корнем в имени точкой входа не является, иначе перепись насчитала бы предметов
 // больше, чем их есть, и «ноль внутрипакетных вызовов» стало бы недостижимым.
 func TestReseedWiring_EntryPointDetectionSeparatesExportedFromHelpers(t *testing.T) {
+	t.Parallel()
 	src := `package seed
 
 func ReseedSystemRoleVerbs(ctx context.Context) error { return nil }
@@ -218,6 +226,7 @@ func (s *sweeper) ReseedRoleVerbsMethod(ctx context.Context) error { return nil 
 // файл без пересчёта точек входа не даёт, и гейт обязан на этом ОТКАЗАТЬ, а не
 // молчать. Здесь проверяется сам признак; отказ — в теле гейта.
 func TestReseedWiring_EntryPointDetectionIsEmptyWithoutTheSubject(t *testing.T) {
+	t.Parallel()
 	src := `package seed
 
 func BackfillOwnerBindings(ctx context.Context) error { return nil }
@@ -267,6 +276,7 @@ func BackfillOwnerBindings(ctx context.Context) error {
 // возможная запись вызова вне пакета досева. Не зная её, гейт стерёг ровно тот
 // каталог, в котором прятать вызов и не нужно.
 func TestReseedWiring_InjectionRedOnAQualifiedReseedCallAnywhereInTheTree(t *testing.T) {
+	t.Parallel()
 	entries := map[string]bool{"ReseedSystemRoleVerbs": true}
 	got, err := roleVerbReseedRefsIn(
 		"services/iam/internal/apps/kaname/api/role/create.go", injReseedQualifiedCallSrc, entries)
@@ -289,6 +299,7 @@ func TestReseedWiring_InjectionRedOnAQualifiedReseedCallAnywhereInTheTree(t *tes
 // ЗНАЧЕНИЕМ и позванный через переменную. Гейт, считающий только вызовы,
 // молчит: в позиции вызова стоит имя переменной, а не точки входа.
 func TestReseedWiring_InjectionRedOnAReseedTakenAsAValue(t *testing.T) {
+	t.Parallel()
 	entries := map[string]bool{"ReseedSystemRoleVerbs": true}
 	got, err := roleVerbReseedRefsIn(
 		"services/iam/internal/apps/kaname/seed/migrate_backfill.go", injReseedValueCaptureSrc, entries)
@@ -309,6 +320,7 @@ func TestReseedWiring_InjectionRedOnAReseedTakenAsAValue(t *testing.T) {
 // неотличим от исправного — на дереве, где корень зовёт пересчёт, он краснел бы
 // всегда, и его отключили бы первым.
 func TestReseedWiring_BootRootIsTheOnlyPlaceWhereAReferenceIsLegal(t *testing.T) {
+	t.Parallel()
 	if !isBootCompositionRoot(bootCompositionRoot) {
 		t.Errorf("композиционный корень (%s) не опознан как законное место ссылки — "+
 			"гейт краснел бы на верном дереве", bootCompositionRoot)

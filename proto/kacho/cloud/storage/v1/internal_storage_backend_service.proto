@@ -8,7 +8,7 @@ package kacho.cloud.storage.v1;
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
-import "kacho/iam/authz/v1/authz_options.proto";
+import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1";
 
@@ -55,26 +55,26 @@ service InternalStorageBackendService {
       body: "*"
     };
 
-    option (kacho.iam.authz.v1.permission)        = "storage.storage_backends.create";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "storage.storage_backends.create";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Get — возвращает регистрацию по id.
   rpc Get(GetStorageBackendRequest) returns (StorageBackend) {
     option (google.api.http) = {get: "/storage/v1/storageBackends/{storage_backend_id}"};
 
-    option (kacho.iam.authz.v1.permission)        = "storage.storage_backends.get";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "storage.storage_backends.get";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // List — перечисляет регистрации. Курсорная пагинация `(created_at, id)`, как у
@@ -83,13 +83,13 @@ service InternalStorageBackendService {
   rpc List(ListStorageBackendsRequest) returns (ListStorageBackendsResponse) {
     option (google.api.http) = {get: "/storage/v1/storageBackends"};
 
-    option (kacho.iam.authz.v1.permission)        = "storage.storage_backends.list";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "storage.storage_backends.list";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Update — правит регистрацию по `update_mask`.
@@ -104,13 +104,13 @@ service InternalStorageBackendService {
       body: "*"
     };
 
-    option (kacho.iam.authz.v1.permission)        = "storage.storage_backends.update";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "storage.storage_backends.update";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 
   // Delete — снимает регистрацию.
@@ -125,13 +125,13 @@ service InternalStorageBackendService {
   rpc Delete(DeleteStorageBackendRequest) returns (DeleteStorageBackendResponse) {
     option (google.api.http) = {delete: "/storage/v1/storageBackends/{storage_backend_id}"};
 
-    option (kacho.iam.authz.v1.permission)        = "storage.storage_backends.delete";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
+    option (corelib.authz.v1.permission)        = "storage.storage_backends.delete";
+    option (corelib.authz.v1.required_relation) = "system_admin";
+    option (corelib.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
       from_request_field: "*"
     };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (corelib.authz.v1.required_acr_min) = "1";
   }
 }
 

@@ -18,6 +18,7 @@ import (
 // доказана инъекцией в обе стороны:
 // clienttruth_quota_refusal_metadata_injection_test.go.
 func TestQuotaRefusalAmountsReachTheClient(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	tree, err := treecorpus.NewTree(root)

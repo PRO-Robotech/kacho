@@ -36,6 +36,7 @@ func findingsFor(t *testing.T, body string, baseline map[schemaRollbackKey]int) 
 // TestInjectedColumnRemovalIsAFinding — по одной инъекции на КАЖДУЮ форму.
 // Красное обязано называть координату: находка без неё не действие.
 func TestInjectedColumnRemovalIsAFinding(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		form string
 		sql  string
@@ -70,6 +71,7 @@ func TestInjectedColumnRemovalIsAFinding(t *testing.T) {
 // TestLegitimateTwinsStaySilent — законные близнецы. Без них гейт ловил бы
 // форму записи, а не существо, и первый же ложный срабат его отключил бы.
 func TestLegitimateTwinsStaySilent(t *testing.T) {
+	t.Parallel()
 	twins := []struct {
 		name string
 		body string
@@ -119,6 +121,7 @@ func TestLegitimateTwinsStaySilent(t *testing.T) {
 // TestRubberStampMarkerIsRefused — признак без обоснования признаком не
 // является: иначе токен становится печатью, которую ставят не читая.
 func TestRubberStampMarkerIsRefused(t *testing.T) {
+	t.Parallel()
 	body := upMigration(pointOfNoReturnMarker + "\nALTER TABLE kacho_vpc.networks DROP COLUMN vrf_id;")
 	if _, got := findingsFor(t, body, nil); len(got) != 1 {
 		t.Fatalf("пустое обоснование принято за объявление: находок %d", len(got))
@@ -127,6 +130,7 @@ func TestRubberStampMarkerIsRefused(t *testing.T) {
 
 // TestBaselineExpiresByItself — исключение, которому нечего исключать, — находка.
 func TestBaselineExpiresByItself(t *testing.T) {
+	t.Parallel()
 	base := map[schemaRollbackKey]int{{File: injRel, Form: "DROP COLUMN"}: 1}
 	_, got := findingsFor(t, upMigration("ALTER TABLE kacho_vpc.networks ADD COLUMN vrf_id text;"), base)
 	if len(got) != 1 || got[0].Kind != "предмета больше нет" {
@@ -141,6 +145,7 @@ func TestBaselineExpiresByItself(t *testing.T) {
 // потому не истекает; расхождение точного числа обязано быть находкой в ОБЕ
 // стороны.
 func TestBaselineHoldsAnExactCountNotACeiling(t *testing.T) {
+	t.Parallel()
 	two := upMigration("ALTER TABLE a DROP COLUMN x;\nALTER TABLE a DROP COLUMN y;")
 	for _, declared := range []int{1, 3} {
 		base := map[schemaRollbackKey]int{{File: injRel, Form: "DROP COLUMN"}: declared}
@@ -158,6 +163,7 @@ func TestBaselineHoldsAnExactCountNotACeiling(t *testing.T) {
 // TestMalformedBaselineLineIsAFinding — ведомость, которую не разобрать, не
 // имеет права молча означать «записей нет».
 func TestMalformedBaselineLineIsAFinding(t *testing.T) {
+	t.Parallel()
 	_, bad := parseSchemaRollbackBaseline("a|b\n")
 	if len(bad) != 1 {
 		t.Errorf("строка без третьего поля принята: %v", bad)
@@ -174,6 +180,7 @@ func TestMalformedBaselineLineIsAFinding(t *testing.T) {
 // TestEmptyWalkIsNotAVerdict — «ноль находок» обязано быть отличимо от «ноль
 // прочитанного»: на пустом обходе перепись обязана это показать.
 func TestEmptyWalkIsNotAVerdict(t *testing.T) {
+	t.Parallel()
 	census, got := findSchemaRollbackFindings(nil, map[schemaRollbackKey]int{})
 	if census.Files != 0 || census.WithForm != 0 || len(got) != 0 {
 		t.Fatalf("пустой вход дал непустую перепись: %s", census)
@@ -187,6 +194,7 @@ func TestEmptyWalkIsNotAVerdict(t *testing.T) {
 // забеливания комментариев: длина и позиции переводов строк обязаны
 // сохраниться, иначе координаты находок поедут.
 func TestSqlBlankStringsKeepsCodeAndOffsets(t *testing.T) {
+	t.Parallel()
 	in := "SELECT 'a\nb', x;\n"
 	out := sqlBlankStrings(in)
 	if len(out) != len(in) {

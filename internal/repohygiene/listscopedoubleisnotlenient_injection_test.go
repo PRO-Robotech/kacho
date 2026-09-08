@@ -18,6 +18,7 @@ import (
 // Инъекция зовёт ТУ ЖЕ функцию, что и проверка дерева, а не свою копию: иначе
 // доказывала бы свойство копии.
 func TestLenientScopeAudit_Injection(t *testing.T) {
+	t.Parallel()
 	const lenientDouble = `package p
 
 import "testing"

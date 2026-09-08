@@ -35,6 +35,7 @@ func hasFinding(j ExemptJudgement, needle string) bool {
 }
 
 func TestR893_ExemptJudgeCanFailAndCanStaySilent(t *testing.T) {
+	t.Parallel()
 	sites := map[string]string{
 		"kaname.cloud.iam.v1.UserService/List": "services/iam/internal/apps/kaname/api/user/list.go",
 	}

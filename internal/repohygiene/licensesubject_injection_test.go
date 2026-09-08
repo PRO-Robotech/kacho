@@ -86,6 +86,7 @@ const injApacheCopy = "\n" +
 
 // Наблюдавшийся дефект: корневой файл — копия сервисного, предмет не правлен.
 func TestLicenseSubjectGate_RedsWhenRootNamesOneService(t *testing.T) {
+	t.Parallel()
 	findings, census := injLicenseScan(injLicenseCorpus{
 		"LICENSE": injLicenseBody("Kachō Compute (kacho-compute)"),
 	})
@@ -102,6 +103,7 @@ func TestLicenseSubjectGate_RedsWhenRootNamesOneService(t *testing.T) {
 
 // Второй наблюдавшийся дефект: сервисный файл называет ЧУЖОЙ сервис.
 func TestLicenseSubjectGate_RedsWhenServiceNamesAnotherService(t *testing.T) {
+	t.Parallel()
 	findings, _ := injLicenseScan(injLicenseCorpus{
 		"services/registry/LICENSE": injLicenseBody("Kachō Geography (kacho-geo)"),
 		"services/storage/LICENSE":  injLicenseBody("Kachō Geography (kacho-geo)"),
@@ -123,6 +125,7 @@ func TestLicenseSubjectGate_RedsWhenServiceNamesAnotherService(t *testing.T) {
 // то есть краснела бы на верном дереве. Неизвестным осталось место ВНУТРИ
 // уровня, но не его корень.
 func TestLicenseSubjectGate_RedsOnAnUndeclaredLocation(t *testing.T) {
+	t.Parallel()
 	findings, census := injLicenseScan(injLicenseCorpus{
 		"pkg/internal/LICENSE": injLicenseBody("Kachō (kacho)"),
 	})
@@ -140,6 +143,7 @@ func TestLicenseSubjectGate_RedsOnAnUndeclaredLocation(t *testing.T) {
 
 // Файл без строки предмета вовсе: лицензия есть, предмета нет.
 func TestLicenseSubjectGate_RedsWhenSubjectLineIsAbsent(t *testing.T) {
+	t.Parallel()
 	findings, _ := injLicenseScan(injLicenseCorpus{
 		"services/vpc/LICENSE": "Business Source License 1.1\n\nChange Date: 2029-01-01\n",
 	})
@@ -150,6 +154,7 @@ func TestLicenseSubjectGate_RedsWhenSubjectLineIsAbsent(t *testing.T) {
 
 // Предмет назван прозой, без машинной половины: сверить не с чем.
 func TestLicenseSubjectGate_RedsWhenIdentifierIsMissing(t *testing.T) {
+	t.Parallel()
 	findings, _ := injLicenseScan(injLicenseCorpus{
 		"services/vpc/LICENSE": injLicenseBody("The Kacho VPC service"),
 	})
@@ -162,6 +167,7 @@ func TestLicenseSubjectGate_RedsWhenIdentifierIsMissing(t *testing.T) {
 
 // Верное дерево: корень, псевдоним каталога и обычный сервис.
 func TestLicenseSubjectGate_SilentOnACorrectTree(t *testing.T) {
+	t.Parallel()
 	findings, census := injLicenseScan(injLicenseCorpus{
 		"LICENSE":                  injLicenseBody("Kachō (kacho), the cloud control-plane platform,"),
 		"gateway/LICENSE":          injLicenseBody("Kachō API Gateway (kacho-api-gateway)"),
@@ -196,6 +202,7 @@ func injAGPLBody() string {
 // Корень уровня с ВЕРНЫМ телом — молчание. Положительный контроль к двум осям
 // ниже: без него их красное зеленело бы на чём угодно.
 func TestLicenseSubjectGate_SilentOnTierRootsWithTheirOwnLicenseText(t *testing.T) {
+	t.Parallel()
 	findings, census := injLicenseScan(injLicenseCorpus{
 		"pkg/LICENSE":          injApacheBody(),
 		"proto/LICENSE":        injApacheBody(),
@@ -217,6 +224,7 @@ func TestLicenseSubjectGate_SilentOnTierRootsWithTheirOwnLicenseText(t *testing.
 // Тело не той лицензии, которую объявляет уровень: файл валиден для всякого
 // читателя, кроме юриста, и без этой оси прошёл бы молча.
 func TestLicenseSubjectGate_RedsWhenTierRootCarriesAnotherLicenseText(t *testing.T) {
+	t.Parallel()
 	findings, _ := injLicenseScan(injLicenseCorpus{
 		"pkg/LICENSE": injLicenseBody("Kachō (kacho)"),
 	})
@@ -233,6 +241,7 @@ func TestLicenseSubjectGate_RedsWhenTierRootCarriesAnotherLicenseText(t *testing
 
 // Обратное направление той же оси: вынесенный продукт под текстом монорепо.
 func TestLicenseSubjectGate_RedsWhenTheProductCarriesTheMonorepoLicenseText(t *testing.T) {
+	t.Parallel()
 	findings, _ := injLicenseScan(injLicenseCorpus{
 		"services/iam/LICENSE": injLicenseBody("Kaname (kaname)"),
 	})
@@ -244,6 +253,7 @@ func TestLicenseSubjectGate_RedsWhenTheProductCarriesTheMonorepoLicenseText(t *t
 // Корень уровня BUSL предмет по-прежнему НЕСЁТ — половина, которую легко
 // потерять при заведении второй формы.
 func TestLicenseSubjectGate_BuslTierRootStillCarriesItsSubject(t *testing.T) {
+	t.Parallel()
 	findings, census := injLicenseScan(injLicenseCorpus{
 		"LICENSE": injLicenseBody("Kachō Compute (kacho-compute)"),
 	})
@@ -258,6 +268,7 @@ func TestLicenseSubjectGate_BuslTierRootStillCarriesItsSubject(t *testing.T) {
 // Новый сервис под services/ карты НЕ требует: предмет выводится механически.
 // Ось отдельная, потому что она и есть довод против полной карты путь→предмет.
 func TestLicenseSubjectGate_SilentOnANewServiceWithoutAnyMapEntry(t *testing.T) {
+	t.Parallel()
 	if _, declared := licenseSubjectAliases["services/objectstore"]; declared {
 		t.Fatal("предпосылка оси: сервис не должен стоять в карте псевдонимов")
 	}
@@ -275,6 +286,7 @@ func TestLicenseSubjectGate_SilentOnANewServiceWithoutAnyMapEntry(t *testing.T) 
 // Скобки копирайта `(c)` стоят в КАЖДОМ файле и на строку предмета не влияют.
 // Без этой оси распознаватель, читающий файл целиком, выглядел бы исправным.
 func TestLicenseSubjectGate_ReadsTheSubjectLineOnlyNotTheCopyright(t *testing.T) {
+	t.Parallel()
 	body := injLicenseBody("Kachō VPC (kacho-vpc)")
 	if !strings.Contains(body, "(c) PRO-Robotech") {
 		t.Fatal("предпосылка оси: в теле обязана быть скобка копирайта")
@@ -288,6 +300,7 @@ func TestLicenseSubjectGate_ReadsTheSubjectLineOnlyNotTheCopyright(t *testing.T)
 // ── перепись: «ноль находок» отличимо от «ноль прочитанного» ─────────────────
 
 func TestLicenseSubjectGate_CensusSeparatesCleanFromUnread(t *testing.T) {
+	t.Parallel()
 	_, empty := injLicenseScan(injLicenseCorpus{"README.md": "нет тут лицензии\n"})
 	if empty.licenses != 0 {
 		t.Fatalf("перепись насчитала файлы LICENSE там, где их нет: %s", empty)
@@ -306,6 +319,7 @@ func TestLicenseSubjectGate_CensusSeparatesCleanFromUnread(t *testing.T) {
 // Законный близнец: чужая копия там, где ей и место. Требовать от неё нашей
 // строки предмета нельзя — она не наша.
 func TestLicenseSubjectGate_SilentOnAVendoredLicenseCopy(t *testing.T) {
+	t.Parallel()
 	findings, census := injLicenseScanVendored(injLicenseCorpus{
 		"proto/google/LICENSE": injApacheCopy,
 	}, "proto/google")
@@ -320,6 +334,7 @@ func TestLicenseSubjectGate_SilentOnAVendoredLicenseCopy(t *testing.T) {
 // Та же копия ВНЕ корня вендоренного пространства — по-прежнему находка.
 // Контроль послабления: оно не течёт за пределы своего предмета.
 func TestLicenseSubjectGate_RedsOnTheSameCopyOutsideAVendorRoot(t *testing.T) {
+	t.Parallel()
 	// Место выбрано так, чтобы объявленная уровнем лицензия ОТЛИЧАЛАСЬ от чужой
 	// копии: у pkg/ соседняя полоса объявила Apache-2.0, и копия Apache там стала
 	// законной — предмет инъекции от этого не изменился, изменилось место.
@@ -339,6 +354,7 @@ func TestLicenseSubjectGate_RedsOnTheSameCopyOutsideAVendorRoot(t *testing.T) {
 // накрывается: он несёт строку предмета, то есть объявляет НАШУ лицензию на
 // чужой код. Вторая половина двойного признака — ради этой оси она и заведена.
 func TestLicenseSubjectGate_RedsWhenOurLicenseSitsInAVendorRoot(t *testing.T) {
+	t.Parallel()
 	findings, census := injLicenseScanVendored(injLicenseCorpus{
 		"proto/google/LICENSE": injLicenseBody("Kachō (kacho)"),
 	}, "proto/google")
@@ -353,6 +369,7 @@ func TestLicenseSubjectGate_RedsWhenOurLicenseSitsInAVendorRoot(t *testing.T) {
 
 // Проба антимаски: рядом с законным пропуском находка объявляется по-прежнему.
 func TestLicenseSubjectGate_VendoredExemptionDoesNotMaskAFinding(t *testing.T) {
+	t.Parallel()
 	findings, census := injLicenseScanVendored(injLicenseCorpus{
 		"proto/google/LICENSE": injApacheCopy,
 		"LICENSE":              injLicenseBody("Kachō Compute (kacho-compute)"),
@@ -368,6 +385,7 @@ func TestLicenseSubjectGate_VendoredExemptionDoesNotMaskAFinding(t *testing.T) {
 // Послабление ИСТЕКАЕТ САМО: уехал вендоренный код — корня больше нет, и
 // оставшийся файл снова находка. Без этой оси запись пережила бы свой предмет.
 func TestLicenseSubjectGate_VendoredExemptionExpiresWithItsSubject(t *testing.T) {
+	t.Parallel()
 	corpus := injLicenseCorpus{"proto/google/LICENSE": injApacheCopy}
 	if findings, _ := injLicenseScanVendored(corpus, "proto/google"); len(findings) != 0 {
 		t.Fatalf("предпосылка оси: при живом корне пропуск обязан быть: %v", findings)

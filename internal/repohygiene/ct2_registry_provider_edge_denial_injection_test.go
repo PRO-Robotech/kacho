@@ -65,6 +65,7 @@ func goSource(domain, body string) EdgeSource {
 
 // (а) НАСТОЯЩИЙ дефект — текст, стоявший в дереве до #1646.
 func TestEdgeDenialInjection_HistoricalTextIsFound(t *testing.T) {
+	t.Parallel()
 	findings, census := scanEdgeClaimOne(t, goSource("registry",
 		`"Имя репозитория. Может содержать косые черты " +`+"\n\t\t"+
 			`"(`+"`team/service`"+`). Переименования у края нет: изменение пересоздаёт " +`+"\n\t\t"+
@@ -91,6 +92,7 @@ func TestEdgeDenialInjection_HistoricalTextIsFound(t *testing.T) {
 // где его нет. Без этой пары гейт, резолвящий по всему дереву контрактов сразу,
 // объявил бы находкой шесть исправных утверждений дерева.
 func TestEdgeDenialInjection_DomainDecidesTheSameSentence(t *testing.T) {
+	t.Parallel()
 	const sentence = `"Сеть группы неизменяема: операции переноса между сетями у края не существует."`
 
 	quiet, _ := scanEdgeClaimOne(t, goSource("registry", sentence))
@@ -118,6 +120,7 @@ func TestEdgeDenialInjection_DomainDecidesTheSameSentence(t *testing.T) {
 // говорить. Взят живой из дерева близнец того же класса: предмет назван не
 // действием, а ЗНАЧЕНИЕМ, и резолвить его не с чем ни при какой форме.
 func TestEdgeDenialInjection_ClaimOutsideTheDictionaryIsCountedNotJudged(t *testing.T) {
+	t.Parallel()
 	findings, census := scanEdgeClaimOne(t, goSource("loadbalancer",
 		`"Границы задаются вместе: полудиапазона у края нет."`))
 	if len(findings) != 0 {
@@ -134,6 +137,7 @@ func TestEdgeDenialInjection_ClaimOutsideTheDictionaryIsCountedNotJudged(t *test
 
 // (г) ЗАКОННЫЙ БЛИЗНЕЦ — утверждение о глаголе, который в контракте ЕСТЬ.
 func TestEdgeDenialInjection_TrueAffirmationIsSilent(t *testing.T) {
+	t.Parallel()
 	findings, _ := scanEdgeClaimOne(t, goSource("registry",
 		`"Переименование у края есть, провайдер им не пользуется намеренно."`))
 	if len(findings) != 0 {
@@ -144,6 +148,7 @@ func TestEdgeDenialInjection_TrueAffirmationIsSilent(t *testing.T) {
 // (д) ОБРАТНАЯ СТОРОНА — утверждение о глаголе, которого нет. Стареет тише
 // отрицания: не мешает работать, пока клиент по нему не пойдёт.
 func TestEdgeDenialInjection_AffirmationOfAnAbsentVerbIsFound(t *testing.T) {
+	t.Parallel()
 	findings, _ := scanEdgeClaimOne(t, goSource("registry",
 		`"Перенос между реестрами у края есть — зовите его вместо пересоздания."`))
 	if len(findings) != 1 {
@@ -157,6 +162,7 @@ func TestEdgeDenialInjection_AffirmationOfAnAbsentVerbIsFound(t *testing.T) {
 // (е) ТОКЕН ДЕЙСТВИЯ — второй способ назвать предмет, морфологии не требующий.
 // Пара: существующий токен молчит, отсутствующий краснеет.
 func TestEdgeDenialInjection_ActionTokenIsResolvedBothWays(t *testing.T) {
+	t.Parallel()
 	ok, census := scanEdgeClaimOne(t, goSource("compute",
 		"\"У края есть действия `:start` и `:stop` — провайдер их не выражает.\""))
 	if len(ok) != 0 {
@@ -180,6 +186,7 @@ func TestEdgeDenialInjection_ActionTokenIsResolvedBothWays(t *testing.T) {
 // Требуй здесь маркера — и находка осталась бы вне наблюдения: «у контракта есть»
 // в закрытый набор форм не входит и входить не должно (гонка за прозой бесконечна).
 func TestEdgeDenialInjection_TokenWithoutAnyMarkerIsStillAClaim(t *testing.T) {
+	t.Parallel()
 	findings, census := scanEdgeClaimOne(t, goSource("compute",
 		"\"У контракта есть `:hibernate` — и он отвечает 501.\""))
 	if len(findings) != 1 {
@@ -195,6 +202,7 @@ func TestEdgeDenialInjection_TokenWithoutAnyMarkerIsStillAClaim(t *testing.T) {
 // знала дефис только в прозе и объявила несуществующими четыре токена, которые
 // контракт объявляет, — то есть ложные находки от собственной асимметрии.
 func TestEdgeDenialInjection_HyphenatedTokenIsKnownOnBothSides(t *testing.T) {
+	t.Parallel()
 	contracts := map[string]EdgeContract{"vpc": {Domain: "vpc",
 		RPCs:    map[string]bool{"AddCidrBlocks": true},
 		Actions: map[string]bool{":add-cidr-blocks": true}}}
@@ -227,6 +235,7 @@ func TestEdgeDenialInjection_HyphenatedTokenIsKnownOnBothSides(t *testing.T) {
 // утверждение свободно разрывается посередине; деление по строкам теряло бы его
 // молча — предмет и маркер оказывались бы в разных единицах суждения.
 func TestEdgeDenialInjection_ClaimWrappedAcrossLinesIsFound(t *testing.T) {
+	t.Parallel()
 	findings, _ := scanEdgeClaimOne(t, EdgeSource{
 		Path: "vpc_security_group_resource.go", Kind: "go", Domain: "loadbalancer",
 		Text: "package provider\n\n" +
@@ -240,6 +249,7 @@ func TestEdgeDenialInjection_ClaimWrappedAcrossLinesIsFound(t *testing.T) {
 // (з) ГРАНИЦА АБЗАЦА при этом сохраняется: отрицание из одного абзаца не встречает
 // глагол из другого.
 func TestEdgeDenialInjection_MarkerAndNounInDifferentSentencesAreSilent(t *testing.T) {
+	t.Parallel()
 	findings, census := scanEdgeClaimOne(t, goSource("loadbalancer",
 		`"Полудиапазона у края нет. Перенос делают отдельным вызовом."`))
 	if len(findings) != 0 {
@@ -252,6 +262,7 @@ func TestEdgeDenialInjection_MarkerAndNounInDifferentSentencesAreSilent(t *testi
 
 // (и) СВЁРТКА КОНКАТЕНАЦИИ — утверждение разорвано по границе литералов.
 func TestEdgeDenialInjection_ClaimSplitAcrossLiteralsIsFound(t *testing.T) {
+	t.Parallel()
 	findings, _ := scanEdgeClaimOne(t, goSource("registry",
 		`"Имя репозитория. Переименования у края " +`+"\n\t\t"+`"нет: изменение пересоздаёт ресурс."`))
 	if len(findings) != 1 {
@@ -262,6 +273,7 @@ func TestEdgeDenialInjection_ClaimSplitAcrossLiteralsIsFound(t *testing.T) {
 // (к) ФОРМА `.tf` — отдельный вид записи предмета, и доказывается отдельно.
 // Модули несут утверждения о крае и до расширения корпуса не судились ничем.
 func TestEdgeDenialInjection_ModuleFormIsJudged(t *testing.T) {
+	t.Parallel()
 	quiet, census := scanEdgeClaimOne(t, EdgeSource{
 		Path: "terraform/modules/registry-space/variables.tf", Kind: "tf", Domain: "registry",
 		Text: "variable \"region_id\" {\n  description = \"Регион реестра. Неизменяем: перенос\n" +
@@ -288,6 +300,7 @@ func TestEdgeDenialInjection_ModuleFormIsJudged(t *testing.T) {
 // (л) ФАЙЛ БЕЗ ДОМЕНА — общая оболочка стабов не импортирует, резолвить не с чем.
 // Утверждение обязано быть СОСЧИТАНО и НЕ объявлено проверенным.
 func TestEdgeDenialInjection_FileWithoutADomainIsCountedNotJudged(t *testing.T) {
+	t.Parallel()
 	findings, census := scanEdgeClaimOne(t, goSource("",
 		`"Снятия у края нет: глагол переводит ресурс с одного значения на другое."`))
 	if len(findings) != 0 {
@@ -304,6 +317,7 @@ func TestEdgeDenialInjection_FileWithoutADomainIsCountedNotJudged(t *testing.T) 
 // (м) ПРЕДПОСЫЛКА — глагол ушёл из контрактов. Отрицающая половина стала бы
 // вакуумной МОЛЧА, поэтому предпосылка обязана заявить о себе сама.
 func TestEdgeDenialInjection_PremiseFailsWhenTheVerbLeavesTheContracts(t *testing.T) {
+	t.Parallel()
 	if _, ok := EdgeClaimPremiseHolds(edgeFxContracts()); !ok {
 		t.Fatal("предпосылка не держится на живых контрактах — гейт красен на исправном дереве")
 	}
@@ -321,6 +335,7 @@ func TestEdgeDenialInjection_PremiseFailsWhenTheVerbLeavesTheContracts(t *testin
 
 // (н) ПУСТОЙ КОРПУС — перепись обязана показать ноль, а не выглядеть как чистое дерево.
 func TestEdgeDenialInjection_EmptyCorpusIsVisibleInTheCensus(t *testing.T) {
+	t.Parallel()
 	findings, _, census, err := ScanProviderEdgeClaims(nil, edgeFxContracts())
 	if err != nil {
 		t.Fatalf("разбор: %v", err)
@@ -343,6 +358,7 @@ func TestEdgeDenialInjection_EmptyCorpusIsVisibleInTheCensus(t *testing.T) {
 
 // (ж1) ЛОЖНОЕ ОТРИЦАНИЕ квалифицированного метода — находка.
 func TestEdgeDenialInjection_QualifiedMethodDeniedButDeclaredIsFound(t *testing.T) {
+	t.Parallel()
 	findings, census := scanEdgeClaimOne(t, goSource("loadbalancer",
 		"\"Добавления целей у края нет: метода `TargetGroupService/AddTargets` контракт не объявляет.\""))
 	if len(findings) != 1 {
@@ -361,6 +377,7 @@ func TestEdgeDenialInjection_QualifiedMethodDeniedButDeclaredIsFound(t *testing.
 
 // (ж2) УТВЕРЖДЕНИЕ метода, которого нет, — обратная сторона той же полосы.
 func TestEdgeDenialInjection_QualifiedMethodAffirmedButAbsentIsFound(t *testing.T) {
+	t.Parallel()
 	findings, _ := scanEdgeClaimOne(t, goSource("loadbalancer",
 		"\"У края есть `TargetGroupService/UpdateTarget` — зовите его вместо пары снятие+добавление.\""))
 	if len(findings) != 1 {
@@ -374,6 +391,7 @@ func TestEdgeDenialInjection_QualifiedMethodAffirmedButAbsentIsFound(t *testing.
 // (ж3) ЗАКОННЫЙ БЛИЗНЕЦ — отрицание метода, которого и вправду нет. Это ровно та
 // форма, которой переписаны пять живых утверждений дерева.
 func TestEdgeDenialInjection_QualifiedMethodDeniedAndAbsentIsSilent(t *testing.T) {
+	t.Parallel()
 	findings, census := scanEdgeClaimOne(t, goSource("loadbalancer",
 		"\"Смена веса выражается снятием и добавлением, а не изменением цели: метода "+
 			"`TargetGroupService/UpdateTarget` у края нет.\""))
@@ -388,6 +406,7 @@ func TestEdgeDenialInjection_QualifiedMethodDeniedAndAbsentIsSilent(t *testing.T
 
 // (ж4) ЗАКОННЫЙ БЛИЗНЕЦ — утверждение о методе, который объявлен.
 func TestEdgeDenialInjection_QualifiedMethodAffirmedAndDeclaredIsSilent(t *testing.T) {
+	t.Parallel()
 	findings, census := scanEdgeClaimOne(t, goSource("loadbalancer",
 		"\"Цели правит `TargetGroupService/AddTargets`, а группу — `TargetGroupService/Update`.\""))
 	if len(findings) != 0 {
@@ -406,6 +425,7 @@ func TestEdgeDenialInjection_QualifiedMethodAffirmedAndDeclaredIsSilent(t *testi
 // при ОДНОМ И ТОМ ЖЕ глаголе и ОДНОМ И ТОМ ЖЕ домене. Резолв по голому имени RPC
 // такой пары различить не может by construction.
 func TestEdgeDenialInjection_ServiceNotVerbDecidesTheVerdict(t *testing.T) {
+	t.Parallel()
 	quiet, _ := scanEdgeClaimOne(t, goSource("loadbalancer",
 		"\"У слушателя целей не бывает: метода `ListenerService/AddTargets` у края нет.\""))
 	if len(quiet) != 0 {
@@ -430,6 +450,7 @@ func TestEdgeDenialInjection_ServiceNotVerbDecidesTheVerdict(t *testing.T) {
 // (з1) РОДОВОЕ ИМЯ БЕЗ ТОКЕНА — находка. Дефект подан ДОСЛОВНО текстом, стоявшим в
 // дереве до этой правки.
 func TestEdgeDenialInjection_GenericActionNounWithoutATokenIsFound(t *testing.T) {
+	t.Parallel()
 	findings, census := scanEdgeClaimOne(t, goSource("loadbalancer",
 		`"Смена веса выражается снятием и добавлением, а не обновлением цели, которого у края нет."`))
 	if len(findings) != 1 {
@@ -454,6 +475,7 @@ func TestEdgeDenialInjection_GenericActionNounWithoutATokenIsFound(t *testing.T)
 // (з2) ЗАКОННЫЙ БЛИЗНЕЦ — то же родовое имя, но предмет назван токеном. Форма
 // исполнена, и гейт молчит.
 func TestEdgeDenialInjection_GenericActionNounNamedByATokenIsSilent(t *testing.T) {
+	t.Parallel()
 	findings, census := scanEdgeClaimOne(t, goSource("loadbalancer",
 		"\"Обновления цели у края нет: метода `TargetGroupService/UpdateTarget` контракт не объявляет.\""))
 	if len(findings) != 0 {
@@ -471,6 +493,7 @@ func TestEdgeDenialInjection_GenericActionNounNamedByATokenIsSilent(t *testing.T
 // девять слов и в другую сторону. Предикат по всему предложению объявил бы это
 // находкой, и первый же ложный срабат снял бы полосу целиком.
 func TestEdgeDenialInjection_GenericNounOutsideTheWindowIsSilent(t *testing.T) {
+	t.Parallel()
 	findings, census := scanEdgeClaimOne(t, goSource("loadbalancer",
 		`"Отозванные строки в обход ВКЛЮЧЕНЫ: они существуют, и «наш идентификатор среди них» `+
 			`означает, что привязка у края есть, — то самое расхождение с чтением, о котором `+
@@ -487,6 +510,7 @@ func TestEdgeDenialInjection_GenericNounOutsideTheWindowIsSilent(t *testing.T) {
 // (з4) ЗАКОННЫЙ БЛИЗНЕЦ — родовое имя есть, но утверждение уже резолвится СЛОВАРЁМ.
 // Полоса включается только там, где не сработала ни одна другая.
 func TestEdgeDenialInjection_GenericNounIsSilentWhenTheDictionaryResolved(t *testing.T) {
+	t.Parallel()
 	findings, census := scanEdgeClaimOne(t, goSource("registry",
 		`"Изменение пересоздаёт ресурс: операции переноса между реестрами у края не существует."`))
 	if len(findings) != 0 {
@@ -500,6 +524,7 @@ func TestEdgeDenialInjection_GenericNounIsSilentWhenTheDictionaryResolved(t *tes
 // (з5) КОНТРОЛЬ КОРПУСА — родовое имя без маркера края утверждением о крае не
 // является вовсе. Без этой пробы полоса могла бы расширить корпус молча.
 func TestEdgeDenialInjection_GenericNounWithoutAMarkerIsNotAClaim(t *testing.T) {
+	t.Parallel()
 	findings, census := scanEdgeClaimOne(t, goSource("loadbalancer",
 		`"Обновление цели провайдер выражает снятием и добавлением."`))
 	if len(findings) != 0 {

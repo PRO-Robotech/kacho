@@ -83,6 +83,7 @@ const (
 // `gateway/internal/restmux`. Новый сервис попадает под гейт в тот же день, что
 // заводится, и без правки этого файла.
 func TestEdgeResolvesEveryProtoPackageItsOwnersCanProduce(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	mains, err := goListMainPackages(root)
@@ -170,6 +171,7 @@ func TestEdgeResolvesEveryProtoPackageItsOwnersCanProduce(t *testing.T) {
 // текста здесь нет: место упаковки разбирается по синтаксическому дереву,
 // объявление — рефлексией.
 func TestForeignTypesPackedInTheTreeAreDeclaredByTheEdge(t *testing.T) {
+	t.Parallel()
 	tt := newTrackedTree(t, repoRoot(t))
 
 	var files []string
@@ -275,6 +277,7 @@ func TestForeignTypesPackedInTheTreeAreDeclaredByTheEdge(t *testing.T) {
 // именно его: как только провайдер начнёт трогать `Any`, она покраснеет и
 // потребует решение пересмотреть, а не унаследовать.
 func TestTerraformProviderIsOutOfThisSubjectAndSaysWhy(t *testing.T) {
+	t.Parallel()
 	tt := newTrackedTree(t, repoRoot(t))
 
 	var files []string

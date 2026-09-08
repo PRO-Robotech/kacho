@@ -129,6 +129,7 @@ func auditCarrierUnknownServiceUse(root string) (uses []string, err error) {
 // TestCarrierStillCannotExpressAProxyEdge — у дескриптора нет полей, которыми
 // прокси-форма выражалась бы объявлением.
 func TestCarrierStillCannotExpressAProxyEdge(t *testing.T) {
+	t.Parallel()
 	ex, declared := hostAdoptionExceptions[edgeService]
 	if !declared || ex.kind != adoptionDecided {
 		t.Skip("край больше не объявлен решением владельца — основание держать не за что; " +
@@ -170,6 +171,7 @@ func TestCarrierStillCannotExpressAProxyEdge(t *testing.T) {
 // сам дотягивался до маршрутизации чужих методов, форма края была бы выразима
 // мимо дескриптора.
 func TestCarrierRegistersOnlyDeclaredServices(t *testing.T) {
+	t.Parallel()
 	uses, err := auditCarrierUnknownServiceUse(repoRoot(t))
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -212,6 +214,7 @@ func synthContractTree(t *testing.T, files map[string]string) string {
 
 // Сторона дефекта: у дескриптора появилось поле прокси-формы.
 func TestProxyShapeProbeRedOnAFieldThatExpressesIt(t *testing.T) {
+	t.Parallel()
 	root := synthContractTree(t, map[string]string{
 		"pkg/servicecontract/spec.go": `package servicecontract
 
@@ -238,6 +241,7 @@ type Spec struct {
 // Без этой половины проба ловила бы «у дескриптора есть поля», а не «появилось
 // поле прокси-формы», и основание решения краснело бы на каждой правке пакета.
 func TestProxyShapeProbeSilentOnALawfulField(t *testing.T) {
+	t.Parallel()
 	root := synthContractTree(t, map[string]string{
 		"pkg/servicecontract/spec.go": `package servicecontract
 
@@ -262,6 +266,7 @@ type Spec struct {
 // Сторона дефекта второй пробы: носитель сам дотянулся до маршрутизации чужих
 // методов.
 func TestCarrierUnknownServiceProbeRedOnAReach(t *testing.T) {
+	t.Parallel()
 	root := synthContractTree(t, map[string]string{
 		"pkg/servicehost/serve.go": `package servicehost
 
@@ -280,6 +285,7 @@ func Serve(h any) any { return grpc.UnknownServiceHandler(h) }
 // Законный близнец: носитель регистрирует ОБЪЯВЛЕННЫЕ службы и до чужих методов
 // не дотягивается.
 func TestCarrierUnknownServiceProbeSilentOnDeclaredRegistration(t *testing.T) {
+	t.Parallel()
 	root := synthContractTree(t, map[string]string{
 		"pkg/servicehost/serve.go": `package servicehost
 

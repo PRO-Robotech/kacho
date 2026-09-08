@@ -39,6 +39,7 @@ import (
 // вход и не выдаёт себя ничем). Этот гейт — его положительная половина: он требует
 // готовность от КАЖДОГО сервиса, поэтому её исчезновение краснеет здесь.
 func TestEveryServiceBuildsReadinessRatherThanServingLiveness(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	var rels []string
@@ -107,6 +108,7 @@ func TestEveryServiceBuildsReadinessRatherThanServingLiveness(t *testing.T) {
 // чисто: «проверка не нашла» и «проверке нечего искать» печатают один и тот же
 // ноль (`testing.md` §«Гейт на класс», п.9), и различает их только перепись.
 func TestLivenessSlotNeverAsksTheReadinessQuestion(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	charts := deploymentTemplates(t, root)

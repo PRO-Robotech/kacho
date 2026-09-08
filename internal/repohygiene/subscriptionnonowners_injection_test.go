@@ -51,6 +51,7 @@ func hasFindingNaming(findings []string, coord string) bool {
 }
 
 func TestSubscriptionNonOwnerGateFallsAndStaysSilent(t *testing.T) {
+	t.Parallel()
 	services := []string{"alpha", "bravo", "charlie"}
 	// alpha служит глагол; bravo и charlie — нет.
 	owners := []string{"alpha"}
@@ -218,6 +219,7 @@ func TestSubscriptionNonOwnerGateFallsAndStaysSilent(t *testing.T) {
 // TestRightsModelTypeCensusReadsDeclarationsOnly — счётчик типов модели прав судит
 // ОБЪЯВЛЕНИЕ, а не упоминание: слово `type` стоит и в комментариях модели.
 func TestRightsModelTypeCensusReadsDeclarationsOnly(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	model := filepath.Join(dir, subscriptionRightsModelRel)
 	if err := os.MkdirAll(filepath.Dir(model), 0o750); err != nil {

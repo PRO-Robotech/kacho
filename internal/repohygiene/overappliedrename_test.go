@@ -448,6 +448,7 @@ func scanOverAppliedRename(tree *treecorpus.Tree) (overAppliedCensus, []overAppl
 
 // TestOverAppliedRenameLeavesNoUnresolvableCoordinate — гейт класса.
 func TestOverAppliedRenameLeavesNoUnresolvableCoordinate(t *testing.T) {
+	t.Parallel()
 	tree, err := treecorpus.NewTree(repoRoot(t))
 	if err != nil {
 		t.Fatalf("состав дерева не собран — вердикт беспредметен: %v", err)

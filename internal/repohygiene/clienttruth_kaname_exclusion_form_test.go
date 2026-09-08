@@ -35,6 +35,7 @@ func clientTruthKanameExclusionFormOptions(t *testing.T) ClientTruthKanameExclus
 // Способность падать доказывает не этот прогон, а инъекция
 // (`clienttruth_kaname_exclusion_form_injection_test.go`): здесь только вердикт.
 func TestClientTruthKanameExclusionFormMatchesTheTree(t *testing.T) {
+	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditClientTruthKanameExclusionForm(
 		clientTruthKanameExclusionFormOptions(t), &log)

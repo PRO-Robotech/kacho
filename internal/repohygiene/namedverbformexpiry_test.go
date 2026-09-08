@@ -85,6 +85,7 @@ func scenarioProbeNames(t *testing.T, tt *trackedTree, root string) ([]string, i
 
 // TestNamedVerbFormReturnsOnlyWithItsCompletenessCheck — сам гейт.
 func TestNamedVerbFormReturnsOnlyWithItsCompletenessCheck(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

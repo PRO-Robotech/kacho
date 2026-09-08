@@ -202,6 +202,7 @@ func checkBrowserBeforeStand(path, raw string) ([]string, browserStandCensus) {
 
 // TestBrowserIsAcquiredBeforeTheStandTakesTheRunner — по дереву.
 func TestBrowserIsAcquiredBeforeTheStandTakesTheRunner(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files := listWorkflows(t, root)
 
@@ -247,6 +248,7 @@ func TestBrowserIsAcquiredBeforeTheStandTakesTheRunner(t *testing.T) {
 // Класс знакомый: предикат, разошедшийся со своим предметом, не перестаёт
 // работать — он начинает уверенно отвечать «не найдено».
 func TestBrowserAcquireScriptCoordinateIsAlive(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	rel := filepath.Join(".github", "scripts", browserAcquireScript)
 	st, err := os.Stat(filepath.Join(root, rel))

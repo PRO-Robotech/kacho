@@ -51,6 +51,7 @@ const commonReadinessCarrierPkg = "pkg/observability/health"
 // форма заведётся так же тихо, как четвёртая, — не нарушив ни одной проверки,
 // потому что каждая форма по отдельности корректна.
 func TestReadinessIsServedByASingleCarrier(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	rels := ct3TrackedRelGoFiles(t, root, "services")

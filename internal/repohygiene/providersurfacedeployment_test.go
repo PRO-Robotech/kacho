@@ -120,6 +120,7 @@ func chartTemplateBodies(t *testing.T) map[string]string {
 var deploymentProviderLedger = map[string][]string{}
 
 func TestChartTemplatesDoNotDialTheProviderAdminSurface(t *testing.T) {
+	t.Parallel()
 	templates := chartTemplateBodies(t)
 	surfaces := adminSurfaces()
 
@@ -170,6 +171,7 @@ func TestChartTemplatesDoNotDialTheProviderAdminSurface(t *testing.T) {
 
 // Запись ведомости обязана иметь предмет.
 func TestDeploymentProviderLedger_StillHasASubject(t *testing.T) {
+	t.Parallel()
 	templates := chartTemplateBodies(t)
 	for rel, permitted := range deploymentProviderLedger {
 		body, ok := templates[rel]
