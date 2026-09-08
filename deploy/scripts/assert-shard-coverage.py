@@ -680,6 +680,10 @@ def report(root: pathlib.Path, manifest_path: pathlib.Path) -> int:
     print("=== покрытие шардов (единица счёта — отслеживаемая git коллекция) ===")
     print(f"осмотрено: суит {st['suites_tree']}, коллекций {st['collections_tree']}, "
           f"шардов {st['shards']}, переключаемых компонентов {st['gates']}")
+    # Строки таблицы весов НАЗЫВАЮТСЯ числом: «расхождений ноль» обязано быть
+    # отличимо от «таблицу не прочитали».
+    print(f"вес суит: строк таблицы {SHARD_DOC} прочитано {st['doc_weight_rows_read']}, "
+          f"запросов в дереве {st['requests_tree']}")
     print(f"ban #6: прочитано .proto {st['ban6_proto_files_read']}, регистраций "
           f"Internal*-служб в прод-коде {st['ban6_registrations_found']}")
     print(f"ban #6: доменов с Internal*-контрактом {st['ban6_domains_with_contract']}, "
