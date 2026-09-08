@@ -1,0 +1,58 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+#
+# ПРОВЕНАНС ВЕНДОРЕННЫХ ВНЕШНИХ ЧАРТОВ (задача #2256).
+#
+# Чем доказывается, что архив в `charts/` — то, что опубликовал вышестоящий:
+# `sha256` здесь есть ДОСЛОВНО значение поля `digest` из `index.yaml` издателя,
+# а не наш собственный пересчёт архива. Пересчёт доказывал бы лишь то, что файл
+# не менялся с тех пор, как мы его положили; равенство с записью издателя
+# доказывает, ЧТО ИМЕННО мы положили.
+#
+# Замер 2026-09-08: все пять сошлись с издателем побайтово.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# ПРОЦЕДУРА БАМПА — ЯВНОЕ ИЗМЕНЕНИЕ С ОБЗОРОМ, И ЭТО СМЫСЛ, А НЕ ЦЕНА
+#
+#   1. поднять версию в `Chart.yaml` (точным пином, диапазон запрещён гейтом);
+#   2. `KACHO_HELM_DEPS_REFRESH=1 bash deploy/scripts/helm-umbrella-deps.sh`
+#      — единственный владелец материализации сходит в сеть и положит архив;
+#   3. `python3 deploy/scripts/assert-vendored-external-charts.py --verify-upstream`
+#      — сверить полученное с `index.yaml` издателя и вписать сюда новый `sha256`;
+#   4. снять прежний архив из `charts/` тем же изменением: архив, которого не
+#      объявляет ни одна зависимость, — находка гейта (послабление обязано
+#      истекать само, а не копиться);
+#   5. для `hydra` и `kratos` ДОПОЛНИТЕЛЬНО перемерить предпосылку терминатора
+#      административного листенера (`deploy/scripts/remeasure-provider-listener-tls.sh`)
+#      и обновить `deploy/PROVIDER-LISTENER-PREMISE.md` — она привязана к версии,
+#      и плавающая зависимость под прибитой предпосылкой уже давала случайный
+#      красный (см. шапку `Chart.yaml`).
+#
+# ЛОКАЛЬНЫХ САБЧАРТОВ (`file://…`) ЗДЕСЬ НЕТ И НЕ ДОЛЖНО БЫТЬ: они собираются из
+# исходников этого же дерева на каждой материализации.
+charts:
+  - name: cert-manager
+    version: v1.16.5
+    archive: cert-manager-v1.16.5.tgz
+    repository: https://charts.jetstack.io
+    sha256: db6d071f2c177b6d69efdab95efd4e80b437636a676d92dc70dcc78515dcb36b
+  - name: hydra
+    version: 0.62.1
+    archive: hydra-0.62.1.tgz
+    repository: https://k8s.ory.sh/helm/charts
+    sha256: a42f0621f09007b7f89d0ca0f48450e8ebf0d33679e8cf25ae88eb51004a9ca7
+  - name: ingress-nginx
+    version: 4.15.1
+    archive: ingress-nginx-4.15.1.tgz
+    repository: https://kubernetes.github.io/ingress-nginx
+    sha256: 3eff0bd18151d6e6b1c441463410571443dda1ac78292cb189346628de784f0c
+  - name: kratos
+    version: 0.62.1
+    archive: kratos-0.62.1.tgz
+    repository: https://k8s.ory.sh/helm/charts
+    sha256: 27cf41ef5703a4f63b4d542cc4ea6ee9661fe5178d28ac55e19b027c8c05080c
+  - name: postgresql
+    version: 13.4.4
+    archive: postgresql-13.4.4.tgz
+    repository: https://charts.bitnami.com/bitnami
+    sha256: 690b0b387f93a9c4b3be740eeb18bc458966fbaeb1b471dbf140a04bec0ee7dd
