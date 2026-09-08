@@ -195,7 +195,7 @@ func auditPanicRecoveryWiring(t *testing.T, root string) panicRecoveryAudit {
 				continue
 			}
 			pkgDir := filepath.Join(cmdRoot, b.Name())
-			pkg, perr := loadPkgForChainScan(pkgDir)
+			pkg, perr := loadPkgForChainScan(root, pkgDir)
 			if perr != nil {
 				t.Fatalf("%s: пакет не разбирается (%v) — молчание гейта по нему "+
 					"ничего не доказывает", relTo(root, pkgDir), perr)
@@ -287,7 +287,8 @@ func auditPanicRecoveryWiring(t *testing.T, root string) panicRecoveryAudit {
 		serviceBuilders: serviceBuilders,
 		listeners:       listeners,
 		covered:         covered,
-		summary: "осмотрено: компонентов " + strconv.Itoa(scannedServices) +
+		summary: "дерево: " + root +
+			"; осмотрено: компонентов " + strconv.Itoa(scannedServices) +
 			", композиционных пакетов " + strconv.Itoa(scannedPkgs) +
 			", файлов " + strconv.Itoa(scannedFiles) +
 			", файлов при поиске звеньев " + strconv.Itoa(scannedRecoveryFiles) +
@@ -430,14 +431,17 @@ func hasRecoveryLink(calls []recoveryKey, known map[recoveryKey]string, kind str
 // ── разбор композиционного пакета ────────────────────────────────────────────
 
 type chainPkgInfo struct {
-	dir     string
-	fset    *token.FileSet
-	files   []*ast.File
-	paths   []string
-	funcs   map[string]*ast.FuncDecl // функции этого пакета по имени
-	fileOf  map[*ast.FuncDecl]*ast.File
-	grpcOf  map[*ast.File]string // локальное имя пакета grpc в файле
-	imports map[*ast.File]map[string]string
+	// treeRoot — корень дерева, которое судит гейт. Разрешение импортов не
+	// поднимается выше него: см. dirOfModuleImport.
+	treeRoot string
+	dir      string
+	fset     *token.FileSet
+	files    []*ast.File
+	paths    []string
+	funcs    map[string]*ast.FuncDecl // функции этого пакета по имени
+	fileOf   map[*ast.FuncDecl]*ast.File
+	grpcOf   map[*ast.File]string // локальное имя пакета grpc в файле
+	imports  map[*ast.File]map[string]string
 }
 
 type listenerChainSite struct {
@@ -448,7 +452,7 @@ type listenerChainSite struct {
 	fn    *ast.FuncDecl
 }
 
-func loadPkgForChainScan(dir string) (*chainPkgInfo, error) {
+func loadPkgForChainScan(treeRoot, dir string) (*chainPkgInfo, error) {
 	fset := token.NewFileSet()
 	pkgs, err := parser.ParseDir(fset, dir, func(fi os.FileInfo) bool {
 		return !strings.HasSuffix(fi.Name(), "_test.go")
@@ -457,7 +461,8 @@ func loadPkgForChainScan(dir string) (*chainPkgInfo, error) {
 		return nil, err
 	}
 	p := &chainPkgInfo{
-		dir: dir, fset: fset,
+		treeRoot: treeRoot,
+		dir:      dir, fset: fset,
 		funcs:   map[string]*ast.FuncDecl{},
 		fileOf:  map[*ast.FuncDecl]*ast.File{},
 		grpcOf:  map[*ast.File]string{},
@@ -765,7 +770,7 @@ func (p *chainPkgInfo) calleeKey(call *ast.CallExpr, in *ast.FuncDecl) (recovery
 		if !ok {
 			return recoveryKey{}, false
 		}
-		dir, ok := dirOfModuleImport(p.dir, path)
+		dir, ok := dirOfModuleImport(p.treeRoot, p.dir, path)
 		if !ok {
 			return recoveryKey{}, false
 		}
@@ -856,15 +861,42 @@ func importMapOfFile(f *ast.File) map[string]string {
 // склеивался бы из её каталога и хвоста ЧУЖОГО префикса, то есть указывал бы в
 // никуда, а функция отвечала бы «нашёл». Отображение самого пути отдано
 // treeRelOfImport: оно знает оба модуля.
-func dirOfModuleImport(fromDir, importPath string) (string, bool) {
+//
+// ПОДЪЁМ ОГРАНИЧЕН КОРНЕМ СУДИМОГО ДЕРЕВА, и это несущее свойство, а не
+// аккуратность. Прежняя редакция брала САМЫЙ ВНЕШНИЙ `go.mod`, поднимаясь до
+// корня файловой системы. Вывод «не первый» верен, а следствие было взято шире
+// нужного: нужен самый внешний В ПРЕДЕЛАХ дерева, которое гейту назвали.
+//
+// Цена измерена (#2429). Рабочая копия, вложенная в другой checkout продукта,
+// попадает под `go.mod` ОБЪЕМЛЮЩЕГО дерева, и звенья разрешались в ЧУЖОМ
+// checkout'е: найденного там гейт не засчитывал и объявлял листенеры
+// беззвенными. Пара на одном коммите, различие ровно в расположении копии:
+// вне вложенности — «листенеров 3, из них со звеном 3», PASS; внутри — «со
+// звеном 0», FAIL с тремя координатами. Остальные семь чисел переписи
+// совпадали дословно, поэтому отличить ложное красное от настоящего по выводу
+// было нельзя. По этому красному завели P0 о продакшн-дефекте (#2427),
+// которого нет; подтвердили его две независимые полосы — обе работали во
+// вложенных копиях, то есть тиражировали одну систематическую ошибку.
+//
+// Гейт судит ТО дерево, которое ему назвали. Всё, что выше `treeRoot`, — чужое
+// по построению, и заглядывать туда он не вправе ни при каком расположении.
+func dirOfModuleImport(treeRoot, fromDir, importPath string) (string, bool) {
 	rel, own := treeRelOfImport(importPath)
 	if !own {
+		return "", false
+	}
+	// Путь вне судимого дерева разрешать нечем: «не наш» здесь — положительный
+	// ответ, а не отсутствие ответа.
+	if !dirWithinTree(treeRoot, fromDir) {
 		return "", false
 	}
 	root, cur := "", fromDir
 	for {
 		if _, err := os.Stat(filepath.Join(cur, "go.mod")); err == nil {
 			root = cur
+		}
+		if cur == treeRoot {
+			break // граница судимого дерева: выше начинается чужое
 		}
 		parent := filepath.Dir(cur)
 		if parent == cur {
@@ -876,6 +908,17 @@ func dirOfModuleImport(fromDir, importPath string) (string, bool) {
 		return "", false
 	}
 	return filepath.Join(root, filepath.FromSlash(rel)), true
+}
+
+// dirWithinTree — лежит ли каталог внутри судимого дерева (или совпадает с ним).
+// Сравнение по очищенным путям и по СЕГМЕНТАМ: префикс строки засчитал бы
+// каталог-сосед `…/kacho-2` за вложенный в `…/kacho`.
+func dirWithinTree(treeRoot, dir string) bool {
+	rel, err := filepath.Rel(filepath.Clean(treeRoot), filepath.Clean(dir))
+	if err != nil {
+		return false
+	}
+	return rel == "." || (!strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != "..")
 }
 
 // walkGoASTFilesForPanicGate обходит прод-исходники под root и отдаёт каждый
