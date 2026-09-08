@@ -32,6 +32,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 const (
@@ -286,7 +288,10 @@ func TestPublicPeerCallableRPCs_CarryNoMutation(t *testing.T) {
 // источника истины контракта, а не из копии, которую пришлось бы поддерживать.
 func protoReturnTypes(t *testing.T) map[string]string {
 	t.Helper()
-	dir := filepath.Join("..", "..", "..", "..", "proto", "kaname", "cloud", "iam", "v1")
+	// Каталог контрактов в поставку модуля не входит: контракты приезжают
+	// зависимостью. Координата берётся от корня платформы, а её отсутствие —
+	// «условие не создано», а не «нет файла».
+	dir := platformtree.RequirePath(t, "proto/kaname/cloud/iam/v1")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("read proto dir %s: %v", dir, err)
@@ -377,7 +382,7 @@ func TestPublicPeerCallableRPCs_EveryCallerHasAModuleInTheTree(t *testing.T) {
 // `services/*`, а не по списку в коде: список разошёлся бы с деревом молча.
 func serviceModulesInTree(t *testing.T) map[string]struct{} {
 	t.Helper()
-	dir := filepath.Join("..", "..", "..", "..", "services")
+	dir := platformtree.RequirePath(t, "services")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("read services dir %s: %v", dir, err)

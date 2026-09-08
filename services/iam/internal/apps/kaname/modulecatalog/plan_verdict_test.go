@@ -55,6 +55,8 @@ import (
 	"github.com/PRO-Robotech/kaname/internal/apps/kaname/seed"
 	"github.com/PRO-Robotech/kaname/internal/catalog"
 	"github.com/PRO-Robotech/kaname/internal/manifest"
+
+	"github.com/PRO-Robotech/kaname/internal/testsupport/platformtree"
 )
 
 // planVerdict — вердикт плана, как его объявляет §2.11.
@@ -357,7 +359,7 @@ func planStates(t *testing.T) []planState {
 // модуля. Читаются из дерева тем же путём, каким их читает применитель.
 func declaredRowsOfShippedModule(t *testing.T, module string) modulecatalog.Declared {
 	t.Helper()
-	path := filepath.Join(manifestsRoot, module, "manifest.yaml")
+	path := filepath.Join(platformtree.RequirePath(t, manifestsRootRel), module, "manifest.yaml")
 	body, err := os.ReadFile(path) // #nosec G304 -- путь собран из константы пакета проб
 	require.NoErrorf(t, err, "прочитать манифест %s", path)
 	m, err := manifest.Load(body)
