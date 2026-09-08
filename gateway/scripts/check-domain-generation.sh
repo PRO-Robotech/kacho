@@ -338,7 +338,10 @@ for out_spec in "str_catalog.json|\"fqn\"" "str_routes.go|FQN"; do
   [[ "${observed_n}" -gt 0 ]] || finding A10 "${out_spec%%|*}: имён выхода не прочитано — обход беспредметен"
   while IFS= read -r obs_root; do
     [[ -n "${obs_root}" ]] || continue
-    printf '%s\n' "${resolved}" | grep -qxF "${obs_root}" \
+    # Сравнение БЕЗ внешнего процесса: `grep -q` выходит до конца входа, писатель
+    # слева получает SIGPIPE, а `pipefail` поднимает это до статуса конвейера —
+    # найденное объявилось бы ненайденным (гейт `TestPipefailVerdictNeverComesFromAPipe`).
+    [[ $'\n'"${resolved}"$'\n' == *$'\n'"${obs_root}"$'\n'* ]] \
       || finding A10 "${out_spec%%|*}: корень '${obs_root}' в именах выхода есть, а домена не дал ни одного — распознаватель на нём слеп"
   done <<< "${observed}"
 done
