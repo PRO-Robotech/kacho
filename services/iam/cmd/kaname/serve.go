@@ -627,6 +627,12 @@ func runServe(cfg config.Config) error {
 	); err != nil {
 		return err
 	}
+	// ПАРА «адрес + удостоверение» административного контура. Половина пары
+	// хуже отсутствия обеих: она выглядит настроенной, отказывая на каждой
+	// административной операции фасада (задача #2471).
+	if err := requireProviderAdminCredentialPair(cfg.AuthN); err != nil {
+		return err
+	}
 
 	// Самоотчёт о security-posture: ПОСЛЕ boot-guard'ов (cfg.Validate() в main,
 	// mtlsCfg.Validate() и production-гейт обоих gRPC-листенеров выше — конфиг
@@ -1324,12 +1330,14 @@ func runServe(cfg config.Config) error {
 			// публичный материал, здесь — предъявленный токен. Слушатель,
 			// который сертификата даже не запрашивает, оставил бы авторитету
 			// нечем отказать, поэтому такой стенд не поднимается вовсе.
-			if !mtlsCfg.JWKSProxyVerifiesCaller() {
-				return fmt.Errorf(
-					"авторитет отзыва не может быть выставлен на слушателе, который не запрашивает " +
-						"клиентский сертификат: задайте KANAME_JWKSPROXY_SERVER_MTLS_CLIENTAUTHMODE=optional-mutual " +
-						"(набор проверочных ключей при этом остаётся доступен без сертификата) " +
-						"либо выключите свою чеканку authn.token-signing.enabled")
+			// УСЛОВИЕ ЖИВЁТ ИМЕНОВАННЫМ СТРАЖЕМ, а не встроенной ветвью.
+			// Встроенной оно и было — и потому не судилось пробой боевого
+			// профиля: та зовёт стражей ПОИМЁННО, и обещание её шапки
+			// «появится у подъёма новое условие — профиль покраснеет»
+			// не исполнялось для условия без имени (задача #2476).
+			if err := requireRevocationAuthorityCallerAuth(
+				signingKeystore != nil, jwksProxyAddr, mtlsCfg); err != nil {
+				return err
 			}
 			introspect := tokenintrospecthttp.NewHandler(tokenintrospecthttp.Config{
 				Issuer:            cfg.AuthN.TokenSigning.Issuer,

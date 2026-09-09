@@ -113,8 +113,21 @@ var umbrellaChains = map[string][]string{
 // chartChains — the `-f` chains the shipped chart itself offers. `values.yaml` is
 // named first in every chain because helm merges it first whether or not anybody
 // passes it.
+//
+// THE `dev` CHAIN IS GONE, and its removal is the subject rather than tidying up
+// (issue #2473). The chart used to offer `values.yaml + values.dev.yaml` for
+// installation, and that chain declared `authMode: dev` while leaving the
+// database channel at the base's insecure value. ban #16 allows an insecure
+// posture only in in-process fixtures and forbids it on a raised cluster, and a
+// helm profile is about a raised cluster by construction. The chain had no
+// consumer in this tree, so its only possible consumer was the client the chart
+// ships to.
+//
+// `values.dev.yaml` itself STAYS in the delivery: two shipped gates need a
+// plaintext end of their axis (see the register in
+// offered_chains_declare_production_posture_test.go, which reads this map and is
+// what keeps a dev-posture chain from being offered again).
 var chartChains = map[string][]string{
-	"dev":  {"values.yaml", "values.dev.yaml"},
 	"prod": {"values.yaml", "values.prod.yaml"},
 }
 
