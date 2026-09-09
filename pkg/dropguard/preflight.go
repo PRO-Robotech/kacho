@@ -239,7 +239,13 @@ type PreflightReport struct {
 	// StaleApprovals lists approvals that matched no pending drop. They release
 	// nothing, so they are reported rather than obeyed.
 	StaleApprovals []string
-	Violations     []Violation
+	// DynamicDrops is how many DROP TABLE statements the inventory could not read
+	// because their subject is computed at run time. They are not Pending and not
+	// Deferred — this run cannot tell whether they destroy anything, or what — and
+	// the census prints the number so that inability is visible rather than absent.
+	// See [DynamicDrop].
+	DynamicDrops []string
+	Violations   []Violation
 }
 
 // OK reports that every pending drop was counted and none was refused.
@@ -259,9 +265,9 @@ func (r PreflightReport) Summary() string {
 		verdict = "NOTHING PENDING"
 	}
 	return fmt.Sprintf(
-		"drop-preflight %s: %s — %d drop(s) in chain, %s, %d pending, %d deferred beyond the target, counted %d of %d, %d observed absent, %d approved by operator, %d refusal(s)",
+		"drop-preflight %s: %s — %d drop(s) in chain, %s, %d pending, %d deferred beyond the target, counted %d of %d, %d observed absent, %d approved by operator, %d refusal(s), %d drop(s) not readable (subject computed at run time)",
 		r.Service, verdict, r.DropsInChain, r.Target, r.Pending, len(r.Deferred), r.Counted, r.Pending,
-		len(r.AbsentAt), len(r.Approved), len(r.Violations))
+		len(r.AbsentAt), len(r.Approved), len(r.Violations), len(r.DynamicDrops))
 }
 
 // WriteCensus prints what was read and what was decided, unconditionally.
@@ -284,6 +290,9 @@ func (r PreflightReport) WriteCensus(w io.Writer) {
 	}
 	for _, k := range r.Approved {
 		_, _ = fmt.Fprintf(w, "  APPROVED BY OPERATOR %s — rows will be destroyed\n", k)
+	}
+	for _, k := range r.DynamicDrops {
+		_, _ = fmt.Fprintf(w, "  NOT READABLE %s — the table name is built at run time; this gate cannot say what it destroys\n", k)
 	}
 	for _, k := range r.StaleApprovals {
 		_, _ = fmt.Fprintf(w, "  approval %s matches no pending drop and released nothing; remove it\n", k)
@@ -336,7 +345,7 @@ func (r PreflightReport) WriteCensus(w io.Writer) {
 // runs. This makes the answer seconds old instead of never taken; it does not make
 // it atomic, and nothing available here would.
 func Preflight(ctx context.Context, count Counter, inv Inv, applied AppliedSet, approvals []Approval, target Target) PreflightReport {
-	rep := PreflightReport{Service: inv.Service, Target: target, DropsInChain: len(inv.Drops), Rows: map[string]int64{}}
+	rep := PreflightReport{Service: inv.Service, Target: target, DropsInChain: len(inv.Drops), DynamicDrops: inv.UnreadableDrops(), Rows: map[string]int64{}}
 
 	byKey := map[string]Approval{}
 	for _, a := range approvals {
