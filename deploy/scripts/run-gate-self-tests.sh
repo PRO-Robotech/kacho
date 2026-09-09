@@ -122,6 +122,7 @@ deploy/scripts/assert-machine-minter-has-no-dead-exchange-lane.py
 deploy/scripts/assert-metrics-surfaces-answer.sh
 deploy/scripts/assert-outbox-autovacuum.sh
 deploy/scripts/assert-own-front-address-is-read.py
+deploy/scripts/assert-own-front-leaf-decision.sh
 deploy/scripts/assert-posture-branches-can-be-taken.py
 deploy/scripts/assert-refusal-lane-has-a-reader.py
 deploy/scripts/assert-report-readers-use-the-summary.py

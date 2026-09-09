@@ -115,17 +115,61 @@ PF_PIDS+=($!)
 # (gen.py::PRECONDITION_MARK → assert-suites-green.sh, код 3). Инъекция
 # «какого-нибудь» адреса превратила бы «условия нет» в вердикт о продукте.
 OWN_FRONT_ENV_ARGS=()
+OWN_FRONT_TLS_ARGS=()   # --ssl-client-* для фронта, чьё ребро ВЗАИМНОЕ
+
+# own_front_client_leaf — тот же помощник, что у прогонщика шардов, и по той же
+# причине: лист берётся у ПОСАДКИ, а не выписывается. 0 — лист есть, 1 — секрета нет.
+own_front_client_leaf() {
+  if [ "${#OWN_FRONT_TLS_ARGS[@]}" -gt 0 ]; then return 0; fi
+  kubectl -n "$NS" get secret api-gateway-client-tls >/dev/null 2>&1 || return 1
+  local dir; dir="$(mktemp -d)"; TMP_DIRS+=("$dir")
+  kubectl -n "$NS" get secret api-gateway-client-tls -o jsonpath='{.data.tls\.crt}' \
+    | base64 -d > "$dir/client.crt"
+  kubectl -n "$NS" get secret api-gateway-client-tls -o jsonpath='{.data.tls\.key}' \
+    | base64 -d > "$dir/client.key"
+  chmod 600 "$dir"/*
+  OWN_FRONT_TLS_ARGS=(--ssl-client-cert "$dir/client.crt" --ssl-client-key "$dir/client.key")
+  echo "[e2e] клиентский лист взят из secret/api-gateway-client-tls"
+  return 0
+}
+
 own_front_forward() {  # <public|internal> <локальный порт> <имя переменной проб>
-  local front="$1" local_port="$2" var="$3" addr scheme port svc
+  local front="$1" local_port="$2" var="$3" addr scheme port svc leaf
   if ! addr="$(python3 "$SCRIPT_DIR/own-rest-front-address.py" "$front" --namespace "$NS")"; then
     echo "[e2e] $var НЕ инъектируется: посадка адреса не дала — кейсы скажут «условие не создано» сами"
     return 0
   fi
-  scheme="${addr%%|*}"; port="$(echo "$addr" | cut -d'|' -f2)"; svc="${addr##*|}"
+  # Поля — ПО НОМЕРУ: хвост строки (`${addr##*|}`) верен лишь для трёхполевой
+  # формы, и добавленное производителем поле молча стало бы именем Service.
+  scheme="$(echo "$addr" | cut -d'|' -f1)"
+  port="$(echo "$addr" | cut -d'|' -f2)"
+  svc="$(echo "$addr" | cut -d'|' -f3)"
+  leaf="$(echo "$addr" | cut -d'|' -f4)"
+
+  # ТРЕБОВАНИЕ КЛИЕНТСКОГО ЛИСТА — решение ПРОИЗВОДИТЕЛЯ, зеркалящего продуктовый
+  # предикат; здесь оно не вычисляется (вторая копия разошлась бы молча). До этой
+  # правки серийный прогонщик листа не подавал ВОВСЕ, и на взаимном ребре каждый
+  # запрос его собственных фронтовых кейсов умирал бы на рукопожатии — то есть
+  # «ответа нет» вместо вердикта о предмете.
+  case "$leaf" in
+    required)
+      if ! own_front_client_leaf; then
+        echo "[e2e] $var НЕ инъектируется: ребро ВЗАИМНОЕ, а secret/api-gateway-client-tls" \
+             "в посадке нет — предъявить нечем; это «условие не создано», а не «лист не нужен»"
+        return 0
+      fi ;;
+    not-required)
+      echo "[e2e] $var: ребро ОДНОСТОРОННЕЕ — клиентский лист НЕ подаём: он ничего бы не доказал" ;;
+    *)
+      echo "[e2e] $var НЕ инъектируется: производитель адреса вернул нераспознанное решение" \
+           "о клиентском листе (${leaf:-пусто}) в «$addr» — дефект связки, а не посадки"
+      return 0 ;;
+  esac
+
   kubectl -n "$NS" port-forward "svc/$svc" "$local_port:$port" >"/tmp/e2e-pf-$var.log" 2>&1 &
   PF_PIDS+=($!)
   OWN_FRONT_ENV_ARGS+=(--env-var "$var=$scheme://127.0.0.1:$local_port")
-  echo "[e2e] собственный фронт: $var → svc/$svc :$port ($scheme) на 127.0.0.1:$local_port"
+  echo "[e2e] собственный фронт: $var → svc/$svc :$port ($scheme, лист $leaf) на 127.0.0.1:$local_port"
 }
 own_front_forward public  "$OWN_REST_PORT"          ownRestBaseUrl
 own_front_forward internal "$OWN_INTERNAL_REST_PORT" ownInternalRestBaseUrl
@@ -226,6 +270,7 @@ if [ -n "$COLLECTION" ]; then
     --env-var "providerPublicBaseUrl=http://localhost:${HYDRA_PUBLIC_PORT:-14444}" \
     --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
     "${OWN_FRONT_ENV_ARGS[@]}" \
+    ${OWN_FRONT_TLS_ARGS[@]+"${OWN_FRONT_TLS_ARGS[@]}"} \
     "${OPT_ENV_ARGS[@]}" \
     --delay-request 15 --reporters cli
 else
@@ -243,6 +288,7 @@ else
     --env-var "providerPublicBaseUrl=http://localhost:${HYDRA_PUBLIC_PORT:-14444}" \
     --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
     "${OWN_FRONT_ENV_ARGS[@]}" \
+    ${OWN_FRONT_TLS_ARGS[@]+"${OWN_FRONT_TLS_ARGS[@]}"} \
     "${OPT_ENV_ARGS[@]}"
   RAW_RC=$?
   set -e
