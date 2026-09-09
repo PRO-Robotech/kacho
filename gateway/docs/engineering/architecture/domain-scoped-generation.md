@@ -38,7 +38,7 @@
 | ручка | что задаёт | умолчание |
 |---|---|---|
 | `KACHO_PROTO_ROOT` | корень дерева контрактов | `<корень монорепо>/proto` |
-| `KACHO_CATALOG_ANCHOR` | anchor-файл плагина | `<край>/proto/kacho/iam/authz/catalog/v1/permissions_catalog_root.proto` |
+| `KACHO_CATALOG_ANCHOR` | anchor-файл плагина | `<край>/proto/corelib/authz/catalog/v1/permissions_catalog_root.proto` |
 | `KACHO_GEN_MODULE_DIR` | каталог, из которого резолвится Go-модуль плагина | `<край>` |
 | `KACHO_GEN_PLUGIN_PKG` | пакет плагина | `./cmd/<плагин>` |
 | `KACHO_GEN_DOMAINS` | отбор доменов через пробел | пусто = все домены дерева |

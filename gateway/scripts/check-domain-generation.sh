@@ -54,7 +54,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MONOREPO_ROOT="$(cd "${REPO_ROOT}/.." && pwd)"
 PROTO_ROOT="${MONOREPO_ROOT}/proto"
-ANCHOR="${REPO_ROOT}/proto/kacho/iam/authz/catalog/v1/permissions_catalog_root.proto"
+ANCHOR="${REPO_ROOT}/proto/corelib/authz/catalog/v1/permissions_catalog_root.proto"
 
 DOMAINS=("$@")
 if [[ ${#DOMAINS[@]} -eq 0 ]]; then

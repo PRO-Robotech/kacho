@@ -42,7 +42,7 @@
 #
 # Ручки (у каждой умолчание воспроизводит прежнее поведение ПОБАЙТОВО):
 #   KACHO_PROTO_ROOT      корень дерева контрактов   (умолч. <корень монорепо>/proto)
-#   KACHO_CATALOG_ANCHOR  anchor-файл плагина        (умолч. <край>/proto/kacho/iam/authz/catalog/v1/permissions_catalog_root.proto)
+#   KACHO_CATALOG_ANCHOR  anchor-файл плагина        (умолч. <край>/proto/corelib/authz/catalog/v1/permissions_catalog_root.proto)
 #   KACHO_GEN_MODULE_DIR  каталог Go-модуля сборки   (умолч. <край>)
 #   KACHO_GEN_PLUGIN_PKG  пакет плагина              (умолч. ./cmd/<плагин>)
 #   KACHO_GEN_DOMAINS     отбор доменов через пробел (умолч. пусто = все домены дерева)
@@ -63,7 +63,7 @@ MONOREPO_ROOT="$(cd "${REPO_ROOT}/.." && pwd)"
 OUT="${1:-${REPO_ROOT}/internal/middleware/rest_route_table_gen.go}"
 
 PROTO_ROOT="${KACHO_PROTO_ROOT:-${MONOREPO_ROOT}/proto}"
-ANCHOR="${KACHO_CATALOG_ANCHOR:-${REPO_ROOT}/proto/kacho/iam/authz/catalog/v1/permissions_catalog_root.proto}"
+ANCHOR="${KACHO_CATALOG_ANCHOR:-${REPO_ROOT}/proto/corelib/authz/catalog/v1/permissions_catalog_root.proto}"
 GEN_MODULE_DIR="${KACHO_GEN_MODULE_DIR:-${REPO_ROOT}}"
 GEN_PLUGIN_PKG="${KACHO_GEN_PLUGIN_PKG:-./cmd/protoc-gen-kacho-rest-routes}"
 GEN_DOMAINS="${KACHO_GEN_DOMAINS:-}"
@@ -113,8 +113,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/stage-proto-tree.sh"
 stage_proto_tree "${PROTO_ROOT}" "${STAGE}" "rest-route-table" "${GEN_DOMAINS}"
 
 # --- anchor-файл плагина (primary file) ---
-mkdir -p "${STAGE}/kacho/iam/authz/catalog/v1"
-cp "${ANCHOR}" "${STAGE}/kacho/iam/authz/catalog/v1/permissions_catalog_root.proto"
+mkdir -p "${STAGE}/corelib/authz/catalog/v1"
+cp "${ANCHOR}" "${STAGE}/corelib/authz/catalog/v1/permissions_catalog_root.proto"
 
 # --- сборка плагина ---
 go -C "${GEN_MODULE_DIR}" build -o "${BIN}/protoc-gen-kacho-rest-routes" "${GEN_PLUGIN_PKG}"
