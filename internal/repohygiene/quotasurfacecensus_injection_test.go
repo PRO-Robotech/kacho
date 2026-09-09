@@ -231,3 +231,176 @@ func TestQSC_ANeighbouringGateIsStillJudged(t *testing.T) {
 			"потеряла бы из виду гейты, которые S4 обязана снять вместе с предметом")
 	require.False(t, res.OwnSourceSeen)
 }
+
+// --- ось 5: расширения, добавленные задачей #2135 ---------------------------
+//
+// Каждая ось подаётся НАСТОЯЩЕЙ формой из дерева и несёт законного близнеца:
+// без близнеца «расширение участвует в обходе» неотличимо от «обход берёт всё».
+
+func TestQSC_AuthzModelFileIsWalkedAndCarriesTheAuthority(t *testing.T) {
+	t.Parallel()
+	const rel = "proto/kaname/cloud/iam/v1/fga_model.fga"
+	require.True(t, quotaCensusEligible(rel),
+		"модель прав обязана участвовать в обходе: в ней ОБЪЯВЛЕНО отношение "+
+			"чтения величин, и до расширения списка перепись его не видела вовсе")
+	// Форма из самого файла.
+	got := surfacesOf(rel, "    define quota_reader: [service_account, group#member] or system_admin\n")
+	require.Contains(t, got, quotaSurfaceAuthority,
+		"объявление права чтения величин — остаток поверхности «A»: оно уходит вместе с авторитетом")
+}
+
+func TestQSC_AuthzModelWithoutTheRelationIsNotACandidate(t *testing.T) {
+	t.Parallel()
+	// Законный близнец: та же модель, соседнее отношение. Кандидатом не является.
+	acc := newQuotaCensusAccumulator()
+	acc.Observe("proto/kaname/cloud/iam/v1/fga_model.fga",
+		"    define fga_writer: [service_account] or system_admin\n")
+	res := acc.Finish()
+	require.Equal(t, 1, res.FilesWalked, "файл обязан быть ОСМОТРЕН")
+	require.Empty(t, res.Candidates,
+		"осмотренный файл без предмета кандидатом не становится — иначе расширение "+
+			"списка означало бы «берём всё» и числа поверхностей потеряли бы смысл")
+}
+
+func TestQSC_ForeignSubjectIsRecognisedByItsKnobName(t *testing.T) {
+	t.Parallel()
+	// Форма из `gateway/deploy/values.yaml`: ИМЯ РУЧКИ предела подписчика.
+	got := surfacesOf("gateway/deploy/values.yaml",
+		"  # вызывающему, у которого своя квота (`maxStreamsPerSubject` ниже)\n")
+	require.Contains(t, got, quotaSurfaceForeign,
+		"предел подписчика потока — чужой предмет; по имени ручки он обязан узнаваться так же, "+
+			"как по имени счётчика отказов")
+	require.NotContains(t, got, quotaSurfaceProse,
+		"чужая машинерия не есть наша проза: отнеся её к упоминанию, перепись сказала бы, "+
+			"что машинерии здесь нет")
+}
+
+// --- ось 6: русская половина признака --------------------------------------
+
+func TestQSC_RussianOnlyMentionIsSeenAndCounted(t *testing.T) {
+	t.Parallel()
+	// Форма из `services/vpc/internal/clients/iam_client.go`: латинского
+	// написания предмета в файле нет ни одного.
+	acc := newQuotaCensusAccumulator()
+	acc.Observe("services/vpc/internal/clients/iam_client.go",
+		"// невидима аккаунтной дельте (приёмка квот, V2-4).\n")
+	res := acc.Finish()
+	require.Len(t, res.Candidates, 1,
+		"корпус двуязычен: признак на одном языке терял бы такие места МОЛЧА")
+	require.Equal(t, 1, res.RussianOnly,
+		"размер слепой зоны обязан быть НАЗВАН числом, иначе расширение признака "+
+			"неотличимо от холостого")
+}
+
+func TestQSC_LatinMentionDoesNotInflateTheRussianOnlyCount(t *testing.T) {
+	t.Parallel()
+	// Законный близнец: тот же предмет, названный латиницей. Кандидат — да,
+	// в слепую зону — нет.
+	acc := newQuotaCensusAccumulator()
+	acc.Observe("services/vpc/internal/clients/limit_client.go",
+		"// клиент InternalLimitService на внутреннем слушателе\n")
+	res := acc.Finish()
+	require.Len(t, res.Candidates, 1)
+	require.Zero(t, res.RussianOnly,
+		"счётчик слепой зоны обязан считать ЯЗЫК, а не регистр и не словарь каталога видов")
+}
+
+// --- ось 7: пункт навигации в раздел величин --------------------------------
+
+func TestQSC_ConsoleMenuEntryToTheLimitsSectionIsAuthority(t *testing.T) {
+	t.Parallel()
+	// Форма из `ui-future/system/src/navigation.ts`: пункт несёт АДРЕС раздела,
+	// а имени компонента страницы не называет.
+	got := surfacesOf("ui-future/system/src/navigation.ts",
+		"        key: \"system-limits\",\n        path: \"/system/limits\",\n")
+	require.Contains(t, got, quotaSurfaceAuthority,
+		"пункт меню — машинерия: снятие авторитета без него оставит в консоли "+
+			"ссылку на снятую страницу, и увидит это арендатор, а не перепись")
+}
+
+func TestQSC_ANeighbouringConsoleMenuEntryIsNotAuthority(t *testing.T) {
+	t.Parallel()
+	// Законный близнец: соседний пункт того же перечня.
+	acc := newQuotaCensusAccumulator()
+	acc.Observe("ui-future/system/src/navigation.ts",
+		"        key: \"system-tokens\",\n        path: \"/system/tokens\",\n")
+	res := acc.Finish()
+	require.Empty(t, res.Candidates,
+		"соседний раздел консоли к величинам отношения не имеет: правило обязано "+
+			"судить адрес, а не близость строк")
+}
+
+// --- ось 8: проза страницы -------------------------------------------------
+
+func TestQSC_PageWithProseOnlyIsAMention(t *testing.T) {
+	t.Parallel()
+	// Форма из `services/iam/docs/content/api/project.mdx`: страница называет
+	// предмет одной прозой, машинерии не несёт.
+	got := surfacesOf("services/iam/docs/content/api/project.mdx",
+		"задаёт границу для квот и (главное) — **уровень выдачи прав**\n")
+	require.Equal(t, []string{quotaSurfaceProse}, got,
+		"страница, называющая предмет прозой, не уезжает — она становится ЛОЖЬЮ, "+
+			"и это другой род работы")
+}
+
+func TestQSC_PageNamingMachineryKeepsItsOwnSurface(t *testing.T) {
+	t.Parallel()
+	// Законный близнец: та же форма файла, но страница называет машинерию.
+	// Правило прозы — отступление, поэтому оно обязано уступить.
+	got := surfacesOf("services/iam/docs/content/api/limit.mdx",
+		"`InternalLimitService.Resolve` отдаёт действующие величины\n")
+	require.Contains(t, got, quotaSurfaceAuthority)
+	require.NotContains(t, got, quotaSurfaceProse,
+		"отступление, взявшее страницу с машинерией, спрятало бы работу стадии S4 в «упоминание»")
+}
+
+func TestQSC_ProseRuleDoesNotSwallowUnknownMachinery(t *testing.T) {
+	t.Parallel()
+	// АНТИМАСКА: правило прозы отбирает по окончанию имени, поэтому исходник с
+	// неизвестной формой машинерии остаётся находкой. Без этой пробы правило
+	// прозы было бы корзиной «прочее» под другим именем.
+	acc := newQuotaCensusAccumulator()
+	acc.Observe("services/vpc/internal/thing.go", "const x = quotaFlibbertigibbet\n")
+	res := acc.Finish()
+	require.Equal(t, []string{"services/vpc/internal/thing.go"}, res.Unclassified,
+		"неизвестная форма в ИСХОДНИКЕ обязана оставаться неотнесённой")
+}
+
+// --- ось 9: совпадение подстроки не прячет настоящую машинерию ------------
+
+func TestQSC_SubstringAccidentDoesNotHideRealMachinery(t *testing.T) {
+	t.Parallel()
+	// Форма из `services/vpc/docs/engineering/architecture/11-resource-count-quotas.md`:
+	// слово, в которое признак попал подстрокой, стоит рядом с настоящим именем
+	// службы величин.
+	got := surfacesOf("services/vpc/docs/engineering/architecture/11-resource-count-quotas.md",
+		"a quotation from the owner doc\n`InternalLimitService` отдаёт действующие величины\n")
+	require.Contains(t, got, quotaSurfaceAuthority,
+		"настоящая машинерия обязана пережить случайное совпадение подстроки")
+	require.NotContains(t, got, quotaSurfaceForeign,
+		"иначе файл уходит под вердикт «не предмет», а работа в нём как раз нужна")
+}
+
+func TestQSC_SubstringAccidentAloneStaysForeign(t *testing.T) {
+	t.Parallel()
+	// Законный близнец: то же совпадение БЕЗ машинерии. Объяснять больше нечего,
+	// и отступление обязано сработать — иначе файл станет находкой на пустом месте.
+	got := surfacesOf("services/vpc/docs/engineering/architecture/README.md",
+		"a quotation from the owner doc\n")
+	require.Equal(t, []string{quotaSurfaceForeign}, got,
+		"совпадение подстроки без машинерии — по-прежнему «не предмет»")
+}
+
+func TestQSC_ForeignStorageRefusalKeepsItsSurface(t *testing.T) {
+	t.Parallel()
+	// Отказ по ЁМКОСТИ чужой системы хранения. Общая фраза отказа по счёту
+	// является его подстрокой, поэтому файл числится и в учёте владельцев, — но
+	// чужая машинерия названа явно и в разбиении обязана победить.
+	acc := newQuotaCensusAccumulator()
+	acc.Observe("services/storage/internal/repo/pg/volume_repo.go",
+		"return fmt.Errorf(\"storage quota exceeded\")\n")
+	res := acc.Finish()
+	require.Equal(t, 1, res.PerPrimary[quotaSurfaceForeign],
+		"ёмкость в байтах квотой счёта ресурсов не является: отдав её учёту, "+
+			"перепись назначила бы работу там, где её нет")
+}
