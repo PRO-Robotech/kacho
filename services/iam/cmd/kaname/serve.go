@@ -1617,7 +1617,7 @@ func runServe(cfg config.Config) error {
 				triggerShutdown()
 			}
 		}()
-		return compensationDrainerTask()
+		return compensationDrainerTask(ctx)
 	})
 	// Наблюдаемость очереди: глубина, возраст самой старой недоставленной
 	// строки, число отравленных. Скан не мутирует таблицу и не может уронить
@@ -1655,7 +1655,7 @@ func runServe(cfg config.Config) error {
 				triggerShutdown()
 			}
 		}()
-		return inviteMailDrainerTask()
+		return inviteMailDrainerTask(ctx)
 	})
 	// Возврат отравленных, наблюдаемость очереди и уборка доставленных строк.
 	// Ошибка сборки останавливает старт: уборка, собранная молча и не
