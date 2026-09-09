@@ -7,9 +7,10 @@
 сквозных проб обязан знать их адреса, иначе кейсы собственного фронта мерили бы
 край платформы вместо предмета — и правильно отказываются это делать.
 
-ПОЧЕМУ АДРЕС ЧИТАЕТСЯ, А НЕ ВЫПИСЫВАЕТСЯ. Номер порта и транспорт слушателя
-объявляет ПОСАДКА (чарт службы: `service.public.restPort`,
-`service.internal.internalRestPort`, `mtls.publicRest`, `mtls.internalRest`).
+ПОЧЕМУ АДРЕС ЧИТАЕТСЯ, А НЕ ВЫПИСЫВАЕТСЯ. Номер порта, транспорт слушателя и
+режим проверки клиента объявляет ПОСАДКА (чарт службы: `service.public.restPort`,
+`service.internal.internalRestPort`, `mtls.publicRest`, `mtls.internalRest`,
+`mtls.restClientAuthMode`, `mtls.internalRestClientAuthMode`).
 Выписанный в прогонщике литерал — второе место об одном предмете: он разойдётся
 с чартом МОЛЧА, и разойдётся ровно там, где расхождение не видно — прогон
 продолжит идти по прежнему адресу и назовёт чужой ответ ответом фронта.
@@ -43,16 +44,37 @@ deploy/own_rest_front_header_names_declared_keys_test.go: она читает о
 тот дефект, что чинился у гейта опроса счётчиков (#2165).
 Из НОМЕРА порта схема не выводится: слушатель меняет транспорт, номера не меняя.
 
+ТРЕБОВАНИЕ КЛИЕНТСКОГО ЛИСТА — ОТДЕЛЬНОЕ ИЗМЕРЕНИЕ, И ОНО ЧИТАЕТСЯ ЗДЕСЬ ЖЕ.
+Транспорт отвечает на «шифруется ли провод»; «требует ли фронт ПРОВЕРЕННОГО
+клиентского листа на рукопожатии» — другой вопрос, у него своя ручка и своё
+умолчание (`server-tls-only`). Фронт под транспортом бывает и односторонним:
+тогда лист подан впустую и не доказывает ничего, а на взаимном ребре без листа
+рукопожатие не состоится ВОВСЕ — запрос не уходит, и прогонщик видит «ответа
+нет» вместо отказа по существу. Предикат здесь — зеркало продуктового
+`MTLSConfig.InternalRESTRequiresClientCert`: транспорт поднят И эффективный
+режим — взаимный. Незаданная ручка отвечает своим умолчанием, а не пустотой:
+пустоту вызывающий прочёл бы как «ручки нет».
+
+ОСЬ САМООТЧЁТА ЭТОТ ВОПРОС НЕ РЕШАЕТ, и это сказано её собственным автором:
+`own_rest_internal_tls` спрашивает про ПРОВОД, «а не про то, требует ли фронт
+клиентского сертификата: это отдельное измерение, и в этой оси его нет»
+(pkg/observability, services/iam/cmd/kaname). Прогонщик, решавший по ней,
+подавал бы лист на одностороннем ребре — то есть отвечал бы на соседний вопрос.
+
 Оба объекта читаются ОДНИМ обращением (`kubectl get svc/... deploy/... -o json`):
 между двумя запросами посадка сменится, и тогда порт будет от одной, а схема от
-другой — пара, которой не существовало ни в один момент времени.
+другой — пара, которой не существовало ни в один момент времени. Режим проверки
+клиента приходит ТЕМ ЖЕ обращением и по той же причине.
 
 ИСХОДОВ ТРИ, И ВТОРОЙ НЕ РАВЕН ТРЕТЬЕМУ:
 
-  0 — адрес разрешён, на stdout `<схема>|<порт>|<имя Service>`. Имя Service тоже
-      отдаётся отсюда: вызывающему оно нужно для проброса, и выведи он его сам
-      («к внутреннему припиши -internal»), раскладка фронтов оказалась бы
-      объявленной в двух местах;
+  0 — адрес разрешён, на stdout `<схема>|<порт>|<имя Service>|<лист>`, где
+      `<лист>` — `required` либо `not-required`. Имя Service тоже отдаётся
+      отсюда: вызывающему оно нужно для проброса, и выведи он его сам («к
+      внутреннему припиши -internal»), раскладка фронтов оказалась бы
+      объявленной в двух местах. Решение о листе отдаётся ГОТОВЫМ по той же
+      причине: вычислив его у себя, вызывающий завёл бы вторую копию
+      продуктового предиката, и разошлась бы она молча;
   3 — УСЛОВИЕ НЕ СОЗДАНО: посадки нет, службы нет, фронт в ней не объявлен либо
       спросить не удалось. Адрес НЕ выдумывается: вызывающий обязан НЕ
       инъектировать переменную, и тогда кейс сам скажет третьим исходом, что
@@ -85,19 +107,54 @@ FRONTS = {
         "service_suffix": "",
         "port_name": "http-rest",
         "tls_env": "KANAME_REST_SERVER_MTLS_ENABLE",
+        "client_auth_env": "KANAME_REST_SERVER_MTLS_CLIENTAUTHMODE",
         "what": "собственный публичный REST-фронт службы",
     },
     "internal": {
         "service_suffix": "-internal",
         "port_name": "http-rest-int",
         "tls_env": "KANAME_INTERNALREST_SERVER_MTLS_ENABLE",
+        "client_auth_env": "KANAME_INTERNALREST_SERVER_MTLS_CLIENTAUTHMODE",
         "what": "собственный внутренний REST-фронт службы",
     },
 }
 
+# Режим проверки клиента: величины и умолчание — зеркало продуктового словаря
+# (services/iam/internal/apps/kaname/config/mtls.go: clientAuthServerTLSOnly,
+# clientAuthMutual, resolveClientAuthMode). Умолчание ОДНОСТОРОННЕЕ и объявлено
+# осознанно: незаданная ручка означает «сертификата не требуем», а не «неизвестно».
+CLIENT_AUTH_DEFAULT = "server-tls-only"
+CLIENT_AUTH_MUTUAL = "mutual"
+
+# Решение о листе — то, что вызывающему нужно, а не сырой режим. Сырой режим
+# заставил бы его завести вторую копию предиката, и она разошлась бы молча.
+LEAF_REQUIRED = "required"
+LEAF_NOT_REQUIRED = "not-required"
+
 RC_OK = 0
 RC_CALLER_DEFECT = 1
 RC_PRECONDITION_MISSING = 3
+
+
+def requires_client_leaf(tls_enabled: bool, raw_mode) -> tuple[str, str]:
+    """(«required»|«not-required», эффективный режим) — зеркало продуктового
+    `MTLSConfig.InternalRESTRequiresClientCert`.
+
+    ДВЕ ПОЛОВИНЫ, И ОБЕ НЕСУЩИЕ. Выключенный транспорт — «нет» by construction:
+    сертификата не бывает там, где нет рукопожатия. Поднятый транспорт решает
+    РЕЖИМ, и требует лист ТОЛЬКО взаимный: запрашивающий (`optional-mutual`)
+    соединение без листа пропускает, то есть не требует его.
+
+    НЕИЗВЕСТНЫЙ РЕЖИМ — «не требует», И ЭТО ЗЕРКАЛО, А НЕ ПОСЛАБЛЕНИЕ. Продукт
+    отвечает на нём так же, а построение транспорта на нём ОТКАЗЫВАЕТ: процесс с
+    таким режимом не стартует вовсе, и фронта, к которому надо было бы носить
+    лист, на этой посадке не существует. Второе прочтение («неизвестно ⇒ подать
+    на всякий случай») развело бы харнесс с продуктом там, где различие не видно.
+    """
+    mode = (raw_mode or "").strip() or CLIENT_AUTH_DEFAULT
+    if not tls_enabled:
+        return LEAF_NOT_REQUIRED, mode
+    return (LEAF_REQUIRED if mode == CLIENT_AUTH_MUTUAL else LEAF_NOT_REQUIRED), mode
 
 
 def _kubectl(ns: str, service: str, deployment: str, timeout: int) -> dict | None:
@@ -177,10 +234,21 @@ def resolve(doc: dict, front: str, container: str) -> tuple[str | None, str]:
     else:
         scheme, how = "http", f"{spec['tls_env']}={raw}"
     census.append(f"схема {scheme} — {how}")
+
+    # ЛИСТ. Читается ТЕМ ЖЕ разобранным ответом и тем же контейнером, что схема:
+    # два обращения дали бы пару, которой не существовало ни в один момент.
+    raw_mode = env.get(spec["client_auth_env"])
+    leaf, mode = requires_client_leaf(scheme == "https", raw_mode)
+    if raw_mode is None:
+        mode_how = f"умолчанием объявления ({spec['client_auth_env']} не эмитирована)"
+    else:
+        mode_how = f"{spec['client_auth_env']}={raw_mode}"
+    census.append(f"клиентский лист {leaf} — режим {mode}, {mode_how}")
+
     service = (svc.get("metadata") or {}).get("name") or ""
     if not service:
         return None, "у Service нет имени — пробрасывать не к чему"
-    return f"{scheme}|{port}|{service}", " · ".join(census)
+    return f"{scheme}|{port}|{service}|{leaf}", " · ".join(census)
 
 
 def main(argv=None) -> int:
@@ -224,7 +292,8 @@ def main(argv=None) -> int:
 # ───────────────────────────────────────────────────────────────────────────
 
 def _doc(port_name="http-rest", port=9098, tls_env=None, tls_value=None,
-         container="kaname", kinds=("Service", "Deployment"), service_name="kaname"):
+         container="kaname", kinds=("Service", "Deployment"), service_name="kaname",
+         mode_env=None, mode_value=None):
     items = []
     if "Service" in kinds:
         items.append({"kind": "Service", "metadata": {"name": service_name},
@@ -232,6 +301,8 @@ def _doc(port_name="http-rest", port=9098, tls_env=None, tls_value=None,
                                          {"name": port_name, "port": port}]}})
     if "Deployment" in kinds:
         env = [] if tls_env is None else [{"name": tls_env, "value": tls_value}]
+        if mode_env is not None:
+            env = env + [{"name": mode_env, "value": mode_value}]
         items.append({"kind": "Deployment", "metadata": {"name": "kaname"},
                       "spec": {"template": {"spec": {"containers": [
                           {"name": container, "env": env}]}}}})
@@ -246,42 +317,55 @@ def self_test() -> int:
         if not ok:
             fails.append(f"{name}: {detail}")
 
+    def where(addr):
+        """Адрес БЕЗ решения о листе: оси 1-6 судят адрес, оси 7-9 — лист.
+
+        Разделение несущее, а не косметическое: ось, чьё ожидание несёт ОБА
+        предмета, краснеет от инъекции в любой из них — и находка перестаёт
+        называть виновника. Проверено инъекцией: со слитым ожиданием дефект
+        предиката листа ронял ещё и «ручка транспорта поднята → https».
+        """
+        return None if addr is None else addr.rsplit("|", 1)[0]
+
+    # ─── ИМЕНА РУЧЕК, чтобы фикстуры не выписывали их по памяти ─────────────
+    PUB_TLS = FRONTS["public"]["tls_env"]
+    PUB_MODE = FRONTS["public"]["client_auth_env"]
+    INT_TLS = FRONTS["internal"]["tls_env"]
+    INT_MODE = FRONTS["internal"]["client_auth_env"]
+
     print("ось 1 — порт берётся ПО ИМЕНИ, а не по номеру")
     addr, c = resolve(_doc(port=31098), "public", "kaname")
-    check("номер сменился — адрес всё равно разрешён", addr == "http|31098|kaname", f"{addr} / {c}")
+    check("номер сменился — адрес всё равно разрешён", where(addr) == "http|31098|kaname", f"{addr} / {c}")
     addr, c = resolve(_doc(port_name="http-rest-renamed"), "public", "kaname")
     check("имени нет — УСЛОВИЕ НЕ СОЗДАНО, а не выдуманный номер", addr is None, f"{addr}")
     check("находка называет объявленные имена", "grpc" in c and "http-rest" in c, c)
 
     print("ось 2 — схема читается из объявления, а не выписывается")
-    addr, _ = resolve(_doc(tls_env="KANAME_REST_SERVER_MTLS_ENABLE", tls_value="true"),
-                      "public", "kaname")
-    check("ручка транспорта поднята → https", addr == "https|9098|kaname", str(addr))
-    addr, _ = resolve(_doc(tls_env="KANAME_REST_SERVER_MTLS_ENABLE", tls_value="false"),
-                      "public", "kaname")
-    check("та же посадка, ручка опущена → http (различие РОВНО одно)", addr == "http|9098|kaname", str(addr))
+    addr, _ = resolve(_doc(tls_env=PUB_TLS, tls_value="true"), "public", "kaname")
+    check("ручка транспорта поднята → https", where(addr) == "https|9098|kaname", str(addr))
+    addr, _ = resolve(_doc(tls_env=PUB_TLS, tls_value="false"), "public", "kaname")
+    check("та же посадка, ручка опущена → http (различие РОВНО одно)",
+          where(addr) == "http|9098|kaname", str(addr))
     addr, c = resolve(_doc(), "public", "kaname")
-    check("ручки нет вовсе → http умолчанием объявления", addr == "http|9098|kaname", str(addr))
+    check("ручки нет вовсе → http умолчанием объявления", where(addr) == "http|9098|kaname", str(addr))
     check("и умолчание НАЗВАНО, а не подставлено молча", "умолчанием объявления" in c, c)
 
     print("ось 3 — схема НЕ выводится из номера порта")
     addr, _ = resolve(_doc(port=443, tls_env=None), "public", "kaname")
-    check("порт 443 без объявленного транспорта остаётся http", addr == "http|443|kaname", str(addr))
+    check("порт 443 без объявленного транспорта остаётся http", where(addr) == "http|443|kaname", str(addr))
 
     print("ось 4 — внутренний фронт судится СВОИМИ координатами")
     addr, _ = resolve(_doc(port_name="http-rest-int", port=9099,
-                           tls_env="KANAME_INTERNALREST_SERVER_MTLS_ENABLE", tls_value="true"),
-                      "internal", "kaname")
-    check("своё имя порта и своя ручка → https|9099", addr == "https|9099|kaname", str(addr))
+                           tls_env=INT_TLS, tls_value="true"), "internal", "kaname")
+    check("своё имя порта и своя ручка → https|9099", where(addr) == "https|9099|kaname", str(addr))
     addr, _ = resolve(_doc(port_name="http-rest-int", port=9099,
-                           tls_env="KANAME_REST_SERVER_MTLS_ENABLE", tls_value="true"),
-                      "internal", "kaname")
-    check("ручка ПУБЛИЧНОГО фронта внутренний не поднимает", addr == "http|9099|kaname", str(addr))
+                           tls_env=PUB_TLS, tls_value="true"), "internal", "kaname")
+    check("ручка ПУБЛИЧНОГО фронта внутренний не поднимает", where(addr) == "http|9099|kaname", str(addr))
 
     print("ось 5 — имя Service отдаёт производитель, а не выводит вызывающий")
     addr, _ = resolve(_doc(port_name="http-rest-int", port=9099, service_name="kaname-internal"),
                       "internal", "kaname")
-    check("имя приходит из ответа посадки", addr == "http|9099|kaname-internal", str(addr))
+    check("имя приходит из ответа посадки", where(addr) == "http|9099|kaname-internal", str(addr))
 
     print("ось 6 — неполный ответ посадки не даёт адреса")
     addr, c = resolve(_doc(kinds=("Service",)), "public", "kaname")
@@ -292,14 +376,65 @@ def self_test() -> int:
     check("контейнер не тот → адреса нет, и находка его называет",
           addr is None and "иной" in c, f"{addr} / {c}")
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # ось 7 — КЛИЕНТСКИЙ ЛИСТ: отдельное измерение, а не следствие транспорта.
+    #
+    # Инъекция и её ЗАКОННЫЙ БЛИЗНЕЦ отличаются РОВНО одним фактом — величиной
+    # на ручке режима: посадка, порт, транспорт и контейнер у них одни и те же.
+    # ─────────────────────────────────────────────────────────────────────────
+    print("ось 7 — лист требуется ТОЛЬКО взаимным режимом")
+    tls_up = dict(port_name="http-rest-int", port=9099, tls_env=INT_TLS, tls_value="true")
+    addr, c = resolve(_doc(**tls_up, mode_env=INT_MODE, mode_value="mutual"), "internal", "kaname")
+    check("взаимный режим → лист ТРЕБУЕТСЯ", addr == "https|9099|kaname|required", f"{addr} / {c}")
+    addr, c = resolve(_doc(**tls_up, mode_env=INT_MODE, mode_value="server-tls-only"), "internal", "kaname")
+    check("тот же фронт под транспортом, режим односторонний → лист НЕ требуется "
+          "(различие РОВНО одно — величина на ручке)",
+          addr == "https|9099|kaname|not-required", f"{addr} / {c}")
+    addr, _ = resolve(_doc(**tls_up, mode_env=INT_MODE, mode_value="optional-mutual"), "internal", "kaname")
+    check("запрашивающий режим листа НЕ требует: соединение без него проходит",
+          addr == "https|9099|kaname|not-required", str(addr))
+    addr, c = resolve(_doc(**tls_up), "internal", "kaname")
+    check("ручки режима нет → одностороннее умолчание, а не «неизвестно»",
+          addr == "https|9099|kaname|not-required", str(addr))
+    check("и умолчание НАЗВАНО в переписи", "не эмитирована" in c and "server-tls-only" in c, c)
+    addr, _ = resolve(_doc(port_name="http-rest-int", port=9099,
+                           mode_env=INT_MODE, mode_value="mutual"), "internal", "kaname")
+    check("взаимный режим БЕЗ транспорта листа не требует: рукопожатия нет вовсе",
+          addr == "http|9099|kaname|not-required", str(addr))
+    addr, _ = resolve(_doc(**tls_up, mode_env=INT_MODE, mode_value="невнятица"), "internal", "kaname")
+    check("неизвестный режим — «не требует», как отвечает и продукт "
+          "(процесс с ним не стартует вовсе)", addr == "https|9099|kaname|not-required", str(addr))
+
+    print("ось 8 — ручка ЧУЖОГО фронта режим этого не меняет")
+    addr, _ = resolve(_doc(**tls_up, mode_env=PUB_MODE, mode_value="mutual"), "internal", "kaname")
+    check("взаимный режим объявлен ПУБЛИЧНОМУ фронту — внутренний остаётся односторонним",
+          addr == "https|9099|kaname|not-required", str(addr))
+    addr, _ = resolve(_doc(tls_env=PUB_TLS, tls_value="true",
+                           mode_env=PUB_MODE, mode_value="mutual"), "public", "kaname")
+    check("тот же режим на СВОЁМ фронте лист требует (положительный контроль оси)",
+          addr == "https|9098|kaname|required", str(addr))
+
+    print("ось 9 — предикат листа зеркалит продуктовый, а не пересказывает его")
+    check("выключенный транспорт: «нет» независимо от режима",
+          requires_client_leaf(False, "mutual") == (LEAF_NOT_REQUIRED, "mutual"),
+          str(requires_client_leaf(False, "mutual")))
+    check("пустая ручка отвечает УМОЛЧАНИЕМ, а не пустотой",
+          requires_client_leaf(True, "") == (LEAF_NOT_REQUIRED, CLIENT_AUTH_DEFAULT),
+          str(requires_client_leaf(True, "")))
+    check("пробелы вокруг величины её не меняют",
+          requires_client_leaf(True, "  mutual  ") == (LEAF_REQUIRED, CLIENT_AUTH_MUTUAL),
+          str(requires_client_leaf(True, "  mutual  ")))
+
     print()
+    total = 14 + 9 + 2 + 3
     if fails:
-        print(f"ОТКАЗ: провалено утверждений {len(fails)} из 14", file=sys.stderr)
+        print(f"ОТКАЗ: провалено утверждений {len(fails)} из {total}", file=sys.stderr)
         for f in fails:
             print("  " + f, file=sys.stderr)
         return 1
-    print("ЧИСТО: 14 утверждений — порт по имени, схема из объявления, имя Service "
-          "от производителя, неполная посадка адреса не даёт")
+    print(f"ЧИСТО: {total} утверждений — порт по имени, схема из объявления, имя Service "
+          "от производителя, требование клиентского листа отдельным измерением, "
+          "неполная посадка адреса не даёт")
     return 0
 
 
