@@ -28,6 +28,24 @@ type Drop struct {
 	RecreatedHere bool
 }
 
+// DynamicDrop is a DROP TABLE whose subject is ASSEMBLED AT RUN TIME: a format
+// placeholder or a concatenation stands where the identifier would be, so the name
+// exists only once PL/pgSQL builds the string, and no reading of the file can say
+// which table goes.
+//
+// It is recorded rather than dropped on the floor because the census is the whole
+// point of this package: a drop nobody counted is the outcome it refuses, and one
+// that cannot be counted has to say so out loud rather than be absent from a number.
+type DynamicDrop struct {
+	Service string
+	Version int64
+	File    string
+	Line    int
+	// Text is the fragment as written, so the census shows WHY it was not judged
+	// instead of asserting that it could not be.
+	Text string
+}
+
 // Inv is the result of reading a service's migration directory, together with the
 // census that says how much was read. "No drops found" and "no files read" are
 // different answers, and a gate that cannot tell them apart asserts nothing.
@@ -35,6 +53,12 @@ type Inv struct {
 	Service      string
 	FilesScanned int
 	Drops        []Drop
+
+	// DynamicDrops are the drops this inventory COULD NOT READ: their table name is
+	// computed at run time. They are not Drops — nothing here knows what they
+	// destroy — and they are not silence either. See [DynamicDrop] and the package
+	// doc's "What the reader cannot see".
+	DynamicDrops []DynamicDrop
 
 	// seeds records, per table, the versions whose Up section INSERTs into it.
 	// It is what grounds a declaration that expects rows: a table no migration
@@ -78,6 +102,16 @@ func (i Inv) SeedVersions(table string, version int64) []int64 {
 	return out
 }
 
+// UnreadableDrops renders each drop whose subject is computed as "NNNN file:line —
+// text", so a census can name its evidence instead of alluding to a count.
+func (i Inv) UnreadableDrops() []string {
+	out := make([]string, 0, len(i.DynamicDrops))
+	for _, d := range i.DynamicDrops {
+		out = append(out, fmt.Sprintf("%04d %s:%d — %s", d.Version, d.File, d.Line, d.Text))
+	}
+	return out
+}
+
 // DropVersions returns every version that drops something, ascending and deduped —
 // the order in which a measured run must step through the chain.
 func (i Inv) DropVersions() []int64 {
@@ -109,7 +143,27 @@ var (
 	//
 	// CREATE TABLE and INSERT INTO take a single table by grammar, so they stay
 	// single-capture; the difference is SQL's, not a choice made here.
-	dropTableRe   = regexp.MustCompile(`(?is)\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?([A-Za-z0-9_."]+(?:\s*,\s*[A-Za-z0-9_."]+)*)`)
+	dropTableRe = regexp.MustCompile(`(?is)\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?([A-Za-z0-9_."]+(?:\s*,\s*[A-Za-z0-9_."]+)*)`)
+	// dynamicDropRe matches a DROP TABLE whose SUBJECT IS COMPUTED: a format
+	// placeholder (%I, %s) or a concatenation stands where the identifier would be.
+	//
+	// Such a statement carries no table name to read. The name exists only once
+	// PL/pgSQL assembles the string at run time, so no pattern here can say which
+	// table it destroys — and that is a boundary of this reader, not a gap in it.
+	// It is matched anyway, and counted, because the alternative is SILENCE:
+	// dropTableRe simply would not fire, and a drop nobody saw is precisely the
+	// outcome the rest of this package exists to refuse.
+	//
+	// It also prevents AN ANSWER WORSE THAN SILENCE. On `format('DROP TABLE
+	// sch.%I', t)` dropTableRe does fire, and captures `sch.` — a truncation that
+	// names nothing. Unsuppressed it would enter the inventory as a table, demand a
+	// declaration no one can write, and send the measurement at a table that does
+	// not exist. A match here suppresses that phantom.
+	//
+	// The identifier before the placeholder must end in `.` (a schema qualifier),
+	// so `EXECUTE 'DROP TABLE a' || ' CASCADE'` — whose table IS written down —
+	// stays an ordinary drop and keeps being judged.
+	dynamicDropRe = regexp.MustCompile(`(?is)\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:[A-Za-z0-9_."]*\.)?(?:%[A-Za-z]|'\s*\|\||\|\|)`)
 	createTableRe = regexp.MustCompile(`(?is)\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([A-Za-z0-9_."]+)`)
 	insertIntoRe  = regexp.MustCompile(`(?is)\bINSERT\s+INTO\s+([A-Za-z0-9_."]+)`)
 )
@@ -191,7 +245,27 @@ func (i *Inv) addFile(service, name, body string) error {
 			i.seeds[bare] = append(i.seeds[bare], version)
 		}
 	}
+	// Drops whose subject is computed are found FIRST, so the loop below can tell a
+	// truncation from a name. Their offsets are keyed by the start of the statement,
+	// which both patterns anchor at the same `DROP`.
+	dynamicAt := map[int]bool{}
+	for _, loc := range dynamicDropRe.FindAllStringIndex(code, -1) {
+		dynamicAt[loc[0]] = true
+		i.DynamicDrops = append(i.DynamicDrops, DynamicDrop{
+			Service: service,
+			Version: version,
+			File:    name,
+			Line:    lineOffset + strings.Count(code[:loc[0]], "\n") + 1,
+			Text:    strings.Join(strings.Fields(code[loc[0]:loc[1]]), " "),
+		})
+	}
+
 	for _, loc := range dropTableRe.FindAllStringSubmatchIndex(code, -1) {
+		if dynamicAt[loc[0]] {
+			// The capture here is the fragment before a placeholder, not a table.
+			// Recording it would invent a drop of something that has no name.
+			continue
+		}
 		// One Drop per table in the list, each with ITS OWN line: a list may span
 		// several lines, and a coordinate pointing at the statement's first line
 		// would send the reader to somewhere the table is not written.
