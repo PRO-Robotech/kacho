@@ -44,7 +44,7 @@
 | `go.yaml.in/yaml/v3` | `v3.0.5` | `LICENSE` |
 | `google.golang.org/genproto/googleapis/api` | `v0.0.0-20260803160001-6ac0973c030d` | `LICENSE` |
 | `google.golang.org/genproto/googleapis/rpc` | `v0.0.0-20260803160001-6ac0973c030d` | `LICENSE` |
-| `google.golang.org/grpc` | `v1.83.1` | `LICENSE` |
+| `google.golang.org/grpc` | `v1.83.2` | `LICENSE` |
 | `gopkg.in/yaml.v3` | `v3.0.1` | `LICENSE` |
 
 ## BSD-3-Clause
