@@ -292,11 +292,6 @@ var knownBoundaryEdges = []knownBoundaryEdge{
 	{"pkg/authz/catalogderive", "pkg/api/kacho/cloud/vpc/v1", 0, 1, "З3"},
 	{"pkg/servicehost", "pkg/api/kacho/cloud/compute/v1", 0, 1, "З3"},
 	{"pkg/servicehost", "pkg/api/kacho/cloud/vpc/v1", 0, 1, "З3"},
-	// Цель этого ребра в дереве БОЛЬШЕ НЕ СУЩЕСТВУЕТ (#2395 увёл словарь), но запись
-	// остаётся, и это не просрочка: проба службы резолвит платформу ПИНОМ, поэтому
-	// импорт прежнего пути в её исходнике жив и гейт его наблюдает. Запись истечёт
-	// вместе с переводом импортов службы — задача #2416, идущая после бампа пина (#2230).
-	{"services/iam/cmd/kaname", "pkg/api/kacho/cloud/api", 0, 1, "З3"},
 
 	// З8 — оснастка, разбирающая дерево, в двоичном службы (приёмка §11).
 	{"services/iam/internal/manifest", "pkg/modulemanifest", 1, 1, "З8"},
