@@ -11,7 +11,7 @@ IMAGE          := kacho-nlb:dev
 # Объявление одно на дерево — см. разбор в самом файле.
 include ../../provenance.mk
 
-.PHONY: build build-api build-migrator test test-short vet lint docker helm-lint helm-render-guard audit-list-filter proto-install-plugins proto-vendor proto-lint proto-gen
+.PHONY: build build-api build-migrator test test-short vet lint docker helm-lint helm-render-guard audit-list-filter
 
 build: build-api build-migrator
 
@@ -47,45 +47,6 @@ export GOLANGCI_LINT_CACHE
 
 lint:
 	golangci-lint run ./...
-
-# proto-install-plugins — ставит protoc-плагины в $GOBIN (lookup через $PATH для buf).
-# Доменный proto kacho-nlb генерируется этими тремя плагинами; permission-catalog для nlb —
-# hand-written (internal/check/permission_map.go), buf-catalog-плагин не нужен.
-proto-install-plugins:
-	go install google.golang.org/protobuf/cmd/protoc-gen-go
-	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc
-	go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway
-
-# proto-vendor — подтягивает corelib-owned инфра-протосы (operation/validation/
-# authz_options/cloud-api + google/*) из kacho-corelib в proto/ ТОЛЬКО для buf-резолва
-# импортов доменного proto. Единственный источник этих файлов — kacho-corelib; здесь они
-# gitignored и не коммитятся (их Go-stubs тоже живут в kacho-corelib, дублей нет). Цель
-# подтягивает их локально перед buf lint/generate.
-CORELIB_PROTO ?= ../kacho-corelib/proto
-VENDORED_INFRA_PROTOS = \
-	google/api/annotations.proto \
-	google/api/http.proto \
-	google/rpc/status.proto \
-	corelib/api/v1/operation.proto \
-	kacho/cloud/operation/operation.proto \
-	kacho/cloud/validation.proto \
-	corelib/authz/v1/authz_options.proto
-
-proto-vendor:
-	@for f in $(VENDORED_INFRA_PROTOS); do \
-		mkdir -p "proto/$$(dirname $$f)"; \
-		cp "$(CORELIB_PROTO)/$$f" "proto/$$f"; \
-	done
-
-proto-lint: proto-vendor
-	cd proto && buf lint
-
-# proto-gen — регенерация Go-stubs доменного proto nlb (kacho/cloud/loadbalancer/v1) из
-# proto/. Универсальная ИНФРА (operation/validation/authz_options/cloud-api/google)
-# подтягивается proto-vendor только для buf-резолва импортов и НЕ генерируется (Go-stubs
-# живут в kacho-corelib / canonical genproto) — см. proto/buf.gen.yaml inputs.paths.
-proto-gen: proto-vendor
-	cd proto && buf generate
 
 # audit-list-filter — CI gate for the public List<Resource> surface: a caller must
 # receive only the rows it may see (per-object, kaname AuthorizeService.BatchCheck
