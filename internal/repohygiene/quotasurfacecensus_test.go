@@ -86,6 +86,8 @@ func formatQuotaCensus(res *quotaCensusResult) string {
 	fmt.Fprintf(&b, "  кандидатов признака ПЕРЕПИСИ:       %d\n", len(res.Candidates))
 	fmt.Fprintf(&b, "  из них видит признак задачи #2135:  %d (разница %d — слепая зона признака задачи)\n",
 		res.TaskCandidates, len(res.Candidates)-res.TaskCandidates)
+	fmt.Fprintf(&b, "  из них найдено ТОЛЬКО русской осью:  %d (столько признак на одном языке терял молча)\n",
+		res.RussianOnly)
 	fmt.Fprintf(&b, "\n  поверхность | осмотрено | найдено | найдено как ГЛАВНАЯ | вердикт\n")
 
 	for _, code := range quotaCensusOrder {

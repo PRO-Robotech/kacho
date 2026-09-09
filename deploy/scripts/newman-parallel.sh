@@ -194,46 +194,90 @@ kubectl -n "$NS" port-forward svc/kaname "$IAM_REGTOKEN_PORT:9096" >/tmp/e2e-pp-
 # «условия нет», а не «проброс не встал», и объявить его ожидаемым значило бы
 # уронить прогон блоком живости на предмете, которого в этой посадке не бывает.
 OWN_FRONT_ENV_ARGS=()
-OWN_FRONT_TLS_ARGS=()   # --ssl-client-* для взаимного ребра внутреннего фронта
+OWN_FRONT_TLS_ARGS=()   # --ssl-client-* для фронта, чьё ребро ВЗАИМНОЕ
+
+# own_front_client_leaf — кладёт клиентский лист посадки в OWN_FRONT_TLS_ARGS.
+# 0 — лист есть (или уже взят раньше), 1 — секрета в посадке нет.
+#
+# Лист берётся у ПОСАДКИ, как и адрес, и по той же причине: служба принимает
+# любой лист, подписанный внутренним центром, а выписывать его сюда значило бы
+# завести вторую правду о том, чем сегодня удостоверяются.
+own_front_client_leaf() {
+  [ "${#OWN_FRONT_TLS_ARGS[@]}" -gt 0 ] && return 0
+  kubectl -n "$NS" get secret api-gateway-client-tls >/dev/null 2>&1 || return 1
+  OWN_FRONT_CERT_DIR="$(mktemp -d)"; TMP_DIRS+=("$OWN_FRONT_CERT_DIR")
+  kubectl -n "$NS" get secret api-gateway-client-tls -o jsonpath='{.data.tls\.crt}' \
+    | base64 -d > "$OWN_FRONT_CERT_DIR/client.crt"
+  kubectl -n "$NS" get secret api-gateway-client-tls -o jsonpath='{.data.tls\.key}' \
+    | base64 -d > "$OWN_FRONT_CERT_DIR/client.key"
+  chmod 600 "$OWN_FRONT_CERT_DIR"/*
+  OWN_FRONT_TLS_ARGS=(--ssl-client-cert "$OWN_FRONT_CERT_DIR/client.crt"
+                      --ssl-client-key  "$OWN_FRONT_CERT_DIR/client.key")
+  echo "[parallel] клиентский лист взят из secret/api-gateway-client-tls"
+  return 0
+}
+
 own_front_forward() {  # <public|internal> <локальный порт> <имя переменной проб>
-  local front="$1" local_port="$2" var="$3" addr scheme port svc
+  local front="$1" local_port="$2" var="$3" addr scheme port svc leaf
   if ! addr="$(python3 "$SCRIPT_DIR/own-rest-front-address.py" "$front" --namespace "$NS")"; then
     echo "[parallel] $var НЕ инъектируется: посадка адреса не дала — кейсы скажут «условие не создано» сами"
     return 0
   fi
-  scheme="${addr%%|*}"; port="$(echo "$addr" | cut -d'|' -f2)"; svc="${addr##*|}"
+  # ПОЛЯ БЕРУТСЯ ПО НОМЕРУ, А НЕ ХВОСТОМ СТРОКИ. Здесь стояло `${addr##*|}`, и
+  # это верно ровно для трёхполевой формы: добавь производитель поле — и имя
+  # Service молча стало бы последним из них.
+  scheme="$(echo "$addr" | cut -d'|' -f1)"
+  port="$(echo "$addr" | cut -d'|' -f2)"
+  svc="$(echo "$addr" | cut -d'|' -f3)"
+  leaf="$(echo "$addr" | cut -d'|' -f4)"
+
+  # ТРЕБУЕТ ЛИ ФРОНТ ПРОВЕРЕННОГО КЛИЕНТСКОГО ЛИСТА — РЕШЕНИЕ ПРОИЗВОДИТЕЛЯ (#2372).
+  #
+  # Прогонщик его не вычисляет: предикат живёт у продукта
+  # (MTLSConfig.InternalRESTRequiresClientCert), производитель адреса его
+  # зеркалит, и второй копии здесь не заводится — она разошлась бы молча.
+  #
+  # ПОЧЕМУ НЕ ОСЬ САМООТЧЁТА. Прежде решение читалось из `own_rest_internal_tls`
+  # в журнале процесса. Ось спрашивает про ПРОВОД — «под транспортом или
+  # открытым текстом», — а не про требование листа: это сказано её собственным
+  # автором и подтверждается деревом, где режим проверки клиента объявляется
+  # ОТДЕЛЬНОЙ ручкой со СВОИМ (односторонним) умолчанием. Фронт под транспортом
+  # бывает и односторонним, и на нём лист подан впустую.
+  #
+  # И читалась ось не оттуда: журнал спрашивался у `deploy/$svc`, где $svc —
+  # имя SERVICE (`kaname-internal`), тогда как Deployment зовётся иначе
+  # (`kaname`). Запрос отказывал, отказ глушился, ветка «прочитать не удалось»
+  # молча выходила без листа — и рукопожатие внутреннего фронта не состоялось.
+  # Молчание распознавателя: не красное и не зелёное, а невидимость.
+  case "$leaf" in
+    required)
+      if ! own_front_client_leaf; then
+        # УСЛОВИЕ НЕ СОЗДАНО — И СКАЗАТЬ ЭТО ОБЯЗАН КЕЙС, А НЕ РУКОПОЖАТИЕ.
+        # Инъектировав адрес без листа, мы получили бы «ответа нет» — то есть
+        # вердикт о продукте на предмете, которого харнесс не создал. Переменная
+        # НЕ инъектируется и проброс НЕ открывается: тогда кейс скажет третьим
+        # исходом (gen.py::require_env_url → assert-suites-green.sh, код 3).
+        echo "[parallel] $var НЕ инъектируется: посадка объявила ребро ВЗАИМНЫМ" \
+             "(фронт требует проверенного клиентского листа), а secret/api-gateway-client-tls" \
+             "в посадке нет — предъявить нечем; это «условие не создано», а не «лист не нужен»"
+        return 0
+      fi ;;
+    not-required)
+      echo "[parallel] $var: посадка объявила ребро ОДНОСТОРОННИМ — клиентский лист НЕ подаём:" \
+           "он ничего бы не доказал" ;;
+    *)
+      # Производитель обязан отдать одно из двух. Иное — дефект ПАРЫ, и он
+      # громкий: тихий пропуск здесь снова дал бы рукопожатие вместо вердикта.
+      echo "[parallel] $var НЕ инъектируется: производитель адреса вернул нераспознанное" \
+           "решение о клиентском листе (${leaf:-пусто}) в «$addr» — это дефект связки" \
+           "прогонщика и own-rest-front-address.py, а не посадки"
+      return 0 ;;
+  esac
+
   kubectl -n "$NS" port-forward "svc/$svc" "$local_port:$port" >"/tmp/e2e-pp-$var.log" 2>&1 &
   PF_PIDS+=($!); PF_WHAT+=("$local_port|$var → svc/$svc (:$port, $scheme)|/tmp/e2e-pp-$var.log")
   OWN_FRONT_ENV_ARGS+=(--env-var "$var=$scheme://127.0.0.1:$local_port")
-  echo "[parallel] собственный фронт: $var → svc/$svc :$port ($scheme) на 127.0.0.1:$local_port"
-
-  # ВНУТРЕННИЙ фронт требует ПРОВЕРЕННОГО клиентского листа: ребро переведено во
-  # взаимный режим, и рукопожатие без листа не состоится вовсе — запрос не
-  # уходит, а прогонщик видит «ответа нет», а не отказ по существу.
-  #
-  # Лист берётся у ПОСАДКИ, как и адрес: тот же идиом, что у соседнего
-  # прогонщика, и по той же причине — служба принимает любой лист, подписанный
-  # внутренним центром, а выписывать его сюда значило бы завести вторую правду
-  # о том, чем сегодня удостоверяются.
-  #
-  # Секрета нет — флаги НЕ добавляются: это «условие не создано», и кейс скажет
-  # об этом сам третьим исходом. Подсовывать лист, которого посадка не давала,
-  # значило бы позеленеть на непроверенном.
-  if [ "$front" = internal ] && [ "${#OWN_FRONT_TLS_ARGS[@]}" -eq 0 ]; then
-    if kubectl -n "$NS" get secret api-gateway-client-tls >/dev/null 2>&1; then
-      OWN_FRONT_CERT_DIR="$(mktemp -d)"; TMP_DIRS+=("$OWN_FRONT_CERT_DIR")
-      kubectl -n "$NS" get secret api-gateway-client-tls -o jsonpath='{.data.tls\.crt}' \
-        | base64 -d > "$OWN_FRONT_CERT_DIR/client.crt"
-      kubectl -n "$NS" get secret api-gateway-client-tls -o jsonpath='{.data.tls\.key}' \
-        | base64 -d > "$OWN_FRONT_CERT_DIR/client.key"
-      chmod 600 "$OWN_FRONT_CERT_DIR"/*
-      OWN_FRONT_TLS_ARGS=(--ssl-client-cert "$OWN_FRONT_CERT_DIR/client.crt"
-                          --ssl-client-key  "$OWN_FRONT_CERT_DIR/client.key")
-      echo "[parallel] внутренний фронт: клиентский лист взят из secret/api-gateway-client-tls"
-    else
-      echo "[parallel] внутренний фронт: секрета листа нет — кейсы скажут «условие не создано» сами"
-    fi
-  fi
+  echo "[parallel] собственный фронт: $var → svc/$svc :$port ($scheme, лист $leaf) на 127.0.0.1:$local_port"
 }
 own_front_forward public   "$OWN_REST_PORT"           ownRestBaseUrl
 own_front_forward internal "$OWN_INTERNAL_REST_PORT"  ownInternalRestBaseUrl

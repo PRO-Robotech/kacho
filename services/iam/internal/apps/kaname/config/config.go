@@ -215,8 +215,12 @@ type PostgresConfig struct {
 //
 // AuthN core fields:
 //
-//	Domain                — public Kachō domain, default `api.kacho.cloud`.
-//	                        Used by token_hook to build issuer/audience.
+//	Domain                — доменное имя посадки, объявленное оператором.
+//	                        Умолчания НЕТ — незаданное значение доезжает
+//	                        до стража, а не замещается построением
+//	                        (см. ResolveDomain; свойство держит проба
+//	                        TestDomainHasNoCompiledInDefault). Из него
+//	                        token_hook выводит издателя и адресата.
 //	HydraIssuer           — Ory Hydra issuer (default `https://hydra.<Domain>`).
 //	HookSharedSecret      — Bearer-token Hydra uses to authenticate calls to
 //	                        token_hook/refresh_hook. Пустое значение обхода НЕ
