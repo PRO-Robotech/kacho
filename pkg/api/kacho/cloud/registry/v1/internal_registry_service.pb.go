@@ -10,8 +10,8 @@
 package registryv1
 
 import (
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -309,7 +309,7 @@ var File_kacho_cloud_registry_v1_internal_registry_service_proto protoreflect.Fi
 
 const file_kacho_cloud_registry_v1_internal_registry_service_proto_rawDesc = "" +
 	"\n" +
-	"7kacho/cloud/registry/v1/internal_registry_service.proto\x12\x17kacho.cloud.registry.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"B\n" +
+	"7kacho/cloud/registry/v1/internal_registry_service.proto\x12\x17kacho.cloud.registry.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"B\n" +
 	"\x1fTriggerGarbageCollectionRequest\x12\x1f\n" +
 	"\vregistry_id\x18\x01 \x01(\tR\n" +
 	"registryId\"C\n" +

@@ -7,7 +7,7 @@ package kaname.cloud.iam.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kaname/cloud/iam/v1/user.proto";
 import "kacho/cloud/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -67,7 +67,7 @@ service UserService {
       post: "/iam/v1/users:invite"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "InviteUserMetadata"
       response: "User"
     };
@@ -106,7 +106,7 @@ service UserService {
   // people of your own Account is the Account's business (`v_get` / `v_list`).
   rpc Update (UpdateUserRequest) returns (kacho.cloud.operation.Operation) {
     option (google.api.http) = { patch: "/iam/v1/users/{user_id}" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateUserMetadata"
       response: "User"
     };
@@ -153,7 +153,7 @@ service UserService {
   // cannot be deleted"; that is unchanged.
   rpc Delete (DeleteUserRequest) returns (kacho.cloud.operation.Operation) {
     option (google.api.http) = { delete: "/iam/v1/users/{user_id}" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteUserMetadata"
       response: "google.protobuf.Empty"
     };
@@ -218,7 +218,7 @@ service UserService {
       post: "/iam/v1/users/{user_id}:removeFromAccount"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "RemoveUserFromAccountMetadata"
       response: "google.protobuf.Empty"
     };
@@ -330,7 +330,7 @@ service UserService {
   // resolution at the edge).
   rpc Block (BlockUserRequest) returns (kacho.cloud.operation.Operation) {
     option (google.api.http) = { post: "/iam/v1/users/{user_id}:block" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "BlockUserMetadata"
       response: "User"
     };
@@ -359,7 +359,7 @@ service UserService {
   // activation-on-first-login, a different path with a different subject.
   rpc Unblock (UnblockUserRequest) returns (kacho.cloud.operation.Operation) {
     option (google.api.http) = { post: "/iam/v1/users/{user_id}:unblock" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UnblockUserMetadata"
       response: "User"
     };

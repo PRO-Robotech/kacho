@@ -7,7 +7,7 @@ package kaname.cloud.iam.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kaname/cloud/iam/v1/project.proto";
 import "kacho/cloud/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -58,7 +58,7 @@ service ProjectService {
   // Creates a project within the specified account.
   rpc Create (CreateProjectRequest) returns (kacho.cloud.operation.Operation) {
     option (google.api.http) = { post: "/iam/v1/projects" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateProjectMetadata"
       response: "Project"
     };
@@ -74,7 +74,7 @@ service ProjectService {
   // Updates the specified project.
   rpc Update (UpdateProjectRequest) returns (kacho.cloud.operation.Operation) {
     option (google.api.http) = { patch: "/iam/v1/projects/{project_id}" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateProjectMetadata"
       response: "Project"
     };
@@ -115,7 +115,7 @@ service ProjectService {
   // there would read "closed" as "done".)
   rpc Delete (DeleteProjectRequest) returns (kacho.cloud.operation.Operation) {
     option (google.api.http) = { delete: "/iam/v1/projects/{project_id}" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteProjectMetadata"
       response: "google.protobuf.Empty"
     };

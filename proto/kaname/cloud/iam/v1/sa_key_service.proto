@@ -7,10 +7,10 @@ package kaname.cloud.iam.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/timestamp.proto";
-import "kacho/cloud/api/operation.proto";
-import "kacho/cloud/api/secret_options.proto";
+import "corelib/api/v1/operation.proto";
 import "kaname/cloud/iam/v1/credential_kind.proto";
 import "kaname/cloud/iam/v1/service_account_oauth_client.proto";
+import "kaname/cloud/iam/v1/secret_options.proto";
 import "kacho/cloud/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
 
@@ -45,7 +45,7 @@ service SAKeyService {
       post: "/iam/v1/serviceAccounts/{service_account_id}/keys"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "IssueSAKeyMetadata"
       response: "IssueSAKeyResponse"
     };
@@ -75,7 +75,7 @@ service SAKeyService {
     option (google.api.http) = {
       delete: "/iam/v1/serviceAccounts/{service_account_id}/keys/{key_id}"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "RevokeSAKeyMetadata"
       response: "RevokeSAKeyResponse"
     };
@@ -227,7 +227,7 @@ message IssueSAKeyResponse {
   // Помечен носителем секрета: пока поле стоит на проводе, ЛЮБОЙ путь записи
   // может положить в него значение, и подметальщик обязан его знать. Пометка
   // говорит о ВИДЕ поля, а не о том, заполняется ли оно сегодня.
-  string client_secret = 3 [deprecated = true, (kacho.cloud.api.secret_bearing) = true];
+  string client_secret = 3 [deprecated = true, (kaname.cloud.iam.v1.secret_bearing) = true];
   // PEM-encoded PKCS#8 ECDSA P-256 private key — SHOWN ONCE; never
   // recoverable. Caller uses it to sign `client_assertion` (RFC 7521/7523)
   // in OAuth2 client_credentials requests against Hydra.
@@ -235,7 +235,7 @@ message IssueSAKeyResponse {
   // Помечен носителем секрета: приватная половина — предъявительский секрет
   // ровно в том же смысле, что и однострочный базовый, и оседать в строке
   // операции, журнале аудита, ленте подписки или строке ресурса не имеет права.
-  string private_key_pem = 4 [(kacho.cloud.api.secret_bearing) = true];
+  string private_key_pem = 4 [(kaname.cloud.iam.v1.secret_bearing) = true];
   // PEM-encoded SPKI public key (informational; Hydra holds the canonical
   // copy as a JWK in the registered client metadata).
   string public_key_pem = 5;
@@ -264,7 +264,7 @@ message IssueSAKeyResponse {
   //
   // Помечен носителем секрета: значение не имеет права осесть НИ В СТРОКЕ
   // ОПЕРАЦИИ, ни в журнале аудита, ни в ленте подписки, ни в строке ресурса.
-  string secret = 9 [(kacho.cloud.api.secret_bearing) = true];
+  string secret = 9 [(kaname.cloud.iam.v1.secret_bearing) = true];
 }
 
 message IssueSAKeyMetadata {

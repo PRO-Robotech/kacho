@@ -7,7 +7,7 @@ package kacho.cloud.compute.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kacho/cloud/compute/v1/machine_type.proto";
 import "kacho/cloud/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -27,7 +27,7 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v
 service InternalMachineTypeService {
   rpc Create (CreateMachineTypeRequest) returns (operation.Operation) {
     option (google.api.http) = { post: "/compute/v1/internal/machineTypes" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateMachineTypeMetadata"
       response: "MachineType"
     };
@@ -41,7 +41,7 @@ service InternalMachineTypeService {
   }
   rpc Update (UpdateMachineTypeRequest) returns (operation.Operation) {
     option (google.api.http) = { patch: "/compute/v1/internal/machineTypes/{machine_type_id}" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateMachineTypeMetadata"
       response: "MachineType"
     };
@@ -55,7 +55,7 @@ service InternalMachineTypeService {
   }
   rpc Delete (DeleteMachineTypeRequest) returns (operation.Operation) {
     option (google.api.http) = { delete: "/compute/v1/internal/machineTypes/{machine_type_id}" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteMachineTypeMetadata"
       response: "google.protobuf.Empty"
     };

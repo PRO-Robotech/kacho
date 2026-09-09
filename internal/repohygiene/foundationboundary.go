@@ -152,7 +152,13 @@ var foundationSubtrees = []struct {
 	{"pkg/api/kacho/cloud/operation", classCorelib},
 	{"pkg/api/kacho/cloud/subscription", classCorelib},
 	{"pkg/api/kacho/cloud/quota", classCorelib},
-	{"pkg/api/corelib/authz", classCorelib},
+	// Нейтральный корень объявляется ЦЕЛИКОМ, а не по одному словарю. Прежде здесь
+	// стоял `pkg/api/corelib/authz`, и записи хватало ровно на один переезд: второй
+	// словарь (#2395, разметка операции) лёг рядом в `pkg/api/corelib/api/v1` и
+	// получил бы класс `kacho` от каталога `pkg/api` — то есть фундамент был бы
+	// объявлен платформой молча. Корень `corelib/` есть фундамент ПО ПОСТРОЕНИЮ:
+	// туда кладут то, что не принадлежит ни одному продукту.
+	{"pkg/api/corelib", classCorelib},
 	{"pkg/quota/quotaiam", classKaname},
 	{"pkg/quota/quotapb", classKaname},
 
@@ -281,30 +287,31 @@ type knownBoundaryEdge struct {
 // иначе новое ребро между уже названными модулями уедет под чужую запись.
 var knownBoundaryEdges = []knownBoundaryEdge{
 	// З3 — пробы с межмодульными привязками (приёмка §7.3).
-	{"pkg/authz/catalogderive", "pkg/api/kacho/cloud/api", 0, 1, "З3"},
 	{"pkg/authz/catalogderive", "pkg/api/kacho/cloud/registry/v1", 0, 1, "З3"},
 	{"pkg/authz/catalogderive", "pkg/api/kacho/cloud/storage/v1", 0, 1, "З3"},
 	{"pkg/authz/catalogderive", "pkg/api/kacho/cloud/vpc/v1", 0, 1, "З3"},
 	{"pkg/servicehost", "pkg/api/kacho/cloud/compute/v1", 0, 1, "З3"},
 	{"pkg/servicehost", "pkg/api/kacho/cloud/vpc/v1", 0, 1, "З3"},
-	{"services/iam/cmd/kaname", "pkg/api/kacho/cloud/api", 0, 1, "З3"},
 
 	// З8 — оснастка, разбирающая дерево, в двоичном службы (приёмка §11).
 	{"services/iam/internal/manifest", "pkg/modulemanifest", 1, 1, "З8"},
 	{"services/iam/internal/manifest", "pkg/modulemanifest/producer", 0, 1, "З8"},
 	{"services/iam/internal/modelrender", "pkg/modulemanifest", 1, 0, "З8"},
 
-	// K3-НОВОЕ — разрез дерева контрактов; приёмка выносит его в полосу
-	// контракта (§10) и этих рёбер не называет. Найдены обходом по обеим осям на
-	// ревизии полосы; предмет заведён отчётом полосы.
+	// Здесь стояли записи разреза дерева контрактов. Их больше нет НИ ОДНОЙ, и
+	// это значит, что прод-рёбер запрещённого направления в `pkg/` не осталось:
+	// фундамент извлекаем как есть.
 	//
-	// Ребро `pkg/api/kacho/cloud/quota/v1` → `pkg/api/kaname/cloud/iam/v1` СНЯТО
-	// вместе со своим предметом (задача #2117, стадия S2): общий контракт учёта
-	// перестал брать перечисление области у контракта выносимой службы и
-	// объявляет своё — с прежними именами и номерами, поэтому ни провод, ни JSON
-	// не изменились. Запись снята ТЕМ ЖЕ изменением, что импорт: ведомость несёт
-	// точный счёт и краснеет сама, когда прощать становится нечего.
-	{"pkg/api/kaname/cloud/iam/v1", "pkg/api/kacho/cloud/api", 18, 0, "K3-НОВОЕ"},
+	// Последней снята пара `pkg/api/kaname/cloud/iam/v1` → `pkg/api/kacho/cloud/api`
+	// (задача #2395, 18 прод-файлов): словарь разметки операции переехал под
+	// нейтральный корень `pkg/api/corelib/api/v1`, потому что им размечают свои
+	// глаголы ОБА продукта, а пометка носителя секрета — под корень службы
+	// `pkg/api/kaname/cloud/iam/v1`, потому что её импортируют 4 контракта и все
+	// они службы. Прежде тем же изменением снята пара
+	// `pkg/api/kacho/cloud/quota/v1` → `pkg/api/kaname/cloud/iam/v1` (#2117, S2).
+	//
+	// Ведомость несёт точный счёт и краснеет сама, когда прощать становится нечего:
+	// снятие каждой записи — её вердикт, а не решение автора.
 
 	// #2089 — словарь аннотаций доступа переехал под нейтральный корень
 	// (`pkg/api/kacho/iam/authz/v1` → `pkg/api/corelib/authz/v1`). Здесь стояли ДВЕ

@@ -7,7 +7,7 @@ package kacho.cloud.geo.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kacho/cloud/geo/v1/geo_common.proto";
 import "kacho/cloud/geo/v1/region.proto";
 import "kacho/cloud/geo/v1/zone.proto";
@@ -33,7 +33,7 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;ge
 service InternalRegionService {
   rpc Create (CreateRegionRequest) returns (operation.Operation) {
     option (google.api.http) = { post: "/geo/v1/internal/regions" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateRegionMetadata"
       response: "Region"
     };
@@ -47,7 +47,7 @@ service InternalRegionService {
   }
   rpc Update (UpdateRegionRequest) returns (operation.Operation) {
     option (google.api.http) = { patch: "/geo/v1/internal/regions/{region_id}" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateRegionMetadata"
       response: "Region"
     };
@@ -61,7 +61,7 @@ service InternalRegionService {
   }
   rpc Delete (DeleteRegionRequest) returns (operation.Operation) {
     option (google.api.http) = { delete: "/geo/v1/internal/regions/{region_id}" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteRegionMetadata"
       response: "google.protobuf.Empty"
     };
@@ -146,7 +146,7 @@ message GetInternalRegionRequest {
 service InternalZoneService {
   rpc Create (CreateZoneRequest) returns (operation.Operation) {
     option (google.api.http) = { post: "/geo/v1/internal/zones" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateZoneMetadata"
       response: "Zone"
     };
@@ -160,7 +160,7 @@ service InternalZoneService {
   }
   rpc Update (UpdateZoneRequest) returns (operation.Operation) {
     option (google.api.http) = { patch: "/geo/v1/internal/zones/{zone_id}" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateZoneMetadata"
       response: "Zone"
     };
@@ -174,7 +174,7 @@ service InternalZoneService {
   }
   rpc Delete (DeleteZoneRequest) returns (operation.Operation) {
     option (google.api.http) = { delete: "/geo/v1/internal/zones/{zone_id}" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteZoneMetadata"
       response: "google.protobuf.Empty"
     };

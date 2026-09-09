@@ -7,7 +7,7 @@ package kaname.cloud.iam.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kaname/cloud/iam/v1/role.proto";
 import "kacho/cloud/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -75,7 +75,7 @@ service RoleService {
   // Имя дублирующее system-role → AlreadyExists.
   rpc Create (CreateRoleRequest) returns (kacho.cloud.operation.Operation) {
     option (google.api.http) = { post: "/iam/v1/roles" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateRoleMetadata"
       response: "Role"
     };
@@ -107,7 +107,7 @@ service RoleService {
   // System role → FailedPrecondition.
   rpc Update (UpdateRoleRequest) returns (kacho.cloud.operation.Operation) {
     option (google.api.http) = { patch: "/iam/v1/roles/{role_id}" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateRoleMetadata"
       response: "Role"
     };
@@ -125,7 +125,7 @@ service RoleService {
   // Custom role с активными AccessBinding'ами → FailedPrecondition.
   rpc Delete (DeleteRoleRequest) returns (kacho.cloud.operation.Operation) {
     option (google.api.http) = { delete: "/iam/v1/roles/{role_id}" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteRoleMetadata"
       response: "google.protobuf.Empty"
     };

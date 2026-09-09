@@ -77,6 +77,57 @@
 // once, in docs/architecture/drop-preflight-counts-the-live-database.md, and are
 // deliberately not restated here.
 //
+// # What the reader can see, and what it cannot
+//
+// Both halves start from the same reading of the migrations, so the forms of drop
+// that reading understands are a property of the whole gate. They are named here
+// because a form nobody named is not judged clean — it is not judged at all, and
+// the difference is invisible from the outside.
+//
+// Judged. The subject is written down, and the gate reads it:
+//
+//	DROP TABLE kaname.limits;                 plain, schema-qualified or not
+//	DROP TABLE IF EXISTS a, b;                every name in a list, each with its own line
+//	EXECUTE 'DROP TABLE kaname.limits';       dynamic, but the statement is a LITERAL
+//
+// The third is worth spelling out because it is easy to assume otherwise: putting a
+// drop inside EXECUTE does not hide it, as long as the name is still written. What
+// hides a drop is the name being COMPUTED, not the EXECUTE around it.
+//
+// Seen but not judged, and COUNTED as such. The statement is recognisable as a drop,
+// but its subject is assembled at run time, so the file holds no name to read:
+//
+//	EXECUTE format('DROP TABLE %I', t);       placeholder
+//	EXECUTE format('DROP TABLE sch.%I', t);   qualifier written, leaf computed
+//	EXECUTE 'DROP TABLE ' || quote_ident(t);  concatenation
+//
+// No pattern can close this. The name does not exist until PL/pgSQL builds the
+// string, and a gate that guessed at it would be asserting something it did not
+// read — the exact move this package was written to stop. So these are counted by
+// [Inv.UnreadableDrops], and both censuses print them with coordinates. That is the
+// honest position: the gate does not say such a drop is safe, it says it could not
+// read it. The second form would otherwise be WORSE than unread — dropTableRe
+// captures `sch.` and would enter a table that does not exist into the inventory —
+// and it is suppressed for that reason.
+//
+// Not seen at all. The text `DROP TABLE` is not in the file:
+//
+//	EXECUTE stmt;                             statement built elsewhere, or read from a query
+//
+// This one is not in the count either, and saying so is the point of naming it: a
+// number cannot include what nothing detected. Nothing short of executing the
+// migration would reveal it, which is why [Preflight] counts the live database
+// before a run rather than trusting this reading alone — but a drop built entirely
+// out of values would still pass unremarked, and no part of this package claims
+// otherwise.
+//
+// The idiom is not hypothetical. This tree runs dynamic DDL in migrations already —
+// DROP INDEX and ALTER TABLE ... DROP CONSTRAINT are built this way — so the first
+// table dropped in that style would land in a form nothing here reads. Whether an
+// unreadable drop should REFUSE a migration rather than be counted is a policy
+// question this package does not settle; it is not settled by silence either, which
+// is why the number is printed even when it is zero.
+//
 // # What neither half covers
 //
 // Neither is atomic with the drop. The live count is taken seconds before the

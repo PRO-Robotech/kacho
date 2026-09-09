@@ -40,7 +40,7 @@ package kaname.cloud.iam.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kaname/cloud/iam/v1/limit.proto";
 import "kacho/cloud/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -100,7 +100,7 @@ service InternalLimitService {
       post: "/iam/v1/internal/limits"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateLimitMetadata"
       response: "Limit"
     };
@@ -128,7 +128,7 @@ service InternalLimitService {
       patch: "/iam/v1/internal/limits/{limit_id}"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateLimitMetadata"
       response: "Limit"
     };
@@ -153,7 +153,7 @@ service InternalLimitService {
     option (google.api.http) = {
       delete: "/iam/v1/internal/limits/{limit_id}"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteLimitMetadata"
       response: "Limit"
     };

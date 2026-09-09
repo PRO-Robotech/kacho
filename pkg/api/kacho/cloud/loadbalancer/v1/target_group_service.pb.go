@@ -10,8 +10,8 @@
 package loadbalancerv1
 
 import (
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -1070,7 +1070,7 @@ var File_kacho_cloud_loadbalancer_v1_target_group_service_proto protoreflect.Fil
 
 const file_kacho_cloud_loadbalancer_v1_target_group_service_proto_rawDesc = "" +
 	"\n" +
-	"6kacho/cloud/loadbalancer/v1/target_group_service.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a.kacho/cloud/loadbalancer/v1/health_check.proto\x1a.kacho/cloud/loadbalancer/v1/target_group.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"?\n" +
+	"6kacho/cloud/loadbalancer/v1/target_group_service.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a.kacho/cloud/loadbalancer/v1/health_check.proto\x1a.kacho/cloud/loadbalancer/v1/target_group.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"?\n" +
 	"\x15GetTargetGroupRequest\x12&\n" +
 	"\x0ftarget_group_id\x18\x01 \x01(\tR\rtargetGroupId\"\x8c\x01\n" +
 	"\x17ListTargetGroupsRequest\x12\x1d\n" +

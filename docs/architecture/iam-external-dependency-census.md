@@ -129,7 +129,7 @@ go list -f '{{join .Imports " "}}' ./services/iam/... \
 
 - `pkg/ownerregister` — 5 файлов iam при 14 у compute и 11 у storage;
 - `pkg/platformmodules` — 5 файлов iam, 11 у корневого `internal/`, 2 у `pkg/`;
-- `pkg/api/kacho/cloud/api` — общие опции контракта.
+- `pkg/api/corelib/api/v1` — разметка операции (до #2395 — `pkg/api/kacho/cloud/api`).
 
 Предикат: `comm -13` двух отсортированных списков прод- и тест-импортов.
 То есть тестовая надстройка **почти не расширяет** внешнюю зависимость по `pkg/`:
@@ -146,15 +146,28 @@ go list -f '{{join .Imports " "}}' ./services/iam/... \
 | `kaname/cloud/iam/v1` | 39 |
 | `proto/google/` (восемь файлов стандартных опций) | 8 |
 | `kacho/cloud/operation` | 3 |
-| `kacho/cloud/api` | 2 |
+| `corelib/api/v1` | 1 |
 | `kacho/cloud/quota/v1` | 2 |
 | `kacho/iam/authz/v1` | 1 |
 
 Вне домена iam и вне стандартных опций Google — **8 файлов** (пути ниже — относительные внутри `proto/`):
-`kacho/cloud/api/operation.proto`, `kacho/cloud/api/secret_options.proto`,
+`corelib/api/v1/operation.proto`,
 `kacho/cloud/operation/{operation,operation_service,package_options}.proto`,
 `kacho/cloud/quota/v1/{quota,identity_quota_service}.proto`,
-`kacho/iam/authz/v1/authz_options.proto`.
+`corelib/authz/v1/authz_options.proto`.
+
+> [!note] Координаты обновлены 2026-09-09, числа — НЕ перемерены
+> Два переезда сместили состав, не меняя его размера: #2089 увёл
+> `kacho/iam/authz/v1` → `corelib/authz/v1`, #2395 — `kacho/cloud/api` в две
+> стороны (`operation.proto` → `corelib/api/v1`, `secret_options.proto` →
+> `kaname/cloud/iam/v1`, к домену службы). Поэтому строка `kacho/cloud/api`
+> из таблицы выше ушла, а `kaname/cloud/iam/v1` приняла её второй файл.
+>
+> Числа таблицы остаются числами СВОЕЙ ревизии и здесь не пересчитывались
+> арифметикой: замыкание импортов — не перечень каталога (в дереве у
+> `kaname/cloud/iam/v1` файлов 41, в замыкании документа — 39), и вычесть одно
+> из другого значило бы назвать разными мерками один предмет. Перемер —
+> предикатом документа, отдельным заходом.
 
 Генерация ведётся `proto/buf.gen.yaml` (три плагина через `go run`, выход —
 `pkg/api`, `paths=source_relative`). Плагины берутся **из модуля**, поэтому версия
@@ -394,10 +407,20 @@ by construction тоже.
 > для `0c3b3313a798b5844bad9937220aa01dd22909c4` и с тех пор изменились; предикаты
 > раздела на сегодняшнем дереве дадут ноль, и это ожидаемо, а не находка.
 
-Файл — `proto/kacho/iam/authz/v1/authz_options.proto`, пакет `kacho.iam.authz.v1`,
-`go_package = ".../pkg/api/kacho/iam/authz/v1"`. Обратите внимание: он лежит **вне**
-`proto/kacho/cloud/`, то есть уже сегодня объявлен как платформенный словарь, а не как
-контракт домена iam.
+Файл лежал под корнем платформы, в каталоге домена доступа вне общего дерева
+контрактов, пакетом того же имени. Обратите внимание: уже тогда он был **вне**
+`proto/kacho/cloud/`, то есть объявлен платформенным словарём, а не контрактом домена.
+
+> [!important] Предсказание этой врезки сбылось 2026-09-08 — словарь переехал
+> Прежний адрес здесь намеренно **не воспроизводится в форме координаты**: цитата
+> мёртвого пути читается проверкой свежести как живое утверждение о дереве, и она права —
+> отличить разбор прошлого от ссылки на настоящее по одной обратной кавычке нельзя.
+>
+> Сегодняшний дом — `proto/corelib/authz/v1/authz_options.proto`, пакет `corelib.authz.v1`.
+> Переезд исполнил решение о нейтральном словаре, которое эта врезка и предсказывала:
+> импортёров переведено **67 из 67**, разрывов объявлено 9 при 9 находках, координата
+> стала окончательной — вынос фундамента отдельным модулем изменит одну строку в одном
+> файле.
 
 **Импортируют его 68 контрактов из 128, из них НЕ-iam — 46.**
 
@@ -447,6 +470,30 @@ geo 3 · subscription 1 · quota 1 · operation 1 · api 1.
 
 ### Шаги 1–5 — делаются БЕЗ решений владельца, каждый самостоятельно ценен
 
+> [!important] ШАГИ 1, 2, 3 и 5 УЖЕ ИСПОЛНЕНЫ — таблица ниже сохранена как план своей ревизии
+> Записанные в ней предикаты снятия сегодня выполнены, а координаты «откуда переезжать»
+> в шагах 1–3 в корне дерева больше не резолвятся: `internal/pgtest` живёт в `pkg/pgtest`,
+> `internal/authzplan` и `tools/authzformbench` — в `services/iam/`.
+>
+> ```sh
+> git ls-files internal/pgtest internal/migratorrun internal/listcursorplan \
+>              internal/nameformdb internal/dropguard tools/listfiltergate \
+>              internal/authzplan tools/authzformbench | wc -l                 # 0
+> git grep -l 'kacho/internal/authzplan' -- '*.go' | grep -v '^services/iam/' | wc -l   # 0 — шаг 3
+> git grep -lE '"github.com/PRO-Robotech/kacho/(internal|tools)/' -- 'services/iam/**/*.go' | wc -l   # 0 — шаг 5
+> ```
+>
+> **Шаг 4 остаётся неадъюдицированным**, и это по-прежнему верно — таблица говорит так
+> сама. Его число есть перечень КАНДИДАТОВ, а не находок; сплошной адъюдикации не
+> проводилось. Тем же предикатом сегодня выходит **189** против записанных 127, единица
+> счёта прежняя — файл, где строка встречается хотя бы раз.
+>
+> **Единица счёта у предикатов выше — файл Go, и записана она одним pathspec'ом
+> намеренно.** Pathspec'и git объединяются по ИЛИ, поэтому форма `-- 'services/iam' '*.go'`
+> означает «iam **или** любой Go в дереве» и отвечает шире объявленного: в её выводе
+> файлы `deploy/`, `gateway/`, `internal/`. Проверяется составом вывода, а не его длиной —
+> число правдоподобно в обоих случаях.
+
 Порядок выведен из зависимостей, а не из удобства: каждый следующий шаг опирается на
 предыдущий, и каждый оставляет дерево зелёным.
 
@@ -454,7 +501,7 @@ geo 3 · subscription 1 · quota 1 · operation 1 · api 1.
 |---:|---|---|---|
 | 1 | **`internal/pgtest` переезжает в `pkg/` (имя каталога — предмет самого шага, здесь координатой не пишется)** | 145 из 220 рёбер корневой зависимости iam; 10 компонентов-потребителей | файлов iam, импортирующих `kacho/internal/pgtest`, — 0 |
 | 2 | **`internal/migratorrun`, `internal/listcursorplan`, `internal/nameformdb`, `internal/dropguard`, `tools/listfiltergate` → `pkg/`** | общеплатформенные, 4–7 потребителей каждый; у iam это 3 прод-файла и 4 пробы | тех же импортов из корня у iam — 0 |
-| 3 | **`internal/authzplan` + `tools/authzformbench` → `services/iam/internal/`** | iam-исключительный кластер: 27 файлов, 8487 строк; вне iam потребитель один и сам iam-исключительный | `git grep -l 'kacho/internal/authzplan' -- ':!services/iam'` → пусто |
+| 3 | **`internal/authzplan` + `tools/authzformbench` → `services/iam/internal/`** | iam-исключительный кластер: 27 файлов, 8487 строк; вне iam потребитель один и сам iam-исключительный | `git grep -l 'kacho/internal/authzplan' -- '*.go' \| grep -v '^services/iam/'` → пусто (прежняя редакция предиката не сужала охват до кода Go и потому считала сам этот документ) |
 | 4 | **гейты дерева, судящие `services/iam`, переезжают вместе с ним** | `internal/repohygiene` — 781 файл, из них **127 называют `services/iam`** (кандидаты; сколько из них действительно **судят** iam, а не упоминают его в ведомости исключений или в разборе, требует адъюдикации по каждому — сплошной адъюдикации НЕ проводилось). Плюс 25 проб самого iam, обходящих дерево через `internal/treecorpus`, и 8 проб через `internal/gitenv` | у iam есть свой корпус обхода, судящий его индекс; в `kacho` не осталось гейта, чей обход требует несуществующего каталога |
 | 5 | **iam собирается отдельным модулем** — контрольный прогон | доказательство: `go build` отдельного модуля с `replace` на дерево | сборка и пробы iam зелены при **нуле** импортов `kacho/internal/**` и `kacho/tools/**` |
 
@@ -514,8 +561,17 @@ awk -F'\t' -v m=$M '$1 !~ /^services\/iam\// && index($2,m"/services/iam/")==1' 
 awk -F'\t' -v m=$M '$1 !~ /^services\/iam\// && index($2,m"/pkg/api/kaname/cloud/iam/")==1 {print $1}' imports.tsv | sort -u | wc -l
 
 # 7. разметка прав
-grep -rl 'kacho/iam/authz/v1/authz_options.proto' --include='*.proto' proto/ | wc -l
-grep -rl 'kacho/iam/authz/v1/authz_options.proto' --include='*.proto' proto/ | grep -vc '^proto/kaname/cloud/iam/'
+#    КООРДИНАТА ЖИВАЯ, и она не та, что напечатана в §5: словарь переехал в фундамент
+#    (kacho#2089). По старому адресу оба предиката дают 0 — это отсутствие файла, а не
+#    отсутствие потребителей.
+grep -rl 'corelib/authz/v1/authz_options.proto' --include='*.proto' proto/ | wc -l    # 68
+grep -rl 'corelib/authz/v1/authz_options.proto' --include='*.proto' proto/ | grep -vc '^proto/kaname/cloud/iam/'   # 45
+#    Первое число воспроизводит §5 (68), второе — 45 против записанных там 46, и
+#    расхождение ИМЕНУЕТСЯ: identity_quota_service.proto переехал в proto/kaname/cloud/iam/
+#    (kacho#2362) и теперь отсекается вторым фильтром как контракт домена iam.
+#    Сам фильтр в §5 принадлежит другой эпохе: записанные там 46 получены отбором по
+#    ПРЕЖНЕМУ каталогу домена, до его переименования в kaname (kacho#2118). Поэтому
+#    предикат §5 не воспроизводит 46 и на своей ревизии — там он даёт 68 и 68.
 
 # 8. доказательство недостижимости корневого internal/ из чужого модуля
 #    отдельный модуль с replace на дерево; меняется РОВНО один факт — путь импорта

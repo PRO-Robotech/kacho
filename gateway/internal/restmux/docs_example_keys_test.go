@@ -31,7 +31,7 @@ import (
 //
 //	ответ           — сообщение ОТВЕТА операции (`httpBinding.output`);
 //	ответ операции  — сообщение, названное САМИМ RPC в аннотации
-//	                  `(kacho.cloud.api.operation).response`. У мутирующего
+//	                  `(corelib.api.v1.operation).response`. У мутирующего
 //	                  глагола ответ — конверт `Operation` (ban #9), а страница
 //	                  показывает читателю то, ради чего он звал: полезную
 //	                  нагрузку, которая приедет в `Operation.response`. Полоса
@@ -181,7 +181,7 @@ func docsLaneMessage(b httpBinding, lane docsExampleLane) (protoreflect.MessageD
 		return msg, ""
 	case docsLaneOperationResponse:
 		if b.operationResponse == nil {
-			return nil, "RPC не объявляет `(kacho.cloud.api.operation).response` — " +
+			return nil, "RPC не объявляет `(corelib.api.v1.operation).response` — " +
 				"полосы «ответ операции» у него нет; если ответ приходит сразу, полоса здесь «Ответ»"
 		}
 		return b.operationResponse, ""

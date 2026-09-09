@@ -10,8 +10,8 @@
 package iamv1
 
 import (
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -1517,7 +1517,7 @@ var File_kaname_cloud_iam_v1_internal_iam_service_proto protoreflect.FileDescrip
 
 const file_kaname_cloud_iam_v1_internal_iam_service_proto_rawDesc = "" +
 	"\n" +
-	".kaname/cloud/iam/v1/internal_iam_service.proto\x12\x13kaname.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a$kacho/cloud/api/secret_options.proto\x1a)kaname/cloud/iam/v1/service_account.proto\x1a\x1ekaname/cloud/iam/v1/user.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"j\n" +
+	".kaname/cloud/iam/v1/internal_iam_service.proto\x12\x13kaname.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a)kaname/cloud/iam/v1/service_account.proto\x1a\x1ekaname/cloud/iam/v1/user.proto\x1a(kaname/cloud/iam/v1/secret_options.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"j\n" +
 	"\x14LookupSubjectRequest\x12!\n" +
 	"\vexternal_id\x18\x01 \x01(\tH\x00R\n" +
 	"externalId\x12\x10\n" +
@@ -1705,6 +1705,7 @@ func file_kaname_cloud_iam_v1_internal_iam_service_proto_init() {
 	}
 	file_kaname_cloud_iam_v1_service_account_proto_init()
 	file_kaname_cloud_iam_v1_user_proto_init()
+	file_kaname_cloud_iam_v1_secret_options_proto_init()
 	file_kaname_cloud_iam_v1_internal_iam_service_proto_msgTypes[0].OneofWrappers = []any{
 		(*LookupSubjectRequest_ExternalId)(nil),
 		(*LookupSubjectRequest_Id)(nil),

@@ -166,6 +166,12 @@ rest-route-table-check:
 # записи каталога средний слой отвечает «catalog: no entry for method», то есть
 # отказом в доступе в рантайме. Коды: 0 — находок нет · 1 — находка · 2 — предмета
 # нет (нет buf/go/дерева контрактов).
+#
+# ЗОВЁТ ЕЁ КОНВЕЙЕР — шаг «разрез …» в job `permission-catalog · rest-route-table`
+# (.github/workflows/ci.yaml), рабочим каталогом gateway. До kacho#1110 не звал
+# НИКТО: цель была объявлена, названа здесь CI-гейтом и не исполнялась ни разу.
+# Провязка залочена internal/repohygiene/domaingenerationwiring_test.go — снимут
+# шаг, и цель останется исполнимой, перестав исполняться, причём молча.
 domain-generation-check:
 	./scripts/check-domain-generation.sh
 

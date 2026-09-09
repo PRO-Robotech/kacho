@@ -9,7 +9,7 @@ import (
 
 	"google.golang.org/genproto/googleapis/api/annotations"
 
-	apiv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
+	apiv1 "github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
@@ -45,7 +45,7 @@ type httpBinding struct {
 	// которое этот биндинг и отдаёт.
 	output protoreflect.MessageDescriptor
 	// operationResponse — сообщение, которое RPC кладёт в `Operation.response`,
-	// по СВОЕЙ аннотации `(kacho.cloud.api.operation).response`. nil у RPC,
+	// по СВОЕЙ аннотации `(corelib.api.v1.operation).response`. nil у RPC,
 	// который операции не заводит.
 	//
 	// Собирается здесь, рядом с `output`, по той же причине: страница арендатора
@@ -119,7 +119,7 @@ func buildHTTPBindings() []httpBinding {
 }
 
 // declaredOperationResponse — сообщение, названное аннотацией
-// `(kacho.cloud.api.operation).response` этого RPC.
+// `(corelib.api.v1.operation).response` этого RPC.
 //
 // Имя в аннотации короткое, в пакете СВОЕГО файла (`response: "Zone"`), и
 // изредка полное (`"google.protobuf.Empty"`). Различаются они наличием точки —

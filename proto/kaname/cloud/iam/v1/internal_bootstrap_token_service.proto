@@ -58,7 +58,7 @@ syntax = "proto3";
 package kaname.cloud.iam.v1;
 
 import "google/protobuf/timestamp.proto";
-import "kacho/cloud/api/secret_options.proto";
+import "kaname/cloud/iam/v1/secret_options.proto";
 import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1;iamv1";
@@ -123,7 +123,7 @@ message MintBootstrapTokenResponse {
   // подметальщика он не требует (ось 1 гейта сужена типами-ответами операций).
   // Пометка здесь объявляет ВИД поля: любой заведённый завтра путь записи
   // увидит её, не зная про этот глагол.
-  string access_token = 1 [(kacho.cloud.api.secret_bearing) = true];
+  string access_token = 1 [(kaname.cloud.iam.v1.secret_bearing) = true];
 
   // OAuth2 token type — always `"Bearer"`.
   string token_type = 2;

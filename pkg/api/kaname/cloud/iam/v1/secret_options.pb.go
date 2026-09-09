@@ -5,9 +5,9 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        (unknown)
-// source: kacho/cloud/api/secret_options.proto
+// source: kaname/cloud/iam/v1/secret_options.proto
 
-package apiv1
+package iamv1
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -24,14 +24,14 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-var file_kacho_cloud_api_secret_options_proto_extTypes = []protoimpl.ExtensionInfo{
+var file_kaname_cloud_iam_v1_secret_options_proto_extTypes = []protoimpl.ExtensionInfo{
 	{
 		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
 		ExtensionType: (*bool)(nil),
 		Field:         101512,
-		Name:          "kacho.cloud.api.secret_bearing",
+		Name:          "kaname.cloud.iam.v1.secret_bearing",
 		Tag:           "varint,101512,opt,name=secret_bearing",
-		Filename:      "kacho/cloud/api/secret_options.proto",
+		Filename:      "kaname/cloud/iam/v1/secret_options.proto",
 	},
 }
 
@@ -42,21 +42,21 @@ var (
 	// журнале аудита, ни в ленте подписки, ни в строке ресурса.
 	//
 	// optional bool secret_bearing = 101512;
-	E_SecretBearing = &file_kacho_cloud_api_secret_options_proto_extTypes[0]
+	E_SecretBearing = &file_kaname_cloud_iam_v1_secret_options_proto_extTypes[0]
 )
 
-var File_kacho_cloud_api_secret_options_proto protoreflect.FileDescriptor
+var File_kaname_cloud_iam_v1_secret_options_proto protoreflect.FileDescriptor
 
-const file_kacho_cloud_api_secret_options_proto_rawDesc = "" +
+const file_kaname_cloud_iam_v1_secret_options_proto_rawDesc = "" +
 	"\n" +
-	"$kacho/cloud/api/secret_options.proto\x12\x0fkacho.cloud.api\x1a google/protobuf/descriptor.proto:F\n" +
-	"\x0esecret_bearing\x12\x1d.google.protobuf.FieldOptions\x18\x88\x99\x06 \x01(\bR\rsecretBearingB=Z;github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api;apiv1b\x06proto3"
+	"(kaname/cloud/iam/v1/secret_options.proto\x12\x13kaname.cloud.iam.v1\x1a google/protobuf/descriptor.proto:F\n" +
+	"\x0esecret_bearing\x12\x1d.google.protobuf.FieldOptions\x18\x88\x99\x06 \x01(\bR\rsecretBearingBAZ?github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1;iamv1b\x06proto3"
 
-var file_kacho_cloud_api_secret_options_proto_goTypes = []any{
+var file_kaname_cloud_iam_v1_secret_options_proto_goTypes = []any{
 	(*descriptorpb.FieldOptions)(nil), // 0: google.protobuf.FieldOptions
 }
-var file_kacho_cloud_api_secret_options_proto_depIdxs = []int32{
-	0, // 0: kacho.cloud.api.secret_bearing:extendee -> google.protobuf.FieldOptions
+var file_kaname_cloud_iam_v1_secret_options_proto_depIdxs = []int32{
+	0, // 0: kaname.cloud.iam.v1.secret_bearing:extendee -> google.protobuf.FieldOptions
 	1, // [1:1] is the sub-list for method output_type
 	1, // [1:1] is the sub-list for method input_type
 	1, // [1:1] is the sub-list for extension type_name
@@ -64,26 +64,26 @@ var file_kacho_cloud_api_secret_options_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for field type_name
 }
 
-func init() { file_kacho_cloud_api_secret_options_proto_init() }
-func file_kacho_cloud_api_secret_options_proto_init() {
-	if File_kacho_cloud_api_secret_options_proto != nil {
+func init() { file_kaname_cloud_iam_v1_secret_options_proto_init() }
+func file_kaname_cloud_iam_v1_secret_options_proto_init() {
+	if File_kaname_cloud_iam_v1_secret_options_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_api_secret_options_proto_rawDesc), len(file_kacho_cloud_api_secret_options_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kaname_cloud_iam_v1_secret_options_proto_rawDesc), len(file_kaname_cloud_iam_v1_secret_options_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   0,
 			NumExtensions: 1,
 			NumServices:   0,
 		},
-		GoTypes:           file_kacho_cloud_api_secret_options_proto_goTypes,
-		DependencyIndexes: file_kacho_cloud_api_secret_options_proto_depIdxs,
-		ExtensionInfos:    file_kacho_cloud_api_secret_options_proto_extTypes,
+		GoTypes:           file_kaname_cloud_iam_v1_secret_options_proto_goTypes,
+		DependencyIndexes: file_kaname_cloud_iam_v1_secret_options_proto_depIdxs,
+		ExtensionInfos:    file_kaname_cloud_iam_v1_secret_options_proto_extTypes,
 	}.Build()
-	File_kacho_cloud_api_secret_options_proto = out.File
-	file_kacho_cloud_api_secret_options_proto_goTypes = nil
-	file_kacho_cloud_api_secret_options_proto_depIdxs = nil
+	File_kaname_cloud_iam_v1_secret_options_proto = out.File
+	file_kaname_cloud_iam_v1_secret_options_proto_goTypes = nil
+	file_kaname_cloud_iam_v1_secret_options_proto_depIdxs = nil
 }

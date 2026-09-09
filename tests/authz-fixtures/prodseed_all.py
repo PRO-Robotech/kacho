@@ -76,6 +76,10 @@ ALL_SERVICES = ("iam", "vpc", "compute", "nlb", "storage", "registry", "geo", "a
 NS = os.environ.get("KACHO_NAMESPACE", os.environ.get("SETUP_NS", "kacho"))
 HYDRA_PF_PORT = int(os.environ.get("HYDRA_PUBLIC_PORT", "14444"))
 HYDRA_SVC = os.environ.get("HYDRA_PUBLIC_SVC", "kacho-umbrella-hydra-public")
+# Бюджет прогрева проброса — ОДИН на оба пути (см. ensure_hydra_forward). Двадцать
+# секунд взяты от прежнего собственного пути (40 попыток × 0.5s), чтобы правка не
+# сужала того, что уже работало; наблюдавшемуся окну (единицы секунд) этого с запасом.
+HYDRA_WARMUP_BUDGET_S = float(os.environ.get("HYDRA_FORWARD_WARMUP_SECONDS", "20"))
 
 
 def log(msg: str) -> None:
@@ -155,33 +159,72 @@ def _hydra_serves(port: int) -> bool:
         return False
 
 
+def _wait_until_hydra_serves(port: int, budget_s: float) -> bool:
+    """Ask until Hydra answers on `port` or the budget runs out; the first ask is free.
+
+    A `kubectl port-forward` binds its listening socket at once and only THEN opens the
+    stream to the API server. Between the two the port is bound and answers nothing —
+    indistinguishable, at TCP level, from a forward whose backend is gone. Telling the two
+    apart is not possible in one shot; it is possible with time, and that is the whole
+    reason this budget exists.
+    """
+    deadline = time.monotonic() + budget_s
+    while True:
+        if _hydra_serves(port):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.5)
+
+
 def ensure_hydra_forward() -> subprocess.Popen | None:
     """Make Hydra's public token endpoint reachable for the client_credentials exchange.
 
     Hydra public is a ClusterIP Service with no ingress route on this stand, so the final
     OAuth2 hop needs a forward. Idempotent: a forward that genuinely serves is reused and
     None is returned, so the caller never kills a forward it does not own.
+
+    ОДИН БЮДЖЕТ ПРОГРЕВА НА ОБА ПУТИ — и это несущее свойство, а не аккуратность.
+    Прежняя редакция давала прогреться ТОЛЬКО пробросу, который открывала сама (сорок
+    попыток), а пробросу, открытому кем-то другим, — ОДНУ попытку с трёхсекундным сроком,
+    после чего объявляла его протухшим и роняла посев. Предмет у обеих проверок один
+    («отвечает ли Hydra на этом порту»), а бюджет различался по тому, КТО открыл проброс,
+    — величина, к длительности прогрева отношения не имеющая.
+
+    Цена измерена на вершине ствола 052ac97a39: харнесс (`deploy/scripts/newman-parallel.sh`)
+    открывает одиннадцать пробросов разом, спит четыре секунды и проверяет лишь то, что
+    ЖИВ НАШ ПРОЦЕСС, — то есть путь «проброс открыт не нами» и есть единственный, каким
+    ходит конвейер. Два шарда одного прогона спросили Hydra через 6.1s и 6.2s после
+    открытия проброса: первый не дождался за три секунды и убил прогон, второй получил
+    ответ за 0.3s. Один код, одно дерево, разный исход — это гонка, а не протухший проброс.
     """
-    if _hydra_serves(HYDRA_PF_PORT):
-        log(f"hydra token endpoint answers on :{HYDRA_PF_PORT} (reusing existing forward)")
-        return None
+    if _port_is_bound(HYDRA_PF_PORT):
+        if _wait_until_hydra_serves(HYDRA_PF_PORT, HYDRA_WARMUP_BUDGET_S):
+            log(f"hydra token endpoint answers on :{HYDRA_PF_PORT} (reusing existing forward)")
+            return None
+        # Диагностика называет ИЗМЕРЕННОЕ, а не предполагаемую причину. Прежняя
+        # утверждала «его под перекатили» — на том прогоне под Hydra был 95s от роду,
+        # `2/2 Running`, перезапусков ноль и отвечал 200 на пробы здоровья. Отказ,
+        # объясняющий себя причиной, которой не измерял, посылает читателя не туда.
+        raise SystemExit(
+            f"[prodseed] FATAL: :{HYDRA_PF_PORT} принимает соединения, но Hydra не ответила "
+            f"на нём за {HYDRA_WARMUP_BUDGET_S:g}s. Порт держит либо проброс, чей поток к "
+            f"API-серверу не встал, либо ЧУЖОЙ проброс/процесс — этого различия TCP не даёт, "
+            f"его даёт `ss -ltnp` на :{HYDRA_PF_PORT}. Посев, пущенный через такой сокет, "
+            f"умирает посреди обмена токенами и читается как дефект аутентификации. Бюджет "
+            f"переносится ручкой HYDRA_FORWARD_WARMUP_SECONDS.")
     if not shutil.which("kubectl"):
         raise SystemExit("[prodseed] FATAL: kubectl not found and Hydra public is not forwarded")
-    if _port_is_bound(HYDRA_PF_PORT):
-        raise SystemExit(
-            f"[prodseed] FATAL: :{HYDRA_PF_PORT} is bound but Hydra does not answer on it — "
-            f"a stale port-forward (its backend pod was re-rolled). Kill it and re-run; a "
-            f"seed started against it dies mid token-exchange and reads like an auth defect.")
     log(f"port-forward {HYDRA_SVC} :{HYDRA_PF_PORT} → 4444")
     proc = subprocess.Popen(
         ["kubectl", "-n", NS, "port-forward", f"svc/{HYDRA_SVC}", f"{HYDRA_PF_PORT}:4444"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    for _ in range(40):
-        if _hydra_serves(HYDRA_PF_PORT):
-            return proc
-        time.sleep(0.5)
+    if _wait_until_hydra_serves(HYDRA_PF_PORT, HYDRA_WARMUP_BUDGET_S):
+        return proc
     proc.terminate()
-    raise SystemExit(f"[prodseed] FATAL: Hydra did not answer on :{HYDRA_PF_PORT}")
+    raise SystemExit(
+        f"[prodseed] FATAL: Hydra не ответила на :{HYDRA_PF_PORT} за "
+        f"{HYDRA_WARMUP_BUDGET_S:g}s после того, как проброс открыли мы сами.")
 
 
 def _port_is_bound(port: int) -> bool:

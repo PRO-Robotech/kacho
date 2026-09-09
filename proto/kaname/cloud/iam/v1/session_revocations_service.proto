@@ -6,7 +6,7 @@ syntax = "proto3";
 package kaname.cloud.iam.v1;
 
 import "google/protobuf/timestamp.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kaname/cloud/iam/v1/session_revocation.proto";
 import "kacho/cloud/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -39,7 +39,7 @@ service InternalSessionRevocationsService {
   //
   // Idempotent on `token_jti` (INSERT ... ON CONFLICT (token_jti) DO NOTHING).
   rpc Revoke (RevokeRequest) returns (kacho.cloud.operation.Operation) {
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "RevokeMetadata"
       response: "SessionRevocation"
     };

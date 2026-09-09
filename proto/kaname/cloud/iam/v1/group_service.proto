@@ -7,7 +7,7 @@ package kaname.cloud.iam.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kaname/cloud/iam/v1/group.proto";
 import "kacho/cloud/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -58,7 +58,7 @@ service GroupService {
   // Creates a group within the specified account.
   rpc Create (CreateGroupRequest) returns (kacho.cloud.operation.Operation) {
     option (google.api.http) = { post: "/iam/v1/groups" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateGroupMetadata"
       response: "Group"
     };
@@ -74,7 +74,7 @@ service GroupService {
   // Updates the specified group.
   rpc Update (UpdateGroupRequest) returns (kacho.cloud.operation.Operation) {
     option (google.api.http) = { patch: "/iam/v1/groups/{group_id}" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateGroupMetadata"
       response: "Group"
     };
@@ -90,7 +90,7 @@ service GroupService {
   // Deletes the specified group.
   rpc Delete (DeleteGroupRequest) returns (kacho.cloud.operation.Operation) {
     option (google.api.http) = { delete: "/iam/v1/groups/{group_id}" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteGroupMetadata"
       response: "google.protobuf.Empty"
     };
@@ -108,7 +108,7 @@ service GroupService {
   // Несуществующий member → FailedPrecondition.
   rpc AddMember (AddGroupMemberRequest) returns (kacho.cloud.operation.Operation) {
     option (google.api.http) = { post: "/iam/v1/groups/{group_id}:addMember" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "AddGroupMemberMetadata"
       response: "google.protobuf.Empty"
     };
@@ -125,7 +125,7 @@ service GroupService {
   // Идемпотентно: удаление несуществующего членства — no-op.
   rpc RemoveMember (RemoveGroupMemberRequest) returns (kacho.cloud.operation.Operation) {
     option (google.api.http) = { post: "/iam/v1/groups/{group_id}:removeMember" body: "*" };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "RemoveGroupMemberMetadata"
       response: "google.protobuf.Empty"
     };

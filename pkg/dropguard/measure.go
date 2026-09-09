@@ -41,7 +41,13 @@ type Report struct {
 	// that "nothing was found" can be told apart from "nothing was read": a run
 	// that skipped the measurement must say which drops it left unanswered.
 	Unmeasured []string
-	Violations []Violation
+	// DynamicDrops is how many DROP TABLE statements the inventory could not read
+	// because their subject is computed at run time. They are NOT part of
+	// DropsInChain — nothing here knows what they destroy — so a run can be OK with
+	// this number non-zero, and the census says the number out loud rather than
+	// letting it be absent. See [DynamicDrop].
+	DynamicDrops []string
+	Violations   []Violation
 }
 
 // OK reports that every drop was measured and none was refused.
@@ -70,8 +76,8 @@ func (r Report) Summary() string {
 	case len(r.Violations) > 0:
 		verdict = "REFUSED"
 	}
-	return fmt.Sprintf("drop-guard %s: %s — read %d migration file(s), measured %d of %d drop(s), %d observed absent, %d violation(s)",
-		r.Service, verdict, r.FilesScanned, r.Measured, r.DropsInChain, len(r.AbsentAt), len(r.Violations))
+	return fmt.Sprintf("drop-guard %s: %s — read %d migration file(s), measured %d of %d drop(s), %d observed absent, %d violation(s), %d drop(s) not readable (subject computed at run time)",
+		r.Service, verdict, r.FilesScanned, r.Measured, r.DropsInChain, len(r.AbsentAt), len(r.Violations), len(r.DynamicDrops))
 }
 
 // WriteCensus prints what the run read and what it decided, unconditionally.
@@ -100,6 +106,9 @@ func (r Report) WriteCensus(w io.Writer) {
 			_, _ = fmt.Fprintf(w, "    %s\n", k)
 		}
 	}
+	for _, k := range r.DynamicDrops {
+		_, _ = fmt.Fprintf(w, "  NOT READABLE %s — the table name is built at run time; this gate cannot say what it destroys\n", k)
+	}
 	for _, v := range r.Violations {
 		_, _ = fmt.Fprintf(w, "  %s\n", v.Error())
 	}
@@ -112,7 +121,7 @@ func (r Report) WriteCensus(w io.Writer) {
 // rather than a quiet something. A guard whose only two outcomes are "green" and
 // "green because it did not run" has one outcome.
 func NothingMeasured(inv Inv) Report {
-	rep := Report{Service: inv.Service, FilesScanned: inv.FilesScanned, DropsInChain: len(inv.Drops), Rows: map[string]int64{}}
+	rep := Report{Service: inv.Service, FilesScanned: inv.FilesScanned, DropsInChain: len(inv.Drops), DynamicDrops: inv.UnreadableDrops(), Rows: map[string]int64{}}
 	for _, d := range inv.Drops {
 		rep.Unmeasured = append(rep.Unmeasured, fmt.Sprintf("%04d/%s", d.Version, d.Table))
 	}
@@ -127,7 +136,7 @@ func NothingMeasured(inv Inv) Report {
 // cannot reach some version stops there and says so, rather than reporting the
 // drops it never got to as clean.
 func MeasureChain(ctx context.Context, db Querier, inv Inv, m Manifest, step StepTo) (Report, error) {
-	rep := Report{Service: inv.Service, FilesScanned: inv.FilesScanned, DropsInChain: len(inv.Drops), Rows: map[string]int64{}}
+	rep := Report{Service: inv.Service, FilesScanned: inv.FilesScanned, DropsInChain: len(inv.Drops), DynamicDrops: inv.UnreadableDrops(), Rows: map[string]int64{}}
 
 	decls := map[string]Declaration{}
 	for _, d := range m.Drops {

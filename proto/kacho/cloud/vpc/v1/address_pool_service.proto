@@ -6,7 +6,7 @@ syntax = "proto3";
 package kacho.cloud.vpc.v1;
 
 import "google/api/annotations.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/cloud/vpc/v1/internal_address_pool_service.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -122,7 +122,7 @@ service AddressPoolService {
       post: "/vpc/v1/addressPools"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateAddressPoolMetadata"
       response: "AddressPool"
     };
@@ -140,7 +140,7 @@ service AddressPoolService {
       patch: "/vpc/v1/addressPools/{pool_id}"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateAddressPoolMetadata"
       response: "AddressPool"
     };
@@ -155,7 +155,7 @@ service AddressPoolService {
 
   rpc Delete(DeleteAddressPoolRequest) returns (operation.Operation) {
     option (google.api.http) = {delete: "/vpc/v1/addressPools/{pool_id}"};
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteAddressPoolMetadata"
       response: "google.protobuf.Empty"
     };
@@ -173,7 +173,7 @@ service AddressPoolService {
       post: "/vpc/v1/addressPools/{address_pool_id}:addCidrBlocks"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateAddressPoolMetadata"
       response: "AddressPool"
     };
@@ -191,7 +191,7 @@ service AddressPoolService {
       post: "/vpc/v1/addressPools/{address_pool_id}:removeCidrBlocks"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateAddressPoolMetadata"
       response: "AddressPool"
     };
@@ -209,7 +209,7 @@ service AddressPoolService {
       post: "/vpc/v1/networks/{network_id}/addressPoolBinding"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "AddressPoolBindingMetadata"
       response: "google.protobuf.Empty"
     };
@@ -224,7 +224,7 @@ service AddressPoolService {
 
   rpc UnbindNetworkDefault(UnbindNetworkDefaultRequest) returns (operation.Operation) {
     option (google.api.http) = {delete: "/vpc/v1/networks/{network_id}/addressPoolBinding"};
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "AddressPoolBindingMetadata"
       response: "google.protobuf.Empty"
     };

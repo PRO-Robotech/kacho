@@ -34,8 +34,8 @@
 package iamv1
 
 import (
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -532,7 +532,7 @@ var File_kaname_cloud_iam_v1_internal_cluster_service_proto protoreflect.FileDes
 
 const file_kaname_cloud_iam_v1_internal_cluster_service_proto_rawDesc = "" +
 	"\n" +
-	"2kaname/cloud/iam/v1/internal_cluster_service.proto\x12\x13kaname.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a!kaname/cloud/iam/v1/cluster.proto\x1a-kaname/cloud/iam/v1/cluster_admin_grant.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"\x13\n" +
+	"2kaname/cloud/iam/v1/internal_cluster_service.proto\x12\x13kaname.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a!kaname/cloud/iam/v1/cluster.proto\x1a-kaname/cloud/iam/v1/cluster_admin_grant.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"\x13\n" +
 	"\x11GetClusterRequest\"\x8a\x01\n" +
 	"\x18GrantClusterAdminRequest\x12O\n" +
 	"\fsubject_type\x18\x01 \x01(\x0e2,.kaname.cloud.iam.v1.ClusterGrantSubjectTypeR\vsubjectType\x12\x1d\n" +

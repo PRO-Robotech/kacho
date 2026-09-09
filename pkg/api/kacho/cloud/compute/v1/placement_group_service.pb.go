@@ -10,8 +10,8 @@
 package computev1
 
 import (
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -681,7 +681,7 @@ var File_kacho_cloud_compute_v1_placement_group_service_proto protoreflect.FileD
 
 const file_kacho_cloud_compute_v1_placement_group_service_proto_rawDesc = "" +
 	"\n" +
-	"4kacho/cloud/compute/v1/placement_group_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a,kacho/cloud/compute/v1/placement_group.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"H\n" +
+	"4kacho/cloud/compute/v1/placement_group_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a,kacho/cloud/compute/v1/placement_group.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"H\n" +
 	"\x18GetPlacementGroupRequest\x12,\n" +
 	"\x12placement_group_id\x18\x01 \x01(\tR\x10placementGroupId\"\x8f\x01\n" +
 	"\x1aListPlacementGroupsRequest\x12\x1d\n" +

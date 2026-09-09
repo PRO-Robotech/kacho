@@ -7,7 +7,7 @@ package kacho.cloud.vpc.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/cloud/reference/reference.proto";
 import "kacho/cloud/vpc/v1/subnet.proto";
@@ -58,7 +58,7 @@ service SubnetService {
       post: "/vpc/v1/subnets"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "CreateSubnetMetadata"
       response: "Subnet"
     };
@@ -78,7 +78,7 @@ service SubnetService {
       patch: "/vpc/v1/subnets/{subnet_id}"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateSubnetMetadata"
       response: "Subnet"
     };
@@ -98,7 +98,7 @@ service SubnetService {
       post: "/vpc/v1/subnets/{subnet_id}:add-cidr-blocks"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateSubnetMetadata"
       response: "Subnet"
     };
@@ -118,7 +118,7 @@ service SubnetService {
       post: "/vpc/v1/subnets/{subnet_id}:remove-cidr-blocks"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "UpdateSubnetMetadata"
       response: "Subnet"
     };
@@ -134,7 +134,7 @@ service SubnetService {
   // Deletes the specified subnet.
   rpc Delete(DeleteSubnetRequest) returns (operation.Operation) {
     option (google.api.http) = {delete: "/vpc/v1/subnets/{subnet_id}"};
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "DeleteSubnetMetadata"
       response: "google.protobuf.Empty"
     };

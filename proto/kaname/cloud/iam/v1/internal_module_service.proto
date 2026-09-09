@@ -96,7 +96,7 @@ syntax = "proto3";
 package kaname.cloud.iam.v1;
 
 import "google/api/annotations.proto";
-import "kacho/cloud/api/operation.proto";
+import "corelib/api/v1/operation.proto";
 import "kacho/cloud/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
 
@@ -160,7 +160,7 @@ service InternalModuleService {
       post: "/iam/v1/internal/modules/{module}:apply"
       body: "*"
     };
-    option (kacho.cloud.api.operation) = {
+    option (corelib.api.v1.operation) = {
       metadata: "ApplyModuleMetadata"
       response: "ApplyModuleResponse"
     };

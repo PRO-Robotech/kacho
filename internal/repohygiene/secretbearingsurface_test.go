@@ -14,7 +14,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 
-	apiv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/contractroot"
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
@@ -220,7 +220,7 @@ func TestBAT1_73_Axis2_NoUnmarkedSecretOnTheSurface(t *testing.T) {
 		sort.Strings(findings)
 		t.Fatalf("поля поверхности, чьё имя выглядит секретом, без пометки и без записи "+
 			"ведомости: %v.\n"+
-			"Носитель закрывается ПОМЕТКОЙ `(kacho.cloud.api.secret_bearing) = true` и ничем "+
+			"Носитель закрывается ПОМЕТКОЙ `(kaname.cloud.iam.v1.secret_bearing) = true` и ничем "+
 			"иным; поле, секретом не являющееся, — записью ведомости С ПРИЧИНОЙ "+
 			"(§4.3.3 приёмки BAT-1).", findings)
 	}
@@ -348,7 +348,7 @@ func collectSecretSurfaceFields() (out []secretSurfaceField, census secretSurfac
 // secretBearingMarked читает САМУ ОПЦИЮ расширения, а не совпадение имени: имя —
 // это ось 2, и она про другое.
 func secretBearingMarked(f protoreflect.FieldDescriptor) bool {
-	v, ok := proto.GetExtension(f.Options(), apiv1.E_SecretBearing).(bool)
+	v, ok := proto.GetExtension(f.Options(), iamv1.E_SecretBearing).(bool)
 	return ok && v
 }
 

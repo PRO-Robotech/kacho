@@ -28,8 +28,8 @@ import (
 	// построению (импорт — литерал), поэтому его полноту проверяет НЕ он сам, а
 	// сверка с деревом внутри анализатора: новый домен без строки здесь роняет
 	// гейт с именем пакета, а не проходит молча.
+	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
