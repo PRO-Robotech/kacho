@@ -189,6 +189,7 @@ stage_proto_tree() {
     mkdir -p "${stage}/${_root}/cloud"
   done
   mkdir -p "${stage}/corelib/authz"
+  mkdir -p "${stage}/corelib/api"
 
   # --- общая инфраструктура ---
   #
@@ -201,6 +202,14 @@ stage_proto_tree() {
   # единственный такой.
   cp -R "${proto_root}/google"             "${stage}/google"
   cp -R "${proto_root}/corelib/authz/v1" "${stage}/corelib/authz/v1"
+  # Аннотация операции переехала сюда из `kacho/cloud/api` (kacho#2395): её
+  # размечают ОБА продукта, поэтому дом у неё нейтральный. Копируется той же
+  # безусловной строкой, что и словарь авторизации, и по той же причине —
+  # раскладка фундамента `corelib/<дерево>/v1` НЕ несёт сегмента `cloud`, а
+  # весь обход деревьев ниже построен на `<корень>/cloud/<дерево>`. Без этой
+  # строки корень объявлен в KACHO_PROTO_ROOTS, но пуст: перепись честно
+  # печатает `corelib=0`, а импорт не резолвится у КАЖДОГО домена платформы.
+  cp -R "${proto_root}/corelib/api/v1"   "${stage}/corelib/api/v1"
 
   # --- исключения обязаны иметь предмет ---
   local excluded
