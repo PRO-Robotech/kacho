@@ -38,6 +38,7 @@ import (
 	"github.com/PRO-Robotech/kaname/internal/apps/kaname/config"
 	"github.com/PRO-Robotech/kaname/internal/apps/kaname/modulecatalog"
 	"github.com/PRO-Robotech/kaname/internal/apps/kaname/moduleroles"
+	"github.com/PRO-Robotech/kaname/internal/apps/kaname/moduleseed"
 	"github.com/PRO-Robotech/kaname/internal/authzguard"
 	"github.com/PRO-Robotech/kaname/internal/clients"
 	"github.com/PRO-Robotech/kaname/internal/handler/clienttokenhttp"
@@ -383,6 +384,22 @@ func runServe(cfg config.Config) error {
 	rolesApplier := moduleroles.NewApplier(moduleroles.NewRepoTxRunner(kanameRepo), rolesRights)
 	if raErr := applyDeliveredModuleRoles(ctx, logger, rolesApplier, deliveredManifests); raErr != nil {
 		return raErr
+	}
+
+	// ПРИМЕНЕНИЕ ПОСЕВА ДОСТАВЛЕННОГО — ПОСЛЕ применения ролей (задача #2452).
+	//
+	// Служебные учётки модулей платформы, их членства и выдачи заводит ЭТОТ
+	// путь, а не миграция службы: миграция применяется везде, включая установку
+	// без платформы, и заводила там пять личностей чужого продукта. Условием
+	// служит ДОСТАВКА манифеста — её кладёт зонтичный чарт платформы и не кладёт
+	// чарт самостоятельной службы.
+	//
+	// Довод о месте, порядке и о том, почему отказ фатален, — шапка
+	// `module_seed_apply.go`; порядок держит гейт
+	// `module_seed_apply_wiring_test.go`, а не этот комментарий.
+	seedApplier := moduleseed.NewApplier(kanamepg.NewModuleSeedWriteRepo(pool))
+	if seErr := applyDeliveredModuleSeed(ctx, logger, seedApplier, deliveredManifests); seErr != nil {
+		return seErr
 	}
 
 	// Подключаем Prometheus-Recorder и логгер к default-registry LRO-worker'а и
