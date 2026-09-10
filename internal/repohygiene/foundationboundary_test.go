@@ -457,3 +457,83 @@ func TestEveryTreeRootDeclaresItsClass(t *testing.T) {
 			len(faults), strings.Join(faults, "\n  "))
 	}
 }
+
+// reachedFromShippedBinaries — пары «поставляемое двоичное × достижимый им
+// пакет дерева», собранные обходом ПРОД-импортов.
+//
+// Пробы в замыкание не входят: они не исполняются в поставляемом процессе, и
+// их ребро судит ось вторая своим счётом.
+func reachedFromShippedBinaries(t *testing.T, root string) ([]executedReach, int) {
+	t.Helper()
+	pkgs, _ := readTreePackages(t, root)
+
+	prodImports := map[string][]string{}
+	for _, p := range pkgs {
+		for imp := range p.Prod {
+			if rel, in := treePathOfImport(imp); in {
+				prodImports[p.Dir] = append(prodImports[p.Dir], rel)
+			}
+		}
+	}
+
+	var mains []string
+	for _, p := range pkgs {
+		if isShippedBinaryDir(p.Dir) {
+			mains = append(mains, p.Dir)
+		}
+	}
+	sort.Strings(mains)
+
+	var reach []executedReach
+	for _, m := range mains {
+		binClass, ok := classOfPackage(m)
+		if !ok {
+			// Корень без объявленного класса — предмет оси пятой, не этой.
+			continue
+		}
+		seen := map[string]struct{}{}
+		queue := append([]string{}, prodImports[m]...)
+		for len(queue) > 0 {
+			n := queue[len(queue)-1]
+			queue = queue[:len(queue)-1]
+			if _, dup := seen[n]; dup {
+				continue
+			}
+			seen[n] = struct{}{}
+			queue = append(queue, prodImports[n]...)
+		}
+		ordered := make([]string, 0, len(seen))
+		for d := range seen {
+			ordered = append(ordered, d)
+		}
+		sort.Strings(ordered)
+		for _, d := range ordered {
+			cls, known := classOfPackage(d)
+			if !known {
+				continue
+			}
+			reach = append(reach, executedReach{
+				Binary: m, BinClass: binClass, Pkg: d, PkgClass: cls,
+			})
+		}
+	}
+	return reach, len(mains)
+}
+
+// TestShippedBinariesExecuteNoForbiddenModule — ось ШЕСТАЯ.
+//
+// Предмет и его отличие от оси второй разобраны на foundationboundary.go.
+// Способность падать доказывает инъекция, а не этот прогон.
+func TestShippedBinariesExecuteNoForbiddenModule(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+
+	reach, mains := reachedFromShippedBinaries(t, root)
+	faults, census := judgeExecutedModules(reach, mains)
+	t.Logf("перепись: %s", census.ExecutedSummary())
+
+	if len(faults) > 0 {
+		t.Fatalf("поставляемое двоичное исполняет модуль запрещённого направления (%d):\n  %s",
+			len(faults), strings.Join(faults, "\n  "))
+	}
+}

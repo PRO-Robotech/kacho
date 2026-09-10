@@ -145,12 +145,16 @@ func edgeFixture() ([]boundaryEdge, []knownBoundaryEdge) {
 	observed := []boundaryEdge{
 		{From: "pkg/listnarrow", To: "pkg/api/kaname/cloud/iam/v1",
 			FromClass: classCorelib, ToClass: classKaname, Prod: 3, Test: 3},
-		{From: "services/iam/internal/manifest", To: "pkg/modulemanifest",
+		// Пара СИНТЕТИЧЕСКАЯ и намеренно не совпадает ни с одной живой: прежде
+		// здесь стояло ребро службы к `pkg/modulemanifest`, и после смены его
+		// класса на `corelib` фикстура утверждала бы о дереве неправду — запись,
+		// пережившую свой предмет, ровно того рода, который эти пробы и ловят.
+		{From: "services/nosuch/internal/probe", To: "pkg/nosuchplatform",
 			FromClass: classKaname, ToClass: classKacho, Prod: 1, Test: 1},
 	}
 	ledger := []knownBoundaryEdge{
 		{"pkg/listnarrow", "pkg/api/kaname/cloud/iam/v1", 3, 3, "З2"},
-		{"services/iam/internal/manifest", "pkg/modulemanifest", 1, 1, "З8"},
+		{"services/nosuch/internal/probe", "pkg/nosuchplatform", 1, 1, "З8"},
 	}
 	return observed, ledger
 }
@@ -210,7 +214,7 @@ func TestEdgeJudgeCatchesALedgerRowWithNothingToForgive(t *testing.T) {
 			len(faults), strings.Join(faults, "\n  "))
 	}
 	if !strings.Contains(faults[0], "нечего исключать") ||
-		!strings.Contains(faults[0], "services/iam/internal/manifest") {
+		!strings.Contains(faults[0], "services/nosuch/internal/probe") {
 		t.Fatalf("находка не объявляет истечение записи с координатой: %s", faults[0])
 	}
 }
@@ -826,5 +830,143 @@ func TestEdgeOutOfANewlyDeclaredRootIsJudged(t *testing.T) {
 		nil, 1, 1)
 	if len(faults) != 1 || !strings.Contains(faults[0], "corelib/listnarrow") {
 		t.Fatalf("ребро запрещённого направления из нового корня обязано быть находкой: %v", faults)
+	}
+}
+
+// ------------------------------- ось 6 -------------------------------
+//
+// Инъекция ведётся на СИНТЕТИЧЕСКИХ парах, а не правкой карты классов, и это
+// не удобство: правка карты роняет ОБЕ оси разом (ось вторая — неучтённым
+// ребром, ось шестая — исполнением в рантайме), то есть перестаёт быть
+// одно-фактной. На фикстурах каждая ось судит свой вход, и молчание соседа
+// доказуемо (TestAxisSixAndAxisTwoRedSeparately ниже).
+
+// executedFixture — ЗАКОННОЕ замыкание. Положительный близнец подан числом и
+// направлением: пара «kacho → kaname» здесь стоит НАМЕРЕННО — она пересекает
+// границу модулей и при этом разрешена, поэтому судья, краснеющий на всяком
+// пересечении класса, на ней бы и попался.
+func executedFixture() []executedReach {
+	return []executedReach{
+		{Binary: "services/iam/cmd/probe", BinClass: classKaname,
+			Pkg: "pkg/db", PkgClass: classCorelib},
+		{Binary: "services/iam/cmd/probe", BinClass: classKaname,
+			Pkg: "pkg/tokenpolicy", PkgClass: classKaname},
+		{Binary: "services/probe/cmd/probe", BinClass: classKacho,
+			Pkg: "pkg/ids", PkgClass: classCorelib},
+		{Binary: "services/probe/cmd/probe", BinClass: classKacho,
+			Pkg: "pkg/api/kaname/cloud/iam/v1", PkgClass: classKaname},
+	}
+}
+
+func TestExecutedJudgeIsSilentOnALegalClosure(t *testing.T) {
+	t.Parallel()
+
+	faults, census := judgeExecutedModules(executedFixture(), 2)
+
+	if len(faults) != 0 {
+		t.Fatalf("контроль покраснел на законном замыкании (%d):\n  %s",
+			len(faults), strings.Join(faults, "\n  "))
+	}
+	if census.Binaries != 2 || census.ReachedPkgs != 4 || census.Edges != 0 {
+		t.Fatalf("перепись контроля не сошлась: двоичных %d, пар %d, запрещённых %d",
+			census.Binaries, census.ReachedPkgs, census.Edges)
+	}
+}
+
+// TestExecutedJudgeCatchesAForbiddenModuleInAShippedBinary — ИНЪЕКЦИЯ НОВОГО.
+//
+// Одно-фактная дельта против контроля: та же фикстура плюс ОДНА пара, у которой
+// направление запрещено. Больше не меняется ничего.
+func TestExecutedJudgeCatchesAForbiddenModuleInAShippedBinary(t *testing.T) {
+	t.Parallel()
+	reach := append(executedFixture(), executedReach{
+		Binary: "services/iam/cmd/probe", BinClass: classKaname,
+		Pkg: "pkg/nosuchplatform", PkgClass: classKacho,
+	})
+
+	faults, census := judgeExecutedModules(reach, 2)
+
+	if len(faults) != 1 {
+		t.Fatalf("ожидалась ровно одна находка, получено %d:\n  %s",
+			len(faults), strings.Join(faults, "\n  "))
+	}
+	// Находка обязана назвать ОБЕ координаты и ОБА класса: без них читатель
+	// пойдёт искать не там, а диагностика есть часть свойства, а не украшение.
+	for _, want := range []string{
+		"services/iam/cmd/probe", "pkg/nosuchplatform", "kaname", "kacho", "обратного require",
+	} {
+		if !strings.Contains(faults[0], want) {
+			t.Fatalf("находка не называет %q: %s", want, faults[0])
+		}
+	}
+	if census.Edges != 1 {
+		t.Fatalf("перепись обязана назвать одну запрещённую пару, названо %d", census.Edges)
+	}
+}
+
+// TestExecutedJudgeRefusesAnEmptyWalkInsteadOfReportingNoFindings — обе стороны
+// пустоты: ни одного двоичного и ни одной пары. «Ноль находок» обязано быть
+// отличимо от «ноль прочитанного».
+func TestExecutedJudgeRefusesAnEmptyWalkInsteadOfReportingNoFindings(t *testing.T) {
+	t.Parallel()
+
+	faults, census := judgeExecutedModules(executedFixture(), 0)
+	if len(faults) != 1 || !strings.Contains(faults[0], "обход пуст") {
+		t.Fatalf("ноль двоичных обязан быть ОТКАЗОМ: %v", faults)
+	}
+	if census.Binaries != 0 {
+		t.Fatalf("перепись пустого обхода обязана называть ноль двоичных, а не %d",
+			census.Binaries)
+	}
+
+	faults, census = judgeExecutedModules(nil, 3)
+	if len(faults) != 1 || !strings.Contains(faults[0], "замыкание пусто") {
+		t.Fatalf("пустое замыкание обязано быть ОТКАЗОМ: %v", faults)
+	}
+	if census.ReachedPkgs != 0 {
+		t.Fatalf("перепись пустого замыкания обязана называть ноль пар, а не %d",
+			census.ReachedPkgs)
+	}
+}
+
+// TestAxisSixAndAxisTwoRedSeparately — ТРЕТИЙ ПРОГОН инъекции.
+//
+// Без него молчание существующего контроля неотличимо от молчания мёртвого:
+// новая ось могла бы оказаться вакуумной, а красное приходить от соседа.
+// Здесь каждая ось получает СВОЙ сломанный вход и сверяется молчание другой.
+func TestAxisSixAndAxisTwoRedSeparately(t *testing.T) {
+	t.Parallel()
+
+	// (1) контроль: цело у обеих — молчат обе.
+	observed, ledger := edgeFixture()
+	if f, _ := judgeBoundaryEdges(observed, ledger, 5914, 11647); len(f) != 0 {
+		t.Fatalf("ось вторая покраснела на контроле: %s", strings.Join(f, "; "))
+	}
+	if f, _ := judgeExecutedModules(executedFixture(), 2); len(f) != 0 {
+		t.Fatalf("ось шестая покраснела на контроле: %s", strings.Join(f, "; "))
+	}
+
+	// (2) сломано у НОВОЙ — краснеет только новая.
+	brokenSix := append(executedFixture(), executedReach{
+		Binary: "services/iam/cmd/probe", BinClass: classKaname,
+		Pkg: "pkg/nosuchplatform", PkgClass: classKacho,
+	})
+	if f, _ := judgeExecutedModules(brokenSix, 2); len(f) != 1 {
+		t.Fatalf("ось шестая обязана покраснеть на своём дефекте, находок %d", len(f))
+	}
+	if f, _ := judgeBoundaryEdges(observed, ledger, 5914, 11647); len(f) != 0 {
+		t.Fatalf("ось вторая покраснела на ЧУЖОМ дефекте: %s", strings.Join(f, "; "))
+	}
+
+	// (3) сломано у СУЩЕСТВУЮЩЕЙ — краснеет только существующая.
+	brokenTwo := append(observed, boundaryEdge{
+		From: "pkg/outbox", To: "pkg/api/kaname/cloud/iam/v1",
+		FromClass: classCorelib, ToClass: classKaname, Prod: 1, Test: 0,
+	})
+	if f, _ := judgeBoundaryEdges(brokenTwo, ledger, 5914, 11647); len(f) != 1 {
+		t.Fatalf("ось вторая обязана покраснеть на своём дефекте, находок %d", len(f))
+	}
+	if f, _ := judgeExecutedModules(executedFixture(), 2); len(f) != 0 {
+		t.Fatalf("ось шестая покраснела на ЧУЖОМ дефекте: %s", strings.Join(f, "; "))
 	}
 }
