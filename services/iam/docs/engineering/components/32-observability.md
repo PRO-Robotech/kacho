@@ -111,8 +111,36 @@ Registry приватный (`prometheus.NewRegistry()`, не глобальны
 | `kaname_lro_orphans_recovered_total`         | counter   | outcome                             | Осиротевшие операции, поднятые reconciler'ом.                 |
 | `kaname_lro_reconcile_runs_total`            | counter   | —                                   | Проходы reconciler-sweep.                                     |
 | `kaname_lro_reconcile_errors_total`          | counter   | —                                   | Проходы reconciler-sweep, завершившиеся ошибкой.             |
+| `kaname_build_info`                          | gauge     | version, revision                   | Метаданные сборки (постоянная 1). Значения ставит СБОРКА (`-ldflags -X`, из тех же аргументов, что клеймо образа), а не ручка профиля. `unstamped` в метке — не версия, а отсутствие штампа. |
 | `kaname_identities_total`                    | counter   | —                                   | Личности, которых платформа видела за всё время (журнал `kaname.identity_journal`). |
 | `kaname_identity_ledger_samples_total`       | counter   | outcome                             | Исходы фонового замера журнала (`ok`/`error`) — то, чем ноль в предыдущем ряду отличается от неснятого замера. |
+
+### Версия сборки — со ШТАМПА, а не с ручки
+
+`kaname_build_info` кормится переменными `buildVersion`/`buildRevision`
+(`cmd/kaname/buildstamp.go`), которые подставляет компоновщик:
+
+```
+go build -ldflags "-X main.buildVersion=$KACHO_IMAGE_VERSION -X main.buildRevision=$KACHO_IMAGE_REVISION"
+```
+
+Обе величины сборка берёт из ТЕХ ЖЕ аргументов, из которых делает клеймо образа
+(`org.opencontainers.image.version` / `.revision`) и файл `/etc/kacho/image-revision`.
+Источник один, поэтому витрина и образ разойтись не могут, а оператор сверяет
+строки дословно.
+
+Ручкой профиля величина не является намеренно: объявленную оператором он вправе
+объявить любой, и первый же откат выкатки, забывший её поправить, сделал бы ряд
+лживым ровно тогда, ради чего он заведён.
+
+Незаданный штамп называет себя словом `unstamped`, а не `dev` и не пустой
+меткой: и то и другое читалось бы как ответ, а это отсутствие измерения.
+
+Держат это две пробы: `TestBuildStampReachesTheBinaryItLabels` разбирает
+ИСПОЛНЯЕМУЮ часть `Dockerfile` и требует, чтобы у каждой подстановки была цель —
+переменная уровня пакета (компоновщик о промахе `-X` молчит); соседний файл
+инъекций доказывает, что она краснеет, когда `-ldflags` осталось обещанием в
+комментарии.
 
 ### Метка `rpc` — ЗАКРЫТЫЙ словарь из трёх полос
 
@@ -289,6 +317,10 @@ gRPC-порт (`:9090`); HTTP `/healthz` и `/readyz` доступны для р
 ## Связанные компоненты
 
 - [`33-runbook.md`](33-runbook.md) — что делать при alert.
+- `docs/content/advanced/observability.mdx` — ОПУБЛИКОВАННАЯ страница: то же,
+  но для того, кто поставил продукт и кода не читает. Она обязана называть только
+  ряды, у которых есть производитель, и нести порядок разбора, исполнимый без
+  остальных компонентов платформы; держит это `TestObservabilityPagePromisesOnlyWhatTheServiceProduces`.
 - [`31-deployment.md`](31-deployment.md) — env vars, порты и mTLS для observability.
 - [`29-relational-verdict.md`](29-relational-verdict.md) — latency-бюджет authz Check hot-path.
 
