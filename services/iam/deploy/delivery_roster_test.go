@@ -74,6 +74,8 @@ var deliveryRoster = []string{
 	"defaultless_keys_test.go",
 	"delivery_roster_test.go",
 	"foreign_object_defaults_test.go",
+	"foreign_operator_declared_injection_test.go",
+	"foreign_operator_declared_test.go",
 	"image_coordinate_injection_test.go",
 	"image_coordinate_test.go",
 	"offered_chains_declare_production_posture_injection_test.go",
