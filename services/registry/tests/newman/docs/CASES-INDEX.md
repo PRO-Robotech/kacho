@@ -239,9 +239,17 @@ down to blob-level** (per-repo blob-scope): deny → `404`. push into a **new** 
 
 ### 3b. Token-exchange (Hydra federation, Variant H) — REG-TX-01..22
 
-Issuer = Hydra (docker `private_key_jwt` shim + k8s `jwt-bearer`); data-plane verifies
-Hydra JWKS; per-request Check remains authZ. Identity-only tokens — authorization is still
-the data-plane per-request Check.
+> **ИМЕНА СЦЕНАРИЕВ НЕСУТ `HYDRA` ИСТОРИЧЕСКИ — предмет у них шире имени.** Идентификаторы
+> сохранены дословно: они машинно сверяются (`validate-cases.py`, гейт покрытия дерева), и
+> переименование сломало бы сверку, ничего не уточнив. Читать их надо как «полоса
+> токен-обмена», а не как «полоса конкретного поставщика».
+
+Издателей на этой полосе **может быть два**, и какой из них выпустил токен, объявляет
+посадка: там, где объявлена своя чеканка, докерный токен выпускает подписант платформы, а
+там, где не объявлена, — внешний поставщик (`private_key_jwt` shim + k8s `jwt-bearer`).
+Плоскость данных сверяет подпись по набору ключей **объявленного издателя** — запись
+выбирается по издателю из самого токена, а не перебором. Per-request Check остаётся authZ;
+токены identity-only, авторизация — всегда per-request Check плоскости данных.
 
 | Intended scenario id | Classes | Prio | Meaning | Verifies |
 |---|---|---|---|---|
