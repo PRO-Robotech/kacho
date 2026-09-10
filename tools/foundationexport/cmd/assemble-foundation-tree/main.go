@@ -84,6 +84,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path"
@@ -389,9 +390,25 @@ func emitStubs(root, rev string, dest *os.Root, files []string, genRels map[stri
 	}
 	defer func() { _ = os.RemoveAll(tmp) }()
 
+	// ДЕСКРИПТОР РАБОЧЕГО КАТАЛОГА — ТОТ ЖЕ ПРИЁМ, ЧТО У НАЗНАЧЕНИЯ, И ПО ТОЙ ЖЕ
+	// ПРИЧИНЕ. Имена здесь приходят из чужого индекса и из доводов запуска, а не
+	// от нас; собранный в строку путь означал бы, что выход за рабочий каталог
+	// отвергает наша строковая арифметика. Через дескриптор его отвергает СРЕДА
+	// ИСПОЛНЕНИЯ. Класс был закрыт в этом файле задачей #2582 — одиннадцать
+	// находок, НОЛЬ подавлений, — и эмиссия обязана держаться тем же механизмом,
+	// а не подавлением рядом с новой записью.
+	work, err := os.OpenRoot(tmp)
+	if err != nil {
+		fail("дескриптор рабочего каталога генерации не открыт: %v", err)
+	}
+	defer func() { _ = work.Close() }()
+
 	// ── Дерево контрактов ревизии раскладывается целиком ────────────────────
 	// Целиком, а не выборочно: `buf` разбирает модуль, и отобранный по нашему
 	// вкусу поднабор отказал бы на первом же импорте соседнего контракта.
+	//
+	// `protoDir` остаётся строкой ТОЛЬКО как рабочий каталог дочернего процесса:
+	// ни одной записи и ни одного чтения по нему не делается.
 	protoDir := filepath.Join(tmp, protoRoot)
 	laid := 0
 	for _, f := range files {
@@ -403,11 +420,13 @@ func emitStubs(root, rev string, dest *os.Root, files []string, genRels map[stri
 		if strings.HasSuffix(f, ".proto") && genRels[path.Dir(rel)] {
 			blob = rewriteGoPackage(blob)
 		}
-		dst := filepath.Join(protoDir, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
-			fail("каталог контрактов не заведён: %v", err)
+		in := path.Join(protoRoot, rel)
+		if d := path.Dir(in); d != "." {
+			if err := work.MkdirAll(d, 0o700); err != nil {
+				fail("каталог контрактов %s не заведён: %v", d, err)
+			}
 		}
-		if err := os.WriteFile(dst, blob, 0o600); err != nil {
+		if err := work.WriteFile(in, blob, 0o600); err != nil {
 			fail("контракт %s не разложен: %v", rel, err)
 		}
 		laid++
@@ -423,7 +442,7 @@ func emitStubs(root, rev string, dest *os.Root, files []string, genRels map[stri
 	// может и отказывает; поэтому объявление и замок берутся ИЗ ТОЙ ЖЕ ревизии,
 	// что и контракты, и кладутся уровнем выше дерева контрактов.
 	for _, f := range []string{"go.mod", "go.sum"} {
-		if err := os.WriteFile(filepath.Join(tmp, f), gitShow(root, rev, f), 0o600); err != nil {
+		if err := work.WriteFile(f, gitShow(root, rev, f), 0o600); err != nil {
 			fail("%s для генерации не разложен: %v", f, err)
 		}
 	}
@@ -457,7 +476,7 @@ func emitStubs(root, rev string, dest *os.Root, files []string, genRels map[stri
 	for _, rel := range rels {
 		decl.WriteString("      - " + rel + "\n")
 	}
-	if err := os.WriteFile(filepath.Join(protoDir, "buf.gen.yaml"), decl.Bytes(), 0o600); err != nil {
+	if err := work.WriteFile(path.Join(protoRoot, "buf.gen.yaml"), decl.Bytes(), 0o600); err != nil {
 		fail("объявление генерации не разложено: %v", err)
 	}
 
@@ -470,10 +489,15 @@ func emitStubs(root, rev string, dest *os.Root, files []string, genRels map[stri
 	}
 
 	// ── Порождённое приезжает в назначение НАШЕЙ записью ───────────────────
-	genRoot := filepath.Join(tmp, "pkg", "api")
+	// Обход порождённого идёт ЧЕРЕЗ ТОТ ЖЕ ДЕСКРИПТОР. Перечень каталога берётся
+	// у файловой системы дескриптора (`Root.FS`), потому что своего `ReadDir` у
+	// дескриптора нет, — а не сборкой пути в строку: иначе чтение вернулось бы
+	// к той же арифметике, от которой дескриптор и заводился.
+	genFS := work.FS()
 	emitted, residue := 0, 0
 	for _, rel := range rels {
-		ents, err := os.ReadDir(filepath.Join(genRoot, filepath.FromSlash(rel)))
+		dir := path.Join("pkg", "api", rel)
+		ents, err := fs.ReadDir(genFS, dir)
 		if err != nil {
 			fail("порождённого для %s нет: %v", rel, err)
 		}
@@ -484,7 +508,7 @@ func emitStubs(root, rev string, dest *os.Root, files []string, genRels map[stri
 			if e.IsDir() {
 				continue
 			}
-			blob, err := os.ReadFile(filepath.Join(genRoot, filepath.FromSlash(rel), e.Name()))
+			blob, err := work.ReadFile(path.Join(dir, e.Name()))
 			if err != nil {
 				fail("порождённый %s/%s не прочитан: %v", rel, e.Name(), err)
 			}
