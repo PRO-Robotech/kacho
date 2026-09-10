@@ -543,19 +543,8 @@ func runServe(cfg config.Config) error {
 		tls:  internalRESTTLSConfig,
 	}
 
-	// M1 — startup invariant: production mode MUST run the cluster-internal
-	// listener (:9091) under mTLS RequireAndVerifyClientCert. Without it the
-	// per-RPC caller policy has no verified module SAN to enforce — anyone
-	// reaching :9091 would bypass authN/authZ. No silent insecure downgrade in
-	// production. (Mirror this requirement on the public listener too —
-	// tenant-facing :9090 must not run plaintext in prod.)
-	if productionMode {
-		if !mtlsCfg.InternalServerMTLS.Enable {
-			return fmt.Errorf("production mode requires internal listener mTLS (RequireAndVerifyClientCert); refusing to start with insecure :9091")
-		}
-		if !mtlsCfg.PublicServerMTLS.Enable {
-			return fmt.Errorf("production mode requires public listener mTLS (TLS); refusing to start with insecure :9090")
-		}
+	if err := requireGRPCListenerMTLS(productionMode, mtlsCfg); err != nil {
+		return err
 	}
 	if err := requireRegistryTokenTLS(productionMode,
 		cfg.APIServer.RegistryToken.ListenAddress(), mtlsCfg); err != nil {
@@ -2084,6 +2073,42 @@ func publicIdentityStream(cfg config.Config, presented *presentedcred.Reader) []
 		return pair
 	}
 	return []grpc.StreamServerInterceptor{presented.StreamOver(pair)}
+}
+
+// requireGRPCListenerMTLS — оба gRPC-слушателя обязаны идти под TLS в боевом
+// режиме.
+//
+// M1 — startup invariant: production mode MUST run the cluster-internal listener
+// (:9091) under mTLS RequireAndVerifyClientCert. Without it the per-RPC caller
+// policy has no verified module SAN to enforce — anyone reaching :9091 would
+// bypass authN/authZ. No silent insecure downgrade in production. The
+// tenant-facing :9090 carries the same requirement.
+//
+// # ПОЧЕМУ ИМЕНОВАННЫЙ СТРАЖ, А НЕ ВСТРОЕННАЯ ВЕТВЬ (задача #2514)
+//
+// Условие жило встроенной ветвью в теле подъёма, и проба боевого профиля
+// повторяла его СВОИМИ утверждениями — то есть два места об одном предмете,
+// расходящиеся молча: подъём обзаводится новым условием, а проба о нём не знает
+// и остаётся зелёной. Ровно этот класс закрыт для соседей тем, что проба зовёт
+// САМИ стражи; безымянное условие позвать нельзя by construction, поэтому оно
+// оставалось исключением, о котором никто не решал.
+//
+// Имя здесь — не косметика: гейт `TestEveryNamedStartupGuardIsJudgedByTheProductionProfile`
+// требует, чтобы КАЖДЫЙ именованный страж судился пробой боевого профиля, и
+// вынесение условия под имя вводит его в область этого гейта.
+func requireGRPCListenerMTLS(productionMode bool, mtlsCfg config.MTLSConfig) error {
+	if !productionMode {
+		return nil
+	}
+	if !mtlsCfg.InternalServerMTLS.Enable {
+		return fmt.Errorf("production mode requires internal listener mTLS " +
+			"(RequireAndVerifyClientCert); refusing to start with insecure :9091")
+	}
+	if !mtlsCfg.PublicServerMTLS.Enable {
+		return fmt.Errorf("production mode requires public listener mTLS (TLS); " +
+			"refusing to start with insecure :9090")
+	}
+	return nil
 }
 
 // requireRegistryTokenTLS — слушатель docker-token (`/iam/token`, :9096) в
