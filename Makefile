@@ -419,7 +419,7 @@ PG_OUTSIDE_SELECTION_PKGS_IAM ?= \
 # ЧЕМ ПРОВЯЗЫВАЕТСЯ И ПОЧЕМУ НЕ `core.hooksPath` — в шапке scripts/hooks/install.sh
 # (короткий ответ: он перебивает `.git/hooks` целиком и молча выключает всё, что
 # там уже лежало).
-.PHONY: test test-unit test-integration test-pg-outside-selection test-service test-service-short docs-sites help install-hooks check-hooks hooks-notice scale-grid-small scale-grid-full matrix-volume-small matrix-volume-full release-preflight release-trunk-green release-breaking-since release-probe release-pin-agrees release-pin-reachable release-no-reciprocity release-dry-run release-artifact
+.PHONY: test test-unit test-integration test-pg-outside-selection test-service test-service-short docs-sites help install-hooks check-hooks hooks-notice scale-grid-small scale-grid-full matrix-volume-small matrix-volume-full release-preflight release-trunk-green release-breaking-since release-probe release-pin-agrees release-pin-reachable release-no-reciprocity release-dry-run release-artifact foundation-floor
 
 ## install-hooks — провязать хуки git из scripts/hooks в этот клон (один раз на клон).
 install-hooks:
@@ -794,6 +794,29 @@ release-pin-reachable:
 
 release-no-reciprocity:
 	scripts/release/assert-no-module-reciprocity.sh
+
+# ── ПОЛ СБОРКИ ФУНДАМЕНТА ────────────────────────────────────────────────────
+#
+# Производитель дерева фундамента не сверяет собранное НИ С ЧЕМ: убыль состава он
+# читает как перепись, а не как отказ. Пол задаёт единственный вопрос, которого
+# не задаёт никто, — не исчез ли из сборки пакет, который УЖЕ ОПУБЛИКОВАН.
+#
+# ПОЛ — ОТДЕЛЬНАЯ ЦЕЛЬ, А НЕ ХВОСТ СБОРКИ, и это решение. Производителю для
+# работы сеть не нужна; полу нужна, потому что ориентир он берёт у посредника.
+# Сцепив их, мы сделали бы сборку дерева невозможной без сети — то есть
+# заплатили бы за проверку доступностью самой работы. Порядок остаётся за
+# вызывающим: собрать, затем спросить пол.
+#
+# НАЗНАЧЕНИЕ ПО УМОЛЧАНИЮ — ВНЕ РЕПОЗИТОРИЯ. Собранное дерево есть черновик
+# одного прогона; в рабочей копии он был бы неотслеживаемым мусором, который
+# рано или поздно уедет в `git add -A`.
+FOUNDATION_MODULE ?= github.com/PRO-Robotech/corelib
+FOUNDATION_OUT    ?= $(shell printf '%s/kacho-foundation-tree' "$${TMPDIR:-/tmp}")
+
+foundation-floor:
+	KACHO_FOUNDATION_MODULE=$(FOUNDATION_MODULE) \
+	  scripts/release/assert-foundation-floor.sh $(FOUNDATION_OUT) \
+	  $(if $(VERSION),--version $(VERSION))
 
 release-dry-run:
 	@test -n "$(VERSION)" || { echo "нужна VERSION, напр. make release-dry-run VERSION=v0.1.0" >&2; exit 2; }
