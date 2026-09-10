@@ -36,7 +36,7 @@ const (
 // пользователя (private_key_jwt). Каждый токен маппится на Hydra OAuth 2.0
 // client (`grant_types=[client_credentials]`, `token_endpoint_auth_method =
 // private_key_jwt`); клиент сам подписывает `client_assertion` (ES256) и
-// обменивает его в Hydra `/oauth2/token` на kacho-JWT, принципалом которого
+// обменивает его в Hydra `/oauth2/token` на JWT доступа, принципалом которого
 // становится `user:<user_id>`.
 //
 // Приватный ключ (`private_key_pem`) возвращается РОВНО ОДИН РАЗ в ответе Issue
@@ -140,7 +140,7 @@ func (c *userTokenServiceClient) Revoke(ctx context.Context, in *RevokeUserToken
 // пользователя (private_key_jwt). Каждый токен маппится на Hydra OAuth 2.0
 // client (`grant_types=[client_credentials]`, `token_endpoint_auth_method =
 // private_key_jwt`); клиент сам подписывает `client_assertion` (ES256) и
-// обменивает его в Hydra `/oauth2/token` на kacho-JWT, принципалом которого
+// обменивает его в Hydra `/oauth2/token` на JWT доступа, принципалом которого
 // становится `user:<user_id>`.
 //
 // Приватный ключ (`private_key_pem`) возвращается РОВНО ОДИН РАЗ в ответе Issue

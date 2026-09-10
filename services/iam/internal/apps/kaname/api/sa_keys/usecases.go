@@ -1053,7 +1053,7 @@ func (u *IssueSAKeyUseCase) doIssueFederated(ctx context.Context, keyID domain.S
 	if exp := u.resolveExpiry(in); exp != nil {
 		row.ExpiresAt = exp
 	}
-	// Federated rows carry no kacho-held key material — key_algorithm is "".
+	// Federated rows carry no kaname-held key material — key_algorithm is "".
 	//
 	// Перечень доверенных издателей уезжает в ТУ ЖЕ транзакцию, что строка
 	// ключа: откат снимает оба, полусделанного состояния между ними не бывает.

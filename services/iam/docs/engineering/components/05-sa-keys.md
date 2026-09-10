@@ -6,7 +6,7 @@
 получает access_token у Ory Hydra по grant'у `client_credentials` с
 `token_endpoint_auth_method = private_key_jwt` (RFC 7521/7523).
 
-Каждый ключ — это **kacho-выпущенная** пара (`private_key`, `public_jwk`):
+Каждый ключ — это пара (`private_key`, `public_jwk`), **выпущенная kaname**:
 
 - **`private_key_pem`** — отдается клиенту ОДИН РАЗ в ответе `IssueSAKey`,
   никогда не хранится в kaname.
