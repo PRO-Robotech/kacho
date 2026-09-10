@@ -12,10 +12,14 @@ package repohygiene
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+
+	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
@@ -98,6 +102,78 @@ func kanameSurfaceCorpus(t *testing.T) map[string][]byte {
 	return corpus
 }
 
+// kanameResidueWorldOfTree — то, что распознаватель узнаёт у ДЕРЕВА, а не у
+// вхождения: имена рядов витрины, объявленные фундаментом.
+//
+// Форм объявления ДВЕ, и обе обязательны — форма, о которой распознаватель не
+// знает, даёт не красное и не зелёное, а молчание:
+//
+//  1. ЛИТЕРАЛОМ в позиции имени ряда (`Name: "kacho_…"`) — разбором исходников
+//     фундамента;
+//  2. СКЛЕЙКОЙ ИЗ ЧАСТЕЙ (`BuildFQName`) — разбором текста они не восстановимы:
+//     приставка приходит доводом. Их отдаёт сам измеритель тем же объявлением,
+//     которым отдаёт их реестру.
+//
+// Ноль собранных рядов — ОТКАЗ, а не «рядов нет»: вычитание стало бы вакуумным,
+// и полоса клейм молча вернула бы себе чужой предмет.
+func kanameResidueWorldOfTree(t *testing.T) residueWorld {
+	t.Helper()
+	root := repoRoot(t)
+
+	dir := filepath.Join(root, FoundationSeriesDeclarationDir)
+	files, err := treecorpus.Under(dir)
+	if err != nil {
+		t.Fatalf("состав %s: %v — «ноль рядов» здесь означало бы «ноль прочитанного»",
+			FoundationSeriesDeclarationDir, err)
+	}
+	corpus := map[string][]byte{}
+	for _, abs := range files {
+		if !strings.HasSuffix(abs, ".go") || strings.HasSuffix(abs, "_test.go") {
+			continue
+		}
+		rel, relErr := filepath.Rel(root, abs)
+		if relErr != nil {
+			t.Fatalf("путь %s: %v", abs, relErr)
+		}
+		body, readErr := os.ReadFile(abs) // #nosec G304 -- путь из индекса своего дерева
+		if readErr != nil {
+			t.Fatalf("чтение %s: %v", rel, readErr)
+		}
+		corpus[filepath.ToSlash(rel)] = body
+	}
+
+	series, filesRead := FoundationSeriesFromCorpus(corpus)
+	if filesRead == 0 {
+		t.Fatalf("под %s не разобрано ни одного исходника — обход не состоялся, и "+
+			"вычитание рядов стало бы вакуумным", FoundationSeriesDeclarationDir)
+	}
+	literalCount := len(series)
+
+	// Форма 2: имена, собираемые из частей. Пул нулевой намеренно — объявления
+	// измеритель отдаёт независимо от того, настроен ли пул.
+	descs := make(chan *prometheus.Desc, 64)
+	go func() {
+		coredb.NewPoolStatsCollector("kacho", "primary", nil).Describe(descs)
+		close(descs)
+	}()
+	reFQ := regexp.MustCompile(`\bkacho_[a-z0-9_]+\b`)
+	assembled := 0
+	for d := range descs {
+		if m := reFQ.FindString(d.String()); m != "" && !series[m] {
+			series[m] = true
+			assembled++
+		}
+	}
+
+	t.Logf("ряды витрины фундамента: исходников разобрано %d · литералом %d · "+
+		"склейкой %d · всего %d", filesRead, literalCount, assembled, len(series))
+	if len(series) == 0 {
+		t.Fatal("рядов витрины не собрано ни одного — вычитание ничего не делает, и " +
+			"полоса клейм молча вернула бы себе имена рядов")
+	}
+	return residueWorld{FoundationSeries: series}
+}
+
 // TestKanameSurfaceNameResidueMatchesItsLedgers — имя платформы на поверхности,
 // которой Kaname называет себя, сходится с обеими ведомостями.
 //
@@ -108,7 +184,8 @@ func kanameSurfaceCorpus(t *testing.T) map[string][]byte {
 func TestKanameSurfaceNameResidueMatchesItsLedgers(t *testing.T) {
 	t.Parallel()
 	findings, ledgerFindings, census, err := FindKanameNameResidue(
-		kanameSurfaceCorpus(t), KanameNameResidueStay, KanameNameResidueDebt)
+		kanameSurfaceCorpus(t), KanameNameResidueStay, KanameNameResidueDebt,
+		kanameResidueWorldOfTree(t))
 	if err != nil {
 		t.Fatalf("разбор: %v", err)
 	}
@@ -244,7 +321,8 @@ func nameResidueShown(n int) int {
 func TestKanameNameResidueRecognizerReadsBothLatinFormsOfTheTree(t *testing.T) {
 	t.Parallel()
 	corpus := kanameSurfaceCorpus(t)
-	_, _, census, err := FindKanameNameResidue(corpus, KanameNameResidueStay, KanameNameResidueDebt)
+	_, _, census, err := FindKanameNameResidue(corpus, KanameNameResidueStay,
+		KanameNameResidueDebt, kanameResidueWorldOfTree(t))
 	if err != nil {
 		t.Fatalf("разбор: %v", err)
 	}
@@ -358,7 +436,8 @@ func TestKanameNameResidueEncodedFormsAreAbsentFromTheSurface(t *testing.T) {
 func TestKanameNameResidueDebtLedgerNamesAnOwnerForEveryLane(t *testing.T) {
 	t.Parallel()
 	_, _, census, err := FindKanameNameResidue(
-		kanameSurfaceCorpus(t), KanameNameResidueStay, KanameNameResidueDebt)
+		kanameSurfaceCorpus(t), KanameNameResidueStay, KanameNameResidueDebt,
+		kanameResidueWorldOfTree(t))
 	if err != nil {
 		t.Fatalf("разбор: %v", err)
 	}

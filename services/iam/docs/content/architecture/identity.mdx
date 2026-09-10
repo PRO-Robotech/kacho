@@ -57,8 +57,9 @@ flowchart LR
 ```
 
 1. Админ вызывает `UserService.Invite(email)` — backend создаёт `PENDING`-строку.
-2. `Operation.metadata` несёт `magicLinkUrl` (recovery/magic-link Kratos); админ передаёт ссылку
-   вручную (автоотправка email не интегрирована).
+2. `Operation.metadata` несёт `magicLinkUrl` (recovery/magic-link Kratos). Автоотправка письма
+   со ссылкой существует; пока почтовый узел не объявлен (`inviteMail.relay`,
+   `inviteMail.from`), письмо не уходит и ссылку передаёт админ.
 3. Приглашённый входит через Kratos.
 4. При успешном входе Kratos дёргает **identity-hook** IAM (listener `:9092`, mTLS): IAM
    сопоставляет email с `PENDING`-строкой, переводит её в `ACTIVE` и заполняет `externalId`.
