@@ -776,9 +776,9 @@ jobs:
       # `/internal/(repo|clients|reconciler)` под `services/<svc>/...` (этого пакета там нет).
       # Из одиннадцати тестов пакета под `-short` пропускался ровно один — этот, —
       # поэтому зелёное самого пакета о переписи не говорило ничего.
-      # Провязка залочена тестом pkg/listfiltergate (TestCIRunsThisCensus).
+      # Провязка залочена тестом internal/repohygiene (TestCIRunsThisCensus).
       - name: listauthz — анализатор видит КАЖДЫЙ списочный метод дерева
-        run: go test ./pkg/listfiltergate/ -run TestCensus_EveryTransportListingIsSeenByItsAnalyser -count=1 -v
+        run: go test ./internal/repohygiene/ -run TestCensus_EveryTransportListingIsSeenByItsAnalyser -count=1 -v
 
       # Форму манифеста домена судит ОДИН исполнитель — загрузчик
       # services/iam/internal/manifest, и второго заводить нельзя (решение #1778).

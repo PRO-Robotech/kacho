@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: BUSL-1.1
 
 // census_test.go asserts a property that is separate from, and easy to mistake for,
 // the one the analysers assert: that every transport listing method in a service is
@@ -28,13 +28,25 @@
 // analyser's job. This asks only "was it looked at", which is the question that was
 // answered wrongly for twenty methods across four services, and then for one more
 // after those twenty were fixed.
-package listfiltergate
+package repohygiene
+
+// ПЕРЕЕХАЛ ИЗ ФУНДАМЕНТА (задача #2532, класс 2). Предмет — свойство ДЕРЕВА
+// ПЛАТФОРМЫ: у каждого сервиса есть свой анализатор отбора списков, и конвейер
+// его гоняет. Живя в `pkg/listfiltergate`, страж поднимался до каталога с
+// `services/` и `.github/workflows` — то есть до дерева, которого у фундамента
+// после разъезда не будет вовсе; отвечал бы он «ничего не осмотрено», а это
+// «не выполнилось», поданное как красное.
+//
+// Перенесён ДОСЛОВНО, вместе со своим подъёмом до корня: переписывать его на
+// местный `repoRoot` значило бы менять предмет заодно с местом, и расхождение
+// было бы неотличимо от переезда.
 
 import (
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -141,6 +153,7 @@ func analyserListingCount(t *testing.T, root, svc string) int {
 // TestCensus_EveryTransportListingIsSeenByItsAnalyser compares each analyser's own
 // count against a sweep of the committed tree.
 func TestCensus_EveryTransportListingIsSeenByItsAnalyser(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("runs each service's analyser; skipped in -short")
 	}
@@ -178,6 +191,7 @@ func TestCensus_EveryTransportListingIsSeenByItsAnalyser(t *testing.T) {
 // unopened tree produce together. So the sweep is required to find the listing
 // methods that are certainly there.
 func TestCensus_SweepFindsSomething(t *testing.T) {
+	t.Parallel()
 	root := repoRootForCoverage(t)
 
 	// iam has the widest listing surface in the repository; a sweep that cannot see
@@ -218,13 +232,27 @@ func TestCensus_SweepFindsSomething(t *testing.T) {
 // step. This is the fifth, and it names the invocation rather than the job so that moving
 // the step between jobs does not silently unwire it.
 func TestCIRunsThisCensus(t *testing.T) {
+	t.Parallel()
 	b, err := os.ReadFile(filepath.Join(repoRootForCoverage(t), ".github", "workflows", "ci.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The invocation must run this test WITHOUT -short; naming the test explicitly is what
-	// makes the step's purpose checkable from here.
-	const invocation = "go test ./pkg/listfiltergate/ -run TestCensus_EveryTransportListingIsSeenByItsAnalyser"
+	// Имя пакета ВЫВОДИТСЯ из места этого файла, а не выписывается.
+	//
+	// Прежде оно стояло литералом `./pkg/listfiltergate/`, и переезд пробы в другой
+	// пакет (задача #2532) этот страж ПЕРЕЖИЛ зелёным: строка в ci.yaml осталась
+	// прежней, конвейер продолжал звать пакет, в котором пробы больше нет, а страж
+	// сверял литерал с литералом. Класс тот же, что он сам и стережёт: провязка
+	// цела на вид и мертва по существу.
+	_, self, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("не удалось определить место этого файла — имя пакета для провязки выводить неоткуда")
+	}
+	pkgRel, rerr := filepath.Rel(repoRootForCoverage(t), filepath.Dir(self))
+	if rerr != nil {
+		t.Fatalf("путь пакета относительно корня: %v", rerr)
+	}
+	invocation := "go test ./" + filepath.ToSlash(pkgRel) + "/ -run TestCensus_EveryTransportListingIsSeenByItsAnalyser"
 	if !strings.Contains(string(b), invocation) {
 		t.Fatalf("ci.yaml does not run %q — this census skips under -short and no job "+
 			"reaches its package otherwise, so without that step it never executes", invocation)

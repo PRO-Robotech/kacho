@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: BUSL-1.1
 
 // coverage_test.go answers the question no individual analyser can answer about
 // itself: which services are judged at all.
@@ -34,7 +34,18 @@
 // A stray directory beside the repository must not change the verdict, and a
 // worktree carrying an untracked scratch service must not either. `git ls-tree`
 // answers about the committed tree.
-package listfiltergate
+package repohygiene
+
+// ПЕРЕЕХАЛ ИЗ ФУНДАМЕНТА (задача #2532, класс 2). Предмет — свойство ДЕРЕВА
+// ПЛАТФОРМЫ: у каждого сервиса есть свой анализатор отбора списков, и конвейер
+// его гоняет. Живя в `pkg/listfiltergate`, страж поднимался до каталога с
+// `services/` и `.github/workflows` — то есть до дерева, которого у фундамента
+// после разъезда не будет вовсе; отвечал бы он «ничего не осмотрено», а это
+// «не выполнилось», поданное как красное.
+//
+// Перенесён ДОСЛОВНО, вместе со своим подъёмом до корня: переписывать его на
+// местный `repoRoot` значило бы менять предмет заодно с местом, и расхождение
+// было бы неотличимо от переезда.
 
 import (
 	"os"
@@ -122,6 +133,7 @@ func hasAnalyser(root, svc string) bool {
 // it is unjudged, and unjudged is the state every gate of this class exists to make
 // impossible. iam and geo sat in it for the whole life of the class.
 func TestCoverage_EveryServiceHasAListFilterAnalyser(t *testing.T) {
+	t.Parallel()
 	root := repoRootForCoverage(t)
 	svcs := servicesFromGit(t, root)
 
@@ -160,6 +172,7 @@ func TestCoverage_EveryServiceHasAListFilterAnalyser(t *testing.T) {
 // to say so. Without this, deleting the body of hasAnalyser would leave the suite
 // green.
 func TestCoverage_PredicateFindsAMissingAnalyser(t *testing.T) {
+	t.Parallel()
 	root := repoRootForCoverage(t)
 
 	const absent = "no-such-service-listfiltergate-control"
@@ -186,6 +199,7 @@ func TestCoverage_PredicateFindsAMissingAnalyser(t *testing.T) {
 // alone would have left the invariant unenforced. The CI step's service loop is
 // therefore read out of the workflow and compared against the tree.
 func TestCoverage_CIRunsEveryAnalyser(t *testing.T) {
+	t.Parallel()
 	root := repoRootForCoverage(t)
 	svcs := servicesFromGit(t, root)
 
@@ -300,6 +314,7 @@ func ciAuditedServices(t *testing.T, workflow string) []string {
 // this assertion names the service instead of the rule quietly becoming a demand for
 // a pointless analyser.
 func TestCoverage_PremiseEveryServiceHasAListingSurface(t *testing.T) {
+	t.Parallel()
 	root := repoRootForCoverage(t)
 	svcs := servicesFromGit(t, root)
 
