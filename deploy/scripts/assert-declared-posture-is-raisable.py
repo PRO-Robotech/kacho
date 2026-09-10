@@ -17,11 +17,36 @@
 композиционном корне нет вовсе. «Зелёный рендер» тут не свидетельство: он
 измеряет другую стадию.
 
-Сегодня такова полоса `own`: композиционный корень объявляет провязанность
-СВОИХ способов входа человека и СВОЕЙ сессии ЛИТЕРАЛЬНЫМ `false` (проверка
-хранит их координату и требует, чтобы литерал был на месте, — см. ниже), а три
-требования полосы читают именно их. Значит неисполнимы ВСЕ значения профиля, а
-не какие-то выбранные: это свойство построения, а не недонастройки.
+Сегодня такова полоса `own`: композиционный корень объявляет ЛИТЕРАЛАМИ
+провязанность своих способов входа человека и своей сессии, пустой перечень
+предъявимых уровней доверия и безусловную стройку дороги к внешнему поставщику
+вместе с записью зеркала его ключей (проверка хранит их координату и требует,
+чтобы литералы были на месте, — см. ведомость ниже). Требования полосы читают
+именно эти наблюдения, поэтому неисполнимы ВСЕ значения профиля, а не какие-то
+выбранные: это свойство построения, а не недонастройки.
+
+ЧИСЛО ОТКАЗОВ ЗДЕСЬ НЕ ВЫПИСАНО — намеренно. Прежняя редакция говорила «три
+требования», и это устарело молча: таблица требований выросла, отказов стало
+пять, а текст остался. Величина, у которой нет владельца, стареет вместе с
+предметом; её место — вывод самой полосы, а не проза о ней.
+
+─────────────────────────────────────────────────────────────────────────────
+КОРНЕЙ ДВА, И КАЖДЫЙ СУДИТСЯ ОТДЕЛЬНО
+
+Посадку объявляют профили ДВУХ корней: чарт ПРОДУКТА (поставка, ради которой
+службу выносят отдельно) и ЗОНТ платформы (стенды монорепо). Ключи у них разные
+— чарт продукта несёт `authn.identityProvider` верхним уровнем, зонт прячет его
+под секцией службы, — поэтому ключи едут ВМЕСТЕ с путём.
+
+Прежняя редакция читала только зонт: профиль чарта продукта мог объявить
+неподъёмную посадку, и проверка молчала. Инъекция одного факта показывает это
+дословно — объявление `own` в `services/iam/deploy/values.prod.yaml` находила
+проба композиционного корня и НЕ находила эта проверка. Перепись печатается ПО
+КАЖДОМУ корню: одно число на оба скрывает ровно тот случай, ради которого
+проверка расширена.
+
+Отсутствие ОДНОГО корня гасит ЕГО, а не проверку целиком: погашенная проверка
+перестала бы судить второй корень — то есть ровно тот, ради которого написана.
 
 ─────────────────────────────────────────────────────────────────────────────
 ЧЕГО ЭТА ПРОВЕРКА НЕ ДЕЛАЕТ, И ЭТО СКАЗАНО ПРЯМО
@@ -52,6 +77,7 @@
 import pathlib
 import re
 import sys
+import tempfile
 
 try:
     import yaml
@@ -68,10 +94,18 @@ HALVES = {
     "iam": ("kaname", "config", "authn", "identityProvider"),
     "gateway": ("api-gateway", "authn", "identityProvider"),
 }
-SUBCHART_DEFAULTS = {
-    "iam": (UMBRELLA / "charts/kaname/values.yaml", ("config", "authn", "identityProvider")),
-    "gateway": (ROOT / "gateway/deploy/values.yaml", ("authn", "identityProvider")),
-}
+PRODUCT_CHART_DIR_REL = "services/iam/deploy"
+# Что обязано стоять в находке о профиле чарта продукта — координата файла.
+PRODUCT_CHART_FINDING_NEEDLE = "values.prod.yaml"
+
+# Базовые значения подчартов — умолчание всякого стенда, не назвавшего полосу
+# сам, поэтому они считаются профилями наравне с остальными. Путь службы задан
+# ОТНОСИТЕЛЬНО зонта: он и есть подчарт, и синтетическое дерево самопроверки
+# получает его тем же выражением, что и живое.
+SUBCHART_KANAME_REL = "charts/kaname/values.yaml"
+SUBCHART_KANAME_KEYS = ("config", "authn", "identityProvider")
+GATEWAY_VALUES = ROOT / "gateway/deploy/values.yaml"
+GATEWAY_KEYS = ("authn", "identityProvider")
 
 # ВЕДОМОСТЬ: посадка → чем доказано, что дерево её не поднимает.
 #
@@ -81,11 +115,26 @@ SUBCHART_DEFAULTS = {
 NOT_RAISABLE = {
     "own": {
         "anchor": ROOT / "services/iam/cmd/kaname/laneposture.go",
-        "literals": ["HumanCredentialsWired: false", "HumanSessionsWired:    false"],
-        "why": ("композиционный корень объявляет провязанность СВОИХ способов входа "
-                "человека и СВОЕЙ сессии литеральным `false`, а три требования полосы "
-                "читают именно их: отказ приходит со стадии ПРОВЯЗКИ, на которую "
-                "профиль не влияет"),
+        # КАЖДОЕ наблюдение корня, которым полоса сегодня заблокирована. Перечень
+        # обязан быть ПОЛНЫМ, а не удобным: премиса, названная подмножеством,
+        # молчит ровно тогда, когда блокирующий набор поменялся, — то есть тогда,
+        # когда полосу и надо пересудить. Пара «поле: значение»; выравнивание
+        # между ними задаёт gofmt и меняет длина соседнего имени, поэтому пробелы
+        # здесь не значимы (иначе запись теряла бы предпосылку от чужой правки).
+        "literals": [
+            "HumanCredentialsWired: false",
+            "HumanSessionsWired: false",
+            "PresentableACRs: nil",
+            "ProviderAdminHopBuilt: true",
+            "ProviderKeySetMirrorPublished: true",
+        ],
+        "why": ("композиционный корень объявляет ЛИТЕРАЛАМИ и провязанность своих "
+                "способов входа человека и своей сессии, и пустой перечень предъявимых "
+                "уровней доверия, и безусловную стройку дороги к внешнему поставщику "
+                "вместе с записью зеркала его ключей; требования полосы читают именно "
+                "эти наблюдения, поэтому отказ приходит со стадии ПРОВЯЗКИ, на которую "
+                "профиль не влияет. Число отказов здесь НЕ выписано: оно меняется вместе "
+                "с таблицей требований, а выписанное — молча стареет"),
         "issue": "#2101",
     },
 }
@@ -106,14 +155,19 @@ def read_nested(path, keys):
     return cur if isinstance(cur, str) else ""
 
 
+def literal_re(lit):
+    """Пара «поле: значение» → образец, безразличный к выравниванию gofmt."""
+    field, _, value = lit.partition(":")
+    return re.escape(field.strip()) + r":\s*" + re.escape(value.strip())
+
+
 def premise_holds(entry):
     """→ (верна, пояснение). Ведомость обязана проверять СВОЮ предпосылку."""
     anchor = entry["anchor"]
     if not anchor.is_file():
         return False, "якоря %s больше нет" % anchor.relative_to(ROOT)
     text = anchor.read_text(encoding="utf-8")
-    missing = [lit for lit in entry["literals"]
-               if not re.search(re.escape(lit), text)]
+    missing = [lit for lit in entry["literals"] if not re.search(literal_re(lit), text)]
     if missing:
         return False, ("в %s больше нет литерал(а/ов) %s"
                        % (anchor.relative_to(ROOT), ", ".join(repr(m) for m in missing)))
@@ -159,15 +213,70 @@ def judge(declarations, not_raisable, premise_of):
     return census, findings
 
 
-def collect_declarations():
-    out = []
-    for p in sorted(UMBRELLA.glob("values*.yaml")):
-        for half, keys in HALVES.items():
-            out.append((str(p.relative_to(ROOT)), half, read_nested(p, keys)))
-    for half, (path, keys) in sorted(SUBCHART_DEFAULTS.items()):
-        rel = str(path.relative_to(ROOT)) if path.is_file() else str(path)
-        out.append((rel + " (базовое значение подчарта)", half, read_nested(path, keys)))
-    return out
+def values_files_in(directory):
+    """Файлы значений каталога по возрастанию имени; каталога нет → пусто."""
+    if not directory.is_dir():
+        return []
+    return sorted(f for f in directory.iterdir()
+                  if f.is_file() and f.name.startswith("values") and f.name.endswith(".yaml"))
+
+
+def collect_declarations(product_dir=None, umbrella_dir=None, gateway_values=None):
+    """Объявления посадки ОБОИХ корней плюс перепись по каждому.
+
+    Корней два, и это не дублирование: чарт ПРОДУКТА — профили той поставки, ради
+    которой службу выносят отдельно; ЗОНТ платформы — профили стендов монорепо.
+    Ключи у корней РАЗНЫЕ (чарт продукта несёт `authn.identityProvider` верхним
+    уровнем, зонт — под секцией службы), поэтому ключи едут ВМЕСТЕ с путём, а не
+    выбираются по имени корня в месте чтения: второй перечень ключей разошёлся бы
+    с первым молча.
+
+    Отсутствие ОДНОГО корня гасит ЕГО, а не проверку целиком: погашенная проверка
+    перестала бы судить и второй корень — то есть ровно тот, ради которого она
+    написана.
+
+    → (объявления, перепись по корням, оговорки)
+    """
+    product_dir = ROOT / PRODUCT_CHART_DIR_REL if product_dir is None else product_dir
+    umbrella_dir = UMBRELLA if umbrella_dir is None else umbrella_dir
+    gateway_values = GATEWAY_VALUES if gateway_values is None else gateway_values
+
+    out, census, notes = [], [], []
+
+    seen = 0
+    for f in values_files_in(product_dir):
+        out.append((str(_rel(f)), "iam", read_nested(f, ("authn", "identityProvider"))))
+        seen += 1
+    census.append(("чарт продукта", seen))
+    if seen == 0:
+        notes.append("чарт продукта: УСЛОВИЕ НЕ СОЗДАНО (не находка) — каталога %s нет"
+                     % _rel(product_dir))
+
+    seen = 0
+    for f in values_files_in(umbrella_dir):
+        for half, keys in sorted(HALVES.items()):
+            out.append((str(_rel(f)), half, read_nested(f, keys)))
+        seen += 1
+    for path, keys, half in ((umbrella_dir / SUBCHART_KANAME_REL, SUBCHART_KANAME_KEYS, "iam"),
+                             (gateway_values, GATEWAY_KEYS, "gateway")):
+        if path.is_file():
+            out.append((str(_rel(path)) + " (базовое значение подчарта)", half,
+                        read_nested(path, keys)))
+            seen += 1
+    census.append(("зонт платформы", seen))
+    if seen == 0:
+        notes.append("зонт платформы: УСЛОВИЕ НЕ СОЗДАНО (не находка) — каталога %s нет"
+                     % _rel(umbrella_dir))
+
+    return out, census, notes
+
+
+def _rel(path):
+    """Координата от корня дерева; вне дерева — как есть."""
+    try:
+        return path.relative_to(ROOT)
+    except ValueError:
+        return path
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -210,6 +319,68 @@ def self_test():
          [("values.dev.yaml", "iam", "external")], good, broken,
          needle="потеряла предпосылку")
 
+    print("  --- КОРНИ: оба читаются, и каждый судится (задача #2101)")
+    decls, roots, _ = collect_declarations()
+    by_root = dict(roots)
+    for name in ("чарт продукта", "зонт платформы"):
+        if by_root.get(name, 0) > 0:
+            print("  ОК  корень [%s]: осмотрено файлов значений %d" % (name, by_root[name]))
+        else:
+            print("  ПРОВАЛ корень [%s] НЕ ЧИТАЕТСЯ: из %d объявлений ни одно не пришло "
+                  "оттуда — профиль этого корня объявил бы неподъёмную посадку, и "
+                  "проверка промолчала бы" % (name, len(decls)))
+            rc = 1
+
+    print("  --- инъекция в СИНТЕТИЧЕСКОЕ дерево: производитель входа вызываем")
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = pathlib.Path(tmp)
+        prod, umb = tmp / "product", tmp / "umbrella"
+        (prod).mkdir()
+        (umb / SUBCHART_KANAME_REL).parent.mkdir(parents=True)
+        gw = tmp / "gateway-values.yaml"
+        gw.write_text("authn:\n  identityProvider: external\n", encoding="utf-8")
+        (umb / SUBCHART_KANAME_REL).write_text(
+            "config:\n  authn:\n    identityProvider: external\n", encoding="utf-8")
+
+        def run(product_posture):
+            (prod / "values.prod.yaml").write_text(
+                "authn:\n  identityProvider: %s\n" % product_posture, encoding="utf-8")
+            d, _, _ = collect_declarations(product_dir=prod, umbrella_dir=umb,
+                                           gateway_values=gw)
+            _, f = judge(d, good, holds)
+            return f
+
+        # законный близнец: тот же корень, подъёмная посадка — обязан МОЛЧАТЬ
+        f = run("external")
+        print("  %s чарт продукта объявил подъёмную посадку → %s"
+              % ("ОК " if not f else "ПРОВАЛ", "молчит" if not f else f))
+        if f:
+            rc = 1
+
+        # инъекция ОДНОГО факта: та же строка, неподъёмная посадка
+        f = run("own")
+        hit = any(PRODUCT_CHART_FINDING_NEEDLE in x for x in f)
+        print("  %s чарт продукта объявил неподъёмную посадку → %s"
+              % ("ОК " if hit else "ПРОВАЛ", "находка с координатой" if hit else (f or "молчит")))
+        if not hit:
+            rc = 1
+
+        # отсутствие ОДНОГО корня гасит ЕГО, а не проверку: продуктовый корень
+        # обязан по-прежнему судиться, иначе в самостоятельном клоне у класса
+        # не осталось бы держателя вовсе.
+        (prod / "values.prod.yaml").write_text(
+            "authn:\n  identityProvider: own\n", encoding="utf-8")
+        d, roots2, notes2 = collect_declarations(product_dir=prod,
+                                                 umbrella_dir=tmp / "нет-такого",
+                                                 gateway_values=tmp / "нет-такого.yaml")
+        _, f = judge(d, good, holds)
+        ok = bool(f) and dict(roots2).get("зонт платформы") == 0 and bool(notes2)
+        print("  %s зонта нет → продуктовый корень всё равно судится, второй назван "
+              "оговоркой → %s" % ("ОК " if ok else "ПРОВАЛ",
+                                  "находка + оговорка" if ok else (f, roots2, notes2)))
+        if not ok:
+            rc = 1
+
     print("  --- предпосылка ведомости на ЖИВОМ дереве (обе стороны)")
     for posture, entry in sorted(NOT_RAISABLE.items()):
         ok, why = premise_holds(entry)
@@ -232,19 +403,22 @@ def main():
     if "--self-test" in sys.argv:
         sys.exit(self_test())
 
-    if not UMBRELLA.is_dir():
-        print("ОТКАЗ: %s не найден — предпосылки нет" % UMBRELLA, file=sys.stderr)
-        sys.exit(2)
-
-    declarations = collect_declarations()
+    declarations, roots, notes = collect_declarations()
     if not declarations:
-        print("ОТКАЗ: обход пуст — файлов значений не найдено, проверка судила бы о "
+        print("ОТКАЗ: обход пуст — ни один корень не прочитан, проверка судила бы о "
               "непрочитанном", file=sys.stderr)
         sys.exit(2)
 
     census, findings = judge(declarations, NOT_RAISABLE,
                              lambda p: premise_holds(NOT_RAISABLE[p]))
 
+    # Перепись ПО КАЖДОМУ корню: «ноль прочитанного у корня» обязано быть отличимо
+    # от «корень ничего не объявляет». Одно число на оба корня скрывает ровно тот
+    # случай, ради которого проверка расширена (задача #2101).
+    for name, n in roots:
+        print("перепись корня [%s]: осмотрено файлов значений %d" % (name, n))
+    for n in notes:
+        print("  " + n)
     print("перепись: " + " · ".join("%s %d" % (k, v) for k, v in census.items()))
     for posture, entry in sorted(NOT_RAISABLE.items()):
         ok, why = premise_holds(entry)
