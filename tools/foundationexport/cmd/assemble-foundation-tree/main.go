@@ -1,0 +1,455 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+//
+// assemble-foundation-tree — ПРОИЗВОДИТЕЛЬ ДЕРЕВА ФУНДАМЕНТА.
+//
+// ЗАЧЕМ ОН ЗАВЕДЁН. У выкладки службы производитель есть
+// (scripts/release/publish-service-artifact.sh): дерево службы лежит в монорепо
+// ГОТОВЫМ модулем — со своим go.mod, LICENSE и рецептом сборки, — поэтому его
+// довольно взять целиком одним `git archive`. У фундамента такого дерева НЕТ:
+// `pkg/` несёт пакеты трёх классов вперемешку, объявления модуля в нём нет
+// вовсе, а импорты называют путь платформы. Дерево фундамента приходится
+// СОБИРАТЬ, и до сих пор собирать его было нечем.
+//
+// ЧТО ОН ДЕЛАЕТ. Читает класс каждого каталога У ГЕЙТА ГРАНИЦЫ (разбором его
+// объявления, а не копией списка), берёт из индекса названной ревизии файлы
+// каталогов классов «corelib» и «оснастка сборки», снимает приставку `pkg/`,
+// переписывает импорты переезжающих путей и кладёт рядом объявление модуля,
+// его замок и лицензию УРОВНЯ ФУНДАМЕНТА.
+//
+// ПОЧЕМУ КЛАСС ЧИТАЕТСЯ У ГЕЙТА, А НЕ ВЫПИСЫВАЕТСЯ ЗДЕСЬ. Выписанный список —
+// второе место об одном предмете: он разошёлся бы с картой молча, и разошёлся
+// бы ровно там, где расхождение не видно, — на каталоге, заведённом после.
+// Разбор объявления падает громко, если форма карты изменилась.
+//
+// ПОЧЕМУ ИМПОРТ ПЕРЕПИСЫВАЕТСЯ ПОЛНЫМ ТОКЕНОМ, А НЕ ПРИСТАВКОЙ. Приставочная
+// замена была написана и снята по замеру: `"…/pkg/authz/` совпадает и с
+// `pkg/authz/authziam`, который НЕ переезжает (класс `kaname`), — то есть увела
+// бы в фундамент чужой пакет молча. Полный токен в кавычках — это ровно путь
+// пакета, и вложенный каталог под него не подпадает.
+//
+// ЧТО ОН СНОСИТ. Каталог назначения он очищает — но только тот, что произвёл
+// САМ: отсутствующий, пустой либо дерево БЕЗ истории, чей `go.mod` объявляет
+// ровно затребованный модуль. Всё прочее — отказ с названной причиной. Прежде
+// здесь стоял безусловный снос названного доводом каталога, и довод
+// «производителя зовёт разработчик у себя» защищал от злого умысла, но не от
+// опечатки: он одинаково верен и когда назначением названы `/`, корень монорепо
+// или чужая рабочая копия.
+//
+// КУДА ОН ПИШЕТ. Все записи идут через дескриптор каталога назначения
+// (`os.OpenRoot`), а не по собранному в строку пути: выход за назначение
+// отвергает СРЕДА ИСПОЛНЕНИЯ, а не наша строковая арифметика. Пути приходят из
+// чужого индекса, и свойство «производитель пишет только под назначение» обязано
+// держаться механизмом, а не добросовестностью соседней программы.
+//
+// ЧЕГО ОН НЕ ДЕЛАЕТ, И ЭТО НАДО ЗНАТЬ ДО ВЫЗОВА:
+//   - ничего не отправляет и не создаёт ссылок версий;
+//   - НЕ трогает запечённый `go_package` порождённых заглушек: он лежит внутри
+//     сериализованного дескриптора, и текстовая правка там либо роняет разбор
+//     при `init`, либо молчит. Дескриптор чинится РЕГЕНЕРАЦИЕЙ у дерева
+//     контрактов. Остаток печатается числом, а не замалчивается;
+//   - НЕ зовёт `go mod tidy`: выбор версий зависимостей — решение, а не
+//     побочный эффект сборки дерева.
+//
+// ИСХОДОВ ТРИ, И ЧИТАЕТСЯ КОД ВОЗВРАТА:
+//
+//	0 — дерево собрано, перепись напечатана;
+//	1 — НАХОДКА: карта не разобралась, обход пуст, каталог без класса,
+//	    назначение сносить нельзя, запись ушла бы за назначение;
+//	2 — позван неверно.
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+)
+
+const (
+	oldModule = "github.com/PRO-Robotech/kacho"
+	mapFile   = "internal/repohygiene/foundationboundary.go"
+)
+
+// newModule — путь модуля фундамента. Он ПРИНИМАЕТСЯ ДОВОДОМ, а не объявлен
+// константой, и это не стиль: гейт `TestModulePathConstantDoesNotOutliveItsModule`
+// запрещает называть в дереве путь модуля, которого дерево не производит. Пока
+// фундамент не объявлен модулем, такая константа была бы утверждением о
+// несуществующем — тем самым классом, который корпус ловит. Довод снимает
+// предмет запрета по построению.
+var newModule string
+
+// classMap — то, что разобрано у гейта: класс каталога и классы поддеревьев.
+type classMap struct {
+	byDir    map[string]string
+	subtrees []struct{ Prefix, Class string }
+	consts   map[string]string // имя константы -> её строковое значение
+}
+
+func fail(format string, a ...any) {
+	fmt.Fprintf(os.Stderr, "НАХОДКА: "+format+"\n", a...)
+	os.Exit(1)
+}
+
+func main() {
+	if len(os.Args) != 5 {
+		fmt.Fprintf(os.Stderr,
+			"употребление: %s <корень-монорепо> <ревизия> <путь-модуля-фундамента> <куда-собрать>\n",
+			os.Args[0])
+		os.Exit(2)
+	}
+	root, rev := os.Args[1], os.Args[2]
+	newModule = os.Args[3]
+	if !strings.Contains(newModule, "/") || strings.HasSuffix(newModule, "/") {
+		fmt.Fprintf(os.Stderr, "путь модуля не похож на путь модуля: %q\n", newModule)
+		os.Exit(2)
+	}
+	// Путь назначения приводится к АБСОЛЮТНОМУ И ЧИЩЁНОМУ прежде всего прочего.
+	// Это не косметика: и осмотр назначения, и дескриптор корня ниже говорят о
+	// том каталоге, который назван, а не о том, куда случайно указывает текущий
+	// рабочий каталог вызывающего.
+	out, err := filepath.Abs(os.Args[4])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "каталог назначения не разрешён в абсолютный путь: %v\n", err)
+		os.Exit(2)
+	}
+	// Осмотр — ДО разбора карты и обхода индекса: назначение, которое сносить
+	// нельзя, обязано отказать сразу, а не после четырёх сотен вызовов git.
+	// Сам снос при этом остаётся ниже, на прежнем месте: дерево не очищается,
+	// пока отбор не состоялся.
+	assertClearable(out)
+
+	cm := parseClassMap(filepath.Join(root, mapFile))
+	fmt.Printf("карта гейта разобрана: каталогов %d, поддеревьев %d\n", len(cm.byDir), len(cm.subtrees))
+	if len(cm.byDir) == 0 || len(cm.subtrees) == 0 {
+		fail("карта пуста — форма объявления изменилась, вердикт беспредметен")
+	}
+
+	files := gitList(root, rev)
+	if len(files) == 0 {
+		fail("обход пуст: индекс ревизии %s не прочитан", rev)
+	}
+
+	moving := map[string]bool{} // каталоги, которые переезжают
+	var sel []string
+	unclassified := map[string]bool{}
+	for _, f := range files {
+		if !strings.HasPrefix(f, "pkg/") {
+			continue
+		}
+		d := path.Dir(f)
+		if d == "pkg" {
+			continue // файлы корня уровня добавляются отдельно и поимённо
+		}
+		c, ok := cm.classOf(d)
+		if !ok {
+			unclassified[d] = true
+			continue
+		}
+		if c == "corelib" || c == "оснастка сборки" {
+			moving[d] = true
+			sel = append(sel, f)
+		}
+	}
+	if len(unclassified) > 0 {
+		names := make([]string, 0, len(unclassified))
+		for d := range unclassified {
+			names = append(names, d)
+		}
+		sort.Strings(names)
+		fail("каталог без объявленного класса (%d): %s", len(names), strings.Join(names, ", "))
+	}
+	if len(sel) == 0 {
+		fail("к переезду не отобрано ни одного файла — вердикт беспредметен")
+	}
+
+	// Карта импортов: только полные пути переезжающих пакетов.
+	imp := map[string]string{}
+	for d := range moving {
+		imp[oldModule+"/"+d] = newModule + "/" + strings.TrimPrefix(d, "pkg/")
+	}
+
+	if err := os.RemoveAll(out); err != nil {
+		fail("каталог назначения не очищен: %v", err)
+	}
+	// 0o700 у каталогов и 0o600 у файлов — это ВЫБОР ПРАВ, а не молчание о
+	// находке; разбор — у `writeRoot`, чтобы довод стоял в одном месте.
+	if err := os.MkdirAll(out, 0o700); err != nil {
+		fail("каталог назначения не заведён: %v", err)
+	}
+	// ДЕСКРИПТОР НАЗНАЧЕНИЯ. Дальше ни одна запись не собирается в строку пути:
+	// имена приходят из чужого индекса, и выход за назначение отвергает среда
+	// исполнения, а не наша проверка. Отказ здесь — находка с именем файла.
+	dest, err := os.OpenRoot(out)
+	if err != nil {
+		fail("дескриптор каталога назначения не открыт: %v", err)
+	}
+	defer func() { _ = dest.Close() }()
+
+	rewritten, descriptors, prose := 0, 0, 0
+	for _, f := range sel {
+		rel := strings.TrimPrefix(f, "pkg/")
+		if d := path.Dir(rel); d != "." {
+			if err := dest.MkdirAll(d, 0o700); err != nil {
+				fail("каталог %s не заведён: %v", d, err)
+			}
+		}
+		blob := gitShow(root, rev, f)
+		if strings.HasSuffix(f, ".go") {
+			before := blob
+			for k, v := range imp {
+				blob = bytes.ReplaceAll(blob, []byte(`"`+k+`"`), []byte(`"`+v+`"`))
+			}
+			if !bytes.Equal(before, blob) {
+				rewritten++
+			}
+			if bytes.Contains(blob, []byte(oldModule)) {
+				if strings.HasSuffix(f, ".pb.go") {
+					descriptors++
+				} else {
+					prose++
+				}
+			}
+		}
+		if err := dest.WriteFile(rel, blob, 0o600); err != nil {
+			fail("файл %s не записан: %v", rel, err)
+		}
+	}
+
+	// Корень модуля. Лицензия берётся УРОВНЯ ФУНДАМЕНТА (`pkg/LICENSE`,
+	// Apache-2.0), а не корня монорепо (BUSL-1.1): уровень объявлен картой
+	// лицензий, и подмена сменила бы условия распространения молча.
+	writeRoot(dest, root, rev)
+
+	fmt.Printf("перепись: каталогов к переезду %d, файлов из индекса %d, файлов с переписанным импортом %d\n",
+		len(moving), len(sel), rewritten)
+	fmt.Printf("остаток пути платформы: в дескрипторах заглушек %d файлов (чинится РЕГЕНЕРАЦИЕЙ, не текстом), в прозе и синтетике %d файлов\n",
+		descriptors, prose)
+	fmt.Printf("собрано в %s\n", out)
+}
+
+// writeRoot кладёт корень модуля — через тот же дескриптор назначения, что и
+// остальные записи.
+//
+// ПОЧЕМУ 0o600 И 0o700, А НЕ 0o644 И 0o755. Довод «это исходники публичного
+// репозитория, их читает всякий клонирующий» ЗАМЕРЕН И НЕВЕРЕН: git не хранит
+// режима файла — он хранит один исполняемый бит, и файл, записанный с 0o600,
+// попадает в индекс тем же `100644`, что и записанный с 0o644 (проба:
+// `chmod 0600 a; chmod 0644 b; git add -A; git ls-files -s` — у обоих `100644`).
+// На выкладке режим ставит umask клонирующего, а не наш.
+//
+// То есть широкие права не давали читателю НИЧЕГО, а платой за них было
+// доступное всякому на этой машине промежуточное дерево. Собранное дерево —
+// черновик одного прогона: его читает `git add` того же разработчика, и больше
+// никто. Узкие права здесь бесплатны, и потому выбраны они, а не подавление
+// находки.
+func writeRoot(dest *os.Root, root, rev string) {
+	gomod := gitShow(root, rev, "go.mod")
+	lines := strings.SplitN(string(gomod), "\n", 2)
+	if !strings.HasPrefix(lines[0], "module "+oldModule) {
+		fail("корневое объявление модуля не то, что ожидалось: %q", lines[0])
+	}
+	lines[0] = "module " + newModule
+	must(dest.WriteFile("go.mod", []byte(strings.Join(lines, "\n")), 0o600))
+	must(dest.WriteFile("go.sum", gitShow(root, rev, "go.sum"), 0o600))
+	must(dest.WriteFile("LICENSE", gitShow(root, rev, "pkg/LICENSE"), 0o600))
+}
+
+// assertClearable отвечает на вопрос, который «снести и собрать заново» прежде
+// задавал молча: ЧТО ИМЕННО сносится.
+//
+// ПРАВИЛО: сносится только то, что произвёл ЭТОТ ЖЕ производитель. Назначение
+// принимается в трёх состояниях, во всех прочих отвергается:
+//
+//	нет вовсе      — завести;
+//	пустой каталог — терять нечего;
+//	каталог БЕЗ истории, чей `go.mod` объявляет РОВНО тот модуль, который велено
+//	                 собрать, — выход прошлого прогона, и повтор идемпотентен.
+//
+// Оговорка про историю отличает выход производителя от КЛОНА того же модуля: у
+// клона она есть, у выхода её нет вовсе. Без этой оговорки правило «модуль
+// совпал» снесло бы рабочую копию фундамента вместе с историей — то есть ровно
+// ту опечатку, ради которой правило и заводится.
+//
+// Объявление модуля читается через дескриптор каталога (`os.OpenRoot`), а не по
+// собранному пути: имя внутри назначения фиксировано, и выход за назначение
+// отвергает среда исполнения.
+func assertClearable(out string) {
+	st, err := os.Stat(out)
+	switch {
+	case err != nil && os.IsNotExist(err):
+		return
+	case err != nil:
+		fail("каталог назначения не осмотрен: %v", err)
+	case !st.IsDir():
+		fail("назначение %s — не каталог; собирать дерево поверх файла производитель не станет", out)
+	}
+	ents, err := os.ReadDir(out)
+	if err != nil {
+		fail("состав каталога назначения не прочитан: %v", err)
+	}
+	if len(ents) == 0 {
+		return
+	}
+	for _, e := range ents {
+		if e.Name() == ".git" {
+			fail("в назначении %s лежит история — это рабочая копия, а не выход "+
+				"прошлого прогона; сносить её производитель не станет", out)
+		}
+	}
+	dir, err := os.OpenRoot(out)
+	if err != nil {
+		fail("дескриптор каталога назначения не открыт: %v", err)
+	}
+	defer func() { _ = dir.Close() }()
+	gomod, err := dir.ReadFile("go.mod")
+	if err != nil {
+		fail("назначение %s не пусто и на выход прошлого прогона не похоже "+
+			"(объявления модуля в нём нет: %v) — очистите его сами либо назовите другое", out, err)
+	}
+	if got := declaredModule(gomod); got != newModule {
+		fail("назначение %s объявляет модуль %q, а собрать велено %q — "+
+			"сносить чужое дерево производитель не станет", out, got, newModule)
+	}
+}
+
+// declaredModule возвращает путь модуля из первой строки объявления либо пустую
+// строку, если первая строка модуля не объявляет.
+func declaredModule(gomod []byte) string {
+	first, _, _ := strings.Cut(string(gomod), "\n")
+	first = strings.TrimSpace(first)
+	if !strings.HasPrefix(first, "module ") {
+		return ""
+	}
+	return strings.TrimSpace(strings.TrimPrefix(first, "module "))
+}
+
+func must(err error) {
+	if err != nil {
+		fail("%v", err)
+	}
+}
+
+func (c classMap) classOf(dir string) (string, bool) {
+	best := ""
+	cls := ""
+	for _, s := range c.subtrees {
+		if (dir == s.Prefix || strings.HasPrefix(dir, s.Prefix+"/")) && len(s.Prefix) > len(best) {
+			best, cls = s.Prefix, s.Class
+		}
+	}
+	if best != "" {
+		return cls, true
+	}
+	parts := strings.Split(dir, "/")
+	if len(parts) < 2 {
+		return "", false
+	}
+	v, ok := c.byDir[parts[1]]
+	return v, ok
+}
+
+// parseClassMap разбирает объявление карты у гейта. Форма изменилась — падаем
+// громко: молча подставленное умолчание и есть та дыра, ради которой карта
+// заведена.
+func parseClassMap(p string) classMap {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, p, nil, 0)
+	if err != nil {
+		fail("объявление карты не разобрано: %v", err)
+	}
+	cm := classMap{byDir: map[string]string{}, consts: map[string]string{}}
+	for _, d := range f.Decls {
+		gd, ok := d.(*ast.GenDecl)
+		if !ok {
+			continue
+		}
+		for _, s := range gd.Specs {
+			vs, ok := s.(*ast.ValueSpec)
+			if !ok || len(vs.Names) != 1 || len(vs.Values) != 1 {
+				continue
+			}
+			name := vs.Names[0].Name
+			switch v := vs.Values[0].(type) {
+			case *ast.BasicLit:
+				if v.Kind == token.STRING {
+					cm.consts[name], _ = strconv.Unquote(v.Value)
+				}
+			case *ast.CompositeLit:
+				switch name {
+				case "foundationClasses":
+					for _, e := range v.Elts {
+						kv, ok := e.(*ast.KeyValueExpr)
+						if !ok {
+							continue
+						}
+						k, err := strconv.Unquote(kv.Key.(*ast.BasicLit).Value)
+						if err != nil {
+							continue
+						}
+						cm.byDir[k] = cm.constVal(kv.Value)
+					}
+				case "foundationSubtrees":
+					for _, e := range v.Elts {
+						cl, ok := e.(*ast.CompositeLit)
+						if !ok || len(cl.Elts) != 2 {
+							continue
+						}
+						pfx, err := strconv.Unquote(cl.Elts[0].(*ast.BasicLit).Value)
+						if err != nil {
+							continue
+						}
+						cm.subtrees = append(cm.subtrees, struct{ Prefix, Class string }{pfx, cm.constVal(cl.Elts[1])})
+					}
+				}
+			}
+		}
+	}
+	return cm
+}
+
+func (c classMap) constVal(e ast.Expr) string {
+	if id, ok := e.(*ast.Ident); ok {
+		if v, ok := c.consts[id.Name]; ok {
+			return v
+		}
+		fail("значение класса %q не разрешено — форма объявления изменилась", id.Name)
+	}
+	if bl, ok := e.(*ast.BasicLit); ok && bl.Kind == token.STRING {
+		v, _ := strconv.Unquote(bl.Value)
+		return v
+	}
+	fail("класс объявлен незнакомой формой")
+	return ""
+}
+
+func gitList(root, rev string) []string {
+	out, err := gitenv.Command(root, "ls-tree", "-r", "--name-only", "-z", rev).Output()
+	if err != nil {
+		fail("состав ревизии не прочитан: %v", err)
+	}
+	var r []string
+	for _, s := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
+		if s != "" {
+			r = append(r, s)
+		}
+	}
+	return r
+}
+
+func gitShow(root, rev, p string) []byte {
+	out, err := gitenv.Command(root, "show", rev+":"+p).Output()
+	if err != nil {
+		fail("файл %s не прочитан на ревизии %s: %v", p, rev, err)
+	}
+	return out
+}
