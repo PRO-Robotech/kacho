@@ -182,35 +182,31 @@ func Load(path string) (Config, error) {
 //
 // KANAME_DB_PASSWORD stays a separate mechanism (see password-from-env).
 func applyLegacyEnv(v *viper.Viper) error {
-	type mapping struct {
-		env string
-		key string
+	// ФОРМА ЗНАЧЕНИЯ ПРОВЕРЯЕТСЯ ДО ЛЮБОЙ СБОРКИ.
+	//
+	// Плоское имя переменной у части этих ручек совпадает с формой, которой
+	// Kubernetes сам объявляет поду адреса служб своего пространства имён
+	// (`<СЛУЖБА>_PORT` и соседние — см. service_link_collision.go). Подстановка
+	// кластера попадает в СВОЁ ЖЕ пространство имён настроек службы и перебивает
+	// не умолчание, а то, что задал оператор.
+	//
+	// Проверка стоит здесь — перед сборкой, — потому что собранное значение
+	// доезжает до отказа лишь на ОТКРЫТИИ слушателя: последним шагом старта,
+	// после отчёта о всей посадке, отказом от библиотеки, не называющим ни ручки,
+	// ни того, откуда взялось значение.
+	if err := refuseCollidingFlatEnv(os.LookupEnv); err != nil {
+		return err
 	}
-	simple := []mapping{
-		{"KANAME_DB_SSLMODE", "repository.postgres.ssl-mode"},
-		{"KANAME_DB_MAX_CONNS", "repository.postgres.max-conns"},
-		{"KANAME_GRPC_PORT", "_legacy.grpc-port"},
-		{"KANAME_INTERNAL_PORT", "_legacy.internal-port"},
-		{"KANAME_AUTH_MODE", "authn.mode"},
-		// Flat alias for the SA-key redact grace window — the deploy chart sets
-		// the short KANAME_SAKEY_REDACT_GRACE rather than the namespaced
-		// KANAME_AUTHN__SAKEY_REDACT_GRACE. Value is a Go duration ("120s").
-		{"KANAME_SAKEY_REDACT_GRACE", "authn.sakey-redact-grace"},
-		// Flat alias for the User-token redact grace window — mirror of the SA-key
-		// alias above. Value is a Go duration ("120s").
-		{"KANAME_USERTOKEN_REDACT_GRACE", "authn.usertoken-redact-grace"},
-		// SA-key lifetime discipline — flat aliases the deploy chart sets.
-		// Values are Go durations ("2160h" / "8760h" / "15m").
-		{"KANAME_SAKEY_DEFAULT_TTL", "authn.sakey-default-ttl"},
-		{"KANAME_SAKEY_MAX_TTL", "authn.sakey-max-ttl"},
-		{"KANAME_SAKEY_ACCESS_TOKEN_TTL", "authn.sakey-access-token-ttl"},
-		{"KANAME_SAKEY_BIND_DPOP", "authn.sakey-bind-dpop"},
-		// Окно отзыва собственной двери. Величина Go-длительности ("5s").
-		{"KANAME_AUTHZ_CACHE_TTL", "authz.cache-ttl"},
-	}
-	for _, m := range simple {
-		if val, ok := os.LookupEnv(m.env); ok {
-			v.Set(m.key, val)
+
+	// Плоские псевдонимы читаются из ОБЩЕГО объявления (flatEnvKnobs): его же
+	// читают проверка формы выше и перепись гейта класса. Второй список
+	// разошёлся бы с первым молча.
+	for _, k := range flatEnvKnobs {
+		if k.Key == "" {
+			continue // значение собирается вручную — поля адреса базы ниже
+		}
+		if val, ok := os.LookupEnv(k.Env); ok {
+			v.Set(k.Key, val)
 		}
 	}
 

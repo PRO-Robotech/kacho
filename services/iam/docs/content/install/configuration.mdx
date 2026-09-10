@@ -86,7 +86,7 @@ listener'ы. Каждый может требовать mTLS.
 <table>
   <thead><tr><th>Переменная</th><th>Назначение</th></tr></thead>
   <tbody>
-    <tr><td><code>KANAME_GRPC_PORT</code> / <code>KANAME_INTERNAL_PORT</code></td><td>Порты public / internal listener'ов</td></tr>
+    <tr><td><code>KANAME_GRPC_PORT</code> / <code>KANAME_INTERNAL_PORT</code></td><td>Порты public / internal listener'ов. Значение — <b>голый номер порта</b> (<code>9091</code>); всё прочее отвергается при старте с именем ручки. См. предупреждение ниже: эти имена совпадают с формой, которой Kubernetes сам объявляет поду адреса служб</td></tr>
     <tr><td><code>KANAME_PUBLIC_SERVER_MTLS_…</code></td><td>mTLS публичного listener'а (cert / key / clientCA / enable)</td></tr>
     <tr><td><code>KANAME_INTERNAL_SERVER_MTLS_…</code></td><td>mTLS internal listener'а (<code>InternalIAMService</code>)</td></tr>
     <tr><td><code>KANAME_HOOKS_SERVER_MTLS_…</code></td><td>mTLS hooks-listener'а (Kratos identity-хуки)</td></tr>
@@ -96,6 +96,32 @@ listener'ы. Каждый может требовать mTLS.
     <tr><td><code>KANAME_API_SERVER__METRICS_ENDPOINT</code></td><td>Адрес Prometheus <code>/metrics</code> (cluster-internal, по умолчанию <code>tcp://0.0.0.0:9095</code>). Имя без двойных подчёркиваний, стоявшее здесь прежде, встречается в дереве <b>только в комментарии</b> — читателя у него нет</td></tr>
   </tbody>
 </table>
+
+:::warning Имя ручки против имени, которое подставляет кластер
+
+Kubernetes объявляет каждому поду адреса всех служб своего пространства имён
+переменными окружения, выводя имя переменной из **имени службы**: верхний
+регистр, дефис → подчёркивание. Служба `kaname-internal` даёт поду
+`KANAME_INTERNAL_PORT` со значением `tcp://<адрес>:<порт>` — то есть попадает
+в **то же** пространство имён, где это имя есть ручка порта внутреннего
+слушателя, и перебивает не умолчание, а заданное вами.
+
+Плоских ручек, чьё имя кластер производит, у службы **три**:
+`KANAME_GRPC_PORT`, `KANAME_INTERNAL_PORT`, `KANAME_DB_PORT`. Каждая принимает
+только голый номер порта; подстановку кластера служба **отвергает при старте**,
+называя ручку и полученное значение.
+
+Остальные ручки этому не подвержены **by construction**: их имена выводятся из
+пути ключа настроек и несут `__`, а кластер двойного подчёркивания не
+производит.
+
+**Что делать оператору.** Поставляемый чарт гасит подстановку сам
+(`enableServiceLinks: false` в spec пода) — ничего делать не нужно.
+Разворачивая службу **своими** манифестами, объявите то же: иначе адреса служб
+приедут в под и вы получите отказ старта с именем ручки.
+
+:::
+
 
 :::warning В боевой посадке транспорт этих рёбер ОБЯЗАТЕЛЕН
 Умолчание `…_ENABLE` — **открытый текст**, а не «слушатель выключен»: адреса всех
