@@ -93,9 +93,10 @@ func TestCoverageJudgeFallsAndStaysSilentInBothDirections(t *testing.T) {
 	}
 
 	// ПРОГОН 1 — КОНТРОЛЬ: множества равны, гейт молчит с обеих сторон.
-	missing, orphan := judgeCoverage(produced, map[string]bool{
+	noExternal := map[string]string{}
+	missing, orphan := judgeCoverageWithExternal(produced, map[string]bool{
 		"AUTHZ_DENIED": true, "QUOTA_EXCEEDED": true,
-	})
+	}, noExternal)
 	if len(missing) != 0 || len(orphan) != 0 {
 		t.Fatalf("контроль: на равных множествах гейт обязан молчать, получено missing=%v orphan=%v — "+
 			"проверка, красная на верном дереве, будет отключена первой", missing, orphan)
@@ -103,7 +104,7 @@ func TestCoverageJudgeFallsAndStaysSilentInBothDirections(t *testing.T) {
 
 	// ПРОГОН 2 — ПРОИЗВЕДЕНО, НЕ РАЗОБРАНО: токен доезжает до арендатора
 	// необъяснённым. Это ровно то состояние, в котором дерево было до #1736.
-	missing, orphan = judgeCoverage(produced, map[string]bool{"QUOTA_EXCEEDED": true})
+	missing, orphan = judgeCoverageWithExternal(produced, map[string]bool{"QUOTA_EXCEEDED": true}, noExternal)
 	if len(missing) != 1 || missing[0] != "AUTHZ_DENIED" {
 		t.Errorf("непокрытый токен НЕ НАЗВАН: missing=%v — находка, не называющая координату, "+
 			"посылает читателя искать не там", missing)
@@ -115,15 +116,41 @@ func TestCoverageJudgeFallsAndStaysSilentInBothDirections(t *testing.T) {
 
 	// ПРОГОН 3 — САМОИСТЕЧЕНИЕ: вердикт есть, производителя нет. Без этого
 	// прогона молчание второй стороны в прогоне 2 неотличимо от молчания мёртвой.
-	missing, orphan = judgeCoverage(produced, map[string]bool{
+	missing, orphan = judgeCoverageWithExternal(produced, map[string]bool{
 		"AUTHZ_DENIED": true, "QUOTA_EXCEEDED": true, "QUOTA_RETIRED_LANE": true,
-	})
+	}, noExternal)
 	if len(orphan) != 1 || orphan[0] != "QUOTA_RETIRED_LANE" {
 		t.Errorf("вердикт, которому нечего разбирать, НЕ НАЙДЕН: orphan=%v — послабление "+
 			"пережило бы свой предмет и выглядело работающим", orphan)
 	}
 	if len(missing) != 0 {
 		t.Errorf("прогон 3 уронил ПЕРВУЮ сторону (missing=%v) — инъекция роняет не своё", missing)
+	}
+
+	// ПРОГОН 4 — ЗАКОННЫЙ БЛИЗНЕЦ ВЕДОМОСТИ: вердикт есть, производителя в
+	// дереве нет, и токен ОБЪЯВЛЕН производимым в другом репозитории. Гейт
+	// обязан молчать: иначе он краснел бы на верно исполненном разрезе и толкал
+	// снимать вердикт консоли — то есть ломать продукт ради зелёного.
+	missing, orphan = judgeCoverageWithExternal(produced, map[string]bool{
+		"AUTHZ_DENIED": true, "QUOTA_EXCEEDED": true, "REFERENCE_MISSING": true,
+	}, map[string]string{"REFERENCE_MISSING": "PRO-Robotech/kaname"})
+	if len(orphan) != 0 || len(missing) != 0 {
+		t.Errorf("объявленный внешний производитель дал находки missing=%v orphan=%v — "+
+			"гейт краснеет на верной работе", missing, orphan)
+	}
+
+	// ПРОГОН 5 — ОБРАТНАЯ ОСЬ ВЕДОМОСТИ: токен объявлен производимым вне дерева,
+	// а производитель нашёлся ЗДЕСЬ. Запись пережила свой предмет, и без этой
+	// оси она не истекала бы никогда.
+	missing, orphan = judgeCoverageWithExternal(produced, map[string]bool{
+		"AUTHZ_DENIED": true, "QUOTA_EXCEEDED": true,
+	}, map[string]string{"QUOTA_EXCEEDED": "PRO-Robotech/kaname"})
+	if len(orphan) != 1 || !strings.Contains(orphan[0], "QUOTA_EXCEEDED") {
+		t.Errorf("вернувшийся производитель НЕ НАЗВАН: orphan=%v — послабление осталось бы "+
+			"прикрывать живую координату", orphan)
+	}
+	if len(missing) != 0 {
+		t.Errorf("прогон 5 уронил ПЕРВУЮ сторону (missing=%v) — инъекция роняет не своё", missing)
 	}
 }
 

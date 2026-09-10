@@ -18,9 +18,17 @@ package deploy_test
 import (
 	"strings"
 	"testing"
-
-	"github.com/PRO-Robotech/kacho/internal/productnaming"
 )
+
+// imageAskedBy — спрошен ли образ этим стендом, и каким компонентом.
+func imageAskedBy(comps map[string]string, img string) (string, bool) {
+	for comp, got := range comps {
+		if got == img {
+			return comp, true
+		}
+	}
+	return "", false
+}
 
 func TestStandImageProducerGateCanFail(t *testing.T) {
 	svcs := standRecipeServices(t)
@@ -40,22 +48,31 @@ func TestStandImageProducerGateCanFail(t *testing.T) {
 	if standWithImages == "" {
 		t.Fatalf("предпосылка не выполнена: ни один стенд дерева не просит локального образа")
 	}
-	// Дефект, ради которого проба заведена, вносится в ту самую часть, что
-	// разошлась вживую. Если её имя перестало быть каноническим — вносить некуда.
-	kaname := productnaming.ChartName("iam")
-	if produced[kaname] != "iam" {
-		t.Fatalf("предпосылка не выполнена: рецепт не производит образа %q службы iam — "+
-			"дефект, ради которого проба заведена, вносить некуда", kaname)
-	}
-	var kanameComp string
-	for comp, img := range asked[standWithImages] {
-		if img == kaname {
-			kanameComp = comp
+	// ЯКОРЬ ДЕФЕКТА ПЕРЕЕХАЛ, И ЭТО НЕ ОФОРМЛЕНИЕ.
+	//
+	// Дефект вносился в ту самую часть, что разошлась вживую, — службу доступа.
+	// Она вынесена отдельным репозиторием, рецепт стенда её образа не собирает, и
+	// вносить дефект стало НЕКУДА: фикстура, привязанная к снимаемому предмету,
+	// истекает вместе с ним.
+	//
+	// Якорем взята другая служба, которую рецепт производит И которую стенд
+	// просит, — она выбирается ИЗ ДЕРЕВА, а не выписывается: выписанное имя
+	// повторило бы ту же ошибку при следующем выносе. Свойство пробы от переезда
+	// не изменилось: дефект вносится ОДНИМ фактом в настоящий вход.
+	var anchorImage, anchorSvc string
+	for img, svc := range produced {
+		if _, asks := imageAskedBy(asked[standWithImages], img); !asks {
+			continue
+		}
+		if anchorImage == "" || img < anchorImage {
+			anchorImage, anchorSvc = img, svc
 		}
 	}
-	if kanameComp == "" {
-		t.Fatalf("предпосылка не выполнена: стенд %q не просит образа %q", standWithImages, kaname)
+	if anchorImage == "" {
+		t.Fatalf("предпосылка не выполнена: ни один образ, производимый рецептом, "+
+			"не спрошен стендом %q — дефект вносить некуда", standWithImages)
 	}
+	t.Logf("якорь дефекта выведен из дерева: образ %q службы %q", anchorImage, anchorSvc)
 
 	// Контроль: дерево как есть — находок ноль. Без него всякое красное ниже
 	// доказывало бы только то, что функция умеет возвращать непустой перечень.
@@ -107,16 +124,16 @@ func TestStandImageProducerGateCanFail(t *testing.T) {
 		// Ровно то, что было вживую: профиль просит `kaname:dev`, а сборка
 		// кладёт в узлы `kacho-iam:dev`.
 		p := copyMap(produced)
-		delete(p, kaname)
-		p["kacho-iam"] = "iam"
+		delete(p, anchorImage)
+		p["kacho-"+anchorSvc+"-by-prefix"] = anchorSvc
 		got := imageDisagreements(asked, p)
 		if len(got) == 0 {
 			t.Fatal("гейт промолчал на расхождении, которое роняло стенд вживую")
 		}
-		if countMentioning(got, kaname) == 0 {
-			t.Errorf("находка не назвала спрошенного образа %s: %v", kaname, got)
+		if countMentioning(got, anchorImage) == 0 {
+			t.Errorf("находка не назвала спрошенного образа %s: %v", anchorImage, got)
 		}
-		if countMentioning(got, "kacho-iam") == 0 {
+		if countMentioning(got, "kacho-"+anchorSvc+"-by-prefix") == 0 {
 			t.Errorf("находка не назвала того, что собирается вместо него: %v", got)
 		}
 		legitimateTwinsSilent(t, got)
@@ -126,7 +143,7 @@ func TestStandImageProducerGateCanFail(t *testing.T) {
 
 	t.Run("производителя у спрошенного образа нет вовсе", func(t *testing.T) {
 		p := copyMap(produced)
-		delete(p, kaname)
+		delete(p, anchorImage)
 		got := imageDisagreements(asked, p)
 		if countMentioning(got, "производителя у него нет") == 0 {
 			t.Fatalf("гейт промолчал на образе без производителя: %v", got)
@@ -162,12 +179,12 @@ func TestStandImageProducerGateCanFail(t *testing.T) {
 		if got := makefileImageDisagreements(declared, produced); len(got) != 0 {
 			t.Fatalf("контроль: согласные объявления дали %d находок: %v", len(got), got)
 		}
-		declared["../iam/Makefile"] = "kacho-iam:dev"
+		declared["../"+anchorSvc+"/Makefile"] = "kacho-" + anchorSvc + "-by-prefix:dev"
 		got := makefileImageDisagreements(declared, produced)
-		if countMentioning(got, "kacho-iam:dev") != 1 {
+		if countMentioning(got, "kacho-"+anchorSvc+"-by-prefix:dev") != 1 {
 			t.Fatalf("третья сторона расхождения не поймана: %v", got)
 		}
-		if countMentioning(got, kaname+":dev") != 1 {
+		if countMentioning(got, anchorImage+":dev") != 1 {
 			t.Fatalf("вторая половина той же находки не названа: %v", got)
 		}
 		legitimateTwinsSilent(t, got)
@@ -178,7 +195,7 @@ func TestStandImageProducerGateCanFail(t *testing.T) {
 		for img, svc := range produced {
 			declared["../"+svc+"/Makefile"] = img + ":dev"
 		}
-		declared["../iam/Makefile"] = ""
+		declared["../"+anchorSvc+"/Makefile"] = ""
 		got := makefileImageDisagreements(declared, produced)
 		if countMentioning(got, "не объявляет IMAGE") != 1 {
 			t.Fatalf("снятое объявление IMAGE прошло незамеченным: %v", got)

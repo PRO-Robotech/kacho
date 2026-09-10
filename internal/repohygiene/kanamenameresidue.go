@@ -241,7 +241,6 @@ var KanameSurface = []string{
 	// каталог, сузил бы популяцию молча — ровно та слепая зона, ради которой
 	// обход роняет прогон на пустом каталоге.
 	"proto/corelib/authz",
-	"services/iam",
 }
 
 // KanameOverlayGlob — образец наложений значений зонта, настраивающих подчарты.
@@ -509,20 +508,15 @@ const (
 var KanameForeignPlatformModules = map[string]foreignNameKind{
 	"kacho-api-gateway":      foreignNameOfAnotherProduct,
 	"kacho-compute":          foreignNameOfAnotherProduct,
-	"kacho-corelib":          foreignNameOfAnotherProduct,
 	"kacho-deploy":           foreignNameOfAnotherProduct,
 	"kacho-geo":              foreignNameOfAnotherProduct,
 	"kacho-loadbalancer":     foreignNameOfAnotherProduct,
 	"kacho-nlb":              foreignNameOfAnotherProduct,
-	"kacho-proto":            foreignNameOfAnotherProduct,
 	"kacho-registry":         foreignNameOfAnotherProduct,
 	"kacho-resource-manager": foreignNameOfAnotherProduct,
 	"kacho-storage":          foreignNameOfAnotherProduct,
-	"kacho-test":             foreignNameOfAnotherProduct,
 	"kacho-ui":               foreignNameOfAnotherProduct,
-	"kacho-vpc-operator":     foreignNameOfAnotherProduct,
 	"kacho-vpc":              foreignNameOfAnotherProduct,
-	"kacho-workspace":        foreignNameOfAnotherProduct,
 
 	// ЕДИНСТВЕННАЯ ЗАПИСЬ ВТОРОГО ВИДА, и она стоит отдельно намеренно: соседи
 	// сверху — чужие продукты, а это имя НАШЕ, только прежнее. Слитая с ними, она
@@ -579,26 +573,18 @@ var KanamePlatformOwnedObjects = map[string]string{
 	"kacho-internal-ca":     "внутренний УЦ, который заводит зонт платформы на весь кластер",
 	"kacho-module-manifests": "карта манифестов ВСЕХ модулей платформы; создаёт её зонт, " +
 		"а Kaname её только читает",
-	"00-kacho-core":                  "файл правил оснастки воркспейса; им владеет воркспейс",
-	"2026-05-23-kacho-nlb-design.md": "документ воркспейса; им владеет воркспейс",
-	"protoc-gen-kacho-permissions":   "плагин генерации платформы; им владеет платформа",
-	"kind-kacho":                     "кластер стенда; имя выбирает рецепт подъёма стенда",
-	"kacho-control-plane":            "узел кластера стенда; имя производит kind из имени кластера",
+	"protoc-gen-kacho-permissions": "плагин генерации платформы; им владеет платформа",
 
-	// Изображающие имена: объект вымышлен, но изображает платформенный, и
-	// изображать обязан впредь.
-	"kacho-demo":                     "изображает служебную запись модуля платформы в фикстуре",
-	"kacho-nosuch":                   "изображает служебную запись модуля платформы, которой нет",
-	"kacho-someother":                "изображает служебную запись ЧУЖОГО модуля в SPIFFE-имени",
-	"kacho-unknown":                  "изображает служебную запись модуля платформы, которой нет",
-	"kacho-release-runner":           "изображает вторую служебную запись платформы в перечне SPIFFE-имён",
-	"kacho-alpha":                    "изображает служебную запись модуля платформы в посевной фикстуре",
-	"kacho-beta":                     "изображает служебную запись модуля платформы в посевной фикстуре",
-	"kacho-gamma":                    "изображает служебную запись модуля платформы в посевной фикстуре",
-	"kacho-vpc-other":                "изображает служебную запись модуля платформы, отличную от посеянной",
-	"kacho-nowhere":                  "изображает репозиторий ЧУЖОГО модуля платформы в пробе поставки",
-	"kacho-test-ca":                  "изображает внутренний УЦ зонта в пробе доверия",
-	"kacho-module-manifests-renamed": "изображает переименованную карту манифестов зонта",
+	// ЗДЕСЬ СТОЯЛО ШЕСТНАДЦАТЬ ЗАПИСЕЙ, ЧЕЙ ПРЕДМЕТ УЕХАЛ ВМЕСТЕ С КАТАЛОГОМ
+	// СЛУЖБЫ. Каждая покрывала вхождения имени платформы на поверхности
+	// `services/iam` — в её фикстурах, посевах, пробах поставки и правилах
+	// оснастки. Служба вынесена отдельным репозиторием; поверхность сузилась до
+	// двух корней контракта, и записям стало нечего прощать.
+	//
+	// Сняты они не «заодно», а по вердикту самой ведомости: она краснеет на
+	// записи, покрывающей НОЛЬ вхождений, — перечень, прощающий вникуда, выдаёт
+	// вперёд слепую зону. Понадобятся снова — вернутся вместе со своей
+	// поверхностью, и вернуть их придётся туда, где эта поверхность живёт.
 }
 
 // KanameFoundationSchemaFunctions — ЗАКРЫТЫЙ перечень функций общего фундамента
@@ -607,6 +593,17 @@ var KanamePlatformOwnedObjects = map[string]string{
 // Решено остаться, и довод не наш: они рендерятся ОДНИМ шаблоном на шесть
 // владельцев, а их байт-идентичность держит отдельный гейт. Сверх того они
 // заведены ПРИМЕНЁННОЙ миграцией службы, которую править нельзя (ban #5).
+//
+// ОСТАТОК, НАЗВАННЫЙ ВСЛУХ (вынос службы доступа, фаза B). После выноса ни одно
+// из семи имён не встречается на оставшейся поверхности: `TestKanameClosedBorder…`
+// объявляет все семь записями без предмета — и он прав. Снять их одним шагом
+// НЕЛЬЗЯ: этой же ведомостью пользуются как СЛОВАРЁМ синтетического мира три
+// доказательства инъекцией (контроль мира, обе формы записи функции, точность
+// долга в обе стороны), и опустошение ведомости гасит их — фикстура, привязанная
+// к снимаемому предмету, истекает вместе с ним. Снимать надо полосу «Б5» целиком:
+// ведомость, ветвь распознавателя, её ось в переписи и её ось инъекции — одним
+// изменением и со своим доказательством. Это отдельная работа, и она заведена
+// предметом, а не сделана мимоходом.
 var KanameFoundationSchemaFunctions = map[string]bool{
 	"kacho_admission_rate_count":    true,
 	"kacho_labels_valid":            true,
@@ -1270,109 +1267,6 @@ var KanameNameResidueStay = []NameResidueStay{
 	// НЕЛЬЗЯ никогда — они и есть различение, — поэтому в долге они сделали бы П3
 	// недостижимым by construction. Ведомость «решено остаться» ровно для этого и
 	// заведена, и она истекает сама: число точное, изменится — покраснеет.
-	{
-		Path: "services/iam/internal/contractnaming/contractnaming.go", Lane: lanePlatformName, Count: 3,
-		Reason: "объявленный источник имён владельцев: `const platformOwner` и разбор, " +
-			"его объясняющий. Имя платформы — ВХОД различения контракта платформы от " +
-			"контракта службы, а не имя, которым служба называет себя",
-	},
-	{
-		Path: "services/iam/internal/contractnaming/contractnaming_test.go", Lane: lanePlatformName, Count: 1,
-		Reason: "проба того же различения: имя платформы подаётся ей входом",
-	},
-	{
-		Path: "services/iam/internal/contractnaming/contractnaming_test.go", Lane: laneObjectName, Count: 1,
-		Reason: "та же проба: законный близнец — запись, похожая на контракт платформы, " +
-			"но им не являющаяся; без неё различение зеленело бы на всём подряд",
-	},
-	{
-		Path: "services/iam/internal/manifest/roleexport/contractowner_injection_test.go", Lane: laneContractCoordinate, Count: 1,
-		Reason: "доказательство различения инъекцией: координата контракта платформы — " +
-			"тот самый вход, на котором отбор владельца обязан промолчать",
-	},
-	{
-		Path: "services/iam/cmd/kaname/schema_guard.go", Lane: laneSchemaName, Count: 1,
-		Reason: "страж старта, отказывающий на базе прежней установки (решение Р11): " +
-			"отставленное имя схемы — его ПРЕДМЕТ, а не наследие. Перестанет " +
-			"встречаться — отличить прежнюю установку от чистой будет нечем",
-	},
-	{
-		Path: "services/iam/cmd/kaname/schema_guard_integration_test.go", Lane: laneSchemaName, Count: 1,
-		Reason: "проба стража: поднимает базу с прежней схемой и требует отказа старта",
-	},
-	{
-		Path: "services/iam/cmd/kaname/schema_raised_from_scratch_integration_test.go", Lane: laneSchemaName, Count: 1,
-		Reason: "проба чистой установки: положительный близнец стража, требует ОТСУТСТВИЯ прежней схемы",
-	},
-	{
-		Path: "services/iam/cmd/kaname/schema_guard_test.go", Lane: laneSchemaPrefixKin, Count: 5,
-		Reason: "проба текста отказа: имя прежней БАЗЫ обязано стоять в жалобе поимённо, " +
-			"иначе оператор не поймёт, где искать (отказ при refuse-to-start выведен " +
-			"из-под запрета §«Публичные артефакты»)",
-	},
-	{
-		Path: "services/iam/docs/content/install/deploy.mdx", Lane: laneSchemaName, Count: 4,
-		Reason: "инструкция установки, к которой отсылает текст отказа: она обязана назвать " +
-			"схему, которую оператор увидел в жалобе, иначе он придёт по ссылке и своего случая не найдёт",
-	},
-	{
-		Path: "services/iam/internal/supplyhygiene/schema_name_test.go", Lane: laneSchemaName, Count: 1,
-		Reason: "сама проверка имени схемы: отставленное имя — её ВХОД, без него у " +
-			"распознавателя нет предмета",
-	},
-	{
-		Path: "services/iam/internal/supplyhygiene/schema_name_test.go", Lane: laneDatabaseName, Count: 1,
-		Reason: "та же проверка: различение схемы и базы требует называть обе формы записи имени базы",
-	},
-	{
-		Path: "services/iam/internal/supplyhygiene/schema_name_test.go", Lane: laneQualifiedTable, Count: 1,
-		Reason: "та же проверка: квалифицированное имя таблицы — форма, которую её распознаватель обязан знать",
-	},
-	{
-		Path: "services/iam/internal/supplyhygiene/schema_name_test.go", Lane: laneSchemaPrefixKin, Count: 2,
-		Reason: "та же проверка: соседи по приставке названы, чтобы пропуск был отличим от находки",
-	},
-	{
-		Path: "services/iam/internal/supplyhygiene/schema_name_injection_test.go", Lane: laneSchemaName, Count: 5,
-		Reason: "доказательство той проверки инъекцией: дефект вносится отставленным именем",
-	},
-	{
-		Path: "services/iam/internal/supplyhygiene/schema_name_injection_test.go", Lane: laneDatabaseName, Count: 1,
-		Reason: "то же доказательство: инъекция по форме имени базы",
-	},
-	{
-		Path: "services/iam/internal/supplyhygiene/schema_name_injection_test.go", Lane: laneQualifiedTable, Count: 2,
-		Reason: "то же доказательство: инъекция по форме квалифицированного имени таблицы",
-	},
-	{
-		Path: "services/iam/internal/supplyhygiene/schema_name_injection_test.go", Lane: laneSchemaPrefixKin, Count: 3,
-		Reason: "то же доказательство: законный близнец — сосед по приставке, на котором проверка обязана молчать",
-	},
-	{
-		Path: "services/iam/internal/migrations/notify_channel_consumer_injection_test.go", Lane: laneSchemaPrefixKin, Count: 2,
-		Reason: "синтетическая фикстура инъекции: канал прежнего имени вносится как ДЕФЕКТ, " +
-			"на котором разбор обязан краснеть",
-	},
-	{
-		Path: "services/iam/internal/migrations/notify_channel_has_a_listener_integration_test.go", Lane: laneSchemaPrefixKin, Count: 4,
-		Reason: "отрицательный контроль: проба требует, чтобы канала прежнего имени в базе " +
-			"НЕ БЫЛО; сними имя — и утверждение станет вакуумным",
-	},
-	{
-		Path: "services/iam/internal/supplyhygiene/package_qualifier_test.go", Lane: laneObjectName, Count: 3,
-		Reason: "проверка КВАЛИФИКАТОРА пакета (#2130): отставленное имя — её ВХОД, без " +
-			"него у распознавателя нет предмета, а у находки нет координаты",
-	},
-	{
-		Path: "services/iam/internal/supplyhygiene/package_qualifier_test.go", Lane: borderUnknownForm, Count: 2,
-		Reason: "та же проверка: формы записи, которых держатель остатка не судит, названы " +
-			"в её шапке — иначе граница её собственной полосы неизвестна читателю",
-	},
-	{
-		Path: "services/iam/internal/supplyhygiene/package_qualifier_injection_test.go", Lane: laneObjectName, Count: 12,
-		Reason: "доказательство той проверки инъекцией: дефект вносится отставленным " +
-			"квалификатором, и он же стоит в законных близнецах, на которых она молчит",
-	},
 	// ── СВЯЗЬ ПРОБЫ С ЧАРТОМ: имя установки здесь ПРЕДМЕТ сравнения (#2371) ──
 	//
 	// Проба выводит имя клиентского листа собственного REST-фронта из чарта и
@@ -1390,36 +1284,6 @@ var KanameNameResidueStay = []NameResidueStay{
 	// предстоит снять»; эти два вхождения снять нельзя, пока чарт объявляет
 	// установку под именем платформы. Запись истекает сама: число точное, а
 	// переименование в чарте её покраснит.
-	{
-		Path: "services/iam/cmd/kaname/ownfronthop_test.go", Lane: laneDomainAddress, Count: 1,
-		Reason: "домен доверия установки — левая половина сравнения пробы с чартом: " +
-			"проба обязана называть тот домен, под которым чарт выдаёт лист фронта",
-	},
-	{
-		Path: "services/iam/cmd/kaname/ownfronthop_test.go", Lane: lanePlatformName, Count: 1,
-		Reason: "пространство имён установки — вторая половина того же сравнения: " +
-			"имя листа складывается из домена, пространства и учётной записи",
-	},
-	{
-		Path: "services/iam/internal/supplyhygiene/package_qualifier_injection_test.go", Lane: laneDomainAddress, Count: 1,
-		Reason: "то же доказательство: имя DNS стенда — законный близнец, на котором " +
-			"проверка обязана молчать; снять его значит сделать близнеца вакуумным",
-	},
-	{
-		Path: "services/iam/internal/supplyhygiene/package_qualifier_injection_test.go", Lane: lanePlatformName, Count: 1,
-		Reason: "то же доказательство: имя платформы отдельным словом — ещё один близнец " +
-			"строчной полосы",
-	},
-	{
-		Path: "services/iam/internal/supplyhygiene/package_qualifier_injection_test.go", Lane: laneContractCoordinate, Count: 1,
-		Reason: "то же доказательство: пакет контракта платформы — близнец, по которому " +
-			"видно, что дискриминатор структурный, а не словарный",
-	},
-	{
-		Path: "services/iam/internal/supplyhygiene/package_qualifier_injection_test.go", Lane: borderUnknownForm, Count: 2,
-		Reason: "то же доказательство: формы вне полос держателя остатка, поданные как " +
-			"вход инъекции",
-	},
 
 	// ── ДОКУМЕНТ О САМОМ ПЕРЕИМЕНОВАНИИ: имя платформы здесь СВИДЕТЕЛЬСТВО (#2214) ──
 	//
@@ -1438,16 +1302,6 @@ var KanameNameResidueStay = []NameResidueStay{
 	// ПОЧЕМУ НЕ ПОДНЯТИЕМ ЧИСЛА ДОЛГА. Долг означает «остаток, который предстоит
 	// снять»; эти два вхождения снять НЕЛЬЗЯ никогда, и в долге они сделали бы
 	// условие П3 недостижимым by construction.
-	{
-		Path: "services/iam/docs/engineering/architecture/verdict-names-a-revision-not-a-file.md", Lane: lanePlatformName, Count: 1,
-		Reason: "пара подстановки, которой шла массовая правка каталогов службы: без " +
-			"левой стороны пары решение не показывает, ЧТО именно было заменено",
-	},
-	{
-		Path: "services/iam/docs/engineering/architecture/verdict-names-a-revision-not-a-file.md", Lane: laneObjectName, Count: 1,
-		Reason: "имя объекта, которое команда печатает НА САМОМ ДЕЛЕ, — предъявление " +
-			"второй находки: документ объявил один вывод, а команда даёт другой",
-	},
 
 	// ── ЯКОРЬ КЛАСТЕРА: переход СОСТОЯЛСЯ, и остаток снять НЕЛЬЗЯ (#2113) ──
 	//
@@ -1463,35 +1317,6 @@ var KanameNameResidueStay = []NameResidueStay{
 	// ровно тот класс, который корпус ловит в чужих предикатах готовности.
 	// Ведомость решённого остаться истекает сама: числа ТОЧНЫЕ, тронут файл —
 	// покраснеет.
-	{
-		Path: "services/iam/internal/migrations/0001_initial.sql", Lane: laneClusterAnchor, Count: 88,
-		Reason: "базовая миграция СЕЕТ якорь прежним написанием, и она ПРИМЕНЕНА: " +
-			"правка применённой миграции запрещена (ban #5). Перевод идёт новой " +
-			"миграцией, а не переписыванием этой",
-	},
-	{
-		Path: "services/iam/internal/migrations/20260906214500_cluster_anchor_moves_to_its_declared_spelling.sql", Lane: laneClusterAnchor, Count: 4,
-		Reason: "миграция ПЕРЕХОДА: прежнее написание — её ИСТОЧНИК. Сними его, и " +
-			"переписывать станет нечего — перевод превратится в пустой оператор",
-	},
-	{
-		Path: "services/iam/internal/migrations/cluster_anchor_agrees_with_the_code_integration_test.go", Lane: laneClusterAnchor, Count: 1,
-		Reason: "отрицательный контроль: проба требует, чтобы прежнего написания в своде " +
-			"НЕ ОСТАЛОСЬ. Её собственный комментарий оговаривает, почему величина взята " +
-			"литералом, а не из объявления, — из объявления она была бы тождественно неверной",
-	},
-	{
-		Path: "services/iam/internal/migrations/cluster_anchor_way_back_integration_test.go", Lane: laneClusterAnchor, Count: 1,
-		Reason: "запись о собственной истёкшей посылке: проба брала переход W4 входом, " +
-			"переход состоялся, и разбор называет прежнее написание, чтобы объяснить, " +
-			"ЧЕМ именно посылка истекла",
-	},
-	{
-		Path: "services/iam/internal/modelrender/canon.go", Lane: laneClusterAnchor, Count: 1,
-		Reason: "запись ЗАМЕРА: шапка называет сдвиг величин канона и его причину — " +
-			"переход написания якоря. Сними прежнее написание, и утверждение о сдвиге " +
-			"перестанет предъявлять то, между чем сдвиг измерен",
-	},
 
 	// ── ПРИСТАВКА СХЕМЫ: остались ТРИ документа, и в каждом имя есть ПРЕДМЕТ ──
 	//
@@ -1501,22 +1326,6 @@ var KanameNameResidueStay = []NameResidueStay{
 	// дерево производит `kaname_`; плюс два синтетических имени фикстур).
 	// Оставшиеся пять снять нельзя: в каждом прежняя приставка ЦИТИРУЕТСЯ как
 	// то, от чего переехали.
-	{
-		Path: "services/iam/docs/content/terraform/provider.mdx", Lane: laneSchemaPrefixKin, Count: 3,
-		Reason: "инструкция переезда состояния арендатора: страница обязана назвать " +
-			"ПРЕЖНИЕ имена типов — их читает блок `moved`, и без них у арендатора нет " +
-			"левой стороны перехода",
-	},
-	{
-		Path: "services/iam/docs/engineering/architecture/known-divergences.md", Lane: laneSchemaPrefixKin, Count: 1,
-		Reason: "свидетельство о СНЯТОМ канале уведомления: разбор называет его поимённо, " +
-			"и проба службы требует, чтобы канала с этим именем в базе не было",
-	},
-	{
-		Path: "services/iam/docs/engineering/components/29-relational-verdict.md", Lane: laneSchemaPrefixKin, Count: 1,
-		Reason: "то же свидетельство на странице компонента: имя снятого канала — предмет " +
-			"утверждения, а не остаток бренда",
-	},
 
 	// ── ЗАХВАЧЕННЫЙ ВЫВОД ПРОГОНА: ось «контракт» (#2076, 2026-09-10) ──────
 	//
@@ -1540,37 +1349,6 @@ var KanameNameResidueStay = []NameResidueStay{
 	//
 	// СЛЕДСТВИЕ, КОТОРОЕ НАДО НАЗВАТЬ: этим ось «контракт» становится ЧИСТОЙ —
 	// третья из шести осей П3 после схемы и таблиц.
-	{
-		Path: "services/iam/tools/authzformbench/REPORT-226-pagecost-2026-08-12.raw.txt", Lane: laneContractCoordinate, Count: 1,
-		Reason: "дословный вывод прогона: прибор читал модель прав по координате, которая " +
-			"на его ревизии и была живой; правка сфальсифицировала бы замер",
-	},
-	{
-		Path: "services/iam/tools/authzformbench/REPORT-XC-10-2026-08-10.raw.txt", Lane: laneContractCoordinate, Count: 1,
-		Reason: "тот же захваченный вывод: путь назван внутри рабочего каталога прогона, " +
-			"которого больше нет — переписать его значит выдумать чужую машину",
-	},
-	{
-		Path: "services/iam/tools/authzformbench/REPORT-XC-10-fullmodel-2026-08-11.txt", Lane: laneContractCoordinate, Count: 2,
-		Reason: "отчёт с провенансом коммита: координата модели прав — часть вопросника, " +
-			"по которому замер воспроизводим на ТОЙ ревизии",
-	},
-	{
-		Path: "services/iam/tools/authzformbench/REPORT-XC-12-F5-labelpath-2026-08-12.raw.txt", Lane: laneContractCoordinate, Count: 1,
-		Reason: "дословный вывод того же прибора на следующем шаге замера",
-	},
-	{
-		Path: "services/iam/tools/authzformbench/REPORT-XC-12-F5-labelpath-2026-08-12.txt", Lane: laneContractCoordinate, Count: 1,
-		Reason: "разбор того же прогона: называет координату, которую прибор прочитал",
-	},
-	{
-		Path: "services/iam/tools/authzformbench/REPORT-XC-12-F5-remeasure-2026-08-14.raw.txt", Lane: laneContractCoordinate, Count: 1,
-		Reason: "перемер той же формы: вывод захвачен дословно",
-	},
-	{
-		Path: "services/iam/tools/authzformbench/REPORT-XC-12-F5-remeasure-2026-08-14.txt", Lane: laneContractCoordinate, Count: 1,
-		Reason: "разбор перемера: та же координата в том же качестве — прочитанная, не объявленная",
-	},
 
 	// ── СЛЕПАЯ ЗОНА Б6 РАЗОБРАНА ПОИМЁННО (#2076, 2026-09-10) ──────────────
 	//
@@ -1591,55 +1369,11 @@ var KanameNameResidueStay = []NameResidueStay{
 	// разошлась бы с первой молча, а сканеры утёкших удостоверений ключуются на
 	// объявленную. Снять её из проб и страниц значит перестать называть то, что
 	// пользователь увидит в своём токене.
-	{
-		Path: "services/iam/docs/content/api/tokens.mdx", Lane: borderUnknownForm, Count: 2,
-		Reason: "форма секрета и довод про якорь для сканеров: метку чеканит фундамент, " +
-			"страница обязана назвать её дословно — иначе владелец токена не узнает свой",
-	},
-	{
-		Path: "services/iam/docs/content/first-credential.mdx", Lane: borderUnknownForm, Count: 2,
-		Reason: "та же метка на первом шаге клиента: форма секрета и полоса, которую она объявляет",
-	},
-	{
-		Path: "services/iam/docs/content/getting-started.mdx", Lane: borderUnknownForm, Count: 1,
-		Reason: "образец подстановки токена: метка фундамента показана так, как её видит клиент",
-	},
-	{
-		Path: "services/iam/tests/newman/cases/basic-access-token.py", Lane: borderUnknownForm, Count: 1,
-		Reason: "утверждение кейса о том, что метка НЕ утекает в тело ответа: метка — вход " +
-			"утверждения, сними её и утверждение станет вакуумным",
-	},
-	{
-		Path: "services/iam/tests/newman/cases/docker-lane-credential-kind.py", Lane: borderUnknownForm, Count: 2,
-		Reason: "та же метка в докер-полосе: она стоит в теле отказа и из неё собирается " +
-			"заведомо неверный секрет — оба утверждения ключуются на метку фундамента",
-	},
-	{
-		Path: "services/iam/tests/newman/collections/basic-access-token.postman_collection.json", Lane: borderUnknownForm, Count: 1,
-		Reason: "порождённый набор того же кейса: правится ИСХОДНИК, здесь метка приезжает генерацией",
-	},
-	{
-		Path: "services/iam/tests/newman/collections/docker-lane-credential-kind.postman_collection.json", Lane: borderUnknownForm, Count: 2,
-		Reason: "порождённый набор докер-полосы: те же два утверждения о метке фундамента",
-	},
-	{
-		Path: "services/iam/tests/newman/credential-secret-form.json", Lane: borderUnknownForm, Count: 2,
-		Reason: "объявленная форма секрета: метка и образец — ВХОД сверки, а не проза о ней",
-	},
-	{
-		Path: "services/iam/tests/newman/scripts/credsecretmint/form_test.go", Lane: borderUnknownForm, Count: 1,
-		Reason: "законный близнец сверки формы: ЧУЖАЯ метка подаётся как заведомо негодная — " +
-			"без неё отрицание зеленело бы на любой строке",
-	},
 
 	// ПРИСТАВКА РЯДОВ ИЗМЕРИТЕЛЯ ФУНДАМЕНТА. Три ряда gRPC-слоя производит общий
 	// измеритель, который служба пинит; переименовать их она не вправе. Страница
 	// объясняет дежурному, почему они носят не имя продукта, — и объяснение
 	// обязано назвать приставку, иначе оно ни о чём.
-	{
-		Path: "services/iam/docs/content/advanced/observability.mdx", Lane: borderUnknownForm, Count: 1,
-		Reason: "проза об приставке рядов общего измерителя: приставка — предмет объяснения",
-	},
 
 	// ОБЩИЙ СЛОЙ ГЕНЕРАТОРА НАБОРОВ. `tests/newman/kacholib/` лежит в КОРНЕ
 	// дерева и служит ВСЕМ восьми наборам (край плюс семь служб) — один на
@@ -1650,56 +1384,12 @@ var KanameNameResidueStay = []NameResidueStay{
 	//
 	// Своего слоя служба не заводит: копия разошлась бы с общей молча, и именно
 	// расхождение копий было предметом сведения.
-	{
-		Path: "services/iam/tests/newman/scripts/gen.py", Lane: borderUnknownForm, Count: 6,
-		Reason: "бутстрап общего слоя: путь ищется по дереву вверх и подставляется в " +
-			"импорт — совпадение с деревом обязано быть дословным",
-	},
-	{
-		Path: "services/iam/tests/newman/scripts/casesindex_test.py", Lane: borderUnknownForm, Count: 5,
-		Reason: "тот же бутстрап у сверщика указателя кейсов плюс оговорка о том, что общий " +
-			"слой в образец отбора НЕ попадает",
-	},
-	{
-		Path: "services/iam/tests/newman/scripts/run.sh", Lane: borderUnknownForm, Count: 4,
-		Reason: "тот же поиск общего слоя отбора из оболочки: путь и текст отказа, когда его нет",
-	},
-	{
-		Path: "services/iam/tests/newman/scripts/README.md", Lane: borderUnknownForm, Count: 2,
-		Reason: "страница набора называет, что взято из общего слоя, а что решается здесь",
-	},
-	{
-		Path: "services/iam/tests/newman/docs/CASES-INDEX.md", Lane: borderUnknownForm, Count: 2,
-		Reason: "указатель кейсов называет хребет генератора: у утверждения о том, ЧЕМ " +
-			"держится уникальность, должен быть адрес",
-	},
-	{
-		Path: "services/iam/tests/newman/scripts/expected_status_test.py", Lane: borderUnknownForm, Count: 1,
-		Reason: "граница предмета сверщика: статус, порождённый ОБЩИМ слоем, сюда не входит",
-	},
-	{
-		Path: "services/iam/tests/newman/scripts/validate-cases.py", Lane: borderUnknownForm, Count: 1,
-		Reason: "тот же адрес общего слоя рядом с его вызывающим",
-	},
-	{
-		Path: "services/iam/tests/newman/cases/README.md", Lane: borderUnknownForm, Count: 1,
-		Reason: "страница кейсов называет хребет, который держит свойство, — не сверщик",
-	},
 
 	// ФИКСТУРЫ ПРОВЕРКИ ИМЕНИ КАТАЛОГА. Проверка судит имена каталогов службы, и
 	// оба вхождения здесь — её ВХОД: слово платформы в прозе (ручка и общий слой)
 	// и алиас `apps/kachopg`, который каталогом предмета НЕ является. Законный
 	// близнец на то и заведён, чтобы правая граница сегмента проверялась; сними
 	// его — и отрицание перестанет что-либо утверждать.
-	{
-		Path: "services/iam/internal/supplyhygiene/directory_name_injection_test.go", Lane: borderUnknownForm, Count: 3,
-		Reason: "синтетический вход проверки имени каталога: проза со словом платформы и " +
-			"законный близнец `apps/kachopg`, на котором проверка обязана молчать",
-	},
-	{
-		Path: "services/iam/internal/supplyhygiene/directory_name_test.go", Lane: borderUnknownForm, Count: 1,
-		Reason: "разбор того же близнеца у самой проверки: почему алиас каталогом не является",
-	},
 
 	// КЛЮЧИ ГЛОБАЛЬНОГО БЛОКА, КОТОРЫЕ ПРОИЗВОДИТ ПЛАТФОРМА. `kachoImageIds` и
 	// `kachoModuleManifests` кладёт в значения зонта рецепт развёртывания
@@ -1748,63 +1438,6 @@ var KanameNameResidueStay = []NameResidueStay{
 	// «файл + полоса» ЦЕЛИКОМ, поэтому запись на них была бы либо красной
 	// сегодня, либо маскирующей чужой остаток. Они переедут сюда тем же
 	// изменением, которым Л1 снимет свою половину.
-	{
-		Path: "services/iam/internal/apps/kaname/api/authorize/caller_authority.go", Lane: laneObjectName, Count: 1,
-		Reason: "образец SPIFFE-имени модуля платформы в шапке (`…/sa/kacho-<svc>`): " +
-			"учётку называет ПЛАТФОРМА, служба лишь читает предъявленное имя",
-	},
-	{
-		Path: "services/iam/internal/authzguard/caller_policy.go", Lane: laneObjectName, Count: 1,
-		Reason: "тот же образец SPIFFE-имени модуля платформы в шапке правила о вызывающем",
-	},
-	{
-		Path: "services/iam/internal/authzguard/caller_policy_test.go", Lane: laneObjectName, Count: 1,
-		Reason: "проба того же правила: образец имени модуля платформы подаётся ей входом",
-	},
-	{
-		Path: "services/iam/internal/authzguard/caller_service.go", Lane: laneObjectName, Count: 2,
-		Reason: "разбор SPIFFE-имени модуля платформы в имя службы: приставка — ВХОД разбора, " +
-			"а не имя, которым Kaname называет себя",
-	},
-	{
-		Path: "services/iam/internal/authzguard/fgaproxy.go", Lane: laneObjectName, Count: 6,
-		Reason: "объявленная приставка имени служебной записи модуля платформы " +
-			"(`svcNamePrefix`) и деривация её идентификатора через md5 — обе о ЧУЖОЙ учётке",
-	},
-	{
-		Path: "services/iam/internal/authzguard/fgaproxy_test.go", Lane: laneObjectName, Count: 4,
-		Reason: "проба той же деривации: приставка модуля платформы подаётся входом, " +
-			"включая вырожденный SPIFFE-адрес с пустыми сегментами",
-	},
-	{
-		Path: "services/iam/internal/authzguard/public_caller_policy.go", Lane: laneObjectName, Count: 1,
-		Reason: "тот же образец SPIFFE-имени модуля платформы в шапке публичного правила",
-	},
-	{
-		Path: "services/iam/internal/manifest/testdata/vpc.seed-fixture.yaml", Lane: laneObjectName, Count: 1,
-		Reason: "предикат в шапке фикстуры, перечисляющий имена служебных записей модулей " +
-			"платформы: команда — свидетельство о ЧУЖИХ именах, а не наше имя",
-	},
-	{
-		Path: "services/iam/internal/repo/kaname/pg/module_sa_dead_roles_integration_test.go", Lane: laneObjectName, Count: 11,
-		Reason: "проба прав служебной записи МОДУЛЯ платформы: деривация её идентификатора " +
-			"и тексты отказов, называющие эту учётку поимённо",
-	},
-	{
-		Path: "services/iam/internal/repo/kaname/pg/retired_operator_identity_integration_test.go", Lane: laneObjectName, Count: 2,
-		Reason: "та же деривация идентификатора служебной записи модуля платформы в пробе " +
-			"снятой учётки оператора",
-	},
-	{
-		Path: "services/iam/internal/repo/kaname/pg/seed_module_sa_identity_integration_test.go", Lane: laneObjectName, Count: 10,
-		Reason: "проба посева служебных записей модулей платформы: канонический вид имени " +
-			"`kacho-<svc>` — то, что она и утверждает",
-	},
-	{
-		Path: "services/iam/internal/supplyhygiene/directory_name_test.go", Lane: laneObjectName, Count: 1,
-		Reason: "проверка имени каталога: приставка каталога репозитория ЧУЖОГО модуля — " +
-			"её вход, без него у распознавателя нет предмета",
-	},
 }
 
 // KanameNameResidueDebt — ведомость ОСТАТКА по полосам.

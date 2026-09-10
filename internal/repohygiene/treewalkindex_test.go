@@ -93,27 +93,32 @@ const (
 )
 
 var inRepoDiskWalks = map[string]string{
-	"gateway/internal/restmux/console_body_contract_test.go:consoleExportedStringConsts":                           whyPending,
-	"gateway/internal/restmux/console_body_contract_test.go:TestConsoleMutationSurfaceIsAccountedFor":              whyPending,
-	"internal/repohygiene/declaredcardinality_test.go:hasProductionReader":                                         whyPending,
-	"internal/repohygiene/guardnamedincomment_test.go:TestCommentsNamingAGuardHaveItInScope":                       whyPending,
-	"internal/repohygiene/guardnamedincomment_test.go:TestGuardedIdentifiersStillHaveSubject":                      whyPending,
-	"internal/repohygiene/hideexistence_test.go:serviceSourceCorpus":                                               whyPending,
-	"internal/repohygiene/listpaginationorder_test.go:forEachProductionGoFileForPagination":                        whyPending,
-	"internal/repohygiene/listreadrelationparity_test.go:deriveServiceDomain":                                      whyPending,
-	"internal/repohygiene/listreadrelationparity_test.go:discoverPageFilters":                                      whyPending,
-	"internal/repohygiene/listreadrelationparity_test.go:TestListReadRelationParity_PremiseHolds":                  whyPending,
-	"internal/repohygiene/lroreconciler_test.go:callsOperationsFunc":                                               whyPending,
-	"internal/repohygiene/lroreconciler_test.go:reconcilerGraceLiterals":                                           whyPending,
-	"internal/repohygiene/lroreconciler_test.go:unreachableReconcilerBuilders":                                     whyPending,
-	"internal/repohygiene/operationownershipport_test.go:operationServiceImplPackages":                             whyPending,
-	"internal/repohygiene/artifactgates/renderguard_test.go:findRenderGuards":                                      whyPending,
-	"internal/repohygiene/revocationwindow_test.go:TestNoCallSiteTakesTheWindowUnprovably":                         whyPending,
-	"internal/repohygiene/revocationwindow_test.go:TestNoServiceTakesTheWindowImplicitly":                          whyPending,
-	"internal/repohygiene/artifactgates/scriptgatewiring_test.go:findToolScriptGates":                              whyPending,
-	"internal/repohygiene/unscopedoperationslist_test.go:forEachProductionGoFile":                                  whyPending,
-	"internal/repohygiene/usecaselayout_test.go:TestUseCaseLayerHasOneLayout":                                      whyPending,
-	"internal/repohygiene/verbvocabulary_test.go:discoverTopLevelVerbLiterals":                                     whyPending,
+	"gateway/internal/restmux/console_body_contract_test.go:consoleExportedStringConsts":              whyPending,
+	"gateway/internal/restmux/console_body_contract_test.go:TestConsoleMutationSurfaceIsAccountedFor": whyPending,
+	"internal/repohygiene/declaredcardinality_test.go:hasProductionReader":                            whyPending,
+	// Здесь стояли две записи носителя, снятого вместе со своим предметом:
+	// оба имени, которые тот гейт стерёг, объявлялись только внутри службы
+	// доступа, а служба вынесена отдельным репозиторием. Перечень обязан только
+	// сокращаться — запись, которой нечего покрывать, унаследует следующее
+	// слепое пятно, и гейт это говорит сам.
+	"internal/repohygiene/hideexistence_test.go:serviceSourceCorpus":                              whyPending,
+	"internal/repohygiene/listpaginationorder_test.go:forEachProductionGoFileForPagination":       whyPending,
+	"internal/repohygiene/listreadrelationparity_test.go:deriveServiceDomain":                     whyPending,
+	"internal/repohygiene/listreadrelationparity_test.go:discoverPageFilters":                     whyPending,
+	"internal/repohygiene/listreadrelationparity_test.go:TestListReadRelationParity_PremiseHolds": whyPending,
+	"internal/repohygiene/lroreconciler_test.go:callsOperationsFunc":                              whyPending,
+	"internal/repohygiene/lroreconciler_test.go:reconcilerGraceLiterals":                          whyPending,
+	"internal/repohygiene/lroreconciler_test.go:unreachableReconcilerBuilders":                    whyPending,
+	"internal/repohygiene/operationownershipport_test.go:operationServiceImplPackages":            whyPending,
+	"internal/repohygiene/artifactgates/renderguard_test.go:findRenderGuards":                     whyPending,
+	"internal/repohygiene/revocationwindow_test.go:TestNoCallSiteTakesTheWindowUnprovably":        whyPending,
+	"internal/repohygiene/revocationwindow_test.go:TestNoServiceTakesTheWindowImplicitly":         whyPending,
+	"internal/repohygiene/artifactgates/scriptgatewiring_test.go:findToolScriptGates":             whyPending,
+	"internal/repohygiene/unscopedoperationslist_test.go:forEachProductionGoFile":                 whyPending,
+	"internal/repohygiene/usecaselayout_test.go:TestUseCaseLayerHasOneLayout":                     whyPending,
+	// Здесь стояла запись обхода носителя словарей глаголов. Он снят вместе со
+	// своим предметом: все семь путей его реестра лежали под каталогом службы
+	// доступа, и после её выноса кандидатов в дереве не осталось ни одного.
 	"services/compute/internal/check/retired_block_storage_test.go:forEachComputeSource":                           whyPending,
 	"services/compute/internal/check/retired_table_identifier_test.go:forEachComputeGoFile":                        whyPending,
 	"services/compute/internal/commentlint/commentlint_test.go:TestCommentsAreCleanOfProcessNoiseAndForeignClouds": whyPending,

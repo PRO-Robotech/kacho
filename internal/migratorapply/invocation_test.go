@@ -321,13 +321,29 @@ func TestEveryApplyPointHasItsInvocationFormDerived(t *testing.T) {
 		service, _ := migrationsDirOf(pkg)
 		inPoints[service] = true
 	}
+	// ТРЕТИЙ ИСХОД, названный после разреза монорепо: форма объявлена нашим
+	// манифестом для части, чьи ИСХОДНИКИ живут в другом репозитории. Точки
+	// наката у неё здесь нет и быть не может — её накатчик собирается своим
+	// деревом, — а форма вызова остаётся НАШИМ обязательством: её печатает наш
+	// шаблон, и разойтись ей есть с чем.
+	//
+	// Такая часть выносится в отдельное число переписи, а не в находку: слитая
+	// с «форм без точки наката», она читалась бы как слепота обхода — то есть
+	// как ровно тот дефект, ради которого обратная сторона и заведена.
 	orphan := make([]string, 0)
+	elsewhere := make([]string, 0, 1)
 	for service := range forms {
-		if !inPoints[service] {
-			orphan = append(orphan, service)
+		if inPoints[service] {
+			continue
 		}
+		if !productnaming.SourcesInThisTree(service) {
+			elsewhere = append(elsewhere, service)
+			continue
+		}
+		orphan = append(orphan, service)
 	}
 	sort.Strings(orphan)
+	sort.Strings(elsewhere)
 	for _, service := range orphan {
 		t.Errorf("манифесты объявляют форму вызова накатчика службы %q (%v), а точки "+
 			"наката у неё в дереве НЕТ. Исходов два: точка есть и обход её не видит "+
@@ -336,8 +352,13 @@ func TestEveryApplyPointHasItsInvocationFormDerived(t *testing.T) {
 			service, forms[service])
 	}
 
+	if len(elsewhere) > 0 {
+		t.Logf("форма вызова объявлена для части с исходниками в другом репозитории: %v — "+
+			"её точка наката судится её деревом, здесь второй стороны нет", elsewhere)
+	}
 	t.Logf("перепись: манифестов прочитано %d, точек наката в дереве %d, форма выведена "+
-		"для %d, форм без точки наката %d", filesRead, len(points), covered, len(orphan))
+		"для %d, форм без точки наката %d, форм у частей с исходниками вне дерева %d",
+		filesRead, len(points), covered, len(orphan), len(elsewhere))
 }
 
 // dsnParts — разобранный DSN пробы. Нужен той полосе доставки конфигурации, где

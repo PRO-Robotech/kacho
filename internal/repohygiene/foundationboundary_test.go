@@ -31,10 +31,16 @@ import (
 // сверх того, учитывает ограничения сборки — то есть отвечает тем же составом
 // файлов, что и `go list`.
 
-const (
-	kachoModule  = "github.com/PRO-Robotech/kacho"
-	kanameModule = "github.com/PRO-Robotech/kaname"
-)
+// Здесь стояла и константа модуля службы доступа. Она снята вместе со своим
+// предметом: служба вынесена отдельным репозиторием, её пакетов в дереве нет, и
+// импортов её модуля не осталось ни одного (предикат:
+// `git grep -c '"github.com/PRO-Robotech/kaname' -- '*.go'` → пусто).
+//
+// Константа, называющая модуль, которого дерево не объявляет, — находка сама по
+// себе: гейт `TestModulePathConstantDoesNotOutliveItsModule` судит именно это, и
+// он прав. Вернётся зависимость от опубликованной службы — вернётся и константа,
+// но уже с живым предметом.
+const kachoModule = "github.com/PRO-Robotech/kacho"
 
 // packageImports — импорты одного каталога, разделённые на прод и пробы.
 //
@@ -163,11 +169,10 @@ func importsByFile(t *testing.T, dir string, names []string) map[string]int {
 // treePathOfImport переводит путь импорта в путь от корня дерева. Второе
 // значение — false для всего, что лежит вне обоих модулей продукта.
 func treePathOfImport(imp string) (string, bool) {
+	// Двух ветвей модуля службы доступа здесь больше нет: они переводили путь
+	// импорта в каталог `services/iam`, которого в дереве не существует, — то
+	// есть были недостижимы и при этом объявляли живую координату.
 	switch {
-	case imp == kanameModule:
-		return "services/iam", true
-	case strings.HasPrefix(imp, kanameModule+"/"):
-		return "services/iam/" + strings.TrimPrefix(imp, kanameModule+"/"), true
 	case imp == kachoModule:
 		return "", false
 	case strings.HasPrefix(imp, kachoModule+"/"):

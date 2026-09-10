@@ -100,7 +100,6 @@ DECLARED="
 .github/scripts/go-test-verdict.py
 .github/scripts/install-browser-deps.sh
 .github/scripts/install-pinned-browser.sh
-.github/scripts/kaname-chart-boots.sh
 .github/scripts/lint-service-charts.sh
 .github/scripts/newman-live.py
 .github/scripts/run-python-probes.py
@@ -163,12 +162,7 @@ deploy/tests/helm/three-outcomes-distinguishable-test.sh
 deploy/tests/helm/trusted-forwarder-profiles-test.sh
 gateway/tests/newman/scripts/selftest_tamper_mutation.py
 services/compute/tests/newman/scripts/validate-cases.py
-services/iam/.github/scripts/classify-integration-outcome.sh
-services/iam/.github/scripts/go-test-verdict.py
-services/iam/.github/scripts/gosec-gate.sh
-services/iam/tests/newman/scripts/body_capture_form_test.py
 tests/newman/scripts/exec-coverage.py
-services/iam/tests/newman/scripts/selftest_basic_access_token.py
 tests/authz-fixtures/ceremony_credentials.py
 tests/authz-fixtures/prodseed_all.py
 tests/authz-fixtures/prodseed_ceremony.py

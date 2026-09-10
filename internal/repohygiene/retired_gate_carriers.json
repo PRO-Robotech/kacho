@@ -1,0 +1,881 @@
+{
+  "_": [
+    "retired_gate_carriers.json — надгробие СНЯТЫХ носителей гейтов.",
+    "",
+    "Запись есть ОБЪЯВЛЕНИЕ снятия: носитель · причина · что стало с предметом.",
+    "Нет записи — снятие молчаливое, и это находка с именем носителя: удаление",
+    "сторожа делает прогон ЗЕЛЕНЕЕ и не может быть замечено прогоном by",
+    "construction — проверка исчезает вместе со своей способностью краснеть.",
+    "",
+    "ФОРМ ДВЕ, И РАЗЛИЧАЮТСЯ ОНИ ЗЕРНОМ, А НЕ СМЫСЛОМ:",
+    "  retired        — ТОЧНЫЙ путь. Единица корпуса internal/repohygiene, где",
+    "                   носителей десятки и запись на каждого стоит строки.",
+    "  retired_scopes — ПРИСТАВКА пути. Единица дерева: одно решение уносит",
+    "                   носителей десятками, и запись на каждого была бы",
+    "                   перечнем имён, а не объявлением.",
+    "",
+    "ОБЕ САМОИСТЕКАЮТ В ОБЕ СТОРОНЫ: запись, чей носитель в дереве ЕСТЬ, —",
+    "находка (прикрывала бы живую координату); запись, под которой НИЧЕГО не",
+    "снимали за достижимую от HEAD историю, — тоже находка (покрывать нечего).",
+    "",
+    "Заведено фазой B выноса службы доступа (приёмка KAN-HOME-1, пункт B14):",
+    "фаза снимает носителей десятками, поэтому надгробие заводится ЭТИМ",
+    "изменением, а не «когда понадобится». Держатели —",
+    "internal/repohygiene/gatecarrierremoval.go (корпус) и removedpathcensus.go",
+    "(остальное дерево)."
+  ],
+  "retired": [
+    {
+      "carrier": "deploy/iam_chart_foreign_kinds_established_injection_test.go",
+      "reason": "доказательство падучести снятого выше носителя (8 утверждений)",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "deploy/iam_chart_foreign_kinds_established_test.go",
+      "reason": "судил, что ЧУЖОЙ вид (PrometheusRule), который везёт ПОСТАВЛЯЕМЫЙ чарт службы, заводится владельцем подъёма ДО установки",
+      "successor": "поставляемый чарт уехал вместе со службой: вида, который он вёз, в этом дереве нет. Вместе с носителем сняты владелец подъёма (.github/scripts/kaname-chart-boots.sh) и джоба production-posture, его звавшая, — оставшись, они ставили бы каталог, которого нет"
+    },
+    {
+      "carrier": "deploy/iam_database_named_for_its_product_injection_test.go",
+      "reason": "доказательство падучести снятого выше носителя (10 утверждений)",
+      "successor": "снято вместе с носителем; помощник asMapOrEmpty переехал к единственному оставшемуся вызывающему — deploy/own_rest_front_is_profile_expressible_test.go"
+    },
+    {
+      "carrier": "deploy/iam_database_named_for_its_product_test.go",
+      "reason": "судил, что база службы доступа зовётся именем СВОЕГО продукта и что оба чарта-тёзки зовут её одинаково; операнды — services/iam/deploy/values.yaml и подчарт зонта",
+      "successor": "предмет разрезан выносом: чарт-тёзка уехал вместе со службой, в дереве остался один подчарт зонта. Сверка ДВУХ объявлений невыразима — обе стороны равенства обязаны лежать в одном дереве. Имя базы у оставшегося подчарта по-прежнему судят гейты стенда (deploy/pool_fits_database_test.go читает ту же связку служба→база)"
+    },
+    {
+      "carrier": "deploy/iam_pool_declaration_parity_test.go",
+      "reason": "судил, что ширина пула службы доступа объявлена ОДИНАКОВО двумя чартами-тёзками",
+      "successor": "тот же разрез: тёзка уехал, второго объявления в дереве нет. Ширину пула оставшегося подчарта против принимаемого базой судит deploy/pool_fits_database_test.go — он же объявил и остаток: слагаемое вне пула для kaname в этом дереве вывести нечем (запись в knownUnfitting, шесть стеков)"
+    },
+    {
+      "carrier": "deploy/internal_rest_client_auth_parity_injection_test.go",
+      "reason": "доказательство падучести снятого выше носителя",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "deploy/internal_rest_client_auth_parity_test.go",
+      "reason": "судил ПАРИТЕТ двух объявлений: режим проверки клиента, которого требует страж старта службы доступа (её композиционный корень и пакет настроек), и режим, объявленный боевым профилем",
+      "successor": "предмет разрезан выносом: страж уехал вместе со службой, в дереве остался только профиль. Равенство двух объявлений невыразимо, когда одна сторона лежит в другом дереве, — а сверять профиль сам с собой значило бы утверждать тождество. Ручку ВКЛЮЧЕНИЯ транспорта у оставшегося подчарта по-прежнему судит deploy/kaname_listener_knobs_test.go; ось РЕЖИМА проверки клиента в этом дереве не судит теперь никто — остаток назван числом, а не прощён"
+    },
+    {
+      "carrier": "deploy/own_front_leaf_pair_declared_injection_test.go",
+      "reason": "доказательство падучести снятого выше носителя",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "deploy/own_front_leaf_pair_declared_test.go",
+      "reason": "судил, что стенд, объявивший ребро собственного внутреннего REST-фронта взаимным, объявляет и удостоверение, которым прогонщик себя назовёт; перечень таких рёбер выводился из композиционного корня службы",
+      "successor": "перечень рёбер брался у службы, и с её выносом брать его стало неоткуда: без него у гейта нет популяции, а не «пустая популяция». Профильную половину (объявлен ли лист там, где объявлен взаимный режим) держит подъём стенда фазы C — она наступает на выкатке, дороже, и это названо остатком"
+    },
+    {
+      "carrier": "deploy/own_rest_front_client_auth_vocabulary_injection_test.go",
+      "reason": "доказательство падучести снятого выше носителя",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "deploy/own_rest_front_client_auth_vocabulary_test.go",
+      "reason": "судил, что словарь режимов проверки клиента, ЗЕРКАЛИМЫЙ харнессом сквозных проб, совпадает со словарём, объявленным продуктом (пакет настроек службы), включая ответ на незаданную ручку",
+      "successor": "продуктовая сторона зеркала уехала вместе со службой; сверять зеркало не с чем. Харнесс остался здесь и продолжает решать по своим величинам — расхождение с продуктом стало МЕЖРЕПОЗИТОРНЫМ обязательством, и оно названо остатком, а не закрыто"
+    },
+    {
+      "carrier": "internal/repohygiene/acceptanceeditafterverdict.go",
+      "reason": "разбор, на котором стоял гейт: правка одобренной приёмки после её вердикта обязана сказать об этом отдельной записью истории",
+      "successor": "дом приёмок в дереве продукта был ОДИН — второй дом приёмки службы доступа; предикат `git ls-files | grep -E '(^|/)acceptance/'` даёт ноль. Запрет #1 на дереве продукта после разреза не измеряется вовсе, и это остаток, названный приёмкой KAN-HOME-1 §7 п.6"
+    },
+    {
+      "carrier": "internal/repohygiene/acceptanceeditafterverdict_injection_test.go",
+      "reason": "доказательство падучести снятого носителя acceptanceeditafterverdict",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/acceptanceeditafterverdict_test.go",
+      "reason": "правка одобренной приёмки после её вердикта обязана сказать об этом отдельной записью истории",
+      "successor": "дом приёмок в дереве продукта был ОДИН — второй дом приёмки службы доступа; предикат `git ls-files | grep -E '(^|/)acceptance/'` даёт ноль. Запрет #1 на дереве продукта после разреза не измеряется вовсе, и это остаток, названный приёмкой KAN-HOME-1 §7 п.6"
+    },
+    {
+      "carrier": "internal/repohygiene/acceptanceprobecoordinate_injection_test.go",
+      "reason": "доказательство падучести снятого выше носителя",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/acceptanceprobecoordinate_test.go",
+      "reason": "судил, что имя пробы, названное приёмкой рядом с кодом службы КООРДИНАТОЙ, резолвится функцией в дереве",
+      "successor": "снято вместе с предметом: приёмок рядом с кодом служб в дереве НОЛЬ (git ls-files 'services/*/docs/engineering/acceptance/*' → 0), обходить нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/applierneverdeletes.go",
+      "reason": "разбор, на котором стоял гейт: применитель ролей модуля не удаляет строку роли — две оси: удаляющий глагол порта и оператор DELETE строковым литералом",
+      "successor": "каталог применителя уехал вместе со службой (файлов пакета 0 при пороге 2). Общие сканеры литерала, которые звал соседний гейт, ушли вместе с ним: его собственный предмет тоже был внутри службы"
+    },
+    {
+      "carrier": "internal/repohygiene/applierneverdeletes_injection_test.go",
+      "reason": "доказательство падучести снятого носителя applierneverdeletes",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/applierneverdeletes_test.go",
+      "reason": "применитель ролей модуля не удаляет строку роли — две оси: удаляющий глагол порта и оператор DELETE строковым литералом",
+      "successor": "каталог применителя уехал вместе со службой (файлов пакета 0 при пороге 2). Общие сканеры литерала, которые звал соседний гейт, ушли вместе с ним: его собственный предмет тоже был внутри службы"
+    },
+    {
+      "carrier": "internal/repohygiene/assertionadmissioncalls.go",
+      "reason": "разбор, на котором стоял гейт: однократность допуска подписанного утверждения клиента — число обращений к базе в одной функции",
+      "successor": "предмет (репозиторий повторов утверждения) уехал вместе со службой; два общих помощника разбора перенесены в astfuncnames.go"
+    },
+    {
+      "carrier": "internal/repohygiene/assertionadmissioncalls_injection_test.go",
+      "reason": "доказательство падучести снятого носителя assertionadmissioncalls",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/assertionadmissioncalls_test.go",
+      "reason": "однократность допуска подписанного утверждения клиента — число обращений к базе в одной функции",
+      "successor": "предмет (репозиторий повторов утверждения) уехал вместе со службой; два общих помощника разбора перенесены в astfuncnames.go"
+    },
+    {
+      "carrier": "internal/repohygiene/authzwrapperoutcomelanes_injection_test.go",
+      "reason": "доказательство падучести снятого носителя authzwrapperoutcomelanes",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/authzwrapperoutcomelanes_test.go",
+      "reason": "булева обёртка вопроса о правах не зовётся там, где есть парная форма с исходом",
+      "successor": "пар «булева ↔ с исходом» в дереве ноль: все они объявлялись стражем прав службы доступа"
+    },
+    {
+      "carrier": "internal/repohygiene/basiccredentialproofrun_test.go",
+      "reason": "доказательство формы базового удостоверения обязано ПРОИЗВОДИТЬСЯ прогоном, а не лежать в дереве",
+      "successor": "и объявление формы, и самопроверка, и звавший её шаг конвейера — в дереве службы; предмета здесь нет ни одним файлом"
+    },
+    {
+      "carrier": "internal/repohygiene/bindingsubjects_test.go",
+      "reason": "выдача записывается вместе с составом своих субъектов",
+      "successor": "корень обхода — слой use-case службы доступа, которого в дереве нет"
+    },
+    {
+      "carrier": "internal/repohygiene/buildstampword_injection_test.go",
+      "reason": "доказательство падучести снятого носителя buildstampword",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/buildstampword_test.go",
+      "reason": "слово незаклеймённой сборки службы доступа совпадает со словом фундамента",
+      "successor": "объявление жило в наблюдаемости службы; согласие двух написаний стало межрепозиторным обязательством и названо остатком в шапке pkg/observability/buildstamp.go"
+    },
+    {
+      "carrier": "internal/repohygiene/carriedcoordinateledger.go",
+      "reason": "разбор, на котором стоял гейт: ведомость координат, переносимых фазой F4: закрытый словарь исходов и самоистечение записи",
+      "successor": "ведомость — документ архитектуры службы доступа, уехала вместе с ней"
+    },
+    {
+      "carrier": "internal/repohygiene/carriedcoordinateledger_injection_test.go",
+      "reason": "доказательство падучести снятого носителя carriedcoordinateledger",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/carriedcoordinateledger_test.go",
+      "reason": "ведомость координат, переносимых фазой F4: закрытый словарь исходов и самоистечение записи",
+      "successor": "ведомость — документ архитектуры службы доступа, уехала вместе с ней"
+    },
+    {
+      "carrier": "internal/repohygiene/catalogcheckwiring_injection_test.go",
+      "reason": "доказательство падучести снятого выше носителя",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего. Класс и его доказательства — в catalogcopyparity_injection_test.go, оси 2-4"
+    },
+    {
+      "carrier": "internal/repohygiene/catalogcheckwiring_test.go",
+      "reason": "судил провязку цели `permission-catalog-copies-in-sync` — сверки ДВУХ вшитых копий каталога прав; вторая копия уехала вместе со службой доступа, и сама цель снята (разбор — в шапке gateway/Makefile)",
+      "successor": "класс держит TestNoRecipeOrScriptRunsAComparisonOnlyIfAFileExists в catalogcopyparity_test.go: он читает ВСЁ дерево и требует, чтобы ни одна сверка ни в одном Makefile и скрипте не исполнялась условно по наличию файла. Свойство «копии каталога равны» предмета в этом дереве не имеет: копия здесь одна"
+    },
+    {
+      "carrier": "internal/repohygiene/catalogwriterlock.go",
+      "reason": "разбор, на котором стоял гейт: каждый писатель строк каталога прав берёт глобальный замок каталога",
+      "successor": "обход служб жив, но исполняемых операторов записи в этот каталог ноль: единственным писателем была служба доступа"
+    },
+    {
+      "carrier": "internal/repohygiene/catalogwriterlock_injection_test.go",
+      "reason": "доказательство падучести снятого носителя catalogwriterlock",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/catalogwriterlock_test.go",
+      "reason": "каждый писатель строк каталога прав берёт глобальный замок каталога",
+      "successor": "обход служб жив, но исполняемых операторов записи в этот каталог ноль: единственным писателем была служба доступа"
+    },
+    {
+      "carrier": "internal/repohygiene/censusfixtureproducer_injection_test.go",
+      "reason": "доказательство падучести снятого носителя censusfixtureproducer",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/censusfixtureproducer_test.go",
+      "reason": "проба, пересчитывающая ВСЕ строки таблицы, не вправе наполнять её в обход производителя",
+      "successor": "пакет-производитель зеркала ресурсов уехал вместе со службой"
+    },
+    {
+      "carrier": "internal/repohygiene/clientdocsexamplefields.go",
+      "reason": "разбор, которым пользовался снятый выше носитель, и никто больше",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/clientdocsexamplefields_injection_test.go",
+      "reason": "доказательство падучести снятого выше носителя",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/clientdocsexamplefields_test.go",
+      "reason": "судил, что пример ответа страницы несёт РОВНО то множество полей, которое называет её таблица «Поля ресурса»",
+      "successor": "снято вместе с предметом: обещание «Ответ несёт все поля ресурса» не даёт ни одна из 46 живых страниц (services/* + gateway), а «## Поля ресурса» в живых доках 0; единственное вхождение обещания оставалось в фикстуре самого гейта"
+    },
+    {
+      "carrier": "internal/repohygiene/clientexpiryimmutable.go",
+      "reason": "разбор, которым пользовался снятый выше носитель, и никто больше",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/clientexpiryimmutable_injection_test.go",
+      "reason": "доказательство падучести снятого выше носителя",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/clientexpiryimmutable_test.go",
+      "reason": "судил, что срок клиента OAuth не правится ни одним оператором миграций (таблица user_oauth_clients)",
+      "successor": "снято вместе с предметом: таблицы user_oauth_clients в применённых миграциях дерева нет, каталог services/iam/internal/migrations отсутствует"
+    },
+    {
+      "carrier": "internal/repohygiene/clienttokensurface.go",
+      "reason": "разбор, на котором стоял гейт: путь токен-эндпоинта зарегистрирован на внешне досягаемой поверхности и ни на какой другой (ban #6)",
+      "successor": "судился композиционный корень службы доступа, которого в дереве нет"
+    },
+    {
+      "carrier": "internal/repohygiene/clienttokensurface_injection_test.go",
+      "reason": "доказательство падучести снятого носителя clienttokensurface",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/clienttokensurface_test.go",
+      "reason": "путь токен-эндпоинта зарегистрирован на внешне досягаемой поверхности и ни на какой другой (ban #6)",
+      "successor": "судился композиционный корень службы доступа, которого в дереве нет"
+    },
+    {
+      "carrier": "internal/repohygiene/clienttruth_iam_moduleset.go",
+      "reason": "разбор, на котором стоял гейт: полнота перечислений набора модулей: закрытая таблица типов против страниц и контракта",
+      "successor": "пакета закрытой таблицы типов в дереве нет; помощник firstNonEmpty перенесён в firstnonempty.go"
+    },
+    {
+      "carrier": "internal/repohygiene/clienttruth_iam_moduleset_injection_test.go",
+      "reason": "доказательство падучести снятого носителя clienttruth_iam_moduleset",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/clienttruth_iam_moduleset_test.go",
+      "reason": "полнота перечислений набора модулей: закрытая таблица типов против страниц и контракта",
+      "successor": "пакета закрытой таблицы типов в дереве нет; помощник firstNonEmpty перенесён в firstnonempty.go"
+    },
+    {
+      "carrier": "internal/repohygiene/clienttruth_kaname_exclusion_form.go",
+      "reason": "разбор, на котором стоял гейт: форма взаимоисключения, названная оператору, есть та, которой оно держится",
+      "successor": "страница установки продукта службы уехала вместе с ним"
+    },
+    {
+      "carrier": "internal/repohygiene/clienttruth_kaname_exclusion_form_injection_test.go",
+      "reason": "доказательство падучести снятого носителя clienttruth_kaname_exclusion_form",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/clienttruth_kaname_exclusion_form_test.go",
+      "reason": "форма взаимоисключения, названная оператору, есть та, которой оно держится",
+      "successor": "страница установки продукта службы уехала вместе с ним"
+    },
+    {
+      "carrier": "internal/repohygiene/clusterrelationproducer_injection_test.go",
+      "reason": "доказательство падучести снятого выше носителя",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/clusterrelationproducer_test.go",
+      "reason": "судил, что запись каталога прав, гейтящая RPC на объекте cluster, называет отношение, которое кто-то ПРОИЗВОДИТ (класс «неисполнимая возможность»)",
+      "successor": "снято вместе с предметом: каталог services/iam/internal/apps/kaname/seed/embedded/permission_catalog.json в дереве отсутствует"
+    },
+    {
+      "carrier": "internal/repohygiene/derivedidsinglesource.go",
+      "reason": "разбор, которым пользовался снятый выше носитель, и никто больше",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/derivedidsinglesource_injection_test.go",
+      "reason": "доказательство падучести снятого выше носителя",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/derivedidsinglesource_test.go",
+      "reason": "судил, что формула деривации детерминированного идентификатора (импорт crypto/md5) объявлена в дереве ровно один раз",
+      "successor": "снято вместе с предметом: импортов crypto/md5 в прод-дереве 0 при 1523 разобранных файлах и 10113 прочитанных объявлениях импорта"
+    },
+    {
+      "carrier": "internal/repohygiene/fgaoutboxrowowner_injection_test.go",
+      "reason": "доказательство падучести снятого носителя fgaoutboxrowowner",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/fgaoutboxrowowner_test.go",
+      "reason": "строку очереди прав рендерит только её владелец",
+      "successor": "каталог владельца формы строки уехал вместе со службой"
+    },
+    {
+      "carrier": "internal/repohygiene/grantedrelationinmodel_injection_test.go",
+      "reason": "доказательство падучести снятого носителя grantedrelationinmodel",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/grantedrelationinmodel_test.go",
+      "reason": "отношение, выданное миграциями, существует в применённой модели прав",
+      "successor": "обе стороны сверки — миграции службы и её копия модели — уехали вместе с ней; канон модели в proto/ этот гейт намеренно не читал"
+    },
+    {
+      "carrier": "internal/repohygiene/grantremovaltrace.go",
+      "reason": "разбор, которым пользовался снятый выше носитель, и никто больше",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/grantremovaltrace_injection_test.go",
+      "reason": "доказательство падучести снятого выше носителя",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/grantremovaltrace_test.go",
+      "reason": "судил, что миграция, удаляющая строки kaname.access_bindings, оставляет след в kaname.audit_outbox, и что ни одна не переносит гранты между ролями",
+      "successor": "снято вместе с предметом: корпус миграций services/iam/internal/migrations в дереве отсутствует"
+    },
+    {
+      "carrier": "internal/repohygiene/guardnamedincomment_test.go",
+      "reason": "комментарий, называющий защиту, обязан иметь её в прод-коде своего пакета",
+      "successor": "оба имени реестра объявлялись только под каталогом службы доступа"
+    },
+    {
+      "carrier": "internal/repohygiene/iamcontourdecisionbasis_test.go",
+      "reason": "держал ОСНОВАНИЕ решения владельца оставить службу доступа вне контура носителя (сверка по services/iam/cmd/kaname)",
+      "successor": "снято вместе с предметом: службы доступа в дереве нет, решение оставлять её вне контура носителя предмета не имеет"
+    },
+    {
+      "carrier": "internal/repohygiene/identitygrowthreader_test.go",
+      "reason": "у величины роста числа личностей есть ЧИТАТЕЛЬ, и он назван",
+      "successor": "коллектор и раздел наблюдаемости службы уехали вместе с ней"
+    },
+    {
+      "carrier": "internal/repohygiene/integrityraisenamesitsconstraint.go",
+      "reason": "разбор, на котором стоял гейт: живой производитель класса нарушения целостности называет связь; арифметика «живого» определения по наибольшей версии",
+      "successor": "единственный производитель стоял в первичной миграции службы; отображение класса в pkg/db/pgfault остаётся, производителей у платформы нет"
+    },
+    {
+      "carrier": "internal/repohygiene/integrityraisenamesitsconstraint_injection_test.go",
+      "reason": "доказательство падучести снятого носителя integrityraisenamesitsconstraint",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/integrityraisenamesitsconstraint_test.go",
+      "reason": "живой производитель класса нарушения целостности называет связь; арифметика «живого» определения по наибольшей версии",
+      "successor": "единственный производитель стоял в первичной миграции службы; отображение класса в pkg/db/pgfault остаётся, производителей у платформы нет"
+    },
+    {
+      "carrier": "internal/repohygiene/kanamemigratorshowcase.go",
+      "reason": "разбор, на котором стоял гейт: накатчик, названный на витрине продукта, обязан быть накатчиком ЭТОГО продукта",
+      "successor": "витрина — дерево поставки службы доступа, уехало целиком"
+    },
+    {
+      "carrier": "internal/repohygiene/kanamemigratorshowcase_boundary_test.go",
+      "reason": "три прогона: гейт витрины и гейт имени судят РАЗНОЕ и ни один не вакуумен",
+      "successor": "половина пары снята вместе с предметом; проба неразличима без неё и не собиралась бы"
+    },
+    {
+      "carrier": "internal/repohygiene/kanamemigratorshowcase_injection_test.go",
+      "reason": "доказательство падучести снятого носителя kanamemigratorshowcase",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/kanamemigratorshowcase_test.go",
+      "reason": "накатчик, названный на витрине продукта, обязан быть накатчиком ЭТОГО продукта",
+      "successor": "витрина — дерево поставки службы доступа, уехало целиком"
+    },
+    {
+      "carrier": "internal/repohygiene/keyalgorithmdictionary.go",
+      "reason": "разбор, на котором стоял гейт: словарь алгоритма ключа в СХЕМЕ совпадает с закрытым перечнем КОДА",
+      "successor": "корпус миграций службы пуст; помощник sqlIdentifierAt перенесён в sqlidentifierat.go"
+    },
+    {
+      "carrier": "internal/repohygiene/keyalgorithmdictionary_injection_test.go",
+      "reason": "доказательство падучести снятого носителя keyalgorithmdictionary",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/keyalgorithmdictionary_test.go",
+      "reason": "словарь алгоритма ключа в СХЕМЕ совпадает с закрытым перечнем КОДА",
+      "successor": "корпус миграций службы пуст; помощник sqlIdentifierAt перенесён в sqlidentifierat.go"
+    },
+    {
+      "carrier": "internal/repohygiene/keystrengththreshold.go",
+      "reason": "разбор, которым пользовался снятый выше носитель, и никто больше",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/keystrengththreshold_injection_test.go",
+      "reason": "доказательство падучести снятого выше носителя",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/keystrengththreshold_test.go",
+      "reason": "судил, что нижний порог стойкости ключа объявлен числом ровно в одном месте дерева",
+      "successor": "снято вместе с предметом: объявлений порога 0 при 1523 разобранных файлах, 17378 осмотренных функциях и 2504 сравнениях"
+    },
+    {
+      "carrier": "internal/repohygiene/labelverdictaxis_test.go",
+      "reason": "судил, что у каждого типа, объявленного выбираемым по меткам, есть ось, по которой меточная ветвь вердикта отвечает",
+      "successor": "снято вместе с предметом: пакет services/iam/internal/domain (и authzmap, repo/kaname/pg/relverdict) в дереве отсутствует"
+    },
+    {
+      "carrier": "internal/repohygiene/limitexportprocedure.go",
+      "reason": "разбор, на котором стоял гейт: инструкция обновления несёт процедуру выгрузки дословно",
+      "successor": "инструкций обновления в дереве ноль: они уехали вместе с продуктом службы"
+    },
+    {
+      "carrier": "internal/repohygiene/limitexportprocedure_injection_test.go",
+      "reason": "доказательство падучести снятого носителя limitexportprocedure",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/limitexportprocedure_test.go",
+      "reason": "инструкция обновления несёт процедуру выгрузки дословно",
+      "successor": "инструкций обновления в дереве ноль: они уехали вместе с продуктом службы"
+    },
+    {
+      "carrier": "internal/repohygiene/listscanobservability_test.go",
+      "reason": "цикл добора страницы снимает стоимость добора",
+      "successor": "циклов добора в дереве ноль: восемь из девяти их носителей лежали под каталогом службы; помощник short перенесён в shortpath_test.go"
+    },
+    {
+      "carrier": "internal/repohygiene/listscopedoubleisnotlenient_injection_test.go",
+      "reason": "доказательство падучести снятого носителя listscopedoubleisnotlenient",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/listscopedoubleisnotlenient_test.go",
+      "reason": "мягкая двойная область называет живого держателя",
+      "successor": "обходились пакеты use-case службы доступа"
+    },
+    {
+      "carrier": "internal/repohygiene/manifestkeydenial.go",
+      "reason": "разбор, на котором стоял гейт: приёмка объявила ключ манифеста незаводимым, а ключ в манифесте есть; плюс маркер состояния, потерявший предмет",
+      "successor": "оба гнезда — каталог манифеста и второй дом приёмки — в дереве отсутствуют"
+    },
+    {
+      "carrier": "internal/repohygiene/manifestkeydenial_injection_test.go",
+      "reason": "доказательство падучести снятого носителя manifestkeydenial",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/manifestkeydenial_test.go",
+      "reason": "приёмка объявила ключ манифеста незаводимым, а ключ в манифесте есть; плюс маркер состояния, потерявший предмет",
+      "successor": "оба гнезда — каталог манифеста и второй дом приёмки — в дереве отсутствуют"
+    },
+    {
+      "carrier": "internal/repohygiene/manifestverbclassrule_injection_test.go",
+      "reason": "доказательство падучести снятого носителя manifestverbclassrule",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/manifestverbclassrule_test.go",
+      "reason": "тип объекта не выводится из имени ресурса; правило класса глагола объявлено однажды",
+      "successor": "загрузчик манифеста уехал вместе со службой; объявлений правила в дереве ноль при 1265 прочитанных файлах"
+    },
+    {
+      "carrier": "internal/repohygiene/migrationnotawriterofmodulerole.go",
+      "reason": "разбор, которым пользовался снятый выше носитель, и никто больше",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/migrationnotawriterofmodulerole_injection_test.go",
+      "reason": "доказательство падучести снятого выше носителя",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/migrationnotawriterofmodulerole_test.go",
+      "reason": "судил (MOD-RD-23), что миграция не вставляет роль модуля, у которого ЕСТЬ манифест, — иначе у предмета два писателя",
+      "successor": "снято вместе с предметом: миграций services/iam/internal/migrations прочитано 0; манифесты модулей (5) живы и судятся своими гейтами"
+    },
+    {
+      "carrier": "internal/repohygiene/mirrorcatalogcondition_injection_test.go",
+      "reason": "доказательство падучести снятого носителя mirrorcatalogcondition",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/mirrorcatalogcondition_test.go",
+      "reason": "условие каталога несёт каждый писатель зеркала ресурсов",
+      "successor": "имя таблицы зеркала не встречается в непроверочном коде ни разу"
+    },
+    {
+      "carrier": "internal/repohygiene/modelcanoncheckwiring_injection_test.go",
+      "reason": "доказательство падучести снятого выше носителя",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/modelcanoncheckwiring_test.go",
+      "reason": "судил провязку цели `model-canon-check`, объявленной services/iam/Makefile: побайтовую сверку блоков модели доступов с манифестами модулей. Исполнитель уехал вместе с каталогом службы",
+      "successor": "ОСТАТОК, названный числом: побайтовое согласие блоков канона (proto/kaname/cloud/iam/v1/fga_model.fga) с манифестами доменов в этом дереве не судит теперь никто. Обе стороны сверки остались здесь — уехал только исполнитель"
+    },
+    {
+      "carrier": "internal/repohygiene/moduleidentityseededonlybythebaseline_injection_test.go",
+      "reason": "доказательство падучести снятого выше носителя",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/moduleidentityseededonlybythebaseline_test.go",
+      "reason": "судил (ПР-5 WIRE-1), что личность модуля заводит ТОЛЬКО применённая базовая миграция службы доступа",
+      "successor": "снято вместе с предметом: корпус миграций службы доступа в дереве отсутствует"
+    },
+    {
+      "carrier": "internal/repohygiene/modulemanifestcheckwiring_injection_test.go",
+      "reason": "доказательство падучести снятого выше носителя",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/modulemanifestcheckwiring_test.go",
+      "reason": "судил провязку цели `module-manifest-check`, объявленной services/iam/Makefile: единственного судью ФОРМЫ манифеста домена. Исполнитель уехал вместе с каталогом службы",
+      "successor": "ОСТАТОК, названный числом: форму пяти манифестов доменов в этом дереве не судит теперь никто. Второго судью заводить запрещено решением #1778 — исполнителя надо перевезти, и это свой предмет со своим замером. Предмет сверки (services/*/manifest.yaml) остаётся здесь"
+    },
+    {
+      "carrier": "internal/repohygiene/moduleserviceaccounthasacomponent_injection_test.go",
+      "reason": "доказательство падучести снятого выше носителя",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/moduleserviceaccounthasacomponent_test.go",
+      "reason": "судил, что посеянная модульная служебная учётка называет компонент, который в дереве ЕСТЬ (анти-бронь круга «кто вправе говорить за пользователя»)",
+      "successor": "снято вместе с предметом: миграций службы доступа, сеявших kaname.service_accounts, в дереве нет"
+    },
+    {
+      "carrier": "internal/repohygiene/namedverbformexpiry.go",
+      "reason": "разбор, на котором стоял гейт: поимённая форма права роли возвращается только вместе с проверкой полноты",
+      "successor": "корпус манифеста службы пуст: разобрано ноль при пороге пять"
+    },
+    {
+      "carrier": "internal/repohygiene/namedverbformexpiry_injection_test.go",
+      "reason": "доказательство падучести снятого носителя namedverbformexpiry",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/namedverbformexpiry_test.go",
+      "reason": "поимённая форма права роли возвращается только вместе с проверкой полноты",
+      "successor": "корпус манифеста службы пуст: разобрано ноль при пороге пять"
+    },
+    {
+      "carrier": "internal/repohygiene/nestedquotacharger_test.go",
+      "reason": "каждый вложенный вид каталога величин имеет списание",
+      "successor": "каталог видов объявлялся единственным файлом домена службы; ни в контракте, ни в pkg/quota перечня видов нет"
+    },
+    {
+      "carrier": "internal/repohygiene/publishedkeyprivatehalf.go",
+      "reason": "разбор, на котором стоял гейт: публикуемая форма подписного ключа не имеет поля приватной половины",
+      "successor": "пар «хранимая → публикуемая» ноль из 3058 типов: все производители ключевого материала были в службе"
+    },
+    {
+      "carrier": "internal/repohygiene/publishedkeyprivatehalf_injection_test.go",
+      "reason": "доказательство падучести снятого носителя publishedkeyprivatehalf",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/publishedkeyprivatehalf_test.go",
+      "reason": "публикуемая форма подписного ключа не имеет поля приватной половины",
+      "successor": "пар «хранимая → публикуемая» ноль из 3058 типов: все производители ключевого материала были в службе"
+    },
+    {
+      "carrier": "internal/repohygiene/quotaconsoleowners.go",
+      "reason": "разбор, на котором стоял гейт: витрина квот спрашивает ровно владельцев с видом-носителем ПРОЕКТА",
+      "successor": "левая сторона сверки — каталог видов службы; витрина консоли жива, сверять её не с чем"
+    },
+    {
+      "carrier": "internal/repohygiene/quotaconsoleowners_injection_test.go",
+      "reason": "доказательство падучести снятого носителя quotaconsoleowners",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/quotaconsoleowners_test.go",
+      "reason": "витрина квот спрашивает ровно владельцев с видом-носителем ПРОЕКТА",
+      "successor": "левая сторона сверки — каталог видов службы; витрина консоли жива, сверять её не с чем"
+    },
+    {
+      "carrier": "internal/repohygiene/quotakindproducer_test.go",
+      "reason": "вид закрытого каталога потолков имеет производителя списания",
+      "successor": "каталог видов жил в домене службы; контракт объявляет ТИП носителя, а не роспись видов"
+    },
+    {
+      "carrier": "internal/repohygiene/quotareadergrant_test.go",
+      "reason": "владелец считаемого вида обязан быть читателем пределов",
+      "successor": "множество читателей объявлялось только миграциями службы; помощники repoRootFor и joinKeys перенесены в treeroot_test.go"
+    },
+    {
+      "carrier": "internal/repohygiene/readpathconcat_injection_test.go",
+      "reason": "доказательство падучести снятого носителя readpathconcat",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/readpathconcat_test.go",
+      "reason": "путь чтения сравнивает КОЛОНКИ, а не склейки",
+      "successor": "объявление предмета замера уехало вместе со службой; помощник stripSQLComments перенесён в stripsqlcomments.go"
+    },
+    {
+      "carrier": "internal/repohygiene/relationfactsolewriter_injection_test.go",
+      "reason": "доказательство падучести снятого выше носителя",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/relationfactsolewriter_test.go",
+      "reason": "судил (R7.3.27), что у прямого факта kaname.relation_fact ровно один производитель — триггер на журнале намерений",
+      "successor": "снято вместе с предметом: имя kaname.relation_fact не встречается в непроверочном коде НИ РАЗУ при 1523 осмотренных файлах"
+    },
+    {
+      "carrier": "internal/repohygiene/reportprosematchestemplate_injection_test.go",
+      "reason": "доказательство падучести снятого носителя reportprosematchestemplate",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/reportprosematchestemplate_test.go",
+      "reason": "проза отчёта прибора совпадает с шаблоном, который её печатает",
+      "successor": "три образца отчётов из четырёх лежали под каталогом службы; у четвёртого (замеры k6 у vpc) производителя заголовка вне службы не было НИКОГДА"
+    },
+    {
+      "carrier": "internal/repohygiene/retiredenginemodelversion_test.go",
+      "reason": "негативное утверждение: таблица версии модели, загружавшейся во ВНЕШНИЙ движок прав, не живёт в схеме службы доступа. Предмет — ровно одна пара «владелец + имя», и владелец назван вместе с именем, потому что одно имя носят таблицы разных служб",
+      "successor": "ЗАМОЛЧАЛ БЫ, а не покраснел: гейт обходит миграции ВСЕГО дерева, и четыре его предпосылки (миграций прочитано · секций · снятий · живых таблиц) держатся миграциями шести оставшихся служб. После выноса службы её миграций в дереве нет, вход, на котором он находит нарушение, стал непредставим, а вердикт остался зелёным — неотличимо от исправной работы. Снят вместе с предметом: вернуть снятый объект молча можно теперь только в дереве службы, и судить это обязано оно"
+    },
+    {
+      "carrier": "internal/repohygiene/roleoperationresponsestate.go",
+      "reason": "разбор, на котором стоял гейт: ответ операции роли не несёт вычисляемого состояния",
+      "successor": "корень обхода — каталог службы доступа"
+    },
+    {
+      "carrier": "internal/repohygiene/roleoperationresponsestate_injection_test.go",
+      "reason": "доказательство падучести снятого носителя roleoperationresponsestate",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/roleoperationresponsestate_test.go",
+      "reason": "ответ операции роли не несёт вычисляемого состояния",
+      "successor": "корень обхода — каталог службы доступа"
+    },
+    {
+      "carrier": "internal/repohygiene/rolescopechainstaysempty.go",
+      "reason": "разбор, на котором стоял гейт: цепь ярусной области у роли модуля остаётся пустой",
+      "successor": "единственный корень обхода — каталог службы доступа, осмотрено ноль файлов"
+    },
+    {
+      "carrier": "internal/repohygiene/rolescopechainstaysempty_injection_test.go",
+      "reason": "доказательство падучести снятого носителя rolescopechainstaysempty",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/rolescopechainstaysempty_test.go",
+      "reason": "цепь ярусной области у роли модуля остаётся пустой",
+      "successor": "единственный корень обхода — каталог службы доступа, осмотрено ноль файлов"
+    },
+    {
+      "carrier": "internal/repohygiene/roleverbreseedbootlane_injection_test.go",
+      "reason": "доказательство падучести снятого выше носителя",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/roleverbreseedbootlane_test.go",
+      "reason": "судил (IAM-RV-1-07), что отказ пересчёта проекции роли сообщается оператору уровнем Error, а не проглатывается — в композиционном корне службы",
+      "successor": "снято вместе с предметом: services/iam/cmd/kaname/serve.go в дереве отсутствует"
+    },
+    {
+      "carrier": "internal/repohygiene/roleverbreseedwiring_injection_test.go",
+      "reason": "доказательство падучести снятого носителя roleverbreseedwiring",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/roleverbreseedwiring_test.go",
+      "reason": "досев зовёт единственного писателя проекции роли ЧЕРЕЗ ПОРТ, и ссылка на пересчёт в дереве одна — в композиционном корне",
+      "successor": "проекция, пакет досева и композиционный корень уехали вместе со службой"
+    },
+    {
+      "carrier": "internal/repohygiene/roleverbsolewriter_injection_test.go",
+      "reason": "доказательство падучести снятого носителя roleverbsolewriter",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/roleverbsolewriter_test.go",
+      "reason": "у проекции роли один АВТОР",
+      "successor": "обе таблицы проекции уехали вместе со службой: их имена не встречаются в непроверочном коде ни разу"
+    },
+    {
+      "carrier": "internal/repohygiene/roleverbstructuralfatal_injection_test.go",
+      "reason": "доказательство падучести снятого носителя roleverbstructuralfatal",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/roleverbstructuralfatal_test.go",
+      "reason": "структурная полоса пересчёта проекции роли РОНЯЕТ старт",
+      "successor": "композиционный корень службы не существует"
+    },
+    {
+      "carrier": "internal/repohygiene/rulepolicysinglesource.go",
+      "reason": "разбор, которым пользовался снятый выше носитель, и никто больше",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/rulepolicysinglesource_injection_test.go",
+      "reason": "доказательство падучести снятого выше носителя",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/rulepolicysinglesource_test.go",
+      "reason": "судил, что политика правил роли выводится в одном месте (services/iam/internal/domain/rule_policy.go)",
+      "successor": "снято вместе с предметом: каталог services/iam/internal/domain в дереве отсутствует"
+    },
+    {
+      "carrier": "internal/repohygiene/scopedepthagreement_injection_test.go",
+      "reason": "доказательство падучести снятого носителя scopedepthagreement",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/scopedepthagreement_test.go",
+      "reason": "предел глубины области объявлен в ТРЁХ местах и они согласны",
+      "successor": "все три координаты — внутри службы доступа"
+    },
+    {
+      "carrier": "internal/repohygiene/standaloneserviceimports_injection_test.go",
+      "reason": "доказательство падучести снятого носителя standaloneserviceimports",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/standaloneserviceimports_test.go",
+      "reason": "сервис, которому предстоит стать отдельным модулем, импортирует из этого модуля только pkg/ и себя",
+      "successor": "разрез СОСТОЯЛСЯ: перечень состоял из одного имени, и его каталога в дереве нет. Границу модуля держат foundationboundary и crossmodulegopath"
+    },
+    {
+      "carrier": "internal/repohygiene/subjectchangeflushparity.go",
+      "reason": "разбор, которым пользовался снятый выше носитель, и никто больше",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/subjectchangeflushparity_injection_test.go",
+      "reason": "доказательство падучести снятого выше носителя",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/subjectchangeflushparity_test.go",
+      "reason": "судил, что самосброс кэша на крае покрывает КАЖДОГО производителя очереди смены субъекта",
+      "successor": "снято вместе с предметом: корень производителей services/iam/internal/apps/kaname/api в дереве отсутствует; сторона края (gateway/internal/middleware/authz.go) без производителей предмета сверки не имеет"
+    },
+    {
+      "carrier": "internal/repohygiene/subjectchangegapdetection_injection_test.go",
+      "reason": "доказательство падучести снятого носителя subjectchangegapdetection",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/subjectchangegapdetection_test.go",
+      "reason": "журнал смены субъекта обнаруживает пропуск НА ОБЕИХ СТОРОНАХ шва",
+      "successor": "два звена из трёх лежали у производителя, то есть в службе; сужать до читателя запрещено собственной шапкой — звенья порознь дают зелёные гейты над неработающим механизмом"
+    },
+    {
+      "carrier": "internal/repohygiene/systemrolerowisneverdeleted.go",
+      "reason": "разбор, на котором стоял гейт: строка системной роли не удаляется",
+      "successor": "обход каталога службы: разобрано ноль прод-файлов при пороге 300"
+    },
+    {
+      "carrier": "internal/repohygiene/systemrolerowisneverdeleted_injection_test.go",
+      "reason": "доказательство падучести снятого носителя systemrolerowisneverdeleted",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/systemrolerowisneverdeleted_test.go",
+      "reason": "строка системной роли не удаляется",
+      "successor": "обход каталога службы: разобрано ноль прод-файлов при пороге 300"
+    },
+    {
+      "carrier": "internal/repohygiene/tokenclaimforeignbrand.go",
+      "reason": "разбор, на котором стоял гейт: клеймо несёт имя своего продукта, не имеет двойника в чужом словаре, и у каждого имени есть автор",
+      "successor": "семя словаря — место чеканки, все составы были в службе; в дереве составов ноль"
+    },
+    {
+      "carrier": "internal/repohygiene/tokenclaimforeignbrand_injection_test.go",
+      "reason": "доказательство падучести снятого носителя tokenclaimforeignbrand",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/tokenclaimforeignbrand_test.go",
+      "reason": "клеймо несёт имя своего продукта, не имеет двойника в чужом словаре, и у каждого имени есть автор",
+      "successor": "семя словаря — место чеканки, все составы были в службе; в дереве составов ноль"
+    },
+    {
+      "carrier": "internal/repohygiene/tokenclaimsinglesource.go",
+      "reason": "разбор, на котором стоял гейт: состав клейм собирается в одном месте",
+      "successor": "владелец сборки уехал вместе со службой, сборок в дереве ноль"
+    },
+    {
+      "carrier": "internal/repohygiene/tokenclaimsinglesource_injection_test.go",
+      "reason": "доказательство падучести снятого носителя tokenclaimsinglesource",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/tokenclaimsinglesource_test.go",
+      "reason": "состав клейм собирается в одном месте",
+      "successor": "владелец сборки уехал вместе со службой, сборок в дереве ноль"
+    },
+    {
+      "carrier": "internal/repohygiene/verbvocabulary_test.go",
+      "reason": "литеральные словари глаголов не выходят за модель; реестр покрывает каждый литерал",
+      "successor": "все семь путей реестра лежали под каталогом службы, кандидатов в дереве ноль из 3169 файлов"
+    },
+    {
+      "carrier": "internal/repohygiene/verdictenumeration_injection_test.go",
+      "reason": "доказательство падучести снятого носителя verdictenumeration",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/verdictenumeration_test.go",
+      "reason": "путь вердикта не читает неограниченно",
+      "successor": "каталог пути вердикта уехал вместе со службой"
+    },
+    {
+      "carrier": "internal/repohygiene/verdictscopeform_test.go",
+      "reason": "одна семантика области на все точки входа формы вердикта",
+      "successor": "каталог пути вердикта уехал вместе со службой"
+    },
+    {
+      "carrier": "internal/repohygiene/verdictsubjectglue_injection_test.go",
+      "reason": "доказательство падучести снятого носителя verdictsubjectglue",
+      "successor": "снято вместе с носителем: доказывать способность падать у проверки, которой нет, нечего"
+    },
+    {
+      "carrier": "internal/repohygiene/verdictsubjectglue_test.go",
+      "reason": "субъект вердикта сравнивается парой колонок, а не склейкой",
+      "successor": "каталог пути вердикта уехал вместе со службой; координата корня вынесена и снята вместе с последним ссылающимся"
+    },
+    {
+      "carrier": "internal/repohygiene/withdrawalproducerarriveswiththeapplier.go",
+      "reason": "разбор, которым пользовался снятый выше носитель, и никто больше",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/withdrawalproducerarriveswiththeapplier_injection_test.go",
+      "reason": "доказательство падучести снятого выше носителя",
+      "successor": "снято вместе с носителем"
+    },
+    {
+      "carrier": "internal/repohygiene/withdrawalproducerarriveswiththeapplier_test.go",
+      "reason": "судил СОГЛАСИЕ двух фактов прод-дерева службы доступа: применитель ролей модуля приводится в действие и производитель отзыва роли существует",
+      "successor": "снято вместе с предметом: прод-файлов Go services/iam разобрано 0 при пороге 300 — обход пуст by construction"
+    }
+  ],
+  "retired_scopes": [
+    {
+      "scope": "services/iam",
+      "reason": "вынос службы доступа отдельным репозиторием PRO-Robotech/kaname (фаза B приёмки KAN-HOME-1): снят весь каталог службы — 2540 отслеживаемых файлов, среди них её собственный корпус носителей гейтов",
+      "successor": "предмет уехал ВМЕСТЕ с носителями: и код, и стерегущие его гейты живут теперь в дереве службы, где обе стороны каждого утверждения снова в одном репозитории. В этом дереве у них предмета нет — судить нечего, а не «перестали судить»"
+    }
+  ]
+}

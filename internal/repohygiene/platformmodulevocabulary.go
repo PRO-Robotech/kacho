@@ -40,8 +40,12 @@ import (
 
 // vocabularyCensus — объём осмотренного, по колонкам.
 type vocabularyCensus struct {
-	Modules          int
-	ServiceDirs      int
+	Modules     int
+	ServiceDirs int
+	// SourcesElsewhere — модулей словаря, чьи исходники живут в другом
+	// репозитории. Печатается отдельным числом: слитое с остальными, оно
+	// читалось бы как осмотренное.
+	SourcesElsewhere int
 	ProtoDirs        int
 	ModelTypes       int
 	WithObjectDomain int
@@ -49,9 +53,10 @@ type vocabularyCensus struct {
 
 func (c vocabularyCensus) Summary() string {
 	return fmt.Sprintf(
-		"объявлено модулей %d · каталогов служб %d · каталогов контрактов %d · "+
-			"типов модели %d · модулей с непустым доменом типов %d",
-		c.Modules, c.ServiceDirs, c.ProtoDirs, c.ModelTypes, c.WithObjectDomain)
+		"объявлено модулей %d · каталогов служб %d · из них исходники вне дерева %d · "+
+			"каталогов контрактов %d · типов модели %d · модулей с непустым доменом типов %d",
+		c.Modules, c.ServiceDirs, c.SourcesElsewhere, c.ProtoDirs, c.ModelTypes,
+		c.WithObjectDomain)
 }
 
 // judgePlatformVocabulary судит словарь против трёх производителей.
@@ -63,6 +68,39 @@ func (c vocabularyCensus) Summary() string {
 // Находки собираются ВСЕ: названная первая заставила бы чинить их по одной.
 func judgePlatformVocabulary(declared []platformmodules.Module,
 	serviceDirs, protoDirs, modelTypes map[string]struct{}) ([]string, vocabularyCensus) {
+	return judgePlatformVocabularyWithExternal(declared, serviceDirs, protoDirs, modelTypes,
+		externalModuleSources)
+}
+
+// externalModuleSources — модули словаря, чьи ИСХОДНИКИ живут в другом
+// репозитории.
+//
+// # Почему запись остаётся в словаре, а гейт учится третьему состоянию
+//
+// Словарь читает не только гейт: `pkg/authz/proxytuple` спрашивает у него
+// `ObjectDomainOfService`/`CatalogModuleOfService` НА ПУТИ ЗАПРОСА. Фундамент
+// публикуется, и вынесенная служба берёт его опубликованной версией — то есть
+// спрашивает этот же словарь о СЕБЕ. Снять запись значило бы заставить
+// опубликованный фундамент отвечать «модуль неизвестен» её собственному домену:
+// поломка поведения, а не уборка объявления.
+//
+// Поэтому запись жива, а третье состояние объявлено ЗДЕСЬ и НАЗЫВАЕТСЯ в
+// переписи: «каталога служб столько, из них исходники вне дерева у столька-то».
+// Молчаливый пропуск был бы неотличим от осмотренного.
+//
+// Самоистечение в обе стороны держит гейт ниже: запись, чей каталог службы В
+// ДЕРЕВЕ ЕСТЬ, — находка (служба вернулась, объявление пережило предмет), и
+// имя, которого нет в словаре модулей, — тоже.
+var externalModuleSources = map[string]string{
+	"iam": "PRO-Robotech/kaname",
+}
+
+// judgePlatformVocabularyWithExternal — тот же вердикт, но ведомость вынесенных
+// модулей подаётся ЯВНО: доказательство способности падать обязано предъявить
+// оба мира, иначе один и тот же вход давал бы один и тот же вердикт.
+func judgePlatformVocabularyWithExternal(declared []platformmodules.Module,
+	serviceDirs, protoDirs, modelTypes map[string]struct{},
+	external map[string]string) ([]string, vocabularyCensus) {
 
 	census := vocabularyCensus{
 		Modules:     len(declared),
@@ -77,9 +115,20 @@ func judgePlatformVocabulary(declared []platformmodules.Module,
 	for _, m := range declared {
 		byService[m.Service] = struct{}{}
 
-		if _, ok := serviceDirs[m.Service]; !ok {
+		_, sourcesElsewhere := external[m.Service]
+		_, dirPresent := serviceDirs[m.Service]
+		switch {
+		case sourcesElsewhere && dirPresent:
+			faults = append(faults, "модуль "+m.Service+": объявлен вынесенным (исходники в "+
+				"другом репозитории), а каталог services/"+m.Service+" в дереве ЕСТЬ — "+
+				"объявление пережило свой предмет: снимите запись из externalModuleSources")
+		case sourcesElsewhere:
+			census.SourcesElsewhere++
+		case !dirPresent:
 			faults = append(faults, "модуль "+m.Service+": каталога services/"+m.Service+
-				" в дереве нет — короткое имя службы называет то, чего не существует")
+				" в дереве нет — короткое имя службы называет то, чего не существует. "+
+				"Если служба вынесена отдельным репозиторием, это объявляется записью в "+
+				"externalModuleSources, а не молчанием")
 		}
 		if _, ok := protoDirs[m.CatalogModule]; !ok {
 			faults = append(faults, "модуль "+m.Service+": каталога контрактов "+

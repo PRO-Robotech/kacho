@@ -198,11 +198,16 @@ var exemptFiles = map[string]string{
 	"services/compute/internal/migrations/0009_rename_folder_to_project.sql":      "applied migration: the record of the rename itself — it must keep naming what it renamed",
 	"services/compute/internal/handler/tenant_interceptor_project_header_test.go": "conformance test: it sends the retired header to prove the server does not honour it; removing the name would remove the proof",
 
-	// Newman cases that ASSERT the retired word is absent from a response, and the
-	// collections generated from them. The literal IS the assertion: remove it and
-	// the proof that the rename reached the wire goes with it.
-	"services/iam/tests/newman/cases/iam-account-redesign.py":                            "conformance case: asserts no pre-redesign container key is served",
-	"services/iam/tests/newman/collections/iam-account-redesign.postman_collection.json": "generated from the conformance case above; regenerating it reproduces the literal",
+	// Here stood two entries for the access service's newman conformance case and
+	// its generated collection: the literal WAS the assertion there, so it was
+	// exempted rather than removed.
+	//
+	// Both are gone together with their subject. The service was carved out into
+	// its own repository (task #1111) and `services/iam` no longer exists in this
+	// tree, so the exemptions had nothing left to excuse — and an exemption whose
+	// subject is gone is a finding, not a leftover: the next blind spot inherits
+	// it silently. The proof they protected did not disappear, it moved: the case
+	// and its collection are judged in the service's own tree now.
 }
 
 // awaitingPass is the price of splitting a sweep across two concurrent passes:
@@ -225,7 +230,11 @@ var exemptFiles = map[string]string{
 var awaitingPass = map[string]string{}
 
 // awaitingRoots are the only trees an awaitingPass entry may name.
-var awaitingRoots = []string{"services/iam/", "gateway/"}
+//
+// `services/iam/` was dropped from this list with the tree it named: the access
+// service left the monorepo (task #1111), so a deferral pointing into it could
+// never be honoured — it would name a tree no pass of this repository owns.
+var awaitingRoots = []string{"gateway/"}
 
 // Finding is one occurrence, or one exemption that no longer earns its place.
 type Finding struct {

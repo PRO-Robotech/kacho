@@ -7,7 +7,7 @@
 // The catalog is emitted by `protoc-gen-kacho-permissions` and embedded into
 // the api-gateway binary via `//go:embed` from a sibling-replicated copy in
 // `internal/middleware/embed/permission_catalog.json` (kept in sync with
-// kacho-proto via the `make sync-permission-catalog` Makefile target).
+// kacho-proto via the `make -C gateway permission-catalog-apply` Makefile target).
 //
 // Loaded shape:
 //

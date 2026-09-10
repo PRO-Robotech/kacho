@@ -53,9 +53,6 @@ package middleware_test
 // 287 → 290, catalog total 346 → 350.
 
 import (
-	"os"
-	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -359,7 +356,7 @@ func TestPermissionCatalog_ACR_CreateNetStrengthening(t *testing.T) {
 	assert.True(t, e.IsExempt(), "Create must remain FGA-exempt")
 }
 
-// TestPermissionCatalog_ACR_CountsAndByteIdentity — SEC-ACR-13 / I2: the whole
+// TestPermissionCatalog_ACR_Counts — SEC-ACR-13 / I2: the whole
 // catalog splits 26×"2" / 211×"1" / 63×"" = 300, and both embedded copies
 // (gateway + iam) are byte-identical. (NLB CONTRACT removed the 4 routine
 // loadbalancer RPCs Start/Stop/AttachTargetGroup/DetachTargetGroup: 332→328;
@@ -375,7 +372,7 @@ func TestPermissionCatalog_ACR_CreateNetStrengthening(t *testing.T) {
 // in proto and routed at the edge, but no implementation existed anywhere, so
 // its 23 entries pointed at paths that answered 404 — and its field names named
 // another cloud on our own wire, which ban #2 does not allow.)
-func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
+func TestPermissionCatalog_ACR_Counts(t *testing.T) {
 	c, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
 
@@ -761,23 +758,12 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	assert.Equal(t, 27, nEmpty, "no-acr-requirement count (подмножество `<exempt>`, не равное ему)")
 	assert.Equal(t, 350, n2+n1+nEmpty, "catalog total")
 
-	// Byte-identity of the two embedded copies.
-	gw := middleware.EmbeddedPermissionCatalogJSON()
-	iamPath := iamCatalogPath(t)
-	iamBytes, err := os.ReadFile(iamPath)
-	require.NoError(t, err, "read iam embedded catalog copy")
-	assert.Equal(t, string(gw), string(iamBytes),
-		"gateway and iam embedded permission_catalog.json copies must be byte-identical")
-}
-
-// iamCatalogPath resolves the iam embedded catalog copy relative to THIS test
-// source file (robust to the test's working directory).
-func iamCatalogPath(t *testing.T) string {
-	t.Helper()
-	_, thisFile, _, ok := runtime.Caller(0)
-	require.True(t, ok)
-	// this file: <repo>/gateway/internal/middleware/permission_catalog_acr_invariant_test.go
-	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", "..", ".."))
-	return filepath.Join(repoRoot, "services", "iam", "internal", "apps", "kaname",
-		"seed", "embedded", "permission_catalog.json")
+	// Здесь сверялась ПОБАЙТОВАЯ идентичность двух вшитых копий каталога — края
+	// и посева службы доступа. Половина утверждения снята вместе со своим
+	// предметом: служба вынесена отдельным репозиторием (задача #1111), второй
+	// копии в этом дереве нет, и равенство двух объявлений невыразимо, когда
+	// одно из них лежит в другом дереве.
+	//
+	// Числа выше предмета не теряли: они замеряются по ЕДИНСТВЕННОЙ оставшейся
+	// копии, и дрейф её содержимого по-прежнему роняет прогон с точным числом.
 }

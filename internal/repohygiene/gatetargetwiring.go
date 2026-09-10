@@ -530,102 +530,7 @@ func makeTargetWiringCensus(w makeTargetWiring) string {
 		total, strings.Join(calls, ", "))
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ПРОВЯЗКА ЦЕЛИ, ОБЪЯВЛЯЕМОЙ КАЖДЫМ СЕРВИСОМ (services/*/Makefile)
-// ─────────────────────────────────────────────────────────────────────────────
-
-// judgeTargetWiring — провязка одной цели глазами гейта, каждый объём своим
-// числом.
-type judgeTargetWiring struct {
-	// Target — имя цели, о которой всё нижеследующее.
-	Target string
-	// Declaring — сервисы, чей Makefile ОБЪЯВЛЯЕТ цель. Факт о дереве.
-	Declaring []string
-	// CalledByWorkflow — сервис → носители конвейера, зовущие цель.
-	CalledByWorkflow map[string][]string
-	// CalledByLocalRunner — сервисы, которые зовёт локальный прогонщик.
-	CalledByLocalRunner map[string]bool
-	// Объёмы осмотренного: «ноль находок» обязано быть отличимо от «ноль
-	// прочитанного», поэтому каждый обход отчитывается своим числом.
-	// WorkflowStepsRead считает шаги с телом `run:` — именно они и есть
-	// популяция, в которой вызов вообще может стоять.
-	MakefilesRead, WorkflowsRead, WorkflowStepsRead, LocalRunnersRead int
-}
-
-// readJudgeTargetWiring — состав провязки цели `target` в дереве `root`.
-//
-// Возвращает ошибку вместо падения, чтобы этой же функцией пользовалась
-// инъекция: она обязана наблюдать исход, а не завершать прогон.
-func readJudgeTargetWiring(root, target string) (judgeTargetWiring, error) {
-	w := judgeTargetWiring{
-		Target:              target,
-		CalledByWorkflow:    map[string][]string{},
-		CalledByLocalRunner: map[string]bool{},
-	}
-	declRe := targetDeclarationRe(target)
-	m := newMakeCallMatcher(target)
-
-	entries, err := os.ReadDir(filepath.Join(root, "services"))
-	if err != nil {
-		return w, fmt.Errorf("не прочитан services/: %w", err)
-	}
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		// #nosec G304 -- имя каталога пришло из перечня services/ ЭТОГО дерева, а
-		// хвост пути — константа: подставить посторонний файл извне нечем.
-		raw, rerr := os.ReadFile(filepath.Join(root, "services", e.Name(), "Makefile"))
-		if rerr != nil {
-			continue
-		}
-		w.MakefilesRead++
-		if declRe.Match(executablePartOf(string(raw))) {
-			w.Declaring = append(w.Declaring, e.Name())
-		}
-	}
-	sort.Strings(w.Declaring)
-
-	steps, files, serr := readWorkflowRunSteps(root)
-	if serr != nil {
-		return w, serr
-	}
-	w.WorkflowsRead = len(files)
-	w.WorkflowStepsRead = len(steps)
-	for _, st := range steps {
-		for _, dir := range m.dirsIn(st.Run, st.WorkDir) {
-			if svc, ok := serviceOfDir(dir); ok {
-				w.CalledByWorkflow[svc] = append(w.CalledByWorkflow[svc], st.File)
-			}
-		}
-	}
-	for svc := range w.CalledByWorkflow {
-		sort.Strings(w.CalledByWorkflow[svc])
-		w.CalledByWorkflow[svc] = uniqueStrings(w.CalledByWorkflow[svc])
-	}
-
-	// #nosec G304 -- путь склеен из корня дерева и КОНСТАНТЫ localRunnerRel;
-	// переменной части у него нет вовсе.
-	raw, rerr := os.ReadFile(filepath.Join(root, filepath.FromSlash(localRunnerRel)))
-	if rerr != nil {
-		return w, fmt.Errorf("не прочитан %s: %w", localRunnerRel, rerr)
-	}
-	w.LocalRunnersRead++
-	// Рабочий каталог прогонщика — корень дерева: `cd` внутри него здесь не
-	// раскрывается, и голый `make <цель>` адресуется корню, а не сервису. Это
-	// та же безопасная сторона: провязка через `cd` будет объявлена
-	// отсутствующей, а не зачтена непонятой.
-	for _, dir := range m.dirsIn(string(raw), "") {
-		if svc, ok := serviceOfDir(dir); ok {
-			w.CalledByLocalRunner[svc] = true
-		}
-	}
-
-	return w, nil
-}
-
-// uniqueStrings — соседние повторы прочь: один носитель, зовущий цель дважды,
-// не есть два носителя.
+// uniqueStrings — соседние дубликаты из ОТСОРТИРОВАННОГО среза, на месте.
 func uniqueStrings(in []string) []string {
 	out := in[:0]
 	var prev string
@@ -639,68 +544,28 @@ func uniqueStrings(in []string) []string {
 	return out
 }
 
-// findJudgeTargetWiringFaults — расхождения провязки, в ОБЕ стороны.
-func findJudgeTargetWiringFaults(w judgeTargetWiring) []string {
-	var out []string
-	declared := map[string]bool{}
-	for _, svc := range w.Declaring {
-		declared[svc] = true
-	}
-
-	for _, svc := range w.Declaring {
-		if len(w.CalledByWorkflow[svc]) == 0 {
-			out = append(out, fmt.Sprintf(
-				"services/%s объявляет цель %s, но её не зовёт ни один шаг конвейера — судья есть, "+
-					"исполнять его некому. Ось, которую судит ТОЛЬКО он, не встречает ни одной "+
-					"автоматической проверки, и молчание неотличимо от исправной работы. Чинится "+
-					"ПРОВЯЗКОЙ существующего судьи, а не вторым судьёй",
-				svc, w.Target))
-		}
-		if !w.CalledByLocalRunner[svc] {
-			out = append(out, fmt.Sprintf(
-				"services/%s объявляет цель %s, но её не зовёт %s — отправка ветки уходит, ни разу "+
-					"не спросив судью. Внутри накопительной линии вердикта конвейера не будет вовсе, "+
-					"поэтому локальный прогон здесь единственное, что стоит между правкой и стволом",
-				svc, w.Target, localRunnerRel))
-		}
-	}
-	for svc, carriers := range w.CalledByWorkflow {
-		if !declared[svc] {
-			out = append(out, fmt.Sprintf(
-				"%s зовёт %s для services/%s, но такой цели там не объявлено — шаг позеленеет ни на чём",
-				strings.Join(carriers, ", "), w.Target, svc))
-		}
-	}
-	for svc := range w.CalledByLocalRunner {
-		if !declared[svc] {
-			out = append(out, fmt.Sprintf(
-				"%s зовёт %s для services/%s, но такой цели там не объявлено — шаг позеленеет ни на чём",
-				localRunnerRel, w.Target, svc))
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
-// judgeTargetWiringCensus — перепись объёма осмотренного, одной строкой.
+// ─────────────────────────────────────────────────────────────────────────────
+// ЗДЕСЬ СТОЯЛА ВТОРАЯ ПОЛОВИНА МЕХАНИЗМА — ПРОВЯЗКА ЦЕЛИ, ОБЪЯВЛЯЕМОЙ
+// СЕРВИСОМ (services/*/Makefile). СНЯТА ВМЕСТЕ СО СВОИМИ ПРЕДМЕТАМИ.
+// ─────────────────────────────────────────────────────────────────────────────
 //
-// Носители печатаются ПОРОЗНЬ: одно число скрыло бы ровно тот случай, ради
-// которого гейт заведён, — провязку, оставшуюся в одном носителе из двух.
-func judgeTargetWiringCensus(w judgeTargetWiring) string {
-	byWorkflow := make([]string, 0, len(w.CalledByWorkflow))
-	for svc, carriers := range w.CalledByWorkflow {
-		byWorkflow = append(byWorkflow, svc+"←"+strings.Join(carriers, "+"))
-	}
-	sort.Strings(byWorkflow)
-	local := make([]string, 0, len(w.CalledByLocalRunner))
-	for svc := range w.CalledByLocalRunner {
-		local = append(local, svc)
-	}
-	sort.Strings(local)
-	return fmt.Sprintf("перепись цели %s: Makefile прочитано %d · объявляют цель %d (%s) · "+
-		"workflow прочитано %d, шагов с телом run %d, зовут %d (%s) · прогонщиков прочитано %d, зовут %d (%s)",
-		w.Target,
-		w.MakefilesRead, len(w.Declaring), strings.Join(w.Declaring, ", "),
-		w.WorkflowsRead, w.WorkflowStepsRead, len(byWorkflow), strings.Join(byWorkflow, ", "),
-		w.LocalRunnersRead, len(local), strings.Join(local, ", "))
-}
+// Предметов у неё было ДВА, и оба объявляла служба доступа: `module-manifest-check`
+// (единственный судья формы манифеста домена) и `model-canon-check` (побайтовая
+// сверка блоков модели с манифестами). Служба вынесена отдельным репозиторием
+// вместе со своим `Makefile`, и целей этой формы в дереве не осталось ни одной:
+// предикат — `git grep -n 'module-manifest-check\|model-canon-check' --
+// 'services/*/Makefile'` → пусто.
+//
+// Оставить механизм без вызывающего было нельзя по его же доводу: неиспользуемый
+// разбор есть мёртвый код, а мёртвый разбор рядом с живым читается как
+// действующий, и следующий заведёт третий предмет под него, не заметив, что
+// первых двух нет.
+//
+// ЧТО ОСТАЛОСЬ ВЫШЕ и от снятия не зависит: форма «цель объявлена НЕ в services/*,
+// а рабочим каталогом шага» (`permission-catalog-check` в gateway/Makefile). Её
+// предмет жив, её гейт — domaingenerationwiring_test.go.
+//
+// Заведётся снова судья, объявленный сервисом, — эту половину надо ВЕРНУТЬ вместе
+// с ним: у единственного судьи без вызывающего ось, которую судит только он, не
+// встречает ни одной автоматической проверки, и молчание неотличимо от исправной
+// работы.

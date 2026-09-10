@@ -18,14 +18,17 @@ package repohygiene
 // человек спрашивает только про себя. Гейт стережёт ровно это свойство
 // поверхности.
 //
-// # ПОЧЕМУ ПОЛОС ТРИ, А НЕ ОДНА
+// # ПОЧЕМУ ПОЛОС ДВЕ, А НЕ ОДНА
 //
-// Полосы A и B ловят вопрос, заданный ПАРАМЕТРОМ (полем субъекта либо термом
-// фильтра). Полоса C ловит его, заданный АРИФМЕТИКОЙ: идентификатор членства
-// не чеканится, а вычисляется из пары «человек:аккаунт» неизменяемой функцией
-// без соли, поэтому чтение по одному идентификатору — полный межаккаунтный
-// оракул, у которого идентификатора ЧЕЛОВЕКА нет вовсе, и первые две полосы о
-// нём молчат by construction.
+// Полоса A ловит вопрос, заданный ПАРАМЕТРОМ (полем субъекта). Полоса C ловит
+// его, заданный АРИФМЕТИКОЙ: идентификатор членства не чеканится, а вычисляется
+// из пары «человек:аккаунт» неизменяемой функцией без соли, поэтому чтение по
+// одному идентификатору — полный межаккаунтный оракул, у которого идентификатора
+// ЧЕЛОВЕКА нет вовсе, и первая полоса о нём молчит by construction.
+//
+// Полос было ТРИ: третья (B) ловила вопрос, заданный термом фильтра. Она снята
+// вместе со своим предметом — разбор ниже говорит, почему именно так, а не
+// расширением корня.
 //
 // Предпосылка полосы C названа здесь, рядом с ней, и ПРОВЕРЯЕТСЯ: перестанет
 // идентификатор быть вычислимым — запрет обязан быть ПЕРЕСМОТРЕН, а не
@@ -39,9 +42,6 @@ package repohygiene
 
 import (
 	"fmt"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -54,28 +54,61 @@ import (
 // oracleProtoDir — поверхность, которую судит гейт.
 const oracleProtoDir = "proto/kaname/cloud/iam/v1"
 
-// oracleFilterRoots — прод-код, где объявляются белые списки фильтра.
-var oracleFilterRoots = []string{"services/iam/internal"}
+// ЗДЕСЬ БЫЛА ПОЛОСА B — терм фильтра, называющий субъекта, на чтении без
+// обязательного аккаунта. Она снята вместе со своим предметом.
+//
+// Предметом полосы были БЕЛЫЕ СПИСКИ ФИЛЬТРА, объявленные в прод-коде службы
+// доступа: её единственный корень так и назывался — `services/iam/internal`.
+// Служба вынесена отдельным продуктом, и в этом дереве таких списков нет ни
+// одного.
+//
+// ШИРЕ КОРЕНЬ ВЗЯТЬ БЫЛО НЕЛЬЗЯ, и это не лень, а свойство самой полосы: она
+// связывает список с чтением, а чтения берутся из контрактов службы доступа.
+// Белый список соседнего домена не связался бы ни с одним из них (`Bound` пуст),
+// и полоса объявила бы находкой КАЖДЫЙ такой список с термом `user_id` — то есть
+// стала бы производителем ложных находок на живом дереве. Живых вызовов разбора
+// фильтра в дереве 37 файлов у пяти доменов, так что цена ошибки измерена, а не
+// предположена.
+//
+// Механизм полосы был доказан инъекцией на СОБРАННОМ дереве, и доказательство
+// снято вместе с ним: держать проверку, у которой в дереве нет и не может быть
+// предмета, значит держать её ради зелёного.
 
 // Предпосылка полосы C: идентификатор членства ВЫЧИСЛЯЕТСЯ из пары, а не
 // чеканится.
 //
-// # Ищется по КОРПУСУ, а не по имени файла
+// # Предмет тот же, а ПРОИЗВОДИТЕЛЬ сменился — и это не ослабление
 //
-// Здесь стояла координата одной миграции, и она умерла 2026-09-04: свод (171
-// файл → один, написанный `pg_dump`) снял файл, в котором деривация была
-// заведена. Само выражение при этом ЖИВО и переехало в свод байт-в-байт — оно
-// стоит в теле функции, — то есть предпосылка была верна, а гейт объявлял её
-// ложной. Так выглядит утверждение, привязанное к координате вместо предмета:
-// оно переживает не факт, а раскладку файлов.
+// Прежде предпосылка читалась в корпусе МИГРАЦИЙ службы доступа: искалось само
+// выражение деривации в теле функции схемы. Довод был верен ровно до выноса
+// службы отдельным продуктом: схемы в этом дереве нет ни одним файлом, читать
+// нечего, и «признака нет» стало неотличимо от «читать было нечего» — ровно то
+// различие, ради которого перепись и печатает объём.
 //
-// Предмет предпосылки — «схема iam выводит идентификатор членства из пары», и
-// принадлежит он КОРПУСУ миграций сервиса, а не какому-то его файлу.
-// Применённую миграцию не правят (ban #5), поэтому деривация переезжает вместе
-// со сводами и будет переезжать впредь; координата на неё указывать не вправе.
+// Производителем стал КОНТРАКТ, и он единственный оставшийся в этом дереве:
+// поверхность, которую полоса судит, объявлена здесь и правится здесь, а
+// объяснение сокрытия при чтении по одному идентификатору называет деривацию
+// прямо. Значит снятие предпосылки и снятие сокрытия видны ОДНИМ чтением одного
+// файла, а не двумя в разных репозиториях.
+//
+// # ГРАНИЦА НАЗВАНА, а не умолчана
+//
+// Контракт делает ЗАЯВЛЕНИЕ, а схема делала ФАКТ. Что идентификатор в самом деле
+// выводится из пары, держит владелец реализации в своём дереве; здесь
+// утверждается ровно то, что этому дереву принадлежит, — поверхность объясняет
+// сокрытие деривацией. Ослаблением это не является: полоса C и прежде опиралась
+// на предпосылку, а не проверяла арифметику; сменилось место, где предпосылка
+// объявлена.
+//
+// Перестанет контракт называть деривацию — запрет обязан быть ПЕРЕСМОТРЕН, а не
+// унаследован молча; ровно это и роняет прогон.
 const (
-	oracleMembershipIDCorpus = "services/iam/internal/migrations"
-	oracleMembershipIDMark   = "substr(md5('membership:'"
+	oracleMembershipIDCorpus = oracleProtoDir
+	// oracleMembershipIDMark — как контракт называет деривацию.
+	//
+	// Фраза, а не слово: одиночное «вычислим» встречается в прозе о другом, и
+	// распознаватель по нему зачёл бы за предпосылку любое соседнее объяснение.
+	oracleMembershipIDMark = "вычислим офлайн из пары"
 )
 
 // oracleAccountDictionary — по каким именам полей ответ считается «называющим
@@ -97,9 +130,6 @@ var oracleAccountTypes = []string{"Membership"}
 // находкой, а невидимостью.
 var oracleSubjectFields = []string{"user_id", "subject_id"}
 
-// oracleFilterSubjectTerms — термы фильтра, называющие субъекта (полоса B).
-var oracleFilterSubjectTerms = []string{"userId", "user_id", "subjectId", "subject_id"}
-
 // oracleTraversalDepth — предел обхода вложенных сообщений условия «б».
 //
 // Это РЕШЕНИЕ, а не измерение: «транзитивно по сообщениям» конечно не само по
@@ -118,6 +148,10 @@ type OracleRPC struct {
 	Response string
 	// ReqFields — поля запроса (имя → тип).
 	ReqFields map[string]string
+	// ScopeFiltered — контракт объявляет пообъектное сужение страницы правами
+	// вызывающего (`corelib.authz.v1.scope_filtered`). Это ДОКАЗАТЕЛЬСТВО
+	// условия «г», и живёт оно там же, где судимая поверхность, — в контракте.
+	ScopeFiltered bool
 }
 
 // FQN — имя, которым находка называет координату.
@@ -131,15 +165,6 @@ type OracleFinding struct {
 	Why  string
 }
 
-// OracleFilterWhitelist — один объявленный белый список фильтра.
-type OracleFilterWhitelist struct {
-	File  string
-	Line  int
-	Terms []string
-	// Bound — чтение, которому список принадлежит; пусто, если связать нечем.
-	Bound string
-}
-
 // OracleCensus — исход обхода. Объём осмотренного ВХОДИТ в исход, а не в лог.
 type OracleCensus struct {
 	ProtoFiles   int
@@ -147,12 +172,10 @@ type OracleCensus struct {
 	RPCs         int
 	PublicReads  int
 	LaneASeen    int
-	LaneBSeen    int
 	LaneCSeen    int
 	Depth        int
 	TruncatedAt  []string
 	Dictionary   []string
-	Whitelists   []OracleFilterWhitelist
 	IDComputable bool
 	// IDCorpusFiles — файлов корпуса миграций прочитано при проверке
 	// предпосылки полосы C. Ноль означает «читать было нечего», а не «признака
@@ -171,19 +194,12 @@ var (
 	oracleRPCRe     = regexp.MustCompile(`(?s)rpc\s+(\w+)\s*\(\s*([\w.]+)\s*\)\s*returns\s*\(\s*([\w.]+)\s*\)\s*\{(.*?)\n\s*\}`)
 	oracleServiceRe = regexp.MustCompile(`(?m)^service\s+(\w+)\s*\{`)
 	oracleGetRe     = regexp.MustCompile(`get:\s*"([^"]+)"`)
-	oracleParseRe   = regexp.MustCompile(`(?s)(?:filter\.Parse|parseListFilter)\s*\(\s*[^,]+,\s*(?:\[\]string\{)?([^)}]*)`)
-	oracleTermRe    = regexp.MustCompile(`"([A-Za-z_][A-Za-z0-9_]*)"`)
-	// oracleTermIdentRe — терм, записанный ИМЕНОВАННОЙ КОНСТАНТОЙ, а не литералом.
+	// oracleScopeFilteredRe — объявление пообъектного сужения страницы в ТЕЛЕ rpc.
 	//
-	// Форма законная и в этом дереве обычная: единый источник истины лучше
-	// литерала, продублированного у двух читателей. Распознаватель, знающий одну
-	// форму, оставил бы всё записанное второй ВНЕ НАБЛЮДЕНИЯ — не находкой, а
-	// невидимостью, и молчал бы об этом. Ровно так он и молчал о белом списке
-	// членства, пока сюда не добавили вторую форму.
-	oracleTermIdentRe = regexp.MustCompile(`\b([A-Za-z_][A-Za-z0-9_]*)\b`)
-	// oracleConstRe — объявление строковой константы, к которому идентификатор
-	// разрешается.
-	oracleConstRe = regexp.MustCompile(`(?m)^\s*(?:[A-Za-z_][A-Za-z0-9_]*\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*"([^"]*)"`)
+	// Судится тело САМОГО глагола (группа 4 разбора rpc), а не файл: опция
+	// соседнего глагола не доказывает ничего об этом, а поиск по файлу гасил бы
+	// целую службу первой же такой опцией у одного её чтения.
+	oracleScopeFilteredRe = regexp.MustCompile(`scope_filtered\s*\)?\s*=\s*true`)
 )
 
 // SurveyMembershipOracle обходит дерево и сводит три полосы.
@@ -241,18 +257,6 @@ func SurveyMembershipOracle(tree *treecorpus.Tree) (OracleCensus, error) {
 		c.TruncatedAt = append(c.TruncatedAt, t)
 	}
 	sort.Strings(c.TruncatedAt)
-
-	wl, err := oracleWhitelists(tree, rpcs)
-	if err != nil {
-		return c, err
-	}
-	c.Whitelists = wl
-	for _, w := range wl {
-		c.LaneBSeen++
-		if f, ok := oracleLaneB(w, rpcs); ok {
-			c.Findings = append(c.Findings, f)
-		}
-	}
 
 	c.IDComputable, c.IDCorpusFiles = oracleIDIsComputable(tree)
 
@@ -326,15 +330,31 @@ func oracleRPCsIn(rel, s string) []OracleRPC {
 			path = g[1]
 		}
 		out = append(out, OracleRPC{
-			Service:  svc,
-			Method:   s[m[2]:m[3]],
-			File:     rel,
-			HTTPPath: path,
-			Request:  oracleBare(s[m[4]:m[5]]),
-			Response: oracleBare(s[m[6]:m[7]]),
+			Service:       svc,
+			Method:        s[m[2]:m[3]],
+			File:          rel,
+			HTTPPath:      path,
+			Request:       oracleBare(s[m[4]:m[5]]),
+			Response:      oracleBare(s[m[6]:m[7]]),
+			ScopeFiltered: oracleScopeFilteredRe.MatchString(oracleStripProtoComments(s[m[8]:m[9]])),
 		})
 	}
 	return out
+}
+
+// oracleStripProtoComments — снятие построчных комментариев тела глагола.
+//
+// Без него гейт зачитывал бы за объявление собственное ОБЪЯСНЕНИЕ: тела оба
+// несут разбор сужения прозой и называют в нём то же имя опции, поэтому поиск по
+// слову оставался бы зелёным при снятом объявлении.
+func oracleStripProtoComments(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, ln := range lines {
+		if j := strings.Index(ln, "//"); j >= 0 {
+			lines[i] = ln[:j]
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func oracleBare(t string) string {
@@ -363,7 +383,7 @@ func oracleLaneA(r OracleRPC, msgs map[string]string, trunc map[string]bool) (Or
 	if oracleAccountIsMandatory(r) {
 		return OracleFinding{}, false
 	}
-	if oracleNarrowedByCallerRights(r.FQN()) {
+	if oracleNarrowedByCallerRights(r) {
 		return OracleFinding{}, false
 	}
 	return OracleFinding{
@@ -448,164 +468,6 @@ func oracleLaneC(r OracleRPC) (OracleFinding, bool) {
 	}, true
 }
 
-// oracleLaneB — терм фильтра, называющий субъекта, на чтении без обязательного
-// аккаунта.
-func oracleLaneB(w OracleFilterWhitelist, rpcs []OracleRPC) (OracleFinding, bool) {
-	subject := ""
-	for _, t := range w.Terms {
-		for _, s := range oracleFilterSubjectTerms {
-			if t == s {
-				subject = t
-			}
-		}
-	}
-	if subject == "" {
-		return OracleFinding{}, false
-	}
-	for _, r := range rpcs {
-		if r.FQN() == w.Bound && oracleAccountIsMandatory(r) {
-			return OracleFinding{}, false
-		}
-	}
-	return OracleFinding{
-		Lane: "B",
-		FQN:  w.Bound,
-		File: fmt.Sprintf("%s:%d", w.File, w.Line),
-		Why: "белый список фильтра несёт терм «" + subject + "», называющий субъекта, а " +
-			"аккаунт у этого чтения не обязателен — та же форма вопроса, спрятанная в filter",
-	}, true
-}
-
-// oracleWhitelists собирает объявленные белые списки и СВЯЗЫВАЕТ каждый с
-// чтением.
-//
-// Связывание идёт по каталогу файла — имя ресурса выводится из него и
-// превращается в имя службы. Связывание ПЕЧАТАЕТСЯ переписью: читатель обязан
-// видеть, что именно сопоставлено, а не верить, что сопоставлено верно.
-func oracleWhitelists(tree *treecorpus.Tree, rpcs []OracleRPC) ([]OracleFilterWhitelist, error) {
-	consts, err := oracleStringConsts(tree)
-	if err != nil {
-		return nil, err
-	}
-	var out []OracleFilterWhitelist
-	for _, rel := range tree.SortedFiles() {
-		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
-			continue
-		}
-		under := false
-		for _, root := range oracleFilterRoots {
-			if strings.HasPrefix(rel, root+"/") {
-				under = true
-			}
-		}
-		if !under {
-			continue
-		}
-		body, err := os.ReadFile(filepath.Join(tree.Root(), filepath.FromSlash(rel)))
-		if err != nil {
-			return nil, fmt.Errorf("чтение %s: %w", rel, err)
-		}
-		s := string(body)
-		for _, m := range oracleParseRe.FindAllStringSubmatchIndex(s, -1) {
-			arg := s[m[2]:m[3]]
-			var terms []string
-			for _, t := range oracleTermRe.FindAllStringSubmatch(arg, -1) {
-				terms = append(terms, t[1])
-			}
-			// Вторая законная форма: терм, названный КОНСТАНТОЙ. Разрешается к
-			// её объявлению; неразрешимое имя термом не считается.
-			for _, id := range oracleTermIdentRe.FindAllStringSubmatch(oracleStripLiterals(arg), -1) {
-				if v, ok := consts[id[1]]; ok {
-					terms = append(terms, v)
-				}
-			}
-			if len(terms) == 0 {
-				continue
-			}
-			sort.Strings(terms)
-			out = append(out, OracleFilterWhitelist{
-				File:  rel,
-				Line:  1 + strings.Count(s[:m[0]], "\n"),
-				Terms: terms,
-				Bound: oracleBindWhitelist(rel, rpcs),
-			})
-		}
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].File != out[j].File {
-			return out[i].File < out[j].File
-		}
-		return out[i].Line < out[j].Line
-	})
-	return out, nil
-}
-
-// oracleStringConsts — строковые константы прод-кода сервиса, к которым
-// разрешаются термы, записанные именем.
-//
-// Область та же, что у белых списков: константа, объявленная вне её, термом
-// этого сервиса не является.
-func oracleStringConsts(tree *treecorpus.Tree) (map[string]string, error) {
-	out := map[string]string{}
-	for _, rel := range tree.SortedFiles() {
-		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
-			continue
-		}
-		under := false
-		for _, root := range oracleFilterRoots {
-			if strings.HasPrefix(rel, root+"/") {
-				under = true
-			}
-		}
-		if !under {
-			continue
-		}
-		body, err := os.ReadFile(filepath.Join(tree.Root(), filepath.FromSlash(rel)))
-		if err != nil {
-			return nil, fmt.Errorf("чтение %s: %w", rel, err)
-		}
-		for _, m := range oracleConstRe.FindAllStringSubmatch(string(body), -1) {
-			if _, seen := out[m[1]]; !seen {
-				out[m[1]] = m[2]
-			}
-		}
-	}
-	return out, nil
-}
-
-// oracleStripLiterals убирает строковые литералы, чтобы разбор ИМЁН не считал
-// содержимое литерала именем.
-func oracleStripLiterals(s string) string {
-	return oracleTermRe.ReplaceAllString(s, " ")
-}
-
-// oracleBindWhitelist — какому списочному чтению принадлежит белый список.
-func oracleBindWhitelist(rel string, rpcs []OracleRPC) string {
-	base := strings.TrimSuffix(filepath.Base(rel), ".go")
-	base = strings.TrimSuffix(base, "_repo")
-	candidates := []string{base, filepath.Base(filepath.Dir(rel))}
-	for _, cand := range candidates {
-		svc := oracleCamel(cand) + "Service"
-		for _, r := range rpcs {
-			if r.Service == svc && strings.HasPrefix(r.Method, "List") {
-				return r.FQN()
-			}
-		}
-	}
-	return ""
-}
-
-func oracleCamel(s string) string {
-	parts := strings.Split(s, "_")
-	for i, p := range parts {
-		if p == "" {
-			continue
-		}
-		parts[i] = strings.ToUpper(p[:1]) + p[1:]
-	}
-	return strings.Join(parts, "")
-}
-
 // oracleQuench — чтение, гасящее условие «г» ДОКАЗАННО.
 //
 // Гасит его не звание, а СУЖЕНИЕ: страница такого чтения проходит пообъектный
@@ -622,36 +484,20 @@ func oracleCamel(s string) string {
 // удостоверял бы собственное объяснение (`testing.md` §«Гейт на класс», п.4).
 // Поэтому доказательство читается разбором и судится по узлу вызова.
 type oracleQuench struct {
-	FQN  string
-	File string
-	// Marker — ИМЯ ФУНКЦИИ, чей вызов доказывает сужение. Совпадение идёт по
-	// последнему сегменту (`pkg.Fn` и `Fn` равнозначны): предмет — вызвана ли
-	// функция, а не как записан её путь.
-	Marker string
-	Why    string
+	FQN string
+	Why string
 }
-
-// oracleNarrowingCall — имя функции, чей вызов доказывает сужение страницы.
-//
-// Одно написание на обе записи: две копии имени разошлись бы при первом же
-// переименовании, и разошлись бы молча — запись, потерявшая доказательство,
-// краснеет, а запись, доказанная НЕ ТЕМ вызовом, нет.
-const oracleNarrowingCall = "visibleOnNarrowedPage"
 
 var oracleQuenchedByNarrowing = []oracleQuench{
 	{
-		FQN:    "AccessBindingService/ListBySubject",
-		File:   "services/iam/internal/apps/kaname/api/access_binding/list_by_subject.go",
-		Marker: oracleNarrowingCall,
+		FQN: "AccessBindingService/ListBySubject",
 		Why: "страница полосы распорядителя аккаунта проходит пообъектный вопрос к модели " +
 			"прав, а полосы собственного чтения и надзора облака шире принадлежащего им не " +
 			"бывают — ответ поэтому не называет областей, к которым вызывающий отношения " +
 			"не имеет (#1352)",
 	},
 	{
-		FQN:    "AccessBindingService/ListSubjectPrivileges",
-		File:   "services/iam/internal/apps/kaname/api/access_binding/list_subject_privileges.go",
-		Marker: oracleNarrowingCall,
+		FQN: "AccessBindingService/ListSubjectPrivileges",
 		Why: "то же сужение и ТЕМ ЖЕ вызовом, что у соседнего чтения: допуск решается по " +
 			"домашнему аккаунту субъекта, а строки ответа проходят пообъектный вопрос по " +
 			"идентификатору выдачи, поэтому области в чужих аккаунтах на страницу не " +
@@ -683,13 +529,38 @@ type oracleAllowance struct {
 var oracleDeclaredAllowances = []oracleAllowance{}
 
 // oracleNarrowedByCallerRights — гасит ли условие «г» это чтение.
-func oracleNarrowedByCallerRights(fqn string) bool {
+//
+// Требуется ДВОЕ сразу: запись ведомости (решение названо вслух и со ссылкой на
+// задачу) И объявление сужения в САМОМ контракте. Одной записи недостаточно —
+// иначе ведомость гасила бы чтение своим существованием; одной опции тоже —
+// иначе снятие обязательного аккаунта гасилось бы молча, без чьего-либо решения.
+func oracleNarrowedByCallerRights(r OracleRPC) bool {
 	for _, q := range oracleQuenchedByNarrowing {
-		if q.FQN == fqn {
-			return true
+		if q.FQN == r.FQN() {
+			return r.ScopeFiltered
 		}
 	}
 	return false
+}
+
+// oracleContractRPCs — глаголы контракта службы доступа, прочитанные из дерева.
+//
+// Вынесено из обхода, потому что читателей стало ДВА: сам обход и перепись
+// доказательств гасящих записей. Второй разбор тех же файлов разошёлся бы с
+// первым молча — и разошёлся бы именно там, где расхождение не видно.
+func oracleContractRPCs(tree *treecorpus.Tree) ([]OracleRPC, error) {
+	var rpcs []OracleRPC
+	for _, rel := range tree.SortedFiles() {
+		if !strings.HasPrefix(rel, oracleProtoDir+"/") || !strings.HasSuffix(rel, ".proto") {
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(tree.Root(), filepath.FromSlash(rel)))
+		if err != nil {
+			return nil, fmt.Errorf("чтение %s: %w", rel, err)
+		}
+		rpcs = append(rpcs, oracleRPCsIn(rel, string(body))...)
+	}
+	return rpcs, nil
 }
 
 // OracleQuenchProof — доказательство одной гасящей записи, прочитанное в дереве.
@@ -701,58 +572,50 @@ type OracleQuenchProof struct {
 
 // SurveyOracleQuenchProofs проверяет предпосылку КАЖДОЙ гасящей записи.
 //
-// Доказательство читается РАЗБОРОМ: судится узел вызова, а не текст файла.
-// Прозу о сужении оба файла несут развёрнутую, и подстрочный поиск находил бы
-// её, оставаясь зелёным при снятом сужении.
+// # Доказательство переехало из РЕАЛИЗАЦИИ в КОНТРАКТ, и это не ослабление
+//
+// Прежде оно читалось разбором прод-кода службы доступа: искался узел вызова
+// функции сужения страницы. Служба вынесена отдельным продуктом, файлов в этом
+// дереве нет, и обе записи покраснели — доказательство пережило свой предмет.
+//
+// Контракт при этом остался ЗДЕСЬ и здесь же правится, поэтому доказательством
+// стало его собственное объявление `corelib.authz.v1.scope_filtered = true` в
+// теле судимого глагола. Оно живёт в том же файле, что и судимая поверхность,
+// значит снятие сужения и снятие обязательного аккаунта видны ОДНИМ чтением, а
+// не двумя в разных репозиториях.
+//
+// ГРАНИЦА НАЗВАНА: опция есть ОБЪЯВЛЕНИЕ, а не исполнение. Что страница
+// действительно сужается построчно, держит владелец реализации — и держит в
+// своём дереве. Здесь утверждается ровно то, что этому дереву принадлежит:
+// поверхность объявляет сужение, а решение о гашении названо вслух ведомостью.
 func SurveyOracleQuenchProofs(tree *treecorpus.Tree) []OracleQuenchProof {
+	rpcs, err := oracleContractRPCs(tree)
+	if err != nil {
+		// Нечитаемый контракт — НЕ доказательство: перепись отдаст «не найдено»
+		// по каждой записи, и гейт скажет об этом отказом, а не молчанием.
+		rpcs = nil
+	}
+	byFQN := make(map[string]OracleRPC, len(rpcs))
+	for _, r := range rpcs {
+		byFQN[r.FQN()] = r
+	}
 	out := make([]OracleQuenchProof, 0, len(oracleQuenchedByNarrowing))
 	for _, q := range oracleQuenchedByNarrowing {
+		r, ok := byFQN[q.FQN]
 		out = append(out, OracleQuenchProof{
 			FQN:   q.FQN,
-			File:  q.File,
-			Found: oracleFileCalls(filepath.Join(tree.Root(), filepath.FromSlash(q.File)), q.Marker),
+			File:  r.File,
+			Found: ok && r.ScopeFiltered,
 		})
 	}
 	return out
 }
 
-// oracleFileCalls — зовёт ли файл функцию с таким именем.
-//
-// Нечитаемый и неразбираемый файл отвечают «нет»: доказательство, которое нельзя
-// прочитать, доказательством не является.
-func oracleFileCalls(path, name string) bool {
-	body, err := os.ReadFile(path) // #nosec G304 -- путь собран из ведомости гейта, не из ввода
-	if err != nil {
-		return false
-	}
-	file, err := parser.ParseFile(token.NewFileSet(), path, body, 0)
-	if err != nil {
-		return false
-	}
-	want := name
-	if i := strings.LastIndex(want, "."); i >= 0 {
-		want = want[i+1:]
-	}
-	found := false
-	ast.Inspect(file, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-		switch fn := call.Fun.(type) {
-		case *ast.Ident:
-			if fn.Name == want {
-				found = true
-			}
-		case *ast.SelectorExpr:
-			if fn.Sel != nil && fn.Sel.Name == want {
-				found = true
-			}
-		}
-		return !found
-	})
-	return found
-}
+// ЗДЕСЬ БЫЛА функция чтения ВЫЗОВА в прод-файле — единственный её вызывающий
+// (перепись доказательств гасящих записей) переведён на объявление контракта,
+// потому что прод-файлов службы доступа в этом дереве нет. Функция снята вместе
+// со своим предметом: помощник без вызывающего есть тот же мёртвый код, что и
+// проверка без предмета.
 
 // OracleAllowanceNames — имена объявленных послаблений, для переписи.
 func OracleAllowanceNames() []string {
@@ -790,7 +653,7 @@ func oracleIDIsComputable(tree *treecorpus.Tree) (bool, int) {
 	read := 0
 	found := false
 	for _, rel := range tree.SortedFiles() {
-		if !strings.HasPrefix(rel, prefix) || !strings.HasSuffix(rel, ".sql") {
+		if !strings.HasPrefix(rel, prefix) || !strings.HasSuffix(rel, ".proto") {
 			continue
 		}
 		body, err := os.ReadFile(filepath.Join(tree.Root(), filepath.FromSlash(rel)))

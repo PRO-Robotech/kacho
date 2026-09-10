@@ -245,20 +245,20 @@ UNIT_TIMEOUT ?= 40m
 INTEGRATION_TIMEOUT ?= 25m
 
 # Сервисы, у которых есть интеграционные пакеты. Совпадает с матрицей CI.
-SERVICES ?= iam vpc compute geo nlb storage registry
+SERVICES ?= vpc compute geo nlb storage registry
 
-# ─── МОДУЛЬ СЛУЖБЫ IAM ───────────────────────────────────────────────────────
+# ─── ВТОРОГО МОДУЛЯ В ДЕРЕВЕ НЕТ ─────────────────────────────────────────────
 #
-# Служба iam несёт СВОЙ `go.mod` (`github.com/PRO-Robotech/kaname`): она
-# выносится отдельным репозиторием и обязана собираться без дерева монорепо на
-# диске. Следствие, о котором тут и речь: корневой `./...` её пакетов БОЛЬШЕ НЕ
-# ВИДИТ — модуль-родитель заканчивается там, где начинается вложенный.
+# Здесь стоял `IAM_MODULE_DIR` и семь целей, звавших модуль службы доступа ВТОРЫМ
+# прогоном: у неё был свой `go.mod`, и корневой `./...` её пакетов не видел.
+# Служба вынесена отдельным репозиторием целиком — каталога в дереве нет, второго
+# прогона неоткуда взять, и цели снятого модуля сняты ВМЕСТЕ с ним.
 #
-# Молчаливое сужение вердикта — главный риск этого разделения: цели, гонявшие
-# `./...`, продолжали бы выходить зелёными, перестав проверять службу вовсе.
-# Поэтому каждая такая цель ниже зовёт модуль службы ВТОРЫМ прогоном, а не
-# полагается на корневой обход.
-IAM_MODULE_DIR ?= services/iam
+# Свойство, ради которого второй прогон заводился, при этом не утрачено, а стало
+# беспредметным: модуль в дереве ОДИН (`git ls-files '*go.mod'` → 1), поэтому
+# корневой обход больше ничего не сужает молча. Заведётся второй модуль — второй
+# прогон обязан вернуться ВМЕСТЕ с ним, и вернуть его надо не «когда заметим»:
+# цель, гоняющая `./...`, останется зелёной, перестав проверять целый модуль.
 
 # PG_OUTSIDE_SELECTION_PKGS — пакеты, которым нужен НАСТОЯЩИЙ Postgres, но
 # которых отбор интеграционной джобы (`/internal/(repo|clients|reconciler|subscriptionjournal)` внутри
@@ -385,22 +385,11 @@ PG_OUTSIDE_SELECTION_PKGS ?= \
 	./pkg/schemaguard \
 	./pkg/migratorcli
 
-# Пакеты МОДУЛЯ СЛУЖБЫ iam — пути относительно $(IAM_MODULE_DIR).
-PG_OUTSIDE_SELECTION_PKGS_IAM ?= \
-	./internal/migrations \
-	./internal/apps/kaname/api/bootstrap_token \
-	./internal/scopesourcecensus \
-	./internal/apps/kaname/api/access_binding \
-	./internal/apps/kaname/api/listvisibility \
-	./internal/apps/kaname/api/readauthz \
-	./internal/apps/kaname/api/user \
-	./internal/authzmap \
-	./internal/service \
-	./internal/testsupport/accesssnapshot \
-	./internal/moduleroleparity \
-	./internal/moduleseedparity \
-	./internal/observability/metrics \
-	./cmd/kaname
+# Здесь стоял перечень пакетов МОДУЛЯ СЛУЖБЫ доступа — четырнадцать имён,
+# адресованных от её каталога. Каталог уехал вместе с модулем; перечень снят
+# вместе с ним, и полоса у цели ниже осталась ОДНА. Пустая половина дала бы
+# зелёную цель, переставшую проверять целый модуль, — поэтому отказ на пустом
+# перечне у цели сохранён и судит теперь единственную полосу.
 
 # ─── Хуки git ────────────────────────────────────────────────────────────────
 #
@@ -476,11 +465,6 @@ test: test-unit test-integration
 test-unit: $(HOOKS_NOTICE)
 	$(GO) test ./... -race -short -count=1 -timeout $(UNIT_TIMEOUT) -json \
 	  | python3 $(CURDIR)/.github/scripts/go-test-verdict.py
-	@echo "=== юниты МОДУЛЯ СЛУЖБЫ iam ($(IAM_MODULE_DIR)) ==="
-	@echo "Корневой ./... её пакетов не видит: у службы свой go.mod. Без этого"
-	@echo "второго прогона цель осталась бы зелёной, перестав проверять службу."
-	$(GO) test -C $(IAM_MODULE_DIR) ./... -race -short -count=1 -timeout $(UNIT_TIMEOUT) -json \
-	  | python3 $(CURDIR)/.github/scripts/go-test-verdict.py
 
 ## test-integration — интеграция. SVC=<сервис> для одного, иначе все по очереди.
 ##
@@ -513,11 +497,11 @@ test-unit: $(HOOKS_NOTICE)
 ## оно случайно: первый же `//go:build integration` вне
 ## `internal/(repo|clients|reconciler|subscriptionjournal)` стал бы невидим всем
 ## прогонам молча.
-# SVC_MODULE_FLAG — в каком модуле искать пакеты названной службы.
-#
-# Служба iam живёт в СВОЁМ модуле, поэтому `./services/iam/...` из корня не
-# резолвится вовсе: `go list` вернул бы пусто, а пустой перечень цель ниже
-# трактует как ОТКАЗ (и правильно делает — иначе он был бы неотличим от успеха).
+# Здесь стоял SVC_MODULE_FLAG — развилка «в каком модуле искать пакеты названной
+# службы». Второго модуля в дереве нет, все службы адресуются от корня, и
+# развилка снята вместе со своим предметом. Заведётся второй модуль — вернуть её
+# надо ВМЕСТЕ с ним: `./services/<новый>/...` из корня не резолвится вовсе,
+# `go list` вернёт пусто, а пустой перечень цель ниже трактует как ОТКАЗ.
 #
 # ОБЛАСТЬ ОТБОРА ПИШЕТСЯ ЛИТЕРАЛОМ В РЕЦЕПТЕ, А НЕ ПЕРЕМЕННОЙ, И ЭТО РЕШЕНИЕ.
 # Гейт `internal/repohygiene` `TestBuildTagPackagesAreReachedByADeclaredRun`
@@ -527,21 +511,12 @@ test-unit: $(HOOKS_NOTICE)
 # сборки непокрытыми ни одним прогоном. Проверено прогоном: после подстановки
 # переменной гейт назвал `services/compute/internal/repo` не покрытым — при
 # неизменном отборе.
-ifeq ($(SVC),iam)
-SVC_MODULE_FLAG := -C $(IAM_MODULE_DIR)
-else
-SVC_MODULE_FLAG :=
-endif
 
 test-integration: $(HOOKS_NOTICE)
 ifdef SVC
 	@set -o pipefail; \
 	rc=0; \
-	if [ "$(SVC)" = iam ]; then \
-	  all=$$($(GO) list -C $(IAM_MODULE_DIR) ./...) || rc=$$?; \
-	else \
-	  all=$$($(GO) list ./services/$(SVC)/...) || rc=$$?; \
-	fi; \
+	all=$$($(GO) list ./services/$(SVC)/...) || rc=$$?; \
 	if [ "$$rc" -ne 0 ]; then \
 	  echo "go list по пакетам $(SVC) сорвался — состав пакетов НЕ ИЗМЕРЕН." >&2; \
 	  echo "Это отказ, а не «нечего запускать»: пустой список здесь означал бы" >&2; \
@@ -551,7 +526,7 @@ ifdef SVC
 	if [ -z "$$pkgs" ]; then echo "нет integration-пакетов у $(SVC) — пропуск (осмотрено пакетов: $$(printf '%s\n' "$$all" | wc -l))"; exit 0; fi; \
 	echo "пакетов: $$(echo "$$pkgs" | wc -l) (из осмотренных $$(printf '%s\n' "$$all" | wc -l))"; \
 	log=$$(mktemp); rc=0; \
-	echo "$$pkgs" | xargs $(GO) test $(SVC_MODULE_FLAG) -tags=integration -race -count=1 -timeout $(INTEGRATION_TIMEOUT) -p 1 2>&1 | tee "$$log" || rc=$$?; \
+	echo "$$pkgs" | xargs $(GO) test -tags=integration -race -count=1 -timeout $(INTEGRATION_TIMEOUT) -p 1 2>&1 | tee "$$log" || rc=$$?; \
 	out=0; deploy/scripts/classify-integration-outcome.sh "$$rc" "$$log" || out=$$?; \
 	rm -f "$$log"; exit $$out
 else
@@ -592,42 +567,37 @@ endif
 ## а не дерева, и разобрать его можно было только сверив вывод с `go.mod` руками.
 test-pg-outside-selection:
 	@set -o pipefail; \
-	root_log=$$(mktemp); iam_log=$$(mktemp); \
-	trap 'rm -f "$$root_log" "$$iam_log"' EXIT; \
+	root_log=$$(mktemp); \
+	trap 'rm -f "$$root_log"' EXIT; \
 	root_named=$$(printf '%s\n' $(PG_OUTSIDE_SELECTION_PKGS) | grep -c . || true); \
-	iam_named=$$(printf '%s\n' $(PG_OUTSIDE_SELECTION_PKGS_IAM) | grep -c . || true); \
-	if [ "$$root_named" -eq 0 ] || [ "$$iam_named" -eq 0 ]; then \
-	  echo "перечень пуст с одной из сторон (корень $$root_named, iam $$iam_named) — это отказ," >&2; \
-	  echo "а не «нечего запускать»: пустая половина дала бы зелёную цель, переставшую" >&2; \
-	  echo "проверять целый модуль, и это неотличимо от успеха. Отказ стоит ДО прогона," >&2; \
-	  echo "потому что go test с пустым перечнем проверил бы пакет текущего каталога." >&2; \
+	if [ "$$root_named" -eq 0 ]; then \
+	  echo "перечень пуст (корень $$root_named) — это отказ, а не «нечего запускать»:" >&2; \
+	  echo "пустой перечень дал бы зелёную цель, переставшую проверять что бы то ни" >&2; \
+	  echo "было, и это неотличимо от успеха. Отказ стоит ДО прогона, потому что" >&2; \
+	  echo "go test с пустым перечнем проверил бы пакет текущего каталога." >&2; \
 	  exit 1; fi; \
 	root_mod=$$($(GO) list -m) || root_mod=""; \
-	iam_mod=$$($(GO) -C $(IAM_MODULE_DIR) list -m) || iam_mod=""; \
-	if [ -z "$$root_mod" ] || [ -z "$$iam_mod" ]; then \
-	  echo "модульный путь полосы НЕ ВЫВЕДЕН (корень «$$root_mod», iam «$$iam_mod») —" >&2; \
-	  echo "переписи не по чему считать отчитавшиеся пакеты, и её молчание было бы" >&2; \
-	  echo "неотличимо от согласия." >&2; exit 1; fi; \
-	echo "полосы: $$root_mod — заявлено $$root_named · $$iam_mod — заявлено $$iam_named"; \
-	root_rc=0; iam_rc=0; \
+	if [ -z "$$root_mod" ]; then \
+	  echo "модульный путь полосы НЕ ВЫВЕДЕН (корень «$$root_mod») — переписи не по чему" >&2; \
+	  echo "считать отчитавшиеся пакеты, и её молчание было бы неотличимо от согласия." >&2; \
+	  exit 1; fi; \
+	echo "полосы: $$root_mod — заявлено $$root_named"; \
+	root_rc=0; \
 	$(GO) test -race -count=1 -p 1 -v -timeout $(INTEGRATION_TIMEOUT) \
 	  $(PG_OUTSIDE_SELECTION_PKGS) 2>&1 | tee "$$root_log" || root_rc=$$?; \
-	$(GO) test -C $(IAM_MODULE_DIR) -race -count=1 -p 1 -v -timeout $(INTEGRATION_TIMEOUT) \
-	  $(PG_OUTSIDE_SELECTION_PKGS_IAM) 2>&1 | tee "$$iam_log" || iam_rc=$$?; \
 	deploy/scripts/classify-pg-outside-selection.sh \
-	  --lane "$$root_mod" "$$root_named" "$$root_log" "$$root_rc" \
-	  --lane "$$iam_mod" "$$iam_named" "$$iam_log" "$$iam_rc"
+	  --lane "$$root_mod" "$$root_named" "$$root_log" "$$root_rc"
 
 ## test-service — ВСЁ одного сервиса (юниты + интеграция). SVC обязателен.
 ## Сюда делегируют `make test` в services/<svc>/Makefile.
 test-service:
 	@test -n "$(SVC)" || { echo "нужен SVC=<сервис>"; exit 2; }
-	$(GO) test $(SVC_MODULE_FLAG) $(SVC_PKGS) -race -cover -count=1 -timeout $(INTEGRATION_TIMEOUT) -p 1
+	$(GO) test $(SVC_PKGS) -race -cover -count=1 -timeout $(INTEGRATION_TIMEOUT) -p 1
 
 ## test-service-short — то же без контейнеров.
 test-service-short:
 	@test -n "$(SVC)" || { echo "нужен SVC=<сервис>"; exit 2; }
-	$(GO) test $(SVC_MODULE_FLAG) $(SVC_PKGS) -race -cover -short -count=1 -timeout $(UNIT_TIMEOUT)
+	$(GO) test $(SVC_PKGS) -race -cover -short -count=1 -timeout $(UNIT_TIMEOUT)
 
 ## docs-sites — собрать ВСЕ сайты документации (gateway + services/*).
 ## Каждая сборка судится кодом возврата: провалившаяся сборка Docusaurus
@@ -639,85 +609,29 @@ docs-sites:
 # SVC_PATH — где лежит сервис В ДЕРЕВЕ. gateway лежит в корне, остальные под services/.
 SVC_PATH = $(if $(filter gateway,$(SVC)),gateway,services/$(SVC))
 
-# SVC_PKGS — тот же сервис, но КАК ПАКЕТЫ, то есть относительно своего модуля.
-# У службы iam модуль свой, и её пакеты адресуются от её каталога, а не от корня;
-# вместе с SVC_MODULE_FLAG выше это даёт `go test -C services/iam ./.` вместо
-# несуществующего из корня `./services/iam/…`.
-SVC_PKGS = $(if $(filter iam,$(SVC)),./...,./$(SVC_PATH)/...)
+# SVC_PKGS — тот же сервис, но КАК ПАКЕТЫ. Модуль в дереве один, поэтому все
+# службы адресуются от корня; развилка на службу со своим модулем снята вместе с
+# самой службой (см. выше).
+SVC_PKGS = ./$(SVC_PATH)/...
 
 help:
 	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/^## //'
 
-## ── ПРИБОР ПОРЯДКОВ: СЕТКА ЧЕТЫРЁХ ОСЕЙ (R7-1 · S1) ────────────────────────
+## ── ПРИБОРЫ ПОРЯДКОВ И ОБЪЁМА — СНЯТЫ ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ ────────────
 ##
-## Две цели, потому что предметы РАЗНЫЕ, а не потому что «одна большая, другая
-## маленькая»:
+## Здесь стояли четыре цели: `scale-grid-small` / `scale-grid-full` (сетка
+## четырёх осей) и `matrix-volume-small` / `matrix-volume-full` (стоимость ОДНОЙ
+## операции против налитой матрицы). Все четыре гоняли пробы ОДНОГО пакета
+## службы доступа, а сама сетка жила КОНСТАНТОЙ в её дереве.
 ##
-##   scale-grid-small — идёт в конвейере на каждом прогоне. Утверждает не форму
-##                      кривой, а ОТСУТСТВИЕ ДЕГРАДАЦИИ: отношение верхней точки
-##                      к нижней против потолка, объявленного константой ДО
-##                      прогона, плюс положительный контроль по оси R (она
-##                      обязана расти — иначе плоскость получена сломанным
-##                      прибором, а не свойством запроса);
+## Служба вынесена отдельным репозиторием: ни пакета, ни констант, ни отчётов в
+## этом дереве нет. Цели сняты вместе с предметом, а не оставлены звать
+## несуществующий каталог — `make -C <нет-такого> цель` выходит кодом 2, и
+## вызывающий, не читающий код возврата, принял бы это за успех.
 ##
-##   scale-grid-full  — РУЧНОЙ прогон до 10⁶ по четырём осям. Сажает миллион
-##                      объектов и миллион выдач, пишет отчёт артефактом дерева.
-##                      В конвейере не идёт и не должна: её место — перед
-##                      правкой и после неё, парой «до/после».
-##
-## Сетка живёт КОНСТАНТОЙ в services/iam/internal/repo/kaname/pg/scalegrid и
-## ниоткуда не переопределяется. Переменная ниже решает, ЗАПУСКАТЬ ли полный
-## прогон, и НИКОГДА — что мерить: отчёт, снятый на сокращённой сетке,
-## неотличим от полного и читается как полный.
-##
-## ПОЛНЫЙ ПРОГОН ИДЁТ ПОСЛЕДНИМ, НА ОКОНЧАТЕЛЬНОМ ДЕРЕВЕ. Отпечаток предмета
-## снимается в НАЧАЛЕ прогона, поэтому правка любого файла под отпечатком после
-## его старта делает отчёт несвежим В МОМЕНТ РОЖДЕНИЯ: гейт свежести покраснеет
-## на только что снятом замере. Под отпечатком — все не-тестовые .go каталогов
-## relverdict и scalegrid плюс миграции, называющие читаемые вердиктом таблицы;
-## тестовые файлы и Makefile в него не входят и правятся свободно.
-##
-## Стоило трёх перезапусков за одну сессию, каждый — потерянные минуты прогона.
-scale-grid-small:
-	$(GO) test -C $(IAM_MODULE_DIR) ./internal/repo/kaname/pg/relverdict/ \
-	  -run 'TestScaleGrid_SmallGridStaysFlatAndTheControlGrows|TestScaleGrid_StatisticsArePartOfThePointNotHygiene|TestScaleGridSeeder_RowForRowMatchesTheProducer' \
-	  -count=1 -v -timeout $(INTEGRATION_TIMEOUT)
-
-scale-grid-full:
-	KACHO_SCALEGRID_FULL=1 $(GO) test -C $(IAM_MODULE_DIR) ./internal/repo/kaname/pg/relverdict/ \
-	  -run TestScaleGrid_FullGridReport -count=1 -v -timeout 120m
-
-## ── ПРИБОР ОБЪЁМА: ОДНА ОПЕРАЦИЯ ПРОТИВ НАЛИТОЙ МАТРИЦЫ (R7-3) ──────────────
-##
-## Предмет ДРУГОЙ, чем у сетки порядков выше, и это не оттенок. Сетка варьирует
-## ОДНУ ось при неподвижных остальных: её точка N = 10⁶ держит выдач тысячу, а
-## точка B = 10⁶ держит объектов тысячу — то есть база в ней никогда не бывала
-## полной. Здесь матрица наливается ЦЕЛИКОМ (объекты и выдачи растут вместе), а
-## операций делается ПО ОДНОЙ: запись выдачи · вердикт (allow) · отзыв ·
-## вердикт после отзыва (deny). Вопрос не «сколько в секунду», а «меняется ли
-## стоимость ОДНОЙ операции от того, сколько всего лежит в базе».
-##
-##   matrix-volume-small — идёт в конвейере вместе с прочими интеграционными.
-##                         Утверждение ДВУХОСЕВОЕ: база обязана вырасти и прибор
-##                         обязан отчитаться ненулевой работой (положительный
-##                         контроль), а стоимость операции — не вырасти
-##                         (предмет). Односторонняя проба «ничего не растёт»
-##                         зеленела бы на приборе, докладывающем ноль.
-##
-##   matrix-volume-full  — РУЧНОЙ прогон до 10⁶ объектов И 10⁶ выдач
-##                         ОДНОВРЕМЕННО (≈6·10⁶ строк в таблицах), пишет отчёт
-##                         артефактом дерева. В конвейере не идёт и не должна.
-##
-## Свежесть отчёта сторожит `TestMatrixVolumeReportIsFreshAndItsSubjectHasNotMoved`
-## в том же пакете; отсутствие отчёта для него — ОТКАЗ, а не пропуск.
-matrix-volume-small:
-	$(GO) test -C $(IAM_MODULE_DIR) ./internal/repo/kaname/pg/relverdict/ \
-	  -run 'TestMatrixVolume_SmallGridMeasuresSomethingAndStaysFlat|TestMatrixVolumeFreshnessGateCanFailAndCanStaySilent' \
-	  -count=1 -v -timeout $(INTEGRATION_TIMEOUT)
-
-matrix-volume-full:
-	KACHO_MATRIX_VOLUME=1 $(GO) test -C $(IAM_MODULE_DIR) ./internal/repo/kaname/pg/relverdict/ \
-	  -run TestMatrixVolume_Report -count=1 -v -timeout 120m
+## Приборы не утрачены: они уехали ЦЕЛИКОМ вместе со своим предметом, вместе с
+## гейтом свежести отчёта и его отпечатком, и их место — в конвейере того
+## репозитория, где живёт измеряемый пакет.
 
 ## ── ЛИНИЯ ВЫПУСКА: ВЕРСИЯ ПЛАТФОРМЫ ────────────────────────────────────────
 ##

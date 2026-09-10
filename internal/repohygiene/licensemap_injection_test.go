@@ -53,10 +53,16 @@ func (c injHeaderCorpus) scan() ([]licenseHeaderFinding, licenseHeaderCensus) {
 
 // ── сторона (а): дефект краснеет и называет координату И ОБЕ лицензии ────────
 
-// Несущая ось перехода: файл фундамента остался под лицензией вынесенного
-// продукта. Именно этот случай прежний гейт не распознавал ВОВСЕ — он держал
-// одну константу и читал чужой заголовок как отсутствующий.
-func TestLicenseHeaderGate_RedsWhenFoundationCarriesTheProductLicense(t *testing.T) {
+// Несущая ось перехода: файл фундамента несёт ЧУЖУЮ лицензию. Именно этот
+// случай прежний гейт не распознавал ВОВСЕ — он держал одну константу и читал
+// чужой заголовок как отсутствующий.
+//
+// Чужой здесь берётся AGPL, и это уже НЕ уровень дерева: приставка вынесенного
+// продукта ушла из карты вместе с каталогом службы доступа. Идентификатор
+// оставлен намеренно — ось утверждает «заголовок не тот, что ждёт уровень», и
+// для неё существенно лишь то, что лицензия отличается от ожидаемой; взяв
+// вместо неё BUSL, проба слилась бы с соседней осью «монорепо на фундаменте».
+func TestLicenseHeaderGate_RedsWhenFoundationCarriesAnAlienLicense(t *testing.T) {
 	t.Parallel()
 	findings, census := injHeaderCorpus{
 		"pkg/ids/ids.go": injHeader(licenseAGPL),
@@ -73,18 +79,26 @@ func TestLicenseHeaderGate_RedsWhenFoundationCarriesTheProductLicense(t *testing
 	}
 }
 
-// Обратное направление той же оси: реализация вынесенного продукта осталась под
-// лицензией монорепо. Без этой оси гейт мог бы судить только один уровень.
-func TestLicenseHeaderGate_RedsWhenTheProductCarriesTheMonorepoLicense(t *testing.T) {
+// Обратное направление той же оси: файл УМОЛЧАНИЯ несёт лицензию фундамента.
+// Без этой оси гейт мог бы судить только уровни с приставкой, а самый населённый
+// уровень дерева — тот, у которого приставки нет, — оставался бы вне суждения.
+//
+// Прежде эта ось стояла на паре «вынесенный продукт ↔ монорепо». Уровень
+// вынесенного продукта ушёл из карты вместе с каталогом службы доступа, и путь
+// под снятой приставкой стал разрешаться в умолчание: заголовок BUSL совпадал с
+// ожидаемым, находок становилось ноль, и проба краснела на исправном гейте.
+// Пара заменена на живую; проверяемое свойство — «судится больше одного уровня,
+// и находка называет ОБЕ лицензии» — то же самое.
+func TestLicenseHeaderGate_RedsWhenTheMonorepoCarriesTheFoundationLicense(t *testing.T) {
 	t.Parallel()
 	findings, _ := injHeaderCorpus{
-		"services/iam/internal/app/app.go": injHeader(licenseBUSL),
+		"gateway/internal/restmux/mux.go": injHeader(licenseApache),
 	}.scan()
 	if len(findings) != 1 {
 		t.Fatalf("ожидалась одна находка, получено %d", len(findings))
 	}
 	got := findings[0].String()
-	for _, want := range []string{licenseAGPL, licenseBUSL} {
+	for _, want := range []string{licenseBUSL, licenseApache, "монорепо"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("находка не называет %q: %s", want, got)
 		}
@@ -139,14 +153,17 @@ func TestLicenseHeaderGate_RedsWhenHeaderIsAbsentAndNamesTheExpectedLicense(t *t
 
 // ── сторона (б): законный близнец обязан молчать ─────────────────────────────
 
-// Верное дерево всех четырёх уровней сразу. Гейт, краснеющий на верном дереве,
-// отключают первым.
+// Верное дерево всех ЧЕТЫРЁХ живых уровней сразу — фундамент, контракты, третья
+// сторона и умолчание. Гейт, краснеющий на верном дереве, отключают первым.
+//
+// Пятая строка — файл вынесенного продукта под AGPL — снята вместе со своим
+// уровнем: приставки `services/iam/` в карте больше нет, путь разрешался бы в
+// умолчание, и близнец, объявленный законным, стал находкой.
 func TestLicenseHeaderGate_SilentOnACorrectTree(t *testing.T) {
 	t.Parallel()
 	findings, census := injHeaderCorpus{
 		"pkg/ids/ids.go":                    injHeader(licenseApache),
 		"proto/kaname/cloud/iam/v1/i.proto": injHeader(licenseApache),
-		"services/iam/internal/a.go":        injHeader(licenseAGPL),
 		"services/vpc/internal/a.go":        injHeader(licenseBUSL),
 		"internal/repohygiene/x.go":         injHeader(licenseBUSL),
 		"proto/google/api/http.proto":       "// Copyright 2026 Google LLC\n",
@@ -154,7 +171,7 @@ func TestLicenseHeaderGate_SilentOnACorrectTree(t *testing.T) {
 	if len(findings) != 0 {
 		t.Fatalf("верное дерево объявлено находкой: %v", findings)
 	}
-	if census.required != 5 || census.declaring != 5 {
+	if census.required != 4 || census.declaring != 4 {
 		t.Fatalf("близнецы не дошли до предиката: обязаны нести %d, несут %d — молчание тогда "+
 			"означает «не читал», а не «сошлось»", census.required, census.declaring)
 	}
@@ -171,11 +188,15 @@ func TestLicenseHeaderGate_LongestPrefixWinsOverAShorterOne(t *testing.T) {
 	if licenseTierFor("proto/kaname/cloud/iam/v1/i.proto").Name != "контракты" {
 		t.Fatal("контракты потеряли свой уровень")
 	}
-	if licenseTierFor("services/iam/internal/a.go").Name != "вынесенный продукт" {
-		t.Fatal("вынесенный продукт потерял свой уровень")
-	}
 	if licenseTierFor("services/vpc/internal/a.go").Name != "монорепо" {
-		t.Fatal("сервис вне вынесенного продукта уехал не на тот уровень")
+		t.Fatal("сервис без своей приставки уехал не на уровень умолчания")
+	}
+	// Умолчание — САМЫЙ КОРОТКИЙ префикс, и побеждает оно только тогда, когда не
+	// совпал ни один длиннее. Без этой строки «длинный побеждает» доказывалось бы
+	// лишь на паре вложенных приставок, а вырожденный случай пустой оставался бы
+	// вне суждения.
+	if licenseTierFor("gateway/main.go").Name != "монорепо" {
+		t.Fatal("край уехал не на уровень умолчания")
 	}
 }
 
@@ -209,8 +230,8 @@ func TestLicenseHeaderGate_GeneratedIsExemptFromDutyButNotFromConformance(t *tes
 func TestLicenseHeaderGate_VoluntaryCarrierIsJudgedTooButNotRequired(t *testing.T) {
 	t.Parallel()
 	silent, census := injHeaderCorpus{
-		"services/iam/docs/a.md": "<!--\nSPDX-License-Identifier: " + licenseAGPL + "\n-->\n",
-		"services/iam/docs/b.md": "# без заголовка вовсе\n",
+		"services/vpc/docs/a.md": "<!--\nSPDX-License-Identifier: " + licenseBUSL + "\n-->\n",
+		"services/vpc/docs/b.md": "# без заголовка вовсе\n",
 	}.scan()
 	if len(silent) != 0 {
 		t.Fatalf("верные добровольные носители объявлены находкой: %v", silent)
@@ -223,7 +244,7 @@ func TestLicenseHeaderGate_VoluntaryCarrierIsJudgedTooButNotRequired(t *testing.
 		t.Fatalf("добровольный носитель не дошёл до предиката: несут %d", census.declaring)
 	}
 	bad, _ := injHeaderCorpus{
-		"services/iam/docs/a.md": "<!--\nSPDX-License-Identifier: " + licenseBUSL + "\n-->\n",
+		"services/vpc/docs/a.md": "<!--\nSPDX-License-Identifier: " + licenseApache + "\n-->\n",
 	}.scan()
 	if len(bad) != 1 {
 		t.Fatalf("добровольный носитель с чужой лицензией не распознан: %v", bad)

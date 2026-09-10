@@ -294,8 +294,10 @@ jobs:
       # Пробы перечислены поимённо, а не собраны шаблоном: шаблон, не нашедший ни
       # одной пробы, вышел бы успехом, и «ноль исполненного» было бы неотличимо от
       # «ноль находок».
-      - name: ALLOW-полосы authz различают дефект (iam)
-        run: python3 services/iam/tests/newman/scripts/selftest_authz_allow_lanes.py
+      # Проба службы доступа снята вместе со своим предметом: её набор уехал в
+      # собственный репозиторий службы и гоняется её конвейером. Оставшись здесь,
+      # шаг отказал бы на отсутствующем файле — то есть красным, не говорящим ни
+      # о чём в этом дереве.
       - name: ALLOW-полосы authz различают дефект (compute)
         run: python3 services/compute/tests/newman/scripts/selftest_authz_allow_lanes.py
       - name: ALLOW-полосы authz различают дефект (geo)
@@ -333,8 +335,11 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7
         with:
           go-version-file: go.mod
-      - name: форма базового удостоверения сверена с чеканкой продукта (iam)
-        run: python3 services/iam/tests/newman/scripts/selftest_basic_access_token.py
+      # Шаг сверки формы базового удостоверения снят вместе со своим предметом:
+      # и проба, и чеканка, с которой она сверялась, уехали в дерево службы.
+      # ОСТАТОК, НАЗВАННЫЙ ВСЛУХ: что утверждение кейса о форме секрета совпадает
+      # со значением продукта, в ЭТОМ дереве не производит теперь никто —
+      # производить это обязано дерево службы, где лежат обе стороны.
 
       # Шаг удаления, не несущий утверждения, зеленеет при ЛЮБОМ ответе — включая
       # отказ. Перепись по дереву нашла 457 таких на 1359 шагов DELETE. Тихим это
@@ -802,12 +807,13 @@ jobs:
       # Условие сверяется по СПИСКУ с разделителями, а не подстрокой: без
       # обрамляющих пробелов `contains('compute storage', 'compute')` был бы верен и
       # для суиты `comp`, если бы такая завелась.
-      - name: гейт — newman зелёный (iam)
-        if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' iam ') }}
-        working-directory: services/iam/tests/newman
-        env:
-          SUITE_LABEL: iam
-        run: bash "${GITHUB_WORKSPACE}/tests/newman/scripts/assert-suites-green.sh"
+      # Шаг вердикта суиты службы доступа снят вместе со своей суитой: шард `iam`
+      # снят из манифеста, каталог набора уехал, и условие по составу шарда не
+      # стало бы истинным НИ НА ОДНОМ шарде. Объявленный и не исполняемый ни разу
+      # шаг — не запас: он выглядит вердиктом и им не является.
+      #
+      # Суит в дереве теперь семь, и связность «у каждой исполняемой суиты есть
+      # шаг-гейт и путь артефактов» держит тот же check-newman-suite-gates.py.
 
       - name: гейт — newman зелёный (vpc)
         if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' vpc ') }}
@@ -897,16 +903,14 @@ jobs:
       # coverage-гейт: proto RPC → newman case-id. Порог — не «сколько получилось»,
       # а ПОЛ, ниже которого падаем: он ловит регресс (RPC добавили, кейс — нет).
       # Живёт на шарде, который гоняет iam: его коллекции и есть предмет.
-      - name: coverage-гейт (proto RPC → newman)
-        if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' iam ') }}
-        working-directory: services/iam/tests/newman
-        env:
-          COVERAGE_MIN: "30"
-        run: |
-          python3 "${GITHUB_WORKSPACE}/tests/newman/scripts/coverage.py" \
-            --proto-glob "${GITHUB_WORKSPACE}/proto/kaname/cloud/iam/v1/*.proto" \
-            --collections-glob 'collections/*.postman_collection.json' \
-            --min "$COVERAGE_MIN"
+      # Здесь стоял coverage-гейт «proto RPC → newman-кейс» с полом 30. Его
+      # операндов было ДВА, и они разъехались по разным деревьям: контракт службы
+      # (`proto/kaname/cloud/iam/v1/`) остался здесь, а коллекции, которыми он
+      # покрывался, уехали вместе со службой. Пол по одному операнду невыразим.
+      #
+      # ОСТАТОК, НАЗВАННЫЙ ЧИСЛОМ: покрытие контракта службы кейсами в ЭТОМ дереве
+      # не измеряется, хотя сам контракт здесь. Судить его обязано дерево, где
+      # лежат коллекции; вернутся коллекции — вернётся и пол.
 
       # ОПИСЬ ШАРДА — то, из чего свод соберёт один ответ. Это не вердикт: шаг
       # зелёный, если сумел записать файл. Пишется ВСЕГДА, в том числе на упавшем

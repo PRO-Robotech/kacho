@@ -4,6 +4,7 @@
 package deploy
 
 import (
+	"github.com/PRO-Robotech/kacho/internal/productnaming"
 	"os"
 	"path/filepath"
 	"sort"
@@ -137,14 +138,28 @@ func TestOwnerNameIsTheBackendKeyOfTheEdgeNotTheTreePath(t *testing.T) {
 // псевдонима ему не завели: такой владелец, будучи объявлен, дал бы «потолок не
 // найден» — отказ верный, но наступающий на выкатке, а не здесь.
 //
-// Домены без журнала (`iam`, `geo`, `quota`) под требование НЕ подпадают:
-// владельцем их не объявляют, и каталог им не нужен. Требование привязано к
-// ФАКТУ — принимаемому имени, у которого каталог обязан находиться.
+// Домены без журнала (`geo`, `quota`) под требование НЕ подпадают: владельцем
+// их не объявляют, и каталог им не нужен. Требование привязано к ФАКТУ —
+// принимаемому имени, у которого каталог обязан находиться.
+//
+// ОТДЕЛЬНО: домен, чьи ИСХОДНИКИ живут в другом репозитории, из популяции
+// исключён — и исключён по ведомости (productnaming.SourcesInThisTree), а не
+// молчанием. Край его внутренний слушатель набирает (служба доступа отвечает
+// на проверку прав и на чтение журнала смены субъекта), но каталога у него в
+// ЭТОМ дереве нет и быть не может: проба потолка чарта, ради которой каталог и
+// требуется, живёт в его собственном дереве. Исключение самоистекает: вернутся
+// исходники — предикат ответит истиной, и домен вернётся в популяцию сам.
 func TestEveryOwnerAcceptedByTheEdgeIsResolvableToATreeDir(t *testing.T) {
 	accepted := config.Config{}.DomainsWithInternalBackend()
 	resolved, unresolved := 0, make([]string, 0, 2)
+	elsewhere := make([]string, 0, 1)
 
 	for _, owner := range accepted {
+		if dir, ours := productnaming.ServiceDir(productnaming.ChartName(owner)); ours &&
+			!productnaming.SourcesInThisTree(dir) {
+			elsewhere = append(elsewhere, owner)
+			continue
+		}
 		found := false
 		for _, dir := range append([]string{owner}, ownerTreeDirAliases[owner]...) {
 			if servicesDirExists(dir) {
@@ -159,8 +174,9 @@ func TestEveryOwnerAcceptedByTheEdgeIsResolvableToATreeDir(t *testing.T) {
 		unresolved = append(unresolved, owner)
 	}
 
-	t.Logf("перепись: имён принимает край %d · каталог резолвится у %d · не резолвится у %d %v",
-		len(accepted), resolved, len(unresolved), unresolved)
+	t.Logf("перепись: имён принимает край %d · каталог резолвится у %d · не резолвится у %d %v · "+
+		"исходники в другом репозитории у %d %v",
+		len(accepted), resolved, len(unresolved), unresolved, len(elsewhere), elsewhere)
 
 	if len(unresolved) > 0 {
 		t.Errorf("имена %s край принимает, а каталога сервиса у них нет ни под своим именем, "+

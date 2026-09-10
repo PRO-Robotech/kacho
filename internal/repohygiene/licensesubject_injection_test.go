@@ -186,17 +186,17 @@ func TestLicenseSubjectGate_SilentOnACorrectTree(t *testing.T) {
 
 // ── уровни с ДРУГОЙ формой лицензии: предмета у них нет вовсе ────────────────
 
-// injApacheBody / injAGPLBody — тела, узнаваемые по тем же маркерам, что и
-// живые файлы. Форма важна: у обеих лицензий параметра `Licensed Work:` НЕТ, и
-// гейт обязан не требовать его от них.
+// injApacheBody — тело, узнаваемое по тем же маркерам, что и живой файл. Форма
+// важна: параметра `Licensed Work:` у Apache-2.0 НЕТ, и гейт обязан не требовать
+// его от неё.
+//
+// Рядом стояло injAGPLBody — тело лицензии вынесенного продукта. Снято вместе со
+// своим предметом: приставки `services/iam/` в карте уровней больше нет, корня
+// этого уровня в дереве тоже, и единственная проба, звавшая помощника, судила
+// уровень, которого не существует.
 func injApacheBody() string {
 	return "                                 Apache License\n" +
 		"                           Version 2.0, January 2004\n"
-}
-
-func injAGPLBody() string {
-	return "                    GNU AFFERO GENERAL PUBLIC LICENSE\n" +
-		"                       Version 3, 19 November 2007\n"
 }
 
 // Корень уровня с ВЕРНЫМ телом — молчание. Положительный контроль к двум осям
@@ -204,18 +204,17 @@ func injAGPLBody() string {
 func TestLicenseSubjectGate_SilentOnTierRootsWithTheirOwnLicenseText(t *testing.T) {
 	t.Parallel()
 	findings, census := injLicenseScan(injLicenseCorpus{
-		"pkg/LICENSE":          injApacheBody(),
-		"proto/LICENSE":        injApacheBody(),
-		"services/iam/LICENSE": injAGPLBody(),
+		"pkg/LICENSE":   injApacheBody(),
+		"proto/LICENSE": injApacheBody(),
 	})
 	if len(findings) != 0 {
 		t.Fatalf("верные корни уровней объявлены находкой: %v", findings)
 	}
-	if census.derived != 3 {
+	if census.derived != 2 {
 		t.Fatalf("ожидание не выведено для корней уровней: %s", census)
 	}
 	if census.withSubj != 0 {
-		t.Fatalf("у Apache-2.0 и AGPL-3.0 параметра предмета НЕТ, а перепись насчитала %d — "+
+		t.Fatalf("у Apache-2.0 параметра предмета НЕТ, а перепись насчитала %d — "+
 			"требовать его от них значило бы требовать строки, которой в лицензии не бывает",
 			census.withSubj)
 	}
@@ -239,16 +238,18 @@ func TestLicenseSubjectGate_RedsWhenTierRootCarriesAnotherLicenseText(t *testing
 	}
 }
 
-// Обратное направление той же оси: вынесенный продукт под текстом монорепо.
-func TestLicenseSubjectGate_RedsWhenTheProductCarriesTheMonorepoLicenseText(t *testing.T) {
-	t.Parallel()
-	findings, _ := injLicenseScan(injLicenseCorpus{
-		"services/iam/LICENSE": injLicenseBody("Kaname (kaname)"),
-	})
-	if len(findings) != 1 || !strings.Contains(findings[0].String(), "AGPL-3.0-or-later") {
-		t.Fatalf("текст монорепо у вынесенного продукта не распознан: %v", findings)
-	}
-}
+// ЗДЕСЬ СТОЯЛО ОБРАТНОЕ НАПРАВЛЕНИЕ ТОЙ ЖЕ ОСИ — вынесенный продукт под текстом
+// монорепо (`services/iam/LICENSE` с телом BUSL, ожидание AGPL-3.0-or-later).
+// Ось снята вместе со своим предметом: уровень вынесенного продукта ушёл из
+// карты, `services/iam/LICENSE` разрешается теперь в умолчание, где тело BUSL
+// как раз и ожидается, — то есть внесённый факт перестал быть дефектом, и проба
+// требовала находку на верном файле.
+//
+// Утверждение при этом НЕ ослаблено: «корень уровня несёт тело не своей лицензии
+// — находка» держит соседняя ось выше на ЖИВОМ уровне (pkg/LICENSE с телом
+// монорепо, ожидание Apache-2.0), и она называет и координату, и имя уровня, и
+// ожидаемую лицензию. Второго не-BUSL уровня с ОТЛИЧНЫМ от Apache ожиданием в
+// карте не осталось, поэтому второе направление не переносится, а закрывается.
 
 // Корень уровня BUSL предмет по-прежнему НЕСЁТ — половина, которую легко
 // потерять при заведении второй формы.

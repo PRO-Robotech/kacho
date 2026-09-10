@@ -57,14 +57,13 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
 )
 
-// catalogEmbedPath / iamCatalogMirrorPath — две вшитые копии каталога. Первая —
-// та, которую исполняет шлюз; вторая — зеркало, вшитое в iam. Гейты ниже говорят
-// «каталог» в единственном числе, и это осмысленно ровно пока копии совпадают
-// побайтово.
-const (
-	catalogEmbedPath     = "gateway/internal/middleware/embed/permission_catalog.json"
-	iamCatalogMirrorPath = "services/iam/internal/apps/kaname/seed/embedded/permission_catalog.json"
-)
+// catalogEmbedPath — вшитая копия каталога, которую ИСПОЛНЯЕТ шлюз.
+//
+// Копия здесь ОДНА, и «каталог» в единственном числе теперь буквален. Рядом
+// стояло зеркало, вшитое в службу доступа; служба вынесена отдельным продуктом, и
+// зеркало уехало вместе с ней. Второй копии в этом дереве нет — значит нет и
+// вопроса «по какой из них выданы права».
+const catalogEmbedPath = "gateway/internal/middleware/embed/permission_catalog.json"
 
 // catalogProtoPackages — proto-пакеты, чьи RPC попадают в каталог.
 //
@@ -184,19 +183,18 @@ func TestCatalogMatchesTheAnnotationsItWasGeneratedFrom(t *testing.T) {
 			"является — он порождаемый.", m)
 	}
 
-	// Обе вшитые копии обязаны совпадать побайтово: гейты говорят «каталог» в
-	// единственном числе, и при разъезде копий неясно, по какой из них выданы
-	// права.
-	mirror, err := os.ReadFile(filepath.Join(root, iamCatalogMirrorPath))
-	if err != nil {
-		t.Fatalf("не прочитано зеркало каталога %s: %v", iamCatalogMirrorPath, err)
-	}
-	if string(raw) != string(mirror) {
-		t.Errorf("две вшитые копии каталога разошлись:\n  %s\n  %s", catalogEmbedPath, iamCatalogMirrorPath)
-	}
+	// ЗДЕСЬ СВЕРЯЛИСЬ ДВЕ ВШИТЫЕ КОПИИ КАТАЛОГА — вторая уехала вместе с
+	// вынесенной службой доступа, и сверять больше нечего: обе стороны равенства
+	// обязаны лежать в одном дереве, а здесь их одна. Утверждение снято вместе со
+	// своим предметом, а не оставлено читать несуществующий путь — чтение дало бы
+	// отказ, неотличимый от расхождения копий.
+	//
+	// Что при этом УТРАЧЕНО: расхождение копии края с копией службы не ловится в
+	// этом дереве НИЧЕМ. Свойство «каталог порождён из аннотаций» держится
+	// по-прежнему — им и занят весь обход выше.
 
 	t.Logf("перепись: строк каталога %d, аннотированных RPC %d в %d пакетах, расхождений %d; "+
-		"копий сверено 2, байт %d",
+		"копий в дереве 1, байт %d",
 		len(rows), methods, len(catalogProtoPackages), len(mismatches), len(raw))
 }
 

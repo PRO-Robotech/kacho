@@ -270,15 +270,60 @@ func parseVerdictDict(text string) (map[string]bool, bool) {
 // которой арендатору показывают, что придётся; справа послабление, пережившее
 // свой предмет.
 func judgeCoverage(rest map[string][]string, declared map[string]bool) (missing, orphan []string) {
+	return judgeCoverageWithExternal(rest, declared, producedOutsideThisTree)
+}
+
+// producedOutsideThisTree — токены отказа, чей ПРОИЗВОДИТЕЛЬ живёт в другом
+// репозитории, а ПОТРЕБИТЕЛЬ (консоль) — здесь.
+//
+// # Почему ведомость, а не снятие вердикта
+//
+// Служба доступа вынесена отдельным продуктом (задача #1111). Отказы, которые
+// она производит, ДОЕЗЖАЮТ ДО АРЕНДАТОРА по-прежнему: умбрелла поднимает её из
+// опубликованного образа, край проксирует ответ, консоль его разбирает. Снять
+// вердикт консоли по такому токену значило бы сломать продукт ради зелёного
+// прогона — арендатор увидел бы прозу производителя вместо разобранного отказа.
+//
+// # Почему это не бессрочное послабление
+//
+// Ведомость самоистекает: запись, у которой производитель В ЭТОМ ДЕРЕВЕ нашёлся,
+// — находка. Тогда токен вернулся к нам, и прикрывать его записью значит
+// прикрывать живую координату.
+//
+// Значение — репозиторий-производитель. Оно не резолвится проверкой и не обязано:
+// предмет вне этого дерева, а назначение — сказать читателю, ГДЕ искать, и не
+// дать записи выродиться в голое имя без причины.
+var producedOutsideThisTree = map[string]string{
+	"MEMBERSHIP_CARRIES_RIGHTS": "PRO-Robotech/kaname",
+	"QUOTA_RATE_EXCEEDED":       "PRO-Robotech/kaname",
+	"REFERENCE_IN_USE":          "PRO-Robotech/kaname",
+	"REFERENCE_MISSING":         "PRO-Robotech/kaname",
+}
+
+// judgeCoverageWithExternal — та же оценка, но ведомость внешних производителей
+// подаётся ЯВНО: доказательство способности падать обязано уметь предъявить обе
+// стороны, иначе один и тот же вход давал бы один и тот же вердикт.
+func judgeCoverageWithExternal(rest map[string][]string, declared map[string]bool,
+	external map[string]string) (missing, orphan []string) {
 	for tok := range rest {
 		if !declared[tok] {
 			missing = append(missing, tok)
 		}
+		if _, ok := external[tok]; ok {
+			// Обратная сторона ведомости: производитель нашёлся ЗДЕСЬ, значит
+			// запись пережила свой предмет.
+			orphan = append(orphan, tok+": объявлен производимым вне дерева ("+external[tok]+
+				"), но производитель найден ЗДЕСЬ — снимите запись из producedOutsideThisTree")
+		}
 	}
 	for tok := range declared {
-		if rest[tok] == nil {
-			orphan = append(orphan, tok)
+		if rest[tok] != nil {
+			continue
 		}
+		if _, ok := external[tok]; ok {
+			continue // производитель в другом репозитории — вердикт консоли законен
+		}
+		orphan = append(orphan, tok)
 	}
 	sort.Strings(missing)
 	sort.Strings(orphan)
@@ -345,6 +390,16 @@ func TestConsoleDeclaresEveryProducedRefusalReason(t *testing.T) {
 		sort.Strings(byConsumer[consumer])
 		t.Logf("вне консоли, потребитель — %s: %s",
 			consumer, strings.Join(byConsumer[consumer], " · "))
+	}
+
+	if len(producedOutsideThisTree) > 0 {
+		outside := make([]string, 0, len(producedOutsideThisTree))
+		for tok := range producedOutsideThisTree {
+			outside = append(outside, tok)
+		}
+		sort.Strings(outside)
+		t.Logf("вердикт консоли законен без производителя в дереве (производитель — "+
+			"другой репозиторий) — %d: %s", len(outside), strings.Join(outside, " "))
 	}
 
 	missing, orphan := judgeCoverage(rest, declared)

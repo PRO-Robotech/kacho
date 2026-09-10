@@ -68,9 +68,11 @@ type InternalSessionRevocationsServiceClient interface {
 	// CAEP forwarder to bulk-emit events.
 	//
 	// The whole response is about ONE user the CALLER NAMES, so it is authorized
-	// per-object on that user, and kaname enforces that itself
-	// (internal/apps/kaname/api/session_revocations). The record below states that
-	// lane, so any future route inherits it rather than a bypass.
+	// per-object on that user, and kaname enforces that itself in its own tree
+	// (the coordinate is deliberately not quoted here: the service was carved out
+	// into its own repository, and a path that resolves in another tree reads as
+	// one that resolves in this one). The record below states that lane, so any
+	// future route inherits it rather than a bypass.
 	//
 	// The relation is `session_reader` — the person themselves plus cloud
 	// oversight, and nobody else (#1140). It used to be the READ TIER `viewer`,
@@ -204,9 +206,11 @@ type InternalSessionRevocationsServiceServer interface {
 	// CAEP forwarder to bulk-emit events.
 	//
 	// The whole response is about ONE user the CALLER NAMES, so it is authorized
-	// per-object on that user, and kaname enforces that itself
-	// (internal/apps/kaname/api/session_revocations). The record below states that
-	// lane, so any future route inherits it rather than a bypass.
+	// per-object on that user, and kaname enforces that itself in its own tree
+	// (the coordinate is deliberately not quoted here: the service was carved out
+	// into its own repository, and a path that resolves in another tree reads as
+	// one that resolves in this one). The record below states that lane, so any
+	// future route inherits it rather than a bypass.
 	//
 	// The relation is `session_reader` — the person themselves plus cloud
 	// oversight, and nobody else (#1140). It used to be the READ TIER `viewer`,

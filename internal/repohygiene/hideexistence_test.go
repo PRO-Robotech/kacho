@@ -55,6 +55,37 @@ var composedNotFoundFormats = map[string]string{
 		"из шаблона `%w: %s %s not found` и имени ресурса, переданного вызовом",
 }
 
+// formatsOwnedElsewhere — типы, чей ВЛАДЕЛЕЦ живёт в другом репозитории.
+//
+// # Почему это НЕ composedNotFoundFormats и не может быть им
+//
+// Тот перечень объявляет «владелец собирает текст из шаблона», то есть
+// утверждение о ФОРМЕ кода владельца. Здесь другое: форма нам неизвестна,
+// потому что кода владельца в этом дереве нет вовсе. Внести такой тип туда
+// значило бы заявить о шаблоне, которого мы не видели, — маска, а не запись.
+//
+// # Почему строки таблиц остаются
+//
+// Таблица — РАНТАЙМ: край скрывает существование чужого объекта, отвечая
+// побайтово тем же текстом, что настоящий промах владельца. Снять строку значит
+// вернуть различимый отказ, то есть оракул существования (`security.md`
+// §Hardening, п. 6). Свойство не отменяется выносом службы — у него сменился
+// судья: побайтовое согласие с владельцем обязано проверять его дерево, где
+// лежит производитель текста.
+//
+// # Самоистечение — В ОБЕ СТОРОНЫ, и это проверяется ниже
+//
+// Запись, чей формат В ЭТОМ ДЕРЕВЕ НАШЁЛСЯ, — находка: владелец вернулся, и
+// прикрывать его записью значит прикрывать живую координату. Тип, которого нет
+// ни в одной таблице, — тоже находка: запись объявляет освобождение для строки,
+// которой не существует.
+var formatsOwnedElsewhere = map[string]string{
+	"account":             "PRO-Robotech/kaname",
+	"iam_user":            "PRO-Robotech/kaname",
+	"iam_service_account": "PRO-Robotech/kaname",
+	"iam_access_binding":  "PRO-Robotech/kaname",
+}
+
 // TestHideExistenceTablesCarryNoUnreachableType — строка таблицы, до которой не
 // доводит ни одна запись каталога, — находка.
 //
@@ -108,7 +139,7 @@ func TestHideExistenceFormatsMatchTheOwningServiceSource(t *testing.T) {
 			"объявил бы несовпадающими ВСЕ форматы, что было бы неверно")
 	}
 
-	var matched, exempted int
+	var matched, exempted, ownedElsewhere int
 	for _, rel := range hideExistenceTables {
 		for objType, format := range parseHideExistenceTable(t, root, rel) {
 			if strings.Contains(sources, format) {
@@ -118,6 +149,10 @@ func TestHideExistenceFormatsMatchTheOwningServiceSource(t *testing.T) {
 			if why, ok := composedNotFoundFormats[objType]; ok {
 				exempted++
 				_ = why
+				continue
+			}
+			if _, ok := formatsOwnedElsewhere[objType]; ok {
+				ownedElsewhere++
 				continue
 			}
 			t.Errorf("%s: формат для %q не встречается ни в одном не-тестовом исходнике "+
@@ -146,10 +181,38 @@ func TestHideExistenceFormatsMatchTheOwningServiceSource(t *testing.T) {
 		}
 	}
 
+	// Ведомость вынесенных владельцев самоистекает В ОБЕ СТОРОНЫ.
+	for objType := range formatsOwnedElsewhere {
+		var seen bool
+		var format string
+		for _, rel := range hideExistenceTables {
+			if f, ok := parseHideExistenceTable(t, root, rel)[objType]; ok {
+				seen = true
+				format = f
+			}
+		}
+		if !seen {
+			t.Errorf("запись formatsOwnedElsewhere пережила свой предмет — типа %q в таблицах "+
+				"больше нет: освобождение объявлено для строки, которой не существует. Удали её.",
+				objType)
+			continue
+		}
+		if strings.Contains(sources, format) {
+			t.Errorf("формат для %q объявлен принадлежащим другому репозиторию, а в исходниках "+
+				"ЭТОГО дерева он НАЙДЕН (%q) — владелец вернулся, и запись прикрывает живую "+
+				"координату. Удали её из formatsOwnedElsewhere: побайтовое согласие снова "+
+				"проверяемо здесь.", objType, format)
+		}
+	}
+
 	// Перепись: сколько таблиц прочитано и сколько форм сверено. Проверка
 	// предпосылки выше роняет гейт на пустом корпусе, но её прохождение молчаливо.
-	t.Logf("перепись: таблиц скрытия %d, форм совпало %d, освобождено %d; корпус исходников %d байт",
-		len(hideExistenceTables), matched, exempted, len(sources))
+	//
+	// Число вынесенных владельцев названо ОТДЕЛЬНО: слитое с совпавшими, оно
+	// читалось бы как сверенное, а сверять его здесь нечем.
+	t.Logf("перепись: таблиц скрытия %d, форм совпало %d, освобождено %d, "+
+		"владелец в другом репозитории у %d; корпус исходников %d байт",
+		len(hideExistenceTables), matched, exempted, ownedElsewhere, len(sources))
 }
 
 // catalogScopeObjectTypes — множество типов объектов, которые каталог якорит хотя

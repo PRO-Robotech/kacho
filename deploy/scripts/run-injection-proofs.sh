@@ -124,7 +124,6 @@ deploy/tests/helm/servername-checked-against-the-peer-inject.sh
 gateway/deploy/revocation_authority_inject.sh
 scripts/ci-local-outcome-inject.sh
 scripts/go-mod-tidy-check-inject.sh
-scripts/judge-outcome-inject.sh
 scripts/overwritten-work-inject.sh
 scripts/hooks/install-inject.sh
 scripts/hooks/prepush-groups-inject.sh

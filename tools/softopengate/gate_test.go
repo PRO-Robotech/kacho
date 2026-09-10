@@ -19,8 +19,14 @@ import (
 
 // declaredFilterRoots — все фильтры сужения страницы. Перечислены ЦЕЛИКОМ, а не
 // образцом: утверждение «у остальных так же» проверяется перечислением, иначе это
-// догадка. iam и registry входят, хотя мягкого прохода у них нет вовсе — именно это
-// и подтверждается их нулём.
+// догадка. registry входит, хотя мягкого прохода у него нет вовсе — именно это
+// и подтверждается его нулём.
+//
+// Здесь стоял и корень службы доступа (`services/iam/internal/authzfilter`).
+// Он снят ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ: служба вынесена отдельным продуктом
+// (задача #1111), каталога в дереве нет. Запись без предмета не «лишняя
+// строка» — она объявляет обход каталога, которого не существует, то есть
+// прикрывает ноль, выдавая его за осмотренное.
 //
 // Перечень ВЫПИСАН, а не выведен, и
 // именно поэтому рядом стоит TestFilterRootsCoverEveryPageFilterInTheTree: он
@@ -39,7 +45,6 @@ var declaredFilterRoots = []string{
 	"services/nlb/internal/authzfilter",
 	"services/storage/internal/authzfilter",
 	"services/vpc/internal/authzfilter",
-	"services/iam/internal/authzfilter",
 	"services/registry/internal/handler",
 }
 

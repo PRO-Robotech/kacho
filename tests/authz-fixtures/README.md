@@ -18,7 +18,9 @@ kubectl port-forward -n kacho svc/api-gateway 18080:8080 &
 bash tests/authz-fixtures/setup.sh
 
 # 3. Run newman per service (пути — от корня ЭТОГО репозитория)
-(cd services/iam/tests/newman     && ./scripts/run.sh --service authz-deny)
+#    Набор службы доступа сюда не входит: она вынесена отдельным репозиторием,
+#    и переход в её каталог был бы переходом в чужое дерево — а вызывать его
+#    надо там, где он лежит.
 (cd services/vpc/tests/newman     && ./scripts/run.sh --service authz-deny)
 (cd services/compute/tests/newman && ./scripts/run.sh --service authz-deny)
 ```

@@ -10,8 +10,6 @@
 //
 //	краснеет  · место сборки сняло провязку — находка НАЗЫВАЕТ ЕГО ИМЯ И КООРДИНАТУ
 //	молчит    · соседнее место того же каталога, провязку сохранившее
-//	краснеет  · то же на НАСТОЯЩЕМ исходнике: у сервиса с двумя серверами звено
-//	            снято у второго, первый цел
 //	молчит    · слушатель, усыновивший через посредника
 //	краснеет  · пропуск, чья возможность усыновлена всеми названными единицами
 //	молчит    · пропуск, названный каталогом, где усыновило лишь одно место из двух
@@ -229,232 +227,29 @@ func TestFoundationGateCountsBySiteNotByDirectory(t *testing.T) {
 	t.Logf("по каталогу: несёт (звено осталось у соседнего сервера); по месту сборки: %s", f.Detail)
 }
 
-// TestFoundationGateRedensWhenARealListenerLosesItsWiring — то же на НАСТОЯЩЕМ
-// исходнике, а не на синтетике.
+// Здесь стояла проба TestFoundationGateRedensWhenARealListenerLosesItsWiring —
+// то же на НАСТОЯЩЕМ исходнике: у каталога с ДВУМЯ местами сборки звено
+// вырезалось у второго, первое оставалось целым, и обе стороны утверждались
+// сразу (по месту — находка, по каталогу — «несёт»).
 //
-// Синтетика доказывает механику. Она не доказывает, что механика приложена к
-// настоящему дереву верно: срез провязки настоящего композиционного корня — это
-// цепочки в переменных, соседние функции пакета и посредник, и синтетика ни
-// одного из этих случаев не содержит.
+// СНЯТА ВМЕСТЕ С ПРЕДМЕТОМ. Её вход существовал ровно пока в дереве был
+// каталог, где два сервера собираются в ОДНОМ файле: служба доступа (внешний и
+// внутренний слушатели) и край (внутренний слушатель жил ради одной этой
+// службы). Служба вынесена отдельным продуктом, внутренний слушатель края снят
+// вместе с нею — мест сборки 7 при 7 каталогах-слушателях, каталогов с более
+// чем одним местом НОЛЬ. Способ вырезания брал границу по номерам строк ДВУХ
+// мест, поэтому неприменим by construction, а не «пока не нашли пары».
 //
-// Поэтому проба берёт каталог, у которого мест сборки БОЛЬШЕ ОДНОГО, копирует
-// пакет его композиционного корня во временное дерево, вырезает вызовы звена,
-// относящиеся ко ВТОРОМУ месту, и разбирает получившийся исходник заново.
-// Ожидание точное: ровно одно место теряет возможность, соседнее — сохраняет.
-func TestFoundationGateRedensWhenARealListenerLosesItsWiring(t *testing.T) {
-	t.Parallel()
-	root := repoRoot(t)
-	r := foundationRoster()
-	sv := foundationSurveyTree(t, root, r)
-
-	cap := injPickListenerCapability(t, r)
-	dir, sites, neighbour, victim := injPickTwoSitesInOneFile(t, sv.Sites)
-
-	tmp, removed := injCopyPkgDroppingWiring(t, root, victim, neighbour, cap)
-	if removed == 0 {
-		t.Fatalf("между местами %s и %s не нашлось ни одной строки с вызовом %q: вырезать нечего, "+
-			"и проба ничего бы не доказала", neighbour.ID, victim.ID, cap.Name)
-	}
-
-	cut, err := DiscoverServerSites(tmp, []string{dir}, sv.Markers, r.Wrappers)
-	if err != nil {
-		t.Fatalf("места сборки во временном дереве не разобрались: %v", err)
-	}
-	if len(cut) != len(sites) {
-		t.Fatalf("во временном дереве мест сборки %d, а в настоящем у %s — %d: вырезание задело "+
-			"не то", len(cut), dir, len(sites))
-	}
-
-	var lost, kept []string
-	for _, s := range cut {
-		if r.Reach(s.Slice, sv.ProviderScan)[cap.Name] {
-			kept = append(kept, s.ID)
-		} else {
-			lost = append(lost, s.ID)
-		}
-	}
-	if len(lost) != 1 || lost[0] != victim.ID {
-		t.Fatalf("вырезано %d строк провязки у %s, а возможность потеряли %v (сохранили %v): "+
-			"срез провязки не различает соседние серверы одного каталога",
-			removed, victim.ID, lost, kept)
-	}
-	if len(kept) == 0 {
-		t.Fatalf("возможность потеряли ВСЕ места каталога %s: вырезание задело общий источник, "+
-			"и проба не отличает «нашёл виновника» от «покраснел на всём»", dir)
-	}
-
-	// Вердикт переписи на этом дереве: ровно одна находка, и она называет
-	// пострадавшее место с координатой.
-	swapped := append([]FoundationSite(nil), sv.Sites...)
-	for i := range swapped {
-		for _, s := range cut {
-			if swapped[i].ID == s.ID {
-				swapped[i] = s
-			}
-		}
-	}
-	cen := r.Adjudicate(sv.Dirs, sv.Scans, swapped, sv.ProviderScan)
-	if len(cen.Findings) != 1 || cen.Findings[0].Listener != victim.ID {
-		t.Fatalf("перепись на настоящем исходнике без провязки дала %d находок (%v), а ждали одну "+
-			"про %s", len(cen.Findings), cen.Findings, victim.ID)
-	}
-
-	// И контроль в обратную сторону, на том же входе: объединение по каталогу
-	// молчит. Это и есть замер, которым опровергнута прежняя единица счёта.
-	whole, err := ScanGoTree(filepath.Join(tmp, filepath.FromSlash(dir)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !whole.Direct(cap) {
-		t.Fatalf("объединение по каталогу %s перестало видеть %q — вход не тот: у соседнего "+
-			"сервера провязка обязана уцелеть", dir, cap.Name)
-	}
-	t.Logf("настоящий исходник %s: вырезано строк %d → по каталогу «несёт», по месту сборки "+
-		"находка: %s", victim.File, removed, cen.Findings[0].Detail)
-}
-
-// injPickListenerCapability — возможность, считаемая по месту сборки, выбранная
-// по СОДЕРЖАНИЮ набора, а не выписанная именем: выписанное имя устарело бы
-// вместе с первой же правкой набора, и проба падала бы на своей фикстуре.
-func injPickListenerCapability(t *testing.T, r FoundationRoster) FoundationCapability {
-	t.Helper()
-	for _, c := range r.Capabilities {
-		if c.Unit == FoundationUnitListener && len(c.Symbols) > 0 {
-			return c
-		}
-	}
-	t.Fatalf("в наборе нет ни одной возможности, считаемой по месту сборки: проба про единицу " +
-		"счёта потеряла предмет — либо все возможности стали процессными, либо единица снята")
-	return FoundationCapability{}
-}
-
-// injPickTwoSitesInOneFile — каталог, у которого ДВА места сборки стоят в ОДНОМ
-// файле, и сама эта пара.
+// Что осталось держать это свойство: TestFoundationGateCountsBySiteNotByDirectory
+// выше — тот же опыт на синтетике, где два места в одном каталоге строит сама
+// проба. Механика единицы счёта доказана; не доказано только приложение её к
+// настоящему исходнику, и предмета для такого доказательства в дереве нет.
+// Появится каталог с двумя местами — пробу возвращают вместе с ним, а не пишут
+// вместо неё ослабленную.
 //
-// Выбор по содержанию переписи, а не по выписанному имени: выписанное устарело бы
-// вместе с первой правкой раскладки. Одного файла требует способ вырезания —
-// провязка второго сервера ищется между строкой первой сборки и строкой второй.
-//
-// Не нашли такой пары — это ОТКАЗ, а не пропуск. Пропуск здесь означал бы, что
-// контроль над единицей счёта исчезает молча при перестановке файлов, то есть
-// при самой вероятной форме правки; ровно за это правило снимает t.Skip у
-// фикстур (`testing.md` §«Всякий механизм исключения обязан истекать сам»).
-func injPickTwoSitesInOneFile(t *testing.T, sites []FoundationSite) (
-	string, []FoundationSite, FoundationSite, FoundationSite) {
-
-	t.Helper()
-	byDir := map[string][]FoundationSite{}
-	var order []string
-	for _, s := range sites {
-		if _, ok := byDir[s.Dir]; !ok {
-			order = append(order, s.Dir)
-		}
-		byDir[s.Dir] = append(byDir[s.Dir], s)
-	}
-	sort.Strings(order)
-	multi := 0
-	for _, d := range order {
-		if len(byDir[d]) > 1 {
-			multi++
-		}
-		byFile := map[string][]FoundationSite{}
-		for _, s := range byDir[d] {
-			byFile[s.File] = append(byFile[s.File], s)
-		}
-		var files []string
-		for f := range byFile {
-			files = append(files, f)
-		}
-		sort.Strings(files)
-		for _, f := range files {
-			in := byFile[f]
-			if len(in) < 2 {
-				continue
-			}
-			sort.Slice(in, func(i, j int) bool { return in[i].Line < in[j].Line })
-			return d, byDir[d], in[len(in)-2], in[len(in)-1]
-		}
-	}
-	t.Fatalf("в дереве не осталось файла, где собираются ДВА сервера одного каталога: предмет "+
-		"этой пробы исчез. Это не повод её пропустить — либо раскладка изменилась и пробу надо "+
-		"переписать под новую, либо перепись мест сломалась. Мест всего %d, каталогов с более "+
-		"чем одним местом %d", len(sites), multi)
-	return "", nil, FoundationSite{}, FoundationSite{}
-}
-
-// injCopyPkgDroppingWiring копирует пакет композиционного корня во временное
-// дерево, вырезая строки с вызовом возможности между СОСЕДНИМ и ПОСТРАДАВШИМ
-// местом сборки.
-//
-// Граница взята по номерам строк самих мест: провязка сервера пишется между
-// предыдущей сборкой и своей. Если раскладка исходника когда-нибудь перестанет
-// быть такой, проба скажет об этом отказом (вырезано ноль либо потеряли не то),
-// а не пройдёт тихо.
-func injCopyPkgDroppingWiring(t *testing.T, root string, victim, neighbour FoundationSite,
-	cap FoundationCapability) (string, int) {
-
-	t.Helper()
-	tmp := t.TempDir()
-	pkgRel := filepath.Dir(victim.File)
-	srcDir := filepath.Join(root, filepath.FromSlash(pkgRel))
-	dstDir := filepath.Join(tmp, filepath.FromSlash(pkgRel))
-	if err := os.MkdirAll(dstDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	entries, err := os.ReadDir(srcDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	removed := 0
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
-		body, rerr := os.ReadFile(filepath.Join(srcDir, e.Name()))
-		if rerr != nil {
-			t.Fatal(rerr)
-		}
-		out := string(body)
-		if filepath.Join(pkgRel, e.Name()) == filepath.FromSlash(victim.File) {
-			out, removed = injDropCallsInRange(string(body), neighbour.Line, victim.Line, cap.Symbols)
-		}
-		if werr := os.WriteFile(filepath.Join(dstDir, e.Name()), []byte(out), 0o644); werr != nil {
-			t.Fatal(werr)
-		}
-	}
-	return tmp, removed
-}
-
-// injDropCallsInRange убирает строки, чей текст содержит вызов одного из
-// символов, в открытом диапазоне строк (from, to).
-//
-// Сверка идёт подстрокой, и предмет у формы узкий: символы — селекторы вида
-// `grpcsrv.NewAdmission`, поэтому хвостом чужого имени совпадение станет только
-// при псевдониме импорта, кончающемся на `grpcsrv`. Вход синтетический, его
-// строит эта же проба. Замер по 4984 файлам Go: хвостов ноль.
-func injDropCallsInRange(body string, from, to int, symbols []string) (string, int) {
-	lines := strings.Split(body, "\n")
-	var out []string
-	removed := 0
-	for i, ln := range lines {
-		n := i + 1
-		drop := false
-		if n > from && n < to {
-			for _, sym := range symbols {
-				if strings.Contains(ln, sym+"(") {
-					drop = true
-					break
-				}
-			}
-		}
-		if drop {
-			removed++
-			continue
-		}
-		out = append(out, ln)
-	}
-	return strings.Join(out, "\n"), removed
-}
+// Сняты вместе с нею и её помощники injPickListenerCapability,
+// injPickTwoSitesInOneFile, injCopyPkgDroppingWiring, injDropCallsInRange:
+// других вызывающих у них не было.
 
 // TestFoundationLedgerEntriesExpireOnTheirOwn — САМОИСТЕЧЕНИЕ обеих ведомостей.
 //

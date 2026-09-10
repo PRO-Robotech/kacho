@@ -45,6 +45,13 @@ import (
 // retiredPaths — файлы и каталоги, существовавшие ТОЛЬКО ради снятой поверхности.
 // Путь, вернувшийся в дерево, — возврат поверхности, а не «похожий файл».
 var retiredPaths = []string{
+	// Двенадцать координат под `services/iam/` сняты ВМЕСТЕ со своим корнем:
+	// служба доступа вынесена отдельным продуктом, и путь под этим корнем не
+	// может вернуться в ЭТО дерево ни при каком изменении. Утверждение «его
+	// нет» стало истинным by construction — то есть перестало быть способным
+	// упасть, а значит перестало быть утверждением. Остались координаты
+	// контракта и стабов: они живут здесь, и возврат любой из них — возврат
+	// поверхности.
 	"proto/kaname/cloud/iam/v1/condition.proto",
 	"proto/kaname/cloud/iam/v1/conditions_service.proto",
 	"proto/kaname/cloud/iam/v1/access_binding_condition.proto",
@@ -53,18 +60,6 @@ var retiredPaths = []string{
 	"pkg/api/kaname/cloud/iam/v1/conditions_service.pb.go",
 	"pkg/api/kaname/cloud/iam/v1/conditions_service.pb.gw.go",
 	"pkg/api/kaname/cloud/iam/v1/conditions_service_grpc.pb.go",
-	"services/iam/internal/apps/kaname/api/conditions",
-	"services/iam/internal/repo/kaname/condition",
-	"services/iam/internal/repo/kaname/pg/conditions_repo.go",
-	"services/iam/internal/service/conditions_crud_service.go",
-	"services/iam/internal/service/conditions_evaluator.go",
-	"services/iam/internal/service/conditions_audit.go",
-	"services/iam/internal/domain/condition.go",
-	"services/iam/internal/domain/access_binding_condition.go",
-	"services/iam/tests/newman/cases/iam-condition.py",
-	"services/iam/tests/newman/collections/iam-condition.postman_collection.json",
-	"services/iam/docs/engineering/components/09-conditions.md",
-	"services/iam/tools/auditlistfilter/exclusion_expiry_test.go",
 }
 
 // surfaceFile — файл, в котором снятая поверхность была бы объявлена, и маркер,
@@ -77,81 +72,33 @@ type surfaceFile struct {
 }
 
 var surfaceFiles = []surfaceFile{
+	// Восемь координат под `services/iam/` сняты вместе со своим корнем: служба
+	// доступа вынесена отдельным продуктом. Их предпосылка (маркер жанра в
+	// читаемом файле) отказывала на КАЖДОМ прогоне, и это верное поведение —
+	// вердикт по непрочитанному файлу не выносится. Остались объявления КРАЯ:
+	// он маршрутизирует службу и обязан не знать снятой поверхности; его
+	// таблица маршрутов, список обхода, вшитый каталог прав и регистрация
+	// мультиплексора живут в этом дереве и предпосылку выполняют.
 	{
 		path:    "gateway/internal/middleware/rest_route_table_gen.go",
 		genre:   "kaname.cloud.iam.v1.AccessBindingService/",
 		forbid:  "ConditionsService/",
 		whatFor: "таблица REST-маршрутов края",
-	},
-	{
+	}, {
 		path:    "gateway/internal/allowlist/list.go",
 		genre:   "/kaname.cloud.iam.v1.AccessBindingService/",
 		forbid:  "ConditionsService/",
 		whatFor: "список обхода края",
-	},
-	{
+	}, {
 		path:    "gateway/internal/middleware/embed/permission_catalog.json",
 		genre:   "kaname.cloud.iam.v1.AccessBindingService/",
 		forbid:  "ConditionsService/",
 		whatFor: "каталог прав, вшитый в край",
-	},
-	{
-		path:    "services/iam/internal/apps/kaname/seed/embedded/permission_catalog.json",
-		genre:   "kaname.cloud.iam.v1.AccessBindingService/",
-		forbid:  "ConditionsService/",
-		whatFor: "каталог прав, вшитый в iam (вторая копия)",
-	},
-	{
+	}, {
 		path:    "gateway/internal/restmux/mux.go",
 		genre:   "RegisterAccessBindingServiceHandlerFromEndpoint",
 		forbid:  "RegisterConditionsServiceHandlerFromEndpoint",
 		whatFor: "регистрация REST-мультиплексора",
-	},
-	{
-		// Карта типов прав ПОРОЖДАЕТСЯ из манифестов модулей (#1092) и лежит в
-		// порождённом файле; координата переехала вместе с ней. Маркер жанра —
-		// живой тип этой же карты, поэтому предпосылка отказывает, если карта
-		// переедет снова.
-		path:    "services/iam/internal/authzmap/tables_gen.go",
-		genre:   "iam_access_binding",
-		forbid:  "iam_condition",
-		whatFor: "карта типов прав (порождается из манифестов)",
-	},
-	{
-		path:    "services/iam/internal/authzcascade/authzcascade.go",
-		genre:   "iam_access_binding",
-		forbid:  "iam_condition",
-		whatFor: "каскад разрешения объекта в аккаунт",
-	},
-	{
-		path:    "services/iam/tools/audit-list-filter.sh",
-		genre:   "--root=",
-		forbid:  "--allow=conditions",
-		whatFor: "прогонщик гейта сужения списка",
-	},
-	{
-		path:    "services/iam/internal/dto/toproto/access_binding.go",
-		genre:   "ScopeType",
-		forbid:  "ConditionId",
-		whatFor: "проекция привязки в ответ",
-	},
-	{
-		path:    "services/iam/internal/domain/access_binding.go",
-		genre:   "ExpiresAt",
-		forbid:  "ConditionID",
-		whatFor: "доменная привязка",
-	},
-	{
-		path:    "services/iam/internal/repo/kaname/pg/access_binding_repo.go",
-		genre:   "granted_by_user_id",
-		forbid:  "condition_id",
-		whatFor: "хранилище привязки",
-	},
-	{
-		path:    "services/iam/tests/newman/scripts/run.sh",
-		genre:   "run_one",
-		forbid:  "iam-condition",
-		whatFor: "прогонщик e2e-набора iam",
 	},
 }
 
@@ -333,101 +280,19 @@ func TestTenantConditionSurface_IsGone(t *testing.T) {
 		}
 	})
 
-	t.Run("хранилища наложения нет в схеме", func(t *testing.T) {
-		// # Признак — СОСТОЯНИЕ схемы, а не история цепи
-		//
-		// Прежде здесь требовалось, чтобы в миграциях нашёлся
-		// `DROP TABLE IF EXISTS kaname.conditions`, а рядом — запись о нём в
-		// `dropguard.json` с числом уничтожаемых строк. Оба референта были из
-		// ИСТОРИИ, и оба исчезли вместе с ней: цепь iam сведена в одну первичную
-		// миграцию. У свода истории нет by construction — он одно состояние, —
-		// поэтому «снос объявлен» перестало быть проверяемым, а ведомость снятий
-		// была снята вместе со снятиями, которые она описывала.
-		//
-		// Свойство при этом никуда не делось и стало проверяться ПРЯМЕЕ:
-		// поверхности наложения в схеме НЕТ. Прежняя пара утверждений доказывала
-		// это в обход — через то, что её однажды снесли; новое утверждает то же
-		// самое о конечном состоянии и не зависит от того, каким путём оно
-		// получено.
-		dir := filepath.Join(root, "services/iam/internal/migrations")
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			t.Fatalf("не прочитан каталог миграций: %v", err)
-		}
-		var all strings.Builder
-		files := 0
-		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".sql") {
-				continue
-			}
-			raw, err := os.ReadFile(filepath.Clean(filepath.Join(dir, e.Name())))
-			if err != nil {
-				t.Fatalf("не прочитана миграция %s: %v", e.Name(), err)
-			}
-			all.Write(raw)
-			files++
-		}
-		if files == 0 {
-			t.Fatal("в каталоге миграций нет ни одного .sql — вердикт беспредметен")
-		}
-		body := all.String()
-
-		// Судится ОТСУТСТВИЕ объекта в схеме, а не наличие оператора сноса в
-		// истории. Это не ослабление, а усиление, и разница видна на предельном
-		// случае: «какая-то миграция сносила» верно и тогда, когда следующая
-		// завела таблицу заново, а «в схеме её нет» — нет.
-		//
-		// Прежняя редакция спрашивала про `DROP TABLE IF EXISTS` и про запись в
-		// ведомости снятий, и обе половины были верны, пока цепочка iam состояла
-		// из 171 инкрементальной миграции. Свод (2026-09-04) историю унёс: у него
-		// нет ни «до», ни «после», снятая поверхность в нём просто ОТСУТСТВУЕТ.
-		// Спрашивать у свода про оператор сноса — спрашивать про то, чего у
-		// артефакта этого рода не бывает by construction.
-		//
-		// Половина про число уничтоженных строк снята вместе со своим предметом:
-		// она утверждала о РАЗОВОМ уничтожении данных, случившемся один раз в
-		// истории, и повторить это утверждение по конечному состоянию нельзя.
-		//
-		// Механизм взят у соседней полосы той же волны: она пришла к тому же
-		// решению независимо и добавила ЯКОРЬ — без него «поверхности нет»
-		// зеленело бы на пустом чтении, то есть отсутствие предмета было бы
-		// неотличимо от отсутствия обхода. Здесь стояла более узкая проверка
-		// (объявление таблицы и объявление столбца); она поглощена, потому что
-		// «любое упоминание» строго шире «объявления», а разбор по объявлению
-		// не ловит возвращение столбца правкой существующей таблицы.
-
-		// КОНТРОЛЬ. Без него «поверхности нет» зеленело бы на пустом файле, на
-		// каталоге, который перестали читать, и на схеме, из которой вынесли всё.
-		// Якорь — таблица, которая обязана быть и к наложению отношения не имеет.
-		const anchor = "kaname.access_bindings"
-		if !strings.Contains(body, anchor) {
-			t.Fatalf("якорь %s не найден в %d файле(ах) миграций: читается не то либо не читается "+
-				"ничего, и отсутствие поверхности ниже было бы отсутствием чтения", anchor, files)
-		}
-
-		// Ни таблиц наложения, ни ссылки на него в привязке. Проверяется ЛЮБОЕ
-		// упоминание, а не только `CREATE`: столбец мог бы вернуться правкой
-		// существующей таблицы, а таблица — под другим оператором.
-		mentions := 0
-		for _, gone := range []string{
-			"kaname.conditions",
-			"access_binding_conditions",
-			"condition_id",
-			"builtin_condition",
-		} {
-			if strings.Contains(body, gone) {
-				mentions++
-				t.Errorf("схема iam упоминает %q — поверхность наложения снята с контракта, "+
-					"а в базе для неё снова заводится место", gone)
-			}
-		}
-
-		// Величина СЧИТАЕТСЯ, а не выписывается нулём. Выписанный ноль печатался
-		// бы и рядом с находкой — то есть перепись противоречила бы вердикту в
-		// том же выводе, и читатель поверил бы той строке, которую увидел первой.
-		t.Logf("перепись: прочитано %d файлов миграций, якорь %s на месте, "+
-			"упоминаний снятой поверхности %d", files, anchor, mentions)
-	})
+	// Здесь стояла подпроба «хранилища наложения нет в схеме»: она читала цепь
+	// миграций службы доступа, требовала якорь `kaname.access_bindings` и
+	// отсутствия четырёх имён снятой поверхности.
+	//
+	// СНЯТА ВМЕСТЕ С ПРЕДМЕТОМ. Схема живёт в базе службы, служба вынесена
+	// отдельным продуктом, и каталога миграций в этом дереве нет — подпроба
+	// отказывала на чтении каталога, то есть вердикта не выносила вовсе.
+	// Свойство «в схеме iam нет поверхности наложения» теперь целиком предмет
+	// того репозитория: судить чужую схему отсюда нечем, а утверждать о ней по
+	// непрочитанному — ровно то, против чего написана эта проба.
+	//
+	// Остальные четыре подпробы предмет сохранили: контракт (`proto/kaname/`),
+	// стабы (`pkg/api/kaname/`) и объявления КРАЯ живут в этом дереве.
 }
 
 // TestTupleConditionMechanism_StaysLive — положительная половина.

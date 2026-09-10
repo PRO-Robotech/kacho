@@ -55,7 +55,13 @@ jobs:
           #
           # Свести три поля в два нельзя ни одним способом, который не вычислял бы
           # путь в шаге, — а вычисленный путь в объявлении не виден глазом.
-          - { target: FuzzPermissionCatalogLookup, mod: services/iam, pkg: ./internal/fuzz, dir: services/iam/internal/fuzz }
+          # Здесь стояла цель службы доступа — единственная строка матрицы,
+          # адресовавшая ВТОРОЙ модуль дерева. Она снята вместе со своим
+          # предметом: служба вынесена отдельным продуктом, её пакет фаззинга
+          # живёт в её дереве и гоняется её конвейером. Модуль в этом дереве
+          # теперь один, поэтому все оставшиеся строки несут `mod: .` — и это
+          # не повод свести поле: заведётся второй модуль, и поле понадобится
+          # снова, а склейка `mod`+`pkg` промахивалась бы мимо каталога.
           - { target: FuzzCIDRParse, mod: ., pkg: ./services/vpc/internal/fuzz, dir: services/vpc/internal/fuzz }
           - { target: FuzzInstanceSpecValidate, mod: ., pkg: ./services/compute/internal/fuzz, dir: services/compute/internal/fuzz }
           - { target: FuzzJWTVerify, mod: ., pkg: ./gateway/internal/fuzz, dir: gateway/internal/fuzz }

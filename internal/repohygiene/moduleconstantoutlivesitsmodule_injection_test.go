@@ -236,8 +236,27 @@ func TestModuleConstantGate_LiveCorpusRedsWhenTheCarvedOutModuleGoes(t *testing.
 		t.Fatalf("живой корпус краснеет при обоих объявленных модулях: %v; перепись: %s", faults, census)
 	}
 
-	// ВНЕСЁННЫЙ ФАКТ: `services/iam/go.mod` уехал вместе с каталогом.
-	faults, census := judgeModulePathConstants(outside, both[:1], parsed, read, len(owners))
+	// ВНЕСЁННЫЙ ФАКТ: объявление второго модуля снято, а константа, называющая
+	// его, в корпусе ЕСТЬ.
+	//
+	// Константа подаётся СИНТЕТИЧЕСКОЙ, и это не ослабление, а починка формы.
+	// Прежде инъекция брала её из живого дерева — то есть требовала, чтобы дерево
+	// НЕСЛО дефект, ради которого гейт заведён. Пока разрез был впереди, такая
+	// константа в нём действительно была; после разреза её не осталось ни одной,
+	// и проба покраснела на достижении собственной цели: «снятие прошло молча»
+	// печаталось на дереве, где снимать было нечего.
+	//
+	// Живой корпус остаётся ПОЛОЖИТЕЛЬНЫМ близнецом выше (оба модуля объявлены —
+	// молчание) и премисой непустоты; отрицательная половина стоит теперь на
+	// входе, который проба строит сама и который поэтому не может исчезнуть.
+	injected := append(append([]ModulePathConstant(nil), outside...), ModulePathConstant{
+		File:   "internal/repohygiene/zz_injected_module_constant.go",
+		Line:   1,
+		Name:   "injectedCarvedModule",
+		Value:  carvedModule,
+		Module: carvedModule,
+	})
+	faults, census := judgeModulePathConstants(injected, both[:1], parsed, read+1, len(owners))
 	if len(faults) == 0 {
 		t.Fatalf("снятие модуля прошло молча — ровно тот случай, ради которого гейт "+
 			"заведён; перепись: %s", census)

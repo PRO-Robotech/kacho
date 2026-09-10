@@ -143,27 +143,68 @@ func TestOwnerRegistrationCarriesWriterTxVersion(t *testing.T) {
 func TestDeliveryClockDictionaryHasSubject(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
-	seen := map[string]int{}
+	inGateScope := map[string]int{}
+	inTree := map[string]int{}
 	files := 0
 
 	walkOwnerRegisterGoFiles(t, root, ownerRegisterScanRoots, func(_ string, body []byte) {
 		files++
 		for call := range deliveryClockCalls {
-			seen[call] += strings.Count(string(body), call+"(")
+			inGateScope[call] += strings.Count(string(body), call+"(")
 		}
 	})
-
 	if files == 0 {
 		t.Fatalf("перепись не прочитала ни одного файла — предпосылка сломана")
 	}
-	for call, why := range deliveryClockCalls {
-		if seen[call] == 0 {
-			t.Fatalf("словарь называет %q (%s), но в %d файлах дерева такого вызова НЕТ — "+
-				"запись, которой больше нечего распознавать, есть находка: она унаследует "+
-				"следующую слепую зону", call, why, files)
+
+	// Второй обход — ПО ВСЕМУ ДЕРЕВУ, включая край и пробы.
+	//
+	// Предмет этой пробы — ОРФОГРАФИЯ словаря: имя, не называющее ни одного
+	// настоящего вызова, распознавать нечего, и оно унаследует следующую слепую
+	// зону. Область гейта (`services` + `pkg`, только прод) для такого вопроса
+	// узка: вызов, законный и живой, может сегодня не встречаться ни в одном
+	// прод-файле этих двух корней — и это не делает имя выдумкой.
+	//
+	// Судить орфографию областью гейта пробовали, и цена измерена: после выноса
+	// службы доступа отдельным продуктом `timestamppb.Now` исчез из прод-кода
+	// обоих корней (все его вхождения были у неё), и проба потребовала снять
+	// имя из словаря. Снятие было бы ПРЯМЫМ заведением слепой зоны: распознаватель
+	// обязан знать ВСЕ законные формы записи предмета, а очереди регистрации живы
+	// у пяти оставшихся владельцев — напиши любой из них `timestamppb.Now` в
+	// сборщике запроса, гейт бы промолчал.
+	tt := newTrackedTree(t, root)
+	treeFiles := 0
+	for rel := range tt.files {
+		if !strings.HasSuffix(rel, ".go") {
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			// Файл индекса, которого нет на диске, — не находка и не тишина.
+			continue
+		}
+		treeFiles++
+		for call := range deliveryClockCalls {
+			inTree[call] += strings.Count(string(body), call+"(")
 		}
 	}
-	t.Logf("предпосылка словаря: прочитано файлов %d, вхождений %v", files, seen)
+	if treeFiles == 0 {
+		t.Fatalf("обход дерева пуст — орфографию словаря проверять не по чему")
+	}
+
+	for call, why := range deliveryClockCalls {
+		if inTree[call] == 0 {
+			t.Fatalf("словарь называет %q (%s), но в %d файлах дерева такого вызова НЕТ ВОВСЕ — "+
+				"запись, которой больше нечего распознавать, есть находка: она унаследует "+
+				"следующую слепую зону", call, why, treeFiles)
+		}
+	}
+
+	// Перепись печатает ОБА числа отдельно. Одно скрыло бы ровно тот случай, из
+	// которого проба переписана: имя, живое в дереве и не встречающееся сегодня
+	// в области гейта, — законное состояние, но знать о нём надо.
+	t.Logf("предпосылка словаря: прод-файлов области гейта %d, файлов дерева %d; "+
+		"вхождений в области гейта %v, во всём дереве %v", files, treeFiles, inGateScope, inTree)
 }
 
 // ── распознавание ──────────────────────────────────────────────────────────

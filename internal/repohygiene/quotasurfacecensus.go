@@ -272,11 +272,12 @@ var quotaCensusRules = []quotaCensusRule{
 		Why:   "консольный раздел величин",
 		Token: regexp.MustCompile(`LimitsPage`),
 	},
-	{
-		Surface: quotaSurfaceAuthority, Code: "A8",
-		Why:   "порт хранилища величин",
-		Token: regexp.MustCompile(`LimitRepo`),
-	},
+	// Здесь стояло правило A8 («порт хранилища величин», признак `LimitRepo`).
+	// Снято ВМЕСТЕ С ПРЕДМЕТОМ: порт объявлялся в службе доступа, служба
+	// вынесена отдельным продуктом, и признак не совпал НИ С ОДНИМ из 343
+	// кандидатов. Правило, которому нечего относить, есть послабление без
+	// ответственного — следующий читатель унаследует его как описание
+	// действительности.
 	{
 		Surface: quotaSurfaceAuthority, Code: "A9",
 		// Пункт меню — МАШИНЕРИЯ, а не подпись: он несёт адрес раздела величин.
@@ -359,12 +360,10 @@ var quotaCensusRules = []quotaCensusRule{
 	},
 
 	// ---------- C. учёт самой службы доступа ----------
-	{
-		Surface: quotaSurfaceIAMLedger, Code: "C1",
-		Why:   "тот же учёт, но в службе доступа: граница B и C проходит по месту (§2)",
-		Scope: []string{iamServicePrefix},
-		Token: regexp.MustCompile(`kacho_quota_count|quota_used|quota_recount|quota_admit|quota_refuse|project_resource_quotas|QUOTA_EXCEEDED|QUOTA_NOT_PROVISIONED|ErrQuotaExceeded|ErrQuotaNotProvisioned|quotaRefusal|QuotaErr|quota exceeded|v1/quotas|quota\.List|QuotasPage|quotas|Quotas|quota-view|quotaAuthority|QuotaAuthority|QuotaConfig|quota_sync_cursor|LimitSync|quotaiam|QuotaGuard|QuotaRepo|QuotaStore|QuotaExecutor|QuotaSchema|QuotaAdmit|quotaWriter|quotaReader|QuotaRow|quotaread|quotadetail|quotapb|quota\.Admit|shared/quota|quota_carrier_lifecycle|kacho\.cloud\.quota|"quota"|quota/v1`),
-	},
+	// Здесь стояло правило C1 («тот же учёт, но в службе доступа»): единственное
+	// правило поверхности C, сужённое областью `services/iam`. Снято ВМЕСТЕ С
+	// ПРЕДМЕТОМ — области в дереве больше нет, и признак не совпал ни с одним
+	// кандидатом. Учёт службы доступа судится теперь её собственным деревом.
 	{
 		Surface: quotaSurfaceIAMLedger, Code: "C2",
 		Why:   "чтение учёта личности — глагол службы доступа",
@@ -483,16 +482,9 @@ var quotaCensusRules = []quotaCensusRule{
 		Fallback: true,
 		Suffixes: []string{".md", ".mdx"},
 	},
-	{
-		Surface: quotaSurfaceProse, Code: "P4",
-		// Черновик манифеста называет предмет в ТЕКСТЕ описания, а не в ключах:
-		// признак совпадает со строкой пояснения внутри значения, поэтому
-		// «упоминание только в комментарии» его не берёт — и правильно не берёт,
-		// строка комментарием не является.
-		Why:      "фикстура черновика манифеста: слово стоит в тексте описания, а не в ключах",
-		Fallback: true,
-		Prefixes: []string{"services/iam/internal/manifest/testdata/"},
-	},
+	// Здесь стояло правило P4 (фикстура черновика манифеста под
+	// `services/iam/internal/manifest/testdata/`). Снято ВМЕСТЕ С ПРЕДМЕТОМ:
+	// каталога в дереве нет, приставка не совпала ни с одним кандидатом.
 }
 
 // quotaCensusFile — один кандидат с отнесением.
