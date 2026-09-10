@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package internal_iam — InternalIAMService (kacho-only, gRPC port :9091).
+// Package internal_iam — InternalIAMService (internal-only, gRPC port :9091).
 //
 // Ban #6 (Internal.* не публикуется на external endpoint): internal-only сервис.
 // Регистрируется ТОЛЬКО на internal listener (port 9091).
