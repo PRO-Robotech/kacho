@@ -35,6 +35,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kaname/internal/repo/kaname/pg"
 )
 
 // setOwnCeiling — величина проекции посадки. Ровно тот оператор, которым её
@@ -241,4 +243,68 @@ func TestOwnCeiling_ForeignKindStillTakesItsValueFromTheAuthority(t *testing.T) 
 		  WHERE kind = 'vpc.network' AND scope = 'DEFAULT' AND withdrawn_at IS NULL`).Scan(&value))
 	require.NotZero(t, value,
 		"величина чужого вида исчезла: снятие ушло шире своего предмета")
+}
+
+// TestOwnCeiling_TenantReadTakesTheValueFromThePostureNotTheStaleSnapshot —
+// АРЕНДАТОРСКОЕ ЧТЕНИЕ берёт величину у посадки (сценарий `KAN-Q3-05`).
+//
+// # Почему снимок строки учёта читать нельзя
+//
+// Он обновляется СПИСАНИЕМ, значит между сменой величины и следующим созданием
+// ресурса отстаёт. Отдать его арендатору значило бы назвать потолок, который уже
+// не действует, — то есть отправить его менять поведение, которое уже изменено.
+//
+// # Пара, а не одно утверждение
+//
+// Отрицание («снимок не отдаётся») зеленело бы на ответе, где величины нет вовсе,
+// поэтому рядом стоит положительный контроль: ответ НЕ ПУСТ ни при каком
+// состоянии, и потребление в нём — фактическое.
+func TestOwnCeiling_TenantReadTakesTheValueFromThePostureNotTheStaleSnapshot(t *testing.T) {
+	pool, ctx := newAccountQuotaDB(t)
+	liftRateCeilingOutOfTheWay(t, ctx, pool)
+
+	setOwnCeiling(t, ctx, pool, "iam.account", 3)
+	external, _ := accountQuotaFixture(t, ctx, pool, "tenant-read")
+
+	// Снимок в строке учёта зафиксирован списанием при величине ТРИ; посадка
+	// объявляет ОДИН. Один изменённый факт — и он же решающий.
+	setOwnCeiling(t, ctx, pool, "iam.account", 1)
+
+	var snapshot int64
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT limit_value FROM kaname.project_resource_quotas
+		  WHERE carrier_type = 'identity' AND carrier_id = $1 AND kind = 'iam.account'`,
+		external).Scan(&snapshot))
+	require.EqualValues(t, 3, snapshot,
+		"снимок уже совпал с посадкой — решающее утверждение стало вакуумным: "+
+			"расхождения источников нет, и «читает посадку» ничем не отличается от "+
+			"«читает снимок»")
+
+	states, err := pg.NewIdentityQuotaRepo(pool).States(ctx, external)
+	require.NoError(t, err)
+	require.NotEmpty(t, states,
+		"ответ пуст: арендатор заключил бы, что он не ограничен, а он ограничен — "+
+			"пустой массив зарезервирован под утверждение, которого эта служба не делает")
+
+	var found bool
+	for _, st := range states {
+		if st.Kind != "iam.account" {
+			continue
+		}
+		found = true
+		require.EqualValues(t, 1, st.Limit,
+			"чтение отдало ОТСТАВШИЙ снимок (%d) вместо величины посадки: арендатор "+
+				"читает потолок, который уже не действует", snapshot)
+		require.EqualValues(t, 1, st.Used,
+			"потребление не фактическое: фикстура завела ровно один аккаунт")
+		require.Equal(t, "DEFAULT", st.SourceScope,
+			"область ответа обязана называть установку: величина объявлена посадкой, "+
+				"а не аккаунтом и не проектом арендатора")
+		require.Empty(t, st.SourceScopeID,
+			"идентификатор области непуст при `DEFAULT` — контракт объявляет его пустым "+
+				"и только тогда")
+	}
+	require.True(t, found,
+		"вида `iam.account` в ответе нет вовсе: потолок, который наступает, стал "+
+			"невидим арендатору — отказ по нему читался бы как поломка платформы")
 }
