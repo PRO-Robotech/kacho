@@ -141,6 +141,14 @@ func nameResidueBorderTwins() map[string]struct{ Path, Body string } {
 			"services/iam/docs/content/advanced/probe-observability.mdx",
 			"| `" + nameResidueProbeSeries + "` | counter | доля неуспешных ответов |\n",
 		},
+		borderPlatformObject: {
+			"services/iam/internal/apps/kaname/config/probe_db_host.go",
+			"const defaultHost = \"kacho-umbrella-pg-iam\"\n",
+		},
+		borderClusterNamespace: {
+			"services/iam/deploy/probe-ns-compound.yaml",
+			"  namespace: kacho-system\n",
+		},
 	}
 }
 
@@ -920,4 +928,289 @@ func TestKanameNameResidueReadsChartGlobalFormsItUsedToMiss(t *testing.T) {
 			}
 		}
 	})
+}
+
+// nameResidueForeignModuleForms — формы, которыми дерево записывает имя ЧУЖОГО
+// модуля платформы.
+//
+// Перечень выведен замером по дереву, а не придуман: сегмент режется по `/`,
+// поэтому терминальная пунктуация прозы (`kacho-vpc:`, `kacho-iam.`) из токена
+// не выпадает и для словаря оказывается ДРУГОЙ строкой. Тот же класс уже
+// чинился у границы функции фундамента; здесь он тот же и лечится тем же
+// перечнем знаков.
+func nameResidueForeignModuleForms() map[string]string {
+	const mod = "kacho-vpc"
+	return map[string]string{
+		"голая":              mod,
+		"с точкой прозы":     mod + ".",
+		"с двоеточием прозы": mod + ":",
+	}
+}
+
+// nameResidueForeignFormPath — путь инъекции формы чужого модуля.
+const nameResidueForeignFormPath = "services/iam/docs/engineering/probe-edges-form.md"
+
+// TestKanameNameResidueBorderReadsEveryFormOfTheForeignModule — граница Б3
+// узнаёт имя чужого модуля в КАЖДОЙ форме, которой дерево его записывает.
+//
+// Форма, о которой граница не знает, даёт не красное и не зелёное, а МОЛЧАНИЕ:
+// имя чужого продукта уезжает на полосу витрины и растёт там остатком, который
+// снять нельзя никогда.
+func TestKanameNameResidueBorderReadsEveryFormOfTheForeignModule(t *testing.T) {
+	t.Parallel()
+	base := nameResidueLanes(t, nameResidueWorld())
+
+	for name, form := range nameResidueForeignModuleForms() {
+		t.Run(name, func(t *testing.T) {
+			world := nameResidueWorld()
+			world[nameResidueForeignFormPath] = []byte("Ребро к " + form + " остаётся односторонним.\n")
+			got := nameResidueLanes(t, world)
+
+			if got[borderForeignModule] != base[borderForeignModule]+1 {
+				t.Fatalf("форма %s (%q) НЕ признана границей %q: было %d, стало %d — "+
+					"граница этой формы не читает, и имя ЧУЖОГО продукта учтено "+
+					"остатком службы", name, form, borderForeignModule,
+					base[borderForeignModule], got[borderForeignModule])
+			}
+			for other := range kanameLanes {
+				if other == borderForeignModule {
+					continue
+				}
+				if got[other] != base[other] {
+					t.Errorf("форма %s (%q) сдвинула ЧУЖУЮ полосу %q (%d → %d)",
+						name, form, other, base[other], got[other])
+				}
+			}
+		})
+	}
+}
+
+// TestKanameNameResidueForeignBorderDoesNotSwallowItsNeighbourhood — ЗАКОННЫЙ
+// близнец: имя СОБСТВЕННОГО объекта службы в той же обёртке обязано остаться
+// на полосе витрины.
+//
+// Без него граница, написанная как «срезать пунктуацию и согласиться», была бы
+// зелёной по всем формам сразу; а поскольку словарь чужих модулей закрыт, охрана
+// обязана судить именно словарь, а не форму записи.
+func TestKanameNameResidueForeignBorderDoesNotSwallowItsNeighbourhood(t *testing.T) {
+	t.Parallel()
+	base := nameResidueLanes(t, nameResidueWorld())
+
+	// Близнецы ДВУХ родов, и второй важнее первого:
+	//
+	//  1. собственная встроенная учётка службы: та же приставка, тот же дефис,
+	//     те же обёртки — и в словаре чужих модулей её НЕТ;
+	//  2. АДРЕС собственного слушателя службы (`kacho-iam:9091`) — тот же словарь,
+	//     но за именем стоит порт. Это ДРУГОЙ предмет: имя здесь называет
+	//     Service нашего же развёртывания, и снять его обязана служба. Охрана,
+	//     срезающая всё после двоеточия, простила бы его молча.
+	const own = "kacho-bootstrap-admin"
+	for name, twin := range map[string]string{
+		"голая":                        own,
+		"с точкой прозы":               own + ".",
+		"с двоеточием прозы":           own + ":",
+		"адрес собственного слушателя": "kacho-iam:9091",
+	} {
+		t.Run(name, func(t *testing.T) {
+			world := nameResidueWorld()
+			world[nameResidueForeignFormPath] = []byte("Учётка " + twin + " посеяна миграцией.\n")
+			got := nameResidueLanes(t, world)
+
+			if got[borderForeignModule] != base[borderForeignModule] {
+				t.Fatalf("близнец %s (%q) ПРИЗНАН границей %q (%d → %d) — охрана шире "+
+					"предмета: она простила собственный объект службы",
+					name, twin, borderForeignModule,
+					base[borderForeignModule], got[borderForeignModule])
+			}
+			if got[laneObjectName] != base[laneObjectName]+1 {
+				t.Fatalf("близнец %s (%q) не поднял полосу %q: было %d, стало %d",
+					name, twin, laneObjectName, base[laneObjectName], got[laneObjectName])
+			}
+		})
+	}
+}
+
+// TestKanameNameResiduePlatformObjectBorderDoesNotSwallowItsNeighbourhood —
+// ЗАКОННЫЙ близнец границы Б9: имя СОБСТВЕННОГО объекта службы, записанное той
+// же формой, обязано остаться на полосе витрины.
+//
+// Без него граница, написанная как «начинается приставкой платформы — значит
+// чужое», была бы зелёной на всём подряд и вычла бы из остатка ровно тот
+// предмет, ради которого ось витрины заведена. Здесь проверяется ОХРАНА, а не
+// каталог: каталог закрыт, и всё, чего в нём нет, обязано остаться долгом в
+// любой позиции.
+func TestKanameNameResiduePlatformObjectBorderDoesNotSwallowItsNeighbourhood(t *testing.T) {
+	t.Parallel()
+	base := nameResidueLanes(t, nameResidueWorld())
+
+	// Собственные объекты службы. Каждый записан ровно там же, где стоят
+	// объекты платформы, — в значении чарта и в шапке кода.
+	twins := map[string]string{
+		"образ службы":              "kacho-migrator",
+		"встроенная учётка службы":  "kacho-bootstrap-admin",
+		"том собственного подчарта": "kacho-identity-config",
+		// Имя, лишь НАЧИНАЮЩЕЕСЯ как релиз зонта, релизом не порождено:
+		// приставка обрывается не на границе слова.
+		"похожее на релиз зонта, но не он": "kacho-umbrellaless-probe",
+	}
+	for name, twin := range twins {
+		t.Run(name, func(t *testing.T) {
+			world := nameResidueWorld()
+			world["services/iam/internal/apps/kaname/config/probe_own_object.go"] =
+				[]byte("const own = \"" + twin + "\"\n")
+			got := nameResidueLanes(t, world)
+
+			if got[borderPlatformObject] != base[borderPlatformObject] {
+				t.Fatalf("близнец %s (%q) ПРИЗНАН границей %q (%d → %d) — охрана шире "+
+					"предмета: она простила собственный объект службы",
+					name, twin, borderPlatformObject,
+					base[borderPlatformObject], got[borderPlatformObject])
+			}
+			if got[laneObjectName] != base[laneObjectName]+1 {
+				t.Fatalf("близнец %s (%q) не поднял полосу %q: было %d, стало %d — "+
+					"собственный объект службы ушёл из-под наблюдения",
+					name, twin, laneObjectName, base[laneObjectName], got[laneObjectName])
+			}
+		})
+	}
+}
+
+// TestKanameNameResidueNamespaceBorderJudgesPositionAndCompoundness — граница
+// Б10 судит ПОЗИЦИЮ и СОСТАВНОСТЬ имени, а не одно из двух.
+//
+// Проверяются обе стороны сразу, потому что каждая по отдельности зеленела бы
+// на сломанной другой:
+//
+//   - то же имя ВНЕ позиции пространства имён (`account: kacho-system`) —
+//     системный аккаунт СЛУЖБЫ, и он обязан остаться долгом;
+//   - ГОЛОЕ имя В позиции пространства имён (`namespace: kacho`) — спорный
+//     случай, который эта граница намеренно не решает: он остаётся у полосы
+//     имени платформы, чей предмет он и есть.
+func TestKanameNameResidueNamespaceBorderJudgesPositionAndCompoundness(t *testing.T) {
+	t.Parallel()
+	base := nameResidueLanes(t, nameResidueWorld())
+
+	for _, c := range []struct{ name, body, lane string }{
+		{
+			"то же имя вне позиции пространства имён",
+			"  account: kacho-system\n",
+			laneObjectName,
+		},
+		{
+			"голое имя в позиции пространства имён",
+			"  namespace: kacho\n",
+			lanePlatformName,
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			world := nameResidueWorld()
+			world["services/iam/deploy/probe-ns-twin.yaml"] = []byte(c.body)
+			got := nameResidueLanes(t, world)
+
+			if got[borderClusterNamespace] != base[borderClusterNamespace] {
+				t.Fatalf("близнец %q ПРИЗНАН границей %q (%d → %d) — граница решила "+
+					"спорный случай, которого никто не решал", c.name,
+					borderClusterNamespace, base[borderClusterNamespace],
+					got[borderClusterNamespace])
+			}
+			if got[c.lane] != base[c.lane]+1 {
+				t.Fatalf("близнец %q не поднял полосу %q: было %d, стало %d",
+					c.name, c.lane, base[c.lane], got[c.lane])
+			}
+		})
+	}
+}
+
+// nameResidueCatalogueCorpus — синтетическое дерево для самоистечения закрытых
+// перечней: по одному вхождению на каждую проверяемую запись.
+func nameResidueCatalogueCorpus() map[string][]byte {
+	return map[string][]byte{
+		"services/iam/probe-catalogue.md": []byte(
+			"Ребро к kacho-vpc остаётся односторонним.\n" +
+				"Функция kacho_quota_refuse рендерится одним шаблоном.\n" +
+				"Хост базы — kacho-umbrella-pg-iam.\n"),
+	}
+}
+
+// TestKanameClosedBorderCatalogueExpiryFallsOnlyOnTheDeadEntry — самоистечение
+// закрытого перечня способно упасть, падает ТОЛЬКО на записи без предмета и
+// называет её.
+//
+// Прогонов ТРИ, и третий обязателен: без него молчание уже существующего
+// перечня неотличимо от молчания мёртвой проверки.
+//
+//  1. контроль — у каждой записи есть предмет, находок ноль;
+//  2. инъекция в НОВЫЙ перечень — краснеет только он;
+//  3. инъекция в СУЩЕСТВУЮЩИЙ перечень — краснеет только он.
+func TestKanameClosedBorderCatalogueExpiryFallsOnlyOnTheDeadEntry(t *testing.T) {
+	t.Parallel()
+	const (
+		foreign  = "чужие модули платформы"
+		platform = "объекты, которыми владеет платформа"
+	)
+	control := map[string][]string{
+		foreign: {"kacho-vpc"},
+		"функции фундамента внутри схемы": {"kacho_quota_refuse"},
+		platform: {"kacho-umbrella-pg-iam"},
+	}
+
+	for _, c := range []struct {
+		name       string
+		catalogues map[string][]string
+		wantDead   map[string]string // перечень → запись без предмета
+	}{
+		{"контроль", control, nil},
+		{
+			"инъекция в новый перечень",
+			map[string][]string{
+				foreign: {"kacho-vpc"},
+				"функции фундамента внутри схемы": {"kacho_quota_refuse"},
+				platform: {"kacho-umbrella-pg-iam", "kacho-no-such-object"},
+			},
+			map[string]string{platform: "kacho-no-such-object"},
+		},
+		{
+			"инъекция в существующий перечень",
+			map[string][]string{
+				foreign: {"kacho-vpc", "kacho-no-such-module"},
+				"функции фундамента внутри схемы": {"kacho_quota_refuse"},
+				platform: {"kacho-umbrella-pg-iam"},
+			},
+			map[string]string{foreign: "kacho-no-such-module"},
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			counts, filesRead, err := BorderCatalogueCensus(nameResidueCatalogueCorpus(), c.catalogues)
+			if err != nil {
+				t.Fatalf("перепись: %v", err)
+			}
+			if filesRead == 0 {
+				t.Fatal("прочитано ноль файлов — вердикт беспредметен")
+			}
+			dead := map[string]string{}
+			for catalogue, names := range counts {
+				for name, n := range names {
+					if n == 0 {
+						dead[catalogue] = name
+					}
+				}
+			}
+			if len(dead) != len(c.wantDead) {
+				t.Fatalf("записей без предмета %d, ожидалось %d: %v", len(dead), len(c.wantDead), dead)
+			}
+			for catalogue, name := range c.wantDead {
+				if dead[catalogue] != name {
+					t.Fatalf("перечень %q: без предмета названа %q, ожидалась %q — "+
+						"проверка указала бы на чужую запись", catalogue, dead[catalogue], name)
+				}
+			}
+		})
+	}
+
+	// Предпосылка самой проверки: на ПУСТОМ обходе она обязана ОТКАЗАТЬ, а не
+	// объявить весь перечень истёкшим.
+	if _, _, err := BorderCatalogueCensus(nil, control); err == nil {
+		t.Fatal("на пустом обходе перепись обязана отказать: иначе «у записи нет " +
+			"предмета» неотличимо от «мы не читали», и перечень истёк бы весь и разом")
+	}
 }

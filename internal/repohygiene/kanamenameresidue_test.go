@@ -510,3 +510,102 @@ func TestKanameNameResidueLedgerRowsAreReachable(t *testing.T) {
 		t.Fatal("полос либо правил ноль — сверка беспредметна")
 	}
 }
+
+// TestKanameClosedBorderCataloguesHaveASubjectInTheTree — запись закрытого
+// перечня границы, которой в дереве нечего покрывать, — НАХОДКА.
+//
+// Закрытый перечень есть послабление: он говорит «это имя не остаток». Всякое
+// послабление в этом дереве обязано истекать САМО — иначе запись переживает своё
+// основание молча и достаётся следующей слепой зоне: следующее имя, случайно
+// совпавшее с мёртвой записью, уйдёт из-под наблюдения, и «ноль находок» по нему
+// будет означать «ноль прочитанного».
+//
+// Замер 2026-09-10, ради которого проверка заведена: в перечне чужих модулей
+// стояли ДВА имени с нулём вхождений на всей поверхности — `kacho-vpc-implement`
+// и `kacho-iam-polyrepo-archive`; они сняты тем же изменением, которым заведена
+// эта проверка.
+//
+// ЧЕГО ПРОВЕРКА НЕ СУДИТ: верна ли причина записи. Она судит НАЛИЧИЕ предмета —
+// то есть ровно то, что машинно решаемо; истинность довода остаётся за человеком.
+func TestKanameClosedBorderCataloguesHaveASubjectInTheTree(t *testing.T) {
+	t.Parallel()
+	catalogues := KanameClosedBorderCatalogues()
+	counts, filesRead, err := BorderCatalogueCensus(kanameSurfaceCorpus(t), catalogues)
+	if err != nil {
+		t.Fatalf("перепись закрытых перечней: %v", err)
+	}
+	if filesRead == 0 {
+		t.Fatal("прочитано ноль файлов — молчание проверки ничего не утверждает")
+	}
+
+	names, entries, dead := 0, 0, 0
+	for _, catalogue := range sortedCatalogueNames(catalogues) {
+		covered := 0
+		for _, name := range catalogues[catalogue] {
+			entries++
+			if counts[catalogue][name] > 0 {
+				covered++
+				continue
+			}
+			dead++
+			t.Errorf("перечень %q: запись %q покрывает НОЛЬ вхождений на поверхности — "+
+				"ей больше нечего прощать. Снимайте запись тем же изменением, которым "+
+				"её предмет ушёл из дерева: перечень, прощающий вникуда, выдаёт вперёд "+
+				"слепую зону", catalogue, name)
+		}
+		names += len(catalogues[catalogue])
+		t.Logf("перечень %-36q записей %2d · с предметом %2d", catalogue,
+			len(catalogues[catalogue]), covered)
+	}
+	t.Logf("прочитано файлов %d; перечней %d; записей %d; без предмета %d",
+		filesRead, len(catalogues), entries, dead)
+	if entries == 0 {
+		t.Fatal("записей ноль — сверка беспредметна, и её зелёный ничего не значит")
+	}
+}
+
+// sortedCatalogueNames — устойчивый порядок печати перечней.
+func sortedCatalogueNames(catalogues map[string][]string) []string {
+	out := make([]string, 0, len(catalogues))
+	for name := range catalogues {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// TestKanameNameResidueCensusAccountsForEveryOccurrence — перепись СХОДИТСЯ:
+// каждое найденное вхождение имени платформы учтено ровно один раз — полосой,
+// границей либо ведомостью решённого остаться.
+//
+// ЗАЧЕМ. Число полосы падает по двум разным причинам, и они означают
+// противоположное: остаток СНЯЛИ из дерева либо предмет ПЕРЕЕХАЛ на границу.
+// Различает их эта сумма: переезд её не меняет, а сужение обхода — меняет
+// немедленно. Без неё «долг снизился на 163» было бы неотличимо от «распознаватель
+// перестал читать 163 вхождения», а второе есть слепая зона, выданная за успех.
+func TestKanameNameResidueCensusAccountsForEveryOccurrence(t *testing.T) {
+	t.Parallel()
+	_, _, census, err := FindKanameNameResidue(
+		kanameSurfaceCorpus(t), KanameNameResidueStay, KanameNameResidueDebt,
+		kanameResidueWorldOfTree(t))
+	if err != nil {
+		t.Fatalf("разбор: %v", err)
+	}
+
+	found, forgiven := 0, 0
+	for lane := range kanameLanes {
+		found += census.FoundByLane[lane]
+		forgiven += census.ForgivenByLane[lane]
+	}
+	t.Logf("вхождений %d = признано полосами и границами %d + прощено ведомостью %d",
+		census.Occurrences, found, forgiven)
+	if found+forgiven != census.Occurrences {
+		t.Fatalf("перепись НЕ СХОДИТСЯ: вхождений %d, а учтено %d (%d признано + %d прощено) — "+
+			"разница %d осталась вне всякой полосы, то есть вне наблюдения",
+			census.Occurrences, found+forgiven, found, forgiven,
+			census.Occurrences-(found+forgiven))
+	}
+	if census.Occurrences == 0 {
+		t.Fatal("вхождений ноль — сумма сходится вакуумно, и её зелёный ничего не значит")
+	}
+}
