@@ -211,6 +211,45 @@ func open(dsn string) error {
 	}
 }
 
+// TestDBOpenGateKnowsEveryFormOfOpening — словарь форм открытия полон.
+//
+// Прежде здесь была одна форма, `sql.Open`, и она была полной: другого способа
+// открыть соединение тракт не знал. С #2544 общий шаг открывает через
+// конфигурацию pgx — появилась вторая законная форма, и одна перестала быть
+// полной. Точка наката, открывшая ею базу сама, ушла бы из-под наблюдения
+// МОЛЧА: не красное и не зелёное, а тишина (testing.md §«Гейт на класс», п. 7).
+func TestDBOpenGateKnowsEveryFormOfOpening(t *testing.T) {
+	t.Parallel()
+	const src = `package main
+
+import (
+	"database/sql"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
+)
+
+func open(dsn string) (*sql.DB, error) {
+	cfg, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	return stdlib.OpenDB(*cfg), nil
+}`
+
+	got := auditDBOpenSource(t, relDBOpenProbe, src)
+	if len(got) == 0 {
+		t.Fatal("точка наката, открывшая базу НОВОЙ формой, гейтом не замечена — " +
+			"словарь разошёлся с деревом, и обход её не судит вовсе")
+	}
+	joined := strings.Join(got, "\n")
+	for _, want := range []string{"stdlib.OpenDB", "pgx.ParseConfig"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("находка не называет форму %q, которой открыли:\n%s", want, joined)
+		}
+	}
+}
+
 // TestDBOpenGateIsSilentOnLegalTwins — гейт СПОСОБЕН смолчать. Без этого он
 // ловил бы форму, а не существо, и первый же ложный срабат его отключил бы.
 func TestDBOpenGateIsSilentOnLegalTwins(t *testing.T) {
