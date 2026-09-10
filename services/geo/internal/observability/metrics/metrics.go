@@ -32,6 +32,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
 	opmetrics "github.com/PRO-Robotech/kacho/pkg/operations"
+
+	"github.com/PRO-Robotech/kacho/pkg/observability"
 )
 
 // Metrics владеет приватным prometheus-реестром и коллекторами kacho-geo.
@@ -49,6 +51,14 @@ type Metrics struct {
 // New конструирует адаптер, регистрирует Go + process runtime-коллекторы,
 // build_info (const-метка сборки) и доменные коллекторы kacho-geo.
 func New(version, commit string) *Metrics {
+	// Штамп нормализуется ЗДЕСЬ, у ряда, а не у вызывающего: ряд — это то место,
+	// где величина становится ОТВЕТОМ, и он обязан быть годным при любом
+	// вызывающем. Пустая метка читается как «версии нет», умолчание объявления
+	// `dev` — как имя ветки; оба неотличимы от «величину не измеряли». Отдельное
+	// слово делает состояние наблюдаемым, и предикат у него ОДИН на пять
+	// процессов — выписанный пятью копиями, он разъехался бы молча.
+	version, commit = observability.NormalizeBuildStamp(version, commit)
+
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(
 		collectors.NewGoCollector(),

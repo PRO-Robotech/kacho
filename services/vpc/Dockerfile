@@ -47,7 +47,38 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # kacho-vpc — gRPC API-сервер (только `serve`).
 # kacho-migrator — CLI миграций (cobra: up|down|status|create), используется
 # init-container'ом перед стартом основного pod'а.
-RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg/mod CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-vpc ./services/vpc/cmd/vpc \
+# ШТАМП СБОРКИ — ТА ЖЕ ВЕЛИЧИНА, ЧТО И КЛЕЙМО ОБРАЗА НИЖЕ.
+#
+# Двоичный файл объявляет `buildVersion`/`buildCommit` и кормит ими ряд витрины
+# `*_build_info`. Без подстановки ряд отвечает `version="dev"` `commit="unknown"`
+# — то есть отвечает НЕПРАВДУ, и дежурному, спросившему «какой код исполняется»,
+# достаётся ответ, который ничего не различает. Значение берётся из ТЕХ ЖЕ
+# аргументов, из которых ниже делается клеймо: источник один, разъехаться нечему.
+#
+# Аргументы объявлены ЗДЕСЬ ПОВТОРНО, хотя те же имена стоят в конечной ступени:
+# область видимости аргумента — ступень, и объявленный в чужой здесь дал бы
+# ПУСТУЮ подстановку — то есть штамп, молча ставший «не проставлено». Ровно эта
+# ось прежде не проверялась ничем и заведена вместе с этой правкой (#2527).
+#
+# Объявление стоит непосредственно перед сборкой, а не в шапке ступени: значение
+# входит в ключ кэша слоя. Выше — загрузка модулей и разрешение зависимостей; они
+# от ревизии не зависят и обязаны оставаться в кэше. Пересобирается только слой
+# компиляции, а внутри него кэш сборки Go (`/root/.cache/go-build`) оставляет
+# работу компоновке: смена `-X` меняет линковку, а не компиляцию пакетов.
+#
+# Умолчание ПУСТОЕ, а не `dev`: сборка руками ревизии знать не обязана, но обязана
+# быть отличима от сборки, знающей её.
+#
+# Что подстановка доедет до символов, а `-ldflags` не остался обещанием в
+# комментарии, — держит `internal/repohygiene`
+# `TestBuildStampReachesEveryBinaryThatDeclaresIt`: он разбирает ИСПОЛНЯЕМУЮ часть
+# файла сборки, требует цели у каждого `-X` и видимости аргумента в этой ступени.
+# Компоновщик о промахе `-X` молчит.
+#
+# Накатчик миграций штампа не несёт и не требует: витрины у него нет.
+ARG KACHO_IMAGE_REVISION=""
+ARG KACHO_IMAGE_VERSION=""
+RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg/mod CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags "-X main.buildVersion=$KACHO_IMAGE_VERSION -X main.buildCommit=$KACHO_IMAGE_REVISION" -o /kacho-vpc ./services/vpc/cmd/vpc \
  && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-migrator ./services/vpc/cmd/migrator
 
 FROM mirror.gcr.io/library/alpine:3.24
