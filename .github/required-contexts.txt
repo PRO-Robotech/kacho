@@ -59,21 +59,19 @@ buf lint · breaking · generate-diff
 build compute
 build dashboard
 build host
-build iam
 build nlb
 build registry
 build storage
 build system
 build vpc
 build · vet · gofmt · test -race
-docs-sites (8 сайтов документации)
+docs-sites
 golangci-lint
 gosec (Go static analysis)
 govulncheck
 helm lint · template (dev + prod)
 integration (compute)
 integration (geo)
-integration (iam)
 integration (nlb)
 integration (registry)
 integration (storage)
@@ -85,7 +83,6 @@ typecheck (11 пакетов)
 unit (compute)
 unit (dashboard)
 unit (host)
-unit (iam)
 unit (nlb)
 unit (registry)
 unit (storage)
