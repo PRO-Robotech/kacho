@@ -251,8 +251,7 @@ curl -X POST "$HYDRA_PUBLIC_URL/oauth2/token" \
   -d "client_id=$CLIENT_ID" \
   -d "client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer" \
   -d "client_assertion=$(cat assertion.txt)" \
-  -d "audience=$AUDIENCE" \
-  -d "scope=kacho.api"
+  -d "audience=$AUDIENCE"
 ```
 
 ### Revoke

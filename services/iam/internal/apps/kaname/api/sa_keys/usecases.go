@@ -330,13 +330,13 @@ type IssueInput struct {
 
 	// Audience — Federation OUT. When non-empty, the Hydra OAuth2
 	// client is registered with this exact `audience` list (replacing the
-	// default kacho-internal `AudiencePrefix`-built audience), so every
+	// default kaname-internal `AudiencePrefix`-built audience), so every
 	// access_token minted for this client lands the values in its `aud`
 	// claim. Required for OIDC-trust-federation with external IdPs — the
 	// `audience` value must match exactly what the remote IdP expects (its
 	// token-exchange endpoint or resource URI).
 	// Order preserved; empty entries dropped; duplicates collapsed.
-	// Empty slice = legacy kacho-internal-only audience.
+	// Empty slice = legacy kaname-internal-only audience.
 	Audience []string
 }
 
@@ -931,7 +931,7 @@ func (u *IssueSAKeyUseCase) nameClient(
 //     External-federation rollout requires the audience to match what the
 //     external IdP expects — those caller values are preserved verbatim.
 //   - in.Audience empty AND AudiencePrefix set → append the legacy
-//     kacho-internal audience `<prefix>/sa/<svaID>`. Backwards-compat for
+//     kaname-internal audience `<prefix>/sa/<svaID>`. Backwards-compat for
 //     callers that do not specify audience. (Skipped when the caller supplied
 //     an explicit audience, keeping the external-federation contract: the
 //     internal default is not force-mixed into a deliberate external list.)
@@ -942,7 +942,7 @@ func (u *IssueSAKeyUseCase) nameClient(
 //     it is additive — it never changes the `aud` a token actually carries
 //     (that is chosen per-exchange by the requested `audience` param).
 //   - everything empty → nil (Hydra mints tokens with no `aud` claim; valid for
-//     the kacho-internal API gateway which doesn't require aud).
+//     the kacho-internal API gateway (ПЛАТФОРМЕННЫЙ край — не наш) which doesn't require aud).
 func (u *IssueSAKeyUseCase) resolveAudience(in IssueInput) []string {
 	seen := make(map[string]struct{}, len(in.Audience)+2)
 	out := make([]string, 0, len(in.Audience)+2)
@@ -960,7 +960,7 @@ func (u *IssueSAKeyUseCase) resolveAudience(in IssueInput) []string {
 	for _, a := range in.Audience {
 		add(a)
 	}
-	// Fall back to the kacho-internal default only when the caller supplied no
+	// Fall back to the kaname-internal default only when the caller supplied no
 	// (non-empty) audience — a deliberate external-federation list is not mixed
 	// with the internal default.
 	if len(out) == 0 && u.AudiencePrefix != "" {

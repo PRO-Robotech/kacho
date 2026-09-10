@@ -234,8 +234,8 @@ func TestKAN_VER_10_KeyIDThatDoesNotResolveIsRefused(t *testing.T) {
 func TestKAN_VER_11_CriticalHeaderNotUnderstoodRefusesTheWholeToken(t *testing.T) {
 	s := newStand(t)
 	m := goodMint(s.key, s.now)
-	m.crit = []string{"kacho-not-implemented"}
-	m.extraHdr = map[string]any{"kacho-not-implemented": "whatever"}
+	m.crit = []string{"kaname-not-implemented"}
+	m.extraHdr = map[string]any{"kaname-not-implemented": "whatever"}
 	assertRefused(t, s, m.sign(t))
 }
 
@@ -494,7 +494,7 @@ func TestKAN_DENY_01_EveryAuthenticationRefusalIsByteIdentical(t *testing.T) {
 	// 10 — помеченный обязательным параметр не исполняется
 	s = newStand(t)
 	m = goodMint(s.key, s.now)
-	m.crit = []string{"kacho-not-implemented"}
+	m.crit = []string{"kaname-not-implemented"}
 	refusals["критический параметр не исполняется"] = mustRefuse(t, s, m.sign(t))
 
 	// 11 — отозван
