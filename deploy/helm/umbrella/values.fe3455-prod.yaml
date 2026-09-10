@@ -656,7 +656,12 @@ registry:
   # (internal-CA leaf) — kids/alg match Hydra-signed tokens; the registry pod trusts
   # the internal-CA via SSL_CERT_DIR. This is an https in-cluster Service, so
   # production requireSecureJWKSURL passes without needing an external hydra-https
-  # terminator. Hydra stays the SIGNER/ISSUER — only the key-DISTRIBUTION URL moved.
+  # terminator.
+  #
+  # ЗДЕСЬ СТОЯЛО «Hydra stays the SIGNER/ISSUER — only the key-DISTRIBUTION URL
+  # moved»: верно про ЗЕРКАЛО и неверно про выдачу. На этом стенде своя чеканка
+  # объявлена (`kaname.config.authn.tokenSigning.enabled`), издателей принимается
+  # ДВОЕ (`registry.tokenAcceptance.issuers`), и первый из них — наш.
   #
   # ⚠ IAM-FIRST DEPLOY SEQUENCING (fail-closed — do NOT flip prematurely):
   #   the kaname :9097 JWKS endpoint MUST be live and smoke-verified serving

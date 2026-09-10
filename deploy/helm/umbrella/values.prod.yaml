@@ -1073,9 +1073,14 @@ registry:
     breakglass: false
   # Data-plane docker-Bearer verification: keys come from the cluster-INTERNAL
   # kaname JWKS proxy (:9097) over https — NOT from Hydra directly. iam is the
-  # single facade to Hydra (core rule #16); Hydra remains the token SIGNER, only
-  # key DISTRIBUTION goes through iam. https is required by requireSecureJWKSURL,
+  # single facade to Hydra (core rule #16). https is required by requireSecureJWKSURL,
   # and the chart default is http:// — which fails the guard.
+  #
+  # ЗДЕСЬ СТОЯЛО «Hydra remains the token SIGNER, only key DISTRIBUTION goes
+  # through iam» — и это ПРОТИВОРЕЧИЛО следующему же абзацу этого файла, где
+  # сказано верное: издателей ДВОЕ, платформа чеканит свои токены сама. Два места
+  # об одном предмете в семи строках друг от друга, из которых верно одно.
+  # Проксированием описывается запись ЗЕРКАЛА и только она.
   # Приём identity-JWT: издатель — МНОЖЕСТВО (F1, задача #897)
   #
   # Платформа чеканит свои токены сама, а прежний издатель на переходе остаётся,

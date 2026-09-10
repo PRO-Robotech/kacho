@@ -23,16 +23,22 @@ Data-plane — отдельный HTTP-листенер (не gRPC), подни�
 ```mermaid
 flowchart LR
   docker["docker / helm"] -->|"Bearer identity-JWT"| h["data-plane handler"]
-  h -->|"1 verify JWT (JWKS + aud + iss)"| jwks["Hydra JWKS"]
+  h -->|"1 verify JWT (набор ключей + aud + iss)"| jwks["публикатор kaname<br/>:9097 — две записи"]
   h -->|"2 parse OCI path → registry/repo/ref"| h
   h -->|"3 Check verb@object"| iam["kaname"]
   h -->|"4 reverse-proxy"| zot[("zot")]
   h -.->|"register-on-first-push"| outbox["registry_outbox → iam"]
 ```
 
-1. **AuthN** — `Authorization: Bearer <JWT>` верифицируется по JWKS Ory Hydra (подпись RS256/ES256),
-   с проверкой audience (`registry.kacho.local`) и issuer (pinned в production). Токен без нужного
-   `aud` отвергается (federation-out на другие RP доступа не даёт).
+1. **AuthN** — `Authorization: Bearer <JWT>` верифицируется по набору ключей проверки
+   (подпись RS256/ES256), с проверкой audience (`registry.kacho.local`) и issuer.
+   **Издателей принимается несколько, и у каждого своя запись набора**: перечень объявляется
+   посадкой (`TOKEN_ISSUERS` + `TOKEN_ISSUER_KEYSETS`, см.
+   [Конфигурация](/install/configuration)), запись выбирается по издателю, объявленному в самом
+   токене, а не перебором. Оба набора отдаёт внутренний публикатор kaname: по каноническому
+   well-known — зеркало набора внешнего поставщика, по своему пути — набор платформы. Издатель без
+   объявленной записи — отказ старта, а не работа вслепую. Токен без нужного `aud` отвергается
+   (federation-out на другие RP доступа не даёт).
 2. **Парсинг пути** — OCI-путь `/v2/<registry>/<repo>/...` разбирается в `(registryId, repo, ref)`.
    Сегментация — до url-decode (split-then-decode), с отбраковкой path-traversal (`..`, encoded-slash)
    `400` ещё до обращения к zot. `registryId` обязан нести префикс `reg` — иначе `404`.
@@ -44,27 +50,31 @@ flowchart LR
 
 Docker сам получает Bearer-токен по протоколу Registry token-auth: при `401` с заголовком
 `WWW-Authenticate: Bearer realm="…/iam/token",service="registry.kacho.local"` он идёт в realm за
-токеном. Realm указывает на **token-шим kaname** (`/iam/token`), который брокерит настоящий токен у
-Ory Hydra (федерация — Variant H).
+токеном. Realm указывает на полосу выдачи kaname (`/iam/token`).
+
+**Кто выпускает этот токен, зависит от посадки.** Там, где объявлена своя чеканка, его выпускает
+**подписант платформы**; где не объявлена, полоса брокерит токен у внешнего поставщика, как прежде.
+Для докер-клиента это неразличимо: протокол один и тот же, а издатель записан в выданном токене —
+по нему и выбирается запись набора ключей на проверке.
 
 ```mermaid
 sequenceDiagram
   participant D as docker
   participant DP as data-plane
-  participant T as iam /iam/token (шим)
-  participant H as Ory Hydra
+  participant T as iam /iam/token
+  participant S as подписант<br/>(свой либо внешний)
   D->>DP: GET /v2/ (без токена)
   DP-->>D: 401 WWW-Authenticate: Bearer realm=…/iam/token
-  D->>T: Basic (SA-key) → запрос токена
-  T->>H: private_key_jwt (docker) / jwt-bearer (k8s)
-  H-->>T: JWT (RS256, aud=registry.kacho.local)
+  D->>T: Basic (базовый токен доступа) → запрос токена
+  T->>S: выпуск под объявленным издателем
+  S-->>T: JWT (aud=registry.kacho.local)
   T-->>D: { token: JWT }
   D->>DP: GET/PUT /v2/… Authorization: Bearer JWT
-  DP->>DP: verify (JWKS + aud + iss) → Check → proxy
+  DP->>DP: verify (набор по издателю + aud + iss) → Check → proxy
 ```
 
 <table>
-  <thead><tr><th>Клиент</th><th>Grant у Hydra</th><th>Как логинится</th></tr></thead>
+  <thead><tr><th>Клиент</th><th>Вид выдачи</th><th>Как логинится</th></tr></thead>
   <tbody>
     <tr><td><code>docker</code> / <code>helm</code> (CI)</td><td>выпуск шимом <code>/iam/token</code></td><td><code>docker login</code> базовым токеном доступа (одна строка в поле пароля)</td></tr>
     <tr><td>Kubernetes workload</td><td><code>jwt-bearer</code> (projected token)</td><td>FEDERATED SA-key (trusted_subjects, без приватного ключа)</td></tr>

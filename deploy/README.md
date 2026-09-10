@@ -115,9 +115,22 @@ Dev-стенд поднимает рядом с остальными серви�
 - **Ory Kratos + Ory Hydra** — identity и OIDC-issuer. Оба приезжают внешними чартами
   `k8s.ory.sh/helm/charts`, у каждого свой постгрес (`pg-kratos`, `pg-hydra`). Публичный
   адрес выдающего в dev — `http://localhost:28080/.ory/hydra/public/` через kind-ingress;
-  `auth.kacho.local` заведён в `values.dev.yaml` для тех, кто ходит браузером. Hydra
-  остаётся **единственным** подписантом, а iam — единственным фасадом к ней
-  (`security.md` §Production-mode обязателен ВЕЗДЕ).
+  `auth.kacho.local` заведён в `values.dev.yaml` для тех, кто ходит браузером. iam
+  остаётся **единственным фасадом** к провайдеру (`security.md` §Production-mode
+  обязателен ВЕЗДЕ) — прямой дозвон в обход iam запрещён и на dev-стенде.
+
+  **Подписант на стенде не один.** Здесь стояло «Hydra остаётся единственным
+  подписантом», и утверждение пережило свой предмет: у платформы своя ключница
+  (`authn.token-signing`), а публикатор `:9097` отдаёт две записи по двум путям —
+  зеркало провайдера на каноническом well-known и нашу по
+  `authn.token-signing.key-set-path`.
+
+  Что чем подписано, задаёт **посадка**, а не эта строка: своя чеканка объявлена
+  в профилях `values.dev-prod.yaml`, `values.prod.yaml`, `values.fe3455-prod.yaml`
+  (перемерять `grep -A1 'clientToken:' helm/umbrella/values*.yaml`), а на
+  `values.dev.yaml` она выключена — там подписывает провайдер. За провайдером
+  при этом остаётся **интерактивный вход человека** на любой посадке: вида
+  выдачи `authorization_code` наш токен-эндпоинт не принимает вовсе.
 - **kratos-selfservice-ui** — sub-chart в `helm/umbrella/charts/kratos-selfservice-ui/`,
   интерактивный логин для тех кейсов, где нужен человек.
 

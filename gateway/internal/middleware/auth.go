@@ -10,10 +10,17 @@
 //     Работает **только в mode=dev**: в production / production-strict эта
 //     симметричная стратегия ОТКЛЮЧЕНА (SEC — symmetric-key principal forgery,
 //     CWE-347), даже если dev-secret задан. Валидно-подписанный HS256 токен в
-//     prod → reject Unauthenticated (единственная принятая стратегия — Hydra JWKS).
-//   - **Hydra JWKS** (RS256/ES256/EdDSA, `WithVerifier`) — реальные login-токены;
+//     prod → reject Unauthenticated (принимается только асимметричная стратегия).
+//   - **Асимметричная** (RS256/ES256/EdDSA, `WithVerifier`) — настоящие токены;
 //     principal берется из верифицированных `kaname_principal_*` claims (top-level
 //     или `ext_claims`), SubjectLookuper — fallback только при их отсутствии.
+//
+// ИЗДАТЕЛЬ У АСИММЕТРИЧНОЙ СТРАТЕГИИ НЕ ОДИН, и здесь стояло обратное
+// («единственная принятая стратегия — Hydra JWKS»). Край принимает ПЕРЕЧЕНЬ
+// издателей, у каждого своя запись источника ключей (`config/tokenissuers.go`,
+// `Config.TokenAcceptance`); на каждом стенде, объявившем свою чеканку, издателей
+// двое, и первый из них — наш. Строку читают при разборе 401, поэтому она
+// отправляла искать причину у постороннего там, где отвергнут НАШ токен.
 //
 // Per-mode:
 //   - **dev** (default): backwards-compat. Без Bearer — pass-through anonymous
@@ -128,7 +135,7 @@ type AuthInterceptor struct {
 	basicLane     *BasicCredentialLane
 	subjectLookup SubjectLookuper
 	kratos        *KratosClient // optional Ory Kratos /whoami client (nil → disabled)
-	verifier      TokenVerifier // JWKS-валидатор Hydra RS256 access JWT (nil → disabled, HMAC-only)
+	verifier      TokenVerifier // асимметричный валидатор по перечню издателей (nil → disabled, HMAC-only)
 	// mtlsDomain — домен доверия, ОТНОСИТЕЛЬНО которого личность клиентского
 	// сертификата признаётся нашей. Объявленный домен И ЕСТЬ включение полосы:
 	// пары «флаг + величина» здесь нет намеренно — две величины, обязанные
