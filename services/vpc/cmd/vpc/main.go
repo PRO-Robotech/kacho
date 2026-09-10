@@ -72,6 +72,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
 
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/migrations"
 )
 
@@ -536,7 +537,7 @@ func runServe(cfg config.Config) error {
 	defer stopQuotaEdge()
 	quotaLimits := quotaEdge.Limits
 
-	svcs := buildServices(pool, slavePool, projectClient, geoClient, geoRegionClient, listFilter, opsRepo, syncRegistrar, quotaLimits, projectClient, cfg, logger)
+	svcs := buildServices(pool, slavePool, projectClient, geoClient, geoRegionClient, listFilter, opsRepo, syncRegistrar, quotaLimits, projectClient, quotaEdge.ReadPosture, cfg, logger)
 
 	// Сервер потока изменений — ОБЩИЙ (`pkg/subscription`), а не свой. Форма
 	// подписки объявлена однажды на всю платформу, и владелец журнала приносит
@@ -1061,7 +1062,7 @@ func startRegisterDrainer(ctx context.Context, iamAddr string, mtlsCfg config.MT
 //
 // slavePool — опц. read-replica pool; nil → kachopg.New делает fallback и Reader-TX
 // идут на master.
-func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClient, geoClient repo.ZoneRegistry, regionClient repo.RegionRegistry, listFilter *authzfilter.Narrower, opsRepo operations.Repo, registrar fgaregister.Registrar, quotaLimits quota.LimitResolver, quotaAccounts quota.AccountLocator, cfg config.Config, logger *slog.Logger) *services {
+func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClient, geoClient repo.ZoneRegistry, regionClient repo.RegionRegistry, listFilter *authzfilter.Narrower, opsRepo operations.Repo, registrar fgaregister.Registrar, quotaLimits quota.LimitResolver, quotaAccounts quota.AccountLocator, quotaPosture quotaread.Posture, cfg config.Config, logger *slog.Logger) *services {
 	// Прямой write-side FGA убран: каждый Create/Delete ресурса эмитит FGA
 	// owner-tuple register/unregister INTENT в своей writer-TX (один commit, без
 	// dual-write); register-drainer применяет каждый intent через kaname
@@ -1354,22 +1355,31 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 			WithZoneRegistry(geoClient).
 			WithListFilter(listFilter),
 		cidrGroupHandler: cgHandler,
-		quotaHandler:     quotaHandlerOrNil(quotaGuard),
+		quotaHandler:     quotaHandlerOrNil(quotaGuard, quotaPosture),
 	}
 }
 
 // quotaHandlerOrNil возвращает обработчик чтения квот ЛИБО настоящий nil.
 //
-// Возврат `*quotaapp.Handler(nil)` в поле структуры был бы не тем же самым:
-// проверка `svcs.quotaHandler != nil` на типизированном nil ИСТИННА, и метод
-// зарегистрировался бы, чтобы упасть на первом же вызове. Тот же класс уже
-// стоил паники на пути создания ресурса, поэтому решение принимается здесь, где
-// тип ещё конкретен.
-func quotaHandlerOrNil(g *quota.Guard) *quotaapp.Handler {
-	if g == nil {
+// Возврат типизированного nil в поле структуры был бы не тем же самым: проверка
+// `!= nil` на нём ИСТИННА, и метод зарегистрировался бы, чтобы упасть на первом
+// же вызове. Решение принимается здесь, где тип ещё конкретен.
+//
+// ОБЪЯВЛЕННОЕ ОТСУТСТВИЕ ДОМЕНА ВЕЛИЧИН — НЕ «НЕТ ВОЗМОЖНОСТИ» (#2515). Полоса
+// собирается только под развёрнутый домен, поэтому прежде на такой посадке
+// обработчика не было вовсе, и незарегистрированный метод отвечал
+// `Unimplemented`. На посадке, которую оператор выбрал сам, это неправда дважды:
+// метод существует, а отсутствует не он, а потолок, — и арендатор читал витрину
+// как сбой платформы, ровно то состояние, ради устранения которого она заведена.
+//
+// Полосы здесь нет и быть не может (спрашивать величины не у кого), поэтому
+// обработчик несёт ПОСАДКУ: общее тело отвечает названным отказом с машинным
+// признаком, а не пустым набором, который контракт запрещает.
+func quotaHandlerOrNil(g *quota.Guard, posture quotaread.Posture) *quotaapp.Handler {
+	if g == nil && !posture.AuthorityIsAbsent() {
 		return nil
 	}
-	return quotaapp.NewHandler(g)
+	return quotaapp.NewHandler(g, posture)
 }
 
 // registerPublicServices — публичные RPC + OperationService на внешний listener.

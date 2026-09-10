@@ -10,6 +10,7 @@ import (
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	"github.com/PRO-Robotech/kacho/pkg/quota/quotapb"
 
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	quotaband "github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/quota"
 )
 
@@ -24,10 +25,20 @@ type Handler struct {
 	lbv1.UnimplementedQuotaServiceServer
 
 	band *quotaband.Guard
+	// posture — объявил ли ЭТОТ владелец домен величин отсутствующим (#2515).
+	//
+	// Отдельно от полосы, а не выведено из её отсутствия: несобранная полоса
+	// означает РАЗОМ «провязать забыли» и «оператор объявил, что домена величин
+	// нет», а следствия у этих двух состояний для арендатора противоположные.
+	// Выведи одно из другого — и законная посадка отвечала бы утверждением о
+	// поломке платформы.
+	posture quotaread.Posture
 }
 
 // NewHandler собирает обработчик поверх полосы учёта.
-func NewHandler(band *quotaband.Guard) *Handler { return &Handler{band: band} }
+func NewHandler(band *quotaband.Guard, posture quotaread.Posture) *Handler {
+	return &Handler{band: band, posture: posture}
+}
 
 // List отдаёт квоты проекта — предел, потребление и источник величины по
 // каждому виду домена.
@@ -36,7 +47,7 @@ func NewHandler(band *quotaband.Guard) *Handler { return &Handler{band: band} }
 // полосе и перевод в контракт одинаковы у всех владельцев, и пять копий этих
 // решений разошлись бы текстом отказа. Своё здесь — только тип ответа.
 func (h *Handler) List(ctx context.Context, req *lbv1.ListQuotasRequest) (*lbv1.ListQuotasResponse, error) {
-	quotas, err := quotapb.ListQuotas(ctx, req.GetProjectId(), h.states())
+	quotas, err := quotapb.ListQuotas(ctx, req.GetProjectId(), h.states(), h.readPosture())
 	if err != nil {
 		return nil, err
 	}
@@ -57,3 +68,15 @@ func (h *Handler) states() quotapb.StatesFunc {
 
 // Гарантия соответствия контракту на этапе сборки.
 var _ lbv1.QuotaServiceServer = (*Handler)(nil)
+
+// readPosture — посадка ЛИБО безопасное умолчание у нулевого приёмника.
+//
+// Нулевое значение посадки означает «домен объявлен адресом», то есть прежнее
+// поведение: непровязанная полоса остаётся `INTERNAL`. Обратное умолчание
+// объявляло бы отсутствие потолков за оператора.
+func (h *Handler) readPosture() quotaread.Posture {
+	if h == nil {
+		return quotaread.AuthorityDeclared()
+	}
+	return h.posture
+}

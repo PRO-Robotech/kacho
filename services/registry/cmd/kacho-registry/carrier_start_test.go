@@ -38,6 +38,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/handler"
 )
 
@@ -86,7 +87,7 @@ func TestCarrierRaisesRegistryWithoutAStartRefusal(t *testing.T) {
 
 	serveErr := servicehost.Serve(ctx, desc,
 		func(reg grpc.ServiceRegistrar) {
-			registerPublic(reg, registryHandler, handler.NewQuotaHandler(nil), opHandler)
+			registerPublic(reg, registryHandler, handler.NewQuotaHandler(nil, quotaread.AuthorityDeclared()), opHandler)
 		},
 		func(reg grpc.ServiceRegistrar) {
 			registerInternal(reg, internalHandler, opHandler, stubSubscriptionServer{})

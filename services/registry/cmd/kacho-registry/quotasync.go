@@ -13,6 +13,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/quota"
 	iamclient "github.com/PRO-Robotech/kacho/services/registry/internal/clients/iam"
@@ -32,6 +33,15 @@ type quotaAuthorityEdge struct {
 	// Guard — nil, когда домен объявлен отсутствующим: отсутствие представимо
 	// ОТДЕЛЬНО от адреса, а не пустой строкой.
 	Guard *quota.Guard
+	// ReadPosture — как ЭТА установка объявила домен величин, для ВИТРИНЫ.
+	//
+	// Отдельно от полосы, а не выведено из её отсутствия (#2515). Полоса
+	// собирается только под развёрнутый домен, поэтому её отсутствие означает
+	// РАЗОМ два состояния: «провязать забыли» и «оператор объявил, что домена
+	// величин нет». Следствия у них для арендатора противоположные, и пока
+	// различия не было, витрина отвечала на законную посадку так же, как на
+	// дефект сборки.
+	ReadPosture quotaread.Posture
 }
 
 // buildQuotaAuthorityEdge разрешает объявление, при надобности дозванивается и
@@ -86,5 +96,9 @@ func buildQuotaAuthorityEdge(
 		return quotaAuthorityEdge{}, noop, fmt.Errorf("start quota limit sync: %w", serr)
 	}
 
-	return quotaAuthorityEdge{Guard: guard}, func() { stopSync(); closeConn() }, nil
+	return quotaAuthorityEdge{
+			Guard:       guard,
+			ReadPosture: corequota.ReadPosture(authority, "registry"),
+		},
+		func() { stopSync(); closeConn() }, nil
 }
