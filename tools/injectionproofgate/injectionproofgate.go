@@ -62,6 +62,32 @@
 //
 // Имя в примерах — ОБРАЗЕЦ с угловыми скобками, а не координата: координата,
 // названная в прозе, есть утверждение о дереве, и выдуманная — ложное.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ЯЗЫК ДОКАЗАТЕЛЬСТВА — ВТОРАЯ ОСЬ ФОРМЫ, И ДО #2519 РАЗБОР ЕЁ НЕ ВИДЕЛ ВОВСЕ
+//
+// Четыре формы выше — про ПУТЬ. Ось, о которой разбор молчал, — про ЯЗЫК файла:
+// доказательство, названное Go-пробой, бывает и оболочкой (`<тема>-inject.sh`,
+// `<тема>_inject.sh`), и пробой на Python (`<тема>_injection_test.py`). Обещание
+// такой формы не давало ни красного, ни зелёного: оно не совпадало с образцом и
+// потому уходило из наблюдения ЦЕЛИКОМ — ни в находках, ни в переписи.
+//
+// Замер дня заведения (числа стареют молча — живые печатает перепись держателя):
+// обещаний прежней формы 542, все резолвятся; обещаний ДРУГОГО ЯЗЫКА в
+// комментариях Go — 6, и о них не было сказано ничего. Полоса прежней формы
+// расширением не тронута — значит прибавка была слепой зоной, а не регрессией
+// дерева. Одно из шести не резолвилось: координата была записана от каталога
+// называющего, а не от корня, и посылала искать доказательство туда, где его нет.
+//
+// Словарь форм оболочки объявляет `deploy/scripts/run-injection-proofs.sh` —
+// обходчик, который эти доказательства ИСПОЛНЯЕТ. Здесь он повторён, потому что
+// разбор на Go не может импортировать оболочку, и это названо вслух: заведут там
+// третью форму — обещание, названное ею, снова выпадет из наблюдения, а признак
+// расхождения виден числом `InOtherLanguages`, которое перестанет расти.
+//
+// Судится КООРДИНАТА, а не образец: `*-inject.sh` и `<тема>-inject.sh` в прозе
+// дерева не называют, поэтому распознаватель требует перед разделителем букву
+// или цифру. Без этого он краснел бы на файлах, которые форму ОБЪЯСНЯЮТ.
 package injectionproofgate
 
 import (
@@ -82,6 +108,25 @@ import (
 var coordinate = regexp.MustCompile(
 	`[A-Za-z0-9_./-]*[a-z0-9_]` + `_injection` + `(?:_internal)?` + `_test` + `\.go`)
 
+// foreignCoordinate — то же имя, но доказательство написано НЕ на Go.
+//
+// Перед разделителем обязана стоять буква или цифра: без этого требования
+// образец `*-inject.sh`, которым форму объясняют в прозе, стал бы координатой, и
+// разбор краснел бы на собственном объяснении.
+var foreignCoordinate = regexp.MustCompile(
+	`[A-Za-z0-9_./-]*[a-z0-9]` + `[-_]inject` + `\.sh` +
+		`|` + `[A-Za-z0-9_./-]*[a-z0-9_]` + `_injection` + `_test` + `\.py`)
+
+// IsProofFile — файл сам является доказательством инъекцией: его имя резолвит
+// координату формы «ПО ДЕРЕВУ». Экспортируется, чтобы состав корпуса собирал
+// ТОТ ЖЕ предикат, которым разбор потом судит, — иначе обещание резолвилось бы
+// или не резолвилось в зависимости от того, попал ли файл в корпус.
+func IsProofFile(p string) bool {
+	base := path.Base(p)
+	return strings.HasSuffix(base, "_test.go") ||
+		foreignCoordinate.FindString(base) == base
+}
+
 // Census — объём осмотренного. Печатается ВСЕГДА: «ноль находок» обязано быть
 // отличимо от «ноль прочитанного».
 type Census struct {
@@ -96,6 +141,11 @@ type Census struct {
 	// InStrings — упоминаний в строковых литералах (полоса НЕ судимая; названа,
 	// чтобы её отсутствие в вердикте не приняли за отсутствие вхождений).
 	InStrings int
+	// InOtherLanguages — из СУДИМЫХ упоминаний те, чьё доказательство написано не
+	// на Go (оболочка, Python). Названо отдельным числом намеренно: по нему видно,
+	// исполняется ли эта ось вообще, — а ноль здесь означал бы, что словарь форм
+	// разошёлся со словарём обходчика, который эти доказательства запускает.
+	InOtherLanguages int
 	// Resolved — из судимых упоминаний нашли свой файл.
 	Resolved int
 }
@@ -136,7 +186,7 @@ func Audit(corpus map[string][]byte) ([]Finding, Census, error) {
 			moduleRoots[path.Dir(p)] = true
 			continue
 		}
-		if strings.HasSuffix(p, "_test.go") {
+		if IsProofFile(p) {
 			byBase[base] = true
 		}
 	}
@@ -160,8 +210,21 @@ func Audit(corpus map[string][]byte) ([]Finding, Census, error) {
 
 		named := false
 		for _, group := range file.Comments {
-			for _, coord := range coordinate.FindAllString(group.Text(), -1) {
+			text := group.Text()
+			for _, coord := range coordinate.FindAllString(text, -1) {
 				census.InComments++
+				named = true
+				if resolves(coord, path.Dir(p), byBase, moduleRoots, exists) {
+					census.Resolved++
+					continue
+				}
+				findings = append(findings, Finding{NamedBy: p, Coordinate: coord})
+			}
+			// Вторая ось формы — язык доказательства. Резолв у неё ТОТ ЖЕ: путь
+			// не зависит от того, на чём написан файл.
+			for _, coord := range foreignCoordinate.FindAllString(text, -1) {
+				census.InComments++
+				census.InOtherLanguages++
 				named = true
 				if resolves(coord, path.Dir(p), byBase, moduleRoots, exists) {
 					census.Resolved++
@@ -178,6 +241,7 @@ func Audit(corpus map[string][]byte) ([]Finding, Census, error) {
 			lit, ok := n.(*ast.BasicLit)
 			if ok && lit.Kind == token.STRING {
 				census.InStrings += len(coordinate.FindAllString(lit.Value, -1))
+				census.InStrings += len(foreignCoordinate.FindAllString(lit.Value, -1))
 			}
 			return true
 		})
