@@ -66,6 +66,8 @@ import (
 // ПОРЯДОК — алфавитный, и он не несёт смысла: смысл несёт СОСТАВ.
 var deliveryRoster = []string{
 	"Chart.yaml",
+	"alert_rules_delivered_injection_test.go",
+	"alert_rules_delivered_test.go",
 	"boot_guard_defaults_injection_test.go",
 	"boot_guard_defaults_test.go",
 	"defaultless_keys_injection_test.go",
@@ -110,6 +112,7 @@ var deliveryRoster = []string{
 	"templates/_helpers.tpl",
 	"templates/configmap.yaml",
 	"templates/deployment.yaml",
+	"templates/prometheusrule.yaml",
 	"templates/service.yaml",
 	"tree_root_test.go",
 	"values.dev.yaml",

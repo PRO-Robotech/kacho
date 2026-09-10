@@ -268,9 +268,23 @@ go build -ldflags "-X main.buildVersion=$KACHO_IMAGE_VERSION -X main.buildRevisi
 - alert: KanameRPCErrorRate
   # Отбор по grpc_service, а не по имени серии: серия теперь общая на платформу,
   # и без отбора тревога считала бы долю по всем семи сервисам сразу.
+  #
+  # ИМЯ В ОТБОРЕ — ИМЯ КОНТРАКТА, А НЕ ИМЯ ПРОДУКТА, и переезд контракта его
+  # меняет. Здесь стояла приставка ПРЕЖНЕГО пакета, снятого переездом (#2133);
+  # дословно она тут не воспроизводится — цитата мёртвой координаты читается
+  # как живое утверждение, и держатель остатка имени справедливо считает её
+  # находкой. Следствие было такое: отбор не совпадал ни с одним контрактом,
+  # ряд был пуст И в числителе, И в знаменателе, поэтому порог не превышался
+  # ни при каком состоянии продукта, а молчание такой тревоги неотличимо от
+  # «доля не-OK ответов в норме».
+  #
+  # Держит это `TestAlertSelectorsNameAContractTheTreeProduces`: он сверяет
+  # отбор с `ServiceDesc.ServiceName` сгенерированных стабов — с той самой
+  # строкой, которую слушатель кладёт в метку. Сверять с пакетом `.proto`
+  # значило бы сверять с половиной предмета: метка несёт пакет И имя службы.
   expr: |
-    sum(rate(kacho_grpc_server_handled_total{grpc_service=~"kacho\\.cloud\\.iam\\..*",grpc_code!="OK"}[5m]))
-      / sum(rate(kacho_grpc_server_handled_total{grpc_service=~"kacho\\.cloud\\.iam\\..*"}[5m])) > 0.05
+    sum(rate(kacho_grpc_server_handled_total{grpc_service=~"kaname\\.cloud\\.iam\\..*",grpc_code!="OK"}[5m]))
+      / sum(rate(kacho_grpc_server_handled_total{grpc_service=~"kaname\\.cloud\\.iam\\..*"}[5m])) > 0.05
   for: 10m
   annotations:
     summary: "доля не-OK gRPC-ответов iam > 5%"
@@ -321,6 +335,14 @@ gRPC-порт (`:9090`); HTTP `/healthz` и `/readyz` доступны для р
   но для того, кто поставил продукт и кода не читает. Она обязана называть только
   ряды, у которых есть производитель, и нести порядок разбора, исполнимый без
   остальных компонентов платформы; держит это `TestObservabilityPagePromisesOnlyWhatTheServiceProduces`.
+  Её правила тревоги ВЕЗЁТ ЧАРТ объектом `PrometheusRule` (ручка `alertRules.enabled`),
+  а не переносит руками оператор; совпадение объекта со страницей сверяется в обе
+  стороны — `TestDeliveredAlertRulesMatchThePublishedPage`.
+
+  Набор правил ЗДЕСЬ и набор правил ТАМ сегодня РАЗНЫЕ — и по составу, и по именам
+  (`KanameAuthzCheckSlow` против `KanameAuthzSlow`). Это два места об одном предмете,
+  и сведение их — отдельная работа: поставку везёт опубликованная страница, поэтому
+  расхождение сегодня стоит дежурному не мёртвой тревоги, а разного словаря.
 - [`31-deployment.md`](31-deployment.md) — env vars, порты и mTLS для observability.
 - [`29-relational-verdict.md`](29-relational-verdict.md) — latency-бюджет authz Check hot-path.
 
