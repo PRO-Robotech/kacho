@@ -132,3 +132,112 @@ func TestInviteMailLaneProducers_TestFileIsNotAProducer(t *testing.T) {
 		"выдала бы снятую полосу за живую")
 	require.Empty(t, found)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ТРЕТЬЯ ОСЬ: СЛОВАРЬ ЗНАЕТ ВСЕ ФОРМЫ, В КОТОРЫХ КОРПУС ПИШЕТ ПРЕДМЕТ
+//
+// Первая редакция держателя судила предмет ФИКСИРОВАННЫМИ формами, а корпус его
+// СКЛОНЯЕТ. Страница, написанная в родительном падеже, оказывалась вне
+// наблюдения целиком: не находкой и не чистой, а НЕВИДИМОЙ — держатель молчал,
+// и молчание это ничем не отличалось от исправной работы.
+//
+// Цена измерена: осматривалось 3 вхождения из 5, и обе лживые строки
+// first-credential.mdx не читались ни разу. Расширение словаря подняло
+// осмотренное 3 → 5 при неизменной прежней полосе — то есть прибавка была
+// СЛЕПОЙ ЗОНОЙ, а не регрессией дерева.
+//
+// Каждая форма доказывается ОТДЕЛЬНО: форма, о которой распознаватель не знает,
+// не даёт ни красного, ни зелёного.
+
+// pageDeniesInflected — предмет в родительном падеже, отрицание голое. Ровно
+// тот текст, что жил на странице до второго захода #2525.
+const pageDeniesInflected = `## Что должно быть до начала
+
+Администратор передаёт ссылку приглашённому вручную — автоматической отправки
+письма в продукте нет.
+`
+
+// pageInflectedButTruthful — ЗАКОННЫЙ БЛИЗНЕЦ склонённой формы: тот же падеж,
+// то же слово «нет» на странице, но отрицание НЕ управляет предметом — оно
+// стоит за пределами узкого окна и относится к другому предмету.
+const pageInflectedButTruthful = `## Что должно быть до начала
+
+Автоматическая отправка письма в продукте есть: пока не объявлен почтовый узел,
+письмо не уходит и ссылку передаёт администратор.
+
+Отдельно, про другое: команды входа в терминале, отдающей токен, — нет; первое
+удостоверение человека рождается в браузере.
+`
+
+// pageNegationInsideAWord — «нет» внутри слова отрицанием не является. Без
+// границы слова держатель нашёл бы его в «интернет» и покраснел бы на тексте,
+// который ничего не отрицает.
+// Слово с «нет» внутри стоит ВПЛОТНУЮ к предмету — иначе оно вне узкого окна, и
+// проба зеленела бы при снятой границе слова, ничего не проверив. Первая
+// редакция этой фикстуры отставила его на ~90 байт и была именно такой.
+const pageNegationInsideAWord = `## Приглашение
+
+Автоотправка идёт через интернет, как только объявлен почтовый узел.
+`
+
+// pageDeniesBareEnglish — голое отрицание английской формы.
+const pageDeniesBareEnglish = `## Invite
+
+The admin hands the link over manually: there is no automatic email in the product.
+`
+
+func TestInviteMailPageInjection_InflectedSubjectIsSeen(t *testing.T) {
+	_, census := findAbsenceClaims(map[string][]byte{"p.mdx": []byte(pageDeniesInflected)})
+	require.NotZerof(t, census.Subjects, "склонённая форма предмета обязана быть ОСМОТРЕНА: "+
+		"форма, о которой распознаватель не знает, не даёт ни красного, ни зелёного — "+
+		"она невидима, и это худший исход из трёх")
+}
+
+func TestInviteMailPageInjection_InflectedDenialIsAFinding(t *testing.T) {
+	claims, census := findAbsenceClaims(map[string][]byte{"p.mdx": []byte(pageDeniesInflected)})
+	require.Equal(t, 1, census.Claims, "склонённый предмет с голым отрицанием — находка")
+	require.Len(t, claims, 1)
+	require.Equal(t, 3, claims[0].Line, "находка обязана называть строку")
+}
+
+func TestInviteMailPageInjection_FarNegationIsSilent(t *testing.T) {
+	claims, census := findAbsenceClaims(map[string][]byte{"p.mdx": []byte(pageInflectedButTruthful)})
+	require.NotZerof(t, census.Subjects, "предмет обязан быть осмотрен и на близнеце")
+	require.Zerof(t, census.Claims, "голое «нет», не управляющее предметом, отрицанием НЕ "+
+		"является: узкое окно и есть та граница, ради которой заведён второй словарь")
+	require.Empty(t, claims)
+}
+
+func TestInviteMailPageInjection_NegationInsideAWordIsNotADenial(t *testing.T) {
+	_, census := findAbsenceClaims(map[string][]byte{"p.mdx": []byte(pageNegationInsideAWord)})
+	require.NotZero(t, census.Subjects)
+	require.Zerof(t, census.Claims, "«нет» внутри «интернет» отрицанием не является — "+
+		"без границы слова держатель краснел бы на правдивом тексте")
+}
+
+func TestInviteMailPageInjection_BareEnglishDenialIsAFinding(t *testing.T) {
+	_, census := findAbsenceClaims(map[string][]byte{"p.mdx": []byte(pageDeniesBareEnglish)})
+	require.Equal(t, 1, census.Claims, "корпус двуязычен: словарь на одном языке "+
+		"недобирает МОЛЧА")
+}
+
+func TestInviteMailPageInjection_OverlappingPatternsCountSubjectOnce(t *testing.T) {
+	// Вход подобран так, что под него подходят ДВА образца сразу: и «автоматическ…
+	// + отправк…», и «автоматически + отправ…». Форма корявая, и именно поэтому
+	// взята: на грамотном тексте образцы не пересекаются, и проба, написанная на
+	// нём, зеленела бы при снятом схлопывании, ничего не проверив. Первая
+	// редакция этой пробы была именно такой.
+	const overlapping = "автоматически отправка писем"
+
+	var matched int
+	for _, re := range subjectPatterns {
+		matched += len(re.FindAllStringIndex(overlapping, -1))
+	}
+	require.Equalf(t, 2, matched, "фикстура обязана быть ДЕЙСТВИТЕЛЬНО перекрывающейся: "+
+		"вход, под который подходит один образец, о схлопывании не утверждает ничего")
+
+	// Перепись объявлена объёмом ОСМОТРЕННОГО: сосчитав вхождение дважды,
+	// держатель отчитался бы о работе, которой не делал.
+	require.Len(t, subjectOccurrences(overlapping), 1,
+		"перекрывающиеся образцы дают ОДНО вхождение")
+}
