@@ -1524,7 +1524,7 @@ func runServe(cfg config.Config) error {
 			}
 			return nil
 		},
-		// internal gRPC server (admin / kacho-only)
+		// internal gRPC server (admin, наружу не публикуется)
 		func() error {
 			err := internalSrv.Serve(internalListener)
 			if err != nil && !errors.Is(err, grpc.ErrServerStopped) {
