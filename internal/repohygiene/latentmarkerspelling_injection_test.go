@@ -33,7 +33,7 @@ func writeLatentSynthetic(t *testing.T, files map[string]string) *trackedTree {
 	return newSyntheticTree(t, dir)
 }
 
-// marker собирает написание пометки из частей — иначе этот файл сам стал бы
+// latentMarkerOf собирает написание пометки из частей — иначе этот файл сам стал бы
 // вхождением и попал бы в перепись настоящего дерева.
 func latentMarkerOf(word string) string { return "# " + word + ":latent" }
 
