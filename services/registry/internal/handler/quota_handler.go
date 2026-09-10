@@ -9,6 +9,7 @@ import (
 	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	"github.com/PRO-Robotech/kacho/pkg/quota/quotapb"
 
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	quotaband "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/quota"
 )
 
@@ -28,10 +29,20 @@ type QuotaHandler struct {
 	registryv1.UnimplementedQuotaServiceServer
 
 	band *quotaband.Guard
+	// posture — объявил ли ЭТОТ владелец домен величин отсутствующим (#2515).
+	//
+	// Отдельно от полосы, а не выведено из её отсутствия: несобранная полоса
+	// означает РАЗОМ «провязать забыли» и «оператор объявил, что домена величин
+	// нет», а следствия у этих двух состояний для арендатора противоположные.
+	// Выведи одно из другого — и законная посадка отвечала бы утверждением о
+	// поломке платформы.
+	posture quotaread.Posture
 }
 
 // NewQuotaHandler собирает обработчик поверх полосы учёта.
-func NewQuotaHandler(band *quotaband.Guard) *QuotaHandler { return &QuotaHandler{band: band} }
+func NewQuotaHandler(band *quotaband.Guard, posture quotaread.Posture) *QuotaHandler {
+	return &QuotaHandler{band: band, posture: posture}
+}
 
 // List отдаёт квоты проекта — предел, потребление и источник величины по
 // каждому виду домена.
@@ -51,7 +62,7 @@ func NewQuotaHandler(band *quotaband.Guard) *QuotaHandler { return &QuotaHandler
 func (h *QuotaHandler) List(
 	ctx context.Context, req *registryv1.ListQuotasRequest,
 ) (*registryv1.ListQuotasResponse, error) {
-	quotas, err := quotapb.ListQuotas(ctx, req.GetProjectId(), h.states())
+	quotas, err := quotapb.ListQuotas(ctx, req.GetProjectId(), h.states(), h.readPosture())
 	if err != nil {
 		return nil, err
 	}
@@ -72,3 +83,15 @@ func (h *QuotaHandler) states() quotapb.StatesFunc {
 
 // Гарантия соответствия контракту на этапе сборки.
 var _ registryv1.QuotaServiceServer = (*QuotaHandler)(nil)
+
+// readPosture — посадка ЛИБО безопасное умолчание у нулевого приёмника.
+//
+// Нулевое значение посадки означает «домен объявлен адресом», то есть прежнее
+// поведение: непровязанная полоса остаётся `INTERNAL`. Обратное умолчание
+// объявляло бы отсутствие потолков за оператора.
+func (h *QuotaHandler) readPosture() quotaread.Posture {
+	if h == nil {
+		return quotaread.AuthorityDeclared()
+	}
+	return h.posture
+}

@@ -79,6 +79,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
 
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/migrations"
 )
 
@@ -291,7 +292,7 @@ func runServe(cfg config.Config) error {
 
 	// Сборка use-case'ов идёт ПОСЛЕ объявления резолва величин: полоса учёта —
 	// их зависимость, а её источник — соединение внутреннего контура выше.
-	svcs := buildServices(pool, projectClient, quotaLimits, geoZones, geoRegions, subnetPlacement, nicClient, storageClient, opsRepo)
+	svcs := buildServices(pool, projectClient, quotaLimits, quotaEdge.ReadPosture, geoZones, geoRegions, subnetPlacement, nicClient, storageClient, opsRepo)
 
 	// Пообъектный сужатель: он же уезжает ПРОВОДКОЙ в дескриптор, поэтому строится
 	// ДО него и ТЕМ ЖЕ объектом, что сужает строки в обработчиках. Собери его
@@ -1079,7 +1080,7 @@ func dialPeerCreds(addr string, creds credentials.TransportCredentials, idle boo
 // saga). Wired here at the composition root; the Instance use-case consumes it in a
 // follow-up cutover slice (attach-state moves from the local attached_disks table to
 // storage). Threaded now so the peer-conn/config plumbing lands additively.
-func buildServices(pool *pgxpool.Pool, projectClient ports.ProjectAccountClient, quotaLimits quota.LimitResolver, geoZones instance.ZoneRegistry, geoRegions placementgroup.RegionRegistry, subnets instance.SubnetRegistry, nicClient instance.NicClient, storageClient instance.StorageClient, opsRepo operations.Repo) *services {
+func buildServices(pool *pgxpool.Pool, projectClient ports.ProjectAccountClient, quotaLimits quota.LimitResolver, quotaPosture quotaread.Posture, geoZones instance.ZoneRegistry, geoRegions placementgroup.RegionRegistry, subnets instance.SubnetRegistry, nicClient instance.NicClient, storageClient instance.StorageClient, opsRepo operations.Repo) *services {
 	instanceRepo := repo.NewInstanceRepo(pool)
 	machineTypeRepo := repo.NewMachineTypeRepo(pool)
 
@@ -1098,7 +1099,7 @@ func buildServices(pool *pgxpool.Pool, projectClient ports.ProjectAccountClient,
 	return &services{
 		// Чтение квот арендатором — та же полоса, что и ранний отказ: у чтения и
 		// у полосы ровно два источника, и они одни и те же.
-		quota:       quotaHandlerOrNil(quotaGuard),
+		quota:       quotaHandlerOrNil(quotaGuard, quotaPosture),
 		machineType: machinetype.NewMachineTypeService(machineTypeRepo, opsRepo),
 		instance: instance.NewInstanceService(instanceRepo, machineTypeRepo, geoZones, subnets, projectClient, nicClient, storageClient, opsRepo).
 			WithQuotaGuard(quotaGuard),
@@ -1357,15 +1358,25 @@ func registerInternalServices(
 
 // quotaHandlerOrNil возвращает обработчик чтения квот ЛИБО настоящий nil.
 //
-// Возврат `*handler.QuotaHandler(nil)` в поле структуры был бы не тем же самым:
-// проверка `svcs.quota != nil` на типизированном nil ИСТИННА, и метод
-// зарегистрировался бы, чтобы отвечать отказом на первом же вызове. Решение
-// принимается здесь, где тип ещё конкретен.
-func quotaHandlerOrNil(g *quota.Guard) *handler.QuotaHandler {
-	if g == nil {
+// Возврат типизированного nil в поле структуры был бы не тем же самым: проверка
+// `!= nil` на нём ИСТИННА, и метод зарегистрировался бы, чтобы упасть на первом
+// же вызове. Решение принимается здесь, где тип ещё конкретен.
+//
+// ОБЪЯВЛЕННОЕ ОТСУТСТВИЕ ДОМЕНА ВЕЛИЧИН — НЕ «НЕТ ВОЗМОЖНОСТИ». Полоса
+// собирается только под развёрнутый домен, поэтому прежде на такой посадке
+// обработчика не было вовсе, и незарегистрированный метод отвечал
+// `Unimplemented`. На посадке, которую оператор выбрал сам, это неправда дважды:
+// метод существует, а отсутствует не он, а потолок, — и арендатор читал витрину
+// как сбой платформы, ровно то состояние, ради устранения которого она заведена.
+//
+// Полосы здесь нет и быть не может (спрашивать величины не у кого), поэтому
+// обработчик несёт ПОСАДКУ: общее тело отвечает названным отказом с машинным
+// признаком, а не пустым набором, который контракт запрещает.
+func quotaHandlerOrNil(g *quota.Guard, posture quotaread.Posture) *handler.QuotaHandler {
+	if g == nil && !posture.AuthorityIsAbsent() {
 		return nil
 	}
-	return handler.NewQuotaHandler(g)
+	return handler.NewQuotaHandler(g, posture)
 }
 
 // buildSubscriptionServer собирает ОБЩИЙ сервер потока изменений для журнала compute.

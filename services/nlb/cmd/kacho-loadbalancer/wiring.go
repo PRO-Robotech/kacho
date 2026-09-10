@@ -44,6 +44,8 @@ import (
 	iamclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/iam"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachopg "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 )
 
 // bgWorker — фоновый loop под супервизором (errgroup): неожиданный exit флипает
@@ -73,6 +75,12 @@ type grpcWiring struct {
 	// означает «раннего отказа нет», а НЕ «предела нет»: место по-прежнему
 	// занимает триггер в writer-транзакции.
 	quotaGuard *quota.Guard
+	// quotaPosture — как ЭТА установка объявила домен величин, для витрины.
+	//
+	// Отдельно от полосы (#2515): её отсутствие означает разом «провязать
+	// забыли» и «оператор объявил, что домена величин нет», а следствия у этих
+	// двух состояний для арендатора противоположные.
+	quotaPosture quotaread.Posture
 	// subscription — ОБЩИЙ сервер потока изменений (`pkg/subscription`), по
 	// экземпляру на владельца журнала.
 	//
@@ -183,8 +191,13 @@ func registerPublic(reg grpc.ServiceRegistrar, w grpcWiring) {
 	// есть «квот нет», ровно то утверждение, которое контракт запрещает делать.
 	// Незарегистрированный метод отвечает `Unimplemented`, и это честно:
 	// возможности здесь действительно нет.
-	if w.quotaGuard != nil {
-		lbv1.RegisterQuotaServiceServer(reg, quotaapi.NewHandler(w.quotaGuard))
+	//
+	// На ОБЪЯВЛЕННОМ ОТСУТСТВИИ домена величин метод выставляется тоже (#2515):
+	// отсутствует не он, а потолок. Прежде `Unimplemented` утверждал, что
+	// возможности нет в сборке, — неправда на посадке, которую выбрал оператор,
+	// и арендатор читал её как сбой платформы.
+	if w.quotaGuard != nil || w.quotaPosture.AuthorityIsAbsent() {
+		lbv1.RegisterQuotaServiceServer(reg, quotaapi.NewHandler(w.quotaGuard, w.quotaPosture))
 	}
 }
 

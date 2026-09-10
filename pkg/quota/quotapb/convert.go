@@ -49,13 +49,25 @@ type StatesFunc func(ctx context.Context, projectID string) ([]quotaread.State, 
 // это решение, а не механика: пять копий отличались бы текстом отказа, и
 // арендатор получал бы на один и тот же неверный ввод разные ответы в разных
 // доменах.
-func ListQuotas(ctx context.Context, projectID string, states StatesFunc) ([]*quotav1.Quota, error) {
+func ListQuotas(
+	ctx context.Context, projectID string, states StatesFunc, posture quotaread.Posture,
+) ([]*quotav1.Quota, error) {
 	if projectID == "" {
 		return nil, status.Error(codes.InvalidArgument, "project_id: required")
 	}
+	// Посадка судится ПОСЛЕ обязательности и ДО полосы.
+	//
+	// После обязательности — потому что арендатор, не назвавший проект, обязан
+	// узнать о своей ошибке, а не выслушать рассказ об установке. До полосы —
+	// потому что на объявленном отсутствии полосы нет by construction, и
+	// проверка `states == nil` приняла бы законную посадку за дефект сборки.
+	if refusal := posture.Refusal(); refusal != nil {
+		return nil, refusal
+	}
 	if states == nil {
-		// Полоса не провязана. Пустой ответ здесь был бы утверждением «квот нет»,
-		// которого контракт не делает; отказ называет предмет.
+		// Полоса не провязана ПРИ ОБЪЯВЛЕННОМ АДРЕСЕ — то есть дефект сборки, и
+		// он остаётся `INTERNAL`. Пустой ответ здесь был бы утверждением «квот
+		// нет», которого контракт не делает; отказ называет предмет.
 		return nil, status.Error(codes.Internal, "quota read band is not wired")
 	}
 	st, err := states(ctx, projectID)

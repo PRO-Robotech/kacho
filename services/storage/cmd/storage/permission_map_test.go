@@ -40,6 +40,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktypebinding"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
@@ -664,7 +665,7 @@ func TestPublicListenerServesNoInternalService(t *testing.T) {
 	}
 
 	public := names(func(r grpc.ServiceRegistrar) {
-		registerPublic(r, volumeUC, snapshotUC, imageUC, diskTypeUC, handler.NewQuotaHandler(nil), opHandler)
+		registerPublic(r, volumeUC, snapshotUC, imageUC, diskTypeUC, handler.NewQuotaHandler(nil, quotaread.AuthorityDeclared()), opHandler)
 	})
 	internal := names(func(r grpc.ServiceRegistrar) {
 		registerInternal(r, volumeUC, imageUC, diskTypeUC,

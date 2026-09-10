@@ -31,6 +31,11 @@ import { PanelHeader } from "@shared/components/molecules/PanelHeader";
 import { ProjectRequiredEmpty } from "@shared/components/molecules/ProjectRequiredEmpty";
 import { useBreadcrumb } from "@shared/components/molecules/PageHeaderSlot";
 import { ResourceTable, type Column } from "@shared/components/organisms/ResourceTable";
+import {
+  QUOTA_AUTHORITY_ABSENT_REASON,
+  presentError,
+  refusalReasonOf,
+} from "@shared/lib/error-presentation";
 import { QUOTA_VALUES_SET_BY, quotaRows, type Quota, type QuotaRow } from "@shared/lib/quota-view";
 
 /**
@@ -133,6 +138,29 @@ export function QuotasPage() {
   const failed = results.filter((r) => r.isError);
   const answered = results.filter((r) => r.isSuccess);
 
+  // ПОСАДКА БЕЗ ДОМЕНА ВЕЛИЧИН — НЕ СБОЙ, И НАЗЫВАТЬ ЕЁ СБОЕМ НЕЛЬЗЯ (#2515).
+  //
+  // Ручка домена величин принимает два законных значения, и второе объявляет,
+  // что потолков в этой установке не назначает никто. Красная плашка «пределы
+  // не прочитаны» утверждает на это поломку — то самое состояние, ради
+  // устранения которого витрина и заведена (см. шапку файла).
+  //
+  // ТРЕБУЮТСЯ ВСЕ ВЛАДЕЛЬЦЫ, А НЕ ОДИН. Посадка одна на установку: владелец,
+  // ответивший иначе, означает, что пятеро разошлись в понимании установки, — а
+  // это уже находка, и показывать её надо отказом, а не объявлением посадки.
+  //
+  // Признак — МАШИННЫЙ. Проза отказа контрактна и меняется осознанно; вывод
+  // полосы из английской фразы вернул бы пустоту при первой же правке тона.
+  const authorityAbsent =
+    failed.length === results.length &&
+    failed.length > 0 &&
+    failed.every((r) => refusalReasonOf(r.error) === QUOTA_AUTHORITY_ABSENT_REASON);
+
+  // Текст берётся у ОБЩЕГО разбора, а не пишется здесь: он уже объявлен
+  // вердиктом по этому признаку, и вторая редакция той же фразы разошлась бы с
+  // первой молча.
+  const absence = authorityAbsent ? presentError(failed[0].error) : null;
+
   const columns: Column<QuotaRow>[] = [
     {
       header: "Ресурс",
@@ -178,7 +206,17 @@ export function QuotasPage() {
         />
       </div>
 
-      {failed.length > 0 && (
+      {absence !== null && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ flexShrink: 0, marginBottom: 12 }}
+          message={absence.title}
+          description={absence.subTitle}
+        />
+      )}
+
+      {!authorityAbsent && failed.length > 0 && (
         <Alert
           type="error"
           showIcon
@@ -221,7 +259,7 @@ export function QuotasPage() {
           // Порядок задан здесь (по имени вида) и устойчив: ответ порядка не
           // обещает, а страница поллится — показанный «как пришёл» список
           // переставлялся бы под курсором читателя.
-          empty="Ограничения не прочитаны"
+          empty={authorityAbsent ? "В этой установке ограничений нет" : "Ограничения не прочитаны"}
         />
       </div>
     </div>

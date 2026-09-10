@@ -51,6 +51,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktypebinding"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
@@ -451,7 +452,7 @@ func registrarsOfBothListeners(t *testing.T) []func(grpc.ServiceRegistrar) {
 	// зарегистрировано, и перепись обслуживаемого обязана описывать стенд, а не
 	// вырожденную сборку. Нулевой указатель здесь молча вывел бы сервис из-под
 	// каждой пробы, которая выводит поверхность из этой сборки.
-	quotaHandler := handler.NewQuotaHandler(nil)
+	quotaHandler := handler.NewQuotaHandler(nil, quotaread.AuthorityDeclared())
 
 	return []func(grpc.ServiceRegistrar){
 		func(r grpc.ServiceRegistrar) {

@@ -14,6 +14,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/handler"
 )
 
@@ -79,7 +80,7 @@ func TestRegistryServesTheSubscriptionStreamOnTheInternalListenerOnly(t *testing
 
 	byListener := map[string]func(grpc.ServiceRegistrar){
 		"public": func(reg grpc.ServiceRegistrar) {
-			registerPublic(reg, registryHandler, handler.NewQuotaHandler(nil), opHandler)
+			registerPublic(reg, registryHandler, handler.NewQuotaHandler(nil, quotaread.AuthorityDeclared()), opHandler)
 		},
 		"internal": func(reg grpc.ServiceRegistrar) {
 			registerInternal(reg, internalHandler, opHandler, sub)

@@ -59,6 +59,36 @@ function stub(body: unknown, ok = true, owner = BODY_OWNER) {
   };
 }
 
+/**
+ * Подставной край на посадке БЕЗ домена величин (#2515).
+ *
+ * Отказывают ВСЕ пятеро — посадка одна на установку, и владелец, ответивший
+ * иначе, означал бы, что они разошлись в понимании установки. Тело отказа несёт
+ * машинный признак: клиент различает полосы по нему, а не по прозе.
+ */
+function stubAuthorityAbsent() {
+  urls = [];
+  globalThis.fetch = (input: RequestInfo | URL) => {
+    urls.push(requestUrl(input));
+    return Promise.resolve({
+      ok: false,
+      status: 400,
+      statusText: "Bad Request",
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({
+            code: 9,
+            message:
+              "resource count limits are not stated in this installation: no limit " +
+              "authority is deployed, so no ceiling applies to any kind and no " +
+              "mutation is refused for exceeding one",
+            details: [{ reason: "QUOTA_AUTHORITY_ABSENT", domain: "vpc.kacho.cloud" }],
+          }),
+        ),
+    } as Response);
+  };
+}
+
 afterEach(() => {
   globalThis.fetch = realFetch;
 });
@@ -197,5 +227,31 @@ describe("витрина квот арендатора", () => {
     renderPage();
     await waitFor(() => expect(screen.queryByText(/не назвал ни одного/i)).toBeNull());
     expect(screen.queryByText(/Облачные сети/)).toBeNull();
+  });
+  // ОБЪЯВЛЕННОЕ ОТСУТСТВИЕ ДОМЕНА ВЕЛИЧИН — НЕ СБОЙ (#2515).
+  //
+  // Ручка домена величин принимает два законных значения, и второе объявляет,
+  // что потолков в этой установке нет вовсе. Пока витрина этого не различала,
+  // законная посадка показывалась красной плашкой «Пределы не прочитаны» — то
+  // есть ровно тем состоянием, ради устранения которого витрина и заведена.
+  it("посадку без домена величин НАЗЫВАЕТ, а не выдаёт за сбой", async () => {
+    stubAuthorityAbsent();
+    renderPage();
+
+    // Названо: арендатор узнаёт, что потолков нет и просить не у кого.
+    expect(await screen.findByText(/в этой установке не задаются/i)).toBeTruthy();
+    // И не названо сбоем: «не прочитаны» утверждает поломку.
+    expect(screen.queryByText(/Пределы не прочитаны/i)).toBeNull();
+  });
+
+  // Положительный близнец: тот же путь, отличается РОВНО ОДНИМ фактом — отказ
+  // без машинного признака. Без него проба зеленела бы на витрине, которая
+  // объявляет посадку на любой отказ подряд, — то есть научилась бы молчать о
+  // настоящих сбоях.
+  it("отказ БЕЗ этого признака по-прежнему показывается сбоем", async () => {
+    stub({ message: "boom" }, false);
+    renderPage();
+    expect(await screen.findByText(/Пределы не прочитаны/i)).toBeTruthy();
+    expect(screen.queryByText(/в этой установке не задаются/i)).toBeNull();
   });
 });
