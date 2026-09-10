@@ -14,10 +14,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	coredb "github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/ids"
 	referencev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/reference"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/securitygroup"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/dto"
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
@@ -26,7 +26,7 @@ import (
 	// blank-import регистрирует трансферы repo-запись → proto.
 	_ "github.com/PRO-Robotech/kacho/services/vpc/internal/dto/toproto"
 
-	"github.com/PRO-Robotech/kacho/pkg/pgtest"
+	"github.com/PRO-Robotech/corelib/pgtest"
 )
 
 // Обратная ссылка группы правил — «кем используется» — читается ЗАПРОСОМ по тем

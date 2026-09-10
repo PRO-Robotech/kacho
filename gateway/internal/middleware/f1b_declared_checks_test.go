@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // f1b_declared_checks_test.go — Ф1б-01: край ОБЪЯВЛЯЕТ состав проверок токена и
-// объявление сходится с единственным перечнем (`pkg/tokenpolicy`).
+// объявление сходится с единственным перечнем (`corelib/tokenpolicy`).
 //
 // Пока состав живёт у каждой поверхности свой, различие между поверхностями НЕ
 // ВЫРАЖЕНО и потому не может покраснеть ни у одной: одна перестанет требовать
@@ -12,7 +12,7 @@ package middleware
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+	"github.com/PRO-Robotech/corelib/tokenpolicy"
 )
 
 func TestF1b01_EdgeDeclaresTheMandatoryCheckComposition(t *testing.T) {

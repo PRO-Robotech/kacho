@@ -25,7 +25,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota"
+	"github.com/PRO-Robotech/corelib/quota"
 )
 
 // cursorRow — наблюдаемое состояние строки курсора целиком.

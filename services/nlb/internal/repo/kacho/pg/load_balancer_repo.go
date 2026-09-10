@@ -11,7 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/PRO-Robotech/kacho/pkg/db/pgfault"
+	"github.com/PRO-Robotech/corelib/db/pgfault"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg/dto"

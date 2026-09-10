@@ -56,7 +56,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // quotaUsageTables — таблицы учёта потребления. Перечень ВЫПИСАН, а не выведен:

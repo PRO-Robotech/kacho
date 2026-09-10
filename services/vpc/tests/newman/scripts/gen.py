@@ -942,7 +942,7 @@ def filter_syntax_block(prefix, list_path):
         # обещающим 400, проходило и при молчаливом игнорировании, то есть ровно на
         # том дефекте, ради которого кейс существует.
         #
-        # Исходы измерены на самом парсере (pkg/filter), а не угаданы:
+        # Исходы измерены на самом парсере (corelib/filter), а не угаданы:
         #   "this is not valid syntax" → Bad expression at column 1. Unknown field: "this"
         #   nonexistent_field="x"      → Bad expression at column 1. Unknown field: "nonexistent_field"
         #   name="foo"                 → разбирается

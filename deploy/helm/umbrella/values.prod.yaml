@@ -376,7 +376,7 @@ vpc:
     adminPodsSelector: {}
   # AuthZ: per-RPC IAM Check (default iamEndpoint kaname-internal:9091),
   # FGA-filtered List ON + fail-closed, write-side FGA ON. Ручки обхода у vpc
-  # больше нет: контур поднимает общий носитель (pkg/servicehost), который ставит
+  # больше нет: контур поднимает общий носитель (corelib/servicehost), который ставит
   # звено решения о доступе всегда, поэтому отменять его нечем.
   authz:
     # Кто вправе ПЕРЕДАВАТЬ личность конечного пользователя (x-kacho-principal-*)

@@ -23,11 +23,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz"
-	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/authz/catalogderive"
+	"github.com/PRO-Robotech/corelib/listnarrow/narrowtest"
+	"github.com/PRO-Robotech/corelib/outbox/bootgate"
+	"github.com/PRO-Robotech/corelib/servicecontract"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/check"
@@ -55,7 +55,7 @@ func (probeExistence) ProbeableTypes() []string { return (&vpcpg.ExistenceProbe{
 // Режим — dev, и это выбор, а не упрощение: боевая посадка требует ПРОВЕРЕННОГО
 // транспорта на обоих слушателях и на ребре решения о доступе, то есть настоящей
 // тройки сертификатов на диске. Что боевой режим их требует, проверяет сам
-// конструктор дескриптора (`pkg/servicecontract`, отказ О8) — на своих фикстурах
+// конструктор дескриптора (`corelib/servicecontract`, отказ О8) — на своих фикстурах
 // и без чтения файлов. Здесь предмет другой: что ОБЪЯВЛЯЕТ о себе vpc. Заводить
 // ради этого генерацию сертификатов значило бы сделать пробу заложницей файловой
 // системы и повторить чужую проверку.

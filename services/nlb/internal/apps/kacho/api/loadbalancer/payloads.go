@@ -53,13 +53,13 @@ func lbAddressOwner(lbID, name string) vpcclient.AddressOwner {
 //
 // A durable intent carries ONLY proxy-registrable tuples. kaname's
 // least-privilege policy accepts the ownership/parent relations declared in
-// pkg/authz/proxytuple and reserves
+// corelib/authz/proxytuple and reserves
 // privilege relations for the AccessBinding flow, so the creator (`admin`) tuple
 // this used to append was refused on every delivery.
 //
 // A refusal from the model owner is TERMINAL: the applier maps it to
 // drainer.ErrPermanent (clients/iam/register_applier.go) and the shared drainer
-// classifies it the same way for every service (pkg/outbox/drainer/classify.go).
+// classifies it the same way for every service (corelib/outbox/drainer/classify.go).
 // So such a row poisons on its FIRST attempt and leaves the partition-head
 // blocking set at once — it does not hold later intents for this LB for any
 // deadline. What it costs is the registration: the applier stops at the first

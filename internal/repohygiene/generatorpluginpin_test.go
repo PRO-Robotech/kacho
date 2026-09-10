@@ -54,7 +54,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 // genPluginDoc — то немногое из buf.gen.yaml, что нужно этому гейту.

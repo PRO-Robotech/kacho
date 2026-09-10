@@ -11,9 +11,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotadetail"
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	corequota "github.com/PRO-Robotech/corelib/quota"
+	"github.com/PRO-Robotech/corelib/quota/quotadetail"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 )
 
@@ -75,7 +75,7 @@ func classifyQuotaErr(err error) error {
 	// Величины производителя приклеиваются ЗДЕСЬ — там, где `*pgconn.PgError` ещё
 	// не потерян. Дальше по пути его нет, и прочитать `DETAIL` больше негде:
 	// текст переживает переход, величины — нет. Разбор
-	// общий (`pkg/quota/quotadetail`) по тому же доводу, по которому производитель
+	// общий (`corelib/quota/quotadetail`) по тому же доводу, по которому производитель
 	// один: шесть копий разошлись бы молча.
 	switch pgErr.Code {
 	case sqlStateQuotaExceeded:

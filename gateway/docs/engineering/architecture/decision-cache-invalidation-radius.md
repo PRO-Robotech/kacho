@@ -52,7 +52,7 @@
 | видов записи журнала объявлено | **7** | `sed -n '807p' services/iam/internal/migrations/0001_initial.sql` |
 | из них с производителем в дереве | **5** | `git grep -l '"<op>"' -- services/iam/internal \| grep -v _test \| grep -v migrations` |
 | такт перепроса (умолчание) | **2s** | `grep -n SUBJECT_CHANGE_POLL_INTERVAL gateway/internal/config/config.go` |
-| окно отзыва: умолчание · потолок | **5s · 10s** | `grep -n 'Default:\|Ceiling:' pkg/authz/revocation_policy.go` |
+| окно отзыва: умолчание · потолок | **5s · 10s** | `grep -n 'Default:\|Ceiling:' corelib/authz/revocation_policy.go` |
 | ключ кэша несёт субъект открыто | **нет**, только дайджест | `grep -n 'sha256.Sum256' gateway/internal/middleware/authz_cache.go` |
 
 ## Цена сплошного сброса — названа, а не замолчана

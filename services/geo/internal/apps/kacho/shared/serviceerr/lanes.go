@@ -4,7 +4,7 @@
 package serviceerr
 
 import (
-	kerrors "github.com/PRO-Robotech/kacho/pkg/errors"
+	kerrors "github.com/PRO-Robotech/corelib/errors"
 )
 
 // serviceDomain — источник отказа, из которого собирается `ErrorInfo.domain`

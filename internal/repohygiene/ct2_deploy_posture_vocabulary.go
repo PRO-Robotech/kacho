@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+	"github.com/PRO-Robotech/corelib/servicecontract"
 )
 
 // postureHomeDir — единственный дом словаря посадок. Каталог, а не файл:

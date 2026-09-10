@@ -11,7 +11,7 @@ package config
 // расходятся именно там, где расхождение опасно.
 
 import (
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+	corequota "github.com/PRO-Robotech/corelib/quota"
 )
 
 const (

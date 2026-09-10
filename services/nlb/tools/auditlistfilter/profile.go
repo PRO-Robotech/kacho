@@ -3,7 +3,7 @@
 
 // Package auditlistfilter states how kacho-nlb is laid out for the public-List
 // gate. The analysis itself — and why it parses instead of grepping — lives in
-// pkg/listfiltergate.
+// corelib/listfiltergate.
 //
 // # This service's shape
 //
@@ -52,7 +52,7 @@
 // use-case lives elsewhere (compute) the shape has to be asserted differently.
 package auditlistfilter
 
-import "github.com/PRO-Robotech/kacho/pkg/listfiltergate"
+import "github.com/PRO-Robotech/corelib/listfiltergate"
 
 // quotaIsAProjectProperty — почему у чтения квот сужать НЕЧЕГО.
 //

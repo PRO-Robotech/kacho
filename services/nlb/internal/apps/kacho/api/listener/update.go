@@ -10,15 +10,15 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/option"
+	"github.com/PRO-Robotech/corelib/option"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
 
+	"github.com/PRO-Robotech/corelib/ids"
+	"github.com/PRO-Robotech/corelib/operations"
+	corevalidate "github.com/PRO-Robotech/corelib/validate"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
-	"github.com/PRO-Robotech/kacho/pkg/ids"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
@@ -438,7 +438,7 @@ func (u *UpdateUseCase) doUpdate(ctx context.Context, next domain.Listener, expe
 // THE TUPLE MUST BE THE PROJECT ONE, and that is the whole substance of this feed.
 // kaname writes resource_mirror only as a side effect of RegisterResource, and
 // it guards that proxy write-path with a least-privilege rule over the whole tuple
-// (pkg/authz/proxytuple.ValidateTuple) evaluated BEFORE the mirror UPSERT. nlb's
+// (corelib/authz/proxytuple.ValidateTuple) evaluated BEFORE the mirror UPSERT. nlb's
 // parent-link relation `load_balancer` is not accepted by it (see
 // listenerRegisterIntent). Feeding the refresh through the
 // parent-link alone made every labels-Update a PermissionDenied that dropped the

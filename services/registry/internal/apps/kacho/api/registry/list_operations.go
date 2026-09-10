@@ -6,7 +6,7 @@ package registry
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/corelib/operations"
 )
 
 // ListOperationsQuery — вход ListOperations реестра: per-resource история

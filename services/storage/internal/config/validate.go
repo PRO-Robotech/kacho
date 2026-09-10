@@ -12,10 +12,10 @@ import (
 	// `scope_filtered` выводится из их аннотаций, и пустой реестр дал бы пустую
 	// полосу — то есть стражу, которой нечего охранять, неотличимую от стражи,
 	// у которой всё в порядке.
-	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1"
+	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
+	"github.com/PRO-Robotech/corelib/authz/catalogderive"
+	"github.com/PRO-Robotech/corelib/servicecontract"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
-	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/blockbackend"
 )
@@ -63,7 +63,7 @@ var storageProtoPackages = []string{
 //
 // Разбор режима, круг отправителей чужой личности, sslmode до своей БД, транспорт
 // обоих слушателей и ребро решения о доступе судит теперь конструктор дескриптора
-// (`pkg/servicecontract`) — один отказ на все сервисы вместо семи собственных.
+// (`corelib/servicecontract`) — один отказ на все сервисы вместо семи собственных.
 // Переезд не ослабил ни одного из них, а два усилил: транспорт спрашивается у
 // САМОГО ТРАНСПОРТА (`Info().SecurityProtocol`), а не у ручки `Enable`, и ребро
 // решения о доступе обязано быть объявлено на ЛЮБОЙ посадке, а не только в боевой.

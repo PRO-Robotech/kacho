@@ -16,7 +16,7 @@ import (
 
 	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
 
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
+	"github.com/PRO-Robotech/corelib/listnarrow/narrowtest"
 )
 
 // TestHandler_DispatchesAll — Handler — тонкая обёртка над use-case'ами.

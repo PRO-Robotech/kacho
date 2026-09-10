@@ -97,7 +97,7 @@ const synthMutatesLiveIndexViaWorkdir = `package probe
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 func TestStagesIntoTheLiveIndexViaWorkdir(t *testing.T) {
@@ -117,7 +117,7 @@ const synthMutatesLiveIndexViaArgs = `package probe
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 func TestStagesIntoTheLiveIndexViaArgs(t *testing.T) {
@@ -162,7 +162,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 func TestReadsLiveTreeWritesItsOwn(t *testing.T) {
@@ -198,7 +198,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 func TestStagesIntoItsOwnTree(t *testing.T) {

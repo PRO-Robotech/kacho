@@ -19,8 +19,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
+	"github.com/PRO-Robotech/corelib/ids"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
-	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/terraform/internal/client"
 )
 
@@ -361,7 +361,7 @@ func (r *subnetResource) Delete(ctx context.Context, req resource.DeleteRequest,
 
 // ImportState принимает идентификатор ресурса.
 //
-// Формат проверяется ЗДЕСЬ, общим каталогом префиксов платформы (pkg/ids) — до любого
+// Формат проверяется ЗДЕСЬ, общим каталогом префиксов платформы (corelib/ids) — до любого
 // обращения к краю. Это та же дисциплина, что у сервисов: заведомо негодный идентификатор
 // получает терминальный отказ с внятным текстом, а не уезжает в сеть, чтобы вернуться
 // оттуда «ресурс не найден» — ответом, который для строки, не являющейся идентификатором,

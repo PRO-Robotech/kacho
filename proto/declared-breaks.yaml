@@ -226,4 +226,72 @@
 # двух файлов пакета оказался РАЗНЫМ и почему номера расширений при переезде не
 # менялись. Предмет автоматического снятия — #2410.
 
-declared: []
+# ===========================================================================
+# ЗАПИСЕЙ ВОСЕМЬ (#2131): контракты КЛАССА ФУНДАМЕНТА объявляют путь общей
+# библиотеки, а не платформы.
+#
+# ЧТО ИЗМЕНЕНО. У восьми контрактов — двух нейтральных (`corelib/…`) и шести
+# платформенных, объявленных фундаментом картой классов (операция, поток
+# изменений, учёт потолков) — опция `go_package` названа путём модуля
+# `github.com/PRO-Robotech/corelib`. Их заглушки живут теперь ТАМ, а платформа
+# импортирует их как зависимость.
+#
+# ЗАЧЕМ, И ЭТО НЕ КОСМЕТИКА. Регистрируется ИМЯ ФАЙЛА контракта, а не путь
+# пакета. Двоичное, слинковавшее старый и новый путь одного контракта, падает
+# ПАНИКОЙ ПРИ ИНИЦИАЛИЗАЦИИ, и падает ТРАНЗИТИВНО — у потребителя, который ни
+# одного из двух путей не называл. Постепенного перевода не существует:
+# заглушки контракта атомарны по построению, поэтому опция и место порождения
+# правятся одним изменением (`proto/buf.gen.yaml`, `exclude_paths`).
+#
+# ЧТО ЭТО ЗНАЧИТ ДЛЯ ВЫЗЫВАЮЩЕГО. Для читающего REST — ничто: ни один путь, ни
+# одно имя поля, ни один номер не изменились, `go_package` на проводе не
+# кодируется вовсе. Для собиравшего стабы Go — путь импорта: `…/kacho/pkg/api/X`
+# становится `…/corelib/api/X`. Полные имена сообщений, служб и методов прежние,
+# поэтому каталог прав и таблица маршрутов не двигаются ни одной записью.
+#
+# ЗАПИСИ ИСТЕКАЮТ САМИ: база сравнения — ствол, и после вливания находок по ним
+# больше нет. Снять их обязано то же изменение, которое поднимет базу.
+# ===========================================================================
+
+declared:
+  - rule: FILE_SAME_GO_PACKAGE
+    path: corelib/api/v1/operation.proto
+    symbol: github.com/PRO-Robotech/corelib/api/corelib/api/v1;apiv1
+    reason: заглушки этого контракта живут в общей библиотеке; два пути одного контракта в одном двоичном дают панику регистрации
+    issue: kacho#2131
+  - rule: FILE_SAME_GO_PACKAGE
+    path: corelib/authz/v1/authz_options.proto
+    symbol: github.com/PRO-Robotech/corelib/api/corelib/authz/v1;authzv1
+    reason: заглушки этого контракта живут в общей библиотеке; два пути одного контракта в одном двоичном дают панику регистрации
+    issue: kacho#2131
+  - rule: FILE_SAME_GO_PACKAGE
+    path: kacho/cloud/operation/operation.proto
+    symbol: github.com/PRO-Robotech/corelib/api/kacho/cloud/operation;operationv1
+    reason: заглушки этого контракта живут в общей библиотеке; два пути одного контракта в одном двоичном дают панику регистрации
+    issue: kacho#2131
+  - rule: FILE_SAME_GO_PACKAGE
+    path: kacho/cloud/operation/operation_service.proto
+    symbol: github.com/PRO-Robotech/corelib/api/kacho/cloud/operation;operationv1
+    reason: заглушки этого контракта живут в общей библиотеке; два пути одного контракта в одном двоичном дают панику регистрации
+    issue: kacho#2131
+  - rule: FILE_SAME_GO_PACKAGE
+    path: kacho/cloud/operation/package_options.proto
+    symbol: github.com/PRO-Robotech/corelib/api/kacho/cloud/operation;operationv1
+    reason: заглушки этого контракта живут в общей библиотеке; два пути одного контракта в одном двоичном дают панику регистрации
+    issue: kacho#2131
+  - rule: FILE_SAME_GO_PACKAGE
+    path: kacho/cloud/quota/v1/quota.proto
+    symbol: github.com/PRO-Robotech/corelib/api/kacho/cloud/quota/v1;quotav1
+    reason: заглушки этого контракта живут в общей библиотеке; два пути одного контракта в одном двоичном дают панику регистрации
+    issue: kacho#2131
+  - rule: FILE_SAME_GO_PACKAGE
+    path: kacho/cloud/subscription/subscription.proto
+    symbol: github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription;subscriptionv1
+    reason: заглушки этого контракта живут в общей библиотеке; два пути одного контракта в одном двоичном дают панику регистрации
+    issue: kacho#2131
+  - rule: FILE_SAME_GO_PACKAGE
+    path: kacho/cloud/subscription/subscription_service.proto
+    symbol: github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription;subscriptionv1
+    reason: заглушки этого контракта живут в общей библиотеке; два пути одного контракта в одном двоичном дают панику регистрации
+    issue: kacho#2131
+

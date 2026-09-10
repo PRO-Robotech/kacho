@@ -73,7 +73,7 @@ const (
 	TrustDomainOwnerDir = "pkg/grpcsrv/"
 	// TrustDomainOwnerImport — путь импорта того же владельца. По нему вызов
 	// конструктора опознаётся независимо от псевдонима.
-	TrustDomainOwnerImport = "github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	TrustDomainOwnerImport = "github.com/PRO-Robotech/corelib/grpcsrv"
 	// TrustDomainConstructor — имя конструктора домена доверия.
 	TrustDomainConstructor = "NewTrustDomain"
 

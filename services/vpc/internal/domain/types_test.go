@@ -25,7 +25,7 @@ func isValidationError(err error) bool {
 // несущую FieldViolation'ы. gRPC-трансляция — отдельным слоем (serviceerr).
 //
 // Имя входит в это утверждение НАРАВНЕ с остальными полями, хотя его форму домен
-// больше не объявляет: форма приезжает из `pkg/validate/nameform` — пакета без
+// больше не объявляет: форма приезжает из `corelib/validate/nameform` — пакета без
 // транспорта, — а решение и его носитель остаются доменными.
 func TestValidate_ReturnsDomainValidationError(t *testing.T) {
 	// bad name → *domain.ValidationError с violation на поле "name".
@@ -59,7 +59,7 @@ func TestValidate_ReturnsDomainValidationError(t *testing.T) {
 // Именно расхождение по этим трём осям и было предметом задачи.
 //
 // Тип ошибки — снова доменный `*domain.ValidationError`: форма приезжает из
-// `pkg/validate/nameform`, пакета БЕЗ транспорта, поэтому домен судит имя сам и
+// `corelib/validate/nameform`, пакета БЕЗ транспорта, поэтому домен судит имя сам и
 // остаётся stdlib-чистым. Утверждается и исход, и носитель: транспортная ошибка
 // отсюда означала бы, что слой снова протёк.
 func TestRcNameVPC_Validate(t *testing.T) {

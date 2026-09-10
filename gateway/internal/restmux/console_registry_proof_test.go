@@ -30,7 +30,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // probeRegistry собирает синтетический файл реестра вокруг одного ресурса.

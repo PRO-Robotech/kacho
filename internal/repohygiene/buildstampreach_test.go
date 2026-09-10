@@ -103,7 +103,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // buildStampPrimarySymbol — символ, по которому двоичный файл опознаётся как

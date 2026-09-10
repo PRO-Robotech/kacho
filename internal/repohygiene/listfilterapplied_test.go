@@ -41,7 +41,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // filterParseSite — одно место вызова filter.Parse с разобранным whitelist'ом.

@@ -4,7 +4,7 @@
 package main
 
 import (
-	"github.com/PRO-Robotech/kacho/pkg/identityposture"
+	"github.com/PRO-Robotech/corelib/identityposture"
 
 	"bytes"
 	"encoding/json"
@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/corelib/observability"
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
-	"github.com/PRO-Robotech/kacho/pkg/observability"
 )
 
 // captureBootPosture runs the posture through the real JSON logger and returns

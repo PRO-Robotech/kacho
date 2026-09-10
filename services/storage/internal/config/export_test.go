@@ -6,7 +6,7 @@ package config
 import (
 	"os"
 
-	corecfg "github.com/PRO-Robotech/kacho/pkg/config"
+	corecfg "github.com/PRO-Robotech/corelib/config"
 )
 
 // ScopeFilteredRPCs — test-only доступ к ТОМУ ЖЕ предикату, по которому стража

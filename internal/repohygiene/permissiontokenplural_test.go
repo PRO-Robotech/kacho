@@ -69,8 +69,8 @@ import (
 	"strings"
 	"testing"
 
-	authzv1 "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
-	"github.com/PRO-Robotech/kacho/pkg/contractroot"
+	authzv1 "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
+	"github.com/PRO-Robotech/corelib/contractroot"
 )
 
 // permTokAnnotation — строка аннотации права в .proto. Аннотация односложна

@@ -31,8 +31,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 )
 
 // Config — корневой config kacho-nlb. Все вложенные структуры с mapstructure-тегами
@@ -111,7 +111,7 @@ type APIServerConfig struct {
 	GRPCGatewayEnable bool          `mapstructure:"grpc-gw-enable"`    // false (gateway = separate svc)
 
 	// HandlingBudget — верхняя граница обработки ОДНОГО вызова: носитель контура
-	// (`pkg/servicehost`) ставит этот срок входящему контексту, если своего у него
+	// (`corelib/servicehost`) ставит этот срок входящему контексту, если своего у него
 	// нет либо он дальше границы. Более строгий срок вызывающего уважается — окно
 	// не расширяется никогда.
 	//
@@ -129,7 +129,7 @@ type APIServerConfig struct {
 	HandlingBudget time.Duration `mapstructure:"handling-budget"`
 
 	// SubscriptionStreamBudget — СРОК ЖИЗНИ одного потока подписки
-	// (`pkg/subscription`, общий сервер потока изменений).
+	// (`corelib/subscription`, общий сервер потока изменений).
 	//
 	// По истечении поток закрывается ЧИСТО, и клиент возобновляется со своей
 	// позиции: обрыв — штатное событие, а не отказ. Величина обязана заметно

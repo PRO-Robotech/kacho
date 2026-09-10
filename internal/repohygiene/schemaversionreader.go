@@ -48,7 +48,7 @@ import (
 
 // schemaGuardPackage — путь пакета-читателя. Признаком служит ИМПОРТ, а не имя
 // функции: имя функции переживёт переименование молча, а импорт — нет.
-const schemaGuardPackage = "github.com/PRO-Robotech/kacho/pkg/schemaguard"
+const schemaGuardPackage = "github.com/PRO-Robotech/corelib/schemaguard"
 
 // schemaReaderCensus — объём осмотренного. «Ноль находок» обязано быть отличимо
 // от «ноль прочитанного», поэтому печатаются ОБЕ величины: сколько сервисов

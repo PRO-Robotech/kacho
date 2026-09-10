@@ -49,7 +49,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/nameformdb"
+	"github.com/PRO-Robotech/corelib/nameformdb"
 )
 
 func TestIntegration_NameForm(t *testing.T) {
@@ -141,7 +141,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/nameformdb"
+	"github.com/PRO-Robotech/corelib/nameformdb"
 )
 
 func deadHelper(ctx context.Context, t *testing.T) {
@@ -173,7 +173,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/nameformdb"
+	"github.com/PRO-Robotech/corelib/nameformdb"
 )
 
 func liveHelper(ctx context.Context, t *testing.T) {
@@ -201,7 +201,7 @@ func TestIntegration_NameForm(t *testing.T) {
 			mig: body,
 			"services/zeta/internal/repo/probe_fixture_test.go": `package repo_test
 
-import "github.com/PRO-Robotech/kacho/pkg/nameformdb"
+import "github.com/PRO-Robotech/corelib/nameformdb"
 
 func zetaProbe() nameformdb.Probe {
 	return nameformdb.Probe{Schema: "kacho_zeta"}
@@ -246,7 +246,7 @@ import (
 	"context"
 	"testing"
 
-	nf "github.com/PRO-Robotech/kacho/pkg/nameformdb"
+	nf "github.com/PRO-Robotech/corelib/nameformdb"
 )
 
 func TestIntegration_NameForm(t *testing.T) {
@@ -278,7 +278,7 @@ func TestIntegration_NameForm(t *testing.T) {
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/nameformdb"
+	"github.com/PRO-Robotech/corelib/nameformdb"
 )
 
 func TestIntegration_NameForm(t *testing.T) {

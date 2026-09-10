@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho/pkg/safeconv"
+	"github.com/PRO-Robotech/corelib/safeconv"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/listpage"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"

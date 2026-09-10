@@ -37,7 +37,7 @@ const legitimateConsumer = `package main
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/pkg/observability/health"
+	"github.com/PRO-Robotech/corelib/observability/health"
 )
 
 func checkers(ping func(context.Context) error) []health.Checker {

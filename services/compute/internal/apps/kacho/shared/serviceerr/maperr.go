@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	kerrors "github.com/PRO-Robotech/kacho/pkg/errors"
+	kerrors "github.com/PRO-Robotech/corelib/errors"
 )
 
 // MapRepoErr — единая трансляция repo-sentinel в gRPC status (копия VPC).
@@ -23,7 +23,7 @@ import (
 // "internal database error" (закрывает info-leak vector через Operation.error.message).
 //
 // Порядок веток — сначала pass-through, потом sentinel-switch (форма kacho-nlb).
-// Он несущий, а не косметический: pkg/validate кладёт имя поля ТОЛЬКО в
+// Он несущий, а не косметический: corelib/validate кладёт имя поля ТОЛЬКО в
 // google.rpc.BadRequest-details, сообщение остаётся общим «invalid argument».
 // Пересборка статуса в sentinel-ветке (`status.Error(code, stripSentinel(...))`)
 // детали теряет, поэтому ошибка, обёрнутая через `%w` на ports.Err*, обязана

@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotadetail"
+	"github.com/PRO-Robotech/corelib/quota/quotadetail"
 )
 
 // Величины отказа учёта доезжают до клиента МАШИННО (задача продукта #1605).

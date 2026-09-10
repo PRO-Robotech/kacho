@@ -11,8 +11,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/PRO-Robotech/kacho/pkg/db/pgfault"
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotadetail"
+	"github.com/PRO-Robotech/corelib/db/pgfault"
+	"github.com/PRO-Robotech/corelib/quota/quotadetail"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 )
 
@@ -60,7 +60,7 @@ func mapQuotaErr(err error) error {
 	// Величины производителя приклеиваются ЗДЕСЬ — там, где `*pgconn.PgError` ещё
 	// не потерян. Дальше по пути его нет, и прочитать `DETAIL` больше негде:
 	// текст переживает переход, величины — нет (задача продукта #1605). Разбор
-	// общий (`pkg/quota/quotadetail`) по тому же доводу, по которому производитель
+	// общий (`corelib/quota/quotadetail`) по тому же доводу, по которому производитель
 	// один: шесть копий разошлись бы молча.
 	switch pgErr.Code {
 	case sqlstateQuotaExceeded:

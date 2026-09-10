@@ -17,8 +17,8 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib" // регистрирует database/sql-драйвер "pgx"
 
-	"github.com/PRO-Robotech/kacho/pkg/pgtest"
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/pgtest"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // applyBudget — предел на один запуск точки наката. Самая длинная цепочка дерева

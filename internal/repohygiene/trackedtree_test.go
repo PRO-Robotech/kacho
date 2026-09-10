@@ -6,7 +6,7 @@ package repohygiene
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // Единый ответ на вопрос «что такое ДЕРЕВО, о котором говорит гейт».

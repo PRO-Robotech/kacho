@@ -19,8 +19,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	coredb "github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // kanameSurfaceCorpus — отслеживаемые файлы поверхности Kaname, спрошенные У

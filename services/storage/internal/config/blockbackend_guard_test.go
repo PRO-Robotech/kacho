@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+	corequota "github.com/PRO-Robotech/corelib/quota"
 )
 
 // Страж старта обязан ОЦЕНИВАТЬ измерения плоскости данных, а не просто печатать

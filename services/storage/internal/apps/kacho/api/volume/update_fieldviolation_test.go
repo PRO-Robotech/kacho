@@ -20,7 +20,7 @@ import (
 
 // ── Update: description / labels are refused at the request edge, by name ────
 //
-// Create runs both fields through pkg/validate. Update ran only the name through
+// Create runs both fields through corelib/validate. Update ran only the name through
 // the domain validator, so an over-limit description or labels map travelled to
 // the UPDATE, was caught by volumes_description_check / volumes_labels_valid, and
 // came back ASYNCHRONOUSLY inside the operation error as the generic "Illegal
@@ -29,7 +29,7 @@ import (
 // What is asserted is the observable: no Operation is handed back (the refusal is
 // synchronous), the code is INVALID_ARGUMENT, and the offending field is named in
 // the google.rpc.BadRequest DETAILS. The MESSAGE is deliberately not asserted —
-// pkg/validate keeps it generic by contract and puts the field name in the
+// corelib/validate keeps it generic by contract and puts the field name in the
 // details, so asserting the text would lock the wrong half (helpers violatedFields
 // / hasField live in fieldviolation_test.go).
 

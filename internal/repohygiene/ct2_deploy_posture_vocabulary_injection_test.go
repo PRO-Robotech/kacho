@@ -122,7 +122,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+	"github.com/PRO-Robotech/corelib/servicecontract"
 )
 
 // Допустимы dev, production и production-strict — словарь живёт в
@@ -142,7 +142,7 @@ func parseMode(s string) (servicecontract.Mode, error) {
 			rel:  "services/vpc/internal/apps/kacho/config/mode.go",
 			src: `package config
 
-import "github.com/PRO-Robotech/kacho/pkg/servicecontract"
+import "github.com/PRO-Robotech/corelib/servicecontract"
 
 type Mode int
 

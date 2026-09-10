@@ -16,9 +16,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/corelib/servicecontract"
+	"github.com/PRO-Robotech/corelib/servicehost"
 	gwmetrics "github.com/PRO-Robotech/kacho/gateway/internal/observability/metrics"
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
-	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 )
 
 // journal — журнал, который проба ЧИТАЕТ. Утверждать про «строку с причиной»

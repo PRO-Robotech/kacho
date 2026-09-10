@@ -124,7 +124,7 @@ func TestOperationHandlerHasASingleSource(t *testing.T) {
 		{"обработчик", `package p
 
 import (
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
 )
 
 type H struct{}
@@ -136,8 +136,8 @@ func (h *H) Get(ctx context.Context, req *operationpb.GetOperationRequest) (*ope
 		{"преобразователь", `package p
 
 import (
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	"github.com/PRO-Robotech/corelib/operations"
 )
 
 func toPB(op *operations.Operation) *operationpb.Operation {
@@ -147,7 +147,7 @@ func toPB(op *operations.Operation) *operationpb.Operation {
 		{"полоса владения", `package p
 
 import (
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/corelib/operations"
 )
 
 func lane(ctx context.Context, repo operations.Repo) {
@@ -162,8 +162,8 @@ func lane(ctx context.Context, repo operations.Repo) {
 		{"полоса прочитанного владельца", `package p
 
 import (
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	"github.com/PRO-Robotech/corelib/operations"
 )
 
 var _ = operations.ErrNotFound

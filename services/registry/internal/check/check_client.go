@@ -15,10 +15,10 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/PRO-Robotech/corelib/auth"
+	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/listnarrow"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/auth"
-	"github.com/PRO-Robotech/kacho/pkg/authz"
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowiam"
 )
 
@@ -87,7 +87,7 @@ var _ authz.CheckClient = (*IAMCheckClient)(nil)
 // тысячи запросов на страницу при веере восемь, то есть 125 последовательных волн
 // против двух у соседних сервисов, которые ту же страницу спрашивают партиями.
 //
-// Механика — общий сужатель списков (`pkg/listnarrow`): партии, ограниченный веер,
+// Механика — общий сужатель списков (`corelib/listnarrow`): партии, ограниченный веер,
 // бюджет от бюджета операции, окно ПОЛОЖИТЕЛЬНЫХ вердиктов и fail-closed. Своей
 // копии здесь не заводится — именно четыре таких копии и сводились в один дом.
 //

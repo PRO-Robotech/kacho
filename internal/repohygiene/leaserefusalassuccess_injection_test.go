@@ -83,7 +83,7 @@ func release(rerr error) error {
 // узнавать существо, а не конкретное имя кода.
 const injLaneForm = `package lane
 
-import "github.com/PRO-Robotech/kacho/pkg/peer"
+import "github.com/PRO-Robotech/corelib/peer"
 
 func release(rerr error) error {
 	switch peer.Classify(rerr) {

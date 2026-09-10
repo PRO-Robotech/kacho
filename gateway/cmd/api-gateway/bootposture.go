@@ -4,9 +4,9 @@
 package main
 
 import (
+	"github.com/PRO-Robotech/corelib/identityposture"
+	"github.com/PRO-Robotech/corelib/observability"
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
-	"github.com/PRO-Robotech/kacho/pkg/identityposture"
-	"github.com/PRO-Robotech/kacho/pkg/observability"
 )
 
 // bootPosture is the api-gateway's self-report of the posture the process

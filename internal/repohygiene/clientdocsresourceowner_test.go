@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/platformmodules"
+	"github.com/PRO-Robotech/corelib/platformmodules"
 )
 
 func clientDocsResourceOwnerOptions(t *testing.T) ClientDocsResourceOwnerOptions {

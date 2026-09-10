@@ -27,7 +27,7 @@ const (
 import (
 	"os"
 
-	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	"github.com/PRO-Robotech/corelib/migratorcli"
 	"github.com/PRO-Robotech/kacho/services/svc/internal/apps/kaname/config"
 )
 
@@ -53,7 +53,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	"github.com/PRO-Robotech/corelib/migratorcli"
 	"github.com/PRO-Robotech/kacho/services/svc/internal/apps/kaname/config"
 )
 
@@ -92,7 +92,7 @@ func buildRunner(flagDSN string) (string, error) {
 import (
 	"os"
 
-	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	"github.com/PRO-Robotech/corelib/migratorcli"
 )
 
 func buildRunner(flagDSN string) (string, error) {
@@ -107,7 +107,7 @@ func buildRunner(flagDSN string) (string, error) {
 	// сегменту пути, объявил бы её недéлегирующей.
 	srcDSNRenamedImport = `package main
 
-import cli "github.com/PRO-Robotech/kacho/pkg/migratorcli"
+import cli "github.com/PRO-Robotech/corelib/migratorcli"
 
 func buildRunner(flagDSN string) (string, error) {
 	return cli.ResolveDSN(flagDSN, nil)
@@ -123,7 +123,7 @@ func buildRunner(flagDSN string) (string, error) {
 import (
 	"os"
 
-	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	"github.com/PRO-Robotech/corelib/migratorcli"
 )
 
 func buildRunner(flagDSN string) (string, error) {
@@ -233,7 +233,7 @@ func TestDSNResolveInjectionRunThree_ExistingPropertyOnly(t *testing.T) {
 import (
 	"errors"
 
-	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	"github.com/PRO-Robotech/corelib/migratorcli"
 )
 
 func buildRunner(flagDSN string) (string, error) {

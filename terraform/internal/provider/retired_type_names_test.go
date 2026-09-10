@@ -37,7 +37,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // reMovedSource — строка, объявляющая ИСТОЧНИК переезда. Прежнее имя типа здесь законно и

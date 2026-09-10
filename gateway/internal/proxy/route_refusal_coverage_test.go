@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/corelib/treecorpus"
 	"github.com/PRO-Robotech/kacho/gateway/internal/proxy"
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // The external-isolation gate enumerates its subject from the proto tree — every

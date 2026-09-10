@@ -464,10 +464,10 @@ tuple'ов никто не эмитит, поэтому вопрос «viewer н
 > авторизация сводится к знанию непрозрачного id, а усиление — «поведенческое
 > изменение замороженного контракта, вне scope». Усиление **приземлилось**: доступ
 > привязан к принципалу, создавшему операцию, предикатом владельца **в самом SQL**
-> (`GetOwned` / `CancelOwned`, `pkg/operations/operationspb/handler.go`); запрос без
+> (`GetOwned` / `CancelOwned`, `corelib/operations/operationspb/handler.go`); запрос без
 > опознанного принципала владельцем не считается; не-владелец и несуществующая
 > операция отвечают **одинаковым** `NotFound`, поэтому ответ не сообщает, существует
-> ли операция вообще. Замки: `pkg/operations/operationspb/handler_test.go`,
+> ли операция вообще. Замки: `corelib/operations/operationspb/handler_test.go`,
 > `operation_ownership_forged_admin_test.go`.
 >
 > Оставлять запись в прежнем виде было опаснее, чем не иметь её вовсе: реестр
@@ -717,7 +717,7 @@ sentinel→code в отдельный слой (если когда-либо) �
   плоские `KACHO_COMPUTE_*` env через `corecfg.LoadPrefixed → envconfig.Process`.
   `evgeniy` предписывает YAML-config через viper/koanf; позитивная половина регламента
   соблюдена (есть отдельный `cmd/migrator`). Механизм config — **shared corelib-решение
-  для всех сервисов** (`pkg/config`); миграция на koanf/viper — общее решение уровня
+  для всех сервисов** (`corelib/config`); миграция на koanf/viper — общее решение уровня
   фундамента, не compute-only. (findings7 #9)
 - ~~**`Instance.Metadata` принимается без размерного лимита**~~ — **ЗАКРЫТО, и
   прежнее обоснование было ЛОЖНЫМ.** Здесь стояло: «ограничивает только default 4 MB
@@ -906,7 +906,7 @@ filter-whitelist в `docs/specs/sub-phase-COMP-1-instance-machinetype-acceptance
 2. `instanceKind` не фильтруется строкой **в принципе**: `instances.instance_kind` —
    `INTEGER` (ordinal enum, миграция 0016), парсер производит только строковое значение.
    `… AND instance_kind = 'CONTAINER'` → `SQLSTATE 22P02 invalid input syntax for type
-   integer`. Нужен enum-декодер в **общем** `pkg/filter` — кросс-сервисное изменение.
+   integer`. Нужен enum-декодер в **общем** `corelib/filter` — кросс-сервисное изменение.
 3. **Индекса нет, и завести его сейчас нечем оправдать.** Поле фильтра без индекса
    превращает `List` в полное сканирование под нагрузкой. `instance_kind` — ≤3 значения
    (нулевая селективность); `placement_group_id` — `DEFAULT ''` практически на всех
@@ -1016,7 +1016,7 @@ field: \"<field>\""`, и **никогда** не игнорируется мол
 **Что изменилось после снятия — сервис снова служит поток, но НЕ СВОЙ.** Ось срока
 жизни стрима у носителя была объявлена **изъятием** с причиной «серверных стримов
 сервис не служит»; с провязкой ОБЩЕГО для платформы потока
-(`InternalSubscriptionService.Subscribe`, реализация — `pkg/subscription`) изъятие
+(`InternalSubscriptionService.Subscribe`, реализация — `corelib/subscription`) изъятие
 стало бы ложью о дереве, и ось объявлена **величиной**. Необъявленная ось роняет
 старт, поэтому молчание здесь невозможно by construction — а обе стороны, изъятие и
 величина, обязаны меняться в тот же коммит, что и служимый набор.

@@ -6,7 +6,7 @@ package restmux
 import (
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/contractroot"
+	"github.com/PRO-Robotech/corelib/contractroot"
 )
 
 // underDeclaredRoot — объявлен ли пакет дескриптора под одним из НАШИХ корней

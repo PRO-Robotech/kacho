@@ -34,8 +34,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/moduleselfgating"
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/moduleselfgating"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // selfGatingRelationLiteral — литерал отношения модели прав.

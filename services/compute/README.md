@@ -43,7 +43,7 @@ Clean Architecture (`internal/domain` → `internal/apps/kacho/api/<resource>` �
 `internal/handler`, `internal/repo`, `internal/clients`); `cmd/compute/main.go` —
 единственный composition root. Слоя с именем «service» у сервиса нет — use-case
 живёт срезом на ресурс. Все мутации (`Create/Update/Delete/Start/Stop/...`)
-возвращают `Operation` (LRO), выполнение worker'ом через `pkg/operations`.`Run`
+возвращают `Operation` (LRO), выполнение worker'ом через `corelib/operations`.`Run`
 (общий фундамент лежит в каталоге `pkg/` монорепо; прежнее имя отдельного
 репозитория фундамента здесь не воспроизводится — координатой оно не является).
 Outbox + LISTEN/NOTIFY питают восстановление наблюдаемого состояния сервиса;

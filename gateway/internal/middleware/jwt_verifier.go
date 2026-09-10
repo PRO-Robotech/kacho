@@ -43,7 +43,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+	"github.com/PRO-Robotech/corelib/tokenpolicy"
 )
 
 // VerifiedToken — output of JWTVerifier.Verify. Carries all claims required by

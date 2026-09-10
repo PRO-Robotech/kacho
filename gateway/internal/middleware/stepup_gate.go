@@ -35,7 +35,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 )
 
 // Sentinel errors — mapped to WWW-Authenticate by the HTTP handler.

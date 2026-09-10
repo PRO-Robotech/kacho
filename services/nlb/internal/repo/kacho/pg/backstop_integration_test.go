@@ -28,11 +28,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/corelib/outbox/bootgate"
+	"github.com/PRO-Robotech/corelib/outbox/metrics"
+	"github.com/PRO-Robotech/corelib/outbox/reconciler"
+	"github.com/PRO-Robotech/corelib/servicehost"
 	iampb "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
-	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
@@ -90,7 +90,7 @@ func Test_1_4_30_ReconcilerRedrivesPoisoned(t *testing.T) {
 // register-drainer not connected → a mutating Create of THIS service is refused
 // (UNAVAILABLE); read RPCs pass; connect → Create allowed.
 //
-// Since kacho-nlb moved onto the shared carrier (`pkg/servicehost`), the
+// Since kacho-nlb moved onto the shared carrier (`corelib/servicehost`), the
 // interceptor that composes these two halves is the carrier's — and the carrier
 // pins its own behaviour on the executing code
 // (`TestBootGateRefusesCreateWhileTheDeliveryPathIsDown`,

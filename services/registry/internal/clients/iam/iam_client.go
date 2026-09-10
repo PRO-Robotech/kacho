@@ -17,10 +17,10 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/PRO-Robotech/corelib/auth"
+	"github.com/PRO-Robotech/corelib/peer"
+	"github.com/PRO-Robotech/corelib/retry"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/auth"
-	"github.com/PRO-Robotech/kacho/pkg/peer"
-	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
 )
@@ -76,7 +76,7 @@ func (c *Client) ProjectExists(ctx context.Context, projectID string) error {
 	if err == nil {
 		return nil
 	}
-	// Полосу выбирает носитель (pkg/peer): «владелец установил, что ссылка не
+	// Полосу выбирает носитель (corelib/peer): «владелец установил, что ссылка не
 	// годится» — нет проекта / нет доступа / негодный по его мнению id.
 	switch o := peer.Classify(err); {
 	case o.RefusedReference():

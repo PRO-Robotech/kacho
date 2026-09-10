@@ -48,8 +48,8 @@ func lawfulSites() []stubGoPackageSite {
 	return []stubGoPackageSite{
 		{
 			File:     "pkg/api/corelib/authz/v1/authz_options.pb.go",
-			Baked:    "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1",
-			Expected: "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1",
+			Baked:    "github.com/PRO-Robotech/corelib/api/corelib/authz/v1",
+			Expected: "github.com/PRO-Robotech/corelib/api/corelib/authz/v1",
 			Module:   "github.com/PRO-Robotech/kacho",
 		},
 		{
@@ -188,7 +188,7 @@ func TestRawDescriptorLiteralReadsTheProtocEmittedForm(t *testing.T) {
 	if err != nil {
 		t.Fatalf("дескриптор собранного литерала не разбирается: %v", err)
 	}
-	if want := "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"; gp != want {
+	if want := "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"; gp != want {
 		t.Fatalf("go_package прочитан как %q, ожидалось %q (суффикс `;alias` обязан быть снят)", gp, want)
 	}
 }

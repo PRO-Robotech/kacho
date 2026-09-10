@@ -6,7 +6,7 @@
 // unit-тестами use-case-пакетов (`internal/apps/kacho/api/<resource>`) и
 // `internal/handler`.
 //
-// Зависит только от `internal/ports`, `internal/domain` и `pkg/operations`
+// Зависит только от `internal/ports`, `internal/domain` и `corelib/operations`
 // — НЕ от use-case-пакетов, поэтому их white-box тесты могут его импортировать
 // без import-cycle.
 package portmock
@@ -23,7 +23,7 @@ import (
 	grpcstatus "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
 
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/corelib/operations"
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaintent"

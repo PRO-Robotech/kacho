@@ -40,7 +40,7 @@ export const MAX_TTL_DAYS = MAX_TTL_SECONDS / SECONDS_PER_DAY; // 730
 
 // Срок вида SECRET — величины ПОЛИТИКИ, не наши.
 //
-// Источник — `pkg/tokenpolicy/policy.go`: `SecretCredentialTTLDefault` (30 суток)
+// Источник — `corelib/tokenpolicy/policy.go`: `SecretCredentialTTLDefault` (30 суток)
 // и `SecretCredentialTTLCeiling` (90 суток). Второго написания здесь НЕ заводится
 // в смысле правила: это ЗЕРКАЛО для формы, а решение принимает сервер — срок
 // сверх потолка он ОТВЕРГАЕТ с именем поля, а не урезает молча. Зеркало нужно,

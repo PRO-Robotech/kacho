@@ -4,10 +4,10 @@
 package handler
 
 import (
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/operations/operationspb"
 	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/shared/prototime"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
@@ -66,7 +66,7 @@ func toProtoStats(s *domain.RegistryStats) *registryv1.RegistryStats {
 }
 
 // operationToProto — прослойка к общему слою: перевод строки операции в контракт
-// объявлен в дереве ОДИН раз (`pkg/operations/operationspb`, задача #1369).
+// объявлен в дереве ОДИН раз (`corelib/operations/operationspb`, задача #1369).
 //
 // До сведения объявлений было двенадцать, а смысловых версий — пять; расходились
 // они именем помощника усечения времени и охраной пустого значения, то есть там,

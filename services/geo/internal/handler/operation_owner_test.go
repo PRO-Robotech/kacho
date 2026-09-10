@@ -11,10 +11,10 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
 
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/operations/operationspb"
 	geov1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 
 	"github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/shared/lro"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/repo/kacho/repomock"
@@ -252,7 +252,7 @@ func TestOperationHandler_Cancel_idempotentReCancel_ok(t *testing.T) {
 // NotFound» это НЕ ловит: там NotFound приходит от отсутствия строки и остаётся
 // зелёным при снятой ветке.
 //
-// Все безымянные случаи обязаны вести себя одинаково (pkg/operations
+// Все безымянные случаи обязаны вести себя одинаково (corelib/operations
 // Principal.IsAnonymous): ctx вообще без принципала, ctx с явно снятым
 // принципалом (transport снял носителя у недоверенного отправителя) и ctx с
 // именованной анонимностью `{system, anonymous}`, которую edge выдаёт запросу

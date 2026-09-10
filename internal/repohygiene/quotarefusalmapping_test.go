@@ -43,8 +43,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota"
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/quota"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // quotaRefusalFacts — что найдено в прод-коде одного владельца.

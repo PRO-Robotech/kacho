@@ -76,7 +76,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/contractroot"
+	"github.com/PRO-Robotech/corelib/contractroot"
 )
 
 // defaultPredicateKey — ключ записи «все прочие типы» в объявлении вида
@@ -186,7 +186,7 @@ var relationStoreQuestions = []string{"Check"}
 // Предпосылка проверяется: TestListReadRelationParity_PremiseHolds требует, чтобы
 // импорт оставался живым хотя бы у одного пакета, иначе третья форма узнавания
 // молча перестала бы что-либо узнавать.
-const sharedNarrowerImportPath = "github.com/PRO-Robotech/kacho/pkg/listnarrow"
+const sharedNarrowerImportPath = "github.com/PRO-Robotech/corelib/listnarrow"
 
 // listReadCatalogEntry — запись сгенерированного каталога прав (нужные поля).
 type listReadCatalogEntry struct {

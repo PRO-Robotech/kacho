@@ -33,7 +33,7 @@ type injectionCase struct {
 	origin   string
 }
 
-const injectionHeader = "package clients\n\nimport (\n\t\"google.golang.org/grpc/codes\"\n\t\"google.golang.org/grpc/status\"\n\n\t\"github.com/PRO-Robotech/kacho/pkg/peer\"\n)\n\nvar _ = codes.OK\nvar _ = peer.OutcomeOK\n\n"
+const injectionHeader = "package clients\n\nimport (\n\t\"google.golang.org/grpc/codes\"\n\t\"google.golang.org/grpc/status\"\n\n\t\"github.com/PRO-Robotech/corelib/peer\"\n)\n\nvar _ = codes.OK\nvar _ = peer.OutcomeOK\n\n"
 
 func TestPeerLaneGateFiresOnTheStateThisChangeFixed(t *testing.T) {
 	t.Parallel()

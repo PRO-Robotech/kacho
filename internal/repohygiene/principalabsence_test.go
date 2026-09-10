@@ -70,7 +70,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/corelib/operations"
 )
 
 // Освобождения для СЕБЯ этот гейт не держит намеренно. Предпосылка ниже

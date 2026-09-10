@@ -105,7 +105,7 @@ func foundationRoster() FoundationRoster {
 				// незачем — их много, и перечень устарел бы молча. Единица —
 				// процесс: сужатель живёт в use-case ресурса, а не в цепочке
 				// звеньев сервера, и у места сборки его спрашивать негде.
-				ImportPath: "github.com/PRO-Robotech/kacho/pkg/listnarrow",
+				ImportPath: "github.com/PRO-Robotech/corelib/listnarrow",
 			},
 			{
 				Name: "восстановление после паники",

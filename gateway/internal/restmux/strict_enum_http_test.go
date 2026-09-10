@@ -13,8 +13,8 @@ import (
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 
+	opv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
-	opv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 )
 
 // strict_enum_http_test.go — то же свойство, но НА ПРОВОДЕ: код ответа и код

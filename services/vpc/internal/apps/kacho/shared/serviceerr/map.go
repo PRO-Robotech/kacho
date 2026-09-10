@@ -60,7 +60,7 @@ func classifyRepoSentinel(err error) (code codes.Code, sentinel error, ok bool) 
 // (AddressPoolService, AddressReferenceService, NetworkInternal).
 //
 // Порядок веток — сначала pass-through, потом sentinel-классификация (форма
-// kacho-nlb). Он несущий, а не косметический: pkg/validate кладёт имя поля
+// kacho-nlb). Он несущий, а не косметический: corelib/validate кладёт имя поля
 // ТОЛЬКО в google.rpc.BadRequest-details, сообщение остаётся общим «invalid
 // argument». Пересборка статуса в sentinel-ветке (`status.Error(code,
 // stripSentinel(...))`) детали теряет, поэтому ошибка, обёрнутая через `%w` на

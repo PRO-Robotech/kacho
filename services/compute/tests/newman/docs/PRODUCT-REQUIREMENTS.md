@@ -56,7 +56,7 @@ ID любой compute-операции начинается с `epd` (`PrefixOpe
 ID ресурсов: Instance/Disk — `epd`; Image/Snapshot — `fd8`. api-gateway OpsProxy маршрутизирует
 `/operations/{id}` по первым 3 символам id → backend `compute`.
 - Validated-by: `*-CR-CONF-ID-PREFIX-*`, `*-CR-CRUD-OK` (assert id regex), `OP-GET-CRUD-OK`, `OP-GET-NEG-UNKNOWN-PREFIX`
-- Agent-check: `pkg/ids/ids.go` (`PrefixOperationCompute` == `PrefixInstance` == `epd`); `operations.New(ids.PrefixOperationCompute, ...)`; `gateway/internal/opsproxy/proxy.go` (`"epd": "compute"`). Префиксы блочного хранения перечислялись здесь же — они принадлежат `services/storage/` и в этом требовании предмета не имеют.
+- Agent-check: `corelib/ids/ids.go` (`PrefixOperationCompute` == `PrefixInstance` == `epd`); `operations.New(ids.PrefixOperationCompute, ...)`; `gateway/internal/opsproxy/proxy.go` (`"epd": "compute"`). Префиксы блочного хранения перечислялись здесь же — они принадлежат `services/storage/` и в этом требовании предмета не имеют.
 
 ### REQ-RES-05 — hard-delete, без soft-delete/tombstone                                        [P2]
 `Delete` физически удаляет строку (`DELETE FROM`); в схеме нет `deletion_timestamp`/`finalizers`/envelope.
@@ -96,7 +96,7 @@ UPPERCASE / подчёркивание / дефис по краю / спец-с�
 > `services/storage`, у compute этих контрактов нет.
 
 - Validated-by: `*-CR-VAL-NAME-{EMPTY-OK,UPPERCASE,HYPHEN-START,SPECIAL-CHARS}`, `*-CR-BVA-NAME-{MAX-63,OVER-64}`, `INST-CR-VAL-NAME-*`
-- Agent-check: `pkg/validate/validate.go` (`NameForm`, `Name`, `NameOnCreate`, `NameOrDefault`); вызов в начале каждого `Create`/`Update` (`internal/apps/kacho/api/*/`). Единственность формы держит гейт `internal/repohygiene` `TestResourceNameFormIsDeclaredOnce`.
+- Agent-check: `corelib/validate/validate.go` (`NameForm`, `Name`, `NameOnCreate`, `NameOrDefault`); вызов в начале каждого `Create`/`Update` (`internal/apps/kacho/api/*/`). Единственность формы держит гейт `internal/repohygiene` `TestResourceNameFormIsDeclaredOnce`.
 
 ### REQ-VAL-01 — required-поля Create — sync `InvalidArgument`                                  [P0]
 До создания Operation проверяются required: `project_id` (все), `zone_id` (Disk/Instance),
@@ -171,7 +171,7 @@ Pagination cursor `(created_at, id)` ASC,ASC; `page_token` opaque base64.
 
 ### REQ-LIST-03 — filter `name="<v>"` поддерживается; не-`name`/garbage syntax — `InvalidArgument` или игнор   [P2]
 - Validated-by: `*-LST-FILTER-{NAME-OK,GARBAGE,UNKNOWN-FIELD,MATCH}`
-- Agent-check: `pkg/filter` (`Parse` с whitelist) + использование в `List`.
+- Agent-check: `corelib/filter` (`Parse` с whitelist) + использование в `List`.
 
 ### REQ-LIST-04 — Instance.List view=BASIC (default) → metadata не возвращается                   [P2]
 Контракт Kachō: BASIC опускает `Instance.metadata`; FULL — включает.

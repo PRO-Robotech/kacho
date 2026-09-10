@@ -25,7 +25,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // injOwners — владелец имён этого дерева, выведенный так же, как на дереве.
@@ -118,7 +118,7 @@ func TestModuleConstantGate_RedsWhenTheNamedModuleIsNotDeclared(t *testing.T) {
 		{File: "internal/repohygiene/a.go", Line: 95, Name: "applierImportPath",
 			Value: "github.com/PRO-Robotech/kaname/internal/x", Module: "github.com/PRO-Robotech/kaname"},
 		{File: "internal/repohygiene/b.go", Line: 26, Name: "operationsPkgPath",
-			Value: "github.com/PRO-Robotech/kacho/pkg/operations", Module: "github.com/PRO-Robotech/kacho"},
+			Value: "github.com/PRO-Robotech/corelib/operations", Module: "github.com/PRO-Robotech/kacho"},
 	}
 	declared := []string{"github.com/PRO-Robotech/kacho"} // модуль службы уехал
 

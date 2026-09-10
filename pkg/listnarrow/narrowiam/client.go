@@ -5,7 +5,7 @@
 //
 // # Почему адаптер живёт ЗДЕСЬ, а не рядом с портом
 //
-// Порт (`pkg/listnarrow`) принадлежит фундаменту, а контракт `AuthorizeService`
+// Порт (`corelib/listnarrow`) принадлежит фундаменту, а контракт `AuthorizeService`
 // — службе доступа. Пока адаптер лежал в самом порту, фундамент импортировал
 // контракт службы: после разъезда на три модуля `corelib` потребовал бы
 // `kaname`, который уже требует `corelib`, — цикл, который Go не собирает
@@ -17,7 +17,7 @@
 // `kaname → corelib`, к контракту доступа — внутри `kaname`. Зовут его службы
 // платформы, и это `kacho → kaname` — тоже разрешённое направление.
 //
-// Эталон того же приёма лежит рядом: `pkg/authz` принимает решателя интерфейсом
+// Эталон того же приёма лежит рядом: `corelib/authz` принимает решателя интерфейсом
 // и контракта не импортирует вовсе.
 package narrowiam
 
@@ -26,9 +26,9 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/PRO-Robotech/corelib/auth"
+	"github.com/PRO-Robotech/corelib/listnarrow"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/auth"
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 )
 
 // New оборачивает соединение с владельцем модели в порт сужателя. conn

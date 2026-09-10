@@ -36,7 +36,7 @@ func realTreeSamples(t *testing.T) (binary listedPackage, containerDep string, c
 			binary = p
 		}
 		// Законный носитель: библиотека проб, которой контейнеры нужны по существу.
-		if p.ImportPath == "github.com/PRO-Robotech/kacho/pkg/pgtest" {
+		if p.ImportPath == "github.com/PRO-Robotech/corelib/pgtest" {
 			carrier = p
 			for _, d := range p.Deps {
 				if strings.Contains(d, "testcontainers") {

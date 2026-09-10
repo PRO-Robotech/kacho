@@ -12,8 +12,8 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/PRO-Robotech/kacho/pkg/contractroot"
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/contractroot"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // ContractRootLiteralFinding — одно место, где популяция отбирается ЛИТЕРАЛОМ

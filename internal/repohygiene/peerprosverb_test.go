@@ -84,7 +84,7 @@ func TestPeerProseGatePremiseStillHolds(t *testing.T) {
 
 const synthPeerCaller = `package clients
 
-import "github.com/PRO-Robotech/kacho/pkg/peer"
+import "github.com/PRO-Robotech/corelib/peer"
 
 const zoneUnavailableText = "geo zone validation unavailable"
 
@@ -113,7 +113,7 @@ func runtimeValued(o peer.Outcome, id, text string) error {
 // здесь имя, а не текст, и обёртка стала бы необъявленным послаблением.
 const synthWrapperDefect = `package wrapped
 
-import "github.com/PRO-Robotech/kacho/pkg/peer"
+import "github.com/PRO-Robotech/corelib/peer"
 
 func lane(o peer.Outcome, id, unavailable string) error {
 	return o.Status(
@@ -129,7 +129,7 @@ func caller(o peer.Outcome, id string) error {
 // synthDefect — глагол в прозе полосы, которая его не заполнит.
 const synthDefect = `package broken
 
-import "github.com/PRO-Robotech/kacho/pkg/peer"
+import "github.com/PRO-Robotech/corelib/peer"
 
 func lane(o peer.Outcome, id string) error {
 	return o.Status(

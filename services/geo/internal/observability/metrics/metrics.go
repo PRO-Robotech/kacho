@@ -30,10 +30,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
-	opmetrics "github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/corelib/authz/authzmetrics"
+	opmetrics "github.com/PRO-Robotech/corelib/operations"
 
-	"github.com/PRO-Robotech/kacho/pkg/observability"
+	"github.com/PRO-Robotech/corelib/observability"
 )
 
 // Metrics владеет приватным prometheus-реестром и коллекторами kacho-geo.
@@ -153,7 +153,7 @@ var _ opmetrics.Recorder = (*Metrics)(nil)
 
 // RegisterAuthzCache провязывает читателей величин КЕША ПОЛОЖИТЕЛЬНЫХ ВЕРДИКТОВ.
 //
-// Коллектор — ОДНА реализация на все сервисы (`pkg/authz/authzmetrics`) и одно
+// Коллектор — ОДНА реализация на все сервисы (`corelib/authz/authzmetrics`) и одно
 // правило имени серии, однородное с краем
 // (`kacho_api_gateway_authz_cache_total`): собиратель, у которого уже есть
 // правило на край, читает сервисы тем же выражением.

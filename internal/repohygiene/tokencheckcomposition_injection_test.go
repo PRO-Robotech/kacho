@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+	"github.com/PRO-Robotech/corelib/tokenpolicy"
 )
 
 // ── (1) перечень объявлен ровно один раз ────────────────────────────────────
@@ -35,7 +35,7 @@ import (
 // является).
 const tokenCheckInjectedSecondList = `package verifier
 
-import "github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+import "github.com/PRO-Robotech/corelib/tokenpolicy"
 
 const mandatoryChecksCensusFloor = 10
 
@@ -73,7 +73,7 @@ func TestCheckListScannerIsSilentOnNeighboursOfTheList(t *testing.T) {
 	t.Parallel()
 	const src = `package verifier
 
-import "github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+import "github.com/PRO-Robotech/corelib/tokenpolicy"
 
 const mandatoryChecksCensusFloor = 10
 
@@ -171,7 +171,7 @@ func build() { _ = jwks.New(anything) }
 // сроком, этого свойства не измеряет вовсе.
 const tokenCheckInjectedIncomplete = `package jwks
 
-import "github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+import "github.com/PRO-Robotech/corelib/tokenpolicy"
 
 var implementedChecks = []tokenpolicy.Check{
 	tokenpolicy.CheckAlgorithmAllowed,
@@ -192,7 +192,7 @@ func (v *Verifier) DeclaredChecks() []tokenpolicy.Check { return implementedChec
 // tokenCheckInjectedComplete — тот же файл с полным составом.
 const tokenCheckInjectedComplete = `package jwks
 
-import "github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+import "github.com/PRO-Robotech/corelib/tokenpolicy"
 
 var implementedChecks = []tokenpolicy.Check{
 	tokenpolicy.CheckAlgorithmAllowed,
@@ -329,7 +329,7 @@ func TestCheckCompositionScannerFlagsAnUnreasonedExtra(t *testing.T) {
 	t.Parallel()
 	const src = `package jwks
 
-import "github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+import "github.com/PRO-Robotech/corelib/tokenpolicy"
 
 var implementedChecks = []tokenpolicy.Check{
 	tokenpolicy.CheckExpiry,
@@ -367,7 +367,7 @@ func TestCheckCompositionScannerAcceptsAReasonedExtra(t *testing.T) {
 	t.Parallel()
 	const src = `package jwks
 
-import "github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+import "github.com/PRO-Robotech/corelib/tokenpolicy"
 
 var implementedChecks = []tokenpolicy.Check{
 	tokenpolicy.CheckExpiry,

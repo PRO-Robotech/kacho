@@ -46,7 +46,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // modulePath — префикс импортов этого модуля, чтобы перевести путь импорта в

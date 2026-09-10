@@ -40,7 +40,7 @@
 -- 8 600 pending rows, statistics gathered while the queue was empty, the SAME claim
 -- statement differing only in whether the decoy exists): 6 990 ms per claim with it
 -- against 29 ms without. It was dropped there by migration 0068 and the rule was
--- written down in pkg/outbox/drainer Config.PartitionColumn — an outbox table
+-- written down in corelib/outbox/drainer Config.PartitionColumn — an outbox table
 -- carries EXACTLY TWO partial indexes over `sent_at IS NULL`, (partition_key, id)
 -- and (attempt_count, id), and NO OTHER. This service kept a third one.
 --
@@ -52,9 +52,9 @@
 --   * the claim — never used it as intended; it was only ever the decoy above.
 --     Its own creating migration justifies it by an `ORDER BY id` claim shape that
 --     no longer exists;
---   * the backlog / oldest-pending-age metric (pkg/outbox/metrics) — aggregates the
+--   * the backlog / oldest-pending-age metric (corelib/outbox/metrics) — aggregates the
 --     WHOLE table with FILTER clauses and no WHERE, so it seq-scans regardless;
---   * the per-partition wedge scan (pkg/outbox/drainer) — groups by the partition
+--   * the per-partition wedge scan (corelib/outbox/drainer) — groups by the partition
 --     key and is served by the (resource_id, id) partition-head index.
 --
 -- Locked by the service-side index-SET test, which asserts the whole set of partial

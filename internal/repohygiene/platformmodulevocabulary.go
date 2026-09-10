@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/platformmodules"
+	"github.com/PRO-Robotech/corelib/platformmodules"
 )
 
 // platformmodulevocabulary.go — вердикт о словаре имён модулей платформы

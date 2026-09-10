@@ -11,8 +11,8 @@ import (
 
 	"google.golang.org/grpc/codes"
 
+	"github.com/PRO-Robotech/corelib/operations"
 	geov1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	region "github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/api/region"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/shared/serviceerr"

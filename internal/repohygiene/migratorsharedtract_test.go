@@ -18,7 +18,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 func TestMigratorDbFreeTractIsDeclaredOnce(t *testing.T) {

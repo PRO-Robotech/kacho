@@ -8,7 +8,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/option"
+	"github.com/PRO-Robotech/corelib/option"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 
@@ -48,7 +48,7 @@ func TestSubnetOfTarget(t *testing.T) {
 //
 // It used to append a creator (`admin`) tuple for an authenticated user, and that
 // tuple could never land: kaname's least-privilege proxy policy accepts only
-// ownership/parent relations declared in pkg/authz/proxytuple and reserves
+// ownership/parent relations declared in corelib/authz/proxytuple and reserves
 // privilege relations like `admin` for the AccessBinding flow, so every delivery
 // was refused. Worse, the refusal costs the whole registration: it is TERMINAL
 // (drainer.ErrPermanent, both at the applier and in the shared drainer), the

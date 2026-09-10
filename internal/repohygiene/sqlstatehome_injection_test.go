@@ -60,7 +60,7 @@ func mapErr(err error) error {
 //   - коды доступности сервера — предмет соседа `pkg/dbready`, другой вопрос.
 const sqlStateInjectedLegitimateTwin = `package pg
 
-import "github.com/PRO-Robotech/kacho/pkg/db/pgfault"
+import "github.com/PRO-Robotech/corelib/db/pgfault"
 
 // mapErr отображает отказ хранилища: 23505 → уже существует, 23503 →
 // предусловие, 23P01 → предусловие. Коды названы в прозе намеренно — маршрут

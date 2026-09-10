@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/peer"
+	"github.com/PRO-Robotech/corelib/peer"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 )
@@ -163,7 +163,7 @@ func (c *CachedProjectClient) describe(ctx context.Context, projectID string) (b
 		//   - Unavailable / Internal / DeadlineExceeded / любая другая
 		//     ошибка — НЕ кешируем (fail-open). Возвращаем err как есть.
 		// Отрицательный результат кешируется ТОЛЬКО тогда, когда владелец его
-		// установил (носитель: pkg/peer). Недоступность и непонятый ответ
+		// установил (носитель: corelib/peer). Недоступность и непонятый ответ
 		// установленным отказом не являются — их кеширование зафиксировало бы
 		// перебой у соседа как «проекта нет» на всё окно TTL.
 		lane := peer.Classify(err)

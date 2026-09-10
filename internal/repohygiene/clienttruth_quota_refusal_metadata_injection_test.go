@@ -59,10 +59,10 @@ func writeQuotaMetaTree(t *testing.T, owner string, f quotaMetaFixture) string {
 	var imp, call string
 	switch f.bridge {
 	case "attach":
-		imp = `import "github.com/PRO-Robotech/kacho/pkg/quota/quotadetail"`
+		imp = `import "github.com/PRO-Robotech/corelib/quota/quotadetail"`
 		call = `return quotadetail.Attach(wrapped, detail)`
 	case "alias":
-		imp = `import qd "github.com/PRO-Robotech/kacho/pkg/quota/quotadetail"`
+		imp = `import qd "github.com/PRO-Robotech/corelib/quota/quotadetail"`
 		call = `return qd.Attach(wrapped, detail)`
 	case "foreign":
 		// Одноимённый пакет ЧУЖОГО происхождения: имя в исходнике то же, путь

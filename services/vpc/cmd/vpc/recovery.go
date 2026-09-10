@@ -17,7 +17,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/corelib/operations"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/operationresolver"
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"

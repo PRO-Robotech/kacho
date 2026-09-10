@@ -11,10 +11,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/corelib/auth"
+	"github.com/PRO-Robotech/corelib/peer"
+	"github.com/PRO-Robotech/corelib/retry"
 	geov1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
-	"github.com/PRO-Robotech/kacho/pkg/auth"
-	"github.com/PRO-Robotech/kacho/pkg/peer"
-	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 )
@@ -107,7 +107,7 @@ func (c *GeoClient) GetZone(ctx context.Context, zoneID string) error {
 		defer cancel()
 		_, rerr := c.zones.Get(auth.PropagateOutgoing(callCtx), &geov1.GetZoneRequest{ZoneId: zoneID})
 		if rerr != nil {
-			// Полосу выбирает носитель (pkg/peer). Прежде распознавался ОДИН код —
+			// Полосу выбирает носитель (corelib/peer). Прежде распознавался ОДИН код —
 			// NotFound; отказ владельца в правах и негодная по его мнению ссылка
 			// уходили наружу сырым ответом соседа и приезжали арендатору
 			// недоступностью, то есть «повтори позже» на терминальный отказ.
@@ -133,7 +133,7 @@ func (c *GeoClient) RegionOfZone(ctx context.Context, zoneID string) (string, er
 		defer cancel()
 		resp, rerr := c.zones.Get(auth.PropagateOutgoing(callCtx), &geov1.GetZoneRequest{ZoneId: zoneID})
 		if rerr != nil {
-			// Полосу выбирает носитель (pkg/peer). Прежде распознавался ОДИН код —
+			// Полосу выбирает носитель (corelib/peer). Прежде распознавался ОДИН код —
 			// NotFound; отказ владельца в правах и негодная по его мнению ссылка
 			// уходили наружу сырым ответом соседа и приезжали арендатору
 			// недоступностью, то есть «повтори позже» на терминальный отказ.

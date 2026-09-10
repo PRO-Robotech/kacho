@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+	coredb "github.com/PRO-Robotech/corelib/db"
 )
 
 // sslModeHomeDir — единственный дом перечня режимов шифрования до собственной

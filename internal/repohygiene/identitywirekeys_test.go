@@ -38,7 +38,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/principalwire"
+	"github.com/PRO-Robotech/corelib/principalwire"
 )
 
 // identityWireCensusFloor — порог переписи: ниже него «ноль находок» означало

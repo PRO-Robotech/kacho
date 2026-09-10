@@ -81,7 +81,7 @@ const standLibraryCall = `package repo
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/pkg/outbox"
+	"github.com/PRO-Robotech/corelib/outbox"
 )
 
 const demoOutboxTable = "demo_outbox"

@@ -13,9 +13,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/corelib/pgtest"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 	"github.com/PRO-Robotech/kacho/internal/productnaming"
-	"github.com/PRO-Robotech/kacho/pkg/pgtest"
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // migratorBinDir — каталог, в который образ кладёт накатчик. Общий у всех

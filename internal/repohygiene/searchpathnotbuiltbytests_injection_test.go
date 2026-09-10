@@ -25,7 +25,7 @@ const searchPathInjectionSource = `package probe
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/pgtest"
+	"github.com/PRO-Robotech/corelib/pgtest"
 	"github.com/stretchr/testify/require"
 )
 

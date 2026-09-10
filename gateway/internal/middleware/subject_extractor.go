@@ -56,7 +56,7 @@ package middleware
 import (
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/corelib/operations"
 )
 
 // Subject prefix vocabulary. Mirrors the authorization model's subject

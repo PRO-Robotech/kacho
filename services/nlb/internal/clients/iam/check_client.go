@@ -11,11 +11,11 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/PRO-Robotech/corelib/auth"
+	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/peer"
+	"github.com/PRO-Robotech/corelib/retry"
 	iampb "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/auth"
-	"github.com/PRO-Robotech/kacho/pkg/authz"
-	"github.com/PRO-Robotech/kacho/pkg/peer"
-	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
@@ -23,7 +23,7 @@ import (
 // DefaultCheckTimeout — per-call deadline применяемый к
 // InternalIAMService.Check, когда client построен без явного timeout'а
 // (`NewCheckClient` / `NewCheckClientFromStub`). Значение мирроит fallback
-// самого `authz.Interceptor` (`pkg/authz/interceptor.go`,
+// самого `authz.Interceptor` (`corelib/authz/interceptor.go`,
 // CheckTimeout<=0 → 2s) — интерцептор применяет CheckTimeout только к
 // вызовам, которые проходят через него; handler-side прямые Check-вызовы
 // (attach_target_group.go, move.go) вне интерцептора без этого поля висели
@@ -157,7 +157,7 @@ func (c *checkClient) check(ctx context.Context, subjectID, relation, object str
 	return false, nil
 }
 
-// isNoPathReason — повторяет detection-логику pkg/authz: сравнивает
+// isNoPathReason — повторяет detection-логику corelib/authz: сравнивает
 // `CheckResponse.reason` с известными "no path"-маркерами FGA.
 func isNoPathReason(reason string) bool {
 	r := strings.ToLower(reason)
@@ -170,7 +170,7 @@ func mapCheckErr(err error) error {
 	if err == nil {
 		return nil
 	}
-	// Полосу выбирает носитель (pkg/peer), а не рукописный разбор кодов. Раскладка
+	// Полосу выбирает носитель (corelib/peer), а не рукописный разбор кодов. Раскладка
 	// полос по sentinel'ам сохранена дословно; изменилось то, ЧТО попадает в каждую:
 	// отказ в правах и негодная по мнению владельца ссылка больше не проваливаются
 	// в ветку «прочее», а собственный истёкший срок читается как недоступность.

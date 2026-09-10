@@ -39,7 +39,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // replicaSurrender — deployment опускает `replicas`, когда у модуля включено

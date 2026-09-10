@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // foundationtreepathliteral_test.go — гейт над ДЕРЕВОМ. Предмет и обе стороны

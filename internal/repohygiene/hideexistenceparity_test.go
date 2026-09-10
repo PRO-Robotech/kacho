@@ -43,7 +43,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/corelib/authz"
 )
 
 // Пакеты, чьи объявления сверяются. Координата ПАКЕТА, а не файла: файл внутри

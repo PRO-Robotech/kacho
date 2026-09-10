@@ -71,7 +71,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // deferralForm — одна форма отсрочки: затравка для дешёвого отсева и точный

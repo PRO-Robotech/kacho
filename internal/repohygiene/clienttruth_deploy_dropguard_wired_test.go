@@ -37,7 +37,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/dropguard"
+	"github.com/PRO-Robotech/corelib/dropguard"
 )
 
 // sharedMigratorRunnerRel — общий накат, сведённый из семи форков. Координата

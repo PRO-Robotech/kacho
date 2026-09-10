@@ -74,15 +74,32 @@ const (
 // Каталог `pkg/*`, которого здесь нет, — находка, а не умолчание: 52-й каталог
 // обязан быть классифицирован ПРАВИЛОМ приёмки (§3), а не молчанием карты.
 var foundationClasses = map[string]foundationClass{
-	"api":             classKacho,
-	"audit":           classCorelib,
-	"auth":            classCorelib,
-	"authz":           classCorelib,
-	"backoff":         classCorelib,
-	"baggage":         classCorelib,
-	"config":          classCorelib,
-	"contractroot":    classCorelib,
-	"credsecret":      classKaname,
+	"api":          classKacho,
+	"audit":        classCorelib,
+	"auth":         classCorelib,
+	"authz":        classCorelib,
+	"backoff":      classCorelib,
+	"baggage":      classCorelib,
+	"config":       classCorelib,
+	"contractroot": classCorelib,
+	// credsecret, identityposture, tokenpolicy — общий словарь ОБОИХ продуктов
+	// (решение владельца 2026-09-11, задача #2131): имя носителя секрета, посадка
+	// личности и политика срока токена. Служба их ПРОИЗВОДИТ, платформа ЧИТАЕТ —
+	// край сверяет посадку и политику на каждом запросе, — и вывести их не может
+	// ни одна сторона: у платформы нет чеканки, у службы нет края. Потребителей
+	// двое, значит класс — фундамент.
+	//
+	// Здесь стоял класс службы, и он делал переезд `pkg/` НЕИСПОЛНИМЫМ: 35 файлов
+	// платформы называют эти три каталога, а разрешить направление
+	// «фундамент → служба» нечем, кроме обратного require, то есть взаимности,
+	// отменяющей целевую раскладку.
+	//
+	// Рядом стояли ещё два каталога того же решения — `ownerregister` и
+	// `subjectchange`. Они ОСТАЛИСЬ службой, и это замер, а не забывчивость: оба
+	// импортируют `pkg/api/kaname/cloud/iam/v1` (класс службы), поэтому их переезд
+	// завёл бы ребро `corelib -> kaname` — ровно то, что запрещает
+	// forbiddenDirections. Предикат снятия внешний: класс стабов контракта доступа.
+	"credsecret":      classCorelib,
 	"db":              classCorelib,
 	"dbready":         classCorelib,
 	"dropguard":       classCorelib,
@@ -92,7 +109,7 @@ var foundationClasses = map[string]foundationClass{
 	"grpcclient":      classCorelib,
 	"grpcsrv":         classCorelib,
 	"httpbody":        classCorelib,
-	"identityposture": classKaname,
+	"identityposture": classCorelib,
 	"ids":             classCorelib,
 	"internal":        classCorelib,
 	"listcursorplan":  classToolchain,
@@ -144,7 +161,7 @@ var foundationClasses = map[string]foundationClass{
 	"singlepass":       classCorelib,
 	"subjectchange":    classKaname,
 	"subscription":     classCorelib,
-	"tokenpolicy":      classKaname,
+	"tokenpolicy":      classCorelib,
 	"treecorpus":       classToolchain,
 	"validate":         classCorelib,
 }

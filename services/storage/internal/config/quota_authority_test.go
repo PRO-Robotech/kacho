@@ -13,7 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+	corequota "github.com/PRO-Robotech/corelib/quota"
 )
 
 // TestQuotaAuthority_KAN_Q1_02_UnsetRefusesStart — незаданное объявление

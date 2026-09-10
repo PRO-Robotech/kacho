@@ -49,7 +49,7 @@
 // у каждой своя проба в инъекции (`testing.md` §«Гейт на класс», п.7):
 //
 //	A  Reason: "TOKEN"            — литерал прямо в составном литерале ErrorInfo
-//	B  Reason{token: "TOKEN"}     — закрытый словарь полос (`pkg/errors/reason.go`)
+//	B  Reason{token: "TOKEN"}     — закрытый словарь полос (`corelib/errors/reason.go`)
 //	C  <ident>Reason<ident> = "…" — константа в файле, который строит ErrorInfo
 //
 // Форма, распознавателю неизвестная, не даёт ни красного, ни зелёного — она
@@ -110,7 +110,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // consoleRefusalDictRel — словарь вердиктов консоли относительно корня дерева.
@@ -298,6 +298,22 @@ var producedOutsideThisTree = map[string]string{
 	"QUOTA_RATE_EXCEEDED":       "PRO-Robotech/kaname",
 	"REFERENCE_IN_USE":          "PRO-Robotech/kaname",
 	"REFERENCE_MISSING":         "PRO-Robotech/kaname",
+
+	// Шесть токенов ниже производит ОБЩАЯ БИБЛИОТЕКА: полосы разрешения ссылки
+	// и отсутствия домена величин объявлены в её пакете отказов, уехавшем из
+	// `pkg/` вместе с остальным фундаментом (задача #2131). Доезжают до
+	// арендатора они по-прежнему — сервис платформы линкует библиотеку и отдаёт
+	// её `reason` дословно, — поэтому вердикт консоли по ним законен, а снятие
+	// вердикта сломало бы продукт ради зелёного прогона.
+	//
+	// Запись самоистекает той же обратной стороной, что и четыре выше: найдётся
+	// производитель В ЭТОМ дереве — запись станет находкой.
+	"INVALID_RESOURCE_ID":    "PRO-Robotech/corelib",
+	"PEER_RESOURCE_MISSING":  "PRO-Robotech/corelib",
+	"PEER_RESOURCE_STATE":    "PRO-Robotech/corelib",
+	"PEER_UNAVAILABLE":       "PRO-Robotech/corelib",
+	"QUOTA_AUTHORITY_ABSENT": "PRO-Robotech/corelib",
+	"RESOURCE_NOT_FOUND":     "PRO-Robotech/corelib",
 }
 
 // judgeCoverageWithExternal — та же оценка, но ведомость внешних производителей

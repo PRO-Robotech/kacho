@@ -9,7 +9,7 @@ import (
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	"github.com/PRO-Robotech/kacho/pkg/quota/quotapb"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	quotaband "github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/quota"
 )
 

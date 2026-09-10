@@ -51,9 +51,9 @@ func opInjectAudit(t *testing.T, files map[string]string) ([]opSourceFinding, op
 const opImports = `package handler
 
 import (
-	%s "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
+	%s "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/operations/operationspb"
 )
 
 var _ = operationspb.ToProto
@@ -301,8 +301,8 @@ func TestInjectionDotImportDoesNotHideTheSubject(t *testing.T) {
 	src := `package handler
 
 import (
-	. "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	. "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	"github.com/PRO-Robotech/corelib/operations"
 )
 
 var _ = operations.ErrNotFound
@@ -402,7 +402,7 @@ func TestInjectionCrossFileAliasDoesNotHideTheSubject(t *testing.T) {
 	t.Parallel()
 	alias := `package handler
 
-import operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+import operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
 
 type getReq = operationpb.GetOperationRequest
 type unimpl = operationpb.UnimplementedOperationServiceServer
@@ -645,7 +645,7 @@ func TestGuardGoesRedWhenTheRecogniserGoesBlind(t *testing.T) {
 
 import (
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operationXX"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/corelib/operations"
 )
 
 var _ = operations.ErrNotFound

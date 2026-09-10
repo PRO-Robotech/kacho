@@ -22,14 +22,14 @@ import (
 
 const observedProdSrc = `package main
 
-import "github.com/PRO-Robotech/kacho/pkg/servicehost"
+import "github.com/PRO-Robotech/corelib/servicehost"
 
 func main() { _ = servicehost.Serve(nil, nil) }
 `
 
 const observerSrc = `package metrics
 
-import "github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
+import "github.com/PRO-Robotech/corelib/authz/authzmetrics"
 
 func wire() { _ = authzmetrics.New("x", nil) }
 `
@@ -89,7 +89,7 @@ func TestVerdictCacheGateIgnoresANonConstructorCall(t *testing.T) {
 		"services/x/cmd/x/main.go": observedProdSrc,
 		"services/x/internal/observability/metrics/metrics.go": `package metrics
 
-import "github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
+import "github.com/PRO-Robotech/corelib/authz/authzmetrics"
 
 func name() string { return authzmetrics.MetricName("x") }
 `,

@@ -9,10 +9,10 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/PRO-Robotech/corelib/auth"
+	"github.com/PRO-Robotech/corelib/peer"
+	"github.com/PRO-Robotech/corelib/retry"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/auth"
-	"github.com/PRO-Robotech/kacho/pkg/peer"
-	"github.com/PRO-Robotech/kacho/pkg/retry"
 )
 
 // Публичный ProjectService.Get в kaname несет tenant scope-filter: он
@@ -97,7 +97,7 @@ func (c *ProjectClient) describe(ctx context.Context, projectID string) (bool, s
 		defer cancel()
 		resp, rerr := c.cli.Get(auth.PropagateOutgoing(cctx), &iamv1.GetProjectRequest{ProjectId: projectID})
 		if rerr != nil {
-			// Полосу выбирает носитель (pkg/peer). «Владелец установил, что ссылка
+			// Полосу выбирает носитель (corelib/peer). «Владелец установил, что ссылка
 			// не годится» — это промах, негодный по его мнению id И ОТКАЗ В ПРАВАХ:
 			// последний прежде проваливался наружу сырым ответом соседа и приезжал
 			// арендатору недоступностью, то есть «повтори позже» на отказ, который

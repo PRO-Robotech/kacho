@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 // TestHumanTextMetadataKey_Injection — доказательство, что проверка выше

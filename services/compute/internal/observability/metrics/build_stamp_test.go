@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/observability"
+	"github.com/PRO-Robotech/corelib/observability"
 )
 
 // build_stamp_test.go — ряд `kacho_compute_build_info` РАЗЛИЧАЕТ версию и её отсутствие.

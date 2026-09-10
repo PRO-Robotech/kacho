@@ -115,7 +115,7 @@ func nameResidueBorderTwins() map[string]struct{ Path, Body string } {
 	return map[string]struct{ Path, Body string }{
 		borderFoundationModule: {
 			"services/iam/internal/apps/kaname/api/probe/import.go",
-			"import \"github.com/PRO-Robotech/kacho/pkg/ids\"\n",
+			"import \"github.com/PRO-Robotech/corelib/ids\"\n",
 		},
 		borderFoundationContract: {
 			"proto/kacho/cloud/iam/v1/probe_import.proto",

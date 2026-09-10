@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	operationv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	operationv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
 	"google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/known/anypb"
 )

@@ -44,7 +44,7 @@ type Cluster struct {
 	// Display name of the cluster singleton. Output-only: the value is written by
 	// the seed migration and no RPC of this service changes it.
 	// Free-form, 1-64 characters — this is NOT the platform resource-name form
-	// (`pkg/validate/nameform`), because the field is not a client-set name.
+	// (`corelib/validate/nameform`), because the field is not a client-set name.
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	// Description. 0-256 characters.
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`

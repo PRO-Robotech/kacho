@@ -121,7 +121,7 @@ type CatalogEntry struct {
 	//
 	// What holds this axis, since 2026-08-09: nothing compares two declarations,
 	// because there is only one. The owning service's per-RPC map is DERIVED from
-	// these same annotations (`pkg/authz/catalogderive`), so "the service narrows
+	// these same annotations (`corelib/authz/catalogderive`), so "the service narrows
 	// something else" is no longer expressible — the lane it enforces is this row.
 	//
 	// What can still go wrong, and what watches it:

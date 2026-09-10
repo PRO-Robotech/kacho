@@ -44,7 +44,7 @@ type Config struct {
 // наверх, отказ теряться негде.
 const injDescriptorAcceptedSrc = `package main
 
-import "github.com/PRO-Robotech/kacho/pkg/servicecontract"
+import "github.com/PRO-Robotech/corelib/servicecontract"
 
 func describe(cfg Config) (servicecontract.Descriptor, error) {
 	return servicecontract.New(servicecontract.Spec{
@@ -77,7 +77,7 @@ func describe(cfg Config) (servicecontract.Descriptor, error) {
 // сквозных проб. Поэтому случаев ДВА, и живой стоит первым.
 const injDescriptorDiscardedSrc = `package main
 
-import "github.com/PRO-Robotech/kacho/pkg/servicecontract"
+import "github.com/PRO-Robotech/corelib/servicecontract"
 
 func describe(cfg Config) servicecontract.Descriptor {
 	desc, _ := servicecontract.New(servicecontract.Spec{
@@ -167,7 +167,7 @@ func TestPostureReachGateSilentWhenTheDescriptorIsAccepted(t *testing.T) {
 // именно эта форма гасит посадку одним символом.
 const injDescriptorQuenchedAtCallerSrc = `package main
 
-import "github.com/PRO-Robotech/kacho/pkg/servicecontract"
+import "github.com/PRO-Robotech/corelib/servicecontract"
 
 func describe(cfg Config) (servicecontract.Descriptor, error) {
 	return servicecontract.New(servicecontract.Spec{
@@ -650,9 +650,9 @@ func TestRefusalWitnessRefusesAnEmptyPackage(t *testing.T) {
 const injWiringTmpl = `package main
 
 import (
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/corelib/servicecontract"
+	coredb "github.com/PRO-Robotech/corelib/db"
 )
 
 type Config struct {
@@ -818,7 +818,7 @@ func TestSpecWiringFollowsAChainOfIntermediates(t *testing.T) {
 	t.Parallel()
 	src := `package main
 
-import "github.com/PRO-Robotech/kacho/pkg/servicecontract"
+import "github.com/PRO-Robotech/corelib/servicecontract"
 
 type Config struct {
 	AuthMode  string ` + "`envconfig:\"KACHO_DEMO_AUTH_MODE\"`" + `
@@ -858,7 +858,7 @@ func sslOf(string) string { return "" }
 
 const injParamTmpl = `package main
 
-import "github.com/PRO-Robotech/kacho/pkg/servicecontract"
+import "github.com/PRO-Robotech/corelib/servicecontract"
 
 type Config struct {
 	AuthMode  string ` + "`envconfig:\"KACHO_DEMO_AUTH_MODE\"`" + `
@@ -984,7 +984,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+	"github.com/PRO-Robotech/corelib/servicecontract"
 )
 
 type Config struct {
@@ -1433,8 +1433,8 @@ func TestRefusalReachRedWhenTheProviderIsNeverCalled(t *testing.T) {
 const injWithdrawnTmpl = `package main
 
 import (
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/corelib/servicecontract"
 )
 
 type Config struct {

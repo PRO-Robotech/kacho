@@ -19,7 +19,7 @@
 // конструктор `check.NewInterceptor(check.Options{…})` и ошибку
 // `ErrIAMConnNotConfigured`. Ни одного из трёх символов в дереве не существует —
 // пример провязки, приведённый здесь, НЕ КОМПИЛИРОВАЛСЯ. Перехватчик собирается
-// общим `pkg/authz`, и композиционный корень (`cmd/compute/main.go`) зовёт его.
+// общим `corelib/authz`, и композиционный корень (`cmd/compute/main.go`) зовёт его.
 //
 // Там же перечислялись записи карты для `Disk`/`Image`/`Snapshot`/`DiskType` и
 // RPC `{…}Service/{List,Set,Update}AccessBindings` с пояснением, что их

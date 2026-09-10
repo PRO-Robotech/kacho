@@ -86,8 +86,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
-	"github.com/PRO-Robotech/kacho/pkg/servicehost"
+	"github.com/PRO-Robotech/corelib/servicecontract"
+	"github.com/PRO-Robotech/corelib/servicehost"
 )
 
 func serveDiagnostics(ctx context.Context, addr string) error {

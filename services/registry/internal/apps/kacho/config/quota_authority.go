@@ -9,7 +9,7 @@ package config
 // зовут оба — страж старта ради вердикта и композиционный корень ради адреса.
 
 import (
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+	corequota "github.com/PRO-Robotech/corelib/quota"
 )
 
 const (

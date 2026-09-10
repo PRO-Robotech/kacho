@@ -25,7 +25,7 @@
 //
 // Внешний слушатель собирается в `main()`, вызвать которую случай не может.
 // Поэтому его звено проверяется с двух сторон порознь: поведение самой формы —
-// в `pkg/grpcsrv/admission_unknown_service_test.go` (проксируемый метод без
+// в `corelib/grpcsrv/admission_unknown_service_test.go` (проксируемый метод без
 // дескриптора отвергается и ключуется личностью, поставленной звеном раньше), а
 // МЕСТО звена в цепочке — разбором синтаксиса ниже. Порядок звеньев есть
 // свойство исходника, и закрепляется оно гейтом по исходнику, а не пробой,
@@ -41,9 +41,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 	"github.com/PRO-Robotech/kacho/gateway/internal/opsproxy"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
 // --- ВЕЛИЧИНЫ ---------------------------------------------------------------
@@ -186,7 +186,7 @@ func TestEdgeSurfaceSplitsTenantTrafficFromTheHostSurface(t *testing.T) {
 //	  звена, её устанавливающего, ложит весь поток в одно безымянное ведро и
 //	  снимается подстановкой чужого заголовка, то есть ограничивает только того,
 //	  кто не пытается его обойти. Цена измерена в
-//	  `pkg/grpcsrv/admission_unknown_service_test.go`.
+//	  `corelib/grpcsrv/admission_unknown_service_test.go`.
 //	ДО решения о правах — оно есть СЕТЕВОЙ вызов к iam на КАЖДОМ запросе, и все
 //	  запросы края идут туда под ОДНОЙ личностью сертификата, то есть в ОДНО
 //	  ведро на внутреннем слушателе iam. Поток одного арендатора, не

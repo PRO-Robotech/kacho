@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/corelib/migratorcli"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 	"github.com/PRO-Robotech/kacho/internal/productnaming"
-	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // migratorCLICorpusSuffixes — что читается: сборка, развёртывание и сами точки

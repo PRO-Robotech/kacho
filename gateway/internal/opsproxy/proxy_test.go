@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/opsproxy"
 )
@@ -165,7 +165,7 @@ func TestOpsProxy_Get_NewFormatVPC(t *testing.T) {
 
 // TestOpsProxy_Get_NewFormatNLB проверяет роутинг 20-char id с 3-char
 // prefix nlb (loadbalancer/kacho-nlb — все операции домена делят этот prefix,
-// PrefixOperationNLB == PrefixLoadBalancer в pkg/ids).
+// PrefixOperationNLB == PrefixLoadBalancer в corelib/ids).
 func TestOpsProxy_Get_NewFormatNLB(t *testing.T) {
 	id := "nlb0123456789abcdefg" // 20 chars, nlb prefix
 	op := &operationpb.Operation{Id: id, Description: "create network load balancer"}

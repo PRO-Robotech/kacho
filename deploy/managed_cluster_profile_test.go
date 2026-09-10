@@ -34,8 +34,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/PRO-Robotech/corelib/gitenv"
 	"github.com/PRO-Robotech/kacho/internal/productnaming"
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────

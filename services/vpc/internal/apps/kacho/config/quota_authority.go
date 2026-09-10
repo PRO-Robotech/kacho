@@ -20,7 +20,7 @@ package config
 // подставить за него разумное умолчание нельзя ни в каком режиме.
 
 import (
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+	corequota "github.com/PRO-Robotech/corelib/quota"
 )
 
 const (

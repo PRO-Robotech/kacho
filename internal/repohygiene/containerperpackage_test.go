@@ -78,7 +78,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 // modulePath переехал в operationtimestamptruncation.go — НЕтестовый файл того
@@ -551,7 +551,7 @@ import (
 	"os"
 	"testing"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/PRO-Robotech/kacho/pkg/pgtest"
+	"github.com/PRO-Robotech/corelib/pgtest"
 )
 func bootOnce() { _, _ = tcpostgres.Run(nil, "postgres:16-alpine") }
 func TestMain(m *testing.M) { bootOnce(); os.Exit(m.Run()) }

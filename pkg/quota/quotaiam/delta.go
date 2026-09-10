@@ -12,7 +12,7 @@
 // то есть там, где расхождение молча меняет, какие строки снимка правит
 // администратор.
 //
-// Пакет отделён от `pkg/quota` намеренно: тот нейтрален к транспорту и не
+// Пакет отделён от `corelib/quota` намеренно: тот нейтрален к транспорту и не
 // импортирует сгенерённые стабы, поэтому синхронизатор проверяем без соседа и без
 // сети. Здесь стабы нужны by construction — это и есть граница с соседом.
 package quotaiam
@@ -21,10 +21,10 @@ import (
 	"context"
 	"time"
 
+	"github.com/PRO-Robotech/corelib/auth"
+	corequota "github.com/PRO-Robotech/corelib/quota"
+	"github.com/PRO-Robotech/corelib/retry"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/auth"
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
-	"github.com/PRO-Robotech/kacho/pkg/retry"
 )
 
 // defaultCallTimeout — предел времени одной попытки тяги.

@@ -8,8 +8,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/ids"
-	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
+	"github.com/PRO-Robotech/corelib/ids"
+	corevalidate "github.com/PRO-Robotech/corelib/validate"
 )
 
 // route — распознанный вид OCI-пути (метод определяет verb/действие отдельно).

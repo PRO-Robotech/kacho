@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // Страница сайта достижима из меню, а пункт меню ведёт на существующую страницу.

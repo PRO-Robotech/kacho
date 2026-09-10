@@ -3,7 +3,7 @@
 
 package domain
 
-import coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
+import coreerrors "github.com/PRO-Robotech/corelib/errors"
 
 // NLB-1b EXPAND (additive) — new LoadBalancer domain newtypes added ALONGSIDE the
 // legacy type/placement_type model. They are persisted + echoed but NOT yet

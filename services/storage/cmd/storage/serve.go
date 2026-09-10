@@ -19,29 +19,29 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/authz/authzmetrics"
+	"github.com/PRO-Robotech/corelib/authz/proxytuple"
+	coredb "github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/corelib/listnarrow"
+	"github.com/PRO-Robotech/corelib/observability"
+	"github.com/PRO-Robotech/corelib/observability/health"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/operations/operationspb"
+	"github.com/PRO-Robotech/corelib/outbox"
+	outboxreconciler "github.com/PRO-Robotech/corelib/outbox/reconciler"
+	"github.com/PRO-Robotech/corelib/retention"
+	"github.com/PRO-Robotech/corelib/servicecontract"
+	"github.com/PRO-Robotech/corelib/servicehost"
+	"github.com/PRO-Robotech/corelib/subscription"
 	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
-	"github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
-	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
-	"github.com/PRO-Robotech/kacho/pkg/observability"
-	"github.com/PRO-Robotech/kacho/pkg/observability/health"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
-	"github.com/PRO-Robotech/kacho/pkg/outbox"
-	outboxreconciler "github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
-	"github.com/PRO-Robotech/kacho/pkg/retention"
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
-	"github.com/PRO-Robotech/kacho/pkg/servicehost"
-	"github.com/PRO-Robotech/kacho/pkg/subscription"
 
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
-	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
@@ -61,7 +61,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/subscriptionjournal"
 
-	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
+	"github.com/PRO-Robotech/corelib/schemaguard"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/migrations"
 )
@@ -94,7 +94,7 @@ const subscriptionSubscribeFQN servicecontract.MethodFQN = "/kacho.cloud.subscri
 //
 // Он не собирает серверы, не выстраивает цепочку звеньев, не строит карту прав и
 // не пишет собственных стражей старта на то, что знает носитель. Всё это переехало
-// в `pkg/servicehost`, и переехало не ради красоты: пока сборка жила здесь, каждый
+// в `corelib/servicehost`, и переехало не ради красоты: пока сборка жила здесь, каждый
 // из семи сервисов держал СВОЮ, и порядок звеньев совпадал ровно настолько,
 // насколько авторы написали одинаковое. У storage расхождение было наблюдаемым:
 // журнал доступа стоял только на unary-цепочке, поэтому стрим-вызов не оставлял в
@@ -240,7 +240,7 @@ func runServe(cfg config.Config) error {
 	// Строка заводится КАЖДОЙ мутацией — контракт объявляет мутации асинхронными,
 	// и `Operation` возвращается вместо ресурса, — а снятия строк не было ни у
 	// одного из восьми владельцев. Порог, предикат и расписание объявлены в
-	// `pkg/operations` и `pkg/retention` ОДИН раз: восемь расписаний об одном
+	// `corelib/operations` и `corelib/retention` ОДИН раз: восемь расписаний об одном
 	// предмете разошлись бы молча.
 	if _, err := operations.StartRetentionSweep(
 		ctx, opsRepo, operations.DefaultRetentionConfig(),
@@ -688,7 +688,7 @@ func describe(
 		//
 		// Здесь стояло изъятие «серверных стримов storage не служит», и оно было
 		// верным ровно до этой правки: подписка на изменения ресурсов
-		// (`pkg/subscription`, внутренний слушатель) отдаёт поток событий. Изъятие
+		// (`corelib/subscription`, внутренний слушатель) отдаёт поток событий. Изъятие
 		// самоистекает намеренно — заявление судится СЛУЖИМЫМ набором, а не
 		// памятью автора: носитель снимает признак стрима с дескрипторов методов у
 		// самих серверов (О11) и уронил бы старт, назвав метод подписки поимённо.
@@ -722,7 +722,7 @@ func describe(
 		//
 		// Эмиссия: одно отношение иерархии владения — `project:<id> #project
 		// @storage_<res>:<id>`. Имя берётся у ПРИНИМАЮЩЕЙ стороны
-		// (`pkg/authz/proxytuple`), которая владеет закрытым набором принимаемых
+		// (`corelib/authz/proxytuple`), которая владеет закрытым набором принимаемых
 		// отношений: второе написание чужого закрытого набора расходится молча, и
 		// расходится там, где это не видно — отказ в правах дренаж читает как
 		// временный, и очередь встаёт головой партиции навсегда.
@@ -784,7 +784,7 @@ func describe(
 		Delivery: servicecontract.Value(servicecontract.DeliveryWriterTransaction),
 
 		// Загрузочный гейт мутаций — изъятие, и предикат его снятия ВНЕШНИЙ:
-		// гейта (`pkg/outbox/bootgate`) в дереве storage нет ни одного вызова.
+		// гейта (`corelib/outbox/bootgate`) в дереве storage нет ни одного вызова.
 		// Заявление истекает пробой TestStorageBringsNoBootGateYet, которая
 		// спрашивает дерево, а не память автора: появится провязка — проба
 		// покраснеет и потребует принести гейт сюда.
@@ -854,7 +854,7 @@ func registerInternal(
 		handler.NewInternalDiskTypeBindingHandler(diskTypeBindingUC))
 	operationpb.RegisterOperationServiceServer(reg, opHandler)
 
-	// Поток изменений — ОБЩИЙ сервер (`pkg/subscription`), а не своя обёртка
+	// Поток изменений — ОБЩИЙ сервер (`corelib/subscription`), а не своя обёртка
 	// вокруг него: владелец регистрирует его самого. Регистрация безусловна —
 	// собирает сервер композиционный корень, и его сборка умеет ОТКАЗАТЬ, поэтому
 	// до сюда нулевой указатель не доходит. Условная регистрация означала бы, что
@@ -972,7 +972,7 @@ func diagnosticMux(m *metrics.Metrics, agg *health.Aggregator) *http.ServeMux {
 // ВЕРСИЯ СХЕМЫ — ОТДЕЛЬНАЯ ИМЕНОВАННАЯ ЗАВИСИМОСТЬ, а не часть проверки базы.
 // Мигратор идёт при каждом раскате, поэтому откат выкатки ставит ПРЕЖНИЙ образ
 // на НОВУЮ схему; база при этом отвечает на `Ping`, и без этого чекера под
-// объявлялся бы готовым и получал трафик (`pkg/schemaguard`, задача #1734).
+// объявлялся бы готовым и получал трафик (`corelib/schemaguard`, задача #1734).
 // Отдельное имя обязательно: оператор обязан отличить «база недоступна» от
 // «образ не той версии, что схема», не читая кода.
 func buildReadinessCheckers(pool *pgxpool.Pool, authzConn *grpc.ClientConn,

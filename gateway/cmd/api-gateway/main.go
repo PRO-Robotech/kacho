@@ -27,9 +27,9 @@ import (
 	// "failed to marshal error message".
 	_ "google.golang.org/genproto/googleapis/rpc/errdetails"
 
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
-	"github.com/PRO-Robotech/kacho/pkg/observability"
-	"github.com/PRO-Robotech/kacho/pkg/servicehost"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/corelib/observability"
+	"github.com/PRO-Robotech/corelib/servicehost"
 	"github.com/PRO-Robotech/kacho/pkg/subjectchange"
 
 	// Обслуживается только нативный API kacho.cloud.*.

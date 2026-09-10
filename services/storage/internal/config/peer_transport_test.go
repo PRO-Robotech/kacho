@@ -7,7 +7,7 @@ package config_test
 //
 // Класс, который эти пробы закрывают: ручка транспорта у ребра есть, проводка её
 // читает, а отказа в старте при невзведённой ручке нет. Клиентские creds на
-// Enable=false вырождаются в insecure БЕЗ ошибки (pkg/grpcclient), поэтому
+// Enable=false вырождаются в insecure БЕЗ ошибки (corelib/grpcclient), поэтому
 // процесс поднимается, отчитывается «authz interceptor enabled» — и каждый Check
 // уходит по открытому каналу. Контроль присутствует и не отказывает ни разу за
 // свою жизнь.
@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcclient"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/config"
 )

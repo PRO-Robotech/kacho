@@ -41,7 +41,7 @@ func injEdge(fromDir, imp, kind string) licenseEdge {
 
 const (
 	// Реальные пути дерева, взятые дословно, чтобы кейс не проверял выдумку.
-	injApachePkg   = "github.com/PRO-Robotech/kacho/pkg/ids"
+	injApachePkg   = "github.com/PRO-Robotech/corelib/ids"
 	injBuslPkg     = "github.com/PRO-Robotech/kacho/gateway/internal/restmux"
 	injVendoredPkg = "github.com/PRO-Robotech/kacho/proto/google/api"
 	injExternalPkg = "google.golang.org/grpc"

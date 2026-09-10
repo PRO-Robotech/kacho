@@ -47,7 +47,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota"
+	"github.com/PRO-Robotech/corelib/quota"
 )
 
 // TestQuotaRefusalIsRenderedFromOneSource — файл каждого владельца совпадает с

@@ -28,7 +28,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // cursorInjectionTree собирает дерево из одного сервиса: миграция с таблицей и

@@ -6,8 +6,8 @@ package domain
 import (
 	"net/netip"
 
-	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
-	"github.com/PRO-Robotech/kacho/pkg/option"
+	coreerrors "github.com/PRO-Robotech/corelib/errors"
+	"github.com/PRO-Robotech/corelib/option"
 	"go.uber.org/multierr"
 )
 

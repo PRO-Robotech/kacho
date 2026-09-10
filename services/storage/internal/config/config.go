@@ -12,9 +12,9 @@ import (
 
 	"fmt"
 
-	corecfg "github.com/PRO-Robotech/kacho/pkg/config"
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	corecfg "github.com/PRO-Robotech/corelib/config"
+	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 )
 
 // envPrefix — корневой сегмент env-имён kacho-storage (KACHO_<DOMAIN>).
@@ -80,7 +80,7 @@ type Config struct {
 	// grpcsrv.WithTrustedForwarders (см. cmd/storage/serve.go).
 	//
 	// Почему это ручка, а не константа, и почему её отсутствие было дырой: contract
-	// corelib (pkg/grpcsrv principalIsTrusted) сужает круг отправителей ТОЛЬКО когда
+	// corelib (corelib/grpcsrv principalIsTrusted) сужает круг отправителей ТОЛЬКО когда
 	// список непуст; на пустом он отвечает «доверяем» любому пиру, прошедшему
 	// проверку сертификата. Внутренний периметр у нас объявлен НЕдоверенным, поэтому
 	// пустой список означает: любой сосед со своим законным клиентским сертификатом
@@ -217,7 +217,7 @@ type Config struct {
 	HandlingBudget time.Duration `envconfig:"KACHO_STORAGE_HANDLING_BUDGET" default:"30s"`
 
 	// SubscriptionStreamBudget — СРОК ЖИЗНИ одного потока подписки
-	// (`pkg/subscription`, общий сервер потока изменений).
+	// (`corelib/subscription`, общий сервер потока изменений).
 	//
 	// По истечении поток закрывается ЧИСТО, и клиент возобновляется со своей
 	// позиции: обрыв — штатное событие, а не отказ. Величина обязана заметно

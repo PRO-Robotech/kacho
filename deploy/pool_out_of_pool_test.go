@@ -116,9 +116,9 @@ import (
 const (
 	pgxDriverPkg = "github.com/jackc/pgx/v5"
 
-	subscriptionPkg = "github.com/PRO-Robotech/kacho/pkg/subscription"
-	drainerPkg      = "github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
-	authzPkg        = "github.com/PRO-Robotech/kacho/pkg/authz"
+	subscriptionPkg = "github.com/PRO-Robotech/corelib/subscription"
+	drainerPkg      = "github.com/PRO-Robotech/corelib/outbox/drainer"
+	authzPkg        = "github.com/PRO-Robotech/corelib/authz"
 )
 
 // outOfPoolRoots — корни обхода. Перечисляет ВЫЗЫВАЮЩИЙ, а не обходчик: «здесь

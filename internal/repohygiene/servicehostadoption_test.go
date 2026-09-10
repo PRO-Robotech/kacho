@@ -47,12 +47,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 const (
 	grpcPkgPath    = "google.golang.org/grpc"
-	grpcsrvPkgPath = "github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	grpcsrvPkgPath = "github.com/PRO-Robotech/corelib/grpcsrv"
 
 	// serverCtor — конструктор слушателя общего фундамента. Единица счёта.
 	serverCtor = "NewServer"

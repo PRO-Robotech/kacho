@@ -82,7 +82,7 @@ import (
 // subscriptionPkgPath — импорт, по которому опознаётся общая форма подписки.
 // Опознание идёт по ПУТИ, а не по имени пакета: имя переименовывается алиасом, и
 // анализатор, ключующийся на нём, ослеп бы от одной строки импорта.
-const subscriptionPkgPath = "github.com/PRO-Robotech/kacho/pkg/subscription"
+const subscriptionPkgPath = "github.com/PRO-Robotech/corelib/subscription"
 
 // Имена полей объявления владельца, которые обязаны нести чужое имя.
 const (

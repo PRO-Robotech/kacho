@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/observability"
+	"github.com/PRO-Robotech/corelib/observability"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/config"
 )
 

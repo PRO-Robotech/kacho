@@ -18,7 +18,7 @@
 // конкреты: handler НЕ тянет пакет `internal/apps/kacho/api/address` напрямую, а
 // определяет узкие port-абстракции `AddressAllocator` (ее удовлетворяет
 // `*address.AllocateUseCase`) и `AddressReferenceManager`, которые связываются в
-// composition root. (Caller-identity живёт в ctx как принципал `pkg/operations`;
+// composition root. (Caller-identity живёт в ctx как принципал `corelib/operations`;
 // use-case address `internal/handler` не импортирует.)
 //
 // AuthZ: per-RPC FGA-Check (object-scoped на `vpc_address:<address_id>`,
@@ -36,7 +36,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/services/addressref"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"

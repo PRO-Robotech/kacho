@@ -9,7 +9,7 @@ import (
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 	"github.com/PRO-Robotech/kacho/pkg/quota/quotapb"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	quotaband "github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/quota"
 )
 

@@ -3,7 +3,7 @@
 
 package pg
 
-import "github.com/PRO-Robotech/kacho/pkg/filter"
+import "github.com/PRO-Robotech/corelib/filter"
 
 // nameFilterCond — предикат сужения по имени для списка, с СОХРАНЁННЫМ
 // оператором (#460).

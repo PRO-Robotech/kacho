@@ -1,6 +1,6 @@
 // Правила валидации полей — единый источник для компонента <Restrictions />.
 // Дом контракта — `proto/kacho/cloud/compute/v1`; дом общего валидатора —
-// `pkg/validate` (единая форма имени ресурса объявлена в `pkg/validate/nameform`).
+// `corelib/validate` (единая форма имени ресурса объявлена в `corelib/validate/nameform`).
 // Правя тексты ниже, сверяй их с этими двумя, а не с прежними полирепо.
 export const RESTRICTIONS = {
   name: [

@@ -32,10 +32,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
-	"github.com/PRO-Robotech/kacho/pkg/servicehost"
+	"github.com/PRO-Robotech/corelib/outbox/bootgate"
+	"github.com/PRO-Robotech/corelib/outbox/metrics"
+	"github.com/PRO-Robotech/corelib/outbox/reconciler"
+	"github.com/PRO-Robotech/corelib/servicehost"
 )
 
 const vpcOutboxTable = "kacho_vpc.fga_register_outbox"
@@ -142,7 +142,7 @@ func Test_1_4_30_ReconcilerRedrivesPoisoned(t *testing.T) {
 // До перевода vpc на носитель контура пакет `internal/fgaboot` держал СВОЮ копию
 // связки «предикат гейтируемой мутации + unary-звено», дословно совпадавшую с
 // такой же копией у соседей. Копия снята вместе с переводом: звено ставит
-// носитель (`pkg/servicehost`), и его поведение — отказ на гейтируемой мутации,
+// носитель (`corelib/servicehost`), и его поведение — отказ на гейтируемой мутации,
 // молчание на всём прочем — закреплено ЕГО пробами. Воспроизводить здесь ту же
 // связку значило бы завести пятую копию предмета, который и убирали.
 //

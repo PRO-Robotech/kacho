@@ -6,7 +6,7 @@ package kacho
 import (
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/filter"
+	"github.com/PRO-Robotech/corelib/filter"
 )
 
 // NameFilter — сужение списка по имени: РАЗОБРАННЫЙ узел выражения, а не одно

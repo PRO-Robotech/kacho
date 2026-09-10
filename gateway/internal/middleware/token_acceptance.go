@@ -42,12 +42,12 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+	"github.com/PRO-Robotech/corelib/tokenpolicy"
 )
 
 const (
 	// PlatformTokenType — тип токена доступа НАШЕЙ чеканки (RFC 9068).
-	// Значение берётся из общего объявления в `pkg/tokenpolicy`, а не пишется
+	// Значение берётся из общего объявления в `corelib/tokenpolicy`, а не пишется
 	// здесь заново.
 	PlatformTokenType = tokenpolicy.TokenTypeAccess
 	// LegacyTokenType — тип, которым помечает свои токены прежний издатель.

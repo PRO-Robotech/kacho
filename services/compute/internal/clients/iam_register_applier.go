@@ -33,9 +33,9 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/PRO-Robotech/corelib/auth"
+	"github.com/PRO-Robotech/corelib/outbox/drainer"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/auth"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaintent"

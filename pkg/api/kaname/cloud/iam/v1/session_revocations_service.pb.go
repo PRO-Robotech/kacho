@@ -10,9 +10,9 @@
 package iamv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
-	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
+	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
+	operation "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"

@@ -53,7 +53,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // grpcImportPath — пакет, по объявлению импорта которого опознаётся локальное
@@ -67,7 +67,7 @@ const grpcImportPath = "google.golang.org/grpc"
 // доступа). Поэтому «у компонента ноль листенеров» перестало быть однозначным
 // признаком сломанного распознавания — но однозначным оно обязано остаться, и
 // различает два случая именно этот импорт.
-const carrierImportPath = "github.com/PRO-Robotech/kacho/pkg/servicehost"
+const carrierImportPath = "github.com/PRO-Robotech/corelib/servicehost"
 
 // panicRecoveryScanRoots — где ищем сами звенья. Звено вправе жить в общем
 // фундаменте, в сервисе или на крае; гейт не требует конкретного адреса, он

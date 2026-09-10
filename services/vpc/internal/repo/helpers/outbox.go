@@ -9,7 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/PRO-Robotech/kacho/pkg/outbox"
+	"github.com/PRO-Robotech/corelib/outbox"
 )
 
 // VPCOutboxTable — имя таблицы outbox в kacho_vpc DB.

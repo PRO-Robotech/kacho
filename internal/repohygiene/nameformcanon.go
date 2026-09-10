@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // «Сервис принял единую форму имени» — ОДНО производное на два гейта.

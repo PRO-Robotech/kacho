@@ -28,11 +28,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/corelib/outbox/bootgate"
+	"github.com/PRO-Robotech/corelib/outbox/metrics"
+	"github.com/PRO-Robotech/corelib/outbox/reconciler"
+	"github.com/PRO-Robotech/corelib/servicehost"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
-	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/clients"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaintent"
@@ -95,7 +95,7 @@ func Test_1_4_30_ReconcilerRedrivesPoisoned(t *testing.T) {
 // (UNAVAILABLE); read RPCs pass; Internal-admin Creates are not gated; connect →
 // Create allowed.
 //
-// Since kacho-compute moved onto the shared carrier (`pkg/servicehost`), the
+// Since kacho-compute moved onto the shared carrier (`corelib/servicehost`), the
 // interceptor that composes these two halves is the carrier's — and the carrier
 // pins its own behaviour on the executing code
 // (`TestBootGateRefusesCreateWhileTheDeliveryPathIsDown`,

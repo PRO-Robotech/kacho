@@ -89,7 +89,7 @@ func TestCompletenessGateIsSilentWhenTheEdgeLinksTheSamePackage(t *testing.T) {
 // такую отключают первой, и вместе с ней перестают читать настоящую.
 func TestCompletenessGateIgnoresPackagesThatRegisterNothing(t *testing.T) {
 	t.Parallel()
-	pkg := goListPackage{ImportPath: "github.com/PRO-Robotech/kacho/pkg/outbox",
+	pkg := goListPackage{ImportPath: "github.com/PRO-Robotech/corelib/outbox",
 		GoFiles: []string{"outbox.go", "drainer.go"}}
 	if pkg.registersProtoMessages() {
 		t.Fatal("пакет без *.pb.go признан регистрирующим — гейт требовал бы от края " +

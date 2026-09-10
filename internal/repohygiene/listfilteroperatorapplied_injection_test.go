@@ -36,7 +36,7 @@ import (
 // подстроки.
 const injFilterOwnerLosingTheOperator = `package owner
 
-import "github.com/PRO-Robotech/kacho/pkg/filter"
+import "github.com/PRO-Robotech/corelib/filter"
 
 type params struct{ Name string }
 
@@ -56,7 +56,7 @@ func List(expr string, p *params) error {
 // но оператор применён. Форма отличается ОДНИМ фактом — вызовом ToSQLOn.
 const injFilterOwnerHonouringTheOperator = `package owner
 
-import "github.com/PRO-Robotech/kacho/pkg/filter"
+import "github.com/PRO-Robotech/corelib/filter"
 
 type params struct {
 	Name string
@@ -81,7 +81,7 @@ func List(expr string, p *params) error {
 // слепое пятно ровно там, где класс и прятался.
 const injFilterOwnerViaHelperParse = `package owner
 
-import "github.com/PRO-Robotech/kacho/pkg/filter"
+import "github.com/PRO-Robotech/corelib/filter"
 
 func parseIt(expr string) (*filter.FilterAST, error) {
 	return filter.Parse(expr, []string{"name"})

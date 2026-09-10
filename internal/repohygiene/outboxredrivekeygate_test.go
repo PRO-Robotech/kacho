@@ -42,7 +42,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // TestRedriveAndDrainKeyTheSameOutboxTheSameWay — две половины одного правила

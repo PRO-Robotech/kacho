@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
+	coreerrors "github.com/PRO-Robotech/corelib/errors"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/shared/serviceerr"
 	geoerrors "github.com/PRO-Robotech/kacho/services/geo/internal/errors"
 )
@@ -87,7 +87,7 @@ func TestToStatusFailureBandsCharacterization(t *testing.T) {
 // a rich validator error wrapped onto a service sentinel with %w must reach the
 // client with its google.rpc.BadRequest field violation intact.
 //
-// pkg/validate puts the offending field name ONLY in the details — the message
+// corelib/validate puts the offending field name ONLY in the details — the message
 // stays the generic "invalid argument" — so a mapper that recognises the sentinel
 // and rebuilds a fresh status.Error(code, text) silently drops the one
 // machine-readable part of the answer. That has to be a property of the mapper,

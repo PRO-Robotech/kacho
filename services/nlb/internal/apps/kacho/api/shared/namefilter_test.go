@@ -4,7 +4,7 @@
 package shared
 
 import (
-	"github.com/PRO-Robotech/kacho/pkg/filter"
+	"github.com/PRO-Robotech/corelib/filter"
 
 	"testing"
 

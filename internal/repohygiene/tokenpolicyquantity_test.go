@@ -45,12 +45,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+	"github.com/PRO-Robotech/corelib/tokenpolicy"
 )
 
 const (
 	// tokenPolicyImportPath — единственный дом политики.
-	tokenPolicyImportPath = "github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+	tokenPolicyImportPath = "github.com/PRO-Robotech/corelib/tokenpolicy"
 	// tokenPolicyOwnerDir — каталог владельца политики.
 	tokenPolicyOwnerDir = "pkg/tokenpolicy/"
 	// tokenPolicyCensusFloor — порог переписи ПО ВСЕМУ дереву: ниже него

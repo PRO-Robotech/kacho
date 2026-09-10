@@ -62,7 +62,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // quotaSyncStarter — имя глагола, включающего обе полосы ребра.

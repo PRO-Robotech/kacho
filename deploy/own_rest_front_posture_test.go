@@ -52,7 +52,7 @@ import (
 )
 
 // ownRESTFrontDimensions — оси, которые обязан судить гейт. Перечень тот же, что
-// объявлен в общем типе самоотчёта (pkg/observability, own_rest_*_tls).
+// объявлен в общем типе самоотчёта (corelib/observability, own_rest_*_tls).
 var ownRESTFrontDimensions = []string{"own_rest_public_tls", "own_rest_internal_tls"}
 
 // withDimension — копия самоотчёта, у которой изменено РОВНО ОДНО измерение.
