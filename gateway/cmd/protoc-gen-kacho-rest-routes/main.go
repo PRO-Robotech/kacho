@@ -65,7 +65,7 @@ const (
 	// PrimaryFile — anchor: плагин эмитит таблицу только когда это имя есть в
 	// CodeGeneratorRequest.FileToGenerate. Иначе (buf зовет плагин по разу на
 	// пакет) каждый вызов эмитил бы одинаковый файл -> duplicate-file-name.
-	PrimaryFile = "kacho/iam/authz/catalog/v1/permissions_catalog_root.proto"
+	PrimaryFile = "corelib/authz/catalog/v1/permissions_catalog_root.proto"
 )
 
 func main() {

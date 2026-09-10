@@ -26,9 +26,18 @@
 
 package catalogderive
 
-// CatalogPath is the repo-relative location of the generated catalog embedded
-// into the api-gateway binary. It is the artefact the gateway actually enforces.
-const CatalogPath = "gateway/internal/middleware/embed/permission_catalog.json"
+// Здесь стояла `CatalogPath` — координата порождённого каталога прав В ДЕРЕВЕ
+// ПЛАТФОРМЫ, объявленная прод-кодом фундамента (задача #2532, класс 3).
+//
+// Снята вместе с предметом, а не спрятана. Замер на день снятия: вызывающих у
+// неё **ноль** (`git grep -c 'catalogderive\.CatalogPath' -- '*.go'`), а тот же
+// путь несут своими литералами **15** файлов — то есть «единым источником» она
+// не была ни для кого и переживала своё основание молча.
+//
+// Почему это класс, а не мелочь: путь лежит в ЗНАЧЕНИИ, поэтому граф импортов
+// его не показывает by construction. После разъезда фундамент дерева платформы
+// не видит, и координата стала бы указывать в никуда — но ни сборка, ни пробы
+// об этом не сказали бы ни слова.
 
 // Entry is the subset of a catalog row this comparison needs.
 type Entry struct {

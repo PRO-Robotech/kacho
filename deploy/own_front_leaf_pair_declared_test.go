@@ -1,0 +1,465 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+// own_front_leaf_pair_declared_test.go — стенд, объявивший ребро собственного
+// внутреннего REST-фронта ВЗАИМНЫМ, обязан объявлять и УДОСТОВЕРЕНИЕ, которым
+// прогонщик себя назовёт.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ПРЕДМЕТ (задача #2372, пункт 2 предиката снятия)
+//
+// Контроль, обращающийся к соседу под своей личностью, несёт ПАРУ: адрес соседа
+// и удостоверение. Адресную половину пары уже держат соседи — производитель
+// адреса зеркалит продуктовый предикат, а полистенную ручку транспорта и режим
+// проверки клиента сверяют kaname_listener_knobs_test.go и
+// internal_rest_client_auth_parity_test.go. ВТОРАЯ половина — «а есть ли чем
+// предъявиться» — не проверялась ничем.
+//
+// Материал прогонщик берёт у ПОСАДКИ: секрет клиентского листа в пространстве
+// имён стенда. Секрет этот не самозарождается — его выпускает `Certificate`
+// чарта, и выпуск ЗАКРЫТ ручкой включения. Снимите ручку — секрета не станет, а
+// ребро останется взаимным.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ПОЧЕМУ ЭТО ТЕРЯЕТСЯ МОЛЧА, А НЕ КРАСНЕЕТ
+//
+// Прогонщик написан честно и ветку «предъявить нечем» несёт: секрета нет — лист
+// не подаётся, адрес не инъектируется, и шаги набора говорят «условие не
+// создано» САМИ, третьим исходом. Это правильное поведение прогонщика и ровно
+// поэтому — тихое: третий исход не красный. Набор остаётся зелёным, шаги
+// собственного внутреннего фронта не исполняются ВОВСЕ, и узнать об этом
+// неоткуда.
+//
+// То есть половина пары, снятая в профиле, не роняет ни один прогон, а
+// отбирает у ребра единственного его свидетеля.
+//
+// Замер до этой пробы (инъекция ровно одного факта — ручка выпуска листа снята
+// у стенда, которым поднимается сквозной конвейер): `go test ./deploy/` и
+// `go test ./gateway/deploy/` — ОБА кодом 0. Дерево о снятой половине пары не
+// говорило ничего.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ДВЕ СТОРОНЫ БЕРУТСЯ ИЗ СВОИХ ИСТОЧНИКОВ — ИНАЧЕ ЭТО ТАВТОЛОГИЯ
+//
+// Сторона ТРЕБОВАНИЯ читается там же, где её читает прогонщик: полистенная
+// ручка транспорта плюс ключ режима проверки клиента, оба ВЫВЕДЕННЫЕ разбором
+// (guardedEdgesFromSource + bindEdgeToTemplate), а не выписанные здесь.
+//
+// Сторона МАТЕРИАЛА читается у ПРОГОНЩИКА: имя секрета снимается с той функции
+// оболочки, которая лист и ПРЕДЪЯВЛЯЕТ. Затем по этому имени ВЫВОДИТСЯ чарт-
+// производитель — тот, чьи значения объявляют секрет с таким именем.
+//
+// НИ ОДНА КООРДИНАТА ЗДЕСЬ НЕ ВЫПИСАНА: ни имя секрета, ни ключ чарта, ни имена
+// ручек. Выписанное имя — второе место об одном предмете, и оно разошлось бы
+// молча ровно тогда, когда предмет переименуют.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// РАСПОЗНАВАТЕЛЬ СУДИТ ИСПОЛНЯЕМУЮ ЧАСТЬ, А НЕ ТЕКСТ
+//
+// Имя секрета стоит в этих же скриптах и в ПРОЗЕ — в сообщении, объясняющем
+// читателю, откуда взят лист. Сверка по подстроке нашла бы прозу и осталась бы
+// зелёной при снятом обращении к кластеру. Поэтому имя берётся только из формы
+// обращения `get secret <имя>`, и только внутри функции, содержащей ПРЕДЪЯВЛЕНИЕ
+// листа (testing.md §«Гейт на класс», п. 4).
+//
+// Область поиска — функция, а не файл: те же скрипты берут вторым обращением
+// ЧУЖОЙ секрет (лист служебной учётки для другого ребра), и файловая область
+// смешала бы два предмета.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ГРАНИЦА ПРЕДМЕТА (названа, чтобы «зелено» не читалось шире, чем есть)
+//
+//   - Судится ОБЪЯВЛЕНИЕ, а не рендер и не кластер. Что `Certificate` дойдёт до
+//     кластера, что центр его подпишет и что рукопожатие состоится — свойства
+//     живого стенда, и здесь они НЕ утверждаются.
+//   - Не утверждается и годность листа: центр, срок, назначение `client auth`
+//     — предмет соседней client_identity_leaf_test.go.
+//   - Утверждается ровно одно: стенд, у которого прогонщик ПОТРЕБУЕТ лист,
+//     объявляет производителя того самого секрета, который прогонщик спросит.
+package deploy_test
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"testing"
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// СУЖДЕНИЕ. Чистая функция: вход строит вызывающий, поэтому доказательство
+// инъекцией подаёт ей синтетику, не трогая общий клон.
+
+// leafStackFacts — что ОДИН стенд говорит про пару «ребро ↔ удостоверение».
+type leafStackFacts struct {
+	stack        string
+	leafRequired bool   // ребро объявлено взаимным ⇒ прогонщик потребует лист
+	credEnabled  bool   // выпуск клиентского листа включён
+	credName     string // имя секрета, которое объявляет стенд
+}
+
+// leafPairFinding — находка. Стенд называется всегда: находка, не называющая,
+// ГДЕ она, посылает читателя искать по всему дереву.
+type leafPairFinding struct {
+	stack  string
+	kind   string
+	detail string
+}
+
+// judgeOwnFrontLeafPair — стенд, требующий листа, обязан объявлять его
+// производителя, и производитель обязан выпускать ИМЕННО тот секрет, который
+// прогонщик спросит.
+//
+// Стенд, листа не требующий, не судится: ребро одностороннее, лист там ничего
+// бы не доказал, и его отсутствие — не находка, а верное состояние.
+func judgeOwnFrontLeafPair(want string, stacks []leafStackFacts) []leafPairFinding {
+	var out []leafPairFinding
+	for _, s := range stacks {
+		if !s.leafRequired {
+			continue
+		}
+		if !s.credEnabled {
+			out = append(out, leafPairFinding{
+				stack: s.stack, kind: "удостоверения нет вовсе",
+				detail: fmt.Sprintf(
+					"ребро собственного внутреннего фронта объявлено ВЗАИМНЫМ, значит прогонщик "+
+						"потребует клиентский лист и спросит у посадки секрет %q — а выпуск листа "+
+						"этим стендом не включён, поэтому секрета не будет НИ ОДНОГО. Прогонщик "+
+						"уйдёт в ветку «предъявить нечем»: адрес не инъектируется, шаги "+
+						"собственного внутреннего фронта скажут «условие не создано» и НЕ "+
+						"исполнятся — набор при этом останется зелёным", want),
+			})
+			continue
+		}
+		if s.credName != want {
+			out = append(out, leafPairFinding{
+				stack: s.stack, kind: "имя расходится",
+				detail: fmt.Sprintf(
+					"прогонщик спросит у посадки секрет %q, а стенд объявляет выпуск секрета %q — "+
+						"половина пары ХУЖЕ отсутствия обеих: посадка выглядит настроенной, "+
+						"лист выпускается, и всё равно предъявить будет нечего", want, s.credName),
+			})
+		}
+	}
+	return out
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// СТОРОНА ПРОГОНЩИКА. Имя секрета снимается с ИСПОЛНЯЕМОЙ формы и только внутри
+// функции, которая лист предъявляет.
+
+// shellFuncOpen — открытие функции оболочки: `имя() {` в начале строки.
+var shellFuncOpen = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)\(\)\s*\{`)
+
+// presentsClientLeaf — ПРЕДЪЯВЛЕНИЕ листа: флаг прогонщика, которым лист
+// уезжает в запрос.
+//
+// ГРАНИЦА ИМЕНИ ВЫРАЖЕНА ЯВНО, а не через `\b`, и это не педантизм: `\b` стоит
+// и между `t` и `-`, поэтому продолженное имя (`--ssl-client-cert-xx`) ему
+// ОТВЕЧАЕТ. Такой флаг прогонщик не понимает — лист не уедет, — а проверка
+// осталась бы зелёной, приняв поломку за предъявление. Замер обеих форм —
+// в доказательстве инъекцией.
+var presentsClientLeaf = regexp.MustCompile(`--ssl-client-cert(?:[^A-Za-z0-9_-]|$)`)
+
+// fetchesSecret — обращение к посадке за секретом. Имя берётся отсюда, а не из
+// прозы: то же имя стоит в сообщении для читателя, и сверка по подстроке
+// осталась бы зелёной при снятом обращении.
+var fetchesSecret = regexp.MustCompile(`get\s+secret\s+([A-Za-z0-9][A-Za-z0-9.-]*)`)
+
+// leafSecretFromRunners — имя секрета, которое прогонщики спросят у посадки.
+// Возвращает имя и список файлов, в которых оно найдено.
+//
+// Популяция ВЫВОДИТСЯ обходом каталога скриптов: перечень прогонщиков,
+// выписанный здесь, устарел бы молча при заведении третьего.
+func leafSecretFromRunners(t *testing.T) (string, []string) {
+	t.Helper()
+
+	files, err := filepath.Glob(filepath.Join("scripts", "*.sh"))
+	if err != nil {
+		t.Fatalf("обход каталога скриптов: %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatalf("в scripts/ нет ни одного файла оболочки — предпосылка проверки исчезла, " +
+			"а не дерево стало чистым")
+	}
+	sort.Strings(files)
+
+	names := map[string][]string{}
+	var scanned int
+	for _, f := range files {
+		raw, err := os.ReadFile(f) // #nosec G304 -- путь выведен обходом дерева репозитория
+		if err != nil {
+			t.Fatalf("чтение %s: %v", f, err)
+		}
+		scanned++
+		for fn, body := range shellFunctions(string(raw)) {
+			if !presentsClientLeaf.MatchString(body) {
+				continue
+			}
+			hits := fetchesSecret.FindAllStringSubmatch(body, -1)
+			if len(hits) == 0 {
+				t.Fatalf("%s: функция %s ПРЕДЪЯВЛЯЕТ клиентский лист и ни разу не спрашивает "+
+					"секрет у посадки — распознаватель перестал узнавать форму обращения, "+
+					"а не прогонщик перестал брать материал", f, fn)
+			}
+			// Место называется ОДИН раз, сколько бы обращений оно ни несло:
+			// перепись считает предъявителей, а не строки.
+			for _, h := range hits {
+				at := fmt.Sprintf("%s:%s", f, fn)
+				if !contains(names[h[1]], at) {
+					names[h[1]] = append(names[h[1]], at)
+				}
+			}
+		}
+	}
+
+	if len(names) == 0 {
+		t.Fatalf("осмотрено файлов оболочки %d: ни один не предъявляет клиентский лист "+
+			"собственному фронту — предпосылка проверки исчезла (прогонщик перестал носить "+
+			"лист либо распознаватель перестал узнавать его форму)", scanned)
+	}
+	if len(names) > 1 {
+		var keys []string
+		for k := range names {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		t.Fatalf("прогонщики предъявляют РАЗНЫЕ секреты %v — у одного предмета два имени, "+
+			"и проверять пару стало не с чем; сведите их к одному", keys)
+	}
+	for k, where := range names {
+		return k, where
+	}
+	return "", nil
+}
+
+// shellFunctions — тело каждой функции оболочки файла. Закрытие — `}` в начале
+// строки: так эти скрипты и записаны, а вложенную функцию они не заводят.
+func shellFunctions(src string) map[string]string {
+	out := map[string]string{}
+	var cur string
+	var body []string
+	for _, line := range strings.Split(src, "\n") {
+		if cur == "" {
+			if m := shellFuncOpen.FindStringSubmatch(line); m != nil {
+				cur, body = m[1], nil
+			}
+			continue
+		}
+		if line == "}" {
+			out[cur] = strings.Join(body, "\n")
+			cur = ""
+			continue
+		}
+		body = append(body, line)
+	}
+	return out
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// СТОРОНА ПРОИЗВОДИТЕЛЯ. Чарт выводится ПО ИМЕНИ секрета, а не выписывается.
+
+// leafIssuerChart — ключ значений и каталог чарта, объявляющего выпуск секрета
+// с искомым именем, плюс его умолчания.
+type leafIssuerChart struct {
+	key       string
+	dir       string
+	defaults  map[string]any
+	enableKey string
+	nameKey   string
+}
+
+// issuerOfSecret — чарт, чьи значения объявляют секрет с этим именем.
+//
+// Предпосылка проверки названа и ПРОВЕРЯЕТСЯ: выпуск листа обязан быть закрыт
+// ручкой включения. Перестанет — рассуждение «ручка снята ⇒ секрета нет»
+// станет ложным, и проверка обязана об этом сказать, а не молчать.
+func issuerOfSecret(t *testing.T, secret string) leafIssuerChart {
+	t.Helper()
+
+	const enableKey, nameKey = "enable", "clientSecretName"
+
+	dirs := subchartDirs(t)
+	keys := make([]string, 0, len(dirs))
+	for k := range dirs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var hits []leafIssuerChart
+	for _, k := range keys {
+		vf := filepath.Join(dirs[k], "values.yaml")
+		if _, err := os.Stat(vf); err != nil {
+			continue // чарт без своих значений — объявлять ему нечем
+		}
+		v := readYAML(t, vf)
+		got, ok := lookup(v, "mtls", nameKey)
+		if !ok || fmt.Sprint(got) != secret {
+			continue
+		}
+		hits = append(hits, leafIssuerChart{
+			key: k, dir: dirs[k], defaults: v,
+			enableKey: enableKey, nameKey: nameKey,
+		})
+	}
+
+	if len(hits) == 0 {
+		t.Fatalf("прогонщик спросит секрет %q, а чарта, объявляющего его выпуск, в дереве НЕТ: "+
+			"осмотрено подчартов %d. Либо секрет переименовали у производителя и не у "+
+			"прогонщика, либо выпуск сняли вовсе — в обоих случаях предъявить будет нечего",
+			secret, len(keys))
+	}
+	if len(hits) > 1 {
+		var where []string
+		for _, h := range hits {
+			where = append(where, h.key)
+		}
+		t.Fatalf("секрет %q объявляют ДВА чарта %v — два места об одном предмете; "+
+			"который из них выпустит лист, решит порядок рендера, а не тот, кто правил профиль",
+			secret, where)
+	}
+
+	iss := hits[0]
+	if _, ok := lookup(iss.defaults, "mtls", iss.enableKey); !ok {
+		t.Fatalf("чарт %s объявляет секрет %q и НЕ объявляет ручку %q — предпосылка проверки "+
+			"(«выпуск закрыт ручкой включения») больше не верна, и снятие ручки перестало "+
+			"означать отсутствие секрета", iss.key, secret, iss.enableKey)
+	}
+
+	tmpl, err := filepath.Glob(filepath.Join(iss.dir, "templates", "*.yaml"))
+	if err != nil {
+		t.Fatalf("обход шаблонов %s: %v", iss.dir, err)
+	}
+	gate := regexp.MustCompile(`\.Values\.mtls\.` + regexp.QuoteMeta(iss.enableKey) + `\b`)
+	var gated bool
+	for _, f := range tmpl {
+		raw, err := os.ReadFile(f) // #nosec G304 -- путь выведен обходом дерева репозитория
+		if err != nil {
+			t.Fatalf("чтение %s: %v", f, err)
+		}
+		body := string(raw)
+		if strings.Contains(body, iss.nameKey) && gate.MatchString(body) {
+			gated = true
+			break
+		}
+	}
+	if !gated {
+		t.Fatalf("в шаблонах чарта %s выпуск секрета %q не закрыт ручкой %q — предпосылка "+
+			"проверки исчезла: снятая ручка больше не означает отсутствие материала",
+			iss.key, secret, iss.enableKey)
+	}
+	return iss
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestStacksRequiringAClientLeafDeclareItsProducer(t *testing.T) {
+	secret, where := leafSecretFromRunners(t)
+	iss := issuerOfSecret(t, secret)
+
+	// СТОРОНА ТРЕБОВАНИЯ — ровно та, по которой решает прогонщик: ручка
+	// транспорта ребра плюс ключ режима проверки клиента. Обе ВЫВЕДЕНЫ.
+	edges := guardedEdgesFromSource(t)
+	probe := scanListenerKnobsFromTree(t)
+	chartDefaults := readYAML(t, filepath.Join(probe.dir, "values.yaml"))
+	body, err := os.ReadFile(probe.template) // #nosec G304 -- путь выведен обходом дерева
+	if err != nil {
+		t.Fatalf("шаблон %s не читается (%v) — предпосылка проверки исчезла", probe.template, err)
+	}
+	for i := range edges {
+		if err := bindEdgeToTemplate(&edges[i], probe.knobs, string(body), probe.template); err != nil {
+			t.Fatalf("ребро %s не связывается с шаблоном: %v", edges[i].edge, err)
+		}
+	}
+
+	stacksTbl := deployStacks(t)
+	names := make([]string, 0, len(stacksTbl))
+	for n := range stacksTbl {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+
+	// ПЕРЕПИСЬ ДВУМЯ ВЕЛИЧИНАМИ. Одно число («стендов N») скрывает ровно тот
+	// случай, ради которого проверка заведена: стенд, переставший объявлять
+	// производителя, уменьшает ВТОРУЮ величину, не трогая первую.
+	var (
+		findings  []leafPairFinding
+		requiring int
+		declaring int
+		facts     []leafStackFacts
+	)
+
+	for _, name := range names {
+		declared := map[string]any{}
+		for _, p := range stacksTbl[name] {
+			declared = mergeValues(declared, readYAML(t, filepath.Join(umbrellaDir, p)))
+		}
+
+		f := leafStackFacts{stack: name}
+		for _, e := range edges {
+			// ТРАНСПОРТ — тем же `dig`, каким его увидит процесс: полистенная
+			// ручка, при её отсутствии общая, затем умолчания чарта.
+			transport, ok := lookup(declared, probe.key, "mtls", e.knob)
+			if !ok {
+				transport, ok = lookup(declared, probe.key, "mtls", e.fallback)
+			}
+			if !ok {
+				transport, ok = lookup(chartDefaults, "mtls", e.knob)
+			}
+			if !ok {
+				transport, _ = lookup(chartDefaults, "mtls", e.fallback)
+			}
+			up, _ := transport.(bool)
+
+			mode, ok := lookup(declared, probe.key, "mtls", e.valuesKey)
+			if !ok {
+				mode, _ = lookup(chartDefaults, "mtls", e.valuesKey)
+			}
+			if up && fmt.Sprint(mode) == e.required {
+				f.leafRequired = true
+			}
+		}
+
+		en, ok := lookup(declared, iss.key, "mtls", iss.enableKey)
+		if !ok {
+			en, _ = lookup(iss.defaults, "mtls", iss.enableKey)
+		}
+		f.credEnabled, _ = en.(bool)
+
+		nm, ok := lookup(declared, iss.key, "mtls", iss.nameKey)
+		if !ok {
+			nm, _ = lookup(iss.defaults, "mtls", iss.nameKey)
+		}
+		f.credName = fmt.Sprint(nm)
+
+		if f.leafRequired {
+			requiring++
+			if f.credEnabled && f.credName == secret {
+				declaring++
+			}
+		}
+		facts = append(facts, f)
+		findings = append(findings, judgeOwnFrontLeafPair(secret, []leafStackFacts{f})...)
+	}
+
+	t.Logf("осмотрено: стендов в таблице %d · рёбер под стражем взаимного режима %d · "+
+		"прогонщиков, предъявляющих лист %d", len(names), len(edges), len(where))
+	t.Logf("   секрет %q читается у прогонщика: %s", secret, strings.Join(where, ", "))
+	t.Logf("   производитель — чарт %q (%s), ручка выпуска %q", iss.key, iss.dir, iss.enableKey)
+	t.Logf("   стендов, требующих лист %d · из них объявляют производителя %d", requiring, declaring)
+
+	// ПУСТОЙ ПРЕДМЕТ НЕ ДАЁТ ЗЕЛЁНОГО. Ни один стенд не требует листа — значит
+	// проверять нечего, и «находок ноль» здесь неотличимо от «ноль прочитанного».
+	if requiring == 0 {
+		t.Fatalf("ни один стенд таблицы не требует клиентского листа (осмотрено %d) — "+
+			"предпосылка проверки исчезла, а не дерево стало чистым: либо ребро больше "+
+			"нигде не объявлено взаимным, либо распознаватель перестал это узнавать",
+			len(facts))
+	}
+
+	for _, f := range findings {
+		t.Errorf("%s: %s — %s", f.stack, f.kind, f.detail)
+	}
+}

@@ -50,6 +50,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/check"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/handler"
@@ -218,7 +219,7 @@ func servedMethods(t *testing.T) []string {
 	var served []string
 	for _, reg := range []func(grpc.ServiceRegistrar){
 		func(r grpc.ServiceRegistrar) {
-			registerPublic(r, registryHandler, handler.NewQuotaHandler(nil), opHandler)
+			registerPublic(r, registryHandler, handler.NewQuotaHandler(nil, quotaread.AuthorityDeclared()), opHandler)
 		},
 		func(r grpc.ServiceRegistrar) {
 			registerInternal(r, internalHandler, opHandler, stubSubscriptionServer{})

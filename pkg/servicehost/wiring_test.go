@@ -22,7 +22,7 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"sort"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -32,31 +32,43 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protodesc"
+	"google.golang.org/protobuf/reflect/protoregistry"
+	"google.golang.org/protobuf/types/descriptorpb"
+	"google.golang.org/protobuf/types/dynamicpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
-
-	// Дескрипторы vpc линкуются РАДИ ГЛОБАЛЬНОГО РЕЕСТРА: набор пообъектных типов
-	// выводится из карты прав резолвом запроса метода через реестр
-	// (`catalogderive.ObjectScopedTypes`), поэтому синтетическое имя метода дало бы
-	// ПУСТОЙ набор — и проба зеленела бы ровно на снятой провязке. Имя метода
-	// обязано быть настоящим.
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
-
-	// Дескрипторы compute — по той же причине и ради другой пробы: домен несёт
-	// единственную подписку дерева, и признак «серверный стрим» снимается с её
-	// настоящего дескриптора. Без линковки каталог домена пуст.
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 )
 
-// probedMethod — настоящий пообъектный МУТИРУЮЩИЙ метод.
+// probedMethod — пообъектный МУТИРУЮЩИЙ метод, чей дескриптор регистрирует сам
+// этот прогон (`TestMain` ниже).
 //
 // Мутация, а не чтение: пообъектное чтение звено скрывает и без всякого порта —
 // по одной лишь форме вызова (`/Get` на глагольном `v_get`), поэтому проба на нём
 // зеленела бы и со снятой провязкой (записано в `refusalSeenByCaller`).
-const probedMethod = "/kacho.cloud.vpc.v1.NetworkService/Update"
+//
+// # Почему дескриптор СВОЙ, а не доменный (задача #2532, класс 1)
+//
+// Прежде здесь стоял `/kacho.cloud.vpc.v1.NetworkService/Update`, и ради него в
+// файл линковались дескрипторы двух доменов ПЛАТФОРМЫ. Прежний комментарий
+// объяснял это так: «синтетическое имя метода дало бы ПУСТОЙ набор, имя обязано
+// быть настоящим». Половина верна, вывод — нет: набор пуст не от синтетичности
+// имени, а от ОТСУТСТВИЯ его в реестре. `catalogderive.zeroRequest` спрашивает
+// реестр о службе и о типе входного сообщения — и ему всё равно, кто их туда
+// положил.
+//
+// Проверено опытом в обе стороны: без регистрации `TestScopedTypesAreDerivedFromTheRightsMap`
+// падает («набор типов выведен не из карты либо пуст»), с регистрацией проходит.
+// То есть наблюдение сохранено целиком, а ребро фундамент → платформа снято.
+const probedMethod = "/corelib.servicehost.probe.v1.ProbeService/Mutate"
+
+// probedMethodTwo — второй мутирующий метод: пробы охвата спрашивают порт о ДВУХ
+// типах разом, и одного метода им мало.
+const probedMethodTwo = "/corelib.servicehost.probe.v1.ProbeService/MutateOther"
 
 // probedType — тип, у которого ЕСТЬ голос владельца. Форма не выписывается: её
 // берут у того, кто ею отвечает.
@@ -64,6 +76,71 @@ const probedType = "vpc_network"
 
 // probedID — идентификатор, который называет вызывающий.
 const probedID = "netABCDEFGHJKMNPQR"
+
+// TestMain регистрирует НЕЙТРАЛЬНЫЙ дескриптор, которого требует `probedMethod`.
+//
+// Регистрация идёт в ГЛОБАЛЬНЫЙ реестр — потому что его и спрашивает
+// `catalogderive.zeroRequest`, а не потому, что так дешевле. Имя пакета своё
+// (`corelib.servicehost.probe.v1`) и в дереве не встречается ни разу: столкнуться
+// с настоящим дескриптором оно не может by construction.
+func TestMain(m *testing.M) {
+	if err := registerProbeDescriptor(); err != nil {
+		fmt.Fprintf(os.Stderr, "проба не построила свой дескриптор: %v\n", err)
+		os.Exit(1)
+	}
+	os.Exit(m.Run())
+}
+
+// registerProbeDescriptor кладёт в глобальный реестр службу с одним мутирующим
+// методом и его входное сообщение.
+//
+// Аннотаций доступа дескриптор НЕ несёт намеренно: карта прав в этом файле
+// строится руками (`carrierMap`), а `zeroRequest` читает только форму — службу,
+// метод и тип входа. Аннотация здесь утверждала бы то, чего проба не спрашивает.
+func registerProbeDescriptor() error {
+	fdp := &descriptorpb.FileDescriptorProto{
+		Name:    proto.String("corelib/servicehost/probe/v1/probe.proto"),
+		Package: proto.String("corelib.servicehost.probe.v1"),
+		Syntax:  proto.String("proto3"),
+		MessageType: []*descriptorpb.DescriptorProto{{
+			Name: proto.String("MutateProbeRequest"),
+			Field: []*descriptorpb.FieldDescriptorProto{{
+				Name:   proto.String("probe_id"),
+				Number: proto.Int32(1),
+				Type:   descriptorpb.FieldDescriptorProto_TYPE_STRING.Enum(),
+				Label:  descriptorpb.FieldDescriptorProto_LABEL_OPTIONAL.Enum(),
+			}},
+		}},
+		Service: []*descriptorpb.ServiceDescriptorProto{{
+			Name: proto.String("ProbeService"),
+			Method: []*descriptorpb.MethodDescriptorProto{{
+				Name:       proto.String("Mutate"),
+				InputType:  proto.String(".corelib.servicehost.probe.v1.MutateProbeRequest"),
+				OutputType: proto.String(".corelib.servicehost.probe.v1.MutateProbeRequest"),
+			}, {
+				Name:       proto.String("MutateOther"),
+				InputType:  proto.String(".corelib.servicehost.probe.v1.MutateProbeRequest"),
+				OutputType: proto.String(".corelib.servicehost.probe.v1.MutateProbeRequest"),
+			}},
+		}},
+	}
+
+	fd, err := protodesc.NewFile(fdp, nil)
+	if err != nil {
+		return fmt.Errorf("сборка дескриптора: %w", err)
+	}
+	if err := protoregistry.GlobalFiles.RegisterFile(fd); err != nil {
+		return fmt.Errorf("регистрация файла: %w", err)
+	}
+	// Тип сообщения регистрируется ОТДЕЛЬНО: `zeroRequest` спрашивает о нём
+	// GlobalTypes, а не GlobalFiles, и без этой половины резолв метода даёт
+	// «не найдено» ровно так же, как без файла.
+	md := fd.Messages().Get(0)
+	if err := protoregistry.GlobalTypes.RegisterMessage(dynamicpb.NewMessageType(md)); err != nil {
+		return fmt.Errorf("регистрация типа сообщения: %w", err)
+	}
+	return nil
+}
 
 // carrierMap — карта прав в той форме, в какой её получает `decisionLink`.
 func carrierMap() authz.RPCMap {
@@ -515,78 +592,22 @@ func TestBothListenersReachTheHandlerOnceTheDecisionLinkIsInstalled(t *testing.T
 	}
 }
 
-// закрепляют, что отказ верно читает уже готовый признак, и молчат о том, откуда
-// он берётся. Инъекция, ради которой проба писалась: заменить
-// `md.IsStreamingServer()` на `false` — весь прогон оставался зелёным, а отказ
-// становился недостижимым на реальном пути.
+// Здесь стояла проба `TestNoDomainServesServerStreams` — СНЯТА ВМЕСТЕ С МЕСТОМ,
+// а не вместе со свойством (задача #2532, класс 2).
 //
-// ПРЕДМЕТ ПРОБЫ ИЗМЕНИЛСЯ ВМЕСТЕ С ДЕРЕВОМ. Прежде здесь брался настоящий домен
-// с настоящей подпиской — единственный серверный стрим дерева, поток журнала
-// изменений compute, — и проверялись обе стороны: у подписки признак поднят, у
-// соседнего одиночного метода того же домена нет.
+// Она утверждала свойство ДЕРЕВА ПЛАТФОРМЫ — «ни один домен не служит серверных
+// стримов», — перечисляя семь доменов поимённо и читая их дескрипторы из
+// глобального реестра. Отсюда две её слепоты, обе она называла сама: рукописный
+// перечень доменов расходится с деревом молча (и уже разошёлся однажды), а обход
+// видит только то, что слинковано в ЭТОТ тестовый бинарь.
 //
-// Стрим снят за отсутствием потребителя, и серверных стримов в дереве не осталось
-// НИ ОДНОГО — ни в одном из восьми доменов. Это ровно то, что объявляют конвенции
-// продукта («Watch RPC не существует»), и теперь дерево им соответствует целиком.
+// Свойство при этом уже держится в платформе, и держится строже:
+// `internal/repohygiene` `TestSubscriptionFormIsDeclaredOnce` читает ДЕРЕВО
+// КОНТРАКТОВ, опознаёт подписку тремя независимыми признаками (употребление
+// серверно-потокового глагола, состав сообщения, имя из закрытого семейства) и
+// потому не слепнет ни на неслинкованном домене, ни на переименовании. Его
+// способность падать доказана инъекцией
+// (`TestSubscriptionSingularity_CatchesSubscriptionByStreamingUse`).
 //
-// Поэтому проба перевёрнута и утверждает СВОЙСТВО ДЕРЕВА: стримов нет. Она и есть
-// страж возврата — появившийся стрим её уронит, и вместе с ним вернётся прежняя
-// двусторонняя проверка признака на настоящем дескрипторе.
-//
-// Граница названа честно: о том, ЧИТАЕТСЯ ли признак с дескриптора, эта проба
-// теперь не утверждает ничего — положительной стороны в дереве нет. Инъекция
-// `IsStreamingServer() → false` сегодня не краснит ни одну пробу дерева, и это
-// цена, а не недосмотр: восстановить наблюдение можно только вернув стрим.
-func TestNoDomainServesServerStreams(t *testing.T) {
-	// ДВЕ ГРАНИЦЫ, обе названы вслух, потому что обе делают пробу уже, чем её имя.
-	//
-	// Первая: обходчик аннотаций требует ЯВНЫХ имён доменов (на пустом перечне не
-	// обходит ничего), а вывести их изнутри этого пакета неоткуда — каталог прав
-	// живёт у края. Рукописный перечень умеет расходиться с деревом молча и уже
-	// разошёлся: первая редакция назвала `kacho.cloud.nlb.v1`, а домен зовётся
-	// `kacho.cloud.loadbalancer.v1`.
-	//
-	// Вторая: обход видит только дескрипторы, СЛИНКОВАННЫЕ в этот бинарь, а
-	// тестовый бинарь пакета тянет не все стабы. Поэтому домен, чей каталог пуст,
-	// считается НЕ ОСМОТРЕННЫМ, а не «без стримов»: перепись печатает оба списка
-	// раздельно, и «ноль находок» остаётся отличимо от «ноль прочитанного».
-	candidates := []string{
-		"kaname.cloud.iam.v1", "kacho.cloud.vpc.v1", "kacho.cloud.compute.v1",
-		"kacho.cloud.loadbalancer.v1", "kacho.cloud.geo.v1",
-		"kacho.cloud.storage.v1", "kacho.cloud.registry.v1",
-	}
-	var seen, unlinked []string
-	for _, d := range candidates {
-		if len(catalogOf([]string{d}).rows) == 0 {
-			unlinked = append(unlinked, d)
-			continue
-		}
-		seen = append(seen, d)
-	}
-	if len(seen) == 0 {
-		t.Fatal("ни один домен не слинкован в тестовый бинарь — проба ничего не " +
-			"осмотрела, и её молчание неотличимо от исправности")
-	}
-	cat := catalogOf(seen)
-	if len(cat.rows) == 0 {
-		t.Fatal("каталог пуст — проба ничего не осмотрела, и её молчание " +
-			"неотличимо от исправности")
-	}
-	total, streams := 0, []string{}
-	for m, row := range cat.rows {
-		total++
-		if row.ServerStreaming {
-			streams = append(streams, string(m))
-		}
-	}
-	sort.Strings(streams)
-	if len(streams) != 0 {
-		t.Errorf("серверные стримы в дереве: %v.\nКонвенции продукта объявляют, что "+
-			"Watch RPC не существует, и дерево этому соответствовало. Появившийся стрим "+
-			"обязан принести с собой: срок жизни подписки величиной у носителя (сейчас "+
-			"эта ось изъята), сужение по правам на каждую отдаваемую строку и "+
-			"двустороннюю пробу признака на настоящем дескрипторе", streams)
-	}
-	t.Logf("перепись: осмотрено доменов %d %v, методов %d, серверных стримов среди них %d; "+
-		"не слинковано в бинарь %d %v", len(seen), seen, total, len(streams), len(unlinked), unlinked)
-}
+// То есть предмет остаётся судимым, а фундамент перестаёт тянуть дескрипторы
+// платформы ради вопроса, который платформа задаёт себе сама.

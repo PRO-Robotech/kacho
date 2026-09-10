@@ -88,14 +88,47 @@ var (
 	loopRe = regexp.MustCompile(`for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+([^;\n]+)`)
 	// varRe finds ${var} / $var inside a -C argument.
 	varRe = regexp.MustCompile(`\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?`)
+	// shellOpRe finds the first shell metacharacter in a field. None of these can
+	// occur in a make target, in a flag, or in a VAR=value override, so the field
+	// carrying one ENDS the argument list: everything from it onward belongs to the
+	// shell, not to make.
+	//
+	// WHY. makeRe stops its capture at `;`, `&` and `|`, so those three never reach
+	// the splitter — but a REDIRECTION does, and a redirection is not a target at
+	// any Makefile, ever. `make -C "services/${svc}" audit-list-filter
+	// >"${logs}/${svc}.out" 2>&1` therefore yielded THREE targets: the real one plus
+	// `>"${logs}/${svc}.out` and `2>`, and the gate reported that the Makefile
+	// declares no such target — once per service the loop names. It was right about
+	// the target and wrong about the command: a step body runs under `bash -e`, where
+	// a return code taken as a CONDITION aborts the step silently, so `cmd >log 2>&1
+	// && rc=0 || rc=$?` is the form such a step is obliged to use. Only the reader
+	// was broken.
+	//
+	// The whole set is closed here at once rather than one form per incident, because
+	// a form the reader does not know is not an edge case: whatever is written in it
+	// stops being observed at all, and the gate goes on printing a verdict.
+	shellOpRe = regexp.MustCompile(`[<>|;&()]`)
 )
 
 // parseMakeArgs splits a make command's arguments into the -C directory (if any)
-// and the target names, dropping flags and VAR=value overrides.
+// and the target names, dropping flags and VAR=value overrides, and stopping at the
+// first shell operator.
 func parseMakeArgs(args string) (dir string, targets []string) {
 	fields := strings.Fields(args)
 	for i := 0; i < len(fields); i++ {
-		f := strings.Trim(fields[i], `"'`)
+		f, stop := fields[i], false
+		if loc := shellOpRe.FindStringIndex(f); loc != nil {
+			// A GLUED operator (`target>log`, `target)` closing a subshell) still
+			// leaves a real argument in front of it, and dropping the whole field
+			// would lose a command the gate is supposed to vouch for. A bare
+			// redirection (`>log`) leaves nothing, and a file-descriptor prefix
+			// (the `2` of `2>&1`) belongs to the redirection rather than to make.
+			f, stop = f[:loc[0]], true
+			if f == "" || isFileDescriptor(f) {
+				break
+			}
+		}
+		f = strings.Trim(f, `"'`)
 		switch {
 		case f == "-C" && i+1 < len(fields):
 			dir = strings.Trim(fields[i+1], `"'`)
@@ -109,8 +142,27 @@ func parseMakeArgs(args string) (dir string, targets []string) {
 		default:
 			targets = append(targets, f)
 		}
+		if stop {
+			break
+		}
 	}
 	return dir, targets
+}
+
+// isFileDescriptor reports whether s is the file-descriptor prefix of a redirection
+// — the `2` of `2>&1`. Such a prefix is part of the redirection, not a target: a
+// Makefile target named after a bare number does not occur, and one could not be
+// written glued to a redirection even if it did.
+func isFileDescriptor(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // expandLoopVars resolves ${var} in dir against `for var in …` loops in the same

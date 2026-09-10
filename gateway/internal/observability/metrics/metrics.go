@@ -40,6 +40,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
+
+	"github.com/PRO-Robotech/kacho/pkg/observability"
 )
 
 // Значения меток — ЗАКРЫТЫЙ словарь. Именованные константы, а не литералы по
@@ -90,6 +92,14 @@ type Metrics struct {
 // New собирает адаптер и регистрирует коллекторы среды выполнения и сведения о
 // сборке.
 func New(version, commit string) *Metrics {
+	// Штамп нормализуется ЗДЕСЬ, у ряда, а не у вызывающего: ряд — это то место,
+	// где величина становится ОТВЕТОМ, и он обязан быть годным при любом
+	// вызывающем. Пустая метка читается как «версии нет», умолчание объявления
+	// `dev` — как имя ветки; оба неотличимы от «величину не измеряли». Отдельное
+	// слово делает состояние наблюдаемым, и предикат у него ОДИН на пять
+	// процессов — выписанный пятью копиями, он разъехался бы молча.
+	version, commit = observability.NormalizeBuildStamp(version, commit)
+
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(
 		collectors.NewGoCollector(),

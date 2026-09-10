@@ -1,6 +1,24 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: Apache-2.0
 
+// derive_test.go — вывод карты прав из аннотаций, на НЕЙТРАЛЬНОМ дескрипторе.
+//
+// Дескриптор строит и регистрирует `probefixture_test.go`; там же разобрано,
+// почему он нейтральный, а не доменный (задача #2532, класс 1). Здесь — только
+// утверждения о полосах вывода.
+//
+// # Что изменилось вместе с дескриптором, а что нет
+//
+// Полос вывода по-прежнему шесть, и представитель каждой на месте. Изменились
+// ИМЕНА, которыми проба его называет, — и это ровно то, ради чего замена сделана:
+// имя доменного метода приносило с собой чужие решения (какой RPC кластерный,
+// какая полоса у чтения каталога), и проба краснела на их изменении, не на своём
+// предмете. Так уже было: одна из проб ниже переезжала с `List` на `Create`,
+// когда полосу чтения каталога типов дисков исправили.
+//
+// Полоса `<exempt>` осталась на настоящем контракте — `kacho.cloud.operation`
+// живёт в ФУНДАМЕНТЕ, ребра к платформе не образует, и подделывать её нечем:
+// это единственная полоса, чей представитель у фундамента свой.
 package catalogderive_test
 
 import (
@@ -11,9 +29,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
-	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
-	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+
+	// Контракт операции линкуется ЯВНО. Прежде его дескрипторы приезжали
+	// транзитивно, вместе со стабами трёх доменов платформы: каждый из них
+	// импортирует тип операции. Со снятием тех стабов транзитивный путь исчез, и
+	// полоса `<exempt>` осталась бы без своего представителя — то есть проба
+	// зеленела бы на пустой карте. Ребра к платформе импорт не образует:
+	// `pkg/api/kacho/cloud/operation` объявлен классом `corelib`.
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
 )
@@ -21,32 +45,33 @@ import (
 // TestDeriveBuildsTheEdgeCheckingEntry — обычная строка: отношение, тип объекта и
 // идентификатор, взятый из названного аннотацией поля запроса.
 func TestDeriveBuildsTheEdgeCheckingEntry(t *testing.T) {
-	m, err := catalogderive.Derive("kacho.cloud.storage.v1")
+	m, err := catalogderive.Derive(probePackage)
 	require.NoError(t, err)
 
-	e, ok := m["/kacho.cloud.storage.v1.VolumeService/Get"]
-	require.True(t, ok, "метод домена обязан попасть в выведенную карту")
+	e, ok := m[probeGet]
+	require.True(t, ok, "метод пакета обязан попасть в выведенную карту")
 	assert.Equal(t, "v_get", e.Relation)
-	assert.Equal(t, "storage.volumes.get", e.Permission)
+	assert.Equal(t, "probe.things.get", e.Permission)
 	assert.False(t, e.Public)
 	assert.False(t, e.ScopeFiltered)
 
 	require.NotNil(t, e.Extract)
-	ot, id, xerr := e.Extract(&storagev1.GetVolumeRequest{VolumeId: "vol-1"})
+	ot, id, xerr := e.Extract(newProbeRequest(t, "GetThingRequest", map[string]string{"thing_id": "thg-1"}))
 	require.NoError(t, xerr)
-	assert.Equal(t, "storage_volume", ot)
-	assert.Equal(t, "vol-1", id, "идентификатор берётся из поля, названного аннотацией")
+	assert.Equal(t, probeThingType, ot)
+	assert.Equal(t, "thg-1", id, "идентификатор берётся из поля, названного аннотацией")
 }
 
-// TestDeriveReadsTheParentScopeField — Create якорится на родителе, и поле другое.
+// TestDeriveReadsTheParentScopeField — область берётся с родительского якоря,
+// когда аннотация называет его поле.
 func TestDeriveReadsTheParentScopeField(t *testing.T) {
-	m, err := catalogderive.Derive("kacho.cloud.storage.v1")
+	m, err := catalogderive.Derive(probePackage)
 	require.NoError(t, err)
 
-	e := m["/kacho.cloud.storage.v1.VolumeService/Create"]
+	e := m[probeCreate]
 	assert.Equal(t, "editor", e.Relation)
 	require.NotNil(t, e.Extract)
-	ot, id, xerr := e.Extract(&storagev1.CreateVolumeRequest{ProjectId: "prj-7"})
+	ot, id, xerr := e.Extract(newProbeRequest(t, "CreateThingRequest", map[string]string{"holder_id": "prj-7"}))
 	require.NoError(t, xerr)
 	assert.Equal(t, "project", ot)
 	assert.Equal(t, "prj-7", id)
@@ -56,17 +81,12 @@ func TestDeriveReadsTheParentScopeField(t *testing.T) {
 // синглтоном, ровно как это делает край; иначе Check уходит на `cluster:*`,
 // который отвергается как unscoped.
 func TestDeriveSubstitutesTheClusterSingleton(t *testing.T) {
-	m, err := catalogderive.Derive("kacho.cloud.storage.v1")
+	m, err := catalogderive.Derive(probePackage)
 	require.NoError(t, err)
 
-	// Пример берётся с АДМИНСКОГО глагола каталога, а не с чтения: чтение
-	// каталога типов дисков — project-scope EXEMPT (#892), у него якоря нет
-	// by construction. Прежняя редакция стояла на `List`, и когда его полосу
-	// исправили, проба покраснела не на своём предмете: она утверждает про
-	// подстановку синглтона, а не про то, какие RPC кластерные.
-	e := m["/kacho.cloud.storage.v1.InternalDiskTypeService/Create"]
+	e := m[probeSingleton]
 	require.NotNil(t, e.Extract)
-	ot, id, xerr := e.Extract(&storagev1.CreateDiskTypeRequest{})
+	ot, id, xerr := e.Extract(newProbeRequest(t, "CreateSingletonRequest", nil))
 	require.NoError(t, xerr)
 	assert.Equal(t, "cluster", ot)
 	assert.Equal(t, "cluster_root", id)
@@ -75,10 +95,10 @@ func TestDeriveSubstitutesTheClusterSingleton(t *testing.T) {
 // TestDeriveCarriesTheScopeFilteredLane — полоса «сужает владелец» переносится
 // как ScopeFiltered, а НЕ как Public: разница в том, требуется ли субъект.
 func TestDeriveCarriesTheScopeFilteredLane(t *testing.T) {
-	m, err := catalogderive.Derive("kacho.cloud.storage.v1")
+	m, err := catalogderive.Derive(probePackage)
 	require.NoError(t, err)
 
-	e := m["/kacho.cloud.storage.v1.InternalVolumeService/ListAttachments"]
+	e := m[probeScopeFilter]
 	assert.True(t, e.ScopeFiltered, "строка scope_filtered обязана требовать субъекта")
 	assert.False(t, e.Public)
 	assert.Empty(t, e.Relation)
@@ -86,6 +106,9 @@ func TestDeriveCarriesTheScopeFilteredLane(t *testing.T) {
 }
 
 // TestDeriveCarriesTheExemptLane — `<exempt>` снимает per-RPC Check целиком.
+//
+// Единственная полоса на НАСТОЯЩЕМ контракте: `kacho.cloud.operation` — контракт
+// фундамента, и ребра к платформе он не образует.
 func TestDeriveCarriesTheExemptLane(t *testing.T) {
 	m, err := catalogderive.Derive("kacho.cloud.operation")
 	require.NoError(t, err)
@@ -100,7 +123,7 @@ func TestDeriveCarriesTheExemptLane(t *testing.T) {
 
 // TestDeriveCarriesHideExistence — форма отказа переносится с той же строки.
 func TestDeriveCarriesHideExistence(t *testing.T) {
-	m, err := catalogderive.Derive("kacho.cloud.registry.v1")
+	m, err := catalogderive.Derive(probePackage)
 	require.NoError(t, err)
 
 	var hiding int
@@ -109,18 +132,24 @@ func TestDeriveCarriesHideExistence(t *testing.T) {
 			hiding++
 		}
 	}
-	assert.NotZero(t, hiding,
-		"ни одна выведенная запись не скрывает существование — либо аннотация "+
-			"перестала читаться, либо полоса снята с домена")
+	assert.Equal(t, 1, hiding,
+		"скрывающих записей ровно одна — столько их в дескрипторе; ноль означает, "+
+			"что аннотация перестала читаться, больше одной — что дескриптор изменили, "+
+			"а проба тотальности этого не заметила")
+
+	e := m[probeHidden]
+	require.NotNil(t, e.Extract, "скрывающая строка остаётся пообъектной")
+	assert.True(t, e.HideExistence)
 }
 
 // TestDeriveRefusesAnUnlinkedPackage — предпосылка вывода: названный пакет обязан
 // быть в бинаре. Молчаливая пустая карта означала бы, что каждый RPC сервиса
 // отвечает fail-closed, и узналось бы это первым запросом.
 func TestDeriveRefusesAnUnlinkedPackage(t *testing.T) {
-	_, err := catalogderive.Derive("kacho.cloud.storage.v1", "kacho.cloud.nosuch.v1")
+	const absent = "corelib.authz.nosuch.v1"
+	_, err := catalogderive.Derive(probePackage, absent)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "kacho.cloud.nosuch.v1")
+	assert.Contains(t, err.Error(), absent)
 }
 
 // TestDeriveRefusesAnEmptyPackageList — вывод без единого пакета даёт пустую
@@ -135,12 +164,12 @@ func TestDeriveRefusesAnEmptyPackageList(t *testing.T) {
 // уехал бы в Check как `type:` и получил бы отказ, неотличимый от отказа по
 // правам.
 func TestExtractorRejectsAForeignRequest(t *testing.T) {
-	m, err := catalogderive.Derive("kacho.cloud.storage.v1")
+	m, err := catalogderive.Derive(probePackage)
 	require.NoError(t, err)
 
-	e := m["/kacho.cloud.storage.v1.VolumeService/Get"]
+	e := m[probeGet]
 	require.NotNil(t, e.Extract)
-	_, _, xerr := e.Extract(&storagev1.CreateVolumeRequest{ProjectId: "prj-1"})
+	_, _, xerr := e.Extract(newProbeRequest(t, "CreateThingRequest", map[string]string{"holder_id": "prj-1"}))
 	require.Error(t, xerr)
 }
 
@@ -148,13 +177,14 @@ func TestExtractorRejectsAForeignRequest(t *testing.T) {
 // названного пакета. Метод без записи отвечает fail-closed, и молчаливый пропуск
 // был бы отказом, о котором никто не объявлял.
 func TestDeriveIsTotalOverThePackage(t *testing.T) {
-	m, err := catalogderive.Derive("kacho.cloud.storage.v1")
+	m, err := catalogderive.Derive(probePackage)
 	require.NoError(t, err)
 
-	assert.Equal(t, catalogderive.MethodCount("kacho.cloud.storage.v1"), len(m),
+	assert.Equal(t, catalogderive.MethodCount(probePackage), len(m),
 		"в карте столько же записей, сколько методов у пакета")
+	require.NotZero(t, len(m), "карта пуста — проба тотальности ничего не осмотрела")
 	for k := range m {
-		require.True(t, strings.HasPrefix(k, "/kacho.cloud.storage.v1."),
+		require.True(t, strings.HasPrefix(k, "/"+probePackage+"."),
 			"в карту попал метод чужого пакета: %s", k)
 	}
 }
@@ -169,15 +199,15 @@ func TestDeriveIsTotalOverThePackage(t *testing.T) {
 // проверен: пустой id не образует объекта, а значит вопрос не задаётся и вызов
 // отвергается.
 func TestEmptyScopeIdIsRefusedNotAsked(t *testing.T) {
-	m, err := catalogderive.Derive("kacho.cloud.storage.v1")
+	m, err := catalogderive.Derive(probePackage)
 	require.NoError(t, err)
 
-	e := m["/kacho.cloud.storage.v1.VolumeService/Get"]
+	e := m[probeGet]
 	require.NotNil(t, e.Extract)
 
-	ot, id, xerr := e.Extract(&storagev1.GetVolumeRequest{}) // поле не заполнено
+	ot, id, xerr := e.Extract(newProbeRequest(t, "GetThingRequest", nil)) // поле не заполнено
 	require.NoError(t, xerr)
-	require.Equal(t, "storage_volume", ot)
+	require.Equal(t, probeThingType, ot)
 	require.Empty(t, id)
 
 	_, ferr := authz.FormatObject(ot, id)
@@ -187,38 +217,39 @@ func TestEmptyScopeIdIsRefusedNotAsked(t *testing.T) {
 // TestDeriveIsCompatibleWithTheInterceptorLookup — ключ выведенной карты обязан
 // совпадать с тем, чем grpc-go зовёт метод.
 func TestDeriveIsCompatibleWithTheInterceptorLookup(t *testing.T) {
-	m, err := catalogderive.Derive("kacho.cloud.storage.v1")
+	m, err := catalogderive.Derive(probePackage)
 	require.NoError(t, err)
 
 	var rm authz.RPCMap = m
-	_, ok := rm.Lookup("/kacho.cloud.storage.v1.VolumeService/Delete")
+	_, ok := rm.Lookup(probeDelete)
 	assert.True(t, ok)
 }
 
 // TestDeriveResolvesADottedScopePath — область, лежащая внутри вложенного тела
-// запроса, читается по составному пути. Единственный такой сайт сегодня —
-// `InternalAddressService.CreateOwnedAddress`, где внутренний путь намеренно
-// переиспользует ЦЕЛИКОМ тело публичного создания, поэтому проект запроса лежит
-// на уровень глубже.
+// запроса, читается по составному пути.
+//
+// Прежде проба стояла на `vpc InternalAddressService.CreateOwnedAddress` —
+// единственном таком сайте дерева, где внутренний путь намеренно переиспользует
+// ЦЕЛИКОМ тело публичного создания. Форма сохранена дословно: вложенное сообщение
+// того же типа, что и тело обычного создания, и область лежит на уровень глубже.
 func TestDeriveResolvesADottedScopePath(t *testing.T) {
-	m, err := catalogderive.Derive("kacho.cloud.vpc.v1")
+	m, err := catalogderive.Derive(probePackage)
 	require.NoError(t, err)
 
-	e, ok := m["/kacho.cloud.vpc.v1.InternalAddressService/CreateOwnedAddress"]
+	e, ok := m[probeDottedCreate]
 	require.True(t, ok)
 	assert.Equal(t, "editor", e.Relation)
 	require.NotNil(t, e.Extract)
 
-	ot, id, xerr := e.Extract(&vpcv1.CreateOwnedAddressRequest{
-		Address: &vpcv1.CreateAddressRequest{ProjectId: "prj-42"},
-	})
+	ot, id, xerr := e.Extract(newProbeRequest(t, "CreateOwnedThingRequest",
+		map[string]string{"inner.holder_id": "prj-42"}))
 	require.NoError(t, xerr)
 	assert.Equal(t, "project", ot)
 	assert.Equal(t, "prj-42", id)
 
 	// Пустое вложенное сообщение не «подставляет» ничего: id пуст, объект не
 	// образуется, вызов отвергается.
-	_, id2, xerr2 := e.Extract(&vpcv1.CreateOwnedAddressRequest{})
+	_, id2, xerr2 := e.Extract(newProbeRequest(t, "CreateOwnedThingRequest", nil))
 	require.NoError(t, xerr2)
 	assert.Empty(t, id2)
 }

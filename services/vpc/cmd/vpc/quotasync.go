@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/quota"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/clients"
@@ -37,6 +38,15 @@ type quotaAuthorityEdge struct {
 	// и то же — и первый же вызывающий, закрывший не тем, оставил бы соединение
 	// открытым молча.
 	Limits quota.LimitResolver
+	// ReadPosture — как ЭТА установка объявила домен величин, для ВИТРИНЫ.
+	//
+	// Отдельно от полосы, а не выведено из её отсутствия (#2515). Полоса
+	// собирается только под развёрнутый домен, поэтому её отсутствие означает
+	// РАЗОМ два состояния: «провязать забыли» и «оператор объявил, что домена
+	// величин нет». Следствия у них для арендатора противоположные, и пока
+	// различия не было, витрина отвечала на законную посадку так же, как на
+	// дефект сборки.
+	ReadPosture quotaread.Posture
 }
 
 // buildQuotaAuthorityEdge разрешает объявление, при надобности дозванивается и
@@ -102,6 +112,9 @@ func buildQuotaAuthorityEdge(
 		return quotaAuthorityEdge{}, noop, fmt.Errorf("start quota limit sync: %w", serr)
 	}
 
-	return quotaAuthorityEdge{Limits: limits},
+	return quotaAuthorityEdge{
+			Limits:      limits,
+			ReadPosture: corequota.ReadPosture(authority, "vpc"),
+		},
 		func() { stopSync(); closeConn() }, nil
 }

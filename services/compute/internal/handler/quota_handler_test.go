@@ -80,7 +80,7 @@ func quotaFixture(t *testing.T) (*QuotaHandler, *quotaRowsStub, *quotaLimitsStub
 		},
 	}}
 	limits := &quotaLimitsStub{}
-	return NewQuotaHandler(quotaband.NewGuard(rows, limits, quotaAccountsStub{}, "compute")), rows, limits
+	return NewQuotaHandler(quotaband.NewGuard(rows, limits, quotaAccountsStub{}, "compute"), quotaread.AuthorityDeclared()), rows, limits
 }
 
 // Свои пределы и своё потребление видны — и в том виде, в каком их назвал учёт.
@@ -151,7 +151,7 @@ func TestQuotaHandler_ListRefusesAnUnanswerableQuestionByName(t *testing.T) {
 // действительности: место по-прежнему занимает триггер, и создание будет
 // отвергнуто.
 func TestQuotaHandler_ListWithNoBandRefusesInsteadOfClaimingNoQuotas(t *testing.T) {
-	h := NewQuotaHandler(nil)
+	h := NewQuotaHandler(nil, quotaread.AuthorityDeclared())
 
 	_, err := h.List(context.Background(), &computev1.ListQuotasRequest{ProjectId: "prj-mine"})
 	require.Error(t, err)

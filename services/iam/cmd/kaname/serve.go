@@ -143,6 +143,21 @@ func runServe(cfg config.Config) error {
 		return err
 	}
 
+	// ПРОЕКЦИЯ СОБСТВЕННЫХ ПОТОЛКОВ — до любого слушателя (приёмка `KAN-QUOTA-1`,
+	// `П25`; довод и цена — own_ceilings_apply.go).
+	//
+	// Величину объявляет посадка, а списывает единственный атомарный оператор в
+	// базе: триггер не читает настройку процесса ни при каком построении, поэтому
+	// объявленное обязано доехать до схемы. Это единственный её перевозчик.
+	//
+	// Стоит ЗДЕСЬ, а не ниже: первый же принятый запрос вправе создать ресурс,
+	// чей потолок эта проекция и объявляет. Слушатель, поднятый раньше, открыл бы
+	// окно, в котором действует величина ПРЕДЫДУЩЕГО пуска, а журнал уже сообщил
+	// новую.
+	if err := projectOwnCeilings(ctx, logger, kanamepg.NewOwnCeilingRepo(pool), cfg.OwnCeilings); err != nil {
+		return err
+	}
+
 	// slave-pool wiring (read-replica). Если slave-url
 	// настроен и отличается от master URL — отдельный pgxpool для read-TX'ов;
 	// иначе slavePool = nil и kanamepg.New() сделает fallback на master.
@@ -199,6 +214,14 @@ func runServe(cfg config.Config) error {
 	// listeners) and the authz-Check decorator. Clean Architecture: prometheus
 	// is imported only here (composition root) + the metrics adapter package.
 	metricsReg := metrics.NewRegistry()
+
+	// ЧТО ЭТОТ ДВОИЧНЫЙ ФАЙЛ ГОВОРИТ О СЕБЕ — первым рядом витрины, до всего
+	// прочего. Первый вопрос дежурного — «какая версия у меня работает», и служба
+	// поставляется ОТДЕЛЬНО от платформы, где такие вопросы закрывает чужой
+	// инвентарь. Величины приходят со штампа сборки (buildstamp.go), а не с ручки
+	// профиля; непроставленный штамп называет себя словом, а не притворяется
+	// версией.
+	metricsReg.RegisterBuildInfo(buildVersion, buildRevision)
 
 	// Состояние пулов соединений. До этой строки насыщение пула не наблюдалось
 	// ничем: снаружи «запрос ждал свободного соединения» и «запрос сам по себе
@@ -543,19 +566,8 @@ func runServe(cfg config.Config) error {
 		tls:  internalRESTTLSConfig,
 	}
 
-	// M1 — startup invariant: production mode MUST run the cluster-internal
-	// listener (:9091) under mTLS RequireAndVerifyClientCert. Without it the
-	// per-RPC caller policy has no verified module SAN to enforce — anyone
-	// reaching :9091 would bypass authN/authZ. No silent insecure downgrade in
-	// production. (Mirror this requirement on the public listener too —
-	// tenant-facing :9090 must not run plaintext in prod.)
-	if productionMode {
-		if !mtlsCfg.InternalServerMTLS.Enable {
-			return fmt.Errorf("production mode requires internal listener mTLS (RequireAndVerifyClientCert); refusing to start with insecure :9091")
-		}
-		if !mtlsCfg.PublicServerMTLS.Enable {
-			return fmt.Errorf("production mode requires public listener mTLS (TLS); refusing to start with insecure :9090")
-		}
+	if err := requireGRPCListenerMTLS(productionMode, mtlsCfg); err != nil {
+		return err
 	}
 	if err := requireRegistryTokenTLS(productionMode,
 		cfg.APIServer.RegistryToken.ListenAddress(), mtlsCfg); err != nil {
@@ -625,6 +637,12 @@ func runServe(cfg config.Config) error {
 		cfg.APIServer.RESTListenAddress(),
 		cfg.APIServer.InternalRESTListenAddress(),
 	); err != nil {
+		return err
+	}
+	// ПАРА «адрес + удостоверение» административного контура. Половина пары
+	// хуже отсутствия обеих: она выглядит настроенной, отказывая на каждой
+	// административной операции фасада (задача #2471).
+	if err := requireProviderAdminCredentialPair(cfg.AuthN); err != nil {
 		return err
 	}
 
@@ -1324,12 +1342,14 @@ func runServe(cfg config.Config) error {
 			// публичный материал, здесь — предъявленный токен. Слушатель,
 			// который сертификата даже не запрашивает, оставил бы авторитету
 			// нечем отказать, поэтому такой стенд не поднимается вовсе.
-			if !mtlsCfg.JWKSProxyVerifiesCaller() {
-				return fmt.Errorf(
-					"авторитет отзыва не может быть выставлен на слушателе, который не запрашивает " +
-						"клиентский сертификат: задайте KANAME_JWKSPROXY_SERVER_MTLS_CLIENTAUTHMODE=optional-mutual " +
-						"(набор проверочных ключей при этом остаётся доступен без сертификата) " +
-						"либо выключите свою чеканку authn.token-signing.enabled")
+			// УСЛОВИЕ ЖИВЁТ ИМЕНОВАННЫМ СТРАЖЕМ, а не встроенной ветвью.
+			// Встроенной оно и было — и потому не судилось пробой боевого
+			// профиля: та зовёт стражей ПОИМЁННО, и обещание её шапки
+			// «появится у подъёма новое условие — профиль покраснеет»
+			// не исполнялось для условия без имени (задача #2476).
+			if err := requireRevocationAuthorityCallerAuth(
+				signingKeystore != nil, jwksProxyAddr, mtlsCfg); err != nil {
+				return err
 			}
 			introspect := tokenintrospecthttp.NewHandler(tokenintrospecthttp.Config{
 				Issuer:            cfg.AuthN.TokenSigning.Issuer,
@@ -2076,6 +2096,42 @@ func publicIdentityStream(cfg config.Config, presented *presentedcred.Reader) []
 		return pair
 	}
 	return []grpc.StreamServerInterceptor{presented.StreamOver(pair)}
+}
+
+// requireGRPCListenerMTLS — оба gRPC-слушателя обязаны идти под TLS в боевом
+// режиме.
+//
+// M1 — startup invariant: production mode MUST run the cluster-internal listener
+// (:9091) under mTLS RequireAndVerifyClientCert. Without it the per-RPC caller
+// policy has no verified module SAN to enforce — anyone reaching :9091 would
+// bypass authN/authZ. No silent insecure downgrade in production. The
+// tenant-facing :9090 carries the same requirement.
+//
+// # ПОЧЕМУ ИМЕНОВАННЫЙ СТРАЖ, А НЕ ВСТРОЕННАЯ ВЕТВЬ (задача #2514)
+//
+// Условие жило встроенной ветвью в теле подъёма, и проба боевого профиля
+// повторяла его СВОИМИ утверждениями — то есть два места об одном предмете,
+// расходящиеся молча: подъём обзаводится новым условием, а проба о нём не знает
+// и остаётся зелёной. Ровно этот класс закрыт для соседей тем, что проба зовёт
+// САМИ стражи; безымянное условие позвать нельзя by construction, поэтому оно
+// оставалось исключением, о котором никто не решал.
+//
+// Имя здесь — не косметика: гейт `TestEveryNamedStartupGuardIsJudgedByTheProductionProfile`
+// требует, чтобы КАЖДЫЙ именованный страж судился пробой боевого профиля, и
+// вынесение условия под имя вводит его в область этого гейта.
+func requireGRPCListenerMTLS(productionMode bool, mtlsCfg config.MTLSConfig) error {
+	if !productionMode {
+		return nil
+	}
+	if !mtlsCfg.InternalServerMTLS.Enable {
+		return fmt.Errorf("production mode requires internal listener mTLS " +
+			"(RequireAndVerifyClientCert); refusing to start with insecure :9091")
+	}
+	if !mtlsCfg.PublicServerMTLS.Enable {
+		return fmt.Errorf("production mode requires public listener mTLS (TLS); " +
+			"refusing to start with insecure :9090")
+	}
+	return nil
 }
 
 // requireRegistryTokenTLS — слушатель docker-token (`/iam/token`, :9096) в

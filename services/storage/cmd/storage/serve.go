@@ -399,7 +399,21 @@ func runServe(cfg config.Config) error {
 		imageUC.WithQuota(quotaEdge.Guard)
 		// Чтение квот арендатором — та же полоса, что и ранний отказ: у чтения и
 		// у полосы ровно два источника, и они одни и те же.
-		quotaHandler = handler.NewQuotaHandler(quotaEdge.Guard)
+		quotaHandler = handler.NewQuotaHandler(quotaEdge.Guard, quotaEdge.ReadPosture)
+	} else if quotaEdge.ReadPosture.AuthorityIsAbsent() {
+		// Обработчик выставляется и на ОБЪЯВЛЕННОМ ОТСУТСТВИИ домена величин (#2515).
+		//
+		// Прежде он выставлялся только вместе с полосой, и незарегистрированный
+		// метод отвечал `Unimplemented` — «такой возможности в этой сборке нет».
+		// На посадке, где домен величин объявлен отсутствующим, это неправда
+		// дважды: метод существует, а отсутствует не он, а потолок. Арендатор
+		// читал витрину как сбой платформы — ровно то состояние, ради устранения
+		// которого витрина и заведена.
+		//
+		// Полосы здесь нет и быть не может (спрашивать величины не у кого),
+		// поэтому обработчик несёт ПОСАДКУ: общее тело отвечает названным отказом
+		// с машинным признаком, а не пустым набором, который контракт запрещает.
+		quotaHandler = handler.NewQuotaHandler(nil, quotaEdge.ReadPosture)
 	}
 
 	// ── FGA owner-tuple register-drainer + sync-registrar (SEC-D, анти-BOLA) ──

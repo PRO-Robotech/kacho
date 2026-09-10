@@ -17,6 +17,16 @@ package repohygiene
 // есть — все полосы на своих числах) · инъекция полосы (растёт ТОЛЬКО она) ·
 // инъекция законного близнеца (не растёт НИЧТО). Без третьего молчание
 // держателя на своём имени продукта неотличимо от молчания мёртвой проверки.
+//
+// Полосой инъекция НЕ исчерпывается: у полосы бывает несколько законных ФОРМ
+// записи одного предмета, и форма, которой распознаватель не знает, даёт не
+// красное и не зелёное, а МОЛЧАНИЕ — записанное ею уезжает на чужую полосу и
+// растёт там остатком, которого нет. Поэтому граница функции фундамента
+// доказывается ПОФОРМЕННО (перечень выведен замером по дереву), и к каждой форме
+// приложен законный близнец: тот же обёрточный узор на токене, функцией
+// фундамента НЕ являющемся, обязан остаться на своей полосе. Без близнеца
+// охрана, написанная как «срезать приставку и согласиться», была бы зелёной по
+// всем формам сразу и вычла бы из остатка его собственный предмет.
 
 import (
 	"fmt"
@@ -127,7 +137,27 @@ func nameResidueBorderTwins() map[string]struct{ Path, Body string } {
 			"services/iam/internal/apps/kaname/api/probe/tracker_ref.go",
 			"// Разбор класса — задача kacho" + trackerRefMark + "2260.\n",
 		},
+		borderFoundationSeries: {
+			"services/iam/docs/content/advanced/probe-observability.mdx",
+			"| `" + nameResidueProbeSeries + "` | counter | доля неуспешных ответов |\n",
+		},
 	}
+}
+
+// nameResidueProbeSeries — имя ряда СИНТЕТИЧЕСКОГО мира.
+//
+// Своё, а не настоящее: перечень, поданный этому миру, содержит ровно его, поэтому
+// ни один другой предмет мира он не отбирает. Настоящее имя ряда сделало бы
+// дельту миров двухфактной — прибавился бы и файл, и совпадение с чужим предметом.
+const nameResidueProbeSeries = "kacho_probe_series_total"
+
+// nameResidueSeriesRoster — перечень рядов, которым мир снабжается.
+//
+// Полоса Б8 узнаёт предмет НЕ из вхождения, а из перечня; мир без перечня её
+// правило исполнить не может, и «полоса молчит» было бы неотличимо от «правило
+// мертво».
+func nameResidueSeriesRoster() residueWorld {
+	return residueWorld{FoundationSeries: map[string]bool{nameResidueProbeSeries: true}}
 }
 
 // trackerRefMark — знак номера, отделённый от литерала.
@@ -169,7 +199,8 @@ func nameResidueWorld() map[string][]byte {
 // nameResidueLanes — вердикт держателя на заданном мире: полоса → вхождений.
 func nameResidueLanes(t *testing.T, world map[string][]byte) map[string]int {
 	t.Helper()
-	_, ledgerFindings, census, err := FindKanameNameResidue(world, nil, nil)
+	_, ledgerFindings, census, err := FindKanameNameResidue(world, nil, nil,
+		nameResidueSeriesRoster())
 	if err != nil {
 		t.Fatalf("разбор синтетического мира: %v", err)
 	}
@@ -274,6 +305,110 @@ func nameResidueSiblingPath(path string) string {
 	return path[:dot] + "-injected" + path[dot:]
 }
 
+// nameResidueFoundationFunctionForms — ФОРМЫ, которыми это дерево записывает имя
+// функции общего фундамента, и по одной инъекции на каждую.
+//
+// Перечень выведен ЗАМЕРОМ по дереву, а не придуман: сегменты, внутри которых
+// стоит имя из закрытого перечня функций, встречаются ровно тремя обёртками —
+// голой, квалифицированной схемой службы и с терминальной пунктуацией прозы.
+// Форма, о которой распознаватель не знает, даёт не красное и не зелёное, а
+// МОЛЧАНИЕ: всё, записанное ею, уезжает с границы на полосу клейм и растёт там
+// как остаток, которого нет.
+func nameResidueFoundationFunctionForms() map[string]string {
+	const fn = "kacho_quota_refuse"
+	return map[string]string{
+		"голая": fn,
+		"квалифицированная схемой": kanameSchemaQualifier + fn,
+		"с пунктуацией прозы":      fn + ":",
+	}
+}
+
+// nameResidueFoundationFormPath — путь инъекции формы: тот же каталог, что у
+// близнеца границы, потому что часть полос читается только внутри своего
+// каталога, и инъекция «куда попало» измеряла бы место, а не форму.
+const nameResidueFoundationFormPath = "services/iam/internal/repo/kaname/pg/probe_quota_form.go"
+
+// TestKanameNameResidueBorderReadsEveryFormOfTheFoundationFunction — граница Б5
+// узнаёт имя функции фундамента в КАЖДОЙ форме, которой дерево его записывает.
+//
+// Инъекция меняет РОВНО ОДИН факт: у мира прибавляется одно вхождение своей
+// формы. Поднять она обязана ТОЛЬКО границу — вхождение, уехавшее на полосу
+// клейм, означает, что распознаватель этой формы не читает.
+func TestKanameNameResidueBorderReadsEveryFormOfTheFoundationFunction(t *testing.T) {
+	t.Parallel()
+	base := nameResidueLanes(t, nameResidueWorld())
+
+	for name, form := range nameResidueFoundationFunctionForms() {
+		t.Run(name, func(t *testing.T) {
+			world := nameResidueWorld()
+			world[nameResidueFoundationFormPath] = []byte("const fn = \"" + form + "\"\n")
+			got := nameResidueLanes(t, world)
+
+			if got[borderFoundationFunction] != base[borderFoundationFunction]+1 {
+				t.Fatalf("форма %s (%q) НЕ признана границей %q: было %d, стало %d — "+
+					"распознаватель этой формы не читает, и всё, записанное ею, "+
+					"молча уезжает на чужую полосу",
+					name, form, borderFoundationFunction,
+					base[borderFoundationFunction], got[borderFoundationFunction])
+			}
+			for other := range kanameLanes {
+				if other == borderFoundationFunction {
+					continue
+				}
+				if got[other] != base[other] {
+					t.Errorf("форма %s (%q) сдвинула ЧУЖУЮ полосу %q (%d → %d) — "+
+						"упоминание функции фундамента учтено остатком, которым оно не является",
+						name, form, other, base[other], got[other])
+				}
+			}
+		})
+	}
+}
+
+// TestKanameNameResidueFoundationBorderDoesNotSwallowItsNeighbourhood — ЗАКОННЫЙ
+// близнец расширенной границы: тот же обёрточный узор на токене, функцией
+// фундамента НЕ являющемся, обязан остаться клеймом.
+//
+// Без этой пробы граница, написанная как «срезать приставку и пунктуацию, а
+// дальше согласиться», была бы зелёной по всем формам сразу и вычла бы из
+// остатка ровно тот предмет, ради которого ведомость заведена. Здесь проверяется
+// ОХРАНА, а не словарь: перечень функций закрыт, и всё, чего в нём нет, обязано
+// остаться на своей полосе в любой обёртке.
+func TestKanameNameResidueFoundationBorderDoesNotSwallowItsNeighbourhood(t *testing.T) {
+	t.Parallel()
+	base := nameResidueLanes(t, nameResidueWorld())
+
+	// Клеймо удостоверения: та же приставка платформы, те же слова через
+	// подчёркивание, тот же набор обёрток — и в перечне функций его НЕТ.
+	const claim = "kacho_principal_type"
+	twins := map[string]string{
+		"голая": claim,
+		"квалифицированная схемой": kanameSchemaQualifier + claim,
+		"с пунктуацией прозы":      claim + ":",
+	}
+
+	for name, twin := range twins {
+		t.Run(name, func(t *testing.T) {
+			world := nameResidueWorld()
+			world[nameResidueFoundationFormPath] = []byte("const claim = \"" + twin + "\"\n")
+			got := nameResidueLanes(t, world)
+
+			if got[borderFoundationFunction] != base[borderFoundationFunction] {
+				t.Fatalf("близнец %s (%q) ПРИЗНАН границей %q (%d → %d) — охрана шире "+
+					"предмета: она вычла из остатка то, что функцией фундамента не является",
+					name, twin, borderFoundationFunction,
+					base[borderFoundationFunction], got[borderFoundationFunction])
+			}
+			if got[laneClaimAssertion] != base[laneClaimAssertion]+1 {
+				t.Fatalf("близнец %s (%q) не поднял полосу %q: было %d, стало %d — "+
+					"обёртка вывела клеймо из наблюдения",
+					name, twin, laneClaimAssertion,
+					base[laneClaimAssertion], got[laneClaimAssertion])
+			}
+		})
+	}
+}
+
 // TestKanameNameResidueOwnProductNameStaysSilent — прогон третий из трёх:
 // законный близнец, где продукт называет себя СВОИМ именем, не двигает ничего.
 //
@@ -318,7 +453,7 @@ func TestKanameNameResidueReadsTheMacronFormAnAsciiPredicateMisses(t *testing.T)
 	}
 
 	base := nameResidueWorld()
-	_, _, censusBase, err := FindKanameNameResidue(base, nil, nil)
+	_, _, censusBase, err := FindKanameNameResidue(base, nil, nil, nameResidueSeriesRoster())
 	if err != nil {
 		t.Fatalf("разбор: %v", err)
 	}
@@ -329,7 +464,7 @@ func TestKanameNameResidueReadsTheMacronFormAnAsciiPredicateMisses(t *testing.T)
 	} {
 		world := nameResidueWorld()
 		world["services/iam/docs/content/probe-form.mdx"] = []byte(body)
-		_, _, census, err := FindKanameNameResidue(world, nil, nil)
+		_, _, census, err := FindKanameNameResidue(world, nil, nil, nameResidueSeriesRoster())
 		if err != nil {
 			t.Fatalf("%s: разбор: %v", name, err)
 		}
@@ -341,7 +476,7 @@ func TestKanameNameResidueReadsTheMacronFormAnAsciiPredicateMisses(t *testing.T)
 
 	world := nameResidueWorld()
 	world["services/iam/docs/content/probe-form.mdx"] = []byte(macronOnly)
-	_, _, census, err := FindKanameNameResidue(world, nil, nil)
+	_, _, census, err := FindKanameNameResidue(world, nil, nil, nameResidueSeriesRoster())
 	if err != nil {
 		t.Fatalf("разбор: %v", err)
 	}
@@ -404,7 +539,7 @@ func TestKanameNameResidueStayLedgerExpiresWithItsSubject(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, ledgerFindings, census, err := FindKanameNameResidue(nameResidueWorld(), tc.stay, nil)
+			_, ledgerFindings, census, err := FindKanameNameResidue(nameResidueWorld(), tc.stay, nil, nameResidueSeriesRoster())
 			if err != nil {
 				t.Fatalf("разбор: %v", err)
 			}
@@ -453,7 +588,7 @@ func TestKanameNameResidueDebtLedgerIsExactInBothDirections(t *testing.T) {
 	}}
 
 	t.Run("сошлось — молчит", func(t *testing.T) {
-		_, ledgerFindings, _, err := FindKanameNameResidue(world, nil, exact)
+		_, ledgerFindings, _, err := FindKanameNameResidue(world, nil, exact, nameResidueSeriesRoster())
 		if err != nil {
 			t.Fatalf("разбор: %v", err)
 		}
@@ -468,7 +603,7 @@ func TestKanameNameResidueDebtLedgerIsExactInBothDirections(t *testing.T) {
 		grown := nameResidueWorld()
 		claim := nameResidueSubjects()[laneClaimAssertion]
 		grown[nameResidueSiblingPath(claim.Path)] = []byte(claim.Body)
-		_, ledgerFindings, _, err := FindKanameNameResidue(grown, nil, exact)
+		_, ledgerFindings, _, err := FindKanameNameResidue(grown, nil, exact, nameResidueSeriesRoster())
 		if err != nil {
 			t.Fatalf("разбор: %v", err)
 		}
@@ -482,7 +617,7 @@ func TestKanameNameResidueDebtLedgerIsExactInBothDirections(t *testing.T) {
 			Lane: laneClaimAssertion, Occurrences: base[laneClaimAssertion] + 5, Files: 1,
 			Owner: "проба",
 		}}
-		_, ledgerFindings, _, err := FindKanameNameResidue(world, nil, stale)
+		_, ledgerFindings, _, err := FindKanameNameResidue(world, nil, stale, nameResidueSeriesRoster())
 		if err != nil {
 			t.Fatalf("разбор: %v", err)
 		}
@@ -492,7 +627,7 @@ func TestKanameNameResidueDebtLedgerIsExactInBothDirections(t *testing.T) {
 	})
 
 	t.Run("полоса с остатком без строки — находка", func(t *testing.T) {
-		_, ledgerFindings, _, err := FindKanameNameResidue(world, nil, exact)
+		_, ledgerFindings, _, err := FindKanameNameResidue(world, nil, exact, nameResidueSeriesRoster())
 		if err != nil {
 			t.Fatalf("разбор: %v", err)
 		}
@@ -577,7 +712,7 @@ func TestKanameNameResidueRefusesOnBeingBeyondItsPredicate(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, _, err := FindKanameNameResidue(tc.world, tc.stay, tc.debt)
+			_, _, _, err := FindKanameNameResidue(tc.world, tc.stay, tc.debt, residueWorld{})
 			if err == nil {
 				t.Fatalf("держатель промолчал там, где вердикт беспредметен; ждали отказ про %q", tc.want)
 			}
@@ -697,4 +832,92 @@ func TestKanameNameResidueTrackerReferenceIsToldByForm(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestKanameNameResidueReadsChartGlobalFormsItUsedToMiss — распознаватель читает
+// ДВЕ формы ключа глобального блока значений, которых прежде не читал, и обе
+// признаёт полосой ключей чарта, а не слепой зоной.
+//
+// ПОЧЕМУ ОТДЕЛЬНАЯ ПРОБА, А НЕ ЕЩЁ ОДИН ПРЕДМЕТ В ОБЩЕМ МИРЕ. Мир инъекции
+// несёт РОВНО ОДНО вхождение на полосу, и контроль на этом держится; второй
+// предмет полосы ключей чарта сломал бы его. Здесь мир общий, а внесённая форма
+// проверяется по своему.
+//
+// ЧЕТЫРЕ ПРОГОНА, И ТРЕТИЙ С ЧЕТВЁРТЫМ НЕСУЩИЕ:
+//
+//  1. контроль — мир как есть;
+//  2. инъекция каждой формы — растёт ТОЛЬКО полоса ключей чарта;
+//  3. законный близнец ВНЕ ЧАРТА — та же форма, и она НЕ ключ чарта: без этого
+//     правило судило бы форму строки, а не место, где она что-то значит;
+//  4. законный близнец СВОИМ ИМЕНЕМ — не двигает ничего.
+//
+// Третий прогон и есть доказательство того, что правило не бланкетное: обе
+// формы вне чарта обязаны уйти в слепую зону, потому что ключа значений там нет.
+func TestKanameNameResidueReadsChartGlobalFormsItUsedToMiss(t *testing.T) {
+	t.Parallel()
+	base := nameResidueLanes(t, nameResidueWorld())
+
+	forms := map[string]string{
+		"защитные скобки": "" +
+			"{{- $src := (((.Values.global).kacho).registry).serviceAud | default \"\" -}}\n",
+		"ключ карты значений": "global:\n  kacho:\n    identity:\n      domain: example\n",
+	}
+	const inChart = "deploy/helm/umbrella/charts/kaname/templates/probe-globalform.yaml"
+	const outsideChart = "services/iam/deploy/probe-globalform.yaml"
+
+	for name, body := range forms {
+		t.Run(name, func(t *testing.T) {
+			world := nameResidueWorld()
+			world[inChart] = []byte(body)
+			got := nameResidueLanes(t, world)
+
+			if got[laneChartKnob] != base[laneChartKnob]+1 {
+				t.Fatalf("форма %q не признана ключом чарта: полоса %q %d → %d. "+
+					"Пока форма не читается, по ней «ноль находок» означает "+
+					"«ноль прочитанного»", name, laneChartKnob,
+					base[laneChartKnob], got[laneChartKnob])
+			}
+			for other := range kanameLanes {
+				if other == laneChartKnob {
+					continue
+				}
+				if got[other] != base[other] {
+					t.Errorf("инъекция формы %q сдвинула ЧУЖУЮ полосу %q (%d → %d) — "+
+						"красное пришло бы от соседа", name, other, base[other], got[other])
+				}
+			}
+		})
+
+		t.Run(name+" вне чарта", func(t *testing.T) {
+			world := nameResidueWorld()
+			world[outsideChart] = []byte(body)
+			got := nameResidueLanes(t, world)
+
+			if got[laneChartKnob] != base[laneChartKnob] {
+				t.Errorf("та же форма ВНЕ чарта признана ключом чарта (%d → %d) — "+
+					"правило судит форму строки вместо места, где ключ значений "+
+					"вообще существует", base[laneChartKnob], got[laneChartKnob])
+			}
+			if got[borderUnknownForm] != base[borderUnknownForm]+1 {
+				t.Errorf("форма вне чарта не попала в слепую зону (%d → %d) — "+
+					"вхождение исчезло из переписи, а не было названо",
+					base[borderUnknownForm], got[borderUnknownForm])
+			}
+		})
+	}
+
+	t.Run("своим именем", func(t *testing.T) {
+		world := nameResidueWorld()
+		world[inChart] = []byte("" +
+			"{{- $src := (((.Values.global).kaname).registry).serviceAud -}}\n" +
+			"global:\n  kaname:\n    identity:\n      domain: example\n")
+		got := nameResidueLanes(t, world)
+		for lane := range kanameLanes {
+			if got[lane] != base[lane] {
+				t.Errorf("те же формы СО СВОИМ именем сдвинули полосу %q (%d → %d) — "+
+					"правило ловит форму записи, а не имя платформы",
+					lane, base[lane], got[lane])
+			}
+		}
+	})
 }

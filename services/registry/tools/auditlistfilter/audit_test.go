@@ -31,7 +31,8 @@ type RegistryHandler struct {
 }
 
 type QuotaHandler struct {
-	band *quotaband.Guard
+	band    *quotaband.Guard
+	posture quotaread.Posture
 }
 
 // Чтение квот проекта: строка квоты — свойство проекта, а не объект с
@@ -39,7 +40,7 @@ type QuotaHandler struct {
 // присутствует в КАЖДОМ синтетическом дереве потому, что он присутствует в
 // настоящем: дерево, где его нет, объявило бы истёкшей запись, которая жива.
 func (h *QuotaHandler) List(ctx context.Context, req *registryv1.ListQuotasRequest) (*registryv1.ListQuotasResponse, error) {
-	quotas, err := quotapb.ListQuotas(ctx, req.GetProjectId(), h.band.States)
+	quotas, err := quotapb.ListQuotas(ctx, req.GetProjectId(), h.band.States, h.posture)
 	if err != nil {
 		return nil, err
 	}

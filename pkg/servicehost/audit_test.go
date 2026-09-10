@@ -428,7 +428,7 @@ func probedSpec(covering ...string) servicecontract.Spec {
 // про пустоту, а не про тип.
 func mapScopedOn(objectType string) authz.RPCMap {
 	return authz.RPCMap{
-		"/kacho.cloud.vpc.v1.NetworkService/Update": {
+		probedMethod: {
 			Relation: "v_update",
 			Extract: authz.StaticExtractor(objectType, func(req any) (string, error) {
 				id, _ := req.(string)
@@ -439,13 +439,13 @@ func mapScopedOn(objectType string) authz.RPCMap {
 }
 
 func probedServed() servedSet {
-	return servedSet{methods: []servicecontract.MethodFQN{"/kacho.cloud.vpc.v1.NetworkService/Update"}}
+	return servedSet{methods: []servicecontract.MethodFQN{probedMethod}}
 }
 
 func probedCatalog() catalogView {
 	return catalogView{rows: map[servicecontract.MethodFQN]catalogRow{
-		"/kacho.cloud.vpc.v1.NetworkService/Update": {
-			Method: "/kacho.cloud.vpc.v1.NetworkService/Update",
+		probedMethod: {
+			Method: probedMethod,
 			Domain: "kacho.cloud.vpc.v1",
 		},
 	}}
@@ -672,14 +672,14 @@ func stubNarrower() servicecontract.ListNarrower {
 // глобальный реестр, поэтому синтетическое имя дало бы пустой набор.
 func mapScopedOnTwo(first, second string) authz.RPCMap {
 	return authz.RPCMap{
-		"/kacho.cloud.vpc.v1.NetworkService/Update": {
+		probedMethod: {
 			Relation: "v_update",
 			Extract: authz.StaticExtractor(first, func(req any) (string, error) {
 				id, _ := req.(string)
 				return id, nil
 			}),
 		},
-		"/kacho.cloud.vpc.v1.SubnetService/Update": {
+		probedMethodTwo: {
 			Relation: "v_update",
 			Extract: authz.StaticExtractor(second, func(req any) (string, error) {
 				id, _ := req.(string)
@@ -691,19 +691,19 @@ func mapScopedOnTwo(first, second string) authz.RPCMap {
 
 func twoScopedServed() servedSet {
 	return servedSet{methods: []servicecontract.MethodFQN{
-		"/kacho.cloud.vpc.v1.NetworkService/Update",
-		"/kacho.cloud.vpc.v1.SubnetService/Update",
+		probedMethod,
+		probedMethodTwo,
 	}}
 }
 
 func twoScopedCatalog() catalogView {
 	return catalogView{rows: map[servicecontract.MethodFQN]catalogRow{
-		"/kacho.cloud.vpc.v1.NetworkService/Update": {
-			Method: "/kacho.cloud.vpc.v1.NetworkService/Update",
+		probedMethod: {
+			Method: probedMethod,
 			Domain: "kacho.cloud.vpc.v1",
 		},
-		"/kacho.cloud.vpc.v1.SubnetService/Update": {
-			Method: "/kacho.cloud.vpc.v1.SubnetService/Update",
+		probedMethodTwo: {
+			Method: probedMethodTwo,
 			Domain: "kacho.cloud.vpc.v1",
 		},
 	}}

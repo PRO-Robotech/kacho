@@ -70,7 +70,10 @@ package repohygiene
 //	                                       миграцией (ban #5)
 //	Б6 форма неизвестна распознавателю     СЛЕПАЯ ЗОНА; число точное, его рост
 //	                                       означает, что появилась форма записи,
-//	                                       которой держатель не судит
+//	                                       которой держатель не судит. Полоса
+//	                                       разобрана поимённо (#2076): её число
+//	                                       НОЛЬ, и всякая единица на ней есть
+//	                                       новая форма, а не наследие
 //	Б7 ссылка на задачу трекера            имя называет РЕПОЗИТОРИЙ учёта, а не
 //	                                       продукт: `kacho` со знаком номера и
 //	                                       цифрой. Правке не подлежит — за ней
@@ -135,10 +138,13 @@ package repohygiene
 // замеров в одобренных приёмках). Четвёртая, УПОМИНАНИЕ ЗАВИСИМОСТИ В ПРОЗЕ,
 // границей НЕ сделана намеренно: отличить «служба зависит от фундамента Kachō»
 // от «страница службы называет себя чужим брендом» формой нельзя — это
-// адъюдикация, и её ведут ПО ОДНОМУ, записью в KanameNameResidueStay. Сегодня
-// такие вхождения лежат в остатке, то есть названы неразобранными, а не
-// прощены оптом. Названо вслух, чтобы «прощено 0» по этой причине не читалось
-// как «таких вхождений нет».
+// адъюдикация, и её ведут ПО ОДНОМУ, записью в KanameNameResidueStay. На полосе
+// Б6 она ПРОВЕДЕНА (#2076, 2026-09-10): двадцать два вхождения общего слоя
+// генератора наборов — того, что лежит в корне дерева и служит всем восьми
+// наборам, — названы записями поимённо, с доводом на каждую. На остальных
+// полосах такие вхождения по-прежнему лежат в остатке, то есть названы
+// неразобранными, а не прощены оптом. Названо вслух, чтобы «прощено 0» по этой
+// причине не читалось как «таких вхождений нет».
 //
 // Ссылка на задачу трекера границей (Б7) сделана ИМЕННО ПОТОМУ, что здесь
 // форма решает: `kacho` со знаком номера и цифрой не может быть самоназванием
@@ -177,7 +183,11 @@ package repohygiene
 
 import (
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/PRO-Robotech/kacho/internal/productnaming"
@@ -407,6 +417,7 @@ const (
 	borderFoundationFunction = "Б5 функция общего фундамента внутри схемы"
 	borderUnknownForm        = "Б6 форма неизвестна распознавателю"
 	borderTrackerReference   = "Б7 ссылка на задачу трекера"
+	borderFoundationSeries   = "Б8 имя ряда витрины фундамента"
 )
 
 // KanameForeignPlatformModules — ЗАКРЫТЫЙ перечень имён чужих модулей
@@ -454,6 +465,27 @@ var KanameFoundationSchemaFunctions = map[string]bool{
 	"kacho_rate_refuse":             true,
 }
 
+// kanameSchemaQualifier — приставка, которой дерево квалифицирует имя функции
+// ВНУТРИ схемы службы: `kaname.kacho_quota_count`.
+//
+// Приставка ОДНА и она структурна, а не подобрана примером: функции заведены в
+// схеме `kaname` (`CREATE SCHEMA kaname` применённой миграции), и другого
+// законного квалификатора у них не бывает. Правило вида «всякое `<слово>.` перед
+// именем — квалификатор схемы» шире предмета: под ним прошёл бы столбец чужой
+// таблицы, чьё имя совпало с именем функции.
+const kanameSchemaQualifier = "kaname."
+
+// foundationFunctionTerminators — знаки, которыми ПРОЗА заканчивает имя функции.
+//
+// Они входят в токен (`isResidueTokenRune` их принимает), поэтому сегментом
+// оказывается `kacho_quota_refuse:` — с точки зрения словаря это ДРУГАЯ строка,
+// и упоминание уезжало с границы на полосу клейм.
+//
+// Перечень узок НАМЕРЕННО: продолжение имени буквой, цифрой, подчёркиванием или
+// дефисом означает ДРУГОЙ объект (`kacho_quota_count_v2`, `kacho_nlb.targets`),
+// и срезать его значило бы признать функцией фундамента то, чем она не является.
+const foundationFunctionTerminators = ".:"
+
 // residueHit — одно вхождение имени и его окрестность.
 //
 // Разбор идёт по СЕГМЕНТУ пути, а не по всему токену: у адреса
@@ -486,9 +518,23 @@ type NameResidueHit struct {
 	Lane string
 }
 
+// residueWorld — то, что распознаватель узнаёт НЕ из самого вхождения, а из
+// дерева: перечни, объявленные другими его частями.
+//
+// Заведено параметром, а не глобальной переменной, ровно затем, чтобы
+// синтетический мир инъекции и настоящее дерево проходили ОДНУ функцию: перечень,
+// выставляемый в глобаль перед прогоном, сделал бы вердикт функцией порядка
+// тестов, а они идут параллельно.
+type residueWorld struct {
+	// FoundationSeries — имена рядов витрины, ОБЪЯВЛЕННЫЕ фундаментом. Пустой
+	// перечень означает «не собирали»: вычитание тогда не делается вовсе, и это
+	// отличимо от «рядов нет» переписью держателя.
+	FoundationSeries map[string]bool
+}
+
 type residueRule struct {
 	Lane  string
-	Match func(h NameResidueHit) bool
+	Match func(h NameResidueHit, w residueWorld) bool
 }
 
 // kanameResidueRules — правила В ПОРЯДКЕ применения; первое совпавшее забирает
@@ -504,26 +550,28 @@ type residueRule struct {
 //   - координата контракта СЛУЖБЫ стоит до координаты контракта ФУНДАМЕНТА:
 //     обе начинаются одинаково, различает их домен.
 var kanameResidueRules = []residueRule{
-	{borderApprovedAcceptance, func(h NameResidueHit) bool {
+	{borderApprovedAcceptance, func(h NameResidueHit, _ residueWorld) bool {
 		return strings.HasPrefix(h.Path, kanameApprovedAcceptanceDir)
 	}},
-	{borderFoundationModule, func(h NameResidueHit) bool {
+	{borderFoundationModule, func(h NameResidueHit, _ residueWorld) bool {
 		return strings.HasSuffix(h.PathPre, "PRO-Robotech/") && h.Seg == "kacho"
 	}},
-	{borderTrackerReference, isTrackerReference},
-	{laneContractCoordinate, func(h NameResidueHit) bool {
+	{borderTrackerReference, func(h NameResidueHit, _ residueWorld) bool {
+		return isTrackerReference(h)
+	}},
+	{laneContractCoordinate, func(h NameResidueHit, _ residueWorld) bool {
 		domain, ok := contractDomainOf(h)
 		return ok && isAccessContractDomain(domain)
 	}},
-	{borderFoundationContract, func(h NameResidueHit) bool {
+	{borderFoundationContract, func(h NameResidueHit, _ residueWorld) bool {
 		_, ok := contractDomainOf(h)
 		return ok
 	}},
-	{laneQualifiedTable, func(h NameResidueHit) bool {
+	{laneQualifiedTable, func(h NameResidueHit, _ residueWorld) bool {
 		rest, ok := schemaPrefixRest(h)
 		return ok && strings.HasPrefix(rest, ".")
 	}},
-	{laneDatabaseName, func(h NameResidueHit) bool {
+	{laneDatabaseName, func(h NameResidueHit, _ residueWorld) bool {
 		rest, ok := schemaPrefixRest(h)
 		if !ok || rest != "" {
 			return false
@@ -531,42 +579,46 @@ var kanameResidueRules = []residueRule{
 		return strings.HasSuffix(h.SegPre, "/") || strings.HasSuffix(h.PathPre, "/") ||
 			isProfileDatabaseKey(h.LinePrefix)
 	}},
-	{laneSchemaName, func(h NameResidueHit) bool {
+	{laneSchemaName, func(h NameResidueHit, _ residueWorld) bool {
 		rest, ok := schemaPrefixRest(h)
 		return ok && rest == ""
 	}},
-	{laneSchemaPrefixKin, func(h NameResidueHit) bool {
+	{laneSchemaPrefixKin, func(h NameResidueHit, _ residueWorld) bool {
 		rest, ok := schemaPrefixRest(h)
 		return ok && strings.HasPrefix(rest, "_")
 	}},
-	{borderFoundationFunction, func(h NameResidueHit) bool {
-		return KanameFoundationSchemaFunctions[h.Seg]
+	{borderFoundationFunction, func(h NameResidueHit, _ residueWorld) bool {
+		return isFoundationSchemaFunction(h.Seg)
 	}},
-	{laneClusterAnchor, func(h NameResidueHit) bool {
+	{laneClusterAnchor, func(h NameResidueHit, _ residueWorld) bool {
 		return strings.HasSuffix(h.SegPre, "cluster_") && strings.HasPrefix(h.SegRest, "_root")
 	}},
-	{laneEnvKnob, func(h NameResidueHit) bool {
+	{laneEnvKnob, func(h NameResidueHit, _ residueWorld) bool {
 		return h.Hit == "KACHO" && strings.HasPrefix(h.SegRest, "_")
 	}},
-	{laneClaimAssertion, func(h NameResidueHit) bool {
+	{borderFoundationSeries, func(h NameResidueHit, w residueWorld) bool {
+		return isFoundationMetricSeries(w.FoundationSeries, h.Seg)
+	}},
+	{laneClaimAssertion, func(h NameResidueHit, _ residueWorld) bool {
 		return h.Hit == "kacho" && len(h.SegRest) > 1 && h.SegRest[0] == '_' &&
 			isLowerWordByte(h.SegRest[1])
 	}},
-	{laneIdentityHeader, func(h NameResidueHit) bool {
+	{laneIdentityHeader, func(h NameResidueHit, _ residueWorld) bool {
 		return strings.HasSuffix(strings.ToLower(h.SegPre), "x-") &&
 			len(h.SegRest) > 1 && h.SegRest[0] == '-' && isLowerWordByte(lowerByte(h.SegRest[1]))
 	}},
-	{borderForeignModule, func(h NameResidueHit) bool {
+	{borderForeignModule, func(h NameResidueHit, _ residueWorld) bool {
 		return KanameForeignPlatformModules[h.Seg]
 	}},
-	{laneChartKnob, func(h NameResidueHit) bool {
+	{laneChartKnob, func(h NameResidueHit, _ residueWorld) bool {
 		if !h.InChart {
 			return false
 		}
 		return strings.HasSuffix(h.SegPre, ".Values.") || strings.HasSuffix(h.SegPre, "global.") ||
-			(len(h.SegRest) > 1 && h.SegRest[0] == '.' && isASCIILetter(h.SegRest[1]))
+			(len(h.SegRest) > 1 && h.SegRest[0] == '.' && isASCIILetter(h.SegRest[1])) ||
+			isParenthesisedGlobalAccess(h) || isValuesMapKey(h)
 	}},
-	{laneDomainAddress, func(h NameResidueHit) bool {
+	{laneDomainAddress, func(h NameResidueHit, _ residueWorld) bool {
 		for _, suffix := range [...]string{".cloud", ".local", ".svc"} {
 			if strings.HasPrefix(h.SegRest, suffix) {
 				return true
@@ -574,17 +626,17 @@ var kanameResidueRules = []residueRule{
 		}
 		return false
 	}},
-	{laneObjectName, func(h NameResidueHit) bool {
+	{laneObjectName, func(h NameResidueHit, _ residueWorld) bool {
 		return !h.Macron &&
 			(strings.HasPrefix(h.SegRest, "-") || strings.HasSuffix(h.SegPre, "-"))
 	}},
-	{laneBrandInText, func(h NameResidueHit) bool { return h.Macron }},
-	{lanePlatformName, func(h NameResidueHit) bool { return strings.EqualFold(h.Seg, "kacho") }},
-	{laneObjectName, func(h NameResidueHit) bool {
+	{laneBrandInText, func(h NameResidueHit, _ residueWorld) bool { return h.Macron }},
+	{lanePlatformName, func(h NameResidueHit, _ residueWorld) bool { return strings.EqualFold(h.Seg, "kacho") }},
+	{laneObjectName, func(h NameResidueHit, _ residueWorld) bool {
 		return len(h.SegRest) > 1 && (h.SegRest[0] == '.' || h.SegRest[0] == ':') &&
 			isASCIILetter(h.SegRest[1])
 	}},
-	{borderUnknownForm, func(NameResidueHit) bool { return true }},
+	{borderUnknownForm, func(NameResidueHit, residueWorld) bool { return true }},
 }
 
 // kanameLanes — полоса → ось. Выведено из правил, а не выписано вторым местом:
@@ -619,6 +671,124 @@ var kanameLanes = map[string]residueLane{
 		"СЛЕПАЯ ЗОНА: форма записи, которой держатель не судит; число точное"},
 	borderTrackerReference: {borderTrackerReference, axisBorder,
 		"ссылка на задачу: имя называет РЕПОЗИТОРИЙ учёта, а не продукт"},
+	borderFoundationSeries: {borderFoundationSeries, axisBorder,
+		"решено остаться: ряд производит измеритель фундамента; служба его не " +
+			"переименовывает, а не назвать — оставить дежурного без запроса"},
+}
+
+// FoundationSeriesDeclarationDir — каталог, в котором фундамент ОБЪЯВЛЯЕТ имена
+// своих рядов, от корня дерева. Координата, а не признак: обход сужен намеренно.
+//
+// Довод измерен, а не выбран из осторожности. Тот же литерал, встреченный где
+// угодно в дереве, бывает совсем другим предметом: под приставкой платформы там
+// живут ИМЕНА СХЕМ и ТАБЛИЦ (`kacho_vpc`, `kacho_iam_subjects`) и функции схемы
+// (`kacho_quota_admit`). Широкий обход вычел бы их из своих полос — то есть
+// замаскировал бы ровно тот остаток, ради которого ведомость и заведена.
+const FoundationSeriesDeclarationDir = "pkg"
+
+// FoundationSeriesFromCorpus — имена рядов витрины, объявленные ЛИТЕРАЛОМ в
+// позиции имени ряда. Второе возвращаемое — файлов разобрано: ноль означает, что
+// обход не состоялся, и «рядов нет» тогда значит «не искали».
+//
+// Судится ПОЗИЦИЯ (`Name:` в объявлении измерителя), а не подстрока: имя ряда и
+// имя схемы записываются одинаково — приставка платформы плюс слова через
+// подчёркивание, — и различает их только место, где литерал стоит.
+func FoundationSeriesFromCorpus(files map[string][]byte) (map[string]bool, int) {
+	out := map[string]bool{}
+	filesRead := 0
+
+	paths := make([]string, 0, len(files))
+	for path := range files {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+
+	for _, path := range paths {
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			continue
+		}
+		fset := token.NewFileSet()
+		file, err := parser.ParseFile(fset, path, files[path], 0)
+		if err != nil {
+			// Неразбираемый исходник — предмет компилятора, не этого разбора.
+			continue
+		}
+		filesRead++
+		ast.Inspect(file, func(n ast.Node) bool {
+			kv, ok := n.(*ast.KeyValueExpr)
+			if !ok {
+				return true
+			}
+			key, ok := kv.Key.(*ast.Ident)
+			if !ok || key.Name != "Name" {
+				return true
+			}
+			lit, ok := kv.Value.(*ast.BasicLit)
+			if !ok || lit.Kind != token.STRING {
+				return true
+			}
+			value, uerr := strconv.Unquote(lit.Value)
+			if uerr != nil {
+				return true
+			}
+			if strings.HasPrefix(value, "kacho_") {
+				out[value] = true
+			}
+			return true
+		})
+	}
+	return out, filesRead
+}
+
+// foundationSeriesSuffixes — хвосты, которые Prometheus дописывает к ряду
+// гистограммы. В объявлении их нет: объявлено базовое имя, а запрос дежурного
+// берёт производное, и страница называет именно производное.
+var foundationSeriesSuffixes = [...]string{"_bucket", "_sum", "_count"}
+
+// isFoundationMetricSeries — объявлен ли токен рядом витрины фундамента.
+//
+// ПОЛНОЕ имя спрашивается ПЕРВЫМ, и только затем — имя без хвоста гистограммы.
+// Обратный порядок ошибается на настоящем ряде, чьё имя оканчивается так же:
+// счётчик `..._total` производным ни от чего не является.
+//
+// Пустой перечень означает «не собирали», и тогда вычитания не происходит вовсе:
+// молчание здесь не выдаётся за «рядов нет» — это различает перепись держателя.
+func isFoundationMetricSeries(series map[string]bool, token string) bool {
+	if len(series) == 0 {
+		return false
+	}
+	if series[token] {
+		return true
+	}
+	for _, suffix := range foundationSeriesSuffixes {
+		if strings.HasSuffix(token, suffix) && series[strings.TrimSuffix(token, suffix)] {
+			return true
+		}
+	}
+	return false
+}
+
+// isFoundationSchemaFunction — сегмент есть УПОМИНАНИЕ функции общего фундамента
+// в любой из форм, которыми его записывает дерево.
+//
+// Судится ОХРАНА, а не словарь. Перечень функций закрыт и остаётся закрытым;
+// расходились с ним не имена, а ОБЁРТКИ: сегмент режется по `/`, поэтому точка
+// квалификатора его не рвёт, а двоеточие прозы из токена не выпадает — и
+// `kaname.kacho_quota_count` с `kacho_quota_refuse:` оказывались для словаря
+// ДРУГИМИ строками. Пополнять словарь этими написаниями значило бы лечить
+// экземпляры: следующая обёртка снова уехала бы на полосу клейм.
+//
+// Снимается РОВНО ДВА слоя, и каждый — структурный факт, а не пример:
+//
+//   - слева приставка СВОЕЙ схемы, в которой функции и заведены;
+//   - справа терминальная пунктуация прозы, которая частью имени быть не может.
+//
+// Всё прочее продолжение имени остаётся значимым: `kacho_quota_count_v2` и
+// `kacho_nlb.targets` — другие объекты, и границей они не признаются.
+func isFoundationSchemaFunction(seg string) bool {
+	name := strings.TrimPrefix(seg, kanameSchemaQualifier)
+	name = strings.TrimRight(name, foundationFunctionTerminators)
+	return KanameFoundationSchemaFunctions[name]
 }
 
 // isTrackerReference — вхождение есть КРАТКАЯ ссылка на задачу трекера вида
@@ -723,6 +893,33 @@ func isProfileDatabaseKey(prefix string) bool {
 		}
 	}
 	return false
+}
+
+// isParenthesisedGlobalAccess — ключ глобального блока значений, записанный
+// ЗАЩИТНЫМИ СКОБКАМИ: `(((.Values.global).kacho).registry).serviceAud`.
+//
+// Форма законная и в шаблонах обычная — она не падает, когда промежуточного
+// ключа нет, — но для распознавателя она НЕВИДИМА: скобка не входит в токен,
+// поэтому токеном оказывается `.kacho` в одиночестве, у него нет ни приставки
+// `.Values.`, ни продолжения `.<буква>`, и вхождение уезжало в слепую зону.
+//
+// Судится ЛЕВЫЙ КОНТЕКСТ СТРОКИ, а не токен, потому что предмет расхождения
+// стоит ровно там: `global).` — это то, что скобка оставляет слева от имени.
+// Сегментом пути это не выражается by construction.
+func isParenthesisedGlobalAccess(h NameResidueHit) bool {
+	return strings.HasSuffix(h.LinePrefix, "global).")
+}
+
+// isValuesMapKey — имя платформы стоит КЛЮЧОМ карты значений: `  kacho:` своей
+// строкой, без приставки и без продолжения внутри сегмента.
+//
+// Требуются ОБА условия: слева от имени в строке только отступ, справа сразу
+// двоеточие и на этом сегмент кончается. Продолжение (`kacho.cloud/component:`)
+// правилам выше видно и до этого не доходит; проза, где имя стоит посреди
+// предложения перед двоеточием, отсекается требованием пустого отступа.
+func isValuesMapKey(h NameResidueHit) bool {
+	return h.SegRest == ":" && h.SegPre == "" &&
+		strings.TrimSpace(h.LinePrefix) == ""
 }
 
 func isLowerWordByte(b byte) bool {
@@ -1048,6 +1245,205 @@ var KanameNameResidueStay = []NameResidueStay{
 		Path: "services/iam/docs/engineering/components/29-relational-verdict.md", Lane: laneSchemaPrefixKin, Count: 1,
 		Reason: "то же свидетельство на странице компонента: имя снятого канала — предмет " +
 			"утверждения, а не остаток бренда",
+	},
+
+	// ── ЗАХВАЧЕННЫЙ ВЫВОД ПРОГОНА: ось «контракт» (#2076, 2026-09-10) ──────
+	//
+	// Восемь вхождений на полосе координаты пакета доступа — не координата
+	// живого контракта, а КООРДИНАТА, КОТОРУЮ ПРОЧИТАЛ ПРОГОН. Отчёты прибора
+	// сравнения форм вердикта несут провенанс («код прогона … @ 6a7b1e861») и
+	// дословный вывод: контракт тогда лежал под корнем платформы, и прогон читал
+	// именно тот путь. Переезд контракта (#2133) состоялся ПОЗЖЕ.
+	//
+	// Правка здесь не переносит утверждение, а ФАЛЬСИФИЦИРУЕТ его: отчёт стал бы
+	// говорить, что прогон читал путь, которого на его ревизии не существовало.
+	// Довод тот же, которым выведена граница Б4, и цена его измерена там же —
+	// массовое переименование дома приёмок (#2214) прошло 335 пар строк без
+	// единой непарной и всё-таки сфальсифицировало два утверждения о прошлой
+	// ревизии.
+	//
+	// ПОЧЕМУ ЗАПИСЯМИ, А НЕ ГРАНИЦЕЙ. Граница учитывает ФОРМУ, и формы у отчёта
+	// прибора нет: имя каталога признаком не является — в него положат и то, что
+	// правится. Записи же истекают сами: число точное, и всякая новая строка
+	// отчёта с этой координатой покраснеет.
+	//
+	// СЛЕДСТВИЕ, КОТОРОЕ НАДО НАЗВАТЬ: этим ось «контракт» становится ЧИСТОЙ —
+	// третья из шести осей П3 после схемы и таблиц.
+	{
+		Path: "services/iam/tools/authzformbench/REPORT-226-pagecost-2026-08-12.raw.txt", Lane: laneContractCoordinate, Count: 1,
+		Reason: "дословный вывод прогона: прибор читал модель прав по координате, которая " +
+			"на его ревизии и была живой; правка сфальсифицировала бы замер",
+	},
+	{
+		Path: "services/iam/tools/authzformbench/REPORT-XC-10-2026-08-10.raw.txt", Lane: laneContractCoordinate, Count: 1,
+		Reason: "тот же захваченный вывод: путь назван внутри рабочего каталога прогона, " +
+			"которого больше нет — переписать его значит выдумать чужую машину",
+	},
+	{
+		Path: "services/iam/tools/authzformbench/REPORT-XC-10-fullmodel-2026-08-11.txt", Lane: laneContractCoordinate, Count: 2,
+		Reason: "отчёт с провенансом коммита: координата модели прав — часть вопросника, " +
+			"по которому замер воспроизводим на ТОЙ ревизии",
+	},
+	{
+		Path: "services/iam/tools/authzformbench/REPORT-XC-12-F5-labelpath-2026-08-12.raw.txt", Lane: laneContractCoordinate, Count: 1,
+		Reason: "дословный вывод того же прибора на следующем шаге замера",
+	},
+	{
+		Path: "services/iam/tools/authzformbench/REPORT-XC-12-F5-labelpath-2026-08-12.txt", Lane: laneContractCoordinate, Count: 1,
+		Reason: "разбор того же прогона: называет координату, которую прибор прочитал",
+	},
+	{
+		Path: "services/iam/tools/authzformbench/REPORT-XC-12-F5-remeasure-2026-08-14.raw.txt", Lane: laneContractCoordinate, Count: 1,
+		Reason: "перемер той же формы: вывод захвачен дословно",
+	},
+	{
+		Path: "services/iam/tools/authzformbench/REPORT-XC-12-F5-remeasure-2026-08-14.txt", Lane: laneContractCoordinate, Count: 1,
+		Reason: "разбор перемера: та же координата в том же качестве — прочитанная, не объявленная",
+	},
+
+	// ── СЛЕПАЯ ЗОНА Б6 РАЗОБРАНА ПОИМЁННО (#2076, 2026-09-10) ──────────────
+	//
+	// Полоса Б6 называет ФОРМУ, которой держатель не судит: имя платформы,
+	// слитое с продолжением без разделителя. Пока её число не ноль, о всяком
+	// другом числе держателя известно лишь, что оно НИЖНЯЯ ГРАНИЦА, — потому
+	// разбор этой полосы и взят вперёд более крупных.
+	//
+	// Разобрано 66 вхождений. Двадцать сняты правкой (имена тревог, идентификатор
+	// узла диаграммы, заголовок схемы манифеста, пространство репозитория в
+	// фикстуре докер-полосы), три оказались ключами чарта в форме, которую
+	// распознаватель теперь читает, остальные сорок три названы ниже — каждое с
+	// доводом, по которому имя платформы здесь обязано остаться.
+	//
+	// МЕТКА СЕКРЕТА УДОСТОВЕРЕНИЯ. Её чеканит ФУНДАМЕНТ (`pkg/credsecret`,
+	// `Mark`), и решение линии называет её наследуемой как есть — вместе с
+	// библиотеками. Своей метки Kaname не заводит: вторая метка одного предмета
+	// разошлась бы с первой молча, а сканеры утёкших удостоверений ключуются на
+	// объявленную. Снять её из проб и страниц значит перестать называть то, что
+	// пользователь увидит в своём токене.
+	{
+		Path: "services/iam/docs/content/api/tokens.mdx", Lane: borderUnknownForm, Count: 2,
+		Reason: "форма секрета и довод про якорь для сканеров: метку чеканит фундамент, " +
+			"страница обязана назвать её дословно — иначе владелец токена не узнает свой",
+	},
+	{
+		Path: "services/iam/docs/content/first-credential.mdx", Lane: borderUnknownForm, Count: 2,
+		Reason: "та же метка на первом шаге клиента: форма секрета и полоса, которую она объявляет",
+	},
+	{
+		Path: "services/iam/docs/content/getting-started.mdx", Lane: borderUnknownForm, Count: 1,
+		Reason: "образец подстановки токена: метка фундамента показана так, как её видит клиент",
+	},
+	{
+		Path: "services/iam/tests/newman/cases/basic-access-token.py", Lane: borderUnknownForm, Count: 1,
+		Reason: "утверждение кейса о том, что метка НЕ утекает в тело ответа: метка — вход " +
+			"утверждения, сними её и утверждение станет вакуумным",
+	},
+	{
+		Path: "services/iam/tests/newman/cases/docker-lane-credential-kind.py", Lane: borderUnknownForm, Count: 2,
+		Reason: "та же метка в докер-полосе: она стоит в теле отказа и из неё собирается " +
+			"заведомо неверный секрет — оба утверждения ключуются на метку фундамента",
+	},
+	{
+		Path: "services/iam/tests/newman/collections/basic-access-token.postman_collection.json", Lane: borderUnknownForm, Count: 1,
+		Reason: "порождённый набор того же кейса: правится ИСХОДНИК, здесь метка приезжает генерацией",
+	},
+	{
+		Path: "services/iam/tests/newman/collections/docker-lane-credential-kind.postman_collection.json", Lane: borderUnknownForm, Count: 2,
+		Reason: "порождённый набор докер-полосы: те же два утверждения о метке фундамента",
+	},
+	{
+		Path: "services/iam/tests/newman/credential-secret-form.json", Lane: borderUnknownForm, Count: 2,
+		Reason: "объявленная форма секрета: метка и образец — ВХОД сверки, а не проза о ней",
+	},
+	{
+		Path: "services/iam/tests/newman/scripts/credsecretmint/form_test.go", Lane: borderUnknownForm, Count: 1,
+		Reason: "законный близнец сверки формы: ЧУЖАЯ метка подаётся как заведомо негодная — " +
+			"без неё отрицание зеленело бы на любой строке",
+	},
+
+	// ПРИСТАВКА РЯДОВ ИЗМЕРИТЕЛЯ ФУНДАМЕНТА. Три ряда gRPC-слоя производит общий
+	// измеритель, который служба пинит; переименовать их она не вправе. Страница
+	// объясняет дежурному, почему они носят не имя продукта, — и объяснение
+	// обязано назвать приставку, иначе оно ни о чём.
+	{
+		Path: "services/iam/docs/content/advanced/observability.mdx", Lane: borderUnknownForm, Count: 1,
+		Reason: "проза об приставке рядов общего измерителя: приставка — предмет объяснения",
+	},
+
+	// ОБЩИЙ СЛОЙ ГЕНЕРАТОРА НАБОРОВ. `tests/newman/kacholib/` лежит в КОРНЕ
+	// дерева и служит ВСЕМ восьми наборам (край плюс семь служб) — один на
+	// дерево, ради чего его и сводили. Это наследуемый код, а не имя, которым
+	// продукт себя называет: Kaname называет здесь СВОЮ ЗАВИСИМОСТЬ, и путь
+	// обязан совпадать с деревом дословно — по нему ходят бутстрап генератора и
+	// отбор наборов, а прозаические вхождения объясняют, где искать хребет.
+	//
+	// Своего слоя служба не заводит: копия разошлась бы с общей молча, и именно
+	// расхождение копий было предметом сведения.
+	{
+		Path: "services/iam/tests/newman/scripts/gen.py", Lane: borderUnknownForm, Count: 6,
+		Reason: "бутстрап общего слоя: путь ищется по дереву вверх и подставляется в " +
+			"импорт — совпадение с деревом обязано быть дословным",
+	},
+	{
+		Path: "services/iam/tests/newman/scripts/casesindex_test.py", Lane: borderUnknownForm, Count: 5,
+		Reason: "тот же бутстрап у сверщика указателя кейсов плюс оговорка о том, что общий " +
+			"слой в образец отбора НЕ попадает",
+	},
+	{
+		Path: "services/iam/tests/newman/scripts/run.sh", Lane: borderUnknownForm, Count: 4,
+		Reason: "тот же поиск общего слоя отбора из оболочки: путь и текст отказа, когда его нет",
+	},
+	{
+		Path: "services/iam/tests/newman/scripts/README.md", Lane: borderUnknownForm, Count: 2,
+		Reason: "страница набора называет, что взято из общего слоя, а что решается здесь",
+	},
+	{
+		Path: "services/iam/tests/newman/docs/CASES-INDEX.md", Lane: borderUnknownForm, Count: 2,
+		Reason: "указатель кейсов называет хребет генератора: у утверждения о том, ЧЕМ " +
+			"держится уникальность, должен быть адрес",
+	},
+	{
+		Path: "services/iam/tests/newman/scripts/expected_status_test.py", Lane: borderUnknownForm, Count: 1,
+		Reason: "граница предмета сверщика: статус, порождённый ОБЩИМ слоем, сюда не входит",
+	},
+	{
+		Path: "services/iam/tests/newman/scripts/validate-cases.py", Lane: borderUnknownForm, Count: 1,
+		Reason: "тот же адрес общего слоя рядом с его вызывающим",
+	},
+	{
+		Path: "services/iam/tests/newman/cases/README.md", Lane: borderUnknownForm, Count: 1,
+		Reason: "страница кейсов называет хребет, который держит свойство, — не сверщик",
+	},
+
+	// ФИКСТУРЫ ПРОВЕРКИ ИМЕНИ КАТАЛОГА. Проверка судит имена каталогов службы, и
+	// оба вхождения здесь — её ВХОД: слово платформы в прозе (ручка и общий слой)
+	// и алиас `apps/kachopg`, который каталогом предмета НЕ является. Законный
+	// близнец на то и заведён, чтобы правая граница сегмента проверялась; сними
+	// его — и отрицание перестанет что-либо утверждать.
+	{
+		Path: "services/iam/internal/supplyhygiene/directory_name_injection_test.go", Lane: borderUnknownForm, Count: 3,
+		Reason: "синтетический вход проверки имени каталога: проза со словом платформы и " +
+			"законный близнец `apps/kachopg`, на котором проверка обязана молчать",
+	},
+	{
+		Path: "services/iam/internal/supplyhygiene/directory_name_test.go", Lane: borderUnknownForm, Count: 1,
+		Reason: "разбор того же близнеца у самой проверки: почему алиас каталогом не является",
+	},
+
+	// КЛЮЧИ ГЛОБАЛЬНОГО БЛОКА, КОТОРЫЕ ПРОИЗВОДИТ ПЛАТФОРМА. `kachoImageIds` и
+	// `kachoModuleManifests` кладёт в значения зонта рецепт развёртывания
+	// (`deploy/Makefile`) — ОДИН на восемь чартов, и читают его край и шесть
+	// служб. Подчарт Kaname здесь ПОТРЕБИТЕЛЬ: своё имя ключа означало бы, что
+	// производитель обязан положить его дважды, и вторая копия разошлась бы с
+	// первой молча.
+	//
+	// Это отличается от полосы ключей чарта: там имя платформы стоит в блоке,
+	// который производят ДЛЯ KANAME И ТОЛЬКО ДЛЯ НЕГО, — и потому оно остаток.
+	// Разделяет вопрос «кто производит ключ», а не «кто его читает».
+	{
+		Path: "deploy/helm/umbrella/charts/kaname/templates/deployment.yaml", Lane: borderUnknownForm, Count: 2,
+		Reason: "чтение двух ключей платформенного производителя (снимок образа и отпечаток " +
+			"манифестов): имя ключа принадлежит рецепту развёртывания, а не подчарту",
 	},
 }
 
@@ -1418,22 +1814,172 @@ var KanameNameResidueStay = []NameResidueStay{
 // прощающая больше, чем есть, перестаёт быть предикатом и выдаёт вперёд слепую
 // зону — следующая настоящая находка той же полосы уехала бы под неё незамеченной.
 
+// РАЗДЕЛЕНИЕ ФОРМ 2026-09-10 — задача #2523: имя ряда витрины перестало судиться
+// как клеймо токена.
+//
+// Полоса «утверждение токена» опознаёт форму `kacho_<слово>`, и её опознают ТРИ
+// разных предмета: клеймо в удостоверении (`kacho_principal_type`), функция схемы
+// (`kacho_quota_admit`, у неё своя граница) и ИМЯ РЯДА, который эмитирует
+// измеритель фундамента (`kacho_grpc_server_handled_total`). Различить их формой
+// записи нельзя — она у них одна.
+//
+// Следствие для владельца полосы было прямое: семнадцать вхождений, к
+// межрепозиторному контракту отношения не имеющих, и они не снялись бы его
+// работой НИКОГДА. Переименовать ряд фундамента служба не вправе, а не назвать
+// его — значит оставить дежурного без запроса о доле неуспешных ответов, ради
+// которого страница наблюдаемости и переписана.
+//
+// ПЕРЕПИСЬ НАЗЫВАЕТ ОБЕ ВЕЛИЧИНЫ, и это здесь несущее: «полоса опустилась»
+// обязано быть отличимо от «полоса ослепла». Осмотренное у полосы клейм
+// УМЕНЬШИЛОСЬ ровно на столько же, на сколько уменьшилось найденное, — значит
+// предмет ПЕРЕЕХАЛ на границу, а не исчез из наблюдения:
+//
+//	утверждение токена   осмотрено 2467 → 2450 · найдено 83 → 66 · файлов 27 → 23
+//	Б8 ряд фундамента    осмотрено    — → 2467 · признано  — → 17
+//
+// Семнадцать против девяти, названных при заведении задачи: те девять были
+// сосчитаны по ОДНОЙ странице, а полоса читает всю поверхность — те же ряды
+// названы ещё инженерной страницей и двумя пробами измерителя службы.
+//
+// ОРАКУЛ СОБИРАЕТСЯ ИЗ ОБЪЯВЛЕНИЙ ДЕРЕВА, А НЕ СПИСКОМ. Список пришлось бы вести
+// руками, и он пережил бы свой предмет; прощение целой страницы замаскировало бы
+// на ней и будущее клеймо. Здесь дозволение СТРУКТУРНОЕ: токен не судится клеймом
+// ровно тогда, когда фундамент ОБЪЯВЛЯЕТ его рядом витрины. Обход сужен до
+// каталога фундамента намеренно — под приставкой платформы в дереве живут ещё
+// имена схем, таблиц и функций схемы, и широкий обход вычел бы их из своих полос.
+//
+// Способность разделения падать и молчать доказана инъекцией —
+// kanamefoundationseries_injection_test.go.
+
+// РОСТ 2026-09-10 на четырёх полосах — задачи #2498 и #2496, наблюдаемость
+// отдельно поставляемой службы. Прибавка названа ПОИМЁННО, как требует норма
+// выше; замер — прогоном держателя на этом дереве и на его базе, а не
+// арифметикой.
+//
+//	переменная окружения    64→87  (41→45 файлов)
+//	утверждение токена      74→83  (26→27)
+//	имя платформы          310→313 (117→119)
+//	Б6 неизвестная форма    65→66  (26→27)
+//
+// ПЕРВЫЙ ЗАМЕР ЭТОЙ ЖЕ ПРАВКИ БЫЛ НЕВЕРЕН, и это стоит сказать раньше самих
+// чисел. Он снимался, пока новые файлы лежали НЕОТСЛЕЖИВАЕМЫМИ: поверхность
+// держателя берётся из индекса git, поэтому шести новых файлов он не читал
+// вовсе и напечатал 70/42 там, где дерево даёт 87/45. Прогон был верен — о том
+// дереве, которое ему дали. Число ведомости берётся ПОСЛЕ того, как правка
+// попала в индекс.
+//
+// ЧЕМ ИМЕННО, по каждой полосе:
+//
+//   - переменная окружения, +23 в 4 новых файлах — аргументы сборки
+//     `KACHO_IMAGE_VERSION` и `KACHO_IMAGE_REVISION`. Dockerfile службы стал
+//     ПРОСТАВЛЯТЬ ими версию двоичного файла (+4: два объявления в ступени
+//     сборки и два в подстановке компоновщика); шапка композиционного корня
+//     называет эту пару (+2); инженерная страница наблюдаемости — тоже (+2);
+//     держатель штампа и его инъекции (+2 и +13) и есть то, чем подстановка
+//     удержана — они подают эти имена входом.
+//
+//     Своё имя завести нельзя: из ЭТИХ аргументов уже делается клеймо образа и
+//     файл ревизии внутри него, и второе объявление одного предмета разошлось
+//     бы с первым молча. Переименовать чужое — сломать клеймо, которое читает
+//     провенанс стенда.
+//
+//   - утверждение токена, +9, все в `docs/content/advanced/observability.mdx` —
+//     имена рядов `kacho_grpc_server_handled_total` (7 раз: строка таблицы,
+//     пример запроса, шаг разбора, замечание о журнале смены субъекта и правило
+//     тревоги), `…_handling_seconds` и `…_stream_seconds` (по одному). Ряды
+//     производит измеритель фундамента, который служба пинит; переименовать их
+//     она не вправе, а не назвать — значит оставить дежурного без запроса о доле
+//     неуспешных ответов, ради чего страница и переписана (#2496).
+//
+//     НАЗВАНО ОТДЕЛЬНО: полоса классифицировала их КАК УТВЕРЖДЕНИЕ ТОКЕНА.
+//     Распознаватель не отличает клеймо токена (`kacho_principal_type`) от имени
+//     ряда витрины — форма записи у них одна. Владельцу полосы это прибавляет
+//     девять вхождений, к межрепозиторному контракту отношения не имеющих. Здесь
+//     число приведено к факту, чтобы «остаток не вырос» осталось проверяемым;
+//     разделение форм — предмет владельца полосы, не этого изменения.
+//
+//   - имя платформы, +3 в 2 новых файлах — путь `/etc/kacho/image-revision`
+//     назван обеими страницами наблюдаемости (по одному) как ВТОРАЯ координата
+//     той же величины: клеймо образа и файл внутри него делаются из одного
+//     аргумента, и оператор сверяет с ними метку ряда. Третье — образец
+//     распознавателя рядов у держателя опубликованной страницы: он обязан читать
+//     ОБА префикса, иначе ряды фундамента остались бы вне наблюдения целиком.
+//
+//   - Б6 неизвестная форма, +1 — голая приставка `kacho_` в прозе опубликованной
+//     страницы, объясняющая, почему три ряда выше носят не имя продукта.
+//
+//   - утверждение токена, 83 → 97 в 27 → 28 файлах — НОВАЯ МИГРАЦИЯ службы
+//     доступа (`20260910120000_own_ceilings_come_from_the_posture.sql`, задача
+//     продукта #2117) заменяет тело `kacho_quota_count` и
+//     `kacho_quota_carrier_lifecycle` через `CREATE OR REPLACE`: применённую
+//     миграцию править нельзя (ban #5), поэтому у одной функции два места
+//     определения во времени, и второе несёт те же имена.
+//
+//     ЧИСЛО ПРИВЕДЕНО К ФАКТУ, а полоса выбрана НЕ ЭТИМ изменением — и это
+//     находка для владельца файла, а не решение здесь. Все четырнадцать вхождений
+//     суть КВАЛИФИЦИРОВАННОЕ имя функции общего фундамента
+//     (`kaname.kacho_quota_refuse` и соседние), то есть ровно тот предмет, о
+//     котором граница Б5 уже сказала «решено остаться: один шаблон на шесть
+//     владельцев». В Б5 они не попадают потому, что её предикат ключуется на
+//     `h.Seg`, а сегмент здесь — ВЕСЬ токен `схема.функция`: разбор идёт по `/`, и
+//     точка сегмента не рвёт. Голая форма распознаётся, квалифицированная — нет.
+//     Это слепая зона распознавателя, а не рост остатка: тем же образцом в
+//     применённой миграции уже сосчитаны и записаны прежние 83.
+
+// ЗАКРЫТЫ ДВЕ ПОЛОСЫ, И ОДНА ИЗ НИХ ЗАКРЫВАЕТ ЦЕЛУЮ ОСЬ П3 (#2076, 2026-09-10).
+// Все числа сняты ПРОГОНОМ держателя на этом дереве; складывать их нельзя —
+// перевод вхождения между полосой и границей файлов не убавляет.
+//
+//	координата пакета доступа         8/7   → 0/0
+//	Б6 форма неизвестна               66/27 → 0/0
+//	ключ профиля и шаблона            122/14 → 125/14   (+3, реклассификация)
+//
+// ОСЬ «КОНТРАКТ» СТАЛА ЧИСТОЙ — третья из шести после схемы и таблиц. Остатком
+// на ней были не координаты живого контракта, а ЗАХВАЧЕННЫЙ ВЫВОД восьми
+// прогонов прибора сравнения форм вердикта: отчёты несут провенанс коммита и
+// читали контракт по тому пути, который на их ревизии и был живым. Переезд
+// контракта (#2133) состоялся позже, и правка отчёта не перенесла бы утверждение,
+// а сфальсифицировала его. Вхождения названы записями ведомости решённого
+// остаться — по одной на файл, с точным числом.
+//
+// Б6 ВЗЯТА ВПЕРЁД БОЛЕЕ КРУПНЫХ ПОЛОС ПО ОДНОЙ ПРИЧИНЕ: пока её число не ноль,
+// о всяком другом числе держателя известно лишь, что оно НИЖНЯЯ ГРАНИЦА. Слепая
+// зона прятала настоящий остаток — и он нашёлся: имена восьми тревог носили
+// приставку платформы, тогда как ряды, по которым они звонят, уже переименованы;
+// идентификатор узла диаграммы, заголовок схемы манифеста и пространство
+// репозитория в фикстуре докер-полосы несли то же имя. Двадцать вхождений сняты
+// правкой, сорок три названы записями (метка удостоверения, которую чеканит
+// фундамент; приставка рядов общего измерителя; общий слой генератора наборов;
+// входы проверки имени каталога; два ключа платформенного производителя).
+//
+// ТРИ ВХОЖДЕНИЯ ОКАЗАЛИСЬ КЛЮЧАМИ ЧАРТА, а не слепой зоной, и полоса ключей от
+// этого ВЫРОСЛА на три. Рост здесь — не прибавка остатка в дереве: те же три
+// вхождения стояли в нём и прежде, но в форме, которой распознаватель не читал
+// (защитные скобки `(((.Values.global).kacho)…` и ключ карты значений `kacho:`
+// своей строкой). Форму он читает теперь, и обе доказаны инъекцией с законным
+// близнецом ВНЕ чарта: там та же запись ключом значений не является и обязана
+// уходить в слепую зону.
+//
+// ПОЧЕМУ РЕКЛАССИФИКАЦИЯ, А НЕ ЗАПИСЬ В ВЕДОМОСТЬ РЕШЁННОГО ОСТАТЬСЯ: эти три
+// вхождения снять НАДО, и снимет их владелец полосы ключей (линия дебрендинга).
+// Прощённые записью, они выпали бы из его перечня — то есть предмет остался бы,
+// а адресата у него не стало.
 var KanameNameResidueDebt = []NameResidueDebt{
-	{laneContractCoordinate, 8, 7, "#2133 — имя пакета контракта следует за продуктом (Р14)"},
+	{laneContractCoordinate, 0, 0, "закрыто #2076: ось контракта чиста — остаток был ЗАХВАЧЕННЫМ выводом прогонов, перенесён в ведомость решённого остаться"},
 	{laneSchemaName, 0, 0, "снято #2128: контракт называет схему, которую дерево производит"},
 	{laneDatabaseName, 0, 0, "снято: имя базы переименовано вместе со схемой"},
 	{laneQualifiedTable, 0, 0, "снято #2128: контракт называет таблицы схемой, которую дерево производит"},
-	{laneEnvKnob, 64, 41, "линия дебрендинга: ручки службы"},
-	{laneChartKnob, 122, 14, "линия дебрендинга: ключи чарта оператора"},
-	{laneClaimAssertion, 74, 26, "О1 эпика #2076 — межрепозиторный контракт, требует окна двух написаний"},
+	{laneEnvKnob, 87, 45, "линия дебрендинга: ручки службы"},
+	{laneChartKnob, 125, 14, "линия дебрендинга: ключи чарта оператора"},
+	{laneClaimAssertion, 25, 18, "О1 эпика #2076 — межрепозиторный контракт, требует окна двух написаний"},
 	{laneIdentityHeader, 85, 42, "Р10 №1 — заголовки переданной личности"},
 	{laneClusterAnchor, 0, 0, "закрыто #2113: переход состоялся, неснимаемое перенесено в ведомость решённого остаться"},
 	{laneSchemaPrefixKin, 0, 0, "закрыто Р5 эпика #2076: приставка имён метрик приведена к факту"},
 	{laneDomainAddress, 574, 167, "Р10 №2 — домен доверия и адреса стенда"},
 	{laneObjectName, 638, 226, "Р3 эпика #2076 — витрина оператора"},
 	{laneBrandInText, 98, 75, "Р3 эпика #2076 — бренд в прозе и на клиентских страницах"},
-	{lanePlatformName, 310, 117, "Р3 эпика #2076 — имя платформы отдельным словом"},
-	{borderUnknownForm, 65, 26, "слепая зона распознавателя: рост числа означает новую форму записи"},
+	{lanePlatformName, 311, 119, "Р3 эпика #2076 — имя платформы отдельным словом"},
+	{borderUnknownForm, 0, 0, "закрыто #2076: слепая зона разобрана поимённо — рост числа означает новую форму записи"},
 }
 
 // KanameNameResidueOutstanding — сколько вхождений имени платформы ведомость
@@ -1523,6 +2069,7 @@ func FindKanameNameResidue(
 	files map[string][]byte,
 	stay []NameResidueStay,
 	debt []NameResidueDebt,
+	world residueWorld,
 ) ([]NameResidueHit, []NameResidueLedgerFinding, NameResidueCensus, error) {
 	census := NameResidueCensus{
 		FilesTracked:   len(files),
@@ -1590,7 +2137,7 @@ func FindKanameNameResidue(
 					census.OccurrencesASCII++
 					sawASCII = true
 				}
-				h.Lane = classifyResidueHit(h, census.OfferedByLane)
+				h.Lane = classifyResidueHit(h, census.OfferedByLane, world)
 				if perFileLane[path] == nil {
 					perFileLane[path] = map[string]int{}
 				}
@@ -1779,14 +2326,14 @@ func validateDebtLedgerShape(debt []NameResidueDebt) error {
 
 // classifyResidueHit — первое совпавшее правило забирает вхождение; каждой
 // полосе, чьё правило ИСПОЛНЯЛОСЬ, засчитывается «предложено».
-func classifyResidueHit(h NameResidueHit, offered map[string]int) string {
+func classifyResidueHit(h NameResidueHit, offered map[string]int, world residueWorld) string {
 	counted := map[string]bool{}
 	for _, rule := range kanameResidueRules {
 		if !counted[rule.Lane] {
 			offered[rule.Lane]++
 			counted[rule.Lane] = true
 		}
-		if rule.Match(h) {
+		if rule.Match(h, world) {
 			return rule.Lane
 		}
 	}

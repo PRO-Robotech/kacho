@@ -114,7 +114,7 @@ const (
 	// every invocation would emit the same `permission_catalog.json`,
 	// causing buf duplicate-file-name conflicts that drop the output entirely.
 	// Anchoring on a single primary file gives us exactly one emitter.
-	PrimaryFile = "kacho/iam/authz/catalog/v1/permissions_catalog_root.proto"
+	PrimaryFile = "corelib/authz/catalog/v1/permissions_catalog_root.proto"
 )
 
 func main() {

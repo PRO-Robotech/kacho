@@ -82,7 +82,7 @@ func quotaFixture(t *testing.T) (*QuotaHandler, *quotaStoreStub, *quotaLimitsStu
 	}}
 	limits := &quotaLimitsStub{}
 	guard := quotaband.NewGuard(store, limits, quotaAccountsStub{}, "registry")
-	return NewQuotaHandler(guard), store, limits
+	return NewQuotaHandler(guard, quotaread.AuthorityDeclared()), store, limits
 }
 
 // Свои пределы и своё потребление видны — и в том виде, в каком их назвал учёт.
@@ -140,7 +140,7 @@ func TestQuotaHandler_ListRefusesAnUnanswerableQuestionByName(t *testing.T) {
 
 // Непровязанная полоса отвечает НАЗВАННЫМ отказом, а не пустым набором.
 func TestQuotaHandler_ListWithNoBandRefusesInsteadOfClaimingNoQuotas(t *testing.T) {
-	h := NewQuotaHandler(nil)
+	h := NewQuotaHandler(nil, quotaread.AuthorityDeclared())
 
 	_, err := h.List(context.Background(), &registryv1.ListQuotasRequest{ProjectId: "prj-mine"})
 	require.Error(t, err)

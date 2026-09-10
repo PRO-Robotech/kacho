@@ -91,6 +91,7 @@ DECLARED="
 .github/scripts/assert-build-fetch-matches-imports.py
 .github/scripts/assert-console-probes-verdict.py
 .github/scripts/assert-default-branch-workflows-can-run.py
+.github/scripts/assert-green-gate-notes.py
 .github/scripts/assert-required-contexts-match-jobs.py
 .github/scripts/check-newman-suite-gates.py
 .github/scripts/check-pinned-tools.sh
@@ -99,6 +100,7 @@ DECLARED="
 .github/scripts/go-test-verdict.py
 .github/scripts/install-browser-deps.sh
 .github/scripts/install-pinned-browser.sh
+.github/scripts/kaname-chart-boots.sh
 .github/scripts/lint-service-charts.sh
 .github/scripts/newman-live.py
 .github/scripts/run-python-probes.py
