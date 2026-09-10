@@ -60,7 +60,11 @@ set -euo pipefail
 # REPO_ROOT = gateway/ (dir этого скрипта/..); MONOREPO_ROOT = корень монорепо.
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MONOREPO_ROOT="$(cd "${REPO_ROOT}/.." && pwd)"
-OUT="${1:-${REPO_ROOT}/internal/middleware/rest_route_table_gen.go}"
+# Умолчание выхода объявлено ОДНАЖДЫ: его называют и подстановка ниже, и
+# текст отказа при незаписываемом каталоге. Две записи одной величины
+# разошлись бы молча — та, что в отказе, читается реже.
+OUT_DEFAULT="${REPO_ROOT}/internal/middleware/rest_route_table_gen.go"
+OUT="${1:-${OUT_DEFAULT}}"
 
 PROTO_ROOT="${KACHO_PROTO_ROOT:-${MONOREPO_ROOT}/proto}"
 ANCHOR="${KACHO_CATALOG_ANCHOR:-${REPO_ROOT}/proto/corelib/authz/catalog/v1/permissions_catalog_root.proto}"
@@ -100,6 +104,31 @@ echo "anchor: ${ANCHOR}"
 echo "модуль плагина: ${GEN_MODULE_DIR} (go.mod: ${gen_gomod})"
 echo "пакет плагина: ${GEN_PLUGIN_PKG}"
 echo "отбор доменов: ${GEN_DOMAINS:-(все домены дерева)}"
+
+# --- выход проверяется НА ЗАПИСЫВАЕМОСТЬ ДО работы, и отказ называет путь ----
+#
+# Умолчание выхода лежит ВНУТРИ дерева края, а у вынесенного домена это дерево —
+# КЭШ МОДУЛЕЙ, то есть read-only. Значит вызов без явного аргумента отказывает у
+# него ВСЕГДА: это не край, а путь по умолчанию.
+#
+# Отказывало это СИМПТОМОМ и ПОСЛЕ всей работы: `mkdir: Permission denied` без
+# пути и без ручки (когда каталога умолчания нет) либо `cp: ... Отказано в
+# доступе` (когда каталог есть, а записи в него нет) — оба уже после раскладки
+# стадии, сборки плагина и прогона buf.
+#
+# Проверка стоит ЗДЕСЬ, а не у копирования выхода: то место наступает последним.
+# Условий ДВА, и одного `mkdir -p` недостаточно — на СУЩЕСТВУЮЩЕМ каталоге он
+# успешен, поэтому право записи спрашивается отдельно. Свойство утверждает ось
+# A14 гейта разреза.
+OUT_DIR="$(dirname "${OUT}")"
+if ! mkdir -p "${OUT_DIR}" 2>/dev/null || [[ ! -w "${OUT_DIR}" ]]; then
+  echo "ERR: каталог выхода не записываем: ${OUT_DIR}" >&2
+  echo "     Выход назван аргументом 1; его умолчание — ${OUT_DEFAULT}," >&2
+  echo "     то есть ВНУТРИ дерева края. У вынесенного домена это дерево" >&2
+  echo "     приезжает кэшем модулей и записи не допускает — назовите выход" >&2
+  echo "     явным аргументом в своём дереве." >&2
+  exit 1
+fi
 
 STAGE="$(mktemp -d)/routes-proto"
 BIN="$(mktemp -d)"
@@ -142,7 +171,6 @@ mkdir -p "${STAGE}/out"
 # Плагин уже прогоняет go/format; повторный gofmt — дешевая страховка.
 gofmt -w "${STAGE}/out/rest_route_table_gen.go"
 
-mkdir -p "$(dirname "${OUT}")"
 cp "${STAGE}/out/rest_route_table_gen.go" "${OUT}"
 
 
