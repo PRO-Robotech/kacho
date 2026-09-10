@@ -465,6 +465,27 @@ var KanameFoundationSchemaFunctions = map[string]bool{
 	"kacho_rate_refuse":             true,
 }
 
+// kanameSchemaQualifier — приставка, которой дерево квалифицирует имя функции
+// ВНУТРИ схемы службы: `kaname.kacho_quota_count`.
+//
+// Приставка ОДНА и она структурна, а не подобрана примером: функции заведены в
+// схеме `kaname` (`CREATE SCHEMA kaname` применённой миграции), и другого
+// законного квалификатора у них не бывает. Правило вида «всякое `<слово>.` перед
+// именем — квалификатор схемы» шире предмета: под ним прошёл бы столбец чужой
+// таблицы, чьё имя совпало с именем функции.
+const kanameSchemaQualifier = "kaname."
+
+// foundationFunctionTerminators — знаки, которыми ПРОЗА заканчивает имя функции.
+//
+// Они входят в токен (`isResidueTokenRune` их принимает), поэтому сегментом
+// оказывается `kacho_quota_refuse:` — с точки зрения словаря это ДРУГАЯ строка,
+// и упоминание уезжало с границы на полосу клейм.
+//
+// Перечень узок НАМЕРЕННО: продолжение имени буквой, цифрой, подчёркиванием или
+// дефисом означает ДРУГОЙ объект (`kacho_quota_count_v2`, `kacho_nlb.targets`),
+// и срезать его значило бы признать функцией фундамента то, чем она не является.
+const foundationFunctionTerminators = ".:"
+
 // residueHit — одно вхождение имени и его окрестность.
 //
 // Разбор идёт по СЕГМЕНТУ пути, а не по всему токену: у адреса
@@ -567,7 +588,7 @@ var kanameResidueRules = []residueRule{
 		return ok && strings.HasPrefix(rest, "_")
 	}},
 	{borderFoundationFunction, func(h NameResidueHit, _ residueWorld) bool {
-		return KanameFoundationSchemaFunctions[h.Seg]
+		return isFoundationSchemaFunction(h.Seg)
 	}},
 	{laneClusterAnchor, func(h NameResidueHit, _ residueWorld) bool {
 		return strings.HasSuffix(h.SegPre, "cluster_") && strings.HasPrefix(h.SegRest, "_root")
@@ -745,6 +766,29 @@ func isFoundationMetricSeries(series map[string]bool, token string) bool {
 		}
 	}
 	return false
+}
+
+// isFoundationSchemaFunction — сегмент есть УПОМИНАНИЕ функции общего фундамента
+// в любой из форм, которыми его записывает дерево.
+//
+// Судится ОХРАНА, а не словарь. Перечень функций закрыт и остаётся закрытым;
+// расходились с ним не имена, а ОБЁРТКИ: сегмент режется по `/`, поэтому точка
+// квалификатора его не рвёт, а двоеточие прозы из токена не выпадает — и
+// `kaname.kacho_quota_count` с `kacho_quota_refuse:` оказывались для словаря
+// ДРУГИМИ строками. Пополнять словарь этими написаниями значило бы лечить
+// экземпляры: следующая обёртка снова уехала бы на полосу клейм.
+//
+// Снимается РОВНО ДВА слоя, и каждый — структурный факт, а не пример:
+//
+//   - слева приставка СВОЕЙ схемы, в которой функции и заведены;
+//   - справа терминальная пунктуация прозы, которая частью имени быть не может.
+//
+// Всё прочее продолжение имени остаётся значимым: `kacho_quota_count_v2` и
+// `kacho_nlb.targets` — другие объекты, и границей они не признаются.
+func isFoundationSchemaFunction(seg string) bool {
+	name := strings.TrimPrefix(seg, kanameSchemaQualifier)
+	name = strings.TrimRight(name, foundationFunctionTerminators)
+	return KanameFoundationSchemaFunctions[name]
 }
 
 // isTrackerReference — вхождение есть КРАТКАЯ ссылка на задачу трекера вида
@@ -1927,7 +1971,7 @@ var KanameNameResidueDebt = []NameResidueDebt{
 	{laneQualifiedTable, 0, 0, "снято #2128: контракт называет таблицы схемой, которую дерево производит"},
 	{laneEnvKnob, 87, 45, "линия дебрендинга: ручки службы"},
 	{laneChartKnob, 125, 14, "линия дебрендинга: ключи чарта оператора"},
-	{laneClaimAssertion, 80, 24, "О1 эпика #2076 — межрепозиторный контракт, требует окна двух написаний"},
+	{laneClaimAssertion, 25, 18, "О1 эпика #2076 — межрепозиторный контракт, требует окна двух написаний"},
 	{laneIdentityHeader, 85, 42, "Р10 №1 — заголовки переданной личности"},
 	{laneClusterAnchor, 0, 0, "закрыто #2113: переход состоялся, неснимаемое перенесено в ведомость решённого остаться"},
 	{laneSchemaPrefixKin, 0, 0, "закрыто Р5 эпика #2076: приставка имён метрик приведена к факту"},
