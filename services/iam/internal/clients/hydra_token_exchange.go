@@ -47,17 +47,6 @@ type HydraTokenClient struct {
 	HTTPClient *http.Client
 }
 
-// NewHydraTokenClient — constructor without a pinned trust anchor (default
-// timeout 10s). Kept for the call sites that address the provider's public
-// listener over plaintext http in-cluster; production must use
-// NewHydraTokenClientWithCA once that listener is served over TLS.
-func NewHydraTokenClient(tokenURL string) *HydraTokenClient {
-	return &HydraTokenClient{
-		TokenURL:   tokenURL,
-		HTTPClient: &http.Client{Timeout: tokenHopTimeout},
-	}
-}
-
 // NewHydraTokenClientWithCA builds the client and, when an anchor is configured,
 // verifies the provider against THAT bundle and nothing else.
 //
