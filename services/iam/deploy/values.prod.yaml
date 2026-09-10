@@ -282,6 +282,18 @@ tls:
   # Оператор заводит объект Secret тем же внутренним удостоверяющим центром, что
   # и серверный, но с назначением `client auth`.
   clientSecretName: kaname-client-tls
+  # ЯКОРЬ ПОСТАВЩИКА ЛИЧНОСТИ — ОТДЕЛЬНЫЙ ОБЪЕКТ, и это решение (#2487).
+  #
+  # Три дороги к поставщику (административная, набор проверочных ключей, обмен
+  # токена) закрепляются ЭТИМ якорем, а не `ca.crt` серверного секрета: тот есть
+  # круг клиентских листов — ответ на другой вопрос, «кто вправе прийти ко мне
+  # клиентом». Профиль называл обоим одну координату, и оператор, чей поставщик
+  # выпущен другим центром, развести их не мог.
+  #
+  # Содержимое двух объектов вправе СОВПАДАТЬ: если ваш поставщик выпущен тем же
+  # внутренним центром, положите в оба один якорь. Разными обязаны быть
+  # координаты — чтобы выбор был выразим, а не подразумевался.
+  providerSecretName: kaname-provider-ca
 
 # ── ВЕЛИЧИНЫ ИЗ СЕКРЕТА ─────────────────────────────────────────────────────
 #
@@ -520,12 +532,12 @@ env:
   # чей поставщик отвечает по http, меняет схему сам — страж якоря тогда не
   # требует, и профиль остаётся исполнимым.
   KANAME_HYDRA_ADMIN_URL: "https://hydra-admin.example.invalid:4445"
-  KANAME_HYDRA_ADMIN_CA_FILE: /etc/kaname/tls/server/ca.crt
+  KANAME_HYDRA_ADMIN_CA_FILE: /etc/kaname/tls/provider/ca.crt
   # УДОСТОВЕРЕНИЕ к этому адресу — не здесь: оно секрет и живёт в карте
   # `secrets` выше, а НУЖНО ли оно — объявляет `authn.providerAdminAuth` ниже.
   # Адрес без удостоверения и есть та половина пары, которая выглядит
   # настроенной (задача #2471).
   KANAME_HYDRA_JWKS_URL: "https://hydra-public.example.invalid:4444/.well-known/jwks.json"
-  KANAME_HYDRA_JWKS_CA_FILE: /etc/kaname/tls/server/ca.crt
+  KANAME_HYDRA_JWKS_CA_FILE: /etc/kaname/tls/provider/ca.crt
   KANAME_HYDRA_TOKEN_URL: "https://hydra-public.example.invalid:4444/oauth2/token"
-  KANAME_HYDRA_TOKEN_CA_FILE: /etc/kaname/tls/server/ca.crt
+  KANAME_HYDRA_TOKEN_CA_FILE: /etc/kaname/tls/provider/ca.crt
