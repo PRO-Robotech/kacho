@@ -127,7 +127,27 @@ func nameResidueBorderTwins() map[string]struct{ Path, Body string } {
 			"services/iam/internal/apps/kaname/api/probe/tracker_ref.go",
 			"// Разбор класса — задача kacho" + trackerRefMark + "2260.\n",
 		},
+		borderFoundationSeries: {
+			"services/iam/docs/content/advanced/probe-observability.mdx",
+			"| `" + nameResidueProbeSeries + "` | counter | доля неуспешных ответов |\n",
+		},
 	}
+}
+
+// nameResidueProbeSeries — имя ряда СИНТЕТИЧЕСКОГО мира.
+//
+// Своё, а не настоящее: перечень, поданный этому миру, содержит ровно его, поэтому
+// ни один другой предмет мира он не отбирает. Настоящее имя ряда сделало бы
+// дельту миров двухфактной — прибавился бы и файл, и совпадение с чужим предметом.
+const nameResidueProbeSeries = "kacho_probe_series_total"
+
+// nameResidueSeriesRoster — перечень рядов, которым мир снабжается.
+//
+// Полоса Б8 узнаёт предмет НЕ из вхождения, а из перечня; мир без перечня её
+// правило исполнить не может, и «полоса молчит» было бы неотличимо от «правило
+// мертво».
+func nameResidueSeriesRoster() residueWorld {
+	return residueWorld{FoundationSeries: map[string]bool{nameResidueProbeSeries: true}}
 }
 
 // trackerRefMark — знак номера, отделённый от литерала.
@@ -169,7 +189,8 @@ func nameResidueWorld() map[string][]byte {
 // nameResidueLanes — вердикт держателя на заданном мире: полоса → вхождений.
 func nameResidueLanes(t *testing.T, world map[string][]byte) map[string]int {
 	t.Helper()
-	_, ledgerFindings, census, err := FindKanameNameResidue(world, nil, nil)
+	_, ledgerFindings, census, err := FindKanameNameResidue(world, nil, nil,
+		nameResidueSeriesRoster())
 	if err != nil {
 		t.Fatalf("разбор синтетического мира: %v", err)
 	}
@@ -318,7 +339,7 @@ func TestKanameNameResidueReadsTheMacronFormAnAsciiPredicateMisses(t *testing.T)
 	}
 
 	base := nameResidueWorld()
-	_, _, censusBase, err := FindKanameNameResidue(base, nil, nil)
+	_, _, censusBase, err := FindKanameNameResidue(base, nil, nil, nameResidueSeriesRoster())
 	if err != nil {
 		t.Fatalf("разбор: %v", err)
 	}
@@ -329,7 +350,7 @@ func TestKanameNameResidueReadsTheMacronFormAnAsciiPredicateMisses(t *testing.T)
 	} {
 		world := nameResidueWorld()
 		world["services/iam/docs/content/probe-form.mdx"] = []byte(body)
-		_, _, census, err := FindKanameNameResidue(world, nil, nil)
+		_, _, census, err := FindKanameNameResidue(world, nil, nil, nameResidueSeriesRoster())
 		if err != nil {
 			t.Fatalf("%s: разбор: %v", name, err)
 		}
@@ -341,7 +362,7 @@ func TestKanameNameResidueReadsTheMacronFormAnAsciiPredicateMisses(t *testing.T)
 
 	world := nameResidueWorld()
 	world["services/iam/docs/content/probe-form.mdx"] = []byte(macronOnly)
-	_, _, census, err := FindKanameNameResidue(world, nil, nil)
+	_, _, census, err := FindKanameNameResidue(world, nil, nil, nameResidueSeriesRoster())
 	if err != nil {
 		t.Fatalf("разбор: %v", err)
 	}
@@ -404,7 +425,7 @@ func TestKanameNameResidueStayLedgerExpiresWithItsSubject(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, ledgerFindings, census, err := FindKanameNameResidue(nameResidueWorld(), tc.stay, nil)
+			_, ledgerFindings, census, err := FindKanameNameResidue(nameResidueWorld(), tc.stay, nil, nameResidueSeriesRoster())
 			if err != nil {
 				t.Fatalf("разбор: %v", err)
 			}
@@ -453,7 +474,7 @@ func TestKanameNameResidueDebtLedgerIsExactInBothDirections(t *testing.T) {
 	}}
 
 	t.Run("сошлось — молчит", func(t *testing.T) {
-		_, ledgerFindings, _, err := FindKanameNameResidue(world, nil, exact)
+		_, ledgerFindings, _, err := FindKanameNameResidue(world, nil, exact, nameResidueSeriesRoster())
 		if err != nil {
 			t.Fatalf("разбор: %v", err)
 		}
@@ -468,7 +489,7 @@ func TestKanameNameResidueDebtLedgerIsExactInBothDirections(t *testing.T) {
 		grown := nameResidueWorld()
 		claim := nameResidueSubjects()[laneClaimAssertion]
 		grown[nameResidueSiblingPath(claim.Path)] = []byte(claim.Body)
-		_, ledgerFindings, _, err := FindKanameNameResidue(grown, nil, exact)
+		_, ledgerFindings, _, err := FindKanameNameResidue(grown, nil, exact, nameResidueSeriesRoster())
 		if err != nil {
 			t.Fatalf("разбор: %v", err)
 		}
@@ -482,7 +503,7 @@ func TestKanameNameResidueDebtLedgerIsExactInBothDirections(t *testing.T) {
 			Lane: laneClaimAssertion, Occurrences: base[laneClaimAssertion] + 5, Files: 1,
 			Owner: "проба",
 		}}
-		_, ledgerFindings, _, err := FindKanameNameResidue(world, nil, stale)
+		_, ledgerFindings, _, err := FindKanameNameResidue(world, nil, stale, nameResidueSeriesRoster())
 		if err != nil {
 			t.Fatalf("разбор: %v", err)
 		}
@@ -492,7 +513,7 @@ func TestKanameNameResidueDebtLedgerIsExactInBothDirections(t *testing.T) {
 	})
 
 	t.Run("полоса с остатком без строки — находка", func(t *testing.T) {
-		_, ledgerFindings, _, err := FindKanameNameResidue(world, nil, exact)
+		_, ledgerFindings, _, err := FindKanameNameResidue(world, nil, exact, nameResidueSeriesRoster())
 		if err != nil {
 			t.Fatalf("разбор: %v", err)
 		}
@@ -577,7 +598,7 @@ func TestKanameNameResidueRefusesOnBeingBeyondItsPredicate(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, _, err := FindKanameNameResidue(tc.world, tc.stay, tc.debt)
+			_, _, _, err := FindKanameNameResidue(tc.world, tc.stay, tc.debt, residueWorld{})
 			if err == nil {
 				t.Fatalf("держатель промолчал там, где вердикт беспредметен; ждали отказ про %q", tc.want)
 			}

@@ -177,7 +177,11 @@ package repohygiene
 
 import (
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/PRO-Robotech/kacho/internal/productnaming"
@@ -407,6 +411,7 @@ const (
 	borderFoundationFunction = "Б5 функция общего фундамента внутри схемы"
 	borderUnknownForm        = "Б6 форма неизвестна распознавателю"
 	borderTrackerReference   = "Б7 ссылка на задачу трекера"
+	borderFoundationSeries   = "Б8 имя ряда витрины фундамента"
 )
 
 // KanameForeignPlatformModules — ЗАКРЫТЫЙ перечень имён чужих модулей
@@ -486,9 +491,23 @@ type NameResidueHit struct {
 	Lane string
 }
 
+// residueWorld — то, что распознаватель узнаёт НЕ из самого вхождения, а из
+// дерева: перечни, объявленные другими его частями.
+//
+// Заведено параметром, а не глобальной переменной, ровно затем, чтобы
+// синтетический мир инъекции и настоящее дерево проходили ОДНУ функцию: перечень,
+// выставляемый в глобаль перед прогоном, сделал бы вердикт функцией порядка
+// тестов, а они идут параллельно.
+type residueWorld struct {
+	// FoundationSeries — имена рядов витрины, ОБЪЯВЛЕННЫЕ фундаментом. Пустой
+	// перечень означает «не собирали»: вычитание тогда не делается вовсе, и это
+	// отличимо от «рядов нет» переписью держателя.
+	FoundationSeries map[string]bool
+}
+
 type residueRule struct {
 	Lane  string
-	Match func(h NameResidueHit) bool
+	Match func(h NameResidueHit, w residueWorld) bool
 }
 
 // kanameResidueRules — правила В ПОРЯДКЕ применения; первое совпавшее забирает
@@ -504,26 +523,28 @@ type residueRule struct {
 //   - координата контракта СЛУЖБЫ стоит до координаты контракта ФУНДАМЕНТА:
 //     обе начинаются одинаково, различает их домен.
 var kanameResidueRules = []residueRule{
-	{borderApprovedAcceptance, func(h NameResidueHit) bool {
+	{borderApprovedAcceptance, func(h NameResidueHit, _ residueWorld) bool {
 		return strings.HasPrefix(h.Path, kanameApprovedAcceptanceDir)
 	}},
-	{borderFoundationModule, func(h NameResidueHit) bool {
+	{borderFoundationModule, func(h NameResidueHit, _ residueWorld) bool {
 		return strings.HasSuffix(h.PathPre, "PRO-Robotech/") && h.Seg == "kacho"
 	}},
-	{borderTrackerReference, isTrackerReference},
-	{laneContractCoordinate, func(h NameResidueHit) bool {
+	{borderTrackerReference, func(h NameResidueHit, _ residueWorld) bool {
+		return isTrackerReference(h)
+	}},
+	{laneContractCoordinate, func(h NameResidueHit, _ residueWorld) bool {
 		domain, ok := contractDomainOf(h)
 		return ok && isAccessContractDomain(domain)
 	}},
-	{borderFoundationContract, func(h NameResidueHit) bool {
+	{borderFoundationContract, func(h NameResidueHit, _ residueWorld) bool {
 		_, ok := contractDomainOf(h)
 		return ok
 	}},
-	{laneQualifiedTable, func(h NameResidueHit) bool {
+	{laneQualifiedTable, func(h NameResidueHit, _ residueWorld) bool {
 		rest, ok := schemaPrefixRest(h)
 		return ok && strings.HasPrefix(rest, ".")
 	}},
-	{laneDatabaseName, func(h NameResidueHit) bool {
+	{laneDatabaseName, func(h NameResidueHit, _ residueWorld) bool {
 		rest, ok := schemaPrefixRest(h)
 		if !ok || rest != "" {
 			return false
@@ -531,42 +552,45 @@ var kanameResidueRules = []residueRule{
 		return strings.HasSuffix(h.SegPre, "/") || strings.HasSuffix(h.PathPre, "/") ||
 			isProfileDatabaseKey(h.LinePrefix)
 	}},
-	{laneSchemaName, func(h NameResidueHit) bool {
+	{laneSchemaName, func(h NameResidueHit, _ residueWorld) bool {
 		rest, ok := schemaPrefixRest(h)
 		return ok && rest == ""
 	}},
-	{laneSchemaPrefixKin, func(h NameResidueHit) bool {
+	{laneSchemaPrefixKin, func(h NameResidueHit, _ residueWorld) bool {
 		rest, ok := schemaPrefixRest(h)
 		return ok && strings.HasPrefix(rest, "_")
 	}},
-	{borderFoundationFunction, func(h NameResidueHit) bool {
+	{borderFoundationFunction, func(h NameResidueHit, _ residueWorld) bool {
 		return KanameFoundationSchemaFunctions[h.Seg]
 	}},
-	{laneClusterAnchor, func(h NameResidueHit) bool {
+	{laneClusterAnchor, func(h NameResidueHit, _ residueWorld) bool {
 		return strings.HasSuffix(h.SegPre, "cluster_") && strings.HasPrefix(h.SegRest, "_root")
 	}},
-	{laneEnvKnob, func(h NameResidueHit) bool {
+	{laneEnvKnob, func(h NameResidueHit, _ residueWorld) bool {
 		return h.Hit == "KACHO" && strings.HasPrefix(h.SegRest, "_")
 	}},
-	{laneClaimAssertion, func(h NameResidueHit) bool {
+	{borderFoundationSeries, func(h NameResidueHit, w residueWorld) bool {
+		return isFoundationMetricSeries(w.FoundationSeries, h.Seg)
+	}},
+	{laneClaimAssertion, func(h NameResidueHit, _ residueWorld) bool {
 		return h.Hit == "kacho" && len(h.SegRest) > 1 && h.SegRest[0] == '_' &&
 			isLowerWordByte(h.SegRest[1])
 	}},
-	{laneIdentityHeader, func(h NameResidueHit) bool {
+	{laneIdentityHeader, func(h NameResidueHit, _ residueWorld) bool {
 		return strings.HasSuffix(strings.ToLower(h.SegPre), "x-") &&
 			len(h.SegRest) > 1 && h.SegRest[0] == '-' && isLowerWordByte(lowerByte(h.SegRest[1]))
 	}},
-	{borderForeignModule, func(h NameResidueHit) bool {
+	{borderForeignModule, func(h NameResidueHit, _ residueWorld) bool {
 		return KanameForeignPlatformModules[h.Seg]
 	}},
-	{laneChartKnob, func(h NameResidueHit) bool {
+	{laneChartKnob, func(h NameResidueHit, _ residueWorld) bool {
 		if !h.InChart {
 			return false
 		}
 		return strings.HasSuffix(h.SegPre, ".Values.") || strings.HasSuffix(h.SegPre, "global.") ||
 			(len(h.SegRest) > 1 && h.SegRest[0] == '.' && isASCIILetter(h.SegRest[1]))
 	}},
-	{laneDomainAddress, func(h NameResidueHit) bool {
+	{laneDomainAddress, func(h NameResidueHit, _ residueWorld) bool {
 		for _, suffix := range [...]string{".cloud", ".local", ".svc"} {
 			if strings.HasPrefix(h.SegRest, suffix) {
 				return true
@@ -574,17 +598,17 @@ var kanameResidueRules = []residueRule{
 		}
 		return false
 	}},
-	{laneObjectName, func(h NameResidueHit) bool {
+	{laneObjectName, func(h NameResidueHit, _ residueWorld) bool {
 		return !h.Macron &&
 			(strings.HasPrefix(h.SegRest, "-") || strings.HasSuffix(h.SegPre, "-"))
 	}},
-	{laneBrandInText, func(h NameResidueHit) bool { return h.Macron }},
-	{lanePlatformName, func(h NameResidueHit) bool { return strings.EqualFold(h.Seg, "kacho") }},
-	{laneObjectName, func(h NameResidueHit) bool {
+	{laneBrandInText, func(h NameResidueHit, _ residueWorld) bool { return h.Macron }},
+	{lanePlatformName, func(h NameResidueHit, _ residueWorld) bool { return strings.EqualFold(h.Seg, "kacho") }},
+	{laneObjectName, func(h NameResidueHit, _ residueWorld) bool {
 		return len(h.SegRest) > 1 && (h.SegRest[0] == '.' || h.SegRest[0] == ':') &&
 			isASCIILetter(h.SegRest[1])
 	}},
-	{borderUnknownForm, func(NameResidueHit) bool { return true }},
+	{borderUnknownForm, func(NameResidueHit, residueWorld) bool { return true }},
 }
 
 // kanameLanes — полоса → ось. Выведено из правил, а не выписано вторым местом:
@@ -619,6 +643,101 @@ var kanameLanes = map[string]residueLane{
 		"СЛЕПАЯ ЗОНА: форма записи, которой держатель не судит; число точное"},
 	borderTrackerReference: {borderTrackerReference, axisBorder,
 		"ссылка на задачу: имя называет РЕПОЗИТОРИЙ учёта, а не продукт"},
+	borderFoundationSeries: {borderFoundationSeries, axisBorder,
+		"решено остаться: ряд производит измеритель фундамента; служба его не " +
+			"переименовывает, а не назвать — оставить дежурного без запроса"},
+}
+
+// FoundationSeriesDeclarationDir — каталог, в котором фундамент ОБЪЯВЛЯЕТ имена
+// своих рядов, от корня дерева. Координата, а не признак: обход сужен намеренно.
+//
+// Довод измерен, а не выбран из осторожности. Тот же литерал, встреченный где
+// угодно в дереве, бывает совсем другим предметом: под приставкой платформы там
+// живут ИМЕНА СХЕМ и ТАБЛИЦ (`kacho_vpc`, `kacho_iam_subjects`) и функции схемы
+// (`kacho_quota_admit`). Широкий обход вычел бы их из своих полос — то есть
+// замаскировал бы ровно тот остаток, ради которого ведомость и заведена.
+const FoundationSeriesDeclarationDir = "pkg"
+
+// FoundationSeriesFromCorpus — имена рядов витрины, объявленные ЛИТЕРАЛОМ в
+// позиции имени ряда. Второе возвращаемое — файлов разобрано: ноль означает, что
+// обход не состоялся, и «рядов нет» тогда значит «не искали».
+//
+// Судится ПОЗИЦИЯ (`Name:` в объявлении измерителя), а не подстрока: имя ряда и
+// имя схемы записываются одинаково — приставка платформы плюс слова через
+// подчёркивание, — и различает их только место, где литерал стоит.
+func FoundationSeriesFromCorpus(files map[string][]byte) (map[string]bool, int) {
+	out := map[string]bool{}
+	filesRead := 0
+
+	paths := make([]string, 0, len(files))
+	for path := range files {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+
+	for _, path := range paths {
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			continue
+		}
+		fset := token.NewFileSet()
+		file, err := parser.ParseFile(fset, path, files[path], 0)
+		if err != nil {
+			// Неразбираемый исходник — предмет компилятора, не этого разбора.
+			continue
+		}
+		filesRead++
+		ast.Inspect(file, func(n ast.Node) bool {
+			kv, ok := n.(*ast.KeyValueExpr)
+			if !ok {
+				return true
+			}
+			key, ok := kv.Key.(*ast.Ident)
+			if !ok || key.Name != "Name" {
+				return true
+			}
+			lit, ok := kv.Value.(*ast.BasicLit)
+			if !ok || lit.Kind != token.STRING {
+				return true
+			}
+			value, uerr := strconv.Unquote(lit.Value)
+			if uerr != nil {
+				return true
+			}
+			if strings.HasPrefix(value, "kacho_") {
+				out[value] = true
+			}
+			return true
+		})
+	}
+	return out, filesRead
+}
+
+// foundationSeriesSuffixes — хвосты, которые Prometheus дописывает к ряду
+// гистограммы. В объявлении их нет: объявлено базовое имя, а запрос дежурного
+// берёт производное, и страница называет именно производное.
+var foundationSeriesSuffixes = [...]string{"_bucket", "_sum", "_count"}
+
+// isFoundationMetricSeries — объявлен ли токен рядом витрины фундамента.
+//
+// ПОЛНОЕ имя спрашивается ПЕРВЫМ, и только затем — имя без хвоста гистограммы.
+// Обратный порядок ошибается на настоящем ряде, чьё имя оканчивается так же:
+// счётчик `..._total` производным ни от чего не является.
+//
+// Пустой перечень означает «не собирали», и тогда вычитания не происходит вовсе:
+// молчание здесь не выдаётся за «рядов нет» — это различает перепись держателя.
+func isFoundationMetricSeries(series map[string]bool, token string) bool {
+	if len(series) == 0 {
+		return false
+	}
+	if series[token] {
+		return true
+	}
+	for _, suffix := range foundationSeriesSuffixes {
+		if strings.HasSuffix(token, suffix) && series[strings.TrimSuffix(token, suffix)] {
+			return true
+		}
+	}
+	return false
 }
 
 // isTrackerReference — вхождение есть КРАТКАЯ ссылка на задачу трекера вида
@@ -1418,6 +1537,43 @@ var KanameNameResidueStay = []NameResidueStay{
 // прощающая больше, чем есть, перестаёт быть предикатом и выдаёт вперёд слепую
 // зону — следующая настоящая находка той же полосы уехала бы под неё незамеченной.
 
+// РАЗДЕЛЕНИЕ ФОРМ 2026-09-10 — задача #2523: имя ряда витрины перестало судиться
+// как клеймо токена.
+//
+// Полоса «утверждение токена» опознаёт форму `kacho_<слово>`, и её опознают ТРИ
+// разных предмета: клеймо в удостоверении (`kacho_principal_type`), функция схемы
+// (`kacho_quota_admit`, у неё своя граница) и ИМЯ РЯДА, который эмитирует
+// измеритель фундамента (`kacho_grpc_server_handled_total`). Различить их формой
+// записи нельзя — она у них одна.
+//
+// Следствие для владельца полосы было прямое: семнадцать вхождений, к
+// межрепозиторному контракту отношения не имеющих, и они не снялись бы его
+// работой НИКОГДА. Переименовать ряд фундамента служба не вправе, а не назвать
+// его — значит оставить дежурного без запроса о доле неуспешных ответов, ради
+// которого страница наблюдаемости и переписана.
+//
+// ПЕРЕПИСЬ НАЗЫВАЕТ ОБЕ ВЕЛИЧИНЫ, и это здесь несущее: «полоса опустилась»
+// обязано быть отличимо от «полоса ослепла». Осмотренное у полосы клейм
+// УМЕНЬШИЛОСЬ ровно на столько же, на сколько уменьшилось найденное, — значит
+// предмет ПЕРЕЕХАЛ на границу, а не исчез из наблюдения:
+//
+//	утверждение токена   осмотрено 2467 → 2450 · найдено 83 → 66 · файлов 27 → 23
+//	Б8 ряд фундамента    осмотрено    — → 2467 · признано  — → 17
+//
+// Семнадцать против девяти, названных при заведении задачи: те девять были
+// сосчитаны по ОДНОЙ странице, а полоса читает всю поверхность — те же ряды
+// названы ещё инженерной страницей и двумя пробами измерителя службы.
+//
+// ОРАКУЛ СОБИРАЕТСЯ ИЗ ОБЪЯВЛЕНИЙ ДЕРЕВА, А НЕ СПИСКОМ. Список пришлось бы вести
+// руками, и он пережил бы свой предмет; прощение целой страницы замаскировало бы
+// на ней и будущее клеймо. Здесь дозволение СТРУКТУРНОЕ: токен не судится клеймом
+// ровно тогда, когда фундамент ОБЪЯВЛЯЕТ его рядом витрины. Обход сужен до
+// каталога фундамента намеренно — под приставкой платформы в дереве живут ещё
+// имена схем, таблиц и функций схемы, и широкий обход вычел бы их из своих полос.
+//
+// Способность разделения падать и молчать доказана инъекцией —
+// kanamefoundationseries_injection_test.go.
+
 // РОСТ 2026-09-10 на четырёх полосах — задачи #2498 и #2496, наблюдаемость
 // отдельно поставляемой службы. Прибавка названа ПОИМЁННО, как требует норма
 // выше; замер — прогоном держателя на этом дереве и на его базе, а не
@@ -1481,7 +1637,7 @@ var KanameNameResidueDebt = []NameResidueDebt{
 	{laneQualifiedTable, 0, 0, "снято #2128: контракт называет таблицы схемой, которую дерево производит"},
 	{laneEnvKnob, 87, 45, "линия дебрендинга: ручки службы"},
 	{laneChartKnob, 122, 14, "линия дебрендинга: ключи чарта оператора"},
-	{laneClaimAssertion, 83, 27, "О1 эпика #2076 — межрепозиторный контракт, требует окна двух написаний"},
+	{laneClaimAssertion, 66, 23, "О1 эпика #2076 — межрепозиторный контракт, требует окна двух написаний"},
 	{laneIdentityHeader, 85, 42, "Р10 №1 — заголовки переданной личности"},
 	{laneClusterAnchor, 0, 0, "закрыто #2113: переход состоялся, неснимаемое перенесено в ведомость решённого остаться"},
 	{laneSchemaPrefixKin, 0, 0, "закрыто Р5 эпика #2076: приставка имён метрик приведена к факту"},
@@ -1579,6 +1735,7 @@ func FindKanameNameResidue(
 	files map[string][]byte,
 	stay []NameResidueStay,
 	debt []NameResidueDebt,
+	world residueWorld,
 ) ([]NameResidueHit, []NameResidueLedgerFinding, NameResidueCensus, error) {
 	census := NameResidueCensus{
 		FilesTracked:   len(files),
@@ -1646,7 +1803,7 @@ func FindKanameNameResidue(
 					census.OccurrencesASCII++
 					sawASCII = true
 				}
-				h.Lane = classifyResidueHit(h, census.OfferedByLane)
+				h.Lane = classifyResidueHit(h, census.OfferedByLane, world)
 				if perFileLane[path] == nil {
 					perFileLane[path] = map[string]int{}
 				}
@@ -1835,14 +1992,14 @@ func validateDebtLedgerShape(debt []NameResidueDebt) error {
 
 // classifyResidueHit — первое совпавшее правило забирает вхождение; каждой
 // полосе, чьё правило ИСПОЛНЯЛОСЬ, засчитывается «предложено».
-func classifyResidueHit(h NameResidueHit, offered map[string]int) string {
+func classifyResidueHit(h NameResidueHit, offered map[string]int, world residueWorld) string {
 	counted := map[string]bool{}
 	for _, rule := range kanameResidueRules {
 		if !counted[rule.Lane] {
 			offered[rule.Lane]++
 			counted[rule.Lane] = true
 		}
-		if rule.Match(h) {
+		if rule.Match(h, world) {
 			return rule.Lane
 		}
 	}
