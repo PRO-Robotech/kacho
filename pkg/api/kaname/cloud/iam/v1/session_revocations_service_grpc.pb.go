@@ -43,7 +43,7 @@ const (
 // when a token's `jti` is not in cache (e.g. cold start window).
 //
 // Revocation sources:
-//   - User-initiated logout (kacho-iam OAuth2 logout handler).
+//   - User-initiated logout (kaname OAuth2 logout handler).
 //   - Admin force-logout (InternalIAMService.ForceLogout — see
 //     internal_iam_service.proto extensions).
 //   - CAEP receiver (external IdP signal).
@@ -68,7 +68,7 @@ type InternalSessionRevocationsServiceClient interface {
 	// CAEP forwarder to bulk-emit events.
 	//
 	// The whole response is about ONE user the CALLER NAMES, so it is authorized
-	// per-object on that user, and kacho-iam enforces that itself
+	// per-object on that user, and kaname enforces that itself
 	// (internal/apps/kaname/api/session_revocations). The record below states that
 	// lane, so any future route inherits it rather than a bypass.
 	//
@@ -179,7 +179,7 @@ func (c *internalSessionRevocationsServiceClient) SessionCutoffOf(ctx context.Co
 // when a token's `jti` is not in cache (e.g. cold start window).
 //
 // Revocation sources:
-//   - User-initiated logout (kacho-iam OAuth2 logout handler).
+//   - User-initiated logout (kaname OAuth2 logout handler).
 //   - Admin force-logout (InternalIAMService.ForceLogout — see
 //     internal_iam_service.proto extensions).
 //   - CAEP receiver (external IdP signal).
@@ -204,7 +204,7 @@ type InternalSessionRevocationsServiceServer interface {
 	// CAEP forwarder to bulk-emit events.
 	//
 	// The whole response is about ONE user the CALLER NAMES, so it is authorized
-	// per-object on that user, and kacho-iam enforces that itself
+	// per-object on that user, and kaname enforces that itself
 	// (internal/apps/kaname/api/session_revocations). The record below states that
 	// lane, so any future route inherits it rather than a bypass.
 	//

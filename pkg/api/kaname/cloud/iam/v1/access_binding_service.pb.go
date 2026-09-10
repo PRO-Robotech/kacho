@@ -681,8 +681,8 @@ type ListAccessBindingsByScopeRequest struct {
 	// api-gateway `scope_extractor` below still keys the per-request FGA scope on
 	// the LEGACY `resource_id`/`resource_type`. A REST caller that sends ONLY the
 	// new pair therefore resolves no scope at the edge and is denied BEFORE
-	// reaching kacho-iam. Until the gateway extractor learns these field names,
-	// send BOTH pairs over REST. The kacho-iam handler itself is already
+	// reaching kaname. Until the gateway extractor learns these field names,
+	// send BOTH pairs over REST. The kaname handler itself is already
 	// new-pair-first (it prefers scope_type/scope_id and falls back to the legacy
 	// pair), so the backend needs no further change.
 	ScopeType string `protobuf:"bytes,5,opt,name=scope_type,json=scopeType,proto3" json:"scope_type,omitempty"`
@@ -1487,7 +1487,7 @@ type ListAssignableRolesRequest struct {
 	// this RPC's api-gateway `scope_extractor` still keys the per-request FGA scope
 	// on the LEGACY `resource_id`/`resource_type`, so a REST caller sending ONLY
 	// the new pair is denied at the edge. Send BOTH pairs over REST until the
-	// gateway extractor learns these names; the kacho-iam handler is already
+	// gateway extractor learns these names; the kaname handler is already
 	// new-pair-first.
 	ScopeType string `protobuf:"bytes,5,opt,name=scope_type,json=scopeType,proto3" json:"scope_type,omitempty"`
 	// Scope-anchor ID; paired with `scope_type`, supersedes `resource_id`. Same

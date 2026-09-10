@@ -148,14 +148,14 @@ func (x *UpsertFromIdentityMetadata) GetCreated() bool {
 // payload from Kratos recovery webhook.
 type OnRecoveryCompletedRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Kratos identity id (= kacho-iam User.external_id) whose recovery just
+	// Kratos identity id (= kaname User.external_id) whose recovery just
 	// completed.
 	ExternalId string `protobuf:"bytes,1,opt,name=external_id,json=externalId,proto3" json:"external_id,omitempty"`
 	// Kratos recovery-flow id (used as idempotency key — `INSERT ... ON
 	// CONFLICT (recovery_jti) DO NOTHING`).
 	RecoveryJti string `protobuf:"bytes,2,opt,name=recovery_jti,json=recoveryJti,proto3" json:"recovery_jti,omitempty"`
 	// E-mail at which the recovery was completed (echo from Kratos identity
-	// traits — kacho-iam matches it against `users.email` to defend against
+	// traits — kaname matches it against `users.email` to defend against
 	// mismatched payloads).
 	Email         string `protobuf:"bytes,3,opt,name=email,proto3" json:"email,omitempty"`
 	unknownFields protoimpl.UnknownFields

@@ -8,7 +8,7 @@
 // source: kaname/cloud/iam/v1/internal_bootstrap_token_service.proto
 
 // InternalBootstrapTokenService — Internal-only (cluster-internal :9091, mTLS).
-// Reachable ONLY by a DIRECT mTLS gRPC dial to kacho-iam :9091. It carries NO
+// Reachable ONLY by a DIRECT mTLS gRPC dial to kaname-internal :9091. It carries NO
 // `google.api.http` binding and is NOT registered on the api-gateway REST mux —
 // deliberately, and this is a SECURITY invariant, not a style choice: the
 // gateway's cluster-internal REST listener is plain HTTP/1.1 (no TLS, no client

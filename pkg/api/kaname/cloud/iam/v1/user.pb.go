@@ -95,7 +95,7 @@ func (User_InviteStatus) EnumDescriptor() ([]byte, []int) {
 // Resource id prefix: `usr` (concatenated form, `ids.NewID`).
 type User struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the user (kacho-iam internal id).
+	// ID of the user (kaname internal id).
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// External identity provider id (Kratos `sub` claim). Может быть пустым для
 	// PENDING (invited but never logged in).

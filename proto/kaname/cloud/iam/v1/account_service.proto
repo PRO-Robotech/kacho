@@ -34,7 +34,7 @@ service AccountService {
     // top-level List has no scope id — the gateway cannot build a
     // single `<type>:<id>` Check object, and a `project:*` Check would
     // wrongly deny every caller with 403. List is default-deny via a
-    // SCOPE-FILTER instead: the kacho-iam handler returns 200 with only the
+    // SCOPE-FILTER instead: the kaname handler returns 200 with only the
     // Accounts the principal is a member of (EMPTY list when none — never a
     // PermissionDenied). The handler is the authoritative gate, so the
     // gateway middleware exempts this RPC. Anonymous is still rejected by the

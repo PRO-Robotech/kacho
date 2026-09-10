@@ -222,7 +222,7 @@ type CatalogResource struct {
 	// guessed by the UI. Internal-only List does NOT count as public.
 	HasListEndpoint bool `protobuf:"varint,3,opt,name=has_list_endpoint,json=hasListEndpoint,proto3" json:"has_list_endpoint,omitempty"`
 	// True if the type may carry a match_labels (ARM_LABELS) selector — it is in
-	// the label-selectable feed set (kacho-iam domain.IsLabelSelectableType:
+	// the label-selectable feed set (kaname domain.IsLabelSelectableType:
 	// mirror-fed types + iam.project/iam.account). ARM_NAMES (resourceNames) is
 	// NOT feed-gated — any type may be pinned by id. The editor must NOT offer a
 	// match_labels arm on a type where this is false (the rule compiler

@@ -1214,3 +1214,62 @@ func TestKanameClosedBorderCatalogueExpiryFallsOnlyOnTheDeadEntry(t *testing.T) 
 			"предмета» неотличимо от «мы не читали», и перечень истёк бы весь и разом")
 	}
 }
+
+// TestKanameForeignNameKindVerdictInjection — способность вердикта видов упасть
+// и смолчать, доказанная ПОДАЧЕЙ ВХОДА, а не прочтением.
+//
+// Оси инъекции по одной, каждая меняет РОВНО ОДИН факт против законного
+// близнеца, и близнец стоит рядом в той же таблице.
+func TestKanameForeignNameKindVerdictInjection(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name  string
+		names map[string]foreignNameKind
+		red   bool
+	}{
+		{
+			name:  "законный близнец: оба вида объявлены — молчит",
+			names: map[string]foreignNameKind{"kacho-vpc": foreignNameOfAnotherProduct, "kacho-iam": foreignNameRetiredOwn},
+		},
+		{
+			name:  "законный близнец: один вид на весь перечень — тоже молчит",
+			names: map[string]foreignNameKind{"kacho-vpc": foreignNameOfAnotherProduct},
+		},
+		{
+			name:  "вид не объявлен (нулевое значение) — находка",
+			names: map[string]foreignNameKind{"kacho-vpc": foreignNameOfAnotherProduct, "kacho-iam": ""},
+			red:   true,
+		},
+		{
+			name:  "вид объявлен, но вне закрытого набора — находка",
+			names: map[string]foreignNameKind{"kacho-vpc": foreignNameOfAnotherProduct, "kacho-iam": "чужое-и-наше-сразу"},
+			red:   true,
+		},
+		{
+			name:  "перечень пуст — вердикт беспредметен, и это НЕ зелёный",
+			names: map[string]foreignNameKind{},
+			red:   true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := KanameForeignNameKindVerdict(tc.names)
+			if tc.red && got == "" {
+				t.Fatalf("инъекция %q обязана краснеть, вердикт пуст", tc.name)
+			}
+			if !tc.red && got != "" {
+				t.Fatalf("законный близнец %q обязан молчать, вердикт: %s", tc.name, got)
+			}
+			if tc.red {
+				t.Logf("вердикт: %s", got)
+			}
+		})
+	}
+
+	// Настоящий перечень — предмет гейта, и он обязан молчать. Прогон без этой
+	// пробы доказывал бы способность падать на синтетике и ничего — о дереве.
+	if v := KanameForeignNameKindVerdict(KanameForeignPlatformModules); v != "" {
+		t.Errorf("настоящий перечень обязан молчать: %s", v)
+	}
+}
