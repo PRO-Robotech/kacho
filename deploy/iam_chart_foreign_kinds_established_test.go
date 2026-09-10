@@ -78,6 +78,29 @@
 //	Р4  перепись печатается числами, и пустой обход роняет прогон.
 //
 // ─────────────────────────────────────────────────────────────────────────────
+// ПОЧЕМУ И РЕНДЕР СПРАШИВАЕТСЯ У ВЛАДЕЛЬЦА, А НЕ СОБИРАЕТСЯ ЗДЕСЬ
+//
+// Первая редакция ВЫПИСЫВАЛА цепочку профилей (`values.yaml` + `values.prod.yaml`)
+// и набор координат у себя. Это вторая копия, и страж
+// `TestNoSecondCopyOfAStackChain` назвал её справедливо: две записи об одной
+// цепочке расходятся МОЛЧА, потому что каждая проверка честно проверяет то, что
+// сама объявила.
+//
+// ВЗЯТЬ ЦЕПОЧКУ ИЗ ТАБЛИЦЫ СТЕНДОВ (`deployStacks`) НЕЛЬЗЯ — и это по предмету,
+// а не по вкусу: таблица резолвит профили против каталога ЗОНТА
+// (`filepath.Join(umbrellaDir, p)`), то есть описывает ДРУГОЙ чарт, и строки
+// поставляемого в ней нет. Совпадение написаний `values.yaml`/`values.prod.yaml`
+// у двух чартов есть совпадение, а не общий предмет; у зонта цепочка `prod`
+// вообще состоит из ОДНОГО профиля, а у поставки из двух. Приняв чужую цепочку,
+// проба начала бы рендерить поставляемый чарт иначе, чем его ставят, — и это
+// снова разошлось бы молча, только уже с чужой таблицей.
+//
+// Поэтому рендер спрашивается у ЕДИНСТВЕННОГО владельца цепочки поставки —
+// самого владельца подъёма (`--render-install-chain`). Он печатает ровно то, что
+// поставит: ту же цепочку, тот же набор координат, то же пространство имён.
+// Копий не остаётся нигде, и проба судит УСТАНАВЛИВАЕМОЕ, а не похожее на него.
+//
+// ─────────────────────────────────────────────────────────────────────────────
 // ПОЧЕМУ ПЕРЕЧЕНЬ ВЛАДЕЛЬЦА СПРАШИВАЕТСЯ ИСПОЛНЕНИЕМ, А НЕ ЧТЕНИЕМ ТЕКСТА
 //
 // Проба зовёт `kaname-chart-boots.sh --foreign-kinds` и читает то, что скрипт
@@ -103,19 +126,12 @@ package deploy_test
 import (
 	"os"
 	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
-
-// deliveredIAMChart — ПОСТАВЛЯЕМЫЙ чарт службы доступа: единственный артефакт,
-// который ставящий получает отдельно. Это НЕ подчарт зонта (`iamChartDir`):
-// наборы их ключей пересекаются меньше чем наполовину, и зелёный зонт о
-// поставке не утверждает ничего.
-const deliveredIAMChart = repoRoot + "/services/iam/deploy"
 
 // iamBootOwnerScript — владелец подъёма поставляемого чарта. Живёт в дереве
 // ПЛАТФОРМЫ, и потому адресуется от её корня, а не подъёмом из чужого модуля.
@@ -124,18 +140,10 @@ const iamBootOwnerScript = repoRoot + "/.github/scripts/kaname-chart-boots.sh"
 // foreignKindsFlag — ключ, которым владелец подъёма печатает свой перечень.
 const foreignKindsFlag = "--foreign-kinds"
 
-// deliveredIAMChartProfiles — БОЕВАЯ цепочка поставки, та же, которой чарт
-// ставит полоса кластера.
-var deliveredIAMChartProfiles = []string{"values.yaml", "values.prod.yaml"}
-
-// deliveredIAMOperatorCoordinates — координаты, которые чарт требует НАЗВАТЬ и
-// умолчаний которым не даёт намеренно: без них рендер отказывает целиком.
-var deliveredIAMOperatorCoordinates = []string{
-	"image=registry.example.invalid/pro-robotech/kaname:0.1.0",
-	"db.host=postgres.example.invalid",
-	"db.passwordSecretName=kaname-db",
-	"db.passwordSecretKey=password",
-}
+// renderInstallChainFlag — ключ, которым владелец подъёма печатает РЕНДЕР той
+// цепочки и того набора координат, которыми он ставит чарт. Ни цепочка, ни
+// координаты здесь не выписываются: вторая копия расходится молча.
+const renderInstallChainFlag = "--render-install-chain"
 
 // builtinAPIGroups — группы, которые кластер служит САМ, без определения извне.
 //
@@ -199,12 +207,13 @@ func renderedAPIVersions(rendered string) []string {
 	return out
 }
 
-// renderDeliveredIAMChart рендерит ПОСТАВЛЯЕМЫЙ чарт боевой цепочкой.
+// renderDeliveredIAMChart — рендер, который печатает САМ владелец подъёма: та же
+// цепочка, тот же набор координат, то же пространство имён, которыми он ставит.
 //
 // Отсутствие helm в CI — жёсткий провал, а не пропуск: гейт, молча ставший
 // инертным на джобе, гейтящей мёрж, гейтом не является. Та же дисциплина, что у
 // соседей по каталогу.
-func renderDeliveredIAMChart(t *testing.T, sets ...string) string {
+func renderDeliveredIAMChart(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("helm"); err != nil {
 		if os.Getenv("CI") != "" {
@@ -212,18 +221,11 @@ func renderDeliveredIAMChart(t *testing.T, sets ...string) string {
 		}
 		t.Skip("helm не в PATH — вердикта НЕТ: третья категория, не зелёное и не красное")
 	}
-	args := []string{"template", "kaname", deliveredIAMChart, "-n", "kaname"}
-	for _, f := range deliveredIAMChartProfiles {
-		args = append(args, "-f", filepath.Join(deliveredIAMChart, f))
-	}
-	for _, s := range sets {
-		args = append(args, "--set", s)
-	}
-	out, err := exec.Command("helm", args...).CombinedOutput() // #nosec G204 -- фиксированный бинарь, аргументы из дерева
+	out, err := exec.Command("bash", iamBootOwnerScript, renderInstallChainFlag).CombinedOutput() // #nosec G204 -- путь из констант этого файла
 	require.NoErrorf(t, err,
-		"поставляемый чарт не отрендерился цепочкой %v: это НЕ вердикт гейта, а "+
+		"владелец подъёма не отрендерил свою цепочку по %s: это НЕ вердикт гейта, а "+
 			"«не выполнилось» — третья категория, и в успех она не засчитывается\n%s",
-		deliveredIAMChartProfiles, out)
+		renderInstallChainFlag, out)
 	return string(out)
 }
 
@@ -268,10 +270,10 @@ func TestIAMChartForeignKindsAreEstablishedByTheBootOwner(t *testing.T) {
 		iamBootOwnerScript)
 
 	// ── Р1: чарт рендерится, и классификатору есть что делить ────────────────
-	rendered := renderDeliveredIAMChart(t, deliveredIAMOperatorCoordinates...)
+	rendered := renderDeliveredIAMChart(t)
 	apiVersions := renderedAPIVersions(rendered)
-	require.NotEmptyf(t, apiVersions, "рендер цепочкой %v не дал НИ ОДНОГО объекта — "+
-		"обход пуст, и «чужих видов 0» означало бы «прочитано 0»", deliveredIAMChartProfiles)
+	require.NotEmpty(t, apiVersions, "рендер владельца подъёма не дал НИ ОДНОГО объекта — "+
+		"обход пуст, и «чужих видов 0» означало бы «прочитано 0»")
 
 	shipped := map[string]bool{}
 	builtinSeen, foreign := 0, map[string]bool{}

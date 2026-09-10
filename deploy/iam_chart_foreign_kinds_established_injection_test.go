@@ -82,7 +82,7 @@ func unestablishedAgainst(rendered string, roster []string) []string {
 // а не «что-то не сошлось»: находка, называющая симптом, посылает читателя
 // искать не там, и на неё тратят прогон.
 func TestIAMChartForeignKinds_FailsWhenTheBootOwnerEstablishesNothing(t *testing.T) {
-	rendered := renderDeliveredIAMChart(t, deliveredIAMOperatorCoordinates...)
+	rendered := renderDeliveredIAMChart(t)
 
 	empty := bootOwnerForeignKinds(t, iamBootOwnerScript, foreignKindsRosterEnv+"=")
 	require.Emptyf(t, empty,
@@ -102,7 +102,7 @@ func TestIAMChartForeignKinds_FailsWhenTheBootOwnerEstablishesNothing(t *testing
 // Тот же путь, ничего не подменено. Без него отрицание выше зеленело бы на
 // сверке, которая краснеет всегда.
 func TestIAMChartForeignKinds_SilentOnTheLegalTwin(t *testing.T) {
-	rendered := renderDeliveredIAMChart(t, deliveredIAMOperatorCoordinates...)
+	rendered := renderDeliveredIAMChart(t)
 
 	roster := bootOwnerForeignKinds(t, iamBootOwnerScript)
 	require.NotEmpty(t, roster, "перечень дерева пуст — тогда близнец не законный, а вырожденный")
@@ -116,7 +116,7 @@ func TestIAMChartForeignKinds_SilentOnTheLegalTwin(t *testing.T) {
 // копил бы записи про виды, снятые с поставки, и унаследовал бы следующую
 // слепую зону.
 func TestIAMChartForeignKinds_StaleRosterEntryIsAFinding(t *testing.T) {
-	rendered := renderDeliveredIAMChart(t, deliveredIAMOperatorCoordinates...)
+	rendered := renderDeliveredIAMChart(t)
 
 	const ghost = "gone.example.invalid/v1"
 	roster := bootOwnerForeignKinds(t, iamBootOwnerScript,
