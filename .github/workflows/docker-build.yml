@@ -270,18 +270,16 @@ jobs:
             # довод, чьего имени файл не объявляет, docker молча выбрасывает, `ARG`
             # остаётся пустым, и образ уезжает без ревизии — при зелёной сборке.
             # Шаг идёт через `docker buildx build`, то есть через BuildKit, а он на
-            # непотреблённый довод не говорит ничего: семь образов, знающих только
-            # каноническое имя, платят за переходную пару ноль (классический
+            # непотреблённый довод не говорит ничего: образы, знающие только
+            # каноническое имя, платили за переходную пару ноль (классический
             # сборщик напечатал бы одну строку предупреждения — но его здесь нет).
-            # Пара снимается, когда `git grep -c 'ARG KACHO_IMAGE_' --
-            # '*Dockerfile'` даст 0; до тех пор её держит гейт выше.
+            # ПАРА СНЯТА: её предмет — Dockerfile службы доступа — ушёл из
+            # этого дерева, предикат снятия дал 0, и потребовал снятия сам гейт.
             if docker buildx build \
                  --platform linux/amd64,linux/arm64 \
                  --provenance=false \
                  --build-arg OCI_IMAGE_REVISION="${{ steps.subject.outputs.sha_full }}" \
                  --build-arg OCI_IMAGE_VERSION="${{ steps.subject.outputs.branch }}" \
-                 --build-arg KACHO_IMAGE_REVISION="${{ steps.subject.outputs.sha_full }}" \
-                 --build-arg KACHO_IMAGE_VERSION="${{ steps.subject.outputs.branch }}" \
                  --cache-from "type=gha,scope=$image" \
                  --cache-to "type=gha,mode=max,scope=$image" \
                  -f "./$dir/Dockerfile" \
