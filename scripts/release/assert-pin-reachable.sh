@@ -67,6 +67,15 @@ REMOTE="${KACHO_RELEASE_REMOTE:-origin}"
 TRUNK="${KACHO_RELEASE_TRUNK:-main}"
 WITH_HISTORY=1
 
+# Сетевой вызов без предела времени ВЕШАЕТ гейт: зависшее соединение не даёт ни
+# находки, ни зелёного, и отличить это от долгой работы нечем. Предел — ручкой,
+# чтобы медленная сеть не превращалась в находку; отсутствие `timeout` не
+# роняет прогон, а лишь снимает предел (полоса и так fail-closed по исходу).
+NET_TIMEOUT="${KACHO_PIN_REACH_NET_TIMEOUT:-20}"
+netrun() {
+    if command -v timeout >/dev/null 2>&1; then timeout "$NET_TIMEOUT" "$@"; else "$@"; fi
+}
+
 usage() {
     cat >&2 <<USAGE
 употребление: $0 [--no-history]
@@ -196,7 +205,7 @@ if [ "${KACHO_PIN_CROSSTREE_NETWORK:-0}" != "1" ]; then
 elif ! command -v gh >/dev/null 2>&1; then
     note "$NET_NAME" "" "инструмента нет — gh не найден"
 else
-    if body="$(gh api "repos/$SERVICE_REPO/contents/$SERVICE_REPO_GOMOD" \
+    if body="$(netrun gh api "repos/$SERVICE_REPO/contents/$SERVICE_REPO_GOMOD" \
                   --jq .content 2>/dev/null | base64 -d 2>/dev/null)" && [ -n "$body" ]; then
         v="$(printf '%s\n' "$body" | pinOf || true)"
         note "$NET_NAME" "$v" "объявление получено, а строки модуля платформы в нём нет"
@@ -214,12 +223,33 @@ LOCAL_TAG_N="$(printf '%s' "$LOCAL_TAGS" | grep -c . || true)"
 NET_TAGS_STATE="нет"
 DURABLE_TAGS="$LOCAL_TAGS"
 if [ "${KACHO_PIN_REACH_NETWORK:-0}" = "1" ]; then
-    if REMOTE_TAGS="$(git ls-remote --tags "$REMOTE" 2>/dev/null)"; then
-        REMOTE_TAG_NAMES="$(printf '%s\n' "$REMOTE_TAGS" | grep -v '\^{}' \
-            | awk '{print $2}' | sed 's|^refs/tags/||' | sed '/^$/d' | sort -u)"
-        DURABLE_TAGS="$(printf '%s\n' "$LOCAL_TAGS" | sed '/^$/d' | sort -u \
-            | comm -12 - <(printf '%s\n' "$REMOTE_TAG_NAMES"))"
-        NET_TAGS_STATE="да"
+    if REMOTE_TAGS="$(netrun git ls-remote --tags "$REMOTE" 2>/dev/null)"; then
+        # Пересекаются ПАРЫ «имя<TAB>объект», а НЕ имена. Одноимённый тег на
+        # удалённом вправе указывать на ДРУГОЙ объект: тогда локальная ссылка
+        # ничего не свидетельствует о том, что origin держит ревизию, и якорем
+        # служить не может. Сверка по именам этого не видит и отказывает
+        # ОТКРЫТО — единственная fail-open полоса, какая тут была.
+        # Сравниваются РАЗЫМЕНОВАННЫЕ объекты (`^{}`): якорь есть коммит, до
+        # которого тег доходит, а не оболочка аннотации, — иначе аннотированный
+        # тег не совпал бы с локальным никогда. Порядок сверки принудительно
+        # C-локальный: `comm` требует одинаковой сортировки с обеих сторон.
+        REMOTE_TAG_PAIRS="$(printf '%s\n' "$REMOTE_TAGS" | awk -F'\t' '
+            $2 ~ /^refs\/tags\// {
+                n = substr($2, 11)
+                if (n ~ /\^\{\}$/) { sub(/\^\{\}$/, "", n); peeled[n] = $1 }
+                else if (!(n in plain))                       plain[n]  = $1
+            }
+            END { for (n in plain) print n "\t" ((n in peeled) ? peeled[n] : plain[n]) }
+        ' | sed '/^$/d' | LC_ALL=C sort -u)"
+        LOCAL_TAG_PAIRS="$(while IFS= read -r t; do
+                [ -n "$t" ] || continue
+                s="$(git rev-parse -q --verify "refs/tags/$t^{}" 2>/dev/null)" || continue
+                printf '%s\t%s\n' "$t" "$s"
+            done < <(printf '%s\n' "$LOCAL_TAGS") | LC_ALL=C sort -u)"
+        DURABLE_TAGS="$(comm -12 <(printf '%s\n' "$LOCAL_TAG_PAIRS" | sed '/^$/d') \
+                                 <(printf '%s\n' "$REMOTE_TAG_PAIRS" | sed '/^$/d') \
+                        | cut -f1)"
+        NET_TAGS_STATE="да, по объектам"
     else
         NET_TAGS_STATE="спросить не удалось — теги считаются НЕдолговечными"
         DURABLE_TAGS=""
