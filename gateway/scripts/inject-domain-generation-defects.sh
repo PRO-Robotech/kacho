@@ -417,6 +417,65 @@ gate_axis "рукописный перечень вернулся — A12 кра
 restore
 cleanup_probe
 
+echo "== ось 11: стадия наследует режим источника (A13) =="
+# Пара разводит оси начисто: остальные оси читают ЗАПИСЫВАЕМЫЙ корень (рабочая
+# копия), поэтому каталоги стадии у них 755 и снятие chmod-а их не касается —
+# краснеет РОВНО A13, и это то, что требует «инъекция обязана ронять ТОЛЬКО
+# проверяемое».
+pyedit "ось 11: приведение режима стадии снято" "$LIB" <<'PYX'
+import sys
+p = sys.argv[1]; s = open(p, encoding='utf-8').read()
+old = '  find "${stage}" -type d -exec chmod u+w {} +\n'
+assert old in s, 'ось 11: приведение режима стадии не найдено'
+# ИНЪЕКЦИЯ: стадия остаётся с режимом источника — как было до kacho#1110
+open(p, 'w', encoding='utf-8').write(s.replace(old, '', 1))
+PYX
+gate_axis "режим стадии не приведён — A13 краснеет и называет причину" \
+    red "стадия наследует режим источника"
+restore
+pyedit "близнец 11: то же приведение другой записью — гейт молчит" "$LIB" <<'PYX'
+import sys
+p = sys.argv[1]; s = open(p, encoding='utf-8').read()
+old = '  find "${stage}" -type d -exec chmod u+w {} +\n'
+assert old in s
+# законный близнец: та же величина другой записью — обход через xargs
+new = '  find "${stage}" -type d -print0 | xargs -0 chmod u+w\n'
+open(p, 'w', encoding='utf-8').write(s.replace(old, new, 1))
+PYX
+gate_axis "близнец 11: то же приведение другой записью — гейт молчит" green
+restore
+
+echo "== ось 12: вход-выход не проверен до работы (A14) =="
+# Инъекция снимает проверку ТОЛЬКО у генератора каталога; у генератора таблицы
+# маршрутов она остаётся. Находка обязана назвать генератора поимённо — иначе
+# «отказ есть» у одного из двух читалось бы как «есть у обоих» (тот же довод,
+# что у A9).
+pyedit "ось 12: ранняя проверка выхода снята у генератора каталога" "$GEN_CAT" <<'PYX'
+import sys
+p = sys.argv[1]; s = open(p, encoding='utf-8').read()
+old = 'if ! mkdir -p "${OUT_DIR}" 2>/dev/null || [[ ! -w "${OUT_DIR}" ]]; then'
+assert old in s, 'ось 12: ранняя проверка выхода не найдена'
+# ИНЪЕКЦИЯ: проверка выхода вырождена в тождественно-ложное условие — код
+# остаётся на месте, а отказать не может НИКОГДА (форма без содержания)
+open(p, 'w', encoding='utf-8').write(s.replace(old, 'if false; then', 1))
+PYX
+gate_axis "проверка выхода вырождена — A14 краснеет и называет генератора" \
+    red "gen-permission-catalog.sh/dir-absent"
+restore
+pyedit "близнец 12: то же условие через промежуточную величину — гейт молчит" "$GEN_CAT" <<'PYX'
+import sys
+p = sys.argv[1]; s = open(p, encoding='utf-8').read()
+old = 'if ! mkdir -p "${OUT_DIR}" 2>/dev/null || [[ ! -w "${OUT_DIR}" ]]; then'
+assert old in s
+# законный близнец: то же условие, разложенное на две величины
+new = ('out_dir_made=0\n'
+       'mkdir -p "${OUT_DIR}" 2>/dev/null && out_dir_made=1\n'
+       'if [[ "${out_dir_made}" -eq 0 || ! -w "${OUT_DIR}" ]]; then')
+open(p, 'w', encoding='utf-8').write(s.replace(old, new, 1))
+PYX
+gate_axis "близнец 12: то же условие через промежуточную величину — гейт молчит" green
+restore
+
 echo "== контроль в обратную сторону: дерево восстановлено =="
 gate_axis "восстановленное дерево — снова зелено" green
 
