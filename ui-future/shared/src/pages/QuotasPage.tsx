@@ -31,11 +31,7 @@ import { PanelHeader } from "@shared/components/molecules/PanelHeader";
 import { ProjectRequiredEmpty } from "@shared/components/molecules/ProjectRequiredEmpty";
 import { useBreadcrumb } from "@shared/components/molecules/PageHeaderSlot";
 import { ResourceTable, type Column } from "@shared/components/organisms/ResourceTable";
-import {
-  QUOTA_AUTHORITY_ABSENT_REASON,
-  presentError,
-  refusalReasonOf,
-} from "@shared/lib/error-presentation";
+import { QUOTA_AUTHORITY_ABSENT_REASON, presentError, refusalReasonOf } from "@shared/lib/error-presentation";
 import { QUOTA_VALUES_SET_BY, quotaRows, type Quota, type QuotaRow } from "@shared/lib/quota-view";
 
 /**
