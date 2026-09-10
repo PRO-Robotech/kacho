@@ -215,7 +215,11 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// под кратким у неё осмысленный: она запускает анализатор каждого сервиса.
 	// Свой шаг + pkg/listfiltergate (TestCIRunsThisCensus), как у четырёх
 	// соседних гейтов tools/.
-	"pkg/listfiltergate": "go test ./pkg/listfiltergate/ -run TestCensus_EveryTransportListingIsSeenByItsAnalyser",
+	// Перепись переехала из фундамента в платформу (задача #2532, класс 2):
+	// её предмет — дерево `services/*`, и фундамент после разъезда его не видит.
+	// Запись переехала вместе с ней; прежняя (`pkg/listfiltergate`) снята потому,
+	// что там больше нечего освобождать — ведомость истекла сама.
+	"internal/repohygiene": "go test ./internal/repohygiene/ -run TestCensus_EveryTransportListingIsSeenByItsAnalyser",
 
 	// Инструмент сравнительного замера форм модели прав. Под кратким пропускает
 	// себя (поднимает контейнеры), в отбор интеграционной джобы не входит — `tools/`

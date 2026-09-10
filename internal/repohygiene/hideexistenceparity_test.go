@@ -143,6 +143,7 @@ func TestHideExistenceParityResolvesByPackage(t *testing.T) {
 // TestHideExistenceParityParserCanFailAndStaysSilent — способность упасть и
 // смолчать, на СИНТЕТИЧЕСКОМ пакете.
 func TestHideExistenceParityParserCanFailAndStaysSilent(t *testing.T) {
+	t.Parallel()
 	const decl = `package middleware
 
 var hideExistenceNotFoundFormats = map[string]string{

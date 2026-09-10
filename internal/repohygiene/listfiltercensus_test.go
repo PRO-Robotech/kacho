@@ -1,5 +1,5 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: BUSL-1.1
 
 // census_test.go asserts a property that is separate from, and easy to mistake for,
 // the one the analysers assert: that every transport listing method in a service is
@@ -153,6 +153,7 @@ func analyserListingCount(t *testing.T, root, svc string) int {
 // TestCensus_EveryTransportListingIsSeenByItsAnalyser compares each analyser's own
 // count against a sweep of the committed tree.
 func TestCensus_EveryTransportListingIsSeenByItsAnalyser(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("runs each service's analyser; skipped in -short")
 	}
@@ -190,6 +191,7 @@ func TestCensus_EveryTransportListingIsSeenByItsAnalyser(t *testing.T) {
 // unopened tree produce together. So the sweep is required to find the listing
 // methods that are certainly there.
 func TestCensus_SweepFindsSomething(t *testing.T) {
+	t.Parallel()
 	root := repoRootForCoverage(t)
 
 	// iam has the widest listing surface in the repository; a sweep that cannot see
@@ -230,6 +232,7 @@ func TestCensus_SweepFindsSomething(t *testing.T) {
 // step. This is the fifth, and it names the invocation rather than the job so that moving
 // the step between jobs does not silently unwire it.
 func TestCIRunsThisCensus(t *testing.T) {
+	t.Parallel()
 	b, err := os.ReadFile(filepath.Join(repoRootForCoverage(t), ".github", "workflows", "ci.yaml"))
 	if err != nil {
 		t.Fatal(err)
