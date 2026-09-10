@@ -63,16 +63,22 @@ usage() {
   <владелец/репозиторий> репозиторий артефакта, напр. PRO-Robotech/kaname
   --confirm <строка>    обязана совпасть с репозиторием ДОСЛОВНО
   --publish             выполнить необратимый шаг; без него — холостой прогон
+  --via-pull-request    доставить ЧЕРЕЗ ЗАПРОС НА СЛИЯНИЕ: ветка → запрос →
+                        вердикт обязательных проверок → вливание. Обязателен
+                        там, где ствол артефакта защищён
   --rev <ревизия>       ревизия монорепо-источника (умолчание: HEAD)
   --branch <имя>        ствол артефакта (умолчание: main)
+  --checks-budget <сек> предел ожидания вердикта проверок (умолчание: 3000)
 
 переменные:
   KACHO_ARTIFACT_HOST   узел (умолчание: github.com)
   KACHO_ARTIFACT_URL    полный адрес отправки; перебивает узел и репозиторий
+  KACHO_FORGE_CMD       команда форжа (умолчание: gh)
 USAGE
 }
 
 SVC=""; REPO=""; CONFIRM=""; PUBLISH=0; REV="HEAD"; BRANCH="main"
+VIA_PR=0; CHECKS_BUDGET="${KACHO_CHECKS_BUDGET:-3000}"
 while [ $# -gt 0 ]; do
     case "$1" in
         --confirm) [ $# -ge 2 ] || { echo "--confirm без значения" >&2; exit 2; }
@@ -82,6 +88,9 @@ while [ $# -gt 0 ]; do
         --branch)  [ $# -ge 2 ] || { echo "--branch без значения" >&2; exit 2; }
                    BRANCH="$2"; shift 2 ;;
         --publish) PUBLISH=1; shift ;;
+        --via-pull-request) VIA_PR=1; shift ;;
+        --checks-budget) [ $# -ge 2 ] || { echo "--checks-budget без значения" >&2; exit 2; }
+                   CHECKS_BUDGET="$2"; shift 2 ;;
         -h|--help) usage; exit 2 ;;
         -*)        echo "неизвестный ключ: $1" >&2; usage; exit 2 ;;
         *)         if   [ -z "$SVC"  ]; then SVC="$1"
@@ -130,11 +139,48 @@ MODULE_WANT="${ARTIFACT_HOST}/${REPO}"
 
 if [ "$PUBLISH" = "1" ]; then
     printf 'производитель поставки: ВЫКЛАДКА %s → %s (ревизия %.12s)\n' "$SVC_DIR" "$REPO" "$SRC_SHA"
+    if [ "$VIA_PR" = "1" ]; then
+        printf 'полоса доставки: ЧЕРЕЗ ЗАПРОС НА СЛИЯНИЕ (ствол не трогается напрямую)\n'
+    else
+        printf 'полоса доставки: ПРЯМО В СТВОЛ %s\n' "$BRANCH"
+    fi
 else
     printf 'производитель поставки: ХОЛОСТОЙ прогон %s → %s (ревизия %.12s) — ничего отправлено не будет\n' \
         "$SVC_DIR" "$REPO" "$SRC_SHA"
+    if [ "$VIA_PR" = "1" ]; then
+        printf 'полоса доставки: ЧЕРЕЗ ЗАПРОС НА СЛИЯНИЕ (ствол не трогается напрямую)\n'
+    else
+        printf 'полоса доставки: ПРЯМО В СТВОЛ %s\n' "$BRANCH"
+    fi
 fi
-printf 'адрес отправки: %s\n\n' "$URL"
+printf 'адрес отправки: %s\n' "$URL"
+
+# ── Условие транспорта, а НЕ гейт ───────────────────────────────────────────
+# Это не находка о дереве: дерево верно, и вердикт о нём выносится ниже. Здесь
+# называется УСЛОВИЕ, при котором необратимый шаг отвергнет удалённый, — и
+# называется ДО гейтов, потому что иначе оно стоит полного прогона.
+#
+# Замер, а не догадка. Отправка по https идёт от приложения OAuth, и GitHub
+# отвергает у него создание либо правку объявления конвейера без полномочия
+# `workflow`; в перечне полномочий токена этого дерева его НЕТ. Отправка по ssh
+# идёт от личности владельца ключа, и ограничение на неё не распространяется
+# by construction. Дерево службы объявление конвейера НЕСЁТ, поэтому условие
+# наступает не когда-нибудь, а на каждой выкладке, двигающей этот файл.
+WF_N="$(git ls-tree -r --name-only "$SRC_SHA" -- "$SVC_DIR/.github/workflows" 2>/dev/null | grep -c . || true)"
+case "$URL" in
+    https://*)
+        if [ "${WF_N:-0}" -gt 0 ]; then
+            cat <<TRANSPORT
+внимание: дерево несёт объявлений конвейера $WF_N, а отправка идёт по https —
+  то есть от приложения OAuth. Удалённый отвергнет создание либо правку
+  .github/workflows/* без полномочия workflow; проверить полномочия:
+      gh auth status
+  Ограничение снимается СМЕНОЙ ТРАНСПОРТА, а не расширением полномочий:
+      GIT_SSH_COMMAND='ssh -o IdentityAgent=none' KACHO_ARTIFACT_URL= $0 …
+TRANSPORT
+        fi ;;
+esac
+printf '\n'
 
 gates=0; red=(); void=()
 
@@ -286,11 +332,12 @@ if [ "${#void[@]}" -gt 0 ]; then
 fi
 
 if [ "$PUBLISH" != "1" ]; then
+    VIA_HINT=""; [ "$VIA_PR" = "1" ] && VIA_HINT=" --via-pull-request"
     cat <<DRY
 Все предпосылки сошлись. ХОЛОСТОЙ прогон: ничего не отправлено.
 Необратимый шаг делает тот же скрипт с ключом --publish:
 
-    $0 $SVC $REPO --confirm $REPO --rev $REV --publish
+    $0 $SVC $REPO --confirm $REPO --rev $REV --publish$VIA_HINT
 DRY
     exit 0
 fi
@@ -371,17 +418,9 @@ MSG
 )" || { echo "   коммит не создан" >&2; exit 3; }
 
 NEW="$(git -C "$WORK/a" rev-parse HEAD)"
-echo "── отправка"
-git -C "$WORK/a" push origin "HEAD:$BRANCH" 2>&1 | sed 's/^/   /'
-if [ "${PIPESTATUS[0]}" != "0" ]; then
-    # ТРЕТЬЯ КАТЕГОРИЯ, а не находка. Отказ отправки — нет учётных данных, ствол
-    # ушёл вперёд, сеть — говорит об УСЛОВИИ, а не о дереве; выдать его за
-    # находку значило бы послать читателя искать дефект там, где его нет.
-    echo "   НЕ отправлено: спросить удалённый не удалось. Дерево ни при чём." >&2
-    exit 3
-fi
-printf '   %s %s: %.12s → %.12s\n' "$REPO" "$BRANCH" "$BASE" "$NEW"
-cat <<DONE
+
+done_note() {
+    cat <<DONE
 
 Выложено. Проверить тем же способом, каким берёт посторонний:
 
@@ -389,4 +428,197 @@ cat <<DONE
     GOFLAGS= GOPRIVATE= go get ${MODULE_WANT}@latest
 
 DONE
+}
+
+# ── Полоса 1: прямо в ствол ─────────────────────────────────────────────────
+if [ "$VIA_PR" != "1" ]; then
+    echo "── отправка"
+    git -C "$WORK/a" push origin "HEAD:$BRANCH" 2>&1 | sed 's/^/   /'
+    if [ "${PIPESTATUS[0]}" != "0" ]; then
+        # ТРЕТЬЯ КАТЕГОРИЯ, а не находка. Отказ отправки — нет учётных данных,
+        # ствол ушёл вперёд, ствол защищён, сеть — говорит об УСЛОВИИ, а не о
+        # дереве; выдать его за находку значило бы послать читателя искать дефект
+        # там, где его нет.
+        echo "   НЕ отправлено: спросить удалённый не удалось. Дерево ни при чём." >&2
+        echo "   Ствол защищён правилами? — полоса --via-pull-request." >&2
+        exit 3
+    fi
+    printf '   %s %s: %.12s → %.12s\n' "$REPO" "$BRANCH" "$BASE" "$NEW"
+    done_note
+    exit 0
+fi
+
+# ── Полоса 2: через запрос на слияние ───────────────────────────────────────
+# ЗАЧЕМ ОНА. Ствол артефакта защищён правилами репозитория: прямая отправка
+# отвергается удалённым, и обойти это можно ровно двумя способами — снять защиту
+# либо пройти тем путём, который она оставляет открытым. Первое запрещено: защита
+# стоит на ЧУЖОМ стволе, и снятие её ради своей отправки есть расширение доступа
+# вместо сужения. Значит производитель обязан уметь второе, иначе поставку снова
+# доводит человек — то есть у неё снова нет производителя.
+#
+# ПОБОЧНО ЗАКРЫВАЕТСЯ ВТОРОЕ ПРЕПЯТСТВИЕ, и это надо назвать, чтобы не сочли
+# совпадением: отправка по ssh идёт от ЛИЧНОСТИ владельца ключа, а не от
+# приложения OAuth, поэтому ограничение «приложению не разрешено заводить или
+# менять объявление конвейера без полномочия workflow» на неё не распространяется
+# by construction. Полоса запроса на слияние транспорта не назначает — она
+# наследует его у источника тем же правилом, что и полоса ствола.
+WORK_BRANCH="publish/${SVC}-${SRC_SHA:0:12}"
+FORGE="${KACHO_FORGE_CMD:-gh}"
+
+printf '── доставка через запрос на слияние (ветка %s)\n' "$WORK_BRANCH"
+
+# Ветка ИМЕНУЕТСЯ ОТ РЕВИЗИИ ИСТОЧНИКА, а не от времени: повторный вызов на той
+# же ревизии обязан попасть в тот же запрос, а не завести второй. Занятость
+# имени поэтому не «перезаписывается» — она РАЗБИРАЕТСЯ: своё дерево или чужое.
+REMOTE_HEAD="$(git -C "$WORK/a" ls-remote origin "refs/heads/$WORK_BRANCH" 2>/dev/null | awk '{print $1}')"
+LSR_RC=$?
+if [ "$LSR_RC" != "0" ]; then
+    echo "   НЕ выполнилось: удалённый не спрошен о ветке. Дерево ни при чём." >&2
+    exit 3
+fi
+PUSH_NEEDED=1
+if [ -n "$REMOTE_HEAD" ]; then
+    git -C "$WORK/a" fetch --quiet origin "refs/heads/$WORK_BRANCH" 2>/dev/null
+    REMOTE_TREE="$(git -C "$WORK/a" rev-parse --verify --quiet "${REMOTE_HEAD}^{tree}" 2>/dev/null || true)"
+    OUR_TREE="$(git -C "$WORK/a" rev-parse "HEAD^{tree}")"
+    if [ -n "$REMOTE_TREE" ] && [ "$REMOTE_TREE" = "$OUR_TREE" ]; then
+        printf '   ветка уже несёт это дерево (%.12s) — отправлять нечего\n' "$REMOTE_HEAD"
+        NEW="$REMOTE_HEAD"; PUSH_NEEDED=0
+    else
+        cat >&2 <<OCC
+   НЕ выполнилось: ветка $WORK_BRANCH занята ЧУЖИМ деревом ($REMOTE_HEAD).
+   Она не перезаписывается: работа, которой не заводил, не правится.
+   Разберите её сами либо позовите производителя на другой ревизии.
+OCC
+        exit 3
+    fi
+fi
+
+if [ "$PUSH_NEEDED" = "1" ]; then
+    git -C "$WORK/a" push origin "HEAD:refs/heads/$WORK_BRANCH" 2>&1 | sed 's/^/   /'
+    if [ "${PIPESTATUS[0]}" != "0" ]; then
+        echo "   НЕ отправлено: спросить удалённый не удалось. Дерево ни при чём." >&2
+        exit 3
+    fi
+    printf '   ветка %s: %.12s\n' "$WORK_BRANCH" "$NEW"
+fi
+
+# ── Форж ────────────────────────────────────────────────────────────────────
+# Отсутствие форжа — ТРЕТЬЯ КАТЕГОРИЯ, а не находка: ветка уже на месте, дерево
+# ни при чём, и человеку остаётся ровно один шаг, который здесь и называется.
+if ! command -v "$FORGE" >/dev/null 2>&1; then
+    cat >&2 <<NOFORGE
+   НЕ выполнилось: команда форжа '$FORGE' не найдена — запрос не открыт.
+   Ветка отправлена и цела; открыть запрос вручную:
+     $FORGE pr create -R $REPO --base $BRANCH --head $WORK_BRANCH
+NOFORGE
+    exit 3
+fi
+
+PR_NUM="$("$FORGE" pr list -R "$REPO" --head "$WORK_BRANCH" --state open \
+            --json number --jq '.[0].number' 2>/dev/null || true)"
+if [ -z "$PR_NUM" ] || [ "$PR_NUM" = "null" ]; then
+    PR_OUT="$("$FORGE" pr create -R "$REPO" --base "$BRANCH" --head "$WORK_BRANCH" \
+        --title "Дерево службы приведено к монорепо (${SRC_SHA:0:12})" \
+        --body "Поставка совпадает с ${SVC_DIR} монорепо на ревизии ${SRC_SHA}.
+
+Ствол этого репозитория защищён правилами, поэтому дерево доставляется
+через запрос на слияние, а не прямой отправкой. Защита не снимается и не
+ослабляется: она стоит на стволе и обязана остаться.
+
+Коммит и запрос произведены scripts/release/publish-service-artifact.sh
+--via-pull-request." 2>&1)"; PR_RC=$?
+    printf '%s\n' "$PR_OUT" | sed 's/^/   /'
+    if [ "$PR_RC" != "0" ]; then
+        echo "   НЕ выполнилось: запрос не открыт. Ветка отправлена и цела." >&2
+        exit 3
+    fi
+    PR_NUM="$("$FORGE" pr list -R "$REPO" --head "$WORK_BRANCH" --state open \
+                --json number --jq '.[0].number' 2>/dev/null || true)"
+fi
+if [ -z "$PR_NUM" ] || [ "$PR_NUM" = "null" ]; then
+    echo "   НЕ выполнилось: номер запроса не установлен." >&2; exit 3
+fi
+printf '   запрос на слияние: %s#%s\n' "$REPO" "$PR_NUM"
+
+# ── Обязательные проверки ───────────────────────────────────────────────────
+# Перечень спрашивается У ЗАЩИТЫ, а не выписывается: выписанный разошёлся бы с
+# репозиторием молча. Контекст, которого НЕТ СРЕДИ ПРОИЗВЕДЁННЫХ, не зеленеет и
+# не краснеет — он остаётся «ожидается», и вливание блокируется навсегда;
+# поэтому недостающие называются отдельно от идущих, а не сваливаются в «ждём».
+REQ="$("$FORGE" api "repos/$REPO/branches/$BRANCH/protection" \
+        --jq '.required_status_checks.contexts[]?' 2>/dev/null || true)"
+REQ_N="$(printf '%s\n' "$REQ" | grep -c . || true)"
+if [ "$REQ_N" = "0" ]; then
+    echo "   НЕ выполнилось: перечень обязательных проверок не прочитан у защиты." >&2
+    echo "   Вердикт о готовности выносить нечем; запрос $REPO#$PR_NUM открыт." >&2
+    exit 3
+fi
+printf '   обязательных проверок %s, бюджет ожидания %s с\n' "$REQ_N" "$CHECKS_BUDGET"
+
+DEADLINE=$(( $(date +%s) + CHECKS_BUDGET ))
+STATE="pending"; MISSING=""; RED=""
+while :; do
+    RUNS="$("$FORGE" api "repos/$REPO/commits/$NEW/check-runs?per_page=100" --paginate \
+            --jq '.check_runs[] | "\(.name)\t\(.status)\t\(.conclusion)"' 2>/dev/null || true)"
+    MISSING=""; RED=""; RUNNING=""; GREEN=0
+    while IFS= read -r ctx; do
+        [ -n "$ctx" ] || continue
+        line="$(printf '%s\n' "$RUNS" | awk -F'\t' -v c="$ctx" '$1==c{print; exit}')"
+        if [ -z "$line" ]; then MISSING="$MISSING$ctx"$'\n'; continue; fi
+        st="$(printf '%s' "$line" | cut -f2)"; cc="$(printf '%s' "$line" | cut -f3)"
+        if [ "$st" != "completed" ]; then RUNNING="$RUNNING$ctx"$'\n'; continue; fi
+        case "$cc" in
+            success|neutral|skipped) GREEN=$((GREEN + 1)) ;;
+            *) RED="$RED$ctx ($cc)"$'\n' ;;
+        esac
+    done < <(printf '%s\n' "$REQ")
+
+    printf '   зелено %s, красно %s, идёт %s, не появилось %s\n' \
+        "$GREEN" "$(printf '%s' "$RED" | grep -c . || true)" \
+        "$(printf '%s' "$RUNNING" | grep -c . || true)" \
+        "$(printf '%s' "$MISSING" | grep -c . || true)"
+
+    if [ -n "$RED" ]; then STATE="red"; break; fi
+    if [ "$GREEN" = "$REQ_N" ]; then STATE="green"; break; fi
+    if [ "$(date +%s)" -ge "$DEADLINE" ]; then STATE="timeout"; break; fi
+    sleep 30
+done
+
+case "$STATE" in
+    red)
+        # НАХОДКА, а не третья категория: конвейер артефакта прогнан по
+        # ВЫЛОЖЕННОМУ дереву и отверг его. Это вердикт о дереве.
+        printf 'красные обязательные проверки:\n%s' "$RED" >&2
+        echo "ВЛИВАНИЕ НЕ ОТКРЫТО: конвейер артефакта отверг дерево. Запрос $REPO#$PR_NUM открыт." >&2
+        exit 1 ;;
+    timeout)
+        [ -n "$MISSING" ] && printf 'не появилось ни разу (производителя нет?):\n%s' "$MISSING" >&2
+        echo "НЕ ВЫПОЛНИЛОСЬ: вердикт не вынесен в пределах бюджета. Запрос $REPO#$PR_NUM открыт, ветка цела." >&2
+        exit 3 ;;
+esac
+
+echo "── вливание"
+# ТЕЛО СХЛОПНУТОГО КОММИТА ЗАДАЁТСЯ ЯВНО. Умолчание форжа склеивает тела всех
+# коммитов ветки: сегодня он один, и умолчание совпало бы, но ветка перестаёт
+# быть одно-коммитной от первой же правки, и склейка приедет молча.
+MERGE_BODY="$WORK/merge-body.txt"
+cat > "$MERGE_BODY" <<MB
+Поставка совпадает с ${SVC_DIR} монорепо на ревизии ${SRC_SHA}.
+
+Доставлено через запрос на слияние ${REPO}#${PR_NUM}: ствол защищён правилами
+репозитория, и защита не снимается — производитель проходит тем путём, который
+она оставляет открытым.
+
+Коммит, ветка и запрос произведены scripts/release/publish-service-artifact.sh
+--via-pull-request.
+MB
+"$FORGE" pr merge "$PR_NUM" -R "$REPO" --squash --delete-branch --body-file "$MERGE_BODY" 2>&1 | sed 's/^/   /'
+if [ "${PIPESTATUS[0]}" != "0" ]; then
+    echo "   НЕ выполнилось: вливание отвергнуто. Запрос $REPO#$PR_NUM открыт и зелен." >&2
+    exit 3
+fi
+TRUNK="$(git -C "$WORK/a" ls-remote origin "refs/heads/$BRANCH" 2>/dev/null | awk '{print $1}')"
+printf '   %s %s: %.12s → %.12s (через %s#%s)\n' "$REPO" "$BRANCH" "$BASE" "${TRUNK:-?}" "$REPO" "$PR_NUM"
+done_note
 exit 0
