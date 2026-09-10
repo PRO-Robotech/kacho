@@ -502,7 +502,7 @@ func hidingChecker(probe servicecontract.ExistenceProbe) authz.CheckClient {
 // повторил её.
 func refusalSeenByCaller(t *testing.T, client authz.CheckClient, objectID string) error {
 	t.Helper()
-	const mutating = "/kacho.cloud.vpc.v1.NetworkService/Update"
+	const mutating = probedMethod
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
 		ServiceName: "kacho-demo",
 		Cache:       authz.NewCache(0),
