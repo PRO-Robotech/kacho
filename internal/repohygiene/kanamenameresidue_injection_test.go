@@ -698,3 +698,91 @@ func TestKanameNameResidueTrackerReferenceIsToldByForm(t *testing.T) {
 		})
 	}
 }
+
+// TestKanameNameResidueReadsChartGlobalFormsItUsedToMiss — распознаватель читает
+// ДВЕ формы ключа глобального блока значений, которых прежде не читал, и обе
+// признаёт полосой ключей чарта, а не слепой зоной.
+//
+// ПОЧЕМУ ОТДЕЛЬНАЯ ПРОБА, А НЕ ЕЩЁ ОДИН ПРЕДМЕТ В ОБЩЕМ МИРЕ. Мир инъекции
+// несёт РОВНО ОДНО вхождение на полосу, и контроль на этом держится; второй
+// предмет полосы ключей чарта сломал бы его. Здесь мир общий, а внесённая форма
+// проверяется по своему.
+//
+// ЧЕТЫРЕ ПРОГОНА, И ТРЕТИЙ С ЧЕТВЁРТЫМ НЕСУЩИЕ:
+//
+//  1. контроль — мир как есть;
+//  2. инъекция каждой формы — растёт ТОЛЬКО полоса ключей чарта;
+//  3. законный близнец ВНЕ ЧАРТА — та же форма, и она НЕ ключ чарта: без этого
+//     правило судило бы форму строки, а не место, где она что-то значит;
+//  4. законный близнец СВОИМ ИМЕНЕМ — не двигает ничего.
+//
+// Третий прогон и есть доказательство того, что правило не бланкетное: обе
+// формы вне чарта обязаны уйти в слепую зону, потому что ключа значений там нет.
+func TestKanameNameResidueReadsChartGlobalFormsItUsedToMiss(t *testing.T) {
+	t.Parallel()
+	base := nameResidueLanes(t, nameResidueWorld())
+
+	forms := map[string]string{
+		"защитные скобки": "" +
+			"{{- $src := (((.Values.global).kacho).registry).serviceAud | default \"\" -}}\n",
+		"ключ карты значений": "global:\n  kacho:\n    identity:\n      domain: example\n",
+	}
+	const inChart = "deploy/helm/umbrella/charts/kaname/templates/probe-globalform.yaml"
+	const outsideChart = "services/iam/deploy/probe-globalform.yaml"
+
+	for name, body := range forms {
+		t.Run(name, func(t *testing.T) {
+			world := nameResidueWorld()
+			world[inChart] = []byte(body)
+			got := nameResidueLanes(t, world)
+
+			if got[laneChartKnob] != base[laneChartKnob]+1 {
+				t.Fatalf("форма %q не признана ключом чарта: полоса %q %d → %d. "+
+					"Пока форма не читается, по ней «ноль находок» означает "+
+					"«ноль прочитанного»", name, laneChartKnob,
+					base[laneChartKnob], got[laneChartKnob])
+			}
+			for other := range kanameLanes {
+				if other == laneChartKnob {
+					continue
+				}
+				if got[other] != base[other] {
+					t.Errorf("инъекция формы %q сдвинула ЧУЖУЮ полосу %q (%d → %d) — "+
+						"красное пришло бы от соседа", name, other, base[other], got[other])
+				}
+			}
+		})
+
+		t.Run(name+" вне чарта", func(t *testing.T) {
+			world := nameResidueWorld()
+			world[outsideChart] = []byte(body)
+			got := nameResidueLanes(t, world)
+
+			if got[laneChartKnob] != base[laneChartKnob] {
+				t.Errorf("та же форма ВНЕ чарта признана ключом чарта (%d → %d) — "+
+					"правило судит форму строки вместо места, где ключ значений "+
+					"вообще существует", base[laneChartKnob], got[laneChartKnob])
+			}
+			if got[borderUnknownForm] != base[borderUnknownForm]+1 {
+				t.Errorf("форма вне чарта не попала в слепую зону (%d → %d) — "+
+					"вхождение исчезло из переписи, а не было названо",
+					base[borderUnknownForm], got[borderUnknownForm])
+			}
+		})
+	}
+
+	t.Run("своим именем", func(t *testing.T) {
+		world := nameResidueWorld()
+		world[inChart] = []byte("" +
+			"{{- $src := (((.Values.global).kaname).registry).serviceAud -}}\n" +
+			"global:\n  kaname:\n    identity:\n      domain: example\n")
+		got := nameResidueLanes(t, world)
+		for lane := range kanameLanes {
+			if got[lane] != base[lane] {
+				t.Errorf("те же формы СО СВОИМ именем сдвинули полосу %q (%d → %d) — "+
+					"правило ловит форму записи, а не имя платформы",
+					lane, base[lane], got[lane])
+			}
+		}
+	})
+}

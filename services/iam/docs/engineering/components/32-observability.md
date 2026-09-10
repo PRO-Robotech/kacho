@@ -210,13 +210,13 @@ go build -ldflags "-X main.buildVersion=$KACHO_IMAGE_VERSION -X main.buildRevisi
 ### Рекомендуемые alert-правила
 
 ```yaml
-- alert: KachoIAMAuthzCheckSlow
+- alert: KanameAuthzCheckSlow
   expr: histogram_quantile(0.95, sum by (le) (rate(kaname_authz_check_duration_seconds_bucket[5m]))) > 0.03
   for: 5m
   annotations:
     summary: "authz Check p95 > 30ms — превышен SLO hot-path авторизации"
 
-- alert: KachoIAMAuthzCheckErrors
+- alert: KanameAuthzCheckErrors
   expr: rate(kaname_authz_check_decisions_total{decision="error"}[5m]) > 1
   for: 10m
   annotations:
@@ -224,24 +224,24 @@ go build -ldflags "-X main.buildVersion=$KACHO_IMAGE_VERSION -X main.buildRevisi
     description: "Вердикт складывается реляционной формой в собственной базе службы;
       отказ означает fail-closed по всем доменам — см. engineering/architecture/failure-domains.md"
 
-- alert: KachoIAMLROStranded
+- alert: KanameLROStranded
   expr: increase(kaname_lro_terminal_write_failures_total[15m]) > 0
   annotations:
     summary: "LRO terminal-write исчерпал retry-бюджет — операция зависла (op_type={{ $labels.op_type }})"
 
-- alert: KachoIAMLROBacklog
+- alert: KanameLROBacklog
   expr: kaname_lro_inflight > 1000
   for: 5m
   annotations:
     summary: "LRO inflight > 1000 — backlog воркер-пула"
 
-- alert: KachoIAMReconcileErrors
+- alert: KanameReconcileErrors
   expr: rate(kaname_lro_reconcile_errors_total[10m]) > 0
   for: 10m
   annotations:
     summary: "reconciler-sweep падает — осиротевшие операции не подбираются"
 
-- alert: KachoIAMIdentityGrowthSpike
+- alert: KanameIdentityGrowthSpike
   # Порог наблюдения, а не отказа: превышение НЕ отвергает регистрацию, оно
   # зовёт человека посмотреть. Величина порога — продуктовая; она названа здесь
   # и меняется здесь же, потому что читателя у ряда ровно один.
@@ -253,7 +253,7 @@ go build -ldflags "-X main.buildVersion=$KACHO_IMAGE_VERSION -X main.buildRevisi
       именно появление, а не перезапуск счётчика. Проверить источник регистраций
       прежде, чем менять пороги."
 
-- alert: KachoIAMIdentityLedgerUnsampled
+- alert: KanameIdentityLedgerUnsampled
   # Ноль в kaname_identities_total законен: платформа могла не увидеть ни
   # одной личности. Незаконно — НЕ ЗНАТЬ, ноль это или неснятый замер. Тревога
   # звонит именно на второе: успешных замеров не прибавляется.
@@ -265,7 +265,7 @@ go build -ldflags "-X main.buildVersion=$KACHO_IMAGE_VERSION -X main.buildRevisi
       роста неотличимы от действительности. Смотреть outcome=\"error\" того же
       семейства и журнал службы."
 
-- alert: KachoIAMRPCErrorRate
+- alert: KanameRPCErrorRate
   # Отбор по grpc_service, а не по имени серии: серия теперь общая на платформу,
   # и без отбора тревога считала бы долю по всем семи сервисам сразу.
   expr: |
