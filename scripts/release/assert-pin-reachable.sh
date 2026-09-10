@@ -227,7 +227,10 @@ if [ "${KACHO_PIN_REACH_NETWORK:-0}" = "1" ]; then
 fi
 DURABLE_TAG_N="$(printf '%s' "$DURABLE_TAGS" | grep -c . || true)"
 
-isDurableTag() { printf '%s\n' "$DURABLE_TAGS" | grep -qxF "$1"; }
+# Сравнение без внешнего процесса: `grep -q` выходит до конца входа, писатель
+# слева получает SIGPIPE, и `pipefail` поднимает это до статуса конвейера —
+# найденный тег объявлялся бы НЕнайденным, то есть закреплённый пин — висящим.
+isDurableTag() { [[ $'\n'"$DURABLE_TAGS"$'\n' == *$'\n'"$1"$'\n'* ]]; }
 
 # anchorOf — чем закреплена ревизия: печатает якорь либо пусто.
 anchorOf() {
