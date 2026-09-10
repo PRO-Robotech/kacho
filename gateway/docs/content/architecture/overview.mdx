@@ -70,7 +70,7 @@ flowchart TD
 REST-запрос проходит цепочку интерсепторов (снаружи внутрь):
 
 ```
-RequestID → Recovery → AuthN(dev-HMAC / Kratos) → DPoP/JWT(Hydra) →
+RequestID → Recovery → AuthN(dev-HMAC / Kratos) → DPoP/JWT(по издателю) →
 AuthZ(per-RPC Check) → AccessLog → Idempotency → REST-mux → backend
 ```
 
@@ -111,7 +111,7 @@ stale-доступ ограниченным во времени.
 <table>
   <thead><tr><th>Кэш</th><th>Что кэширует</th><th>Ограничение</th></tr></thead>
   <tbody>
-    <tr><td>JWKS</td><td>Публичные ключи Hydra для проверки подписи JWT</td><td>TTL (<code>KACHO&#95;JWKS&#95;CACHE&#95;TTL&#95;SECONDS</code>, дефолт 300 с)</td></tr>
+    <tr><td>JWKS</td><td>Публичные ключи проверки подписи JWT — по одной записи на объявленного издателя</td><td>TTL (<code>KACHO&#95;JWKS&#95;CACHE&#95;TTL&#95;SECONDS</code>, дефолт 300 с)</td></tr>
     <tr><td>Introspection</td><td>Результат OAuth2-интроспекции токена</td><td>TTL + размер (дефолт 5 с / 10000)</td></tr>
     <tr><td>DPoP-replay</td><td><code>jti</code> уже виденных proof (anti-replay)</td><td>LRU + TTL ≥ 2× окна свежести proof</td></tr>
     <tr><td>Authz-decision</td><td>Решения <code>Check</code> (allow/deny)</td><td>TTL + размер + самосброс на реплике мутации + опрос журнала смены субъекта</td></tr>

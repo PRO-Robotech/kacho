@@ -27,7 +27,7 @@ TLS-листенер; соединения, принятые на внешнем
 REST-запрос проходит (снаружи внутрь):
 
 ```
-RequestID → Recovery → AuthN(legacy: dev-HMAC / Kratos) → DPoP/JWT(Hydra) →
+RequestID → Recovery → AuthN(legacy: dev-HMAC / Kratos) → DPoP/JWT(по издателю) →
 AuthZ(per-RPC Check) → AccessLog → Idempotency → REST-mux → backend
 ```
 

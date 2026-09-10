@@ -13,9 +13,15 @@ import (
 	"time"
 )
 
-// Hydra-mirrored JWKS fixtures. The whole point of the proxy is that the served
-// kids are Hydra's ACTUAL signing kids — never a `kacho-*` kid of iam's own (iam
-// has no keyset; such a kid would be a guaranteed kid-miss / fail-closed reject).
+// Hydra-mirrored JWKS fixtures. Смысл зеркала в том, что отдаются НАСТОЯЩИЕ
+// подписные kid провайдера — и никогда наш собственный.
+//
+// Здесь стояло «iam has no keyset». Ключница у платформы ЕСТЬ, и её набор
+// публикуется этим же слушателем — ВТОРОЙ записью по своему пути. Неверен был
+// не запрет, а его довод: наш kid не имеет права попасть в запись ЗЕРКАЛА,
+// потому что для потребителя, пиннутого на прежнего издателя, он не совпадёт
+// никогда — гарантированный промах по kid и отказ fail-closed. Именно эту
+// развязку зеркало и держит.
 const (
 	hydraJWKS1 = `{"keys":[{"kty":"RSA","use":"sig","kid":"hydra-kid-1","alg":"RS256","n":"sbjXaaaa","e":"AQAB"}]}`
 	hydraJWKS2 = `{"keys":[{"kty":"RSA","use":"sig","kid":"hydra-kid-1","alg":"RS256","n":"sbjXaaaa","e":"AQAB"},{"kty":"RSA","use":"sig","kid":"hydra-kid-2","alg":"RS256","n":"ZZZdefff","e":"AQAB"}]}`

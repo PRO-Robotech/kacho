@@ -10,8 +10,8 @@ import dedent from 'ts-dedent'
 # Конфигурация
 
 Kachō API Gateway конфигурируется через переменные окружения. Большинство — с префиксом
-**`KACHO_API_GATEWAY_`**; ключи AuthN-инфраструктуры (Hydra / JWKS / DPoP) — с префиксом
-`KACHO_` (общие для платформы). Эта страница перечисляет ключевые группы и даёт пример.
+**`KACHO_API_GATEWAY_`**; ключи AuthN-инфраструктуры (внешний поставщик удостоверений, наборы
+ключей, DPoP) — с префиксом `KACHO_` (общие для платформы). Эта страница перечисляет ключевые группы и даёт пример.
 
 :::warning Secure-by-default
 При `KACHO_APP_ENV=production` гейтвей **откажется стартовать**, если authz выключен
@@ -168,7 +168,7 @@ gRPC server-reflection **нет собственной ручки** — пере
     KACHO_API_GATEWAY_TLS_CERT_FILE: /tls/tls.crt
     KACHO_API_GATEWAY_TLS_KEY_FILE: /tls/tls.key
 
-    # AuthN — production Hydra + DPoP
+    # AuthN — production: два объявленных издателя + DPoP
     KACHO_API_GATEWAY_AUTHN_MODE: production-strict
     # Посадка личности: чем стенд проверяет ЧЕЛОВЕКА — внешним поставщиком
     # удостоверений (external) или собственной чеканкой платформы (own).

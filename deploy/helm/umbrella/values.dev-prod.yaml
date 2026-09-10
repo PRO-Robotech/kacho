@@ -145,10 +145,18 @@ api-gateway:
   # DUPLICATE list key → helm strategic-merge `$setElementOrder` patch failure on
   # `helm upgrade` (dev base appEnv=dev + extraEnv=production → two KACHO_APP_ENV).
   appEnv: production
-  # UNIFICATION: verify RS256 tokens through the iam :9097 JWKS mirror, NOT Hydra :4444
-  # directly (iam is the single JWKS facade; a direct-provider dial is forbidden). The
-  # mirror is byte-identical and short-TTL; Hydra stays issuer/signer. `issuer` (iss-pin)
-  # is unchanged — inherited from values.dev.yaml.
+  # UNIFICATION: verify tokens through the iam :9097 publisher, NOT the provider :4444
+  # directly (iam is the single key-set facade; a direct-provider dial is forbidden).
+  #
+  # ЗАПИСЕЙ У ПУБЛИКАТОРА ДВЕ, и на ЭТОМ профиле обе действуют: зеркало набора
+  # провайдера (байт-в-байт, короткий срок) и НАША запись — ниже в этом же файле
+  # объявлены `tokenSigning` и `clientToken.enabled: true`, то есть свой подписант
+  # здесь поднят.
+  #
+  # Здесь стояло «Hydra stays issuer/signer», и это противоречило самому профилю —
+  # два места об одном предмете в одном файле. Верно: провайдер остаётся издателем
+  # СВОЕЙ записи (интерактивный вход и удостоверения прежнего выпуска), наш
+  # подписант — своей. `tokenAcceptance.issuers` выше перечисляет обоих поимённо.
   #
   # THE HOP IS TLS, AND IT IS VERIFIED. Over it travels the material the edge checks every
   # bearer's SIGNATURE with: whoever substitutes it substitutes the access decision, and

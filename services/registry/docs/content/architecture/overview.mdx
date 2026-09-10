@@ -176,7 +176,7 @@ flowchart LR
   reg -->|"ProjectService.Get (валидация project на Create)"| iam
   reg -->|"RegisterResource / UnregisterResource (owner-tuple)"| iam
   reg -->|"blob/manifest read + push/pull proxy"| zot[("zot")]
-  docker["docker / helm"] -->|"identity-JWT через /iam/token → Hydra"| iam
+  docker["docker / helm"] -->|"identity-JWT через /iam/token"| iam
 ```
 
 <table>
