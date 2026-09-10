@@ -34,7 +34,18 @@
 // A stray directory beside the repository must not change the verdict, and a
 // worktree carrying an untracked scratch service must not either. `git ls-tree`
 // answers about the committed tree.
-package listfiltergate
+package repohygiene
+
+// ПЕРЕЕХАЛ ИЗ ФУНДАМЕНТА (задача #2532, класс 2). Предмет — свойство ДЕРЕВА
+// ПЛАТФОРМЫ: у каждого сервиса есть свой анализатор отбора списков, и конвейер
+// его гоняет. Живя в `pkg/listfiltergate`, страж поднимался до каталога с
+// `services/` и `.github/workflows` — то есть до дерева, которого у фундамента
+// после разъезда не будет вовсе; отвечал бы он «ничего не осмотрено», а это
+// «не выполнилось», поданное как красное.
+//
+// Перенесён ДОСЛОВНО, вместе со своим подъёмом до корня: переписывать его на
+// местный `repoRoot` значило бы менять предмет заодно с местом, и расхождение
+// было бы неотличимо от переезда.
 
 import (
 	"os"
