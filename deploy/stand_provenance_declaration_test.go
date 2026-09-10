@@ -56,31 +56,37 @@ package deploy
 // ─────────────────────────────────────────────────────────────────────────────
 // ИМЯ ДОВОДА — КОНТРАКТ С ФАЙЛОМ СБОРКИ, И ГЕЙТ СВЕРЯЕТ ЕГО, А НЕ ТОЛЬКО НАЛИЧИЕ
 //
-// Пока имя было ОДНО и выписано здесь константой, половинчатое переименование
-// краснело само собой: непереименованная половина не находила своего имени. Как
-// только имён стало два (переход, см. ниже), эта случайная защита исчезает —
-// вызов «передаёт что-то из набора», файл «объявляет что-то из набора», и
-// расхождение между ними проходит молча. Docker непотреблённый довод выбрасывает
-// БЕЗ слова, `ARG` остаётся при пустом умолчании, образ уезжает без ревизии, а
-// сборка зелена: класс «значение, которое пишут и не читают».
+// Довод, чьего имени файл сборки не объявляет, docker выбрасывает БЕЗ слова:
+// `ARG` остаётся при пустом умолчании, образ уезжает без ревизии, а сборка
+// зелена — класс «значение, которое пишут и не читают».
 //
 // Поэтому гейт сверяет СООТВЕТСТВИЕ: у вызова, чью цель `-f` можно разрешить в
-// дереве, имя переданного довода обязано совпасть с именем, которое объявляет
-// ЭТА цель. Где цель собрана из переменной оболочки (`-f $$d/Dockerfile`) или
-// матрицы конвейера, соответствие не проверяемо by construction — такие вызовы
-// НЕ прощаются молча, а считаются и называются числом: «ноль находок» обязано
-// быть отличимо от «ноль прочитанного».
+// дереве, имя переданного довода обязано совпасть с именем, из которого ЭТА цель
+// выводит клеймо ревизии. Имя цели читается У САМОЙ ЦЕЛИ — из строки клейма,
+// которую гейт от неё и так требует, — а НЕ из перечня известных имён: перечень
+// стареет молча, а строка клейма есть в каждом образе продукта by construction.
+// Где цель собрана из переменной оболочки (`-f $$d/Dockerfile`) или матрицы
+// конвейера, соответствие не проверяемо by construction — такие вызовы НЕ
+// прощаются молча, а считаются и называются числом: «ноль находок» обязано быть
+// отличимо от «ноль прочитанного».
 //
 // ─────────────────────────────────────────────────────────────────────────────
-// ИМЁН ДВА, И ВТОРОЕ ИСТЕКАЕТ САМО
+// ЗДЕСЬ СТОЯЛА ОСЬ ПРИЁМА ПРЕЖНЕГО ИМЕНИ — ОНА ИСТЕКЛА (#2583)
 //
-// Каноническое имя не называет продукт: величиной помечает свой образ каждый
-// продукт дерева, а называющее одного из них имя переименовывается при каждом
-// следующем выносе. Прежнее имя принимается, ПОКА ХОТЬ ОДИН Dockerfile дерева его
-// объявляет, — сегодня это файл службы доступа, которая переименовывается в своём
-// репозитории. Как только объявивших ноль, приём прежнего имени становится
-// НАХОДКОЙ: послабление, которому нечего прощать, — это место, куда следующая
-// сборка без величины попадёт незамеченной.
+// Имён было ДВА: каноническое (названное внешним стандартом, а не продуктом) и
+// прежнее, называвшее платформу. Прежнее принималось, ПОКА хоть один Dockerfile
+// дерева его объявлял, — им был файл службы доступа. Служба вынесена отдельным
+// репозиторием, объявивших стало НОЛЬ, и приём сам объявил себя находкой в тот
+// же прогон, назвав все три места снятия. Ровно то самоистечение, ради которого
+// он писался, — поэтому снят он ВМЕСТЕ с предметом: константа прежнего имени,
+// функция самоистечения, поле переписи и оси инъекции, его проверявшие.
+//
+// СНЯТО, А НЕ ОСЛАБЛЕНО, и это разные вещи. Вместе с приёмом стали
+// НЕПРЕДСТАВИМЫ два входа: «файл объявляет два имени одной величины» (имён
+// осталось одно) и «вызов передаёт одно известное имя, а цель объявляет другое
+// известное» (известное осталось одно). Первый утрачен вместе с предметом.
+// Второй ПЕРЕНЕСЁН на признак, который дерево производит, — имя, из которого
+// цель выводит клеймо, — и потому по-прежнему проверяем инъекцией.
 
 import (
 	"os"
@@ -99,16 +105,16 @@ import (
 // а не выбрано вкусом. Объявление величины — provenance.mk.
 const canonicalProvenanceArg = "OCI_IMAGE_REVISION"
 
-// legacyProvenanceArg — прежнее имя. Принимается, пока его объявляет хоть один
-// Dockerfile дерева; ноль объявивших делает приём находкой (см. шапку).
-const legacyProvenanceArg = "KACHO_IMAGE_REVISION"
-
-// knownProvenanceArgs — порядок значим: первое совпадение считается объявленным.
-var knownProvenanceArgs = []string{canonicalProvenanceArg, legacyProvenanceArg}
-
 func argDeclRe(name string) *regexp.Regexp {
 	return regexp.MustCompile(`(?m)^ARG\s+` + name + `\b`)
 }
+
+// labelArgRe — имя довода, из которого образ выводит клеймо ревизии. Признак
+// НАЗВАН ЦЕЛЬЮ, а не нашим перечнем: строку клейма гейт требует от каждого
+// образа продукта, поэтому имя читается у любого Dockerfile — включая тот, чьё
+// имя довода нам неизвестно. Перечень известных имён на этом месте старел бы
+// молча, и сверка соответствия замолчала бы вместе с ним.
+var labelArgRe = regexp.MustCompile(`org\.opencontainers\.image\.revision="\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?"`)
 
 // revisionPathFromReader — путь величины, ПРОЧИТАННЫЙ у читателя. Единственное
 // объявление в дереве; здесь его копии нет намеренно.
@@ -126,55 +132,58 @@ func revisionPathFromReader(t *testing.T) string {
 	return string(m[1])
 }
 
-// productDockerfiles — перечень образов продукта, ВЫВЕДЕННЫЙ из дерева.
-// Выписанный отстал бы на первом же новом сервисе или модуле консоли.
-func productDockerfiles(t *testing.T) []string {
-	t.Helper()
+// productDockerfilePatterns — где живут образы продукта. Перечень ОБРАЗЦОВ, а не
+// файлов: выписанный перечень файлов отстал бы на первом же новом сервисе или
+// модуле консоли.
+var productDockerfilePatterns = []string{
+	"../gateway/Dockerfile",
+	"../services/*/Dockerfile",
+	"../ui-future/*/Dockerfile",
+}
+
+// matchProductDockerfiles — чистое сопоставление образцов с деревом. Вынесено из
+// обёртки ниже, чтобы проба инъекции могла подать ему образцы, ничего не находящие,
+// и убедиться, что пустой обход ДОСТИЖИМ: функция, роняющая прогон сама,
+// непроверяема — пробе пришлось бы падать, чтобы доказать, что она работает.
+func matchProductDockerfiles(patterns []string) ([]string, error) {
 	var out []string
-	for _, pattern := range []string{
-		"../gateway/Dockerfile",
-		"../services/*/Dockerfile",
-		"../ui-future/*/Dockerfile",
-	} {
+	for _, pattern := range patterns {
 		hits, err := filepath.Glob(pattern)
 		if err != nil {
-			t.Fatalf("обход %s: %v", pattern, err)
+			return nil, err
 		}
 		out = append(out, hits...)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// productDockerfiles — тот же перечень для гейта, с ОТКАЗОМ на пустом обходе:
+// «образов не найдено» обязано ронять прогон, а не читаться как «находок нет».
+func productDockerfiles(t *testing.T) []string {
+	t.Helper()
+	out, err := matchProductDockerfiles(productDockerfilePatterns)
+	if err != nil {
+		t.Fatalf("обход образцов %v: %v", productDockerfilePatterns, err)
 	}
 	if len(out) == 0 {
 		t.Fatal("образов продукта не найдено — гейт, не прочитавший предмет, обязан падать, а не зеленеть")
 	}
-	sort.Strings(out)
 	return out
 }
 
-// checkDockerfile — находки по одному Dockerfile и ИМЯ довода, которое он
-// объявляет. Чистая функция над текстом: проба инъекции кормит её синтетикой, не
-// трогая дерево.
+// checkDockerfile — находки по одному Dockerfile. Чистая функция над текстом:
+// проба инъекции кормит её синтетикой, не трогая дерево.
 //
-// Имя определяется ПЕРВЫМ, и остальное сверяется с НИМ: файл, объявивший одно имя
-// и выводящий клеймо из другого, прошёл бы проверку, принимающую любое известное
-// имя в каждой строке по отдельности.
-func checkDockerfile(body, revisionPath string) (findings []string, arg string) {
-	var declared []string
-	for _, name := range knownProvenanceArgs {
-		if argDeclRe(name).MatchString(body) {
-			declared = append(declared, name)
-		}
-	}
-	switch len(declared) {
-	case 0:
-		findings = append(findings, "не объявлен ARG "+canonicalProvenanceArg)
-		return findings, ""
-	case 1:
-		arg = declared[0]
-	default:
-		// Два имени одной величины в одном файле — два места об одном предмете.
-		// Разойдутся они молча: клеймо возьмёт одно, файл ревизии другое.
-		findings = append(findings, "объявлены ДВА имени одной величины ("+
-			strings.Join(declared, ", ")+") — у довода одно имя, иначе клеймо и файл разъедутся")
-		arg = declared[0]
+// Имя довода у образа продукта ОДНО и каноническое; клеймо и файл ревизии
+// обязаны выводиться ИМЕННО из него. Файл, объявивший канон и выводящий клеймо
+// из чего-то другого, прошёл бы проверку, которая судит каждую строку в
+// отдельности, — поэтому обе сверяются с одним и тем же именем.
+func checkDockerfile(body, revisionPath string) (findings []string) {
+	arg := canonicalProvenanceArg
+	if !argDeclRe(arg).MatchString(body) {
+		findings = append(findings, "не объявлен ARG "+arg)
+		return findings
 	}
 
 	labelRe := regexp.MustCompile(`org\.opencontainers\.image\.revision="\$\{?` + arg + `\}?"`)
@@ -203,56 +212,36 @@ func checkDockerfile(body, revisionPath string) (findings []string, arg string) 
 			findings = append(findings, "последний USER — "+last+": подъём до root не закрыт")
 		}
 	}
-	return findings, arg
-}
-
-// legacyAcceptanceFinding — САМОИСТЕЧЕНИЕ приёма прежнего имени. Приём существует
-// ради образов, которые прежнее имя ещё объявляют; ноль таких означает, что
-// прощать больше нечего, — и тогда приём есть слепая зона, а не совместимость.
-//
-// Вынесено чистой функцией, чтобы проба инъекции подавала ей перепись, а не
-// подделывала дерево: доказательство, требующее сборки настоящего дерева без
-// службы доступа, не воспроизводимо.
-func legacyAcceptanceFinding(byName map[string]int) string {
-	if byName[legacyProvenanceArg] != 0 {
-		return ""
-	}
-	return "приём прежнего имени ARG " + legacyProvenanceArg + " потерял предмет — ни один " +
-		"Dockerfile дерева его не объявляет. Снимите его здесь и переходную пару доводов в " +
-		"provenance.mk, .github/workflows/docker-build.yml и " +
-		".github/scripts/kaname-chart-boots.sh: послабление, которому нечего прощать, — " +
-		"место, куда следующая сборка без величины попадёт незамеченной"
+	return findings
 }
 
 func TestEveryProductImageCarriesTheTreeRevision(t *testing.T) {
 	revisionPath := revisionPathFromReader(t)
 	files := productDockerfiles(t)
 
-	byName := map[string]int{}
-	total := 0
+	total, carrying := 0, 0
 	for _, f := range files {
 		body, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatalf("чтение %s: %v", f, err)
 		}
 		total++
-		findings, arg := checkDockerfile(string(body), revisionPath)
+		findings := checkDockerfile(string(body), revisionPath)
+		if len(findings) == 0 {
+			carrying++
+		}
 		for _, finding := range findings {
 			t.Errorf("НАХОДКА: %s — %s", f, finding)
 		}
-		if arg != "" {
-			byName[arg]++
-		}
 	}
 
-	if finding := legacyAcceptanceFinding(byName); finding != "" {
-		t.Errorf("НАХОДКА: %s", finding)
-	}
-
-	t.Logf("осмотрено: образов продукта %d, из них под каноническим именем %s — %d, "+
-		"под прежним %s — %d, путь величины «%s» (прочитан у читателя)",
-		total, canonicalProvenanceArg, byName[canonicalProvenanceArg],
-		legacyProvenanceArg, byName[legacyProvenanceArg], revisionPath)
+	// Перепись печатает ДВЕ величины: сколько образов осмотрено и сколько несут
+	// величину без единой находки. Одно число скрывало бы ровно тот случай, ради
+	// которого перепись заведена, — «ноль находок» на нуле прочитанного. Пустой
+	// перечень при этом до сюда не доходит: productDockerfiles роняет прогон.
+	t.Logf("осмотрено: образов продукта %d, несут величину без находок %d, "+
+		"имя довода %s, путь величины «%s» (прочитан у читателя)",
+		total, carrying, canonicalProvenanceArg, revisionPath)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -403,31 +392,30 @@ func buildSites(t *testing.T) (makefiles, workflows []string) {
 	return makefiles, workflows
 }
 
-// namesPassedBy — ИМЕНА доводов, которые вызов передаёт: буквально либо через
-// переменную, чьё объявление их несёт. Вторая форма нужна рецепту стенда: там
+// passesArg — передаёт ли вызов довод ПОД ЭТИМ именем: буквально либо через
+// переменную, чьё объявление его несёт. Вторая форма нужна рецепту стенда: там
 // аргументы собраны в одну переменную, и требовать буквального имени в каждой
 // строке значило бы требовать копий.
-func namesPassedBy(text string, carriers map[string]map[string]bool) map[string]bool {
-	out := map[string]bool{}
-	for _, name := range knownProvenanceArgs {
-		if strings.Contains(text, name) {
-			out[name] = true
-		}
+//
+// Имя приходит ПАРАМЕТРОМ, от цели вызова, а не из перечня известных: перечень
+// на этом месте старел бы молча, и вопрос «совпало ли» превратился бы в «есть ли
+// хоть что-то из набора» — то есть перестал бы быть вопросом о соответствии.
+func passesArg(text string, carriers map[string]map[string]bool, name string) bool {
+	if strings.Contains(text, name) {
+		return true
 	}
 	for v, names := range carriers {
-		if !strings.Contains(text, v) {
-			continue
-		}
-		for name := range names {
-			out[name] = true
+		if strings.Contains(text, v) && names[name] {
+			return true
 		}
 	}
-	return out
+	return false
 }
 
-// dockerfileArgOf — имя довода, объявленное целью вызова. Второй результат —
-// разрешилась ли цель вовсе: путь, собранный из переменной оболочки или матрицы
-// конвейера, не разрешается by construction, и это НЕ находка, а граница.
+// dockerfileArgOf — имя довода, из которого цель вызова выводит клеймо ревизии.
+// Второй результат — разрешилась ли цель вовсе: путь, собранный из переменной
+// оболочки или матрицы конвейера, не разрешается by construction, и это НЕ
+// находка, а граница.
 func dockerfileArgOf(site, text string) (arg string, resolved bool) {
 	m := regexp.MustCompile(`(?:-f|file=)\s*"?([^\s"]*Dockerfile[^\s"]*)"?`).FindStringSubmatch(text)
 	if m == nil {
@@ -454,17 +442,18 @@ func dockerfileArgOf(site, text string) (arg string, resolved bool) {
 	if err != nil {
 		return "", false
 	}
-	for _, name := range knownProvenanceArgs {
-		if argDeclRe(name).MatchString(string(body)) {
-			return name, true
-		}
+	if m := labelArgRe.FindSubmatch(body); m != nil {
+		return string(m[1]), true
 	}
-	// Файл есть, а величины не объявляет — это находка СТОРОНЫ ОБРАЗА, и её уже
-	// назвал TestEveryProductImageCarriesTheTreeRevision. Здесь сверять нечего.
+	// Файл есть, а клейма из довода не выводит — это находка СТОРОНЫ ОБРАЗА, и её
+	// уже назвал TestEveryProductImageCarriesTheTreeRevision. Здесь сверять нечего.
 	return "", false
 }
 
 var makeVarDeclRe = regexp.MustCompile(`^([A-Z_][A-Z0-9_]*)\s*[:?]?=`)
+
+// buildArgNameRe — имя довода в строке `--build-arg <ИМЯ>=…`.
+var buildArgNameRe = regexp.MustCompile(`--build-arg\s+"?([A-Za-z_][A-Za-z0-9_]*)`)
 var makeIncludeRe = regexp.MustCompile(`^-?include\s+(\S+)`)
 
 // revisionCarryingVars — переменные, чьё ОБЪЯВЛЕНИЕ содержит величину, ВКЛЮЧАЯ
@@ -510,11 +499,15 @@ func revisionCarryingVars(path string, depth int) (carriers map[string]map[strin
 			findings = append(findings, f...)
 			continue
 		}
+		// Имена читаются как ИМЕНА ДОВОДОВ, а не сверяются с перечнем известных:
+		// переменная-носитель тем и является, что строит `--build-arg <ИМЯ>=…`, и
+		// сверка соответствия обязана уметь спросить про ЛЮБОЕ имя, включая то,
+		// которого мы не знаем. Прежняя редакция считала носителем и переменную,
+		// чьё объявление лишь СОДЕРЖАЛО имя (величину провенанса), — она доводов
+		// не строит, и оправдывать вызов ей было нечем.
 		var carried []string
-		for _, name := range knownProvenanceArgs {
-			if strings.Contains(line, name) {
-				carried = append(carried, name)
-			}
+		for _, m := range buildArgNameRe.FindAllStringSubmatch(line, -1) {
+			carried = append(carried, m[1])
 		}
 		if len(carried) == 0 {
 			continue
@@ -538,28 +531,28 @@ func TestEveryImageBuildPassesTheTreeRevision(t *testing.T) {
 	var seen, checked, unresolved int
 	judge := func(inv buildInvocation, carriers map[string]map[string]bool) {
 		seen++
-		passed := namesPassedBy(inv.text, carriers)
-		if len(passed) == 0 {
-			t.Errorf("НАХОДКА: %s — сборка не передаёт --build-arg %s=…; образ уедет без ревизии, "+
-				"и провенанс стенда ответит «не установлена»", inv.site, canonicalProvenanceArg)
-			return
-		}
+		// ТРЕБУЕМОЕ ИМЯ ПРИХОДИТ ОТ ЦЕЛИ, а канон — только там, где цели нет.
+		// Цель разрешилась ⇒ спрашиваем ровно то имя, из которого она выводит
+		// клеймо: это и есть сверка соответствия. Не разрешилась ⇒ спрашиваем
+		// канон, потому что всякий образ продукта этого дерева объявляет его
+		// (держит проверка выше), и другого требования у нас нет.
 		want, resolved := dockerfileArgOf(inv.site, inv.text)
-		if !resolved {
+		need := canonicalProvenanceArg
+		if resolved {
+			checked++
+			need = want
+		} else {
 			unresolved++
+		}
+		if passesArg(inv.text, carriers, need) {
 			return
 		}
-		checked++
-		if !passed[want] {
-			names := make([]string, 0, len(passed))
-			for n := range passed {
-				names = append(names, n)
-			}
-			sort.Strings(names)
-			t.Errorf("НАХОДКА: %s — сборка передаёт довод под именем %s, а её цель объявляет ARG %s; "+
-				"docker непотреблённый довод выбрасывает МОЛЧА, ARG остаётся пустым, и образ уедет "+
-				"без ревизии при зелёной сборке", inv.site, strings.Join(names, "+"), want)
+		why := "образ уедет без ревизии, и провенанс стенда ответит «не установлена»"
+		if resolved && need != canonicalProvenanceArg {
+			why = "её цель выводит клеймо из $" + need + ", а docker непотреблённый довод " +
+				"выбрасывает МОЛЧА: ARG останется пустым, а сборка — зелёной"
 		}
+		t.Errorf("НАХОДКА: %s — сборка не передаёт --build-arg %s=…; %s", inv.site, need, why)
 	}
 
 	for _, f := range makefiles {
