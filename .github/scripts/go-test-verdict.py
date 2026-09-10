@@ -230,9 +230,11 @@ def verdict(run: Run, watch: str, ledger: list[str], out) -> int:
         out.write(
             f"ОТКАЗ: {pkg} {test} — пропуск с причиной «{reason}» не объявлен "
             f"законным. Пропуск гейта дерева неотличим от его успеха, поэтому "
-            f"необъявленный — находка: либо предпосылка не создана (чинится "
-            f"настройкой прогона или клона), либо причина законна by construction "
-            f"и обязана быть внесена в ведомость\n")
+            f"необъявленный — находка. Исходов ТРИ: (1) предпосылка не создана — "
+            f"чинится настройкой прогона или клона, и остаётся КРАСНЫМ; (2) предмета "
+            f"нет by construction; (3) пробу гоняет СВОЙ названный шаг конвейера без "
+            f"`-short`. Второй и третий вносятся в ведомость, и различает их один "
+            f"вопрос: НАЗОВИ ШАГ, который эту пробу исполняет\n")
         rc = 1
     if rc == 0:
         out.write("ЧИСТО\n")
@@ -254,11 +256,18 @@ def _stream(*lines: str):
     return io.StringIO("\n".join(lines) + "\n")
 
 
-def _case(name: str, lines, ledger, expect_rc: int, expect_sub: str | None):
+def _case(name: str, lines, ledger, expect_rc: int, expect_sub: str | None,
+          forbid: str | None = None):
+    """`forbid` — подстрока, которой в выводе быть НЕ должно.
+
+    Без неё инъекция доказывает лишь «покраснело», а не «покраснело на том, на
+    чём надо»: вердикт, краснеющий на всём сразу, выглядит точно так же."""
     buf = io.StringIO()
     rc = run_stream(_stream(*lines), buf, DEFAULT_WATCH, ledger)
     got = buf.getvalue()
-    ok = rc == expect_rc and (expect_sub is None or expect_sub in got)
+    ok = (rc == expect_rc
+          and (expect_sub is None or expect_sub in got)
+          and (forbid is None or forbid not in got))
     print(f"  [{'OK ' if ok else 'ОТКАЗ'}] {name}: код {rc} (ждали {expect_rc})")
     if not ok:
         print("    ── вывод ──\n" + "\n".join("    " + x for x in got.splitlines()))
@@ -267,6 +276,12 @@ def _case(name: str, lines, ledger, expect_rc: int, expect_sub: str | None):
 
 GATE_PKG = "github.com/PRO-Robotech/kacho/internal/repohygiene"
 OTHER_PKG = "github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
+
+# Пропуск ОСНОВАНИЯ 2 из живого дерева, дословно. Выписан, а не выдуман: самопроба
+# судит форму, которая роняла накопительную линию, а не её пересказ.
+CENSUS_TEST = "TestCensus_EveryTransportListingIsSeenByItsAnalyser"
+CENSUS_REASON = "runs each service's analyser; skipped in -short"
+LEGAL_BY_CONSTRUCTION = "файловая система не поддерживает симлинки"
 
 
 def _skip_lines(pkg: str, test: str, reason: str):
@@ -306,6 +321,43 @@ def self_test() -> int:
         + _skip_lines(GATE_PKG, "TestSym",
                       "файловая система не поддерживает симлинки: operation not permitted"),
         led, 0, "ЧИСТО")
+
+    # Ось 1б — ОСНОВАНИЕ 2 ведомости: проба, которую гоняет свой шаг конвейера.
+    #
+    # Прогонов ТРИ, а не два, и третий обязателен: без него молчание УЖЕ
+    # существующего контроля неотличимо от молчания мёртвого. Мир каждого прогона
+    # отличается от контрольного РОВНО ОДНИМ фактом — снятой записью ведомости, —
+    # поэтому красное нельзя списать на соседа.
+    both = [LEGAL_BY_CONSTRUCTION, CENSUS_REASON]
+    two_skips = (
+        _pass_lines(GATE_PKG, "TestA")
+        + _skip_lines(GATE_PKG, CENSUS_TEST, CENSUS_REASON)
+        + _skip_lines(GATE_PKG, "TestSym", LEGAL_BY_CONSTRUCTION + ": operation not permitted"))
+    refusal_census = f"ОТКАЗ: {GATE_PKG} {CENSUS_TEST}"
+    refusal_sym = f"ОТКАЗ: {GATE_PKG} TestSym"
+
+    # (1) КОНТРОЛЬ: обе причины объявлены — молчат оба.
+    ok &= _case(
+        "контроль: обе причины в ведомости → зелено",
+        two_skips, both, 0, "необъявленных пропусков 0")
+
+    # (2) ИНЪЕКЦИЯ НОВОГО: снята запись основания 2 — краснеет ТОЛЬКО она.
+    ok &= _case(
+        "снята запись основания 2 → красно на переписи, и НЕ на близнеце",
+        two_skips, [LEGAL_BY_CONSTRUCTION], 1, refusal_census, forbid=refusal_sym)
+
+    # (3) ИНЪЕКЦИЯ СУЩЕСТВУЮЩЕГО: снята запись основания 1 — краснеет ТОЛЬКО она.
+    # Это и есть доказательство, что прежний контроль жив, а не просто молчит.
+    ok &= _case(
+        "снята запись основания 1 → красно на ней, и НЕ на переписи",
+        two_skips, [CENSUS_REASON], 1, refusal_sym, forbid=refusal_census)
+
+    # Диагностика обязана называть ВОПРОС, различающий исходы: читатель, которому
+    # предложены только «предпосылка» и «by construction», починит не то — ни один
+    # из двух к основанию 2 не подходит.
+    ok &= _case(
+        "отказ называет три исхода и вопрос про шаг конвейера",
+        two_skips, [LEGAL_BY_CONSTRUCTION], 1, "НАЗОВИ ШАГ")
 
     # Ось 2 — граница сверки: тот же пропуск вне пакетов гейтов не судится.
     ok &= _case(
