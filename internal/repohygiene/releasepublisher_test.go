@@ -121,6 +121,11 @@ var releaseArtifacts = []releaseArtifact{
 		injection: "scripts/release/assert-no-module-reciprocity-inject.sh",
 		why:       "предпосылка «порядок выпуска существует»: граф ОБЪЯВЛЕННЫХ модулей ацикличен — мерится require/replace, а не подстрокой в пути импорта",
 	},
+	{
+		mechanism: "scripts/release/assert-pin-reachable.sh",
+		injection: "scripts/release/assert-pin-reachable-inject.sh",
+		why:       "предпосылка шага 4 порядка выпуска: ревизия пина ЗАКРЕПЛЕНА долговечной ссылкой — стволом либо тегом, а не временной головой полосы, снятие которой уничтожает воспроизводимость из исходников (#2243)",
+	},
 }
 
 // releaseAudit — исход осмотра. Возвращается СТРУКТУРОЙ, а не печатается на
