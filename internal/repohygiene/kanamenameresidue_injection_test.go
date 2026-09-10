@@ -21,12 +21,19 @@ package repohygiene
 // Полосой инъекция НЕ исчерпывается: у полосы бывает несколько законных ФОРМ
 // записи одного предмета, и форма, которой распознаватель не знает, даёт не
 // красное и не зелёное, а МОЛЧАНИЕ — записанное ею уезжает на чужую полосу и
-// растёт там остатком, которого нет. Поэтому граница функции фундамента
+// растёт там остатком, которого нет. Поэтому граница имени чужого модуля
 // доказывается ПОФОРМЕННО (перечень выведен замером по дереву), и к каждой форме
-// приложен законный близнец: тот же обёрточный узор на токене, функцией
-// фундамента НЕ являющемся, обязан остаться на своей полосе. Без близнеца
-// охрана, написанная как «срезать приставку и согласиться», была бы зелёной по
-// всем формам сразу и вычла бы из остатка его собственный предмет.
+// приложен законный близнец: тот же обёрточный узор на токене, чужим модулем НЕ
+// являющемся, обязан остаться на своей полосе. Без близнеца охрана, написанная
+// как «срезать пунктуацию и согласиться», была бы зелёной по всем формам сразу и
+// вычла бы из остатка его собственный предмет.
+//
+// ПОФОРМЕННОЕ доказательство ЖИЛО У ДВУХ границ, и одна из них снята вместе со
+// своим предметом (Б5, функция общего фундамента внутри схемы — вынос службы
+// доступа, фаза B). Класс от этого не потерян: он держится границей Б3, у которой
+// предмет ЖИВОЙ — двенадцать записей закрытого словаря, у каждой вхождения на
+// поверхности. Снятая пара (формы + её близнец) была бы вакуумной: словарь пуст,
+// и обе пробы зеленели бы, ничего не утверждая.
 
 import (
 	"fmt"
@@ -109,8 +116,8 @@ func nameResidueSubjects() map[string]struct{ Path, Body string } {
 // границей и не признаны ни одной осью.
 //
 // Без них держатель ловил бы форму, а не предмет: путь модуля фундамента, чужой
-// контракт, чужой модуль, одобренная приёмка и функция общего фундамента несут
-// имя платформы законно, и первое же срабатывание на них его бы отключило.
+// контракт, чужой модуль и одобренная приёмка несут имя платформы законно, и
+// первое же срабатывание на них его бы отключило.
 func nameResidueBorderTwins() map[string]struct{ Path, Body string } {
 	return map[string]struct{ Path, Body string }{
 		borderFoundationModule: {
@@ -128,10 +135,6 @@ func nameResidueBorderTwins() map[string]struct{ Path, Body string } {
 		borderApprovedAcceptance: {
 			"services/iam/docs/engineering/acceptance/probe-acceptance.md",
 			"Замер: `git grep kacho_iam.roles` даёт 64.\n",
-		},
-		borderFoundationFunction: {
-			"services/iam/internal/repo/kaname/pg/probe_quota.go",
-			"const fn = \"kacho_quota_refuse\"\n",
 		},
 		borderTrackerReference: {
 			"services/iam/internal/apps/kaname/api/probe/tracker_ref.go",
@@ -311,110 +314,6 @@ func nameResidueSiblingPath(path string) string {
 		return path + "-injected"
 	}
 	return path[:dot] + "-injected" + path[dot:]
-}
-
-// nameResidueFoundationFunctionForms — ФОРМЫ, которыми это дерево записывает имя
-// функции общего фундамента, и по одной инъекции на каждую.
-//
-// Перечень выведен ЗАМЕРОМ по дереву, а не придуман: сегменты, внутри которых
-// стоит имя из закрытого перечня функций, встречаются ровно тремя обёртками —
-// голой, квалифицированной схемой службы и с терминальной пунктуацией прозы.
-// Форма, о которой распознаватель не знает, даёт не красное и не зелёное, а
-// МОЛЧАНИЕ: всё, записанное ею, уезжает с границы на полосу клейм и растёт там
-// как остаток, которого нет.
-func nameResidueFoundationFunctionForms() map[string]string {
-	const fn = "kacho_quota_refuse"
-	return map[string]string{
-		"голая": fn,
-		"квалифицированная схемой": kanameSchemaQualifier + fn,
-		"с пунктуацией прозы":      fn + ":",
-	}
-}
-
-// nameResidueFoundationFormPath — путь инъекции формы: тот же каталог, что у
-// близнеца границы, потому что часть полос читается только внутри своего
-// каталога, и инъекция «куда попало» измеряла бы место, а не форму.
-const nameResidueFoundationFormPath = "services/iam/internal/repo/kaname/pg/probe_quota_form.go"
-
-// TestKanameNameResidueBorderReadsEveryFormOfTheFoundationFunction — граница Б5
-// узнаёт имя функции фундамента в КАЖДОЙ форме, которой дерево его записывает.
-//
-// Инъекция меняет РОВНО ОДИН факт: у мира прибавляется одно вхождение своей
-// формы. Поднять она обязана ТОЛЬКО границу — вхождение, уехавшее на полосу
-// клейм, означает, что распознаватель этой формы не читает.
-func TestKanameNameResidueBorderReadsEveryFormOfTheFoundationFunction(t *testing.T) {
-	t.Parallel()
-	base := nameResidueLanes(t, nameResidueWorld())
-
-	for name, form := range nameResidueFoundationFunctionForms() {
-		t.Run(name, func(t *testing.T) {
-			world := nameResidueWorld()
-			world[nameResidueFoundationFormPath] = []byte("const fn = \"" + form + "\"\n")
-			got := nameResidueLanes(t, world)
-
-			if got[borderFoundationFunction] != base[borderFoundationFunction]+1 {
-				t.Fatalf("форма %s (%q) НЕ признана границей %q: было %d, стало %d — "+
-					"распознаватель этой формы не читает, и всё, записанное ею, "+
-					"молча уезжает на чужую полосу",
-					name, form, borderFoundationFunction,
-					base[borderFoundationFunction], got[borderFoundationFunction])
-			}
-			for other := range kanameLanes {
-				if other == borderFoundationFunction {
-					continue
-				}
-				if got[other] != base[other] {
-					t.Errorf("форма %s (%q) сдвинула ЧУЖУЮ полосу %q (%d → %d) — "+
-						"упоминание функции фундамента учтено остатком, которым оно не является",
-						name, form, other, base[other], got[other])
-				}
-			}
-		})
-	}
-}
-
-// TestKanameNameResidueFoundationBorderDoesNotSwallowItsNeighbourhood — ЗАКОННЫЙ
-// близнец расширенной границы: тот же обёрточный узор на токене, функцией
-// фундамента НЕ являющемся, обязан остаться клеймом.
-//
-// Без этой пробы граница, написанная как «срезать приставку и пунктуацию, а
-// дальше согласиться», была бы зелёной по всем формам сразу и вычла бы из
-// остатка ровно тот предмет, ради которого ведомость заведена. Здесь проверяется
-// ОХРАНА, а не словарь: перечень функций закрыт, и всё, чего в нём нет, обязано
-// остаться на своей полосе в любой обёртке.
-func TestKanameNameResidueFoundationBorderDoesNotSwallowItsNeighbourhood(t *testing.T) {
-	t.Parallel()
-	base := nameResidueLanes(t, nameResidueWorld())
-
-	// Клеймо удостоверения: та же приставка платформы, те же слова через
-	// подчёркивание, тот же набор обёрток — и в перечне функций его НЕТ.
-	const claim = "kacho_principal_type"
-	twins := map[string]string{
-		"голая": claim,
-		"квалифицированная схемой": kanameSchemaQualifier + claim,
-		"с пунктуацией прозы":      claim + ":",
-	}
-
-	for name, twin := range twins {
-		t.Run(name, func(t *testing.T) {
-			world := nameResidueWorld()
-			world[nameResidueFoundationFormPath] = []byte("const claim = \"" + twin + "\"\n")
-			got := nameResidueLanes(t, world)
-
-			if got[borderFoundationFunction] != base[borderFoundationFunction] {
-				t.Fatalf("близнец %s (%q) ПРИЗНАН границей %q (%d → %d) — охрана шире "+
-					"предмета: она вычла из остатка то, что функцией фундамента не является",
-					name, twin, borderFoundationFunction,
-					base[borderFoundationFunction], got[borderFoundationFunction])
-			}
-			if got[laneClaimAssertion] != base[laneClaimAssertion]+1 {
-				t.Fatalf("близнец %s (%q) не поднял полосу %q: было %d, стало %d — "+
-					"обёртка вывела клеймо из наблюдения",
-					name, twin, laneClaimAssertion,
-					base[laneClaimAssertion], got[laneClaimAssertion])
-			}
-		})
-	}
 }
 
 // TestKanameNameResidueOwnProductNameStaysSilent — прогон третий из трёх:
@@ -936,8 +835,9 @@ func TestKanameNameResidueReadsChartGlobalFormsItUsedToMiss(t *testing.T) {
 // Перечень выведен замером по дереву, а не придуман: сегмент режется по `/`,
 // поэтому терминальная пунктуация прозы (`kacho-vpc:`, `kacho-iam.`) из токена
 // не выпадает и для словаря оказывается ДРУГОЙ строкой. Тот же класс уже
-// чинился у границы функции фундамента; здесь он тот же и лечится тем же
-// перечнем знаков.
+// чинился у границы функции фундамента (Б5, СНЯТА фазой B вместе со своим
+// предметом); здесь он тот же и лечится тем же перечнем знаков — и здесь у
+// него предмет ЖИВОЙ, поэтому поформенное доказательство осталось тут.
 func nameResidueForeignModuleForms() map[string]string {
 	const mod = "kacho-vpc"
 	return map[string]string{
@@ -1127,7 +1027,6 @@ func nameResidueCatalogueCorpus() map[string][]byte {
 	return map[string][]byte{
 		"services/iam/probe-catalogue.md": []byte(
 			"Ребро к kacho-vpc остаётся односторонним.\n" +
-				"Функция kacho_quota_refuse рендерится одним шаблоном.\n" +
 				"Хост базы — kacho-umbrella-pg-iam.\n"),
 	}
 }
@@ -1149,8 +1048,7 @@ func TestKanameClosedBorderCatalogueExpiryFallsOnlyOnTheDeadEntry(t *testing.T) 
 		platform = "объекты, которыми владеет платформа"
 	)
 	control := map[string][]string{
-		foreign: {"kacho-vpc"},
-		"функции фундамента внутри схемы": {"kacho_quota_refuse"},
+		foreign:  {"kacho-vpc"},
 		platform: {"kacho-umbrella-pg-iam"},
 	}
 
@@ -1163,8 +1061,7 @@ func TestKanameClosedBorderCatalogueExpiryFallsOnlyOnTheDeadEntry(t *testing.T) 
 		{
 			"инъекция в новый перечень",
 			map[string][]string{
-				foreign: {"kacho-vpc"},
-				"функции фундамента внутри схемы": {"kacho_quota_refuse"},
+				foreign:  {"kacho-vpc"},
 				platform: {"kacho-umbrella-pg-iam", "kacho-no-such-object"},
 			},
 			map[string]string{platform: "kacho-no-such-object"},
@@ -1172,8 +1069,7 @@ func TestKanameClosedBorderCatalogueExpiryFallsOnlyOnTheDeadEntry(t *testing.T) 
 		{
 			"инъекция в существующий перечень",
 			map[string][]string{
-				foreign: {"kacho-vpc", "kacho-no-such-module"},
-				"функции фундамента внутри схемы": {"kacho_quota_refuse"},
+				foreign:  {"kacho-vpc", "kacho-no-such-module"},
 				platform: {"kacho-umbrella-pg-iam"},
 			},
 			map[string]string{foreign: "kacho-no-such-module"},
