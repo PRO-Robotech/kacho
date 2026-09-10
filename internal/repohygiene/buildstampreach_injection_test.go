@@ -16,6 +16,12 @@
 //  4. ФОРМА ПУТИ ПАКЕТА. Сборка из корня дерева (`./services/x/cmd/x`) и из
 //     своего модуля (`./cmd/x`) — обе законны, и обе обязаны опознаваться;
 //     `go list -deps` тем же путём сборкой НЕ является.
+//  5. ВИДИМОСТЬ АРГУМЕНТА В СВОЕЙ СТУПЕНИ. `-X`, берущий значение из аргумента,
+//     объявленного в ДРУГОЙ ступени, даёт пустую подстановку — штамп, молча
+//     ставший «не проставлено». Ось заведена задачей #2527: до неё держатель на
+//     таком файле сборки печатал «ставит» и МОЛЧАЛ, то есть зеленел ровно на
+//     сломанном свойстве. Законный близнец — тот же файл с `ARG` в ступени
+//     сборки.
 //
 // Плюс отдельно — что перепись без предмета не выдаётся за «нарушений нет»:
 // пустой корпус даёт ОШИБКУ, а не тихий зелёный.
@@ -178,4 +184,96 @@ func TestBuildStampInjection_EmptyCorpusIsAnError(t *testing.T) {
 	_, _, err := AuditBuildStampReach(map[string][]byte{})
 	require.Errorf(t, err, "пустой корпус обязан быть ОШИБКОЙ, а не тихим зелёным: "+
 		"молчание держателя на нулевом обходе ничего не утверждает")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ОСЬ 5 — ВИДИМОСТЬ АРГУМЕНТА В СТУПЕНИ СБОРКИ (#2527).
+//
+// Дельта миров ниже — ОДИН факт: строка `ARG` в ступени сборки. Всё остальное —
+// подстановка, символы, путь пакета, имя ступени — совпадает дословно.
+
+// dockerArgInWrongStage — аргументы объявлены в КОНЕЧНОЙ ступени (там они нужны
+// клейму), а сборка идёт в первой. Ровно та форма, что лежала в дереве до #2527.
+const dockerArgInWrongStage = `FROM golang AS builder
+RUN go build -ldflags "-X main.buildVersion=$KACHO_IMAGE_VERSION -X main.buildCommit=$KACHO_IMAGE_REVISION" -o /alpha ./services/alpha/cmd/alpha
+
+FROM alpine
+ARG KACHO_IMAGE_REVISION=""
+ARG KACHO_IMAGE_VERSION=""
+LABEL org.opencontainers.image.revision="$KACHO_IMAGE_REVISION"
+`
+
+// dockerArgInBuilderStage — ЗАКОННЫЙ БЛИЗНЕЦ: те же две ступени, то же клеймо,
+// та же строка сборки; отличие ОДНО — аргументы объявлены и в ступени сборки.
+const dockerArgInBuilderStage = `FROM golang AS builder
+ARG KACHO_IMAGE_REVISION=""
+ARG KACHO_IMAGE_VERSION=""
+RUN go build -ldflags "-X main.buildVersion=$KACHO_IMAGE_VERSION -X main.buildCommit=$KACHO_IMAGE_REVISION" -o /alpha ./services/alpha/cmd/alpha
+
+FROM alpine
+ARG KACHO_IMAGE_REVISION=""
+ARG KACHO_IMAGE_VERSION=""
+LABEL org.opencontainers.image.revision="$KACHO_IMAGE_REVISION"
+`
+
+func TestBuildStampInjection_ArgFromAnotherStageIsAnEmptySubstitution(t *testing.T) {
+	t.Parallel()
+	b := auditOne(t, "services/alpha/cmd/alpha/main.go", srcDeclaresStamp,
+		"services/alpha/Dockerfile", dockerArgInWrongStage)
+	require.Truef(t, b.Stamped, "подстановка НАЗВАНА — и именно поэтому одной оси «есть "+
+		"ли -ldflags» мало: файл выглядит проставленным")
+	require.ElementsMatchf(t, []string{"KACHO_IMAGE_REVISION", "KACHO_IMAGE_VERSION"},
+		b.ArgsUnseen, "оба аргумента объявлены в ЧУЖОЙ ступени: в ступени сборки они "+
+			"не видны, и компоновщик впишет пустую строку")
+}
+
+func TestBuildStampInjection_ArgDeclaredInBuilderStageIsSilent(t *testing.T) {
+	t.Parallel()
+	b := auditOne(t, "services/alpha/cmd/alpha/main.go", srcDeclaresStamp,
+		"services/alpha/Dockerfile", dockerArgInBuilderStage)
+	require.True(t, b.Stamped)
+	require.Emptyf(t, b.ArgsUnseen, "законный близнец обязан МОЛЧАТЬ: дельта с предыдущим "+
+		"миром — одна строка `ARG` в ступени сборки, и она здесь есть")
+}
+
+func TestBuildStampInjection_ArgDeclaredAfterTheBuildIsStillUnseen(t *testing.T) {
+	t.Parallel()
+	late := `FROM golang AS builder
+RUN go build -ldflags "-X main.buildVersion=$V -X main.buildCommit=$R" -o /alpha ./services/alpha/cmd/alpha
+ARG V=""
+ARG R=""
+`
+	b := auditOne(t, "services/alpha/cmd/alpha/main.go", srcDeclaresStamp,
+		"services/alpha/Dockerfile", late)
+	require.ElementsMatchf(t, []string{"R", "V"}, b.ArgsUnseen, "аргумент действует с места "+
+		"объявления и НИЖЕ: объявленный после сборки, для неё он не существует, и "+
+		"разбор, судящий по файлу целиком, прощал бы промах порядка")
+}
+
+func TestBuildStampInjection_GlobalArgBeforeFirstStageIsNotVisibleInside(t *testing.T) {
+	t.Parallel()
+	global := `ARG KACHO_IMAGE_VERSION=""
+ARG KACHO_IMAGE_REVISION=""
+FROM golang AS builder
+RUN go build -ldflags "-X main.buildVersion=$KACHO_IMAGE_VERSION -X main.buildCommit=$KACHO_IMAGE_REVISION" -o /alpha ./services/alpha/cmd/alpha
+`
+	b := auditOne(t, "services/alpha/cmd/alpha/main.go", srcDeclaresStamp,
+		"services/alpha/Dockerfile", global)
+	require.ElementsMatchf(t, []string{"KACHO_IMAGE_REVISION", "KACHO_IMAGE_VERSION"},
+		b.ArgsUnseen, "аргумент до первого `FROM` виден строкам `FROM`, а ВНУТРИ ступени "+
+			"требует повторного объявления: считать его видимым значило бы прощать "+
+			"ровно тот промах, ради которого ось заведена")
+}
+
+func TestBuildStampInjection_LiteralValueReferencesNoArgAndIsNotJudgedHere(t *testing.T) {
+	t.Parallel()
+	literal := `FROM golang AS builder
+RUN go build -ldflags "-X main.buildVersion=v1.2.3 -X main.buildCommit=deadbeef" -o /alpha ./services/alpha/cmd/alpha
+`
+	b := auditOne(t, "services/alpha/cmd/alpha/main.go", srcDeclaresStamp,
+		"services/alpha/Dockerfile", literal)
+	require.True(t, b.Stamped, "литерал ДОЕДЕТ до двоичного файла — подстановка состоялась")
+	require.Emptyf(t, b.ArgsUnseen, "ссылки на аргумент нет, значит и невидимого аргумента "+
+		"нет: держатель не вправе краснеть на том, чего не судит. Что литерал — это "+
+		"ВТОРАЯ величина об одном предмете, названо в шапке отдельно и здесь не судится")
 }
