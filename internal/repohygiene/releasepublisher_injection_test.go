@@ -54,9 +54,21 @@ func syntheticRunner() string {
 	return sb.String()
 }
 
+// syntheticCallers — исполняемые строки, зовущие КАЖДЫЙ механизм. Форма
+// намеренно повторяет рецепт сборки: строка начинается с табуляции.
+func syntheticCallers() []string {
+	sources := map[string]string{"Makefile": ""}
+	var sb strings.Builder
+	for _, a := range releaseArtifacts {
+		sb.WriteString("\t" + a.mechanism + " $(VERSION)\n")
+	}
+	sources["Makefile"] = sb.String()
+	return releaseCallerLines(sources)
+}
+
 func TestReleasePublisherGateStaysSilentOnALegitimateTree(t *testing.T) {
 	t.Parallel()
-	a := auditReleasePublisher(syntheticPublisherTree(t), syntheticRunner())
+	a := auditReleasePublisher(syntheticPublisherTree(t), syntheticRunner(), syntheticCallers())
 	t.Logf("законный близнец: файлов прочитано %d, утверждений %d, находок %d",
 		a.filesRead, a.assertions, len(a.findings))
 	if len(a.findings) != 0 {
@@ -79,7 +91,7 @@ func TestReleasePublisherGateIgnoresAnUnrelatedScript(t *testing.T) {
 		[]byte("#!/usr/bin/env bash\n"), 0o755); err != nil {
 		t.Fatalf("файл не записан: %v", err)
 	}
-	if a := auditReleasePublisher(root, syntheticRunner()); len(a.findings) != 0 {
+	if a := auditReleasePublisher(root, syntheticRunner(), syntheticCallers()); len(a.findings) != 0 {
 		t.Fatalf("посторонний скрипт не является предметом гейта, а он нашёл: %v", a.findings)
 	}
 }
@@ -91,7 +103,7 @@ func TestReleasePublisherGateRedOnAMissingMechanism(t *testing.T) {
 	if err := os.Remove(filepath.Join(root, victim)); err != nil {
 		t.Fatalf("файл не снят: %v", err)
 	}
-	a := auditReleasePublisher(root, syntheticRunner())
+	a := auditReleasePublisher(root, syntheticRunner(), syntheticCallers())
 	if len(a.findings) != 1 || !strings.Contains(a.findings[0], victim) {
 		t.Fatalf("снятый механизм обязан дать ровно одну находку с координатой %s, получено: %v", victim, a.findings)
 	}
@@ -105,7 +117,7 @@ func TestReleasePublisherGateRedOnANonExecutableFile(t *testing.T) {
 	if err := os.Chmod(filepath.Join(root, victim), 0o644); err != nil {
 		t.Fatalf("режим не изменён: %v", err)
 	}
-	a := auditReleasePublisher(root, syntheticRunner())
+	a := auditReleasePublisher(root, syntheticRunner(), syntheticCallers())
 	if len(a.findings) != 1 || !strings.Contains(a.findings[0], victim) {
 		t.Fatalf("неисполняемый файл обязан дать ровно одну находку с координатой %s, получено: %v", victim, a.findings)
 	}
@@ -122,11 +134,65 @@ func TestReleasePublisherGateRedWhenTheRunnerStopsCallingAnInjection(t *testing.
 	root := syntheticPublisherTree(t)
 	victim := releaseArtifacts[0].injection
 	runner := strings.ReplaceAll(syntheticRunner(), victim, "scripts/release/something-else.sh")
-	a := auditReleasePublisher(root, runner)
+	a := auditReleasePublisher(root, runner, syntheticCallers())
 	if len(a.findings) != 1 || !strings.Contains(a.findings[0], victim) {
 		t.Fatalf("невызываемая инъекция обязана дать ровно одну находку с координатой %s, получено: %v", victim, a.findings)
 	}
 	t.Logf("ось «прогонщик перестал звать»: гейт краснеет и называет %s", victim)
+}
+
+// TestReleasePublisherGateRedWhenAMechanismHasNoCaller — ось «механизм зовётся».
+//
+// Файлы на месте, доказательство падучести зовётся прогонщиком, и всё выглядит
+// исправным — а механизм не исполняет НИКТО. Ровно в этом состоянии был
+// производитель поставки: он существовал, был исполняем, имел инъекцию, и
+// выкладку при этом доводил человек.
+func TestReleasePublisherGateRedWhenAMechanismHasNoCaller(t *testing.T) {
+	t.Parallel()
+	root := syntheticPublisherTree(t)
+	victim := releaseArtifacts[0].mechanism
+	var callers []string
+	for _, line := range syntheticCallers() {
+		if !strings.Contains(line, victim) {
+			callers = append(callers, line)
+		}
+	}
+	a := auditReleasePublisher(root, syntheticRunner(), callers)
+	if len(a.findings) != 1 || !strings.Contains(a.findings[0], victim) {
+		t.Fatalf("механизм без вызывающего обязан дать ровно одну находку с координатой %s, получено: %v",
+			victim, a.findings)
+	}
+	t.Logf("ось «механизм никто не зовёт»: гейт краснеет и называет %s", victim)
+}
+
+// TestReleasePublisherGateDoesNotCountACommentAsACaller — ЗАКОННЫЙ БЛИЗНЕЦ оси
+// «механизм зовётся», и он несущий.
+//
+// Отличие от случая выше — РОВНО ОДИН факт: строка вызова осталась на месте, но
+// стала комментарием. Путь по-прежнему в тексте, а исполнения нет. Гейт,
+// судящий по подстроке в файле, здесь МОЛЧИТ и потому зеленеет на справке
+// собственного рецепта, где все девять путей перечислены поимённо.
+func TestReleasePublisherGateDoesNotCountACommentAsACaller(t *testing.T) {
+	t.Parallel()
+	root := syntheticPublisherTree(t)
+	victim := releaseArtifacts[0].mechanism
+
+	var sb strings.Builder
+	for _, a := range releaseArtifacts {
+		if a.mechanism == victim {
+			sb.WriteString("##   " + a.mechanism + " — про него написано в справке\n")
+			continue
+		}
+		sb.WriteString("\t" + a.mechanism + " $(VERSION)\n")
+	}
+	callers := releaseCallerLines(map[string]string{"Makefile": sb.String()})
+
+	a := auditReleasePublisher(root, syntheticRunner(), callers)
+	if len(a.findings) != 1 || !strings.Contains(a.findings[0], victim) {
+		t.Fatalf("упоминание в комментарии вызовом не является — ожидалась одна находка с %s, получено: %v",
+			victim, a.findings)
+	}
+	t.Logf("законный близнец: путь в комментарии не зачтён вызовом — гейт называет %s", victim)
 }
 
 // TestReleasePublisherGateRedOnAnEmptyTree — обход по пустому дереву.
@@ -135,16 +201,20 @@ func TestReleasePublisherGateRedWhenTheRunnerStopsCallingAnInjection(t *testing.
 // даёт находку по каждому предмету, а не тишину.
 func TestReleasePublisherGateRedOnAnEmptyTree(t *testing.T) {
 	t.Parallel()
-	a := auditReleasePublisher(t.TempDir(), "")
+	a := auditReleasePublisher(t.TempDir(), "", nil)
 	if a.filesRead != 0 {
 		t.Fatalf("в пустом дереве прочитанных файлов быть не может, прочитано %d", a.filesRead)
 	}
-	// Находок на предмет ровно ТРИ: нет механизма · нет его инъекции ·
-	// прогонщик инъекцию не зовёт. Число выписано, а не «больше нуля»:
-	// «больше нуля» зеленело бы и на гейте, схлопнувшем все оси в одну.
-	if want := 3 * len(releaseArtifacts); len(a.findings) != want {
-		t.Fatalf("пустое дерево обязано дать по три находки на предмет (%d), получено %d: %v",
+	// Находок на предмет ровно ЧЕТЫРЕ: нет механизма · нет его инъекции ·
+	// прогонщик инъекцию не зовёт · механизм никто не зовёт. Число выписано, а
+	// не «больше нуля»: «больше нуля» зеленело бы и на гейте, схлопнувшем все
+	// оси в одну.
+	if want := 4 * len(releaseArtifacts); len(a.findings) != want {
+		t.Fatalf("пустое дерево обязано дать по четыре находки на предмет (%d), получено %d: %v",
 			want, len(a.findings), a.findings)
+	}
+	if a.callerLines != 0 {
+		t.Fatalf("мест вызова в пустом дереве быть не может, прочитано %d", a.callerLines)
 	}
 	t.Logf("ось «пустое дерево»: находок %d при нуле прочитанных файлов", len(a.findings))
 }

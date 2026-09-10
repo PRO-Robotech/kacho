@@ -25,12 +25,27 @@
 //
 //  1. каждый механизм линии выпуска существует и исполняем;
 //  2. у каждого есть доказательство способности упасть (`*-inject.sh`);
-//  3. это доказательство ЗОВЁТСЯ прогонщиком `scripts/ci-local.sh`.
+//  3. это доказательство ЗОВЁТСЯ прогонщиком `scripts/ci-local.sh`;
+//  4. САМ МЕХАНИЗМ ЗОВЁТСЯ — целью сборки либо шагом конвейера.
 //
 // Третий пункт — не оформление. Доказательство, которого никто не запускает,
 // не отличается от отсутствующего: оно перестаёт исполняться в тот же день,
 // когда ломается, и узнать об этом неоткуда. Этот класс в дереве уже
 // наблюдался и стоил отдельной починки.
+//
+// Четвёртый — тот же класс, поднятый на уровень выше, и он заведён по замеру.
+// Из механизмов перечня вызывающего не имел РОВНО ОДИН — производитель
+// поставки дерева службы: ни строки в рецепте, ни шага в объявлении конвейера.
+// То есть выкладку доводил человек, вспоминая службу, адрес артефакта,
+// подтверждение и три ключа, — а правило корпуса требует, чтобы у поставки был
+// ПРОИЗВОДИТЕЛЬ, а не человек. Прочие восемь вызывающего несли, поэтому ось не
+// тождественно-истинна и не тождественно-ложна: она разделяла перечень 8 к 1 в
+// день заведения.
+//
+// ВЫЗОВОМ СЧИТАЕТСЯ ИСПОЛНЯЕМАЯ СТРОКА, А НЕ УПОМИНАНИЕ. Путь механизма стоит и
+// в справке этого же Makefile, и в объяснительных комментариях; гейт, считающий
+// их вызовом, зеленел бы на СОБСТВЕННОМ объяснении — класс, который корпус ловит
+// в продукте (`testing.md` §«Гейт на класс», п. 4).
 //
 // ПЕРЕЧЕНЬ МЕХАНИЗМОВ ВЫВЕДЕН ИЗ РЕШЕНИЯ, А НЕ ИЗ КАТАЛОГА, и потому растёт
 // вместе с ним: механизмов стало шесть, когда у операции «поставить версию»
@@ -134,13 +149,51 @@ var releaseArtifacts = []releaseArtifact{
 type releaseAudit struct {
 	filesRead  int
 	assertions int
-	findings   []string
+	// callerLines — исполняемых строк, прочитанных в местах вызова. Величина
+	// отдельная: без неё «вызывающего нет» неотличимо от «мест вызова не
+	// прочитано ни одного», а это разные вердикты — второй есть поломка гейта.
+	callerLines int
+	findings    []string
+}
+
+// releaseCallerLines — ИСПОЛНЯЕМЫЕ строки тех мест, откуда механизм может
+// зваться: рецептов сборки и объявлений конвейера.
+//
+// Комментарии отсеиваются, и это несущее: путь механизма стоит в справке того же
+// рецепта и в объяснительных абзацах рядом. Считая их вызовом, гейт объявил бы
+// вызванным всё, о чём хоть где-то написано, — и остался бы зелёным ровно в том
+// случае, ради которого заведён.
+func releaseCallerLines(sources map[string]string) []string {
+	var out []string
+	for _, body := range sources {
+		for _, line := range strings.Split(body, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+				continue
+			}
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// releaseIsCalled — зовётся ли путь хоть одной исполняемой строкой. Сверка идёт
+// по пути ЦЕЛИКОМ, а не по базовому имени: одноимённый файл в другом каталоге
+// вызовом этого механизма не является.
+func releaseIsCalled(callers []string, mechanism string) bool {
+	for _, line := range callers {
+		if strings.Contains(line, mechanism) {
+			return true
+		}
+	}
+	return false
 }
 
 // auditReleasePublisher — единственная реализация осмотра. Ею пользуются и
 // гейт, и его инъекция; расхождение между ними невозможно by construction.
-func auditReleasePublisher(root, runner string) releaseAudit {
+func auditReleasePublisher(root, runner string, callers []string) releaseAudit {
 	var a releaseAudit
+	a.callerLines = len(callers)
 	for _, art := range releaseArtifacts {
 		for _, rel := range []string{art.mechanism, art.injection} {
 			a.assertions++
@@ -164,6 +217,16 @@ func auditReleasePublisher(root, runner string) releaseAudit {
 			a.findings = append(a.findings,
 				art.injection+": прогонщик scripts/ci-local.sh его не зовёт — доказательство падучести не исполняется")
 		}
+
+		// Механизм обязан ЗВАТЬСЯ. Без вызывающего он не отличается от
+		// отсутствующего: его никто не прогоняет, поэтому он ломается молча, а
+		// работа, ради которой он заведён, снова достаётся человеку.
+		a.assertions++
+		if !releaseIsCalled(callers, art.mechanism) {
+			a.findings = append(a.findings,
+				art.mechanism+": звать его нечем — ни цели сборки, ни шага конвейера не исполняет этот путь. "+
+					art.why+". Заведи вызывающего: механизм без него не отличается от отсутствующего")
+		}
 	}
 	return a
 }
@@ -178,16 +241,51 @@ func TestMonorepoCarriesAVersionPublisher(t *testing.T) {
 		t.Fatalf("прогонщик не прочитан (%s): %v — вердикта нет ни по одному предмету", runnerPath, err)
 	}
 
-	a := auditReleasePublisher(root, string(runnerRaw))
+	// МЕСТА ВЫЗОВА собираются из дерева, а не выписываются: рукописный перечень
+	// разошёлся бы с деревом молча — класс, который в этом репозитории уже
+	// наблюдался тремя копиями одного списка.
+	sources := map[string]string{}
+	makefileRaw, err := os.ReadFile(filepath.Join(root, "Makefile"))
+	if err != nil {
+		t.Fatalf("Makefile не прочитан: %v — о вызывающих вердикта нет", err)
+	}
+	sources["Makefile"] = string(makefileRaw)
+
+	wfDir := filepath.Join(root, ".github", "workflows")
+	entries, err := os.ReadDir(wfDir)
+	if err != nil {
+		t.Fatalf("объявления конвейера не прочитаны (%s): %v — о вызывающих вердикта нет", wfDir, err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yml") && !strings.HasSuffix(e.Name(), ".yaml") {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(wfDir, e.Name()))
+		if err != nil {
+			t.Fatalf("объявление %s не прочитано: %v", e.Name(), err)
+		}
+		sources[e.Name()] = string(raw)
+	}
+
+	callers := releaseCallerLines(sources)
+	a := auditReleasePublisher(root, string(runnerRaw), callers)
 
 	// Перепись печатается ВСЕГДА: «ноль находок» обязано быть отличимо от
 	// «ноль прочитанного». Пустой обход — красное, а не тихий успех.
-	t.Logf("перепись: предметов выпуска %d, файлов прочитано %d, утверждений %d, находок %d",
-		len(releaseArtifacts), a.filesRead, a.assertions, len(a.findings))
+	t.Logf("перепись: предметов выпуска %d, файлов прочитано %d, мест вызова прочитано %d "+
+		"(источников %d), утверждений %d, находок %d",
+		len(releaseArtifacts), a.filesRead, a.callerLines, len(sources), a.assertions, len(a.findings))
 
 	if len(releaseArtifacts) == 0 || a.assertions == 0 {
 		t.Fatalf("обход пуст: предметов %d, утверждений %d — вердикт беспредметен",
 			len(releaseArtifacts), a.assertions)
+	}
+	// Ноль исполняемых строк означал бы, что ось «механизм зовётся» судит
+	// пустоту: она объявила бы невызванными ВСЕ механизмы, и красное пришло бы
+	// от поломки обхода, а не от дерева.
+	if a.callerLines == 0 {
+		t.Fatalf("мест вызова прочитано ноль при %d источниках — ось «механизм зовётся» беспредметна",
+			len(sources))
 	}
 	for _, f := range a.findings {
 		t.Errorf("производитель версии: %s", f)

@@ -419,7 +419,7 @@ PG_OUTSIDE_SELECTION_PKGS_IAM ?= \
 # ЧЕМ ПРОВЯЗЫВАЕТСЯ И ПОЧЕМУ НЕ `core.hooksPath` — в шапке scripts/hooks/install.sh
 # (короткий ответ: он перебивает `.git/hooks` целиком и молча выключает всё, что
 # там уже лежало).
-.PHONY: test test-unit test-integration test-pg-outside-selection test-service test-service-short docs-sites help install-hooks check-hooks hooks-notice scale-grid-small scale-grid-full matrix-volume-small matrix-volume-full release-preflight release-trunk-green release-breaking-since release-probe release-pin-agrees release-pin-reachable release-no-reciprocity release-dry-run
+.PHONY: test test-unit test-integration test-pg-outside-selection test-service test-service-short docs-sites help install-hooks check-hooks hooks-notice scale-grid-small scale-grid-full matrix-volume-small matrix-volume-full release-preflight release-trunk-green release-breaking-since release-probe release-pin-agrees release-pin-reachable release-no-reciprocity release-dry-run release-artifact
 
 ## install-hooks — провязать хуки git из scripts/hooks в этот клон (один раз на клон).
 install-hooks:
@@ -751,6 +751,11 @@ matrix-volume-full:
 ##                             подстроку в пути импорта: переименование каталога
 ##                             вердикта не двигает, обратное require — двигает
 ##   release-dry-run         — весь набор гейтов разом, без создания чего-либо
+##   release-artifact        — сойдутся ли предпосылки ПОСТАВКИ дерева службы в
+##                             репозиторий артефакта (ARTIFACT_SVC/ARTIFACT_REPO).
+##                             Гоняет четыре гейта производителя поставки и
+##                             печатает перепись; необратимого шага не делает —
+##                             как и все цели этого блока
 ##
 ## У самих скриптов исходов ЧЕТЫРЕ, и различать их обязательно: 0 — сошлось,
 ## 1 — находка, 2 — позван неверно, 3 — НЕ ВЫПОЛНИЛОСЬ (спросить не удалось).
@@ -793,3 +798,30 @@ release-no-reciprocity:
 release-dry-run:
 	@test -n "$(VERSION)" || { echo "нужна VERSION, напр. make release-dry-run VERSION=v0.1.0" >&2; exit 2; }
 	scripts/release/publish-tag.sh $(VERSION) --confirm $(VERSION)
+
+# ── ПОСТАВКА ДЕРЕВА СЛУЖБЫ: У ПРОИЗВОДИТЕЛЯ ПОЯВЛЯЕТСЯ ВЫЗЫВАЮЩИЙ ───────────
+#
+# Производитель поставки в дереве был, а звать его было НЕЧЕМ: ни цели, ни шага
+# конвейера — то есть выкладку по-прежнему доводил человек, вспоминая службу,
+# адрес артефакта, подтверждение и три ключа. Механизм, у которого нет
+# вызывающего, не отличается от отсутствующего: он перестаёт исполняться в тот
+# же день, когда ломается, и узнать об этом неоткуда.
+#
+# АДРЕС АРТЕФАКТА ВЫПИСАН, А НЕ ВЫВЕДЕН ИЗ `go.mod` — И ЭТО НЕСУЩЕЕ. Первый гейт
+# производителя сверяет ОБЪЯВЛЕННЫЙ путь модуля с адресом, по которому службу
+# достают; выведи адрес из объявления — и сверка станет тождественно-истинной,
+# то есть формой проверки без содержания. Расхождение этих двух величин уже
+# стоило отказа `go get` у постороннего, и ловит его ровно этот гейт.
+#
+# НЕОБРАТИМОГО ШАГА ЗДЕСЬ НЕТ, как и у соседей: цель отвечает на вопрос
+# «сойдутся ли предпосылки», а выкладку делает тот же скрипт с `--publish` и
+# дословным подтверждением, набранным человеком. Подтверждение, которое
+# подставляет рецепт, подтверждением не является.
+ARTIFACT_SVC  ?= iam
+ARTIFACT_REPO ?= PRO-Robotech/kaname
+
+release-artifact:
+	@test -n "$(ARTIFACT_SVC)" || { echo "нужна ARTIFACT_SVC, напр. make release-artifact ARTIFACT_SVC=iam" >&2; exit 2; }
+	@test -n "$(ARTIFACT_REPO)" || { echo "нужен ARTIFACT_REPO, напр. ARTIFACT_REPO=PRO-Robotech/kaname" >&2; exit 2; }
+	scripts/release/publish-service-artifact.sh $(ARTIFACT_SVC) $(ARTIFACT_REPO) \
+	  --confirm $(ARTIFACT_REPO) $(if $(REV),--rev $(REV))
