@@ -40,11 +40,11 @@ const (
 // the wildcard affordances.
 //
 // Ground-truth (the catalog mirrors EXACTLY this — no more, no less):
-//   - kacho-iam `internal/authzmap` → `objectTypes` (the closed
+//   - kaname `internal/authzmap` → `objectTypes` (the closed
 //     `(module,resource) → FGA object_type` table; extending it requires a
 //     lockstep edit of `fga_model.fga`) + `VerbRelationsOfType(fgaType)`
 //     (набор отношений, объявленный ЭТИМ типом; пустой — ярусный предок);
-//   - kacho-iam `internal/authzmap.CommonVerbVocabulary()` — набор, ОБЩИЙ для всех
+//   - kaname `internal/authzmap.CommonVerbVocabulary()` — набор, ОБЩИЙ для всех
 //     ресурсов (пересечение наборов типов), сегодня {get,list,create,update,delete}
 //     (+ ограниченный разворот подстановки, теперь по набору СВОЕГО типа).
 //
@@ -103,11 +103,11 @@ func (c *permissionCatalogServiceClient) ListPermissionCatalog(ctx context.Conte
 // the wildcard affordances.
 //
 // Ground-truth (the catalog mirrors EXACTLY this — no more, no less):
-//   - kacho-iam `internal/authzmap` → `objectTypes` (the closed
+//   - kaname `internal/authzmap` → `objectTypes` (the closed
 //     `(module,resource) → FGA object_type` table; extending it requires a
 //     lockstep edit of `fga_model.fga`) + `VerbRelationsOfType(fgaType)`
 //     (набор отношений, объявленный ЭТИМ типом; пустой — ярусный предок);
-//   - kacho-iam `internal/authzmap.CommonVerbVocabulary()` — набор, ОБЩИЙ для всех
+//   - kaname `internal/authzmap.CommonVerbVocabulary()` — набор, ОБЩИЙ для всех
 //     ресурсов (пересечение наборов типов), сегодня {get,list,create,update,delete}
 //     (+ ограниченный разворот подстановки, теперь по набору СВОЕГО типа).
 //

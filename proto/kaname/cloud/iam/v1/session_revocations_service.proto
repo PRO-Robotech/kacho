@@ -23,7 +23,7 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1;i
 // when a token's `jti` is not in cache (e.g. cold start window).
 //
 // Revocation sources:
-//   - User-initiated logout (kacho-iam OAuth2 logout handler).
+//   - User-initiated logout (kaname OAuth2 logout handler).
 //   - Admin force-logout (InternalIAMService.ForceLogout — see
 //     internal_iam_service.proto extensions).
 //   - CAEP receiver (external IdP signal).
@@ -44,7 +44,7 @@ service InternalSessionRevocationsService {
       response: "SessionRevocation"
     };
     // Cluster-internal listener-protected; callers are
-    // kacho-iam internal logout handler, ForceLogout admin RPC,
+    // kaname internal logout handler, ForceLogout admin RPC,
     // back-channel logout, CAEP receiver — all server-side.
     option (corelib.authz.v1.permission) = "<exempt>";
     option (corelib.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
@@ -66,7 +66,7 @@ service InternalSessionRevocationsService {
   // CAEP forwarder to bulk-emit events.
   //
   // The whole response is about ONE user the CALLER NAMES, so it is authorized
-  // per-object on that user, and kacho-iam enforces that itself
+  // per-object on that user, and kaname enforces that itself
   // (internal/apps/kaname/api/session_revocations). The record below states that
   // lane, so any future route inherits it rather than a bypass.
   //
@@ -103,7 +103,7 @@ service InternalSessionRevocationsService {
       from_request_field: "user_id"
     };
     option (corelib.authz.v1.required_acr_min) = "1";
-    // A refusal is the user's own miss, not "you may not". kacho-iam answers a
+    // A refusal is the user's own miss, not "you may not". kaname answers a
     // denied caller that way already; the flag is what makes an edge that ever
     // routes this RPC answer the same, instead of a 403 that tells an outsider
     // the user exists. The edge heuristic does not cover this shape on its own —
@@ -157,7 +157,7 @@ message RevokeRequest {
   // stays authoritative for the token's lifetime.
   google.protobuf.Timestamp ttl_expires_at = 4;
 
-  // When true, kacho-iam enumerates ALL active access tokens for the user
+  // When true, kaname enumerates ALL active access tokens for the user
   // (Hydra introspection) and inserts a row per `jti`. Used by admin
   // ForceLogout and password-change flows.
   bool revoke_all_user_tokens = 5;

@@ -103,12 +103,16 @@ cannot access.** Deny is indistinguishable from absence.
 - `GET /v2/` without a token → `401` fail-closed; peer (iam/Check/zot) unavailable →
   fail-closed for mutations.
 
-**Token / identity (Hydra Variant H).**
+**Token / identity (полоса токен-обмена, Variant H).**
 - Tokens are **identity-only**; authorization is always the per-request Check above.
-- docker: `/iam/token` `private_key_jwt` shim → Hydra `client_credentials`; anon → `401 +
-  WWW-Authenticate` (docker-CLI contract). k8s: `jwt-bearer` with an exact-subject trust-grant.
-- data-plane verifies **Hydra JWKS**; JWKS unavailable / unknown-kid → fail-closed +
-  kid-miss refetch (bounded cache-TTL); `alg`-guard (no `none`).
+- **Издателей может быть два**, и выбирает посадка: своя чеканка объявлена → докерный токен
+  выпускает подписант платформы; не объявлена → внешний поставщик. Имена сценариев несут
+  `HYDRA` исторически и машинно сверяются — читать их как «полоса токен-обмена».
+- docker: `/iam/token` + `private_key_jwt`; anon → `401 + WWW-Authenticate` (docker-CLI
+  contract). k8s: `jwt-bearer` with an exact-subject trust-grant.
+- data-plane verifies the key-set record **of the issuer named in the token**; набор
+  недоступен / неизвестный `kid` → fail-closed + kid-miss refetch (bounded cache-TTL);
+  `alg`-guard (no `none`).
 
 ---
 

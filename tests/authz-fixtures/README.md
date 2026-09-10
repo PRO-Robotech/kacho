@@ -5,7 +5,7 @@ Account / Project / User / AccessBinding и активирует invitee чер�
 invite-flow.
 
 **KAC-127** расширяет bootstrap двумя non-human моделями субъектов (5-6):
-ServiceAccount (Hydra `client_credentials`, Class A workload identity) +
+ServiceAccount (`client_credentials`, Class A workload identity) +
 статический API-token (issue / revoke / expire через `SAKeyService`).
 
 ## Quick start
@@ -54,11 +54,13 @@ Production-путь (`prodseed_all.py` → `prodseed_matrix.py` → `mint_rs256.
 1. **admin** — iam `InternalBootstrapTokenService.MintBootstrapToken`, прямой mTLS-gRPC
    на `kaname :9091` с **bootstrap-operator** client-cert (у mint нет REST-маршрута;
    credential — SPIFFE SAN сертификата вызывающего);
-2. **каждый субъект** — iam `SAKeyService.Issue` (iam заводит Hydra OAuth-клиента и
-   ОДИН раз отдаёт ES256-ключ) → подписываем `private_key_jwt` client_assertion →
-   стандартный OAuth2 `client_credentials` обмен. Это единственный санкционированный
-   прямой поход в Hydra (RFC 7521/7523 client-flow); выдача, lifecycle и JWKS остаются
-   за фасадом iam.
+2. **каждый субъект** — iam `SAKeyService.Issue` (ОДИН раз отдаёт ES256-ключ) →
+   подписываем `private_key_jwt` client_assertion → стандартный `client_credentials`
+   обмен. **Куда идёт обмен, зависит от посадки стенда:** на токен-эндпоинт платформы
+   (`POST /iam/v1/token`), а там, где своя чеканка не объявлена, — прямо у внешнего
+   поставщика; второе и есть единственный санкционированный прямой поход к нему
+   (RFC 7521/7523 client-flow). Выдача, lifecycle и наборы ключей в обоих случаях
+   остаются за фасадом iam.
 
 **Почему все субъекты — ServiceAccount, а не User** (проверено по коду, не предположено):
 `IssueUserTokenUseCase.resolveAudience` вообще не принимает audience вызывающего и всегда
@@ -158,10 +160,14 @@ internal-RPC) в файлы `0600` под `/tmp`. В репозиторий кл
 
 - 2 service accounts в account-A: `authz-sa-a` (granted) + `authz-sa-nogrant`
 - 1 access binding: `vpc-editor on project-A1` → SA-A (`subjectType=service_account`)
-- 1 SA-key (Hydra OAuth client) для SA-A через `SAKeyService.Issue`;
-  `client_secret` возвращается ОДИН раз и **не персистится** в реестр фикстур
-  (`OUT_DIR`, см. таблицу выше — каталог целиком под `.gitignore`)
-- токены (HS256 dev-equivalents Hydra-issued JWT — api-gateway dev-mode authn):
+- 1 SA-key для SA-A через `SAKeyService.Issue`; **приватная половина**
+  (`privateKeyPem`) возвращается ОДИН раз и **не персистится** в реестр фикстур
+  (`OUT_DIR`, см. таблицу выше — каталог целиком под `.gitignore`).
+  Здесь стояло «`client_secret` возвращается один раз» — поля этого вида
+  удостоверения в системе нет: в контракте оно `[deprecated = true]` и всегда пусто
+  (`sa_key_service.proto`), а харнесс читает именно `privateKeyPem`
+  (`mint_rs256.py`)
+- токены (HS256 dev-equivalents выпущенного платформой JWT — api-gateway dev-mode authn):
   - `jwtSAA` — SA-A токен (`kaname_principal_type=service_account`, `sub=<svaAId>`)
   - `jwtSANoGrant` — SA без grant'ов
   - `apiTokenValid` — статический API-token, scope `vpc.* project:<A1>`

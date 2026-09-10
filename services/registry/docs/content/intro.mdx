@@ -196,7 +196,7 @@ flowchart LR
     <tr><td>zot</td><td>OCI-совместимый registry-бэкенд (блобы/манифесты, S3-backed) — source of truth образов</td></tr>
     <tr><td>OCI Distribution / Docker Registry v2</td><td>Data-plane push/pull (<code>registry.kacho.local</code>)</td></tr>
     <tr><td>Goose</td><td>Версионирование схемы (миграции <code>0001</code>, <code>0002</code>)</td></tr>
-    <tr><td>Ory Hydra</td><td>OAuth2/OIDC — identity-JWT для data-plane; авторизация — per-RPC / per-request Check через kaname</td></tr>
+    <tr><td>OAuth2/OIDC identity-JWT</td><td>Удостоверение плоскости данных. Издателей принимается несколько: платформа (kaname) и внешний поставщик (Ory Hydra) — перечень объявляет посадка. Авторизация — per-RPC / per-request Check через kaname</td></tr>
     <tr><td>grpc-gateway</td><td>REST-проекция control-plane gRPC</td></tr>
   </tbody>
 </table>

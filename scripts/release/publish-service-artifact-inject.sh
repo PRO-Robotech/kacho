@@ -265,6 +265,187 @@ OUT="$( cd "$SCRATCH/k" && KACHO_ARTIFACT_HOST=example.test \
         "$SUT" probe owner/probe --confirm owner/probe --branch nosuchbranch --publish 2>&1 )"; RC=$?
 say "K1 ствола нет у артефакта — не выполнилось" 3 "клон не удался" "$OUT" "$RC"
 
+echo "── M. условие транспорта: объявление конвейера и полномочие OAuth"
+# ОДНО-ФАКТНАЯ ПАРА. Дерево одно и то же, различается ТОЛЬКО транспорт: по https
+# отправка идёт от приложения OAuth и упирается в полномочие workflow, по ssh —
+# от личности владельца ключа и не упирается ни во что. Утверждение отрицательное
+# («по ssh молчит»), поэтому рядом стоит положительное («по https говорит»),
+# иначе молчание зеленело бы на скрипте, который не умеет говорить вовсе.
+make_tree "$SCRATCH/m" "example.test/owner/probe" pass
+mkdir -p "$SCRATCH/m/services/probe/.github/workflows"
+printf 'name: ci\non: [push]\n' > "$SCRATCH/m/services/probe/.github/workflows/ci.yml"
+( cd "$SCRATCH/m" && git -c user.name=p -c user.email=p@invalid add -A \
+  && git -c user.name=p -c user.email=p@invalid commit --quiet -m wf ) >/dev/null 2>&1
+
+( cd "$SCRATCH/m" && git remote add origin "https://example.test/owner/mono.git" ) >/dev/null 2>&1
+OUT="$(run_sut "$SCRATCH/m")"; RC=$?
+say "M1 https + объявление конвейера — условие названо" 0 "полномочия workflow" "$OUT" "$RC"
+say "M2 условие названо числом, а не намёком" 0 "объявлений конвейера 1" "$OUT" "$RC"
+say "M3 и это НЕ находка: дерево верно" 0 "находок 0" "$OUT" "$RC"
+
+# Законный близнец: то же дерево, транспорт ssh — молчание.
+( cd "$SCRATCH/m" && git remote set-url origin "git@example.test:owner/mono.git" ) >/dev/null 2>&1
+OUT="$(run_sut "$SCRATCH/m")"; RC=$?
+if [[ "$OUT" != *"полномочия workflow"* ]]; then
+    ok "M4 ssh + то же дерево — молчание"
+else
+    bad "M4 ssh + то же дерево — молчание" "условие названо там, где его нет"
+fi
+
+# Второй законный близнец: https, но объявлений конвейера в дереве нет.
+make_tree "$SCRATCH/m2" "example.test/owner/probe" pass
+( cd "$SCRATCH/m2" && git remote add origin "https://example.test/owner/mono.git" ) >/dev/null 2>&1
+OUT="$(run_sut "$SCRATCH/m2")"; RC=$?
+if [[ "$OUT" != *"полномочия workflow"* ]]; then
+    ok "M5 https без объявлений конвейера — молчание"
+else
+    bad "M5 https без объявлений конвейера — молчание" "условие названо без предмета"
+fi
+
+echo "── L. полоса запроса на слияние: ствол НЕ трогается напрямую"
+# ЗАЧЕМ ОТДЕЛЬНАЯ СЕКЦИЯ. Полоса заведена ради защищённого ствола, и её главное
+# свойство — отрицательное: ствол артефакта не двигается, пока проверки не дали
+# вердикт. Отрицание доказывается ТОЛЬКО в паре с положительным контролем,
+# поэтому рядом с каждым «ствол не тронут» стоит «ветка появилась».
+
+# Подставной форж. Он НЕ прогоняет ничего и не притворяется, что прогнал: его
+# предмет — три ответа, которые производитель обязан различать. Каждый ответ
+# подаётся ОТДЕЛЬНЫМ утверждением с одно-фактной дельтой, а вызовы пишутся в
+# журнал — провязка доказывается тем, ЧТО ЕГО ПОЗВАЛИ, а не тем, что он ответил
+# «хорошо».
+STUB="$SCRATCH/forge"
+cat > "$STUB" <<'FORGE'
+#!/usr/bin/env bash
+MODE="$(cat "$STUB_STATE/mode" 2>/dev/null || echo green)"
+printf '%s\n' "$*" >> "$STUB_STATE/log"
+case "$1 $2" in
+  "pr list")   [ -f "$STUB_STATE/created" ] && echo 77; exit 0 ;;
+  "pr create") : > "$STUB_STATE/created"; echo "https://forge.invalid/pr/77"; exit 0 ;;
+  "pr merge")  echo "влито"; exit 0 ;;
+esac
+if [ "$1" = "api" ]; then
+  case "$2" in
+    *"/protection") printf 'гейт-а\nгейт-б\n'; exit 0 ;;
+    *"/check-runs"*)
+      case "$MODE" in
+        green)   printf 'гейт-а\tcompleted\tsuccess\nгейт-б\tcompleted\tsuccess\n' ;;
+        red)     printf 'гейт-а\tcompleted\tsuccess\nгейт-б\tcompleted\tfailure\n' ;;
+        running) printf 'гейт-а\tcompleted\tsuccess\nгейт-б\tin_progress\t\n' ;;
+        absent)  printf 'гейт-а\tcompleted\tsuccess\n' ;;
+      esac
+      exit 0 ;;
+  esac
+fi
+exit 0
+FORGE
+chmod +x "$STUB"
+
+stub_reset() { rm -rf "$SCRATCH/stub"; mkdir -p "$SCRATCH/stub"; printf '%s' "$1" > "$SCRATCH/stub/mode"; : > "$SCRATCH/stub/log"; }
+bare_trunk() { git --git-dir="$1" rev-parse main 2>/dev/null; }
+
+# Свой голый репозиторий: секция H оставила свой уже приведённым к дереву службы,
+# и вторая выкладка туда сказала бы «отправлять нечего» ещё до полосы.
+LBARE="$SCRATCH/bare-pr.git"
+git init --quiet --bare -b main "$LBARE"
+LSEED="$SCRATCH/seed-pr"; mkdir -p "$LSEED"
+printf 'прежнее дерево\n' > "$LSEED/OLD-ROOT-FILE"
+( cd "$LSEED" && git init --quiet -b main \
+  && git -c user.name=p -c user.email=p@invalid add -A \
+  && git -c user.name=p -c user.email=p@invalid commit --quiet -m seed \
+  && git push --quiet "$LBARE" main ) >/dev/null 2>&1
+TRUNK0="$(bare_trunk "$LBARE")"
+
+make_tree "$SCRATCH/l" "example.test/owner/probe" pass
+WB="publish/probe-$( cd "$SCRATCH/l" && git rev-parse HEAD | cut -c1-12 )"
+
+run_pr() {  # run_pr <mode> <forge> [доп. ключи]
+    local mode="$1" forge="$2"; shift 2
+    stub_reset "$mode"
+    ( cd "$SCRATCH/l" && KACHO_ARTIFACT_HOST=example.test \
+        KACHO_ARTIFACT_URL="$LBARE" KACHO_FORGE_CMD="$forge" \
+        STUB_STATE="$SCRATCH/stub" \
+        "$SUT" probe owner/probe --confirm owner/probe --publish --via-pull-request "$@" 2>&1 )
+}
+
+# L1 — холостой прогон называет полосу, которой позван.
+OUT="$( cd "$SCRATCH/l" && KACHO_ARTIFACT_HOST=example.test \
+        "$SUT" probe owner/probe --confirm owner/probe --via-pull-request 2>&1 )"; RC=$?
+say "L1 холостой прогон называет полосу" 0 "ЧЕРЕЗ ЗАПРОС НА СЛИЯНИЕ" "$OUT" "$RC"
+say "L2 подсказка несёт тот же ключ" 0 "--publish --via-pull-request" "$OUT" "$RC"
+
+# L3 — форжа нет: третья категория, ветка отправлена, ствол не тронут.
+OUT="$(run_pr green "$SCRATCH/no-such-forge-xyz")"; RC=$?
+say "L3 форжа нет — не выполнилось, а не находка" 3 "команда форжа" "$OUT" "$RC"
+if [ -n "$(git --git-dir="$LBARE" rev-parse --verify --quiet "refs/heads/$WB")" ]; then
+    ok "L4 ветка отправлена (положительный контроль отрицания ниже)"
+else
+    bad "L4 ветка отправлена (положительный контроль отрицания ниже)" "ветки $WB нет"
+fi
+if [ "$(bare_trunk "$LBARE")" = "$TRUNK0" ]; then
+    ok "L5 ствол НЕ тронут"
+else
+    bad "L5 ствол НЕ тронут" "ствол сдвинулся: $TRUNK0 → $(bare_trunk "$LBARE")"
+fi
+
+# L6 — красная обязательная проверка: НАХОДКА о дереве, а не третья категория.
+OUT="$(run_pr red "$STUB")"; RC=$?
+say "L6 красная обязательная — находка" 1 "ВЛИВАНИЕ НЕ ОТКРЫТО" "$OUT" "$RC"
+if grep -q '^pr create' "$SCRATCH/stub/log"; then
+    ok "L6a запрос на слияние заведён"
+else
+    bad "L6a запрос на слияние заведён" "журнал: $(tr '\n' '|' < "$SCRATCH/stub/log")"
+fi
+say "L7 находка называет проверку" 1 "гейт-б" "$OUT" "$RC"
+if ! grep -q '^pr merge' "$SCRATCH/stub/log"; then
+    ok "L8 вливания на красном НЕ было"
+else
+    bad "L8 вливания на красном НЕ было" "в журнале форжа есть pr merge"
+fi
+
+# L7' — контекст, которого нет среди произведённых: НЕ красное и не зелёное.
+OUT="$(run_pr absent "$STUB" --checks-budget 0)"; RC=$?
+say "L9 не появившийся контекст — третья категория" 3 "не появилось ни разу" "$OUT" "$RC"
+say "L10 и он назван поимённо" 3 "гейт-б" "$OUT" "$RC"
+
+# L11 — идущая проверка: тоже не вердикт.
+OUT="$(run_pr running "$STUB" --checks-budget 0)"; RC=$?
+say "L11 идущая проверка — не вердикт" 3 "вердикт не вынесен" "$OUT" "$RC"
+
+# L12 — зелено: вливание ПОЗВАНО (провязка доказывается вызовом).
+OUT="$(run_pr green "$STUB")"; RC=$?
+say "L12 зелено — выложено" 0 "Выложено" "$OUT" "$RC"
+if grep -q '^pr merge 77' "$SCRATCH/stub/log"; then
+    ok "L13 вливание позвано с номером запроса"
+else
+    bad "L13 вливание позвано с номером запроса" "журнал: $(tr '\n' '|' < "$SCRATCH/stub/log")"
+fi
+if grep -q '^pr merge 77 .*--body-file' "$SCRATCH/stub/log"; then
+    ok "L13a тело схлопнутого коммита задано ЯВНО, а не умолчанием форжа"
+else
+    bad "L13a тело схлопнутого коммита задано ЯВНО, а не умолчанием форжа" "журнал: $(tr '\n' '|' < "$SCRATCH/stub/log")"
+fi
+if [ "$(bare_trunk "$LBARE")" = "$TRUNK0" ]; then
+    ok "L14 ствол двигает ФОРЖ, а не производитель"
+else
+    bad "L14 ствол двигает ФОРЖ, а не производитель" "производитель сам сдвинул ствол"
+fi
+
+# L15 — ветка занята ЧУЖИМ деревом: отказ, и она НЕ перезаписана.
+OCCUP="$SCRATCH/occupied"; mkdir -p "$OCCUP"
+printf 'чужая работа\n' > "$OCCUP/ЧУЖОЕ"
+( cd "$OCCUP" && git init --quiet -b x \
+  && git -c user.name=p -c user.email=p@invalid add -A \
+  && git -c user.name=p -c user.email=p@invalid commit --quiet -m чужое \
+  && git push --quiet "$LBARE" "x:refs/heads/$WB" --force ) >/dev/null 2>&1
+OCC_HEAD="$(git --git-dir="$LBARE" rev-parse "refs/heads/$WB")"
+OUT="$(run_pr green "$STUB")"; RC=$?
+say "L15 занятая чужим ветка — не выполнилось" 3 "занята ЧУЖИМ деревом" "$OUT" "$RC"
+if [ "$(git --git-dir="$LBARE" rev-parse "refs/heads/$WB")" = "$OCC_HEAD" ]; then
+    ok "L16 чужая ветка НЕ перезаписана"
+else
+    bad "L16 чужая ветка НЕ перезаписана" "ветка сдвинулась"
+fi
+
 echo
 printf 'перепись доказательства: утверждений %d, прошло %d, провалено %d\n' \
     "$((PASS+FAIL))" "$PASS" "$FAIL"

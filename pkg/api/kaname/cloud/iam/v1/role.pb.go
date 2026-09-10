@@ -396,7 +396,7 @@ func (RoleHealth) EnumDescriptor() ([]byte, []int) {
 //
 // Roles бывают двух типов:
 //   - system roles (is_system=true, cluster_id='cluster_root') — seed'ятся
-//     миграциями kacho-iam, read-only через публичный API (Update/Delete на
+//     миграциями kaname, read-only через публичный API (Update/Delete на
 //     system role → FailedPrecondition).
 //   - custom roles (is_system=false) — multi-scope: точно один из
 //     `account_id` / `project_id` non-empty, другой пустой. Mutual exclusion

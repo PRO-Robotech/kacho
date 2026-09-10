@@ -446,10 +446,37 @@ const (
 	borderClusterNamespace   = "Б10 пространство имён кластера"
 )
 
-// KanameForeignPlatformModules — ЗАКРЫТЫЙ перечень имён чужих модулей
-// платформы. Решено остаться (эпик #2076 §«ЧТО НЕ ТРОГАЕТСЯ НИКОГДА» плюс
-// «имена чужих модулей платформы»): это имена ДРУГИХ продуктов, и Kaname их не
-// переименовывает.
+// foreignNameKind — ЧЬЁ имя записано. Значение записи перечня, а не украшение:
+// граница Б3 прощает имя, и прощать его можно по двум РАЗНЫМ основаниям.
+//
+// Прежде значением было `true`, и оно не различало ничего: перечень объявлял
+// одно основание на все записи — «имя ДРУГОГО продукта». Для шестнадцати имён
+// это верно; для `kacho-iam` — нет, это ПРЕЖНЕЕ имя ЭТОГО продукта. Сорок
+// вхождений в контракте службы прощались основанием, которое для них ложно, и
+// не показывались ни одному владельцу полосы (задача продукта #2562).
+//
+// Тип закрыт двумя значениями и проверяется `TestKanameForeignNamesDeclareWhoseTheyAre`:
+// запись без объявленного вида — находка. Это и есть «объявляет вслух»: следующий,
+// кто добавит имя, обязан сказать, чьё оно, а не унаследовать чужое основание.
+type foreignNameKind string
+
+const (
+	// foreignNameOfAnotherProduct — имя ДРУГОГО продукта платформы. Kaname его не
+	// переименовывает, потому что не владеет им: поставь службу одну — объект,
+	// который это имя называет, заведёт платформа.
+	foreignNameOfAnotherProduct foreignNameKind = "имя другого продукта платформы"
+	// foreignNameRetiredOwn — ПРЕЖНЕЕ имя ЭТОГО продукта. Оно остаётся не потому,
+	// что чужое, а потому что снять его нельзя ТАМ, ГДЕ ОНО ЕЩЁ СТОИТ:
+	// применённая миграция (ban #5), проза, разбирающая сам переезд имени, и
+	// фикстуры, называющие прежнюю личность. Живое утверждение о работающей
+	// службе под это основание НЕ подпадает и снимается — так закрыт контракт
+	// (#2562: сорок вхождений в `proto/kaname` → 0).
+	foreignNameRetiredOwn foreignNameKind = "прежнее имя ЭТОГО продукта"
+)
+
+// KanameForeignPlatformModules — ЗАКРЫТЫЙ перечень имён, которые Kaname не
+// переименовывает, и ВИД каждого имени (см. `foreignNameKind`). Решено остаться
+// (эпик #2076 §«ЧТО НЕ ТРОГАЕТСЯ НИКОГДА» плюс «имена чужих модулей платформы»).
 //
 // Перечень ЗАКРЫТ намеренно. Правило вида «всякое `kacho-<слово>` — чужой
 // модуль» прощало бы `kacho-migrator` и `kacho-bootstrap-admin` — то есть
@@ -479,24 +506,40 @@ const (
 // доходит. Появится на поверхности — уедет в долг и будет адъюдицировано
 // заново; это и есть работа механизма, а не его отказ. У второго снятого имени
 // (`kacho-iam-polyrepo-archive`) предмета нет во всём дереве.
-var KanameForeignPlatformModules = map[string]bool{
-	"kacho-api-gateway":      true,
-	"kacho-compute":          true,
-	"kacho-corelib":          true,
-	"kacho-deploy":           true,
-	"kacho-geo":              true,
-	"kacho-iam":              true,
-	"kacho-loadbalancer":     true,
-	"kacho-nlb":              true,
-	"kacho-proto":            true,
-	"kacho-registry":         true,
-	"kacho-resource-manager": true,
-	"kacho-storage":          true,
-	"kacho-test":             true,
-	"kacho-ui":               true,
-	"kacho-vpc-operator":     true,
-	"kacho-vpc":              true,
-	"kacho-workspace":        true,
+var KanameForeignPlatformModules = map[string]foreignNameKind{
+	"kacho-api-gateway":      foreignNameOfAnotherProduct,
+	"kacho-compute":          foreignNameOfAnotherProduct,
+	"kacho-corelib":          foreignNameOfAnotherProduct,
+	"kacho-deploy":           foreignNameOfAnotherProduct,
+	"kacho-geo":              foreignNameOfAnotherProduct,
+	"kacho-loadbalancer":     foreignNameOfAnotherProduct,
+	"kacho-nlb":              foreignNameOfAnotherProduct,
+	"kacho-proto":            foreignNameOfAnotherProduct,
+	"kacho-registry":         foreignNameOfAnotherProduct,
+	"kacho-resource-manager": foreignNameOfAnotherProduct,
+	"kacho-storage":          foreignNameOfAnotherProduct,
+	"kacho-test":             foreignNameOfAnotherProduct,
+	"kacho-ui":               foreignNameOfAnotherProduct,
+	"kacho-vpc-operator":     foreignNameOfAnotherProduct,
+	"kacho-vpc":              foreignNameOfAnotherProduct,
+	"kacho-workspace":        foreignNameOfAnotherProduct,
+
+	// ЕДИНСТВЕННАЯ ЗАПИСЬ ВТОРОГО ВИДА, и она стоит отдельно намеренно: соседи
+	// сверху — чужие продукты, а это имя НАШЕ, только прежнее. Слитая с ними, она
+	// прощалась основанием «Kaname его не переименовывает», для неё ложным.
+	//
+	// Что под этой записью остаётся законно: применённая миграция
+	// (`internal/migrations/0001_initial.sql`, ban #5), проза, разбирающая сам
+	// переезд имени (форма `kacho-iam→kaname` — снять там имя значит сделать
+	// разбор непонятным), фикстуры и кейсы, называющие прежнюю личность.
+	//
+	// Чего под ней БОЛЬШЕ НЕТ: живого утверждения о работающей службе. Контракт
+	// говорил «kacho-iam ведёт собственный ресурс AccessBinding», «the kacho-iam
+	// handler returns 200…» — в настоящем времени, прозой, которую читает
+	// интегратор. Сорок таких вхождений в семнадцати файлах `proto/kaname` сняты
+	// задачей #2562; предикат — `git grep -o 'kacho-iam' -- proto/kaname |
+	// grep -vc 'kacho-iam#'` → 0.
+	"kacho-iam": foreignNameRetiredOwn,
 }
 
 // platformUmbrellaRelease — имя релиза зонтичного чарта ПЛАТФОРМЫ.
@@ -787,7 +830,9 @@ var kanameLanes = map[string]residueLane{
 	borderFoundationContract: {borderFoundationContract, axisBorder,
 		"предмет П4 — граница фундамента: контракт платформы, а не службы"},
 	borderForeignModule: {borderForeignModule, axisBorder,
-		"решено остаться: имя ЧУЖОГО продукта, Kaname его не переименовывает"},
+		"решено остаться: имя, которое Kaname не переименовывает, — ЛИБО имя другого " +
+			"продукта платформы, ЛИБО прежнее имя ЭТОГО продукта; вид назван у каждой " +
+			"записи KanameForeignPlatformModules, и одного основания на обе не бывает"},
 	borderApprovedAcceptance: {borderApprovedAcceptance, axisBorder,
 		"вердикт назван вместе со своей ревизией; правка его не переносит"},
 	borderFoundationFunction: {borderFoundationFunction, axisBorder,
@@ -938,7 +983,8 @@ func isFoundationSchemaFunction(seg string) bool {
 // адрес Service НАШЕГО развёртывания; оба обязаны остаться в долге, и оба
 // остаются by construction.
 func isForeignPlatformModule(seg string) bool {
-	return KanameForeignPlatformModules[strings.TrimRight(seg, proseNameTerminators)]
+	_, ok := KanameForeignPlatformModules[strings.TrimRight(seg, proseNameTerminators)]
+	return ok
 }
 
 // isPlatformOwnedObject — сегмент называет объект, которым владеет НЕ Kaname.
@@ -2290,7 +2336,7 @@ var KanameNameResidueDebt = []NameResidueDebt{
 	{laneClusterAnchor, 0, 0, "закрыто #2113: переход состоялся, неснимаемое перенесено в ведомость решённого остаться"},
 	{laneSchemaPrefixKin, 0, 0, "закрыто Р5 эпика #2076: приставка имён метрик приведена к факту"},
 	{laneDomainAddress, 574, 167, "Р10 №2 — домен доверия и адреса стенда"},
-	{laneObjectName, 193, 86, "Р3 эпика #2076 — витрина оператора"},
+	{laneObjectName, 192, 85, "Р3 эпика #2076 — витрина оператора"},
 	{laneBrandInText, 98, 75, "Р3 эпика #2076 — бренд в прозе и на клиентских страницах"},
 	{lanePlatformName, 311, 119, "Р3 эпика #2076 — имя платформы отдельным словом"},
 	{borderUnknownForm, 0, 0, "закрыто #2076: слепая зона разобрана поимённо — рост числа означает новую форму записи"},
@@ -2321,6 +2367,67 @@ func KanameNameResidueOutstanding() (occurrences, lanes int) {
 // Выводится из самих перечней, а не выписывается третьим местом: два списка об
 // одном предмете разошлись бы молча, и разошлись бы именно тогда, когда сверить
 // их некому.
+// KanameForeignNameKindVerdict — вердикт по перечню имён, которые Kaname не
+// переименовывает: у КАЖДОЙ записи объявлен вид, и он из закрытого набора.
+// Пустая строка = сошлось.
+//
+// ЗАЧЕМ ФУНКЦИЯ, А НЕ ПРОВЕРКА ВНУТРИ ТЕСТА. Инъекция обязана подавать СВОИ
+// записи и судить ту же функцию, которой судится настоящий перечень, — иначе
+// доказывается копия, а не гейт.
+//
+// ЧТО ОН ЛОВИТ И ЧЕГО НЕ ЛОВИТ, сказано прямо: он судит, ОБЪЯВЛЕН ли вид, а не
+// верен ли он. Верность вида — адъюдикация по одному вопросу («поставь службу
+// одну: объект, который это имя называет, кто его заведёт?»), и машинного
+// признака у неё нет. Гейт закрывает ровно то, чем #2562 и был: вид НЕ БЫЛ
+// объявлен вовсе, поэтому одно основание молча накрывало два разных.
+func KanameForeignNameKindVerdict(names map[string]foreignNameKind) string {
+	if len(names) == 0 {
+		return "перечень пуст — судить нечего, и зелёный такого прогона ничего не значит"
+	}
+	known := map[foreignNameKind]bool{
+		foreignNameOfAnotherProduct: true,
+		foreignNameRetiredOwn:       true,
+	}
+	bad := make([]string, 0, len(names))
+	for name, kind := range names {
+		if !known[kind] {
+			bad = append(bad, fmt.Sprintf("  %q → вид %q", name, string(kind)))
+		}
+	}
+	if len(bad) == 0 {
+		return ""
+	}
+	sort.Strings(bad)
+	var b strings.Builder
+	fmt.Fprintf(&b, "записей без объявленного вида %d из %d:\n", len(bad), len(names))
+	b.WriteString(strings.Join(bad, "\n"))
+	b.WriteString("\nГраница Б3 прощает имя по ДВУМ разным основаниям, и запись, вида не " +
+		"назвавшая, наследует чужое. Именно так сорок вхождений контракта прощались " +
+		"основанием «имя ДРУГОГО продукта», для них ложным (#2562).\n" +
+		"Виды: " + string(foreignNameOfAnotherProduct) + " · " + string(foreignNameRetiredOwn))
+	return b.String()
+}
+
+// KanameForeignNameKindCensus — перепись по видам: печатается всегда, чтобы
+// «ноль находок» было отличимо от «ноль прочитанного».
+func KanameForeignNameKindCensus(names map[string]foreignNameKind) string {
+	byKind := map[foreignNameKind]int{}
+	for _, kind := range names {
+		byKind[kind]++
+	}
+	kinds := make([]string, 0, len(byKind))
+	for k := range byKind {
+		kinds = append(kinds, string(k))
+	}
+	sort.Strings(kinds)
+	parts := make([]string, 0, len(kinds))
+	for _, k := range kinds {
+		parts = append(parts, fmt.Sprintf("%s %d", k, byKind[foreignNameKind(k)]))
+	}
+	return fmt.Sprintf("записей %d · видов %d · по видам: %s",
+		len(names), len(byKind), strings.Join(parts, ", "))
+}
+
 func KanameClosedBorderCatalogues() map[string][]string {
 	out := map[string][]string{
 		"чужие модули платформы":              nil,

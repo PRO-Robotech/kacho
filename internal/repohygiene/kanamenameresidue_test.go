@@ -609,3 +609,21 @@ func TestKanameNameResidueCensusAccountsForEveryOccurrence(t *testing.T) {
 		t.Fatal("вхождений ноль — сумма сходится вакуумно, и её зелёный ничего не значит")
 	}
 }
+
+// TestKanameForeignNamesDeclareWhoseTheyAre — у каждой записи перечня имён,
+// которые Kaname не переименовывает, ОБЪЯВЛЕН вид: имя другого продукта
+// платформы либо прежнее имя ЭТОГО продукта.
+//
+// ЗАЧЕМ. Граница Б3 прощает имя, и оснований у неё два. Пока значением записи
+// было `true`, объявлено было одно — «имя ДРУГОГО продукта», — и `kacho-iam`
+// прощался им, будучи прежним именем ЭТОГО. Следствие измерено (#2562): сорок
+// вхождений в контракте службы, в настоящем времени о работающей службе, не
+// попадали ни в одну строку ведомости долга и не показывались ни одному
+// владельцу полосы; при закрытии линии их прочитали бы как «решено остаться».
+func TestKanameForeignNamesDeclareWhoseTheyAre(t *testing.T) {
+	t.Parallel()
+	t.Logf("перепись: %s", KanameForeignNameKindCensus(KanameForeignPlatformModules))
+	if v := KanameForeignNameKindVerdict(KanameForeignPlatformModules); v != "" {
+		t.Error(v)
+	}
+}

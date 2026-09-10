@@ -4,7 +4,7 @@
 syntax = "proto3";
 
 // InternalBootstrapTokenService — Internal-only (cluster-internal :9091, mTLS).
-// Reachable ONLY by a DIRECT mTLS gRPC dial to kacho-iam :9091. It carries NO
+// Reachable ONLY by a DIRECT mTLS gRPC dial to kaname-internal :9091. It carries NO
 // `google.api.http` binding and is NOT registered on the api-gateway REST mux —
 // deliberately, and this is a SECURITY invariant, not a style choice: the
 // gateway's cluster-internal REST listener is plain HTTP/1.1 (no TLS, no client
@@ -15,21 +15,32 @@ syntax = "proto3";
 // TLS endpoint either (the `Internal…Service` name matches `HasInternalSuffix`,
 // so the gRPC router 404s it on the public listener — ban #6).
 //
-// Purpose (#58): a NON-INTERACTIVE entry point to a first real RS256 Bearer for
-// production-mode seed. Production authN (`api-gateway authn.mode=
-// production-strict`) accepts RS256 only (Hydra-signed; gateway verifies via the
-// iam JWKS-proxy :9097; requires `aud=https://{API_DOMAIN}`). Newman/e2e seed
-// mints HS256 dev JWTs → inert against a production stand, and a fresh stand has
-// zero seeded Hydra OAuth clients, so the only path to a first token is a human
-// Kratos→Hydra browser ceremony — which blocks ALL production e2e.
+// Purpose (#58): a NON-INTERACTIVE entry point to a first real asymmetric Bearer
+// for production-mode seed. Production authN (`api-gateway
+// authn.mode=production-strict`) verifies the signature against the key-set
+// record of the issuer NAMED IN THE TOKEN (the gateway reads both records from
+// the iam publisher on :9097) and requires `aud=https://{API_DOMAIN}`.
+// Newman/e2e seed mints HS256 dev JWTs → inert against a production stand, and a
+// fresh stand has no seeded machine credential at all, so without this service
+// the only path to a first token is a human browser ceremony at the identity
+// provider — which blocks ALL production e2e.
 //
 // This service idempotently provisions a SINGLE bootstrap-admin ServiceAccount
-// (cluster `system_admin`) + its Hydra OAuth client (client_credentials +
-// private_key_jwt) and mints a short-lived RS256 access-token for it via the
-// EXISTING Hydra client_credentials exchange (the same machinery the registry
-// `/iam/token` shim uses; only the requested `audience` differs —
-// `https://{API_DOMAIN}` vs the registry service). Hydra remains the issuer /
-// signer; iam only brokers the exchange (never re-signs).
+// (cluster `system_admin`) and mints a short-lived access-token for it.
+//
+// WHO SIGNS THAT TOKEN DEPENDS ON THE DEPLOYMENT, and this line used to claim
+// otherwise. It said "Hydra remains the issuer / signer; iam only brokers the
+// exchange (never re-signs)" — the claim outlived its subject (#1119). Today:
+//
+//   own minting declared → the PLATFORM signer mints it (internal/tokensigner,
+//                          wired through internal/bootstraptokenwire);
+//   not declared         → the provider mints it, brokered through the existing
+//                          client_credentials exchange, and the bootstrap-admin
+//                          gets a mirrored OAuth client (client_credentials +
+//                          private_key_jwt) as before.
+//
+// Only the requested `audience` differs from the registry lane —
+// `https://{API_DOMAIN}` vs the registry service.
 //
 // Principal = a ServiceAccount, NOT a User, because service principals are
 // acr-EXEMPT by design (security.md §4.1.2; iam authzguard/fgaproxy): the minted

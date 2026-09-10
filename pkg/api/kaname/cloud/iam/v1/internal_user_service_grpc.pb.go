@@ -39,7 +39,7 @@ const (
 // Transport:
 //   - `Get` — регистрируется в api-gateway internal mux (нужен interceptor'у);
 //   - `UpsertFromIdentity` — доступен через gRPC direct
-//     (`grpcurl -plaintext kacho-iam:9091 ...`); REST вызывается
+//     (`grpcurl -plaintext kaname-internal:9091 ...`); REST вызывается
 //     OIDC-callback handler'ом.
 type InternalUserServiceClient interface {
 	// Upsert User mirror'а из OIDC identity (Ory Kratos).
@@ -52,7 +52,7 @@ type InternalUserServiceClient interface {
 	// Internal Get без auth (для api-gateway interceptor'а; не выставляется на public mux).
 	Get(ctx context.Context, in *GetUserRequest, opts ...grpc.CallOption) (*User, error)
 	// hook called by Ory Kratos after a successful
-	// self-service recovery flow (magic-link e-mail recovery). kacho-iam
+	// self-service recovery flow (magic-link e-mail recovery). kaname
 	// re-enables the User (if `invite_status` was `DISABLED`), invalidates all
 	// active sessions for the user (writes `session_revocations` rows with
 	// reason=`password-change`), and emits `iam.user.recovery_completed` audit.
@@ -111,7 +111,7 @@ func (c *internalUserServiceClient) OnRecoveryCompleted(ctx context.Context, in 
 // Transport:
 //   - `Get` — регистрируется в api-gateway internal mux (нужен interceptor'у);
 //   - `UpsertFromIdentity` — доступен через gRPC direct
-//     (`grpcurl -plaintext kacho-iam:9091 ...`); REST вызывается
+//     (`grpcurl -plaintext kaname-internal:9091 ...`); REST вызывается
 //     OIDC-callback handler'ом.
 type InternalUserServiceServer interface {
 	// Upsert User mirror'а из OIDC identity (Ory Kratos).
@@ -124,7 +124,7 @@ type InternalUserServiceServer interface {
 	// Internal Get без auth (для api-gateway interceptor'а; не выставляется на public mux).
 	Get(context.Context, *GetUserRequest) (*User, error)
 	// hook called by Ory Kratos after a successful
-	// self-service recovery flow (magic-link e-mail recovery). kacho-iam
+	// self-service recovery flow (magic-link e-mail recovery). kaname
 	// re-enables the User (if `invite_status` was `DISABLED`), invalidates all
 	// active sessions for the user (writes `session_revocations` rows with
 	// reason=`password-change`), and emits `iam.user.recovery_completed` audit.

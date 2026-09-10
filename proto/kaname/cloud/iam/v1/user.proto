@@ -42,7 +42,7 @@ message User {
   reserved 6;
   reserved "account_id";
 
-  // ID of the user (kacho-iam internal id).
+  // ID of the user (kaname internal id).
   string id = 1;
 
   // External identity provider id (Kratos `sub` claim). Может быть пустым для

@@ -40,7 +40,7 @@ const (
 // становится `user:<user_id>`.
 //
 // Приватный ключ (`private_key_pem`) возвращается РОВНО ОДИН РАЗ в ответе Issue
-// и не хранится нигде — kacho-iam держит только публичную часть в
+// и не хранится нигде — kaname держит только публичную часть в
 // `user_oauth_clients`; подпись проверяется по публичному ключу в OAuth2-обмене.
 //
 // authz: parent-scoped на `iam_user`. Мутации требуют `token_issuer`, чтение —
@@ -144,7 +144,7 @@ func (c *userTokenServiceClient) Revoke(ctx context.Context, in *RevokeUserToken
 // становится `user:<user_id>`.
 //
 // Приватный ключ (`private_key_pem`) возвращается РОВНО ОДИН РАЗ в ответе Issue
-// и не хранится нигде — kacho-iam держит только публичную часть в
+// и не хранится нигде — kaname держит только публичную часть в
 // `user_oauth_clients`; подпись проверяется по публичному ключу в OAuth2-обмене.
 //
 // authz: parent-scoped на `iam_user`. Мутации требуют `token_issuer`, чтение —

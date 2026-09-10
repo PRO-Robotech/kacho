@@ -654,7 +654,13 @@ spec:
             # Empty → not emitted → iam falls back to
             # ResolveHydraIssuer()+"/.well-known/jwks.json" (dev/local unchanged).
             # Prod sets the in-cluster hydra-public base so the iam→Hydra fetch stays
-            # inside the cluster. Hydra remains the signer/issuer — iam only proxies.
+            # inside the cluster.
+            #
+            # ЭТА РУЧКА ОПИСЫВАЕТ ЗЕРКАЛО, А НЕ ВСЮ ВЫДАЧУ. Здесь стояло
+            # «Hydra remains the signer/issuer» — утверждение, пережившее свой
+            # предмет: там, где объявлена своя чеканка, платформа чеканит свои
+            # токены сама, а слушатель :9097 отдаёт ВТОРУЮ запись — набор из
+            # нашей ключницы по своему пути.
             - name: KANAME_HYDRA_JWKS_URL
               value: {{ . | quote }}
             {{- end }}

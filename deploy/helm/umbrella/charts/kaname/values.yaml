@@ -31,8 +31,16 @@ platform:
     # Upstream Hydra PUBLIC JWKS URL that the cluster-INTERNAL jwks-proxy listener
     # (:9097) mirrors byte-for-byte (env KANAME_HYDRA_JWKS_URL). Empty → iam falls
     # back to ResolveHydraIssuer()+"/.well-known/jwks.json". Prod sets the in-cluster
-    # hydra-public base so the iam→Hydra fetch stays inside the cluster. Hydra remains
-    # the token signer/issuer — iam only proxies its JWKS (the served kids are Hydra's).
+    # hydra-public base so the iam→Hydra fetch stays inside the cluster.
+    #
+    # ЗДЕСЬ СТОЯЛО «Hydra remains the token signer/issuer — iam only proxies», и это
+    # пережило свой предмет. Платформа чеканит СВОИ токены своим подписантом
+    # там, где объявлена своя чеканка (`authn.token-signing`), и тот же слушатель
+    # :9097 отдаёт ВТОРУЮ запись — набор из НАШЕЙ ключницы по своему пути
+    # (`authn.token-signing.key-set-path`). Проксированием описывается ТОЛЬКО
+    # эта ручка: зеркало прежнего издателя — дословная копия его набора, и киды
+    # в нём его. Перепутать записи значит проверять токен одного издателя ключом
+    # другого — развязка «издатель → источник набора» существует ради этого.
     hydraJwksUrl: ""
     # Trust anchor for the JWKS upstream fetch when that hop is served over TLS
     # (env KANAME_HYDRA_JWKS_CA_FILE). Empty → the default transport, which is
