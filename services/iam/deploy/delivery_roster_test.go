@@ -103,6 +103,8 @@ var deliveryRoster = []string{
 	"schema_mechanism_precedes_the_service_test.go",
 	"scrape_declared_injection_test.go",
 	"scrape_declared_test.go",
+	"service_links_are_off_injection_test.go",
+	"service_links_are_off_test.go",
 	"service_routes_every_surface_injection_test.go",
 	"service_routes_every_surface_test.go",
 	"templates/_helpers.tpl",
