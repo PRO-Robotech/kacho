@@ -123,6 +123,16 @@ func Load(path string) (Config, error) {
 		}
 	}
 
+	// ТРИ СОБСТВЕННЫХ ПОТОЛКА привязываются здесь по той же причине, что три
+	// ручки выше, и перечень ВЫВОДИТСЯ из таблицы величин, а не выписывается
+	// вторым списком (`own_ceilings.go`): выписанный разошёлся бы с ней молча,
+	// и переменная, названная текстом отказа, перестала бы доезжать до поля.
+	for _, k := range OwnCeilingKnobs {
+		if err := v.BindEnv(k.Key, k.Env); err != nil {
+			return Config{}, fmt.Errorf("bind %s env: %w", k.Key, err)
+		}
+	}
+
 	// YAML file (optional).
 	if path != "" {
 		v.SetConfigFile(path)
