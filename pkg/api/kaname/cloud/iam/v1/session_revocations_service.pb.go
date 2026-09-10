@@ -46,7 +46,7 @@ type RevokeRequest struct {
 	// `now() + 30d`). Should be ≥ original token's `exp` claim so the cache
 	// stays authoritative for the token's lifetime.
 	TtlExpiresAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=ttl_expires_at,json=ttlExpiresAt,proto3" json:"ttl_expires_at,omitempty"`
-	// When true, kacho-iam enumerates ALL active access tokens for the user
+	// When true, kaname enumerates ALL active access tokens for the user
 	// (Hydra introspection) and inserts a row per `jti`. Used by admin
 	// ForceLogout and password-change flows.
 	RevokeAllUserTokens bool `protobuf:"varint,5,opt,name=revoke_all_user_tokens,json=revokeAllUserTokens,proto3" json:"revoke_all_user_tokens,omitempty"`

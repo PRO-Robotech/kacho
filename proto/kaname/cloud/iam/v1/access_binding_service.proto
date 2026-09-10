@@ -17,7 +17,7 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1;i
 
 // A set of methods for managing AccessBinding resources.
 //
-// kacho-iam ведет собственный ресурс AccessBinding в пакете
+// kaname ведет собственный ресурс AccessBinding в пакете
 // kaname.cloud.iam.v1 — это канонический AccessBinding домена IAM,
 // единственный источник истины для grant-привязок.
 service AccessBindingService {
@@ -47,7 +47,7 @@ service AccessBindingService {
     // request field: iam.account / iam.project / iam.cluster). The api-gateway
     // permission catalog can only carry a STATIC object_type, so it cannot
     // build the correct `<type>:<id>` Check object here. Therefore the
-    // middleware exempts this RPC and the kacho-iam handler is the
+    // middleware exempts this RPC and the kaname handler is the
     // authoritative gate: `requireGrantAuthority` performs the precise
     // per-resource_type check (owner of the owning Account OR FGA `admin` on
     // the actual scope object). Anonymous is still rejected by the IAM
@@ -117,7 +117,7 @@ service AccessBindingService {
   //     GET /iam/v1/accessBindings?filter=subject%3D%22usr…%22&accountId=acc…
   rpc List (ListAccessBindingsRequest) returns (ListAccessBindingsResponse) {
     option (google.api.http) = { get: "/iam/v1/accessBindings" };
-    // Authorized at the level of the data: kacho-iam reads the page by cursor and
+    // Authorized at the level of the data: kaname reads the page by cursor and
     // then narrows it per row, in batches, on `v_get` on `iam_access_binding:<id>`
     // — the same relation that gates the single-object read, so a row is on the
     // page exactly when its holder may read it by id. There is no single object
@@ -161,7 +161,7 @@ service AccessBindingService {
   // back-compat.
   //
   // Lists access bindings assigned to the specified subject. Authorized by
-  // kacho-iam against the subject NAMED IN THE REQUEST, which the edge cannot turn
+  // kaname against the subject NAMED IN THE REQUEST, which the edge cannot turn
   // into an object of any type it knows.
   //
   // Admission is the SAME predicate `ListSubjectPrivileges` uses — the two verbs
@@ -223,7 +223,7 @@ service AccessBindingService {
   // `200` that means the opposite. For `group` the reply is the grants of the
   // group itself (DIRECT); groups do not nest.
   //
-  // Authorized by kacho-iam: self (for a group subject — a member of it), or
+  // Authorized by kaname: self (for a group subject — a member of it), or
   // `admin`/owner of the HOME ACCOUNT of the subject named in the request, or the
   // cluster administrator — ONE predicate, shared with `ListBySubject`. That
   // account is not a request field — it is resolved from the subject — so the edge
@@ -279,7 +279,7 @@ service AccessBindingService {
   //
   // Scope-polymorphic catalog gate (anti-anon + ACR floor, parity with
   // `ListByScope`); the precise grant-authority policy is enforced
-  // authoritatively in the kacho-iam handler via `requireGrantAuthority`
+  // authoritatively in the kaname handler via `requireGrantAuthority`
   // (owner of the owning Account/Project OR FGA `admin` on the scope object) —
   // same gate as `AccessBinding.Create` on this resource.
   rpc ListAssignableRoles (ListAssignableRolesRequest) returns (ListAssignableRolesResponse) {
@@ -310,7 +310,7 @@ service AccessBindingService {
   // DEPRECATED — use `List` with `filter=role="<roleId>"`
   // (+ `include_revoked` for the audit-retention read). Retained for back-compat.
   //
-  // Authorized at the level of the data: kacho-iam reads the page and keeps only
+  // Authorized at the level of the data: kaname reads the page and keeps only
   // the rows whose OWN scope the caller has grant authority over (or whose subject
   // is the caller). Each row can sit on a different scope, so there is no single
   // object for the edge to check. Ordered by (created_at, id) ASC; keyset
@@ -329,7 +329,7 @@ service AccessBindingService {
   // principals — closing the effective-principal audit gap (a binding on a GROUP
   // subject otherwise only shows "group G", not its current members).
   //
-  // Authorized by kacho-iam against the object NAMED IN THE REQUEST: the caller
+  // Authorized by kaname against the object NAMED IN THE REQUEST: the caller
   // must hold grant authority over `<object_type>:<object_id>` (or own the account
   // that contains it, or be a cluster administrator). The object's type is itself a
   // request field, so the edge cannot build the object — hence `scope_filtered`. A
@@ -646,8 +646,8 @@ message ListAccessBindingsByScopeRequest {
   // api-gateway `scope_extractor` below still keys the per-request FGA scope on
   // the LEGACY `resource_id`/`resource_type`. A REST caller that sends ONLY the
   // new pair therefore resolves no scope at the edge and is denied BEFORE
-  // reaching kacho-iam. Until the gateway extractor learns these field names,
-  // send BOTH pairs over REST. The kacho-iam handler itself is already
+  // reaching kaname. Until the gateway extractor learns these field names,
+  // send BOTH pairs over REST. The kaname handler itself is already
   // new-pair-first (it prefers scope_type/scope_id and falls back to the legacy
   // pair), so the backend needs no further change.
   string scope_type = 5;
@@ -898,7 +898,7 @@ message ListAssignableRolesRequest {
   // this RPC's api-gateway `scope_extractor` still keys the per-request FGA scope
   // on the LEGACY `resource_id`/`resource_type`, so a REST caller sending ONLY
   // the new pair is denied at the edge. Send BOTH pairs over REST until the
-  // gateway extractor learns these names; the kacho-iam handler is already
+  // gateway extractor learns these names; the kaname handler is already
   // new-pair-first.
   string scope_type = 5;
 

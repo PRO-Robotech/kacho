@@ -71,7 +71,7 @@ service AuthorizeService {
     option (corelib.authz.v1.permission) = "iam.authorize.check";
     // The subject's type is embedded in its ARN and the queried resource is a
     // nested ResourceRef carrying its own type, so neither yields an object the
-    // edge can name before the call. kacho-iam decides: self-query ∨ cluster-admin
+    // edge can name before the call. kaname decides: self-query ∨ cluster-admin
     // ∨ `admin` on the resource actually named in the request.
     //
     // Until this was made explicit the row declared `viewer` on the cluster
@@ -141,7 +141,7 @@ service AuthorizeService {
     option (corelib.authz.v1.permission) = "iam.authorize.listSubjects";
     // The queried resource may be of any type (vpc_network / account / …). The
     // edge can read the nested ResourceRef.id but not its .type, so it cannot
-    // build the object at all. kacho-iam decides: cluster-admin ∨ `admin` on the
+    // build the object at all. kaname decides: cluster-admin ∨ `admin` on the
     // real `<resource.type>:<resource.id>`. See AuthorizeService.Check for why the
     // previous `viewer`-on-cluster row was not a gate.
     option (corelib.authz.v1.scope_filtered)   = true;
@@ -159,7 +159,7 @@ service AuthorizeService {
     option (google.api.http) = { post: "/iam/v1/authorize:expandRelations" body: "*" };
     option (corelib.authz.v1.permission) = "iam.authorize.expand";
     // Same shape as AuthorizeService.ListSubjects: the resource type is a field of
-    // the nested ResourceRef, so the edge cannot build the object. kacho-iam
+    // the nested ResourceRef, so the edge cannot build the object. kaname
     // decides: cluster-admin ∨ `admin` on the real
     // `<resource.type>:<resource.id>`.
     option (corelib.authz.v1.scope_filtered)   = true;

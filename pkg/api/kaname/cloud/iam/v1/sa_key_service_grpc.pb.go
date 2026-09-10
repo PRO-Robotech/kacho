@@ -39,12 +39,12 @@ const (
 //
 // AUTHENTICATION IS `private_key_jwt`, NOT A SHARED SECRET. The workload holds
 // the PKCS#8 EC private key returned in `private_key_pem` and signs an RFC-7523
-// client assertion with it; nothing symmetric is exchanged, and kacho-iam stores
+// client assertion with it; nothing symmetric is exchanged, and kaname stores
 // only the public half plus the `hydra_client_id` → ServiceAccount mapping in
 // `service_account_oauth_clients`.
 //
 // `private_key_pem` is returned EXACTLY ONCE in the Issue response and is never
-// persisted by kacho-iam. `client_secret` is `[deprecated = true]` and is always
+// persisted by kaname. `client_secret` is `[deprecated = true]` and is always
 // empty for keys issued today — see the field's own comment.
 //
 // This header used to describe basic-auth `<client_id>:<client_secret>` and
@@ -110,12 +110,12 @@ func (c *sAKeyServiceClient) Revoke(ctx context.Context, in *RevokeSAKeyRequest,
 //
 // AUTHENTICATION IS `private_key_jwt`, NOT A SHARED SECRET. The workload holds
 // the PKCS#8 EC private key returned in `private_key_pem` and signs an RFC-7523
-// client assertion with it; nothing symmetric is exchanged, and kacho-iam stores
+// client assertion with it; nothing symmetric is exchanged, and kaname stores
 // only the public half plus the `hydra_client_id` → ServiceAccount mapping in
 // `service_account_oauth_clients`.
 //
 // `private_key_pem` is returned EXACTLY ONCE in the Issue response and is never
-// persisted by kacho-iam. `client_secret` is `[deprecated = true]` and is always
+// persisted by kaname. `client_secret` is `[deprecated = true]` and is always
 // empty for keys issued today — see the field's own comment.
 //
 // This header used to describe basic-auth `<client_id>:<client_secret>` and

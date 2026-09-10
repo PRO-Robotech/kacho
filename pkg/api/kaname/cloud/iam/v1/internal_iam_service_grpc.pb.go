@@ -57,7 +57,7 @@ type InternalIAMServiceClient interface {
 	// форма в собственной базе iam: внешний движок отношений, поверх которого этот
 	// метод стоял прежде, снят стадией S6 эпика #747.
 	// Используется per-service authz-interceptor'ами kacho-vpc / kacho-compute /
-	// kacho-loadbalancer / self (kacho-iam) для проверки прав на write/read RPC.
+	// kacho-loadbalancer / self (kaname) для проверки прав на write/read RPC.
 	// Latency budget: ≤20ms p95. Сетевого перехода к соседу больше нет — вопрос
 	// задаётся той же базе, что и остальные чтения службы.
 	//
@@ -307,7 +307,7 @@ type InternalIAMServiceServer interface {
 	// форма в собственной базе iam: внешний движок отношений, поверх которого этот
 	// метод стоял прежде, снят стадией S6 эпика #747.
 	// Используется per-service authz-interceptor'ами kacho-vpc / kacho-compute /
-	// kacho-loadbalancer / self (kacho-iam) для проверки прав на write/read RPC.
+	// kacho-loadbalancer / self (kaname) для проверки прав на write/read RPC.
 	// Latency budget: ≤20ms p95. Сетевого перехода к соседу больше нет — вопрос
 	// задаётся той же базе, что и остальные чтения службы.
 	//

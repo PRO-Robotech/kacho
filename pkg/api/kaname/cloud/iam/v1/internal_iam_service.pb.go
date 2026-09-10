@@ -173,7 +173,7 @@ type LookupSubjectRequest_ExternalId struct {
 }
 
 type LookupSubjectRequest_Id struct {
-	// kacho-iam internal id (`usr-...` или `sva-...`).
+	// kaname internal id (`usr-...` или `sva-...`).
 	Id string `protobuf:"bytes,2,opt,name=id,proto3,oneof"`
 }
 

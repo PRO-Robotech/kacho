@@ -17,7 +17,7 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1;i
 // (`cluster:cluster_root#system_admin@user:...`).
 //
 // Identity hierarchy: cluster → account → project → resource. Each downstream
-// level is owned by `kacho-iam` (account / project) or by domain services
+// level is owned by `kaname` (account / project) or by domain services
 // (vpc / compute / loadbalancer).
 //
 // Resource id: literal `cluster_root` (not a Crockford-postfix id).

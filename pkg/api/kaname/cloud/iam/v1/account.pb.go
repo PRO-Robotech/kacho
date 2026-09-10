@@ -25,7 +25,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// An Account resource. Top-level tenant container in kacho-iam.
+// An Account resource. Top-level tenant container in kaname.
 //
 // Account groups Projects and owns custom Roles/Groups/ServiceAccounts. Each Account
 // has a single owner_user_id° (User id), which is OUTPUT-ONLY derived-from-caller

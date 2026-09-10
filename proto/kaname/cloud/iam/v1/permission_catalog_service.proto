@@ -21,11 +21,11 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1;i
 // the wildcard affordances.
 //
 // Ground-truth (the catalog mirrors EXACTLY this — no more, no less):
-//   - kacho-iam `internal/authzmap` → `objectTypes` (the closed
+//   - kaname `internal/authzmap` → `objectTypes` (the closed
 //     `(module,resource) → FGA object_type` table; extending it requires a
 //     lockstep edit of `fga_model.fga`) + `VerbRelationsOfType(fgaType)`
 //     (набор отношений, объявленный ЭТИМ типом; пустой — ярусный предок);
-//   - kacho-iam `internal/authzmap.CommonVerbVocabulary()` — набор, ОБЩИЙ для всех
+//   - kaname `internal/authzmap.CommonVerbVocabulary()` — набор, ОБЩИЙ для всех
 //     ресурсов (пересечение наборов типов), сегодня {get,list,create,update,delete}
 //     (+ ограниченный разворот подстановки, теперь по набору СВОЕГО типа).
 // The rule compiler fail-closed-SKIPs any `(module,resource)` NOT in
@@ -134,7 +134,7 @@ message CatalogResource {
   bool has_list_endpoint = 3;
 
   // True if the type may carry a match_labels (ARM_LABELS) selector — it is in
-  // the label-selectable feed set (kacho-iam domain.IsLabelSelectableType:
+  // the label-selectable feed set (kaname domain.IsLabelSelectableType:
   // mirror-fed types + iam.project/iam.account). ARM_NAMES (resourceNames) is
   // NOT feed-gated — any type may be pinned by id. The editor must NOT offer a
   // match_labels arm on a type where this is false (the rule compiler
