@@ -395,7 +395,18 @@ trap cleanup EXIT
 hdr "образ службы"
 if [ "${KANAME_CHART_BOOTS_SKIP_BUILD:-0}" = "1" ] && docker image inspect "$IMAGE" >/dev/null 2>&1; then
   say "образ $IMAGE уже собран — сборка пропущена по просьбе вызывающего"
+# ПАР ИМЁН ДВЕ, И ЭТО ПЕРЕХОД. Единственная цель этой сборки — Dockerfile службы
+# доступа, и он объявляет ПРЕЖНЮЮ пару: переименовывается он в её репозитории, а не
+# здесь. Имя довода есть контракт с файлом сборки — довод, чьего имени файл не
+# объявляет, docker молча выбрасывает, `ARG` остаётся пустым, образ уезжает без
+# ревизии, и сборка при этом зелена. Обе пары рядом делают шаг независимым от
+# ПОРЯДКА, в котором два репозитория переименуют своё. Цена пары — ноль на
+# BuildKit (одна строка предупреждения на классическом сборщике, не отказ);
+# образ службы собирается с `RUN --mount`, то есть без BuildKit не собирается
+# вовсе. Снимается прежняя пара, когда
+# `git grep -c 'ARG KACHO_IMAGE_' -- '*Dockerfile'` даст 0.
 elif ! docker build -f "$ROOT/services/iam/Dockerfile" -t "$IMAGE" \
+      --build-arg OCI_IMAGE_REVISION="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unknown)" \
       --build-arg KACHO_IMAGE_REVISION="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unknown)" \
       "$ROOT/services/iam" > "$WORK/build.log" 2>&1; then
   say "УСЛОВИЕ НЕ СОЗДАНО: образ службы не собрался — вердикта о чарте это не даёт"

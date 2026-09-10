@@ -84,13 +84,13 @@ say() {
 # `--eval` заводит цель на лету: в самом provenance.mk цели нет намеренно (она
 # стала бы целью по умолчанию у каждого включающего Makefile).
 expected_revision() {
-  # `$(KACHO_IMAGE_REVISION)` — переменная MAKE, а не оболочки. Одинарные кавычки
+  # `$(OCI_IMAGE_REVISION)` — переменная MAKE, а не оболочки. Одинарные кавычки
   # здесь обязательны: раскрой её bash, в make уехала бы пустая строка, и ядро
   # честно ответило бы «сравнивать не с чем». Пояснение стоит ПЕРЕД директивой —
   # токен, не имеющий вида ключ=значение, обрывает её разбор.
   # shellcheck disable=SC2016
   make -f "$PROVENANCE_MK" -s --no-print-directory \
-       --eval='__kacho_print_revision: ; @printf "%s\n" "$(KACHO_IMAGE_REVISION)"' \
+       --eval='__kacho_print_revision: ; @printf "%s\n" "$(OCI_IMAGE_REVISION)"' \
        __kacho_print_revision 2>/dev/null
 }
 
@@ -184,7 +184,7 @@ STUB
 cat "$KACHO_SELFTEST_WORK/prov.out"
 exit "$(cat "$KACHO_SELFTEST_WORK/prov.rc")"
 STUB
-  printf 'KACHO_IMAGE_REVISION := deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n' > "$work/provenance.mk"
+  printf 'OCI_IMAGE_REVISION := deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n' > "$work/provenance.mk"
   chmod +x "$work/.github/scripts/stand-present-or-explain.sh" "$work/deploy/scripts/stand-provenance.sh"
   export KACHO_SELFTEST_WORK="$work"
 
@@ -257,7 +257,7 @@ STUB
   # Без этой оси «unknown» уехало бы в сравнение, разошлось бы с КАЖДЫМ
   # контейнером и заглушило прогон по нашей же слепоте — то есть отказ выглядел
   # бы находкой о стенде.
-  printf 'KACHO_IMAGE_REVISION := unknown\n' > "$work/provenance.mk"
+  printf 'OCI_IMAGE_REVISION := unknown\n' > "$work/provenance.mk"
   run есть 0 "сходится у 8"
   if [ "$(cat "$work/rc")" = 0 ] && ! marked && [[ "$(summary)" == *"НЕ ПРОЧИТАНА"* ]] \
      && [[ "$(summary)" == *"unknown"* ]]; then
