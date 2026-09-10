@@ -185,7 +185,13 @@ func TestRenderRefusalPathsAreDerivedFromTheTemplate(t *testing.T) {
 		start := strings.Index(b, `{{- define "kaname-svc.requireOperatorSuppliedNames" -}}`)
 		require.GreaterOrEqual(t, start, 0)
 		head, body := b[:start], b[start:]
+		// ФОРМ ВЕТВИ ДВЕ, и обезврежены обязаны быть ОБЕ: безусловная
+		// (`if not <ключ>`) и условная — «обязательна от антецедента»
+		// (`if and <антецедент> (not <ключ>)`, задача #2488). Оставив вторую,
+		// инъекция подменяла бы не тот факт: распознаватель по-прежнему находил
+		// бы ветви, и проба зеленела бы, ничего не доказав.
 		body = strings.ReplaceAll(body, "{{- if not ", "{{- unless ")
+		body = strings.ReplaceAll(body, "{{- if and ", "{{- unless and ")
 		writeChartFile(t, chartDir, "templates/_helpers.tpl", head+body)
 
 		_, _, injErr := renderRefusalPaths(chartDir)
@@ -257,7 +263,8 @@ func TestMountGuardDistinguishesTheLeaves(t *testing.T) {
 		})
 		require.Error(t, err, "переименует шаблон подкаталог — путь под неизвестным именем "+
 			"обязан стать находкой, а не пройти молча")
-		require.Contains(t, err.Error(), "client, server")
+		// Листов три с задачи #2487: якорь поставщика — своя координата.
+		require.Contains(t, err.Error(), "client, provider, server")
 	})
 
 	t.Run("ПУТЬ ВНЕ МОНТИРОВАНИЯ — прежняя ось не потеряна", func(t *testing.T) {
