@@ -99,6 +99,7 @@ DECLARED="
 .github/scripts/go-test-verdict.py
 .github/scripts/install-browser-deps.sh
 .github/scripts/install-pinned-browser.sh
+.github/scripts/kaname-chart-boots.sh
 .github/scripts/lint-service-charts.sh
 .github/scripts/newman-live.py
 .github/scripts/run-python-probes.py
