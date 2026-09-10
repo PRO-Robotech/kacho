@@ -180,7 +180,7 @@ type IssueSAKeyUseCase struct {
 	redactGrace time.Duration
 
 	// HydraClientNamePrefix — used to compose the Hydra `client_name`
-	// (default "kacho-sak-<svaID>"). Configurable via env at wire-time.
+	// (default "kaname-sak-<svaID>"). Configurable via env at wire-time.
 	HydraClientNamePrefix string
 	// DefaultScope — scope granted to issued keys (default empty).
 	DefaultScope string
@@ -285,7 +285,7 @@ func NewIssueSAKeyUseCase(r SAClientRepo, tx service.TxBeginner, h OAuthClientAd
 		hydra:                 h,
 		opsRepo:               ops,
 		now:                   time.Now,
-		HydraClientNamePrefix: "kacho-sak-",
+		HydraClientNamePrefix: "kaname-sak-",
 	}
 }
 
