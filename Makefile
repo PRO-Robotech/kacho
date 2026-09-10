@@ -419,7 +419,7 @@ PG_OUTSIDE_SELECTION_PKGS_IAM ?= \
 # ЧЕМ ПРОВЯЗЫВАЕТСЯ И ПОЧЕМУ НЕ `core.hooksPath` — в шапке scripts/hooks/install.sh
 # (короткий ответ: он перебивает `.git/hooks` целиком и молча выключает всё, что
 # там уже лежало).
-.PHONY: test test-unit test-integration test-pg-outside-selection test-service test-service-short docs-sites help install-hooks check-hooks hooks-notice scale-grid-small scale-grid-full matrix-volume-small matrix-volume-full release-preflight release-trunk-green release-breaking-since release-probe release-pin-agrees release-pin-reachable release-no-reciprocity release-dry-run release-artifact foundation-floor
+.PHONY: test test-unit test-integration test-pg-outside-selection test-service test-service-short docs-sites help install-hooks check-hooks hooks-notice scale-grid-small scale-grid-full matrix-volume-small matrix-volume-full release-preflight release-trunk-green release-breaking-since release-probe release-pin-agrees release-pin-reachable release-no-reciprocity release-dry-run release-artifact foundation-floor foundation-tree
 
 ## install-hooks — провязать хуки git из scripts/hooks в этот клон (один раз на клон).
 install-hooks:
@@ -817,6 +817,20 @@ foundation-floor:
 	KACHO_FOUNDATION_MODULE=$(FOUNDATION_MODULE) \
 	  scripts/release/assert-foundation-floor.sh $(FOUNDATION_OUT) \
 	  $(if $(VERSION),--version $(VERSION))
+
+# ── СБОРКА ДЕРЕВА ФУНДАМЕНТА: У ПРОИЗВОДИТЕЛЯ ПОЯВЛЯЕТСЯ ВЫЗЫВАЮЩИЙ ──────────
+#
+# Производитель в дереве был, а звать его было НЕЧЕМ: ни цели, ни шага
+# конвейера. Механизм, у которого нет вызывающего, не отличается от
+# отсутствующего: он перестаёт исполняться в тот же день, когда ломается, и
+# узнать об этом неоткуда.
+#
+# НЕОБРАТИМОГО ШАГА ЗДЕСЬ НЕТ: цель собирает дерево во временный каталог и
+# ничего не отправляет, не тегирует и не публикует.
+foundation-tree:
+	go run ./tools/foundationexport/cmd/assemble-foundation-tree \
+	  $(CURDIR) $(or $(REV),$(shell git rev-parse HEAD)) \
+	  $(FOUNDATION_MODULE) $(FOUNDATION_OUT)
 
 release-dry-run:
 	@test -n "$(VERSION)" || { echo "нужна VERSION, напр. make release-dry-run VERSION=v0.1.0" >&2; exit 2; }
