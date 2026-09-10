@@ -34,6 +34,33 @@ data:
     logger:
       level: {{ default "INFO" .Values.logger.level | quote }}
 
+    {{- $oc := .Values.ownCeilings | default dict }}
+    # ТРИ СОБСТВЕННЫХ ПОТОЛКА СЛУЖБЫ (приёмка `KAN-QUOTA-1`, `П25`; задача #2117):
+    # сколько аккаунтов заводит одна личность и сколько путей входа держит человек
+    # и машина. Величину объявляет ПОСАДКА — внешнего авторитета величин в
+    # самостоятельной установке нет by construction, и спросить её не у кого.
+    #
+    # УМОЛЧАНИЯ НЕТ НИ ЗДЕСЬ, НИ В `defaults.go` СЛУЖБЫ: величина, которую
+    # построение подставляет молча, предметом стража быть не может — он зелен при
+    # любом входе. Незаданное доезжает до стража старта незаданным, и он отказывает
+    # в пуске, называя настройку и переменную.
+    #
+    # ВЕТВЬ ПО `hasKey`, А НЕ `with`, И ЭТО НЕСУЩЕЕ. `with` считает НОЛЬ пустым и
+    # выбросил бы его — а ноль здесь законная и осмысленная величина
+    # («ресурсов этого вида не заводить»), то есть ровно то, что теряет всякий, кто
+    # читает «не задано» как «ноль». Оператор, желающий запретить вид, не смог бы
+    # выразить это ни при каком вводе, и отказ назвал бы ему НЕ ТУ причину.
+    own-ceilings:
+      {{- if hasKey $oc "accountsPerIdentity" }}
+      accounts-per-identity: {{ $oc.accountsPerIdentity }}
+      {{- end }}
+      {{- if hasKey $oc "credentialsPerUser" }}
+      credentials-per-user: {{ $oc.credentialsPerUser }}
+      {{- end }}
+      {{- if hasKey $oc "credentialsPerServiceAccount" }}
+      credentials-per-service-account: {{ $oc.credentialsPerServiceAccount }}
+      {{- end }}
+
     api-server:
       endpoint: {{ printf "tcp://0.0.0.0:%v" .Values.ports.grpc | quote }}
       internal-endpoint: {{ printf "tcp://0.0.0.0:%v" .Values.ports.internalGrpc | quote }}

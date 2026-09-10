@@ -174,6 +174,16 @@ func postureValuePaths(tree map[string]any) [][]string {
 
 var configBridge = []bridged{
 	{configKey: "logger.level", valuePath: []string{"logger", "level"}},
+	// ТРИ СОБСТВЕННЫХ ПОТОЛКА (приёмка `KAN-QUOTA-1`, `П25`; задача #2117).
+	//
+	// `omitEmpty` НЕ СТАВИТСЯ, и это несущее: ноль здесь законная величина
+	// («ресурсов этого вида не заводить»), и вычет пустого выбросил бы её —
+	// переложение стало бы УЖЕ рендера ровно на том значении, которое чарт
+	// рендерит ветвью `hasKey`. Отсутствующий ключ и без `omitEmpty` не
+	// попадает во вход: сборка пропускает `nil`.
+	{configKey: "own-ceilings.accounts-per-identity", valuePath: []string{"ownCeilings", "accountsPerIdentity"}},
+	{configKey: "own-ceilings.credentials-per-user", valuePath: []string{"ownCeilings", "credentialsPerUser"}},
+	{configKey: "own-ceilings.credentials-per-service-account", valuePath: []string{"ownCeilings", "credentialsPerServiceAccount"}},
 	{configKey: "api-server.endpoint", derive: func(r *valueReader) any {
 		return fmt.Sprintf("tcp://0.0.0.0:%s", r.text("ports", "grpc"))
 	}},
