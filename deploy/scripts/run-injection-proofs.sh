@@ -128,6 +128,7 @@ scripts/overwritten-work-inject.sh
 scripts/hooks/install-inject.sh
 scripts/hooks/prepush-groups-inject.sh
 scripts/hooks/prepush-range-inject.sh
+scripts/release/assert-foundation-floor-inject.sh
 scripts/release/assert-no-module-reciprocity-inject.sh
 scripts/release/assert-pin-agrees-inject.sh
 scripts/release/assert-pin-reachable-inject.sh
