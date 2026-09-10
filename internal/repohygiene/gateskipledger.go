@@ -4,6 +4,7 @@
 package repohygiene
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -53,6 +54,16 @@ type SkipSite struct {
 type SkipCensus struct {
 	FilesRead int
 	Sites     []SkipSite
+
+	// Unresolved — вызовы пропуска, чью причину разбор НЕ разрешает: `t.SkipNow()`
+	// (причины нет вовсе) и `t.Skip(v)` с неконстантным первым аргументом.
+	//
+	// Считать их отдельно обязательно. Такой пропуск невидим ОБЕИМ проверкам: гейт
+	// по дереву не знает его причины, а прогонщик берёт за причину последнюю строку
+	// перед `--- SKIP` — то есть судит соседний `t.Log`, а не сам пропуск. Молча
+	// выпав из переписи, он стал бы ровно тем, против чего заведена ведомость:
+	// пропуском, неотличимым от успеха.
+	Unresolved []SkipSite
 }
 
 // CollectSkipSites обходит пробные файлы под корнями и собирает вызовы пропуска
@@ -88,21 +99,27 @@ func CollectSkipSites(roots []string) (SkipCensus, error) {
 					return true
 				}
 				sel, ok := call.Fun.(*ast.SelectorExpr)
-				if !ok || (sel.Sel.Name != "Skip" && sel.Sel.Name != "Skipf") {
+				if !ok {
 					return true
 				}
+				switch sel.Sel.Name {
+				case "Skip", "Skipf", "SkipNow":
+				default:
+					return true
+				}
+				site := SkipSite{Rel: rel, Line: fset.Position(call.Pos()).Line}
 				if len(call.Args) == 0 {
+					// `t.SkipNow()` — причины нет вовсе.
+					c.Unresolved = append(c.Unresolved, site)
 					return true
 				}
 				reason, ok := constPrefix(call.Args[0])
 				if !ok {
+					c.Unresolved = append(c.Unresolved, site)
 					return true
 				}
-				c.Sites = append(c.Sites, SkipSite{
-					Rel:    rel,
-					Line:   fset.Position(call.Pos()).Line,
-					Reason: reason,
-				})
+				site.Reason = reason
+				c.Sites = append(c.Sites, site)
 				return true
 			})
 			return nil
@@ -111,12 +128,16 @@ func CollectSkipSites(roots []string) (SkipCensus, error) {
 			return c, err
 		}
 	}
-	sort.Slice(c.Sites, func(i, j int) bool {
-		if c.Sites[i].Rel != c.Sites[j].Rel {
-			return c.Sites[i].Rel < c.Sites[j].Rel
+	byCoord := func(s []SkipSite) func(i, j int) bool {
+		return func(i, j int) bool {
+			if s[i].Rel != s[j].Rel {
+				return s[i].Rel < s[j].Rel
+			}
+			return s[i].Line < s[j].Line
 		}
-		return c.Sites[i].Line < c.Sites[j].Line
-	})
+	}
+	sort.Slice(c.Sites, byCoord(c.Sites))
+	sort.Slice(c.Unresolved, byCoord(c.Unresolved))
 	return c, nil
 }
 
@@ -173,11 +194,10 @@ func constPrefixWhole(e ast.Expr) (prefix string, whole, ok bool) {
 // AuditGateSkipLedger — ядро гейта, отделённое от корня дерева НАМЕРЕННО: инъекция
 // обязана прогнать его на синтетическом дереве, а не на этом.
 //
-// Направление сверки ОДНО и выбрано осознанно: каждая запись ведомости обязана
-// иметь предмет в дереве. Обратного требования («каждый пропуск объявлен») здесь
-// НЕТ и быть не должно — необъявленный пропуск обязан краснеть в момент ПРОГОНА,
-// а не благословляться при написании: гейт по дереву не знает, случился ли
-// пропуск, а прогонщик знает.
+// Направление здесь ОДНО: каждая запись ведомости обязана иметь предмет в дереве.
+// Обратное направление живёт в `AuditGateSkipDeclared` и намеренно вынесено в
+// ОТДЕЛЬНУЮ функцию: инъекция обязана ронять ровно то свойство, которое проверяет,
+// а слитые в одну функцию направления краснели бы вместе и не различались.
 func AuditGateSkipLedger(entries []string, c SkipCensus) []string {
 	var findings []string
 	for _, entry := range entries {
@@ -194,6 +214,66 @@ func AuditGateSkipLedger(entries []string, c SkipCensus) []string {
 				"у послабления нет предмета, и оно переживёт то, ради чего заведено; "+
 				"снимите запись либо назовите пробу, которая этой причиной пропускается")
 		}
+	}
+	return findings
+}
+
+// AuditGateSkipDeclared — ОБРАТНОЕ направление сверки: каждый пропуск у гейтов
+// дерева объявлен ведомостью.
+//
+// # Почему одного прогонщика мало — предмет задачи #2548
+//
+// Прогонщик юнитов краснеет на необъявленном пропуске В МОМЕНТ ПРОГОНА, и это
+// верно ровно для пропусков, которые СЛУЧИЛИСЬ. Пропуск, чья предпосылка сегодня
+// держится, не случается — и потому невидим: он молчит до того дня, когда
+// предпосылка откажет, а тогда прогон краснеет НЕ НА ДЕФЕКТЕ.
+//
+// Замер, из которого это выведено (`internal/repohygiene`, 966 файлов Go): вызовов
+// пропуска 13, срабатывает при `-short` ОДИН. То есть двенадцать причин прогонщик
+// не судил ни разу, и пять из них не были объявлены.
+//
+// Худший случай нашёлся среди них: проба ведомости границ фундамента пропускалась
+// при ПУСТОЙ ведомости — то есть на достижении цели выноса фундамента. Успех
+// работы уронил бы прогон.
+//
+// # Почему это не «благословение при написании»
+//
+// Прежняя редакция отвергала обратное направление доводом: объявлять пропуск
+// законным при написании значило бы разоружать прогонщик заранее. Довод снят не
+// мнением, а устройством ПАРЫ направлений: запись без живого вызова роняет
+// `AuditGateSkipLedger`, а вызов без записи роняет эту функцию. Значит завести
+// пропуск и объявить его законным можно только ОДНИМ изменением, где стоит и то и
+// другое, — ровно то, чего шапка ведомости и добивается. Разница лишь в том, когда
+// это видно: при написании, а не при отказе предпосылки через полгода.
+func AuditGateSkipDeclared(entries []string, c SkipCensus) []string {
+	var findings []string
+	for _, s := range c.Sites {
+		declared := false
+		for _, entry := range entries {
+			if strings.HasPrefix(s.Reason, entry) {
+				declared = true
+				break
+			}
+		}
+		if !declared {
+			findings = append(findings, fmt.Sprintf(
+				"%s:%d: пропуск с причиной «%s» не объявлен в %s — сегодня он молчит, "+
+					"потому что его предпосылка держится, а в день её отказа прогон "+
+					"покраснеет НЕ НА ДЕФЕКТЕ. Исходов два: причина законна by "+
+					"construction — внесите её в ведомость СО СВОИМ основанием; либо "+
+					"пропуска здесь быть не должно — перепишите пробу так, чтобы на "+
+					"достигнутой цели ПРОХОДИТЬ с переписью, а на отказе предпосылки "+
+					"КРАСНЕТЬ (отказ предпосылки ведомостью не прощается)",
+				s.Rel, s.Line, s.Reason, GateSkipLedgerFile))
+		}
+	}
+	for _, s := range c.Unresolved {
+		findings = append(findings, fmt.Sprintf(
+			"%s:%d: причину пропуска не разрешает разбор (t.SkipNow либо неконстантный "+
+				"первый аргумент) — такой пропуск невидим ОБЕИМ проверкам: ведомости "+
+				"сверять не с чем, а прогонщик примет за причину последнюю строку перед "+
+				"`--- SKIP`, то есть соседний t.Log. Назовите причину строковым литералом",
+			s.Rel, s.Line))
 	}
 	return findings
 }

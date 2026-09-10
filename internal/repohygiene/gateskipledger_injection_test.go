@@ -223,3 +223,152 @@ func TestInjection_EmptyCensusIsDistinguishableFromZeroFindings(t *testing.T) {
 		t.Fatalf("на пустой переписи находок %d — ждали 1", len(f))
 	}
 }
+
+// ─── ОБРАТНОЕ НАПРАВЛЕНИЕ: КАЖДЫЙ ПРОПУСК ОБЪЯВЛЕН (#2548) ───────────────────
+//
+// Инъекция идёт ТРЕМЯ прогонами на ОДНОМ контрольном дереве, и каждый меняет
+// РОВНО ОДИН факт против него:
+//
+//	контроль          — целы оба свойства  → молчат ОБА направления;
+//	инъекция нового   — пропуск не объявлен → краснеет ТОЛЬКО обратное;
+//	инъекция старого  — запись без предмета → краснеет ТОЛЬКО прямое.
+//
+// Третий прогон обязателен: без него молчание прямого направления неотличимо от
+// молчания мёртвого. А раздельные функции нужны именно затем, чтобы «краснеет
+// только оно» можно было утверждать — слитые в одну, направления краснели бы
+// вместе и не различались.
+//
+// Форма «завести ещё один элемент» здесь ЗАКОННА, и это надо сказать: направления
+// судят РАЗНЫЕ популяции — прямое судит записи ведомости, обратное судит вызовы.
+// Лишний необъявленный вызов нарушает единственное требование к вызовам и не
+// трогает ни одного требования к записям, поэтому дельта остаётся одно-фактной.
+
+// synthUndeclaredSkip — вызов, чьей причины нет ни в одной записи ведомости.
+const synthUndeclaredSkip = `package synth
+
+import "testing"
+
+func TestUndeclared(t *testing.T) {
+	t.Skip("зависимость не поднята — предмета нет")
+}
+`
+
+// synthSkipNow — пропуск БЕЗ причины: разбору нечего разрешать.
+const synthSkipNow = `package synth
+
+import "testing"
+
+func TestNoReason(t *testing.T) {
+	t.SkipNow()
+}
+`
+
+func TestInjection_UndeclaredSkipRedensOnlyTheDeclaredDirection(t *testing.T) {
+	t.Parallel()
+
+	// Контрольная ведомость: одна запись, и у неё есть предмет в контрольном дереве.
+	const entry = "файловая система не поддерживает симлинки"
+	control := synthSkipTree(t, map[string]string{"a/x_test.go": synthSkipCall})
+
+	census := func(root string) SkipCensus {
+		t.Helper()
+		c, err := CollectSkipSites([]string{root})
+		if err != nil {
+			t.Fatalf("обход: %v", err)
+		}
+		return c
+	}
+
+	// ── ПРОГОН 1: КОНТРОЛЬ. Целы оба свойства — молчат оба направления.
+	cControl := census(control)
+	if cControl.FilesRead != 1 || len(cControl.Sites) != 1 || len(cControl.Unresolved) != 0 {
+		t.Fatalf("перепись контроля: файлов %d, вызовов %d, неразрешённых %d — ждали 1, 1, 0",
+			cControl.FilesRead, len(cControl.Sites), len(cControl.Unresolved))
+	}
+	if f := AuditGateSkipDeclared([]string{entry}, cControl); len(f) != 0 {
+		t.Fatalf("контроль: обратное направление краснеет на целом дереве: %v", f)
+	}
+	if f := AuditGateSkipLedger([]string{entry}, cControl); len(f) != 0 {
+		t.Fatalf("контроль: прямое направление краснеет на целом дереве: %v", f)
+	}
+
+	// ── ПРОГОН 2: ИНЪЕКЦИЯ НОВОГО СВОЙСТВА. Добавлен вызов, чья причина не
+	// объявлена. Запись ведомости предмет НЕ теряет — её держит прежний вызов.
+	injected := synthSkipTree(t, map[string]string{
+		"a/x_test.go": synthSkipCall,
+		"a/y_test.go": synthUndeclaredSkip,
+	})
+	cInjected := census(injected)
+	if len(cInjected.Sites) != 2 {
+		t.Fatalf("перепись инъекции: вызовов %d — ждали 2", len(cInjected.Sites))
+	}
+	fNew := AuditGateSkipDeclared([]string{entry}, cInjected)
+	if len(fNew) != 1 {
+		t.Fatalf("необъявленный пропуск не найден: находок %d (%v)", len(fNew), fNew)
+	}
+	if !strings.Contains(fNew[0], "y_test.go") {
+		t.Fatalf("находка не называет координату: %q", fNew[0])
+	}
+	if !strings.Contains(fNew[0], "зависимость не поднята") {
+		t.Fatalf("находка не называет причину: %q", fNew[0])
+	}
+	if f := AuditGateSkipLedger([]string{entry}, cInjected); len(f) != 0 {
+		t.Fatalf("инъекция НОВОГО уронила ПРЯМОЕ направление — дельта не одно-фактна, "+
+			"и «краснеет только оно» утверждать нельзя: %v", f)
+	}
+
+	// ── ПРОГОН 3: ИНЪЕКЦИЯ СУЩЕСТВУЮЩЕГО СВОЙСТВА. Запись без предмета на том же
+	// контрольном дереве. Без этого прогона молчание прямого направления в
+	// прогоне 2 неотличимо от молчания мёртвого.
+	fOld := AuditGateSkipLedger([]string{entry, "ствол не разрешается"}, cControl)
+	if len(fOld) != 1 {
+		t.Fatalf("просроченная запись не найдена: находок %d (%v) — прямое "+
+			"направление молчит НЕ потому, что цело", len(fOld), fOld)
+	}
+	if !strings.Contains(fOld[0], "ствол не разрешается") {
+		t.Fatalf("находка не называет запись: %q", fOld[0])
+	}
+	if f := AuditGateSkipDeclared([]string{entry, "ствол не разрешается"}, cControl); len(f) != 0 {
+		t.Fatalf("инъекция СТАРОГО уронила обратное направление — дельта не "+
+			"одно-фактна: %v", f)
+	}
+}
+
+// TestInjection_SkipWithoutAResolvableReasonIsAFinding — пропуск, чью причину
+// разбор не разрешает, невидим ОБЕИМ проверкам и потому находка.
+//
+// Законный близнец той же формы — пропуск с причиной-литералом — обязан молчать,
+// иначе проверка ловила бы «здесь есть пропуск», а не «причину нельзя прочесть».
+func TestInjection_SkipWithoutAResolvableReasonIsAFinding(t *testing.T) {
+	t.Parallel()
+	const entry = "файловая система не поддерживает симлинки"
+
+	// (а) ДЕФЕКТ: причины нет вовсе.
+	c := mustCollect(t, synthSkipTree(t, map[string]string{"a/n_test.go": synthSkipNow}))
+	if len(c.Unresolved) != 1 || len(c.Sites) != 0 {
+		t.Fatalf("перепись: разрешённых %d, неразрешённых %d — ждали 0 и 1",
+			len(c.Sites), len(c.Unresolved))
+	}
+	f := AuditGateSkipDeclared([]string{entry}, c)
+	if len(f) != 1 || !strings.Contains(f[0], "n_test.go") {
+		t.Fatalf("пропуск без разрешимой причины не назван поимённо: %v", f)
+	}
+
+	// (б) ЗАКОННЫЙ БЛИЗНЕЦ: причина-литерал, объявленная ведомостью — молчание.
+	cTwin := mustCollect(t, synthSkipTree(t, map[string]string{"a/x_test.go": synthSkipCall}))
+	if len(cTwin.Unresolved) != 0 {
+		t.Fatalf("литеральная причина сочтена неразрешимой: %+v", cTwin.Unresolved)
+	}
+	if f := AuditGateSkipDeclared([]string{entry}, cTwin); len(f) != 0 {
+		t.Fatalf("законный близнец объявлен находкой: %v", f)
+	}
+}
+
+func mustCollect(t *testing.T, root string) SkipCensus {
+	t.Helper()
+	c, err := CollectSkipSites([]string{root})
+	if err != nil {
+		t.Fatalf("обход: %v", err)
+	}
+	return c
+}

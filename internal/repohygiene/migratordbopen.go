@@ -123,6 +123,7 @@ func (c migratorDBOpenCensus) String() string {
 // migratorDBOpenSource — что гейт вычитал из одного файла. Узлами, не словами.
 type migratorDBOpenSource struct {
 	OpensDB       bool
+	OpenForms     []string
 	WaitsReady    bool
 	SetsUpGoose   bool
 	DeclaresSpec  bool
@@ -194,9 +195,18 @@ func readMigratorDBOpenSource(rel, src string) (migratorDBOpenSource, error) {
 		if !ok {
 			return true
 		}
+		// СЛОВАРЬ ФОРМ ОДИН НА ДЕРЕВО — [migratorNoticeOpeners].
+		//
+		// Прежде здесь стояла одна форма, `sql.Open`, и она была полной: другого
+		// способа открыть соединение тракт не знал. С #2544 общий шаг открывает
+		// через конфигурацию pgx (обработчик уведомлений задаётся на ней), то
+		// есть в дереве появилась ВТОРАЯ законная форма — и одна форма перестала
+		// быть полной. Точка наката, открывшая ею базу сама, ушла бы из-под
+		// наблюдения молча: не красное и не зелёное, а тишина.
 		switch {
-		case pkg.Name == "sql" && sel.Sel.Name == "Open":
+		case migratorIsOpenerCall(pkg.Name + "." + sel.Sel.Name):
 			out.OpensDB = true
+			out.OpenForms = append(out.OpenForms, pkg.Name+"."+sel.Sel.Name)
 		case pkg.Name == "dbready" && sel.Sel.Name == "Wait":
 			out.WaitsReady = true
 		case pkg.Name == "goose" && (sel.Sel.Name == "SetDialect" || sel.Sel.Name == "SetBaseFS"):
@@ -207,6 +217,18 @@ func readMigratorDBOpenSource(rel, src string) (migratorDBOpenSource, error) {
 	return out, nil
 }
 
+// migratorIsOpenerCall — форма ли это открытия соединения. Словарь общий с
+// гейтом доставки уведомлений: две редакции одного перечня разошлись бы молча, и
+// разошлась бы та, которую реже читают.
+func migratorIsOpenerCall(name string) bool {
+	for _, opener := range migratorNoticeOpeners {
+		if name == opener {
+			return true
+		}
+	}
+	return false
+}
+
 // migratorDBOpenFindings формулирует находки одного файла тракта так, чтобы
 // каждая называла причину, а не симптом.
 func migratorDBOpenFindings(rel string, s migratorDBOpenSource) []migratorTractFinding {
@@ -215,8 +237,9 @@ func migratorDBOpenFindings(rel string, s migratorDBOpenSource) []migratorTractF
 		out = append(out, migratorTractFinding{Rel: rel, What: what})
 	}
 	if s.OpensDB {
-		add("открывает базу сам (sql.Open) — зови " +
-			migratorSharedTractHome + migratorDBOpenFunc)
+		add(fmt.Sprintf("открывает базу сам (%s) — зови %s%s",
+			strings.Join(dedupSortedMarkers(s.OpenForms), ", "),
+			migratorSharedTractHome, migratorDBOpenFunc))
 	}
 	if s.WaitsReady {
 		add("ставит свой барьер готовности базы (dbready.Wait) — он внутри " +

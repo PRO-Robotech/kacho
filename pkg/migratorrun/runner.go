@@ -82,7 +82,8 @@ func New(cfg Config) (*Runner, error) {
 	return &Runner{cfg: cfg, spec: spec}, nil
 }
 
-// open настраивает goose под диалект и открывает базу с барьером готовности.
+// open настраивает goose под диалект, открывает базу с барьером готовности и
+// провязывает доставку уведомлений сервера.
 //
 // Настройка идёт ПЕРВОЙ: она не ходит в сеть, поэтому негодная файловая система
 // или незнакомый диалект отвергаются до соединения, а не после него.
@@ -90,11 +91,36 @@ func New(cfg Config) (*Runner, error) {
 // Соединение ОДНО на команду — им пользуются и счёт перед сносом, и сам накат.
 // Делегирующая форма открывала базу дважды за один `up`; второе соединение не
 // давало ничего, кроме второго прохождения барьера готовности.
-func (r *Runner) open(ctx context.Context) (*sql.DB, error) {
+//
+// # Приёмник уведомлений заводится ЗДЕСЬ, и назначение у него то же, что у
+// счёта перед сносом
+//
+// Оператор читает ОДИН поток — вывод init-контейнера, — и перепись счёта уже
+// уходит в него же. Второй поток для уведомлений сделал бы один отчёт двумя, из
+// которых читают обычно один (#2544).
+func (r *Runner) open(ctx context.Context) (*sql.DB, *migratorcli.NoticeRelay, error) {
 	if err := migratorcli.SetupGoose(r.cfg.FS, r.spec); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return migratorcli.OpenDB(ctx, r.cfg.DSN, r.spec)
+	notices := migratorcli.NewNoticeRelay(r.cfg.Service, os.Stderr)
+	db, err := migratorcli.OpenDB(ctx, r.cfg.DSN, r.spec, notices)
+	if err != nil {
+		return nil, nil, err
+	}
+	return db, notices, nil
+}
+
+// closing — общий хвост команды: перепись уведомлений, затем закрытие.
+//
+// Перепись печатается ВСЕГДА и на ЛЮБОМ исходе, включая отказ: сказанное
+// сервером до отказа — самое ценное, что есть у оператора, а «ноль доставленных»
+// обязано быть отличимо от «обработчика не было вовсе». Хвост один на три
+// команды, потому что три редакции одного отчёта разошлись бы молча.
+func closing(db *sql.DB, notices *migratorcli.NoticeRelay) func() {
+	return func() {
+		notices.WriteCensus()
+		_ = db.Close()
+	}
 }
 
 // Up применяет цепочку — сперва СОСЧИТАВ строки в таблицах, которые уронят ещё не
@@ -120,11 +146,11 @@ func (r *Runner) Up(ctx context.Context, target string) error {
 		version, scope = v, dropguard.UpTo(v)
 	}
 
-	db, err := r.open(ctx)
+	db, notices, err := r.open(ctx)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = db.Close() }()
+	defer closing(db, notices)()
 
 	// СЧЁТ ПЕРЕД СНОСОМ — здесь, и это единственное место. Шаг, который зовут
 	// отдельной строкой, однажды не позовут; отсюда его не обойти, не обойдя
@@ -169,11 +195,11 @@ func (r *Runner) Down(ctx context.Context, target string) error {
 		version = v
 	}
 
-	db, err := r.open(ctx)
+	db, notices, err := r.open(ctx)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = db.Close() }()
+	defer closing(db, notices)()
 
 	if target == "" {
 		return goose.DownContext(ctx, db, r.cfg.MigrationsDir)
@@ -189,11 +215,11 @@ func (r *Runner) Down(ctx context.Context, target string) error {
 func (r *Runner) Status(ctx context.Context, out io.Writer) error {
 	_ = out
 
-	db, err := r.open(ctx)
+	db, notices, err := r.open(ctx)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = db.Close() }()
+	defer closing(db, notices)()
 
 	return goose.StatusContext(ctx, db, r.cfg.MigrationsDir)
 }

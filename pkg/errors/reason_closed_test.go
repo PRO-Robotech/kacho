@@ -10,7 +10,9 @@ package errors_test
 import (
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -38,6 +40,7 @@ func TestSixthTokenDoesNotCompileOutsideThePackage(t *testing.T) {
 		t.Skipf("предпосылка гейта не выполнена: тулчейн go недоступен (%v)", err)
 	}
 	root := moduleRoot(t)
+	probeImport := probeImportPath(t)
 
 	cases := []struct {
 		name        string
@@ -75,7 +78,8 @@ func TestSixthTokenDoesNotCompileOutsideThePackage(t *testing.T) {
 		}
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			src := "package main\n\nimport (\n\t\"google.golang.org/grpc/codes\"\n\n\tkerrors \"github.com/PRO-Robotech/kacho/pkg/errors\"\n)\n\nfunc main() {\n\t" + tc.body + "\n}\n"
+			src := "package main\n\nimport (\n\t\"google.golang.org/grpc/codes\"\n\n\tkerrors \"" +
+				probeImport + "\"\n)\n\nfunc main() {\n\t" + tc.body + "\n}\n"
 			probe := filepath.Join(dir, "probe.go")
 			require.NoError(t, os.WriteFile(probe, []byte(src), 0o600))
 
@@ -95,8 +99,31 @@ func TestSixthTokenDoesNotCompileOutsideThePackage(t *testing.T) {
 
 	// Объём осмотренного: «ноль находок» обязано быть отличимо от «ноль
 	// прочитанного» (testing.md §Гейт на класс, п.3).
-	t.Logf("проб компиляции осмотрено: %d (инъекций %d, законных близнецов %d)",
-		len(cases), injections, twins)
+	t.Logf("проб компиляции осмотрено: %d (инъекций %d, законных близнецов %d); "+
+		"путь импорта пакета выведен как %s",
+		len(cases), injections, twins, probeImport)
+}
+
+// probeImportPath — путь импорта пакета, о котором говорит эта проба. Берётся у
+// САМОГО пакета через его тип, а не выписывается литералом.
+//
+// Литерал был бы координатой ОДНОЙ раскладки. В монорепо путь начинается с
+// модуля платформы; в отдельном репозитории фундамента у того же пакета путь
+// другой, и синтетическая программа перестала бы собираться ВОВСЕ — а гейт
+// закрытости словаря объявил бы это подтверждением запрета, потому что сборка
+// упала. От этого стоит сверка с ЗАХВАЧЕННЫМ текстом компилятора — она и поймала
+// подмену причины; но чинить надо не проверку, а происхождение пути.
+//
+// Соседняя функция moduleRoot уже держала это правило для КОРНЯ («путь к пакету
+// в дереве не выписывается»), а путь импорта строкой рядом ему противоречил:
+// два места об одном предмете, из которых верно было одно.
+func probeImportPath(t *testing.T) string {
+	t.Helper()
+	p := reflect.TypeOf(kerrors.Reason{}).PkgPath()
+	require.NotEmpty(t, p, "путь импорта пакета не выведен — синтетической программе нечего импортировать")
+	require.Equal(t, "errors", path.Base(p),
+		"выведен путь не того пакета (%s) — проба собрала бы программу про чужой словарь", p)
+	return p
 }
 
 // moduleRoot — корень модуля, от которого исполняется проба сборки. Ищется по

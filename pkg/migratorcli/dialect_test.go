@@ -29,6 +29,7 @@ package migratorcli_test
 
 import (
 	"context"
+	"io"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -91,7 +92,7 @@ func TestOpenDBRefusalNamesTheDriver(t *testing.T) {
 		Name:         "postgres",
 		GooseDialect: "postgres",
 		SQLDriver:    "nosuchdriver",
-	})
+	}, migratorcli.NewNoticeRelay("svc", io.Discard))
 	if err == nil {
 		t.Fatal("незарегистрированный драйвер принят — отказ проверять нечем")
 	}
@@ -119,7 +120,8 @@ func TestOpenDBWaitsForTheServerAndThenRefuses(t *testing.T) {
 	const unreachable = "postgres://kacho:kacho@127.0.0.1:1/kacho?sslmode=disable"
 
 	start := time.Now()
-	db, err := migratorcli.OpenDB(ctx, unreachable, migratorcli.SpecPostgres)
+	db, err := migratorcli.OpenDB(ctx, unreachable, migratorcli.SpecPostgres,
+		migratorcli.NewNoticeRelay("svc", io.Discard))
 	if err == nil {
 		_ = db.Close()
 		t.Fatal("шаг вернул годное соединение к серверу, которого нет — барьера готовности " +
