@@ -29,6 +29,30 @@ data:
     logger:
       level: {{ default "INFO" .Values.config.logger.level | quote }}
 
+    {{- $oc := .Values.config.ownCeilings | default dict }}
+    # ТРИ СОБСТВЕННЫХ ПОТОЛКА СЛУЖБЫ (приёмка `KAN-QUOTA-1`, `П25`; задача #2117):
+    # сколько аккаунтов заводит одна личность и сколько путей входа держит человек
+    # и машина. Величину объявляет ПОСАДКА — авторитета величин у этих видов больше
+    # нет, и спросить её не у кого.
+    #
+    # Блок ОБЯЗАН стоять и здесь, и в чарте самой службы: конфигурацию процесса
+    # рендерят ДВА чарта, и ручка без умолчания, доехавшая до одного из них, роняет
+    # старт под вторым. Умолчания нет намеренно — величина, которую построение
+    # подставляет молча, предметом стража быть не может.
+    #
+    # Ветвь по `hasKey`, а не `with`: `with` считает НОЛЬ пустым и выбросил бы его,
+    # а ноль здесь законная величина — «ресурсов этого вида не заводить».
+    own-ceilings:
+      {{- if hasKey $oc "accountsPerIdentity" }}
+      accounts-per-identity: {{ $oc.accountsPerIdentity }}
+      {{- end }}
+      {{- if hasKey $oc "credentialsPerUser" }}
+      credentials-per-user: {{ $oc.credentialsPerUser }}
+      {{- end }}
+      {{- if hasKey $oc "credentialsPerServiceAccount" }}
+      credentials-per-service-account: {{ $oc.credentialsPerServiceAccount }}
+      {{- end }}
+
     api-server:
       endpoint: {{ printf "tcp://0.0.0.0:%v" .Values.ports.grpc | quote }}
       internal-endpoint: {{ printf "tcp://0.0.0.0:%v" .Values.ports.internalGrpc | quote }}
