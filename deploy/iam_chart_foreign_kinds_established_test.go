@@ -1,8 +1,9 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: BUSL-1.1
 
-// foreign_kinds_established_test.go — ЧУЖОЙ ВИД, КОТОРЫЙ ВЕЗЁТ ЧАРТ, ОБЯЗАН
-// ЗАВОДИТЬСЯ ВЛАДЕЛЬЦЕМ ПОДЪЁМА ДО УСТАНОВКИ.
+// iam_chart_foreign_kinds_established_test.go — ЧУЖОЙ ВИД, КОТОРЫЙ ВЕЗЁТ
+// ПОСТАВЛЯЕМЫЙ ЧАРТ СЛУЖБЫ ДОСТУПА, ОБЯЗАН ЗАВОДИТЬСЯ ВЛАДЕЛЬЦЕМ ПОДЪЁМА ДО
+// УСТАНОВКИ.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ПРЕДМЕТ
@@ -23,6 +24,22 @@
 // готовности и не на миграциях, а на первом же шаге установки.
 //
 // ─────────────────────────────────────────────────────────────────────────────
+// ПОЧЕМУ ЭТОТ ГЕЙТ ЖИВЁТ В МОДУЛЕ ПЛАТФОРМЫ, А НЕ РЯДОМ С ЧАРТОМ
+//
+// Он сверяет ДВА перечня из РАЗНЫХ деревьев: что везёт чарт — дерево СЛУЖБЫ; что
+// заводит владелец подъёма — дерево ПЛАТФОРМЫ (`.github/`). Значит предмет
+// гейта есть свойство ПЛАТФОРМЫ, и жить он обязан здесь: отсюда видны оба
+// дерева, потому что дерево службы лежит внутри платформенного.
+//
+// Первая редакция стояла в модуле службы и доставала скрипт ПОБЕГОМ ЗА КОРЕНЬ
+// МОДУЛЯ. Служба выносится отдельным продуктом; в её самостоятельном клоне
+// каталога `.github/` нет вовсе, а под чужим деревом такой путь указал бы на
+// ЧУЖОЙ файл — и вердикт был бы о нём. Страж
+// `TestPlatformCoordinatesTouchingTheTreeAreAnchoredInTheModule` назвал это
+// находкой, и он прав: ослаблять его нельзя — он держит несущее свойство
+// выноса. Закрыто ПЕРЕЕЗДОМ, как и класс 2 задачи #2532.
+//
+// ─────────────────────────────────────────────────────────────────────────────
 // ПОЧЕМУ УСЛОВИЕ СОЗДАЁТ ВЛАДЕЛЕЦ ПОДЪЁМА, А НЕ ЧАРТ
 //
 // Это ровно та роль, которую скрипт себе уже объявил: «он заводит то, что в
@@ -36,15 +53,18 @@
 //	    ТИХИЙ ПРОПУСК, и цена измерена: `helm template` без кластера отвечает
 //	    `false` ВСЕГДА (проверено на пробном чарте: без кластера `false`, с
 //	    `--api-versions` `true`, с `--validate` против кластера без оператора
-//	    `false`). Значит объект перестал бы рендериться у ВСЕХ проб этого
-//	    каталога, которые зовут `helm template` без кластера, — их 10, — и
-//	    сверка со страницей (Р1 соседней пробы) покраснела бы, доказывая не то,
-//	    что хотела. Молчание неотличимо от исправности — тот самый класс.
+//	    `false`). Значит объект перестал бы рендериться у ВСЕХ проб чарта,
+//	    которые зовут `helm template` без кластера, — их 10, — и сверка со
+//	    страницей покраснела бы, доказывая не то, что хотела. Молчание
+//	    неотличимо от исправности — тот самый класс.
 //	ОТКАЗ РЕНДЕРА (`fail`) — по той же измеренной причине сработал бы во ВСЕХ
 //	    десяти, потому что вне кластера возможностей не знает никто.
 //	`crds/` ЧАРТА — заставил бы НАШ чарт владеть определением ЧУЖОГО оператора:
 //	    helm такие определения не обновляет и не удаляет, а при настоящем
 //	    операторе рядом они конфликтуют.
+//
+// Выключить ручку правил в самой джобе — тоже не ход: он снимает красноту,
+// СУЖАЯ предикат полосы, чьё объявление — «судит ВСЁ».
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧТО ЗДЕСЬ УТВЕРЖДАЕТСЯ
@@ -91,13 +111,31 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// bootOwnerScript — владелец подъёма поставляемого чарта, относительно корня
-// монорепо. У арендатора его нет и быть не должно: это оснастка конвейера, а не
-// часть поставки.
-const bootOwnerScript = ".github/scripts/kaname-chart-boots.sh"
+// deliveredIAMChart — ПОСТАВЛЯЕМЫЙ чарт службы доступа: единственный артефакт,
+// который ставящий получает отдельно. Это НЕ подчарт зонта (`iamChartDir`):
+// наборы их ключей пересекаются меньше чем наполовину, и зелёный зонт о
+// поставке не утверждает ничего.
+const deliveredIAMChart = repoRoot + "/services/iam/deploy"
+
+// iamBootOwnerScript — владелец подъёма поставляемого чарта. Живёт в дереве
+// ПЛАТФОРМЫ, и потому адресуется от её корня, а не подъёмом из чужого модуля.
+const iamBootOwnerScript = repoRoot + "/.github/scripts/kaname-chart-boots.sh"
 
 // foreignKindsFlag — ключ, которым владелец подъёма печатает свой перечень.
 const foreignKindsFlag = "--foreign-kinds"
+
+// deliveredIAMChartProfiles — БОЕВАЯ цепочка поставки, та же, которой чарт
+// ставит полоса кластера.
+var deliveredIAMChartProfiles = []string{"values.yaml", "values.prod.yaml"}
+
+// deliveredIAMOperatorCoordinates — координаты, которые чарт требует НАЗВАТЬ и
+// умолчаний которым не даёт намеренно: без них рендер отказывает целиком.
+var deliveredIAMOperatorCoordinates = []string{
+	"image=registry.example.invalid/pro-robotech/kaname:0.1.0",
+	"db.host=postgres.example.invalid",
+	"db.passwordSecretName=kaname-db",
+	"db.passwordSecretKey=password",
+}
 
 // builtinAPIGroups — группы, которые кластер служит САМ, без определения извне.
 //
@@ -161,6 +199,34 @@ func renderedAPIVersions(rendered string) []string {
 	return out
 }
 
+// renderDeliveredIAMChart рендерит ПОСТАВЛЯЕМЫЙ чарт боевой цепочкой.
+//
+// Отсутствие helm в CI — жёсткий провал, а не пропуск: гейт, молча ставший
+// инертным на джобе, гейтящей мёрж, гейтом не является. Та же дисциплина, что у
+// соседей по каталогу.
+func renderDeliveredIAMChart(t *testing.T, sets ...string) string {
+	t.Helper()
+	if _, err := exec.LookPath("helm"); err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatalf("helm не в PATH при CI — рендер-гейт обязан исполняться, а не пропускаться")
+		}
+		t.Skip("helm не в PATH — вердикта НЕТ: третья категория, не зелёное и не красное")
+	}
+	args := []string{"template", "kaname", deliveredIAMChart, "-n", "kaname"}
+	for _, f := range deliveredIAMChartProfiles {
+		args = append(args, "-f", filepath.Join(deliveredIAMChart, f))
+	}
+	for _, s := range sets {
+		args = append(args, "--set", s)
+	}
+	out, err := exec.Command("helm", args...).CombinedOutput() // #nosec G204 -- фиксированный бинарь, аргументы из дерева
+	require.NoErrorf(t, err,
+		"поставляемый чарт не отрендерился цепочкой %v: это НЕ вердикт гейта, а "+
+			"«не выполнилось» — третья категория, и в успех она не засчитывается\n%s",
+		deliveredIAMChartProfiles, out)
+	return string(out)
+}
+
 // bootOwnerForeignKinds — перечень, который владелец подъёма ПЕЧАТАЕТ и по
 // которому же заводит виды. Возвращает `apiVersion` каждой записи.
 //
@@ -169,7 +235,7 @@ func renderedAPIVersions(rendered string) []string {
 // «владелец не умеет отвечать».
 func bootOwnerForeignKinds(t *testing.T, scriptPath string, env ...string) []string {
 	t.Helper()
-	cmd := exec.Command("bash", scriptPath, foreignKindsFlag) // #nosec G204 -- путь из дерева
+	cmd := exec.Command("bash", scriptPath, foreignKindsFlag) // #nosec G204 -- путь из констант этого файла
 	cmd.Env = append(os.Environ(), env...)
 	out, err := cmd.CombinedOutput()
 	require.NoErrorf(t, err,
@@ -194,23 +260,18 @@ func bootOwnerForeignKinds(t *testing.T, scriptPath string, env ...string) []str
 	return kinds
 }
 
-func TestForeignKindsTheChartShipsAreEstablishedByTheBootOwner(t *testing.T) {
-	outer, svc := outerRoot(t), serviceRoot(t)
-	if outer == svc {
-		t.Skip("монорепо над продуктом нет — владельца подъёма в этом дереве не существует: " +
-			"третья категория, не зелёное и не красное")
-	}
-	scriptPath := filepath.Join(outer, bootOwnerScript)
-	if _, err := os.Stat(scriptPath); err != nil {
-		t.Skipf("владельца подъёма нет по пути %s — вердикта о согласии перечней НЕТ: "+
-			"третья категория, в зачёт «прошло» не идёт", scriptPath)
-	}
+func TestIAMChartForeignKindsAreEstablishedByTheBootOwner(t *testing.T) {
+	// Владелец подъёма — файл ПЛАТФОРМЫ, и его отсутствие здесь есть находка, а
+	// не «третья категория»: этот модуль им владеет.
+	_, err := os.Stat(iamBootOwnerScript)
+	require.NoErrorf(t, err, "владельца подъёма нет по пути %s — сверять перечни не с чем",
+		iamBootOwnerScript)
 
 	// ── Р1: чарт рендерится, и классификатору есть что делить ────────────────
-	rendered := renderStandaloneChart(t, chartProfiles, minimalOperatorCoordinates...)
+	rendered := renderDeliveredIAMChart(t, deliveredIAMOperatorCoordinates...)
 	apiVersions := renderedAPIVersions(rendered)
 	require.NotEmptyf(t, apiVersions, "рендер цепочкой %v не дал НИ ОДНОГО объекта — "+
-		"обход пуст, и «чужих видов 0» означало бы «прочитано 0»", chartProfiles)
+		"обход пуст, и «чужих видов 0» означало бы «прочитано 0»", deliveredIAMChartProfiles)
 
 	shipped := map[string]bool{}
 	builtinSeen, foreign := 0, map[string]bool{}
@@ -227,7 +288,7 @@ func TestForeignKindsTheChartShipsAreEstablishedByTheBootOwner(t *testing.T) {
 			"у работающего чарта, значит классификатор читает не то", len(apiVersions))
 
 	established := map[string]bool{}
-	for _, k := range bootOwnerForeignKinds(t, scriptPath) {
+	for _, k := range bootOwnerForeignKinds(t, iamBootOwnerScript) {
 		established[k] = true
 	}
 
@@ -244,7 +305,7 @@ func TestForeignKindsTheChartShipsAreEstablishedByTheBootOwner(t *testing.T) {
 			"В пустом кластере схема отвергнет объект и вместе с ним ВСЮ установку — "+
 			"не одну тревогу. Условие создаётся в %s, а не выключением ручки: "+
 			"выключенная ручка сужает предикат джобы, чьё объявление — «судит ВСЁ»",
-		unestablished, bootOwnerScript)
+		unestablished, iamBootOwnerScript)
 
 	// ── Р3: у каждой записи владельца есть ПРЕДМЕТ ──────────────────────────
 	var stale []string

@@ -1,9 +1,9 @@
 // Copyright (c) PRO-Robotech
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: BUSL-1.1
 
-// foreign_kinds_established_injection_test.go — доказательство того, что сверка
-// «что чарт везёт» с «что владелец подъёма заводит» СПОСОБНА упасть, и что она
-// молчит на законном близнеце.
+// iam_chart_foreign_kinds_established_injection_test.go — доказательство того,
+// что сверка «что чарт везёт» с «что владелец подъёма заводит» СПОСОБНА упасть,
+// и что она молчит на законном близнеце.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ЛЕВЕР ИНЪЕКЦИИ — ОДИН ФАКТ, И ОН НАСТОЯЩИЙ
@@ -39,21 +39,6 @@ import (
 
 // foreignKindsRosterEnv — ручка, которой подменяется перечень владельца подъёма.
 const foreignKindsRosterEnv = "KANAME_CHART_BOOTS_FOREIGN_KINDS"
-
-// bootOwnerPathOrSkip — путь к владельцу подъёма либо честный пропуск.
-func bootOwnerPathOrSkip(t *testing.T) string {
-	t.Helper()
-	outer, svc := outerRoot(t), serviceRoot(t)
-	if outer == svc {
-		t.Skip("монорепо над продуктом нет — владельца подъёма в этом дереве не существует: " +
-			"третья категория, не зелёное и не красное")
-	}
-	p := filepath.Join(outer, bootOwnerScript)
-	if _, err := os.Stat(p); err != nil {
-		t.Skipf("владельца подъёма нет по пути %s — доказывать нечем: третья категория", p)
-	}
-	return p
-}
 
 // failsUnder — исполняет обращение в СВОЕЙ горутине и отвечает, упало ли оно.
 //
@@ -91,16 +76,15 @@ func unestablishedAgainst(rendered string, roster []string) []string {
 	return out
 }
 
-// TestForeignKindsGate_FailsWhenTheBootOwnerEstablishesNothing — И1 СКВОЗНАЯ.
+// TestIAMChartForeignKinds_FailsWhenTheBootOwnerEstablishesNothing — И1 СКВОЗНАЯ.
 //
 // Настоящий скрипт с ПУСТЫМ перечнем. Находка обязана назвать ИМЕННО чужой вид,
 // а не «что-то не сошлось»: находка, называющая симптом, посылает читателя
 // искать не там, и на неё тратят прогон.
-func TestForeignKindsGate_FailsWhenTheBootOwnerEstablishesNothing(t *testing.T) {
-	script := bootOwnerPathOrSkip(t)
-	rendered := renderStandaloneChart(t, chartProfiles, minimalOperatorCoordinates...)
+func TestIAMChartForeignKinds_FailsWhenTheBootOwnerEstablishesNothing(t *testing.T) {
+	rendered := renderDeliveredIAMChart(t, deliveredIAMOperatorCoordinates...)
 
-	empty := bootOwnerForeignKinds(t, script, foreignKindsRosterEnv+"=")
+	empty := bootOwnerForeignKinds(t, iamBootOwnerScript, foreignKindsRosterEnv+"=")
 	require.Emptyf(t, empty,
 		"перечень объявлен пустым, а владелец вернул %v — подстановка недейственна: "+
 			"в скрипте `${VAR:-…}` вместо `${VAR-…}`, и инъекция ничего не подменила", empty)
@@ -113,31 +97,29 @@ func TestForeignKindsGate_FailsWhenTheBootOwnerEstablishesNothing(t *testing.T) 
 		"находка не назвала чужой вид поимённо, а перечислила %v", missing)
 }
 
-// TestForeignKindsGate_SilentOnTheLegalTwin — И2 ЗАКОННЫЙ БЛИЗНЕЦ.
+// TestIAMChartForeignKinds_SilentOnTheLegalTwin — И2 ЗАКОННЫЙ БЛИЗНЕЦ.
 //
 // Тот же путь, ничего не подменено. Без него отрицание выше зеленело бы на
 // сверке, которая краснеет всегда.
-func TestForeignKindsGate_SilentOnTheLegalTwin(t *testing.T) {
-	script := bootOwnerPathOrSkip(t)
-	rendered := renderStandaloneChart(t, chartProfiles, minimalOperatorCoordinates...)
+func TestIAMChartForeignKinds_SilentOnTheLegalTwin(t *testing.T) {
+	rendered := renderDeliveredIAMChart(t, deliveredIAMOperatorCoordinates...)
 
-	roster := bootOwnerForeignKinds(t, script)
+	roster := bootOwnerForeignKinds(t, iamBootOwnerScript)
 	require.NotEmpty(t, roster, "перечень дерева пуст — тогда близнец не законный, а вырожденный")
 	require.Empty(t, unestablishedAgainst(rendered, roster),
 		"на нетронутом дереве сверка обязана молчать")
 }
 
-// TestForeignKindsGate_StaleRosterEntryIsAFinding — И3 САМОИСТЕЧЕНИЕ.
+// TestIAMChartForeignKinds_StaleRosterEntryIsAFinding — И3 САМОИСТЕЧЕНИЕ.
 //
 // Запись, которой больше нечего заводить, — находка. Без этой стороны перечень
 // копил бы записи про виды, снятые с поставки, и унаследовал бы следующую
 // слепую зону.
-func TestForeignKindsGate_StaleRosterEntryIsAFinding(t *testing.T) {
-	script := bootOwnerPathOrSkip(t)
-	rendered := renderStandaloneChart(t, chartProfiles, minimalOperatorCoordinates...)
+func TestIAMChartForeignKinds_StaleRosterEntryIsAFinding(t *testing.T) {
+	rendered := renderDeliveredIAMChart(t, deliveredIAMOperatorCoordinates...)
 
 	const ghost = "gone.example.invalid/v1"
-	roster := bootOwnerForeignKinds(t, script,
+	roster := bootOwnerForeignKinds(t, iamBootOwnerScript,
 		foreignKindsRosterEnv+"="+ghost+"§ghosts.gone.example.invalid§https://example.invalid/ghost.yaml")
 
 	shipped := map[string]bool{}
@@ -154,12 +136,12 @@ func TestForeignKindsGate_StaleRosterEntryIsAFinding(t *testing.T) {
 		"вид, которого чарт не везёт, не признан устаревшей записью: %v", stale)
 }
 
-// TestForeignKindsGate_ClassifierSeparatesBothSides — И4 КЛАССИФИКАТОР.
+// TestIAMChartForeignKinds_ClassifierSeparatesBothSides — И4 КЛАССИФИКАТОР.
 //
 // Синтетика намеренно: настоящий чарт несёт ровно один чужой вид, а предмет
 // здесь — обе стороны разделения. Классификатор, относящий к чужим ВСЁ, дал бы
 // на дереве тот же зелёный.
-func TestForeignKindsGate_ClassifierSeparatesBothSides(t *testing.T) {
+func TestIAMChartForeignKinds_ClassifierSeparatesBothSides(t *testing.T) {
 	builtin := []string{"v1", "apps/v1", "batch/v1", "networking.k8s.io/v1", "rbac.authorization.k8s.io/v1"}
 	foreign := []string{"monitoring.coreos.com/v1", "cert-manager.io/v1", "gateway.networking.example/v1"}
 
@@ -173,12 +155,12 @@ func TestForeignKindsGate_ClassifierSeparatesBothSides(t *testing.T) {
 	}
 }
 
-// TestForeignKindsGate_NestedAPIVersionIsNotAnObject — И5 РАЗБОРЩИК РЕНДЕРА.
+// TestIAMChartForeignKinds_NestedAPIVersionIsNotAnObject — И5 РАЗБОРЩИК РЕНДЕРА.
 //
 // `apiVersion` встречается и ВНУТРИ тел — в ссылках владельца, в шаблонах пода.
 // Счёт по подстроке считал бы вложенное объектом и мог бы объявить чужой вид
 // там, где его никто не ставит.
-func TestForeignKindsGate_NestedAPIVersionIsNotAnObject(t *testing.T) {
+func TestIAMChartForeignKinds_NestedAPIVersionIsNotAnObject(t *testing.T) {
 	doc := "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: kaname\n" +
 		"  ownerReferences:\n    - apiVersion: nested.example.invalid/v1\n      kind: Ghost\n"
 	got := renderedAPIVersions(doc)
@@ -190,28 +172,27 @@ func TestForeignKindsGate_NestedAPIVersionIsNotAnObject(t *testing.T) {
 		"разборщик потерял второй документ")
 }
 
-// TestForeignKindsGate_MalformedRosterEntryIsRejected — И6 НЕГОДНАЯ ЗАПИСЬ.
+// TestIAMChartForeignKinds_MalformedRosterEntryIsRejected — И6 НЕГОДНАЯ ЗАПИСЬ.
 //
 // Запись без третьего поля владелец пропустил бы МОЛЧА, и вид остался бы
 // незаведённым при внешне полном перечне. Проверяется тем же ключом, которым
 // перечень читает гейт.
-func TestForeignKindsGate_MalformedRosterEntryIsRejected(t *testing.T) {
-	script := bootOwnerPathOrSkip(t)
-
+func TestIAMChartForeignKinds_MalformedRosterEntryIsRejected(t *testing.T) {
 	failed := failsUnder(func(sub *testing.T) {
-		bootOwnerForeignKinds(sub, script, foreignKindsRosterEnv+"=monitoring.coreos.com/v1§только-два-поля")
+		bootOwnerForeignKinds(sub, iamBootOwnerScript,
+			foreignKindsRosterEnv+"=monitoring.coreos.com/v1§только-два-поля")
 	})
 	require.True(t, failed,
 		"запись без третьего поля принята — владелец пропустил бы её молча, "+
 			"и вид остался бы незаведённым при внешне полном перечне")
 }
 
-// TestForeignKindsGate_BootOwnerRefusalIsNotAnEmptyRoster — И7 ТРЕТЬЯ КАТЕГОРИЯ.
+// TestIAMChartForeignKinds_BootOwnerRefusalIsNotAnEmptyRoster — И7 ТРЕТЬЯ КАТЕГОРИЯ.
 //
 // «Владелец не умеет отвечать» обязано быть отличимо от «владелец ничего не
 // заводит»: иначе снятый ключ читался бы как пустой перечень, и гейт краснел бы
 // НЕ ТЕМ текстом — либо, что хуже, зеленел бы, если перечень и правда пуст.
-func TestForeignKindsGate_BootOwnerRefusalIsNotAnEmptyRoster(t *testing.T) {
+func TestIAMChartForeignKinds_BootOwnerRefusalIsNotAnEmptyRoster(t *testing.T) {
 	dir := t.TempDir()
 	deaf := filepath.Join(dir, "deaf.sh")
 	require.NoError(t, os.WriteFile(deaf,
@@ -223,11 +204,11 @@ func TestForeignKindsGate_BootOwnerRefusalIsNotAnEmptyRoster(t *testing.T) {
 			"засчитано за ответ")
 }
 
-// TestForeignKindsGate_CensusCountsWhatItRead — И8 ПЕРЕПИСЬ НЕ ВАКУУМНА.
+// TestIAMChartForeignKinds_CensusCountsWhatItRead — И8 ПЕРЕПИСЬ НЕ ВАКУУМНА.
 //
 // «Ноль находок» обязано быть отличимо от «ноль прочитанного»: пустой рендер
 // роняет гейт, а не даёт ему зелёное на пустом обходе.
-func TestForeignKindsGate_CensusCountsWhatItRead(t *testing.T) {
+func TestIAMChartForeignKinds_CensusCountsWhatItRead(t *testing.T) {
 	require.Empty(t, renderedAPIVersions(""),
 		"пустой рендер дал объекты — тогда пустой обход был бы неотличим от полного")
 	require.Empty(t, renderedAPIVersions("# только комментарий\n"),
