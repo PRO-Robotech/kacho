@@ -254,7 +254,7 @@ jobs:
           for entry in $images; do
             image="${entry%%:*}"; rest="${entry#*:}"; dir="${rest%%:*}"; ctx="${rest##*:}"
             echo "::group::$image"
-            # ПРОВЕНАНС. Без этих двух аргументов образ уезжает в реестр, не неся
+            # ПРОВЕНАНС. Без этих аргументов образ уезжает в реестр, не неся
             # ревизии вовсе: `--provenance=false` выше снимает вложение buildkit, а
             # своей величины у образа не было ни в клейме, ни в файле. Тогда
             # `make -C deploy stand-provenance` на управляемом кластере отвечает
@@ -262,9 +262,24 @@ jobs:
             # образа — то есть из величины, которая лжёт при пересборке под прежним
             # тегом. Что аргументы переданы КАЖДОЙ сборкой дерева, держит
             # deploy/stand_provenance_declaration_test.go.
+            #
+            # ПАР ИМЁН ДВЕ, И ЭТО ПЕРЕХОД, А НЕ НЕБРЕЖНОСТЬ. Цикл собирает ОДНОЙ
+            # строкой восемь образов, и семнадцатый Dockerfile дерева — файл службы
+            # доступа — объявляет ПРЕЖНЮЮ пару: он переименовывается в её
+            # репозитории, а не здесь. Имя довода есть контракт с файлом сборки:
+            # довод, чьего имени файл не объявляет, docker молча выбрасывает, `ARG`
+            # остаётся пустым, и образ уезжает без ревизии — при зелёной сборке.
+            # Шаг идёт через `docker buildx build`, то есть через BuildKit, а он на
+            # непотреблённый довод не говорит ничего: семь образов, знающих только
+            # каноническое имя, платят за переходную пару ноль (классический
+            # сборщик напечатал бы одну строку предупреждения — но его здесь нет).
+            # Пара снимается, когда `git grep -c 'ARG KACHO_IMAGE_' --
+            # '*Dockerfile'` даст 0; до тех пор её держит гейт выше.
             if docker buildx build \
                  --platform linux/amd64,linux/arm64 \
                  --provenance=false \
+                 --build-arg OCI_IMAGE_REVISION="${{ steps.subject.outputs.sha_full }}" \
+                 --build-arg OCI_IMAGE_VERSION="${{ steps.subject.outputs.branch }}" \
                  --build-arg KACHO_IMAGE_REVISION="${{ steps.subject.outputs.sha_full }}" \
                  --build-arg KACHO_IMAGE_VERSION="${{ steps.subject.outputs.branch }}" \
                  --cache-from "type=gha,scope=$image" \

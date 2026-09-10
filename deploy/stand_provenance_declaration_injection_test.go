@@ -24,18 +24,18 @@ const injRevisionPath = "/etc/kacho/image-revision"
 // ниже зеленели бы и на проверке, отвергающей вообще всё.
 const legitDockerfile = `FROM alpine:3.24
 COPY --from=builder /kacho-vpc /usr/local/bin/kacho-vpc
-ARG KACHO_IMAGE_REVISION=""
-ARG KACHO_IMAGE_VERSION=""
-LABEL org.opencontainers.image.revision="$KACHO_IMAGE_REVISION" \
-      org.opencontainers.image.version="$KACHO_IMAGE_VERSION"
-RUN mkdir -p /etc/kacho && printf '%s\n' "$KACHO_IMAGE_REVISION" > /etc/kacho/image-revision
+ARG OCI_IMAGE_REVISION=""
+ARG OCI_IMAGE_VERSION=""
+LABEL org.opencontainers.image.revision="$OCI_IMAGE_REVISION" \
+      org.opencontainers.image.version="$OCI_IMAGE_VERSION"
+RUN mkdir -p /etc/kacho && printf '%s\n' "$OCI_IMAGE_REVISION" > /etc/kacho/image-revision
 USER 65532
 ENTRYPOINT ["/usr/local/bin/kacho-vpc"]
 `
 
 func TestProvenanceGateFailsOnAnImageThatDoesNotCarryTheRevision(t *testing.T) {
-	if f := checkDockerfile(legitDockerfile, injRevisionPath); len(f) != 0 {
-		t.Fatalf("положительный контроль: законный образ объявлен нарушителем — %v", f)
+	if f, arg := checkDockerfile(legitDockerfile, injRevisionPath); len(f) != 0 || arg != canonicalProvenanceArg {
+		t.Fatalf("положительный контроль: законный образ объявлен нарушителем — находки %v, имя довода %q", f, arg)
 	}
 
 	cases := []struct {
@@ -45,7 +45,7 @@ func TestProvenanceGateFailsOnAnImageThatDoesNotCarryTheRevision(t *testing.T) {
 	}{
 		{
 			name: "снято объявление аргумента",
-			body: strings.Replace(legitDockerfile, `ARG KACHO_IMAGE_REVISION=""`+"\n", "", 1),
+			body: strings.Replace(legitDockerfile, `ARG OCI_IMAGE_REVISION=""`+"\n", "", 1),
 			want: "не объявлен ARG",
 		},
 		{
@@ -53,7 +53,7 @@ func TestProvenanceGateFailsOnAnImageThatDoesNotCarryTheRevision(t *testing.T) {
 			// рукой — значит она не функция дерева и лжёт с первой пересборки.
 			name: "клеймо не выводится из аргумента, а вписано",
 			body: strings.Replace(legitDockerfile,
-				`org.opencontainers.image.revision="$KACHO_IMAGE_REVISION"`,
+				`org.opencontainers.image.revision="$OCI_IMAGE_REVISION"`,
 				`org.opencontainers.image.revision="c11f1d52b93471f7321683c516403def8ae632c8"`, 1),
 			want: "клеймо org.opencontainers.image.revision не выводится",
 		},
@@ -66,7 +66,7 @@ func TestProvenanceGateFailsOnAnImageThatDoesNotCarryTheRevision(t *testing.T) {
 		{
 			name: "файл пишется не из аргумента",
 			body: strings.Replace(legitDockerfile,
-				`printf '%s\n' "$KACHO_IMAGE_REVISION" > /etc/kacho/image-revision`,
+				`printf '%s\n' "$OCI_IMAGE_REVISION" > /etc/kacho/image-revision`,
 				`printf '%s\n' "dev" > /etc/kacho/image-revision`, 1),
 			want: "величина не записывается",
 		},
@@ -84,7 +84,7 @@ func TestProvenanceGateFailsOnAnImageThatDoesNotCarryTheRevision(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			findings := checkDockerfile(c.body, injRevisionPath)
+			findings, _ := checkDockerfile(c.body, injRevisionPath)
 			if len(findings) == 0 {
 				t.Fatalf("дефект внесён, а гейт молчит")
 			}
@@ -102,17 +102,77 @@ func TestProvenanceGateFailsOnAnImageThatDoesNotCarryTheRevision(t *testing.T) {
 func TestProvenanceGateStaysSilentOnTheConsoleFamilyShape(t *testing.T) {
 	body := `FROM nginxinc/nginx-unprivileged:1.31-alpine
 COPY --from=build /app/vpc/dist /usr/share/nginx/html
-ARG KACHO_IMAGE_REVISION=""
-ARG KACHO_IMAGE_VERSION=""
-LABEL org.opencontainers.image.revision="$KACHO_IMAGE_REVISION" \
-      org.opencontainers.image.version="$KACHO_IMAGE_VERSION"
+ARG OCI_IMAGE_REVISION=""
+ARG OCI_IMAGE_VERSION=""
+LABEL org.opencontainers.image.revision="$OCI_IMAGE_REVISION" \
+      org.opencontainers.image.version="$OCI_IMAGE_VERSION"
 USER root
-RUN mkdir -p /etc/kacho && printf '%s\n' "$KACHO_IMAGE_REVISION" > /etc/kacho/image-revision
+RUN mkdir -p /etc/kacho && printf '%s\n' "$OCI_IMAGE_REVISION" > /etc/kacho/image-revision
 USER 101
 CMD ["nginx", "-g", "daemon off;"]
 `
-	if f := checkDockerfile(body, injRevisionPath); len(f) != 0 {
+	if f, _ := checkDockerfile(body, injRevisionPath); len(f) != 0 {
 		t.Fatalf("законная форма объявлена нарушителем — %v", f)
+	}
+}
+
+// ЗАКОННЫЙ БЛИЗНЕЦ ПЕРЕХОДА: образ, объявляющий ПРЕЖНЕЕ имя, нарушителем не
+// является — приём прежнего имени и есть предмет перехода. Без этой оси
+// переименование краснело бы на файле службы доступа, который правится в её
+// репозитории, а не здесь.
+func TestProvenanceGateAcceptsTheLegacyArgNameWhileItIsStillDeclared(t *testing.T) {
+	body := strings.ReplaceAll(legitDockerfile, canonicalProvenanceArg, legacyProvenanceArg)
+	findings, arg := checkDockerfile(body, injRevisionPath)
+	if len(findings) != 0 {
+		t.Fatalf("образ под прежним именем объявлен нарушителем — %v", findings)
+	}
+	if arg != legacyProvenanceArg {
+		t.Fatalf("имя довода прочитано как %q, ждали %q", arg, legacyProvenanceArg)
+	}
+}
+
+// Имя определяется ПЕРВЫМ, и остальное сверяется с НИМ. Файл, объявивший одно имя
+// и выводящий клеймо из другого, прошёл бы проверку, которая принимает любое
+// известное имя в каждой строке ПО ОТДЕЛЬНОСТИ, — то есть ровно ту проверку, в
+// которую вырождается гейт, когда имён становится два.
+func TestProvenanceGateJudgesTheLabelAgainstTheNameTheFileDeclares(t *testing.T) {
+	body := strings.Replace(legitDockerfile,
+		`org.opencontainers.image.revision="$`+canonicalProvenanceArg+`"`,
+		`org.opencontainers.image.revision="$`+legacyProvenanceArg+`"`, 1)
+	findings, _ := checkDockerfile(body, injRevisionPath)
+	joined := strings.Join(findings, " | ")
+	if !strings.Contains(joined, "клеймо org.opencontainers.image.revision не выводится") {
+		t.Fatalf("клеймо из ЧУЖОГО известного имени принято за своё: %v", findings)
+	}
+}
+
+// Два имени одной величины в одном файле — два места об одном предмете; клеймо
+// возьмёт одно, файл ревизии другое, и разойдутся они молча. Заодно эта ось
+// закрывает «решить переход, объявив в каждом Dockerfile оба имени».
+func TestProvenanceGateRejectsAFileDeclaringBothNames(t *testing.T) {
+	body := strings.Replace(legitDockerfile,
+		"ARG "+canonicalProvenanceArg+`=""`,
+		"ARG "+canonicalProvenanceArg+`=""`+"\nARG "+legacyProvenanceArg+`=""`, 1)
+	findings, _ := checkDockerfile(body, injRevisionPath)
+	if !strings.Contains(strings.Join(findings, " | "), "объявлены ДВА имени") {
+		t.Fatalf("файл с двумя именами одной величины прошёл молча: %v", findings)
+	}
+}
+
+// САМОИСТЕЧЕНИЕ приёма прежнего имени — в обе стороны. Пока прежнее имя кто-то
+// объявляет, приём молчит; как только объявивших ноль, приём становится находкой.
+// Проба кормит перепись, а не дерево: доказательство, требующее дерева БЕЗ службы
+// доступа, не воспроизводимо.
+func TestLegacyArgAcceptanceExpiresWhenNobodyDeclaresItAnymore(t *testing.T) {
+	if f := legacyAcceptanceFinding(map[string]int{canonicalProvenanceArg: 16, legacyProvenanceArg: 1}); f != "" {
+		t.Fatalf("приём с живым предметом объявлен находкой: %s", f)
+	}
+	f := legacyAcceptanceFinding(map[string]int{canonicalProvenanceArg: 17})
+	if f == "" {
+		t.Fatal("приёму прежнего имени прощать нечего, а гейт молчит — послабление не истекает")
+	}
+	if !strings.Contains(f, legacyProvenanceArg) || !strings.Contains(f, "provenance.mk") {
+		t.Fatalf("находка не называет ни имени, ни места снятия: %s", f)
 	}
 }
 
@@ -126,15 +186,69 @@ func TestProvenanceGateFailsOnABuildThatDoesNotPassTheRevision(t *testing.T) {
 	if len(invs) != 1 {
 		t.Fatalf("вызовов распознано %d, ждали 1 — предмет пробы не построен", len(invs))
 	}
-	if invocationCarriesRevision(invs[0].text, nil) {
+	if len(namesPassedBy(invs[0].text, nil)) != 0 {
 		t.Fatal("вызов без величины признан несущим её")
 	}
 
 	// Законный близнец: та же строка с величиной — молчание.
 	ok := "docker:\n\tcd .. && docker build $(IMAGE_BUILD_ARGS) -f services/vpc/Dockerfile -t kacho-vpc:dev .\n"
 	invs = makeBuildInvocations("синтетика/Makefile", ok)
-	if len(invs) != 1 || !invocationCarriesRevision(invs[0].text, []string{"$(IMAGE_BUILD_ARGS)"}) {
+	carriers := map[string]map[string]bool{"$(IMAGE_BUILD_ARGS)": {canonicalProvenanceArg: true}}
+	if len(invs) != 1 || !namesPassedBy(invs[0].text, carriers)[canonicalProvenanceArg] {
 		t.Fatal("законный вызов объявлен нарушителем")
+	}
+}
+
+// НЕСУЩАЯ ОСЬ ЭТОЙ ПРАВКИ: производитель передаёт довод под одним именем, а его
+// цель объявляет другое. docker непотреблённый довод выбрасывает МОЛЧА, `ARG`
+// остаётся при пустом умолчании, образ уезжает без ревизии — и сборка зелена.
+// Пока имя было одно, эта дыра была закрыта случайно (непереименованная половина
+// не находила своего имени); с двумя именами её закрывает только сверка.
+//
+// Проба заводит СВОЁ дерево: сверка читает настоящий файл цели, поэтому подать ей
+// синтетику текстом нельзя.
+func TestProvenanceGateFailsWhenTheNamePassedDoesNotMatchTheTargetsArg(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatalf("запись %s: %v", name, err)
+		}
+		return p
+	}
+
+	// Цель объявляет ПРЕЖНЕЕ имя — как файл службы доступа сегодня.
+	write("Dockerfile", "FROM alpine\nARG "+legacyProvenanceArg+`=""`+"\n")
+	site := write("Makefile", "docker:\n\tdocker build --build-arg "+canonicalProvenanceArg+"=x -f Dockerfile -t t .\n")
+
+	invs := makeBuildInvocations(site, "docker:\n\tdocker build --build-arg "+canonicalProvenanceArg+"=x -f Dockerfile -t t .\n")
+	if len(invs) != 1 {
+		t.Fatalf("вызовов распознано %d, ждали 1 — предмет пробы не построен", len(invs))
+	}
+	want, resolved := dockerfileArgOf(site, invs[0].text)
+	if !resolved {
+		t.Fatal("цель не разрешилась — сверять нечего, и предмет пробы не построен")
+	}
+	if want != legacyProvenanceArg {
+		t.Fatalf("имя цели прочитано как %q, ждали %q", want, legacyProvenanceArg)
+	}
+	if namesPassedBy(invs[0].text, nil)[want] {
+		t.Fatal("расхождение имён не обнаружено: вызов признан передающим то, чего не передаёт")
+	}
+
+	// ЗАКОННЫЙ БЛИЗНЕЦ — переходная пара: тот же вызов передаёт ОБА имени.
+	both := "docker:\n\tdocker build --build-arg " + canonicalProvenanceArg + "=x --build-arg " +
+		legacyProvenanceArg + "=x -f Dockerfile -t t .\n"
+	invs = makeBuildInvocations(site, both)
+	if len(invs) != 1 || !namesPassedBy(invs[0].text, nil)[legacyProvenanceArg] {
+		t.Fatalf("переходная пара объявлена нарушителем: %+v", invs)
+	}
+
+	// ВТОРОЙ ЗАКОННЫЙ БЛИЗНЕЦ — цель, разрешаемая из переменной оболочки: сверка
+	// не применима by construction, и это ГРАНИЦА, а не находка.
+	shellPath := "docker:\n\tdocker build $(IMAGE_BUILD_ARGS) -f $$d/Dockerfile -t t .\n"
+	if _, resolved := dockerfileArgOf(site, joinContinuations(shellPath)[1]); resolved {
+		t.Fatal("путь из переменной оболочки объявлен разрешённым — сверка утверждала бы о чужом файле")
 	}
 }
 
@@ -160,13 +274,19 @@ func TestProvenanceGateFollowsIncludesInBothDirections(t *testing.T) {
 		return p
 	}
 
-	write("carries.mk", "IMAGE_BUILD_ARGS := --build-arg KACHO_IMAGE_REVISION=\"$(GIT_COMMIT)\"\n")
+	write("carries.mk", "IMAGE_BUILD_ARGS := --build-arg "+canonicalProvenanceArg+"=\"$(GIT_COMMIT)\" --build-arg "+legacyProvenanceArg+"=\"$(GIT_COMMIT)\"\n")
 	write("empty.mk", "SOMETHING := else\n")
 
 	good := write("Makefile.good", "include carries.mk\ndocker:\n\tdocker build $(IMAGE_BUILD_ARGS) -f Dockerfile -t x .\n")
 	carriers, findings := revisionCarryingVars(good, 0)
-	if len(carriers) != 1 || carriers[0] != "$(IMAGE_BUILD_ARGS)" || len(findings) != 0 {
+	if len(carriers) != 1 || len(findings) != 0 {
 		t.Fatalf("носитель из включённого файла не найден: носители %v, находки %v", carriers, findings)
+	}
+	// Носитель несёт ОБА имени переходной пары — иначе сверка соответствия
+	// объявила бы нарушителем цель, объявляющую прежнее имя.
+	names := carriers["$(IMAGE_BUILD_ARGS)"]
+	if !names[canonicalProvenanceArg] || !names[legacyProvenanceArg] {
+		t.Fatalf("носитель прочитан не полностью: %v", names)
 	}
 
 	bad := write("Makefile.bad", "include empty.mk\ndocker:\n\tdocker build $(IMAGE_BUILD_ARGS) -f Dockerfile -t x .\n")
@@ -196,16 +316,16 @@ jobs:
 	if len(invs) != 1 {
 		t.Fatalf("вызовов распознано %d, ждали 1 (шаг checkout вызовом не является)", len(invs))
 	}
-	if invocationCarriesRevision(invs[0].text, nil) {
+	if len(namesPassedBy(invs[0].text, nil)) != 0 {
 		t.Fatal("шаг без build-args признан несущим величину")
 	}
 
 	// Законный близнец — тот же шаг с величиной.
 	withArgs := strings.Replace(noArgs,
 		"          file: ui-future/vpc/Dockerfile",
-		"          file: ui-future/vpc/Dockerfile\n          build-args: |\n            KACHO_IMAGE_REVISION=${{ github.sha }}", 1)
+		"          file: ui-future/vpc/Dockerfile\n          build-args: |\n            OCI_IMAGE_REVISION=${{ github.sha }}", 1)
 	invs = workflowBuildInvocations(t, "синтетика.yml", withArgs)
-	if len(invs) != 1 || !invocationCarriesRevision(invs[0].text, nil) {
+	if len(invs) != 1 || !namesPassedBy(invs[0].text, nil)[canonicalProvenanceArg] {
 		t.Fatalf("законный шаг объявлен нарушителем: %+v", invs)
 	}
 
@@ -218,7 +338,7 @@ jobs:
           docker buildx build --provenance=false -f ./services/vpc/Dockerfile -t x .
 `
 	invs = workflowBuildInvocations(t, "синтетика.yml", runStep)
-	if len(invs) != 1 || invocationCarriesRevision(invs[0].text, nil) {
+	if len(invs) != 1 || len(namesPassedBy(invs[0].text, nil)) != 0 {
 		t.Fatalf("вызов в шаге-скрипте не распознан либо ложно оправдан: %+v", invs)
 	}
 }

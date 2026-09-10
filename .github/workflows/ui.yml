@@ -517,8 +517,8 @@ jobs:
           # один коммит. Что аргументы переданы КАЖДОЙ сборкой дерева, держит
           # deploy/stand_provenance_declaration_test.go.
           build-args: |
-            KACHO_IMAGE_REVISION=${{ github.sha }}
-            KACHO_IMAGE_VERSION=${{ steps.gate.outputs.tag }}
+            OCI_IMAGE_REVISION=${{ github.sha }}
+            OCI_IMAGE_VERSION=${{ steps.gate.outputs.tag }}
           cache-from: type=gha,scope=uif-${{ matrix.project }}
           cache-to: type=gha,scope=uif-${{ matrix.project }},mode=max
 

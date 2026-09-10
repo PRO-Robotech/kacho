@@ -320,7 +320,7 @@ report() {
       if [ -n "$rev" ]; then
         src="файл"; by_file=$((by_file + 1))
       else
-        rev="(величина ПУСТА: образ собран без --build-arg KACHO_IMAGE_REVISION)"
+        rev="(величина ПУСТА: образ собран без --build-arg OCI_IMAGE_REVISION)"
         unknown=$((unknown + 1))
       fi
     elif rev="$(revision_from_label "$imageid")"; then
@@ -487,7 +487,7 @@ STUB
   printf 'vpc-1\tvpc\tdocker.io/library/kacho-vpc:dev\tsha256:aaa\n' > "$work/pods.tsv"
   printf '\n' > "$work/exec.vpc"
   out="$(report kacho)"; rc=$?
-  if [ "$rc" -eq 1 ] && [[ "$out" == *"ПУСТА"* ]] && [[ "$out" == *"KACHO_IMAGE_REVISION"* ]]; then
+  if [ "$rc" -eq 1 ] && [[ "$out" == *"ПУСТА"* ]] && [[ "$out" == *"OCI_IMAGE_REVISION"* ]]; then
     ok "код 1 и названа ПРИЧИНА — сборка не проставила величину"
   else
     bad "код $rc; вывод: $out"

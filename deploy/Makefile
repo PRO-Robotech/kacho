@@ -318,8 +318,8 @@ build-ui:
 # машинно — звать scripts/stand-provenance.sh напрямую; читающему глазами — строка
 # ВЕРДИКТ ниже.
 stand-provenance:
-	@echo "рабочая копия: $(GIT_REF) @ $(KACHO_IMAGE_REVISION)"
-	@bash scripts/stand-provenance.sh --namespace kacho --expect "$(KACHO_IMAGE_REVISION)"; rc=$$?; \
+	@echo "рабочая копия: $(GIT_REF) @ $(OCI_IMAGE_REVISION)"
+	@bash scripts/stand-provenance.sh --namespace kacho --expect "$(OCI_IMAGE_REVISION)"; rc=$$?; \
 	  case $$rc in \
 	    0) echo "ВЕРДИКТ: ревизия установлена у каждого осмотренного контейнера и сходится с рабочей копией (код 0)" ;; \
 	    1) echo "ВЕРДИКТ: у части контейнеров ревизия НЕ установлена (код 1) — они названы выше" ;; \
