@@ -44,7 +44,13 @@ func injectionProofCorpus(t *testing.T, root string) map[string][]byte {
 	corpus := map[string][]byte{}
 	for _, abs := range files {
 		base := filepath.Base(abs)
-		if !strings.HasSuffix(abs, ".go") && base != "go.mod" {
+		// Доказательства ДРУГОГО ЯЗЫКА (оболочка, Python) входят в корпус ключом
+		// без содержимого: разбор их не читает, но обещание, называющее такой
+		// файл, обязано по нему резолвиться. Без них координата оболочки стала бы
+		// находкой у КАЖДОЙ пробы, которая её называет, — то есть расширение
+		// распознавателя завело бы шесть ложных находок вместо наблюдения.
+		if !strings.HasSuffix(abs, ".go") && base != "go.mod" &&
+			!injectionproofgate.IsProofFile(base) {
 			continue
 		}
 		rel, relErr := filepath.Rel(root, abs)
@@ -52,8 +58,9 @@ func injectionProofCorpus(t *testing.T, root string) map[string][]byte {
 			t.Fatalf("путь %s: %v", abs, relErr)
 		}
 		rel = filepath.ToSlash(rel)
-		if base == "go.mod" {
-			// Содержимое не читается: ключ и есть объявление корня модуля.
+		if base == "go.mod" || !strings.HasSuffix(base, ".go") {
+			// Содержимое не читается: ключ и есть объявление — корня модуля либо
+			// самого доказательства.
 			corpus[rel] = nil
 			continue
 		}
@@ -78,13 +85,22 @@ func TestEveryNamedInjectionProofExistsInTheWholeTree(t *testing.T) {
 	}
 
 	t.Logf("перепись: исходников разобрано %d · корней модулей %d · называющих файлов %d · "+
-		"обещаний %d · резолвится %d · в литералах %d (полоса НЕ судимая)",
+		"обещаний %d (из них доказательство ДРУГОГО ЯЗЫКА %d) · резолвится %d · "+
+		"в литералах %d (полоса НЕ судимая)",
 		census.GoFiles, census.ModuleRoots, census.NamingFiles,
-		census.InComments, census.Resolved, census.InStrings)
+		census.InComments, census.InOtherLanguages, census.Resolved, census.InStrings)
 
 	if census.GoFiles == 0 || census.InComments == 0 {
 		t.Fatalf("исходников %d, обещаний %d — обход не состоялся, и молчание держателя "+
 			"ничего не утверждает", census.GoFiles, census.InComments)
+	}
+	if census.InOtherLanguages == 0 {
+		t.Fatalf("обещаний, называющих доказательство ДРУГОГО ЯЗЫКА, ноль при %d обещаниях "+
+			"всего. Читается это двояко, и оба чтения требуют действия: либо словарь форм "+
+			"разошёлся со словарём обходчика, который такие доказательства исполняет "+
+			"(deploy/scripts/run-injection-proofs.sh), и ось молчит МЁРТВОЙ; либо таких "+
+			"обещаний в дереве действительно не осталось — тогда ось снимается ВМЕСТЕ со "+
+			"своим предметом, а не оставляется зелёной вхолостую", census.InComments)
 	}
 	if census.ModuleRoots < 2 {
 		t.Fatalf("корней модулей в корпусе %d — форма «от корня модуля» не исполнялась ни "+

@@ -157,3 +157,131 @@ func TestInjectionProof_EmptyCorpusIsAnError(t *testing.T) {
 	_, _, err := injectionproofgate.Audit(map[string][]byte{})
 	require.Errorf(t, err, "пустой корпус обязан быть ОШИБКОЙ, а не тихим зелёным")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ПОЛОСА ДОКАЗАТЕЛЬСТВ ДРУГОГО ЯЗЫКА (#2519)
+//
+// Обещание, называющее доказательство оболочкой (`<тема>-inject.sh`) либо пробой
+// на Python, — та же форма утверждения о дереве, и мёртвая координата в нём
+// читается так же, как само доказательство. До этой полосы разбор её не судил и
+// НЕ СЧИТАЛ: обещание уходило из наблюдения целиком, а молчание о целом виде
+// вхождений неотличимо от их отсутствия.
+//
+// Дельта каждого мира против положительного близнеца — ОДИН факт: наличие одного
+// файла-доказательства. Обе стороны утверждаются порознь, и порознь же
+// проверяется, что снятие ОДНОГО доказательства роняет ТОЛЬКО его полосу.
+
+// shellProofName / goProofName — имена, собранные СКЛЕЙКОЙ: записанные одним
+// литералом, они стали бы координатами в строковом литерале ЭТОГО файла и
+// изменили бы перепись держателя о настоящем дереве.
+const (
+	shellProofName = "topic" + "-inject" + ".sh"
+	goProofName    = "topic" + "_injection" + "_test.go"
+)
+
+// bothPromises — тело пробы, называющей ОБА доказательства: и своё, и соседнее.
+func bothPromises() []byte {
+	return []byte("package probe\n\n// Способность упасть доказана инъекцией — " +
+		goProofName + " и deploy/tests/helm/" + shellProofName + ".\nvar _ = 1\n")
+}
+
+// intactWorld — контроль: оба доказательства на месте.
+func intactWorld() map[string][]byte {
+	return map[string][]byte{
+		"internal/probe/probe_test.go":        bothPromises(),
+		"internal/probe/" + goProofName:       []byte("package probe\n"),
+		"deploy/tests/helm/" + shellProofName: nil,
+	}
+}
+
+func TestInjectionProof_ForeignFormControlIsSilentAndCounted(t *testing.T) {
+	t.Parallel()
+	findings, census := auditWorld(t, intactWorld())
+	require.Emptyf(t, findings, "КОНТРОЛЬ: оба доказательства в дереве — молчат обе полосы")
+	require.Equal(t, 2, census.InComments, "обещаний две: своё и соседнего языка")
+	require.Equal(t, 2, census.Resolved)
+	require.Equalf(t, 1, census.InOtherLanguages,
+		"полоса другого языка обязана быть СОСЧИТАНА: без числа её молчание "+
+			"неотличимо от отсутствия обещаний в ней")
+}
+
+func TestInjectionProof_ForeignProofMissingIsAFindingAndOnlyItsOwn(t *testing.T) {
+	t.Parallel()
+	// ИНЪЕКЦИЯ НОВОГО: снято доказательство ОБОЛОЧКИ, Go-доказательство на месте.
+	world := intactWorld()
+	delete(world, "deploy/tests/helm/"+shellProofName)
+
+	findings, census := auditWorld(t, world)
+	require.Len(t, findings, 1, "краснеет ТОЛЬКО новая полоса")
+	require.Equal(t, "deploy/tests/helm/"+shellProofName, findings[0].Coordinate)
+	require.Equal(t, 1, census.Resolved, "старая полоса резолвится по-прежнему")
+	require.Equal(t, 1, census.InOtherLanguages)
+}
+
+func TestInjectionProof_GoProofMissingIsAFindingAndOnlyItsOwn(t *testing.T) {
+	t.Parallel()
+	// ИНЪЕКЦИЯ СТАРОГО: снято Go-доказательство, доказательство оболочки на месте.
+	// Без этого прогона молчание существующей полосы неотличимо от молчания мёртвой.
+	world := intactWorld()
+	delete(world, "internal/probe/"+goProofName)
+
+	findings, census := auditWorld(t, world)
+	require.Len(t, findings, 1, "краснеет ТОЛЬКО существующая полоса")
+	require.Equal(t, goProofName, findings[0].Coordinate)
+	require.Equal(t, 1, census.Resolved, "полоса другого языка резолвится по-прежнему")
+	require.Equal(t, 1, census.InOtherLanguages)
+}
+
+// TestInjectionProof_ForeignFormPatternIsNotACoordinate — ЗАКОННЫЙ БЛИЗНЕЦ.
+//
+// В прозе форма доказательства называется ОБРАЗЦОМ (`*-inject.sh`,
+// `<тема>-inject.sh`). Образец дерева не называет, и судить его значило бы
+// краснеть на собственном объяснении. Без этой пары расширение распознавателя
+// завело бы ложную находку в первом же файле, который форму объясняет.
+func TestInjectionProof_ForeignFormPatternIsNotACoordinate(t *testing.T) {
+	t.Parallel()
+	body := []byte("package probe\n\n// Доказательство инъекцией называется " +
+		"`*-inject" + ".sh`, у службы — `<тема>-inject" + ".sh`.\nvar _ = 1\n")
+	findings, census := auditWorld(t, map[string][]byte{"internal/probe/probe_test.go": body})
+	require.Empty(t, findings, "образец — не координата")
+	require.Zero(t, census.InOtherLanguages, "и в перепись полосы он не идёт")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ПАРА, ЗАВИСЯЩАЯ ТОЛЬКО ОТ НОВОЙ ОСИ
+//
+// Миры выше называют ОБА доказательства сразу — так доказывается, что находка
+// принадлежит своей полосе. Но проверка, зависящая от обеих осей, краснеет и на
+// сломе ЧУЖОЙ: по ней нельзя отличить «умерла новая ось» от «умерла старая».
+// Поэтому здесь мир, в котором Go-координаты нет ВОВСЕ, — и он остаётся зелёным,
+// когда снимают старую ось, доказывая, что новая жива сама по себе.
+
+// shellOnlyPromise — обещание, называющее ТОЛЬКО доказательство оболочки.
+func shellOnlyPromise() []byte {
+	return []byte("package probe\n\n// Способность упасть доказана инъекцией — deploy/tests/helm/" +
+		shellProofName + ".\nvar _ = 1\n")
+}
+
+func TestInjectionProof_ForeignFormAloneResolves(t *testing.T) {
+	t.Parallel()
+	findings, census := auditWorld(t, map[string][]byte{
+		"internal/probe/probe_test.go":        shellOnlyPromise(),
+		"deploy/tests/helm/" + shellProofName: nil,
+	})
+	require.Empty(t, findings)
+	require.Equal(t, 1, census.InComments)
+	require.Equal(t, 1, census.InOtherLanguages)
+	require.Equal(t, 1, census.Resolved)
+}
+
+func TestInjectionProof_ForeignFormAloneMissingIsAFinding(t *testing.T) {
+	t.Parallel()
+	// ЗАКОННЫЙ БЛИЗНЕЦ предыдущего мира: дельта — ОДИН факт, файла нет.
+	findings, census := auditWorld(t, map[string][]byte{
+		"internal/probe/probe_test.go": shellOnlyPromise(),
+	})
+	require.Len(t, findings, 1)
+	require.Equal(t, "deploy/tests/helm/"+shellProofName, findings[0].Coordinate)
+	require.Equal(t, 1, census.InOtherLanguages)
+	require.Zero(t, census.Resolved)
+}
