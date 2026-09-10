@@ -44,6 +44,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -417,8 +418,12 @@ func TestProdProfile_SatisfiesTheBootGuard(t *testing.T) {
 		"боевой профиль чарта не удовлетворяет стражу старта: под с этими значениями "+
 			"не поднимется — процесс откажет в пуске ещё до первого слушателя")
 
-	t.Logf("перепись: профилей в цепочке %d · ключей конфигурации %d · переменных окружения %d",
-		len(chartProfiles), keyCount, envCount)
+	envs := envEntries(merged)
+	_ = applySecretStandIns(merged, envs)
+	t.Logf("перепись: профилей в цепочке %d · ключей конфигурации %d · переменных окружения %d · "+
+		"форм пути к материалу выведено %d · путей осмотрено %d",
+		len(chartProfiles), keyCount, envCount,
+		len(materialPathSuffixes()), len(materialPathsNamed(envs)))
 }
 
 // TestProdProfile_TheGuardIsLiveWithoutIt — отрицательный контроль несущей
@@ -848,6 +853,129 @@ func applySecretStandIns(merged map[string]any, envs map[string]string) error {
 	return errs
 }
 
+// materialPathsNamed — пути к материалу, названные окружением, в виде
+// `ручка=путь`, отсортированные ради детерминизма находок.
+//
+// Вынесено отдельно, чтобы перепись «путей осмотрено N» печаталась той же
+// величиной, по которой выносится вердикт: посчитанная вторым выражением, она
+// разошлась бы с ним молча — и расхождение было бы видно ровно там, где его
+// нет, потому что на исправном дереве оба выражения дают одно и то же.
+func materialPathsNamed(envs map[string]string) []string {
+	var named []string
+	for k, v := range envs {
+		if !namesAMaterialPath(k) {
+			continue
+		}
+		for _, p := range strings.Split(v, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				named = append(named, k+"="+p)
+			}
+		}
+	}
+	sort.Strings(named)
+	return named
+}
+
+// ── распознаватель путей к материалу ────────────────────────────────────────
+
+// namesAMaterialPath — называет ли ручка ПУТЬ К ФАЙЛУ материала.
+//
+// # ПЕРЕЧЕНЬ ФОРМ ВЫВОДИТСЯ, А НЕ ВЫПИСЫВАЕТСЯ (задача #2479)
+//
+// Здесь стоял выписанный перечень окончаний. Он был верен для форм, которые
+// автор помнил, и МОЛЧАЛ о прочих: форма, о которой распознаватель не знает, не
+// даёт ни красного, ни зелёного — всё записанное в ней уходит из-под наблюдения.
+// Измеренный экземпляр: якорь доверия отправителя письма (`ca-bundle-file`)
+// оканчивается на `_CA_BUNDLE_FILE`, ни под одно из выписанных окончаний не
+// подпадал и потому не проверялся вовсе.
+//
+// Теперь окончания выводятся из ПОЛЕЙ САМОЙ НАСТРОЙКИ: заведут новое поле-путь —
+// распознаватель узнает о нём в тот же день. Механизмов настройки два, и у
+// каждого своё правило вывода имени, поэтому обходятся оба:
+//
+//	envconfig  (`MTLSConfig`)  — имя поля целиком, заглавными: CertFile → CERTFILE;
+//	viper      (`Config`)      — значение тега mapstructure, дефис в подчёркивание:
+//	                             ca-bundle-file → CA_BUNDLE_FILE.
+//
+// Признак поля-пути — окончание его ИМЕНИ (`…File`/`…Files`), а не тип: строка
+// хранит и путь, и адрес, и режим, и различить их по типу нельзя.
+func namesAMaterialPath(knob string) bool {
+	for _, suffix := range materialPathSuffixes() {
+		if strings.HasSuffix(knob, "_"+suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// materialPathSuffixes — окончания имён ручек, называющих путь к материалу,
+// выведенные из полей настройки. Порядок детерминирован ради текста находок.
+func materialPathSuffixes() []string {
+	seen := map[string]bool{}
+	collectMaterialPathSuffixes(reflect.TypeOf(config.MTLSConfig{}), envconfigSpelling, seen)
+	collectMaterialPathSuffixes(reflect.TypeOf(config.Config{}), mapstructureSpelling, seen)
+	out := make([]string, 0, len(seen))
+	for s := range seen {
+		out = append(out, s)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// envconfigSpelling / mapstructureSpelling — как каждый механизм пишет имя поля
+// в окружении. Возвращают пустую строку, когда поле путём не является.
+func envconfigSpelling(f reflect.StructField) string {
+	if !isMaterialPathField(f) {
+		return ""
+	}
+	return strings.ToUpper(f.Name)
+}
+
+func mapstructureSpelling(f reflect.StructField) string {
+	if !isMaterialPathField(f) {
+		return ""
+	}
+	tag := strings.Split(f.Tag.Get("mapstructure"), ",")[0]
+	if strings.TrimSpace(tag) == "" {
+		return ""
+	}
+	return strings.ToUpper(strings.ReplaceAll(tag, "-", "_"))
+}
+
+// isMaterialPathField — поле, чьё ИМЯ оканчивается на File/Files. Тип не
+// различает путь от адреса и от режима, поэтому судится имя.
+func isMaterialPathField(f reflect.StructField) bool {
+	return strings.HasSuffix(f.Name, "File") || strings.HasSuffix(f.Name, "Files")
+}
+
+// collectMaterialPathSuffixes обходит настройку вглубь. Циклов у неё нет by
+// construction (дерево значений), но глубина ограничена типом, а не значением,
+// поэтому обход конечен.
+func collectMaterialPathSuffixes(t reflect.Type, spell func(reflect.StructField) string, seen map[string]bool) {
+	for t != nil && t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t == nil || t.Kind() != reflect.Struct {
+		return
+	}
+	for i := range t.NumField() {
+		f := t.Field(i)
+		if !f.IsExported() {
+			continue
+		}
+		if s := spell(f); s != "" {
+			seen[s] = true
+		}
+		ft := f.Type
+		for ft.Kind() == reflect.Pointer || ft.Kind() == reflect.Slice || ft.Kind() == reflect.Array {
+			ft = ft.Elem()
+		}
+		if ft.Kind() == reflect.Struct {
+			collectMaterialPathSuffixes(ft, spell, seen)
+		}
+	}
+}
+
 // filesAreMountable — каждый путь к файлу, названный ручкой, лежит под
 // каталогом, который чарт монтирует, И этот каталог обеспечен ОБЪЯВЛЕННЫМ
 // секретом.
@@ -877,23 +1005,10 @@ func filesAreMountable(merged map[string]any, envs map[string]string) error {
 		"client": "clientSecretName",
 	}
 
-	var named []string
-	for k, v := range envs {
-		if !strings.HasSuffix(k, "_CERTFILE") && !strings.HasSuffix(k, "_KEYFILE") &&
-			!strings.HasSuffix(k, "_CLIENTCAFILES") && !strings.HasSuffix(k, "_CA_FILE") &&
-			!strings.HasSuffix(k, "_CAFILES") {
-			continue
-		}
-		for _, p := range strings.Split(v, ",") {
-			if p = strings.TrimSpace(p); p != "" {
-				named = append(named, k+"="+p)
-			}
-		}
-	}
+	named := materialPathsNamed(envs)
 	if len(named) == 0 {
 		return nil
 	}
-	sort.Strings(named)
 
 	var errs error
 	if strings.TrimSpace(mount) == "" {
