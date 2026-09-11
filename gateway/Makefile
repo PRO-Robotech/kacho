@@ -28,7 +28,8 @@ REST_ROUTE_TABLE_BUILD  := build/rest_route_table_gen.go
 
 .PHONY: build test vet lint docker helm-lint permission-catalog permission-catalog-apply \
         rest-route-table rest-route-table-apply \
-        domain-generation-check domain-generation-inject
+        domain-generation-check domain-generation-inject \
+        catalog-splice-check catalog-splice-inject
 
 build:
 	CGO_ENABLED=0 go build -o bin/$(BINARY) $(CMD)
@@ -163,3 +164,24 @@ domain-generation-check:
 # генераторы, зови эту цель РУКАМИ — способность падать в диффе не видна.
 domain-generation-inject:
 	./scripts/inject-domain-generation-defects.sh
+
+# CI GATE склейки (kacho#1110, вторая половина): каталог прав и таблица
+# маршрутов, СОБРАННЫЕ ИЗ ДВУХ ЧАСТЕЙ (платформа `kacho` + служба `kaname`),
+# дают ПОБАЙТОВО то же множество записей, что вшитые артефакты, собранные по
+# всему дереву. `domain-generation-check` выше доказывает, что доля службы
+# порождается в одиночку; эта цель доказывает другое — что доля службы,
+# сложенная с долей платформы, восстанавливает вшитый каталог без пропуска и
+# без лишнего. Пропавшая при склейке запись — тот же `catalog: no entry for
+# method` → AUTHZ_DENIED, но на КОНКРЕТНОМ RPC, независимо от прав.
+#
+# ЗОВЁТ ЕЁ КОНВЕЙЕР — шаг «склейка …» в job `permission-catalog · rest-route-table`
+# (.github/workflows/ci.yaml), рабочим каталогом gateway. Провязка залочена
+# internal/repohygiene/catalogsplicewiring_test.go.
+catalog-splice-check:
+	./scripts/check-catalog-splice.sh
+
+# Доказательство, что гейт склейки СПОСОБЕН упасть — на НАСТОЯЩЕЙ пропаже
+# домена из дерева контрактов, не только на своих внутренних самотестах
+# (S6/S7). Правя гейт или раскладку доменов, зови эту цель РУКАМИ.
+catalog-splice-inject:
+	./scripts/inject-catalog-splice-defects.sh
