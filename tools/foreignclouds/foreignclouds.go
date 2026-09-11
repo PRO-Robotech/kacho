@@ -73,11 +73,16 @@ import (
 // tokens are the provider and provider-product names. Each is matched
 // case-insensitively on identifier boundaries (see findTokens below).
 //
-// The two-letter abbreviation of one provider is deliberately absent. On its
-// own it is far weaker evidence than a full name, and this tree still carries
-// it in hundreds of places that no change here can reach — adding it would bury
-// the findings that are actionable under ones that are not. The narrow comment
-// guard in compute already covers that abbreviation where it matters most.
+// The two-letter abbreviation is tracked separately through debtTokens and
+// debtFiles, the named ledger of paths that carry it. ScanDebt produces the
+// occurrence and file counts; auditDebtFiles checks for undeclared mentions
+// and entries that no longer have a subject. The number of ledger paths is
+// distinct from the number of occurrences found by the scan.
+//
+// The comment guard in services/compute/internal/commentlint also checks that
+// abbreviation, within Go comments in that service's internal and cmd trees.
+// Its scan does not cover SQL migrations or Newman cases and collections;
+// the repository-wide debt ledger remains separate from that narrower check.
 var tokens = []string{
 	"yandex",
 	"ycloud",

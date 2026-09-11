@@ -353,6 +353,88 @@ jobs:
         if: '!cancelled()'
         run: python3 deploy/scripts/assert-scan-stubs-hide-nothing.py
 
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7
+        if: '!cancelled()'
+        with:
+          go-version-file: go.mod
+
+      # S1/Snapshot исполняются в собственных копиях дерева. Настоящий скан
+      # готовит отдельный bundle; JSON-события доказывают непустой полный запуск.
+      - name: RG1.1 — сохранность конфигурации после сканирующей пробы
+        id: rg11-scan-preservation
+        if: '!cancelled()'
+        env:
+          GOFLAGS: '-tags=rg11trivy'
+        run: |
+          set -euo pipefail
+          if [ "${GOFLAGS:-}" != '-tags=rg11trivy' ] || [ "$(go env GOFLAGS)" != '-tags=rg11trivy' ]; then
+            echo '::error::RG1.1: обязательный тег rg11trivy не выбран'
+            exit 2
+          fi
+          scan_work="$(mktemp -d "${RUNNER_TEMP:?}/rg11-scan.XXXXXX")"
+          export TRIVY_CACHE_DIR="$scan_work/trivy-cache"
+          export TMPDIR="$scan_work/tmp"
+          mkdir -p "$TRIVY_CACHE_DIR" "$TMPDIR"
+          go version
+          trivy --version
+          prep_rc=0
+          python3 deploy/scripts/assert-scan-stubs-hide-nothing.py >"$scan_work/preparation.log" 2>&1 || prep_rc=$?
+          cat "$scan_work/preparation.log"
+          if [ "$prep_rc" != 0 ] || [ ! -f "$TRIVY_CACHE_DIR/policy/metadata.json" ]; then
+            echo "::error::RG1.1: подготовка настоящего скана не выполнена (код $prep_rc)"
+            exit 2
+          fi
+          cat "$TRIVY_CACHE_DIR/policy/metadata.json"
+          go_rc=0
+          go test -json ./services/storage/tools -run '^(TestRG11_0[1-4]|TestRG11Snapshot|TestRG11ScanExecution)' -count=1 -timeout=30m >"$scan_work/events.jsonl" 2>"$scan_work/go.stderr" || go_rc=$?
+          printf '%s\n' "$go_rc" >"$scan_work/go.exit"
+          cat "$scan_work/events.jsonl" "$scan_work/go.stderr"
+          events_rc=0
+          python3 - "$scan_work/events.jsonl" <<'RG11_SCAN_EVENTS' || events_rc=$?
+          import json
+          import sys
+
+          required = {
+              "TestRG11_01/real_clean", "TestRG11_02/missing_clean",
+              "TestRG11_03/dirty_present_repeat", "TestRG11_03/dirty_absent_repeat",
+              "TestRG11_04/failure_after_mutation",
+              "TestRG11SnapshotPrepare/create_failure", "TestRG11SnapshotPrepare/copy_failure",
+              "TestRG11SnapshotPrepare/partial_snapshot", "TestRG11SnapshotPrepare/snapshot_success",
+              "TestRG11SnapshotRestore/copy_failure", "TestRG11SnapshotRestore/restore_success",
+          }
+          observed = {name: [] for name in required}
+          try:
+              with open(sys.argv[1], encoding="utf-8") as stream:
+                  for line in stream:
+                      event = json.loads(line)
+                      if not isinstance(event, dict):
+                          raise ValueError("JSON event is not an object")
+                      if event.get("Package") != "github.com/PRO-Robotech/kacho/services/storage/tools":
+                          continue
+                      action, name = event.get("Action"), event.get("Test")
+                      if action in ("skip", "fail"):
+                          raise ValueError(f"{action}: {name or 'package'}")
+                      if action == "output":
+                          if "no tests to run" in event.get("Output", ""):
+                              raise ValueError("Go reported no tests to run")
+                          continue
+                      if name in required:
+                          observed[name].append(action)
+          except (OSError, ValueError, TypeError) as error:
+              print(f"::error::RG1.1: поток событий непригоден: {error}")
+              sys.exit(2)
+          incomplete = {name: actions for name, actions in observed.items() if actions != ["run", "pass"]}
+          print(f"RG1.1: обязательных вариантов {len(required)}, run/pass подтверждены {len(required) - len(incomplete)}")
+          if incomplete:
+              print(f"::error::RG1.1: нет полного успешного исполнения: {incomplete}")
+              sys.exit(2)
+          RG11_SCAN_EVENTS
+          if [ "$go_rc" != 0 ]; then
+            echo "::error::RG1.1: go test завершился кодом $go_rc; свидетельства: $scan_work"
+            exit "$go_rc"
+          fi
+          exit "$events_rc"
+
       # ДОКАЗАТЕЛЬСТВО ПАДУЧЕСТИ ЖИВЁТ ЗДЕСЬ, А НЕ В `make injection-proofs`, и это
       # решение: обходчику доказательств в ci.yaml недоступен trivy, поэтому там оно
       # отвечало бы «условие не создано» КАЖДЫЙ раз — то есть существовало бы как

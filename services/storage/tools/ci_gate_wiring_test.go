@@ -6,11 +6,11 @@ package tools_regression
 // A gate is only a gate if the command that runs it exists and is actually run.
 // Both halves failed here at once, in opposite directions:
 //
-//   - the command as written down was unrunnable. Verification checklists say
-//     `make audit-list-filter`, but this repository has NO Makefile at its root —
-//     the target lives in services/<svc>/Makefile. Typed from the root, as written,
-//     it answers "No rule to make target" and exits non-zero, so a reader following
-//     the checklist could not run the gate at all;
+//   - the command as written down was unrunnable. Verification checklists named
+//     `make audit-list-filter` without its service directory. The storage target
+//     is declared in services/storage/Makefile and is invoked from the repository
+//     root with `make -C services/storage audit-list-filter`. The working directory
+//     is part of the command: a target in another Makefile cannot serve it;
 //   - the comment about the command was stale in the other direction. This
 //     service's Makefile and this package's own doc comment both stated that no CI
 //     workflow invokes the target — which stopped being true when
@@ -23,9 +23,11 @@ package tools_regression
 // the commands CI issues.
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 
@@ -56,6 +58,7 @@ type makeInvocation struct {
 	workflow string
 	dir      string // relative to repo root; "." means repo root
 	target   string
+	wrapped  bool
 }
 
 // workflowFile is the slice of GitHub Actions schema this check needs.
@@ -195,6 +198,252 @@ func expandLoopVars(t *testing.T, run, dir, where string) []string {
 	return nil
 }
 
+// shellWord keeps the unquoted value and its original span. Only wrapper options
+// need unquoting; the make arguments still go through parseMakeArgs unchanged.
+type shellWord struct {
+	value      string
+	start, end int
+}
+
+type shellCommand struct {
+	start, end int
+	words      []shellWord
+	err        error
+}
+
+// readShellCommand reads one simple command without evaluating shell syntax.
+// Quoted/escaped separators belong to their word; unquoted separators end the
+// command. Redirections end argv but remain in the span masked from makeRe.
+// Errors matter only when the caller recognizes the canonical wrapper.
+func readShellCommand(script string, start int) shellCommand {
+	cmd := shellCommand{start: start, end: len(script)}
+	var word strings.Builder
+	wordStart := -1
+	var quote byte
+	redirect := false
+	flush := func(end int) {
+		if wordStart >= 0 {
+			cmd.words = append(cmd.words, shellWord{word.String(), wordStart, end})
+			word.Reset()
+			wordStart = -1
+		}
+	}
+	for i := start; i < len(script); i++ {
+		c := script[i]
+		if c == '\\' && quote != '\'' {
+			if i+1 == len(script) {
+				cmd.err = fmt.Errorf("unfinished shell escape")
+				break
+			}
+			if !redirect {
+				if wordStart < 0 {
+					wordStart = i
+				}
+				// Inside double quotes bash only removes these backslashes.
+				if quote == '"' && !strings.ContainsRune("$`\"\\\n", rune(script[i+1])) {
+					word.WriteByte(c)
+				}
+				word.WriteByte(script[i+1])
+			}
+			i++
+			continue
+		}
+		if quote != 0 {
+			if c == quote {
+				quote = 0
+			} else if !redirect {
+				word.WriteByte(c)
+			}
+			continue
+		}
+		if c == '\'' || c == '"' {
+			quote = c
+			if !redirect && wordStart < 0 {
+				wordStart = i
+			}
+			continue
+		}
+		if strings.ContainsRune("\n;&|()", rune(c)) {
+			flush(i)
+			cmd.end = i + 1
+			return cmd
+		}
+		if c == '#' && wordStart < 0 {
+			if end := strings.IndexByte(script[i:], '\n'); end >= 0 {
+				cmd.end = i + end + 1
+			}
+			return cmd
+		}
+		if c == '<' || c == '>' {
+			if !isFileDescriptor(word.String()) {
+				flush(i)
+			}
+			word.Reset()
+			wordStart = -1
+			redirect = true
+			continue
+		}
+		if c == ' ' || c == '\t' || c == '\r' {
+			flush(i)
+			continue
+		}
+		if !redirect {
+			if wordStart < 0 {
+				wordStart = i
+			}
+			word.WriteByte(c)
+		}
+	}
+	flush(len(script))
+	if quote != 0 {
+		cmd.err = fmt.Errorf("unterminated shell quote")
+	}
+	return cmd
+}
+
+// ciDirectory follows a relative cd and preserves an absolute operand.
+func ciDirectory(base, dir string) string {
+	if filepath.IsAbs(dir) {
+		return filepath.Clean(dir)
+	}
+	return filepath.Join(base, dir)
+}
+
+func dynamicCIDirectory(dir string) bool {
+	return strings.ContainsAny(dir, "$`") || strings.Contains(dir, "GH_EXPR")
+}
+
+// shellExecutableWord locates the command after shell control words and the
+// script-file operand of bash. It only locates these forms so standUpMake can
+// refuse unsupported prefixes; it does not interpret their execution semantics.
+// Arguments to echo/printf/another script are never scanned for wrapper paths.
+func shellExecutableWord(script string, words []shellWord) int {
+	i := 0
+	for i < len(words) && script[words[i].start:words[i].end] == words[i].value {
+		switch words[i].value {
+		case "if", "elif", "while", "until", "then", "else", "do", "!":
+			i++
+			continue
+		}
+		break
+	}
+	if i < len(words) && words[i].value == "bash" {
+		i++
+		for i < len(words) {
+			option := words[i].value
+			if option == "--" {
+				i++
+				break
+			}
+			if !strings.HasPrefix(option, "-") && !strings.HasPrefix(option, "+") {
+				break
+			}
+			switch option {
+			case "-", "--help", "--version":
+				return -1 // stdin or informational mode has no script-file operand
+			case "-o", "+o", "-O", "+O", "--rcfile", "--init-file":
+				i += 2 // the next word is an option value, not the script
+			default:
+				if !strings.HasPrefix(option, "--") && strings.ContainsAny(option[1:], "cs") {
+					return -1 // -c/-s leaves subsequent words as positional arguments
+				}
+				i++
+			}
+		}
+	}
+	if i >= len(words) {
+		return -1
+	}
+	return i
+}
+
+// standUpMake reads only the canonical stand-up interface. The bool says whether
+// this command's span is owned by the wrapper, even when its arguments are invalid.
+func standUpMake(root, base, script string, cmd shellCommand) (inv []makeInvocation, recognized bool, err error) {
+	commandWord := shellExecutableWord(script, cmd.words)
+	if commandWord < 0 {
+		return nil, false, nil
+	}
+	words := cmd.words[commandWord:]
+	const canonical = ".github/scripts/stand-up.sh"
+	path := words[0].value
+	if dynamicCIDirectory(base) {
+		// A dynamic cwd cannot establish the identity of a relative canonical
+		// path. Announce that limitation instead of substituting the root.
+		if filepath.Clean(path) == canonical || strings.HasSuffix(filepath.Clean(path), "/"+canonical) {
+			return nil, true, fmt.Errorf("cannot resolve dynamic working-directory %q", base)
+		}
+		return nil, false, nil
+	}
+	if ciDirectory(ciDirectory(root, base), path) != filepath.Join(root, canonical) {
+		return nil, false, nil
+	}
+	if commandWord != 0 && !(commandWord == 1 && cmd.words[0].value == "bash") {
+		return nil, true, fmt.Errorf("unsupported shell prefix before canonical stand-up command")
+	}
+	if cmd.err != nil {
+		return nil, true, cmd.err
+	}
+	words = words[1:]
+	if len(words) == 1 && words[0].value == "--self-test" {
+		return nil, true, nil
+	}
+	label, dir := "", base
+	for len(words) > 0 && words[0].value != "--" {
+		key := words[0].value
+		if key != "--label" && key != "--dir" {
+			return nil, true, fmt.Errorf("unsupported stand-up option %q", key)
+		}
+		if len(words) < 2 || words[1].value == "" || strings.HasPrefix(words[1].value, "--") {
+			return nil, true, fmt.Errorf("stand-up %s requires a value", key)
+		}
+		if key == "--label" {
+			label = words[1].value
+		} else {
+			if dynamicCIDirectory(words[1].value) || strings.ContainsAny(words[1].value, " \t\n") {
+				return nil, true, fmt.Errorf("cannot resolve stand-up --dir %q", words[1].value)
+			}
+			dir = ciDirectory(base, words[1].value)
+		}
+		words = words[2:]
+	}
+	if label == "" || len(words) < 2 || words[1].value != "make" {
+		return nil, true, fmt.Errorf("stand-up requires --label and -- followed by make")
+	}
+	words = words[1:]
+	changes := 0
+	for i := 1; i < len(words); i++ {
+		if words[i].value == "-C" || strings.HasPrefix(words[i].value, "-C") {
+			changes++
+			value := strings.TrimPrefix(words[i].value, "-C")
+			if value == "" {
+				if i+1 == len(words) || strings.HasPrefix(words[i+1].value, "-") {
+					return nil, true, fmt.Errorf("stand-up child make -C requires a directory")
+				}
+				i++
+				value = words[i].value
+			}
+			if value == "" || dynamicCIDirectory(value) || strings.ContainsAny(value, " \t\n") {
+				return nil, true, fmt.Errorf("cannot resolve stand-up child make -C %q", value)
+			}
+		}
+	}
+	if changes > 1 {
+		return nil, true, fmt.Errorf("unsupported repeated -C in stand-up child make")
+	}
+	childDir, targets := parseMakeArgs(script[words[0].end:words[len(words)-1].end])
+	if childDir != "" {
+		dir = ciDirectory(dir, childDir)
+	}
+	if len(targets) == 0 {
+		return nil, true, fmt.Errorf("stand-up child make has no explicit target to resolve")
+	}
+	for _, target := range targets {
+		inv = append(inv, makeInvocation{dir: dir, target: target, wrapped: true})
+	}
+	return inv, true, nil
+}
+
 // collectMakeInvocations reads every workflow and returns each make command it
 // issues, resolved to the directory whose Makefile would serve it.
 func collectMakeInvocations(t *testing.T, root string) []makeInvocation {
@@ -221,7 +470,13 @@ func collectMakeInvocations(t *testing.T, root string) []makeInvocation {
 			t.Fatalf("parse %s: %v", e.Name(), err)
 		}
 
-		for jobName, job := range wf.Jobs {
+		jobNames := make([]string, 0, len(wf.Jobs))
+		for name := range wf.Jobs {
+			jobNames = append(jobNames, name)
+		}
+		sort.Strings(jobNames)
+		for _, jobName := range jobNames {
+			job := wf.Jobs[jobName]
 			for i, step := range job.Steps {
 				if step.Run == "" {
 					continue
@@ -240,7 +495,31 @@ func collectMakeInvocations(t *testing.T, root string) []makeInvocation {
 					base = "."
 				}
 
-				for _, m := range makeRe.FindAllStringSubmatch(script, -1) {
+				ordinary := []byte(script)
+				for start := 0; start < len(script); {
+					cmd := readShellCommand(script, start)
+					start = cmd.end
+					wrapped, recognized, err := standUpMake(root, base, script, cmd)
+					if !recognized {
+						continue
+					}
+					// Even an invalid recognized wrapper owns its span: its label
+					// and child must never be mistaken for ordinary make commands.
+					for pos := cmd.start; pos < cmd.end; pos++ {
+						if ordinary[pos] != '\n' {
+							ordinary[pos] = ' '
+						}
+					}
+					if err != nil {
+						t.Errorf("%s: stand-up make command cannot be read: %v", where, err)
+						continue
+					}
+					for _, inv := range wrapped {
+						inv.workflow = where
+						out = append(out, inv)
+					}
+				}
+				for _, m := range makeRe.FindAllStringSubmatch(string(ordinary), -1) {
 					dir, targets := parseMakeArgs(m[1])
 					if len(targets) == 0 {
 						continue // bare `make` with only flags — nothing to resolve
@@ -328,7 +607,7 @@ func itoa(i int) string {
 // makeTargets returns the target names declared by the Makefile in dir. ok is
 // false when there is no Makefile there at all.
 func makeTargets(root, dir string) (targets map[string]bool, ok bool) {
-	path := filepath.Join(root, dir, "Makefile")
+	path := filepath.Join(ciDirectory(root, dir), "Makefile")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, false
@@ -354,7 +633,13 @@ func TestEveryCIMakeCommandResolves(t *testing.T) {
 		t.Fatal("no `make` commands found in any workflow — the parser found nothing, " +
 			"so this test asserted nothing")
 	}
-	t.Logf("checked %d make command(s) issued by CI", len(invocations))
+	wrapped := 0
+	for _, inv := range invocations {
+		if inv.wrapped {
+			wrapped++
+		}
+	}
+	t.Logf("checked %d make command(s) issued by CI; under stand-up: %d", len(invocations), wrapped)
 
 	for _, inv := range invocations {
 		targets, ok := makeTargets(root, inv.dir)
