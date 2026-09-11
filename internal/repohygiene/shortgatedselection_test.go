@@ -647,6 +647,14 @@ func shortGatedPackages(t *testing.T, root string) (pkgs []string, scanned int) 
 				seen[dir] = true
 				return
 			}
+			// Хелпер общего фундамента: синтетический дом "corelib/<pkg>"
+			// (corelibPackageGoFiles) переводится обратно в путь импорта
+			// модуля, которым его на самом деле называет вызывающий.
+			if rel, ok := strings.CutPrefix(h, shortGateCorelibSyntheticHomePrefix); ok &&
+				strings.Contains(body, `"github.com/PRO-Robotech/corelib/`+rel+`"`) {
+				seen[dir] = true
+				return
+			}
 		}
 	})
 
@@ -678,6 +686,29 @@ func packagesWithLiteralShort(t *testing.T, root string) []string {
 
 // shortGateHelpers — пакеты НЕ-тестового кода, содержащие `testing.Short()`.
 // Вычисляются обходом, не захардкожены: новый хелпер подхватывается сам.
+// shortGateCorelibHelperPkgs — пакеты общего фундамента
+// (github.com/PRO-Robotech/corelib), несущие testing.Short() в не-тестовом
+// коде. Раньше такие хелперы жили в дереве (pkg/pgtest и соседи) и находились
+// обходом; переехав в модуль, они больше не видны walkGoFiles by construction
+// — обход идёт по индексу git, а не по кэшу модулей. Перечень здесь — три
+// пакета, замеренные по факту (grep testing.Short() по корелибу), а не
+// выведенные: другого способа узнать, какие подпакеты стали хелперами,
+// не завязываясь на кэш модулей целиком, не существует.
+var shortGateCorelibHelperPkgs = []string{"dropguard/dropguardtest", "listcursorplan", "pgtest"}
+
+// shortGateCorelibSyntheticHomePrefix — приставка синтетического пути, которым
+// [corelibPackageGoFiles] метит содержимое общего фундамента ("corelib/<pkg>").
+//
+// НЕ приставка корня контрактов ([contractroot.Roots] несёт слово "corelib" по
+// СВОЕЙ причине — нейтральный дом словаря аннотаций доступа, kacho#2089): это
+// омоним, а не то же самое имя. Оформлена константой, а не литералом внутри
+// вызова, по требованию TestPopulationIsSelectedByTheDeclaredRootsNotALiteral:
+// отбор популяции ПО КОРНЮ КОНТРАКТОВ обязан идти через объявленный словарь, а
+// не литерал — тот гейт судит именно ФОРМУ записи (литерал во втором аргументе
+// strings.CutPrefix), не различая по смыслу два омонима. Тот же приём уже несут
+// settledWatermarkFoundationPrefix и subscriptionServerFoundationPrefix.
+const shortGateCorelibSyntheticHomePrefix = "corelib/"
+
 func shortGateHelpers(t *testing.T, root string) []string {
 	t.Helper()
 	seen := map[string]bool{}
@@ -689,6 +720,16 @@ func shortGateHelpers(t *testing.T, root string) []string {
 			seen[filepath.ToSlash(filepath.Dir(rel))] = true
 		}
 	})
+	// Хелперы, переехавшие в общий фундамент: та же проверка, по содержимому,
+	// прочитанному из кэша модулей (corelibPackageGoFiles, см.
+	// corelibsource_test.go), а не с диска дерева.
+	for _, pkg := range shortGateCorelibHelperPkgs {
+		for rel, body := range corelibPackageGoFiles(t, root, pkg) {
+			if strings.Contains(executablePart(rel, body), "testing.Short()") {
+				seen[filepath.ToSlash(filepath.Dir(rel))] = true
+			}
+		}
+	}
 	out := make([]string, 0, len(seen))
 	for d := range seen {
 		out = append(out, d)
