@@ -229,7 +229,6 @@ vpc:
     trustedForwarder: true
   mtls:
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
       geo: true
   authz:
     # Круг отправителей чужой личности — см. values.prod.yaml (там же обоснование
@@ -252,7 +251,6 @@ compute:
     trustedForwarderSANs: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
   mtls:
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
       geo: true
       # compute→storage edge (InternalVolumeService attach/detach + Volume mirror, :9091)
       # is now FIRST-CLASS in the compute chart: storageInternalAddr (default
@@ -443,7 +441,6 @@ kacho-nlb:
   # end-user principal → impersonation). Only the api-gateway SA legitimately forwards.
   mtls:
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
       geo: true
   config:
     authz:
@@ -702,7 +699,6 @@ registry:
   mtls:
     enable: true
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
       iamAuthz: true
       iamProject: true
       # registry→geo RegionService.Get (public :9090, REG-1 F4). geo runs hardened
@@ -786,7 +782,6 @@ storage:
   mtls:
     enable: true
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
       geo: true
       iam: true
 

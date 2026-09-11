@@ -72,6 +72,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
 
+	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/migrations"
 )
@@ -268,14 +269,6 @@ func runServe(cfg config.Config) error {
 	// ДО cross-service dial'ов.
 	if err := cfg.ValidatePeerTransport(mtlsCfg); err != nil {
 		return fmt.Errorf("config validate (peer transport): %w", err)
-	}
-
-	// Объявление домена величин: ровно два законных значения, и незаданное среди
-	// них не значится. Проверка стоит ЗДЕСЬ, до дозвонов, чтобы оператор получил
-	// названную ручку раньше, чем отказ соединения; сама проводка читает то же
-	// объявление тем же методом, поэтому «страж доволен» ⟺ «дилится объявленное».
-	if err := cfg.ValidateQuotaAuthority(mtlsCfg); err != nil {
-		return fmt.Errorf("config validate (quota authority): %w", err)
 	}
 
 	pool, err := coredb.NewPool(ctx, cfg.DSN())
@@ -511,33 +504,25 @@ func runServe(cfg config.Config) error {
 
 	// Учёт числа ресурсов арендатора. Приёмка
 	// `docs/specs/sub-phase-quota-v2-materialised-usage-acceptance.md`
-	// (APPROVED, раунд 2), DoD S2 п.3 и п.5; объявление источника величин —
-	// `docs/specs/sub-phase-KAN-QUOTA-1-limit-authority-leaves-iam-acceptance.md`,
-	// стадия S1.
+	// (APPROVED, раунд 2), DoD S2 п.3 и п.5.
 	//
-	// Величины живут у домена величин и разрешаются ТАМ: старшинство PROJECT >
-	// ACCOUNT > DEFAULT требует знать аккаунт проекта, а владелец типа его не
-	// знает (у него только зеркало, заводимое из того же обращения).
-	//
-	// Адрес домена величин ОБЪЯВЛЕН ручкой `quota.authority`, а не выведен из
-	// адреса авторизации. Прежде он выводился, и довод был верен ровно до тех
-	// пор, пока авторитет величин и авторитет авторизации — одна служба; уход
-	// модуля квотирования из службы доступа это условие снимает, а выведенный
-	// адрес указывал бы после него на слушатель, где службы величин нет вовсе.
-	//
-	// Ветки «полоса не собирается, потому что соседа не задали» здесь БОЛЬШЕ НЕТ:
-	// незаданное объявление отвергает страж старта, а объявленное отсутствие —
-	// законная посадка, в которой тянущий не заводится и состояние курсора
-	// называет причину.
-	quotaEdge, stopQuotaEdge, qerr := buildQuotaAuthorityEdge(
-		ctx, cfg, mtlsCfg, pool, "kacho_vpc", logger)
+	// Домен величин у этого потребителя отсутствует НАВСЕГДА — это факт кода,
+	// а не посадки: авторитета величин больше нет, а не «выключен
+	// настройкой». Курсор синхронизации всё же заводится безусловно
+	// (решение принимает StartLimitSync, читая объявление, — дерево держит
+	// гейтом требование, что каждый потребитель, несущий таблицу курсора
+	// дельты, поднимает тянущего): строка курсора называет причину
+	// отсутствия, отличая её от «тянущий не поднялся».
+	stopQuotaSync, qerr := corequota.StartLimitSync(
+		ctx, pool, corequota.Authority{}, nil, "kacho_vpc", corequota.Config{}, logger)
 	if qerr != nil {
 		return qerr
 	}
-	defer stopQuotaEdge()
-	quotaLimits := quotaEdge.Limits
+	defer stopQuotaSync()
+	var quotaLimits quota.LimitResolver
+	quotaPosture := corequota.ReadPosture(corequota.Authority{}, "vpc")
 
-	svcs := buildServices(pool, slavePool, projectClient, geoClient, geoRegionClient, listFilter, opsRepo, syncRegistrar, quotaLimits, projectClient, quotaEdge.ReadPosture, cfg, logger)
+	svcs := buildServices(pool, slavePool, projectClient, geoClient, geoRegionClient, listFilter, opsRepo, syncRegistrar, quotaLimits, projectClient, quotaPosture, cfg, logger)
 
 	// Сервер потока изменений — ОБЩИЙ (`pkg/subscription`), а не свой. Форма
 	// подписки объявлена однажды на всю платформу, и владелец журнала приносит

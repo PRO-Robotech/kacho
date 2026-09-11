@@ -19,9 +19,9 @@ import (
 
 // writeConfigFile — фикстура БЕЗ добавок: посадка задаётся телом дословно.
 //
-// Помощник соседнего файла дописывает объявление домена величин к любой
-// фикстуре, у которой его нет, — и это верно для проб СЛУЖБЫ. Здесь предмет
-// ровно обратный: конфигурация, которой посадки службы недостаёт.
+// Предмет этого файла — конфигурация, которой посадки службы недостаёт;
+// пробы СЛУЖБЫ строят валидную посадку своим собственным помощником
+// (minimalValidConfig), а не этим.
 func writeConfigFile(t *testing.T, body string) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "config.yaml")
@@ -32,7 +32,7 @@ func writeConfigFile(t *testing.T, body string) string {
 }
 
 // postureLessDevYAML — всё, чем пользуется накат, и НИЧЕГО из посадки службы:
-// ни объявления домена величин, ни круга отправителей чужой личности.
+// круг отправителей чужой личности не сужен.
 const postureLessDevYAML = "mode: dev\n" +
 	"repository:\n  postgres:\n    url: postgres://u:p@h:5432/kacho_nlb?sslmode=disable\n"
 
@@ -41,7 +41,13 @@ const postureLessDevYAML = "mode: dev\n" +
 //
 // Пара отличается ОДНИМ фактом — вызванной дверью, — поэтому расхождение
 // исходов означает ровно то, что объявлено, и ничего сверх.
+//
+// Опт-ин пакета (`TestMain`) снят ЛОКАЛЬНО: без этого страж круга отправителей
+// молчит на КАЖДОЙ пробе пакета, и различающим фактом здесь становится он, а
+// не посадка службы — то есть проба перестала бы называть предмет, который
+// объявляет.
 func TestMigrateDSN_ReadsTheAddressWithoutTheServiceBootGuard(t *testing.T) {
+	t.Setenv("KACHO_NLB_AUTHZ__TRUST_ANY_FORWARDER", "false")
 	path := writeConfigFile(t, postureLessDevYAML)
 
 	dsn, err := MigrateDSN(path)
@@ -56,7 +62,7 @@ func TestMigrateDSN_ReadsTheAddressWithoutTheServiceBootGuard(t *testing.T) {
 	if _, lerr := Load(path); lerr == nil {
 		t.Fatal("дверь СЛУЖБЫ приняла ту же конфигурацию — страж посадки ослаблен, " +
 			"и первая половина пробы больше ничего не различает")
-	} else if !strings.Contains(lerr.Error(), "quota.authority") {
+	} else if !strings.Contains(lerr.Error(), "trusted-forwarder-sans") {
 		t.Fatalf("отказ двери службы не называет ручку:\n%v", lerr)
 	}
 }

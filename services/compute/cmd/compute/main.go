@@ -79,6 +79,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
 
+	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/migrations"
 )
@@ -268,31 +269,25 @@ func runServe(cfg config.Config) error {
 		)
 	}
 
-	// Ребро compute→домен величин: ОДНО ребро, ДВЕ полосы — разрешение величины
-	// на пути запроса и фоновая дельта, которой снимок догоняет авторитет.
-	//
-	// Адрес ОБЪЯВЛЕН ручкой, а не выведен из адреса авторизации. Прежде он
-	// выводился, и довод был верен ровно до тех пор, пока авторитет величин и
-	// авторитет авторизации — одна служба; уход модуля квотирования из службы
-	// доступа это условие снимает.
-	//
-	// Ветки «полоса не собирается, потому что соседа не задали» здесь БОЛЬШЕ НЕТ:
-	// незаданное объявление отвергает страж старта, а объявленное отсутствие —
-	// законная посадка, в которой тянущий не заводится и состояние курсора
-	// называет причину. Приёмка ухода модуля квотирования из службы доступа,
-	// стадия S1 (имя документа приёмки здесь не цитируется: страж комментариев
-	// этой службы отвергает процессный лексикон, а он входит в имя файла).
-	quotaEdge, stopQuotaEdge, qerr := buildQuotaAuthorityEdge(
-		ctx, cfg, pool, repo.QuotaSchema, logger)
+	// Домен величин у этого потребителя отсутствует НАВСЕГДА — это факт кода,
+	// а не посадки: авторитета величин больше нет, а не «выключен
+	// настройкой». Курсор синхронизации всё же заводится безусловно
+	// (решение принимает StartLimitSync, читая объявление, — дерево держит
+	// гейтом требование, что каждый потребитель, несущий таблицу курсора
+	// дельты, поднимает тянущего): строка курсора называет причину
+	// отсутствия, отличая её от «тянущий не поднялся».
+	stopQuotaSync, qerr := corequota.StartLimitSync(
+		ctx, pool, corequota.Authority{}, nil, repo.QuotaSchema, corequota.Config{}, logger)
 	if qerr != nil {
 		return qerr
 	}
-	defer stopQuotaEdge()
-	quotaLimits := quotaEdge.Limits
+	defer stopQuotaSync()
+	var quotaLimits quota.LimitResolver
+	quotaPosture := corequota.ReadPosture(corequota.Authority{}, "compute")
 
 	// Сборка use-case'ов идёт ПОСЛЕ объявления резолва величин: полоса учёта —
 	// их зависимость, а её источник — соединение внутреннего контура выше.
-	svcs := buildServices(pool, projectClient, quotaLimits, quotaEdge.ReadPosture, geoZones, geoRegions, subnetPlacement, nicClient, storageClient, opsRepo)
+	svcs := buildServices(pool, projectClient, quotaLimits, quotaPosture, geoZones, geoRegions, subnetPlacement, nicClient, storageClient, opsRepo)
 
 	// Пообъектный сужатель: он же уезжает ПРОВОДКОЙ в дескриптор, поэтому строится
 	// ДО него и ТЕМ ЖЕ объектом, что сужает строки в обработчиках. Собери его
@@ -886,14 +881,6 @@ func insecureEdgesInProductionStrict(cfg config.Config) error {
 	}
 	if cfg.FGARegisterDrainerEnabled && !cfg.IAMRegisterMTLS.Enable {
 		insecure = append(insecure, "IAM_REGISTER_MTLS_ENABLE")
-	}
-	// Ребро compute→домен величин. Провод живой ровно тогда, когда объявление
-	// разрешилось адресом, — тем же методом, каким его читает проводка, поэтому
-	// «страж увидел ребро» ⟺ «ребро дилится» by construction, а не по совпадению
-	// двух одинаково написанных условий. Полос у ребра две, и обе идут по этому
-	// проводу, поэтому удостоверение одно.
-	if cfg.QuotaAuthorityEdgeLive() && !cfg.QuotaAuthorityMTLS.Enable {
-		insecure = append(insecure, "QUOTA_AUTHORITY_MTLS_ENABLE")
 	}
 	if len(insecure) == 0 {
 		return nil

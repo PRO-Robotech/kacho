@@ -35,6 +35,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 	outboxmetrics "github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
+	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 	"github.com/PRO-Robotech/kacho/pkg/retention"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
@@ -334,44 +335,41 @@ func runServe(cfg config.Config) error {
 	// берётся из УЖЕ существующего вызова к соседу за проектом (:9090), новым
 	// ребром работа не обзаводится.
 	//
-	// Ребро registry→домен величин: ОДНО ребро, ДВЕ полосы — разрешение величины
-	// на пути запроса и фоновая дельта, которой снимок догоняет авторитет.
-	//
-	// Адрес ОБЪЯВЛЕН ручкой, а не выведен из адреса авторизации. Ветки «полоса не
-	// собирается, потому что соседа не задали» здесь БОЛЬШЕ НЕТ: незаданное
-	// объявление отвергает страж старта, а объявленное отсутствие — законная
-	// посадка, в которой тянущий не заводится, а состояние курсора называет
-	// причину. Приёмка
-	// `docs/specs/sub-phase-KAN-QUOTA-1-limit-authority-leaves-iam-acceptance.md`,
-	// стадия S1.
-	quotaEdge, stopQuotaEdge, qerr := buildQuotaAuthorityEdge(ctx, cfg, pool, iamAdapter, logger)
+	// Домен величин у этого потребителя отсутствует НАВСЕГДА — это факт кода,
+	// а не посадки: авторитета величин больше нет, а не «выключен
+	// настройкой». Курсор синхронизации всё же заводится безусловно (решение
+	// принимает StartLimitSync, читая объявление, — дерево держит гейтом
+	// требование, что каждый потребитель, несущий таблицу курсора дельты,
+	// поднимает тянущего): строка курсора называет причину отсутствия,
+	// отличая её от «тянущий не поднялся».
+	stopQuotaSync, qerr := corequota.StartLimitSync(
+		ctx, pool, corequota.Authority{}, nil, pg.QuotaSchema, corequota.Config{}, logger)
 	if qerr != nil {
 		return qerr
 	}
-	defer stopQuotaEdge()
+	defer stopQuotaSync()
+	// Посадка витрины ВЫВОДИТСЯ из объявления тем же общим переводом, что и у
+	// остальных владельцев (`corequota.ReadPosture`), а не подставлена литералом
+	// напрямую: решить за оператора своим признаком нельзя, даже когда исход
+	// сегодня один.
+	quotaPosture := corequota.ReadPosture(corequota.Authority{}, "registry")
 
+	// Обработчик выставляется на ОБЪЯВЛЕННОМ ОТСУТСТВИИ домена величин.
+	//
+	// Незарегистрированный метод отвечает `Unimplemented` — «такой возможности
+	// в этой сборке нет». На посадке, где домен величин объявлен отсутствующим,
+	// это неправда дважды: метод существует, а отсутствует не он, а потолок.
+	// Арендатор читал витрину как сбой платформы — ровно то состояние, ради
+	// устранения которого витрина и заведена.
+	//
+	// Полосы здесь нет и быть не может (спрашивать величины не у кого),
+	// поэтому обработчик несёт ПОСАДКУ: общее тело отвечает названным отказом
+	// с машинным признаком, а не пустым набором, который контракт запрещает.
 	var quotaHandler *handler.QuotaHandler
-	if quotaEdge.Guard != nil {
-		registryUC.WithQuotaGuard(quotaEdge.Guard)
-		// Чтение квот арендатором — та же полоса, что и ранний отказ: у чтения
-		// и у полосы ровно два источника, и они одни и те же.
-		quotaHandler = handler.NewQuotaHandler(quotaEdge.Guard, quotaEdge.ReadPosture)
-	} else if quotaEdge.ReadPosture.AuthorityIsAbsent() {
-		// Обработчик выставляется и на ОБЪЯВЛЕННОМ ОТСУТСТВИИ домена величин (#2515).
-		//
-		// Прежде он выставлялся только вместе с полосой, и незарегистрированный
-		// метод отвечал `Unimplemented` — «такой возможности в этой сборке нет».
-		// На посадке, где домен величин объявлен отсутствующим, это неправда
-		// дважды: метод существует, а отсутствует не он, а потолок. Арендатор
-		// читал витрину как сбой платформы — ровно то состояние, ради устранения
-		// которого витрина и заведена.
-		//
-		// Полосы здесь нет и быть не может (спрашивать величины не у кого),
-		// поэтому обработчик несёт ПОСАДКУ: общее тело отвечает названным отказом
-		// с машинным признаком, а не пустым набором, который контракт запрещает.
-		quotaHandler = handler.NewQuotaHandler(nil, quotaEdge.ReadPosture)
+	if quotaPosture.AuthorityIsAbsent() {
+		quotaHandler = handler.NewQuotaHandler(nil, quotaPosture)
 	}
-	logger.Info("quota_guard", "wired", quotaEdge.Guard != nil)
+	logger.Info("quota_guard", "wired", false)
 
 	// ── разрешитель осиротевших операций (durable LRO recovery) ───────────────
 	// Дренаж на SIGTERM ниже закрывает только штатное завершение. Всё остальное —

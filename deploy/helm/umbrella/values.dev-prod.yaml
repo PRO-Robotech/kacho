@@ -617,7 +617,6 @@ registry:
   mtls:
     enable: true
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
       tokenRevocation: true
   dataplaneTLSTerminatedExternally: true
 

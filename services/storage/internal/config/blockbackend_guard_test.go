@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 )
 
 // Страж старта обязан ОЦЕНИВАТЬ измерения плоскости данных, а не просто печатать
@@ -22,13 +20,9 @@ import (
 // требует помимо предмета этих проб, здесь уже взведено, поэтому падение указывает
 // ровно на предмет.
 func baseProduction() Config {
-	// Объявление домена величин — часть законной посадки: у ручки ровно два
-	// законных значения, и незаданное среди них не значится. Отправная точка,
-	// его не несущая, отличалась бы от законной ДВУМЯ фактами сразу.
 	return Config{
 		AuthMode:          "production",
 		ListFilterEnabled: true,
-		QuotaAuthority:    corequota.NotDeployed,
 	}
 }
 
@@ -179,8 +173,7 @@ func TestBootGuard_DevModeDoesNotRequireBackendKnobs(t *testing.T) {
 	t.Parallel()
 	// dev-посадка — только локальные фикстуры. Требования боевого режима на неё
 	// не распространяются, и это записанное решение, а не послабление на ходу.
-	c := Config{AuthMode: "dev", BlockBackendKind: "CEPH_RBD",
-		QuotaAuthority: corequota.NotDeployed}
+	c := Config{AuthMode: "dev", BlockBackendKind: "CEPH_RBD"}
 	if err := c.Validate(); err != nil {
 		t.Fatalf("dev-режим не обязан нести боевые требования: %v", err)
 	}
