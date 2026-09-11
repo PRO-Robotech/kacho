@@ -81,10 +81,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// localRunnerRel — локальный прогонщик: его зовёт хук отправки ветки, поэтому
-// он исполняется сам, а не по памяти отправляющего.
-const localRunnerRel = "scripts/ci-local.sh"
-
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧТЕНИЕ КОНВЕЙЕРА — один читатель на всех потребителей
 // ─────────────────────────────────────────────────────────────────────────────
@@ -263,18 +259,6 @@ func executablePartOf(body string) []byte {
 		b.WriteByte('\n')
 	}
 	return []byte(b.String())
-}
-
-// serviceOfDir — сервис, чьему Makefile адресован вызов.
-//
-// Ровно два сегмента: `services/vpc/tests/newman` — не Makefile сервиса, и вызов
-// оттуда адресован не ему.
-func serviceOfDir(dir string) (string, bool) {
-	parts := strings.Split(dir, "/")
-	if len(parts) != 2 || parts[0] != "services" || parts[1] == "" {
-		return "", false
-	}
-	return parts[1], true
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
