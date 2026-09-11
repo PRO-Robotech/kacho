@@ -103,7 +103,7 @@ func TestQueueEventValueHasAProducer(t *testing.T) {
 			continue
 		}
 
-		svcFiles, err := producerCorpus(root, svc)
+		svcFiles, err := producerCorpus(t, root, svc)
 		if err != nil {
 			t.Errorf("состав прод-кода сервиса %s не прочитан (%v) — остановись здесь: "+
 				"«производителей нет» неотличимо от «не смотрели»", svc, err)
@@ -193,7 +193,7 @@ func queueService(wiring outboxInventory, table string) string {
 //
 // Корпус ШИРЕ каталога сервиса на общую библиотеку, и это не послабление, а
 // исправление предпосылки. Значение, которое пишет ОБЩИЙ механизм доставки
-// (`pkg/audit` помечает строку доставленной), производится продуктом ровно так
+// (`audit` помечает строку доставленной), производится продуктом ровно так
 // же, как значение, написанное сервисом; корпус, ограниченный каталогом
 // сервиса, объявлял бы такое значение мёртвым и толкал бы дублировать общий
 // оператор в каждую службу.
@@ -203,7 +203,17 @@ func queueService(wiring outboxInventory, table string) string {
 // появляется только у очереди, которую служба поднимает своей проводкой, — то
 // есть общий механизм у неё провязан by construction. Способность гейта упасть
 // сохраняется: у МЁРТВОГО значения нет литерала нигде в дереве.
-func producerCorpus(root, svc string) ([]string, error) {
+//
+// # Общая библиотека — теперь ДВА места, а не одно
+//
+// `pkg/audit` переехал целиком в общий фундамент (`github.com/PRO-Robotech/
+// corelib`, пакет `audit`): в этом дереве такого каталога больше нет
+// (`ls pkg/audit` — отказ). Предмет от переноса не исчез — производитель
+// значений `pending`/`sent` живёт в `corelib/audit/sink.go` тем же способом,
+// каким жил в `pkg/audit` до переноса. Читать его нужно ТУДА, куда он
+// переехал, а не считать мёртвым только потому, что старый путь опустел.
+func producerCorpus(t *testing.T, root, svc string) ([]string, error) {
+	t.Helper()
 	files, err := goFilesOfService(root, svc)
 	if err != nil {
 		return nil, err
@@ -212,7 +222,48 @@ func producerCorpus(root, svc string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return append(files, shared...), nil
+	corelibShared := corelibPackageGoFilePaths(t, root, "audit")
+	out := make([]string, 0, len(files)+len(shared)+len(corelibShared))
+	out = append(out, files...)
+	out = append(out, shared...)
+	out = append(out, corelibShared...)
+	return out, nil
+}
+
+// corelibPackageGoFilePaths — абсолютные пути НЕ-тестовых *.go файлов ОДНОГО
+// пакета общего фундамента в кэше модулей.
+//
+// Отличие от corelibPackageGoFiles (`corelibsource_test.go`): тот отдаёт
+// СОДЕРЖИМОЕ по синтетическому ключу `corelib/<pkg>/<файл>` — годится там, где
+// вызывающий сам разбирает байты. Здесь предмет — сам ПУТЬ: producerCorpus и
+// его читатели (`stringLiteralsIn`, `producers2coord`) читают файл диском
+// (`parser.ParseFile(fset, p, nil, 0)`), и синтетический путь для них был бы
+// просто несуществующим файлом.
+func corelibPackageGoFilePaths(t *testing.T, root, pkg string) []string {
+	t.Helper()
+	dir, version := corelibModuleDir(t, root)
+	pkgDir := filepath.Join(dir, filepath.FromSlash(pkg))
+	all, err := filepath.Glob(filepath.Join(pkgDir, "*.go"))
+	if err != nil {
+		t.Fatalf("перечень файлов %s общего фундамента (%s@%s): %v", pkg,
+			corelibModulePath, version, err)
+	}
+	out := make([]string, 0, len(all))
+	for _, p := range all {
+		if strings.HasSuffix(p, "_test.go") {
+			continue
+		}
+		out = append(out, p)
+	}
+	if len(out) == 0 {
+		t.Fatalf("в %s общего фундамента (%s@%s) не нашлось ни одного не-тестового "+
+			"файла — модуль не извлечён в кэш модулей (`go mod download`), либо "+
+			"пакет переехал внутри модуля. Гейт беспредметен: отличить «кэш не "+
+			"наполнен» от «объявления не стало» по пустому списку нельзя, поэтому "+
+			"он падает сам.", pkg, corelibModulePath, version)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // serviceOfSchema — «kacho_<сервис>.<таблица>» → «<сервис>».
