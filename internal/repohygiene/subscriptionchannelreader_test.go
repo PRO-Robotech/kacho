@@ -36,8 +36,12 @@ import (
 
 const (
 	// channelReadOwner — каталог единственного законного чтения канала для
-	// подписки.
-	channelReadOwner = "pkg/subscription/"
+	// подписки. Предмет живёт в пакете `subscription` общего фундамента
+	// (`github.com/PRO-Robotech/corelib`): префикс "corelib/" метит
+	// синтетический путь, которым `corelibPackageGoFiles` называет файлы,
+	// прочитанные из кэша модулей, а не путь дерева — такого каталога в
+	// индексе git больше нет.
+	channelReadOwner = "corelib/subscription/"
 	// channelReadServices — дерево владельцев доменов: здесь чтения канала для
 	// подписки быть не должно.
 	channelReadServices = "services/"
@@ -79,18 +83,30 @@ func TestChannelIsReadByTheStreamServerAlone(t *testing.T) {
 		parsed, literals int
 		sites            []ChannelReadSite
 	)
+	scan := func(path string, src []byte) {
+		found, census, serr := ScanChannelReads(path, src)
+		if serr != nil {
+			t.Fatalf("разбор %s: %v", path, serr)
+		}
+		parsed++
+		literals += census.Literals
+		sites = append(sites, found...)
+	}
 	for _, rel := range rels {
 		src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
 		if err != nil {
 			continue
 		}
-		found, census, err := ScanChannelReads(rel, src)
-		if err != nil {
-			t.Fatalf("разбор %s: %v", rel, err)
-		}
-		parsed++
-		literals += census.Literals
-		sites = append(sites, found...)
+		scan(rel, src)
+	}
+
+	// Чтение канала переехало в общий фундамент: сервер потока живёт в пакете
+	// `subscription` `github.com/PRO-Robotech/corelib`, и дерево каталога
+	// channelReadOwner больше не несёт. Читается ТУДА, куда сервер переехал, —
+	// иначе предпосылка (1) ниже молчала бы и при переносе, и при
+	// исчезновении чтения канала, а различить эти два случая было бы нечем.
+	for path, src := range corelibPackageGoFiles(t, root, "subscription") {
+		scan(path, src)
 	}
 
 	var owner, inServices, elsewhere []ChannelReadSite
@@ -157,7 +173,7 @@ func TestChannelIsReadByTheStreamServerAlone(t *testing.T) {
 			"владелец о канале не знает. Своё чтение даёт второе соединение вне пула на "+
 			"каждую подписку и вторую раскладку пробуждений — обе расходятся с общей молча, "+
 			"потому что каждая по отдельности работает.\n"+
-			"Снятие: отдать журнал через pkg/subscription либо, если предмет иной подсистемы, "+
+			"Снятие: отдать журнал через github.com/PRO-Robotech/corelib/subscription либо, если предмет иной подсистемы, "+
 			"внести файл в channelReadExemptions с причиной.",
 			len(findings), strings.Join(findings, "\n  "), channelReadOwner)
 	}

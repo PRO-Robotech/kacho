@@ -43,9 +43,13 @@ const (
 	bodyCapImplementation = "net/http.MaxBytesReader"
 	// bodyCapConsumer — то, чем потолок УПОТРЕБЛЯЕТСЯ. Таких мест сколько
 	// угодно.
-	bodyCapConsumer = "github.com/PRO-Robotech/kacho/pkg/httpbody.Cap"
-	// bodyCapOwner — каталог единственного владельца реализации.
-	bodyCapOwner = "pkg/httpbody/"
+	bodyCapConsumer = "github.com/PRO-Robotech/corelib/httpbody.Cap"
+	// bodyCapOwner — каталог единственного владельца реализации. Предмет живёт
+	// в пакете `httpbody` общего фундамента (`github.com/PRO-Robotech/corelib`):
+	// префикс "corelib/" метит синтетический путь, которым
+	// `corelibPackageGoFiles` называет файлы, прочитанные из кэша модулей, а не
+	// путь дерева — такого каталога в индексе git больше нет.
+	bodyCapOwner = "corelib/httpbody/"
 	// bodyCapCensusFloor — порог переписи: ниже него «ноль находок» означало бы
 	// «ноль прочитанного».
 	bodyCapCensusFloor = 1000
@@ -73,14 +77,10 @@ func TestBodyCapIsDeclaredExactlyOnce(t *testing.T) {
 		parsed, calls, imports, dotImports int
 		impls, consumers                   []BodyCapSite
 	)
-	for _, rel := range rels {
-		src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
-		if err != nil {
-			continue
-		}
-		i, c, census, err := ScanBodyCapCalls(rel, src, bodyCapImplementation, bodyCapConsumer)
-		if err != nil {
-			t.Fatalf("разбор %s: %v", rel, err)
+	scan := func(path string, src []byte) {
+		i, c, census, serr := ScanBodyCapCalls(path, src, bodyCapImplementation, bodyCapConsumer)
+		if serr != nil {
+			t.Fatalf("разбор %s: %v", path, serr)
 		}
 		parsed++
 		calls += census.Calls
@@ -88,6 +88,23 @@ func TestBodyCapIsDeclaredExactlyOnce(t *testing.T) {
 		dotImports += census.DotImports
 		impls = append(impls, i...)
 		consumers = append(consumers, c...)
+	}
+
+	for _, rel := range rels {
+		src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			continue
+		}
+		scan(rel, src)
+	}
+
+	// Реализация переехала в общий фундамент: потолок ставит `net/http.MaxBytesReader`
+	// внутри пакета `httpbody` `github.com/PRO-Robotech/corelib`, и дерево
+	// каталога bodyCapOwner больше не несёт. Читается ТУДА, куда реализация
+	// переехала, — иначе предпосылка (1) ниже молчала бы и при переносе, и при
+	// исчезновении потолка, а различить эти два случая было бы нечем.
+	for path, src := range corelibPackageGoFiles(t, root, "httpbody") {
+		scan(path, src)
 	}
 
 	t.Logf("перепись: не-тестовых файлов Go разобрано %d, объявлений импорта прочитано %d, "+

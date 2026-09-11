@@ -53,8 +53,12 @@ import (
 )
 
 const (
-	// moduleManifestOwner — каталог единственного объявления.
-	moduleManifestOwner = "pkg/modulemanifest/"
+	// moduleManifestOwner — каталог единственного объявления. Предмет живёт в
+	// пакете `modulemanifest` общего фундамента (`github.com/PRO-Robotech/corelib`):
+	// префикс "corelib/" метит синтетический путь, которым
+	// `corelibPackageGoFiles` называет файлы, прочитанные из кэша модулей, а не
+	// путь дерева — такого каталога в индексе git больше нет.
+	moduleManifestOwner = "corelib/modulemanifest/"
 	// moduleManifestCensusFloor — порог переписи: ниже него «ноль находок»
 	// означало бы «ноль прочитанного».
 	moduleManifestCensusFloor = 1000
@@ -65,6 +69,42 @@ const (
 var moduleManifestSpellings = map[string]string{
 	"manifest.yaml":  "имя файла В ДЕРЕВЕ",
 	".manifest.yaml": "окончание ключа В ДОСТАВКЕ",
+}
+
+// scanModuleManifestSpellings разбирает ОДИН файл (дерева либо кэша модулей) и
+// относит каждую найденную форму имени к владельцу либо вовне — судя по
+// префиксу ПЕРЕДАННОГО пути, а не по его происхождению. Общая функция для
+// обоих источников — иначе классификация разошлась бы с собой при первой же
+// правке одного из двух мест, где она применяется.
+func scanModuleManifestSpellings(path string, src []byte) (literals int, owner, findings []string, err error) {
+	fset := token.NewFileSet()
+	file, perr := parser.ParseFile(fset, path, src, 0)
+	if perr != nil {
+		return 0, nil, nil, perr
+	}
+	ast.Inspect(file, func(n ast.Node) bool {
+		lit, ok := n.(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			return true
+		}
+		literals++
+		value, uerr := strconv.Unquote(lit.Value)
+		if uerr != nil {
+			return true
+		}
+		what, named := moduleManifestSpellings[value]
+		if !named {
+			return true
+		}
+		site := fmt.Sprintf("%s:%d  %q — %s", path, fset.Position(lit.Pos()).Line, value, what)
+		if strings.HasPrefix(path, moduleManifestOwner) {
+			owner = append(owner, site)
+			return true
+		}
+		findings = append(findings, site)
+		return true
+	})
+	return literals, owner, findings, nil
 }
 
 // TestModuleManifestFileNameIsDeclaredExactlyOnce — сам гейт.
@@ -94,34 +134,31 @@ func TestModuleManifestFileNameIsDeclaredExactlyOnce(t *testing.T) {
 		if err != nil {
 			continue
 		}
-		fset := token.NewFileSet()
-		file, perr := parser.ParseFile(fset, rel, src, 0)
+		lit, own, find, perr := scanModuleManifestSpellings(rel, src)
 		if perr != nil {
 			t.Fatalf("разбор %s: %v", rel, perr)
 		}
 		parsed++
-		ast.Inspect(file, func(n ast.Node) bool {
-			lit, ok := n.(*ast.BasicLit)
-			if !ok || lit.Kind != token.STRING {
-				return true
-			}
-			literals++
-			value, uerr := strconv.Unquote(lit.Value)
-			if uerr != nil {
-				return true
-			}
-			what, named := moduleManifestSpellings[value]
-			if !named {
-				return true
-			}
-			site := fmt.Sprintf("%s:%d  %q — %s", rel, fset.Position(lit.Pos()).Line, value, what)
-			if strings.HasPrefix(rel, moduleManifestOwner) {
-				owner = append(owner, site)
-				return true
-			}
-			findings = append(findings, site)
-			return true
-		})
+		literals += lit
+		owner = append(owner, own...)
+		findings = append(findings, find...)
+	}
+
+	// Владелец объявления переехал в общий фундамент (задача продукта #1934
+	// пережила свой предмет вместе с переносом): дерево больше не несёт
+	// каталога moduleManifestOwner, а значение объявляется в пакете
+	// `modulemanifest` `github.com/PRO-Robotech/corelib`. Читается ТУДА, куда
+	// объявление переехало, — не пустым списком, который неотличим от «имя не
+	// объявлено нигде».
+	for path, src := range corelibPackageGoFiles(t, root, "modulemanifest") {
+		lit, own, find, perr := scanModuleManifestSpellings(path, src)
+		if perr != nil {
+			t.Fatalf("разбор %s: %v", path, perr)
+		}
+		parsed++
+		literals += lit
+		owner = append(owner, own...)
+		findings = append(findings, find...)
 	}
 
 	t.Logf("перепись: не-тестовых файлов Go разобрано %d, строковых литералов осмотрено %d, "+
