@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { GUEST_ACCESS_KEY_FIELDS } from "@shared/lib/guest-access-key-form";
 import { REGISTRY } from "@shared/lib/resource-registry";
 import type { FormField } from "@shared/lib/form-schema";
+import { isCorelibCoordinate, readCorelibFile } from "@shared/test/corelib-source";
 
 /**
  * Гейт: ФОРМА ИМЕНИ, ОБЪЯВЛЕННАЯ ФОРМОЙ СОЗДАНИЯ, — ЭТО ФОРМА ПЛАТФОРМЫ.
@@ -59,6 +60,12 @@ import type { FormField } from "@shared/lib/form-schema";
  * текста это прямо оговаривает (`internal/repohygiene` `uisourcereadtest`,
  * условие (3): `.go` читают, `.ts`/`.tsx` загружают). Реестр консоли этот гейт
  * именно ЗАГРУЖАЕТ и судит по значениям, а не по своему тексту.
+ *
+ * ГДЕ ТЕПЕРЬ ЖИВЁТ ФОРМА ПЛАТФОРМЫ. `pkg/validate/nameform` вынесен отдельным
+ * опубликованным модулем (`github.com/PRO-Robotech/corelib`); дерево больше не
+ * несёт этого файла. Читаем ТУДА, куда объявление переехало — тем же приёмом,
+ * что Go-гейт `internal/repohygiene/resourcenameform_test.go` (см.
+ * `@shared/test/corelib-source`), а не второй выписанной константой.
  */
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -70,14 +77,16 @@ const repoRoot = path.resolve(here, "../../../..");
  *
  * Отсутствие файла и несовпадение образца — РАЗНЫЕ беды, и обе обязаны быть
  * отказом, а не пропуском: гейт, молча пропускающий непрочитанный источник,
- * зеленеет ровно тогда, когда сравнивать не с чем.
+ * зеленеет ровно тогда, когда сравнивать не с чем. `relPath` бывает ДВУХ видов
+ * (см. `@shared/test/corelib-source`): путь дерева читается отсюда напрямую,
+ * координата `corelib/…` — из кэша модулей Go, версией, закреплённой `go.mod`.
  */
 function goDeclaredForm(relPath: string, pattern: RegExp, what: string): string {
-  const full = path.join(repoRoot, relPath);
   let text: string;
   try {
-    text = readFileSync(full, "utf8");
-  } catch {
+    text = isCorelibCoordinate(relPath) ? readCorelibFile(repoRoot, relPath) : readFileSync(path.join(repoRoot, relPath), "utf8");
+  } catch (err) {
+    if (isCorelibCoordinate(relPath)) throw err;
     throw new Error(
       `${what}: исходник платформы не прочитан — ${relPath}. Сравнивать не с чем, ` +
         `и молчание здесь означало бы «форма совпала», чего никто не проверял.`,
@@ -95,7 +104,7 @@ function goDeclaredForm(relPath: string, pattern: RegExp, what: string): string 
 
 /** Форма платформы — одна на всё дерево (iam · vpc · compute · storage · nlb · geo). */
 const PLATFORM_FORM = goDeclaredForm(
-  "pkg/validate/nameform/nameform.go",
+  "corelib/validate/nameform/nameform.go",
   /^const Form = `([^`]+)`/m,
   "форма платформы",
 );
