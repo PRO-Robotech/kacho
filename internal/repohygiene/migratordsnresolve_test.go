@@ -25,7 +25,7 @@ func TestMigratorEntryPointsDoNotResolveDSNThemselves(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 
-	census, findings, notDelegating, err := auditMigratorDSNResolve(root)
+	census, findings, notDelegating, err := auditMigratorDSNResolve(t, root)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -77,13 +77,32 @@ func TestMigratorEntryPointsDoNotResolveDSNThemselves(t *testing.T) {
 
 // auditMigratorDSNResolve читает корпус и возвращает перепись с находками.
 // Вынесен из пробы, чтобы инъекция звала ТО ЖЕ, что и гейт.
-func auditMigratorDSNResolve(root string) (migratorDSNCensus, []migratorDSNFinding, []string, error) {
+func auditMigratorDSNResolve(t *testing.T, root string) (migratorDSNCensus, []migratorDSNFinding, []string, error) {
 	var (
 		census   migratorDSNCensus
 		findings []migratorDSNFinding
 	)
 	delegating := map[string]bool{}
 	entryDirs := map[string]bool{}
+
+	// Общий пакет переехал из pkg/migratorcli в пакет migratorcli общего
+	// фундамента (github.com/PRO-Robotech/corelib): дерево больше не несёт
+	// его файлов, поэтому PremiseResolve/PremiseEnv с диска всегда false —
+	// читаем ТУДА, куда пакет переехал (см. corelibsource_test.go).
+	for rel, body := range corelibPackageGoFiles(t, root, "migratorcli") {
+		facts, ferr := migratorDSNFactsOf(rel, string(body))
+		if ferr != nil {
+			return census, nil, nil, ferr
+		}
+		census.FilesRead++
+		census.SharedFiles++
+		if facts.DeclaresResolve {
+			census.PremiseResolve = true
+		}
+		if facts.DeclaresEnvName && facts.DeclaredEnvValue == migratorDSNEnvName {
+			census.PremiseEnv = true
+		}
+	}
 
 	for _, dir := range []string{"pkg", "services"} {
 		paths, err := treecorpus.UnderWithSuffix(filepath.Join(root, dir), ".go")

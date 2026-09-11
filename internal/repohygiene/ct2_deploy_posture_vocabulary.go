@@ -7,7 +7,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -16,10 +15,18 @@ import (
 	"github.com/PRO-Robotech/corelib/servicecontract"
 )
 
-// postureHomeDir — единственный дом словаря посадок. Каталог, а не файл:
+// postureHomeDir — единственный дом словаря посадок В ЭТОМ ДЕРЕВЕ, а также
+// форма, которую несут синтетические фикстуры проб. Каталог, а не файл:
 // `pkg/servicecontract` — дом семантики объявления процесса о себе целиком, и
 // требовать от него ОДНОГО файла значило бы судить раскладку вместо предмета.
 const postureHomeDir = "pkg/servicecontract"
+
+// postureCorelibHomeDir — тот же дом на НАСТОЯЩЕМ дереве: предмет переехал
+// целиком из postureHomeDir этого дерева в пакет servicecontract общего
+// фундамента. Логический путь — corelibDirTag("servicecontract")
+// (ct2_docs_idform.go), а не файловый: файл лежит в кэше модулей, а не под
+// корнем судимого дерева.
+var postureCorelibHomeDir = corelibDirTag("servicecontract")
 
 // postureFinding — одно место, где словарь объявлен вне общего дома.
 type postureFinding struct {
@@ -72,7 +79,12 @@ type postureCensus struct {
 // своё (`switch mode { case servicecontract.ModeDev: … }`) литералов не содержит
 // и остаётся законным — сервис вправе иметь свой перечень посадок, пока он не
 // заводит своих ПИСЬМЕН для них.
-func auditPostureVocabularySingleSource(root string, files []string) ([]postureFinding, postureCensus, error) {
+// files — логический (относительный либо синтетический "corelib/…") путь →
+// СОДЕРЖИМОЕ файла. Логический путь решает классификацию (дом/сгенерённые
+// стабы/обычный файл); содержимое передаётся готовым, а не читается заново по
+// пути, — файлы дома на настоящем дереве лежат в кэше модулей, а не под корнем
+// судимого дерева, и второго чтения не требуют.
+func auditPostureVocabularySingleSource(files map[string][]byte) ([]postureFinding, postureCensus, error) {
 	vocabulary := map[string]struct{}{}
 	for _, mode := range servicecontract.Modes() {
 		vocabulary[mode] = struct{}{}
@@ -87,21 +99,20 @@ func auditPostureVocabularySingleSource(root string, files []string) ([]postureF
 	var findings []postureFinding
 	fset := token.NewFileSet()
 
-	for _, rel := range files {
+	logicalRels := make([]string, 0, len(files))
+	for rel := range files {
+		logicalRels = append(logicalRels, rel)
+	}
+	sort.Strings(logicalRels)
+
+	for _, rel := range logicalRels {
 		slashed := filepath.ToSlash(rel)
 		// Сгенерённые стабы руками не правят — требовать от вывода генератора
 		// свойства исходника значило бы судить не того автора.
 		if strings.HasPrefix(slashed, "pkg/api/") {
 			continue
 		}
-		// #nosec G304 -- путь пришёл из индекса git ЭТОГО дерева (treecorpus, через
-		// trackedGoFiles) либо из синтетического корня инъекции; постороннего ввода
-		// тут нет.
-		src, err := os.ReadFile(filepath.Join(root, rel))
-		if err != nil {
-			return nil, cen, err
-		}
-		file, perr := parser.ParseFile(fset, rel, src, 0)
+		file, perr := parser.ParseFile(fset, rel, files[rel], 0)
 		if perr != nil {
 			return nil, cen, perr
 		}
@@ -135,7 +146,7 @@ func auditPostureVocabularySingleSource(root string, files []string) ([]postureF
 		}
 		sort.Strings(values)
 
-		if strings.HasPrefix(slashed, postureHomeDir+"/") {
+		if strings.HasPrefix(slashed, postureHomeDir+"/") || strings.HasPrefix(slashed, postureCorelibHomeDir+"/") {
 			cen.HomeFiles++
 			continue
 		}

@@ -17,9 +17,71 @@
 package repohygiene
 
 import (
+	"fmt"
+	"os/exec"
 	"strings"
 	"testing"
 )
+
+// listPackagesAtWithDeps — то же самое, что listPackagesWithDeps, но для
+// НАЗВАННОГО пути импорта, а не для "./...": go list резолвит любой пакет,
+// достижимый из графа зависимостей закреплённого go.mod, включая чужие
+// модули, которые "./..." принципиально не обходит.
+func listPackagesAtWithDeps(root, importPath string) ([]listedPackage, error) {
+	cmd := exec.Command("go", "list", "-f", `{{.ImportPath}}	{{.Name}}	{{join .Deps " "}}`, importPath)
+	cmd.Dir = root
+
+	out, err := cmd.Output()
+	if err != nil {
+		stderr := ""
+		var ee *exec.ExitError
+		if ok := asExitError(err, &ee); ok {
+			stderr = strings.TrimSpace(string(ee.Stderr))
+		}
+		return nil, fmt.Errorf("go list %s не отработал: %w\n%s", importPath, err, stderr)
+	}
+
+	var pkgs []listedPackage
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimRight(line, "\r")
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 3)
+		if len(parts) < 2 {
+			continue
+		}
+		p := listedPackage{ImportPath: parts[0], Name: parts[1]}
+		if len(parts) == 3 && parts[2] != "" {
+			p.Deps = strings.Fields(parts[2])
+		}
+		pkgs = append(pkgs, p)
+	}
+	return pkgs, nil
+}
+
+// corelibPgtestImportPath — законный носитель контейнерной зависимости
+// переехал из pkg/pgtest в пакет pgtest общего фундамента
+// (github.com/PRO-Robotech/corelib): у ЭТОГО модуля (`go list ./...`) он
+// больше не резолвится вовсе — ./... не заходит в чужие модули, даже
+// закреплённые в go.mod. Резолвится он ПРЯМЫМ вызовом go list на сам путь
+// импорта, а не поиском внутри перечня ./....
+const corelibPgtestImportPath = "github.com/PRO-Robotech/corelib/pgtest"
+
+// listExternalPackageWithDeps — то же наблюдение, что listPackagesWithDeps,
+// но для ОДНОГО пакета вне текущего модуля: go list резолвит любой пакет,
+// достижимый из графа зависимостей закреплённого go.mod, а не только ./....
+func listExternalPackageWithDeps(t *testing.T, root, importPath string) listedPackage {
+	t.Helper()
+	pkgs, err := listPackagesAtWithDeps(root, importPath)
+	if err != nil {
+		t.Fatalf("вход не получен для %s, вердикта нет: %v", importPath, err)
+	}
+	if len(pkgs) != 1 {
+		t.Fatalf("go list %s вернул %d пакетов, ожидался ровно один", importPath, len(pkgs))
+	}
+	return pkgs[0]
+}
 
 // realTreeSamples — настоящий бинарь и настоящая зависимость контейнерного клиента,
 // взятые из этого дерева. Вход инъекции обязан быть настоящим.
@@ -35,21 +97,21 @@ func realTreeSamples(t *testing.T) (binary listedPackage, containerDep string, c
 		if p.Name == "main" && binary.ImportPath == "" {
 			binary = p
 		}
-		// Законный носитель: библиотека проб, которой контейнеры нужны по существу.
-		if p.ImportPath == "github.com/PRO-Robotech/corelib/pgtest" {
-			carrier = p
-			for _, d := range p.Deps {
-				if strings.Contains(d, "testcontainers") {
-					containerDep = d
-					break
-				}
-			}
-		}
 	}
-
 	if binary.ImportPath == "" {
 		t.Fatal("в дереве не нашлось ни одного пакета main — инъекции не на чем стоять")
 	}
+
+	// Законный носитель: библиотека проб, которой контейнеры нужны по
+	// существу. Она вне текущего модуля — резолвится отдельным вызовом.
+	carrier = listExternalPackageWithDeps(t, repoRoot(t), corelibPgtestImportPath)
+	for _, d := range carrier.Deps {
+		if strings.Contains(d, "testcontainers") {
+			containerDep = d
+			break
+		}
+	}
+
 	if containerDep == "" || carrier.ImportPath == "" {
 		t.Fatal("в дереве не нашлось законного носителя контейнерной зависимости — " +
 			"предпосылка пробы не выполнена")

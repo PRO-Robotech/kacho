@@ -40,11 +40,6 @@ import (
 	"github.com/PRO-Robotech/corelib/dropguard"
 )
 
-// sharedMigratorRunnerRel — общий накат, сведённый из семи форков. Координата
-// объявлена ЗДЕСЬ, а не по местам вызова: литерал, повторённый вызывающими,
-// разъезжается молча.
-const sharedMigratorRunnerRel = "pkg/migratorrun"
-
 // migratorPackageDirs — каталоги, в которых у сервиса живёт накат.
 //
 // Прежде их было ДВА, потому что мигратор был форкнут: у части сервисов вся
@@ -53,15 +48,24 @@ const sharedMigratorRunnerRel = "pkg/migratorrun"
 // вместе с раскладкой сменился предмет проверки: вызов стража теперь один на
 // всё дерево, а от сервиса требуется до него ДОЙТИ.
 //
-// Это ровно тот класс, ради которого гейт и переписан, а не подправлен:
+// Общий прогонщик сам переехал вторым переездом — из `pkg/migratorrun` этого
+// дерева в пакет `migratorrun` общего фундамента (`github.com/PRO-Robotech/
+// corelib`). Второй дом резолвится по версии, закреплённой go.mod: у
+// синтетического дерева проб (без go.mod) второго дома нет и это законно — его
+// предмет целиком лежит в первом, а `callsDropguardGate` на несуществующем
+// каталоге отвечает «не нашли», не «ошибка».
+//
+// Это ровно тот класс, ради которого гейт и переписан, а не подправлен ранее:
 // переименование выводит предмет из-под каждого отбирающего по старому месту, и
 // такой отбор не краснеет — он ЗАМОЛКАЕТ. Здесь он не замолчал только потому,
 // что рядом стоит перепись прочитанных файлов.
-func migratorPackageDirs(root, svc string) []string {
-	return []string{
-		filepath.Join(root, "services", svc, "cmd", "migrator"),
-		filepath.Join(root, sharedMigratorRunnerRel),
+func migratorPackageDirs(t *testing.T, root, svc string) []string {
+	t.Helper()
+	dirs := []string{filepath.Join(root, "services", svc, "cmd", "migrator")}
+	if moduleDir, err := corelibModuleRootDir(root); err == nil {
+		dirs = append(dirs, filepath.Join(moduleDir, "migratorrun"))
 	}
+	return dirs
 }
 
 // callsDropguardGate разбирает все не-тестовые .go каталога и отвечает, есть ли в
@@ -141,7 +145,7 @@ func TestEveryServiceThatDropsRowsCountsThemBeforeMigrating(t *testing.T) {
 		withDrops++
 
 		var found bool
-		for _, dir := range migratorPackageDirs(root, svc) {
+		for _, dir := range migratorPackageDirs(t, root, svc) {
 			ok, read := callsDropguardGate(t, dir)
 			goFilesRead += read
 			if ok {

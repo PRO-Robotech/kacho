@@ -316,6 +316,19 @@ func TestMigratorRefusalTextsHaveOneProducer(t *testing.T) {
 		findings = append(findings, journalled...)
 	}
 
+	// Владелец переехал из pkg/migratorcli в пакет migratorcli общего
+	// фундамента (github.com/PRO-Robotech/corelib): дерево больше не несёт
+	// файла-производителя, поэтому ownerDecls с диска всегда 0 — читаем ТУДА,
+	// куда он переехал (см. corelibsource_test.go), тем же признаком.
+	for rel, body := range corelibPackageGoFiles(t, root, "migratorcli") {
+		filesRead++
+		decls, derr := migratorCLIRefusalDeclarations(rel, string(body))
+		if derr != nil {
+			t.Fatalf("%v", derr)
+		}
+		ownerDecls += len(decls)
+	}
+
 	t.Logf("перепись: файлов осмотрено %d (точек наката %d), объявлений текста отказа "+
 		"у производителя %d, находок (вторая редакция либо подача через журнал) %d",
 		filesRead, entryPoints, ownerDecls, len(findings))

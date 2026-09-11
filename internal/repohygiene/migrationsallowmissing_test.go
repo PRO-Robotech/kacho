@@ -58,7 +58,7 @@ func TestEveryMigrationRunnerAdmitsANonChronologicalNumber(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 	var paths []string
-	for _, sub := range []string{"services", sharedApplyPkg} {
+	for _, sub := range []string{"services"} {
 		found, cerr := treecorpus.UnderWithSuffix(filepath.Join(root, sub), ".go")
 		if cerr != nil {
 			t.Fatalf("корпус дерева под %s не построен: %v", sub, cerr)
@@ -66,22 +66,22 @@ func TestEveryMigrationRunnerAdmitsANonChronologicalNumber(t *testing.T) {
 		paths = append(paths, found...)
 	}
 
+	// Общий пакет наката переехал из pkg/migratorrun в модуль общего
+	// фундамента (github.com/PRO-Robotech/corelib) — читаем ТУДА, куда он
+	// переехал (см. corelibsource_test.go), а не по прежнему пути дерева
+	// (sharedApplyPkg): там его больше нет ни файлом, и treecorpus честно
+	// отказывается строить корпус под несуществующим каталогом.
+	corelibFiles := corelibPackageGoFiles(t, root, "migratorrun")
+
 	var (
 		filesRead  int
 		callsFound int
 		missingOpt []string
 	)
-	for _, path := range paths {
-		if strings.HasSuffix(path, "_test.go") {
-			continue
-		}
-		raw, rerr := os.ReadFile(path)
-		if rerr != nil {
-			t.Fatalf("%s: чтение не удалось: %v", path, rerr)
-		}
+	scanSrc := func(path string, raw []byte) {
 		src := string(raw)
 		if !strings.Contains(src, "goose.Up") {
-			continue
+			return
 		}
 		filesRead++
 		fset := token.NewFileSet()
@@ -114,6 +114,20 @@ func TestEveryMigrationRunnerAdmitsANonChronologicalNumber(t *testing.T) {
 			}
 			return true
 		})
+	}
+
+	for _, path := range paths {
+		if strings.HasSuffix(path, "_test.go") {
+			continue
+		}
+		raw, rerr := os.ReadFile(path)
+		if rerr != nil {
+			t.Fatalf("%s: чтение не удалось: %v", path, rerr)
+		}
+		scanSrc(path, raw)
+	}
+	for path, raw := range corelibFiles {
+		scanSrc(path, raw)
 	}
 
 	t.Logf("перепись: файлов с накатом прочитано %d, вызовов наката найдено %d, "+

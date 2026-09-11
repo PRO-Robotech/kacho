@@ -41,13 +41,26 @@ func injEdge(fromDir, imp, kind string) licenseEdge {
 
 const (
 	// Реальные пути дерева, взятые дословно, чтобы кейс не проверял выдумку.
-	injApachePkg   = "github.com/PRO-Robotech/corelib/ids"
+	//
+	// injApachePkg МЕНЯЛ КООРДИНАТУ (2026-09): был "…/pkg/ids", ушедшего в общий
+	// фундамент corelib целиком. Взять сегодняшний импорт corelib нельзя —
+	// corelib для ЭТОГО гейта внешний модуль (см. licensecompat.go §«ГРАНИЦЫ»:
+	// судится ребро внутри модуля продукта, а не совместимость с закреплённой
+	// зависимостью — это предмет dependencylicense.go), и treePathOfImport на
+	// нём законно отдаёт "" — не находка, а граница гейта. Заводить синтетический
+	// уровень "corelib/" в licenseTiers тоже нельзя: у него не будет ни одного
+	// РЕАЛЬНОГО пути дерева, и его роняет TestLicenseTiersHaveALiveSubjectInTheTree
+	// (ось четвёртая — «запись без предмета»). Поэтому координата переведена на
+	// пакет, который в дереве ОСТАЛСЯ (pkg/ переехал не целиком — 275 файлов
+	// pkg/{api,authz,listnarrow,ownerregister,quota,subjectchange} никуда не
+	// уезжали) и по-прежнему живой пример Apache-уровня.
+	injApachePkg   = "github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	injBuslPkg     = "github.com/PRO-Robotech/kacho/gateway/internal/restmux"
 	injVendoredPkg = "github.com/PRO-Robotech/kacho/proto/google/api"
 	injExternalPkg = "google.golang.org/grpc"
 
 	injBuslDir   = "gateway/internal/restmux"
-	injApacheDir = "pkg/db"
+	injApacheDir = "pkg/ownerregister"
 )
 
 // ЗДЕСЬ СТОЯЛИ injAgplPkg И injAgplDir — координаты уровня вынесенного продукта.

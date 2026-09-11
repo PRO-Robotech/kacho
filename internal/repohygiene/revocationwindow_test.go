@@ -464,6 +464,22 @@ func TestNoServiceTakesTheWindowImplicitly(t *testing.T) {
 		}
 	}
 
+	// Единственная авторитетная площадка переехала из композиционных корней
+	// сервисов в decisionLink пакета servicehost общего фундамента
+	// (github.com/PRO-Robotech/corelib): её литерал называет кеш явно
+	// (Cache: authz.NewCache(...)), поэтому её появление здесь СНИЖАЕТ число
+	// площадок без имени, а не добавляет находку. Читаем ТУДА, куда она
+	// переехала (см. corelibsource_test.go), а не только диск.
+	for rel, srcBytes := range corelibPackageGoFiles(t, root, "servicehost") {
+		filesRead++
+		rep, perr := revocationwindowgate.ScanImplicitSites(serviceOfPath(rel), rel, string(srcBytes))
+		if perr != nil {
+			t.Fatalf("разбор %s: %v", rel, perr)
+		}
+		literalsSeen += rep.LiteralsSeen
+		sites = append(sites, rep.Sites...)
+	}
+
 	// Перепись — до вердикта и на каждом пути.
 	t.Logf("осмотрено: файлов прочитано=%d, литералов InterceptorOptions=%d, площадок без имени кеша=%d",
 		filesRead, literalsSeen, len(sites))
@@ -560,6 +576,18 @@ func TestNoCallSiteTakesTheWindowUnprovably(t *testing.T) {
 		if err != nil {
 			t.Fatalf("обход %s: %v", rel, err)
 		}
+	}
+
+	// Та же переехавшая площадка — со стороны вызова (см. пояснение в
+	// TestNoServiceTakesTheWindowImplicitly).
+	for rel, srcBytes := range corelibPackageGoFiles(t, root, "servicehost") {
+		filesRead++
+		rep, perr := revocationwindowgate.ScanInterceptorCalls(serviceOfPath(rel), rel, string(srcBytes))
+		if perr != nil {
+			t.Fatalf("разбор %s: %v", rel, perr)
+		}
+		callsSeen += rep.CallsSeen
+		sites = append(sites, rep.Sites...)
 	}
 
 	// Перепись — до вердикта и на каждом пути.

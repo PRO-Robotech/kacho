@@ -44,9 +44,19 @@ func TestPeerProseVerbMatchesItsLane(t *testing.T) {
 // память автора.
 func TestPeerProseGatePremiseStillHolds(t *testing.T) {
 	t.Parallel()
-	path := filepath.Join(repoRoot(t), "pkg", "peer", "outcome.go")
+	root := repoRoot(t)
+
+	// Носитель полос переехал в пакет peer общего фундамента
+	// (github.com/PRO-Robotech/corelib) — читаем ТУДА, куда объявление
+	// переехало (см. corelibsource_test.go), а не по прежнему пути дерева.
+	files := corelibPackageGoFiles(t, root, "peer")
+	body, ok := files["corelib/peer/outcome.go"]
+	if !ok {
+		t.Fatalf("носителя полос corelib/peer/outcome.go нет среди файлов пакета peer " +
+			"общего фундамента — гейту нечем проверить основание")
+	}
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, path, nil, 0)
+	f, err := parser.ParseFile(fset, "outcome.go", body, 0)
 	if err != nil {
 		t.Fatalf("разбор носителя полос: %v", err)
 	}

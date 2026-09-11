@@ -254,7 +254,7 @@ func TestConvertedClientsCarryNoHandRolledLaneRead(t *testing.T) {
 		if n := dirty[f]; n != 0 {
 			t.Errorf("%s: переведённый клиент снова разбирает ответ по коду (%d мест)", f, n)
 		}
-		if !strings.Contains(string(body), "pkg/peer") {
+		if !strings.Contains(string(body), "github.com/PRO-Robotech/corelib/peer") {
 			t.Errorf("%s: переведённый клиент не импортирует носитель — либо перевод откачен,\n"+
 				"    либо запись перечня пережила свой предмет", f)
 			continue

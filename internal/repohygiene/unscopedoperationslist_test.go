@@ -146,14 +146,21 @@ func TestAdminTierExemptionsStillHaveSubject(t *testing.T) {
 func TestNarrowedEntrypointPremiseHolds(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
-	body, err := os.ReadFile(filepath.Join(root, "pkg/operations/list_for_caller.go"))
-	if err != nil {
-		t.Fatalf("суженной точки входа нет на месте (%v): гейту некуда переводить места, "+
-			"его требование стало невыполнимым — пересмотри запрет", err)
+
+	// ListForCaller переехал в пакет operations общего фундамента
+	// (github.com/PRO-Robotech/corelib) — читаем ТУДА, куда объявление
+	// переехало, а не по прежнему пути дерева (см. corelibsource_test.go).
+	var found bool
+	for _, body := range corelibPackageGoFiles(t, root, "operations") {
+		if strings.Contains(string(body), "func ListForCaller(") {
+			found = true
+			break
+		}
 	}
-	if !strings.Contains(string(body), "func ListForCaller(") {
-		t.Fatalf("pkg/operations/list_for_caller.go больше не объявляет ListForCaller — " +
-			"переводить некуда, пересмотри запрет")
+	if !found {
+		t.Fatalf("суженной точки входа нет: пакет operations общего фундамента " +
+			"(github.com/PRO-Robotech/corelib) не объявляет ListForCaller — гейту " +
+			"некуда переводить места, его требование стало невыполнимым — пересмотри запрет")
 	}
 }
 

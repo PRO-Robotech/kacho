@@ -7,6 +7,7 @@ import (
 	"go/build"
 	"go/parser"
 	"go/token"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -201,6 +202,20 @@ func TestEveryFoundationCatalogDeclaresItsClass(t *testing.T) {
 		parts := strings.Split(filepath.ToSlash(rel), "/")
 		if len(parts) > 1 {
 			seen[parts[0]] = struct{}{}
+		}
+	}
+	// Второй дом: бо́льшая часть каталогов `pkg/*` переехала ЦЕЛИКОМ в модуль
+	// общего фундамента (github.com/PRO-Robotech/corelib) — предмет записи
+	// живёт ТАМ, а не в этом дереве, и это законно: карта объявляет класс, а
+	// не место хранения (§«Ключ — имя каталога, а не путь»). Отсутствие в
+	// ОБОИХ домах остаётся находкой; отсутствие только в этом — нет.
+	if moduleDir, merr := corelibModuleRootDir(root); merr == nil {
+		if entries, rerr := os.ReadDir(moduleDir); rerr == nil {
+			for _, e := range entries {
+				if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+					seen[e.Name()] = struct{}{}
+				}
+			}
 		}
 	}
 	inTree := make([]string, 0, len(seen))
@@ -398,6 +413,25 @@ func TestEveryDeclaredPathPrefixHasASubjectInTheTree(t *testing.T) {
 		slash := filepath.ToSlash(rel)
 		for _, prefix := range declared {
 			if slash == prefix || strings.HasPrefix(slash, prefix+"/") {
+				pathsUnder[prefix]++
+			}
+		}
+	}
+	// Второй дом: приставка `pkg/<хвост>` переехала ЦЕЛИКОМ в модуль общего
+	// фундамента (github.com/PRO-Robotech/corelib) — предмет живёт под тем же
+	// хвостом, но без `pkg/`. Отсутствие в ОБОИХ домах остаётся находкой;
+	// отсутствие только в этом дереве — нет, запись описывает переехавшее, а
+	// не несуществующее.
+	if moduleDir, merr := corelibModuleRootDir(root); merr == nil {
+		for _, prefix := range declared {
+			if pathsUnder[prefix] > 0 {
+				continue
+			}
+			tail, ok := strings.CutPrefix(prefix, "pkg/")
+			if !ok {
+				continue
+			}
+			if _, serr := os.Stat(filepath.Join(moduleDir, filepath.FromSlash(tail))); serr == nil {
 				pathsUnder[prefix]++
 			}
 		}

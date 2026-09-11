@@ -471,7 +471,7 @@ func TestIntegration_NameForm(t *testing.T) {
 		files := map[string]string{
 			mig: body,
 			"services/nu/internal/repo/name_form_constraint_integration_test.go": `package repo_test
-это не Go, но путь пакета-двигателя тут есть: pkg/nameformdb
+это не Go, но путь пакета-двигателя тут есть: github.com/PRO-Robotech/corelib/nameformdb
 `,
 		}
 		cov := analyseNameFormDBCoverage(files, injCanon, injEntry)

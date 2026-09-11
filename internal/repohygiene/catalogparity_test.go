@@ -564,9 +564,20 @@ func handsRegistrarsToTheCarrier(f *ast.File) bool {
 	return found
 }
 
-// apiStubImportPrefix — путь сгенерённых стабов. Домен восстанавливается из
-// хвоста пути заменой разделителя: `kacho/cloud/storage/v1` → `kacho.cloud.storage.v1`.
-const apiStubImportPrefix = "github.com/PRO-Robotech/kacho/pkg/api/"
+// apiStubImportPrefixes — пути сгенерённых стабов, ОБА дома сразу. Домен
+// восстанавливается из хвоста пути заменой разделителя: `kacho/cloud/storage/v1`
+// → `kacho.cloud.storage.v1`.
+//
+// Дома два, а не один: доменные стабы (vpc/compute/storage/nlb/registry/geo/…)
+// остаются под `pkg/api/` этого дерева, а платформенные, версии не несущие
+// (subscription/operation/quota), переехали в общий фундамент — `api/` общего
+// фундамента (`github.com/PRO-Robotech/corelib`). Единственный префикс молчал
+// бы на второй форме ровно так, как молчал до этой правки: `kacho.cloud.
+// subscription` регистрируется этой же функцией, а признана не была.
+var apiStubImportPrefixes = []string{
+	"github.com/PRO-Robotech/kacho/pkg/api/",
+	"github.com/PRO-Robotech/corelib/api/",
+}
 
 // registeredProtoPackages — домены служб, которые файл РЕГИСТРИРУЕТ на сервере.
 //
@@ -577,14 +588,24 @@ func registeredProtoPackages(f *ast.File) []string {
 	local := map[string]string{} // локальное имя пакета → proto-пакет
 	for _, imp := range f.Imports {
 		path, err := strconv.Unquote(imp.Path.Value)
-		if err != nil || !strings.HasPrefix(path, apiStubImportPrefix) {
+		if err != nil {
+			continue
+		}
+		var prefix string
+		for _, p := range apiStubImportPrefixes {
+			if strings.HasPrefix(path, p) {
+				prefix = p
+				break
+			}
+		}
+		if prefix == "" {
 			continue
 		}
 		name := filepath.Base(path)
 		if imp.Name != nil {
 			name = imp.Name.Name
 		}
-		local[name] = strings.ReplaceAll(strings.TrimPrefix(path, apiStubImportPrefix), "/", ".")
+		local[name] = strings.ReplaceAll(strings.TrimPrefix(path, prefix), "/", ".")
 	}
 	if len(local) == 0 {
 		return nil

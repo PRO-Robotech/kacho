@@ -112,6 +112,12 @@ type SubscriptionServerOptions struct {
 	// GoRoots — каталоги прод-кода, в которых ищется сервер.
 	GoRoots []string
 	Allow   []SubscriptionStreamAllowance
+	// ExtraFiles — файлы, уже прочитанные вызывающим (например, из пакета
+	// общего фундамента через corelibPackageGoFiles) и подаваемые под своим
+	// синтетическим путём вместо диска: сервер переехал в модуль
+	// (github.com/PRO-Robotech/corelib), и диск под GoRoots его больше не
+	// несёт.
+	ExtraFiles map[string][]byte
 }
 
 // SubscriptionServerCensus — объём осмотренного. Печатается ВСЕГДА.
@@ -187,6 +193,26 @@ func AuditSubscriptionServerSingularity(
 			impls = append(impls, rel)
 		}
 	}
+
+	// ExtraFiles — то же наблюдение по содержимому, уже прочитанному
+	// вызывающим из модуля общего фундамента: диск под GoRoots туда не
+	// доходит.
+	extraRels := make([]string, 0, len(o.ExtraFiles))
+	for rel := range o.ExtraFiles {
+		extraRels = append(extraRels, rel)
+	}
+	sort.Strings(extraRels)
+	for _, rel := range extraRels {
+		census.GoFiles++
+		has, herr := sourceImplementsSubscribe(rel, o.ExtraFiles[rel])
+		if herr != nil {
+			return nil, census, herr
+		}
+		if has {
+			impls = append(impls, rel)
+		}
+	}
+
 	sort.Strings(impls)
 	census.ServerImpls = len(impls)
 
@@ -253,10 +279,11 @@ func AuditSubscriptionServerSingularity(
 		})
 	default:
 		for _, rel := range impls {
-			if !strings.HasPrefix(rel, SubscriptionServerHome) {
+			if !strings.HasPrefix(rel, SubscriptionServerHome) && !strings.HasPrefix(rel, subscriptionServerFoundationPrefix) {
 				findings = append(findings, SubscriptionServerFinding{
 					Kind: "СЕРВЕР-НЕ-В-ФУНДАМЕНТЕ", Where: rel,
-					What: "сервер потока обязан жить в " + SubscriptionServerHome + ", а не в сервисе",
+					What: "сервер потока обязан жить в " + SubscriptionServerHome + " или в " +
+						subscriptionServerFoundationPrefix + " общего фундамента, а не в сервисе",
 				})
 			}
 		}
@@ -271,6 +298,13 @@ func AuditSubscriptionServerSingularity(
 	return findings, census, nil
 }
 
+// subscriptionServerFoundationPrefix — синтетический префикс, которым
+// corelibPackageGoFiles метит файлы, прочитанные из кэша модулей общего
+// фундамента (github.com/PRO-Robotech/corelib). Сервер, объявленный там, —
+// тот же единственный экземпляр, что раньше стоял под SubscriptionServerHome:
+// место переехало из каталога дерева в модуль, а не расплодилось.
+const subscriptionServerFoundationPrefix = "corelib/"
+
 // fileImplementsSubscribe — несёт ли файл метод ОБЩЕГО глагола.
 //
 // Разбор по узлу, а не по тексту: метод `Subscribe` в дереве не один, и отличает
@@ -283,6 +317,21 @@ func fileImplementsSubscribe(path string) (bool, error) {
 		// Файл, который не разбирается, судить нечем — и молчать о нём нельзя.
 		return false, fmt.Errorf("разбор %s: %w", path, err)
 	}
+	return fileNodeImplementsSubscribe(file), nil
+}
+
+// sourceImplementsSubscribe — то же самое, но по содержимому, уже прочитанному
+// вызывающим (ExtraFiles), а не по диску.
+func sourceImplementsSubscribe(name string, src []byte) (bool, error) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, name, src, parser.SkipObjectResolution)
+	if err != nil {
+		return false, fmt.Errorf("разбор %s: %w", name, err)
+	}
+	return fileNodeImplementsSubscribe(file), nil
+}
+
+func fileNodeImplementsSubscribe(file *ast.File) bool {
 	found := false
 	ast.Inspect(file, func(n ast.Node) bool {
 		fn, ok := n.(*ast.FuncDecl)
@@ -297,7 +346,7 @@ func fileImplementsSubscribe(path string) (bool, error) {
 		}
 		return true
 	})
-	return found, nil
+	return found
 }
 
 // typeName — имя типа выражения без пакета и указателей.

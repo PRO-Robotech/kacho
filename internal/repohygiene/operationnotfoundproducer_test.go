@@ -107,7 +107,13 @@ var operationNotFoundForm = regexp.MustCompile(`(?i)\boperation\b.*%[sqv].*\bnot
 const operationNotFoundSubstitution = "%v"
 
 // operationNotFoundProducerPath — единственное место, где этот текст записан.
-var operationNotFoundProducerPath = filepath.Join("pkg", "operations", "notfound.go")
+//
+// Переехало из pkg/operations в пакет operations общего фундамента
+// (github.com/PRO-Robotech/corelib): путь — синтетический, тот же, которым
+// corelibPackageGoFiles метит файлы, прочитанные из кэша модулей (см.
+// corelibsource_test.go), а не путь дерева — такого каталога в индексе git
+// больше нет.
+var operationNotFoundProducerPath = "corelib/operations/notfound.go"
 
 // operationNotFoundCensus — объём ОСМОТРЕННОГО.
 //
@@ -230,59 +236,71 @@ func operationNotFoundProducers(root string, paths []string) (found []string, ce
 		if err != nil {
 			continue
 		}
-		census.filesRead++
 		rel, rerr := filepath.Rel(root, p)
 		if rerr != nil {
 			rel = p
 		}
-		consts := operationNotFoundStringConsts(f)
+		fnd, c := operationNotFoundScanFile(fset, f, rel)
+		found = append(found, fnd...)
+		census.filesRead++
+		census.literals += c.literals
+		census.concats += c.concats
+	}
+	return found, census
+}
 
-		type span struct{ from, to token.Pos }
-		var covered []span
-		isCovered := func(pos token.Pos) bool {
-			for _, s := range covered {
-				if pos >= s.from && pos < s.to {
-					return true
-				}
-			}
-			return false
-		}
-		record := func(n ast.Node, shape string) {
-			if isCovered(n.Pos()) {
-				return
-			}
-			covered = append(covered, span{n.Pos(), n.End()})
-			found = append(found, fmt.Sprintf("%s:%d: %q", rel, fset.Position(n.Pos()).Line, shape))
-		}
+// operationNotFoundScanFile — то же наблюдение над ОДНИМ уже разобранным
+// файлом. Вынесено, чтобы то же самое можно было применить к содержимому,
+// прочитанному не с диска (пакет общего фундамента через corelibPackageGoFiles,
+// см. corelibsource_test.go), без второй копии логики суда.
+func operationNotFoundScanFile(fset *token.FileSet, f *ast.File, rel string) (found []string, census operationNotFoundCensus) {
+	consts := operationNotFoundStringConsts(f)
 
-		var stack []ast.Node
-		ast.Inspect(f, func(n ast.Node) bool {
-			if n == nil {
-				stack = stack[:len(stack)-1]
+	type span struct{ from, to token.Pos }
+	var covered []span
+	isCovered := func(pos token.Pos) bool {
+		for _, s := range covered {
+			if pos >= s.from && pos < s.to {
 				return true
 			}
-			switch x := n.(type) {
-			case *ast.BasicLit:
-				if x.Kind == token.STRING {
-					census.literals++
-					if v, err := strconv.Unquote(x.Value); err == nil && operationNotFoundForm.MatchString(v) {
-						record(x, v)
-					}
-				}
-			case *ast.BinaryExpr:
-				// Только ВНЕШНЯЯ склейка: у вложенной форма — подстрока формы
-				// внешней, и суд над ней был бы вторым судом того же места.
-				if operationNotFoundIsStringConcat(x, consts) && !operationNotFoundInsideConcat(stack, consts) {
-					census.concats++
-					if shape, _ := operationNotFoundShape(x, consts); operationNotFoundForm.MatchString(shape) {
-						record(x, shape)
-					}
+		}
+		return false
+	}
+	record := func(n ast.Node, shape string) {
+		if isCovered(n.Pos()) {
+			return
+		}
+		covered = append(covered, span{n.Pos(), n.End()})
+		found = append(found, fmt.Sprintf("%s:%d: %q", rel, fset.Position(n.Pos()).Line, shape))
+	}
+
+	var stack []ast.Node
+	ast.Inspect(f, func(n ast.Node) bool {
+		if n == nil {
+			stack = stack[:len(stack)-1]
+			return true
+		}
+		switch x := n.(type) {
+		case *ast.BasicLit:
+			if x.Kind == token.STRING {
+				census.literals++
+				if v, err := strconv.Unquote(x.Value); err == nil && operationNotFoundForm.MatchString(v) {
+					record(x, v)
 				}
 			}
-			stack = append(stack, n)
-			return true
-		})
-	}
+		case *ast.BinaryExpr:
+			// Только ВНЕШНЯЯ склейка: у вложенной форма — подстрока формы
+			// внешней, и суд над ней был бы вторым судом того же места.
+			if operationNotFoundIsStringConcat(x, consts) && !operationNotFoundInsideConcat(stack, consts) {
+				census.concats++
+				if shape, _ := operationNotFoundShape(x, consts); operationNotFoundForm.MatchString(shape) {
+					record(x, shape)
+				}
+			}
+		}
+		stack = append(stack, n)
+		return true
+	})
 	return found, census
 }
 
@@ -310,6 +328,22 @@ func TestOperationNotFoundHasOneProducer(t *testing.T) {
 	}
 
 	found, census := operationNotFoundProducers(root, files)
+
+	// Общий производитель — та же координата, вне диска: пакет переехал в
+	// модуль общего фундамента, и обход tracked-дерева его больше не достигает.
+	for rel, body := range corelibPackageGoFiles(t, root, "operations") {
+		fset := token.NewFileSet()
+		f, perr := parser.ParseFile(fset, rel, body, 0)
+		if perr != nil {
+			t.Fatalf("%s: разбор: %v", rel, perr)
+		}
+		fnd, c := operationNotFoundScanFile(fset, f, rel)
+		found = append(found, fnd...)
+		census.filesRead++
+		census.literals += c.literals
+		census.concats += c.concats
+	}
+
 	t.Logf("осмотрено не-тестовых файлов Go: %d · %s · производителей найдено: %d",
 		len(files), census, len(found))
 

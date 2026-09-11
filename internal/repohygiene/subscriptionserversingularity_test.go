@@ -27,11 +27,16 @@ var subscriptionStreamAllowances []SubscriptionStreamAllowance
 
 func subscriptionServerOptions(t *testing.T) SubscriptionServerOptions {
 	t.Helper()
+	root := repoRoot(t)
 	return SubscriptionServerOptions{
-		Root:      repoRoot(t),
+		Root:      root,
 		ProtoRoot: "proto",
 		GoRoots:   []string{"pkg", "services", "gateway", "terraform", "internal", "cmd"},
 		Allow:     subscriptionStreamAllowances,
+		// Сервер переехал из pkg/subscription в пакет subscription общего
+		// фундамента (github.com/PRO-Robotech/corelib) — читаем ТУДА, куда он
+		// переехал (см. corelibsource_test.go), а не только диск.
+		ExtraFiles: corelibPackageGoFiles(t, root, "subscription"),
 	}
 }
 

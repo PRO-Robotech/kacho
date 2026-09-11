@@ -75,7 +75,6 @@
 package repohygiene
 
 import (
-	"path/filepath"
 	"testing"
 )
 
@@ -251,14 +250,14 @@ func foundationSurveyTree(t *testing.T, root string, r FoundationRoster) foundat
 		t.Fatalf("перепись мест сборки сервера не состоялась: %v", err)
 	}
 	for _, p := range r.Providers {
-		s, serr := ScanGoTree(filepath.Join(root, filepath.FromSlash(p.Name)))
+		s, serr := ScanGoTree(FoundationPkgDir(root, p.Name))
 		if serr != nil {
 			t.Fatalf("посредник %s не разбирается: %v", p.Name, serr)
 		}
 		sv.ProviderScan[p.Name] = s
 	}
 	for _, w := range r.Wrappers {
-		s, serr := ScanGoTree(filepath.Join(root, filepath.FromSlash(w.Dir)))
+		s, serr := ScanGoTree(FoundationPkgDir(root, w.Dir))
 		if serr != nil {
 			t.Fatalf("обёртка %s не разбирается: %v", w.Dir, serr)
 		}

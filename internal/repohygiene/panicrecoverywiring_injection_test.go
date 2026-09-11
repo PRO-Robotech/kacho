@@ -73,7 +73,7 @@ const synthRootWired = `package main
 import (
 	"google.golang.org/grpc"
 
-	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
 func serve() {
@@ -99,7 +99,7 @@ const synthRootUnwired = `package main
 import (
 	"google.golang.org/grpc"
 
-	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
 func serve() {
@@ -372,7 +372,7 @@ const synthServiceBuilder = `package main
 import (
 	"google.golang.org/grpc"
 
-	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/corelib/subscription"
 )
 
@@ -398,7 +398,7 @@ func buildStream() {
 const synthPairAssignedListener = `package main
 
 import (
-	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
 func serve() {

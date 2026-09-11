@@ -167,7 +167,7 @@ func TestRawDescriptorLiteralReadsTheProtocEmittedForm(t *testing.T) {
 	t.Parallel()
 
 	raw := descriptorBytes(t, "corelib/authz/v1/authz_options.proto",
-		"github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1;authzv1")
+		"github.com/PRO-Robotech/corelib/api/corelib/authz/v1;authzv1")
 
 	// Форма protoc-gen-go: `const … _rawDesc = "" + "…"`, плюс соседние
 	// объявления, чьи имена суффиксу НЕ удовлетворяют.

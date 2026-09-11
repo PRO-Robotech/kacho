@@ -166,8 +166,14 @@ var frozenLegacyMigrations = map[string]string{
 	// содержательна: она говорит «каталог под надзором, legacy-номеров ноль»,
 	// тогда как отсутствие записи означало бы «номера не под надзором».
 	"gateway/internal/idempotencypg/migrations": "",
-	"pkg/migrations/common":                     "1-4",
-	"services/compute/internal/migrations":      "1-34,36-38",
+	// Здесь стояла запись "pkg/migrations/common": "1-4". Снята ВМЕСТЕ с
+	// каталогом: он переехал целиком в migrations/common общего фундамента
+	// (github.com/PRO-Robotech/corelib) и в индексе git этого дерева больше
+	// не резолвится ни одним файлом (см. corelibsource_test.go). Гейт судит
+	// СВОЙ индекс, а не кэш модулей: у переехавшего каталога — свой продукт,
+	// свой репозиторий и свой надзор за нумерацией; держать здесь запись о
+	// нём значило бы замораживать номера, которые эта проверка не видит.
+	"services/compute/internal/migrations": "1-34,36-38",
 	"services/compute/migrations":               "1",
 	"services/geo/internal/migrations":          "1-4",
 	// Здесь стояла запись службы доступа («1» — сведённая первичная миграция).

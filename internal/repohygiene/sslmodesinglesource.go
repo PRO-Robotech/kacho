@@ -67,6 +67,18 @@ type sslModeCensus struct {
 // ловит. Заведут в доме новое значение — распознаватель увидит его тем же
 // прогоном.
 func auditSSLModeSingleSource(root string, files []string) ([]sslModeFinding, sslModeCensus, error) {
+	return auditSSLModeSingleSourceWithExtra(root, files, nil)
+}
+
+// auditSSLModeSingleSourceWithExtra — то же самое, плюс файлы, уже прочитанные
+// вызывающим под своим синтетическим путём (пакет db общего фундамента,
+// github.com/PRO-Robotech/corelib, читаемый из кэша модулей —
+// corelibPackageGoFiles, см. corelibsource_test.go), — вместо диска. Дом
+// переехал из pkg/db туда; синтетические деревья инъекции продолжают писать
+// "pkg/db/..." напрямую и extra им не нужен.
+func auditSSLModeSingleSourceWithExtra(
+	root string, files []string, extra map[string][]byte,
+) ([]sslModeFinding, sslModeCensus, error) {
 	vocabulary := map[string]struct{}{}
 	for _, mode := range coredb.SSLModes() {
 		vocabulary[mode] = struct{}{}
@@ -83,17 +95,16 @@ func auditSSLModeSingleSource(root string, files []string) ([]sslModeFinding, ss
 	cen := sslModeCensus{ByValue: map[string]int{}}
 	var findings []sslModeFinding
 
-	for _, rel := range files {
-		slashed := filepath.ToSlash(rel)
-		// Сгенерённые стабы руками не правят — требовать от вывода генератора
-		// свойства исходника значило бы судить не того автора.
-		if strings.HasPrefix(slashed, "pkg/api/") {
-			continue
-		}
+	// scan принимает src ЛИТЕРАЛЬНЫМ any, а не []byte: параметр статического
+	// типа []byte, переданный в parser.ParseFile(..., any, ...), даёт НЕПУСТОЙ
+	// интерфейс даже при nil-слайсе — parser.ParseFile читает его как "источник
+	// есть, и это пустые байты" и падает на EOF вместо чтения диска. Диском
+	// управляет ИМЕННО нетипизированный nil, дошедший до ParseFile как есть.
+	scan := func(slashed, abs string, src any) error {
 		fset := token.NewFileSet()
-		f, err := parser.ParseFile(fset, filepath.Join(root, rel), nil, parser.SkipObjectResolution)
+		f, err := parser.ParseFile(fset, abs, src, parser.SkipObjectResolution)
 		if err != nil {
-			return nil, cen, fmt.Errorf("разбор %s: %w", slashed, err)
+			return fmt.Errorf("разбор %s: %w", slashed, err)
 		}
 		cen.FilesRead++
 
@@ -116,7 +127,7 @@ func auditSSLModeSingleSource(root string, files []string) ([]sslModeFinding, ss
 			return true
 		})
 		if len(seen) == 0 {
-			continue
+			return nil
 		}
 
 		values := make([]string, 0, len(seen))
@@ -125,9 +136,9 @@ func auditSSLModeSingleSource(root string, files []string) ([]sslModeFinding, ss
 		}
 		sort.Strings(values)
 
-		if slashed == sslModeHomeDir || strings.HasPrefix(slashed, sslModeHomeDir+"/") {
+		if inSSLModeHome(slashed) {
 			cen.HomeFiles++
-			continue
+			return nil
 		}
 
 		enumerates := len(seen) > 1
@@ -139,8 +150,44 @@ func auditSSLModeSingleSource(root string, files []string) ([]sslModeFinding, ss
 		if enumerates {
 			findings = append(findings, sslModeFinding{Where: slashed, Values: values})
 		}
+		return nil
+	}
+
+	for _, rel := range files {
+		slashed := filepath.ToSlash(rel)
+		// Сгенерённые стабы руками не правят — требовать от вывода генератора
+		// свойства исходника значило бы судить не того автора.
+		if strings.HasPrefix(slashed, "pkg/api/") {
+			continue
+		}
+		abs := filepath.Join(root, filepath.FromSlash(slashed))
+		if err := scan(slashed, abs, nil); err != nil {
+			return nil, cen, err
+		}
+	}
+	for slashed, body := range extra {
+		if err := scan(slashed, slashed, body); err != nil {
+			return nil, cen, err
+		}
 	}
 
 	sort.Slice(findings, func(i, j int) bool { return findings[i].Where < findings[j].Where })
 	return findings, cen, nil
+}
+
+// sslModeCorelibHomeDir — синтетический путь, которым corelibPackageGoFiles
+// метит файлы пакета db, прочитанные из кэша модулей общего фундамента
+// (github.com/PRO-Robotech/corelib), — второй законный дом наравне с
+// sslModeHomeDir. Обе формы принимаются РАЗОМ: дерево судит по фактическому
+// написанию, а не по одному из двух периодов миграции.
+const sslModeCorelibHomeDir = "corelib/db"
+
+// inSSLModeHome — лежит ли файл в доме перечня, в любой из двух форм.
+func inSSLModeHome(slashed string) bool {
+	for _, home := range []string{sslModeHomeDir, sslModeCorelibHomeDir} {
+		if slashed == home || strings.HasPrefix(slashed, home+"/") {
+			return true
+		}
+	}
+	return false
 }

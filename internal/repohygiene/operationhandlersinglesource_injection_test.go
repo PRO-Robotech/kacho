@@ -644,7 +644,7 @@ func TestGuardGoesRedWhenTheRecogniserGoesBlind(t *testing.T) {
 	blind := `package handler
 
 import (
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operationXX"
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operationXX"
 	"github.com/PRO-Robotech/corelib/operations"
 )
 

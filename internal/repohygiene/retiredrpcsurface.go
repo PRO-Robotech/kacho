@@ -114,8 +114,16 @@ func AuditRetiredRPCSurface(opts RetiredRPCSurfaceOptions, out io.Writer) ([]Ret
 	var findings []RetiredRPCSurfaceFinding
 
 	// ── 1. Сгенерированные стабы: та же таблица, по которой идёт диспатч ──────
+	// Оба дома стабов — ЭТОГО дерева и общего фундамента, куда переехали
+	// платформенные контракты без домена-версии (operation/quota/subscription):
+	// один дом здесь читал бы имя снятого как несуществующее в контракте вообще,
+	// не различая «снято» от «предмет переехал».
+	homes := []apiStubHome{{dir: filepath.Join(opts.Root, opts.APIRoot)}}
+	if corelibDir, cerr := corelibAPIStubDir(opts.Root); cerr == nil {
+		homes = append(homes, apiStubHome{dir: corelibDir})
+	}
 	var rc CatalogReachabilityCensus
-	declared, err := declaredMethods(filepath.Join(opts.Root, opts.APIRoot), &rc)
+	declared, err := declaredMethods(homes, &rc)
 	if err != nil {
 		return nil, c, err
 	}

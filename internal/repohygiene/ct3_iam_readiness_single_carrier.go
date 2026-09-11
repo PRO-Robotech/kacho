@@ -83,15 +83,24 @@ type carrierCensus struct {
 //     от него общего носителя сервисов значило бы судить не тот предмет;
 //   - ЧТО проверяет каждая зависимость и СКОЛЬКО их — это вопрос композиционного
 //     корня, и общий носитель на него намеренно не отвечает.
-func auditReadinessCarrierIsSingle(root string, serviceFiles, carrierFiles []string) ([]carrierFinding, carrierCensus, error) {
+// carrierFiles — логический путь (для переписи) → СОДЕРЖИМОЕ. Содержимое
+// передаётся готовым, а не читается по root+rel: положительный контроль
+// (`commonReadinessCarrierPkg`) на настоящем дереве лежит в кэше модулей
+// общего фундамента, а не под корнем судимого репозитория.
+func auditReadinessCarrierIsSingle(root string, serviceFiles []string, carrierFiles map[string][]byte) ([]carrierFinding, carrierCensus, error) {
 	var cen carrierCensus
 	fset := token.NewFileSet()
 
 	// Положительный контроль ПЕРВЫМ: пока не доказано, что распознаватель умеет
 	// узнать носитель там, где тот заведомо есть, его ноль под services/ не
 	// значит ничего.
-	for _, rel := range carrierFiles {
-		decls, err := carrierDeclsIn(root, rel, fset)
+	carrierRels := make([]string, 0, len(carrierFiles))
+	for rel := range carrierFiles {
+		carrierRels = append(carrierRels, rel)
+	}
+	sort.Strings(carrierRels)
+	for _, rel := range carrierRels {
+		decls, err := carrierDeclsFromSrc(rel, carrierFiles[rel], fset)
 		if err != nil {
 			return nil, cen, err
 		}
@@ -159,6 +168,13 @@ func carrierDeclsIn(root, rel string, fset *token.FileSet) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("чтение %s: %w", rel, err)
 	}
+	return carrierDeclsFromSrc(rel, src, fset)
+}
+
+// carrierDeclsFromSrc — то же разбором ГОТОВОГО содержимого, без чтения по
+// пути: положительный контроль на настоящем дереве читает файлы кэша модулей,
+// которым root+rel не адресуются.
+func carrierDeclsFromSrc(rel string, src []byte, fset *token.FileSet) ([]string, error) {
 	file, perr := parser.ParseFile(fset, rel, src, 0)
 	if perr != nil {
 		return nil, fmt.Errorf("разбор %s: %w", rel, perr)

@@ -38,6 +38,14 @@ func TestTestsDoNotBuildTheSearchPathClause(t *testing.T) {
 		}
 		sources[rel] = string(body)
 	}
+	// Общая реализация переехала из pkg/pgtest в пакет pgtest общего
+	// фундамента (github.com/PRO-Robotech/corelib): читаем ТУДА, куда она
+	// переехала (corelibPackageGoFiles, см. corelibsource_test.go), под тем же
+	// синтетическим ключом — SearchPathOwnerDirs судит по КЛЮЧУ карты, а не по
+	// настоящему пути диска, поэтому второго механизма заводить не нужно.
+	for rel, body := range corelibPackageGoFiles(t, root, "pgtest") {
+		sources[rel] = string(body)
+	}
 	owners := SearchPathOwnerDirs(sources)
 	t.Logf("файлов Go осмотрено %d; объявлений %s найдено %d: %v",
 		len(sources), SearchPathOwnerName, len(owners), owners)

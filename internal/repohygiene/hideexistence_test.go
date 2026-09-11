@@ -250,8 +250,22 @@ func parseHideExistenceTable(t *testing.T, root, rel string) map[string]string {
 	t.Helper()
 	path := filepath.Join(root, rel)
 	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("таблица скрытия существования не там, где её ждёт гейт (%s): %v — перенеси "+
-			"гейт вместе с ней, а не удаляй", rel, err)
+		// Предмет переехал ЦЕЛИКОМ из pkg/authz этого дерева в пакет authz общего
+		// фундамента (github.com/PRO-Robotech/corelib): читаем ТУДА, куда он
+		// переехал, прежде чем объявлять гейт беспредметным.
+		if tail, ok := strings.CutPrefix(filepath.ToSlash(rel), "pkg/"); ok {
+			if moduleDir, merr := corelibModuleRootDir(root); merr == nil {
+				corelibPath := filepath.Join(moduleDir, filepath.FromSlash(tail))
+				if _, cerr := os.Stat(corelibPath); cerr == nil {
+					path = corelibPath
+					err = nil
+				}
+			}
+		}
+		if err != nil {
+			t.Fatalf("таблица скрытия существования не там, где её ждёт гейт (%s): %v — перенеси "+
+				"гейт вместе с ней, а не удаляй", rel, err)
+		}
 	}
 	f, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
 	if err != nil {

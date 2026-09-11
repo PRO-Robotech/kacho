@@ -714,16 +714,58 @@ func sortedKeys(m map[string][]string) []string {
 // reconciler.RegisterOutboxPartition). Значение берётся ИЗ ДЕРЕВА: повтори его
 // здесь литералом — и оно разошлось бы с константой молча, а гейт сверял бы
 // ключи с величиной, которой в коде уже нет.
+//
+// Пакеты reconciler/drainer переехали из pkg/outbox в модуль общего
+// фундамента (github.com/PRO-Robotech/corelib): читаем ТУДА, куда они
+// переехали (corelibPackageGoFiles, см. corelibsource_test.go), а не по
+// прежнему пути дерева — там их больше нет ни файлом.
 func corelibOutboxConstStrings(t *testing.T, root string) map[string]string {
 	t.Helper()
 	out := map[string]string{}
-	for _, pkg := range []string{"reconciler", "drainer"} {
-		dir := filepath.Join(root, "pkg", "outbox", pkg)
-		if _, err := os.Stat(dir); err != nil {
+	for _, pkg := range []string{"outbox/reconciler", "outbox/drainer"} {
+		for name, src := range corelibPackageGoFiles(t, root, pkg) {
+			for k, v := range constStringsFromSource(t, name, src) {
+				out[k] = v
+			}
+		}
+	}
+	return out
+}
+
+// constStringsFromSource — то же, что serviceConstStrings, но по содержимому,
+// уже прочитанному вызывающим (например, из кэша модулей), а не по диску.
+func constStringsFromSource(t *testing.T, name string, src []byte) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, name, src, 0)
+	if err != nil {
+		t.Fatalf("разбор %s: %v", name, err)
+	}
+	for _, decl := range f.Decls {
+		gd, ok := decl.(*ast.GenDecl)
+		if !ok || gd.Tok != token.CONST {
 			continue
 		}
-		for k, v := range serviceConstStrings(t, dir) {
-			out[k] = v
+		for _, spec := range gd.Specs {
+			vs, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for i, ident := range vs.Names {
+				if i >= len(vs.Values) {
+					continue
+				}
+				lit, ok := vs.Values[i].(*ast.BasicLit)
+				if !ok || lit.Kind != token.STRING {
+					continue
+				}
+				v, uerr := strconv.Unquote(lit.Value)
+				if uerr != nil {
+					continue
+				}
+				out[ident.Name] = v
+			}
 		}
 	}
 	return out

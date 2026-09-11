@@ -19,16 +19,28 @@
 // Он держит не сам класс (класс держит страж), а то, что страж ОСТАЁТСЯ на
 // месте, — по трём осям сразу:
 //
-//	ось 1  каждый пакет проб под internal/repohygiene и pkg/treecorpus
-//	       объявляет TestMain, доходящий до стража;
-//	ось 2  каждая экспортированная функция treecorpus, достигающая реального
-//	       индекса, доходит до стража — то есть третий конструктор, заведённый
-//	       мимо, находка, а не тихая дыра;
+//	ось 1  каждый пакет проб под internal/repohygiene объявляет TestMain,
+//	       доходящий до стража;
+//	ось 2  каждая экспортированная функция treecorpus (пакета общего
+//	       фундамента, закреплённого go.mod — предмет переехал из pkg/treecorpus
+//	       ЭТОГО дерева в github.com/PRO-Robotech/corelib), достигающая
+//	       реального индекса, доходит до стража — то есть третий конструктор,
+//	       заведённый мимо, находка, а не тихая дыра;
 //	ось 3  каждый рецепт Makefile дерева, вызывающий `go test`, несёт отключение
 //	       кеша.
 //
 // Ось 3 сегодня зелена целиком, и это сказано прямо: она держит свойство ВПЕРЁД,
 // а её прохождение свидетельством ничего не является.
+//
+// # Почему ось 1 больше не судит pkg/treecorpus
+//
+// Пакет treecorpus ЦЕЛИКОМ переехал в общий фундамент — в ЭТОМ дереве
+// `pkg/treecorpus` не отслеживаемый путь ни одним файлом. Собственная тестовая
+// гигиена его пакета проб (несёт ли ОН СВОЙ TestMain) — предмет РЕПОЗИТОРИЯ
+// corelib, а не кассы; судить чужой пакет проб отсюда значило бы утверждать о
+// дереве, которого здесь нет. Что из treecorpus остаётся НАШИМ предметом —
+// названо осью 2 отдельно: чтение НЕ-тестового кода пакета (что он
+// ПРЕДОСТАВЛЯЕТ), а не его собственных проб.
 //
 // # Названная слепая зона
 //
@@ -55,7 +67,6 @@ import (
 // Остаток при этом не спрятан — он печатается числом (см. слепую зону в шапке).
 var guardRoots = []string{
 	"internal/repohygiene",
-	"pkg/treecorpus",
 }
 
 // guardName — имя стража. Одно место на весь файл: ось 1 и ось 2 обязаны
@@ -249,17 +260,14 @@ func collectTestMainFacts(t *testing.T, root string) ([]testMainFacts, int) {
 
 func collectTreecorpusFacts(t *testing.T, root string) ([]constructorFacts, int) {
 	t.Helper()
-	files, err := treecorpus.UnderWithSuffix(filepath.Join(root, "pkg/treecorpus"), ".go")
-	if err != nil {
-		t.Fatalf("состав pkg/treecorpus: %v", err)
-	}
+	// Предмет переехал в общий фундамент: НЕ-тестовые файлы пакета treecorpus
+	// читаются из кэша модулей по версии, закреплённой go.mod судимого дерева
+	// (`corelibsource_test.go`), а не из отсутствующего pkg/treecorpus.
+	files := corelibPackageGoFiles(t, root, "treecorpus")
 	calls := map[string]map[string]bool{}
 	exported := map[string]bool{}
-	for _, f := range files {
-		if strings.HasSuffix(f, "_test.go") {
-			continue
-		}
-		file := parseGo(t, f, mustRead(t, f))
+	for path, src := range files {
+		file := parseGo(t, path, src)
 		for _, d := range file.Decls {
 			fd, ok := d.(*ast.FuncDecl)
 			if !ok || fd.Recv != nil || fd.Body == nil {

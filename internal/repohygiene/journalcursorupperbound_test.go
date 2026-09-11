@@ -64,11 +64,37 @@ import (
 // предмет-то у записи есть.
 var journalCursorAllowances []JournalCursorAllowance
 
+// journalCursorGoRoots — GoRoots ПЛЮС общий фундамент, если он резолвится.
+//
+// Читатель журнала (`subscription.Storage`/drainer) переехал ЦЕЛИКОМ в
+// github.com/PRO-Robotech/corelib вместе с пакетом `subscription` —
+// `pkg/subscription` в этом дереве больше не существует. Его возобновимое
+// чтение (`ORDER BY %s ASC ... WHERE %s > $1 AND %s <= $2`) параметризовано
+// именем колонки, и jcClassify уже умеет такой запрос опознавать по
+// собственному правилу («Параметризованный журнал») — не хватало только
+// каталога, откуда этот файл читать: элемент GoRoots всегда джойнился с
+// корнем ЭТОГО дерева, а corelib лежит в кэше модулей вовсе снаружи. Путь
+// возвращается абсолютным нарочно — jcRootDir (journalcursorupperbound.go)
+// джойнит с root только относительные элементы, и это симметрично тому, как
+// сам анализатор уже отличает «параметризованную» колонку от колонки схемы.
+//
+// Резолв — лучшее усилие: не найден модуль (синтетическое дерево пробы, чужой
+// GOMODCACHE) — GoRoots остаются прежними, без абсолютного элемента.
+func journalCursorGoRoots(t *testing.T, root string, base []string) []string {
+	t.Helper()
+	out := append([]string(nil), base...)
+	if moduleDir, err := corelibModuleRootDir(root); err == nil {
+		out = append(out, moduleDir)
+	}
+	return out
+}
+
 func journalCursorOptions(t *testing.T) JournalCursorOptions {
 	t.Helper()
+	root := repoRoot(t)
 	return JournalCursorOptions{
-		Root:     repoRoot(t),
-		GoRoots:  []string{"pkg", "services", "gateway", "terraform", "internal", "cmd"},
+		Root:     root,
+		GoRoots:  journalCursorGoRoots(t, root, []string{"pkg", "services", "gateway", "terraform", "internal", "cmd"}),
 		SQLRoots: []string{"pkg", "services", "gateway"},
 		Allow:    journalCursorAllowances,
 	}

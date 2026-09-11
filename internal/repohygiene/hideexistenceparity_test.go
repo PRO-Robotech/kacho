@@ -56,11 +56,27 @@ const (
 // parseTableInPackage — записи объявления в названном пакете дерева.
 func parseTableInPackage(t *testing.T, root, rel string) map[string]string {
 	t.Helper()
-	formats, read, err := parseFormatsInPackage(filepath.Join(root, rel))
+	dir := filepath.Join(root, rel)
+	formats, read, err := parseFormatsInPackage(dir)
+	if err != nil {
+		// Предмет переехал ЦЕЛИКОМ из pkg/authz этого дерева в пакет authz общего
+		// фундамента (github.com/PRO-Robotech/corelib) — местный каталог остался
+		// (в нём живут подкаталоги класса kaname, вроде authziam), но прямых
+		// файлов в нём больше нет. Читаем ТУДА, куда предмет переехал, прежде чем
+		// объявлять гейт беспредметным.
+		if tail, ok := strings.CutPrefix(filepath.ToSlash(rel), "pkg/"); ok {
+			if moduleDir, merr := corelibModuleRootDir(root); merr == nil {
+				corelibDir := filepath.Join(moduleDir, filepath.FromSlash(tail))
+				if f2, r2, e2 := parseFormatsInPackage(corelibDir); e2 == nil {
+					formats, read, err, dir = f2, r2, nil, corelibDir
+				}
+			}
+		}
+	}
 	if err != nil {
 		t.Fatalf("таблица скрытия существования в пакете %s не разрешена: %v", rel, err)
 	}
-	t.Logf("перепись: пакет %s — файлов прочитано %d · записей таблицы %d", rel, read, len(formats))
+	t.Logf("перепись: пакет %s — файлов прочитано %d · записей таблицы %d", dir, read, len(formats))
 	return formats
 }
 
@@ -129,14 +145,10 @@ func TestHideExistenceParityResolvesByPackage(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 	for _, rel := range []string{gatewayTableDir, foundationTableDir} {
-		formats, read, err := parseFormatsInPackage(filepath.Join(root, rel))
-		if err != nil {
-			t.Fatalf("страж не разрешил объявление в пакете %s: %v", rel, err)
-		}
+		formats := parseTableInPackage(t, root, rel)
 		if len(formats) == 0 {
 			t.Fatalf("объявление пакета %s разобралось в ноль записей — страж прошёл бы вакуумно", rel)
 		}
-		t.Logf("перепись: пакет %s — файлов прочитано %d · записей объявления %d", rel, read, len(formats))
 	}
 }
 

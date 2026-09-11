@@ -40,6 +40,14 @@ func clusterAnchorSources(t *testing.T) map[string]string {
 		}
 		sources[rel] = string(b)
 	}
+	// Объявление переехало ЦЕЛИКОМ: `ClusterSingletonID` предмета в этом дереве
+	// больше не несёт ни одного файла — оно живёт в authz/catalogderive общего
+	// фундамента (github.com/PRO-Robotech/corelib). Без второго дома объявлений
+	// найдено бы 0, и вердикт о согласии/о литералах мимо объявления был бы
+	// беспредметен, а не «согласны».
+	for rel, body := range corelibPackageGoFiles(t, root, "authz/catalogderive") {
+		sources[rel] = string(body)
+	}
 	return sources
 }
 

@@ -37,8 +37,9 @@ import (
 // разбор идёт без `parser.ParseComments`, а строка остаётся `*ast.BasicLit` и
 // вызовом не становится.
 
-// nameFormEnginePkgPath — путь пакета-двигателя. Служит ДВУМ разным целям, и обе
-// названы, чтобы вторую не приняли за возврат к поиску подстрокой:
+// nameFormEnginePkgPath — хвост пути импорта пакета-двигателя. Служит ДВУМ
+// разным целям, и обе названы, чтобы вторую не приняли за возврат к поиску
+// подстрокой:
 //
 //   - отбор каталогов-кандидатов: файл, зовущий двигатель, обязан его
 //     импортировать, а строка импорта содержит этот путь. Каталог, где путь не
@@ -49,7 +50,12 @@ import (
 //
 // Отбор кандидатов доказательством НЕ является: попавший в кандидаты файл всё
 // равно проходит разбор, и упоминание пути в комментарии даст ноль вызовов.
-const nameFormEnginePkgPath = "pkg/nameformdb"
+//
+// Значение — ПОЛНЫЙ путь импорта, а не хвост дерева: двигатель переехал из
+// pkg/nameformdb в пакет nameformdb общего фундамента
+// (github.com/PRO-Robotech/corelib), и вызывающие теперь импортируют его под
+// НОВЫМ полным путём — единственным законным написанием в этом дереве.
+const nameFormEnginePkgPath = "github.com/PRO-Robotech/corelib/nameformdb"
 
 // nameFormEngineType — тип двигателя, вызов метода которого и есть
 // доказательство.
@@ -389,7 +395,7 @@ func nameFormEngineLocalName(f *ast.File) string {
 		if err != nil {
 			continue
 		}
-		if !strings.HasSuffix(p, "/"+nameFormEnginePkgPath) && p != nameFormEnginePkgPath {
+		if p != nameFormEnginePkgPath {
 			continue
 		}
 		if imp.Name != nil {

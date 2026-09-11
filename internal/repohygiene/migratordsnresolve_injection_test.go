@@ -207,7 +207,7 @@ func TestDSNResolveInjectionRunTwo_NewPropertyOnly(t *testing.T) {
 			if len(got) != 1 {
 				t.Fatalf("находок %d, ожидалась одна: %v", len(got), got)
 			}
-			for _, want := range []string{relDSNEntry, tc.naming, "pkg/migratorcli", "ResolveDSN"} {
+			for _, want := range []string{relDSNEntry, tc.naming, "corelib/migratorcli", "ResolveDSN"} {
 				if !strings.Contains(got[0], want) {
 					t.Errorf("находка не называет %q: %s", want, got[0])
 				}

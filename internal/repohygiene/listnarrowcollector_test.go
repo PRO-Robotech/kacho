@@ -7,6 +7,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -203,8 +205,23 @@ func TestEveryListNarrowConsumerRegistersItsCollector(t *testing.T) {
 			"снимите его вместе с сужателем либо почините имена, которыми он его ищет")
 	}
 	if harnessSites == 0 {
-		t.Fatalf("исключению %q больше нечего исключать: дублёров сужателя в дереве нет — "+
-			"снимите запись вместе с каталогом", narrowTestHarness)
+		// Дом дублёра переехал ЦЕЛИКОМ из pkg/listnarrow этого дерева в пакет
+		// listnarrow общего фундамента (github.com/PRO-Robotech/corelib) — тот
+		// же класс переезда, что у прочих гейтов фундамента. Предмет исключения
+		// (harnessSites==0 в ЭТОМ дереве) остаётся живым, если дублёр найден ТАМ:
+		// снимать запись значило бы объявить несуществующим то, что просто уехало.
+		root := repoRoot(t)
+		moduleDir, merr := corelibModuleRootDir(root)
+		if merr != nil {
+			t.Fatalf("исключению %q больше нечего исключать ни в этом дереве, ни в общем "+
+				"фундаменте (%v) — снимите запись вместе с каталогом", narrowTestHarness, merr)
+		}
+		harnessInCorelib := filepath.Join(moduleDir, "listnarrow", "narrowtest")
+		if fi, serr := os.Stat(harnessInCorelib); serr != nil || !fi.IsDir() {
+			t.Fatalf("исключению %q больше нечего исключать: дублёра нет ни в этом дереве, "+
+				"ни в общем фундаменте (%s) — снимите запись вместе с каталогом",
+				narrowTestHarness, harnessInCorelib)
+		}
 	}
 
 	var findings []string

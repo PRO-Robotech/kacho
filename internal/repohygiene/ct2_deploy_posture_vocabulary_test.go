@@ -4,8 +4,8 @@
 package repohygiene
 
 import (
+	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 
@@ -45,23 +45,31 @@ func TestPostureVocabularyHasASingleSource(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 
-	var files []string
+	files := map[string][]byte{}
 	for _, sub := range []string{"services", "gateway", "pkg", "internal", "tools", "terraform"} {
 		for _, abs := range trackedGoFiles(t, filepath.Join(root, sub)) {
 			rel, err := filepath.Rel(root, abs)
 			if err != nil {
 				t.Fatalf("относительный путь %s: %v", abs, err)
 			}
-			files = append(files, filepath.ToSlash(rel))
+			body, rerr := os.ReadFile(abs) // #nosec G304 -- путь из индекса git этого дерева
+			if rerr != nil {
+				t.Fatalf("чтение %s: %v", abs, rerr)
+			}
+			files[filepath.ToSlash(rel)] = body
 		}
 	}
-	sort.Strings(files)
+	// Дом переехал целиком: без второго дома распознаватель ослеп бы на ВСЁ
+	// дерево, а не только на копии, — «домашних файлов ноль» получено бы даром.
+	for rel, body := range corelibPackageGoFiles(t, root, "servicecontract") {
+		files[rel] = body
+	}
 	if len(files) == 0 {
 		t.Fatal("предпосылка гейта не выполняется: не-тестовых файлов Go в индексе НОЛЬ — " +
 			"обход смотрит не туда; чинить надо гейт, а не молча выходить успехом")
 	}
 
-	findings, cen, err := auditPostureVocabularySingleSource(root, files)
+	findings, cen, err := auditPostureVocabularySingleSource(files)
 	if err != nil {
 		t.Fatalf("обход дерева: %v", err)
 	}

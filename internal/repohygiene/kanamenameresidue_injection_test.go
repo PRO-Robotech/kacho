@@ -120,9 +120,23 @@ func nameResidueSubjects() map[string]struct{ Path, Body string } {
 // первое же срабатывание на них его бы отключило.
 func nameResidueBorderTwins() map[string]struct{ Path, Body string } {
 	return map[string]struct{ Path, Body string }{
+		// Б1 узнаёт СЕГМЕНТ ПУТИ "kacho" сразу после "PRO-Robotech/"
+		// (kanameResidueRules, borderFoundationModule: `h.Seg == "kacho"`) — а
+		// не импорт общего фундамента как понятия. Фикстура несла
+		// "…/PRO-Robotech/corelib/ids" (правка pkg→corelib, a3fbfe546d) — после
+		// извлечения фундамента в corelib сегмент после "PRO-Robotech/" стал
+		// "corelib", распознаватель его не узнаёт (правило литеральное, а
+		// kanamenameresidue.go — не наш предмет: держатель остатка имени вынесен
+		// отдельным репозиторием), и близнец перестал быть предметом БЕЗ
+		// собственной находки — граница молчала одинаково и на верном, и на
+		// сломанном фикстуре. Возвращён путь ПОД МОДУЛЕМ kacho: он и сегодня
+		// законно живой (kaname временно require'ит платформу псевдоверсией,
+		// polyrepo.md §«Build-граф»), и пример взят из пакета, который под
+		// pkg/ остался (pkg/ownerregister, 275 файлов pkg/{api,authz,
+		// listnarrow,ownerregister,quota,subjectchange} никуда не уезжали).
 		borderFoundationModule: {
 			"services/iam/internal/apps/kaname/api/probe/import.go",
-			"import \"github.com/PRO-Robotech/corelib/ids\"\n",
+			"import \"github.com/PRO-Robotech/kacho/pkg/ownerregister\"\n",
 		},
 		borderFoundationContract: {
 			"proto/kacho/cloud/iam/v1/probe_import.proto",
