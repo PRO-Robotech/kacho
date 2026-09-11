@@ -1,0 +1,9 @@
+{
+  "retired": [
+    {
+      "carrier": "internal/repohygiene/quotaauthorityprofiles_test.go",
+      "reason": "Носитель судил пару «адрес домена величин объявлен — удостоверение к нему объявлено» у пяти потребителей и требовал от чартов не подставлять умолчание за оператора. Ребро снято из кода целиком (клиент, дозвон, ручка адреса, ручка удостоверения) во всех пяти чартах служб и во всех четырёх зонтичных профилях — предмета пары не осталось: адреса, половину которого можно забыть, больше не существует ни в одном чарте.",
+      "successor": "Требование «тянущий подъём безусловен» держит quotaauthoritydeclared.go/TestQuotaSyncStartsUnderTheDeclaration — оно живо и зелёно. Требование «посадка витрины выводится из объявления, а не подставлена литералом» держит quotashowposture.go/TestQuotaShowcaseKnowsWhetherTheAuthorityIsDeployed — тоже живо и зелёно. Предмета снятого носителя (пара адрес+удостоверение) больше нет ни в одной форме: git grep -c 'quota\\.authority\\|mtls\\.edges\\.quotaAuthority' по services/*/deploy/ и deploy/helm/umbrella/ даёт 0."
+    }
+  ]
+}
