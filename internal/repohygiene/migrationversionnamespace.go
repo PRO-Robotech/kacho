@@ -174,8 +174,8 @@ var frozenLegacyMigrations = map[string]string{
 	// свой репозиторий и свой надзор за нумерацией; держать здесь запись о
 	// нём значило бы замораживать номера, которые эта проверка не видит.
 	"services/compute/internal/migrations": "1-34,36-38",
-	"services/compute/migrations":               "1",
-	"services/geo/internal/migrations":          "1-4",
+	"services/compute/migrations":          "1",
+	"services/geo/internal/migrations":     "1-4",
 	// Здесь стояла запись службы доступа («1» — сведённая первичная миграция).
 	// Снята ВМЕСТЕ с каталогом: служба вынесена отдельным продуктом, каталога
 	// миграций в дереве нет. Запись, которой нечего замораживать, объявляет

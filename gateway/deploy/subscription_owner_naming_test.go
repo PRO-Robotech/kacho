@@ -4,12 +4,13 @@
 package deploy
 
 import (
-	"github.com/PRO-Robotech/kacho/internal/productnaming"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/productnaming"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 )

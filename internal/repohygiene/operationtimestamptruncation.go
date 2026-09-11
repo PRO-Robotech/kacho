@@ -383,7 +383,7 @@ func sortedFileKeys(m map[string]*ast.File) []string {
 // дерево, у которого нет go.mod вовсе (синтетика инъекции) или закрепления
 // общего фундамента, этому гейту не подлежит — предмета у него нет, а не отказ.
 func corelibOperationspbFiles(root string) (files map[string][]byte, ok bool, err error) {
-	body, rerr := os.ReadFile(filepath.Join(root, "go.mod"))
+	body, rerr := os.ReadFile(filepath.Join(root, "go.mod")) // #nosec G304 -- путь собран из корня дерева и имени объявления модуля, оба не от пользователя
 	if rerr != nil {
 		return nil, false, nil
 	}
@@ -423,7 +423,7 @@ func corelibOperationspbFiles(root string) (files map[string][]byte, ok bool, er
 		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
 			continue
 		}
-		src, rerr := os.ReadFile(filepath.Join(dir, name))
+		src, rerr := os.ReadFile(filepath.Join(dir, name)) // #nosec G304 -- путь собран из каталога модуля в кэше и имени файла пакета, оба не от пользователя
 		if rerr != nil {
 			return nil, false, fmt.Errorf("чтение %s/%s: %w", pkg, name, rerr)
 		}

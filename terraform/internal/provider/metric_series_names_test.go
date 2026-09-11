@@ -43,13 +43,14 @@ package provider
 
 import (
 	"context"
-	"github.com/PRO-Robotech/kacho/internal/productnaming"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/productnaming"
 
 	"github.com/prometheus/client_golang/prometheus"
 

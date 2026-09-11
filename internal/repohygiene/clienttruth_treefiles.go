@@ -119,7 +119,7 @@ func clientTruthTreeFiles(
 // синтетике, и `os.IsNotExist` там просачивается наверх как обычно.
 func clientTruthReadTreeFile(tree *treecorpus.Tree, rel string) ([]byte, error) {
 	path := filepath.Join(tree.Root(), filepath.FromSlash(rel))
-	body, err := os.ReadFile(path)
+	body, err := os.ReadFile(path) // #nosec G304 -- путь собран из корня дерева и координаты из индекса git, оба не от пользователя
 	if err == nil || !errors.Is(err, os.ErrNotExist) {
 		return body, err
 	}
@@ -132,5 +132,5 @@ func clientTruthReadTreeFile(tree *treecorpus.Tree, rel string) ([]byte, error) 
 	if cerr != nil {
 		return body, err // второй дом не резолвится — исходная ошибка честнее
 	}
-	return os.ReadFile(filepath.Join(moduleDir, filepath.FromSlash(tail)))
+	return os.ReadFile(filepath.Join(moduleDir, filepath.FromSlash(tail))) // #nosec G304 -- путь собран из каталога модуля в кэше и координаты из индекса git
 }

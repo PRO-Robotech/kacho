@@ -142,7 +142,7 @@ func corelibAPIStubDir(root string) (string, error) {
 // судимого дерева. Общий предикат для всех гейтов, которым нужен второй дом:
 // второй resolve той же версии молча разошёлся бы с первым при бампе.
 func corelibModuleRootDir(root string) (string, error) {
-	body, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	body, err := os.ReadFile(filepath.Join(root, "go.mod")) // #nosec G304 -- путь собран из корня дерева и имени объявления модуля, оба не от пользователя
 	if err != nil {
 		return "", fmt.Errorf("чтение go.mod: %w", err)
 	}
