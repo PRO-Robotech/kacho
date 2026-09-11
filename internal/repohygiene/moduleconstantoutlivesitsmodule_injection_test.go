@@ -122,7 +122,7 @@ func TestModuleConstantGate_RedsWhenTheNamedModuleIsNotDeclared(t *testing.T) {
 	}
 	declared := []string{"github.com/PRO-Robotech/kacho"} // модуль службы уехал
 
-	faults, census := judgeModulePathConstants(consts, declared, 10, 40, 1)
+	faults, census := judgeModulePathConstants(consts, declared, nil, 10, 40, 1)
 	if len(faults) != 1 {
 		t.Fatalf("константа, пережившая свой модуль, не найдена: %v", faults)
 	}
@@ -146,12 +146,80 @@ func TestModuleConstantGate_SilentWhileTheModuleIsDeclared(t *testing.T) {
 	}
 	declared := []string{"github.com/PRO-Robotech/kacho", "github.com/PRO-Robotech/kaname"}
 
-	faults, census := judgeModulePathConstants(consts, declared, 10, 40, 1)
+	faults, census := judgeModulePathConstants(consts, declared, nil, 10, 40, 1)
 	if len(faults) != 0 {
 		t.Fatalf("законный близнец объявлен находкой: %v", faults)
 	}
 	if census.PerModule["github.com/PRO-Robotech/kaname"] != 1 {
 		t.Fatalf("перепись не подтверждает, что смотреть было на что: %s", census)
+	}
+}
+
+// ЗАКОННЫЙ БЛИЗНЕЦ ВТОРОГО СПОСОБА ЗНАТЬ: модуль не объявлен, а ЗАТРЕБОВАН.
+//
+// Ось заведена своей парой, потому что это НОВОЕ свойство суждения, а не
+// частный случай прежнего: ровно на нём гейт дал 24 ложные находки в день, когда
+// фундамент вынесли отдельным опубликованным модулем. Отрицание к ней —
+// TestModuleConstantGate_RedsWhenTheNamedModuleIsNotDeclared выше: тот же вход,
+// отличающийся ровно одним фактом — модуль не назван НИ ОДНИМ из двух способов.
+func TestModuleConstantGate_SilentWhileTheModuleIsRequired(t *testing.T) {
+	t.Parallel()
+	consts := []ModulePathConstant{
+		{File: "internal/repohygiene/a.go", Line: 26, Name: "operationsPkgPath",
+			Value: "github.com/PRO-Robotech/corelib/operations", Module: "github.com/PRO-Robotech/corelib"},
+	}
+	declared := []string{"github.com/PRO-Robotech/kacho"}
+	required := []string{"github.com/PRO-Robotech/corelib"}
+
+	faults, census := judgeModulePathConstants(consts, declared, required, 10, 40, 1)
+	if len(faults) != 0 {
+		t.Fatalf("затребованный модуль объявлен незнаемым: %v", faults)
+	}
+	if census.PerModule["github.com/PRO-Robotech/corelib"] != 1 {
+		t.Fatalf("перепись не подтверждает, что смотреть было на что: %s", census)
+	}
+	if census.Required != 1 || census.Modules != 1 {
+		t.Fatalf("перепись не разводит объявленное и затребованное: %s", census)
+	}
+}
+
+// РАЗБОРЩИК затребованных знает ОБЕ законные формы записи. Форма, о которой он
+// не знает, даёт не красное и не зелёное — молчание: модуль читается незнаемым,
+// и находка приходит на верном дереве.
+func TestModuleConstantGate_RequireParserKnowsBothForms(t *testing.T) {
+	t.Parallel()
+	got := requiredModulePaths(`module github.com/PRO-Robotech/kacho
+
+go 1.24
+
+require github.com/PRO-Robotech/corelib v1.4.0
+
+require (
+	google.golang.org/grpc v1.83.2 // indirect
+	github.com/PRO-Robotech/other v0.1.0
+)
+`)
+	want := []string{
+		"github.com/PRO-Robotech/corelib",
+		"github.com/PRO-Robotech/other",
+		"google.golang.org/grpc",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("формы записи `require` прочитаны не все: %v, ожидалось %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("разбор разошёлся: %v, ожидалось %v", got, want)
+		}
+	}
+
+	// ЗАКОННЫЙ БЛИЗНЕЦ: `go.mod` без `require` даёт пустой ответ, а не выдумку.
+	if bare := requiredModulePaths("module github.com/PRO-Robotech/kacho\n\ngo 1.24\n"); len(bare) != 0 {
+		t.Fatalf("объявление без `require` дало %v", bare)
+	}
+	// И второй: слово `require` в комментарии директивой не является.
+	if prose := requiredModulePaths("module m\n\n// require github.com/PRO-Robotech/ghost v1\n"); len(prose) != 0 {
+		t.Fatalf("проза принята за директиву: %v", prose)
 	}
 }
 
@@ -167,10 +235,10 @@ func TestModuleConstantGate_EachEmptyInputIsARefusal(t *testing.T) {
 		faults []string
 		want   string
 	}{
-		{"модулей ноль", injFaultsOf(judgeModulePathConstants(c, nil, 1, 1, 1)), "ни одного `go.mod`"},
-		{"владельцев ноль", injFaultsOf(judgeModulePathConstants(c, d, 1, 1, 0)), "владельца имён"},
-		{"файлов ноль", injFaultsOf(judgeModulePathConstants(c, d, 0, 1, 1)), "обход пуст"},
-		{"констант ноль", injFaultsOf(judgeModulePathConstants(c, d, 1, 0, 1)), "строковых констант"},
+		{"модулей ноль", injFaultsOf(judgeModulePathConstants(c, nil, nil, 1, 1, 1)), "ни одного `go.mod`"},
+		{"владельцев ноль", injFaultsOf(judgeModulePathConstants(c, d, nil, 1, 1, 0)), "владельца имён"},
+		{"файлов ноль", injFaultsOf(judgeModulePathConstants(c, d, nil, 0, 1, 1)), "обход пуст"},
+		{"констант ноль", injFaultsOf(judgeModulePathConstants(c, d, nil, 1, 0, 1)), "строковых констант"},
 	} {
 		if len(tc.faults) != 1 || !strings.Contains(tc.faults[0], tc.want) {
 			t.Fatalf("%s: прошло как чистота либо смешалось с соседним отказом: %v", tc.name, tc.faults)
@@ -180,28 +248,56 @@ func TestModuleConstantGate_EachEmptyInputIsARefusal(t *testing.T) {
 
 func injFaultsOf(f []string, _ ModuleConstantCensus) []string { return f }
 
-// ── ТОТ ЖЕ ОПЫТ НА ЖИВОМ ДЕРЕВЕ: снятие каталога обязано краснеть ────────────
+// ── ТОТ ЖЕ ОПЫТ НА ЖИВОМ ДЕРЕВЕ: уход модуля из знаемых обязан краснеть ──────
 
 // Пробы выше доказывают механизм на синтетике. Эта воспроизводит НАСТОЯЩИЙ
-// переход на настоящем корпусе: те же константы дерева, судимые против состава
-// без вынесенного модуля. Без неё доказано было бы, что ось работает вообще, но
-// не что она сработает в тот день, ради которого заведена.
+// переход на настоящем корпусе: те же константы дерева, судимые против набора
+// знаемых модулей БЕЗ одного из них. Без неё доказано было бы, что ось работает
+// вообще, но не что она сработает в тот день, ради которого заведена.
 //
-// Пара одно-фактная: близнец — тот же корпус при обоих объявленных модулях.
+// # Пара одно-фактная, и оба её входа берутся ИЗ ДЕРЕВА
+//
+// Близнец — полный набор знаемых (объявленные плюс затребованные): молчание.
+// Внесённый факт — тот же набор БЕЗ модуля фундамента: константы, называющие
+// пути внутрь него, обязаны покраснеть, и покраснеть с координатой.
+//
+// Различие ровно одно и оно названо: одна запись набора. Корпус, распознаватель,
+// перепись, суждение — те же.
+//
+// # Почему константы НАСТОЯЩИЕ, а не синтетические
+//
+// Прежняя редакция подавала синтетическую константу: на том дереве настоящих не
+// оставалось ни одной, и проба краснела на достижении собственной цели. Сегодня
+// их две дюжины — фундамент вынесен отдельным опубликованным модулем, и пути
+// внутрь него названы константами по всему дереву. Отрицательная половина стоит
+// поэтому на РЕАЛЬНОМ входе, и это сильнее синтетики: она доказывает, что
+// красное придёт на тех самых координатах, которыми судят дерево.
+//
+// Премиса непустоты обязательна: корпус без таких констант обратил бы инъекцию
+// в форму без содержания, и проба говорит об этом отказом, а не молчанием.
 func TestModuleConstantGate_LiveCorpusRedsWhenTheCarvedOutModuleGoes(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
+	tree := newTrackedTree(t, root)
 
-	const carvedTree = "services/iam/"
-	const carvedModule = "github.com/PRO-Robotech/kaname"
-	both := []string{"github.com/PRO-Robotech/kacho", carvedModule}
-	owners := moduleNameOwners(both)
+	declared, required := knownModulesOfTree(t, root, tree)
+	owners := moduleNameOwners(declared)
+
+	// Модуль, чей уход воспроизводится, ВЫВОДИТСЯ: берётся затребованный модуль
+	// нашего владельца имён. Выписанное имя было бы ровно тем, что этот гейт
+	// ловит, — координатой, переживающей свой предмет.
+	ourRequired := ownNamed(required, owners)
+	if len(ourRequired) == 0 {
+		t.Skip("своих затребованных модулей у дерева нет: воспроизводить уход нечего. " +
+			"Это не чистота и не находка — предмета инъекции в этом дереве не существует")
+	}
+	gone := ourRequired[0]
 
 	files, err := treecorpus.UnderWithSuffix(root, ".go")
 	if err != nil {
 		t.Fatalf("состав дерева не прочитан: %v", err)
 	}
-	var outside []ModulePathConstant
+	var consts []ModulePathConstant
 	read, parsed := 0, 0
 	for _, abs := range files {
 		rel, err := filepath.Rel(root, abs)
@@ -209,11 +305,6 @@ func TestModuleConstantGate_LiveCorpusRedsWhenTheCarvedOutModuleGoes(t *testing.
 			t.Fatalf("путь %s не приводится к корню: %v", abs, err)
 		}
 		rel = filepath.ToSlash(rel)
-		// Константы ВНУТРИ вынесенного дерева уезжают вместе с ним и находкой
-		// не станут. Предмет — те, что остаются в монорепо.
-		if strings.HasPrefix(rel, carvedTree) {
-			continue
-		}
 		b, err := os.ReadFile(abs) // #nosec G304 — путь из состава дерева
 		if err != nil {
 			t.Fatalf("%s не прочитан: %v", rel, err)
@@ -224,52 +315,52 @@ func TestModuleConstantGate_LiveCorpusRedsWhenTheCarvedOutModuleGoes(t *testing.
 		}
 		parsed++
 		read += n
-		outside = append(outside, found...)
+		consts = append(consts, found...)
 	}
 	if parsed == 0 || read == 0 {
-		t.Fatalf("корпус вне вынесенного дерева пуст: файлов %d, констант %d — "+
-			"вердикт был бы о непрочитанном", parsed, read)
+		t.Fatalf("корпус пуст: файлов %d, констант %d — вердикт был бы о непрочитанном",
+			parsed, read)
 	}
 
-	// БЛИЗНЕЦ: оба модуля объявлены — молчание.
-	if faults, census := judgeModulePathConstants(outside, both, parsed, read, len(owners)); len(faults) != 0 {
-		t.Fatalf("живой корпус краснеет при обоих объявленных модулях: %v; перепись: %s", faults, census)
+	// ПРЕМИСА ОТРИЦАНИЯ: константы, называющие уходящий модуль, в корпусе ЕСТЬ.
+	// Без неё красное ниже было бы невозможно, и молчание читалось бы как
+	// «снятие прошло тихо» на дереве, где снимать нечего.
+	naming := 0
+	for _, c := range consts {
+		if c.Module == gone {
+			naming++
+		}
+	}
+	if naming == 0 {
+		t.Fatalf("ни одна константа не называет %s: инъекция беспредметна — уход этого "+
+			"модуля нечем сделать заметным", gone)
 	}
 
-	// ВНЕСЁННЫЙ ФАКТ: объявление второго модуля снято, а константа, называющая
-	// его, в корпусе ЕСТЬ.
-	//
-	// Константа подаётся СИНТЕТИЧЕСКОЙ, и это не ослабление, а починка формы.
-	// Прежде инъекция брала её из живого дерева — то есть требовала, чтобы дерево
-	// НЕСЛО дефект, ради которого гейт заведён. Пока разрез был впереди, такая
-	// константа в нём действительно была; после разреза её не осталось ни одной,
-	// и проба покраснела на достижении собственной цели: «снятие прошло молча»
-	// печаталось на дереве, где снимать было нечего.
-	//
-	// Живой корпус остаётся ПОЛОЖИТЕЛЬНЫМ близнецом выше (оба модуля объявлены —
-	// молчание) и премисой непустоты; отрицательная половина стоит теперь на
-	// входе, который проба строит сама и который поэтому не может исчезнуть.
-	injected := append(append([]ModulePathConstant(nil), outside...), ModulePathConstant{
-		File:   "internal/repohygiene/zz_injected_module_constant.go",
-		Line:   1,
-		Name:   "injectedCarvedModule",
-		Value:  carvedModule,
-		Module: carvedModule,
-	})
-	faults, census := judgeModulePathConstants(injected, both[:1], parsed, read+1, len(owners))
-	if len(faults) == 0 {
-		t.Fatalf("снятие модуля прошло молча — ровно тот случай, ради которого гейт "+
-			"заведён; перепись: %s", census)
+	// БЛИЗНЕЦ: полный набор знаемых — молчание.
+	if faults, census := judgeModulePathConstants(
+		consts, declared, required, parsed, read, len(owners)); len(faults) != 0 {
+		t.Fatalf("живой корпус краснеет при полном наборе знаемых модулей: %v; перепись: %s",
+			faults, census)
+	}
+
+	// ВНЕСЁННЫЙ ФАКТ — ровно один: одна запись ушла из знаемых.
+	shrunk := make([]string, 0, len(required))
+	for _, m := range required {
+		if m != gone {
+			shrunk = append(shrunk, m)
+		}
+	}
+	faults, census := judgeModulePathConstants(consts, declared, shrunk, parsed, read, len(owners))
+	if len(faults) != naming {
+		t.Fatalf("уход модуля %s дал находок %d, а называющих его констант %d — "+
+			"суждение потеряло часть предмета; перепись: %s", gone, len(faults), naming, census)
 	}
 	for _, f := range faults {
-		if !strings.Contains(f, carvedModule) {
+		if !strings.Contains(f, gone) {
 			t.Fatalf("находка не называет уехавший модуль: %q", f)
 		}
 	}
-	t.Logf("одно-фактная пара на живом корпусе: файлов вне %s — %d, констант прочитано %d, "+
-		"названных путём модуля %d; при обоих модулях находок 0, без вынесенного — %d",
-		carvedTree, parsed, read, census.Matched, len(faults))
-	for _, f := range faults {
-		t.Logf("  %s", f)
-	}
+	t.Logf("одно-фактная пара на живом корпусе: файлов %d, констант прочитано %d, "+
+		"названных путём модуля %d; при полном наборе находок 0, без %s — %d",
+		parsed, read, census.Matched, gone, len(faults))
 }

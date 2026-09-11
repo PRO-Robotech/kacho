@@ -107,12 +107,25 @@ var Profile = listfiltergate.Profile{
 		// objects may this subject act on", and that is the form the ban must
 		// already refuse when it is written.
 		{Dir: "internal/check", Type: "IAMCheckClient", Role: listfiltergate.AsksVerdicts},
-		// The SHARED narrow port to kaname's AuthorizeService, resolved from the
-		// module root because it is foundation rather than service code. It is the
-		// shortest path from "narrow this page" to "enumerate the universe": the RPC
-		// it fronts is the one that enumerates (AuthorizeService.ListObjects), so a
-		// profile watching only its own client would leave the likelier door unwatched.
-		{Dir: "pkg/listnarrow", Type: "AuthorizeClient", Role: listfiltergate.AsksVerdicts, Shared: true},
+		// АДАПТЕР порта сужателя — то, что от общего порта осталось В ЭТОМ ДЕРЕВЕ.
+		//
+		// Прежде здесь стоял сам порт (`pkg/listnarrow.AuthorizeClient`, `Shared`),
+		// и разрешался он от корня модуля. Оба факта умерли вместе с переездом
+		// фундамента (#2131): интерфейс уехал в `corelib`, а `Shared` разрешается
+		// обходом вверх до `go.mod`, ОБЪЯВЛЯЮЩЕГО модуль гейта, — такого go.mod в
+		// платформе нет и не будет, поэтому источник переставал разрешаться вовсе
+		// и гейт объявлял находкой собственную технику.
+		//
+		// Watch переехал на РЕАЛИЗАЦИЮ, и класс от этого не сузился: адаптер несёт
+		// `var _ listnarrow.AuthorizeClient = (*grpcAuthorizeClient)(nil)`, поэтому
+		// метод, добавленный в интерфейс фундамента, обязан появиться ЗДЕСЬ — иначе
+		// дерево не собирается. Признак производит это дерево, а не чужое.
+		//
+		// Путь относителен корню службы намеренно: `Shared` — единственная форма
+		// адресации от корня модуля, и она неисполнима до тех пор, пока разрешение
+		// живёт в вынесенном модуле. Предикат возврата: `Shared` станет исполнимым,
+		// когда гейт научится разрешать источник от корня ЗАТРЕБОВАННОГО модуля.
+		{Dir: "../../pkg/listnarrow/narrowiam", Type: "grpcAuthorizeClient", Role: listfiltergate.AsksVerdicts},
 	},
 	SubjectScopers: []string{"ListForCaller"},
 

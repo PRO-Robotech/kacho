@@ -74,12 +74,17 @@ func runGate(t *testing.T, root string, args ...string) (string, error) {
 // surface, and the declared enumeration sources whose method sets derive the ban.
 var treesRead = []string{anchorDir, "internal/check", "internal/clients/iam"}
 
-// sharedTreesRead are the directories under the MODULE root the gate parses. The
-// port through which every consumer service asks kaname the authorization
-// question is shared foundation, not service code — so a copy holding only the
-// service would make the derivation unresolvable, and every injection below would
-// fail on that instead of on its own subject.
-var sharedTreesRead = []string{"pkg/listnarrow"}
+// treesAboveTheService are the directories OUTSIDE the service root the gate
+// parses. Адаптер порта сужателя — не код службы, поэтому копия, несущая одну
+// только службу, оставила бы источник неразрешимым, и КАЖДАЯ инъекция ниже
+// падала бы на этом, а не на своём предмете.
+//
+// Прежде каталог назывался общим и разрешался от корня модуля (`Shared`). Оба
+// факта умерли с переездом фундамента (#2131): интерфейс порта уехал в
+// `corelib`, а от `Shared`-разрешения остался обход вверх до `go.mod`,
+// объявляющего модуль ГЕЙТА, — такого go.mod в платформе нет. В дереве осталась
+// реализация, и watch стоит на ней (см. профиль).
+var treesAboveTheService = []string{"pkg/listnarrow/narrowiam"}
 
 // moduleRoot returns the module root — the directory holding go.mod, pkg/ and
 // services/. It is where a Shared enumeration source is resolved from.
@@ -138,21 +143,21 @@ func copyTrees(t *testing.T) string {
 	for _, tree := range treesRead {
 		copied += copyTree(t, serviceRoot(t), tree, svc)
 	}
-	for _, tree := range sharedTreesRead {
+	for _, tree := range treesAboveTheService {
 		copied += copyTree(t, moduleRoot(t), tree, dst)
 	}
-	// The go.mod is what makes this copy a module: the gate walks up from --root to
-	// find it, exactly as it does in the real tree.
-	if err := os.WriteFile(filepath.Join(dst, "go.mod"),
-		[]byte("module github.com/PRO-Robotech/kacho\n\ngo 1.24\n"), 0o644); err != nil {
-		t.Fatalf("write go.mod: %v", err)
-	}
+	// go.mod здесь БОЛЬШЕ НЕ ПИШЕТСЯ, и это снятие фикстуры вместе с её
+	// основанием, а не упрощение. Она объявляла копию модулем ради обхода вверх,
+	// которым гейт разрешал `Shared`-источник; после переезда фундамента (#2131)
+	// ни один профиль `Shared` не объявляет, обход не исполняется, и файл был бы
+	// фикстурой без предмета — тем самым классом, который эти пробы стерегут.
+	// Разбор AST модуля не требует: гейт читает каталоги, а не пакеты.
 	// "Ноль прочитанного" обязано быть отличимо от "ноль находок": копия, собранная
 	// из пустого состава, дала бы гейту пустое дерево, и КАЖДАЯ проба ниже упала бы
 	// с сообщением не о своём предмете.
 	if copied == 0 {
 		t.Fatalf("состав пуст: скопировано 0 файлов из %v/%v — инъекции ниже утверждали бы "+
-			"о дереве, которого нет", treesRead, sharedTreesRead)
+			"о дереве, которого нет", treesRead, treesAboveTheService)
 	}
 	return svc
 }
@@ -221,7 +226,7 @@ func TestAuditListFilter_RealTreePasses(t *testing.T) {
 		"enumerate-then-narrow ban",
 		"source internal/clients/iam.CheckClient",
 		"source internal/check.IAMCheckClient",
-		"source pkg/listnarrow.AuthorizeClient",
+		"source ../../pkg/listnarrow/narrowiam.grpcAuthorizeClient",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("a passing run must report its census (missing %q)\n--- output ---\n%s", want, out)
@@ -372,18 +377,25 @@ func TestAuditListFilter_DerivedBanRefusesAPageTakenFromAnEnumeration(t *testing
 			wantSource: "internal/clients/iam.CheckClient",
 		},
 		{
-			// the SHARED port to kaname's AuthorizeService — the surface that
-			// already carries ListObjects on the iam side, so this is the shortest
-			// path from "narrow the page" to "enumerate the universe".
-			name: "shared authorize port",
+			// АДАПТЕР порта к AuthorizeService службы доступа — поверхность, за
+			// которой на её стороне уже стоит ListObjects, то есть кратчайший путь
+			// от «сузить страницу» к «перечислить вселенную».
+			//
+			// Дефект вносится в РЕАЛИЗАЦИЮ, а не в интерфейс: интерфейс уехал в
+			// вынесенный фундамент (#2131), и правка чужого модуля инъекцией не
+			// является — она проверяла бы падучесть двойника. Реализация же
+			// привязана к интерфейсу утверждением соответствия, поэтому метод,
+			// появившийся там, обязан появиться и здесь.
+			name: "narrow port adapter",
 			widen: func(t *testing.T, root string) {
-				patch(t, filepath.Dir(filepath.Dir(root)), "pkg/listnarrow/narrower.go",
-					"type AuthorizeClient interface {",
-					"type AuthorizeClient interface {\n\tVisibleObjectIDs(ctx context.Context, subject, objectType string) ([]string, error)")
+				patch(t, filepath.Dir(filepath.Dir(root)), "pkg/listnarrow/narrowiam/client.go",
+					"func (g *grpcAuthorizeClient) BatchCheck(",
+					"func (g *grpcAuthorizeClient) VisibleObjectIDs(ctx context.Context, subject, objectType string) ([]string, error) {\n"+
+						"\treturn nil, nil\n}\n\nfunc (g *grpcAuthorizeClient) BatchCheck(")
 			},
 			call:       "\tallowed, _ := u.authz.VisibleObjectIDs(ctx, \"user:x\", \"nlb_load_balancer\")\n\t_ = allowed\n",
 			wantCall:   "reaches VisibleObjectIDs",
-			wantSource: "pkg/listnarrow.AuthorizeClient",
+			wantSource: "pkg/listnarrow/narrowiam.grpcAuthorizeClient",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
