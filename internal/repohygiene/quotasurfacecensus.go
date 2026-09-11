@@ -358,6 +358,19 @@ var quotaCensusRules = []quotaCensusRule{
 		NotScope: []string{iamServicePrefix},
 		Token:    regexp.MustCompile(`kacho\.cloud\.quota|"quota"|quota/v1`),
 	},
+	{
+		Surface: quotaSurfaceOwners, Code: "B10",
+		// Объявление генерации контрактов исключает `kacho/cloud/quota` из
+		// ЛОКАЛЬНОГО порождения — стабы учёта переехали в общий фундамент
+		// (`github.com/PRO-Robotech/corelib/api/...`), и породить их здесь ещё
+		// раз значило бы дать двоичному два пакета с одним именем контракта
+		// (паника инициализации, а не отказ сборки). Сам файл лежит ВНЕ
+		// каталога контракта, поэтому B4 (Prefixes на `proto/kacho/cloud/quota/`)
+		// его не видит — здесь предмет тот же, а путь другой.
+		Why:      "перечень исключений локальной генерации называет контракт учёта, переехавший в общий фундамент",
+		Prefixes: []string{"proto/buf.gen.yaml"},
+		Token:    regexp.MustCompile(`kacho/cloud/quota`),
+	},
 
 	// ---------- C. учёт самой службы доступа ----------
 	// Здесь стояло правило C1 («тот же учёт, но в службе доступа»): единственное
