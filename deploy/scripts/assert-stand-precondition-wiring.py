@@ -100,7 +100,6 @@ STAND_CALL = re.compile(
 VERDICT_RUNNERS = (
     "assert-suites-green.sh",              # гейт суиты: «нет отчётов» → красное
     "assert-ban6-external-isolation.py",   # спрашивает листенер, которого нет
-    "coverage.py",                         # считает по отчётам, которых нет
     "newman-live.py report",               # печатает «0 отчётов» как потерю
     "newman-shard-run.sh",                 # прогон суит шарда: без кластера падает на первом запросе
     "npx playwright test",                 # то же для консоли
