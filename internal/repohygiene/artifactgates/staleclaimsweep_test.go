@@ -707,12 +707,15 @@ func TestStaleClaimPremiseHolds(t *testing.T) {
 	})
 
 	t.Run("отказ_в_правах_терминален_в_общей_библиотеке", func(t *testing.T) {
-		fd := mustFunc(t, root, "pkg/outbox/drainer/classify.go", "isPermanentGRPC")
+		// pkg/outbox/drainer переехал в общий фундамент
+		// (github.com/PRO-Robotech/corelib), пакет outbox/drainer — байт-в-байт
+		// то же дерево, читается из кэша модулей (corelibsource_test.go).
+		fd := mustFuncInCorelib(t, root, "outbox/drainer", "classify.go", "isPermanentGRPC")
 		requireBodyMentions(t, fd, "codes", "PermissionDenied")
 	})
 
 	t.Run("повторяемая_строка_удерживается_ниже_порога", func(t *testing.T) {
-		fd := mustFunc(t, root, "pkg/outbox/drainer/internal.go", "markTransientFailure")
+		fd := mustFuncInCorelib(t, root, "outbox/drainer", "internal.go", "markTransientFailure")
 		if !bodyCapsBelowMaxAttempts(fd) {
 			t.Fatalf("markTransientFailure больше не удерживает попытку ниже порога " +
 				"(выражения вида MaxAttempts - 1 в теле нет). Тогда строка, помеченная " +
@@ -750,11 +753,32 @@ func TestStaleClaimPremiseHolds(t *testing.T) {
 	})
 }
 
-// mustFunc — разбирает файл и достаёт объявление функции по имени.
+// mustFunc — разбирает файл ДЕРЕВА (путь относительно корня) и достаёт
+// объявление функции по имени.
 func mustFunc(t *testing.T, root, rel, name string) *ast.FuncDecl {
 	t.Helper()
+	return mustFuncAt(t, filepath.Join(root, filepath.FromSlash(rel)), rel, name)
+}
+
+// mustFuncInCorelib — то же самое, но файл лежит НЕ в дереве, а в пакете
+// общего фундамента (`github.com/PRO-Robotech/corelib`), куда переехала часть
+// pkg/ (см. `corelibsource_test.go`). pkg — имя каталога пакета внутри модуля
+// (например "outbox/drainer"), file — имя файла в нём.
+func mustFuncInCorelib(t *testing.T, root, pkg, file, name string) *ast.FuncDecl {
+	t.Helper()
+	path, version, err := corelibFilePath(root, pkg, file)
+	if err != nil {
+		t.Fatalf("%v — предпосылка не проверена, а не «пройдена»", err)
+	}
+	return mustFuncAt(t, path, corelibModulePath+"@"+version+"/"+pkg+"/"+file, name)
+}
+
+// mustFuncAt — разбирает файл по АБСОЛЮТНОМУ пути и достаёт объявление функции
+// по имени. rel — только для текста находки, на разбор не влияет.
+func mustFuncAt(t *testing.T, path, rel, name string) *ast.FuncDecl {
+	t.Helper()
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, filepath.Join(root, filepath.FromSlash(rel)), nil, parser.ParseComments)
+	f, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
 	if err != nil {
 		t.Fatalf("разбор %s: %v — предпосылка не проверена, а не «пройдена»", rel, err)
 	}
