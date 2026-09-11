@@ -1,0 +1,18 @@
+=== RUN   TestOneContainerManyDatabases
+2026/09/11 15:53:38 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 29.8.0
+  API Version: 1.55
+  Operating System: Ubuntu 26.04.1 LTS
+  Total Memory: 62150 MB
+  Testcontainers for Go Version: v0.44.0
+  Resolved Docker Host: unix:///var/run/docker.sock
+  Resolved Docker Socket Path: /var/run/docker.sock
+  Test SessionID: 5611667020998f74fba6140faa25e1fdeb39e5f148fbe208475f4b38fd63ee30
+  Test ProcessID: f749cfb0-389a-40ea-89a2-c282013bd16c
+2026/09/11 15:53:38 ✍🏼 Replacing image with HubImageSubstitutor (prepends 127.0.0.1:1/rg1). From: postgres:16-alpine to 127.0.0.1:1/rg1/postgres:16-alpine
+2026/09/11 15:53:38 No image auth found for 127.0.0.1:1. Setting empty credentials for the image: 127.0.0.1:1/rg1/postgres:16-alpine. This is expected for public images. Details: credentials not found in native keychain
+pgtest: integration Postgres unavailable: start postgres: run postgres: generic container: create container: Error response from daemon: failed to resolve reference "127.0.0.1:1/rg1/postgres:16-alpine": failed to do request: Head "https://127.0.0.1:1/v2/rg1/postgres/manifests/16-alpine": dial tcp 127.0.0.1:1: connect: connection refused
+УСЛОВИЕ НЕ СОЗДАНО: вердикта нет НИ У ОДНОЙ пробы пакета, включая успевшие пройти.
+Это не дефект кода. Прогон недействителен и повторяется.
+FAIL	github.com/PRO-Robotech/kacho/pkg/pgtest	0.163s
+FAIL

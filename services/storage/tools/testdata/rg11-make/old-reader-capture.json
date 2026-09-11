@@ -1,0 +1,271 @@
+{
+  "reader_sha256": "42b738fc1ef9df195077c96c48a44cfb6bd44671d3ed1826fc47e90315a7d2b1",
+  "corpus_sha256": "0664026559373f68b0602838ca71bea2e61c6c68a421391f1faca006407b76c5",
+  "exit": 0,
+  "invocations": [
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 3,
+      "dir": "gateway",
+      "target": "permission-catalog-check",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 4,
+      "dir": "gateway",
+      "target": "rest-route-table-check",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 5,
+      "dir": "gateway",
+      "target": "domain-generation-check",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 7,
+      "dir": "services/compute",
+      "target": "audit-list-filter",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 7,
+      "dir": "services/geo",
+      "target": "audit-list-filter",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 7,
+      "dir": "services/iam",
+      "target": "audit-list-filter",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 7,
+      "dir": "services/nlb",
+      "target": "audit-list-filter",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 7,
+      "dir": "services/registry",
+      "target": "audit-list-filter",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 7,
+      "dir": "services/storage",
+      "target": "audit-list-filter",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 7,
+      "dir": "services/vpc",
+      "target": "audit-list-filter",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 9,
+      "dir": "services/iam",
+      "target": "module-manifest-check",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 10,
+      "dir": "services/iam",
+      "target": "model-canon-check",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 13,
+      "dir": "services/storage",
+      "target": "audit-known-failing",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "build-test",
+      "step": 12,
+      "dir": ".",
+      "target": "test-unit",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 7,
+      "dir": "services/iam",
+      "target": "helm-render-guard",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 7,
+      "dir": "services/nlb",
+      "target": "helm-render-guard",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 7,
+      "dir": "services/vpc",
+      "target": "helm-render-guard",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 11,
+      "dir": "deploy",
+      "target": "waiter-discipline",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 12,
+      "dir": "deploy",
+      "target": "report-reader-discipline",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 13,
+      "dir": "deploy",
+      "target": "alt-fixture-discipline",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 14,
+      "dir": "deploy",
+      "target": "posture-branch-discipline",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 15,
+      "dir": "deploy",
+      "target": "verdict-aggregator-discipline",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 16,
+      "dir": "deploy",
+      "target": "ceremony-declaration-discipline",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 17,
+      "dir": "deploy",
+      "target": "dialled-transport-discipline",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 18,
+      "dir": "deploy",
+      "target": "generated-scripts-parse",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 19,
+      "dir": "deploy",
+      "target": "delete-step-discipline",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 20,
+      "dir": "deploy",
+      "target": "fixture-role-verbs",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 24,
+      "dir": "deploy",
+      "target": "gate-self-test",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 25,
+      "dir": "deploy",
+      "target": "injection-proofs",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 26,
+      "dir": "deploy",
+      "target": "helm-manifest-test",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "integration",
+      "step": 3,
+      "dir": ".",
+      "target": "test-integration",
+      "wrapped": false
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "pg-outside-selection",
+      "step": 4,
+      "dir": ".",
+      "target": "test-pg-outside-selection",
+      "wrapped": false
+    },
+    {
+      "workflow": "console-e2e.yml",
+      "job": "probes",
+      "step": 28,
+      "dir": "deploy",
+      "target": "seed-vpc-pools-check",
+      "wrapped": false
+    }
+  ]
+}
