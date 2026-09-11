@@ -869,6 +869,26 @@
       "carrier": "internal/repohygiene/withdrawalproducerarriveswiththeapplier_test.go",
       "reason": "судил СОГЛАСИЕ двух фактов прод-дерева службы доступа: применитель ролей модуля приводится в действие и производитель отзыва роли существует",
       "successor": "снято вместе с предметом: прод-файлов Go services/iam разобрано 0 при пороге 300 — обход пуст by construction"
+    },
+    {
+      "carrier": "pkg/dropguard/declaredcount_injection_test.go",
+      "reason": "доказательство падучести стража объявленного счётчика дропгарда",
+      "successor": "пакет dropguard переехал целиком в общий фундамент (github.com/PRO-Robotech/corelib, коммит a3fbfe546d — «pkg: фундамент вынесен в общую библиотеку»); носитель уехал ВМЕСТЕ с ним, БУКВАЛЬНО по тому же относительному пути (corelib/dropguard/declaredcount_injection_test.go) и с тем же именем. Предмета в этом дереве нет — судить нечего, а не «перестали судить», как и у выноса службы доступа выше"
+    },
+    {
+      "carrier": "pkg/dropguard/dynamicdrop_injection_test.go",
+      "reason": "доказательство падучести стража динамического снятия таблиц дропгардом",
+      "successor": "тот же перенос, что у declaredcount_injection_test.go выше: пакет dropguard целиком в github.com/PRO-Robotech/corelib, носитель — по тому же пути (corelib/dropguard/dynamicdrop_injection_test.go), тем же именем"
+    },
+    {
+      "carrier": "pkg/treecorpus/cachedverdict_test.go",
+      "reason": "судил кэш вердикта обхода дерева (repoRootForProbe)",
+      "successor": "пакет treecorpus переехал целиком в общий фундамент (github.com/PRO-Robotech/corelib, тот же коммит a3fbfe546d); носитель уехал ВМЕСТЕ с ним по тому же относительному пути (corelib/treecorpus/cachedverdict_test.go), тем же именем"
+    },
+    {
+      "carrier": "pkg/treecorpus/index_cache_test.go",
+      "reason": "судил кэш индекса обхода дерева (repoRootForCache)",
+      "successor": "тот же перенос, что у cachedverdict_test.go выше: пакет treecorpus целиком в github.com/PRO-Robotech/corelib, носитель — по тому же пути (corelib/treecorpus/index_cache_test.go), тем же именем"
     }
   ],
   "retired_scopes": [
