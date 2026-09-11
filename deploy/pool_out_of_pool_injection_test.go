@@ -103,6 +103,14 @@ func (s *outOfPoolStand) read(t *testing.T) *outOfPoolTree {
 	return readOutOfPoolTreeAt(t, s.root)
 }
 
+// readAsLibrary — тот же синтетический стенд, прочитанный как каталог общего
+// фундамента: держатели общих ресурсов лежат ПРЯМО под корнем (`Site` без
+// префикса `pkg/`), а не под одной из поддиректорий `outOfPoolRoots`.
+func (s *outOfPoolStand) readAsLibrary(t *testing.T) *outOfPoolTree {
+	t.Helper()
+	return readOutOfPoolLibraryTree(t, s.root)
+}
+
 const (
 	// Захват своего соединения. Путь драйвера ВЕРСИОНИРОВАН, а пакет зовётся
 	// иначе — на этом первая редакция распознавателя и ослепла.
@@ -176,8 +184,15 @@ func TestOutOfPoolRecogniserResolvesVersionedImportPaths(t *testing.T) {
 // Захват, не приписанный ни службе, ни записи каталога, обязан быть НАЗВАН.
 // Молчание здесь и есть та самая «честная неполнота, названная полнотой»: сумма
 // сходится по отсутствию слагаемого, а не по сходимости.
+//
+// Держатели общих ресурсов лежат в ОТДЕЛЬНОМ дереве (общий фундамент) — их
+// самоистечение проверяется отдельным синтетическим стендом (`lib`,
+// прочитанным `readAsLibrary`), а «захват вне каталога» и «своё дерево службы»
+// остаются предметом ЛОКАЛЬНОГО стенда (`local`, прочитанного `read`). Два
+// корня, потому что в жизни это ровно так: чарт и вызывающий код — здесь,
+// LISTEN-сессия — там.
 func TestOutOfPoolArithmeticIsCompleteOrSaysItIsNot(t *testing.T) {
-	write := func(t *testing.T, s *outOfPoolStand) {
+	writeLibrary := func(t *testing.T, s *outOfPoolStand) {
 		t.Helper()
 		for _, h := range outOfPoolHolders {
 			body := captureConnect
@@ -189,25 +204,34 @@ func TestOutOfPoolArithmeticIsCompleteOrSaysItIsNot(t *testing.T) {
 	}
 
 	t.Run("каждый захват приписан — ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ", func(t *testing.T) {
-		s := newOutOfPoolStand(t)
-		write(t, s)
+		lib := newOutOfPoolStand(t)
+		writeLibrary(t, lib)
+		local := newOutOfPoolStand(t)
 		// Захват в дереве СЛУЖБЫ приписан ей by construction — и это тоже надо
 		// проверить, иначе «ноль неучтённых» достижимо тем, что служб не читали.
-		s.write(t, "services/probe/internal/repo/notify.go", captureHijack)
-		tree := s.read(t)
-		if got := unattributedCaptures(t, tree); len(got) != 0 {
+		local.write(t, "services/probe/internal/repo/notify.go", captureHijack)
+
+		libTree, localTree := lib.readAsLibrary(t), local.read(t)
+		if got := unattributedCaptures(t, localTree, libTree); len(got) != 0 {
 			t.Fatalf("законное дерево объявлено неполным: %v", got)
 		}
-		if len(tree.captures) != len(outOfPoolHolders)+1 {
-			t.Fatalf("захватов опознано %d, ожидалось %d", len(tree.captures), len(outOfPoolHolders)+1)
+		if len(libTree.captures) != len(outOfPoolHolders) {
+			t.Fatalf("захватов в общем фундаменте опознано %d, ожидалось %d",
+				len(libTree.captures), len(outOfPoolHolders))
+		}
+		if len(localTree.captures) != 1 {
+			t.Fatalf("захватов в этом дереве опознано %d, ожидался 1 (свой, служебный)",
+				len(localTree.captures))
 		}
 	})
 
 	t.Run("захват вне каталога — находка с координатой", func(t *testing.T) {
-		s := newOutOfPoolStand(t)
-		write(t, s)
-		s.write(t, "pkg/newholder/keepalive.go", captureConnect)
-		got := unattributedCaptures(t, s.read(t))
+		lib := newOutOfPoolStand(t)
+		writeLibrary(t, lib)
+		local := newOutOfPoolStand(t)
+		local.write(t, "pkg/newholder/keepalive.go", captureConnect)
+
+		got := unattributedCaptures(t, local.read(t), lib.readAsLibrary(t))
 		if len(got) != 1 || got[0].kind != kindOutOfPoolUnattributed {
 			t.Fatalf("неучтённый захват принят молча: %v", got)
 		}
@@ -217,12 +241,15 @@ func TestOutOfPoolArithmeticIsCompleteOrSaysItIsNot(t *testing.T) {
 	})
 
 	t.Run("запись каталога без предмета — сама находка", func(t *testing.T) {
-		s := newOutOfPoolStand(t)
-		write(t, s)
-		// Снимаем захват у ОДНОГО держателя, оставив файл на месте: запись обязана
-		// истечь по отсутствию ПРЕДМЕТА, а не по отсутствию файла.
-		s.write(t, outOfPoolHolders[0].Site, "package sub\n\nfunc noop() {}\n")
-		got := unattributedCaptures(t, s.read(t))
+		lib := newOutOfPoolStand(t)
+		writeLibrary(t, lib)
+		// Снимаем захват у ОДНОГО держателя В ОБЩЕМ ФУНДАМЕНТЕ, оставив файл на
+		// месте: запись обязана истечь по отсутствию ПРЕДМЕТА, а не по
+		// отсутствию файла.
+		lib.write(t, outOfPoolHolders[0].Site, "package sub\n\nfunc noop() {}\n")
+		local := newOutOfPoolStand(t)
+
+		got := unattributedCaptures(t, local.read(t), lib.readAsLibrary(t))
 		if len(got) != 1 {
 			t.Fatalf("истёкшая запись каталога пережила свой предмет молча: %v", got)
 		}
@@ -230,6 +257,67 @@ func TestOutOfPoolArithmeticIsCompleteOrSaysItIsNot(t *testing.T) {
 			t.Fatalf("находка не называет истёкшую запись: %q", got[0].why)
 		}
 	})
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// РЕЗОЛВ ОБЩЕГО ФУНДАМЕНТА: каталог на диске находится ПО go.mod, не угадан
+
+// TestEscapeModulePathMatchesTheEcosystemRule — известные пары путь → кодировка
+// (правило самой экосистемы модулей, не наш вкус). Без него опечатка в
+// экранировании дала бы каталог, которого нет, — и `corelibModuleDir` упал бы
+// сам, но по неверной причине.
+func TestEscapeModulePathMatchesTheEcosystemRule(t *testing.T) {
+	cases := []struct{ path, want string }{
+		{corelibModulePath, "github.com/!p!r!o-!robotech/corelib"},
+		// ЗАКОННЫЙ БЛИЗНЕЦ: путь без заглавных букв кодировка не трогает вовсе.
+		{"github.com/jackc/pgx", "github.com/jackc/pgx"},
+	}
+	for _, c := range cases {
+		if got := escapeModulePath(c.path); got != c.want {
+			t.Errorf("escapeModulePath(%q) = %q, ожидалось %q", c.path, got, c.want)
+		}
+	}
+}
+
+// TestCorelibModuleVersionReadsTheDeclaredPin — версия читается из go.mod
+// ДЕРЕВА, а не из первого числа, похожего на семвер.
+func TestCorelibModuleVersionReadsTheDeclaredPin(t *testing.T) {
+	root := t.TempDir()
+	body := "module example.com/probe\n\ngo 1.24\n\nrequire (\n\t" +
+		corelibModulePath + " v9.9.9\n\tgithub.com/example/other v0.0.1\n)\n"
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte(body), 0o600); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	if got := corelibModuleVersion(t, root); got != "v9.9.9" {
+		t.Fatalf("версия = %q, ожидалась v9.9.9 — резолв нашёл не ту строку блока require", got)
+	}
+}
+
+// TestCorelibModuleDirResolvesTheRealFundament — доказывает, что резолв
+// версии+кэша ПРОИЗВОДИТ каталог, в котором реально лежат все три Site.
+//
+// Без этой пробы главный тест мог бы молчать не потому, что держатели живы, а
+// потому, что резолв указывает не туда: `readOutOfPoolLibraryTree` на
+// несуществующем или на ЧУЖОМ каталоге тоже дал бы «неучтённых 0» — по
+// отсутствию предмета, а не по его наличию. Реальный каталог нельзя ни
+// сломать, ни вернуть (в отличие от синтетического стенда выше), поэтому
+// здесь проверяется СОСТОЯНИЕ, а не инъекция: держатели резолвятся сегодня.
+func TestCorelibModuleDirResolvesTheRealFundament(t *testing.T) {
+	dir := corelibModuleDir(t, "..")
+	tree := readOutOfPoolLibraryTree(t, dir)
+	if tree.files == 0 {
+		t.Fatalf("каталог общего фундамента %s прочитан, файлов Go 0 — резолв указывает не туда", dir)
+	}
+	seen := map[string]bool{}
+	for _, c := range tree.captures {
+		seen[c.File] = true
+	}
+	for _, h := range outOfPoolHolders {
+		if !seen[h.Site] {
+			t.Errorf("держатель %q (%s) не найден в реальном общем фундаменте %s — переехал "+
+				"снова, либо резолв указывает не туда", h.Kind, h.Site, dir)
+		}
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -546,9 +546,14 @@ func applyLedger(findings []poolFinding, ledger map[string]string) (fail, forgiv
 
 func TestDeclaredPoolFitsTheDatabaseItConnectsTo(t *testing.T) {
 	tree := readOutOfPoolTree(t)
+	// Держатели общих ресурсов (LISTEN подписки, дренаж очереди, сброс кэша
+	// решений) переехали в общий фундамент целиком — самоистечение записей
+	// каталога держателей проверяется по СНИМКУ ЭТОГО модуля, а не по
+	// локальному дереву, которое таких файлов больше не содержит.
+	library := readOutOfPoolLibraryTree(t, corelibModuleDir(t, ".."))
 	facts := allPoolFacts(t, tree)
 	findings, examined, lines := scanPoolFits(facts)
-	findings = append(findings, unattributedCaptures(t, tree)...)
+	findings = append(findings, unattributedCaptures(t, tree, library)...)
 	sort.Slice(findings, func(i, j int) bool { return findings[i].key() < findings[j].key() })
 
 	for _, l := range lines {
@@ -595,12 +600,18 @@ func TestDeclaredPoolFitsTheDatabaseItConnectsTo(t *testing.T) {
 	// Захваты вне пула печатаются ДВУМЯ числами — сколько их и сколько из них
 	// НЕ ПРИПИСАНО. Одного первого мало ровно там, где проверка и слепа:
 	// разбор, переставший узнавать захват, даёт то же «неучтённых 0», что и
-	// полная арифметика.
+	// полная арифметика. Числа теперь ДВУХ деревьев — этого репозитория и
+	// общего фундамента, — а не одного: держатели переехали, а обход,
+	// печатающий только местное, не отличил бы «захватов нет» от «переехали».
+	totalCaptures := len(tree.captures) + len(library.captures)
 	t.Logf("осмотрено: стеков %d, связок служба→база с объявленными пулом и потолком %d, "+
-		"файлов прод-кода Go %d, захватов соединения вне пула %d (не приписано %d), "+
+		"файлов прод-кода Go %d (захватов вне пула %d), файлов общего фундамента %d "+
+		"(захватов вне пула %d) — итого %d (не приписано %d), "+
 		"слагаемых вне пула %d (величина из значений стека %d, из дерева исходников %d), "+
 		"находок %d (%s %d, %s %d, %s %d, %s %d), записей в ведомости %d",
-		len(facts), examined, tree.files, len(tree.captures), byKind[kindOutOfPoolUnattributed],
+		len(facts), examined,
+		tree.files, len(tree.captures), library.files, len(library.captures),
+		totalCaptures, byKind[kindOutOfPoolUnattributed],
 		fromValues+fromTree, fromValues, fromTree,
 		len(findings),
 		kindPoolUndeclared, byKind[kindPoolUndeclared],
@@ -612,9 +623,10 @@ func TestDeclaredPoolFitsTheDatabaseItConnectsTo(t *testing.T) {
 		t.Fatal("ни одной связки служба→база не осмотрено — проверка ничего не утверждает, " +
 			"хотя выглядит зелёной")
 	}
-	if tree.files == 0 || len(tree.captures) == 0 {
-		t.Fatalf("файлов прод-кода %d, захватов вне пула %d — обход пуст: «слагаемых вне пула нет» "+
-			"стало неотличимо от «дерево не прочитано»", tree.files, len(tree.captures))
+	if tree.files == 0 || library.files == 0 || totalCaptures == 0 {
+		t.Fatalf("файлов прод-кода %d, файлов общего фундамента %d, захватов вне пула %d — "+
+			"обход пуст: «слагаемых вне пула нет» стало неотличимо от «дерево не прочитано»",
+			tree.files, library.files, totalCaptures)
 	}
 }
 

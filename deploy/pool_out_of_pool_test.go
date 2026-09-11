@@ -102,6 +102,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -116,9 +117,17 @@ import (
 const (
 	pgxDriverPkg = "github.com/jackc/pgx/v5"
 
-	subscriptionPkg = "github.com/PRO-Robotech/corelib/subscription"
-	drainerPkg      = "github.com/PRO-Robotech/corelib/outbox/drainer"
-	authzPkg        = "github.com/PRO-Robotech/corelib/authz"
+	// corelibModulePath — общий фундамент: держатели общих ресурсов (LISTEN
+	// подписки, дренаж очереди, сброс кэша решений) живут ТАМ, а не в этом
+	// дереве — исходники захвата переехали целиком, вызывающий код и чарт
+	// остались здесь. Самоистечение записи каталога держателей проверяется
+	// поэтому по ОТДЕЛЬНОМУ снимку этого модуля (readOutOfPoolLibraryTree),
+	// а не по локальному дереву (`outOfPoolRoots`), которое такого пути у
+	// себя больше не содержит вовсе.
+	corelibModulePath = "github.com/PRO-Robotech/corelib"
+	subscriptionPkg   = corelibModulePath + "/subscription"
+	drainerPkg        = corelibModulePath + "/outbox/drainer"
+	authzPkg          = corelibModulePath + "/authz"
 )
 
 // outOfPoolRoots — корни обхода. Перечисляет ВЫЗЫВАЮЩИЙ, а не обходчик: «здесь
@@ -128,7 +137,8 @@ var outOfPoolRoots = []string{"pkg", "services", "gateway", "internal", "cmd", "
 // ─────────────────────────────────────────────────────────────────────────────
 // КАТАЛОГ ДЕРЖАТЕЛЕЙ ОБЩЕГО ФУНДАМЕНТА
 
-// outOfPoolHolder — один вид захвата, лежащий в `pkg/`.
+// outOfPoolHolder — один вид захвата, лежащий в общем фундаменте
+// (corelibModulePath), а не в этом дереве.
 //
 // Служба-КАНДИДАТ опознаётся ИМПОРТОМ пакета-держателя, а не перечнем имён:
 // перечень разошёлся бы с деревом молча, а импорт есть ребро, которое видно
@@ -149,7 +159,10 @@ var outOfPoolRoots = []string{"pkg", "services", "gateway", "internal", "cmd", "
 type outOfPoolHolder struct {
 	// Kind — как вид называется в разборе и в тексте находки.
 	Kind string
-	// Site — файл захвата. Его отсутствие в дереве делает запись САМОИСТЁКШЕЙ.
+	// Site — файл захвата, путь ОТНОСИТЕЛЬНО КОРНЯ corelibModulePath (не этого
+	// дерева: держатели общих ресурсов переехали туда целиком). Его отсутствие
+	// ТАМ делает запись САМОИСТЁКШЕЙ — проверяется по снимку модуля-фундамента
+	// (readOutOfPoolLibraryTree), а не по локальному дереву.
 	Site string
 	// Pkg — пакет-держатель: службы-КАНДИДАТЫ находятся по его импорту.
 	Pkg string
@@ -190,7 +203,7 @@ type outOfPoolCtx struct {
 var outOfPoolHolders = []outOfPoolHolder{
 	{
 		Kind: "поток подписки",
-		Site: "pkg/subscription/server.go",
+		Site: "subscription/server.go",
 		Pkg:  subscriptionPkg,
 		// Пакет несёт, кроме сервера потоков, НАБЛЮДАТЕЛЬ ГРАНИЦЫ УСТОЯВШЕГОСЯ —
 		// переиспользуемую часть, которую берут возобновимые чтения, отвечающие на
@@ -208,7 +221,7 @@ var outOfPoolHolders = []outOfPoolHolder{
 	},
 	{
 		Kind: "LISTEN дренажа очереди",
-		Site: "pkg/outbox/drainer/internal.go",
+		Site: "outbox/drainer/internal.go",
 		Pkg:  drainerPkg,
 		// Дренаж ИЗЫМАЕТ соединение из пула, поэтому пул вправе открыть себе
 		// новое: это +1 сверх ширины на каждый заведённый дренаж.
@@ -216,7 +229,7 @@ var outOfPoolHolders = []outOfPoolHolder{
 	},
 	{
 		Kind: "LISTEN сброса кэша решений",
-		Site: "pkg/authz/listen_invalidate.go",
+		Site: "authz/listen_invalidate.go",
 		Pkg:  authzPkg,
 		// Ноль ИЗМЕРЕННЫЙ, а не предположенный: держателя никто не поднимает —
 		// ни один композиционный корень его не упоминает. Заведут — слагаемое
@@ -271,33 +284,126 @@ func readOutOfPoolTreeAt(t *testing.T, root string) *outOfPoolTree {
 		if _, err := os.Stat(dir); err != nil {
 			continue
 		}
-		err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-				return nil
-			}
-			rel, _ := filepath.Rel(tr.root, path)
-			rel = filepath.ToSlash(rel)
-			// Сгенерённые стабы соединений не открывают вовсе.
-			if strings.HasPrefix(rel, "pkg/api/") {
-				return nil
-			}
-			tr.files++
-			return tr.readFile(path, rel)
-		})
-		if err != nil {
-			t.Fatalf("обход %s: %v", r, err)
-		}
+		tr.walk(t, dir)
 	}
+	tr.finalize()
+	return tr
+}
+
+// readOutOfPoolLibraryTree — тот же разбор, но КОРНЕМ служит каталог самого
+// модуля-фундамента, а не одна из поддиректорий `outOfPoolRoots` — та
+// раскладка (`pkg/`, `services/`, …) принадлежит ЭТОМУ репозиторию, а не ему.
+// Держатели общих ресурсов лежат ПРЯМО под корнем модуля (`subscription/`,
+// `outbox/drainer/`, `authz/`), поэтому обходится сам каталог целиком, без
+// перечня поддиректорий-кандидатов.
+func readOutOfPoolLibraryTree(t *testing.T, dir string) *outOfPoolTree {
+	t.Helper()
+	tr := &outOfPoolTree{
+		root:    dir,
+		imports: map[string]map[string]bool{},
+		calls:   map[string]map[string]int{},
+	}
+	tr.walk(t, dir)
+	tr.finalize()
+	return tr
+}
+
+// walk обходит ОДИН каталог, приписывая найденные файлы относительно tr.root.
+// Вынесен из readOutOfPoolTreeAt, чтобы то же чтение применялось и к
+// поддеревьям этого репозитория, и к каталогу модуля-фундамента — два разных
+// корня, один разбор.
+func (tr *outOfPoolTree) walk(t *testing.T, dir string) {
+	t.Helper()
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		rel, _ := filepath.Rel(tr.root, path)
+		rel = filepath.ToSlash(rel)
+		// Сгенерённые стабы соединений не открывают вовсе.
+		if strings.HasPrefix(rel, "pkg/api/") {
+			return nil
+		}
+		tr.files++
+		return tr.readFile(path, rel)
+	})
+	if err != nil {
+		t.Fatalf("обход %s: %v", dir, err)
+	}
+}
+
+// finalize сортирует накопленные захваты — единообразно для обоих корней.
+func (tr *outOfPoolTree) finalize() {
 	sort.Slice(tr.captures, func(i, j int) bool {
 		if tr.captures[i].File != tr.captures[j].File {
 			return tr.captures[i].File < tr.captures[j].File
 		}
 		return tr.captures[i].Line < tr.captures[j].Line
 	})
-	return tr
+}
+
+// corelibModuleVersion — версия corelibModulePath, закреплённая go.mod ЭТОГО
+// дерева. Читается текстом закоммиченного файла, а не `go list` — предикату не
+// нужна сеть там, где ответ уже лежит в дереве.
+func corelibModuleVersion(t *testing.T, root string) string {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil {
+		t.Fatalf("чтение go.mod: %v", err)
+	}
+	for _, line := range strings.Split(string(body), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && fields[0] == corelibModulePath {
+			return fields[1]
+		}
+	}
+	t.Fatalf("go.mod не объявляет версию %s — резолвить каталог общего фундамента нечем",
+		corelibModulePath)
+	return ""
+}
+
+// escapeModulePath — кодировка пути модуля для каталога кэша: заглавная буква
+// становится восклицательным знаком со строчной (правило экосистемы модулей
+// Go — файловые системы бывают регистронезависимы, — а не наш вкус).
+func escapeModulePath(p string) string {
+	var b strings.Builder
+	for _, r := range p {
+		if r >= 'A' && r <= 'Z' {
+			b.WriteByte('!')
+			b.WriteRune(r + ('a' - 'A'))
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// corelibModuleDir — каталог общего фундамента НА ДИСКЕ: тот же, откуда
+// компилятор берёт исходники ЭТОЙ САМОЙ сборки (соседние файлы того же пакета
+// теста импортируют corelib напрямую — без скачанного модуля тестовый бинарь
+// вообще не собрался бы). Резолв — go.mod (версия) + `go env GOMODCACHE`
+// (каталог кэша): признак, который дерево ПРОИЗВОДИТ, а не путь, угаданный
+// проверкой.
+func corelibModuleDir(t *testing.T, root string) string {
+	t.Helper()
+	version := corelibModuleVersion(t, root)
+	out, err := exec.Command("go", "env", "GOMODCACHE").Output()
+	if err != nil {
+		t.Fatalf("go env GOMODCACHE: %v", err)
+	}
+	cache := strings.TrimSpace(string(out))
+	if cache == "" {
+		t.Fatal("go env GOMODCACHE пуст — каталог кэша модулей не установлен")
+	}
+	dir := filepath.Join(cache, filepath.FromSlash(escapeModulePath(corelibModulePath))+"@"+version)
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("каталог общего фундамента %s не найден на диске (%v) — резолв версии/кэша "+
+			"разошёлся с тем, что использовал компилятор этой же сборки", dir, err)
+	}
+	return dir
 }
 
 func (tr *outOfPoolTree) readFile(path, rel string) error {
@@ -940,30 +1046,29 @@ func outOfPoolPerReplica(
 // unattributedCaptures — ЗАМЕР ПОЛНОТЫ арифметики.
 //
 // Всякий захват соединения вне пула обязан быть кому-то приписан: службе (если
-// лежит в её дереве) либо записи каталога держателей. Захват, не приписанный
-// никому, — находка, а не молчание: именно так «учли то, что вспомнили»
-// перестаёт называться полнотой.
+// лежит в её собственном дереве) либо записи каталога держателей. Захват, не
+// приписанный никому, — находка, а не молчание: именно так «учли то, что
+// вспомнили» перестаёт называться полнотой.
 //
-// Зеркальная половина: запись каталога, чьего файла захвата в дереве больше нет,
-// — ТОЖЕ находка. Иначе она пережила бы свой предмет и продолжала бы числиться
-// учтённой, а следующий читатель принял бы перечень за действующий.
-func unattributedCaptures(t *testing.T, tree *outOfPoolTree) []poolFinding {
+// Зеркальная половина: запись каталога, чьего файла захвата больше нет ТАМ, ГДЕ
+// ОН ТЕПЕРЬ ЖИВЁТ, — ТОЖЕ находка. Держатели общих ресурсов переехали в общий
+// фундамент (corelibModulePath) целиком: вызывающий код и чарт остались в этом
+// дереве, а сама LISTEN-сессия — там. Поэтому самоистечение проверяется НЕ по
+// локальному дереву (`tree`), а по ОТДЕЛЬНОМУ снимку модуля-фундамента
+// (`library`, читается readOutOfPoolLibraryTree) — иначе она пережила бы свой
+// предмет и продолжала бы числиться учтённой, а следующий читатель принял бы
+// перечень за действующий.
+func unattributedCaptures(t *testing.T, tree, library *outOfPoolTree) []poolFinding {
 	t.Helper()
-	known := map[string]string{}
-	for _, h := range outOfPoolHolders {
-		known[h.Site] = h.Kind
+	seenLibrary := map[string]bool{}
+	for _, c := range library.captures {
+		seenLibrary[c.File] = true
 	}
-	seen := map[string]bool{}
 
 	var out []poolFinding
 	for _, c := range tree.captures {
 		if strings.HasPrefix(c.File, "services/") {
 			continue // приписан своей службе by construction
-		}
-		if kind, ok := known[c.File]; ok {
-			seen[c.File] = true
-			_ = kind
-			continue
 		}
 		out = append(out, poolFinding{
 			stack: "дерево", subject: c.File, kind: kindOutOfPoolUnattributed,
@@ -974,14 +1079,14 @@ func unattributedCaptures(t *testing.T, tree *outOfPoolTree) []poolFinding {
 		})
 	}
 	for _, h := range outOfPoolHolders {
-		if seen[h.Site] {
+		if seenLibrary[h.Site] {
 			continue
 		}
 		out = append(out, poolFinding{
 			stack: "дерево", subject: h.Site, kind: kindOutOfPoolUnattributed,
-			why: fmt.Sprintf("записи каталога держателей %q больше нечего учитывать: захвата "+
-				"соединения в %s нет. Снимите запись — перечень, переживший свой предмет, "+
-				"читается как действующий", h.Kind, h.Site),
+			why: fmt.Sprintf("записи каталога держателей %q больше нечего учитывать в %s: "+
+				"захвата соединения в %s нет. Снимите запись — перечень, переживший свой "+
+				"предмет, читается как действующий", h.Kind, corelibModulePath, h.Site),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].key() < out[j].key() })
