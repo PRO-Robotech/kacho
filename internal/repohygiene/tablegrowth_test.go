@@ -780,14 +780,39 @@ func readTableGrowthTree(t *testing.T, root string) (tableGrowthState, TableGrow
 	}
 	state = foldMigrationScans(scans)
 
-	walkOwnerRegisterGoFiles(t, root, tableGrowthRoots, func(rel string, body []byte) {
+	scanGoRemovals := func(rel string, body []byte) {
 		removals, c, err := ScanGoSQLRemovals(rel, body)
 		if err != nil {
 			t.Fatalf("разбор %s: %v", rel, err)
 		}
 		census.Add(c)
 		state.Removals = append(state.Removals, removals...)
-	})
+	}
+
+	walkOwnerRegisterGoFiles(t, root, tableGrowthRoots, scanGoRemovals)
+
+	// Общий фундамент — тем же способом, что и дерево, а не отдельной веткой.
+	//
+	// Уборщик `operations` и проекция `project_resource_quotas` переехали в
+	// `github.com/PRO-Robotech/corelib` вместе с пакетами, которые их несли
+	// (`operations`, `quota`): в дереве под `pkg/` их больше нет ни байтом,
+	// значит `walkOwnerRegisterGoFiles` выше их не видит и не может увидеть —
+	// не потому что уборки не стало, а потому что каталог опустел.
+	//
+	// Оба уборщика ЛИТЕРАЛЬНО объявляют, что рассчитаны именно на этот гейт:
+	// `corelib/operations/retention.go` называет TestLiveTablesNameTheirGrowthLimit
+	// по имени и объясняет, почему имя таблицы — литерал, а схема — подстановка
+	// (`%s.operations`): «схема у каждого из восьми владельцев своя, имя
+	// таблицы — одно на всех, поэтому ОДИН литерал покрывает все восемь». Тот
+	// же приём — у `corelib/quota` (`%s.project_resource_quotas`,
+	// projection.go). `removalCoversTable` уже умеет читать пустую схему как
+	// «любая» — это свойство было в дереве и до переноса, задел он только
+	// то, что дерево перестало показывать разбору сам литерал.
+	for _, pkg := range []string{"operations", "quota"} {
+		for name, src := range corelibPackageGoFiles(t, root, pkg) {
+			scanGoRemovals(name, src)
+		}
+	}
 
 	return state, census
 }
