@@ -36,7 +36,7 @@
     "",
     "Предикат, из которого это выведено (повторяемый):",
     "  git grep -lE 'consoleUrl|ui-future|:5173' -- \\",
-    "      'services/*/tests/newman' 'gateway/tests/newman'   → 0 при 98 коллекциях",
+    "      'services/*/tests/newman' 'gateway/tests/newman'   → 0 при 57 коллекциях",
     "",
     "То есть НИ ОДИН newman-запрос консоли не касается: newman ходит по HTTP в",
     "край, консоль — отдельная поверхность. При этом `dev-up` собирал девять её",
