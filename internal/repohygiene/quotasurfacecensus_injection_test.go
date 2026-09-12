@@ -404,3 +404,45 @@ func TestQSC_ForeignStorageRefusalKeepsItsSurface(t *testing.T) {
 		"ёмкость в байтах квотой счёта ресурсов не является: отдав её учёту, "+
 			"перепись назначила бы работу там, где её нет")
 }
+
+// --- ось: описание процесса, зовущее самопроверку (правило P4) --------------
+//
+// Три входа вместо одного, потому что предмет правила — ИСПОЛНЯЕМЫЙ ВЫЗОВ в
+// описании процесса, и каждое из трёх слов в этой фразе надо опровергнуть
+// порознь. Форма входов взята у настоящего шага `selftest-quota-posture` в
+// `.github/workflows/console-e2e.yml`.
+
+func TestQSC_WorkflowCallingASelftestIsAMention(t *testing.T) {
+	t.Parallel()
+	got := surfacesOf(".github/workflows/console-e2e.yml",
+		"      - name: гейт — самопроверка решения о посадке домена величин\n"+
+			"        id: selftest-quota-posture\n"+
+			"        working-directory: ui-future/e2e\n"+
+			"        run: node scripts/quota-posture-selftest.ts\n")
+	require.Equal(t, []string{quotaSurfaceProse}, got,
+		"описание процесса называет ИМЯ ФАЙЛА пробы, а не величину: машинерии в нём нет, "+
+			"и снос авторитета величин его не затронет")
+}
+
+func TestQSC_WorkflowWithRealMachineryStaysAFinding(t *testing.T) {
+	t.Parallel()
+	// Законный близнец правила P4: тот же каталог, отличается РОВНО одним
+	// фактом — вместо вызова пробы стоит машинерия величин. Без него P4
+	// доказывало бы лишь то, что описания процессов оно относит, — а не то, что
+	// относит ровно вызов пробы.
+	got := surfacesOf(".github/workflows/console-e2e.yml",
+		"        env:\n          KACHO_VPC_QUOTA_NETWORKS: \"12\"\n")
+	require.Empty(t, got,
+		"описание процесса, выставляющее ВЕЛИЧИНУ, обязано остаться НЕОТНЕСЁННЫМ: "+
+			"иначе P4 становится корзиной «прочее» для всего каталога описаний процессов")
+}
+
+func TestQSC_SelftestCallOutsideTheWorkflowDirIsNotAMentionByP4(t *testing.T) {
+	t.Parallel()
+	// Та же строка вызова, но не в описании процесса: область правила несущая,
+	// иначе любой скрипт, зовущий пробу, уехал бы в «упоминание».
+	got := surfacesOf("scripts/local/run-console-selftests.sh",
+		"node scripts/quota-posture-selftest.ts\n")
+	require.NotContains(t, got, quotaSurfaceProse,
+		"P4 сработало вне .github/workflows — область правила потеряна")
+}
