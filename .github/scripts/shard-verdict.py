@@ -59,6 +59,7 @@ import argparse
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -270,7 +271,7 @@ def main() -> int:
 # ломается молча:
 #
 #   1. форм несозданного условия в дереве ДВЕ, и вторая была невидима. Отметку
-#      `STAND_PRECONDITION_UNMET=1` кладут ДВА производителя: владелец подъёма
+#      `<отметка>=1` кладут ДВА производителя: владелец подъёма
 #      (при отметке-файле постороннего источника чартов) и вердикт провенанса
 #      (когда стенд исполняет ДРУГОЕ дерево). Второй файла не оставляет — и
 #      распознаватель, ищущий только файл, на нём МОЛЧАЛ. Наблюдалось на прогоне
@@ -295,33 +296,326 @@ FLAG_PRODUCERS = {
     ".github/scripts/stand-revision-verdict.sh": "stand-revision-divergence",
 }
 
+# ПРОИЗВОДИТЕЛЬ СУДИТСЯ ПО СУЩЕСТВУ, А НЕ ПО ТЕКСТУ, и это не вкус: перечень,
+# выведенный поиском по слову, ловил ЧЕТЫРЕ вида законной записи — фикстуру
+# соседней полосы, синтетику в дереве проб, вызов самопроверки и собственную
+# прозу. Замер на подставном дереве: перечень 6 при производителях 2.
+#
+# Раковина — то, через что отметка попадает в ОКРУЖЕНИЕ ЗАДАНИЯ, и таких мест у
+# платформы два: `$GITHUB_ENV` (переменная следующих шагов) и `$GITHUB_OUTPUT`
+# (выход шага, объявляемый в `outputs`). Запись в раковину отличается от
+# упоминания раковины оператором ДОПИСЫВАНИЯ: `>>` в оболочке, режим `"a"` в
+# питоне. Слово `GITHUB_ENV` без него стоит в дереве в условиях шагов, в
+# объяснениях и в читателях отметки.
+SINK = re.compile(r"GITHUB_(?:ENV|OUTPUT)")
+APPEND = re.compile(r">>|['\"]a['\"]")
+# Вызов файла В ПОЗИЦИИ КОМАНДЫ: имя ИЗВЛЕКАЕТСЯ из строки, а не ищется по
+# каждому пути дерева. Обе формы записи одним выражением, и ИНТЕРПРЕТАТОР ПЕРЕД
+# ПУТЁМ ОБЯЗАТЕЛЕН — цена его отсутствия измерена на этом дереве: вызовов 4
+# вместо 7, производителей 1 вместо 2, и терялся ровно
+# `bash "$GITHUB_WORKSPACE/…/stand-revision-verdict.sh"`, то есть второй
+# производитель целиком.
+#
+# Извлечение, а не перебор — тоже замер, а не вкус: перебор 6692 путей по 1206
+# строкам тела шагов не уложился в 120 с и был снят как непригодный, а не как
+# некрасивый.
+CALL = re.compile(r"(?:^|[;&|(]|\$\()[ \t]*"
+                  r"(?:(?:bash|sh|python3|python)[ \t]+)?"
+                  r"([^\s;&|()]+)")
 
-def flag_producers_in_tree() -> dict[str, bool]:
-    """путь → оставляет ли он ещё и отметку-ФАЙЛ. ВЫВЕДЕНО из дерева.
 
-    Признак производителя — строка, кладущая отметку в `$GITHUB_ENV`, а не слово
-    в прозе: имя переменной стоит в дереве десятки раз в условиях шагов, в
-    объяснениях и в самопроверках, и поиск по слову нашёл бы их все.
+def _code_lines(text: str) -> list[str]:
+    """Строки БЕЗ комментариев: `#` в оболочке, YAML и питоне, `//` в Go и TS.
+
+    Комментарий отброшен ДО поиска, а не после: собственное объяснение предмета
+    иначе становится находкой о предмете. В дереве это уже наблюдалось —
+    `.github/scripts/stand-up.sh` попадал в перечень строкой шапки, где оба слова
+    стоят рядом, и промах был невидим лишь потому, что файл и без неё производитель.
     """
-    r = subprocess.run(["git", "-C", str(REPO), "grep", "-n", "--fixed-strings",
-                        f"{FLAG}=1"], capture_output=True, text=True)
-    # код 1 у git grep — «совпадений нет»; это не отказ инструмента, но и не
-    # находка: пустой обход обрабатывается вызывающим.
-    if r.returncode not in (0, 1):
-        raise SystemExit(f"FATAL: git grep не отработал: {r.stderr.strip()}")
-    out: dict[str, bool] = {}
-    for line in r.stdout.splitlines():
-        parts = line.split(":", 2)
-        if len(parts) < 3 or "GITHUB_ENV" not in parts[2]:
+    out: list[str] = []
+    for line in text.splitlines():
+        bare = line.lstrip()
+        if bare.startswith("#") or bare.startswith("//"):
             continue
-        out.setdefault(parts[0], False)
-    for path in list(out):
+        out.append(line)
+    return out
+
+
+def _sets_flag(text: str) -> bool:
+    """Файл САМ дописывает отметку в раковину окружения задания."""
+    return any(f"{FLAG}=1" in l and SINK.search(l) and APPEND.search(l)
+               for l in _code_lines(text))
+
+
+def _declares_flag(doc: dict) -> bool:
+    """Объявление конвейера ставит отметку КАРТОЙ `env:` — на любом из трёх уровней."""
+    def has(node: object) -> bool:
+        env = node.get("env") if isinstance(node, dict) else None
+        return isinstance(env, dict) and FLAG in env
+
+    if has(doc):
+        return True
+    for job in ((doc.get("jobs") or {}) if isinstance(doc, dict) else {}).values():
+        if has(job):
+            return True
+        for step in (job.get("steps") or []) if isinstance(job, dict) else []:
+            if has(step):
+                return True
+    return False
+
+
+def _tracked(root: pathlib.Path) -> list[str]:
+    r = subprocess.run(["git", "-C", str(root), "ls-files", "-z"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        raise SystemExit(f"FATAL: git ls-files не отработал: {r.stderr.strip()}")
+    return [f for f in r.stdout.split("\0") if f]
+
+
+def _read(root: pathlib.Path, rel: str) -> str | None:
+    # Отказ чтения НЕ глушится в ответ о ФОРМЕ (см. ниже), но здесь он означает
+    # «не текст»: двоичный файл отметки не дописывает, и `None` отличимо от «нет».
+    try:
+        return (root / rel).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def _workflow_docs(root: pathlib.Path) -> list[tuple[str, dict]]:
+    """Объявления конвейера. Каталог фиксирован ПЛАТФОРМОЙ, а не моим перечнем:
+    GitHub Actions читает только `.github/workflows/`, и `jobs:` обязателен."""
+    import yaml  # локально: обычный проход описи разбора YAML не требует
+    out: list[tuple[str, dict]] = []
+    for rel in _tracked(root):
+        if not rel.startswith(".github/workflows/") or not rel.endswith((".yml", ".yaml")):
+            continue
+        text = _read(root, rel)
+        if text is None:
+            continue
+        try:
+            doc = yaml.safe_load(text) or {}
+        except yaml.YAMLError:
+            # Неразбираемое объявление — НЕ «объявления нет»: пропустить его молча
+            # значило бы ответить «производителей нет» там, где их не прочитали.
+            raise SystemExit(f"FATAL: объявление конвейера не разобралось: {rel}")
+        if isinstance(doc, dict) and isinstance(doc.get("jobs"), dict):
+            out.append((rel, doc))
+    return out
+
+
+def _step_run_lines(docs: list[tuple[str, dict]]) -> list[str]:
+    """Строки, которые конвейер ИСПОЛНЯЕТ. САМОПРОВЕРКА — НЕ ПРОИЗВОДСТВО.
+
+    Единица счёта — строка вызова, и цена оговорки измерена: без неё на этом
+    дереве вызовов 9 вместо 7, и два лишних — `stand-up.sh --self-test`, который
+    работает в своём временном дереве и в `$GITHUB_ENV` работы не пишет ничего.
+    Оговорка судит СТРОКУ: перенос `--self-test` на продолжение она не увидит.
+
+    Судится РАЗОБРАННОЕ тело шага, а не текст файла, и это тоже замер: тот же
+    предикат по тексту `.github/workflows/*` дал 2 вместо 7 — в файле перед
+    вызовом стоит `run:`, и позиция команды у строки другая.
+    """
+    out: list[str] = []
+    for _, doc in docs:
+        for job in (doc.get("jobs") or {}).values():
+            for step in (job.get("steps") or []) if isinstance(job, dict) else []:
+                if not isinstance(step, dict):
+                    continue
+                for line in str(step.get("run") or "").splitlines():
+                    if "--self-test" in line:
+                        continue
+                    out.append(line)
+    return out
+
+
+def _runs_of(lines: list[str], names: dict[str, list[str]]) -> set[str]:
+    """Пути, ЗАПУСКАЕМЫЕ этими строками. Отбор по имени файла в позиции команды.
+
+    Отбор по ИМЕНИ, а не по полному пути: в теле шага путь приходит с
+    `$GITHUB_WORKSPACE`, с `./` и без, и сверка полных путей молча теряла бы
+    ровно те формы, ради которых предикат и заведён. Цена сказана прямо: два
+    файла с одинаковым именем в разных каталогах считаются запускаемыми оба.
+    """
+    hit: set[str] = set()
+    for line in lines:
+        for token in CALL.findall(line):
+            name = token.strip('"\'`').rsplit("/", 1)[-1]
+            hit.update(names.get(name, ()))
+    return hit
+
+
+def flag_producers_in_tree(root: pathlib.Path | None = None) -> dict[str, bool]:
+    """путь → оставляет ли он ещё и отметку-ФАЙЛ. ВЫВЕДЕНО из дерева ПО СУЩЕСТВУ.
+
+    Производитель — тот, кто ВЫСТАВЛЯЕТ отметку в окружение задания, и обе
+    половины признака обязательны:
+
+      пишет      — непрокомментированная строка дописывает `<отметка>=1` в
+                   `$GITHUB_ENV`/`$GITHUB_OUTPUT`, либо объявление несёт её
+                   картой `env:`;
+      исполняется — конвейер файл ЗАПУСКАЕТ: тело шага зовёт его прямо, или
+                   зовёт того, кто зовёт его (один переход), или файл САМ есть
+                   объявление конвейера — тогда запускать его некому, он и есть
+                   запуск.
+
+    ФИКСТУРА ОТСЕКАЕТСЯ ВТОРОЙ ПОЛОВИНОЙ, А НЕ ПЕРЕЧНЕМ ПУТЕЙ. Перечень
+    исключений разошёлся бы с деревом молча — тот же класс, что и текстовый
+    поиск. Свойство же проверяет сам конвейер: синтетика, доказывающая падение
+    ЧУЖОЙ проверки, законно кладёт отметку и законно не запускается ни одним
+    шагом, поэтому на ЭТОМ прогоне выставить её не может.
+
+    ОДИН ПЕРЕХОД, А НЕ НОЛЬ: производитель, которого шаг зовёт через обёртку,
+    иначе выпал бы из перечня — то есть починка текстового поиска завела бы
+    молчание в другую сторону. Глубже одного перехода — названный остаток:
+    на этом дереве оба производителя зовутся ПРЯМО (вызовов 3 и 4).
+
+    ЧЕГО ПРИЗНАК НЕ РАЗЛИЧАЕТ, сказано прямо. Файл, НЕСУЩИЙ производящую
+    команду как ДАННЫЕ — фикстура в строковой константе, — от файла, который её
+    ИСПОЛНЯЕТ, статически неотличим: у обоих это текст. Наблюдалось на себе:
+    выписав фикстуры буквально, я сделал производителем ЭТУ опись — и её же
+    назвал производителем гейт соседней полосы, потому что правило у него то же.
+    Поэтому фикстуры здесь СОСТАВЛЯЮТСЯ из имени отметки, а не выписываются, и
+    буквальных написаний `<отметка>=1` в этом файле ноль. Держит это не обещание:
+    носитель, попавший в перечень, даёт ПРОВАЛ двусторонней сверки — громко, в
+    первом же прогоне, как и случилось со мной.
+    """
+    root = REPO if root is None else root
+    tracked = _tracked(root)
+    docs = _workflow_docs(root)
+
+    # ── половина «пишет» ────────────────────────────────────────────────────
+    cand: set[str] = set()
+    for rel in tracked:
+        text = _read(root, rel)
+        if text is not None and _sets_flag(text):
+            cand.add(rel)
+    decl = {rel for rel, doc in docs if _declares_flag(doc)}
+    cand |= decl
+
+    # ── половина «исполняется» ──────────────────────────────────────────────
+    names: dict[str, list[str]] = {}
+    for rel in tracked:
+        names.setdefault(rel.rsplit("/", 1)[-1], []).append(rel)
+    direct = _runs_of(_step_run_lines(docs), names)
+    hop: list[str] = []
+    for rel in sorted(direct):
+        text = _read(root, rel)
+        if text is not None:
+            hop.extend(l for l in _code_lines(text) if "--self-test" not in l)
+    runnable = direct | _runs_of(hop, names)
+
+    out: dict[str, bool] = {}
+    for rel in sorted(cand):
+        if rel not in runnable and rel not in {r for r, _ in docs}:
+            continue
         # Отказ чтения НЕ глушится: `except` здесь превратил бы неизвестность в
         # «отметки-файла не кладёт», то есть в тихий ответ о форме. Проверено
         # собой: первая редакция этой строки маскировала NameError и отвечала
         # «нет» — ось формы покраснела, и только двусторонняя сверка это назвала.
-        out[path] = MARK_NAME in (REPO / path).read_text(encoding="utf-8")
+        out[rel] = MARK_NAME in (root / rel).read_text(encoding="utf-8")
     return out
+
+
+def roster_findings(tree: dict[str, bool], declared: dict[str, str]) -> list[str]:
+    """Расхождения перечня с объявленным набором, В ОБЕ СТОРОНЫ.
+
+    Вынесено из тела самопроверки в отдельное выражение не для порядка, а чтобы
+    двусторонняя сверка была ДОКАЗУЕМА ИНЪЕКЦИЕЙ: в дереве расхождений ноль, и
+    пока сверка жила внутри печати, её собственное молчание было неотличимо от
+    её смерти.
+    """
+    out: list[str] = []
+    for path, with_mark in sorted(tree.items()):
+        want = declared.get(path)
+        if want is None:
+            out.append(f"производителя '{path}' нет в FLAG_PRODUCERS — его форма даст МОЛЧАНИЕ")
+            continue
+        expect = "external-chart-source" if with_mark else "stand-revision-divergence"
+        if want != expect:
+            out.append(f"'{path}': запись говорит «{want}», дерево — «{expect}»")
+    for path in declared:
+        if path not in tree:
+            out.append(f"запись '{path}' производителя в дереве НЕ имеет — снимите её")
+    return out
+
+
+# Подставное дерево со ВСЕМИ законными формами предмета — и с четырьмя видами
+# законной записи, которые производителями НЕ являются. Форм записи отметки
+# четыре, форм вызова файла четыре; в настоящем дереве живут по две, поэтому
+# остальные держатся ИНЪЕКЦИЕЙ, а не обещанием.
+ROSTER_PROBE_FILES: dict[str, str] = {
+    # ── форма записи A: дописывание в `$GITHUB_ENV` (живёт в дереве) ─────────
+    ".github/scripts/env-producer.sh":
+        f'#!/usr/bin/env bash\necho "{FLAG}=1" >> "$GITHUB_ENV"\n',
+    # ── форма записи B: выход шага, объявляемый в `outputs` ──────────────────
+    ".github/scripts/out-producer.sh":
+        f'#!/usr/bin/env bash\necho "{FLAG}=1" >> "$GITHUB_OUTPUT"\n',
+    # ── форма записи D: дописывание из питона режимом «a» ────────────────────
+    ".github/scripts/py-producer.py":
+        f'import os\nopen(os.environ["GITHUB_ENV"], "a").write("{FLAG}=1\\n")\n',
+    # обёртка: её зовёт шаг, она зовёт производителя — ФОРМА ВЫЗОВА «один переход»
+    ".github/scripts/wrapper.sh":
+        '#!/usr/bin/env bash\npython3 .github/scripts/py-producer.py\n',
+    # ── НЕ производитель: единственный вызов в конвейере — самопроверка ──────
+    ".github/scripts/selftest-only.sh":
+        f'#!/usr/bin/env bash\necho "{FLAG}=1" >> "$GITHUB_ENV"\n',
+    # ── НЕ производитель: собственная проза, оба слова в одной строке ────────
+    ".github/scripts/prose.sh":
+        f'#!/usr/bin/env bash\n# $GITHUB_ENV  {FLAG}=1 >> — шаги ниже гасятся\ntrue\n',
+    # ── НЕ производитель: законная фикстура соседней полосы. Конвейер её не
+    #    запускает НИ ОДНИМ вызовом, поэтому на ЭТОМ прогоне выставить отметку
+    #    она не может — при том что кладёт её совершенно законно.
+    "deploy/scripts/fixture-inject.sh":
+        f'#!/usr/bin/env bash\necho "{FLAG}=1" >> "$GITHUB_ENV"\n',
+    # ── НЕ производитель: синтетика в дереве проб ────────────────────────────
+    "internal/repohygiene/fixture.go":
+        f'package repohygiene\n\nconst inj = "echo {FLAG}=1 >> \\"$GITHUB_ENV\\""\n',
+    # ── форма вызова: объявление конвейера кладёт отметку ТЕЛОМ ШАГА ─────────
+    ".github/workflows/inline.yml":
+        'name: inline\njobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n'
+        f'      - name: inline\n        run: echo "{FLAG}=1" >> "$GITHUB_ENV"\n',
+    # ── форма записи C: объявление несёт отметку КАРТОЙ `env:` ───────────────
+    ".github/workflows/envmap.yml":
+        'name: envmap\njobs:\n  j:\n    runs-on: ubuntu-latest\n'
+        '    env:\n      STAND_PRECONDITION_UNMET: 1\n    steps:\n'
+        '      - name: noop\n        run: "true"\n',
+    # ── объявление, которое всех и запускает. Само отметки не кладёт ─────────
+    ".github/workflows/run.yml":
+        'name: run\njobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n'
+        '      - name: bare\n        run: .github/scripts/env-producer.sh\n'
+        '      - name: interp\n        run: bash'
+        ' "$GITHUB_WORKSPACE/.github/scripts/out-producer.sh"\n'
+        '      - name: hop\n        run: bash .github/scripts/wrapper.sh\n'
+        '      - name: selftest\n        run: bash .github/scripts/selftest-only.sh --self-test\n'
+        '      - name: prose\n        run: bash .github/scripts/prose.sh\n',
+}
+# Кого перечень ОБЯЗАН назвать. Остальные файлы подставного дерева — законная
+# запись, производителями не являющаяся; их отсутствие проверяется отдельно.
+ROSTER_PROBE_WANT = {
+    ".github/scripts/env-producer.sh": "запись в $GITHUB_ENV · вызов голым путём",
+    ".github/scripts/out-producer.sh": "запись в $GITHUB_OUTPUT · вызов через интерпретатор",
+    ".github/scripts/py-producer.py": "запись из питона режимом «a» · вызов через один переход",
+    ".github/workflows/inline.yml": "запись телом шага · файл САМ есть объявление",
+    ".github/workflows/envmap.yml": "запись картой env: · файл САМ есть объявление",
+}
+ROSTER_PROBE_DENY = {
+    ".github/scripts/selftest-only.sh": "зовётся только как `--self-test`",
+    ".github/scripts/prose.sh": "проза: оба слова в строке, записи нет",
+    "deploy/scripts/fixture-inject.sh": "законная фикстура соседней полосы: конвейер её не зовёт",
+    "internal/repohygiene/fixture.go": "синтетика в дереве проб",
+}
+
+
+def _roster_tree(root: pathlib.Path, files: dict[str, str]) -> None:
+    for rel, text in files.items():
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True, capture_output=True)
+    # Пути перечислены ЯВНО: `-A` в общей рабочей копии запрещён, и привычка
+    # сохраняется здесь, чтобы не переехала обратно копированием.
+    subprocess.run(["git", "add", ".github", "deploy", "internal"],
+                   cwd=root, check=True, capture_output=True)
 
 
 def verdict_steps() -> list[dict]:
@@ -408,25 +702,80 @@ def _self_test() -> int:
 
     print("=== shard-verdict.py --self-test ===")
 
-    # ── ось 1: формы несозданного условия выведены из дерева ─────────────────
+    # ── ось 1: КОНТРОЛЬ — перечень выведен из дерева ПО СУЩЕСТВУ ─────────────
     print("  --- формы отметки: перечень выведен из дерева, сверен в обе стороны")
     tree = flag_producers_in_tree()
     seen["производителей"] = len(tree)
     say(bool(tree), f"производителей отметки {FLAG} в дереве: {len(tree)}",
         "обход пуст — «все формы известны» значило бы «ни одна не прочитана»")
     for path, with_mark in sorted(tree.items()):
-        want = FLAG_PRODUCERS.get(path)
-        say(want is not None,
-            f"о производителе '{path}' распознаватель рассуждал",
-            "производителя нет в FLAG_PRODUCERS — его форма даст МОЛЧАНИЕ")
-        if want is not None:
-            expect = "external-chart-source" if with_mark else "stand-revision-divergence"
-            say(want == expect,
-                f"'{path}' → форма «{want}» (отметка-файл: {'да' if with_mark else 'нет'})",
-                f"дерево говорит «{expect}»")
-    for path in FLAG_PRODUCERS:
-        say(path in tree, f"запись '{path}' имеет производителя в дереве",
-            "запись переживает свой предмет — снимите её")
+        print(f"         '{path}' — отметка-файл: {'да' if with_mark else 'нет'}")
+    findings = roster_findings(tree, FLAG_PRODUCERS)
+    say(not findings,
+        f"перечень сошёлся с FLAG_PRODUCERS в обе стороны "
+        f"(дерево {len(tree)}, запись {len(FLAG_PRODUCERS)})",
+        "; ".join(findings))
+
+    # ── ось 1б: ИНЪЕКЦИЯ распознавателя — все формы, и ни одна лишняя ────────
+    #
+    # ПРЕДМЕТ. Перечень выводился ПОИСКОМ ПО ТЕКСТУ, и текст не отличает того,
+    # кто отметку СТАВИТ, от того, кто её лишь называет. Замер на этом же
+    # подставном дереве: прежний предикат давал перечень из ШЕСТИ при
+    # производителях ДВУХ — лишними были законная фикстура соседней полосы,
+    # синтетика дерева проб, вызов самопроверки и собственный комментарий.
+    #
+    # Инъекция обязательна в обе стороны: без неё «фикстура не попала» неотличимо
+    # от «не попал никто», а «производитель попал» — от «попадают все».
+    print("  --- инъекция распознавателя: каждая форма доказана, лишних нет")
+    with tempfile.TemporaryDirectory() as td:
+        tmp = pathlib.Path(td)
+        _roster_tree(tmp, ROSTER_PROBE_FILES)
+        got = flag_producers_in_tree(tmp)
+        seen["форм записи"] = 4
+        seen["форм вызова"] = 4
+        for path, form in sorted(ROSTER_PROBE_WANT.items()):
+            say(path in got, f"производитель попал в перечень: {form}",
+                f"'{path}' не найден — эта форма даёт МОЛЧАНИЕ; в перечне: {sorted(got)}")
+        for path, why in sorted(ROSTER_PROBE_DENY.items()):
+            say(path not in got, f"в перечень НЕ попал: {why}",
+                f"'{path}' назван производителем — отладку пошлёт не туда")
+        say(set(got) == set(ROSTER_PROBE_WANT),
+            f"перечень подставного дерева — РОВНО производители ({len(got)} из "
+            f"{len(ROSTER_PROBE_FILES)} файлов)", f"в перечне: {sorted(got)}")
+        # Двусторонняя сверка ДОЛЖНА находить, а не молчать: производители
+        # подставного дерева в FLAG_PRODUCERS не объявлены ни один.
+        inj = roster_findings(got, FLAG_PRODUCERS)
+        say(len(inj) == len(got) + len(FLAG_PRODUCERS),
+            f"сверка назвала {len(inj)} расхождений: {len(got)} незаявленных "
+            f"производителя и {len(FLAG_PRODUCERS)} записи без предмета",
+            f"нашла: {inj}")
+
+    # ── ось 1в: ИНЪЕКЦИЯ СУЩЕСТВУЮЩЕГО — прежняя форма ещё жива ──────────────
+    #
+    # Фикстура соседа остаётся на месте, а у НАСТОЯЩЕГО производителя снимается
+    # строка записи. Без этого прогона молчание живой формы неотличимо от её
+    # смерти: «фикстура не попала» верно и у предиката, который не находит НИЧЕГО.
+    print("  --- инъекция существующего: снят производитель ⇒ перечень краснеет")
+    with tempfile.TemporaryDirectory() as td:
+        tmp = pathlib.Path(td)
+        files = dict(ROSTER_PROBE_FILES)
+        files[".github/scripts/env-producer.sh"] = "#!/usr/bin/env bash\ntrue\n"
+        _roster_tree(tmp, files)
+        got = flag_producers_in_tree(tmp)
+        say(".github/scripts/env-producer.sh" not in got,
+            "снятый производитель из перечня ушёл — предикат не всегда-истинен",
+            f"в перечне: {sorted(got)}")
+        say("deploy/scripts/fixture-inject.sh" not in got,
+            "фикстура соседа не попала и теперь — при ЖИВОМ остальном перечне",
+            f"в перечне: {sorted(got)}")
+        say(len(got) == len(ROSTER_PROBE_WANT) - 1,
+            f"перечень стал {len(got)} вместо {len(ROSTER_PROBE_WANT)} — остальные формы живы",
+            f"в перечне: {sorted(got)}")
+        was = {".github/scripts/env-producer.sh": "external-chart-source"}
+        gone = [f for f in roster_findings(got, was) if "НЕ имеет" in f]
+        say(len(gone) == 1,
+            "сверка назвала запись, потерявшую производителя — это находка, не тишина",
+            f"нашла: {gone}")
 
     # ── ось 2: контроль ──────────────────────────────────────────────────────
     print("  --- контроль: отметки нет, отчёты на местах, пробы зелёные")
@@ -460,6 +809,15 @@ def _self_test() -> int:
         say((v.get("precondition") or {}).get("kind") == "stand-revision-divergence",
             "опись несёт форму «stand-revision-divergence» — свод её прочтёт",
             f"в описи: {v.get('precondition')}")
+        # ТЕКСТ ОТКАЗА НАЗЫВАЕТ НАБЛЮДАТЕЛЯ ЛИТЕРАЛОМ, а перечень выведен из
+        # дерева. Связь между ними держится здесь: литерал, разошедшийся с
+        # деревом, посылает отладку не туда — и это ровно то, чем красное
+        # отличается от красного. Молча разойтись они больше не могут.
+        who = (v.get("precondition") or {}).get("producer")
+        say(who in tree, f"наблюдатель «{who}» из текста отказа есть в выведенном перечне",
+            f"в перечне: {sorted(tree)}")
+        say(bool(who) and who in out, "текст отказа назвал наблюдателя ИМЕНЕМ файла",
+            out[-500:])
 
     # ── ось 4: инъекция СУЩЕСТВУЮЩЕГО — отметка-файл постороннего источника ──
     print("  --- инъекция существующего: отметка-ФАЙЛ ⇒ КРАСНОЕ, причина из файла")
@@ -477,6 +835,11 @@ def _self_test() -> int:
                 f"форма «external-chart-source» {tail}", f"в описи: {v.get('precondition')}")
             say("charts.example.invalid" in out,
                 f"причина взята ИЗ ФАЙЛА, а не подставлена {tail}", out[-500:])
+            who = (v.get("precondition") or {}).get("producer")
+            say(who in tree, f"наблюдатель «{who}» есть в выведенном перечне {tail}",
+                f"в перечне: {sorted(tree)}")
+            say(bool(who) and who in out, f"текст отказа назвал наблюдателя {tail}",
+                out[-500:])
 
     # ── ось 5: законный близнец — пробы УПАЛИ, условие создано ───────────────
     print("  --- законный близнец: пробы упали ⇒ опись НЕ присваивает себе вердикт")
