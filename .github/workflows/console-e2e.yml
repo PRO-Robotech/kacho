@@ -848,9 +848,13 @@ jobs:
           # тем, что НЕ выдаёт послаблений.
           VERDICT_UNMET: ${{ steps.report-gate.outputs.unmet }}
         run: |
-          printf '%s' "$STEPS_JSON" > /tmp/console-e2e-steps.json
+          # Каталог берётся РУЧКОЙ ранера с запасным значением: тело этого шага
+          # исполняется доказательством инъекцией как есть, а жёсткий `/tmp`
+          # сделал бы его неисполнимым вне ранера.
+          steps_file="${RUNNER_TEMP:-/tmp}/console-e2e-steps.json"
+          printf '%s' "$STEPS_JSON" > "$steps_file"
           python3 .github/scripts/console-run-category.py \
-            --steps /tmp/console-e2e-steps.json \
+            --steps "$steps_file" \
             --probe-step probes \
             --verdict-step report-gate \
             --verdict-unmet "$VERDICT_UNMET" \
@@ -860,3 +864,51 @@ jobs:
         id: teardown
         if: ${{ always() && (github.event_name != 'workflow_dispatch' || inputs.console_url == '') }}
         run: kind delete cluster --name "$CLUSTER_NAME" 2>/dev/null || true
+
+      # ─── ЗЕЛЁНОЕ РАБОТЫ ЕСТЬ ГАРАНТИЯ, А НЕ «МЫ НЕ СПРАШИВАЛИ» ──────────
+      #
+      # Отметка `STAND_PRECONDITION_UNMET=1` гасит шесть шагов выше — и это верно:
+      # вердикт о чужом дереве относится не к тому предмету. Неверно было другое:
+      # погашенный шаг НЕ ПАДАЕТ, он пропускается, а работа без упавших шагов
+      # выходит `success`. Наблюдалось на прогоне 34694955300: консоль пропустила
+      # `прогон проб` и гейт по отчёту и вышла зелёной — то есть отсутствие
+      # вердикта пришло в сводку тем же кружком, что и «проверено, замечаний нет».
+      #
+      # Решение владельца 2026-09-12: «сделай так, чтобы можно было гарантировать
+      # зелёный; если что-то не так — в красный». Поэтому исход работы при
+      # погашенном вердикте КРАСНЫЙ, а различение трёх категорий живёт в тексте
+      # отказа: владелец переписи называет причину и говорит прямо, что вердикта
+      # о продукте нет ни у одной проверки этой работы.
+      #
+      # Перечень объявленных вердиктных шагов ВЫВОДИТСЯ из этого же файла (шаги,
+      # чьё условие читает отметку), а не выписывается здесь: выписанный разошёлся
+      # бы молча. Держит связность гейт `internal/repohygiene`
+      # `TestSkippedVerdictDoesNotPassAsGreen`.
+      #
+      # ШАГ ИДЁТ ПОСЛЕДНИМ И НЕ ГАСИТСЯ: перепись, гасимая тем, о чём обязана
+      # доложить, промолчала бы ровно в своём случае.
+      - name: перепись исходов — объявленное против исполненного
+        id: verdict-census
+        if: ${{ always() }}
+        env:
+          STEPS_JSON: ${{ toJSON(steps) }}
+          # Отметка читается ПЕРЕМЕННОЙ, а не подстановкой в текст команды.
+          UNMET: ${{ env.STAND_PRECONDITION_UNMET }}
+          # Внешний стенд: два гасимых шага несут ещё одну оговорку — «свой
+          # подъём», — и при заданном адресе они законно не исполняются. Оговорка
+          # называется ВЫЗЫВАЮЩИМ и только в том прогоне, где она ложна; всякая
+          # НЕ названная оговорка законным пропуском не считается.
+          GIVEN_URL: ${{ inputs.console_url }}
+        run: |
+          steps_file="${RUNNER_TEMP:-/tmp}/console-e2e-census-steps.json"
+          printf '%s' "$STEPS_JSON" > "$steps_file"
+          args=()
+          if [ -n "$GIVEN_URL" ]; then
+            args+=(--legit-skip inputs.console_url)
+          fi
+          python3 .github/scripts/assert-declared-verdicts-ran.py \
+            --workflow .github/workflows/console-e2e.yml \
+            --job probes \
+            --steps "$steps_file" \
+            --flag "$UNMET" \
+            ${args[@]+"${args[@]}"}
