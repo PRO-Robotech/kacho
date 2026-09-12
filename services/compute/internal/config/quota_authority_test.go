@@ -81,3 +81,55 @@ func TestQuotaAuthority_ValidateCarriesTheGuard(t *testing.T) {
 	require.Contains(t, err.Error(), "KACHO_COMPUTE_QUOTA_AUTHORITY",
 		"общий валидатор обязан нести стража объявления домена величин")
 }
+
+// TestQuotaAuthority_AbsentAuthorityWithDeclaredTransportRefusesStart — ВТОРАЯ
+// половина пары, зеркальная KAN-Q1-05.
+//
+// Адрес объявляет ОТСУТСТВИЕ домена величин, а удостоверение к нему объявлено —
+// вместе с именем, по которому сверяется рукопожатие. Обращаться при этом не к
+// кому, поэтому имя называет пира, к которому ребро НЕ идёт: контроль
+// присутствует, провязан, исполняется — и защищает не фактического собеседника.
+//
+// Наблюдалось в дереве: шесть профилей развёртывания объявляли
+// `quota.authority: not-deployed` и тем же контейнером —
+// `..._MTLS_SERVERNAME: kaname-internal.kacho.svc`.
+func TestQuotaAuthority_AbsentAuthorityWithDeclaredTransportRefusesStart(t *testing.T) {
+	c := Config{AuthMode: "production-strict"}
+	c.QuotaAuthority = corequota.NotDeployed
+	c.QuotaAuthorityMTLS.Enable = true
+	c.QuotaAuthorityMTLS.ServerName = "kaname-internal.kacho.svc"
+
+	err := c.ValidateQuotaAuthority()
+	require.Error(t, err,
+		"адрес объявил отсутствие домена величин, а имя для сверки задано — половина пары")
+	require.Contains(t, err.Error(), "KACHO_COMPUTE_QUOTA_AUTHORITY_MTLS_SERVERNAME",
+		"отказ обязан назвать ЛИШНЮЮ половину пары")
+	require.Contains(t, err.Error(), "kaname-internal.kacho.svc",
+		"отказ обязан процитировать имя, которое названо впустую")
+}
+
+// TestQuotaAuthority_AbsentAuthorityWithDeclaredTransportRefusesOutsideProductionToo —
+// режимом этот отказ НЕ смягчается, и это отличает его от KAN-Q1-05.
+//
+// «Требуется ли проверяемый транспорт» — вопрос посадки. «К кому мы идём» —
+// не вопрос посадки: собеседника нет ни в одном режиме. Смягчение здесь
+// оставило бы дефект ровно на том стенде, который его и маскирует.
+func TestQuotaAuthority_AbsentAuthorityWithDeclaredTransportRefusesOutsideProductionToo(t *testing.T) {
+	c := Config{AuthMode: "dev"}
+	c.QuotaAuthority = corequota.NotDeployed
+	c.QuotaAuthorityMTLS.ServerName = "kaname-internal.kacho.svc"
+
+	require.Error(t, c.ValidateQuotaAuthority())
+}
+
+// TestQuotaAuthority_AbsentAuthorityWithoutTransportIsSilent — положительный
+// близнец: объявленное отсутствие БЕЗ удостоверения остаётся законной посадкой.
+//
+// Без него отказ выше зеленел бы на любой посадке с `not-deployed`, то есть
+// отбирал бы единственную посадку, ради которой это значение и заведено.
+func TestQuotaAuthority_AbsentAuthorityWithoutTransportIsSilent(t *testing.T) {
+	c := Config{AuthMode: "production-strict"}
+	c.QuotaAuthority = corequota.NotDeployed
+
+	require.NoError(t, c.ValidateQuotaAuthority())
+}

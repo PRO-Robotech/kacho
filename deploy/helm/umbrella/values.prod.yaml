@@ -405,7 +405,11 @@ vpc:
   mtls:
     enable: true
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
+      # Домена величин в этой установке НЕТ (`quota.authority: not-deployed` в чарте
+      # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
+      # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
+      # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
+      quotaAuthority: false
       iamRegister: true
       iamProject: true
       iamAuthz: true
@@ -457,7 +461,11 @@ compute:
   mtls:
     enable: true
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
+      # Домена величин в этой установке НЕТ (`quota.authority: not-deployed` в чарте
+      # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
+      # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
+      # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
+      quotaAuthority: false
       iamRegister: true
       iamProject: true
       iamAuthz: true
@@ -854,7 +862,11 @@ kacho-nlb:
   mtls:
     enable: true
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
+      # Домена величин в этой установке НЕТ (`quota.authority: not-deployed` в чарте
+      # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
+      # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
+      # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
+      quotaAuthority: false
       iamRegister: true
       iamProject: true
       vpc: true
@@ -1025,7 +1037,11 @@ storage:
   mtls:
     enable: true
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
+      # Домена величин в этой установке НЕТ (`quota.authority: not-deployed` в чарте
+      # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
+      # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
+      # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
+      quotaAuthority: false
       geo: true
       iam: true
 
@@ -1148,7 +1164,11 @@ registry:
   mtls:
     enable: true
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
+      # Домена величин в этой установке НЕТ (`quota.authority: not-deployed` в чарте
+      # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
+      # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
+      # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
+      quotaAuthority: false
       iamAuthz: true
       iamProject: true
       geo: true

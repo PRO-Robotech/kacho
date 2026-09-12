@@ -11,23 +11,41 @@ package config
 import (
 	corequota "github.com/PRO-Robotech/corelib/quota"
 	"github.com/PRO-Robotech/corelib/servicecontract"
+
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaedge"
 )
 
 const (
-	quotaAuthorityKnob          = "KACHO_STORAGE_QUOTA_AUTHORITY"
-	quotaAuthorityTransportKnob = "KACHO_STORAGE_QUOTA_AUTHORITY_MTLS_ENABLE"
+	quotaAuthorityKnob           = "KACHO_STORAGE_QUOTA_AUTHORITY"
+	quotaAuthorityTransportKnob  = "KACHO_STORAGE_QUOTA_AUTHORITY_MTLS_ENABLE"
+	quotaAuthorityServerNameKnob = "KACHO_STORAGE_QUOTA_AUTHORITY_MTLS_SERVERNAME"
 )
 
 // QuotaAuthorityDeclaration разрешает объявление домена величин вместе с
 // удостоверением к нему.
 func (c Config) QuotaAuthorityDeclaration() (corequota.Authority, error) {
-	return corequota.ResolveAuthority(corequota.Declaration{
+	a, err := corequota.ResolveAuthority(corequota.Declaration{
 		Knob:              quotaAuthorityKnob,
 		Value:             c.QuotaAuthority,
 		TransportKnob:     quotaAuthorityTransportKnob,
 		TransportRequired: c.quotaAuthorityTransportRequired(),
 		TransportDeclared: c.QuotaAuthorityMTLS.Enable,
 	})
+	if err != nil {
+		return corequota.Authority{}, err
+	}
+	// Вторая половина пары: адрес объявил ОТСУТСТВИЕ домена, а удостоверение к
+	// нему объявлено — имя для сверки называет пира, к которому ребро не идёт.
+	if err := quotaedge.ValidateAbsentAuthorityCarriesNoTransport(quotaedge.Pair{
+		AuthorityKnob:  quotaAuthorityKnob,
+		Authority:      c.QuotaAuthority,
+		TransportKnob:  quotaAuthorityTransportKnob,
+		ServerNameKnob: quotaAuthorityServerNameKnob,
+		Transport:      c.QuotaAuthorityMTLS,
+	}); err != nil {
+		return corequota.Authority{}, err
+	}
+	return a, nil
 }
 
 // ValidateQuotaAuthority — тот же предикат, вызванный ради вердикта.
