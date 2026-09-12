@@ -127,7 +127,7 @@ func TestRetryAdviceGateCanFail(t *testing.T) {
 		},
 		{
 			name: "близнец/отрицание-по-русски",
-			body: retryAdviceWrap("\treturn status.Errorf(codes.FailedPrecondition, \"подсеть %s исчерпана — повтор бессмыслен\", id)"),
+			body: retryAdviceWrap("\treturn status.Errorf(codes.FailedPrecondition, \"подсеть %s исчерпана — не повторяйте запрос\", id)"),
 			why: func(t *testing.T, c retryAdviceCensus) {
 				if c.Advices != 1 || c.Negated != 1 {
 					t.Fatalf("совет распознан %d раз, снят отрицанием %d раз — молчание "+
@@ -177,6 +177,20 @@ func TestRetryAdviceGateCanFail(t *testing.T) {
 				}
 				if c.Advices != 0 {
 					t.Fatalf("в тексте без совета совет распознан %d раз", c.Advices)
+				}
+			},
+		},
+		{
+			name: "близнец/существительное-повтор-не-совет",
+			body: retryAdviceWrap("\treturn fmt.Errorf(\"%w: SecurityGroup %s изменён повтором чужой правки\", ErrFailedPrecondition, id)"),
+			why: func(t *testing.T, c retryAdviceCensus) {
+				if c.Literals != 1 {
+					t.Fatalf("текстов отказа осмотрено %d, ожидался 1 — молчание получено "+
+						"обрывом обхода", c.Literals)
+				}
+				if c.Advices != 0 || c.Negated != 0 {
+					t.Fatalf("упоминание повтора прочитано как совет (советов %d, снято "+
+						"отрицанием %d) — форма F4 не сужена до директивной", c.Advices, c.Negated)
 				}
 			},
 		},
