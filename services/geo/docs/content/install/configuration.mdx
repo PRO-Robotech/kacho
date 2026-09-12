@@ -48,7 +48,7 @@ Kachō Geo конфигурируется через переменные окр
 <table>
   <thead><tr><th>Переменная</th><th>По умолчанию</th><th>Описание</th></tr></thead>
   <tbody>
-    <tr><td><code>KACHO_GEO_AUTHZ_IAM_GRPC_ADDR</code></td><td><em>(пусто)</em></td><td>Internal-адрес kaname для per-RPC Check (обычно iam-internal <code>:9091</code>)</td></tr>
+    <tr><td><code>KACHO_GEO_AUTHZ_IAM_GRPC_ADDR</code></td><td><em>(пусто)</em></td><td>Internal-адрес kaname для per-RPC Check — Service <code>kaname-internal</code>, порт <code>:9091</code>. Публичный <code>kaname</code> этого порта НЕ выставляет</td></tr>
     <tr><td><code>KACHO_GEO_AUTHZ_CHECK_TIMEOUT</code></td><td><code>2s</code></td><td>Срок ОДНОГО вопроса о правах владельцу модели. Неотвечающий сосед без срока вешает горутину навсегда</td></tr>
     <tr><td><code>KACHO_GEO_AUTH_MODE</code></td><td><code>production</code></td><td>Posture старта: <code>dev</code> · <code>production</code> · <code>production-strict</code>. Дефолт — <code>production</code> (secure by default)</td></tr>
     <tr><td><code>KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS</code></td><td><em>(пусто)</em></td><td>Allow-list SAN&apos;ов, которым разрешено передавать личность конечного пользователя (SA api-gateway). В production обязателен непустой</td></tr>
@@ -115,7 +115,7 @@ dev). В production оба server-флага должны быть `true`.
     KACHO_GEO_INTERNAL_PORT: "9091"
 
     KACHO_GEO_AUTH_MODE: production-strict
-    KACHO_GEO_AUTHZ_IAM_GRPC_ADDR: kaname.kacho.svc:9091
+    KACHO_GEO_AUTHZ_IAM_GRPC_ADDR: kaname-internal.kacho.svc:9091
 
     # per-edge mTLS (включить в production)
     KACHO_GEO_PUBLIC_SERVER_MTLS_ENABLE: "true"

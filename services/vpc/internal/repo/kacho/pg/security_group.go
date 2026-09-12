@@ -407,7 +407,16 @@ func (w *securityGroupWriter) Delete(ctx context.Context, id string) error {
 
 // UpdateRules атомарно меняет набор правил SG в текущей writer-TX. Optimistic
 // concurrency через `xmin::text` snapshot — concurrent UpdateRules → один из
-// вызовов получит 0 rows → ErrFailedPrecondition "concurrent modification".
+// вызовов получит 0 rows → ErrFailedPrecondition "was modified concurrently".
+//
+// Текст отказа называет СОСТОЯНИЕ и НЕ советует повторить — ни здесь, ни в
+// UpdateRule. Причина не в краткости: RPC асинхронный (`UpdateRules` отдаёт
+// `Operation`), поэтому повторять вызывающему нечего — запроса уже нет, исход
+// операции терминален, и тело мутации внутри платформы не переигрывается. Совет
+// «повтори» здесь был адресован некому, а на FAILED_PRECONDITION он вдобавок
+// противоречит коду, стоящему в том же выражении. Тон сведён с соседями той же
+// полосы (Listener / NetworkLoadBalancer / TargetGroup в nlb пишут ровно это).
+// Держит гейт `internal/repohygiene` TestRetryAdviceIsExecutableOnItsLane.
 //
 // outbox-write — в use-case'е.
 func (w *securityGroupWriter) UpdateRules(ctx context.Context, sgID string, deleteIDs []string, add []domain.SecurityGroupRule) (*kacho.SecurityGroupRecord, error) {
@@ -458,7 +467,7 @@ func (w *securityGroupWriter) UpdateRules(ctx context.Context, sgID string, dele
 	sg, err := helpers.ScanSG(row)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("%w: SecurityGroup %s was modified concurrently, please retry",
+			return nil, fmt.Errorf("%w: SecurityGroup %s was modified concurrently",
 				helpers.ErrFailedPrecondition, sgID)
 		}
 		return nil, helpers.WrapSGErr(err, sgID)
@@ -467,7 +476,8 @@ func (w *securityGroupWriter) UpdateRules(ctx context.Context, sgID string, dele
 }
 
 // UpdateRule обновляет description/labels единичного правила в SG (xmin-OCC).
-// Concurrent-modification → FailedPrecondition.
+// Concurrent-modification → FailedPrecondition, текстом состояния без совета
+// повторить (см. UpdateRules о том, почему совета здесь нет).
 //
 // outbox-write — в use-case'е.
 func (w *securityGroupWriter) UpdateRule(ctx context.Context, sgID, ruleID, description string, labels map[string]string, mask []string) (*kacho.SecurityGroupRecord, error) {
@@ -520,7 +530,7 @@ func (w *securityGroupWriter) UpdateRule(ctx context.Context, sgID, ruleID, desc
 	sg, err := helpers.ScanSG(row)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("%w: SecurityGroup %s was modified concurrently, please retry",
+			return nil, fmt.Errorf("%w: SecurityGroup %s was modified concurrently",
 				helpers.ErrFailedPrecondition, sgID)
 		}
 		return nil, helpers.WrapSGErr(err, sgID)
