@@ -44,8 +44,27 @@
 упрётся в потолок — а это и есть состояние, из которого гейт заведён.
 
 ПРОВЕРКА ПРЕДПОСЫЛОК. «Ноль находок» обязано быть отличимо от «ноль прочитанного»:
-пустая волна, непрочитанный потолок темпа, невыведенный базовый уровень и ноль
-заведений под всеми личностями сразу — ОТКАЗ, а не «чисто».
+непрочитанный потолок темпа, невыведенный базовый уровень и ноль заведений под
+всеми личностями сразу — ОТКАЗ, а не «чисто».
+
+ПУСТАЯ ВОЛНА — ИСХОД РАЗРЕЗА, И ОН ЗАПИСАН У СОСЕДА. Линия выноса службы доступа
+унесла суиту волны и затравку темпа; отказ стал вечным и называл не ту причину —
+«каталога миграций iam нет», хотя мерить было нечего ещё до темпа. Состояния
+волны различает сосед (`wave_presence`), здесь они только читаются: предмета в
+дереве нет — БЕСПРЕДМЕТНО с числами обхода и кодом ноль; предмет есть, а темпа
+нет — ОТКАЗ. Текст исхода печатает сосед, единственный его производитель.
+
+ПОРЯДОК НЕСУЩИЙ и доказан инъекцией в обе стороны: сперва ВОЛНА (предмет), потом
+ТЕМП (мерка). Между двумя прогонами фикстуры меняется ровно один факт — лежит ли
+в суите коллекция под личностью церемонии, — и мерки нет в обоих: без волны
+исход беспредметен, с волной — отказ по мерке.
+
+ОТДЕЛЬНО: САМОПРОВЕРКА БОЛЬШЕ НЕ ПАДАЕТ ТРАССОЙ СТЕКА. Чтение величины темпа
+стояло в ней без перехвата, и после разреза она падала необработанным
+`PremiseError`: вместо названного отказа читатель получал стек, а объявленного
+кода 2 не производилось вовсе (питон отдаёт 1). Перехват уточняет предмет, а не
+ослабляет утверждение: отсутствие величины законно РОВНО тогда, когда и волны в
+дереве нет, — есть волна, а величины нет — провал.
 
 Использование:
     python3 deploy/scripts/assert-identity-admission-rate-headroom.py [--root .]
@@ -93,6 +112,27 @@ class PremiseError(RuntimeError):
     """Предпосылка вердикта не выполнена — это ОТКАЗ, а не «чисто»."""
 
 
+class SubjectElsewhere(RuntimeError):
+    """Волны церемонии в ЭТОМ дереве нет — предмет уехал вместе со службой доступа.
+
+    СВОЙ КЛАСС, А НЕ КЛАСС СОСЕДА, и это не дублирование: сосед загружается
+    динамически, поэтому его класс недоступен в `except` до загрузки. Тот же приём,
+    которым здесь уже переводится чужой отказ в свой («чужой отказ — наш отказ»).
+
+    ТЕКСТ ИСХОДА НЕ КОПИРУЕТСЯ: печатает его сосед, единственный производитель, а
+    исключение несёт только перепись и ссылку на печать. Вторая копия текста
+    разошлась бы с первой молча — как разошлись бы два кодека одного вердикта.
+    """
+
+    def __init__(self, census: dict, reporter):
+        super().__init__("волна церемонии в этом дереве не производится")
+        self.census = census
+        self._reporter = reporter
+
+    def report(self, what: str) -> int:
+        return self._reporter(self.census, what)
+
+
 def decide(charged: int, ceiling: int) -> tuple[int, bool]:
     """Вердикт по паре «списаний, потолок» → (код возврата, находка ли).
 
@@ -120,8 +160,9 @@ def load_peak_gate(root: str):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     for want in ("load_declarations", "identities_of", "wave_collections",
-                 "timeline_of", "read_base_components", "seeded_by_identity",
-                 "read_seeded_value"):
+                 "wave_presence", "timeline_of", "read_base_components",
+                 "seeded_by_identity", "read_seeded_value", "SubjectElsewhere",
+                 "report_subject_elsewhere"):
         if not hasattr(mod, want):
             raise PremiseError(
                 f"у соседнего гейта нет `{want}` — его форма изменилась, и вердикт "
@@ -157,11 +198,19 @@ def audit(root: str):
     peak_gate = load_peak_gate(root)
     decl, forms = peak_gate.load_declarations(root)
     identities = peak_gate.identities_of(decl)
+    # ПОРЯДОК НЕСУЩИЙ, и он тот же, что у соседа: сперва ВОЛНА (предмет), потом
+    # темп (мерка). Мерка, спрошенная раньше предмета, отказывает по своей
+    # недоступности там, где мерить нечего, — и называет читателю не ту причину.
+    # Ровно это и происходило после разреза службы доступа: отказ говорил
+    # «каталога миграций iam нет», хотя волны в дереве не было вовсе.
+    try:
+        wave = peak_gate.wave_collections(root, decl)
+    except peak_gate.SubjectElsewhere as exc:      # чужой исход — наш исход
+        raise SubjectElsewhere(exc.census, peak_gate.report_subject_elsewhere) from exc
     ceiling, window, mig_census = read_rate_with_census(root)
     common, seeded_total, why = peak_gate.read_base_components(root)
     seeded = peak_gate.seeded_by_identity(decl, seeded_total)
     base = common + max(seeded.values(), default=0)
-    wave = peak_gate.wave_collections(root, decl)
 
     per_identity = []
     cases = steps = 0
@@ -200,6 +249,8 @@ def main(argv=None) -> int:
 
     try:
         worst, ceiling, base, why, census = audit(a.root)
+    except SubjectElsewhere as exc:
+        return exc.report("темп заведения аккаунтов")
     except PremiseError as exc:
         print(f"ОТКАЗ (предпосылка): {exc}", file=sys.stderr)
         return 2
@@ -311,9 +362,36 @@ def self_test() -> int:
     sites = _threshold_sites(open(os.path.abspath(__file__), encoding="utf-8").read())
     check("мест сравнения", sites, ["decide"])
 
-    print("── величина темпа читается из миграции, а не выписана")
-    rate, window = read_rate(REPO)
-    note(rate > 0 and window > 0, f"потолок {rate} заведени(й) за {window} с")
+    # ЗДЕСЬ БЫЛА ТРАССА СТЕКА. Вызов стоял без перехвата, и после разреза службы
+    # доступа самопроверка падала НЕПЕРЕХВАЧЕННЫМ `PremiseError`: вместо названного
+    # отказа читатель получал стек, а объявленный код возврата 2 не производился
+    # вовсе (питон отдаёт 1 на необработанном исключении). Находка, называющая
+    # симптом вместо причины, посылает искать не там — и тратит на это прогон.
+    #
+    # Перехват НЕ ослабляет утверждение, а уточняет его предмет: величина темпа
+    # живёт в затравке службы, и её отсутствие законно РОВНО ТОГДА, когда и волны
+    # в этом дереве нет. Есть волна, а мерки нет — ПРОВАЛ, и это та сторона, без
+    # которой перехват стал бы маской.
+    print("── величина темпа: читается из миграции либо предмета в дереве нет")
+    try:
+        _pg = load_peak_gate(REPO)
+        _decl, _f = _pg.load_declarations(REPO)
+    except PremiseError as exc:
+        note(False, f"предпосылка самопроверки: {exc}")
+        return 1
+    try:
+        rate, window = read_rate(REPO)
+        note(rate > 0 and window > 0, f"потолок {rate} заведени(й) за {window} с")
+    except PremiseError as exc:
+        try:
+            _pg.wave_presence(REPO, _decl)
+            note(False, f"волна в дереве ЕСТЬ, а величина темпа не читается: {exc}")
+        except _pg.SubjectElsewhere as sub:
+            note(True, f"величины темпа в дереве нет — и волны тоже: предмет вне "
+                       f"дерева (коллекций прочитано {sub.census['files_read']}, "
+                       f"волны {sub.census['stems']})")
+        except PremiseError as inner:
+            note(False, f"величины темпа нет, и состояние волны неясно: {inner}")
     try:
         read_rate(os.path.join(REPO, "нет-такого"))
         note(False, "миграции темпа нет: прошло молча")
@@ -414,7 +492,7 @@ def self_test() -> int:
         except PremiseError:
             note(True, f"{label}: ОТКАЗ")
 
-    print("── настоящее дерево читается, перепись непуста")
+    print("── настоящее дерево: либо перепись непуста, либо предмет НАЗВАН вне его")
     try:
         worst, ceiling, base, _why, census = audit(REPO)
         for label, got in (("коллекций", census["collections"]),
@@ -427,8 +505,44 @@ def self_test() -> int:
                  else f"{label} == 0 — предикат ослеп")
         note(ceiling - worst[2] >= HEADROOM_REQUIRED,
              f"наименьший запас {ceiling - worst[2]} (личность {worst[0]})")
+    except SubjectElsewhere as exc:
+        # Беспредметность законна ТОЛЬКО с непустой переписью: пустой обход
+        # означал бы «не смогли прочитать», а это другое состояние.
+        note(exc.census["files_read"] > 0 and exc.census["stems"] == 0
+             and not exc.census["suite_present"],
+             f"волна вне дерева НАЗВАНА: прочитано коллекций "
+             f"{exc.census['files_read']}, каталог суиты отсутствует, волны 0")
     except PremiseError as exc:
         note(False, f"настоящее дерево: {exc}")
+
+    print("── ПОРЯДОК: темп спрашивается ПОСЛЕ волны, а не вместо неё")
+    # Фикстура — СОСЕДА, единственный её производитель: порядок есть свойство обоих
+    # гейтов полосы, и вторая копия фикстуры разошлась бы с первой молча. Между
+    # прогонами меняется РОВНО ОДИН факт — есть ли в суите коллекция под личностью
+    # церемонии.
+    import shutil as _shutil  # noqa: PLC0415 — нужен только здесь
+
+    _r = _pg.synthetic_wave_root(with_wave=False, with_seed=False)
+    try:
+        audit(_r)
+        note(False, "волны нет, темпа нет: прошло молча")
+    except SubjectElsewhere:
+        note(True, "волны нет, темпа нет → БЕСПРЕДМЕТНО (темп не спрашивали)")
+    except PremiseError as exc:
+        note(False, f"волны нет — а отказ по темпу: {exc}")
+    _shutil.rmtree(_r, ignore_errors=True)
+
+    _r = _pg.synthetic_wave_root(with_wave=True, with_seed=False)
+    try:
+        audit(_r)
+        note(False, "волна ЕСТЬ, темпа нет: прошло молча")
+    except SubjectElsewhere:
+        note(False, "волна ЕСТЬ, а исход объявлен беспредметным — темп перестали "
+                    "спрашивать при живом предмете")
+    except PremiseError as exc:
+        note("темп" in str(exc) or "миграц" in str(exc),
+             "волна ЕСТЬ, темпа нет → ОТКАЗ по темпу")
+    _shutil.rmtree(_r, ignore_errors=True)
 
     print()
     print(f"утверждений исполнено: {asserts}")

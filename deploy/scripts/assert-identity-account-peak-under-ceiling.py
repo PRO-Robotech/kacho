@@ -682,6 +682,58 @@ def audit(root: str):
     return worst[1], worst[2], ceiling, base, why, census
 
 
+def synthetic_wave_root(*, with_wave: bool, with_seed: bool,
+                        seed_body: str = "") -> str:
+    """Синтетический корень для доказательства ПОРЯДКА проверок.
+
+    Зовут его ОБА гейта полосы: порядок «сперва предмет, потом мерка» — свойство
+    обоих, и фикстура у него одна. Вторая копия фикстуры разошлась бы с первой
+    молча, а разошлась бы именно там, где обе отвечают «валидно».
+
+    `with_wave` — лежит ли в суите коллекция под личностью церемонии (ПРЕДМЕТ).
+    `with_seed` — лежит ли в миграциях затравка величины (МЕРКА).
+    Между двумя прогонами меняется РОВНО ОДИН из двух фактов.
+    """
+    d = tempfile.mkdtemp(prefix="kacho-order-")
+    for rel in (os.path.join("deploy", "scripts", os.path.basename(__file__)),
+                NEIGHBOUR_GATE, CEREMONY_DECL, CEREMONY_SEED):
+        os.makedirs(os.path.join(d, os.path.dirname(rel)), exist_ok=True)
+        with open(os.path.join(REPO, rel), encoding="utf-8") as fh:
+            body = fh.read()
+        with open(os.path.join(d, rel), "w", encoding="utf-8") as fh:
+            fh.write(body)
+    # Коллекция СОСЕДНЕЙ суиты есть ВСЕГДА: без неё обход прочитал бы ноль, и
+    # состояние стало бы «не смогли прочитать» — соседним, а не проверяемым.
+    nb = os.path.join(d, "services", "zz", "tests", "newman", "collections")
+    os.makedirs(nb, exist_ok=True)
+    with open(os.path.join(nb, "n.postman_collection.json"), "w", encoding="utf-8") as fh:
+        json.dump({"info": {"name": "n", "schema": ""}, "item": [
+            {"name": "CASE — сосед", "item": [{"name": "шаг", "request": {
+                "method": "GET", "url": {"raw": "{{baseUrl}}/vpc/v1/networks"}}}]}]}, fh)
+    coll = os.path.join(d, SUITE, "collections")
+    if with_wave:
+        os.makedirs(coll, exist_ok=True)
+        step = {"name": "mk", "request": {"method": "POST",
+                                          "url": {"raw": "{{baseUrl}}/iam/v1/accounts"}},
+                "event": [{"listen": "prerequest", "script": {"exec": [
+                    f"// per-step auth: bearer from env "
+                    f"'{CEREMONY_IDENTITY_BEARERS[0]}'"]}},
+                          {"listen": "test", "script": {"exec": [
+                              "const v = (j.metadata && j.metadata.accountId);",
+                              "  if (v !== undefined && v !== null) "
+                              "pm.environment.set('accA', String(v));"]}}]}
+        with open(os.path.join(coll, "w.postman_collection.json"), "w",
+                  encoding="utf-8") as fh:
+            json.dump({"info": {"name": "t", "schema": ""},
+                       "item": [{"name": "CASE — заголовок", "item": [step]}]}, fh)
+    if with_seed:
+        mig = os.path.join(d, IAM_MIGRATIONS)
+        os.makedirs(mig, exist_ok=True)
+        with open(os.path.join(mig, "0001_initial.sql"), "w", encoding="utf-8") as fh:
+            fh.write("-- +goose Up\n" + seed_body)
+    return d
+
+
 def _suite_root_for_empty_wave() -> str:
     """Корень, где каталог суиты ЕСТЬ, а коллекций волны нет — фикстура отказа."""
     d = tempfile.mkdtemp(prefix="kacho-suite-")
@@ -1198,6 +1250,32 @@ def self_test() -> int:
              f"суита с коллекцией → волна найдена ({_stems})")
     except (SubjectElsewhere, PremiseError) as exc:
         note(False, f"законный близнец: волна не найдена ({exc})")
+    _shutil.rmtree(_r, ignore_errors=True)
+
+    print("── ПОРЯДОК: мерка спрашивается ПОСЛЕ предмета, а не вместо него")
+    # Без этой пары порядок держался бы только тем, в какой строке стоит вызов.
+    # Меняется РОВНО ОДИН факт — лежит ли в суите коллекция под личностью
+    # церемонии; мерки (затравки потолка) нет в обоих прогонах.
+    _r = synthetic_wave_root(with_wave=False, with_seed=False)
+    try:
+        audit(_r)
+        note(False, "волны нет, мерки нет: прошло молча")
+    except SubjectElsewhere:
+        note(True, "волны нет, мерки нет → БЕСПРЕДМЕТНО (мерку не спрашивали)")
+    except PremiseError as exc:
+        note(False, f"волны нет — а отказ по мерке: {exc}")
+    _shutil.rmtree(_r, ignore_errors=True)
+
+    _r = synthetic_wave_root(with_wave=True, with_seed=False)
+    try:
+        audit(_r)
+        note(False, "волна ЕСТЬ, мерки нет: прошло молча")
+    except SubjectElsewhere:
+        note(False, "волна ЕСТЬ, а исход объявлен беспредметным — мерку перестали "
+                    "спрашивать при живом предмете")
+    except PremiseError as exc:
+        note("потолок" in str(exc) or "миграц" in str(exc),
+             f"волна ЕСТЬ, мерки нет → ОТКАЗ по мерке")
     _shutil.rmtree(_r, ignore_errors=True)
 
     print()
