@@ -33,27 +33,68 @@
 // Замер, из которого гейт выведен (перепись одного прогона, 49 заданий):
 // ложно-зелёных 5, вердиктных шагов погашено 22 в трёх процессах.
 //
-// # Что гейт требует
+// # Что гейт требует, и по КАКИМ ДВУМ признакам берётся задание
 //
-// Для каждой пары «задание · отметка», где отметка гасит хотя бы один
-// ВЕРДИКТНЫЙ шаг, в прогоне обязан быть ПРОИЗВОДИТЕЛЬ КРАСНОГО — шаг или
-// ветвь, дающая ненулевой код при выставленной отметке. Форм ровно ТРИ, и
-// каждая доказана инъекцией в `gatedverdictproducesred_injection_test.go`:
+// Пара «задание · отметка» требует ПРОИЗВОДИТЕЛЯ КРАСНОГО — шага или ветви,
+// дающей ненулевой код при выставленной отметке, — если верно ХОТЬ ОДНО:
 //
-//	форма 1 — шаг, чьё условие ссылается на отметку в полярности «выставлена»,
-//	          и чьё тело способно выйти ненулевым;
-//	форма 2 — всегда-исполняемый шаг, чьё тело НАЗЫВАЕТ отметку и способно
-//	          выйти ненулевым (в том числе через отслеживаемый скрипт);
-//	форма 3 — делегирование нижестоящему заданию: оно зависит от нашего
+//	признак «ГАСИТ»      — отметка гасит в задании хотя бы один ВЕРДИКТНЫЙ шаг;
+//	признак «ПРОИЗВОДИТ» — задание САМО ставит суппрессивную отметку (пишет её в
+//	                       `$GITHUB_ENV` своим телом либо зовёт отслеживаемого
+//	                       писателя не его самопробой).
+//
+// ВТОРОЙ ПРИЗНАК НЕ ЗАМЕНЯЕТ ПЕРВОГО И НЕ ВЫВОДИТСЯ ИЗ НЕГО. Работа, которая
+// отметку производит и НЕ ЧИТАЕТ ни одним условием, признаку «гасит» невидима —
+// а это тот же ложно-зелёный: третья категория объявлена и выброшена, шаги ниже
+// отработали на несозданном условии и вышли нулём. Замерено на базе линии:
+// работ-производителей 4, работ-гасящих 3, и разница ровно одна —
+// `production-posture.yml::stand`, где читателей отметки было НОЛЬ при двух
+// производителях в ней же (`lane/posture-verdict`, исполнение настоящих тел
+// шагов на отсутствующем кластере).
+//
+// Суппрессивность отметки ВЫВОДИТСЯ ИЗ ДЕРЕВА (гасит ли она вердиктный шаг хоть
+// в одном задании), а не из имени: без этого признак «производит» потребовал бы
+// красноты от КАЖДОЙ записи в `$GITHUB_ENV` — в дереве это адрес настроек
+// материализации и образ браузера, где гасить нечего.
+//
+// # Форм производителя ЧЕТЫРЕ, и каждая доказана инъекцией
+//
+// В `gatedverdictproducesred_injection_test.go`, в обе стороны: форма есть —
+// молчит, форма снята — находка с координатой.
+//
+//	форма 1 — шаг, чьё УСЛОВИЕ ссылается на отметку в полярности «выставлена»,
+//	          и чьё тело способно выйти ненулевым (в том числе телом скрипта);
+//	форма 2 — всегда-исполняемый шаг, чьё ТЕЛО или блок `env:` называет отметку,
+//	          и чьё ТЕЛО способно выйти ненулевым;
+//	форма 3 — всегда-исполняемый шаг, называющий отметку и ПЕРЕДАЮЩИЙ её
+//	          значение подстановкой в вызов отслеживаемого скрипта, который
+//	          способен выйти ненулевым;
+//	форма 4 — делегирование нижестоящему заданию: оно зависит от нашего
 //	          (`needs`), исполняется не только на падении, и зовёт владельца
 //	          сводного вердикта из [gvRunLevelVerdictOwners].
 //
-// Формы 1 и 2 требуют, чтобы отказ был причинно связан с ОТМЕТКОЙ. Без этого
+// ФОРМА 3 БЫЛА ПОТЕРЯНА ПЕРВОЙ РЕДАКЦИЕЙ, и цена этого измерена: ею в дереве
+// записаны ВСЕ ТРИ производителя переписи исходов (`ci.yaml::helm`,
+// `console-e2e.yml::probes`, `production-posture.yml::stand`). Шаг переписи
+// обязан быть всегда-исполняемым — перепись, гасимая тем, о чём обязана
+// доложить, промолчала бы ровно в своём случае, — поэтому полярности в его
+// условии нет и быть не может, а прежняя редакция требовала именно её. Форма,
+// о которой распознаватель не знает, даёт не красное и не зелёное, а МОЛЧАНИЕ.
+//
+// Формы 1, 2 и 3 требуют, чтобы отказ был причинно связан с ОТМЕТКОЙ. Без этого
 // производителем оказался бы любой шаг задания, способный упасть по любой
 // причине, — то есть требование выполнялось бы у всех и не отвергало никого.
 //
 // `continue-on-error: true` у производителя снимает его с учёта: отказ,
 // проглоченный послаблением, задание не роняет.
+//
+// # ВЕДОМОСТИ ПРОЩЁННЫХ У ГЕЙТА НЕТ
+//
+// Первая редакция несла её: два известных ложно-зелёных лежали в процессах
+// соседних полос, править которые этой полосе было нельзя. Записи истекли —
+// оба задания несут производителя, — и ведомость снята ЦЕЛИКОМ вместе с
+// предикатом её истечения. Заводить заново не надо ни в какой форме: всякая
+// запись в ней — место, куда ложно-зелёное вносят незамеченным.
 //
 // # Признак ВЕРДИКТНОГО шага — исполним разбором и ошибается в сторону строгости
 //
@@ -90,8 +131,11 @@
 //
 // «Ноль находок» обязано отличаться от «ноль прочитанного»: гейт печатает
 // процессов · заданий · шагов с условием · из них погашенных отметкой · из них
-// вердиктных · заданий, потребовавших производителя · заданий без него. Пустой
-// обход — провал.
+// вердиктных и служебных · пар, потребовавших производителя · из них тех, где
+// задание САМО производит отметку · пар без производителя · закрытых
+// делегированием · отметок дерева и суппрессивных среди них. Пустой обход —
+// провал, и отдельно провал — ноль суппрессивных отметок: тогда признак
+// «производит» не применяется ни к чему.
 //
 // # Чего гейт НЕ закрывает, сказано прямо
 //
@@ -102,9 +146,14 @@
 // то есть пара «задание · та отметка» уже в предмете этого гейта, и канал
 // закрыт у источника, а не у эха.
 //
-// Он не судит и ИСТИННОСТЬ красноты у формы 3: структура отвечает «кому
-// делегировано», а не «краснеет ли делегат». Этот вопрос закрыт ИСПОЛНЕНИЕМ
-// владельца в `TestRunLevelVerdictOwnerRedsOnTheMark`.
+// Он не судит и ИСТИННОСТЬ красноты у форм 3 и 4: структура отвечает «кому
+// поручено», а не «краснеет ли исполнитель». Для формы 4 вопрос закрыт
+// ИСПОЛНЕНИЕМ владельца в `TestRunLevelVerdictOwnerRedsOnTheMark`. Для формы 3
+// он закрыт САМОПРОБОЙ скрипта переписи
+// (`.github/scripts/assert-declared-verdicts-ran.py --self-test`, случай 2:
+// «отметка выставлена → красное, причина названа»), которую исполняет
+// `deploy/scripts/run-gate-self-tests.sh`. Гейт этого НЕ проверяет и на такую
+// проверку не претендует — сказано прямо, чтобы не читалось шире сделанного.
 package repohygiene
 
 import (
@@ -126,36 +175,10 @@ const gvGateTestName = "TestGatedVerdictStepsHaveAProducerOfRed"
 
 // gvRunLevelVerdictOwners — владельцы сводного вердикта, чья краснота от
 // отметки ДОКАЗАНА исполнением (`TestRunLevelVerdictOwnerRedsOnTheMark`).
-// Форма 3 принимается только через них: делегирование кому угодно означало бы,
+// Форма 4 принимается только через них: делегирование кому угодно означало бы,
 // что достаточно объявить нижестоящее задание.
 var gvRunLevelVerdictOwners = []string{
 	".github/scripts/aggregate-shard-verdicts.py",
-}
-
-// gvKnownWithoutRed — задания, у которых производителя красного ещё НЕТ, и
-// которые чинит ОТДЕЛЬНАЯ полоса той же волны.
-//
-// ЭТО НЕ ПРОЩЕНИЕ, И РАЗНИЦА ПРОВЕРЯЕМА. Запись несёт предмет (кто чинит) и
-// предикат снятия (у задания появился производитель), а держит её САМ ГЕЙТ:
-// запись, которой больше нечего исключать, — НАХОДКА. То есть запись не может
-// пережить своего предмета: полоса, приносящая производителя, обязана снять
-// запись ТЕМ ЖЕ изменением, иначе гейт краснеет на ней.
-//
-// ЗАЧЕМ ОНА ВООБЩЕ ЕСТЬ. Предмет этой полосы — не починить два известных места,
-// а не дать завестись ТРЕТЬЕМУ. Оба известных найдены этим же гейтом и названы
-// координатами ниже; чинят их процессы, которые этой полосе не принадлежат.
-// Без записи гейт запирал бы отправку любой работы дерева до их починки — то
-// есть предмет был бы не «новое ложно-зелёное», а «чужая незакрытая задача».
-//
-// ЧЕГО ЗАПИСЬ НЕ ДЕЛАЕТ. Она не прячет находку: координаты и текст печатаются
-// в журнал как объявленный долг, с числом. И она не расширяется молча — всякое
-// НЕ названное здесь задание остаётся красным.
-var gvKnownWithoutRed = map[string]string{
-	".github/workflows/ci.yaml: задание helm": "чинит полоса, правящая задание helm " +
-		"(шаги рендера умбреллы гасятся отметкой, производителя красного нет)",
-	".github/workflows/console-e2e.yml: задание probes": "чинит полоса, правящая " +
-		"console-e2e.yml (разметчик исхода выходит нулём при любой категории — " +
-		"это опись, а не вердикт)",
 }
 
 // gvHousekeepingActions — служебные действия целиком по имени.
@@ -189,6 +212,17 @@ type gvMark struct {
 	Value   string   // значение, при котором шаги гасятся
 	Known   bool     // значение выведено из дерева, а не угадано
 	Writers []string // координаты производителей — для текста отказа
+
+	// Suppresses — отметка ГАСИТ вердиктный шаг хоть в одном задании дерева,
+	// то есть она суппрессивная по ФАКТУ ДЕРЕВА, а не по имени.
+	//
+	// Этим признаком отделяется отметка третьей категории от обычной передачи
+	// значения через `$GITHUB_ENV`. Без него требование «работа, производящая
+	// отметку, обязана иметь производителя красного» распространилось бы на
+	// КАЖДУЮ запись в `$GITHUB_ENV` — в дереве это, например, адрес настроек
+	// материализации и образ браузера, — и гейт потребовал бы красноты там, где
+	// гасить нечего.
+	Suppresses bool
 }
 
 // gvCensus — объём осмотренного. Печатается всегда: «ноль находок» обязано быть
@@ -202,8 +236,8 @@ type gvCensus struct {
 	Housekeeping int // из них служебных
 	Demanding    int // пар «задание · отметка», потребовавших производителя
 	WithoutRed   int // из них без производителя
-	Delegations  int // закрытых формой 3
-	Declared     int // из них названы объявленным долгом
+	Delegations  int // закрытых формой 4
+	Producing    int // из требовавших — те, где задание САМО производит отметку
 }
 
 func (c *gvCensus) add(o gvCensus) {
@@ -216,7 +250,7 @@ func (c *gvCensus) add(o gvCensus) {
 	c.Demanding += o.Demanding
 	c.WithoutRed += o.WithoutRed
 	c.Delegations += o.Delegations
-	c.Declared += o.Declared
+	c.Producing += o.Producing
 }
 
 // gvStep — то немногое из шага, что нужно этому гейту.
@@ -438,15 +472,26 @@ func (p *gvParser) leaf(text string) gvTri {
 
 // ───────────────────────── распознаватели форм ────────────────────────────────
 
-// gvNonZeroExit — тело способно выйти НЕНУЛЕВЫМ кодом.
+// gvNonZeroExit — тело способно выйти НЕНУЛЕВЫМ кодом в оболочечной форме.
 //
 // `exit 0` не считается, и аннотация без отказа тоже: `::error` печатает
 // красную строку в журнал и оставляет шаг зелёным — это ровно тот класс,
 // который гейт и ловит, только на уровень ниже.
 var gvNonZeroExit = regexp.MustCompile(`(^|[;&|{(\n]|\bthen\b|\belse\b|\bdo\b)\s*(exit\s+([1-9][0-9]*|"?\$)|false\b|return\s+[1-9][0-9]*)`)
 
+// gvNonZeroCall — тот же отказ, объявленный ВЫЗОВОМ, а не словом оболочки.
+// Отслеживаемые скрипты дерева написаны на трёх языках, и в двух из них
+// ненулевой выход не имеет оболочечной формы вовсе.
+//
+// ЗАМЕР, А НЕ ПРЕДПОЛОЖЕНИЕ: скриптов, которые умеют ненулевой выход ТОЛЬКО
+// этой формой, в дереве 24 из 439 отслеживаемых. Нераспознанный отказ даёт
+// ЛОЖНУЮ НАХОДКУ (производитель есть, а гейт его не видит) — то есть слепота
+// здесь стоит не молчания, а красноты на исправном дереве.
+var gvNonZeroCall = regexp.MustCompile(
+	`(sys\.exit\(\s*[1-9]|raise\s+SystemExit\(\s*[1-9]|process\.exit\(\s*[1-9]|os\.Exit\([1-9])`)
+
 func gvCanExitNonZero(body string) bool {
-	return gvNonZeroExit.MatchString(body)
+	return gvNonZeroExit.MatchString(body) || gvNonZeroCall.MatchString(body)
 }
 
 // gvActionOf — имя действия без ссылки на версию.
@@ -518,6 +563,159 @@ func gvTruthy(v string) bool {
 	return s == "true" || strings.Contains(s, "true")
 }
 
+// gvSelfTestFlag — флаг собственной пробы скрипта. Литерал ЗАКОНЕН здесь
+// потому, что он не наш: его объявляет и разбирает сам скрипт, а состав
+// скриптов с самопробой держит `deploy/scripts/run-gate-self-tests.sh`.
+const gvSelfTestFlag = "--self-test"
+
+// gvSelfTestInvocation — шаг зовёт скрипт его СОБСТВЕННОЙ самопробой, а не по
+// делу.
+//
+// Признак нужен потому, что самопроба владельца подъёма обрывается ДО записи
+// отметки (`exit` в конце блока самопробы — проверено чтением скрипта), то есть
+// отметку такой шаг не производит НИКОГДА. Счесть его производством значило бы
+// требовать производителя красного у работы, которая отметку не поднимает: на
+// дереве это дало бы 9 шагов-производителей вместо 7.
+//
+// Флаг обязан стоять в ТОЙ ЖЕ строке, что вызов: иначе самопроба одного скрипта
+// прощала бы настоящее производство другим в том же теле.
+func gvSelfTestInvocation(st gvStep, script, scriptBody string) bool {
+	if !strings.Contains(scriptBody, gvSelfTestFlag) {
+		return false
+	}
+	for _, line := range strings.Split(st.Run, "\n") {
+		if strings.Contains(line, script) && strings.Contains(line, gvSelfTestFlag) {
+			return true
+		}
+	}
+	return false
+}
+
+// gvWriterFiles — файлы, в которых стоят производители отметки. Координата
+// писателя — «путь:строка», и для записи из тела шага процесса путём оказывается
+// сам процесс; такой писатель отслеживаемым скриптом не является и ловится
+// признаком (а) в [gvJobProducesMark].
+func gvWriterFiles(mark gvMark) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, w := range mark.Writers {
+		if i := strings.LastIndexByte(w, ':'); i > 0 {
+			if f := w[:i]; !seen[f] {
+				seen[f] = true
+				out = append(out, f)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// gvStepWritesMark — тело шага САМО пишет отметку в `$GITHUB_ENV`.
+func gvStepWritesMark(st gvStep, name string) bool {
+	aliases := map[string]bool{"GITHUB_ENV": true}
+	for _, m := range gvEnvAlias.FindAllStringSubmatch(st.Run, -1) {
+		aliases[m[1]] = true
+	}
+	for _, raw := range strings.Split(st.Run, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		i := strings.Index(line, ">>")
+		if i < 0 {
+			continue
+		}
+		w := gvEnvWriteLine.FindStringSubmatch(line)
+		if w == nil || !aliases[w[1]] {
+			continue
+		}
+		for _, n := range gvEnvAssign.FindAllStringSubmatch(line[:i], -1) {
+			if n[1] == name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// gvJobProducesMark — координаты шагов задания, ПРОИЗВОДЯЩИХ отметку.
+//
+// ЗАЧЕМ ЭТОТ ПРИЗНАК СУЩЕСТВУЕТ РЯДОМ С «ГАСИТ», А НЕ ВМЕСТО НЕГО. Признак
+// «гасит» видит работу только тогда, когда она читает отметку условием. Работа,
+// которая отметку ПРОИЗВОДИТ и не читает ни одним шагом, ему невидима — а это
+// не безобидный случай, а тот же ложно-зелёный: третья категория объявлена и
+// выброшена, шаги ниже отработали на несозданном условии и вышли нулём.
+//
+// ЗАМЕРЕНО НА БАЗЕ ЛИНИИ, а не предположено: работ-производителей было 4,
+// работ-гасящих 3, и разница ровно одна — `production-posture.yml::stand`, где
+// читателей отметки было НОЛЬ при двух производителях в ней же. Работа зеленела
+// без единого вердикта о своём предмете, и признак «гасит» её не видел.
+func gvJobProducesMark(job gvJob, mark gvMark, scripts map[string]string) []string {
+	var out []string
+	writers := gvWriterFiles(mark)
+	for i, st := range job.Steps {
+		label := "шаг #" + itoa(i+1)
+		if st.Name != "" {
+			label += " («" + st.Name + "»)"
+		}
+		// (а) тело шага пишет отметку своими руками
+		if gvStepWritesMark(st, mark.Name) {
+			out = append(out, label)
+			continue
+		}
+		// (б) шаг зовёт отслеживаемого писателя — и не его самопробой
+		for _, w := range writers {
+			body, tracked := scripts[w]
+			if !tracked || !strings.Contains(st.Run, w) {
+				continue
+			}
+			if gvSelfTestInvocation(st, w, body) {
+				continue
+			}
+			out = append(out, label)
+			break
+		}
+	}
+	return out
+}
+
+// gvMarkAliases — имена, под которыми отметка доезжает до ТЕЛА шага: само её
+// имя и всякий ключ блока `env:`, чьё значение её называет. Переименование при
+// доставке (`UNMET: ${{ env.STAND_PRECONDITION_UNMET }}`) — законная форма, и
+// без неё доставка читалась бы как несвязанная с отметкой.
+func gvMarkAliases(st gvStep, name string) []string {
+	var out []string
+	if strings.Contains(st.Run, name) {
+		out = append(out, name)
+	}
+	keys := make([]string, 0, len(st.Env))
+	for k := range st.Env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if strings.Contains(st.Env[k], name) {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// gvMarkReachesScript — значение отметки ПОДСТАВЛЕНО в тело шага, то есть
+// доезжает до вызванного им скрипта.
+//
+// Это и есть причинная связь для формы 3: без неё производителем оказался бы
+// любой шаг, который где-то называет отметку и зовёт скрипт, где-то умеющий
+// падать, — то есть требование выполнялось бы почти всюду и не отвергало никого.
+func gvMarkReachesScript(st gvStep, name string) bool {
+	for _, a := range gvMarkAliases(st, name) {
+		if regexp.MustCompile(`\$\{?` + regexp.QuoteMeta(a) + `\b`).MatchString(st.Run) {
+			return true
+		}
+	}
+	return false
+}
+
 // gvScriptsInvoked — отслеживаемые скрипты, которые зовёт тело шага.
 func gvScriptsInvoked(body string, scripts map[string]string) []string {
 	var out []string
@@ -536,15 +734,14 @@ func gvScriptsInvoked(body string, scripts map[string]string) []string {
 //
 // Вынесено отдельно от обхода дерева, чтобы способность упасть и способность
 // смолчать доказывались инъекцией на входе, а не пересказом цикла.
-func judgeGatedVerdict(path, raw string, marks map[string]gvMark, scripts map[string]string,
-	known map[string]string) ([]string, []string, gvCensus) {
+func judgeGatedVerdict(path, raw string, marks map[string]gvMark,
+	scripts map[string]string) ([]string, gvCensus) {
 	var census gvCensus
 	census.Workflows = 1
-	var declaredDebt []string
 	var doc gvDoc
 	if err := yaml.Unmarshal([]byte(raw), &doc); err != nil {
 		return []string{path + ": не разобран YAML: " + err.Error() + " — файл НЕ проверен"},
-			nil, census
+			census
 	}
 	census.Jobs = len(doc.Jobs)
 
@@ -562,15 +759,32 @@ func judgeGatedVerdict(path, raw string, marks map[string]gvMark, scripts map[st
 				census.StepsWithIf++
 			}
 		}
-		// Отметки, которые читает ИМЕННО это задание.
-		var observed []string
+		// ОТМЕТКИ, ОТНОСЯЩИЕСЯ К ЭТОМУ ЗАДАНИЮ, — ПО ДВУМ ПРИЗНАКАМ.
+		// Второй не заменяет первого: работа может гасить отметку, которую
+		// ставит другая (шард гасит отметку своего подъёма), и может
+		// производить отметку, которую не читает ничем.
+		relevant := map[string]bool{}
 		for name := range marks {
 			for _, st := range job.Steps {
 				if strings.Contains(st.If, "env."+name) {
-					observed = append(observed, name)
+					relevant[name] = true
 					break
 				}
 			}
+		}
+		produced := map[string][]string{}
+		for name, mark := range marks {
+			if !mark.Suppresses {
+				continue // обычная передача значения, а не третья категория
+			}
+			if coords := gvJobProducesMark(job, mark, scripts); len(coords) > 0 {
+				produced[name] = coords
+				relevant[name] = true
+			}
+		}
+		observed := make([]string, 0, len(relevant))
+		for name := range relevant {
+			observed = append(observed, name)
 		}
 		sort.Strings(observed)
 
@@ -602,70 +816,58 @@ func judgeGatedVerdict(path, raw string, marks map[string]gvMark, scripts map[st
 				census.Verdict++
 				verdicts = append(verdicts, label)
 			}
-			if len(verdicts) == 0 {
-				continue // законный близнец: гасится только служебное
+			makers := produced[name]
+			if len(verdicts) == 0 && len(makers) == 0 {
+				continue // законный близнец: гасится только служебное, и не производит
 			}
 			census.Demanding++
+			if len(makers) > 0 {
+				census.Producing++
+			}
 			if gvHasProducerOfRed(doc, jobName, job, name, mark, scripts, &census) {
 				continue
 			}
 			census.WithoutRed++
-			key := path + ": задание " + jobName
-			if reason, declared := known[key]; declared {
-				census.Declared++
-				declaredDebt = append(declaredDebt, key+" — производителя красного нет; "+
-					"объявленный долг: "+reason)
-				continue
+			// ПРИЧИНА НАЗЫВАЕТСЯ РАЗНЫМИ СЛОВАМИ, потому что чинят их по-разному:
+			// у погашенных вердиктов чинить нечего кроме красноты, а у работы без
+			// читателей отметка выброшена — и это надо увидеть из текста.
+			var why string
+			switch {
+			case len(verdicts) > 0 && len(makers) > 0:
+				why = "она гасит вердиктные шаги " + strings.Join(verdicts, ", ") +
+					", и это же задание её ПРОИЗВОДИТ (" + strings.Join(makers, ", ") + ")"
+			case len(verdicts) > 0:
+				why = "она гасит вердиктные шаги " + strings.Join(verdicts, ", ")
+			default:
+				why = "это задание её ПРОИЗВОДИТ (" + strings.Join(makers, ", ") +
+					"), а НЕ ЧИТАЕТ ни одним условием: третья категория объявлена и " +
+					"ВЫБРОШЕНА — гасить некого, шаги ниже отработают на несозданном " +
+					"условии и выйдут нулём"
 			}
-			findings = append(findings, where+" — она гасит вердиктные шаги "+
-				strings.Join(verdicts, ", ")+", а производителя красного у задания НЕТ. "+
+			findings = append(findings, where+" — "+why+
+				", а производителя красного у задания НЕТ. "+
 				"Значит при выставленной отметке задание дойдёт до конца ЗЕЛЁНЫМ, не вынеся "+
 				"ни одного утверждения о своём предмете: сводка покажет success, и человек "+
 				"прочтёт это как «проверено и прошло». Отметку ставит "+
 				strings.Join(mark.Writers, ", ")+" — и выходит нулём. "+
 				"Заведи производителя красного: шаг с условием на отметку в полярности "+
-				"«выставлена» и ненулевым выходом; либо ветвь в всегда-исполняемом шаге, "+
-				"называющую отметку; либо делегирование нижестоящему заданию с владельцем "+
-				"сводного вердикта. Текст отказа обязан называть, что условие НЕ СОЗДАНО, — "+
+				"«выставлена» и ненулевым выходом (форма 1); либо ветвь в всегда-исполняемом "+
+				"шаге, называющую отметку (форма 2); либо всегда-исполняемый шаг, ПЕРЕДАЮЩИЙ "+
+				"значение отметки отслеживаемому скрипту, который умеет выйти ненулевым "+
+				"(форма 3); либо делегирование нижестоящему заданию с владельцем сводного "+
+				"вердикта (форма 4). Текст отказа обязан называть, что условие НЕ СОЗДАНО, — "+
 				"различение исходов остаётся в тексте, а не в цвете")
 		}
 	}
 	sort.Strings(findings)
-	sort.Strings(declaredDebt)
-	return findings, declaredDebt, census
-}
-
-// gvStaleDebt — записи объявленного долга, которым больше НЕЧЕГО исключать.
-//
-// Это и есть предикат снятия записи, и он читается фактом дерева: запись
-// названа использованной только тогда, когда обход НАШЁЛ задание без
-// производителя красного под тем же именем. Как только производитель появился
-// (или задание переименовано, или отметка перестала гасить его вердикты),
-// запись становится находкой и обязана уйти тем же изменением.
-func gvStaleDebt(known map[string]string, used map[string]bool) []string {
-	keys := make([]string, 0, len(known))
-	for k := range known {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	var out []string
-	for _, k := range keys {
-		if used[k] {
-			continue
-		}
-		out = append(out, "объявленному долгу «"+k+"» больше нечего исключать: "+
-			"у задания есть производитель красного, либо самого задания или отметки "+
-			"в дереве нет. Сними запись ТЕМ ЖЕ изменением — иначе она переживёт свой "+
-			"предмет и станет прощать другое под прежним именем")
-	}
-	return out
+	return findings, census
 }
 
 // gvHasProducerOfRed — есть ли у задания производитель красного по любой из
-// трёх форм.
+// ЧЕТЫРЁХ форм.
 func gvHasProducerOfRed(doc gvDoc, jobName string, job gvJob, name string, mark gvMark,
 	scripts map[string]string, census *gvCensus) bool {
-	// Формы 1 и 2 — в самом задании.
+	// Формы 1, 2 и 3 — в самом задании.
 	for _, st := range job.Steps {
 		if gvEval(st.If, name, mark.Value) == gvFalse {
 			continue // сам погашен той же отметкой
@@ -687,11 +889,24 @@ func gvHasProducerOfRed(doc gvDoc, jobName string, job gvJob, name string, mark 
 			continue
 		}
 		if gvCanExitNonZero(st.Run) {
-			return true
+			return true // формы 1 и 2: отказ объявлен в самом теле шага
 		}
-		// Тело — один вызов скрипта. Причинность уже дана условием («отметка
-		// выставлена»), поэтому ненулевой выход скрипта вызван именно ею.
-		if condRefs {
+		// ФОРМА 3 — ОТКАЗ ПРОИЗВОДИТ ВЫЗВАННЫЙ СКРИПТ, А НЕ ТЕЛО ШАГА.
+		//
+		// Причинность даёт одно из двух: полярность в условии («отметка
+		// выставлена» — тогда всякий ненулевой выход вызван ею) либо ДОСТАВКА
+		// значения отметки в вызов (`--flag "$UNMET"` при
+		// `env: UNMET: ${{ env.STAND_PRECONDITION_UNMET }}`).
+		//
+		// Прежняя редакция требовала ТОЛЬКО полярности в условии — и теряла
+		// вторую форму, которой в дереве записаны ВСЕ ТРИ производителя
+		// переписи исходов (работы `ci.yaml::helm`, `console-e2e.yml::probes`,
+		// `production-posture.yml::stand`). Шаг переписи обязан быть
+		// всегда-исполняемым — перепись, гасимая тем, о чём обязана доложить,
+		// промолчала бы ровно в своём случае, — поэтому полярности в его
+		// условии нет и быть не может, и требование её означало молчание гейта
+		// на трёх настоящих производителях сразу.
+		if condRefs || gvMarkReachesScript(st, name) {
 			for _, s := range gvScriptsInvoked(st.Run, scripts) {
 				if gvCanExitNonZero(scripts[s]) {
 					return true
@@ -699,7 +914,7 @@ func gvHasProducerOfRed(doc gvDoc, jobName string, job gvJob, name string, mark 
 			}
 		}
 	}
-	// Форма 3 — делегирование нижестоящему заданию.
+	// Форма 4 — делегирование нижестоящему заданию.
 	others := make([]string, 0, len(doc.Jobs))
 	for n := range doc.Jobs {
 		others = append(others, n)
@@ -817,6 +1032,7 @@ func gvCollectMarks(t *testing.T, root string) (map[string]gvMark, map[string]st
 		}
 	}
 	// Прямые записи в телах шагов процессов — та же форма, другое место.
+	docs := map[string]gvDoc{}
 	for _, wf := range listWorkflows(t, root) {
 		b, err := os.ReadFile(filepath.Join(root, wf))
 		if err != nil {
@@ -828,6 +1044,7 @@ func gvCollectMarks(t *testing.T, root string) (map[string]gvMark, map[string]st
 			t.Errorf("%s не разобран: %v — файл НЕ осмотрен", wf, err)
 			continue
 		}
+		docs[wf] = doc
 		jobs := make([]string, 0, len(doc.Jobs))
 		for n := range doc.Jobs {
 			jobs = append(jobs, n)
@@ -839,6 +1056,32 @@ func gvCollectMarks(t *testing.T, root string) (map[string]gvMark, map[string]st
 					addWrites(wf+" ("+jn+", шаг #"+itoa(i+1)+")", st.Run)
 				}
 			}
+		}
+	}
+	// СУППРЕССИВНОСТЬ ВЫВОДИТСЯ ИЗ ДЕРЕВА, а не из имени отметки: отметка
+	// суппрессивна, если ГАСИТ вердиктный шаг хоть в одном задании. Признак
+	// считается ТЕМИ ЖЕ [gvEval] и [gvIsHousekeeping], которыми судит судья, —
+	// второе определение того же предиката разошлось бы с первым молча.
+	//
+	// Обход идёт по ВСЕМУ дереву, а не по файлу: отметку ставит один процесс, а
+	// гасить её может другой, и судья видит по одному файлу за раз.
+	for name, mark := range marks {
+		if !mark.Known {
+			continue // пока значение неизвестно, неизвестно и что гасится
+		}
+		var suppresses bool
+		for _, doc := range docs {
+			for _, job := range doc.Jobs {
+				for _, st := range job.Steps {
+					if gvEval(st.If, name, mark.Value) == gvFalse && !gvIsHousekeeping(st) {
+						suppresses = true
+					}
+				}
+			}
+		}
+		if suppresses {
+			mark.Suppresses = true
+			marks[name] = mark
 		}
 	}
 	return marks, scripts
@@ -896,49 +1139,44 @@ func TestGatedVerdictStepsHaveAProducerOfRed(t *testing.T) {
 	}
 
 	var total gvCensus
-	used := map[string]bool{}
-	var debt []string
 	for _, f := range files {
 		raw, err := os.ReadFile(filepath.Join(root, f))
 		if err != nil {
 			t.Errorf("%s не прочитан: %v — файл НЕ проверен", f, err)
 			continue
 		}
-		findings, declared, census := judgeGatedVerdict(f, string(raw), marks, scripts, gvKnownWithoutRed)
+		findings, census := judgeGatedVerdict(f, string(raw), marks, scripts)
 		total.add(census)
 		for _, msg := range findings {
 			t.Error(msg)
 		}
-		for _, msg := range declared {
-			debt = append(debt, msg)
-			used[strings.SplitN(msg, " — ", 2)[0]] = true
-		}
-	}
-	// ЗАПИСЬ, КОТОРОЙ НЕЧЕГО ИСКЛЮЧАТЬ, — НАХОДКА. Это и есть предикат снятия:
-	// как только у названного задания появился производитель красного (или само
-	// задание переименовано, или отметка перестала гасить его вердикты), запись
-	// обязана уйти ТЕМ ЖЕ изменением. Иначе послабление переживёт свой предмет и
-	// начнёт прощать что-то другое под прежним именем.
-	for _, msg := range gvStaleDebt(gvKnownWithoutRed, used) {
-		t.Error(msg)
-	}
-	for _, d := range debt {
-		t.Logf("ОБЪЯВЛЕННЫЙ ДОЛГ: %s", d)
 	}
 	names := make([]string, 0, len(marks))
 	for n := range marks {
 		names = append(names, n)
 	}
 	sort.Strings(names)
+	suppressive := make([]string, 0, len(names))
+	for _, n := range names {
+		if marks[n].Suppresses {
+			suppressive = append(suppressive, n)
+		}
+	}
 	t.Logf("осмотрено: процессов %d, заданий %d, шагов с условием %d; "+
 		"погашено отметкой %d, из них вердиктных %d и служебных %d; "+
-		"пар «задание · отметка», потребовавших производителя красного, %d, "+
-		"из них без него %d (объявленным долгом названо %d, записей в долге %d); "+
-		"закрыто делегированием %d; отметок дерева %d (%s)",
+		"пар «задание · отметка», потребовавших производителя красного, %d "+
+		"(из них задание САМО производит отметку в %d), из них без производителя %d; "+
+		"закрыто делегированием %d; отметок дерева %d (%s), из них суппрессивных %d (%s)",
 		total.Workflows, total.Jobs, total.StepsWithIf,
 		total.Suppressed, total.Verdict, total.Housekeeping,
-		total.Demanding, total.WithoutRed, total.Declared, len(gvKnownWithoutRed),
-		total.Delegations, len(marks), strings.Join(names, ", "))
+		total.Demanding, total.Producing, total.WithoutRed,
+		total.Delegations, len(marks), strings.Join(names, ", "),
+		len(suppressive), strings.Join(suppressive, ", "))
+	if len(suppressive) == 0 {
+		t.Error("ни одна отметка дерева не признана суппрессивной — признак «работа " +
+			"производит отметку» тогда не применяется НИ К ЧЕМУ, и его молчание было бы " +
+			"молчанием о непрочитанном")
+	}
 	if total.Suppressed == 0 {
 		t.Error("ни один шаг дерева не погашен отметкой — либо вычислитель условий " +
 			"перестал их узнавать, либо отметки больше не гасят ничего. «Ноль находок» " +

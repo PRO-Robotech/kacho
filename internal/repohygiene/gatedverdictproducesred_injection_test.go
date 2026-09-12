@@ -42,18 +42,39 @@ import (
 func TestGatedVerdictJudgeKnowsEveryForm(t *testing.T) {
 	t.Parallel()
 
+	// Отметка по умолчанию: значение выведено, СУППРЕССИВНА (в дереве гасит
+	// вердиктные шаги). Случай, которому нужна другая отметка, объявляет свою.
 	marks := map[string]gvMark{
 		"STAND_PRECONDITION_UNMET": {
 			Name: "STAND_PRECONDITION_UNMET", Value: "1", Known: true,
-			Writers: []string{"синтетика/stand-up.sh:1"},
+			Suppresses: true,
+			Writers:    []string{"синтетика/stand-up.sh:1"},
 		},
 	}
 	const gated = "        if: ${{ env.STAND_PRECONDITION_UNMET != '1' }}\n"
+	// Писатель отметки — отслеживаемый скрипт, объявляющий СВОЮ самопробу.
+	// Разбор `--self-test` в его теле и есть признак, по которому судья
+	// отличает вызов по делу от вызова самопробы.
+	writerScripts := map[string]string{
+		".github/scripts/stand-up.sh": "if [ \"$1\" = --self-test ]; then\n  run_cases; exit $ok\nfi\n" +
+			"echo \"STAND_PRECONDITION_UNMET=1\" >> \"$GITHUB_ENV\"\nexit 0\n",
+	}
+	// Та же отметка, но её писатель — ОТСЛЕЖИВАЕМЫЙ скрипт выше. Разделение
+	// нарочное: у случаев о признаке «гасит» писатель неотслеживаемый, поэтому
+	// производства в них нет и каждый доказывает РОВНО своё свойство.
+	trackedWriter := map[string]gvMark{
+		"STAND_PRECONDITION_UNMET": {
+			Name: "STAND_PRECONDITION_UNMET", Value: "1", Known: true,
+			Suppresses: true,
+			Writers:    []string{".github/scripts/stand-up.sh:284"},
+		},
+	}
 
 	cases := []struct {
 		name    string
 		yaml    string
 		scripts map[string]string
+		marks   map[string]gvMark
 		wantHit bool
 	}{
 		{
@@ -145,7 +166,7 @@ func TestGatedVerdictJudgeKnowsEveryForm(t *testing.T) {
 			wantHit: true,
 		},
 		{
-			name: "форма 3 — делегирование нижестоящему заданию с владельцем, молчит",
+			name: "форма 4 — делегирование нижестоящему заданию с владельцем, молчит",
 			yaml: "jobs:\n  shard:\n    steps:\n      - name: newman — суиты шарда\n" +
 				gated + "        run: bash .github/scripts/newman-shard-run.sh\n" +
 				"  summary:\n    needs: [shard]\n    if: ${{ !cancelled() }}\n    steps:\n" +
@@ -190,6 +211,54 @@ func TestGatedVerdictJudgeKnowsEveryForm(t *testing.T) {
 			wantHit: false,
 		},
 		{
+			name: "форма 3 — отметка передана отслеживаемому скрипту через env, молчит",
+			yaml: "jobs:\n  stand:\n    steps:\n      - name: вердикт числами\n" +
+				gated + "        run: go test ./deploy/ -run Posture\n" +
+				"      - name: перепись исходов\n        if: ${{ always() }}\n" +
+				"        env:\n          UNMET: ${{ env.STAND_PRECONDITION_UNMET }}\n" +
+				"        run: |\n          python3 .github/scripts/verdict-census.py --flag \"$UNMET\"\n",
+			scripts: map[string]string{
+				".github/scripts/verdict-census.py": "def main():\n    if flag:\n        return 1\n",
+			},
+			wantHit: false,
+		},
+		{
+			name: "та же форма, но отметка скрипту НЕ передана — находка",
+			yaml: "jobs:\n  stand:\n    steps:\n      - name: вердикт числами\n" +
+				gated + "        run: go test ./deploy/ -run Posture\n" +
+				"      - name: перепись исходов\n        if: ${{ always() }}\n" +
+				"        env:\n          UNMET: ${{ env.STAND_PRECONDITION_UNMET }}\n" +
+				"        run: |\n          python3 .github/scripts/verdict-census.py --dir shard\n",
+			scripts: map[string]string{
+				".github/scripts/verdict-census.py": "def main():\n    if flag:\n        return 1\n",
+			},
+			wantHit: true,
+		},
+		{
+			name: "форма 3, скрипт краснеет через sys.exit — молчит",
+			yaml: "jobs:\n  stand:\n    steps:\n      - name: вердикт числами\n" +
+				gated + "        run: go test ./deploy/ -run Posture\n" +
+				"      - name: перепись исходов\n        if: ${{ always() }}\n" +
+				"        env:\n          UNMET: ${{ env.STAND_PRECONDITION_UNMET }}\n" +
+				"        run: |\n          python3 .github/scripts/verdict-census.py --flag \"$UNMET\"\n",
+			scripts: map[string]string{
+				".github/scripts/verdict-census.py": "if flag:\n    sys.exit(1)\n",
+			},
+			wantHit: false,
+		},
+		{
+			name: "форма 3, скрипт умеет только sys.exit(0) — находка",
+			yaml: "jobs:\n  stand:\n    steps:\n      - name: вердикт числами\n" +
+				gated + "        run: go test ./deploy/ -run Posture\n" +
+				"      - name: перепись исходов\n        if: ${{ always() }}\n" +
+				"        env:\n          UNMET: ${{ env.STAND_PRECONDITION_UNMET }}\n" +
+				"        run: |\n          python3 .github/scripts/verdict-census.py --flag \"$UNMET\"\n",
+			scripts: map[string]string{
+				".github/scripts/verdict-census.py": "if flag:\n    sys.exit(0)\n",
+			},
+			wantHit: true,
+		},
+		{
 			name: "законный близнец: под отметкой только кэш — молчит",
 			yaml: "jobs:\n  probes:\n    steps:\n      - uses: actions/cache/save@v6\n" +
 				gated + "        with:\n          path: ~/.cache/x\n          key: k\n",
@@ -210,17 +279,90 @@ func TestGatedVerdictJudgeKnowsEveryForm(t *testing.T) {
 			wantHit: false,
 		},
 		{
-			name: "законный близнец: отметку не читает НИ ОДИН шаг — молчит",
-			yaml: "jobs:\n  stand:\n    steps:\n      - name: стенд\n" +
-				"        run: .github/scripts/stand-up.sh -- make dev-prod-up\n" +
-				"      - name: вердикт числами\n        if: ${{ always() }}\n" +
-				"        run: go test ./deploy/ -run Posture\n",
+			// ЗДЕСЬ СТОЯЛ «ЗАКОННЫЙ БЛИЗНЕЦ: ОТМЕТКУ НЕ ЧИТАЕТ НИ ОДИН ШАГ —
+			// МОЛЧИТ», И ЭТО БЫЛА МОЯ ОШИБКА, А НЕ БЛИЗНЕЦ. Ровно этим
+			// состоянием жила работа `production-posture.yml::stand`: два
+			// производителя отметки, ноль читателей, зелёный исход без
+			// вердикта — замерено исполнением настоящих тел шагов на
+			// отсутствующем кластере (`lane/posture-verdict`). Случай оставлен
+			// с ОБРАТНЫМ ожиданием и стоит среди признака «производит» выше.
+			//
+			// Настоящий близнец этого класса — работа, которая отметку не
+			// производит и не читает: ей требовать нечего.
+			name: "законный близнец: работа отметку не производит и не читает — молчит",
+			yaml: "jobs:\n  lint:\n    steps:\n      - name: go vet\n" +
+				"        run: go vet ./...\n" +
+				"      - name: сборка\n        if: ${{ always() }}\n        run: go build ./...\n",
+			scripts: writerScripts,
+			marks:   trackedWriter,
 			wantHit: false,
 		},
 		{
 			name: "значение отметки из дерева не выводится — находка, а не молчание",
 			yaml: "jobs:\n  probes:\n    steps:\n      - name: прогон проб\n" +
 				"        if: ${{ env.KACHO_UNKNOWN_MARK != '1' }}\n        run: npx playwright test\n",
+			scripts: map[string]string{},
+			marks: map[string]gvMark{
+				"KACHO_UNKNOWN_MARK": {Name: "KACHO_UNKNOWN_MARK", Known: false,
+					Writers: []string{"синтетика/writer.sh:1"}},
+			},
+			wantHit: true,
+		},
+		// ── признак «РАБОТА ПРОИЗВОДИТ ОТМЕТКУ» ──────────────────────────────
+		{
+			name: "работа производит суппрессивную отметку, читателя нет — находка",
+			yaml: "jobs:\n  stand:\n    steps:\n      - name: стенд\n" +
+				"        run: .github/scripts/stand-up.sh --dir deploy -- make dev-prod-up\n" +
+				"      - name: вердикт числами\n        if: ${{ always() }}\n" +
+				"        run: go test ./deploy/ -run Posture\n",
+			scripts: writerScripts,
+			marks:   trackedWriter,
+			wantHit: true,
+		},
+		{
+			name: "та же работа с производителем красного формы 2 — молчит",
+			yaml: "jobs:\n  stand:\n    steps:\n      - name: стенд\n" +
+				"        run: .github/scripts/stand-up.sh --dir deploy -- make dev-prod-up\n" +
+				"      - name: вердикт числами\n        if: ${{ always() }}\n" +
+				"        run: go test ./deploy/ -run Posture\n" +
+				"      - name: перепись исходов\n        if: ${{ always() }}\n" +
+				"        run: |\n          [ \"${STAND_PRECONDITION_UNMET:-}\" = 1 ] && " +
+				"{ echo \"::error::условие не создано\"; exit 1; }\n          exit 0\n",
+			scripts: writerScripts,
+			marks:   trackedWriter,
+			wantHit: false,
+		},
+		{
+			name: "законный близнец: работа зовёт писателя его САМОПРОБОЙ — производством не является",
+			yaml: "jobs:\n  probes:\n    steps:\n      - name: гейт — самопроверка владельца подъёма\n" +
+				"        run: bash .github/scripts/stand-up.sh --self-test\n" +
+				"      - name: вердикт числами\n        if: ${{ always() }}\n" +
+				"        run: go test ./deploy/ -run Posture\n",
+			scripts: writerScripts,
+			marks:   trackedWriter,
+			wantHit: false,
+		},
+		{
+			name: "законный близнец: отметка НЕ суппрессивна в дереве — производство не требует красного",
+			yaml: "jobs:\n  probes:\n    steps:\n      - name: браузер — сам chromium\n" +
+				"        run: bash .github/scripts/install-pinned-browser.sh\n" +
+				"      - name: прогон проб\n        if: ${{ always() }}\n        run: npx playwright test\n",
+			scripts: map[string]string{
+				".github/scripts/install-pinned-browser.sh": "echo \"KACHO_CHROMIUM=$img\" >> \"$GITHUB_ENV\"\nexit 1\n",
+			},
+			marks: map[string]gvMark{
+				"KACHO_CHROMIUM": {Name: "KACHO_CHROMIUM", Value: "$img", Known: false,
+					Writers: []string{".github/scripts/install-pinned-browser.sh:195"}},
+			},
+			wantHit: false,
+		},
+		{
+			name: "работа ПИШЕТ отметку своим телом, читателя нет — находка",
+			yaml: "jobs:\n  stand:\n    steps:\n      - name: стенд\n" +
+				"        run: |\n          make dev-prod-up || " +
+				"echo \"STAND_PRECONDITION_UNMET=1\" >> \"$GITHUB_ENV\"\n" +
+				"      - name: вердикт числами\n        if: ${{ always() }}\n" +
+				"        run: go test ./deploy/ -run Posture\n",
 			scripts: map[string]string{},
 			wantHit: true,
 		},
@@ -229,83 +371,14 @@ func TestGatedVerdictJudgeKnowsEveryForm(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			m := marks
-			if strings.Contains(tc.yaml, "KACHO_UNKNOWN_MARK") {
-				m = map[string]gvMark{
-					"KACHO_UNKNOWN_MARK": {Name: "KACHO_UNKNOWN_MARK", Known: false,
-						Writers: []string{"синтетика/writer.sh:1"}},
-				}
+			if tc.marks != nil {
+				m = tc.marks
 			}
-			findings, _, _ := judgeGatedVerdict("синтетика.yml", tc.yaml, m, tc.scripts, nil)
+			findings, _ := judgeGatedVerdict("синтетика.yml", tc.yaml, m, tc.scripts)
 			if got := len(findings) > 0; got != tc.wantHit {
 				t.Fatalf("ожидалась находка=%v, получено %v: %v", tc.wantHit, got, findings)
 			}
 		})
-	}
-}
-
-// TestDeclaredDebtExpiresFromATreeFact — объявленный долг в обе стороны.
-//
-// Запись существует затем, чтобы известные два места не запирали работу над
-// третьим; она НЕ прощение, и разница проверяема ровно здесь:
-//
-//	находка, которой запись НЕ названа, остаётся красной;
-//	запись, которой нечего исключать, сама становится красной.
-//
-// Без первой половины запись стала бы всеразрешением; без второй — пережила бы
-// свой предмет, и полоса, приносящая производителя, ушла бы, оставив прощение
-// действовать на другое задание под прежним именем.
-func TestDeclaredDebtExpiresFromATreeFact(t *testing.T) {
-	t.Parallel()
-	marks := map[string]gvMark{
-		"STAND_PRECONDITION_UNMET": {
-			Name: "STAND_PRECONDITION_UNMET", Value: "1", Known: true,
-			Writers: []string{"синтетика/stand-up.sh:1"},
-		},
-	}
-	const gated = "        if: ${{ env.STAND_PRECONDITION_UNMET != '1' }}\n"
-	const twoJobs = "jobs:\n  helm:\n    steps:\n      - name: umbrella template\n" +
-		gated + "        run: helm template deploy/helm/umbrella\n" +
-		"  probes:\n    steps:\n      - name: прогон проб\n" +
-		gated + "        run: npx playwright test\n"
-
-	// Запись названа на одно задание из двух: второе обязано остаться красным.
-	known := map[string]string{"синтетика.yml: задание helm": "чинит соседняя полоса"}
-	findings, debt, _ := judgeGatedVerdict("синтетика.yml", twoJobs, marks, scriptsNone(), known)
-	if len(debt) != 1 {
-		t.Fatalf("объявленным долгом названо %d записей, ждали 1: %v", len(debt), debt)
-	}
-	if len(findings) != 1 {
-		t.Fatalf("находок %d, ждали 1 (задание probes записью не названо): %v", len(findings), findings)
-	}
-	if !strings.Contains(findings[0], "probes") {
-		t.Fatalf("находка не про то задание: %v", findings)
-	}
-
-	// Та же запись на дереве, где заданию helm производитель красного УЖЕ
-	// заведён: исключать больше нечего — красное.
-	fixed := strings.Replace(twoJobs,
-		"  probes:\n",
-		"      - name: условие не создано — работа красная\n"+
-			"        if: ${{ always() && env.STAND_PRECONDITION_UNMET == '1' }}\n"+
-			"        run: exit 1\n"+
-			"  probes:\n", 1)
-	_, debt, _ = judgeGatedVerdict("синтетика.yml", fixed, marks, scriptsNone(), known)
-	used := map[string]bool{}
-	for _, d := range debt {
-		used[strings.SplitN(d, " — ", 2)[0]] = true
-	}
-	stale := gvStaleDebt(known, used)
-	if len(stale) != 1 {
-		t.Fatalf("устаревших записей %d, ждали 1: %v", len(stale), stale)
-	}
-	// Законный близнец: пока производителя нет, запись использована и молчит.
-	used = map[string]bool{}
-	_, debt, _ = judgeGatedVerdict("синтетика.yml", twoJobs, marks, scriptsNone(), known)
-	for _, d := range debt {
-		used[strings.SplitN(d, " — ", 2)[0]] = true
-	}
-	if stale := gvStaleDebt(known, used); len(stale) != 0 {
-		t.Fatalf("запись с живым предметом объявлена устаревшей: %v", stale)
 	}
 }
 
@@ -329,7 +402,7 @@ func TestGatedVerdictJudgeOnRealTreeInput(t *testing.T) {
 	}
 
 	// Контроль: как есть в дереве — судья молчит про это задание.
-	if findings, _, _ := judgeGatedVerdict(subject, string(raw), marks, scripts, nil); len(findings) != 0 {
+	if findings, _ := judgeGatedVerdict(subject, string(raw), marks, scripts); len(findings) != 0 {
 		t.Fatalf("контроль: на настоящем %s судья дал находки %v — "+
 			"инъекция ниже будет неотличима от этого же", subject, findings)
 	}
@@ -356,7 +429,7 @@ func TestGatedVerdictJudgeOnRealTreeInput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("инъекция не собралась обратно: %v", err)
 	}
-	findings, _, _ := judgeGatedVerdict(subject, string(injected), marks, scripts, nil)
+	findings, _ := judgeGatedVerdict(subject, string(injected), marks, scripts)
 	if len(findings) == 0 {
 		t.Fatal("инъекция: у свода снято `needs` на шард, красное производить некому — " +
 			"судья обязан назвать находку, а он смолчал")
@@ -560,4 +633,160 @@ func TestCIRunsGatedVerdictGate(t *testing.T) {
 	if withShort {
 		t.Fatal("ci.yaml зовёт гейт с -short — вердикт остаётся, а перепись прячется")
 	}
+}
+
+// TestGatedVerdictJudgeOnPostureTreeInput — инъекция НАСТОЯЩИМ входом из дерева
+// по двум осям, которых синтетика не закрывает.
+//
+// Синтетика доказывает форму, а не существо: она не отвечает на вопрос,
+// совпадает ли форма, СТОЯЩАЯ В ДЕРЕВЕ, с той, которую судья умеет читать.
+// Предмет здесь — `production-posture.yml`, где производитель красного записан
+// формой 3 (отметка доезжает в шаг блоком `env:`, ненулевой код даёт
+// отслеживаемый скрипт переписи).
+//
+// Три утверждения, и каждое опровергается своим прогоном:
+//
+//  1. КОНТРОЛЬ — как есть в дереве судья молчит. Без него всякая находка ниже
+//     неотличима от находки, которая была и до инъекции.
+//  2. ИНЪЕКЦИЯ ПРОИЗВОДИТЕЛЯ — шаг переписи снят: гасящая отметка осталась,
+//     красное производить некому, находка обязана назвать задание.
+//  3. ИНЪЕКЦИЯ ПРИЗНАКА «РАБОТА ПРОИЗВОДИТ ОТМЕТКУ» — на дереве БЕЗ
+//     производителя дополнительно сняты читатели отметки. Довод «гасит
+//     вердиктные шаги» этим снимается целиком, и если бы судья знал только
+//     его, он бы СМОЛЧАЛ: ровно этим состоянием работа посадки и жила до
+//     полосы `lane/posture-verdict` — два производителя отметки, ноль
+//     читателей, зелёный исход без вердикта. Находка обязана остаться.
+func TestGatedVerdictJudgeOnPostureTreeInput(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	marks, scripts := gvCollectMarks(t, root)
+
+	const subject = workflowsDir + "/production-posture.yml"
+	const mark = "STAND_PRECONDITION_UNMET"
+	raw, err := os.ReadFile(filepath.Join(root, subject))
+	if err != nil {
+		t.Fatalf("не прочитан %s: %v — инъекции не на чем ставить", subject, err)
+	}
+
+	if findings, _ := judgeGatedVerdict(subject, string(raw), marks, scripts); len(findings) != 0 {
+		t.Fatalf("КОНТРОЛЬ: на настоящем %s судья дал находки %v — производитель "+
+			"красного в дереве ЕСТЬ (шаг переписи исходов), значит распознаватель "+
+			"его формы не знает, и всякая инъекция ниже неотличима от этого же",
+			subject, findings)
+	}
+
+	// Разбор общий для обеих инъекций: правится копия в памяти, дерево не трогается.
+	load := func() (map[string]any, []any) {
+		t.Helper()
+		var doc map[string]any
+		if err := yaml.Unmarshal(raw, &doc); err != nil {
+			t.Fatalf("%s не разобран: %v", subject, err)
+		}
+		jobs, ok := doc["jobs"].(map[string]any)
+		if !ok {
+			t.Fatalf("%s: нет разбираемого `jobs:` — предпосылка инъекции не выполняется", subject)
+		}
+		job, ok := jobs["stand"].(map[string]any)
+		if !ok {
+			t.Fatalf("%s: задания `stand` нет — предпосылка инъекции не выполняется", subject)
+		}
+		steps, ok := job["steps"].([]any)
+		if !ok || len(steps) == 0 {
+			t.Fatalf("%s: у `stand` нет разбираемых шагов", subject)
+		}
+		return job, steps
+	}
+	emit := func(doc map[string]any) string {
+		t.Helper()
+		b, err := yaml.Marshal(doc)
+		if err != nil {
+			t.Fatalf("инъекция не собралась обратно: %v", err)
+		}
+		return string(b)
+	}
+	// Шаг-производитель НАХОДИТСЯ по признаку, а не по имени: отметка доезжает в
+	// него блоком `env:`. Поиск по названию шага пережил бы переименование.
+	dropProducer := func(job map[string]any, steps []any) []any {
+		t.Helper()
+		var kept []any
+		var dropped int
+		for _, s := range steps {
+			st, _ := s.(map[string]any)
+			var names bool
+			if env, ok := st["env"].(map[string]any); ok {
+				for _, v := range env {
+					if str, ok := v.(string); ok && strings.Contains(str, mark) {
+						names = true
+					}
+				}
+			}
+			if names {
+				dropped++
+				continue
+			}
+			kept = append(kept, s)
+		}
+		if dropped != 1 {
+			t.Fatalf("%s: шагов, которым отметка доезжает блоком env, оказалось %d, "+
+				"а не 1 — предпосылка инъекции не выполняется, и её исход ничего "+
+				"не значил бы", subject, dropped)
+		}
+		job["steps"] = kept
+		return kept
+	}
+
+	// (2) Снят производитель красного.
+	docA, stepsA := load()
+	dropProducer(docA, stepsA)
+	findings, _ := judgeGatedVerdict(subject, emit(mustDoc(t, raw, docA)), marks, scripts)
+	if !namesJob(findings, "stand") {
+		t.Fatalf("ИНЪЕКЦИЯ ПРОИЗВОДИТЕЛЯ: шаг переписи снят, гасящая отметка осталась — "+
+			"судья обязан назвать задание stand, получено %v", findings)
+	}
+
+	// (3) На том же дереве сняты ЧИТАТЕЛИ отметки.
+	docB, stepsB := load()
+	kept := dropProducer(docB, stepsB)
+	var unread int
+	for _, s := range kept {
+		st, _ := s.(map[string]any)
+		cond, _ := st["if"].(string)
+		if strings.Contains(cond, "env."+mark) {
+			st["if"] = "${{ always() }}"
+			unread++
+		}
+	}
+	if unread == 0 {
+		t.Fatalf("%s: ни один шаг `stand` не читает отметку условием — снимать нечего, "+
+			"и предпосылка третьей инъекции не выполняется", subject)
+	}
+	findings, _ = judgeGatedVerdict(subject, emit(mustDoc(t, raw, docB)), marks, scripts)
+	if !namesJob(findings, "stand") {
+		t.Fatalf("ИНЪЕКЦИЯ ПРИЗНАКА «РАБОТА ПРОИЗВОДИТ ОТМЕТКУ»: снято %d читателей "+
+			"отметки у работы, которая её ПРОИЗВОДИТ (два шага подъёма), производителя "+
+			"красного нет — судья смолчал: %v. Признак «гасит» один эту работу не "+
+			"видит, и ровно так она зеленела без вердикта", unread, findings)
+	}
+}
+
+// mustDoc — общий корень документа с подменённым `jobs:`. Инъекция правит
+// задание на месте, а собирать обратно надо ВЕСЬ документ.
+func mustDoc(t *testing.T, raw []byte, job map[string]any) map[string]any {
+	t.Helper()
+	var doc map[string]any
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("документ не разобран: %v", err)
+	}
+	jobs, _ := doc["jobs"].(map[string]any)
+	jobs["stand"] = job
+	return doc
+}
+
+func namesJob(findings []string, job string) bool {
+	for _, f := range findings {
+		if strings.Contains(f, "задание "+job) {
+			return true
+		}
+	}
+	return false
 }
