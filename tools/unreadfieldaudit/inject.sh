@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 # inject.sh — ДОКАЗАТЕЛЬСТВО СПОСОБНОСТИ УПАСТЬ для границы дерева
 # (`unread_field_audit.py`, полоса «ВНЕ ДЕРЕВА»).
 #
