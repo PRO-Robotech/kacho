@@ -89,6 +89,29 @@ doc() {
   } >"$TMP/in.yaml"
 }
 
+# doc_emptyaddr <имя-для-сверки> — адрес ребра объявлен и ПУСТ.
+doc_emptyaddr() {
+  local servername="$1"
+  {
+    cert "vpc.kacho.svc"
+    echo "---"
+    echo "apiVersion: apps/v1"
+    echo "kind: Deployment"
+    echo "metadata:"
+    echo "  name: compute"
+    echo "spec:"
+    echo "  template:"
+    echo "    spec:"
+    echo "      containers:"
+    echo "        - name: compute"
+    echo "          env:"
+    echo "            - name: KACHO_COMPUTE_VPC_MTLS_SERVERNAME"
+    echo "              value: \"$servername\""
+    echo "            - name: KACHO_COMPUTE_VPC_GRPC_ADDR"
+    echo "              value: \"\""
+  } >"$TMP/in.yaml"
+}
+
 # doc_envfrom <имя-для-сверки> <адрес> — ФОРМА Б: адрес приезжает `envFrom`.
 doc_envfrom() {
   local servername="$1" addr="$2"
@@ -281,6 +304,13 @@ assert "имя при адресе 'not-deployed' — находка" RED
 assert_says "соседа в этой" "отказ обязан назвать ОТСУТСТВИЕ соседа, а не «другого пира»"
 doc_absent ""
 assert "близнец: адрес 'not-deployed' БЕЗ имени — молчит (законная посадка)" GREEN
+
+echo "── ось Д: адрес объявлен и ПУСТ ──"
+doc_emptyaddr "vpc.kacho.svc"
+assert "пустой адрес при заданном имени — находка" RED
+assert_says "хоста в" "пустой набор хостов делал бы отношение выполнимым подстановкой"
+doc "vpc.kacho.svc" "vpc.kacho.svc:9090"
+assert "близнец: адрес с хостом — молчит" GREEN
 
 echo "── формы записи: их четыре, и каждая доказывается отдельно ──"
 doc "kacho-geo.kacho.svc" "vpc.kacho.svc:9090"

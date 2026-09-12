@@ -224,7 +224,21 @@ def judge(coord, value, san, addrs, findings):
         return san_judged, addr_judged
 
     hosts = {shorten(host_of(v)) for v in addrs.values() if host_of(v)}
-    if hosts and shorten(value) not in hosts:
+
+    # Адрес объявлен и ПУСТ — это не «адреса рядом нет» и не совпадение. Прежняя
+    # редакция давала здесь находку с текстом «ребро идёт к []»; нынешняя
+    # называет предмет прямо. Молчать нельзя: пустой набор хостов делал бы
+    # отношение «имя ∈ хосты» выполнимым подстановкой, то есть не сужающим
+    # ничего.
+    if not hosts:
+        findings.append(
+            f"{coord} = {value!r} — адрес ребра ОБЪЯВЛЕН ({sorted(addrs)!r}), но хоста в "
+            f"нём нет: сверять имя не с чем, а объявление выглядит настроенным. Либо "
+            f"адрес задан пустым, либо он не адрес"
+        )
+        return san_judged, addr_judged
+
+    if shorten(value) not in hosts:
         findings.append(
             f"{coord} = {value!r} — ребро идёт к {sorted(hosts)!r} "
             f"(объявлено {sorted(addrs)!r}), а сверяется имя ДРУГОГО пира. "
