@@ -121,17 +121,32 @@ def manifest_files(root):
     клоне. Обход диска остаётся запасным путём и НЕ МОЛЧИТ — чем получен состав,
     печатается переписью, потому что синтетический корень самопроверки git-ом не
     является, а читатель обязан видеть, какое множество судилось.
+
+    ГЛУБИНА ОГРАНИЧЕНА ОДНИМ СЕГМЕНТОМ, И ЭТО НЕ ПЕДАНТСТВО: у двух читателей
+    одного предмета звезда значит РАЗНОЕ — в pathspec git она пересекает косую
+    черту, в `glob` питона нет. Сегодня оба дают одни и те же пять файлов, то есть
+    расхождение существует и НЕ НАБЛЮДАЕТСЯ; первый же манифест глубже
+    (`services/x/подкаталог/manifest.yaml`) попал бы в один состав и не попал в
+    другой — молча, и именно там, где оба отвечают «валидно». Модульный манифест
+    лежит в корне каталога службы by construction, поэтому отбор по глубине
+    сужает состав ровно до объявленного.
     """
+    def _one_segment(rel: str) -> bool:
+        parts = rel.split("/")
+        return len(parts) == 3 and parts[0] == "services" and parts[2] == "manifest.yaml"
+
     try:
         out = subprocess.run(["git", "-C", root, "ls-files", "-z", MANIFEST_GLOB],
                              capture_output=True, text=True, check=True).stdout
-        paths = sorted(p for p in out.split("\0") if p)
+        paths = sorted(p for p in out.split("\0") if p and _one_segment(p))
         if paths:
             return paths, "индекс git"
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass
-    return sorted(os.path.relpath(p, root).replace(os.sep, "/")
-                  for p in glob.glob(os.path.join(root, MANIFEST_GLOB))), "обход диска"
+    return sorted(rel for rel in
+                  (os.path.relpath(p, root).replace(os.sep, "/")
+                   for p in glob.glob(os.path.join(root, MANIFEST_GLOB)))
+                  if _one_segment(rel)), "обход диска"
 
 
 def object_types(root):
