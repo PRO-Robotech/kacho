@@ -9,7 +9,7 @@ package main
 // Дефект, который они закрывают: оба листенера строили правильную цепочку
 // CertIdentityExtract → TrustedPrincipalExtract(WithTrustedForwarders(список)), но
 // получали ЛИТЕРАЛЬНЫЙ пустой список, а поля в конфигурации не было вовсе. Контракт
-// corelib (pkg/grpcsrv principalIsTrusted) сужает круг ТОЛЬКО на непустом списке —
+// corelib (corelib/grpcsrv principalIsTrusted) сужает круг ТОЛЬКО на непустом списке —
 // на пустом любой пир, прошедший проверку сертификата, присылал заголовки личности
 // жертвы, и субъектом проверки прав становилась она.
 //
@@ -48,8 +48,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/corelib/operations"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/config"
 )
@@ -125,7 +125,7 @@ func listenerChain(t *testing.T, cfg config.Config) grpc.UnaryServerInterceptor 
 
 // seenIdentity прогоняет запрос через цепочку и возвращает личность, которую
 // увидел бы обработчик, и признак доверия. Это и есть наблюдаемое: субъект
-// проверки прав собирается ровно из неё (pkg/authz subject_extract).
+// проверки прав собирается ровно из неё (corelib/authz subject_extract).
 func seenIdentity(t *testing.T, chain grpc.UnaryServerInterceptor, ctx context.Context) (id string, trusted bool, present bool) {
 	t.Helper()
 	final := func(c context.Context, _ any) (any, error) {

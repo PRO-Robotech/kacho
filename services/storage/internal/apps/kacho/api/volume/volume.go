@@ -24,11 +24,11 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/PRO-Robotech/corelib/filter"
+	"github.com/PRO-Robotech/corelib/ids"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/validate"
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
-	"github.com/PRO-Robotech/kacho/pkg/filter"
-	"github.com/PRO-Robotech/kacho/pkg/ids"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/quota"
@@ -39,7 +39,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/protoconv"
 
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
+	"github.com/PRO-Robotech/corelib/listnarrow"
 )
 
 // Pagination — вход для List: cursor-пагинация (page_size + opaque page_token) +
@@ -357,7 +357,7 @@ func (u *UseCase) Create(ctx context.Context, v *domain.Volume) (*operations.Ope
 	// Sync BVA at the request edge (parity with Image, #61): reject over-limit
 	// description (>256) / labels (>64) BEFORE any peer/DB call.
 	//
-	// The error goes to the mapper AS IS. pkg/validate already answers in the
+	// The error goes to the mapper AS IS. corelib/validate already answers in the
 	// contract's own shape — INVALID_ARGUMENT, generic "invalid argument" message,
 	// offending field in the google.rpc.BadRequest detail — and rebuilding it from
 	// err.Error() took the text and dropped the detail, so the caller learned the
@@ -710,7 +710,7 @@ func (u *UseCase) GetInternal(ctx context.Context, id string) (*domain.Volume, e
 // До этого description и labels не проверялись вовсе: переразмерное значение
 // доезжало до UPDATE, ловилось volumes_description_check / volumes_labels_valid и
 // возвращалось АСИНХРОННО в ошибке операции обобщённым «Illegal argument» — поздно
-// и без имени поля. Ошибка pkg/validate уходит наверх КАК ЕСТЬ: имя поля она
+// и без имени поля. Ошибка corelib/validate уходит наверх КАК ЕСТЬ: имя поля она
 // кладёт в google.rpc.BadRequest-детали, а пересборка через err.Error() их теряет.
 func resolveUpdate(mask []string, name, description string, labels map[string]string, sizeBytes int64) (VolumeUpdate, error) {
 	var u VolumeUpdate

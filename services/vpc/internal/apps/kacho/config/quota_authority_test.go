@@ -14,7 +14,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+	corequota "github.com/PRO-Robotech/corelib/quota"
 )
 
 // TestQuotaAuthority_KAN_Q1_02_UnsetRefusesStart — незаданное объявление
@@ -135,4 +135,45 @@ func TestQuotaAuthority_KnobReachesTheField(t *testing.T) {
 	require.Equal(t, "limits.kacho.svc:9091", cfg.Quota.Authority,
 		"значение ручки обязано доехать до поля; иначе процесс отказывает в старте, "+
 			"называя ручку, которую оператор задал")
+}
+
+// TestQuotaAuthority_AbsentAuthorityWithDeclaredTransportRefusesStart — ВТОРАЯ
+// половина пары, зеркальная KAN-Q1-05: адрес объявляет ОТСУТСТВИЕ домена
+// величин, а имя для сверки рукопожатия задано. Обращаться не к кому, поэтому
+// имя называет пира, к которому ребро НЕ идёт.
+func TestQuotaAuthority_AbsentAuthorityWithDeclaredTransportRefusesStart(t *testing.T) {
+	c := Config{Quota: QuotaConfig{Authority: corequota.NotDeployed}}
+	c.AuthN.Mode = ModeProductionStrict
+
+	var m MTLSConfig
+	m.QuotaAuthorityMTLS.Enable = true
+	m.QuotaAuthorityMTLS.ServerName = "kaname-internal.kacho.svc"
+
+	err := c.ValidateQuotaAuthority(m)
+	require.Error(t, err,
+		"адрес объявил отсутствие домена величин, а имя для сверки задано — половина пары")
+	require.Contains(t, err.Error(), "KACHO_VPC_QUOTA_AUTHORITY_MTLS_SERVERNAME",
+		"отказ обязан назвать ЛИШНЮЮ половину пары")
+	require.Contains(t, err.Error(), "kaname-internal.kacho.svc",
+		"отказ обязан процитировать имя, которое названо впустую")
+}
+
+// TestQuotaAuthority_AbsentAuthorityWithDeclaredTransportRefusesOutsideProductionToo —
+// режимом этот отказ НЕ смягчается: собеседника нет ни в одном режиме.
+func TestQuotaAuthority_AbsentAuthorityWithDeclaredTransportRefusesOutsideProductionToo(t *testing.T) {
+	c := Config{Quota: QuotaConfig{Authority: corequota.NotDeployed}}
+
+	var m MTLSConfig
+	m.QuotaAuthorityMTLS.ServerName = "kaname-internal.kacho.svc"
+
+	require.Error(t, c.ValidateQuotaAuthority(m))
+}
+
+// TestQuotaAuthority_AbsentAuthorityWithoutTransportIsSilent — положительный
+// близнец: объявленное отсутствие БЕЗ удостоверения — законная посадка.
+func TestQuotaAuthority_AbsentAuthorityWithoutTransportIsSilent(t *testing.T) {
+	c := Config{Quota: QuotaConfig{Authority: corequota.NotDeployed}}
+	c.AuthN.Mode = ModeProductionStrict
+
+	require.NoError(t, c.ValidateQuotaAuthority(MTLSConfig{}))
 }

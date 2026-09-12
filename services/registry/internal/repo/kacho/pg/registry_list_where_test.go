@@ -3,7 +3,7 @@
 
 package pg
 
-// registry_list_where_test.go — #460. `pkg/filter` grammar has two operators, `=`
+// registry_list_where_test.go — #460. `corelib/filter` grammar has two operators, `=`
 // and `CONTAINS`. This repo parsed the expression and then took only ast.Value,
 // building `name = $N` by hand — so `name CONTAINS "prod"` was answered as
 // `name = "prod"`: the console asked for every registry whose name contains

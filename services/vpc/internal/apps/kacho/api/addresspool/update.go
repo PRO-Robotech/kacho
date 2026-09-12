@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
+	corevalidate "github.com/PRO-Robotech/corelib/validate"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"

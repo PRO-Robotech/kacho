@@ -5,7 +5,7 @@
 // peer-сервисам (kaname, kacho-geo) единым паттерном (retries, LB, TLS,
 // metrics), без отдельного dial-кода на каждый клиент.
 //
-// Builder — обёртка над `grpcclient.DialPeer` (`pkg/grpcclient/dial.go`) с
+// Builder — обёртка над `grpcclient.DialPeer` (`corelib/grpcclient/dial.go`) с
 // дефолтами kacho-vpc (retries=3, dialTimeout=10s, KeepAlive 30s,
 // userAgent="kacho-vpc"). Client-side round_robin LB включается флагом DNSLB.
 //
@@ -29,7 +29,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcclient"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"

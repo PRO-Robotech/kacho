@@ -57,7 +57,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	manifestproducer "github.com/PRO-Robotech/kacho/pkg/modulemanifest/producer"
+	manifestproducer "github.com/PRO-Robotech/corelib/modulemanifest/producer"
 )
 
 // producerCensus — объём осмотренного этой проверкой.

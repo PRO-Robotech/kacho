@@ -14,7 +14,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
+	"github.com/PRO-Robotech/corelib/outbox/bootgate"
 )
 
 // GuardCreateUnary — unary-интерсептор, который сверяется с boot-gate на

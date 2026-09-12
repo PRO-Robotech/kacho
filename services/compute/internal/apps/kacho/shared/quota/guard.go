@@ -10,8 +10,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/PRO-Robotech/kacho/pkg/peer"
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	"github.com/PRO-Robotech/corelib/peer"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 )
 

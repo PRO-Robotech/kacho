@@ -13,13 +13,13 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/pgtest"
+	"github.com/PRO-Robotech/corelib/pgtest"
 
-	"github.com/PRO-Robotech/kacho/pkg/option"
+	"github.com/PRO-Robotech/corelib/option"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+	coredb "github.com/PRO-Robotech/corelib/db"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg"

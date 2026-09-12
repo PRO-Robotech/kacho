@@ -464,9 +464,19 @@ func TestEnforcedCardinalityLimitsAreDeclared(t *testing.T) {
 func TestLabelsLimitPremiseHolds(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
-	body, err := os.ReadFile(filepath.Join(root, "pkg/validate/validate.go"))
-	if err != nil {
-		t.Fatalf("pkg/validate/validate.go не читается: %v", err)
+	// Предмет переехал ЦЕЛИКОМ из pkg/validate этого дерева в пакет validate
+	// общего фундамента (github.com/PRO-Robotech/corelib).
+	files := corelibPackageGoFiles(t, root, "validate")
+	var body []byte
+	for rel, b := range files {
+		if strings.HasSuffix(rel, "/validate.go") {
+			body = b
+			break
+		}
+	}
+	if body == nil {
+		t.Fatalf("%s/validate.go не найден среди %d файлов пакета validate общего фундамента",
+			corelibDirTag("validate"), len(files))
 	}
 	if !strings.Contains(string(body), "func Labels(") {
 		t.Fatal("общего исполнителя меток (pkg/validate.Labels) больше нет — освобождение карт меток " +

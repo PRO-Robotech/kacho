@@ -42,6 +42,19 @@ mtls:
 # перевывести его здесь нечем. Исход принадлежит оператору: пере-пин на коммит
 # этого дерева, после чего запись ниже станет находкой сама.
 # без-вывода: kacho-ui-future-host kacho-ui-future-dashboard kacho-ui-future-vpc kacho-ui-future-iam kacho-ui-future-nlb kacho-ui-future-registry kacho-ui-future-system kacho-ui-future-compute kacho-ui-future-storage — коммит master-ветки прежнего репозитория консоли, в этом дереве не разрешается
+#
+# ОБРАЗ СЛУЖБЫ ДОСТУПА ВЫВЕДЕН БЫТЬ НЕ МОЖЕТ, и это НЕ «ещё не сделано». Его
+# собирает конвейер PRO-Robotech/kaname, в тег попадает коммит ЕЁ ствола, и в
+# этом дереве он не разрешается by construction — значит запись «порождено-от»
+# его не покрывает и покрывать не вправе. Прежде покрывала: пин назывался
+# коммитом ЭТОГО дерева, выглядел выведенным — и не тянулся, потому что образа с
+# таким тегом в реестре нет. Проверка вывода этого не видит: она сверяет тег с
+# записью, а не с реестром. Досягаемость держит
+# deploy/published_image_pin_is_reachable_test.go.
+#
+# Директива самоистекает по ВНЕШНЕМУ факту: как только в теге окажется коммит
+# этого дерева, запись упадёт сама.
+# без-вывода: kaname — образ собирает конвейер своего репозитория PRO-Robotech/kaname; коммит её ствола в этом дереве не разрешается
 # Reconciled to CURRENTLY-LIVE fe3455 images 2026-07-15 (kubectl get deploy,statefulset
 # -n kacho, verified working). NOTE ON LAYER PRECEDENCE: for the 6 core control-plane
 # services (vpc/compute/kacho-geo/api-gateway/kaname/kacho-nlb) the EFFECTIVE image
@@ -154,15 +167,24 @@ uif:
 kaname:
   image:
     repository: docker.io/prorobotech/kaname
-    # FORWARD ROLL: main-c744f956 (#321 audience-union + #323 :9097 JWKS + #325 RG-1
-    # 418-catalog + #326 docker-login issued_at). Kept in sync with the authoritative
-    # override in values.fe3455-prod.yaml (layers AFTER this file).
-    # The earlier main-b3d23769 pin was BLOCKED: that build reverted c300053, so
-    # `issued_at` went back to a bare Unix number and `docker login` broke
-    # («Time.UnmarshalJSON: input is not a JSON string»). kacho-iam#326 re-applied it
-    # onto main (wire-shape regression test locks the RFC3339 STRING) → main c744f95 →
-    # CI published main-c744f956. Blocker resolved; this tag is the forward target.
-    tag: main-b622b388
+    # ПИН СЛУЖБЫ ДОСТУПА НЕ ВЫВОДИТСЯ ИЗ КОММИТА ЭТОГО ДЕРЕВА, И ПРЕЖНИЙ НЕ ТЯНУЛСЯ.
+    # Образ собирает конвейер PRO-Robotech/kaname, в тег попадает коммит ЕЁ ствола;
+    # здесь стоял `main-b622b388` — коммит ЭТОГО дерева, и манифеста у такого тега
+    # нет (реестр 404 при живом репозитории). Под уходил в Init:ImagePullBackOff уже
+    # после успешного «helm upgrade».
+    #
+    # Здесь же лежал разбор «FORWARD ROLL на main-c744f956» с перечнем задач,
+    # которые тот образ несёт, и указанием «не перепиниваться ниже этого тега».
+    # Разбор снят целиком: названного тега в реестре тоже НЕТ (404), то есть
+    # указание было неисполнимо, а перечень описывал образ, который никому не
+    # достанется. Запрет `cutover-fe3455.sh` на `main-b3d23769` при этом остаётся
+    # в силе и этим пином не затрагивается.
+    #
+    # Тег ведёт И основной контейнер, И init наката миграций — оба через помощник
+    # `kaname.image`.
+    # Действующее переопределение — values.fe3455-prod.yaml (тот же тег, слой ПОСЛЕ
+    # этого файла).
+    tag: main-efa5d1f3
     pullPolicy: IfNotPresent
 kacho-nlb:
   enabled: true

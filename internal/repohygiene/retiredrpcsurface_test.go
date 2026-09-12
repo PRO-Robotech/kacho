@@ -202,14 +202,16 @@ var retiredRPCSurface = []RetiredRPC{
 	},
 	{
 		FQN: "kaname.cloud.iam.v1.InternalIamHooksService/TokenHook",
-		Reason: "хуки Hydra обслуживаются по HTTP (services/iam/internal/handler/iamhooks), и обслуживаются " +
-			"СВОИМИ структурами тела запроса под контракт Hydra — типы этого proto не читает ни одна строка " +
-			"неgenerated-кода. gRPC-объявление описывало замысел, который не был реализован",
+		Reason: "хуки Hydra обслуживались по HTTP, своим обработчиком службы доступа, и своими " +
+			"структурами тела запроса под контракт Hydra — типы этого proto не читала ни одна строка " +
+			"неgenerated-кода. gRPC-объявление описывало замысел, который не был реализован. " +
+			"Координата обработчика здесь не воспроизводится: служба вынесена отдельным продуктом, " +
+			"и путь под её каталогом в этом дереве не резолвится",
 	},
 	{
 		FQN: "kaname.cloud.iam.v1.InternalIamHooksService/RefreshTokenHook",
-		Reason: "вторая половина того же неreализованного gRPC-объявления хуков Hydra; живой путь — " +
-			"HTTP-обработчик refresh_hook_handler.go со своей формой тела",
+		Reason: "вторая половина того же неreализованного gRPC-объявления хуков Hydra; живым был " +
+			"HTTP-обработчик службы доступа со своей формой тела, уехавший вместе с нею",
 	},
 	// ── Волна 1 модуля вычислений (приёмка COMP-E1a) ───────────────────────
 	//
@@ -263,9 +265,16 @@ func retiredRPCSurfaceOptions(t *testing.T) RetiredRPCSurfaceOptions {
 		Root:      repoRoot(t),
 		APIRoot:   "pkg/api",
 		ProtoRoot: "proto",
+		// Копий каталога в ЭТОМ дереве осталась одна. Вторая — вшитая в службу
+		// доступа — уехала вместе со службой, вынесенной отдельным продуктом;
+		// её координата не резолвится, а анализатор на непрочитанной копии
+		// отказывает, и правильно отказывает. Способность читать НЕСКОЛЬКО
+		// копий (ради копии, которую забыли перегенерировать) от этого не
+		// потеряна и доказывается синтетикой —
+		// TestRetiredRPCSurface_ReadsEveryCatalogCopy строит своё дерево с
+		// двумя копиями и требует находку во ВТОРОЙ.
 		CatalogPaths: []string{
 			filepath.Join("gateway", "internal", "middleware", "embed", "permission_catalog.json"),
-			filepath.Join("services", "iam", "internal", "apps", "kaname", "seed", "embedded", "permission_catalog.json"),
 		},
 		Retired: retiredRPCSurface,
 	}
@@ -276,7 +285,8 @@ func retiredRPCSurfaceOptions(t *testing.T) RetiredRPCSurfaceOptions {
 func TestRetiredRPCSurface_NoRetiredNameCameBack(t *testing.T) {
 	t.Parallel()
 	var log strings.Builder
-	findings, census, err := AuditRetiredRPCSurface(retiredRPCSurfaceOptions(t), &log)
+	opts := retiredRPCSurfaceOptions(t)
+	findings, census, err := AuditRetiredRPCSurface(opts, &log)
 	if err != nil {
 		t.Fatalf("анализатор не отработал: %v", err)
 	}
@@ -292,9 +302,14 @@ func TestRetiredRPCSurface_NoRetiredNameCameBack(t *testing.T) {
 		t.Fatalf("из контракта прочитано файлов %d, сервисов %d — разбор не нашёл того, что заведомо есть",
 			census.ProtoFiles, census.ProtoSvcs)
 	}
-	if census.CatalogFiles != 2 || census.CatalogRows < 200 {
-		t.Fatalf("копий каталога прочитано %d, строк суммарно %d — прочитаны не обе копии",
-			census.CatalogFiles, census.CatalogRows)
+	// Число копий ВЫВОДИТСЯ из перечня, а не выписывается: выписанное разошлось
+	// бы с ним молча при первом же добавлении или снятии копии — и разошлось бы
+	// именно в ту сторону, где расхождение не видно (прочитали меньше, чем
+	// объявлено, а проба ждёт прежнее число и объявляет это находкой о дереве).
+	if census.CatalogFiles != len(opts.CatalogPaths) || census.CatalogRows < 200 {
+		t.Fatalf("копий каталога объявлено %d, прочитано %d, строк суммарно %d — "+
+			"прочитаны не все объявленные копии",
+			len(opts.CatalogPaths), census.CatalogFiles, census.CatalogRows)
 	}
 
 	if len(findings) == 0 {

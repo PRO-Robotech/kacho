@@ -58,7 +58,14 @@ func TestSSLModeAllowlistHasASingleSource(t *testing.T) {
 			"обход смотрит не туда; чинить надо гейт, а не молча выходить успехом")
 	}
 
-	findings, cen, err := auditSSLModeSingleSource(root, files)
+	// Дом переехал из pkg/db в пакет db общего фундамента
+	// (github.com/PRO-Robotech/corelib): читаем ТУДА, куда он переехал
+	// (corelibPackageGoFiles, см. corelibsource_test.go), а не только диск.
+	extra := map[string][]byte{}
+	for rel, body := range corelibPackageGoFiles(t, root, "db") {
+		extra[rel] = body
+	}
+	findings, cen, err := auditSSLModeSingleSourceWithExtra(root, files, extra)
 	if err != nil {
 		t.Fatalf("обход: %v", err)
 	}
@@ -68,9 +75,9 @@ func TestSSLModeAllowlistHasASingleSource(t *testing.T) {
 		byValue = append(byValue, v+"×"+strconv.Itoa(n))
 	}
 	sort.Strings(byValue)
-	t.Logf("осмотрено файлов Go: %d; литералов словаря: %d; файлов дома (%s): %d; "+
+	t.Logf("осмотрено файлов Go: %d; литералов словаря: %d; файлов дома (%s или %s): %d; "+
 		"мест вне дома: %d; по значениям: %s",
-		cen.FilesRead, cen.LiteralsSeen, sslModeHomeDir, cen.HomeFiles,
+		cen.FilesRead, cen.LiteralsSeen, sslModeHomeDir, sslModeCorelibHomeDir, cen.HomeFiles,
 		len(findings), strings.Join(byValue, " "))
 
 	// СТРАЖ ПРЕДПОСЫЛКИ — САМОПРОВЕРКА РАСПОЗНАВАТЕЛЯ, А НЕ СЧЁТ НАХОДОК.
@@ -122,9 +129,9 @@ func known(mode string) bool {
 	// перечень уехал (или распознаватель перестал его видеть) — и тогда «ноль
 	// находок вне дома» верно ровно потому, что предмета нет нигде.
 	if cen.HomeFiles == 0 {
-		t.Fatalf("предпосылка гейта не выполняется: в доме %s НЕТ ни одного файла со словарём "+
-			"режимов. Либо перечень переехал, либо распознаватель его не видит; «ноль копий» "+
-			"в таком состоянии не утверждает ничего", sslModeHomeDir)
+		t.Fatalf("предпосылка гейта не выполняется: ни в %s, ни в %s НЕТ ни одного файла со "+
+			"словарём режимов. Либо перечень переехал, либо распознаватель его не видит; «ноль "+
+			"копий» в таком состоянии не утверждает ничего", sslModeHomeDir, sslModeCorelibHomeDir)
 	}
 
 	if len(findings) > 0 {
@@ -132,11 +139,11 @@ func known(mode string) bool {
 		for _, f := range findings {
 			b.WriteString("\n    " + f.Where + " — перечисляет " + strings.Join(f.Values, ", "))
 		}
-		t.Fatalf("перечень безопасных значений sslmode объявлен вне общего дома (%s).\n"+
+		t.Fatalf("перечень безопасных значений sslmode объявлен вне общего дома (%s или %s).\n"+
 			"Это правило БЕЗОПАСНОСТИ, а копия — второй его ИСТОЧНИК: сойтись копиям нечем, "+
 			"расходятся они молча, и «эту ось здесь забыли» становится неотличимо от «эту ось "+
 			"здесь решили не судить». Спрашивай предикат дома (`db.SSLModeSecure` / "+
 			"`db.SSLModeConfigurable`), тексты собирай из `db.SecureSSLModes()` / "+
-			"`db.ConfigurableSSLModes()`:%s", sslModeHomeDir, b.String())
+			"`db.ConfigurableSSLModes()`:%s", sslModeHomeDir, sslModeCorelibHomeDir, b.String())
 	}
 }

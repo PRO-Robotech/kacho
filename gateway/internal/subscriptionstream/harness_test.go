@@ -21,7 +21,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
-	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 	"github.com/PRO-Robotech/kacho/gateway/internal/subscriptionstream"
@@ -38,7 +38,7 @@ import (
 // граница её доверия — знанием, а не догадкой.
 //
 // Не доказывается здесь: устоявшаяся граница журнала и порядок выдачи (предмет
-// собственных интеграционных проб `pkg/subscription`, где журнал настоящий) и
+// собственных интеграционных проб `corelib/subscription`, где журнал настоящий) и
 // браузерная нога цепи (предмет сквозных проб `ui-future/e2e`).
 //
 // Владелец-стенд ЗАПИСЫВАЕТ полученный запрос и метаданные: именно по ним

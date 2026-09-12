@@ -34,13 +34,13 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/authz/catalogderive"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/operations/operationspb"
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
-	"github.com/PRO-Robotech/kacho/pkg/authz"
-	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktypebinding"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"

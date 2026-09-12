@@ -411,6 +411,21 @@ func f(fieldName string) error {
 	if i {
 		return iamerr.Wrapf(iamerr.ErrNotFound, "wrapf second argument text", id)
 	}
+	if j {
+		// ДЕВЯТАЯ ФОРМА: переменная-посредник, без обёртки и без формата —
+		// текст доезжает до gRPC-статуса ТЕМ ЖЕ значением, каким был присвоен.
+		msg := "var mediated status text"
+		return status.New(codes.PermissionDenied, msg).Err()
+	}
+	if k {
+		// ЗАКОННЫЙ БЛИЗНЕЦ: та же форма присваивания (переменная = литерал),
+		// но до gRPC-статуса она не доходит вовсе — обычное сообщение лога.
+		// Без корреляции с status.New/status.Error распознаватель добавил бы
+		// в корпус КАЖДОЕ присваивание строки в файле — здесь он обязан
+		// молчать, иначе лог засорит корпус производителей отказа.
+		logMsg := "log only, never reaches a status"
+		log.Println(logMsg)
+	}
 	return corevalidate.ResourceID("Image", "img", x)
 }
 `
@@ -433,6 +448,7 @@ func f(fieldName string) error {
 		"sprintf assembled text",          // fmt.Sprintf (#1748)
 		"errors new constant text",        // errors.New (#1748)
 		"wrapf second argument text",      // Wrapf, текст вторым аргументом (#1748)
+		"var mediated status text",        // переменная-посредник (девятая форма)
 	} {
 		if !got[want] {
 			t.Errorf("распознаватель производителей не прочитал форму %q — "+
@@ -446,6 +462,13 @@ func f(fieldName string) error {
 			t.Errorf("проза комментария принята за производителя (%q) — гейт краснел бы "+
 				"на собственном объяснении", bad)
 		}
+	}
+	// Законный близнец девятой формы: та же форма присваивания, но переменная
+	// не доехала до статуса — распознаватель обязан молчать, иначе корпус
+	// производителей засорился бы обычными строками лога.
+	if got["log only, never reaches a status"] {
+		t.Errorf("присваивание, не дошедшее до статуса, принято за производителя " +
+			"— распознаватель шумит на обычных переменных")
 	}
 	if len(got) == 0 {
 		t.Fatal("производителей ноль — распознаватель ослеп, и «расхождения нет» стало бы " +

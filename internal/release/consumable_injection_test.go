@@ -37,7 +37,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 // synthetic — описание синтетического репозитория. Поля меняются по ОДНОМУ:

@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
+	"github.com/PRO-Robotech/corelib/authz/proxytuple"
 )
 
 // Event types stored in compute_fga_register_outbox.event_type (matches the
@@ -112,7 +112,7 @@ func ProjectHierarchyTuple(kind, resourceID, projectID string) (Tuple, bool) {
 	}
 	return Tuple{
 		SubjectID: "project:" + projectID,
-		// Named from the receiving side's declaration (pkg/authz/proxytuple), which owns
+		// Named from the receiving side's declaration (corelib/authz/proxytuple), which owns
 		// the accepted set: a second spelling of somebody else's closed set drifts
 		// silently, and a relation the owner refuses wedges its queue partition.
 		Relation: string(proxytuple.RelationProject),

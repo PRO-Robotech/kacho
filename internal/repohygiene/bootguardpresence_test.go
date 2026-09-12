@@ -5,10 +5,9 @@ package repohygiene
 
 import (
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
-
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // postureReachRelaxations — ведомость, КОТОРАЯ ИСТЕКАЕТ САМА.
@@ -309,15 +308,13 @@ func TestServiceDeclaringPostureKnobsHasABootGuard(t *testing.T) {
 func TestCentralDescriptorCarriesARefusalWitness(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
-	dir := filepath.Join(root, "pkg", "servicecontract")
 
-	// Состав — из индекса git: обход диска подобрал бы игнорируемое и сделал бы
-	// вердикт свойством рабочего каталога, а не коммита.
-	paths, gerr := treecorpus.Glob(filepath.Join(dir, "*_test.go"))
-	if gerr != nil {
-		t.Fatalf("перечень проб %s: %v — предпосылка гейта исчезла, а не дерево "+
-			"стало чистым", dir, gerr)
-	}
+	// Предмет переехал в общий фундамент (github.com/PRO-Robotech/corelib):
+	// pkg/servicecontract больше не отслеживаемый путь ЭТОГО дерева, поэтому
+	// treecorpus.Glob по кэшу модулей неприменим — он читает состав git-индекса,
+	// которого у распакованного модуля нет. Пути резолвятся напрямую: кэш
+	// модулей — не рабочая копия, обход диска над ним не подбирает игнорируемое.
+	paths := corelibPackageTestFilePaths(t, root, "servicecontract")
 
 	w, err := scanContractRefusalWitness(paths)
 	if err != nil {
@@ -354,4 +351,33 @@ func TestCentralDescriptorCarriesARefusalWitness(t *testing.T) {
 			"локальная копия стража geo. Пока оси нет у свидетеля, снятие копии "+
 			"ничем не подпёрто.", strings.Join(missing, ", "))
 	}
+}
+
+// corelibPackageTestFilePaths — абсолютные пути *_test.go файлов ОДНОГО пакета
+// общего фундамента (`github.com/PRO-Robotech/corelib`) в кэше модулей.
+//
+// Отличие от corelibPackageGoFiles (`corelibsource_test.go`): там предмет —
+// НЕ-тестовое содержимое пакета (что пакет ПРЕДОСТАВЛЯЕТ); здесь предмет — сами
+// пробы (несут ли они свидетеля отказа). Кэш модулей — распакованный архив, а
+// не git-дерево, поэтому treecorpus.Glob здесь неприменим: он читает состав
+// git-индекса, которого у кэша модулей нет, а обычный filepath.Glob по
+// пристинному, версионированному кэшу не подбирает ничего игнорируемого.
+func corelibPackageTestFilePaths(t *testing.T, root, pkg string) []string {
+	t.Helper()
+	dir, version := corelibModuleDir(t, root)
+	pkgDir := filepath.Join(dir, filepath.FromSlash(pkg))
+	paths, err := filepath.Glob(filepath.Join(pkgDir, "*_test.go"))
+	if err != nil {
+		t.Fatalf("перечень проб %s общего фундамента (%s@%s): %v", pkg,
+			corelibModulePath, version, err)
+	}
+	if len(paths) == 0 {
+		t.Fatalf("в %s общего фундамента (%s@%s) не нашлось ни одной пробы "+
+			"(*_test.go) — модуль не извлечён в кэш модулей (`go mod download`), "+
+			"либо пакет переехал внутри модуля. Гейт беспредметен: отличить «кэш не "+
+			"наполнен» от «проб не стало» по пустому списку нельзя, поэтому он "+
+			"падает сам.", pkg, corelibModulePath, version)
+	}
+	sort.Strings(paths)
+	return paths
 }

@@ -34,8 +34,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/PRO-Robotech/corelib/gitenv"
 	"github.com/PRO-Robotech/kacho/internal/productnaming"
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -166,11 +166,26 @@ func zotAuth(tree map[string]any) map[string]any {
 // своему автору, а значение при этом лежит в ПУБЛИЧНОМ репозитории — то есть
 // «пароль» перестаёт быть словом, обозначающим защиту.
 //
-// ПОЧЕМУ ПРИЗНАК — ИМЕННО «ТЯНЕТ ИЗ РЕЕСТРА». Это единственное свойство,
-// которое отличает две посадки МАШИННО и приезжает из самого профиля: стенд,
-// чьи образы грузятся в узел, по построению одноразовый и локальный. Правило
-// самонастраивается — профиль, переведённый на публичные образы, приходит под
-// проверку без правки этого файла.
+// ПОЧЕМУ ПРИЗНАК — ИМЕННО «НИ ОДИН ОБРАЗ НЕ ГРУЗИТСЯ В УЗЕЛ». Отличает две
+// посадки МАШИННО и приезжает из самого профиля: стенд, чьи образы кладут в узел,
+// по построению одноразовый и локальный. Правило самонастраивается — профиль,
+// переведённый на публичные образы ЦЕЛИКОМ, приходит под проверку без правки
+// этого файла.
+//
+// ПРЕДПОСЫЛКА ПЕРЕПРОВЕРЕНА ПОСЛЕ ВЫНОСА СЛУЖБЫ ДОСТУПА, И ОНА НЕ ВЫДЕРЖАЛА В
+// ПРЕЖНЕЙ ФОРМЕ. Здесь стояло «тянет ХОТЬ ОДИН образ из реестра», и на популяции,
+// где стенды были либо целиком локальными, либо целиком реестровыми, это было
+// неотличимо от нынешней формы — то есть узкая популяция предпосылку не
+// подтверждала, а СКРЫВАЛА. Вынос службы завёл третий вид: стенд разработчика
+// кладёт в узел семь своих образов и ТЯНЕТ восьмой, опубликованный чужим
+// репозиторием. Прежний признак объявил бы такой стенд долгоживущим и общим и
+// потребовал бы от него секрета, созданного оператором, — на одноразовом kind
+// на ноутбуке, то есть сломал бы его подъём ради предмета, которого там нет.
+//
+// Что признак судит на самом деле: живёт ли стенд дольше своего автора. Ответ
+// даёт наличие ОБРАЗА, КОТОРЫЙ КЛАДУТ В УЗЕЛ, — такой образ существует только у
+// того, кто его собрал, и вместе с ним исчезает. Один пулленный образ этого не
+// меняет.
 func TestStandPullingFromARegistryTakesLayerStoreCredentialByReference(t *testing.T) {
 	stacks := deployStacks(t)
 
@@ -181,17 +196,20 @@ func TestStandPullingFromARegistryTakesLayerStoreCredentialByReference(t *testin
 	)
 	for _, name := range sortedStackNames(stacks) {
 		values := effectiveValues(t, stacks[name])
-		fromRegistry := false
+		anyLocal := false
+		anyRegistry := false
 		for _, ref := range productImageRefs(values) {
 			if _, _, ok := productImageRef(ref); !ok {
 				continue
 			}
 			refs++
 			if pulledFromARegistry(ref) {
-				fromRegistry = true
+				anyRegistry = true
+			} else {
+				anyLocal = true
 			}
 		}
-		if !fromRegistry {
+		if anyLocal || !anyRegistry {
 			local = append(local, name)
 			continue
 		}
@@ -364,9 +382,14 @@ func TestProductImagePinsAreDerivedFromTheRecordedCommit(t *testing.T) {
 
 		// Ссылки берутся из РАЗОБРАННОГО дерева, а не из текста. Первая редакция
 		// читала текст выражением и видела только плоскую форму (`image: <строка>`):
-		// четыре образа из семнадцати объявлены картой `{repository, tag}`, и правка
-		// их тега мимо записи осталась бы незамеченной — гейт, читающий одну из двух
-		// законных форм, молчит там, где выглядит работающим.
+		// картой `{repository, tag}` объявлены ЧЕТЫРЕ образа продукта из
+		// СЕМНАДЦАТИ, которые пинит дерево (kaname, kacho-nlb, kacho-registry,
+		// kacho-storage), и правка их тега мимо записи осталась бы незамеченной —
+		// гейт, читающий одну из двух законных форм, молчит там, где выглядит
+		// работающим. Единица знаменателя — РАЗЛИЧНЫЙ ОБРАЗ продукта сложенного
+		// дерева; её печатает перепись
+		// deploy/published_image_pin_is_reachable_test.go строкой «различных ссылок
+		// N у M компонентов», и брать её надо оттуда, а не отсюда.
 		pinned := map[string]bool{}
 		profilePins, derivedHere := 0, 0
 		for _, ref := range productImageRefs(readYAML(t, filepath.Join(umbrellaDir, name))) {
@@ -606,5 +629,186 @@ func TestProfileClaimingGenerationNamesAProducerThatExists(t *testing.T) {
 	if claims == 0 {
 		t.Fatal("ни один профиль не объявляет порождения — предикат разошёлся с деревом " +
 			"либо предмет исчез; в обоих случаях молчание неотличимо от чистоты")
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// D. Запись о выводе не вправе покрывать образ, чьих исходников в дереве НЕТ.
+//
+// ПРЕДМЕТ. Запись «порождено-от» выводит тег из коммита ЭТОГО дерева. Для части,
+// уехавшей в свой репозиторий, такой тег — не «устаревший», а НЕСУЩЕСТВУЮЩИЙ:
+// её образ собирает чужой конвейер, и в тег попадает коммит ЕЁ ствола. Пин при
+// этом выглядит выведенным, проверка вывода выше согласна с записью, и обнаружить
+// расхождение можно только в реестре либо на кластере.
+//
+// ЗАМЕР, ИЗ КОТОРОГО ВЫВЕДЕНО (2026-09-12). Служба доступа была запинена в пяти
+// местах, и в двух из них запись покрывала её тег: профиль управляемого кластера
+// выводил `main-7bb0a6e1`, профиль боевой площадки — `main-b622b388`. Оба тега
+// названы коммитами ЭТОГО дерева и оба существуют как коммиты; манифеста нет ни у
+// одного. Прочие ШЕСТНАДЦАТЬ пинов профиля управляемого кластера, выведенные из
+// той же записи, тянулись — поэтому по ним расхождение не видно ничем.
+//
+// ЕДИНИЦА СЧЁТА — ПИН ПРОФИЛЯ (объявление образа в одном файле значений), и она
+// названа потому, что здесь легко сосчитать не то: у сложенного стенда пинов
+// больше, чем у профиля, а у репозиториев своя единица. Предикат — одна команда,
+// читающая объявление:
+//
+//	git show fb562c4d20:deploy/helm/umbrella/values.a8f60d.yaml \
+//	  | grep -cE '^\s*(image:\s*docker\.io|repository:\s*docker\.io)'   # 17
+//
+// Прежняя редакция называла здесь «девятнадцать», а шапка соседней проверки —
+// «двадцать пинов»: ни одно из двух не измерялось, и сходились они только друг с
+// другом.
+//
+// ПОЧЕМУ ЭТО ОТДЕЛЬНАЯ ПРОВЕРКА, А НЕ ДОВЕСОК К ПРЕДЫДУЩЕЙ. Та спрашивает «равен
+// ли тег выводу», и на этом дефекте отвечает «равен» — правильно отвечает.
+// Здесь вопрос другой: ВПРАВЕ ЛИ запись покрывать этот образ вообще. Досягаемость
+// того же пина держит deploy/published_image_pin_is_reachable_test.go, но она
+// СЕТЕВАЯ; эта проверка читает только объявления и работает без сети.
+//
+// СТОРОНА СПРАШИВАЕТСЯ У ЕДИНСТВЕННОГО ВЛАДЕЛЬЦА ИМЁН
+// (`productnaming.SourcesInThisTree`), а не выводится приставкой и не выписывается
+// здесь вторым перечнем: второе место об одном предмете разошлось бы молча.
+// Ведомость сторон самоистекает в обе стороны — это держит её собственный гейт.
+
+// pinsCoveredByADerivationTheyCannotHave — РЕШЕНИЕ, чистой функцией.
+//
+// `images` — образы профиля, тянущиеся из реестра (имя → тег); `hasRecord` —
+// несёт ли профиль запись «порождено-от»; `exempt` — образы, объявленные
+// невыводимыми.
+func pinsCoveredByADerivationTheyCannotHave(
+	profile string, images map[string]string, hasRecord bool, exempt map[string]string,
+) []string {
+	if !hasRecord {
+		return nil // покрывать нечем: пин без записи ловит проверка выше
+	}
+	names := make([]string, 0, len(images))
+	for img := range images {
+		names = append(names, img)
+	}
+	sort.Strings(names)
+
+	var out []string
+	for _, img := range names {
+		if _, ok := exempt[img]; ok {
+			continue
+		}
+		dir, known := productnaming.ServiceDir(img)
+		if !known || productnaming.SourcesInThisTree(dir) {
+			continue
+		}
+		out = append(out, profile+": образ "+img+" запинен тегом "+images[img]+
+			", и этот тег ПОКРЫТ записью «порождено-от» — то есть объявлен выведенным из коммита "+
+			"ЭТОГО дерева. Исходники части "+dir+" в дереве не лежат: её образ собирает конвейер "+
+			"её репозитория, и в тег попадает коммит ЕЁ ствола. Вывод здесь невозможен не «пока», "+
+			"а by construction, и выведенный тег указывает на образ, которого никто не публиковал: "+
+			"под уйдёт в ImagePullBackOff уже ПОСЛЕ успешного «helm upgrade».\n    Исход один: "+
+			"`# без-вывода: "+img+" — <причина>` и досягаемый тег, названный рукой")
+	}
+	return out
+}
+
+// TestDerivationRecordDoesNotCoverAForeignlySourcedImage — сам гейт.
+func TestDerivationRecordDoesNotCoverAForeignlySourcedImage(t *testing.T) {
+	profiles := trackedUmbrellaProfiles(t)
+
+	withRecord, pins, foreign := 0, 0, 0
+	for _, name := range profiles {
+		raw, err := os.ReadFile(filepath.Join(umbrellaDir, name))
+		if err != nil {
+			t.Fatalf("профиль %s не читается (%v) — предпосылка проверки исчезла", name, err)
+		}
+		hasRecord := derivedFromRe.FindStringSubmatch(string(raw)) != nil
+		if hasRecord {
+			withRecord++
+		}
+		exempt := notDerivedExemptions(string(raw))
+
+		images := map[string]string{}
+		for _, ref := range productImageRefs(readYAML(t, filepath.Join(umbrellaDir, name))) {
+			repo, tag, ok := productImageRef(ref)
+			if !ok || !pulledFromARegistry(ref) {
+				continue
+			}
+			pins++
+			img := repo[strings.LastIndex(repo, "/")+1:]
+			images[img] = tag
+			if dir, known := productnaming.ServiceDir(img); known && !productnaming.SourcesInThisTree(dir) {
+				foreign++
+			}
+		}
+		for _, f := range pinsCoveredByADerivationTheyCannotHave(name, images, hasRecord, exempt) {
+			t.Error(f)
+		}
+	}
+
+	// Проверка СВОЕЙ предпосылки. Ослепнуть проверка может двумя способами:
+	// перестать видеть записи о выводе и перестать видеть образы со стороной вне
+	// дерева. Во втором случае молчание означает «предмета нет», и это надо
+	// СКАЗАТЬ, а не выдать за «всё в порядке».
+	if len(profiles) == 0 || pins == 0 {
+		t.Fatalf("обход ничего не прочитал: профилей=%d, пинов=%d — предикат перестал узнавать "+
+			"дерево", len(profiles), pins)
+	}
+	if withRecord == 0 {
+		t.Fatalf("ни один профиль не несёт записи «порождено-от» — покрывать нечем, и «запись " +
+			"не покрывает чужого» означало бы «записей нет»")
+	}
+	t.Logf("осмотрено: профилей %d, из них с записью о выводе %d; пинов из реестра %d, из них "+
+		"образов со стороной ВНЕ дерева %d (ведомость сторон — internal/productnaming)",
+		len(profiles), withRecord, pins, foreign)
+	if foreign == 0 {
+		t.Log("образов со стороной вне дерева не найдено — предмета у этой проверки сегодня нет, " +
+			"и её молчание означает именно это, а не покрытие")
+	}
+}
+
+// TestPinsCoveredByADerivationTheyCannotHave_SelfTest — способность решения
+// упасть и смолчать, на входе той же формы.
+func TestPinsCoveredByADerivationTheyCannotHave_SelfTest(t *testing.T) {
+	const foreignImage = "kaname" // сторона объявлена в internal/productnaming
+	ours := map[string]string{"kacho-vpc": "main-1", "kacho-ui-future-host": "main-1"}
+
+	// Предпосылка самого доказательства: ведомость сторон всё ещё называет эту
+	// часть внешней. Перестанет — синтетика ниже станет вакуумной, и об этом
+	// надо узнать здесь, а не из зелёного гейта.
+	dir, known := productnaming.ServiceDir(foreignImage)
+	if !known || productnaming.SourcesInThisTree(dir) {
+		t.Fatalf("образ %q больше не считается внешним (каталог %q, известен=%t) — ведомость "+
+			"сторон изменилась, и это доказательство проверяет то, чего нет", foreignImage, dir, known)
+	}
+
+	// (а) ВНЕСЁННЫЙ ДЕФЕКТ — чужой образ покрыт записью.
+	with := map[string]string{foreignImage: "main-1"}
+	for k, v := range ours {
+		with[k] = v
+	}
+	got := pinsCoveredByADerivationTheyCannotHave("values.x.yaml", with, true, nil)
+	if len(got) != 1 || !strings.Contains(got[0], foreignImage) {
+		t.Fatalf("покрытие чужого образа не опознано: %v", got)
+	}
+	for _, ours := range []string{"kacho-vpc", "kacho-ui-future-host"} {
+		if strings.Contains(got[0], ours) {
+			t.Errorf("обвинение шире предмета — назван наш образ %s: %s", ours, got[0])
+		}
+	}
+
+	// (б) ЗАКОННЫЙ БЛИЗНЕЦ, отличается ОДНИМ фактом — образ объявлен невыводимым.
+	if got := pinsCoveredByADerivationTheyCannotHave("values.x.yaml", with, true,
+		map[string]string{foreignImage: "чужой конвейер"}); len(got) != 0 {
+		t.Errorf("объявленный невыводимым засчитан покрытым: %v", got)
+	}
+
+	// (в) ВТОРОЙ ЗАКОННЫЙ БЛИЗНЕЦ — записи о выводе нет вовсе. Не наш предмет:
+	//     пин без записи ловит проверка выше, и дублировать её обвинение значило
+	//     бы покрасить один дефект дважды.
+	if got := pinsCoveredByADerivationTheyCannotHave("values.x.yaml", with, false, nil); len(got) != 0 {
+		t.Errorf("профиль без записи о выводе покрашен: %v", got)
+	}
+
+	// (г) ТРЕТИЙ ЗАКОННЫЙ БЛИЗНЕЦ — покрыты только НАШИ образы, включая консоль
+	//     (её собирает не рецепт стенда, но исходники в дереве лежат). Молчит.
+	if got := pinsCoveredByADerivationTheyCannotHave("values.x.yaml", ours, true, nil); len(got) != 0 {
+		t.Errorf("наши образы засчитаны чужими: %v", got)
 	}
 }

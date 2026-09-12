@@ -134,7 +134,7 @@ func writeFloorOrderTree(t *testing.T, tree floorOrderTree) string {
 	// ── Потребитель ИЗ ДРУГОГО пакета: импорт делает его файлом подписки ────
 	write("services/iam/internal/repo/pg/journal.go", ""+
 		"package pg\n\n"+
-		"import \"github.com/PRO-Robotech/kacho/pkg/subscription\"\n\n"+
+		"import \"github.com/PRO-Robotech/corelib/subscription\"\n\n"+
 		"var _ = subscription.RetainsFromEarliestRow\n")
 
 	return root

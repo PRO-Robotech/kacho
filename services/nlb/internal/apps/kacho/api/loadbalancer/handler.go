@@ -20,11 +20,11 @@ import (
 	"context"
 	"log/slog"
 
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	"github.com/PRO-Robotech/corelib/operations"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
+	"github.com/PRO-Robotech/corelib/listnarrow"
 )
 
 // Handler реализует lbv1.NetworkLoadBalancerServiceServer.

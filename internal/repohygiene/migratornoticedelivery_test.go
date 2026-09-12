@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // TestMigrationNoticesReachTheOperator — уведомления сервера доезжают до того,
@@ -21,7 +21,7 @@ func TestMigrationNoticesReachTheOperator(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 
-	census, findings, err := auditMigratorNotice(root)
+	census, findings, err := auditMigratorNotice(t, root)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -74,7 +74,7 @@ func TestMigrationNoticesReachTheOperator(t *testing.T) {
 
 // auditMigratorNotice читает корпус и возвращает перепись с находками.
 // Вынесен из пробы, чтобы инъекция звала ТО ЖЕ, что и гейт.
-func auditMigratorNotice(root string) (migratorNoticeCensus, []migratorTractFinding, error) {
+func auditMigratorNotice(t *testing.T, root string) (migratorNoticeCensus, []migratorTractFinding, error) {
 	var (
 		census   migratorNoticeCensus
 		findings []migratorTractFinding
@@ -90,6 +90,25 @@ func auditMigratorNotice(root string) (migratorNoticeCensus, []migratorTractFind
 	}
 	var files []read
 	wired := map[string]bool{}
+
+	// Общий тракт переехал из pkg/migratorcli и pkg/migratorrun в пакеты
+	// migratorcli и migratorrun общего фундамента (github.com/PRO-Robotech/corelib):
+	// дерево больше не несёт их файлов, поэтому HomeFiles с диска всегда 0 —
+	// читаем ТУДА, куда они переехали (см. corelibsource_test.go).
+	for _, pkg := range []string{"migratorcli", "migratorrun"} {
+		for rel, body := range corelibPackageGoFiles(t, root, pkg) {
+			facts, ferr := readMigratorNoticeSource(rel, string(body))
+			if ferr != nil {
+				return census, nil, ferr
+			}
+			census.FilesRead++
+			census.HomeFiles++
+			if facts.SetsHandler {
+				wired[filepath.ToSlash(filepath.Dir(rel))] = true
+			}
+			files = append(files, read{rel: rel, home: true, src: facts})
+		}
+	}
 
 	for _, dir := range []string{"pkg", "services"} {
 		paths, err := treecorpus.UnderWithSuffix(filepath.Join(root, dir), ".go")

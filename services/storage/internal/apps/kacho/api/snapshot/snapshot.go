@@ -20,11 +20,11 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/PRO-Robotech/corelib/filter"
+	"github.com/PRO-Robotech/corelib/ids"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/validate"
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
-	"github.com/PRO-Robotech/kacho/pkg/filter"
-	"github.com/PRO-Robotech/kacho/pkg/ids"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/quota"
@@ -35,7 +35,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/protoconv"
 
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
+	"github.com/PRO-Robotech/corelib/listnarrow"
 )
 
 // Pagination — вход для List: cursor-пагинация + project-scope + filter=name
@@ -313,7 +313,7 @@ func (u *UseCase) Create(ctx context.Context, s *domain.Snapshot) (*operations.O
 	// generic text. For the caller that is the difference between "your description
 	// is too long" and "the operation failed for some reason".
 	//
-	// The error goes to the mapper AS IS. pkg/validate already answers in the
+	// The error goes to the mapper AS IS. corelib/validate already answers in the
 	// contract's own shape — INVALID_ARGUMENT, generic "invalid argument" message,
 	// offending field in the google.rpc.BadRequest detail — and rebuilding it from
 	// err.Error() took the text and dropped the detail, so the caller learned the
@@ -489,7 +489,7 @@ func (u *UseCase) ListOperations(ctx context.Context, snapshotID string, p Pagin
 // бы прогоняли имя): переразмерное описание, переполненные метки и незаконное имя
 // доезжали до UPDATE, ловились snapshots_description_check / snapshots_labels_valid /
 // snapshots_name_check и возвращались АСИНХРОННО в ошибке операции обобщённым
-// «Illegal argument» — поздно и без имени поля. Ошибка pkg/validate уходит наверх
+// «Illegal argument» — поздно и без имени поля. Ошибка corelib/validate уходит наверх
 // КАК ЕСТЬ: имя поля она кладёт в google.rpc.BadRequest-детали, а пересборка через
 // err.Error() их теряет. Имя — исключение: его контрактный текст сам называет поле
 // («Illegal argument name»), поэтому оно идёт привычной sentinel-обёрткой.

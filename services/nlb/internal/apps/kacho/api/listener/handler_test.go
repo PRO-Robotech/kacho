@@ -14,13 +14,13 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
+	"github.com/PRO-Robotech/corelib/ids"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
-	"github.com/PRO-Robotech/kacho/pkg/ids"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
+	"github.com/PRO-Robotech/corelib/listnarrow/narrowtest"
 )
 
 // TestHandler_RoutesEachRPC — smoke-tests that Handler thin-transport correctly

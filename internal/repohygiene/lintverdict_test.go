@@ -63,7 +63,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 const lintInvocation = "golangci-lint run"

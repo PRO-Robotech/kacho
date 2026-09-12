@@ -7,7 +7,7 @@
 // The catalog is emitted by `protoc-gen-kacho-permissions` and embedded into
 // the api-gateway binary via `//go:embed` from a sibling-replicated copy in
 // `internal/middleware/embed/permission_catalog.json` (kept in sync with
-// kacho-proto via the `make sync-permission-catalog` Makefile target).
+// kacho-proto via the `make -C gateway permission-catalog-apply` Makefile target).
 //
 // Loaded shape:
 //
@@ -121,7 +121,7 @@ type CatalogEntry struct {
 	//
 	// What holds this axis, since 2026-08-09: nothing compares two declarations,
 	// because there is only one. The owning service's per-RPC map is DERIVED from
-	// these same annotations (`pkg/authz/catalogderive`), so "the service narrows
+	// these same annotations (`corelib/authz/catalogderive`), so "the service narrows
 	// something else" is no longer expressible — the lane it enforces is this row.
 	//
 	// What can still go wrong, and what watches it:

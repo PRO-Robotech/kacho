@@ -10,16 +10,16 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-	"github.com/PRO-Robotech/kacho/pkg/nameformdb"
-	"github.com/PRO-Robotech/kacho/pkg/pgtest"
+	coredb "github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/nameformdb"
+	"github.com/PRO-Robotech/corelib/pgtest"
 )
 
 // TestIntegration_NLB_NameFormConstraintIsEnforced — задача #721.
 //
 // Миграция 715001 ставит форму имени трём таблицам nlb; доказательство того, что
 // форма ДЕЙСТВУЕТ, было только у vpc. Разбор класса, перечень утверждений и
-// почему положительный контроль обязателен — `pkg/nameformdb`.
+// почему положительный контроль обязателен — `corelib/nameformdb`.
 func TestIntegration_NLB_NameFormConstraintIsEnforced(t *testing.T) {
 	ctx := context.Background()
 	dsn := setupTestDB(t) // сам пропускается под -short

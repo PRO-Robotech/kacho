@@ -360,10 +360,39 @@ func (r FoundationRoster) VerifyProviderClaims(providerScans map[string]*Foundat
 // вокруг пустоты изъятия, выглядящие как учтённый долг. Без второй возможность
 // была бы не усыновлена никем и никогда — не потому, что её не провязали, а
 // потому что провязку нечем увидеть.
+// FoundationPkgDir — каталог пакета фундамента (`pkg/<имя>`) для чтения: ЭТОГО
+// дерева, если он там ещё живёт, либо, если предмет переехал ЦЕЛИКОМ, того же
+// пакета в общем фундаменте (github.com/PRO-Robotech/corelib). Второй ответ
+// сегодня частый: бо́льшая часть pkg/ уехала в модуль, оставив местными лишь
+// api, authz, listnarrow, ownerregister, quota, subjectchange.
+//
+// Отсутствие в ОБОИХ домах — не ошибка функции: она честно отдаёт локальный
+// путь, и вызывающий (тот же VerifyCapabilities) находит отсутствие сам —
+// разными путями означало бы судить дважды.
+func FoundationPkgDir(root, pkgRel string) string {
+	local := filepath.Join(root, filepath.FromSlash(pkgRel))
+	if fi, err := os.Stat(local); err == nil && fi.IsDir() {
+		return local
+	}
+	name, ok := strings.CutPrefix(filepath.ToSlash(pkgRel), "pkg/")
+	if !ok {
+		return local
+	}
+	moduleDir, err := corelibModuleRootDir(root)
+	if err != nil {
+		return local
+	}
+	corelibPath := filepath.Join(moduleDir, filepath.FromSlash(name))
+	if fi, err := os.Stat(corelibPath); err == nil && fi.IsDir() {
+		return corelibPath
+	}
+	return local
+}
+
 func (r FoundationRoster) VerifyCapabilities(root string) []string {
 	var bad []string
 	for _, c := range r.Capabilities {
-		if fi, err := os.Stat(filepath.Join(root, filepath.FromSlash(c.Pkg))); err != nil || !fi.IsDir() {
+		if fi, err := os.Stat(FoundationPkgDir(root, c.Pkg)); err != nil || !fi.IsDir() {
 			bad = append(bad, fmt.Sprintf("возможность %q объявлена обязательной, а её каталога %s "+
 				"в фундаменте нет: набор требует усыновить то, чего не существует", c.Name, c.Pkg))
 		}

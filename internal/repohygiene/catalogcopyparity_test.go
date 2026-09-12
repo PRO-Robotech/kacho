@@ -66,25 +66,12 @@
 package repohygiene
 
 import (
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
-
-// catalogParityTarget — цель, исполняющая сверку двух копий каталога прав.
-const catalogParityTarget = "permission-catalog-copies-in-sync"
-
-// catalogCheckTarget — цель, зовущая сверку своей зависимостью; её же зовёт
-// конвейер.
-//
-// Координата вызывающего здесь намеренно НЕ выписана: имя файла и заголовок шага
-// стареют молча, а утверждение «её зовёт конвейер» держит проба
-// TestCatalogCopyParityTargetIsCalledByThePipeline, которая выводит перечень
-// процессов из дерева.
-const catalogCheckTarget = "permission-catalog-check"
 
 // makefilesOfTree — отслеживаемые Makefile и *.mk дерева.
 //
@@ -283,100 +270,22 @@ func TestNoRecipeOrScriptRunsAComparisonOnlyIfAFileExists(t *testing.T) {
 	}
 }
 
-// runCatalogParity — запуск цели сверки с переопределением операндов.
+// ЗДЕСЬ СТОЯЛИ ТРИ УТВЕРЖДЕНИЯ О ЦЕЛИ `permission-catalog-copies-in-sync` —
+// СНЯТЫ ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ.
 //
-// Переопределение идёт АРГУМЕНТОМ make, а не переменной окружения: аргумент
-// перебивает присваивание в Makefile, окружение — нет, и молчаливое
-// переопределение из окружения дало бы пробе судить не то, что судит конвейер.
-func runCatalogParity(t *testing.T, root string, overrides ...string) (string, int) {
-	t.Helper()
-	args := append([]string{"-C", filepath.Join(root, "gateway"), "--no-print-directory", catalogParityTarget}, overrides...)
-	cmd := exec.Command("make", args...) //nolint:gosec // аргументы — литералы пробы и пути из t.TempDir()
-	out, err := cmd.CombinedOutput()
-	code := 0
-	// asExitError (prverdictwait_test.go) отделяет «команда отработала и вернула
-	// ненулевой код» от «команду не удалось запустить». Первое — вердикт, второе
-	// — «не выполнилось», и смешивать их нельзя: непойманное «не выполнилось»
-	// зачлось бы за находку.
-	var ee *exec.ExitError
-	if err != nil {
-		if !asExitError(err, &ee) {
-			t.Fatalf("make не запустился: %v — исход не наблюдался, вердикт беспредметен\n%s", err, out)
-		}
-		code = ee.ExitCode()
-	}
-	return string(out), code
-}
-
-// TestCatalogCopyParityPassesOnTheWholeTree — ПОВЕДЕНИЕ: на целом дереве сверка
-// копий проходит, и она действительно что-то сверила.
+// Цель сверяла ДВЕ вшитые копии каталога прав: у края и у службы доступа. Служба
+// вынесена отдельным продуктом, её копия уехала вместе с каталогом, второго
+// операнда в дереве нет, и цель снята (разбор — в шапке `gateway/Makefile`).
+// Утверждения о ней сняты тем же изменением, а не оставлены звать несуществующую
+// цель: `make` на неизвестной цели выходит кодом 2, и проба, читающая только
+// «ненулевой», объявила бы находкой отсутствие предмета.
 //
-// Это положительный контроль ко всем отрицаниям инъекции: без него «отсутствие
-// копии даёт отказ» было бы верно и у цели, которая отказывает всегда.
-func TestCatalogCopyParityPassesOnTheWholeTree(t *testing.T) {
-	t.Parallel()
-	root := repoRoot(t)
-	out, code := runCatalogParity(t, root)
-	if code != 0 {
-		t.Fatalf("цель %s на целом дереве не прошла (код %d) — копии каталога прав "+
-			"разошлись либо цель сломана:\n%s", catalogParityTarget, code, out)
-	}
-	// Цель обязана отчитаться ОБЪЁМОМ: молчаливый успех неотличим от успеха,
-	// при котором сверять было нечего.
-	if !strings.Contains(out, "перепись") {
-		t.Fatalf("цель %s прошла молча — в выводе нет переписи осмотренного, "+
-			"поэтому «копии равны» неотличимо от «сверять было нечего»:\n%s",
-			catalogParityTarget, out)
-	}
-	t.Logf("вывод цели: %s", strings.TrimSpace(out))
-}
-
-// TestCatalogCheckInvokesTheCopyParityTarget — СВЯЗЬ ВНУТРИ Makefile: цель,
-// которую зовёт конвейер, обязана звать сверку копий.
+// Снято здесь ТРИ: поведение цели на целом дереве, её вызов зависимостью из
+// `permission-catalog-check` и (в catalogcheckwiring_test.go) её вызов
+// конвейером.
 //
-// Без этого утверждения сверка остаётся исполнимой и неисполняемой: конвейер
-// зовёт `permission-catalog-check`, и если сверка выпала из его зависимостей,
-// расхождение копий снова не ловится ничем — только теперь тихо и без обёртки.
-//
-// Связь засчитывается в ДВУХ формах, и обе исполняемы: зависимость в заголовке
-// правила и вызов `$(MAKE) <цель>` в рецепте. Имя цели, стоящее в комментарии,
-// связью не является. Распознаватель — общий (makefileTargetsReaching,
-// gatetargetwiring.go): им же гейт провязки с конвейером выводит множество
-// целей, вызов которых исполняет сверку. Две копии этого предиката разошлись бы
-// молча — и разошлись бы там, где обе зелены.
-func TestCatalogCheckInvokesTheCopyParityTarget(t *testing.T) {
-	t.Parallel()
-	root := repoRoot(t)
-	reach, err := makefileTargetsReaching(
-		filepath.Join(root, catalogMakefileDir, "Makefile"), catalogParityTarget)
-	if err != nil {
-		t.Fatalf("достижимость не прочитана: %v — вердикт беспредметен", err)
-	}
-	if reach.RecipeLines == 0 {
-		t.Fatalf("в %s/Makefile не прочитано ни одной строки рецепта — разбор сломан", catalogMakefileDir)
-	}
-
-	// Положительный контроль: сама сверяющая цель обязана быть НАЙДЕНА
-	// объявленной. Ноль объявлений означает, что цель сняли либо разбор сломан,
-	// и тогда «связь в порядке» ничего не значит.
-	if !reach.Declared {
-		t.Fatalf("цель %s не объявлена в %s/Makefile (прочитано %d строк рецепта) — "+
-			"сверять копии некому", catalogParityTarget, catalogMakefileDir, reach.RecipeLines)
-	}
-
-	wired := false
-	for _, entry := range reach.Reaching {
-		if entry == catalogCheckTarget {
-			wired = true
-		}
-	}
-	if !wired {
-		t.Fatalf("цель %s объявлена, но %s её не зовёт — ни зависимостью, ни вызовом. "+
-			"Конвейер зовёт %s, значит сверка копий исполнима и не исполняется. "+
-			"Достигают сверку сейчас: %s",
-			catalogParityTarget, catalogCheckTarget, catalogCheckTarget,
-			strings.Join(reach.Reaching, ", "))
-	}
-	t.Logf("перепись: строк рецепта прочитано %d · целей, достигающих %s, %d (%s)",
-		reach.RecipeLines, catalogParityTarget, len(reach.Reaching), strings.Join(reach.Reaching, ", "))
-}
+// КЛАСС, ради которого файл заведён, ОСТАЁТСЯ и держится выше:
+// TestNoRecipeOrScriptRunsAComparisonOnlyIfAFileExists читает ДЕРЕВО — всякий
+// Makefile и всякий скрипт — и требует, чтобы ни одна сверка не исполнялась
+// условно по наличию файла. Он не знал этой цели по имени и от её снятия не
+// ослеп.

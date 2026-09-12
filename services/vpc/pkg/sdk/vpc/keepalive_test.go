@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcclient"
 )
 
 // TestSDKDialOpts_NoOpts_DefaultsKeepalive — NewClient(addr) без явных opts →

@@ -137,7 +137,7 @@ data:
       # нет, и viper выбрасывал их молча — оператор задавал значение, процесс
       # его не применял. Не возвращать без поля-читателя: гейт
       # TestEveryRenderedConfigKeyHasAFieldThatReadsIt покраснеет.
-      # require-iam — fail-closed загрузочный гейт (pkg/outbox/bootgate):
+      # require-iam — fail-closed загрузочный гейт (corelib/outbox/bootgate):
       # мутирующий Create отвергается, а под остаётся NotReady, пока
       # register-drainer не подключён к kaname. Ресурс не создаётся, пока его
       # намерение о владении некуда доставить, — иначе созданный в этом окне

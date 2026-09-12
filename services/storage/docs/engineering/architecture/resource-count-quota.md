@@ -180,7 +180,7 @@ grep -rn 'INSERT INTO \(volumes\|snapshots\|images\)' \
   (`storage.v1.QuotaService.List`, `viewer` на проекте запроса). Отвечает ПОЛНЫМ
   набором видов домена, никогда пустым массивом: пустой массив читался бы как
   «предела нет», а предел есть. Тело чтения общее на всех владельцев
-  (`pkg/quota/quotaread`).
+  (`corelib/quota/quotaread`).
 
 ## Что этой работой НЕ сделано
 

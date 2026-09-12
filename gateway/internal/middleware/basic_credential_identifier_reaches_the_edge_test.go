@@ -36,9 +36,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PRO-Robotech/corelib/credsecret"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
-	"github.com/PRO-Robotech/kacho/pkg/credsecret"
 )
 
 func TestBCL1450_TheCredentialIdentifierReachesTheRevocationReader(t *testing.T) {

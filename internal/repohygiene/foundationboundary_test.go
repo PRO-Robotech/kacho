@@ -7,13 +7,14 @@ import (
 	"go/build"
 	"go/parser"
 	"go/token"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // foundationboundary_test.go — гейты над ДЕРЕВОМ по трём осям границы
@@ -31,10 +32,16 @@ import (
 // сверх того, учитывает ограничения сборки — то есть отвечает тем же составом
 // файлов, что и `go list`.
 
-const (
-	kachoModule  = "github.com/PRO-Robotech/kacho"
-	kanameModule = "github.com/PRO-Robotech/kaname"
-)
+// Здесь стояла и константа модуля службы доступа. Она снята вместе со своим
+// предметом: служба вынесена отдельным репозиторием, её пакетов в дереве нет, и
+// импортов её модуля не осталось ни одного (предикат:
+// `git grep -c '"github.com/PRO-Robotech/kaname' -- '*.go'` → пусто).
+//
+// Константа, называющая модуль, которого дерево не объявляет, — находка сама по
+// себе: гейт `TestModulePathConstantDoesNotOutliveItsModule` судит именно это, и
+// он прав. Вернётся зависимость от опубликованной службы — вернётся и константа,
+// но уже с живым предметом.
+const kachoModule = "github.com/PRO-Robotech/kacho"
 
 // packageImports — импорты одного каталога, разделённые на прод и пробы.
 //
@@ -163,11 +170,10 @@ func importsByFile(t *testing.T, dir string, names []string) map[string]int {
 // treePathOfImport переводит путь импорта в путь от корня дерева. Второе
 // значение — false для всего, что лежит вне обоих модулей продукта.
 func treePathOfImport(imp string) (string, bool) {
+	// Двух ветвей модуля службы доступа здесь больше нет: они переводили путь
+	// импорта в каталог `services/iam`, которого в дереве не существует, — то
+	// есть были недостижимы и при этом объявляли живую координату.
 	switch {
-	case imp == kanameModule:
-		return "services/iam", true
-	case strings.HasPrefix(imp, kanameModule+"/"):
-		return "services/iam/" + strings.TrimPrefix(imp, kanameModule+"/"), true
 	case imp == kachoModule:
 		return "", false
 	case strings.HasPrefix(imp, kachoModule+"/"):
@@ -196,6 +202,20 @@ func TestEveryFoundationCatalogDeclaresItsClass(t *testing.T) {
 		parts := strings.Split(filepath.ToSlash(rel), "/")
 		if len(parts) > 1 {
 			seen[parts[0]] = struct{}{}
+		}
+	}
+	// Второй дом: бо́льшая часть каталогов `pkg/*` переехала ЦЕЛИКОМ в модуль
+	// общего фундамента (github.com/PRO-Robotech/corelib) — предмет записи
+	// живёт ТАМ, а не в этом дереве, и это законно: карта объявляет класс, а
+	// не место хранения (§«Ключ — имя каталога, а не путь»). Отсутствие в
+	// ОБОИХ домах остаётся находкой; отсутствие только в этом — нет.
+	if moduleDir, merr := corelibModuleRootDir(root); merr == nil {
+		if entries, rerr := os.ReadDir(moduleDir); rerr == nil {
+			for _, e := range entries {
+				if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+					seen[e.Name()] = struct{}{}
+				}
+			}
 		}
 	}
 	inTree := make([]string, 0, len(seen))
@@ -393,6 +413,25 @@ func TestEveryDeclaredPathPrefixHasASubjectInTheTree(t *testing.T) {
 		slash := filepath.ToSlash(rel)
 		for _, prefix := range declared {
 			if slash == prefix || strings.HasPrefix(slash, prefix+"/") {
+				pathsUnder[prefix]++
+			}
+		}
+	}
+	// Второй дом: приставка `pkg/<хвост>` переехала ЦЕЛИКОМ в модуль общего
+	// фундамента (github.com/PRO-Robotech/corelib) — предмет живёт под тем же
+	// хвостом, но без `pkg/`. Отсутствие в ОБОИХ домах остаётся находкой;
+	// отсутствие только в этом дереве — нет, запись описывает переехавшее, а
+	// не несуществующее.
+	if moduleDir, merr := corelibModuleRootDir(root); merr == nil {
+		for _, prefix := range declared {
+			if pathsUnder[prefix] > 0 {
+				continue
+			}
+			tail, ok := strings.CutPrefix(prefix, "pkg/")
+			if !ok {
+				continue
+			}
+			if _, serr := os.Stat(filepath.Join(moduleDir, filepath.FromSlash(tail))); serr == nil {
 				pathsUnder[prefix]++
 			}
 		}

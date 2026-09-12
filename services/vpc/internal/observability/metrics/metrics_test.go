@@ -10,8 +10,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	opmetrics "github.com/PRO-Robotech/kacho/pkg/operations"
-	outboxmetrics "github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
+	opmetrics "github.com/PRO-Robotech/corelib/operations"
+	outboxmetrics "github.com/PRO-Robotech/corelib/outbox/metrics"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/observability/metrics"
 )

@@ -7,7 +7,7 @@
 //
 // Порт (`pkg/authz.CheckClient`) принадлежит фундаменту, а контракт
 // `InternalIAMService` — службе доступа. Пока адаптер лежал в носителе
-// (`pkg/servicehost`), фундамент импортировал контракт службы: после разъезда на
+// (`corelib/servicehost`), фундамент импортировал контракт службы: после разъезда на
 // три модуля `corelib` потребовал бы `kaname`, который уже требует `corelib`, —
 // цикл, который Go не собирает (приёмка K3-1 §7.2, задача #2131).
 //
@@ -23,9 +23,9 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/PRO-Robotech/corelib/auth"
+	"github.com/PRO-Robotech/corelib/authz"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/auth"
-	"github.com/PRO-Robotech/kacho/pkg/authz"
 )
 
 // NewCheckClient оборачивает соединение с владельцем модели в порт проверки.

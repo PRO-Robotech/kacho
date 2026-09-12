@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // readinesscarrier.go — обход дерева для гейта единственного носителя
@@ -23,7 +23,7 @@ import (
 
 // healthCarrierPkg — объявленный носитель разведённых живости и готовности.
 // Его шапка называет себя ЕДИНСТВЕННЫМ в дереве; гейт держит это утверждение.
-const healthCarrierPkg = "github.com/PRO-Robotech/kacho/pkg/observability/health"
+const healthCarrierPkg = "github.com/PRO-Robotech/corelib/observability/health"
 
 // readyHandlerSel / liveHandlerSel — как носитель отдаёт обработчики. Разъедутся
 // с кодом — перепись найдёт ноль построенных носителем, и гейт скажет об этом

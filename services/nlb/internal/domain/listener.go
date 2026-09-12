@@ -4,7 +4,7 @@
 package domain
 
 import (
-	"github.com/PRO-Robotech/kacho/pkg/option"
+	"github.com/PRO-Robotech/corelib/option"
 	"go.uber.org/multierr"
 )
 

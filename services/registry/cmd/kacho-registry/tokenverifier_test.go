@@ -25,7 +25,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcclient"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/config"
 	"github.com/stretchr/testify/require"
 )

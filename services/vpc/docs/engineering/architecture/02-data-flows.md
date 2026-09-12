@@ -390,5 +390,5 @@ flowchart TD
 | Cascade resolve | `internal/apps/kacho/api/addresspool/resolve.go` |
 | AllocateExternalIP / AllocateInternalIP / AllocateInternalIPv6 | `internal/apps/kacho/api/address/allocate.go` (аллокатор-константы — `create.go`; бенчмарки — `internal/repo/address_pool_freelist_bench_test.go`) |
 | ProjectClient.Exists → ProjectClient (IAM) | `internal/clients/iam_client.go` (+ `project_cache.go`) |
-| Operations worker | `pkg/operations/worker.go` |
+| Operations worker | `corelib/operations/worker.go` |
 | Outbox emit (в writer-TX) + LISTEN/NOTIFY trigger | `internal/repo/helpers/outbox.go`, `internal/repo/kacho/pg/*` (триггер `vpc_outbox_notify_trg` — `internal/migrations/0001_initial.sql`) |

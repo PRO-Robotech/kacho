@@ -229,7 +229,11 @@ vpc:
     trustedForwarder: true
   mtls:
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
+      # Домена величин в этой установке НЕТ (`quota.authority: not-deployed` в чарте
+      # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
+      # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
+      # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
+      quotaAuthority: false
       geo: true
   authz:
     # Круг отправителей чужой личности — см. values.prod.yaml (там же обоснование
@@ -252,7 +256,11 @@ compute:
     trustedForwarderSANs: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
   mtls:
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
+      # Домена величин в этой установке НЕТ (`quota.authority: not-deployed` в чарте
+      # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
+      # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
+      # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
+      quotaAuthority: false
       geo: true
       # compute→storage edge (InternalVolumeService attach/detach + Volume mirror, :9091)
       # is now FIRST-CLASS in the compute chart: storageInternalAddr (default
@@ -283,31 +291,24 @@ kaname:
   mtls:
     jwksProxyClientAuthMode: optional-mutual
   image:
-    # ── FORWARD ROLL: main-c744f956 (kaname main c744f95, multiarch, Docker Hub-
-    #    verified 2026-07-15) supersedes the live feature build KAC-registry-docker-auth-
-    #    c3000530. The tag drives BOTH the main container AND the kaname-migrator init
-    #    (chart helper "kaname.image"). Carries:
-    #      • #321 SA-key registry-audience union — the audience bug this cutover fixes;
-    #      • #319 token name/labels;
-    #      • #322/#323 cluster-internal Hydra-JWKS proxy listener (:9097) — REQUIRED so
-    #        registry.tokenAcceptance.issuerKeySets below is coherent (iam must SERVE :9097
-    #        before/with the
-    #        registry JWKS-flip, else every token-verify 401s);
-    #      • #325 RG-1 anon-token + registry RPC catalog entries (418-catalog — must land
-    #        together with api-gateway c7dce40d + registry af0eacae);
-    #      • #326 docker-login `issued_at` RFC3339 string (see below).
+    # ПИН СЛУЖБЫ ДОСТУПА НЕ ВЫВОДИТСЯ ИЗ КОММИТА ЭТОГО ДЕРЕВА, И ПРЕЖНИЙ НЕ ТЯНУЛСЯ.
+    # Образ собирает конвейер PRO-Robotech/kaname, в тег попадает коммит ЕЁ ствола;
+    # здесь стоял `main-b622b388` — коммит ЭТОГО дерева, и манифеста у такого тега
+    # нет (реестр 404 при живом репозитории). Под уходил в Init:ImagePullBackOff уже
+    # после успешного «helm upgrade», а тег ведёт И основной контейнер, И init
+    # наката миграций — оба через помощник `kaname.image`.
     #
-    #    DOCKER-LOGIN issued_at — why this exact tag and not the earlier main-b3d23769:
-    #    /iam/token (:9096) emits `issued_at`, which the docker client parses via
-    #    time.Time.UnmarshalJSON — that accepts ONLY a JSON string, so a bare int64 breaks
-    #    `docker login` ("Time.UnmarshalJSON: input is not a JSON string") → no bearer →
-    #    all pull/push 401. The live feature build carries that fix (kaname c300053) but
-    #    main-b3d23769 REVERTED it, which made rolling to main a hard blocker. kacho-iam#326
-    #    re-applied c300053 onto main (RFC3339 STRING, locked by a wire-shape regression
-    #    test) → main c744f95 → CI published main-c744f956. Blocker resolved: this image is
-    #    a strict forward over the live build on BOTH halves. Do not repin below this tag —
-    #    cutover-fe3455.sh preflight denylists the broken main-b3d23769.
-    tag: main-b622b388
+    # ЗДЕСЬ ЛЕЖАЛ РАЗБОР «FORWARD ROLL на main-c744f956» — двадцать пять строк с
+    # перечнем задач того образа и указанием «не перепиниваться ниже этого тега».
+    # Снят целиком: названного тега в реестре ТОЖЕ НЕТ (404), то есть указание было
+    # неисполнимо, а перечень описывал образ, который никому не достанется. Запрет
+    # `cutover-fe3455.sh` на `main-b3d23769` остаётся в силе и этим пином не
+    # затрагивается — он проверяет именно ту строку, а не «тег ниже такого-то».
+    #
+    # Разбор не воспроизводится и в исправленном виде намеренно: перечень задач,
+    # которые несёт чужой образ, объявлен в ЕГО репозитории, и второе место об одном
+    # предмете разошлось бы с первым молча — как разошёлся прежний.
+    tag: main-efa5d1f3
   # ─── Docker Registry v2 token shim (`/iam/token`, :9096) ─────────────────────
   # ОБЯЗАТЕЛЬНО на развёрнутом окружении: без этого работает built-in дефолт
   # `service: registry.kacho.local`, и `docker login` падает с `unauthorized`.
@@ -443,7 +444,11 @@ kacho-nlb:
   # end-user principal → impersonation). Only the api-gateway SA legitimately forwards.
   mtls:
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
+      # Домена величин в этой установке НЕТ (`quota.authority: not-deployed` в чарте
+      # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
+      # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
+      # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
+      quotaAuthority: false
       geo: true
   config:
     authz:
@@ -702,7 +707,11 @@ registry:
   mtls:
     enable: true
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
+      # Домена величин в этой установке НЕТ (`quota.authority: not-deployed` в чарте
+      # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
+      # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
+      # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
+      quotaAuthority: false
       iamAuthz: true
       iamProject: true
       # registry→geo RegionService.Get (public :9090, REG-1 F4). geo runs hardened
@@ -786,7 +795,11 @@ storage:
   mtls:
     enable: true
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
+      # Домена величин в этой установке НЕТ (`quota.authority: not-deployed` в чарте
+      # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
+      # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
+      # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
+      quotaAuthority: false
       geo: true
       iam: true
 

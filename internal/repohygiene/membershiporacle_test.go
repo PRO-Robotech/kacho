@@ -4,10 +4,11 @@
 package repohygiene
 
 // membershiporacle_test.go — гейт IAM-ID-2-15: вопроса «в каких аккаунтах
-// состоит этот человек» на публичной поверхности iam нет — ни параметром, ни
-// термом фильтра, ни арифметикой.
+// состоит этот человек» на публичной поверхности iam нет — ни параметром,
+// ни арифметикой. (Полосу терма фильтра гейт нёс третьей и снял вместе с её
+// предметом — см. шапку `membershiporacle.go`.)
 //
-// Предмет, устройство трёх полос и границы гейта изложены ОДИН раз — в шапке
+// Предмет, устройство полос и границы гейта изложены ОДИН раз — в шапке
 // `membershiporacle.go`; здесь они не пересказываются, иначе завелись бы два
 // места об одном предмете.
 //
@@ -28,7 +29,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 func TestMembershipOracle_TheQuestionIsNotAskableOnThePublicSurface(t *testing.T) {
@@ -48,8 +49,9 @@ func TestMembershipOracle_TheQuestionIsNotAskableOnThePublicSurface(t *testing.T
 	// И от «ноль распознанного»: сломанный обход и сгнивший разбор дают
 	// одинаково зелёный вердикт.
 	t.Logf("перепись: файлов контрактов %d · сообщений %d · RPC распознано %d · "+
-		"из них публичных чтений %d · рассмотрено полосой A %d, полосой B %d, полосой C %d",
-		c.ProtoFiles, c.Messages, c.RPCs, c.PublicReads, c.LaneASeen, c.LaneBSeen, c.LaneCSeen)
+		"из них публичных чтений %d · рассмотрено полосой A %d, полосой C %d "+
+		"(полоса B снята вместе со своим предметом — см. `membershiporacle.go`)",
+		c.ProtoFiles, c.Messages, c.RPCs, c.PublicReads, c.LaneASeen, c.LaneCSeen)
 	// Предпосылка полосы C печатается ОБЪЁМОМ, а не только исходом: деривация
 	// переезжает между файлами при каждом своде миграций, и «признака нет»
 	// обязано быть отличимо от «читать было нечего».
@@ -65,16 +67,6 @@ func TestMembershipOracle_TheQuestionIsNotAskableOnThePublicSurface(t *testing.T
 	t.Logf("формы, которыми запрос называет человека (условие «а»): поле %v либо тот же "+
 		"сегмент пути — читаются ОБЕ", oracleSubjectFields)
 
-	// Связывание белых списков печатается: читатель обязан видеть, ЧТО именно
-	// сопоставлено, а не верить, что сопоставлено верно.
-	for _, w := range c.Whitelists {
-		bound := w.Bound
-		if bound == "" {
-			bound = "СВЯЗАТЬ НЕЧЕМ"
-		}
-		t.Logf("  белый список %s:%d термы %v → %s", w.File, w.Line, w.Terms, bound)
-	}
-
 	// ── ПРЕДПОСЫЛКИ ГЕЙТА. Пустой обход — ОТКАЗ, а не успех.
 	if c.ProtoFiles == 0 || c.Messages == 0 {
 		t.Fatal("контрактов iam не прочитано ни одного: разбор перестал распознавать " +
@@ -83,9 +75,6 @@ func TestMembershipOracle_TheQuestionIsNotAskableOnThePublicSurface(t *testing.T
 	if c.PublicReads == 0 {
 		t.Fatal("публичных чтений не распознано ни одного — предикат устарел: чтения " +
 			"человека, аккаунта и выдач существуют, и ноль здесь означает сломанный обход")
-	}
-	if c.LaneBSeen == 0 {
-		t.Fatal("белых списков фильтра не найдено ни одного — полоса B рассматривает пустоту")
 	}
 
 	// Предпосылка полосы C названа рядом с ней и ПРОВЕРЯЕТСЯ: перестанет
@@ -106,10 +95,16 @@ func TestMembershipOracle_TheQuestionIsNotAskableOnThePublicSurface(t *testing.T
 	// ── ГАСЯЩИЕ ЗАПИСИ. Каждая обязана нести доказательство, живое в дереве.
 	for _, p := range SurveyOracleQuenchProofs(tree) {
 		if !p.Found {
-			t.Errorf("гасящая запись %s потеряла доказательство: признак сужения в %s "+
-				"больше не находится. Гейт лишился единственного основания не краснеть "+
-				"на этом чтении — близнец обязан быть ЗАМЕНЁН, а не унаследован",
-				p.FQN, p.File)
+			where := p.File
+			if where == "" {
+				where = "глагола нет в контракте вовсе"
+			}
+			t.Errorf("гасящая запись %s потеряла доказательство: объявления "+
+				"пообъектного сужения (`corelib.authz.v1.scope_filtered`) в теле этого "+
+				"глагола контракта больше нет (%s). Гейт лишился единственного основания "+
+				"не краснеть на этом чтении — доказательство обязано быть ЗАМЕНЕНО, а "+
+				"запись снята вместе с ним, а не унаследована",
+				p.FQN, where)
 			continue
 		}
 		t.Logf("  гасит условие «г»: %s — доказательство живо (%s)", p.FQN, p.File)

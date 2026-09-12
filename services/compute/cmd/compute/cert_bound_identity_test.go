@@ -38,8 +38,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/corelib/operations"
 )
 
 const gatewaySAN = "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
@@ -55,7 +55,7 @@ const gatewaySAN = "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
 // Свойство не осталось без проверки, и вот чем оно держится теперь — тремя
 // артефактами вместо одного грепа:
 //
-//   - `pkg/servicehost` — `TestForwardedIdentityIsHonouredOnlyFromTheCircle` и
+//   - `corelib/servicehost` — `TestForwardedIdentityIsHonouredOnlyFromTheCircle` и
 //     `TestUnnarrowedCircleWouldHonourAnyVerifiedPeer`: пара стоит в цепочке
 //     носителя, в правильном порядке, и решает на исполняемом коде;
 //   - `internal/repohygiene` — `TestCompositionRootsCarryNoServerConstructionOfTheirOwn`:

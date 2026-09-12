@@ -11,8 +11,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/corelib/treecorpus"
 	"github.com/PRO-Robotech/kacho/internal/repohygiene"
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // Контракт платформы не зависит от контракта выносимой службы доступа.

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // Package subscriptionjournal — объявление ЖУРНАЛА vpc для общего сервера потока
-// изменений (`pkg/subscription`).
+// изменений (`corelib/subscription`).
 //
 // # Что здесь есть и чего здесь нет
 //
@@ -65,7 +65,7 @@
 // Довод «типов такого домена в модели НОЛЬ» — рабочий признак
 // непровязываемости, и он применяется там, где верен: у geo типов `geo_*`
 // действительно ноль, и потому geo потоком не владеет
-// (`pkg/subscription/doc.go`). Ложное употребление признака здесь обесценивало
+// (`corelib/subscription/doc.go`). Ложное употребление признака здесь обесценивало
 // его там. Сверяется основание пробой `TestPoolExclusionGroundMatchesTheAuthzModel`.
 package subscriptionjournal
 
@@ -75,10 +75,10 @@ import (
 
 	"google.golang.org/protobuf/types/known/anypb"
 
-	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/subscription"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
-	"github.com/PRO-Robotech/kacho/pkg/authz"
-	"github.com/PRO-Robotech/kacho/pkg/subscription"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/dto"
 	_ "github.com/PRO-Robotech/kacho/services/vpc/internal/dto/toproto" // регистрация трансферов

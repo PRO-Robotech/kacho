@@ -53,7 +53,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/principalwire"
+	"github.com/PRO-Robotech/corelib/principalwire"
 )
 
 const (

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // clusterAnchorBeyondGoCorpus — отслеживаемые файлы ВНЕ Go, спрошенные У ИНДЕКСА.

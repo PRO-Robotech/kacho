@@ -8,8 +8,8 @@ import (
 
 	"google.golang.org/protobuf/reflect/protoreflect"
 
+	"github.com/PRO-Robotech/corelib/authz/catalogderive"
 	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
-	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 )
 

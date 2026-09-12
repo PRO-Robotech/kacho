@@ -11,9 +11,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
 
+	"github.com/PRO-Robotech/corelib/outbox/drainer"
+	outboxmetrics "github.com/PRO-Robotech/corelib/outbox/metrics"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
-	outboxmetrics "github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/clients"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/observability/metrics"

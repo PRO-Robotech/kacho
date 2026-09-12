@@ -123,7 +123,7 @@ const (
 	migratorCLIDecisionDoc = "docs/architecture/migrator-cli.md"
 
 	// migratorCLISharedParserImport — общий разбор аргументов прямой формы.
-	migratorCLISharedParserImport = "github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	migratorCLISharedParserImport = "github.com/PRO-Robotech/corelib/migratorcli"
 
 	// migratorCLICobraImport — разбор аргументов делегирующей формы.
 	migratorCLICobraImport = "github.com/spf13/cobra"

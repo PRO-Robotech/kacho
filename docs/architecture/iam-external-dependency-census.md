@@ -70,20 +70,20 @@ go list -f '{{join .Imports " "}}' ./services/iam/... \
 
 | пакет `pkg/` | прод-файлов iam | прод-файлов прочих | прочих компонентов |
 |---|---:|---:|---|
-| `pkg/operations` | 70 | 141 | 8 |
-| `pkg/safeconv` | **26** | 9 | 2 (vpc, gateway) |
-| `pkg/tokenpolicy` | **19** | 7 | 2 (registry, gateway) |
-| `pkg/ids` | 16 | 118 | 8 |
-| `pkg/grpcsrv` | 15 | 30 | 8 |
-| `pkg/validate` | 15 | 111 | 8 |
-| `pkg/credsecret` | **7** | 1 | 1 (gateway) |
-| `pkg/db` | 6 | 22 | 9 |
-| `pkg/outbox/metrics` | 5 | 18 | 6 |
-| `pkg/servicecontract` | 5 | 28 | 9 |
-| `pkg/filter` · `pkg/outbox/drainer` | 4 | 17 · 10 | 5 · 5 |
-| `pkg/db/pgfault` · `pkg/httpbody` · `pkg/identityposture` · `pkg/observability` · `pkg/operations/operationspb` · `pkg/outbox` · `pkg/pagetoken` | 3 | 14 · **1** · **3** · 14 · 14 · 12 · 4 | 7 · **1** · **1** · 7 · 6 · 7 · 2 |
-| `pkg/authz` · `pkg/authz/proxytuple` · `pkg/errors` · `pkg/modulemanifest` · `pkg/observability/health` · `pkg/quota/quotadetail` · `pkg/quota/quotaread` · `pkg/subjectchange` · `pkg/subscription` | 2 | 40 · 12 · 21 · **1** · 11 · 11 · 19 · 3 · 11 | 8 · 7 · 6 · **1** · 6 · 5 · 6 · 2 · 5 |
-| `pkg/audit` · `pkg/authz/catalogderive` · `pkg/config` · `pkg/grpcclient` · `pkg/migratorcli` · `pkg/migratorcli/cobraargs` · `pkg/outbox/reconciler` · `pkg/quota` · `pkg/quota/quotapb` · `pkg/retention` · `pkg/schemaguard` · `pkg/servicehost` · `pkg/validate/nameform` | 1 | **1** · 8 · 6 · 19 · 8 · 2 · 10 · 17 · 5 · 9 · 12 · 7 · 5 | **1** · 5 · 6 · 8 · 8 · 2 · 5 · 7 · 5 · 6 · 7 · 7 · 3 |
+| `corelib/operations` | 70 | 141 | 8 |
+| `corelib/safeconv` | **26** | 9 | 2 (vpc, gateway) |
+| `corelib/tokenpolicy` | **19** | 7 | 2 (registry, gateway) |
+| `corelib/ids` | 16 | 118 | 8 |
+| `corelib/grpcsrv` | 15 | 30 | 8 |
+| `corelib/validate` | 15 | 111 | 8 |
+| `corelib/credsecret` | **7** | 1 | 1 (gateway) |
+| `corelib/db` | 6 | 22 | 9 |
+| `corelib/outbox/metrics` | 5 | 18 | 6 |
+| `corelib/servicecontract` | 5 | 28 | 9 |
+| `corelib/filter` · `corelib/outbox/drainer` | 4 | 17 · 10 | 5 · 5 |
+| `corelib/db/pgfault` · `corelib/httpbody` · `corelib/identityposture` · `corelib/observability` · `corelib/operations/operationspb` · `corelib/outbox` · `corelib/pagetoken` | 3 | 14 · **1** · **3** · 14 · 14 · 12 · 4 | 7 · **1** · **1** · 7 · 6 · 7 · 2 |
+| `corelib/authz` · `corelib/authz/proxytuple` · `corelib/errors` · `corelib/modulemanifest` · `corelib/observability/health` · `corelib/quota/quotadetail` · `corelib/quota/quotaread` · `pkg/subjectchange` · `corelib/subscription` | 2 | 40 · 12 · 21 · **1** · 11 · 11 · 19 · 3 · 11 | 8 · 7 · 6 · **1** · 6 · 5 · 6 · 2 · 5 |
+| `corelib/audit` · `corelib/authz/catalogderive` · `corelib/config` · `corelib/grpcclient` · `corelib/migratorcli` · `corelib/migratorcli/cobraargs` · `corelib/outbox/reconciler` · `corelib/quota` · `pkg/quota/quotapb` · `corelib/retention` · `corelib/schemaguard` · `corelib/servicehost` · `corelib/validate/nameform` | 1 | **1** · 8 · 6 · 19 · 8 · 2 · 10 · 17 · 5 · 9 · 12 · 7 · 5 | **1** · 5 · 6 · 8 · 8 · 2 · 5 · 7 · 5 · 6 · 7 · 7 · 3 |
 
 Полная таблица воспроизводится одной командой (она же строила числа выше) —
 см. §«Приложение А».
@@ -109,15 +109,15 @@ go list -f '{{join .Imports " "}}' ./services/iam/... \
 | стаб | прод-файлов iam | прод-файлов прочих | прочих компонентов |
 |---|---:|---:|---|
 | `pkg/api/kaname/cloud/iam/v1` | **92** | 48 | 9 |
-| `pkg/api/kacho/cloud/operation` | 28 | 132 | 8 |
+| `corelib/api/kacho/cloud/operation` | 28 | 132 | 8 |
 
-> **Третьей строкой здесь стоял `pkg/api/kacho/cloud/quota/v1` (2 прод-файла iam),
+> **Третьей строкой здесь стоял `corelib/api/kacho/cloud/quota/v1` (2 прод-файла iam),
 > и её предмет СНЯТ.** Объяснение гласило: «iam **служит**
 > `IdentityQuotaService`», и служба объявлялась в пакете общей формы ответа
 > учёта. Объявление переехало в собственный контракт службы доступа
 > (`kaname.cloud.iam.v1`, kacho#2362, решение `Д9`), и прод-файлов iam,
 > импортирующих этот стаб, стало **ноль** — предикат:
-> `grep -rl 'pkg/api/kacho/cloud/quota/v1"' --include='*.go' services/iam | grep -vc _test.go`.
+> `grep -rl 'corelib/api/kacho/cloud/quota/v1"' --include='*.go' services/iam | grep -vc _test.go`.
 >
 > Числа двух оставшихся строк **не перемерялись** и остаются числами своей
 > ревизии: они сняты единицей счёта этого документа, а не той, которой снят ноль
@@ -128,8 +128,8 @@ go list -f '{{join .Imports " "}}' ./services/iam/... \
 Сверх прод-набора пробы iam добавляют **ровно три** пути:
 
 - `pkg/ownerregister` — 5 файлов iam при 14 у compute и 11 у storage;
-- `pkg/platformmodules` — 5 файлов iam, 11 у корневого `internal/`, 2 у `pkg/`;
-- `pkg/api/corelib/api/v1` — разметка операции (до #2395 — `pkg/api/kacho/cloud/api`).
+- `corelib/platformmodules` — 5 файлов iam, 11 у корневого `internal/`, 2 у `pkg/`;
+- `corelib/api/corelib/api/v1` — разметка операции (до #2395 — `pkg/api/kacho/cloud/api`).
 
 Предикат: `comm -13` двух отсортированных списков прод- и тест-импортов.
 То есть тестовая надстройка **почти не расширяет** внешнюю зависимость по `pkg/`:
@@ -197,14 +197,14 @@ go list -f '{{join .Imports " "}}' ./services/iam/... \
 дефект:  import _ "github.com/PRO-Robotech/kacho/internal/pgtest"
          defect.go:3:8: use of internal package .../internal/pgtest not allowed   rc=1
 
-близнец: import _ "github.com/PRO-Robotech/kacho/pkg/ids"
+близнец: import _ "github.com/PRO-Robotech/corelib/ids"
          (пусто)                                                                  rc=0
 ```
 
 Два контроля той же формы:
 
 ```
-pkg/internal/tlsutil          → use of internal package ... not allowed   rc=1
+corelib/internal/tlsutil          → use of internal package ... not allowed   rc=1
 services/iam/internal/domain  → use of internal package ... not allowed   rc=1
 ```
 
@@ -309,15 +309,15 @@ awk -F'\t' '$1 ~ /^pkg\// && $2 ~ /kacho\/services\//' <таблица разб�
 
 | прод | пробы |
 |---|---|
-| `pkg/api/kacho/cloud/quota/v1/quota.pb.go` | `pkg/listnarrow/narrower_cache_stats_test.go` |
-| `pkg/listnarrow/client.go` | `pkg/listnarrow/narrower_contract_test.go` |
-| `pkg/listnarrow/narrower.go` | `pkg/listnarrow/page_bench_test.go` |
-| `pkg/listnarrow/narrowtest/narrowtest.go` | `pkg/ownerregister/ownerregister_test.go` |
-| `pkg/listnarrow/object.go` | `pkg/servicehost/wiring_test.go` |
+| `corelib/api/kacho/cloud/quota/v1/quota.pb.go` | `corelib/listnarrow/narrower_cache_stats_test.go` |
+| `corelib/listnarrow/client.go` | `corelib/listnarrow/narrower_contract_test.go` |
+| `corelib/listnarrow/narrower.go` | `corelib/listnarrow/page_bench_test.go` |
+| `corelib/listnarrow/narrowtest/narrowtest.go` | `pkg/ownerregister/ownerregister_test.go` |
+| `corelib/listnarrow/object.go` | `corelib/servicehost/wiring_test.go` |
 | `pkg/ownerregister/ownerregister.go` | `pkg/subjectchange/readerpositionlost_test.go` |
 | `pkg/quota/quotaiam/delta.go` | `pkg/subjectchange/reader_test.go` |
-| `pkg/quota/quotapb/convert.go` | `pkg/subscription/revocation_integration_test.go` |
-| `pkg/servicehost/serve.go` | |
+| `pkg/quota/quotapb/convert.go` | `corelib/subscription/revocation_integration_test.go` |
+| `corelib/servicehost/serve.go` | |
 | `pkg/subjectchange/reader.go` | |
 
 **Это НЕ цикл — и посылка задания здесь неверна.** Она исходила из того, что контракт
@@ -394,7 +394,7 @@ by construction тоже.
 > [!important] ВЫВОД ЭТОГО РАЗДЕЛА ОТМЕНЁН решением владельца Р12 (2026-09-06, #2089)
 > Раздел заключал «он остаётся в `kacho`». Владелец решил иначе, и решение исполнено:
 > файл переехал в `proto/corelib/authz/v1/authz_options.proto`, пакет
-> `corelib.authz.v1`, `go_package = ".../pkg/api/corelib/authz/v1"`.
+> `corelib.authz.v1`, `go_package = ".../corelib/api/corelib/authz/v1"`.
 >
 > **Замер раздела при этом устоял и стал доводом ЗА переезд, а не против.** Две трети
 > потребителей словаря — чужие домены, поэтому унести его вместе с доменом нельзя;
@@ -472,7 +472,7 @@ geo 3 · subscription 1 · quota 1 · operation 1 · api 1.
 
 > [!important] ШАГИ 1, 2, 3 и 5 УЖЕ ИСПОЛНЕНЫ — таблица ниже сохранена как план своей ревизии
 > Записанные в ней предикаты снятия сегодня выполнены, а координаты «откуда переезжать»
-> в шагах 1–3 в корне дерева больше не резолвятся: `internal/pgtest` живёт в `pkg/pgtest`,
+> в шагах 1–3 в корне дерева больше не резолвятся: `internal/pgtest` живёт в `corelib/pgtest`,
 > `internal/authzplan` и `tools/authzformbench` — в `services/iam/`.
 >
 > ```sh
@@ -576,5 +576,5 @@ grep -rl 'corelib/authz/v1/authz_options.proto' --include='*.proto' proto/ | gre
 # 8. доказательство недостижимости корневого internal/ из чужого модуля
 #    отдельный модуль с replace на дерево; меняется РОВНО один факт — путь импорта
 #    internal/pgtest → "use of internal package ... not allowed", rc=1
-#    pkg/ids        → пусто, rc=0
+#    corelib/ids        → пусто, rc=0
 ```

@@ -65,7 +65,11 @@ set -uo pipefail
 # per-service suite covers; services/iam/tests/newman even cites it as the covering
 # location for a case it removed. A suite that exists but never runs is the state
 # that let it rot, so it is either wired or deleted — this is the wiring.
-SERVICES="${SERVICES:-iam vpc compute nlb storage registry geo api-gateway}"
+# Умолчание называет суиты ЭТОГО дерева. Суита службы доступа снята вместе со
+# своим каталогом: служба вынесена отдельным продуктом, набора здесь нет, и
+# исполняемая суита без каталога — прогон, который нечем разобрать (это и
+# говорит .github/scripts/check-newman-suite-gates.py).
+SERVICES="${SERVICES:-vpc compute nlb storage registry geo api-gateway}"
 NS="${SETUP_NS:-kacho}"
 GW_PORT="${GW_PORT:-18080}"
 GW_INTERNAL_PORT="${GW_INTERNAL_PORT:-18081}"

@@ -33,7 +33,7 @@ type injectionCase struct {
 	origin   string
 }
 
-const injectionHeader = "package clients\n\nimport (\n\t\"google.golang.org/grpc/codes\"\n\t\"google.golang.org/grpc/status\"\n\n\t\"github.com/PRO-Robotech/kacho/pkg/peer\"\n)\n\nvar _ = codes.OK\nvar _ = peer.OutcomeOK\n\n"
+const injectionHeader = "package clients\n\nimport (\n\t\"google.golang.org/grpc/codes\"\n\t\"google.golang.org/grpc/status\"\n\n\t\"github.com/PRO-Robotech/corelib/peer\"\n)\n\nvar _ = codes.OK\nvar _ = peer.OutcomeOK\n\n"
 
 func TestPeerLaneGateFiresOnTheStateThisChangeFixed(t *testing.T) {
 	t.Parallel()
@@ -127,10 +127,25 @@ var errNotFound = status.Error(codes.NotFound, "x")
 			// движка прав, и законный близнец истёк вместе с ним — унеся
 			// доказательство, что гейт не срабатывает вхолостую (стадия S6
 			// эпика #747).
+			// Близнец перевешен с адаптера к внешнему провайдеру личности на
+			// адаптер к внешнему реестру образов. Причина не косметическая:
+			// признаки провайдера личности сняты вместе со своим предметом —
+			// служба доступа, единственный их носитель, вынесена отдельным
+			// репозиторием, — и путь под её каталогом перестал опознаваться как
+			// внешний адаптер. Оставленный как был, близнец утверждал бы
+			// освобождение, которого распознаватель уже не выдаёт: гейт краснел
+			// бы на ЗАКОННОЙ форме, а такую проверку снимают первой.
+			//
+			// Новый признак живой и измерен: `/zot/` — 7 файлов дерева, и он
+			// совпадает с КАТАЛОГОМ в пути (признак сверяется с путём, не с
+			// телом), поэтому путь ниже несёт сегмент `/zot/`, а не имя вроде
+			// `zotclient` — иначе близнец не опознался бы и проба краснела бы по
+			// причине, не имеющей отношения к её предмету.
 			name:   "законный близнец: адаптер к ВНЕШНЕЙ системе",
-			path:   "services/iam/internal/clients/hydra_token_exchange.go",
+			path:   "services/registry/internal/clients/zot/tags.go",
 			origin: "чужой протокол и чужие коды — словарь из пяти полос к ним неприменим",
-			body: injectionHeader + `func mapProvider(err error) error {
+			body: injectionHeader + `// адрес внешнего реестра: /zot/v2/…
+func mapProvider(err error) error {
 	if st, ok := status.FromError(err); ok && st.Code() == codes.Aborted {
 		return err
 	}
@@ -239,7 +254,7 @@ func TestConvertedClientsCarryNoHandRolledLaneRead(t *testing.T) {
 		if n := dirty[f]; n != 0 {
 			t.Errorf("%s: переведённый клиент снова разбирает ответ по коду (%d мест)", f, n)
 		}
-		if !strings.Contains(string(body), "pkg/peer") {
+		if !strings.Contains(string(body), "github.com/PRO-Robotech/corelib/peer") {
 			t.Errorf("%s: переведённый клиент не импортирует носитель — либо перевод откачен,\n"+
 				"    либо запись перечня пережила свой предмет", f)
 			continue

@@ -5,7 +5,7 @@ syntax = "proto3";
 
 package kacho.cloud.quota.v1;
 
-option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1;quotav1";
+option go_package = "github.com/PRO-Robotech/corelib/api/kacho/cloud/quota/v1;quotav1";
 
 // Quota — one ceiling as the tenant sees it: the limit, what is already spent
 // against it, and WHERE the limit came from.

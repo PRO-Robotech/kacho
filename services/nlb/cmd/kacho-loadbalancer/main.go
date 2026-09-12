@@ -13,7 +13,7 @@
 //
 // Он не собирает серверы, не выстраивает цепочки звеньев, не строит карту прав и
 // не держит собственного звена решения о доступе: всё это переехало в носитель
-// контура (`pkg/servicehost`), которому сервис приносит ОБЪЯВЛЕНИЕ о себе —
+// контура (`corelib/servicehost`), которому сервис приносит ОБЪЯВЛЕНИЕ о себе —
 // дескриптор (`describe.go`). Оба слушателя поднимает `servicehost.Serve`, он же
 // гасит их по отмене контекста.
 //
@@ -38,22 +38,22 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
-	"github.com/PRO-Robotech/kacho/pkg/observability"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/outbox"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
-	"github.com/PRO-Robotech/kacho/pkg/retention"
-	"github.com/PRO-Robotech/kacho/pkg/servicehost"
-	"github.com/PRO-Robotech/kacho/pkg/subscription"
+	"github.com/PRO-Robotech/corelib/authz/authzmetrics"
+	coredb "github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/listnarrow"
+	"github.com/PRO-Robotech/corelib/observability"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/outbox"
+	"github.com/PRO-Robotech/corelib/outbox/bootgate"
+	"github.com/PRO-Robotech/corelib/outbox/metrics"
+	"github.com/PRO-Robotech/corelib/outbox/reconciler"
+	"github.com/PRO-Robotech/corelib/retention"
+	"github.com/PRO-Robotech/corelib/servicehost"
+	"github.com/PRO-Robotech/corelib/subscription"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/subscriptionjournal"
 
-	"github.com/PRO-Robotech/kacho/pkg/observability/health"
+	"github.com/PRO-Robotech/corelib/observability/health"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/clients"
@@ -67,11 +67,11 @@ import (
 	// Импортируется здесь (composition root), чтобы registry был полон до старта
 	// gRPC server'ов; handler'ы вызывают dto.Transfer и предполагают, что
 	// каждая зарегистрированная пара уже в map'е.
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+	corequota "github.com/PRO-Robotech/corelib/quota"
 	_ "github.com/PRO-Robotech/kacho/services/nlb/internal/dto/type2pb"
 	kachopg "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg"
 
-	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
+	"github.com/PRO-Robotech/corelib/schemaguard"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/migrations"
 )
@@ -246,7 +246,7 @@ func runServe(configPath string) error {
 	// Строка заводится КАЖДОЙ мутацией — контракт объявляет мутации асинхронными,
 	// и `Operation` возвращается вместо ресурса, — а снятия строк не было ни у
 	// одного из восьми владельцев. Порог, предикат и расписание объявлены в
-	// `pkg/operations` и `pkg/retention` ОДИН раз: восемь расписаний об одном
+	// `corelib/operations` и `corelib/retention` ОДИН раз: восемь расписаний об одном
 	// предмете разошлись бы молча.
 	if _, err := operations.StartRetentionSweep(
 		ctx, opsRepo, operations.DefaultRetentionConfig(),

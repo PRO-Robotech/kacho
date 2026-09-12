@@ -20,9 +20,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	quotav1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1"
+	quotav1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/quota/v1"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 )
 
 // StatesFunc — чтение квот проекта у владельца.

@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/PRO-Robotech/kacho/pkg/validate"
+	"github.com/PRO-Robotech/corelib/validate"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"

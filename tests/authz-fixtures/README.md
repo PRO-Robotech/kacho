@@ -18,7 +18,9 @@ kubectl port-forward -n kacho svc/api-gateway 18080:8080 &
 bash tests/authz-fixtures/setup.sh
 
 # 3. Run newman per service (пути — от корня ЭТОГО репозитория)
-(cd services/iam/tests/newman     && ./scripts/run.sh --service authz-deny)
+#    Набор службы доступа сюда не входит: она вынесена отдельным репозиторием,
+#    и переход в её каталог был бы переходом в чужое дерево — а вызывать его
+#    надо там, где он лежит.
 (cd services/vpc/tests/newman     && ./scripts/run.sh --service authz-deny)
 (cd services/compute/tests/newman && ./scripts/run.sh --service authz-deny)
 ```
@@ -32,7 +34,7 @@ bash tests/authz-fixtures/setup.sh
 
 `setup.sh` СНАЧАЛА определяет posture стенда и уже потом решает, откуда брать токены.
 Определение читает единственную строку, которую процесс сам пишет после boot-guard'ов
-(`msg="boot security posture"`, `pkg/observability/bootposture.go`) — тот же наблюдаемый
+(`msg="boot security posture"`, `corelib/observability/bootposture.go`) — тот же наблюдаемый
 факт, по которому судит `deploy/scripts/assert-production-posture.sh`. **Не** ConfigMap:
 security-ручки приезжают через `envFrom` и читаются один раз на старте, поэтому хранимое
 значение может говорить `production`, пока живой процесс всё ещё `dev`.

@@ -18,14 +18,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 func TestMigratorDatabaseOpeningIsDeclaredOnce(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 
-	census, findings, err := auditMigratorDBOpen(root)
+	census, findings, err := auditMigratorDBOpen(t, root)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -66,12 +66,31 @@ func TestMigratorDatabaseOpeningIsDeclaredOnce(t *testing.T) {
 
 // auditMigratorDBOpen читает корпус и возвращает перепись с находками.
 // Вынесен из пробы, чтобы инъекция звала ТО ЖЕ, что и гейт.
-func auditMigratorDBOpen(root string) (migratorDBOpenCensus, []migratorTractFinding, error) {
+func auditMigratorDBOpen(t *testing.T, root string) (migratorDBOpenCensus, []migratorTractFinding, error) {
 	var (
 		census   migratorDBOpenCensus
 		findings []migratorTractFinding
 		declared = map[string]struct{}{}
 	)
+
+	// Общий пакет переехал из pkg/migratorcli в пакет migratorcli общего
+	// фундамента (github.com/PRO-Robotech/corelib): дерево больше не несёт
+	// его файлов, поэтому SharedOpen/SharedGoose/SharedSpec с диска всегда
+	// false — читаем ТУДА, куда пакет переехал (см. corelibsource_test.go).
+	for rel, body := range corelibPackageGoFiles(t, root, "migratorcli") {
+		census.FilesRead++
+		census.SharedFiles++
+		facts, ferr := readMigratorDBOpenSource(rel, string(body))
+		if ferr != nil {
+			return census, nil, ferr
+		}
+		census.SharedOpen = census.SharedOpen || facts.DeclaresOpen
+		census.SharedGoose = census.SharedGoose || facts.DeclaresSetup
+		census.SharedSpec = census.SharedSpec || facts.DeclaresSpec
+		for _, m := range facts.Markers {
+			declared[m] = struct{}{}
+		}
+	}
 
 	for _, dir := range []string{"pkg", "services"} {
 		paths, err := treecorpus.UnderWithSuffix(filepath.Join(root, dir), ".go")

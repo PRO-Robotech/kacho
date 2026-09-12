@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/corelib/ids"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 	kachopg "github.com/PRO-Robotech/kacho/services/registry/internal/repo/kacho/pg"

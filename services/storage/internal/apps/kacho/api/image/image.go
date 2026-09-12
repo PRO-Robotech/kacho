@@ -27,11 +27,11 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/PRO-Robotech/corelib/filter"
+	"github.com/PRO-Robotech/corelib/ids"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/validate"
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
-	"github.com/PRO-Robotech/kacho/pkg/filter"
-	"github.com/PRO-Robotech/kacho/pkg/ids"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/quota"
@@ -42,7 +42,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/protoconv"
 
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
+	"github.com/PRO-Robotech/corelib/listnarrow"
 )
 
 // Pagination — вход для List: cursor-пагинация (page_size + opaque page_token) +
@@ -371,7 +371,7 @@ func (u *UseCase) Create(ctx context.Context, i *domain.Image) (*operations.Oper
 	// description (>256) / labels (>64) BEFORE any peer/DB call, so an over-limit
 	// input returns INVALID_ARGUMENT instead of a 200 Operation.
 	//
-	// The error goes to the mapper AS IS. pkg/validate already answers in the
+	// The error goes to the mapper AS IS. corelib/validate already answers in the
 	// contract's own shape — INVALID_ARGUMENT, generic "invalid argument" message,
 	// offending field in the google.rpc.BadRequest detail — and rebuilding it from
 	// err.Error() took the text and dropped the detail, so the caller learned the
@@ -490,7 +490,7 @@ func (u *UseCase) Register(ctx context.Context, in RegisterInput) (*domain.Image
 	if err := domain.ImageName(in.Name).Validate(); err != nil {
 		return nil, u.errStatus(fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, err.Error()))
 	}
-	// Ошибка pkg/validate уходит наверх КАК ЕСТЬ: имя отвергнутого поля она кладёт в
+	// Ошибка corelib/validate уходит наверх КАК ЕСТЬ: имя отвергнутого поля она кладёт в
 	// google.rpc.BadRequest-детали, а пересборка через err.Error() их теряет.
 	if err := validate.Description("description", in.Description); err != nil {
 		return nil, u.errStatus(err)
@@ -668,7 +668,7 @@ func (u *UseCase) GetInternal(ctx context.Context, id string) (*domain.Image, er
 // До этого description и labels не проверялись вовсе: переразмерное значение
 // доезжало до UPDATE, ловилось images_description_check / images_labels_valid и
 // возвращалось АСИНХРОННО в ошибке операции обобщённым «Illegal argument» — поздно
-// и без имени поля. Ошибка pkg/validate уходит наверх КАК ЕСТЬ: имя поля она
+// и без имени поля. Ошибка corelib/validate уходит наверх КАК ЕСТЬ: имя поля она
 // кладёт в google.rpc.BadRequest-детали, а пересборка через err.Error() их теряет.
 func resolveUpdate(mask []string, name, description string, labels map[string]string) (ImageUpdate, error) {
 	var u ImageUpdate

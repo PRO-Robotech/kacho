@@ -18,7 +18,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcclient"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/config"
 )

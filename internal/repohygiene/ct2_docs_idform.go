@@ -278,9 +278,16 @@ func docsIDFormSorted(set map[string]bool) []string {
 // граница названа, чтобы обход не мог не сойтись.
 func docsIDFormMintMap(opts DocsIDFormOptions, census *DocsIDFormCensus) (map[string]map[string]bool, error) {
 	// known — «чеканящие функции»: каталог.имя#индекс-параметра → форма.
+	// Затравка называет ОБА дома: `pkg/ids` этого дерева (форма, которую несут
+	// синтетические фикстуры проб — своя изолированная копия пакета, к общему
+	// фундаменту отношения не имеющая) и corelibDirTag("ids") — предмет НАСТОЯЩЕГО
+	// дерева переехал туда ЦЕЛИКОМ из pkg/ids. Оба ключа нужны одновременно: без
+	// первого замолчала бы синтетика, без второго — настоящее дерево.
 	known := map[string]string{
-		"pkg/ids.NewID#0":       idFormConcat,
-		"pkg/ids.NewHyphenID#0": idFormHyphen,
+		"pkg/ids.NewID#0":                       idFormConcat,
+		"pkg/ids.NewHyphenID#0":                 idFormHyphen,
+		corelibDirTag("ids") + ".NewID#0":       idFormConcat,
+		corelibDirTag("ids") + ".NewHyphenID#0": idFormHyphen,
 	}
 	minted := map[string]map[string]bool{}
 	sites := map[string]bool{}      // позиции разрешённых вызовов — счёт без дублей по проходам
@@ -502,7 +509,25 @@ func docsIDFormCallee(ce *ast.CallExpr, dir string, imports map[string]string) (
 	return "", "", false
 }
 
-// docsIDFormImports — алиас пакета → каталог дерева, только для своего модуля.
+// corelibModuleImportPathDocsIDForm — путь модуля общего фундамента. Имя не
+// совпадает с одноимёнными константами других гейтов намеренно: каждый резолвер
+// корня несёт свою, чтобы правка одного не задевала подпись другого молча.
+const corelibModuleImportPathDocsIDForm = "github.com/PRO-Robotech/corelib"
+
+// corelibDirTag — синтетический "каталог" пакета общего фундамента: не путь в
+// ЭТОМ дереве (там его нет), а координата, отличимая от локального каталога тем
+// же префиксом, что несут узлы обхода из [docsIDFormWalkGo].
+func corelibDirTag(pkg string) string { return "corelib/" + pkg }
+
+// docsIDFormImports — алиас пакета → каталог дерева, для СВОЕГО модуля и для
+// общего фундамента.
+//
+// Два дома, а не один: платформенные помощники без версии-домена (ids,
+// operations, …) переехали ЦЕЛИКОМ из pkg/ этого дерева в общий фундамент —
+// признание только первого дома оставляло бы `ids.NewID`/`ids.NewHyphenID`
+// невидимыми: вызов есть в исходнике, а `imports["ids"]` не резолвится, и
+// docsIDFormCallee отвечает `ok=false` — «вызовов чеканки найдено 0» получено
+// даром, не потому что чеканки не стало.
 func docsIDFormImports(opts DocsIDFormOptions, file *ast.File) map[string]string {
 	imports := map[string]string{}
 	for _, im := range file.Imports {
@@ -510,11 +535,16 @@ func docsIDFormImports(opts DocsIDFormOptions, file *ast.File) map[string]string
 		if uerr != nil {
 			continue
 		}
-		if !strings.HasPrefix(p, opts.ModulePath+"/") {
+		var target string
+		switch {
+		case strings.HasPrefix(p, opts.ModulePath+"/"):
+			target = strings.TrimPrefix(p, opts.ModulePath+"/")
+		case strings.HasPrefix(p, corelibModuleImportPathDocsIDForm+"/"):
+			target = corelibDirTag(strings.TrimPrefix(p, corelibModuleImportPathDocsIDForm+"/"))
+		default:
 			continue
 		}
-		target := strings.TrimPrefix(p, opts.ModulePath+"/")
-		alias := path2pkgName(target)
+		alias := path2pkgName(p)
 		if im.Name != nil {
 			alias = im.Name.Name
 		}
@@ -526,7 +556,33 @@ func docsIDFormImports(opts DocsIDFormOptions, file *ast.File) map[string]string
 // docsIDFormWalkGo обходит не-тестовые исходники дерева.
 func docsIDFormWalkGo(opts DocsIDFormOptions, visit func(rel, dir string, file *ast.File, fset *token.FileSet)) error {
 	fset := token.NewFileSet()
-	return filepath.WalkDir(opts.Root, func(path string, d fs.DirEntry, err error) error {
+	if err := docsIDFormWalkOneRoot(fset, opts.Root, "", visit); err != nil {
+		return err
+	}
+	// Второй дом — общий фундамент. Платформенные помощники (ids, operations,
+	// …) переехали туда ЦЕЛИКОМ: без этого обхода прямой вызов `ids.NewID` уже
+	// не находится (docsIDFormImports его признаёт, но искомой функции в дереве
+	// физически нет), а транзитивный — тем более: посредник (`operations.
+	// NewFromContext`), сам зовущий `ids.NewID` внутри СВОЕГО тела, живёт там
+	// же, и без обхода его тело не прочитано ни разу.
+	//
+	// ЛУЧШЕЕ УСИЛИЕ: у синтетического дерева проб (`t.TempDir()`, без go.mod)
+	// второго дома нет и это законно — его предмет целиком лежит в первом.
+	moduleDir, err := corelibModuleRootDir(opts.Root)
+	if err != nil {
+		return nil
+	}
+	return docsIDFormWalkOneRoot(fset, moduleDir, "corelib", visit)
+}
+
+// docsIDFormWalkOneRoot обходит ОДИН корень; tag — синтетический префикс
+// относительных путей ("" для этого дерева, "corelib" для общего фундамента),
+// отличающий узлы одного дома от другого тем же способом, что и
+// [docsIDFormImports] / [corelibDirTag].
+func docsIDFormWalkOneRoot(
+	fset *token.FileSet, root, tag string, visit func(rel, dir string, file *ast.File, fset *token.FileSet),
+) error {
+	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -540,16 +596,26 @@ func docsIDFormWalkGo(opts DocsIDFormOptions, visit func(rel, dir string, file *
 		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
-		rel, rerr := filepath.Rel(opts.Root, path)
+		rel, rerr := filepath.Rel(root, path)
 		if rerr != nil {
 			return rerr
+		}
+		rel = filepath.ToSlash(rel)
+		dir := filepath.ToSlash(filepath.Dir(rel))
+		if tag != "" {
+			rel = tag + "/" + rel
+			if dir == "." {
+				dir = tag
+			} else {
+				dir = tag + "/" + dir
+			}
 		}
 		file, perr := parser.ParseFile(fset, path, nil, 0)
 		if perr != nil {
 			// Неразбираемый файл — не находка ЭТОГО анализатора.
 			return nil //nolint:nilerr // предмет анализатора — чеканка, а не синтаксис чужого файла
 		}
-		visit(filepath.ToSlash(rel), filepath.ToSlash(filepath.Dir(rel)), file, fset)
+		visit(rel, dir, file, fset)
 		return nil
 	})
 }

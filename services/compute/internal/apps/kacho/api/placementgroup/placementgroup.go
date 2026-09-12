@@ -11,10 +11,10 @@ import (
 
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 
-	"github.com/PRO-Robotech/kacho/pkg/ids"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/corelib/ids"
+	"github.com/PRO-Robotech/corelib/operations"
+	corevalidate "github.com/PRO-Robotech/corelib/validate"
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
-	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/lro"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/ownersync"

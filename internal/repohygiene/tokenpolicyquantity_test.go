@@ -45,14 +45,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+	"github.com/PRO-Robotech/corelib/tokenpolicy"
 )
 
 const (
 	// tokenPolicyImportPath — единственный дом политики.
-	tokenPolicyImportPath = "github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
-	// tokenPolicyOwnerDir — каталог владельца политики.
-	tokenPolicyOwnerDir = "pkg/tokenpolicy/"
+	tokenPolicyImportPath = "github.com/PRO-Robotech/corelib/tokenpolicy"
+	// tokenPolicyOwnerDir — каталог владельца политики. Предмет живёт в пакете
+	// `tokenpolicy` общего фундамента (`github.com/PRO-Robotech/corelib`):
+	// префикс "corelib/" метит синтетический путь, которым
+	// `corelibPackageGoFiles` называет файлы, прочитанные из кэша модулей, а не
+	// путь дерева — такого каталога в индексе git больше нет. Проверяется
+	// ПРЕФИКСОМ той же строкой, что и обычный читатель политики (см. цикл
+	// области ниже): владелец — частный случай области, а не отдельная ветка.
+	tokenPolicyOwnerDir = "corelib/tokenpolicy/"
 	// tokenPolicyCensusFloor — порог переписи ПО ВСЕМУ дереву: ниже него
 	// «область пуста» означало бы «ноль прочитанного».
 	tokenPolicyCensusFloor = 1000
@@ -186,27 +192,41 @@ func TestTokenPolicyQuantityIsDeclaredOnce(t *testing.T) {
 		unresolv  int
 		found     []DurationDeclaration
 	)
-	for _, rel := range all {
-		src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
-		if err != nil {
-			continue
-		}
+	process := func(path string, src []byte) {
 		scanned++
-		inScope := strings.HasPrefix(rel, tokenPolicyOwnerDir) ||
+		inScope := strings.HasPrefix(path, tokenPolicyOwnerDir) ||
 			strings.Contains(string(src), `"`+tokenPolicyImportPath+`"`)
 		if !inScope {
 			outside++
-			continue
+			return
 		}
-		scope = append(scope, rel)
-		decls, census, err := ScanDurationDeclarations(rel, src)
-		if err != nil {
-			t.Fatalf("разбор %s: %v", rel, err)
+		scope = append(scope, path)
+		decls, census, serr := ScanDurationDeclarations(path, src)
+		if serr != nil {
+			t.Fatalf("разбор %s: %v", path, serr)
 		}
 		specs += census.ValueSpecs
 		durations += census.Durations
 		unresolv += census.Unresolved
 		found = append(found, decls...)
+	}
+	for _, rel := range all {
+		src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			continue
+		}
+		process(rel, src)
+	}
+
+	// Владелец политики переехал в общий фундамент: величины объявляет пакет
+	// `tokenpolicy` `github.com/PRO-Robotech/corelib`, а не каталог дерева.
+	// Читается ТУДА, куда политика переехала, — иначе предпосылка (3) ниже
+	// видела бы пустую область и не отличала бы «политика переехала» от
+	// «политика пропала». tokenPolicyOwnerDir классифицирует эти файлы
+	// областью тем же префиксом, что и обычного читателя выше — владелец не
+	// импортирует сам себя, поэтому вторая половина inScope на нём молчит.
+	for path, src := range corelibPackageGoFiles(t, root, "tokenpolicy") {
+		process(path, src)
 	}
 
 	t.Logf("перепись: не-тестовых файлов Go в дереве %d, из них в области политики %d "+

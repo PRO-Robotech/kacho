@@ -103,7 +103,7 @@ export const STREAM_SUBJECTS = {
 	srcJournalStorage = `package subscriptionjournal
 
 import (
-	"github.com/PRO-Robotech/kacho/pkg/subscription"
+	"github.com/PRO-Robotech/corelib/subscription"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
 )
 
@@ -132,7 +132,7 @@ func Journal() subscription.Journal {
 	srcJournalRenamedImport = `package subscriptionjournal
 
 import (
-	"github.com/PRO-Robotech/kacho/pkg/subscription"
+	"github.com/PRO-Robotech/corelib/subscription"
 	af "github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
 )
 
@@ -150,7 +150,7 @@ func Journal() subscription.Journal {
 	// местная константа и строка прямо в объявлении.
 	srcJournalLocalAndLiteral = `package subscriptionjournal
 
-import "github.com/PRO-Robotech/kacho/pkg/subscription"
+import "github.com/PRO-Robotech/corelib/subscription"
 
 const KindNetwork = "vpc_network"
 
@@ -169,7 +169,7 @@ func Journal() subscription.Journal {
 	// ОТКАЗОМ: молча укоротившийся словарь объявил бы нарушителями законные виды.
 	srcJournalUnresolvable = `package subscriptionjournal
 
-import "github.com/PRO-Robotech/kacho/pkg/subscription"
+import "github.com/PRO-Robotech/corelib/subscription"
 
 func Journal() subscription.Journal {
 	return subscription.Journal{

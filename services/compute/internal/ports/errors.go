@@ -6,7 +6,7 @@ package ports
 import (
 	"errors"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 )
 
 // Sentinel-ошибки слоя use-case/repo. Живут здесь (в leaf-пакете ports), а не в

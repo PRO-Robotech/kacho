@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	opmetrics "github.com/PRO-Robotech/kacho/pkg/operations"
+	opmetrics "github.com/PRO-Robotech/corelib/operations"
 )
 
 // scrape собирает текст /metrics через приватный реестр адаптера.

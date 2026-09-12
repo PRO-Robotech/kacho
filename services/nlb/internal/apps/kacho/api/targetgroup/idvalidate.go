@@ -4,8 +4,8 @@
 package targetgroup
 
 import (
-	"github.com/PRO-Robotech/kacho/pkg/ids"
-	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
+	"github.com/PRO-Robotech/corelib/ids"
+	corevalidate "github.com/PRO-Robotech/corelib/validate"
 )
 
 // validateTargetGroupID — malformed-id guard (api-conventions error-format): id с

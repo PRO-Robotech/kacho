@@ -4,7 +4,7 @@
 2026-08-23 (задача #1018), **выбор записан решением с ценой** 2026-08-28
 (задача #1053) · **Область:** всякое возобновимое чтение журнала в монорепо —
 не только механизм подписки · **Это ЕДИНСТВЕННОЕ место, где выбор объявлен**;
-`pkg/subscription/watermark.go` несёт его исполнение, гейт
+`corelib/subscription/watermark.go` несёт его исполнение, гейт
 `internal/repohygiene/journalcursorupperbound.go` — его энфорсмент.
 
 ## Предмет: номер выдан раньше, чем строка видна
@@ -76,7 +76,7 @@ WHERE sequence_no > $1 ORDER BY sequence_no ASC
 поэтому «нижняя догнала прежнюю верхнюю» не доказывает ничего.
 
 Это не рассуждение: подслучай воспроизведён пробой
-(`pkg/subscription/commitorder_integration_test.go`, «писатель без
+(`corelib/subscription/commitorder_integration_test.go`, «писатель без
 идентификатора транзакции не пропускается») — тест-триггер вешает писателя
 ровно в этом состоянии.
 
@@ -89,9 +89,9 @@ WHERE sequence_no > $1 ORDER BY sequence_no ASC
 
 | что | чем |
 |---|---|
-| гарантия исполнена | `pkg/subscription/watermark.go`; чтение — окно `(курсор, устоявшееся]` в `pkg/subscription/drain.go` и в `services/iam/internal/repo/kaname/pg/subject_change_repo.go` |
-| гарантия доказана | `pkg/subscription/commitorder_integration_test.go` — три подслучая: инверсный порядок фиксаций, откат писателя, писатель без идентификатора транзакции; `services/iam/internal/repo/kaname/pg/subject_change_commit_order_integration_test.go` — те же окно и откат на журнале изменений субъекта плюс урезание позиции на полной странице |
-| наблюдатель один и в фундаменте | гейт `settledwatermarksingularity`; общее состояние защищено замком, и это доказано `pkg/subscription`.`TestWatermarkSurvivesConcurrentPasses` |
+| гарантия исполнена | `corelib/subscription/watermark.go`; чтение — окно `(курсор, устоявшееся]` в `corelib/subscription/drain.go` и в `services/iam/internal/repo/kaname/pg/subject_change_repo.go` |
+| гарантия доказана | `corelib/subscription/commitorder_integration_test.go` — три подслучая: инверсный порядок фиксаций, откат писателя, писатель без идентификатора транзакции; `services/iam/internal/repo/kaname/pg/subject_change_commit_order_integration_test.go` — те же окно и откат на журнале изменений субъекта плюс урезание позиции на полной странице |
+| наблюдатель один и в фундаменте | гейт `settledwatermarksingularity`; общее состояние защищено замком, и это доказано `corelib/subscription`.`TestWatermarkSurvivesConcurrentPasses` |
 | **никто не читает по голому номеру** | гейт `journalcursorupperbound` — судит по дереву, а не по перечню |
 
 Гейт отличает предмет от законных близнецов по **объявленному типу колонки**:

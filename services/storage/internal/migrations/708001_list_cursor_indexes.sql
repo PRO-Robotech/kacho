@@ -20,7 +20,7 @@
 --     ключей курсора нет ни в одном;
 --   * `storage_backends` — каталог внутренних носителей, единственный индекс —
 --     `UNIQUE (name)`;
---   * `operations` — общий список операций (`pkg/operations`), у которого все
+--   * `operations` — общий список операций (`corelib/operations`), у которого все
 --     фильтры необязательны. `operations_created_at_idx (created_at)` из
 --     `0002_operations` несёт только первый ключ курсора, а
 --     `operations_account_id_idx (account_id, created_at, id) WHERE account_id IS

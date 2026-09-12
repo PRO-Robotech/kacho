@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/corelib/authz"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/check"
 )

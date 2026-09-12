@@ -49,12 +49,13 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 const (
@@ -206,8 +207,8 @@ func auditDescriptorFieldReaders(t *testing.T, root string) fieldReaderResult {
 	res := fieldReaderResult{readers: map[string][]string{}}
 	fset := token.NewFileSet()
 
-	contractFiles := trackedGoFiles(t, filepath.Join(root, contractPkgRel))
-	carrierFiles := trackedGoFiles(t, filepath.Join(root, carrierPkgRel))
+	contractFiles := pkgGoFiles(t, root, contractPkgRel)
+	carrierFiles := pkgGoFiles(t, root, carrierPkgRel)
 	res.files = len(contractFiles) + len(carrierFiles)
 
 	// 1. Интерфейсы, объявленные в пакете дескриптора: поле такого типа есть ПОРТ,
@@ -396,6 +397,53 @@ func trackedGoFiles(t *testing.T, dir string) []string {
 			continue
 		}
 		out = append(out, abs)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// pkgGoFiles — не-тестовые .go-файлы пакета `pkg/<name>` ЭТОГО дерева, ЛИБО,
+// если такого пути в дереве больше нет, того же пакета в общем фундаменте
+// (github.com/PRO-Robotech/corelib), куда он мог переехать целиком.
+//
+// Два дома, а не один: несколько пакетов носителя контура (servicecontract,
+// servicehost) переехали туда полностью, и `treecorpus.Under` на отсутствующем
+// пути ОТКАЗЫВАЕТ (не молчит пустым списком) — этот отказ и есть сигнал
+// перевести чтение на второй дом, а не находка о дереве.
+func pkgGoFiles(t *testing.T, root, pkgRel string) []string {
+	t.Helper()
+	dir := filepath.Join(root, pkgRel)
+	if tracked, err := treecorpus.Under(dir); err == nil {
+		var out []string
+		for _, abs := range tracked {
+			if !strings.HasSuffix(abs, ".go") || strings.HasSuffix(abs, "_test.go") {
+				continue
+			}
+			out = append(out, abs)
+		}
+		sort.Strings(out)
+		return out
+	}
+	name, ok := strings.CutPrefix(filepath.ToSlash(pkgRel), "pkg/")
+	if !ok {
+		t.Fatalf("%s не под pkg/ — второй дом резолвится только для pkg/<имя>", pkgRel)
+	}
+	moduleDir, merr := corelibModuleRootDir(root)
+	if merr != nil {
+		t.Fatalf("%s не читается ни в дереве, ни в общем фундаменте: %v", pkgRel, merr)
+	}
+	pkgDir := filepath.Join(moduleDir, filepath.FromSlash(name))
+	entries, rerr := os.ReadDir(pkgDir)
+	if rerr != nil {
+		t.Fatalf("каталог %s общего фундамента (%s) не читается: %v", name, moduleDir, rerr)
+	}
+	var out []string
+	for _, e := range entries {
+		n := e.Name()
+		if e.IsDir() || !strings.HasSuffix(n, ".go") || strings.HasSuffix(n, "_test.go") {
+			continue
+		}
+		out = append(out, filepath.Join(pkgDir, n))
 	}
 	sort.Strings(out)
 	return out

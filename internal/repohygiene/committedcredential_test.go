@@ -108,7 +108,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 // credentialKeyVocabulary — имена, по которым узнаётся СЛОТ креда в файле

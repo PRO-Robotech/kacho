@@ -66,7 +66,7 @@ func OpenDB(ctx context.Context, dsn string, spec DialectSpec) (*sql.DB, error) 
 import (
 	"io"
 
-	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	"github.com/PRO-Robotech/corelib/migratorcli"
 )
 
 func (r *Runner) relay() *migratorcli.NoticeRelay {
@@ -103,7 +103,7 @@ func open(cfg interface{}) *sql.DB { return stdlib.OpenDB(cfg) }`
 import (
 	"os"
 
-	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	"github.com/PRO-Robotech/corelib/migratorcli"
 )
 
 func relay(service string) *migratorcli.NoticeRelay {
@@ -120,7 +120,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	"github.com/PRO-Robotech/corelib/migratorcli"
 )
 
 func run(ctx context.Context, dsn string, spec migratorcli.DialectSpec) error {
@@ -228,7 +228,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/PRO-Robotech/kacho/pkg/dbready"
+	"github.com/PRO-Robotech/corelib/dbready"
 )
 
 func main() {

@@ -51,14 +51,10 @@ func TestTrustDomainIsDeclaredNotCompiled(t *testing.T) {
 		shape   []string
 		reports []string
 	)
-	for _, rel := range rels {
-		src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
-		if err != nil {
-			continue
-		}
-		sites, c, perr := ScanTrustDomainLiterals(rel, src)
+	scan := func(path string, src []byte) {
+		sites, c, perr := ScanTrustDomainLiterals(path, src)
 		if perr != nil {
-			t.Fatalf("разбор %s: %v", rel, perr)
+			t.Fatalf("разбор %s: %v", path, perr)
 		}
 		parsed++
 		census.Literals += c.Literals
@@ -71,7 +67,7 @@ func TestTrustDomainIsDeclaredNotCompiled(t *testing.T) {
 			// законна везде, и запрещать её значило бы запрещать разбор личности
 			// вместе с прозой о нём. Находка — КОНКРЕТНЫЙ домен.
 			if !s.AuthorityIsConcrete {
-				if strings.HasPrefix(rel, TrustDomainOwnerDir) {
+				if strings.HasPrefix(path, TrustDomainOwnerDir) {
 					shape = append(shape, fmt.Sprintf("%s:%d %q", s.File, s.Line, s.Value))
 				}
 				continue
@@ -79,6 +75,24 @@ func TestTrustDomainIsDeclaredNotCompiled(t *testing.T) {
 			reports = append(reports, fmt.Sprintf("%s:%d  форма=%s  власть=%q  значение=%q",
 				s.File, s.Line, s.Form, s.Authority, s.Value))
 		}
+	}
+
+	for _, rel := range rels {
+		src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			continue
+		}
+		scan(rel, src)
+	}
+
+	// Владелец формы личности переехал в общий фундамент: пакет `grpcsrv`
+	// объявляет схему `spiffe://` (форма без конкретной власти) у себя в
+	// `github.com/PRO-Robotech/corelib`, и дерево каталога TrustDomainOwnerDir
+	// больше не несёт. Читается ТУДА, куда объявление переехало, — иначе
+	// предпосылка (2) ниже молчала бы и при переносе, и при исчезновении
+	// разбора личности, а различить эти два случая было бы нечем.
+	for path, src := range corelibPackageGoFiles(t, root, "grpcsrv") {
+		scan(path, src)
 	}
 
 	t.Logf("перепись: не-тестовых файлов Go разобрано %d, строковых литералов осмотрено %d, "+

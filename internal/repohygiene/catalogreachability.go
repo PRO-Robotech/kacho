@@ -132,25 +132,34 @@ func AuditCatalogReachability(opts CatalogReachabilityOptions, out io.Writer) ([
 			opts.CatalogPath)
 	}
 
-	declared, err := declaredMethods(filepath.Join(opts.Root, opts.APIRoot), &c)
+	// Оба дома стабов — ЭТОГО дерева и общего фундамента, куда переехали
+	// платформенные контракты без домена-версии (operation/quota/subscription).
+	// Один дом здесь давал бы «сервиса нет в контракте» там, где сервис есть и
+	// смонтирован — предмет переехал, а не пропал.
+	mountOpts := MountOptions{Root: opts.Root, APIRoot: opts.APIRoot, ModulePath: opts.ModulePath, Roots: opts.Roots}
+	homes, err := apiStubHomes(mountOpts)
+	if err != nil {
+		return nil, c, err
+	}
+
+	declared, err := declaredMethods(homes, &c)
 	if err != nil {
 		return nil, c, err
 	}
 	if c.StubFiles == 0 {
-		return nil, c, fmt.Errorf("не прочитано ни одного файла стабов в %q — «все методы контракта неизвестны» "+
-			"получено даром", filepath.Join(opts.Root, opts.APIRoot))
+		return nil, c, fmt.Errorf("не прочитано ни одного файла стабов в %v — «все методы контракта неизвестны» "+
+			"получено даром", homes)
 	}
 
 	// Смонтированное берётся ТОЙ ЖЕ реализацией, что и в анализаторе монтирования:
 	// две разошлись бы, и один из гейтов начал бы утверждать о композиционном корне
 	// неправду.
 	var mc MountCensus
-	mountOpts := MountOptions{Root: opts.Root, APIRoot: opts.APIRoot, ModulePath: opts.ModulePath, Roots: opts.Roots}
-	_, dirToProto, err := declaredServices(filepath.Join(opts.Root, opts.APIRoot), &mc)
+	_, dirToProto, err := declaredServices(homes, &mc)
 	if err != nil {
 		return nil, c, err
 	}
-	mounted, err := mountedServices(mountOpts, dirToProto, &mc)
+	mounted, err := mountedServices(mountOpts, homes, dirToProto, &mc)
 	if err != nil {
 		return nil, c, err
 	}
@@ -286,42 +295,44 @@ func readCatalogRows(path string) ([]catalogReachRow, error) {
 // Разбор идёт по AST, а не по тексту: `MethodName` встречается в файле и вне
 // дескриптора, и текстовый поиск приписал бы методы одного сервиса другому в
 // файле, где дескрипторов несколько.
-func declaredMethods(apiRoot string, c *CatalogReachabilityCensus) (map[string]map[string]struct{}, error) {
+func declaredMethods(homes []apiStubHome, c *CatalogReachabilityCensus) (map[string]map[string]struct{}, error) {
 	out := map[string]map[string]struct{}{}
 	fset := token.NewFileSet()
-	err := filepath.Walk(apiRoot, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() || !strings.HasSuffix(path, "_grpc.pb.go") {
+	for _, home := range homes {
+		err := filepath.Walk(home.dir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() || !strings.HasSuffix(path, "_grpc.pb.go") {
+				return nil
+			}
+			f, perr := parser.ParseFile(fset, path, nil, 0)
+			if perr != nil {
+				return fmt.Errorf("стаб %q не разобран: %w", path, perr)
+			}
+			c.StubFiles++
+			ast.Inspect(f, func(n ast.Node) bool {
+				cl, ok := n.(*ast.CompositeLit)
+				if !ok || !isGRPCServiceDesc(cl.Type) {
+					return true
+				}
+				name, methods := serviceDescContent(cl)
+				if name == "" {
+					return true
+				}
+				if _, seen := out[name]; !seen {
+					out[name] = map[string]struct{}{}
+				}
+				for _, m := range methods {
+					out[name][m] = struct{}{}
+				}
+				return true
+			})
 			return nil
-		}
-		f, perr := parser.ParseFile(fset, path, nil, 0)
-		if perr != nil {
-			return fmt.Errorf("стаб %q не разобран: %w", path, perr)
-		}
-		c.StubFiles++
-		ast.Inspect(f, func(n ast.Node) bool {
-			cl, ok := n.(*ast.CompositeLit)
-			if !ok || !isGRPCServiceDesc(cl.Type) {
-				return true
-			}
-			name, methods := serviceDescContent(cl)
-			if name == "" {
-				return true
-			}
-			if _, seen := out[name]; !seen {
-				out[name] = map[string]struct{}{}
-			}
-			for _, m := range methods {
-				out[name][m] = struct{}{}
-			}
-			return true
 		})
-		return nil
-	})
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 	c.DeclaredSvcs = len(out)
 	for _, ms := range out {

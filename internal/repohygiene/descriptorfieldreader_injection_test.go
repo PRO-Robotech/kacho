@@ -57,7 +57,7 @@ func New(s Spec) error {
 // оси. Это законный близнец.
 const synthCarrierWired = `package servicehost
 
-import "github.com/PRO-Robotech/kacho/pkg/servicecontract"
+import "github.com/PRO-Robotech/corelib/servicecontract"
 
 func Serve(s servicecontract.Spec) {
 	_ = s.HandlingBudget
@@ -75,7 +75,7 @@ func Serve(s servicecontract.Spec) {
 // клетках сразу.
 const synthCarrierUnwired = `package servicehost
 
-import "github.com/PRO-Robotech/kacho/pkg/servicecontract"
+import "github.com/PRO-Robotech/corelib/servicecontract"
 
 func Serve(s servicecontract.Spec) {
 	_ = s.Service
@@ -90,7 +90,7 @@ func Serve(s servicecontract.Spec) {
 // них не читает.
 const synthCarrierDecoy = `package servicehost
 
-import "github.com/PRO-Robotech/kacho/pkg/servicecontract"
+import "github.com/PRO-Robotech/corelib/servicecontract"
 
 // Историческая справка: носитель когда-то читал s.HandlingBudget, звал
 // s.Existence.ObjectExists и разворачивал s.Emits.Get(). Теперь ничего этого нет.

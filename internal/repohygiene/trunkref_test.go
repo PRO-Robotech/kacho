@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 // trunkRefNames — имена, которыми в этом дереве называется ствол. Порядок значим:

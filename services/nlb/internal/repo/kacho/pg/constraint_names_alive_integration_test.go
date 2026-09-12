@@ -14,12 +14,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/pgtest"
+	"github.com/PRO-Robotech/corelib/pgtest"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+	coredb "github.com/PRO-Robotech/corelib/db"
 )
 
 // TestGate_EveryMappedConstraintNameExistsInSchema — ГЕЙТ КЛАССА, зеркальный к
@@ -56,7 +56,7 @@ import (
 //	switch f.Constraint { case "…": }           — имя поля разобранного отказа
 //	if f.Constraint == "…"                      — сравнение вместо ветвления
 //
-// Вторая появилась вместе с домом `pkg/db/pgfault`, третья была законной и до
+// Вторая появилась вместе с домом `corelib/db/pgfault`, третья была законной и до
 // него — и до этой правки гейт не видел её вовсе.
 func TestGate_EveryMappedConstraintNameExistsInSchema(t *testing.T) {
 	mapped, files := constraintNamesSwitchedOn(t)
@@ -189,7 +189,7 @@ func constraintNamesSwitchedOn(t *testing.T) ([]string, int) {
 // constraintNameField — имена полей, несущих имя нарушенного ограничения.
 //
 // Их два: `ConstraintName` у ошибки драйвера и `Constraint` у отказа,
-// разобранного домом `pkg/db/pgfault`. Перечень закрыт намеренно: распознаватель,
+// разобранного домом `corelib/db/pgfault`. Перечень закрыт намеренно: распознаватель,
 // принимающий любое поле, начал бы засчитывать посторонние сравнения и завышать
 // перепись — то есть отвечал бы шире, чем знает.
 func constraintNameField(name string) bool {

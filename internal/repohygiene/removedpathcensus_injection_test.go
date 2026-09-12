@@ -45,7 +45,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 // injCensusCarrierSrc — тело синтетического НОСИТЕЛЯ: проба, читающая дерево.
@@ -493,7 +493,7 @@ import "testing"
 
 func TestShadow(t *testing.T) {
 	t.Parallel()
-	_ = "github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	_ = "github.com/PRO-Robotech/corelib/treecorpus"
 	_ = "repoRoot("
 	_ = t
 }

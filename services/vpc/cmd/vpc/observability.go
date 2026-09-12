@@ -19,12 +19,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc/connectivity"
 
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/outbox/bootgate"
+	"github.com/PRO-Robotech/corelib/servicecontract"
 
-	"github.com/PRO-Robotech/kacho/pkg/observability/health"
-	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
+	"github.com/PRO-Robotech/corelib/observability/health"
+	"github.com/PRO-Robotech/corelib/schemaguard"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/clients"
 	vpcmetrics "github.com/PRO-Robotech/kacho/services/vpc/internal/observability/metrics"
 )
@@ -83,7 +83,7 @@ func startLROWorker(rec operations.Recorder, logger *slog.Logger) error {
 // ВЕРСИЯ СХЕМЫ — ОТДЕЛЬНАЯ ИМЕНОВАННАЯ ЗАВИСИМОСТЬ, а не часть проверки базы.
 // Мигратор идёт при каждом раскате, поэтому откат выкатки ставит ПРЕЖНИЙ образ
 // на НОВУЮ схему; база при этом отвечает на `Ping`, и без этого чекера под
-// объявлялся бы готовым и получал трафик (`pkg/schemaguard`, задача #1734).
+// объявлялся бы готовым и получал трафик (`corelib/schemaguard`, задача #1734).
 // Отдельное имя обязательно: оператор обязан отличить «база недоступна» от
 // «образ не той версии, что схема», не читая кода.
 func buildReadinessCheckers(pool *pgxpool.Pool, gate *bootgate.Gate, authzConn clients.Conn,

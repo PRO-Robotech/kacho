@@ -4,7 +4,7 @@
 package main
 
 // describe.go — ОБЪЯВЛЕНИЕ kacho-compute о себе для носителя контура
-// (`pkg/servicehost`).
+// (`corelib/servicehost`).
 //
 // # Что этот файл заменил
 //
@@ -25,15 +25,15 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/authz/proxytuple"
+	coredb "github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/corelib/listnarrow"
+	"github.com/PRO-Robotech/corelib/outbox/bootgate"
+	"github.com/PRO-Robotech/corelib/servicecontract"
 	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
-	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/config"
@@ -196,7 +196,7 @@ func describe(
 		// Здесь стояло ИЗЪЯТИЕ, и оно было верным: подписка на журнал изменений
 		// была снята вместе со своей поверхностью, потому что подписчика у неё не
 		// было ни одного дня. Сервис служит поток снова — но уже ОБЩИЙ
-		// (`pkg/subscription`), один на платформу, а не свой. Изъятие
+		// (`corelib/subscription`), один на платформу, а не свой. Изъятие
 		// стало бы ложью о дереве ровно в тот момент, когда глагол
 		// зарегистрирован, поэтому меняется вместе с ним, а не после.
 		//
@@ -216,7 +216,7 @@ func describe(
 
 		// Эмиссия: одно отношение иерархии владения — `project:<id> #project
 		// @compute_instance:<id>`. Имя берётся у ПРИНИМАЮЩЕЙ стороны
-		// (`pkg/authz/proxytuple`), которая владеет закрытым набором принимаемых
+		// (`corelib/authz/proxytuple`), которая владеет закрытым набором принимаемых
 		// отношений: второе написание чужого закрытого набора расходится молча, и
 		// расходится там, где это не видно — отказ в правах дренаж читает как
 		// временный, и очередь встаёт головой партиции навсегда.
@@ -235,7 +235,7 @@ func describe(
 		// «строже», а «без рубежа».
 		//
 		// Сужаемый метод у сервиса ОДИН — общий поток изменений
-		// (`pkg/subscription`). Здесь стояла ПУСТАЯ карта, и она была
+		// (`corelib/subscription`). Здесь стояла ПУСТАЯ карта, и она была
 		// верным утверждением ровно пока сервис не служил потока: прежний,
 		// собственный, был снят вместе со своей поверхностью. Носитель сверяет
 		// проводку с каталогом В ОБЕ СТОРОНЫ, поэтому карта и перечень сужаемых

@@ -6,9 +6,9 @@ package config
 import (
 	"google.golang.org/grpc"
 
-	corecfg "github.com/PRO-Robotech/kacho/pkg/config"
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	corecfg "github.com/PRO-Robotech/corelib/config"
+	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 )
 
 // mtlsEnvPrefix — корневой сегмент env-имен для per-edge mTLS.

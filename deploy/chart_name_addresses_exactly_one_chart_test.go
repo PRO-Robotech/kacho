@@ -85,7 +85,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 // chartNameDecl — объявление одного чарта: то, чем он себя называет.
@@ -295,51 +295,15 @@ func TestChartNameAddressesExactlyOneChart(t *testing.T) {
 	}
 }
 
-// TestStandalonePredicateSelectsExactlyOneChart — ПРОГОН САМОГО ПРЕДИКАТА.
+// ЗДЕСЬ СТОЯЛ ПРОГОН САМОГО ПРЕДИКАТА «чарт продукта» — СНЯТ ВМЕСТЕ С ПРЕДМЕТОМ.
 //
-// Держатель выше требует объявления; эта проба утверждает то, ради чего оно
-// заведено: предикат «чарт продукта» выбирает РОВНО ОДИН чарт, и подчартом
-// стенда его удовлетворить нельзя. Без неё зелёное выше означало бы лишь, что
-// поля заполнены, — а не что ими можно адресовать.
-func TestStandalonePredicateSelectsExactlyOneChart(t *testing.T) {
-	decls, _ := trackedChartDecls(t)
-	if len(decls) == 0 {
-		t.Fatalf("обход пуст: чартов не прочитано ни одного — предикат прогонять не на чем")
-	}
-
-	const productName = "kaname"
-
-	var byNameOnly, byNameAndDistribution []string
-	for _, d := range decls {
-		if d.Name != productName {
-			continue
-		}
-		byNameOnly = append(byNameOnly, d.Path)
-		if d.Distribution == chartDistributionStandalone {
-			byNameAndDistribution = append(byNameAndDistribution, d.Path)
-		}
-	}
-	sort.Strings(byNameOnly)
-	sort.Strings(byNameAndDistribution)
-
-	t.Logf("предикат по ИМЕНИ выбирает %d: %s", len(byNameOnly), strings.Join(byNameOnly, ", "))
-	t.Logf("предикат по ИМЕНИ И НАЗНАЧЕНИЮ выбирает %d: %s",
-		len(byNameAndDistribution), strings.Join(byNameAndDistribution, ", "))
-
-	// ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ, а не украшение: без него утверждение ниже зеленело
-	// бы на дереве, где чарта с этим именем нет вовсе.
-	if len(byNameOnly) == 0 {
-		t.Fatalf("чарта с именем %q в дереве нет — предикат беспредметен, и зелёное относилось бы "+
-			"к другому дереву", productName)
-	}
-	if len(byNameAndDistribution) != 1 {
-		t.Fatalf("предикат «имя %q И назначение %q» выбрал %d чартов (%s), а обязан ровно один: "+
-			"пока их не один, вердикт по «чарту продукта» может быть вынесен не по тому чарту",
-			productName, chartDistributionStandalone, len(byNameAndDistribution),
-			strings.Join(byNameAndDistribution, ", "))
-	}
-	if got := byNameAndDistribution[0]; got != "services/iam/deploy/Chart.yaml" {
-		t.Fatalf("предикат выбрал %q — это не чарт продукта; координата, которой меряют, уехала, "+
-			"и вердикты по ней будут о другом каталоге", got)
-	}
-}
+// Он утверждал, что предикат «имя kaname И назначение standalone» выбирает РОВНО
+// ОДИН чарт, и что это `services/iam/deploy/Chart.yaml`. Продукт вынесен
+// собственным репозиторием, чарт уехал вместе с ним, назначения `standalone` в
+// дереве не осталось ни у одного чарта — предикат стал беспредметным, а его
+// зелёное относилось бы к другому дереву.
+//
+// КЛАСС, ради которого файл заведён, ОСТАЁТСЯ выше и от снятия не зависит:
+// TestChartNameAddressesExactlyOneChart читает ВСЕ чарты дерева и требует, чтобы
+// имя адресовало ровно один, а всякое различие тёзок было объявлено ДАННЫМИ. Он
+// же и уронил прогон на объявлении, пережившем своего тёзку.

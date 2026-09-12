@@ -15,8 +15,8 @@ import (
 
 	"google.golang.org/grpc/codes"
 
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-	"github.com/PRO-Robotech/kacho/pkg/ids"
+	coredb "github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/ids"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/cidrgroup"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
@@ -24,7 +24,7 @@ import (
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
 
-	"github.com/PRO-Robotech/kacho/pkg/pgtest"
+	"github.com/PRO-Robotech/corelib/pgtest"
 )
 
 // Интеграционные пробы именованного набора префиксов на НАСТОЯЩЕМ Postgres.

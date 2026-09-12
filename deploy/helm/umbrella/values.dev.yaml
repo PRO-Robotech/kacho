@@ -401,7 +401,11 @@ compute:
   mtls:
     enable: true
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
+      # Домена величин в этой установке НЕТ (`quota.authority: not-deployed` в чарте
+      # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
+      # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
+      # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
+      quotaAuthority: false
       iamRegister: true
       iamProject: true
       iamAuthz: true
@@ -456,7 +460,11 @@ storage:
   mtls:
     enable: true
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
+      # Домена величин в этой установке НЕТ (`quota.authority: not-deployed` в чарте
+      # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
+      # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
+      # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
+      quotaAuthority: false
       geo: true
       iam: true
 
@@ -651,7 +659,11 @@ vpc:
   mtls:
     enable: true
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
+      # Домена величин в этой установке НЕТ (`quota.authority: not-deployed` в чарте
+      # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
+      # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
+      # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
+      quotaAuthority: false
       iamRegister: true
       iamProject: true
       iamAuthz: true
@@ -1510,7 +1522,7 @@ kaname:
   # ── ДОСТАВКА МАНИФЕСТОВ МОДУЛЕЙ (kacho#1901) ──────────────────────────────
   # Здесь имя ConfigMap объявляется ОДИН раз на весь стенд: отсюда его читает
   # чарт (том и монтирование) И отсюда же — производитель объекта
-  # (`make module-manifests-configmap`, pkg/modulemanifest/producer). Второе
+  # (`make module-manifests-configmap`, corelib/modulemanifest/producer). Второе
   # объявление разошлось бы с первым молча: под смонтировал бы один объект,
   # производитель положил бы другой, каталог доставки приехал бы пустым — и
   # снаружи это неотличимо от «модулей нет».
@@ -1540,10 +1552,22 @@ kaname:
   # mTLS: server-only (authz authority; gateway/vpc/compute/nlb dial iam over mTLS).
   mtls:
     enable: true
-  image:
-    repository: kaname
-    tag: dev
-    pullPolicy: IfNotPresent
+  # ОБРАЗ СЛУЖБЫ ДОСТУПА НЕ СОБИРАЕТСЯ ЭТИМ ДЕРЕВОМ — И ЭТО ПРИЧИНА, А НЕ ОТТЕНОК.
+  #
+  # Здесь стоял локальный `kaname:dev`, который клал в узлы `make dev-up`. Служба
+  # вынесена отдельным репозиторием: её каталога здесь нет, её образ производит
+  # конвейер её собственного репозитория, и рецепт стенда её больше не строит
+  # (`deploy/Makefile`, SERVICES — семь служб, её среди них нет).
+  #
+  # Накладка снята ЦЕЛИКОМ, а не переписана на другой тег: пин опубликованного
+  # образа объявлен ОДИН РАЗ, в `values.yaml` зонта, и второе место о том же
+  # предмете разошлось бы с ним молча. Стенд разработчика поднимается теперь на
+  # том же артефакте, что и всякий другой.
+  #
+  # Отказ, если образ не вытянулся, приходит ПОСЛЕ успешного `helm upgrade` —
+  # `ImagePullBackOff`, и ни рендер, ни `lint` его не видят. Отличить «стенд не
+  # готов» от «продукт сломан» здесь можно ровно по этому: под не стартовал ни
+  # разу, а не упал.
   ports:
     grpc: 9090
     internalGrpc: 9091
@@ -1716,7 +1740,11 @@ kacho-nlb:
   mtls:
     enable: true
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
+      # Домена величин в этой установке НЕТ (`quota.authority: not-deployed` в чарте
+      # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
+      # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
+      # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
+      quotaAuthority: false
       iamRegister: true
       iamProject: true
       vpc: true
@@ -1891,7 +1919,11 @@ registry:
   mtls:
     enable: true
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
+      # Домена величин в этой установке НЕТ (`quota.authority: not-deployed` в чарте
+      # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
+      # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
+      # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
+      quotaAuthority: false
       iamAuthz: true      # registry→iam Check + fga-proxy (:9091)
       iamProject: true    # registry→iam ProjectService.Get (:9090)
       geo: true           # registry→geo RegionService.Get (:9090)

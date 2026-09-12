@@ -6,7 +6,7 @@ package check
 import (
 	"sort"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/corelib/authz"
 )
 
 // ScopeFilteredRPCs возвращает отсортированный список полных gRPC-методов

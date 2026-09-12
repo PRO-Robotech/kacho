@@ -67,7 +67,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 // tokens are the provider and provider-product names. Each is matched
@@ -670,17 +670,18 @@ var debtFiles = map[string]string{
 	"tools/foreignclouds/foreignclouds_test.go": "the fixtures that prove this list fires on an undeclared mention and expires on a dead entry",
 
 	// Проза в комментариях, которую эта правка не трогала: файлы находятся в
-	// работе у параллельных задач (newman-кейсы/скрипты, services/iam/internal).
+	// работе у параллельных задач (newman-кейсы/скрипты).
 	// Правка тех же слов рядом с чужими изменениями даёт конфликт на ровном
 	// месте, поэтому вынесено следующим шагом — запись истечёт сама, когда
 	// упоминание уйдёт.
 	"services/nlb/tests/newman/cases/operation.py":             "prose comment; file is owned by concurrent newman work",
 	"services/compute/tests/newman/scripts/run-incremental.js": "prose comment in the suite runner; file is owned by concurrent newman work",
 	"services/compute/tests/newman/scripts/run-incremental.sh": "prose comment in the suite runner; file is owned by concurrent newman work",
-	"services/iam/internal/apps/kaname/shared/doc.go":          "prose comment; services/iam/internal is owned by concurrent work",
-	"services/iam/internal/apps/kaname/shared/errors.go":       "prose comment; services/iam/internal is owned by concurrent work",
-	"services/iam/internal/domain/project.go":                  "prose comment; services/iam/internal is owned by concurrent work",
-	"services/iam/internal/domain/status.go":                   "prose comment; services/iam/internal is owned by concurrent work",
+	// Здесь стояли ЧЕТЫРЕ записи о прозе внутри службы доступа, отложенной по
+	// той же причине — «файлы в работе у параллельных задач». Отсрочка истекла
+	// вместе со своим предметом: служба вынесена отдельным репозиторием (задача
+	// #1111), каталога `services/iam` в этом дереве нет. Долг не «закрыт» и не
+	// «прощён» — он уехал к своему владельцу и судится его деревом.
 }
 
 // Debt — сводка заявленного долга: сколько вхождений в скольких файлах.

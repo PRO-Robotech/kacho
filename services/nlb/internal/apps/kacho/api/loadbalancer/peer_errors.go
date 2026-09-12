@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	kerrors "github.com/PRO-Robotech/kacho/pkg/errors"
+	kerrors "github.com/PRO-Robotech/corelib/errors"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/shared"
 	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
@@ -182,7 +182,7 @@ func linkedAddressErr(err error) error {
 
 // peerResourceMissing — полоса peer-validate «чужого ресурса нет у владельца».
 //
-// Форма поднята в общий фундамент (pkg/errors): код полосы, машинный признак в
+// Форма поднята в общий фундамент (corelib/errors): код полосы, машинный признак в
 // details, проза — та, что передана вызывающим. Здесь она намеренно
 // ГЕНЕРИЧЕСКАЯ и остаётся такой: на этой полосе мы не подтверждаем ни
 // существование, ни placement, ни принадлежность чужого адреса. По той же

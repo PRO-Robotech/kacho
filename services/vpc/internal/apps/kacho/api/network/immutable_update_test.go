@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/corelib/ids"
 )
 
 // VPC-1-07 / VPC-1-20: the declared supernet (ipv4/ipv6_cidr_blocks) and

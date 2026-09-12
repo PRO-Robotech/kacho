@@ -26,7 +26,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
 )
 

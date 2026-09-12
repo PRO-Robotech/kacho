@@ -617,7 +617,11 @@ registry:
   mtls:
     enable: true
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
+      # Домена величин в этой установке НЕТ (`quota.authority: not-deployed` в чарте
+      # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
+      # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
+      # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
+      quotaAuthority: false
       tokenRevocation: true
   dataplaneTLSTerminatedExternally: true
 

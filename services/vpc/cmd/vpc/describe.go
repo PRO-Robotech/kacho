@@ -4,7 +4,7 @@
 package main
 
 // describe.go — ОБЪЯВЛЕНИЕ kacho-vpc о себе для носителя контура
-// (`pkg/servicehost`).
+// (`corelib/servicehost`).
 //
 // # Что этот файл заменил
 //
@@ -26,15 +26,15 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/authz/catalogderive"
+	"github.com/PRO-Robotech/corelib/authz/proxytuple"
+	coredb "github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/corelib/outbox/bootgate"
+	"github.com/PRO-Robotech/corelib/servicecontract"
 	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
-	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
-	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 
@@ -284,7 +284,7 @@ func describe(
 
 		// Эмиссия. vpc пишет владельцу прав ровно ОДНО отношение — иерархическую
 		// привязку ресурса к проекту. Имя берётся у ПРИНИМАЮЩЕЙ стороны
-		// (`pkg/authz/proxytuple`), которая владеет закрытым набором принимаемых
+		// (`corelib/authz/proxytuple`), которая владеет закрытым набором принимаемых
 		// отношений: второе написание чужого закрытого набора расходится молча, и
 		// расходится там, где это не видно, — отказ в правах дренаж читает как
 		// временный, и очередь встаёт головой партиции навсегда.

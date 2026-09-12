@@ -50,10 +50,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/internal/productnaming"
+
 	"github.com/prometheus/client_golang/prometheus"
 
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	coredb "github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // metricsNamespace — приставка имён рядов службы доступа. Та же строка, которой продукт
@@ -154,6 +156,25 @@ func isProductMetricSeries(series map[string]bool, token string) bool {
 // ровно ту находку, ради которой сосед написан).
 func TestMetricSeriesNamesAreDistinctFromProviderTypes(t *testing.T) {
 	root := repoTreeRoot(t)
+
+	// КАТАЛОГ ОБЪЯВЛЕНИЙ ЖИВЁТ У СЛУЖБЫ, А СЛУЖБА ВЫНЕСЕНА.
+	//
+	// Имена рядов витрины объявляет сама служба доступа, и после её выноса
+	// отдельным репозиторием (задача #1111) каталога объявлений в этом дереве
+	// нет. Требовать непустого обхода значило бы требовать координату, которой
+	// не существует: проба краснела бы на верно исполненном разрезе.
+	//
+	// Утверждение при этом НЕ ослаблено до «как получится»: пока каталог здесь,
+	// обе стороны проверяются как прежде. Нет каталога — проверять нечего, и
+	// это ПЕЧАТАЕТСЯ, а не проглатывается зелёным: «ноль находок» обязано быть
+	// отличимо от «ноль прочитанного». Возврат исходников возвращает и замер.
+	if !productnaming.SourcesInThisTree("iam") {
+		t.Logf("каталог объявлений %s в этом дереве отсутствует: исходники службы "+
+			"вынесены отдельным репозиторием. Имена рядов витрины здесь НЕ СОБИРАЮТСЯ, "+
+			"и непересечение их с реестром типов провайдера НЕ ИЗМЕРЯЕТСЯ — молчание "+
+			"по этой оси не означает «пересечений нет»", observabilityDeclarationDir)
+		return
+	}
 
 	series, filesRead, err := productMetricSeriesNames(root)
 	if err != nil {

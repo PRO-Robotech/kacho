@@ -46,7 +46,7 @@
 -- partitioning only serialises more; it never splits one object across partitions),
 -- and only ever visible for rows still unsent from before that migration.
 --
--- Behavioural lock: pkg/outbox/drainer Test_1_4_45_RegisterOutbox_UnregisterThenStale
+-- Behavioural lock: corelib/outbox/drainer Test_1_4_45_RegisterOutbox_UnregisterThenStale
 -- Register (no PartitionColumn → resurrect; with it → correctly ABSENT).
 --
 -- Plain (in-tx) CREATE INDEX IF NOT EXISTS, matching the table's sibling pending

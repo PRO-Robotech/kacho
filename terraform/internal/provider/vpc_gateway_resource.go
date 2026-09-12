@@ -6,8 +6,8 @@ package provider
 import (
 	"google.golang.org/protobuf/proto"
 
+	"github.com/PRO-Robotech/corelib/ids"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
-	"github.com/PRO-Robotech/kacho/pkg/ids"
 )
 
 // Шлюз — точка исхода трафика подсети наружу.

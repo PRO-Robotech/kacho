@@ -40,8 +40,12 @@ import (
 )
 
 const (
-	// sqlStateHome — единственный дом решения о классе отказа.
-	sqlStateHome = "pkg/db/pgfault/"
+	// sqlStateHome — единственный дом решения о классе отказа. Предмет живёт в
+	// пакете `db/pgfault` общего фундамента (`github.com/PRO-Robotech/corelib`):
+	// префикс "corelib/" метит синтетический путь, которым
+	// `corelibPackageGoFiles` называет файлы, прочитанные из кэша модулей, а не
+	// путь дерева — такого каталога в индексе git больше нет.
+	sqlStateHome = "corelib/db/pgfault/"
 	// sqlStateCensusFloor — порог переписи: ниже него «ноль находок» означало бы
 	// «ноль прочитанного». Величина взята НЕ из сегодняшнего числа файлов Go
 	// (их на порядок больше) — она отвечает на вопрос «сколько файлов обязано
@@ -112,14 +116,10 @@ func TestIntegritySQLStateIsDecidedInOnePlace(t *testing.T) {
 		parsed, literals, funcs int
 		inHome, outside         []SQLStateSite
 	)
-	for _, rel := range rels {
-		src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
-		if err != nil {
-			continue
-		}
-		sites, census, err := ScanSQLStateLiterals(rel, src)
-		if err != nil {
-			t.Fatalf("разбор %s: %v", rel, err)
+	scan := func(path string, src []byte) {
+		sites, census, serr := ScanSQLStateLiterals(path, src)
+		if serr != nil {
+			t.Fatalf("разбор %s: %v", path, serr)
 		}
 		parsed++
 		literals += census.Literals
@@ -131,6 +131,23 @@ func TestIntegritySQLStateIsDecidedInOnePlace(t *testing.T) {
 			}
 			outside = append(outside, s)
 		}
+	}
+	for _, rel := range rels {
+		src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			continue
+		}
+		scan(rel, src)
+	}
+
+	// Дом решения переехал в общий фундамент: перечень кодов целостности
+	// объявляет пакет `db/pgfault` `github.com/PRO-Robotech/corelib`, и дерево
+	// каталога sqlStateHome больше не несёт. Читается ТУДА, куда решение
+	// переехало, — иначе положительный контроль (2) ниже молчал бы и при
+	// переносе, и при исчезновении дома, а различить эти два случая было бы
+	// нечем.
+	for path, src := range corelibPackageGoFiles(t, root, "db/pgfault") {
+		scan(path, src)
 	}
 
 	t.Logf("перепись: не-тестовых файлов Go разобрано %d, объявлений функций прочитано %d, "+

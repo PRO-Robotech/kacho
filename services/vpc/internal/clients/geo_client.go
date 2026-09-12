@@ -9,10 +9,10 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/PRO-Robotech/corelib/auth"
+	"github.com/PRO-Robotech/corelib/peer"
+	"github.com/PRO-Robotech/corelib/retry"
 	geov1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
-	"github.com/PRO-Robotech/kacho/pkg/auth"
-	"github.com/PRO-Robotech/kacho/pkg/peer"
-	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
@@ -65,7 +65,7 @@ func (c *GeoZoneClient) Get(ctx context.Context, id string) (*domain.Zone, error
 		defer cancel()
 		resp, rerr := c.zones.Get(auth.PropagateOutgoing(cctx), &geov1.GetZoneRequest{ZoneId: id})
 		if rerr != nil {
-			// Полосу выбирает носитель (pkg/peer). Прежде здесь распознавался
+			// Полосу выбирает носитель (corelib/peer). Прежде здесь распознавался
 			// ОДИН код — NotFound, — а отказ владельца в правах и негодная по
 			// его мнению ссылка проваливались наружу сырым ответом соседа: повтор
 			// (retry.OnUnavailable) их не касался, а сервисный маппер разворачивал

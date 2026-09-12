@@ -15,9 +15,9 @@ import (
 
 	"google.golang.org/grpc"
 
-	corecfg "github.com/PRO-Robotech/kacho/pkg/config"
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	corecfg "github.com/PRO-Robotech/corelib/config"
+	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 )
 
 // envPrefix — корневой сегмент env-имен kacho-geo (KACHO_<DOMAIN>).

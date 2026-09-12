@@ -3,7 +3,7 @@
 
 // Package operationresolver — доменный resolver осиротевших LRO для kacho-geo.
 //
-// Движок reconciler'а живёт в pkg/operations (сканирует таблицу
+// Движок reconciler'а живёт в corelib/operations (сканирует таблицу
 // operations по grace-окну, клеймит orphan'ы под FOR UPDATE SKIP LOCKED). Сам
 // resolver — доменная часть в сервисе: он знает типы метаданных операций geo
 // (*geov1.<Verb><Resource>Metadata) и сверяет осиротевшую операцию с
@@ -33,7 +33,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/corelib/operations"
 
 	geov1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 
@@ -62,7 +62,7 @@ type Readers struct {
 // зеркалят таксономию метаданных corelib-Resolver (Create/Update/Delete), а не
 // схлопнуты в bool: kindCreate и kindUpdate дают идентичный исход (present →
 // Done(current)) не по копипасте, а потому что таков ПЛАТФОРМЕННЫЙ контракт
-// reconcile (pkg/operations: «Create/Update-метаданные: present →
+// reconcile (corelib/operations: «Create/Update-метаданные: present →
 // Done(current)» — reconcile к committed-реальности, НЕ re-apply). Отдельные
 // самодокументирующие метки на switch-диспетче (case *Update*Metadata →
 // kindUpdate) сохранены как type-level seam: если платформенный контракт когда-либо

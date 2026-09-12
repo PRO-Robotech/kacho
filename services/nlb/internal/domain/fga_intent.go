@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
+	"github.com/PRO-Robotech/corelib/authz/proxytuple"
 )
 
 // FGA-register-intent  — pure-Go domain value-types for the
@@ -40,7 +40,7 @@ const (
 // FGA relation strings of the kacho-nlb authorization model.
 //
 // ONLY `project` is emitted in a register-intent, and it is NAMED FROM THE
-// RECEIVING SIDE'S DECLARATION (pkg/authz/proxytuple) rather than spelled again
+// RECEIVING SIDE'S DECLARATION (corelib/authz/proxytuple) rather than spelled again
 // here: the accepted set belongs to kaname, and a second spelling of somebody
 // else's closed set is a copy that drifts silently. Privilege relations are
 // reserved for the AccessBinding flow — "admin" (formerly emitted as a creator

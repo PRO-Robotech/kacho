@@ -32,7 +32,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
+	"github.com/PRO-Robotech/corelib/authz/proxytuple"
 )
 
 // Registrar — порт синхронной регистрации owner-tuple'ов в kaname. Create-flow
@@ -166,7 +166,7 @@ func Decode(b []byte) (Payload, error) {
 // (Contract-A) он НЕ потребляется деривационным каскадом `<rel> from project` (удалён).
 // objectType — FGA-тип vpc_* ("vpc_network", "vpc_subnet", ...).
 //
-// Отношение НАЗЫВАЕТСЯ из объявления приёмной стороны (pkg/authz/proxytuple), а не
+// Отношение НАЗЫВАЕТСЯ из объявления приёмной стороны (corelib/authz/proxytuple), а не
 // пишется здесь литералом: закрытый набор принадлежит kaname, и второе написание
 // чужого набора — копия, которая разойдётся молча.
 func ProjectHierarchy(projectID, objectType, objectID string) Tuple {

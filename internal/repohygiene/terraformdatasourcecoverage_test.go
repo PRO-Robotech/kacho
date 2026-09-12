@@ -95,7 +95,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/contractroot"
+	"github.com/PRO-Robotech/corelib/contractroot"
 )
 
 // dsReadingVerbs — глаголы, читающие РЕСУРС.

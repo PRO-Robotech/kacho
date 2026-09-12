@@ -57,7 +57,6 @@ package middleware_test
 
 import (
 	"encoding/json"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -65,8 +64,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
 // freshnessCensus — что перепись увидела. Печатается ЦЕЛИКОМ: «ноль находок»
@@ -139,14 +138,18 @@ func TestStepUpFreshness_NoCatalogEntryDeclaresAWindow(t *testing.T) {
 	copies := map[string][]byte{
 		"gateway/internal/middleware/embed/permission_catalog.json": middleware.EmbeddedPermissionCatalogJSON(),
 	}
-	iamRaw, err := os.ReadFile(iamCatalogPath(t))
-	require.NoError(t, err, "read iam embedded catalog copy")
-	copies["services/iam/internal/apps/kaname/seed/embedded/permission_catalog.json"] = iamRaw
 
-	// Обе копии судятся ОТДЕЛЬНО, а не одна с опорой на байт-идентичность,
-	// которую утверждает соседний гейт. Опора на чужое утверждение сделала бы
-	// вердикт этого гейта функцией того, прогнали ли соседа.
-	require.Len(t, copies, 2, "перепись обязана осмотреть обе вшитые копии каталога")
+	// Копий каталога в ЭТОМ дереве одна. Прежде их было две — вторую нёс посев
+	// службы доступа, и обе судились ОТДЕЛЬНО, а не одна с опорой на
+	// байт-идентичность (опора на чужое утверждение сделала бы вердикт этого
+	// гейта функцией того, прогнали ли соседа). Довод остаётся нормой; вторая
+	// копия уехала вместе со службой (задача #1111) и судится её деревом.
+	//
+	// Число здесь ВЫВОДИТСЯ из состава карты, а не сравнивается с литералом:
+	// требование «копий ровно две» пережило бы свой предмет молча, а требование
+	// непустоты держит то, ради чего оно стояло, — пустая перепись не даёт
+	// зелёного.
+	require.NotEmpty(t, copies, "перепись обязана осмотреть хотя бы одну вшитую копию каталога")
 
 	for path, raw := range copies {
 		c, err := censusFreshnessConsumers(path, raw)

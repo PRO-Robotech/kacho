@@ -15,10 +15,10 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/PRO-Robotech/corelib/auth"
+	"github.com/PRO-Robotech/corelib/peer"
+	"github.com/PRO-Robotech/corelib/retry"
 	geopb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
-	"github.com/PRO-Robotech/kacho/pkg/auth"
-	"github.com/PRO-Robotech/kacho/pkg/peer"
-	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
 )
@@ -80,7 +80,7 @@ func (c *Client) RegionExists(ctx context.Context, regionID string) error {
 		return nil
 	}
 
-	// Полосу выбирает носитель (pkg/peer). Прежде здесь стоял свой разбор кодов,
+	// Полосу выбирает носитель (corelib/peer). Прежде здесь стоял свой разбор кодов,
 	// у которого ветка `default` молча объявляла ЛЮБОЙ непонятый ответ соседа
 	// временным: клиент получал «повтори позже» на отказ, который повтором не
 	// лечится, и ни одной строки диагностики при этом не оставалось.

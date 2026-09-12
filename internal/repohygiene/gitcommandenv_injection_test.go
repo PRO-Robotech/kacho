@@ -41,7 +41,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 var ctx = context.Background()

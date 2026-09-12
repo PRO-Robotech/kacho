@@ -12,10 +12,13 @@ model
 #
 # This file is the **canonical source** of the authorization model, and since the
 # external relations engine was retired (S6 of epic #747) it is the source the
-# DECISION itself compiles from: `services/iam/internal/authzmodel` embeds a
-# byte-identical copy and builds the resolution plan the relational form answers
-# with. The two copies are kept identical by `make -C deploy fga-model-embed`;
-# edit the canonical file only.
+# DECISION itself compiles from.
+#
+# The consuming service now lives in its OWN repository (PRO-Robotech/kaname): it
+# embeds a byte-identical copy and builds the resolution plan the relational form
+# answers with. Keeping the two copies identical is that repository's subject —
+# both sides of an equality have to sit in one tree, and here they no longer do.
+# Edit the canonical file only; this tree carries exactly one copy of the model.
 #
 # The engine's model-stub configmap and the target that produced its JSON are
 # gone with the engine: nothing converts this file to the engine's wire format

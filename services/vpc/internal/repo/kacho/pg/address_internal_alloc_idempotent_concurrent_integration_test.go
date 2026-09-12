@@ -23,12 +23,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+	coredb "github.com/PRO-Robotech/corelib/db"
 	addressapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/address"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 
-	"github.com/PRO-Robotech/kacho/pkg/pgtest"
+	"github.com/PRO-Robotech/corelib/pgtest"
 )
 
 // runConcurrentAllocate — N goroutine, стартующих одновременно (barrier), вызывают

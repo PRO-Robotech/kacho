@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 // credential_strip_census_test.go — KAN-STRIP-03 приёмки KAN-AUTHN-1.
@@ -97,21 +97,30 @@ func (g credentialReaderGroup) String() string {
 // что перечень сходится с деревом: файл, появившийся и не адъюдицированный,
 // роняет пробу, и файл перечня, исчезнувший из дерева, — тоже.
 var credentialReaderCensus = map[string]credentialReaderGroup{
-	"services/iam/internal/clients/hydra_login_sessions.go": groupWritesOutgoing,
-	"services/iam/internal/clients/hydra_oauth_clients.go":  groupWritesOutgoing,
-	"terraform/internal/client/client.go":                   groupWritesOutgoing,
+	// Здесь стояли две записи службы доступа (клиенты внешнего провайдера
+	// личности) и одна её же ниже, на собственной поверхности. Все три сняты
+	// ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ: служба вынесена отдельным репозиторием
+	// (задача #1111). Запись, чей файл в дереве не резолвится, — находка, а не
+	// след: перечень перестал бы сходиться с деревом, и следующий читатель искал
+	// бы координату, которой нет.
+	"terraform/internal/client/client.go": groupWritesOutgoing,
 
 	"gateway/internal/handler/logout_handler.go":          groupReadsAtTheEdge,
 	"gateway/internal/middleware/auth.go":                 groupReadsAtTheEdge,
 	"gateway/internal/middleware/dpop_http_middleware.go": groupReadsAtTheEdge,
 
-	"pkg/grpcsrv/principal_extract.go": groupTransportMarker,
+	// Здесь стояла запись общего транспорта (перечень «не писать в журнал»). Она
+	// снята ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ: фундамент вынесен отдельным модулем
+	// (задача #2131), и файла в этом дереве нет. Запись без предмета — находка, а
+	// не след: перечень перестал бы сходиться с деревом, и следующий читатель
+	// искал бы координату, которой не существует.
+	//
+	// Сама ГРУППА оставлена, и это не запас: перепись печатает по ней ноль, и ноль
+	// назван вслух ниже — «полоса здесь не измеряется». Снять группу значило бы
+	// сделать невидимым то, что маркер существует и судится своим деревом.
 
-	"services/iam/internal/handler/iamhooks/hook_auth.go": groupOwnSurface,
-	"services/registry/internal/dataplane/handler.go":     groupOwnSurface,
-	"services/registry/internal/dataplane/proxy.go":       groupOwnSurface,
-
-	"services/iam/internal/presentedcred/reader.go": groupBehindTheEdge,
+	"services/registry/internal/dataplane/handler.go": groupOwnSurface,
+	"services/registry/internal/dataplane/proxy.go":   groupOwnSurface,
 
 	"internal/repohygiene/bothidentityformsproducer.go": groupNamesTheKeyToSearchForIt,
 
@@ -191,14 +200,39 @@ func TestKAN_STRIP_03_CredentialReaderCensus(t *testing.T) {
 		t.Errorf("запись переписи потеряла предмет — файла в дереве больше нет: %v", vanished)
 	}
 
-	// Читатель ЗА краем ровно один, и это несущее: снятие на крае безопасно
-	// именно потому, что за ним удостоверение читает только механизм этой
-	// приёмки. Появится второй — снятие обязано быть пересмотрено, а не
-	// исполнено молча.
-	if got := len(byGroup[groupBehindTheEdge]); got != 1 {
-		t.Errorf("за краем удостоверение читает %d потребител(я/ей), ожидался ровно один: %v\n"+
+	// Читатель ЗА краем: их обязано быть не больше одного, и это несущее —
+	// снятие на крае безопасно именно потому, что за ним удостоверение читает
+	// только механизм этой приёмки. Появится второй — снятие обязано быть
+	// пересмотрено, а не исполнено молча.
+	//
+	// НИЖНЯЯ ГРАНИЦА СНЯТА, и снята она с названной причиной. Единственным
+	// читателем за краем была служба доступа, вынесенная отдельным
+	// репозиторием (задача #1111): в РАНТАЙМЕ она читает удостоверение
+	// по-прежнему — умбрелла поднимает её из опубликованного образа, — но в
+	// ЭТОМ дереве её исходников нет, и измерить эту полосу здесь нечем.
+	//
+	// Требовать «ровно один» значило бы требовать координату, которой в дереве
+	// не существует: проба краснела бы на верно исполненном разрезе. Требовать
+	// «ни одного» — тоже неверно: читатель есть, он просто судится своим
+	// деревом. Поэтому здесь остаётся ВЕРХНЯЯ граница (второй читатель — по-
+	// прежнему находка), а нижняя названа остатком вслух, а не проглочена нулём.
+	if got := len(byGroup[groupBehindTheEdge]); got > 1 {
+		t.Errorf("за краем удостоверение читает %d потребител(я/ей), допустим не больше одного: %v\n"+
 			"снятие на крае обосновано единственностью этого читателя — пересмотрите его",
 			got, byGroup[groupBehindTheEdge])
+	}
+	if len(byGroup[groupBehindTheEdge]) == 0 {
+		t.Log("за краем читателей удостоверения в ЭТОМ дереве нет: единственный " +
+			"(служба доступа) вынесен отдельным репозиторием и судится там. Полоса " +
+			"здесь НЕ ИЗМЕРЯЕТСЯ — молчание по ней не означает «читателей нет»")
+	}
+	// Тот же остаток, названный по второй полосе: маркер общего транспорта уехал
+	// вместе с фундаментом (задача #2131). Ноль по этой группе обязан быть
+	// НАЗВАН, иначе он читается как «маркера не существует».
+	if len(byGroup[groupTransportMarker]) == 0 {
+		t.Log("маркера общего транспорта в ЭТОМ дереве нет: фундамент вынесен отдельным " +
+			"модулем и судится там. Полоса здесь НЕ ИЗМЕРЯЕТСЯ — молчание по ней не " +
+			"означает «маркера нет»")
 	}
 }
 

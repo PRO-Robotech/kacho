@@ -7,8 +7,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/PRO-Robotech/corelib/authz"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"google.golang.org/grpc"
 )
 

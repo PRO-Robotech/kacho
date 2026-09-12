@@ -44,8 +44,8 @@ import (
 // на ней проходит: он отказывает на пустом ОБХОДЕ, а не на пустом послаблении.
 //
 // Читать это как «предмет З8 закрыт» НЕЛЬЗЯ: у оси ТРЕТЬЕЙ своя ведомость, и в
-// ней З8 жив двумя записями (`knownShippedToolchain` ниже). Ведомости разные,
-// предмет у них общий только по имени.
+// ней З8 записей больше НЕ ИМЕЕТ (`knownShippedToolchain` ниже пуста).
+// Ведомости разные, предмет у них общий только по имени.
 //
 // Пока записи были, они хранились поимённо и с точным счётом файлов, и правило
 // остаётся в силе для следующей:
@@ -74,15 +74,32 @@ const (
 // Каталог `pkg/*`, которого здесь нет, — находка, а не умолчание: 52-й каталог
 // обязан быть классифицирован ПРАВИЛОМ приёмки (§3), а не молчанием карты.
 var foundationClasses = map[string]foundationClass{
-	"api":             classKacho,
-	"audit":           classCorelib,
-	"auth":            classCorelib,
-	"authz":           classCorelib,
-	"backoff":         classCorelib,
-	"baggage":         classCorelib,
-	"config":          classCorelib,
-	"contractroot":    classCorelib,
-	"credsecret":      classKaname,
+	"api":          classKacho,
+	"audit":        classCorelib,
+	"auth":         classCorelib,
+	"authz":        classCorelib,
+	"backoff":      classCorelib,
+	"baggage":      classCorelib,
+	"config":       classCorelib,
+	"contractroot": classCorelib,
+	// credsecret, identityposture, tokenpolicy — общий словарь ОБОИХ продуктов
+	// (решение владельца 2026-09-11, задача #2131): имя носителя секрета, посадка
+	// личности и политика срока токена. Служба их ПРОИЗВОДИТ, платформа ЧИТАЕТ —
+	// край сверяет посадку и политику на каждом запросе, — и вывести их не может
+	// ни одна сторона: у платформы нет чеканки, у службы нет края. Потребителей
+	// двое, значит класс — фундамент.
+	//
+	// Здесь стоял класс службы, и он делал переезд `pkg/` НЕИСПОЛНИМЫМ: 35 файлов
+	// платформы называют эти три каталога, а разрешить направление
+	// «фундамент → служба» нечем, кроме обратного require, то есть взаимности,
+	// отменяющей целевую раскладку.
+	//
+	// Рядом стояли ещё два каталога того же решения — `ownerregister` и
+	// `subjectchange`. Они ОСТАЛИСЬ службой, и это замер, а не забывчивость: оба
+	// импортируют `pkg/api/kaname/cloud/iam/v1` (класс службы), поэтому их переезд
+	// завёл бы ребро `corelib -> kaname` — ровно то, что запрещает
+	// forbiddenDirections. Предикат снятия внешний: класс стабов контракта доступа.
+	"credsecret":      classCorelib,
 	"db":              classCorelib,
 	"dbready":         classCorelib,
 	"dropguard":       classCorelib,
@@ -92,7 +109,7 @@ var foundationClasses = map[string]foundationClass{
 	"grpcclient":      classCorelib,
 	"grpcsrv":         classCorelib,
 	"httpbody":        classCorelib,
-	"identityposture": classKaname,
+	"identityposture": classCorelib,
 	"ids":             classCorelib,
 	"internal":        classCorelib,
 	"listcursorplan":  classToolchain,
@@ -144,7 +161,7 @@ var foundationClasses = map[string]foundationClass{
 	"singlepass":       classCorelib,
 	"subjectchange":    classKaname,
 	"subscription":     classCorelib,
-	"tokenpolicy":      classKaname,
+	"tokenpolicy":      classCorelib,
 	"treecorpus":       classToolchain,
 	"validate":         classCorelib,
 }
@@ -183,6 +200,18 @@ var foundationSubtrees = []struct {
 	{"pkg/quota/quotaiam", classKaname},
 	{"pkg/quota/quotapb", classKaname},
 
+	// Полнота пары «адрес домена величин + удостоверение к нему» — ПЛАТФОРМА, а
+	// не фундамент, и правило то же, по которому фундаментом стал `credsecret`:
+	// класс определяется числом продуктов среди потребителей. Потребителей пять
+	// (vpc · compute · storage · registry · nlb), и все пять — службы платформы;
+	// службы доступа среди них нет ни одной. Нейтральному модулю такой предикат
+	// не принадлежит: он про посадку ОДНОГО продукта.
+	//
+	// Объявляется ЯВНО потому, что родительский каталог — `corelib`: без записи
+	// каталог унаследовал бы класс фундамента МОЛЧА и попал бы в перечень
+	// переезжающих, а вместе с ним — в модуль, которому не принадлежит.
+	{"pkg/quota/quotaedge", classKacho},
+
 	// Адаптер порта сужения к контракту владельца модели (приёмка §7.2, задача
 	// #2131). Правило то же, что у расщепления `pkg/api`: контракт остаётся у
 	// того, кто его РЕАЛИЗУЕТ. Порт при этом остаётся в `corelib` — шов проходит
@@ -211,7 +240,6 @@ var foundationRoots = []struct {
 	Prefix string
 	Class  foundationClass
 }{
-	{"services/iam", classKaname},
 	{"services", classKacho},
 	{"gateway", classKacho},
 	{"terraform", classKacho},
@@ -538,12 +566,12 @@ func judgeBoundaryEdges(observed []boundaryEdge, ledger []knownBoundaryEdge, fil
 // knownShippedToolchain — ведомость оси ТРЕТЬЕЙ: каталоги класса «оснастка
 // сборки», лежащие в замыкании поставляемого двоичного СЕГОДНЯ.
 //
-// Оба приезжают одним корнем — пакетом службы, который разбирает дерево
-// исходников на пути старта, — и снимаются предметом З8.
-var knownShippedToolchain = map[string]string{
-	"gitenv":     "З8",
-	"treecorpus": "З8",
-}
+// Ведомость ПУСТА, и это ЦЕЛЬ, а не незаполненность. Обе прежние записи
+// (`gitenv`, `treecorpus`, предмет З8) приезжали одним корнем — пакетом службы
+// доступа, разбиравшим дерево исходников на пути старта. Служба вынесена
+// отдельным продуктом, и в замыкании поставляемых двоичных оснастки сборки
+// не осталось ни одной: прощать нечего.
+var knownShippedToolchain = map[string]string{}
 
 // judgeShippedToolchain — ось ТРЕТЬЯ: оснастка сборки не исполняется в
 // поставляемом процессе (K3-13, K3-14, F5).
@@ -752,9 +780,10 @@ func (c boundaryCensus) RootSummary() string {
 //
 // ВЫВОДИТСЯ из foundationRoots (односегментные приставки), а не выписывается:
 // выписанный разошёлся бы с картой молча — тем же способом, каким расходится
-// всё, о чём сказано в двух местах. Многосегментные приставки (`services/iam`)
-// корнями не являются и в перечень не идут: их предмет — расщепление корня, а
-// не его класс.
+// всё, о чём сказано в двух местах. Многосегментные приставки корнями не
+// являются и в перечень не идут: их предмет — расщепление корня, а не его
+// класс. Сегодня таких приставок в foundationRoots НЕТ ни одной — последняя
+// расщепляла `services` под службу доступа и снята вместе с нею.
 func declaredTreeRoots() map[string]foundationClass {
 	out := map[string]foundationClass{}
 	for _, r := range foundationRoots {

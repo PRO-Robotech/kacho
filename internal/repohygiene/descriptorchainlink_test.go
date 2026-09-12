@@ -35,8 +35,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // chainLinkTypeNames — типы, которыми выражается ЗВЕНО цепочки либо доступ к
@@ -56,10 +54,7 @@ var chainLinkTypeNames = map[string]string{
 func TestDescriptorCarriesNoChainLink(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
-	files, err := treecorpus.Under(filepath.Join(root, contractPkgRel))
-	if err != nil {
-		t.Fatalf("состав пакета дескриптора: %v", err)
-	}
+	files := pkgGoFiles(t, root, contractPkgRel)
 
 	var (
 		fields   int

@@ -136,22 +136,22 @@ func TestQSC_RuleWithoutSubjectIsAFinding(t *testing.T) {
 		"правило, которому было что относить, в находки попадать не должно")
 }
 
-// --- ось 4: граница B и C — ОДНОФАКТНАЯ разница пути ----------------------
-
-func TestQSC_OwnerAndAccessServiceDifferByPathAlone(t *testing.T) {
-	t.Parallel()
-	const body = "const reasonQuotaExceeded = \"QUOTA_EXCEEDED\"\n"
-
-	owner := surfacesOf("services/vpc/internal/apps/kacho/shared/quota.go", body)
-	access := surfacesOf("services/iam/internal/apps/kaname/shared/quota.go", body)
-
-	require.Contains(t, owner, quotaSurfaceOwners)
-	require.NotContains(t, owner, quotaSurfaceIAMLedger)
-	require.Contains(t, access, quotaSurfaceIAMLedger)
-	require.NotContains(t, access, quotaSurfaceOwners,
-		"содержимое побайтово одно, различается ТОЛЬКО путь — и это единственный факт, "+
-			"которым §2 приёмки различает поверхности B и C")
-}
+// --- ось 4 СНЯТА ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ -------------------------------
+//
+// Здесь стояла проба «граница B и C — ОДНОФАКТНАЯ разница пути»: два файла с
+// побайтово одним содержимым, различающиеся только каталогом, обязаны попадать
+// на разные поверхности. Единственным правилом поверхности C, сужённым по пути,
+// было C1 («тот же учёт, но в службе доступа»); оно снято вместе с областью
+// `services/iam`, которой в дереве больше нет.
+//
+// Отличать поверхности ПО ПУТИ стало нечем — и это не ослабление: правил
+// поверхности C осталось три (C2 · C3 · C4), и все три ключуются на ПРИЗНАКЕ
+// (глагол учёта личности, контракт чтения, пакет формы ответа у края), а не на
+// каталоге. Проба, оставленная без своего правила, утверждала бы различение,
+// которого распознаватель не производит — то есть зеленела бы вакуумно либо
+// краснела на верном дереве.
+//
+// Ось вернётся вместе с правилом, сужённым по пути, если такое заведут снова.
 
 // --- ось 5: слепая зона признака ЗАДАЧИ названа числом, а не унаследована ---
 
@@ -403,4 +403,46 @@ func TestQSC_ForeignStorageRefusalKeepsItsSurface(t *testing.T) {
 	require.Equal(t, 1, res.PerPrimary[quotaSurfaceForeign],
 		"ёмкость в байтах квотой счёта ресурсов не является: отдав её учёту, "+
 			"перепись назначила бы работу там, где её нет")
+}
+
+// --- ось: описание процесса, зовущее самопроверку (правило P4) --------------
+//
+// Три входа вместо одного, потому что предмет правила — ИСПОЛНЯЕМЫЙ ВЫЗОВ в
+// описании процесса, и каждое из трёх слов в этой фразе надо опровергнуть
+// порознь. Форма входов взята у настоящего шага `selftest-quota-posture` в
+// `.github/workflows/console-e2e.yml`.
+
+func TestQSC_WorkflowCallingASelftestIsAMention(t *testing.T) {
+	t.Parallel()
+	got := surfacesOf(".github/workflows/console-e2e.yml",
+		"      - name: гейт — самопроверка решения о посадке домена величин\n"+
+			"        id: selftest-quota-posture\n"+
+			"        working-directory: ui-future/e2e\n"+
+			"        run: node scripts/quota-posture-selftest.ts\n")
+	require.Equal(t, []string{quotaSurfaceProse}, got,
+		"описание процесса называет ИМЯ ФАЙЛА пробы, а не величину: машинерии в нём нет, "+
+			"и снос авторитета величин его не затронет")
+}
+
+func TestQSC_WorkflowWithRealMachineryStaysAFinding(t *testing.T) {
+	t.Parallel()
+	// Законный близнец правила P4: тот же каталог, отличается РОВНО одним
+	// фактом — вместо вызова пробы стоит машинерия величин. Без него P4
+	// доказывало бы лишь то, что описания процессов оно относит, — а не то, что
+	// относит ровно вызов пробы.
+	got := surfacesOf(".github/workflows/console-e2e.yml",
+		"        env:\n          KACHO_VPC_QUOTA_NETWORKS: \"12\"\n")
+	require.Empty(t, got,
+		"описание процесса, выставляющее ВЕЛИЧИНУ, обязано остаться НЕОТНЕСЁННЫМ: "+
+			"иначе P4 становится корзиной «прочее» для всего каталога описаний процессов")
+}
+
+func TestQSC_SelftestCallOutsideTheWorkflowDirIsNotAMentionByP4(t *testing.T) {
+	t.Parallel()
+	// Та же строка вызова, но не в описании процесса: область правила несущая,
+	// иначе любой скрипт, зовущий пробу, уехал бы в «упоминание».
+	got := surfacesOf("scripts/local/run-console-selftests.sh",
+		"node scripts/quota-posture-selftest.ts\n")
+	require.NotContains(t, got, quotaSurfaceProse,
+		"P4 сработало вне .github/workflows — область правила потеряна")
 }

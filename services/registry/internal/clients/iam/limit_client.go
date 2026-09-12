@@ -9,11 +9,11 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/PRO-Robotech/corelib/auth"
+	corequota "github.com/PRO-Robotech/corelib/quota"
+	"github.com/PRO-Robotech/corelib/retry"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/auth"
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 	"github.com/PRO-Robotech/kacho/pkg/quota/quotaiam"
-	"github.com/PRO-Robotech/kacho/pkg/retry"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/quota"
 )
 

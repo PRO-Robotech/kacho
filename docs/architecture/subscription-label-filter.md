@@ -1,7 +1,7 @@
 # Отбор по меткам в подписке: почему сервер его не делает и делать не будет
 
 **Статус:** решение принято 2026-08-30 (задача #1025) · **Область:** оси отбора
-контракта `kacho.cloud.subscription` и общий сервер `pkg/subscription` · **Это
+контракта `kacho.cloud.subscription` и общий сервер `corelib/subscription` · **Это
 ЕДИНСТВЕННОЕ место, где выбор объявлен**; исполнение — отсутствие оси в
 `SubscriptionRequest`, энфорсмент исполнимости клиентского отбора —
 `internal/repohygiene/subscriptionstatelabels_test.go`.

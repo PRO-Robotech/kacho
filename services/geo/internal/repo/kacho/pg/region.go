@@ -16,8 +16,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/outbox"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/outbox"
 
 	region "github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/api/region"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/domain"

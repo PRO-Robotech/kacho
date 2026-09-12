@@ -10,8 +10,8 @@ import (
 
 	"go.uber.org/multierr"
 
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	coredb "github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 )
 
@@ -278,7 +278,7 @@ func (c Config) Validate() error {
 	}
 
 	// Словарь принимаемых значений — НЕ свой: он приходит из дома семантики
-	// строки подключения (`pkg/db`), объявленный один раз на всё дерево (задача
+	// строки подключения (`corelib/db`), объявленный один раз на всё дерево (задача
 	// продукта #1464). Текст отказа собирается оттуда же, поэтому пополнение
 	// словаря не оставит здесь устаревшего перечисления.
 	switch {

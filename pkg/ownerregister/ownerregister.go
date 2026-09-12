@@ -58,7 +58,7 @@
 //
 // # Признак первой доставки сюда НЕ добавляется
 //
-// Он уже landed ПОЛЕМ ДЕСКРИПТОРА сервиса (pkg/servicecontract), а не параметром
+// Он уже landed ПОЛЕМ ДЕСКРИПТОРА сервиса (corelib/servicecontract), а не параметром
 // запроса. Слот под него в [Registration] был бы вторым местом об одном
 // предмете; приёмка XC-7 §10 п.3 это прямо отвергает. Принимающая сторона
 // принимает признак лишь В КОНЪЮНКЦИИ со своим вердиктом по данным — правило
@@ -74,8 +74,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/PRO-Robotech/corelib/auth"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/auth"
 )
 
 // defaultTimeout — предельный срок ОДНОГО вызова RegisterResource.

@@ -102,7 +102,7 @@ import (
 	"testing"
 	"unicode"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // Формы записи пользовательского текста. Каждая доказана своей пробой в

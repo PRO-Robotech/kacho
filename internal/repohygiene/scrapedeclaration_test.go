@@ -14,8 +14,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/PRO-Robotech/corelib/treecorpus"
 	"github.com/PRO-Robotech/kacho/internal/productnaming"
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // scrapedeclaration_test.go — каждый процесс с диагностической поверхностью

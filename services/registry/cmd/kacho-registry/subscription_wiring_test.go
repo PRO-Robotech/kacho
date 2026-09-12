@@ -9,12 +9,12 @@ import (
 
 	"google.golang.org/grpc"
 
-	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	"github.com/PRO-Robotech/corelib/listnarrow"
+	"github.com/PRO-Robotech/corelib/listnarrow/narrowtest"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/operations/operationspb"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/handler"
 )
 

@@ -38,7 +38,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/principalwire"
+	"github.com/PRO-Robotech/corelib/principalwire"
 )
 
 // identityWireCensusFloor — порог переписи: ниже него «ноль находок» означало
@@ -65,6 +65,27 @@ func TestIdentityWireNamespaceIsDeclaredOnce(t *testing.T) {
 	}
 	sort.Strings(rels)
 
+	// ОБА каталога, которые этот гейт сверяет (IdentityWireOwnerDir,
+	// IdentityWireFundamentDir), переехали ЦЕЛИКОМ в общий фундамент
+	// (github.com/PRO-Robotech/corelib/{principalwire,grpcsrv}) — в этом
+	// дереве `pkg/principalwire/` и `pkg/grpcsrv/` больше нет ни одним файлом,
+	// и обход tt.files (git-состав ЭТОГО дерева) их не встретит НИКОГДА.
+	// Без подсадки владелец и фундамент были бы неотличимы от «пространство
+	// имён личности перестало существовать» — а оно живо, только сменило дом.
+	//
+	// Синтетический rel собирается так, чтобы существующие префиксные
+	// сравнения (IdentityWireOwnerDir="pkg/principalwire/",
+	// IdentityWireFundamentDir="pkg/grpcsrv/") продолжали работать без правки
+	// identitywirekeys.go: раскладка corelib зеркалит прежнюю pkg/ — у обоих
+	// каталогов корень модуля, а не подкаталог.
+	corelibFiles, corelibErr := identityWireCorelibFiles(root)
+	if corelibErr == nil {
+		for rel := range corelibFiles {
+			rels = append(rels, rel)
+		}
+		sort.Strings(rels)
+	}
+
 	var (
 		parsed    int
 		census    IdentityWireCensus
@@ -73,9 +94,15 @@ func TestIdentityWireNamespaceIsDeclaredOnce(t *testing.T) {
 		bound     = map[string][]IdentityWireBinding{}
 	)
 	for _, rel := range rels {
-		src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
-		if err != nil {
-			continue
+		var src []byte
+		if body, ok := corelibFiles[rel]; ok {
+			src = body
+		} else {
+			body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+			if err != nil {
+				continue
+			}
+			src = body
 		}
 		decls, bindings, c, perr := ScanIdentityWireDeclarations(rel, src)
 		if perr != nil {
@@ -218,4 +245,40 @@ func orAnonymous(name string) string {
 		return "<элемент составного значения>"
 	}
 	return name
+}
+
+// identityWireCorelibFiles читает Go-исходники ОБОИХ каталогов, которые этот
+// гейт сверяет, из общего фундамента — туда переехали и pkg/principalwire/, и
+// pkg/grpcsrv/ (см. врезку у вызова). Ключ карты — тот же rel, каким назвал бы
+// эти файлы обход ЭТОГО дерева, если бы каталоги в нём остались: raскладка
+// corelib зеркалит прежнюю pkg/ 1:1 (оба каталога — корень модуля).
+//
+// Резолв — лучшее усилие: не найден модуль (синтетическое дерево пробы, чужой
+// GOMODCACHE) — карта приходит пустой И ошибкой; вызывающий на такой ошибке не
+// падает, а продолжает без подсадки, как это уже делают corelibModuleRootDir'ные
+// помощники других гейтов этого пакета.
+func identityWireCorelibFiles(root string) (map[string][]byte, error) {
+	moduleDir, err := corelibModuleRootDir(root)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string][]byte{}
+	for _, sub := range []string{"principalwire", "grpcsrv"} {
+		dir := filepath.Join(moduleDir, sub)
+		entries, derr := os.ReadDir(dir)
+		if derr != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") {
+				continue
+			}
+			body, rerr := os.ReadFile(filepath.Join(dir, e.Name()))
+			if rerr != nil {
+				continue
+			}
+			out["pkg/"+sub+"/"+e.Name()] = body
+		}
+	}
+	return out, nil
 }

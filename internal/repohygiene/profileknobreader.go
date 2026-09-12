@@ -64,7 +64,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // knobFinding — объявленный ключ, у которого нет читателя.

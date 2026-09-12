@@ -44,7 +44,7 @@
 -- half is globally unique by construction (core rule #15), so "same partition" is
 -- exactly "same iam-mirror object".
 --
--- Behavioural lock: pkg/outbox/drainer Test_1_4_45_RegisterOutbox_UnregisterThenStale
+-- Behavioural lock: corelib/outbox/drainer Test_1_4_45_RegisterOutbox_UnregisterThenStale
 -- Register (no PartitionColumn → resurrect; with it → correctly ABSENT).
 --
 -- Plain (in-tx) CREATE INDEX IF NOT EXISTS, matching the table's sibling pending

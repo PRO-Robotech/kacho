@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/contractroot"
-	"github.com/PRO-Robotech/kacho/pkg/platformmodules"
+	"github.com/PRO-Robotech/corelib/contractroot"
+	"github.com/PRO-Robotech/corelib/platformmodules"
 )
 
 // platformmodulevocabulary_test.go — гейт над ДЕРЕВОМ: словарь имён модулей

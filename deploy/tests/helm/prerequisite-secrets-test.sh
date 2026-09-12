@@ -62,9 +62,19 @@ require_helm
 # таблицы дерева — здесь была её копия, и копия стареет молча: цель может
 # получить новый слой, а проверка продолжит рендерить прежний состав и
 # отчитываться зелёным.
+# КОД ЧИТАТЕЛЯ ЦЕПОЧКИ ПОТРЕБОВАН ДО СБОРКИ МАССИВА. Внутри элемента массива
+# подстановка роняет код, и отказ чтения таблицы давал элемент `dev-up|` с ПУСТОЙ
+# цепочкой — `helm` без единого `-f`. Замер инъекцией: этот гейт объявлял тогда
+# «helm template отказал на «профиль цели dev-up» — это УСЛОВИЕ прогона», то есть
+# винил несобранные зависимости вместо непрочитанной таблицы. Разбор — в шапке
+# `stacks.sh`.
+ARGS_DEV="$(stacks_args dev "$UMBRELLA")" \
+  || fatal "стек dev: цепочка стенда не прочитана — helm без единого -f сел бы на умолчания чарта"
+ARGS_DEV_PROD="$(stacks_args dev-prod "$UMBRELLA")" \
+  || fatal "стек dev-prod: цепочка стенда не прочитана — helm без единого -f сел бы на умолчания чарта"
 PROFILES=(
-  "dev-up|$(stacks_args dev "$UMBRELLA")"
-  "dev-prod-up|$(stacks_args dev-prod "$UMBRELLA")"
+  "dev-up|$ARGS_DEV"
+  "dev-prod-up|$ARGS_DEV_PROD"
 )
 EXPECTED_ASSERTIONS="${#PROFILES[@]}"
 
@@ -123,8 +133,8 @@ self_test() {
   # самопроверка «проходила» по нулю документов: инъекция (A) не нашла бы своего
   # секрета и объявила бы гейт пропустившим дефект — то есть красный вердикт о
   # дереве по причине, к дереву отношения не имеющей.
-  # shellcheck disable=SC2046,SC2086
-  helm_try kacho-umbrella "$UMBRELLA" $(stacks_args dev-prod "$UMBRELLA")
+  # shellcheck disable=SC2086
+  helm_try kacho-umbrella "$UMBRELLA" $ARGS_DEV_PROD
   render_or_fatal "стек dev-prod (самопроверка)"
   printf '%s\n' "$HELM_OUT" > "$render"
   prov="$(provisioned_by dev-prod-up)"

@@ -50,32 +50,30 @@ const pgOutsideMakeTarget = "make test-pg-outside-selection"
 func TestPGOutsideOwnStepDeclarationsPointAtTheList(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
-	// ПЕРЕЧНЕЙ ДВА, И ЧИТАТЬ НАДО ОБА.
+	// ПЕРЕЧЕНЬ ОДИН — ВТОРОЙ СНЯТ ВМЕСТЕ СО СВОИМ МОДУЛЕМ.
 	//
-	// Служба iam несёт свой `go.mod`, поэтому её пакеты не резолвятся из корня и
-	// вынесены в отдельную величину с путями ОТНОСИТЕЛЬНО каталога службы. Гейт
-	// сверяет освобождения по путям ДЕРЕВА, значит вторую половину надо привести
-	// к тому же виду. Читать одну половину — значит объявить вторую
-	// «отсутствующей в перечне», ничего в ней не изменив: тринадцать ложных
-	// находок и ни одной настоящей.
+	// Здесь читались ДВА перечня: корневой и второй, с путями ОТНОСИТЕЛЬНО
+	// каталога службы доступа, у которой был свой `go.mod`. Служба вынесена
+	// отдельным репозиторием — второго перечня в Makefile нет, приводить к путям
+	// дерева нечего.
+	//
+	// Урок, ради которого запись остаётся: читать ОДНУ половину, когда их две, —
+	// значит объявить вторую «отсутствующей в перечне», ничего в ней не изменив.
+	// Так и было: тринадцать ложных находок и ни одной настоящей. Появится второй
+	// модуль — вторую половину надо вернуть ВМЕСТЕ с ним.
 	declared := makefileListedPkgs(t, root, "PG_OUTSIDE_SELECTION_PKGS")
 	rootNamed := len(declared)
-	iamNamed := 0
-	for _, rel := range makefileListedPkgs(t, root, "PG_OUTSIDE_SELECTION_PKGS_IAM") {
-		declared = append(declared, strings.TrimSuffix(iamTreePrefix, "/")+"/"+rel)
-		iamNamed++
-	}
 	sort.Strings(declared)
-	if rootNamed == 0 || iamNamed == 0 {
-		t.Fatalf("перечень пуст с одной из сторон (корень %d, модуль службы iam %d) — "+
-			"сверять не с чем, а молчание такого гейта неотличимо от согласия", rootNamed, iamNamed)
+	if rootNamed == 0 {
+		t.Fatalf("перечень пуст (корень %d) — сверять не с чем, а молчание такого гейта "+
+			"неотличимо от согласия", rootNamed)
 	}
 	for _, f := range judgePGOutsideSeam(shortGatedRunByOwnCIStep, declared) {
 		t.Errorf("%s", f)
 	}
 	t.Logf("сверено: освобождений со ссылкой на цель — %d, записей перечня — %d "+
-		"(корневой модуль %d, модуль службы iam %d)",
-		countPGOutsideExemptions(shortGatedRunByOwnCIStep), len(declared), rootNamed, iamNamed)
+		"(корневой модуль %d)",
+		countPGOutsideExemptions(shortGatedRunByOwnCIStep), len(declared), rootNamed)
 }
 
 // judgePGOutsideSeam — решающая часть, вынесенная из вердикта, чтобы её можно

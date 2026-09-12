@@ -560,7 +560,7 @@ CASES.append(Case(
         # Try cancel as Editor B (different subject)
         #
         # 409 СНЯТ: производителя у него на этой полосе НЕТ. Отмена операции сведена
-        # в общий слой (`pkg/operations/operationspb/handler.go`) и эмитит ровно
+        # в общий слой (`corelib/operations/operationspb/handler.go`) и эмитит ровно
         # InvalidArgument / NotFound / FailedPrecondition / Internal; край
         # (`gateway/internal/opsproxy`) добавляет к ним InvalidArgument / NotFound /
         # PermissionDenied. По таблице края (`api-conventions.md` §«gRPC-код →
@@ -613,7 +613,7 @@ CASES.append(Case(
         #
         # Опрос стоял под B — под тем самым субъектом, про которого шаг выше
         # УТВЕРЖДАЕТ, что операция A ему не видна. Видимость операции
-        # creator-principal-scoped by design (pkg/operations/owner.go: предикат —
+        # creator-principal-scoped by design (corelib/operations/owner.go: предикат —
         # пара (PrincipalType, PrincipalID) создателя, чужой владелец → ErrNotFound
         # без утечки), поэтому B законно получал 404, а кейс требовал от него 200 и
         # краснел на ПРАВИЛЬНОМ поведении — в той же папке, где сам же его и

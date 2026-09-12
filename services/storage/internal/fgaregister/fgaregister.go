@@ -30,7 +30,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
+	"github.com/PRO-Robotech/corelib/authz/proxytuple"
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 )
 
@@ -60,7 +60,7 @@ const (
 )
 
 // relationProject — hierarchy-relation owner-tuple: `project:<id> #project @<obj>`.
-// Named from the receiving side's declaration (pkg/authz/proxytuple), which owns the
+// Named from the receiving side's declaration (corelib/authz/proxytuple), which owns the
 // accepted set: a second spelling of somebody else's closed set drifts silently.
 const relationProject = string(proxytuple.RelationProject)
 

@@ -42,7 +42,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/corelib/authz"
 	"github.com/PRO-Robotech/kacho/pkg/subjectchange"
 )
 

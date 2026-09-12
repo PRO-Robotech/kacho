@@ -7,7 +7,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/option"
+	"github.com/PRO-Robotech/corelib/option"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"

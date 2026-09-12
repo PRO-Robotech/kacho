@@ -270,10 +270,16 @@ func topLevelSections(manifest string) []string {
 	return out
 }
 
-// serviceConfigCharts — чарты дерева, рендерящие конфигурацию нашего сервиса.
+// serviceConfigCharts — чарты дерева, рендерящие конфигурацию нашего сервиса,
+// ИСХОДНИКИ которого лежат в ЭТОМ дереве.
+//
 // Второе возвращаемое — сколько чартов осмотрено всего: «ноль находок» обязано
-// быть отличимо от «ноль прочитанного».
-func serviceConfigCharts(t *testing.T) (found []serviceConfigChart, chartsSeen int) {
+// быть отличимо от «ноль прочитанного». Третье — чарты нашей поставки, чью
+// конфигурацию судить здесь НЕЧЕМ: часть вынесена отдельным продуктом
+// (productnaming.SourcesInThisTree), структуру её настроек читает её
+// собственное дерево. Пропуск возвращается ИМЕНАМИ, а не проглатывается:
+// молчаливый пропуск неотличим от «осмотрели и сошлось».
+func serviceConfigCharts(t *testing.T) (found []serviceConfigChart, chartsSeen int, elsewhere []string) {
 	t.Helper()
 	var chartDirs []string
 	err := filepath.WalkDir(filepath.Join(repoRoot), func(path string, d os.DirEntry, err error) error {
@@ -326,6 +332,13 @@ func serviceConfigCharts(t *testing.T) (found []serviceConfigChart, chartsSeen i
 		}
 		if svc == "" {
 			continue // чарт не поднимает наш бинарь с YAML-конфигурацией
+		}
+		if !productnaming.SourcesInThisTree(svc) {
+			// Наша часть, наша поставка — но исходников здесь нет. Сравнивать
+			// рендер не с чем: обе стороны равенства обязаны лежать в одном
+			// дереве. Имя уходит в перепись вызывающему.
+			elsewhere = append(elsewhere, chartDir+" ("+svc+")")
+			continue
 		}
 
 		// Том, смонтированный по этому пути, живёт в шаблоне рабочей нагрузки —
@@ -383,7 +396,8 @@ func serviceConfigCharts(t *testing.T) (found []serviceConfigChart, chartsSeen i
 			sections:      sections,
 		})
 	}
-	return found, chartsSeen
+	sort.Strings(elsewhere)
+	return found, chartsSeen, elsewhere
 }
 
 // declaredSections — теги mapstructure корневой структуры Config сервиса.
@@ -431,7 +445,7 @@ func declaredSections(t *testing.T, service string) ([]string, string) {
 // которую чарт рендерит в config.yaml сервиса, обязана иметь одноимённый тег
 // mapstructure в корневой структуре Config этого сервиса.
 func TestRenderedConfigSectionIsParsedByTheService(t *testing.T) {
-	charts, chartsSeen := serviceConfigCharts(t)
+	charts, chartsSeen, elsewhere := serviceConfigCharts(t)
 	if chartsSeen == 0 {
 		t.Fatal("в дереве не найдено ни одного Chart.yaml — обход прочитал ноль, " +
 			"и «ноль находок» здесь означало бы «ноль осмотренного»")
@@ -461,6 +475,11 @@ func TestRenderedConfigSectionIsParsedByTheService(t *testing.T) {
 		}
 	}
 
+	if len(elsewhere) > 0 {
+		t.Logf("вне осмотра (наша поставка, исходники в другом репозитории): %s — "+
+			"структуру их настроек судит их собственное дерево, здесь второй стороны "+
+			"равенства нет", strings.Join(elsewhere, " "))
+	}
 	t.Logf("осмотрено: чартов в дереве %d, из них с конфигурацией сервиса %d; "+
 		"прочитано верхнеуровневых секций %d; секций без разбора %d",
 		chartsSeen, len(charts), sectionsRead, orphans)

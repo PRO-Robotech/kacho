@@ -14,9 +14,9 @@ import (
 	"net/url"
 	"time"
 
-	corecfg "github.com/PRO-Robotech/kacho/pkg/config"
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	corecfg "github.com/PRO-Robotech/corelib/config"
+	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 )
 
 // envPrefix — корневой сегмент env-имён kacho-registry (KACHO_<DOMAIN>).
@@ -88,14 +88,14 @@ type Config struct {
 	// метаданных x-kacho-principal-*. Уезжает в ОБА листенера через
 	// grpcsrv.WithTrustedForwarders (см. cmd/kacho-registry/serve.go).
 	//
-	// Почему это ручка, а не константа: contract corelib (pkg/grpcsrv
+	// Почему это ручка, а не константа: contract corelib (corelib/grpcsrv
 	// principalIsTrusted) сужает круг отправителей ТОЛЬКО когда список непуст; на
 	// пустом он отвечает «доверяем» любому пиру, прошедшему проверку сертификата.
 	// Внутренний периметр у нас объявлен НЕдоверенным, сетевой политики у registry
 	// нет вовсе, а клиентский сертификат всем соседям выдаёт один и тот же
 	// внутренний центр — то есть пустой список означает: любой под кластера
 	// присылает заголовки личности жертвы, и решение о правах принимается от её
-	// имени (pkg/authz subject_extract читает ровно эту личность).
+	// имени (corelib/authz subject_extract читает ровно эту личность).
 	//
 	// Формат — список через запятую. Законный отправитель ОДИН — api-gateway: по
 	// графу импортов заглушки registry вне самого сервиса импортирует только
@@ -220,7 +220,7 @@ type Config struct {
 	// Неположительное значение отвергает конструктор дескриптора.
 	HandlingBudget time.Duration `envconfig:"KACHO_REGISTRY_HANDLING_BUDGET" default:"30s"`
 
-	// ── ПОТОК ИЗМЕНЕНИЙ (общий сервер подписки, `pkg/subscription`) ──────────
+	// ── ПОТОК ИЗМЕНЕНИЙ (общий сервер подписки, `corelib/subscription`) ──────────
 	//
 	// Три величины ПОСАДКИ, а не журнала: журнал говорит, где он лежит и как его
 	// строка становится событием, а сколько потоков держать и сколько они живут —

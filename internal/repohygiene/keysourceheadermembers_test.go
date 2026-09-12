@@ -37,12 +37,21 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+	"github.com/PRO-Robotech/corelib/tokenpolicy"
 )
 
 const (
 	// keySourceOwnerFile — единственный дом перечня.
-	keySourceOwnerFile = "pkg/tokenpolicy/policy.go"
+	//
+	// КООРДИНАТА ПЕРЕЕХАЛА: pkg/tokenpolicy переехал ЦЕЛИКОМ в общий фундамент
+	// (github.com/PRO-Robotech/corelib/tokenpolicy) — в этом дереве каталога
+	// pkg/tokenpolicy больше нет. Владелец перечня остался ОДИН (сам импорт
+	// tokenpolicy выше это доказывает — он резолвится), поменялся только его
+	// дом. "corelib/" — синтетическая метка тела дерева, а не путь диска;
+	// её читает keySourceOwnerFile (сюда, для отчёта и для строгого сравнения)
+	// и keySourceOwnerScan (ниже, для фактического чтения с диска через кэш
+	// модулей). Тот же приём — corelibDirTag в ct2_docs_idform.go.
+	keySourceOwnerFile = "corelib/tokenpolicy/policy.go"
 	// keySourceOwnerDecl — объявление, которым перечень выражен.
 	keySourceOwnerDecl = "функция KeySourceHeaderMembers"
 	// keySourceCensusFloor — порог переписи: ниже него «ноль находок» означало
@@ -70,9 +79,11 @@ func TestKeySourceHeaderMembersAreDeclaredOnce(t *testing.T) {
 			"беспредметен: он молчал бы и тогда, когда предмет исчез, и тогда, когда "+
 			"сломался он сам. Перечень: %v", len(members), keySourceListArity, members)
 	}
-	if !tt.hasFile(keySourceOwnerFile) {
-		t.Fatalf("файла-владельца перечня (%s) в составе дерева НЕТ — перечень переехал, "+
-			"и гейт стережёт координату, которой не существует", keySourceOwnerFile)
+	ownerSrc, ownerErr := keySourceOwnerScan(root)
+	if ownerErr != nil {
+		t.Fatalf("файла-владельца перечня (%s) нет ни в дереве, ни в общем фундаменте (%v) — "+
+			"перечень переехал в оба дома одновременно, и гейт стережёт координату, "+
+			"которой не существует", keySourceOwnerFile, ownerErr)
 	}
 
 	var rels []string
@@ -106,6 +117,29 @@ func TestKeySourceHeaderMembersAreDeclaredOnce(t *testing.T) {
 		tagNames += census.TagNames
 		mentions += census.Mentions
 		for _, s := range sites {
+			if len(s.Members) >= keySourceListArity {
+				lists = append(lists, s)
+				continue
+			}
+			singles = append(singles, s)
+		}
+	}
+
+	// Владелец переехал: его САМ ФАЙЛ вне git-состава этого дерева (см. выше),
+	// поэтому обход по tt.files его не встретит НИКОГДА, и без явной подсадки
+	// (2) и (3) ниже были бы беспредметны — перечня в переписи не было бы вовсе,
+	// а «выписан вне владельца» не от чего отличать.
+	{
+		ownerSites, ownerCensus, serr := ScanKeySourceHeaderMembers(keySourceOwnerFile, ownerSrc, members)
+		if serr != nil {
+			t.Fatalf("разбор владельца %s (общий фундамент): %v", keySourceOwnerFile, serr)
+		}
+		parsed++
+		decls += ownerCensus.Decls
+		literals += ownerCensus.StringLiterals
+		tagNames += ownerCensus.TagNames
+		mentions += ownerCensus.Mentions
+		for _, s := range ownerSites {
 			if len(s.Members) >= keySourceListArity {
 				lists = append(lists, s)
 				continue
@@ -182,4 +216,20 @@ func TestKeySourceHeaderMembersAreDeclaredOnce(t *testing.T) {
 	sort.Strings(where)
 	t.Logf("законные употребления по одному члену (их сколько угодно): %s",
 		strings.Join(where, ", "))
+}
+
+// keySourceOwnerScan читает СОДЕРЖИМОЕ владельца перечня: этим деревом
+// (осталась ли когда-нибудь координата под pkg/), а не найдя — общим
+// фундаментом, куда pkg/tokenpolicy переехал целиком. Отсутствие в ОБОИХ
+// домах — отказ, а не пропуск: судить о единственности перечня, не прочитав
+// ни одного его объявления, нечем.
+func keySourceOwnerScan(root string) ([]byte, error) {
+	if body, err := os.ReadFile(filepath.Join(root, "pkg", "tokenpolicy", "policy.go")); err == nil {
+		return body, nil
+	}
+	moduleDir, merr := corelibModuleRootDir(root)
+	if merr != nil {
+		return nil, merr
+	}
+	return os.ReadFile(filepath.Join(moduleDir, "tokenpolicy", "policy.go"))
 }

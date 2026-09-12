@@ -10,10 +10,10 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/PRO-Robotech/corelib/auth"
+	"github.com/PRO-Robotech/corelib/peer"
+	"github.com/PRO-Robotech/corelib/retry"
 	geopb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
-	"github.com/PRO-Robotech/kacho/pkg/auth"
-	"github.com/PRO-Robotech/kacho/pkg/peer"
-	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
@@ -134,7 +134,7 @@ func (c *regionClient) Get(ctx context.Context, regionID string) (*Region, error
 // где «invalid argument» — текст внутреннего sentinel, а не утверждение о
 // регионе.
 func mapRegionErr(regionID string, err error) error {
-	// Полосу выбирает носитель (pkg/peer). Прежде здесь стоял свой разбор кодов, и
+	// Полосу выбирает носитель (corelib/peer). Прежде здесь стоял свой разбор кодов, и
 	// он уже разошёлся с соседними файлами того же сервиса: PermissionDenied тут
 	// сводился к промаху, а в клиенте зон — к отдельному sentinel'у.
 	switch o := peer.Classify(err); {

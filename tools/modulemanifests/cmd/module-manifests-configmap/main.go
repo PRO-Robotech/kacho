@@ -34,7 +34,7 @@ import (
 	"fmt"
 	"os"
 
-	manifestproducer "github.com/PRO-Robotech/kacho/pkg/modulemanifest/producer"
+	manifestproducer "github.com/PRO-Robotech/corelib/modulemanifest/producer"
 )
 
 func main() {

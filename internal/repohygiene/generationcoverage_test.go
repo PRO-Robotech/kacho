@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/gitenv"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // TestEveryContractRootIsNamedInGenerationInputs — каждый наш контракт назван

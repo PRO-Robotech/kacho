@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 // синтетическое общее звено — распознаётся по существу: возвращает
@@ -268,7 +268,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/PRO-Robotech/kacho/pkg/servicehost"
+	"github.com/PRO-Robotech/corelib/servicehost"
 )
 
 func serve(ctx context.Context) error {
@@ -373,7 +373,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
-	"github.com/PRO-Robotech/kacho/pkg/subscription"
+	"github.com/PRO-Robotech/corelib/subscription"
 )
 
 func buildStream() {

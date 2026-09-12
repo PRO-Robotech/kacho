@@ -25,15 +25,15 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	coredb "github.com/PRO-Robotech/corelib/db"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/network"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/subnet"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
 
-	"github.com/PRO-Robotech/kacho/pkg/pgtest"
+	"github.com/PRO-Robotech/corelib/pgtest"
 )
 
 // reservedRangeUnderTest — служебный диапазон стенда для случаев ниже. Лежит ВНУТРИ

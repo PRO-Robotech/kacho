@@ -11,9 +11,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/corelib/auth"
+	"github.com/PRO-Robotech/corelib/peer"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/auth"
-	"github.com/PRO-Robotech/kacho/pkg/peer"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
@@ -42,7 +42,7 @@ func NewIAMClient(conn *grpc.ClientConn) *IAMClient {
 // EnsureProjectExists валидирует project_id через kaname (ProjectService.Get)
 // на request-path Create.
 //
-// Полосу ответа выбирает носитель (pkg/peer), а не рукописный разбор кодов.
+// Полосу ответа выбирает носитель (corelib/peer), а не рукописный разбор кодов.
 // Прежде здесь стояло «NotFound либо InvalidArgument → предусловие не выполнено,
 // ВСЁ ОСТАЛЬНОЕ → недоступность»: отказ владельца В ПРАВАХ попадал во «всё
 // остальное» и уезжал арендатору как ВРЕМЕННЫЙ отказ. Повтор его не лечит —
@@ -95,7 +95,7 @@ func (c *IAMClient) AccountOf(ctx context.Context, projectID string) (string, er
 	p, err := c.cli.Get(auth.PropagateOutgoing(cctx), &iamv1.GetProjectRequest{ProjectId: projectID})
 	if err != nil {
 		// Отказ соседа отдаётся вызывающему КАК ЕСТЬ: полосу (не найдено /
-		// состояние / недоступность) выбирает носитель `pkg/peer` у вызывающего,
+		// состояние / недоступность) выбирает носитель `corelib/peer` у вызывающего,
 		// и второй рукописный разбор кодов здесь дал бы два места об одном
 		// предмете — ровно тот класс, который уже чинили в EnsureProjectExists.
 		return "", err

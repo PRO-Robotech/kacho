@@ -5,7 +5,7 @@
 //
 // Все поля с семантикой — newtypes с `Validate error`. Голый `string`
 // запрещён. Domain-пакет импортирует ТОЛЬКО stdlib и собственный фундамент
-// (`pkg/option`, `pkg/errors`) — никаких pgx, grpc-stubs, sqlc-types; domain не
+// (`corelib/option`, `corelib/errors`) — никаких pgx, grpc-stubs, sqlc-types; domain не
 // знает adapter'ов (workspace CLAUDE.md «Чистая архитектура»).
 //
 // CreatedAt сюда не входит (DB-managed) — он живёт в repo-сущности
@@ -18,9 +18,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
-	"github.com/PRO-Robotech/kacho/pkg/option"
-	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
+	coreerrors "github.com/PRO-Robotech/corelib/errors"
+	"github.com/PRO-Robotech/corelib/option"
+	corevalidate "github.com/PRO-Robotech/corelib/validate"
 )
 
 // ---- ID newtypes -----------------------------------------------------------

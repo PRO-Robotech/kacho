@@ -10,7 +10,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
 	registrypb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"

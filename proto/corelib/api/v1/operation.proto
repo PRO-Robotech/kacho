@@ -7,7 +7,7 @@ package corelib.api.v1;
 
 import "google/protobuf/descriptor.proto";
 
-option go_package = "github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1;apiv1";
+option go_package = "github.com/PRO-Robotech/corelib/api/corelib/api/v1;apiv1";
 
 // Разметка длящейся операции — словарь, которым КАЖДЫЙ домен помечает свои
 // глаголы.

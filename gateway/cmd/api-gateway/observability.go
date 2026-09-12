@@ -13,7 +13,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+	"github.com/PRO-Robotech/corelib/servicecontract"
 
 	gwmetrics "github.com/PRO-Robotech/kacho/gateway/internal/observability/metrics"
 )

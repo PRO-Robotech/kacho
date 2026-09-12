@@ -12,7 +12,7 @@
 // not. A method can be invisible for a second, independent reason: it lives outside
 // the anchor root the profile names. vpc had exactly that — a listing RPC in a
 // SECOND transport package (internal/handler, beside the per-resource packages under
-// internal/apps/kaname/api), returning NIC attachments for instance ids the caller
+// the service's own use-case root), returning NIC attachments for instance ids the caller
 // supplies with no per-RPC check behind it. Widening the name predicate did not
 // reach it, and the analyser's census went on reporting a number that looked
 // complete because it counted only what the analyser had looked at.
@@ -51,7 +51,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 // transportListingRe matches a listing method declared on a pointer receiver whose
@@ -194,13 +194,24 @@ func TestCensus_SweepFindsSomething(t *testing.T) {
 	t.Parallel()
 	root := repoRootForCoverage(t)
 
-	// iam has the widest listing surface in the repository; a sweep that cannot see
-	// it is broken, whatever it says about anything else.
-	iam := treeListings(t, root, "iam")
-	if len(iam) < 20 {
-		t.Fatalf("the tree sweep found only %d transport listing method(s) in services/iam, "+
+	// PREMISE ANCHOR: the service with the widest listing surface in the tree. A
+	// sweep that cannot see it is broken, whatever it says about anything else.
+	//
+	// The anchor used to be the access service (22 methods). It was carved out into
+	// its own repository, and an anchor naming a directory the tree does not carry
+	// makes the premise fail on a CORRECT tree — the floor would then be repaired
+	// by lowering it, which is the one repair that must never be made here.
+	//
+	// The anchor is vpc, and the floor is MEASURED, not guessed: 23 transport
+	// listing methods on the day of the move (compute 8 · storage 11 · nlb 7 ·
+	// registry 6 · geo 2). Twenty is the same distance below the anchor the old
+	// floor kept: it survives an ordinary removal and still catches a predicate
+	// that stopped matching.
+	anchor := treeListings(t, root, "vpc")
+	if len(anchor) < 20 {
+		t.Fatalf("the tree sweep found only %d transport listing method(s) in services/vpc, "+
 			"which is implausible — the predicate is not matching, and every equality it "+
-			"reports elsewhere is an agreement between two silences", len(iam))
+			"reports elsewhere is an agreement between two silences", len(anchor))
 	}
 
 	// And the mirror: it must NOT match something that only looks like a declaration.

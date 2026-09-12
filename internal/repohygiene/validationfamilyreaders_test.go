@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // validationfamilyreaders_test.go — ПРОВЕРКИ, ЧИТАЮЩЕЙ СНЯТОЕ СЕМЕЙСТВО, В ДЕРЕВЕ

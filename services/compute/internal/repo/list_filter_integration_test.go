@@ -34,8 +34,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/corelib/operations"
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
 )
 
 // TestIntegration_InstanceHandler_PaginatedFilteredList — page-then-check traversal

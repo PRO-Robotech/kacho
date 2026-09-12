@@ -22,10 +22,10 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/PRO-Robotech/corelib/auth"
+	"github.com/PRO-Robotech/corelib/peer"
+	"github.com/PRO-Robotech/corelib/retry"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/auth"
-	"github.com/PRO-Robotech/kacho/pkg/peer"
-	"github.com/PRO-Robotech/kacho/pkg/retry"
 )
 
 // projectExistsTTL — TTL положительного результата Exists.
@@ -108,7 +108,7 @@ func (c *ProjectClient) Exists(ctx context.Context, projectID string) (bool, err
 		defer cancel()
 		_, rerr := c.cli.Get(auth.PropagateOutgoing(callCtx), &iamv1.GetProjectRequest{ProjectId: projectID})
 		if rerr != nil {
-			// Полосу выбирает носитель (pkg/peer): «владелец установил, что ссылка
+			// Полосу выбирает носитель (corelib/peer): «владелец установил, что ссылка
 			// не годится» — промах, негодный по его мнению id И отказ в правах.
 			// Пробрасывать их ошибкой нельзя: сервисный маппер разворачивает это в
 			// недоступность, то есть говорит вызывающему «повтори позже» на ввод,

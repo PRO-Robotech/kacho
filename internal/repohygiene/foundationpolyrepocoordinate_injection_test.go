@@ -26,7 +26,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // fpcRootWith собирает корень из перечисленных файлов. Файлов ровно столько,

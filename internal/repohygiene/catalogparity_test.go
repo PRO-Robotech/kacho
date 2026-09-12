@@ -45,26 +45,25 @@ import (
 
 	"google.golang.org/protobuf/reflect/protoreflect"
 
-	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1"
+	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
+	_ "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	"github.com/PRO-Robotech/corelib/authz/catalogderive"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
 )
 
-// catalogEmbedPath / iamCatalogMirrorPath — две вшитые копии каталога. Первая —
-// та, которую исполняет шлюз; вторая — зеркало, вшитое в iam. Гейты ниже говорят
-// «каталог» в единственном числе, и это осмысленно ровно пока копии совпадают
-// побайтово.
-const (
-	catalogEmbedPath     = "gateway/internal/middleware/embed/permission_catalog.json"
-	iamCatalogMirrorPath = "services/iam/internal/apps/kaname/seed/embedded/permission_catalog.json"
-)
+// catalogEmbedPath — вшитая копия каталога, которую ИСПОЛНЯЕТ шлюз.
+//
+// Копия здесь ОДНА, и «каталог» в единственном числе теперь буквален. Рядом
+// стояло зеркало, вшитое в службу доступа; служба вынесена отдельным продуктом, и
+// зеркало уехало вместе с ней. Второй копии в этом дереве нет — значит нет и
+// вопроса «по какой из них выданы права».
+const catalogEmbedPath = "gateway/internal/middleware/embed/permission_catalog.json"
 
 // catalogProtoPackages — proto-пакеты, чьи RPC попадают в каталог.
 //
@@ -184,19 +183,18 @@ func TestCatalogMatchesTheAnnotationsItWasGeneratedFrom(t *testing.T) {
 			"является — он порождаемый.", m)
 	}
 
-	// Обе вшитые копии обязаны совпадать побайтово: гейты говорят «каталог» в
-	// единственном числе, и при разъезде копий неясно, по какой из них выданы
-	// права.
-	mirror, err := os.ReadFile(filepath.Join(root, iamCatalogMirrorPath))
-	if err != nil {
-		t.Fatalf("не прочитано зеркало каталога %s: %v", iamCatalogMirrorPath, err)
-	}
-	if string(raw) != string(mirror) {
-		t.Errorf("две вшитые копии каталога разошлись:\n  %s\n  %s", catalogEmbedPath, iamCatalogMirrorPath)
-	}
+	// ЗДЕСЬ СВЕРЯЛИСЬ ДВЕ ВШИТЫЕ КОПИИ КАТАЛОГА — вторая уехала вместе с
+	// вынесенной службой доступа, и сверять больше нечего: обе стороны равенства
+	// обязаны лежать в одном дереве, а здесь их одна. Утверждение снято вместе со
+	// своим предметом, а не оставлено читать несуществующий путь — чтение дало бы
+	// отказ, неотличимый от расхождения копий.
+	//
+	// Что при этом УТРАЧЕНО: расхождение копии края с копией службы не ловится в
+	// этом дереве НИЧЕМ. Свойство «каталог порождён из аннотаций» держится
+	// по-прежнему — им и занят весь обход выше.
 
 	t.Logf("перепись: строк каталога %d, аннотированных RPC %d в %d пакетах, расхождений %d; "+
-		"копий сверено 2, байт %d",
+		"копий в дереве 1, байт %d",
 		len(rows), methods, len(catalogProtoPackages), len(mismatches), len(raw))
 }
 
@@ -566,9 +564,20 @@ func handsRegistrarsToTheCarrier(f *ast.File) bool {
 	return found
 }
 
-// apiStubImportPrefix — путь сгенерённых стабов. Домен восстанавливается из
-// хвоста пути заменой разделителя: `kacho/cloud/storage/v1` → `kacho.cloud.storage.v1`.
-const apiStubImportPrefix = "github.com/PRO-Robotech/kacho/pkg/api/"
+// apiStubImportPrefixes — пути сгенерённых стабов, ОБА дома сразу. Домен
+// восстанавливается из хвоста пути заменой разделителя: `kacho/cloud/storage/v1`
+// → `kacho.cloud.storage.v1`.
+//
+// Дома два, а не один: доменные стабы (vpc/compute/storage/nlb/registry/geo/…)
+// остаются под `pkg/api/` этого дерева, а платформенные, версии не несущие
+// (subscription/operation/quota), переехали в общий фундамент — `api/` общего
+// фундамента (`github.com/PRO-Robotech/corelib`). Единственный префикс молчал
+// бы на второй форме ровно так, как молчал до этой правки: `kacho.cloud.
+// subscription` регистрируется этой же функцией, а признана не была.
+var apiStubImportPrefixes = []string{
+	"github.com/PRO-Robotech/kacho/pkg/api/",
+	"github.com/PRO-Robotech/corelib/api/",
+}
 
 // registeredProtoPackages — домены служб, которые файл РЕГИСТРИРУЕТ на сервере.
 //
@@ -579,14 +588,24 @@ func registeredProtoPackages(f *ast.File) []string {
 	local := map[string]string{} // локальное имя пакета → proto-пакет
 	for _, imp := range f.Imports {
 		path, err := strconv.Unquote(imp.Path.Value)
-		if err != nil || !strings.HasPrefix(path, apiStubImportPrefix) {
+		if err != nil {
+			continue
+		}
+		var prefix string
+		for _, p := range apiStubImportPrefixes {
+			if strings.HasPrefix(path, p) {
+				prefix = p
+				break
+			}
+		}
+		if prefix == "" {
 			continue
 		}
 		name := filepath.Base(path)
 		if imp.Name != nil {
 			name = imp.Name.Name
 		}
-		local[name] = strings.ReplaceAll(strings.TrimPrefix(path, apiStubImportPrefix), "/", ".")
+		local[name] = strings.ReplaceAll(strings.TrimPrefix(path, prefix), "/", ".")
 	}
 	if len(local) == 0 {
 		return nil

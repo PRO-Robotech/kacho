@@ -376,7 +376,7 @@ vpc:
     adminPodsSelector: {}
   # AuthZ: per-RPC IAM Check (default iamEndpoint kaname-internal:9091),
   # FGA-filtered List ON + fail-closed, write-side FGA ON. Ручки обхода у vpc
-  # больше нет: контур поднимает общий носитель (pkg/servicehost), который ставит
+  # больше нет: контур поднимает общий носитель (corelib/servicehost), который ставит
   # звено решения о доступе всегда, поэтому отменять его нечем.
   authz:
     # Кто вправе ПЕРЕДАВАТЬ личность конечного пользователя (x-kacho-principal-*)
@@ -405,7 +405,11 @@ vpc:
   mtls:
     enable: true
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
+      # Домена величин в этой установке НЕТ (`quota.authority: not-deployed` в чарте
+      # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
+      # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
+      # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
+      quotaAuthority: false
       iamRegister: true
       iamProject: true
       iamAuthz: true
@@ -457,7 +461,11 @@ compute:
   mtls:
     enable: true
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
+      # Домена величин в этой установке НЕТ (`quota.authority: not-deployed` в чарте
+      # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
+      # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
+      # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
+      quotaAuthority: false
       iamRegister: true
       iamProject: true
       iamAuthz: true
@@ -854,7 +862,11 @@ kacho-nlb:
   mtls:
     enable: true
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
+      # Домена величин в этой установке НЕТ (`quota.authority: not-deployed` в чарте
+      # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
+      # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
+      # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
+      quotaAuthority: false
       iamRegister: true
       iamProject: true
       vpc: true
@@ -865,6 +877,29 @@ kacho-nlb:
       # default with tls:false — so an unset geo edge is refuse-to-start, not just
       # a broken dial. geo also serves RequireAndVerifyClientCert here.
       geo: true
+  # АДРЕСА СОСЕДЕЙ — ТОЙ ЖЕ ЛОВУШКОЙ, ЧТО `db.host` НИЖЕ, И ЦЕНА ЗДЕСЬ ВЫШЕ.
+  #
+  # Умолчания чарта nlb — `kacho-vpc.kacho.svc` и `kacho-compute.kacho.svc`:
+  # они предполагают релиз, названный `kacho`. В этой установке службы
+  # называются `vpc` и `compute` (так их рендерят соответствующие чарты), и
+  # умолчание указывает на Service, которого в профиле НЕТ ВОВСЕ. Правильные
+  # адреса приходили только из dev-профиля, который боевой слой не наследует, —
+  # ровно то, на чём уже был пойман `db.host`.
+  #
+  # Замечено не дозвоном, а разбором рендера: имя для сверки рукопожатия
+  # (`mtls.serverName.vpc` = `vpc.kacho.svc`) осталось верным и потому
+  # РАСХОДИЛОСЬ с адресом — пара «адрес + имя для сверки» разъехалась, и
+  # `deploy/tests/helm/servername-checked-against-the-peer-test.sh` называет это
+  # находкой. Половина пары здесь неверна именно та, которую не видно в
+  # сертификате: сертификат соседа выписан на `vpc.kacho.svc`, а набирается
+  # `kacho-vpc.kacho.svc`.
+  peers:
+    vpc:
+      addr: vpc.kacho.svc:9090
+      internalAddr: vpc.kacho.svc:9091
+    compute:
+      addr: compute.kacho.svc:9090
+      internalAddr: ""
   db:
     # The nlb chart default host is `kacho-pg-nlb`, which assumes the release is
     # named `kacho`; this release is `kacho-umbrella`, so the real Service is
@@ -1002,7 +1037,11 @@ storage:
   mtls:
     enable: true
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
+      # Домена величин в этой установке НЕТ (`quota.authority: not-deployed` в чарте
+      # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
+      # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
+      # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
+      quotaAuthority: false
       geo: true
       iam: true
 
@@ -1125,7 +1164,11 @@ registry:
   mtls:
     enable: true
     edges:
-      quotaAuthority: true # →домен величин (Resolve + ListChangedSince, :9091)
+      # Домена величин в этой установке НЕТ (`quota.authority: not-deployed` в чарте
+      # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
+      # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
+      # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
+      quotaAuthority: false
       iamAuthz: true
       iamProject: true
       geo: true

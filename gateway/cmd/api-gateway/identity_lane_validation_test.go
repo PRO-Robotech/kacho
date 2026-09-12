@@ -24,8 +24,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/corelib/identityposture"
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
-	"github.com/PRO-Robotech/kacho/pkg/identityposture"
 )
 
 // testAdminCA — якорь доверия административного контура. Часть фикстуры, не

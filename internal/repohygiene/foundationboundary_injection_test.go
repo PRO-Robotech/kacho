@@ -377,8 +377,14 @@ func TestClassOfPackageResolvesSplitSubtreesAndRefusesUnknownCatalogs(t *testing
 		// оснастка и обычный каталог
 		{"pkg/pgtest", classToolchain},
 		{"pkg/listnarrow/narrowtest", classCorelib},
-		// дерево вне pkg/: победа самой длинной приставки
-		{"services/iam/internal/manifest", classKaname},
+		// дерево вне pkg/: корень разрешается своим классом.
+		//
+		// Пары на «победу самой длинной приставки» здесь БОЛЬШЕ НЕТ, и это не
+		// упущение: единственная многосегментная приставка называла службу
+		// доступа, вынесенную отдельным продуктом, и в foundationRoots не
+		// осталось ни одной вложенной. Само свойство «длиннее побеждает»
+		// проверено выше парой pkg/quota ↔ pkg/quota/quotaiam — оно у
+		// classOfPackage одно на обе карты.
 		{"services/vpc/internal/repo", classKacho},
 		{"gateway/internal/restmux", classKacho},
 		{"internal/repohygiene", classToolchain},

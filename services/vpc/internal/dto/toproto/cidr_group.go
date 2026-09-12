@@ -4,9 +4,9 @@
 package toproto
 
 import (
+	"github.com/PRO-Robotech/corelib/safeconv"
 	reference "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/reference"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
-	"github.com/PRO-Robotech/kacho/pkg/safeconv"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/dto"
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"

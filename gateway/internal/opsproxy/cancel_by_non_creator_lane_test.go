@@ -19,12 +19,12 @@ import (
 
 	rpcstatus "google.golang.org/genproto/googleapis/rpc/status"
 
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
 
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/operations/operationspb"
 	"github.com/PRO-Robotech/kacho/gateway/internal/opsproxy"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 )
 
 // Какой исход даёт полоса «отмена ЧУЖОЙ операции» — установлено ОПЫТОМ.

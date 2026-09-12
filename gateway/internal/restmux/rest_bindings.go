@@ -9,7 +9,7 @@ import (
 
 	"google.golang.org/genproto/googleapis/api/annotations"
 
-	apiv1 "github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1"
+	apiv1 "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"

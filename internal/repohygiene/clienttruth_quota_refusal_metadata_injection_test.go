@@ -59,10 +59,10 @@ func writeQuotaMetaTree(t *testing.T, owner string, f quotaMetaFixture) string {
 	var imp, call string
 	switch f.bridge {
 	case "attach":
-		imp = `import "github.com/PRO-Robotech/kacho/pkg/quota/quotadetail"`
+		imp = `import "github.com/PRO-Robotech/corelib/quota/quotadetail"`
 		call = `return quotadetail.Attach(wrapped, detail)`
 	case "alias":
-		imp = `import qd "github.com/PRO-Robotech/kacho/pkg/quota/quotadetail"`
+		imp = `import qd "github.com/PRO-Robotech/corelib/quota/quotadetail"`
 		call = `return qd.Attach(wrapped, detail)`
 	case "foreign":
 		// Одноимённый пакет ЧУЖОГО происхождения: имя в исходнике то же, путь
@@ -111,7 +111,7 @@ func classifyQuotaErr(code, msg, detail string, wrapped error) error {
 	}`
 	}
 
-	mk("services/"+owner+"/internal/apps/kaname/shared/serviceerr/quota.go", `package serviceerr
+	mk("services/"+owner+"/internal/apps/kacho/shared/serviceerr/quota.go", `package serviceerr
 
 import "google.golang.org/genproto/googleapis/rpc/errdetails"
 
@@ -125,7 +125,7 @@ func quotaRefusal(md map[string]string) *errdetails.ErrorInfo {
 	if f.twin {
 		// ЗАКОННЫЙ БЛИЗНЕЦ: сборка ErrorInfo ДРУГОЙ полосы. Величин у неё нет и
 		// быть не должно — требовать их значило бы краснеть на исправном коде.
-		mk("services/"+owner+"/internal/apps/kaname/shared/serviceerr/lanes.go", `package serviceerr
+		mk("services/"+owner+"/internal/apps/kacho/shared/serviceerr/lanes.go", `package serviceerr
 
 import "google.golang.org/genproto/googleapis/rpc/errdetails"
 
@@ -247,7 +247,7 @@ func TestQuotaMetadataGate_RedWhenTheAnswerHasNowhereToPutThem(t *testing.T) {
 		t.Fatalf("ответ без поля величин обязан давать РОВНО одну находку, получено %d: %v",
 			len(findings), findings)
 	}
-	if !strings.Contains(findings[0], "services/beta/internal/apps/kaname/shared/serviceerr/quota.go") {
+	if !strings.Contains(findings[0], "services/beta/internal/apps/kacho/shared/serviceerr/quota.go") {
 		t.Fatalf("находка обязана называть файл сборки ответа: %s", findings[0])
 	}
 }

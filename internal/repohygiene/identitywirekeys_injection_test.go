@@ -22,7 +22,7 @@ package repohygiene
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/principalwire"
+	"github.com/PRO-Robotech/corelib/principalwire"
 )
 
 // identityWireInjectedDefect — ВТОРОЕ объявление имени, тремя формами сразу:
@@ -56,7 +56,7 @@ const identityWireInjectedLegitimate = `package restfront
 import (
 	"fmt"
 
-	pw "github.com/PRO-Robotech/kacho/pkg/principalwire"
+	pw "github.com/PRO-Robotech/corelib/principalwire"
 )
 
 const mdKeyPrincipalID = pw.MetaPrincipalID
@@ -78,7 +78,7 @@ func strip(md map[string][]string) error {
 // объявлении импорта.
 const identityWireInjectedBinding = `package grpcsrv
 
-import pw "github.com/PRO-Robotech/kacho/pkg/principalwire"
+import pw "github.com/PRO-Robotech/corelib/principalwire"
 
 const (
 	MDKeyPrincipalType = pw.MetaPrincipalType
@@ -196,7 +196,7 @@ func TestIdentityWireScannerReadsTheFundamentBinding(t *testing.T) {
 func TestIdentityWireCatalogueNamesOnlyRealFundamentKeys(t *testing.T) {
 	t.Parallel()
 	_, bindings, _, err := ScanIdentityWireDeclarations(
-		"pkg/grpcsrv/acr.go", []byte("package grpcsrv\n\nimport pw \"github.com/PRO-Robotech/kacho/pkg/principalwire\"\n\nconst MDKeyTokenACR = pw.MetaTokenACR\n"))
+		"pkg/grpcsrv/acr.go", []byte("package grpcsrv\n\nimport pw \"github.com/PRO-Robotech/corelib/principalwire\"\n\nconst MDKeyTokenACR = pw.MetaTokenACR\n"))
 	if err != nil {
 		t.Fatalf("разбор синтетики: %v", err)
 	}

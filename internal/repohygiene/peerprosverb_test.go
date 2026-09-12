@@ -44,9 +44,19 @@ func TestPeerProseVerbMatchesItsLane(t *testing.T) {
 // память автора.
 func TestPeerProseGatePremiseStillHolds(t *testing.T) {
 	t.Parallel()
-	path := filepath.Join(repoRoot(t), "pkg", "peer", "outcome.go")
+	root := repoRoot(t)
+
+	// Носитель полос переехал в пакет peer общего фундамента
+	// (github.com/PRO-Robotech/corelib) — читаем ТУДА, куда объявление
+	// переехало (см. corelibsource_test.go), а не по прежнему пути дерева.
+	files := corelibPackageGoFiles(t, root, "peer")
+	body, ok := files["corelib/peer/outcome.go"]
+	if !ok {
+		t.Fatalf("носителя полос corelib/peer/outcome.go нет среди файлов пакета peer " +
+			"общего фундамента — гейту нечем проверить основание")
+	}
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, path, nil, 0)
+	f, err := parser.ParseFile(fset, "outcome.go", body, 0)
 	if err != nil {
 		t.Fatalf("разбор носителя полос: %v", err)
 	}
@@ -84,7 +94,7 @@ func TestPeerProseGatePremiseStillHolds(t *testing.T) {
 
 const synthPeerCaller = `package clients
 
-import "github.com/PRO-Robotech/kacho/pkg/peer"
+import "github.com/PRO-Robotech/corelib/peer"
 
 const zoneUnavailableText = "geo zone validation unavailable"
 
@@ -113,7 +123,7 @@ func runtimeValued(o peer.Outcome, id, text string) error {
 // здесь имя, а не текст, и обёртка стала бы необъявленным послаблением.
 const synthWrapperDefect = `package wrapped
 
-import "github.com/PRO-Robotech/kacho/pkg/peer"
+import "github.com/PRO-Robotech/corelib/peer"
 
 func lane(o peer.Outcome, id, unavailable string) error {
 	return o.Status(
@@ -129,7 +139,7 @@ func caller(o peer.Outcome, id string) error {
 // synthDefect — глагол в прозе полосы, которая его не заполнит.
 const synthDefect = `package broken
 
-import "github.com/PRO-Robotech/kacho/pkg/peer"
+import "github.com/PRO-Robotech/corelib/peer"
 
 func lane(o peer.Outcome, id string) error {
 	return o.Status(

@@ -103,8 +103,10 @@ type AuthorizeServiceClient interface {
 	// one gRPC hop, while the 100 relation-store round-trips are still paid, in
 	// sequence. The relation store itself does serve a batched question (that is
 	// what internal/authzfilter uses for iam's own pages); routing this RPC through
-	// it is open work, tracked as a number in
-	// services/iam/docs/engineering/architecture/known-divergences.md §11.
+	// it is open work, tracked as a number in the service's own engineering
+	// documentation (its coordinate is deliberately not quoted here: the service
+	// was carved out into its own repository, and a path that resolves in another
+	// tree reads as one that resolves in this one).
 	//
 	// Order of results matches the order of `checks` in the request. Per-item
 	// failures (e.g. malformed subject) are surfaced as `allowed=false` with
@@ -275,8 +277,10 @@ type AuthorizeServiceServer interface {
 	// one gRPC hop, while the 100 relation-store round-trips are still paid, in
 	// sequence. The relation store itself does serve a batched question (that is
 	// what internal/authzfilter uses for iam's own pages); routing this RPC through
-	// it is open work, tracked as a number in
-	// services/iam/docs/engineering/architecture/known-divergences.md §11.
+	// it is open work, tracked as a number in the service's own engineering
+	// documentation (its coordinate is deliberately not quoted here: the service
+	// was carved out into its own repository, and a path that resolves in another
+	// tree reads as one that resolves in this one).
 	//
 	// Order of results matches the order of `checks` in the request. Per-item
 	// failures (e.g. malformed subject) are surfaced as `allowed=false` with

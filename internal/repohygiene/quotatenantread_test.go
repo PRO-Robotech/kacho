@@ -13,9 +13,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 
-	"github.com/PRO-Robotech/kacho/pkg/platformmodules"
+	"github.com/PRO-Robotech/corelib/platformmodules"
 )
 
 // Владелец, который СПИСЫВАЕТ, обязан отвечать на ЧТЕНИЕ — и его снимок обязан
@@ -208,12 +208,55 @@ func TestEveryQuotaChargingOwnerAnswersTheTenantRead(t *testing.T) {
 		}
 	}
 
+	// СЛУЖБЫ, ЖИВУЩИЕ В ЭТОМ ДЕРЕВЕ. Зеркальная форма ниже спрашивает «почему
+	// отвечает и не списывает», и вопрос этот имеет смысл только там, где
+	// списывать ЕСТЬ ЧЕМ: миграции владельца лежат в его каталоге службы.
+	//
+	// Контракт и реализация теперь бывают в РАЗНЫХ деревьях. Служба доступа
+	// вынесена отдельным продуктом, а её контракт остался здесь — им пользуются
+	// пять доменов и край. Модуль, у которого контракт есть, а каталога службы
+	// нет, списывать не может BY CONSTRUCTION: его миграции лежат в чужом
+	// репозитории, и «не списывает» о нём есть свойство раскладки, а не дефект.
+	//
+	// Признак ЖИВОЙ, а не имя: перечень выводится из индекса дерева. Появится
+	// каталог службы — модуль вернётся под зеркальную меру сам, без правки
+	// здесь. Пропишись имя `iam` в исключение — оно пережило бы свой предмет
+	// молча в тот день, когда служба вернулась бы.
+	serviceFiles, err := treecorpus.Under(filepath.Join(root, "services"))
+	require.NoError(t, err, "состав каталога служб берётся у индекса дерева")
+	serviceInTree := map[string]bool{}
+	for _, path := range serviceFiles {
+		rel := path
+		if i := strings.Index(path, "/services/"); i >= 0 {
+			rel = path[i+1:]
+		}
+		if seg := strings.Split(rel, "/"); len(seg) > 1 {
+			serviceInTree[seg[1]] = true
+		}
+	}
+	require.NotEmpty(t, serviceInTree,
+		"под services/ не опознано ни одной службы — зеркальная мера ниже освободила бы "+
+			"ВСЕХ, и её молчание означало бы пустой обход, а не отсутствие находок")
+
+	// protoDirServed — модуль контракта, чья служба живёт в этом дереве.
+	protoDirServed := func(dir string) bool {
+		if svc, ok := platformmodules.ServiceOfCatalogModule(dir); ok {
+			return serviceInTree[svc]
+		}
+		return serviceInTree[dir]
+	}
+
 	// Зеркальная форма: ответ про потолок, под который никто не считает.
 	chargingProtoDirs := map[string]bool{}
 	for domain := range charging {
 		chargingProtoDirs[protoDir(domain)] = true
 	}
+	skippedForeign := make([]string, 0, 1)
 	for dir, where := range answering {
+		if !protoDirServed(dir) {
+			skippedForeign = append(skippedForeign, dir)
+			continue
+		}
 		if !chargingProtoDirs[dir] {
 			findings = append(findings, dir+
 				" — отвечает на чтение квот ("+where+"), но не списывает ни одного вида: "+
@@ -222,12 +265,15 @@ func TestEveryQuotaChargingOwnerAnswersTheTenantRead(t *testing.T) {
 	}
 	sort.Strings(findings)
 
-	t.Logf("перепись: миграций осмотрено %d, контрактов %d; списывают %d (%s); "+
-		"отвечают на чтение %d (%s); догоняют величину %d (%s)",
-		migrationsSeen, protosSeen,
+	sort.Strings(skippedForeign)
+	t.Logf("перепись: миграций осмотрено %d, контрактов %d; служб в дереве %d; "+
+		"списывают %d (%s); отвечают на чтение %d (%s); догоняют величину %d (%s); "+
+		"модулей контракта без своей службы в этом дереве %d (%s) — зеркальной мерой не судятся",
+		migrationsSeen, protosSeen, len(serviceInTree),
 		len(charging), joinKeys(charging),
 		len(answering), joinKeys(answering),
-		len(cursor), joinKeys(cursor))
+		len(cursor), joinKeys(cursor),
+		len(skippedForeign), strings.Join(skippedForeign, ", "))
 
 	require.Empty(t, findings,
 		"предел, который ограничивает и которого не видно, неотличим для арендатора от сбоя "+

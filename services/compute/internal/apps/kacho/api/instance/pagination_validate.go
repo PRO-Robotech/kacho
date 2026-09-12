@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho/pkg/validate"
+	"github.com/PRO-Robotech/corelib/validate"
 )
 
 // ValidateListPagination validates the List pagination inputs (page_size + page_token)

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
+	"github.com/PRO-Robotech/corelib/authz/proxytuple"
 )
 
 // proxyforbiddentypes_test.go — гейт над ДЕРЕВОМ: запретительный набор типов

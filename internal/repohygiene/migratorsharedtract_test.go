@@ -18,14 +18,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 func TestMigratorDbFreeTractIsDeclaredOnce(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 
-	census, findings, err := auditMigratorSharedTract(root)
+	census, findings, err := auditMigratorSharedTract(t, root)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -57,12 +57,33 @@ func TestMigratorDbFreeTractIsDeclaredOnce(t *testing.T) {
 // auditMigratorSharedTract читает корпус и возвращает перепись с находками.
 // Вынесен из пробы, чтобы инъекция звала ТО ЖЕ, что и гейт: доказательство,
 // проверяющее свою копию разбора, не доказывает ничего о гейте.
-func auditMigratorSharedTract(root string) (migratorTractCensus, []migratorTractFinding, error) {
+func auditMigratorSharedTract(t *testing.T, root string) (migratorTractCensus, []migratorTractFinding, error) {
 	var (
 		census   migratorTractCensus
 		findings []migratorTractFinding
 		declared = map[string]struct{}{}
 	)
+
+	// Общий пакет переехал из pkg/migratorcli в пакет migratorcli общего
+	// фундамента (github.com/PRO-Robotech/corelib): дерево больше не несёт
+	// его файлов, поэтому declared с диска всегда пуст — читаем ТУДА, куда
+	// пакет переехал (см. corelibsource_test.go).
+	for rel, body := range corelibPackageGoFiles(t, root, "migratorcli") {
+		census.FilesRead++
+		census.SharedFiles++
+		lits, lerr := stringLiteralsOfGoSource(rel, string(body))
+		if lerr != nil {
+			return census, nil, lerr
+		}
+		for _, marker := range migratorRefusalMarkers {
+			for _, lit := range lits {
+				if strings.Contains(lit, marker) {
+					declared[marker] = struct{}{}
+					break
+				}
+			}
+		}
+	}
 
 	for _, dir := range []string{"pkg", "services"} {
 		paths, err := treecorpus.UnderWithSuffix(filepath.Join(root, dir), ".go")

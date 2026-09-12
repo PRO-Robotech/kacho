@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
-	"github.com/PRO-Robotech/kacho/pkg/validate/nameform"
+	"github.com/PRO-Robotech/corelib/treecorpus"
+	"github.com/PRO-Robotech/corelib/validate/nameform"
 )
 
 // Форма имени, показанная клиенту, совпадает с формой, которую держит код.

@@ -12,7 +12,7 @@
 //	"enp" → vpc               (операции по Network / RouteTable / SecurityGroup)
 //	"e9b" → vpc               (операции по Subnet / Address)
 //	"epd" → compute           (ВСЕ операции compute-домена: Instance/MachineType —
-//	                           PrefixOperationCompute == PrefixInstance, см. pkg/ids.
+//	                           PrefixOperationCompute == PrefixInstance, см. corelib/ids.
 //	                           Блочное хранение здесь БОЛЬШЕ НЕ значится: Volume/Snapshot/Image/
 //	                           DiskType принадлежат kacho-storage и несут собственный op-префикс)
 //	"iop" → iam               (ВСЕ операции iam-домена: Account/Project/User/SA/Group/Role/AccessBinding)
@@ -39,9 +39,9 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
-	"github.com/PRO-Robotech/kacho/pkg/ids"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	"github.com/PRO-Robotech/corelib/ids"
+	"github.com/PRO-Robotech/corelib/operations"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 )
@@ -257,7 +257,7 @@ func (p *OpsProxy) Cancel(ctx context.Context, req *operationpb.CancelOperationR
 // личности голыми строками — дважды, в двух соседних условиях. Сойтись двум
 // перечислениям нечем, они не собираются вместе и друг друга не читают, и
 // расхождение видит только тот, кто сравнит копии. Правила, отличия обеих полос
-// и порядок условий описаны в доме — `pkg/operations`, и здесь намеренно НЕ
+// и порядок условий описаны в доме — `corelib/operations`, и здесь намеренно НЕ
 // пересказываются: два места об одном предмете расходятся молча (задача
 // продукта #1399).
 //

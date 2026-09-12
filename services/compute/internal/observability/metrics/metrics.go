@@ -26,14 +26,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowmetrics"
+	"github.com/PRO-Robotech/corelib/listnarrow"
+	"github.com/PRO-Robotech/corelib/listnarrow/narrowmetrics"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
-	opmetrics "github.com/PRO-Robotech/kacho/pkg/operations"
-	outboxmetrics "github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
+	"github.com/PRO-Robotech/corelib/authz/authzmetrics"
+	opmetrics "github.com/PRO-Robotech/corelib/operations"
+	outboxmetrics "github.com/PRO-Robotech/corelib/outbox/metrics"
 
-	"github.com/PRO-Robotech/kacho/pkg/observability"
+	"github.com/PRO-Robotech/corelib/observability"
 )
 
 // Metrics владеет приватным prometheus-реестром и коллекторами kacho-compute.
@@ -292,7 +292,7 @@ func (m *Metrics) InitDeliveredByDirection(table, direction string) {
 
 // RegisterListNarrow провязывает читателя величин СУЖАТЕЛЯ СПИСКОВ.
 //
-// Коллектор — ОДНА реализация на все сервисы (`pkg/listnarrow/narrowmetrics`),
+// Коллектор — ОДНА реализация на все сервисы (`corelib/listnarrow/narrowmetrics`),
 // потому что пять копий одинаковых на вид полос разъезжаются молча — ровно по
 // той же причине, по которой единствен и сам сужатель. Здесь только имя
 // сервиса и читатель.
@@ -306,7 +306,7 @@ func (m *Metrics) RegisterListNarrow(read func() listnarrow.Counts) {
 
 // RegisterAuthzCache провязывает читателей величин КЕША ПОЛОЖИТЕЛЬНЫХ ВЕРДИКТОВ.
 //
-// Коллектор — ОДНА реализация на все сервисы (`pkg/authz/authzmetrics`) и одно
+// Коллектор — ОДНА реализация на все сервисы (`corelib/authz/authzmetrics`) и одно
 // правило имени серии, однородное с краем
 // (`kacho_api_gateway_authz_cache_total`): собиратель, у которого уже есть
 // правило на край, читает сервисы тем же выражением.

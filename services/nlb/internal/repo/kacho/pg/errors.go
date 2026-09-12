@@ -13,9 +13,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/PRO-Robotech/kacho/pkg/db/pgfault"
-	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
-	"github.com/PRO-Robotech/kacho/pkg/pagetoken"
+	"github.com/PRO-Robotech/corelib/db/pgfault"
+	coreerrors "github.com/PRO-Robotech/corelib/errors"
+	"github.com/PRO-Robotech/corelib/pagetoken"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
 
@@ -105,7 +105,7 @@ func encodePageToken(t time.Time, id string) string {
 	if t.IsZero() && id == "" {
 		return ""
 	}
-	// Форма объявлена ОДИН раз — в `pkg/pagetoken` (#652). Она отличается от
+	// Форма объявлена ОДИН раз — в `corelib/pagetoken` (#652). Она отличается от
 	// канонической (алфавит URL без дополнения, разделитель — нулевой байт), и
 	// это различие ВИДНО там же: пока каждая форма жила у себя, несовместимость
 	// токенов двух служб обнаруживалась только на чужом курсоре.

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // TestPageCursorFormIsDeclaredOnce — форма курсора страницы объявлена ОДИН раз
@@ -40,7 +40,13 @@ import (
 // Единственное законное место — `pkg/pagetoken`. Всё прочее обязано звать его.
 func TestPageCursorFormIsDeclaredOnce(t *testing.T) {
 	t.Parallel()
-	const home = "pkg/pagetoken"
+	// Авторитетный кодек переехал из pkg/pagetoken в пакет pagetoken общего
+	// фундамента (github.com/PRO-Robotech/corelib) — обе формы дома признаются
+	// разом: инъекция строит синтетические деревья со старым каталогом
+	// дерева, а настоящее дерево несёт только новый синтетический путь
+	// (см. corelibsource_test.go).
+	const homeTree = "pkg/pagetoken"
+	const homeFoundation = "corelib/pagetoken/"
 
 	roots := []string{"../../pkg", "../../services", "../../gateway"}
 
@@ -67,6 +73,20 @@ func TestPageCursorFormIsDeclaredOnce(t *testing.T) {
 		}
 	}
 
+	// Пакет общего фундамента — тот же предмет, вне диска: авторитетный кодек
+	// туда переехал целиком, и обход roots его не достигает.
+	for rel, src := range corelibPackageGoFiles(t, repoRoot(t), "pagetoken") {
+		scanned++
+		fset := token.NewFileSet()
+		f, perr := parser.ParseFile(fset, rel, src, 0)
+		if perr != nil {
+			t.Fatalf("разбор %s: %v", rel, perr)
+		}
+		if parsesCursorBody(f) {
+			sites[rel] = true
+		}
+	}
+
 	var names []string
 	for s := range sites {
 		names = append(names, s)
@@ -85,12 +105,12 @@ func TestPageCursorFormIsDeclaredOnce(t *testing.T) {
 	}
 
 	for _, name := range names {
-		if strings.Contains(name, home) {
+		if strings.Contains(name, homeTree) || strings.HasPrefix(name, homeFoundation) {
 			continue
 		}
-		t.Errorf("%s: вторая запись формы курсора. Объявление одно — %s; "+
+		t.Errorf("%s: вторая запись формы курсора. Объявление одно — %s (либо %s общего фундамента); "+
 			"остальные обязаны ЗВАТЬ его, а не повторять: guard, бегущий первым, "+
-			"иначе разойдётся с путём чтения молча", name, home)
+			"иначе разойдётся с путём чтения молча", name, homeTree, homeFoundation)
 	}
 }
 

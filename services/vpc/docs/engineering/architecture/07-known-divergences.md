@@ -131,9 +131,9 @@ mapper'а оставлены отдельными **осознанно**:
   на retry-логику вызывающего Compute, менять его в рамках чисто-рефакторинга
   нельзя. Дублирования switch'а нет — функция узкая (NotFound + passthrough +
   fallback).
-- **отображение repo-ошибки операции в код** (`pkg/operations/operationspb/handler.go`, общий слой) — оперирует sentinel'ами
+- **отображение repo-ошибки операции в код** (`corelib/operations/operationspb/handler.go`, общий слой) — оперирует sentinel'ами
   **другого семейства**: `operations.ErrNotFound` / `operations.ErrAlreadyDone`
-  из `pkg/operations`, а не `repo.Err*`. К repo-sentinel classifier'у
+  из `corelib/operations`, а не `repo.Err*`. К repo-sentinel classifier'у
   отношения не имеет.
 
 Если появится необходимость дать IPAM-allocate-пути богаче классификацию — это
@@ -339,7 +339,7 @@ primitive:
   positive/negative TTL + clock-injection под unit-тесты.
 
 **Третий кеш сервису больше не принадлежит.** Кеш вердиктов видимости списочной страницы
-уехал в общий дом `pkg/listnarrow`; в `internal/authzfilter/` осталось только то, что у
+уехал в общий дом `corelib/listnarrow`; в `internal/authzfilter/` осталось только то, что у
 сервиса действительно своё — словарь типов, аудит-строки действий и предикат членства
 страницы (`actions.go`, `narrower.go`, `relations.go`), а `Narrower` — псевдоним общего
 типа. Посадка кеша задаётся полями `CacheTTL`/`CacheMaxEntries` в `authzfilter.Config`.

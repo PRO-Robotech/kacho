@@ -26,7 +26,7 @@ import (
 // Сервис поднимает слушателя СВОИМ конструктором.
 const directRaiserSrc = `package main
 
-import "github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+import "github.com/PRO-Robotech/corelib/grpcsrv"
 
 func main() { _ = grpcsrv.NewServer() }
 `
@@ -34,7 +34,7 @@ func main() { _ = grpcsrv.NewServer() }
 // Тот же сервис — плюс сборка измерителя задержки.
 const latencyMeterSrc = `package main
 
-import "github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+import "github.com/PRO-Robotech/corelib/grpcsrv"
 
 func meter() { _, _ = grpcsrv.NewServerLatency(nil) }
 `
@@ -42,7 +42,7 @@ func meter() { _, _ = grpcsrv.NewServerLatency(nil) }
 // Сервис отдал входящий путь носителю и своего сервера не строит.
 const carrierRaiserSrc = `package main
 
-import "github.com/PRO-Robotech/kacho/pkg/servicehost"
+import "github.com/PRO-Robotech/corelib/servicehost"
 
 func main() { _ = servicehost.Serve(nil, nil) }
 `
@@ -124,7 +124,7 @@ func TestLatencyGateIgnoresANonConstructorCall(t *testing.T) {
 		"services/x/cmd/x/main.go": directRaiserSrc,
 		"services/x/cmd/x/other.go": `package main
 
-import "github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+import "github.com/PRO-Robotech/corelib/grpcsrv"
 
 func limits() any { return grpcsrv.DefaultServerLimits() }
 `,
@@ -171,7 +171,7 @@ func TestLatencyGateFollowsAnImportAlias(t *testing.T) {
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/cmd/x/main.go": `package main
 
-import srv "github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+import srv "github.com/PRO-Robotech/corelib/grpcsrv"
 
 func main() { _ = srv.NewServer() }
 

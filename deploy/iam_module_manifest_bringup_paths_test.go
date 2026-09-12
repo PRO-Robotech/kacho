@@ -70,14 +70,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // manifestProducerToken — как записывается ВЫЗОВ производителя.
 //
 // Один токен покрывает обе формы: цель сборки зовётся по имени
 // (`$(MAKE) … module-manifests-configmap`, `make -C … module-manifests-configmap`),
-// а прямой запуск — путём `./pkg/modulemanifest/producer/cmd/module-manifests-configmap`,
+// а прямой запуск — путём `./corelib/modulemanifest/producer/cmd/module-manifests-configmap`,
 // который это имя содержит. Второго токена завести нельзя: он разошёлся бы с
 // первым молча.
 const manifestProducerToken = "module-manifests-configmap"

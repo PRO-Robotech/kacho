@@ -105,7 +105,7 @@
 
 # ── Линия выноса iam (`integration/standalone-iam`) — ЗАПИСЬ СНЯТА 2026-09-08 ─
 # Здесь стояла запись на `internal/repohygiene/catalogcopyparity_test.go`
-# (приспособление `internal/treecorpus` → `pkg/treecorpus` на посадке
+# (приспособление `internal/treecorpus` → `corelib/treecorpus` на посадке
 # `f7c1e5c702`). На линии `release/kaname-tail` её предмет НЕДОСТИЖИМ, и запись
 # снята ровно тем способом, который предписывает абзац выше: «перечень
 # пересматривается на первой же линии, которая унаследовала файл».
@@ -116,7 +116,7 @@
 #   git merge-base --is-ancestor f7c1e5c702 HEAD        → нет
 # Линии `release/kaname` и `release/kaname-tail` — СЁСТРЫ (общий предок
 # `a9e635c7cd`), а не предок и потомок, поэтому посадок первой в графе второй нет
-# вовсе. Сам пакет при этом уже в стволе: `pkg/treecorpus` есть в `origin/main`,
+# вовсе. Сам пакет при этом уже в стволе: `corelib/treecorpus` есть в `origin/main`,
 # `internal/treecorpus` нет ни одним файлом, — то есть приспосабливать нечего.
 #
 # ЧТО ЭТО ЗНАЧИТ ДЛЯ `release/kaname`. Та линия несёт СВОЮ копию перечня и свою

@@ -60,7 +60,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/contractroot"
+	"github.com/PRO-Robotech/corelib/contractroot"
 
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
@@ -71,15 +71,15 @@ import (
 	// домена в protoregistry.GlobalFiles. Список сверяется с диском в
 	// TestAllowlist_CensusCoversEveryProtoFile — новый домен без импорта тут
 	// краснеет там.
-	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1"
+	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
+	_ "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	_ "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/reference"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 )

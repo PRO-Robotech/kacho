@@ -31,14 +31,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+	coredb "github.com/PRO-Robotech/corelib/db"
 
 	"github.com/PRO-Robotech/kacho/services/registry/internal/dataplane"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/migrations"
 	kachopg "github.com/PRO-Robotech/kacho/services/registry/internal/repo/kacho/pg"
 
-	"github.com/PRO-Robotech/kacho/pkg/pgtest"
+	"github.com/PRO-Robotech/corelib/pgtest"
 )
 
 // ---- минимальные адаптеры под exported-порты dataplane ----------------------

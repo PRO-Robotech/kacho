@@ -46,6 +46,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -85,8 +86,47 @@ type nameFormFinding struct {
 // общем фундаменте, и её байт-идентичной копии в дереве нет.
 func TestResourceNameFormIsDeclaredOnce(t *testing.T) {
 	t.Parallel()
-	tt := newTrackedTree(t, repoRoot(t))
+	root := repoRoot(t)
+	tt := newTrackedTree(t, root)
 	canonDecls, copies, scanned := scanNameFormDecls(t, tt)
+
+	// Канон переехал из pkg/validate/nameform в пакет validate/nameform общего
+	// фундамента (github.com/PRO-Robotech/corelib): дерево больше не несёт
+	// файла, содержащего литерал, поэтому canonDecls с диска всегда пуст —
+	// читаем ТУДА, куда он переехал (см. corelibsource_test.go), тем же
+	// признаком (литерал равен canonPattern), не вводя второго предиката.
+	canonPattern, cerr := findCanonPattern(root)
+	if cerr != nil {
+		t.Fatalf("%v", cerr)
+	}
+	for rel, body := range corelibPackageGoFiles(t, root, "validate/nameform") {
+		scanned++
+		fset := token.NewFileSet()
+		af, perr := parser.ParseFile(fset, rel, body, 0)
+		if perr != nil {
+			t.Fatalf("%s: разбор: %v", rel, perr)
+		}
+		ast.Inspect(af, func(n ast.Node) bool {
+			vs, ok := n.(*ast.ValueSpec)
+			if !ok {
+				return true
+			}
+			for _, v := range vs.Values {
+				lit, isLit := v.(*ast.BasicLit)
+				if !isLit || lit.Kind != token.STRING {
+					continue
+				}
+				val, uerr := strconv.Unquote(lit.Value)
+				if uerr != nil || val != canonPattern {
+					continue
+				}
+				canonDecls = append(canonDecls, nameFormFinding{
+					file: rel, line: fset.Position(lit.Pos()).Line,
+					detail: "литерал формы имени"})
+			}
+			return true
+		})
+	}
 	assertNameFormSingle(t, canonDecls, copies, scanned)
 }
 
@@ -167,8 +207,35 @@ func assertNameFormSingle(t *testing.T, canonDecls, copies []nameFormFinding, sc
 // точка его подстановки объявлены ровно по одному разу на всё дерево.
 func TestDefaultNameDerivationIsDeclaredOnce(t *testing.T) {
 	t.Parallel()
-	tt := newTrackedTree(t, repoRoot(t))
+	root := repoRoot(t)
+	tt := newTrackedTree(t, root)
 	decls, scanned := scanDerivationDecls(t, tt)
+
+	// Производство переехало из pkg/validate в пакет validate общего
+	// фундамента (github.com/PRO-Robotech/corelib): дерево больше не несёт
+	// объявлений canonDerivationFunc/canonSubstitutionFunc, поэтому decls с
+	// диска всегда пуст — читаем ТУДА, куда оно переехало (см.
+	// corelibsource_test.go), тем же признаком (имя функции пакетного уровня).
+	for rel, body := range corelibPackageGoFiles(t, root, "validate") {
+		fset := token.NewFileSet()
+		af, perr := parser.ParseFile(fset, rel, body, 0)
+		if perr != nil {
+			t.Fatalf("%s: разбор: %v", rel, perr)
+		}
+		scanned++
+		for _, d := range af.Decls { //nolint:gocritic // обход объявлений файла
+			fd, ok := d.(*ast.FuncDecl)
+			if !ok || fd.Recv != nil || fd.Name == nil {
+				continue
+			}
+			name := fd.Name.Name
+			if name != canonDerivationFunc && name != canonSubstitutionFunc {
+				continue
+			}
+			decls[name] = append(decls[name], nameFormFinding{
+				file: rel, line: fset.Position(fd.Pos()).Line, detail: "func " + name})
+		}
+	}
 	assertDerivationSingle(t, decls, scanned)
 }
 
@@ -215,10 +282,10 @@ func assertDerivationSingle(t *testing.T, decls map[string][]nameFormFinding, sc
 		found := decls[fn]
 		if len(found) == 1 {
 			rel := filepath.ToSlash(found[0].file)
-			if !strings.HasPrefix(rel, canonDerivationPkgDir+"/") {
-				t.Errorf("%s:%d: %s объявлена вне %s. Производство имени горизонтально — "+
-					"его зовут все сервисы, значит место ему в общем фундаменте.",
-					found[0].file, found[0].line, fn, canonDerivationPkgDir)
+			if !strings.HasPrefix(rel, canonDerivationPkgDir+"/") && !strings.HasPrefix(rel, "corelib/validate/") {
+				t.Errorf("%s:%d: %s объявлена вне %s (и вне пакета validate общего фундамента). "+
+					"Производство имени горизонтально — его зовут все сервисы, значит место ему в "+
+					"общем фундаменте.", found[0].file, found[0].line, fn, canonDerivationPkgDir)
 			}
 			continue
 		}
@@ -284,6 +351,14 @@ func findCanonPattern(root string) (string, error) {
 	dir := filepath.Join(root, filepath.FromSlash(canonNameFormPkgDir))
 	entries, err := os.ReadDir(dir)
 	if err != nil {
+		// Канон переехал из pkg/validate/nameform в пакет validate/nameform
+		// общего фундамента (github.com/PRO-Robotech/corelib): на дереве,
+		// где каталога дерева больше нет, ищем ТУДА, куда он переехал, а не
+		// молчим — иначе «переехал» и «пропал» были бы неотличимы. Синтетические
+		// деревья инъекции каталог создают сами и сюда не заходят никогда.
+		if pat, cerr := corelibFormPattern(root); cerr == nil {
+			return pat, nil
+		}
 		return "", fmt.Errorf("чтение %s: %w", canonNameFormPkgDir, err)
 	}
 	for _, e := range entries {
@@ -295,28 +370,85 @@ func findCanonPattern(root string) (string, error) {
 		if perr != nil {
 			return "", fmt.Errorf("%s/%s: разбор: %w", canonNameFormPkgDir, e.Name(), perr)
 		}
-		var found string
-		ast.Inspect(af, func(n ast.Node) bool {
-			vs, ok := n.(*ast.ValueSpec)
-			if !ok {
-				return true
-			}
-			for i, nm := range vs.Names {
-				if nm.Name != canonNameFormConst || i >= len(vs.Values) {
-					continue
-				}
-				if lit, ok := vs.Values[i].(*ast.BasicLit); ok && lit.Kind == token.STRING {
-					if v, uerr := strconv.Unquote(lit.Value); uerr == nil {
-						found = v
-					}
-				}
-			}
-			return true
-		})
-		if found != "" {
+		if found := formConstInFile(af); found != "" {
 			return found, nil
 		}
 	}
 	return "", fmt.Errorf("константа %s не найдена в %s — предпосылка гейта не выполнена: "+
 		"он судит копии по канону, а канона нет", canonNameFormConst, canonNameFormPkgDir)
+}
+
+// formConstInFile — то же наблюдение (константа canonNameFormConst,
+// строковый литерал), но по уже разобранному файлу, а не по диску:
+// используется и для дерева, и для пакета общего фундамента.
+func formConstInFile(af *ast.File) string {
+	var found string
+	ast.Inspect(af, func(n ast.Node) bool {
+		vs, ok := n.(*ast.ValueSpec)
+		if !ok {
+			return true
+		}
+		for i, nm := range vs.Names {
+			if nm.Name != canonNameFormConst || i >= len(vs.Values) {
+				continue
+			}
+			if lit, ok := vs.Values[i].(*ast.BasicLit); ok && lit.Kind == token.STRING {
+				if v, uerr := strconv.Unquote(lit.Value); uerr == nil {
+					found = v
+				}
+			}
+		}
+		return true
+	})
+	return found
+}
+
+// corelibFormPattern — канон, читанный из кэша модулей общего фундамента, без
+// зависимости от *testing.T (нужен из findCanonPattern, у которой такого
+// параметра нет и не должно быть — её контракт с инъекцией это ОШИБКА, а не
+// падение пробы).
+func corelibFormPattern(root string) (string, error) {
+	body, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil {
+		return "", fmt.Errorf("чтение go.mod: %w", err)
+	}
+	var dep DirectDependency
+	found := false
+	for _, d := range ParseGoModRequires(string(body)) {
+		if d.Path == corelibModulePath {
+			dep, found = d, true
+			break
+		}
+	}
+	if !found {
+		return "", fmt.Errorf("go.mod не закрепляет %s", corelibModulePath)
+	}
+	out, cerr := exec.Command("go", "env", "GOMODCACHE").Output()
+	if cerr != nil {
+		return "", fmt.Errorf("go env GOMODCACHE: %w", cerr)
+	}
+	cache := strings.TrimSpace(string(out))
+	if cache == "" {
+		return "", fmt.Errorf("go env GOMODCACHE пуст")
+	}
+	dir := filepath.Join(ModuleCacheDir(cache, dep), "validate", "nameform")
+	entries, derr := os.ReadDir(dir)
+	if derr != nil {
+		return "", fmt.Errorf("чтение %s: %w", dir, derr)
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		fset := token.NewFileSet()
+		af, perr := parser.ParseFile(fset, filepath.Join(dir, e.Name()), nil, 0)
+		if perr != nil {
+			return "", fmt.Errorf("%s: разбор: %w", e.Name(), perr)
+		}
+		if found := formConstInFile(af); found != "" {
+			return found, nil
+		}
+	}
+	return "", fmt.Errorf("константа %s не найдена в пакете validate/nameform общего фундамента",
+		canonNameFormConst)
 }

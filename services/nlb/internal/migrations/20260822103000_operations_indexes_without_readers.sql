@@ -8,7 +8,7 @@
 -- ЗАМЕР, А НЕ ВПЕЧАТЛЕНИЕ
 --
 -- Общий список операций фильтрует РОВНО по двум полям — `resource_id` и
--- `account_id` (`pkg/operations` `ListFilter`), и своего запроса к таблице
+-- `account_id` (`corelib/operations` `ListFilter`), и своего запроса к таблице
 -- операций у nlb нет ни одного (предикат: обход `services/nlb/internal/repo`
 -- по имени таблицы даёт пусто).
 --

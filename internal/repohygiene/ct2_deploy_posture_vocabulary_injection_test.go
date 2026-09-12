@@ -4,9 +4,7 @@
 package repohygiene
 
 import (
-	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 )
@@ -122,7 +120,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+	"github.com/PRO-Robotech/corelib/servicecontract"
 )
 
 // Допустимы dev, production и production-strict — словарь живёт в
@@ -142,7 +140,7 @@ func parseMode(s string) (servicecontract.Mode, error) {
 			rel:  "services/vpc/internal/apps/kacho/config/mode.go",
 			src: `package config
 
-import "github.com/PRO-Robotech/kacho/pkg/servicecontract"
+import "github.com/PRO-Robotech/corelib/servicecontract"
 
 type Mode int
 
@@ -163,31 +161,22 @@ func fromHost(m servicecontract.Mode) Mode {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			root := t.TempDir()
-			files := map[string]string{
+			raw := map[string]string{
 				filepath.Join(postureHomeDir, "contract.go"): home,
 				tc.rel: tc.src,
 			}
-			var rels []string
-			for rel, src := range files {
-				abs := filepath.Join(root, rel)
-				if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
-					t.Fatalf("создание каталога %s: %v", rel, err)
-				}
-				if err := os.WriteFile(abs, []byte(src), 0o600); err != nil {
-					t.Fatalf("запись %s: %v", rel, err)
-				}
-				rels = append(rels, filepath.ToSlash(rel))
+			files := make(map[string][]byte, len(raw))
+			for rel, src := range raw {
+				files[filepath.ToSlash(rel)] = []byte(src)
 			}
-			sort.Strings(rels)
 
-			findings, cen, err := auditPostureVocabularySingleSource(root, rels)
+			findings, cen, err := auditPostureVocabularySingleSource(files)
 			if err != nil {
 				t.Fatalf("обход: %v", err)
 			}
-			if cen.FilesRead != len(rels) {
+			if cen.FilesRead != len(files) {
 				t.Fatalf("разобрано %d файлов из %d — обход неполон, вердикт беспредметен",
-					cen.FilesRead, len(rels))
+					cen.FilesRead, len(files))
 			}
 			// Дом обязан быть узнан домом в КАЖДОМ прогоне: иначе красное приходило
 			// бы от него, и вакуумность проверяемой оси осталась бы незамеченной.

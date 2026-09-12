@@ -14,9 +14,9 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 
+	"github.com/PRO-Robotech/corelib/contractroot"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/contractroot"
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // secretbearingsurface_test.go — ОСЬ 2 ГЕЙТА BAT-1-73: НЕПОМЕЧЕННЫХ НОСИТЕЛЕЙ НА

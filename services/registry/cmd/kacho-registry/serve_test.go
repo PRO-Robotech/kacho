@@ -10,11 +10,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/config"
 
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+	"github.com/PRO-Robotech/corelib/servicecontract"
 )
 
 // discardLogger — тихий slog для тестов validateAuthMode (ветки логируют WARN).

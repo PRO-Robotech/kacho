@@ -31,9 +31,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
-	"github.com/PRO-Robotech/kacho/pkg/servicehost"
+	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/outbox/bootgate"
+	"github.com/PRO-Robotech/corelib/servicehost"
 )
 
 // TestCarrierRaisesComputeWithoutAStartRefusal — исход: носитель поднимает

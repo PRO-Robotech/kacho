@@ -293,7 +293,7 @@ func TestAcceptanceIAMServiceAccountKey_SecretSurvivesRefreshAndDiesWithTheKey(t
 // повышенным уровнем личность ЧЕЛОВЕКА. Голое «permission denied» не различает их вовсе,
 // а прежняя редакция этой пробы закрепляла ОДНУ и притом неверную: она требовала от
 // провайдера сказать, что служебная учётка второй фактор не проходит и ключи заводятся
-// человеком. Служебная учётка от порога ОСВОБОЖДЕНА (pkg/grpcsrv/acr.go, EvaluateStepUp:
+// человеком. Служебная учётка от порога ОСВОБОЖДЕНА (corelib/grpcsrv/acr.go, EvaluateStepUp:
 // машинный принципал разрешается первым же условием), поэтому текст отправлял конвейер
 // отказываться от полосы, которая для него и предназначена.
 func TestAcceptanceIAMServiceAccountKey_DeniedIssueExplainsBothCauses(t *testing.T) {

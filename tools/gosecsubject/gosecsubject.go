@@ -96,7 +96,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 // AllRules — то, чем gosec обозначает «подавить все правила»

@@ -28,7 +28,7 @@ import (
 const trustDomainInjectedDefect = `package authzguard
 
 import (
-	gs "github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	gs "github.com/PRO-Robotech/corelib/grpcsrv"
 )
 
 const sanTrustPrefix = "spiffe://kacho.cloud/ns/"
@@ -49,7 +49,7 @@ func domain() gs.TrustDomain {
 const trustDomainInjectedLegitimate = `package authzguard
 
 import (
-	gs "github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	gs "github.com/PRO-Robotech/corelib/grpcsrv"
 )
 
 // SAN модуля имеет вид spiffe://kacho.cloud/ns/<ns>/sa/kacho-<svc> — это ПРОЗА:

@@ -65,7 +65,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // opSite — функция, читающая значение разобранного выражения.
@@ -83,6 +83,43 @@ func collectFilterOperatorSites(t *testing.T, roots []string) (sites []opSite, f
 	t.Helper()
 	repo := repoRoot(t)
 
+	// Состав берётся из ИНДЕКСА, а не с диска: правила игнорирования на обход по
+	// диску не действуют, и он видел бы то, чего в репозитории нет (`treewalkindex`).
+	tree, err := treecorpus.NewTree(repo)
+	if err != nil {
+		t.Fatalf("состав дерева: %v", err)
+	}
+	var rels []string
+	for _, rel := range tree.SortedFiles() {
+		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
+			continue
+		}
+		// pkg/filter — дом самой грамматики: его собственные чтения .Value не
+		// являются применением оператора к чужому предикату.
+		if strings.HasPrefix(rel, "pkg/filter/") {
+			continue
+		}
+		for _, root := range roots {
+			if rel == root || strings.HasPrefix(rel, root+"/") {
+				rels = append(rels, rel)
+				break
+			}
+		}
+	}
+	return collectFilterOperatorSitesIn(t, repo, rels)
+}
+
+// collectFilterOperatorSitesIn — ТОТ ЖЕ распознаватель, но над названным корнем
+// и названным перечнем файлов.
+//
+// Вынесен затем, чтобы доказательство способности падать
+// (`listfilteroperatorapplied_injection_test.go`) звало ЭТУ функцию, а не свою
+// копию: две реализации одного распознавателя разошлись бы молча — и разошлись
+// бы именно там, где расхождение не видно, потому что обе отвечают верно на
+// обычном входе.
+func collectFilterOperatorSitesIn(t *testing.T, repo string, rels []string) (sites []opSite, filesRead int) {
+	t.Helper()
+
 	type parsedFile struct {
 		path string
 		rel  string
@@ -94,34 +131,8 @@ func collectFilterOperatorSites(t *testing.T, roots []string) (sites []opSite, f
 	// которая возвращает узел (то есть передаёт решение вызывающему).
 	helpers := map[string]map[string]bool{}
 
-	// Состав берётся из ИНДЕКСА, а не с диска: правила игнорирования на обход по
-	// диску не действуют, и он видел бы то, чего в репозитории нет (`treewalkindex`).
-	tree, err := treecorpus.NewTree(repo)
-	if err != nil {
-		t.Fatalf("состав дерева: %v", err)
-	}
-	wanted := func(rel string) bool {
-		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
-			return false
-		}
-		// pkg/filter — дом самой грамматики: его собственные чтения .Value не
-		// являются применением оператора к чужому предикату.
-		if strings.HasPrefix(rel, "pkg/filter/") {
-			return false
-		}
-		for _, root := range roots {
-			if rel == root || strings.HasPrefix(rel, root+"/") {
-				return true
-			}
-		}
-		return false
-	}
-
-	for _, rel := range tree.SortedFiles() {
-		if !wanted(rel) {
-			continue
-		}
-		path := filepath.Join(repo, rel)
+	for _, rel := range rels {
+		path := filepath.Join(repo, filepath.FromSlash(rel))
 		fset := token.NewFileSet()
 		f, perr := parser.ParseFile(fset, path, nil, 0)
 		if perr != nil {
@@ -287,16 +298,28 @@ func TestFilterOwnerHonoursTheParsedOperator(t *testing.T) {
 	t.Logf("осмотрено: %d не-тестовых файлов, %d мест чтения значения разобранного выражения, из них применяют оператор %d",
 		filesRead, len(sites), honoured)
 
-	// Проверка СВОЕЙ предпосылки. Гейт осмыслен, только если он вообще нашёл
-	// владельцев; ноль мест означает, что разбор переехал или сломался обход, а не
-	// что дерево чисто.
+	// Проверка СВОЕЙ предпосылки — ОБЪЁМ ОБХОДА, а не число находок.
 	if filesRead < 500 {
 		t.Fatalf("прочитано всего %d файлов — обход не добрался до дерева, вердикт недействителен", filesRead)
 	}
-	if len(sites) == 0 {
-		t.Fatal("не найдено ни одного места чтения разобранного выражения — " +
-			"предпосылка гейта не выполняется, вердикт недействителен")
-	}
+
+	// ЗДЕСЬ СТОЯЛО «мест ноль ⇒ вердикт недействителен», и это было ошибкой
+	// РОДА: ноль мест чтения `.Value` есть ДОСТИЖЕНИЕ цели гейта (владельцы
+	// применяют оператор через `.ToSQL`/`.ToSQLOn`, а не забирают голое
+	// значение), и падать на нём значит подталкивать держать место ради
+	// зелёного (`testing.md` §«Чтение вердикта», п. 4).
+	//
+	// Предмет исчез не сам: единственное место чтения `.Value` в дереве
+	// принадлежало службе доступа (обработчик перечисления выдач), и уехало
+	// вместе с нею. Предикат, которым это установлено:
+	// `git grep -n 'ast\.Value' HEAD -- 'services/**/*.go'` — до выноса одно
+	// семейство строк в её обработчике, после выноса ноль.
+	//
+	// Отличить «мест нет» от «распознаватель ослеп» обязана НЕ эта проба, а
+	// доказательство на синтетике: `listfilteroperatorapplied_injection_test.go`
+	// зовёт ТОТ ЖЕ collectFilterOperatorSitesIn и требует от него находки на
+	// внесённом дефекте и молчания на законном близнеце. Пока оно зелено, ноль
+	// здесь — факт о дереве.
 
 	if len(findings) > 0 {
 		t.Fatalf("владельцев, теряющих оператор фильтра: %d\n  %s",

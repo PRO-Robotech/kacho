@@ -7,7 +7,7 @@ package corelib.authz.v1;
 
 import "google/protobuf/descriptor.proto";
 
-option go_package = "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1;authzv1";
+option go_package = "github.com/PRO-Robotech/corelib/api/corelib/authz/v1;authzv1";
 
 // Authz options — per-RPC annotations consumed by `protoc-gen-kacho-permissions`
 // to build the canonical `permission_catalog.json` and by the iam authz
@@ -139,9 +139,9 @@ extend google.protobuf.MethodOptions {
 // The owning service's per-RPC map carries the same axis
 // (`authz.RPCEntry.ScopeFiltered`). It is no longer a second declaration that
 // could disagree: the map is DERIVED from these annotations
-// (`pkg/authz/catalogderive`), so the two cannot drift by construction. The gate
+// (`corelib/authz/catalogderive`), so the two cannot drift by construction. The gate
 // that compared them lives in `internal/repohygiene` (catalogparity_test.go); the
-// package this sentence used to name, `pkg/authz/catalogparity`, was deleted when
+// package this sentence used to name, `corelib/authz/catalogparity`, was deleted when
 // derivation removed its subject.
 //
 // ONE MARKER, TWO READINGS — do not collapse them (recorded 2026-08-10)

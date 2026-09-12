@@ -15,11 +15,11 @@ package main
 // сертификат всем соседям выдаёт один и тот же внутренний центр. Внутренний
 // листенер (:9091) при этом уже строил доверенную пару CertIdentityExtract →
 // TrustedPrincipalExtract, но с ПУСТЫМ списком отправителей, что по контракту
-// corelib (pkg/grpcsrv principalIsTrusted) означает не «никому», а «любому пиру,
+// corelib (corelib/grpcsrv principalIsTrusted) означает не «никому», а «любому пиру,
 // прошедшему проверку сертификата».
 //
 // Итог обоих дефектов один: сосед предъявляет свой законный сертификат, шлёт
-// заголовки личности жертвы — и решение о правах (pkg/authz subject_extract читает
+// заголовки личности жертвы — и решение о правах (corelib/authz subject_extract читает
 // ровно operations.PrincipalFromContextOK) принимается от её имени.
 //
 // Замки утверждают НАБЛЮДАЕМОЕ: какую личность увидит обработчик за цепочкой,
@@ -34,16 +34,16 @@ import (
 	"strings"
 	"testing"
 
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+	corequota "github.com/PRO-Robotech/corelib/quota"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/corelib/operations"
 
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/config"
 )
@@ -190,7 +190,7 @@ func TestValidate_ProductionIgnoresTheDevOptIn(t *testing.T) {
 //
 // Что цепочку получают ОБА слушателя и что она у них одна — свойство ПОСТРОЕНИЯ
 // носителя (`serverPair` строит её один раз на двоих) и предмет его собственных
-// проб (`pkg/servicehost`: TestBothListenersRefuseIdenticallyOnTheWire,
+// проб (`corelib/servicehost`: TestBothListenersRefuseIdenticallyOnTheWire,
 // TestForwardedIdentityIsHonouredOnlyFromTheCircle). Здесь утверждается то, что
 // принадлежит РЕЕСТРУ: какой круг он объявляет и кого этот круг пускает.
 func hostIdentityChain(t *testing.T, forwarders ...string) []grpc.UnaryServerInterceptor {
@@ -209,7 +209,7 @@ func hostIdentityChain(t *testing.T, forwarders ...string) []grpc.UnaryServerInt
 
 // seenIdentity прогоняет запрос через цепочку и возвращает личность, которую
 // увидел бы обработчик, и признак доверия. Это и есть наблюдаемое: субъект
-// проверки прав собирается ровно из неё (pkg/authz subject_extract →
+// проверки прав собирается ровно из неё (corelib/authz subject_extract →
 // operations.PrincipalFromContextOK).
 func seenIdentity(t *testing.T, chain []grpc.UnaryServerInterceptor, ctx context.Context) (id string, trusted, present bool) {
 	t.Helper()

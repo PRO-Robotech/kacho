@@ -39,7 +39,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // oarRootWith собирает корень из перечисленных файлов. Файлов ровно столько,

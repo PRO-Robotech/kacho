@@ -56,7 +56,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // pkgVarDeclCensus — объём осмотренного при разрешении объявления.

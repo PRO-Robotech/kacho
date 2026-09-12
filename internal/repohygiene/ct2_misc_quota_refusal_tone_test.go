@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota"
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/quota"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // TestQuotaRefusalToneIsDerivedFromTheSentinelNotAPrefixList — у каждого

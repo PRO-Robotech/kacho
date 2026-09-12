@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
-	"github.com/PRO-Robotech/kacho/pkg/pagetoken"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	"github.com/PRO-Robotech/corelib/pagetoken"
 )
 
 // TestFramerIsCorrectAtAnyPositionForm — форму позиции выбирает её ВЛАДЕЛЕЦ, и
@@ -21,7 +21,7 @@ import (
 // кадрировщике, не проверяющем НИЧЕГО.
 func TestFramerIsCorrectAtAnyPositionForm(t *testing.T) {
 	t.Run("законная позиция проезжает дословно", func(t *testing.T) {
-		// Позиция, выпущенная владельцем формы: `pkg/pagetoken` кодирует её
+		// Позиция, выпущенная владельцем формы: `corelib/pagetoken` кодирует её
 		// стандартным base64 С ДОПОЛНЕНИЕМ, поэтому её алфавит несёт `+`, `/`
 		// и `=`. Кадрировщик, написанный по вере в крокфордов алфавит, отверг
 		// бы законное значение — и потеря была бы не в мусоре, а в

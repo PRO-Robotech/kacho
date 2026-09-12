@@ -79,8 +79,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/PRO-Robotech/corelib/treecorpus"
 	"github.com/PRO-Robotech/kacho/internal/productnaming"
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // imageNameFinding — одна находка с координатой. Координата обязательна: без

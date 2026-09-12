@@ -78,7 +78,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/corelib/ids"
 )
 
 // edgeOpPollsBeforeDone — на каком по счёту опросе операция объявляется завершённой.
@@ -829,7 +829,7 @@ func (e *fakeEdge) writeJSON(w http.ResponseWriter, status int, v any) {
 
 // edgeNewID — идентификатор в той же форме, в какой его чеканит платформа.
 //
-// Берётся НАСТОЯЩИЙ генератор (pkg/ids), а не своя строка: импорт ресурса проверяет форму
+// Берётся НАСТОЯЩИЙ генератор (corelib/ids), а не своя строка: импорт ресурса проверяет форму
 // общим каталогом префиксов, и подделка «похожего» идентификатора провалила бы импорт по
 // причине, не имеющей отношения к предмету пробы.
 func edgeNewID(k *edgeKind) string {

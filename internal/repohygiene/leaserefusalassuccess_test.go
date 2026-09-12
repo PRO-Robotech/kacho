@@ -70,7 +70,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // releaseLanePkg — пакет-предмет: клиент vpc у nlb, где живёт полоса

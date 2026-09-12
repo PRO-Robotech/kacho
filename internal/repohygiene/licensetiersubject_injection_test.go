@@ -185,39 +185,59 @@ func TestLicenseTierSubjectGate_CensusCountsEveryTierSeparately(t *testing.T) {
 // которая исполняется.
 //
 // Пара одно-фактная: близнец — тот же перечень с каталогом на месте.
-func TestLicenseTierSubjectGate_LiveMapRedsWhenTheCarvedOutTreeGoes(t *testing.T) {
+func TestLicenseTierSubjectGate_LiveMapRedsWhenATierLosesItsLastPath(t *testing.T) {
 	t.Parallel()
 
-	const carved = "services/iam/"
-	full := []string{
-		"pkg/ids/id.go",
-		"proto/kacho/cloud/vpc/v1/network.proto",
-		"proto/google/api/annotations.proto",
-		carved + "cmd/iam/main.go",
-		"gateway/main.go",
+	// Приставка берётся ИЗ ЖИВОЙ КАРТЫ, а не выписывается: выписанная переживает
+	// свой уровень молча — ровно так эта проба и умерла в прошлый раз, когда
+	// стояла на `services/iam/`, а уровень вынесенного продукта из карты ушёл.
+	// Тогда путь под снятой приставкой стал разрешаться в умолчание, снятие
+	// перестало обнулять хоть что-нибудь, и «находок 1» превратилось в «находок 0»
+	// при исправном суждении.
+	var judged licenseTier
+	for _, tr := range licenseTiers {
+		if tr.Prefix != "" {
+			judged = tr
+			break
+		}
+	}
+	if judged.Prefix == "" {
+		t.Fatal("в живой карте нет ни одного судимого уровня — доказывать нечего, " +
+			"и молчание пробы означало бы «ноль прочитанного», а не «годно»")
+	}
+
+	// Полное дерево: под КАЖДЫМ судимым уровнем живой карты стоит путь, плюс один
+	// путь умолчания. Иначе близнец краснел бы на соседнем уровне, и вердикт
+	// внесённого факта нельзя было бы приписать самому факту.
+	full := []string{"gateway/main.go"}
+	for _, tr := range licenseTiers {
+		if tr.Prefix != "" {
+			full = append(full, tr.Prefix+"probe.txt")
+		}
 	}
 	var without []string
 	for _, p := range full {
-		if !strings.HasPrefix(p, carved) {
+		if !strings.HasPrefix(p, judged.Prefix) {
 			without = append(without, p)
 		}
 	}
 
-	// БЛИЗНЕЦ: каталог на месте — молчание.
+	// БЛИЗНЕЦ: под уровнем есть путь — молчание.
 	if faults, census := judgeLicenseTierSubjects(licenseTiers, licenseTierPathCensus(full)); len(faults) != 0 {
 		t.Fatalf("живая карта краснеет на полном дереве: %v; перепись: %s", faults, census)
 	}
 
-	// ВНЕСЁННЫЙ ФАКТ: каталога нет — находка, называющая приставку.
+	// ВНЕСЁННЫЙ ФАКТ — РОВНО ОДИН: у уровня judged не осталось путей.
 	faults, census := judgeLicenseTierSubjects(licenseTiers, licenseTierPathCensus(without))
 	if len(faults) != 1 {
-		t.Fatalf("снятие каталога прошло молча: находок %d (%v); перепись: %s",
+		t.Fatalf("уровень без путей прошёл молча: находок %d (%v); перепись: %s",
 			len(faults), faults, census)
 	}
-	if !strings.Contains(faults[0], carved) {
-		t.Fatalf("находка не называет снятую приставку: %q", faults[0])
+	if !strings.Contains(faults[0], judged.Prefix) {
+		t.Fatalf("находка не называет обеспредмеченную приставку %q: %q", judged.Prefix, faults[0])
 	}
-	if census.PathsPerTier["вынесенный продукт"] != 0 {
-		t.Fatalf("перепись не показывает нулевой уровень: %d", census.PathsPerTier["вынесенный продукт"])
+	if census.PathsPerTier[judged.Name] != 0 {
+		t.Fatalf("перепись не показывает нулевой уровень %q: %d",
+			judged.Name, census.PathsPerTier[judged.Name])
 	}
 }

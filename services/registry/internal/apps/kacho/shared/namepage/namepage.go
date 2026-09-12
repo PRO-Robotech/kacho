@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"strconv"
 
-	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
+	corevalidate "github.com/PRO-Robotech/corelib/validate"
 
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
 )

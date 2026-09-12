@@ -77,7 +77,7 @@ func synthTruncationTree(t *testing.T, files map[string]string) string {
 const truncSrcBare = `package m
 
 import (
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"time"
 )
@@ -95,7 +95,7 @@ func toProto(op struct{ CreatedAt, ModifiedAt time.Time }) *operationpb.Operatio
 const truncSrcDirect = `package m
 
 import (
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"time"
 )
@@ -111,7 +111,7 @@ func toProto(op struct{ CreatedAt, ModifiedAt time.Time }) *operationpb.Operatio
 const truncSrcViaHelper = `package m
 
 import (
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"time"
 )
@@ -131,7 +131,7 @@ func toProto(op struct{ CreatedAt, ModifiedAt time.Time }) *operationpb.Operatio
 const truncSrcHollowHelper = `package m
 
 import (
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"time"
 )

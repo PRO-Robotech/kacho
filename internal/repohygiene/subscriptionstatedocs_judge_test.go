@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/platformmodules"
+	"github.com/PRO-Robotech/corelib/platformmodules"
 )
 
 // subscriptionstatedocs_judge_test.go — суждение гейта «страница подписки говорит про

@@ -28,7 +28,7 @@ const (
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	"github.com/PRO-Robotech/corelib/migratorcli"
 )
 
 func run(ctx context.Context, dsn string, fsys interface{}) error {
@@ -50,8 +50,8 @@ import (
 
 	"github.com/pressly/goose/v3"
 
-	"github.com/PRO-Robotech/kacho/pkg/dbready"
-	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	"github.com/PRO-Robotech/corelib/dbready"
+	"github.com/PRO-Robotech/corelib/migratorcli"
 )
 
 func main() {
@@ -90,7 +90,7 @@ var SpecPostgres = DialectSpec{Name: "postgres", GooseDialect: "postgres", SQLDr
 // Своего открытия базы здесь НЕТ: sql.Open ленив, поэтому барьер готовности
 // (dbready.Wait) живёт в общем шаге вместе с текстом "open db (driver=%s)" и с
 // "database connection check failed". Настройка goose (goose.SetDialect) — там же.
-import "github.com/PRO-Robotech/kacho/pkg/migratorcli"
+import "github.com/PRO-Robotech/corelib/migratorcli"
 
 func f() { _, _ = migratorcli.OpenDB(nil, "", migratorcli.SpecPostgres) }`
 
@@ -187,7 +187,7 @@ func TestDBOpenInjectionRunThree_ExistingPropertyOnly(t *testing.T) {
 import (
 	"errors"
 
-	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	"github.com/PRO-Robotech/corelib/migratorcli"
 )
 
 func (c Config) Validate() error {

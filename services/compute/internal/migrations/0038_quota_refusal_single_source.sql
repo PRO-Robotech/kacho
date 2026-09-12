@@ -1,7 +1,7 @@
 -- Copyright (c) PRO-Robotech
 -- SPDX-License-Identifier: BUSL-1.1
 --
--- СГЕНЕРИРОВАНО ИЗ `pkg/quota/refusal.sql.tmpl`. РУКАМИ НЕ ПРАВИТЬ.
+-- СГЕНЕРИРОВАНО ИЗ `corelib/quota/refusal.sql.tmpl`. РУКАМИ НЕ ПРАВИТЬ.
 -- Перегенерация: `go run ./tools/quota-refusal-migration`.
 
 -- =============================================================================

@@ -69,14 +69,21 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kacho/internal/productnaming"
 )
 
-// rulesOverlayRoots — что считается ПОСТАВКОЙ этой службы. Соседние чарты сюда
-// не входят намеренно.
+// rulesOverlayRoots — что считается ПОСТАВКОЙ этой службы В ЭТОМ ДЕРЕВЕ.
+// Соседние чарты сюда не входят намеренно.
+//
+// Третьим корнем здесь стоял собственный чарт службы (`../services/iam/deploy`).
+// Он уехал вместе с каталогом службы при выносе её отдельным продуктом
+// (задача #1111) и судится теперь в её дереве. Оставшиеся два — наша поставка,
+// и предмет у гейта от этого не исчез: остаток наложения правил в умбрелле
+// по-прежнему обещал бы арендатору механизм без исполнителя.
 var rulesOverlayRoots = []string{
 	filepath.Join(umbrellaDir, "charts", "kaname"),
 	filepath.Join(umbrellaDir, "templates"),
-	filepath.Join("..", "services", "iam", "deploy"),
 }
 
 // rulesOverlayValuesFiles — файлы значений, объявляющие ручки поставки.
@@ -197,28 +204,46 @@ func TestRulesOverlayLeftNoRemnantInTheDelivery(t *testing.T) {
 	// Признак потребителя — обращение к вердикту наложения по его адресу
 	// (`/v1/data/…`). Это то, что делает КОД, а не то, о чём он вспоминает,
 	// поэтому комментарии из осмотра исключены.
-	serviceRoot := filepath.Join("..", "services", "iam")
-	err := filepath.WalkDir(serviceRoot, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		census.consumerFiles++
-		for _, line := range goExecutableLines(string(raw)) {
-			if strings.Contains(line, "/v1/data/") {
-				census.consumerHits++
-				break
+	// Исходники службы после её выноса отдельным продуктом лежат в ДРУГОМ
+	// репозитории, и предпосылку там измеряет её собственное дерево. Здесь она
+	// не измеряется — и это говорится ВСЛУХ, а не проглатывается нулём: гейт,
+	// у которого предпосылка молча не измерена, зеленеет по той же причине, по
+	// какой зеленел бы сломанный.
+	//
+	// Послабление САМОИСТЕКАЕТ by construction: вернутся исходники в это дерево
+	// — предикат ниже ответит истиной, и замер возобновится сам, без чьей-либо
+	// памяти. Вторая половина гейта (остатки в НАШЕЙ поставке) предмета не
+	// теряла и судится как прежде.
+	measuredPremise := productnaming.SourcesInThisTree("iam")
+	if measuredPremise {
+		serviceRoot := filepath.Join("..", "services", "iam")
+		err := filepath.WalkDir(serviceRoot, func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
 			}
-		}
-		return nil
-	})
-	require.NoError(t, err)
-	require.NotZero(t, census.consumerFiles,
-		"прод-файлов службы не прочитано ни одного — предпосылка не измерена, "+
-			"а вердикт был бы беспредметен")
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			census.consumerFiles++
+			for _, line := range goExecutableLines(string(raw)) {
+				if strings.Contains(line, "/v1/data/") {
+					census.consumerHits++
+					break
+				}
+			}
+			return nil
+		})
+		require.NoError(t, err)
+		require.NotZero(t, census.consumerFiles,
+			"прод-файлов службы не прочитано ни одного — предпосылка не измерена, "+
+				"а вердикт был бы беспредметен")
+	} else {
+		t.Log("предпосылка «у наложения правил нет потребителя» в этом дереве НЕ ИЗМЕРЕНА: " +
+			"исходники службы вынесены отдельным репозиторием (productnaming: " +
+			"externallySourcedServices). Судится только вторая половина — остатки " +
+			"наложения в нашей поставке")
+	}
 
 	// ── ОСТАТКИ В ПОСТАВКЕ ────────────────────────────────────────────────
 	for _, root := range rulesOverlayRoots {

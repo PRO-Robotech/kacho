@@ -35,7 +35,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // proxyShapedFields — имена полей дескриптора, появление которых означало бы,
@@ -63,7 +63,24 @@ func auditProxyShapedFields(root string) (found []string, files, fields int, err
 	dir := filepath.Join(root, "pkg", "servicecontract")
 	tracked, terr := treecorpus.Under(dir)
 	if terr != nil {
-		return nil, 0, 0, fmt.Errorf("состав пакета дескриптора не читается: %w", terr)
+		// Предмет переехал ЦЕЛИКОМ из pkg/servicecontract этого дерева в пакет
+		// servicecontract общего фундамента (github.com/PRO-Robotech/corelib).
+		moduleDir, merr := corelibModuleRootDir(root)
+		if merr != nil {
+			return nil, 0, 0, fmt.Errorf("состав пакета дескриптора не читается ни в дереве (%v), "+
+				"ни в общем фундаменте (%w)", terr, merr)
+		}
+		corelibDir := filepath.Join(moduleDir, "servicecontract")
+		entries, rerr := os.ReadDir(corelibDir)
+		if rerr != nil {
+			return nil, 0, 0, fmt.Errorf("каталог %s общего фундамента не читается: %w", corelibDir, rerr)
+		}
+		tracked = tracked[:0]
+		for _, e := range entries {
+			if !e.IsDir() {
+				tracked = append(tracked, filepath.Join(corelibDir, e.Name()))
+			}
+		}
 	}
 
 	fset := token.NewFileSet()
@@ -106,6 +123,16 @@ func auditProxyShapedFields(root string) (found []string, files, fields int, err
 // службы.
 func auditCarrierUnknownServiceUse(root string) (uses []string, err error) {
 	path := filepath.Join(root, "pkg", "servicehost", "serve.go")
+	if _, statErr := os.Stat(path); statErr != nil {
+		// Предмет переехал ЦЕЛИКОМ из pkg/servicehost этого дерева в пакет
+		// servicehost общего фундамента (github.com/PRO-Robotech/corelib).
+		moduleDir, merr := corelibModuleRootDir(root)
+		if merr != nil {
+			return nil, fmt.Errorf("носитель не читается ни в дереве (%v), ни в общем "+
+				"фундаменте (%w)", statErr, merr)
+		}
+		path = filepath.Join(moduleDir, "servicehost", "serve.go")
+	}
 	fset := token.NewFileSet()
 	f, perr := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
 	if perr != nil {

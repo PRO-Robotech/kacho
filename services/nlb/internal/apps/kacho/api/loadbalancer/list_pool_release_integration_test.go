@@ -12,14 +12,14 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/require"
 
+	coredb "github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/ids"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/pgtest"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-	"github.com/PRO-Robotech/kacho/pkg/ids"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
+	"github.com/PRO-Robotech/corelib/listnarrow"
+	"github.com/PRO-Robotech/corelib/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/loadbalancer"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachopg "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg"
@@ -40,7 +40,7 @@ import (
 
 // setupCappedPoolDB hands the test its own database on the package's one
 // container, applies nothing (the template is already migrated — see TestMain and
-// pkg/pgtest), and returns a repository over a pool of EXACTLY maxConns
+// corelib/pgtest), and returns a repository over a pool of EXACTLY maxConns
 // connections.
 //
 // It does not reuse setupDB from integration_test.go on purpose: that one hands

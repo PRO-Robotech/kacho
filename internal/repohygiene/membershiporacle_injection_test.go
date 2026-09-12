@@ -20,8 +20,24 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
+
+// oracleScopeFilteredLine — строка объявления пообъектного сужения для глагола
+// фикстуры.
+//
+// Формы три, и все три нужны: объявление (законный близнец), его отсутствие
+// (инъекция) и объявление, стоящее ТОЛЬКО прозой (контроль п.4 — гейт обязан
+// судить исполняемую часть, а не слово).
+func oracleScopeFilteredLine(f oracleFixture, fqn string) string {
+	if f.scopeFilteredAsProse == fqn {
+		return "    // option (corelib.authz.v1.scope_filtered) = true;\n"
+	}
+	if f.dropScopeFilteredOn == fqn {
+		return ""
+	}
+	return "    option (corelib.authz.v1.scope_filtered) = true;\n"
+}
 
 // oracleFixture — состав синтетического дерева одной пробы.
 type oracleFixture struct {
@@ -29,17 +45,23 @@ type oracleFixture struct {
 	protoExtra string
 	// userExtraFields — поля, добавленные ресурсу человека.
 	userExtraFields string
-	// whitelistTerms — термы белого списка списочного чтения БЕЗ обязательного
-	// аккаунта (ресурс `widget`).
-	whitelistTerms string
+	// dropScopeFilteredOn — снять объявление пообъектного сужения у названного
+	// глагола контракта (форма `Service/Method`). Так снимается ДОКАЗАТЕЛЬСТВО
+	// гасящей записи — по одному глаголу зараз.
+	dropScopeFilteredOn string
+	// scopeFilteredAsProse — объявить сужение ТОЛЬКО комментарием внутри тела
+	// глагола. Контроль п.4: гейт, читающий слово, зачёл бы собственное
+	// объяснение за исполнение.
+	scopeFilteredAsProse string
 	// dropIDMark — снять предпосылку полосы C.
 	dropIDMark bool
-	// idMigrationName — имя файла корпуса, в котором стоит деривация.
+	// idMigrationName — имя файла КОРПУСА КОНТРАКТА, в котором стоит объявление
+	// деривации.
 	//
 	// Параметр, а не константа: предпосылка ищется по КОРПУСУ, и привязка к
-	// имени файла её уже однажды убила — свод миграций iam (2026-09-04) снял
-	// файл, в котором деривация была заведена, при том что само выражение
-	// переехало в свод байт-в-байт. Пустое значение — имя по умолчанию.
+	// имени файла её уже однажды убила — свод миграций службы доступа
+	// (2026-09-04) снял файл, где деривация была заведена, при том что само
+	// выражение переехало в свод байт-в-байт. Пустое значение — имя по умолчанию.
 	idMigrationName string
 }
 
@@ -97,6 +119,12 @@ message Widget {
 message ListWidgetsResponse {
   repeated Widget widgets = 1;
 }
+message ListBySubjectRequest {
+  string user_id = 1;
+}
+message ListBySubjectResponse {
+  repeated Membership memberships = 1;
+}
 
 service MembershipService {
   rpc Get (GetMembershipRequest) returns (Membership) {
@@ -118,58 +146,40 @@ service WidgetService {
     option (google.api.http) = { get: "/iam/v1/widgets" };
   }
 }
+
+service AccessBindingService {
+  rpc ListBySubject (ListBySubjectRequest) returns (ListBySubjectResponse) {
+    option (google.api.http) = { get: "/iam/v1/accessBindings:listBySubject" };
+` + oracleScopeFilteredLine(f, "AccessBindingService/ListBySubject") + `  }
+  rpc ListSubjectPrivileges (ListBySubjectRequest) returns (ListBySubjectResponse) {
+    option (google.api.http) = { get: "/iam/v1/accessBindings:listSubjectPrivileges" };
+` + oracleScopeFilteredLine(f, "AccessBindingService/ListSubjectPrivileges") + `  }
+}
 `
 	write(t, filepath.Join(protoDir, "base.proto"), base)
 	if f.protoExtra != "" {
 		write(t, filepath.Join(protoDir, "extra.proto"), f.protoExtra)
 	}
 
-	// Белые списки: членства (законный — аккаунт обязателен) и `widget`.
-	mdir := filepath.Join(root, "services", "iam", "internal", "repo", "kaname", "membership")
-	if err := os.MkdirAll(mdir, 0o750); err != nil {
-		t.Fatalf("каталог порта: %v", err)
-	}
-	write(t, filepath.Join(mdir, "filter.go"),
-		"package membership\n\nconst FilterFieldUserID = \"userId\"\n\n"+
-			"func ParseListFilter(e string) { filter.Parse(e, []string{FilterFieldUserID}) }\n")
+	// Фикстуры белых списков фильтра здесь БЫЛИ и сняты вместе с полосой B:
+	// её предметом были списки, объявленные в прод-коде службы доступа, а служба
+	// вынесена отдельным продуктом.
 
-	wdir := filepath.Join(root, "services", "iam", "internal", "repo", "kaname", "pg")
-	if err := os.MkdirAll(wdir, 0o750); err != nil {
-		t.Fatalf("каталог репозитория: %v", err)
-	}
-	terms := f.whitelistTerms
-	if terms == "" {
-		terms = `"name"`
-	}
-	write(t, filepath.Join(wdir, "widget_repo.go"),
-		"package pg\n\nfunc list(f F) { parseListFilter(f.Filter, "+terms+") }\n")
-
-	// Доказательство гасящей записи условия «г».
-	adir := filepath.Join(root, "services", "iam", "internal", "apps", "kaname", "api", "access_binding")
-	if err := os.MkdirAll(adir, 0o750); err != nil {
-		t.Fatalf("каталог use-case: %v", err)
-	}
-	// Доказательство читается РАЗБОРОМ, поэтому фикстура несёт настоящий ВЫЗОВ, а
-	// не строку с его именем: файл, где имя стоит только в комментарии, — предмет
-	// отдельного контроля ниже.
-	quench := "package access_binding\n\nfunc e() { visibleOnNarrowedPage(nil, nil, nil) }\n"
-	write(t, filepath.Join(adir, "list_by_subject.go"), quench)
-	write(t, filepath.Join(adir, "list_subject_privileges.go"), quench)
-
-	// Предпосылка полосы C.
-	migDir := filepath.Join(root, "services", "iam", "internal", "migrations")
-	if err := os.MkdirAll(migDir, 0o750); err != nil {
-		t.Fatalf("каталог миграций: %v", err)
-	}
+	// Предпосылка полосы C живёт в КОНТРАКТЕ: реализация вынесена отдельным
+	// продуктом, и схемы, которую можно было бы прочесть, в этом дереве нет.
+	//
+	// Файл ОТДЕЛЬНЫЙ, а не приписка к базовому: предпосылка ищется по КОРПУСУ, и
+	// ось «та же фраза в файле с другим именем» ниже стережёт ровно это.
 	mark := oracleMembershipIDMark
 	if f.dropIDMark {
-		mark = "-- предпосылка снята"
+		mark = "предпосылка снята"
 	}
 	idFile := f.idMigrationName
 	if idFile == "" {
-		idFile = "470001_memberships_expand.sql"
+		idFile = "membership_service.proto"
 	}
-	write(t, filepath.Join(migDir, idFile), mark+" || p_user_id)\n")
+	write(t, filepath.Join(protoDir, idFile),
+		"syntax = \"proto3\";\npackage kaname.cloud.iam.v1;\n\n// Идентификатор членства "+mark+"\n")
 
 	tree, err := treecorpus.SyntheticTree(root)
 	if err != nil {
@@ -255,49 +265,12 @@ func TestOracleGate_LaneA_MembershipsFieldOnTheUserResource(t *testing.T) {
 	}
 }
 
-// TestOracleGate_LaneB_SubjectTermInAnUnscopedWhitelist — инъекция B.
-func TestOracleGate_LaneB_SubjectTermInAnUnscopedWhitelist(t *testing.T) {
-	t.Parallel()
-	got := oracleLanes(t, oracleFixture{whitelistTerms: `"name", "userId"`})
-	if got["WidgetService/List"] != "B" {
-		t.Fatalf("полоса B не заметила терм субъекта в белом списке чтения без "+
-			"обязательного аккаунта: %v", got)
-	}
-}
-
-// TestOracleGate_LaneB_SubjectTermStaysLawfulWhenAccountIsMandatory — законный
-// близнец полосы B: тот же терм на аккаунт-скоупном чтении находкой НЕ является,
-// потому что действует ВНУТРИ названного аккаунта.
-//
-// Он стоит в БАЗЕ каждой пробы (белый список членства), поэтому здесь
-// утверждается прямо: контроль выше молчит именно из-за него, а не потому, что
-// полоса B ничего не читает.
-func TestOracleGate_LaneB_SubjectTermStaysLawfulWhenAccountIsMandatory(t *testing.T) {
-	t.Parallel()
-	c, err := SurveyMembershipOracle(oracleInjectionTree(t, oracleFixture{}))
-	if err != nil {
-		t.Fatalf("обход: %v", err)
-	}
-	seen := false
-	for _, w := range c.Whitelists {
-		for _, term := range w.Terms {
-			if term == "userId" && w.Bound == "MembershipService/List" {
-				seen = true
-			}
-		}
-	}
-	if !seen {
-		t.Fatal("полоса B не ВИДИТ терм субъекта, объявленный КОНСТАНТОЙ, — значит её " +
-			"молчание ничего не доказывает: всё, записанное этой формой, лежит вне " +
-			"наблюдения, а не признано законным")
-	}
-	for _, f := range c.Findings {
-		if f.Lane == "B" {
-			t.Fatalf("полоса B краснеет на законном близнеце: %s — терм действует "+
-				"внутри названного аккаунта", f.FQN)
-		}
-	}
-}
+// ЗДЕСЬ БЫЛИ ДВЕ ПРОБЫ ПОЛОСЫ B — инъекция терма субъекта в белый список
+// чтения без обязательного аккаунта и её законный близнец. Обе сняты вместе с
+// полосой: её предметом были белые списки фильтра, объявленные в прод-коде
+// службы доступа, а служба вынесена отдельным продуктом. Довод, по которому
+// корень полосы нельзя было расширить на живые домены, — в шапке
+// `membershiporacle.go`.
 
 // TestOracleGate_LaneC_FlatMembershipRead — инъекция C. ОБЯЗАТЕЛЬНА: без неё
 // полоса C остаётся объявлением, а гейт зелен ровно на том входе, ради которого
@@ -347,14 +320,17 @@ func TestOracleGate_LaneC_PremiseIsCheckedNotAssumed(t *testing.T) {
 	// ТРЕТЬЯ ОСЬ: та же деривация в файле с ДРУГИМ именем.
 	//
 	// Прежде предпосылка читала один файл по координате, и координата умерла
-	// 2026-09-04: свод миграций iam снял файл, в котором деривация была
-	// заведена, — а само выражение переехало в свод байт-в-байт. Гейт объявил
-	// предпосылку ложной, будучи неправ: он пережил не факт, а раскладку файлов.
+	// 2026-09-04: свод миграций службы доступа снял файл, в котором деривация
+	// была заведена, — а само выражение переехало в свод байт-в-байт. Гейт
+	// объявил предпосылку ложной, будучи неправ: он пережил не факт, а раскладку
+	// файлов.
 	//
-	// Применённую миграцию не правят (ban #5), поэтому деривация переезжает при
-	// каждом своде и будет переезжать впредь. Ось стережёт ровно это.
+	// Производитель с тех пор сменился на контракт (реализация уехала отдельным
+	// продуктом), но класс ошибки от этого не изменился: объявление переезжает
+	// между файлами корпуса при каждом переустройстве контракта. Ось стережёт
+	// ровно это.
 	c3, err := SurveyMembershipOracle(oracleInjectionTree(t, oracleFixture{
-		idMigrationName: "0001_initial.sql",
+		idMigrationName: "membership.proto",
 	}))
 	if err != nil {
 		t.Fatalf("обход: %v", err)
@@ -371,10 +347,15 @@ func TestOracleGate_LaneC_PremiseIsCheckedNotAssumed(t *testing.T) {
 }
 
 // TestOracleGate_QuenchEntryExpiresWithItsProof — гасящая запись самоистекает.
+//
+// Доказательство читается в КОНТРАКТЕ (объявление `scope_filtered` в теле
+// глагола), потому что реализация службы доступа живёт в другом продукте, а
+// контракт правится здесь. Снятие идёт ПО ОДНОМУ глаголу: гейт, замечающий
+// только пропажу первой записи, неотличим от исправного, пока записей не станет
+// две.
 func TestOracleGate_QuenchEntryExpiresWithItsProof(t *testing.T) {
 	t.Parallel()
-	tree := oracleInjectionTree(t, oracleFixture{})
-	proofs := SurveyOracleQuenchProofs(tree)
+	proofs := SurveyOracleQuenchProofs(oracleInjectionTree(t, oracleFixture{}))
 	if len(proofs) == 0 {
 		t.Fatal("гасящих записей нет — проба рассматривает пустоту")
 	}
@@ -383,59 +364,64 @@ func TestOracleGate_QuenchEntryExpiresWithItsProof(t *testing.T) {
 			t.Fatalf("КОНТРОЛЬ: доказательство %s обязано находиться на законном дереве", p.FQN)
 		}
 	}
-	// Снимаем сужение — КАЖДАЯ запись обязана потерять основание. Снимается
-	// по одной: гейт, замечающий только пропажу первой, неотличим от исправного,
-	// пока записей не станет две.
+
 	for _, q := range oracleQuenchedByNarrowing {
-		root := tree.Root()
-		write(t, filepath.Join(root, filepath.FromSlash(q.File)),
-			"package access_binding\n\nfunc e() {}\n")
-		tree2, err := treecorpus.SyntheticTree(root)
-		if err != nil {
-			t.Fatalf("состав дерева: %v", err)
-		}
+		tree := oracleInjectionTree(t, oracleFixture{dropScopeFilteredOn: q.FQN})
 		expired := false
-		for _, p := range SurveyOracleQuenchProofs(tree2) {
+		for _, p := range SurveyOracleQuenchProofs(tree) {
 			if p.FQN == q.FQN && !p.Found {
 				expired = true
 			}
 			if p.FQN != q.FQN && !p.Found {
-				t.Fatalf("снят вызов у %s, а основание потеряла ЧУЖАЯ запись %s — "+
+				t.Fatalf("сужение снято у %s, а основание потеряла ЧУЖАЯ запись %s — "+
 					"доказательства перепутаны местами", q.FQN, p.FQN)
 			}
 		}
 		if !expired {
-			t.Fatalf("вызов сужения снят, а гасящая запись %s всё ещё считает себя "+
+			t.Fatalf("объявление сужения снято, а гасящая запись %s всё ещё считает себя "+
 				"доказанной — близнец пережил своё основание", q.FQN)
 		}
-		// Возвращаем, чтобы следующая итерация судила снятие ОДНОЙ записи.
-		write(t, filepath.Join(root, filepath.FromSlash(q.File)),
-			"package access_binding\n\nfunc e() { visibleOnNarrowedPage(nil, nil, nil) }\n")
+	}
+}
+
+// TestOracleGate_QuenchedReadBecomesAFindingWhenTheProofGoes — вторая половина
+// того же: потеряв доказательство, чтение обязано СТАТЬ НАХОДКОЙ, а не просто
+// «незадоказанной записью».
+//
+// Без неё самоистечение доказывало бы лишь то, что перепись изменилась, — а
+// предмет гейта в том, ЧТО он говорит о поверхности.
+func TestOracleGate_QuenchedReadBecomesAFindingWhenTheProofGoes(t *testing.T) {
+	t.Parallel()
+	target := oracleQuenchedByNarrowing[0].FQN
+
+	base := oracleLanes(t, oracleFixture{})
+	if lane, ok := base[target]; ok {
+		t.Fatalf("КОНТРОЛЬ: чтение %s объявлено находкой полосы %q при живом "+
+			"объявлении сужения — гашение не действует", target, lane)
+	}
+
+	got := oracleLanes(t, oracleFixture{dropScopeFilteredOn: target})
+	if got[target] != "A" {
+		t.Fatalf("объявление сужения снято, а чтение %s находкой полосы A не стало: %v — "+
+			"гашение держится ведомостью, а не доказательством", target, got)
 	}
 }
 
 // TestOracleGate_QuenchProofIsNotSatisfiedByProse — КОНТРОЛЬ обратной стороны:
-// имя сужения, стоящее ТОЛЬКО в комментарии, доказательством не является.
+// объявление сужения, стоящее ТОЛЬКО комментарием, доказательством не является.
 //
-// Оба файла, на которые указывают записи, несут развёрнутый разбор сужения
-// прозой и называют в нём то же имя. Подстрочный поиск нашёл бы этот разбор и
-// остался бы зелёным при снятом сужении — гейт удостоверял бы собственное
-// объяснение.
+// Тела обоих глаголов несут развёрнутый разбор сужения прозой и называют в нём
+// то же имя опции. Поиск по слову нашёл бы этот разбор и остался бы зелёным при
+// снятом объявлении — гейт удостоверял бы собственное объяснение
+// (`testing.md` §«Гейт на класс», п.4).
 func TestOracleGate_QuenchProofIsNotSatisfiedByProse(t *testing.T) {
 	t.Parallel()
-	tree := oracleInjectionTree(t, oracleFixture{})
-	root := tree.Root()
-	target := oracleQuenchedByNarrowing[0]
-	write(t, filepath.Join(root, filepath.FromSlash(target.File)),
-		"package access_binding\n\n// Страница сужается вызовом visibleOnNarrowedPage.\nfunc e() {}\n")
-	tree2, err := treecorpus.SyntheticTree(root)
-	if err != nil {
-		t.Fatalf("состав дерева: %v", err)
-	}
-	for _, p := range SurveyOracleQuenchProofs(tree2) {
-		if p.FQN == target.FQN && p.Found {
+	target := oracleQuenchedByNarrowing[0].FQN
+	tree := oracleInjectionTree(t, oracleFixture{scopeFilteredAsProse: target})
+	for _, p := range SurveyOracleQuenchProofs(tree) {
+		if p.FQN == target && p.Found {
 			t.Fatalf("проза о сужении зачтена за сужение: запись %s считает себя "+
-				"доказанной комментарием, в котором названо имя вызова", p.FQN)
+				"доказанной комментарием, в котором названо имя опции", p.FQN)
 		}
 	}
 }
@@ -455,8 +441,6 @@ func TestOracleGate_CensusIsNotVacuous(t *testing.T) {
 		t.Fatal("сообщений разобрано ноль")
 	case c.PublicReads == 0:
 		t.Fatal("публичных чтений распознано ноль")
-	case c.LaneBSeen == 0:
-		t.Fatal("белых списков рассмотрено ноль")
 	}
 	if !strings.Contains(strings.Join(c.Dictionary, ","), "account_id") {
 		t.Fatal("словарь условия «б» пуст либо потерял несущее имя")

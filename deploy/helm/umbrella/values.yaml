@@ -53,11 +53,54 @@ kacho:
 # Helm не пропагирует top-level `kacho.*` в sub-chart автоматически — дублируем
 # в namespace'е sub-chart'а (sub-chart держит fallback в charts/kaname/values.yaml).
 kaname:
-  # kaname использует структуру image.{repository,tag,pullPolicy}; dev-стенд
-  # override'ит в values.dev.yaml на local kaname:dev.
+  # ОБРАЗ СЛУЖБЫ ДОСТУПА СОБИРАЕТ ЧУЖОЙ КОНВЕЙЕР — ПИН ЗДЕСЬ ЕДИНСТВЕННЫЙ СПОСОБ
+  # ЕГО НАЗВАТЬ, И ДОСЯГАЕМОСТЬ ПИНА НИКЕМ НЕ ВЫВОДИТСЯ.
+  #
+  # Здесь стояло «kaname использует структуру image.{repository,tag,pullPolicy};
+  # dev-стенд override'ит в values.dev.yaml на local kaname:dev». Первая половина
+  # верна, вторая была ложью, и обе проверяются предикатом:
+  #   deploy/helm/umbrella/values.dev.yaml блока `kaname.image` НЕ несёт — dev,
+  #   dev-prod и prod наследуют ЭТУ строку целиком;
+  #   `grep -n '^SERVICES' deploy/Makefile` → vpc compute api-gateway nlb geo
+  #   storage registry: службы доступа в перечне НЕТ, поэтому `kaname:dev` нечем
+  #   собрать, и такой пин был бы образом без производителя
+  #   (deploy/stand_image_has_a_producer_test.go).
+  #
+  # Вывести тег из коммита этого дерева НЕЛЬЗЯ: у службы своё пространство тегов.
+  # Реестр службы несёт теги ДВУХ происхождений: коммиты её собственного ствола и
+  # коммиты ЭТОГО дерева (образ публиковался его конвейером до выноса). Поэтому пин,
+  # названный коммитом этого дерева, выглядит выведенным и не тянется — ровно так
+  # умерли четыре прежних. `main-efa5d1f3` — ствол службы, манифест 200.
+  #
+  # ЧИСЛА ТЕГОВ ЗДЕСЬ НЕТ НАМЕРЕННО. Прежняя редакция называла «17 тегов, из них
+  # ТРИ коммитами службы, остальные 14 — этого дерева». Содержимое реестра меняет
+  # чужой конвейер, поэтому у такого числа не может быть производителя в этом
+  # дереве: перемер В ТОТ ЖЕ ДЕНЬ дал восемнадцать. Число, которое стареет от
+  # чужого действия, обязано либо печататься проверкой, либо не стоять в прозе.
+  # Спросить состав можно одной командой:
+  #   t=$(curl -s "https://auth.docker.io/token?service=registry.docker.io\
+  #   &scope=repository:prorobotech/kaname:pull" \
+  #   | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+  #   curl -s -H "Authorization: Bearer $t" \
+  #     https://registry-1.docker.io/v2/prorobotech/kaname/tags/list
+  #
+  # Досягаемость держит deploy/published_image_pin_is_reachable_test.go, а не эта
+  # запись: комментарий стареет молча, проверка — нет.
+  #
+  # А ТО, ЧТО СТЕНД ИСПОЛНЯЕТ ИМЕННО ЭТУ ССЫЛКУ, держит
+  # `deploy/scripts/stand-provenance.sh`:
+  # он читает ЭТУ строку (через `product_pins_load`) и сверяет её с работающим
+  # контейнером. Досягаемость и посадка — разные утверждения: пин может тянуться и
+  # при этом не быть тем, что исполняет стенд. Прежде такой сверки не было вовсе, а
+  # сверка с ревизией ДЕРЕВА ПРОГОНА объявляла находкой верный факт и гасила
+  # прогон целиком (34694955309: 0 коллекций из 57 на пяти стендах).
+  #
+  # СЛЕДСТВИЕ ДЛЯ ТОГО, КТО ПРАВИТ ТЕГ: правка здесь меняет ПРЕДМЕТ сверки на
+  # каждом стенде, чья цепочка этот профиль наследует. Стенд, поднятый до правки,
+  # после неё честно назовётся расхождением — это верно, а не досадно.
   image:
     repository: docker.io/prorobotech/kaname
-    tag: main-be5a45a2
+    tag: main-efa5d1f3
     pullPolicy: IfNotPresent
   platform:
     domain: api.kacho.cloud
@@ -539,37 +582,72 @@ global:
       # Окно между сигналом остановки и уходом процесса — чтобы снятие конечных
       # точек успело распространиться.
       preStopSeconds: 5
-  # Container image registry + tag. Образы kacho-* публикуются в DockerHub под
-  # namespace = DOCKERHUB_USERNAME; тег = `<branch>-<sha8>` или semver. Per-service
-  # `image:` ниже выписаны явно и должны совпадать с `<imageRegistry>/<svc>:<imageTag>`.
-  # dev-стенд (kind) переопределяет на локально-загруженные `:dev` образы (values.dev.yaml).
-  imageRegistry: docker.io/prorobotech       # override: --set global.imageRegistry=docker.io/<user>
-  imageTag: latest                           # override: --set global.imageTag=<branch>-<sha8>
+  # ЭТИ ДВЕ РУЧКИ ОБЪЯВЛЕНЫ И НЕ ЧИТАЮТСЯ НИ ОДНИМ ШАБЛОНОМ. Замер, а не
+  # впечатление: поиск `imageTag` по шаблонам и файлам значений дерева даёт
+  # объявление здесь и прозу о нём — читателя нет ни у одной. Помощник образа
+  # службы доступа (`kaname.image` в
+  # deploy/helm/umbrella/charts/kaname/templates/_helpers.tpl) читает
+  # `image.{digest,repository,tag}` и на `global` не смотрит вовсе; братские
+  # подчарты принимают плоскую строку `image:`.
+  #
+  # Значит исход «снять пины в пользу global.imageTag», который перечень ниже
+  # обещал, НЕДОСТУПЕН by construction. Ручки оставлены (их снятие — ломающее
+  # изменение у всякого, кто передаёт `--set` рукой), но выходом больше не
+  # называются: возможность, объявленная и неисполнимая, хуже отсутствующей.
+  #
+  # Per-service `image:` ниже выписаны явно; dev-стенд (kind) переопределяет их
+  # на локально-загруженные `:dev` образы (values.dev.yaml).
+  imageRegistry: docker.io/prorobotech       # НЕ ЧИТАЕТСЯ ни одним шаблоном
+  imageTag: latest                           # НЕ ЧИТАЕТСЯ ни одним шаблоном
 
 # ─── Per-service image references (DockerHub) ──────────────────────────────
 # Packaged sub-charts (vpc/compute/ui/api-gateway) принимают плоскую строку
 # `image:` + `imagePullPolicy:`. dev-стенд переопределяет на local `:dev` образы.
 #
-# ЗАПИСИ О ВЫВОДЕ ЗДЕСЬ НЕТ, И ЭТО НЕ УПУЩЕНИЕ. Умолчания чарта не описывают ни
-# один стенд: каждый профиль дерева переопределяет их целиком, и ни одна из
-# четырёх ссылок ниже не разрешается в коммит этого дерева — это теги прежних
-# полирепозиториев. Ещё две (`main-latest`) коммита не называют вовсе: это
-# заглушки, и заглушка не станет выводимой сама.
+# УМОЛЧАНИЯ ВЫВЕДЕНЫ ИЗ КОММИТА — ИСХОД, КОТОРЫЙ ЗДЕСЬ ОБЪЯВЛЯЛСЯ, ИСПОЛНЕН.
 #
-# Записать сюда «порождено-от» значило бы объявить вывод из коммита, которого
-# нет, — то есть завести ровно ту ложь, против которой запись и придумана.
-# Исход принадлежит оператору: либо умолчания перепиниваются на коммит этого
-# дерева одним заходом, либо снимаются в пользу `global.imageTag`. До тех пор
-# каждая ссылка обязана называть себя невыводимой — иначе она неотличима от
-# выведенной. Держит это deploy/managed_cluster_profile_test.go.
-# без-вывода: kacho-vpc kacho-compute kacho-api-gateway kaname — коммит прежнего полирепозитория, в этом дереве не разрешается
-# без-вывода: kacho-geo kacho-storage — тег-заглушка `main-latest`, коммита не называет; настоящий тег приходит профилем
+# Здесь стояло «записи о выводе здесь нет, и это не упущение»: четыре ссылки
+# называли коммиты прежних полирепозиториев, две были заглушками `main-latest`, а
+# перечень исходов кончался словами «либо перепиниваются на коммит этого дерева
+# одним заходом, либо снимаются в пользу `global.imageTag`». Второй исход
+# НЕДОСТУПЕН by construction — ручка не читается ни одним шаблоном (см.
+# `global.imageTag` выше), — поэтому исполнен первый.
+#
+# ЦЕНА ПРЕЖНЕГО СОСТОЯНИЯ ИЗМЕРЕНА, А НЕ ПРЕДПОЛОЖЕНА. Манифеста не было НИ У
+# ОДНОЙ из шести ссылок: реестр отвечал 404 при живых репозиториях. Единственный
+# стенд, наследующий эти умолчания целиком, — `prod`: ни `values.prod.yaml`, ни
+# какой-либо его слой образа продукта не объявляет вовсе. То есть боевой профиль
+# поднимался семью недостижимыми образами, и увидеть это можно было только на
+# кластере, минутами позже «helm upgrade прошёл».
+#
+# ВЫБОР КОММИТА. `d941344b` — вершина ствола этого дерева на день правки, и ровно
+# на нём опубликованы ВСЕ СЕМЬ образов, которые дерево собирает (проверено по
+# реестру: манифест есть у каждого). Один коммит на все семь — не удобство:
+# профиль, собранный из разных коммитов, описывает состояние, которое ствол
+# никогда не проходил.
+#
+# ЧТО ДОБАВИЛОСЬ К ПЯТИ. `registry` и `kacho-nlb` умбрелла не пинила вовсе, и их
+# ссылка приезжала умолчанием СВОЕГО подчарта: у registry — тот же мёртвый
+# `main-latest`, у nlb — ПУСТОЙ тег, который его помощник подставляет из
+# `.Chart.AppVersion`. Второе тише первого: тега в файле значений нет ни одним
+# словом, читатель профиля его не видит, а kubelet получает — и манифеста у него
+# нет. Оба пина стоят теперь там, где стоят остальные пять.
+#
+# СЛУЖБА ДОСТУПА ОСТАЁТСЯ НЕВЫВОДИМОЙ, и это не «ещё не сделано»: её образ
+# собирает конвейер её репозитория, в тег попадает коммит ЕЁ ствола, и в этом
+# дереве он не разрешается by construction. Директива самоистекает по внешнему
+# факту: как только в теге окажется коммит этого дерева, запись упадёт.
+#
+# Досягаемость держит deploy/published_image_pin_is_reachable_test.go, вывод —
+# deploy/managed_cluster_profile_test.go. Два разных вопроса, две проверки.
+# порождено-от: main d941344bd972b2e994263a9e964afa1491aff293
+# без-вывода: kaname — образ собирает конвейер своего репозитория PRO-Robotech/kaname; коммит её ствола в этом дереве не разрешается
 vpc:
-  image: docker.io/prorobotech/kacho-vpc:main-3b48f99b
+  image: docker.io/prorobotech/kacho-vpc:main-d941344b
   imagePullPolicy: IfNotPresent
 
 compute:
-  image: docker.io/prorobotech/kacho-compute:main-1ecb2817
+  image: docker.io/prorobotech/kacho-compute:main-d941344b
   imagePullPolicy: IfNotPresent
 
 # kacho-geo — vendored sub-chart (Geography Region/Zone leaf-service). Image tag
@@ -579,11 +657,11 @@ compute:
 # deploy time (per-profile override + per-cluster overlay). Full sub-chart
 # defaults live in charts/kacho-geo/values.yaml; this block overrides image only.
 kacho-geo:
-  image: docker.io/prorobotech/kacho-geo:main-latest
+  image: docker.io/prorobotech/kacho-geo:main-d941344b
   imagePullPolicy: IfNotPresent
 
 api-gateway:
-  image: docker.io/prorobotech/kacho-api-gateway:main-fa9a8422
+  image: docker.io/prorobotech/kacho-api-gateway:main-d941344b
   imagePullPolicy: IfNotPresent
   # INFRA sec-hardening r3 — the sub-chart's own ingress backends the plaintext
   # `cmux` port, which is the CLUSTER-INTERNAL (unmarked) listener and therefore
@@ -641,6 +719,13 @@ kratos-selfservice-ui:
 # Deployment + StatefulSet on the next `helm upgrade`. dev overlay flips both true.
 kacho-nlb:
   enabled: false
+  # Пин ЗДЕСЬ, а не умолчанием подчарта. Умолчание несёт пустой тег, и подчарт
+  # подставляет `.Chart.AppVersion` (`kacho-nlb.image` в
+  # services/nlb/deploy/templates/_helpers.tpl) — ссылку, которой в файле
+  # значений не видно ни одним словом, а kubelet получает. Манифеста у неё нет.
+  image:
+    repository: docker.io/prorobotech/kacho-nlb
+    tag: main-d941344b
 pg-nlb:
   enabled: false
   # Carries kacho_nlb.fga_register_outbox. See "Statistics freshness for the
@@ -658,7 +743,7 @@ storage:
   enabled: false
   image:
     repository: docker.io/prorobotech/kacho-storage
-    tag: main-latest
+    tag: main-d941344b
 pg-storage:
   enabled: false
   # Carries kacho_storage.fga_register_outbox. See "Statistics freshness for the
@@ -771,6 +856,18 @@ pg-iam:
   primary:
     extendedConfiguration: |
       autovacuum_naptime = 5s
+# ─── kacho-registry — пин умбреллы ─────────────────────────────────────────
+# Ключа `registry` у умбреллы не было, и ссылка приезжала умолчанием подчарта
+# (services/registry/deploy/values.yaml) — `main-latest`, манифеста нет.
+#
+# `enabled` здесь НЕ объявляется намеренно: Chart.yaml условит подчарт по
+# `registry.enabled`, и появление ключа со значением сменило бы состав стенда, а
+# предмет этой правки — досягаемость образа, а не состав.
+registry:
+  image:
+    repository: docker.io/prorobotech/kacho-registry
+    tag: main-d941344b
+
 pg-registry:
   # Carries kacho_registry.registry_outbox.
   primary:

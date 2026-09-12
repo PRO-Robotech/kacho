@@ -41,7 +41,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 
-	"github.com/PRO-Robotech/kacho/pkg/observability"
+	"github.com/PRO-Robotech/corelib/observability"
 )
 
 // Значения меток — ЗАКРЫТЫЙ словарь. Именованные константы, а не литералы по

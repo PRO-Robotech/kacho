@@ -10,9 +10,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	"github.com/PRO-Robotech/corelib/grpcclient"
+	corequota "github.com/PRO-Robotech/corelib/quota"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/quota"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/clients"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/config"

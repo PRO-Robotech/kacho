@@ -47,15 +47,40 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/productnaming"
 )
 
-// catalogCopies — обе встроенные копии каталога. Требование предъявляется к
-// ОБЕИМ: копия, о которой гейт не знает, разошлась бы молча.
+// catalogCopies — встроенные копии каталога, ЛЕЖАЩИЕ В ЭТОМ ДЕРЕВЕ. Требование
+// предъявляется к каждой: копия, о которой гейт не знает, разошлась бы молча.
+//
+// Копий было ДВЕ, вторая — посевная у службы доступа. Она ушла вместе со своим
+// деревом (вынос `services/iam` отдельным продуктом), и читать её отсюда нельзя
+// ни при каком состоянии диска. Байт-в-байт совпадение копий — предмет другого
+// гейта; здесь важно лишь то, что каждая ДОСТУПНАЯ копия судится.
 func catalogCopies() []string {
 	return []string{
 		filepath.Join("gateway", "internal", "middleware", "embed", "permission_catalog.json"),
-		filepath.Join("services", "iam", "internal", "apps", "kaname", "seed", "embedded", "permission_catalog.json"),
 	}
+}
+
+// exemptLaneOwnerOutsideTree — живёт ли код, принимающий решение по этому
+// методу, в ЧУЖОМ дереве.
+//
+// Владелец выводится из имени пакета контракта (`<продукт>.cloud.<домен>.…`), а
+// сторона — из ведомости разреза (`productnaming`), а не выписывается здесь:
+// выписанный перечень пережил бы возвращение части в дерево молча, а ведомость
+// разреза самоистекает и проверяется своим гейтом.
+func exemptLaneOwnerOutsideTree(fqn string) bool {
+	pkg := fqn
+	if i := strings.Index(pkg, "/"); i >= 0 {
+		pkg = pkg[:i]
+	}
+	parts := strings.Split(pkg, ".")
+	if len(parts) < 3 || parts[1] != "cloud" {
+		return false
+	}
+	return !productnaming.SourcesInThisTree(parts[2])
 }
 
 func readExemptCatalogRows(t *testing.T, root, rel string) []ExemptCatalogRow {
@@ -93,11 +118,22 @@ func TestR893_ExemptLaneNamesItsReason(t *testing.T) {
 	j := JudgeExemptLane(rows, EnforcementSite, func(site string) bool {
 		_, err := os.Stat(filepath.Join(root, site))
 		return err == nil
-	})
+	}, exemptLaneOwnerOutsideTree)
 	t.Logf("копий каталога %d; %s", len(catalogCopies()), j.Census())
 
 	if j.Exempt == 0 {
 		t.Fatalf("записей `<exempt>` ноль — гейт беспредметен, и его молчание ничего не значит")
+	}
+	// Половина «координата энфорса названа и резолвится» молчит одинаково когда
+	// она исполнилась и когда ей нечего было судить: полос, требующих координаты,
+	// могло не остаться вовсе — все отложены владельцу в чужом дереве. Число
+	// судимых ЗДЕСЬ и есть тот положительный контроль, без которого «ноль
+	// находок» неотличимо от «ноль прочитанного».
+	if j.SiteJudgedHere == 0 {
+		t.Fatalf("полос, чья причина требует координаты И чей владелец живёт в ЭТОМ дереве, "+
+			"НОЛЬ (отложено владельцу %d) — половина про координату энфорса перестала "+
+			"утверждать что-либо: она зеленеет, потому что ей нечего судить, а не потому "+
+			"что дерево исправно.\n%s", j.SiteDeferredToOwner, j.Census())
 	}
 	if len(j.Findings) > 0 {
 		t.Fatalf("полоса «проверки нет» не называет причину: %d\n  %s\n%s\n\n"+

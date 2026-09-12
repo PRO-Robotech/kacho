@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // Package subscriptionjournal — объявление ЖУРНАЛА nlb для общего сервера потока
-// изменений (`pkg/subscription`).
+// изменений (`corelib/subscription`).
 //
 // Здесь только ЗНАЧЕНИЯ: где журнал лежит, каким каналом будит, как его строка
 // становится событием общей формы. Курсор, граница устоявшегося, пределы, сужение
@@ -179,10 +179,10 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/subscription"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
-	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
-	"github.com/PRO-Robotech/kacho/pkg/authz"
-	"github.com/PRO-Robotech/kacho/pkg/subscription"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/dto"
 	_ "github.com/PRO-Robotech/kacho/services/nlb/internal/dto/type2pb" // регистрация трансферов

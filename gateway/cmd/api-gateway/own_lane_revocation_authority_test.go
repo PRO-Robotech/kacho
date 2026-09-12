@@ -41,8 +41,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/corelib/identityposture"
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
-	"github.com/PRO-Robotech/kacho/pkg/identityposture"
 )
 
 // Фикстура НАШЕГО авторитета отзыва: годная во всех четырёх осях. Случаи ниже

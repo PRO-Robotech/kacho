@@ -45,14 +45,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // observerPkg / observerFunc — как строится коллектор доли попаданий. Разъедется
 // с кодом — перепись найдёт ноль наблюдателей, и гейт скажет об этом отдельной
 // строкой, а не промолчит.
 const (
-	observerPkg  = "github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
+	observerPkg  = "github.com/PRO-Robotech/corelib/authz/authzmetrics"
 	observerFunc = "New"
 )
 

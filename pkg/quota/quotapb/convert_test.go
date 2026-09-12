@@ -13,8 +13,8 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/pkg/quota/quotapb"
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 )
 
 // Ответ арендатору не изменился НИ НА БАЙТ, когда перечисление области перестало

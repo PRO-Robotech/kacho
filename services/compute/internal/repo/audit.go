@@ -10,8 +10,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/PRO-Robotech/kacho/pkg/ids"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/corelib/ids"
+	"github.com/PRO-Robotech/corelib/operations"
 )
 
 // auditPrefix — префикс идентификатора записи журнала. Тип читается по
@@ -53,7 +53,7 @@ type AuditEvent struct {
 // # Чего эта функция НЕ делает
 //
 // Не отправляет наружу и не решает, куда отправлять. Запись ложится в очередь;
-// доставку ведёт вывоз (`pkg/audit`, поднят в композиционном корне службы), у
+// доставку ведёт вывоз (`corelib/audit`, поднят в композиционном корне службы), у
 // него свои повторы и своя пауза перед ними. Смешать запись с доставкой значило
 // бы поставить успех мутации в зависимость от доступности приёмника журнала.
 func emitAudit(ctx context.Context, tx pgx.Tx, ev AuditEvent) error {

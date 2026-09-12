@@ -93,7 +93,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 // trustAnchorVars — переменные, которыми пинится набор корней. Обе, и это

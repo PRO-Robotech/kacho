@@ -13,7 +13,7 @@ import (
 	"testing"
 	"unicode"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 // Имя в коде — ТОЛЬКО латиницей. Комментарии и тексты — на любом языке.

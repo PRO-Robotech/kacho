@@ -73,7 +73,7 @@ func knownMode(mode string) bool {
 			rel:  "services/vpc/internal/apps/kacho/config/validate.go",
 			src: `package config
 
-import coredb "github.com/PRO-Robotech/kacho/pkg/db"
+import coredb "github.com/PRO-Robotech/corelib/db"
 
 // Боевая посадка допускает require|verify-ca|verify-full — перечень живёт в
 // pkg/db, здесь только вопрос к нему.

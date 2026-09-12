@@ -140,13 +140,21 @@ func TestRetiredBlockStorageIsUnreachable(t *testing.T) {
 		t.Fatal("no retired service names — this gate would assert nothing")
 	}
 
-	// Surfaces a request can be routed or authorized through. Both embedded copies
-	// of the permission catalog are listed: they are required to be byte-identical,
-	// and checking only one would let the other drift while the gate stayed green.
+	// Surfaces a request can be routed or authorized through.
+	//
+	// A second embedded copy of the permission catalog used to be listed here —
+	// the access service's seed copy — because the two are required to be
+	// byte-identical and checking only one would let the other drift while the
+	// gate stayed green. That copy left this tree with the service, which was
+	// carved out into its own repository, so it is judged there;
+	// its coordinate is deliberately not quoted, a coordinate that resolves in
+	// another repository reads as one that resolves in this one.
+	//
+	// The surviving surfaces are still the complete set for THIS tree: a request
+	// reaching a retired service through the monorepo has to pass one of them.
 	surfaces := []string{
 		filepath.Join(root, "gateway", "internal", "middleware", "rest_route_table_gen.go"),
 		filepath.Join(root, "gateway", "internal", "middleware", "embed", "permission_catalog.json"),
-		filepath.Join(root, "services", "iam", "internal", "apps", "kaname", "seed", "embedded", "permission_catalog.json"),
 		filepath.Join(root, "gateway", "internal", "allowlist", "list.go"),
 	}
 	for _, path := range surfaces {

@@ -5,7 +5,7 @@
         assert-outbox-autovacuum helm-manifest-test \
         reload-svc logs-svc psql preflight e2e-test helm-lint \
         loadtest-address-allocate loadtest-address-allocate-clean \
-        reload-svc-iam psql-iam logs-iam build-services fga-model-embed \
+        psql-iam logs-iam build-services \
         guard-kind-context guard-destructive gate-self-test injection-proofs waiter-discipline \
         report-reader-discipline alt-fixture-discipline posture-branch-discipline \
         verdict-aggregator-discipline ceremony-declaration-discipline \
@@ -44,9 +44,25 @@ DEV_UP_VALUES ?=
 # (deploy/stacks.txt), а не выписанная в рецепте. Рецепт и проверки обязаны
 # поднимать один и тот же состав: пока цепочка стояла здесь своей копией,
 # проверка могла честно судить стенд, которого рецепт не поднимает.
-# `$(shell …)` вычисляется при разборе Makefile — отказ чтения таблицы виден
-# сразу и до первого действия над кластером.
-STACK_ARGS = $(shell bash tests/helm/stacks.sh --args $(1) ./helm/umbrella)
+#
+# ПУСТОТА ОСТАНАВЛИВАЕТ РАСКРЫТИЕ, А НЕ УЕЗЖАЕТ В `helm`. Здесь стояло
+# утверждение «`$(shell …)` вычисляется при разборе Makefile — отказ чтения
+# таблицы виден сразу и до первого действия над кластером», и оно было ЛОЖНЫМ:
+# `$(shell …)` роняет код возврата by construction (make отдаёт его только через
+# `.SHELLSTATUS`), поэтому отказ читателя таблицы давал ПУСТОЕ раскрытие при
+# успешном разборе, и `helm upgrade --install` шёл БЕЗ ЕДИНОГО `-f`.
+# Чем это кончалось — замерено: на сегодняшнем чарте рендер без `-f` отказывает
+# (страж подчарта реестра требует учётных данных), то есть цена — отказ с ложной
+# причиной у самого helm, а не тихая посадка разработки. Держит это свойство
+# ЧАРТА, а не рецепта: снимут страж — и пустая цепочка поднимет стенд разработки
+# под именем названного. Видно это было бы не сразу и не здесь.
+#
+# `$(or …)` в make вычисляет аргументы по одному и останавливается на первом
+# непустом, поэтому `$(error …)` срабатывает РОВНО на пустом раскрытии. Проверено:
+# на непустом значение доезжает, на пустом make останавливается кодом 2 ДО
+# исполнения рецепта. Цель `stack-up` сверх этого проверяет `-n "$$args"` в самом
+# рецепте — у неё имя стенда приходит снаружи, и сверка нужна ей на своём месте.
+STACK_ARGS = $(or $(strip $(shell bash tests/helm/stacks.sh --args $(1) ./helm/umbrella)),$(error цепочка стенда '$(1)' прочиталась ПУСТОЙ: читатель таблицы deploy/stacks.txt отказал. helm без единого -f сел бы на умолчания чарта, то есть на посадку РАЗРАБОТКИ))
 # Параметры цели stack-up. STACK умолчания НЕ имеет намеренно: цель меняет
 # кластер, и «наверное, dev» выбором стенда не является.
 STACK ?=
@@ -85,7 +101,7 @@ POSTURE_SKIP ?=
 # `deploy/product_names_shell_reader_test.go`). Что сюда не вернётся вывод по
 # приставке, держит гейт `internal/repohygiene`
 # `TestStandRecipesNeverDeriveAnImageNameByPrefix`.
-SERVICES := iam vpc compute api-gateway nlb geo storage registry
+SERVICES := vpc compute api-gateway nlb geo storage registry
 
 # IMAGES — какие образы РЕАЛЬНО собирать. Умолчание — все восемь (локальный стенд
 # поднимает всё). Шард e2e поднимает подмножество компонентов, и сборка образа,
@@ -224,15 +240,17 @@ IMAGE_IDS_VALUES := helm/umbrella/values.image-ids.yaml
 # дерева.
 MODULE_MANIFESTS_VALUES := helm/umbrella/values.module-manifests.yaml
 
-# КОНТЕКСТ СБОРКИ — НЕ У ВСЕХ ОДИНАКОВ, И ЭТО ОБЪЯВЛЕНО, А НЕ ПОДРАЗУМЕВАЕТСЯ.
+# КОНТЕКСТ СБОРКИ ОДИН НА ВСЕХ — И ЭТО СОСТОЯНИЕ, А НЕ ВЕЧНАЯ НОРМА.
 #
-# Семь образов собираются с контекстом в КОРНЕ дерева: они пакеты одного модуля,
-# и `pkg/` с `proto/` нужны каждому. Служба iam несёт СВОЙ `go.mod` и подключает
-# фундамент внешним модулем по версии — её контекст равен её каталогу.
+# Все семь образов собираются с контекстом в КОРНЕ дерева: они пакеты одного
+# модуля, и `pkg/` с `proto/` нужны каждому.
 #
-# Дай ей корень — соберётся тоже, поэтому расхождение было бы МОЛЧАЛИВЫМ: разошлись
-# бы не сборка и отказ, а сборка и утверждение шапки её Dockerfile о собственной
-# самодостаточности. Ложным стало бы утверждение, а не образ.
+# Здесь стояла развилка на восьмой образ — службу доступа с её собственным
+# `go.mod` и контекстом, равным её каталогу. Каталога в дереве больше нет, её
+# образ собирает конвейер её собственного репозитория, и развилка снята вместе с
+# предметом. Заведётся второй модуль — развилка вернётся, и вернуть её надо
+# ВМЕСТЕ с ним: контекст, равный корню, у самодостаточного модуля собирается
+# тоже, поэтому расхождение было бы МОЛЧАЛИВЫМ.
 build-services:
 	@echo "=== provenance: $(GIT_REF) @ $(GIT_COMMIT)$(GIT_DIRTY) ==="
 	@. ./scripts/lib/product-names.sh; \
@@ -241,8 +259,7 @@ build-services:
 	  img=$$(product_image_name "$$svc") || exit 1; \
 	  echo "=== build $$img:dev ==="; \
 	  d=$$(test "$$svc" = api-gateway && echo gateway || echo services/$$svc); \
-	  bctx=$$(test "$$svc" = iam && echo "$$d" || echo .); \
-	  ( cd .. && docker build -f $$d/Dockerfile $(IMAGE_BUILD_ARGS) -t $$img:dev "$$bctx" ) || exit 1; \
+	  ( cd .. && docker build -f $$d/Dockerfile $(IMAGE_BUILD_ARGS) -t $$img:dev . ) || exit 1; \
 	  kind load docker-image $$img:dev --name $(CLUSTER_NAME) || exit 1; \
 	done
 	@# Идентификатор содержимого берётся у демона ПОСЛЕ сборки: это то, что реально
@@ -317,8 +334,8 @@ build-ui:
 # машинно — звать scripts/stand-provenance.sh напрямую; читающему глазами — строка
 # ВЕРДИКТ ниже.
 stand-provenance:
-	@echo "рабочая копия: $(GIT_REF) @ $(KACHO_IMAGE_REVISION)"
-	@bash scripts/stand-provenance.sh --namespace kacho --expect "$(KACHO_IMAGE_REVISION)"; rc=$$?; \
+	@echo "рабочая копия: $(GIT_REF) @ $(OCI_IMAGE_REVISION)"
+	@bash scripts/stand-provenance.sh --namespace kacho --expect "$(OCI_IMAGE_REVISION)"; rc=$$?; \
 	  case $$rc in \
 	    0) echo "ВЕРДИКТ: ревизия установлена у каждого осмотренного контейнера и сходится с рабочей копией (код 0)" ;; \
 	    1) echo "ВЕРДИКТ: у части контейнеров ревизия НЕ установлена (код 1) — они названы выше" ;; \
@@ -1329,13 +1346,12 @@ reload-svc: guard-kind-context
 ifndef SVC
 	$(error SVC variable is required, e.g. make reload-svc SVC=compute)
 endif
-	@if [ "$(SVC)" != "vpc" ] && [ "$(SVC)" != "compute" ] && [ "$(SVC)" != "storage" ] && [ "$(SVC)" != "loadbalancer" ] && [ "$(SVC)" != "api-gateway" ] && [ "$(SVC)" != "iam" ] && [ "$(SVC)" != "ui" ] && [ "$(SVC)" != "nlb" ]; then \
+	@if [ "$(SVC)" != "vpc" ] && [ "$(SVC)" != "compute" ] && [ "$(SVC)" != "storage" ] && [ "$(SVC)" != "loadbalancer" ] && [ "$(SVC)" != "api-gateway" ] && [ "$(SVC)" != "ui" ] && [ "$(SVC)" != "nlb" ]; then \
 		echo "ERROR: unknown service '$(SVC)'"; exit 1; \
 	fi; \
 	. ./scripts/lib/product-names.sh; \
 	IMG=$$(product_image_name "$(SVC)") || exit 1; \
 	DEPLOY_NAME=$(SVC); \
-	if [ "$(SVC)" = "iam" ]; then DEPLOY_NAME=kaname; fi; \
 	if [ "$(SVC)" = "ui" ]; then DEPLOY_NAME=ui; fi; \
 	if [ "$(SVC)" = "nlb" ]; then DEPLOY_NAME=kacho-nlb; fi; \
 	if [ "$(SVC)" = "storage" ]; then DEPLOY_NAME=kacho-storage; fi; \
@@ -1347,8 +1363,7 @@ endif
 		: ; \
 	else \
 		d=$$(test "$(SVC)" = api-gateway && echo gateway || echo services/$(SVC)); \
-		bctx=$$(test "$(SVC)" = iam && echo "$$d" || echo .); \
-		( cd .. && docker build -f $$d/Dockerfile $(IMAGE_BUILD_ARGS) -t $$IMG:dev "$$bctx" ); \
+		( cd .. && docker build -f $$d/Dockerfile $(IMAGE_BUILD_ARGS) -t $$IMG:dev . ); \
 	fi && \
 	kind load docker-image $$IMG:dev --name $(CLUSTER_NAME) && \
 	kubectl rollout restart -n kacho deployment/$$DEPLOY_NAME
@@ -1448,9 +1463,11 @@ loadtest-address-allocate-clean: guard-kind-context
 
 # ─── KAC-105: IAM stack (kaname; KAC-127: Zitadel → Ory) ──────────────────────
 
-# alias для reload-svc SVC=iam — пересобрать и перезагрузить kaname.
-reload-svc-iam:
-	@$(MAKE) reload-svc SVC=iam
+# Здесь стоял alias `reload-svc-iam` — пересборка образа службы доступа из
+# дерева. Каталога службы в дереве нет, её образ производит конвейер её
+# собственного репозитория, и пересобирать локально нечего: цель снята вместе с
+# предметом. Наблюдать за поднятой службой по-прежнему можно — `psql-iam` и
+# `logs-iam` ниже адресуют СТЕНД, а не дерево, и предмета не теряли.
 
 # psql в kaname-БД (база, пользователь, схема — все kaname).
 psql-iam: guard-kind-context
@@ -1587,17 +1604,17 @@ logs-iam:
 
 # KAC-127: zitadel-admin target удалён — Zitadel заменён на Ory Kratos + Hydra.
 
-# Копия канонической МОДЕЛИ прав, вшиваемая в двоичный файл iam: из неё
-# реляционная форма вердикта выводит отношения (XC-12). Модель остаётся
-# источником истины ФОРМЫ и после снятия внешнего движка (S6 эпика #747) —
-# снято то, что требовало ЖИВОГО движка, а не то, что называет модель.
-# Держится порождением плюс гейтом побайтового равенства
-# (services/iam/internal/authzmodel/identity_test.go).
-OPENFGA_CANONICAL_FGA ?= ../proto/kaname/cloud/iam/v1/fga_model.fga
-FGA_MODEL_EMBED ?= ../services/iam/internal/authzmodel/fga_model.fga
-fga-model-embed:
-	@cp $(OPENFGA_CANONICAL_FGA) $(FGA_MODEL_EMBED)
-	@echo "fga-model-embed: $(FGA_MODEL_EMBED) обновлён из $(OPENFGA_CANONICAL_FGA)"
+# Здесь стояла цель, копировавшая каноническую МОДЕЛЬ прав в каталог службы
+# доступа — туда, откуда её двоичный файл вшивал копию. Приёмник уехал вместе с
+# каталогом службы, и копировать стало НЕКУДА: цель снята вместе с предметом, а
+# не оставлена «на будущее».
+#
+# Что осталось в этом дереве и чего снятие не касается: сама каноническая модель
+# (`proto/kaname/cloud/iam/v1/fga_model.fga`) — она источник истины ФОРМЫ, её
+# читают гейты паритета каталога прав, и уезжать ей отдельным решением
+# (контракт остаётся в монорепо, пока у службы нет опубликованных выпусков).
+# Побайтовое равенство двух копий теперь предмет ЕЁ репозитория: обе стороны
+# равенства должны быть в одном дереве, а здесь их больше не две.
 
 # ─── KAC-127 Phase 10 — SPIRE / Cilium mesh / cosign ─────────────────────
 # Targets для bootstrap, dry-run проверки, и emergency operations.

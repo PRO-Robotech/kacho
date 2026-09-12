@@ -79,7 +79,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // NameFormSourceRel — единственный источник применяемой формы имени. Объявлен

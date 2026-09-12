@@ -47,7 +47,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/corelib/authz"
 )
 
 // SubjectChange — одна строка `subject_change_outbox` в том объёме, в каком её

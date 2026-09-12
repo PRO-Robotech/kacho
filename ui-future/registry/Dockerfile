@@ -41,12 +41,12 @@ COPY --from=build /app/registry/dist /usr/share/nginx/html
 # а цель провенанса скажет словами, что величина не проставлена.
 # Разбор целиком — deploy/scripts/stand-provenance.sh; что величину проставляет
 # КАЖДАЯ сборка дерева — deploy/stand_provenance_declaration_test.go.
-ARG KACHO_IMAGE_REVISION=""
-ARG KACHO_IMAGE_VERSION=""
-LABEL org.opencontainers.image.revision="$KACHO_IMAGE_REVISION" \
-      org.opencontainers.image.version="$KACHO_IMAGE_VERSION"
+ARG OCI_IMAGE_REVISION=""
+ARG OCI_IMAGE_VERSION=""
+LABEL org.opencontainers.image.revision="$OCI_IMAGE_REVISION" \
+      org.opencontainers.image.version="$OCI_IMAGE_VERSION"
 USER root
-RUN mkdir -p /etc/kacho && printf '%s\n' "$KACHO_IMAGE_REVISION" > /etc/kacho/image-revision
+RUN mkdir -p /etc/kacho && printf '%s\n' "$OCI_IMAGE_REVISION" > /etc/kacho/image-revision
 
 # Явный non-root USER (trivy DS-0002: контейнер не должен работать под root).
 USER 101

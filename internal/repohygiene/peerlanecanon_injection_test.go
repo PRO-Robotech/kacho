@@ -42,7 +42,7 @@ const (
 	ownerRepoPath     = "services/geo/internal/repo/kacho/pg/zone.go"
 	consumerLanePath  = "services/vpc/internal/clients/geo_client.go"
 	ownerClientPath   = "services/geo/internal/clients/iam_client.go"
-	injectionPrologue = "package fixture\n\nimport (\n\t\"fmt\"\n\n\tgeoerrors \"github.com/PRO-Robotech/kacho/services/geo/internal/errors\"\n\tkerrors \"github.com/PRO-Robotech/kacho/pkg/errors\"\n\t\"google.golang.org/grpc/codes\"\n\t\"google.golang.org/grpc/status\"\n)\n\nvar _ = fmt.Sprint\nvar _ = codes.OK\nvar _ = status.New\nvar _ = geoerrors.ErrNotFound\n\n"
+	injectionPrologue = "package fixture\n\nimport (\n\t\"fmt\"\n\n\tgeoerrors \"github.com/PRO-Robotech/kacho/services/geo/internal/errors\"\n\tkerrors \"github.com/PRO-Robotech/corelib/errors\"\n\t\"google.golang.org/grpc/codes\"\n\t\"google.golang.org/grpc/status\"\n)\n\nvar _ = fmt.Sprint\nvar _ = codes.OK\nvar _ = status.New\nvar _ = geoerrors.ErrNotFound\n\n"
 )
 
 // laneCanonBaseline — дерево, на котором действующие требования выполнены ВСЕ.

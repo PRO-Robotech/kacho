@@ -44,7 +44,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
 
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
+	"github.com/PRO-Robotech/corelib/listnarrow/narrowtest"
 )
 
 // TestCreateUseCase_FreshAddressIsReserved pins the birth state: an address

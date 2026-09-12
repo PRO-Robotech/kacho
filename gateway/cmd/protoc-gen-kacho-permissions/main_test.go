@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	authzv1 "github.com/PRO-Robotech/kacho/pkg/api/corelib/authz/v1"
+	authzv1 "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/descriptorpb"
 )
