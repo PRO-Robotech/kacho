@@ -104,6 +104,7 @@ DECLARED="
 .github/scripts/lint-service-charts.sh
 .github/scripts/newman-live.py
 .github/scripts/run-python-probes.py
+.github/scripts/shard-verdict.py
 .github/scripts/stand-revision-verdict.sh
 .github/scripts/stand-up.sh
 deploy/scripts/assert-admin-hop-transport.sh
