@@ -62,12 +62,14 @@
 #         make -C deploy fixture-role-verbs
 
 import ast
+import glob
 import os
 import re
 import subprocess
-import shutil
 import sys
 import tempfile
+
+import yaml
 
 MODEL_REL = "proto/kaname/cloud/iam/v1/fga_model.fga"
 
@@ -79,110 +81,132 @@ FIXTURE_GLOBS = ["tests/authz-fixtures/*.py", "services/*/tests/newman/cases/*.p
 
 VERB_WILDCARD = "*"
 
-# Закрытая таблица (module.resource) → тип модели прав. Один источник с прод-кодом:
-# гейт читает ТУ ЖЕ карту, по которой строит объекты реконсайлер, поэтому «глагол
-# законен» решается набором ЕГО типа, а не общим словарём.
+# Закрытая таблица (module.resource) → тип модели прав. Читается у ПРОИЗВОДИТЕЛЯ
+# таблицы — манифестов модулей, — а не у её порождённой копии.
 #
-# ПРЕДМЕТ — ПАКЕТ, А НЕ ФАЙЛ (задача продукта #1944). Прежде здесь стоял путь к
-# `fga_types.go`. Таблица стала ПОРОЖДАЕМОЙ из манифестов модулей (#1092) и
-# уехала в `tables_gen.go`; гейт остался на прежнем имени и начал отвечать
-# «FATAL: не прочитана закрытая таблица типов» — то есть третьей категорией
-# («не выполнилось»), поданной как отказ. Пакет — единица области видимости Go:
-# package-level имя в нём ровно одно by construction, поэтому перенос объявления
-# между файлами пакета больше ничего здесь не ломает.
-TYPES_PKG_REL = "services/iam/internal/authzmap"
-TYPES_VAR = "objectTypes"
+# ПРЕДМЕТ — МАНИФЕСТЫ ЭТОГО ДЕРЕВА (задача разреза службы доступа). Здесь стоял
+# пакет `services/iam/internal/authzmap`, и это было верно, пока служба доступа
+# лежала в этом дереве. Линия выноса службы отдельным продуктом унесла каталог
+# целиком (отслеживаемых файлов под `services/iam` в дереве ноль), и гейт начал
+# отвечать «FATAL: не прочитана закрытая таблица типов» — НАВСЕГДА, потому что
+# это факт дерева, а не несозданное условие окружения. Отказ при этом называл
+# симптом («каталога пакета нет»), а не причину.
+#
+# ПОЧЕМУ МАНИФЕСТЫ, А НЕ ВТОРАЯ КОПИЯ СЛОВАРЯ. Таблица в пакете была ПОРОЖДЕНА
+# из манифестов модулей (#1092): раздел `resources` каждого манифеста несёт пару
+# `name` + `objectType`, и он же порождает блоки типов модели, сверяемые с
+# каноном побайтово. Значит манифест — не копия таблицы, а её ВХОД, и чтение
+# входа даёт то же множество на шаг раньше. Вторым списком это не становится:
+# списка здесь по-прежнему нет, читается дерево.
+#
+# ЦЕНА НАЗВАНА ЧИСЛОМ И ПЕЧАТАЕТСЯ. Свой манифест служба доступа унесла вместе с
+# собой, поэтому её пары в этом дереве не разрешаются: манифестов пять, пар
+# двадцать, глагольных типов модели двадцать семь — семь типов без пары в дереве.
+# Фикстуры дерева сегодня называют ТРИ пары (`loadbalancer.targetGroups`,
+# `storage.volumes`, `vpc.subnet`), все три платформенные, и все три
+# разрешаются. Пара, которая не разрешилась, НЕ молчит: она печатается отдельной
+# строкой переписи, а глагол по ней судится объединением наборов — то есть мягче,
+# и это сказано вслух, а не спрятано.
+MANIFEST_GLOB = "services/*/manifest.yaml"
 
 
 def repo_root():
     return os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 
 
-# Открывающая часть объявления карты. Тело берётся БАЛАНСОМ СКОБОК, а не
-# образцом «до перевода строки и закрывающей»: однострочная запись
-# `var X = map[string]string{"a": "b"}` — законная форма Go, и образец,
-# знающий лишь многострочную, её не находит. Распознаватель, не знающий одной
-# из законных форм, не даёт ни красного, ни зелёного — он МОЛЧИТ, и записанное
-# в неизвестной ему форме оказывается вне наблюдения
-# (`testing.md` §«Гейт на класс», п. 7). Разбор Go-стороны этого же предмета
-# (`internal/repohygiene/pkgvardecl.go`) идёт по узлам и обе формы знает: два
-# читателя одного предмета обязаны сходиться по форме, иначе они разойдутся
-# молча.
-#
-# Начало строки (`^` при re.M) обязательно и несёт СМЫСЛ: package-level `var` в
-# gofmt-дереве стоит в нулевой колонке, а закомментированное объявление
-# начинается с `//`. Без якоря распознаватель находит объявление в ПРОЗЕ,
-# объясняющей его переезд, — краснеет на собственном объяснении. Слепая зона
-# названа: объявление внутри группы `var ( … )` идёт с отступом и здесь не
-# распознаётся; исход такого — ОТКАЗ с объёмом прочитанного, а не молчание.
-_MAP_HEAD = r"^var\s+{}\s*=\s*map\[string\]string\s*\{{"
+def manifest_files(root):
+    """(пути манифестов от корня, чем получен состав).
+
+    СОСТАВ — ИЗ ИНДЕКСА GIT: то же множество, что увидит конвейер на свежем
+    клоне. Обход диска остаётся запасным путём и НЕ МОЛЧИТ — чем получен состав,
+    печатается переписью, потому что синтетический корень самопроверки git-ом не
+    является, а читатель обязан видеть, какое множество судилось.
+
+    ГЛУБИНА ОГРАНИЧЕНА ОДНИМ СЕГМЕНТОМ, И ЭТО НЕ ПЕДАНТСТВО: у двух читателей
+    одного предмета звезда значит РАЗНОЕ — в pathspec git она пересекает косую
+    черту, в `glob` питона нет. Сегодня оба дают одни и те же пять файлов, то есть
+    расхождение существует и НЕ НАБЛЮДАЕТСЯ; первый же манифест глубже
+    (`services/x/подкаталог/manifest.yaml`) попал бы в один состав и не попал в
+    другой — молча, и именно там, где оба отвечают «валидно». Модульный манифест
+    лежит в корне каталога службы by construction, поэтому отбор по глубине
+    сужает состав ровно до объявленного.
+    """
+    def _one_segment(rel: str) -> bool:
+        parts = rel.split("/")
+        return len(parts) == 3 and parts[0] == "services" and parts[2] == "manifest.yaml"
+
+    try:
+        out = subprocess.run(["git", "-C", root, "ls-files", "-z", MANIFEST_GLOB],
+                             capture_output=True, text=True, check=True).stdout
+        paths = sorted(p for p in out.split("\0") if p and _one_segment(p))
+        if paths:
+            return paths, "индекс git"
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+    return sorted(rel for rel in
+                  (os.path.relpath(p, root).replace(os.sep, "/")
+                   for p in glob.glob(os.path.join(root, MANIFEST_GLOB)))
+                  if _one_segment(rel)), "обход диска"
 
 
-def _map_literal_body(src, var_name):
-    """Тело литерала карты var_name, либо None. Балансом скобок."""
-    m = re.search(_MAP_HEAD.format(re.escape(var_name)), src, re.M)
-    if not m:
-        return None
-    depth, i = 1, m.end()
-    while i < len(src) and depth:
-        c = src[i]
-        if c == "{":
-            depth += 1
-        elif c == "}":
-            depth -= 1
-        i += 1
-    if depth:
-        return None
-    return src[m.end():i - 1]
+def object_types(root):
+    """({"module.resource": "тип_модели"}, чем прочитано, сколько манифестов прочитано).
 
+    ПОЧЕМУ ИЗ МАНИФЕСТОВ, А НЕ СПИСКОМ ЗДЕСЬ. Копия таблицы в гейте разъехалась бы
+    с деревом молча: новый ресурс появился бы у модуля и не появился бы у проверки,
+    и та начала бы считать законный глагол несуществующим. Манифест — ВХОД
+    порождения таблицы, а не её копия (см. MANIFEST_GLOB).
 
-def object_types(pkg_dir, var_name=TYPES_VAR):
-    """({"module.resource": "тип_модели"}, файл, сколько файлов пакета прочитано).
-
-    ПОЧЕМУ ИЗ КОДА, А НЕ СПИСКОМ ЗДЕСЬ. Копия таблицы в гейте разъехалась бы с
-    прод-кодом молча: новый ресурс появился бы у реконсайлера и не появился бы
-    у проверки, и та начала бы считать законный глагол несуществующим.
-
-    ПОЧЕМУ ПО ПАКЕТУ, А НЕ ПО ФАЙЛУ — см. TYPES_PKG_REL.
-
-    Тестовые файлы не читаются: синтетика проб держит собственные литералы того
-    же имени, и счёт их сделал бы предмет функцией числа проб.
-
-    Три отказа, и все три — отказы, а не пустой словарь: пакета нет · объявления
-    нет · объявлений больше одного (два места об одном предмете). Возвращается
+    ОТКАЗЫ, И ВСЕ ОНИ ОТКАЗЫ, А НЕ ПУСТОЙ СЛОВАРЬ: манифестов нет · документ не
+    разбирается · нет ключа `module` · ресурс без `objectType` · одна пара
+    объявлена дважды (два места об одном предмете). Возвращается
     (None, причина, сколько прочитано), и вызывающий печатает причину — «не
     найдено» обязано быть отличимо от «не читано».
+
+    Ресурс БЕЗ `objectType` — отказ, а не пропуск: пообъектной адресации у такого
+    ресурса нет вовсе, и разрешённая в пустоту пара судила бы глагол ни по какому
+    набору. Манифест это и объявляет: ключ обязателен.
     """
-    try:
-        names = sorted(n for n in os.listdir(pkg_dir)
-                       if n.endswith(".go") and not n.endswith("_test.go"))
-    except OSError:
-        return None, f"каталога пакета {pkg_dir} нет", 0
-    if not names:
-        return None, f"в пакете {pkg_dir} нет не-тестовых файлов Go", 0
-    found = []
-    for name in names:
+    paths, how = manifest_files(root)
+    if not paths:
+        return None, f"под {MANIFEST_GLOB} нет ни одного манифеста ({how})", 0
+    out, where, read = {}, {}, 0
+    for rel in paths:
         try:
-            src = open(os.path.join(pkg_dir, name), encoding="utf-8").read()
-        except OSError:
-            continue
-        body = _map_literal_body(src, var_name)
-        if body is not None:
-            found.append((name, body))
-    if not found:
-        return None, (f"в пакете {pkg_dir} нет объявления {var_name} "
-                      f"(не-тестовых файлов прочитано {len(names)})"), len(names)
-    if len(found) > 1:
-        return None, (f"в пакете {pkg_dir} объявление {var_name} встречено "
-                      f"{len(found)} раза ({', '.join(n for n, _ in found)}) — "
-                      "два места об одном предмете"), len(names)
-    decl_file, body = found[0]
-    out = {}
-    for k, v in re.findall(r'"([^"]+)"\s*:\s*"([^"]+)"', body):
-        out[k] = v
+            doc = yaml.safe_load(open(os.path.join(root, rel), encoding="utf-8"))
+        except (OSError, yaml.YAMLError) as exc:
+            return None, f"манифест {rel} не разбирается: {exc}", read
+        read += 1
+        if not isinstance(doc, dict):
+            return None, f"манифест {rel} — не документ-словарь", read
+        module = doc.get("module")
+        if not isinstance(module, str) or not module:
+            return None, (f"в {rel} нет ключа `module` — пара (module, resource) из "
+                          f"него не строится (прочитано манифестов {read})"), read
+        resources = doc.get("resources")
+        if resources is None:
+            continue                      # манифест без адресуемых ресурсов — законен
+        if not isinstance(resources, list):
+            return None, f"в {rel} `resources` не список", read
+        for item in resources:
+            if not isinstance(item, dict):
+                return None, f"в {rel} запись `resources` — не словарь", read
+            name, otype = item.get("name"), item.get("objectType")
+            if not isinstance(name, str) or not name:
+                return None, f"в {rel} запись `resources` без `name`", read
+            if not isinstance(otype, str) or not otype:
+                return None, (f"в {rel} ресурс {name!r} без `objectType` — пообъектной "
+                              f"адресации у него нет, и пара разрешилась бы в пустоту"), read
+            pair = module + "." + name
+            if pair in out:
+                return None, (f"пара {pair} объявлена дважды ({where[pair]} даёт "
+                              f"{out[pair]!r}, {rel} — {otype!r}) — два места об одном "
+                              f"предмете"), read
+            out[pair], where[pair] = otype, rel
     if not out:
-        return None, (f"объявление {var_name} в {decl_file} не дало ни одной пары"), len(names)
-    return out, decl_file, len(names)
+        return None, (f"манифестов прочитано {read}, а ни одной пары "
+                      f"(module, resource) в них нет"), read
+    return out, how, read
 
 
 def model_verb_sets(model_path):
@@ -386,13 +410,21 @@ def run(root, files, verb_sets, label="дерево", excused=None):
     for v in verb_sets.values():
         fallback |= set(v)
 
-    types_map, types_where, types_files = object_types(os.path.join(root, TYPES_PKG_REL))
+    types_map, types_where, types_files = object_types(root)
     if not types_map:
         print(f"FATAL: не прочитана закрытая таблица типов: {types_where}. "
               "Разрешать пару (module, resource) нечем, и молчание ничего не доказывает.")
         return 2
-    print(f"перепись источника: пакет {TYPES_PKG_REL}, не-тестовых файлов прочитано "
-          f"{types_files}, объявление {TYPES_VAR} в {types_where}, пар {len(types_map)}")
+    # Типы модели, у которых пары в ЭТОМ дереве нет, — цена разреза службы
+    # доступа: её манифест уехал вместе с нею. Печатается ВСЕГДА, в том числе на
+    # зелёном пути: «пар двадцать» без этого числа одинаково читается и когда
+    # дерево несёт все модули, и когда часть их стала чужим продуктом.
+    typeless = sorted(set(verb_sets) - set(types_map.values()))
+    print(f"перепись источника: манифестов модулей прочитано {types_files} "
+          f"({MANIFEST_GLOB}, состав — {types_where}), пар (module, resource) "
+          f"{len(types_map)}; глагольных типов модели {len(verb_sets)}, из них без пары "
+          f"в этом дереве {len(typeless)}"
+          + (f": {typeless}" if typeless else ""))
 
     if files is None:
         print("FATAL: состав фикстур не читается (git ls-files не отработал). "
@@ -491,16 +523,21 @@ def self_test():
     print("=== инъекция: определение роли из несуществующего глагола ===")
     tmp = tempfile.mkdtemp()
     os.makedirs(os.path.join(tmp, "tests", "authz-fixtures"))
-    # Синтетическое дерево несёт НАСТОЯЩУЮ закрытую таблицу пар. Без неё вызовы
+    # Синтетическое дерево несёт НАСТОЯЩИЕ манифесты дерева. Без них вызовы
     # `run()` ниже отвечали отказом «таблицы нет» (код 2), а самопроверка
     # засчитывала это за «пустой состав — провал» (ждала любой ненулевой): два
     # разных отказа под одним именем, то есть подпроверка проходила по причине,
-    # которую не проверяла.
-    os.makedirs(os.path.join(tmp, TYPES_PKG_REL), exist_ok=True)
-    for _n in os.listdir(os.path.join(root, TYPES_PKG_REL)):
-        if _n.endswith(".go") and not _n.endswith("_test.go"):
-            shutil.copyfile(os.path.join(root, TYPES_PKG_REL, _n),
-                            os.path.join(tmp, TYPES_PKG_REL, _n))
+    # которую не проверяла. Копируются НАСТОЯЩИЕ, а не синтетические: пара
+    # `loadbalancer.targetGroups` ниже обязана резолвиться в тип, который
+    # каноническая модель действительно объявляет, иначе «законный близнец»
+    # молчал бы по неверной причине — не потому, что глагол законен, а потому,
+    # что пара не разрешилась.
+    for _rel, _ in [(r, None) for r in manifest_files(root)[0]]:
+        os.makedirs(os.path.join(tmp, os.path.dirname(_rel)), exist_ok=True)
+        with open(os.path.join(root, _rel), encoding="utf-8") as _fh:
+            _body = _fh.read()
+        with open(os.path.join(tmp, _rel), "w", encoding="utf-8") as _fh:
+            _fh.write(_body)
 
     def write(name, body):
         p = os.path.join(tmp, "tests", "authz-fixtures", name)
@@ -536,7 +573,7 @@ def self_test():
     # у разбора нет с тех пор, как глагол стали сверять с набором СВОЕГО типа.
     # Самопроверка падала исключением ДО первой инъекции, то есть гейт не мог
     # доказать, что краснеет, — и его зелёный обычный проход ничего не значил.
-    types_map, types_where, _ = object_types(os.path.join(root, TYPES_PKG_REL))
+    types_map, types_where, _ = object_types(root)
     if not types_map:
         print(f"  ПРОВАЛ закрытая таблица не читается ({types_where}) — "
               f"самопроверке не на чем стоять")
@@ -574,75 +611,104 @@ def self_test():
     else:
         print(f"  ОК  перепись видит все формы: определений {triples}")
 
-    # ── ИСТОЧНИК РАЗРЕШАЕТСЯ ПО ПАКЕТУ — обе стороны (задача продукта #1944) ──
-    # Гейт уже ломался ровно здесь: таблица уехала в порождённый файл, а он ждал
-    # прежнего имени и отвечал «не прочитана» — «не выполнилось», поданное как
-    # отказ. Ниже — четыре прогона по одному синтетическому пакету: находит после
-    # переезда · молчит на прозе · отказывает без объявления · отказывает на двух.
-    pkgtmp = os.path.join(tmp, "pkgprobe")
-    os.makedirs(pkgtmp, exist_ok=True)
+    # ── ИСТОЧНИК — МАНИФЕСТЫ МОДУЛЕЙ, обе стороны по КАЖДОЙ оси ──────────────
+    # Гейт уже ломался ровно здесь дважды: сперва таблица уехала в порождённый
+    # файл, а он ждал прежнего имени; потом каталог службы уехал из дерева
+    # целиком, и отказ стал вечным. Поэтому у нового источника проверяется каждая
+    # ось, и у каждой — законный близнец: иначе «краснеет» неотличимо от
+    # «краснеет на всём».
+    #
+    # Синтетика ЗДЕСЬ, а не настоящее дерево: ось «пара объявлена дважды» в живом
+    # дереве не представима (её ловит гейт манифестов), и подать её можно только
+    # своим корнем.
+    mtmp = os.path.join(tmp, "manifestprobe")
 
-    def _pkg_write(name, body):
-        with open(os.path.join(pkgtmp, name), "w", encoding="utf-8") as fh:
+    def _manifest(mod, body, service="alpha"):
+        d = os.path.join(mtmp, "services", service)
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "manifest.yaml"), "w", encoding="utf-8") as fh:
             fh.write(body)
+        return f"services/{service}/manifest.yaml"
 
-    def _pkg_rm(name):
-        pth = os.path.join(pkgtmp, name)
-        if os.path.exists(pth):
-            os.remove(pth)
-
-    # ПРОЗА в прежнем файле: имя и «объявление» стоят под комментарием. Читатель,
-    # судящий по тексту без разбора формы, взял бы его за источник.
-    _pkg_write("fga_types.go",
-               "package authzmap\n\n"
-               "// objectTypes переехал; строка ниже НЕ объявление.\n"
-               '// var objectTypes = map[string]string{"ghost.one": "ghost_one"}\n')
-    _pkg_write("tables_gen.go",
-               "package authzmap\n\n"
-               "var objectTypes = map[string]string{\n"
-               '\t"alpha.one": "alpha_one",\n'
-               '\t"beta.one":  "beta_one",\n'
-               "}\n")
-    # Тестовый файл того же имени НЕ читается: иначе объявлений стало бы два.
-    _pkg_write("tables_gen_test.go",
-               "package authzmap\n\n"
-               'var objectTypes = map[string]string{"synthetic.one": "synthetic_one"}\n')
-
-    m_moved, where_moved, files_moved = object_types(pkgtmp)
-    if m_moved and where_moved == "tables_gen.go" and files_moved == 2 and len(m_moved) == 2:
-        print("  ОК  объявление найдено после переезда внутрь пакета "
-              f"(файлов {files_moved}, в {where_moved}, пар {len(m_moved)})")
+    # (1) ЗАКОННЫЙ БЛИЗНЕЦ: два манифеста, оба по форме — пары читаются из ОБОИХ.
+    _manifest("alpha",
+              "module: alpha\n"
+              "resources:\n"
+              "  - name: one\n"
+              "    objectType: alpha_one\n", "alpha")
+    _manifest("beta",
+              "# objectType в комментарии данными НЕ является: YAML комментарий\n"
+              "# не разбирается в ключ, поэтому проза не может стать парой.\n"
+              "#  - name: ghost\n"
+              "#    objectType: ghost_one\n"
+              "module: beta\n"
+              "resources:\n"
+              "  - name: one\n"
+              "    objectType: beta_one\n", "beta")
+    m_ok, how_ok, read_ok = object_types(mtmp)
+    if m_ok == {"alpha.one": "alpha_one", "beta.one": "beta_one"} and read_ok == 2:
+        print(f"  ОК  пары читаются из манифестов ({read_ok} шт., состав — {how_ok}), "
+              f"проза в комментарии парой не становится")
     else:
-        print(f"  ПРОВАЛ после переезда источник не разрешён: {where_moved}")
+        print(f"  ПРОВАЛ источник не разрешён по манифестам: {m_ok} ({how_ok})")
         rc = 1
 
-    _pkg_rm("tables_gen.go")
-    m_gone, where_gone, _f = object_types(pkgtmp)
-    if m_gone is None and "прочитано" in where_gone:
-        print(f"  ОК  без объявления — отказ с объёмом осмотренного: {where_gone}")
+    # (2) РЕСУРС БЕЗ `objectType` — отказ, а не пара, разрешённая в пустоту.
+    _manifest("beta",
+              "module: beta\n"
+              "resources:\n"
+              "  - name: one\n"
+              "    objectType: beta_one\n"
+              "  - name: two\n", "beta")
+    m_no_type, why_no_type, _r = object_types(mtmp)
+    if m_no_type is None and "objectType" in why_no_type and "'two'" in why_no_type:
+        print("  ОК  ресурс без `objectType` — отказ, и он НАЗЫВАЕТ ресурс")
     else:
-        print("  ПРОВАЛ проза принята за объявление либо отказ не назвал объём "
-              f"прочитанного: {where_gone}")
+        print(f"  ПРОВАЛ ресурс без типа объекта принят молча: {why_no_type}")
         rc = 1
 
-    _pkg_write("tables_gen.go",
-               "package authzmap\n\n"
-               'var objectTypes = map[string]string{"alpha.one": "alpha_one"}\n')
-    _pkg_write("fga_types.go",
-               "package authzmap\n\n"
-               'var objectTypes = map[string]string{"gamma.one": "gamma_one"}\n')
-    m_two, where_two, _f = object_types(pkgtmp)
-    if m_two is None and "два места" in where_two:
-        print("  ОК  два объявления одного имени — отказ, а не произвольное из них")
+    # (3) ОДНА ПАРА ИЗ ДВУХ МАНИФЕСТОВ — отказ, а не произвольный из них.
+    _manifest("beta",
+              "module: alpha\n"
+              "resources:\n"
+              "  - name: one\n"
+              "    objectType: beta_one\n", "beta")
+    m_two, why_two, _r = object_types(mtmp)
+    if m_two is None and "два места" in why_two:
+        print("  ОК  пара, объявленная дважды, — отказ, а не произвольная из двух")
     else:
-        print(f"  ПРОВАЛ два объявления приняты молча: {where_two}")
+        print(f"  ПРОВАЛ две пары об одном предмете приняты молча: {why_two}")
         rc = 1
 
-    m_absent, where_absent, _f = object_types(os.path.join(pkgtmp, "nosuch"))
-    if m_absent is None:
-        print("  ОК  пакета нет — отказ, а не пустой словарь")
+    # (4) МАНИФЕСТ БЕЗ `module` — отказ: пара из него не строится.
+    _manifest("beta",
+              "resources:\n"
+              "  - name: one\n"
+              "    objectType: beta_one\n", "beta")
+    m_nomod, why_nomod, _r = object_types(mtmp)
+    if m_nomod is None and "`module`" in why_nomod:
+        print("  ОК  манифест без `module` — отказ с названной причиной")
     else:
-        print(f"  ПРОВАЛ несуществующий пакет дал словарь: {where_absent}")
+        print(f"  ПРОВАЛ манифест без модуля принят молча: {why_nomod}")
+        rc = 1
+
+    # (5) НЕРАЗБИРАЕМЫЙ документ — отказ, а не пустой словарь.
+    _manifest("beta", "module: beta\nresources: [ {name: one,\n", "beta")
+    m_bad, why_bad, _r = object_types(mtmp)
+    if m_bad is None and "не разбирается" in why_bad:
+        print("  ОК  неразбираемый манифест — отказ, а не «пар в нём нет»")
+    else:
+        print(f"  ПРОВАЛ неразбираемый манифест дал {m_bad}: {why_bad}")
+        rc = 1
+
+    # (6) МАНИФЕСТОВ НЕТ ВОВСЕ — отказ, а не пустой словарь. Ровно то состояние,
+    #     в котором гейт оказался после разреза службы: «нечего читать» обязано
+    #     быть отличимо от «прочитано и чисто».
+    m_absent, why_absent, read_absent = object_types(os.path.join(mtmp, "nosuch"))
+    if m_absent is None and read_absent == 0:
+        print(f"  ОК  манифестов нет — отказ с объёмом прочитанного: {why_absent}")
+    else:
+        print(f"  ПРОВАЛ пустой корень дал словарь: {m_absent} ({why_absent})")
         rc = 1
 
     # ПУСТОЙ СОСТАВ — провал, а не тишина.
