@@ -59,6 +59,7 @@ import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 DEFAULT_LEDGER = ".github/scripts/gate-skips-allowed.txt"
@@ -105,6 +106,16 @@ class Run:
         # категория: прогон снят по сроку, убит по памяти, оборван — вердикта у них
         # нет НИ У ОДНОЙ, и «ноль упавших» тут не значит «чисто».
         self.started: set[tuple[str, str]] = set()
+        # ПАКЕТЫ С ТЕРМИНАЛЬНЫМ СОБЫТИЕМ — отдельно от `packages`. `packages`
+        # наполняется ЛЮБЫМ событием, в том числе `start` и `output`: пакет,
+        # начатый и убитый на середине, попадает туда и делает «исполнено»
+        # неотличимым от «начато». Опись шарда считает по ЭТОМУ множеству.
+        self.pkg_done: set[str] = set()
+        # Сколько ушло ДО первой пробы. Это время сборки под -race и линковки —
+        # цена, которую распил платит В КАЖДОМ шарде, поэтому её называет сам
+        # шард, а не оценка со стороны.
+        self.began = time.monotonic()
+        self.first_test_at: float | None = None
 
 
 def consume(stream, out, run: Run) -> None:
@@ -145,6 +156,10 @@ def consume(stream, out, run: Run) -> None:
             run.packages.add(pkg)
         if action == "run" and test:
             run.started.add((pkg, test))
+            if run.first_test_at is None:
+                run.first_test_at = time.monotonic() - run.began
+        if action in ("pass", "fail", "skip") and not test and pkg:
+            run.pkg_done.add(pkg)
         if action == "output":
             text = ev.get("Output", "")
             out.write(text)
@@ -241,10 +256,43 @@ def verdict(run: Run, watch: str, ledger: list[str], out) -> int:
     return rc
 
 
-def run_stream(stream, out, watch: str, ledger: list[str]) -> int:
+def run_stream(stream, out, watch: str, ledger: list[str],
+               collect: list[Run] | None = None) -> int:
     run = Run()
+    if collect is not None:
+        collect.append(run)
     consume(stream, out, run)
     return verdict(run, watch, ledger, out)
+
+
+# ─── опись шарда ────────────────────────────────────────────────────────────
+#
+# ПОЧЕМУ ОПИСЬ ПИШЕТ ПРОГОНЩИК, А НЕ ШАГ КОНВЕЙЕРА. «Исполнено» знает только тот,
+# кто читал поток: по логу это не восстановимо (пакет без проб печатает `ok` ровно
+# так же, как пакет с пробами), а по коду возврата — тем менее. Второе место об
+# одном предмете здесь означало бы, что перепись шарда и его вердикт могут
+# разойтись молча.
+def census(run: Run, shard: str, assigned: list[str], rc: int) -> dict:
+    assigned = sorted(set(assigned))
+    seen = sorted(set(assigned) & run.pkg_done)
+    return {
+        "shard": shard,
+        "assigned": assigned,
+        "seen": seen,
+        # Роздано и не отчиталось: терминального события нет. Это третья
+        # категория, и в «исполнено» она не засчитывается.
+        "missing": sorted(set(assigned) - run.pkg_done),
+        # Отчитался тот, кого не раздавали: прогон шёл не по той раздаче.
+        "unexpected": sorted(run.pkg_done - set(assigned)),
+        "tests_executed": run.passed,
+        "tests_failed": len(run.failed),
+        "tests_skipped": len(run.skipped),
+        "packages_failed": len(run.pkg_failed),
+        "builds_failed": len(run.build_failed),
+        "tests_unfinished": len(run.started),
+        "seconds_to_first_test": run.first_test_at,
+        "rc": rc,
+    }
 
 
 # ─── самопроба ──────────────────────────────────────────────────────────────
@@ -422,6 +470,45 @@ def self_test() -> int:
          _ev(Action="fail", Package=GATE_PKG)],
         led, 1, "undefined: Foo")
 
+    # Ось 9 — ОПИСЬ ШАРДА. Предмет: «роздано = исполнено». Проверяется в обе
+    # стороны, потому что именно здесь распил заводит тихое зелёное: пакет,
+    # розданный и не отчитавшийся, печатает то же ничего, что и отсутствующий.
+    def _census_of(lines, assigned, rc=0):
+        buf = io.StringIO()
+        collected: list[Run] = []
+        code = run_stream(_stream(*lines), buf, DEFAULT_WATCH, [], collect=collected)
+        return census(collected[0], "проба", assigned, rc or code)
+
+    def _check(name: str, cond: bool, got) -> bool:
+        print(f"  [{'OK ' if cond else 'ОТКАЗ'}] {name}: {got}")
+        return cond
+
+    two = [GATE_PKG, OTHER_PKG]
+    both_done = (_pass_lines(GATE_PKG, "TestA") + [_ev(Action="pass", Package=GATE_PKG)]
+                 + _pass_lines(OTHER_PKG, "TestB") + [_ev(Action="pass", Package=OTHER_PKG)])
+    d = _census_of(both_done, two)
+    ok &= _check("контроль: оба розданных отчитались → не отчиталось 0",
+                 d["missing"] == [] and len(d["seen"]) == 2, d["missing"])
+    ok &= _check("проб исполнено попадает в опись", d["tests_executed"] == 2,
+                 d["tests_executed"])
+
+    one_done = _pass_lines(GATE_PKG, "TestA") + [_ev(Action="pass", Package=GATE_PKG)]
+    d = _census_of(one_done, two)
+    ok &= _check("розданный пакет не отчитался → назван в missing",
+                 d["missing"] == [OTHER_PKG], d["missing"])
+
+    d = _census_of(both_done, [GATE_PKG])
+    ok &= _check("отчитался пакет вне раздачи → назван в unexpected",
+                 d["unexpected"] == [OTHER_PKG], d["unexpected"])
+
+    # `packages` наполняется любым событием, поэтому «начат и убит» не должен
+    # считаться исполненным. Это ровно тот случай, на котором счёт по `packages`
+    # дал бы «исполнено 2» при одном вердикте.
+    killed = one_done + [_ev(Action="output", Package=OTHER_PKG, Output="=== RUN\n")]
+    d = _census_of(killed, two)
+    ok &= _check("пакет начат и убит → в исполненные НЕ попал",
+                 d["seen"] == [GATE_PKG], d["seen"])
+
     print("самопроба:", "ПРОЙДЕНА" if ok else "ПРОВАЛЕНА")
     return 0 if ok else 1
 
@@ -431,6 +518,12 @@ def main() -> int:
     ap.add_argument("--ledger", default=DEFAULT_LEDGER)
     ap.add_argument("--watch", default=DEFAULT_WATCH)
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--census-out", default="",
+                    help="куда записать опись шарда (JSON) — её читает сводный вердикт")
+    ap.add_argument("--shard-id", default="",
+                    help="идентификатор шарда; без него опись безадресна")
+    ap.add_argument("--assigned", default="",
+                    help="розданные шарду пакеты, через пробел или перевод строки")
     args = ap.parse_args()
 
     if args.self_test:
@@ -447,8 +540,41 @@ def main() -> int:
         return 2
     ledger = load_ledger(ledger_path)
 
+    if args.census_out and not args.shard_id:
+        sys.stderr.write(
+            "ОТКАЗ: --census-out без --shard-id. Безадресная опись не сверяется с "
+            "планом, и её отсутствие стало бы неотличимо от присутствия\n")
+        return 2
+    if args.census_out and not args.assigned.split():
+        sys.stderr.write(
+            "ОТКАЗ: --census-out без --assigned. Опись без розданного не отвечает на "
+            "вопрос «роздано = исполнено», то есть не является переписью\n")
+        return 2
+
     sys.stdout.reconfigure(line_buffering=True)
-    return run_stream(sys.stdin, sys.stdout, args.watch, ledger)
+    collected: list[Run] = []
+    rc = run_stream(sys.stdin, sys.stdout, args.watch, ledger, collect=collected)
+
+    # ОПИСЬ ПИШЕТСЯ И НА КРАСНОМ. Иначе падение продукта приезжало бы в свод как
+    # «шард не отчитался»: причина подменяется, а разбор начинается не с того места.
+    if args.census_out and collected:
+        doc = census(collected[0], args.shard_id, args.assigned.split(), rc)
+        out = Path(args.census_out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(doc, ensure_ascii=False, indent=1) + "\n",
+                       encoding="utf-8")
+        ttf = doc["seconds_to_first_test"]
+        ttf_text = "не дошло ни до одной пробы" if ttf is None else f"{ttf:.0f} с"
+        sys.stdout.write(
+            f"опись шарда `{doc['shard']}`: роздано {len(doc['assigned'])} · "
+            f"исполнено {len(doc['seen'])} · не отчиталось {len(doc['missing'])} · "
+            f"до первой пробы {ttf_text} → {out}\n")
+        if doc["missing"] or doc["unexpected"]:
+            sys.stdout.write(
+                f"ОТКАЗ: роздано и не отчиталось {len(doc['missing'])}, отчиталось "
+                f"вне раздачи {len(doc['unexpected'])}. Пропуск не есть проход\n")
+            rc = rc or 1
+    return rc
 
 
 if __name__ == "__main__":

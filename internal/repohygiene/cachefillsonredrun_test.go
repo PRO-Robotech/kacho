@@ -57,6 +57,22 @@
 // другой стороны: иначе запрет снимается удалением сохранения, и круг
 // замыкается снова, но уже без единого упоминания кэша, которое можно найти.
 //
+// # Наполнитель бывает В ДРУГОМ ЗАДАНИИ, и это законно
+//
+// Раскладка «прогреть один раз, разойтись по полосам» (`unit-plan` наполняет
+// кэш сборки под -race, тринадцать шардов его читают) наполнителя в СВОЁМ
+// задании не имеет и иметь не должна: сохранение из тринадцати полос под одним
+// ключом — тринадцать записей ради одной, а под разными — вытеснение чужих
+// записей из предела кэша репозитория.
+//
+// Поэтому восстановление без сохранения законно РОВНО ТОГДА, когда тот же
+// КЛЮЧ сохраняет задание того же процесса, от которого это зависит по `needs`
+// (в том числе через посредника). Оба условия несущие: сохранение под другим
+// ключом наполняет другую запись, а сохранение в задании, которого мы не ждём,
+// может не успеть — тогда промах остаётся промахом, то есть ровно та находка,
+// ради которой ось заведена. Свойство против обхода запрета сохраняется:
+// удалили сохранение — снова красное.
+//
 // # Читается разобранный документ, а не текст
 //
 // Имена `actions/cache@…` и `save-always` стоят в этом файле в объяснении, и
@@ -83,13 +99,58 @@ import (
 
 // cacheWorkflowDoc — то немногое из workflow, что нужно этому гейту.
 type cacheWorkflowDoc struct {
-	Jobs map[string]struct {
-		Steps []struct {
-			Name string `yaml:"name"`
-			Uses string `yaml:"uses"`
-			If   string `yaml:"if"`
-		} `yaml:"steps"`
-	} `yaml:"jobs"`
+	Jobs map[string]cacheJob `yaml:"jobs"`
+}
+
+type cacheJob struct {
+	Needs yaml.Node   `yaml:"needs"`
+	Steps []cacheStep `yaml:"steps"`
+}
+
+type cacheStep struct {
+	Name string `yaml:"name"`
+	Uses string `yaml:"uses"`
+	If   string `yaml:"if"`
+	With struct {
+		Key string `yaml:"key"`
+	} `yaml:"with"`
+}
+
+// needs — имена заданий, от которых зависит это, в обеих законных формах
+// (скаляр и список). Форма у площадки обе, и читать одну значило бы объявлять
+// зависимость отсутствующей там, где она записана короче.
+func (j cacheJob) needs() []string {
+	switch j.Needs.Kind {
+	case yaml.ScalarNode:
+		var s string
+		if j.Needs.Decode(&s) == nil && s != "" {
+			return []string{s}
+		}
+	case yaml.SequenceNode:
+		var s []string
+		if j.Needs.Decode(&s) == nil {
+			return s
+		}
+	}
+	return nil
+}
+
+// cacheSaversReachable — задания, от которых `from` зависит по `needs`, включая
+// посредников. Обход по посещённым: цикл в объявлении площадка не примет, но
+// гейт не имеет права зависеть от этого и зависать.
+func cacheSaversReachable(jobs map[string]cacheJob, from string) map[string]bool {
+	seen := map[string]bool{}
+	queue := jobs[from].needs()
+	for len(queue) > 0 {
+		next := queue[0]
+		queue = queue[1:]
+		if next == "" || seen[next] {
+			continue
+		}
+		seen[next] = true
+		queue = append(queue, jobs[next].needs()...)
+	}
+	return seen
 }
 
 // cacheCensus — сколько шагов какой формы осмотрено.
@@ -142,9 +203,26 @@ func checkCacheFillOnRed(path, raw string) ([]string, cacheCensus) {
 		return []string{path + ": не разобран YAML: " + err.Error() + " — файл НЕ проверен"}, census
 	}
 
+	// Кто какой ключ сохраняет — собирается ДО разбора находок: наполнитель
+	// восстановления может стоять в задании, объявленном ниже по файлу.
+	savedBy := map[string]map[string]bool{} // ключ -> задания, сохраняющие его
+	for name, job := range doc.Jobs {
+		for _, st := range job.Steps {
+			if actionOf(st.Uses) != "actions/cache/save" {
+				continue
+			}
+			k := strings.TrimSpace(st.With.Key)
+			if savedBy[k] == nil {
+				savedBy[k] = map[string]bool{}
+			}
+			savedBy[k][name] = true
+		}
+	}
+
 	var findings []string
 	for name, job := range doc.Jobs {
 		restores, saves := 0, 0
+		var restoreKeys []string
 		for i, st := range job.Steps {
 			where := path + ": job " + name + ", шаг #" + itoa(i+1)
 			if st.Name != "" {
@@ -164,6 +242,7 @@ func checkCacheFillOnRed(path, raw string) ([]string, cacheCensus) {
 			case "actions/cache/restore":
 				census.Restore++
 				restores++
+				restoreKeys = append(restoreKeys, strings.TrimSpace(st.With.Key))
 			case "actions/cache/save":
 				census.Save++
 				saves++
@@ -177,10 +256,31 @@ func checkCacheFillOnRed(path, raw string) ([]string, cacheCensus) {
 			}
 		}
 		if restores > 0 && saves == 0 {
-			findings = append(findings, path+": job "+name+" — кэш ВОССТАНАВЛИВАЕТСЯ "+
-				"(`actions/cache/restore`), но нигде в этом задании не СОХРАНЯЕТСЯ. "+
-				"Наполнять его нечем: промах кэша останется промахом на каждом прогоне, "+
-				"и мера будет выглядеть принятой, работая никогда")
+			upstream := cacheSaversReachable(doc.Jobs, name)
+			for _, k := range restoreKeys {
+				filler := ""
+				for j := range savedBy[k] {
+					if upstream[j] {
+						filler = j
+						break
+					}
+				}
+				if filler != "" {
+					continue
+				}
+				elsewhere := len(savedBy[k]) > 0
+				why := "нигде в процессе не СОХРАНЯЕТСЯ"
+				if elsewhere {
+					why = "сохраняется только заданием, которого это НЕ ЖДЁТ по `needs` " +
+						"(значит наполнение может не успеть к чтению)"
+				}
+				findings = append(findings, path+": job "+name+" — кэш ВОССТАНАВЛИВАЕТСЯ "+
+					"(`actions/cache/restore`) по ключу `"+k+"`, но "+why+". "+
+					"Наполнять его нечем: промах кэша останется промахом на каждом прогоне, "+
+					"и мера будет выглядеть принятой, работая никогда. Законны два исхода: "+
+					"сохранение В ЭТОМ задании с `if`, переживающим красный шаг, либо "+
+					"сохранение ТОГО ЖЕ ключа в задании, от которого это зависит по `needs`")
+			}
 		}
 	}
 	sort.Strings(findings)
@@ -275,6 +375,46 @@ func TestCacheFillDetectorSeesBothForms(t *testing.T) {
 		{
 			name: "восстановление без сохранения — находка",
 			yaml: "jobs:\n  b:\n    steps:\n      - uses: actions/cache/restore@v6\n" +
+				"        with:\n          path: ~/.cache/x\n          key: k\n",
+			wantHit: true,
+		},
+		{
+			// ЗАКОННЫЙ БЛИЗНЕЦ раскладки «прогреть один раз, разойтись по полосам».
+			name: "восстановление без сохранения, но ТОТ ЖЕ ключ сохраняет задание из needs — молчит",
+			yaml: "jobs:\n  plan:\n    steps:\n      - uses: actions/cache/save@v6\n" +
+				"        if: ${{ !cancelled() }}\n        with:\n          path: ~/.cache/x\n          key: k\n" +
+				"  shard:\n    needs: plan\n    steps:\n      - uses: actions/cache/restore@v6\n" +
+				"        with:\n          path: ~/.cache/x\n          key: k\n",
+			wantHit: false,
+		},
+		{
+			// То же через ПОСРЕДНИКА: зависимость транзитивна, и читать только
+			// прямые `needs` значило бы объявлять наполнитель отсутствующим.
+			name: "наполнитель через посредника в needs — молчит",
+			yaml: "jobs:\n  plan:\n    steps:\n      - uses: actions/cache/save@v6\n" +
+				"        if: ${{ always() }}\n        with:\n          path: ~/.cache/x\n          key: k\n" +
+				"  mid:\n    needs: [plan]\n    steps:\n      - run: echo\n" +
+				"  shard:\n    needs: [mid]\n    steps:\n      - uses: actions/cache/restore@v6\n" +
+				"        with:\n          path: ~/.cache/x\n          key: k\n",
+			wantHit: false,
+		},
+		{
+			// ИНЪЕКЦИЯ, отличающаяся от близнеца РОВНО ОДНИМ фактом: снят `needs`.
+			// Наполнение может не успеть к чтению — промах остаётся промахом.
+			name: "сохранение есть, но в задании вне needs — находка",
+			yaml: "jobs:\n  plan:\n    steps:\n      - uses: actions/cache/save@v6\n" +
+				"        if: ${{ !cancelled() }}\n        with:\n          path: ~/.cache/x\n          key: k\n" +
+				"  shard:\n    steps:\n      - uses: actions/cache/restore@v6\n" +
+				"        with:\n          path: ~/.cache/x\n          key: k\n",
+			wantHit: true,
+		},
+		{
+			// Вторая инъекция того же близнеца: `needs` на месте, а ключ другой —
+			// наполняется другая запись, и читаемая остаётся пустой.
+			name: "сохранение в needs, но ДРУГОГО ключа — находка",
+			yaml: "jobs:\n  plan:\n    steps:\n      - uses: actions/cache/save@v6\n" +
+				"        if: ${{ !cancelled() }}\n        with:\n          path: ~/.cache/x\n          key: other\n" +
+				"  shard:\n    needs: plan\n    steps:\n      - uses: actions/cache/restore@v6\n" +
 				"        with:\n          path: ~/.cache/x\n          key: k\n",
 			wantHit: true,
 		},

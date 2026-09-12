@@ -53,7 +53,6 @@
 from __future__ import annotations
 
 import argparse
-import copy
 import re
 import sys
 from pathlib import Path
@@ -85,6 +84,29 @@ def run_text(job: dict) -> str:
     комментарии исполняемой частью не являются, и судить по ним значило бы судить
     по прозе."""
     return "\n".join(str(s.get("run") or "") for s in steps_of(job))
+
+
+def wiring_text(job: dict) -> str:
+    """Исполняемый текст ВМЕСТЕ со значениями `env` задания и его шагов.
+
+    Подстановка матрицы законна в обеих формах: прямо в `run:` и через `env:` с
+    чтением переменной. Первая редакция читала только `run:` и на законной второй
+    форме объявляла, что шард не получает своей доли, — то есть требовала одной
+    записи из двух равноправных. Это не придирка: гейт, отвергающий законное,
+    снимут при первом же ложном срабатывании.
+
+    `name:` и комментарии сюда НЕ входят: имя шага — проза, и провязка, «доказанная»
+    именем, не провязка. Значения `with:` тоже НЕ входят, и это измерено инъекцией:
+    имя артефакта `unit-census-${{ matrix.shard.id }}` содержит подстановку, ничего
+    при этом не говоря о том, ту ли долю гонял прогон, — с `with:` в наборе гейт
+    молчал на шарде, честно гонявшем всё дерево.
+    """
+    parts = [run_text(job)]
+    for scope in [job] + steps_of(job):
+        env = scope.get("env")
+        if isinstance(env, dict):
+            parts.extend(str(v) for v in env.values())
+    return "\n".join(parts)
 
 
 def uses_of(job: dict) -> list[tuple[str, dict]]:
@@ -235,7 +257,7 @@ def adjudicate(ci: dict, workflows: dict[str, dict]) -> tuple[list[str], dict[st
                 f"FAIL-FAST НЕ СНЯТ у `{shard}`: первый упавший шард отменяет "
                 f"остальные, и они приходят третьей категорией — вердикта о своих "
                 f"пакетах не даёт НИ ОДИН, а причина у этого одна и внешняя")
-        stext = run_text(sjob)
+        stext = wiring_text(sjob)
         if "matrix.shard.id" not in stext:
             findings.append(
                 f"ШАРД НЕ ПОЛУЧАЕТ СВОЕЙ ДОЛИ: в `run:` задания `{shard}` нет "
@@ -289,11 +311,11 @@ def adjudicate(ci: dict, workflows: dict[str, dict]) -> tuple[list[str], dict[st
             produced = artifact_names(jobs[shard], "upload-artifact")
         if pattern and produced:
             def matches(pat: str, name: str) -> bool:
-                # Имя артефакта несёт подстановку матрицы; сверяется ПРЕФИКС до
-                # первой подстановки — он и есть то, что образец обязан поймать.
+                # Имя артефакта несёт подстановку матрицы, и на момент разбора она
+                # не раскрыта. Сверяется ПРЕФИКС до первой подстановки: он и есть
+                # то, что образец обязан поймать при любом значении матрицы.
                 head = name.split("${{")[0]
-                return pat.rstrip("*").startswith(pat.rstrip("*")) and head.startswith(
-                    pat.rstrip("*"))
+                return head.startswith(pat.rstrip("*"))
             if not any(matches(p, n) for p in pattern for n in produced):
                 findings.append(
                     f"ОБРАЗЕЦ НЕ ЛОВИТ ОПИСЬ: свод скачивает {pattern}, шард "
@@ -492,6 +514,16 @@ def self_test() -> int:
     ok &= _case("шард без matrix.shard.id → красно", c, w, True,
                 "ШАРД НЕ ПОЛУЧАЕТ СВОЕЙ ДОЛИ")
 
+    # 8б. ЗАКОННЫЙ БЛИЗНЕЦ той же оси: доля подаётся через `env`, а не прямо в
+    # `run`. Обе формы законны, и гейт обязан молчать на второй — без этого случая
+    # красное на 8 доказывало бы лишь «краснеет», а не «краснеет на том, на чём надо».
+    def via_env(c):
+        c["jobs"]["unit-shard"]["steps"][1] = {
+            "env": {"SHARD": "${{ matrix.shard.id }}"},
+            "run": 'make test-unit SHARD="$SHARD"\n'}
+    c, w = broken(via_env)
+    ok &= _case("доля подаётся через env → зелено (форма законная)", c, w, False, None)
+
     # 9. Нераспиленный прогон остался в другом задании.
     def leftover(c):
         c["jobs"]["build-test"] = {"name": "build", "steps": [{"run": "make test-unit\n"}]}
@@ -520,6 +552,14 @@ def self_test() -> int:
     c, w = broken(drop_selftest)
     ok &= _case("самопроба агрегатора не вызвана → красно", c, w, True,
                 "САМОПРОБА НЕ ИСПОЛНЯЕТСЯ")
+
+    # 12б. Образец скачивания не ловит имя описи: скачано будет ноль, и свод
+    # объявит непроведённым проведённое. Класс тихий — шаг скачивания при этом
+    # зелёный.
+    c, w = broken(lambda c: c["jobs"]["unit-verdict"]["steps"][0]["with"].__setitem__(
+        "pattern", "newman-shard-*"))
+    ok &= _case("образец скачивания не ловит опись → красно", c, w, True,
+                "ОБРАЗЕЦ НЕ ЛОВИТ ОПИСЬ")
 
     # 13. Пустое объявление — обход пуст, и это ОТКАЗ, а не «находок нет».
     ok &= _case("ноль заданий → красно", {"jobs": {}}, {CI: {"jobs": {}}}, True,

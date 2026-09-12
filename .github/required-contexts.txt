@@ -64,7 +64,7 @@ build registry
 build storage
 build system
 build vpc
-build · vet · gofmt · test -race
+build · vet · gofmt
 docs-sites
 golangci-lint
 gosec (Go static analysis)
@@ -92,6 +92,8 @@ unit (vpc)
 матрица покрывает все remotes
 перенос ветки не откатил ствол
 план шардов + гейты покрытия
+план шардов юнитов · перепись полноты
 сводный вердикт (все шарды)
+сводный вердикт юнитов (все шарды)
 сквозные пробы консоли (свой стенд)
 федерация исполняется

@@ -88,12 +88,14 @@ cd "$REPO_ROOT" || exit 2
 # находкой ниже — расхождение в любую сторону роняет проверку.
 DECLARED="
 .github/scripts/aggregate-shard-verdicts.py
+.github/scripts/aggregate-unit-shards.py
 .github/scripts/assert-build-fetch-matches-imports.py
 .github/scripts/assert-console-probes-verdict.py
 .github/scripts/assert-declared-verdicts-ran.py
 .github/scripts/assert-default-branch-workflows-can-run.py
 .github/scripts/assert-green-gate-notes.py
 .github/scripts/assert-required-contexts-match-jobs.py
+.github/scripts/assert-unit-shard-wiring.py
 .github/scripts/check-newman-suite-gates.py
 .github/scripts/check-pinned-tools.sh
 .github/scripts/check-volume-mounts.py
@@ -107,6 +109,7 @@ DECLARED="
 .github/scripts/shard-verdict.py
 .github/scripts/stand-revision-verdict.sh
 .github/scripts/stand-up.sh
+.github/scripts/unit-shards.py
 deploy/scripts/assert-admin-hop-transport.sh
 deploy/scripts/assert-alt-fixtures-are-another.py
 deploy/scripts/assert-ban6-external-isolation.py

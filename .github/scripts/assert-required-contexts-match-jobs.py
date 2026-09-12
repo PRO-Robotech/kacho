@@ -324,6 +324,45 @@ def derived_exclusions(root: Path) -> tuple[list[str], str]:
     return sorted(out), str(p.relative_to(root))
 
 
+UNIT_SHARDS_SCRIPT = ".github/scripts/unit-shards.py"
+
+
+def derived_unit_shard_exclusions(root: Path) -> tuple[list[str], str]:
+    """Имена шардов ЮНИТОВ — по тому же шаблону, что их job.
+
+    Шаблон в `.github/workflows/ci.yaml`:
+        name: юниты ${{ matrix.shard.id }}
+
+    Перечень областей ВЫВОДИТСЯ тем же скриптом, что и раздача, но входом
+    `--from-index`: этот процесс идёт по расписанию и Go в нём не поднимается
+    вовсе, а `go list` без Go не ответит. Единица счёта у входа из индекса другая
+    (файлы против собираемых по умолчанию пакетов), и расхождение двух входов —
+    находка ПЕРЕПИСИ РАЗДАЧИ (`unit-shards.py --census`), то есть красное на
+    слиянии, а не молчание здесь.
+
+    Почему выводимое, а не объявленное: областей тринадцать и их состав меняется
+    заведением службы или каталога. Выписанный перечень разошёлся бы молча — и в
+    этом репозитории уже расходился.
+    """
+    script = root / UNIT_SHARDS_SCRIPT
+    if not script.is_file():
+        raise Unavailable(f"нет {UNIT_SHARDS_SCRIPT}: шаблон имён шардов юнитов "
+                          f"строить нечем")
+    try:
+        p = subprocess.run([sys.executable, str(script), "--ids", "--from-index"],
+                           cwd=str(root), capture_output=True, text=True, timeout=300)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise Unavailable(f"`unit-shards.py --ids --from-index` не отработал: {e}") from e
+    if p.returncode != 0:
+        raise Unavailable(
+            f"`unit-shards.py --ids --from-index` вышел кодом {p.returncode}: "
+            f"{p.stderr.strip()[:300]}")
+    ids = [x.strip() for x in p.stdout.splitlines() if x.strip()]
+    if not ids:
+        raise Unavailable(f"{UNIT_SHARDS_SCRIPT}: ноль областей — выводить имена не из чего")
+    return sorted(f"юниты {i}" for i in ids), f"{UNIT_SHARDS_SCRIPT} --ids --from-index"
+
+
 # ── СВЕРКА ──────────────────────────────────────────────────────────────────
 
 def adjudicate(declared: list[str] | None, produced: list[str] | None,
@@ -474,6 +513,9 @@ def execute(repo: str, branch: str, root: Path) -> int:
 
     try:
         derived, src = derived_exclusions(root)
+        unit_derived, unit_src = derived_unit_shard_exclusions(root)
+        derived = sorted(set(derived) | set(unit_derived))
+        src = f"{src} + {unit_src}"
     except Unavailable as e:
         print("ИЗМЕРЕНИЕ НЕ СДЕЛАНО (это НЕ «расхождений нет»):", file=sys.stderr)
         print(f"  выводимые исключения: {e}", file=sys.stderr)
@@ -662,6 +704,46 @@ def self_test() -> int:
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
+    print("(i2) имена шардов ЮНИТОВ выводятся из индекса — без Go")
+    root = Path(tempfile.mkdtemp(prefix="ctx-unit-selftest-"))
+    try:
+        (root / ".github" / "scripts").mkdir(parents=True)
+        real = repo_root() / UNIT_SHARDS_SCRIPT
+        shutil.copy(real, root / UNIT_SHARDS_SCRIPT)
+        for rel in ("services/vpc/x_test.go", "services/geo/y_test.go",
+                    "internal/repohygiene/z_test.go",
+                    "internal/repohygiene/testdata/ignored_test.go"):
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text("package p\n")
+        subprocess.run(["git", "-C", str(root), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(root), "add", UNIT_SHARDS_SCRIPT,
+                        "services/vpc/x_test.go", "services/geo/y_test.go",
+                        "internal/repohygiene/z_test.go",
+                        "internal/repohygiene/testdata/ignored_test.go"], check=True)
+        got, src = derived_unit_shard_exclusions(root)
+        check("имена собраны по шаблону job",
+              got == ["юниты geo", "юниты internal", "юниты vpc"], got)
+        check("фикстура под testdata областью не стала",
+              not any("testdata" in x for x in got), got)
+        check("источник назван", src.startswith(UNIT_SHARDS_SCRIPT), src)
+        # Инъекция обратной стороны: индекс без единой пробы — измерение НЕ
+        # СДЕЛАНО, а не «областей нет».
+        empty = Path(tempfile.mkdtemp(prefix="ctx-unit-empty-"))
+        try:
+            (empty / ".github" / "scripts").mkdir(parents=True)
+            shutil.copy(real, empty / UNIT_SHARDS_SCRIPT)
+            subprocess.run(["git", "-C", str(empty), "init", "-q"], check=True)
+            subprocess.run(["git", "-C", str(empty), "add", UNIT_SHARDS_SCRIPT], check=True)
+            try:
+                derived_unit_shard_exclusions(empty)
+                check("пустой индекс отвергнут", False, "исключения не подняты")
+            except Unavailable:
+                check("пустой индекс отвергнут", True)
+        finally:
+            shutil.rmtree(empty, ignore_errors=True)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
     print("(j) объявление разошлось с ЗАЩИТОЙ ветки — дрейф в обе стороны")
     # Опасное направление: защита требует контекст, о котором объявление молчит.
     # Производитель версии его не спросит — тег пообещает непроверенную зелень.
@@ -710,13 +792,13 @@ def self_test() -> int:
             "\n"
             "alpha\n"
             "   \n"
-            "build · vet · gofmt · test -race\r\n"
+            "build · vet · gofmt\r\n"
             "# ещё примечание\n"
             "Postgres-пробы (пропуск =...\n")
     got = parse_declaration(body)
     check("примечания и пустые строки не контексты", len(got) == 3, got)
     check("имя с внутренними пробелами читается дословно",
-          "build · vet · gofmt · test -race" in got, got)
+          "build · vet · gofmt" in got, got)
     check("возврат каретки снят", not any("\r" in x for x in got), got)
     check("обрезанное площадкой имя сохраняет многоточие",
           any(x.endswith("=...") for x in got), got)
@@ -726,10 +808,19 @@ def self_test() -> int:
     try:
         (root / "deploy").mkdir(parents=True)
         (root / "deploy" / "e2e-shards.json").write_text(json.dumps(_SHARDS))
-        (root / ".github").mkdir(parents=True)
+        (root / ".github" / "scripts").mkdir(parents=True)
         decl_file = root / DECLARATION_PATH
         decl_file.write_text("# объявление\nbuild · vet\ngolangci-lint\n",
                              encoding="utf-8")
+        # ВТОРОЙ ПРОИЗВОДИТЕЛЬ ВЫВОДИМЫХ ИСКЛЮЧЕНИЙ тоже обязан отвечать в этой
+        # фикстуре: мир здоров по всем осям, кроме измеряемой, иначе ось мерила бы
+        # чужую находку. Шардам юнитов для ответа нужны индекс git и своя проба.
+        shutil.copy(repo_root() / UNIT_SHARDS_SCRIPT, root / UNIT_SHARDS_SCRIPT)
+        (root / "services" / "vpc").mkdir(parents=True)
+        (root / "services" / "vpc" / "x_test.go").write_text("package p\n")
+        subprocess.run(["git", "-C", str(root), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(root), "add", UNIT_SHARDS_SCRIPT,
+                        "services/vpc/x_test.go"], check=True)
 
         def gh_no_protection(args):
             q = " ".join(args)
@@ -743,7 +834,8 @@ def self_test() -> int:
                 # ось мерила бы чужие находки, а не своё различение исходов.
                 rows = ["completed\tbuild · vet", "completed\tgolangci-lint",
                         *[f"completed\t{d['context']}" for d in DECLARED_EXCLUSIONS],
-                        *[f"completed\t{n}" for n in _DERIVED]]
+                        *[f"completed\t{n}" for n in _DERIVED],
+                        "completed\tюниты vpc"]
                 return "\n".join(rows) + "\n"
             raise AssertionError(q)
 
