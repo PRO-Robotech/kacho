@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -789,4 +790,302 @@ func namesJob(findings []string, job string) bool {
 		}
 	}
 	return false
+}
+
+// gvScanCase — одна форма записи в окружение задания и ожидаемый ИСХОД разбора.
+//
+// `file` непустой означает: форма ЖИВЁТ в дереве, и текст взят оттуда. Тогда
+// каждая непустая строка `body` обязана найтись в этом файле — фикстура,
+// разошедшаяся с продуктом, доказывала бы свойство фикстуры.
+type gvScanCase struct {
+	name     string
+	coord    string
+	file     string // координата в дереве, откуда взят текст; "" — синтетика
+	lang     gvLang
+	body     string
+	wantMark string // отметка, которую разбор ОБЯЗАН вывести; "" — отметки нет
+	wantVal  string // её значение
+	wantFind bool   // ожидается находка «имя не разобрано»
+}
+
+// TestGatedVerdictMarkScanReadsCodeNotText — перепись ФОРМ записи в окружение
+// задания и доказательство того, что разбор читает ИСПОЛНЯЕМУЮ часть, а не текст.
+//
+// # Почему эта проверка существует отдельно от обхода дерева
+//
+// Обход дерева доказывает ровно то, что дерево сегодня такое. Способность
+// разбора УПАСТЬ и способность СМОЛЧАТЬ доказываются только подстановкой входа:
+// в дереве обе формы разом не встречаются никогда.
+//
+// # Пара, из-за которой проверка написана
+//
+// Один и тот же текст — `echo "X=1" >> "$GITHUB_ENV"` — в `*.sh` есть
+// ПРОИЗВОДСТВО отметки, а в f-строке питона есть ДАННЫЕ: тело фикстуры, которое
+// на этом прогоне никто не исполняет. Разбор по сырому тексту их не различал и
+// дал четыре находки на законной синтетике `.github/scripts/shard-verdict.py`.
+//
+// # Формы, которых этот разбор не видит ВОВСЕ, и почему
+//
+//  1. `$GITHUB_OUTPUT` — вне объявленного предмета гейта: он судит отметки в
+//     `$GITHUB_ENV` (шапка `gatedverdictproducesred_test.go`, §«Чего гейт НЕ
+//     закрывает»). В дереве форма живёт, и её молчание объявлено, а не случайно;
+//  2. карта `env:` объявления процесса — отметка там не ПИШЕТСЯ телом, а
+//     объявляется ключом, то есть у формы нет тела, которое можно разобрать. В
+//     настоящем дереве ни одна из трёх отметок картой `env:` не объявлена —
+//     перепись гейта называет их производителей по координатам скриптов;
+//  3. строка, СОБРАННАЯ в питоне или JS и отданная оболочке (`shell=True`,
+//     `os.system`, `execSync`) — она исполняется, а вычёркивание литерала делает
+//     её невидимой. Пересечение файлов, отдающих строку оболочке, с файлами,
+//     называющими `GITHUB_ENV`, на этой ревизии ПУСТО; предикат снятия остатка
+//     стоит в шапке раздела `gvExecutableText`.
+//  4. питоний `open(os.environ["GITHUB_ENV"], "a").write(…)` — запись без
+//     `>>`, и образец `gvEnvWriteLine` её не покрывает. В НАСТОЯЩЕМ дереве
+//     такой формы ноль: она живёт только подставным деревом самопробы
+//     `.github/scripts/shard-verdict.py`. Ожидаемым исходом здесь она НЕ
+//     объявлена намеренно — случай «эту форму разбор молчит» узаконил бы
+//     слепоту. Предикат её появления: `os.environ["GITHUB_ENV"]` в `*.py`
+//     вне `shard-verdict.py` даёт непустой счёт.
+func TestGatedVerdictMarkScanReadsCodeNotText(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+
+	cases := []gvScanCase{
+		// ─── формы ПРОИЗВОДСТВА, живущие в дереве: разбор обязан их видеть ───
+		{
+			name:     "оболочка · прямое дописывание в $GITHUB_ENV",
+			coord:    ".github/scripts/stand-revision-verdict.sh",
+			file:     ".github/scripts/stand-revision-verdict.sh",
+			lang:     gvLangShell,
+			body:     "        echo \"STAND_PRECONDITION_UNMET=1\" >> \"$GITHUB_ENV\"\n",
+			wantMark: "STAND_PRECONDITION_UNMET", wantVal: "1",
+		},
+		{
+			name:  "оболочка · дописывание через ПСЕВДОНИМ адреса",
+			coord: ".github/scripts/install-pinned-browser.sh",
+			file:  ".github/scripts/install-pinned-browser.sh",
+			lang:  gvLangShell,
+			body: "  local out=\"${GITHUB_OUTPUT:-}\" envf=\"${GITHUB_ENV:-}\"\n" +
+				"    [ -n \"$envf\" ] && echo \"KACHO_CHROMIUM=$img\" >> \"$envf\"\n",
+			wantMark: "KACHO_CHROMIUM", wantVal: "$img",
+		},
+		{
+			name:     "оболочка · запись под ОХРАНОЙ в той же строке",
+			coord:    ".github/scripts/stand-up.sh",
+			file:     ".github/scripts/stand-up.sh",
+			lang:     gvLangShell,
+			body:     "[ -n \"${GITHUB_ENV:-}\" ]    && echo \"STAND_PRECONDITION_UNMET=1\" >> \"$GITHUB_ENV\"\n",
+			wantMark: "STAND_PRECONDITION_UNMET", wantVal: "1",
+		},
+		{
+			name:     "объявление процесса · тело шага пишет само",
+			coord:    ".github/workflows/ci.yaml (tofu, шаг #3)",
+			file:     ".github/workflows/ci.yaml",
+			lang:     gvLangShell,
+			body:     "          echo \"TF_CLI_CONFIG_FILE=$RUNNER_TEMP/tofu.tfrc\" >> \"$GITHUB_ENV\"\n",
+			wantMark: "TF_CLI_CONFIG_FILE", wantVal: "$RUNNER_TEMP/tofu.tfrc",
+		},
+
+		// ─── формы ДАННЫХ, живущие в дереве: разбор обязан молчать ───────────
+		{
+			name:  "питон · тело файла-фикстуры в f-строке",
+			coord: ".github/scripts/shard-verdict.py",
+			file:  ".github/scripts/shard-verdict.py",
+			lang:  gvLangPython,
+			body:  "        f'#!/usr/bin/env bash\\necho \"{FLAG}=1\" >> \"$GITHUB_ENV\"\\n',\n",
+		},
+		{
+			name:  "питон · шаблон ОБЪЯВЛЕНИЯ ПРОЦЕССА в f-строке",
+			coord: ".github/scripts/shard-verdict.py",
+			file:  ".github/scripts/shard-verdict.py",
+			lang:  gvLangPython,
+			body:  "        f'      - name: inline\\n        run: echo \"{FLAG}=1\" >> \"$GITHUB_ENV\"\\n',\n",
+		},
+		{
+			name:  "оболочка · собственная проза в решётке",
+			coord: ".github/scripts/stand-up.sh",
+			file:  ".github/scripts/stand-up.sh",
+			lang:  gvLangShell,
+			body:  "#   $GITHUB_ENV     STAND_PRECONDITION_UNMET=1  — шаги ниже обязаны на нём пропускаться;\n",
+		},
+		{
+			name:  "оболочка · адрес отдан ПОДПРОЦЕССУ, записи нет",
+			coord: ".github/scripts/stand-up.sh",
+			file:  ".github/scripts/stand-up.sh",
+			lang:  gvLangShell,
+			body:  "    GITHUB_WORKSPACE=\"$d\" GITHUB_ENV=\"$d/env\" GITHUB_OUTPUT=\"$d/out\" GITHUB_STEP_SUMMARY=\"$d/sum\" \\\n",
+		},
+		{
+			name:  "оболочка · запись в $GITHUB_OUTPUT — вне предмета гейта",
+			coord: ".github/scripts/install-pinned-browser.sh",
+			file:  ".github/scripts/install-pinned-browser.sh",
+			lang:  gvLangShell,
+			body: "  local out=\"${GITHUB_OUTPUT:-}\" envf=\"${GITHUB_ENV:-}\"\n" +
+				"      [ -n \"$out\" ] && echo \"complete=true\" >> \"$out\"\n",
+		},
+
+		// ─── ИНЪЕКЦИЯ НОВОГО: форма данных, похожая на производство ──────────
+		{
+			name:  "питон · ТРОЙНАЯ строка",
+			coord: "синтетика/fixture.py",
+			lang:  gvLangPython,
+			body: "STUB = \"\"\"#!/usr/bin/env bash\n" +
+				"echo \"INJECTED_MARK=1\" >> \"$GITHUB_ENV\"\n" +
+				"\"\"\"\n",
+		},
+		{
+			name:  "питон · КОНКАТЕНАЦИЯ литералов",
+			coord: "синтетика/fixture.py",
+			lang:  gvLangPython,
+			body: "STUB = ('#!/usr/bin/env bash\\n'\n" +
+				"        'echo \"INJECTED_MARK=1\" >> \"$GITHUB_ENV\"\\n')\n",
+		},
+		{
+			name:  "оболочка · тело HEREDOC",
+			coord: "синтетика/fixture.sh",
+			lang:  gvLangShell,
+			body: "  cat > \"$work/stub.sh\" <<'STUB'\n" +
+				"echo \"INJECTED_MARK=1\" >> \"$GITHUB_ENV\"\n" +
+				"STUB\n",
+		},
+		{
+			name:  "оболочка · КОНЦЕВОЙ комментарий",
+			coord: "синтетика/fixture.sh",
+			lang:  gvLangShell,
+			body:  "true  # echo \"INJECTED_MARK=1\" >> \"$GITHUB_ENV\"\n",
+		},
+
+		// ─── ИНЪЕКЦИЯ СТАРОГО: тот же текст как КОД — обязан остаться виден ──
+		{
+			name:     "ТОТ ЖЕ текст в оболочке — производство, а не данные",
+			coord:    "синтетика/producer.sh",
+			lang:     gvLangShell,
+			body:     "echo \"INJECTED_MARK=1\" >> \"$GITHUB_ENV\"\n",
+			wantMark: "INJECTED_MARK", wantVal: "1",
+		},
+		{
+			name:  "запись ВНЕ heredoc, ограничитель закрыт — производство",
+			coord: "синтетика/producer.sh",
+			lang:  gvLangShell,
+			body: "  cat > \"$work/stub.sh\" <<'STUB'\n" +
+				"тело фикстуры\n" +
+				"STUB\n" +
+				"echo \"INJECTED_MARK=1\" >> \"$GITHUB_ENV\"\n",
+			wantMark: "INJECTED_MARK", wantVal: "1",
+		},
+		{
+			name:     "запись, за которой ИДЁТ комментарий — производство",
+			coord:    "синтетика/producer.sh",
+			lang:     gvLangShell,
+			body:     "echo \"INJECTED_MARK=1\" >> \"$GITHUB_ENV\"  # ставит отметку\n",
+			wantMark: "INJECTED_MARK", wantVal: "1",
+		},
+		{
+			name:     "оболочка · запись БЕЗ разбираемого имени — НАХОДКА",
+			coord:    "синтетика/producer.sh",
+			lang:     gvLangShell,
+			body:     "printf '%s\\n' \"$line\" >> \"$GITHUB_ENV\"\n",
+			wantFind: true,
+		},
+		{
+			name:     "оболочка · слив файла в адрес — НАХОДКА",
+			coord:    "синтетика/producer.sh",
+			lang:     gvLangShell,
+			body:     "cat \"$f\" >> \"$GITHUB_ENV\"\n",
+			wantFind: true,
+		},
+		{
+			name:  "оболочка · запись через псевдоним БЕЗ имени — НАХОДКА",
+			coord: "синтетика/producer.sh",
+			lang:  gvLangShell,
+			body: "envf=\"${GITHUB_ENV:-}\"\n" +
+				"cat \"$f\" >> \"$envf\"\n",
+			wantFind: true,
+		},
+	}
+
+	var fromTree, producing, silent, finding int
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if tc.file != "" {
+				raw, err := os.ReadFile(filepath.Join(root, tc.file))
+				if err != nil {
+					t.Fatalf("%s не прочитан: %v — форма объявлена взятой из дерева, "+
+						"а дерева не видно", tc.file, err)
+				}
+				for _, ln := range strings.Split(tc.body, "\n") {
+					if strings.TrimSpace(ln) == "" {
+						continue
+					}
+					if !strings.Contains(string(raw), strings.TrimRight(ln, " \t")) {
+						t.Fatalf("в %s нет строки %q — фикстура разошлась с продуктом, "+
+							"и проверка доказывала бы свойство фикстуры", tc.file, ln)
+					}
+				}
+			}
+			marks := map[string]gvMark{}
+			got := gvScanEnvWrites(tc.coord, tc.lang, tc.body, marks)
+
+			if tc.wantFind && len(got) == 0 {
+				t.Fatalf("находки нет, а форма её требует. Разбор перестал видеть "+
+					"настоящую запись без разбираемого имени — существующий контроль "+
+					"стал бы неотличим от мёртвого.\nтело:\n%s\nисполняемая часть:\n%s",
+					tc.body, gvExecutableText(tc.lang, tc.body))
+			}
+			if !tc.wantFind && len(got) != 0 {
+				t.Fatalf("находки %v на форме, которая производством НЕ является.\n"+
+					"исполняемая часть:\n%s", got, gvExecutableText(tc.lang, tc.body))
+			}
+			if tc.wantMark == "" {
+				if len(marks) != 0 {
+					t.Fatalf("выведены отметки %v там, где производства нет: "+
+						"данные приняты за код", gvMarkNames(marks))
+				}
+				return
+			}
+			mk, ok := marks[tc.wantMark]
+			if !ok {
+				t.Fatalf("отметка %q НЕ выведена (выведено: %v) — вычёркивание "+
+					"съело исполняемый код.\nисполняемая часть:\n%s",
+					tc.wantMark, gvMarkNames(marks), gvExecutableText(tc.lang, tc.body))
+			}
+			if mk.Value != tc.wantVal {
+				t.Fatalf("отметка %q: значение %q, ожидалось %q", tc.wantMark, mk.Value, tc.wantVal)
+			}
+		})
+		switch {
+		case tc.wantFind:
+			finding++
+		case tc.wantMark != "":
+			producing++
+		default:
+			silent++
+		}
+		if tc.file != "" {
+			fromTree++
+		}
+	}
+
+	// Перепись: «ноль находок» обязано отличаться от «ноль прочитанного», а три
+	// исхода обязаны быть представлены каждый — иначе доказана одна сторона.
+	t.Logf("осмотрено форм %d, из них взятых из дерева %d; производящих %d, "+
+		"молчащих %d, дающих находку %d", len(cases), fromTree, producing, silent, finding)
+	if len(cases) == 0 || fromTree == 0 {
+		t.Fatal("перепись форм пуста — проверка не судит ничего")
+	}
+	if producing == 0 || silent == 0 || finding == 0 {
+		t.Fatalf("исходы представлены не все: производящих %d, молчащих %d, находок %d. "+
+			"Проверка, у которой отсутствует один исход, доказывает одну сторону",
+			producing, silent, finding)
+	}
+}
+
+// gvMarkNames — имена выведенных отметок, отсортированные, для текста отказа.
+func gvMarkNames(marks map[string]gvMark) []string {
+	out := make([]string, 0, len(marks))
+	for n := range marks {
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
 }

@@ -124,8 +124,15 @@
 // Имя отметки и слова про условия стоят в этом файле и в комментариях
 // процессов; гейт, ищущий их подстрокой в сыром тексте, покраснел бы на
 // собственном объяснении. Поэтому задания и шаги берутся из разобранного YAML,
-// где комментария не существует как узла, а `$GITHUB_ENV` ищется только в
-// строках, не начинающихся с решётки.
+// где комментария не существует как узла.
+//
+// Тела скриптов YAML-ом не разбираются, и там действует то же правило другим
+// средством: перед разбором из текста ВЫЧЁРКИВАЕТСЯ всё, что исполняемым кодом
+// не является — тело строкового литерала, комментарий, тело heredoc, — по
+// правилам языка файла. Устройство, цена и остаток — §«Исполняемая часть против
+// сырого текста файла» у [gvExecutableText]; перепись форм и доказательство
+// обеих способностей (упасть · смолчать) —
+// [TestGatedVerdictMarkScanReadsCodeNotText].
 //
 // # Перепись
 //
@@ -157,6 +164,7 @@
 package repohygiene
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -955,6 +963,352 @@ func gvHasProducerOfRed(doc gvDoc, jobName string, job gvJob, name string, mark 
 
 // ───────────────────────── словарь отметок из дерева ──────────────────────────
 
+// ───────────── исполняемая часть против сырого текста файла ───────────────────
+//
+// ПРЕДМЕТ. Гейт судит ПРОИЗВОДСТВО отметки — исполняемое действие. Запись,
+// стоящая внутри строкового литерала, не исполняется: это ДАННЫЕ — тело
+// фикстуры, шаблон генерируемого скрипта, пример в прозе. Разбор по образцу над
+// сырым текстом кода от данных не отличает и ошибается СРАЗУ В ОБЕ СТОРОНЫ:
+// находка на законной фикстуре и молчание на форме, которую образец не покрыл.
+//
+// НАБЛЮДАЛОСЬ НА СВЕДЁННОМ ДЕРЕВЕ, а не предположено. `.github/scripts/
+// shard-verdict.py` держит подставное дерево своей самопробы: тела
+// файлов-фикстур лежат в f-строках, и `>> "$GITHUB_ENV"` стоит там частью
+// шаблона. Сырой текст дал ЧЕТЫРЕ находки на законной синтетике — и на тех же
+// f-строках ТРИ другие записи (питоний `open(…, "a")`, проза в решётке,
+// экранированная кавычка) остались невидимы. По отдельности обе полосы зелены;
+// предмет виден только на слитом дереве.
+//
+// ЧТО ДЕЛАЕТСЯ. Перед разбором из текста ВЫЧЁРКИВАЕТСЯ то, что исполняемым
+// кодом не является, — по правилам того языка, на котором файл написан:
+//
+//	питон, JS   тело строкового литерала (короткого, тройного, шаблонного) и
+//	            комментарий. Конкатенация литералов вычёркивается по частям:
+//	            каждая часть — свой литерал;
+//	оболочка    комментарий и тело heredoc. Кавычки оболочки НЕ вычёркиваются —
+//	            `echo "X=1" >> "$GITHUB_ENV"` есть исполняемая запись, а не
+//	            данные: кавычка там квотит аргумент, а не вводит значение.
+//
+// Длина и переводы строк сохраняются, поэтому номер строки находки остаётся
+// координатой ИСХОДНОГО файла, а в текст отказа идёт исходная строка.
+//
+// ЧЕГО ЭТО НЕ ЗАКРЫВАЕТ, сказано прямо. Строка, СОБРАННАЯ в питоне или JS и
+// отданная оболочке (`subprocess.run(f"echo X=1 >> $GITHUB_ENV", shell=True)`),
+// исполняется — а вычёркивание делает её невидимой. В дереве такой формы НОЛЬ, и
+// это замер, а не допущение: файлов, отдающих строку оболочке, девять (все
+// `ui-future/**/*.mjs`), файлов, называющих `GITHUB_ENV`, два, пересечение —
+// пустое. Предикат снятия остатка — непустое пересечение:
+//
+//	comm -12 \
+//	  <(git grep -l -e 'shell=True' -e 'os.system(' -e execSync -- '*.py' '*.js' '*.mjs' | LC_ALL=C sort) \
+//	  <(git grep -l GITHUB_ENV -- '*.py' '*.js' '*.mjs' | LC_ALL=C sort)
+
+// gvLang — язык тела: от него зависит, ЧТО в тексте является данными.
+type gvLang int
+
+const (
+	gvLangShell  gvLang = iota // тело шага процесса, `*.sh`, `*.bash`
+	gvLangPython               // `*.py`
+	gvLangJS                   // `*.js`, `*.mjs`
+)
+
+// gvLangOf — язык по расширению. Умолчание — оболочка: тело шага процесса
+// расширения не имеет, а неизвестное расширение лучше судить строже (кавычки
+// оболочки остаются кодом), чем вычеркнуть настоящую запись.
+func gvLangOf(rel string) gvLang {
+	switch strings.ToLower(filepath.Ext(rel)) {
+	case ".py":
+		return gvLangPython
+	case ".js", ".mjs":
+		return gvLangJS
+	default:
+		return gvLangShell
+	}
+}
+
+// gvExecutableText — текст с вычеркнутыми данными. Возвращает строку той же
+// длины: каждый байт данных заменён пробелом, перевод строки сохранён.
+func gvExecutableText(lang gvLang, body string) string {
+	src := []byte(body)
+	out := make([]byte, len(src))
+	copy(out, src)
+	blank := func(from, to int) {
+		if from < 0 {
+			from = 0
+		}
+		if to > len(out) {
+			to = len(out)
+		}
+		for i := from; i < to; i++ {
+			if out[i] != '\n' {
+				out[i] = ' '
+			}
+		}
+	}
+	switch lang {
+	case gvLangPython:
+		gvBlankPython(src, blank)
+	case gvLangJS:
+		gvBlankJS(src, blank)
+	default:
+		gvBlankShell(src, blank)
+	}
+	return string(out)
+}
+
+// gvEndOfLine — индекс перевода строки, начиная с i, либо конец текста.
+func gvEndOfLine(src []byte, i int) int {
+	for i < len(src) && src[i] != '\n' {
+		i++
+	}
+	return i
+}
+
+// gvBlankPython — литералы и комментарии питона. Обратная косая внутри литерала
+// кавычку не закрывает НИ в обычной строке, ни в raw: `r'\”` — законный
+// литерал, и различать префиксы для этой цели не требуется.
+func gvBlankPython(src []byte, blank func(from, to int)) {
+	for i := 0; i < len(src); {
+		switch c := src[i]; {
+		case c == '#':
+			j := gvEndOfLine(src, i)
+			blank(i, j)
+			i = j
+		case c == '\'' || c == '"':
+			n := 1
+			if i+2 < len(src) && src[i+1] == c && src[i+2] == c {
+				n = 3
+			}
+			j := i + n
+			for j < len(src) {
+				if src[j] == '\\' {
+					j += 2
+					continue
+				}
+				if src[j] == c && (n == 1 || (j+2 < len(src) && src[j+1] == c && src[j+2] == c)) {
+					break
+				}
+				if n == 1 && src[j] == '\n' {
+					break // незакрытая короткая строка: дальше уже другой код
+				}
+				j++
+			}
+			end := j + n
+			if j >= len(src) || (n == 1 && j < len(src) && src[j] == '\n') {
+				end = j
+			}
+			blank(i, end)
+			i = end
+		default:
+			i++
+		}
+	}
+}
+
+// gvBlankJS — литералы (включая шаблонный) и комментарии JS. Регулярное
+// выражение как литерал НЕ разбирается: отличить его от деления без разбора
+// выражения нельзя, а в дереве ни один `*.js`/`*.mjs` не называет `GITHUB_ENV`
+// вовсе, поэтому вход у этой ветки сегодня пуст. Форма названа здесь, чтобы её
+// молчание было объявленным, а не незамеченным.
+func gvBlankJS(src []byte, blank func(from, to int)) {
+	for i := 0; i < len(src); {
+		switch {
+		case src[i] == '/' && i+1 < len(src) && src[i+1] == '/':
+			j := gvEndOfLine(src, i)
+			blank(i, j)
+			i = j
+		case src[i] == '/' && i+1 < len(src) && src[i+1] == '*':
+			j := i + 2
+			for j+1 < len(src) && !(src[j] == '*' && src[j+1] == '/') {
+				j++
+			}
+			end := j + 2
+			if end > len(src) {
+				end = len(src)
+			}
+			blank(i, end)
+			i = end
+		case src[i] == '\'' || src[i] == '"' || src[i] == '`':
+			q := src[i]
+			j := i + 1
+			for j < len(src) {
+				if src[j] == '\\' {
+					j += 2
+					continue
+				}
+				if src[j] == q {
+					break
+				}
+				if q != '`' && src[j] == '\n' {
+					break
+				}
+				j++
+			}
+			end := j + 1
+			if j >= len(src) || (q != '`' && src[j] == '\n') {
+				end = j
+			}
+			blank(i, end)
+			i = end
+		default:
+			i++
+		}
+	}
+}
+
+// gvBlankShell — комментарии и тела heredoc оболочки. Кавычки НЕ вычёркиваются,
+// но и не игнорируются: сканер проходит их насквозь, чтобы решётка внутри
+// строки (`echo "a#b"`) комментария не открывала.
+func gvBlankShell(src []byte, blank func(from, to int)) {
+	var pending []string // ограничители heredoc, чьи тела ещё не прочитаны
+	for i := 0; i < len(src); {
+		if len(pending) > 0 && (i == 0 || src[i-1] == '\n') {
+			j := gvEndOfLine(src, i)
+			if strings.TrimSpace(string(src[i:j])) == pending[0] {
+				pending = pending[1:] // сама строка-ограничитель — код
+			} else {
+				blank(i, j)
+			}
+			i = j
+			continue
+		}
+		switch c := src[i]; {
+		case c == '\\':
+			i += 2
+		case c == '\'':
+			j := i + 1
+			for j < len(src) && src[j] != '\'' {
+				j++
+			}
+			i = j + 1
+		case c == '"':
+			j := i + 1
+			for j < len(src) {
+				if src[j] == '\\' {
+					j += 2
+					continue
+				}
+				if src[j] == '"' {
+					break
+				}
+				j++
+			}
+			i = j + 1
+		case c == '#' && (i == 0 || strings.IndexByte(" \t\n;&|(", src[i-1]) >= 0):
+			j := gvEndOfLine(src, i)
+			blank(i, j)
+			i = j
+		case c == '<' && i+1 < len(src) && src[i+1] == '<':
+			if delim, n := gvHeredocDelim(src, i); delim != "" {
+				pending = append(pending, delim)
+				i += n
+			} else {
+				i += 2
+			}
+		default:
+			i++
+		}
+	}
+}
+
+// gvHeredocDelim — ограничитель heredoc, начинающегося на `src[i] == '<'`, и
+// длина объявления. Пустой ограничитель означает «не heredoc»: `<<<` — это
+// here-string, тела у него нет.
+func gvHeredocDelim(src []byte, i int) (string, int) {
+	j := i + 2
+	if j < len(src) && src[j] == '<' {
+		return "", 0 // here-string
+	}
+	if j < len(src) && src[j] == '-' {
+		j++
+	}
+	for j < len(src) && (src[j] == ' ' || src[j] == '\t') {
+		j++
+	}
+	var quote byte
+	if j < len(src) && (src[j] == '\'' || src[j] == '"') {
+		quote = src[j]
+		j++
+	}
+	start := j
+	for j < len(src) && (src[j] == '_' || src[j] == '.' ||
+		(src[j] >= 'a' && src[j] <= 'z') || (src[j] >= 'A' && src[j] <= 'Z') ||
+		(src[j] >= '0' && src[j] <= '9')) {
+		j++
+	}
+	if j == start {
+		return "", 0
+	}
+	delim := string(src[start:j])
+	if quote != 0 {
+		if j >= len(src) || src[j] != quote {
+			return "", 0
+		}
+		j++
+	}
+	return delim, j - i
+}
+
+// gvScanEnvWrites — записи в окружение из ОДНОГО тела: пополняет словарь отметок
+// и возвращает находки готовым текстом отказа.
+//
+// Отдельной функцией — не для красоты. Доказать, что разбор СПОСОБЕН упасть и
+// СПОСОБЕН смолчать, можно только подстановкой входа: в дереве обе формы разом
+// не встречаются, и проверка, гоняющая обход дерева, доказывает лишь то, что
+// дерево сегодня такое. Обе оси стоят в
+// [TestGatedVerdictMarkScanReadsCodeNotText].
+func gvScanEnvWrites(coord string, lang gvLang, body string, marks map[string]gvMark) []string {
+	var findings []string
+	raws := strings.Split(body, "\n")
+	code := strings.Split(gvExecutableText(lang, body), "\n")
+	aliases := map[string]bool{"GITHUB_ENV": true}
+	for _, m := range gvEnvAlias.FindAllStringSubmatch(strings.Join(code, "\n"), -1) {
+		aliases[m[1]] = true
+	}
+	for i, rawCode := range code {
+		line := strings.TrimSpace(rawCode)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		w := gvEnvWriteLine.FindStringSubmatch(line)
+		if w == nil || !aliases[w[1]] {
+			continue
+		}
+		names := gvEnvAssign.FindAllStringSubmatch(line[:strings.Index(line, ">>")], -1)
+		var took bool
+		for _, n := range names {
+			if aliases[n[1]] || n[1] == "GITHUB_OUTPUT" {
+				continue
+			}
+			val := strings.Trim(n[2], `"'`)
+			known := val != "" && !strings.ContainsAny(val, "$`")
+			prev, seen := marks[n[1]]
+			mk := gvMark{Name: n[1], Value: val, Known: known,
+				Writers: []string{coord + ":" + itoa(i+1)}}
+			if seen {
+				mk.Writers = append(prev.Writers, mk.Writers...)
+				if prev.Known && (!known || prev.Value != val) {
+					mk.Value, mk.Known = prev.Value, prev.Known
+				}
+			}
+			marks[n[1]] = mk
+			took = true
+		}
+		if !took {
+			src := line
+			if i < len(raws) {
+				src = strings.TrimSpace(raws[i])
+			}
+			findings = append(findings, fmt.Sprintf(
+				"%s:%d — запись в $GITHUB_ENV, из которой имя не разобрано: %q. "+
+					"Словарь отметок остался бы неполон, а неполный словарь МОЛЧА сужает "+
+					"этот гейт: пара «задание · отметка» не попала бы в предмет вовсе. "+
+					"Напиши имя и значение литералом в той же строке", coord, i+1, src))
+		}
+	}
+	return findings
+}
+
 var gvEnvWriteLine = regexp.MustCompile(`>>\s*"?\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?`)
 var gvEnvAssign = regexp.MustCompile(`([A-Za-z_][A-Za-z0-9_]*)=([^\s"']*|"[^"]*"|'[^']*')`)
 var gvEnvAlias = regexp.MustCompile(`([A-Za-z_][A-Za-z0-9_]*)=\s*"?\$\{?GITHUB_ENV[:}\-"]`)
@@ -974,46 +1328,9 @@ func gvCollectMarks(t *testing.T, root string) (map[string]gvMark, map[string]st
 	scripts := map[string]string{}
 	marks := map[string]gvMark{}
 
-	addWrites := func(coord, body string) {
-		aliases := map[string]bool{"GITHUB_ENV": true}
-		for _, m := range gvEnvAlias.FindAllStringSubmatch(body, -1) {
-			aliases[m[1]] = true
-		}
-		for i, raw := range strings.Split(body, "\n") {
-			line := strings.TrimSpace(raw)
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			w := gvEnvWriteLine.FindStringSubmatch(line)
-			if w == nil || !aliases[w[1]] {
-				continue
-			}
-			names := gvEnvAssign.FindAllStringSubmatch(line[:strings.Index(line, ">>")], -1)
-			var took bool
-			for _, n := range names {
-				if aliases[n[1]] || n[1] == "GITHUB_OUTPUT" {
-					continue
-				}
-				val := strings.Trim(n[2], `"'`)
-				known := val != "" && !strings.ContainsAny(val, "$`")
-				prev, seen := marks[n[1]]
-				mk := gvMark{Name: n[1], Value: val, Known: known,
-					Writers: []string{coord + ":" + itoa(i+1)}}
-				if seen {
-					mk.Writers = append(prev.Writers, mk.Writers...)
-					if prev.Known && (!known || prev.Value != val) {
-						mk.Value, mk.Known = prev.Value, prev.Known
-					}
-				}
-				marks[n[1]] = mk
-				took = true
-			}
-			if !took {
-				t.Errorf("%s:%d — запись в $GITHUB_ENV, из которой имя не разобрано: %q. "+
-					"Словарь отметок остался бы неполон, а неполный словарь МОЛЧА сужает "+
-					"этот гейт: пара «задание · отметка» не попала бы в предмет вовсе. "+
-					"Напиши имя и значение литералом в той же строке", coord, i+1, line)
-			}
+	addWrites := func(coord string, lang gvLang, body string) {
+		for _, f := range gvScanEnvWrites(coord, lang, body, marks) {
+			t.Errorf("%s", f)
 		}
 	}
 
@@ -1028,7 +1345,7 @@ func gvCollectMarks(t *testing.T, root string) (map[string]gvMark, map[string]st
 		}
 		scripts[rel] = string(b)
 		if strings.Contains(scripts[rel], "GITHUB_ENV") {
-			addWrites(rel, scripts[rel])
+			addWrites(rel, gvLangOf(rel), scripts[rel])
 		}
 	}
 	// Прямые записи в телах шагов процессов — та же форма, другое место.
@@ -1053,7 +1370,8 @@ func gvCollectMarks(t *testing.T, root string) (map[string]gvMark, map[string]st
 		for _, jn := range jobs {
 			for i, st := range doc.Jobs[jn].Steps {
 				if strings.Contains(st.Run, "GITHUB_ENV") {
-					addWrites(wf+" ("+jn+", шаг #"+itoa(i+1)+")", st.Run)
+					addWrites(wf+" ("+jn+", шаг #"+itoa(i+1)+")",
+						gvLangShell, st.Run)
 				}
 			}
 		}
