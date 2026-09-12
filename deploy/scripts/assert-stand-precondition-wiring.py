@@ -66,6 +66,11 @@
      который сам дописывает `<отметка>=1` в `$GITHUB_ENV`, а производящим шагом —
      тот, который такой скрипт запускает. Перечня имён нет намеренно: он старел
      бы ровно тогда, когда заводят третьего производителя.
+     «Дописывает» судится РАЗБОРОМ, а не поиском по содержимому файла: см. блок
+     перед `flag_producers()`. Поиск по тексту считал производителем прозу о
+     производстве, и по переписи обхода это шесть вхождений текста отметки из
+     восьми — два комментария, три строки неисполняющих команд (две из них
+     ЧИТАТЕЛИ отметки) и одна строка-документация.
 
 ЧЕГО ЗВЕНО 7 НЕ ЗАКРЫВАЕТ, сказано прямо: наличия читателя мало для КРАСНОГО.
 Читатель делает третью категорию видимой работе, а роняет работу отдельный
@@ -91,6 +96,7 @@
 """
 from __future__ import annotations
 
+import io
 import os
 import pathlib
 import re
@@ -98,6 +104,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tokenize
 
 import yaml
 
@@ -174,11 +181,275 @@ def guarded(step: dict) -> bool:
     return f"env.{FLAG}" in str(step.get("if") or "")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ПРОИЗВОДИТЕЛЬ ОТМЕТКИ ОТБИРАЕТСЯ РАЗБОРОМ, А НЕ ПОИСКОМ ПО ТЕКСТУ.
+#
+# Прежняя редакция спрашивала файл целиком: «встретилось ли `<отметка>=1` И слово
+# `GITHUB_ENV`». Так проза о производстве неотличима от производства, и предмет у
+# этого в дереве наполовину уже был: последний шаг работ подъёма несёт текст
+# отметки в шапке-объяснении, а молчал предикат ТОЛЬКО потому, что имени раковины
+# в той же прозе не оказалось. Допиши его кто-нибудь — и звено 7 потребовало бы
+# читателя от работ, которые отметку не ставят: гейт покраснел бы на ВЕРНОМ
+# дереве, то есть перестал бы быть годным.
+#
+# Признак разведён на две роли, и это не оформление, а существо дела:
+#
+#   НАЗНАЧЕНИЕ обязано быть КОДОМ — перенаправление в `$GITHUB_ENV`. Раковина,
+#   названная в комментарии, в сообщении или в строке-документации, ничего не
+#   принимает;
+#   СОДЕРЖИМОЕ может быть ДАННЫМИ — текст `<отметка>=1` в оболочке живёт внутри
+#   кавычек by construction (`echo "<отметка>=1" >> "$GITHUB_ENV"`), поэтому
+#   запретить ему быть строкой значило бы не увидеть ни одного производителя.
+#
+# Отсюда единица суждения: ОДНА логическая команда оболочки (одно объявление
+# питона), а не файл. Читатель раковины (`grep -q '<отметка>=1' "$GITHUB_ENV"`)
+# отличается от производителя ровно оператором записи — и на файле это различие
+# не выразимо вовсе.
+#
+# То же решение уже принято в `.github/scripts/shard-verdict.py` (перепись
+# производителей: раковина + оператор дописывания + отброшенный комментарий).
+# Здесь оно доведено до разбора: там комментарий узнаётся по началу строки, а
+# кавычки и тело heredoc не различаются.
+# ЧЕГО РАЗБОР НЕ ПОКРЫВАЕТ, сказано прямо, потому что границу иначе примут за
+# отсутствующую:
+#   • запись, РАЗОРВАННУЮ на две команды (`m="<отметка>=1"` одной строкой, `echo
+#     "$m" >> "$GITHUB_ENV"` другой): единица суждения — одна команда, и такой
+#     формы в дереве нет ни одной;
+#   • раковину, добытую иначе, чем перенаправлением: `tee`, `dd`, запись питоном
+#     не через режим открытия. Записи без предмета в дереве не заводятся;
+#   • СОСТАВЛЕННЫЙ текст отметки (`f"{FLAG}=1"`): в данных он не буквален, поэтому
+#     производитель, собирающий отметку из частей, предикатом не виден. Тот же
+#     предел был и у прежней редакции — эта правка его не заводит и не снимает;
+#   • `$GITHUB_OUTPUT` — вторую раковину платформы. Звено 7 судит отметку,
+#     гасящую шаги, а она приходит через окружение задания.
+SINK_ENV = "GITHUB_ENV"
+# Запись В РАКОВИНУ: перенаправление, а не упоминание. `>` и `>>` обе формы —
+# перезапись окружения задания так же меняет его, как дописывание.
+SH_WRITE = re.compile(r">>?[ \t]*\$\{?" + SINK_ENV + r"\b")
+# Дописывание в питоне: режим открытия либо оператор оболочки в составленной
+# команде. Тот же признак, что у переписи `shard-verdict.py`.
+PY_APPEND = re.compile(r">>|['\"]a\+?['\"]")
+# Раскрытие переменной. ВНУТРИ ДВОЙНЫХ КАВЫЧЕК ОНО КОД, а не данные: `"$GITHUB_ENV"`
+# — это обращение к переменной, и именно в такой форме обе записи стоят в дереве.
+SH_EXPANSION = re.compile(r"\$(?:[A-Za-z_][A-Za-z0-9_]*|[0-9@*#?$!-])")
+# Открытие heredoc. `(?!<)` отсекает здесь-строку `<<<`, которой в дереве 3 штуки:
+# у неё тела нет, и принятая за heredoc она съела бы остаток файла.
+SH_HEREDOC = re.compile(r"<<(-?)(?!<)[ \t]*(\"[^\"]*\"|'[^']*'|[A-Za-z_][A-Za-z0-9_]*)")
+PY_STRING_TOKENS = frozenset(
+    getattr(tokenize, name) for name in
+    ("STRING", "FSTRING_START", "FSTRING_MIDDLE", "FSTRING_END",
+     "TSTRING_START", "TSTRING_MIDDLE", "TSTRING_END")
+    if hasattr(tokenize, name))
+PY_SKIP_TOKENS = frozenset((tokenize.NL, tokenize.NEWLINE, tokenize.INDENT,
+                            tokenize.DEDENT, tokenize.ENCODING, tokenize.COMMENT))
+# Строка в ПОЗИЦИИ КЛЮЧА ОКРУЖЕНИЯ — тоже код: `os.environ["GITHUB_ENV"]` есть
+# обращение к раковине, хотя её имя и записано литералом. Без этого настоящий
+# производитель на питоне был бы неотличим от прозы, то есть починка одной слепой
+# зоны завела бы вторую.
+PY_ENV_LOOKUP = (("environ", "["), ("getenv", "("), ("get", "("))
+
+
+def sh_brace_span(line: str, start: int) -> int:
+    """Конец `${…}` или `$(…)` со счётом вложенности. Начало — на `$`."""
+    opening = line[start + 1]
+    closing = "}" if opening == "{" else ")"
+    depth, i = 0, start + 1
+    while i < len(line):
+        if line[i] == "\\":
+            i += 2
+            continue
+        if line[i] == opening:
+            depth += 1
+        elif line[i] == closing:
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    return len(line)
+
+
+def sh_scan_line(line: str, quote: str) -> tuple[str, str, str, list[tuple[str, bool]], bool]:
+    """Одна физическая строка оболочки → (КОД, КОД+ДАННЫЕ, кавычка, heredoc'и, продолжение).
+
+    КОД — копия строки, где всё неисполняемое заменено пробелом: содержимое
+    кавычек, тело комментария. Длина сохраняется, поэтому `>>` и `$GITHUB_ENV`
+    остаются рядом и перенаправление узнаётся выражением, а не склейкой.
+    """
+    code: list[str] = []
+    data: list[str] = []
+    heredocs: list[tuple[str, bool]] = []
+    continues = False
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if quote == "'":
+            code.append(" ")
+            data.append(ch)
+            if ch == "'":
+                quote = ""
+            i += 1
+            continue
+        if quote == '"':
+            if ch == "\\":
+                if i + 1 >= len(line):
+                    continues = True
+                    i += 1
+                    continue
+                code.append("  ")
+                data.append(line[i:i + 2])
+                i += 2
+                continue
+            if ch == '"':
+                quote = ""
+                code.append(" ")
+                data.append(ch)
+                i += 1
+                continue
+            if ch == "$" and i + 1 < len(line):
+                end = (sh_brace_span(line, i) if line[i + 1] in "{("
+                       else (m.end() if (m := SH_EXPANSION.match(line, i)) else i + 1))
+                code.append(line[i:end])
+                data.append(line[i:end])
+                i = end
+                continue
+            code.append(" ")
+            data.append(ch)
+            i += 1
+            continue
+        # ── вне кавычек ──────────────────────────────────────────────────────
+        if ch == "#" and (i == 0 or line[i - 1] in " \t;&|(&"):
+            break  # комментарий — проза: ни в КОД, ни в ДАННЫЕ
+        if ch == "\\":
+            if i + 1 >= len(line):
+                continues = True
+                i += 1
+                continue
+            code.append(line[i:i + 2])
+            data.append(line[i:i + 2])
+            i += 2
+            continue
+        if ch == "$" and i + 1 < len(line):
+            end = (sh_brace_span(line, i) if line[i + 1] in "{("
+                   else (m.end() if (m := SH_EXPANSION.match(line, i)) else i + 1))
+            code.append(line[i:end])
+            data.append(line[i:end])
+            i = end
+            continue
+        if ch in "'\"":
+            quote = ch
+            code.append(" ")
+            data.append(ch)
+            i += 1
+            continue
+        if ch == "<" and (m := SH_HEREDOC.match(line, i)):
+            heredocs.append((m.group(2).strip("'\""), m.group(1) == "-"))
+            code.append(m.group(0))
+            data.append(m.group(0))
+            i = m.end()
+            continue
+        code.append(ch)
+        data.append(ch)
+        i += 1
+    return "".join(code), "".join(data), quote, heredocs, continues
+
+
+def sh_commands(text: str) -> list[tuple[str, str]]:
+    """Логические команды оболочки: (КОД, КОД+ДАННЫЕ). Комментарии отброшены.
+
+    Команда собирается через продолжение строки (`\\` на конце), через
+    незакрытую кавычку и через тело heredoc: тело — ДАННЫЕ своей команды, поэтому
+    `cat >> "$GITHUB_ENV" <<EOF` с отметкой в теле есть производитель, а
+    `cat <<EOF` с той же прозой в теле — нет. Различает их назначение открывающей
+    команды, а не содержимое тела.
+    """
+    lines = text.split("\n")
+    units: list[tuple[str, str]] = []
+    i = 0
+    while i < len(lines):
+        code_parts: list[str] = []
+        data_parts: list[str] = []
+        heredocs: list[tuple[str, bool]] = []
+        quote = ""
+        while i < len(lines):
+            code, data, quote, hd, continues = sh_scan_line(lines[i], quote)
+            i += 1
+            code_parts.append(code)
+            data_parts.append(data)
+            heredocs.extend(hd)
+            if not quote and not continues:
+                break
+        for delim, strip_tabs in heredocs:
+            while i < len(lines):
+                body = lines[i]
+                i += 1
+                if (body.lstrip("\t") if strip_tabs else body) == delim:
+                    break
+                data_parts.append(body)
+        units.append(("\n".join(code_parts), "\n".join(data_parts)))
+    return units
+
+
+def py_code_and_data(text: str, where: str) -> tuple[str, str]:
+    """Питон → (КОД, КОД+ДАННЫЕ). Комментарий и строка-ДОКУМЕНТАЦИИ — проза.
+
+    Обычная строка и f-строка из КОДА выброшены, но в ДАННЫХ остались: текст
+    отметки живёт там законно. В КОД поднят литерал в позиции ключа окружения —
+    `os.environ["GITHUB_ENV"]` есть обращение к раковине.
+    """
+    code: list[str] = []
+    data: list[str] = []
+    prev: list[str] = []          # последние значимые токены, для позиции ключа
+    at_line_start = True
+    pending_doc: tokenize.TokenInfo | None = None
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
+    except (tokenize.TokenError, SyntaxError, IndentationError) as exc:
+        # Молчание здесь превратило бы неразбираемый файл в «не производитель» —
+        # ровно та третья категория, которую гейт и защищает.
+        raise SystemExit(f"FATAL: {where} не разобран питоном: {exc}")
+    for tok in tokens:
+        if pending_doc is not None:
+            # Строка, СОСТАВЛЯЮЩАЯ всё объявление, — документация: проза.
+            if tok.type not in (tokenize.NEWLINE, tokenize.ENDMARKER):
+                data.append(pending_doc.string)
+            pending_doc = None
+        if tok.type == tokenize.COMMENT:
+            continue
+        if tok.type in PY_SKIP_TOKENS:
+            if tok.type in (tokenize.NL, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT):
+                at_line_start = True
+            continue
+        if tok.type in PY_STRING_TOKENS:
+            if tok.type == tokenize.STRING and at_line_start:
+                pending_doc = tok
+                at_line_start = False
+                continue
+            data.append(tok.string)
+            if tuple(prev[-2:]) in PY_ENV_LOOKUP:
+                code.append(tok.string)
+            at_line_start = False
+            continue
+        code.append(tok.string)
+        data.append(tok.string)
+        prev.append(tok.string)
+        at_line_start = False
+    return " ".join(code), " ".join(data)
+
+
+def writes_flag_to_env(text: str, suffix: str, where: str) -> bool:
+    """Файл САМ дописывает отметку в раковину окружения задания — ИСПОЛНЯЕМОЙ строкой."""
+    mark = f"{FLAG}=1"
+    if suffix == ".py":
+        code, data = py_code_and_data(text, where)
+        return SINK_ENV in code and mark in data and PY_APPEND.search(data) is not None
+    return any(SH_WRITE.search(code) and mark in data for code, data in sh_commands(text))
+
+
 def flag_producers(scripts_dir: pathlib.Path | None = None) -> list[str]:
     """Скрипты, которые САМИ дописывают отметку в `$GITHUB_ENV`. Выведено из дерева.
 
-    Признак — не имя и не перечень: файл обязан содержать И присваивание
-    `<отметка>=1`, И `$GITHUB_ENV`, куда оно уезжает. Перечень имён старел бы ровно
+    Признак — не имя и не перечень: в файле обязана быть ИСПОЛНЯЕМАЯ запись
+    `<отметка>=1` в `$GITHUB_ENV` (разбор выше). Перечень имён старел бы ровно
     тогда, когда заводят третьего производителя, — то есть в единственный момент,
     когда он и нужен.
 
@@ -197,7 +468,7 @@ def flag_producers(scripts_dir: pathlib.Path | None = None) -> list[str]:
             text = f.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        if f"{FLAG}=1" in text and "GITHUB_ENV" in text:
+        if writes_flag_to_env(text, f.suffix, str(f)):
             out.append(f.name)
     return out
 
