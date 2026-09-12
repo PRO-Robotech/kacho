@@ -8,6 +8,8 @@
 //
 //	product-names КАТАЛОГ [КАТАЛОГ…]     печатает «каталог<TAB>имя» построчно
 //	product-names --parts                печатает каталоги частей ВЕДОМОСТИ, по одному в строке
+//	product-names --external-pins ФАЙЛ…  печатает, какой ССЫЛКОЙ объявлена часть,
+//	                                     чьи исходники вынесены в другой репозиторий
 //
 // # Зачем режим перечисления
 //
@@ -48,7 +50,9 @@
 //	0  имена напечатаны;
 //	1  среди названного есть ПУСТОЕ имя — печатать для него нечего;
 //	2  каталогов не названо ни одного — обход беспредметен, и это НЕ успех;
-//	   либо ведомость пуста в режиме `--parts` — «ноль прочитанного» не есть «ноль частей».
+//	   либо ведомость пуста в режиме `--parts` — «ноль прочитанного» не есть «ноль частей»;
+//	   либо у `--external-pins` не названо файлов, файл не читается или не разбирается,
+//	   либо пуста ведомость вынесенных частей — там тот же довод, разбор у режима.
 //
 // Пустой вывод при коде 0 невозможен by construction: код 2 отделяет «спросили
 // и не получили» от «не спрашивали».
@@ -70,14 +74,27 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"sort"
+	"strings"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/PRO-Robotech/kacho/internal/productnaming"
 )
 
 func main() {
 	dirs := os.Args[1:]
+
+	// Режим пинов отсекается ДО общего пути по той же причине, по какой отсечён
+	// `--parts` ниже: иначе флаг уехал бы в правило как имя каталога и режим
+	// напечатал бы выведенное из него имя образа — ответ на вопрос, которого
+	// никто не задавал.
+	if len(dirs) > 0 && dirs[0] == "--external-pins" {
+		os.Exit(externalPinsMode(os.Stdout, os.Stderr, dirs[1:]))
+	}
 
 	// Режим перечисления отсекается ДО общего пути: без него `--parts` уезжал
 	// в правило как имя каталога и печатал выведенное из него имя образа —
@@ -131,4 +148,223 @@ func main() {
 	if empty > 0 {
 		os.Exit(1)
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// РЕЖИМ `--external-pins` — КАКОЙ ССЫЛКОЙ ПРИЕЗЖАЕТ ЧАСТЬ, ЧЬИ ИСХОДНИКИ ВЫНЕСЕНЫ
+//
+// # Предмет
+//
+// Проверка посадки требует, чтобы контейнер продукта нёс ревизию ДЕРЕВА ПРОГОНА.
+// Для части, чьи исходники в этом дереве, это верно by construction: её образ
+// собирает тот же прогон. Для части ВЫНЕСЕННОЙ — ложно by construction: её образ
+// собирает чужой конвейер, и приезжает он ОБЪЯВЛЕННЫМ ПИНОМ, чей тег называет
+// коммит ЕЁ ствола. Сверять такой контейнер с ревизией прогона значит объявлять
+// находкой верный факт — ровно это и наблюдалось: пять стендов из пяти (четыре
+// шарда newman и стенд консоли) были заглушены одним и тем же контейнером.
+//
+// Сверять при этом НАДО: стенд, чей пин никем не объявлен, вправе исполнять что
+// угодно. Поэтому вопрос меняется, а не снимается — «та ли это ссылка, которую
+// объявляет ЭТО дерево».
+//
+// # Почему перечень пинов ЧИТАЕТСЯ, а не выписывается
+//
+// Выписанный перечень разошёлся бы с деревом молча и в ту сторону, где это не
+// видно: литерал `if (( mods < 2 ))` в шаге конвейера уже ронял прогон этой линии
+// на ВЕРНОМ факте. Здесь перечень выводится из двух объявлений, у каждого из
+// которых ровно один владелец:
+//
+//   - КАКАЯ ЧАСТЬ вынесена — `externallySourcedServices` (эта же библиотека);
+//   - КАКОЙ ССЫЛКОЙ она приезжает — профили значений умбреллы, названные
+//     вызывающим (он читает их состав у `deploy/stacks.txt` через единственного
+//     shell-читателя, `deploy/tests/helm/stacks.sh`).
+//
+// Третьего читателя `stacks.txt` здесь не заводится намеренно: файл сам называет
+// своих читателей, и их двое.
+//
+// # ФОРМ ОБЪЯВЛЕНИЯ ОБРАЗА ДВЕ, И ОБЕ ЗАКОННЫ
+//
+// Подчарты объявляют образ по-разному: картой (`image: {repository, tag, digest}`)
+// и плоской строкой (`image: "<репо>:<тег>"` рядом с `imageDigest`). Распознаватель,
+// знающий одну из двух, на второй МОЛЧИТ — то есть выглядит работающим и не видит
+// предмета. Обе формы разбираются здесь, и обе доказаны инъекцией
+// (`tools/productnames/cmd/product-names/external_pins_test.go`).
+//
+// # ИСХОДЫ
+//
+// Печатаются строки двух видов, и первый печатается ВСЕГДА — иначе «часть
+// вынесена, а пина у неё нет» неотличимо от «вынесенных частей нет»:
+//
+//	PART<TAB><каталог><TAB><имя образа>
+//	PIN<TAB><имя образа><TAB><ссылка><TAB><файл,файл…>
+//
+// Перепись осмотренного уходит в stderr: её читает человек, а строки — вызывающий.
+//
+// Код 2 — исчезнувшая предпосылка: файлов не названо, файл не читается либо не
+// разбирается, ведомость вынесенных частей пуста. Ни одно из трёх не есть «пинов
+// нет»: пустой вывод при коде 0 вызывающий прочитал бы как полный перечень.
+// Решение об исходе принимает ВЫЗЫВАЮЩИЙ (`stand-provenance.sh`): у него есть
+// стенд, то есть вторая сторона сравнения.
+
+// externalPinsMode — вход режима. Возвращает код процесса.
+//
+// Потоки приходят АРГУМЕНТАМИ, а не берутся у процесса: пробе нужен вывод, и
+// подмена `os.Stdout` на время вызова делала бы её зависимой от того, кто ещё в
+// этот момент пишет в тот же дескриптор (под `-race` это ещё и гонка). Здесь
+// печать — свойство вызова, а не процесса.
+func externalPinsMode(stdout, stderr io.Writer, files []string) int {
+	if len(files) == 0 {
+		_, _ = fmt.Fprintln(stderr,
+			"product-names: --external-pins не названо ни одного файла значений.\n"+
+				"               Состав профилей принадлежит вызывающему (deploy/stacks.txt);\n"+
+				"               пустой перечень дал бы «пинов нет» вместо «не спрашивали».")
+		return 2
+	}
+	external := productnaming.ExternallySourcedServices()
+	if len(external) == 0 {
+		_, _ = fmt.Fprintln(stderr,
+			"product-names: ведомость вынесенных частей пуста — сверять пины не у кого.\n"+
+				"               Это НЕ «вынесенных частей нет»: пустой вывод при коде 0\n"+
+				"               вызывающий прочитал бы как полный перечень.")
+		return 2
+	}
+
+	// Имя образа → каталог. Ключ ответа — ИМЯ, потому что стенд называет
+	// контейнер именем образа, а не каталогом исходников.
+	dirOfImage := make(map[string]string, len(external))
+	dirs := make([]string, 0, len(external))
+	for dir := range external {
+		dirs = append(dirs, dir)
+	}
+	sort.Strings(dirs)
+	for _, dir := range dirs {
+		dirOfImage[productnaming.ChartName(dir)] = dir
+	}
+
+	// refs — ссылка → файлы, её объявившие. Порядок вывода байтовый: вызывающий
+	// сличает перечень с перечнем, а обход карты порядка не даёт вовсе.
+	type key struct{ image, ref string }
+	where := map[key][]string{}
+	declared, read := 0, 0
+
+	for _, f := range files {
+		// Путь приходит от читателя состава стендов ЭТОГО ЖЕ дерева
+		// (deploy/stacks.txt), а не от пользователя. `Clean` стоит не ради стиля:
+		// без него сканер называет чтение по переменной пути (G304/G703), а
+		// подавление здесь было бы ИНЕРТНЫМ — гейт подавлений судит их по живому
+		// предмету, и директива без находки роняет прогон.
+		raw, err := os.ReadFile(filepath.Clean(f))
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr,
+				"product-names: файл значений %s не читается (%v) — перечень пинов был бы\n"+
+					"               неполон, а неполный перечень даёт «ссылка не объявлена»\n"+
+					"               на верной ссылке. Это «не выполнилось», а не «пинов нет».\n", f, err)
+			return 2
+		}
+		var tree map[string]any
+		if err := yaml.Unmarshal(raw, &tree); err != nil {
+			_, _ = fmt.Fprintf(stderr,
+				"product-names: файл значений %s не разбирается (%v) — см. выше.\n", f, err)
+			return 2
+		}
+		read++
+		for _, decl := range walkImageRefs(tree) {
+			declared++
+			img := decl.repo[strings.LastIndex(decl.repo, "/")+1:]
+			if _, ours := dirOfImage[img]; !ours {
+				continue
+			}
+			k := key{image: img, ref: decl.ref()}
+			where[k] = append(where[k], filepath.Base(f))
+		}
+	}
+
+	for _, dir := range dirs {
+		_, _ = fmt.Fprintf(stdout, "PART\t%s\t%s\n", dir, productnaming.ChartName(dir))
+	}
+	keys := make([]key, 0, len(where))
+	for k := range where {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].image != keys[j].image {
+			return keys[i].image < keys[j].image
+		}
+		return keys[i].ref < keys[j].ref
+	})
+	for _, k := range keys {
+		_, _ = fmt.Fprintf(stdout, "PIN\t%s\t%s\t%s\n", k.image, k.ref, strings.Join(where[k], ","))
+	}
+	_, _ = fmt.Fprintf(stderr,
+		"осмотрено: файлов значений %d (прочитано %d), объявлений образа %d, "+
+			"частей вынесенных %d, различных пинов %d\n",
+		len(files), read, declared, len(dirs), len(keys))
+	return 0
+}
+
+// imageRef — ссылка на образ, объявленная значениями. Digest сильнее тега: так
+// её и рендерит чарт.
+type imageRef struct {
+	repo, tag, digest string
+}
+
+func (r imageRef) ref() string {
+	if r.digest != "" {
+		return r.repo + "@" + r.digest
+	}
+	if r.tag == "" {
+		return r.repo
+	}
+	return r.repo + ":" + r.tag
+}
+
+// walkImageRefs — обход РАЗОБРАННОГО дерева значений, а не текста. Формы две, и
+// знать надо обе (разбор в шапке режима).
+func walkImageRefs(node any) []imageRef {
+	tree, ok := node.(map[string]any)
+	if !ok {
+		return nil
+	}
+	var out []imageRef
+	keys := make([]string, 0, len(tree))
+	for k := range tree {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if k == "image" {
+			switch img := tree[k].(type) {
+			case string:
+				if ref := strings.TrimSpace(img); ref != "" {
+					digest, _ := tree["imageDigest"].(string)
+					out = append(out, splitFlatRef(ref, strings.TrimSpace(digest)))
+				}
+				continue
+			case map[string]any:
+				repo, _ := img["repository"].(string)
+				if strings.TrimSpace(repo) != "" {
+					tag, _ := img["tag"].(string)
+					digest, _ := img["digest"].(string)
+					out = append(out, imageRef{
+						repo:   strings.TrimSpace(repo),
+						tag:    strings.TrimSpace(tag),
+						digest: strings.TrimSpace(digest),
+					})
+				}
+				continue
+			}
+		}
+		out = append(out, walkImageRefs(tree[k])...)
+	}
+	return out
+}
+
+// splitFlatRef — разбор плоской формы `<репозиторий>[:<тег>]`. Двоеточие ищется
+// ПОСЛЕ последней косой черты: в `host:5000/repo` оно принадлежит хосту.
+func splitFlatRef(ref, digest string) imageRef {
+	repo, tag := ref, ""
+	if i := strings.LastIndex(ref, ":"); i > strings.LastIndex(ref, "/") {
+		repo, tag = ref[:i], ref[i+1:]
+	}
+	return imageRef{repo: repo, tag: tag, digest: digest}
 }
