@@ -120,7 +120,7 @@ func TestAskRegistryTellsAbsenceFromFailureToAsk(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			ep, stop := c.reg.start(t)
 			defer stop()
-			got, why := askRegistry(client, ep, ref)
+			got, why := newRegistryProbe(client, ep).askRegistry(ref)
 			if got != c.want {
 				t.Fatalf("ответ %d, ожидался %d (причина: %q)", got, c.want, why)
 			}
@@ -139,7 +139,7 @@ func TestAskRegistryDoesNotJudgeAnUnknownRegistry(t *testing.T) {
 	ep, stop := injectedRegistry{tokenCode: 200, tagsCode: 200, manifestCode: 404}.start(t)
 	defer stop()
 
-	got, why := askRegistry(client, ep, "ghcr.io/someone/something:v1")
+	got, why := newRegistryProbe(client, ep).askRegistry("ghcr.io/someone/something:v1")
 	if got != answerUnresolved {
 		t.Fatalf("чужой реестр разобран как %d — непонятый адрес не доказывает отсутствия", got)
 	}
@@ -323,5 +323,84 @@ func TestImagesTheUmbrellaLeavesToItsSubcharts(t *testing.T) {
 		"kacho-vpc": "vpc.image", "kacho-registry": "registry.image", "kaname": "kaname.image",
 	}); len(got) != 0 {
 		t.Errorf("лишний пин выдан за пропущенный: %v", got)
+	}
+}
+
+// TestRegistryProbeRemembersPerRepositoryWithoutWeakeningTheControl — память по
+// репозиторию НЕ ослабляет управляющий вопрос.
+//
+// ПРЕДМЕТ. Маркер и ответ управляющего вопроса помнятся, чтобы гейт не упирался в
+// предел реестра (измерено: на сорока семи ссылках анонимный Docker Hub начинал
+// отвечать `429`, и сверялось 8 из 47). Память — оптимизация, и оптимизация
+// обязана быть проверена с той стороны, с которой она могла бы стать
+// послаблением: закрытый репозиторий обязан давать «не выполнилось» КАЖДОЙ своей
+// ссылке, а не только первой.
+func TestRegistryProbeRemembersPerRepositoryWithoutWeakeningTheControl(t *testing.T) {
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	// (а) Репозиторий читается: управляющий вопрос задан ОДИН раз на три ссылки,
+	//     а вердикт у каждой свой.
+	var tags, manifests int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		switch {
+		case strings.HasPrefix(req.URL.Path, "/token"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"token":"injected"}`))
+		case strings.Contains(req.URL.Path, "/tags/list"):
+			tags++
+			w.WriteHeader(http.StatusOK)
+		case strings.Contains(req.URL.Path, "/manifests/"):
+			manifests++
+			// Первый тег есть, остальные — нет.
+			if strings.HasSuffix(req.URL.Path, "/main-1") {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	ep := registryEndpoints{Token: srv.URL + "/token", API: srv.URL + "/v2/"}
+
+	probe := newRegistryProbe(client, ep)
+	want := []registryAnswer{answerPresent, answerAbsent, answerAbsent}
+	for i, tag := range []string{"main-1", "main-2", "main-3"} {
+		got, why := probe.askRegistry("docker.io/prorobotech/kaname:" + tag)
+		if got != want[i] {
+			t.Fatalf("%s: ответ %d, ожидался %d (%s)", tag, got, want[i], why)
+		}
+	}
+	if tags != 1 {
+		t.Errorf("управляющий вопрос задан %d раз на три ссылки одного репозитория — память "+
+			"не работает, и гейт упрётся в предел реестра", tags)
+	}
+	if manifests != 3 {
+		t.Errorf("манифест спрошен %d раз вместо трёх — память перестала различать ссылки, а "+
+			"это уже послабление: вердикт одной выдаётся за вердикт другой", manifests)
+	}
+
+	// (б) ЗАКОННЫЙ БЛИЗНЕЦ ОБРАТНОЙ СТОРОНЫ: репозиторий НЕ читается. Каждая его
+	//     ссылка обязана дать «не выполнилось», а не только первая, — иначе
+	//     память превратила бы контроль в однократный.
+	closed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		switch {
+		case strings.HasPrefix(req.URL.Path, "/token"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"token":"injected"}`))
+		case strings.Contains(req.URL.Path, "/tags/list"):
+			w.WriteHeader(http.StatusUnauthorized)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer closed.Close()
+
+	probe = newRegistryProbe(client, registryEndpoints{Token: closed.URL + "/token", API: closed.URL + "/v2/"})
+	for _, tag := range []string{"main-1", "main-2"} {
+		got, why := probe.askRegistry("docker.io/prorobotech/kaname:" + tag)
+		if got != answerUnresolved {
+			t.Errorf("%s: ответ %d при нечитаемом репозитории — 404 на манифесте выдан за "+
+				"отсутствие тега (%s)", tag, got, why)
+		}
 	}
 }

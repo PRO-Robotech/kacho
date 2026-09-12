@@ -336,11 +336,40 @@ var dockerHubEndpoints = registryEndpoints{
 	API:   "https://registry-1.docker.io/v2/",
 }
 
+// registryProbe — один проход по ссылкам. Маркер и ответ управляющего вопроса
+// помнятся ПО РЕПОЗИТОРИЮ, а не спрашиваются на каждую ссылку.
+//
+// Причина измерена, а не предположена: анонимный предел Docker Hub. Прежняя
+// редакция задавала три запроса на ссылку (маркер · перечень тегов · манифест), и
+// на сорока семи ссылках реестр начинал отвечать `429` — гейт честно относил это
+// к «не выполнилось» и не краснел, но сверял 8 ссылок из 47. Проверка, чьё
+// измерение обычно не состоится, перестаёт читаться, а перестав читаться,
+// перестаёт работать. Память по репозиторию сводит 141 запрос к 65.
+//
+// Ответ управляющего вопроса памятью НЕ ослабляется: он задаётся по разу на
+// репозиторий, а различает он состояние РЕПОЗИТОРИЯ, а не тега.
+type registryProbe struct {
+	client *http.Client
+	ep     registryEndpoints
+	tokens map[string]string // репозиторий → маркер
+	gate   map[string]string // репозиторий → причина, по которой его нельзя судить ("" = можно)
+}
+
+func newRegistryProbe(client *http.Client, ep registryEndpoints) *registryProbe {
+	return &registryProbe{
+		client: client,
+		ep:     ep,
+		tokens: map[string]string{},
+		gate:   map[string]string{},
+	}
+}
+
 // askRegistry — есть ли манифест. КОНТРОЛЬ ПЕРЕД ГЛАВНЫМ ВОПРОСОМ: сперва
 // спрашивается перечень тегов репозитория. Прошёл — реестр достижим и
 // репозиторий читается, значит отсутствие одного тега есть факт. Упал — спросить
 // не удалось, и «не знаю» не выдаётся за «нет».
-func askRegistry(client *http.Client, ep registryEndpoints, ref string) (registryAnswer, string) {
+func (p *registryProbe) askRegistry(ref string) (registryAnswer, string) {
+	client, ep := p.client, p.ep
 	repo, reference := ref, ""
 	if i := strings.Index(ref, "@"); i >= 0 {
 		repo, reference = ref[:i], ref[i+1:]
@@ -352,14 +381,26 @@ func askRegistry(client *http.Client, ep registryEndpoints, ref string) (registr
 	}
 	path := strings.TrimPrefix(repo, dockerHubRegistry)
 
-	token, err := dockerHubToken(client, ep, path)
-	if err != nil {
-		return answerUnresolved, "токен на чтение " + path + " не получен: " + err.Error()
+	token, seen := p.tokens[path]
+	if !seen {
+		var err error
+		if token, err = dockerHubToken(client, ep, path); err != nil {
+			p.gate[path] = "токен на чтение " + path + " не получен: " + err.Error()
+		}
+		p.tokens[path] = token
+		// Управляющий вопрос — по разу на репозиторий: он различает состояние
+		// РЕПОЗИТОРИЯ, а не тега.
+		if _, blocked := p.gate[path]; !blocked {
+			if code, err := registryGet(client, ep, token, path, "tags/list?n=1"); err != nil || code != http.StatusOK {
+				p.gate[path] = fmt.Sprintf("репозиторий %s не читается (перечень тегов: код %d, %v) — "+
+					"отсутствие отдельного тега этим не доказывается", path, code, err)
+			} else {
+				p.gate[path] = ""
+			}
+		}
 	}
-	// Управляющий вопрос.
-	if code, err := registryGet(client, ep, token, path, "tags/list?n=1"); err != nil || code != http.StatusOK {
-		return answerUnresolved, fmt.Sprintf("репозиторий %s не читается (перечень тегов: код %d, %v) — "+
-			"отсутствие отдельного тега этим не доказывается", path, code, err)
+	if why := p.gate[path]; why != "" {
+		return answerUnresolved, why
 	}
 	code, err := registryGet(client, ep, token, path, "manifests/"+reference)
 	switch {
@@ -374,10 +415,36 @@ func askRegistry(client *http.Client, ep registryEndpoints, ref string) (registr
 	}
 }
 
+// registryCredentialEnv — откуда берётся удостоверение к реестру. Те же имена,
+// которыми пользуется сборка образов, — второго уклада не заводится.
+//
+// АНОНИМНЫЙ ПРЕДЕЛ — НЕ ТЕОРИЯ, А ЗАМЕР. Без удостоверения Docker Hub начинает
+// отвечать `429` после нескольких десятков обращений: гейт честно относит это к
+// «не выполнилось» и не краснеет, но сверяет часть ссылок вместо всех. Поэтому
+// задание, поднимающее ручку, обязано передать и эти две величины; сверено
+// сколько и было ли удостоверение — печатает перепись.
+const (
+	registryUserEnv  = "DOCKERHUB_USERNAME"
+	registryTokenEnv = "DOCKERHUB_TOKEN" //nolint:gosec // имя переменной, не величина
+)
+
+// registryCredentialPresent — обе половины удостоверения заданы. Половина хуже
+// отсутствия обеих: она выглядит настроенной.
+func registryCredentialPresent() bool {
+	return os.Getenv(registryUserEnv) != "" && os.Getenv(registryTokenEnv) != ""
+}
+
 // dockerHubToken — маркер на чтение одного репозитория.
 func dockerHubToken(client *http.Client, ep registryEndpoints, path string) (string, error) {
 	url := ep.Token + "?service=registry.docker.io&scope=repository:" + path + ":pull"
-	resp, err := client.Get(url) //nolint:noctx // срок задан самим клиентом
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+	if registryCredentialPresent() {
+		req.SetBasicAuth(os.Getenv(registryUserEnv), os.Getenv(registryTokenEnv))
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -442,9 +509,9 @@ func TestPublishedProductImagePinIsReachable(t *testing.T) {
 
 	var answers []pinAnswer
 	if census.NetworkOn {
-		client := &http.Client{Timeout: 20 * time.Second}
+		probe := newRegistryProbe(&http.Client{Timeout: 20 * time.Second}, dockerHubEndpoints)
 		for _, ref := range refs {
-			answer, why := askRegistry(client, dockerHubEndpoints, ref)
+			answer, why := probe.askRegistry(ref)
 			answers = append(answers, pinAnswer{Ref: ref, Answer: answer, Why: why})
 			switch answer {
 			case answerAbsent:
@@ -479,7 +546,14 @@ func TestPublishedProductImagePinIsReachable(t *testing.T) {
 
 	knobState := "ВЫКЛЮЧЕНО (ручка " + registryCheckKnob + "=1 не поднята)"
 	if census.NetworkOn {
-		knobState = "включено ручкой " + registryCheckKnob
+		knobState = "включено ручкой " + registryCheckKnob + ", удостоверение реестра " +
+			map[bool]string{true: "задано", false: "НЕ задано"}[registryCredentialPresent()]
+	}
+	if census.Unresolved > 0 && !registryCredentialPresent() {
+		t.Logf("подсказка: %d ссылок не сверено, а удостоверение реестра (%s/%s) не задано — "+
+			"анонимный предел Docker Hub отвечает 429 после нескольких десятков обращений. "+
+			"Это НЕ находка и не вычитается из вердикта, но и сверкой не является",
+			census.Unresolved, registryUserEnv, registryTokenEnv)
 	}
 	t.Logf("осмотрено: стендов %d, объявлений образа %d, из них образов продукта из реестра %d "+
 		"(без объявленного тега %d — судить нечего); различных ссылок %d; измерение %s; "+
