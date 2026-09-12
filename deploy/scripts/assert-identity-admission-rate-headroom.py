@@ -50,21 +50,41 @@
 ПУСТАЯ ВОЛНА — ИСХОД РАЗРЕЗА, И ОН ЗАПИСАН У СОСЕДА. Линия выноса службы доступа
 унесла суиту волны и затравку темпа; отказ стал вечным и называл не ту причину —
 «каталога миграций iam нет», хотя мерить было нечего ещё до темпа. Состояния
-волны различает сосед (`wave_presence`), здесь они только читаются: предмета в
-дереве нет — БЕСПРЕДМЕТНО с числами обхода и кодом ноль; предмет есть, а темпа
-нет — ОТКАЗ. Текст исхода печатает сосед, единственный его производитель.
+волны различает сосед (`wave_presence`), здесь они только читаются. Состояний ТРИ,
+и беспредметно ровно ОДНО: каталога суиты нет вовсе — БЕСПРЕДМЕТНО с числами обхода
+и кодом ноль; каталог ЕСТЬ, а коллекций волны в нём нет — ОТКАЗ; обход прочитал ноль
+коллекций — ОТКАЗ. Два отказных состояния приходили сюда чужим классом и уходили
+трассой; теперь их переводит граница. Текст исхода печатает сосед, единственный его
+производитель.
 
 ПОРЯДОК НЕСУЩИЙ и доказан инъекцией в обе стороны: сперва ВОЛНА (предмет), потом
 ТЕМП (мерка). Между двумя прогонами фикстуры меняется ровно один факт — лежит ли
 в суите коллекция под личностью церемонии, — и мерки нет в обоих: без волны
 исход беспредметен, с волной — отказ по мерке.
 
-ОТДЕЛЬНО: САМОПРОВЕРКА БОЛЬШЕ НЕ ПАДАЕТ ТРАССОЙ СТЕКА. Чтение величины темпа
-стояло в ней без перехвата, и после разреза она падала необработанным
-`PremiseError`: вместо названного отказа читатель получал стек, а объявленного
-кода 2 не производилось вовсе (питон отдаёт 1). Перехват уточняет предмет, а не
-ослабляет утверждение: отсутствие величины законно РОВНО тогда, когда и волны в
-дереве нет, — есть волна, а величины нет — провал.
+ОТДЕЛЬНО: ЧУЖОЙ ОТКАЗ — НАШ ОТКАЗ, И ЭТО ДЕРЖИТСЯ ГРАНИЦЕЙ, А НЕ ПЕРЕХВАТАМИ.
+
+Здесь стояло «самопроверка больше не падает трассой стека», и это было верно для
+самопроверки и НЕВЕРНО для прод-пути того же гейта — то есть заявление шире
+сделанного. Перевод чужого отказа стоял на ДВУХ вызовах из пятнадцати; на
+остальных чужой `PremiseError` уходил наружу непойманным, потому что у соседа СВОЙ
+одноимённый класс, а `except PremiseError` в `main()` ловит здешний. Читатель
+получал стек с кодом 1 вместо объявленного кода 2 с названным отказом — находку,
+называющую симптом вместо причины.
+
+Замер разбором на ревизии находки: вызовов к соседу 15, чужой отказ уходил
+непереведённым с ВОСЬМИ — пять на прод-пути и три в самопроверке. Приёмка назвала
+один; остальные семь молчали тем же способом.
+
+Починено НЕ восемью перехватами: восемь закрылись бы, а девятый вызов забыл бы
+перевод так же молча. Сосед достаётся через ФАСАД (`_Peer`), который переводит
+чужой исход и чужой отказ в наши на КАЖДОМ вызове; сырой модуль границу не
+покидает, поэтому переводить не нужно помнить. Утверждается это тремя условиями
+границы плюс поведенческой пробой на поддельном соседе — по каждому имени
+требуемого набора и по каждому чужому классу.
+
+Перевод УТОЧНЯЕТ предмет, а не ослабляет утверждение: отсутствие величины законно
+РОВНО тогда, когда и волны в дереве нет, — есть волна, а величины нет — провал.
 
 Использование:
     python3 deploy/scripts/assert-identity-admission-rate-headroom.py [--root .]
@@ -74,8 +94,10 @@ from __future__ import annotations
 
 import argparse
 import ast
+import functools
 import os
 import sys
+import types
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
@@ -83,6 +105,17 @@ REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 # Сосед — ЕДИНСТВЕННЫЙ источник форм, порядка волны и базового уровня. Импортируется,
 # а не переписывается: переписанная копия разошлась бы с ним молча.
 PEAK_GATE = "deploy/scripts/assert-identity-account-peak-under-ceiling.py"
+
+# ТРЕБУЕМЫЙ НАБОР СОСЕДА. Объявлением, а не литералом внутри загрузчика: по этому
+# же перечню самопроверка доказывает, что перевод чужого отказа ТОТАЛЕН — иначе
+# доказательство перечисляло бы свой список имён и разошлось бы с проверкой формы
+# молча, ровно там, где оба отвечают «валидно».
+REQUIRED_PEER_API = (
+    "load_declarations", "identities_of", "wave_collections", "wave_presence",
+    "timeline_of", "read_base_components", "seeded_by_identity",
+    "read_seeded_value", "SubjectElsewhere", "PremiseError",
+    "report_subject_elsewhere",
+)
 
 # Величина темпа — там, где она НАЗНАЧАЕТСЯ, а не там, где её ожидают тексты отказов.
 #
@@ -116,8 +149,9 @@ class SubjectElsewhere(RuntimeError):
     """Волны церемонии в ЭТОМ дереве нет — предмет уехал вместе со службой доступа.
 
     СВОЙ КЛАСС, А НЕ КЛАСС СОСЕДА, и это не дублирование: сосед загружается
-    динамически, поэтому его класс недоступен в `except` до загрузки. Тот же приём,
-    которым здесь уже переводится чужой отказ в свой («чужой отказ — наш отказ»).
+    динамически, поэтому его класс недоступен в `except` до загрузки. Перевод живёт
+    в ОДНОМ месте — на границе (`_Peer`), — а не на выбранных вызовах: именно
+    выборочный перевод и дал трассу стека на прод-пути.
 
     ТЕКСТ ИСХОДА НЕ КОПИРУЕТСЯ: печатает его сосед, единственный производитель, а
     исключение несёт только перепись и ссылку на печать. Вторая копия текста
@@ -131,6 +165,64 @@ class SubjectElsewhere(RuntimeError):
 
     def report(self, what: str) -> int:
         return self._reporter(self.census, what)
+
+
+class _Peer:
+    """Сосед, у которого КАЖДЫЙ вызов переводит чужой отказ в наш.
+
+    ПОЧЕМУ ОДНО МЕСТО, А НЕ ПЕРЕХВАТ НА КАЖДОМ ВЫЗОВЕ. Перевод стоял ровно на
+    двух вызовах из пятнадцати, и это не было видно ниоткуда: у соседа СВОИ
+    одноимённые классы, поэтому `except PremiseError` в `main()` ловит наш и
+    чужой НЕ ловит — чужой уходит трассой стека с кодом 1 вместо объявленного 2.
+    Замер разбором на ревизии находки: вызовов к соседу 15, чужой отказ уходил
+    непереведённым с ВОСЬМИ — пять на прод-пути (`load_declarations`,
+    `identities_of`, `wave_collections`, `read_base_components`,
+    `seeded_by_identity`) и три в самопроверке. Приёмка назвала один из восьми;
+    остальные семь молчали тем же способом.
+
+    Перехват на каждом вызове закрыл бы восемь и не закрыл девятый: следующий
+    вызов к соседу забудет перевод — забыть его нельзя только тогда, когда
+    переводить не нужно помнить. Здесь перевод ТОТАЛЕН by construction, и
+    доказан он поведенчески — поддельным соседом, поднимающим чужой отказ из
+    КАЖДОГО имени требуемого набора.
+
+    ПЕРЕВОДЯТСЯ ФУНКЦИИ, А НЕ ВСЁ. Классы и константы отдаются как есть: обёртка
+    вокруг класса сломала бы `except peer.SubjectElsewhere` у всякого, кто ещё
+    захочет ловить чужой класс прямо, а константы вызывать не нужно.
+    """
+
+    def __init__(self, mod):
+        self.__dict__["_mod"] = mod
+        self.__dict__["_calls"] = {}
+
+    def __getattr__(self, name):
+        mod, cache = self.__dict__["_mod"], self.__dict__["_calls"]
+        if name in cache:
+            return cache[name]
+        obj = getattr(mod, name)
+        if not isinstance(obj, types.FunctionType):
+            return obj
+        cache[name] = _translating(obj, mod)
+        return cache[name]
+
+
+def _translating(fn, mod):
+    """Обёртка одного вызова: чужой исход → наш исход, чужой отказ → наш отказ.
+
+    Порядок ветвей НЕСУЩИЙ: `SubjectElsewhere` идёт первой. Будь она подклассом
+    `PremiseError` у соседа — перестановка превратила бы беспредметность в отказ,
+    то есть вечное красное там, где условие создать нельзя.
+    """
+    @functools.wraps(fn)
+    def call(*a, **kw):
+        try:
+            return fn(*a, **kw)
+        except mod.SubjectElsewhere as exc:          # чужой исход — наш исход
+            raise SubjectElsewhere(
+                exc.census, mod.report_subject_elsewhere) from exc
+        except mod.PremiseError as exc:              # чужой отказ — наш отказ
+            raise PremiseError(str(exc)) from exc
+    return call
 
 
 def decide(charged: int, ceiling: int) -> tuple[int, bool]:
@@ -159,15 +251,14 @@ def load_peak_gate(root: str):
         raise PremiseError(f"соседний гейт не загружается: {path}")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    for want in ("load_declarations", "identities_of", "wave_collections",
-                 "wave_presence", "timeline_of", "read_base_components",
-                 "seeded_by_identity", "read_seeded_value", "SubjectElsewhere",
-                 "report_subject_elsewhere"):
+    for want in REQUIRED_PEER_API:
         if not hasattr(mod, want):
             raise PremiseError(
                 f"у соседнего гейта нет `{want}` — его форма изменилась, и вердикт "
                 f"был бы о том, чего он больше не считает")
-    return mod
+    # ФАСАД, А НЕ СЫРОЙ МОДУЛЬ: сырой отдавал чужие классы отказа наружу, и
+    # `except PremiseError` у вызывающего их не ловил — см. `_Peer`.
+    return _Peer(mod)
 
 
 def read_rate(root: str) -> tuple[int, int]:
@@ -181,12 +272,12 @@ def read_rate(root: str) -> tuple[int, int]:
 
 def read_rate_with_census(root: str) -> tuple[int, int, dict[str, int]]:
     peak = load_peak_gate(root)
-    try:
-        (events, window), census = peak.read_seeded_value(
-            root, RATE_TABLE, RATE_WHERE, ("max_events", "window_seconds"),
-            "потолок темпа")
-    except peak.PremiseError as exc:            # чужой отказ — наш отказ
-        raise PremiseError(str(exc)) from exc
+    # Перехвата здесь НЕТ намеренно: чужой отказ переводит фасад (`_Peer`), один
+    # раз и для всех вызовов. Перехват на месте был бы девятой копией идиомы —
+    # той самой, которую забыли на восьми других вызовах.
+    (events, window), census = peak.read_seeded_value(
+        root, RATE_TABLE, RATE_WHERE, ("max_events", "window_seconds"),
+        "потолок темпа")
     if not (events.isdigit() and window.isdigit()):
         raise PremiseError(
             f"темп прочитан как ({events!r}, {window!r}) — не числа, вердикт был "
@@ -203,10 +294,7 @@ def audit(root: str):
     # недоступности там, где мерить нечего, — и называет читателю не ту причину.
     # Ровно это и происходило после разреза службы доступа: отказ говорил
     # «каталога миграций iam нет», хотя волны в дереве не было вовсе.
-    try:
-        wave = peak_gate.wave_collections(root, decl)
-    except peak_gate.SubjectElsewhere as exc:      # чужой исход — наш исход
-        raise SubjectElsewhere(exc.census, peak_gate.report_subject_elsewhere) from exc
+    wave = peak_gate.wave_collections(root, decl)
     ceiling, window, mig_census = read_rate_with_census(root)
     common, seeded_total, why = peak_gate.read_base_components(root)
     seeded = peak_gate.seeded_by_identity(decl, seeded_total)
@@ -315,6 +403,119 @@ def _threshold_sites(source: str) -> list[str]:
     return sorted(sites)
 
 
+def _untranslated_peer_handles(source: str) -> tuple[list[str], dict[str, int]]:
+    """→ (места, где сосед достаётся вызывающему СЫРЫМ, перепись осмотренного).
+
+    СВОЙСТВО, КОТОРОЕ УТВЕРЖДАЕТСЯ, — не «каждый вызов переводит», а «переводить
+    НЕ НУЖНО ПОМНИТЬ»: сырой модуль соседа не покидает границу (`load_peak_gate`),
+    поэтому чужой класс отказа до вызывающего добраться НЕ МОЖЕТ. Перехват на
+    каждом вызове закрыл бы восемь известных мест и не закрыл девятое; здесь
+    девятого не бывает by construction.
+
+    ПОЧЕМУ НЕ «ПЕРЕЧИСЛИТЬ ВЫЗОВЫ И ПРОВЕРИТЬ ПЕРЕХВАТ». Такой предикат судил бы
+    СНЯТУЮ конструкцию: после фасада чужой класс на вызовы не приходит вовсе, и
+    предикат требовал бы перехвата того, чего там нет, — то есть краснел бы на
+    исправном коде. Первая его редакция именно это и сделала, и красное было
+    верным сигналом о предикате, а не о дереве.
+
+    Три условия, и все три судят РАЗБОР, а не поиск по образцу: имена `_Peer`,
+    `_mod` и `module_from_spec` стоят в этом файле и в прозе про сам этот класс.
+
+      1. каждый возврат `load_peak_gate` отдаёт `_Peer(...)` — иначе наружу уедет
+         сырой модуль;
+      2. модуль из спеки собирается ТОЛЬКО внутри `load_peak_gate` — второй
+         загрузчик обошёл бы границу;
+      3. внутреннее поле фасада (`_mod`) не читает никто, кроме самого фасада, —
+         иначе сырой модуль достают в обход.
+    """
+    tree = ast.parse(source)
+    funcs = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+    classes = {n.name: n for n in tree.body if isinstance(n, ast.ClassDef)}
+    bad: list[str] = []
+    census = {"returns": 0, "loaders": 0, "mod_reads": 0}
+
+    loader = funcs.get("load_peak_gate")
+    if loader is None:
+        return ["нет `load_peak_gate` — границы перевода не существует"], census
+    for n in ast.walk(loader):
+        if not isinstance(n, ast.Return) or n.value is None:
+            continue
+        census["returns"] += 1
+        v = n.value
+        ok = (isinstance(v, ast.Call) and isinstance(v.func, ast.Name)
+              and v.func.id == "_Peer")
+        if not ok:
+            bad.append(f"load_peak_gate:{n.lineno} отдаёт не `_Peer(...)` — "
+                       f"наружу уедет сырой модуль соседа")
+
+    inside = {id(n) for n in ast.walk(loader)}
+    for fn_name, fn in list(funcs.items()) + [(f"{c}.<тело>", v)
+                                              for c, v in classes.items()]:
+        for n in ast.walk(fn):
+            if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                    and n.func.attr == "module_from_spec"):
+                census["loaders"] += 1
+                if id(n) not in inside:
+                    bad.append(f"{fn_name}:{n.lineno} собирает модуль соседа в обход "
+                               f"границы перевода")
+
+    peer_body = classes.get("_Peer")
+    peer_ids = {id(n) for n in ast.walk(peer_body)} if peer_body else set()
+    for n in ast.walk(tree):
+        read = None
+        if isinstance(n, ast.Attribute) and n.attr == "_mod":
+            read = n
+        elif (isinstance(n, ast.Subscript) and isinstance(n.slice, ast.Constant)
+              and n.slice.value == "_mod"):
+            read = n
+        if read is None:
+            continue
+        census["mod_reads"] += 1
+        if id(read) not in peer_ids:
+            bad.append(f"строка {read.lineno}: сырой модуль достают через `_mod` "
+                       f"в обход фасада")
+    return bad, census
+
+
+def _fake_peer(names, raising: str):
+    """Поддельный сосед: КАЖДОЕ имя набора поднимает чужой отказ `raising`.
+
+    ПОДДЕЛКА СТРУКТУРНО НЕ СПОСОБНА ДАТЬ ЗЕЛЁНОЕ по своему предмету: ни одна её
+    функция не возвращает значения — она только поднимает. Провязка доказывается
+    тем, что перевод СРАБОТАЛ на каждом имени, а не тем, что подделка ответила
+    «хорошо».
+    """
+    import types as _t  # noqa: PLC0415 — нужен только здесь
+
+    mod = _t.ModuleType("kacho_fake_peer")
+
+    class FakePremise(RuntimeError):
+        pass
+
+    class FakeElsewhere(RuntimeError):
+        def __init__(self, census):
+            super().__init__("предмет вне дерева")
+            self.census = census
+
+    mod.PremiseError = FakePremise
+    mod.SubjectElsewhere = FakeElsewhere
+    mod.report_subject_elsewhere = lambda census, what="?": 0
+    exc = (FakePremise("чужой отказ подделки") if raising == "PremiseError"
+           else FakeElsewhere({"files_read": 1, "stems": 0, "suite_present": False,
+                               "suite": "синт"}))
+
+    def make(_name):
+        def fn(*_a, **_kw):
+            raise exc
+        return fn
+
+    for name in names:
+        if name in ("PremiseError", "SubjectElsewhere", "report_subject_elsewhere"):
+            continue
+        setattr(mod, name, make(name))
+    return mod
+
+
 def _step(bearer: str, capture: bool, name: str = "шаг"):
     """Синтетический шаг заведения: предъявитель + захват идентификатора либо без."""
     tests = ["const v = (j.metadata && j.metadata.accountId);",
@@ -359,8 +560,85 @@ def self_test() -> int:
               decide(charged, ceiling), want)
 
     print("── сравнение списания с потолком в модуле РОВНО ОДНО, и живёт оно в decide")
-    sites = _threshold_sites(open(os.path.abspath(__file__), encoding="utf-8").read())
+    _mine = open(os.path.abspath(__file__), encoding="utf-8").read()
+    sites = _threshold_sites(_mine)
     check("мест сравнения", sites, ["decide"])
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # ЧУЖОЙ ОТКАЗ — НАШ ОТКАЗ: перевод ТОТАЛЕН, а не на выбранных вызовах
+    # ═════════════════════════════════════════════════════════════════════════
+    # ЗДЕСЬ БЫЛА ТРАССА СТЕКА НА ПРОД-ПУТИ. Перевод стоял на двух вызовах из
+    # пятнадцати; на остальных чужой `PremiseError` уходил непойманным, потому что
+    # `except PremiseError` в `main()` ловит ЗДЕШНИЙ одноимённый класс. Читатель
+    # получал стек с кодом 1 вместо объявленного кода 2 с названным отказом.
+    #
+    # Утверждается СВОЙСТВО, а не починенное место: непереведённых вызовов НОЛЬ.
+    print("── граница перевода: сырой модуль соседа её НЕ ПОКИДАЕТ")
+    _bad, _cen = _untranslated_peer_handles(_mine)
+    note(_cen["returns"] > 0 and _cen["loaders"] > 0,
+         f"осмотрено: возвратов границы {_cen['returns']}, сборок модуля "
+         f"{_cen['loaders']}, чтений внутреннего поля {_cen['mod_reads']}"
+         + ("" if _cen["returns"] and _cen["loaders"]
+            else " — разбор ослеп, чинить надо предикат"))
+    check("мест, где сосед уходит сырым", _bad, [])
+
+    # ПРЕДИКАТ ОБЯЗАН УМЕТЬ КРАСНЕТЬ, и инъекция меняет РОВНО ОДИН факт против
+    # законного близнеца — что именно отдаёт граница. Без этой пары «ноль мест»
+    # было бы неотличимо от «разбор не видит ни одной формы».
+    _twin = ("def load_peak_gate(root):\n"
+             "    spec = importlib.util.spec_from_file_location('x', root)\n"
+             "    mod = importlib.util.module_from_spec(spec)\n"
+             "    return _Peer(mod)\n"
+             "class _Peer:\n"
+             "    def __init__(self, mod):\n"
+             "        self.__dict__['_mod'] = mod\n")
+    _hurt = _twin.replace("    return _Peer(mod)", "    return mod")
+    _g_twin, _ = _untranslated_peer_handles(_twin)
+    _g_hurt, _ = _untranslated_peer_handles(_hurt)
+    note(_g_twin == [], f"законный близнец МОЛЧИТ: {_g_twin}")
+    note(len(_g_hurt) == 1 and "сырой модуль" in _g_hurt[0],
+         f"граница отдала сырой модуль → НАХОДКА: {_g_hurt or 'НЕ НАЙДЕНА'}")
+    # Вторая ось того же свойства: загрузчик В ОБХОД границы.
+    _g_2nd, _ = _untranslated_peer_handles(
+        _twin + "def other(root):\n"
+                "    return importlib.util.module_from_spec(root)\n")
+    note(len(_g_2nd) == 1 and "в обход" in _g_2nd[0],
+         f"второй загрузчик в обход → НАХОДКА: {_g_2nd or 'НЕ НАЙДЕНА'}")
+    # Третья ось: сырой модуль достают через внутреннее поле фасада.
+    _g_3rd, _ = _untranslated_peer_handles(
+        _twin + "def other(p):\n    return p.__dict__['_mod']\n")
+    note(len(_g_3rd) == 1 and "в обход фасада" in _g_3rd[0],
+         f"чтение `_mod` снаружи → НАХОДКА: {_g_3rd or 'НЕ НАЙДЕНА'}")
+
+    # ПОВЕДЕНЧЕСКОЕ доказательство тотальности: подделка поднимает чужой отказ из
+    # КАЖДОГО имени требуемого набора, и каждое обязано выйти НАШИМ классом.
+    # Перечень имён — тот же `REQUIRED_PEER_API`, что сверяет форму соседа: свой
+    # список здесь разошёлся бы с проверкой формы молча.
+    print("── перевод доказан поведением: каждое имя набора, оба чужих класса")
+    _api = [n for n in REQUIRED_PEER_API
+            if n not in ("PremiseError", "SubjectElsewhere",
+                         "report_subject_elsewhere")]
+    note(len(_api) > 0, f"имён набора под проверкой {len(_api)}")
+    for _foreign, _ours, _label in ((["PremiseError"], PremiseError, "отказ"),
+                                    (["SubjectElsewhere"], SubjectElsewhere,
+                                     "беспредметность")):
+        _peer = _Peer(_fake_peer(REQUIRED_PEER_API, _foreign[0]))
+        _bad = []
+        for _n in _api:
+            try:
+                getattr(_peer, _n)()
+            except _ours:
+                continue
+            except BaseException as _exc:       # noqa: BLE001 — предмет пробы
+                _bad.append(f"{_n}→{type(_exc).__name__}")
+        check(f"чужой {_label} переведён на всех {len(_api)} именах", _bad, [])
+
+    # Классы и константы соседа фасад отдаёт КАК ЕСТЬ: обёртка вокруг класса
+    # сломала бы `except peer.SubjectElsewhere` у всякого, кто ловит чужой прямо.
+    _peer = _Peer(_fake_peer(REQUIRED_PEER_API, "PremiseError"))
+    note(isinstance(_peer.PremiseError, type)
+         and isinstance(_peer.SubjectElsewhere, type),
+         "классы соседа отдаются классами, а не обёртками")
 
     # ЗДЕСЬ БЫЛА ТРАССА СТЕКА. Вызов стоял без перехвата, и после разреза службы
     # доступа самопроверка падала НЕПЕРЕХВАЧЕННЫМ `PremiseError`: вместо названного
@@ -386,7 +664,7 @@ def self_test() -> int:
         try:
             _pg.wave_presence(REPO, _decl)
             note(False, f"волна в дереве ЕСТЬ, а величина темпа не читается: {exc}")
-        except _pg.SubjectElsewhere as sub:
+        except SubjectElsewhere as sub:          # НАШ класс: перевёл фасад
             note(True, f"величины темпа в дереве нет — и волны тоже: предмет вне "
                        f"дерева (коллекций прочитано {sub.census['files_read']}, "
                        f"волны {sub.census['stems']})")
@@ -543,6 +821,69 @@ def self_test() -> int:
         note("темп" in str(exc) or "миграц" in str(exc),
              "волна ЕСТЬ, темпа нет → ОТКАЗ по темпу")
     _shutil.rmtree(_r, ignore_errors=True)
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # ПУСТАЯ ВОЛНА: ТРИ СОСТОЯНИЯ, И ДВА ИЗ НИХ ПРИХОДИЛИ ТРАССОЙ СТЕКА
+    # ═════════════════════════════════════════════════════════════════════════
+    # Беспредметность (каталога суиты нет вовсе) переводилась и раньше — её ловил
+    # перехват на одном вызове. Два ОТКАЗНЫХ состояния той же функции соседа
+    # перехвата не имели: чужой `PremiseError` уходил наружу, `except PremiseError`
+    # в `main()` ловил ЗДЕШНИЙ одноимённый класс, и читатель получал стек с кодом 1
+    # вместо объявленного кода 2 с названным отказом.
+    #
+    # Инъекция ОДНО-ФАКТНАЯ: базой служит тот же корень `with_wave=False`, что дал
+    # беспредметность строкой выше, и меняется ровно один факт дерева — наличие
+    # каталога суиты. Текст отказа сверяется по предмету, а не по совпадению слов:
+    # «каталог ЕСТЬ, а коллекций волны нет» — это не «предмет в другом дереве».
+    print("── пустая волна: отказные состояния приходят ОТКАЗОМ, а не трассой")
+    _r = _pg.synthetic_wave_root(with_wave=False, with_seed=True,
+                                 seed_body=_RATE_ROW)
+    os.makedirs(os.path.join(_r, _pg.SUITE, "collections"), exist_ok=True)
+    try:
+        audit(_r)
+        note(False, "каталог суиты ЕСТЬ, волны нет: прошло молча")
+    except SubjectElsewhere:
+        note(False, "каталог суиты ЕСТЬ, а исход объявлен беспредметным — "
+                    "отказ подменён беспредметностью")
+    except PremiseError as exc:
+        note("каталог суиты" in str(exc) and "коллекций волны в нём нет" in str(exc),
+             f"каталог суиты ЕСТЬ, волны нет → ОТКАЗ по предмету: {exc}")
+    _shutil.rmtree(_r, ignore_errors=True)
+
+    # Второе отказное состояние той же функции: обход прочитал НОЛЬ коллекций.
+    # Один факт против базы — снята коллекция соседней суиты, которую фикстура
+    # кладёт всегда именно затем, чтобы обход не был пуст.
+    _r = _pg.synthetic_wave_root(with_wave=False, with_seed=True,
+                                 seed_body=_RATE_ROW)
+    _shutil.rmtree(os.path.join(_r, "services", "zz"), ignore_errors=True)
+    try:
+        audit(_r)
+        note(False, "прочитано ноль коллекций: прошло молча")
+    except SubjectElsewhere:
+        note(False, "прочитано ноль коллекций, а исход беспредметен — «ноль "
+                    "найденных» стало неотличимо от «ноль прочитанного»")
+    except PremiseError as exc:
+        note("НИ ОДНОЙ" in str(exc) or "ноль" in str(exc).lower(),
+             f"прочитано ноль коллекций → ОТКАЗ: {exc}")
+    _shutil.rmtree(_r, ignore_errors=True)
+
+    # ИЗВЕСТНАЯ ДЫРА ФАСАДА, ЗАКРЫТАЯ УТВЕРЖДЕНИЕМ: перевод накрывает ФУНКЦИИ.
+    # Объяви сосед любое имя набора вызываемым объектом другого рода (частичное
+    # применение, экземпляр с `__call__`), и оно уехало бы мимо перевода — молча.
+    print("── набор соседа: каждое имя либо функция (переводится), либо класс")
+    _mod_real = load_peak_gate(REPO)
+    _odd = []
+    for _n in REQUIRED_PEER_API:
+        _obj = getattr(_mod_real, _n)
+        if isinstance(_obj, type):
+            continue
+        if _n in ("PremiseError", "SubjectElsewhere"):
+            _odd.append(f"{_n}→не класс")
+            continue
+        # функция прошла через фасад ⇒ это обёртка, а у обёртки есть __wrapped__
+        if not hasattr(_obj, "__wrapped__"):
+            _odd.append(f"{_n}→{type(_obj).__name__} мимо перевода")
+    check(f"имён набора {len(REQUIRED_PEER_API)}, мимо перевода", _odd, [])
 
     print()
     print(f"утверждений исполнено: {asserts}")
