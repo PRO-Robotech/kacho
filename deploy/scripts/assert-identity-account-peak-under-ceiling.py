@@ -38,8 +38,33 @@
 уже видно в обзоре.
 
 ПРОВЕРКА ПРЕДПОСЫЛОК. «Ноль находок» обязано быть отличимо от «ноль прочитанного»,
-поэтому пустая волна, нечитаемая коллекция, ноль созданий, невыведенный базовый
-уровень и непрочитанный потолок — ОТКАЗ, а не «чисто».
+поэтому нечитаемая коллекция, ноль созданий, невыведенный базовый уровень и
+непрочитанный потолок — ОТКАЗ, а не «чисто».
+
+ПУСТАЯ ВОЛНА — ТРИ СОСТОЯНИЯ, И ЗДЕСЬ ЗАПИСАН ИСХОД РАЗРЕЗА. Прежде она была
+одним отказом. Линия выноса службы доступа отдельным продуктом унесла её суиту
+(`services/iam/tests/newman`) вместе с затравкой потолка, и отказ стал ВЕЧНЫМ —
+причём называл он не первую причину, а вторую: «каталога миграций iam нет»,
+хотя мерить было нечего ещё до потолка. Теперь состояния различаются, и различает
+их факт дерева, а не пустота списка:
+
+  * прочитано НОЛЬ коллекций — обход сломан. ОТКАЗ;
+  * каталог суиты ЕСТЬ, а коллекций под личностью церемонии в нём нет — волна
+    исчезла при живом предмете. ОТКАЗ, тот же, что стоял здесь всегда;
+  * каталога суиты НЕТ ВОВСЕ — предмет уехал в дерево другого продукта.
+    БЕСПРЕДМЕТНО: печатается с числами обхода, код возврата ноль.
+
+ПОЧЕМУ НОЛЬ, А НЕ ОТКАЗ, И ПОЧЕМУ ЭТО НЕ ПОСЛАБЛЕНИЕ. Третья категория («условие
+не создано») тут не подходит: условие нельзя создать ни на какой машине — суита в
+другом репозитории. Вечный отказ сняли бы вместе с гейтом, потеряв и вторую
+половину, которая жива. Поэтому ноль — но с НАЗВАННЫМ состоянием, и оно ИСТЕКАЕТ
+САМО: первая же коллекция под личностью церемонии снова потребует потолок, а его
+недоступность снова станет отказом. Обе стороны доказаны инъекцией: разница между
+«беспредметно» и «волна исчезла» — ровно одно имя предъявителя в фикстуре.
+
+ПОРЯДОК ПРОВЕРОК НЕСУЩИЙ: сперва волна (предмет), потом потолок (мерка). Мерка,
+спрошенная раньше предмета, даёт отказ по своей недоступности там, где мерить
+нечего, — и посылает читателя искать не там.
 
 Использование:
     python3 deploy/scripts/assert-identity-account-peak-under-ceiling.py [--root .]
@@ -54,6 +79,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
@@ -161,6 +187,29 @@ def decide(peak: int, ceiling: int) -> tuple[int, bool]:
     """
     finding = ceiling - peak < HEADROOM_REQUIRED
     return (1 if finding else 0), finding
+
+
+class SubjectElsewhere(RuntimeError):
+    """Волны в ЭТОМ дереве нет: суита, чью волну гейт вешает на потолок, живёт в
+    дереве другого продукта.
+
+    ЭТО НЕ ТРЕТЬЯ КАТЕГОРИЯ и не «предпосылка не выполнена». Третья категория —
+    несозданное условие окружения, поправимое на этой же машине; здесь поправить
+    нечего: каталога суиты нет ни на какой машине, потому что линия выноса службы
+    доступа унесла его в другой репозиторий. Отказ по этому поводу был бы вечным,
+    а вечный отказ снимают вместе с гейтом.
+
+    И НЕ «ЧИСТО»: состояние печатается поимённо, с числами обхода, и ИСТЕКАЕТ
+    САМО — появится в дереве хоть одна коллекция под личностью церемонии, и
+    потолок снова потребуется, а его недоступность снова станет отказом.
+
+    Несёт перепись: сколько коллекций прочитано, есть ли каталог суиты, сколько
+    коллекций волны нашлось.
+    """
+
+    def __init__(self, census: dict):
+        super().__init__("волна церемонии в этом дереве не производится")
+        self.census = census
 
 
 class PremiseError(RuntimeError):
@@ -431,11 +480,46 @@ def _pre_code(step) -> str:
         for ev in (step.get("event") or []) if ev.get("listen") == "prerequest")
 
 
+def wave_presence(root: str, decl) -> tuple[list[str], dict]:
+    """→ (имена коллекций волны, перепись прочитанного).
+
+    ПУСТАЯ ВОЛНА — ТРИ РАЗНЫХ СОСТОЯНИЯ, и схлопывать их в одно нельзя:
+
+      * ПРОЧИТАНО НОЛЬ коллекций — обход сломан либо корень не тот. Отказ:
+        «ноль найденных» обязано быть отличимо от «ноль прочитанного»;
+      * КАТАЛОГ СУИТЫ ЕСТЬ, а коллекций волны в нём нет — предмет на месте, а
+        волна исчезла. Отказ, и это тот же отказ, что стоял здесь всегда;
+      * КАТАЛОГА СУИТЫ НЕТ ВОВСЕ — суита уехала в дерево другого продукта.
+        Ни отказ, ни «чисто»: [SubjectElsewhere], печатается и истекает сама.
+
+    Различает состояния ОДИН факт дерева — наличие каталога, — и он спрашивается
+    у диска, а не выводится из пустоты списка: пустой список даёт и то, и другое.
+    """
+    res = decl.scan(root)
+    census = {
+        "files_read": res.get("files_read", 0),
+        "suite_present": os.path.isdir(os.path.join(root, SUITE, "collections")),
+        "suite": SUITE,
+    }
+    stems = decl.stems_for_suite(SUITE, root)
+    census["stems"] = len(stems)
+    if stems:
+        return stems, census
+    if census["files_read"] == 0:
+        raise PremiseError(
+            f"обход не прочитал НИ ОДНОЙ коллекции (корень {root}) — «ноль "
+            f"коллекций волны» стало неотличимо от «ноль прочитанного»")
+    if census["suite_present"]:
+        raise PremiseError(
+            f"каталог суиты {SUITE}/collections в дереве ЕСТЬ, а коллекций волны в "
+            f"нём нет (прочитано коллекций дерева {census['files_read']}) — волна "
+            f"исчезла при живой суите, и это не «чисто»")
+    raise SubjectElsewhere(census)
+
+
 def wave_collections(root: str, decl) -> list[tuple[str, dict]]:
     """Коллекции волны В ПОРЯДКЕ ИСПОЛНЕНИЯ, разобранные."""
-    stems = decl.stems_for_suite(SUITE, root)
-    if not stems:
-        raise PremiseError("волна пуста — считать нечего, и это не «чисто»")
+    stems, _census = wave_presence(root, decl)
     out = []
     for stem in stems:
         p = os.path.join(root, SUITE, "collections", f"{stem}.postman_collection.json")
@@ -551,6 +635,13 @@ def audit(root: str):
                 raise PremiseError(
                     f"предъявитель {b!r} (личность {name!r}) не объявлен в "
                     f"CEREMONY_ONLY_ENV — счёт видел бы не все создания этой личности")
+    # ПОРЯДОК НЕСУЩИЙ: сперва ВОЛНА, потом потолок и базовый уровень. Волна —
+    # предмет вердикта, потолок — мерка; спрашивать мерку раньше предмета значит
+    # отказывать по недоступности мерки там, где мерить нечего. Ровно это и
+    # происходило после разреза службы: гейт отвечал «каталога миграций iam нет»,
+    # хотя волны в дереве не было вовсе, — то есть называл вторую причину, не
+    # дойдя до первой.
+    wave = wave_collections(root, decl)
     ceiling, mig_census = read_ceiling_with_census(root)
     common, seeded_total, why = read_base_components(root)
     seeded = seeded_by_identity(decl, seeded_total)
@@ -560,7 +651,6 @@ def audit(root: str):
                 f"`SEED_OWNED_ACCOUNTS` называет личность {name!r}, которой нет в "
                 f"`HUMAN_IDENTITIES` — её аккаунты не попали бы ни в чей счёт")
     base = common + max(seeded.values(), default=0)
-    wave = wave_collections(root, decl)
 
     per_identity: list[tuple[str, int, tuple | None, int, int]] = []
     cases = steps = 0
@@ -592,6 +682,48 @@ def audit(root: str):
     return worst[1], worst[2], ceiling, base, why, census
 
 
+def _suite_root_for_empty_wave() -> str:
+    """Корень, где каталог суиты ЕСТЬ, а коллекций волны нет — фикстура отказа."""
+    d = tempfile.mkdtemp(prefix="kacho-suite-")
+    os.makedirs(os.path.join(d, SUITE, "collections"), exist_ok=True)
+    return d
+
+
+def report_subject_elsewhere(census: dict, what: str = "пик аккаунтов") -> int:
+    """Печать исхода «предмет в другом дереве» + код возврата.
+
+    ПЕЧАТАЕТСЯ, А НЕ МОЛЧИТ: строка переписи называет, сколько коллекций
+    прочитано, какой каталог искали и сколько коллекций волны нашлось. «Ноль
+    найденных» обязано быть отличимо от «ноль прочитанного» и здесь — особенно
+    здесь, потому что именно на этом исходе гейт возвращает НОЛЬ.
+
+    КОД НОЛЬ, И ВОТ ПОЧЕМУ ИМЕННО ОН. Вердикт о дереве бывает трёх исходов, и
+    ни один не подходит: находки нет (не красный); мерить нечего (не зелёный по
+    существу); условие не «не создано» — его НЕЛЬЗЯ создать на этой машине, суита
+    в другом репозитории. Отказ был бы вечным, а вечный отказ снимают вместе с
+    гейтом — то есть теряют и вторую половину, которая ещё жива. Поэтому ноль,
+    но с названным состоянием: читатель обязан видеть, что вердикта по существу
+    не было.
+
+    ИСТЕКАЕТ САМО: появится в дереве коллекция под личностью церемонии — волна
+    перестанет быть пустой, потолок снова потребуется, и его недоступность снова
+    станет ОТКАЗОМ. Вернётся каталог суиты — вернётся и прежний отказ «волна
+    исчезла при живой суите».
+    """
+    print(f"БЕСПРЕДМЕТНО: волна церемонии в этом дереве не производится.")
+    print(f"  перепись: коллекций дерева прочитано {census['files_read']}, "
+          f"каталог суиты {census['suite']}/collections "
+          f"{'ЕСТЬ' if census['suite_present'] else 'отсутствует'}, "
+          f"коллекций волны найдено {census['stems']}")
+    print(f"  {what} вешается на потолок ЛИЧНОСТИ, а личности церемонии в этом "
+          f"дереве не ведёт ни одна коллекция.")
+    print("  Предмет уехал вместе со службой доступа: её суита и затравка потолка")
+    print("  живут в дереве другого продукта, и судить их надо там.")
+    print("  Состояние ИСТЕКАЕТ САМО: первая же коллекция под личностью церемонии")
+    print("  снова потребует потолок, и его недоступность снова станет ОТКАЗОМ.")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--root", default=REPO, help="корень монорепо")
@@ -603,6 +735,8 @@ def main(argv=None) -> int:
 
     try:
         peak, at, ceiling, base, why, census = audit(a.root)
+    except SubjectElsewhere as exc:
+        return report_subject_elsewhere(exc.census)
     except PremiseError as exc:
         print(f"ОТКАЗ (предпосылка): {exc}", file=sys.stderr)
         return 2
@@ -796,7 +930,6 @@ def self_test() -> int:
     # порядок колонок, — поэтому каждая из двух осей проверяется отдельно, а
     # рядом стоит законный близнец. Каждый случай меняет РОВНО ОДИН факт против
     # него: иначе неизвестно, какой из двух дал отказ.
-    import tempfile  # noqa: PLC0415 — нужен только здесь
 
     _CANON = ("INSERT INTO kaname.limits (id, created_at, scope, scope_id, "
               "kind, limit_value, withdrawn_at, revision) VALUES "
@@ -932,7 +1065,11 @@ def self_test() -> int:
 
     print("── предпосылки: пустое и нечитаемое суть ОТКАЗ, а не «чисто»")
     for label, fn in (
-        ("пустая волна", lambda: wave_collections(REPO, _EmptyDecl())),
+        # ВОЛНА ПУСТА ПРИ ЖИВОЙ СУИТЕ — по-прежнему ОТКАЗ. Корень несёт каталог
+        # суиты намеренно: без каталога то же самое означало бы «предмет вне
+        # дерева», и проба спрашивала бы не о том, о чём заявляет.
+        ("пустая волна при живой суите",
+         lambda: wave_collections(_suite_root_for_empty_wave(), _EmptyDecl())),
         ("потолка нет в дереве", lambda: read_ceiling(os.path.join(REPO, "нет-такого"))),
         ("источника базового уровня нет",
          lambda: read_base_level(os.path.join(REPO, "нет-такого"))),
@@ -957,7 +1094,7 @@ def self_test() -> int:
     except PremiseError as exc:
         note(False, f"настоящее объявление личностей: {exc}")
 
-    print("── настоящее дерево читается, перепись непуста")
+    print("── настоящее дерево: либо перепись непуста, либо предмет НАЗВАН вне его")
     try:
         _peak, _at, ceiling, base, _why, census = audit(REPO)
         for label, got in (("коллекций", census["collections"]), ("шагов", census["steps"]),
@@ -965,8 +1102,103 @@ def self_test() -> int:
                            ("базовый уровень", base)):
             note(got > 0, f"{label} > 0 ({got})" if got > 0
                  else f"{label} == 0 — предикат ослеп")
+    except SubjectElsewhere as exc:
+        # Беспредметность — ЗАКОННЫЙ исход, но только с переписью: она обязана
+        # доказать, что обход РАБОТАЛ. Пустой обход здесь означал бы не «волны
+        # нет», а «читать не смогли», и это разные вещи.
+        note(exc.census["files_read"] > 0 and exc.census["stems"] == 0
+             and not exc.census["suite_present"],
+             f"волна вне дерева НАЗВАНА: прочитано коллекций "
+             f"{exc.census['files_read']}, каталог суиты отсутствует, волны 0")
     except PremiseError as exc:
         note(False, f"настоящее дерево: {exc}")
+
+    print("── пустая волна: ТРИ состояния, и они не схлопываются в одно")
+    import shutil as _shutil  # noqa: PLC0415 — нужен только здесь
+
+    # ВОЛНА — это коллекции, идущие ПОД ЛИЧНОСТЬЮ ЦЕРЕМОНИИ, а не все коллекции
+    # суиты: объявление отбирает их по предъявителю шага. Поэтому фикстура волны
+    # несёт шаг с предъявителем церемонии, а фикстура «суита есть, волны нет» —
+    # шаг с посторонним предъявителем. Разница между ними — РОВНО ОДНО имя.
+    def _coll(bearer: str | None):
+        step = {"name": "шаг", "request": {"method": "GET",
+                                           "url": {"raw": "{{baseUrl}}/iam/v1/accounts"}}}
+        if bearer:
+            step["event"] = [{"listen": "prerequest", "script": {
+                "exec": [f"// per-step auth: bearer from env '{bearer}'"]}}]
+        return {"info": {"name": "t", "schema": ""},
+                "item": [{"name": "CASE — заголовок", "item": [step]}]}
+
+    def _wave_root(*, neighbour: bool, suite_dir: bool, suite_bearer: str | None) -> str:
+        d = tempfile.mkdtemp(prefix="kacho-wave-")
+        if neighbour:
+            p = os.path.join(d, "services", "zz", "tests", "newman", "collections")
+            os.makedirs(p, exist_ok=True)
+            with open(os.path.join(p, "a.postman_collection.json"), "w",
+                      encoding="utf-8") as fh:
+                json.dump(_coll("jwtAccountAdminA"), fh)
+        if suite_dir:
+            p = os.path.join(d, SUITE, "collections")
+            os.makedirs(p, exist_ok=True)
+            with open(os.path.join(p, "b.postman_collection.json"), "w",
+                      encoding="utf-8") as fh:
+                json.dump(_coll(suite_bearer), fh)
+        return d
+
+    _decl, _gate = load_declarations(REPO)
+
+    # (1) каталога суиты НЕТ, а коллекции дерева читаются → предмет вне дерева.
+    _r = _wave_root(neighbour=True, suite_dir=False, suite_bearer=None)
+    try:
+        wave_presence(_r, _decl)
+        note(False, "суиты нет: прошло молча")
+    except SubjectElsewhere as exc:
+        note(exc.census["files_read"] == 1 and not exc.census["suite_present"],
+             f"суиты нет, коллекции читаются → предмет вне дерева "
+             f"(прочитано {exc.census['files_read']})")
+    except PremiseError as exc:
+        note(False, f"суиты нет: получили отказ вместо беспредметности: {exc}")
+    _shutil.rmtree(_r, ignore_errors=True)
+
+    # (2) АНТИ-МАСКА, и это главная половина: каталог суиты ЕСТЬ, волны в нём нет —
+    #     ОТКАЗ, а не беспредметность. Отличие от (1) — РОВНО ОДИН факт: каталог.
+    #     Без этой стороны «предмет вне дерева» накрыло бы и живую суиту, у которой
+    #     волна исчезла, — то есть ровно тот дефект, ради которого гейт заведён.
+    _r = _wave_root(neighbour=True, suite_dir=True, suite_bearer="jwtAccountAdminA")
+    try:
+        wave_presence(_r, _decl)
+        note(False, "суита есть, волны нет: прошло молча")
+    except SubjectElsewhere:
+        note(False, "суита ЕСТЬ, а исчезнувшая волна объявлена беспредметностью — "
+                    "маска на живом предмете")
+    except PremiseError as exc:
+        note("ЕСТЬ" in str(exc), f"суита есть, волны нет → ОТКАЗ")
+    _shutil.rmtree(_r, ignore_errors=True)
+
+    # (3) ПРОЧИТАНО НОЛЬ — отказ, а не беспредметность: «ноль найденных» обязано
+    #     быть отличимо от «ноль прочитанного». Отличие от (1) — тоже один факт.
+    _r = _wave_root(neighbour=False, suite_dir=False, suite_bearer=None)
+    try:
+        wave_presence(_r, _decl)
+        note(False, "прочитано ноль: прошло молча")
+    except SubjectElsewhere:
+        note(False, "пустой обход объявлен беспредметностью — «не прочитали» "
+                    "выдано за «нечего читать»")
+    except PremiseError as exc:
+        note("НИ ОДНОЙ" in str(exc), "прочитано ноль коллекций → ОТКАЗ")
+    _shutil.rmtree(_r, ignore_errors=True)
+
+    # (4) ЗАКОННЫЙ БЛИЗНЕЦ: суита с коллекцией — волна НАЙДЕНА, ни отказа, ни
+    #     беспредметности. Без него все три отрицания выше зеленели бы на
+    #     предикате, который не умеет находить волну вовсе.
+    _r = _wave_root(neighbour=True, suite_dir=True, suite_bearer=CEREMONY_IDENTITY_BEARERS[0])
+    try:
+        _stems, _c = wave_presence(_r, _decl)
+        note(_stems == ["b"] and _c["stems"] == 1,
+             f"суита с коллекцией → волна найдена ({_stems})")
+    except (SubjectElsewhere, PremiseError) as exc:
+        note(False, f"законный близнец: волна не найдена ({exc})")
+    _shutil.rmtree(_r, ignore_errors=True)
 
     print()
     # Перепись СВОЯ, а не только дерева: «ноль провалов» обязано быть отличимо от
@@ -990,11 +1222,20 @@ class _EmptyBearersDecl:
 
 
 class _EmptyDecl:
-    """Объявление, отдающее пустую волну — фикстура предпосылки."""
+    """Объявление, отдающее пустую волну — фикстура предпосылки.
+
+    `scan` отдаёт НЕНУЛЕВОЕ число прочитанного намеренно: фикстура проверяет
+    «волна пуста», а не «обход ничего не прочитал». Это разные состояния, и с
+    нулём здесь проба меняла бы предмет на соседний (см. `wave_presence`).
+    """
 
     @staticmethod
     def stems_for_suite(_suite, _root):
         return []
+
+    @staticmethod
+    def scan(_root):
+        return {"files_read": 1}
 
 
 if __name__ == "__main__":
