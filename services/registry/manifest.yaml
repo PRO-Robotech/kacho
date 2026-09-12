@@ -13,10 +13,17 @@
 #  репозиторий в этом пространстве имён» есть операция над объектом реестра.
 #
 #  Раздел `resources` порождает блоки типов модели доступов; сверка с каноном
-#  `proto/kaname/cloud/iam/v1/fga_model.fga` ПОБАЙТОВАЯ:
-#      make -C services/iam model-canon-check
-#  Форму документа судит один разбор:
-#      make -C services/iam module-manifest-check
+#  `proto/kaname/cloud/iam/v1/fga_model.fga` ПОБАЙТОВАЯ, и её исполнитель — цель
+#  `model-canon-check` репозитория PRO-Robotech/kaname; форму документа судит там
+#  же `module-manifest-check`. Служба доступа уехала вместе с ними (#2598), и в
+#  ЭТОМ дереве обеих сверок не ведёт НИКТО. Остаток назван числом, а не умолчан:
+#  предмет — #2613.
+#
+#  Что о СВОЁМ документе утверждает платформа, не владея его схемой, судится здесь:
+#      go test ./internal/repohygiene/ -run TestModuleManifestsOfThePlatformAreReadable -count=1
+#      go test ./internal/repohygiene/ -run TestManifestIsNotASecondDeclarationOfARight -count=1
+#  А что всякий названный этой шапкой держатель ИСПОЛНИМ в дереве, где она лежит:
+#      go test ./internal/repohygiene/ -run TestManifestNamedPredicateIsRunnableInThisTree -count=1
 #
 #  Что ВЫВОДИТСЯ и здесь не пишется: класс канонического действия — из его
 #  имени; умолчательный состав субъектов `[user, service_account, group#member]`;
@@ -27,8 +34,8 @@
 #  ЧЕГО ЗДЕСЬ НЕТ, и это сказано, чтобы манифест не читался как полный.
 #
 #  Раздела `roles` здесь нет потому, что объявлять нечего: живых системных ролей
-#  у модуля НОЛЬ — предикат печатает перепись гейта
-#      go test -C services/iam ./internal/moduleroleparity/
+#  у модуля НОЛЬ — перепись печатает пакет `internal/moduleroleparity`
+#  репозитория PRO-Robotech/kaname; в этом дереве его нет (#2613).
 #  Пустой раздел был бы вторым способом сказать то же самое, и он разошёлся бы с
 #  деревом молча в день появления первой роли: гейт краснеет, если живая роль
 #  модуля не объявлена, а раздел уже есть.
@@ -128,8 +135,8 @@ resources:
 #  seed — что заводит УСТАНОВКА модуля (#1891).
 #
 #  Здесь объявлено то, что у модуля уже лежит в базе, и согласие с ней
-#  доказывается ПРОГОНОМ, а не чтением миграций:
-#      go test -C services/iam ./internal/moduleseedparity/
+#  доказывается ПРОГОНОМ, а не чтением миграций: пакет `internal/moduleseedparity`
+#  репозитория PRO-Robotech/kaname. В этом дереве такого прогона нет (#2613).
 #
 #  ЧЕГО ЗДЕСЬ НЕТ, и это не недосмотр: `groups` и `accessBindings`. Живых строк
 #  этих двух видов у модуля НЕТ ни одной, и это утверждение ПРОВЕРЯЕТСЯ: гейт

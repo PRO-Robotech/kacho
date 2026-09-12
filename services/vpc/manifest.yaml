@@ -10,10 +10,17 @@
 #  construction: ключ `objectType` обязателен.
 #
 #  Раздел `resources` порождает блоки типов модели доступов; сверка с каноном
-#  `proto/kaname/cloud/iam/v1/fga_model.fga` ПОБАЙТОВАЯ:
-#      make -C services/iam model-canon-check
-#  Форму документа судит один разбор:
-#      make -C services/iam module-manifest-check
+#  `proto/kaname/cloud/iam/v1/fga_model.fga` ПОБАЙТОВАЯ, и её исполнитель — цель
+#  `model-canon-check` репозитория PRO-Robotech/kaname; форму документа судит там
+#  же `module-manifest-check`. Служба доступа уехала вместе с ними (#2598), и в
+#  ЭТОМ дереве обеих сверок не ведёт НИКТО. Остаток назван числом, а не умолчан:
+#  предмет — #2613.
+#
+#  Что о СВОЁМ документе утверждает платформа, не владея его схемой, судится здесь:
+#      go test ./internal/repohygiene/ -run TestModuleManifestsOfThePlatformAreReadable -count=1
+#      go test ./internal/repohygiene/ -run TestManifestIsNotASecondDeclarationOfARight -count=1
+#  А что всякий названный этой шапкой держатель ИСПОЛНИМ в дереве, где она лежит:
+#      go test ./internal/repohygiene/ -run TestManifestNamedPredicateIsRunnableInThisTree -count=1
 #
 #  Что ВЫВОДИТСЯ и здесь не пишется: класс канонического действия — из его
 #  имени; умолчательный состав субъектов `[user, service_account, group#member]`;
@@ -24,8 +31,9 @@
 #  ЧЕГО ЗДЕСЬ НЕТ, и это сказано, чтобы манифест не читался как полный.
 #
 #  РАЗДЕЛ `roles` ЗДЕСЬ ЕСТЬ — внизу файла. Он объявляет то, что у модуля уже
-#  лежит в базе, и согласие с ней доказывается ПРОГОНОМ, а не чтением:
-#      go test -C services/iam ./internal/moduleroleparity/
+#  лежит в базе, и согласие с ней доказывается ПРОГОНОМ, а не чтением: пакет
+#  `internal/moduleroleparity` репозитория PRO-Robotech/kaname. Прогон идёт в ЕГО
+#  дереве — в этом каталога службы нет ни одного пути (#2613).
 #
 #  Здесь стояло «раздел `roles` этот манифест НЕ объявляет, и это не недосмотр:
 #  14 из 18 живых ролей несут назначение короче предела прозы». Утверждение было
@@ -33,7 +41,8 @@
 #  приговор по длине имени типа (`Admin RouteTable` 16 знаков проходило,
 #  `Edit RouteTable` 15 — нет) и делал 27 живых ролей из 42 невыразимыми ни при
 #  каком написании. Величина предела и довод обеими сторонами —
-#  `services/iam/internal/manifest/roles.go`, `minRoleDescriptionRunes` (#1904).
+#  `internal/manifest/roles.go` репозитория PRO-Robotech/kaname,
+#  `minRoleDescriptionRunes` (#1904).
 #  ВЕДОМОСТЬ ГЕЙТА ПУСТА, и это перемерено, а не унаследовано: живые роли
 #  объявили все четыре модуля, у которых они есть, — `compute` (3 из 3),
 #  `iam` (19 из 19), `loadbalancer` (2 из 2), `vpc` (18 из 18); всего 42 роли
@@ -187,8 +196,8 @@ resources:
 #
 #  Писатель этих строк — применитель манифеста, а не миграция: он приводит
 #  `kaname.roles` к объявленному здесь состоянию. Согласие объявления с живой
-#  базой держит ПРОГОН, а не чтение:
-#      go test -C services/iam ./internal/moduleroleparity/
+#  базой держит ПРОГОН, а не чтение: пакет `internal/moduleroleparity`
+#  репозитория PRO-Robotech/kaname (#2613).
 #  Гейт поднимает Postgres, играет цепочку миграций дерева и сравнивает строки
 #  с тем, что произвёл бы применитель ИЗ ЭТОГО раздела. Расхождение по
 #  идентификатору, назначению либо праву — находка с именем роли.
@@ -397,8 +406,8 @@ roles:
 #  seed — что заводит УСТАНОВКА модуля (#1891).
 #
 #  Здесь объявлено то, что у модуля уже лежит в базе, и согласие с ней
-#  доказывается ПРОГОНОМ, а не чтением миграций:
-#      go test -C services/iam ./internal/moduleseedparity/
+#  доказывается ПРОГОНОМ, а не чтением миграций: пакет `internal/moduleseedparity`
+#  репозитория PRO-Robotech/kaname. В этом дереве такого прогона нет (#2613).
 #
 #  ЧЕГО ЗДЕСЬ НЕТ, и это не недосмотр: `groups`.
 #
