@@ -65,6 +65,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -156,6 +157,51 @@ def area(pkg: str, module: str) -> str:
     return segs[0]
 
 
+TEST_DECL_RE = re.compile(r"^func (?:Test|Fuzz)", re.M)
+
+
+def order_weights(root: Path) -> dict[str, int]:
+    """Вес области ДЛЯ ПОРЯДКА ОТПРАВКИ — число объявлений проб в её файлах.
+
+    ЧТО ЭТОТ ВЕС РЕШАЕТ И ЧЕГО НЕ РЕШАЕТ. Он решает ТОЛЬКО порядок строк матрицы.
+    Раздачи он не касается, полноты не касается, вердикта не касается: ошибись он
+    вдвое — изменится очередь отправки, и ничего больше. Поэтому приблизительность
+    здесь законна, а неточность не может стать потерей пакета.
+
+    ЗАЧЕМ ВООБЩЕ ПОРЯДОК. Площадка создаёт задания матрицы в порядке строк и
+    раздаёт ранеры по мере освобождения. Когда ранеров меньше, чем шардов, — а это
+    измерено: в прогоне 34723597932 тринадцать шардов стали готовы одновременно и
+    самый долгий получил ранер через 1058 с, — порядок определяет критический путь
+    прогона целиком. Долгий шард, отправленный последним, добавляет к прогону всё
+    время ожидания.
+
+    ПОЧЕМУ ЧИСЛО ПРОБ, А НЕ ЧИСЛО ПАКЕТОВ. Число пакетов как предсказание
+    ОПРОВЕРГНУТО замером: `internal` — 6 пакетов из 206 (3 %) и 1073 с из 1488 с
+    критического пути (72 %), тогда как `vpc` — 40 пакетов и 87 с. Число
+    объявлений проб ставит `internal` первым (2629 против 1499 у `vpc`), то есть
+    отвечает на нужный вопрос. Идеальным предсказателем оно не является и здесь
+    им быть не обязано — см. первый абзац.
+    """
+    try:
+        r = subprocess.run(["git", "-C", str(root), "ls-files", "*_test.go"],
+                           capture_output=True, text=True, timeout=300)
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    if r.returncode != 0:
+        return {}
+    out: dict[str, int] = {}
+    for rel in r.stdout.splitlines():
+        rel = rel.strip()
+        if not rel or "/testdata/" in rel or rel.startswith("testdata/"):
+            continue
+        try:
+            body = (root / rel).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        out[area(rel, "")] = out.get(area(rel, ""), 0) + len(TEST_DECL_RE.findall(body))
+    return out
+
+
 def assign(pkgs: list[str], module: str) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     for pkg in pkgs:
@@ -224,7 +270,8 @@ def plan_document(tree: list[str], shards: dict[str, list[str]], module: str) ->
     }
 
 
-def matrix_document(shards: dict[str, list[str]]) -> dict:
+def matrix_document(shards: dict[str, list[str]],
+                    weights: dict[str, int] | None = None) -> dict:
     """Строка матрицы несёт ТОЛЬКО `id` области — не перечень пакетов.
 
     Перечень шард выводит сам, тем же `--packages` и тем же правилом. Это ВТОРОЕ
@@ -236,8 +283,14 @@ def matrix_document(shards: dict[str, list[str]]) -> dict:
     Обратный порядок — передать перечень матрицей — экономит вычисление и теряет
     эту сверку: шард гонял бы ровно то, что ему сказали, и вопрос «а то же ли это,
     что в дереве» задавать было бы негде.
+
+    ПОРЯДОК СТРОК — САМЫЙ ТЯЖЁЛЫЙ ПЕРВЫМ (см. `order_weights`). При нехватке
+    ранеров порядок строк и есть критический путь прогона. Без веса порядок
+    остаётся детерминированным — по идентификатору, — потому что недетерминизм
+    матрицы сделал бы неповторимым и разбор прогона.
     """
-    return {"shard": [{"id": sid} for sid in shards]}
+    order = sorted(shards, key=lambda sid: (-(weights or {}).get(sid, 0), sid))
+    return {"shard": [{"id": sid} for sid in order]}
 
 
 # ─── самопроба ──────────────────────────────────────────────────────────────
@@ -361,6 +414,31 @@ def self_test() -> int:
           f"индекса и путь импорта дают одну область")
     ok &= same
 
+    # Ось 11 — ПОРЯДОК ОТПРАВКИ. Вес решает только очередь: множество шардов и
+    # раздача от него не зависят ни в одном случае.
+    w = {"pkg": 900, "vpc": 10, "gateway": 5}
+    rows = [r["id"] for r in matrix_document(shards, w)["shard"]]
+    first_ok = rows[0] == "pkg"
+    print(f"  [{'OK ' if first_ok else 'ОТКАЗ'}] самый тяжёлый по весу отправляется "
+          f"первым: {rows}")
+    ok &= first_ok
+    same_set = sorted(rows) == sorted(shards)
+    print(f"  [{'OK ' if same_set else 'ОТКАЗ'}] вес НЕ меняет множество шардов "
+          f"({len(rows)} против {len(shards)})")
+    ok &= same_set
+    no_w = [r["id"] for r in matrix_document(shards, {})["shard"]]
+    det = no_w == sorted(shards)
+    print(f"  [{'OK ' if det else 'ОТКАЗ'}] без веса порядок детерминирован по "
+          f"идентификатору: {no_w}")
+    ok &= det
+    # Раздача обязана остаться той же при любом весе — иначе вес стал бы решать
+    # полноту, а его приблизительность законна только потому, что не решает.
+    findings_w, num_w = census(FIXTURE, shards, sorted(shards))
+    same_handed = num_w["handed"] == len(FIXTURE) and not findings_w
+    print(f"  [{'OK ' if same_handed else 'ОТКАЗ'}] раздача при любом весе та же: "
+          f"роздано {num_w['handed']} при дереве {len(FIXTURE)}")
+    ok &= same_handed
+
     print("самопроба:", "ПРОЙДЕНА" if ok else "ПРОВАЛЕНА")
     return 0 if ok else 1
 
@@ -416,6 +494,7 @@ def main() -> int:
 
     shards = assign(tree, module)
     findings, num = census(tree, shards, index)
+    weights = order_weights(root)
 
     if args.packages:
         if args.packages not in shards:
@@ -445,7 +524,8 @@ def main() -> int:
             for f in findings:
                 sys.stderr.write(f"ОТКАЗ: {f}\n")
             return 1
-        print("matrix=" + json.dumps(matrix_document(shards), ensure_ascii=False))
+        print("matrix=" + json.dumps(matrix_document(shards, weights),
+                                     ensure_ascii=False))
         return 0
 
     # Перепись — умолчание: вызов без режима обязан ЧТО-ТО измерить, а не молчать.
@@ -454,8 +534,12 @@ def main() -> int:
     print(f"  пакетов с пробами в дереве: {num['tree']}")
     print(f"  роздано по шардам:          {num['handed']} (различных {num['handed_unique']})")
     print(f"  шардов:                     {num['shards']}")
-    for sid, n in sorted(num["per_shard"].items(), key=lambda kv: (-kv[1], kv[0])):
-        print(f"    {sid:14} {n:4}")
+    print(f"  порядок отправки — самый тяжёлый первым; вес = объявлений проб "
+          f"(решает ТОЛЬКО очередь, не раздачу)")
+    for row in matrix_document(shards, weights)["shard"]:
+        sid = row["id"]
+        print(f"    {sid:14} пакетов {num['per_shard'][sid]:4} · "
+              f"объявлений проб {weights.get(sid, 0):5}")
     if args.out:
         Path(args.out).write_text(
             json.dumps(plan_document(tree, shards, module), ensure_ascii=False,
