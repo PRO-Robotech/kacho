@@ -90,6 +90,7 @@ DECLARED="
 .github/scripts/aggregate-shard-verdicts.py
 .github/scripts/assert-build-fetch-matches-imports.py
 .github/scripts/assert-console-probes-verdict.py
+.github/scripts/assert-declared-verdicts-ran.py
 .github/scripts/assert-default-branch-workflows-can-run.py
 .github/scripts/assert-green-gate-notes.py
 .github/scripts/assert-required-contexts-match-jobs.py
