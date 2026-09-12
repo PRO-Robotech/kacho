@@ -1974,7 +1974,12 @@ jobs:
         run: |
           set -euo pipefail
           n=0
-          for stack in $(bash ../../tests/helm/stacks.sh --names); do
+          # Перечень и цепочка берутся ПРИСВАИВАНИЕМ: подстановка в списке `for`
+          # теряет код ВСЕГДА, поэтому отказ читателя таблицы обходил бы ноль
+          # стеков, а страж ниже назвал бы это «не отрендерено ни одного» —
+          # верным словом о неверной причине.
+          stacks="$(bash ../../tests/helm/stacks.sh --names)"
+          for stack in $stacks; do
             args="$(bash ../../tests/helm/stacks.sh --args "$stack")"
             echo "=== $stack: helm template $args ==="
             # shellcheck disable=SC2086
