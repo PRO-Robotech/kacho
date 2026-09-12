@@ -174,16 +174,20 @@ def guarded(step: dict) -> bool:
     return f"env.{FLAG}" in str(step.get("if") or "")
 
 
-def flag_producers() -> list[str]:
+def flag_producers(scripts_dir: pathlib.Path | None = None) -> list[str]:
     """Скрипты, которые САМИ дописывают отметку в `$GITHUB_ENV`. Выведено из дерева.
 
     Признак — не имя и не перечень: файл обязан содержать И присваивание
     `<отметка>=1`, И `$GITHUB_ENV`, куда оно уезжает. Перечень имён старел бы ровно
     тогда, когда заводят третьего производителя, — то есть в единственный момент,
     когда он и нужен.
+
+    Каталог — ПАРАМЕТР, а не константа: без него предикат нельзя подать входом,
+    который в дереве не лежит, и обе стороны инъекции (проза о записи · сама
+    запись) проверялись бы обещанием.
     """
     out: list[str] = []
-    scripts = REPO / ".github" / "scripts"
+    scripts = (REPO / ".github" / "scripts") if scripts_dir is None else scripts_dir
     if not scripts.is_dir():
         return out
     for f in sorted(scripts.iterdir()):
@@ -661,6 +665,75 @@ def _self_test() -> int:
     globals()["flag_producers"] = real_prod
     say(any("БЕЗ ВХОДА" in x for x in f),
         "ноль скриптов-производителей → находка (звено 7 не судит даром)")
+
+    # ── (и) ПРЕДИКАТ ПРОИЗВОДИТЕЛЯ СУДИТ ИСПОЛНЯЕМЫЙ КОД, А НЕ ТЕКСТ ─────────
+    #
+    # Отбор «оба слова встретились в файле» считает производителем ПРОЗУ о
+    # производстве, и предмет у этой оси в дереве наполовину уже есть: последний
+    # шаг работ подъёма несёт текст отметки в шапке-объяснении, а молчит предикат
+    # только потому, что имени раковины в той же прозе пока нет. Допишет его
+    # кто-нибудь — и звено 7 потребует читателя от работ, которые отметку НЕ
+    # ставят: гейт покраснеет на верном дереве, то есть перестанет быть годным.
+    #
+    # Оси идут парами, и близнец отличается РОВНО ОДНИМ фактом — исполняется ли
+    # запись. Читатель раковины стоит отдельной осью: у него есть и текст отметки,
+    # и имя раковины, и нет ровно оператора записи.
+    print("  --- звено 7: производитель отбирается РАЗБОРОМ (инъекция парами)")
+    mark = f"{FLAG}=1"
+    fixtures: list[tuple[str, bool, str]] = [
+        # ЗАПИСЬ ИСПОЛНЯЕТСЯ → производитель
+        ("prod-plain.sh", True,
+         '#!/usr/bin/env bash\necho "' + mark + '" >> "$GITHUB_ENV"\n'),
+        ("prod-guarded.sh", True,
+         '#!/usr/bin/env bash\n[ -n "${GITHUB_ENV:-}" ] && echo "' + mark
+         + '" >> "$GITHUB_ENV"\n'),
+        ("prod-heredoc.sh", True,
+         '#!/usr/bin/env bash\ncat >> "$GITHUB_ENV" <<EOF\n' + mark + '\nEOF\n'),
+        ("prod-write.py", True,
+         'import os\nwith open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:\n'
+         '    fh.write("' + mark + '\\n")\n'),
+        # ПРОЗА О ЗАПИСИ → НЕ производитель
+        ("prose-comment.sh", False,
+         '#!/usr/bin/env bash\n# отметка ' + mark + ' уезжает в "$GITHUB_ENV"\ntrue\n'),
+        ("prose-dquote.sh", False,
+         '#!/usr/bin/env bash\necho "ставим ' + mark + ' в $GITHUB_ENV"\n'),
+        ("prose-squote.sh", False,
+         "#!/usr/bin/env bash\necho 'ставим " + mark + " в $GITHUB_ENV'\n"),
+        ("prose-heredoc.sh", False,
+         "#!/usr/bin/env bash\ncat <<'EOF'\nотметка " + mark + " уезжает в $GITHUB_ENV\nEOF\n"),
+        ("prose-docstring.py", False,
+         '"""Отметку ' + mark + ' ставит владелец подъёма — она уезжает в $GITHUB_ENV."""\n'
+         'import sys\n\nsys.exit(0)\n'),
+        ("prose-string.py", False,
+         'MESSAGE = "отметка ' + mark + ' уезжает в $GITHUB_ENV"\nprint(MESSAGE)\n'),
+        ("prose-fstring.py", False,
+         'WHO = "владелец подъёма"\nMESSAGE = f"{WHO} ставит ' + mark
+         + ' в $GITHUB_ENV"\nprint(MESSAGE)\n'),
+        # ЧИТАТЕЛЬ РАКОВИНЫ: текст отметки и имя раковины есть, записи нет
+        ("reader.sh", False,
+         '#!/usr/bin/env bash\ngrep -q \'' + mark + '\' "$GITHUB_ENV"\n'),
+    ]
+    with tempfile.TemporaryDirectory() as td:
+        fx = pathlib.Path(td) / "scripts"
+        fx.mkdir()
+        for name, _want, text in fixtures:
+            (fx / name).write_text(text, encoding="utf-8")
+        got = set(flag_producers(fx))
+        for name, want, _text in fixtures:
+            say((name in got) == want,
+                f"{name}: " + ("запись исполняется → производитель" if want
+                               else "запись не исполняется → НЕ производитель"),
+                f"предикат ответил «{'да' if name in got else 'нет'}», "
+                f"ждали «{'да' if want else 'нет'}»")
+        want_all = {n for n, w, _ in fixtures if w}
+        say(got == want_all,
+            f"на подставном наборе производителей {len(want_all)} из {len(fixtures)} — "
+            f"остальное проза о записи и чтение раковины",
+            f"ответ {sorted(got)}, ждали {sorted(want_all)}")
+        empty = pathlib.Path(td) / "empty"
+        empty.mkdir()
+        say(flag_producers(empty) == [],
+            "каталог скриптов пуст → производителей ноль (вход звена 7 отсутствует)")
 
     print("самопроверка:", "PASS" if ok else "FAIL")
     return 0 if ok else 1
