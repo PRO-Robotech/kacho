@@ -21,6 +21,8 @@ package config
 
 import (
 	corequota "github.com/PRO-Robotech/corelib/quota"
+
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaedge"
 )
 
 const (
@@ -28,8 +30,9 @@ const (
 	// видит оператор. Попадают в текст отказа старта: без имени ручки стенд не
 	// поднять, и это одно из трёх мест, прямо выведенных из-под запрета
 	// `security.md` §«Публичные артефакты».
-	quotaAuthorityKnob          = "quota.authority (KACHO_VPC_QUOTA__AUTHORITY)"
-	quotaAuthorityTransportKnob = "KACHO_VPC_QUOTA_AUTHORITY_MTLS_ENABLE"
+	quotaAuthorityKnob           = "quota.authority (KACHO_VPC_QUOTA__AUTHORITY)"
+	quotaAuthorityTransportKnob  = "KACHO_VPC_QUOTA_AUTHORITY_MTLS_ENABLE"
+	quotaAuthorityServerNameKnob = "KACHO_VPC_QUOTA_AUTHORITY_MTLS_SERVERNAME"
 )
 
 // QuotaAuthority разрешает объявление домена величин вместе с удостоверением к
@@ -53,13 +56,28 @@ const (
 // ручка, а не переиспользуется чужая: вывод адреса из чужого ребра эта стадия и
 // снимает.
 func (c Config) QuotaAuthority(m MTLSConfig) (corequota.Authority, error) {
-	return corequota.ResolveAuthority(corequota.Declaration{
+	a, err := corequota.ResolveAuthority(corequota.Declaration{
 		Knob:              quotaAuthorityKnob,
 		Value:             c.Quota.Authority,
 		TransportKnob:     quotaAuthorityTransportKnob,
 		TransportRequired: c.AuthN.Mode.IsProduction(),
 		TransportDeclared: m.QuotaAuthorityMTLS.Enable,
 	})
+	if err != nil {
+		return corequota.Authority{}, err
+	}
+	// Вторая половина пары: адрес объявил ОТСУТСТВИЕ домена, а удостоверение к
+	// нему объявлено — имя для сверки называет пира, к которому ребро не идёт.
+	if err := quotaedge.ValidateAbsentAuthorityCarriesNoTransport(quotaedge.Pair{
+		AuthorityKnob:  quotaAuthorityKnob,
+		Authority:      c.Quota.Authority,
+		TransportKnob:  quotaAuthorityTransportKnob,
+		ServerNameKnob: quotaAuthorityServerNameKnob,
+		Transport:      m.QuotaAuthorityMTLS,
+	}); err != nil {
+		return corequota.Authority{}, err
+	}
+	return a, nil
 }
 
 // ValidateQuotaAuthority — тот же предикат, вызванный ради вердикта.
