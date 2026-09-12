@@ -8,8 +8,10 @@
 //
 //	product-names КАТАЛОГ [КАТАЛОГ…]     печатает «каталог<TAB>имя» построчно
 //	product-names --parts                печатает каталоги частей ВЕДОМОСТИ, по одному в строке
-//	product-names --external-pins ФАЙЛ…  печатает, какой ССЫЛКОЙ объявлена часть,
-//	                                     чьи исходники вынесены в другой репозиторий
+//	product-names --external-pins ЦЕПОЧКА…  печатает, какой ССЫЛКОЙ объявлена
+//	                                        часть, чьи исходники вынесены в другой
+//	                                        репозиторий. ЦЕПОЧКА — «<имя>=<файл>[,<файл>…]»,
+//	                                        слои складываются слева направо, как в helm
 //
 // # Зачем режим перечисления
 //
@@ -51,7 +53,7 @@
 //	1  среди названного есть ПУСТОЕ имя — печатать для него нечего;
 //	2  каталогов не названо ни одного — обход беспредметен, и это НЕ успех;
 //	   либо ведомость пуста в режиме `--parts` — «ноль прочитанного» не есть «ноль частей»;
-//	   либо у `--external-pins` не названо файлов, файл не читается или не разбирается,
+//	   либо у `--external-pins` не названо цепочек, файл не читается или не разбирается,
 //	   либо пуста ведомость вынесенных частей — там тот же довод, разбор у режима.
 //
 // Пустой вывод при коде 0 невозможен by construction: код 2 отделяет «спросили
@@ -182,12 +184,23 @@ func main() {
 // Третьего читателя `stacks.txt` здесь не заводится намеренно: файл сам называет
 // своих читателей, и их двое.
 //
-// # ФОРМ ОБЪЯВЛЕНИЯ ОБРАЗА ДВЕ, И ОБЕ ЗАКОННЫ
+// # ФОРМ ОБЪЯВЛЕНИЯ ОБРАЗА ТРИ, И ВСЕ ТРИ ЗАКОННЫ В ЭТОМ ДЕРЕВЕ
 //
-// Подчарты объявляют образ по-разному: картой (`image: {repository, tag, digest}`)
-// и плоской строкой (`image: "<репо>:<тег>"` рядом с `imageDigest`). Распознаватель,
-// знающий одну из двух, на второй МОЛЧИТ — то есть выглядит работающим и не видит
-// предмета. Обе формы разбираются здесь, и обе доказаны инъекцией
+// Подчарты объявляют образ по-разному, и перечень получен ОБХОДОМ профилей, а не
+// памятью:
+//
+//	картой            `image: {repository, tag[, digest]}`  — kaname, kacho-nlb;
+//	плоской строкой   `image: "<репо>:<тег>"` + `imageDigest` — вендоренный geo;
+//	ТОЛЬКО ТЕГОМ      `image: {tag: …}` в накладке                — values.fe3455-prod.yaml.
+//
+// Третья и была слепым местом: репозиторий приезжает из слоя НИЖЕ, поэтому накладка
+// сама по себе ссылки не несёт. Распознаватель, судящий файлы по одному, её не
+// отвергает — он её НЕ ВИДИТ, и стенд, поднятый такой цепочкой, получил бы «пин не
+// объявлен» либо, при ином теге накладки, находку на верной ссылке.
+//
+// ПОЭТОМУ ВХОД — ЦЕПОЧКА, А НЕ ФАЙЛ. Слои складываются так же, как их складывает
+// helm (карты сливаются по ключам, прочее замещается целиком), и ссылка берётся у
+// СЛОЖЕННОГО дерева значений. Все три формы доказаны инъекцией
 // (`tools/productnames/cmd/product-names/external_pins_test.go`).
 //
 // # ИСХОДЫ
@@ -196,7 +209,7 @@ func main() {
 // вынесена, а пина у неё нет» неотличимо от «вынесенных частей нет»:
 //
 //	PART<TAB><каталог><TAB><имя образа>
-//	PIN<TAB><имя образа><TAB><ссылка><TAB><файл,файл…>
+//	PIN<TAB><имя образа><TAB><ссылка><TAB><стек,стек…>
 //
 // Перепись осмотренного уходит в stderr: её читает человек, а строки — вызывающий.
 //
@@ -212,11 +225,11 @@ func main() {
 // подмена `os.Stdout` на время вызова делала бы её зависимой от того, кто ещё в
 // этот момент пишет в тот же дескриптор (под `-race` это ещё и гонка). Здесь
 // печать — свойство вызова, а не процесса.
-func externalPinsMode(stdout, stderr io.Writer, files []string) int {
-	if len(files) == 0 {
+func externalPinsMode(stdout, stderr io.Writer, chains []string) int {
+	if len(chains) == 0 {
 		_, _ = fmt.Fprintln(stderr,
-			"product-names: --external-pins не названо ни одного файла значений.\n"+
-				"               Состав профилей принадлежит вызывающему (deploy/stacks.txt);\n"+
+			"product-names: --external-pins не названо ни одной цепочки значений.\n"+
+				"               Состав стендов принадлежит вызывающему (deploy/stacks.txt);\n"+
 				"               пустой перечень дал бы «пинов нет» вместо «не спрашивали».")
 		return 2
 	}
@@ -241,41 +254,49 @@ func externalPinsMode(stdout, stderr io.Writer, files []string) int {
 		dirOfImage[productnaming.ChartName(dir)] = dir
 	}
 
-	// refs — ссылка → файлы, её объявившие. Порядок вывода байтовый: вызывающий
-	// сличает перечень с перечнем, а обход карты порядка не даёт вовсе.
 	type key struct{ image, ref string }
 	where := map[key][]string{}
-	declared, read := 0, 0
+	declared, filesRead := 0, 0
+	seenFile := map[string]bool{}
 
-	for _, f := range files {
-		// Путь приходит от читателя состава стендов ЭТОГО ЖЕ дерева
-		// (deploy/stacks.txt), а не от пользователя. `Clean` стоит не ради стиля:
-		// без него сканер называет чтение по переменной пути (G304/G703), а
-		// подавление здесь было бы ИНЕРТНЫМ — гейт подавлений судит их по живому
-		// предмету, и директива без находки роняет прогон.
-		raw, err := os.ReadFile(filepath.Clean(f))
-		if err != nil {
-			_, _ = fmt.Fprintf(stderr,
-				"product-names: файл значений %s не читается (%v) — перечень пинов был бы\n"+
-					"               неполон, а неполный перечень даёт «ссылка не объявлена»\n"+
-					"               на верной ссылке. Это «не выполнилось», а не «пинов нет».\n", f, err)
-			return 2
+	for _, chain := range chains {
+		name, files := splitChain(chain)
+		folded := map[string]any{}
+		for _, f := range files {
+			// Путь приходит от читателя состава стендов ЭТОГО ЖЕ дерева
+			// (deploy/stacks.txt), а не от пользователя. `Clean` стоит не ради стиля:
+			// без него сканер называет чтение по переменной пути (G304/G703), а
+			// подавление здесь было бы ИНЕРТНЫМ — гейт подавлений судит их по живому
+			// предмету, и директива без находки роняет прогон.
+			raw, err := os.ReadFile(filepath.Clean(f))
+			if err != nil {
+				_, _ = fmt.Fprintf(stderr,
+					"product-names: файл значений %s (цепочка %q) не читается (%v) — перечень\n"+
+						"               пинов был бы неполон, а неполный перечень даёт «ссылка не\n"+
+						"               объявлена» на верной ссылке. Это «не выполнилось».\n", f, name, err)
+				return 2
+			}
+			var layer map[string]any
+			if err := yaml.Unmarshal(raw, &layer); err != nil {
+				_, _ = fmt.Fprintf(stderr,
+					"product-names: файл значений %s (цепочка %q) не разбирается (%v) — см. выше.\n",
+					f, name, err)
+				return 2
+			}
+			folded = mergeLayers(folded, layer)
+			filesRead++
+			seenFile[f] = true
 		}
-		var tree map[string]any
-		if err := yaml.Unmarshal(raw, &tree); err != nil {
-			_, _ = fmt.Fprintf(stderr,
-				"product-names: файл значений %s не разбирается (%v) — см. выше.\n", f, err)
-			return 2
-		}
-		read++
-		for _, decl := range walkImageRefs(tree) {
+		// Ссылка берётся у СЛОЖЕННОГО дерева: накладка, объявляющая только тег,
+		// сама ссылки не несёт — репозиторий приезжает из слоя ниже.
+		for _, decl := range walkImageRefs(folded) {
 			declared++
 			img := decl.repo[strings.LastIndex(decl.repo, "/")+1:]
 			if _, ours := dirOfImage[img]; !ours {
 				continue
 			}
 			k := key{image: img, ref: decl.ref()}
-			where[k] = append(where[k], filepath.Base(f))
+			where[k] = append(where[k], name)
 		}
 	}
 
@@ -286,6 +307,8 @@ func externalPinsMode(stdout, stderr io.Writer, files []string) int {
 	for k := range where {
 		keys = append(keys, k)
 	}
+	// Порядок байтовый: вызывающий сличает перечень с перечнем, а обход карты
+	// порядка не даёт вовсе.
 	sort.Slice(keys, func(i, j int) bool {
 		if keys[i].image != keys[j].image {
 			return keys[i].image < keys[j].image
@@ -293,13 +316,55 @@ func externalPinsMode(stdout, stderr io.Writer, files []string) int {
 		return keys[i].ref < keys[j].ref
 	})
 	for _, k := range keys {
-		_, _ = fmt.Fprintf(stdout, "PIN\t%s\t%s\t%s\n", k.image, k.ref, strings.Join(where[k], ","))
+		stacks := append([]string{}, where[k]...)
+		sort.Strings(stacks)
+		_, _ = fmt.Fprintf(stdout, "PIN\t%s\t%s\t%s\n", k.image, k.ref, strings.Join(stacks, ","))
 	}
 	_, _ = fmt.Fprintf(stderr,
-		"осмотрено: файлов значений %d (прочитано %d), объявлений образа %d, "+
+		"осмотрено: цепочек %d, слоёв прочитано %d (различных файлов %d), объявлений образа %d, "+
 			"частей вынесенных %d, различных пинов %d\n",
-		len(files), read, declared, len(dirs), len(keys))
+		len(chains), filesRead, len(seenFile), declared, len(dirs), len(keys))
 	return 0
+}
+
+// splitChain — «<имя>=<файл>[,<файл>…]». Аргумент без знака равенства — цепочка
+// из одного слоя, названная своим файлом: эта форма нужна инъекции, где предмет
+// доказательства — ОДИН подменённый слой, и придумывать ему имя стека значило бы
+// требовать от пробы знания о составе стендов.
+func splitChain(arg string) (string, []string) {
+	name, list := filepath.Base(arg), arg
+	if i := strings.Index(arg, "="); i >= 0 {
+		name, list = arg[:i], arg[i+1:]
+	}
+	var files []string
+	for _, f := range strings.Split(list, ",") {
+		if f = strings.TrimSpace(f); f != "" {
+			files = append(files, f)
+		}
+	}
+	return name, files
+}
+
+// mergeLayers — сложение слоёв ТАК ЖЕ, как их складывает helm: карты сливаются по
+// ключам, всё остальное замещается целиком. Второй реализации этого правила в
+// дереве нет: Go-проверки каталога deploy складывают слои так же (mergeValues), и
+// разойдись эти два сложения — расхождение было бы молчаливым.
+func mergeLayers(dst, src map[string]any) map[string]any {
+	if dst == nil {
+		dst = map[string]any{}
+	}
+	for k, v := range src {
+		if sub, ok := v.(map[string]any); ok {
+			if cur, ok := dst[k].(map[string]any); ok {
+				dst[k] = mergeLayers(cur, sub)
+				continue
+			}
+			dst[k] = mergeLayers(map[string]any{}, sub)
+			continue
+		}
+		dst[k] = v
+	}
+	return dst
 }
 
 // imageRef — ссылка на образ, объявленная значениями. Digest сильнее тега: так
