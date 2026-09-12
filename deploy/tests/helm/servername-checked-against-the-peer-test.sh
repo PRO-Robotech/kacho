@@ -102,9 +102,17 @@ audit_render() { python3 "$AUDIT" "$1" "$2"; }
 
 TOT_SEEN=0; TOT_SAN=0; TOT_ADDR=0; TOT_NOADDR=0; TOT_CERTS=0
 
-for stack in $(stacks_names); do
-  # shellcheck disable=SC2046
-  helm template kacho-umbrella "$UMBRELLA" $(stacks_args "$stack" "$UMBRELLA") \
+# КОД ПЕРЕЧНЯ СТЕКОВ ПОТРЕБОВАН ПРИСВАИВАНИЕМ, А НЕ СПИСКОМ `for`: подстановка в
+# списке `for` теряет код ВСЕГДА, и отказ читателя таблицы обходил бы ноль стеков
+# при нулевом коде. Пустой обход ловится ниже (`TOT_SEEN`), но НАЗЫВАЛСЯ бы он
+# «имён для сверки не найдено» — то есть верным словом о неверной причине.
+STACKS="$(stacks_names)" \
+  || fatal "перечень стеков не прочитан — обходить нечего, и это не чистое дерево"
+for stack in $STACKS; do
+  args="$(stacks_args "$stack" "$UMBRELLA")" \
+    || fatal "стек $stack: цепочка стенда не прочитана — helm без единого -f сел бы на умолчания чарта"
+  # shellcheck disable=SC2086
+  helm template kacho-umbrella "$UMBRELLA" $args \
       --namespace kacho >"$TMP/$stack.yaml" 2>"$TMP/$stack.err" \
     || fatal "рендер стека «$stack» не удался — судить нечего:
 $(sed 's/^/       /' "$TMP/$stack.err")"

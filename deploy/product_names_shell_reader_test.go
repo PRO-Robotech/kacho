@@ -394,3 +394,148 @@ func TestShellReaderRefusalNamesTheSubjectOnly(t *testing.T) {
 	t.Logf("перепись: пустое имя прямым путём → код %d, предмет назван: %t, "+
 		"внутренностей в отказе %d", code, named, len(leaked))
 }
+
+// askShellDirs — спросить читатель оболочки о ПЕРЕЧНЕ частей продукта.
+//
+// Зовётся настоящая функция настоящей библиотеки, а не её пересказ: пересказ
+// сошёлся бы сам с собой и молчал бы ровно тогда, когда перечень неполон.
+func askShellDirs(t *testing.T) ([]string, string, int) {
+	t.Helper()
+	lib := filepath.Join("scripts", "lib", "product-names.sh")
+	if _, err := os.Stat(lib); err != nil {
+		t.Fatalf("читателя имён для оболочки нет (%v) — доказывать нечего", err)
+	}
+	cmd := exec.Command("bash", "-c", ". ./"+filepath.ToSlash(lib)+"\nproduct_service_dirs")
+	var out, errb strings.Builder
+	cmd.Stdout, cmd.Stderr = &out, &errb
+	err := cmd.Run()
+	code := 0
+	if ee, ok := err.(*exec.ExitError); ok {
+		code = ee.ExitCode()
+	} else if err != nil {
+		t.Fatalf("оболочку не запустить (%v) — это «не выполнилось», а не расхождение", err)
+	}
+	return strings.Fields(out.String()), errb.String(), code
+}
+
+// TestShellPartListCoversTheLedgerEvenWithoutSourcesInTheTree — перечень частей
+// продукта содержит КАЖДУЮ запись ведомости, включая ту, чьи исходники уехали.
+//
+// # Предмет
+//
+// Обратный вопрос «наш ли это образ» отвечает по ведомости имён; ведомость
+// наполняется тем перечнем, который вернёт `product_service_dirs`. Пока перечень
+// выводился ТОЛЬКО из `services/*`, часть, чьи исходники уехали в свой
+// репозиторий, из него выпадала — а её имя, чарт и пин образа остались нашими.
+// Отказ при этом ЗЕЛЁНЫЙ по форме: распознаватель чужое имя не отвергает, он его
+// НЕ ВИДИТ, и перепись печатает «пинов продукта N» на неполном N.
+//
+// Проба утверждает НАБЛЮДАЕМОЕ СЛЕДСТВИЕ — что образ части признан нашим, — а не
+// внутреннее устройство перечня: устройство законно меняется, следствие нет.
+//
+// # Почему именно ведомость, а не выписанное здесь имя
+//
+// Ожидание берётся у `productnaming.RenamedServices()`, то есть у того же
+// источника, что читает оболочка. Выписать здесь второе имя продукта литералом
+// значило бы завести третье место об одном предмете — оно разошлось бы молча и
+// разошлось бы на переименовании, когда сверить его некому.
+func TestShellPartListCoversTheLedgerEvenWithoutSourcesInTheTree(t *testing.T) {
+	ledger := productnaming.RenamedServices()
+	if len(ledger) == 0 {
+		t.Skip("ведомость собственных имён пуста — предмета у пробы нет")
+	}
+
+	dirs, stderr, code := askShellDirs(t)
+	if code != 0 {
+		t.Fatalf("перечень частей не прочитан (код %d) — это не «сошлось».\n%s", code, stderr)
+	}
+	if len(dirs) == 0 {
+		t.Fatal("оболочка вернула пустой перечень частей — вердикт был бы вакуумным")
+	}
+
+	have := map[string]bool{}
+	for _, d := range dirs {
+		have[d] = true
+	}
+
+	// (1) Каждая запись ведомости — в перечне. Это то, что было сломано.
+	covered, external := 0, 0
+	for dir := range ledger {
+		if !productnaming.SourcesInThisTree(dir) {
+			external++
+		}
+		if !have[dir] {
+			t.Errorf("часть %q названа ведомостью (имя %q), но в перечне оболочки её НЕТ.\n"+
+				"        Её образ будет сочтён чужим МОЛЧА: пин уйдёт из-под наблюдения\n"+
+				"        свежести, а перепись напечатает неполное число как полное.",
+				dir, ledger[dir])
+			continue
+		}
+		covered++
+	}
+
+	// (2) Контроль в обратную сторону: объединение не ЗАМЕНИЛО перечень из
+	//     индекса. Без этого утверждения перечень, состоящий из одной ведомости,
+	//     прошёл бы первую половину и потерял шесть частей платформы.
+	//
+	// Популяция берётся ТЕМ ЖЕ помощником, что и у соседней пробы этого файла:
+	// он и корень разрешает верно, и зовёт git через `gitenv` — голый
+	// `exec.Command` выбрал бы чужое дерево при GIT_DIR в окружении, что
+	// запрещено гейтом `TestGitCommandsRunWithScrubbedEnvironment`.
+	fromIndex := serviceDirsInTree(t)
+	if len(fromIndex) == 0 {
+		t.Fatal("под services/ индекс не дал ни одного каталога — встречный контроль беспредметен")
+	}
+	for dir := range fromIndex {
+		if !have[dir] {
+			t.Errorf("часть %q есть в индексе под services/, а в перечне оболочки её нет — "+
+				"объединение заменило перечень вместо того, чтобы его расширить", dir)
+		}
+	}
+
+	// (3) Наблюдаемое следствие: образ каждой части ведомости признан НАШИМ.
+	//     Именно этот ответ читают stand-provenance и gen-managed-image-pins.
+	lib := filepath.Join("scripts", "lib", "product-names.sh")
+	script := ". ./" + filepath.ToSlash(lib) + `
+product_names_load $(product_service_dirs) || exit 2
+for ref in "$@"; do
+  if product_image_is_ours "$ref"; then printf '%s\tНАШ\n' "$ref"; else printf '%s\tЧУЖОЙ\n' "$ref"; fi
+done`
+	refs := make([]string, 0, len(ledger)+1)
+	for _, name := range ledger {
+		refs = append(refs, name+":dev")
+	}
+	// Законный близнец: посторонний образ обязан остаться чужим. Без него
+	// утверждение зеленело бы на распознавателе, отвечающем «наш» на всё.
+	const foreign = "docker.io/bitnami/postgresql:16.4.0"
+	refs = append(refs, foreign)
+
+	out, err := exec.Command("bash", append([]string{"-c", script, "bash"}, refs...)...).Output()
+	if err != nil {
+		t.Fatalf("обратный вопрос не задан (%v) — следствие не проверено", err)
+	}
+	verdict := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if p := strings.SplitN(line, "\t", 2); len(p) == 2 {
+			verdict[p[0]] = p[1]
+		}
+	}
+	ours := 0
+	for _, name := range ledger {
+		ref := name + ":dev"
+		if verdict[ref] != "НАШ" {
+			t.Errorf("образ %q части со своим именем продукта признан %q — "+
+				"собственный образ отнесён в чужие", ref, verdict[ref])
+			continue
+		}
+		ours++
+	}
+	if verdict[foreign] != "ЧУЖОЙ" {
+		t.Errorf("посторонний образ %q признан %q — распознаватель отвечает «наш» на всё, "+
+			"и первая половина этой пробы вакуумна", foreign, verdict[foreign])
+	}
+
+	t.Logf("перепись: перечень частей %d (из индекса %d, ведомостью %d, из них внешне-источниковых %d); "+
+		"записей ведомости покрыто %d; образов ведомости признано нашими %d; посторонний признан %q",
+		len(dirs), len(fromIndex), len(ledger), external, covered, ours, verdict[foreign])
+}

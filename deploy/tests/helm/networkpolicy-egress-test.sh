@@ -276,9 +276,16 @@ EXPECTED_ASSERTIONS="$(printf '%s\n' "$STACKS" | grep -c . || true)"
 TOT_POL=0
 TOT_PAIRS=0
 for stack in $STACKS; do
-  prof="$(stacks_chain "$stack" ' ')"
-  # shellcheck disable=SC2046,SC2086
-  render "стек $stack" $(stacks_args "$stack" "$UMBRELLA")
+  # КОД ЧИТАТЕЛЯ ЦЕПОЧКИ ПОТРЕБОВАН у ОБОИХ вызовов: потерянный отказ давал
+  # ПУСТУЮ цепочку при нулевом коде, и `render` вызывал `helm` БЕЗ ЕДИНОГО `-f`.
+  # Разбор цены — в шапке `stacks.sh` §«КОД ОТКАЗА ТАБЛИЦЫ ПОТРЕБОВАН КАЖДЫМ
+  # ПРОИЗВОДНЫМ»; здесь он не пересказывается.
+  prof="$(stacks_chain "$stack" ' ')" \
+    || fatal "стек $stack: цепочка профилей не прочитана — судить не о чем"
+  args="$(stacks_args "$stack" "$UMBRELLA")" \
+    || fatal "стек $stack: цепочка стенда не прочитана — helm без единого -f сел бы на умолчания чарта"
+  # shellcheck disable=SC2086
+  render "стек $stack" $args
   r="$RENDER_FILE"
   scope_f="$(mktemp)"
   out="$(check "$r" 2>"$scope_f")"

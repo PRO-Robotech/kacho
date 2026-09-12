@@ -55,8 +55,18 @@ CHART=./helm/umbrella
 if [ -n "${IDENTITY_SOURCE_PROFILES:-}" ]; then
   read -r -a PROFILES <<< "$IDENTITY_SOURCE_PROFILES"
 else
-  mapfile -t PROFILES < <(bash tests/helm/stacks.sh --chain dev 2>/dev/null
-                          bash tests/helm/stacks.sh --chain prod 2>/dev/null)
+  # КОД КАЖДОЙ ЦЕПОЧКИ ПОТРЕБОВАН, И ПРИЧИНА НЕ ГЛУШИТСЯ. Прежняя редакция
+  # кормила `mapfile` подстановкой процесса и уводила stderr обоих вызовов в
+  # `/dev/null`: подстановка процесса теряет код by construction, поэтому отказ
+  # ОДНОГО из двух давал перечень НЕПОЛНЫЙ, а не пустой — страж ниже такой
+  # перечень пропускает, и вердикт выходил зелёным на одной полосе из двух.
+  # Причина при этом была подавлена и не доезжала даже до оператора.
+  _chain_dev="$(bash tests/helm/stacks.sh --chain dev)" \
+    || fatal "цепочка стенда dev не прочитана — судить не о чем (причина выше)"
+  _chain_prod="$(bash tests/helm/stacks.sh --chain prod)" \
+    || fatal "цепочка стенда prod не прочитана — судить не о чем (причина выше)"
+  mapfile -t PROFILES <<<"$_chain_dev
+$_chain_prod"
   [ "${#PROFILES[@]}" -gt 0 ] || fatal "общий источник цепочек не дал ни одного профиля — судить не о чем"
 fi
 EXPECTED_ASSERTIONS="${#PROFILES[@]}"

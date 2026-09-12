@@ -43,8 +43,17 @@ premise_chart_deps
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/src" "$TMP/rendered"
 
+# КОД ЧИТАТЕЛЯ ЦЕПОЧКИ ПОТРЕБОВАН ОДИН РАЗ И ЗАРАНЕЕ. Внутри аргумента `helm`
+# подстановка роняет код, и пустая цепочка при нулевом коде отдавала бы `helm`
+# без единого `-f`: отказ приписывался бы рендеру, а не таблице. Второй рендер
+# ниже берёт ТУ ЖЕ величину, а не спрашивает повторно: два вопроса могли бы
+# ответить по-разному. Разбор цены — в шапке `stacks.sh`.
+ARGS="$(bash tests/helm/stacks.sh --args dev-prod ./helm/umbrella)" || {
+  echo "ОТКАЗ: цепочка стенда не прочитана — helm без единого -f сел бы на умолчания чарта" >&2; exit 2; }
+
+# shellcheck disable=SC2086
 helm template kacho-umbrella ./helm/umbrella -n kacho \
-  $(bash tests/helm/stacks.sh --args dev-prod ./helm/umbrella) > "$TMP/render.yaml" 2>"$TMP/err" || {
+  $ARGS > "$TMP/render.yaml" 2>"$TMP/err" || {
     echo "ОТКАЗ: рендер не удался"; tail -3 "$TMP/err"; exit 1; }
 
 # ШАГ БЕРЁТСЯ ТАК, КАК ЕГО ПОЛУЧАЕТ ОБОЛОЧКА В ПОДЕ, а не так, как он объявлен:
@@ -137,8 +146,9 @@ run "файл законен, переменная негодна" RED "пере
 # ЗДЕСЬ НЕТ НИ ОДНОГО НАСТОЯЩЕГО УДОСТОВЕРЕНИЯ: строка ниже заведомо негодна и
 # нужна лишь затем, чтобы её можно было ИСКАТЬ в выводе.
 CRED_VALUE='injected-not-a-secret-7f3a'
+# shellcheck disable=SC2086
 helm template kacho-umbrella ./helm/umbrella -n kacho \
-  $(bash tests/helm/stacks.sh --args dev-prod ./helm/umbrella) \
+  $ARGS \
   --set 'global.kacho.identity.smtp.connectionURI=smtp://noreply%40kacho.cloud@kacho-umbrella-mailpit:1025/' \
   --set global.kacho.identity.smtp.credentialSecret.name=kacho-identity-smtp \
   --set global.kacho.identity.smtp.credentialSecret.key=password \

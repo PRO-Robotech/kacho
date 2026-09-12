@@ -842,7 +842,9 @@ helm_group() {
                 set -euo pipefail
                 cd '$umb'
                 n=0
-                for stack in \$(bash ../../tests/helm/stacks.sh --names); do
+                # Присваиванием, а не списком \`for\`: тот теряет код ВСЕГДА.
+                stacks=\"\$(bash ../../tests/helm/stacks.sh --names)\"
+                for stack in \$stacks; do
                     args=\"\$(bash ../../tests/helm/stacks.sh --args \"\$stack\")\"
                     # shellcheck disable=SC2086
                     helm template ci . \$args > /dev/null
