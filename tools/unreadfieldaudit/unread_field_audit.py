@@ -1329,6 +1329,93 @@ message SweepScopedResponse { string ok = 1; }
     check("пустой каталог прав — отказ предпосылки, а не чистый обход",
           empty_refused)
 
+    # ── ГРАНИЦА ДЕРЕВА: ДОМЕН ВЫНЕСЕННОЙ СЛУЖБЫ против ДРЕЙФА СОПОСТАВЛЕНИЯ ─
+    #
+    # Новый признак, и у него ровно один вход — КОРЕНЬ дерева контрактов. Обе
+    # стороны обязательны, потому что ошибка в каждую из них стоит своего:
+    #   * извинить домен, чья служба ЗДЕСЬ, — МАСКА: сопоставление каталогов
+    #     дрейфует молча, и все поля домена уходят из-под наблюдения;
+    #   * не извинить домен, чья служба в другом продукте, — ОТКАЗ на верном
+    #     факте: прогон краснеет тем, что дерево в порядке.
+    #
+    # Фикстуры отличаются РОВНО ОДНИМ фактом — есть ли в индексе пакет под
+    # `services/one`; перечень доменов, корни и их контракты совпадают побайтово.
+    with tempfile.TemporaryDirectory() as root:
+        for dom in ("one", "two"):
+            os.makedirs(os.path.join(root, PROTO_DIR, "alpha", "cloud", dom, "v1"))
+        pkg_one = f"{MODULE}/services/one/internal/handler"
+        idx_impl = {"packages": [{"path": pkg_one, "files": []}], "reads": {}}
+        idx_gone = {"packages": [], "reads": {}}
+        prev = os.getcwd()
+        os.chdir(root)
+        try:
+            doms = domains_under("alpha")
+            kin_impl = root_implemented_domains(idx_impl, "alpha")
+            kin_gone = root_implemented_domains(idx_gone, "alpha")
+        finally:
+            os.chdir(prev)
+
+    # (24) ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: домены корня перечисляются. Пустой перечень
+    #      сделал бы правило границы ВАКУУМНЫМ — корень без доменов «не
+    #      реализован» by construction, и извинялось бы всё подряд.
+    check("домены корня дерева контрактов перечисляются",
+          doms == ["one", "two"], f"перечислено: {doms}")
+    # (25) КРАСНОЕ: корень, чей домен здесь РЕАЛИЗОВАН, границей быть не может —
+    #      значит домен `two` с пустым собственным деревом получит ОТКАЗ, а не
+    #      тихое извинение. Это и есть защита от дрейфа DOMAIN_SERVICE_DIR.
+    check("корень с реализованным доменом границей не объявляется",
+          kin_impl == ["one"], f"реализованные домены корня: {kin_impl}")
+    # (26) МОЛЧАНИЕ, законный близнец — отличие ровно одно (пакета в индексе нет):
+    #      корень, не реализованный здесь НИ ОДНИМ доменом, внешний, и его домены
+    #      объявляются вне дерева.
+    check("корень без реализованных доменов объявляется внешним",
+          kin_gone == [], f"реализованные домены корня: {kin_gone}")
+
+    # ── ДИАГНОСТИКА ОТКАЗА: КТО В ЭТОМ ДЕРЕВЕ ПРИНИМАЕТ ЗАПРОСЫ ДОМЕНА ───────
+    #
+    # Отказ обязан называть, ГДЕ искать: сообщение о симптоме («пакетов
+    # собственного дерева 0») посылает чинить обход, тогда как чинить надо
+    # сопоставление каталога. Законный близнец — каталог, который тот же тип
+    # запроса лишь ТИПО-АССЕРТИТ в карте прав: обработчиком он не является.
+    with tempfile.TemporaryDirectory() as root:
+        h_dir = os.path.join(root, "services", "one", "internal", "handler")
+        a_dir = os.path.join(root, "services", "two", "internal", "authz")
+        os.makedirs(h_dir)
+        os.makedirs(a_dir)
+        h_rel = os.path.join("services", "one", "internal", "handler", "h.go")
+        a_rel = os.path.join("services", "two", "internal", "authz", "a.go")
+        open(os.path.join(root, h_rel), "w", encoding="utf-8").write(
+            "func (h *H) Get(ctx context.Context, req *fixv1.GetOneRequest) error {\n")
+        open(os.path.join(root, a_rel), "w", encoding="utf-8").write(
+            "\tif r, ok := req.(*fixv1.GetOneRequest); ok {\n")
+        handled_idx = {"packages": [
+            {"path": f"{MODULE}/services/one/internal/handler", "files": [h_rel]},
+            {"path": f"{MODULE}/services/two/internal/authz", "files": [a_rel]},
+        ], "reads": {}}
+        cache_snapshot = dict(_FILE_CACHE)
+        prev = os.getcwd()
+        os.chdir(root)
+        try:
+            handled = handling_service_dirs(handled_idx, {"GetOneRequest"})
+            handled_empty = handling_service_dirs(handled_idx, set())
+        finally:
+            os.chdir(prev)
+            _FILE_CACHE.clear()
+            _FILE_CACHE.update(cache_snapshot)
+
+    # (27) КРАСНОЕ: каталог, объявляющий обработчик, назван — и назван с числом
+    #      типов, иначе перечень не отличить от догадки.
+    check("каталог с обработчиком публичного запроса назван в диагностике",
+          handled.get("one") == 1, f"перечень: {handled}")
+    # (28) МОЛЧАНИЕ, законный близнец: каталог, который тип запроса лишь
+    #      типо-ассертит (карта прав), обработчиком не считается.
+    check("каталог с одним типо-ассершеном обработчиком не считается",
+          "two" not in handled, f"перечень: {handled}")
+    # (29) МОЛЧАНИЕ: пустое множество типов запроса даёт пустой перечень, а не
+    #      регулярное выражение с пустой альтернацией (оно совпало бы со всем).
+    check("пустое множество типов запроса даёт пустой перечень",
+          handled_empty == {}, f"перечень: {handled_empty}")
+
     print(f"проверок исполнено: {checks}; разобрано фикстур: 1; "
           f"сообщений в фикстуре: {len(msgs)}; ключей индекса-фикстуры: "
           f"{len(idx['reads'])}")
