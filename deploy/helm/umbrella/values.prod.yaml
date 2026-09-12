@@ -865,6 +865,29 @@ kacho-nlb:
       # default with tls:false — so an unset geo edge is refuse-to-start, not just
       # a broken dial. geo also serves RequireAndVerifyClientCert here.
       geo: true
+  # АДРЕСА СОСЕДЕЙ — ТОЙ ЖЕ ЛОВУШКОЙ, ЧТО `db.host` НИЖЕ, И ЦЕНА ЗДЕСЬ ВЫШЕ.
+  #
+  # Умолчания чарта nlb — `kacho-vpc.kacho.svc` и `kacho-compute.kacho.svc`:
+  # они предполагают релиз, названный `kacho`. В этой установке службы
+  # называются `vpc` и `compute` (так их рендерят соответствующие чарты), и
+  # умолчание указывает на Service, которого в профиле НЕТ ВОВСЕ. Правильные
+  # адреса приходили только из dev-профиля, который боевой слой не наследует, —
+  # ровно то, на чём уже был пойман `db.host`.
+  #
+  # Замечено не дозвоном, а разбором рендера: имя для сверки рукопожатия
+  # (`mtls.serverName.vpc` = `vpc.kacho.svc`) осталось верным и потому
+  # РАСХОДИЛОСЬ с адресом — пара «адрес + имя для сверки» разъехалась, и
+  # `deploy/tests/helm/servername-checked-against-the-peer-test.sh` называет это
+  # находкой. Половина пары здесь неверна именно та, которую не видно в
+  # сертификате: сертификат соседа выписан на `vpc.kacho.svc`, а набирается
+  # `kacho-vpc.kacho.svc`.
+  peers:
+    vpc:
+      addr: vpc.kacho.svc:9090
+      internalAddr: vpc.kacho.svc:9091
+    compute:
+      addr: compute.kacho.svc:9090
+      internalAddr: ""
   db:
     # The nlb chart default host is `kacho-pg-nlb`, which assumes the release is
     # named `kacho`; this release is `kacho-umbrella`, so the real Service is
