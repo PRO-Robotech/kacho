@@ -151,7 +151,8 @@ export function useIamMutation(opts: {
         //
         // `expectOperation` здесь безусловно true, и это не допущение: все
         // мутации iam объявлены `returns (operation.Operation)` — предикат
-        // (разбор контрактов `proto/kaname/cloud/iam/v1/*`) не нашёл ни одного
+        // (разбор контрактов `kaname/cloud/iam/v1/*` модуля
+        // `github.com/PRO-Robotech/kaname`) не нашёл ни одного
         // синхронного мутирующего RPC этого домена.
         const resolved = resolveMutationResponse(resp, true);
         if (resolved.kind === "operation") {
