@@ -87,20 +87,28 @@ function parse(file: string, source?: string): ts.SourceFile {
  * Якорь конца строки отделяет глагольную форму (`…/operations:all` — отдельный
  * аккаунт-широкий список, подмаршрутом ресурса не являющийся).
  */
-export function protoOperationBases(protoDir: string): string[] {
-  const files = walk(protoDir, /\.proto$/);
+export function protoOperationBases(protoDirs: string[]): string[] {
   const bases = new Set<string>();
-  for (const f of files) {
-    for (const m of readFileSync(f, "utf8").matchAll(/get:\s*"([^"]+)\/\{[^}]+\}\/operations"/g)) {
-      bases.add(m[1]);
+  for (const dir of protoDirs) {
+    for (const f of walk(dir, /\.proto$/)) {
+      for (const m of readFileSync(f, "utf8").matchAll(/get:\s*"([^"]+)\/\{[^}]+\}\/operations"/g)) {
+        bases.add(m[1]);
+      }
     }
   }
   return [...bases].sort();
 }
 
-/** Сколько файлов proto прочитано — перепись рядом с находками. */
-export function protoFileCount(protoDir: string): number {
-  return walk(protoDir, /\.proto$/).length;
+/** Сколько файлов proto прочитано — перепись рядом с находками.
+ *
+ * Каталогов ДВА, и это не обобщение впрок: решением владельца (kacho#2616,
+ * исход C, 2026-09-13) контракты службы доступа уехали в `PRO-Robotech/kaname` и
+ * приезжают опубликованным модулем. Обход одного каталога сузился на 41 контракт
+ * МОЛЧА — проба не падала на отсутствии файла, она получала базы подмаршрутов
+ * без домена `iam` и объявляла его вкладку несуществующей.
+ */
+export function protoFileCount(protoDirs: string[]): number {
+  return protoDirs.reduce((n, dir) => n + walk(dir, /\.proto$/).length, 0);
 }
 
 /** Реестры ресурсов, найденные в дереве консоли (перечень выводится, а не выписывается). */

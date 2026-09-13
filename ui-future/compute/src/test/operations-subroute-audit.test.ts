@@ -46,6 +46,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { OPERATIONS_LIST_PATHS, hasOperationsSubroute } from "@shared/lib/operations-subroute";
+import { contractProtoRoots } from "@shared/test/proto-contract";
 import { isReExportOnly } from "@shared/test/shared-symbol-sweep";
 
 import {
@@ -63,9 +64,13 @@ import {
 
 const SRC_DIR = fileURLToPath(new URL("..", import.meta.url));
 const UI_ROOT = resolve(SRC_DIR, "../..");
-const PROTO_DIR = join(resolve(UI_ROOT, ".."), "proto");
+// ДОМОВ ДЕРЕВА КОНТРАКТОВ ДВА — этого дерева и приезжающего модулем
+// (kacho#2616, исход C, 2026-09-13). Перечень — `contractProtoRoots()`, одно
+// объявление на всю консоль; обход одного дома давал базы подмаршрутов без
+// домена `iam` и объявлял его вкладку несуществующей, не падая ни на чём.
+const PROTO_DIRS = contractProtoRoots();
 
-const protoBases = protoOperationBases(PROTO_DIR);
+const protoBases = protoOperationBases(PROTO_DIRS);
 const registryFiles = findRegistryFiles(UI_ROOT);
 const specsByApp = new Map<string, SpecEntry[]>(
   registryFiles.map((f) => [appOf(UI_ROOT, f), readRegistrySpecs(f, UI_ROOT)]),
@@ -94,7 +99,7 @@ const scannedSources = walk(UI_ROOT, SOURCE_RE).filter((f) => !/\.test\.tsx?$/.t
 
 describe("объём осмотренного — «ноль находок» отличимо от «ноль прочитанного»", () => {
   it("дерево proto прочитано и подмаршруты операций из него извлечены", () => {
-    expect(protoFileCount(PROTO_DIR)).toBeGreaterThan(100);
+    expect(protoFileCount(PROTO_DIRS)).toBeGreaterThan(100);
     expect(protoBases.length).toBeGreaterThan(15);
   });
 
