@@ -136,6 +136,34 @@
 //	                 отдельного перечня «глаголов GitHub» заводить не нужно:
 //	                 перечень стареет, а объявление модуля — нет
 //	shortAnchor      якорь короче двух сегментов — см. выше
+//	successorCoord   координата, чей авторитет дерево САМО объявило чужим:
+//	                 значение `carried_to.path` надгробия снятых носителей, у
+//	                 которого рядом назван репозиторий-преемник. Исключаются
+//	                 ЗНАЧЕНИЯ с объявленным авторитетом, а не файл: остальные
+//	                 токены надгробия судятся как прежде.
+//	                 ДОВОД ПОЛОСЫ — ВЛАДЕНИЕ, а не число находок: у такой
+//	                 координаты есть СВОЙ судья (carriedsubjectdeclared.go), а её
+//	                 якорь обязан не резолвиться здесь — то, что он всё-таки
+//	                 резолвится, говорит лишь о совпадении раскладок двух деревьев.
+//	                 ЧИСЛО, КОТОРЫМ ПОЛОСА ОБОСНОВЫВАЛАСЬ, ПЕРЕЖИЛО СВОЙ ПРЕДМЕТ,
+//	                 и названо здесь, чтобы следующий не вывел его заново. Задача
+//	                 #2602 мерила дерево БЕЗ третьего авторитета: из 107 координат
+//	                 надгробия двенадцать несут сегмент имени продукта, у семи
+//	                 якорь резолвится здесь, и без полосы гейт назвал бы находкой
+//	                 семь ВЕРНЫХ координат чужого дерева. С приходом дерева
+//	                 ВНЕШНЕГО МОДУЛЯ (kacho#2616) это перестало быть верным —
+//	                 проверено СНЯТИЕМ полосы, а не рассуждением: находок
+//	                 по-прежнему НОЛЬ, судимых 165 → 172, из них деревом внешнего
+//	                 модуля 139 → 146, якорь короче двух сегментов 343 → 348. Все
+//	                 семь резолвятся теперь ПО СВИДЕТЕЛЬСТВУ; числа перемеряй тем
+//	                 же снятием, они стареют вместе с обоими деревьями.
+//	                 БЕСПРЕДМЕТНОЙ полоса от этого не стала, и это тоже замер, а
+//	                 не оговорка: у синтетических деревьев инъекции внешних корней
+//	                 нет by construction (перепись печатает «деревьев внешних
+//	                 корней 0»), и там полоса несущая — её инъекция меняет ровно
+//	                 один факт и краснеет без неё. Два авторитета отвечают на
+//	                 РАЗНЫЕ вопросы: объявление — «чья это координата»,
+//	                 свидетельство — «лежит ли она там»
 //	anchorUnresolved якорь не резолвится вовсе: токен путём этого дерева не
 //	                 является (адрес в контейнере, ресурс кластера, адрес URL,
 //	                 синтетическая фикстура чужой пробы). Синтетика чужих
@@ -332,6 +360,7 @@ type overAppliedCensus struct {
 	moduleOwnSegment int
 	shortAnchor      int
 	anchorUnresolved int
+	successorCoord   int
 	judged           int
 	moduleJudged     int
 	resolved         int
@@ -343,12 +372,13 @@ func (c overAppliedCensus) String() string {
 	return fmt.Sprintf("файлов прочитано %d · двоичных пропущено %d · объявленных модулей %d · "+
 		"деревьев внешних корней %d · "+
 		"токенов с сегментом %q %d (авторитет чужой %d · сегмент — имя объявленного модуля %d · "+
-		"якорь короче %d сегментов %d · якорь не резолвится %d) · "+
+		"якорь короче %d сегментов %d · якорь не резолвится %d · "+
+		"координата репозитория-преемника %d) · "+
 		"судимых %d (полосой модуля %d, резолвится %d, из них деревом внешнего модуля %d)",
 		c.filesRead, c.filesBinary, c.modulesDeclared, c.externalTrees,
 		standaloneProductSegment, c.tokensWithName,
 		c.moduleForeign, c.moduleOwnSegment,
-		minAnchorSegments, c.shortAnchor, c.anchorUnresolved,
+		minAnchorSegments, c.shortAnchor, c.anchorUnresolved, c.successorCoord,
 		c.judged, c.moduleJudged, c.resolved, c.externalResolved)
 }
 
@@ -468,6 +498,40 @@ func modulePathResolves(tree *treecorpus.Tree, p string) bool {
 	return tree.HasDir(p) || tree.HasFile(p)
 }
 
+// declaredSuccessorCoordinates — координаты, про которые дерево САМО сказало, что
+// их авторитет ЧУЖОЙ: значения `carried_to.path` надгробия снятых носителей
+// (internal/repohygiene/carriedsubjectdeclared.go). Ключ — сам путь.
+//
+// # Почему это не «полоса-исключение по имени файла»
+//
+// Предмет этого гейта — координата ЭТОГО дерева, записанная по-переименованному.
+// Координата, чей репозиторий назван рядом же, предметом не является: её якорь
+// обязан не резолвиться здесь, и то, что он всё-таки резолвится, говорит лишь о
+// совпадении раскладок двух деревьев. Поэтому исключается не ФАЙЛ, а ровно те
+// его значения, у которых объявлен чужой авторитет, — остальные токены того же
+// файла судятся как прежде, и число исключённых печатается своей полосой.
+//
+// Отсутствие надгробия и запись без репозитория — не ошибка: словарь тогда пуст,
+// и всякий токен судится, как до его появления.
+func declaredSuccessorCoordinates(root string) (map[string]bool, error) {
+	l, err := readGateCarrierLedger(root)
+	if err != nil || l == nil {
+		return nil, err
+	}
+	out := map[string]bool{}
+	for _, r := range l.Retired {
+		if r.CarriedTo == nil {
+			continue
+		}
+		coord := strings.TrimSpace(r.CarriedTo.Path)
+		if coord == "" || strings.TrimSpace(r.CarriedTo.Repo) == "" {
+			continue
+		}
+		out[coord] = true
+	}
+	return out, nil
+}
+
 // scanOverAppliedRename разбирает ПРОИЗВОЛЬНОЕ дерево: настоящий репозиторий и
 // синтетический корень инъекции проходят одну и ту же функцию, поэтому
 // доказанное на втором верно для первого.
@@ -484,6 +548,11 @@ func scanOverAppliedRename(tree *treecorpus.Tree) (overAppliedCensus, []overAppl
 	root := tree.Root()
 	exts := externalRootTrees(root)
 	census.externalTrees = len(exts)
+	foreign, err := declaredSuccessorCoordinates(root)
+	if err != nil {
+		return census, nil, err
+	}
+	ledgerRel := gateCorpusDir + "/" + gateCarrierLedgerName
 	for _, rel := range tree.SortedFiles() {
 		slash := filepath.ToSlash(rel)
 		raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
@@ -526,6 +595,12 @@ func scanOverAppliedRename(tree *treecorpus.Tree) (overAppliedCensus, []overAppl
 					continue
 				}
 				census.tokensWithName++
+
+				// Авторитет объявлен ЧУЖИМ там же, где записана координата.
+				if slash == ledgerRel && foreign[tok] {
+					census.successorCoord++
+					continue
+				}
 
 				if strings.HasPrefix(tok, "github.com/") || strings.HasPrefix(tok, "PRO-Robotech/") {
 					// Путь ВНЕШНЕГО модуля судится тем же правилом, но своим
