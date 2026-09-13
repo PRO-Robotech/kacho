@@ -46,6 +46,7 @@
 
 from __future__ import annotations
 
+import ast
 import glob
 import io
 import os
@@ -61,42 +62,81 @@ STD = set(sys.stdlib_module_names) | {"__future__"}
 PIP_NOISE = {"pip", "install", "python3", "-m", "--quiet", "--disable-pip-version-check",
              "--no-input", "--upgrade", "set", "-euo", "pipefail"}
 
+# Признак того, что задание ПОДНИМАЕТ СТЕНД. Такому заданию нужен ПОЛНЫЙ набор сторонних
+# модулей дерева, а не только тот, что виден в его `run:`.
+#
+# ПОЧЕМУ ТАК, а не точным графом вызовов: посев стенда доходит до python через цепочку
+# `stand-up.sh` → `make dev-up` → `tests/authz-fixtures/setup.sh` → `prodseed_all.py` →
+# `mint_rs256.py` → `jwt`. Раскрыть её объявлением нельзя — в середине Makefile, и
+# пройти его разбором значит написать второй make. Наблюдалось 2026-09-13 (задание
+# 103673961666): задание ставило `pyyaml`, посев упал `No module named 'jwt'`, и четыре
+# шарда e2e дали «TOTAL: 0/18 collection(s) reported» — стенд поднялся, а вердикта о
+# продукте не было.
+#
+# Поэтому для поднимающих стенд требование грубее и ВЕРНЕЕ: весь набор дерева. Цена —
+# лишний пакет там, где он может не понадобиться; цена ошибки в другую сторону — прогон
+# стенда без вердикта.
+STAND_MARKERS = ("stand-up.sh", "dev-up")
+
 
 def tracked_files() -> set[str]:
     p = subprocess.run(["git", "ls-files"], capture_output=True, text=True)
     return set(p.stdout.split())
 
 
-def third_party(path: str, tracked: set[str], seen: set[str] | None = None) -> set[str]:
-    """Сторонние модули скрипта. Локальные импорты раскрываются транзитивно."""
+def third_party(path: str, tracked: set[str], seen: set[str] | None = None,
+                basenames: dict[str, str] | None = None) -> set[str]:
+    """Сторонние модули скрипта. Локальные импорты раскрываются транзитивно.
+
+    РАЗБОР, А НЕ ОБРАЗЕЦ. Первая редакция искала импорты регулярным выражением и
+    приносила `the` — слово из прозы внутри докстринга. Подстрочный счёт не отличает
+    импорт от текста о нём, и это тот же класс, который корпус ловит у гейтов.
+
+    ЛОКАЛЬНОСТЬ — ПО ВСЕМУ ДЕРЕВУ, а не по соседнему каталогу: `gen_shared` лежит в
+    другом каталоге и подключается через `sys.path`, поэтому проверка «файл рядом»
+    называла его сторонним.
+    """
     if seen is None:
         seen = set()
+    if basenames is None:
+        basenames = {os.path.basename(f)[:-3]: f for f in tracked if f.endswith(".py")}
     if path in seen or path not in tracked:
         return set()
     seen.add(path)
     try:
-        text = io.open(path, encoding="utf-8").read()
-    except OSError:
+        tree = ast.parse(io.open(path, encoding="utf-8").read())
+    except (OSError, SyntaxError):
         return set()
     out: set[str] = set()
     here = os.path.dirname(path)
-    for m in re.finditer(r"^\s*(?:import|from)\s+([A-Za-z_][\w]*)", text, re.M):
-        mod = m.group(1)
-        if mod in STD:
-            continue
-        local = os.path.join(here, mod + ".py")
-        if local in tracked:
-            out |= third_party(local, tracked, seen)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names = [a.name.split(".")[0] for a in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            names = [(node.module or "").split(".")[0]] if node.level == 0 else []
         else:
-            out.add(mod)
+            continue
+        for mod in names:
+            if not mod or mod in STD:
+                continue
+            local = os.path.join(here, mod + ".py")
+            if local in tracked:
+                out |= third_party(local, tracked, seen, basenames)
+            elif mod in basenames:
+                out |= third_party(basenames[mod], tracked, seen, basenames)
+            else:
+                out.add(mod)
     return out
 
 
-def judge(jobs: list[dict]) -> list[str]:
-    """jobs: [{workflow, job, scripts:[...], pip:[...], setup_python_at, pip_at:[...]}]"""
+def judge(jobs: list[dict], all_tree: set[str] | None = None) -> list[str]:
+    """jobs: [{workflow, job, needs, pip, setup_python_at, pip_at, raises_stand}]"""
     findings = []
+    full = {PACKAGE_OF.get(m, m) for m in (all_tree or set())}
     for j in jobs:
         need = {PACKAGE_OF.get(m, m) for m in j["needs"]}
+        if j.get("raises_stand") and full:
+            need |= full
         have = set(j["pip"])
         missing = sorted(need - have)
         if missing:
@@ -149,10 +189,22 @@ def survey(root: str = ".") -> list[dict]:
                                 and not w.startswith("-")}
                 for m in re.finditer(r"([\w./-]+\.py)", run):
                     needs |= third_party(m.group(1), tracked)
-            if needs or pip:
+            raises = any(mark in str(s.get("run") or "") for s in steps
+                         for mark in STAND_MARKERS)
+            if needs or pip or raises:
                 out.append({"workflow": os.path.basename(wf), "job": jname,
                             "needs": sorted(needs), "pip": sorted(pip),
-                            "pip_at": pip_at, "setup_python_at": setup_at})
+                            "pip_at": pip_at, "setup_python_at": setup_at,
+                            "raises_stand": raises})
+    return out
+
+
+def tree_third_party(tracked: set[str]) -> set[str]:
+    """Сторонние модули ВСЕГО дерева — нужда задания, поднимающего стенд."""
+    out: set[str] = set()
+    for f in tracked:
+        if f.endswith(".py"):
+            out |= third_party(f, tracked)
     return out
 
 
@@ -179,6 +231,12 @@ def self_test() -> int:
         ("законный близнец: задание вообще без python → молчит",
          [{"workflow": "w", "job": "j", "needs": [], "pip": [],
            "pip_at": [], "setup_python_at": None}], 0, None),
+        ("подъём стенда требует ПОЛНОГО набора дерева → находка при частичном",
+         [{"workflow": "w", "job": "stand", "needs": ["yaml"], "pip": ["pyyaml"],
+           "pip_at": [2], "setup_python_at": 1, "raises_stand": True}], 1, "pyjwt"),
+        ("законный близнец: подъём с полным набором → молчит",
+         [{"workflow": "w", "job": "stand", "needs": ["yaml"], "pip": ["pyyaml", "pyjwt"],
+           "pip_at": [2], "setup_python_at": 1, "raises_stand": True}], 0, None),
         ("дефект в одном задании из двух не прикрывается вторым",
          [{"workflow": "w", "job": "ok", "needs": ["yaml"], "pip": ["pyyaml"],
            "pip_at": [2], "setup_python_at": 1},
@@ -187,7 +245,7 @@ def self_test() -> int:
     ]
     ok = True
     for name, jobs, want, needle in cases:
-        f = judge(jobs)
+        f = judge(jobs, {"yaml", "jwt"} if any(j.get("raises_stand") for j in jobs) else None)
         good = len(f) == want and (needle is None or any(needle in x for x in f))
         ok &= good
         print(f"  [{'OK ' if good else 'ОТКАЗ'}] {name}: находок {len(f)} (ждали {want})")
@@ -213,15 +271,19 @@ def main() -> int:
     if "--self-test" in sys.argv:
         return self_test()
     jobs = survey()
+    tree = tree_third_party(tracked_files())
+    stands = [j for j in jobs if j.get("raises_stand")]
     with_python = [j for j in jobs if j["needs"]]
     print(f"осмотрено заданий с python-скриптами: {len(jobs)}; "
-          f"из них требуют сторонних модулей: {len(with_python)}")
+          f"из них требуют сторонних модулей: {len(with_python)}; "
+          f"поднимают стенд: {len(stands)}; сторонних модулей в дереве: "
+          f"{', '.join(sorted(PACKAGE_OF.get(m, m) for m in tree)) or '—'}")
     if not jobs:
         sys.stderr.write(
             "ОТКАЗ: не прочитано НИ ОДНОГО объявления задания с python-скриптами. "
             "Это «не выполнилось», а не «нарушений нет»: обход пуст, судить нечего\n")
         return 2
-    findings = judge(jobs)
+    findings = judge(jobs, tree)
     if not findings:
         print("условия прогона создаются заданиями: каждое, чьи скрипты требуют сторонний "
               "модуль, ставит его сам и после установки интерпретатора")

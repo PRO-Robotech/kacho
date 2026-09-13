@@ -138,7 +138,7 @@ jobs:
           python-version: '3.13'
       - name: сторонний модуль python, который читают скрипты этого задания
         id: python-modules
-        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml pyjwt
 
       - name: гейт — самопроверка вердикта по отчёту проб
         id: selftest-verdict
