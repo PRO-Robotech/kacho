@@ -95,6 +95,7 @@ DECLARED="
 .github/scripts/assert-default-branch-workflows-can-run.py
 .github/scripts/assert-green-gate-notes.py
 .github/scripts/assert-jobs-provide-python-modules.py
+.github/scripts/assert-jobs-provide-their-tools.py
 .github/scripts/assert-required-contexts-match-jobs.py
 .github/scripts/assert-unit-shard-wiring.py
 .github/scripts/check-newman-suite-gates.py
@@ -168,6 +169,7 @@ deploy/tests/helm/three-outcomes-distinguishable-test.sh
 deploy/tests/helm/trusted-forwarder-profiles-test.sh
 gateway/tests/newman/scripts/selftest_tamper_mutation.py
 services/compute/tests/newman/scripts/validate-cases.py
+tests/newman/scripts/case_home_test.py
 tests/newman/scripts/exec-coverage.py
 tests/authz-fixtures/ceremony_credentials.py
 tests/authz-fixtures/prodseed_all.py
