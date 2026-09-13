@@ -45,7 +45,14 @@
     инструмента, объявляет то же самое, но другим языком. Так пропал бы `helm`
     в задании юнитов (#2630);
   * версию инструмента. `yq` бывает двух разных программ с одним именем, и
-    подмена ловится самим предусловием, а не этим гейтом.
+    подмена ловится самим предусловием, а не этим гейтом;
+  * предусловие, записанное ВНУТРИ файла Python. Строковые литералы `.py`
+    снимаются разбором целиком (см. `strip_py_strings`), поэтому шелл-код,
+    живущий там строкой, обходу не виден. Замер, оправдывающий узость:
+    предусловия дерева дают 42 файла `.sh` и один Makefile, а единственный
+    `.py`, который их давал, — САМ ЭТОТ ГЕЙТ, и оба его «предусловия» были
+    ложными (образец `command -v X` из объяснения формы отказа и `trivy` из
+    фикстуры инъекции). То есть узость не потеряла ни одного настоящего.
 
 Первые два закрываются установкой инструмента в задании — то есть той же
 правкой; гейт их не находит, но и не мешает. Названы они здесь затем, чтобы
@@ -86,6 +93,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import os
 import re
 import subprocess
@@ -145,7 +153,7 @@ COMMENT_SH = re.compile(r"(?m)(?<!\$)(?<![\w\"'`])#(?![{(]).*$")
 # инструмент `would` — наблюдалось на первом же прогоне, находка была ложной.
 GUARD = re.compile(
     r"(?:^|[\n;|&(){}@]|\$\(|`|&&|\|\||(?<![\w-])(?:then|else|elif|do|if|while|until)(?![\w-]))"
-    r"\s*!?\s*"
+    r"\s*(?:!\s*)?"
     r"(?:command\s+-v|which)\s+(?P<tool>[A-Za-z_][\w.+-]*)",
     re.MULTILINE,
 )
@@ -173,7 +181,7 @@ MAKE_CALL = re.compile(
 # которой гейт написан.
 SCRIPT_CALL = re.compile(
     r"(?:^|[\n;|&{}@]|\$\(|&&|\|\||(?<![\w-])(?:then|else|elif|do|exec|sudo|time|source)(?![\w-]))"
-    r"\s*[-+@]?\s*"
+    r"\s*(?:[-+@]\s*)?"
     r"(?:"
     r"(?:/usr/bin/env\s+)?(?:bash|sh|zsh|python3?|py)\s+(?:-[A-Za-z]+\s+)*"
     r"(?P<viainterp>(?:\./)?(?:[\w.-]+/)*[\w.-]+\.(?:sh|bash|py))"
@@ -183,9 +191,52 @@ SCRIPT_CALL = re.compile(
     re.MULTILINE,
 )
 
-# Строка документации Python — проза, а не код: пути в ней суть координаты, а не
-# вызовы. Снимается до разбора наравне с комментариями шелла.
-PY_DOCSTRING = re.compile(r'(?s)(?<![\w\\])(?P<q>"""|\'\'\').*?(?P=q)')
+# СТРОКОВЫЙ ЛИТЕРАЛ PYTHON — НЕ КОД, и снимается РАЗБОРОМ, а не образцом.
+#
+# Прежняя редакция парила тройные кавычки регулярным выражением. Их в этом файле
+# оказалось ПЯТНАДЦАТЬ — число нечётное, поэтому пары разъезжались, и часть
+# документации доживала до разбора. Цена названа замером: гейт объявил находкой
+# инструмент `X` — образец `command -v X` из СОБСТВЕННОГО объяснения формы
+# отказа, — и инструмент `trivy` из фикстуры собственной инъекции. Обе находки
+# ложные, обе показывали координатой этот самый файл.
+#
+# Это класс «гейт читает собственное объяснение» (`testing.md` §«Гейт на класс»,
+# п. 4). Регулярным выражением он не закрывается: пары кавычек считает язык, а не
+# образец. Разбор снимает литералы BY CONSTRUCTION.
+#
+# Замер, оправдывающий узость: предусловия в дереве дают 42 файла `.sh` и один
+# Makefile; единственный `.py`, дававший их, — ЭТОТ, и оба его «предусловия»
+# ложные. То есть снятие литералов не теряет ни одного настоящего.
+def strip_py_strings(text: str) -> str:
+    """Снять все строковые литералы Python, сохранив расположение строк."""
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        # Не разбирается — судить нечем. Молчание тут честнее догадки образцом.
+        return ""
+    starts, off = [], 0
+    for line in text.splitlines(keepends=True):
+        starts.append(off)
+        off += len(line)
+    starts.append(off)
+
+    def at(lineno: int, col: int) -> int:
+        idx = min(max(lineno - 1, 0), len(starts) - 1)
+        return min(starts[idx] + col, len(text))
+
+    spans = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if node.lineno and node.end_lineno is not None:
+                spans.append((at(node.lineno, node.col_offset),
+                              at(node.end_lineno, node.end_col_offset)))
+    if not spans:
+        return text
+    drop = bytearray(len(text))
+    for a, b in spans:
+        for i in range(a, min(b, len(text))):
+            drop[i] = 1
+    return "".join(c for i, c in enumerate(text) if not drop[i] or c == "\n")
 
 
 def run(cmd: Sequence[str], cwd: str) -> str:
@@ -314,14 +365,23 @@ class Resolver:
             self.by_base.setdefault(os.path.basename(rel), []).append(rel)
         self.scripts_total: Set[str] = set()
         self.targets_total: Set[Tuple[str, str]] = set()
+        # Чтение и разбор запоминаются: обход идёт ПО КАЖДОМУ заданию, а скрипты
+        # у заданий общие. Без памяти один и тот же файл разбирался бы до 34 раз.
+        self._text: Dict[str, str] = {}
 
     def _read(self, rel: str) -> str:
+        if rel in self._text:
+            return self._text[rel]
+        self._text[rel] = self._read_uncached(rel)
+        return self._text[rel]
+
+    def _read_uncached(self, rel: str) -> str:
         try:
             text = open(os.path.join(self.root, rel), encoding="utf-8", errors="replace").read()
         except OSError:
             return ""
         if rel.endswith(".py"):
-            text = PY_DOCSTRING.sub("", text)
+            text = strip_py_strings(text)
         return text
 
     def _resolve(self, token: str, wd: str) -> str | None:
@@ -730,6 +790,52 @@ def self_test() -> int:
             print("ПРОВАЛ (е): дефект за make-целью не найден — обход не транзитивен.")
         else:
             print(f"(е) дефект на глубине 2 (шаг → make → скрипт): НАХОДКА — {hit[0][3]}")
+
+        # (з) ГЕЙТ НЕ ЧИТАЕТ СОБСТВЕННОЕ ОБЪЯСНЕНИЕ. Питонов файл, где имя
+        # инструмента стоит и в строке документации, и в обычном строковом
+        # литерале (фикстура инъекции), предусловием НЕ является: литералы —
+        # проза, а не код. Именно так гейт нашёл несуществующий инструмент `X`
+        # и приписал заданию чужой `trivy`, показывая координатой сам себя.
+        root = tempfile.mkdtemp(dir=tmp)
+        os.makedirs(os.path.join(root, ".github", "workflows"))
+        os.makedirs(os.path.join(root, "scripts"))
+        open(os.path.join(root, "scripts", "probe.py"), "w").write(
+            '''#!/usr/bin/env python3
+"""Объяснение формы отказа.
+
+    А. `if ! command -v X ...; then ... exit 1 ... fi` — отрицание плюс выход.
+    Б. `command -v trivy ... || fatal ...` — отказ на той же строке.
+"""
+FIXTURE = "#!/bin/sh\nif ! command -v kubeconform; then exit 2; fi\n"
+print(FIXTURE)
+'''
+        )
+        open(os.path.join(root, ".github", "workflows", "probe.yml"), "w").write(
+            "name: p\non: [push]\njobs:\n  p:\n    runs-on: ubuntu-latest\n    steps:\n"
+            "      - name: r\n        run: python3 scripts/probe.py\n"
+        )
+        subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+        subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+        r = analyse(root)
+        n += 1
+        bogus = sorted({f[2] for f in r["findings"]})
+        if bogus:
+            ok = False
+            print(f"ПРОВАЛ (з): проза и литералы Python прочитаны как предусловие: {bogus}")
+        else:
+            print("(з) объяснение и фикстура внутри .py: МОЛЧИТ")
+
+        # (з2) ЗАКОННЫЙ БЛИЗНЕЦ к (з): тот же инструмент, но предусловие стоит в
+        # ИСПОЛНЯЕМОМ шелле — обязано находиться. Без этой пары (з) доказывал бы
+        # лишь то, что гейт разучился видеть.
+        r = analyse(_tree(tmp, SH_REFUSING.format(tool="kubeconform"),
+                          WF.format(setup="", tool="kubeconform")))
+        n += 1
+        if not [f for f in r["findings"] if f[2] == "kubeconform"]:
+            ok = False
+            print("ПРОВАЛ (з2): настоящее предусловие в .sh перестало находиться.")
+        else:
+            print("(з2) то же имя, но предусловие в исполняемом .sh: НАХОДКА")
 
         # (ж) ПУСТОЙ ОБХОД — ОТКАЗ, а не чистота.
         empty = tempfile.mkdtemp(dir=tmp)
