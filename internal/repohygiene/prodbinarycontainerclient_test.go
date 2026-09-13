@@ -210,11 +210,17 @@ func listPackagesWithDeps(root string) ([]listedPackage, error) {
 	return pkgs, nil
 }
 
+// Перечень пакетов с зависимостями считается ОДИН раз на процесс: он берётся
+// подпроцессом `go list ./...` по всему дереву, и обе пробы этого гейта платили
+// за него по разу (замер — oncebyroot_test.go). Перечень отдаётся ТОЛЬКО ДЛЯ
+// ЧТЕНИЯ.
+var packagesWithDepsOfTree = onceByRoot(listPackagesWithDeps)
+
 func TestProdBinaryDoesNotLinkAContainerRuntimeClient(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 
-	pkgs, err := listPackagesWithDeps(root)
+	pkgs, err := packagesWithDepsOfTree(root)
 	if err != nil {
 		t.Fatalf("вход не получен, вердикта нет: %v", err)
 	}

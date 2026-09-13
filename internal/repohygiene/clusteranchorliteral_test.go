@@ -18,9 +18,18 @@ import (
 // произведённые файлы, чужие копии, остатки прогонов. Порождённые стабы
 // контракта исключены отдельно: они называют якорь в комментариях (литералов
 // там нет), и читать их — только время.
+// Состав считается ОДИН раз на процесс: три вызова (эта проба и два обращения
+// за объявленным написанием) читали и разбирали один и тот же непроверочный Go.
+// Карта отдаётся ТОЛЬКО ДЛЯ ЧТЕНИЯ.
+var clusterAnchorSourcesOfTree = onceByRootUsingProbe(scanClusterAnchorSources)
+
 func clusterAnchorSources(t *testing.T) map[string]string {
 	t.Helper()
-	root := repoRoot(t)
+	return clusterAnchorSourcesOfTree(t, repoRoot(t))
+}
+
+func scanClusterAnchorSources(t *testing.T, root string) map[string]string {
+	t.Helper()
 	out, err := gitenv.Command(root, "ls-files", "-z", "--", "*.go").Output()
 	if err != nil {
 		t.Fatalf("git ls-files: %v — состав дерева не установлен, и «ноль находок» "+

@@ -226,7 +226,7 @@ func TestDecorativeAxisExceptionsAllStillHaveASubject(t *testing.T) {
 		t.Skip("перечень декоративных осей пуст — истекать нечему")
 	}
 
-	res := auditDescriptorFieldReaders(t, repoRoot(t))
+	res := descriptorFieldReadersOfTree(t, repoRoot(t))
 	if len(res.readers[excused]) == 0 {
 		t.Fatalf("ось %q не читается вообще ничем — исключение выдано не той клетке: "+
 			"перечень покрывает ТОЛЬКО «читается предикатом объявленности», а это «не читается нигде»",
