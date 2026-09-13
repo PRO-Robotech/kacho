@@ -154,8 +154,8 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: pyyaml (нужен гейту связности суита↔гейт↔артефакт)
-        run: python3 -m pip install --quiet pyyaml
+      - name: сторонние модули python (pyyaml для гейта связности, pyjwt для посева)
+        run: python3 -m pip install --quiet pyyaml pyjwt
 
       # Покрытие: каждая суита дерева назначена ровно одному шарду, сумма
       # коллекций по шардам = коллекций в дереве. Самопроверка гоняется рядом —

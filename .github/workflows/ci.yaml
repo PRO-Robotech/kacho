@@ -1267,8 +1267,8 @@ jobs:
       # `pyyaml` читают гейт прежнего издателя и гейт запускаемости процессов,
       # `pytest` — прогонщик проб python ниже. Ставить модуль перед своим шагом нельзя:
       # порядок шагов меняется, и тогда гейт снова остаётся без модуля молча.
-      - name: модули python для гейтов этого задания (pyyaml, pytest)
-        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml pytest
+      - name: модули python для гейтов этого задания (pyyaml, pyjwt, pytest)
+        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml pyjwt pytest
 
       - name: регрессионные пробы оснастки сюит исполняются (не только существуют)
         run: |
@@ -2006,8 +2006,21 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: pyyaml (его читают гейты вендоринга, посадки и переписи исходов)
-        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+      # СТАВИТСЯ ВЕСЬ НАБОР СТОРОННИХ МОДУЛЕЙ ДЕРЕВА, А НЕ ТОТ, ЧЕЙ ОТКАЗ УВИДЕЛИ.
+      #
+      # Перепись по индексу git (единица — имя модуля, не вхождение; stdlib и локальные
+      # модули отброшены): сторонних ровно два — `yaml` (15 вхождений, гейты вендоринга,
+      # посадки, переписи исходов, запускаемости процессов) и `jwt` (1 вхождение,
+      # `tests/authz-fixtures/mint_rs256.py`, который тянет самопроверка церемонии
+      # посева). Предикат — `git ls-files '*.py'` плюс отбор по `sys.stdlib_module_names`.
+      #
+      # Ставить по одному «по мере отказов» нельзя: `setup-python` приносит чистый
+      # интерпретатор, и каждый недостающий модуль стоит целого прогона конвейера.
+      # Наблюдалось дважды за один час: `No module named 'yaml'` (задание 103664648324) и
+      # `No module named 'jwt'` (задание 103666500592) — оба на hosted, где системный
+      # python эти модули несёт.
+      - name: сторонние модули python дерева (pyyaml, pyjwt)
+        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml pyjwt
 
       - name: внешние чарты вендорены, и их пин точен
         run: |
