@@ -7,8 +7,8 @@ Covered RPCs: Get, GrantAdmin, RevokeAdmin, ListAdmins.
 
 WHY THIS SUITE LIVES IN THE api-gateway REPO AND NOT IN services/iam
 --------------------------------------------------------------------
-These four RPCs are served ONLY on the api-gateway CLUSTER-INTERNAL REST listener
-(`/iam/v1/internal/cluster/...`, :8081). Their gate is a gateway concern — the
+These four RPCs are reachable on the api-gateway CLUSTER-INTERNAL REST listener
+(`/iam/v1/internal/cluster/...`, :8081), and their gate is a gateway concern — the
 permission-catalog entry `required_relation=system_admin` with
 `scope_extractor{object_type: cluster, from_request_field: "*"}` — and the whole
 point of `Get`/`ListAdmins` being gated is that a non-admin must not be able to
@@ -31,10 +31,23 @@ What NOTHING else covers, at any level, and therefore only lives here:
   * the exact error text of "User <id> is not an active cluster admin" and
     "User <id> not found" (the Go tests assert the CODE only).
 
-Additionally: services/iam/tests/newman/cases/iam-authz-grant-check-propagation.py
-removed a tautological Break-Glass case and justified the removal by naming THIS
-file as the place where the `cluster_admin_grants` INSERT contract is covered. That
-justification is only true if this suite actually runs.
+Additionally: the iam suite's iam-authz-grant-check-propagation case module removed a
+tautological Break-Glass case and justified the removal by naming THIS file as the
+place where the `cluster_admin_grants` INSERT contract is covered. That justification
+is only true if this suite actually runs. Координата этого модуля здесь НЕ
+воспроизводится путём: набор службы выехал в свой репозиторий (`PRO-Robotech/kaname`),
+и путь `services/iam/...` в этом дереве не существует — цитата мёртвого адреса
+читается проверкой свежести как живое утверждение.
+
+СЛОВО «ONLY» ВЫШЕ СНЯТО, И ЭТО ЗАМЕР, А НЕ РЕДАКТУРА (2026-09-13)
+-----------------------------------------------------------------
+Прежняя редакция утверждала, что эти RPC обслуживаются ТОЛЬКО внутренним REST-фронтом
+края. С выносом службы отдельным продуктом это перестало быть верным: её собственный
+внутренний фронт регистрирует `InternalClusterService` наравне с прочими
+(`internal/restfront/registration.go` в репозитории службы). Довод «здесь, потому что
+больше негде» поэтому истёк; довод «здесь, потому что ГЕЙТ — контракт края» остался и
+несёт эту прописку сам. Что из покрытия модуля производит служба, а не край, названо в
+`ASSERTS_REASON` выше — это остаток, а не обещание.
 
 FIXTURES — canonical keys only, no bespoke seeding
 --------------------------------------------------
@@ -60,6 +73,21 @@ Error-text discipline: messages assert with `.to.eql` (exact). Error text is par
 the Kachō contract. Do NOT weaken an assertion to make a run green — fix the code, or
 report the finding.
 """
+
+# ЧЬЁ ПОВЕДЕНИЕ УТВЕРЖДАЕТ ЭТОТ МОДУЛЬ (e2e-flow.md §7а, решение владельца 2026-09-12).
+# Сверяет `tests/newman/scripts/case_home_test.py`.
+ASSERTS_DOMAIN = "gateway"
+ASSERTS_REASON = (
+    "предмет — ГЕЙТ КРАЯ на внутренних путях `/iam/v1/internal/cluster/*`: запись каталога "
+    "прав `required_relation=system_admin` со scope_extractor на cluster, и то, что "
+    "не-администратор не наблюдает список администраторов кластера. Производитель этого "
+    "отказа — край, и здесь он дома. ОСТАТОК НАЗВАН ЧЕСТНО: четыре из пяти свойств, которые "
+    "модуль объявляет уникально своими (отображение кодов службы в HTTP-статус, префикс `iop` "
+    "у операции, терминальность `done=true`, дословные тексты отказов), производит СЛУЖБА, и "
+    "их дом — её репозиторий. Расщепление — своя задача: оно требует переутверждения по "
+    "фактическому производителю, как у `md.resource`/`md.scope` в kaname#29, а не переноса "
+    "утверждений как есть."
+)
 
 CASES = []
 
