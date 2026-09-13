@@ -155,7 +155,7 @@ jobs:
           python-version: '3.13'
 
       - name: сторонние модули python (pyyaml для гейта связности, pyjwt для посева)
-        run: python3 -m pip install --quiet pyyaml pyjwt
+        run: python3 -m pip install --quiet pyyaml pyjwt[crypto]
 
       # Покрытие: каждая суита дерева назначена ровно одному шарду, сумма
       # коллекций по шардам = коллекций в дереве. Самопроверка гоняется рядом —
@@ -609,7 +609,7 @@ jobs:
         with:
           python-version: '3.13'
       - name: сторонний модуль python, который читают скрипты этого задания
-        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml pyjwt
+        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml pyjwt[crypto]
 
       - name: kind
         run: |

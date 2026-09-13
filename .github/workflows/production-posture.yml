@@ -173,7 +173,7 @@ jobs:
         with:
           python-version: '3.13'
       - name: сторонний модуль python, который читают скрипты этого задания
-        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml pyjwt
+        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml pyjwt[crypto]
 
       - name: kind
         run: |

@@ -57,7 +57,13 @@ import sys
 import yaml
 
 # Имя модуля → имя пакета для установки. Список закрытый: расширяется вместе с деревом.
-PACKAGE_OF = {"yaml": "pyyaml", "jwt": "pyjwt"}
+# Имя модуля → имя пакета. У `jwt` это ПАКЕТ С ДОПОЛНЕНИЕМ, и дополнение несущее:
+# `pip install pyjwt` ставит библиотеку без крипто-бэкенда, и подпись ES256/RS256 падает
+# `NotImplementedError: Algorithm 'ES256' could not be found. Do you have cryptography
+# installed?`. Наблюдалось 2026-09-13 (задание 103675929789): стенд поднялся, посев упал,
+# «ПРОГОН НЕДЕЙСТВИТЕЛЕН», 0 из 9 суит отчитались. Сам `tests/authz-fixtures/mint_rs256.py`
+# требование объявляет в шапке: «Requires PyJWT + cryptography (ES256 signing)».
+PACKAGE_OF = {"yaml": "pyyaml", "jwt": "pyjwt[crypto]"}
 STD = set(sys.stdlib_module_names) | {"__future__"}
 PIP_NOISE = {"pip", "install", "python3", "-m", "--quiet", "--disable-pip-version-check",
              "--no-input", "--upgrade", "set", "-euo", "pipefail"}
@@ -222,8 +228,8 @@ def self_test() -> int:
         ("дефект: установка ДО интерпретатора → находка про другой интерпретатор",
          [{"workflow": "w", "job": "j", "needs": ["yaml"], "pip": ["pyyaml"],
            "pip_at": [1], "setup_python_at": 3}], 1, "ДО `setup-python`"),
-        ("законный близнец: имя модуля против имени пакета (jwt→pyjwt) → молчит",
-         [{"workflow": "w", "job": "j", "needs": ["jwt"], "pip": ["pyjwt"],
+        ("законный близнец: имя модуля против имени пакета (jwt→pyjwt[crypto]) → молчит",
+         [{"workflow": "w", "job": "j", "needs": ["jwt"], "pip": ["pyjwt[crypto]"],
            "pip_at": [2], "setup_python_at": 1}], 0, None),
         ("дефект: поставлен модуль не тот, что нужен → находка",
          [{"workflow": "w", "job": "j", "needs": ["jwt"], "pip": ["pyyaml"],
@@ -231,11 +237,15 @@ def self_test() -> int:
         ("законный близнец: задание вообще без python → молчит",
          [{"workflow": "w", "job": "j", "needs": [], "pip": [],
            "pip_at": [], "setup_python_at": None}], 0, None),
+        ("дефект: pyjwt БЕЗ крипто-дополнения → находка (ES256 не заработает)",
+         [{"workflow": "w", "job": "j", "needs": ["jwt"], "pip": ["pyjwt"],
+           "pip_at": [2], "setup_python_at": 1}], 1, "pyjwt[crypto]"),
         ("подъём стенда требует ПОЛНОГО набора дерева → находка при частичном",
          [{"workflow": "w", "job": "stand", "needs": ["yaml"], "pip": ["pyyaml"],
            "pip_at": [2], "setup_python_at": 1, "raises_stand": True}], 1, "pyjwt"),
         ("законный близнец: подъём с полным набором → молчит",
-         [{"workflow": "w", "job": "stand", "needs": ["yaml"], "pip": ["pyyaml", "pyjwt"],
+         [{"workflow": "w", "job": "stand", "needs": ["yaml"],
+           "pip": ["pyyaml", "pyjwt[crypto]"],
            "pip_at": [2], "setup_python_at": 1, "raises_stand": True}], 0, None),
         ("дефект в одном задании из двух не прикрывается вторым",
          [{"workflow": "w", "job": "ok", "needs": ["yaml"], "pip": ["pyyaml"],

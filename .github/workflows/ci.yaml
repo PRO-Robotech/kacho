@@ -1285,7 +1285,7 @@ jobs:
       # `pytest` — прогонщик проб python ниже. Ставить модуль перед своим шагом нельзя:
       # порядок шагов меняется, и тогда гейт снова остаётся без модуля молча.
       - name: модули python для гейтов этого задания (pyyaml, pyjwt, pytest)
-        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml pyjwt pytest
+        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml pyjwt[crypto] pytest
 
       - name: регрессионные пробы оснастки сюит исполняются (не только существуют)
         run: |
@@ -2045,7 +2045,7 @@ jobs:
       # `No module named 'jwt'` (задание 103666500592) — оба на hosted, где системный
       # python эти модули несёт.
       - name: сторонние модули python дерева (pyyaml, pyjwt)
-        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml pyjwt
+        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml pyjwt[crypto]
 
       - name: внешние чарты вендорены, и их пин точен
         run: |
