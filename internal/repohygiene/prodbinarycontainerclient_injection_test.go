@@ -88,7 +88,7 @@ func listExternalPackageWithDeps(t *testing.T, root, importPath string) listedPa
 func realTreeSamples(t *testing.T) (binary listedPackage, containerDep string, carrier listedPackage) {
 	t.Helper()
 
-	pkgs, err := listPackagesWithDeps(repoRoot(t))
+	pkgs, err := packagesWithDepsOfTree(repoRoot(t))
 	if err != nil {
 		t.Fatalf("вход не получен, вердикта нет: %v", err)
 	}

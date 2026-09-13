@@ -237,7 +237,7 @@ func TestConvertedClientsCarryNoHandRolledLaneRead(t *testing.T) {
 		"services/nlb/internal/clients/vpc/network_interface_client.go",
 	}
 
-	sites, _, _ := collectPeerCodeReads(t, root)
+	sites := peerCodeReadsCached(t, root).sites
 	dirty := map[string]int{}
 	for _, s := range sites {
 		dirty[s.file]++

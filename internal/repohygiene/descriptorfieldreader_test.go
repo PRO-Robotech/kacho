@@ -138,7 +138,7 @@ type fieldReaderResult struct {
 // Проверено инъекцией в обе стороны (`descriptorfieldreader_injection_test.go`).
 func TestEveryDescriptorFieldHasAReader(t *testing.T) {
 	t.Parallel()
-	res := auditDescriptorFieldReaders(t, repoRoot(t))
+	res := descriptorFieldReadersOfTree(t, repoRoot(t))
 	t.Log(res.summary)
 
 	if res.fields == 0 {
@@ -202,6 +202,13 @@ type specField struct {
 //
 // Состав берётся у git (`treecorpus`), а не с диска: вердикт обязан быть
 // свойством коммита, а не рабочего каталога с чужими распаковками.
+// Обход настоящего дерева считается ОДИН раз на процесс: две пробы, судящие
+// дерево, обходили оба пакета носителя заново (замер — oncebyroot_test.go).
+// Инъекция подаёт синтетические корни и обязана
+// звать немемоизированную форму — onceByRoot отказывает на втором ином корне.
+// Результат отдаётся ТОЛЬКО ДЛЯ ЧТЕНИЯ.
+var descriptorFieldReadersOfTree = onceByRootUsingProbe(auditDescriptorFieldReaders)
+
 func auditDescriptorFieldReaders(t *testing.T, root string) fieldReaderResult {
 	t.Helper()
 	res := fieldReaderResult{readers: map[string][]string{}}
