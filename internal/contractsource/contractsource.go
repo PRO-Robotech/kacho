@@ -43,6 +43,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 // ExternalRootModules — корни дерева контрактов, ЧЬИХ ИСХОДНИКОВ В ЭТОМ ДЕРЕВЕ
@@ -160,7 +162,14 @@ func Files(repoRoot, relToProto string, suffixes ...string) ([]string, error) {
 			return nil, fmt.Errorf("contractsource: обход %s: %w", dir, err)
 		}
 	} else {
-		cmd := exec.Command("git", "-C", repoRoot, "ls-files", "-z", "--full-name", "--", filepath.ToSlash(filepath.Join("proto", relToProto)))
+		// Состав спрашивается через `gitenv.Command`, а не прямым `exec.Command`:
+		// `cmd.Dir` НЕ выбирает репозиторий, когда в окружении есть `GIT_DIR` —
+		// переменная сильнее рабочего каталога. Тогда обход читал бы индекс той
+		// рабочей копии, из которой запущен прогон, и вердикт становился бы
+		// свойством окружения. Держит это `internal/repohygiene`
+		// TestGitCommandsRunWithScrubbedEnvironment, и он поймал ровно эту строку.
+		cmd := gitenv.Command(repoRoot, "ls-files", "-z", "--full-name", "--",
+			filepath.ToSlash(filepath.Join("proto", relToProto)))
 		raw, cerr := cmd.Output()
 		if cerr != nil {
 			return nil, fmt.Errorf("contractsource: git ls-files в %s: %w", dir, cerr)
