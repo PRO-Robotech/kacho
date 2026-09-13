@@ -32,7 +32,7 @@ import (
 	"github.com/PRO-Robotech/corelib/outbox/metrics"
 	"github.com/PRO-Robotech/corelib/outbox/reconciler"
 	"github.com/PRO-Robotech/corelib/servicehost"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/clients"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaintent"

@@ -150,7 +150,38 @@
 здесь, — соседи перестанут извиняться в тот же прогон; уедь отсюда служба, чей
 корень остался общим, — она получит ОТКАЗ, и решение «объявить границу» придётся
 принять ЯВНО, перенеся контракт под свой корень (так и сделано для службы доступа,
-kacho#2362 → `proto/kaname/`).
+kacho#2362 → корень `kaname`).
+
+САМОИСТЕЧЕНИЕ РАБОТАЕТ, ПОКА КОРЕНЬ ЛЕЖИТ В ДЕРЕВЕ, И ЭТО ГРАНИЦА ОБХОДА, А НЕ ЕГО
+СВОЙСТВО. `contract_roots()` выводит перечень обходом `proto/*/cloud`: корень, которого
+в дереве нет, в перечень не попадает — и тогда не наступает НИ ОДИН из двух исходов
+выше. Ни отказа, ни объявленной границы: домен просто отсутствует в перечислении, а
+перепись честно печатает ноль по той популяции, что осталась.
+
+ЭТО НАСТУПИЛО, и измерено, а не предположено. Решением владельца kacho#2616 (исход C,
+2026-09-13) контракты службы доступа уехали в `PRO-Robotech/kaname` целиком, и корня
+`kaname` под `proto/` этого дерева больше нет:
+
+    python3 -c "import glob,os; print(sorted(os.path.basename(os.path.dirname(d))
+      for d in glob.glob('proto/*/cloud') if os.path.isdir(d)))"        # -> ['kacho']
+    python3 tools/unreadfieldaudit/unread_field_audit.py | head -2
+    #  -> доменов перечислено: 7; ИЗМЕРЕНО: 6; ВНЕ ДЕРЕВА (граница объявлена): 0
+    #  -> осмотрено полей: 727
+
+Сопоставление с замером 2026-09-08 выше: тогда под наблюдением было 727 полей, а ВНЕ
+него — 269 (домен `iam`, 39 контрактов, 61 стаб), и починка состояла в том, чтобы
+вывести перечень корней обходом вместо литерала. Сегодня осмотрено СНОВА 727, слово
+`iam` в отчёте не встречается ни разу, а «ВНЕ ДЕРЕВА (граница объявлена)» равно НУЛЮ:
+механизм, заведённый ради видимости внешнего корня, о нём молчит, потому что корня нет
+и объявлять границу нечему. Класс тот же, путь третий — не литерал и не забытое
+сопоставление, а физическое отсутствие корня.
+
+ЧТО ИЗ ЭТОГО СЛЕДУЕТ ДЛЯ ЧИТАТЕЛЯ ВЫВОДА: «полей БЕЗ читателя: 0» верно для ШЕСТИ
+измеренных доменов платформы и утверждением о поверхности службы доступа НЕ является —
+её поля этим прогоном не осматриваются вовсе. Судить их может только обход, резолвящий
+внешний корень в дереве опубликованного модуля, — так это делает Go-сторона
+(`internal/contractsource`, `ExternalRootModules`); здесь такого резолвинга нет, и
+популяция обхода этим ограничена.
 
 ЧЕГО ЭТА ГРАНИЦА НЕ ЗАКРЫВАЕТ, сказано прямо: записи каталога прав, ключуемые
 методами внешнего домена, этим прогоном не судятся — ни как «поле закрыто», ни как
@@ -219,22 +250,140 @@ GEN_DIR = "pkg/api"
 # (первые две — `pkg/contractroot.Roots` и `KACHO_PROTO_ROOTS` в оболочке)
 # разошлась бы с ними молча, а расхождение перечней корней — ровно та слепота,
 # которую этот предикат обязан не иметь.
+# ── ВТОРОЙ ДОМ ДЕРЕВА КОНТРАКТОВ: КОРЕНЬ, ПРИЕЗЖАЮЩИЙ МОДУЛЕМ ────────────────
+#
+# Обход по `proto/*/cloud` был полон, пока ВСЕ корни лежали в этом дереве. С
+# 2026-09-13 (kacho#2616, исход C) контракты службы доступа уехали в её
+# репозиторий: под `proto/` их здесь нет, и глоб вернул `['kacho']` — то есть
+# популяция сузилась на целый домен МОЛЧА, ровно вторым разом того же класса,
+# который разобран в абзаце выше. Замер на день правки: полей под наблюдением
+# 727 при 996 в обоих домах; слова `iam` в отчёте — ноль; код выхода 0.
+#
+# Перечень внешних корней НЕ ВЫПИСЫВАЕТСЯ здесь третьей копией: он ЧИТАЕТСЯ из
+# того единственного места, где объявлен, — `ExternalRootModules` в
+# `internal/contractsource/contractsource.go`. Расхождение копий и есть та
+# слепота, которую предикат обязан не иметь.
+EXTERNAL_ROOT_MODULES_DECL = "internal/contractsource/contractsource.go"
+
+_EXTERNAL_ROOT_RE = re.compile(
+    r'^\s*"([A-Za-z0-9_.-]+)":\s*"([A-Za-z0-9_./-]+)",\s*$', re.M)
+
+_module_dir_cache = {}
+
+
+def external_root_modules():
+    """Отображение «корень → путь модуля Go», прочитанное из объявления Go.
+
+    ВНЕШНИЙ ДОМ ПРИМЕНИМ ТОЛЬКО К НАСТОЯЩЕМУ ДЕРЕВУ, и различает их наличие
+    объявления модуля. Синтетическое дерево самопробы (создаётся во временном
+    каталоге) `go.mod` не несёт: спрашивать у него каталог чужого модуля
+    бессмысленно, и отказ на этом был бы отказом предиката на своей же фикстуре.
+    Настоящее дерево `go.mod` несёт всегда — значит различение НАБЛЮДАЕМО.
+
+    Отсутствие объявления ПРИ НАЛИЧИИ `go.mod` — ОТКАЗ: тихий пустой перечень
+    вернул бы ровно то молчание, ради снятия которого этот раздел написан.
+    """
+    if not os.path.isfile("go.mod"):
+        return {}
+    try:
+        with open(EXTERNAL_ROOT_MODULES_DECL, encoding="utf-8") as fh:
+            src = fh.read()
+    except OSError as e:
+        raise RuntimeError(
+            f"объявление внешних корней не прочитано ({EXTERNAL_ROOT_MODULES_DECL}): {e} — "
+            "перечень корней собрался бы неполным, и популяция сузилась бы молча") from e
+    marker = "ExternalRootModules = map[string]string{"
+    at = src.find(marker)
+    if at < 0:
+        raise RuntimeError(
+            f"в {EXTERNAL_ROOT_MODULES_DECL} не найдено объявление ExternalRootModules — "
+            "форма объявления сменилась, и разбор молчит вместо отказа")
+    end = src.find("}", at)
+    out = dict(_EXTERNAL_ROOT_RE.findall(src[at + len(marker):end]))
+    if not out:
+        raise RuntimeError(
+            "перечень внешних корней пуст: объявление найдено, а записей из него не "
+            "извлечено ни одной — отказ разборщика, а не «внешних корней нет»")
+    return out
+
+
+def module_dir(module):
+    """Каталог распакованного модуля. Спрашивается сам `go`.
+
+    Форма пути кэша — внутреннее дело `go`; собранный вручную путь разошёлся бы
+    с ним молча.
+    """
+    if module in _module_dir_cache:
+        return _module_dir_cache[module]
+
+    def ask():
+        try:
+            out = subprocess.run(
+                ["go", "list", "-m", "-f", "{{.Dir}}", module],
+                capture_output=True, text=True, check=False)
+        except OSError:
+            return ""
+        return out.stdout.strip() if out.returncode == 0 else ""
+
+    d = ask()
+    if not d:
+        subprocess.run(["go", "mod", "download", module],
+                       capture_output=True, text=True, check=False)
+        d = ask()
+    if not d or not os.path.isdir(d):
+        raise RuntimeError(
+            f"модуль {module} не резолвится — дерево его контрактов взять неоткуда. "
+            "Это «не выполнилось», а не «полей нет»: нужен `go` и прогретый кэш "
+            f"модулей (`go mod download {module}`)")
+    _module_dir_cache[module] = d
+    return d
+
+
+def contract_bases():
+    """Отображение «корень → (каталог дерева контрактов, каталог заглушек)».
+
+    Корень, физически лежащий в этом дереве, берётся ОТТУДА, и модуль для него не
+    резолвится вовсе. Остальные объявленные внешними — из кэша модулей.
+    """
+    bases = {}
+    for d in glob.glob(os.path.join(PROTO_DIR, "*", "cloud")):
+        if os.path.isdir(d):
+            bases[os.path.basename(os.path.dirname(d))] = (PROTO_DIR, GEN_DIR)
+    for root, module in external_root_modules().items():
+        if root in bases:
+            continue
+        d = module_dir(module)
+        if not os.path.isdir(os.path.join(d, PROTO_DIR, root, "cloud")):
+            raise RuntimeError(
+                f"модуль {module} резолвится ({d}), а каталога {PROTO_DIR}/{root}/cloud "
+                "в нём нет — версия модуля не несёт дерева контрактов")
+        bases[root] = (os.path.join(d, PROTO_DIR), os.path.join(d, GEN_DIR))
+    if not bases:
+        raise RuntimeError(
+            f"под {PROTO_DIR}/*/cloud и в объявленных модулях нет ни одного корня "
+            "дерева контрактов — смотреть не на что; «ноль полей» здесь неотличимо "
+            "от чистого дерева")
+    return bases
+
+
 def contract_roots():
-    """Корни дерева контрактов — те каталоги `proto/*`, под которыми есть `cloud`.
+    """Корни дерева контрактов — ОБОИХ домов, этого дерева и приезжающих модулем.
 
     Пустой перечень означал бы пустую популяцию у КАЖДОГО читателя ниже, поэтому
     он здесь ОТКАЗ, а не факт о полях: вызывающий обязан остановиться, а не
     выдать «ноль находок» на «ноль прочитанного».
     """
-    roots = sorted(
-        os.path.basename(os.path.dirname(d))
-        for d in glob.glob(os.path.join(PROTO_DIR, "*", "cloud"))
-        if os.path.isdir(d))
-    if not roots:
-        raise RuntimeError(
-            f"под {PROTO_DIR}/*/cloud нет ни одного корня дерева контрактов — "
-            "смотреть не на что; «ноль полей» здесь неотличимо от чистого дерева")
-    return roots
+    return sorted(contract_bases())
+
+
+def proto_base(root):
+    """Каталог, играющий роль `proto/` для этого корня."""
+    return contract_bases()[root][0]
+
+
+def gen_base(root):
+    """Каталог, играющий роль `pkg/api` для этого корня."""
+    return contract_bases()[root][1]
 
 
 def domain_root(domain):
@@ -243,8 +392,8 @@ def domain_root(domain):
     Резолвится ОБХОДОМ, а не выводом из имени: имя домена о своём корне не
     сообщает ничего, и всякий вывод по имени был бы четвёртой копией перечня.
     """
-    for r in contract_roots():
-        if os.path.isdir(os.path.join(PROTO_DIR, r, "cloud", domain)):
+    for r, (proto_dir, _) in sorted(contract_bases().items()):
+        if os.path.isdir(os.path.join(proto_dir, r, "cloud", domain)):
             return r
     return None
 
@@ -253,13 +402,19 @@ def proto_glob(domain):
     r = domain_root(domain)
     if r is None:
         return None
-    return os.path.join(PROTO_DIR, r, "cloud", domain, "v1", "*.proto")
+    return os.path.join(proto_base(r), r, "cloud", domain, "v1", "*.proto")
 
 
 def gen_root(domain):
-    """Каталог сгенерированных стабов домена (`pkg/api/<корень>/cloud`)."""
+    """Каталог сгенерированных стабов домена (`<дом>/<корень>/cloud`).
+
+    Дом у корня СВОЙ: заглушки корня, приезжающего модулем, лежат в модуле, а не
+    в `pkg/api` этого дерева.
+    """
     r = domain_root(domain)
-    return os.path.join(GEN_DIR, r if r else contract_roots()[0], "cloud")
+    if r is None:
+        r = contract_roots()[0]
+    return os.path.join(gen_base(r), r, "cloud")
 MODULE = "github.com/PRO-Robotech/kacho"
 INDEXER = "./tools/unreadfieldaudit/cmd/proto-field-readers"
 PERMISSION_CATALOG = "gateway/internal/middleware/embed/permission_catalog.json"
@@ -750,12 +905,31 @@ def domains_under(root):
     """
     return sorted(
         os.path.basename(os.path.dirname(d))
-        for d in glob.glob(os.path.join(PROTO_DIR, root, "cloud", "*", "v1")))
+        for d in glob.glob(os.path.join(proto_base(root), root, "cloud", "*", "v1")))
+
+
+def stub_module(root):
+    """Модуль Go, публикующий заглушки этого корня.
+
+    Свой — для корня этого дерева; объявленный внешним — для приезжающего.
+    Склейка `MODULE` с абсолютным путём кэша модулей давала координату, которой не
+    существует (наблюдалось: `github.com/PRO-Robotech/kacho//home/dk/go/pkg/mod/…`),
+    и читатель отказа шёл искать пакет по ней.
+    """
+    return external_root_modules().get(root, MODULE)
 
 
 def stub_pkg(domain):
-    """Путь пакета сгенерированных стабов домена."""
-    return f"{MODULE}/{gen_root(domain)}/{domain}/v1"
+    """Путь пакета сгенерированных стабов домена — ИМЕНЕМ ПАКЕТА, а не путём диска.
+
+    Корень, приезжающий модулем, публикует заглушки СВОИМ модулем, и его каталог
+    в кэше к имени пакета отношения не имеет: имя собирается из модуля и
+    относительного пути `pkg/api/<корень>/cloud/<домен>/v1`.
+    """
+    r = domain_root(domain)
+    if r is None:
+        r = contract_roots()[0]
+    return f"{stub_module(r)}/{GEN_DIR}/{r}/cloud/{domain}/v1"
 
 
 def stub_pkg_name(domain):
@@ -957,7 +1131,7 @@ def typed_readers(index, domain):
     имя типа посимвольно равно `<родитель>_<Поле>` — форма, которую генератор
     производит ровно для члена `oneof`.
     """
-    stub = f"{MODULE}/{gen_root(domain)}/{domain}/v1|"
+    stub = stub_pkg(domain) + "|"
     prefixes = prod_pkg_prefixes(domain)
     out = set()
     for key, readers in index["reads"].items():
@@ -1909,8 +2083,8 @@ def main():
             index_path = a.split("=", 1)[1]
     domains = [a for a in args if not a.startswith("-")] or [
         os.path.basename(os.path.dirname(d))
-        for r in contract_roots()
-        for d in sorted(glob.glob(os.path.join(PROTO_DIR, r, "cloud", "*", "v1")))]
+        for r, (proto_dir, _) in sorted(contract_bases().items())
+        for d in sorted(glob.glob(os.path.join(proto_dir, r, "cloud", "*", "v1")))]
 
     try:
         index = build_reader_index(index_path)

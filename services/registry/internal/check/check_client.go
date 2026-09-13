@@ -18,8 +18,8 @@ import (
 	"github.com/PRO-Robotech/corelib/auth"
 	"github.com/PRO-Robotech/corelib/authz"
 	"github.com/PRO-Robotech/corelib/listnarrow"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowiam"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 )
 
 // CheckTimeout — per-call deadline на один Check-вызов к iam. Зеркалит corelib

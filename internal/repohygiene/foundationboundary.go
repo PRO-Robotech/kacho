@@ -144,26 +144,37 @@ var foundationClasses = map[string]foundationClass{
 	"operations":       classCorelib,
 	"option":           classCorelib,
 	"outbox":           classCorelib,
-	"ownerregister":    classKaname,
-	"pagetoken":        classCorelib,
-	"peer":             classCorelib,
-	"pgtest":           classToolchain,
-	"platformmodules":  classCorelib,
-	"principalwire":    classCorelib,
-	"quota":            classCorelib,
-	"retention":        classCorelib,
-	"retry":            classCorelib,
-	"safeconv":         classCorelib,
-	"schemaguard":      classCorelib,
-	"servicecontract":  classCorelib,
-	"servicehost":      classCorelib,
-	"shutdown":         classCorelib,
-	"singlepass":       classCorelib,
-	"subjectchange":    classKaname,
-	"subscription":     classCorelib,
-	"tokenpolicy":      classCorelib,
-	"treecorpus":       classToolchain,
-	"validate":         classCorelib,
+	// ownerregister и subjectchange НЕ ЛЕЖАТ В ЭТОМ ДЕРЕВЕ с 2026-09-13
+	// (kacho#2616, исход C): они переехали в модуль службы доступа и живут там
+	// по тем же путям — `github.com/PRO-Robotech/kaname/pkg/{ownerregister,
+	// subjectchange}`. Класс их от переезда не изменился: он и был `kaname`.
+	//
+	// ЗАПИСИ ОСТАЮТСЯ, И ЭТО НЕ СНИСХОДИТЕЛЬНОСТЬ. Карта объявляет КЛАСС, а не
+	// место хранения (см. §«Ключ — имя каталога, а не путь»), и предмет у записи
+	// живой — просто в ТРЕТЬЕМ доме. Ось первая резолвит его там же, где второй
+	// дом фундамента: `declaredModuleRootDir` + `pkg/` модуля. Снять запись
+	// значило бы потерять объявление класса для каталога, который никуда не
+	// девался, — и вернуть его молча при следующем переезде.
+	"ownerregister":   classKaname,
+	"pagetoken":       classCorelib,
+	"peer":            classCorelib,
+	"pgtest":          classToolchain,
+	"platformmodules": classCorelib,
+	"principalwire":   classCorelib,
+	"quota":           classCorelib,
+	"retention":       classCorelib,
+	"retry":           classCorelib,
+	"safeconv":        classCorelib,
+	"schemaguard":     classCorelib,
+	"servicecontract": classCorelib,
+	"servicehost":     classCorelib,
+	"shutdown":        classCorelib,
+	"singlepass":      classCorelib,
+	"subjectchange":   classKaname,
+	"subscription":    classCorelib,
+	"tokenpolicy":     classCorelib,
+	"treecorpus":      classToolchain,
+	"validate":        classCorelib,
 }
 
 // foundationSubtrees — каталоги, уезжающие НЕ ЦЕЛИКОМ (приёмка §5, знак †).
@@ -186,6 +197,11 @@ var foundationSubtrees = []struct {
 	Prefix string
 	Class  foundationClass
 }{
+	// Заглушки этого контракта с 2026-09-13 публикует модуль службы
+	// (kacho#2616, исход C): в ЭТОМ дереве пути `pkg/api/kaname/…` больше нет,
+	// он живёт в `github.com/PRO-Robotech/kaname` по тому же написанию. Запись
+	// остаётся по тому же доводу, что две записи карты каталогов выше: она
+	// объявляет класс, а не место, и ось четвёртая резолвит её в третьем доме.
 	{"pkg/api/kaname/cloud/iam", classKaname},
 	{"pkg/api/kacho/cloud/operation", classCorelib},
 	{"pkg/api/kacho/cloud/subscription", classCorelib},
@@ -422,6 +438,9 @@ type boundaryCensus struct {
 	LedgerRows  int
 	Binaries    int
 	ReachedPkgs int
+	Requires    int
+	Modules     int
+	ClassPairs  int
 }
 
 // Перепись печатается ПО ОСЯМ, а не одной строкой на все восемь величин: ось
@@ -439,6 +458,14 @@ func (c boundaryCensus) EdgeSummary() string {
 		"файлов Go прочитано %d · внутридревесных импортов (файл×путь) %d · "+
 			"рёбер запрещённого направления %d · строк ведомости %d",
 		c.FilesRead, c.Imports, c.Edges, c.LedgerRows)
+}
+
+func (c boundaryCensus) ModuleEdgeSummary() string {
+	return fmt.Sprintf(
+		"файлов Go прочитано %d · МЕЖМОДУЛЬНЫХ импортов (файл×путь) %d · "+
+			"различных пар классов %d · рёбер запрещённого направления %d · "+
+			"объявлений модулей %d · строк require прочитано %d",
+		c.FilesRead, c.Imports, c.ClassPairs, c.Edges, c.Modules, c.Requires)
 }
 
 func (c boundaryCensus) ClosureSummary() string {
@@ -866,4 +893,233 @@ func judgeExecutedModules(reach []executedReach, binaries int) ([]string, bounda
 
 	sort.Strings(faults)
 	return faults, census
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ОСЬ СЕДЬМАЯ — РЕБРО МЕЖДУ МОДУЛЯМИ, а не между каталогами одного модуля.
+//
+// # Почему шести осей не хватило, и это ЗАМЕР, а не соображение
+//
+// До 2026-09-13 все три класса лежали в ОДНОМ модуле, и «ребро между модулями»
+// было фигурой речи: Go ни одного из них отвергнуть не мог, поэтому ось вторая
+// судила пути дерева, переводя импорт в путь приставкой собственного модуля
+// (`treePathOfImport`). Всё, что этой приставки не несло, она отбрасывала ДО
+// счёта — и отбрасывала молча.
+//
+// Решением владельца (kacho#2616, исход C) служба доступа стала отдельным
+// модулем, и платформа взяла её зависимостью. С этого дня в дереве появились
+// импорты `github.com/PRO-Robotech/kaname/…` — и ось вторая не видит их ВОВСЕ:
+// ни как ребро, ни в переписи. Замер на день заведения этой оси: таких узлов
+// import 133 в 122 файлах, и все шесть осей вместе называли их числом НОЛЬ.
+//
+// Молчание здесь дороже красного: ребро запрещённого направления, проложенное
+// через границу модуля, собирается чисто, проходит все шесть осей и обнажается
+// только в день, когда чужой модуль попробуют выпустить.
+//
+// # Что эта ось судит, а что судить НЕ МОЖЕТ — сказано числом, а не общо
+//
+// Гейт живёт в дереве платформы, поэтому наблюдаемы ровно две вещи:
+//
+//	импорты файлов ЭТОГО дерева   → рёбра, ИСХОДЯЩИЕ из его пакетов
+//	`require` его `go.mod`        → направления, объявленные самим деревом
+//
+// Из этого ловятся ТРИ запрещённых направления, и все три представимы:
+//
+//	corelib → kaname   пакет класса «фундамент» этого дерева берёт модуль службы
+//	corelib → kacho    он же берёт модуль платформы (вне пути своего дерева)
+//	kaname  → kacho    пакет класса «служба» берёт модуль платформы
+//
+// Сегодня их ноль, и это ЗАМЕР: перепись печатает 133 законных ребра при 0
+// запрещённых, а пустой обход роняет прогон (см. отказы ниже).
+//
+// Чего ось НЕ СУДИТ, и это остаток, а не обещание: рёбра, ИСХОДЯЩИЕ из `corelib`
+// и из `kaname`. Их файлов в этом дереве нет, их `go.mod` тоже — судить нечем, и
+// объявлять «проверено» было бы утверждением о непрочитанном. Держатели у них
+// свои: конвейеры соседних репозиториев и
+// `scripts/release/assert-no-module-reciprocity.sh`.
+//
+// # Класс ЦЕЛИ берётся у МОДУЛЯ, а не у каталога внутри него
+//
+// Это сознательное сужение. Каталог чужого модуля может нести класс «оснастка
+// сборки» (`corelib/treecorpus`), но предмет оснастки — не направление, а
+// НЕИСПОЛНЕНИЕ в поставляемом процессе, и его судят оси третья и шестая. Здесь
+// же вопрос ровно один: вправе ли пакет такого класса зависеть от такого модуля.
+//
+// # Ведомости у этой оси НЕТ, и по тому же доводу, что у оси шестой
+//
+// Ребро через границу модуля разрешает `go.mod`, а не расстояние до дня раскола:
+// раскол уже состоялся. Прощать здесь значило бы прощать `require`, которого
+// нельзя выпустить, — то есть отложить работу до дня, когда она уже невыполнима.
+
+// moduleClasses — класс каждого модуля ОБЪЯВЛЕННОГО состава.
+//
+// Это отношение не выводится из имени: `kacho` и `kaname` — имена и модулей, и
+// корней контракта, и каталогов, и вывод по имени был бы второй копией этой
+// карты, расходящейся молча. Запись, чей модуль ни объявлен этим деревом, ни
+// затребован его `go.mod`, — НАХОДКА (судится тем же судьёй ниже): объявление
+// без предмета не истекает само и потому переживает свой повод.
+var moduleClasses = map[string]foundationClass{
+	"github.com/PRO-Robotech/kacho":   classKacho,
+	"github.com/PRO-Robotech/kaname":  classKaname,
+	"github.com/PRO-Robotech/corelib": classCorelib,
+}
+
+// ownModulePath — модуль ЭТОГО дерева. Рёбра внутри него судит ось вторая, и
+// удваивать её находки седьмая не должна.
+const ownModulePath = "github.com/PRO-Robotech/kacho"
+
+// classOfModule — модуль и его класс по пути импорта. Побеждает самая длинная
+// совпавшая приставка: модуль `…/kacho` и модуль `…/kaname` различны, и разбор
+// по короткой приставке спутал бы их при появлении модуля-тёзки с суффиксом.
+//
+// Третий исход назван отдельно: путь, не принадлежащий ни одному объявленному
+// модулю (`google.golang.org/grpc`, stdlib), — НЕ находка и не ребро. Вердикт о
+// чужих зависимостях у этой оси не предмет; его предмет — свои три модуля.
+func classOfModule(importPath string) (string, foundationClass, bool) {
+	best, bestClass := "", foundationClass("")
+	for module, cls := range moduleClasses {
+		if importPath != module && !strings.HasPrefix(importPath, module+"/") {
+			continue
+		}
+		if len(module) > len(best) {
+			best, bestClass = module, cls
+		}
+	}
+	if best == "" {
+		return "", "", false
+	}
+	return best, bestClass, true
+}
+
+// crossModuleEdge — наблюдённое ребро из пакета ЭТОГО дерева в ЧУЖОЙ модуль.
+//
+// Счёт раздельный, прод и пробы, по тому же доводу, что у [boundaryEdge]: проба
+// входит в граф зависимостей своего модуля, и `go.mod` обязан её разрешить, —
+// значит тестового импорта ДОСТАТОЧНО, чтобы ребро существовало.
+type crossModuleEdge struct {
+	FromPkg   string
+	FromClass foundationClass
+	ToModule  string
+	ToClass   foundationClass
+	Prod      int
+	Test      int
+}
+
+func (e crossModuleEdge) key() string { return e.FromPkg + " -> " + e.ToModule }
+
+// judgeCrossModuleEdges — ось СЕДЬМАЯ.
+//
+// `requires` — пути модулей из `require` судимого `go.mod`; `filesRead` — файлов
+// Go прочитано; `imports` — межмодульных импортов (файл × путь); `pairs` —
+// различных наблюдённых пар «класс источника → класс цели».
+//
+// ОТКАЗЫ НА ПУСТОМ ОБХОДЕ — ТРИ, и каждый закрывает свою слепоту:
+//
+//	файлов ноль        вердикт относился бы к непрочитанному;
+//	импортов ноль      перевод пути импорта ослеп — именно этот дефект и стоял
+//	                   в дереве, когда ось заводили (133 узла назывались нулём);
+//	пар классов < 2    все рёбра свелись к одной паре: классификатор отвечает
+//	                   одинаково на разные модули, и «запрещённых нет» означало
+//	                   бы «различать нечем».
+func judgeCrossModuleEdges(edges []crossModuleEdge, requires []string, filesRead, imports, pairs int) ([]string, boundaryCensus) {
+	census := boundaryCensus{
+		FilesRead:  filesRead,
+		Imports:    imports,
+		Requires:   len(requires),
+		Modules:    len(moduleClasses),
+		ClassPairs: pairs,
+	}
+	var faults []string
+
+	if filesRead == 0 {
+		return []string{"обход пуст: файлов Go не прочитано ни одного — вердикт о " +
+			"межмодульном направлении относился бы к непрочитанному"}, census
+	}
+	if imports == 0 {
+		return []string{"межмодульных импортов не прочитано НИ ОДНОГО при непустом " +
+			"обходе: так выглядит ослепший перевод пути импорта, а не чистое дерево — " +
+			"платформа берёт зависимостью и фундамент, и службу доступа, то есть таких " +
+			"импортов в ней сотни"}, census
+	}
+	if pairs < 2 {
+		return []string{fmt.Sprintf("различных пар «класс источника → класс цели» "+
+			"наблюдено %d при %d межмодульных импортах: все рёбра свелись к одной паре, "+
+			"то есть классификатор модуля или пакета отвечает одинаково на разные входы — "+
+			"«запрещённых направлений не нашлось» означало бы «различать нечем»",
+			pairs, imports)}, census
+	}
+	if len(requires) == 0 {
+		return []string{"в go.mod не прочитано ни одной строки require — разбор " +
+			"объявления модулей отказал, и самоистечение карты классов модулей " +
+			"судило бы по пустому перечню, то есть объявило бы находкой каждую запись"}, census
+	}
+
+	// Самоистечение карты: объявление про модуль, которого дерево не объявляет
+	// собственным и не требует, — находка. Порядок устойчив, чтобы вывод не
+	// зависел от обхода карты.
+	known := map[string]bool{ownModulePath: true}
+	for _, r := range requires {
+		known[r] = true
+	}
+	declared := make([]string, 0, len(moduleClasses))
+	for module := range moduleClasses {
+		declared = append(declared, module)
+	}
+	sort.Strings(declared)
+	for _, module := range declared {
+		if known[module] {
+			continue
+		}
+		faults = append(faults, fmt.Sprintf(
+			"карта классов модулей объявляет %s (класс «%s»), а дерево его ни "+
+				"объявляет своим, ни требует в go.mod: запись описывает модуль, которого "+
+				"в составе нет, никогда не совпадёт и потому не истечёт сама — снимите "+
+				"её вместе с предметом",
+			module, moduleClasses[module]))
+	}
+
+	for _, e := range edges {
+		if !forbiddenDirections[[2]foundationClass{e.FromClass, e.ToClass}] {
+			continue
+		}
+		census.Edges++
+		faults = append(faults, fmt.Sprintf(
+			"пакет %s (класс «%s») импортирует модуль %s (класс «%s»): направление "+
+				"«%s → %s» запрещено целевой раскладкой. Прод-файлов %d, пробных %d; "+
+				"тестового импорта ДОСТАТОЧНО — go.mod обязан разрешить и его. Ведомости "+
+				"у этой оси нет намеренно: раскол состоялся, и такое ребро разрешается "+
+				"только обратным require, то есть циклом выпуска",
+			e.FromPkg, e.FromClass, e.ToModule, e.ToClass, e.FromClass, e.ToClass,
+			e.Prod, e.Test))
+	}
+
+	sort.Strings(faults)
+	return faults, census
+}
+
+// declaredModuleRootDir — каталог ОБЪЯВЛЕННОГО модуля в кэше модулей, по версии,
+// закреплённой `go.mod` судимого дерева.
+//
+// ОТКАЗ, а не пустая строка: «модуль не закреплён» и «кэш не наполнен» по пустому
+// результату не различить, а вызывающий, продолжающий молча, объявил бы
+// «предмета нет» там, где подвела инфраструктура прогона.
+func declaredModuleRootDir(root, modulePath string, readFile func(string) ([]byte, error), gomodcache func() (string, error)) (string, error) {
+	body, err := readFile(root + "/go.mod")
+	if err != nil {
+		return "", fmt.Errorf("чтение go.mod: %w", err)
+	}
+	for _, dep := range ParseGoModRequires(string(body)) {
+		if dep.Path != modulePath {
+			continue
+		}
+		cache, cerr := gomodcache()
+		if cerr != nil {
+			return "", cerr
+		}
+		if cache == "" {
+			return "", fmt.Errorf("каталог кэша модулей пуст — второй дом не резолвится")
+		}
+		return ModuleCacheDir(cache, dep), nil
+	}
+	return "", fmt.Errorf("go.mod не закрепляет %s — дом не резолвится", modulePath)
 }

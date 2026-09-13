@@ -22,7 +22,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/corelib/credsecret"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )

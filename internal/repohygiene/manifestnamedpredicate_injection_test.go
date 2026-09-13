@@ -26,16 +26,16 @@ import (
 func injectionManifestTree() manifestTreeView {
 	return manifestTreeView{
 		Files: map[string]bool{
-			"services/iam/Makefile":           true,
-			"services/vpc/manifest.yaml":      true,
-			"internal/repohygiene/holder.go":  true,
-			"proto/kaname/cloud/iam/v1/m.fga": true,
+			"services/iam/Makefile":          true,
+			"services/vpc/manifest.yaml":     true,
+			"internal/repohygiene/holder.go": true,
+			"proto/kacho/cloud/vpc/v1/m.fga": true,
 		},
 		Dirs: map[string]bool{
 			".": true, "services": true, "services/iam": true, "services/vpc": true,
 			"internal": true, "internal/repohygiene": true, "internal/empty": true,
-			"proto": true, "proto/kaname": true, "proto/kaname/cloud": true,
-			"proto/kaname/cloud/iam": true, "proto/kaname/cloud/iam/v1": true,
+			"proto": true, "proto/kacho": true, "proto/kacho/cloud": true,
+			"proto/kacho/cloud/vpc": true, "proto/kacho/cloud/vpc/v1": true,
 		},
 		MakeTargets: map[string]map[string]bool{
 			"services/iam/Makefile": {"model-canon-check": true},
@@ -128,7 +128,7 @@ func TestInjection_ManifestNamedPredicateCatchesEachAxis(t *testing.T) {
 		},
 		{
 			axis:        "N5 законный близнец — координата существует",
-			header:      "#  сверка с каноном `proto/kaname/cloud/iam/v1/m.fga`",
+			header:      "#  сверка с каноном `proto/kacho/cloud/vpc/v1/m.fga`",
 			wantFinding: false,
 		},
 		{

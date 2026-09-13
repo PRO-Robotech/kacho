@@ -31,17 +31,49 @@
 // Тогда утверждение звучит буквально «вот существующий каталог, а в нём
 // подкаталог с именем продукта», и второй половины в дереве не существует.
 //
-// # Два АВТОРИТЕТА, а не два предиката
+// # ТРИ АВТОРИТЕТА, а не три предиката
 //
-// Токен бывает двух родов, и резолвит их разное:
+// Токен бывает двух родов, и резолвит их разное; ДЕРЕВО, которым проверяется
+// остаток, зависит от того, чьё имя модуля токен назвал:
 //
-//	координата ДЕРЕВА   `services/iam/internal/repo/kaname` — резолвится
-//	                    деревом: точным путём либо СУФФИКСОМ отслеживаемого
-//	                    пути, потому что проза пишет координату от корня службы
-//	                    (`nlb/internal/repo/...`), а не репозитория
-//	путь МОДУЛЯ Go      `github.com/PRO-Robotech/kacho/services/iam/...` —
-//	                    резолвится ОБЪЯВЛЕНИЯМИ модулей: путь абсолютен by
-//	                    construction, суффиксу здесь взяться неоткуда
+//	координата ДЕРЕВА   путь БЕЗ имени модуля, один из сегментов которого — имя
+//	                    продукта (каталог слоя хранилища службы, каталог её
+//	                    контрактов). Резолвится деревом: точным путём либо
+//	                    СУФФИКСОМ отслеживаемого пути, потому что проза пишет
+//	                    координату от корня службы, а не репозитория. Не нашлось
+//	                    здесь — спрашивается дерево ВНЕШНЕГО модуля: имени модуля
+//	                    такой токен не несёт, и координата заглушек службы в
+//	                    прозе этого дерева — законное указание на чужой
+//	                    репозиторий
+//	путь МОДУЛЯ Go      токен, начинающийся с имени модуля, — резолвится
+//	                    ОБЪЯВЛЕНИЯМИ модулей: путь абсолютен by construction,
+//	                    суффиксу здесь взяться неоткуда
+//	дерево ВНЕШНЕГО     решением владельца (kacho#2616, исход C, 2026-09-13)
+//	модуля              контракты и заглушки службы доступа уехали в её
+//	                    репозиторий и приезжают модулем ПО ТЕМ ЖЕ относительным
+//	                    путям. Остаток проверяется ТОЧНЫМ путём от корня этого
+//	                    модуля, без суффикса: суффикс по чужому дереву гасил бы
+//	                    находки, а не находил их
+//
+// ДЕРЕВО ВНЕШНЕГО МОДУЛЯ ОТВЕЧАЕТ ЗА ОСТАТОК ТОЛЬКО СВОИХ ПУТЕЙ, и это решение,
+// а не упущение. Путь модуля называет пакет ИМЕНЕМ модуля, поэтому остаток
+// судится тем деревом, которое это имя обозначает:
+//
+//	имя модуля СЛУЖБЫ + остаток до заглушек — остаток проверяется деревом её
+//	  модуля: там он и лежит, и это ЗАКОННАЯ форма импорта
+//	имя модуля ПЛАТФОРМЫ + ТОТ ЖЕ остаток — остаток проверяется ЭТИМ деревом и
+//	  не резолвится: пакет уехал под другое имя модуля, и Go по такому пути не
+//	  найдёт его никогда. НАХОДКА
+//
+// Разреши мы второй форме резолвиться чужим деревом, гейт замолчал бы ровно о
+// том, что обязан ловить: об импорте, пережившем переезд. Он её и поймал — в трёх
+// файлах инъекций сразу после выноса.
+//
+// СОБСТВЕННАЯ ОШИБКА, НАЗВАННАЯ ЗДЕСЬ, ПОТОМУ ЧТО ГЕЙТ ЕЁ НАШЁЛ: первая редакция
+// этого абзаца выписала вторую форму ЛИТЕРАЛОМ — и прогон дал находку на строке
+// 62 этого самого файла. Правило §«Предмет» («координаты здесь намеренно не
+// воспроизводятся») распространяется и на объяснение правила; поэтому формы
+// названы словами, а не цитатами.
 //
 // Прежняя редакция объявляла путь модуля СЛЕПОЙ ЗОНОЙ («судить его этим
 // предикатом значило бы мерить не тот авторитет») — верно про авторитет и
@@ -61,11 +93,21 @@
 //
 // # Второй РОД находки: пакет ВЛОЖЕННОГО модуля через путь родительского
 //
-// Служба доступа вынесена в собственный модуль (`services/iam/go.mod`). Значит
-// её пакет РОДИТЕЛЬСКОМУ модулю не принадлежит, и путь вида
-// `github.com/PRO-Robotech/<родитель>/services/iam/internal/...` не резолвится
-// НИКОГДА — при том что каталог в дереве существует и предикат «якорь+сегмент»
-// на нём молчит. Отсюда отдельный род находки: координата недостижима модулем.
+// Пакет вложенного модуля РОДИТЕЛЬСКОМУ не принадлежит: путь вида
+// `github.com/PRO-Robotech/<родитель>/<корень вложенного>/internal/...` не
+// резолвится НИКОГДА — при том что каталог в дереве существует и предикат
+// «якорь+сегмент» на нём молчит. Отсюда отдельный род находки: координата
+// недостижима модулем.
+//
+// ЗДЕСЬ СТОЯЛ ПРИМЕР `services/iam/go.mod` как живой. Он больше не живой и не
+// станет: служба доступа вынесена в свой РЕПОЗИТОРИЙ (kacho#2616, исход C,
+// 2026-09-13), и вложенного модуля в этом дереве не осталось ни одного —
+// `git ls-files '*go.mod'` даёт одну запись, корневую. Род находки от этого не
+// снят и снимать его нельзя: он держится инъекцией (подпроба «ОСЬ (модуль): пакет
+// ВЛОЖЕННОГО модуля через путь родительского — находка» строит своё дерево с
+// вложенным модулем), и заведётся вложенный модуль снова — предикат готов. Но
+// утверждать, что предмет у него есть В ЭТОМ дереве, значило бы писать о
+// несуществующем.
 //
 // # Почему якорь обязан быть не короче двух сегментов
 //
@@ -99,17 +141,28 @@
 //	                 синтетическая фикстура чужой пробы). Синтетика чужих
 //	                 инъекций попадает СЮДА, а не в перечень исключений:
 //	                 дерева под ней нет by construction
+//	externalResolved координата резолвится не этим деревом, а деревом модуля,
+//	                 публикующего внешний корень контрактов. Считается отдельным
+//	                 числом, а не растворяется в `resolved`: пропади это дерево —
+//	                 полоса обнулится, и обнуление обязано быть видно
 //
 // # Перепись
 //
-// Печатается: файлов прочитано, двоичных пропущено, объявленных модулей,
-// токенов с сегментом имени продукта, каждая полоса своим числом, судимых (и
-// сколько из них пришло полосой модуля), из них резолвится, находок.
+// Печатается: файлов прочитано, двоичных пропущено, объявленных модулей, деревьев
+// внешних корней, токенов с сегментом имени продукта, каждая полоса своим числом,
+// судимых (и сколько из них пришло полосой модуля), из них резолвится (и сколько
+// резолвилось деревом внешнего модуля), находок.
 //
 // Ноль токенов — ОТКАЗ: гейт, чей предмет отсутствие, молчит одинаково и когда
 // предмета нет, и когда сломан обход. Ноль объявленных модулей и ноль судимых
 // полосой модуля — тоже ОТКАЗ: правило полосы не исполнялось НИ РАЗУ, и её
 // молчание тогда означает «не искали», а не «не нашли». Условия самоистекающие.
+//
+// Ноль ДЕРЕВЬЕВ ВНЕШНИХ КОРНЕЙ отказом НЕ является, и это не послабление, а
+// направление ошибки: потеря этого авторитета делает гейт ГРОМЧЕ — координаты,
+// лежащие в чужом дереве, снова становятся находками, с именем и строкой. Молчать
+// он от этого не начинает, поэтому число печатается, а вердиктом не становится;
+// у синтетических деревьев инъекции внешних корней нет by construction.
 package repohygiene
 
 import (
@@ -124,6 +177,8 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/corelib/treecorpus"
+
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 )
 
 // standaloneProductSegment — имя продукта, которым служба доступа назвала свои
@@ -246,7 +301,11 @@ type overAppliedFinding struct {
 	token  string
 	anchor string // якорь (координата дерева) либо целевой путь (координата модуля)
 	nested string // непусто — путь вложенного модуля, из-за которого координата недостижима
-	text   string
+	// external — непусто: якорь резолвился деревом ВНЕШНЕГО модуля, а не этим
+	// деревом. Авторитет обязан быть назван в находке: без него читатель пошёл бы
+	// искать якорь у себя и не нашёл бы, решив, что находка ложная.
+	external string
+	text     string
 }
 
 func (f overAppliedFinding) String() string {
@@ -255,8 +314,12 @@ func (f overAppliedFinding) String() string {
 			"родительскому модулю он не принадлежит, и по этому пути его не найти никогда | %s",
 			f.file, f.line, f.token, f.anchor, f.nested, strings.TrimSpace(f.text))
 	}
-	return fmt.Sprintf("%s:%d: %s — якорь %s резолвится, %s/%s нет | %s",
-		f.file, f.line, f.token, f.anchor, f.anchor, standaloneProductSegment,
+	where := "в этом дереве"
+	if f.external != "" {
+		where = "в дереве модуля " + f.external
+	}
+	return fmt.Sprintf("%s:%d: %s — якорь %s резолвится %s, %s/%s нет | %s",
+		f.file, f.line, f.token, f.anchor, where, f.anchor, standaloneProductSegment,
 		strings.TrimSpace(f.text))
 }
 
@@ -272,18 +335,109 @@ type overAppliedCensus struct {
 	judged           int
 	moduleJudged     int
 	resolved         int
+	externalTrees    int
+	externalResolved int
 }
 
 func (c overAppliedCensus) String() string {
 	return fmt.Sprintf("файлов прочитано %d · двоичных пропущено %d · объявленных модулей %d · "+
+		"деревьев внешних корней %d · "+
 		"токенов с сегментом %q %d (авторитет чужой %d · сегмент — имя объявленного модуля %d · "+
 		"якорь короче %d сегментов %d · якорь не резолвится %d) · "+
-		"судимых %d (полосой модуля %d, резолвится %d)",
-		c.filesRead, c.filesBinary, c.modulesDeclared,
+		"судимых %d (полосой модуля %d, резолвится %d, из них деревом внешнего модуля %d)",
+		c.filesRead, c.filesBinary, c.modulesDeclared, c.externalTrees,
 		standaloneProductSegment, c.tokensWithName,
 		c.moduleForeign, c.moduleOwnSegment,
 		minAnchorSegments, c.shortAnchor, c.anchorUnresolved,
-		c.judged, c.moduleJudged, c.resolved)
+		c.judged, c.moduleJudged, c.resolved, c.externalResolved)
+}
+
+// externalRootTree — дерево МОДУЛЯ, публикующего внешний корень дерева
+// контрактов: путь модуля (для текста находки) и его каталог на диске.
+type externalRootTree struct {
+	modulePath string
+	dir        string
+}
+
+// externalRootTrees — деревья модулей внешних корней, закреплённых go.mod
+// судимого дерева, в устойчивом порядке.
+//
+// Перечень корней и их модулей спрашивается у contractsource: он объявлен ОДИН
+// раз, и второе объявление разошлось бы с ним при появлении третьего корня.
+// Резолв — общим предикатом `pinnedModuleRootDir`, тем же, которым второй дом
+// заглушек резолвит анализатор монтирования: два разных резолва одной версии
+// молча разошлись бы при бампе.
+//
+// ПУСТОЙ ПЕРЕЧЕНЬ — ЗАКОННЫЙ ИСХОД, и он не тише, а громче: у синтетических
+// деревьев проб (t.TempDir() без своего go.mod) внешних корней нет by
+// construction, а на настоящем дереве потеря этого авторитета добавляет находки,
+// а не отнимает. Число печатается переписью, чтобы потеря была видна.
+func externalRootTrees(treeRoot string) []externalRootTree {
+	roots := make([]string, 0, len(contractsource.ExternalRootModules))
+	for r := range contractsource.ExternalRootModules {
+		roots = append(roots, r)
+	}
+	sort.Strings(roots)
+	seen := map[string]bool{}
+	var out []externalRootTree
+	for _, r := range roots {
+		modulePath := contractsource.ExternalRootModules[r]
+		if seen[modulePath] {
+			continue
+		}
+		dir, err := pinnedModuleRootDir(treeRoot, modulePath)
+		if err != nil {
+			continue
+		}
+		if st, serr := os.Stat(dir); serr != nil || !st.IsDir() {
+			continue
+		}
+		seen[modulePath] = true
+		out = append(out, externalRootTree{modulePath: modulePath, dir: dir})
+	}
+	return out
+}
+
+// externalTreeResolves — координата существует в дереве какого-нибудь внешнего
+// модуля, отсчитанная от ЕГО корня. Возвращает путь модуля — им и назван
+// авторитет в переписи.
+//
+// Только точный путь, и только ВНУТРИ каталога модуля: `..` в середине токена
+// вывел бы проверку за его пределы, а там она стала бы утверждением о случайном
+// соседе по кэшу.
+func externalTreeResolves(exts []externalRootTree, coord string) (string, bool) {
+	coord = strings.Trim(coord, "./,;:")
+	if coord == "" {
+		return "", false
+	}
+	for _, e := range exts {
+		p := filepath.Join(e.dir, filepath.FromSlash(coord))
+		if p != e.dir && !strings.HasPrefix(p, e.dir+string(os.PathSeparator)) {
+			continue
+		}
+		if _, err := os.Stat(p); err == nil {
+			return e.modulePath, true
+		}
+	}
+	return "", false
+}
+
+// externalModuleOf — токен начинается с пути ВНЕШНЕГО модуля, чьё дерево
+// резолвится. Возвращает это дерево и число сегментов пути модуля — остаток
+// отсчитывается от его корня.
+//
+// Спрашивается ПЕРЕД перечнем объявленных в дереве модулей: внешний модуль в
+// `go.mod` объявлен зависимостью, а не своим `module`-заголовком, поэтому
+// `declaredModules` его не знает и `moduleOf` вернул бы nil — токен уехал бы в
+// полосу «авторитет не наш», при том что авторитет есть и лежит в кэше модулей.
+func externalModuleOf(exts []externalRootTree, tok string) (*externalRootTree, int) {
+	for i := range exts {
+		m := exts[i].modulePath
+		if tok == m || strings.HasPrefix(tok, m+"/") {
+			return &exts[i], len(strings.Split(m, "/"))
+		}
+	}
+	return nil, 0
 }
 
 // treeCoordinateResolves — путь есть в дереве сам по себе либо суффиксом
@@ -328,6 +482,8 @@ func scanOverAppliedRename(tree *treecorpus.Tree) (overAppliedCensus, []overAppl
 	census.modulesDeclared = len(mods)
 
 	root := tree.Root()
+	exts := externalRootTrees(root)
+	census.externalTrees = len(exts)
 	for _, rel := range tree.SortedFiles() {
 		slash := filepath.ToSlash(rel)
 		raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
@@ -372,6 +528,51 @@ func scanOverAppliedRename(tree *treecorpus.Tree) (overAppliedCensus, []overAppl
 				census.tokensWithName++
 
 				if strings.HasPrefix(tok, "github.com/") || strings.HasPrefix(tok, "PRO-Robotech/") {
+					// Путь ВНЕШНЕГО модуля судится тем же правилом, но своим
+					// авторитетом: остаток отсчитывается от корня того модуля, а
+					// не этого дерева. Иначе всякий импорт заглушек службы
+					// доступа уезжал бы в полосу «авторитет не наш» — то есть из
+					// наблюдения вышла бы ровно та поверхность, которую переезд и
+					// тронул.
+					if ext, extSegs := externalModuleOf(exts, tok); ext != nil {
+						one := []externalRootTree{*ext}
+						mk := -1
+						for j := extSegs; j < len(segs); j++ {
+							if segs[j] == standaloneProductSegment {
+								mk = j
+								break
+							}
+						}
+						if mk < 0 {
+							// Сегмент встречается только в САМОМ пути модуля
+							// (`…/kaname`, `…/kaname/issues/2224`): резолвится
+							// объявлением зависимости, а не деревом.
+							census.moduleOwnSegment++
+							continue
+						}
+						extAnchor := strings.Join(segs[extSegs:mk], "/")
+						anchorOK := extAnchor == ""
+						if !anchorOK {
+							_, anchorOK = externalTreeResolves(one, extAnchor)
+						}
+						if !anchorOK {
+							census.anchorUnresolved++
+							continue
+						}
+						census.judged++
+						census.moduleJudged++
+						extTarget := strings.Join(segs[extSegs:mk+1], "/")
+						if _, ok := externalTreeResolves(one, extTarget); ok {
+							census.resolved++
+							census.externalResolved++
+							continue
+						}
+						findings = append(findings, overAppliedFinding{
+							file: slash, line: i + 1, token: tok, anchor: extAnchor,
+							external: ext.modulePath, text: line,
+						})
+						continue
+					}
 					mod := moduleOf(mods, tok)
 					if mod == nil {
 						census.moduleForeign++
@@ -432,8 +633,18 @@ func scanOverAppliedRename(tree *treecorpus.Tree) (overAppliedCensus, []overAppl
 					continue
 				}
 				census.judged++
-				if treeCoordinateResolves(tree, strings.Join(segs[:k+1], "/")) {
+				target := strings.Join(segs[:k+1], "/")
+				if treeCoordinateResolves(tree, target) {
 					census.resolved++
+					continue
+				}
+				// Второй авторитет ПЕРВОГО рода: координата может лежать в дереве
+				// модуля, публикующего внешний корень контрактов. Спрашивается
+				// ПОСЛЕ своего дерева, а не вместо: своё дерево — источник истины,
+				// чужое лишь добирает то, что из него уехало.
+				if _, ok := externalTreeResolves(exts, target); ok {
+					census.resolved++
+					census.externalResolved++
 					continue
 				}
 				findings = append(findings, overAppliedFinding{

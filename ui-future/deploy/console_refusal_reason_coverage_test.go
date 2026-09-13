@@ -141,21 +141,29 @@ var consoleDictBlock = regexp.MustCompile(`(?s)const REFUSALS: Record<string, Re
 // потребителя была бы послаблением без предмета. Потребители печатаются
 // переписью поимённо.
 //
-// Прежде перечень звался «полосой потока» и нёс два пути с одним потребителем.
-// Оснований у исключения оказалось два, а не одно: у полосы отзыва края отказ до
-// браузера не доезжает ВООБЩЕ — глагол внутренний (ban #6), и его читает Go
-// соседней реплики. Объявить такому токену вердикт консоли значило бы завести
-// запись, которая не сработает ни при каком входе.
-var offConsoleProducerPaths = []struct {
+// # ЗАПИСЬ ИСТЕКАЕТ ВМЕСТЕ С ПРЕДМЕТОМ, И ЭТО ТЕПЕРЬ ДЕРЖИТ ПРОВЕРКА
+//
+// Здесь стояли ещё два пути — `pkg/subscription/` и `pkg/subjectchange/`, — и
+// исключать им было НЕЧЕГО: отслеживаемых файлов под обоими ноль. Первый уехал в
+// общий фундамент (#2131), второй — вместе с контрактами и кодом службы доступа
+// (kacho#2616, исход C, 2026-09-13; канон теперь приезжает модулем
+// `github.com/PRO-Robotech/kaname`). Ни один из них не давал ни одного токена, и
+// заметить это было нечем: перечень печатался ПО ПОТРЕБИТЕЛЯМ, а мёртвый путь
+// делил потребителя с живым — «хаб подписки браузера» в переписи стоял, потому
+// что токены давал `gateway/internal/subscriptionstream/`.
+//
+// Так исключение шириной в каталог переживает свой предмет: следующий файл,
+// заведённый под мёртвым путём, наследует освобождение от вердикта консоли, о
+// котором никто не решал. Поэтому ниже стоит pathsWithoutSubject — предикат
+// самоистечения по КАЖДОМУ пути отдельно, а не по потребителю.
+type offConsolePath struct {
 	prefix   string
 	consumer string
-}{
-	{filepath.Join("pkg", "subscription") + string(filepath.Separator),
-		"хаб подписки браузера"},
+}
+
+var offConsoleProducerPaths = []offConsolePath{
 	{filepath.Join("gateway", "internal", "subscriptionstream") + string(filepath.Separator),
 		"хаб подписки браузера"},
-	{filepath.Join("pkg", "subjectchange") + string(filepath.Separator),
-		"читатель отзыва края (Go): глагол внутренний, до браузера отказ не доезжает"},
 }
 
 // offConsoleConsumer — чей это токен, если не консоли. Пустая строка означает
@@ -170,6 +178,36 @@ func offConsoleConsumer(rel string) string {
 		}
 	}
 	return ""
+}
+
+// pathsWithoutSubject — объявленные пути, из-под которых НЕ ПРИШЛО НИ ОДНОГО
+// токена, то есть исключения без предмета.
+//
+// Единица счёта — ТОКЕН, а не файл: предмет исключения — токен отказа, чей
+// потребитель не консоль. Путь, под которым файлы есть, а токенов нет, тоже
+// ничего не исключает — и с равным правом наследует освобождение следующему.
+//
+// Функция чистая намеренно, как и offConsoleConsumer: доказательство подаёт ей
+// и перечень, и найденное, не трогая дерево.
+func pathsWithoutSubject(produced []producedReason, paths []offConsolePath) (dead []string, subjects map[string]int) {
+	subjects = map[string]int{}
+	for _, p := range paths {
+		subjects[p.prefix] = 0
+	}
+	for _, r := range produced {
+		for _, p := range paths {
+			if strings.HasPrefix(r.where, p.prefix) {
+				subjects[p.prefix]++
+			}
+		}
+	}
+	for _, p := range paths {
+		if subjects[p.prefix] == 0 {
+			dead = append(dead, p.prefix+" (объявленный потребитель — "+p.consumer+")")
+		}
+	}
+	sort.Strings(dead)
+	return dead, subjects
 }
 
 // censusSkipPaths — не производители: гейты и утилиты держат СВОИ копии токенов,
@@ -406,6 +444,23 @@ func TestConsoleDeclaresEveryProducedRefusalReason(t *testing.T) {
 		sort.Strings(byConsumer[consumer])
 		t.Logf("вне консоли, потребитель — %s: %s",
 			consumer, strings.Join(byConsumer[consumer], " · "))
+	}
+
+	// САМОИСТЕЧЕНИЕ ИСКЛЮЧЕНИЯ ПО ПУТИ — отдельно от переписи по потребителям.
+	// Перепись выше складывает токены нескольких путей в одного потребителя,
+	// поэтому мёртвый путь в ней не виден: за него отвечает живой сосед с тем же
+	// именем потребителя.
+	deadPaths, pathSubjects := pathsWithoutSubject(produced, offConsoleProducerPaths)
+	for _, p := range offConsoleProducerPaths {
+		t.Logf("исключение по пути %s: токенов из-под него %d", p.prefix, pathSubjects[p.prefix])
+	}
+	if len(deadPaths) > 0 {
+		t.Errorf("объявлен путь вне консоли, из-под которого НЕ ПРИХОДИТ НИ ОДНОГО токена — %d:\n\t%s\n\n"+
+			"Исключению нечего исключать: оно пережило свой предмет и остаётся освобождением "+
+			"шириной в каталог. Следующий файл, заведённый под этим путём, унаследует свободу "+
+			"от вердикта консоли, о которой никто не решал. Снимите запись — либо верните "+
+			"производителя, ради которого она заведена.",
+			len(deadPaths), strings.Join(deadPaths, "\n\t"))
 	}
 
 	if len(producedOutsideThisTree) > 0 {

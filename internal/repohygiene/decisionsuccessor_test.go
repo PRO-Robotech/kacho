@@ -13,7 +13,66 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/corelib/contractroot"
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 )
+
+// decisionProtoPrefix — приставка, по которой координата документа опознаётся как
+// координата ДЕРЕВА КОНТРАКТОВ. Одна форма, а не перечень: документ пишет
+// координату от корня репозитория.
+const decisionProtoPrefix = "proto/"
+
+// decisionSurfacePath — путь на диске к поверхности, названной документом решения,
+// и признак того, что она приехала МОДУЛЕМ, а не лежит в этом дереве.
+//
+// Координата дерева контрактов резолвится contractsource, а не склейкой с корнем
+// репозитория. Решением владельца (kacho#2616, исход C, 2026-09-13) контракты
+// службы доступа уехали в её собственный репозиторий: под `proto/` их здесь нет,
+// а платформе они по-прежнему нужны, и приезжают они опубликованным модулем
+// `github.com/PRO-Robotech/kaname`. Склейка с корнем дала бы путь, которого нет, —
+// то есть гейт объявил бы «документ называет координату, которой в дереве нет»
+// там, где координата верна, а неверен был предикат. Исходы это РАЗНЫЕ: первый
+// чинится правкой документа, второй — переводом координаты.
+func decisionSurfacePath(root, rel string) (path string, external bool, err error) {
+	slash := filepath.ToSlash(rel)
+	relToProto := ""
+	switch {
+	case strings.HasPrefix(slash, decisionProtoPrefix):
+		relToProto = strings.TrimPrefix(slash, decisionProtoPrefix)
+	default:
+		// Координата дерева контрактов бывает названа и БЕЗ приставки `proto/` —
+		// именно так её несут дескрипторы, ведомости входов и сообщения buf
+		// (`kaname/cloud/iam/v1/project_service.proto`). После переезда контрактов
+		// службы (kacho#2616, исход C) это стало ЕДИНСТВЕННОЙ верной формой для её
+		// файлов: каталога `proto/kaname` в этом дереве нет, и приставка называла
+		// бы место, которого не существует.
+		//
+		// Форма распознаётся по ПЕРВОМУ СЕГМЕНТУ, сверенному с объявленным
+		// множеством корней, а не по догадке о «похоже на контракт»: путь
+		// `docs/architecture/…` первым сегментом корня не несёт и уходит в
+		// ветвь дерева.
+		first := strings.SplitN(slash, "/", 2)[0]
+		for _, r := range contractroot.Roots {
+			if first == r {
+				relToProto = slash
+				break
+			}
+		}
+		if relToProto == "" {
+			return filepath.Join(root, filepath.FromSlash(rel)), false, nil
+		}
+	}
+	inTree := filepath.Join(root, filepath.FromSlash(slash))
+	if _, serr := os.Stat(inTree); serr == nil {
+		return inTree, false, nil
+	}
+	p, perr := contractsource.Path(root, relToProto)
+	if perr != nil {
+		return "", false, perr
+	}
+	return p, true, nil
+}
 
 // projectDeletionDecisionDoc — документ решения. Координата ОДНА и здесь
 // выписана намеренно: это и есть тот единственный вход, из которого гейт выводит
@@ -48,13 +107,25 @@ func TestProjectDeletionSurfacesNameTheSameSuccessor(t *testing.T) {
 		findings []string
 		missing  []string
 	)
+	external := 0
 	for _, rel := range coords {
-		src, rerr := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		abs, fromModule, perr := decisionSurfacePath(root, rel)
+		if perr != nil {
+			// Координата, которую не резолвит ни дерево, ни объявленный модуль
+			// её корня: документ посылает читателя туда, где ничего нет, и
+			// причина названа предикатом, а не угадывается.
+			missing = append(missing, rel+" — "+perr.Error())
+			continue
+		}
+		src, rerr := os.ReadFile(abs) // #nosec G304 -- путь резолвлен из координаты документа решения
 		if rerr != nil {
 			// Координата, названная документом и НЕ существующая, — находка сама
 			// по себе: документ посылает читателя туда, где ничего нет.
 			missing = append(missing, rel)
 			continue
+		}
+		if fromModule {
+			external++
 		}
 		census.Surfaces++
 		cites, found := CitesSuccessor(src, successor)
@@ -66,10 +137,10 @@ func TestProjectDeletionSurfacesNameTheSameSuccessor(t *testing.T) {
 	}
 
 	t.Logf("перепись: документ решения %s; объявленная задача-преемник #%d; "+
-		"координат прочитано %d, поверхностей разобрано %d, ссылок на задачи встречено %d; "+
-		"находок %d, ненайденных координат %d",
+		"координат прочитано %d, поверхностей разобрано %d (из них приехало модулем %d), "+
+		"ссылок на задачи встречено %d; находок %d, ненайденных координат %d",
 		projectDeletionDecisionDoc, census.Successor, census.Coordinates,
-		census.Surfaces, census.Citations, len(findings), len(missing))
+		census.Surfaces, external, census.Citations, len(findings), len(missing))
 
 	// Предпосылка: поверхности вообще есть. Ноль означает, что документ перестал
 	// называть координаты, и суждение выполняется тождественно.

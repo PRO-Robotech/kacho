@@ -27,7 +27,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"

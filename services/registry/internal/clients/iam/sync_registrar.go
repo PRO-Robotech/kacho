@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // sync_registrar.go — перевод намерений registry в ОБЩУЮ форму синхронной
-// доставки регистрации (pkg/ownerregister). Своей формы у registry больше нет.
+// доставки регистрации (pkg/ownerregister модуля
+// github.com/PRO-Robotech/kaname). Своей формы у registry больше нет.
 package iam
 
 import (
 	"context"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
+	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 
 	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"

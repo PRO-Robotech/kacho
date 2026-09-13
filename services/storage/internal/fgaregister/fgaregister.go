@@ -31,7 +31,7 @@ import (
 	"time"
 
 	"github.com/PRO-Robotech/corelib/authz/proxytuple"
-	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
+	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 )
 
 // Типы событий колонки event_type таблицы fga_register_outbox; передаются

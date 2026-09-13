@@ -12,7 +12,7 @@ import (
 	"github.com/PRO-Robotech/corelib/auth"
 	"github.com/PRO-Robotech/corelib/authz"
 	"github.com/PRO-Robotech/corelib/authz/catalogderive"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 )
 
 // ResourceExistenceProbe — порт проверки существования object-scoped ресурса в

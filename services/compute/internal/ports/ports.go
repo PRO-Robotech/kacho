@@ -15,8 +15,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
+	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 )
 
 // Pagination — постраничная навигация.

@@ -12,7 +12,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
+	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 )

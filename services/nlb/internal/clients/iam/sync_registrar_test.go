@@ -7,7 +7,8 @@
 //
 // Регистратор nlb перестал быть самостоятельной реализацией: цикл по tuple'ам,
 // срок вызова, сборка запроса, поведение при отказе и проброс личности живут
-// теперь в ОДНОМ месте (pkg/ownerregister) и проверяются его собственными
+// теперь в ОДНОМ месте (pkg/ownerregister модуля github.com/PRO-Robotech/kaname)
+// и проверяются его собственными
 // пробами. Здесь остаётся ровно то, что принадлежит nlb, — ПЕРЕВОД: какие поля
 // намерения куда легли и какая версия поехала.
 //
@@ -30,8 +31,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	iampb "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
+	iampb "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
+	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/clients/iam"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"

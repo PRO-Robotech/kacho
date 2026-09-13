@@ -146,4 +146,252 @@
 # начнёт прощать пустоту.
 # ===========================================================================
 
-declared: []
+# ===========================================================================
+# ЗАПИСИ ЭТОЙ ВЕТКИ — контракты службы доступа УЕХАЛИ В ЕЁ РЕПОЗИТОРИЙ.
+#
+# РЕШЕНИЕ. Владелец 2026-09-13 (`kacho#2616`, исход C «дом по владельцу, провод
+# неизменен», разбор — `kacho#2617`): контракты, относящиеся к службе доступа,
+# живут в `PRO-Robotech/kaname`, и в этом дереве их не остаётся. Заглушки Go
+# публикует её модуль; платформа берёт их зависимостью.
+#
+# ЧТО СНЯТО. Сорок один файл `kaname/cloud/iam/v1/*.proto` (плюс не-контрактный
+# `fga_model.fga`, которого buf не видит). `FILE_NO_DELETE` даёт по одной находке
+# НА ФАЙЛ, поэтому и записей 41, а `path` и `symbol` у каждой совпадают — у
+# снятия файла предмет ровно один.
+#
+# ЧЕГО НЕ СНЯТО, И ЭТО НЕСУЩЕЕ. Имя proto-пакета (`kaname.cloud.iam.v1`), путь
+# файла внутри дерева контрактов, номера полей, номера расширений, шаблоны REST
+# — НЕ ИЗМЕНИЛИСЬ НИ ОДНИМ ЗНАКОМ. Изменилась ровно одна строка в каждом файле:
+# `option go_package`, то есть КТО ПУБЛИКУЕТ заглушки. Замер: различие 41
+# контракта против копии в репозитории службы — ровно эта строка, по одной на
+# файл (`diff` по каждому из 42 путей, 41 отличие в одну строку + прозаический
+# абзац в `fga_model.fga`).
+#
+# ЧТО ЭТО ЗНАЧИТ ДЛЯ ВЫЗЫВАЮЩЕГО — НИЧЕГО, и это проверяемо, а не обещано.
+# Развёрнутый клиент адресует методы полным именем (`kaname.cloud.iam.v1.…`) и
+# путями REST (`/iam/v1/…`); ни одно из них не тронуто. Каталог прав края
+# остался ПОБАЙТОВО тем же (350 записей, sha256 неизменен), таблица маршрутов —
+# тоже (308 строк, из них 104 службы). Перекомпиляции требует тот, кто собирал
+# заглушки службы из модуля платформы; таких потребителей два, оба свои.
+#
+# ПОЧЕМУ РАЗРЫВ НЕИЗБЕЖЕН, А НЕ ВЫБРАН. `buf breaking` сравнивает ДЕРЕВО против
+# дерева: файл, которого в этом дереве больше нет, для него снят — независимо от
+# того, что тот же путь с тем же содержимым публикуется другим модулем. Модели
+# «файл переехал» у правила нет, и заводить её не наше дело. Альтернатива —
+# оставить копию здесь, то есть публиковать один путь `.proto` дважды; это даёт
+# панику регистрации дескрипторов у транзитивного потребителя, отказ времени
+# ИСПОЛНЕНИЯ, который сборкой не ловится.
+#
+# ПРЕДИКАТ СНЯТИЯ ЭТИХ ЗАПИСЕЙ. База сравнения — ствол. После вливания этой
+# ветки в `main` файлов не будет ни в дереве, ни в базе, находок станет 0, и
+# адъюдикатор назовёт каждую из 41 записи потерявшей предмет — на первом же
+# прогоне ствола. Снять их обязано то изменение, которое поднимет базу; ждать
+# отдельного повода не нужно и нельзя.
+# ===========================================================================
+
+declared:
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/access_binding.proto
+    symbol: kaname/cloud/iam/v1/access_binding.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/access_binding_service.proto
+    symbol: kaname/cloud/iam/v1/access_binding_service.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/account.proto
+    symbol: kaname/cloud/iam/v1/account.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/account_service.proto
+    symbol: kaname/cloud/iam/v1/account_service.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/authorize_service.proto
+    symbol: kaname/cloud/iam/v1/authorize_service.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/cluster.proto
+    symbol: kaname/cloud/iam/v1/cluster.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/cluster_admin_grant.proto
+    symbol: kaname/cloud/iam/v1/cluster_admin_grant.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/credential_kind.proto
+    symbol: kaname/cloud/iam/v1/credential_kind.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/group.proto
+    symbol: kaname/cloud/iam/v1/group.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/group_service.proto
+    symbol: kaname/cloud/iam/v1/group_service.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/identity_quota_service.proto
+    symbol: kaname/cloud/iam/v1/identity_quota_service.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/interactive_client.proto
+    symbol: kaname/cloud/iam/v1/interactive_client.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/internal_bootstrap_token_service.proto
+    symbol: kaname/cloud/iam/v1/internal_bootstrap_token_service.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/internal_cluster_service.proto
+    symbol: kaname/cloud/iam/v1/internal_cluster_service.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/internal_iam_service.proto
+    symbol: kaname/cloud/iam/v1/internal_iam_service.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/internal_interactive_client_service.proto
+    symbol: kaname/cloud/iam/v1/internal_interactive_client_service.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/internal_limit_service.proto
+    symbol: kaname/cloud/iam/v1/internal_limit_service.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/internal_module_service.proto
+    symbol: kaname/cloud/iam/v1/internal_module_service.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/internal_operations_service.proto
+    symbol: kaname/cloud/iam/v1/internal_operations_service.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/internal_user_service.proto
+    symbol: kaname/cloud/iam/v1/internal_user_service.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/limit.proto
+    symbol: kaname/cloud/iam/v1/limit.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/limit_service.proto
+    symbol: kaname/cloud/iam/v1/limit_service.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/membership.proto
+    symbol: kaname/cloud/iam/v1/membership.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/membership_service.proto
+    symbol: kaname/cloud/iam/v1/membership_service.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/package_options.proto
+    symbol: kaname/cloud/iam/v1/package_options.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/permission_catalog_service.proto
+    symbol: kaname/cloud/iam/v1/permission_catalog_service.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/project.proto
+    symbol: kaname/cloud/iam/v1/project.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/project_service.proto
+    symbol: kaname/cloud/iam/v1/project_service.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/role.proto
+    symbol: kaname/cloud/iam/v1/role.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/role_service.proto
+    symbol: kaname/cloud/iam/v1/role_service.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/sa_key_service.proto
+    symbol: kaname/cloud/iam/v1/sa_key_service.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/secret_options.proto
+    symbol: kaname/cloud/iam/v1/secret_options.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/service_account.proto
+    symbol: kaname/cloud/iam/v1/service_account.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/service_account_oauth_client.proto
+    symbol: kaname/cloud/iam/v1/service_account_oauth_client.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/service_account_service.proto
+    symbol: kaname/cloud/iam/v1/service_account_service.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/session_revocation.proto
+    symbol: kaname/cloud/iam/v1/session_revocation.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/session_revocations_service.proto
+    symbol: kaname/cloud/iam/v1/session_revocations_service.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/user.proto
+    symbol: kaname/cloud/iam/v1/user.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/user_oauth_client.proto
+    symbol: kaname/cloud/iam/v1/user_oauth_client.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/user_service.proto
+    symbol: kaname/cloud/iam/v1/user_service.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616
+  - rule: FILE_NO_DELETE
+    path: kaname/cloud/iam/v1/user_token_service.proto
+    symbol: kaname/cloud/iam/v1/user_token_service.proto
+    reason: контракт службы доступа уехал в PRO-Robotech/kaname по тому же пути и с тем же именем пакета; изменился только go_package
+    issue: kacho#2616

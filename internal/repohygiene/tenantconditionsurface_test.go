@@ -30,6 +30,24 @@
 // найдено» становится неотличимо от «я читаю не тот файл», и оба исхода дают один
 // и тот же зелёный. По той же причине гейт печатает ПЕРЕПИСЬ — сколько файлов он
 // прочитал: ноль находок обязано быть отличимо от нуля прочитанного.
+//
+// # ГДЕ ЛЕЖИТ МОДЕЛЬ ПРАВ — С 2026-09-13 НЕ В ЭТОМ ДЕРЕВЕ
+//
+// Прежняя редакция этого файла утверждала, что модель прав и контракт привязки
+// лежат под `proto/kaname/` ЭТОГО дерева, и называла их путями от корня
+// репозитория. Утверждение ОТМЕНЕНО, а не удалено молча: на объявленную здесь
+// координату `fgaModelPath` опираются соседние гейты пакета и называют её своим
+// каноническим источником (modelrelationproducer_test.go), поэтому читатель,
+// пришедший за прежним смыслом, обязан найти здесь причину, а не пустое место.
+//
+// Решением владельца (kacho#2616, исход C) контракты службы доступа уехали в её
+// репозиторий: канон приезжает опубликованным модулем
+// `github.com/PRO-Robotech/kaname`, каталогом `proto/kaname/…` внутри него.
+// Координаты ниже названы ОТНОСИТЕЛЬНО `proto/` — то есть внутри дерева
+// контрактов, а не внутри репозитория, — и абсолютный путь резолвит
+// `internal/contractsource`. Литерал пути от корня репозитория после переезда не
+// краснеет и не зеленеет: читающая проба честно падает «нет такого файла», а
+// обходящая получает пустую популяцию и печатает по ней «находок 0».
 package repohygiene
 
 import (
@@ -38,28 +56,54 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 )
 
 // ── что снято ────────────────────────────────────────────────────────────────
 
-// retiredPaths — файлы и каталоги, существовавшие ТОЛЬКО ради снятой поверхности.
-// Путь, вернувшийся в дерево, — возврат поверхности, а не «похожий файл».
-var retiredPaths = []string{
-	// Двенадцать координат под `services/iam/` сняты ВМЕСТЕ со своим корнем:
-	// служба доступа вынесена отдельным продуктом, и путь под этим корнем не
-	// может вернуться в ЭТО дерево ни при каком изменении. Утверждение «его
-	// нет» стало истинным by construction — то есть перестало быть способным
-	// упасть, а значит перестало быть утверждением. Остались координаты
-	// контракта и стабов: они живут здесь, и возврат любой из них — возврат
-	// поверхности.
-	"proto/kaname/cloud/iam/v1/condition.proto",
-	"proto/kaname/cloud/iam/v1/conditions_service.proto",
-	"proto/kaname/cloud/iam/v1/access_binding_condition.proto",
-	"pkg/api/kaname/cloud/iam/v1/condition.pb.go",
-	"pkg/api/kaname/cloud/iam/v1/access_binding_condition.pb.go",
-	"pkg/api/kaname/cloud/iam/v1/conditions_service.pb.go",
-	"pkg/api/kaname/cloud/iam/v1/conditions_service.pb.gw.go",
-	"pkg/api/kaname/cloud/iam/v1/conditions_service_grpc.pb.go",
+// retiredContractPaths — файлы дерева КОНТРАКТОВ, существовавшие ТОЛЬКО ради
+// снятой поверхности. Координаты названы относительно `proto/`; путь,
+// вернувшийся в дерево контрактов, — возврат поверхности, а не «похожий файл».
+//
+// # ЧТО ЗДЕСЬ СТОЯЛО И ПОЧЕМУ ПЕРЕЧЕНЬ ПЕРЕПИСАН (2026-09-13)
+//
+// Двенадцать координат под `services/iam/` были сняты раньше — ВМЕСТЕ со своим
+// корнем: служба доступа вынесена отдельным продуктом, и путь под этим корнем не
+// может вернуться в ЭТО дерево ни при каком изменении. Утверждение «его нет»
+// стало истинным by construction — то есть перестало быть способным упасть, а
+// значит перестало быть утверждением.
+//
+// Тем же исходом C задачи kacho#2616 из этого дерева изъяты и ОБА оставшихся
+// корня `kaname` — дерево его контрактов и порождённые из него стабы Go; оба
+// приезжают теперь модулем `github.com/PRO-Robotech/kaname`. Восемь записей
+// перечня — три координаты контракта и пять координат стабов — повторили ту же
+// судьбу разом, и поступлено с ними по разбору выше, а не по вкусу: перечень
+// переписан, а не отредактирован.
+//
+// ТРИ КООРДИНАТЫ КОНТРАКТА СОХРАНЕНЫ СПОСОБНЫМИ УПАСТЬ. Они переведены на дерево
+// контрактов: оно приезжает модулем, лежит на диске целиком, и утверждение «в
+// контракте службы доступа этих трёх файлов нет» проверяется его чтением.
+// Предмет утверждения при этом СМЕНИЛСЯ, и это названо прямо: прежде
+// утверждалось «поверхность не вернулась в платформу», теперь — «поверхность не
+// вернулась в контракт службы». Упадёт оно в момент, когда мы пинём версию
+// модуля, где ресурс условия заведён снова, — то есть ровно тогда, когда решение
+// о снятии и надо пересматривать. Предпосылка (дерево контрактов ПРОЧИТАНО, и
+// сколько файлов) проверяется и печатается подпробой ниже: без неё «ни одной не
+// осталось» означало бы «читать было нечего».
+//
+// ПЯТЬ КООРДИНАТ СТАБОВ СНЯТЫ, и вот чем они отличаются от трёх выше. Стаб
+// ПОРОЖДАЕТСЯ из контракта механически: без `condition.proto` файла
+// `condition.pb.go` не бывает, поэтому «стаба нет» — не второй факт, а следствие
+// первого, уже утверждённого выше. И назвать его координату нечем:
+// `internal/contractsource` — единственный законный резолвер координат дерева
+// контрактов — отвечает про `proto/` и только про него, а стабы лежат в модуле
+// службы доступа, под своим каталогом внутри него. Литерал пути внутрь чужого
+// модуля есть ровно то, от чего этот пакет и заведён избавить.
+var retiredContractPaths = []string{
+	"kaname/cloud/iam/v1/condition.proto",
+	"kaname/cloud/iam/v1/conditions_service.proto",
+	"kaname/cloud/iam/v1/access_binding_condition.proto",
 }
 
 // surfaceFile — файл, в котором снятая поверхность была бы объявлена, и маркер,
@@ -130,8 +174,13 @@ const (
 	// модель прав, ищи утверждения о ней ОБОИМИ обходами, а не тем, который
 	// запускается из твоего каталога.
 	liveMFARestrictions = 2
-	fgaModelPath        = "proto/kaname/cloud/iam/v1/fga_model.fga"
-	accessBindingPth    = "proto/kaname/cloud/iam/v1/access_binding.proto"
+	// fgaModelPath / accessBindingPth / iamContractDir — координаты ВНУТРИ
+	// дерева контрактов, то есть относительно `proto/`. Абсолютный путь даёт
+	// [contractsource]: дерево приезжает модулем, и путь от корня репозитория к
+	// нему не ведёт (разбор — в шапке файла).
+	fgaModelPath     = "kaname/cloud/iam/v1/fga_model.fga"
+	accessBindingPth = "kaname/cloud/iam/v1/access_binding.proto"
+	iamContractDir   = "kaname/cloud/iam/v1"
 )
 
 var (
@@ -212,23 +261,73 @@ func readTreeFile(t *testing.T, root, rel string) string {
 	return string(raw)
 }
 
+// contractFilePath — абсолютный путь к файлу дерева контрактов по координате
+// ОТНОСИТЕЛЬНО `proto/`.
+//
+// Нерезолвленная координата — ОТКАЗ, а не пропуск: дерево контрактов приезжает
+// модулем, и «файла нет» по координате, которую не сумели разрешить, означало бы
+// «я не нашёл, где смотреть», а не факт о дереве.
+func contractFilePath(t *testing.T, root, relToProto string) string {
+	t.Helper()
+	p, err := contractsource.Path(root, relToProto)
+	if err != nil {
+		t.Fatalf("координата дерева контрактов %s не резолвится: %v — "+
+			"вердикт по ненайденному дереву не выносится", relToProto, err)
+	}
+	return p
+}
+
+// readContractFile — то же, что [readTreeFile], но по координате дерева
+// контрактов, а не дерева репозитория.
+//
+// Отдельная функция, а не параметр у первой: [readTreeFile] читают и пробы,
+// чей предмет лежит в ЭТОМ дереве (workflowexitcoderead_test.go), и резолв
+// через модуль сделал бы их координаты неотличимыми от контрактных.
+func readContractFile(t *testing.T, root, relToProto string) string {
+	t.Helper()
+	p := contractFilePath(t, root, relToProto)
+	raw, err := os.ReadFile(filepath.Clean(p))
+	if err != nil {
+		t.Fatalf("не прочитан %s (%s): %v — вердикт по непрочитанному файлу не выносится",
+			relToProto, p, err)
+	}
+	if len(raw) == 0 {
+		t.Fatalf("%s (%s) пуст — гейт смотрит не туда, его «находок нет» беспредметно",
+			relToProto, p)
+	}
+	return string(raw)
+}
+
 // TestTenantConditionSurface_IsGone — отрицательная половина.
 func TestTenantConditionSurface_IsGone(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 
-	t.Run("файлов снятой поверхности нет", func(t *testing.T) {
+	t.Run("файлов снятой поверхности нет в дереве контрактов", func(t *testing.T) {
+		// ПРЕДПОСЫЛКА ПЕРВАЯ: дерево контрактов прочитано, и прочитано НЕ пустым.
+		// Без неё «ни одной координаты не осталось» означало бы «читать было
+		// нечего» — тот самый зелёный, который даёт молчащий обход.
+		corpus, err := contractsource.Files(root, iamContractDir, ".proto", ".fga")
+		if err != nil {
+			t.Fatalf("дерево контрактов службы доступа не прочитано: %v — по "+
+				"непрочитанному дереву «этих файлов в нём нет» не утверждается", err)
+		}
+		dir := contractFilePath(t, root, iamContractDir)
+
 		var back []string
-		for _, rel := range retiredPaths {
-			if _, err := os.Stat(filepath.Join(root, rel)); err == nil {
+		for _, rel := range retiredContractPaths {
+			if _, serr := os.Stat(contractFilePath(t, root, rel)); serr == nil {
 				back = append(back, rel)
 			}
 		}
 		if len(back) > 0 {
-			t.Fatalf("тенантская поверхность условного доступа снята, но %d её путей в дереве:\n  %s",
-				len(back), strings.Join(back, "\n  "))
+			t.Fatalf("тенантская поверхность условного доступа снята, но %d её путей "+
+				"в дереве контрактов (%s):\n  %s",
+				len(back), dir, strings.Join(back, "\n  "))
 		}
-		t.Logf("перепись: проверено %d путей, ни одного не осталось", len(retiredPaths))
+		t.Logf("перепись: дерево контрактов %s — файлов прочитано %d; координат снятой "+
+			"поверхности проверено %d, ни одной не осталось",
+			dir, len(corpus), len(retiredContractPaths))
 	})
 
 	t.Run("объявлений снятой поверхности нет", func(t *testing.T) {
@@ -252,7 +351,7 @@ func TestTenantConditionSurface_IsGone(t *testing.T) {
 	})
 
 	t.Run("тип условия снят из модели прав", func(t *testing.T) {
-		model := codeOnly(fgaModelPath, readTreeFile(t, root, fgaModelPath))
+		model := codeOnly(fgaModelPath, readContractFile(t, root, fgaModelPath))
 		if reIamCondType.MatchString(model) {
 			t.Errorf("%s объявляет `type iam_condition` — тип пережил своего единственного производителя",
 				fgaModelPath)
@@ -260,7 +359,7 @@ func TestTenantConditionSurface_IsGone(t *testing.T) {
 	})
 
 	t.Run("контракт привязки резервирует номер И имя", func(t *testing.T) {
-		ab := readTreeFile(t, root, accessBindingPth)
+		ab := readContractFile(t, root, accessBindingPth)
 		if !strings.Contains(ab, "message AccessBinding {") {
 			t.Fatalf("%s не содержит message AccessBinding — предпосылка не выполняется", accessBindingPth)
 		}
@@ -291,8 +390,14 @@ func TestTenantConditionSurface_IsGone(t *testing.T) {
 	// того репозитория: судить чужую схему отсюда нечем, а утверждать о ней по
 	// непрочитанному — ровно то, против чего написана эта проба.
 	//
-	// Остальные четыре подпробы предмет сохранили: контракт (`proto/kaname/`),
-	// стабы (`pkg/api/kaname/`) и объявления КРАЯ живут в этом дереве.
+	// Остальные четыре подпробы предмет сохранили, но предмет у них РАЗНЫЙ, и
+	// смешивать их больше нельзя: объявления КРАЯ (таблица маршрутов, список
+	// обхода, вшитый каталог, регистрация мультиплексора) живут в ЭТОМ дереве,
+	// а контракт службы — в её модуле, и о нём утверждается ровно то, что видно
+	// в прочитанном дереве контрактов. Порождённые стабы Go предметом быть
+	// перестали: они выводятся из контракта механически и лежат в модуле службы
+	// доступа, а разбор у [retiredContractPaths] говорит, почему второго
+	// утверждения о них нет.
 }
 
 // TestTupleConditionMechanism_StaysLive — положительная половина.
@@ -303,7 +408,7 @@ func TestTupleConditionMechanism_StaysLive(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 
-	model := codeOnly(fgaModelPath, readTreeFile(t, root, fgaModelPath))
+	model := codeOnly(fgaModelPath, readContractFile(t, root, fgaModelPath))
 	if !strings.Contains(model, "type project") {
 		t.Fatalf("%s не похож на модель прав — предпосылка положительной половины не выполняется", fgaModelPath)
 	}

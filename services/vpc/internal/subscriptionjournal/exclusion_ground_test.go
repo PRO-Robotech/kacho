@@ -69,12 +69,22 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 )
 
-// canonicalModel — каноническая модель прав. Копия у iam
-// (`services/iam/internal/authzmodel/fga_model.fga`) держится гейтом дрейфа и
-// здесь не читается: два чтения об одном предмете разошлись бы молча.
-const canonicalModel = serviceRoot + "/../../proto/kaname/cloud/iam/v1/fga_model.fga"
+// canonicalModelRel — каноническая модель прав, названная путём ОТНОСИТЕЛЬНО
+// `proto/`, а не координатой в этом дереве.
+//
+// Здесь стоял литерал `serviceRoot + "/../../proto/kaname/…"`. Под `proto/` этого
+// дерева модели больше нет: решением владельца (kacho#2616, исход C, 2026-09-13)
+// контракты службы доступа уехали в её репозиторий и приезжают опубликованным
+// модулем `github.com/PRO-Robotech/kaname` — каталогом `proto/kaname` внутри него.
+// Разрешает координату `internal/contractsource`, один резолвер на оба вида корня.
+const canonicalModelRel = "kaname/cloud/iam/v1/fga_model.fga"
+
+// repoRootFromPackage — корень дерева относительно каталога этого пакета.
+const repoRootFromPackage = serviceRoot + "/../.."
 
 // poolObjectType — тип объекта пула адресов в модели прав.
 const poolObjectType = "vpc_address_pool"
@@ -96,6 +106,11 @@ var refutedGroundForms = []*regexp.Regexp{
 // сверяется с канонической моделью прав.
 func TestPoolExclusionGroundMatchesTheAuthzModel(t *testing.T) {
 	// ── положительная сторона: тип в модели ЕСТЬ ───────────────────────────
+	canonicalModel, err := contractsource.Path(repoRootFromPackage, canonicalModelRel)
+	if err != nil {
+		t.Fatalf("каноническая модель не разрешается: %v — без неё проба судила бы "+
+			"о признаке, которого не измеряла", err)
+	}
 	raw, err := os.ReadFile(filepath.Clean(canonicalModel))
 	if err != nil {
 		t.Fatalf("каноническая модель не прочитана (%s): %v — без неё проба судила бы "+

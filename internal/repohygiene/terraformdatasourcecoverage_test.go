@@ -94,8 +94,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/PRO-Robotech/corelib/contractroot"
 )
 
 // dsReadingVerbs — глаголы, читающие РЕСУРС.
@@ -368,27 +366,17 @@ type dsServiceCensus struct {
 func readOnlyServiceCensus(t *testing.T, root string) dsServiceCensus {
 	t.Helper()
 	out := dsServiceCensus{verbsSeen: map[string]bool{}}
-	// Обход по ОБЪЯВЛЕННЫМ ДОМЕННЫМ корням: домен под вторым корнем выпал бы из
-	// популяции, и гейт объявил бы, что служба «больше не создаёт ресурс», —
-	// находка про собственную слепоту, а не про дерево.
-	//
-	// Спрашиваются именно ДОМЕННЫЕ корни, а не все объявленные: корень, не
-	// несущий дерева доменов (нейтральный словарь аннотаций `corelib`, #2089),
-	// ронял обход на несуществующем каталоге. Условие «корень без доменов
-	// законен» объявлено ОДНИМ местом — `contractroot.DomainRoots`.
-	var contractRels []string
-	domainRoots := contractroot.DomainRoots(filepath.Join(root, "proto"))
-	if len(domainRoots) == 0 {
-		t.Fatal("доменных корней дерева контрактов не найдено — обходчик судил бы о пустой " +
-			"популяции; ноль здесь означает сломанный обход, а не чистое дерево")
-	}
-	for _, r := range domainRoots {
-		contractRels = append(contractRels, trackedFilesUnder(t, root, "proto/"+r+"/cloud", ".proto")...)
-	}
-	for _, rel := range contractRels {
-		src, err := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- путь из индекса репозитория
+	// Обход по ОБЪЯВЛЕННЫМ ДОМЕННЫМ корням, где бы их дерево ни лежало. Домен,
+	// выпавший из популяции, роняет этот гейт ТРЕМЯ разными неправдами сразу:
+	// глагол его сервисов объявляется неклассифицируемым, запись таблицы
+	// источников — пережившей свой сервис, а исключение — прикрывающим пустоту.
+	// Все три — находки про собственную слепоту обхода, а не про дерево, и ровно
+	// это дал переезд контрактов службы доступа (kacho#2616, исход C, 2026-09-13).
+	// Состав и условие «корень без доменов законен» — contractDomainProtoFiles.
+	for _, abs := range contractDomainProtoFiles(t, root) {
+		src, err := os.ReadFile(abs) // #nosec G304 -- путь из состава дерева контрактов
 		if err != nil {
-			t.Fatalf("чтение %s: %v", rel, err)
+			t.Fatalf("чтение %s: %v", abs, err)
 		}
 		out.protoFiles++
 		pub, nonCreating, readable, unclassified, verbs := classifyProtoServices(string(src))
@@ -400,7 +388,16 @@ func readOnlyServiceCensus(t *testing.T, root string) dsServiceCensus {
 			out.verbsSeen[v] = true
 		}
 	}
-	sort.Strings(out.readable)
+	// ЕДИНИЦА СЧЁТА ЧИТАЕМЫХ СЕРВИСОВ — ИМЯ, а не объявление. Обе таблицы ниже
+	// (источники и исключения) ключуются именем сервиса, и одно имя объявлено
+	// НЕСКОЛЬКИМИ доменами: `OperationService` есть у каждого. Пока сюда попадали
+	// объявления, вердикт не менялся (та же находка печаталась дважды), но
+	// арифметика переписи «не представлено источниками» вычитала распределённое по
+	// именам из суммы по объявлениям и давала число, которому не отвечало НИ ОДНОЙ
+	// находки выше: на этом дереве она печатала 4 при нуле находок. Схождение
+	// проверяется самим гейтом — перепись обязана давать 0 ровно тогда, когда
+	// находок нет.
+	out.readable = dsDedup(out.readable)
 	out.unclassified = dsDedup(out.unclassified)
 	return out
 }

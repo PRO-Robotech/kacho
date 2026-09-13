@@ -976,3 +976,266 @@ func TestAxisSixAndAxisTwoRedSeparately(t *testing.T) {
 		t.Fatalf("ось шестая покраснела на ЧУЖОМ дефекте: %s", strings.Join(f, "; "))
 	}
 }
+
+// ------------------------------- ось 7 -------------------------------
+//
+// Каждая проба снимает РОВНО ОДНО свойство фикстуры и требует РОВНО ОДНУ
+// находку. Фикстура синтетическая и намеренно не совпадает ни с одним живым
+// пакетом дерева: совпадение сделало бы кейс утверждением о дереве, а не о
+// механизме, и он краснел бы при первой законной правке раскладки.
+
+func crossModuleFixture() ([]crossModuleEdge, []string) {
+	observed := []crossModuleEdge{
+		// Законное ребро: платформа берёт службу зависимостью.
+		{FromPkg: "services/nosuchplatform/internal/probe", FromClass: classKacho,
+			ToModule: "github.com/PRO-Robotech/kaname", ToClass: classKaname, Prod: 7, Test: 2},
+		// Законное ребро: служба берёт фундамент.
+		{FromPkg: "pkg/nosuchservice", FromClass: classKaname,
+			ToModule: "github.com/PRO-Robotech/corelib", ToClass: classCorelib, Prod: 3, Test: 1},
+	}
+	requires := []string{
+		"github.com/PRO-Robotech/corelib",
+		"github.com/PRO-Robotech/kaname",
+	}
+	return observed, requires
+}
+
+func TestCrossModuleJudgeIsSilentOnTheAllowedDirections(t *testing.T) {
+	t.Parallel()
+	observed, requires := crossModuleFixture()
+
+	faults, census := judgeCrossModuleEdges(observed, requires, 3476, 133, 2)
+
+	if len(faults) != 0 {
+		t.Fatalf("контроль покраснел на разрешённых направлениях (%d):\n  %s",
+			len(faults), strings.Join(faults, "\n  "))
+	}
+	if census.Imports != 133 || census.Requires != 2 || census.ClassPairs != 2 || census.Edges != 0 {
+		t.Fatalf("перепись контроля не сошлась: импортов %d, require %d, пар %d, рёбер %d",
+			census.Imports, census.Requires, census.ClassPairs, census.Edges)
+	}
+}
+
+// TestCrossModuleJudgeCatchesTheServiceTakingThePlatform — `kaname -> kacho`.
+func TestCrossModuleJudgeCatchesTheServiceTakingThePlatform(t *testing.T) {
+	t.Parallel()
+	observed, requires := crossModuleFixture()
+	observed = append(observed, crossModuleEdge{
+		FromPkg: "pkg/nosuchservice", FromClass: classKaname,
+		ToModule: "github.com/PRO-Robotech/kacho", ToClass: classKacho, Prod: 1, Test: 0,
+	})
+
+	faults, census := judgeCrossModuleEdges(observed, requires, 3476, 134, 3)
+
+	if len(faults) != 1 {
+		t.Fatalf("ожидалась ровно одна находка, получено %d:\n  %s",
+			len(faults), strings.Join(faults, "\n  "))
+	}
+	for _, want := range []string{"pkg/nosuchservice", "github.com/PRO-Robotech/kacho",
+		"kaname → kacho"} {
+		if !strings.Contains(faults[0], want) {
+			t.Fatalf("находка не называет %q: %s", want, faults[0])
+		}
+	}
+	if census.Edges != 1 {
+		t.Fatalf("перепись обязана назвать одно ребро запрещённого направления, а не %d",
+			census.Edges)
+	}
+}
+
+// TestCrossModuleJudgeCatchesTheFoundationTakingAProduct — `corelib -> kaname`.
+// Законный близнец предыдущей: меняется РОВНО класс источника.
+func TestCrossModuleJudgeCatchesTheFoundationTakingAProduct(t *testing.T) {
+	t.Parallel()
+	observed, requires := crossModuleFixture()
+	observed = append(observed, crossModuleEdge{
+		FromPkg: "pkg/nosuchfoundation", FromClass: classCorelib,
+		ToModule: "github.com/PRO-Robotech/kaname", ToClass: classKaname, Prod: 0, Test: 1,
+	})
+
+	faults, _ := judgeCrossModuleEdges(observed, requires, 3476, 134, 3)
+
+	if len(faults) != 1 {
+		t.Fatalf("ожидалась ровно одна находка, получено %d:\n  %s",
+			len(faults), strings.Join(faults, "\n  "))
+	}
+	// Тестового импорта ДОСТАТОЧНО, и находка обязана это назвать: прод-файлов
+	// здесь ноль, и молчание на таком ребре было бы разрешением цикла выпуска.
+	if !strings.Contains(faults[0], "corelib → kaname") ||
+		!strings.Contains(faults[0], "пробных 1") {
+		t.Fatalf("находка не называет направление и пробный счёт: %s", faults[0])
+	}
+}
+
+// TestCrossModuleJudgeCatchesAModuleClassWithoutASubject — самоистечение карты
+// классов модулей. Соседняя сторона той же сверки, и доказывается отдельно: в
+// контроле её молчание неотличимо от молчания мёртвой ветви.
+func TestCrossModuleJudgeCatchesAModuleClassWithoutASubject(t *testing.T) {
+	t.Parallel()
+	observed, _ := crossModuleFixture()
+	// Дерево перестало требовать модуль службы, а запись карты осталась.
+	requires := []string{"github.com/PRO-Robotech/corelib"}
+
+	faults, _ := judgeCrossModuleEdges(observed, requires, 3476, 133, 2)
+
+	if len(faults) != 1 {
+		t.Fatalf("ожидалась ровно одна находка, получено %d:\n  %s",
+			len(faults), strings.Join(faults, "\n  "))
+	}
+	if !strings.Contains(faults[0], "github.com/PRO-Robotech/kaname") ||
+		!strings.Contains(faults[0], "не истечёт сама") {
+		t.Fatalf("находка не объявляет истечение записи с координатой: %s", faults[0])
+	}
+}
+
+// TestCrossModuleJudgeRefusesAnEmptyWalkInsteadOfReportingNoFindings — файлов ноль.
+func TestCrossModuleJudgeRefusesAnEmptyWalkInsteadOfReportingNoFindings(t *testing.T) {
+	t.Parallel()
+	_, requires := crossModuleFixture()
+
+	faults, census := judgeCrossModuleEdges(nil, requires, 0, 0, 0)
+
+	if len(faults) != 1 || !strings.Contains(faults[0], "обход пуст") {
+		t.Fatalf("пустой обход обязан быть ОТКАЗОМ, а не «находок ноль»: %v", faults)
+	}
+	if census.FilesRead != 0 {
+		t.Fatalf("перепись пустого обхода обязана называть ноль прочитанных, а не %d",
+			census.FilesRead)
+	}
+}
+
+// TestCrossModuleJudgeRefusesZeroCrossModuleImportsOnANonEmptyWalk — ИМЕННО ТОТ
+// дефект, который стоял в дереве в день заведения оси: перевод пути импорта
+// отбрасывал чужой модуль ДО счёта, и 133 узла назывались нулём при 3476
+// прочитанных файлах.
+func TestCrossModuleJudgeRefusesZeroCrossModuleImportsOnANonEmptyWalk(t *testing.T) {
+	t.Parallel()
+	_, requires := crossModuleFixture()
+
+	faults, _ := judgeCrossModuleEdges(nil, requires, 3476, 0, 0)
+
+	if len(faults) != 1 {
+		t.Fatalf("ожидался ровно один отказ, получено %d: %v", len(faults), faults)
+	}
+	if !strings.Contains(faults[0], "ослепший перевод пути импорта") {
+		t.Fatalf("отказ не называет свою причину — ослепший перевод, а не чистое дерево: %s",
+			faults[0])
+	}
+}
+
+// TestCrossModuleJudgeRefusesASingleClassPair — классификатор, отвечающий
+// одинаково на разные модули. Отличается от предыдущей РОВНО одним фактом:
+// импорты прочитаны, а различать их нечем.
+func TestCrossModuleJudgeRefusesASingleClassPair(t *testing.T) {
+	t.Parallel()
+	observed, requires := crossModuleFixture()
+
+	faults, _ := judgeCrossModuleEdges(observed, requires, 3476, 133, 1)
+
+	if len(faults) != 1 || !strings.Contains(faults[0], "различать нечем") {
+		t.Fatalf("единственная пара классов обязана быть ОТКАЗОМ: %v", faults)
+	}
+}
+
+// TestCrossModuleJudgeRefusesAnEmptyRequireList — разборщик `go.mod` отказал.
+func TestCrossModuleJudgeRefusesAnEmptyRequireList(t *testing.T) {
+	t.Parallel()
+	observed, _ := crossModuleFixture()
+
+	faults, _ := judgeCrossModuleEdges(observed, nil, 3476, 133, 2)
+
+	if len(faults) != 1 || !strings.Contains(faults[0], "ни одной строки require") {
+		t.Fatalf("пустой перечень require обязан быть ОТКАЗОМ, а не находкой по каждой "+
+			"записи карты: %v", faults)
+	}
+}
+
+// TestModuleClassifierSeparatesTheThreeModulesAndRefusesStrangers — проба
+// собственной предпосылки оси: перевод пути импорта в модуль.
+//
+// Её НЕ БЫЛО НИ ОДНОЙ до этой оси, и ровно поэтому ослепление `treePathOfImport`
+// на чужой модуль прошло молча: механизм перевода не был доказан ничем.
+func TestModuleClassifierSeparatesTheThreeModulesAndRefusesStrangers(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		imp      string
+		module   string
+		cls      foundationClass
+		external bool
+	}{
+		{"github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1",
+			"github.com/PRO-Robotech/kaname", classKaname, true},
+		{"github.com/PRO-Robotech/kaname/pkg/ownerregister",
+			"github.com/PRO-Robotech/kaname", classKaname, true},
+		{"github.com/PRO-Robotech/corelib/treecorpus",
+			"github.com/PRO-Robotech/corelib", classCorelib, true},
+		{"github.com/PRO-Robotech/corelib", "github.com/PRO-Robotech/corelib", classCorelib, true},
+		// Собственный модуль — НЕ межмодульное ребро: его судит ось вторая.
+		{"github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1", "", "", false},
+		{"github.com/PRO-Robotech/kacho", "", "", false},
+		// Чужие зависимости и stdlib — не предмет этой оси.
+		{"google.golang.org/grpc", "", "", false},
+		{"strings", "", "", false},
+		// Приставка сопоставляется ПО ГРАНИЦЕ СЕГМЕНТА: модуль-тёзка с суффиксом
+		// не должен опознаваться как объявленный.
+		{"github.com/PRO-Robotech/kanamex/pkg/api", "", "", false},
+		{"github.com/PRO-Robotech/corelibx", "", "", false},
+	}
+
+	for _, c := range cases {
+		module, cls, external := moduleOfImport(c.imp)
+		if external != c.external {
+			t.Fatalf("%s: признак «чужой объявленный модуль» %v, ожидался %v",
+				c.imp, external, c.external)
+		}
+		if module != c.module || cls != c.cls {
+			t.Fatalf("%s: получено (%q, %q), ожидалось (%q, %q)",
+				c.imp, module, cls, c.module, c.cls)
+		}
+	}
+	t.Logf("перепись: разобрано путей импорта %d, из них чужих объявленных модулей %d",
+		len(cases), func() int {
+			n := 0
+			for _, c := range cases {
+				if c.external {
+					n++
+				}
+			}
+			return n
+		}())
+}
+
+// TestEveryModuleClassIsANameNoTreeCanShadow — карта классов модулей называет
+// ровно те три модуля, что несут классы раскладки, и ни одного лишнего.
+//
+// Проба предпосылки, а не тавтология: она роняет прогон на ПУСТОЙ карте (тогда
+// «запрещённых направлений нет» означало бы «классифицировать нечем») и на
+// классе, которого в закрытом наборе не существует.
+func TestEveryModuleClassIsANameNoTreeCanShadow(t *testing.T) {
+	t.Parallel()
+
+	if len(moduleClasses) == 0 {
+		t.Fatal("карта классов модулей пуста: ось седьмая не смогла бы отнести ни одного " +
+			"ребра, и её молчание означало бы «различать нечем», а не «нарушений нет»")
+	}
+	allowed := map[foundationClass]bool{
+		classCorelib: true, classKaname: true, classKacho: true,
+	}
+	for module, cls := range moduleClasses {
+		if !allowed[cls] {
+			t.Fatalf("модуль %s объявлен классом %q, которого в закрытом наборе раскладки "+
+				"нет: оснастка сборки модулем не бывает, её предмет — неисполнение (оси 3 и 6)",
+				module, cls)
+		}
+		if !strings.HasPrefix(module, "github.com/") {
+			t.Fatalf("объявление модуля %q не похоже на путь модуля Go: карта сопоставляется "+
+				"с приставкой пути импорта, и запись иной формы не совпадёт никогда", module)
+		}
+	}
+	if _, ok := moduleClasses[ownModulePath]; !ok {
+		t.Fatalf("карта не называет собственный модуль %s: `moduleOfImport` отбрасывает его "+
+			"по этой записи, и без неё импорты своего дерева поехали бы в ось седьмую, "+
+			"удваивая находки оси второй", ownModulePath)
+	}
+}

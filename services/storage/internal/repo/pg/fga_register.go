@@ -12,8 +12,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
+	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 )
 
 // emitFGARegister вставляет ОДНУ строку fga_register_outbox (register/unregister

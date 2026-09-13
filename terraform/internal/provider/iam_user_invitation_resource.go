@@ -18,8 +18,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"google.golang.org/protobuf/proto"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/terraform/internal/client"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 )
 
 // userMembershipPath — коллекция пользователей края. Названа СТРОКОЙ ЧЛЕНСТВА, потому что
@@ -46,8 +46,19 @@ var (
 // `ACTIVE` и обзаводится внешним идентификатором. Строку заводит `Invite`, а не `Create`:
 // вызова создания пользователя в контракте края НЕТ вовсе — ни рабочего, ни устаревшего.
 // Заголовок службы всё ещё поминает какой-то `Create`, отвечающий «используйте Invite», но
-// метода с таким именем служба не объявляет: `grep -n 'rpc ' proto/kaname/cloud/iam/v1/
-// user_service.proto` даёт восемь вызовов, и `Create` среди них нет. Приводить этот отказ
+// метода с таким именем служба не объявляет. Контракт службы доступа уехал в её
+// репозиторий (kacho#2616, исход C, 2026-09-13), поэтому предикат читает дерево
+// опубликованного модуля, а координату модуля берёт у Go:
+//
+//	D=$(go list -m -f '{{.Dir}}' github.com/PRO-Robotech/kaname)
+//	grep -cE '^[[:space:]]*rpc ' "$D/proto/kaname/cloud/iam/v1/user_service.proto"        # → 9
+//	grep -cE '^[[:space:]]*rpc Create' "$D/proto/kaname/cloud/iam/v1/user_service.proto"  # → 0
+//
+// ЗДЕСЬ СТОЯЛО «даёт восемь вызовов», и число СНЯТО замером: объявлений девять
+// (Get · List · Invite · Update · Delete · RemoveFromAccount · Block · Unblock ·
+// ListOperations). Прежний предикат считал вхождения `rpc ` в любой позиции строки,
+// а не ОБЪЯВЛЕНИЯ; вывод от этого не меняется — `Create` среди девяти нет, и второй
+// предикат выше говорит это отдельным числом. Приводить этот отказ
 // как поведение края значило бы обещать ответ, которого некому произвести — потому здесь
 // названо то, что верно: создать пользователя нельзя ничем.
 // Отсюда и имя ресурса: он управляет ПРИГЛАШЕНИЕМ и его строкой

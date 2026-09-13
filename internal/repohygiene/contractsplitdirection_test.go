@@ -11,7 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/corelib/treecorpus"
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 	"github.com/PRO-Robotech/kacho/internal/repohygiene"
 )
 
@@ -29,10 +29,27 @@ import (
 // # Что именно измерено
 //
 // На голове линии таких рёбер было **одно** — общий контракт учёта брал у
-// службы доступа перечисление области, на которой победила величина. Обратных
-// (служба → платформа) двадцать два, и они законны: перепись печатает оба числа,
-// чтобы «ноль находок» было отличимо и от «ноль прочитанного», и от «прочитали
-// одно дерево из двух».
+// службы доступа перечисление области, на которой победила величина. Обратные
+// (служба → платформа) законны, и перепись печатает оба числа, чтобы «ноль
+// находок» было отличимо и от «ноль прочитанного», и от «прочитали одно дерево
+// из двух».
+//
+// Величину обратных рёбер этот текст больше НЕ НАЗЫВАЕТ, и это не пропуск.
+// Прежняя редакция называла двадцать два — число головы линии #2117, когда оба
+// дерева лежали в одном репозитории. Сегодня состав дерева службы определяется
+// закреплённой версией модуля, то есть меняется без всякой правки этого файла:
+// число здесь стало бы верным для другой ревизии молча. Действующую величину
+// печатает перепись прогона (`cen.String()`), а не проза.
+//
+// # Откуда берутся оба дерева ПОСЛЕ выноса службы
+//
+// Решением владельца kacho#2616 (исход C, 2026-09-13) контракты службы доступа
+// уехали в её репозиторий; утверждение «оба дерева лежат под `proto/` этого
+// репозитория» ОТМЕНЕНО. Контракт службы приезжает модулем
+// `github.com/PRO-Robotech/kaname`, координату резолвит
+// `internal/contractsource`, и ребро, ради которого гейт заведён, от этого стало
+// дороже, а не дешевле: платформенный контракт, взявший тип у службы, теперь
+// делает платформу несобираемой без ЧУЖОГО репозитория.
 //
 // # Почему гейт, а не разовый предикат
 //
@@ -51,10 +68,9 @@ func TestPlatformContractDoesNotImportTheServiceContract(t *testing.T) {
 	t.Parallel()
 
 	root := repoRootFor(t)
-	protoRoot := filepath.Join(root, "proto")
 
-	platform := readProtoTree(t, protoRoot, "kacho")
-	service := readProtoTree(t, protoRoot, "kaname")
+	platform := readProtoTree(t, root, "kacho")
+	service := readProtoTree(t, root, "kaname")
 
 	require.NotZero(t, len(platform),
 		"в дереве контрактов платформы не прочитано НИ ОДНОГО описания: вердикт "+
@@ -80,16 +96,38 @@ func TestPlatformContractDoesNotImportTheServiceContract(t *testing.T) {
 }
 
 // readProtoTree читает описания контрактов одного дерева.
-func readProtoTree(t *testing.T, protoRoot, tree string) []repohygiene.ContractFile {
+//
+// КАТАЛОГ ДЕРЕВА СПРАШИВАЕТСЯ, А НЕ СОБИРАЕТСЯ ЛИТЕРАЛОМ. До kacho#2616 оба
+// дерева лежали под `proto/` этого репозитория, и потому путь писали склейкой
+// `filepath.Join(root, "proto", tree)`. Решением владельца (исход C, 2026-09-13)
+// контракты службы доступа уехали в её репозиторий и приезжают модулем
+// `github.com/PRO-Robotech/kaname`: утверждение «оба дерева лежат в `proto/`
+// этого репозитория» ОТМЕНЕНО, и координату резолвит `internal/contractsource`.
+//
+// Почему это несущее, а не переносимая строка: склейка после переезда не
+// краснеет и не зеленеет, а ОТКАЗЫВАЕТ либо МОЛЧИТ — обход пустого каталога
+// вернул бы пустой состав, и гейт направления судил бы ноль описаний службы,
+// оставшись зелёным. Здесь молчания нет by construction: `contractsource.Files`
+// на пустом составе отказывает, а обе `require.NotZero` ниже судят перепись.
+//
+// Путь описания остаётся ОТНОСИТЕЛЬНЫМ к `proto/` своего дерева
+// (`kaname/cloud/iam/v1/limit.proto`): именно в этом написании его называет
+// оператор импорта внутри контракта, и именно его печатает находка. Корень
+// модуля и корень репозитория — разные каталоги, поэтому база отсчёта берётся у
+// того дерева, в котором корень нашёлся.
+func readProtoTree(t *testing.T, root, tree string) []repohygiene.ContractFile {
 	t.Helper()
-	files, err := treecorpus.UnderWithSuffix(filepath.Join(protoRoot, tree), ".proto")
+	dir, err := contractsource.Dir(root, tree)
+	require.NoError(t, err, "каталог дерева контрактов %s", tree)
+	files, err := contractsource.Files(root, tree, ".proto")
 	require.NoError(t, err, "обход дерева контрактов %s", tree)
 
+	base := filepath.Dir(dir) // каталог `proto/` того дерева, где корень нашёлся
 	out := make([]repohygiene.ContractFile, 0, len(files))
 	for _, abs := range files {
-		rel, rerr := filepath.Rel(protoRoot, abs)
-		require.NoError(t, rerr, "путь %s относительно %s", abs, protoRoot)
-		src, rerr := os.ReadFile(abs) // #nosec G304 -- путь из индекса git
+		rel, rerr := filepath.Rel(base, abs)
+		require.NoError(t, rerr, "путь %s относительно %s", abs, base)
+		src, rerr := os.ReadFile(abs) // #nosec G304 -- путь из индекса git либо из кэша модулей
 		require.NoError(t, rerr, "чтение %s", abs)
 		out = append(out, repohygiene.ContractFile{Path: filepath.ToSlash(rel), Src: string(src)})
 	}

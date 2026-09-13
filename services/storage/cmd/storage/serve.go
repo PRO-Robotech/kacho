@@ -37,12 +37,12 @@ import (
 	"github.com/PRO-Robotech/corelib/servicehost"
 	"github.com/PRO-Robotech/corelib/subscription"
 	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
-	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
+	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 
 	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
 	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktypebinding"
@@ -435,7 +435,8 @@ func runServe(cfg config.Config) error {
 		if derr := startRedriveBackstop(ctx, pool, logger); derr != nil {
 			return fmt.Errorf("start redrive backstop: %w", derr)
 		}
-		// Форма доставки — ОДНА на все сервисы (pkg/ownerregister): у storage больше
+		// Форма доставки — ОДНА на все сервисы (pkg/ownerregister модуля
+		// github.com/PRO-Robotech/kaname): у storage больше
 		// нет своего регистратора, потому что своего в нём ничего и не было —
 		// только копия, разошедшаяся с соседями по маркеру версии.
 		syncRegistrar, rerr := ownerregister.New(iamv1.NewInternalIAMServiceClient(authzConn))

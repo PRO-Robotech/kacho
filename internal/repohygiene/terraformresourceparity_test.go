@@ -14,6 +14,8 @@ import (
 	"github.com/PRO-Robotech/corelib/contractroot"
 
 	"github.com/PRO-Robotech/corelib/treecorpus"
+
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 )
 
 // Каждый ресурс публичного API обязан быть в Terraform-провайдере.
@@ -347,27 +349,14 @@ var (
 func publicCreatingServices(t *testing.T, root string) []string {
 	t.Helper()
 	var out []string
-	// Обход по ОБЪЯВЛЕННЫМ ДОМЕННЫМ корням: домен под вторым корнем выпал бы из
-	// популяции, и гейт объявил бы, что служба «больше не создаёт ресурс», —
-	// находка про собственную слепоту, а не про дерево.
-	//
-	// Спрашиваются именно ДОМЕННЫЕ корни, а не все объявленные: корень, не
-	// несущий дерева доменов (нейтральный словарь аннотаций `corelib`, #2089),
-	// ронял обход на несуществующем каталоге. Условие «корень без доменов
-	// законен» объявлено ОДНИМ местом — `contractroot.DomainRoots`.
-	var contractRels []string
-	domainRoots := contractroot.DomainRoots(filepath.Join(root, "proto"))
-	if len(domainRoots) == 0 {
-		t.Fatal("доменных корней дерева контрактов не найдено — обходчик судил бы о пустой " +
-			"популяции; ноль здесь означает сломанный обход, а не чистое дерево")
-	}
-	for _, r := range domainRoots {
-		contractRels = append(contractRels, trackedFilesUnder(t, root, "proto/"+r+"/cloud", ".proto")...)
-	}
-	for _, rel := range contractRels {
-		src, err := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- путь из индекса репозитория
+	// Обход по ОБЪЯВЛЕННЫМ ДОМЕННЫМ корням, где бы их дерево ни лежало: домен,
+	// выпавший из популяции, заставил бы гейт объявить, что служба «больше не
+	// создаёт ресурс», — находка про собственную слепоту, а не про дерево.
+	// Состав и условие «корень без доменов законен» — contractDomainProtoFiles.
+	for _, abs := range contractDomainProtoFiles(t, root) {
+		src, err := os.ReadFile(abs) // #nosec G304 -- путь из состава дерева контрактов
 		if err != nil {
-			t.Fatalf("чтение %s: %v", rel, err)
+			t.Fatalf("чтение %s: %v", abs, err)
 		}
 		s := string(src)
 		for _, m := range reService.FindAllStringSubmatchIndex(s, -1) {
@@ -391,6 +380,65 @@ func publicCreatingServices(t *testing.T, root string) []string {
 				out = append(out, name)
 			}
 		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// contractDomainProtoFiles — АБСОЛЮТНЫЕ пути файлов `.proto` дерева ДОМЕНОВ по всем
+// объявленным корням контрактов, в устойчивом порядке.
+//
+// ПОЧЕМУ НЕ `contractroot.DomainRoots` + склейка с `proto/`. Тот предикат
+// отвечает, какие корни лежат под `<root>/proto` ЭТОГО дерева, и был полон, пока
+// все корни лежали здесь. Решением владельца (kacho#2616, исход C, 2026-09-13)
+// контракты службы доступа уехали в её собственный репозиторий: под `proto/` их
+// здесь НЕТ, а платформе они по-прежнему нужны — провайдер терраформа управляет
+// её ресурсами, край выводит из её контрактов 117 записей каталога прав из 350 и
+// 104 строки таблицы маршрутов из 308. Приезжают они опубликованным модулем.
+//
+// Корень, выпавший из популяции, НЕ КРАСНЕЕТ и не зеленеет: обход честно печатает
+// «находок ноль» по опустевшему множеству, а гейт вдобавок объявляет живые записи
+// таблицы покрытия пережившими свой сервис — то есть велит снять покрытие с
+// поверхности, которую продукт по-прежнему несёт. Поэтому каталог корня
+// спрашивается у contractsource: он резолвит и корень в дереве, и корень,
+// приезжающий модулем, ОДНИМ вызовом.
+//
+// Корень без дерева доменов законен и популяцию не расширяет (нейтральный словарь
+// аннотаций `corelib`, #2089, дерева `cloud` не несёт) — проверяется наличием
+// каталога `cloud`, а не перечнем имён.
+//
+// Пустой результат — ОТКАЗ в обеих формах: ни одного доменного корня и ни одного
+// файла. «Ноль находок» обязано быть отличимо от «ноль прочитанного».
+func contractDomainProtoFiles(t *testing.T, root string) []string {
+	t.Helper()
+	var out []string
+	domainRoots := 0
+	for _, r := range contractroot.Roots {
+		dir, err := contractsource.Dir(root, r)
+		if err != nil {
+			// Корень объявлен и не заведён ни здесь, ни модулем. Это не находка
+			// обхода: перечень корней общий на все репозитории семейства, и
+			// корень, которого у ЭТОГО дерева нет, популяцию не расширяет.
+			continue
+		}
+		if st, serr := os.Stat(filepath.Join(dir, "cloud")); serr != nil || !st.IsDir() {
+			continue
+		}
+		files, ferr := contractsource.Files(root, r+"/cloud", ".proto")
+		if ferr != nil {
+			t.Fatalf("состав дерева доменов корня %s: %v", r, ferr)
+		}
+		domainRoots++
+		out = append(out, files...)
+	}
+	if domainRoots == 0 {
+		t.Fatalf("доменных корней дерева контрактов не найдено ни в %s, ни в объявленных "+
+			"модулях — обходчик судил бы о пустой популяции; ноль здесь означает сломанный "+
+			"обход, а не чистое дерево", filepath.Join(root, "proto"))
+	}
+	if len(out) == 0 {
+		t.Fatalf("доменных корней %d, а файлов .proto под ними ноль — предикат устарел или "+
+			"каталоги переехали", domainRoots)
 	}
 	sort.Strings(out)
 	return out

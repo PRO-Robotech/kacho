@@ -31,11 +31,19 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # ИСТОЧНИК ИСТИНЫ — МОДЕЛЬ, А НЕ ВТОРОЙ СПИСОК
 #
-# Набор глаголов читается из канонической модели прав
-# (proto/kaname/cloud/iam/v1/fga_model.fga) — из отношений с приставкой `v_`. Ровно
-# та же сторона, которую сторожит гейт дрейфа iam и internal/repohygiene/
-# verbvocabulary_test.go. Держать здесь рукописную копию словаря значило бы завести
-# ту самую вторую таблицу, которая молча разъедется с первой.
+# Набор глаголов читается из канонической модели прав (`kaname/cloud/iam/v1/
+# fga_model.fga` внутри дерева контрактов) — из отношений с приставкой `v_`. Ровно
+# та же сторона, которую сторожит internal/repohygiene/verbvocabulary_test.go.
+# Держать здесь рукописную копию словаря значило бы завести ту самую вторую
+# таблицу, которая молча разъедется с первой.
+#
+# ДЕРЕВО КОНТРАКТОВ ЛЕЖИТ НЕ ЗДЕСЬ. Решением владельца (kacho#2616, исход C,
+# 2026-09-13) контракты службы доступа уехали в её репозиторий: под `proto/` этого
+# дерева модели больше нет, канон приезжает опубликованным модулем
+# `github.com/PRO-Robotech/kaname`, каталогом `proto/kaname` внутри него. Путь
+# разрешает contract_file() ниже, а не `os.path.join(root, …)`: литерал после
+# переезда падал трассой `FileNotFoundError`, называя координату и не называя ни
+# причины, ни того, что делать.
 #
 # ГЛАГОЛ СВЕРЯЕТСЯ С НАБОРОМ СВОЕГО ТИПА. Здесь стояла предпосылка «сегодня все
 # глагольные типы объявляют один и тот же набор, поэтому пару (модуль, ресурс) можно
@@ -71,7 +79,26 @@ import tempfile
 
 import yaml
 
-MODEL_REL = "proto/kaname/cloud/iam/v1/fga_model.fga"
+# MODEL_REL — каноническая модель прав, названная путём ОТНОСИТЕЛЬНО `proto/`.
+#
+# Здесь стояло `proto/kaname/…` — координата в этом дереве, и она умерла: решением
+# владельца (kacho#2616, исход C, 2026-09-13) контракты службы доступа уехали в её
+# репозиторий. Приезжают они опубликованным модулем KANAME_MODULE, каталогом
+# `proto/kaname` внутри него; координата внутри контрактного дерева не изменилась,
+# изменился корень, поэтому и хранится она теперь БЕЗ приставки `proto/`.
+MODEL_REL = "kaname/cloud/iam/v1/fga_model.fga"
+
+# EXTERNAL_ROOTS_DECL — где объявлено, какой корень контрактов каким модулем
+# публикуется.
+#
+# ПЕРЕЧЕНЬ ЧИТАЕТСЯ, А НЕ КОПИРУЕТСЯ. Копия здесь была бы ТРЕТЬИМ объявлением
+# одного предмета: первое — `ExternalRootModules` пакета `internal/contractsource`,
+# второе — массив `KACHO_PROTO_ROOT_MODULES` оболочки
+# (`gateway/scripts/lib/stage-proto-tree.sh`), и расхождение тех двух держит гейт
+# (`internal/repohygiene` TestContractRootModulesAgreeBetweenGoAndShell). Третьей
+# копии такого гейта нет, поэтому она расходилась бы МОЛЧА — а чтение объявления
+# не расходится by construction.
+EXTERNAL_ROOTS_DECL = "internal/contractsource/contractsource.go"
 
 # Где живут фикстуры, заводящие роли. Предикат — МЕСТО: посев матрицы прав и
 # декларативные кейсы newman. Прод-код и миграции сюда НЕ входят намеренно —
@@ -112,6 +139,90 @@ MANIFEST_GLOB = "services/*/manifest.yaml"
 
 def repo_root():
     return os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+
+
+def external_root_modules(root):
+    """({корень: путь модуля}, где объявлено) либо (None, причина отказа).
+
+    Читает объявление Go-стороны — см. EXTERNAL_ROOTS_DECL. Ноль разобранных
+    записей — ОТКАЗ, а не пустое отображение: пустое означало бы «внешних корней
+    не бывает», и тогда отсутствие модели ниже объяснялось бы не тем.
+    """
+    path = os.path.join(root, EXTERNAL_ROOTS_DECL)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            src = fh.read()
+    except OSError as exc:
+        return None, f"объявление внешних корней не прочитано ({EXTERNAL_ROOTS_DECL}): {exc}"
+    block = re.search(r"var ExternalRootModules = map\[string\]string\{(.*?)\n\}", src, re.S)
+    if not block:
+        return None, (f"в {EXTERNAL_ROOTS_DECL} нет объявления "
+                      f"`var ExternalRootModules = map[string]string{{…}}` — перечень внешних "
+                      f"корней переименован либо переписан, и читать его стало нечем")
+    out = dict(re.findall(r'"([^"]+)"\s*:\s*"([^"]+)"', block.group(1)))
+    if not out:
+        return None, (f"объявление ExternalRootModules в {EXTERNAL_ROOTS_DECL} разобрано в НОЛЬ "
+                      f"записей — разбор сломан, а не перечень пуст")
+    return out, EXTERNAL_ROOTS_DECL
+
+
+def module_dir(root, module):
+    """Каталог распакованного модуля, либо пустая строка.
+
+    Спрашивается сам `go`, а не собирается путь в кэше: форма пути кэша
+    (регистро-экранирование) — его внутреннее дело, и собранный вручную путь
+    разошёлся бы с ним молча. Кэш мог быть не прогрет — одна попытка добора, и
+    только одна (тот же порядок, что у `internal/contractsource`).
+    """
+    def ask():
+        try:
+            done = subprocess.run(["go", "list", "-m", "-f", "{{.Dir}}", module],
+                                  cwd=root, capture_output=True, text=True, check=True)
+        except (OSError, subprocess.CalledProcessError):
+            return ""
+        return done.stdout.strip()
+
+    found = ask()
+    if not found:
+        subprocess.run(["go", "mod", "download", module],
+                       cwd=root, capture_output=True, text=True, check=False)
+        found = ask()
+    return found if found and os.path.isdir(found) else ""
+
+
+def contract_file(root, rel_to_proto):
+    """(абсолютный путь к файлу дерева контрактов, чем получен) либо (None, причина).
+
+    Корень, физически лежащий в `proto/` этого дерева, берётся ОТТУДА, и модуль
+    для него не резолвится вовсе; корень, которого здесь нет, — из модуля,
+    объявленного Go-стороной. Тот же порядок и тот же довод, что у
+    `internal/contractsource.Dir`.
+
+    ОТКАЗ ГРОМКИЙ И НАЗЫВАЕТ ПРИЧИНУ. Тихое «не нашлось» превратило бы «модель
+    переехала» и «кэш модулей не прогрет» в одно и то же событие, а вердикт —
+    в свойство машины.
+    """
+    in_tree = os.path.join(root, "proto", *rel_to_proto.split("/"))
+    if os.path.exists(in_tree):
+        return in_tree, f"дерево ({os.path.join('proto', rel_to_proto)})"
+    contract_root = rel_to_proto.split("/")[0]
+    modules, where = external_root_modules(root)
+    if modules is None:
+        return None, where
+    module = modules.get(contract_root)
+    if module is None:
+        return None, (f"корня {contract_root!r} нет в дереве ({in_tree}) и внешним модулем он "
+                      f"не объявлен ({where}) — читать модель неоткуда")
+    moddir = module_dir(root, module)
+    if not moddir:
+        return None, (f"модуль {module} не резолвится из {root} — дерево контрактов корня "
+                      f"{contract_root!r} взять неоткуда. Прогрейте кэш: "
+                      f"`go mod download {module}`")
+    full = os.path.join(moddir, "proto", *rel_to_proto.split("/"))
+    if not os.path.exists(full):
+        return None, (f"модуль {module} резолвится ({moddir}), но {rel_to_proto} в нём нет — "
+                      f"версия модуля не несёт этого файла контрактов")
+    return full, f"модуль {module} ({moddir})"
 
 
 def manifest_files(root):
@@ -207,6 +318,18 @@ def object_types(root):
         return None, (f"манифестов прочитано {read}, а ни одной пары "
                       f"(module, resource) в них нет"), read
     return out, how, read
+
+
+def model_verb_sets_of_tree(root):
+    """({тип: {глаголы}}, чем получен путь) либо (None, причина отказа).
+
+    Единственный вход обоих путей — прод и самопроверка. Второй кодек здесь
+    расходился бы с первым молча и именно там, где расхождение не видно.
+    """
+    path, how = contract_file(root, MODEL_REL)
+    if path is None:
+        return None, how
+    return model_verb_sets(path), how
 
 
 def model_verb_sets(model_path):
@@ -506,10 +629,11 @@ def run(root, files, verb_sets, label="дерево", excused=None):
 def self_test():
     rc = 0
     root = repo_root()
-    verb_sets = model_verb_sets(os.path.join(root, MODEL_REL))
+    verb_sets, model_where = model_verb_sets_of_tree(root)
     if not verb_sets:
-        print("  ПРОВАЛ модель не читается — самопроверке не на чем стоять")
+        print(f"  ПРОВАЛ модель не читается ({model_where}) — самопроверке не на чем стоять")
         return 1
+    print(f"источник модели: {model_where}")
     vocabulary = set.union(*verb_sets.values())
     # Глаголы берутся ИЗ МОДЕЛИ, а не вписываются литералом: инъекция обязана
     # оставаться настоящей, когда словарь однажды изменится.
@@ -789,7 +913,17 @@ def main():
     if "--self-test" in sys.argv:
         return self_test()
     root = repo_root()
-    return run(root, list_fixture_files(root), model_verb_sets(os.path.join(root, MODEL_REL)))
+    verb_sets, model_where = model_verb_sets_of_tree(root)
+    # ОТКАЗ СВОИМ СООБЩЕНИЕМ, А НЕ ТРАССОЙ. Прежде модель открывалась голым
+    # `open()`, и после переезда контрактов гейт падал FileNotFoundError с трассой
+    # питона: читатель конвейера видел координату, которой нет, и ни слова о том,
+    # почему её нет и что делать.
+    if verb_sets is None:
+        print(f"FATAL: каноническая модель прав не найдена: {model_where}")
+        print("       Судить глаголы фикстур не по чему, и молчание ничего не доказывает.")
+        return 2
+    print(f"перепись источника модели: {MODEL_REL} — {model_where}")
+    return run(root, list_fixture_files(root), verb_sets)
 
 
 if __name__ == "__main__":

@@ -16,7 +16,7 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 
 	"github.com/PRO-Robotech/corelib/operations"
-	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
+	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"

@@ -722,14 +722,16 @@ func relationSlice(e ast.Expr, relations map[string]bool, vocab *pkgVocab) ([]st
 
 // modelRelations — словарь отношений из канонической модели. Это и есть предпосылка
 // узнавания: предикат страницы состоит из отношений модели.
+//
+// Координата модели названа ОТНОСИТЕЛЬНО `proto/` ([fgaModelPath]), а путь на
+// диске даёт [readContractFile]: канон приезжает модулем службы доступа
+// (kacho#2616, исход C, 2026-09-13), и склейка с корнем репозитория вела бы в
+// несуществующий каталог.
 func modelRelations(t *testing.T, root string) map[string]bool {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join(root, fgaModelPath))
-	if err != nil {
-		t.Fatalf("прочитать модель %s: %v", fgaModelPath, err)
-	}
+	b := readContractFile(t, root, fgaModelPath)
 	out := map[string]bool{}
-	for _, ln := range strings.Split(string(b), "\n") {
+	for _, ln := range strings.Split(b, "\n") {
 		rest, cut := strings.CutPrefix(strings.TrimSpace(ln), "define ")
 		if !cut {
 			continue

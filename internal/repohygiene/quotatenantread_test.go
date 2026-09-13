@@ -15,8 +15,77 @@ import (
 
 	"github.com/PRO-Robotech/corelib/treecorpus"
 
+	"github.com/PRO-Robotech/corelib/contractroot"
 	"github.com/PRO-Robotech/corelib/platformmodules"
+
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 )
+
+// quotaContractFile — одно описание контракта: координата в форме
+// `proto/<корень>/…` и путь, по которому его читать.
+type quotaContractFile struct {
+	// Rel — координата, какой её называет читатель и печатает находка. Она НЕ
+	// зависит от того, на каком диске файл нашёлся.
+	Rel string
+	// Abs — где его открыть.
+	Abs string
+}
+
+// quotaContractFiles — описания контрактов ВСЕХ объявленных корней дерева.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ПОЧЕМУ ПО КОРНЯМ, А НЕ ОБХОДОМ `proto/` ЦЕЛИКОМ
+//
+// Прежняя редакция брала `treecorpus.UnderWithSuffix(root+"/proto", ".proto")` —
+// один обход одного каталога, потому что все контракты лежали под ним. Решением
+// владельца kacho#2616 (исход C, 2026-09-13) контракты службы доступа уехали в
+// её репозиторий и приезжают модулем `github.com/PRO-Robotech/kaname`:
+// утверждение «все контракты лежат под `proto/` этого дерева» ОТМЕНЕНО, и
+// координату каждого корня резолвит `internal/contractsource`.
+//
+// ЦЕНА НЕПЕРЕВОДА БЫЛА НАЗВАНА ЧИСЛОМ, а не предположена: `InternalLimitService`
+// объявлен в дереве РОВНО ОДИН раз, и объявление это лежит теперь в модуле.
+// Обход одного каталога находил владельцев величин НОЛЬ — и предпосылка
+// «владелец ровно один», на которой стоит освобождение владельца от догоняющего
+// снимка, роняла прогон, хотя владелец существует и пять доменов этого дерева
+// списывают против него.
+//
+// ЕДИНИЦА СЧЁТА СМЕНИЛАСЬ, и это сказано прямо, потому что перепись печатает
+// число: было «все `.proto` под `proto/`» — 87 файлов, включая 4 вендоренных
+// `google/**`; стало «`.proto` под ОБЪЯВЛЕННЫМИ корнями» (`contractroot.Roots`
+// — kacho · kaname · corelib) — 81 + 41 + 2 = 124. Вендоренное третьей стороны
+// выпало намеренно: `service QuotaService` там объявить нельзя, а его сегменты
+// пути к форме `proto/<корень>/cloud/<каталог>/v1` не приводятся, то есть в
+// `answering` он попадал бы мусорным ключом.
+//
+// ПУСТОЙ СОСТАВ — ОТКАЗ, а не пустой срез: его даёт сам `contractsource.Files`,
+// и вызывающему не приходится отличать «файлов нет» от «прочитано не то дерево».
+func quotaContractFiles(t *testing.T, root string) []quotaContractFile {
+	t.Helper()
+	var out []quotaContractFile
+	for _, r := range contractroot.Roots {
+		dir, err := contractsource.Dir(root, r)
+		require.NoErrorf(t, err, "каталог дерева контрактов корня %q", r)
+		files, err := contractsource.Files(root, r, ".proto")
+		require.NoErrorf(t, err, "состав дерева контрактов корня %q", r)
+
+		// Каталог `proto/` того дерева, в котором корень нашёлся: у корня этого
+		// репозитория свой, у приехавшего модулем — модульный.
+		base := filepath.Dir(dir)
+		for _, abs := range files {
+			rel, rerr := filepath.Rel(base, abs)
+			require.NoErrorf(t, rerr, "путь %s относительно %s", abs, base)
+			out = append(out, quotaContractFile{
+				Rel: "proto/" + filepath.ToSlash(rel),
+				Abs: abs,
+			})
+		}
+	}
+	require.NotEmptyf(t, out, "ни одного описания контракта под корнями %v — "+
+		"обход пуст, и всякий вердикт по нему был бы свойством непрочитанного",
+		contractroot.Roots)
+	return out
+}
 
 // Владелец, который СПИСЫВАЕТ, обязан отвечать на ЧТЕНИЕ — и его снимок обязан
 // догонять авторитет.
@@ -53,10 +122,15 @@ func TestEveryQuotaChargingOwnerAnswersTheTenantRead(t *testing.T) {
 	//
 	// Довод пережил свой предмет: импортов у общей формы сегодня НЕТ вовсе, и
 	// служба переехала в собственный контракт службы доступа
-	// (`proto/kaname/cloud/iam/v1`, kacho#2362, решение `Д9`). Запись снята ТЕМ ЖЕ
+	// (`kaname/cloud/iam/v1`, kacho#2362, решение `Д9`). Запись снята ТЕМ ЖЕ
 	// изменением, что и переезд: без этого держатель роняет прогон обеими своими
 	// половинами сразу — «отвечает, но не списывает» о новом месте и «списывает,
 	// но не показывает» о старом.
+	//
+	// Координата названа БЕЗ приставки `proto/` намеренно: с kacho#2616 (исход C,
+	// 2026-09-13) этот корень лежит не под `proto/` данного дерева, а в модуле
+	// `github.com/PRO-Robotech/kaname`, и «proto/kaname/…» читалось бы как путь
+	// этого репозитория — то есть как приглашение пойти туда, где файла нет.
 	protoDirOf := platformmodules.AliasesByService()
 
 	sqlFiles, err := treecorpus.UnderWithSuffix(filepath.Join(root, "services"), ".sql")
@@ -97,8 +171,7 @@ func TestEveryQuotaChargingOwnerAnswersTheTenantRead(t *testing.T) {
 	}
 
 	// Кто отвечает на чтение: домен, чей контракт объявляет `QuotaService`.
-	protoFiles, err := treecorpus.UnderWithSuffix(filepath.Join(root, "proto"), ".proto")
-	require.NoError(t, err, "перечень контрактов берётся у индекса дерева")
+	protoFiles := quotaContractFiles(t, root)
 
 	answering := map[string]string{} // каталог контракта → файл
 	// Имён у службы чтения два, и второе — не синоним: `IdentityQuotaService`
@@ -107,21 +180,17 @@ func TestEveryQuotaChargingOwnerAnswersTheTenantRead(t *testing.T) {
 	// значило бы объявить находкой домен, который читать как раз ДАЁТ.
 	serviceRe := regexp.MustCompile(`(?m)^service (Quota|IdentityQuota)Service\b`)
 	protosSeen := 0
-	for _, path := range protoFiles {
-		raw, rerr := os.ReadFile(path)
-		require.NoError(t, rerr, "чтение %s", path)
+	for _, f := range protoFiles {
+		raw, rerr := os.ReadFile(f.Abs) // #nosec G304 -- путь из индекса git либо из кэша модулей
+		require.NoError(t, rerr, "чтение %s", f.Rel)
 		protosSeen++
 		if !serviceRe.MatchString(string(raw)) {
 			continue
 		}
-		rel := path
-		if i := strings.Index(path, "/proto/"); i >= 0 {
-			rel = path[i+1:]
-		}
-		// proto/kacho/cloud/<каталог>/v1/…
-		seg := strings.Split(rel, "/")
+		// proto/<корень>/cloud/<каталог>/v1/…
+		seg := strings.Split(f.Rel, "/")
 		if len(seg) > 3 {
-			answering[seg[3]] = rel
+			answering[seg[3]] = f.Rel
 		}
 	}
 
@@ -144,18 +213,14 @@ func TestEveryQuotaChargingOwnerAnswersTheTenantRead(t *testing.T) {
 	// причитается.
 	limitOwners := map[string]string{}
 	ownerRe := regexp.MustCompile(`(?m)^service InternalLimitService\b`)
-	for _, path := range protoFiles {
-		raw, rerr := os.ReadFile(path)
-		require.NoError(t, rerr, "чтение %s", path)
+	for _, f := range protoFiles {
+		raw, rerr := os.ReadFile(f.Abs) // #nosec G304 -- путь из индекса git либо из кэша модулей
+		require.NoError(t, rerr, "чтение %s", f.Rel)
 		if !ownerRe.MatchString(string(raw)) {
 			continue
 		}
-		rel := path
-		if i := strings.Index(path, "/proto/"); i >= 0 {
-			rel = path[i+1:]
-		}
-		if seg := strings.Split(rel, "/"); len(seg) > 3 {
-			limitOwners[seg[3]] = rel
+		if seg := strings.Split(f.Rel, "/"); len(seg) > 3 {
+			limitOwners[seg[3]] = f.Rel
 		}
 	}
 	require.Lenf(t, limitOwners, 1,
@@ -212,11 +277,17 @@ func TestEveryQuotaChargingOwnerAnswersTheTenantRead(t *testing.T) {
 	// отвечает и не списывает», и вопрос этот имеет смысл только там, где
 	// списывать ЕСТЬ ЧЕМ: миграции владельца лежат в его каталоге службы.
 	//
-	// Контракт и реализация теперь бывают в РАЗНЫХ деревьях. Служба доступа
-	// вынесена отдельным продуктом, а её контракт остался здесь — им пользуются
-	// пять доменов и край. Модуль, у которого контракт есть, а каталога службы
-	// нет, списывать не может BY CONSTRUCTION: его миграции лежат в чужом
-	// репозитории, и «не списывает» о нём есть свойство раскладки, а не дефект.
+	// Контракт и реализация теперь бывают в РАЗНЫХ деревьях, и с 2026-09-13 —
+	// в разных РЕПОЗИТОРИЯХ. Прежняя редакция говорила «её контракт остался
+	// здесь»; утверждение ОТМЕНЕНО решением владельца kacho#2616 (исход C):
+	// контракт службы доступа уехал вместе с ней и приезжает модулем
+	// `github.com/PRO-Robotech/kaname`. Пользуются им по-прежнему пять доменов
+	// этого дерева и край, поэтому из популяции он не изъят — его подаёт
+	// `quotaContractFiles`.
+	//
+	// Модуль, у которого контракт есть, а каталога службы нет, списывать не может
+	// BY CONSTRUCTION: его миграции лежат в чужом репозитории, и «не списывает» о
+	// нём есть свойство раскладки, а не дефект.
 	//
 	// Признак ЖИВОЙ, а не имя: перечень выводится из индекса дерева. Появится
 	// каталог службы — модуль вернётся под зеркальную меру сам, без правки

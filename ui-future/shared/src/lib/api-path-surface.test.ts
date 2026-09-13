@@ -33,6 +33,8 @@
 // число обязано меняться вместе с кодом.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
+
+import { contractProtoRoots } from "../test/proto-contract";
 import { join, resolve } from "node:path";
 
 import { parseSource } from "@shared/test/console-verb-literals";
@@ -123,7 +125,18 @@ function matches(actual: string[], surface: string[]): boolean {
 
 // ── Поверхность ствола ───────────────────────────────────────────────────────
 
-const protoFiles = walk(PROTO_DIR, /\.proto$/);
+// ДЕРЕВО КОНТРАКТОВ ЛЕЖИТ В ДВУХ ДОМАХ, и обходятся оба.
+//
+// Решением владельца (kacho#2616, исход C, 2026-09-13) контракты службы доступа
+// уехали в `PRO-Robotech/kaname` и приезжают опубликованным модулем. Обход одного
+// `proto/` после переезда сузился на 41 контракт МОЛЧА: проба не падала на
+// отсутствии файла — она получала поверхность без домена `iam` и объявляла каждый
+// его маршрут неслужимым. Замер: 82 проверки из 309 в трёх наборах, все 82 — о
+// маршрутах службы доступа.
+//
+// Перечень домов — `contractProtoRoots()` (shared/src/test/proto-contract.ts),
+// одно объявление на всю консоль.
+const protoFiles = contractProtoRoots().flatMap((r) => walk(r, /\.proto$/));
 const protoPaths = [
   ...new Set(
     protoFiles.flatMap((f) =>

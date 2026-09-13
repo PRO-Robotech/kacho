@@ -54,12 +54,11 @@ import (
 	"github.com/PRO-Robotech/corelib/retention"
 	"github.com/PRO-Robotech/corelib/subscription"
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/subscriptionjournal"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/corelib/observability/health"
 	"github.com/PRO-Robotech/corelib/servicecontract"
-	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/guestaccesskey"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/machinetype"
@@ -76,6 +75,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/operationresolver"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
+	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 
 	"github.com/PRO-Robotech/corelib/schemaguard"
 
@@ -1313,7 +1313,8 @@ func buildSyncRegistrar(cfg config.Config, logger *slog.Logger) (*ownerregister.
 		return nil, nil, fmt.Errorf("dial kaname (sync registrar): %w", cerr)
 	}
 	logger.Info("owner-tuple sync-registrar dialed", "iam_addr", addr, "mtls", cfg.IAMRegisterMTLS.Enable)
-	// Форма доставки — ОДНА на все сервисы (pkg/ownerregister): своего
+	// Форма доставки — ОДНА на все сервисы (pkg/ownerregister модуля
+	// github.com/PRO-Robotech/kaname): своего
 	// регистратора у compute больше нет, потому что своего в нём и не было —
 	// только копия, разошедшаяся с соседями по маркеру версии.
 	reg, rerr := ownerregister.New(iamv1.NewInternalIAMServiceClient(conn))

@@ -32,7 +32,7 @@ import (
 	"github.com/PRO-Robotech/corelib/outbox/metrics"
 	"github.com/PRO-Robotech/corelib/outbox/reconciler"
 	"github.com/PRO-Robotech/corelib/servicehost"
-	iampb "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
+	iampb "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )

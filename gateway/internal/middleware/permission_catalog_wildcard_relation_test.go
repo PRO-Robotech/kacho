@@ -39,6 +39,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 )
 
 // referenceCatalogueRPCs — the RPCs whose response IS the global reference
@@ -171,10 +172,21 @@ var (
 // Over-approximation is the safe direction here: a pair listed that turns out not
 // to be reachable only forces a catalog row to be named and justified; a pair
 // MISSED lets an unnarrowed row through unnoticed.
+//
+// ГДЕ ЛЕЖИТ МОДЕЛЬ. Не под `proto/` этого дерева: решением владельца (kacho#2616,
+// исход C, 2026-09-13) контракты службы доступа уехали в её репозиторий и
+// приезжают сюда опубликованным модулем `github.com/PRO-Robotech/kaname`,
+// каталогом `proto/kaname` внутри него. Координата разрешается
+// `internal/contractsource` — один и тот же резолвер для корней этого дерева и
+// для внешних, — а не собирается литералом: литерал после переезда не краснеет,
+// он ОТКАЗЫВАЕТ либо МОЛЧИТ, и здесь молчание было бы зелёным вердиктом по
+// непрочитанной модели.
 func wildcardSatisfiableRelations(t *testing.T) map[typeRelation]struct{} {
 	t.Helper()
 
-	raw, err := os.ReadFile(filepath.Join(repoRootForWildcardGate(t), "proto/kaname/cloud/iam/v1/fga_model.fga"))
+	model, err := contractsource.Path(repoRootForWildcardGate(t), "kaname/cloud/iam/v1/fga_model.fga")
+	require.NoError(t, err, "the canonical authorization model must be resolvable — it is what defines the class")
+	raw, err := os.ReadFile(model)
 	require.NoError(t, err, "the canonical authorization model must be readable — it is what defines the class")
 
 	// type -> relation -> expression

@@ -30,7 +30,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/corelib/outbox/drainer"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/clients"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaintent"

@@ -23,7 +23,8 @@ package subscriptionstream_test
 // вместе со своим предметом, а не вместе со свойством — радиус закрытия,
 // отсечение пустого имени и идемпотентность промаха утверждаются теперь на
 // оставшихся путях: радиус — ниже, на двух живых потоках; пустое имя и повтор —
-// у читателя (`pkg/subjectchange`, `TestPolledRevocationNamesEachSubjectOnce`).
+// у читателя (`pkg/subjectchange` модуля `github.com/PRO-Robotech/kaname`,
+// `TestPolledRevocationNamesEachSubjectOnce`).
 
 import (
 	"testing"

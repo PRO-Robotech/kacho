@@ -20,7 +20,7 @@ import (
 	"github.com/PRO-Robotech/corelib/auth"
 	"github.com/PRO-Robotech/corelib/peer"
 	"github.com/PRO-Robotech/corelib/retry"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
 )

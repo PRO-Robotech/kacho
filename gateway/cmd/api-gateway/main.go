@@ -30,7 +30,7 @@ import (
 	"github.com/PRO-Robotech/corelib/grpcsrv"
 	"github.com/PRO-Robotech/corelib/observability"
 	"github.com/PRO-Robotech/corelib/servicehost"
-	"github.com/PRO-Robotech/kacho/pkg/subjectchange"
+	"github.com/PRO-Robotech/kaname/pkg/subjectchange"
 
 	// Обслуживается только нативный API kacho.cloud.*.
 
@@ -838,7 +838,8 @@ func main() {
 	// знает и знать ему нечем: толчок из него снят вместе с адресом края (задача
 	// #1024), а ребро осталось потребитель→владелец, как и всякое другое.
 	//
-	// Читатель живёт в ФУНДАМЕНТЕ (`pkg/subjectchange`), а не здесь: свойство
+	// Читатель живёт в ФУНДАМЕНТЕ (`pkg/subjectchange` модуля
+	// `github.com/PRO-Robotech/kaname`, kacho#2616), а не здесь: свойство
 	// «смена прав доезжает до кэша решений» обязано держаться одной реализацией, и
 	// одной пробой — сквозь обе стороны, вместе с производителем журнала.
 	//
