@@ -16,6 +16,8 @@ package config_test
 // проходит» неотличимо от стража, который отвергает всё.
 
 import (
+	corequota "github.com/PRO-Robotech/corelib/quota"
+
 	"strings"
 	"testing"
 
@@ -37,8 +39,7 @@ func armedProd() config.Config {
 	// Ребро величин поднимается и защищается наравне с остальными: отправная
 	// точка, где оно объявлено отсутствующим, вывела бы его из наблюдения, и
 	// ослабление его удостоверения перестало бы что-либо значить.
-	c.QuotaAuthority = "kaname-internal:9091"
-	c.QuotaAuthorityMTLS = grpcclient.TLSClient{Enable: true}
+	c.QuotaAuthority = corequota.NotDeployed
 	return c
 }
 

@@ -1,10 +1,11 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 
-# ОБЪЯВЛЕНИЕ домена величин. Ровно два законных значения: адрес в форме
-# host:port либо слово `not-deployed`. Пустое значение — НЕ умолчание, а отказ
-# старта: умолчание означало бы выбор за оператора между «потолки действуют» и
-# «потолков нет», и выбор этот был бы невидим.
+# ОБЪЯВЛЕНИЕ домена величин. Действующее значение ОДНО — слово `not-deployed`.
+# Адрес был вторым: производителя у контракта авторитета величин не осталось ни
+# в одном дереве, и объявленный адрес теперь отвергается стартом. Пустое
+# значение — НЕ умолчание, а тоже отказ старта: умолчание означало бы выбор за
+# оператора между «потолки действуют» и «потолков нет», и выбор был бы невидим.
 #
 # Объявление ОДНО на обе полосы ребра — разрешение величины на пути запроса и
 # фоновую дельту. Приёмка
@@ -166,7 +167,6 @@ mtls:
     vpc: false           # compute→vpc NIC-spec + IPAM Address
     geo: false           # compute→geo ZoneService.Get (Instance.zone_id, :9090) — kacho-geo epic S4
     storage: false       # compute→storage InternalVolumeService (attach-saga, :9091) — compute/storage split
-    quotaAuthority: false # compute→домен величин (Resolve + ListChangedSince, :9091)
   serverName:
     iamRegister: kaname-internal.kacho.svc
     iamProject: kaname.kacho.svc            # :9090 ProjectService.Get dial-host
@@ -174,7 +174,6 @@ mtls:
     vpc: vpc.kacho.svc
     geo: kacho-geo.kacho.svc                   # :9090 ZoneService.Get dial-host
     storage: kacho-storage.kacho.svc           # :9091 InternalVolumeService dial-host (∈ storage server-SAN)
-    quotaAuthority: kaname-internal.kacho.svc  # домен величин; сегодня — внутренний слушатель службы доступа
 
 # compute is not on the Address.Create write-path; HPA + resources
 # present for uniform policy across services. maxReplicas=5 is plenty.

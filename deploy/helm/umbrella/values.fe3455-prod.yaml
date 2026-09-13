@@ -233,7 +233,6 @@ vpc:
       # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
       # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
       # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
-      quotaAuthority: false
       geo: true
   authz:
     # Круг отправителей чужой личности — см. values.prod.yaml (там же обоснование
@@ -260,7 +259,6 @@ compute:
       # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
       # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
       # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
-      quotaAuthority: false
       geo: true
       # compute→storage edge (InternalVolumeService attach/detach + Volume mirror, :9091)
       # is now FIRST-CLASS in the compute chart: storageInternalAddr (default
@@ -448,7 +446,6 @@ kacho-nlb:
       # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
       # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
       # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
-      quotaAuthority: false
       geo: true
   config:
     authz:
@@ -711,7 +708,6 @@ registry:
       # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
       # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
       # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
-      quotaAuthority: false
       iamAuthz: true
       iamProject: true
       # registry→geo RegionService.Get (public :9090, REG-1 F4). geo runs hardened
@@ -799,7 +795,6 @@ storage:
       # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
       # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
       # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
-      quotaAuthority: false
       geo: true
       iam: true
 

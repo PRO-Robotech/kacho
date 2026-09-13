@@ -4,6 +4,8 @@
 package main
 
 import (
+	corequota "github.com/PRO-Robotech/corelib/quota"
+
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -230,7 +232,7 @@ func everyEdgeLive(t *testing.T) config.Config {
 		// требовать от него удостоверение. Объявление «не развёрнут» вывело бы
 		// ребро из наблюдения, и отключение его mTLS перестало бы что-либо
 		// значить — фикстура молча перестала бы быть представительной.
-		QuotaAuthority: "kaname-internal.kacho.svc:9091",
+		QuotaAuthority: corequota.NotDeployed,
 	}
 	v := reflect.ValueOf(&cfg).Elem()
 	for _, field := range dialedEdgeFields(t, moduleRoot(t)) {

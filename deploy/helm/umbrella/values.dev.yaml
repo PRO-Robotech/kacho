@@ -405,7 +405,6 @@ compute:
       # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
       # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
       # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
-      quotaAuthority: false
       iamRegister: true
       iamProject: true
       iamAuthz: true
@@ -464,7 +463,6 @@ storage:
       # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
       # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
       # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
-      quotaAuthority: false
       geo: true
       iam: true
 
@@ -663,7 +661,6 @@ vpc:
       # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
       # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
       # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
-      quotaAuthority: false
       iamRegister: true
       iamProject: true
       iamAuthz: true
@@ -1744,7 +1741,6 @@ kacho-nlb:
       # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
       # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
       # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
-      quotaAuthority: false
       iamRegister: true
       iamProject: true
       vpc: true
@@ -1923,7 +1919,6 @@ registry:
       # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
       # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
       # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
-      quotaAuthority: false
       iamAuthz: true      # registry→iam Check + fga-proxy (:9091)
       iamProject: true    # registry→iam ProjectService.Get (:9090)
       geo: true           # registry→geo RegionService.Get (:9090)

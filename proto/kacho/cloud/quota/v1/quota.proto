@@ -35,8 +35,9 @@ option go_package = "github.com/PRO-Robotech/corelib/api/kacho/cloud/quota/v1;qu
 // widened answer.
 //
 // READ-ONLY BY CONSTRUCTION. This message never appears in a request body. The
-// tenant reads; only the cloud administrator changes a value, through
-// `iam.v1.InternalLimitService` on the internal listener. The split is a
+// tenant reads; a value is changed only by the cloud administrator, through the
+// limit authority — a domain the access service has retired whole and which the
+// platform has not re-established (PRO-Robotech/kacho#2190). The split is a
 // permission boundary, not a convenience: a tenant able to raise their own
 // ceiling has no ceiling.
 message Quota {

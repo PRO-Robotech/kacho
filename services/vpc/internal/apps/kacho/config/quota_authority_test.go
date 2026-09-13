@@ -24,7 +24,7 @@ import (
 // выведенных из-под запрета `security.md` §«Публичные артефакты».
 func TestQuotaAuthority_KAN_Q1_02_UnsetRefusesStart(t *testing.T) {
 	var c Config
-	err := c.ValidateQuotaAuthority(MTLSConfig{})
+	err := c.ValidateQuotaAuthority()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "quota.authority")
 	require.Contains(t, err.Error(), corequota.NotDeployed,
@@ -41,7 +41,7 @@ func TestQuotaAuthority_KAN_Q1_06_NotDeployedIsALegalPosture(t *testing.T) {
 	c := Config{Quota: QuotaConfig{Authority: corequota.NotDeployed}}
 	c.AuthN.Mode = ModeProductionStrict
 
-	a, err := c.QuotaAuthority(MTLSConfig{})
+	a, err := c.QuotaAuthority()
 	require.NoError(t, err, "объявленное отсутствие — законная посадка, а не отказ")
 	require.False(t, a.Deployed())
 	require.Equal(t, corequota.AuthorityAbsent, a.State())
@@ -49,56 +49,40 @@ func TestQuotaAuthority_KAN_Q1_06_NotDeployedIsALegalPosture(t *testing.T) {
 
 // TestQuotaAuthority_KAN_Q1_05_HalfAPairRefusesStart — адрес есть,
 // удостоверения нет.
-func TestQuotaAuthority_KAN_Q1_05_HalfAPairRefusesStart(t *testing.T) {
-	c := Config{Quota: QuotaConfig{Authority: "kaname-internal.kacho.svc:9091"}}
-	c.AuthN.Mode = ModeProductionStrict
-
-	err := c.ValidateQuotaAuthority(MTLSConfig{})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "KACHO_VPC_QUOTA_AUTHORITY_MTLS_ENABLE",
-		"отказ обязан назвать НЕДОСТАЮЩУЮ половину пары")
-}
 
 // TestQuotaAuthority_HalfAPairIsSilentOutsideProduction — зеркало предыдущего.
 //
-// Требование транспорта у ребра величин ТО ЖЕ, что у остальных рёбер службы.
-// Собственная строгость сделала бы локальный стенд неподнимаемым там, где все
-// прочие рёбра ходят открытым текстом законно.
-func TestQuotaAuthority_HalfAPairIsSilentOutsideProduction(t *testing.T) {
-	c := Config{Quota: QuotaConfig{Authority: "kaname-internal.kacho.svc:9091"}}
-	c.AuthN.Mode = ModeDev
-
-	a, err := c.QuotaAuthority(MTLSConfig{})
-	require.NoError(t, err)
-	require.True(t, a.Deployed())
-}
-
-// TestQuotaAuthority_KAN_Q1_04_AddressIsNotDerivedFromAuthz — адрес величин и
-// адрес авторизации разводятся, и смена одного не трогает другой.
+// TestQuotaAuthority_KAN_Q1_04_AddressIsNotDerivedFromAuthz — объявление величин
+// НЕ выводится из адреса соседа по авторизации.
 //
-// До S1 сценарий был неисполним ПО ПОСТРОЕНИЮ: оба брались из одного соединения,
-// и развести значения было нечем.
+// ПЕРЕПИСАНА под то, что дерево производит сегодня. Прежняя редакция разводила
+// два АДРЕСА; адрес домена величин больше не бывает законным, и утверждать о нём
+// нечего. Свойство при этом не исчезло, а стало сильнее: при живом адресе
+// авторизации объявление величин обязано остаться ОТСУТСТВУЮЩИМ. Выведись оно из
+// чужого ребра — вернулся бы ровно тот дефект, ради которого ручка и заведена
+// (`security.md` §Hardening п. 9: адрес, от которого зависит решение, не
+// выводится из чужого адреса).
 func TestQuotaAuthority_KAN_Q1_04_AddressIsNotDerivedFromAuthz(t *testing.T) {
-	c := Config{Quota: QuotaConfig{Authority: "limits.kacho.svc:9091"}}
+	c := Config{Quota: QuotaConfig{Authority: corequota.NotDeployed}}
 	c.AuthN.Mode = ModeDev
 	c.AuthZ.IAMEndpoint = "kaname-internal.kacho.svc:9091"
 
-	a, err := c.QuotaAuthority(MTLSConfig{})
+	a, err := c.QuotaAuthority()
 	require.NoError(t, err)
-	require.Equal(t, "limits.kacho.svc:9091", a.Endpoint(),
-		"величина берётся по СВОЕМУ адресу")
-	require.NotEqual(t, c.AuthZ.IAMEndpoint, a.Endpoint())
+	require.False(t, a.Deployed(),
+		"живой адрес авторизации не делает домен величин развёрнутым")
+	require.Empty(t, a.Endpoint(),
+		"объявление величин не заимствует чужой адрес")
 
-	// Смена адреса авторизации не трогает адрес величин.
+	// Смена адреса авторизации на объявление величин не влияет ничем.
 	c.AuthZ.IAMEndpoint = "kaname-internal.other.svc:9091"
-	b, err := c.QuotaAuthority(MTLSConfig{})
+	b, err := c.QuotaAuthority()
 	require.NoError(t, err)
-	require.Equal(t, a.Endpoint(), b.Endpoint())
+	require.Equal(t, a.State(), b.State())
 
-	// И наоборот: смена адреса величин не трогает адрес авторизации.
+	// И наоборот: объявление величин не трогает адрес авторизации.
 	before := c.AuthZ.IAMEndpoint
-	c.Quota.Authority = corequota.NotDeployed
-	_, err = c.QuotaAuthority(MTLSConfig{})
+	_, err = c.QuotaAuthority()
 	require.NoError(t, err)
 	require.Equal(t, before, c.AuthZ.IAMEndpoint)
 }
@@ -141,39 +125,42 @@ func TestQuotaAuthority_KnobReachesTheField(t *testing.T) {
 // половина пары, зеркальная KAN-Q1-05: адрес объявляет ОТСУТСТВИЕ домена
 // величин, а имя для сверки рукопожатия задано. Обращаться не к кому, поэтому
 // имя называет пира, к которому ребро НЕ идёт.
-func TestQuotaAuthority_AbsentAuthorityWithDeclaredTransportRefusesStart(t *testing.T) {
-	c := Config{Quota: QuotaConfig{Authority: corequota.NotDeployed}}
-	c.AuthN.Mode = ModeProductionStrict
-
-	var m MTLSConfig
-	m.QuotaAuthorityMTLS.Enable = true
-	m.QuotaAuthorityMTLS.ServerName = "kaname-internal.kacho.svc"
-
-	err := c.ValidateQuotaAuthority(m)
-	require.Error(t, err,
-		"адрес объявил отсутствие домена величин, а имя для сверки задано — половина пары")
-	require.Contains(t, err.Error(), "KACHO_VPC_QUOTA_AUTHORITY_MTLS_SERVERNAME",
-		"отказ обязан назвать ЛИШНЮЮ половину пары")
-	require.Contains(t, err.Error(), "kaname-internal.kacho.svc",
-		"отказ обязан процитировать имя, которое названо впустую")
-}
 
 // TestQuotaAuthority_AbsentAuthorityWithDeclaredTransportRefusesOutsideProductionToo —
 // режимом этот отказ НЕ смягчается: собеседника нет ни в одном режиме.
-func TestQuotaAuthority_AbsentAuthorityWithDeclaredTransportRefusesOutsideProductionToo(t *testing.T) {
-	c := Config{Quota: QuotaConfig{Authority: corequota.NotDeployed}}
-
-	var m MTLSConfig
-	m.QuotaAuthorityMTLS.ServerName = "kaname-internal.kacho.svc"
-
-	require.Error(t, c.ValidateQuotaAuthority(m))
-}
 
 // TestQuotaAuthority_AbsentAuthorityWithoutTransportIsSilent — положительный
 // близнец: объявленное отсутствие БЕЗ удостоверения — законная посадка.
-func TestQuotaAuthority_AbsentAuthorityWithoutTransportIsSilent(t *testing.T) {
-	c := Config{Quota: QuotaConfig{Authority: corequota.NotDeployed}}
-	c.AuthN.Mode = ModeProductionStrict
 
-	require.NoError(t, c.ValidateQuotaAuthority(MTLSConfig{}))
+// TestQuotaAuthority_AddressRefusesStart_NoProducer — адрес отвергается СТАРТОМ:
+// производителя у контракта авторитета величин не осталось ни в одном дереве.
+//
+// ЗАМЕНИЛА пару проб о половине пары «адрес и удостоверение». Их предмет снят
+// вместе с ребром — стеречь удостоверение к собеседнику, которого нет, нечего
+// (`testing.md` §«Гейт на класс», п. 9: проба, чей предмет снят, ЗАМЕНЯЕТСЯ, а не
+// ослабляется).
+func TestQuotaAuthority_AddressRefusesStart_NoProducer(t *testing.T) {
+	c := Config{Quota: QuotaConfig{Authority: "kaname-internal.kacho.svc:9091"}}
+	c.AuthN.Mode = ModeProductionStrict
+	err := c.ValidateQuotaAuthority()
+	require.Error(t, err, "адрес принят молча — ручка объявляет возможность, которой нет")
+	require.Contains(t, err.Error(), "quota.authority",
+		"отказ обязан назвать ручку: без её имени стенд не поднять")
+	require.Contains(t, err.Error(), corequota.NotDeployed,
+		"отказ обязан назвать СЛЕДУЮЩИЙ ШАГ оператора — единственное действующее значение")
+	require.Contains(t, err.Error(), "#2190",
+		"отказ обязан назвать предмет, которым состояние снимается")
+}
+
+// TestQuotaAuthority_AddressRefusalIsNotSoftenedByPosture — режимом отказ НЕ
+// смягчается, и этим он отличается от снятого требования транспорта.
+//
+// «Требуется ли проверяемый транспорт» было вопросом посадки. «Есть ли
+// собеседник» — не вопрос посадки: производителя нет ни в одном режиме.
+// Смягчение оставило бы объявление, которое поднимается на стенде и отказывает в
+// бою, — ту самую неразличимость, ради устранения которой отказ и заведён.
+func TestQuotaAuthority_AddressRefusalIsNotSoftenedByPosture(t *testing.T) {
+	c := Config{Quota: QuotaConfig{Authority: "kaname-internal.kacho.svc:9091"}}
+	c.AuthN.Mode = ModeDev
+	require.Error(t, c.ValidateQuotaAuthority())
 }

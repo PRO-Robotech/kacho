@@ -274,7 +274,7 @@ func runServe(cfg config.Config) error {
 	// них не значится. Проверка стоит ЗДЕСЬ, до дозвонов, чтобы оператор получил
 	// названную ручку раньше, чем отказ соединения; сама проводка читает то же
 	// объявление тем же методом, поэтому «страж доволен» ⟺ «дилится объявленное».
-	if err := cfg.ValidateQuotaAuthority(mtlsCfg); err != nil {
+	if err := cfg.ValidateQuotaAuthority(); err != nil {
 		return fmt.Errorf("config validate (quota authority): %w", err)
 	}
 
@@ -530,7 +530,7 @@ func runServe(cfg config.Config) error {
 	// законная посадка, в которой тянущий не заводится и состояние курсора
 	// называет причину.
 	quotaEdge, stopQuotaEdge, qerr := buildQuotaAuthorityEdge(
-		ctx, cfg, mtlsCfg, pool, "kacho_vpc", logger)
+		ctx, cfg, pool, "kacho_vpc", logger)
 	if qerr != nil {
 		return qerr
 	}

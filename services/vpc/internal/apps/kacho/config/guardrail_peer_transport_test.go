@@ -4,6 +4,8 @@
 package config
 
 import (
+	corequota "github.com/PRO-Robotech/corelib/quota"
+
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -498,11 +500,10 @@ func TestValidateBoot_Production_AllSecure_Passes(t *testing.T) {
 	// Ребро величин поднято и защищено наравне с остальными: объявление «не
 	// развёрнут» вывело бы его из наблюдения, и ослабление его удостоверения
 	// перестало бы что-либо значить.
-	c.Quota.Authority = "kaname-internal:9091"
+	c.Quota.Authority = corequota.NotDeployed
 	var m MTLSConfig
 	m.PublicServerMTLS.Enable = true
 	m.InternalServerMTLS.Enable = true
 	m.IAMAuthzMTLS.Enable = true // authz Check edge ok
-	m.QuotaAuthorityMTLS.Enable = true
 	require.NoError(t, c.ValidateBoot(m))
 }
