@@ -203,4 +203,76 @@
 # проходит, а не падает.
 # ===========================================================================
 
-declared:
+declared:  # ── kacho#2601: форма ответа учёта переименована в `corelib.quota.v1` ──────
+  #
+  # ЧТО СНЯТО И ПОЧЕМУ. Сообщение `Quota` объявляет ФОРМУ ответа об учёте, общую
+  # обоим продуктам, и лежит в опубликованном фундаменте. Платформенное имя
+  # `kacho.cloud.quota.v1` утверждало владение, которого нет: библиотеку берут и
+  # платформа, и служба доступа. Контракт переехал под нейтральный корень
+  # (`corelib/quota/v1/quota.proto`) и переименован в `corelib.quota.v1`.
+  #
+  # ПРОВОЛОЧНОЙ НЕСОВМЕСТИМОСТИ У АРЕНДАТОРА НЕТ, и это замер, а не надежда.
+  # Полное имя сообщения не участвует ни в двоичном кодировании (номера полей),
+  # ни в JSON (имена полей); `Quota` не встречается ни в одном `google.protobuf.Any`
+  # и службы в своём пакете не объявляет — значит путь метода gRPC им не задан.
+  # Меняется только дескриптор: имя типа поля `quotas` у пяти владельцев и имя
+  # файла в реестре. Отсюда и форма находок: одно `FILE_NO_DELETE` плюс пять
+  # `FIELD_SAME_TYPE`, по одному на владельца, и ни одного об оболочке запроса.
+  #
+  # ПРЕДИКАТ СНЯТИЯ — ОБЩИЙ У ШЕСТИ ЗАПИСЕЙ: вливание этой ветки в ствол. База
+  # сравнения поднимется, находок станет ноль, и адъюдикатор назовёт каждую
+  # запись потерявшей предмет на первом же прогоне ствола.
+
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/quota/v1/quota.proto
+    symbol: kacho/cloud/quota/v1/quota.proto
+    reason: >-
+      контракт общей формы учёта переехал под нейтральный корень фундамента и
+      называется теперь corelib/quota/v1/quota.proto; платформенное имя у файла
+      библиотеки утверждало владение, которого нет
+    issue: kacho#2601
+
+  - rule: FIELD_SAME_TYPE
+    path: kacho/cloud/vpc/v1/quota_service.proto
+    symbol: ListQuotasResponse
+    reason: >-
+      тип поля quotas переименован с kacho.cloud.quota.v1.Quota на
+      corelib.quota.v1.Quota; состав сообщения не изменён ни на поле, поэтому ни
+      двоичная форма, ни JSON у арендатора не меняются
+    issue: kacho#2601
+
+  - rule: FIELD_SAME_TYPE
+    path: kacho/cloud/compute/v1/quota_service.proto
+    symbol: ListQuotasResponse
+    reason: >-
+      тип поля quotas переименован с kacho.cloud.quota.v1.Quota на
+      corelib.quota.v1.Quota; состав сообщения не изменён ни на поле, поэтому ни
+      двоичная форма, ни JSON у арендатора не меняются
+    issue: kacho#2601
+
+  - rule: FIELD_SAME_TYPE
+    path: kacho/cloud/storage/v1/quota_service.proto
+    symbol: ListQuotasResponse
+    reason: >-
+      тип поля quotas переименован с kacho.cloud.quota.v1.Quota на
+      corelib.quota.v1.Quota; состав сообщения не изменён ни на поле, поэтому ни
+      двоичная форма, ни JSON у арендатора не меняются
+    issue: kacho#2601
+
+  - rule: FIELD_SAME_TYPE
+    path: kacho/cloud/loadbalancer/v1/quota_service.proto
+    symbol: ListQuotasResponse
+    reason: >-
+      тип поля quotas переименован с kacho.cloud.quota.v1.Quota на
+      corelib.quota.v1.Quota; состав сообщения не изменён ни на поле, поэтому ни
+      двоичная форма, ни JSON у арендатора не меняются
+    issue: kacho#2601
+
+  - rule: FIELD_SAME_TYPE
+    path: kacho/cloud/registry/v1/quota_service.proto
+    symbol: ListQuotasResponse
+    reason: >-
+      тип поля quotas переименован с kacho.cloud.quota.v1.Quota на
+      corelib.quota.v1.Quota; состав сообщения не изменён ни на поле, поэтому ни
+      двоичная форма, ни JSON у арендатора не меняются
+    issue: kacho#2601

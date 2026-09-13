@@ -30,8 +30,8 @@ import (
 	// гейт с именем пакета, а не проходит молча.
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
+	_ "github.com/PRO-Robotech/corelib/api/corelib/quota/v1"
 	_ "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
-	_ "github.com/PRO-Robotech/corelib/api/kacho/cloud/quota/v1"
 	_ "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"

@@ -47,4 +47,3 @@ inputs:
     exclude_paths:
       - kacho/cloud/operation
       - kacho/cloud/subscription
-      - kacho/cloud/quota

@@ -25,7 +25,7 @@ import (
 // который проверка обязана называть находкой.
 const injIdentityQuotaService = `syntax = "proto3";
 
-package kacho.cloud.quota.v1;
+package corelib.quota.v1;
 
 // IdentityQuotaService — the ceilings carried by the CALLER THEMSELVES.
 service IdentityQuotaService {
@@ -36,10 +36,10 @@ service IdentityQuotaService {
 `
 
 // Настоящая форма пакета ФОРМЫ без службы — из
-// `proto/kacho/cloud/quota/v1/quota.proto`.
+// `proto/corelib/quota/v1/quota.proto`.
 const injQuotaShapeOnly = `syntax = "proto3";
 
-package kacho.cloud.quota.v1;
+package corelib.quota.v1;
 
 // WHY THIS MESSAGE IS SHARED AND THE SERVICE IS NOT. The value lives in iam and
 // the counting lives with the owner of the resource type.
@@ -54,7 +54,7 @@ message Quota {
 func TestQSH_ServiceInsideTheShapePackageIsAFinding(t *testing.T) {
 	t.Parallel()
 
-	const rel = "proto/kacho/cloud/quota/v1/identity_quota_service.proto"
+	const rel = "proto/corelib/quota/v1/identity_quota_service.proto"
 	require.True(t, InQuotaShapePackage(rel),
 		"путь пакета формы обязан узнаваться: иначе проверка осмотрит ноль файлов и смолчит")
 	require.Contains(t, ServicesDeclaredIn(injIdentityQuotaService), "IdentityQuotaService",

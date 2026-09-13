@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
-	quotav1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/quota/v1"
+	quotav1 "github.com/PRO-Robotech/corelib/api/corelib/quota/v1"
 	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 )
 
