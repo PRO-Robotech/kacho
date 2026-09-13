@@ -18,7 +18,6 @@ import { REGISTRY } from "./resource-registry";
 import { OPERATIONS_LIST_PATHS, hasOperationsSubroute, operationsListPath } from "./operations-subroute";
 
 const APP_DIR = process.cwd();
-const PROTO_DIR = join(resolve(APP_DIR, "../.."), "proto");
 
 function walk(dir: string, match: RegExp, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {

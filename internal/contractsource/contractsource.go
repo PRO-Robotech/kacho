@@ -223,7 +223,7 @@ func moduleDir(repoRoot, module string) (string, error) {
 		return d, nil
 	}
 	ask := func() string {
-		cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", module)
+		cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", module) // #nosec G204 -- argv[0] фиксирован, операнд — путь модуля из ExternalRootModules этого файла, не из внешнего входа
 		cmd.Dir = repoRoot
 		raw, err := cmd.Output()
 		if err != nil {
@@ -234,7 +234,7 @@ func moduleDir(repoRoot, module string) (string, error) {
 	dir := ask()
 	if dir == "" {
 		// Кэш модулей мог быть не прогрет: одна попытка добора, и только одна.
-		dl := exec.Command("go", "mod", "download", module)
+		dl := exec.Command("go", "mod", "download", module) // #nosec G204 -- тот же операнд и тот же довод, что у вызова выше
 		dl.Dir = repoRoot
 		_ = dl.Run()
 		dir = ask()

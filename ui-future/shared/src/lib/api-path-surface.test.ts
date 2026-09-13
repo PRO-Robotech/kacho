@@ -46,7 +46,6 @@ import { REGISTRY } from "./resource-registry";
 // координаты дерева.
 const APP_DIR = process.cwd();
 const REPO_ROOT = resolve(APP_DIR, "../..");
-const PROTO_DIR = join(REPO_ROOT, "proto");
 const GATEWAY_DIR = join(REPO_ROOT, "gateway");
 const SHARED_SRC = resolve(APP_DIR, "../shared/src");
 
