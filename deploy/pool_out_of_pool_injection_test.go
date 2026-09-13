@@ -185,21 +185,43 @@ func TestOutOfPoolRecogniserResolvesVersionedImportPaths(t *testing.T) {
 // Молчание здесь и есть та самая «честная неполнота, названная полнотой»: сумма
 // сходится по отсутствию слагаемого, а не по сходимости.
 //
-// Держатели общих ресурсов лежат в ОТДЕЛЬНОМ дереве (общий фундамент) — их
-// самоистечение проверяется отдельным синтетическим стендом (`lib`,
-// прочитанным `readAsLibrary`), а «захват вне каталога» и «своё дерево службы»
-// остаются предметом ЛОКАЛЬНОГО стенда (`local`, прочитанного `read`). Два
-// корня, потому что в жизни это ровно так: чарт и вызывающий код — здесь,
-// LISTEN-сессия — там.
+// Дом у держателей РАЗНЫЙ, и стендов поэтому два. Держатель фундамента живёт в
+// отдельном дереве (`lib`, прочитанный `readAsLibrary`), держатель платформы —
+// в этом (`local`, прочитанный `read`); куда писать, спрашивается у самой записи
+// ([outOfPoolHolder.InTree]), а не у приставки пути. Два корня, потому что в
+// жизни это ровно так: у одних чарт и вызывающий код здесь, а LISTEN-сессия
+// там, у других — всё здесь.
 func TestOutOfPoolArithmeticIsCompleteOrSaysItIsNot(t *testing.T) {
+	bodyFor := func(h outOfPoolHolder) string {
+		if strings.Contains(h.Site, "drainer") {
+			return captureHijack
+		}
+		return captureConnect
+	}
+	// Держатели пишутся В ТО дерево, которое объявила их запись. Писать всех в
+	// одно значило бы проверять мир, которого нет: половина записей истекала бы
+	// в нём по отсутствию файла, а не по отсутствию предмета.
 	writeLibrary := func(t *testing.T, s *outOfPoolStand) {
 		t.Helper()
 		for _, h := range outOfPoolHolders {
-			body := captureConnect
-			if strings.Contains(h.Site, "drainer") {
-				body = captureHijack
+			if h.InTree {
+				continue
 			}
-			s.write(t, h.Site, body)
+			s.write(t, h.Site, bodyFor(h))
+		}
+	}
+	writeInTree := func(t *testing.T, s *outOfPoolStand) {
+		t.Helper()
+		for _, h := range outOfPoolHolders {
+			if h.InTree {
+				s.write(t, h.Site, bodyFor(h))
+			}
+		}
+	}
+	inTreeHolders := 0
+	for _, h := range outOfPoolHolders {
+		if h.InTree {
+			inTreeHolders++
 		}
 	}
 
@@ -207,6 +229,7 @@ func TestOutOfPoolArithmeticIsCompleteOrSaysItIsNot(t *testing.T) {
 		lib := newOutOfPoolStand(t)
 		writeLibrary(t, lib)
 		local := newOutOfPoolStand(t)
+		writeInTree(t, local)
 		// Захват в дереве СЛУЖБЫ приписан ей by construction — и это тоже надо
 		// проверить, иначе «ноль неучтённых» достижимо тем, что служб не читали.
 		local.write(t, "services/probe/internal/repo/notify.go", captureHijack)
@@ -215,13 +238,13 @@ func TestOutOfPoolArithmeticIsCompleteOrSaysItIsNot(t *testing.T) {
 		if got := unattributedCaptures(t, localTree, libTree); len(got) != 0 {
 			t.Fatalf("законное дерево объявлено неполным: %v", got)
 		}
-		if len(libTree.captures) != len(outOfPoolHolders) {
+		if len(libTree.captures) != len(outOfPoolHolders)-inTreeHolders {
 			t.Fatalf("захватов в общем фундаменте опознано %d, ожидалось %d",
-				len(libTree.captures), len(outOfPoolHolders))
+				len(libTree.captures), len(outOfPoolHolders)-inTreeHolders)
 		}
-		if len(localTree.captures) != 1 {
-			t.Fatalf("захватов в этом дереве опознано %d, ожидался 1 (свой, служебный)",
-				len(localTree.captures))
+		if len(localTree.captures) != 1+inTreeHolders {
+			t.Fatalf("захватов в этом дереве опознано %d, ожидалось %d (свой служебный плюс держатели платформы)",
+				len(localTree.captures), 1+inTreeHolders)
 		}
 	})
 
@@ -229,6 +252,7 @@ func TestOutOfPoolArithmeticIsCompleteOrSaysItIsNot(t *testing.T) {
 		lib := newOutOfPoolStand(t)
 		writeLibrary(t, lib)
 		local := newOutOfPoolStand(t)
+		writeInTree(t, local)
 		local.write(t, "pkg/newholder/keepalive.go", captureConnect)
 
 		got := unattributedCaptures(t, local.read(t), lib.readAsLibrary(t))
@@ -240,20 +264,54 @@ func TestOutOfPoolArithmeticIsCompleteOrSaysItIsNot(t *testing.T) {
 		}
 	})
 
-	t.Run("запись каталога без предмета — сама находка", func(t *testing.T) {
+	// Самоистечение проверяется У КАЖДОГО ДОМА отдельно: механизм спрашивает
+	// разные деревья, и проба, стоящая на одном, о втором не утверждает ничего.
+	holderAt := func(t *testing.T, inTree bool) outOfPoolHolder {
+		t.Helper()
+		for _, h := range outOfPoolHolders {
+			if h.InTree == inTree {
+				return h
+			}
+		}
+		t.Fatalf("в каталоге держателей нет ни одной записи с InTree=%v — "+
+			"полоса не проверена, а не пуста", inTree)
+		return outOfPoolHolder{}
+	}
+
+	t.Run("запись каталога фундамента без предмета — сама находка", func(t *testing.T) {
+		h := holderAt(t, false)
 		lib := newOutOfPoolStand(t)
 		writeLibrary(t, lib)
 		// Снимаем захват у ОДНОГО держателя В ОБЩЕМ ФУНДАМЕНТЕ, оставив файл на
 		// месте: запись обязана истечь по отсутствию ПРЕДМЕТА, а не по
 		// отсутствию файла.
-		lib.write(t, outOfPoolHolders[0].Site, "package sub\n\nfunc noop() {}\n")
+		lib.write(t, h.Site, "package sub\n\nfunc noop() {}\n")
 		local := newOutOfPoolStand(t)
+		writeInTree(t, local)
 
 		got := unattributedCaptures(t, local.read(t), lib.readAsLibrary(t))
 		if len(got) != 1 {
 			t.Fatalf("истёкшая запись каталога пережила свой предмет молча: %v", got)
 		}
-		if !strings.Contains(got[0].why, outOfPoolHolders[0].Site) {
+		if !strings.Contains(got[0].why, h.Site) {
+			t.Fatalf("находка не называет истёкшую запись: %q", got[0].why)
+		}
+	})
+
+	t.Run("запись каталога платформы без предмета — сама находка", func(t *testing.T) {
+		h := holderAt(t, true)
+		lib := newOutOfPoolStand(t)
+		writeLibrary(t, lib)
+		local := newOutOfPoolStand(t)
+		writeInTree(t, local)
+		// Тот же приём, но в ЭТОМ дереве: файл на месте, захвата в нём больше нет.
+		local.write(t, h.Site, "package sub\n\nfunc noop() {}\n")
+
+		got := unattributedCaptures(t, local.read(t), lib.readAsLibrary(t))
+		if len(got) != 1 {
+			t.Fatalf("истёкшая запись каталога платформы пережила свой предмет молча: %v", got)
+		}
+		if !strings.Contains(got[0].why, h.Site) {
 			t.Fatalf("находка не называет истёкшую запись: %q", got[0].why)
 		}
 	})
@@ -312,11 +370,27 @@ func TestCorelibModuleDirResolvesTheRealFundament(t *testing.T) {
 	for _, c := range tree.captures {
 		seen[c.File] = true
 	}
+	checked := 0
 	for _, h := range outOfPoolHolders {
+		// Держатель платформы в фундаменте не лежит и лежать не обязан: его
+		// самоистечение проверяет тот же механизм по ЛОКАЛЬНОМУ дереву
+		// (unattributedCaptures), и требовать его здесь значило бы краснеть на
+		// верно объявленном доме.
+		if h.InTree {
+			continue
+		}
+		checked++
 		if !seen[h.Site] {
 			t.Errorf("держатель %q (%s) не найден в реальном общем фундаменте %s — переехал "+
 				"снова, либо резолв указывает не туда", h.Kind, h.Site, dir)
 		}
+	}
+	// Перепись: «ноль ошибок» обязано быть отличимо от «ноль проверенного» —
+	// объяви все записи живущими в дереве, и цикл выше стал бы пустым.
+	t.Logf("перепись: записей каталога %d, из них дома в фундаменте %d — проверены все",
+		len(outOfPoolHolders), checked)
+	if checked == 0 {
+		t.Fatalf("ни одной записи каталога с домом в фундаменте — проба беспредметна")
 	}
 }
 

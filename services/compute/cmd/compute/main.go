@@ -50,10 +50,10 @@ import (
 	"github.com/PRO-Robotech/corelib/servicehost"
 
 	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
-	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 	"github.com/PRO-Robotech/corelib/retention"
-	"github.com/PRO-Robotech/corelib/subscription"
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
+	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+	"github.com/PRO-Robotech/kacho/pkg/subscription"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/subscriptionjournal"
 	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 

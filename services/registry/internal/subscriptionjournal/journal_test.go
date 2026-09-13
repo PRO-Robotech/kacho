@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 	"github.com/PRO-Robotech/corelib/authz"
-	"github.com/PRO-Robotech/corelib/subscription"
+	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+	"github.com/PRO-Robotech/kacho/pkg/subscription"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 )
 

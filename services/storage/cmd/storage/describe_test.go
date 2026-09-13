@@ -43,12 +43,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
-	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 	"github.com/PRO-Robotech/corelib/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/corelib/operations"
 	"github.com/PRO-Robotech/corelib/operations/operationspb"
 	"github.com/PRO-Robotech/corelib/servicecontract"
 	"github.com/PRO-Robotech/corelib/treecorpus"
+	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 
 	"github.com/PRO-Robotech/corelib/authz"
 	"github.com/PRO-Robotech/corelib/quota/quotaread"

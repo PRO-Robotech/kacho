@@ -171,10 +171,15 @@ var foundationClasses = map[string]foundationClass{
 	"shutdown":        classCorelib,
 	"singlepass":      classCorelib,
 	"subjectchange":   classKaname,
-	"subscription":    classCorelib,
-	"tokenpolicy":     classCorelib,
-	"treecorpus":      classToolchain,
-	"validate":        classCorelib,
+	// Сервер потока ВЕРНУЛСЯ в дерево платформы (kacho#2601): контракт
+	// подписки несёт платформенное имя, служба доступа его не зовёт ни
+	// одним оператором, и в фундаменте, который линкуют оба продукта, ему
+	// места нет. Граница устоявшегося при этом ОСТАЛАСЬ в фундаменте —
+	// у неё контракта нет вовсе, и её берут оба продукта.
+	"subscription": classKacho,
+	"tokenpolicy":  classCorelib,
+	"treecorpus":   classToolchain,
+	"validate":     classCorelib,
 }
 
 // foundationSubtrees — каталоги, уезжающие НЕ ЦЕЛИКОМ (приёмка §5, знак †).
@@ -204,7 +209,7 @@ var foundationSubtrees = []struct {
 	// объявляет класс, а не место, и ось четвёртая резолвит её в третьем доме.
 	{"pkg/api/kaname/cloud/iam", classKaname},
 	{"pkg/api/kacho/cloud/operation", classCorelib},
-	{"pkg/api/kacho/cloud/subscription", classCorelib},
+	{"pkg/api/kacho/cloud/subscription", classKacho},
 	{"pkg/api/kacho/cloud/quota", classCorelib},
 	// Нейтральный корень объявляется ЦЕЛИКОМ, а не по одному словарю. Прежде здесь
 	// стоял `pkg/api/corelib/authz`, и записи хватало ровно на один переезд: второй

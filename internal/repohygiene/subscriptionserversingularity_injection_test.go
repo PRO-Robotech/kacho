@@ -135,7 +135,7 @@ func (w *Watch) Subscribe(req *SubscriptionRequest, stream InternalSubscriptionS
 }
 `)
 	f := s.audit(t)
-	requireFinding(t, f, "СЕРВЕР-НЕ-В-ФУНДАМЕНТЕ", "services/vpc/internal/handler/watch.go")
+	requireFinding(t, f, "СЕРВЕР-НЕ-ДОМА", "services/vpc/internal/handler/watch.go")
 	requireFinding(t, f, "ВТОРОЙ-СЕРВЕР", "services/vpc")
 }
 
@@ -158,7 +158,7 @@ func (o *Other) Subscribe(req *SubscriptionRequest, stream InternalSubscriptionS
 	f := s.audit(t)
 	requireFinding(t, f, "ВТОРОЙ-СЕРВЕР", "pkg/subscription2")
 	for _, x := range f {
-		if x.Kind == "СЕРВЕР-НЕ-В-ФУНДАМЕНТЕ" {
+		if x.Kind == "СЕРВЕР-НЕ-ДОМА" {
 			t.Fatalf("сервер в фундаменте назван лежащим не там: %v", x)
 		}
 	}

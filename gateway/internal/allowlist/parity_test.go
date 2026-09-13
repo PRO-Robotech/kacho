@@ -74,13 +74,13 @@ import (
 	// краснеет там.
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
-	_ "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/reference"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 	_ "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 )

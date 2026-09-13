@@ -39,8 +39,8 @@ import (
 	"github.com/PRO-Robotech/corelib/servicehost"
 	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
 
-	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
+	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 
 	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/config"

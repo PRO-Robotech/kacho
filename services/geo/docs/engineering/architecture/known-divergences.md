@@ -270,7 +270,7 @@ projection is `/subscription/v1/events`. geo keeps `geo_outbox` — a feed by sh
 a decision, not an omission.
 
 **Why it is not merely unimplemented — the mechanism cannot accept this feed.**
-`subscription.Mapping.validate` (`corelib/subscription/journal.go`) requires a
+`subscription.Mapping.validate` (`pkg/subscription/journal.go`) requires a
 non-empty kind dictionary in which **every kind is an object type of the rights
 model**, and it says why in the refusal itself: without an object type there is
 no way to ask whether a given caller may see a given row. The rights model

@@ -50,7 +50,7 @@ import (
 	"github.com/PRO-Robotech/corelib/outbox/reconciler"
 	"github.com/PRO-Robotech/corelib/retention"
 	"github.com/PRO-Robotech/corelib/servicehost"
-	"github.com/PRO-Robotech/corelib/subscription"
+	"github.com/PRO-Robotech/kacho/pkg/subscription"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/subscriptionjournal"
 
 	"github.com/PRO-Robotech/corelib/observability/health"

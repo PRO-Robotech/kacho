@@ -179,10 +179,10 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
-	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 	"github.com/PRO-Robotech/corelib/authz"
-	"github.com/PRO-Robotech/corelib/subscription"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+	"github.com/PRO-Robotech/kacho/pkg/subscription"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/dto"
 	_ "github.com/PRO-Robotech/kacho/services/nlb/internal/dto/type2pb" // регистрация трансферов

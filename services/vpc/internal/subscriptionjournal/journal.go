@@ -75,10 +75,10 @@ import (
 
 	"google.golang.org/protobuf/types/known/anypb"
 
-	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 	"github.com/PRO-Robotech/corelib/authz"
-	"github.com/PRO-Robotech/corelib/subscription"
+	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	"github.com/PRO-Robotech/kacho/pkg/subscription"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/dto"
 	_ "github.com/PRO-Robotech/kacho/services/vpc/internal/dto/toproto" // регистрация трансферов

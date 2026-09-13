@@ -373,7 +373,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
-	"github.com/PRO-Robotech/corelib/subscription"
+	"github.com/PRO-Robotech/kacho/pkg/subscription"
 )
 
 func buildStream() {

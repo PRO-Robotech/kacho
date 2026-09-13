@@ -34,8 +34,8 @@ import (
 	"github.com/PRO-Robotech/corelib/servicecontract"
 	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
 
-	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"

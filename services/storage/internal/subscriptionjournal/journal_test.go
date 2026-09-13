@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/corelib/authz"
-	"github.com/PRO-Robotech/corelib/subscription"
+	"github.com/PRO-Robotech/kacho/pkg/subscription"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/subscriptionjournal"
 )

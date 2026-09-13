@@ -152,6 +152,14 @@ var consoleDictBlock = regexp.MustCompile(`(?s)const REFUSALS: Record<string, Re
 // делил потребителя с живым — «хаб подписки браузера» в переписи стоял, потому
 // что токены давал `gateway/internal/subscriptionstream/`.
 //
+// `pkg/subscription/` ВЕРНУЛСЯ 2026-09-13 (kacho#2601) — вместе с контрактом
+// подписки, чьё имя платформенное, и вместе с сервером потока. Запись заведена
+// заново, и на этот раз у неё ЕСТЬ предмет: сервер производит
+// `SUBSCRIPTION_POSITION_LOST`, потребитель тот же — хаб подписки браузера, а не
+// вердикт консоли (`ui-future/shared/src/lib/error-presentation.ts` объявляет это
+// прямо: полосы потока читает хаб). Предмет проверяется, а не обещается:
+// опустеет путь — pathsWithoutSubject назовёт запись сама.
+//
 // Так исключение шириной в каталог переживает свой предмет: следующий файл,
 // заведённый под мёртвым путём, наследует освобождение от вердикта консоли, о
 // котором никто не решал. Поэтому ниже стоит pathsWithoutSubject — предикат
@@ -163,6 +171,8 @@ type offConsolePath struct {
 
 var offConsoleProducerPaths = []offConsolePath{
 	{filepath.Join("gateway", "internal", "subscriptionstream") + string(filepath.Separator),
+		"хаб подписки браузера"},
+	{filepath.Join("pkg", "subscription") + string(filepath.Separator),
 		"хаб подписки браузера"},
 }
 

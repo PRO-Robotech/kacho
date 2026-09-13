@@ -117,15 +117,22 @@ import (
 const (
 	pgxDriverPkg = "github.com/jackc/pgx/v5"
 
-	// corelibModulePath — общий фундамент: держатели общих ресурсов (LISTEN
-	// подписки, дренаж очереди, сброс кэша решений) живут ТАМ, а не в этом
-	// дереве — исходники захвата переехали целиком, вызывающий код и чарт
-	// остались здесь. Самоистечение записи каталога держателей проверяется
-	// поэтому по ОТДЕЛЬНОМУ снимку этого модуля (readOutOfPoolLibraryTree),
-	// а не по локальному дереву (`outOfPoolRoots`), которое такого пути у
-	// себя больше не содержит вовсе.
+	// corelibModulePath — общий фундамент. Часть держателей общих ресурсов
+	// (дренаж очереди, сброс кэша решений) живёт ТАМ, а не в этом дереве —
+	// исходники захвата переехали целиком, вызывающий код и чарт остались
+	// здесь. Самоистечение таких записей проверяется поэтому по ОТДЕЛЬНОМУ
+	// снимку этого модуля (readOutOfPoolLibraryTree), а не по локальному
+	// дереву (`outOfPoolRoots`), которое такого пути у себя не содержит.
+	//
+	// ДОМ У ДЕРЖАТЕЛЕЙ РАЗНЫЙ, и с 2026-09-13 это надо объявлять, а не
+	// подразумевать: сервер потока подписки ВЕРНУЛСЯ в дерево платформы
+	// (kacho#2601) — его контракт несёт платформенное имя, служба доступа его
+	// не зовёт вовсе, и в фундаменте, который линкуют оба продукта, ему места
+	// нет. Запись, чей дом объявлен неверно, самоистекает МОЛЧА: снимок
+	// чужого модуля её файла не содержит, и она читается как учтённая.
 	corelibModulePath = "github.com/PRO-Robotech/corelib"
-	subscriptionPkg   = corelibModulePath + "/subscription"
+	kachoModulePath   = "github.com/PRO-Robotech/kacho"
+	subscriptionPkg   = kachoModulePath + "/pkg/subscription"
 	drainerPkg        = corelibModulePath + "/outbox/drainer"
 	authzPkg          = corelibModulePath + "/authz"
 )
@@ -159,11 +166,17 @@ var outOfPoolRoots = []string{"pkg", "services", "gateway", "internal", "cmd", "
 type outOfPoolHolder struct {
 	// Kind — как вид называется в разборе и в тексте находки.
 	Kind string
-	// Site — файл захвата, путь ОТНОСИТЕЛЬНО КОРНЯ corelibModulePath (не этого
-	// дерева: держатели общих ресурсов переехали туда целиком). Его отсутствие
-	// ТАМ делает запись САМОИСТЁКШЕЙ — проверяется по снимку модуля-фундамента
-	// (readOutOfPoolLibraryTree), а не по локальному дереву.
+	// Site — файл захвата. Путь отсчитывается от корня ТОГО дерева, которое
+	// названо в [outOfPoolHolder.InTree]: от корня corelibModulePath у
+	// держателя фундамента, от корня этого репозитория у держателя платформы.
+	// Отсутствие файла ТАМ, ГДЕ ОН ОБЪЯВЛЕН, делает запись САМОИСТЁКШЕЙ.
 	Site string
+	// InTree — держатель живёт в ЭТОМ дереве, а не в модуле-фундаменте.
+	//
+	// Объявляется полем, а не выводится из приставки пути: вывод по приставке
+	// молчал бы ровно на том случае, ради которого поле заведено, — переезде
+	// держателя между модулями, когда обе приставки выглядят правдоподобно.
+	InTree bool
 	// Pkg — пакет-держатель: службы-КАНДИДАТЫ находятся по его импорту.
 	Pkg string
 	// RaisedBy — ключ конструктора держателя (`<путь пакета>.<функция>`).
@@ -202,9 +215,10 @@ type outOfPoolCtx struct {
 
 var outOfPoolHolders = []outOfPoolHolder{
 	{
-		Kind: "поток подписки",
-		Site: "subscription/server.go",
-		Pkg:  subscriptionPkg,
+		Kind:   "поток подписки",
+		Site:   "pkg/subscription/server.go",
+		InTree: true,
+		Pkg:    subscriptionPkg,
 		// Пакет несёт, кроме сервера потоков, НАБЛЮДАТЕЛЬ ГРАНИЦЫ УСТОЯВШЕГОСЯ —
 		// переиспользуемую часть, которую берут возобновимые чтения, отвечающие на
 		// запрос (kacho#1374). Такой импортёр потоков не поднимает и соединений
@@ -1051,24 +1065,40 @@ func outOfPoolPerReplica(
 // вспомнили» перестаёт называться полнотой.
 //
 // Зеркальная половина: запись каталога, чьего файла захвата больше нет ТАМ, ГДЕ
-// ОН ТЕПЕРЬ ЖИВЁТ, — ТОЖЕ находка. Держатели общих ресурсов переехали в общий
-// фундамент (corelibModulePath) целиком: вызывающий код и чарт остались в этом
-// дереве, а сама LISTEN-сессия — там. Поэтому самоистечение проверяется НЕ по
-// локальному дереву (`tree`), а по ОТДЕЛЬНОМУ снимку модуля-фундамента
-// (`library`, читается readOutOfPoolLibraryTree) — иначе она пережила бы свой
-// предмет и продолжала бы числиться учтённой, а следующий читатель принял бы
-// перечень за действующий.
+// ОН ТЕПЕРЬ ЖИВЁТ, — ТОЖЕ находка. Дом у держателей РАЗНЫЙ, и спрашивается он у
+// самой записи ([outOfPoolHolder.InTree]): держателя фундамента ищем в снимке
+// модуля (`library`, читается readOutOfPoolLibraryTree), держателя платформы —
+// в локальном дереве (`tree`). Спроси мы одно дерево на всех, запись пережила бы
+// свой предмет МОЛЧА — в чужом дереве её файла нет by construction, и следующий
+// читатель принял бы перечень за действующий.
 func unattributedCaptures(t *testing.T, tree, library *outOfPoolTree) []poolFinding {
 	t.Helper()
 	seenLibrary := map[string]bool{}
 	for _, c := range library.captures {
 		seenLibrary[c.File] = true
 	}
+	seenTree := map[string]bool{}
+	for _, c := range tree.captures {
+		seenTree[c.File] = true
+	}
+	// Файлы держателей, объявленных живущими в ЭТОМ дереве, приписаны своей
+	// записью каталога — и потому не «ничьи». Без этой полосы возврат держателя
+	// из модуля в дерево немедленно давал бы находку «захват не приписан», то
+	// есть гейт краснел бы на верно учтённом держателе.
+	holderSite := map[string]bool{}
+	for _, h := range outOfPoolHolders {
+		if h.InTree {
+			holderSite[h.Site] = true
+		}
+	}
 
 	var out []poolFinding
 	for _, c := range tree.captures {
 		if strings.HasPrefix(c.File, "services/") {
 			continue // приписан своей службе by construction
+		}
+		if holderSite[c.File] {
+			continue // приписан записи каталога держателей
 		}
 		out = append(out, poolFinding{
 			stack: "дерево", subject: c.File, kind: kindOutOfPoolUnattributed,
@@ -1079,14 +1109,18 @@ func unattributedCaptures(t *testing.T, tree, library *outOfPoolTree) []poolFind
 		})
 	}
 	for _, h := range outOfPoolHolders {
-		if seenLibrary[h.Site] {
+		home, seen := corelibModulePath, seenLibrary
+		if h.InTree {
+			home, seen = kachoModulePath, seenTree
+		}
+		if seen[h.Site] {
 			continue
 		}
 		out = append(out, poolFinding{
 			stack: "дерево", subject: h.Site, kind: kindOutOfPoolUnattributed,
 			why: fmt.Sprintf("записи каталога держателей %q больше нечего учитывать в %s: "+
 				"захвата соединения в %s нет. Снимите запись — перечень, переживший свой "+
-				"предмет, читается как действующий", h.Kind, corelibModulePath, h.Site),
+				"предмет, читается как действующий", h.Kind, home, h.Site),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].key() < out[j].key() })

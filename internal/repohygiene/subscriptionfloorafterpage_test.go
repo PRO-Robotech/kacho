@@ -22,10 +22,11 @@ func TestSubscriptionAsksTheFloorAfterThePage(t *testing.T) {
 	findings, census, err := AuditSubscriptionFloorAfterPage(
 		SubscriptionFloorAfterPageOptions{
 			Root: root,
-			// Наблюдатель границы и сервер потока переехали в пакет
-			// subscription общего фундамента (github.com/PRO-Robotech/corelib)
-			// — читаем ТУДА, куда они переехали (см. corelibsource_test.go),
-			// а не только диск.
+			// Наблюдатель границы остался в пакете subscription общего
+			// фундамента (github.com/PRO-Robotech/corelib), сервер потока
+			// вернулся в дерево платформы (kacho#2601). Читается И то, И
+			// другое: предмет проверки — их ПОРЯДОК, и он разорван ровно
+			// тогда, когда одну половину правят без другой.
 			ExtraFiles: corelibPackageGoFiles(t, root, "subscription"),
 		}, &log)
 	if err != nil {

@@ -35,13 +35,13 @@ import (
 	"github.com/PRO-Robotech/corelib/retention"
 	"github.com/PRO-Robotech/corelib/servicecontract"
 	"github.com/PRO-Robotech/corelib/servicehost"
-	"github.com/PRO-Robotech/corelib/subscription"
 	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
+	"github.com/PRO-Robotech/kacho/pkg/subscription"
 	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 
 	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
-	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
+	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"

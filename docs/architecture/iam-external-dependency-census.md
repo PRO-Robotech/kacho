@@ -348,7 +348,7 @@ awk -F'\t' '$1 ~ /^pkg\// && $2 ~ /kacho\/services\//' <таблица разб�
 | `corelib/listnarrow/object.go` | `corelib/servicehost/wiring_test.go` |
 | `pkg/ownerregister/ownerregister.go` | `pkg/subjectchange/readerpositionlost_test.go` |
 | `pkg/quota/quotaiam/delta.go` | `pkg/subjectchange/reader_test.go` |
-| `pkg/quota/quotapb/convert.go` | `corelib/subscription/revocation_integration_test.go` |
+| `pkg/quota/quotapb/convert.go` | `pkg/subscription/revocation_integration_test.go` |
 | `corelib/servicehost/serve.go` | |
 | `pkg/subjectchange/reader.go` | |
 

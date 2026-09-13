@@ -33,19 +33,22 @@ func subscriptionServerOptions(t *testing.T) SubscriptionServerOptions {
 		ProtoRoot: "proto",
 		GoRoots:   []string{"pkg", "services", "gateway", "terraform", "internal", "cmd"},
 		Allow:     subscriptionStreamAllowances,
-		// Сервер переехал из pkg/subscription в пакет subscription общего
-		// фундамента (github.com/PRO-Robotech/corelib) — читаем ТУДА, куда он
-		// переехал (см. corelibsource_test.go), а не только диск.
+		// Сервер вернулся из фундамента в pkg/subscription платформы
+		// (kacho#2601): контракт подписки несёт ПЛАТФОРМЕННОЕ имя, служба его
+		// не зовёт вовсе, и в фундаменте, который линкуют оба продукта, ему
+		// места нет. Закреплённый фундамент читается (см. corelibsource_test.go)
+		// НЕ затем, что сервер там живёт, а затем, чтобы доказать, что он там
+		// не остался: пока пин не поднят, вторая копия приезжает модулем.
 		ExtraFiles: corelibPackageGoFiles(t, root, "subscription"),
 	}
 }
 
-// TestSubscriptionServerIsSingularAndLivesInTheFoundation — вердикт о НАСТОЯЩЕМ
+// TestSubscriptionServerIsSingularAndLivesInThePlatform — вердикт о НАСТОЯЩЕМ
 // дереве.
 //
 // Способность падать доказывает не этот прогон, а инъекция
 // (`subscriptionserversingularity_injection_test.go`): здесь только вердикт.
-func TestSubscriptionServerIsSingularAndLivesInTheFoundation(t *testing.T) {
+func TestSubscriptionServerIsSingularAndLivesInThePlatform(t *testing.T) {
 	t.Parallel()
 	var log strings.Builder
 	findings, census, err := AuditSubscriptionServerSingularity(subscriptionServerOptions(t), &log)
