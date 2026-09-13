@@ -44,10 +44,12 @@ const (
 // listener only — so a tenant meeting `RESOURCE_EXHAUSTED` could learn neither
 // their ceiling, nor their consumption, nor who states the value.
 //
-// READ ONLY. There is no Create/Update/Delete here and there will not be: the
-// value is administered through `iam.v1.InternalLimitService` under `system_admin`
-// on the internal listener. A tenant who can raise their own ceiling does not have
-// one.
+// READ ONLY. There is no Create/Update/Delete here and there will not be. The
+// value was administered by the limit authority of the access service, a domain
+// since retired whole: no producer of that contract exists in any tree today, and
+// this platform declares the authority absent. A tenant who can raise their own
+// ceiling does not have one. The fate of the authority is decided by
+// PRO-Robotech/kacho#2190.
 type QuotaServiceClient interface {
 	// List the quotas of one project for THIS domain.
 	//
@@ -97,10 +99,12 @@ func (c *quotaServiceClient) List(ctx context.Context, in *ListQuotasRequest, op
 // listener only — so a tenant meeting `RESOURCE_EXHAUSTED` could learn neither
 // their ceiling, nor their consumption, nor who states the value.
 //
-// READ ONLY. There is no Create/Update/Delete here and there will not be: the
-// value is administered through `iam.v1.InternalLimitService` under `system_admin`
-// on the internal listener. A tenant who can raise their own ceiling does not have
-// one.
+// READ ONLY. There is no Create/Update/Delete here and there will not be. The
+// value was administered by the limit authority of the access service, a domain
+// since retired whole: no producer of that contract exists in any tree today, and
+// this platform declares the authority absent. A tenant who can raise their own
+// ceiling does not have one. The fate of the authority is decided by
+// PRO-Robotech/kacho#2190.
 type QuotaServiceServer interface {
 	// List the quotas of one project for THIS domain.
 	//
