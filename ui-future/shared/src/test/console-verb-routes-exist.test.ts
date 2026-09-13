@@ -2,6 +2,8 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { contractProtoRoots } from "./proto-contract";
+
 import {
   UNRESOLVED,
   collectVerbRouteUses,
@@ -47,8 +49,12 @@ const consoleRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../..",
 );
-// proto/ — дом ВСЕХ .proto (polyrepo.md); контракт края лежит только там.
-const protoRoot = path.resolve(consoleRoot, "..", "proto");
+// ЗДЕСЬ СТОЯЛА КООРДИНАТА `proto/` ЭТОГО ДЕРЕВА со словами «дом ВСЕХ .proto;
+// контракт края лежит только там», и с 2026-09-13 это ложь: решением владельца
+// (kacho#2616, исход C) контракты службы доступа уехали в `PRO-Robotech/kaname` и
+// приезжают опубликованным модулем. Домов ДВА, и перечень их — `contractProtoRoots()`;
+// обход одного давал поверхность без домена `iam` и объявлял каждый его маршрут
+// неслужимым, не падая ни на чём.
 
 // Приложения консоли. Перечислены поимённо, а не обходом корня: новое
 // приложение обязано быть внесено сюда осознанно, иначе оно молча выпадет
@@ -94,13 +100,15 @@ function walk(dir: string, out: string[], exts: string[]): string[] {
 // contractRoutes — все REST-пути, объявленные аннотациями google.api.http.
 function contractRoutes(): string[] {
   const routes = new Set<string>();
-  for (const file of walk(protoRoot, [], [".proto"])) {
-    // google/api/http.proto — сама аннотация; её примеры в комментариях путями
-    // Kachō не являются.
-    if (path.relative(protoRoot, file).startsWith("google" + path.sep))
-      continue;
-    const src = readFileSync(file, "utf8");
-    for (const m of src.matchAll(httpBinding)) routes.add(m[1]);
+  // ДОМОВ ДЕРЕВА КОНТРАКТОВ ДВА (см. note ниже) — обходятся оба.
+  for (const root of contractProtoRoots()) {
+    for (const file of walk(root, [], [".proto"])) {
+      // google/api/http.proto — сама аннотация; её примеры в комментариях путями
+      // Kachō не являются.
+      if (path.relative(root, file).startsWith("google" + path.sep)) continue;
+      const src = readFileSync(file, "utf8");
+      for (const m of src.matchAll(httpBinding)) routes.add(m[1]);
+    }
   }
   return [...routes].sort();
 }

@@ -14,7 +14,7 @@ import (
 
 	"github.com/PRO-Robotech/corelib/filter"
 	"github.com/PRO-Robotech/corelib/validate"
-	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
+	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaintent"

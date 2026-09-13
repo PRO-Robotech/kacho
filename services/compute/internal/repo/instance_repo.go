@@ -18,10 +18,10 @@ import (
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 
 	"github.com/PRO-Robotech/corelib/singlepass"
-	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaintent"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
+	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 )
 
 // InstanceRepo — реализация ports.InstanceRepo поверх pgxpool.

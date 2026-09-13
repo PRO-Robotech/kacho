@@ -73,7 +73,7 @@ func TestProtoCitedHolders_CanFailAndStaysSilent(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
-			writeCitedFile(t, root, "proto/kaname/cloud/iam/v1/a.proto", tc.contract)
+			writeCitedFile(t, root, "proto/kacho/cloud/vpc/v1/a.proto", tc.contract)
 			if tc.holder != "" {
 				writeCitedFile(t, root, tc.holder, "#!/bin/sh\nexit 0\n")
 			}

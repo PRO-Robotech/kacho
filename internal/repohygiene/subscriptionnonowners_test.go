@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/corelib/treecorpus"
+
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 )
 
 // subscriptionnonowners_test.go — гейт «домен, не служащий глагол подписки, несёт
@@ -133,18 +135,42 @@ var subscriptionNonOwners = []subscriptionNonOwner{
 //
 // Путь обязан читаться. Не прочитался — прогон падает (`totalTypes == 0`), а не
 // зеленеет: ноль прочитанных типов и ноль нарушений здесь неотличимы.
-const subscriptionRightsModelRel = "proto/kaname/cloud/iam/v1/fga_model.fga"
+//
+// # КАНОН УЕХАЛ ИЗ ЭТОГО ДЕРЕВА (2026-09-13)
+//
+// Решением владельца (kacho#2616, исход C) контракты службы доступа вынесены в её
+// репозиторий и приезжают модулем `github.com/PRO-Robotech/kaname`, каталогом
+// `proto/kaname/…` внутри него. Прежнее утверждение «каноническая копия лежит в
+// дереве контрактов ЭТОГО репозитория» ОТМЕНЕНО: `proto/kaname/` здесь больше нет.
+// Координату резолвит `internal/contractsource`, и корень для неё он выбирает сам
+// — дерево, физически присутствующее в `proto/`, берётся оттуда, а его отсутствие
+// означает модуль. Именно поэтому синтетическое дерево пробы инъекции
+// (subscriptionnonowners_injection_test.go) продолжает читаться своё: оно кладёт
+// модель под `proto/`, и до модуля резолв не доходит.
+const (
+	// subscriptionRightsModelInContract — координата ВНУТРИ дерева контрактов,
+	// то есть относительно `proto/`: в таком виде её принимает contractsource.
+	subscriptionRightsModelInContract = "kaname/cloud/iam/v1/fga_model.fga"
+	// subscriptionRightsModelRel — та же координата ОТ КОРНЯ ДЕРЕВА. Выведена
+	// конкатенацией, а не выписана вторым литералом: два литерала одного пути
+	// разошлись бы молча. В этом виде её пишет синтетическое дерево инъекции.
+	subscriptionRightsModelRel = "proto/" + subscriptionRightsModelInContract
+)
 
 // rightsModelTypesByDomain — сколько типов модели прав объявляет каждый домен.
 //
-// Читается ИСПОЛНЯЕМАЯ копия модели ([subscriptionRightsModelRel]), а не каноническая:
-// решение о видимости строки считается по той, которая встроена в службу. Обе
-// держит байт-идентичными своя цель.
+// Читается КАНОНИЧЕСКАЯ копия модели ([subscriptionRightsModelRel]) — единственная
+// оставшаяся в досягаемости: исполняемая жила в дереве вынесенной службы. Здесь
+// стояло обратное утверждение («читается исполняемая, а не каноническая»), оно
+// расходилось с разбором у самой константы и снято как ложное.
 func rightsModelTypesByDomain(root string) (byDomain map[string]int, total int, err error) {
-	path := filepath.Join(root, subscriptionRightsModelRel)
-	f, err := os.Open(path) // #nosec G304 -- обход собственного дерева
+	path, err := contractsource.Path(root, subscriptionRightsModelInContract)
 	if err != nil {
 		return nil, 0, fmt.Errorf("модель прав %s: %w", subscriptionRightsModelRel, err)
+	}
+	f, err := os.Open(path) // #nosec G304 -- координата дерева контрактов, не ввод
+	if err != nil {
+		return nil, 0, fmt.Errorf("модель прав %s (%s): %w", subscriptionRightsModelRel, path, err)
 	}
 	defer func() { _ = f.Close() }()
 

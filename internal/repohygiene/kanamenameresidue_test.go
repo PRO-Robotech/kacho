@@ -21,7 +21,60 @@ import (
 
 	coredb "github.com/PRO-Robotech/corelib/db"
 	"github.com/PRO-Robotech/corelib/treecorpus"
+
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 )
+
+// kanameSurfaceFiles — состав ОДНОГО каталога поверхности и БАЗА, относительно
+// которой путь на диске превращается в координату переписи.
+//
+// ВЕТВЕЙ ДВЕ, И РАЗЛИЧАЕТ ИХ НЕ СТИЛЬ, А ТО, ГДЕ ЛЕЖИТ ПРЕДМЕТ. Каталог этого
+// дерева (чарт оператора) спрашивается у индекса git: под ним лежат рабочие копии
+// полос и распаковки чартов, и обход диска сделал бы вердикт свойством рабочего
+// каталога. Каталог дерева КОНТРАКТОВ резолвит `internal/contractsource`: после
+// kacho#2616 (исход C, 2026-09-13) контракты службы доступа в этом дереве не
+// лежат — они приезжают модулем `github.com/PRO-Robotech/kaname`, и `proto/`
+// у них своё, внутри модуля. Индекса git у кэша модулей нет by construction, а
+// игнорируемых файлов в нём не бывает: там обход диска И ЕСТЬ обход коммита.
+//
+// База возвращается вместе с составом намеренно: координата «proto/kaname/…»
+// обязана остаться прежней — по ней ведутся обе ведомости и её печатает находка,
+// — а вот каталог, от которого она отсчитывается, у двух ветвей разный.
+func kanameSurfaceFiles(root, dir string) (files []string, base string, err error) {
+	relToProto, underProto := strings.CutPrefix(filepath.ToSlash(dir), "proto/")
+	if !underProto {
+		found, uerr := treecorpus.Under(filepath.Join(root, dir))
+		return found, root, uerr
+	}
+	treeRoot, rerr := contractsource.RootOf(relToProto)
+	if rerr != nil {
+		return nil, "", rerr
+	}
+	rootDir, derr := contractsource.Dir(root, treeRoot)
+	if derr != nil {
+		return nil, "", derr
+	}
+	found, ferr := contractsource.Files(root, relToProto)
+	if ferr != nil {
+		return nil, "", ferr
+	}
+	// Каталог `proto/` того дерева, в котором корень нашёлся: для корня этого
+	// репозитория — его собственный, для приехавшего модулем — модульный.
+	return found, filepath.Dir(rootDir), nil
+}
+
+// kanameSurfaceKey — координата файла поверхности: та же, что до переезда
+// контракта, независимо от того, на каком диске файл найден.
+//
+// Приставка `proto/` восстанавливается, а не отсчитывается от корня дерева:
+// корень модуля и корень репозитория — разные каталоги, и путь от них разошёлся
+// бы молча, унеся с собой обе ведомости и координату находки.
+func kanameSurfaceKey(dir, relToBase string) string {
+	if strings.HasPrefix(filepath.ToSlash(dir), "proto/") {
+		return "proto/" + relToBase
+	}
+	return relToBase
+}
 
 // kanameSurfaceCorpus — отслеживаемые файлы поверхности Kaname, спрошенные У
 // ИНДЕКСА git, а не собранные обходом диска.
@@ -37,17 +90,17 @@ func kanameSurfaceCorpus(t *testing.T) map[string][]byte {
 	root := repoRoot(t)
 	corpus := map[string][]byte{}
 	for _, dir := range KanameSurface {
-		files, err := treecorpus.Under(filepath.Join(root, dir))
+		files, base, err := kanameSurfaceFiles(root, dir)
 		if err != nil {
 			t.Fatalf("состав поверхности %s: %v — «ноль находок» здесь означало бы "+
 				"«ноль прочитанного»", dir, err)
 		}
 		for _, abs := range files {
-			rel, relErr := filepath.Rel(root, abs)
+			rel, relErr := filepath.Rel(base, abs)
 			if relErr != nil {
 				t.Fatalf("путь %s: %v", abs, relErr)
 			}
-			rel = filepath.ToSlash(rel)
+			rel = kanameSurfaceKey(dir, filepath.ToSlash(rel))
 			if _, seen := corpus[rel]; seen {
 				continue // каталоги поверхности могут вкладываться друг в друга
 			}

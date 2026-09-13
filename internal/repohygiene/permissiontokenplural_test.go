@@ -210,9 +210,22 @@ func permTokReadDomain(t *testing.T, root, domain string) (files int, recs []per
 	// Корень домена РЕЗОЛВИТСЯ обходом объявленных корней: литерал не нашёл бы
 	// домена, переехавшего под второй корень, и гейт объявил бы находкой
 	// собственную слепоту — «каталог proto не читается».
-	_, domainDir, ok := contractroot.ResolveDomain(filepath.Join(root, "proto"), domain)
-	if !ok {
-		t.Fatalf("домен %s не резолвится ни под одним объявленным корнем %v", domain, contractroot.Roots)
+	//
+	// Обходятся ВСЕ каталоги `proto/`, а не один склеенный с корнем репозитория:
+	// дерево корня `kaname` приезжает модулем (kacho#2616, исход C, 2026-09-13), и
+	// склейка не нашла бы домена iam — отказ был бы про слепоту гейта, а не про
+	// дерево. Разбор — у [contractProtoDirs].
+	var domainDir string
+	protoDirs := contractProtoDirs(t, root)
+	for _, protoDir := range protoDirs {
+		if _, d, ok := contractroot.ResolveDomain(protoDir, domain); ok {
+			domainDir = d
+			break
+		}
+	}
+	if domainDir == "" {
+		t.Fatalf("домен %s не резолвится ни под одним объявленным корнем %v ни в одном "+
+			"каталоге контрактов %v", domain, contractroot.Roots, protoDirs)
 	}
 	dir := filepath.Join(domainDir, "v1")
 	if _, err := os.Stat(dir); err != nil {

@@ -38,9 +38,9 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/PRO-Robotech/corelib/outbox/drainer"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/fgaregister"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
+	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 )
 
 // IAMRegisterRPC — узкое подмножество iamv1.InternalIAMServiceClient, нужное

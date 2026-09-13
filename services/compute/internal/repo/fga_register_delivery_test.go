@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
+	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 )
 
 // TestUnmappableIntentProducesNoDelivery — намерение, которого нет (не
@@ -18,7 +18,8 @@ import (
 // Свойство проверялось у синхронного регистратора compute
 // (`TestSyncRegistrar_Register_UnknownKindOrEmpty_NoOp`), пока регистратор был
 // свой. Регистратор снят — форма доставки теперь одна на все сервисы
-// (pkg/ownerregister), — но САМО СВОЙСТВО никуда не делось, оно лишь переехало
+// (pkg/ownerregister модуля github.com/PRO-Robotech/kaname), — но САМО СВОЙСТВО
+// никуда не делось, оно лишь переехало
 // на слой ниже: решение «регистрировать нечего» принимает эмиттер writer-
 // транзакции, а не доставка. Проба переехала вместе с ним, а не была удалена
 // вместе с файлом: удаление проверки вместе с её прежним домом и есть то, как

@@ -462,12 +462,13 @@ func collectFGAObjectTypes(consts map[string]ast.Expr, service string, modelType
 // поэтому именно это множество ограничивает разбор.
 func collectModelObjectTypes(t *testing.T, root string) map[string]struct{} {
 	t.Helper()
-	body, err := os.ReadFile(filepath.Join(root, fgaModelPath))
-	if err != nil {
-		t.Fatalf("читаю модель: %v", err)
-	}
+	// Канон приезжает модулем службы доступа (kacho#2616, исход C, 2026-09-13),
+	// поэтому координата разрешается [readContractFile], а не склейкой с корнем
+	// репозитория: склейка давала бы путь, которого нет, и обходящие пробы
+	// получили бы пустую популяцию вместо отказа.
+	body := readContractFile(t, root, fgaModelPath)
 	out := map[string]struct{}{}
-	for _, line := range strings.Split(string(body), "\n") {
+	for _, line := range strings.Split(body, "\n") {
 		if m := fgaTypeRe.FindStringSubmatch(strings.TrimSpace(line)); m != nil {
 			out[m[1]] = struct{}{}
 		}

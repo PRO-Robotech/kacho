@@ -76,7 +76,19 @@ command -v python3 >/dev/null || { echo "БЕЗ ПРЕДМЕТА: python3 не �
 source "${REPO_ROOT}/scripts/lib/stage-proto-tree.sh"
 
 WORK="$(mktemp -d)"
-trap 'rm -rf "${WORK}"' EXIT
+trap 'chmod -R u+w "${WORK}" 2>/dev/null || true; rm -rf "${WORK}"' EXIT
+
+# --- вход СОБИРАЕТСЯ ИЗ МОДУЛЕЙ ------------------------------------------
+#
+# Доля службы выводится из ЕЁ контрактов, а они в этом дереве не лежат
+# (kacho#2616, исход C): приезжают модулем. Без сборки входа обход ниже нашёл бы
+# «доменов kaname 0» и гейт краснел бы на собственной неполноте, а не на
+# расхождении склейки.
+CONTRACT_ROOT="${WORK}/contract-root"
+kacho_assemble_contract_root "${PROTO_ROOT}" "${CONTRACT_ROOT}" "${MONOREPO_ROOT}" "check-catalog-splice" \
+  || { echo "БЕЗ ПРЕДМЕТА: корень контрактов не собрался — сверять нечего" >&2; exit 2; }
+PROTO_ROOT="${CONTRACT_ROOT}"
+export KACHO_PROTO_ROOT="${CONTRACT_ROOT}"
 
 findings=0
 finding() { findings=$((findings + 1)); echo "НАХОДКА [$1]: $2" >&2; }

@@ -13,7 +13,8 @@
 
 ## Посылка задачи подтверждена, предложенный размен — нет
 
-Посылка верна: `pkg/subjectchange.Watcher.Poll` зовёт `Flush` на всякой непустой
+Посылка верна: `pkg/subjectchange.Watcher.Poll` (модуль
+`github.com/PRO-Robotech/kaname`) зовёт `Flush` на всякой непустой
 порции **безусловно**, а строкой ниже `closeNamed` уже работает поимённо — имена в
 порции есть.
 
@@ -39,7 +40,7 @@
 (`services/iam/internal/domain/access_binding.go:143` — отказ под условием
 `b.SubjectID == "*" && !(b.System && b.SubjectType == "user")`), и контракт называет её
 «единственный субъект, которого нельзя ни назвать, ни отозвать поимённо»
-(`proto/kaname/cloud/iam/v1/access_binding.proto`).
+(`kaname/cloud/iam/v1/access_binding.proto` того же модуля).
 
 ## Замер, на котором решение стоит
 
@@ -134,7 +135,8 @@
 
 ## Чем держится
 
-`pkg/subjectchange.TestNonAddressableSubjectFlushesTheWholeCache` — три вида строк,
+`pkg/subjectchange.TestNonAddressableSubjectFlushesTheWholeCache` (в дереве модуля
+службы) — три вида строк,
 по имени которых задетых записей не найти, обязаны гасить кэш целиком. Гейт
 **намеренно не требует** сплошного сброса для конкретной строки (`user:usr-…`):
 правильное сужение вправе её сузить, и запрещать его значило бы пинить нынешнее

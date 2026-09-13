@@ -108,7 +108,8 @@ export type { ResourceColumn, ResourceSpec };
  * взяться неоткуда:
  *
  *   - `RemoveUserFromAccountRequest.account_id` объявлен ОБЯЗАТЕЛЬНЫМ
- *     (`proto/kaname/cloud/iam/v1/user_service.proto`) — запрос без него край
+ *     (`kaname/cloud/iam/v1/user_service.proto` модуля
+ *     `github.com/PRO-Robotech/kaname`) — запрос без него край
  *     отвергает, то есть пункт не работал бы ни при каком вводе;
  *   - на строке личности аккаунта НЕТ: поле снято с контракта (#471,
  *     `User.reserved 6 / "account_id"`), потому что членств у человека бывает
@@ -153,7 +154,8 @@ function accountScopeChosen(ctx: RowVerbContext): boolean {
  *
  * ПРЕДИКАТ ПЕРЕСМОТРА этого абзаца назван, чтобы вложенность не наследовали на
  * веру: изменится тело любого из двух отношений в
- * `proto/kaname/cloud/iam/v1/fga_model.fga` — вложенность перемеряют заново.
+ * `kaname/cloud/iam/v1/fga_model.fga` модуля `github.com/PRO-Robotech/kaname` —
+ * вложенность перемеряют заново.
  *
  * ПОЧЕМУ ЦЕНА ЗДЕСЬ ВЫШЕ, ЧЕМ У СОСЕДА. Запрет себе необратим самим
  * запрещающим: восстановление пароля его не снимает, вернуть доступ может только

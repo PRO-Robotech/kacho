@@ -12,9 +12,9 @@ import (
 	"github.com/PRO-Robotech/corelib/auth"
 	corequota "github.com/PRO-Robotech/corelib/quota"
 	"github.com/PRO-Robotech/corelib/retry"
-	iampb "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/quota/quotaiam"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/quota"
+	iampb "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 )
 
 // Клиент владельца величин: `InternalLimitService.Resolve` на ВНУТРЕННЕМ

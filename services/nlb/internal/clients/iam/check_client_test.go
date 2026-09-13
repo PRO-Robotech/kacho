@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/corelib/authz"
-	iampb "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
+	iampb "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )

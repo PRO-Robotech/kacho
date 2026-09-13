@@ -109,7 +109,7 @@ func TestLicenseHeaderGate_RedsWhenTheMonorepoCarriesTheFoundationLicense(t *tes
 func TestLicenseHeaderGate_RedsWhenContractsCarryTheMonorepoLicense(t *testing.T) {
 	t.Parallel()
 	findings, _ := injHeaderCorpus{
-		"proto/kaname/cloud/iam/v1/iam.proto": "// SPDX-License-Identifier: " + licenseBUSL + "\n",
+		"proto/kacho/cloud/vpc/v1/vpc.proto": "// SPDX-License-Identifier: " + licenseBUSL + "\n",
 	}.scan()
 	if len(findings) != 1 || !strings.Contains(findings[0].String(), "контракты") {
 		t.Fatalf("расхождение уровня контрактов не распознано: %v", findings)
@@ -162,11 +162,11 @@ func TestLicenseHeaderGate_RedsWhenHeaderIsAbsentAndNamesTheExpectedLicense(t *t
 func TestLicenseHeaderGate_SilentOnACorrectTree(t *testing.T) {
 	t.Parallel()
 	findings, census := injHeaderCorpus{
-		"pkg/ids/ids.go":                    injHeader(licenseApache),
-		"proto/kaname/cloud/iam/v1/i.proto": injHeader(licenseApache),
-		"services/vpc/internal/a.go":        injHeader(licenseBUSL),
-		"internal/repohygiene/x.go":         injHeader(licenseBUSL),
-		"proto/google/api/http.proto":       "// Copyright 2026 Google LLC\n",
+		"pkg/ids/ids.go":                   injHeader(licenseApache),
+		"proto/kacho/cloud/vpc/v1/i.proto": injHeader(licenseApache),
+		"services/vpc/internal/a.go":       injHeader(licenseBUSL),
+		"internal/repohygiene/x.go":        injHeader(licenseBUSL),
+		"proto/google/api/http.proto":      "// Copyright 2026 Google LLC\n",
 	}.scan()
 	if len(findings) != 0 {
 		t.Fatalf("верное дерево объявлено находкой: %v", findings)
@@ -185,7 +185,7 @@ func TestLicenseHeaderGate_LongestPrefixWinsOverAShorterOne(t *testing.T) {
 	if licenseTierFor("proto/google/api/http.proto").Name != "третья сторона" {
 		t.Fatalf("длинный префикс не победил: %q", licenseTierFor("proto/google/api/http.proto").Name)
 	}
-	if licenseTierFor("proto/kaname/cloud/iam/v1/i.proto").Name != "контракты" {
+	if licenseTierFor("proto/kacho/cloud/vpc/v1/i.proto").Name != "контракты" {
 		t.Fatal("контракты потеряли свой уровень")
 	}
 	if licenseTierFor("services/vpc/internal/a.go").Name != "монорепо" {

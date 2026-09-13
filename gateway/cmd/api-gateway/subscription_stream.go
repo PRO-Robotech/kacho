@@ -12,7 +12,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/PRO-Robotech/kacho/pkg/subjectchange"
+	"github.com/PRO-Robotech/kaname/pkg/subjectchange"
 
 	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 

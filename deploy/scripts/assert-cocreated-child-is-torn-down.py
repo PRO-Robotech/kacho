@@ -74,9 +74,27 @@
 Теперь предпосылка судится, когда её КООРДИНАТА в этом дереве есть, и объявляется
 вне дерева только при ОБОИХ условиях: файла здесь нет И пара не производится
 переписью. Одного условия мало — иначе «вне дерева» стало бы маской на живой паре.
-Следствие: P1 судится и после разреза (контракт службы лежит в `proto/kaname/…`,
-им владеет платформа), P2 и P3 названы вне дерева и вернутся вместе с каталогом,
-без правки гейта.
+Следствие: P2 и P3 названы вне дерева и вернутся вместе с каталогом, без правки
+гейта.
+
+P1 СУДИТСЯ, И ЕГО КООРДИНАТА РАЗРЕШАЕТСЯ, А НЕ ВЫПИСЫВАЕТСЯ. Здесь стояло
+«контракт службы лежит в `proto/kaname/…`, им владеет платформа» — и это перестало
+быть правдой: решением владельца (kacho#2616, исход C, 2026-09-13) контракты
+службы доступа уехали в её репозиторий и приезжают опубликованным модулем
+`github.com/PRO-Robotech/kaname`, каталогом `proto/kaname` внутри него.
+
+Цена молчания была ИЗМЕРЕНА, а не предположена. Пока координата была литералом,
+чтение шло через `except OSError: return False`, и после изъятия совпадали ОБА
+условия «вне дерева»: файла здесь нет и пара не производится. Гейт печатал
+«предпосылок судилось 0 из 3», выводил `PASS` и выходил кодом 0 — то есть предмет
+запрета не проверялся ВООБЩЕ, а прогон оставался зелёным.
+
+Выбран РЕЗОЛВ, а не отдельный вердикт «судилось 0 из 3». Предмет P1 — сообщение
+контракта, и оно ЖИВО: сменился корень дерева, а не факт. Отказаться судить
+достижимую предпосылку значило бы завести вечный красный (или вечное «беспредметно»)
+там, где ответ получается одной командой. P2 и P3 — о РЕАЛИЗАЦИИ, которая ушла
+целиком, и они остаются вне дерева законно. Итог: судится 1 из 3, и это число
+печатается.
 
 ПЕРЕПИСЬ САГ — половина, которую это дерево ПРОИЗВОДИТ, и она осталась вооружена:
 гейт обходит все `create.go` под `services/*/internal/apps/` и ищет use-case'ы,
@@ -112,6 +130,7 @@
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 
@@ -358,8 +377,102 @@ def census_sagas(root):
     return unknown, stale, unproduced, absent, n_files, n_with_writer
 
 
+# EXTERNAL_ROOTS_DECL — где объявлено, какой корень дерева контрактов каким
+# модулем публикуется.
+#
+# ПЕРЕЧЕНЬ ЧИТАЕТСЯ У ПРОИЗВОДИТЕЛЯ, А НЕ КОПИРУЕТСЯ СЮДА. Копия была бы ещё одним
+# объявлением одного предмета: первое — `ExternalRootModules` пакета
+# `internal/contractsource`, второе — массив `KACHO_PROTO_ROOT_MODULES` оболочки
+# (`gateway/scripts/lib/stage-proto-tree.sh`), и расхождение ТЕХ ДВУХ держит гейт
+# (`internal/repohygiene` TestContractRootModulesAgreeBetweenGoAndShell). Гейта на
+# третью копию нет, поэтому она расходилась бы МОЛЧА.
+EXTERNAL_ROOTS_DECL = "internal/contractsource/contractsource.go"
+
+
+def external_root_modules(root):
+    """({корень: путь модуля}, где объявлено) либо (None, причина отказа).
+
+    Ноль разобранных записей — ОТКАЗ, а не пустое отображение: пустое означало бы
+    «внешних корней не бывает», и отсутствие контракта объяснялось бы не тем.
+    """
+    path = os.path.join(root, EXTERNAL_ROOTS_DECL)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            src = fh.read()
+    except OSError as exc:
+        return None, f"объявление внешних корней не прочитано ({EXTERNAL_ROOTS_DECL}): {exc}"
+    block = re.search(r"var ExternalRootModules = map\[string\]string\{(.*?)\n\}", src, re.S)
+    if not block:
+        return None, (f"в {EXTERNAL_ROOTS_DECL} нет объявления "
+                      f"`var ExternalRootModules = map[string]string{{…}}` — перечень внешних "
+                      f"корней переименован либо переписан")
+    out = dict(re.findall(r'"([^"]+)"\s*:\s*"([^"]+)"', block.group(1)))
+    if not out:
+        return None, (f"объявление ExternalRootModules в {EXTERNAL_ROOTS_DECL} разобрано в НОЛЬ "
+                      f"записей — разбор сломан, а не перечень пуст")
+    return out, EXTERNAL_ROOTS_DECL
+
+
+def module_dir(root, module):
+    """Каталог распакованного модуля, либо пустая строка.
+
+    Спрашивается сам `go`: форма пути кэша (регистро-экранирование) — его
+    внутреннее дело, и собранный вручную путь разошёлся бы с ним молча. Кэш мог
+    быть не прогрет — одна попытка добора, и только одна (тот же порядок, что у
+    `internal/contractsource`).
+    """
+    def ask():
+        try:
+            done = subprocess.run(["go", "list", "-m", "-f", "{{.Dir}}", module],
+                                  cwd=root, capture_output=True, text=True, check=True)
+        except (OSError, subprocess.CalledProcessError):
+            return ""
+        return done.stdout.strip()
+
+    found = ask()
+    if not found:
+        subprocess.run(["go", "mod", "download", module],
+                       cwd=root, capture_output=True, text=True, check=False)
+        found = ask()
+    return found if found and os.path.isdir(found) else ""
+
+
+def contract_file(root, rel_to_proto):
+    """(абсолютный путь к файлу дерева контрактов, чем получен) либо (None, причина).
+
+    Корень, физически лежащий в `proto/` этого дерева, берётся ОТТУДА, и модуль
+    для него не резолвится вовсе; корень, которого здесь нет, — из модуля,
+    объявленного производителем перечня. Тот же порядок и тот же довод, что у
+    `internal/contractsource.Dir`.
+
+    ОТКАЗ НАЗЫВАЕТ ПРИЧИНУ. Тихое «не нашлось» сделало бы «контракт переехал» и
+    «кэш модулей не прогрет» одним событием, а вердикт — свойством машины.
+    """
+    in_tree = os.path.join(root, "proto", *rel_to_proto.split("/"))
+    if os.path.exists(in_tree):
+        return in_tree, f"дерево ({os.path.join('proto', rel_to_proto)})"
+    contract_root = rel_to_proto.split("/")[0]
+    modules, where = external_root_modules(root)
+    if modules is None:
+        return None, where
+    module = modules.get(contract_root)
+    if module is None:
+        return None, (f"корня {contract_root!r} нет в дереве ({in_tree}) и внешним модулем он "
+                      f"не объявлен ({where})")
+    moddir = module_dir(root, module)
+    if not moddir:
+        return None, (f"модуль {module} не резолвится из {root} — дерево контрактов корня "
+                      f"{contract_root!r} взять неоткуда. Прогрейте кэш: "
+                      f"`go mod download {module}`")
+    full = os.path.join(moddir, "proto", *rel_to_proto.split("/"))
+    if not os.path.exists(full):
+        return None, (f"модуль {module} резолвится ({moddir}), но {rel_to_proto} в нём нет — "
+                      f"версия модуля не несёт этого файла контрактов")
+    return full, f"модуль {module} ({moddir})"
+
+
 def premises(root):
-    """→ список (ХОЗЯИН-пара, имя, выполнена?, где искали).
+    """→ (список (ХОЗЯИН-пара, имя, выполнена?, где искали), код отказа резолва).
 
     У КАЖДОЙ ПРЕДПОСЫЛКИ ЕСТЬ ХОЗЯИН, и это не оформление. Все три ниже описывают
     ОДНУ пару — сагу аккаунта, — и держались они на допущении «её производитель в
@@ -373,31 +486,56 @@ def premises(root):
     печатаются с пометкой и в вердикт не идут; вернётся каталог — вернутся и они,
     без правки гейта.
 
-    Прежняя редакция объявляла все три безусловно и на разрезе отвечала
-    «НЕТ P2 … / НЕТ P3 …» с выводом «сага снята или переписана». Вывод был
-    ЛОЖНЫМ: сага жива, у неё сменился адрес — дерево. Находка, называющая не тот
-    предмет, посылает читателя искать не там.
+    P1 — О КОНТРАКТЕ, И ЕГО КООРДИНАТА РЕЗОЛВИТСЯ. Контракт уехал в репозиторий
+    службы (kacho#2616, исход C) и приезжает модулем; литерал `proto/kaname/…`
+    после этого уводил P1 в «вне дерева» МОЛЧА — см. шапку файла, где записан
+    измеренный исход. Отказ резолва не маскируется под «вне дерева»: он роняет
+    прогон своим сообщением.
     """
     def has(rel, pattern):
+        """(признак найден?, примечание).
+
+        ТРИ исхода, а не два, и третий не растворяется. «Координаты нет» называет
+        сам premise_verdict — он же решает, находка это или чужое дерево.
+        «Координата есть, а прочитать не удалось» — исход, которого прежде не было
+        вовсе: голое `except OSError: return False` выдавало его за «признака в
+        файле нет», то есть за утверждение о содержимом, которого не читало.
+        """
+        if not os.path.exists(rel):
+            return False, ""
         try:
-            return re.search(pattern, open(os.path.join(root, rel), encoding="utf-8").read()) is not None
-        except OSError:
-            return False
+            with open(rel, encoding="utf-8") as fh:
+                body = fh.read()
+        except OSError as exc:
+            return False, f" (координата есть, а прочитать её не удалось: {exc})"
+        return re.search(pattern, body) is not None, ""
+
+    def at(rel):
+        return os.path.join(root, rel)
+
     acc = ("iam", "account")
+    contract_rel = "kaname/cloud/iam/v1/account.proto"
+    contract_path, contract_where = contract_file(root, contract_rel)
+    if contract_path is None:
+        print(f"FATAL: контракт {contract_rel} не разрешается: {contract_where}")
+        print("       Предпосылка P1 о нём и есть предмет запрета; объявить её «вне дерева»")
+        print("       значило бы засчитать непрочитанное за проверенное.")
+        return None, 2
+
+    p1_ok, p1_note = has(contract_path, r"message CreateAccountMetadata\b[\s\S]{0,600}?"
+                                        r"\bstring default_project_id\b")
+    p2_ok, p2_note = has(at("services/iam/internal/apps/kaname/api/account/create.go"),
+                         r"w\.ProjectsW\(\)\.Insert\(")
+    p3_ok, p3_note = has(at("services/iam/internal/repo/kaname/pg/account_repo.go"),
+                         r"NOT EXISTS \(SELECT 1 FROM projects")
     return [
-        (acc, "P1 CreateAccountMetadata объявляет default_project_id",
-         has("proto/kaname/cloud/iam/v1/account.proto",
-             r"message CreateAccountMetadata\b[\s\S]{0,600}?\bstring default_project_id\b"),
-         "proto/kaname/cloud/iam/v1/account.proto"),
-        (acc, "P2 сага создания аккаунта вставляет проект в своей транзакции",
-         has("services/iam/internal/apps/kaname/api/account/create.go",
-             r"w\.ProjectsW\(\)\.Insert\("),
-         "services/iam/internal/apps/kaname/api/account/create.go"),
-        (acc, "P3 удаление аккаунта отказывает, пока в нём есть проект",
-         has("services/iam/internal/repo/kaname/pg/account_repo.go",
-             r"NOT EXISTS \(SELECT 1 FROM projects"),
-         "services/iam/internal/repo/kaname/pg/account_repo.go"),
-    ]
+        (acc, "P1 CreateAccountMetadata объявляет default_project_id" + p1_note,
+         p1_ok, contract_path),
+        (acc, "P2 сага создания аккаунта вставляет проект в своей транзакции" + p2_note,
+         p2_ok, "services/iam/internal/apps/kaname/api/account/create.go"),
+        (acc, "P3 удаление аккаунта отказывает, пока в нём есть проект" + p3_note,
+         p3_ok, "services/iam/internal/repo/kaname/pg/account_repo.go"),
+    ], 0
 
 
 def walk_verdict(cols: int, born: int, findings: list, client_pairs: list):
@@ -846,11 +984,15 @@ def main() -> int:
     # удалённого файла хватило бы, чтобы предпосылка живой пары перестала
     # спрашиваться молча. При живой паре пропавшая координата остаётся НАХОДКОЙ.
     #
-    # Следствие, которое надо назвать: контракт службы доступа лежит в ЭТОМ
-    # дереве (`proto/kaname/…`), поэтому P1 судится и после разреза — платформа
-    # по-прежнему владеет контрактом. Уехали только координаты реализации.
+    # Следствие, которое надо назвать: контракт службы доступа лежит НЕ в этом
+    # дереве (kacho#2616, исход C, 2026-09-13) — он приезжает модулем
+    # `github.com/PRO-Robotech/kaname`, и P1 судится по РАЗРЕШЁННОЙ координате,
+    # а не по литералу `proto/kaname/…`, который уводил её в «вне дерева» молча.
+    # Уехали и координаты реализации — они остаются вне дерева законно.
     print("=== предпосылки запрета (пропала любая при живой паре — предмета нет) ===")
-    prem = premises(root)
+    prem, prem_resolve_rc = premises(root)
+    if prem is None:
+        return prem_resolve_rc
     rows, prem_rc, n_judged = premise_verdict(root, prem, absent)
     for mark, name, where, note in rows:
         print(f"  {mark} {name}  [{where}]" + (f"{note}" if note else ""))

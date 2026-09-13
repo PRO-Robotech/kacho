@@ -201,6 +201,25 @@ jobs:
         if: '!cancelled()'
         run: bash scripts/gosec-subject-inject.sh
 
+  # ДВОИЧНОЕ TRIVY НЕ БЕРЁТСЯ ИЗ КЭША, И ЭТО НЕ ОСТОРОЖНОСТЬ.
+  #
+  # `trivy-action` сама зовёт `setup-trivy`, а тот сперва пробует восстановить двоичное
+  # из кэша действий. Наблюдалось 2026-09-13 (задание 103659407723, запрос слияния
+  # #2630): восстановление объявило попадание, шаг «Install Trivy» вышел `skipped`, а
+  # следующий шаг упал `trivy: command not found`, код 127 — то есть кэш ОТВЕТИЛ
+  # ПОПАДАНИЕМ, не дав содержимого. Дальше каскад: `trivy-fs.sarif` не создан, выгрузка
+  # SARIF отказала «Path does not exist», и задание краснело семью шагами подряд, ни один
+  # из которых о дереве ничего не говорил.
+  #
+  # Это тот же класс, что общий кэш линтера и общее имя во общем TMPDIR: ОБЩИЙ РЕСУРС
+  # ОТДАЁТ ЧУЖОЙ ВЕРДИКТ. Цена отказа от кэша — повторное скачивание двоичного на каждом
+  # прогоне; цена ложного попадания — красный вердикт о продукте там, где сканер не
+  # исполнялся вовсе.
+  #
+  # `version` объявлен ЯВНО тем же значением, что действует по умолчанию у пиннутой
+  # ревизии действия (v0.70.0): тогда пин виден сторожу свежести
+  # (`.github/scripts/check-pinned-tools.sh` читает `with: version:`), а не живёт внутри
+  # чужого умолчания, которое сменится при первом же обновлении хеша.
   trivy:
     name: trivy (fs + IaC)
     runs-on: ubuntu-latest
@@ -226,6 +245,9 @@ jobs:
       - name: trivy fs (SARIF → Security)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
+          # Двоичное ставится ЗАНОВО, из кэша не берётся — см. записку ниже.
+          cache: 'false'
+          version: v0.70.0
           scan-type: 'fs'
           scan-ref: '.'
           format: 'sarif'
@@ -255,6 +277,9 @@ jobs:
       - name: trivy config (SARIF → Security)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
+          # Двоичное ставится ЗАНОВО, из кэша не берётся — см. записку ниже.
+          cache: 'false'
+          version: v0.70.0
           scan-type: 'config'
           scan-ref: '.'
           trivy-config: 'trivy.yaml'
@@ -278,6 +303,9 @@ jobs:
       - name: trivy fs (гейт CRITICAL/HIGH)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
+          # Двоичное ставится ЗАНОВО, из кэша не берётся — см. записку ниже.
+          cache: 'false'
+          version: v0.70.0
           scan-type: 'fs'
           scan-ref: '.'
           format: 'table'
@@ -293,6 +321,9 @@ jobs:
         if: '!cancelled()'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
+          # Двоичное ставится ЗАНОВО, из кэша не берётся — см. записку ниже.
+          cache: 'false'
+          version: v0.70.0
           scan-type: 'config'
           scan-ref: '.'
           trivy-config: 'trivy.yaml'
@@ -307,6 +338,23 @@ jobs:
       # одной цели, а рендерятся они целиком — 20 манифестов; введённые в осмотр,
       # они дали 10 новых целей (86 → 96) и на первом же прогоне настоящую находку.
       # Идёт под `!cancelled()` по той же причине, что и соседи: вердикты независимы.
+      # УСЛОВИЕ ПРОГОНА СОЗДАЁТ ЗАДАНИЕ, А НЕ ОБРАЗ РАНЕРА.
+      #
+      # Скрипты этого задания читают РАЗОБРАННЫЙ YAML (`import yaml`), а системный python
+      # наших ранеров идёт без `pyyaml` и без `pip`. Наблюдалось 2026-09-13 на четырёх
+      # разных заданиях подряд, каждое — отдельный прогон: `ОТКАЗ: нет модуля yaml`,
+      # `No module named pip`, `No module named 'jwt'`, `No module named 'yaml'`. На
+      # GitHub-hosted эти модули в образе есть, поэтому класс проявлялся по жребию очереди.
+      #
+      # Держит это гейт, а не внимание: `.github/scripts/assert-jobs-provide-python-modules.py`
+      # выводит нужду задания из скриптов, которые оно зовёт (с транзитивным раскрытием
+      # локальных импортов), и требует, чтобы модуль ставился — после установки интерпретатора.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
+        with:
+          python-version: '3.13'
+      - name: сторонний модуль python, который читают скрипты этого задания
+        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+
       - name: IaC-скан покрывает каждый чарт
         if: '!cancelled()'
         run: python3 deploy/scripts/assert-iac-scan-covers-every-chart.py

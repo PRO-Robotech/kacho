@@ -2,15 +2,16 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // sync_registrar.go — перевод намерения nlb в ОБЩУЮ форму синхронной доставки
-// регистрации (pkg/ownerregister). Своей формы у nlb больше нет.
+// регистрации (pkg/ownerregister модуля github.com/PRO-Robotech/kaname).
+// Своей формы у nlb больше нет.
 package iam
 
 import (
 	"context"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
+	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 )
 
 // Registrar — порт синхронной регистрации, потребляемый create/update-use-case'ами

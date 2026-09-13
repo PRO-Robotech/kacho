@@ -360,3 +360,58 @@ func TestOverAppliedRenameModuleAuthorityComesFromTheTree(t *testing.T) {
 			noDecl.moduleForeign, withDecl.moduleForeign, noDecl)
 	}
 }
+
+// TestOverAppliedRename_DeclaredSuccessorCoordinateIsNotOursButProseIsStillJudged —
+// полоса «координата репозитория-преемника» в ОБЕ стороны.
+//
+// Два мира отличаются РОВНО ОДНИМ фактом — тем, объявлен ли авторитет координаты
+// чужим рядом с ней:
+//
+//	токен стоит значением `carried_to.path` надгробия, репозиторий назван → молчание
+//	ТОТ ЖЕ токен стоит прозой Makefile, авторитета никто не объявлял   → находка
+//
+// Без второй половины полоса была бы прощением по имени файла: она обязана
+// пропускать ЗНАЧЕНИЕ с объявленным авторитетом, а не всякий токен, похожий на
+// координату.
+func TestOverAppliedRename_DeclaredSuccessorCoordinateIsNotOursButProseIsStillJudged(t *testing.T) {
+	t.Parallel()
+	// Координата, чей якорь резолвится ЗДЕСЬ (раскладки двух деревьев совпали),
+	// а сегмент имени продукта переименованием НЕ объясняется.
+	coord := "services/demo/internal/repo/kaname/pg/repo.go"
+	ledger := `{"retired": [{"carrier": "internal/repohygiene/alpha_test.go",` +
+		`"reason": "синтетический носитель", "successor": "уехал", "fate": "carried",` +
+		`"carried_to": {"repo": "PRO-Robotech/demoiam", "path": "` + coord + `"}}]}`
+
+	declared := oarBase()
+	declared[gateCorpusDir+"/"+gateCarrierLedgerName] = ledger
+	census, findings, err := scanOverAppliedRename(oarRootWith(t, declared))
+	if err != nil {
+		t.Fatalf("мир с объявленным авторитетом: обход: %v", err)
+	}
+	t.Logf("объявленный авторитет: %s", census)
+	if len(findings) != 0 {
+		t.Fatalf("координата с объявленным чужим авторитетом дала находку — гейт краснеет "+
+			"на верной работе: %v", findings)
+	}
+	if census.successorCoord != 1 {
+		t.Fatalf("полоса «координата репозитория-преемника» насчитала %d вместо одной: "+
+			"молчание пришло от другой полосы, и новое правило не исполнялось. Перепись: %s",
+			census.successorCoord, census)
+	}
+
+	// ОДИН факт иначе: тот же токен прозой, авторитета никто не объявлял.
+	prose, proseFindings, err := scanOverAppliedRename(oarRootWith(t, oarWith(coord)))
+	if err != nil {
+		t.Fatalf("мир без объявления: обход: %v", err)
+	}
+	t.Logf("без объявления: %s", prose)
+	if len(proseFindings) != 1 {
+		t.Fatalf("тот же токен БЕЗ объявленного авторитета обязан быть находкой, "+
+			"получено %d: %v", len(proseFindings), proseFindings)
+	}
+	if prose.successorCoord != 0 {
+		t.Fatalf("полоса забрала токен, авторитет которого никто не объявлял (%d) — "+
+			"это прощение по имени файла, а не по объявлению. Перепись: %s",
+			prose.successorCoord, prose)
+	}
+}

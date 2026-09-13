@@ -16,7 +16,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/cache"
 )

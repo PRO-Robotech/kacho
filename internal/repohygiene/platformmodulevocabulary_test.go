@@ -4,6 +4,7 @@
 package repohygiene
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/PRO-Robotech/corelib/contractroot"
 	"github.com/PRO-Robotech/corelib/platformmodules"
+
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 )
 
 // platformmodulevocabulary_test.go — гейт над ДЕРЕВОМ: словарь имён модулей
@@ -33,7 +36,7 @@ func TestPlatformModuleVocabularyMatchesTheTree(t *testing.T) {
 	faults, census := judgePlatformVocabulary(
 		declared,
 		dirNamesUnder(t, filepath.Join(root, "services")),
-		contractDomainSet(filepath.Join(root, "proto")),
+		contractDomainSet(contractProtoDirs(t, root)...),
 		collectModelObjectTypes(t, root),
 	)
 
@@ -66,14 +69,66 @@ func dirNamesUnder(t *testing.T, dir string) map[string]struct{} {
 	return out
 }
 
-// contractDomainSet — имена деревьев доменов под ВСЕМИ объявленными корнями.
+// contractDomainSet — имена деревьев доменов под ВСЕМИ объявленными корнями во
+// ВСЕХ каталогах `proto/`, которые эти корни занимают.
+//
 // Заменяет обход одного литерального каталога: домен, переехавший под второй
 // корень, выпал бы из словаря, и гейт объявил бы расхождением собственную
-// слепоту, а не находку дерева.
-func contractDomainSet(protoDir string) map[string]struct{} {
+// слепоту, а не находку дерева. Каталогов стало ДВА — см. [contractProtoDirs].
+func contractDomainSet(protoDirs ...string) map[string]struct{} {
 	out := map[string]struct{}{}
-	for _, d := range contractroot.Domains(protoDir) {
-		out[d] = struct{}{}
+	for _, protoDir := range protoDirs {
+		for _, d := range contractroot.Domains(protoDir) {
+			out[d] = struct{}{}
+		}
+	}
+	return out
+}
+
+// contractProtoDirs — каталоги `proto/`, в которых лежат деревья ОБЪЯВЛЕННЫХ
+// корней контрактов.
+//
+// # Почему каталог перестал быть один
+//
+// Прежде он был один — `<корень репозитория>/proto`, — и читатели называли его
+// склейкой. Решением владельца (kacho#2616, исход C, 2026-09-13) контракты
+// службы доступа вынесены в её репозиторий: дерево корня `kaname` приезжает
+// модулем `github.com/PRO-Robotech/kaname`, и склейка перестала его НАХОДИТЬ —
+// не покраснела, а замолчала. Это тот же класс, ради которого заведён
+// `contractroot` (литерал приставки корня), повторённый на уровень выше: там
+// молчал отбор ПО КОРНЮ, здесь — отбор ПО КАТАЛОГУ.
+//
+// # Форма ответа выбрана под чужой вход, а не под удобство
+//
+// `contractroot` резолвит домен как `<protoDir>/<корень>/cloud/<домен>`, а
+// [contractsource] отвечает каталогом `<…>/proto/<корень>` — нужный `protoDir`
+// есть его РОДИТЕЛЬ. Поэтому здесь берётся родитель, а не собирается путь
+// заново: собранный путь разошёлся бы с формой, которую contractsource
+// объявляет, и разошёлся бы молча. Повторы отсеиваются — корни, лежащие в этом
+// дереве, дают один и тот же каталог.
+//
+// Пустой ответ — ОТКАЗ: ноль каталогов означает, что дерева контрактов нет
+// вовсе, и всякое «ноль находок» по нему было бы свойством непрочитанного.
+func contractProtoDirs(t *testing.T, root string) []string {
+	t.Helper()
+	seen := map[string]bool{}
+	var out, refused []string
+	for _, r := range contractroot.Roots {
+		dir, err := contractsource.Dir(root, r)
+		if err != nil {
+			refused = append(refused, fmt.Sprintf("%s (%v)", r, err))
+			continue
+		}
+		p := filepath.Dir(dir)
+		if !seen[p] {
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 {
+		t.Fatalf("ни один объявленный корень контрактов %v не резолвится: %s — обход "+
+			"пуст, и вердикт относился бы к непрочитанному",
+			contractroot.Roots, strings.Join(refused, "; "))
 	}
 	return out
 }

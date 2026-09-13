@@ -31,6 +31,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 )
 
 // catalogEntry — минимальная проекция строки permission-catalog'а.
@@ -61,7 +63,7 @@ func repoFile(t *testing.T, rel string) string {
 	}
 }
 
-// modelDSL — модель прав В ЕДИНСТВЕННОЙ КОПИИ, КОТОРУЮ НЕСЁТ ЭТО ДЕРЕВО.
+// modelDSL — КАНОНИЧЕСКАЯ модель прав, и другой этому гейту больше не доступно.
 //
 // Читалась копия, которую служба доступа КОМПИЛИРУЕТ в план вывода
 // (`services/iam/internal/authzmodel`), — и выбрана она была затем, чтобы гейт
@@ -69,9 +71,16 @@ func repoFile(t *testing.T, rel string) string {
 // зеленел бы на неисполняемой.
 //
 // Довод пережил свой предмет. Служба вынесена отдельным репозиторием, её копия
-// уехала вместе с каталогом, и выбирать больше НЕ ИЗ ЧЕГО: в этом дереве
-// остаётся ровно одна копия модели — каноническая, в `proto/`. Она же источник
-// истины ФОРМЫ, и именно её читает контракт.
+// уехала вместе с каталогом, и выбирать больше НЕ ИЗ ЧЕГО: остаётся ровно одна
+// копия модели — каноническая. Она же источник истины ФОРМЫ, и именно её читает
+// контракт.
+//
+// ГДЕ ЭТА КОПИЯ ЛЕЖИТ. Не в `proto/` этого дерева: решением владельца
+// (kacho#2616, исход C, 2026-09-13) контракты службы доступа уехали в её
+// репозиторий и приезжают опубликованным модулем
+// `github.com/PRO-Robotech/kaname`, каталогом `proto/kaname` внутри него.
+// Координату разрешает `internal/contractsource`; `repoFile` остаётся для того,
+// что это дерево несёт САМО (каталог прав края).
 //
 // Что при этом УТРАЧЕНО, и это надо назвать вслух: гейт больше не может
 // заметить расхождение канонической копии с исполняемой — обе стороны равенства
@@ -80,9 +89,14 @@ func repoFile(t *testing.T, rel string) string {
 // исполняет ту же модель» — предмет её собственного репозитория.
 func modelDSL(t *testing.T) string {
 	t.Helper()
-	raw, err := os.ReadFile(repoFile(t, "proto/kaname/cloud/iam/v1/fga_model.fga"))
-	require.NoError(t, err, "встроенная модель прав не прочитана — гейту не с чем сверять каталог")
-	require.NotEmpty(t, strings.TrimSpace(string(raw)), "встроенная модель пуста")
+	// Корень дерева — каталог, несущий `go.mod`; `repoFile` поднимается до него
+	// от рабочего каталога пробы.
+	root := filepath.Dir(repoFile(t, "go.mod"))
+	model, err := contractsource.Path(root, "kaname/cloud/iam/v1/fga_model.fga")
+	require.NoError(t, err, "каноническая модель прав не разрешается — гейту не с чем сверять каталог")
+	raw, err := os.ReadFile(model)
+	require.NoError(t, err, "каноническая модель прав не прочитана — гейту не с чем сверять каталог")
+	require.NotEmpty(t, strings.TrimSpace(string(raw)), "каноническая модель пуста")
 	return string(raw)
 }
 

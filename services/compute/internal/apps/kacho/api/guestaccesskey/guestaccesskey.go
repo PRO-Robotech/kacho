@@ -18,7 +18,7 @@ import (
 	"github.com/PRO-Robotech/corelib/ids"
 	"github.com/PRO-Robotech/corelib/operations"
 	corevalidate "github.com/PRO-Robotech/corelib/validate"
-	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
+	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/lro"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/ownersync"

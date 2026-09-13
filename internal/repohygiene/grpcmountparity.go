@@ -72,6 +72,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 )
 
 // MountOptions — вход анализатора.
@@ -93,13 +95,26 @@ type MountOptions struct {
 // apiStubHome — один ДОМ сгенерённых стабов: import-префикс и соответствующий
 // каталог на диске.
 //
-// Домов ДВА, а не один. Доменные стабы (vpc/compute/storage/nlb/registry/geo/…)
-// остаются под APIRoot ЭТОГО дерева. Платформенные контракты, версии-домена не
-// несущие (operation/quota/subscription), переехали ЦЕЛИКОМ в общий фундамент —
-// `api/` модуля `github.com/PRO-Robotech/corelib`, закреплённого go.mod. Анализ,
-// знающий только первый дом, не находит объявления второго вовсе — не «находит
-// пустым», а не находит СЕРВИС, и запись каталога прав, называющая его метод,
-// резолвится как «сервиса нет в контракте» вместо «сервис есть и смонтирован».
+// Домов ТРИ, а не один, и каждый заведён своим переездом.
+//
+//	APIRoot этого дерева   доменные стабы (vpc/compute/storage/nlb/registry/geo/…)
+//	`api/` фундамента      платформенные контракты без домена-версии
+//	                       (operation/quota/subscription) переехали ЦЕЛИКОМ в
+//	                       модуль `github.com/PRO-Robotech/corelib`
+//	`pkg/api/<корень>`     контракты службы доступа уехали в её собственный
+//	  модуля корня         репозиторий (решение владельца kacho#2616, исход C,
+//	                       2026-09-13). Заглушки публикует модуль
+//	                       `github.com/PRO-Robotech/kaname` по ТЕМ ЖЕ
+//	                       относительным путям, что были здесь; владение модулем
+//	                       объявлено ОДИН раз —
+//	                       contractsource.ExternalRootModules
+//
+// Анализ, знающий только первый дом, не находит объявления остальных вовсе — не
+// «находит пустым», а не находит СЕРВИС, и запись каталога прав, называющая его
+// метод, резолвится как «сервиса нет в контракте» вместо «сервис есть, а
+// композиционного корня для него в этом дереве нет». Разница несущая: первое
+// велит СНЯТЬ запись, то есть потерять покрытие трети поверхности края (117
+// записей каталога из 350 и 104 маршрута из 308 — по-прежнему его).
 type apiStubHome struct {
 	importPrefix string
 	dir          string
@@ -142,12 +157,21 @@ func corelibAPIStubDir(root string) (string, error) {
 // судимого дерева. Общий предикат для всех гейтов, которым нужен второй дом:
 // второй resolve той же версии молча разошёлся бы с первым при бампе.
 func corelibModuleRootDir(root string) (string, error) {
+	return pinnedModuleRootDir(root, corelibModuleImportPathForMount)
+}
+
+// pinnedModuleRootDir — каталог ЛЮБОГО модуля, закреплённого go.mod судимого
+// дерева, в кэше модулей. Общий предикат для всех домов, приезжающих модулем:
+// второй resolve той же версии молча разошёлся бы с первым при бампе, а третий
+// дом (заглушки службы доступа) резолвится ровно тем же способом, что второй, —
+// значит и объявление у них обязано быть одно.
+func pinnedModuleRootDir(root, modulePath string) (string, error) {
 	body, err := os.ReadFile(filepath.Join(root, "go.mod")) // #nosec G304 -- путь собран из корня дерева и имени объявления модуля, оба не от пользователя
 	if err != nil {
 		return "", fmt.Errorf("чтение go.mod: %w", err)
 	}
 	for _, dep := range ParseGoModRequires(string(body)) {
-		if dep.Path != corelibModuleImportPathForMount {
+		if dep.Path != modulePath {
 			continue
 		}
 		out, cerr := exec.Command("go", "env", "GOMODCACHE").Output()
@@ -160,19 +184,47 @@ func corelibModuleRootDir(root string) (string, error) {
 		}
 		return ModuleCacheDir(cache, dep), nil
 	}
-	return "", fmt.Errorf("go.mod не закрепляет %s — второй дом не резолвится",
-		corelibModuleImportPathForMount)
+	return "", fmt.Errorf("go.mod не закрепляет %s — дом заглушек этого модуля не резолвится",
+		modulePath)
 }
 
-// apiStubHomes — дома для судимого дерева, в постоянном порядке (первый —
-// ЭТОГО дерева, второй, если резолвится, — общего фундамента).
+// externalRootStubDir — каталог заглушек ВНЕШНЕГО корня дерева контрактов в
+// кэше модулей: `pkg/api/<корень>` внутри модуля, который этот корень публикует.
 //
-// Второй дом — ЛУЧШЕЕ УСИЛИЕ, не отказ: у синтетических деревьев проб (созданных
-// `t.TempDir()` под ОДНУ узкую фикстуру, без своего go.mod) предмета для него
-// нет, и это законно — их предмет лежит целиком в первом доме. На НАСТОЯЩЕМ
-// дереве (go.mod закрепляет corelib, модуль извлечён в кэш) второй дом резолвится
-// всегда; если это не так, находки по конкретным FQN (`unknown-service` там, где
-// сервис есть и смонтирован) назовут причину явно — тише этот отказ не становится.
+// Относительный путь берётся у судимого дерева (`opts.APIRoot` + корень), а не
+// выписывается литералом: модуль публикует заглушки по ТЕМ ЖЕ относительным
+// путям, что были здесь до переезда, и второе написание разошлось бы с первым
+// молча при переносе каталога.
+func externalRootStubDir(opts MountOptions, root, modulePath string) (string, error) {
+	moduleDir, err := pinnedModuleRootDir(opts.Root, modulePath)
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(moduleDir, filepath.FromSlash(opts.APIRoot), root)
+	if st, serr := os.Stat(dir); serr != nil || !st.IsDir() {
+		return "", fmt.Errorf("каталог %s/%s модуля %s не читается: %v — модуль не извлечён "+
+			"в кэш модулей (`go mod download`), либо заглушки переехали внутри модуля",
+			opts.APIRoot, root, modulePath, serr)
+	}
+	return dir, nil
+}
+
+// apiStubHomes — дома для судимого дерева, в постоянном порядке (первый — ЭТОГО
+// дерева, затем общий фундамент и внешние корни дерева контрактов, каждый если
+// резолвится).
+//
+// Дома со второго — ЛУЧШЕЕ УСИЛИЕ, не отказ: у синтетических деревьев проб
+// (созданных `t.TempDir()` под ОДНУ узкую фикстуру, без своего go.mod) предмета
+// для них нет, и это законно — их предмет лежит целиком в первом доме. На
+// НАСТОЯЩЕМ дереве (go.mod закрепляет и corelib, и модуль корня службы доступа,
+// оба извлечены в кэш) резолвятся все; если это не так, находки по конкретным FQN
+// (`unknown-service` там, где сервис есть) назовут причину явно — тише этот отказ
+// не становится.
+//
+// Перечень внешних корней спрашивается у contractsource, а не выписывается
+// здесь: он объявлен ОДИН раз, и второе объявление разошлось бы с ним при
+// появлении третьего корня — молча, потому что расхождение выглядит как «сервиса
+// нет в контракте».
 func apiStubHomes(opts MountOptions) ([]apiStubHome, error) {
 	homes := []apiStubHome{{
 		importPrefix: opts.ModulePath + "/" + opts.APIRoot + "/",
@@ -182,6 +234,22 @@ func apiStubHomes(opts MountOptions) ([]apiStubHome, error) {
 		homes = append(homes, apiStubHome{
 			importPrefix: corelibAPIImportPrefix,
 			dir:          corelibDir,
+		})
+	}
+	externalRoots := make([]string, 0, len(contractsource.ExternalRootModules))
+	for root := range contractsource.ExternalRootModules {
+		externalRoots = append(externalRoots, root)
+	}
+	sort.Strings(externalRoots)
+	for _, root := range externalRoots {
+		modulePath := contractsource.ExternalRootModules[root]
+		dir, err := externalRootStubDir(opts, root, modulePath)
+		if err != nil {
+			continue
+		}
+		homes = append(homes, apiStubHome{
+			importPrefix: modulePath + "/" + opts.APIRoot + "/" + root + "/",
+			dir:          dir,
 		})
 	}
 	return homes, nil

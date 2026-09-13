@@ -33,7 +33,6 @@ import (
 	"github.com/PRO-Robotech/corelib/validate"
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 
-	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/quota"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/blockbackend"
@@ -41,6 +40,7 @@ import (
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/protoconv"
+	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 
 	"github.com/PRO-Robotech/corelib/listnarrow"
 )

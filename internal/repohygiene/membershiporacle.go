@@ -49,10 +49,89 @@ import (
 	"strings"
 
 	"github.com/PRO-Robotech/corelib/treecorpus"
+
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 )
 
-// oracleProtoDir — поверхность, которую судит гейт.
-const oracleProtoDir = "proto/kaname/cloud/iam/v1"
+// Поверхность, которую судит гейт, названа ДВУМЯ координатами одного каталога —
+// потому что её читают из двух мест с разными соглашениями, а литерал один.
+//
+// # КОНТРАКТЫ УЕХАЛИ ИЗ ЭТОГО ДЕРЕВА (2026-09-13)
+//
+// Решением владельца (kacho#2616, исход C) контракты службы доступа вынесены в её
+// репозиторий и приезжают модулем `github.com/PRO-Robotech/kaname`, каталогом
+// `proto/kaname/…` внутри него. Прежняя редакция называла каталог путём от корня
+// репозитория и отбирала по нему состав ДЕРЕВА — после переезда такой отбор не
+// краснеет и не зеленеет, а МОЛЧИТ: популяция пуста, и «RPC не найдено»
+// печатается по непрочитанному. Путь на диске резолвит
+// `internal/contractsource`; как именно — см. [oracleContractCorpus].
+const (
+	// oracleContractDir — координата каталога ВНУТРИ дерева контрактов, то есть
+	// относительно `proto/`: в таком виде её принимает contractsource, и в таком
+	// виде координаты печатают находки и перепись.
+	oracleContractDir = "kaname/cloud/iam/v1"
+	// oracleProtoDir — та же координата ОТ КОРНЯ ДЕРЕВА. Выведена конкатенацией,
+	// а не выписана вторым литералом: два литерала одного пути разошлись бы
+	// молча. В этом виде её пишет синтетическое дерево инъекции
+	// (membershiporacle_injection_test.go).
+	oracleProtoDir = "proto/" + oracleContractDir
+)
+
+// oracleContractFile — один файл контракта: координата для сообщения и путь на
+// диске для чтения. Второе без первого сделало бы находку неадресуемой, первое
+// без второго — непрочитанной.
+type oracleContractFile struct {
+	Rel  string
+	Path string
+}
+
+// oracleContractCorpus — файлы контракта службы доступа, которые судит гейт.
+//
+// # ИСТОЧНИКОВ СОСТАВА ДВА, И ЭТО НЕ ЗАПАСНОЙ ПУТЬ
+//
+// Порядок между ними — ТОТ ЖЕ, который объявляет `internal/contractsource`:
+// дерево корня, физически присутствующее в `proto/`, берётся ИЗ СОСТАВА ДЕРЕВА,
+// а его отсутствие означает модуль. Первая ветвь несёт настоящую работу, а не
+// совместимость: синтетическое дерево инъекции кладёт контракт именно под
+// `proto/` и индекса git не имеет by construction, поэтому состав ему даёт
+// `treecorpus`, а не git. Вторая ветвь — дерево контрактов продукта, приехавшее
+// модулем; там обход каталога И ЕСТЬ обход проверенного коммита, игнорируемых
+// файлов в кэше модулей не бывает.
+//
+// Пустой состав — ОТКАЗ в обоих случаях, а не молчание: «RPC не найдено» и
+// «читать было нечего» дают один и тот же зелёный вердикт, и различает их только
+// отказ.
+//
+// Функция ОДНА на три читателя (обход полос, перепись доказательств гасящих
+// записей, предпосылка полосы C): три собственных отбора разошлись бы молча, и
+// разошлись бы там, где расхождение не ищут.
+func oracleContractCorpus(tree *treecorpus.Tree) ([]oracleContractFile, error) {
+	var out []oracleContractFile
+	prefix := oracleProtoDir + "/"
+	for _, rel := range tree.SortedFiles() {
+		if !strings.HasPrefix(rel, prefix) || !strings.HasSuffix(rel, ".proto") {
+			continue
+		}
+		out = append(out, oracleContractFile{
+			Rel:  strings.TrimPrefix(rel, "proto/"),
+			Path: filepath.Join(tree.Root(), filepath.FromSlash(rel)),
+		})
+	}
+	if len(out) > 0 {
+		return out, nil
+	}
+	paths, err := contractsource.Files(tree.Root(), oracleContractDir, ".proto")
+	if err != nil {
+		return nil, fmt.Errorf("состав контрактов %s: %w", oracleContractDir, err)
+	}
+	for _, abs := range paths {
+		out = append(out, oracleContractFile{
+			Rel:  oracleContractDir + "/" + filepath.Base(abs),
+			Path: abs,
+		})
+	}
+	return out, nil
+}
 
 // ЗДЕСЬ БЫЛА ПОЛОСА B — терм фильтра, называющий субъекта, на чтении без
 // обязательного аккаунта. Она снята вместе со своим предметом.
@@ -103,7 +182,7 @@ const oracleProtoDir = "proto/kaname/cloud/iam/v1"
 // Перестанет контракт называть деривацию — запрет обязан быть ПЕРЕСМОТРЕН, а не
 // унаследован молча; ровно это и роняет прогон.
 const (
-	oracleMembershipIDCorpus = oracleProtoDir
+	oracleMembershipIDCorpus = oracleContractDir
 	// oracleMembershipIDMark — как контракт называет деривацию.
 	//
 	// Фраза, а не слово: одиночное «вычислим» встречается в прозе о другом, и
@@ -212,20 +291,21 @@ func SurveyMembershipOracle(tree *treecorpus.Tree) (OracleCensus, error) {
 	msgs := map[string]string{}
 	var rpcs []OracleRPC
 
-	for _, rel := range tree.SortedFiles() {
-		if !strings.HasPrefix(rel, oracleProtoDir+"/") || !strings.HasSuffix(rel, ".proto") {
-			continue
-		}
-		body, err := os.ReadFile(filepath.Join(tree.Root(), filepath.FromSlash(rel)))
+	corpus, cerr := oracleContractCorpus(tree)
+	if cerr != nil {
+		return c, cerr
+	}
+	for _, f := range corpus {
+		body, err := os.ReadFile(filepath.Clean(f.Path))
 		if err != nil {
-			return c, fmt.Errorf("чтение %s: %w", rel, err)
+			return c, fmt.Errorf("чтение %s (%s): %w", f.Rel, f.Path, err)
 		}
 		c.ProtoFiles++
 		s := string(body)
 		for name, block := range oracleMessageBlocks(s) {
 			msgs[name] = block
 		}
-		rpcs = append(rpcs, oracleRPCsIn(rel, s)...)
+		rpcs = append(rpcs, oracleRPCsIn(f.Rel, s)...)
 	}
 	c.Messages = len(msgs)
 	c.RPCs = len(rpcs)
@@ -549,16 +629,17 @@ func oracleNarrowedByCallerRights(r OracleRPC) bool {
 // доказательств гасящих записей. Второй разбор тех же файлов разошёлся бы с
 // первым молча — и разошёлся бы именно там, где расхождение не видно.
 func oracleContractRPCs(tree *treecorpus.Tree) ([]OracleRPC, error) {
+	corpus, err := oracleContractCorpus(tree)
+	if err != nil {
+		return nil, err
+	}
 	var rpcs []OracleRPC
-	for _, rel := range tree.SortedFiles() {
-		if !strings.HasPrefix(rel, oracleProtoDir+"/") || !strings.HasSuffix(rel, ".proto") {
-			continue
+	for _, f := range corpus {
+		body, rerr := os.ReadFile(filepath.Clean(f.Path))
+		if rerr != nil {
+			return nil, fmt.Errorf("чтение %s (%s): %w", f.Rel, f.Path, rerr)
 		}
-		body, err := os.ReadFile(filepath.Join(tree.Root(), filepath.FromSlash(rel)))
-		if err != nil {
-			return nil, fmt.Errorf("чтение %s: %w", rel, err)
-		}
-		rpcs = append(rpcs, oracleRPCsIn(rel, string(body))...)
+		rpcs = append(rpcs, oracleRPCsIn(f.Rel, string(body))...)
 	}
 	return rpcs, nil
 }
@@ -645,19 +726,22 @@ func oracleIsAllowed(fqn string) bool {
 // [oracleMembershipIDCorpus]). Второе возвращаемое — сколько файлов прочитано:
 // «признака нет» обязано быть отличимо от «читать было нечего».
 //
-// Состав берётся у УЖЕ СОСТАВЛЕННОГО дерева, а не отдельным обходом: дерево
-// приходит сюда из одного источника со всеми полосами, и второй обход дал бы
-// вердикт о другом множестве файлов, чем тот, который гейт объявляет переписью.
+// Состав берётся у ТОЙ ЖЕ функции, что и у всех полос ([oracleContractCorpus]), а
+// не отдельным обходом: второй обход дал бы вердикт о другом множестве файлов,
+// чем тот, который гейт объявляет переписью.
+//
+// Отказ состава возвращает ноль прочитанных, а не «признака нет»: гейт роняет
+// прогон на нуле прочитанных отдельным утверждением, и эти два ответа различимы.
 func oracleIDIsComputable(tree *treecorpus.Tree) (bool, int) {
-	prefix := oracleMembershipIDCorpus + "/"
+	corpus, err := oracleContractCorpus(tree)
+	if err != nil {
+		return false, 0
+	}
 	read := 0
 	found := false
-	for _, rel := range tree.SortedFiles() {
-		if !strings.HasPrefix(rel, prefix) || !strings.HasSuffix(rel, ".proto") {
-			continue
-		}
-		body, err := os.ReadFile(filepath.Join(tree.Root(), filepath.FromSlash(rel)))
-		if err != nil {
+	for _, f := range corpus {
+		body, rerr := os.ReadFile(filepath.Clean(f.Path))
+		if rerr != nil {
 			continue
 		}
 		read++

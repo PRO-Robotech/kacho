@@ -39,8 +39,8 @@ import (
 	"github.com/PRO-Robotech/corelib/retention"
 	"github.com/PRO-Robotech/corelib/subscription"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/subscriptionjournal"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/corelib/observability/health"
 	addressapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/address"

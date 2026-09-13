@@ -4,6 +4,7 @@
 package repohygiene
 
 import (
+	"sort"
 	"strings"
 	"testing"
 )
@@ -34,10 +35,17 @@ service NeighbourService {
 }
 `
 
+// adviceSubjectService — имя подопытной службы. Объявлено ОДИН раз: его пишет
+// сборщик контракта ниже, и его же спрашивает выбор глагола для инъекции в
+// настоящий корпус. Вторая копия разошлась бы с первой молча — и разошлась бы
+// именно тогда, когда сверить их некому.
+const adviceSubjectService = "SubjectService"
+
 // adviceSubjectContract собирает подопытный контракт с одной строкой прозы.
 func adviceSubjectContract(prose string) string {
 	var b strings.Builder
-	b.WriteString("syntax = \"proto3\";\npackage kacho.cloud.probe.v1;\n\nservice SubjectService {\n")
+	b.WriteString("syntax = \"proto3\";\npackage kacho.cloud.probe.v1;\n\nservice " +
+		adviceSubjectService + " {\n")
 	for _, ln := range strings.Split(prose, "\n") {
 		b.WriteString("  // " + ln + "\n")
 	}
@@ -317,12 +325,80 @@ func TestContractAdviceReadsBothWaysOfDelimitingAName(t *testing.T) {
 	}
 }
 
+// adviceInjectedRel — координата синтетического контракта, подмешиваемого к
+// настоящему корпусу. Каталог выбран так, чтобы в дереве его НЕ БЫЛО: иначе
+// охватывающую службу совету дал бы сосед по каталогу, и инъекция судила бы не
+// то, что объявила.
+const adviceInjectedRel = "proto/kacho/cloud/probe/v1/injected_service.proto"
+
+// adviceVerbDeclaredByTheTree — глагол, который НАСТОЯЩИЙ корпус объявляет, а
+// подопытная служба инъекции — нет.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ПОЧЕМУ ИМЯ ВЫБИРАЕТСЯ ЗАМЕРОМ, А НЕ СТОИТ ЛИТЕРАЛОМ
+//
+// Прежняя редакция писала `Revoke` строкой. Это работало, пока контракт службы
+// доступа лежал в этом дереве: `Revoke` объявляли там четыре службы, и потому
+// имя было СЛОВАРНЫМ — распознаватель форм записи (`adviceShape`) признаёт
+// одиночное слово именем глагола только тогда, когда дерево его где-то
+// объявляет, потому что иначе всякое слово с заглавной буквы стало бы находкой.
+//
+// Решением владельца kacho#2616 (исход C, 2026-09-13) контракты службы доступа
+// уехали в её репозиторий: `git grep 'rpc Revoke' -- '*.proto'` в этом дереве
+// даёт НОЛЬ. `Revoke` перестал быть словарным, форма его записи стала пустой,
+// предложение инъекции перестало осматриваться вовсе — и внесённый дефект дал
+// НОЛЬ находок. Отказ при этом выглядел как «гейт не видит дефекта», а являлся
+// «предпосылка фикстуры пережила свой предмет»: одна и та же проза доказывала
+// суждение в памяти (там сосед `NeighbourService` объявляет `Revoke` сам) и не
+// доказывала ничего на дереве.
+//
+// Имя теперь ПРОИЗВОДИТСЯ ОТ ФАКТА: берётся первый по алфавиту глагол, который
+// корпус объявляет и форма записи которого непуста, за вычетом глаголов самой
+// подопытной службы. Устойчивость выбора нужна ради разбора красного — иначе
+// текст отказа менялся бы от прогона к прогону при неизменном дереве.
+func adviceVerbDeclaredByTheTree(t *testing.T, corpus []adviceSource) string {
+	t.Helper()
+	var ours []adviceSource
+	for _, s := range corpus {
+		if adviceIsOurs(s.Body) {
+			ours = append(ours, s)
+		}
+	}
+	ix := buildAdviceIndex(ours)
+	names := make([]string, 0, len(ix.verbOwners))
+	for v := range ix.verbOwners {
+		names = append(names, v)
+	}
+	sort.Strings(names)
+	for _, v := range names {
+		// Глагол подопытной службы дефекта не даёт by construction: совет на
+		// СВОЙ объявленный глагол законен, и находки тут быть не должно.
+		if ix.serviceVerbs[adviceSubjectService][v] {
+			continue
+		}
+		if ix.adviceShape(v) == "" {
+			continue
+		}
+		return v
+	}
+	t.Fatalf("в корпусе из %d наших контрактов не нашлось НИ ОДНОГО глагола, чьё имя "+
+		"распознаётся как имя глагола (объявленных глаголов %d) — инъекция называла бы "+
+		"слово, которого словарь не знает, и её ноль означал бы «не осмотрено»",
+		len(ours), len(ix.verbOwners))
+	return ""
+}
+
 // Тот же вердикт — по НАСТОЯЩЕМУ дереву, а не только по корпусу в памяти.
 //
 // Инъекция в память доказывает суждение; она ничего не говорит о том, читает ли
 // гейт дерево и тем ли образцом. Здесь берётся настоящий корпус и к нему
 // добавляется ОДИН синтетический контракт: находка обязана появиться ровно одна
 // и ровно в нём.
+//
+// ИМЯ ГЛАГОЛА БЕРЁТСЯ ИЗ КОРПУСА, а не из памяти автора — разбор в шапке
+// `adviceVerbDeclaredByTheTree`. Дефект от этого остаётся ОДНОФАКТНЫМ: против
+// законного близнеца меняется ровно то, кому совет указывает, — глагол
+// объявлен деревом, но НЕ той службой, в чьём комментарии он назван.
 func TestContractAdviceInjectionOnTheRealCorpus(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -339,10 +415,16 @@ func TestContractAdviceInjectionOnTheRealCorpus(t *testing.T) {
 		"находок %d", before.Files, before.AdviceSentences, before.Checked,
 		len(before.Findings))
 
+	// Словарь спрашивается у корпуса ВМЕСТЕ с подопытным контрактом: глаголы
+	// самой подопытной службы обязаны быть исключены, а объявляет их она.
+	probe := adviceSource{Rel: adviceInjectedRel, Body: adviceSubjectContract("")}
+	verb := adviceVerbDeclaredByTheTree(t, append(append([]adviceSource{}, sources...), probe))
+	t.Logf("глагол инъекции взят из корпуса: %q", verb)
+
 	injected := append(append([]adviceSource{}, sources...), adviceSource{
-		Rel: "proto/kacho/cloud/probe/v1/injected_service.proto",
+		Rel: adviceInjectedRel,
 		Body: adviceSubjectContract(
-			"There is nothing to refuse here. Revoke the invitation instead."),
+			"There is nothing to refuse here. " + verb + " the invitation instead."),
 	})
 	after := auditContractAdvice(injected)
 
@@ -352,11 +434,12 @@ func TestContractAdviceInjectionOnTheRealCorpus(t *testing.T) {
 	}
 	if len(after.Findings) != len(before.Findings)+1 {
 		t.Fatalf("инъекция в настоящее дерево не дала ровно одной новой находки: "+
-			"было %d, стало %d", len(before.Findings), len(after.Findings))
+			"было %d, стало %d (глагол инъекции %q)",
+			len(before.Findings), len(after.Findings), verb)
 	}
 	var got *adviceFinding
 	for i := range after.Findings {
-		if after.Findings[i].Rel == "proto/kacho/cloud/probe/v1/injected_service.proto" {
+		if after.Findings[i].Rel == adviceInjectedRel {
 			got = &after.Findings[i]
 		}
 	}
@@ -364,8 +447,8 @@ func TestContractAdviceInjectionOnTheRealCorpus(t *testing.T) {
 		t.Fatal("новая находка есть, но не в инъецированном контракте — красное " +
 			"пришло не от инъекции")
 	}
-	if got.Named != "Revoke" {
-		t.Fatalf("находка называет %q вместо %q", got.Named, "Revoke")
+	if got.Named != verb {
+		t.Fatalf("находка называет %q вместо %q", got.Named, verb)
 	}
 }
 

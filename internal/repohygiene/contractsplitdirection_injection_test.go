@@ -4,7 +4,6 @@
 package repohygiene_test
 
 import (
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -26,12 +25,18 @@ import (
 // Четвёртый — про ФОРМУ оператора: `import public "…"` законен, и распознаватель,
 // её не знающий, выпускал бы объявленное ею ребро из-под наблюдения молча.
 
-// splitFixture — обе стороны, прочитанные из дерева.
+// splitFixture — обе стороны, прочитанные из своих деревьев.
+//
+// «Из дерева» после kacho#2616 (исход C, 2026-09-13) означает ДВА дерева, а не
+// одно: контракт платформы лежит в `proto/` этого репозитория, контракт службы
+// приезжает модулем `github.com/PRO-Robotech/kaname`. Обе координаты резолвит
+// `readProtoTree` через `internal/contractsource`; предпосылка «фикстура
+// привязана к дереву, а не к памяти автора» от этого не меняется — оба состава
+// по-прежнему взяты из закоммиченного содержимого, каждый из своего коммита.
 func splitFixture(t *testing.T) (platform, service []repohygiene.ContractFile) {
 	t.Helper()
 	root := repoRootFor(t)
-	protoRoot := filepath.Join(root, "proto")
-	return readProtoTree(t, protoRoot, "kacho"), readProtoTree(t, protoRoot, "kaname")
+	return readProtoTree(t, root, "kacho"), readProtoTree(t, root, "kaname")
 }
 
 // withInjectedImport возвращает копию среза, в котором названному описанию

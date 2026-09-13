@@ -134,7 +134,12 @@ func TestVocabularyJudgeCatchesACatalogModuleWithNoProtoDirectory(t *testing.T) 
 		t.Fatalf("ожидалась ровно одна находка, получено %d:\n  %s",
 			len(faults), strings.Join(faults, "\n  "))
 	}
-	if !strings.Contains(faults[0], "proto/kacho/cloud/nlb") {
+	// Ожидание НЕ несёт литерала корня: текст находки перестал его называть
+	// вместе с появлением второго корня и третьего дерева (kacho#2616, исход C) —
+	// путь `proto/kacho/cloud/iam` не существует ни в одном дереве, и посылать
+	// читателя по нему было бы хуже, чем не называть путь вовсе. Ветвь опознаётся
+	// по имени домена и по своей формулировке.
+	if !strings.Contains(faults[0], "каталога контрактов домена nlb") {
 		t.Fatalf("находка пришла не от той ветви: %s", faults[0])
 	}
 }

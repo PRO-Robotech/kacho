@@ -24,7 +24,7 @@ import (
 	"github.com/PRO-Robotech/corelib/auth"
 	corequota "github.com/PRO-Robotech/corelib/quota"
 	"github.com/PRO-Robotech/corelib/retry"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 )
 
 // defaultCallTimeout — предел времени одной попытки тяги.

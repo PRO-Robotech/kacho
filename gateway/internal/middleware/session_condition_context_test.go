@@ -50,6 +50,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 )
 
 // conditionProbeNow — «сейчас» пробы. Часы управляемые: свежесть подтверждения
@@ -269,10 +270,18 @@ var reMfaFreshSignature = regexp.MustCompile(`(?m)^condition\s+mfa_fresh\s*\(([^
 // у этого перечня нет. Отсутствие условия в модели — находка, а не повод
 // промолчать: гейт, потерявший предмет, обязан краснеть, иначе он переживёт то,
 // что им обозначалось.
+//
+// КООРДИНАТА РАЗРЕШАЕТСЯ, А НЕ СОБИРАЕТСЯ ИЗ СЕГМЕНТОВ. Под `proto/` этого дерева
+// модели больше нет: решением владельца (kacho#2616, исход C, 2026-09-13)
+// контракты службы доступа уехали в её репозиторий и приезжают опубликованным
+// модулем `github.com/PRO-Robotech/kaname` — каталогом `proto/kaname` внутри него.
+// Собранный вручную путь после такого переезда не краснеет по существу: он даёт
+// «нет такого файла», то есть отказ по координате вместо вердикта о предмете.
 func mfaFreshArgumentsFromModel(t *testing.T) []string {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(conditionProbeRepoRoot(t),
-		"proto", "kaname", "cloud", "iam", "v1", "fga_model.fga"))
+	model, err := contractsource.Path(conditionProbeRepoRoot(t), "kaname/cloud/iam/v1/fga_model.fga")
+	require.NoError(t, err, "каноническая модель прав не разрешается — предмет гейта недоступен")
+	raw, err := os.ReadFile(model)
 	require.NoError(t, err, "каноническая модель прав не прочитана — предмет гейта недоступен")
 	m := reMfaFreshSignature.FindSubmatch(raw)
 	require.NotNil(t, m,

@@ -12,7 +12,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	quotav1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/quota/v1"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 )
 
 // Своя форма ответа службы доступа совпадает с платформенной ДОСЛОВНО.

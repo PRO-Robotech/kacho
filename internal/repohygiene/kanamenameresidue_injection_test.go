@@ -129,14 +129,26 @@ func nameResidueBorderTwins() map[string]struct{ Path, Body string } {
 		// kanamenameresidue.go — не наш предмет: держатель остатка имени вынесен
 		// отдельным репозиторием), и близнец перестал быть предметом БЕЗ
 		// собственной находки — граница молчала одинаково и на верном, и на
-		// сломанном фикстуре. Возвращён путь ПОД МОДУЛЕМ kacho: он и сегодня
-		// законно живой (kaname временно require'ит платформу псевдоверсией,
-		// polyrepo.md §«Build-граф»), и пример взят из пакета, который под
-		// pkg/ остался (pkg/ownerregister, 275 файлов pkg/{api,authz,
-		// listnarrow,ownerregister,quota,subjectchange} никуда не уезжали).
+		// сломанном фикстуре. Нужен путь ПОД МОДУЛЕМ kacho: он и сегодня законно
+		// живой (kaname временно require'ит платформу псевдоверсией,
+		// polyrepo.md §«Build-граф»).
+		//
+		// ЗДЕСЬ СТОЯЛ `pkg/ownerregister` с оговоркой «275 файлов
+		// pkg/{api,authz,listnarrow,ownerregister,quota,subjectchange} никуда не
+		// уезжали». Оба утверждения ОТМЕНЕНЫ переездом контрактов службы доступа
+		// (kacho#2616, исход C, 2026-09-13) и опровергаются замером:
+		//
+		//	git ls-files pkg/ownerregister  | wc -l   → 0
+		//	git ls-files pkg/subjectchange  | wc -l   → 0
+		//	git ls-files pkg/ | wc -l                 → 173 (172 + pkg/LICENSE)
+		//
+		// Под `pkg/` осталось ЧЕТЫРЕ каталога из шести: api 165 · quota 5 ·
+		// listnarrow 1 · authz 1 (единица счёта — путь в индексе git). Пример взят
+		// из `pkg/quota/quotapb` — он под `pkg/` остался и импортируется деревом
+		// шесть раз, то есть остался и предметом, а не только каталогом.
 		borderFoundationModule: {
 			"services/iam/internal/apps/kaname/api/probe/import.go",
-			"import \"github.com/PRO-Robotech/kacho/pkg/ownerregister\"\n",
+			"import \"github.com/PRO-Robotech/kacho/pkg/quota/quotapb\"\n",
 		},
 		borderFoundationContract: {
 			"proto/kacho/cloud/iam/v1/probe_import.proto",
