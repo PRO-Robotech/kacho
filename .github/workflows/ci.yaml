@@ -1255,10 +1255,24 @@ jobs:
         with:
           python-version: '3.13'
 
+      # МОДУЛИ СТАВЯТСЯ СРАЗУ ЗА ИНТЕРПРЕТАТОРОМ, А НЕ ПЕРЕД СВОИМ ШАГОМ.
+      #
+      # `actions/setup-python` приносит ЧИСТЫЙ интерпретатор: системный `python3` образа
+      # мог нести `yaml` (на GitHub-hosted несёт), а этот — нет. Наблюдалось 2026-09-13,
+      # задание 103664648324: гейт «приём прежнего издателя на крае имеет предмет» упал
+      # `ModuleNotFoundError: No module named 'yaml'` — то есть моя же установка
+      # интерпретатора отняла модуль у гейта, который до неё работал.
+      #
+      # Поэтому оба модуля ставятся ОДНИМ шагом сразу за установкой интерпретатора:
+      # `pyyaml` читают гейт прежнего издателя и гейт запускаемости процессов,
+      # `pytest` — прогонщик проб python ниже. Ставить модуль перед своим шагом нельзя:
+      # порядок шагов меняется, и тогда гейт снова остаётся без модуля молча.
+      - name: модули python для гейтов этого задания (pyyaml, pytest)
+        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml pytest
+
       - name: регрессионные пробы оснастки сюит исполняются (не только существуют)
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet --disable-pip-version-check pytest
           python3 .github/scripts/run-python-probes.py --self-test
           python3 .github/scripts/run-python-probes.py
 
