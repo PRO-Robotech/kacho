@@ -887,14 +887,12 @@ func insecureEdgesInProductionStrict(cfg config.Config) error {
 	if cfg.FGARegisterDrainerEnabled && !cfg.IAMRegisterMTLS.Enable {
 		insecure = append(insecure, "IAM_REGISTER_MTLS_ENABLE")
 	}
-	// Ребро compute→домен величин. Провод живой ровно тогда, когда объявление
-	// разрешилось адресом, — тем же методом, каким его читает проводка, поэтому
-	// «страж увидел ребро» ⟺ «ребро дилится» by construction, а не по совпадению
-	// двух одинаково написанных условий. Полос у ребра две, и обе идут по этому
-	// проводу, поэтому удостоверение одно.
-	if cfg.QuotaAuthorityEdgeLive() && !cfg.QuotaAuthorityMTLS.Enable {
-		insecure = append(insecure, "QUOTA_AUTHORITY_MTLS_ENABLE")
-	}
+	// Ребра compute→домен величин в этом перечне НЕТ, и это не пропуск. Провод
+	// снят вместе с контрактом, которого не осталось ни в одном дереве; страж,
+	// требующий удостоверения на проводе, которого композиционный корень не
+	// собирает, есть фантомное требование, пережившее то, что охраняло. Поймано
+	// переписью рёбер композиционного корня, а не чтением.
+
 	if len(insecure) == 0 {
 		return nil
 	}

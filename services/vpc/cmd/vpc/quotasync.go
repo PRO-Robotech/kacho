@@ -14,7 +14,6 @@ import (
 	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/quota"
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/clients"
 )
 
 // Ребро vpc→домен величин: ОДНО ребро, ДВЕ полосы.
@@ -60,61 +59,37 @@ type quotaAuthorityEdge struct {
 func buildQuotaAuthorityEdge(
 	ctx context.Context,
 	cfg config.Config,
-	mtlsCfg config.MTLSConfig,
 	pool *pgxpool.Pool,
 	schema string,
 	logger *slog.Logger,
 ) (quotaAuthorityEdge, func(), error) {
 	noop := func() {}
 
-	authority, err := cfg.QuotaAuthority(mtlsCfg)
+	authority, err := cfg.QuotaAuthority()
 	if err != nil {
 		return quotaAuthorityEdge{}, noop, err
 	}
 
-	var (
-		limits    quota.LimitResolver
-		src       corequota.Source
-		closeConn = noop
-	)
-	if authority.Deployed() {
-		conn, derr := dialPeer(ctx, "vpc→quota authority",
-			mtlsCfg.QuotaAuthorityMTLS.Enable, mtlsCfg.QuotaAuthorityClientCreds, false,
-			clients.BuildOptions{
-				Endpoint: authority.Endpoint(),
-				// Односторонний TLS у этого ребра не объявляется: удостоверение
-				// здесь — только клиентский сертификат (довод — godoc
-				// Config.QuotaAuthority). Поле читается набирателем лишь на
-				// выключенном client-cert, то есть на посадке, где открытым
-				// текстом ходят и все прочие рёбра.
-				TLS: false,
-			})
-		if derr != nil {
-			return quotaAuthorityEdge{}, noop, fmt.Errorf("dial quota authority: %w", derr)
-		}
-		closeConn = func() { _ = conn.Close() }
-		limitClient := clients.NewLimitClient(conn)
-		limits, src = limitClient, limitClient
-		logger.Info("resource-count quota: limit authority edge configured",
-			"endpoint", authority.Endpoint(),
-			"mtls", mtlsCfg.QuotaAuthorityMTLS.Enable,
-			"service", "vpc")
-	}
+	// Полосы пути запроса НЕТ и быть не может: производителя у контракта
+	// авторитета величин не осталось ни в одном дереве, и объявленный адрес
+	// отвергается стражем старта (`pkg/quota/quotaedge`.ValidateAuthorityHasAProducer).
+	// Порт остаётся сокетом: он переживает смерть своей реализации by construction,
+	// и это ровно то, ради чего он порт. Кто его наполнит — решает развилка
+	// PRO-Robotech/kacho#2190.
 
 	// Снимок величины обязан ДОГОНЯТЬ авторитет: без тянущего строка,
 	// заведённая один раз, живёт со своей величиной вечно, и смена предела
 	// администратором не доезжает до проекта никогда. Заведение стоит здесь
 	// БЕЗУСЛОВНО — решение принимает StartLimitSync, читая объявление.
 	stopSync, serr := corequota.StartLimitSync(
-		ctx, pool, authority, src, schema, corequota.Config{}, logger)
+		ctx, pool, authority, nil, schema, corequota.Config{}, logger)
 	if serr != nil {
-		closeConn()
 		return quotaAuthorityEdge{}, noop, fmt.Errorf("start quota limit sync: %w", serr)
 	}
 
 	return quotaAuthorityEdge{
-			Limits:      limits,
+			Limits:      nil,
 			ReadPosture: corequota.ReadPosture(authority, "vpc"),
 		},
-		func() { stopSync(); closeConn() }, nil
+		stopSync, nil
 }

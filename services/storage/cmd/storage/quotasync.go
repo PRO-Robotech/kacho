@@ -13,7 +13,6 @@ import (
 	corequota "github.com/PRO-Robotech/corelib/quota"
 	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/quota"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/clients"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/config"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
@@ -58,46 +57,24 @@ func buildQuotaAuthorityEdge(
 		return quotaAuthorityEdge{}, noop, err
 	}
 
-	var (
-		guard     *quota.Guard
-		src       corequota.Source
-		closeConn = noop
-	)
-	if authority.Deployed() {
-		conn, derr := dialPeer(authority.Endpoint(), cfg.QuotaAuthorityMTLS, logger, "quota-authority")
-		if derr != nil {
-			return quotaAuthorityEdge{}, noop, fmt.Errorf("dial quota authority: %w", derr)
-		}
-		if conn == nil {
-			// dialPeer отдаёт nil на пустом адресе. Сюда мы попасть не можем:
-			// объявление уже разрешено и несёт непустой адрес. Ветка стоит,
-			// чтобы «невозможно» было названо, а не выведено читателем.
-			return quotaAuthorityEdge{}, noop, fmt.Errorf(
-				"объявление домена величин разрешено адресом %q, а набиратель отдал "+
-					"пустое соединение", authority.Endpoint())
-		}
-		closeConn = func() { _ = conn.Close() }
-		limitClient := clients.NewLimitClient(conn)
-		guard = quota.NewGuard(pg.NewQuotaRepo(pool), limitClient, accounts)
-		src = limitClient
-		logger.Info("resource-count quota: limit authority edge configured",
-			"endpoint", authority.Endpoint(),
-			"mtls", cfg.QuotaAuthorityMTLS.Enable,
-			"service", "storage")
-	}
+	// Полосы пути запроса НЕТ и быть не может: производителя у контракта
+	// авторитета величин не осталось ни в одном дереве, и объявленный адрес
+	// отвергается стражем старта (`pkg/quota/quotaedge`.ValidateAuthorityHasAProducer).
+	// Порт остаётся сокетом: он переживает смерть своей реализации by construction,
+	// и это ровно то, ради чего он порт. Кто его наполнит — решает развилка
+	// PRO-Robotech/kacho#2190.
 
 	// Заведение стоит БЕЗУСЛОВНО — решение принимает StartLimitSync, читая
 	// объявление.
 	stopSync, serr := corequota.StartLimitSync(
-		ctx, pool, authority, src, pg.QuotaSchema, corequota.Config{}, logger)
+		ctx, pool, authority, nil, pg.QuotaSchema, corequota.Config{}, logger)
 	if serr != nil {
-		closeConn()
 		return quotaAuthorityEdge{}, noop, fmt.Errorf("start quota limit sync: %w", serr)
 	}
 
 	return quotaAuthorityEdge{
-			Guard:       guard,
+			Guard:       nil,
 			ReadPosture: corequota.ReadPosture(authority, "storage"),
 		},
-		func() { stopSync(); closeConn() }, nil
+		stopSync, nil
 }

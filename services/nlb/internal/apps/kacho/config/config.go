@@ -521,12 +521,6 @@ type MTLSConfig struct {
 	Compute grpcclient.TLSClient `mapstructure:"compute"`
 	// Geo — client-cert на ребре nlb→geo (RegionService.Get, kacho-geo).
 	Geo grpcclient.TLSClient `mapstructure:"geo"`
-	// QuotaAuthority — client-cert на ребре nlb→домен величин (обе полосы:
-	// InternalLimitService.Resolve на пути запроса и ListChangedSince фоновой
-	// дельтой). Своё, а не заимствованное у authz-ребра: адрес домена величин
-	// объявляется отдельно (`quota.authority`), и удостоверение обязано
-	// следовать за адресом.
-	QuotaAuthority grpcclient.TLSClient `mapstructure:"quota-authority"`
 }
 
 // ─── Jobs (background workers) ───────────────────────────────────────────────

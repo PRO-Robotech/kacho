@@ -5,10 +5,29 @@ package config
 
 // quota_authority.go — объявление домена величин и страж его посадки.
 //
-// Один предикат на стража и на проводку: [Config.QuotaAuthorityDeclaration]
-// зовут оба — страж старта ради вердикта и композиционный корень ради адреса.
-// Второго предиката здесь нет намеренно: разошедшиеся страж и проводка
-// расходятся именно там, где расхождение опасно.
+// # У ручки осталось ОДНО действующее значение
+//
+// Авторитет величин снят со службы доступа целиком (задача продукта 2117), и
+// своего домена платформа не завела: производителя у контракта нет ни в одном
+// дереве. Значит адрес обращаться некуда, и объявивший его получает ОТКАЗ
+// СТАРТА, а не молчаливое «как будто отсутствует» — названное значение обязано
+// значить названное.
+//
+// # Здесь больше нет ПАРЫ «адрес и удостоверение»
+//
+// Пара стерегла живое ребро: удостоверение к нему несло имя, по которому
+// сверяется рукопожатие, и объявленное при отсутствующем собеседнике называло
+// пира, к которому ребро не идёт. Ребра нет — нет и предмета у пары. Требование
+// проверяемого транспорта снято тем же изменением: страж, требующий mTLS на
+// проводе, которого композиционный корень не собирает, есть фантомное
+// требование, пережившее то, что охраняло (поймано переписью рёбер
+// композиционного корня, а не чтением).
+//
+// # Один предикат на стража и на проводку
+//
+// Метод зовут оба — страж старта ради вердикта и композиционный корень ради
+// объявления. Второго предиката здесь нет намеренно: разошедшиеся страж и
+// проводка расходятся именно там, где расхождение опасно.
 
 import (
 	corequota "github.com/PRO-Robotech/corelib/quota"
@@ -16,34 +35,22 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/quota/quotaedge"
 )
 
-const (
-	quotaAuthorityKnob           = "KACHO_COMPUTE_QUOTA_AUTHORITY"
-	quotaAuthorityTransportKnob  = "KACHO_COMPUTE_QUOTA_AUTHORITY_MTLS_ENABLE"
-	quotaAuthorityServerNameKnob = "KACHO_COMPUTE_QUOTA_AUTHORITY_MTLS_SERVERNAME"
-)
+const quotaAuthorityKnob = "KACHO_COMPUTE_QUOTA_AUTHORITY"
 
-// QuotaAuthorityDeclaration разрешает объявление домена величин вместе с
-// удостоверением к нему.
+// QuotaAuthorityDeclaration разрешает объявление домена величин.
 func (c Config) QuotaAuthorityDeclaration() (corequota.Authority, error) {
 	a, err := corequota.ResolveAuthority(corequota.Declaration{
-		Knob:              quotaAuthorityKnob,
-		Value:             c.QuotaAuthority,
-		TransportKnob:     quotaAuthorityTransportKnob,
-		TransportRequired: c.Posture().IsProduction(),
-		TransportDeclared: c.QuotaAuthorityMTLS.Enable,
+		Knob:  quotaAuthorityKnob,
+		Value: c.QuotaAuthority,
 	})
 	if err != nil {
 		return corequota.Authority{}, err
 	}
-	// Вторая половина пары: адрес объявил ОТСУТСТВИЕ домена, а удостоверение к
-	// нему объявлено — имя для сверки называет пира, к которому ребро не идёт.
-	if err := quotaedge.ValidateAbsentAuthorityCarriesNoTransport(quotaedge.Pair{
-		AuthorityKnob:  quotaAuthorityKnob,
-		Authority:      c.QuotaAuthority,
-		TransportKnob:  quotaAuthorityTransportKnob,
-		ServerNameKnob: quotaAuthorityServerNameKnob,
-		Transport:      c.QuotaAuthorityMTLS,
-	}); err != nil {
+	// Адрес отвергается стартом: собеседника нет. Предикат стоит ПОСЛЕ разбора,
+	// а не до него: «оператор не выбрал» судит разборщик и называет это своими
+	// словами, и два текста об одном входе давали бы тот отказ, который успел
+	// сработать первым.
+	if err := quotaedge.ValidateAuthorityHasAProducer(quotaAuthorityKnob, c.QuotaAuthority); err != nil {
 		return corequota.Authority{}, err
 	}
 	return a, nil
@@ -53,20 +60,4 @@ func (c Config) QuotaAuthorityDeclaration() (corequota.Authority, error) {
 func (c Config) ValidateQuotaAuthority() error {
 	_, err := c.QuotaAuthorityDeclaration()
 	return err
-}
-
-// QuotaAuthorityEdgeLive — дилится ли ребро величин по этому объявлению.
-//
-// Читает ТО ЖЕ объявление, но БЕЗ половины про удостоверение, и это не второй
-// предикат об одном предмете: вопрос здесь другой. «Полна ли пара» — вопрос
-// стража посадки; «дилится ли ребро» — вопрос того, кто требует от живых рёбер
-// проверяемого транспорта. Спроси он полную пару — молчал бы ровно на той
-// посадке, ради которой заведён: адрес объявлен, удостоверения нет, разбор
-// отказывает, и страж пропускает открытый канал.
-func (c Config) QuotaAuthorityEdgeLive() bool {
-	a, err := corequota.ResolveAuthority(corequota.Declaration{
-		Knob:  quotaAuthorityKnob,
-		Value: c.QuotaAuthority,
-	})
-	return err == nil && a.Deployed()
 }

@@ -50,8 +50,7 @@ func allEdgesSecured() config.Config {
 		// Ребро величин поднимается и защищается наравне с остальными:
 		// объявление «не развёрнут» вывело бы его из наблюдения, и ослабление
 		// его удостоверения перестало бы что-либо значить.
-		QuotaAuthority:     "kaname-internal.kacho.svc:9091",
-		QuotaAuthorityMTLS: grpcclient.TLSClient{Enable: true},
+		QuotaAuthority: corequota.NotDeployed,
 	}
 }
 

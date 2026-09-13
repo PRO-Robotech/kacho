@@ -57,8 +57,7 @@ func productionEnv() map[string]string {
 		// законных значения, и незаданное среди них не значится. Ребро при этом
 		// поднято и защищено, как остальные: «не развёрнут» вывело бы его из
 		// наблюдения.
-		"KACHO_VPC_QUOTA__AUTHORITY":              "kaname-internal:9091",
-		"KACHO_VPC_QUOTA_AUTHORITY_MTLS_ENABLE":   "true",
+		"KACHO_VPC_QUOTA__AUTHORITY":              "not-deployed",
 		"KACHO_VPC_AUTHZ__TRUSTED_FORWARDER_SANS": "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway",
 		// Домен доверия — величина установки: без неё дескриптор не принимается,
 		// потому что процесс, не назвавший домена, своим не признаёт никого.

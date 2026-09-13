@@ -621,7 +621,6 @@ registry:
       # каждого потребителя), поэтому удостоверения к нему не бывает: имя для
       # сверки рукопожатия называло бы ПИРА, К КОТОРОМУ РЕБРО НЕ ИДЁТ.
       # Половину пары отвергает страж старта (`pkg/quota/quotaedge`).
-      quotaAuthority: false
       tokenRevocation: true
   dataplaneTLSTerminatedExternally: true
 
