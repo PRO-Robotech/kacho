@@ -83,13 +83,13 @@ func TestCSD_Run2_PlatformImportingTheServiceIsAFinding(t *testing.T) {
 
 	const victim = "kacho/cloud/quota/v1/quota.proto"
 	injected := withInjectedImport(t, platform, victim,
-		`import "kaname/cloud/iam/v1/limit.proto";`)
+		`import "kaname/cloud/iam/v1/membership.proto";`)
 
 	f, cen := repohygiene.AuditContractSplitDirection(injected, service, "kacho", "kaname")
 	require.Lenf(t, f, 1, "внесённое ребро обязано дать РОВНО одну находку, получено %d:\n  %s",
 		len(f), strings.Join(f, "\n  "))
 	require.Contains(t, f[0], victim, "находка не называет контракт-виновник")
-	require.Contains(t, f[0], "kaname/cloud/iam/v1/limit.proto",
+	require.Contains(t, f[0], "kaname/cloud/iam/v1/membership.proto",
 		"находка не называет импортируемый контракт — читателю негде посмотреть")
 	require.Equal(t, len(platform), cen.PlatformFiles,
 		"перепись сбилась: осмотрено %d описаний платформы вместо %d",
@@ -103,7 +103,7 @@ func TestCSD_Run3_ServiceImportingThePlatformIsSilent(t *testing.T) {
 	t.Parallel()
 	platform, service := splitFixture(t)
 
-	const twin = "kaname/cloud/iam/v1/limit.proto"
+	const twin = "kaname/cloud/iam/v1/membership.proto"
 	injected := withInjectedImport(t, service, twin,
 		`import "kacho/cloud/quota/v1/quota.proto";`)
 
@@ -124,7 +124,7 @@ func TestCSD_Run4_PublicImportFormIsSeenToo(t *testing.T) {
 
 	const victim = "kacho/cloud/quota/v1/quota.proto"
 	injected := withInjectedImport(t, platform, victim,
-		`import public "kaname/cloud/iam/v1/limit.proto";`)
+		`import public "kaname/cloud/iam/v1/membership.proto";`)
 
 	f, _ := repohygiene.AuditContractSplitDirection(injected, service, "kacho", "kaname")
 	require.Lenf(t, f, 1,
