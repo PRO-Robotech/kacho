@@ -258,6 +258,10 @@ func writeUnder(path string, b []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return fmt.Errorf("каталог собранного корня не заведён (%s): %w", filepath.Dir(path), err)
 	}
+	// #nosec G703 -- path собран ЭТИМ ЖЕ пакетом из временного каталога прогона
+	// и координат, объявленных постоянными: ни один его сегмент не приходит из
+	// запроса, окружения или содержимого судимых файлов. Каталог порождается на
+	// время прогона и снимается вместе с ним.
 	if err := os.WriteFile(path, b, 0o600); err != nil {
 		return fmt.Errorf("файл собранного корня не записан (%s): %w", path, err)
 	}
