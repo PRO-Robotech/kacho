@@ -139,6 +139,24 @@ trap 'rm -rf "${STAGE%/*}" "${BIN}"' EXIT
 # пакета роняло оба генератора по очереди одинаковым сообщением компилятора.
 # shellcheck source=lib/stage-proto-tree.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/stage-proto-tree.sh"
+# --- вход СОБИРАЕТСЯ ИЗ МОДУЛЕЙ, а не берётся одним деревом ----------------
+#
+# Контракты службы доступа уехали в её репозиторий (kacho#2616, исход C): под
+# `proto/` их больше нет, а краю они нужны — 117 записей каталога из 350 и 104
+# маршрута из 308 выводятся из НИХ. Поэтому корень контрактов для стадии
+# СОБИРАЕТСЯ: своё дерево плюс деревья корней, объявленных приезжающими модулем
+# (KACHO_PROTO_ROOT_MODULES). Объявленный и не материализованный корень роняет
+# сборку входа — прежде он давал выход без своих записей и вердикт «OK» на нём.
+#
+# Собранное дерево экспортируется дочерним вызовам ручкой KACHO_PROTO_ROOT: гейт
+# склейки зовёт генераторы по шесть раз, и второй резолв модуля был бы работой
+# без предмета.
+CONTRACT_ROOT="$(mktemp -d)/contract-root"
+trap 'rm -rf "${STAGE%/*}" "${BIN}" "${CONTRACT_ROOT%/*}"' EXIT
+kacho_assemble_contract_root "${PROTO_ROOT}" "${CONTRACT_ROOT}" "${GEN_MODULE_DIR}" "permission-catalog"
+PROTO_ROOT="${CONTRACT_ROOT}"
+export KACHO_PROTO_ROOT="${CONTRACT_ROOT}"
+
 stage_proto_tree "${PROTO_ROOT}" "${STAGE}" "permission-catalog" "${GEN_DOMAINS}"
 
 # --- anchor-файл плагина (primary file) ---

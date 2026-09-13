@@ -81,6 +81,9 @@ command -v buf >/dev/null || { echo "БЕЗ ПРЕДМЕТА: buf не уста�
 command -v go  >/dev/null || { echo "БЕЗ ПРЕДМЕТА: go не установлен — сверять нечего"  >&2; exit 2; }
 [[ -d "${PROTO_ROOT}" ]] || { echo "БЕЗ ПРЕДМЕТА: нет дерева контрактов ${PROTO_ROOT}" >&2; exit 2; }
 
+# shellcheck source=lib/stage-proto-tree.sh
+source "${REPO_ROOT}/scripts/lib/stage-proto-tree.sh"
+
 WORK="$(mktemp -d)"
 # Уборка снимает запрет записи ПЕРЕД удалением: ось A13 намеренно делает
 # реплику read-only, а unlink требует права записи на КАТАЛОГ. Без этого
@@ -120,6 +123,17 @@ diag_tail() {
   esac
 }
 
+# --- вход СОБИРАЕТСЯ ИЗ МОДУЛЕЙ ------------------------------------------
+#
+# Корень `kaname` в этом дереве не лежит: контракты службы доступа уехали в её
+# репозиторий (kacho#2616, исход C) и приезжают модулем. Гейт обязан судить ТОТ
+# ЖЕ вход, что кормит генераторы, — иначе его собственная стадия выйдет без
+# деревьев службы, и все оси измерят платформу, назвав это полным выходом.
+CONTRACT_ROOT="${WORK}/contract-root"
+kacho_assemble_contract_root "${PROTO_ROOT}" "${CONTRACT_ROOT}" "${MONOREPO_ROOT}" "check-domain-generation" \
+  || { echo "БЕЗ ПРЕДМЕТА: корень контрактов не собрался — судить нечего" >&2; exit 2; }
+PROTO_ROOT="${CONTRACT_ROOT}"
+
 # --- перепись входов ------------------------------------------------------
 echo "check-domain-generation: корень контрактов ${PROTO_ROOT}"
 echo "check-domain-generation: отбор доменов: ${DOMAINS[*]}"
@@ -147,8 +161,6 @@ echo "check-domain-generation: полный выход — записей кат
 #     его свойство утверждается ЯВНО, а не подразумевается.
 # ==========================================================================
 STRIPPED="${WORK}/stripped-proto"
-# shellcheck source=lib/stage-proto-tree.sh
-source "${REPO_ROOT}/scripts/lib/stage-proto-tree.sh"
 stage_proto_tree "${PROTO_ROOT}" "${STRIPPED}" "check-stripped-tree" "${DOMAINS[*]}" \
   || finding A2 "раскладка урезанного дерева отказала"
 
