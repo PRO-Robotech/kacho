@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: Apache-2.0
 
-// Package quotapb — перевод строк учёта в контракт `kacho.cloud.quota.v1`.
+// Package quotapb — перевод строк учёта в контракт `corelib.quota.v1`.
 //
 // # Почему это отдельный пакет, а не пять одинаковых функций в пяти обработчиках
 //
@@ -20,7 +20,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	quotav1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/quota/v1"
+	quotav1 "github.com/PRO-Robotech/corelib/api/corelib/quota/v1"
 
 	"github.com/PRO-Robotech/corelib/quota/quotaread"
 )

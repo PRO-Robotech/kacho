@@ -211,7 +211,11 @@ var foundationSubtrees = []struct {
 	{"pkg/api/kaname/cloud/iam", classKaname},
 	{"pkg/api/kacho/cloud/operation", classCorelib},
 	{"pkg/api/kacho/cloud/subscription", classCorelib},
-	{"pkg/api/kacho/cloud/quota", classCorelib},
+	// Записи `pkg/api/kacho/cloud/quota` здесь БОЛЬШЕ НЕТ (kacho#2601): форма
+	// ответа учёта переименована в `corelib.quota.v1` и лежит под нейтральным
+	// корнем, то есть класс ей раздаёт запись `pkg/api/corelib` ниже — по пути, а
+	// не переопределением. Переопределение, пережившее свой каталог, есть слепая
+	// зона: класс оно раздаёт, а предмета у него нет.
 	// Нейтральный корень объявляется ЦЕЛИКОМ, а не по одному словарю. Прежде здесь
 	// стоял `pkg/api/corelib/authz`, и записи хватало ровно на один переезд: второй
 	// словарь (#2395, разметка операции) лёг рядом в `pkg/api/corelib/api/v1` и
