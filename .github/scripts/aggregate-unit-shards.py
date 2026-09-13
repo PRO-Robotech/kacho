@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -213,23 +214,68 @@ def adjudicate(plan: dict | None, censuses: dict[str, dict],
     return GREEN, findings, num
 
 
-def read_censuses(d: Path) -> dict[str, dict]:
-    out: dict[str, dict] = {}
+# Имя файла описи несёт НОМЕР ПОПЫТКИ: `<шард>.a<N>.json`. Без суффикса — попытка 0.
+ATTEMPT_IN_NAME = re.compile(r"\.a(\d+)\.json$")
+
+
+def attempt_of(path: Path) -> int:
+    """Попытка, на которой опись записана. Отвечает ИМЯ ФАЙЛА, а шард — документ.
+
+    Источники разные намеренно: имя артефакта конвейер строит из
+    `${{ github.run_attempt }}`, и подделать его прогону нечем, тогда как поле
+    внутри документа пишет тот же прогон, чью правдивость мы и выясняем.
+    """
+    m = ATTEMPT_IN_NAME.search(path.name)
+    return int(m.group(1)) if m else 0
+
+
+def read_censuses(d: Path) -> tuple[dict[str, dict], list[str]]:
+    """Опись КАЖДОГО шарда — от САМОЙ СВЕЖЕЙ его попытки. Плюс перечень отброшенных.
+
+    ПОЧЕМУ ВЫБОР, А НЕ ПРОСТО ЧТЕНИЕ. Перезапуск упавшего шарда не заменяет его
+    артефакт, а ДОБАВЛЯЕТ второй с тем же именем. Наблюдалось в прогоне
+    34725980915: `unit-census-gateway` создан дважды (00:10:22 — попытка, где шард
+    упал; 00:30:50 — попытка, где он вышел `success`), `download-artifact` с
+    `merge-multiple: true` сложил оба в один каталог, одноимённый файл
+    перезаписался в неопределённом порядке, и свод объявил «ШАРД ВЫШЕЛ НЕНУЛЁМ:
+    gateway (код 1)» при всех тринадцати шардах зелёных. Красное было о ПРОШЛОМ.
+
+    ФИЛЬТР ПО ПОПЫТКЕ ПРОГОНА НЕ ГОДИТСЯ, и это не мелочь: шард, который не
+    перезапускали, описи с новым номером не заливает — его законная опись от
+    первой попытки обязана остаться в счёт, иначе перезапуск ОДНОГО шарда
+    превращал бы остальные двенадцать в «не отчитались».
+
+    Отброшенные НАЗЫВАЮТСЯ, а не молчат: «взял свежую» без перечня неотличимо от
+    «второй описи не было».
+    """
+    best: dict[str, tuple[int, dict]] = {}
+    dropped: list[str] = []
     if not d.is_dir():
-        return out
+        return {}, dropped
     for p in sorted(d.rglob("*.json")):
         try:
             doc = json.loads(p.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
+        if not isinstance(doc, dict):
+            continue
         sid = doc.get("shard")
-        if isinstance(doc, dict) and sid:
-            out[str(sid)] = doc
-    return out
+        if not sid:
+            continue
+        sid = str(sid)
+        att = attempt_of(p)
+        prev = best.get(sid)
+        if prev is None or att > prev[0]:
+            if prev is not None:
+                dropped.append(f"{sid}: попытка {prev[0]} (взята {att})")
+            best[sid] = (att, doc)
+        else:
+            dropped.append(f"{sid}: попытка {att} (взята {prev[0]})")
+    return {sid: doc for sid, (_, doc) in best.items()}, sorted(dropped)
 
 
 def render(category: str, findings: list[str], num: dict,
-           censuses: dict[str, dict]) -> str:
+           censuses: dict[str, dict], dropped: list[str] | None = None) -> str:
     lines = [f"ИСХОД: {category} — {GLOSS[category]}", ""]
     lines.append(f"пакетов с пробами в дереве N {num['tree']} · "
                  f"роздано по шардам M {num['handed']} · "
@@ -248,6 +294,15 @@ def render(category: str, findings: list[str], num: dict,
                 f"| {sid} | {len(c.get('assigned') or [])} | {len(c.get('seen') or [])} "
                 f"| {c.get('tests_executed', 0)} "
                 f"| {'—' if ttf is None else f'{float(ttf):.0f}'} | {c.get('rc', '?')} |")
+    # Отброшенные описи печатаются ВСЕГДА, в том числе когда их ноль: «ноль
+    # устаревших» обязано быть отличимо от «устаревшие не искали».
+    lines.append("")
+    if dropped:
+        lines.append(f"описей отброшено как устаревшие: {len(dropped)} — "
+                     + "; ".join(dropped))
+    else:
+        lines.append("описей отброшено как устаревшие: 0 (у каждого шарда "
+                     "ровно одна попытка в наборе)")
     if findings:
         lines.append("")
         lines.append(f"НАХОДОК {len(findings)}:")
@@ -365,8 +420,75 @@ def self_test() -> int:
     ok &= _case("пропуски при нулевом коде шарда → ЗЕЛЁНЫЙ (судит прогонщик)", c,
                 GREEN, None)
 
+    ok &= _self_test_attempts()
+
     print("самопроба:", "ПРОЙДЕНА" if ok else "ПРОВАЛЕНА")
     return 0 if ok else 1
+
+
+def _write_census(d: Path, sid: str, attempt: int | None, rc: int) -> Path:
+    """Опись на диск. `attempt=None` — имя БЕЗ суффикса, форма до этой правки."""
+    name = f"{sid}.json" if attempt is None else f"{sid}.a{attempt}.json"
+    p = d / name
+    p.write_text(json.dumps(_census(sid, ["pkg/one"], rc=rc), ensure_ascii=False),
+                 encoding="utf-8")
+    return p
+
+
+def _self_test_attempts() -> bool:
+    """ВЫБОР ПОПЫТКИ — четыре оси, и две из них о том, чего прежний код не различал.
+
+    Проверяется файловая половина (`read_censuses`), а не чистая функция: предмет
+    дефекта был именно в чтении каталога, куда `download-artifact` сложил две описи
+    одного шарда.
+    """
+    import tempfile
+    ok = True
+
+    def case(name: str, files, want_rc, want_dropped: int) -> bool:
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td)
+            for sid, att, rc in files:
+                _write_census(d, sid, att, rc)
+            got, dropped = read_censuses(d)
+            rc = got.get("gateway", {}).get("rc")
+            good = rc == want_rc and len(dropped) == want_dropped
+            print(f"  [{'OK ' if good else 'ОТКАЗ'}] {name}: rc {rc} (ждали "
+                  f"{want_rc}), отброшено {len(dropped)} (ждали {want_dropped})")
+            return good
+
+    # ДЕФЕКТ, ИЗ-ЗА КОТОРОГО ЭТО НАПИСАНО: рядом со свежей зелёной описью лежит
+    # красная от прошлой попытки. Верный ответ — свежая, и отброшенная названа.
+    ok &= case("устаревшая красная рядом со свежей зелёной → взята свежая",
+               [("gateway", 1, 1), ("gateway", 3, 0)], 0, 1)
+
+    # ОБРАТНАЯ СТОРОНА, без которой первая ось доказывала бы «выбирай зелёное»:
+    # свежая КРАСНАЯ при устаревшей зелёной обязана победить — свод не вправе
+    # предпочитать удобный вердикт.
+    ok &= case("свежая красная при устаревшей зелёной → взята свежая (красная)",
+               [("gateway", 1, 0), ("gateway", 3, 1)], 1, 1)
+
+    # ЗАКОННЫЙ БЛИЗНЕЦ: одна попытка — отбрасывать нечего, и это печатается нулём.
+    ok &= case("единственная опись → взята она, отброшено ноль",
+               [("gateway", 2, 0)], 0, 0)
+
+    # СОВМЕСТИМОСТЬ: имя без суффикса — попытка 0, и суффиксованная её обгоняет.
+    ok &= case("имя без суффикса считается попыткой 0",
+               [("gateway", None, 1), ("gateway", 1, 0)], 0, 1)
+
+    # Перезапуск ОДНОГО шарда не превращает остальные в «не отчитались»: у них
+    # попытка прежняя, и они обязаны остаться в наборе.
+    with tempfile.TemporaryDirectory() as td:
+        d = Path(td)
+        _write_census(d, "vpc", 1, 0)
+        _write_census(d, "gateway", 1, 1)
+        _write_census(d, "gateway", 3, 0)
+        got, dropped = read_censuses(d)
+        good = sorted(got) == ["gateway", "vpc"] and got["vpc"]["rc"] == 0
+        print(f"  [{'OK ' if good else 'ОТКАЗ'}] опись шарда без перезапуска "
+              f"остаётся в наборе: шардов {sorted(got)}")
+        ok &= good
+    return ok
 
 
 def main() -> int:
@@ -390,11 +512,11 @@ def main() -> int:
         plan = None
         sys.stdout.write(f"план не прочитан ({args.plan}): {e}\n")
 
-    censuses = read_censuses(Path(args.dir))
+    censuses, dropped = read_censuses(Path(args.dir))
     own, note = own_tree(root)
     category, findings, num = adjudicate(plan, censuses, own, note,
                                          args.plan_result, args.shard_result)
-    text = render(category, findings, num, censuses)
+    text = render(category, findings, num, censuses, dropped)
     sys.stdout.write(text)
     if args.summary:
         try:
