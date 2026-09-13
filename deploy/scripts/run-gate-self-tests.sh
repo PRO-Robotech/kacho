@@ -94,6 +94,7 @@ DECLARED="
 .github/scripts/assert-declared-verdicts-ran.py
 .github/scripts/assert-default-branch-workflows-can-run.py
 .github/scripts/assert-green-gate-notes.py
+.github/scripts/assert-jobs-provide-python-modules.py
 .github/scripts/assert-required-contexts-match-jobs.py
 .github/scripts/assert-unit-shard-wiring.py
 .github/scripts/check-newman-suite-gates.py
