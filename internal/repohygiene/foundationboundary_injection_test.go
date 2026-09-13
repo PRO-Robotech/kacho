@@ -372,7 +372,6 @@ func TestClassOfPackageResolvesSplitSubtreesAndRefusesUnknownCatalogs(t *testing
 		// расщепление pkg/quota (приёмка §5.3): остаток corelib, два подпакета kaname
 		{"pkg/quota", classCorelib},
 		{"pkg/quota/quotaread", classCorelib},
-		{"pkg/quota/quotaiam", classKaname},
 		{"pkg/quota/quotapb", classKaname},
 		// оснастка и обычный каталог
 		{"pkg/pgtest", classToolchain},
@@ -383,8 +382,14 @@ func TestClassOfPackageResolvesSplitSubtreesAndRefusesUnknownCatalogs(t *testing
 		// упущение: единственная многосегментная приставка называла службу
 		// доступа, вынесенную отдельным продуктом, и в foundationRoots не
 		// осталось ни одной вложенной. Само свойство «длиннее побеждает»
-		// проверено выше парой pkg/quota ↔ pkg/quota/quotaiam — оно у
+		// проверено выше парой pkg/quota ↔ pkg/quota/quotapb — оно у
 		// classOfPackage одно на обе карты.
+		//
+		// Пара СМЕНИЛАСЬ вместе с деревом: прежде доказательством служила
+		// pkg/quota ↔ pkg/quota/quotaiam, и её младший член снят вместе с
+		// клиентом к авторитету величин. Доказательство перенесено на живую
+		// пару, а не удалено: свойство осталось, исчез один из двух примеров,
+		// которыми оно показывалось.
 		{"services/vpc/internal/repo", classKacho},
 		{"gateway/internal/restmux", classKacho},
 		{"internal/repohygiene", classToolchain},
