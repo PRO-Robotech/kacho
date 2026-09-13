@@ -32,7 +32,7 @@ func TestQSC_AuthorityIsRecognisedByTheServiceName(t *testing.T) {
 	t.Parallel()
 	// Форма из `services/compute/internal/clients/limit_client.go`.
 	got := surfacesOf("services/compute/internal/clients/limit_client.go",
-		"// клиент iam.v1.InternalLimitService на внутреннем слушателе\n")
+		"// чтение kaname.limits на внутреннем слушателе\n")
 	require.Contains(t, got, quotaSurfaceAuthority,
 		"имя службы величин обязано относить файл к авторитету: именно эти места снимает S4")
 }
@@ -131,7 +131,7 @@ func TestQSC_RuleWithoutSubjectIsAFinding(t *testing.T) {
 		"на корпусе из одного файла почти всем правилам относить нечего — "+
 			"перепись обязана это сказать, иначе послабление переживёт свой предмет")
 	joined := strings.Join(res.RulesWithoutHit, " ")
-	require.Contains(t, joined, "A1", "находка обязана НАЗЫВАТЬ правило, а не только их число")
+	require.Contains(t, joined, "A2", "находка обязана НАЗЫВАТЬ правило, а не только их число")
 	require.NotContains(t, joined, "B7 (",
 		"правило, которому было что относить, в находки попадать не должно")
 }
@@ -208,7 +208,7 @@ func TestQSC_PrimaryPrefersForeignOverOurLedger(t *testing.T) {
 // перепись прибавляла бы к каждой поверхности по единице собственного описания.
 func TestQSC_OwnSourceIsNotItsOwnSubject(t *testing.T) {
 	t.Parallel()
-	const body = "InternalLimitService kacho_quota_count RefusedSubjectQuota\n"
+	const body = "kaname.limits kacho_quota_count RefusedSubjectQuota\n"
 
 	acc := newQuotaCensusAccumulator()
 	acc.Observe(quotaCensusOwnSource, body)
@@ -225,7 +225,7 @@ func TestQSC_OwnSourceIsNotItsOwnSubject(t *testing.T) {
 // свойство учёта по-настоящему, и снятие таких гейтов — часть работы S4.
 func TestQSC_ANeighbouringGateIsStillJudged(t *testing.T) {
 	t.Parallel()
-	const body = "InternalLimitService kacho_quota_count RefusedSubjectQuota\n"
+	const body = "kaname.limits kacho_quota_count RefusedSubjectQuota\n"
 
 	acc := newQuotaCensusAccumulator()
 	acc.Observe("internal/repohygiene/quotakindproducer.go", body)
@@ -311,7 +311,7 @@ func TestQSC_LatinMentionDoesNotInflateTheRussianOnlyCount(t *testing.T) {
 	// в слепую зону — нет.
 	acc := newQuotaCensusAccumulator()
 	acc.Observe("services/vpc/internal/clients/limit_client.go",
-		"// клиент InternalLimitService на внутреннем слушателе\n")
+		"// quota client reads kaname.limits over the internal listener\n")
 	res := acc.Finish()
 	require.Len(t, res.Candidates, 1)
 	require.Zero(t, res.RussianOnly,
@@ -361,7 +361,7 @@ func TestQSC_PageNamingMachineryKeepsItsOwnSurface(t *testing.T) {
 	// Законный близнец: та же форма файла, но страница называет машинерию.
 	// Правило прозы — отступление, поэтому оно обязано уступить.
 	got := surfacesOf("services/iam/docs/content/api/limit.mdx",
-		"`InternalLimitService.Resolve` отдаёт действующие величины\n")
+		"`kaname.limits` несёт действующие величины\n")
 	require.Contains(t, got, quotaSurfaceAuthority)
 	require.NotContains(t, got, quotaSurfaceProse,
 		"отступление, взявшее страницу с машинерией, спрятало бы работу стадии S4 в «упоминание»")
@@ -387,7 +387,7 @@ func TestQSC_SubstringAccidentDoesNotHideRealMachinery(t *testing.T) {
 	// слово, в которое признак попал подстрокой, стоит рядом с настоящим именем
 	// службы величин.
 	got := surfacesOf("services/vpc/docs/engineering/architecture/11-resource-count-quotas.md",
-		"a quotation from the owner doc\n`InternalLimitService` отдаёт действующие величины\n")
+		"a quotation from the owner doc\n`kaname.limits` несёт действующие величины\n")
 	require.Contains(t, got, quotaSurfaceAuthority,
 		"настоящая машинерия обязана пережить случайное совпадение подстроки")
 	require.NotContains(t, got, quotaSurfaceForeign,
