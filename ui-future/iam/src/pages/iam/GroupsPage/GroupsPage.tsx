@@ -33,6 +33,7 @@ import { LabelsEditor, labelsFromEntries, type LabelEntry } from "@shared/compon
 import { useDebouncedValue } from "@shared/lib/list-search";
 import { pickerScope, type PickerScope } from "@shared/lib/picker-search";
 import { groupDetailPathFromOp } from "./groupNav";
+import { useResourceStream } from "@shared/lib/subscription/use-resource-stream";
 
 /**
  * Чем сужается список кандидатов в участники у своего владельца (#528).
@@ -82,13 +83,23 @@ export function GroupsPage() {
     [accountId, navigate],
   );
 
+  // Группы ведёт журнал службы доступа (вид `iam_group`), поэтому опрос снимает
+  // ПОКРЫТИЕ, а не наша уверенность: признак приходит от владельца первым кадром
+  // потока. Аккаунт проектом не сужается — предмет живёт уровнем выше, и ось
+  // проекта здесь пуста НАМЕРЕННО: задай её, и владелец отдавал бы только строки
+  // с непустым проектом, то есть ни одной.
+  const { streamed } = useResourceStream({
+    specId: "groups",
+    projectId: null,
+    invalidate: ["iam", "groups", "list", accountId],
+    enabled: !!accountId,
+  });
+
   const list = useQuery({
     queryKey: ["iam", "groups", "list", accountId],
     queryFn: () => iamApi.listGroups({ account_id: accountId!, pageSize: "200" }),
     enabled: !!accountId,
-    // поллинг остаётся: журнала у iam нет — среди владельцев глагола подписки
-    // его не значится (владельцев называет карта предметов, `STREAM_SUBJECTS`).
-    refetchInterval: 5_000,
+    refetchInterval: streamed ? false : 5_000,
     staleTime: 0,
   });
 
@@ -369,7 +380,11 @@ export function GroupMembersPanel({ group, accountId }: { group: Group; accountI
   const members = useQuery({
     queryKey: ["iam", "groups", group.id, "members"],
     queryFn: () => iamApi.listGroupMembers(group.id, { pageSize: "200" }),
-    // поллинг остаётся: состав группы — предмет iam, а журнала у iam нет.
+    // поллинг остаётся: журнал службы доступа ведёт СЕМЬ видов, и состава группы
+    // среди них нет — он живёт отдельной таблицей связей, а вид `iam_group`
+    // несёт саму группу. Событие о группе приходом-уходом участника не
+    // производится, поэтому подписка здесь молчала бы, а список замер бы
+    // навсегда — что со стороны неотличимо от «состав не менялся».
     refetchInterval: 5_000,
     staleTime: 0,
   });
