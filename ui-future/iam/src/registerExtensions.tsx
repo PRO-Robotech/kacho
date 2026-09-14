@@ -365,8 +365,10 @@ function SubjectPrivilegesSubjectTable({
     queryKey: ["iam", "subject-privileges", mode.subjectType, mode.subjectId],
     queryFn: () => iamApi.listSubjectPrivileges(mode.subjectType, mode.subjectId, { page_size: "200" }),
     enabled: !!mode.subjectId,
-    // поллинг остаётся: привилегии субъекта — предмет iam, а журнала у iam
-    // нет: подписаться не на что.
+    // поллинг остаётся: привилегии субъекта — ПРОИЗВОДНАЯ (роль × ресурс ×
+    // область), а журнал ведёт ресурсы: среди семи его видов такого нет. Событие
+    // о выдаче пришло бы видом `iam_access_binding` и об этой таблице не сказало
+    // бы ничего — производная меняется и от роли, и от области, и от членства.
     refetchInterval: 5_000,
     staleTime: 0,
   });

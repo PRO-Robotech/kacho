@@ -170,18 +170,18 @@ export const SERVICE_MODULES: ServiceModule[] = [
     color: "#9B59F6",
     description: "Аккаунты, проекты, пользователи, сервисные аккаунты, группы, роли и связки прав.",
     landing: () => "/iam/accounts",
-    // ЕДИНСТВЕННАЯ плитка без `specId` — и это решение, а не пропуск: журнала у
-    // iam нет ни для одного вида, поэтому подписываться тут не на что, и её три
-    // счётчика остаются на опросе при любом исходе #1632. Перечень владельцев
-    // журнала объявляет `JOURNAL_OWNERS` (@shared/lib/subscription/subjects), и
-    // `iam` в него не входит: назови мы предмет здесь — владелец отверг бы поток,
-    // а счётчик замер бы навсегда, что со стороны неотличимо от «ресурсов нет».
-    // Появится журнал у iam — три `specId` дописываются сюда, и опрос уходит
-    // отсюда сам, без единой правки загрузчика.
+    // ЖУРНАЛ У СЛУЖБЫ ДОСТУПА ПОЯВИЛСЯ, и три `specId` дописаны сюда — опрос ушёл
+    // отсюда САМ, без единой правки загрузчика: он снимается признаком покрытия,
+    // который отдаёт `useStreamCoverage` по этой же карте.
+    //
+    // Здесь стояло обратное — «журнала у iam нет ни для одного вида» — и
+    // утверждение пережило свой предмет. Оно же называло координатой
+    // `JOURNAL_OWNERS`, снятый #1578: перечень владельцев выводится из карты
+    // предметов, а плоского индекса у неё больше нет.
     stats: [
-      { key: "accounts", label: "Аккаунтов", listPath: "/iam/v1/accounts", payloadKey: "accounts" },
-      { key: "projects", label: "Проектов", listPath: "/iam/v1/projects", payloadKey: "projects" },
-      { key: "roles", label: "Ролей", listPath: "/iam/v1/roles", payloadKey: "roles" },
+      { key: "accounts", label: "Аккаунтов", listPath: "/iam/v1/accounts", payloadKey: "accounts", specId: "accounts" },
+      { key: "projects", label: "Проектов", listPath: "/iam/v1/projects", payloadKey: "projects", specId: "projects" },
+      { key: "roles", label: "Ролей", listPath: "/iam/v1/roles", payloadKey: "roles", specId: "roles" },
     ],
   },
 ];

@@ -31,6 +31,7 @@ import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
 import { errorText } from "@shared/lib/error-presentation";
 import { useDebouncedValue } from "@shared/lib/list-search";
 import { pickerScope } from "@shared/lib/picker-search";
+import { useResourceStream } from "@shared/lib/subscription/use-resource-stream";
 
 /** Уровень выдачи — теми же словами, что у платформы: аккаунт и проект. */
 type ScopeTab = "account" | "project";
@@ -87,6 +88,16 @@ export function AccessPage() {
     [navigate, resourceId, scope],
   );
 
+  // Выдачи ведёт журнал службы доступа (вид `iam_access_binding`). Ключ
+  // перечитывания — префикс: срез по ресурсу лежит под ним же, и событие гасит
+  // его вместе с остальными.
+  const { streamed: bindingsStreamed } = useResourceStream({
+    specId: "access-bindings",
+    projectId: null,
+    invalidate: ["iam", "access-bindings"],
+    enabled: !!resourceId,
+  });
+
   const bindings = useQuery({
     queryKey: ["iam", "access-bindings", "by-resource", resourceType, resourceId],
     queryFn: () =>
@@ -94,8 +105,7 @@ export function AccessPage() {
         pageSize: "200",
       }),
     enabled: !!resourceId,
-    // поллинг остаётся: журнала у iam нет, подписаться не на что.
-    refetchInterval: 5_000,
+    refetchInterval: bindingsStreamed ? false : 5_000,
     staleTime: 0,
   });
 

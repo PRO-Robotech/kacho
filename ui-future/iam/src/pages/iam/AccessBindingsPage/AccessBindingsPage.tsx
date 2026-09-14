@@ -23,6 +23,7 @@ import { ScopeRequiredEmpty } from "@/components/molecules/ScopeRequiredEmpty";
 import { IamListShell } from "@/components/organisms/iam/IamListShell";
 import { ColumnSettings, useHiddenColumns } from "@shared/components/molecules/TableToolbar";
 import { clientScope, rowsAreComplete } from "@shared/lib/list-scope";
+import { useResourceStream } from "@shared/lib/subscription/use-resource-stream";
 import {
   AccessBindingCreateForm,
   type SubjectType,
@@ -78,6 +79,18 @@ export function AccessBindingsPage() {
 
   // Единая таблица — все bindings, видимые в выбранном Account (account-scoped +
   // project-scoped). Не запрашиваем, пока Account не выбран.
+  //
+  // Выдачи ведёт журнал службы доступа (вид `iam_access_binding`). Ключ
+  // перечитывания взят ПРЕФИКСОМ: под ним лежат срезы по каждому сочетанию
+  // отбора и признака отозванных, и событие обязано погасить их все — иначе
+  // вкладка, на которой отбор другой, осталась бы со старым срезом.
+  const { streamed: bindingsStreamed } = useResourceStream({
+    specId: "access-bindings",
+    projectId: null,
+    invalidate: ["iam", "access-bindings"],
+    enabled: !!accountId,
+  });
+
   const bindingsQ = useQuery({
     queryKey: ["iam", "access-bindings", "by-account", accountId, subjectTypeFilter, includeRevoked],
     queryFn: () =>
@@ -87,11 +100,7 @@ export function AccessBindingsPage() {
         include_revoked: includeRevoked,
       }),
     enabled: !!accountId,
-    // поллинг остаётся: журнала у iam нет — среди владельцев глагола подписки
-    // его не значится (владельцев называет карта предметов, `STREAM_SUBJECTS`).
-    // Подписаться не на что: ось `owner` приняла бы только объявленного
-    // посадкой владельца.
-    refetchInterval: 5_000,
+    refetchInterval: bindingsStreamed ? false : 5_000,
     staleTime: 0,
   });
   const bindingsList = bindingsQ.data as AccessBindingList | undefined;

@@ -58,7 +58,23 @@ function makeHub(sources: FakeSource[]): SubscriptionHub {
 }
 
 const vpcModule = SERVICE_MODULES.find((m) => m.key === "vpc")!;
-const iamModule = SERVICE_MODULES.find((m) => m.key === "iam")!;
+
+// МОДУЛЬ БЕЗ ПРЕДМЕТА ПОТОКА — СИНТЕТИКА, И ЭТО РЕШЕНИЕ, А НЕ УДОБСТВО.
+//
+// Здесь стоял живой модуль службы доступа: он единственный не называл ни одного
+// `specId`. Журнал у службы появился, все её счётчики предмет получили, и
+// журналом не ведомого модуля в витрине не осталось НИ ОДНОГО.
+//
+// Свойство, которое проба держит, — поведение ХУКА: счётчик, чей предмет никем
+// не объявлен, обязан остаться на опросе, иначе он замрёт навсегда. Оно от
+// состава витрины не зависит и обязано пережить его, поэтому фикстура строится
+// снятием `specId`, а не выбором модуля. Что в САМОЙ витрине не осталось
+// счётчиков без предмета — предмет соседней пробы (`service-modules.stream`), и
+// второе место об одном факте разошлось бы с ней молча.
+const journallessModule = {
+  ...SERVICE_MODULES.find((m) => m.key === "iam")!,
+  stats: SERVICE_MODULES.find((m) => m.key === "iam")!.stats.map(({ specId: _specId, ...rest }) => rest),
+};
 
 /** Число списочных запросов и текущий ответ на каждый listPath. */
 let listCalls = 0;
@@ -75,7 +91,7 @@ beforeEach(() => {
       listCalls += 1;
       const stat =
         vpcModule.stats.find((s) => path.startsWith(s.listPath)) ??
-        iamModule.stats.find((s) => path.startsWith(s.listPath));
+        journallessModule.stats.find((s) => path.startsWith(s.listPath));
       const body = stat
         ? { [stat.payloadKey]: Array.from({ length: itemsPerList }, (_, i) => ({ id: `x-${i}` })) }
         : {};
@@ -130,11 +146,11 @@ describe("счётчики витрины и поток изменений", () 
     const sources: FakeSource[] = [];
     const hub = makeHub(sources);
 
-    const { result } = renderHook(() => useModuleCounts(iamModule, "all", "", hub));
+    const { result } = renderHook(() => useModuleCounts(journallessModule, "all", "", hub));
     await waitFor(() => expect(result.current.accounts).toBe(1));
     const afterFirstLoad = listCalls;
 
-    // Ни одного потока не открыто: предмета у iam нет, подписываться не на что.
+    // Ни одного потока не открыто: предмета у счётчика нет, подписываться не на что.
     expect(sources).toHaveLength(0);
 
     act(() => {

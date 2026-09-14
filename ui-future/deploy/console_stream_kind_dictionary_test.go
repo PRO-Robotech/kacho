@@ -106,6 +106,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -350,6 +351,13 @@ type consoleKindVerdict struct {
 	PinnedByName int
 	// PinnedByBijection — владельцев, чью привязку держит только однозначность.
 	PinnedByBijection int
+	// PinnedByLedger — владельцев, чью привязку держит ЗАПИСЬ ВЕДОМОСТИ внешних
+	// журналов: она называет и владельца, и репозиторий, то есть пинит пару
+	// явным решением — строже, чем совпадение имени с каталогом.
+	PinnedByLedger int
+	// ExcusedExternal — видов, чьё написание НЕ СВЕРЕНО НИ С ЧЕМ: журнал их
+	// владельца ведёт другой репозиторий, и пин его ещё не несёт.
+	ExcusedExternal int
 }
 
 func (v consoleKindVerdict) empty() bool {
@@ -363,8 +371,63 @@ func journalDirOfOwner(owner string) string {
 	return path.Join("services", owner, "internal", "subscriptionjournal")
 }
 
+// outlivedLedgerRecords — записи ведомости внешних журналов, у которых предмет
+// исчез. Три стороны, и каждая означает своё:
+//
+//   - журнал владельца нашёлся В ЭТОМ дереве — запись прикрывает живую координату;
+//   - журнал стал ЧИТАЕМ В ПИНЕ — сверять есть чем, прощать больше нечего;
+//   - карта предметов владельца не называет — прощать нечего вовсе, и запись
+//     стала слепой зоной, выданной вперёд.
+//
+// Отдельной функцией — ради того же, ради чего отделено суждение о картe:
+// инъекция обязана подавать ОБЕ стороны каждой оси, не трогая дерева.
+func outlivedLedgerRecords(external map[string]string, dict map[string][]string,
+	namedOwners map[string]bool, readable map[string]string) []string {
+	owners := make([]string, 0, len(external))
+	for owner := range external {
+		owners = append(owners, owner)
+	}
+	sort.Strings(owners)
+
+	var out []string
+	for _, owner := range owners {
+		repo := external[owner]
+		if _, here := dict[journalDirOfOwner(owner)]; here {
+			out = append(out, fmt.Sprintf(
+				"владелец %q объявлен ведущим журнал В ДРУГОМ репозитории (%s), а журнал "+
+					"нашёлся В ЭТОМ дереве (%s) — запись пережила свой предмет, снимите её "+
+					"из journalsOutsideThisTree: она прикрывает живую координату",
+				owner, repo, journalDirOfOwner(owner)))
+		}
+		if rel, ok := readable[owner]; ok {
+			out = append(out, fmt.Sprintf(
+				"журнал владельца %q СТАЛ ЧИТАЕМ в пине (%s) — сверять написания теперь "+
+					"есть чем, и прощать их больше нечего. Снимите запись %q из "+
+					"journalsOutsideThisTree: пока она стоит, перепись считает виды этого "+
+					"владельца несверенными, хотя они сверены",
+				owner, rel, owner))
+		}
+		if !namedOwners[owner] {
+			out = append(out, fmt.Sprintf(
+				"ведомость journalsOutsideThisTree называет владельца %q (%s), которого "+
+					"карта предметов консоли НЕ НАЗЫВАЕТ ни одной записью — прощать нечего, "+
+					"и запись стала слепой зоной, выданной вперёд",
+				owner, repo))
+		}
+	}
+	return out
+}
+
 // judgeConsoleKinds сверяет карту предметов со словарями дерева.
 func judgeConsoleKinds(subjects []consoleStreamSubject, dict map[string][]string) consoleKindVerdict {
+	return judgeConsoleKindsWithExternal(subjects, dict, journalsOutsideThisTree)
+}
+
+// judgeConsoleKindsWithExternal — та же оценка, но ведомость внешних журналов
+// подаётся ЯВНО: доказательство способности падать обязано предъявить ОБЕ
+// стороны, иначе один и тот же вход давал бы один и тот же вердикт.
+func judgeConsoleKindsWithExternal(subjects []consoleStreamSubject, dict map[string][]string,
+	external map[string]string) consoleKindVerdict {
 	byKind := map[string][]string{}
 	for owner, kinds := range dict {
 		for _, kind := range kinds {
@@ -382,6 +445,14 @@ func judgeConsoleKinds(subjects []consoleStreamSubject, dict map[string][]string
 	for _, s := range subjects {
 		journals := byKind[s.Kind]
 		if len(journals) == 0 {
+			if _, outside := external[s.Owner]; outside {
+				// Журнал этого владельца ведёт другой репозиторий, и пин его ещё
+				// не несёт: сверять написание НЕ С ЧЕМ. Молча пропустить нельзя —
+				// число таких видов печатает перепись, и запись ведомости
+				// истекает сама, как только журнал станет читаем.
+				verdict.ExcusedExternal++
+				continue
+			}
 			verdict.Undeclared = append(verdict.Undeclared, fmt.Sprintf(
 				"спека %q называет владельцем %q вид %q, которого НЕ ОБЪЯВЛЯЕТ ни один "+
 					"журнал дерева. Поток откроется, словарь владельца этого вида не "+
@@ -424,6 +495,15 @@ func judgeConsoleKinds(subjects []consoleStreamSubject, dict map[string][]string
 
 	// Свойство 4: одноимённый каталог, если он в дереве есть, привязку РЕШАЕТ.
 	for _, owner := range sortedMapKeys(ownerJournals) {
+		if _, outside := external[owner]; outside {
+			// Пара «владелец ↔ журнал» названа записью ведомости поимённо, и
+			// одноимённого каталога у такого владельца в этом дереве нет by
+			// construction. Считать его однозначностью значило бы расширить
+			// слепую зону перестановки на владельца, которого ведомость как раз
+			// и пинит явно.
+			verdict.PinnedByLedger++
+			continue
+		}
 		own := journalDirOfOwner(owner)
 		if _, exists := dict[own]; !exists {
 			verdict.PinnedByBijection++
@@ -504,27 +584,34 @@ func collectStringConsts(t *testing.T, dir string, out map[string]string) {
 		if perr != nil {
 			t.Fatalf("файл %s не разобрался: %v", p, perr)
 		}
-		for _, d := range file.Decls {
-			gen, ok := d.(*ast.GenDecl)
-			if !ok || gen.Tok != token.CONST {
+		collectConstDecls(file, out)
+	}
+}
+
+// collectConstDecls — строковые константы одного разобранного файла. Общая для
+// обхода СВОЕГО дерева и обхода пиненного модуля: два разбора одного предмета
+// разошлись бы молча, и разошёлся бы тот, который реже прогоняют.
+func collectConstDecls(file *ast.File, out map[string]string) {
+	for _, d := range file.Decls {
+		gen, ok := d.(*ast.GenDecl)
+		if !ok || gen.Tok != token.CONST {
+			continue
+		}
+		for _, sp := range gen.Specs {
+			vs, ok := sp.(*ast.ValueSpec)
+			if !ok {
 				continue
 			}
-			for _, s := range gen.Specs {
-				vs, ok := s.(*ast.ValueSpec)
-				if !ok {
+			for i, ident := range vs.Names {
+				if i >= len(vs.Values) {
 					continue
 				}
-				for i, ident := range vs.Names {
-					if i >= len(vs.Values) {
-						continue
-					}
-					bl, ok := vs.Values[i].(*ast.BasicLit)
-					if !ok || bl.Kind != token.STRING {
-						continue
-					}
-					if unq, uerr := strconv.Unquote(bl.Value); uerr == nil {
-						out[ident.Name] = unq
-					}
+				bl, ok := vs.Values[i].(*ast.BasicLit)
+				if !ok || bl.Kind != token.STRING {
+					continue
+				}
+				if unq, uerr := strconv.Unquote(bl.Value); uerr == nil {
+					out[ident.Name] = unq
 				}
 			}
 		}
@@ -548,8 +635,151 @@ func modulePathOf(t *testing.T, root string) string {
 	return ""
 }
 
-// journalDictionaries — словари всех владельцев журнала дерева.
-func journalDictionaries(t *testing.T, root string) map[string][]string {
+// ─────────────────────────────────────────────────────────────────────────────
+// ЖУРНАЛ, КОТОРЫЙ ВЕДЁТ ДРУГОЙ РЕПОЗИТОРИЙ
+//
+// Служба доступа вынесена отдельным продуктом, и её журнал живёт в её дереве.
+// Обход `services/*` его не видит by construction, поэтому виды, которые консоль
+// называет её владельцем, были бы объявлены НЕОБЪЯВЛЕННЫМИ — гейт краснел бы на
+// верной карте, а снять его требование значило бы снять проверку написаний
+// целиком.
+//
+// Исход выбран третий: журнал читается ТАМ, ГДЕ ОН ЕСТЬ, — в модуле, который это
+// дерево ПИНИТ. Пин есть объявленное ребро сборки, а не догадка: версия названа в
+// `go.mod`, и словарь берётся у производителя той версии, а не переписывается
+// сюда. Копия словаря была бы вторым местом об одном предмете и разошлась бы с
+// владельцем молча — ровно то, от чего этот гейт и заведён.
+//
+// ПОКА ПИН ЖУРНАЛА НЕ НЕСЁТ, сверять написания нечем, и это состояние объявлено
+// ведомостью ниже, а не замаскировано. Ведомость самоистекает в ТРИ стороны, и ни
+// одна не требует, чтобы кто-нибудь о ней вспомнил:
+//
+//   · журнал владельца нашёлся В ЭТОМ дереве — предмет записи исчез;
+//   · журнал владельца стал ЧИТАЕМ В ПИНЕ — сверять теперь есть чем, и запись
+//     обязана уйти, уступив место настоящей проверке;
+//   · карта предметов перестала называть этого владельца — прощать стало нечего.
+//
+// Значение записи — ПУТЬ МОДУЛЯ, а не вольное имя: им же резолвится пин, поэтому
+// запись, указывающая в никуда, не доживает до зелёного.
+
+// journalsOutsideThisTree — владельцы, чей журнал ведёт другой репозиторий.
+var journalsOutsideThisTree = map[string]string{
+	"iam": "github.com/PRO-Robotech/kaname",
+}
+
+// externalJournalRel — где журнал лежит внутри чужого модуля. Форма одна на все
+// репозитории продукта и выведена из этого дерева: у своих владельцев она та же,
+// с точностью до каталога сервиса.
+const externalJournalRel = "internal/subscriptionjournal/journal.go"
+
+// pinnedModuleDirs — каталоги пиненных модулей, по одному запросу на прогон.
+//
+// Спрашивается у сборщика, а не собирается из `GOMODCACHE` и правил экранирования
+// пути: последние — его внутренняя механика, и копия этих правил разошлась бы с
+// ним молча на первом же модуле с заглавной буквой в имени.
+func pinnedModuleDirs(t *testing.T, root string, modulePaths []string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for _, mp := range modulePaths {
+		cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", mp) // #nosec G204 -- путь модуля объявлен ведомостью выше
+		cmd.Dir = root
+		cmd.Env = append(os.Environ(), "GOWORK=off")
+		raw, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("каталог пиненного модуля %s не разрешился (%v) — прочитать журнал "+
+				"владельца негде, и молчание проверки не являлось бы утверждением о "+
+				"согласии написаний", mp, err)
+		}
+		dir := strings.TrimSpace(string(raw))
+		if dir == "" {
+			t.Fatalf("модуль %s не пинится этим деревом — ведомость внешних журналов "+
+				"указывает в никуда", mp)
+		}
+		out[mp] = dir
+	}
+	return out
+}
+
+// moduleConstLookup — значения строковых констант пакета ВНУТРИ пиненного модуля.
+//
+// Отдельно от `treeConstLookup`: тот берёт состав у индекса git, а модуль лежит
+// в кеше сборщика и репозиторием не является — обход индексом дал бы там ноль
+// файлов, то есть молча укоротившийся словарь.
+func moduleConstLookup(t *testing.T, moduleDir, modulePath string) constLookup {
+	t.Helper()
+	cache := map[string]map[string]string{}
+	return func(importPath, name string) (string, bool) {
+		consts, done := cache[importPath]
+		if !done {
+			consts = map[string]string{}
+			rel := strings.TrimPrefix(importPath, modulePath+"/")
+			if rel != importPath {
+				collectStringConstsAt(t, filepath.Join(moduleDir, filepath.FromSlash(rel)), consts)
+			}
+			cache[importPath] = consts
+		}
+		v, ok := consts[name]
+		return v, ok
+	}
+}
+
+// collectStringConstsAt — то же, что `collectStringConsts`, но состав берётся у
+// файловой системы: чужой модуль под индексом этого дерева не лежит.
+func collectStringConstsAt(t *testing.T, dir string, out map[string]string) {
+	t.Helper()
+	entries, err := filepath.Glob(filepath.Join(dir, "*.go"))
+	if err != nil {
+		t.Fatalf("перечень файлов пакета %s не собрался: %v", dir, err)
+	}
+	for _, p := range entries {
+		if strings.HasSuffix(p, "_test.go") {
+			continue
+		}
+		src, rerr := os.ReadFile(p) // #nosec G304 -- каталог выдан сборщиком по пиненному модулю
+		if rerr != nil {
+			t.Fatalf("файл %s не читается: %v", p, rerr)
+		}
+		fset := token.NewFileSet()
+		file, perr := parser.ParseFile(fset, p, src, 0)
+		if perr != nil {
+			t.Fatalf("файл %s не разобрался: %v", p, perr)
+		}
+		collectConstDecls(file, out)
+	}
+}
+
+// externalJournalKinds — словарь владельца, чей журнал лежит в пиненном модуле.
+//
+// Второй результат отвечает на вопрос «читаемо ли»: ЛОЖЬ означает, что пин этого
+// журнала ещё не несёт, и тогда написания владельца не сверяются ничем — это
+// состояние объявлено ведомостью, а не молчанием.
+func externalJournalKinds(t *testing.T, moduleDir, modulePath string) ([]string, string, bool) {
+	t.Helper()
+	abs := filepath.Join(moduleDir, filepath.FromSlash(externalJournalRel))
+	src, err := os.ReadFile(abs) // #nosec G304 -- каталог выдан сборщиком по пиненному модулю
+	if err != nil {
+		return nil, "", false
+	}
+	rel := modulePath + "/" + path.Dir(externalJournalRel)
+	decl, derr := journalKindRefsOf(rel, string(src))
+	if derr != nil {
+		t.Fatalf("%v", derr)
+	}
+	kinds, kerr := resolveJournalKinds(rel, decl, rel,
+		moduleConstLookup(t, moduleDir, modulePath))
+	if kerr != nil {
+		t.Fatalf("%v", kerr)
+	}
+	return kinds, rel, true
+}
+
+// journalDictionaries — словари всех владельцев журнала: своего дерева и тех,
+// чей журнал ведёт пиненный модуль.
+//
+// Второй результат называет владельцев ведомости, чей журнал ОКАЗАЛСЯ ЧИТАЕМ, —
+// по нему запись ведомости и истекает: сверять стало чем, значит прощать больше
+// нечего.
+func journalDictionaries(t *testing.T, root string) (map[string][]string, map[string]string) {
 	t.Helper()
 	modulePath := modulePathOf(t, root)
 	lookup := treeConstLookup(t, root, modulePath)
@@ -582,7 +812,30 @@ func journalDictionaries(t *testing.T, root string) map[string][]string {
 		}
 		out[path.Dir(rel)] = kinds
 	}
-	return out
+
+	// Журналы, которые ведёт другой репозиторий, читаются у ПИНА — объявленного
+	// ребра сборки, а не у копии словаря в этом дереве.
+	readable := map[string]string{}
+	owners := make([]string, 0, len(journalsOutsideThisTree))
+	for owner := range journalsOutsideThisTree {
+		owners = append(owners, owner)
+	}
+	sort.Strings(owners)
+	wanted := make([]string, 0, len(owners))
+	for _, owner := range owners {
+		wanted = append(wanted, journalsOutsideThisTree[owner])
+	}
+	dirs := pinnedModuleDirs(t, root, wanted)
+	for _, owner := range owners {
+		mp := journalsOutsideThisTree[owner]
+		kinds, rel, ok := externalJournalKinds(t, dirs[mp], mp)
+		if !ok {
+			continue
+		}
+		out[rel] = kinds
+		readable[owner] = rel
+	}
+	return out, readable
 }
 
 // TestEveryKindTheConsoleNamesIsDeclaredByItsOwner — три свойства на дереве.
@@ -595,7 +848,7 @@ func TestEveryKindTheConsoleNamesIsDeclaredByItsOwner(t *testing.T) {
 	}
 	subjects := consoleStreamSubjectsOf(string(raw))
 	_, declaredOwnerFields := consoleSubjectCounts(string(raw))
-	dict := journalDictionaries(t, root)
+	dict, externalReadable := journalDictionaries(t, root)
 
 	declared := 0
 	perOwner := make([]string, 0, len(dict))
@@ -641,7 +894,22 @@ func TestEveryKindTheConsoleNamesIsDeclaredByItsOwner(t *testing.T) {
 
 	verdict := judgeConsoleKinds(subjects, dict)
 	t.Logf("привязка владельцев: одноимённым каталогом держится %d, взаимной "+
-		"однозначностью %d", verdict.PinnedByName, verdict.PinnedByBijection)
+		"однозначностью %d, ведомостью внешних журналов %d; видов, чьё написание "+
+		"НЕ СВЕРЕНО (журнал в чужом репозитории, пин его не несёт): %d",
+		verdict.PinnedByName, verdict.PinnedByBijection, verdict.PinnedByLedger,
+		verdict.ExcusedExternal)
+
+	// ВЕДОМОСТЬ ВНЕШНИХ ЖУРНАЛОВ ИСТЕКАЕТ САМА — три стороны, ни одна не ждёт,
+	// чтобы о ней вспомнили. Суждение вынесено функцией: доказательство
+	// способности падать обязано прогонять ТУ ЖЕ функцию, а не её копию.
+	namedOwners := map[string]bool{}
+	for _, sub := range subjects {
+		namedOwners[sub.Owner] = true
+	}
+	for _, text := range outlivedLedgerRecords(
+		journalsOutsideThisTree, dict, namedOwners, externalReadable) {
+		t.Error(text)
+	}
 
 	// Премиса свойства 4, с ОБЕИХ сторон.
 	if verdict.PinnedByName == 0 {

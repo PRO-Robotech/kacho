@@ -385,7 +385,7 @@ describe("предпосылка гейта: он различает сняты�
     const sites = parse(`
       const q = useQuery({
         queryKey: ["users"],
-        // поллинг остаётся: журнала у iam нет, подписаться не на что
+        // поллинг остаётся: тип машины журналом не ведётся, подписаться не на что
         refetchInterval: 5_000,
       });
     `);
@@ -414,7 +414,7 @@ describe("предпосылка гейта: он различает сняты�
     const sites = parse(`
       const a = useQuery({
         queryKey: ["users"],
-        // поллинг остаётся: журнала у iam нет, подписаться не на что
+        // поллинг остаётся: тип машины журналом не ведётся, подписаться не на что
         refetchInterval: 5_000,
       });
       const b = useQuery({ queryKey: ["roles"], refetchInterval: 5_000 });
