@@ -598,14 +598,18 @@ func TestExternalJournalLedger_RecordOutlivesItsSubject(t *testing.T) {
 			"прикрывала бы живую координату", len(got))
 	}
 
-	// ОСЬ 2: журнал стал читаем в пине.
+	// ЧИТАЕМОСТЬ ОСЬЮ НЕ ЯВЛЯЕТСЯ — и это утверждается прямо, потому что здесь
+	// стояла обратная проба. Запись несёт ДВЕ роли: адрес модуля, по которому
+	// журнал читается, и прощение написаний, пока читать нечего. Читаемость гасит
+	// вторую и не трогает первую; снятие записи у читаемого журнала отняло бы
+	// адрес, и владелец пропал бы из обхода целиком.
 	readable := map[string]string{"identity": "example.com/identity/internal/subscriptionjournal"}
-	if got := outlivedLedgerRecords(probeExternalLedger, empty, named, readable); len(got) != 1 {
-		t.Fatalf("журнал стал читаем в пине, а запись не истекла (%d) — прощение "+
-			"пережило бы то, ради чего заводилось", len(got))
+	if got := outlivedLedgerRecords(probeExternalLedger, empty, named, readable); len(got) != 0 {
+		t.Fatalf("читаемый журнал объявлен истечением записи (%v) — снятие отняло бы "+
+			"адрес, по которому он и читается", got)
 	}
 
-	// ОСЬ 3: карта владельца больше не называет.
+	// ОСЬ 2: карта владельца больше не называет.
 	if got := outlivedLedgerRecords(probeExternalLedger, empty, map[string]bool{}, none); len(got) != 1 {
 		t.Fatalf("карта не называет владельца, а запись не истекла (%d) — она стала "+
 			"слепой зоной, выданной вперёд", len(got))
