@@ -174,7 +174,13 @@ var foundationClasses = map[string]foundationClass{
 	"subscription":    classCorelib,
 	"tokenpolicy":     classCorelib,
 	"treecorpus":      classToolchain,
-	"validate":        classCorelib,
+	// Класс тот же, что у двух сиблингов рядом (`gitenv`, `treecorpus`), и по
+	// тому же правилу, а не по соседству: пакет читает дерево исходников и
+	// ходит в git, поэтому в замыкание поставляемого двоичного не попадает —
+	// его зовёт только `internal/repohygiene`. Каталог приехал с `corelib
+	// v1.5.0`, где получил дом общей части ban #11 и ban #17 (kaname#51).
+	"treehygiene": classToolchain,
+	"validate":    classCorelib,
 }
 
 // foundationSubtrees — каталоги, уезжающие НЕ ЦЕЛИКОМ (приёмка §5, знак †).

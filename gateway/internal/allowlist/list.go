@@ -61,8 +61,9 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.vpc.v1.CidrGroupService/AddCidrBlocks":          {},
 	"/kacho.cloud.vpc.v1.CidrGroupService/RemoveCidrBlocks":       {},
 	"/kacho.cloud.vpc.v1.CidrGroupService/ListOperations":         {},
-	// vpc.v1 — QuotaService (только чтение: величины администрируются на
-	// внутреннем слушателе через iam.v1.InternalLimitService)
+	// vpc.v1 — QuotaService (только чтение: назначавший величины
+	// авторитет снят вместе с доменом величин, PRO-Robotech/kacho#2117 —
+	// производителя не осталось ни в одном дереве, владелец не назначен)
 	"/kacho.cloud.vpc.v1.QuotaService/List": {},
 	// vpc.v1 — SubnetService
 	"/kacho.cloud.vpc.v1.SubnetService/Get":               {},
@@ -119,8 +120,9 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.vpc.v1.GatewayService/Update":         {},
 	"/kacho.cloud.vpc.v1.GatewayService/Delete":         {},
 	"/kacho.cloud.vpc.v1.GatewayService/ListOperations": {},
-	// compute.v1 — QuotaService (только чтение: величины администрируются на
-	// внутреннем слушателе через iam.v1.InternalLimitService)
+	// compute.v1 — QuotaService (только чтение: назначавший величины
+	// авторитет снят вместе с доменом величин, PRO-Robotech/kacho#2117 —
+	// производителя не осталось ни в одном дереве, владелец не назначен)
 	"/kacho.cloud.compute.v1.QuotaService/List": {},
 
 	// compute.v1 — InstanceService
@@ -166,8 +168,9 @@ var AllowedMethods = map[string]struct{}{
 	// compute.v1 — Geography (Region/Zone) НЕ публичная поверхность compute:
 	// выделена в leaf-сервис kacho-geo (см. geo.v1 ниже).
 
-	// storage.v1 — QuotaService (только чтение: величины администрируются на
-	// внутреннем слушателе через iam.v1.InternalLimitService)
+	// storage.v1 — QuotaService (только чтение: назначавший величины
+	// авторитет снят вместе с доменом величин, PRO-Robotech/kacho#2117 —
+	// производителя не осталось ни в одном дереве, владелец не назначен)
 	"/kacho.cloud.storage.v1.QuotaService/List": {},
 
 	// storage.v1 — VolumeService (kacho-storage; Volume — block-storage ресурс,
@@ -338,17 +341,6 @@ var AllowedMethods = map[string]struct{}{
 	"/kaname.cloud.iam.v1.AccessBindingService/Update": {}, // public mutation (REST PATCH /iam/v1/accessBindings/{access_binding_id}); clears deletion_protection, editor relation (parity with Delete)
 	"/kaname.cloud.iam.v1.AccessBindingService/Delete": {},
 
-	// LimitService — административная поверхность пределов на ПУБЛИЧНОМ бэкенде
-	// (ADM-1 S1, #878). Наружу выставлен публичный глагол, а не `Internal*`:
-	// запрет 6 не смягчён, `HasInternalSuffix` не тронут. Доступ закрывает
-	// отношение `system_admin` @ `cluster`, которое подстановочный кортеж
-	// `user:*` не выполняет, — поэтому публикация адреса круга не расширяет, а
-	// делает отказ честным: 403 вместо 404.
-	"/kaname.cloud.iam.v1.LimitService/Get":            {},
-	"/kaname.cloud.iam.v1.LimitService/List":           {},
-	"/kaname.cloud.iam.v1.LimitService/Create":         {},
-	"/kaname.cloud.iam.v1.LimitService/Update":         {},
-	"/kaname.cloud.iam.v1.LimitService/Delete":         {},
 	"/kaname.cloud.iam.v1.AccessBindingService/Revoke": {}, // soft-revoke :verb (REST POST /iam/v1/accessBindings/{access_binding_id}:revoke), F10
 
 	"/kaname.cloud.iam.v1.AccessBindingService/ListByScope":           {}, // public sync read (REST GET /iam/v1/accessBindings:listByScope)
@@ -372,8 +364,9 @@ var AllowedMethods = map[string]struct{}{
 	// ВНЕШНИЙ listener: на внутреннем у части этих RPC есть и REST-маршрут
 	// (restmux заводит их на internalMux), и это запрету #6 не противоречит.
 
-	// loadbalancer.v1 — QuotaService (только чтение: величины администрируются на
-	// внутреннем слушателе через iam.v1.InternalLimitService)
+	// loadbalancer.v1 — QuotaService (только чтение: назначавший величины
+	// авторитет снят вместе с доменом величин, PRO-Robotech/kacho#2117 —
+	// производителя не осталось ни в одном дереве, владелец не назначен)
 	"/kacho.cloud.loadbalancer.v1.QuotaService/List": {},
 
 	// loadbalancer.v1 — NetworkLoadBalancerService (kacho-nlb)
@@ -406,8 +399,9 @@ var AllowedMethods = map[string]struct{}{
 	// (HasInternalSuffix блокирует автоматически; запрет #6). gRPC-direct only;
 	// streaming Subscribe не имеет HTTP-аннотаций, REST не регистрируется.
 
-	// registry.v1 — QuotaService (только чтение: величины администрируются на
-	// внутреннем слушателе через iam.v1.InternalLimitService)
+	// registry.v1 — QuotaService (только чтение: назначавший величины
+	// авторитет снят вместе с доменом величин, PRO-Robotech/kacho#2117 —
+	// производителя не осталось ни в одном дереве, владелец не назначен)
 	"/kacho.cloud.registry.v1.QuotaService/List": {},
 
 	// registry.v1 — RegistryService (kacho-registry, control-plane реестра)

@@ -61,7 +61,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// sensitiveACR2Set — the 33 FQNs that MUST carry required_acr_min="2" after the
+// sensitiveACR2Set — the 27 FQNs that MUST carry required_acr_min="2" after the
 // refinement (grant-surface + credential + tenancy-root + shared-resource
 // ceiling, domain-agnostic). Any drift (an RPC added or dropped) fails this
 // test. Categories A–J per the APPROVED acceptance docs.
@@ -168,34 +168,18 @@ func sensitiveACR2Set() map[string]struct{} {
 		"kaname.cloud.iam.v1.InternalInteractiveClientService/Create",
 		"kaname.cloud.iam.v1.InternalInteractiveClientService/Update",
 		"kaname.cloud.iam.v1.InternalInteractiveClientService/Delete",
-		// J — resource-count ceilings (3). Issue #291, S1.
+		// ЗДЕСЬ СТОЯЛА КАТЕГОРИЯ J — потолки числа ресурсов (6 записей: три акта
+		// администрирования величины на внутреннем адресе и те же три на публичном).
 		//
-		// Sensitive because a ceiling decides how much of a SHARED resource one
-		// tenant may take. Raising one hands out headroom that is not created by
-		// the act; lowering one freezes a tenant's creation path; withdrawing one
-		// silently moves the decision to another scope. All three are grants in
-		// the same sense category B is: they change what a principal may do, and
-		// nothing about them is undone by the next read.
+		// Снята вместе с доменом величин (PRO-Robotech/kacho#2117): авторитета,
+		// назначавшего величину, не осталось ни в одном дереве. До каталога края это
+		// дошло подъёмом пина службы (PRO-Robotech/kacho#2645) — записи порождаются
+		// из контрактов, а контракты приезжают сюда модулем.
 		//
-		// Get / List / Resolve / ListChangedSince are deliberately NOT here —
-		// reading a ceiling grants nothing — and their exclusion is asserted by
-		// the complement test below, because the generator's default floor is "2"
-		// and an unstated floor would have put them here by accident rather than
-		// by decision.
-		"kaname.cloud.iam.v1.InternalLimitService/Create",
-		"kaname.cloud.iam.v1.InternalLimitService/Update",
-		"kaname.cloud.iam.v1.InternalLimitService/Delete",
-
-		// Те же три акта на ПУБЛИЧНОМ адресе (ADM-1 S1, #878). Порог
-		// подтверждения личности принадлежит ДЕЙСТВИЮ, а не адресу: сменить
-		// потолок через `/iam/v1/limits` — ровно то же изменение доли арендатора
-		// в общей платформе, что и через внутренний путь. Разойдись эти два
-		// перечня хоть на одну запись, публичный адрес стал бы дешёвым обходом
-		// ступени, и обход этот не был бы виден ни в одном диффе.
-		"kaname.cloud.iam.v1.LimitService/Create",
-		"kaname.cloud.iam.v1.LimitService/Update",
-		"kaname.cloud.iam.v1.LimitService/Delete",
-
+		// Довод категории не отозван, а остался без предмета: порог принадлежал
+		// ДЕЙСТВИЮ, а не адресу, и потому был одинаков на обоих. Заведут потолки
+		// заново — категория заводится вместе с ними, и оба адреса обязаны нести
+		// один порог, иначе публичный станет дешёвым обходом ступени.
 		// K — module-catalog application (1). kacho#1034.
 		//
 		// Sensitive because applying WITHDRAWS TENANT RIGHTS and does so
@@ -248,7 +232,13 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 	// «чувствительное» — назначение, изменение и отзыв предела. Число утверждается,
 	// а не выводится из списка: молчаливое сокращение — ровно то, что произошло бы
 	// при случайно выпавшей записи.
-	require.Len(t, sensitive, 33, "the acceptance-doc sensitive set must contain exactly 33 FQNs")
+	// 33 → 27: домен величин снят (PRO-Robotech/kacho#2117), и с ним ушла вся
+	// категория J — шесть актов администрирования потолка, три на внутреннем
+	// адресе и три на публичном. До каталога края это дошло подъёмом пина
+	// службы (PRO-Robotech/kacho#2645). Число по-прежнему утверждается, а не
+	// выводится из списка: молчаливое сокращение — ровно то, что произошло бы
+	// при случайно выпавшей записи, и отличить его от этого снятия было бы нечем.
+	require.Len(t, sensitive, 27, "the acceptance-doc sensitive set must contain exactly 27 FQNs")
 
 	got2 := map[string]struct{}{}
 	for _, fqn := range c.FQNs() {
@@ -269,7 +259,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 		_, want := sensitive[fqn]
 		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive allowlist (over-inclusion): %s", fqn)
 	}
-	assert.Len(t, got2, 33, "exactly 33 FQNs must carry required_acr_min=2")
+	assert.Len(t, got2, 27, "exactly 27 FQNs must carry required_acr_min=2")
 }
 
 // TestPermissionCatalog_ACR_ComplementNotTwo — SEC-ACR-13 / I1: explicit
@@ -655,8 +645,9 @@ func TestPermissionCatalog_ACR_Counts(t *testing.T) {
 	//
 	//	снятие движка   — вычло записи администрирования хранилища отношений;
 	//	снятие двух дверей (#788) — вычло две записи полосы «освобождённых»;
-	//	публикация пределов (#878) — прибавила пять записей публичного
-	//	                `iam.v1.LimitService`.
+	//	публикация пределов (#878) — прибавила пять записей публичной
+	//	                поверхности величин (её имя здесь не воспроизводится:
+	//	                поверхность снята, PRO-Robotech/kacho#2117).
 	//
 	// Числа ниже — НЕ сумма трёх поправок в уме и НЕ выбор одной стороны: они
 	// сняты ЗАМЕРОМ сгенерированного каталога ПОСЛЕ слияния (регенерация
@@ -687,7 +678,17 @@ func TestPermissionCatalog_ACR_Counts(t *testing.T) {
 	// (`UserService/RemoveFromAccount`, #1127) — вторая половина пары к Invite,
 	// и порог у неё тот же, что у Invite и у отзыва выдачи: обе меняют СОСТАВ
 	// участников аккаунта.
-	assert.Equal(t, 33, n2, "sensitive count")
+	// СНЯТИЕ ДОМЕНА ВЕЛИЧИН (PRO-Robotech/kacho#2117, до края дошло подъёмом пина
+	// службы — PRO-Robotech/kacho#2645) убрало из каталога ДВЕНАДЦАТЬ записей:
+	// шесть актов администрирования величины ушли из чувствительной полосы
+	// (33→27) и шесть чтений потолка — из рутинной (290→284); полоса «без
+	// порога» не сдвинулась (27), потому что ни одна снятая запись в ней не
+	// стояла. Итог 350→338.
+	//
+	// Числа ЗАМЕРЕНЫ прогоном, а не вычтены в уме: их напечатали сами упавшие
+	// утверждения этой пробы после регенерации каталога. Сумма сходится
+	// (27+284+27=338) — и это единственное, ради чего её стоит называть.
+	assert.Equal(t, 27, n2, "sensitive count")
 	// ТРИ линии завели по одной записи каждая, и объяснения всех трёх остаются —
 	// они про разные глаголы. Числа ниже ЗАМЕРЕНЫ по дереву после слияния,
 	// а не сложены в уме: арифметика трёх переписей даёт совпадение, которое
@@ -754,9 +755,9 @@ func TestPermissionCatalog_ACR_Counts(t *testing.T) {
 	// освобождённую запись (#1450), линия — две записи полосы рутины (IAM-ID-2 S1).
 	// Числа ниже ЗАМЕРЕНЫ по вшитому каталогу ПОСЛЕ слияния, а не сложены в уме:
 	// n2=32 (не двигалась), n1=287, nEmpty=27, итог 346.
-	assert.Equal(t, 290, n1, "routine count")
+	assert.Equal(t, 284, n1, "routine count")
 	assert.Equal(t, 27, nEmpty, "no-acr-requirement count (подмножество `<exempt>`, не равное ему)")
-	assert.Equal(t, 350, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 338, n2+n1+nEmpty, "catalog total")
 
 	// Здесь сверялась ПОБАЙТОВАЯ идентичность двух вшитых копий каталога — края
 	// и посева службы доступа. Половина утверждения снята вместе со своим
