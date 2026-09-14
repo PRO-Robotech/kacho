@@ -38,11 +38,24 @@ const synthReachModule = "synthreach"
 // про ЛЮБОЙ признак сборки.
 func synthReachTree(t *testing.T, makefile string, taggedPkgs []string) string {
 	t.Helper()
+	return synthReachTreeWithWorkflow(t, makefile, "", taggedPkgs)
+}
+
+// synthReachTreeWithWorkflow — то же дерево плюс объявление рабочего процесса.
+//
+// Процесс кладётся в `.github/workflows/`, потому что ИМЕННО оттуда судья берёт
+// объявления этого вида: положи его в другой каталог — и проба доказывала бы,
+// что судья читает файл, который в дереве не читает никто.
+func synthReachTreeWithWorkflow(t *testing.T, makefile, workflow string, taggedPkgs []string) string {
+	t.Helper()
 	root := t.TempDir()
 
 	files := map[string]string{
 		"go.mod":   "module " + synthReachModule + "\n\ngo 1.24\n",
 		"Makefile": makefile,
+	}
+	if workflow != "" {
+		files[".github/workflows/synth.yml"] = workflow
 	}
 	for _, pkg := range taggedPkgs {
 		files[pkg+"/probe_test.go"] = "//go:build synthtag\n\n" +
@@ -183,6 +196,160 @@ func TestTagRunGateDoesNotCountACommentAsARun(t *testing.T) {
 	if len(findings) == 0 {
 		t.Fatalf("единственное упоминание признака — в комментарии, а гейт считает пакет "+
 			"покрытым.\n%s", census)
+	}
+}
+
+// ── признак, объявленный ОКРУЖЕНИЕМ ─────────────────────────────────────────
+//
+// `go test` читает `GOFLAGS` наравне с флагом строки вызова, поэтому шаг
+// объявляет признак двумя законными формами. Распознаватель, знающий одну,
+// объявляет НЕПОКРЫТЫМ пакет, который покрыт, — и «покрытия нет» становится
+// неотличимо от «судья этой формы не читает».
+//
+// Четыре направления, и каждое меняет ОДИН факт против своего близнеца:
+// покрыт · вне области · признак в соседнем шаге · признак в комментарии.
+
+// makefileWithoutAnyTag — объявление БЕЗ признака: единственным источником
+// признака в этих пробах остаётся процесс, иначе они зеленели бы на Makefile.
+func makefileWithoutAnyTag() string {
+	return "test-nothing:\n\t@echo нечего\n"
+}
+
+// workflowEnvTag — шаг объявляет признак окружением, а зовёт `go test` БЕЗ флага.
+// Ровно форма шага `security-scan.yml`, из-за которой класс и найден.
+func workflowEnvTag(scope string) string {
+	return "name: synth\n" +
+		"on: [push]\n" +
+		"jobs:\n" +
+		"  probe:\n" +
+		"    runs-on: ubuntu-latest\n" +
+		"    steps:\n" +
+		"      - name: прогон под признаком\n" +
+		"        env:\n" +
+		"          GOFLAGS: '-tags=synthtag'\n" +
+		"        run: |\n" +
+		"          go test " + scope + " -count=1\n"
+}
+
+// TestTagRunGateReadsTheTagDeclaredByTheEnvironment — направление (а): пакет
+// внутри области прогона, признак объявлен окружением — гейт МОЛЧИТ.
+func TestTagRunGateReadsTheTagDeclaredByTheEnvironment(t *testing.T) {
+	t.Parallel()
+	root := synthReachTreeWithWorkflow(t, makefileWithoutAnyTag(),
+		workflowEnvTag("./services/x/internal/repo"), []string{"services/x/internal/repo"})
+
+	findings, census := auditSynthReach(t, root)
+	t.Log(census.String())
+
+	if census.StepsRead == 0 {
+		t.Fatalf("шаги процесса не прочитаны — форма окружения не осмотрена вовсе: %s", census)
+	}
+	if census.StepsWithEnvTag != 1 {
+		t.Fatalf("шагов с признаком в окружении %d, ожидался 1 — распознаватель "+
+			"формы не читает: %s", census.StepsWithEnvTag, census)
+	}
+	if census.RunsFound == 0 {
+		t.Fatalf("признак объявлен окружением, а прогон не распознан — форма невидима: %s", census)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("покрытый пакет помечен находкой — признак из окружения не доехал "+
+			"до отбора:\n%s\n%s", joinTagRunFindings(findings), census)
+	}
+}
+
+// TestTagRunGateStillJudgesScopeOfAnEnvDeclaredRun — направление (б): ТОТ ЖЕ
+// процесс, тот же признак в окружении, изменён ОДИН факт — область прогона
+// пакета не покрывает. Гейт КРАСНЕЕТ.
+//
+// Без этой стороны новая форма означала бы «шаг с GOFLAGS покрывает всё».
+func TestTagRunGateStillJudgesScopeOfAnEnvDeclaredRun(t *testing.T) {
+	t.Parallel()
+	root := synthReachTreeWithWorkflow(t, makefileWithoutAnyTag(),
+		workflowEnvTag("./services/y/..."), []string{"services/x/internal/repo"})
+
+	findings, census := auditSynthReach(t, root)
+	t.Log(census.String())
+
+	if census.RunsFound == 0 {
+		t.Fatalf("прогон не распознан — проба доказывала бы отсутствие формы, а не отбор: %s", census)
+	}
+	if len(findings) == 0 {
+		t.Fatalf("пакет вне области прогона, а гейт молчит — признак из окружения "+
+			"отменяет отбор.\n%s", census)
+	}
+	if !strings.Contains(joinTagRunFindings(findings), "services/x/internal/repo") {
+		t.Fatalf("находка не называет пакет:\n%s", joinTagRunFindings(findings))
+	}
+}
+
+// TestTagRunGateDoesNotLeakTheEnvTagIntoTheNextStep — направление (в): признак
+// объявлен ДРУГОМУ шагу. Граница шага несущая: без неё `GOFLAGS` одного шага
+// объявлял бы покрытым всё, что зовёт `go test` ниже по файлу.
+func TestTagRunGateDoesNotLeakTheEnvTagIntoTheNextStep(t *testing.T) {
+	t.Parallel()
+	workflow := "name: synth\n" +
+		"on: [push]\n" +
+		"jobs:\n" +
+		"  probe:\n" +
+		"    runs-on: ubuntu-latest\n" +
+		"    steps:\n" +
+		"      - name: признак объявлен здесь\n" +
+		"        env:\n" +
+		"          GOFLAGS: '-tags=synthtag'\n" +
+		"        run: echo подготовка\n" +
+		"      - name: а прогон идёт здесь\n" +
+		"        run: |\n" +
+		"          go test ./services/x/internal/repo -count=1\n"
+	root := synthReachTreeWithWorkflow(t, makefileWithoutAnyTag(), workflow,
+		[]string{"services/x/internal/repo"})
+
+	findings, census := auditSynthReach(t, root)
+	t.Log(census.String())
+
+	if census.StepsRead != 2 {
+		t.Fatalf("шагов прочитано %d, ожидалось 2 — границу шага судья не видит: %s",
+			census.StepsRead, census)
+	}
+	if len(findings) == 0 {
+		t.Fatalf("признак соседнего шага засчитан этому прогону — граница шага не "+
+			"держится.\n%s", census)
+	}
+}
+
+// TestTagRunGateDoesNotCountAnEnvTagInAComment — направление (г): предпосылка
+// та же, что у вызова, — объявлением является ОБЪЯВЛЕНИЕ, а не проза о нём.
+//
+// Разбор документа этот случай закрывает by construction (комментарий в дерево
+// узлов не попадает), и проба закрепляет именно это: замени разбор на поиск по
+// строке — и она покраснеет.
+func TestTagRunGateDoesNotCountAnEnvTagInAComment(t *testing.T) {
+	t.Parallel()
+	workflow := "name: synth\n" +
+		"on: [push]\n" +
+		"jobs:\n" +
+		"  probe:\n" +
+		"    runs-on: ubuntu-latest\n" +
+		"    steps:\n" +
+		"      - name: прогон без признака\n" +
+		"        # когда-то здесь стояло GOFLAGS: '-tags=synthtag'\n" +
+		"        run: |\n" +
+		"          go test ./services/x/internal/repo -count=1\n"
+	root := synthReachTreeWithWorkflow(t, makefileWithoutAnyTag(), workflow,
+		[]string{"services/x/internal/repo"})
+
+	findings, census := auditSynthReach(t, root)
+	t.Log(census.String())
+
+	if census.StepsRead != 1 {
+		t.Fatalf("шагов прочитано %d, ожидался 1 — без чтения шагов проба ничего "+
+			"не утверждает: %s", census.StepsRead, census)
+	}
+	if census.StepsWithEnvTag != 0 {
+		t.Fatalf("комментарий принят за объявление окружения: %s", census)
+	}
+	if len(findings) == 0 {
+		t.Fatalf("единственное упоминание признака — в комментарии, а гейт считает "+
+			"пакет покрытым.\n%s", census)
 	}
 }
 

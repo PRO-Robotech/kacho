@@ -130,11 +130,12 @@ func auditTaggedTestsAreSelected(root, modulePath string) ([]tagSelectionFinding
 	census.FilesWithTag = scan.FilesWithTag
 	census.FuncsUnderTag = len(scan.Funcs)
 
-	runs, declFiles, err := extractTaggedRuns(root)
+	decl, err := extractTaggedRuns(root)
 	if err != nil {
 		return nil, census, err
 	}
-	census.DeclarationFiles = declFiles
+	runs := decl.Runs
+	census.DeclarationFiles = decl.DeclarationFiles
 	census.RunsFound = len(runs)
 
 	narrowing := map[string]bool{}
