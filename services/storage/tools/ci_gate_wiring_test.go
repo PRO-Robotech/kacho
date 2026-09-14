@@ -156,6 +156,11 @@ func parseMakeArgs(args string) (dir string, targets []string) {
 // — the `2` of `2>&1`. Such a prefix is part of the redirection, not a target: a
 // Makefile target named after a bare number does not occur, and one could not be
 // written glued to a redirection even if it did.
+// assignmentRe matches a shell assignment prefix — `NAME=value` written before
+// the command. Bash runs the command with that variable set, so the assignment
+// is a prefix and the command word comes after it.
+var assignmentRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
+
 func isFileDescriptor(s string) bool {
 	if s == "" {
 		return false
@@ -209,6 +214,11 @@ type shellCommand struct {
 	start, end int
 	words      []shellWord
 	err        error
+	// leadingRedirect marks a redirection written BEFORE the command word
+	// (`>probe.out cmd …`). Bash allows it anywhere, so dropping it would make
+	// the command word look like the first word of a plain invocation — that is,
+	// it would turn an unsupported form into a supported-looking one.
+	leadingRedirect bool
 }
 
 // readShellCommand reads one simple command without evaluating shell syntax.
@@ -278,6 +288,9 @@ func readShellCommand(script string, start int) shellCommand {
 			if !isFileDescriptor(word.String()) {
 				flush(i)
 			}
+			if len(cmd.words) == 0 {
+				cmd.leadingRedirect = true
+			}
 			word.Reset()
 			wordStart = -1
 			redirect = true
@@ -285,6 +298,11 @@ func readShellCommand(script string, start int) shellCommand {
 		}
 		if c == ' ' || c == '\t' || c == '\r' {
 			flush(i)
+			// A redirection ends with its operand, not with the command: bash
+			// reads `>out cmd arg` as a redirection FOLLOWED by a command. Leaving
+			// the flag set swallowed every remaining word, so a wrapper written
+			// after a redirection disappeared from argv entirely.
+			redirect = false
 			continue
 		}
 		if !redirect {
@@ -320,8 +338,66 @@ func dynamicCIDirectory(dir string) bool {
 func shellExecutableWord(script string, words []shellWord) int {
 	i := 0
 	for i < len(words) && script[words[i].start:words[i].end] == words[i].value {
-		switch words[i].value {
+		w := words[i].value
+		switch w {
 		case "if", "elif", "while", "until", "then", "else", "do", "!":
+			i++
+			continue
+		case "{":
+			// A group is a prefix, not a command: `{ cmd; }` runs cmd unchanged.
+			i++
+			continue
+		case "exec":
+			i++
+			for i < len(words) && strings.HasPrefix(words[i].value, "-") {
+				if words[i].value == "-a" {
+					i += 2 // `exec -a name cmd` — the next word names argv[0]
+					continue
+				}
+				i++
+			}
+			continue
+		case "command":
+			i++
+			skip := true
+			for skip && i < len(words) && strings.HasPrefix(words[i].value, "-") {
+				switch words[i].value {
+				case "-v", "-V", "--help", "--version":
+					return -1 // prints a path instead of running it — a mention
+				case "--":
+					i++
+					skip = false
+				default:
+					i++
+				}
+			}
+			continue
+		case "env":
+			i++
+			for i < len(words) {
+				a := words[i].value
+				if a == "--" {
+					i++
+					break
+				}
+				if strings.HasPrefix(a, "-") {
+					if a == "-u" || a == "--unset" {
+						i += 2 // the next word names the variable to drop
+						continue
+					}
+					i++
+					continue
+				}
+				if assignmentRe.MatchString(a) {
+					i++
+					continue
+				}
+				break
+			}
+			continue
+		}
+		if assignmentRe.MatchString(w) {
+			// `NAME=value cmd …` — an assignment prefix, not the command.
 			i++
 			continue
 		}
@@ -344,8 +420,20 @@ func shellExecutableWord(script string, words []shellWord) int {
 			case "-o", "+o", "-O", "+O", "--rcfile", "--init-file":
 				i += 2 // the next word is an option value, not the script
 			default:
-				if !strings.HasPrefix(option, "--") && strings.ContainsAny(option[1:], "cs") {
+				if strings.HasPrefix(option, "--") {
+					i++
+					continue
+				}
+				if strings.ContainsAny(option[1:], "cs") {
 					return -1 // -c/-s leaves subsequent words as positional arguments
+				}
+				// A CLUSTER carries its option value too: `bash -eo pipefail x.sh`
+				// is `-e -o pipefail`, so `pipefail` is the value of `-o` and NOT
+				// the script. Reading it as the script made the real script — and
+				// with it the wrapper — invisible to this check.
+				if strings.ContainsAny(option[1:], "oO") {
+					i += 2
+					continue
 				}
 				i++
 			}
@@ -378,8 +466,12 @@ func standUpMake(root, base, script string, cmd shellCommand) (inv []makeInvocat
 	if ciDirectory(ciDirectory(root, base), path) != filepath.Join(root, canonical) {
 		return nil, false, nil
 	}
+	if cmd.leadingRedirect {
+		return nil, true, fmt.Errorf("unsupported redirection before canonical stand-up command")
+	}
 	if commandWord != 0 && !(commandWord == 1 && cmd.words[0].value == "bash") {
-		return nil, true, fmt.Errorf("unsupported shell prefix before canonical stand-up command")
+		return nil, true, fmt.Errorf("unsupported shell prefix %q before canonical stand-up command",
+			cmd.words[0].value)
 	}
 	if cmd.err != nil {
 		return nil, true, cmd.err
