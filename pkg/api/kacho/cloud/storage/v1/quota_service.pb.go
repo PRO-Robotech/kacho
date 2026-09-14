@@ -11,7 +11,7 @@ package storagev1
 
 import (
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
-	v1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/quota/v1"
+	v1 "github.com/PRO-Robotech/corelib/api/corelib/quota/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -141,12 +141,12 @@ var File_kacho_cloud_storage_v1_quota_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_storage_v1_quota_service_proto_rawDesc = "" +
 	"\n" +
-	"*kacho/cloud/storage/v1/quota_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1cgoogle/api/annotations.proto\x1a kacho/cloud/quota/v1/quota.proto\x1a$corelib/authz/v1/authz_options.proto\"2\n" +
+	"*kacho/cloud/storage/v1/quota_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1ccorelib/quota/v1/quota.proto\x1a$corelib/authz/v1/authz_options.proto\"2\n" +
 	"\x11ListQuotasRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tR\tprojectId\"I\n" +
-	"\x12ListQuotasResponse\x123\n" +
-	"\x06quotas\x18\x01 \x03(\v2\x1b.kacho.cloud.quota.v1.QuotaR\x06quotas2\xc9\x01\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\"E\n" +
+	"\x12ListQuotasResponse\x12/\n" +
+	"\x06quotas\x18\x01 \x03(\v2\x17.corelib.quota.v1.QuotaR\x06quotas2\xc9\x01\n" +
 	"\fQuotaService\x12\xb8\x01\n" +
 	"\x04List\x12).kacho.cloud.storage.v1.ListQuotasRequest\x1a*.kacho.cloud.storage.v1.ListQuotasResponse\"Y\x8a\xb5\x18\x13storage.quotas.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
@@ -168,10 +168,10 @@ var file_kacho_cloud_storage_v1_quota_service_proto_msgTypes = make([]protoimpl.
 var file_kacho_cloud_storage_v1_quota_service_proto_goTypes = []any{
 	(*ListQuotasRequest)(nil),  // 0: kacho.cloud.storage.v1.ListQuotasRequest
 	(*ListQuotasResponse)(nil), // 1: kacho.cloud.storage.v1.ListQuotasResponse
-	(*v1.Quota)(nil),           // 2: kacho.cloud.quota.v1.Quota
+	(*v1.Quota)(nil),           // 2: corelib.quota.v1.Quota
 }
 var file_kacho_cloud_storage_v1_quota_service_proto_depIdxs = []int32{
-	2, // 0: kacho.cloud.storage.v1.ListQuotasResponse.quotas:type_name -> kacho.cloud.quota.v1.Quota
+	2, // 0: kacho.cloud.storage.v1.ListQuotasResponse.quotas:type_name -> corelib.quota.v1.Quota
 	0, // 1: kacho.cloud.storage.v1.QuotaService.List:input_type -> kacho.cloud.storage.v1.ListQuotasRequest
 	1, // 2: kacho.cloud.storage.v1.QuotaService.List:output_type -> kacho.cloud.storage.v1.ListQuotasResponse
 	2, // [2:3] is the sub-list for method output_type

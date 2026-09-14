@@ -31,7 +31,7 @@ const (
 //
 // QuotaService — what this domain's ceilings are and how much of them is spent.
 //
-// THE SHAPE OF THE ANSWER IS STATED ONCE, in `kacho.cloud.quota.v1.Quota`, and is
+// THE SHAPE OF THE ANSWER IS STATED ONCE, in `corelib.quota.v1.Quota`, and is
 // not restated here. Each owner answers about ITS OWN kinds, from its own
 // database, because a single summary endpoint at iam would need `iam -> owner`
 // calls to learn what is spent, and that edge would close a cycle. What is
@@ -86,7 +86,7 @@ func (c *quotaServiceClient) List(ctx context.Context, in *ListQuotasRequest, op
 //
 // QuotaService — what this domain's ceilings are and how much of them is spent.
 //
-// THE SHAPE OF THE ANSWER IS STATED ONCE, in `kacho.cloud.quota.v1.Quota`, and is
+// THE SHAPE OF THE ANSWER IS STATED ONCE, in `corelib.quota.v1.Quota`, and is
 // not restated here. Each owner answers about ITS OWN kinds, from its own
 // database, because a single summary endpoint at iam would need `iam -> owner`
 // calls to learn what is spent, and that edge would close a cycle. What is
