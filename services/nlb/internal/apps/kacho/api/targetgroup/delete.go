@@ -9,8 +9,6 @@ import (
 	"log/slog"
 	"strings"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -111,7 +109,11 @@ func (u *DeleteTargetGroupUseCase) Execute(
 		}
 	}
 	if live > 0 {
-		return nil, status.Errorf(codes.FailedPrecondition,
+		// Полоса та же, что у запасного пути базы для ЭТОГО ЖЕ факта
+		// (`restrict_fk.go`, ограничение по целям): один факт — один признак.
+		// Синхронная предпроверка срабатывает раньше, поэтому без признака
+		// оставался именно тот производитель, который клиент видит ОБЫЧНО.
+		return nil, shared.DeletionRefusal(refusal.HoldsChildren, "target_group", id,
 			"TargetGroup has %d target(s); remove them first via RemoveTargets", live)
 	}
 

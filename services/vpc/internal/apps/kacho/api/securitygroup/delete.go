@@ -16,6 +16,7 @@ import (
 	"github.com/PRO-Robotech/corelib/operations"
 	corevalidate "github.com/PRO-Robotech/corelib/validate"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
@@ -53,7 +54,8 @@ func (u *DeleteSecurityGroupUseCase) Execute(ctx context.Context, id string) (*o
 		return nil, serviceerr.MapRepoErr(err)
 	}
 	if existing.DefaultForNetwork {
-		return nil, status.Errorf(codes.FailedPrecondition, "default security group cannot be deleted")
+		return nil, serviceerr.DeletionRefusal(refusal.Protected, "security_group", id,
+			"default security group cannot be deleted")
 	}
 
 	op, err := operations.NewFromContext(
