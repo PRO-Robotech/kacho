@@ -44,6 +44,34 @@ import (
 // `kaname.cloud.iam.v1.PermissionCatalogEntry`. Decoded from JSON without
 // pulling the proto descriptor (the catalog is intentionally self-contained;
 // see permissions_catalog.proto comment).
+//
+// ПОЛЕ ЭТОЙ ЗАПИСИ ОБЯЗАНО ИМЕТЬ ЭМИТЕНТА (#2569).
+//
+// Декодер и эмитент (`gateway/cmd/protoc-gen-kacho-permissions`) — ДВА МЕСТА ОБ
+// ОДНОМ ПРЕДМЕТЕ, и расходятся они молча: неизвестный ключ JSON-декодер
+// пропускает, а поле, которого никто не эмитит, остаётся нулевым при любом
+// входе. Со стороны такое поле выглядит несомой возможностью каталога.
+//
+// Замер 2026-09-14, из-за которого норма записана: эмитент объявлял ВОСЕМЬ
+// тегов, декодер — ЧЕТЫРНАДЦАТЬ. Семь полей разницы не производил никто:
+// `domain`, `resource_type`, `action`, `requires_mfa_fresh`, `risk_level`,
+// `description`, `emitted_build_sha` — и ни одного из них не было ни в одной из
+// 338 записей вшитого каталога. Шесть из семи не читались вовсе; седьмое
+// (`risk_level`) читалось журналом отказа и писало туда ПУСТУЮ строку на каждом
+// отказе за всю жизнь процесса. Их godoc при этом утверждал о продукте неправду:
+// «Filled by plugin during emission» — плагин такого поля не имеет; «used by
+// audit to detect catalog-vs-binary drift» — такого аудита нет; «Defaults follow
+// RiskLevel: LOW/MEDIUM → false, HIGH/CRITICAL → true» — правила нет ни строкой,
+// а его вход отсутствует в каждой записи.
+//
+// ОБРАТНОЕ НАПРАВЛЕНИЕ ЗАКОННО и находкой не является: эмитент вправе
+// производить ключ, который этому декодеру не нужен (`exempt_reason` — ровно
+// такой). Декодер читает то, на чём принимает решения, а не всё подряд.
+//
+// Держит `internal/repohygiene` `TestCatalogDecoderDeclaresNoFieldTheEmitterNeverProduces`:
+// он сверяет множества json-тегов обеих структур РАЗБОРОМ, печатает объём
+// осмотренного и падает на пустом обходе. Заводя поле здесь — заведи его и у
+// эмитента, иначе гейт назовёт тег по имени.
 type CatalogEntry struct {
 	// FQN — fully-qualified gRPC method id
 	// ("kacho.cloud.vpc.v1.NetworkService/Create"). Map key.
@@ -63,32 +91,6 @@ type CatalogEntry struct {
 
 	// RequiredACRMin — ACR floor as string ("1" / "2" / "3"). Default "2".
 	RequiredACRMin string `json:"required_acr_min"`
-
-	// Domain — `<domain>` part of `Permission` ("vpc"). Filled by plugin
-	// during emission.
-	Domain string `json:"domain"`
-
-	// ResourceType — `<resource>` part of `Permission` ("networks").
-	ResourceType string `json:"resource_type"`
-
-	// Action — `<verb>` part of `Permission` ("create").
-	Action string `json:"action"`
-
-	// RequiresMFAFresh — true when this RPC requires `mfa_fresh` overlay
-	// regardless of the underlying role's conditions. Defaults follow
-	// `RiskLevel`: LOW/MEDIUM → false, HIGH/CRITICAL → true.
-	RequiresMFAFresh bool `json:"requires_mfa_fresh"`
-
-	// RiskLevel — operator-classification of the permission's blast radius.
-	// Values: "RISK_LEVEL_UNSPECIFIED" | "LOW" | "MEDIUM" | "HIGH" | "CRITICAL".
-	RiskLevel string `json:"risk_level"`
-
-	// Description — admin-UI-surfaced human description (≤ 512 chars).
-	Description string `json:"description"`
-
-	// EmittedBuildSHA — git-SHA at catalog emission time; used by audit to
-	// detect catalog-vs-binary drift.
-	EmittedBuildSHA string `json:"emitted_build_sha"`
 
 	// HideExistence — when true, an authz deny on this RPC is surfaced as
 	// NotFound (gRPC 5 / HTTP 404) with no deny reasons, instead of
@@ -226,15 +228,15 @@ func (c *PermissionCatalog) LoadFromBytes(buf []byte) error {
 	if len(buf) == 0 {
 		return errors.New("permission catalog: empty input")
 	}
-	// Try the object shape first: {"entries": [...], "critical": {...}}.
+	// Try the object shape first: {"entries": [...]}.
+	//
+	// Поля `critical` здесь НЕТ намеренно (#2569). Оно разбиралось и не
+	// читалось ничем, а его комментарий объявлял «kept here for forward-compat
+	// with admin-UI surfaces» — то есть запас на будущее, за который никто не
+	// отвечает. Ключ, если он в документе есть, декодер по-прежнему пропускает
+	// молча: разбор от его снятия не изменился ничем.
 	var asObject struct {
 		Entries []CatalogEntry `json:"entries"`
-		// Critical is parsed but currently unused at this layer; the audit
-		// pipeline reads it directly from the catalog. Kept here for
-		// forward-compat with admin-UI surfaces.
-		Critical struct {
-			Permissions []string `json:"permissions"`
-		} `json:"critical"`
 	}
 	var entries []CatalogEntry
 	if jerr := json.Unmarshal(buf, &asObject); jerr == nil && len(asObject.Entries) > 0 {
