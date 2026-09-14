@@ -18,6 +18,7 @@ import (
 	"github.com/PRO-Robotech/corelib/operations"
 	corevalidate "github.com/PRO-Robotech/corelib/validate"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
@@ -245,7 +246,7 @@ func (u *DeleteNetworkUseCase) checkNetworkEmpty(ctx context.Context, networkID 
 	if len(blockers) == 0 {
 		return nil
 	}
-	return status.Errorf(codes.FailedPrecondition,
+	return serviceerr.DeletionRefusal(refusal.HoldsChildren, "network", networkID,
 		"Network %s is not empty (%s)", networkID, strings.Join(blockers, ", "))
 }
 

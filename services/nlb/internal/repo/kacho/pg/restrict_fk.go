@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/PRO-Robotech/corelib/db/pgfault"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
 
@@ -67,6 +68,12 @@ type RestrictFKContract struct {
 	// `NetworkLoadBalancer`): по нему различаются направления одного и того же
 	// ограничения (удаление родителя против вставки ребёнка).
 	ParentKind string
+	// Lane — машинный признак полосы отказа, который уедет клиенту рядом с
+	// текстом. Объявляется ЗДЕСЬ, у контракта ссылки, а не выводится из Render:
+	// вывод полосы из собственной прозы был бы тем же разбором текста, только
+	// внутри сервера. Ссылка говорит, ЧЕЙ ребёнок держит родителя, и этого
+	// довольно: свои дети — контейнер не пуст, чужие ссылки — лист занят.
+	Lane refusal.Lane
 	// Blockers — перечисление строк, удержавших удаление. Читается ПОСЛЕ отказа
 	// БД, в той же транзакции, откатанной до точки сохранения.
 	Blockers func(ctx context.Context, tx pgx.Tx, parentID string) (RestrictBlockers, error)
@@ -100,6 +107,7 @@ var RestrictFKContracts = map[string]RestrictFKContract{
 	// с ПЕРЕЧНЕМ слушателей: порядок разбора не приходится угадывать.
 	"listeners_target_group_fk": {
 		ParentKind: "TargetGroup",
+		Lane:       refusal.ReferredTo,
 		Blockers:   blockersOf(qListenersByTargetGroup),
 		Render: func(_ string, b RestrictBlockers) string {
 			return "target group is referenced by listeners: [" + b.List() + "]"
@@ -110,6 +118,7 @@ var RestrictFKContracts = map[string]RestrictFKContract{
 	// приёмкой, поэтому путь БД повторяет её, а не заводит третью.
 	"targets_target_group_id_fkey": {
 		ParentKind: "TargetGroup",
+		Lane:       refusal.HoldsChildren,
 		Blockers:   blockersOf(qTargetsByTargetGroup),
 		Render: func(_ string, b RestrictBlockers) string {
 			return fmt.Sprintf("TargetGroup has %d target(s); remove them first via RemoveTargets", b.Total)
@@ -121,6 +130,7 @@ var RestrictFKContracts = map[string]RestrictFKContract{
 	// одного факта остался один текст на всех трёх производителях.
 	"listeners_load_balancer_id_fkey": {
 		ParentKind: "NetworkLoadBalancer",
+		Lane:       refusal.HoldsChildren,
 		Blockers:   blockersOf(qListenersByLB),
 		Render: func(parentID string, _ RestrictBlockers) string {
 			return fmt.Sprintf("NetworkLoadBalancer %s has listener(s); delete first", parentID)
@@ -182,11 +192,13 @@ func isFKViolation(err error, constraint string) bool {
 func tgMoveBlockedByListeners(ctx context.Context, tx pgx.Tx, tgID string) error {
 	b, err := blockersOf(qListenersByTargetGroup)(ctx, tx, tgID)
 	if err != nil || b.Total == 0 {
-		return fmt.Errorf("%w: target group is referenced by listeners; repoint them before moving",
-			kacho.ErrFailedPrecondition)
+		return refusal.Wrap(refusal.ReferredTo, refusal.Ref{ResourceType: "target_group", ResourceID: tgID},
+			fmt.Errorf("%w: target group is referenced by listeners; repoint them before moving",
+				kacho.ErrFailedPrecondition))
 	}
-	return fmt.Errorf("%w: target group is referenced by %d listener(s); repoint them before moving",
-		kacho.ErrFailedPrecondition, b.Total)
+	return refusal.Wrap(refusal.ReferredTo, refusal.Ref{ResourceType: "target_group", ResourceID: tgID},
+		fmt.Errorf("%w: target group is referenced by %d listener(s); repoint them before moving",
+			kacho.ErrFailedPrecondition, b.Total))
 }
 
 // deleteParentRow — удаление строки-родителя, чей снос сторожат `ON DELETE
@@ -243,5 +255,11 @@ func mapRestrictBlocked(ctx context.Context, tx pgx.Tx, kind, id string, execErr
 	if err != nil || blockers.Total == 0 {
 		return mapPgErr(execErr, kind, id)
 	}
-	return fmt.Errorf("%w: %s", kacho.ErrFailedPrecondition, c.Render(id, blockers))
+	// Полоса запасного пути БД. Ограничение названо, значит вид блокирующих строк
+	// известен: у балансировщика это ЕГО дети (контейнер не пуст), у группы целей —
+	// чужие ссылки (лист занят). Обе полосы объявлены контрактом ссылки, а не
+	// выведены из текста: текст здесь производит Render, и читать его обратно
+	// значило бы разбирать собственную прозу.
+	return refusal.Wrap(c.Lane, refusal.Ref{ResourceType: c.ParentKind, ResourceID: id},
+		fmt.Errorf("%w: %s", kacho.ErrFailedPrecondition, c.Render(id, blockers)))
 }

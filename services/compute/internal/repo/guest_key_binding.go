@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 )
 
@@ -47,7 +48,15 @@ func (e *ErrGuestKeyInUse) Error() string {
 // Unwrap делает отказ снятия отображаемым общей таблицей отказов: состояние
 // ресурса не позволяет операцию. Без него отказ упал бы в фиксированный
 // внутренний — и перечень машин, ради которого он написан, не доехал бы.
-func (e *ErrGuestKeyInUse) Unwrap() error { return ports.ErrFailedPrecondition }
+//
+// Полоса ставится ЗДЕСЬ, а не у вызывающего: отказ — типизированный, и его вид
+// назван самим типом. Вызывающий, ставящий полосу на такой отказ, назвал бы её
+// второй раз и разошёлся бы с типом молча.
+func (e *ErrGuestKeyInUse) Unwrap() error {
+	return refusal.Wrap(refusal.ReferredTo,
+		refusal.Ref{ResourceType: "guest_access_key", ResourceID: e.KeyID},
+		ports.ErrFailedPrecondition)
+}
 
 // maxNamedHolders — сколько машин называется в отказе. Отказ адресован человеку;
 // перечень из тысячи идентификаторов ему ничего не сообщает.

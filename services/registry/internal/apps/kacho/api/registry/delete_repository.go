@@ -13,6 +13,7 @@ import (
 	"github.com/PRO-Robotech/corelib/ids"
 	"github.com/PRO-Robotech/corelib/operations"
 	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
@@ -60,7 +61,7 @@ func (u *UseCase) DeleteRepository(ctx context.Context, registryID, repository s
 			return nil, mapRepoErr(eerr)
 		}
 		if !empty {
-			return nil, failFailedPrecondition("repository is not empty")
+			return nil, failDeletionRefusal(refusal.HoldsChildren, "repository", repository, "repository is not empty")
 		}
 		intents := []OutboxIntent{
 			{Event: domain.FGAEventUnregister, Intent: domain.UnregisterIntentForRepo(registryID, repository)},

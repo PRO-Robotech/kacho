@@ -9,6 +9,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
@@ -193,10 +194,12 @@ func (aw *addressWriter) DeleteGuarded(_ context.Context, id string) (*kacho.Add
 		return nil, repo.ErrNotFound
 	}
 	if existing.DeletionProtection {
-		return nil, fmt.Errorf("%w: address %s has deletion_protection enabled; clear it via Update before Delete", repo.ErrFailedPrecondition, id)
+		return nil, refusal.Wrap(refusal.Protected, refusal.Ref{ResourceType: "address", ResourceID: id},
+			fmt.Errorf("%w: address %s has deletion_protection enabled; clear it via Update before Delete", repo.ErrFailedPrecondition, id))
 	}
 	if existing.Used {
-		return nil, fmt.Errorf("%w: address %s is in use", repo.ErrFailedPrecondition, id)
+		return nil, refusal.Wrap(refusal.ReferredTo, refusal.Ref{ResourceType: "address", ResourceID: id},
+			fmt.Errorf("%w: address %s is in use", repo.ErrFailedPrecondition, id))
 	}
 	cp := *existing
 	if aw.w.deletedAddrIDs == nil {

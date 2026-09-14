@@ -22,21 +22,54 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CONFIG="$ROOT/trivy.yaml"
 GATE="$ROOT/deploy/scripts/assert-scan-stubs-hide-nothing.py"
 COVERAGE="$ROOT/deploy/scripts/assert-iac-scan-covers-every-chart.py"
-BACKUP="$(mktemp)"
 passed=0
 failed=0
-
-cleanup() {
-  cp "$BACKUP" "$CONFIG"
-  rm -f "$BACKUP"
-}
-trap cleanup EXIT
 
 if ! command -v trivy >/dev/null 2>&1; then
   echo "ОТКАЗ: trivy не найден в PATH — доказывать нечем" >&2
   exit 2
 fi
-cp "$CONFIG" "$BACKUP"
+
+# До пригодного снимка исходник не трогаем и восстановление не включаем.
+# Непустое имя файла не доказывает ни создание, ни успешное копирование.
+if ! BACKUP="$(mktemp)"; then
+  echo "ОТКАЗ: не удалось создать резервный снимок trivy.yaml" >&2
+  exit 2
+fi
+if [ ! -f "$BACKUP" ]; then
+  echo "ОТКАЗ: созданный резервный снимок не является файлом: $BACKUP" >&2
+  exit 2
+fi
+if ! cp -- "$CONFIG" "$BACKUP" || ! cmp -s -- "$CONFIG" "$BACKUP"; then
+  echo "ОТКАЗ: подготовка резервного снимка trivy.yaml не удалась" >&2
+  rm -f -- "$BACKUP" || echo "ОТКАЗ: не удалось удалить непригодный снимок: $BACKUP" >&2
+  exit 2
+fi
+
+restore_failed=0
+restore_config() {
+  if ! cp -- "$BACKUP" "$CONFIG" || ! cmp -s -- "$BACKUP" "$CONFIG"; then
+    restore_failed=1
+    echo "ОТКАЗ: невозможно восстановить trivy.yaml; пригодный снимок сохранён: $BACKUP" >&2
+    return 2
+  fi
+}
+
+cleanup() {
+  local rc=$?
+  trap - EXIT
+  # Уже наблюдённый отказ не скрываем повторной попыткой и снимок не удаляем.
+  if [ "$restore_failed" = 1 ]; then
+    exit 2
+  fi
+  restore_config || exit 2
+  if ! rm -f -- "$BACKUP"; then
+    echo "ОТКАЗ: trivy.yaml восстановлен, но снимок не удалён: $BACKUP" >&2
+    exit 2
+  fi
+  exit "$rc"
+}
+trap cleanup EXIT
 
 # $1 — заголовок, $2 — ожидаемый код, $3 — обязательная подстрока вывода ("" — любая)
 expect() {
@@ -77,7 +110,7 @@ else
   echo "$cov_out" | tail -4 | sed 's/^/        /'
   failed=$((failed+1))
 fi
-cp "$BACKUP" "$CONFIG"
+restore_config || exit 2
 
 # ── D. Заглушка без предмета: объявлена, но снятие её не меняет ничего ───────
 # Это находка, а не третий исход: заглушка, ничего не открывающая, подменяет
@@ -91,7 +124,7 @@ d["misconfiguration"]["helm"]["set"] = ["trivyStubsProbe=true"]
 yaml.safe_dump(d, open(p, "w", encoding="utf-8"), allow_unicode=True)
 PY
 expect "заглушка без предмета — находка" 1 "не меняет НИЧЕГО"
-cp "$BACKUP" "$CONFIG"
+restore_config || exit 2
 
 # ── E. Идеал не превращён в поломку: заглушек нет вовсе ───────────────────────
 python3 - "$CONFIG" <<'PY'
@@ -102,7 +135,7 @@ d["misconfiguration"]["helm"]["set"] = []
 yaml.safe_dump(d, open(p, "w", encoding="utf-8"), allow_unicode=True)
 PY
 expect "заглушек нет — гейт проходит, а не падает" 0 "судить нечего"
-cp "$BACKUP" "$CONFIG"
+restore_config || exit 2
 
 # ── F. Откат ДОКАЗАН, а не заявлен ───────────────────────────────────────────
 # Сверяется с копией, снятой ПЕРЕД инъекцией, а не с индексом git: инъекция обязана

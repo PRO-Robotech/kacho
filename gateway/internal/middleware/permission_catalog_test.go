@@ -55,7 +55,15 @@ func TestPermissionCatalog_LoadFromBytes_ObjectShape(t *testing.T) {
 	entry, ok := c.Lookup("kaname.cloud.iam.v1.AuthorizeService/Check")
 	require.True(t, ok)
 	assert.Equal(t, "iam.authorize.check", entry.Permission)
-	assert.Equal(t, "MEDIUM", entry.RiskLevel)
+	assert.Equal(t, "viewer", entry.RequiredRelation)
+
+	// Ключи, которых декодер НЕ объявляет, стоят в этой фикстуре намеренно
+	// (`risk_level` в записи, `critical` на верхнем уровне) и обязаны быть
+	// пропущены молча. Прежде здесь утверждалось значение `risk_level` —
+	// поля-сироты, которого эмитент не производит ни в одной из записей
+	// каталога (#2569); утверждение доказывало разбор ключа, а не свойство
+	// продукта. Проверяется теперь ТЕРПИМОСТЬ: снятие поля-сироты из декодера
+	// не имеет права уронить разбор документа, где такой ключ есть.
 }
 
 func TestPermissionCatalog_LoadFromBytes_EmptyError(t *testing.T) {

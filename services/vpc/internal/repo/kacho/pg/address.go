@@ -16,6 +16,7 @@ import (
 
 	"github.com/PRO-Robotech/corelib/filter"
 	"github.com/PRO-Robotech/corelib/validate"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
@@ -450,7 +451,8 @@ func (w *addressWriter) Delete(ctx context.Context, id string) error {
 	tag, err := w.tx.Exec(ctx, `DELETE FROM addresses WHERE id = $1`, id)
 	if err != nil {
 		if helpers.IsFKViolation(err) {
-			return fmt.Errorf("%w: address is in use", helpers.ErrFailedPrecondition)
+			return refusal.Wrap(refusal.ReferredTo, refusal.Ref{ResourceType: "address", ResourceID: id},
+				fmt.Errorf("%w: address is in use", helpers.ErrFailedPrecondition))
 		}
 		return helpers.WrapPgErr(err, "Address", id)
 	}
@@ -484,9 +486,11 @@ func (w *addressWriter) DeleteGuarded(ctx context.Context, id string) (*kacho.Ad
 		return nil, gerr // ErrNotFound (или иная)
 	}
 	if cur.DeletionProtection {
-		return nil, fmt.Errorf("%w: address %s has deletion_protection enabled; clear it via Update before Delete", helpers.ErrFailedPrecondition, id)
+		return nil, refusal.Wrap(refusal.Protected, refusal.Ref{ResourceType: "address", ResourceID: id},
+			fmt.Errorf("%w: address %s has deletion_protection enabled; clear it via Update before Delete", helpers.ErrFailedPrecondition, id))
 	}
-	return nil, fmt.Errorf("%w: address %s is in use", helpers.ErrFailedPrecondition, id)
+	return nil, refusal.Wrap(refusal.ReferredTo, refusal.Ref{ResourceType: "address", ResourceID: id},
+		fmt.Errorf("%w: address %s is in use", helpers.ErrFailedPrecondition, id))
 }
 
 // v6ClaimMaxAttempts — сколько подряд занятых номеров переступает автоматическая

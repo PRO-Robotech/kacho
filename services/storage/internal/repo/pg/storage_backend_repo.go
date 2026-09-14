@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PRO-Robotech/corelib/db/pgfault"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/storagebackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
@@ -274,7 +275,8 @@ func mapStorageBackendErr(err error, c sbErrCtx) error {
 			return fmt.Errorf("%w: storage backend already exists", storageerr.ErrAlreadyExists)
 		case pgfault.ForeignKey: // ссылка ревизии привязки (RESTRICT)
 			if f.Constraint == cnBindingBackendFK {
-				return fmt.Errorf("%w: StorageBackend %s is in use", storageerr.ErrFailedPrecondition, c.backendID)
+				return refusal.Wrap(refusal.ReferredTo, refusal.Ref{ResourceType: "storage_backend", ResourceID: c.backendID},
+					fmt.Errorf("%w: StorageBackend %s is in use", storageerr.ErrFailedPrecondition, c.backendID))
 			}
 			return fmt.Errorf("%w: storage backend violates a reference constraint", storageerr.ErrFailedPrecondition)
 		case pgfault.Check: // вид, состояние, обязательные координата и ссылка

@@ -16,6 +16,7 @@ import (
 	"github.com/PRO-Robotech/corelib/filter"
 	"github.com/PRO-Robotech/corelib/safeconv"
 	"github.com/PRO-Robotech/corelib/validate"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
@@ -319,7 +320,8 @@ func (w *networkWriter) Delete(ctx context.Context, id string) error {
 	tag, err := w.tx.Exec(ctx, `DELETE FROM networks WHERE id = $1`, id)
 	if err != nil {
 		if helpers.IsFKViolation(err) {
-			return fmt.Errorf("%w: network is not empty", helpers.ErrFailedPrecondition)
+			return refusal.Wrap(refusal.HoldsChildren, refusal.Ref{ResourceType: "network", ResourceID: id},
+				fmt.Errorf("%w: network is not empty", helpers.ErrFailedPrecondition))
 		}
 		return helpers.WrapPgErr(err, "Network", id)
 	}

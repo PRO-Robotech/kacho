@@ -16,6 +16,7 @@ import (
 	"github.com/PRO-Robotech/corelib/operations"
 	corevalidate "github.com/PRO-Robotech/corelib/validate"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
@@ -56,7 +57,7 @@ func (u *DeleteAddressUseCase) Execute(ctx context.Context, id string) (*operati
 	}
 	if existing.DeletionProtection {
 		_ = rd.Close()
-		return nil, status.Errorf(codes.FailedPrecondition,
+		return nil, serviceerr.DeletionRefusal(refusal.Protected, "address", id,
 			"address %s has deletion_protection enabled; clear it via Update before Delete", id)
 	}
 	// Адрес используется каким-либо referrer'ом (NIC, load balancer, …) —
@@ -72,12 +73,12 @@ func (u *DeleteAddressUseCase) Execute(ctx context.Context, id string) (*operati
 			if referrer == "" {
 				referrer = ref.ReferrerID
 			}
-			return nil, status.Errorf(codes.FailedPrecondition,
+			return nil, serviceerr.DeletionRefusal(refusal.ReferredTo, "address", id,
 				"address %s is in use by %s %s; detach it before deleting the address",
 				id, referrerTypeLabel(ref.ReferrerType), referrer)
 		}
 		// Referrer-row нет (или чтение упало), но used=true — все равно блокируем generic-сообщением.
-		return nil, status.Errorf(codes.FailedPrecondition, "address %s is in use", id)
+		return nil, serviceerr.DeletionRefusal(refusal.ReferredTo, "address", id, "address %s is in use", id)
 	}
 	_ = rd.Close()
 

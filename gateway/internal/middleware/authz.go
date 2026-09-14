@@ -1230,7 +1230,6 @@ func (m *AuthzMiddleware) phaseCheck(
 			"subject", subj.FGA,
 			"action", entry.Permission,
 			"resource", descriptor.ResourceType+":"+descriptor.ResourceID,
-			"risk", entry.RiskLevel,
 		)
 		return decision{outcome: outcomeAllow, descriptor: descriptor, entry: entry}
 	}
@@ -1249,7 +1248,6 @@ func (m *AuthzMiddleware) phaseCheck(
 		"action", entry.Permission,
 		"resource", descriptor.ResourceType+":"+descriptor.ResourceID,
 		"reasons", reasons,
-		"risk", entry.RiskLevel,
 		"hide_existence", entry.HidesExistenceOnDeny(dr.FQN),
 	)
 	return denyDecision(dr.FQN, entry, descriptor, reasons)

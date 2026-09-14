@@ -9,15 +9,15 @@ import (
 	"log/slog"
 	"strings"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/PRO-Robotech/corelib/ids"
 	"github.com/PRO-Robotech/corelib/operations"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/shared"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
@@ -93,7 +93,7 @@ func (u *DeleteTargetGroupUseCase) Execute(
 		return nil, mapDomainErr(err)
 	}
 	if len(lstIDs) > 0 {
-		return nil, status.Errorf(codes.FailedPrecondition,
+		return nil, shared.DeletionRefusal(refusal.ReferredTo, "target_group", id,
 			"target group is referenced by listeners: [%s]", strings.Join(lstIDs, ", "))
 	}
 
@@ -109,7 +109,11 @@ func (u *DeleteTargetGroupUseCase) Execute(
 		}
 	}
 	if live > 0 {
-		return nil, status.Errorf(codes.FailedPrecondition,
+		// Полоса та же, что у запасного пути базы для ЭТОГО ЖЕ факта
+		// (`restrict_fk.go`, ограничение по целям): один факт — один признак.
+		// Синхронная предпроверка срабатывает раньше, поэтому без признака
+		// оставался именно тот производитель, который клиент видит ОБЫЧНО.
+		return nil, shared.DeletionRefusal(refusal.HoldsChildren, "target_group", id,
 			"TargetGroup has %d target(s); remove them first via RemoveTargets", live)
 	}
 

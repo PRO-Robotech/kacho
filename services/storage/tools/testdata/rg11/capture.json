@@ -1,0 +1,38 @@
+{
+  "source_sha": "d941344bd972b2e994263a9e964afa1491aff293",
+  "repo": "PRO-Robotech/kacho",
+  "go_version": "go version go1.26.8 linux/amd64",
+  "docker_version": "29.8.0",
+  "registry_connect_errno": 111,
+  "chosen_image": "127.0.0.1:1/rg1/postgres:16-alpine",
+  "image_absent": true,
+  "compile_rc": 0,
+  "compile_seconds": 0.9151908099997854,
+  "compile_command": [
+    "go",
+    "test",
+    "-c",
+    "-o",
+    "<capture-dir>/pgtest.test",
+    "./pkg/pgtest"
+  ],
+  "command": [
+    "timeout",
+    "45s",
+    "go",
+    "test",
+    "./pkg/pgtest",
+    "-run",
+    "^TestOneContainerManyDatabases$",
+    "-count=1",
+    "-v"
+  ],
+  "env_overrides": {
+    "TESTCONTAINERS_RYUK_DISABLED": "true",
+    "TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX": "127.0.0.1:1/rg1"
+  },
+  "returncode": 1,
+  "elapsed_seconds": 0.7043679590001375,
+  "stdout_stderr_sha256": "229785c7a3702acd71783b0ef7c7a2e87e322967bd9d488e495409d40728cc34",
+  "output_bytes": 1551
+}

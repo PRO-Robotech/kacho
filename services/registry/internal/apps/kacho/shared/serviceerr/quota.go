@@ -39,7 +39,7 @@ const (
 )
 
 // quotaReasonDomain — источник отказа в `ErrorInfo.domain`, как его видит клиент.
-const quotaReasonDomain = "registry.kacho.cloud"
+const quotaReasonDomain = serviceDomain + ".kacho.cloud"
 
 // quotaRefusal собирает статус отказа учёта, если err им является; ok=false
 // означает «это не отказ учёта» и передаёт разбор общей классификации.
