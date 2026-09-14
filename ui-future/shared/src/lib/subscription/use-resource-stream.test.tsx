@@ -42,6 +42,11 @@ class FakeSource implements EventSourceLike {
   close(): void {
     this.readyState = 2;
   }
+  /** Терминальный отказ: приёмник закрыт, повтора не будет. */
+  fail(): void {
+    this.readyState = 2;
+    this.onerror?.(new Event("error"));
+  }
   emit(name: string, data: unknown): void {
     this.readyState = 1;
     for (const fn of this.handlers.get(name) ?? []) fn({ data: JSON.stringify(data), lastEventId: "p1" } as MessageEvent<string>);
@@ -104,6 +109,22 @@ describe("страница снимает опрос только на ДОКА�
     // зеленело бы на хуке, который не снимает опрос никогда.
     const { sources, read } = setup("networks");
     act(() => sources[0].emit("opened", opened(["vpc_subnet"])));
+    expect(read()).toBe(false);
+  });
+
+  it("поток отказал — ОПРОС ВОЗВРАЩАЕТСЯ, а не остаётся снятым навсегда", () => {
+    // Это половина предмета, которую легко упустить: покрытие СНИМАЕТ опрос, и
+    // если оно не вернётся в «нет», список замрёт молча — ни ошибки, ни пустого
+    // ответа, просто ничего не меняется. Со стороны такой список неотличим от
+    // верного, и заметить это можно только по тому, что он не меняется никогда.
+    //
+    // Положительный контроль стоит ПЕРВЫМ утверждением: без него «опрос
+    // включён» зеленело бы на хуке, который не снимает его никогда.
+    const { sources, read } = setup("networks");
+    act(() => sources[0].emit("opened", opened(["vpc_network"])));
+    expect(read()).toBe(true);
+
+    act(() => sources[0].fail());
     expect(read()).toBe(false);
   });
 

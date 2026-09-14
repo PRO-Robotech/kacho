@@ -266,3 +266,236 @@ describe("хаб подписки: один поток на владельца, 
     expect(said.join("\n")).toContain("501");
   });
 });
+
+/**
+ * ОБЪЯВЛЕННАЯ ПОСАДКА И СБОЙ — РАЗНЫЕ СОСТОЯНИЯ (#2016).
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ПРЕДМЕТ
+ *
+ * Перечень владельцев журналов у края ЗАКРЫТ, и пустой означает «никого»: край
+ * отвечает «журналов не служу» ДО того, как прочтёт имя владельца. Значит этот
+ * ответ относится к КРАЮ и одинаков для всех, а посадка без потока — законный
+ * выбор оператора, а не поломка.
+ *
+ * Прежняя редакция хаба различие ВЫЧИСЛЯЛА и ВЫБРАСЫВАЛА: код ответа попадал в
+ * строку журнала и больше никуда, поведение было одно на оба состояния. Цена
+ * измерена браузером на подставном крае, отвечающем `501`: приёмник событий
+ * даёт одну запись уровня `error` в журнале браузера, разбор отказа — вторую,
+ * и платит их КАЖДЫЙ владелец на КАЖДОЙ странице.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * У КАЖДОГО ОТРИЦАНИЯ ЗДЕСЬ ЕСТЬ ПОЛОЖИТЕЛЬНЫЙ БЛИЗНЕЦ
+ *
+ * «Второй владелец потока не открыл» верно и для хаба, который не открывает
+ * потока никогда, — то есть для хаба, сломанного целиком. Поэтому рядом с
+ * каждым утверждением о молчании стоит тот же мир с ОДНИМ изменённым фактом
+ * (код ответа края, состояние памяти, положение часов), в котором поток
+ * открывается.
+ */
+describe("посадочный отказ края отличается от сбоя", () => {
+  // Ссылки `verifies` здесь нет намеренно: своей задачи у предмета нет, а номер
+  // соседней был бы ложной координатой — следующий читатель пошёл бы по ней и
+  // нашёл другой предмет. Признак, по которому предмет найден, назван в шапке
+  // выше: две записи уровня `error` в журнале браузера на подставном крае,
+  // отвечающем «журналов не служу», и по паре на каждого следующего владельца.
+  const WINDOW = 60_000;
+
+  /** Дать осесть цепочке разбора: `then` → `catch` → `finally`. */
+  const settle = async (): Promise<void> => {
+    for (let i = 0; i < 8; i += 1) await Promise.resolve();
+  };
+
+  function hubWith(opts: {
+    status?: number;
+    /** Готовое обещание разбора; незаданное — отвечает `status` сразу. */
+    pending?: Promise<{ status: number; contentType: string; body: string }>;
+    available?: () => boolean;
+    clock: { at: number };
+    /** Общая память двух хабов — так выглядит переход между страницами. */
+    cell?: { until: number };
+    said?: string[];
+    diagnosed?: { count: number };
+  }) {
+    const sources: FakeSource[] = [];
+    const cell = opts.cell ?? { until: 0 };
+    const hub = new SubscriptionHub({
+      open: (url) => {
+        const s = new FakeSource(url);
+        sources.push(s);
+        return s;
+      },
+      diagnose: () => {
+        if (opts.diagnosed) opts.diagnosed.count += 1;
+        return (
+          opts.pending ??
+          Promise.resolve({ status: opts.status ?? 501, contentType: "application/json", body: "" })
+        );
+      },
+      log: (m) => opts.said?.push(m),
+      now: () => opts.clock.at,
+      reopenAfterMs: WINDOW,
+      available: opts.available,
+      recallEdgeSilence: () => cell.until,
+      rememberEdgeSilence: (until) => {
+        cell.until = until;
+      },
+    });
+    return { hub, sources, cell };
+  }
+
+  const vpc = { owner: "vpc", kind: "vpc_network", projectId: "prj-1" };
+  const compute = { owner: "compute", kind: "compute_instance", projectId: "prj-1" };
+
+  it("«журналов не служу» гасит поток ВСЕМ владельцам и спрашивается ОДИН раз", async () => {
+    const clock = { at: 1_000 };
+    const diagnosed = { count: 0 };
+    const { hub, sources } = hubWith({ status: 501, clock, diagnosed });
+    hub.subscribe(vpc, () => undefined);
+    sources[0].fail();
+    await settle();
+
+    hub.subscribe(compute, () => undefined);
+    expect(sources).toHaveLength(1);
+    expect(diagnosed.count).toBe(1);
+  });
+
+  it("а СБОЙ гасит только свой канал — соседний владелец открывается", async () => {
+    // Положительный близнец утверждения выше. Мир отличается ОДНИМ фактом —
+    // кодом ответа края; без него «второй поток не открылся» зеленело бы на
+    // хабе, не открывающем потока никогда.
+    const clock = { at: 1_000 };
+    const { hub, sources } = hubWith({ status: 503, clock });
+    hub.subscribe(vpc, () => undefined);
+    sources[0].fail();
+    await settle();
+
+    hub.subscribe(compute, () => undefined);
+    expect(sources).toHaveLength(2);
+  });
+
+  it("пока разбор идёт, нового потока не открывается — исход уже известен", async () => {
+    const clock = { at: 1_000 };
+    let release!: (v: { status: number; contentType: string; body: string }) => void;
+    const pending = new Promise<{ status: number; contentType: string; body: string }>((res) => {
+      release = res;
+    });
+    const { hub, sources } = hubWith({ pending, clock });
+    hub.subscribe(vpc, () => undefined);
+    sources[0].fail();
+
+    hub.subscribe(compute, () => undefined);
+    expect(sources).toHaveLength(1);
+
+    // Разбор сказал «сбой» — значит молчал только канал, и сосед открывается.
+    release({ status: 503, contentType: "application/json", body: "" });
+    await settle();
+    hub.subscribe(compute, () => undefined);
+    expect(sources).toHaveLength(2);
+  });
+
+  it("память о посадке переживает переход между страницами", async () => {
+    const clock = { at: 1_000 };
+    const cell = { until: 0 };
+    const first = hubWith({ status: 501, clock, cell });
+    first.hub.subscribe(vpc, () => undefined);
+    first.sources[0].fail();
+    await settle();
+
+    // Переход по разделу — полная перезагрузка: хаб новый, память та же.
+    const second = hubWith({ status: 501, clock, cell });
+    second.hub.subscribe(vpc, () => undefined);
+    expect(second.sources).toHaveLength(0);
+  });
+
+  it("а с ПУСТОЙ памятью тот же хаб поток открывает", () => {
+    // Положительный близнец: без него утверждение выше зеленело бы на хабе,
+    // который не открывает потока ни при какой памяти.
+    const clock = { at: 1_000 };
+    const { hub, sources } = hubWith({ status: 501, clock, cell: { until: 0 } });
+    hub.subscribe(vpc, () => undefined);
+    expect(sources).toHaveLength(1);
+  });
+
+  it("окно посадочного молчания ИСТЕКАЕТ — включённая выкаткой возможность берётся", async () => {
+    // Послабление обязано истекать само: посадку меняют выкаткой, и вечное
+    // молчание означало бы, что поток не берётся до закрытия вкладки.
+    const clock = { at: 1_000 };
+    const cell = { until: 0 };
+    const { hub, sources } = hubWith({ status: 501, clock, cell });
+    hub.subscribe(vpc, () => undefined);
+    sources[0].fail();
+    await settle();
+
+    clock.at += WINDOW - 1;
+    hubWith({ status: 501, clock, cell }).hub.subscribe(vpc, () => undefined);
+    expect(sources).toHaveLength(1);
+
+    clock.at += 2;
+    const after = hubWith({ status: 501, clock, cell });
+    after.hub.subscribe(vpc, () => undefined);
+    expect(after.sources).toHaveLength(1);
+  });
+
+  it("среда без приёмника событий молчит КРАЮ целиком и говорит об этом один раз", () => {
+    const clock = { at: 1_000 };
+    const said: string[] = [];
+    const { hub, sources } = hubWith({ clock, said, available: () => false });
+    hub.subscribe(vpc, () => undefined);
+    hub.subscribe(compute, () => undefined);
+    expect(sources).toHaveLength(0);
+    expect(said).toHaveLength(1);
+  });
+
+  it("опрос остаётся в ОБОИХ состояниях: покрытия нет ни при посадке, ни при сбое", async () => {
+    for (const status of [501, 503]) {
+      const clock = { at: 1_000 };
+      const { hub, sources } = hubWith({ status, clock });
+      hub.subscribe(vpc, () => undefined);
+      sources[0].emit("opened", opened(["vpc_network"]));
+      expect(hub.covers(vpc)).toBe(true);
+      sources[0].fail();
+      await settle();
+      expect(hub.covers(vpc)).toBe(false);
+    }
+  });
+
+  it("разбор, который не ответил, НЕ запирает поток навсегда", () => {
+    // «Не знаю» — третья категория, и выдавать её за «нет» нельзя. Край может
+    // молчать (висящий запрос, оборванная связь), и признак «разбор идёт»,
+    // снимаемый только ответом, оставил бы страницу на опросе до перезагрузки
+    // вкладки — молча и навсегда. Ожидание получает ТО ЖЕ конечное окно.
+    const clock = { at: 1_000 };
+    // Обещание, которое не разрешается НИКОГДА: так выглядит молчащий край.
+    const pending = new Promise<{ status: number; contentType: string; body: string }>(() => undefined);
+    const { hub, sources } = hubWith({ pending, clock });
+    hub.subscribe(vpc, () => undefined);
+    sources[0].fail();
+
+    hub.subscribe(compute, () => undefined);
+    expect(sources).toHaveLength(1);
+
+    clock.at += WINDOW + 1;
+    hub.subscribe(compute, () => undefined);
+    expect(sources).toHaveLength(2);
+  });
+
+  it("посадочный отказ назван ПОСАДКОЙ, а сбой — отказом владельца", async () => {
+    const clock = { at: 1_000 };
+    const posture: string[] = [];
+    const broken: string[] = [];
+    const a = hubWith({ status: 501, clock, said: posture });
+    a.hub.subscribe(vpc, () => undefined);
+    a.sources[0].fail();
+    await settle();
+
+    const b = hubWith({ status: 503, clock, said: broken, cell: { until: 0 } });
+    b.hub.subscribe(vpc, () => undefined);
+    b.sources[0].fail();
+    await settle();
+
+    expect(posture.join("\n")).toContain("ОБЪЯВЛЕННАЯ посадка");
+    expect(broken.join("\n")).not.toContain("ОБЪЯВЛЕННАЯ посадка");
+    expect(broken.join("\n")).toContain("vpc");
+  });
+});
