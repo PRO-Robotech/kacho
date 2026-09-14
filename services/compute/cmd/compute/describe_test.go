@@ -24,7 +24,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
-	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 	"github.com/PRO-Robotech/corelib/authz"
 	"github.com/PRO-Robotech/corelib/operations"
 	"github.com/PRO-Robotech/corelib/outbox/bootgate"
@@ -308,7 +308,7 @@ func TestStreamBudgetIsDeclaredWithItsSubject(t *testing.T) {
 //     поверхность не выходит (запретом на публикацию внутренних служб наружу), а «internal = доверенный» здесь не
 //     допущение: оба слушателя обходятся порознь.
 func TestComputeServesTheSubscriptionStream(t *testing.T) {
-	const subscribeVerb = "/kacho.cloud.subscription.InternalSubscriptionService/Subscribe"
+	const subscribeVerb = "/corelib.subscription.InternalSubscriptionService/Subscribe"
 
 	seen := map[string][]string{}
 	methods := 0

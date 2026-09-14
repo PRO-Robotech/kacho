@@ -43,7 +43,7 @@
 // # Кто считается ссылкой, а кто нет
 //
 //	ДА   другой контракт дерева, называющий тип полным именем
-//	     (`kacho.cloud.subscription.SubscriptionRequest`);
+//	     (`corelib.subscription.SubscriptionRequest`);
 //	ДА   прод-код Go, импортирующий сгенерённый пакет ИМЕНОВАННО и
 //	     употребляющий тип.
 //	НЕТ  сами файлы общего пакета — тип не ссылается на себя;
@@ -77,7 +77,7 @@ import (
 )
 
 // SubscriptionGoPackage — импортный путь сгенерённого пакета общей формы.
-const SubscriptionGoPackage = "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+const SubscriptionGoPackage = "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 
 // SubscriptionGoDefaultAlias — имя пакета Go по умолчанию (из `go_package`).
 const SubscriptionGoDefaultAlias = "subscriptionv1"

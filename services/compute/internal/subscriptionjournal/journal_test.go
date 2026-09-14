@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 	"github.com/PRO-Robotech/corelib/subscription"
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"

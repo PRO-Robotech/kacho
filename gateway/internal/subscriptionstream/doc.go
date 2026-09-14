@@ -6,7 +6,7 @@
 // # Что это и чем оно не является
 //
 // Край становится ПОТРЕБИТЕЛЕМ общего глагола подписки
-// (`kacho.cloud.subscription.InternalSubscriptionService/Subscribe`,
+// (`corelib.subscription.InternalSubscriptionService/Subscribe`,
 // `corelib/subscription`) и отдаёт наружу СВОЮ поверхность — Server-Sent Events.
 //
 // Это не проекция метода через `runtime.ServeMux`, и различие проверяемо, а не

@@ -31,9 +31,9 @@ func newServerStand(t *testing.T) *serverStand {
 	t.Helper()
 	root := t.TempDir()
 	s := &serverStand{root: root}
-	s.write(t, "proto/kacho/cloud/subscription/subscription.proto", `
+	s.write(t, "proto/corelib/subscription/subscription.proto", `
 syntax = "proto3";
-package kacho.cloud.subscription;
+package corelib.subscription;
 
 // Здесь СЛОВО returns (stream — внутри комментария. Оно не объявление, и
 // анализатор, считающий текст, покраснел бы на этом объяснении.
@@ -241,7 +241,7 @@ func TestServerStandRedsWhenTheServerHasNoVerb(t *testing.T) {
 	t.Parallel()
 	s := newServerStand(t)
 	if err := os.Remove(filepath.Join(s.root,
-		"proto/kacho/cloud/subscription/subscription.proto")); err != nil {
+		"proto/corelib/subscription/subscription.proto")); err != nil {
 		t.Fatal(err)
 	}
 	s.write(t, "proto/kacho/cloud/geo/v1/geo.proto", "syntax = \"proto3\";\npackage kacho.cloud.geo.v1;\n")

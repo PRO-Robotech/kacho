@@ -72,7 +72,7 @@ message SubscriptionEvent {
 
 func baseShapeForm() shapeForm {
 	return shapeForm{
-		Package: "kacho.cloud.subscription",
+		Package: "corelib.subscription",
 		Imports: `import "google/protobuf/any.proto";`,
 		AnchorEnum: `// SubscriptionAnchor — якорь начала.
 enum SubscriptionAnchor {
@@ -151,13 +151,13 @@ func shapeAudit(
 ) ([]SubscriptionShapeFinding, SubscriptionShapeCensus) {
 	t.Helper()
 	root := subscriptionStand(t, map[string]string{
-		"proto/kacho/cloud/subscription/subscription.proto": form.render(),
+		"proto/corelib/subscription/subscription.proto": form.render(),
 	})
 	var log strings.Builder
 	findings, census, err := AuditSubscriptionFormShape(SubscriptionShapeOptions{
 		Root:          root,
 		ProtoRoot:     "proto",
-		FormFile:      "kacho/cloud/subscription/subscription.proto",
+		FormFile:      "corelib/subscription/subscription.proto",
 		RequestFields: ledger,
 		AbsentAxes:    absent,
 		Expect:        subscriptionShapeExpectation(),
@@ -637,7 +637,7 @@ func TestSubscriptionShapeRefusesAnEmptyRead(t *testing.T) {
 	t.Run("контракта нет", func(t *testing.T) {
 		root := subscriptionStand(t, map[string]string{"proto/.keep": ""})
 		_, _, err := AuditSubscriptionFormShape(SubscriptionShapeOptions{
-			Root: root, ProtoRoot: "proto", FormFile: "kacho/cloud/subscription/subscription.proto",
+			Root: root, ProtoRoot: "proto", FormFile: "corelib/subscription/subscription.proto",
 			RequestFields: shapeStandLedger(), AbsentAxes: shapeStandAbsent(),
 			Expect: subscriptionShapeExpectation(),
 		}, nil)
@@ -652,15 +652,15 @@ func TestSubscriptionShapeRefusesAnEmptyRead(t *testing.T) {
 	})
 
 	t.Run("файл есть, объявлений нет", func(t *testing.T) {
-		f := shapeForm{Package: "kacho.cloud.subscription"}
+		f := shapeForm{Package: "corelib.subscription"}
 		root := subscriptionStand(t, map[string]string{
-			"proto/kacho/cloud/subscription/subscription.proto": `syntax = "proto3";
-package kacho.cloud.subscription;
+			"proto/corelib/subscription/subscription.proto": `syntax = "proto3";
+package corelib.subscription;
 // Здесь ничего не объявлено.
 `})
 		_ = f
 		_, _, err := AuditSubscriptionFormShape(SubscriptionShapeOptions{
-			Root: root, ProtoRoot: "proto", FormFile: "kacho/cloud/subscription/subscription.proto",
+			Root: root, ProtoRoot: "proto", FormFile: "corelib/subscription/subscription.proto",
 			RequestFields: shapeStandLedger(), AbsentAxes: shapeStandAbsent(),
 			Expect: subscriptionShapeExpectation(),
 		}, nil)
@@ -678,10 +678,10 @@ package kacho.cloud.subscription;
 		f := baseShapeForm()
 		f.Package = "kacho.cloud.demo.v1"
 		root := subscriptionStand(t, map[string]string{
-			"proto/kacho/cloud/subscription/subscription.proto": f.render(),
+			"proto/corelib/subscription/subscription.proto": f.render(),
 		})
 		_, _, err := AuditSubscriptionFormShape(SubscriptionShapeOptions{
-			Root: root, ProtoRoot: "proto", FormFile: "kacho/cloud/subscription/subscription.proto",
+			Root: root, ProtoRoot: "proto", FormFile: "corelib/subscription/subscription.proto",
 			RequestFields: shapeStandLedger(), AbsentAxes: shapeStandAbsent(),
 			Expect: subscriptionShapeExpectation(),
 		}, nil)
@@ -710,13 +710,13 @@ func TestSubscriptionShapeMissingMessageCanFail(t *testing.T) {
 		f := baseShapeForm()
 		f.Opened = ""
 		root := subscriptionStand(t, map[string]string{
-			"proto/kacho/cloud/subscription/subscription.proto": strings.Replace(
+			"proto/corelib/subscription/subscription.proto": strings.Replace(
 				f.render(),
 				"// SubscriptionOpened — служебное первое сообщение.\nmessage SubscriptionOpened {\n\n}\n",
 				"", 1),
 		})
 		findings, _, err := AuditSubscriptionFormShape(SubscriptionShapeOptions{
-			Root: root, ProtoRoot: "proto", FormFile: "kacho/cloud/subscription/subscription.proto",
+			Root: root, ProtoRoot: "proto", FormFile: "corelib/subscription/subscription.proto",
 			RequestFields: shapeStandLedger(), AbsentAxes: shapeStandAbsent(),
 			Expect: subscriptionShapeExpectation(),
 		}, nil)
@@ -751,10 +751,10 @@ func shapeAuditRaw(
 ) ([]SubscriptionShapeFinding, SubscriptionShapeCensus) {
 	t.Helper()
 	root := subscriptionStand(t, map[string]string{
-		"proto/kacho/cloud/subscription/subscription.proto": body,
+		"proto/corelib/subscription/subscription.proto": body,
 	})
 	findings, census, err := AuditSubscriptionFormShape(SubscriptionShapeOptions{
-		Root: root, ProtoRoot: "proto", FormFile: "kacho/cloud/subscription/subscription.proto",
+		Root: root, ProtoRoot: "proto", FormFile: "corelib/subscription/subscription.proto",
 		RequestFields: ledger, AbsentAxes: absent,
 		Expect: subscriptionShapeExpectation(),
 	}, nil)

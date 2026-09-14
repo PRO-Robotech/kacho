@@ -66,7 +66,7 @@ import (
 // Оно записано строкой, а не выведено из сгенерённого дескриптора служб: носитель
 // сверяет проводку с КАТАЛОГОМ ПРАВ, где ключ — та же строка, и вывод её из
 // другого источника сделал бы сверку тождественно истинной при расхождении.
-const subscriptionSubscribeFQN servicecontract.MethodFQN = "/kacho.cloud.subscription.InternalSubscriptionService/Subscribe"
+const subscriptionSubscribeFQN servicecontract.MethodFQN = "/corelib.subscription.InternalSubscriptionService/Subscribe"
 
 func hideExistenceForms() map[servicecontract.ObjectType]servicecontract.NotFoundFormat {
 	out := map[servicecontract.ObjectType]servicecontract.NotFoundFormat{}

@@ -43,7 +43,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
-	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 	"github.com/PRO-Robotech/corelib/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/corelib/operations"
 	"github.com/PRO-Robotech/corelib/operations/operationspb"
@@ -527,7 +527,7 @@ func TestStorageServesExactlyTheSubscriptionStream(t *testing.T) {
 		t.Fatal("ни один метод не зарегистрирован — утверждение о составе стримов было бы " +
 			"верно и на пустом наборе, то есть проба не отличала бы исправное от сломанного")
 	}
-	const subscribeVerb = "/kacho.cloud.subscription.InternalSubscriptionService/Subscribe"
+	const subscribeVerb = "/corelib.subscription.InternalSubscriptionService/Subscribe"
 	if len(streams) != 1 || streams[0] != subscribeVerb {
 		t.Fatalf("служимые серверные стримы: %v; ожидался ровно один — %s.\nВторой стрим "+
 			"означал бы второй язык потока у одного сервиса; ноль — что подписка не "+

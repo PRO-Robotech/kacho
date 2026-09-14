@@ -257,7 +257,7 @@ func TestStreamBudgetIsAValueBecauseTheSubscriptionStreamIsServed(t *testing.T) 
 		}
 	}
 	require.Positive(t, methods, "перепись прочла ноль методов — судить не о чем")
-	assert.Equal(t, []string{"kacho.cloud.subscription.InternalSubscriptionService/Subscribe"}, streaming,
+	assert.Equal(t, []string{"corelib.subscription.InternalSubscriptionService/Subscribe"}, streaming,
 		"служимые потоки разошлись с тем, ради чего объявлена величина "+
 			"(осмотрено методов: %d)", methods)
 	assert.Equal(t, 1, streams, "потоков служится %d: %v", streams, streaming)

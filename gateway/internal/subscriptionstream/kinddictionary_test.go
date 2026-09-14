@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 )
 
 // TestKindDictionaryReachesTheBrowserFrame — словарь видов доезжает до браузера

@@ -1,7 +1,7 @@
 # Вид предмета подписки: одно написание и один способ его прочитать
 
 **Статус:** решение принято 2026-08-28 (задача #1393) · **Область:** ось `kinds`
-контракта `kacho.cloud.subscription` и словари видов всех владельцев журнала ·
+контракта `corelib.subscription` и словари видов всех владельцев журнала ·
 **Это ЕДИНСТВЕННОЕ место, где выбор объявлен**; исполнение —
 `corelib/subscription/journal.go` (`Journal.KindDictionary`), энфорсмент —
 `internal/repohygiene/subscriptionkindvocabulary.go` и `Journal.Validate`.

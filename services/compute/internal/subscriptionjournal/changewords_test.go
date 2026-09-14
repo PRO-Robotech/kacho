@@ -12,7 +12,7 @@ import (
 	"sort"
 	"testing"
 
-	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 )
 
 // emitterFile — где живёт ПРОИЗВОДИТЕЛЬ слов журнала.
