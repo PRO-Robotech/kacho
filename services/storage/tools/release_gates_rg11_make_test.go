@@ -710,7 +710,13 @@ func TestRG11MakeDesignForms(t *testing.T) {
 		})
 	}
 	for _, tc := range []struct{ name, run, level string }{
-		{"quoted_label", `bash ".github/scripts/stand-up.sh" --label 'RG1.1 ; make label-only | > # text' --dir 'deploy' -- make helm-deps`, ""},
+		// Литерал ИНТЕРПРЕТИРУЕМЫЙ, а не сырой, и это не стиль: в Go обратные
+		// кавычки — синтаксис сырой строки, а гейт названных целей сборки
+		// (internal/repohygiene/namedmaketarget_test.go) читает обратные кавычки
+		// как inline-код, то есть как команду, названную читателю. Имя-приманка
+		// внутри --label целью не является и набирать его никто не должен;
+		// сырой литерал делал его неотличимым от названной цели.
+		{"quoted_label", "bash \".github/scripts/stand-up.sh\" --label 'RG1.1 ; make label-only | > # text' --dir 'deploy' -- make helm-deps", ""},
 		{"escaped_label", `./.github/scripts/stand-up.sh --label RG1.1\;label --dir deploy -- make helm-deps`, ""},
 		{"child_make_C", `.github/scripts/stand-up.sh --label "RG1.1" --dir services/storage -- make -C ../../deploy helm-deps`, ""},
 		{"child_make_C_attached", `.github/scripts/stand-up.sh --label "RG1.1" --dir services/storage -- make -C../../deploy helm-deps`, ""},
