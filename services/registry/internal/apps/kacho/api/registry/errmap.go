@@ -6,6 +6,7 @@ package registry
 import (
 	"fmt"
 
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/shared/serviceerr"
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
 )
@@ -31,6 +32,19 @@ func failInvalidArg(format string, a ...any) error {
 // failFailedPrecondition — sentinel ErrFailedPrecondition → gRPC FAILED_PRECONDITION.
 func failFailedPrecondition(format string, a ...any) error {
 	return serviceerr.ToStatus(fmt.Errorf("%w: %s", regerrors.ErrFailedPrecondition, fmt.Sprintf(format, a...)))
+}
+
+// failDeletionRefusal — тот же отказ предусловия, но с ПОЛОСОЙ: клиент отличает
+// «контейнер не пуст» от прочих предусловий машинно, по `reason`-токену, а не
+// разбором прозы (`api-conventions.md` §By-lane code-split).
+//
+// Отдельная функция, а не параметр у соседней: полоса есть у отказа на СНЯТИЕ и
+// нет у предусловия вообще, и необязательный параметр читался бы как «полосу
+// можно не называть» ровно там, где её отсутствие и есть дефект.
+func failDeletionRefusal(lane refusal.Lane, resourceType, id, format string, a ...any) error {
+	return serviceerr.ToStatus(refusal.Wrap(lane,
+		refusal.Ref{ResourceType: resourceType, ResourceID: id},
+		fmt.Errorf("%w: %s", regerrors.ErrFailedPrecondition, fmt.Sprintf(format, a...))))
 }
 
 // failAlreadyExists — sentinel ErrAlreadyExists → gRPC ALREADY_EXISTS.

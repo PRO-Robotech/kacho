@@ -200,6 +200,19 @@ var (
 	// `iamerr.Wrapf(iamerr.ErrNotFound, "%s %s is not an active cluster admin", …)`
 	// — текст стоит ВТОРЫМ аргументом, за сигнальной ошибкой.
 	rtWrapArg = regexp.MustCompile(`\bWrapf?\(\s*[\w.]+\s*,\s*"((?:[^"\\]|\\.)*)"`)
+	// Отказ на СНЯТИЕ ресурса, собранный конструктором ПОЛОСЫ: текст стоит
+	// ЧЕТВЁРТЫМ аргументом, за полосой, видом ресурса и его идентификатором
+	// (`serviceerr.DeletionRefusal(refusal.HoldsChildren, "network", id, "…", …)`,
+	// `shared.DeletionRefusal`, `failDeletionRefusal`).
+	//
+	// Форма заведена вместе с машинным признаком полосы отказа на снятие
+	// (задача продукта #1297) и ЗАМЕСТИЛА прежнюю `status.Errorf(codes.X, "…")`
+	// у полутора десятков текстов. Распознаватель, её не знающий, объявил бы
+	// «производителя нет» у отказов, которые продукт производит как прежде, —
+	// то есть послал бы автора кейса править верное утверждение
+	// (`testing.md` §«Гейт на класс», п.7).
+	rtDeletionRefusal = regexp.MustCompile(
+		`DeletionRefusal\(\s*[\w.]+\s*,\s*(?:"[^"]*"|[\w.]+)\s*,\s*[\w.]+\s*,\s*"((?:[^"\\]|\\.)*)"`)
 
 	// rtVarAssignLiteral — переменной присвоен ЧИСТЫЙ строковый литерал:
 	// `msg := "…"` либо `msg = "…"` (переприсвоение параметра/поля). Строка
@@ -278,7 +291,7 @@ func rtProducers(root string, goFiles []string) (map[string]map[string]bool, err
 		}
 		whole := joined.String()
 		for _, re := range []*regexp.Regexp{rtStatusText, rtWrapText, rtInvalidArg,
-			rtSprintfText, rtErrorsNew, rtWrapArg, rtConstText} {
+			rtSprintfText, rtErrorsNew, rtWrapArg, rtConstText, rtDeletionRefusal} {
 			for _, m := range re.FindAllStringSubmatch(whole, -1) {
 				add(owner, strings.ReplaceAll(m[1], "%q", `"%s"`))
 			}

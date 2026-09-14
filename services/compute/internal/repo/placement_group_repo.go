@@ -16,6 +16,7 @@ import (
 	"github.com/PRO-Robotech/corelib/validate"
 	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaintent"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
@@ -41,8 +42,12 @@ func (e *ErrPlacementGroupInUse) Error() string {
 }
 
 // Unwrap делает отказ отображаемым общей таблицей: состояние ресурса не
-// позволяет операцию.
-func (e *ErrPlacementGroupInUse) Unwrap() error { return ports.ErrFailedPrecondition }
+// позволяет операцию. Полоса ставится здесь же — вид отказа назван самим типом.
+func (e *ErrPlacementGroupInUse) Unwrap() error {
+	return refusal.Wrap(refusal.ReferredTo,
+		refusal.Ref{ResourceType: "placement_group", ResourceID: e.GroupID},
+		ports.ErrFailedPrecondition)
+}
 
 // PlacementGroupRepo — хранение групп размещения.
 type PlacementGroupRepo struct {

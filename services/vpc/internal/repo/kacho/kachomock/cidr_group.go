@@ -9,6 +9,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
@@ -206,7 +207,8 @@ func (gw *cidrGroupWriter) Delete(_ context.Context, id string) error {
 		return fmt.Errorf("%w: CidrGroup %s not found", repo.ErrNotFound, id)
 	}
 	if refs := referrersFromSGs(gw.w.localSGs, id); len(refs) > 0 {
-		return fmt.Errorf("%w: CidrGroup %s is in use", repo.ErrFailedPrecondition, id)
+		return refusal.Wrap(refusal.ReferredTo, refusal.Ref{ResourceType: "cidr_group", ResourceID: id},
+			fmt.Errorf("%w: CidrGroup %s is in use", repo.ErrFailedPrecondition, id))
 	}
 	delete(gw.w.localCGs, id)
 	gw.w.deletedCGIDs[id] = struct{}{}

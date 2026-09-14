@@ -15,6 +15,7 @@ import (
 
 	"github.com/PRO-Robotech/corelib/filter"
 	"github.com/PRO-Robotech/corelib/validate"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
@@ -392,7 +393,8 @@ func (w *securityGroupWriter) Delete(ctx context.Context, id string) error {
 		return helpers.WrapSGErr(err, id)
 	}
 	if inUse {
-		return fmt.Errorf("%w: security group is in use by network interface(s)", helpers.ErrFailedPrecondition)
+		return refusal.Wrap(refusal.ReferredTo, refusal.Ref{ResourceType: "security_group", ResourceID: id},
+			fmt.Errorf("%w: security group is in use by network interface(s)", helpers.ErrFailedPrecondition))
 	}
 
 	tag, err := w.tx.Exec(ctx, `DELETE FROM security_groups WHERE id = $1`, id)

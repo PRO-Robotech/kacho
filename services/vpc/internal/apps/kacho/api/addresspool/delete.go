@@ -7,10 +7,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // DeleteAddressPoolUseCase — admin-only Delete. Bindings (network_default /
@@ -51,7 +50,7 @@ func (u *DeleteAddressPoolUseCase) Execute(ctx context.Context, id string) error
 		return err
 	}
 	if n > 0 {
-		return status.Errorf(codes.FailedPrecondition,
+		return serviceerr.DeletionRefusal(refusal.HoldsChildren, "address_pool", id,
 			"AddressPool %s is not empty (%d allocated addresses); release IPs first", id, n)
 	}
 	if err := w.AddressPools().Delete(ctx, id); err != nil {

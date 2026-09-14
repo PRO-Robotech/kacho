@@ -55,7 +55,16 @@ func ToStatus(err error) error {
 	case errors.Is(err, storageerr.ErrAlreadyExists):
 		return status.Error(codes.AlreadyExists, strip(err, storageerr.ErrAlreadyExists))
 	case errors.Is(err, storageerr.ErrFailedPrecondition):
-		return status.Error(codes.FailedPrecondition, strip(err, storageerr.ErrFailedPrecondition))
+		// Полоса отказа на снятие приклеивается ЗДЕСЬ, в ветке предусловия, а не
+		// выше по switch'у: признак принадлежит состоянию ресурса, и поставить его
+		// на код, который полосе не принадлежит, значило бы объявить полосу там, где
+		// производитель её не называл. Полосы нет — ветка ведёт себя ровно как
+		// прежде, ни кода, ни текста не меняя.
+		msg := strip(err, storageerr.ErrFailedPrecondition)
+		if laned, ok := deletionRefusal(err, codes.FailedPrecondition, msg); ok {
+			return laned
+		}
+		return status.Error(codes.FailedPrecondition, msg)
 	case errors.Is(err, storageerr.ErrResourceExhausted):
 		return status.Error(codes.ResourceExhausted, strip(err, storageerr.ErrResourceExhausted))
 	case errors.Is(err, storageerr.ErrInvalidArg):

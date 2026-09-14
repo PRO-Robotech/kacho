@@ -334,8 +334,16 @@ func judgeCoverage(rest map[string][]string, declared map[string]bool) (missing,
 var producedOutsideThisTree = map[string]string{
 	"MEMBERSHIP_CARRIES_RIGHTS": "PRO-Robotech/kaname",
 	"QUOTA_RATE_EXCEEDED":       "PRO-Robotech/kaname",
-	"REFERENCE_IN_USE":          "PRO-Robotech/kaname",
-	"REFERENCE_MISSING":         "PRO-Robotech/kaname",
+	// REFERENCE_IN_USE снят из ведомости: токен ВЕРНУЛСЯ в это дерево. Платформа
+	// производит его на отказах снятия своих ресурсов (`pkg/refusal`, задача
+	// продукта #1297) — тем же именем, каким его производит служба доступа,
+	// потому что факт один: снять нельзя, на ресурс ещё ссылаются. Запись,
+	// прикрывающая живую координату, прикрывала бы её навсегда.
+	//
+	// REFERENCE_MISSING остаётся: его противоположную сторону — «ссылаемого
+	// нет» — платформа не производит, у неё эта полоса выражена резолвом
+	// идентификатора (`PEER_RESOURCE_MISSING`).
+	"REFERENCE_MISSING": "PRO-Robotech/kaname",
 
 	// Шесть токенов ниже производит ОБЩАЯ БИБЛИОТЕКА: полосы разрешения ссылки
 	// и отсутствия домена величин объявлены в её пакете отказов, уехавшем из
