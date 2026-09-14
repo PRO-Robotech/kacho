@@ -135,12 +135,32 @@ const subjectFateCarried = "carried"
 // печатает его число, и восстанавливать проверку пойдут туда, где предмет живёт.
 const subjectFateUnguarded = "unguarded"
 
+// subjectFateRegained — предмет ОСТАЛСЯ здесь и снова стережётся: держатель в
+// ЭТОМ дереве, и его координата названа полем [GateCarrierRetirement.GuardedHere].
+//
+// Четвёртое значение заведено ЗАМЕРОМ, а не симметрией (задача
+// PRO-Robotech/kacho#2613). Две семьи носителей — провязка побайтовой сверки
+// модели и провязка судьи ФОРМЫ манифеста — стерегли предмет, который вместе со
+// службой НЕ УЕХАЛ: пять документов `services/*/manifest.yaml` как лежали здесь,
+// так и лежат; уехал их ИСПОЛНИТЕЛЬ. Обе семьи объявляли `unguarded`, и после
+// того как держатели завелись здесь заново, все три прежних значения стали
+// ложью: `gone` отрицает живой предмет, `carried` обещает стража в чужом дереве,
+// `unguarded` утверждает, что стража нет вовсе.
+//
+// ПОЧЕМУ ЭТО НЕ «ПРОСТО СНЯТЬ ЗАПИСЬ». Носитель снят — это факт, и надгробие
+// объявляет именно снятие. Снять запись значило бы сделать прежнее снятие
+// молчаливым: гейт-сосед (gatecarrierremoval.go) нашёл бы его находкой заново.
+// Меняется не факт снятия, а судьба ПРЕДМЕТА — ровно то, ради чего поле и
+// заведено.
+const subjectFateRegained = "regained"
+
 // subjectFates — ЗАКРЫТЫЙ словарь судеб. Значение — что запись этим объявляет;
 // оно идёт в текст находки, чтобы сообщение называло предмет, а не имя ключа.
 var subjectFates = map[string]string{
 	subjectFateGone:      "предмета больше нет — судить нечего",
 	subjectFateCarried:   "предмет уехал и стережётся в репозитории-преемнике",
 	subjectFateUnguarded: "предмет уехал и не стережётся никем — названный остаток",
+	subjectFateRegained:  "предмет остался здесь и снова стережётся — держатель в этом дереве",
 }
 
 // carriedSubjectTreesEnv — ручка, которой вызывающий даёт корни клонов
@@ -167,8 +187,8 @@ var carrierSuffixes = []string{
 type carriedSubjectCensus struct {
 	// Rows — записей надгробия прочитано.
 	Rows int
-	// Gone, Carried, Unguarded — сколько записей какую судьбу объявили.
-	Gone, Carried, Unguarded int
+	// Gone, Carried, Unguarded, Regained — сколько записей какую судьбу объявили.
+	Gone, Carried, Unguarded, Regained int
 	// Families — семей носителей среди прочитанных записей.
 	Families int
 	// Repos — репозиториев-преемников в словаре владельца имён.
@@ -353,8 +373,12 @@ func resolveInTrees(trees map[string]string) carriedCoordinateResolver {
 //
 // Разведено с добычей входа намеренно: инъекция гоняет эту функцию на настоящей
 // ведомости, а не на её копии.
+// root — корень ЭТОГО дерева: по нему резолвится координата держателя у судьбы
+// [subjectFateRegained]. Она единственная проверяется всегда, поэтому корень
+// здесь обязателен, а не факультативен, как клон соседа.
 func judgeCarriedSubjects(
-	rows []GateCarrierRetirement, repos map[string]bool, resolve carriedCoordinateResolver,
+	root string, rows []GateCarrierRetirement, repos map[string]bool,
+	resolve carriedCoordinateResolver,
 ) ([]string, carriedSubjectCensus) {
 	census := carriedSubjectCensus{Rows: len(rows), Repos: len(repos)}
 	var findings []string
@@ -370,7 +394,7 @@ func judgeCarriedSubjects(
 		fam := carrierFamily(r.Carrier)
 		families[fam] = append(families[fam], r)
 
-		findings = append(findings, judgeOneSubjectFate(r, repos, resolve, &census)...)
+		findings = append(findings, judgeOneSubjectFate(root, r, repos, resolve, &census)...)
 	}
 	census.Families = len(families)
 	findings = append(findings, judgeFamilyAgreement(families)...)
@@ -386,7 +410,7 @@ func judgeCarriedSubjects(
 // [judgeFamilyAgreement]): иначе одна ошибка дала бы находку на каждом члене
 // семьи, и предмет находки сместился бы с записи на её родню.
 func judgeOneSubjectFate(
-	r GateCarrierRetirement, repos map[string]bool,
+	root string, r GateCarrierRetirement, repos map[string]bool,
 	resolve carriedCoordinateResolver, census *carriedSubjectCensus,
 ) []string {
 	var findings []string
@@ -415,6 +439,23 @@ func judgeOneSubjectFate(
 		return findings
 	}
 
+	if r.Fate == subjectFateRegained {
+		census.Regained++
+		return append(findings, judgeRegainedSubject(r, root)...)
+	}
+
+	// Координата держателя В ЭТОМ дереве принадлежит ровно одной судьбе.
+	// Названная при любой другой, она обещает стража там, где запись же и
+	// объявила его отсутствие либо отъезд.
+	if strings.TrimSpace(r.GuardedHere) != "" {
+		findings = append(findings, fmt.Sprintf(
+			"%s: %q объявил судьбу %q и назвал держателя В ЭТОМ дереве (%q). "+
+				"Поле %q принадлежит судьбе %q и только ей: при остальных запись утверждает, "+
+				"что здесь предмета либо стража нет",
+			gateCarrierLedgerName, r.Carrier, r.Fate, r.GuardedHere, "guarded_here",
+			subjectFateRegained))
+	}
+
 	if r.Fate == subjectFateUnguarded {
 		census.Unguarded++
 		return append(findings, judgeUnguardedSubject(r, repos)...)
@@ -422,6 +463,46 @@ func judgeOneSubjectFate(
 
 	census.Carried++
 	return append(findings, judgeCarriedCoordinate(r, repos, resolve, census)...)
+}
+
+// judgeRegainedSubject — предмет остался здесь и снова стережётся.
+//
+// Координата держателя ОБЯЗАТЕЛЬНА и, в отличие от координаты в чужом дереве,
+// ПРОВЕРЯЕТСЯ ВСЕГДА: она лежит в этом же репозитории, и клона соседа для неё не
+// требуется. Поэтому у неё нет состояния «не сверялась» — назвав несуществующий
+// файл, запись объявила бы стража, которого нет, тем же способом, каким лгала
+// прежняя редакция.
+//
+// Координата чужого репозитория здесь запрещена: предмет никуда не уезжал, и
+// назвать преемника значило бы поставить рядом два утверждения об одном
+// предмете.
+func judgeRegainedSubject(r GateCarrierRetirement, root string) []string {
+	var findings []string
+	rel := strings.TrimSpace(r.GuardedHere)
+	if rel == "" {
+		return append(findings, fmt.Sprintf(
+			"%s: %q объявил %q, но не назвал держателя В ЭТОМ дереве. «Снова стережётся» "+
+				"без координаты неотличимо от «не стережётся никем» — то есть от той самой лжи, "+
+				"против которой поле и заведено",
+			gateCarrierLedgerName, r.Carrier, subjectFateRegained))
+	}
+	if r.CarriedTo != nil {
+		findings = append(findings, fmt.Sprintf(
+			"%s: %q объявил %q — предмет остался здесь, — и назвал координату преемника %s. "+
+				"Два утверждения об одном предмете, и верно одно",
+			gateCarrierLedgerName, r.Carrier, subjectFateRegained, r.CarriedTo.describe()))
+	}
+	if why := judgeCarriedPathForm(r.Carrier, rel); why != "" {
+		return append(findings, why)
+	}
+	if st, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); err != nil || !st.Mode().IsRegular() {
+		findings = append(findings, fmt.Sprintf(
+			"%s: %q называет держателем %q, а такого файла В ЭТОМ дереве НЕТ. Это единственная "+
+				"координата надгробия, которую дерево проверяет само, и висячей она быть не "+
+				"вправе: читатель уйдёт по ней в пустоту",
+			gateCarrierLedgerName, r.Carrier, rel))
+	}
+	return findings
 }
 
 // judgeUnguardedSubject — названный остаток: предмет уехал, держателя нет.

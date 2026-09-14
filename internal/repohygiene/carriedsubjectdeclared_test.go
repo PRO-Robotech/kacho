@@ -15,13 +15,13 @@ import (
 // TestCarriedSubjectIsDeclaredNotBuried — судьба предмета у каждой записи
 // надгробия объявлена, и объявление связно.
 //
-// Перепись печатает ВОСЕМЬ величин, а не одну. Каждая закрывает свой способ
+// Перепись печатает ДЕВЯТЬ величин, а не одну. Каждая закрывает свой способ
 // получить «ноль находок» ни на чём: записей прочитано · семей · сколько
 // объявили «предмета нет», сколько «уехало и стережётся», сколько «уехало и не
-// стережётся никем» · репозиториев-преемников в словаре · координат СВЕРЕНО с
-// деревом-преемником и сколько НЕ сверялось · какие деревья-преемники были под
-// рукой. Последние две врозь намеренно:
-// пропуск, не названный числом, читался бы как проход.
+// стережётся никем», сколько «осталось здесь и снова стережётся» ·
+// репозиториев-преемников в словаре · координат СВЕРЕНО с деревом-преемником и
+// сколько НЕ сверялось · какие деревья-преемники были под рукой. Последние две
+// врозь намеренно: пропуск, не названный числом, читался бы как проход.
 func TestCarriedSubjectIsDeclaredNotBuried(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -44,14 +44,14 @@ func TestCarriedSubjectIsDeclaredNotBuried(t *testing.T) {
 		resolve = resolveInTrees(trees)
 	}
 
-	findings, census := judgeCarriedSubjects(rows, repos, resolve)
+	findings, census := judgeCarriedSubjects(root, rows, repos, resolve)
 
-	t.Logf("осмотрено: записей %s — %d; семей носителей — %d; объявлено %q %d, %q %d, %q %d; "+
-		"репозиториев-преемников в словаре — %d; координат сверено с деревом-преемником — %d, "+
+	t.Logf("осмотрено: записей %s — %d; семей носителей — %d; объявлено %q %d, %q %d, %q %d, "+
+		"%q %d; репозиториев-преемников в словаре — %d; координат сверено с деревом-преемником — %d, "+
 		"НЕ сверялось — %d; деревья-преемники: %s",
 		gateCarrierLedgerName, census.Rows, census.Families,
 		subjectFateGone, census.Gone, subjectFateCarried, census.Carried,
-		subjectFateUnguarded, census.Unguarded,
+		subjectFateUnguarded, census.Unguarded, subjectFateRegained, census.Regained,
 		census.Repos, census.Checked, census.Unchecked, how)
 
 	for _, f := range findings {
