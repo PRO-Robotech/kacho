@@ -46,7 +46,7 @@ var transportMessageAllow = []TransportMessageAllowance{
 	// предсказала свой конец — «как только следующая фаза объявит метод подписки,
 	// сообщение окажется названо глаголом, и эта запись уронит прогон как
 	// истёкшая». Фаза kacho#1018 объявила
-	// `kacho.cloud.subscription.SubscriptionService/Subscribe`, гейт покраснел на
+	// `corelib.subscription.SubscriptionService/Subscribe`, гейт покраснел на
 	// записи, и она снята — не потому, что кто-то вспомнил, а потому, что прогон
 	// не дал её оставить.
 	//

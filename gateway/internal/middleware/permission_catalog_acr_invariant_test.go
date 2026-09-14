@@ -703,7 +703,7 @@ func TestPermissionCatalog_ACR_Counts(t *testing.T) {
 	// прав не выдаёт и не отзывает, а спрашивает про уже принятое решение.
 	//
 	// Линия watch: объявлен ЕДИНЫЙ глагол подписки платформы
-	// (`kacho.cloud.subscription.InternalSubscriptionService/Subscribe`, #1018) —
+	// (`corelib.subscription.InternalSubscriptionService/Subscribe`, #1018) —
 	// запись каталога одна на всех владельцев журналов, потому что одно и полное
 	// имя метода: сервис объявлен однажды и регистрируется каждым владельцем на
 	// своём внутреннем слушателе. Порог «1», а не «2»: подписка ЧИТАЕТ и не

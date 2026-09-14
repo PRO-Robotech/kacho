@@ -68,7 +68,7 @@ func subscriptionStandOptions(root string, allow ...SubscriptionRequestAllowance
 // не предъявляла бы разбору тела ту работу, ради которой он написан, — и ветвь
 // состава на стенде не наблюдала бы ничего.
 const standCommonForm = `syntax = "proto3";
-package kacho.cloud.subscription;
+package corelib.subscription;
 // Здесь могло бы стоять слово message { в прозе — и оно стоит.
 message SubscriptionRequest {
   repeated string kinds = 1;
@@ -101,9 +101,9 @@ message WatchRequest {
 // самом факте упоминания подписки, здесь покраснеет.
 const standDomainImportsCommon = `syntax = "proto3";
 package kacho.cloud.demo.v1;
-import "kacho/cloud/subscription/subscription.proto";
+import "corelib/subscription/subscription.proto";
 message DemoSubscribeWiring {
-  kacho.cloud.subscription.SubscriptionRequest request = 1;
+  corelib.subscription.SubscriptionRequest request = 1;
 }
 `
 

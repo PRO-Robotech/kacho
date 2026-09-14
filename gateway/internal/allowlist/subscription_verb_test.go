@@ -12,7 +12,7 @@ import "testing"
 // внешнего пути у него нет и не заводится. Два состояния легко спутать, и
 // спутать их можно ровно один раз.
 
-const subscribeMethod = "/kacho.cloud.subscription.InternalSubscriptionService/Subscribe"
+const subscribeMethod = "/corelib.subscription.InternalSubscriptionService/Subscribe"
 
 // TestSubscriptionVerbIsNotExternallyRoutable — оба независимых механизма
 // отсекают метод, и проверяются они ОБА.

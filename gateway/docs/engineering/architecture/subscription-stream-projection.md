@@ -7,7 +7,7 @@
 
 **Server-Sent Events (`text/event-stream`) на одной ручке края
 `GET /subscription/v1/events`.** Край — gRPC-клиент общего глагола подписки
-(`kacho.cloud.subscription.InternalSubscriptionService/Subscribe`,
+(`corelib.subscription.InternalSubscriptionService/Subscribe`,
 `corelib/subscription`) на внутреннем слушателе владельца журнала; наружу он отдаёт
 СВОЮ поверхность в SSE-кадрах.
 
@@ -91,7 +91,7 @@ gateway/cmd/api-gateway/main.go:1024  // WriteTimeout is intentionally left unse
 >   обработчик)` — документированная возможность;
 > - `generate_unbound_methods=true` в `proto/buf.gen.yaml` **уже породил** для этого метода
 >   полноценный шлюзовой регистратор со потоковой пересылкой ответа
->   (`corelib/api/kacho/cloud/subscription/subscription_service.pb.gw.go`).
+>   (`corelib/api/corelib/subscription/subscription_service.pb.gw.go`).
 >
 > То есть метод отделяет от внешнего пути не построение, а **одна не сделанная строка**:
 > регистратор никем не позван. Решение от этого не меняется — SSE остаётся верным выбором
@@ -230,7 +230,7 @@ gateway/cmd/api-gateway/main.go:1024  // WriteTimeout is intentionally left unse
 ручки резолвится в тот же FQN, что несёт запись каталога:
 
 ```json
-{ "fqn": "kacho.cloud.subscription.InternalSubscriptionService/Subscribe",
+{ "fqn": "corelib.subscription.InternalSubscriptionService/Subscribe",
   "permission": "platform.subscription.subscribe",
   "required_acr_min": "1", "scope_filtered": true }
 ```

@@ -25,8 +25,8 @@ import (
 // reachCommonForm — общий пакет с ТРЕМЯ типами: ровно та форма, чью досягаемость
 // гейт и наблюдает. Слово `message` в прозе стоит намеренно.
 const reachCommonForm = `syntax = "proto3";
-package kacho.cloud.subscription;
-option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription;subscriptionv1";
+package corelib.subscription;
+option go_package = "github.com/PRO-Robotech/corelib/api/corelib/subscription;subscriptionv1";
 // Здесь в прозе стоит слово message { — и оно обязано быть невидимо.
 message SubscriptionRequest {
   repeated string kinds = 1;
@@ -54,11 +54,11 @@ message Thing {
 // reachProtoReferrer — ЗАКОННАЯ ссылка из другого контракта: домен взял общий тип.
 const reachProtoReferrer = `syntax = "proto3";
 package kacho.cloud.demo.v1;
-import "kacho/cloud/subscription/subscription.proto";
+import "corelib/subscription/subscription.proto";
 message DemoWiring {
-  kacho.cloud.subscription.SubscriptionRequest request = 1;
-  kacho.cloud.subscription.SubscriptionOpened opened = 2;
-  kacho.cloud.subscription.SubscriptionEvent event = 3;
+  corelib.subscription.SubscriptionRequest request = 1;
+  corelib.subscription.SubscriptionOpened opened = 2;
+  corelib.subscription.SubscriptionEvent event = 3;
 }
 `
 
@@ -71,9 +71,9 @@ message DemoWiring {
 const reachProtoNearMissName = `syntax = "proto3";
 package kacho.cloud.legacy.v1;
 message LegacyWiring {
-  kacho.cloud.subscription.SubscriptionRequestV2 request = 1;
-  kacho.cloud.subscription.SubscriptionOpenedV2 opened = 2;
-  kacho.cloud.subscription.SubscriptionEventV2 event = 3;
+  corelib.subscription.SubscriptionRequestV2 request = 1;
+  corelib.subscription.SubscriptionOpenedV2 opened = 2;
+  corelib.subscription.SubscriptionEventV2 event = 3;
 }
 `
 
@@ -81,7 +81,7 @@ message LegacyWiring {
 const reachGoReferrer = `package server
 
 import (
-	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 )
 
 func Serve(req *subscriptionv1.SubscriptionRequest) (*subscriptionv1.SubscriptionOpened, error) {
@@ -98,7 +98,7 @@ func Serve(req *subscriptionv1.SubscriptionRequest) (*subscriptionv1.Subscriptio
 const reachGoBlankImport = `package wiring
 
 import (
-	_ "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	_ "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 )
 `
 
@@ -113,7 +113,7 @@ const reachGoTestReferrer = `package server_test
 import (
 	"testing"
 
-	subs "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	subs "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 )
 
 func TestSomething(t *testing.T) {
@@ -129,7 +129,7 @@ func TestSomething(t *testing.T) {
 const reachGoGeneratedStub = `package subscriptionv1
 
 import (
-	other "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	other "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 )
 
 var _ = other.SubscriptionRequest{}
@@ -141,7 +141,7 @@ var _ = other.SubscriptionRequest{}
 const reachGoNearMissName = `package neighbour
 
 import (
-	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 )
 
 var _ = subscriptionv1.SubscriptionRequestV2{}
@@ -160,7 +160,7 @@ const reachGoImportInsideAString = `package template
 const fixture = ` + "`" + `package server
 
 import (
-	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 )
 
 var _ = subscriptionv1.SubscriptionRequest{}
@@ -193,9 +193,9 @@ func reachAudit(
 // baseStand — минимальное дерево: общая форма, наполнитель и пустой каталог кода.
 func baseStand() map[string]string {
 	return map[string]string{
-		"proto/kacho/cloud/subscription/subscription.proto": reachCommonForm,
-		"proto/kacho/cloud/other/v1/thing.proto":            reachFiller,
-		"services/demo/doc.go":                              "package demo\n",
+		"proto/corelib/subscription/subscription.proto": reachCommonForm,
+		"proto/kacho/cloud/other/v1/thing.proto":        reachFiller,
+		"services/demo/doc.go":                          "package demo\n",
 	}
 }
 
@@ -306,7 +306,7 @@ func TestSubscriptionReachCountsOnlyRealReferrers(t *testing.T) {
 
 	t.Run("сгенерённый стаб — НЕ ссылка", func(t *testing.T) {
 		files := baseStand()
-		files["pkg/api/kacho/cloud/subscription/subscription.pb.go"] = reachGoGeneratedStub
+		files["pkg/api/corelib/subscription/subscription.pb.go"] = reachGoGeneratedStub
 		types, census := reachAudit(t, files, "pkg")
 		if census.Unreferenced != 3 {
 			t.Fatalf("стаб засчитан ссылкой: без ссылок %d из 3", census.Unreferenced)

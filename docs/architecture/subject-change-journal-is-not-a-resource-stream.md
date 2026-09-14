@@ -31,7 +31,7 @@
 ### 1. Модель авторизации противоположна, и здесь она fail-open
 
 Глагол подписки объявлен `scope_filtered`
-(`proto/kacho/cloud/subscription/subscription_service.proto`): строка отдаётся,
+(`proto/corelib/subscription/subscription_service.proto`): строка отдаётся,
 если у вызывающего есть право на её предмет. У ресурсного потока это защита от
 показа чужого.
 

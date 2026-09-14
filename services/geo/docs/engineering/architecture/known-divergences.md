@@ -262,7 +262,7 @@ create whose id is not prefixed by its region is refused before any FK is consul
 ## 9. geo keeps a change feed but does **not** serve the platform subscription verb — narrowing has nothing to ask
 
 **What.** Every other domain that keeps a resource change feed serves
-`kacho.cloud.subscription.InternalSubscriptionService/Subscribe`, whose edge
+`corelib.subscription.InternalSubscriptionService/Subscribe`, whose edge
 projection is `/subscription/v1/events`. geo keeps `geo_outbox` — a feed by shape
 (`sequence_no`, `resource_kind ∈ {Region, Zone}`, `resource_id`, `event_type`,
 `payload`) — and deliberately does not serve the verb. Reviewers who count

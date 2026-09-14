@@ -6,7 +6,7 @@
 // # Что он считает
 //
 // Объявления запроса подписки в дереве контракта: общее — в пакете
-// `kacho.cloud.subscription`, доменные — где угодно ещё. Ожидаемое число
+// `corelib.subscription`, доменные — где угодно ещё. Ожидаемое число
 // ВЫВОДИТСЯ: одна общая форма плюс столько доменных, сколько стоит в ведомости
 // послаблений. Снял запись — ожидание уменьшилось само; выписанной константы,
 // которую надо помнить и править, здесь нет.
@@ -119,7 +119,7 @@ import (
 )
 
 // SubscriptionCommonPackage — пакет, в котором форма подписки объявляется один раз.
-const SubscriptionCommonPackage = "kacho.cloud.subscription"
+const SubscriptionCommonPackage = "corelib.subscription"
 
 // SubscriptionCommonRequest — имя общей формы запроса подписки.
 const SubscriptionCommonRequest = "SubscriptionRequest"

@@ -123,7 +123,7 @@ func registeredObjectTypes() []servicecontract.ObjectType {
 // Оно записано строкой, а не выведено из сгенерённого дескриптора служб: носитель
 // сверяет проводку с КАТАЛОГОМ ПРАВ, где ключ — та же строка, и вывод её из
 // другого источника сделал бы сверку тождественно истинной при расхождении.
-const subscriptionSubscribeFQN servicecontract.MethodFQN = "/kacho.cloud.subscription.InternalSubscriptionService/Subscribe"
+const subscriptionSubscribeFQN servicecontract.MethodFQN = "/corelib.subscription.InternalSubscriptionService/Subscribe"
 
 var listByInstanceMethod = servicecontract.MethodFQN(
 	"/" + vpcv1.InternalNetworkInterfaceService_ServiceDesc.ServiceName + "/ListByInstance")
@@ -244,7 +244,7 @@ func describe(
 		// Первый раз предметом был поток намерения исполнителю датаплейна; он был
 		// снят целиком (kacho#400), и изъятие вернулось. Теперь предмет появился
 		// снова и уже не уйдёт: vpc служит ПОДПИСКУ на изменения своих ресурсов
-		// (`kacho.cloud.subscription.InternalSubscriptionService/Subscribe`,
+		// (`corelib.subscription.InternalSubscriptionService/Subscribe`,
 		// kacho#1023) на внутреннем слушателе.
 		//
 		// Величина возвращается ОСОЗНАННО, как того и требовало изъятие: оно

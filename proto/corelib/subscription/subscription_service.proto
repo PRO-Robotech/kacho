@@ -3,12 +3,12 @@
 
 syntax = "proto3";
 
-package kacho.cloud.subscription;
+package corelib.subscription;
 
-import "kacho/cloud/subscription/subscription.proto";
+import "corelib/subscription/subscription.proto";
 import "corelib/authz/v1/authz_options.proto";
 
-option go_package = "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription;subscriptionv1";
+option go_package = "github.com/PRO-Robotech/corelib/api/corelib/subscription;subscriptionv1";
 
 // Глагол подписки платформы и носитель его потока.
 //
@@ -75,7 +75,7 @@ message SubscriptionMessage {
 //
 // # Один сервис на всех владельцев, а не по сервису на домен
 //
-// Полное имя метода одно (`/kacho.cloud.subscription.InternalSubscriptionService/Subscribe`),
+// Полное имя метода одно (`/corelib.subscription.InternalSubscriptionService/Subscribe`),
 // и каждый владелец журнала регистрирует ЭТОТ сервис на своём внутреннем
 // слушателе. Имена gRPC-сервисов уникальны в пределах процесса, а процессы у
 // владельцев разные — поэтому одно объявление обслуживает всех, и запись каталога

@@ -13,7 +13,7 @@ import (
 
 	"google.golang.org/protobuf/types/known/anypb"
 
-	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 )
 
 // Path — адрес единственной проекции потока. Объявлен здесь, потому что его
@@ -24,7 +24,7 @@ const Path = "/subscription/v1/events"
 // MethodFQN — полное имя глагола, который эта ручка исполняет от имени
 // вызывающего. Полоса прав спрашивает по нему запись каталога: право одно, и
 // второй записи под выдуманным именем не заводится.
-const MethodFQN = "kacho.cloud.subscription.InternalSubscriptionService/Subscribe"
+const MethodFQN = "corelib.subscription.InternalSubscriptionService/Subscribe"
 
 // headerLastEventID — единственный носитель позиции. Заголовок стандартный: его
 // шлёт САМ браузер при переподключении, и ради этого свойства выбран SSE.

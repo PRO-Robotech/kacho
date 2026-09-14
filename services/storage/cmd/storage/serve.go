@@ -39,8 +39,8 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
 	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
-	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
@@ -86,7 +86,7 @@ const listAttachmentsMethod servicecontract.MethodFQN = "/kacho.cloud.storage.v1
 // Оно записано строкой, а не выведено из сгенерённого дескриптора служб: носитель
 // сверяет проводку с КАТАЛОГОМ ПРАВ, где ключ — та же строка, и вывод её из
 // другого источника сделал бы сверку тождественно истинной при расхождении.
-const subscriptionSubscribeFQN servicecontract.MethodFQN = "/kacho.cloud.subscription.InternalSubscriptionService/Subscribe"
+const subscriptionSubscribeFQN servicecontract.MethodFQN = "/corelib.subscription.InternalSubscriptionService/Subscribe"
 
 // runServe — composition root.
 //

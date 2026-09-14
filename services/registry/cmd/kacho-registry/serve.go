@@ -39,7 +39,7 @@ import (
 	"github.com/PRO-Robotech/corelib/servicehost"
 	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
 
-	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 
 	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
@@ -1199,7 +1199,7 @@ func describe(cfg config.Config, mode servicecontract.Mode, logger *slog.Logger,
 			// отсутствующий сужатель означает не «строже», а «без рубежа». Носитель
 			// сверяет это в обе стороны и роняет старт поимённо по методу — что он
 			// и сделал, когда проводки здесь ещё не было.
-			"/kacho.cloud.subscription.InternalSubscriptionService/Subscribe": ports.narrower,
+			"/corelib.subscription.InternalSubscriptionService/Subscribe": ports.narrower,
 		}),
 
 		// Форма отказа для типа, чьё существование скрывается. Каталог называет

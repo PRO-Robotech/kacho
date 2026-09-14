@@ -33,7 +33,7 @@
 ## Почему проект не умножает
 
 `SubscriptionRequest.project_id` скалярен, и это верно
-(`proto/kacho/cloud/subscription/subscription.proto`). Отсюда легко заключить, что
+(`proto/corelib/subscription/subscription.proto`). Отсюда легко заключить, что
 арендатор с тремя проектами обязан открыть три потока на каждого владельца. Не
 обязан:
 
@@ -60,7 +60,7 @@
 
 | величина | `ef68f94ec` | перемер `c40719694` | предикат |
 |---|---:|---:|---|
-| ось проекта скалярна | да | да | `grep -n 'project_id = 2' proto/kacho/cloud/subscription/subscription.proto` |
+| ось проекта скалярна | да | да | `grep -n 'project_id = 2' proto/corelib/subscription/subscription.proto` |
 | владельцев служат глагол в прод-коде | **2** (compute, nlb) | **5** (+ vpc, storage, registry) | `grep -rl RegisterInternalSubscriptionServiceServer services/ \| grep -v _test` |
 | владельцев объявлено на крае | **0** (`owners: ""`) | **5** | `grep -n 'owners:' gateway/deploy/values.yaml` |
 | потолок реплики | 64 | **16** | `grep -n maxStreams gateway/deploy/values.yaml` |
