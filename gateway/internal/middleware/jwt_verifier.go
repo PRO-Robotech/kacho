@@ -127,8 +127,9 @@ type VerifiedToken struct {
 	//	            Issuer равен rec.issuer by construction;
 	//	ExpiresAt — непуст ВСЕГДА: WithExpirationRequired;
 	//	Audience  — нормализованный aud, одиночная строка либо список
-	//	            (extractAudience). Пуст, когда утверждения aud нет вовсе, а
-	//	            полоса его отсутствие допускает (allowMissingAudience);
+	//	            (extractAudience). У проверенного токена непуст всегда:
+	//	            сужение по адресату безусловно, и токен без `aud` до сюда
+	//	            не доходит;
 	//	Subject / IssuedAt / JTI — утверждения НЕОБЯЗАТЕЛЬНЫЕ: утверждения нет
 	//	            либо пришло не того типа — поле остаётся нулём, и это
 	//	            «не заявлено», а не «заявлено пусто».
@@ -210,10 +211,6 @@ type JWTVerifier struct {
 	expectedAudience string
 	clockSkew        time.Duration
 
-	// allowMissingAudience — for tests / dev mode where the provider may not
-	// yet inject the gateway audience.
-	allowMissingAudience bool
-
 	// now — источник времени. ВХОД, а не окружение: без этого проба допуска на
 	// расхождение часов недетерминирована, то есть не может упасть предсказуемо
 	// и держится широкими допусками вместо утверждения. Ровно та же причина и
@@ -227,12 +224,15 @@ type JWTVerifierConfig struct {
 	// издателя. Обязательны: пустой перечень означает «принимаем любого».
 	Issuers []IssuerKeySet
 
-	JWKSCacheTTL         time.Duration
-	JWKSFetchTimeout     time.Duration
-	HTTPClient           *http.Client // optional; nil → default
-	ExpectedAudience     string
-	ClockSkew            time.Duration
-	AllowMissingAudience bool
+	JWKSCacheTTL     time.Duration
+	JWKSFetchTimeout time.Duration
+	HTTPClient       *http.Client // optional; nil → default
+
+	// ExpectedAudience — АДРЕСАТ, которому адресованы принимаемые токены.
+	// ОБЯЗАТЕЛЕН: пустое значение означает «принимаем адресованное кому угодно»,
+	// то есть и токен другой установки того же продукта (задача #2567).
+	ExpectedAudience string
+	ClockSkew        time.Duration
 
 	// Clock подменяет источник времени. nil → системное время.
 	Clock func() time.Time
@@ -243,11 +243,21 @@ type JWTVerifierConfig struct {
 // Отказ вместо построения на всяком состоянии, которое при пустом значении
 // означает «не сужаем»: записей нет · пустой издатель, адрес или набор типов ·
 // издатель объявлен дважды · неабсолютный адрес · тип доказательства владения
-// объявлен принимаемым.
+// объявлен принимаемым · АДРЕСАТ НЕ ОБЪЯВЛЕН.
 func NewJWTVerifier(cfg JWTVerifierConfig) (*JWTVerifier, error) {
 	records, err := normaliseIssuerKeySets(cfg.Issuers)
 	if err != nil {
 		return nil, err
+	}
+	// Адресат судится ЗДЕСЬ, а не в Verify, и это делает сужение безусловным
+	// by construction: проверка ниже вправе опереться на непустое значение,
+	// потому что построиться с пустым нельзя. Условие «сужаем, если непусто»
+	// на его месте было бы выключателем, у которого нет ни ручки, ни следа.
+	if strings.TrimSpace(cfg.ExpectedAudience) == "" {
+		return nil, errors.New(
+			"expected audience is empty — the audience is the only claim that says which " +
+				"installation a token was issued for, and an empty expectation accepts one " +
+				"minted for any other")
 	}
 	if cfg.JWKSCacheTTL <= 0 {
 		cfg.JWKSCacheTTL = 5 * time.Minute
@@ -276,11 +286,10 @@ func NewJWTVerifier(cfg JWTVerifierConfig) (*JWTVerifier, error) {
 		now = time.Now
 	}
 	return &JWTVerifier{
-		records:              records,
-		expectedAudience:     cfg.ExpectedAudience,
-		clockSkew:            cfg.ClockSkew,
-		allowMissingAudience: cfg.AllowMissingAudience,
-		now:                  now,
+		records:          records,
+		expectedAudience: strings.TrimSpace(cfg.ExpectedAudience),
+		clockSkew:        cfg.ClockSkew,
+		now:              now,
 	}, nil
 }
 
@@ -598,12 +607,12 @@ func (v *JWTVerifier) Verify(ctx context.Context, token string) (*VerifiedToken,
 	if err != nil {
 		return nil, err
 	}
-	if v.expectedAudience != "" {
-		if !audienceContains(auds, v.expectedAudience) {
-			if !v.allowMissingAudience {
-				return nil, fmt.Errorf("aud does not contain %q (got %v)", v.expectedAudience, auds)
-			}
-		}
+	// БЕЗУСЛОВНО: у построенного проверяющего адресат непуст by construction
+	// (см. NewJWTVerifier), поэтому ветки «сужаем, только если объявлено» здесь
+	// нет и быть не может. Отсутствующий `aud` отвергается тем же сравнением —
+	// пустой набор не содержит ничего.
+	if !audienceContains(auds, v.expectedAudience) {
+		return nil, fmt.Errorf("aud does not contain %q (got %v)", v.expectedAudience, auds)
 	}
 
 	out := &VerifiedToken{

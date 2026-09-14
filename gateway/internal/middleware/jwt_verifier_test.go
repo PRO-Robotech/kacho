@@ -502,12 +502,31 @@ func TestJWTVerifier_Construction_Validates(t *testing.T) {
 		Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: "https://iam.kacho.test/jwks"}},
 	})
 	assert.Error(t, err)
+	// Незаявленный адресат — «принимаем адресованное кому угодно», в том числе
+	// другой установке того же продукта (задача #2567).
+	_, err = middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
+		Issuers: []middleware.IssuerKeySet{{
+			Issuer: testIssuer, KeySetURL: "https://iam.kacho.test/jwks",
+			TokenTypes: []string{middleware.LegacyTokenType},
+		}},
+	})
+	assert.Error(t, err)
+	// Вырожденный адресат: непуст по длине, пуст по существу.
+	_, err = middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
+		Issuers: []middleware.IssuerKeySet{{
+			Issuer: testIssuer, KeySetURL: "https://iam.kacho.test/jwks",
+			TokenTypes: []string{middleware.LegacyTokenType},
+		}},
+		ExpectedAudience: "   ",
+	})
+	assert.Error(t, err)
 	// Положительный контроль: полная запись строится.
 	_, err = middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
 		Issuers: []middleware.IssuerKeySet{{
 			Issuer: testIssuer, KeySetURL: "https://iam.kacho.test/jwks",
 			TokenTypes: []string{middleware.LegacyTokenType},
 		}},
+		ExpectedAudience: testAudience,
 	})
 	assert.NoError(t, err)
 }
