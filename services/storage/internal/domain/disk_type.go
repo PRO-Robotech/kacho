@@ -6,7 +6,7 @@ package domain
 import (
 	"fmt"
 
-	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
+	corevalidate "github.com/PRO-Robotech/corelib/validate"
 )
 
 // PerformanceTier — ярус класса диска. ЗАКРЫТЫЙ словарь, а не свободная строка.

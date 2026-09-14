@@ -57,12 +57,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 const (
 	// quotaDetailPkgPath — дом единственного разбора величин.
-	quotaDetailPkgPath = "github.com/PRO-Robotech/kacho/pkg/quota/quotadetail"
+	quotaDetailPkgPath = "github.com/PRO-Robotech/corelib/quota/quotadetail"
 	// quotaDetailAttachFunc — то, чем мост приклеивает величины к отказу.
 	quotaDetailAttachFunc = "Attach"
 	// errdetailsPkgPath — дом `google.rpc.ErrorInfo`.

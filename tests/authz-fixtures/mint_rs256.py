@@ -272,7 +272,8 @@ def mint_bootstrap(*, grpc_addr: str | None = None,
     # tombstone (`reserved 1; reserved "ttl_seconds"`) — the lifetime belongs to the
     # issuer's client configuration, so a per-request value only ever changed the
     # number in the RESPONSE, understating the expiry of a cluster-admin credential.
-    # See proto/kaname/cloud/iam/v1/internal_bootstrap_token_service.proto.
+    # See kaname/cloud/iam/v1/internal_bootstrap_token_service.proto in module
+    # github.com/PRO-Robotech/kaname (kacho#2616).
     #
     # This function kept sending `{"ttlSeconds": N}` after that removal, so every
     # attempt died at the request encoder — `has no known field named ttlSeconds` —

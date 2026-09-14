@@ -6,7 +6,7 @@ package quota
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 )
 
 // Арендаторское чтение квот: предел, потребление и источник величины.

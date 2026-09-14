@@ -4,7 +4,7 @@
 package config
 
 import (
-	"github.com/PRO-Robotech/kacho/pkg/identityposture"
+	"github.com/PRO-Robotech/corelib/identityposture"
 
 	"crypto/tls"
 	"crypto/x509"
@@ -15,11 +15,11 @@ import (
 	"strings"
 	"time"
 
-	corecfg "github.com/PRO-Robotech/kacho/pkg/config"
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	corecfg "github.com/PRO-Robotech/corelib/config"
+	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+	"github.com/PRO-Robotech/corelib/servicecontract"
 )
 
 // Config хранит конфигурацию api-gateway.
@@ -221,7 +221,7 @@ type Config struct {
 	// нет; `own` МОЛЧА сняло бы эти требования с профиля, который просто забыли
 	// обновить. Умолчание живёт в ПРОФИЛЕ, а не здесь.
 	//
-	// Значение разбирается ОБЩИМ словарём (pkg/identityposture): служба прав и
+	// Значение разбирается ОБЩИМ словарём (corelib/identityposture): служба прав и
 	// край читают одно и то же поле, и второй словарь разошёлся бы с первым на
 	// первом же новом значении — молча, потому что обе стороны компилируются.
 	IdentityProvider string `envconfig:"KACHO_API_GATEWAY_IDENTITY_PROVIDER" default:""`

@@ -80,8 +80,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/contractroot"
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/contractroot"
+	"github.com/PRO-Robotech/corelib/treecorpus"
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 )
 
 // clientDocsSharedProtoDomains — пакеты контракта, чьи поля законно встречаются в
@@ -189,8 +190,12 @@ func clientDocsProtoDomains(opts ClientDocsContractDriftOptions) (
 	// приставки: после переезда домена под второй корень литерал сузил бы
 	// популяцию молча — обход честно напечатал бы «находок ноль» по опустевшему
 	// множеству, и отличить это от исправной работы было бы нечем.
-	bases := contractroot.CloudDirs(filepath.Join(opts.Root, opts.ProtoRoot))
-	// Состав берётся ИЗ ИНДЕКСА, а не обходом диска: чтение внутри колбэка обхода
+	bases, basesErr := contractDomainBases(opts.Root, opts.ProtoRoot)
+	if basesErr != nil {
+		return nil, nil, 0, basesErr
+	}
+	// Состав берётся ИЗ ИНДЕКСА (корень этого дерева) либо обходом кэша модулей
+	// (корень, приезжающий модулем) — см. contractDomainBases; а не обходом диска: чтение внутри колбэка обхода
 	// подвержено подмене пути символической ссылкой между шагом обхода и открытием
 	// файла (G122). Индекс отдаёт готовый перечень, и файл открывается вне обхода.
 	// Путь несёт СВОЙ корень: домен выводится из пути ОТНОСИТЕЛЬНО того корня,
@@ -198,13 +203,9 @@ func clientDocsProtoDomains(opts ClientDocsContractDriftOptions) (
 	// относительный путь с `../`, и домен вышел бы мусорным.
 	type rootedPath struct{ base, path string }
 	var paths []rootedPath
-	for _, base := range bases {
-		sub, serr := treecorpus.UnderWithSuffix(base, ".proto")
-		if serr != nil {
-			return nil, nil, 0, serr
-		}
-		for _, sp := range sub {
-			paths = append(paths, rootedPath{base: base, path: sp})
+	for _, b := range bases {
+		for _, sp := range b.Paths {
+			paths = append(paths, rootedPath{base: b.Base, path: sp})
 		}
 	}
 	for _, rp := range paths {
@@ -489,16 +490,15 @@ func clientDocsDeprecatedPaths(opts ClientDocsContractDriftOptions) (map[string]
 	// приставки: после переезда домена под второй корень литерал сузил бы
 	// популяцию молча — обход честно напечатал бы «находок ноль» по опустевшему
 	// множеству, и отличить это от исправной работы было бы нечем.
-	bases := contractroot.CloudDirs(filepath.Join(opts.Root, opts.ProtoRoot))
-	// Состав из индекса, а не обходом диска — та же причина, что у соседней функции:
+	bases, basesErr := contractDomainBases(opts.Root, opts.ProtoRoot)
+	if basesErr != nil {
+		return nil, 0, basesErr
+	}
+	// Состав из индекса либо из кэша модулей — та же причина, что у соседней функции:
 	// чтение внутри колбэка обхода подвержено подмене пути символической ссылкой.
 	var paths []string
-	for _, base := range bases {
-		sub, serr := treecorpus.UnderWithSuffix(base, ".proto")
-		if serr != nil {
-			return nil, 0, serr
-		}
-		paths = append(paths, sub...)
+	for _, b := range bases {
+		paths = append(paths, b.Paths...)
 	}
 
 	for _, p := range paths {
@@ -610,4 +610,79 @@ func AuditClientDocsDeprecationParity(
 			census.Blocks, census.BlocksJudged, len(findings))
 	}
 	return findings, census, nil
+}
+
+// contractDomainBases — базы обхода дерева контрактов вместе с их составом.
+//
+// ДВА ИСТОЧНИКА, И ЭТО НЕ НЕБРЕЖНОСТЬ. Доменный корень, лежащий в судимом
+// дереве, читается ИЗ ИНДЕКСА git: обход диска подвержен подмене пути
+// символической ссылкой (G122) и вдобавок читал бы игнорируемые каталоги.
+// Доменный корень, приезжающий МОДУЛЕМ (kacho#2616, исход C: контракты службы
+// доступа уехали в её репозиторий), индекса не имеет by construction — кэш
+// модулей и ЕСТЬ распакованный проверенный коммит, и там обход диска есть обход
+// коммита.
+//
+// БЕЗ ВТОРОГО ИСТОЧНИКА ПОПУЛЯЦИЯ СУЖАЕТСЯ МОЛЧА. Замер на день правки: пометок
+// депрекации в контрактах ЭТОГО дерева ноль, в дереве контрактов модуля службы —
+// 13 в трёх файлах. Обход по одному источнику печатал бы «помеченных путей 0» и
+// был бы зелёным на непрочитанном.
+func contractDomainBases(root, protoRoot string) ([]contractDomainBase, error) {
+	var out []contractDomainBase
+	inTree := map[string]bool{}
+	for _, base := range contractroot.CloudDirs(filepath.Join(root, protoRoot)) {
+		sub, serr := treecorpus.UnderWithSuffix(base, ".proto")
+		if serr != nil {
+			return nil, serr
+		}
+		out = append(out, contractDomainBase{Base: base, Paths: sub})
+		// Корень — родитель каталога `cloud`.
+		inTree[filepath.Base(filepath.Dir(base))] = true
+	}
+	// ВНЕШНИЙ ДОМ ПРИМЕНИМ ТОЛЬКО К НАСТОЯЩЕМУ ДЕРЕВУ, и различает их наличие
+	// объявления модуля. Синтетические деревья проб (созданные в `t.TempDir()`)
+	// `go.mod` не несут: спрашивать у них каталог чужого модуля бессмысленно, и
+	// отказ на этом был бы отказом гейта на своей же фикстуре, а не находкой о
+	// дереве. Настоящее дерево `go.mod` несёт всегда — значит различение
+	// наблюдаемо, а не угадано.
+	if _, gerr := os.Stat(filepath.Join(root, "go.mod")); gerr != nil {
+		return out, nil
+	}
+	for r := range contractsource.ExternalRootModules {
+		if inTree[r] {
+			continue
+		}
+		dir, derr := contractsource.Dir(root, r)
+		if derr != nil {
+			// Дерево объявляет модуль, а каталог его не резолвится — это отказ
+			// добычи входа, а не пустой корень: вызывающий обязан отличить
+			// «пометок нет» от «дерево не прочитано».
+			return nil, fmt.Errorf("дерево контрактов внешнего корня %q: %w", r, derr)
+		}
+		base := filepath.Join(dir, "cloud")
+		if st, serr := os.Stat(base); serr != nil || !st.IsDir() {
+			continue
+		}
+		var sub []string
+		werr := filepath.Walk(base, func(path string, fi os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if !fi.IsDir() && strings.HasSuffix(path, ".proto") {
+				sub = append(sub, path)
+			}
+			return nil
+		})
+		if werr != nil {
+			return nil, fmt.Errorf("обход дерева контрактов внешнего корня %q (%s): %w", r, base, werr)
+		}
+		sort.Strings(sub)
+		out = append(out, contractDomainBase{Base: base, Paths: sub})
+	}
+	return out, nil
+}
+
+// contractDomainBase — одна база обхода и её состав.
+type contractDomainBase struct {
+	Base  string
+	Paths []string
 }

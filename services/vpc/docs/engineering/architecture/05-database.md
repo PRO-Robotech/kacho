@@ -44,7 +44,7 @@ helper-функции). Дальше — обычные инкрементные
 | 0006 | `0006_fga_register_outbox.sql` | таблица `fga_register_outbox` (transactional-outbox для регистрации owner-tuple в FGA через kaname) + LISTEN/NOTIFY-триггер |
 | 0007 | `0007_network_vrf_id.sql` | `networks.vrf_id bigint` — sequence-backed уникальный per-network VRF id (инфра-чувствительное поле data-plane, отдается только через `InternalNetworkService.GetNetwork`) |
 | 0008 | `0008_fga_register_outbox_resource_cols.sql` | additive `resource_kind` / `resource_id` на `fga_register_outbox` (нужны reconciler'у для адресации intent по ресурсу) |
-| 0009 | `0009_operations_account_id.sql` | additive nullable `operations.account_id` (общий LRO-writer из `pkg/operations` INSERT'ит колонку безусловно) + partial index |
+| 0009 | `0009_operations_account_id.sql` | additive nullable `operations.account_id` (общий LRO-writer из `corelib/operations` INSERT'ит колонку безусловно) + partial index |
 | 0010 | `0010_subnet_cidr_blocks.sql` | child-таблица `subnet_cidr_blocks` + EXCLUDE gist: неперекрытие покрывает **все** блоки подсетей сети, а не только якорь (baseline-EXCLUDE смотрел лишь на `*_cidr_primary`) |
 | 0011 | `0011_address_pool_checks.sql` | DB CHECK-parity формы `address_pools` (name/description/kind/selector_priority) — инвариант на DB-уровне, не только в use-case |
 | 0012 | `0012_subnet_placement.sql` | `subnets.placement_type` (`ZONAL`\|`REGIONAL`) + `region_id`; CHECK `subnets_placement_type_chk` и `subnets_placement_payload_chk` держат взаимоисключение пары зона/регион |
@@ -305,13 +305,13 @@ Transactional-outbox для регистрации владения через `
 
 Объявлена **в собственном** `0001_initial.sql` сервиса, а не подтягивается из общего
 набора: `git grep migrations/common -- services/vpc` даёт пусто, и таблица описана в той
-же миграции, что и остальные. Общей остаётся **логика** worker'а (`pkg/operations`), а не
+же миграции, что и остальные. Общей остаётся **логика** worker'а (`corelib/operations`), а не
 DDL. PK `id` (`enp...`). Без FK на ресурсы (resource может быть удален до завершения op).
 `account_id` — nullable денормализация (миграция 0009; для vpc остается NULL).
 
 ## Connection / pooling
 
-- `pkg/db`.`NewPool(cfg)` — pgxpool с retry + lifecycle.
+- `corelib/db`.`NewPool(cfg)` — pgxpool с retry + lifecycle.
 - `KACHO_VPC_DB_MAX_CONNS` прокидывается в DSN (`pool_max_conns`) **только** для pgxpool;
   `migrate` использует отдельный `MigrateDSN` без этого параметра (иначе `database/sql`
   шлет серверу неизвестный PG-параметр → `FATAL`).

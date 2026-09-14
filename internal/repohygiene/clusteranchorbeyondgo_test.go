@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // clusterAnchorBeyondGoCorpus — отслеживаемые файлы ВНЕ Go, спрошенные У ИНДЕКСА.
@@ -20,9 +20,18 @@ import (
 // разбор Go): написание якоря стоит в 18 файлах документации, и именно там
 // заведётся ведомость решённого остаться. Исключить их значило бы завести
 // слепую зону ровно на той оси, ради которой гейт написан.
+// Обход считается ОДИН раз на процесс: три пробы этого гейта просили тот же
+// корпус и платили за него трижды (замер — oncebyroot_test.go). Корпус
+// отдаётся ТОЛЬКО ДЛЯ ЧТЕНИЯ.
+var clusterAnchorBeyondGoCorpusOfTree = onceByRootUsingProbe(scanClusterAnchorBeyondGoCorpus)
+
 func clusterAnchorBeyondGoCorpus(t *testing.T) map[string][]byte {
 	t.Helper()
-	root := repoRoot(t)
+	return clusterAnchorBeyondGoCorpusOfTree(t, repoRoot(t))
+}
+
+func scanClusterAnchorBeyondGoCorpus(t *testing.T, root string) map[string][]byte {
+	t.Helper()
 	files, err := treecorpus.Under(root)
 	if err != nil {
 		t.Fatalf("состав дерева: %v — «ноль находок» здесь означало бы «ноль прочитанного»", err)
@@ -50,7 +59,16 @@ func clusterAnchorBeyondGoCorpus(t *testing.T) map[string][]byte {
 //
 // Владелец истины один и тот же у обоих разборов: второе место об одном
 // предмете разошлось бы молча, и разошлось бы ровно в день перехода.
+// Объявления разбираются ОДИН раз на процесс: обе пробы, которым нужно
+// написание, разбирали весь непроверочный Go заново.
+var clusterAnchorDeclaredOfTree = onceByRootUsingProbe(scanClusterAnchorDeclared)
+
 func clusterAnchorDeclared(t *testing.T) string {
+	t.Helper()
+	return clusterAnchorDeclaredOfTree(t, repoRoot(t))
+}
+
+func scanClusterAnchorDeclared(t *testing.T, _ string) string {
 	t.Helper()
 	decls, _, _, err := FindClusterAnchorLiterals(clusterAnchorSources(t))
 	if err != nil {

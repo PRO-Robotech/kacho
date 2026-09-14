@@ -101,7 +101,7 @@ func TestBuild_DNSLBFlagPicksTheResolverAndBalancing(t *testing.T) {
 	t.Parallel()
 	// Предмет ЭТОГО пакета — провязка флага, а не содержимое конфигурации
 	// службы: политика повтора и объявление round_robin переехали в
-	// `pkg/grpcclient` вместе со сборкой соединения и утверждаются там
+	// `corelib/grpcclient` вместе со сборкой соединения и утверждаются там
 	// (`TestPeerServiceConfigRetriesOnUnavailableOnly`,
 	// `TestPeerServiceConfigDeclaresRoundRobinWhenAsked`). Здесь остаётся то,
 	// что vpc по-прежнему решает сам: какой флаг какой резолвер выбирает.

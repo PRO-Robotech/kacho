@@ -64,9 +64,15 @@ func TestR7_3_28_RetiredEnumerationSurfaceIsGoneEverywhere(t *testing.T) {
 		Root:      repoRoot(t),
 		APIRoot:   "pkg/api",
 		ProtoRoot: "proto",
+		// Копия каталога прав в дереве ОДНА. Вторая — посевная копия службы
+		// доступа — ушла вместе со службой, вынесенной отдельным продуктом;
+		// на момент выноса обе были байт-идентичны (102 865 байт, расхождений
+		// ноль), и байт-идентичность держала своя цель. Здесь читается та,
+		// что осталась, и перепись ниже называет ЧИСЛО прочитанных копий и
+		// строк: ноль строк роняет прогон, потому что «записи каталога нет»
+		// иначе неотличимо от «каталог не читали».
 		CatalogPaths: []string{
 			"gateway/internal/middleware/embed/permission_catalog.json",
-			"services/iam/internal/apps/kaname/seed/embedded/permission_catalog.json",
 		},
 		Retired: retired,
 	}, io.Discard)

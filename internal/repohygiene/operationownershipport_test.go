@@ -168,11 +168,27 @@ func TestUnscopedCancelExemptionsStillHaveSubject(t *testing.T) {
 func TestOwnershipScopedPortPremiseHolds(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
-	body := string(mustRead(t, filepath.Join(root, "pkg/operations/owner.go")))
+
+	// Суженный порт переехал в пакет operations общего фундамента
+	// (github.com/PRO-Robotech/corelib) — читаем ТУДА, куда он переехал
+	// (см. corelibsource_test.go), а не по прежнему пути дерева.
+	var body string
+	for _, src := range corelibPackageGoFiles(t, root, "operations") {
+		s := string(src)
+		if strings.Contains(s, "func AsOwned(") {
+			body = s
+			break
+		}
+	}
+	if body == "" {
+		t.Fatalf("суженного порта нет: пакет operations общего фундамента " +
+			"(github.com/PRO-Robotech/corelib) не объявляет AsOwned — переводить некуда, " +
+			"пересмотри запрет")
+	}
 	for _, want := range []string{"func AsOwned(", "CancelOwned(ctx context.Context", "GetOwned(ctx context.Context"} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("pkg/operations/owner.go больше не объявляет %q — переводить некуда, "+
-				"пересмотри запрет", want)
+			t.Fatalf("пакет operations общего фундамента больше не объявляет %q — переводить "+
+				"некуда, пересмотри запрет", want)
 		}
 	}
 }

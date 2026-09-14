@@ -120,7 +120,8 @@ func edgeKindUserTokenAs(machineCaller bool) *edgeKind {
 		//
 		// Идентификатор клиента и идентификатор ключа РАВНЫ `id` строки, и это не
 		// упрощение подделки, а измеренный контракт: у удостоверения одно имя, а не три
-		// (proto/kaname/cloud/iam/v1/user_token_service.proto, IssueUserTokenResponse —
+		// (kaname/cloud/iam/v1/user_token_service.proto модуля
+		// github.com/PRO-Robotech/kaname, IssueUserTokenResponse —
 		// `client_id` совпадает с `key_id` дословно).
 		OpResponse: func(row *edgeRow) edgeObject {
 			return edgeObject{
@@ -229,7 +230,7 @@ var accTokenForeignIssuerRefusal = regexp.MustCompile(
 //
 //  1. текст НЕ утверждает, что служебная учётка порога не проходит. Утверждала прежняя
 //     редакция всех трёх текстов ресурса; машинный принципал от порога ОСВОБОЖДЁН первым
-//     же условием общего правила (pkg/grpcsrv/acr.go, EvaluateStepUp), к которому оба
+//     же условием общего правила (corelib/grpcsrv/acr.go, EvaluateStepUp), к которому оба
 //     места энфорсмента приходят через одну функцию;
 //  2. названо ПРАВО — настоящая причина отказа машинному вызывающему;
 //  3. названо, что порог требуется ЧЕЛОВЕКУ;

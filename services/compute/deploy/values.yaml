@@ -1,21 +1,29 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 
-# ОБЪЯВЛЕНИЕ домена величин. Ровно два законных значения: адрес в форме
-# host:port либо слово `not-deployed`. Пустое значение — НЕ умолчание, а отказ
-# старта: умолчание означало бы выбор за оператора между «потолки действуют» и
-# «потолков нет», и выбор этот был бы невидим.
+# ОБЪЯВЛЕНИЕ домена величин. Действующее значение ОДНО — слово `not-deployed`.
+# Адрес был вторым: производителя у контракта авторитета величин не осталось ни
+# в одном дереве, и объявленный адрес теперь отвергается стартом. Пустое
+# значение — НЕ умолчание, а тоже отказ старта: умолчание означало бы выбор за
+# оператора между «потолки действуют» и «потолков нет», и выбор был бы невидим.
 #
 # Объявление ОДНО на обе полосы ребра — разрешение величины на пути запроса и
 # фоновую дельту. Приёмка
 # `docs/specs/sub-phase-KAN-QUOTA-1-limit-authority-leaves-iam-acceptance.md`,
 # стадия S1.
 #
-# Сегодня домен величин живёт внутри службы доступа, поэтому значение указывает
-# на её внутренний слушатель, и поведение продукта не меняется ни на байт.
-# Уедет домен — правится ЭТА строка, а не код пяти потребителей.
+# Сегодня домен величин ЕЩЁ живёт внутри службы доступа — но порядок его
+# снятия обратен привычному: сперва потребители перестают спрашивать (эта
+# строка, #2596), потом снимается отвечающий (#2117 S4). Обратный порядок
+# обрывал бы каждую мутацию fail-closed недоступностью соседа на пути запроса.
+#
+# `not-deployed` — законное написание (`quota.NotDeployed`), не пустая
+# строка: списание уже безусловно (миграция
+# `*_quota_absent_authority_charges_unconditionally`), клиент к соседу не
+# заводится вовсе — страж и сборка ребра читают ЭТО ЖЕ объявление
+# (`quota_authority.go` / `quotasync.go` этой службы).
 quota:
-  authority: "kaname-internal.kacho.svc:9091"
+  authority: "not-deployed"
 
 
 name: compute
@@ -159,7 +167,6 @@ mtls:
     vpc: false           # compute→vpc NIC-spec + IPAM Address
     geo: false           # compute→geo ZoneService.Get (Instance.zone_id, :9090) — kacho-geo epic S4
     storage: false       # compute→storage InternalVolumeService (attach-saga, :9091) — compute/storage split
-    quotaAuthority: false # compute→домен величин (Resolve + ListChangedSince, :9091)
   serverName:
     iamRegister: kaname-internal.kacho.svc
     iamProject: kaname.kacho.svc            # :9090 ProjectService.Get dial-host
@@ -167,7 +174,6 @@ mtls:
     vpc: vpc.kacho.svc
     geo: kacho-geo.kacho.svc                   # :9090 ZoneService.Get dial-host
     storage: kacho-storage.kacho.svc           # :9091 InternalVolumeService dial-host (∈ storage server-SAN)
-    quotaAuthority: kaname-internal.kacho.svc  # домен величин; сегодня — внутренний слушатель службы доступа
 
 # compute is not on the Address.Create write-path; HPA + resources
 # present for uniform policy across services. maxReplicas=5 is plenty.
@@ -219,7 +225,17 @@ authzIam:
   # собирал сам композиционный корень; после переезда контура на общий носитель
   # такой ветки не существует, и оператор, поверивший комментарию, получил бы
   # неподнимающийся стенд вместо «отключённой проверки».
-  grpcAddr: "kaname.kacho.svc:9091"
+  # Service `kaname-internal`, а НЕ `kaname`: порт 9091 несёт ТОЛЬКО внутренний
+  # Service (`deploy/helm/umbrella/charts/kaname/templates/service-internal.yaml`),
+  # публичный `kaname` выставляет 9090/9096/rest и этого порта не знает. Прежняя
+  # редакция называла здесь `kaname:9091` — адрес, которого нет ни на одном стенде:
+  # перехватчик per-RPC authz бил в закрытый порт, получал i/o timeout и отвечал
+  # «authorization service unavailable» на КАЖДОМ list/get. Оба профиля умбреллы
+  # (`values.dev.yaml`, `values.prod.yaml`) правили это своим override'ом с ровно
+  # тем значением, что стоит теперь здесь, — то есть объяснение дефекта жило в
+  # профиле, а дефект оставался в чарте, и standalone-установка этого чарта его
+  # наследовала.
+  grpcAddr: "kaname-internal.kacho.svc:9091"
 
 # Sidecar внутриподовых политик УДАЛЁН (был `opa.*`). Он тянул подписанный bundle с
 # эндпоинта iam, которого больше нет — сервис выдачи bundle'ов из iam удалён, — и ни

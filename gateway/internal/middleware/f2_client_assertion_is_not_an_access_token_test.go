@@ -44,8 +44,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/corelib/tokenpolicy"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
-	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
 )
 
 // f2ClientID — идентификатор клиента, которым утверждение называет само себя:

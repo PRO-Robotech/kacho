@@ -13,8 +13,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/gitenv"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // ledgerPath — ведомость приёмок, под которыми ведётся кодирование дерева.

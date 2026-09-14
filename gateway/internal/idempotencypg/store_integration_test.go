@@ -20,9 +20,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PRO-Robotech/corelib/pgtest"
 	"github.com/PRO-Robotech/kacho/gateway/internal/idempotencypg"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
-	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // replica — одна реплика края: своё хранилище поверх общей базы.

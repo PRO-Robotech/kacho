@@ -47,7 +47,7 @@ import (
 // оказался бы вне наблюдения, ничего об этом не сказав.
 const (
 	// ownerMarker — кто ПРОИЗВОДИТ `Operation` с `Any` внутри.
-	ownerMarker = "github.com/PRO-Robotech/kacho/pkg/operations"
+	ownerMarker = "github.com/PRO-Robotech/corelib/operations"
 	// edgeMarker — кто ОТОБРАЖАЕТ `Operation` в JSON, то есть распаковывает
 	// `Any` через реестр типов своего процесса.
 	edgeMarker = "github.com/PRO-Robotech/kacho/gateway/internal/restmux"

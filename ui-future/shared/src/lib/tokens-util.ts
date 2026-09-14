@@ -5,7 +5,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ВИД УДОСТОВЕРЕНИЯ РЕШАЕТ ВСЁ ОСТАЛЬНОЕ (#1235)
 //
-// Контракт (`proto/kaname/cloud/iam/v1/credential_kind.proto`) различает виды по
+// Контракт (`kaname/cloud/iam/v1/credential_kind.proto` модуля
+// `github.com/PRO-Robotech/kaname`) различает виды по
 // тому, ЧЕМ удостоверение себя предъявляет, и у них РАЗНЫЙ срок:
 //
 //   KEYPAIR — ключевая пара ES256; вызывающий сам подписывает `client_assertion`
@@ -40,7 +41,7 @@ export const MAX_TTL_DAYS = MAX_TTL_SECONDS / SECONDS_PER_DAY; // 730
 
 // Срок вида SECRET — величины ПОЛИТИКИ, не наши.
 //
-// Источник — `pkg/tokenpolicy/policy.go`: `SecretCredentialTTLDefault` (30 суток)
+// Источник — `corelib/tokenpolicy/policy.go`: `SecretCredentialTTLDefault` (30 суток)
 // и `SecretCredentialTTLCeiling` (90 суток). Второго написания здесь НЕ заводится
 // в смысле правила: это ЗЕРКАЛО для формы, а решение принимает сервер — срок
 // сверх потолка он ОТВЕРГАЕТ с именем поля, а не урезает молча. Зеркало нужно,

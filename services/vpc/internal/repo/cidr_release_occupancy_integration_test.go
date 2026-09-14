@@ -15,8 +15,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-	"github.com/PRO-Robotech/kacho/pkg/ids"
+	coredb "github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/ids"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/address"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/addresspool"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/subnet"
@@ -27,7 +27,7 @@ import (
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
 
-	"github.com/PRO-Robotech/kacho/pkg/pgtest"
+	"github.com/PRO-Robotech/corelib/pgtest"
 )
 
 // Освобождение диапазона, в котором ЖИВУТ адреса, снимает несущее ограничение

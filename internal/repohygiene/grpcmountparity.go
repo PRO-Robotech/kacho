@@ -66,18 +66,22 @@ import (
 	"go/token"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 )
 
 // MountOptions — вход анализатора.
 type MountOptions struct {
 	// Root — корень репозитория.
 	Root string
-	// APIRoot — путь (относительно Root) к сгенерированным стабам.
+	// APIRoot — путь (относительно Root) к сгенерённым стабам ЭТОГО дерева
+	// (доменные контракты — vpc/compute/storage/nlb/registry/geo/…).
 	APIRoot string
 	// ModulePath — import-префикс модуля, чтобы отличить стабы от прочих импортов.
 	ModulePath string
@@ -86,6 +90,169 @@ type MountOptions struct {
 	Roots []string
 	// Allow — FQN сервисов, намеренно не поднимаемых по gRPC.
 	Allow []string
+}
+
+// apiStubHome — один ДОМ сгенерённых стабов: import-префикс и соответствующий
+// каталог на диске.
+//
+// Домов ТРИ, а не один, и каждый заведён своим переездом.
+//
+//	APIRoot этого дерева   доменные стабы (vpc/compute/storage/nlb/registry/geo/…)
+//	`api/` фундамента      платформенные контракты без домена-версии
+//	                       (operation/quota/subscription) переехали ЦЕЛИКОМ в
+//	                       модуль `github.com/PRO-Robotech/corelib`
+//	`pkg/api/<корень>`     контракты службы доступа уехали в её собственный
+//	  модуля корня         репозиторий (решение владельца kacho#2616, исход C,
+//	                       2026-09-13). Заглушки публикует модуль
+//	                       `github.com/PRO-Robotech/kaname` по ТЕМ ЖЕ
+//	                       относительным путям, что были здесь; владение модулем
+//	                       объявлено ОДИН раз —
+//	                       contractsource.ExternalRootModules
+//
+// Анализ, знающий только первый дом, не находит объявления остальных вовсе — не
+// «находит пустым», а не находит СЕРВИС, и запись каталога прав, называющая его
+// метод, резолвится как «сервиса нет в контракте» вместо «сервис есть, а
+// композиционного корня для него в этом дереве нет». Разница несущая: первое
+// велит СНЯТЬ запись, то есть потерять покрытие трети поверхности края (117
+// записей каталога из 350 и 104 маршрута из 308 — по-прежнему его).
+type apiStubHome struct {
+	importPrefix string
+	dir          string
+}
+
+// corelibAPIImportPrefix — import-префикс сгенерённых стабов общего фундамента.
+// Один на весь пакет: второе написание разошлось бы с этим молча при переносе.
+const corelibAPIImportPrefix = "github.com/PRO-Robotech/corelib/api/"
+
+// corelibModuleImportPathForMount — путь модуля общего фундамента. Имя не
+// совпадает с одноимённой константой тестовых гейтов (`corelibsource_test.go`,
+// `corelibModulePath`) намеренно: та объявлена в _test.go-файле и в обычную
+// сборку пакета не попадает, а эта — часть анализатора, а не только его пробы.
+const corelibModuleImportPathForMount = "github.com/PRO-Robotech/corelib"
+
+// corelibAPIStubDir — каталог `api/` общего фундамента в кэше модулей,
+// разрешённый по версии, закреплённой go.mod судимого дерева.
+//
+// ОТКАЗ, а не пустая строка — если модуль не закреплён в go.mod либо не
+// извлечён в кэш («go mod download» не выполнялся): различить «переехало» от
+// «кэш не наполнен» по пустому результату нечем, а анализатор, продолжающий
+// искать второй дом молча пустым списком, отвечал бы «сервиса нет» и там, где
+// подвела инфраструктура прогона, а не дерево.
+func corelibAPIStubDir(root string) (string, error) {
+	moduleDir, err := corelibModuleRootDir(root)
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(moduleDir, "api")
+	if st, serr := os.Stat(dir); serr != nil || !st.IsDir() {
+		return "", fmt.Errorf("каталог api/ общего фундамента (%s) не читается: %v — "+
+			"модуль не извлечён в кэш модулей (`go mod download`), либо api/ переехал "+
+			"внутри модуля", corelibModuleImportPathForMount, serr)
+	}
+	return dir, nil
+}
+
+// corelibModuleRootDir — каталог МОДУЛЯ общего фундамента в кэше модулей (не
+// какого-то одного его пакета), разрешённый по версии, закреплённой go.mod
+// судимого дерева. Общий предикат для всех гейтов, которым нужен второй дом:
+// второй resolve той же версии молча разошёлся бы с первым при бампе.
+func corelibModuleRootDir(root string) (string, error) {
+	return pinnedModuleRootDir(root, corelibModuleImportPathForMount)
+}
+
+// pinnedModuleRootDir — каталог ЛЮБОГО модуля, закреплённого go.mod судимого
+// дерева, в кэше модулей. Общий предикат для всех домов, приезжающих модулем:
+// второй resolve той же версии молча разошёлся бы с первым при бампе, а третий
+// дом (заглушки службы доступа) резолвится ровно тем же способом, что второй, —
+// значит и объявление у них обязано быть одно.
+func pinnedModuleRootDir(root, modulePath string) (string, error) {
+	body, err := os.ReadFile(filepath.Join(root, "go.mod")) // #nosec G304 -- путь собран из корня дерева и имени объявления модуля, оба не от пользователя
+	if err != nil {
+		return "", fmt.Errorf("чтение go.mod: %w", err)
+	}
+	for _, dep := range ParseGoModRequires(string(body)) {
+		if dep.Path != modulePath {
+			continue
+		}
+		out, cerr := exec.Command("go", "env", "GOMODCACHE").Output()
+		if cerr != nil {
+			return "", fmt.Errorf("go env GOMODCACHE: %w", cerr)
+		}
+		cache := strings.TrimSpace(string(out))
+		if cache == "" {
+			return "", fmt.Errorf("go env GOMODCACHE пуст — каталог кэша модулей не установлен")
+		}
+		return ModuleCacheDir(cache, dep), nil
+	}
+	return "", fmt.Errorf("go.mod не закрепляет %s — дом заглушек этого модуля не резолвится",
+		modulePath)
+}
+
+// externalRootStubDir — каталог заглушек ВНЕШНЕГО корня дерева контрактов в
+// кэше модулей: `pkg/api/<корень>` внутри модуля, который этот корень публикует.
+//
+// Относительный путь берётся у судимого дерева (`opts.APIRoot` + корень), а не
+// выписывается литералом: модуль публикует заглушки по ТЕМ ЖЕ относительным
+// путям, что были здесь до переезда, и второе написание разошлось бы с первым
+// молча при переносе каталога.
+func externalRootStubDir(opts MountOptions, root, modulePath string) (string, error) {
+	moduleDir, err := pinnedModuleRootDir(opts.Root, modulePath)
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(moduleDir, filepath.FromSlash(opts.APIRoot), root)
+	if st, serr := os.Stat(dir); serr != nil || !st.IsDir() {
+		return "", fmt.Errorf("каталог %s/%s модуля %s не читается: %v — модуль не извлечён "+
+			"в кэш модулей (`go mod download`), либо заглушки переехали внутри модуля",
+			opts.APIRoot, root, modulePath, serr)
+	}
+	return dir, nil
+}
+
+// apiStubHomes — дома для судимого дерева, в постоянном порядке (первый — ЭТОГО
+// дерева, затем общий фундамент и внешние корни дерева контрактов, каждый если
+// резолвится).
+//
+// Дома со второго — ЛУЧШЕЕ УСИЛИЕ, не отказ: у синтетических деревьев проб
+// (созданных `t.TempDir()` под ОДНУ узкую фикстуру, без своего go.mod) предмета
+// для них нет, и это законно — их предмет лежит целиком в первом доме. На
+// НАСТОЯЩЕМ дереве (go.mod закрепляет и corelib, и модуль корня службы доступа,
+// оба извлечены в кэш) резолвятся все; если это не так, находки по конкретным FQN
+// (`unknown-service` там, где сервис есть) назовут причину явно — тише этот отказ
+// не становится.
+//
+// Перечень внешних корней спрашивается у contractsource, а не выписывается
+// здесь: он объявлен ОДИН раз, и второе объявление разошлось бы с ним при
+// появлении третьего корня — молча, потому что расхождение выглядит как «сервиса
+// нет в контракте».
+func apiStubHomes(opts MountOptions) ([]apiStubHome, error) {
+	homes := []apiStubHome{{
+		importPrefix: opts.ModulePath + "/" + opts.APIRoot + "/",
+		dir:          filepath.Join(opts.Root, opts.APIRoot),
+	}}
+	if corelibDir, err := corelibAPIStubDir(opts.Root); err == nil {
+		homes = append(homes, apiStubHome{
+			importPrefix: corelibAPIImportPrefix,
+			dir:          corelibDir,
+		})
+	}
+	externalRoots := make([]string, 0, len(contractsource.ExternalRootModules))
+	for root := range contractsource.ExternalRootModules {
+		externalRoots = append(externalRoots, root)
+	}
+	sort.Strings(externalRoots)
+	for _, root := range externalRoots {
+		modulePath := contractsource.ExternalRootModules[root]
+		dir, err := externalRootStubDir(opts, root, modulePath)
+		if err != nil {
+			continue
+		}
+		homes = append(homes, apiStubHome{
+			importPrefix: modulePath + "/" + opts.APIRoot + "/" + root + "/",
+			dir:          dir,
+		})
+	}
+	return homes, nil
 }
 
 // MountCensus — то, что анализатор прочитал. Ноль находок обязано быть отличимо
@@ -127,16 +294,21 @@ var serviceNameRe = regexp.MustCompile(`ServiceName:\s*"([A-Za-z0-9_.]+)"`)
 func AuditGRPCMountParity(opts MountOptions, out io.Writer) ([]MountFinding, MountCensus, error) {
 	var c MountCensus
 
-	declared, dirToProto, err := declaredServices(filepath.Join(opts.Root, opts.APIRoot), &c)
+	homes, err := apiStubHomes(opts)
+	if err != nil {
+		return nil, c, err
+	}
+
+	declared, dirToProto, err := declaredServices(homes, &c)
 	if err != nil {
 		return nil, c, err
 	}
 	if c.StubFiles == 0 {
-		return nil, c, fmt.Errorf("не прочитано ни одного файла стабов в %q — предмет не найден, "+
-			"и любой вердикт ниже беспредметен", filepath.Join(opts.Root, opts.APIRoot))
+		return nil, c, fmt.Errorf("не прочитано ни одного файла стабов в %v — предмет не найден, "+
+			"и любой вердикт ниже беспредметен", homes)
 	}
 
-	mounted, err := mountedServices(opts, dirToProto, &c)
+	mounted, err := mountedServices(opts, homes, dirToProto, &c)
 	if err != nil {
 		return nil, c, err
 	}
@@ -270,29 +442,31 @@ func declaredSomewhere(declared map[string][]string, fqn string) bool {
 	return false
 }
 
-// declaredServices читает сгенерированные стабы: `ServiceName` в `ServiceDesc` —
-// то самое имя, по которому grpc-go диспатчит вызов.
-func declaredServices(apiRoot string, c *MountCensus) (map[string][]string, map[string]string, error) {
+// declaredServices читает сгенерированные стабы ОБОИХ домов: `ServiceName` в
+// `ServiceDesc` — то самое имя, по которому grpc-go диспатчит вызов.
+func declaredServices(homes []apiStubHome, c *MountCensus) (map[string][]string, map[string]string, error) {
 	declared := map[string][]string{}
 	dirToProto := map[string]string{}
-	err := rootedWalk(apiRoot, func(rel string) bool {
-		return strings.HasSuffix(rel, "_grpc.pb.go")
-	}, func(path string, b []byte) error {
-		c.StubFiles++
-		for _, m := range serviceNameRe.FindAllStringSubmatch(string(b), -1) {
-			full := m[1]
-			i := strings.LastIndexByte(full, '.')
-			if i < 0 {
-				continue
+	for _, home := range homes {
+		err := rootedWalk(home.dir, func(rel string) bool {
+			return strings.HasSuffix(rel, "_grpc.pb.go")
+		}, func(path string, b []byte) error {
+			c.StubFiles++
+			for _, m := range serviceNameRe.FindAllStringSubmatch(string(b), -1) {
+				full := m[1]
+				i := strings.LastIndexByte(full, '.')
+				if i < 0 {
+					continue
+				}
+				pkg, svc := full[:i], full[i+1:]
+				declared[pkg] = append(declared[pkg], svc)
+				dirToProto[filepath.Dir(path)] = pkg
 			}
-			pkg, svc := full[:i], full[i+1:]
-			declared[pkg] = append(declared[pkg], svc)
-			dirToProto[filepath.Dir(path)] = pkg
+			return nil
+		})
+		if err != nil {
+			return nil, nil, err
 		}
-		return nil
-	})
-	if err != nil {
-		return nil, nil, err
 	}
 	for pkg := range declared {
 		sort.Strings(declared[pkg])
@@ -305,7 +479,7 @@ func declaredServices(apiRoot string, c *MountCensus) (map[string][]string, map[
 
 // mountedServices разбирает композиционные корни и собирает FQN сервисов,
 // поднятых вызовом `Register<X>ServiceServer`.
-func mountedServices(opts MountOptions, dirToProto map[string]string, c *MountCensus) (map[string]map[string]struct{}, error) {
+func mountedServices(opts MountOptions, homes []apiStubHome, dirToProto map[string]string, c *MountCensus) (map[string]map[string]struct{}, error) {
 	out := map[string]map[string]struct{}{}
 	for _, root := range opts.Roots {
 		base := filepath.Join(opts.Root, root)
@@ -321,7 +495,7 @@ func mountedServices(opts MountOptions, dirToProto map[string]string, c *MountCe
 			}
 			rel, _ := filepath.Rel(opts.Root, path)
 			c.CmdPackages++
-			set, files, err := mountedInPackage(path, opts, dirToProto)
+			set, files, err := mountedInPackage(path, homes, dirToProto)
 			if err != nil {
 				return err
 			}
@@ -338,7 +512,7 @@ func mountedServices(opts MountOptions, dirToProto map[string]string, c *MountCe
 	return out, nil
 }
 
-func mountedInPackage(dir string, opts MountOptions, dirToProto map[string]string) (map[string]struct{}, int, error) {
+func mountedInPackage(dir string, homes []apiStubHome, dirToProto map[string]string) (map[string]struct{}, int, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, 0, err
@@ -356,7 +530,7 @@ func mountedInPackage(dir string, opts MountOptions, dirToProto map[string]strin
 			return nil, files, fmt.Errorf("parse %s: %w", filepath.Join(dir, name), err)
 		}
 		files++
-		alias := aliasToProtoPackage(f, opts, dirToProto)
+		alias := aliasToProtoPackage(f, homes, dirToProto)
 		ast.Inspect(f, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
 			if !ok {
@@ -401,14 +575,24 @@ func serviceFromRegisterName(name string) (string, bool) {
 // aliasToProtoPackage сопоставляет локальное имя импорта стабов с proto-пакетом.
 // Имя берётся из явного алиаса, иначе — из имени пакета в каталоге стабов, а не
 // из последнего сегмента пути: у сгенерированных пакетов он «v1».
-func aliasToProtoPackage(f *ast.File, opts MountOptions, dirToProto map[string]string) map[string]string {
+func aliasToProtoPackage(f *ast.File, homes []apiStubHome, dirToProto map[string]string) map[string]string {
 	out := map[string]string{}
 	for _, imp := range f.Imports {
 		p, err := strconv.Unquote(imp.Path.Value)
-		if err != nil || !strings.HasPrefix(p, opts.ModulePath+"/"+opts.APIRoot+"/") {
+		if err != nil {
 			continue
 		}
-		dir := filepath.Join(opts.Root, strings.TrimPrefix(p, opts.ModulePath+"/"))
+		var dir string
+		for _, home := range homes {
+			if !strings.HasPrefix(p, home.importPrefix) {
+				continue
+			}
+			dir = filepath.Join(home.dir, strings.TrimPrefix(p, home.importPrefix))
+			break
+		}
+		if dir == "" {
+			continue
+		}
 		proto, ok := dirToProto[dir]
 		if !ok {
 			continue

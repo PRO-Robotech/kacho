@@ -8,7 +8,15 @@
 //
 // Читается ОРИГИНАЛ, а не его отражение в коде консоли: отражение — и есть то,
 // что проверяется.
+//
+// КОРЕНЬ ДЕРЕВА КОНТРАКТОВ — НЕ ОБЯЗАТЕЛЬНО КАТАЛОГ ЭТОГО РЕПОЗИТОРИЯ. Платформа
+// называет себя `kacho` и несёт свои контракты в `proto/`; служба доступа
+// (`kaname`) свои унесла в собственный репозиторий (kacho#2616, исход C,
+// 2026-09-13) и публикует их модулем Go. Обе разновидности разрешает один
+// contractPath() — по наличию корня в дереве, а не по имени, — поэтому вызывающий
+// называет путь ВНУТРИ дерева контрактов и о переезде не знает.
 
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
@@ -68,10 +76,141 @@ export function monorepoRoot(): string {
   );
 }
 
-/** Полный путь к контракту по его пути внутри `proto/` (`kacho/cloud/vpc/v1/route_table.proto`). */
+/**
+ * Где объявлено, какой корень дерева контрактов каким модулем публикуется.
+ *
+ * ПЕРЕЧЕНЬ ЧИТАЕТСЯ У ПРОИЗВОДИТЕЛЯ, А НЕ КОПИРУЕТСЯ СЮДА. Копия была бы очередным
+ * объявлением одного предмета: первое — `ExternalRootModules` пакета
+ * `internal/contractsource`, второе — массив `KACHO_PROTO_ROOT_MODULES` оболочки
+ * (`gateway/scripts/lib/stage-proto-tree.sh`), и расхождение ТЕХ ДВУХ держит гейт
+ * (`internal/repohygiene` TestContractRootModulesAgreeBetweenGoAndShell). Гейта на
+ * копию в консоли нет, поэтому она расходилась бы МОЛЧА — тем же способом, каким
+ * устарели пять прежних объявлений формы имени (#715, см. `corelib-source.ts`).
+ */
+const EXTERNAL_ROOTS_DECL = join("internal", "contractsource", "contractsource.go");
+
+/** {корень: путь модуля} — читается объявление Go-стороны; ноль записей — отказ. */
+function externalRootModules(root: string): Map<string, string> {
+  const declAt = join(root, EXTERNAL_ROOTS_DECL);
+  let src: string;
+  try {
+    src = readFileSync(declAt, "utf8");
+  } catch (err) {
+    throw new Error(
+      `объявление внешних корней контрактов не прочитано (${EXTERNAL_ROOTS_DECL}): ${String(err)} — ` +
+        `узнать, каким модулем приезжает корень, стало нечем`,
+    );
+  }
+  const block = /var ExternalRootModules = map\[string\]string\{([\s\S]*?)\n\}/.exec(src);
+  if (!block) {
+    throw new Error(
+      `в ${EXTERNAL_ROOTS_DECL} нет объявления \`var ExternalRootModules = map[string]string{…}\` — ` +
+        `перечень внешних корней переименован либо переписан`,
+    );
+  }
+  const out = new Map<string, string>();
+  for (const m of block[1].matchAll(/"([^"]+)"\s*:\s*"([^"]+)"/g)) out.set(m[1], m[2]);
+  if (out.size === 0) {
+    throw new Error(
+      `объявление ExternalRootModules в ${EXTERNAL_ROOTS_DECL} разобрано в НОЛЬ записей — ` +
+        `разбор сломан, а не перечень пуст`,
+    );
+  }
+  return out;
+}
+
+/** Каталог распакованного модуля — один запрос на модуль за прогон. */
+const moduleDirCache = new Map<string, string>();
+
+/**
+ * Каталог модуля спрашивается у `go`, а не собирается из переменных окружения и
+ * не выводится из формы пути кэша: кодировка этого пути — внутреннее дело `go`, и
+ * собранный вручную разошёлся бы с ним молча (тот же довод, что у
+ * `internal/contractsource.moduleDir`).
+ *
+ * Кэш модулей мог быть не прогрет — одна попытка добора, и только одна. Она здесь
+ * НЕСУЩАЯ: пробы консоли гоняются девятью наборами jest, и требовать от каждого
+ * предварительного `go mod download` значило бы завести условие вне дерева,
+ * которое невыполнение делает красным вместо дефекта.
+ */
+function goModuleDir(root: string, module: string): string {
+  const cached = moduleDirCache.get(module);
+  if (cached) return cached;
+  const ask = (): string => {
+    try {
+      return execFileSync("go", ["list", "-m", "-f", "{{.Dir}}", module], {
+        cwd: root,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim();
+    } catch {
+      return "";
+    }
+  };
+  let dir = ask();
+  if (!dir) {
+    try {
+      execFileSync("go", ["mod", "download", module], { cwd: root, stdio: "ignore" });
+    } catch {
+      // Добор мог не удаться (нет сети, нет `go`) — причину назовёт отказ ниже.
+    }
+    dir = ask();
+  }
+  if (!dir || !existsSync(dir)) {
+    throw new Error(
+      `модуль ${module} не резолвится из ${root} — дерево его контрактов взять неоткуда. ` +
+        `Нужен установленный \`go\` и прогретый кэш модулей: \`go mod download ${module}\`. ` +
+        `Это «не выполнилось», а не «контракт изменился», и молчание здесь означало бы «совпало», ` +
+        `чего никто не проверял.`,
+    );
+  }
+  moduleDirCache.set(module, dir);
+  return dir;
+}
+
+/**
+ * Полный путь к контракту по его пути внутри дерева контрактов
+ * (`kacho/cloud/vpc/v1/route_table.proto`, `kaname/cloud/iam/v1/role.proto`).
+ *
+ * КОРНЕЙ ДВА ВИДА, И ВЫБОР ИДЁТ ПО НАЛИЧИЮ В ДЕРЕВЕ. Корень, физически лежащий в
+ * `proto/` монорепо, берётся ОТТУДА, и модуль для него не резолвится вовсе. Корня
+ * службы доступа (`kaname`) здесь больше нет: решением владельца (kacho#2616,
+ * исход C, 2026-09-13) её контракты уехали в её репозиторий и приезжают
+ * опубликованным модулем `github.com/PRO-Robotech/kaname`, каталогом
+ * `proto/kaname` внутри него. Тот же порядок и тот же довод, что у Go-стороны
+ * (`internal/contractsource.Dir`).
+ *
+ * МОДУЛЬ НЕ ЛЕЖИТ В `node_modules`, и подменить его пакетом npm нельзя: версию
+ * закрепляет корневой `go.mod` — то самое объявление, которым собирается продукт.
+ * Поэтому каталог спрашивается у `go`, как это уже делает `corelib-source.ts` для
+ * общего фундамента.
+ *
+ * ОТКАЗ ГРОМКИЙ И НАЗЫВАЕТ ПРИЧИНУ. Здесь читают контракт на уровне МОДУЛЯ пробы —
+ * до первого `it`, — поэтому тихий возврат пустого пути уронил бы весь файл пробы
+ * сообщением про `undefined`, а не про недостижимый источник.
+ */
 export function contractPath(protoRelPath: string): string {
-  const full = join(monorepoRoot(), "proto", ...protoRelPath.split("/"));
-  if (!existsSync(full)) throw new Error(`контракт не найден: ${protoRelPath} (искали ${full})`);
+  const root = monorepoRoot();
+  const segments = protoRelPath.split("/");
+  const inTree = join(root, "proto", ...segments);
+  if (existsSync(inTree)) return inTree;
+
+  const contractRoot = segments[0];
+  const module = externalRootModules(root).get(contractRoot);
+  if (!module) {
+    throw new Error(
+      `контракт не найден: ${protoRelPath} (искали ${inTree}); корень "${contractRoot}" ` +
+        `внешним модулем не объявлен (${EXTERNAL_ROOTS_DECL}) — либо путь неверен, либо корень ` +
+        `надо объявить там же, где его объявляет платформа`,
+    );
+  }
+  const full = join(goModuleDir(root, module), "proto", ...segments);
+  if (!existsSync(full)) {
+    throw new Error(
+      `контракт не найден: ${protoRelPath} — модуль ${module} резолвится, но этого файла в нём нет ` +
+        `(искали ${full}). Версия модуля не несёт контракт, который проба называет.`,
+    );
+  }
   return full;
 }
 
@@ -271,4 +410,31 @@ export function listConsoleSources(root: string): string[] {
     if (existsSync(src) && statSync(src).isDirectory()) walk(src);
   }
   return out.sort();
+}
+
+/**
+ * Корни ДЕРЕВА КОНТРАКТОВ — каталоги, каждый из которых играет роль `proto/`.
+ *
+ * ПЕРВЫЙ — этого дерева. Остальные — по одному на объявленный внешний корень,
+ * чьё дерево приезжает опубликованным модулем (kacho#2616, исход C, 2026-09-13:
+ * контракты службы доступа уехали в `PRO-Robotech/kaname`).
+ *
+ * ЗАЧЕМ ОТДЕЛЬНО ОТ `contractPath`. Та отвечает про ОДИН названный файл; пробам
+ * поверхности нужен ВЕСЬ состав — они обходят `proto/` целиком и выводят из него
+ * множество путей REST. Обход одного корня после переезда сузился на 41 контракт
+ * молча: проба не падала на отсутствии файла, она получала популяцию без домена
+ * `iam` и объявляла каждый его маршрут неслужимым. Замер: 82 проверки из 309 в
+ * трёх наборах, и все 82 — о маршрутах службы доступа.
+ *
+ * Внешний корень, УЖЕ лежащий в дереве, вторым корнем не добавляется: иначе один
+ * файл прочитался бы дважды, и счётчики уникальности разошлись бы сами с собой.
+ */
+export function contractProtoRoots(): string[] {
+  const root = monorepoRoot();
+  const roots = [join(root, "proto")];
+  for (const [contractRoot, module] of externalRootModules(root)) {
+    if (existsSync(join(root, "proto", contractRoot))) continue;
+    roots.push(join(goModuleDir(root, module), "proto"));
+  }
+  return roots;
 }

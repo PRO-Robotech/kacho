@@ -22,8 +22,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
+	"github.com/PRO-Robotech/corelib/outbox/metrics"
+	"github.com/PRO-Robotech/corelib/outbox/reconciler"
 )
 
 const (

@@ -16,11 +16,11 @@ import (
 
 	"google.golang.org/protobuf/types/known/anypb"
 
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	"github.com/PRO-Robotech/corelib/auth"
+	"github.com/PRO-Robotech/corelib/peer"
+	"github.com/PRO-Robotech/corelib/retry"
 	vpcpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
-	"github.com/PRO-Robotech/kacho/pkg/auth"
-	"github.com/PRO-Robotech/kacho/pkg/peer"
-	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
@@ -145,7 +145,7 @@ type InternalAddressClient interface {
 	// проекте, исход приезжает ПОЛЕМ. Ни один код ошибки больше не читается как
 	// доказательство отсутствия аренды.
 	//
-	// Полосы отказа разведены носителем `pkg/peer`, корзины «прочее» у них нет —
+	// Полосы отказа разведены носителем `corelib/peer`, корзины «прочее» у них нет —
 	// она выбирала бы политику повтора за вызывающего. ЛЮБОЙ отказ означает
 	// «работа НЕ сделана», аренду не трогаем:
 	//   - Denied/StateRefused          → domain.ErrFailedPrecondition, терминально
@@ -538,7 +538,7 @@ func leaseOutcomeFromProto(o vpcpb.ReleaseOwnedAddressResponse_Outcome) (LeaseOu
 }
 
 // mapReleaseLeaseErr — полосы отказа снятия аренды, разведённые ОБЩИМ носителем
-// `pkg/peer` (тем же, что у привязки и у публичного чтения адреса).
+// `corelib/peer` (тем же, что у привязки и у публичного чтения адреса).
 //
 // Корзины «прочее» здесь нет намеренно. Она не нейтральна: она ВЫБИРАЕТ политику
 // повтора за вызывающего — и на этой полосе выбирала бы терминальную для всего,

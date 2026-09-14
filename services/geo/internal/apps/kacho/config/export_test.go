@@ -6,7 +6,7 @@ package config
 import (
 	"os"
 
-	corecfg "github.com/PRO-Robotech/kacho/pkg/config"
+	corecfg "github.com/PRO-Robotech/corelib/config"
 )
 
 // LoadInto — test-only хелпер (компилируется исключительно в _test.go, не

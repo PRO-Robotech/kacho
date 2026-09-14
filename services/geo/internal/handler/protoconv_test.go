@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/corelib/operations"
 )
 
 // TestOperationToProto_TruncatesTimestampsToSecond — created_at/modified_at

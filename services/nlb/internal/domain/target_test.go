@@ -6,7 +6,7 @@ package domain_test
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/option"
+	"github.com/PRO-Robotech/corelib/option"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
 

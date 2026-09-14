@@ -51,7 +51,57 @@ import (
 // станет нечего», — и ровно это произошло: владельцев теперь два, и оба
 // монтируют его на своём внутреннем слушателе. Анализатор уронил прогон на этой
 // записи сам, как и было обещано.
-var mountAllow = []string{}
+// СЕЙЧАС НЕ ПУСТ, И ЭТО ОБЪЯВЛЕНИЕ, А НЕ ПОСЛАБЛЕНИЕ. Служба доступа вынесена
+// отдельным продуктом (`PRO-Robotech/kaname`, решение владельца kacho#2616,
+// исход C, 2026-09-13): ни композиционного корня, ни контрактов, ни заглушек в
+// этом дереве больше нет — заглушки публикует МОДУЛЬ
+// `github.com/PRO-Robotech/kaname`, закреплённый go.mod, и анализатор читает их
+// как третий дом (`apiStubHomes`). Значит все её gRPC-сервисы по-прежнему
+// объявлены контрактом и не монтируются здесь НИКЕМ, и это не недоделка, а
+// раскладка.
+//
+// ЗДЕСЬ СТОЯЛО «уедет контракт вслед за реализацией — сервис исчезнет из
+// контракта, и записи станет нечего прощать». Контракт уехал, и предсказанного
+// НЕ ПРОИЗОШЛО: сервис остался объявленным, только объявление читается из
+// модуля. Написанное было верно для дерева, у которого второго дома нет, — а у
+// этого их три.
+//
+// ЧТО С ЗАПИСЯМИ СТАЛО, НАЗВАНО ЧИСЛОМ. Пакет `kaname.cloud.iam.v1` не
+// монтирует НИ ОДИН бинарь этого дерева, поэтому все 23 записи лежат ВНЕ
+// предмета анализатора монтирования (шапка `grpcmountparity.go`, §«Исключение
+// живёт, пока у него есть предмет») и попадают в графу переписи «исключений вне
+// предмета» — она печатает 23, а находок 0. Для СОСЕДНЕГО гейта, достижимости
+// каталога, те же записи остаются живыми и прощают 117 строк каталога прав из
+// 350: предикат у него свой, и там предмет у записи есть.
+//
+// Запись самоистекает в обе стороны и по своему предикату, а не по чьему-то
+// решению: смонтирует кто-нибудь такой сервис — исключать станет нечего;
+// перестанет модуль публиковать заглушки сервиса — тот исчезнет из контракта, и
+// записи снова станет нечего прощать (у гейта каталога — сразу, у этого — как
+// только пакетом начнут владеть). Оба исхода роняют прогон сами.
+var mountAllow = []string{
+	"kaname.cloud.iam.v1.AccessBindingService",
+	"kaname.cloud.iam.v1.AccountService",
+	"kaname.cloud.iam.v1.AuthorizeService",
+	"kaname.cloud.iam.v1.GroupService",
+	"kaname.cloud.iam.v1.IdentityQuotaService",
+	"kaname.cloud.iam.v1.InternalBootstrapTokenService",
+	"kaname.cloud.iam.v1.InternalClusterService",
+	"kaname.cloud.iam.v1.InternalIAMService",
+	"kaname.cloud.iam.v1.InternalInteractiveClientService",
+	"kaname.cloud.iam.v1.InternalModuleService",
+	"kaname.cloud.iam.v1.InternalOperationsService",
+	"kaname.cloud.iam.v1.InternalSessionRevocationsService",
+	"kaname.cloud.iam.v1.InternalUserService",
+	"kaname.cloud.iam.v1.MembershipService",
+	"kaname.cloud.iam.v1.PermissionCatalogService",
+	"kaname.cloud.iam.v1.ProjectService",
+	"kaname.cloud.iam.v1.RoleService",
+	"kaname.cloud.iam.v1.SAKeyService",
+	"kaname.cloud.iam.v1.ServiceAccountService",
+	"kaname.cloud.iam.v1.UserService",
+	"kaname.cloud.iam.v1.UserTokenService",
+}
 
 func mountOptions(t *testing.T) MountOptions {
 	t.Helper()

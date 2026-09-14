@@ -64,11 +64,37 @@ import (
 // предмет-то у записи есть.
 var journalCursorAllowances []JournalCursorAllowance
 
+// journalCursorGoRoots — GoRoots ПЛЮС общий фундамент, если он резолвится.
+//
+// Читатель журнала (`subscription.Storage`/drainer) переехал ЦЕЛИКОМ в
+// github.com/PRO-Robotech/corelib вместе с пакетом `subscription` —
+// `pkg/subscription` в этом дереве больше не существует. Его возобновимое
+// чтение (`ORDER BY %s ASC ... WHERE %s > $1 AND %s <= $2`) параметризовано
+// именем колонки, и jcClassify уже умеет такой запрос опознавать по
+// собственному правилу («Параметризованный журнал») — не хватало только
+// каталога, откуда этот файл читать: элемент GoRoots всегда джойнился с
+// корнем ЭТОГО дерева, а corelib лежит в кэше модулей вовсе снаружи. Путь
+// возвращается абсолютным нарочно — jcRootDir (journalcursorupperbound.go)
+// джойнит с root только относительные элементы, и это симметрично тому, как
+// сам анализатор уже отличает «параметризованную» колонку от колонки схемы.
+//
+// Резолв — лучшее усилие: не найден модуль (синтетическое дерево пробы, чужой
+// GOMODCACHE) — GoRoots остаются прежними, без абсолютного элемента.
+func journalCursorGoRoots(t *testing.T, root string, base []string) []string {
+	t.Helper()
+	out := append([]string(nil), base...)
+	if moduleDir, err := corelibModuleRootDir(root); err == nil {
+		out = append(out, moduleDir)
+	}
+	return out
+}
+
 func journalCursorOptions(t *testing.T) JournalCursorOptions {
 	t.Helper()
+	root := repoRoot(t)
 	return JournalCursorOptions{
-		Root:     repoRoot(t),
-		GoRoots:  []string{"pkg", "services", "gateway", "terraform", "internal", "cmd"},
+		Root:     root,
+		GoRoots:  journalCursorGoRoots(t, root, []string{"pkg", "services", "gateway", "terraform", "internal", "cmd"}),
 		SQLRoots: []string{"pkg", "services", "gateway"},
 		Allow:    journalCursorAllowances,
 	}
@@ -99,16 +125,23 @@ func TestJournalReadersNeverAdvanceOnABareSequenceNumber(t *testing.T) {
 	if census.ResumableReads == 0 {
 		t.Fatal("возобновимых чтений опознано 0: распознаватель ослеп, и молчание гейта беспредметно")
 	}
-	// И премиса ТРЕТЬЕЙ ЗАКРЫТОСТИ. Она выводится из тела триггера, то есть её
-	// молчание неотличимо от её отсутствия: перестань распознаватель читать
-	// триггеры — закрытых колонок станет ноль, законное чтение снова окажется
-	// находкой, и починят его записью в ведомости. На дереве такая колонка ЕСТЬ
-	// (`kaname.limits.revision`, миграция 0092), поэтому ноль здесь означает
-	// поломку распознавателя, а не исправление дерева.
-	if census.CommitOrderedColumns == 0 {
-		t.Fatal("колонок, выдаваемых в порядке фиксаций, опознано 0: распознаватель триггеров " +
-			"ослеп — законное чтение снова станет находкой, и её закроют послаблением")
-	}
+	// ЗДЕСЬ СТОЯЛ ОТКАЗ на нулевую третью закрытость, и его довод назывался
+	// прямо: «на дереве такая колонка ЕСТЬ (`kaname.limits.revision`, миграция
+	// 0092), поэтому ноль означает поломку распознавателя, а не исправление
+	// дерева». Довод был верен и пережил свой предмет: миграция принадлежала
+	// службе доступа, вынесенной отдельным продуктом, и другой колонки,
+	// выдаваемой в порядке фиксаций, дерево не производит.
+	//
+	// ЖИВОСТЬ РАСПОЗНАВАТЕЛЯ ТРИГГЕРОВ ДЕРЖИТ ИНЪЕКЦИЯ, а не этот счёт, и
+	// держит строже: `TestJournalCursorGateReadsClosednessOnTheWriterSide`
+	// требует РОВНО одной такой колонки на собранном стенде, а
+	// `TestJournalCursorGateJudgesTheShapeNotTheWord` снимает у законного
+	// писателя по одному признаку зараз и требует, чтобы закрытость
+	// переставала выводиться на каждом. Обе от состава дерева не зависят.
+	//
+	// Величина остаётся в переписи выше и печатается ВСЕГДА: ноль в ней сегодня
+	// есть факт О ДЕРЕВЕ. Проба, падающая на нём, требовала бы держать колонку
+	// ради самой колонки.
 
 	if len(findings) == 0 {
 		return

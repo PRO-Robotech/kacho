@@ -4,7 +4,7 @@
 package main
 
 // describe.go — ОБЪЯВЛЕНИЕ kacho-nlb о себе для носителя контура
-// (`pkg/servicehost`).
+// (`corelib/servicehost`).
 //
 // # Что этот файл заменил
 //
@@ -25,17 +25,17 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/authz/proxytuple"
+	coredb "github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/corelib/outbox/bootgate"
+	"github.com/PRO-Robotech/corelib/servicecontract"
 	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
-	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
-	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
@@ -168,7 +168,7 @@ func describe(
 		//
 		// Здесь стояло ИЗЪЯТИЕ, и оно было верным: собственный стрим сервиса снят
 		// вместе со своим контрактом, потребителя у него не было. Сервис
-		// служит поток снова — но уже ОБЩИЙ (`pkg/subscription`), один
+		// служит поток снова — но уже ОБЩИЙ (`corelib/subscription`), один
 		// на платформу, а не свой. Изъятие стало бы ложью о дереве ровно в тот
 		// момент, когда глагол зарегистрирован, поэтому меняется вместе с ним.
 		//
@@ -209,7 +209,7 @@ func describe(
 			listMethod(lbv1.NetworkLoadBalancerService_ServiceDesc.ServiceName): narrower,
 			listMethod(lbv1.ListenerService_ServiceDesc.ServiceName):            narrower,
 			listMethod(lbv1.TargetGroupService_ServiceDesc.ServiceName):         narrower,
-			// Общий поток изменений (`pkg/subscription`). Имя собрано
+			// Общий поток изменений (`corelib/subscription`). Имя собрано
 			// из дескриптора ОБЩЕЙ службы тем же способом, что и остальные три:
 			// переименуют — не соберётся, а не разойдётся молча.
 			//

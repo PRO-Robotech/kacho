@@ -6,7 +6,7 @@
 // Единая точка сборки gRPC-клиентских соединений к peer-сервисам: retries, LB,
 // TLS — один паттерн на всех.
 //
-// Builder — обёртка над `grpcclient.DialPeer` (`pkg/grpcclient/dial.go`) с
+// Builder — обёртка над `grpcclient.DialPeer` (`corelib/grpcclient/dial.go`) с
 // дефолтами kacho-nlb (retries=3, dialTimeout=10s, KeepAlive 30s,
 // userAgent="kacho-nlb"). Тот же фундамент зовёт kacho-vpc.
 //
@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcclient"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"

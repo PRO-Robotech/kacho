@@ -50,7 +50,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // CatalogAnchorSite — одно место, называющее координату якоря.

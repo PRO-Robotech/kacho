@@ -254,7 +254,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	"github.com/PRO-Robotech/corelib/migratorcli"
 )
 
 func main() {
@@ -315,7 +315,7 @@ import (
 
 	"github.com/pressly/goose/v3"
 
-	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	"github.com/PRO-Robotech/corelib/migratorcli"
 )
 
 func main() {
@@ -586,7 +586,7 @@ func TestMigratorCLIParserGateJudgesTheCallNotTheImport(t *testing.T) {
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	"github.com/PRO-Robotech/corelib/migratorcli"
 )
 
 func newRootCmd() *cobra.Command {
@@ -623,7 +623,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	"github.com/PRO-Robotech/corelib/migratorcli"
 )
 
 func main() {
@@ -779,7 +779,7 @@ func TestMigratorCLIRefusalGateStaysSilentOnLegitimateTwins(t *testing.T) {
 			name: "вызов производителя",
 			src: `package main
 
-import "github.com/PRO-Robotech/kacho/pkg/migratorcli"
+import "github.com/PRO-Robotech/corelib/migratorcli"
 
 func fail(path, given string) error {
 	return migratorcli.UnexpectedArgumentError(path, given)
@@ -869,7 +869,7 @@ func TestMigratorCLIRefusalGateStaysSilentOnLegitimateOutput(t *testing.T) {
 import (
 	"os"
 
-	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	"github.com/PRO-Robotech/corelib/migratorcli"
 )
 
 func fail(err error) {

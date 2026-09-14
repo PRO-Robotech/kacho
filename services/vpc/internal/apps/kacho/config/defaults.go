@@ -47,7 +47,7 @@ func RegisterDefaults(v *viper.Viper) {
 	// exhaustion / deadline-less запросов, CWE-770). 0 → без границы.
 	v.SetDefault("api-server.request-timeout", 30*time.Second)
 
-	// Подписка на изменения (`pkg/subscription`). Величины — посадочные, поэтому
+	// Подписка на изменения (`corelib/subscription`). Величины — посадочные, поэтому
 	// стоят здесь, а не в объявлении журнала: журнал говорит, ГДЕ он лежит, а не
 	// сколько живёт поток и сколько их бывает разом.
 	v.SetDefault("api-server.subscription-stream-budget", time.Hour)

@@ -23,7 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 // syntheticTree раскладывает крошечное дерево и делает его ОТСЛЕЖИВАЕМЫМ:
@@ -56,7 +56,7 @@ func syntheticTree(t *testing.T, files map[string]string) string {
 // rootSource — композиционный корень: функция, зовущая конструктор дескриптора.
 const rootSource = `package main
 
-import "github.com/PRO-Robotech/kacho/pkg/servicecontract"
+import "github.com/PRO-Robotech/corelib/servicecontract"
 
 // describe собирает объявление сервиса о себе.
 func describe() (servicecontract.Descriptor, error) {

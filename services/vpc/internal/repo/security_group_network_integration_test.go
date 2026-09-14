@@ -16,16 +16,16 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-	"github.com/PRO-Robotech/kacho/pkg/ids"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	coredb "github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/ids"
+	"github.com/PRO-Robotech/corelib/operations"
 	sgapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/securitygroup"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/cqrsadapter"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 
-	"github.com/PRO-Robotech/kacho/pkg/pgtest"
+	"github.com/PRO-Robotech/corelib/pgtest"
 )
 
 // Интеграционные тесты use-case-уровня против реального Postgres
@@ -560,7 +560,7 @@ func TestIntegration_SGNet_UpdateMaskNetwork_InvalidArgument(t *testing.T) {
 
 // sgTargetUnusable — ЕДИНСТВЕННЫЙ текст, которым сервис отвечает на оба исхода
 // резолва цели правила: цели нет и цель в чужой сети. Форма совпадает с текстом
-// настоящего промаха владельца (`pkg/authz/hide_existence.go`), включая
+// настоящего промаха владельца (`corelib/authz/hide_existence.go`), включая
 // типизированную обёртку идентификатора: скрытие обязано быть побайтово
 // неотличимым от отсутствия, иначе по различию текстов восстанавливается
 // существование чужого объекта.

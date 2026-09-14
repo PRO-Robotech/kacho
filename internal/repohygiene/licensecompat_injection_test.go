@@ -41,16 +41,77 @@ func injEdge(fromDir, imp, kind string) licenseEdge {
 
 const (
 	// Реальные пути дерева, взятые дословно, чтобы кейс не проверял выдумку.
-	injApachePkg   = "github.com/PRO-Robotech/kacho/pkg/ids"
+	//
+	// injApachePkg МЕНЯЛ КООРДИНАТУ ДВАЖДЫ, и оба раза по одной причине: пакет,
+	// взятый примером Apache-уровня, уезжал из дерева.
+	//
+	// Первый раз (2026-09) это был "…/pkg/ids", ушедший в общий фундамент corelib
+	// целиком. Взять сегодняшний импорт corelib нельзя — corelib для ЭТОГО гейта
+	// внешний модуль (см. licensecompat.go §«ГРАНИЦЫ»: судится ребро внутри
+	// модуля продукта, а не совместимость с закреплённой зависимостью — это
+	// предмет dependencylicense.go), и treePathOfImport на нём законно отдаёт ""
+	// — не находка, а граница гейта. Заводить синтетический уровень "corelib/" в
+	// licenseTiers тоже нельзя: у него не будет ни одного РЕАЛЬНОГО пути дерева,
+	// и его роняет TestLicenseTiersHaveALiveSubjectInTheTree (ось четвёртая —
+	// «запись без предмета»). Тогда координата была переведена на
+	// "pkg/ownerregister".
+	//
+	// Второй раз — решением владельца kacho#2616 (исход C, 2026-09-13): каталог
+	// реестра владельцев уехал в репозиторий службы доступа вместе с её
+	// контрактами, и `git ls-files pkg/ownerregister` даёт 0. Утверждение
+	// «275 файлов pkg/{api,authz,listnarrow,ownerregister,quota,subjectchange}
+	// никуда не уезжали» ОТМЕНЕНО: ownerregister и subjectchange уехали, а под
+	// `pkg/` осталось 173 отслеживаемых файла.
+	//
+	// ПРЕДПОСЫЛКА РАСПАЛАСЬ МОЛЧА, И ЭТО СУТЬ, А НЕ ПОДРОБНОСТЬ. Мёртвая
+	// координата здесь не роняет ни одного кейса: уровень разрешается САМЫМ
+	// ДЛИННЫМ совпавшим префиксом карты (`licenseTierFor`), а Apache-уровень
+	// объявлен широкой приставкой "pkg/" — поэтому "pkg/ownerregister" отдавал
+	// Apache и после того, как каталог перестал существовать. Кейсы оставались
+	// ЗЕЛЁНЫМИ на выдумке: гейт по-прежнему судился, но пара уровней бралась с
+	// пути, которого в дереве нет, и «взято дословно из дерева» стало ложью.
+	// Машинного держателя у этого класса здесь НЕТ — ни один гейт не сверяет
+	// координаты фикстуры с индексом, — и потому правка сделана чтением, а
+	// красного не было и быть не могло.
+	//
+	// ПО КАКОМУ ПРЕДИКАТУ ВЫБРАНА НОВАЯ. Два числа, оба получаются одной
+	// командой каждое: `git ls-files <путь> | wc -l` — 52 отслеживаемых файла, и
+	// `grep -rl '<модуль>/<путь>"' --include=*.go . | wc -l` — 184 импортёра.
+	// Это наибольшие величины среди живых каталогов Apache-уровня (соседние
+	// рукописные пакеты дают 1–2 файла и 5–6 импортёров). Довод не в размере
+	// самом: под `pkg/` из 173 файлов 165 лежат в `pkg/api/kacho/**`, то есть
+	// почти весь оставшийся Apache-уровень — это ПЛАТФОРМЕННЫЙ контракт в форме
+	// Go, и уехать по основанию исхода C он не может: исход C вынес контракты
+	// СЛУЖБЫ, платформенные остаются здесь по тому же решению.
+	injApachePkg   = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 	injBuslPkg     = "github.com/PRO-Robotech/kacho/gateway/internal/restmux"
-	injAgplPkg     = "github.com/PRO-Robotech/kaname/internal/apps/kaname/moduleroles"
 	injVendoredPkg = "github.com/PRO-Robotech/kacho/proto/google/api"
 	injExternalPkg = "google.golang.org/grpc"
 
 	injBuslDir   = "gateway/internal/restmux"
-	injApacheDir = "pkg/db"
-	injAgplDir   = "services/iam/internal/handler"
+	injApacheDir = "pkg/api/kacho/cloud/vpc/v1"
 )
+
+// ЗДЕСЬ СТОЯЛИ injAgplPkg И injAgplDir — координаты уровня вынесенного продукта.
+// Сняты вместе со своим предметом: приставки `services/iam/` в карте уровней
+// больше нет, и обе координаты разрешались в умолчание BUSL, то есть кейсы,
+// объявленные нарушением, судили пару BUSL->BUSL и молчали.
+//
+// ЧТО ЭТО ЗНАЧИТ ДЛЯ ГЕЙТА, названо прямо, а не заглажено: ребро «платформа
+// импортирует пакет вынесенной службы» — предмет задачи #2083 — этим гейтом
+// СЕГОДНЯ НЕ СУДИТСЯ ВОВСЕ. Чужой модуль перестал быть уровнем дерева, и
+// treePathOfImport на нём отдаёт ("", false): ветвей, переводивших импорт службы
+// в путь под `services/iam/`, в функции больше НЕТ — они сняты вместе с
+// каталогом, которого в дереве не существует. Прежняя редакция этого абзаца
+// говорила, что перевод «по-прежнему» их делает; утверждение ОТМЕНЕНО, и
+// вердикт от него не меняется: ребро не судится ни так, ни так. Судить его
+// должен гейт лицензий ЗАВИСИМОСТЕЙ, а не этот; перевод импорта и карта уровней
+// — не предмет этого файла, и чинить их отсюда значило бы завести второе место
+// об одном предмете.
+//
+// Само ПРАВИЛО совместимости про AGPL по-прежнему знает и проверяется в обе
+// стороны по всем парам — см. TestLicenseCompatibleAnswersEveryPairOfTiers: там
+// уровни задаются синтетически и от карты дерева не зависят.
 
 // TestLicenseTierForDirResolvesTheDirectoryOfEachTier — ЛОВУШКА, из-за которой
 // гейт мог бы зеленеть на всём.
@@ -65,8 +126,6 @@ func TestLicenseTierForDirResolvesTheDirectoryOfEachTier(t *testing.T) {
 		dir  string
 		want string
 	}{
-		{"services/iam", licenseAGPL},
-		{"services/iam/internal/handler", licenseAGPL},
 		{"pkg", licenseApache},
 		{"pkg/db", licenseApache},
 		{"proto", licenseApache},
@@ -142,18 +201,13 @@ func TestInjectedIncompatibleEdgeIsAFindingWithItsCoordinate(t *testing.T) {
 		wantTo   string
 	}{
 		{
-			// Предмет задачи #2083: платформа втягивает клиентский пакет службы.
-			name:     "платформа BUSL импортирует пакет службы AGPL",
-			bad:      injEdge(injBuslDir, injAgplPkg, licenseEdgeProd),
+			// Монорепо втягивает уровень, лицензия которого не объявлена.
+			// Направление отдельное от следующего: там источник пермиссивен, здесь
+			// нет, и слить их значило бы утверждать fail-closed на одном уровне.
+			name:     "монорепо BUSL импортирует уровень без объявленной лицензии",
+			bad:      injEdge(injBuslDir, injVendoredPkg, licenseEdgeProd),
 			twin:     injEdge(injBuslDir, injApachePkg, licenseEdgeProd),
-			wantFrom: licenseBUSL, wantTo: licenseAGPL,
-		},
-		{
-			// Исходная сторона того же предмета: §10 AGPL.
-			name:     "служба AGPL импортирует код BUSL",
-			bad:      injEdge(injAgplDir, injBuslPkg, licenseEdgeProd),
-			twin:     injEdge(injAgplDir, injApachePkg, licenseEdgeProd),
-			wantFrom: licenseAGPL, wantTo: licenseBUSL,
+			wantFrom: licenseBUSL, wantTo: "",
 		},
 		{
 			// Пермиссивность фундамента — утверждение, которое обязано быть
@@ -172,11 +226,12 @@ func TestInjectedIncompatibleEdgeIsAFindingWithItsCoordinate(t *testing.T) {
 		},
 		{
 			// Проба распространяется публичным репозиторием наравне с прод-кодом,
-			// поэтому вид ребра вердикта не смягчает.
+			// поэтому вид ребра вердикта не смягчает. Близнец того же вида: если бы
+			// смягчал — молчали бы оба, и ось ничего не утверждала бы.
 			name:     "то же ребро в пробе судится наравне с прод-кодом",
-			bad:      injEdge(injBuslDir, injAgplPkg, licenseEdgeTest),
-			twin:     injEdge(injBuslDir, injApachePkg, licenseEdgeTest),
-			wantFrom: licenseBUSL, wantTo: licenseAGPL,
+			bad:      injEdge(injApacheDir, injBuslPkg, licenseEdgeTest),
+			twin:     injEdge(injApacheDir, injApachePkg, licenseEdgeTest),
+			wantFrom: licenseApache, wantTo: licenseBUSL,
 		},
 	}
 
@@ -228,34 +283,35 @@ func TestLicenseCompatControlAndCensus(t *testing.T) {
 	t.Parallel()
 	legal := []licenseEdge{
 		injEdge(injBuslDir, injApachePkg, licenseEdgeProd),
-		injEdge(injAgplDir, injApachePkg, licenseEdgeProd),
 		injEdge(injApacheDir, injApachePkg, licenseEdgeProd),
-		injEdge(injAgplDir, injAgplPkg, licenseEdgeTest),
 		injEdge(injBuslDir, injBuslPkg, licenseEdgeProd),
+		injEdge(injBuslDir, injApachePkg, licenseEdgeTest),
 		injEdge(injBuslDir, injExternalPkg, licenseEdgeProd),
 	}
-	findings, census := scanLicenseCompat(legal, 3, 6)
+	findings, census := scanLicenseCompat(legal, 3, 5)
 	if len(findings) != 0 {
 		t.Fatalf("на законном наборе находок %d — гейт краснеет на исправном: %v", len(findings), findings)
 	}
-	if census.Edges != 5 {
-		t.Fatalf("судимых рёбер %d, ожидалось 5 (шестое — наружу)\n%s", census.Edges, census.String())
+	if census.Edges != 4 {
+		t.Fatalf("судимых рёбер %d, ожидалось 4 (пятое — наружу)\n%s", census.Edges, census.String())
 	}
 	if census.External != 1 {
 		t.Fatalf("рёбер наружу %d, ожидалось 1 — чужой модуль обязан быть отделён, "+
 			"а не осуждён здесь\n%s", census.External, census.String())
 	}
-	if census.Prod != 4 || census.Test != 1 {
-		t.Fatalf("перепись по виду: прод %d, проба %d; ожидалось 4 и 1\n%s",
+	if census.Prod != 3 || census.Test != 1 {
+		t.Fatalf("перепись по виду: прод %d, проба %d; ожидалось 3 и 1\n%s",
 			census.Prod, census.Test, census.String())
 	}
 	// Перепись обязана называть пары поимённо: одно число «рёбер N» скрыло бы
 	// ровно тот случай, ради которого гейт заведён.
-	// Пять: BUSL->Apache, AGPL->Apache, Apache->Apache, AGPL->AGPL, BUSL->BUSL.
-	// Число выписано, а не выведено из длины набора, — иначе утверждение стало бы
+	// ТРИ пары на ЧЕТЫРЕ судимых ребра: BUSL->Apache (два ребра, прод и проба),
+	// Apache->Apache, BUSL->BUSL. Несовпадение чисел здесь несущее — оно и
+	// доказывает, что пары СВОРАЧИВАЮТСЯ, а не пересчитывают набор. Число
+	// выписано, а не выведено из длины набора, иначе утверждение стало бы
 	// тождественно истинным и о разделении пар не сказало бы ничего.
-	if len(census.Pairs) != 5 {
-		t.Fatalf("пар в переписи %d, ожидалось 5\n%s", len(census.Pairs), census.String())
+	if len(census.Pairs) != 3 {
+		t.Fatalf("пар в переписи %d, ожидалось 3\n%s", len(census.Pairs), census.String())
 	}
 }
 
@@ -287,9 +343,9 @@ func TestLicenseCompatEmptyInputIsNotAVerdict(t *testing.T) {
 func TestLicenseCompatFindingsAreDeterministic(t *testing.T) {
 	t.Parallel()
 	a := []licenseEdge{
-		injEdge(injBuslDir, injAgplPkg, licenseEdgeProd),
+		injEdge(injBuslDir, injVendoredPkg, licenseEdgeProd),
 		injEdge(injApacheDir, injBuslPkg, licenseEdgeProd),
-		injEdge(injAgplDir, injBuslPkg, licenseEdgeProd),
+		injEdge(injApacheDir, injVendoredPkg, licenseEdgeProd),
 	}
 	b := []licenseEdge{a[2], a[0], a[1]}
 

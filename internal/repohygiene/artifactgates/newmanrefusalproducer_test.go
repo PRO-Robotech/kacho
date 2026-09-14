@@ -343,6 +343,10 @@ type rpCensus struct {
 	// похожий текст: доказательства нет ни в одну сторону. Печатается числом и
 	// перечнем, вердикта не выносит.
 	unproven []rpFinding
+	// elsewhere — шаги, чей производитель объявлен живущим в другом
+	// репозитории. Отдельное число: слитое с «не установлено», оно читалось бы
+	// как догадка о похожести, а здесь известен факт.
+	elsewhere []rpFinding
 	// eqlAsserts / containsAsserts — обе формы помощника порознь: ноль у одной
 	// означает ослепший распознаватель, а не чистое дерево.
 	eqlAsserts, containsAsserts int
@@ -356,6 +360,37 @@ func (c rpCensus) declared() int { return c.eqlAsserts + c.containsAsserts }
 
 // auditRefusalProducer — весь разбор одним входом, чтобы инъекция гоняла ТУ ЖЕ
 // функцию, а не свою копию логики.
+// producedInAnotherRepository — шаги, чей текст отказа производит продукт,
+// живущий в ДРУГОМ репозитории.
+//
+// # Почему это отдельная полоса, а не «не установлено»
+//
+// Полоса «не установлено» входится ПОРОГОМ похожести на ближайшего производителя
+// — то есть догадкой о том, собран ли текст из аргументов. Здесь догадки нет:
+// известно точно, что производителя в этом дереве не будет никогда, потому что
+// он уехал вместе со своим продуктом. Смешать это с порогом значило бы отдать
+// вердикт случайной похожести строк.
+//
+// # Почему кейс не правится
+//
+// Текст ПРОИЗВОДИТСЯ — просто не здесь: край проксирует ответ службы, и
+// утверждение кейса проходит на живом стенде. Привести его «к тому, что продукт
+// отдаёт сегодня» нельзя: продукт отдаёт ровно это.
+//
+// # Самоистечение — в обе стороны
+//
+// Запись, чей шаг в коллекциях не нашёлся, — находка (объявление без предмета).
+// Запись, чей текст в ЭТОМ дереве производителя обрёл, — тоже: значит владелец
+// вернулся, и прикрывать его записью значит прикрывать живую координату. Обе оси
+// проверяются в самом гейте ниже.
+var producedInAnotherRepository = map[string]string{
+	"gateway/tests/newman/collections/cluster_admin.postman_collection.json::revoke-non-admin": "PRO-Robotech/kaname",
+}
+
+// rpStepKey — ключ ведомости: коллекция и имя шага. Номер строки не годится —
+// его сдвигает всякая правка выше по файлу, и ведомость истекала бы от косметики.
+func rpStepKey(collection, step string) string { return collection + "::" + step }
+
 func auditRefusalProducer(root string, cols []string,
 	corpusOf func(collection string) rtCorpus) ([]rpFinding, rpCensus, error) {
 	var findings []rpFinding
@@ -421,6 +456,10 @@ func auditRefusalProducer(root string, cols []string,
 							collection: rel, step: it.Name,
 							declared: strings.ReplaceAll(decl, "\x01", "…"),
 							nearest:  best, nearestCover: cover,
+						}
+						if _, ok := producedInAnotherRepository[rpStepKey(rel, it.Name)]; ok {
+							cen.elsewhere = append(cen.elsewhere, f)
+							continue
 						}
 						if cover >= rpNearestFloor {
 							cen.unproven = append(cen.unproven, f)
@@ -503,6 +542,25 @@ func TestNewmanAssertedRefusalTextHasAProducer(t *testing.T) {
 		"а не находка).%s\nПроизводителей по владельцам: %v",
 		cen.collections, cen.steps, cen.declared(), cen.eqlAsserts, cen.containsAsserts,
 		cen.syncEnvelope, cen.opEnvelope, len(cen.unproven), unproven.String(), owners)
+
+	// Ведомость вынесенных производителей самоистекает В ОБЕ СТОРОНЫ.
+	seenKeys := map[string]bool{}
+	for _, f := range cen.elsewhere {
+		seenKeys[rpStepKey(f.collection, f.step)] = true
+	}
+	for key := range producedInAnotherRepository {
+		if seenKeys[key] {
+			continue
+		}
+		t.Errorf("запись producedInAnotherRepository пережила свой предмет: шага %q среди "+
+			"утверждений о тексте отказа НЕТ. Либо шаг снят, либо его текст обрёл "+
+			"производителя в этом дереве — в обоих случаях запись прикрывает пустоту "+
+			"либо живую координату. Удали её.", key)
+	}
+	if len(cen.elsewhere) > 0 {
+		t.Logf("производитель объявлен живущим в другом репозитории у %d шаг(ов): %v",
+			len(cen.elsewhere), producedInAnotherRepository)
+	}
 
 	if len(findings) > 0 {
 		var b strings.Builder

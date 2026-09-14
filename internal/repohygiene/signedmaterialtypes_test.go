@@ -38,12 +38,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+	"github.com/PRO-Robotech/corelib/tokenpolicy"
 )
 
 const (
-	// signedTypesOwnerFile — единственный дом обоих объявленных типов.
-	signedTypesOwnerFile = "pkg/tokenpolicy/policy.go"
+	// signedTypesOwnerFile — единственный дом обоих объявленных типов. Предмет
+	// живёт в пакете `tokenpolicy` общего фундамента
+	// (`github.com/PRO-Robotech/corelib`): префикс "corelib/" метит
+	// синтетический путь, которым `corelibPackageGoFiles` называет файлы,
+	// прочитанные из кэша модулей, а не путь дерева — такого файла в индексе
+	// git больше нет.
+	signedTypesOwnerFile = "corelib/tokenpolicy/policy.go"
 	// signedTypesCensusFloor — порог переписи.
 	signedTypesCensusFloor = 1000
 )
@@ -65,16 +70,17 @@ type signedTypeDebtEntry struct {
 // signedTypeDebt — ведомость. Отсортирована по файлу.
 //
 // Замер на день заведения гейта: значение токена доступа объявлено в дереве
-// ТРИЖДЫ (политика и две записи ниже), значение утверждения клиента — ОДИН раз.
-var signedTypeDebt = []signedTypeDebtEntry{
-	{
-		File: "services/iam/internal/registrytokenwire/local_minter.go",
-		Name: "registryTokenType",
-		Why: "объявленный тип токена контура выдачи докер-токена; заведён фазой F1, до " +
-			"появления политики, и в её область эта поверхность не переводилась",
-		Until: "файл читает значение из pkg/tokenpolicy вместо своего объявления",
-	},
-}
+// ТРИЖДЫ (политика и две записи ведомости), значение утверждения клиента — ОДИН
+// раз. Обе записи с тех пор истекли: последняя ушла вместе со своим предметом
+// при выносе службы доступа (`services/iam`) отдельным продуктом — файла, чьё
+// второе объявление она прощала, в индексе больше нет.
+//
+// Ведомость ПУСТА, и это её цель, а не поломка: способность обеих её половин
+// упасть показана синтетикой в signedmaterialtypes_injection_test.go, поэтому
+// пустой список ничего не выхолащивает. Предмет самого гейта живёт в
+// пакете tokenpolicy общего фундамента и обходом всего дерева — он от
+// ведомости не зависит.
+var signedTypeDebt = []signedTypeDebtEntry{}
 
 // signedTypeDebtDefects — что не так с самой ведомостью, безотносительно дерева.
 //
@@ -187,6 +193,23 @@ func scanSignedTypeDeclarations(t *testing.T) ([]StringValueDeclaration, int, St
 		census.Matches += c.Matches
 		results = append(results, decls...)
 	}
+
+	// Оба типа переехали в общий фундамент: политика объявляет их в пакете
+	// `tokenpolicy` `github.com/PRO-Robotech/corelib`, и дерево файла
+	// signedTypesOwnerFile больше не несёт. Читается ТУДА, куда объявление
+	// переехало, — иначе предпосылка «оба типа в ОДНОМ месте» (3) видела бы
+	// ноль файлов и не отличала бы «переехало» от «пропало».
+	for path, src := range corelibPackageGoFiles(t, root, "tokenpolicy") {
+		decls, c, err := ScanDeclaredStringValues(path, src, values)
+		if err != nil {
+			t.Fatalf("разбор %s: %v", path, err)
+		}
+		parsed++
+		census.ValueSpecs += c.ValueSpecs
+		census.StringConstants += c.StringConstants
+		census.Matches += c.Matches
+		results = append(results, decls...)
+	}
 	return results, parsed, census
 }
 
@@ -292,7 +315,7 @@ func TestSignedMaterialTypesAreDeclaredOnceAndDistinct(t *testing.T) {
 			"Второе объявление одного значения не расходится с первым сразу: оно расходится "+
 			"при первой же правке одной стороны, и расходится молча — обе стороны по "+
 			"отдельности выглядят исправными. Исходов три: читать значение из "+
-			"pkg/tokenpolicy · снять объявление вместе с кодом, который его подпирал · "+
+			"github.com/PRO-Robotech/corelib/tokenpolicy · снять объявление вместе с кодом, который его подпирал · "+
 			"завести запись ведомости с причиной и предикатом снятия.",
 			signedTypesOwnerFile, len(fresh), strings.Join(fresh, "\n  "))
 	}

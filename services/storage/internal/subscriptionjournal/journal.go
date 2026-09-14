@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // Package subscriptionjournal — объявление ЖУРНАЛА storage для общего сервера
-// потока изменений (`pkg/subscription`).
+// потока изменений (`corelib/subscription`).
 //
 // Здесь только ЗНАЧЕНИЯ: где журнал лежит, каким каналом будит, как его строка
 // становится событием общей формы. Курсор, граница устоявшегося, пределы, сужение
@@ -96,9 +96,9 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
-	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
-	"github.com/PRO-Robotech/kacho/pkg/authz"
-	"github.com/PRO-Robotech/kacho/pkg/subscription"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/subscription"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/protoconv"

@@ -12,12 +12,12 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho/pkg/filter"
-	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
-	"github.com/PRO-Robotech/kacho/pkg/validate"
+	"github.com/PRO-Robotech/corelib/filter"
+	"github.com/PRO-Robotech/corelib/validate"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaintent"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
+	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 )
 
 // GuestAccessKeyRepo — хранение публичных ключей входа в машину.

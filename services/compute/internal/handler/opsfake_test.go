@@ -4,7 +4,7 @@
 // Дублёры репозитория операций для проб ЭТОГО сервиса.
 //
 // Переехали сюда из снятой пробы обработчика операции: сам обработчик сведён в
-// `pkg/operations/operationspb` и проверяется там одной суитой, а здешние пробы
+// `corelib/operations/operationspb` и проверяется там одной суитой, а здешние пробы
 // утверждают СВОЙ предмет — что репозиторий этого сервиса несёт предикат
 // владения и что подделанный заголовок его не снимает.
 
@@ -18,8 +18,8 @@ import (
 	genstatus "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
 
-	"github.com/PRO-Robotech/kacho/pkg/ids"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/corelib/ids"
+	"github.com/PRO-Robotech/corelib/operations"
 )
 
 // fakeOwnedOpsRepo — тестовый double, реализующий operations.Repo И

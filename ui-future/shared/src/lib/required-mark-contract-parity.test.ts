@@ -57,11 +57,37 @@
 // краснеет с координатой, а законный близнец ТОЙ ЖЕ ФОРМЫ — подпись «Имя» со
 // звёздочкой у ресурса, чей контракт её требует (группа IAM), — молчит.
 // Дискриминатор держится одним именем с обеих сторон.
+//
+// СЛУЖБА ДОСТУПА ВЫНЕСЕНА ОТДЕЛЬНЫМ ПРОДУКТОМ — и ШЕСТЬ IAM-ЗАПИСЕЙ СНЯТЫ ВМЕСТЕ
+// С ДОКАЗАТЕЛЬСТВОМ. `services/iam/` в этом дереве не осталось ни одним файлом;
+// её собственные `newman`-кейсы уехали с ней же. Единственным доказательством
+// того, что `/iam/v1/accounts`…`/iam/v1/internal/interactiveClients` требуют
+// `name`, был `validateResourceName` в `services/iam/internal/domain/types.go` —
+// файл, который сравнивать больше не с чем: другого производителя этого факта в
+// дереве нет (контракт эту опцию не несёт с kacho#1255, страница документации
+// сервиса уехала вместе с сервисом). «Доказывается, а не объявляется» — здесь
+// именно оно и работает: не имея доказательства, запись держать нельзя, даже
+// если поведение сервера не менялось ни на бит.
+//
+// Шесть путей поэтому НЕ в `REQUIRED_BY_SERVER` — не потому что имя стало
+// необязательным, а потому что у платформы нет способа это утверждать.
+// `contractRequires` вернёт для них `null` («не знаю»), а не `false` («не
+// требует»): гейт больше не судит звёздочку «Имя» этих шести форм — ни в одну,
+// ни в другую сторону. Тот же приём уже применён в этом дереве для того же
+// расставания: `internal/repohygiene/nestedquotasuitereclaim_test.go` снял
+// двустороннюю сверку с каталогом `countableKinds` ровно по этой причине и
+// оставил её незаменённой, а не подменённой выдумкой.
+//
+// Восстановить проверяемость может только НОВЫЙ производитель этого факта — в
+// дереве службы доступа (её собственный гейт формы) либо явной странице
+// документации, которую эта проба сможет прочитать. До тех пор шесть форм
+// проверяют себя чем угодно, кроме этого гейта.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
+import { isCorelibCoordinate, readCorelibFile } from "@shared/test/corelib-source";
 import { stripComments } from "@shared/test/strip-comments";
 import { REGISTRY } from "./resource-registry";
 
@@ -165,15 +191,11 @@ function lineOf(src: string, index: number): number {
  * различимы, и `contractRequires` возвращает для такого адреса `null`.
  */
 const REQUIRED_BY_SERVER: ReadonlyMap<string, ReadonlySet<string>> = new Map([
-  // iam: пустое имя отвергается формой имени — `nameform.OK("")` ложно, и
-  // `validateResourceName` отвечает `Illegal argument name: must match …`.
-  // Сервер имени НЕ подставляет: `NameOrDefault` в services/iam не зовётся.
-  ["/iam/v1/accounts", new Set(["name"])],
-  ["/iam/v1/groups", new Set(["name"])],
-  ["/iam/v1/projects", new Set(["name"])],
-  ["/iam/v1/roles", new Set(["name"])],
-  ["/iam/v1/serviceAccounts", new Set(["name"])],
-  ["/iam/v1/internal/interactiveClients", new Set(["name"])],
+  // iam: ШЕСТЬ путей СНЯТЫ (см. шапку файла, «СЛУЖБА ДОСТУПА ВЫНЕСЕНА
+  // ОТДЕЛЬНЫМ ПРОДУКТОМ») — `services/iam/internal/domain/types.go` уехал с
+  // сервисом, и предпосылка `validateResourceName` больше не читается ничем в
+  // этом дереве. Отсутствие записи здесь означает «не знаю» (`contractRequires`
+  // вернёт `null`), а не «не требует»: снятие записи — не смена контракта.
   // storage: административный ресурс, имя обязательно (домен отвергает пустое).
   ["/storage/v1/storageBackends", new Set(["name"])],
   // vpc и compute: имя НЕ обязательно — сервер производит его от `id`
@@ -195,10 +217,18 @@ const REQUIRED_BY_SERVER: ReadonlyMap<string, ReadonlySet<string>> = new Map([
  * Отказывающий (либо, наоборот, подставляющий имя) код продукта — предпосылка
  * каждой записи. Исчезнет он — перечень станет описанием вчерашнего дерева, и
  * проба предпосылки краснеет по имени файла.
+ *
+ * Координата бывает ДВУХ видов (см. `@shared/test/corelib-source`): путь дерева
+ * читается напрямую, координата `corelib/…` — из кэша модулей Go, версией,
+ * закреплённой корневым `go.mod`. `pkg/validate/nameform` вынесен отдельным
+ * опубликованным модулем (`github.com/PRO-Robotech/corelib`) — дерево больше не
+ * несёт этого файла, поэтому его предпосылка читается туда, куда он переехал.
+ *
+ * Предпосылки шести IAM-путей здесь нет — она СНЯТА вместе с записями
+ * `REQUIRED_BY_SERVER`, а не потеряна молча; причина — шапка файла.
  */
 const REQUIRED_BY_SERVER_SOURCES: ReadonlyArray<readonly [string, string]> = [
-  ["services/iam/internal/domain/types.go", "func validateResourceName("],
-  ["pkg/validate/nameform/nameform.go", "func OK("],
+  ["corelib/validate/nameform/nameform.go", "func OK("],
   ["services/vpc/internal/domain/types.go", "NameOrDefault"],
   ["services/compute/internal/apps/kacho/api/instance/instance.go", "NameOrDefault"],
 ];
@@ -229,11 +259,22 @@ const contract = readContract();
  *
  * `null` — сопоставить не удалось: ни один путь записи не отвечает адресу. Это
  * не «не требует»: молчание и незнание обязаны быть различимы.
+ *
+ * `requiredByPath` — необязательный, по умолчанию РЕАЛЬНЫЙ (`contract.requiredByPath`).
+ * Параметр существует ради инъекции: с уходом службы доступа в дереве не
+ * осталось РЕАЛЬНОГО ресурса, у которого контракт требует «Имя» и который несёт
+ * форму в консоли (см. шапку файла) — самопроверку дискриминатора «true / false
+ * / null» держит теперь синтетическая карта, а не факт о живом ресурсе, который
+ * может измениться сам по себе.
  */
-function contractRequires(apiPath: string, field: string): boolean | null {
+function contractRequires(
+  apiPath: string,
+  field: string,
+  requiredByPath: ReadonlyMap<string, ReadonlySet<string>> = contract.requiredByPath,
+): boolean | null {
   let known = false;
   let required = false;
-  for (const [path, fields] of contract.requiredByPath) {
+  for (const [path, fields] of requiredByPath) {
     if (path === apiPath || apiPath.startsWith(`${path}/`) || path.startsWith(`${apiPath}/`)) {
       known = true;
       if (fields.has(field)) required = true;
@@ -287,9 +328,16 @@ function readForms(sources: Array<{ rel: string; raw: string }>): FormsRead {
   return { filesRead: sources.length, itemsParsed, claims };
 }
 
-/** Подпись поля `name` у ресурса — берётся из реестра, а не выписывается. */
-function nameLabelOf(specId: string): string | null {
-  const spec = REGISTRY[specId];
+/** Форма записи реестра, нужная этому файлу — не весь `ResourceSpec`. */
+type NameRegistry = Record<string, Pick<(typeof REGISTRY)[string], "fields" | "apiPath"> | undefined>;
+
+/**
+ * Подпись поля `name` у ресурса — берётся из реестра, а не выписывается.
+ *
+ * `registry` — по умолчанию РЕАЛЬНЫЙ (см. `contractRequires` — та же причина).
+ */
+function nameLabelOf(specId: string, registry: NameRegistry = REGISTRY): string | null {
+  const spec = registry[specId];
   const field = spec?.fields?.find((f) => f.name === "name");
   return field?.label ?? null;
 }
@@ -312,17 +360,28 @@ interface Verdict {
   unresolved: number;
 }
 
-function adjudicate(forms: FormsRead): Verdict {
+/**
+ * Реестр и контракт, которыми судит `adjudicate` — по умолчанию РЕАЛЬНЫЕ.
+ * Инъекции нужен свой пакет: см. `contractRequires`/`nameLabelOf`.
+ */
+interface AdjudicateDeps {
+  registry: NameRegistry;
+  requiredByPath: ReadonlyMap<string, ReadonlySet<string>>;
+}
+
+function adjudicate(forms: FormsRead, deps?: AdjudicateDeps): Verdict {
+  const registry = deps?.registry ?? REGISTRY;
+  const requiredByPath = deps?.requiredByPath ?? contract.requiredByPath;
   const findings: string[] = [];
   let judged = 0;
   let unresolved = 0;
 
   for (const claim of forms.claims) {
     for (const specId of claim.specIds) {
-      const fieldLabel = nameLabelOf(specId);
+      const fieldLabel = nameLabelOf(specId, registry);
       if (fieldLabel === null || !labelNamesField(claim.label, fieldLabel)) continue;
-      const apiPath = REGISTRY[specId]?.apiPath;
-      const requires = apiPath ? contractRequires(apiPath, "name") : null;
+      const apiPath = registry[specId]?.apiPath;
+      const requires = apiPath ? contractRequires(apiPath, "name", requiredByPath) : null;
       if (requires === null) {
         unresolved++;
         continue;
@@ -386,12 +445,27 @@ describe("объём осмотренного — «ноль находок» о
     // заставило бы читателя искать предмет вручную.
     const stale: string[] = [];
     for (const [rel, marker] of REQUIRED_BY_SERVER_SOURCES) {
-      const abs = join(REPO_ROOT, rel);
-      if (!existsSync(abs)) {
-        stale.push(`${rel} — файла нет`);
-        continue;
+      let text: string;
+      if (isCorelibCoordinate(rel)) {
+        // Координата общего фундамента: файл не прочитан → `readCorelibFile`
+        // сам бросает отказ с названной координатой (модуль не извлечён в кэш
+        // либо переехал внутри модуля) — тот же смысл, что у «файла нет», но
+        // средствами кэша модулей, а не рабочей копии.
+        try {
+          text = readCorelibFile(REPO_ROOT, rel);
+        } catch (err) {
+          stale.push(err instanceof Error ? err.message : `${rel} — файл не прочитан`);
+          continue;
+        }
+      } else {
+        const abs = join(REPO_ROOT, rel);
+        if (!existsSync(abs)) {
+          stale.push(`${rel} — файла нет`);
+          continue;
+        }
+        text = readFileSync(abs, "utf8");
       }
-      if (!readFileSync(abs, "utf8").includes(marker)) stale.push(`${rel} — нет «${marker}»`);
+      if (!text.includes(marker)) stale.push(`${rel} — нет «${marker}»`);
     }
     expect(stale).toEqual([]);
   });
@@ -416,7 +490,17 @@ describe("объём осмотренного — «ноль находок» о
           ? ` · числятся в индексе, но в рабочей копии их нет: ${treeMissing.length} (${treeMissing.join(", ")})`
           : " · пропущенных нет"),
     );
-    expect(treeVerdict.judged).toBeGreaterThan(0);
+    // Раньше здесь утверждалось `judged > 0` — со снятыми IAM-путями (шапка
+    // файла) это стало ЛОЖНЫМ утверждением о живом дереве, а не забытой
+    // строкой: единственный путь, требующий «Имя» (`storageBackends`), формы
+    // не несёт, а vpc/compute корректно НЕ отмечают «Имя» звёздочкой там, где
+    // контракт этого не требует, — резолвить в «true» или «false» сегодня
+    // нечего, и это ПРАВИЛЬНОЕ состояние, а не пробел разбора. Сигнал о том,
+    // что пайплайн всё ещё встречает живые заявления консоли (а не молчит
+    // из-за сломанного разбора), даёт `unresolved`: iam-формы («Группы»,
+    // «Роли») дают его ненулевым именно потому, что гейт их ВИДИТ и честно не
+    // берётся судить.
+    expect(treeVerdict.unresolved).toBeGreaterThan(0);
   });
 });
 
@@ -431,12 +515,26 @@ describe("звёздочка обязательности сходится с к
 describe("инъекция: гейт краснеет на дефекте и молчит на законном близнеце", () => {
   const latch = (raw: string) => adjudicate(readForms([{ rel: "synthetic.tsx", raw }]));
 
+  // Синтетический ресурс для «требует=true»: со снятыми IAM-путями (см.
+  // шапку файла) в РЕАЛЬНОМ дереве не осталось ни одного ресурса, у которого
+  // одновременно (а) контракт требует «Имя» и (б) есть форма в консоли —
+  // `storageBackends` требует, но формы не несёт (`storage-console-surface.test.ts`
+  // намеренно её не показывает). Самопроверку дискриминатора «true» держит
+  // теперь пара, не привязанная к факту о живом ресурсе: она не переживёт
+  // редизайна формы `storageBackends` и не устареет молча, если чей-то другой
+  // контракт передумает.
+  const syntheticRequiredByPath = new Map([["/synthetic/v1/widgets", new Set(["name"])]]);
+  const syntheticRegistry: NameRegistry = {
+    widgets: { apiPath: "/synthetic/v1/widgets", fields: [{ name: "name", label: "Имя", type: "string" }] },
+  };
+  const syntheticDeps: AdjudicateDeps = { registry: syntheticRegistry, requiredByPath: syntheticRequiredByPath };
+
   it("контракт различает два ресурса — иначе дискриминатору нечего различать", () => {
     // Положительный контроль самого разбора контракта: если бы обе стороны
     // читались одинаково, инъекция ниже проходила бы по причине, не имеющей
     // отношения к предмету.
     expect(contractRequires("/vpc/v1/subnets", "name")).toBe(false);
-    expect(contractRequires("/iam/v1/groups", "name")).toBe(true);
+    expect(contractRequires("/synthetic/v1/widgets", "name", syntheticRequiredByPath)).toBe(true);
   });
 
   it("ДЕФЕКТ: «Имя» со звёздочкой у ресурса, чей контракт её не требует — находка с координатой", () => {
@@ -470,13 +568,20 @@ describe("инъекция: гейт краснеет на дефекте и м�
 
   it("БЛИЗНЕЦ: «Имя» со звёздочкой там, где контракт её ТРЕБУЕТ — молчание, но объявление рассужено", () => {
     // Ключевой близнец: форма выглядит ровно как дефект, и молчит гейт не
-    // потому, что не разобрал её, а потому, что контракт группы IAM объявляет
-    // `name` обязательным. Без проверки `judged` молчание означало бы «не
-    // прочитал».
-    const verdict = latch(
-      `<FormShell specId="groups" mode="create">\n` +
-        `  <Form.Item label="Имя" name="name" required rules={[{ required: true }]}>\n` +
-        `    <Input />\n  </Form.Item>\n</FormShell>\n`,
+    // потому, что не разобрал её, а потому, что контракт синтетического
+    // ресурса объявляет `name` обязательным. Без проверки `judged` молчание
+    // означало бы «не прочитал».
+    const verdict = adjudicate(
+      readForms([
+        {
+          rel: "synthetic.tsx",
+          raw:
+            `<FormShell specId="widgets" mode="create">\n` +
+            `  <Form.Item label="Имя" name="name" required rules={[{ required: true }]}>\n` +
+            `    <Input />\n  </Form.Item>\n</FormShell>\n`,
+        },
+      ]),
+      syntheticDeps,
     );
     expect(verdict.findings).toEqual([]);
     expect(verdict.judged).toBe(1);

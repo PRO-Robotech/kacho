@@ -18,18 +18,18 @@ import (
 
 	"google.golang.org/grpc"
 
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
+	coredb "github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/operations/operationspb"
+	"github.com/PRO-Robotech/corelib/outbox/bootgate"
+	"github.com/PRO-Robotech/corelib/outbox/drainer"
+	"github.com/PRO-Robotech/corelib/outbox/metrics"
 
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	"github.com/PRO-Robotech/corelib/listnarrow"
+	"github.com/PRO-Robotech/corelib/subscription"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
-	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
-	"github.com/PRO-Robotech/kacho/pkg/subscription"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/subscriptionjournal"
 
 	announceapi "github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/announce"
@@ -45,7 +45,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachopg "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 )
 
 // bgWorker — фоновый loop под супервизором (errgroup): неожиданный exit флипает
@@ -81,7 +81,7 @@ type grpcWiring struct {
 	// забыли» и «оператор объявил, что домена величин нет», а следствия у этих
 	// двух состояний для арендатора противоположные.
 	quotaPosture quotaread.Posture
-	// subscription — ОБЩИЙ сервер потока изменений (`pkg/subscription`), по
+	// subscription — ОБЩИЙ сервер потока изменений (`corelib/subscription`), по
 	// экземпляру на владельца журнала.
 	//
 	// Собирается в композиционном корне: ему нужны выделенное соединение вне
@@ -214,7 +214,7 @@ func registerInternal(reg grpc.ServiceRegistrar, w grpcWiring) {
 	announceHandler := announceapi.NewHandler(kachopg.NewAnnounceStore(w.pool), w.logger)
 	lbv1.RegisterInternalLoadBalancerAnnounceServiceServer(reg, announceHandler)
 
-	// Поток изменений — ОБЩИЙ сервер (`pkg/subscription`), а не своя обёртка
+	// Поток изменений — ОБЩИЙ сервер (`corelib/subscription`), а не своя обёртка
 	// вокруг него: владелец регистрирует его самого. Регистрация безусловна —
 	// собирает сервер композиционный корень, и его сборка умеет ОТКАЗАТЬ, поэтому
 	// до сюда нулевой указатель не доходит. Условная регистрация означала бы, что

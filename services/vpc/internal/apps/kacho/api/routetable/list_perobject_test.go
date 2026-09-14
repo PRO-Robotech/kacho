@@ -16,7 +16,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
+	"github.com/PRO-Robotech/corelib/listnarrow/narrowtest"
 )
 
 // Per-page фильтрованный List для RouteTableService: возвращаем ТОЛЬКО
@@ -26,7 +26,7 @@ import (
 //
 // Единичный Get здесь НЕ тестируется: его видимость энфорсит per-RPC
 // authz-interceptor прямым per-object Check'ом (existence-hiding на deny), а не
-// use-case — см. GetRouteTableUseCase и pkg/authz/interceptor_test.go.
+// use-case — см. GetRouteTableUseCase и corelib/authz/interceptor_test.go.
 
 // fakeListFilter — in-memory ListFilter для unit-тестов. Запоминает аргументы, с
 // которыми его позвали, и отвечает из заранее заданного видимого набора.

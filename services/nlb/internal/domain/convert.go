@@ -6,7 +6,7 @@ package domain
 import (
 	"math"
 
-	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
+	coreerrors "github.com/PRO-Robotech/corelib/errors"
 )
 
 // Proto numeric fields (port, health-check thresholds) are int64 on

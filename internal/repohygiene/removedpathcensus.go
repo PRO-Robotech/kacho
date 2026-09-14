@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 // removedpathcensus.go — перепись путей, СНЯТЫХ между базой и HEAD, по ВСЕМУ
@@ -159,8 +159,8 @@ const gateCarrierRemovalSubject = "снятие носителя гейта ко
 // читать дерево (`treecorpus` — состав по индексу git, `gitenv` — сам git), и
 // продуктовой пробе они не нужны ни для чего.
 var treeReadingImports = map[string]bool{
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus": true,
-	"github.com/PRO-Robotech/kacho/pkg/gitenv":     true,
+	"github.com/PRO-Robotech/corelib/treecorpus": true,
+	"github.com/PRO-Robotech/corelib/gitenv":     true,
 }
 
 // treeRootFinderRe — ФОРМА имени функции, разрешающей корень репозитория.

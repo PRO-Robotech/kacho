@@ -35,7 +35,6 @@ import { RemoteShell } from "@/pages/RemoteShell";
 import { TokensRoutes } from "@/pages/TokensPage";
 
 const ClusterAdminsPage = lazy(() => import("@shared/pages/system/ClusterAdminsPage"));
-const LimitsPage = lazy(() => import("@shared/pages/system/LimitsPage"));
 
 const spin = (
   <div style={{ padding: 48, textAlign: "center" }}>
@@ -74,14 +73,12 @@ export function SystemRoutes() {
             </Suspense>
           }
         />
-        <Route
-          path="limits"
-          element={
-            <Suspense fallback={spin}>
-              <LimitsPage />
-            </Suspense>
-          }
-        />
+        {/* ЗДЕСЬ БЫЛ раздел администратора «Пределы» — назначение величин.
+            Служба, которой он правил величины, выпилена из службы доступа
+            целиком; производителя у этой поверхности не осталось ни одного,
+            и страница отвечала бы отказом при любом входе. Чтение учёта
+            арендатором — другой предмет, живёт у владельцев типов и
+            остаётся (см. QuotasPage). */}
       </Route>
 
       {/* Create/Detail/Edit — страница-формы (без рейла раздела). */}

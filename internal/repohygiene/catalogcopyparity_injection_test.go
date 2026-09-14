@@ -34,120 +34,25 @@ package repohygiene
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
 // ─── ОСЬ 1: ПОВЕДЕНИЕ ЦЕЛИ ───────────────────────────────────────────────────
 
-// twoCopies — два файла с заданным содержимым во временном каталоге.
-func twoCopies(t *testing.T, iam, edge string) (iamPath, edgePath string) {
-	t.Helper()
-	dir := t.TempDir()
-	iamPath = filepath.Join(dir, "iam_permission_catalog.json")
-	edgePath = filepath.Join(dir, "edge_permission_catalog.json")
-	if err := os.WriteFile(iamPath, []byte(iam), 0o600); err != nil {
-		t.Fatalf("копия iam не записана: %v", err)
-	}
-	if err := os.WriteFile(edgePath, []byte(edge), 0o600); err != nil {
-		t.Fatalf("копия края не записана: %v", err)
-	}
-	return iamPath, edgePath
-}
-
-// oneEntryCatalog — минимально законный каталог: одна запись, поэтому перепись
-// цели непуста и «копии равны» не может означать «сверять было нечего».
-const oneEntryCatalog = `[
-  {
-    "fqn": "kaname.cloud.iam.v1.UserService/Get",
-    "permission": "iam.users.get",
-    "required_relation": "viewer"
-  }
-]
-`
-
-// TestCatalogCopyParityTarget_Injection — цель обязана отказывать на
-// отсутствующем операнде и на расхождении, и обязана молчать на сошедшихся
-// копиях.
-func TestCatalogCopyParityTarget_Injection(t *testing.T) {
-	t.Parallel()
-	root := repoRoot(t)
-
-	// ── КОНТРОЛЬ: два одинаковых законных операнда — цель обязана МОЛЧАТЬ ────
-	//
-	// Стоит первым и формальностью не является: без него всякое отрицание ниже
-	// объяснялось бы целью, которая отказывает при любом входе.
-	iam, edge := twoCopies(t, oneEntryCatalog, oneEntryCatalog)
-	out, code := runCatalogParity(t, root, "IAM_CATALOG="+iam, "PERMISSION_CATALOG_TARGET="+edge)
-	if code != 0 {
-		t.Fatalf("КОНТРОЛЬ: на двух сошедшихся копиях цель отказала (код %d) — она "+
-			"краснеет на исправном входе, и ни одна находка ниже ничего не доказывает:\n%s",
-			code, out)
-	}
-	if !strings.Contains(out, "записей 1") {
-		t.Fatalf("КОНТРОЛЬ: цель прошла, но не назвала объём осмотренного — «копии равны» "+
-			"неотличимо от «сверять было нечего»:\n%s", out)
-	}
-
-	// ── НАХОДКА 1: копии iam НЕТ ────────────────────────────────────────────
-	//
-	// Это предмет полосы: прежде обёртка `if [ -f … ]` делала этот вход тихим
-	// успехом, то есть сверка не исполнялась ни разу и цель была зелена.
-	missing := filepath.Join(t.TempDir(), "уехала_вместе_с_выносом_iam.json")
-	out, code = runCatalogParity(t, root, "IAM_CATALOG="+missing, "PERMISSION_CATALOG_TARGET="+edge)
-	if code == 0 {
-		t.Fatalf("отсутствующая копия iam прошла БЕЗ отказа (код 0) — сверка пропускается "+
-			"молча, ровно как под снятой обёрткой `if [ -f … ]`:\n%s", out)
-	}
-	if !strings.Contains(out, missing) {
-		t.Fatalf("цель отказала, но НЕ НАЗВАЛА недостающий путь %s — отказ, не называющий "+
-			"операнд, посылает читателя искать не там:\n%s", missing, out)
-	}
-
-	// ── НАХОДКА 2: копии КРАЯ нет — та же ось с другой стороны ──────────────
-	//
-	// Без неё «отказ при отсутствии» было бы утверждением про один операнд из
-	// двух, а второй остался бы вне наблюдения.
-	out, code = runCatalogParity(t, root, "IAM_CATALOG="+iam, "PERMISSION_CATALOG_TARGET="+missing)
-	if code == 0 {
-		t.Fatalf("отсутствующая копия края прошла БЕЗ отказа (код 0):\n%s", out)
-	}
-	if !strings.Contains(out, missing) {
-		t.Fatalf("цель отказала, но не назвала недостающий путь края %s:\n%s", missing, out)
-	}
-
-	// ── НАХОДКА 3: копии расходятся на ОДИН БАЙТ ───────────────────────────
-	//
-	// Предмет самой сверки. Отказ на отсутствии операнда ничего не говорит о
-	// том, сверяет ли цель содержимое: без этой оси она могла бы лишь проверять
-	// наличие двух файлов.
-	drifted := strings.Replace(oneEntryCatalog, `"viewer"`, `"editor"`, 1)
-	if drifted == oneEntryCatalog {
-		t.Fatal("фикстура расхождения не отличается от исходной — ось не проверена")
-	}
-	iamDrift, edgeDrift := twoCopies(t, drifted, oneEntryCatalog)
-	out, code = runCatalogParity(t, root, "IAM_CATALOG="+iamDrift, "PERMISSION_CATALOG_TARGET="+edgeDrift)
-	if code == 0 {
-		t.Fatalf("разошедшиеся копии прошли БЕЗ отказа (код 0) — цель проверяет наличие "+
-			"файлов, а не их содержимое:\n%s", out)
-	}
-	if !strings.Contains(out, "drifted") {
-		t.Fatalf("цель отказала на расхождении, но не назвала его предметом — текст "+
-			"отказа не отличим от отказа по отсутствию операнда:\n%s", out)
-	}
-
-	// ── НАХОДКА 4: копии равны и ПУСТЫ ──────────────────────────────────────
-	//
-	// «Ноль находок» обязано быть отличимо от «ноль прочитанного» и у самой
-	// цели: два пустых каталога побайтово равны, и без этой ветки цель
-	// отчиталась бы зелёным, не сверив ни одной записи.
-	iamEmpty, edgeEmpty := twoCopies(t, "[]\n", "[]\n")
-	out, code = runCatalogParity(t, root, "IAM_CATALOG="+iamEmpty, "PERMISSION_CATALOG_TARGET="+edgeEmpty)
-	if code == 0 {
-		t.Fatalf("две ПУСТЫЕ равные копии прошли зелёным (код 0) — «копии сошлись» "+
-			"неотличимо от «сверять было нечего»:\n%s", out)
-	}
-}
+// ЗДЕСЬ СТОЯЛО ДОКАЗАТЕЛЬСТВО ЦЕЛИ `permission-catalog-copies-in-sync` — СНЯТО
+// ВМЕСТЕ С ЦЕЛЬЮ.
+//
+// Ось первая доказывала, что сама цель отказывает на отсутствующем операнде, на
+// расхождении копий и на двух ПУСТЫХ равных копиях, и молчит на сошедшихся. Цель
+// снята вместе со вторым операндом — копией каталога у вынесенной службы доступа
+// (разбор — в шапке `gateway/Makefile`), — и доказывать стало нечего. Вместе с
+// осью сняты её помощник `twoCopies` и фикстура `oneEntryCatalog`: они не
+// использовались больше ничем.
+//
+// ОСИ 2-4 НИЖЕ ОСТАЮТСЯ и от снятия не зависят: они доказывают РАСПОЗНАВАТЕЛЬ
+// обёрнутой сверки — тот, что читает дерево целиком и держит класс «сверка,
+// исполняемая условно по наличию файла». Его предмет — всякий Makefile и всякий
+// скрипт, а не эта цель.
 
 // ─── ОСЬ 2: РАСПОЗНАВАТЕЛЬ ОБЁРНУТОЙ СВЕРКИ ─────────────────────────────────
 

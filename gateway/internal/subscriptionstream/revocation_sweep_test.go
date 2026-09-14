@@ -23,13 +23,14 @@ package subscriptionstream_test
 // вместе со своим предметом, а не вместе со свойством — радиус закрытия,
 // отсечение пустого имени и идемпотентность промаха утверждаются теперь на
 // оставшихся путях: радиус — ниже, на двух живых потоках; пустое имя и повтор —
-// у читателя (`pkg/subjectchange`, `TestPolledRevocationNamesEachSubjectOnce`).
+// у читателя (`pkg/subjectchange` модуля `github.com/PRO-Robotech/kaname`,
+// `TestPolledRevocationNamesEachSubjectOnce`).
 
 import (
 	"testing"
 	"time"
 
-	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 	"github.com/PRO-Robotech/kacho/gateway/internal/subscriptionstream"

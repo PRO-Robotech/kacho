@@ -47,12 +47,29 @@ func repoRoot(t *testing.T) string {
 // чтобы доказательство способности упасть подавало ей НАСТОЯЩИЙ вход, а не
 // повторяло её логику своей копией.
 func ledgerFindings(root string, ledger map[string]string) []string {
+	return ledgerFindingsWithExternal(root, ledger, productnaming.ExternallySourcedServices())
+}
+
+// ledgerFindingsWithExternal — та же перепись, но ведомость вынесенных частей
+// подаётся ЯВНО: доказательство способности падать обязано уметь предъявить
+// дерево, где часть объявлена вынесенной, и дерево, где она таковой не
+// объявлена, — иначе один и тот же вход давал бы один и тот же вердикт.
+func ledgerFindingsWithExternal(root string, ledger, external map[string]string) []string {
 	var out []string
 	for dir, name := range ledger {
-		if st, err := os.Stat(filepath.Join(root, "services", dir)); err != nil || !st.IsDir() {
+		_, sourcesElsewhere := external[dir]
+		st, err := os.Stat(filepath.Join(root, "services", dir))
+		switch {
+		case sourcesElsewhere && err == nil && st.IsDir():
+			out = append(out, fmt.Sprintf(
+				"запись %q → %q объявлена вынесенной (исходники в другом репозитории), "+
+					"но каталог services/%s в дереве ЕСТЬ — объявление пережило свой предмет: "+
+					"часть вернулась, снимите её из ведомости вынесенных", dir, name, dir))
+		case !sourcesElsewhere && (err != nil || !st.IsDir()):
 			out = append(out, fmt.Sprintf(
 				"запись %q → %q: каталога исходников services/%s в дереве нет — "+
-					"запись пережила свой предмет", dir, name, dir))
+					"запись пережила свой предмет либо часть вынесена в другой репозиторий "+
+					"и это не объявлено (productnaming.externallySourcedServices)", dir, name, dir))
 		}
 		chart := filepath.Join(root, "deploy", "helm", "umbrella", "charts", name)
 		if st, err := os.Stat(chart); err != nil || !st.IsDir() {
@@ -78,6 +95,51 @@ func TestRenamedServicesLedgerHasBothSidesInTheTree(t *testing.T) {
 	}
 	t.Logf("перепись: записей ведомости %d, у каждой сверены обе стороны (каталог исходников и чарт)",
 		len(ledger))
+}
+
+// TestExternallySourcedLedgerExpiresOnItsOwn — ведомость вынесенных частей
+// самоистекает в ОБЕ стороны, и обе оси названы: имя, которого нет в ведомости
+// собственных имён, объявляло бы часть, которой продукт не называет; чарт,
+// которого нет в умбрелле, означал бы, что в этом дереве имени взяться неоткуда.
+//
+// Пустая ведомость — законное состояние и НЕ находка: дерево, из которого ничего
+// не выносили, вынесенных частей не несёт. Поэтому перепись печатается всегда:
+// «ноль записей» обязано быть отличимо от «ноль прочитанного».
+func TestExternallySourcedLedgerExpiresOnItsOwn(t *testing.T) {
+	root := repoRoot(t)
+	external := productnaming.ExternallySourcedServices()
+	named := productnaming.RenamedServices()
+
+	for _, dir := range sortedKeys(external) {
+		if _, ok := named[dir]; !ok {
+			t.Errorf("запись %q ведомости вынесенных не имеет собственного имени в "+
+				"renamedServices — два словаря об одном предмете разошлись бы молча", dir)
+			continue
+		}
+		chart := filepath.Join(root, "deploy", "helm", "umbrella", "charts", named[dir])
+		if st, err := os.Stat(chart); err != nil || !st.IsDir() {
+			t.Errorf("запись %q → %q: чарта deploy/helm/umbrella/charts/%s в дереве нет — "+
+				"поставки этой части здесь не осталось, и имени взяться неоткуда",
+				dir, external[dir], named[dir])
+		}
+		if productnaming.SourcesInThisTree(dir) {
+			t.Errorf("запись %q объявлена вынесенной, но SourcesInThisTree отвечает истиной — "+
+				"предикат и ведомость расходятся", dir)
+		}
+	}
+	t.Logf("перепись: записей вынесенных частей %d, собственных имён %d — "+
+		"у каждой вынесенной сверены имя и чарт", len(external), len(named))
+}
+
+// sortedKeys — детерминизм входа переписи: порядок обхода карты в Go случаен, и
+// без сортировки перечень находок менялся бы от прогона к прогону.
+func sortedKeys(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func TestEveryUmbrellaChartResolvesToAPartOfTheProduct(t *testing.T) {

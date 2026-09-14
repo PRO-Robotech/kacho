@@ -19,8 +19,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/corelib/pgtest"
 	"github.com/PRO-Robotech/kacho/gateway/internal/idempotencypg"
-	"github.com/PRO-Robotech/kacho/pkg/pgtest"
 )
 
 // observer — независимый читатель базы: смотрит на строки помимо хранилища.

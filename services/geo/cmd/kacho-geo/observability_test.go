@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/observability/health"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
-	"github.com/PRO-Robotech/kacho/pkg/servicehost"
+	"github.com/PRO-Robotech/corelib/observability/health"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/servicecontract"
+	"github.com/PRO-Robotech/corelib/servicehost"
 
 	"github.com/PRO-Robotech/kacho/services/geo/internal/observability/metrics"
 )

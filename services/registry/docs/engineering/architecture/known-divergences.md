@@ -126,11 +126,11 @@ struct-tags.
 **Why accepted.** This is the **platform-wide** corelib convention
 (`corecfg.LoadPrefixed` is used identically by every `kacho-*` service). It is a
 regime-conformance choice made once at the corelib layer, not a registry-local defect;
-changing it is a workspace-wide migration of `pkg/config` under a dedicated
+changing it is a workspace-wide migration of `corelib/config` under a dedicated
 release phase, out of scope for a single-service hardening pass. No runtime defect —
 only the layered-profile / hot-reload affordances of viper/koanf are unavailable.
 
-**What would revisit this.** A platform decision to migrate `pkg/config` to
+**What would revisit this.** A platform decision to migrate `corelib/config` to
 viper/koanf YAML with env override; then every service (including this one) follows.
 
 ## 5. Authenticated-deny → 404 existence-hiding: live e2e assertion blocked on test infra
@@ -394,7 +394,7 @@ frozen-contract hardening change.
 
 **The divergence has no subject left.** The per-service permission map is no longer written by
 hand: it is derived from the same proto annotations the gateway catalog is generated from
-(`pkg/authz/catalogderive`), and a `scope_filtered` row carries neither a relation nor a scope
+(`corelib/authz/catalogderive`), and a `scope_filtered` row carries neither a relation nor a scope
 extractor — the annotation is rejected by the generator if it names either. So the fields that
 were "carried but never read" are now absent, and the dead-field class (CWE-561) is closed by
 construction rather than by review.
@@ -443,7 +443,7 @@ the same fact, and it additionally requires an authenticated principal at the ed
 
 **Что расходится.** Страница каталога (`ListRepositories`, `ListRegistries`,
 `ListOperations`) сужается по `v_list`, тогда как чтение репозитория — манифест, блоб,
-конфигурация — гейтится `v_get`. Общий сужатель списков (`pkg/listnarrow`) берёт
+конфигурация — гейтится `v_get`. Общий сужатель списков (`corelib/listnarrow`) берёт
 предикат из тотальной карты сервиса; здесь он передаётся **явно на каждом вызове**
 (`check.IAMCheckClient.CheckMany`), и это единственное место в дереве, где так.
 
@@ -472,7 +472,7 @@ the same fact, and it additionally requires an authenticated principal at the ed
 Порт прав (`handler.Authorizer`) получил вторую дверь — `CheckMany`, — и она
 **обязательная**, а не «возможность по желанию»: реализация без неё оставила бы
 поштучный опрос, и утверждение «переведено на пакетный вопрос» осталось бы без
-предмета. Механика — общий сужатель (`pkg/listnarrow`): партии ≤100, ограниченный
+предмета. Механика — общий сужатель (`corelib/listnarrow`): партии ≤100, ограниченный
 веер, бюджет операции, окно **положительных** вердиктов, fail-closed на первой
 ошибке. Соединение то же: `AuthorizeService` зарегистрирован и на внутреннем
 листенере kaname, поэтому второго дозвона не заводится.

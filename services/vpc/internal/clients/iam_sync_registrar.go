@@ -7,8 +7,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/fgaregister"
+	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 )
 
 // SyncRegistrar — перевод намерения vpc в общую форму доставки

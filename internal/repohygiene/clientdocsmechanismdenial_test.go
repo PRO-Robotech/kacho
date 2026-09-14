@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // clientdocsmechanismdenial_test.go — гейт «клиентская документация не отрицает

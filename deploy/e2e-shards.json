@@ -36,7 +36,7 @@
     "",
     "Предикат, из которого это выведено (повторяемый):",
     "  git grep -lE 'consoleUrl|ui-future|:5173' -- \\",
-    "      'services/*/tests/newman' 'gateway/tests/newman'   → 0 при 98 коллекциях",
+    "      'services/*/tests/newman' 'gateway/tests/newman'   → 0 при 57 коллекциях",
     "",
     "То есть НИ ОДИН newman-запрос консоли не касается: newman ходит по HTTP в",
     "край, консоль — отдельная поверхность. При этом `dev-up` собирал девять её",
@@ -108,7 +108,7 @@
     }
   },
 
-  "core_images": ["iam", "geo", "api-gateway"],
+  "core_images": ["geo", "api-gateway"],
 
   "gate_images": {
     "vpc": "vpc",
@@ -151,7 +151,7 @@
     "компоненту — гейт покраснеет; перестанет носитель монтировать службу —",
     "покраснеет тоже. Ведомость, которую нельзя проверить, здесь не заводится."
   ],
-  "core_ban6_domains": ["iam", "geo"],
+  "core_ban6_domains": ["geo"],
   "gate_ban6_domains": {
     "vpc": ["vpc", "subscription"],
     "compute": ["compute", "subscription"],
@@ -166,12 +166,6 @@
       "suites": ["vpc"],
       "components": ["vpc", "pg-vpc"],
       "why": "18 коллекций / 3709 запросов — самая тяжёлая суита по объёму, отдельный раннер. Своих peer-зависимостей нет: geo и iam в ядре."
-    },
-    {
-      "id": "iam",
-      "suites": ["iam"],
-      "components": ["vpc", "pg-vpc", "compute", "pg-compute", "kacho-nlb", "pg-nlb", "storage", "pg-storage"],
-      "why": "41 коллекция / 2146 запросов. Разлучить с vpc/nlb/storage НЕЛЬЗЯ: label-revoke-vpc/-nlb/-storage и authz-sa-apitoken ходят в чужие домены (измерено по URL коллекций: vpc 21, storage 11, nlb 3 запроса). compute — из-за посева внешнего VIP-пула nlb, который создаёт Instance. Это самый широкий шард, и это честный отрицательный результат: он снимает только registry+zot."
     },
     {
       "id": "nlb",

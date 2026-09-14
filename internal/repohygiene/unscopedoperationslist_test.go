@@ -41,14 +41,13 @@ import (
 // Каждая запись обязана нести обоснование «почему этот ярус», а не «так
 // исторически»: молчаливое освобождение неотличимо от пропущенного места.
 var adminTierUnscopedList = map[string]string{
-	"services/iam/internal/apps/kaname/api/account/list_all_operations.go": "" +
-		"ярус администратора аккаунта: гейт пропускает только кластерного администратора, " +
-		"владельца аккаунта и делегированного администратора аккаунта. Аудит чужих действий " +
-		"внутри своей тенантности — предмет этого RPC, а не побочный эффект.",
-	"services/iam/internal/apps/kaname/api/internal_operations/list_iam_operations.go": "" +
-		"внутренний ярус: system_admin @ cluster, RPC живёт только на internal-листенере. " +
-		"Ровно тот случай, который godoc operations.Repo.List называет законным — доверенный " +
-		"внутренний вызывающий, авторизованный иначе.",
+	// Записей нет — и это ЦЕЛЬ, а не незаполненность. Оба прежних освобождения
+	// принадлежали службе доступа (административный ярус аккаунта и внутренний
+	// ярус) и уехали вместе с ней в отдельный продукт; ни один файл дерева
+	// больше не зовёт несуженное перечисление. Пустая ведомость означает
+	// «прощать нечего», поэтому TestAdminTierExemptionsStillHaveSubject на ней
+	// проходит: падение на достигнутой цели толкало бы держать запись ради
+	// зелёного.
 }
 
 // scanRoots — где ищем. Тесты и фейки исключены намеренно: их предмет — сам
@@ -70,8 +69,8 @@ var scanRoots = []string{"services", "gateway", "pkg"}
 //     распознавание ниже, а не расширять список исключений.
 //
 // Проверено инъекцией в обе стороны: возврат любого места на u.opsRepo.List
-// красит гейт и печатает координату; законные два места яруса он пропускает
-// молча.
+// красит гейт и печатает координату; место, стоящее в adminTierUnscopedList, он
+// пропускает молча. Сегодня ведомость пуста — освобождать в дереве нечего.
 func TestNoUnscopedOperationsListOutsideAdminTier(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -147,14 +146,21 @@ func TestAdminTierExemptionsStillHaveSubject(t *testing.T) {
 func TestNarrowedEntrypointPremiseHolds(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
-	body, err := os.ReadFile(filepath.Join(root, "pkg/operations/list_for_caller.go"))
-	if err != nil {
-		t.Fatalf("суженной точки входа нет на месте (%v): гейту некуда переводить места, "+
-			"его требование стало невыполнимым — пересмотри запрет", err)
+
+	// ListForCaller переехал в пакет operations общего фундамента
+	// (github.com/PRO-Robotech/corelib) — читаем ТУДА, куда объявление
+	// переехало, а не по прежнему пути дерева (см. corelibsource_test.go).
+	var found bool
+	for _, body := range corelibPackageGoFiles(t, root, "operations") {
+		if strings.Contains(string(body), "func ListForCaller(") {
+			found = true
+			break
+		}
 	}
-	if !strings.Contains(string(body), "func ListForCaller(") {
-		t.Fatalf("pkg/operations/list_for_caller.go больше не объявляет ListForCaller — " +
-			"переводить некуда, пересмотри запрет")
+	if !found {
+		t.Fatalf("суженной точки входа нет: пакет operations общего фундамента " +
+			"(github.com/PRO-Robotech/corelib) не объявляет ListForCaller — гейту " +
+			"некуда переводить места, его требование стало невыполнимым — пересмотри запрет")
 	}
 }
 

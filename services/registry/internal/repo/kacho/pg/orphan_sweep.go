@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/singlepass"
+	"github.com/PRO-Robotech/corelib/singlepass"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 )
 

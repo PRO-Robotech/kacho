@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/multierr"
 
-	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
+	coreerrors "github.com/PRO-Robotech/corelib/errors"
 )
 
 // LoadBalancer — domain entity NetworkLoadBalancer.

@@ -12,7 +12,7 @@ the use-case packages no longer import `serviceerr`, `grpc/codes`, or
 `serviceerr.ToStatus`). However `go list -deps ./services/geo/internal/apps/kacho/api/zone`
 still lists `google.golang.org/grpc` (and `jackc/pgx`).
 
-**Why it is not a defect.** Both come from `pkg/operations`,
+**Why it is not a defect.** Both come from `corelib/operations`,
 which every kacho service's use-case imports for the async LRO envelope
 (`operations.Repo`, `operations.Run`, `operations.NewFromContext`). The corelib
 `operations` package is a horizontal cross-cutting concern (its `Repo` is a
@@ -73,12 +73,12 @@ paths are given from the repository root, because a bare file name cannot be che
 ## 3. Config via corelib `envconfig` struct-tags, not YAML/viper/koanf
 
 **What.** `services/geo/internal/apps/kacho/config` binds all settings through
-`envconfig:"…"` struct-tags via `config.LoadPrefixed("KACHO_GEO")` from `pkg/config`,
+`envconfig:"…"` struct-tags via `config.LoadPrefixed("KACHO_GEO")` from `corelib/config`,
 rather than a YAML file loaded through viper/koanf as the evgeniy regime
 prescribes.
 
 **Why it is not a geo-local defect.** This is the **platform-wide** config
-mechanism: `pkg/config` exposes `LoadPrefixed`, and every kacho service
+mechanism: `corelib/config` exposes `LoadPrefixed`, and every kacho service
 (`kacho-vpc`, `kacho-compute`, `kaname`, `kacho-nlb`, …) uses it identically.
 Env-only 12-factor config is a deliberate cross-service decision; per-edge TLS
 blocks are expressed via env-name prefixing. Migrating to a YAML/viper loader is a
@@ -87,7 +87,7 @@ corelib for all services or not at all. Recorded here so the regime item is not
 re-flagged per service.
 
 **Boundary.** If layered/file-based config with hot-reload is ever required
-platform-wide, the change lands in `pkg/config` (keeping the per-edge
+platform-wide, the change lands in `corelib/config` (keeping the per-edge
 TLS structs), and every service picks it up. Not planned.
 
 ## 4. Resource-id validated by a `domain.ValidateID` function, not a newtype
@@ -109,7 +109,7 @@ enforced either way. The newtype refactor is a style-only follow-up (regime
 alignment), not a security/consistency gap.
 
 **Note (owner-scope, no admin bypass).** `operationspb.Handler.Get/Cancel`
-(общий слой `pkg/operations/operationspb`, куда полоса сведена из семи копий)
+(общий слой `corelib/operations/operationspb`, куда полоса сведена из семи копий)
 owner-scope strictly by creator-principal with **no** cluster-admin bypass.
 Прежде здесь стояло «unlike `kacho-vpc`, which has a `tenant.Admin` cross-cut» —
 это было неверно И ДО сведения: комментарий снятого обработчика vpc гласил
@@ -123,7 +123,7 @@ intentional, not a missing feature.
 
 **geo no longer builds the authz interceptor itself, and never grew its own `check` package.**
 Predicate: `git ls-files services/geo/internal/check | wc -l` → 0. The
-service host (`pkg/servicehost`) builds the decision link — one construction site for
+service host (`corelib/servicehost`) builds the decision link — one construction site for
 all services — from values the descriptor carries. Two of the knobs this section used to
 call "intentionally corelib-default" are now **chosen** rather than inherited, and that
 is the point rather than a rename: the revocation window (`KACHO_GEO_AUTHZ_CACHE_TTL`)
@@ -175,7 +175,7 @@ present (with pre-update values) and finalizes the operation as `Done` with the
 even though it never applied (a lost update surfaced as success).
 
 **Why it is by-design (platform contract).** This is the **corelib LRO reconcile
-contract**, not a geo-local choice: `pkg/operations` documents the
+contract**, not a geo-local choice: `corelib/operations` documents the
 resolver semantics as "Create/Update-метаданные: ресурс присутствует →
 `{OutcomeDone, current}`" — the reconciler reconciles the operation status to
 committed reality and deliberately does **not** re-drive the worker closure
@@ -189,7 +189,7 @@ this contract explicitly.
 **Why not changed / instrumented geo-locally.** The two candidate improvements — a
 distinct terminal marker (reconcile-completed vs worker-completed) or resolving
 orphan-`Update` to `Interrupted` so the client re-issues — both change the
-**platform** reconcile contract, so they belong in `pkg/operations` (once,
+**platform** reconcile contract, so they belong in `corelib/operations` (once,
 for all services), not as a geo-only divergence that would drift geo from the shared
 LRO pattern. No proto/REST contract is affected either way. The `kindUpdate`
 dispatch label is retained (§ resolver `kind` enum) precisely as the named
@@ -270,7 +270,7 @@ projection is `/subscription/v1/events`. geo keeps `geo_outbox` — a feed by sh
 a decision, not an omission.
 
 **Why it is not merely unimplemented — the mechanism cannot accept this feed.**
-`subscription.Mapping.validate` (`pkg/subscription/journal.go`) requires a
+`subscription.Mapping.validate` (`corelib/subscription/journal.go`) requires a
 non-empty kind dictionary in which **every kind is an object type of the rights
 model**, and it says why in the refusal itself: without an object type there is
 no way to ask whether a given caller may see a given row. The rights model

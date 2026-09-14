@@ -77,7 +77,7 @@ import (
 )
 
 // SubscriptionGoPackage — импортный путь сгенерённого пакета общей формы.
-const SubscriptionGoPackage = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+const SubscriptionGoPackage = "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 
 // SubscriptionGoDefaultAlias — имя пакета Go по умолчанию (из `go_package`).
 const SubscriptionGoDefaultAlias = "subscriptionv1"

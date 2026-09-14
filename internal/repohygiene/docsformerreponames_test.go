@@ -89,7 +89,19 @@ type formerRepoName struct {
 
 var formerRepoNames = []formerRepoName{
 	{name: "kacho-proto", current: []string{"proto/", "pkg/api"}},
-	{name: "kacho-corelib", current: []string{"pkg/"}},
+	// "pkg/" — часть предмета остаётся местным (api, authz, listnarrow,
+	// ownerregister, quota, subjectchange); "corelib/" — бо́льшая часть уехала
+	// ЦЕЛИКОМ в общий фундамент (github.com/PRO-Robotech/corelib), и координата,
+	// называющая его, пишется формой `corelib/<пакет>/...` — оба ответа сегодня
+	// законны, и второй без первого читался бы как находка на верно приземлённой
+	// странице.
+	// "pkg/" — часть предмета остаётся местным (api, authz, listnarrow,
+	// ownerregister, quota, subjectchange); "corelib/" — бо́льшая часть уехала
+	// ЦЕЛИКОМ в общий фундамент (github.com/PRO-Robotech/corelib), и координата,
+	// называющая его, пишется формой `corelib/<пакет>/...` — оба ответа сегодня
+	// законны, и второй без первого читался бы как находка на верно приземлённой
+	// странице.
+	{name: "kacho-corelib", current: []string{"pkg/", "corelib/"}},
 }
 
 type formerRepoFinding struct {

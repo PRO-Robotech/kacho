@@ -32,7 +32,7 @@ func TestQSC_AuthorityIsRecognisedByTheServiceName(t *testing.T) {
 	t.Parallel()
 	// Форма из `services/compute/internal/clients/limit_client.go`.
 	got := surfacesOf("services/compute/internal/clients/limit_client.go",
-		"// клиент iam.v1.InternalLimitService на внутреннем слушателе\n")
+		"// чтение kaname.limits на внутреннем слушателе\n")
 	require.Contains(t, got, quotaSurfaceAuthority,
 		"имя службы величин обязано относить файл к авторитету: именно эти места снимает S4")
 }
@@ -131,27 +131,32 @@ func TestQSC_RuleWithoutSubjectIsAFinding(t *testing.T) {
 		"на корпусе из одного файла почти всем правилам относить нечего — "+
 			"перепись обязана это сказать, иначе послабление переживёт свой предмет")
 	joined := strings.Join(res.RulesWithoutHit, " ")
-	require.Contains(t, joined, "A1", "находка обязана НАЗЫВАТЬ правило, а не только их число")
+	require.Contains(t, joined, "A2", "находка обязана НАЗЫВАТЬ правило, а не только их число")
 	require.NotContains(t, joined, "B7 (",
 		"правило, которому было что относить, в находки попадать не должно")
 }
 
-// --- ось 4: граница B и C — ОДНОФАКТНАЯ разница пути ----------------------
-
-func TestQSC_OwnerAndAccessServiceDifferByPathAlone(t *testing.T) {
-	t.Parallel()
-	const body = "const reasonQuotaExceeded = \"QUOTA_EXCEEDED\"\n"
-
-	owner := surfacesOf("services/vpc/internal/apps/kacho/shared/quota.go", body)
-	access := surfacesOf("services/iam/internal/apps/kaname/shared/quota.go", body)
-
-	require.Contains(t, owner, quotaSurfaceOwners)
-	require.NotContains(t, owner, quotaSurfaceIAMLedger)
-	require.Contains(t, access, quotaSurfaceIAMLedger)
-	require.NotContains(t, access, quotaSurfaceOwners,
-		"содержимое побайтово одно, различается ТОЛЬКО путь — и это единственный факт, "+
-			"которым §2 приёмки различает поверхности B и C")
-}
+// --- ось 4 СНЯТА ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ -------------------------------
+//
+// Здесь стояла проба «граница B и C — ОДНОФАКТНАЯ разница пути»: два файла с
+// побайтово одним содержимым, различающиеся только каталогом, обязаны попадать
+// на разные поверхности. Единственным правилом поверхности C, сужённым по пути,
+// было C1 («тот же учёт, но в службе доступа»); оно снято вместе с областью
+// `services/iam`, которой в дереве больше нет.
+//
+// Отличать поверхности ПО ПУТИ стало нечем — и это не ослабление: правил
+// поверхности C осталось ДВА (C2 · C4), и оба ключуются на ПРИЗНАКЕ (глагол
+// учёта личности, пакет формы ответа у края), а не на каталоге.
+//
+// ЗДЕСЬ СТОЯЛО «осталось три (C2 · C3 · C4), и все три ключуются на ПРИЗНАКЕ», и
+// это было неверно ДВАЖДЫ: C3 ключевался на `Prefixes`, то есть ровно на пути, а
+// не на признаке, — и он снят вместе со своим предметом (контракт чтения учёта
+// личности уехал в модуль службы, kacho#2616, исход C, 2026-09-13). Проба,
+// оставленная без своего правила, утверждала бы различение,
+// которого распознаватель не производит — то есть зеленела бы вакуумно либо
+// краснела на верном дереве.
+//
+// Ось вернётся вместе с правилом, сужённым по пути, если такое заведут снова.
 
 // --- ось 5: слепая зона признака ЗАДАЧИ названа числом, а не унаследована ---
 
@@ -203,7 +208,7 @@ func TestQSC_PrimaryPrefersForeignOverOurLedger(t *testing.T) {
 // перепись прибавляла бы к каждой поверхности по единице собственного описания.
 func TestQSC_OwnSourceIsNotItsOwnSubject(t *testing.T) {
 	t.Parallel()
-	const body = "InternalLimitService kacho_quota_count RefusedSubjectQuota\n"
+	const body = "kaname.limits kacho_quota_count RefusedSubjectQuota\n"
 
 	acc := newQuotaCensusAccumulator()
 	acc.Observe(quotaCensusOwnSource, body)
@@ -220,7 +225,7 @@ func TestQSC_OwnSourceIsNotItsOwnSubject(t *testing.T) {
 // свойство учёта по-настоящему, и снятие таких гейтов — часть работы S4.
 func TestQSC_ANeighbouringGateIsStillJudged(t *testing.T) {
 	t.Parallel()
-	const body = "InternalLimitService kacho_quota_count RefusedSubjectQuota\n"
+	const body = "kaname.limits kacho_quota_count RefusedSubjectQuota\n"
 
 	acc := newQuotaCensusAccumulator()
 	acc.Observe("internal/repohygiene/quotakindproducer.go", body)
@@ -234,12 +239,20 @@ func TestQSC_ANeighbouringGateIsStillJudged(t *testing.T) {
 
 // --- ось 5: расширения, добавленные задачей #2135 ---------------------------
 //
-// Каждая ось подаётся НАСТОЯЩЕЙ формой из дерева и несёт законного близнеца:
-// без близнеца «расширение участвует в обходе» неотличимо от «обход берёт всё».
+// Каждая ось подаётся настоящей формой и несёт законного близнеца: без близнеца
+// «расширение участвует в обходе» неотличимо от «обход берёт всё».
+//
+// «ИЗ ДЕРЕВА» про модель прав больше НЕ ВЕРНО, и это сказано, а не умолчано:
+// файлов `.fga` в индексе этого дерева ноль (`git ls-files '*.fga' | wc -l` → 0)
+// с переезда контрактов службы доступа (kacho#2616, исход C, 2026-09-13). Форма
+// взята из модели, как она лежит в модуле `github.com/PRO-Robotech/kaname`, и
+// координата ниже названа его координатой. Ось СОХРАНЕНА намеренно: отбор идёт
+// по расширению, канон читают из собранного корня контрактов, и перепись,
+// ослепшая на `.fga`, ослепла бы ровно на объявлении права чтения величин.
 
 func TestQSC_AuthzModelFileIsWalkedAndCarriesTheAuthority(t *testing.T) {
 	t.Parallel()
-	const rel = "proto/kaname/cloud/iam/v1/fga_model.fga"
+	const rel = "kaname/cloud/iam/v1/fga_model.fga"
 	require.True(t, quotaCensusEligible(rel),
 		"модель прав обязана участвовать в обходе: в ней ОБЪЯВЛЕНО отношение "+
 			"чтения величин, и до расширения списка перепись его не видела вовсе")
@@ -253,7 +266,7 @@ func TestQSC_AuthzModelWithoutTheRelationIsNotACandidate(t *testing.T) {
 	t.Parallel()
 	// Законный близнец: та же модель, соседнее отношение. Кандидатом не является.
 	acc := newQuotaCensusAccumulator()
-	acc.Observe("proto/kaname/cloud/iam/v1/fga_model.fga",
+	acc.Observe("kaname/cloud/iam/v1/fga_model.fga",
 		"    define fga_writer: [service_account] or system_admin\n")
 	res := acc.Finish()
 	require.Equal(t, 1, res.FilesWalked, "файл обязан быть ОСМОТРЕН")
@@ -298,7 +311,7 @@ func TestQSC_LatinMentionDoesNotInflateTheRussianOnlyCount(t *testing.T) {
 	// в слепую зону — нет.
 	acc := newQuotaCensusAccumulator()
 	acc.Observe("services/vpc/internal/clients/limit_client.go",
-		"// клиент InternalLimitService на внутреннем слушателе\n")
+		"// quota client reads kaname.limits over the internal listener\n")
 	res := acc.Finish()
 	require.Len(t, res.Candidates, 1)
 	require.Zero(t, res.RussianOnly,
@@ -348,7 +361,7 @@ func TestQSC_PageNamingMachineryKeepsItsOwnSurface(t *testing.T) {
 	// Законный близнец: та же форма файла, но страница называет машинерию.
 	// Правило прозы — отступление, поэтому оно обязано уступить.
 	got := surfacesOf("services/iam/docs/content/api/limit.mdx",
-		"`InternalLimitService.Resolve` отдаёт действующие величины\n")
+		"`kaname.limits` несёт действующие величины\n")
 	require.Contains(t, got, quotaSurfaceAuthority)
 	require.NotContains(t, got, quotaSurfaceProse,
 		"отступление, взявшее страницу с машинерией, спрятало бы работу стадии S4 в «упоминание»")
@@ -374,7 +387,7 @@ func TestQSC_SubstringAccidentDoesNotHideRealMachinery(t *testing.T) {
 	// слово, в которое признак попал подстрокой, стоит рядом с настоящим именем
 	// службы величин.
 	got := surfacesOf("services/vpc/docs/engineering/architecture/11-resource-count-quotas.md",
-		"a quotation from the owner doc\n`InternalLimitService` отдаёт действующие величины\n")
+		"a quotation from the owner doc\n`kaname.limits` несёт действующие величины\n")
 	require.Contains(t, got, quotaSurfaceAuthority,
 		"настоящая машинерия обязана пережить случайное совпадение подстроки")
 	require.NotContains(t, got, quotaSurfaceForeign,
@@ -403,4 +416,46 @@ func TestQSC_ForeignStorageRefusalKeepsItsSurface(t *testing.T) {
 	require.Equal(t, 1, res.PerPrimary[quotaSurfaceForeign],
 		"ёмкость в байтах квотой счёта ресурсов не является: отдав её учёту, "+
 			"перепись назначила бы работу там, где её нет")
+}
+
+// --- ось: описание процесса, зовущее самопроверку (правило P4) --------------
+//
+// Три входа вместо одного, потому что предмет правила — ИСПОЛНЯЕМЫЙ ВЫЗОВ в
+// описании процесса, и каждое из трёх слов в этой фразе надо опровергнуть
+// порознь. Форма входов взята у настоящего шага `selftest-quota-posture` в
+// `.github/workflows/console-e2e.yml`.
+
+func TestQSC_WorkflowCallingASelftestIsAMention(t *testing.T) {
+	t.Parallel()
+	got := surfacesOf(".github/workflows/console-e2e.yml",
+		"      - name: гейт — самопроверка решения о посадке домена величин\n"+
+			"        id: selftest-quota-posture\n"+
+			"        working-directory: ui-future/e2e\n"+
+			"        run: node scripts/quota-posture-selftest.ts\n")
+	require.Equal(t, []string{quotaSurfaceProse}, got,
+		"описание процесса называет ИМЯ ФАЙЛА пробы, а не величину: машинерии в нём нет, "+
+			"и снос авторитета величин его не затронет")
+}
+
+func TestQSC_WorkflowWithRealMachineryStaysAFinding(t *testing.T) {
+	t.Parallel()
+	// Законный близнец правила P4: тот же каталог, отличается РОВНО одним
+	// фактом — вместо вызова пробы стоит машинерия величин. Без него P4
+	// доказывало бы лишь то, что описания процессов оно относит, — а не то, что
+	// относит ровно вызов пробы.
+	got := surfacesOf(".github/workflows/console-e2e.yml",
+		"        env:\n          KACHO_VPC_QUOTA_NETWORKS: \"12\"\n")
+	require.Empty(t, got,
+		"описание процесса, выставляющее ВЕЛИЧИНУ, обязано остаться НЕОТНЕСЁННЫМ: "+
+			"иначе P4 становится корзиной «прочее» для всего каталога описаний процессов")
+}
+
+func TestQSC_SelftestCallOutsideTheWorkflowDirIsNotAMentionByP4(t *testing.T) {
+	t.Parallel()
+	// Та же строка вызова, но не в описании процесса: область правила несущая,
+	// иначе любой скрипт, зовущий пробу, уехал бы в «упоминание».
+	got := surfacesOf("scripts/local/run-console-selftests.sh",
+		"node scripts/quota-posture-selftest.ts\n")
+	require.NotContains(t, got, quotaSurfaceProse,
+		"P4 сработало вне .github/workflows — область правила потеряна")
 }

@@ -19,7 +19,7 @@ const (
 	// делегирует общему предикату и зовёт общий разбор цели.
 	srcTractConverged = `package migrator
 
-import "github.com/PRO-Robotech/kacho/pkg/migratorcli"
+import "github.com/PRO-Robotech/corelib/migratorcli"
 
 func (c Config) Validate() error {
 	return migratorcli.RunnerPreconditions{Service: c.Service, DSN: c.DSN}.Validate()
@@ -64,7 +64,7 @@ func parseTargetVersion(s string) (int64, error) {
 // Свой текст отказа здесь НЕ объявляется: "dsn is empty" и остальные пять живут
 // в общем пакете. Разбор цели тоже общий — fmt.Sscanf отсюда снят, он на
 // "12abc" отдавал 12 без ошибки.
-import "github.com/PRO-Robotech/kacho/pkg/migratorcli"
+import "github.com/PRO-Robotech/corelib/migratorcli"
 
 func (c Config) Validate() error { return migratorcli.RunnerPreconditions{}.Validate() }`
 
@@ -72,7 +72,7 @@ func (c Config) Validate() error { return migratorcli.RunnerPreconditions{}.Vali
 	// чтобы показать: моя проверка на нём молчит, а его — краснеет.
 	srcTractThirdForm = `package main
 
-import "github.com/PRO-Robotech/kacho/pkg/db"
+import "github.com/PRO-Robotech/corelib/db"
 
 func main() { _ = db.Open }`
 )
@@ -188,7 +188,7 @@ func TestSharedTractGateIsSilentOnLegalTwins(t *testing.T) {
 		// обёртке. Гейт, считающий её нарушением, краснел бы на верном коде.
 		src := `package migrator
 
-import "github.com/PRO-Robotech/kacho/pkg/migratorcli"
+import "github.com/PRO-Robotech/corelib/migratorcli"
 
 func f(s string) { _, _ = migratorcli.ParseTargetVersion(s) }`
 		if got := auditSource(t, relProbe, src); len(got) != 0 {

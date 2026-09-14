@@ -277,11 +277,27 @@ def env_entry_names(node):
     return frozenset(names)
 
 
-ALLOWED = {
-    'kubernetes.default.svc.cluster.local':
-        'идентификатор издателя API-сервера (--service-account-issuer), сверяется '
-        'побайтово с полем iss в токене — это не наш сосед, а внешний контракт',
-}
+# ИСКЛЮЧЕНИЙ НЕТ, и это состояние, а не пропуск.
+#
+# Здесь стояла одна запись — `kubernetes.default.svc.cluster.local`, идентификатор
+# издателя API-сервера (`--service-account-issuer`): он сверяется побайтово с полем `iss`
+# в токене, то есть не сосед, а внешний контракт, и полная форма у него законна.
+#
+# ПРЕДМЕТ ЗАПИСИ УЕХАЛ ВМЕСТЕ С КОДОМ. Строка жила в единственном файле дерева —
+# `pkg/api/kaname/cloud/iam/v1/sa_key_service.pb.go`, — а этим изменением платформа берёт
+# заглушки службы МОДУЛЕМ и свою копию снимает. Теперь строка приходит из модуля службы,
+# которого обход не читает и читать не должен: гейт судит дерево платформы.
+#
+# Замер, которым это установлено (различие только в ревизии):
+#   ствол 8d70f59983      -> находок 0, не-тестовых .go 1322
+#   эта ветка             -> находка 1 «нечего исключать», не-тестовых .go 1231
+# Разница 91 файл — изъятые заглушки; из них предмет несёт ровно один.
+#
+# Запись снята, а не оставлена «на будущее»: исключение без предмета унаследует следующую
+# слепую зону — если полная форма вернётся в дерево платформы, гейт обязан назвать её
+# находкой, а не промолчать по старой ведомости. Понадобится снова — заводится вместе со
+# своим предметом.
+ALLOWED = {}
 
 
 def classify(path, stack):
@@ -386,6 +402,7 @@ require_python_yaml
 # прощение шире предмета.
 # ─────────────────────────────────────────────────────────────────────────────
 cat >"$DERIVER" <<'DERIVEEOF'
+import json
 import re
 import subprocess
 import sys
@@ -394,28 +411,19 @@ FIELD = re.compile(r'^\s*(\w+)\s+([\w\.\[\]\*]+)(?:\s+`([^`]*)`)?', re.M)
 PKG = re.compile(r'^package\s+(\w+)', re.M)
 STRUCT = re.compile(r'type\s+(\w+)\s+struct\s*\{')
 ENVCONFIG = re.compile(r'envconfig:"([^"]*)"')
+# Импорты: и одиночная форма, и блок. Псевдоним берётся, когда он есть, — иначе
+# имя пакета спрашивается у `go list`, а не выводится из последнего сегмента
+# пути: пакет вправе называться иначе, чем его каталог.
+IMPORT_BLOCK = re.compile(r'^import\s*\((.*?)^\)', re.M | re.S)
+IMPORT_ONE = re.compile(r'^import\s+(?:(\w+)\s+)?"([^"]+)"', re.M)
+IMPORT_LINE = re.compile(r'^\s*(?:(\w+|\.|_)\s+)?"([^"]+)"', re.M)
 
-out = subprocess.run(['git', 'ls-files', '*.go'], capture_output=True, text=True)
-if out.returncode != 0:
-    sys.stderr.write('git ls-files не выполнился: %s\n' % out.stderr.strip())
-    sys.exit(2)
-files = [f for f in out.stdout.split() if not f.endswith('_test.go')]
 
-types = set()          # пакет.Тип — форма TLS-клиента
-decls = []             # (пакет.Тип поля, envconfig-тег)
-for path in files:
-    try:
-        src = open(path, encoding='utf-8', errors='replace').read()
-    except OSError:
-        continue
-    pkgm = PKG.search(src)
-    if not pkgm:
-        continue
-    pkg = pkgm.group(1)
+def shape_types(src, pkg):
+    """Типы формы TLS-клиента в одном исходнике: ServerName РЯДОМ с CAFiles."""
+    found = set()
     for m in STRUCT.finditer(src):
-        i = m.end()
-        depth = 1
-        j = i
+        i, depth, j = m.end(), 1, m.end()
         while j < len(src) and depth:
             if src[j] == '{':
                 depth += 1
@@ -425,21 +433,136 @@ for path in files:
         body = src[i:j - 1]
         fields = {fm.group(1): (fm.group(2), fm.group(3)) for fm in FIELD.finditer(body)}
         if 'ServerName' in fields and 'CAFiles' in fields:
-            types.add(pkg + '.' + m.group(1))
-        for ftype, tag in fields.values():
+            found.add(pkg + '.' + m.group(1))
+    return found
+
+
+def struct_bodies(src):
+    for m in STRUCT.finditer(src):
+        i, depth, j = m.end(), 1, m.end()
+        while j < len(src) and depth:
+            if src[j] == '{':
+                depth += 1
+            elif src[j] == '}':
+                depth -= 1
+            j += 1
+        yield src[i:j - 1]
+
+
+out = subprocess.run(['git', 'ls-files', '*.go'], capture_output=True, text=True)
+if out.returncode != 0:
+    sys.stderr.write('git ls-files не выполнился: %s\n' % out.stderr.strip())
+    sys.exit(2)
+files = [f for f in out.stdout.split() if not f.endswith('_test.go')]
+
+types = set()              # пакет.Тип — форма TLS-клиента, ОБЪЯВЛЕННАЯ в этом дереве
+decls = []                 # (пакет.Тип поля, envconfig-тег, файл)
+imports_of = {}            # файл → {как пишут в коде: путь импорта}
+for path in files:
+    try:
+        src = open(path, encoding='utf-8', errors='replace').read()
+    except OSError:
+        continue
+    pkgm = PKG.search(src)
+    if not pkgm:
+        continue
+    pkg = pkgm.group(1)
+    types |= shape_types(src, pkg)
+
+    imp = {}
+    for blk in IMPORT_BLOCK.findall(src):
+        for alias, ipath in IMPORT_LINE.findall(blk):
+            imp[alias if alias and alias not in ('.', '_') else ipath.rsplit('/', 1)[-1]] = ipath
+    for alias, ipath in IMPORT_ONE.findall(src):
+        imp[alias or ipath.rsplit('/', 1)[-1]] = ipath
+    imports_of[path] = imp
+
+    for body in struct_bodies(src):
+        for fm in FIELD.finditer(body):
+            ftype, tag = fm.group(2), fm.group(3)
             if not tag or 'envconfig:' not in tag:
                 continue
             bare = ftype.lstrip('*[]')
             decls.append((bare if '.' in bare else pkg + '.' + bare,
-                          ENVCONFIG.search(tag).group(1)))
+                          ENVCONFIG.search(tag).group(1), path))
 
-tags = sorted({tag for qual, tag in decls if qual in types and tag not in ('', '-')})
+# ─────────────────────────────────────────────────────────────────────────────
+# ФОРМА ТИПА ЧИТАЕТСЯ ТАМ, ГДЕ ТИП ЛЕЖИТ, А НЕ ТОЛЬКО В ЭТОМ ДЕРЕВЕ.
+#
+# Прежняя редакция искала объявление формы ТОЛЬКО среди отслеживаемых `.go`
+# этого дерева. Посылка была верна, пока фундамент лежал здесь, и умерла вместе
+# с его выносом в общую библиотеку (`pkg: фундамент вынесен…`): поля остались на
+# месте — их десятки у vpc, compute, geo, registry, — а объявление их типа
+# уехало в чужой модуль. Перечень становился ПУСТ, и вердикт не выносился вовсе:
+# код 2 у самой проверки и у её доказательства инъекцией, на каждом прогоне.
+#
+# Имя типа сюда выписать было нельзя: имя — не форма, и ведомость имён разошлась
+# бы с формой молча. Поэтому спрашивается ИСТОЧНИК: каталог пакета даёт `go list`
+# (кэш модулей, сети не требует — модули уже стянуты соседним шагом того же
+# задания), а форма читается из его исходников тем же предикатом, что и в дереве.
+#
+# Спрашиваются ТОЛЬКО те пакеты, чей квалификатор реально стоит у envconfig-поля:
+# обход всех зависимостей был бы и дольше, и шире предмета.
+unresolved = {}
+for qual, _tag, path in decls:
+    if qual in types:
+        continue
+    pkgname = qual.split('.', 1)[0]
+    ipath = imports_of.get(path, {}).get(pkgname)
+    if ipath:
+        unresolved.setdefault(ipath, set()).add(pkgname)
+
+ext_pkgs = 0
+if unresolved:
+    try:
+        listed = subprocess.run(
+            ['go', 'list', '-e', '-f', '{{.Name}}\t{{.Dir}}\t{{.GoFiles}}', *sorted(unresolved)],
+            capture_output=True, text=True)
+    except FileNotFoundError:
+        # Инструмента нет — это УСЛОВИЕ НЕ СОЗДАНО, а не «формы нет». Трассировка
+        # на его месте назвала бы причиной наш разбор и увела бы читателя не туда.
+        sys.stderr.write('нет go — каталог чужого модуля спросить нечем, '
+                         'форма типа НЕ ПРОЧИТАНА\n')
+        sys.exit(2)
+    if listed.returncode != 0:
+        sys.stderr.write(
+            'go list не выполнился — форму типа из чужого модуля прочитать нечем: %s\n'
+            % listed.stderr.strip())
+        sys.exit(2)
+    import os
+    for line in listed.stdout.splitlines():
+        parts = line.split('\t')
+        if len(parts) != 3 or not parts[1]:
+            continue
+        name, d, gofiles = parts[0], parts[1], parts[2].strip('[]').split()
+        if not gofiles:
+            continue
+        ext_pkgs += 1
+        for gf in gofiles:
+            try:
+                esrc = open(os.path.join(d, gf), encoding='utf-8', errors='replace').read()
+            except OSError:
+                continue
+            types |= shape_types(esrc, name)
+    # РАЗНЫЕ ПРИЧИНЫ НУЛЯ — РАЗНЫЕ СООБЩЕНИЯ. `go list -e` на невыложенном модуле
+    # возвращает код 0 и ПУСТОЙ каталог, поэтому без этой ветки отказ назвал бы
+    # причиной поля («ни одно envconfig-поле не имеет типа формы»), тогда как поля
+    # на месте, а прочитать не удалось ИСТОЧНИК. Читателя это увело бы искать не там.
+    if ext_pkgs == 0:
+        sys.stderr.write(
+            'ни один из спрошенных пакетов (%s) не отдал каталога с исходниками — '
+            'модули не выложены? форма типа НЕ ПРОЧИТАНА, и поля тут не виноваты\n'
+            % ', '.join(sorted(unresolved)))
+        sys.exit(2)
+
+tags = sorted({tag for qual, tag, _ in decls if qual in types and tag not in ('', '-')})
 
 for t in sorted(types):
     print('TYPE %s' % t)
 for t in tags:
     print('TAG %s' % t)
-print('DERIVE gofiles=%d types=%d tags=%d' % (len(files), len(types), len(tags)))
+print('DERIVE gofiles=%d extpkgs=%d types=%d tags=%d'
+      % (len(files), ext_pkgs, len(types), len(tags)))
 
 # «Ноль тегов» и «дерево не читали» обязаны быть различимы: на пустом перечне
 # прощение выключено целиком, и гейт объявил бы находкой каждое имя-для-сверки —
@@ -448,14 +571,29 @@ if not files:
     sys.stderr.write('не прочитано ни одного не-тестового .go\n')
     sys.exit(2)
 if not types:
-    sys.stderr.write('в дереве не найдено ни одного типа формы TLS-клиента '
-                     '(ServerName рядом с CAFiles) — перечень выводить не из чего\n')
+    sys.stderr.write('ни в дереве, ни в источниках спрошенных пакетов не найдено '
+                     'ни одного типа формы TLS-клиента (ServerName рядом с CAFiles) — '
+                     'перечень выводить не из чего\n')
     sys.exit(2)
 if not tags:
     sys.stderr.write('ни одно envconfig-поле не имеет типа формы TLS-клиента — '
                      'перечень имён-для-сверки пуст\n')
     sys.exit(2)
 DERIVEEOF
+
+# ПРЕДУСЛОВИЯ ИНСТРУМЕНТОВ — ДО ВЫВОДА ПЕРЕЧНЯ, А НЕ ПОСЛЕ.
+#
+# Вывод перечня спрашивает у `go` каталог чужого модуля (форма типа читается там,
+# где тип лежит). Пока `require_helm` стоял НИЖЕ, в окружении без helm — а PATH,
+# суженный до «нет helm», не несёт и `go` — прогон падал на выводе перечня и
+# называл причиной ПЕРЕЧЕНЬ, тогда как условие не создано у ИНСТРУМЕНТА. Исход
+# при этом верен по коду (2) и лжив по причине, а значит посылает читателя не
+# туда: доказательство инъекцией это и поймало.
+#
+# Самопроверка рендеров не делает и helm ей не нужен — там предусловие не
+# спрашивается намеренно, иначе классификатор нельзя было бы прогнать на машине
+# без helm вовсе.
+[ "${1:-}" = "--self-test" ] || require_helm
 
 derive_out="$(cd "$REPO_ROOT" && python3 "$DERIVER" 2>&1)" || {
   printf '%s\n' "$derive_out" | sed 's/^/      /'
@@ -562,14 +700,24 @@ spec:
     - kaname.kacho.svc
     - kaname.kacho' 0
 
-  probe "законно: внешний издатель kubernetes.default → молчит (внешний контракт)" \
+  # Утверждение ПЕРЕВЁРНУТО вместе со своим предметом, а не снято.
+  #
+  # Пока ведомость несла запись `kubernetes.default.svc.cluster.local`, полная форма
+  # здесь была законна, и проба утверждала молчание. Предмет записи уехал: строка жила
+  # в единственном файле дерева платформы — заглушке службы, — а платформа берёт их
+  # теперь модулем и свою копию сняла. Запись снята тем же изменением.
+  #
+  # Отсюда новое свойство того же входа: полная форма в дереве платформы — НАХОДКА.
+  # Оставить прежнее утверждение значило бы держать исключение, которому нечего
+  # исключать; снять пробу целиком — потерять вход, на котором это видно.
+  probe "полная форма внешнего издателя в дереве платформы → находка (исключение истекло)" \
 'apiVersion: v1
 kind: ConfigMap
 metadata:
   name: iam
 data:
   trust.yaml: |
-    issuer: "https://kubernetes.default.svc.cluster.local"' 0
+    issuer: "https://kubernetes.default.svc.cluster.local"' 1
 
   probe "законно: внешнее имя вне кластера → молчит" \
 'apiVersion: v1

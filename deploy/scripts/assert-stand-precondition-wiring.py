@@ -21,7 +21,7 @@
 где шаг зовёт подъём стенда в позиции команды. Рукописный перечень пришлось бы
 дописывать руками ровно тогда же, когда о новой работе забывают.
 
-ЧТО ПРОВЕРЯЕТСЯ — СВЯЗНОСТЬ, А НЕ НАМЕРЕНИЕ. Звеньев шесть, и любое разорванное
+ЧТО ПРОВЕРЯЕТСЯ — СВЯЗНОСТЬ, А НЕ НАМЕРЕНИЕ. Звеньев семь, и любое разорванное
 возвращает исходный дефект МОЛЧА:
 
   1. владелец материализации кладёт отметку (доказано его же --self-test:
@@ -50,6 +50,35 @@
      (тот же срыв без отметки — краснеет как прежде). Двух прогонов мало:
      без контроля неизвестно, способен ли шаг выйти нулём вообще, а без
      близнеца правка была бы маской.
+  7. работа, ПРОИЗВОДЯЩАЯ отметку, её же и ЧИТАЕТ. Звенья 2 и 4 судят шаги:
+     первое — что подъём делегирует владельцу, второе — что шаг-вердикт гасится.
+     Ни одно не спрашивает про РАБОТУ ЦЕЛИКОМ, и между ними пролезает форма, в
+     которой отметка выставляется и не читается НИКЕМ: производителей ≥ 1,
+     читателей 0. Тогда третья категория работе невидима — шаг подъёма выходит
+     нулём (так решено #2250), гасить некого, и работа выходит `success`, не
+     вынеся вердикта ни одной проверкой.
+     ЗАМЕРЕНО, А НЕ ПРЕДПОЛОЖЕНО (2026-09-12): у четырёх работ подъёма читателей
+     отметки было 5 · 6 · 11 · **0**, и ноль стоял у `production-posture.yml`/
+     `stand` — при ДВУХ производителях в ней же (владелец подъёма и провенанс
+     ревизии). Исполнение настоящих тел шагов дало `success` при выставленной
+     отметке: ни один шаг о посадке не сказал ничего.
+     Предикат ВЫВЕДЕН из дерева в обе стороны: производителем считается скрипт,
+     который сам дописывает `<отметка>=1` в `$GITHUB_ENV`, а производящим шагом —
+     тот, который такой скрипт запускает. Перечня имён нет намеренно: он старел
+     бы ровно тогда, когда заводят третьего производителя.
+     «Дописывает» судится РАЗБОРОМ, а не поиском по содержимому файла: см. блок
+     перед `flag_producers()`. Поиск по тексту считал производителем прозу о
+     производстве, и по переписи обхода это шесть вхождений текста отметки из
+     восьми — два комментария, три строки неисполняющих команд (две из них
+     ЧИТАТЕЛИ отметки) и одна строка-документация.
+
+ЧЕГО ЗВЕНО 7 НЕ ЗАКРЫВАЕТ, сказано прямо: наличия читателя мало для КРАСНОГО.
+Читатель делает третью категорию видимой работе, а роняет работу отдельный
+владелец — перепись исходов `.github/scripts/assert-declared-verdicts-ran.py`,
+последний шаг работы. Требовать её здесь от ВСЕХ четырёх работ гейт не вправе:
+три из них — предмет соседних полос, и такое требование краснело бы на чужой
+незакрытой работе, то есть стало бы недостижимым by construction. Держатель
+«работа зовёт перепись» — предмет общего гейта гарантии, а не этого.
 
 Звено 4 — то, что ломается само собой: девятая суита заводится копированием
 восьмой, и условие в копию не переносят. Поэтому набор шагов-вердиктов
@@ -67,6 +96,7 @@
 """
 from __future__ import annotations
 
+import io
 import os
 import pathlib
 import re
@@ -74,6 +104,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tokenize
 
 import yaml
 
@@ -100,7 +131,6 @@ STAND_CALL = re.compile(
 VERDICT_RUNNERS = (
     "assert-suites-green.sh",              # гейт суиты: «нет отчётов» → красное
     "assert-ban6-external-isolation.py",   # спрашивает листенер, которого нет
-    "coverage.py",                         # считает по отчётам, которых нет
     "newman-live.py report",               # печатает «0 отчётов» как потерю
     "newman-shard-run.sh",                 # прогон суит шарда: без кластера падает на первом запросе
     "npx playwright test",                 # то же для консоли
@@ -151,20 +181,367 @@ def guarded(step: dict) -> bool:
     return f"env.{FLAG}" in str(step.get("if") or "")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ПРОИЗВОДИТЕЛЬ ОТМЕТКИ ОТБИРАЕТСЯ РАЗБОРОМ, А НЕ ПОИСКОМ ПО ТЕКСТУ.
+#
+# Прежняя редакция спрашивала файл целиком: «встретилось ли `<отметка>=1` И слово
+# `GITHUB_ENV`». Так проза о производстве неотличима от производства, и предмет у
+# этого в дереве наполовину уже был: последний шаг работ подъёма несёт текст
+# отметки в шапке-объяснении, а молчал предикат ТОЛЬКО потому, что имени раковины
+# в той же прозе не оказалось. Допиши его кто-нибудь — и звено 7 потребовало бы
+# читателя от работ, которые отметку не ставят: гейт покраснел бы на ВЕРНОМ
+# дереве, то есть перестал бы быть годным.
+#
+# Признак разведён на две роли, и это не оформление, а существо дела:
+#
+#   НАЗНАЧЕНИЕ обязано быть КОДОМ — перенаправление в `$GITHUB_ENV`. Раковина,
+#   названная в комментарии, в сообщении или в строке-документации, ничего не
+#   принимает;
+#   СОДЕРЖИМОЕ может быть ДАННЫМИ — текст `<отметка>=1` в оболочке живёт внутри
+#   кавычек by construction (`echo "<отметка>=1" >> "$GITHUB_ENV"`), поэтому
+#   запретить ему быть строкой значило бы не увидеть ни одного производителя.
+#
+# Отсюда единица суждения: ОДНА логическая команда оболочки (одно объявление
+# питона), а не файл. Читатель раковины (`grep -q '<отметка>=1' "$GITHUB_ENV"`)
+# отличается от производителя ровно оператором записи — и на файле это различие
+# не выразимо вовсе.
+#
+# То же решение уже принято в `.github/scripts/shard-verdict.py` (перепись
+# производителей: раковина + оператор дописывания + отброшенный комментарий).
+# Здесь оно доведено до разбора: там комментарий узнаётся по началу строки, а
+# кавычки и тело heredoc не различаются.
+# ЧЕГО РАЗБОР НЕ ПОКРЫВАЕТ, сказано прямо, потому что границу иначе примут за
+# отсутствующую:
+#   • запись, РАЗОРВАННУЮ на две команды (`m="<отметка>=1"` одной строкой, `echo
+#     "$m" >> "$GITHUB_ENV"` другой): единица суждения — одна команда, и такой
+#     формы в дереве нет ни одной;
+#   • раковину, добытую иначе, чем перенаправлением: `tee`, `dd`, запись питоном
+#     не через режим открытия. Записи без предмета в дереве не заводятся;
+#   • СОСТАВЛЕННЫЙ текст отметки (`f"{FLAG}=1"`): в данных он не буквален, поэтому
+#     производитель, собирающий отметку из частей, предикатом не виден. Тот же
+#     предел был и у прежней редакции — эта правка его не заводит и не снимает;
+#   • `$GITHUB_OUTPUT` — вторую раковину платформы. Звено 7 судит отметку,
+#     гасящую шаги, а она приходит через окружение задания.
+SINK_ENV = "GITHUB_ENV"
+# Запись В РАКОВИНУ: перенаправление, а не упоминание. `>` и `>>` обе формы —
+# перезапись окружения задания так же меняет его, как дописывание.
+SH_WRITE = re.compile(r">>?[ \t]*\$\{?" + SINK_ENV + r"\b")
+# Дописывание в питоне: режим открытия либо оператор оболочки в составленной
+# команде. Тот же признак, что у переписи `shard-verdict.py`.
+PY_APPEND = re.compile(r">>|['\"]a\+?['\"]")
+# Раскрытие переменной. ВНУТРИ ДВОЙНЫХ КАВЫЧЕК ОНО КОД, а не данные: `"$GITHUB_ENV"`
+# — это обращение к переменной, и именно в такой форме обе записи стоят в дереве.
+SH_EXPANSION = re.compile(r"\$(?:[A-Za-z_][A-Za-z0-9_]*|[0-9@*#?$!-])")
+# Открытие heredoc. `(?!<)` отсекает здесь-строку `<<<`, которой в дереве 3 штуки:
+# у неё тела нет, и принятая за heredoc она съела бы остаток файла.
+SH_HEREDOC = re.compile(r"<<(-?)(?!<)[ \t]*(\"[^\"]*\"|'[^']*'|[A-Za-z_][A-Za-z0-9_]*)")
+PY_STRING_TOKENS = frozenset(
+    getattr(tokenize, name) for name in
+    ("STRING", "FSTRING_START", "FSTRING_MIDDLE", "FSTRING_END",
+     "TSTRING_START", "TSTRING_MIDDLE", "TSTRING_END")
+    if hasattr(tokenize, name))
+PY_SKIP_TOKENS = frozenset((tokenize.NL, tokenize.NEWLINE, tokenize.INDENT,
+                            tokenize.DEDENT, tokenize.ENCODING, tokenize.COMMENT))
+# Строка в ПОЗИЦИИ КЛЮЧА ОКРУЖЕНИЯ — тоже код: `os.environ["GITHUB_ENV"]` есть
+# обращение к раковине, хотя её имя и записано литералом. Без этого настоящий
+# производитель на питоне был бы неотличим от прозы, то есть починка одной слепой
+# зоны завела бы вторую.
+PY_ENV_LOOKUP = (("environ", "["), ("getenv", "("), ("get", "("))
+
+
+def sh_brace_span(line: str, start: int) -> int:
+    """Конец `${…}` или `$(…)` со счётом вложенности. Начало — на `$`."""
+    opening = line[start + 1]
+    closing = "}" if opening == "{" else ")"
+    depth, i = 0, start + 1
+    while i < len(line):
+        if line[i] == "\\":
+            i += 2
+            continue
+        if line[i] == opening:
+            depth += 1
+        elif line[i] == closing:
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    return len(line)
+
+
+def sh_scan_line(line: str, quote: str) -> tuple[str, str, str, list[tuple[str, bool]], bool]:
+    """Одна физическая строка оболочки → (КОД, КОД+ДАННЫЕ, кавычка, heredoc'и, продолжение).
+
+    КОД — копия строки, где всё неисполняемое заменено пробелом: содержимое
+    кавычек, тело комментария. Длина сохраняется, поэтому `>>` и `$GITHUB_ENV`
+    остаются рядом и перенаправление узнаётся выражением, а не склейкой.
+    """
+    code: list[str] = []
+    data: list[str] = []
+    heredocs: list[tuple[str, bool]] = []
+    continues = False
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if quote == "'":
+            code.append(" ")
+            data.append(ch)
+            if ch == "'":
+                quote = ""
+            i += 1
+            continue
+        if quote == '"':
+            if ch == "\\":
+                if i + 1 >= len(line):
+                    continues = True
+                    i += 1
+                    continue
+                code.append("  ")
+                data.append(line[i:i + 2])
+                i += 2
+                continue
+            if ch == '"':
+                quote = ""
+                code.append(" ")
+                data.append(ch)
+                i += 1
+                continue
+            if ch == "$" and i + 1 < len(line):
+                end = (sh_brace_span(line, i) if line[i + 1] in "{("
+                       else (m.end() if (m := SH_EXPANSION.match(line, i)) else i + 1))
+                code.append(line[i:end])
+                data.append(line[i:end])
+                i = end
+                continue
+            code.append(" ")
+            data.append(ch)
+            i += 1
+            continue
+        # ── вне кавычек ──────────────────────────────────────────────────────
+        if ch == "#" and (i == 0 or line[i - 1] in " \t;&|(&"):
+            break  # комментарий — проза: ни в КОД, ни в ДАННЫЕ
+        if ch == "\\":
+            if i + 1 >= len(line):
+                continues = True
+                i += 1
+                continue
+            code.append(line[i:i + 2])
+            data.append(line[i:i + 2])
+            i += 2
+            continue
+        if ch == "$" and i + 1 < len(line):
+            end = (sh_brace_span(line, i) if line[i + 1] in "{("
+                   else (m.end() if (m := SH_EXPANSION.match(line, i)) else i + 1))
+            code.append(line[i:end])
+            data.append(line[i:end])
+            i = end
+            continue
+        if ch in "'\"":
+            quote = ch
+            code.append(" ")
+            data.append(ch)
+            i += 1
+            continue
+        if ch == "<" and (m := SH_HEREDOC.match(line, i)):
+            heredocs.append((m.group(2).strip("'\""), m.group(1) == "-"))
+            code.append(m.group(0))
+            data.append(m.group(0))
+            i = m.end()
+            continue
+        code.append(ch)
+        data.append(ch)
+        i += 1
+    return "".join(code), "".join(data), quote, heredocs, continues
+
+
+def sh_commands(text: str) -> list[tuple[str, str]]:
+    """Логические команды оболочки: (КОД, КОД+ДАННЫЕ). Комментарии отброшены.
+
+    Команда собирается через продолжение строки (`\\` на конце), через
+    незакрытую кавычку и через тело heredoc: тело — ДАННЫЕ своей команды, поэтому
+    `cat >> "$GITHUB_ENV" <<EOF` с отметкой в теле есть производитель, а
+    `cat <<EOF` с той же прозой в теле — нет. Различает их назначение открывающей
+    команды, а не содержимое тела.
+    """
+    lines = text.split("\n")
+    units: list[tuple[str, str]] = []
+    i = 0
+    while i < len(lines):
+        code_parts: list[str] = []
+        data_parts: list[str] = []
+        heredocs: list[tuple[str, bool]] = []
+        quote = ""
+        while i < len(lines):
+            code, data, quote, hd, continues = sh_scan_line(lines[i], quote)
+            i += 1
+            code_parts.append(code)
+            data_parts.append(data)
+            heredocs.extend(hd)
+            if not quote and not continues:
+                break
+        for delim, strip_tabs in heredocs:
+            while i < len(lines):
+                body = lines[i]
+                i += 1
+                if (body.lstrip("\t") if strip_tabs else body) == delim:
+                    break
+                data_parts.append(body)
+        units.append(("\n".join(code_parts), "\n".join(data_parts)))
+    return units
+
+
+def py_code_and_data(text: str, where: str) -> tuple[str, str]:
+    """Питон → (КОД, КОД+ДАННЫЕ). Комментарий и строка-ДОКУМЕНТАЦИИ — проза.
+
+    Обычная строка и f-строка из КОДА выброшены, но в ДАННЫХ остались: текст
+    отметки живёт там законно. В КОД поднят литерал в позиции ключа окружения —
+    `os.environ["GITHUB_ENV"]` есть обращение к раковине.
+    """
+    code: list[str] = []
+    data: list[str] = []
+    prev: list[str] = []          # последние значимые токены, для позиции ключа
+    at_line_start = True
+    pending_doc: tokenize.TokenInfo | None = None
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
+    except (tokenize.TokenError, SyntaxError, IndentationError) as exc:
+        # Молчание здесь превратило бы неразбираемый файл в «не производитель» —
+        # ровно та третья категория, которую гейт и защищает.
+        raise SystemExit(f"FATAL: {where} не разобран питоном: {exc}")
+    for tok in tokens:
+        if pending_doc is not None:
+            # Строка, СОСТАВЛЯЮЩАЯ всё объявление, — документация: проза.
+            if tok.type not in (tokenize.NEWLINE, tokenize.ENDMARKER):
+                data.append(pending_doc.string)
+            pending_doc = None
+        if tok.type == tokenize.COMMENT:
+            continue
+        if tok.type in PY_SKIP_TOKENS:
+            if tok.type in (tokenize.NL, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT):
+                at_line_start = True
+            continue
+        if tok.type in PY_STRING_TOKENS:
+            if tok.type == tokenize.STRING and at_line_start:
+                pending_doc = tok
+                at_line_start = False
+                continue
+            data.append(tok.string)
+            if tuple(prev[-2:]) in PY_ENV_LOOKUP:
+                code.append(tok.string)
+            at_line_start = False
+            continue
+        code.append(tok.string)
+        data.append(tok.string)
+        prev.append(tok.string)
+        at_line_start = False
+    return " ".join(code), " ".join(data)
+
+
+def writes_flag_to_env(text: str, suffix: str, where: str) -> bool:
+    """Файл САМ дописывает отметку в раковину окружения задания — ИСПОЛНЯЕМОЙ строкой."""
+    mark = f"{FLAG}=1"
+    if suffix == ".py":
+        code, data = py_code_and_data(text, where)
+        return SINK_ENV in code and mark in data and PY_APPEND.search(data) is not None
+    return any(SH_WRITE.search(code) and mark in data for code, data in sh_commands(text))
+
+
+def flag_producers(scripts_dir: pathlib.Path | None = None) -> list[str]:
+    """Скрипты, которые САМИ дописывают отметку в `$GITHUB_ENV`. Выведено из дерева.
+
+    Признак — не имя и не перечень: в файле обязана быть ИСПОЛНЯЕМАЯ запись
+    `<отметка>=1` в `$GITHUB_ENV` (разбор выше). Перечень имён старел бы ровно
+    тогда, когда заводят третьего производителя, — то есть в единственный момент,
+    когда он и нужен.
+
+    Каталог — ПАРАМЕТР, а не константа: без него предикат нельзя подать входом,
+    который в дереве не лежит, и обе стороны инъекции (проза о записи · сама
+    запись) проверялись бы обещанием.
+    """
+    out: list[str] = []
+    scripts = (REPO / ".github" / "scripts") if scripts_dir is None else scripts_dir
+    if not scripts.is_dir():
+        return out
+    for f in sorted(scripts.iterdir()):
+        if not f.is_file() or f.suffix not in (".sh", ".py"):
+            continue
+        try:
+            text = f.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if writes_flag_to_env(text, f.suffix, str(f)):
+            out.append(f.name)
+    return out
+
+
+def produces_flag(step: dict, producers: list[str]) -> bool:
+    """Шаг ПРОИЗВОДИТ отметку, если ЗАПУСКАЕТ скрипт-производитель.
+
+    ИНТЕРПРЕТАТОР ПЕРЕД ПУТЁМ ОБЯЗАТЕЛЕН В ПРЕДИКАТЕ, и это не догадка: первая
+    редакция требовала имя в позиции команды и молча теряла форму
+    `bash "$GITHUB_WORKSPACE/.../stand-revision-verdict.sh"` — то есть ровно тот
+    второй производитель, ради которого звено и заведено. Два моих же замера одной
+    работы разошлись (2 против 1), и слеп был предикат, а не дерево.
+    """
+    run = str(step.get("run") or "")
+    for line in run.splitlines():
+        # САМОПРОВЕРКА — НЕ ПРОИЗВОДСТВО. `stand-up.sh --self-test` работает в
+        # своём временном дереве и в `$GITHUB_ENV` работы не пишет НИЧЕГО. Единица
+        # счёта — ШАГ конвейера, и замер по дереву даёт: нынешний предикат 7 · без
+        # этой оговорки 9 · без формы с интерпретатором (первая редакция) 4. Два
+        # лишних в девятке — вызовы самопроверки, то есть без оговорки звено 7
+        # требовало бы читателя от работы, которая отметку не производит.
+        # Оговорка судит СТРОКУ вызова;
+        # перенос `--self-test` на продолжение строки она не увидит, и это названо
+        # здесь, а не оставлено на догадку.
+        if "--self-test" in line:
+            continue
+        for name in producers:
+            if re.search(r"(^|[;&|(]|\$\()[ \t]*(?:(?:bash|sh|python3|python)[ \t]+)?\S*"
+                         + re.escape(name) + r"\b", line):
+                return True
+    return False
+
+
 def calls_owner(step: dict) -> bool:
     return re.search(r"(^|[;&|(]|\$\()[ \t]*\S*stand-up\.sh\b", str(step.get("run") or ""), re.M) is not None
 
 
 def check() -> tuple[list[str], dict[str, int]]:
     findings: list[str] = []
-    seen = {"jobs": 0, "steps": 0, "verdict": 0, "guarded": 0, "carrier": 0, "noif": 0}
+    seen = {"jobs": 0, "steps": 0, "verdict": 0, "guarded": 0, "carrier": 0, "noif": 0,
+            "producers": 0, "readers": 0}
     runners_hit = {r: 0 for r in VERDICT_RUNNERS}
     exempt_hit = {k: 0 for k in DELEGATION_EXEMPT}
+
+    # ЗВЕНО 7 (см. шапку): предикат обязан иметь ВХОД. Ноль скриптов-производителей
+    # означает «ничего не прочитано», а не «связно»: тогда каждая работа проходит
+    # звено 7 by construction, и оно превращается во всеразрешение.
+    producers = flag_producers()
+    if not producers:
+        findings.append(
+            f"в `.github/scripts` ни один файл не дописывает `{FLAG}=1` в `$GITHUB_ENV` — "
+            f"звено 7 осталось БЕЗ ВХОДА и прошло бы по каждой работе даром. Либо отметка "
+            f"переименована, либо производитель уехал: «ноль находок» здесь неотличимо от "
+            f"«ноль прочитанного»")
 
     for wf, jn, steps, stand in stand_jobs():
         seen["jobs"] += 1
         seen["steps"] += len(steps)
         where = f"{wf} / работа '{jn}'"
+
+        # ── звено 7: работа, производящая отметку, её же и читает ─────────────
+        made = [s for s in steps if produces_flag(s, producers)]
+        read = [s for s in steps if guarded(s)]
+        seen["producers"] += len(made)
+        seen["readers"] += len(read)
+        if made and not read:
+            findings.append(
+                f"{where}: отметку {FLAG} в этой работе ПРОИЗВОДЯТ {len(made)} шаг(а) — "
+                + ", ".join(f"«{s.get('name') or s.get('id') or '?'}»" for s in made)
+                + " — и не читает НИ ОДИН. Третья категория работе невидима: шаг подъёма "
+                "выходит нулём (так решено #2250), гасить некого, и работа выйдет `success`, "
+                "не вынеся вердикта ни одной проверкой. Зелёное такой работы означает «мы не "
+                "спрашивали», а владелец 2026-09-12 потребовал обратного: зелёное — гарантия")
 
         # ── звено 2: делегирование единственному владельцу ────────────────────
         if not calls_owner(stand):
@@ -486,6 +863,149 @@ def _self_test() -> int:
     say(not any("нечего исключать" in x or "не нашло своей работы" in x for x in check()[0]),
         "пустая ведомость послаблений — молчим: цель достигнута, а не сломана")
 
+    # ── (з) ЗВЕНО 7: производитель отметки без читателя — ИНЪЕКЦИЯ В ОБЕ СТОРОНЫ
+    #
+    # Три прогона, и меньше нельзя. Контроль говорит, что предикат способен
+    # МОЛЧАТЬ на живом дереве; инъекция — что он способен НАЙТИ; законный близнец
+    # отличается от инъекции РОВНО ОДНИМ фактом (остались ли производители) и
+    # обязан снова молчать. Без близнеца звено 7 требовало бы читателя от работы,
+    # которой нечего читать, — то есть стало бы недостижимым by construction.
+    say(not any("не читает НИ ОДИН" in x for x in check()[0]),
+        "контроль: у каждой работы-производителя есть читатель отметки")
+
+    prod_now = flag_producers()
+    say(bool(prod_now),
+        f"СКРИПТОВ-производителей отметки в дереве найдено {len(prod_now)} "
+        f"({', '.join(prod_now)}) — у звена 7 есть ВХОД",
+        "ни одного: предикат судил бы даром")
+
+    def strip_reader(steps: list[dict]) -> list[dict]:
+        out = []
+        for s in steps:
+            cond = str(s.get("if") or "")
+            if f"env.{FLAG}" in cond:
+                s = dict(s)
+                s["if"] = re.sub(r"\s*&&\s*env\." + FLAG + r"\s*!=\s*'1'", "", cond) or "always()"
+                s["if"] = s["if"].replace(f"env.{FLAG} != '1'", "true")
+            out.append(s)
+        return out
+
+    def hurt_reader():
+        return [(wf, jn, strip_reader(steps), stand) for wf, jn, steps, stand in real()]
+
+    globals()["stand_jobs"] = hurt_reader
+    f, seen7 = check()
+    globals()["stand_jobs"] = real
+    hits = [x for x in f if "не читает НИ ОДИН" in x]
+    say(len(hits) >= 4,
+        f"отметку перестали читать → находка по КАЖДОЙ работе-производителю "
+        f"(нашлось {len(hits)})",
+        f"нашлось {len(hits)}, работ-производителей в дереве не меньше четырёх")
+
+    # ЗАКОННЫЙ БЛИЗНЕЦ: тот же снятый читатель, но и производителя в работе НЕТ.
+    # Отличается от инъекции выше РОВНО ОДНИМ фактом.
+    def hurt_both():
+        out = []
+        for wf, jn, steps, stand in real():
+            new_steps, new_stand = [], stand
+            for s in strip_reader(steps):
+                orig = s
+                if produces_flag(s, prod_now):
+                    s = dict(s, run="echo производителя в этой работе нет\n")
+                new_steps.append(s)
+                # Шаг подъёма обязан быть ТЕМ ЖЕ объектом, что лежит в списке:
+                # `check()` ищет его через `steps.index(stand)`, и копия дала бы
+                # ValueError — отказ пробы, неотличимый на глаз от находки.
+                if orig is stand:
+                    new_stand = s
+            out.append((wf, jn, new_steps, new_stand))
+        return out
+
+    globals()["stand_jobs"] = hurt_both
+    f, _ = check()
+    globals()["stand_jobs"] = real
+    say(not any("не читает НИ ОДИН" in x for x in f),
+        "производителя в работе нет → звено 7 молчит (читателя не требует)")
+
+    # САМОИСТЕЧЕНИЕ ВХОДА: ноль скриптов-производителей — «ноль прочитанного», а не
+    # «связно». Без этой половины переименование отметки сделало бы звено 7
+    # всеразрешением, и заметить это было бы нельзя ничем.
+    real_prod = flag_producers
+    globals()["flag_producers"] = lambda: []
+    f, _ = check()
+    globals()["flag_producers"] = real_prod
+    say(any("БЕЗ ВХОДА" in x for x in f),
+        "ноль скриптов-производителей → находка (звено 7 не судит даром)")
+
+    # ── (и) ПРЕДИКАТ ПРОИЗВОДИТЕЛЯ СУДИТ ИСПОЛНЯЕМЫЙ КОД, А НЕ ТЕКСТ ─────────
+    #
+    # Отбор «оба слова встретились в файле» считает производителем ПРОЗУ о
+    # производстве, и предмет у этой оси в дереве наполовину уже есть: последний
+    # шаг работ подъёма несёт текст отметки в шапке-объяснении, а молчит предикат
+    # только потому, что имени раковины в той же прозе пока нет. Допишет его
+    # кто-нибудь — и звено 7 потребует читателя от работ, которые отметку НЕ
+    # ставят: гейт покраснеет на верном дереве, то есть перестанет быть годным.
+    #
+    # Оси идут парами, и близнец отличается РОВНО ОДНИМ фактом — исполняется ли
+    # запись. Читатель раковины стоит отдельной осью: у него есть и текст отметки,
+    # и имя раковины, и нет ровно оператора записи.
+    print("  --- звено 7: производитель отбирается РАЗБОРОМ (инъекция парами)")
+    mark = f"{FLAG}=1"
+    fixtures: list[tuple[str, bool, str]] = [
+        # ЗАПИСЬ ИСПОЛНЯЕТСЯ → производитель
+        ("prod-plain.sh", True,
+         '#!/usr/bin/env bash\necho "' + mark + '" >> "$GITHUB_ENV"\n'),
+        ("prod-guarded.sh", True,
+         '#!/usr/bin/env bash\n[ -n "${GITHUB_ENV:-}" ] && echo "' + mark
+         + '" >> "$GITHUB_ENV"\n'),
+        ("prod-heredoc.sh", True,
+         '#!/usr/bin/env bash\ncat >> "$GITHUB_ENV" <<EOF\n' + mark + '\nEOF\n'),
+        ("prod-write.py", True,
+         'import os\nwith open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:\n'
+         '    fh.write("' + mark + '\\n")\n'),
+        # ПРОЗА О ЗАПИСИ → НЕ производитель
+        ("prose-comment.sh", False,
+         '#!/usr/bin/env bash\n# отметка ' + mark + ' уезжает в "$GITHUB_ENV"\ntrue\n'),
+        ("prose-dquote.sh", False,
+         '#!/usr/bin/env bash\necho "ставим ' + mark + ' в $GITHUB_ENV"\n'),
+        ("prose-squote.sh", False,
+         "#!/usr/bin/env bash\necho 'ставим " + mark + " в $GITHUB_ENV'\n"),
+        ("prose-heredoc.sh", False,
+         "#!/usr/bin/env bash\ncat <<'EOF'\nотметка " + mark + " уезжает в $GITHUB_ENV\nEOF\n"),
+        ("prose-docstring.py", False,
+         '"""Отметку ' + mark + ' ставит владелец подъёма — она уезжает в $GITHUB_ENV."""\n'
+         'import sys\n\nsys.exit(0)\n'),
+        ("prose-string.py", False,
+         'MESSAGE = "отметка ' + mark + ' уезжает в $GITHUB_ENV"\nprint(MESSAGE)\n'),
+        ("prose-fstring.py", False,
+         'WHO = "владелец подъёма"\nMESSAGE = f"{WHO} ставит ' + mark
+         + ' в $GITHUB_ENV"\nprint(MESSAGE)\n'),
+        # ЧИТАТЕЛЬ РАКОВИНЫ: текст отметки и имя раковины есть, записи нет
+        ("reader.sh", False,
+         '#!/usr/bin/env bash\ngrep -q \'' + mark + '\' "$GITHUB_ENV"\n'),
+    ]
+    with tempfile.TemporaryDirectory() as td:
+        fx = pathlib.Path(td) / "scripts"
+        fx.mkdir()
+        for name, _want, text in fixtures:
+            (fx / name).write_text(text, encoding="utf-8")
+        got = set(flag_producers(fx))
+        for name, want, _text in fixtures:
+            say((name in got) == want,
+                f"{name}: " + ("запись исполняется → производитель" if want
+                               else "запись не исполняется → НЕ производитель"),
+                f"предикат ответил «{'да' if name in got else 'нет'}», "
+                f"ждали «{'да' if want else 'нет'}»")
+        want_all = {n for n, w, _ in fixtures if w}
+        say(got == want_all,
+            f"на подставном наборе производителей {len(want_all)} из {len(fixtures)} — "
+            f"остальное проза о записи и чтение раковины",
+            f"ответ {sorted(got)}, ждали {sorted(want_all)}")
+        empty = pathlib.Path(td) / "empty"
+        empty.mkdir()
+        say(flag_producers(empty) == [],
+            "каталог скриптов пуст → производителей ноль (вход звена 7 отсутствует)")
+
     print("самопроверка:", "PASS" if ok else "FAIL")
     return 0 if ok else 1
 
@@ -520,6 +1040,9 @@ def main() -> int:
           f"({', '.join(f'{w}/{j}' for w, j, _, _ in jobs)}), шагов в них {seen['steps']}, "
           f"из них выносящих вердикт о продукте {seen['verdict']} (с условием {seen['guarded']}), "
           f"несущих причину своду {seen['carrier']}, без условия после подъёма {seen['noif']}, "
+          f"ШАГОВ-производителей отметки {seen['producers']} при ШАГАХ-читателях "
+          f"{seen['readers']} (производят её {len(flag_producers())} скрипта: "
+          f"{', '.join(flag_producers()) or 'НИ ОДНОГО'}), "
           f"послаблений делегирования {len(DELEGATION_EXEMPT)}; "
           f"тел шагов исполнено {proven} × 3 прогона (контроль · третья категория · находка)")
     if seen["verdict"] == 0 or seen["carrier"] == 0:

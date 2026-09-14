@@ -53,14 +53,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // Как поднимают слушателя и как заводят измеритель. Разъедутся с кодом —
 // перепись найдёт ноль подъёмов, и гейт скажет об этом отдельной строкой, а не
 // промолчит.
 const (
-	serverPkg   = "github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	serverPkg   = "github.com/PRO-Robotech/corelib/grpcsrv"
 	serverFunc  = "NewServer"
 	latencyFunc = "NewServerLatency"
 

@@ -4,7 +4,6 @@
 package middleware_test
 
 import (
-	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -105,16 +104,18 @@ func TestNLB1a02_CatalogNoLegacyLbType(t *testing.T) {
 	require.True(t, sawNlb, "expected loadbalancer catalog entries keyed on nlb_* object types")
 }
 
-// TestNLB1a02_CatalogCopiesByteIdentical — verifies NLB-1a-02: the two embedded
-// catalog copies (gateway middleware + iam seed) are byte-identical, so the edge
-// Check and the iam grant-taxonomy resolve against exactly the same authz surface.
-func TestNLB1a02_CatalogCopiesByteIdentical(t *testing.T) {
-	root := repoRoot(t)
-	gw, err := os.ReadFile(filepath.Join(root, "gateway", "internal", "middleware", "embed", "permission_catalog.json"))
-	require.NoError(t, err)
-	iam, err := os.ReadFile(filepath.Join(root, "services", "iam", "internal", "apps", "kaname", "seed", "embedded", "permission_catalog.json"))
-	require.NoError(t, err)
-	require.Truef(t, bytes.Equal(gw, iam),
-		"embedded permission_catalog.json copies drifted (gateway=%d bytes, iam=%d bytes) — both must be renamed in lockstep",
-		len(gw), len(iam))
-}
+// Здесь стоял TestNLB1a02_CatalogCopiesByteIdentical — сверка ДВУХ вшитых копий
+// каталога прав (края и посева службы доступа) на побайтовое равенство.
+//
+// Утверждение снято ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ: служба вынесена отдельным
+// репозиторием (задача #1111), второй копии в этом дереве нет. Равенство двух
+// объявлений невыразимо, когда одно из них лежит в другом дереве, — и
+// подставить вместо него «копия одна, значит равенство держится» было бы
+// вакуумным утверждением, зелёным при любом дрейфе.
+//
+// Что осталось предметом ЗДЕСЬ: форма и содержимое единственной оставшейся
+// копии — их судят соседние утверждения этого файла и
+// permission_catalog_acr_invariant_test.go. Согласие двух копий стало
+// МЕЖРЕПОЗИТОРНЫМ обязательством, и координаты второй стороны здесь намеренно
+// не приводятся: координата, резолвящаяся в другом дереве, читается как
+// резолвящаяся в этом.

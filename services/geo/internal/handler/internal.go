@@ -15,8 +15,8 @@ package handler
 import (
 	"context"
 
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
 	geov1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 
 	region "github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/api/region"
 	zone "github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/api/zone"

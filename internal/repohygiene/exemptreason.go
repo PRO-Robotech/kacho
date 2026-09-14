@@ -58,13 +58,24 @@ var exemptReasonDictionary = map[string]string{
 // переведены в полосу сужения на данных, где решение принимает тот же владелец,
 // но край при этом ОБЯЗАН извлечь принципала. Строка перечня без живой записи
 // каталога — находка, поэтому запись и координата снимаются одним изменением.
+//
+// ЧЕТЫРЕ КООРДИНАТЫ СЛУЖБЫ ДОСТУПА СНЯТЫ ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ (вынос
+// `services/iam` отдельным продуктом). Записи каталога у этих методов ЖИВЫ — край
+// по-прежнему их маршрутизирует, контракт по-прежнему лежит в `proto/`, — а вот
+// код, принимающий решение, уехал в чужое дерево. Координата, которую здесь ни
+// при каком состоянии диска не резолвить, есть утверждение о том, чего не
+// существует; держать её значило бы обещать проверку, которой нет.
+//
+// Требование при этом НЕ снято, а АДРЕСОВАНО ВЛАДЕЛЬЦУ: полоса, чья часть
+// объявлена внешне-исходной (`productnaming.SourcesInThisTree`), судится в
+// репозитории владельца, а здесь считается ОТДЕЛЬНЫМ ЧИСЛОМ переписи. Молчаливый
+// пропуск был бы неотличим от «осмотрели и сошлось». Послабление ИСТЕКАЕТ САМО:
+// вернётся часть в это дерево — ведомость разреза перестанет называть её внешней,
+// и координата снова станет обязательной; исчезнут записи из каталога — истечёт и
+// предмет.
 var EnforcementSite = map[string]string{
-	"kaname.cloud.iam.v1.AccountService/Create":       "services/iam/internal/apps/kaname/api/account/create.go",
-	"kaname.cloud.iam.v1.AuthorizeService/WhoAmI":     "services/iam/internal/apps/kaname/api/authorize/whoami.go",
-	"kaname.cloud.iam.v1.IdentityQuotaService/List":   "services/iam/internal/apps/kaname/api/identityquota/handler.go",
-	"kaname.cloud.iam.v1.AccessBindingService/Create": "services/iam/internal/apps/kaname/api/access_binding/create.go",
-	"kacho.cloud.operation.OperationService/Get":      "gateway/internal/opsproxy/proxy.go",
-	"kacho.cloud.operation.OperationService/Cancel":   "gateway/internal/opsproxy/proxy.go",
+	"kacho.cloud.operation.OperationService/Get":    "gateway/internal/opsproxy/proxy.go",
+	"kacho.cloud.operation.OperationService/Cancel": "gateway/internal/opsproxy/proxy.go",
 }
 
 // ExemptCatalogRow — запись каталога прав вместе с копией, из которой прочитана.
@@ -80,7 +91,14 @@ type ExemptJudgement struct {
 	Total    int
 	Exempt   int
 	ByReason map[string]int
-	Findings []string
+	// SiteJudgedHere — полос, у которых причина требует координаты И владелец
+	// живёт в ЭТОМ дереве: единственные, о которых молчание что-то значит.
+	SiteJudgedHere int
+	// SiteDeferredToOwner — полос, чей владелец объявлен внешне-исходным.
+	// Отдельным числом, а не вычетом: пропуск, не названный числом, неотличим
+	// от «осмотрели и сошлось».
+	SiteDeferredToOwner int
+	Findings            []string
 }
 
 // Census — объём осмотренного одной строкой. Печатается ВСЕГДА: «ноль находок»
@@ -97,6 +115,8 @@ func (j ExemptJudgement) Census() string {
 	sort.Strings(reasons)
 	return "осмотрено: записей " + strconv.Itoa(j.Total) +
 		", из них `<exempt>` " + strconv.Itoa(j.Exempt) +
+		"; координата энфорса: судится здесь " + strconv.Itoa(j.SiteJudgedHere) +
+		", отложено владельцу в чужом дереве " + strconv.Itoa(j.SiteDeferredToOwner) +
 		"; по причинам: " + strings.Join(reasons, " ")
 }
 
@@ -117,7 +137,12 @@ func serviceShortName(fqn string) string {
 // `sites` — перечень координат энфорса, `siteExists` — предикат существования
 // координаты в дереве. Оба параметрами, а не глобальными: инъекция обязана
 // управлять входом судьи, иначе она проверяла бы дерево, а не судью.
-func JudgeExemptLane(rows []ExemptCatalogRow, sites map[string]string, siteExists func(string) bool) ExemptJudgement {
+func JudgeExemptLane(
+	rows []ExemptCatalogRow,
+	sites map[string]string,
+	siteExists func(string) bool,
+	ownerOutsideTree func(fqn string) bool,
+) ExemptJudgement {
 	j := ExemptJudgement{ByReason: map[string]int{}}
 	claimed := map[string]bool{}
 
@@ -163,7 +188,21 @@ func JudgeExemptLane(rows []ExemptCatalogRow, sites map[string]string, siteExist
 		}
 
 		// Остальные три причины утверждают, что решение принимает КОД. Значит у
-		// них обязана быть живая координата этого кода.
+		// них обязана быть живая координата этого кода — но только если сам код
+		// лежит в ЭТОМ дереве. У части, объявленной внешне-исходной, координата
+		// не резолвится и резолвиться не может; требование адресуется её
+		// владельцу, а здесь считается отдельным числом.
+		if ownerOutsideTree != nil && ownerOutsideTree(r.FQN) {
+			j.SiteDeferredToOwner++
+			if named, ok := sites[r.FQN]; ok {
+				j.Findings = append(j.Findings, "перечень координат называет метод, чей "+
+					"владелец объявлен внешне-исходным: "+r.FQN+" → "+named+
+					" — координата здесь не резолвится ни при каком состоянии дерева")
+				claimed[r.FQN] = true
+			}
+			continue
+		}
+		j.SiteJudgedHere++
 		site, ok := sites[r.FQN]
 		if !ok {
 			j.Findings = append(j.Findings, "причина "+r.ExemptReason+

@@ -113,7 +113,7 @@ func TestPermissionCatalog_EmbeddedAsset_Loads(t *testing.T) {
 
 // TestPermissionCatalog_RegistryV1Present_EntryFloor — hermetic regression
 // guard for the stale-permission-catalog prod bug: a stale
-// `make sync-permission-catalog` shipped an embedded catalog that had dropped
+// `make -C gateway permission-catalog-apply` shipped an embedded catalog that had dropped
 // the registry.v1 RPCs, so those methods hit "no entry for method" → denied.
 // The generic embed test's floor (>=240) sits well below the buggy value and
 // therefore cannot catch a re-regression. This test pins the actual floor
@@ -153,7 +153,7 @@ func TestPermissionCatalog_RegistryV1Present_EntryFloor(t *testing.T) {
 	// A floor is a guard against a SILENT shrink; a deliberate retire moves it, and
 	// only by the number of entries the retire actually removed.
 	assert.GreaterOrEqual(t, c.Size(), 285,
-		"embedded catalog shrank below the known floor — stale `make sync-permission-catalog`?")
+		"embedded catalog shrank below the known floor — stale `make -C gateway permission-catalog-apply`?")
 
 	// registry.v1 methods MUST be present (the regressed surface).
 	for _, want := range []struct{ fqn, perm string }{
@@ -453,7 +453,7 @@ func TestPermissionCatalog_InternalClusterService_LockedSystemAdmin(t *testing.T
 //     and InternalAuthorizeService.RunRegoTest.
 //
 // The embedded catalog is kept in sync with proto-gen via
-// `make sync-permission-catalog`.
+// `make -C gateway permission-catalog-apply`.
 func TestPermissionCatalog_ListPermissionCatalog_ExemptAndTombstones(t *testing.T) {
 	c, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
@@ -483,7 +483,7 @@ func TestPermissionCatalog_ListPermissionCatalog_ExemptAndTombstones(t *testing.
 // object is meaningless), Internal.* admin RPCs stay `system_admin` (no
 // surface/relation downgrade on cluster-internal admin methods), and exempt
 // RPCs stay exempt. The embedded catalog is kept in sync with proto-gen via
-// `make sync-permission-catalog`.
+// `make -C gateway permission-catalog-apply`.
 //
 // The dividing line is the SCOPE, not the verb in the method name. A method scoped
 // on the object itself takes the object's verb; a method scoped on the parent

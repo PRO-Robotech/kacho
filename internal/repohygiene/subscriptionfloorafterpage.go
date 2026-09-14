@@ -61,6 +61,7 @@ import (
 	"io"
 	"io/fs"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -84,7 +85,15 @@ const (
 var subscriptionFloorSelectors = []string{"Floor", "ObserveFloor"}
 
 // SubscriptionFloorAfterPageOptions — посадка анализатора.
-type SubscriptionFloorAfterPageOptions struct{ Root string }
+type SubscriptionFloorAfterPageOptions struct {
+	Root string
+	// ExtraFiles — файлы, уже прочитанные вызывающим (например, из пакета
+	// подписки общего фундамента через corelibPackageGoFiles) и подаваемые
+	// под своим синтетическим путём вместо диска: наблюдатель границы и
+	// сервер потока переехали в модуль (github.com/PRO-Robotech/corelib), и
+	// обход opts.Root их больше не достигает.
+	ExtraFiles map[string][]byte
+}
 
 // SubscriptionFloorAfterPageCensus — объём осмотренного по КАЖДОЙ полосе.
 //
@@ -136,35 +145,15 @@ func AuditSubscriptionFloorAfterPage(
 	// readers[каталог][имя] — помощники, читающие страницу окном.
 	readers := map[string]map[string]string{}
 
-	err := filepath.WalkDir(opts.Root, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() {
-			switch d.Name() {
-			case ".git", "vendor", "node_modules", "testdata":
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		census.GoFiles++
-
-		file, perr := parser.ParseFile(fset, path, nil, 0)
-		if perr != nil {
-			return fmt.Errorf("разбор %s: %w", path, perr)
-		}
+	// scanFile — тело одного файла, разобранного КЕМ УГОДНО (диском либо
+	// вызывающим через ExtraFiles): предмет один, разница только в том, откуда
+	// взяты байты.
+	scanFile := func(rel string, file *ast.File) {
 		if !ownsSubscriptionFloor(file) {
-			return nil
+			return
 		}
 		census.OwnedFiles++
 
-		rel, relErr := filepath.Rel(opts.Root, path)
-		if relErr != nil {
-			rel = path
-		}
 		rel = filepath.ToSlash(rel)
 		dir := filepath.ToSlash(filepath.Dir(rel))
 
@@ -231,10 +220,55 @@ func AuditSubscriptionFloorAfterPage(
 				scanned = append(scanned, rec)
 			}
 		}
+	}
+
+	err := filepath.WalkDir(opts.Root, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case ".git", "vendor", "node_modules", "testdata":
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		census.GoFiles++
+
+		file, perr := parser.ParseFile(fset, path, nil, 0)
+		if perr != nil {
+			return fmt.Errorf("разбор %s: %w", path, perr)
+		}
+		rel, relErr := filepath.Rel(opts.Root, path)
+		if relErr != nil {
+			rel = path
+		}
+		scanFile(rel, file)
 		return nil
 	})
 	if err != nil {
 		return nil, census, err
+	}
+
+	// ExtraFiles — тот же предмет, вне диска: наблюдатель границы и сервер
+	// потока переехали в модуль общего фундамента, и обход opts.Root их не
+	// достигает. Порядок относительно disk-обхода безразличен: судится он
+	// после того, как readers наполнен ПОЛНОСТЬЮ, а не по ходу заполнения.
+	extraRels := make([]string, 0, len(opts.ExtraFiles))
+	for rel := range opts.ExtraFiles {
+		extraRels = append(extraRels, rel)
+	}
+	sort.Strings(extraRels)
+	for _, rel := range extraRels {
+		census.GoFiles++
+		file, perr := parser.ParseFile(fset, rel, opts.ExtraFiles[rel], 0)
+		if perr != nil {
+			return nil, census, fmt.Errorf("разбор %s: %w", rel, perr)
+		}
+		scanFile(rel, file)
 	}
 
 	for _, rec := range scanned {

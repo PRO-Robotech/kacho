@@ -13,9 +13,9 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
 
+	"github.com/PRO-Robotech/corelib/ids"
+	"github.com/PRO-Robotech/corelib/operations"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
-	"github.com/PRO-Robotech/kacho/pkg/ids"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
@@ -281,13 +281,13 @@ func (u *CreateTargetGroupUseCase) assertNameUnique(ctx context.Context, project
 //
 // A durable intent carries ONLY proxy-registrable tuples. kaname's
 // least-privilege policy accepts the ownership/parent relations declared in
-// pkg/authz/proxytuple and reserves
+// corelib/authz/proxytuple and reserves
 // privilege relations for the AccessBinding flow, so the creator (`admin`) tuple
 // this used to append was refused on every delivery.
 //
 // A refusal from the model owner is TERMINAL: the applier maps it to
 // drainer.ErrPermanent (clients/iam/register_applier.go) and the shared drainer
-// classifies it the same way for every service (pkg/outbox/drainer/classify.go).
+// classifies it the same way for every service (corelib/outbox/drainer/classify.go).
 // So such a row poisons on its FIRST attempt and leaves the partition-head
 // blocking set at once — it does not hold later intents for this target group for
 // any deadline. What it costs is the registration: the applier stops at the first

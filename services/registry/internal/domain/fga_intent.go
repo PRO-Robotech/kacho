@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
+	"github.com/PRO-Robotech/corelib/authz/proxytuple"
 )
 
 // FGA-register-intent — чистые domain-value-типы transactional-outbox owner-tuple
@@ -24,7 +24,7 @@ import (
 
 // FGAObjectTypeRegistry — FGA object-type namespace-реестра. object-prefix
 // `registry_` РАВЕН имени сервиса kacho-registry, и словарь имён модулей
-// (pkg/platformmodules) объявляет у него обе колонки одинаковыми — в отличие от
+// (corelib/platformmodules) объявляет у него обе колонки одинаковыми — в отличие от
 // балансировщика, у которого различны три написания.
 const FGAObjectTypeRegistry = "registry_registry"
 
@@ -47,7 +47,7 @@ const FGAObjectTypeProject = "project"
 // hierarchy-relation репозитория к его namespace-реестру
 // (registry_repository #parent @registry_registry).
 //
-// Все три НАЗЫВАЮТСЯ из объявления приёмной стороны (pkg/authz/proxytuple), а не
+// Все три НАЗЫВАЮТСЯ из объявления приёмной стороны (corelib/authz/proxytuple), а не
 // пишутся здесь литералом: закрытый набор принадлежит kaname, и второе написание
 // чужого набора — копия, которая разойдётся молча. Цена расхождения не «красный
 // тест»: отвергнутое отношение отвергается на КАЖДОЙ доставке, а очередь считает

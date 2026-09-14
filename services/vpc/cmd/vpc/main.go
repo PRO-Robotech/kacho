@@ -20,29 +20,29 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
-	"github.com/PRO-Robotech/kacho/pkg/observability"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
-	"github.com/PRO-Robotech/kacho/pkg/outbox"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
-	"github.com/PRO-Robotech/kacho/pkg/servicehost"
+	"github.com/PRO-Robotech/corelib/authz/authzmetrics"
+	coredb "github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/listnarrow"
+	"github.com/PRO-Robotech/corelib/observability"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/operations/operationspb"
+	"github.com/PRO-Robotech/corelib/outbox"
+	"github.com/PRO-Robotech/corelib/outbox/bootgate"
+	"github.com/PRO-Robotech/corelib/outbox/drainer"
+	"github.com/PRO-Robotech/corelib/outbox/metrics"
+	"github.com/PRO-Robotech/corelib/outbox/reconciler"
+	"github.com/PRO-Robotech/corelib/servicehost"
 
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
-	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	"github.com/PRO-Robotech/corelib/retention"
+	"github.com/PRO-Robotech/corelib/subscription"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/retention"
-	"github.com/PRO-Robotech/kacho/pkg/subscription"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/subscriptionjournal"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
-	"github.com/PRO-Robotech/kacho/pkg/observability/health"
+	"github.com/PRO-Robotech/corelib/observability/health"
 	addressapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/address"
 	addresspoolapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/addresspool"
 	cidrgroupapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/cidrgroup"
@@ -70,9 +70,9 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/cqrsadapter"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 
-	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
+	"github.com/PRO-Robotech/corelib/schemaguard"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/migrations"
 )
 
@@ -82,7 +82,7 @@ const configPathEnv = "KACHO_VPC_CONFIG_PATH"
 
 func main() {
 	// kacho-vpc — single-purpose binary: только обслуживает API. Миграции живут в
-	// отдельном `cmd/migrator` (cobra-based; сам накат — pkg/migratorrun).
+	// отдельном `cmd/migrator` (cobra-based; сам накат — corelib/migratorrun).
 	// Subcommand-проверка — в switch ниже.
 
 	cfg, err := config.Load(os.Getenv(configPathEnv))
@@ -274,7 +274,7 @@ func runServe(cfg config.Config) error {
 	// них не значится. Проверка стоит ЗДЕСЬ, до дозвонов, чтобы оператор получил
 	// названную ручку раньше, чем отказ соединения; сама проводка читает то же
 	// объявление тем же методом, поэтому «страж доволен» ⟺ «дилится объявленное».
-	if err := cfg.ValidateQuotaAuthority(mtlsCfg); err != nil {
+	if err := cfg.ValidateQuotaAuthority(); err != nil {
 		return fmt.Errorf("config validate (quota authority): %w", err)
 	}
 
@@ -311,7 +311,7 @@ func runServe(cfg config.Config) error {
 	// Строка заводится КАЖДОЙ мутацией — контракт объявляет мутации асинхронными,
 	// и `Operation` возвращается вместо ресурса, — а снятия строк не было ни у
 	// одного из восьми владельцев. Порог, предикат и расписание объявлены в
-	// `pkg/operations` и `pkg/retention` ОДИН раз: восемь расписаний об одном
+	// `corelib/operations` и `corelib/retention` ОДИН раз: восемь расписаний об одном
 	// предмете разошлись бы молча.
 	if _, err := operations.StartRetentionSweep(
 		ctx, opsRepo, operations.DefaultRetentionConfig(),
@@ -530,7 +530,7 @@ func runServe(cfg config.Config) error {
 	// законная посадка, в которой тянущий не заводится и состояние курсора
 	// называет причину.
 	quotaEdge, stopQuotaEdge, qerr := buildQuotaAuthorityEdge(
-		ctx, cfg, mtlsCfg, pool, "kacho_vpc", logger)
+		ctx, cfg, pool, "kacho_vpc", logger)
 	if qerr != nil {
 		return qerr
 	}
@@ -539,7 +539,7 @@ func runServe(cfg config.Config) error {
 
 	svcs := buildServices(pool, slavePool, projectClient, geoClient, geoRegionClient, listFilter, opsRepo, syncRegistrar, quotaLimits, projectClient, quotaEdge.ReadPosture, cfg, logger)
 
-	// Сервер потока изменений — ОБЩИЙ (`pkg/subscription`), а не свой. Форма
+	// Сервер потока изменений — ОБЩИЙ (`corelib/subscription`), а не свой. Форма
 	// подписки объявлена однажды на всю платформу, и владелец журнала приносит
 	// сюда только объявление СВОЕГО журнала: где он лежит, каким каналом будит,
 	// как его строка становится событием. Курсор, граница устоявшегося, пределы,
@@ -682,7 +682,7 @@ func runServe(cfg config.Config) error {
 	}
 
 	// Ограничитель допуска запросов ЗДЕСЬ больше не собирается: его провязал
-	// носитель контура (`pkg/servicehost`) по оси дескриптора. Пока проводка
+	// носитель контура (`corelib/servicehost`) по оси дескриптора. Пока проводка
 	// принадлежала этому корню, она существовала ровно у одного сервиса из
 	// семи — и «провязал» было неотличимо от «не провязал» без сплошной
 	// переписи (задачи #692, #771). Величины по-прежнему объявляет посадка
@@ -913,7 +913,7 @@ func dialPeer(
 // недостижим: на выключенном фильтре и на нерезолвимом адресе процесс не
 // поднимается — `ValidateListFilter` отказывает на любой посадке, а адрес там и
 // здесь резолвится ОДНИМ методом Config. Отказ на отсутствующей модели остаётся
-// свойством самого сужателя (`pkg/listnarrow`: нет соединения ⇒ PermissionDenied),
+// свойством самого сужателя (`corelib/listnarrow`: нет соединения ⇒ PermissionDenied),
 // а не следствием того, что ручку не тронули.
 func buildListFilter(cfg config.Config, conn clients.Conn, logger *slog.Logger) *authzfilter.Narrower {
 	if !cfg.AuthZ.ListFilter.Enabled || conn == nil {

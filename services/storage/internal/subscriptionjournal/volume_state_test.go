@@ -10,8 +10,8 @@ import (
 
 	"google.golang.org/protobuf/types/known/anypb"
 
+	"github.com/PRO-Robotech/corelib/subscription"
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
-	"github.com/PRO-Robotech/kacho/pkg/subscription"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/subscriptionjournal"
 )

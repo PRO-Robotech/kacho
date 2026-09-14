@@ -128,7 +128,8 @@ CASES.append(Case(
 # ЗДЕСЬ СТОЯЛО «RED until the #71 FGA model+wiring deploys … GREEN after» И ПОМЕТКА
 # `# verifies #71` НА САМОМ КЕЙСЕ. Оба пережили свой предмет: типы `storage_volume` /
 # `storage_snapshot` / `storage_image` в модели есть
-# (`proto/kaname/cloud/iam/v1/fga_model.fga`), тикет `kacho#71` закрыт COMPLETED
+# (`kaname/cloud/iam/v1/fga_model.fga` модуля `github.com/PRO-Robotech/kaname`),
+# тикет `kacho#71` закрыт COMPLETED
 # 2026-08-06 — значит объявление «ожидаемо красный» стало ЛОЖНЫМ утверждением о
 # продукте, а пометка выкупала из «всё обязано быть зелёным» кейс, который обязан быть
 # зелёным. Отдельно: пометка называла тикет БЕЗ репозитория (`#71`), а такую ссылку
@@ -889,7 +890,7 @@ CASES.append(Case(
     # verifies CS1-S1-03 (INV-8 leak-guard на filter-пути)
     #
     # Прежде здесь стояло `oneOf([200, 400])` под заголовком «handled». Исход при
-    # этом УСТАНОВЛЕН: `name="a\' OR 1=1--"` разбирается штатно (`pkg/filter`.`Parse`
+    # этом УСТАНОВЛЕН: `name="a\' OR 1=1--"` разбирается штатно (`corelib/filter`.`Parse`
     # — поле `name` в белом списке use-case\'а `volume.List`, значение в кавычках,
     # хвоста нет), значение уезжает ПАРАМЕТРОМ запроса, и страница приходит пустой,
     # потому что тома с таким именем нет. `400` производится только негодным

@@ -67,6 +67,15 @@ const dropGuardManifest = "dropguard.json"
 // не читает, сколько бы файлов ни лежало рядом.
 const dropGuardRunner = "pkg/dropguard/dropguardtest"
 
+// dropGuardRunnerImportForms — ОБА написания импорта, которыми проба зовёт
+// общего стража. Пакет-предмет переехал ЦЕЛИКОМ из pkg/dropguard этого дерева
+// в dropguard общего фундамента (github.com/PRO-Robotech/corelib) — второе
+// написание единственное, которое сегодня встречается в реальных пробах.
+var dropGuardRunnerImportForms = []string{
+	`"github.com/PRO-Robotech/kacho/pkg/dropguard/dropguardtest"`,
+	`"github.com/PRO-Robotech/corelib/dropguard/dropguardtest"`,
+}
+
 // dropGuardOwner — служба, объявившая сносы манифестом, и то, что при ней есть.
 type dropGuardOwner struct {
 	Pkg      string // services/<svc>/internal/migrations
@@ -180,8 +189,10 @@ func dirCallsDropGuardRunner(t *testing.T, dir string) bool {
 		if readErr != nil {
 			t.Fatalf("не прочитан %s: %v", e.Name(), readErr)
 		}
-		if strings.Contains(string(raw), `"github.com/PRO-Robotech/kacho/`+dropGuardRunner+`"`) {
-			return true
+		for _, form := range dropGuardRunnerImportForms {
+			if strings.Contains(string(raw), form) {
+				return true
+			}
 		}
 	}
 	return false

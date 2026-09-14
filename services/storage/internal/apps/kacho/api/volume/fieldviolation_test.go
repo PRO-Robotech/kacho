@@ -23,7 +23,7 @@ import (
 // violation at all.
 //
 // The status MESSAGE is deliberately NOT asserted in this file. By contract
-// pkg/validate returns the generic "invalid argument" text and puts the offending
+// corelib/validate returns the generic "invalid argument" text and puts the offending
 // field name in the DETAILS — asserting the message would lock the wrong half of
 // the contract and would keep passing while the details stayed empty.
 func violatedFields(err error) []string {
@@ -58,7 +58,7 @@ func hasField(fields []string, want string) bool {
 // contract for Volume.Create: an over-limit description / labels map must come back
 // as INVALID_ARGUMENT whose details name the offending field.
 //
-// The use-case used to rebuild pkg/validate's rich error from its TEXT
+// The use-case used to rebuild corelib/validate's rich error from its TEXT
 // (`fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, err.Error())`). That threw the
 // BadRequest detail away and left the caller with a correct code, a message quoting
 // gRPC's own wire framing, and no way to tell WHICH field was rejected.

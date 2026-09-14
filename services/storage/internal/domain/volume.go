@@ -7,7 +7,7 @@ import (
 	"errors"
 	"time"
 
-	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
+	corevalidate "github.com/PRO-Robotech/corelib/validate"
 )
 
 // ID-префиксы ресурсов домена Storage (3-char, ids.NewID). Тип ресурса читается
@@ -82,7 +82,7 @@ func (n VolumeName) Validate() error {
 // из чего выводить. Пустое имя до записи не доживает — его заменяет NameOrDefault в
 // use-case, в точке, где идентификатор уже есть.
 //
-// Возвращается контрактный ErrIllegalName, а не ошибка pkg/validate: текст «Illegal
+// Возвращается контрактный ErrIllegalName, а не ошибка corelib/validate: текст «Illegal
 // argument name» — часть контракта Kachō (§1.7) и утверждается кейсами чёрного ящика.
 // Канону делегируется РЕШЕНИЕ о форме, а не форма ответа.
 func validateDisplayName(v string) error {

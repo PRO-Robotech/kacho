@@ -91,7 +91,12 @@ import (
 	"strings"
 )
 
-// SettledWatermarkHome — каталог, в котором обязан лежать единственный наблюдатель.
+// SettledWatermarkHome — каталог ДЕРЕВА, в котором наблюдатель жил до переезда
+// в общий фундамент. Держится ради инъекции (settledwatermarksingularity_injection_test.go),
+// которая строит синтетические деревья с каталогом "pkg/" и о модуле
+// github.com/PRO-Robotech/corelib не знает вовсе. На настоящем дереве
+// наблюдатель живёт по synthetic-пути settledWatermarkFoundationPrefix —
+// см. inSettledWatermarkFoundation.
 const SettledWatermarkHome = "pkg/"
 
 // settledWatermarkMarkers — несущие признаки наблюдения. Обязаны стоять ВСЕ ТРИ
@@ -118,6 +123,13 @@ type SettledWatermarkOptions struct {
 	// GoRoots — каталоги прод-кода, в которых ищется наблюдатель.
 	GoRoots []string
 	Allow   []SettledWatermarkAllowance
+	// ExtraFiles — файлы, уже прочитанные ВЫЗЫВАЮЩИМ (например, из пакета
+	// общего фундамента через corelibPackageGoFiles) и подаваемые под своим
+	// синтетическим путём вместо диска: наблюдатель переехал в модуль
+	// (github.com/PRO-Robotech/corelib), и диск под GoRoots его больше не
+	// несёт. Ключ — синтетический относительный путь (например
+	// "corelib/subscription/watermark.go"), значение — исходник.
+	ExtraFiles map[string][]byte
 }
 
 // SettledWatermarkCensus — объём осмотренного. Печатается ВСЕГДА.
@@ -175,18 +187,39 @@ func AuditSettledWatermarkSingularity(
 			observers = append(observers, rel)
 		}
 	}
+
+	// ExtraFiles — то же наблюдение, но по содержимому, уже прочитанному
+	// вызывающим из модуля общего фундамента: диск под GoRoots туда не
+	// доходит, а разбор — тот же самый, разницы в предмете нет.
+	extraRels := make([]string, 0, len(o.ExtraFiles))
+	for rel := range o.ExtraFiles {
+		extraRels = append(extraRels, rel)
+	}
+	sort.Strings(extraRels)
+	for _, rel := range extraRels {
+		census.GoFiles++
+		lits, err := goStringLiteralsFromSource(rel, o.ExtraFiles[rel])
+		if err != nil {
+			return nil, census, err
+		}
+		census.Literals += len(lits)
+		if allMarkersPresent(lits) {
+			observers = append(observers, rel)
+		}
+	}
+
 	sort.Strings(observers)
 	census.Observers = len(observers)
 	for _, rel := range observers {
-		if strings.HasPrefix(rel, SettledWatermarkHome) {
+		if inSettledWatermarkFoundation(rel) {
 			census.InHome++
 		}
 	}
 
 	_, _ = fmt.Fprintf(log,
-		"осмотрено: файлов прод-кода Go %d · строковых литералов %d · наблюдателей границы %d (из них в %s — %d) · послаблений %d\n",
+		"осмотрено: файлов прод-кода Go %d · строковых литералов %d · наблюдателей границы %d (в фундаменте %s или %s — %d) · послаблений %d\n",
 		census.GoFiles, census.Literals, census.Observers,
-		SettledWatermarkHome, census.InHome, census.Allowances)
+		SettledWatermarkHome, settledWatermarkFoundationPrefix, census.InHome, census.Allowances)
 
 	if census.GoFiles == 0 {
 		return nil, census, fmt.Errorf(
@@ -228,13 +261,13 @@ func AuditSettledWatermarkSingularity(
 			_ = a
 			continue
 		}
-		if !strings.HasPrefix(rel, SettledWatermarkHome) {
+		if !inSettledWatermarkFoundation(rel) {
 			findings = append(findings, SettledWatermarkFinding{
 				Kind:  "НАБЛЮДАТЕЛЬ-ВНЕ-ФУНДАМЕНТА",
 				Where: rel,
 				What: fmt.Sprintf(
-					"наблюдатель границы устоявшегося вне %s: у домена заводится свой курсор, свой размен и свой разбор отката, и общий механизм остаётся общим по имени",
-					SettledWatermarkHome),
+					"наблюдатель границы устоявшегося вне %s и вне %s общего фундамента: у домена заводится свой курсор, свой размен и свой разбор отката, и общий механизм остаётся общим по имени",
+					SettledWatermarkHome, settledWatermarkFoundationPrefix),
 			})
 		}
 	}
@@ -268,6 +301,21 @@ func AuditSettledWatermarkSingularity(
 		return findings[i].Where < findings[j].Where
 	})
 	return findings, census, nil
+}
+
+// settledWatermarkFoundationPrefix — синтетический префикс, которым
+// corelibPackageGoFiles метит файлы, прочитанные из кэша модулей общего
+// фундамента (github.com/PRO-Robotech/corelib). Наблюдатель, объявленный
+// там, — тот же единственный экземпляр, что раньше стоял под
+// SettledWatermarkHome: место переехало из каталога дерева в модуль, а не
+// расплодилось.
+const settledWatermarkFoundationPrefix = "corelib/"
+
+// inSettledWatermarkFoundation — «в фундаменте» для обеих форм этого предмета:
+// прежнего пути дерева (проверяется инъекцией на синтетических GoRoots) и
+// нынешнего синтетического пути модуля (ExtraFiles).
+func inSettledWatermarkFoundation(rel string) bool {
+	return strings.HasPrefix(rel, SettledWatermarkHome) || strings.HasPrefix(rel, settledWatermarkFoundationPrefix)
 }
 
 // allMarkersPresent — несёт ли файл ТЕКСТ НАБЛЮДЕНИЯ: литерал, в котором стоят
@@ -310,6 +358,21 @@ func goStringLiterals(path string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+	return stringLiteralsOfFile(f), nil
+}
+
+// goStringLiteralsFromSource — то же самое, но по содержимому, уже
+// прочитанному вызывающим (ExtraFiles), а не по диску.
+func goStringLiteralsFromSource(name string, src []byte) ([]string, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, name, src, 0)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", name, err)
+	}
+	return stringLiteralsOfFile(f), nil
+}
+
+func stringLiteralsOfFile(f *ast.File) []string {
 	var out []string
 	ast.Inspect(f, func(n ast.Node) bool {
 		lit, ok := n.(*ast.BasicLit)
@@ -323,5 +386,5 @@ func goStringLiterals(path string) ([]string, error) {
 		out = append(out, v)
 		return true
 	})
-	return out, nil
+	return out
 }

@@ -24,7 +24,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	tfstate "github.com/hashicorp/terraform-plugin-testing/terraform"
 
-	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/corelib/ids"
 )
 
 // edgeKindTargetGroup — как поддельный край обслуживает группу целей.

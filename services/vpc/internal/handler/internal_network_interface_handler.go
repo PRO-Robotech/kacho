@@ -24,9 +24,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/corelib/ids"
+	corevalidate "github.com/PRO-Robotech/corelib/validate"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
-	"github.com/PRO-Robotech/kacho/pkg/ids"
-	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/services/nicinternal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/dto"

@@ -16,7 +16,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	"github.com/PRO-Robotech/corelib/migratorcli"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
 )
 

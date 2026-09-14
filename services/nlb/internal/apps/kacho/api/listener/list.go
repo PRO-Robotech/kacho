@@ -15,7 +15,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
+	"github.com/PRO-Robotech/corelib/listnarrow"
 )
 
 // ListUseCase — sync list listeners фильтрованный по `load_balancer_id`

@@ -6,7 +6,7 @@ package targetgroup
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/corelib/operations"
 
 	computeclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/compute"
 	geoclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/geo"

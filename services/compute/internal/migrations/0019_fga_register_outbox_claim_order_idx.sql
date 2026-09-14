@@ -54,7 +54,7 @@
 --
 -- Behaviour is UNCHANGED: same claim statement, same partition-head semantics,
 -- same per-partition FIFO. Only the access path changes. Locked by
--- pkg/outbox/drainer Test_ClaimPlan_DoesNotScaleWithBacklogDepth.
+-- corelib/outbox/drainer Test_ClaimPlan_DoesNotScaleWithBacklogDepth.
 --
 -- Plain (in-tx) CREATE INDEX IF NOT EXISTS, matching the table's sibling index
 -- migrations. On a matured cluster where the build's brief table write-lock would

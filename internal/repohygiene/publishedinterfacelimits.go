@@ -99,7 +99,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // limitsReaderScope — прод-дерево владельца величин: только здесь упоминание имени

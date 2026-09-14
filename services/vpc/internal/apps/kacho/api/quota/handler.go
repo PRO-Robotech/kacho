@@ -9,7 +9,7 @@ import (
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 	"github.com/PRO-Robotech/kacho/pkg/quota/quotapb"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	quotaband "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/quota"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 )
@@ -17,10 +17,12 @@ import (
 // Handler — реализация vpcv1.QuotaServiceServer. Тонкий транспорт: разбор
 // запроса → полоса учёта → формат ответа.
 //
-// ТОЛЬКО ЧТЕНИЕ, и это граница прав, а не объём работы. Величины назначает
-// администратор облака через `iam.v1.InternalLimitService` на внутреннем
-// слушателе; здесь их нельзя ни завести, ни изменить, ни удалить. Арендатор,
-// способный поднять свой потолок, потолка не имеет.
+// ТОЛЬКО ЧТЕНИЕ, и это граница прав, а не объём работы. Величину назначал
+// авторитет величин службы доступа — домен, снятый целиком; производителя у его
+// контракта не осталось ни в одном дереве, и эта установка объявляет домен
+// отсутствующим. Здесь величину нельзя ни завести, ни изменить, ни удалить, и
+// было нельзя всегда: арендатор, способный поднять свой потолок, потолка не
+// имеет. Судьба авторитета — PRO-Robotech/kacho#2190.
 type Handler struct {
 	vpcv1.UnimplementedQuotaServiceServer
 

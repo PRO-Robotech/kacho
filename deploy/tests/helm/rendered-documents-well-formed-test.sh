@@ -174,7 +174,14 @@ echo "=== документ несёт apiVersion и kind; имя перемен�
 profiles_checked=0
 # Ожидание объявляется ДО обхода: посчитанное ПОСЛЕ него совпало бы с фактом по
 # построению и не утверждало бы ничего.
-EXPECTED_ASSERTIONS="$(stacks_table | grep -c . || true)"
+# ТАБЛИЦА ЧИТАЕТСЯ ОДИН РАЗ, И ЕЁ КОД ПОТРЕБОВАН. Прежняя редакция спрашивала её
+# ДВАЖДЫ — здесь через `| grep -c . || true` и ниже через `<<<"$(stacks_table)"`, —
+# и оба раза роняла код: труба доносит код `grep`, `|| true` затирает остаток, а
+# подстановка в here-string кода не отдаёт вовсе. Два вопроса об одном предмете
+# могли ответить по-разному, и отказ читателя приходил как «ноль строк».
+STACK_ROWS="$(stacks_table)" \
+  || fatal "таблица стеков не прочитана — это «не выполнилось», а не «стеков нет»"
+EXPECTED_ASSERTIONS="$(printf '%s\n' "$STACK_ROWS" | grep -c . || true)"
 [ "$EXPECTED_ASSERTIONS" -ge 1 ] || fatal "таблица стеков не дала ни одной строки — обходить нечего"
 while IFS= read -r row; do
   [ -z "$row" ] && continue
@@ -191,7 +198,7 @@ while IFS= read -r row; do
   fi
   if check_profile "$label" "${args[@]}"; then ok; else fail=1; fi
   profiles_checked=$((profiles_checked + 1))
-done <<<"$(stacks_table)"
+done <<<"$STACK_ROWS"
 
 # Объём осмотренного — отдельное утверждение. Обход, который не отрендерил ни
 # одного стека, зелен ровно так же, как чистое дерево.

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+	corequota "github.com/PRO-Robotech/corelib/quota"
 )
 
 // Словарь посадок у nlb — ТОТ ЖЕ, что у остальных шести стражей старта.

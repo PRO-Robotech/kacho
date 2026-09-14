@@ -32,7 +32,7 @@ import (
 	"context"
 	"testing"
 
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+	coredb "github.com/PRO-Robotech/corelib/db"
 )
 
 func TestSomething(t *testing.T) {
@@ -57,9 +57,9 @@ import (
 	"context"
 	"testing"
 
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+	coredb "github.com/PRO-Robotech/corelib/db"
 
-	"github.com/PRO-Robotech/kacho/pkg/pgtest"
+	"github.com/PRO-Robotech/corelib/pgtest"
 )
 
 func TestSomething(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // readMovingTree — состав ПЕРЕЕЗЖАЮЩИХ каталогов `pkg/` и путь модуля платформы,
@@ -91,6 +91,23 @@ func TestFoundationNamesNoMovingPackageOutsideAnImport(t *testing.T) {
 	root := repoRoot(t)
 
 	platform, moving, contents := readMovingTree(t, root)
+
+	// ПРЕДМЕТ ОСИ ИСЧЕРПАН, А НЕ РАСПОЗНАВАТЕЛЬ ОСЛЕП: переезд `corelib`/
+	// `оснастка сборки` из pkg/ этого дерева ЗАВЕРШЁН (`foundationboundary.go`,
+	// §«переезд завершён» у foundationClasses) — каталогов этих двух классов
+	// под pkg/ не осталось ни одного, значит и «переезжающих путей в прозе»
+	// у ЭТОГО дерева больше не бывает: предмет уехал целиком, а не спрятался.
+	// Признак измерим и самообновляем: как только под pkg/ снова появится
+	// каталог класса corelib/оснастка (K3-1 требует классифицировать его
+	// ПРАВИЛОМ приёмки, не молчанием), moving станет непустым, и проверка
+	// возобновится сама — без правки этого файла.
+	if len(moving) == 0 {
+		t.Skipf("переезжающих каталогов pkg/* нет: 0 предметов класса corelib/оснастка "+
+			"сборки в дереве (%d прод-файлов pkg/ осмотрено) — ось не проверяет прозу "+
+			"о том, чего не существует. Возобновится сама, если такой каталог появится",
+			len(contents))
+	}
+
 	findings, stale, census := judgeFoundationProseCoordinatesAgainst(
 		platform, moving, contents, knownBakedDescriptors)
 

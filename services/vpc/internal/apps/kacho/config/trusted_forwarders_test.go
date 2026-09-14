@@ -7,7 +7,7 @@ package config
 //
 // Оба листенера строят доверенную пару
 // grpcsrv.CertIdentityExtract → TrustedPrincipalExtract(WithTrustedForwarders(список)).
-// Контракт corelib (pkg/grpcsrv principalIsTrusted) сужает круг ТОЛЬКО когда список
+// Контракт corelib (corelib/grpcsrv principalIsTrusted) сужает круг ТОЛЬКО когда список
 // НЕПУСТ; на пустом он отвечает «доверяем» ЛЮБОМУ пиру, прошедшему проверку
 // сертификата. Внутренний периметр у нас объявлен НЕдоверенным, значит пустой список
 // означает не «никому», а «всем» — и это надо ловить отказом старта, а не WARN'ом.

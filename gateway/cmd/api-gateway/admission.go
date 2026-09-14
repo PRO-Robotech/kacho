@@ -8,7 +8,7 @@ package main
 //
 // # Почему у края своя проводка, а не носителя контура
 //
-// Шесть сервисов платформы поднимают слушателей через `pkg/servicehost`, и
+// Шесть сервисов платформы поднимают слушателей через `corelib/servicehost`, и
 // потолок им ставит он. Край собирает серверы сам — внешний в `main.go`,
 // cluster-internal в `internal_grpc_listener.go`, — поэтому провязка стоит
 // здесь. Это отличие раскладки, а не решения: величины берутся из ТОГО ЖЕ пола
@@ -48,8 +48,8 @@ import (
 
 	"log/slog"
 
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
 // admissionLimits — величины слушателя края: ручки посадки там, где она их

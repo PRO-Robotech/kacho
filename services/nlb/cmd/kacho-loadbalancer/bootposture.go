@@ -4,8 +4,8 @@
 package main
 
 import (
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-	"github.com/PRO-Robotech/kacho/pkg/observability"
+	coredb "github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/observability"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
 )
@@ -23,7 +23,7 @@ import (
 //     применяется к ОБОИМ gRPC-листенерам (:9090 и :9091), поэтому оба поля
 //     отражают одно и то же реальное состояние — асимметрии тут не существует.
 //   - authz_check   — не адрес и БОЛЬШЕ НЕ nil-проверка клиента: звено решения о
-//     доступе ставит носитель контура (`pkg/servicehost`), и ветки «поднять
+//     доступе ставит носитель контура (`corelib/servicehost`), и ветки «поднять
 //     слушатели без него» у него нет — либо контур собран, либо старт отвергнут.
 //     Самоотчёт печатается ПОСЛЕ приёма дескриптора, поэтому здесь это факт
 //     построения, а не наблюдение над указателем. Прежний предикат

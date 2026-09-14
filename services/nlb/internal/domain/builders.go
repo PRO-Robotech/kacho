@@ -3,7 +3,7 @@
 
 package domain
 
-import "github.com/PRO-Robotech/kacho/pkg/ids"
+import "github.com/PRO-Robotech/corelib/ids"
 
 // Factory-builders для domain-сущностей. Inline-литералы domain-структур с
 // magic-defaults (Status="CREATING", SlowStart=0, DeregistrationDelay=300) в

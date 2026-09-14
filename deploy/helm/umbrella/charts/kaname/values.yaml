@@ -1,8 +1,22 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 # Default values for kaname sub-chart.
-# Все ключи здесь — fallback'и для umbrella values.dev.yaml (которая override'ит через
-# `kaname: { ... }`). НЕ ставить здесь production-secret'ы.
+#
+# ЗДЕСЬ СТОЯЛО «все ключи — fallback'и для umbrella values.dev.yaml». Это
+# неверно, и неверность увела разбор задачи #2599 на ложный след: боевой стек
+# `prod` состоит из ОДНОГО профиля (`deploy/stacks.txt`), поэтому всё, чего тот
+# не назвал, приезжает ИМЕННО ОТСЮДА — на замере 2026-09-12 это 7 ключей из 9 в
+# блоках `image`/`db`, и стек `fe3455` берёт отсюда же все шесть ключей `db`.
+# Значит эти значения — умолчания ВСЕХ стеков, а не только стенда разработки.
+#
+# Почему это законно и почему стражей на пустоту здесь НЕ заводится (координата
+# узла базы выводится helm из имени релиза и псевдонима подчарта; профиль
+# объявляет те же координаты у владельца — `pg-iam.auth`; согласие сторон
+# подтверждает гейт посадки на живом стенде, падая и на нуле соединений) —
+# `docs/architecture/umbrella-subchart-defaults-name-the-release-it-installs.md`.
+# Там же названы два остатка и предикат повторения замера.
+#
+# НЕ ставить здесь production-secret'ы: пароли приходят ссылкой на секрет.
 
 # Phase 2 (KAC-127) — `kacho.domain` пробрасывается из umbrella values.yaml
 # через subchart-import (см. dependencies в umbrella Chart.yaml). Sub-chart
@@ -390,6 +404,11 @@ service:
     # service-internal.yaml — the registry data-plane fetches JWKS from here.
     jwksProxyPort: 9097
 
+# Эти шесть ключей — умолчания ВСЕХ стеков, а не только стенда: боевые профили
+# объявляют те же координаты у ВЛАДЕЛЬЦА (`pg-iam.auth`), а не здесь, и адрес
+# узла helm выводит из имени релиза и псевдонима подчарта. Почему стража на
+# пустоту здесь нет и чем согласие сторон удержано —
+# `docs/architecture/umbrella-subchart-defaults-name-the-release-it-installs.md`.
 db:
   host: kacho-umbrella-pg-iam
   port: "5432"
@@ -846,7 +865,7 @@ authMode: production
 # операция над данными и релиза службы не требует.
 #
 # КТО ЕГО КЛАДЁТ (kacho#1901). Объект порождает `make module-manifests-configmap`
-# (инструмент — pkg/modulemanifest/producer): он обходит `services/*/manifest.yaml`
+# (инструмент — corelib/modulemanifest/producer): он обходит `services/*/manifest.yaml`
 # того же дерева и берёт ИМЯ ОБЪЕКТА из тех же профилей, что и helm, — отсюда,
 # из `configMapName` ниже. Одно объявление на обе стороны: второе разошлось бы с
 # первым молча, под смонтировал бы один объект, производитель положил бы другой,

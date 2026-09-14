@@ -13,12 +13,12 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+	coredb "github.com/PRO-Robotech/corelib/db"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/addresspool"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 
-	"github.com/PRO-Robotech/kacho/pkg/pgtest"
+	"github.com/PRO-Robotech/corelib/pgtest"
 )
 
 // DB-level защита от пересечения CIDR в AddressPool (нормализованная child-таблица

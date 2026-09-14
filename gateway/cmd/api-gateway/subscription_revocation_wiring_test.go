@@ -26,7 +26,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 	"github.com/PRO-Robotech/kacho/gateway/internal/subscriptionstream"
-	"github.com/PRO-Robotech/kacho/pkg/subjectchange"
+	"github.com/PRO-Robotech/kaname/pkg/subjectchange"
 )
 
 func quietLog() *slog.Logger {

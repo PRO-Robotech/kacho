@@ -36,9 +36,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PRO-Robotech/corelib/credsecret"
+	"github.com/PRO-Robotech/corelib/ids"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
-	"github.com/PRO-Robotech/kacho/pkg/credsecret"
-	"github.com/PRO-Robotech/kacho/pkg/ids"
 )
 
 // mintDistinct чеканит годное удостоверение со СВОИМ идентификатором и

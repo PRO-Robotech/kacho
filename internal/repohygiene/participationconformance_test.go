@@ -44,12 +44,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // carrierServeCall — вызов, которым сервис поднимается носителем.
 const (
-	carrierPkg  = "github.com/PRO-Robotech/kacho/pkg/servicehost"
+	carrierPkg  = "github.com/PRO-Robotech/corelib/servicehost"
 	carrierFunc = "Serve"
 )
 
@@ -244,7 +244,7 @@ func synthCarrierTree(t *testing.T, files map[string]string) string {
 
 const carrierProdSrc = `package main
 
-import "github.com/PRO-Robotech/kacho/pkg/servicehost"
+import "github.com/PRO-Robotech/corelib/servicehost"
 
 func main() { _ = servicehost.Serve(nil, nil) }
 `
@@ -254,7 +254,7 @@ const carrierProbeSrc = `package main
 import (
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/servicehost"
+	"github.com/PRO-Robotech/corelib/servicehost"
 )
 
 func TestCarrierStarts(t *testing.T) { _ = servicehost.Serve(nil, nil) }
@@ -314,7 +314,7 @@ func TestCarrierParticipationGateIgnoresANonServeCall(t *testing.T) {
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/cmd/x/main.go": `package main
 
-import "github.com/PRO-Robotech/kacho/pkg/servicehost"
+import "github.com/PRO-Robotech/corelib/servicehost"
 
 func main() { _ = servicehost.DefaultShutdownGrace }
 `,

@@ -50,7 +50,7 @@ RUN go build -o /alpha ./services/alpha/cmd/alpha
 // dockerWithLdflags — ЗАКОННЫЙ БЛИЗНЕЦ предыдущего: та же сборка, отличается
 // ОДНИМ фактом — подстановкой обоих символов.
 const dockerWithLdflags = `FROM golang AS builder
-RUN go build -ldflags "-X main.buildVersion=$KACHO_IMAGE_VERSION -X main.buildCommit=$KACHO_IMAGE_REVISION" -o /alpha ./services/alpha/cmd/alpha
+RUN go build -ldflags "-X main.buildVersion=$OCI_IMAGE_VERSION -X main.buildCommit=$OCI_IMAGE_REVISION" -o /alpha ./services/alpha/cmd/alpha
 `
 
 func auditOne(t *testing.T, goPath, goBody, dockerPath, dockerBody string) StampedBinary {
@@ -85,7 +85,7 @@ func TestBuildStampInjection_BuildWithLdflagsStamps(t *testing.T) {
 func TestBuildStampInjection_HalfTheSymbolsIsNotAStamp(t *testing.T) {
 	t.Parallel()
 	half := `FROM golang AS builder
-RUN go build -ldflags "-X main.buildVersion=$KACHO_IMAGE_VERSION" -o /alpha ./services/alpha/cmd/alpha
+RUN go build -ldflags "-X main.buildVersion=$OCI_IMAGE_VERSION" -o /alpha ./services/alpha/cmd/alpha
 `
 	b := auditOne(t, "services/alpha/cmd/alpha/main.go", srcDeclaresStamp,
 		"services/alpha/Dockerfile", half)
@@ -109,8 +109,8 @@ func TestBuildStampInjection_ContinuationLinesAreStitched(t *testing.T) {
 	t.Parallel()
 	split := `FROM golang AS builder
 RUN go build \
-    -ldflags "-X main.buildVersion=$KACHO_IMAGE_VERSION \
-      -X main.buildCommit=$KACHO_IMAGE_REVISION" \
+    -ldflags "-X main.buildVersion=$OCI_IMAGE_VERSION \
+      -X main.buildCommit=$OCI_IMAGE_REVISION" \
     -o /alpha ./services/alpha/cmd/alpha
 `
 	b := auditOne(t, "services/alpha/cmd/alpha/main.go", srcDeclaresStamp,
@@ -195,25 +195,25 @@ func TestBuildStampInjection_EmptyCorpusIsAnError(t *testing.T) {
 // dockerArgInWrongStage — аргументы объявлены в КОНЕЧНОЙ ступени (там они нужны
 // клейму), а сборка идёт в первой. Ровно та форма, что лежала в дереве до #2527.
 const dockerArgInWrongStage = `FROM golang AS builder
-RUN go build -ldflags "-X main.buildVersion=$KACHO_IMAGE_VERSION -X main.buildCommit=$KACHO_IMAGE_REVISION" -o /alpha ./services/alpha/cmd/alpha
+RUN go build -ldflags "-X main.buildVersion=$OCI_IMAGE_VERSION -X main.buildCommit=$OCI_IMAGE_REVISION" -o /alpha ./services/alpha/cmd/alpha
 
 FROM alpine
-ARG KACHO_IMAGE_REVISION=""
-ARG KACHO_IMAGE_VERSION=""
-LABEL org.opencontainers.image.revision="$KACHO_IMAGE_REVISION"
+ARG OCI_IMAGE_REVISION=""
+ARG OCI_IMAGE_VERSION=""
+LABEL org.opencontainers.image.revision="$OCI_IMAGE_REVISION"
 `
 
 // dockerArgInBuilderStage — ЗАКОННЫЙ БЛИЗНЕЦ: те же две ступени, то же клеймо,
 // та же строка сборки; отличие ОДНО — аргументы объявлены и в ступени сборки.
 const dockerArgInBuilderStage = `FROM golang AS builder
-ARG KACHO_IMAGE_REVISION=""
-ARG KACHO_IMAGE_VERSION=""
-RUN go build -ldflags "-X main.buildVersion=$KACHO_IMAGE_VERSION -X main.buildCommit=$KACHO_IMAGE_REVISION" -o /alpha ./services/alpha/cmd/alpha
+ARG OCI_IMAGE_REVISION=""
+ARG OCI_IMAGE_VERSION=""
+RUN go build -ldflags "-X main.buildVersion=$OCI_IMAGE_VERSION -X main.buildCommit=$OCI_IMAGE_REVISION" -o /alpha ./services/alpha/cmd/alpha
 
 FROM alpine
-ARG KACHO_IMAGE_REVISION=""
-ARG KACHO_IMAGE_VERSION=""
-LABEL org.opencontainers.image.revision="$KACHO_IMAGE_REVISION"
+ARG OCI_IMAGE_REVISION=""
+ARG OCI_IMAGE_VERSION=""
+LABEL org.opencontainers.image.revision="$OCI_IMAGE_REVISION"
 `
 
 func TestBuildStampInjection_ArgFromAnotherStageIsAnEmptySubstitution(t *testing.T) {
@@ -222,7 +222,7 @@ func TestBuildStampInjection_ArgFromAnotherStageIsAnEmptySubstitution(t *testing
 		"services/alpha/Dockerfile", dockerArgInWrongStage)
 	require.Truef(t, b.Stamped, "подстановка НАЗВАНА — и именно поэтому одной оси «есть "+
 		"ли -ldflags» мало: файл выглядит проставленным")
-	require.ElementsMatchf(t, []string{"KACHO_IMAGE_REVISION", "KACHO_IMAGE_VERSION"},
+	require.ElementsMatchf(t, []string{"OCI_IMAGE_REVISION", "OCI_IMAGE_VERSION"},
 		b.ArgsUnseen, "оба аргумента объявлены в ЧУЖОЙ ступени: в ступени сборки они "+
 			"не видны, и компоновщик впишет пустую строку")
 }
@@ -252,14 +252,14 @@ ARG R=""
 
 func TestBuildStampInjection_GlobalArgBeforeFirstStageIsNotVisibleInside(t *testing.T) {
 	t.Parallel()
-	global := `ARG KACHO_IMAGE_VERSION=""
-ARG KACHO_IMAGE_REVISION=""
+	global := `ARG OCI_IMAGE_VERSION=""
+ARG OCI_IMAGE_REVISION=""
 FROM golang AS builder
-RUN go build -ldflags "-X main.buildVersion=$KACHO_IMAGE_VERSION -X main.buildCommit=$KACHO_IMAGE_REVISION" -o /alpha ./services/alpha/cmd/alpha
+RUN go build -ldflags "-X main.buildVersion=$OCI_IMAGE_VERSION -X main.buildCommit=$OCI_IMAGE_REVISION" -o /alpha ./services/alpha/cmd/alpha
 `
 	b := auditOne(t, "services/alpha/cmd/alpha/main.go", srcDeclaresStamp,
 		"services/alpha/Dockerfile", global)
-	require.ElementsMatchf(t, []string{"KACHO_IMAGE_REVISION", "KACHO_IMAGE_VERSION"},
+	require.ElementsMatchf(t, []string{"OCI_IMAGE_REVISION", "OCI_IMAGE_VERSION"},
 		b.ArgsUnseen, "аргумент до первого `FROM` виден строкам `FROM`, а ВНУТРИ ступени "+
 			"требует повторного объявления: считать его видимым значило бы прощать "+
 			"ровно тот промах, ради которого ось заведена")

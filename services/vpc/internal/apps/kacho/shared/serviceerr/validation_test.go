@@ -6,7 +6,7 @@ package serviceerr_test
 import (
 	"testing"
 
-	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
+	coreerrors "github.com/PRO-Robotech/corelib/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"

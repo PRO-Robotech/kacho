@@ -6,7 +6,7 @@ package kacho
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 )
 
 // Контракт доступа к строкам учёта числа ресурсов.

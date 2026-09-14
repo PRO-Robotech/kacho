@@ -43,7 +43,18 @@ func TestListNarrowSecondImplementationKeepsItsReason(t *testing.T) {
 	)
 
 	secondExists := dirHasGo(t, filepath.Join(root, secondImpl))
-	singleAction, scanned := foundationTakesASingleAction(t, filepath.Join(root, foundationDir))
+
+	// Дом фундамента переехал ЦЕЛИКОМ из pkg/listnarrow этого дерева (остались
+	// только подкаталоги класса kaname, вроде narrowiam) в пакет listnarrow
+	// общего фундамента (github.com/PRO-Robotech/corelib) — читаем ТУДА, куда
+	// он переехал, если местный каталог не несёт файлов прямо в себе.
+	foundationPath := filepath.Join(root, foundationDir)
+	if !dirHasGo(t, foundationPath) {
+		if moduleDir, merr := corelibModuleRootDir(root); merr == nil {
+			foundationPath = filepath.Join(moduleDir, "listnarrow")
+		}
+	}
+	singleAction, scanned := foundationTakesASingleAction(t, foundationPath)
 
 	t.Logf("осмотрено функций фундамента %d; принимает одиночное действие: %v; "+
 		"вторая реализация в дереве: %v", scanned, singleAction, secondExists)

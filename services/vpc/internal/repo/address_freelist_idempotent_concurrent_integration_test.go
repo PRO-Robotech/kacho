@@ -26,12 +26,12 @@ import (
 	"sync"
 	"testing"
 
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+	coredb "github.com/PRO-Robotech/corelib/db"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/pkg/pgtest"
+	"github.com/PRO-Robotech/corelib/pgtest"
 )
 
 func TestFreelist_ConcurrentAllocateSameAddress(t *testing.T) {

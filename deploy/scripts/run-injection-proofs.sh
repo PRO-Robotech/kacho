@@ -111,6 +111,7 @@ REPO_ROOT="$(cd "$DEPLOY_ROOT/.." && pwd)"
 # ниже — расхождение в любую сторону роняет проверку.
 DECLARED="
 deploy/load-tests/restart-verdict-inject.sh
+deploy/scripts/declared-verdicts-census-inject.sh
 deploy/scripts/deps-failure-class-inject.sh
 deploy/tests/helm/identity-hook-credential-provenance-inject.sh
 deploy/tests/helm/identity-hook-credential-source-inject.sh
@@ -124,7 +125,6 @@ deploy/tests/helm/servername-checked-against-the-peer-inject.sh
 gateway/deploy/revocation_authority_inject.sh
 scripts/ci-local-outcome-inject.sh
 scripts/go-mod-tidy-check-inject.sh
-scripts/judge-outcome-inject.sh
 scripts/overwritten-work-inject.sh
 scripts/hooks/install-inject.sh
 scripts/hooks/prepush-groups-inject.sh
@@ -140,6 +140,7 @@ scripts/release/publish-tag-inject.sh
 scripts/release/publish-version-inject.sh
 scripts/release/summarize-run-inject.sh
 services/nlb/tests/newman/scripts/selftest-assertions-inject.sh
+tools/unreadfieldaudit/unread-field-audit-inject.sh
 "
 
 # ВТОРОЙ ДОМ: доказательство исполняется в НАЗВАННОМ объявлении конвейера, а не
@@ -167,6 +168,7 @@ scripts/release/breaking-since-release-inject.sh|.github/workflows/ci.yaml|ну�
 NOT_A_PROOF="
 deploy/scripts/inject-admin-hop-defects.sh|вносит дефекты в ЖИВОЙ стенд, а не доказывает гейт; запускается целью admin-hop-injection под стражем контекста
 deploy/scripts/run-injection-proofs.sh|это ОБХОДЧИК доказательств, а не доказательство; слово в имени от предмета обхода. Запускать его собой значило бы рекурсию
+gateway/scripts/inject-catalog-splice-defects.sh|доказательство гейта склейки, но НЕ этого обхода: вносит пропажу домена в РЕАЛЬНОЕ дерево контрактов и требует buf+go+python3, поэтому зовётся отдельной целью catalog-splice-inject (gateway/Makefile) руками при правке гейта
 gateway/scripts/inject-domain-generation-defects.sh|доказательство гейта разреза, но НЕ этого обхода: правит рабочее дерево и требует buf+go, поэтому зовётся отдельной целью domain-generation-inject (gateway/Makefile) руками при правке гейта или генераторов
 gateway/scripts/inject-session-cutoff-defects.sh|вносит дефекты в ЖИВОЙ стенд обрыва сессии; запускается вручную при разборе, не обходом
 "

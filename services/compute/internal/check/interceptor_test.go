@@ -13,9 +13,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/operations"
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
-	"github.com/PRO-Robotech/kacho/pkg/authz"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/check"
 )
@@ -105,7 +105,7 @@ func TestInterceptor_Unary_Deny_InstanceStop(t *testing.T) {
 // «Тебе нельзя» означает «повторять бессмысленно» — решение зависит от
 // вызывающего, отношения и объекта, и повтор не меняет ни одного из трёх; здесь
 // же про права не сказано ничего, и через мгновение ответ будет. Полосы целиком —
-// pkg/authz/decision_lane_codes_test.go.
+// corelib/authz/decision_lane_codes_test.go.
 func TestInterceptor_Unary_Unavailable_FailClosed(t *testing.T) {
 	intr, _ := newTestInterceptor(t, func(_ context.Context, _, _, _ string) (bool, error) {
 		return false, errors.New("iam unavailable: connection refused")

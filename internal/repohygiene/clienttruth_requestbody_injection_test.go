@@ -172,13 +172,27 @@ func run() error {
 }
 `)
 	s.write(t, "docs/ok.mdx", curlDoc(`{ "name": "acme", "description": "ACME" }`))
-	var log strings.Builder
-	_, _, err := AuditClientTruthRequestBody(bodyStandOptions(t, s.root), &log)
-	// Невходных полей стало ноль ПО ВСЕМУ входу — и это ОТКАЗ, а не тихий
-	// зелёный: второй
-	// предикат остался бы без предмета, а «находок ноль» получено даром.
-	if err == nil {
-		t.Fatal("набор невходных полей пуст, а анализатор вернул успех")
+	findings, census := s.run(t)
+
+	// Различие с `TestBodyGate_RedOnKeyTheCodeRejects` РОВНО ОДНО: пометка в
+	// тексте отказа. Тот же вызов, то же поле, та же страница — значит
+	// расхождение вердикта нельзя списать на разный вход.
+	if census.RejectedFields != 0 {
+		t.Fatalf("невходных полей выведено %d, ожидался 0: отказ без пометки попал "+
+			"в набор, и гейт запретил бы присылать всё, что вообще проверяется",
+			census.RejectedFields)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("на поле, отвергаемом по ОБЫЧНОМУ поводу, findings=%d, ожидался 0: %v",
+			len(findings), findings)
+	}
+
+	// Предпосылка близнеца: страница была прочитана и ключи рассужены. Без неё
+	// «находок ноль» здесь означало бы «ничего не читали», и близнец молчал бы
+	// при любом распознавателе.
+	if census.BodiesMatched == 0 || census.KeysJudged == 0 {
+		t.Fatalf("тел сопоставлено %d, ключей рассужено %d — близнец молчит потому, "+
+			"что сверка не состоялась", census.BodiesMatched, census.KeysJudged)
 	}
 }
 

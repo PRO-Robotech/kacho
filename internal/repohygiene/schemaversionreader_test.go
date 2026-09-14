@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // serviceMigrationSets и serviceRootSources читают ИНДЕКС git: вердикт обязан

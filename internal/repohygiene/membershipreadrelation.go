@@ -39,12 +39,28 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
+
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 )
 
 const (
-	mrrCatalog   = "gateway/internal/middleware/embed/permission_catalog.json"
-	mrrModel     = "proto/kaname/cloud/iam/v1/fga_model.fga"
+	mrrCatalog = "gateway/internal/middleware/embed/permission_catalog.json"
+	// mrrModelInContract — координата модели прав ВНУТРИ дерева контрактов, то
+	// есть относительно `proto/`.
+	//
+	// Контракты службы доступа вынесены в её репозиторий (kacho#2616, исход C,
+	// 2026-09-13) и приезжают модулем `github.com/PRO-Robotech/kaname`; путь на
+	// диске резолвит `internal/contractsource`. Литерал от корня репозитория
+	// после переезда не краснел бы, а МОЛЧАЛ: обход находил бы ноль файлов и
+	// печатал по ним «находок 0».
+	mrrModelInContract = "kaname/cloud/iam/v1/fga_model.fga"
+	// mrrModel — та же координата ОТ КОРНЯ ДЕРЕВА. Выведена конкатенацией, а не
+	// выписана вторым литералом: два литерала одного пути разошлись бы молча. В
+	// этом виде её пишет синтетическое дерево инъекции
+	// (membershipreadrelation_injection_test.go), и contractsource читает именно
+	// его модель — корень, физически присутствующий в `proto/`, он берёт оттуда.
+	mrrModel     = "proto/" + mrrModelInContract
 	mrrScopeType = "account"
 	// mrrTierAnchor — ярус распорядителя, который отношение обязано читать.
 	mrrTierAnchor = "admin"
@@ -211,9 +227,13 @@ func SurveyMembershipReadRelation(tree *treecorpus.Tree) (MRRCensus, error) {
 
 // mrrRelationDefs — определения отношений типа `account` из модели прав.
 func mrrRelationDefs(tree *treecorpus.Tree) (map[string]string, error) {
-	body, err := os.ReadFile(filepath.Join(tree.Root(), filepath.FromSlash(mrrModel)))
+	path, err := contractsource.Path(tree.Root(), mrrModelInContract)
 	if err != nil {
-		return nil, fmt.Errorf("модель прав не читается: %w", err)
+		return nil, fmt.Errorf("модель прав %s не резолвится: %w", mrrModel, err)
+	}
+	body, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return nil, fmt.Errorf("модель прав %s не читается: %w", path, err)
 	}
 	s := string(body)
 	loc := mrrTypeRe.FindAllStringSubmatchIndex(s, -1)

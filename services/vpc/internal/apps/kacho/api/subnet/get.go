@@ -6,8 +6,8 @@ package subnet
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/pkg/ids"
-	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
+	"github.com/PRO-Robotech/corelib/ids"
+	corevalidate "github.com/PRO-Robotech/corelib/validate"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 )

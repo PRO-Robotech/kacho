@@ -25,7 +25,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/corelib/authz"
 )
 
 // cachedAuthorizer — Authorizer с TTL-кешем положительных вердиктов.

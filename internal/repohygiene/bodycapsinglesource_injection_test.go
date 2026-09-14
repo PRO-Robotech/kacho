@@ -51,8 +51,8 @@ const bodyCapInjectedLegitimateConsumers = `package tokenhttp
 import (
 	"net/http"
 
-	"github.com/PRO-Robotech/kacho/pkg/httpbody"
-	bodycap "github.com/PRO-Robotech/kacho/pkg/httpbody"
+	"github.com/PRO-Robotech/corelib/httpbody"
+	bodycap "github.com/PRO-Robotech/corelib/httpbody"
 	myhttp "example.com/vendorlib/http"
 )
 

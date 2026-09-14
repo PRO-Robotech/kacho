@@ -26,7 +26,7 @@
 -- дочернего списка (`WHERE target_group_id = $1 ORDER BY created_at ASC, id
 -- ASC`) не было вовсе, `targets_tg_idx (target_group_id)` порядка не даёт.
 --
--- `operations` — пятый: общий список операций (`pkg/operations`), у которого все
+-- `operations` — пятый: общий список операций (`corelib/operations`), у которого все
 -- фильтры необязательны. Три существующих индекса ему не помогают —
 -- `operations_project_created_idx` требует равенства по `project_id` (его в
 -- запросе нет) и вдобавок несёт то же смешанное направление;

@@ -388,6 +388,21 @@ func AuditJournalCursorUpperBound(
 	return findings, census, nil
 }
 
+// jcRootDir — каталог корня для одного элемента GoRoots/SQLRoots.
+//
+// Элемент почти всегда ОТНОСИТЕЛЕН дереву (root — эта проверка правит и не
+// трогает). Абсолютный элемент — координата ВНЕ дерева: общий фундамент,
+// извлечённый целиком в отдельный модуль (github.com/PRO-Robotech/corelib) и
+// достающийся из кэша модулей, а не из этого дерева. Join с root такую
+// координату испортил бы («root» + «/abs/path» не существует), поэтому
+// абсолютный путь берётся дословно.
+func jcRootDir(root, r string) string {
+	if filepath.IsAbs(r) {
+		return r
+	}
+	return filepath.Join(root, r)
+}
+
 // jcCollectSchema собирает объявленные типы колонок из миграций И колонки,
 // позиция которых выдаётся в ПОРЯДКЕ ФИКСАЦИЙ.
 //
@@ -400,7 +415,7 @@ func jcCollectSchema(
 	schema = map[string]string{}
 	var paths []string
 	for _, r := range sqlRoots {
-		got, gerr := collectFiles(filepath.Join(root, r), ".sql")
+		got, gerr := collectFiles(jcRootDir(root, r), ".sql")
 		if gerr != nil {
 			return nil, nil, 0, gerr
 		}
@@ -447,7 +462,7 @@ func jcCollectReads(
 ) ([]jcResumableRead, int, int, error) {
 	var files []string
 	for _, r := range goRoots {
-		got, err := collectFiles(filepath.Join(root, r), ".go")
+		got, err := collectFiles(jcRootDir(root, r), ".go")
 		if err != nil {
 			return nil, 0, 0, err
 		}

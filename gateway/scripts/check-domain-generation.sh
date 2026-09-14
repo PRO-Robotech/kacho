@@ -81,6 +81,9 @@ command -v buf >/dev/null || { echo "БЕЗ ПРЕДМЕТА: buf не уста�
 command -v go  >/dev/null || { echo "БЕЗ ПРЕДМЕТА: go не установлен — сверять нечего"  >&2; exit 2; }
 [[ -d "${PROTO_ROOT}" ]] || { echo "БЕЗ ПРЕДМЕТА: нет дерева контрактов ${PROTO_ROOT}" >&2; exit 2; }
 
+# shellcheck source=lib/stage-proto-tree.sh
+source "${REPO_ROOT}/scripts/lib/stage-proto-tree.sh"
+
 WORK="$(mktemp -d)"
 # Уборка снимает запрет записи ПЕРЕД удалением: ось A13 намеренно делает
 # реплику read-only, а unlink требует права записи на КАТАЛОГ. Без этого
@@ -120,6 +123,17 @@ diag_tail() {
   esac
 }
 
+# --- вход СОБИРАЕТСЯ ИЗ МОДУЛЕЙ ------------------------------------------
+#
+# Корень `kaname` в этом дереве не лежит: контракты службы доступа уехали в её
+# репозиторий (kacho#2616, исход C) и приезжают модулем. Гейт обязан судить ТОТ
+# ЖЕ вход, что кормит генераторы, — иначе его собственная стадия выйдет без
+# деревьев службы, и все оси измерят платформу, назвав это полным выходом.
+CONTRACT_ROOT="${WORK}/contract-root"
+kacho_assemble_contract_root "${PROTO_ROOT}" "${CONTRACT_ROOT}" "${MONOREPO_ROOT}" "check-domain-generation" \
+  || { echo "БЕЗ ПРЕДМЕТА: корень контрактов не собрался — судить нечего" >&2; exit 2; }
+PROTO_ROOT="${CONTRACT_ROOT}"
+
 # --- перепись входов ------------------------------------------------------
 echo "check-domain-generation: корень контрактов ${PROTO_ROOT}"
 echo "check-domain-generation: отбор доменов: ${DOMAINS[*]}"
@@ -147,8 +161,6 @@ echo "check-domain-generation: полный выход — записей кат
 #     его свойство утверждается ЯВНО, а не подразумевается.
 # ==========================================================================
 STRIPPED="${WORK}/stripped-proto"
-# shellcheck source=lib/stage-proto-tree.sh
-source "${REPO_ROOT}/scripts/lib/stage-proto-tree.sh"
 stage_proto_tree "${PROTO_ROOT}" "${STRIPPED}" "check-stripped-tree" "${DOMAINS[*]}" \
   || finding A2 "раскладка урезанного дерева отказала"
 
@@ -342,7 +354,11 @@ run_domain_generation stripped "${STRIPPED}" \
 # ==========================================================================
 for gen_log in "${WORK}/ext.catalog.log" "${WORK}/ext.routes.log"; do
   [[ -f "${gen_log}" ]] || { finding A3 "журнала генератора нет: ${gen_log}"; continue; }
-  for key in "корень контрактов" "anchor" "модуль плагина" "пакет плагина" "отбор доменов"; do
+  # Шестой ключ заведён вместе со сборкой входа из модулей (kacho#2616, исход C):
+  # генератор обязан назвать НЕ ТОЛЬКО что прочитал, но и ОТКУДА это взялось — из
+  # дерева или из модуля. Без этого «порождено» неотличимо от «порождено из
+  # неполного входа», а именно эта неполнота давала 233 записи вместо 350.
+  for key in "корень контрактов" "вход генераторов собран в" "anchor" "модуль плагина" "пакет плагина" "отбор доменов"; do
     grep -qF "${key}" "${gen_log}" \
       || finding A3 "перепись генератора $(basename "${gen_log}") не называет «${key}»"
   done

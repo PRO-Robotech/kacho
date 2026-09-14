@@ -27,17 +27,17 @@ package principalmeta
 import (
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/principalwire"
+	"github.com/PRO-Robotech/corelib/principalwire"
 )
 
 // Canonical HTTP header names.
 //
-// ИМЕНА ОБЪЯВЛЕНЫ НЕ ЗДЕСЬ. Их единственное объявление — `pkg/principalwire`,
+// ИМЕНА ОБЪЯВЛЕНЫ НЕ ЗДЕСЬ. Их единственное объявление — `corelib/principalwire`,
 // откуда те же имена берёт фундамент. Здесь стоят только псевдонимы: имя,
 // написанное тут своей рукой, было бы вторым объявлением одного предмета, а
 // расходятся такие два МОЛЧА — переименование одной стороны собирается чисто и
 // кончается ПОТЕРЕЙ личности, а не отказом. Разбор — в шапке
-// `pkg/principalwire`; единственность держит гейт дерева `internal/repohygiene`
+// `corelib/principalwire`; единственность держит гейт дерева `internal/repohygiene`
 // `TestIdentityWireNamespaceIsDeclaredOnce`.
 const (
 	HeaderPrincipalType    = principalwire.HeaderPrincipalType
@@ -247,7 +247,7 @@ func IsAnnotatorProducedKey(name string) bool { return annotatorProducedKeys[nam
 //
 // НАБОР ОБЯЗАН ИМЕТЬ ПРЕДМЕТ: запись про ключ, которого нет среди производимых
 // краем, — исключение, потерявшее предмет, и гейт пакета считает её находкой.
-// РЕШЕНИЕ живёт в каталоге `pkg/principalwire` (поле Key.EdgeOnly) — там же,
+// РЕШЕНИЕ живёт в каталоге `corelib/principalwire` (поле Key.EdgeOnly) — там же,
 // где имена, о которых край и фундамент договариваются. Держать здесь второй
 // перечень значило бы завести второе место об одном предмете: ключ, снятый с
 // края в каталоге и оставшийся в перечне, разошёлся бы молча.

@@ -42,7 +42,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // confirmMarker — признак того, что проба ОТКРЫВАЕТ подтверждение и читает его.

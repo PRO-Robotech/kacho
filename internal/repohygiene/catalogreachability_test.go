@@ -18,13 +18,21 @@
 // метода), и ПЯТЬ из них называют метод, чей сервис не смонтирован ни в одном
 // композиционном корне. Ни один гейт дерева на этом не падал.
 //
-// ЧТО ИЗМЕРЕНО СЕЙЧАС (после снятия): 289 строк каталога, инертных — НОЛЬ. Те пять
-// строк не были «исправлены» переносом в список исключений: сняты сами объявления,
-// потому что у всех четырёх сервисов не было ни сервера, ни клиента, ни одной
-// неgenerated-ссылки — включая типы сообщений. Надгробие снятых имён и гейт на их
-// возвращение — retiredrpcsurface.go: этот анализатор такое возвращение НЕ ловит по
-// построению (имя, вернувшееся вместе с реализацией, смонтировано, и его строки
-// резолвятся), а именно ради этого случая имена и резервируют.
+// ЧТО ИЗМЕРЕНО ТОГДА ЖЕ (после снятия): 289 строк каталога, инертных — НОЛЬ. Те
+// пять строк не были «исправлены» переносом в список исключений: сняты сами
+// объявления, потому что у всех четырёх сервисов не было ни сервера, ни клиента,
+// ни одной неgenerated-ссылки — включая типы сообщений. Надгробие снятых имён и
+// гейт на их возвращение — retiredrpcsurface.go: этот анализатор такое
+// возвращение НЕ ловит по построению (имя, вернувшееся вместе с реализацией,
+// смонтировано, и его строки резолвятся), а именно ради этого случая имена и
+// резервируют.
+//
+// ЧТО ИЗМЕРЕНО СЕЙЧАС, после выноса службы доступа в свой репозиторий (kacho#2616,
+// исход C, 2026-09-13): строк каталога 350, методов контракта 350, инертных 117 —
+// все 117 принадлежат службе, чей композиционный корень уехал, а каталог края
+// остался. Предикат переписи — сам гейт ниже, посадка
+// `TestCatalogReachability_InertRowsAreExactlyTheAllowedServices`; числа стареют,
+// перемеряй их прогоном, а не чтением этой строки.
 package repohygiene
 
 import (
@@ -53,7 +61,133 @@ import (
 // что каталог целиком состоит из строк, за которыми стоит обслуживаемый метод.
 // Способность анализатора находить инертные строки от этой пустоты не зависит —
 // она доказана инъекцией, см. TestCatalogReachability_RedOnAnUnmountedService.
-var knownInertCatalogRows = []string{}
+// СЕЙЧАС НЕ ПУСТ, И ЭТО СЛЕДСТВИЕ ЗАПИСИ `mountAllow`, А НЕ ВТОРОЕ РАЗРЕШЕНИЕ.
+// Служба доступа вынесена отдельным продуктом (решение владельца kacho#2616,
+// исход C, 2026-09-13): её композиционный корень уехал вместе с реализацией, и
+// вслед за ними уехали контракты и заглушки — их публикует МОДУЛЬ
+// `github.com/PRO-Robotech/kaname`, откуда анализатор их и читает (третий дом,
+// `apiStubHomes`). Каталог прав КРАЯ при этом остался здесь и по-прежнему несёт
+// 117 её строк из 350. Отсюда: каждая такая строка объявляет полосу для вызова,
+// который до края этого дерева не дойдёт, — и это не остаток, а раскладка.
+//
+// ЗДЕСЬ СТОЯЛО «когда контракт уедет вслед за реализацией, инвентарь опустеет
+// целиком». Контракт уехал, и инвентарь НЕ ОПУСТЕЛ: 117 строк на месте, потому
+// что опустеть им было бы нечем — записи каталога никуда не уезжали, а
+// объявления методов читаются из модуля. Это тот самый класс, который корпус
+// ловит: предсказание пережило свой предмет. Инвентарь опустеет ровно тогда,
+// когда край перестанет нести строки этой службы, — и вот об ЭТОМ гейт скажет
+// первым.
+//
+// Перечень ТОЧНЫЙ и истекает сам: строка ушла — либо метод смонтировали, либо
+// край снял её из каталога, снимайте запись; строка появилась — контракт объявил
+// полосу для метода, которого никто не обслуживает.
+var knownInertCatalogRows = []string{
+	"kaname.cloud.iam.v1.AccessBindingService/Create",
+	"kaname.cloud.iam.v1.AccessBindingService/Delete",
+	"kaname.cloud.iam.v1.AccessBindingService/ExpandAccess",
+	"kaname.cloud.iam.v1.AccessBindingService/Get",
+	"kaname.cloud.iam.v1.AccessBindingService/List",
+	"kaname.cloud.iam.v1.AccessBindingService/ListAssignableRoles",
+	"kaname.cloud.iam.v1.AccessBindingService/ListByAccount",
+	"kaname.cloud.iam.v1.AccessBindingService/ListByRole",
+	"kaname.cloud.iam.v1.AccessBindingService/ListByScope",
+	"kaname.cloud.iam.v1.AccessBindingService/ListBySubject",
+	"kaname.cloud.iam.v1.AccessBindingService/ListOperations",
+	"kaname.cloud.iam.v1.AccessBindingService/ListSubjectPrivileges",
+	"kaname.cloud.iam.v1.AccessBindingService/Revoke",
+	"kaname.cloud.iam.v1.AccessBindingService/Update",
+	"kaname.cloud.iam.v1.AccountService/Create",
+	"kaname.cloud.iam.v1.AccountService/Delete",
+	"kaname.cloud.iam.v1.AccountService/Get",
+	"kaname.cloud.iam.v1.AccountService/List",
+	"kaname.cloud.iam.v1.AccountService/ListAllOperations",
+	"kaname.cloud.iam.v1.AccountService/ListOperations",
+	"kaname.cloud.iam.v1.AccountService/Update",
+	"kaname.cloud.iam.v1.AuthorizeService/BatchCheck",
+	"kaname.cloud.iam.v1.AuthorizeService/Check",
+	"kaname.cloud.iam.v1.AuthorizeService/ExpandRelations",
+	"kaname.cloud.iam.v1.AuthorizeService/ListSubjects",
+	"kaname.cloud.iam.v1.AuthorizeService/WhoAmI",
+	"kaname.cloud.iam.v1.GroupService/AddMember",
+	"kaname.cloud.iam.v1.GroupService/Create",
+	"kaname.cloud.iam.v1.GroupService/Delete",
+	"kaname.cloud.iam.v1.GroupService/Get",
+	"kaname.cloud.iam.v1.GroupService/List",
+	"kaname.cloud.iam.v1.GroupService/ListMembers",
+	"kaname.cloud.iam.v1.GroupService/ListOperations",
+	"kaname.cloud.iam.v1.GroupService/RemoveMember",
+	"kaname.cloud.iam.v1.GroupService/Update",
+	"kaname.cloud.iam.v1.IdentityQuotaService/List",
+	"kaname.cloud.iam.v1.InternalBootstrapTokenService/MintBootstrapToken",
+	"kaname.cloud.iam.v1.InternalClusterService/Get",
+	"kaname.cloud.iam.v1.InternalClusterService/GrantAdmin",
+	"kaname.cloud.iam.v1.InternalClusterService/ListAdmins",
+	"kaname.cloud.iam.v1.InternalClusterService/RevokeAdmin",
+	"kaname.cloud.iam.v1.InternalIAMService/Check",
+	"kaname.cloud.iam.v1.InternalIAMService/CheckBasicCredentialLive",
+	"kaname.cloud.iam.v1.InternalIAMService/ForceLogout",
+	"kaname.cloud.iam.v1.InternalIAMService/GetRoleCompiled",
+	"kaname.cloud.iam.v1.InternalIAMService/LookupSubject",
+	"kaname.cloud.iam.v1.InternalIAMService/PollSubjectChanges",
+	"kaname.cloud.iam.v1.InternalIAMService/RegisterResource",
+	"kaname.cloud.iam.v1.InternalIAMService/ResolveBasicCredential",
+	"kaname.cloud.iam.v1.InternalIAMService/UnregisterResource",
+	"kaname.cloud.iam.v1.InternalInteractiveClientService/Create",
+	"kaname.cloud.iam.v1.InternalInteractiveClientService/Delete",
+	"kaname.cloud.iam.v1.InternalInteractiveClientService/Get",
+	"kaname.cloud.iam.v1.InternalInteractiveClientService/List",
+	"kaname.cloud.iam.v1.InternalInteractiveClientService/Update",
+	"kaname.cloud.iam.v1.InternalModuleService/Apply",
+	"kaname.cloud.iam.v1.InternalModuleService/Get",
+	"kaname.cloud.iam.v1.InternalModuleService/List",
+	"kaname.cloud.iam.v1.InternalModuleService/Plan",
+	"kaname.cloud.iam.v1.InternalOperationsService/ListIamOperations",
+	"kaname.cloud.iam.v1.InternalSessionRevocationsService/IsRevoked",
+	"kaname.cloud.iam.v1.InternalSessionRevocationsService/ListByUser",
+	"kaname.cloud.iam.v1.InternalSessionRevocationsService/Revoke",
+	"kaname.cloud.iam.v1.InternalSessionRevocationsService/SessionCutoffOf",
+	"kaname.cloud.iam.v1.InternalUserService/Get",
+	"kaname.cloud.iam.v1.InternalUserService/OnRecoveryCompleted",
+	"kaname.cloud.iam.v1.InternalUserService/UpsertFromIdentity",
+	"kaname.cloud.iam.v1.MembershipService/Get",
+	"kaname.cloud.iam.v1.MembershipService/List",
+	"kaname.cloud.iam.v1.PermissionCatalogService/ListPermissionCatalog",
+	"kaname.cloud.iam.v1.ProjectService/Create",
+	"kaname.cloud.iam.v1.ProjectService/Delete",
+	"kaname.cloud.iam.v1.ProjectService/Get",
+	"kaname.cloud.iam.v1.ProjectService/List",
+	"kaname.cloud.iam.v1.ProjectService/ListOperations",
+	"kaname.cloud.iam.v1.ProjectService/Update",
+	"kaname.cloud.iam.v1.RoleService/Create",
+	"kaname.cloud.iam.v1.RoleService/Delete",
+	"kaname.cloud.iam.v1.RoleService/Get",
+	"kaname.cloud.iam.v1.RoleService/List",
+	"kaname.cloud.iam.v1.RoleService/ListOperations",
+	"kaname.cloud.iam.v1.RoleService/Update",
+	"kaname.cloud.iam.v1.SAKeyService/Issue",
+	"kaname.cloud.iam.v1.SAKeyService/List",
+	"kaname.cloud.iam.v1.SAKeyService/Revoke",
+	"kaname.cloud.iam.v1.ServiceAccountService/Create",
+	"kaname.cloud.iam.v1.ServiceAccountService/Delete",
+	"kaname.cloud.iam.v1.ServiceAccountService/Disable",
+	"kaname.cloud.iam.v1.ServiceAccountService/Enable",
+	"kaname.cloud.iam.v1.ServiceAccountService/Get",
+	"kaname.cloud.iam.v1.ServiceAccountService/List",
+	"kaname.cloud.iam.v1.ServiceAccountService/ListOperations",
+	"kaname.cloud.iam.v1.ServiceAccountService/Update",
+	"kaname.cloud.iam.v1.UserService/Block",
+	"kaname.cloud.iam.v1.UserService/Delete",
+	"kaname.cloud.iam.v1.UserService/Get",
+	"kaname.cloud.iam.v1.UserService/Invite",
+	"kaname.cloud.iam.v1.UserService/List",
+	"kaname.cloud.iam.v1.UserService/ListOperations",
+	"kaname.cloud.iam.v1.UserService/RemoveFromAccount",
+	"kaname.cloud.iam.v1.UserService/Unblock",
+	"kaname.cloud.iam.v1.UserService/Update",
+	"kaname.cloud.iam.v1.UserTokenService/Issue",
+	"kaname.cloud.iam.v1.UserTokenService/List",
+	"kaname.cloud.iam.v1.UserTokenService/Revoke",
+}
 
 // catalogReachabilityOptions — вход на НАСТОЯЩЕМ дереве. Список исключений
 // передаётся из mountAllow: сервис, намеренно не поднимаемый по gRPC, — это ОДНО

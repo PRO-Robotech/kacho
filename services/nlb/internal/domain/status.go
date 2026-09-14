@@ -3,7 +3,7 @@
 
 package domain
 
-import coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
+import coreerrors "github.com/PRO-Robotech/corelib/errors"
 
 // Все enum-newtypes для статусов / типов NLB.
 //

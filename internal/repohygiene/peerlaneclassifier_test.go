@@ -39,6 +39,7 @@
 package repohygiene
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -80,10 +81,19 @@ const peerClientDir = "internal/clients/"
 // TestForeignSystemDirsHaveSubject: запись, которой больше нечего исключать,
 // создаёт впечатление границы, которой нет.
 var foreignSystemDirs = map[string]string{
-	"hydra":        "провайдер токенов — OAuth2, не наш каталог",
-	"/zot/":        "реестр образов — distribution-API, не наш каталог",
-	"/jwks/":       "публичные ключи верификации — HTTP, а не gRPC-полоса",
-	"provider_hop": "транспорт к провайдеру токенов",
+	"/zot/":  "реестр образов — distribution-API, не наш каталог",
+	"/jwks/": "публичные ключи верификации — HTTP, а не gRPC-полоса",
+
+	// ЗДЕСЬ БЫЛИ ДВА ПРИЗНАКА — "hydra" (провайдер токенов) и "provider_hop"
+	// (транспорт к нему). Оба ИСТЕКЛИ вместе со своим предметом: адаптеры к
+	// провайдеру жили у службы доступа, а она вынесена отдельным продуктом, и
+	// файлов клиентов с такими именами в дереве нет ни одного.
+	//
+	// Гейт назвал оба поимённо («не совпал ни с одним файлом клиентов — граница
+	// предмета объявлена шире, чем есть»), то есть замыкание сработало как
+	// задумано. Снят ПРИЗНАК, а не гейт: два оставшихся признака совпадают с
+	// живыми файлами (замер на день снятия: /jwks/ — 4, /zot/ — 7), поэтому
+	// перечень не опустел и молчание гейта не вакуумно.
 }
 
 // laneExemptions — ЗАКОННЫЕ отступления: файл читает коды соседа не ради полосы,
@@ -143,31 +153,49 @@ type laneSiteRead struct {
 	call string
 }
 
-// collectPeerCodeReads обходит дерево клиентов к своим соседям и собирает места,
-// где код ответа читается напрямую. Возвращает ещё и перепись: «ноль находок»
-// обязано быть отличимо от «ноль прочитанного».
-func collectPeerCodeReads(t *testing.T, root string) (sites []laneSiteRead, filesRead, inScope int) {
-	t.Helper()
+// peerLaneScan — что даёт обход клиентов к соседям. Перепись входит в результат:
+// «ноль находок» обязано быть отличимо от «ноль прочитанного».
+//
+// clientRels несёт пути ВСЕХ файлов клиентов к соседям, включая исключённые как
+// внешняя система: граница внешних систем судится по ним же
+// (TestForeignSystemDirsHaveSubject), и второй обход того же дерева ради того же
+// перечня был чистой платой.
+type peerLaneScan struct {
+	sites      []laneSiteRead
+	filesRead  int
+	inScope    int
+	clientRels []string
+}
 
+// scanPeerCodeReads обходит дерево клиентов к своим соседям и собирает места,
+// где код ответа читается напрямую.
+//
+// Отказ возвращается ОШИБКОЙ, а не t.Fatalf: результат мемоизируется
+// (peerCodeReadsOfTree), и проба, в контексте которой обход состоялся, не
+// обязана быть той, которая о нём спросит. Сообщить об отказе через чужой
+// *testing.T значило бы уронить пробу, к предмету не относящуюся.
+func scanPeerCodeReads(root string) (peerLaneScan, error) {
+	var out peerLaneScan
 	dir := filepath.Join(root, "services")
 	err := rootedWalk(dir, func(rel string) bool {
 		return strings.HasSuffix(rel, ".go") && !strings.HasSuffix(rel, "_test.go")
 	}, func(abs string, body []byte) error {
-		filesRead++
+		out.filesRead++
 		rel := filepath.ToSlash(relTo(root, abs))
 		if !strings.Contains(rel, peerClientDir) {
 			return nil
 		}
+		out.clientRels = append(out.clientRels, rel)
 		if foreignSystemOf(rel) != "" {
 			return nil
 		}
-		inScope++
+		out.inScope++
 
 		fset := token.NewFileSet()
 		f, perr := parser.ParseFile(fset, abs, body, 0)
 		if perr != nil {
-			t.Fatalf("%s: разбор не удался: %v — гейт не вправе засчитать непрочитанный "+
-				"файл в перепись", abs, perr)
+			return fmt.Errorf("%s: разбор не удался: %w — гейт не вправе засчитать "+
+				"непрочитанный файл в перепись", abs, perr)
 		}
 		ast.Inspect(f, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
@@ -189,7 +217,7 @@ func collectPeerCodeReads(t *testing.T, root string) (sites []laneSiteRead, file
 				return true
 			}
 			pos := fset.Position(call.Pos())
-			sites = append(sites, laneSiteRead{
+			out.sites = append(out.sites, laneSiteRead{
 				file: filepath.ToSlash(relTo(root, pos.Filename)),
 				line: pos.Line,
 				call: pkg.Name + "." + sel.Sel.Name,
@@ -199,15 +227,46 @@ func collectPeerCodeReads(t *testing.T, root string) (sites []laneSiteRead, file
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("обход %s: %v", dir, err)
+		return peerLaneScan{}, fmt.Errorf("обход %s: %w", dir, err)
 	}
-	sort.Slice(sites, func(i, j int) bool {
-		if sites[i].file != sites[j].file {
-			return sites[i].file < sites[j].file
+	sort.Slice(out.sites, func(i, j int) bool {
+		if out.sites[i].file != out.sites[j].file {
+			return out.sites[i].file < out.sites[j].file
 		}
-		return sites[i].line < sites[j].line
+		return out.sites[i].line < out.sites[j].line
 	})
-	return sites, filesRead, inScope
+	sort.Strings(out.clientRels)
+	return out, nil
+}
+
+// peerCodeReadsOfTree — обход считается ОДИН раз на процесс: четыре пробы этого
+// гейта спрашивали одно и то же дерево и платили за него четыре раза. Величина
+// и единица счёта — oncebyroot_test.go §«ЕДИНИЦА СЧЁТА»; суммой времени проб её
+// мерить НЕЛЬЗЯ, там это ожидание процессора, а не работа.
+//
+// Результат отдаётся ТОЛЬКО ДЛЯ ЧТЕНИЯ: срезы общие на все пробы.
+var peerCodeReadsOfTree = onceByRoot(scanPeerCodeReads)
+
+// peerCodeReadsCached — форма для проб, судящих НАСТОЯЩЕЕ дерево.
+func peerCodeReadsCached(t *testing.T, root string) peerLaneScan {
+	t.Helper()
+	scan, err := peerCodeReadsOfTree(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return scan
+}
+
+// collectPeerCodeReads — форма для инъекции: синтетический корень свой у каждого
+// случая, мемоизация здесь не только бесполезна, но и запрещена (onceByRoot
+// отказывает на втором ином корне).
+func collectPeerCodeReads(t *testing.T, root string) (sites []laneSiteRead, filesRead, inScope int) {
+	t.Helper()
+	scan, err := scanPeerCodeReads(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return scan.sites, scan.filesRead, scan.inScope
 }
 
 func foreignSystemOf(rel string) string {
@@ -226,7 +285,8 @@ func foreignSystemOf(rel string) string {
 func TestPeerLaneIsNotReadOutsideTheCarrier(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
-	sites, filesRead, inScope := collectPeerCodeReads(t, root)
+	scan := peerCodeReadsCached(t, root)
+	sites, filesRead, inScope := scan.sites, scan.filesRead, scan.inScope
 
 	var findings, excused int
 	for _, s := range sites {
@@ -261,7 +321,7 @@ func TestPeerLaneIsNotReadOutsideTheCarrier(t *testing.T) {
 func TestExemptionsHaveSubject(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
-	sites, _, _ := collectPeerCodeReads(t, root)
+	sites := peerCodeReadsCached(t, root).sites
 
 	live := map[string]bool{}
 	for _, s := range sites {
@@ -287,27 +347,18 @@ func TestForeignSystemDirsHaveSubject(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 
+	// Перечень файлов клиентов берётся из ТОГО ЖЕ обхода, что у проб выше: свой
+	// второй обход того же дерева отвечал на тот же вопрос и стоил столько же.
+	scan := peerCodeReadsCached(t, root)
 	seen := map[string]int{}
-	dir := filepath.Join(root, "services")
-	var filesRead int
-	err := rootedWalk(dir, func(rel string) bool {
-		return strings.HasSuffix(rel, ".go") && !strings.HasSuffix(rel, "_test.go")
-	}, func(abs string, _ []byte) error {
-		filesRead++
-		rel := filepath.ToSlash(relTo(root, abs))
-		if !strings.Contains(rel, peerClientDir) {
-			return nil
-		}
+	for _, rel := range scan.clientRels {
 		for marker := range foreignSystemDirs {
 			if strings.Contains(rel, marker) {
 				seen[marker]++
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("обход %s: %v", dir, err)
 	}
+	filesRead := scan.filesRead
 
 	for marker, why := range foreignSystemDirs {
 		if seen[marker] == 0 {

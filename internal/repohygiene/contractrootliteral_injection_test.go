@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/contractroot"
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/contractroot"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 // synthGoTree — синтетическое дерево из одного файла с заданным телом.

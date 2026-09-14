@@ -7,7 +7,7 @@
 //
 // Он не собирает серверы, не выстраивает цепочки звеньев, не строит карту прав,
 // не держит собственного звена решения о доступе и собственного загрузочного
-// гейта мутаций: всё это переехало в носитель контура (`pkg/servicehost`),
+// гейта мутаций: всё это переехало в носитель контура (`corelib/servicehost`),
 // которому сервис приносит ОБЪЯВЛЕНИЕ о себе — дескриптор (`describe.go`). Оба
 // слушателя поднимает `servicehost.Serve`, он же гасит их по отмене контекста.
 //
@@ -35,31 +35,30 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
-	"github.com/PRO-Robotech/kacho/pkg/observability"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
-	"github.com/PRO-Robotech/kacho/pkg/outbox"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
-	"github.com/PRO-Robotech/kacho/pkg/servicehost"
+	"github.com/PRO-Robotech/corelib/authz/authzmetrics"
+	coredb "github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/listnarrow"
+	"github.com/PRO-Robotech/corelib/observability"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/operations/operationspb"
+	"github.com/PRO-Robotech/corelib/outbox"
+	"github.com/PRO-Robotech/corelib/outbox/bootgate"
+	"github.com/PRO-Robotech/corelib/outbox/drainer"
+	"github.com/PRO-Robotech/corelib/outbox/metrics"
+	"github.com/PRO-Robotech/corelib/outbox/reconciler"
+	"github.com/PRO-Robotech/corelib/servicehost"
 
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	"github.com/PRO-Robotech/corelib/retention"
+	"github.com/PRO-Robotech/corelib/subscription"
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
-	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/retention"
-	"github.com/PRO-Robotech/kacho/pkg/subscription"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/subscriptionjournal"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
-	"github.com/PRO-Robotech/kacho/pkg/observability/health"
-	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+	"github.com/PRO-Robotech/corelib/observability/health"
+	"github.com/PRO-Robotech/corelib/servicecontract"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/guestaccesskey"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/machinetype"
@@ -76,10 +75,11 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/operationresolver"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
+	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 
-	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
+	"github.com/PRO-Robotech/corelib/schemaguard"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/migrations"
 )
 
@@ -153,7 +153,7 @@ func runServe(cfg config.Config) error {
 	// Строка заводится КАЖДОЙ мутацией — контракт объявляет мутации асинхронными,
 	// и `Operation` возвращается вместо ресурса, — а снятия строк не было ни у
 	// одного из восьми владельцев. Порог, предикат и расписание объявлены в
-	// `pkg/operations` и `pkg/retention` ОДИН раз: восемь расписаний об одном
+	// `corelib/operations` и `corelib/retention` ОДИН раз: восемь расписаний об одном
 	// предмете разошлись бы молча.
 	if _, err := operations.StartRetentionSweep(
 		ctx, opsRepo, operations.DefaultRetentionConfig(),
@@ -739,7 +739,7 @@ func requireAuthzEdgeTransport(cfg config.Config) error {
 // текстом по сети (CWE-319) — допустимо только в dev.
 //
 // Перечень безопасных значений — НЕ свой: он приходит из дома семантики строки
-// подключения (`pkg/db`), где объявлен один раз на всё дерево. Судится ИСХОД — режим той строки, что уходит в пул: у compute он
+// подключения (`corelib/db`), где объявлен один раз на всё дерево. Судится ИСХОД — режим той строки, что уходит в пул: у compute он
 // деривится из ручки (`baseDSN` подставляет `disable` на пустой), поэтому
 // сегодня совпадает с ней, но спрашивать надо строку. Страж, читающий ручку,
 // расходится с пулом молча при первом же изменении сборки DSN — так и вышло у
@@ -887,14 +887,12 @@ func insecureEdgesInProductionStrict(cfg config.Config) error {
 	if cfg.FGARegisterDrainerEnabled && !cfg.IAMRegisterMTLS.Enable {
 		insecure = append(insecure, "IAM_REGISTER_MTLS_ENABLE")
 	}
-	// Ребро compute→домен величин. Провод живой ровно тогда, когда объявление
-	// разрешилось адресом, — тем же методом, каким его читает проводка, поэтому
-	// «страж увидел ребро» ⟺ «ребро дилится» by construction, а не по совпадению
-	// двух одинаково написанных условий. Полос у ребра две, и обе идут по этому
-	// проводу, поэтому удостоверение одно.
-	if cfg.QuotaAuthorityEdgeLive() && !cfg.QuotaAuthorityMTLS.Enable {
-		insecure = append(insecure, "QUOTA_AUTHORITY_MTLS_ENABLE")
-	}
+	// Ребра compute→домен величин в этом перечне НЕТ, и это не пропуск. Провод
+	// снят вместе с контрактом, которого не осталось ни в одном дереве; страж,
+	// требующий удостоверения на проводе, которого композиционный корень не
+	// собирает, есть фантомное требование, пережившее то, что охраняло. Поймано
+	// переписью рёбер композиционного корня, а не чтением.
+
 	if len(insecure) == 0 {
 		return nil
 	}
@@ -1313,7 +1311,8 @@ func buildSyncRegistrar(cfg config.Config, logger *slog.Logger) (*ownerregister.
 		return nil, nil, fmt.Errorf("dial kaname (sync registrar): %w", cerr)
 	}
 	logger.Info("owner-tuple sync-registrar dialed", "iam_addr", addr, "mtls", cfg.IAMRegisterMTLS.Enable)
-	// Форма доставки — ОДНА на все сервисы (pkg/ownerregister): своего
+	// Форма доставки — ОДНА на все сервисы (pkg/ownerregister модуля
+	// github.com/PRO-Robotech/kaname): своего
 	// регистратора у compute больше нет, потому что своего в нём и не было —
 	// только копия, разошедшаяся с соседями по маркеру версии.
 	reg, rerr := ownerregister.New(iamv1.NewInternalIAMServiceClient(conn))
@@ -1345,7 +1344,7 @@ func registerInternalServices(
 	svcs *services,
 	subscribe subscriptionv1.InternalSubscriptionServiceServer,
 ) {
-	// Поток изменений — ОБЩИЙ сервер (`pkg/subscription`), а не своя обёртка
+	// Поток изменений — ОБЩИЙ сервер (`corelib/subscription`), а не своя обёртка
 	// вокруг него: владелец регистрирует его самого. Регистрация безусловна —
 	// собирает сервер композиционный корень, и его сборка умеет ОТКАЗАТЬ, поэтому
 	// до сюда нулевой указатель не доходит. Условная регистрация означала бы, что

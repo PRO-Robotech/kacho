@@ -16,7 +16,7 @@
  * ФОРМ ДВЕ, И ЭТО РЕШЕНИЕ, А НЕ НЕДОСВЕДЁННЫЙ ФОРК
  *
  * `NAME_FORM` — форма ПЛАТФОРМЫ, одна на всё дерево: DNS label по RFC 1123
- * (`pkg/validate/nameform`, плюс CHECK-ограничение миграции 715001 у пяти схем).
+ * (`corelib/validate/nameform`, плюс CHECK-ограничение миграции 715001 у пяти схем).
  * Её применяют iam, vpc, compute, storage, nlb, geo.
  *
  * `NAME_FORM_REGISTRY` — форма имени РЕЕСТРА ОБРАЗОВ

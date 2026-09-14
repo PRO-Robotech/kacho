@@ -18,7 +18,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota"
+	"github.com/PRO-Robotech/corelib/quota"
 )
 
 func main() {

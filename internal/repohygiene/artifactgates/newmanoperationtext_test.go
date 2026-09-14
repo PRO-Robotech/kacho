@@ -64,9 +64,25 @@ import (
 // optProducerDirs — где живут производители арендаторской полосы операций.
 // Утверждение о дереве, и оно проверяется: каталог обязан существовать и давать
 // непустой набор шаблонов.
+//
+// `pkg/operations` переехал в общий фундамент (`github.com/PRO-Robotech/corelib`)
+// — имя остаётся координатой сообщений и переписи, а содержимое `optTemplates`
+// читает не из индекса git, а из кэша модулей (`optCorelibPackages`,
+// `corelibsource_test.go`). `gateway/internal/opsproxy` остаётся в дереве без
+// изменений.
 var optProducerDirs = []string{
 	filepath.Join("pkg", "operations"),
 	filepath.Join("gateway", "internal", "opsproxy"),
+}
+
+// optCorelibPackages — пакеты модуля общего фундамента, замещающие переехавший
+// каталог `pkg/operations`. Их ДВА: обработчик gRPC полосы (текст «operation_id
+// required» и другие) лежит в подпакете `operationspb` — собственный `package`,
+// собственный производитель текстов. `corelibPackageGoFiles` не рекурсивна
+// (`corelibsource_test.go`), поэтому подпакет назван явно, а не найден обходом.
+var optCorelibPackages = []string{
+	"operations",
+	filepath.Join("operations", "operationspb"),
 }
 
 // optStatusText — форматная строка отказа. Читается ровно в той форме, в какой
@@ -94,9 +110,24 @@ func optGoComment(line string) string {
 func optTemplates(root string, goFiles []string) (map[string]bool, map[string]bool, error) {
 	out := map[string]bool{}
 	covered := map[string]bool{}
+
+	// scanTemplates — общая половина для обоих источников (индекс git и кэш
+	// модулей): извлечение форматных строк отказа из тела не-тестового файла.
+	scanTemplates := func(b []byte) {
+		for _, raw := range strings.Split(string(b), "\n") {
+			for _, m := range optStatusText.FindAllStringSubmatch(optGoComment(raw), -1) {
+				out[optExpandQuoted(m[1])] = true
+			}
+		}
+	}
+
+	corelibDir := filepath.Join("pkg", "operations")
 	for _, rel := range goFiles {
 		dir := ""
 		for _, d := range optProducerDirs {
+			if d == corelibDir {
+				continue // переехал в общий фундамент, индекс git его больше не несёт
+			}
 			if strings.HasPrefix(rel, d+string(filepath.Separator)) {
 				dir = d
 				break
@@ -110,12 +141,25 @@ func optTemplates(root string, goFiles []string) (map[string]bool, map[string]bo
 		if err != nil {
 			return nil, nil, fmt.Errorf("чтение %s: %w", rel, err)
 		}
-		for _, raw := range strings.Split(string(b), "\n") {
-			for _, m := range optStatusText.FindAllStringSubmatch(optGoComment(raw), -1) {
-				out[optExpandQuoted(m[1])] = true
-			}
+		scanTemplates(b)
+	}
+
+	// pkg/operations переехал в общий фундамент — читается из кэша модулей, а
+	// не из индекса git. Оба подпакета (optCorelibPackages) обязаны резолвиться
+	// и дать хотя бы один файл; отказ здесь ЗАМЕНЯЕТ прежнее «в индексе git нет
+	// ни одного файла», а не дополняет его — corelibsource_test.go сам отличает
+	// «кэш не наполнен» от «пакет переехал внутри модуля».
+	for _, pkg := range optCorelibPackages {
+		files, err := corelibPackageGoFiles(root, pkg)
+		if err != nil {
+			return nil, nil, fmt.Errorf("производитель полосы операций %s (общий фундамент): %w", pkg, err)
+		}
+		covered[corelibDir] = true
+		for _, b := range files {
+			scanTemplates(b)
 		}
 	}
+
 	return out, covered, nil
 }
 

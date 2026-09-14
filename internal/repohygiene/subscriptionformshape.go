@@ -107,7 +107,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/contractroot"
+	"github.com/PRO-Robotech/corelib/contractroot"
 )
 
 // SubscriptionAxisRole — роль поля запроса подписки.

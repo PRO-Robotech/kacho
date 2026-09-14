@@ -53,7 +53,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 // dockerIgnorePatterns — исполняемые строки `.dockerignore` (без комментариев).
@@ -202,7 +202,7 @@ tests/authz-fixtures/out
 		// ЗАКОННЫЕ ИСХОДНИКИ — обязаны ехать в контекст, иначе сборка сломается.
 		{"services/iam/cmd/kaname/main.go", false},
 		{"go.mod", false},
-		{"proto/kaname/cloud/iam/v1/fga_model.fga", false},
+		{"proto/kacho/cloud/vpc/v1/address.proto", false},
 		// Произведённый файл, которого в списке образцов НЕТ, — обязан быть виден.
 		{"deploy/helm/umbrella/Chart.lock", false},
 	}

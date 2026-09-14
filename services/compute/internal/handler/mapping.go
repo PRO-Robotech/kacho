@@ -4,13 +4,13 @@
 package handler
 
 import (
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/operations/operationspb"
 )
 
 // operationToProto — прослойка к общему слою: перевод строки операции в контракт
-// объявлен в дереве ОДИН раз (`pkg/operations/operationspb`).
+// объявлен в дереве ОДИН раз (`corelib/operations/operationspb`).
 //
 // До сведения объявлений было двенадцать, а смысловых версий — пять; расходились
 // они именем помощника усечения времени и охраной пустого значения, то есть там,

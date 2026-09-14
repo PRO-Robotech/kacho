@@ -4,7 +4,7 @@
 // Package lro — общие константы Long-Running Operations каталога kacho-registry.
 package lro
 
-import "github.com/PRO-Robotech/kacho/pkg/ids"
+import "github.com/PRO-Robotech/corelib/ids"
 
 // OperationPrefix — 3-символьный префикс operation-id каталога registry. По нему
 // api-gateway opsproxy маршрутизирует OperationService.Get/Cancel в backend

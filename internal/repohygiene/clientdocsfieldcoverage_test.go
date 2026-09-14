@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/platformmodules"
+	"github.com/PRO-Robotech/corelib/platformmodules"
 )
 
 func clientDocsFieldCoverageOptions(t *testing.T) ClientDocsFieldCoverageOptions {

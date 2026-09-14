@@ -65,7 +65,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/PRO-Robotech/kacho/pkg/modulemanifest"
+	"github.com/PRO-Robotech/corelib/modulemanifest"
 )
 
 // manifestServicesDir — каталог, под которым лежат службы платформы.

@@ -13,7 +13,7 @@
 //
 // Он не собирает серверы, не выстраивает цепочки звеньев, не строит карту прав и
 // не держит собственного звена решения о доступе: всё это переехало в носитель
-// контура (`pkg/servicehost`), которому сервис приносит ОБЪЯВЛЕНИЕ о себе —
+// контура (`corelib/servicehost`), которому сервис приносит ОБЪЯВЛЕНИЕ о себе —
 // дескриптор (`describe.go`). Оба слушателя поднимает `servicehost.Serve`, он же
 // гасит их по отмене контекста.
 //
@@ -38,22 +38,22 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
-	"github.com/PRO-Robotech/kacho/pkg/observability"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/outbox"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
-	"github.com/PRO-Robotech/kacho/pkg/retention"
-	"github.com/PRO-Robotech/kacho/pkg/servicehost"
-	"github.com/PRO-Robotech/kacho/pkg/subscription"
+	"github.com/PRO-Robotech/corelib/authz/authzmetrics"
+	coredb "github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/listnarrow"
+	"github.com/PRO-Robotech/corelib/observability"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/outbox"
+	"github.com/PRO-Robotech/corelib/outbox/bootgate"
+	"github.com/PRO-Robotech/corelib/outbox/metrics"
+	"github.com/PRO-Robotech/corelib/outbox/reconciler"
+	"github.com/PRO-Robotech/corelib/retention"
+	"github.com/PRO-Robotech/corelib/servicehost"
+	"github.com/PRO-Robotech/corelib/subscription"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/subscriptionjournal"
 
-	"github.com/PRO-Robotech/kacho/pkg/observability/health"
+	"github.com/PRO-Robotech/corelib/observability/health"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/clients"
@@ -67,11 +67,12 @@ import (
 	// Импортируется здесь (composition root), чтобы registry был полон до старта
 	// gRPC server'ов; handler'ы вызывают dto.Transfer и предполагают, что
 	// каждая зарегистрированная пара уже в map'е.
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+	corequota "github.com/PRO-Robotech/corelib/quota"
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/quota"
 	_ "github.com/PRO-Robotech/kacho/services/nlb/internal/dto/type2pb"
 	kachopg "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg"
 
-	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
+	"github.com/PRO-Robotech/corelib/schemaguard"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/migrations"
 )
@@ -85,10 +86,15 @@ type peerClients struct {
 	Project  iamclient.ProjectClient
 	Check    iamclient.CheckClient
 	Register iamclient.RegisterResourceClient // FGA-proxy (register-drainer)
-	// Limit — резолв разрешённых величин учёта (InternalLimitService.Resolve).
+	// Limit — ПОРТ резолва разрешённых величин учёта. Сегодня всегда nil:
+	// производителя у контракта авторитета величин не осталось ни в одном
+	// дереве, и объявленный адрес отвергается стражем старта. Порт переживает
+	// смерть своей реализации by construction — тем он и порт; кто его наполнит,
+	// решает развилка PRO-Robotech/kacho#2190.
+	//
 	// nil → совещательная полоса не собирается, и ранний отказ по квоте не
 	// производится; место при этом по-прежнему занимает триггер.
-	Limit *iamclient.LimitClient
+	Limit quota.LimitResolver
 	// Geo (Region/Zone-валидация — ребро nlb→geo, kacho-geo)
 	Region geoclient.RegionClient
 	Zone   geoclient.ZoneClient
@@ -246,7 +252,7 @@ func runServe(configPath string) error {
 	// Строка заводится КАЖДОЙ мутацией — контракт объявляет мутации асинхронными,
 	// и `Operation` возвращается вместо ресурса, — а снятия строк не было ни у
 	// одного из восьми владельцев. Порог, предикат и расписание объявлены в
-	// `pkg/operations` и `pkg/retention` ОДИН раз: восемь расписаний об одном
+	// `corelib/operations` и `corelib/retention` ОДИН раз: восемь расписаний об одном
 	// предмете разошлись бы молча.
 	if _, err := operations.StartRetentionSweep(
 		ctx, opsRepo, operations.DefaultRetentionConfig(),
@@ -313,17 +319,12 @@ func runServe(configPath string) error {
 	if qaerr != nil {
 		return qaerr
 	}
-	// Проверка на nil здесь НЕ избыточна: peers.Limit — конкретный указатель, и
-	// присваивание нулевого указателя интерфейсу даёт НЕнулевой интерфейс с nil
-	// внутри. Тогда сборка приняла бы «источник есть» на неразвёрнутом домене, и
-	// первый же проход упал бы на разыменовании вместо того, чтобы не заводиться
-	// вовсе.
-	var limitSrc corequota.Source
-	if peers.Limit != nil {
-		limitSrc = peers.Limit
-	}
+	// Источник дельты не собирается: производителя у контракта авторитета
+	// величин не осталось. Тянущий при этом не «выключен» — его не заводит сам
+	// StartLimitSync, читая объявление; объявленный же адрес до сюда не доходит,
+	// его отвергает страж старта.
 	stopQuotaSync, qerr := corequota.StartLimitSync(
-		ctx, pool, quotaAuthority, limitSrc, kachopg.QuotaSchema, corequota.Config{}, logger)
+		ctx, pool, quotaAuthority, nil, kachopg.QuotaSchema, corequota.Config{}, logger)
 	if qerr != nil {
 		return fmt.Errorf("start quota limit sync: %w", qerr)
 	}
@@ -634,28 +635,6 @@ func peerDialSpecs(cfg *config.Config) []peerDialSpec {
 			mtls: cfg.MTLS.IAMRegister,
 		},
 		{
-			// Ребро nlb→домен величин: ОДНО ребро, ДВЕ полосы — разрешение
-			// величины на пути запроса и фоновая дельта. Адрес ОБЪЯВЛЕН
-			// (`quota.authority`), а не выведен из адреса соседа по
-			// авторизации: довод «второй адрес того же слушателя разошёлся бы
-			// с первым молча» верен ровно пока авторитет величин и авторитет
-			// авторизации — одна служба, а уход модуля квотирования это
-			// условие снимает.
-			//
-			// Адрес берётся ТЕМ ЖЕ методом, что читает страж старта, поэтому
-			// «страж доволен» ⟺ «дилится объявленное».
-			// Односторонний TLS у этого ребра не объявляется (`tls` не задан):
-			// удостоверение здесь — только клиентский сертификат. Служба величин
-			// стоит на ВНУТРЕННЕМ слушателе, где mTLS требуется на любом
-			// развёрнутом стенде, и ни один профиль дерева одностороннего TLS на
-			// этом ребре не объявляет. Понадобится — у ребра заведётся СВОЯ
-			// ручка, а не переиспользуется чужая: вывод из чужого ребра эта
-			// работа как раз и снимает.
-			name: quotaAuthorityPeerName,
-			addr: quotaAuthorityDialAddr(cfg),
-			mtls: cfg.MTLS.QuotaAuthority,
-		},
-		{
 			name: "geo",
 			addr: firstNonEmpty(cfg.ExtAPI.Geo.Addr, cfg.ExtAPI.Geo.InternalAddr),
 			tls:  cfg.ExtAPI.Geo.TLS,
@@ -801,13 +780,6 @@ func dialPeers(
 		// :9091). Replaces the former direct WriteCreatorTuple (Issue N5).
 		peers.Register = iamclient.NewRegisterResourceClient(iamInternalConn)
 	}
-	// Учёт числа ресурсов: резолв разрешённых величин у ДОМЕНА ВЕЛИЧИН, по
-	// СВОЕМУ объявленному ребру. ВНУТРЕННИЙ слушатель — величины админская
-	// поверхность, на внешнем их нет и быть не должно
-	// (`security.md` §Internal-vs-external).
-	if quotaConn := dialedConns[quotaAuthorityPeerName]; quotaConn != nil {
-		peers.Limit = iamclient.NewLimitClient(quotaConn)
-	}
 	// report the per-listener mTLS state of the iam read/authz edges
 	// (mirror of the register-drainer fga_register_drainer_started "mtls" log).
 	// iam-project (9090, ProjectService.Get) and iam-internal (9091, Check) are
@@ -944,26 +916,4 @@ func buildListFilter(cfg *config.Config, iamConn clients.Conn, logger *slog.Logg
 		// (iamInternalConn). mtls.iam-project управляет другим, публичным ребром.
 		"iam_authz_mtls", cfg.MTLS.IAMRegister.Enable)
 	return f
-}
-
-// quotaAuthorityPeerName — имя ребра nlb→домен величин в таблице соединений.
-//
-// Объявлено константой, а не литералом в двух местах: имя читают и сборка
-// таблицы, и разбор её результата, и разошедшись, они дали бы `nil`-клиент при
-// исправном соединении — то есть «полосы нет» при живом соседе.
-const quotaAuthorityPeerName = "quota-authority"
-
-// quotaAuthorityDialAddr отдаёт адрес, по которому дилится ребро величин.
-//
-// Читает ТОТ ЖЕ метод, что и страж старта: «страж доволен» обязано означать
-// «дилится объявленное». Пустая строка здесь означает «домен объявлен
-// отсутствующим» — таблица соединений такое ребро не дилит, и это ровно то
-// поведение, которого требует объявление. Отказ разбора здесь не теряется: тот
-// же метод зовёт `Config.Validate`, и процесс до дозвона не доходит.
-func quotaAuthorityDialAddr(cfg *config.Config) string {
-	authority, err := cfg.QuotaAuthorityDeclaration()
-	if err != nil {
-		return ""
-	}
-	return authority.Endpoint()
 }

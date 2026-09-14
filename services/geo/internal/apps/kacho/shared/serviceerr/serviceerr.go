@@ -27,7 +27,7 @@ import (
 // Уже-gRPC-статус (например, validate.PageSize) пробрасывается как есть.
 //
 // Порядок веток — сначала pass-through, потом sentinel-switch (форма kacho-nlb).
-// Он несущий, а не косметический: pkg/validate кладёт имя поля ТОЛЬКО в
+// Он несущий, а не косметический: corelib/validate кладёт имя поля ТОЛЬКО в
 // google.rpc.BadRequest-details, сообщение остаётся общим «invalid argument».
 // Пересборка статуса в sentinel-ветке (`status.Error(code, strip(err))`) детали
 // теряет, поэтому ошибка, обёрнутая через `%w` на geoerrors.Err*, обязана пройти

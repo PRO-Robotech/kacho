@@ -10,7 +10,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotadetail"
+	"github.com/PRO-Robotech/corelib/quota/quotadetail"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 )

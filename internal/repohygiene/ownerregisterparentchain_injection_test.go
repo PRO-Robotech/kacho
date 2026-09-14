@@ -4,6 +4,7 @@
 package repohygiene
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -27,7 +28,7 @@ const injectedChainlessRegister = `package clients
 import (
 	"context"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 )
 
 func apply(ctx context.Context, cli Client, p Payload) error {
@@ -44,13 +45,13 @@ func apply(ctx context.Context, cli Client, p Payload) error {
 
 // lawfulChainNamed — ТА ЖЕ форма, но цепь названа и вычислена из области,
 // объявленной этой же доставкой. Гейт обязан молчать.
-const lawfulChainNamed = `package clients
+const lawfulChainNamedTemplate = `package clients
 
 import (
 	"context"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
+	"%s"
 )
 
 func apply(ctx context.Context, cli Client, p Payload) error {
@@ -79,7 +80,7 @@ const lawfulRootObject = `package clients
 import (
 	"context"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 )
 
 func apply(ctx context.Context, cli Client, p Payload) error {
@@ -102,7 +103,7 @@ const lawfulUnregisterHasNoChain = `package clients
 import (
 	"context"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 )
 
 func apply(ctx context.Context, cli Client, p Payload) error {
@@ -117,12 +118,12 @@ func apply(ctx context.Context, cli Client, p Payload) error {
 
 // lawfulZeroValueReturn — нулевое значение рядом с ошибкой. Полей не называет
 // ни одного, поэтому производителем не является и цепи не должен.
-const lawfulZeroValueReturn = `package repo
+const lawfulZeroValueReturnTemplate = `package repo
 
 import (
 	"errors"
 
-	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
+	"%s"
 )
 
 func emit(ok bool) (ownerregister.Registration, error) {
@@ -144,7 +145,7 @@ const forwardOnly = `package clients
 import (
 	"context"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 )
 
 func apply(ctx context.Context, cli Client, p Payload) error {
@@ -168,6 +169,62 @@ func handle(ctx context.Context, in Request) error {
 	return store(ctx, Row{ParentChain: in.GetParentChain()})
 }
 `
+
+// ownerRegisterImportPathTheGateAccepts — путь импорта пакета общей доставки,
+// КАКОЙ ЕГО ПРИЗНАЁТ САМ ГЕЙТ.
+//
+// Берётся ПОДСТАНОВКОЙ в предикат гейта (`ownerRegisterLocalName`), а не
+// переписывается литералом рядом. Причина не гипотетическая, она наблюдалась:
+// литерал фикстуры сверяется с литералом гейта, и, разойдясь с ним, обнуляет
+// инъекцию МОЛЧА — `ownerRegisterLocalName` вернёт пустое имя, строка доставки
+// перестанет распознаваться, и законные половины позеленеют ни на чём, ничего
+// при этом не проверив.
+//
+// Разрыв произвёл переезд контрактов службы доступа (kacho#2616, исход C,
+// 2026-09-13): пакет доставки публикуется теперь модулем
+// `github.com/PRO-Robotech/kaname`, и прежний внутримодульный путь перестал
+// существовать. Подстановка делает расхождение НЕВОЗМОЖНЫМ by construction:
+// какой бы путь ни признавал гейт, фикстура берёт ровно его, а если гейт не
+// признаёт ни одного из проверенных — либо признаёт больше одного — проба падает
+// ЗДЕСЬ, а не зеленеет молчанием.
+func ownerRegisterImportPathTheGateAccepts(t *testing.T) string {
+	t.Helper()
+	candidates := []string{
+		"github.com/PRO-Robotech/kaname/pkg/ownerregister",
+		"github.com/PRO-Robotech/kacho/pkg/ownerregister",
+	}
+	var accepted []string
+	for _, path := range candidates {
+		probe := "package probe\n\nimport \"" + path + "\"\n\n" +
+			"var _ = ownerregister.Registration{}\n"
+		_, file := parseInjected(t, probe)
+		if ownerRegisterLocalName(file) != "" {
+			accepted = append(accepted, path)
+		}
+	}
+	if len(accepted) != 1 {
+		t.Fatalf("предикат гейта признал %d путей импорта пакета доставки из %d "+
+			"проверенных (%v) — фикстуру нельзя привести к литералу гейта, пока "+
+			"признанный путь не ровно один: при нуле инъекция обнулится молча, "+
+			"при двух неясно, какой из них проверяется",
+			len(accepted), len(candidates), accepted)
+	}
+	return accepted[0]
+}
+
+// lawfulChainNamed — вход «цепь названа и вычислена», собранный с тем путём
+// импорта, который признаёт гейт.
+func lawfulChainNamed(t *testing.T) string {
+	t.Helper()
+	return fmt.Sprintf(lawfulChainNamedTemplate, ownerRegisterImportPathTheGateAccepts(t))
+}
+
+// lawfulZeroValueReturn — вход «нулевое значение рядом с ошибкой», собранный там
+// же и тем же путём.
+func lawfulZeroValueReturn(t *testing.T) string {
+	t.Helper()
+	return fmt.Sprintf(lawfulZeroValueReturnTemplate, ownerRegisterImportPathTheGateAccepts(t))
+}
 
 // parse — разбор синтетического исходника; общая часть всех проб ниже.
 func parseInjected(t *testing.T, src string) (*token.FileSet, *ast.File) {
@@ -217,10 +274,10 @@ func TestParentChainGateRedOnChainlessRegister(t *testing.T) {
 func TestParentChainGateSilentOnLawfulForms(t *testing.T) {
 	t.Parallel()
 	for name, src := range map[string]string{
-		"цепь названа и вычислена":         lawfulChainNamed,
+		"цепь названа и вычислена":         lawfulChainNamed(t),
 		"объект без предка по построению":  lawfulRootObject,
 		"снятие регистрации":               lawfulUnregisterHasNoChain,
-		"нулевое значение рядом с ошибкой": lawfulZeroValueReturn,
+		"нулевое значение рядом с ошибкой": lawfulZeroValueReturn(t),
 	} {
 		if hits := chainlessLiterals(t, src); len(hits) != 0 {
 			t.Errorf("гейт краснеет на ЗАКОННОЙ форме (%s): %v", name, hits)
@@ -233,8 +290,8 @@ func TestParentChainGateSilentOnLawfulForms(t *testing.T) {
 func TestParentChainProductionRecognisesOnlyRealAssembly(t *testing.T) {
 	t.Parallel()
 	assembly := map[string]string{
-		"вычисление из области": lawfulChainNamed,
-		"явный литерал":         lawfulZeroValueReturn,
+		"вычисление из области": lawfulChainNamed(t),
+		"явный литерал":         lawfulZeroValueReturn(t),
 	}
 	for name, src := range assembly {
 		_, in := parseInjected(t, src)
@@ -270,7 +327,7 @@ func TestParentChainInjectionInputsAreDistinguishable(t *testing.T) {
 	t.Parallel()
 	bearing := map[string]string{
 		"дефект":       injectedChainlessRegister,
-		"цепь названа": lawfulChainNamed,
+		"цепь названа": lawfulChainNamed(t),
 		"объект без предка по построению": lawfulRootObject,
 		"снятие регистрации":              lawfulUnregisterHasNoChain,
 		"проброс поля":                    forwardOnly,
@@ -291,4 +348,37 @@ func TestParentChainInjectionInputsAreDistinguishable(t *testing.T) {
 				"не является предметом гейта, и обе половины пары прошли бы вакуумно", name)
 		}
 	}
+}
+
+// TestParentChainDeliveryFormIsRecognisedInTheFixture — вход «строка доставки»
+// ОПОЗНАН распознавателем гейта именно как строка доставки.
+//
+// Отдельной пробой, а не строкой в наборе выше, потому что предмет у неё другой:
+// форма запроса узнаётся по ИМЕНИ ТИПА и от пути импорта не зависит вовсе, а
+// строка доставки — по ПАРЕ (пакет, тип), то есть ровно через
+// `ownerRegisterLocalName`. Разойдись путь импорта фикстуры с литералом гейта —
+// пара не сложится, `litDelivery` не возникнет ни разу, и проба
+// «гейт молчит на законных формах» пройдёт ВАКУУМНО: он ждёт нуля находок и получит нуль,
+// потому что вход перестал быть предметом, а не потому что гейт молчит по делу.
+//
+// Это та самая пара, которую переезд контрактов службы доступа (kacho#2616,
+// исход C, 2026-09-13) и разорвал. Утверждение здесь — её держатель.
+func TestParentChainDeliveryFormIsRecognisedInTheFixture(t *testing.T) {
+	t.Parallel()
+	_, in := parseInjected(t, lawfulZeroValueReturn(t))
+
+	delivery := 0
+	for _, lit := range parentChainBearingLiterals(in, ownerRegisterLocalName(in)) {
+		if lit.kind == litDelivery {
+			delivery++
+		}
+	}
+	if delivery == 0 {
+		t.Fatalf("распознаватель не увидел НИ ОДНОЙ строки доставки во входе, который "+
+			"её несёт: путь импорта фикстуры разошёлся с литералом гейта (%q), пара "+
+			"(пакет, тип) не складывается, и половина инъекции про доставку проверяет "+
+			"пустоту", ownerRegisterImportPathTheGateAccepts(t))
+	}
+	t.Logf("осмотрено: строк доставки во входе %d, путь импорта из предиката гейта %q",
+		delivery, ownerRegisterImportPathTheGateAccepts(t))
 }

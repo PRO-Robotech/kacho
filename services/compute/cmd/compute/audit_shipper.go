@@ -7,7 +7,7 @@
 //
 // Приёмник. До него журнал писался восемью местами репозитория и не читался
 // никем. Решение о том, ЧТО считать приёмником и почему им стал поток
-// структурных записей службы, живёт в пакете `pkg/audit` — здесь оно не
+// структурных записей службы, живёт в пакете `corelib/audit` — здесь оно не
 // пересказывается, чтобы два места об одном предмете не разошлись.
 //
 // # Почему вывоз, а не общий дренаж
@@ -26,8 +26,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho/pkg/audit"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
+	"github.com/PRO-Robotech/corelib/audit"
+	"github.com/PRO-Robotech/corelib/outbox/metrics"
 )
 
 // buildAuditShipper строит вывоз журнала аудита.

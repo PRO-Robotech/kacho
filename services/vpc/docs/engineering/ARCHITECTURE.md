@@ -110,10 +110,10 @@ vpc serve                        — запуск gRPC-серверов
 
 - gRPC-сервер на публичном порту (по умолчанию `:9090`).
 - gRPC-сервер на internal-порту (по умолчанию `:9091`).
-- Воркеров операций `pkg/operations`.`Run` — одна горутина на каждую
+- Воркеров операций `corelib/operations`.`Run` — одна горутина на каждую
   in-flight LRO; пул не явный.
 - Подключение к Postgres через `pgxpool` (один пул).
-- FGA register-drainer (`pkg/outbox/drainer`) — слушает
+- FGA register-drainer (`corelib/outbox/drainer`) — слушает
   `kacho_vpc_fga_register_outbox` и применяет owner-tuple intents через `kaname`.
 
 ### 2.2 Хранилище
@@ -308,7 +308,7 @@ Cross-cutting и internal transport (`internal/handler/`):
 
 | Файл | Сервис / роль |
 |---|---|
-| — (сведён в `pkg/operations/operationspb`) | `OperationService.Get` / `Cancel` |
+| — (сведён в `corelib/operations/operationspb`) | `OperationService.Get` / `Cancel` |
 | `internal_address_allocate_handler.go` | `InternalAddressService.AllocateInternalIP/IPv6/External` + referrer-tracking |
 | `internal_network_handler.go` | `InternalNetworkService` (`GetNetwork` — internal-only `vrf_id`; `SetDefaultSecurityGroupId`) |
 | `authn_interceptor.go` | `AuthNUnaryInterceptor`, `AuthNStreamInterceptor` (требуют предъявленного принципала в production-mode; решений о доступе не принимают) |
@@ -351,7 +351,7 @@ Cross-cutting и internal transport (`internal/handler/`):
 5. Инстанцирование `*Repo` объектов.
 6. Инстанцирование `*Service` объектов с проброшенными портами.
 7. Инстанцирование двух gRPC-слушателей (публичный `:9090` и internal `:9091`)
-   через общий носитель `pkg/servicehost`.`Serve` по дескриптору из
+   через общий носитель `corelib/servicehost`.`Serve` по дескриптору из
    `cmd/vpc/describe.go`. Цепочку интерсепторов ставит носитель; своих у сервиса
    два — `internal/handler/authn_interceptor.go` (принципал предъявлен?) и
    `internal/handler/deadline_interceptor.go`. Прежняя редакция называла здесь два
@@ -600,7 +600,7 @@ api-gateway смотрит на первые 3 символа Operation.id и н
 
 | Ресурс | ID prefix | Глобальный | Заметки |
 |---|---|---|---|
-| AddressPool | `apl` (3-char, формат `pkg/ids`) | да | Не имеет `project_id`; `kind` enum (CHECK — миграция 0011); `zone_id` — id-строка домена **geo** без FK; блоки — `v4_cidr_blocks`/`v6_cidr_blocks` раздельно по семьям; `selector_labels`/`selector_priority` хранятся, но в текущем каскаде не участвуют |
+| AddressPool | `apl` (3-char, формат `corelib/ids`) | да | Не имеет `project_id`; `kind` enum (CHECK — миграция 0011); `zone_id` — id-строка домена **geo** без FK; блоки — `v4_cidr_blocks`/`v6_cidr_blocks` раздельно по семьям; `selector_labels`/`selector_priority` хранятся, но в текущем каскаде не участвуют |
 
 > Здесь строкой ниже стоял селектор пулов облака как действующий ресурс. Его таблица
 > дропнута миграцией 0002 вместе с соответствующим шагом каскада, Go-типа с таким именем
@@ -891,7 +891,7 @@ cluster-internal listener api-gateway и не публикуются на TLS-en
 
 ### 8.4 ID format
 
-ID получается через `pkg/ids`.`NewID(prefix)` (см. таблицу в §5.1).
+ID получается через `corelib/ids`.`NewID(prefix)` (см. таблицу в §5.1).
 Колонки — `TEXT`. Каждый id-берущий RPC первым стейтментом вызывает
 `corevalidate.ResourceID(resourceType, ids.PrefixXxx, id)`: нераспознанный id
 (нет известного 3-char prefix `net/sub/adr/rtb/sgr/gtw/nic/apl/enp`) → sync `INVALID_ARGUMENT
@@ -1067,7 +1067,7 @@ goose создает `goose_db_version` автоматически. Миграц
 
 ### 10.4 Observability
 
-- Логи — `pkg/observability` (slog в JSON или text).
+- Логи — `corelib/observability` (slog в JSON или text).
 - Метрики — не вынесены (GitHub Issue — observability gap); ожидается prometheus exporter на отдельном порту.
 - Trace — не реализован.
 
@@ -1118,7 +1118,7 @@ IAM sidecar — иначе anonymous = root.
 > - «`OperationService.Get` не делает AuthZ» — неверно: `Get` и `Cancel`
 >   энфорсят **владельца** операции, резолвя ключ исключительно из доверенного
 >   принципала контекста; отсутствие ключа — отказ, а не пропуск
->   (`pkg/operations/operationspb/handler.go`).
+>   (`corelib/operations/operationspb/handler.go`).
 > - «mTLS на :9091 опционален, primary defense — NetworkPolicy» — неверно и опаснее
 >   прочего: `ValidateServerMTLS` требует server-mTLS на internal-листенере в **любом**
 >   production-режиме, и без него старт отказывает. Запись, объявляющая защиту
@@ -1263,7 +1263,7 @@ baseline в `tests/k6/results/BASELINE.md`.)
 
 1. По одному файлу на таблицу. Каждый реализует port-интерфейс из service.
 2. В `internal/repo/helpers/outbox.go` — эмиссия в `vpc_outbox` в той же writer-TX
-   поверх `pkg/outbox`.
+   поверх `corelib/outbox`.
 3. В `internal/repo/helpers/unique.go` — функции распознавания pg-error по SQLSTATE
    (`23505`, `23P01`, `23503`).
 4. В `paging.go` — кодирование `(created_at, id)` в opaque base64 page_token.
@@ -1307,7 +1307,7 @@ baseline в `tests/k6/results/BASELINE.md`.)
    требующие предъявленного принципала в production-mode.
 5. В `internal/handler/internal_address_allocate_handler.go` — обертка над
    `AddressService.Allocate*`.
-6. В `pkg/operations/operationspb/handler.go` — `Get` / `Cancel` через `ops`.
+6. В `corelib/operations/operationspb/handler.go` — `Get` / `Cancel` через `ops`.
 7. Конвертация `Operation` в proto — пакет `internal/apps/kacho/shared/pbconv`
    (`OperationToProto`, с маппингом `CreatedBy`).
 8. В `internal/handler/internal_maperr.go` — generic info-leak-safe mapper.
@@ -1393,7 +1393,7 @@ kacho-vpc/
 │   ├── clients/
 │   │   └── iam_client.go (+ project_cache.go) — ProjectClient через gRPC к kaname
 │   ├── handler/                   — cross-cutting / internal transport (см. §3.5)
-│   │   │   (OperationService.Get/Cancel сведён в pkg/operations/operationspb)
+│   │   │   (OperationService.Get/Cancel сведён в corelib/operations/operationspb)
 │   │   ├── internal_address_allocate_handler.go — InternalAddressService (IPAM)
 │   │   ├── internal_network_handler.go     — InternalNetworkService (vrf_id / default-SG)
 │   │   ├── authn_interceptor.go   — AuthN-guard (принципал предъявлен?)
@@ -1423,7 +1423,7 @@ kacho-vpc/
 | Containment | `selector_labels @>` — pool описывает whitelist допустимых labels |
 | xmin OCC | Optimistic concurrency control через системную колонку Postgres `xmin` |
 | AuthMode | Уровень строгости AuthN-проверок (`dev/production/production-strict`) |
-| Принципал | Личность вызывающего (`x-kacho-principal-*` → `pkg/operations`), из неё выводится FGA-subject |
+| Принципал | Личность вызывающего (`x-kacho-principal-*` → `corelib/operations`), из неё выводится FGA-subject |
 | Composition root | Единственное место сборки зависимостей (`cmd/vpc/main.go`) |
 
 ### C. Связанные документы

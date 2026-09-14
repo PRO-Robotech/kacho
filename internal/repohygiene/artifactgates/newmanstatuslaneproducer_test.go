@@ -139,9 +139,30 @@ var slpOpsLaneInfraStatuses = map[int]string{
 // slpOpsLaneProducerDirs — где живут производители арендаторской полосы операций.
 // Утверждение о дереве, и оно проверяется: каталог обязан существовать и давать
 // непустой набор кодов.
+//
+// `pkg/operations` переехал в общий фундамент (`github.com/PRO-Robotech/corelib`)
+// — имя здесь остаётся координатой сообщений и переписи (см. слово «в индексе
+// git» в текстах отказа ниже, которое для него больше не буквально), а его
+// содержимое `slpOpsLaneStatuses` читает не из индекса git, а из кэша модулей
+// (`slpOpsLaneCorelibPackages`, `corelibsource_test.go`). `gateway/internal/opsproxy`
+// остаётся в дереве без изменений.
 var slpOpsLaneProducerDirs = []string{
 	filepath.Join("pkg", "operations"),
 	filepath.Join("gateway", "internal", "opsproxy"),
+}
+
+// slpOpsLaneCorelibPackages — пакеты модуля общего фундамента, замещающие
+// переехавший каталог `pkg/operations`. Их ДВА, а не один: обработчик gRPC
+// полосы операций лежит в подпакете `operationspb` (собственный `package`,
+// собственный производитель `FailedPrecondition`), и старый обход дерева
+// подхватывал его СЛЕДСТВИЕМ префиксного сравнения путей — не потому, что кто-то
+// решил читать рекурсивно. `corelibPackageGoFiles` рекурсии не делает
+// (`corelibsource_test.go`), поэтому подпакет назван здесь явно, а не найден
+// обходом: перечень производителей полосы обязан оставаться утверждением про
+// НАЗВАННЫЕ пути, а не про «всё, что лежит внутри».
+var slpOpsLaneCorelibPackages = []string{
+	"operations",
+	filepath.Join("operations", "operationspb"),
 }
 
 var slpCodeLiteral = regexp.MustCompile(`\bcodes\.([A-Z][A-Za-z]*)\b`)
@@ -396,9 +417,30 @@ func slpOpsLaneStatuses(root string, goFiles []string) (map[int]bool, map[string
 	seen := map[string]int{}
 	out := map[int]bool{http200: true}
 	covered := map[string]bool{}
+
+	// scanCodes — общая половина для обоих источников (индекс git и кэш
+	// модулей): извлечение литералов `codes.X` из тела не-тестового файла.
+	scanCodes := func(b []byte) {
+		for _, raw := range strings.Split(string(b), "\n") {
+			line := slpStripGoComment(raw)
+			for _, m := range slpCodeLiteral.FindAllStringSubmatch(line, -1) {
+				c, ok := byName[m[1]]
+				if !ok {
+					continue // `codes.Code` как тип и прочее — не производитель
+				}
+				seen[m[1]]++
+				out[runtime.HTTPStatusFromCode(c)] = true
+			}
+		}
+	}
+
+	corelibDir := filepath.Join("pkg", "operations")
 	for _, rel := range goFiles {
 		dir := ""
 		for _, d := range slpOpsLaneProducerDirs {
+			if d == corelibDir {
+				continue // переехал в общий фундамент, индекс git его больше не несёт
+			}
 			if strings.HasPrefix(rel, d+string(filepath.Separator)) {
 				dir = d
 				break
@@ -415,21 +457,30 @@ func slpOpsLaneStatuses(root string, goFiles []string) (map[int]bool, map[string
 		if err != nil {
 			return nil, nil, fmt.Errorf("чтение %s: %w", rel, err)
 		}
-		for _, raw := range strings.Split(string(b), "\n") {
-			line := slpStripGoComment(raw)
-			for _, m := range slpCodeLiteral.FindAllStringSubmatch(line, -1) {
-				c, ok := byName[m[1]]
-				if !ok {
-					continue // `codes.Code` как тип и прочее — не производитель
-				}
-				seen[m[1]]++
-				out[runtime.HTTPStatusFromCode(c)] = true
-			}
+		scanCodes(b)
+	}
+
+	// pkg/operations переехал в общий фундамент — читается из кэша модулей, а
+	// не из индекса git. Оба подпакета (slpOpsLaneCorelibPackages) обязаны
+	// резолвиться и дать хотя бы один файл; отказ здесь ЗАМЕНЯЕТ прежнее
+	// «в индексе git нет ни одного файла», а не дополняет его —
+	// corelibsource_test.go сам отличает «кэш не наполнен» от «пакет переехал
+	// внутри модуля».
+	for _, pkg := range slpOpsLaneCorelibPackages {
+		files, err := corelibPackageGoFiles(root, pkg)
+		if err != nil {
+			return nil, nil, fmt.Errorf("производитель полосы операций %s (общий фундамент): %w", pkg, err)
+		}
+		covered[corelibDir] = true
+		for _, b := range files {
+			scanCodes(b)
 		}
 	}
-	// Каталог, который перепись назвала и не нашла в индексе, — это утверждение о
-	// дереве, пережившее свой предмет: полоса переехала, а гейт продолжает судить
-	// по половине производителей.
+
+	// Каталог, который перепись назвала и не нашла (в индексе git — для
+	// gateway/internal/opsproxy, в кэше модулей — для pkg/operations), — это
+	// утверждение о дереве, пережившее свой предмет: полоса переехала, а гейт
+	// продолжает судить по половине производителей.
 	for _, d := range slpOpsLaneProducerDirs {
 		if !covered[d] {
 			return nil, nil, fmt.Errorf("в индексе git нет ни одного не-тестового .go под %s — "+

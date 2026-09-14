@@ -76,7 +76,7 @@ import (
 const (
 	// migratorDSNSharedImport — путь общего пакета. Назван, а не выведен: «пакет,
 	// на который ссылаются» есть определение через тех, кого проверяем.
-	migratorDSNSharedImport = "github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	migratorDSNSharedImport = "github.com/PRO-Robotech/corelib/migratorcli"
 
 	// migratorDSNResolveFunc — общий резолв приоритета источников.
 	migratorDSNResolveFunc = "ResolveDSN"

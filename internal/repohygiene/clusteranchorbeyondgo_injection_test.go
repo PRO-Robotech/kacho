@@ -31,19 +31,37 @@ const beyondGoDeclared = "cluster_kaname_root"
 // beyondGoStale — прежнее написание: то, что обязано краснеть.
 const beyondGoStale = "cluster_kacho_root"
 
-// beyondGoSubjects — ПРЕДМЕТ инъекции: по одному файлу на КАЖДЫЙ вид, который
-// встречается в настоящем дереве, и все они несут ОБЪЯВЛЕННОЕ написание.
+// beyondGoSubjects — ПРЕДМЕТ инъекции: по одному файлу на каждый вид, и все они
+// несут ОБЪЯВЛЕННОЕ написание.
 //
 // Отделены от близнецов намеренно: инъекция «по каждому виду» обязана бить в
 // файл, у которого написание ЕСТЬ. Прежняя редакция брала первый файл вида из
 // общей карты и на видах `md` и `yaml` попадала в близнеца — то есть в файл,
 // где менять нечего, — и объявляла разбор ослепшим там, где он исправен.
+//
+// ЗДЕСЬ СТОЯЛО «по одному файлу на каждый вид, КОТОРЫЙ ВСТРЕЧАЕТСЯ В НАСТОЯЩЕМ
+// ДЕРЕВЕ», и это утверждение ОТМЕНЕНО замером. Видов в наборе двенадцать, а
+// якорь в дереве несут девять:
+//
+//	go test ./internal/repohygiene/ -run TestClusterAnchorBeyondGoMatchesItsDeclaration -count=1 -v
+//	  → по видам файлов: yaml · py · ts · md · tsx · json · hcl · sh · sql
+//	    (файлов с якорем 22, вхождений 57, прочитано вне Go 3060)
+//
+// Трёх видов набора в дереве нет: `mdx`, а с переездом контрактов службы доступа
+// (kacho#2616, исход C, 2026-09-13) — ещё `proto` и `fga`. Набор ШИРЕ дерева
+// НАМЕРЕННО, и сужать его нельзя: распознаватель читает текст по виду-расширению,
+// и ослепни он на `fga`, он ослеп бы ровно в тот момент, когда канон модели
+// читают. Канон читают не из `proto/` этого дерева, а из СОБРАННОГО корня
+// контрактов, куда его кладёт дерево опубликованного модуля
+// `github.com/PRO-Robotech/kaname` (`kacho_assemble_contract_root`,
+// gateway/scripts/lib/stage-proto-tree.sh) — поэтому два ключа ниже названы
+// координатами внутри собранного корня, а не путями `proto/` этого дерева.
 func beyondGoSubjects() map[string]string {
 	return map[string]string{
-		"proto/kaname/cloud/iam/v1/cluster.proto": "" +
+		"kaname/cloud/iam/v1/cluster.proto": "" +
 			"// Singleton cluster resource (`id = \"" + beyondGoDeclared + "\"`).\n" +
 			"message Cluster { string id = 1; }\n",
-		"proto/kaname/cloud/iam/v1/fga_model.fga": "" +
+		"kaname/cloud/iam/v1/fga_model.fga": "" +
 			"type cluster\n  relations\n    define system_admin: [user]\n" +
 			"# якорь: " + beyondGoDeclared + "\n",
 		"services/iam/manifest.yaml": "" +
@@ -176,8 +194,11 @@ func TestBeyondGoInjection_StaleSpellingRedsPerKind(t *testing.T) {
 	t.Parallel()
 	kinds := beyondGoKinds(t)
 	if len(kinds) < 12 {
-		t.Fatalf("видов в синтетическом мире %d — меньше, чем в дереве (12); "+
-			"инъекция «по каждому виду» стала бы инъекцией по части", len(kinds))
+		t.Fatalf("видов в синтетическом мире %d — меньше двенадцати, объявленных "+
+			"набором предметов; инъекция «по каждому виду» стала бы инъекцией по "+
+			"части. Порог сверяется с СОСТАВОМ НАБОРА, а не с деревом: девять видов "+
+			"из двенадцати дерево несёт, а `proto`, `fga` и `mdx` покрыты шире него "+
+			"намеренно — разбор шапки beyondGoSubjects", len(kinds))
 	}
 
 	for kind, path := range kinds {

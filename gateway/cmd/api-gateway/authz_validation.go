@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz"
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/servicecontract"
 )
 
 // AuthzMiddlewareConfig is the minimal cross-section of the middleware

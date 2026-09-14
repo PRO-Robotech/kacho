@@ -20,7 +20,7 @@ import (
 
 // ── Update: description / labels / name are refused at the request edge ──────
 //
-// Create runs description and labels through pkg/validate and the name through the
+// Create runs description and labels through corelib/validate and the name through the
 // domain validator. Update ran NONE of the three, so an over-limit description, an
 // over-limit labels map or an illegal name travelled to the UPDATE, was caught by
 // snapshots_description_check / snapshots_labels_valid / snapshots_name_check, and
@@ -33,7 +33,7 @@ import (
 // The observable is asserted: no Operation is handed back (the refusal is
 // synchronous), the code is INVALID_ARGUMENT, and for description/labels the
 // offending field is named in the google.rpc.BadRequest DETAILS. Their MESSAGE is
-// deliberately not asserted — pkg/validate keeps it generic by contract (helpers
+// deliberately not asserted — corelib/validate keeps it generic by contract (helpers
 // violatedFields / hasField live in fieldviolation_test.go). The name is the
 // exception: its refusal is the domain's own fixed contract text, so that one IS
 // asserted on the message.

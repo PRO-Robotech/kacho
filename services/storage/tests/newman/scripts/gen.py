@@ -174,7 +174,11 @@ class Case:
 # одинаковых отказов, а 201 не дали НИ ОДНОГО утверждения — исполнялись против шаблона и
 # исчезали из вердикта («не выполнилось» тихо шло в зачёт «прошло», testing.md).
 #
-# Полный разбор класса и доказательство инъекцией — в `services/iam/tests/newman/scripts/gen.py`
+# Полный разбор класса и доказательство инъекцией живут в генераторе набора СЛУЖБЫ ДОСТУПА — в её
+# собственном репозитории. Координата здесь не приводится: путь, резолвящийся в
+# другом дереве, читается как резолвящийся в этом, а утверждение о ДОКАЗАННОСТИ
+# по нерезолвимой координате снимает работу с читателя, вместо того чтобы её
+# подтвердить
 # (там же перепись: 2571 опрос операции на 82 коллекции, под стражем helper'а — 188).
 #
 # ПРЕДИКАТ УЗКИЙ: срабатывает, только когда имя НЕ ОПРЕДЕЛЕНО НИ В ОДНОЙ области.
@@ -280,7 +284,8 @@ def save_from_response(jsonpath: str, env_var: str) -> List[str]:
     шага и идёт ПОСЛЕ `_op_id_guard`, который сам решает, находка это или
     санкционированный пропуск уборки.
 
-    Разбор класса с переписью — `services/iam/tests/newman/scripts/gen.py`, где он
+    Разбор класса с переписью живёт в генераторе набора службы доступа (её
+    репозиторий; координата здесь не приводится), где он
     был закрыт первым; гейт по дереву на обе половины пары «удаление → опрос» —
     `deploy/scripts/assert-delete-operation-outcome.py`.
     """
@@ -407,28 +412,20 @@ def wait_until_ready_step(name: str, path: str, ready: str, subject: str,
 
 
 
-def assert_op_error_oneof(codes: List[int], code_names: str,
-    # ВЫЗЫВАЮЩИЙ У НЕЁ ЕСТЬ, И ОН МЕЖНАБОРНЫЙ (#1478). Ни один модуль кейсов
-    # storage её не зовёт, и перепись «объявление без вызывающего» назвала её
-    # мёртвой — но её зовёт проба стойкости сериализатора, живущая в наборе iam
-    # и обходящая генераторы ВСЕХ наборов. Снятие уронило пробу: разбор не знал
-    # этой формы вызывающего. Оставлена намеренно; форма учтена переписью.
-                          msg_substr: Optional[str] = None) -> Step:
-    """Как assert_op_error, но допускает НАБОР gRPC-кодов (когда точный код —
-    3 vs 5 / 3 vs 9 — не зафиксирован контрактом). Проверка БЕЗУСЛОВНА: операция
-    обязана завершиться с error (не response) — regression, при которой нелегальная
-    операция начинает УСПЕШНО проходить, даёт RED (project-rule #12/#13; закрывает
-    false-green `if (j.error)`-паттерн 3-го аудита)."""
-    codes_js = "[" + ", ".join(str(c) for c in codes) + "]"
-    body = [
-        "const j = pm.response.json();",
-        "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-        "pm.test('operation rejected (op-error present, not success)', () => pm.expect(Boolean(j.error), JSON.stringify(j)).to.eql(true));",
-        f"pm.test({js_str(f'error code in {codes_js} ({code_names})')}, () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.be.oneOf({codes_js}));",
-    ]
-    if msg_substr is not None:
-        body.append(f"pm.test({js_str(f'error text includes \"{msg_substr}\"')}, () => pm.expect((j.error && j.error.message || '').toLowerCase()).to.include({js_str(msg_substr.lower())}));")
-    return Step(name="assert-op-error", method="GET", path="/operations/{{opId}}", test_script=body)
+# ЗДЕСЬ БЫЛА assert_op_error_oneof — «как assert_op_error, но допускает НАБОР
+# gRPC-кодов». Ни один модуль кейсов storage её не звал НИКОГДА; её единственный
+# вызывающий был МЕЖНАБОРНЫМ (#1478) — проба стойкости сериализатора, жившая в
+# наборе службы доступа и обходившая генераторы ВСЕХ наборов.
+#
+# Набор службы уехал вместе с ней в её собственный репозиторий, и вызывающего не
+# осталось ни одного: перепись гейта «впрыскивается в модули кейсов и не
+# вызывается ни одним» назвала её мёртвой, и на этот раз она права. Мёртвая копия
+# не излучает ничего, поэтому её присутствие ненаблюдаемо, а указатель кейсов
+# продолжал бы обещать проверку, которой нет.
+#
+# Форма не утрачена: тот же помощник жив у compute, где его зовёт СВОЙ модуль
+# кейсов (`cases/instance-redesign.py`). Понадобится он storage — вернётся
+# вместе с вызывающим, а не вперёд него.
 
 
 def assert_op_error(code: int, code_name: str, msg_substr: Optional[str] = None,
@@ -495,7 +492,7 @@ def assert_op_success(auth: Optional[str] = None) -> Step:
 # ТЕКСТ ОБЯЗАН СОВПАДАТЬ С ОСТАЛЬНЫМИ НАБОРАМИ ДОСЛОВНО. Вердикт по КАЖДОЙ
 # суите выносит один скрипт (tests/newman/scripts/assert-suites-green.sh,
 # запускается с cwd = каталог проверяемой суиты), а метку он читает у ОДНОГО
-# производителя — services/iam/tests/newman/scripts/gen.py, — потому что берёт её
+# производителя — генератор набора службы доступа, в её репозитории, — потому что берёт её
 # по `dirname "${BASH_SOURCE[0]}"`, а не по cwd. Набор, объявивший другой текст,
 # МОЛЧА выпадает из третьей категории: его стражи снова читаются находками о
 # продукте, хотя метка у них есть. Согласие держит гейт дерева
@@ -643,7 +640,6 @@ _INJECTED = {
     "wait_until_ready": wait_until_ready,
     "wait_until_ready_step": wait_until_ready_step,
     "assert_op_error": assert_op_error,
-    "assert_op_error_oneof": assert_op_error_oneof,
     "assert_op_success": assert_op_success,
     "js_regex_src": js_regex_src,
     "js_name": js_name,

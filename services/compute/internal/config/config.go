@@ -10,9 +10,9 @@ import (
 
 	"google.golang.org/grpc"
 
-	corecfg "github.com/PRO-Robotech/kacho/pkg/config"
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	corecfg "github.com/PRO-Robotech/corelib/config"
+	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 )
 
 // EnvPrefix — корневой сегмент имён env для kacho-compute (KACHO_<DOMAIN>).
@@ -107,10 +107,12 @@ type Config struct {
 	// (internal) против 9090 (публичный ProjectService.Get).
 	AuthZIAMGRPCAddr string `envconfig:"KACHO_COMPUTE_AUTHZ_IAM_GRPC_ADDR" default:""`
 
-	// QuotaAuthority — ОБЪЯВЛЕНИЕ домена величин. Ровно два законных значения:
-	// адрес в форме host:port либо слово `not-deployed`. Незаданное значение —
-	// отказ старта: умолчание означало бы выбор за оператора между «потолки
-	// действуют» и «потолков нет», и выбор этот был бы невидим.
+	// QuotaAuthority — ОБЪЯВЛЕНИЕ домена величин. Действующее значение одно:
+	// слово `not-deployed`. Адрес был вторым — производителя у контракта
+	// авторитета величин не осталось, и адрес теперь отвергается стартом.
+	// Незаданное значение — тоже отказ старта: умолчание означало бы выбор за
+	// оператора между «потолки действуют» и «потолков нет», и выбор этот был бы
+	// невидим.
 	//
 	// Объявление ОДНО на обе полосы ребра — разрешение величины на пути запроса
 	// и фоновую дельту. Приёмка ухода модуля квотирования из службы доступа,
@@ -422,16 +424,6 @@ type Config struct {
 	// InternalIAMService.Check + FGA-filtered List (один conn → AuthZIAMGRPCAddr,
 	// internal :9091). ServerName = kaname-internal.*.
 	IAMAuthzMTLS grpcclient.TLSClient `envconfig:"IAM_AUTHZ_MTLS"`
-
-	// QuotaAuthorityMTLS — client-creds для ребра compute→домен величин
-	// (InternalLimitService.Resolve на пути запроса И ListChangedSince фоновой
-	// дельтой — обе полосы ОДНОГО ребра, поэтому удостоверение одно).
-	//
-	// Своё, а не заимствованное у authz-ребра: адрес домена величин объявляется
-	// отдельно (KACHO_COMPUTE_QUOTA_AUTHORITY), и удостоверение обязано следовать
-	// за адресом. Половина пары — адрес есть, удостоверения нет — отвергается
-	// стражем старта.
-	QuotaAuthorityMTLS grpcclient.TLSClient `envconfig:"QUOTA_AUTHORITY_MTLS"`
 
 	// GeoMTLS — client-creds для ребра compute→geo (geo.v1.ZoneService.Get,
 	// zone_id-валидация Instance). Enable=false (default) → insecure

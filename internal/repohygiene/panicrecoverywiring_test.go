@@ -53,7 +53,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // grpcImportPath — пакет, по объявлению импорта которого опознаётся локальное
@@ -67,7 +67,7 @@ const grpcImportPath = "google.golang.org/grpc"
 // доступа). Поэтому «у компонента ноль листенеров» перестало быть однозначным
 // признаком сломанного распознавания — но однозначным оно обязано остаться, и
 // различает два случая именно этот импорт.
-const carrierImportPath = "github.com/PRO-Robotech/kacho/pkg/servicehost"
+const carrierImportPath = "github.com/PRO-Robotech/corelib/servicehost"
 
 // panicRecoveryScanRoots — где ищем сами звенья. Звено вправе жить в общем
 // фундаменте, в сервисе или на крае; гейт не требует конкретного адреса, он
@@ -375,7 +375,65 @@ func panicRecoveryConstructors(t *testing.T, root string) (map[recoveryKey]strin
 			}
 		})
 	}
+
+	// Общее звено переехало из pkg/grpcsrv в пакет grpcsrv общего фундамента
+	// (github.com/PRO-Robotech/corelib): дерево больше не несёт его файлов, а
+	// синтетический путь (corelibPackageGoFiles, см. corelibsource_test.go)
+	// разбирается тем же узлом-признаком — сигнатурой и телом, а не именем.
+	// Ключ дома ("corelib/grpcsrv") обязан совпасть с тем, который для этого
+	// же импорта строит calleeKey, иначе распознавание объявления не встретится
+	// с распознаванием вызова.
+	//
+	// Условие деклараций — намеренное: инъекция строит синтетические деревья
+	// со СВОИМ go.mod, не закрепляющим общий фундамент (звено там кладётся
+	// прямо под pkg/grpcsrv, диском), и звать corelibPackageGoFiles на таком
+	// дереве значило бы падать по причине, которая не о предмете пробы.
+	if declaresCorelibDependency(t, root) {
+		for rel, body := range corelibPackageGoFiles(t, root, "grpcsrv") {
+			files++
+			fset := token.NewFileSet()
+			f, err := parser.ParseFile(fset, rel, body, 0)
+			if err != nil {
+				t.Fatalf("%s: разбор не удался: %v", rel, err)
+			}
+			grpcName := importLocalNameOf(f, grpcImportPath)
+			if grpcName == "" {
+				continue
+			}
+			for _, d := range f.Decls {
+				fn, ok := d.(*ast.FuncDecl)
+				if !ok || fn.Body == nil || fn.Type.Results == nil {
+					continue
+				}
+				kind := interceptorResultKind(fn.Type.Results, grpcName)
+				if kind == "" {
+					continue
+				}
+				if !bodyCallsRecover(fn.Body) {
+					continue
+				}
+				known[recoveryKey{dir: filepath.Dir(rel), name: fn.Name.Name}] = kind
+			}
+		}
+	}
 	return known, files
+}
+
+// declaresCorelibDependency сообщает, закрепляет ли go.mod судимого дерева
+// общий фундамент — без падения на деревьях, где его не может быть (синтетика
+// инъекции несёт свой минимальный go.mod намеренно).
+func declaresCorelibDependency(t *testing.T, root string) bool {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil {
+		return false
+	}
+	for _, dep := range ParseGoModRequires(string(body)) {
+		if dep.Path == corelibModulePath {
+			return true
+		}
+	}
+	return false
 }
 
 // interceptorResultKind — возвращает вид интерсептора, если функция отдаёт
@@ -770,6 +828,16 @@ func (p *chainPkgInfo) calleeKey(call *ast.CallExpr, in *ast.FuncDecl) (recovery
 		if !ok {
 			return recoveryKey{}, false
 		}
+		// Общий фундамент (github.com/PRO-Robotech/corelib) — ОТДЕЛЬНЫЙ модуль,
+		// не в судимом дереве, и dirOfModuleImport/treeRelOfImport о нём не
+		// знают by construction (это верно и назначено: см. шапку
+		// subscriptionkindvocabulary.go про единственность модуля дерева).
+		// Ключ дома строится тем же синтетическим путём, которым
+		// corelibPackageGoFiles метит файлы, прочитанные из кэша модулей —
+		// иначе объявление и вызов разошлись бы разными словарями имён.
+		if rel, ok := strings.CutPrefix(path, corelibModulePath+"/"); ok {
+			return recoveryKey{dir: "corelib/" + rel, name: fun.Sel.Name}, true
+		}
 		dir, ok := dirOfModuleImport(p.treeRoot, p.dir, path)
 		if !ok {
 			return recoveryKey{}, false
@@ -971,6 +1039,18 @@ func exprLabelOf(e ast.Expr) string {
 }
 
 func relTo(root, p string) string {
+	// Второй дом: путь лежит в кэше модулей общего фундамента, а не под корнем
+	// судимого дерева. filepath.Rel(root, p) для такого пути технически не
+	// ошибается — он честно посчитает цепочку `..`, — но результат нечитаем
+	// (десяток `../` до домашнего каталога кэша) и не несёт координаты, по
+	// которой читатель находки восстановил бы предмет. Логический путь
+	// (`corelib/<пакет>/<файл>`) короче и совпадает с тем, что печатают гейты,
+	// уже переведённые на второй дом (corelibsource_test.go).
+	if moduleDir, merr := corelibModuleRootDir(root); merr == nil {
+		if tail, ok := strings.CutPrefix(filepath.ToSlash(p), filepath.ToSlash(moduleDir)+"/"); ok {
+			return "corelib/" + tail
+		}
+	}
 	r, err := filepath.Rel(root, p)
 	if err != nil {
 		return p

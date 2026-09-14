@@ -6,7 +6,7 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/PRO-Robotech/kacho/pkg/httpbody"
+	"github.com/PRO-Robotech/corelib/httpbody"
 )
 
 // EdgeMaxRequestBodyBytes — потолок тела запроса на REST-краю.
@@ -41,7 +41,7 @@ const EdgeMaxRequestBodyBytes int64 = 1 << 20
 func HTTPMaxBodyBytes(limit int64) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Оба слоя потолка — в pkg/httpbody, единственной в дереве
+			// Оба слоя потолка — в corelib/httpbody, единственной в дереве
 			// реализации. Форма отказа остаётся здесь: у края она своя.
 			if httpbody.Cap(w, r, limit) {
 				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)

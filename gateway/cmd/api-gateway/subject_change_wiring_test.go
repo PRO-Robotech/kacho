@@ -30,7 +30,7 @@ func collapse(src string) string {
 // его погасить кэш — утверждает сквозная проба на стороне владельца
 // (`services/iam/internal/repo/kaname/pg`, `TestRightsChangeReachesTheEdge…`): она
 // ставит вопрос через обе стороны на настоящей схеме, настоящем контракте и
-// настоящем читателе `pkg/subjectchange`.
+// настоящем читателе `pkg/subjectchange` модуля `github.com/PRO-Robotech/kaname`.
 //
 // Достать оттуда она не может ровно одного: КУДА этот читатель провязан здесь.
 // Кэш решений живёт в дереве края, и правило видимости `internal/` не пускает к

@@ -8,7 +8,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/corelib/operations"
 
 	"google.golang.org/protobuf/proto"
 

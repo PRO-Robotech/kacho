@@ -29,8 +29,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz"
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 	"github.com/PRO-Robotech/kacho/tools/revocationwindowgate"
 )
 
@@ -44,11 +44,15 @@ var revocationScanRoots = []string{
 	"services/compute/internal/config",
 	"services/storage/internal/config",
 	"services/geo/internal/apps/kacho/config",
-	// Владелец модели. До собственной двери окна у него не было ВООБЩЕ — он не
-	// задавал пообъектного вопроса на своих слушателях, полагаясь на край, — и
-	// потому его каталог объявлений в перепись не входил. Дверь завела окно;
-	// каталог входит вместе с ним.
-	"services/iam/internal/apps/kaname/config",
+	// ЗДЕСЬ БЫЛ КАТАЛОГ ОБЪЯВЛЕНИЙ ВЛАДЕЛЬЦА МОДЕЛИ — он снят вместе со своим
+	// предметом: служба доступа вынесена отдельным продуктом, и каталога в дереве
+	// нет ни одним файлом. Гейт назвал это сам («предпосылка гейта нарушена:
+	// каталог объявлений не читается»), то есть жёсткая координата внутрь службы
+	// покраснела как задумано, а не промолчала.
+	//
+	// Снята КООРДИНАТА, а не гейт: остальные семь корней живы, и по ним гейт
+	// по-прежнему судит — перепись печатает число разобранных файлов, поэтому
+	// «ноль находок» остаётся отличимым от «ноль прочитанного».
 	// Край. Он не лежит под services/, и именно поэтому его окно не попало в
 	// перепись: все корни обхода начинались с services/, так что процесс, через
 	// который проходит КАЖДЫЙ внешний запрос, не был прочитан ни одной из
@@ -460,6 +464,22 @@ func TestNoServiceTakesTheWindowImplicitly(t *testing.T) {
 		}
 	}
 
+	// Единственная авторитетная площадка переехала из композиционных корней
+	// сервисов в decisionLink пакета servicehost общего фундамента
+	// (github.com/PRO-Robotech/corelib): её литерал называет кеш явно
+	// (Cache: authz.NewCache(...)), поэтому её появление здесь СНИЖАЕТ число
+	// площадок без имени, а не добавляет находку. Читаем ТУДА, куда она
+	// переехала (см. corelibsource_test.go), а не только диск.
+	for rel, srcBytes := range corelibPackageGoFiles(t, root, "servicehost") {
+		filesRead++
+		rep, perr := revocationwindowgate.ScanImplicitSites(serviceOfPath(rel), rel, string(srcBytes))
+		if perr != nil {
+			t.Fatalf("разбор %s: %v", rel, perr)
+		}
+		literalsSeen += rep.LiteralsSeen
+		sites = append(sites, rep.Sites...)
+	}
+
 	// Перепись — до вердикта и на каждом пути.
 	t.Logf("осмотрено: файлов прочитано=%d, литералов InterceptorOptions=%d, площадок без имени кеша=%d",
 		filesRead, literalsSeen, len(sites))
@@ -556,6 +576,18 @@ func TestNoCallSiteTakesTheWindowUnprovably(t *testing.T) {
 		if err != nil {
 			t.Fatalf("обход %s: %v", rel, err)
 		}
+	}
+
+	// Та же переехавшая площадка — со стороны вызова (см. пояснение в
+	// TestNoServiceTakesTheWindowImplicitly).
+	for rel, srcBytes := range corelibPackageGoFiles(t, root, "servicehost") {
+		filesRead++
+		rep, perr := revocationwindowgate.ScanInterceptorCalls(serviceOfPath(rel), rel, string(srcBytes))
+		if perr != nil {
+			t.Fatalf("разбор %s: %v", rel, perr)
+		}
+		callsSeen += rep.CallsSeen
+		sites = append(sites, rep.Sites...)
 	}
 
 	// Перепись — до вердикта и на каждом пути.

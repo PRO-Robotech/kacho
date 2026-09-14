@@ -142,7 +142,7 @@ func TestLaneScannerReadsDeclarationAsASyntaxNode(t *testing.T) {
 	t.Parallel()
 	src := []byte(`package subscriptionjournal
 
-import "github.com/PRO-Robotech/kacho/pkg/subscription"
+import "github.com/PRO-Robotech/corelib/subscription"
 
 // Здесь в прозе стоит RetainsFromEarliestRow и AgeColumn: "не читать".
 const Table = "kacho_probe.probe_outbox"
@@ -203,7 +203,7 @@ func run() {}
 
 	call := []byte(`package main
 
-import "github.com/PRO-Robotech/kacho/pkg/subscription"
+import "github.com/PRO-Robotech/corelib/subscription"
 
 func run(ctx any, db any, j any, cfg any, log any) {
 	_, _ = subscription.StartJournalRetentionSweep(ctx, db, j, cfg, log)

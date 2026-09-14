@@ -7,14 +7,14 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/corelib/servicecontract"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 )
 
 // describePosture — ОБЪЯВЛЕНИЕ края о своей посадке центральному дескриптору
-// (`pkg/servicecontract`), задача продукта #1407.
+// (`corelib/servicecontract`), задача продукта #1407.
 //
 // # Что это меняет, и это НЕ «была дыра»
 //
@@ -31,7 +31,7 @@ import (
 // # Почему объявлен СОБСТВЕННЫЙ контур
 //
 // [servicecontract.Spec] описывает две вещи: посадку — она есть у каждого
-// развёрнутого процесса — и проводку носителя (`pkg/servicehost`). Вторую читает
+// развёрнутого процесса — и проводку носителя (`corelib/servicehost`). Вторую читает
 // только носитель, а контур края он не поднимает и поднять не может: у края
 // четыре слушателя двух разных протоколов (открытый мультиплексор за входом
 // кластера, необязательный TLS-слушатель, внутренний REST и внутренний gRPC),

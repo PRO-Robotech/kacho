@@ -8,7 +8,7 @@ package kacho.cloud.subscription;
 import "kacho/cloud/subscription/subscription.proto";
 import "corelib/authz/v1/authz_options.proto";
 
-option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription;subscriptionv1";
+option go_package = "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription;subscriptionv1";
 
 // Глагол подписки платформы и носитель его потока.
 //
@@ -21,7 +21,7 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscript
 //
 // Разделение не косметическое: домены импортируют ФОРМУ (чтобы говорить на одном
 // языке подписки) и НЕ обязаны импортировать глагол — его регистрирует общий
-// сервер `pkg/subscription`, один на платформу.
+// сервер `corelib/subscription`, один на платформу.
 // SubscriptionMessage — то, что едет по потоку: ЛИБО служебное сообщение
 // открытия, ЛИБО событие.
 //

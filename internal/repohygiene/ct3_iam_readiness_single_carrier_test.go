@@ -59,7 +59,13 @@ func TestReadinessIsServedByASingleCarrier(t *testing.T) {
 		t.Fatal("предпосылка гейта не выполняется: не-тестовых файлов Go под services/ в индексе " +
 			"НОЛЬ — обход смотрит не туда; чинить надо гейт, а не молча выходить успехом")
 	}
-	carrier := ct3TrackedRelGoFiles(t, root, filepath.FromSlash(commonReadinessCarrierPkg))
+	// Предмет переехал ЦЕЛИКОМ из pkg/observability/health этого дерева в пакет
+	// observability/health общего фундамента (github.com/PRO-Robotech/corelib):
+	// положительный контроль обязан читать ЖИВОЙ дом, а не отсутствующий путь.
+	carrier := map[string][]byte{}
+	for rel, body := range corelibPackageGoFiles(t, root, "observability/health") {
+		carrier[rel] = body
+	}
 	if len(carrier) == 0 {
 		t.Fatalf("общий носитель %s не читается обходом: положительного контроля нет, и "+
 			"«собственных носителей ноль» ниже означало бы «распознаватель ничего не искал»",

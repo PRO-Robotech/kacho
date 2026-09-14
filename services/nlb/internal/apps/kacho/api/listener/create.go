@@ -10,14 +10,14 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/option"
+	"github.com/PRO-Robotech/corelib/option"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
 
+	"github.com/PRO-Robotech/corelib/ids"
+	"github.com/PRO-Robotech/corelib/operations"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
-	"github.com/PRO-Robotech/kacho/pkg/ids"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
@@ -381,7 +381,7 @@ func (u *CreateUseCase) syncRegister(ctx context.Context, intent domain.FGARegis
 // outbox-emitter из DB-clock.
 //
 // ONLY PROXY-REGISTRABLE TUPLES BELONG IN A DURABLE INTENT. kaname's
-// least-privilege proxy policy is declared in pkg/authz/proxytuple and decides the
+// least-privilege proxy policy is declared in corelib/authz/proxytuple and decides the
 // whole tuple, not the relation alone; privilege relations are writable only by the
 // AccessBinding flow, never by a module proxy. So the creator (`admin`) and
 // parent-link (`load_balancer`) tuples this intent used to carry were refused on
@@ -393,7 +393,7 @@ func (u *CreateUseCase) syncRegister(ctx context.Context, intent domain.FGARegis
 // Carrying them cost the registration itself. A refusal from the model owner is
 // TERMINAL: the applier maps it to drainer.ErrPermanent
 // (clients/iam/register_applier.go) and the shared drainer classifies it the same
-// way for every service (pkg/outbox/drainer/classify.go). Such a Create row
+// way for every service (corelib/outbox/drainer/classify.go). Such a Create row
 // therefore poisons on its FIRST attempt and drops out of the partition-head
 // blocking set at once — it does not hold the listener's later intents (notably
 // the labels-refresh that revokes an ARM_LABELS grant) for any deadline. It does
@@ -419,7 +419,7 @@ func listenerRegisterIntent(l *kachorepo.ListenerRecord) domain.FGARegisterInten
 //
 // The tuple must be the project one for the same reason listenerMirrorIntent's
 // must (see update.go): UnregisterResource runs the identical least-privilege
-// rule (pkg/authz/proxytuple.ValidateTuple), and the parent-link relation
+// rule (corelib/authz/proxytuple.ValidateTuple), and the parent-link relation
 // `load_balancer` is not registrable. A retraction built from it is rejected before the resource_mirror
 // DELETE, so the mirror row of a DELETED listener survives and the reconciler
 // keeps re-materialising per-object grants from it — a deleted listener retaining

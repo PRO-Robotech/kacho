@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/corelib/migratorcli"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 	"github.com/PRO-Robotech/kacho/internal/productnaming"
-	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
 )
 
 // migratorCLICorpusSuffixes — что читается: сборка, развёртывание и сами точки
@@ -314,6 +314,19 @@ func TestMigratorRefusalTextsHaveOneProducer(t *testing.T) {
 			t.Fatalf("%v", jerr)
 		}
 		findings = append(findings, journalled...)
+	}
+
+	// Владелец переехал из pkg/migratorcli в пакет migratorcli общего
+	// фундамента (github.com/PRO-Robotech/corelib): дерево больше не несёт
+	// файла-производителя, поэтому ownerDecls с диска всегда 0 — читаем ТУДА,
+	// куда он переехал (см. corelibsource_test.go), тем же признаком.
+	for rel, body := range corelibPackageGoFiles(t, root, "migratorcli") {
+		filesRead++
+		decls, derr := migratorCLIRefusalDeclarations(rel, string(body))
+		if derr != nil {
+			t.Fatalf("%v", derr)
+		}
+		ownerDecls += len(decls)
 	}
 
 	t.Logf("перепись: файлов осмотрено %d (точек наката %d), объявлений текста отказа "+

@@ -24,7 +24,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/PRO-Robotech/kacho/pkg/observability/health"
+	"github.com/PRO-Robotech/corelib/observability/health"
 )
 
 func checkers(ping func(context.Context) error) []health.Checker {
@@ -82,7 +82,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/PRO-Robotech/kacho/pkg/observability/health"
+	"github.com/PRO-Robotech/corelib/observability/health"
 )
 
 func checkers(ping func(context.Context) error) []health.Checker {
@@ -162,7 +162,7 @@ func deps(ping func(context.Context) error) []checker {
 import (
 	"net/http"
 
-	"github.com/PRO-Robotech/kacho/pkg/observability/health"
+	"github.com/PRO-Robotech/corelib/observability/health"
 )
 
 func deps(slot *health.Slot) []health.Checker {
@@ -188,7 +188,7 @@ func mux(agg *health.Aggregator, m http.Handler) *http.ServeMux {
 import (
 	"net/http"
 
-	"github.com/PRO-Robotech/kacho/pkg/observability/health"
+	"github.com/PRO-Robotech/corelib/observability/health"
 )
 
 func deps(slot *health.Slot, name string) []health.Checker {

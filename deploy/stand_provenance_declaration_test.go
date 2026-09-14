@@ -53,6 +53,41 @@ package deploy
 // ОТДЕЛЬНЫЙ предмет, и он не закрыт здесь: величина им передана, путь остался
 // чужой заботой.
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ИМЯ ДОВОДА — КОНТРАКТ С ФАЙЛОМ СБОРКИ, И ГЕЙТ СВЕРЯЕТ ЕГО, А НЕ ТОЛЬКО НАЛИЧИЕ
+//
+// Довод, чьего имени файл сборки не объявляет, docker выбрасывает БЕЗ слова:
+// `ARG` остаётся при пустом умолчании, образ уезжает без ревизии, а сборка
+// зелена — класс «значение, которое пишут и не читают».
+//
+// Поэтому гейт сверяет СООТВЕТСТВИЕ: у вызова, чью цель `-f` можно разрешить в
+// дереве, имя переданного довода обязано совпасть с именем, из которого ЭТА цель
+// выводит клеймо ревизии. Имя цели читается У САМОЙ ЦЕЛИ — из строки клейма,
+// которую гейт от неё и так требует, — а НЕ из перечня известных имён: перечень
+// стареет молча, а строка клейма есть в каждом образе продукта by construction.
+// Где цель собрана из переменной оболочки (`-f $$d/Dockerfile`) или матрицы
+// конвейера, соответствие не проверяемо by construction — такие вызовы НЕ
+// прощаются молча, а считаются и называются числом: «ноль находок» обязано быть
+// отличимо от «ноль прочитанного».
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ЗДЕСЬ СТОЯЛА ОСЬ ПРИЁМА ПРЕЖНЕГО ИМЕНИ — ОНА ИСТЕКЛА (#2583)
+//
+// Имён было ДВА: каноническое (названное внешним стандартом, а не продуктом) и
+// прежнее, называвшее платформу. Прежнее принималось, ПОКА хоть один Dockerfile
+// дерева его объявлял, — им был файл службы доступа. Служба вынесена отдельным
+// репозиторием, объявивших стало НОЛЬ, и приём сам объявил себя находкой в тот
+// же прогон, назвав все три места снятия. Ровно то самоистечение, ради которого
+// он писался, — поэтому снят он ВМЕСТЕ с предметом: константа прежнего имени,
+// функция самоистечения, поле переписи и оси инъекции, его проверявшие.
+//
+// СНЯТО, А НЕ ОСЛАБЛЕНО, и это разные вещи. Вместе с приёмом стали
+// НЕПРЕДСТАВИМЫ два входа: «файл объявляет два имени одной величины» (имён
+// осталось одно) и «вызов передаёт одно известное имя, а цель объявляет другое
+// известное» (известное осталось одно). Первый утрачен вместе с предметом.
+// Второй ПЕРЕНЕСЁН на признак, который дерево производит, — имя, из которого
+// цель выводит клеймо, — и потому по-прежнему проверяем инъекцией.
+
 import (
 	"os"
 	"path/filepath"
@@ -64,7 +99,22 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const provenanceArg = "KACHO_IMAGE_REVISION"
+// canonicalProvenanceArg — имя довода, под которым величина ездит в образ.
+// Названо предметом, а предмет — внешним стандартом: довод кормит аннотацию
+// `org.opencontainers.image.revision`, и потому имя ВЫВОДИМО из ключа клейма,
+// а не выбрано вкусом. Объявление величины — provenance.mk.
+const canonicalProvenanceArg = "OCI_IMAGE_REVISION"
+
+func argDeclRe(name string) *regexp.Regexp {
+	return regexp.MustCompile(`(?m)^ARG\s+` + name + `\b`)
+}
+
+// labelArgRe — имя довода, из которого образ выводит клеймо ревизии. Признак
+// НАЗВАН ЦЕЛЬЮ, а не нашим перечнем: строку клейма гейт требует от каждого
+// образа продукта, поэтому имя читается у любого Dockerfile — включая тот, чьё
+// имя довода нам неизвестно. Перечень известных имён на этом месте старел бы
+// молча, и сверка соответствия замолчала бы вместе с ним.
+var labelArgRe = regexp.MustCompile(`org\.opencontainers\.image\.revision="\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?"`)
 
 // revisionPathFromReader — путь величины, ПРОЧИТАННЫЙ у читателя. Единственное
 // объявление в дереве; здесь его копии нет намеренно.
@@ -82,49 +132,71 @@ func revisionPathFromReader(t *testing.T) string {
 	return string(m[1])
 }
 
-// productDockerfiles — перечень образов продукта, ВЫВЕДЕННЫЙ из дерева.
-// Выписанный отстал бы на первом же новом сервисе или модуле консоли.
-func productDockerfiles(t *testing.T) []string {
-	t.Helper()
+// productDockerfilePatterns — где живут образы продукта. Перечень ОБРАЗЦОВ, а не
+// файлов: выписанный перечень файлов отстал бы на первом же новом сервисе или
+// модуле консоли.
+var productDockerfilePatterns = []string{
+	"../gateway/Dockerfile",
+	"../services/*/Dockerfile",
+	"../ui-future/*/Dockerfile",
+}
+
+// matchProductDockerfiles — чистое сопоставление образцов с деревом. Вынесено из
+// обёртки ниже, чтобы проба инъекции могла подать ему образцы, ничего не находящие,
+// и убедиться, что пустой обход ДОСТИЖИМ: функция, роняющая прогон сама,
+// непроверяема — пробе пришлось бы падать, чтобы доказать, что она работает.
+func matchProductDockerfiles(patterns []string) ([]string, error) {
 	var out []string
-	for _, pattern := range []string{
-		"../gateway/Dockerfile",
-		"../services/*/Dockerfile",
-		"../ui-future/*/Dockerfile",
-	} {
+	for _, pattern := range patterns {
 		hits, err := filepath.Glob(pattern)
 		if err != nil {
-			t.Fatalf("обход %s: %v", pattern, err)
+			return nil, err
 		}
 		out = append(out, hits...)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// productDockerfiles — тот же перечень для гейта, с ОТКАЗОМ на пустом обходе:
+// «образов не найдено» обязано ронять прогон, а не читаться как «находок нет».
+func productDockerfiles(t *testing.T) []string {
+	t.Helper()
+	out, err := matchProductDockerfiles(productDockerfilePatterns)
+	if err != nil {
+		t.Fatalf("обход образцов %v: %v", productDockerfilePatterns, err)
 	}
 	if len(out) == 0 {
 		t.Fatal("образов продукта не найдено — гейт, не прочитавший предмет, обязан падать, а не зеленеть")
 	}
-	sort.Strings(out)
 	return out
 }
 
 // checkDockerfile — находки по одному Dockerfile. Чистая функция над текстом:
 // проба инъекции кормит её синтетикой, не трогая дерево.
-func checkDockerfile(body, revisionPath string) []string {
-	var findings []string
-
-	if !regexp.MustCompile(`(?m)^ARG\s+` + provenanceArg + `\b`).MatchString(body) {
-		findings = append(findings, "не объявлен ARG "+provenanceArg)
+//
+// Имя довода у образа продукта ОДНО и каноническое; клеймо и файл ревизии
+// обязаны выводиться ИМЕННО из него. Файл, объявивший канон и выводящий клеймо
+// из чего-то другого, прошёл бы проверку, которая судит каждую строку в
+// отдельности, — поэтому обе сверяются с одним и тем же именем.
+func checkDockerfile(body, revisionPath string) (findings []string) {
+	arg := canonicalProvenanceArg
+	if !argDeclRe(arg).MatchString(body) {
+		findings = append(findings, "не объявлен ARG "+arg)
+		return findings
 	}
 
-	labelRe := regexp.MustCompile(`org\.opencontainers\.image\.revision="\$\{?` + provenanceArg + `\}?"`)
+	labelRe := regexp.MustCompile(`org\.opencontainers\.image\.revision="\$\{?` + arg + `\}?"`)
 	if !labelRe.MatchString(body) {
 		findings = append(findings,
-			"клеймо org.opencontainers.image.revision не выводится из $"+provenanceArg)
+			"клеймо org.opencontainers.image.revision не выводится из $"+arg)
 	}
 
 	// Файл пишется ИЗ ТОГО ЖЕ аргумента и ПО ТОМУ ЖЕ пути, что читает читатель.
-	writeRe := regexp.MustCompile(`\$\{?` + provenanceArg + `\}?"?\s*>\s*` + regexp.QuoteMeta(revisionPath))
+	writeRe := regexp.MustCompile(`\$\{?` + arg + `\}?"?\s*>\s*` + regexp.QuoteMeta(revisionPath))
 	if !writeRe.MatchString(body) {
 		findings = append(findings,
-			"величина не записывается в "+revisionPath+" из $"+provenanceArg)
+			"величина не записывается в "+revisionPath+" из $"+arg)
 	}
 
 	// Последний USER образа обязан остаться непривилегированным: семейство
@@ -147,18 +219,29 @@ func TestEveryProductImageCarriesTheTreeRevision(t *testing.T) {
 	revisionPath := revisionPathFromReader(t)
 	files := productDockerfiles(t)
 
-	total := 0
+	total, carrying := 0, 0
 	for _, f := range files {
 		body, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatalf("чтение %s: %v", f, err)
 		}
 		total++
-		for _, finding := range checkDockerfile(string(body), revisionPath) {
+		findings := checkDockerfile(string(body), revisionPath)
+		if len(findings) == 0 {
+			carrying++
+		}
+		for _, finding := range findings {
 			t.Errorf("НАХОДКА: %s — %s", f, finding)
 		}
 	}
-	t.Logf("осмотрено: образов продукта %d, путь величины «%s» (прочитан у читателя)", total, revisionPath)
+
+	// Перепись печатает ДВЕ величины: сколько образов осмотрено и сколько несут
+	// величину без единой находки. Одно число скрывало бы ровно тот случай, ради
+	// которого перепись заведена, — «ноль находок» на нуле прочитанного. Пустой
+	// перечень при этом до сюда не доходит: productDockerfiles роняет прогон.
+	t.Logf("осмотрено: образов продукта %d, несут величину без находок %d, "+
+		"имя довода %s, путь величины «%s» (прочитан у читателя)",
+		total, carrying, canonicalProvenanceArg, revisionPath)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -309,27 +392,73 @@ func buildSites(t *testing.T) (makefiles, workflows []string) {
 	return makefiles, workflows
 }
 
-// invocationCarriesRevision — вызов передаёт величину сам либо через переменную,
-// которая её несёт. Вторая форма нужна рецепту стенда: там аргументы собраны в
-// одну переменную, и требовать буквального имени в каждой строке значило бы
-// требовать копий.
-func invocationCarriesRevision(text string, carriers []string) bool {
-	if strings.Contains(text, provenanceArg) {
+// passesArg — передаёт ли вызов довод ПОД ЭТИМ именем: буквально либо через
+// переменную, чьё объявление его несёт. Вторая форма нужна рецепту стенда: там
+// аргументы собраны в одну переменную, и требовать буквального имени в каждой
+// строке значило бы требовать копий.
+//
+// Имя приходит ПАРАМЕТРОМ, от цели вызова, а не из перечня известных: перечень
+// на этом месте старел бы молча, и вопрос «совпало ли» превратился бы в «есть ли
+// хоть что-то из набора» — то есть перестал бы быть вопросом о соответствии.
+func passesArg(text string, carriers map[string]map[string]bool, name string) bool {
+	if strings.Contains(text, name) {
 		return true
 	}
-	for _, c := range carriers {
-		if strings.Contains(text, c) {
+	for v, names := range carriers {
+		if strings.Contains(text, v) && names[name] {
 			return true
 		}
 	}
 	return false
 }
 
+// dockerfileArgOf — имя довода, из которого цель вызова выводит клеймо ревизии.
+// Второй результат — разрешилась ли цель вовсе: путь, собранный из переменной
+// оболочки или матрицы конвейера, не разрешается by construction, и это НЕ
+// находка, а граница.
+func dockerfileArgOf(site, text string) (arg string, resolved bool) {
+	m := regexp.MustCompile(`(?:-f|file=)\s*"?([^\s"]*Dockerfile[^\s"]*)"?`).FindStringSubmatch(text)
+	if m == nil {
+		return "", false
+	}
+	rel := m[1]
+	if strings.ContainsAny(rel, "$*{") {
+		return "", false // путь собран из переменной либо матрицы
+	}
+	base := filepath.Dir(site)
+	// `cd <X> && docker build …` меняет базу пути. Берём ПОСЛЕДНИЙ переход перед
+	// сборкой: рецепты стенда пишут `( cd ../ui-future && docker build … )`.
+	if i := buildCmdRe.FindStringIndex(text); i != nil {
+		for _, cd := range regexp.MustCompile(`cd\s+([^\s&;]+)`).FindAllStringSubmatchIndex(text[:i[0]], -1) {
+			base = filepath.Join(base, text[cd[2]:cd[3]])
+		}
+	}
+	// Процессы конвейера исполняются из корня дерева, а не из каталога своего файла.
+	if strings.Contains(filepath.ToSlash(site), "/.github/workflows/") {
+		base = ".."
+	}
+	path := filepath.Join(base, rel)
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return "", false
+	}
+	if m := labelArgRe.FindSubmatch(body); m != nil {
+		return string(m[1]), true
+	}
+	// Файл есть, а клейма из довода не выводит — это находка СТОРОНЫ ОБРАЗА, и её
+	// уже назвал TestEveryProductImageCarriesTheTreeRevision. Здесь сверять нечего.
+	return "", false
+}
+
 var makeVarDeclRe = regexp.MustCompile(`^([A-Z_][A-Z0-9_]*)\s*[:?]?=`)
+
+// buildArgNameRe — имя довода в строке `--build-arg <ИМЯ>=…`.
+var buildArgNameRe = regexp.MustCompile(`--build-arg\s+"?([A-Za-z_][A-Za-z0-9_]*)`)
 var makeIncludeRe = regexp.MustCompile(`^-?include\s+(\S+)`)
 
 // revisionCarryingVars — переменные, чьё ОБЪЯВЛЕНИЕ содержит величину, ВКЛЮЧАЯ
-// объявленные во включаемых файлах.
+// объявленные во включаемых файлах. Значение — набор ИМЁН, которые переменная
+// несёт: переходная пара несёт два, и сверка соответствия обязана знать какие.
 //
 // Включение обходится, а не игнорируется, и это существенно: величина объявлена
 // ОДИН раз на дерево (provenance.mk), поэтому рецепт, судимый только по
@@ -339,13 +468,14 @@ var makeIncludeRe = regexp.MustCompile(`^-?include\s+(\S+)`)
 // Возвращает носители И находки; о находках отчитывается ВЫЗЫВАЮЩИЙ. Функция,
 // роняющая прогон сама, непроверяема: пробе инъекции пришлось бы падать, чтобы
 // доказать, что она работает.
-func revisionCarryingVars(path string, depth int) (carriers, findings []string) {
+func revisionCarryingVars(path string, depth int) (carriers map[string]map[string]bool, findings []string) {
+	carriers = map[string]map[string]bool{}
 	if depth > 4 {
-		return nil, nil
+		return carriers, nil
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, nil
+		return carriers, nil
 	}
 	dir := filepath.Dir(path)
 	for _, line := range joinContinuations(string(raw)) {
@@ -358,15 +488,38 @@ func revisionCarryingVars(path string, depth int) (carriers, findings []string) 
 				continue
 			}
 			c, f := revisionCarryingVars(included, depth+1)
-			carriers = append(carriers, c...)
+			for v, names := range c {
+				if carriers[v] == nil {
+					carriers[v] = map[string]bool{}
+				}
+				for n := range names {
+					carriers[v][n] = true
+				}
+			}
 			findings = append(findings, f...)
 			continue
 		}
-		if !strings.Contains(line, provenanceArg) {
+		// Имена читаются как ИМЕНА ДОВОДОВ, а не сверяются с перечнем известных:
+		// переменная-носитель тем и является, что строит `--build-arg <ИМЯ>=…`, и
+		// сверка соответствия обязана уметь спросить про ЛЮБОЕ имя, включая то,
+		// которого мы не знаем. Прежняя редакция считала носителем и переменную,
+		// чьё объявление лишь СОДЕРЖАЛО имя (величину провенанса), — она доводов
+		// не строит, и оправдывать вызов ей было нечем.
+		var carried []string
+		for _, m := range buildArgNameRe.FindAllStringSubmatch(line, -1) {
+			carried = append(carried, m[1])
+		}
+		if len(carried) == 0 {
 			continue
 		}
 		if m := makeVarDeclRe.FindStringSubmatch(trimmed); m != nil {
-			carriers = append(carriers, "$("+m[1]+")")
+			v := "$(" + m[1] + ")"
+			if carriers[v] == nil {
+				carriers[v] = map[string]bool{}
+			}
+			for _, n := range carried {
+				carriers[v][n] = true
+			}
 		}
 	}
 	return carriers, findings
@@ -375,13 +528,31 @@ func revisionCarryingVars(path string, depth int) (carriers, findings []string) 
 func TestEveryImageBuildPassesTheTreeRevision(t *testing.T) {
 	makefiles, workflows := buildSites(t)
 
-	var seen int
-	judge := func(inv buildInvocation, carriers []string) {
+	var seen, checked, unresolved int
+	judge := func(inv buildInvocation, carriers map[string]map[string]bool) {
 		seen++
-		if !invocationCarriesRevision(inv.text, carriers) {
-			t.Errorf("НАХОДКА: %s — сборка не передаёт --build-arg %s=…; образ уедет без ревизии, "+
-				"и провенанс стенда ответит «не установлена»", inv.site, provenanceArg)
+		// ТРЕБУЕМОЕ ИМЯ ПРИХОДИТ ОТ ЦЕЛИ, а канон — только там, где цели нет.
+		// Цель разрешилась ⇒ спрашиваем ровно то имя, из которого она выводит
+		// клеймо: это и есть сверка соответствия. Не разрешилась ⇒ спрашиваем
+		// канон, потому что всякий образ продукта этого дерева объявляет его
+		// (держит проверка выше), и другого требования у нас нет.
+		want, resolved := dockerfileArgOf(inv.site, inv.text)
+		need := canonicalProvenanceArg
+		if resolved {
+			checked++
+			need = want
+		} else {
+			unresolved++
 		}
+		if passesArg(inv.text, carriers, need) {
+			return
+		}
+		why := "образ уедет без ревизии, и провенанс стенда ответит «не установлена»"
+		if resolved && need != canonicalProvenanceArg {
+			why = "её цель выводит клеймо из $" + need + ", а docker непотреблённый довод " +
+				"выбрасывает МОЛЧА: ARG останется пустым, а сборка — зелёной"
+		}
+		t.Errorf("НАХОДКА: %s — сборка не передаёт --build-arg %s=…; %s", inv.site, need, why)
 	}
 
 	for _, f := range makefiles {
@@ -410,6 +581,13 @@ func TestEveryImageBuildPassesTheTreeRevision(t *testing.T) {
 	if seen == 0 {
 		t.Fatal("вызовов сборки ноль — «все передают величину» здесь означало бы «ни один не прочитан»")
 	}
-	t.Logf("осмотрено: рецептов %d, процессов конвейера %d, вызовов сборки %d",
-		len(makefiles), len(workflows), seen)
+	// Соответствие имён проверено НЕ у всех вызовов, и это надо назвать числом:
+	// цель, собранная из переменной оболочки, не разрешается by construction.
+	if checked == 0 {
+		t.Error("НАХОДКА: ни у одного вызова цель не разрешилась — сверка имён не выполнена ни " +
+			"разу, и «соответствие держится» здесь означало бы «не прочитано»")
+	}
+	t.Logf("осмотрено: рецептов %d, процессов конвейера %d, вызовов сборки %d; "+
+		"соответствие имени сверено у %d, цель не разрешается у %d",
+		len(makefiles), len(workflows), seen, checked, unresolved)
 }

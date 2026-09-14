@@ -414,7 +414,7 @@ func TestConfigPopulationCoversEveryPartThatMountsItsSettings(t *testing.T) {
 		t.Fatal("в дереве не найдено ни одного файла настроек нашей части — обход прочитал " +
 			"ноль, и «ноль находок» здесь означало бы «ноль осмотренного»")
 	}
-	charts, chartsSeen := serviceConfigCharts(t)
+	charts, chartsSeen, elsewhere := serviceConfigCharts(t)
 	// ЕДИНИЦА СЧЁТА ЗДЕСЬ — ЧАСТЬ, А НЕ ЧАРТ, и это не педантизм: одну часть
 	// продукта описывают ДВА чарта (её собственный и её же подчарт в умбрелле),
 	// поэтому счёт чартов дал бы «в популяции 4 из 3» — число, которое читателю
@@ -424,11 +424,18 @@ func TestConfigPopulationCoversEveryPartThatMountsItsSettings(t *testing.T) {
 		covered[c.service] = true
 	}
 
+	// Часть, чьи ИСХОДНИКИ живут в другом репозитории, в популяцию этого
+	// семейства не входит BY CONSTRUCTION: сравнивать рендер её чарта не с чем —
+	// структура настроек, второй операнд равенства, лежит в её собственном
+	// дереве. Пропуск объявлен ведомостью (productnaming), а не выведен
+	// молчанием, и назван отдельным числом переписи ниже: слитый с «вне
+	// популяции», он читался бы как долг, которого нет.
 	missing := make([]string, 0, len(inTree))
 	for svc := range inTree {
-		if !covered[svc] {
-			missing = append(missing, svc)
+		if covered[svc] || !productnaming.SourcesInThisTree(svc) {
+			continue
 		}
+		missing = append(missing, svc)
 	}
 	sort.Strings(missing)
 	for _, svc := range missing {
@@ -442,8 +449,12 @@ func TestConfigPopulationCoversEveryPartThatMountsItsSettings(t *testing.T) {
 	}
 
 	t.Logf("осмотрено: чартов в дереве %d; частей, монтирующих файл настроек %d; "+
-		"из них в популяции %d; вне популяции %d; чартов в популяции %d",
-		chartsSeen, len(inTree), len(covered), len(missing), len(charts))
+		"из них в популяции %d; вне популяции %d; чартов в популяции %d; "+
+		"чартов нашей поставки с исходниками в другом репозитории %d",
+		chartsSeen, len(inTree), len(covered), len(missing), len(charts), len(elsewhere))
+	if len(elsewhere) > 0 {
+		t.Logf("  вне осмотра (исходники в другом репозитории): %s", strings.Join(elsewhere, " "))
+	}
 	names := make([]string, 0, len(inTree))
 	for svc, chart := range inTree {
 		names = append(names, fmt.Sprintf("%s→%s", svc, chart))
@@ -455,7 +466,7 @@ func TestConfigPopulationCoversEveryPartThatMountsItsSettings(t *testing.T) {
 // TestDBChannelKeyResolvesToTheFieldTheDSNReads — ключ, которым чарт объявляет
 // шифрование канала к базе, обязан доехать до строки подключения.
 func TestDBChannelKeyResolvesToTheFieldTheDSNReads(t *testing.T) {
-	charts, chartsSeen := serviceConfigCharts(t)
+	charts, chartsSeen, elsewhere := serviceConfigCharts(t)
 	if chartsSeen == 0 {
 		t.Fatal("в дереве не найдено ни одного Chart.yaml — обход прочитал ноль, " +
 			"и «ноль находок» здесь означало бы «ноль осмотренного»")
@@ -526,6 +537,11 @@ func TestDBChannelKeyResolvesToTheFieldTheDSNReads(t *testing.T) {
 	}
 
 	sort.Strings(withoutChannelKey)
+	if len(elsewhere) > 0 {
+		t.Logf("вне осмотра (наша поставка, исходники в другом репозитории): %s — "+
+			"поля структуры настроек, в которое обязан доехать ключ, в этом дереве нет",
+			strings.Join(elsewhere, " "))
+	}
 	t.Logf("осмотрено: чартов в дереве %d, из них с конфигурацией сервиса %d; "+
 		"прочитано ключей настроек %d; из них объявляют канал к базе %d; "+
 		"осей «сборщик читает поле» судимо %d; находок %d",

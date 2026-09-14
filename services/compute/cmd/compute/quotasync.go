@@ -10,11 +10,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	corequota "github.com/PRO-Robotech/corelib/quota"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/quota"
-	"github.com/PRO-Robotech/kacho/services/compute/internal/clients"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/config"
 )
 
@@ -58,43 +56,26 @@ func buildQuotaAuthorityEdge(
 		return quotaAuthorityEdge{}, noop, err
 	}
 
-	var (
-		limits    quota.LimitResolver
-		src       corequota.Source
-		closeConn = noop
-	)
-	if authority.Deployed() {
-		creds, cerr := grpcclient.TLSClientTransportCreds(cfg.QuotaAuthorityMTLS)
-		if cerr != nil {
-			return quotaAuthorityEdge{}, noop, fmt.Errorf("compute→quota authority mTLS creds: %w", cerr)
-		}
-		conn, derr := dialPeerCreds(authority.Endpoint(), creds, true)
-		if derr != nil {
-			return quotaAuthorityEdge{}, noop, fmt.Errorf("dial quota authority: %w", derr)
-		}
-		closeConn = func() { _ = conn.Close() }
-		limitClient := clients.NewLimitClient(conn)
-		limits, src = limitClient, limitClient
-		logger.Info("resource-count quota: limit authority edge configured",
-			"endpoint", authority.Endpoint(),
-			"mtls", cfg.QuotaAuthorityMTLS.Enable,
-			"service", "compute")
-	}
+	// Полосы пути запроса НЕТ и быть не может: производителя у контракта
+	// авторитета величин не осталось ни в одном дереве, и объявленный адрес
+	// отвергается стражем старта (`pkg/quota/quotaedge`.ValidateAuthorityHasAProducer).
+	// Порт остаётся сокетом: он переживает смерть своей реализации by construction,
+	// и это ровно то, ради чего он порт. Кто его наполнит — решает развилка,
+	// которую ведёт задача продукта 2190.
 
 	// Заведение стоит БЕЗУСЛОВНО — решение принимает StartLimitSync, читая
 	// объявление. Пока оно принималось здесь, признаком служило наличие
 	// соединения соседа по авторизации, и после снятия авторитета величин подъём
 	// отказал бы ПРИ СБОРКЕ, а этот отказ фатален.
 	stopSync, serr := corequota.StartLimitSync(
-		ctx, pool, authority, src, schema, corequota.Config{}, logger)
+		ctx, pool, authority, nil, schema, corequota.Config{}, logger)
 	if serr != nil {
-		closeConn()
 		return quotaAuthorityEdge{}, noop, fmt.Errorf("start quota limit sync: %w", serr)
 	}
 
 	return quotaAuthorityEdge{
-			Limits:      limits,
+			Limits:      nil,
 			ReadPosture: corequota.ReadPosture(authority, "compute"),
 		},
-		func() { stopSync(); closeConn() }, nil
+		stopSync, nil
 }

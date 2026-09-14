@@ -47,7 +47,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota"
+	"github.com/PRO-Robotech/corelib/quota"
 )
 
 // TestQuotaRefusalIsRenderedFromOneSource — файл каждого владельца совпадает с
@@ -69,6 +69,7 @@ func TestQuotaRefusalIsRenderedFromOneSource(t *testing.T) {
 		if err != nil {
 			t.Fatalf("рендер для %s: %v", o.Service, err)
 		}
+		want = translateCorelibQuotaRefusalSelfRef(want)
 		dir := filepath.Join(root, "services", o.Service, "internal", "migrations")
 
 		// ── СВЕРКА ПЕРВАЯ: файл целиком, там где он рендерится ─────────────
@@ -134,6 +135,114 @@ func TestQuotaRefusalIsRenderedFromOneSource(t *testing.T) {
 	if len(findings) > 0 {
 		t.Fatalf("отказ учёта разошёлся с единым источником (%d):\n  %s",
 			len(findings), strings.Join(findings, "\n  "))
+	}
+}
+
+// corelibQuotaRefusalStaleSelfRef / corelibQuotaRefusalCurrentSelfRef — единственная
+// известная НЕПОДВИЖНОСТЬ рендера общего фундамента: путь, которым сам шаблон
+// называет СЕБЯ в эмитируемом заголовке миграции.
+//
+// # Почему это переводится, а не сравнивается как есть
+//
+// Шаблон переехал из `pkg/quota` в `github.com/PRO-Robotech/corelib/quota`
+// (коммит a3fbfe546d, «pkg: фундамент вынесен в общую библиотеку»), и та же
+// правка механически заменила упоминания старого пути ПО ВСЕМУ дереву —
+// включая эту строку внутри пяти уже ПРИМЕНЁННЫХ миграций отказа учёта.
+// Применённую миграцию нельзя переиграть повторно (ban #5), поэтому пять
+// файлов дерева сегодня несут актуальный путь навсегда — это проверено
+// прямым чтением: `git show a3fbfe546d -- services/compute/.../0038_*.sql`
+// правит РОВНО эту строку, ничего больше.
+//
+// Шаблон, теперь живущий в corelib v1.4.0, свой эмитируемый заголовок
+// сохранил БУКВАЛЬНО ("`pkg/quota/refusal.sql.tmpl`") — его собственный
+// комментарий объявляет это намеренным: «вывод генератора байт-в-байт
+// прежний» (`{{/* ... */}}` в refusal.sql.tmpl корелиба). Значит рендер
+// v1.4.0 навсегда называет свой ДОпереездный путь, а применённые файлы этого
+// дерева — свой ПОСЛЕпереездный. Обе стороны правы о своём моменте; расходится
+// только эта строка провенанса, а не производимая функция (доказано
+// TestCorelibQuotaRefusalSelfRefTranslationIsNarrow: длина расхождения без
+// перевода равна ровно длине разницы двух путей, и нигде больше).
+//
+// Перевод СУЖЕН до этой одной, именованной подстроки: остаток файла (включая
+// оба тела функций отказа) сравнивается как прежде, побайтово, без
+// послаблений — расходись там что-то ещё, сравнение покраснеет и назовёт
+// строку.
+const (
+	corelibQuotaRefusalStaleSelfRef   = "`pkg/quota/refusal.sql.tmpl`"
+	corelibQuotaRefusalCurrentSelfRef = "`corelib/quota/refusal.sql.tmpl`"
+)
+
+// translateCorelibQuotaRefusalSelfRef — переводит РОВНО одну известную
+// подстроку рендера общего фундамента в её актуальный вид. НЕ второй
+// рендерер (RenderRefusalMigration остаётся единственным источником текста):
+// эта функция не решает, ЧТО эмитировать, только приводит имя пакета в уже
+// готовом тексте к имени, под которым пакет живёт сегодня.
+func translateCorelibQuotaRefusalSelfRef(rendered string) string {
+	return strings.ReplaceAll(rendered, corelibQuotaRefusalStaleSelfRef,
+		corelibQuotaRefusalCurrentSelfRef)
+}
+
+// TestCorelibQuotaRefusalSelfRefTranslationIsNarrow — доказательство в ОБЕ
+// стороны: перевод закрывает ИМЕННО известное расхождение и не маскирует
+// никакое другое.
+func TestCorelibQuotaRefusalSelfRefTranslationIsNarrow(t *testing.T) {
+	t.Parallel()
+	owners := quota.RefusalOwners()
+	checked := 0
+	for _, o := range owners {
+		if !o.RendersOwnFile() {
+			continue
+		}
+		want, err := quota.RenderRefusalMigration(o)
+		if err != nil {
+			t.Fatalf("рендер для %s: %v", o.Service, err)
+		}
+
+		// Предпосылка: рендер общего фундамента и правда несёт устаревшую
+		// самореференцию. Без этого перевод беспредметен — «нечего переводить»
+		// неотличимо от «перевод сломан», если не проверить это отдельно.
+		if !strings.Contains(want, corelibQuotaRefusalStaleSelfRef) {
+			t.Fatalf("%s: рендер общего фундамента больше не несёт устаревшую "+
+				"самореференцию %s — перевод потерял предмет: снимите его вместе "+
+				"с этой пробой, а не оставляйте на всякий случай", o.Service,
+				corelibQuotaRefusalStaleSelfRef)
+		}
+
+		translated := translateCorelibQuotaRefusalSelfRef(want)
+
+		// Направление первое: перевод ЗАКРЫВАЕТ известное расхождение —
+		// переведённый рендер обязан совпасть с тем, что уже лежит в
+		// применённой миграции этого владельца.
+		path := filepath.Join(repoRoot(t), "services", o.Service, "internal",
+			"migrations", o.Migration)
+		got, rerr := os.ReadFile(path) // #nosec G304 -- путь из перечня владельцев
+		if rerr != nil {
+			t.Fatalf("%s: применённая миграция не читается: %v", o.Service, rerr)
+		}
+		if string(got) != translated {
+			t.Fatalf("%s: перевод не закрыл известное расхождение — %s", o.Service,
+				firstDiff(string(got), translated))
+		}
+
+		// Направление второе: перевод НЕ маскирует произвольное расхождение.
+		// Порча тела функции (за пределами строки самореференции) обязана
+		// остаться видимой после перевода — иначе строковая замена сузилась
+		// бы до маски, готовой проглотить и настоящий дефект.
+		hurt := strings.Replace(translated, "kacho_quota_refuse", "kacho_quota_refuseXX", 1)
+		if hurt == translated {
+			t.Fatalf("%s: инъекция не изменила текст — предпосылка пробы не выполнена",
+				o.Service)
+		}
+		if string(got) == hurt {
+			t.Fatalf("%s: перевод сделал испорченный рендер неотличимым от применённой "+
+				"миграции — это и есть маска, которой перевод не должен быть", o.Service)
+		}
+
+		checked++
+	}
+	if checked == 0 {
+		t.Fatal("ни один владелец не рендерит свой файл — перевод беспредметен, " +
+			"а «ноль расхождений» здесь означало бы «ноль проверенного»")
 	}
 }
 

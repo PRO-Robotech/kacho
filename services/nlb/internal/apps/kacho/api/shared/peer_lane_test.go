@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	kerrors "github.com/PRO-Robotech/kacho/pkg/errors"
+	kerrors "github.com/PRO-Robotech/corelib/errors"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
 

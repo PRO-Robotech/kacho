@@ -6,7 +6,7 @@ package domain
 import (
 	"time"
 
-	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
+	coreerrors "github.com/PRO-Robotech/corelib/errors"
 	"go.uber.org/multierr"
 )
 

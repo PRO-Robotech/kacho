@@ -50,10 +50,10 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib" // database/sql driver для goose
 	"github.com/pressly/goose/v3"
 
+	"github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/safeconv"
 	"github.com/PRO-Robotech/kacho/gateway/internal/idempotencypg/migrations"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
-	"github.com/PRO-Robotech/kacho/pkg/db"
-	"github.com/PRO-Robotech/kacho/pkg/safeconv"
 )
 
 // schemaLockID — идентификатор advisory-блокировки, под которой накатывается

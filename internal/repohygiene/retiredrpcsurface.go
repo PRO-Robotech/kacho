@@ -114,8 +114,27 @@ func AuditRetiredRPCSurface(opts RetiredRPCSurfaceOptions, out io.Writer) ([]Ret
 	var findings []RetiredRPCSurfaceFinding
 
 	// ── 1. Сгенерированные стабы: та же таблица, по которой идёт диспатч ──────
+	// ДОМА СТАБОВ СПРАШИВАЮТСЯ У ОБЩЕГО СБОРЩИКА, а не собираются здесь.
+	//
+	// Здесь стоял свой перечень из двух домов — этого дерева и общего фундамента.
+	// Он давал верный ответ и был ВТОРЫМ объявлением одного предмета: когда
+	// заглушки службы доступа уехали в её модуль (kacho#2616, исход C,
+	// 2026-09-13), третий дом достался `apiStubHomes`, а этому перечню — нет.
+	// Красного это не давало и дать не могло: имя, вернувшееся в контракт СЛУЖБЫ,
+	// такой перечень просто не видит — слепая зона, а не находка.
+	//
+	// Один дом читал бы имя снятого как несуществующее в контракте вообще, не
+	// различая «снято» от «предмет переехал».
+	// `ModulePath` этим гейтам не нужен: он служит только полю `importPrefix`,
+	// которое читает сверка монтирования (`grpcmountparity`), а не разбор
+	// объявлений. Пустое значение здесь ничего не сужает — перечень домов
+	// собирается по КАТАЛОГАМ.
+	homes, homesErr := apiStubHomes(MountOptions{Root: opts.Root, APIRoot: opts.APIRoot})
+	if homesErr != nil {
+		return nil, c, homesErr
+	}
 	var rc CatalogReachabilityCensus
-	declared, err := declaredMethods(filepath.Join(opts.Root, opts.APIRoot), &rc)
+	declared, err := declaredMethods(homes, &rc)
 	if err != nil {
 		return nil, c, err
 	}

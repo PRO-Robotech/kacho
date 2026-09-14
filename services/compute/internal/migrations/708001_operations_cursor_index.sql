@@ -12,7 +12,7 @@
 --     SELECT … FROM public.operations [WHERE …]
 --     ORDER BY created_at ASC, id ASC LIMIT <размер+1>
 --
--- Запрос строит общий `pkg/operations` (`pgRepo.listWithOwner`), и ВСЕ его
+-- Запрос строит общий `corelib/operations` (`pgRepo.listWithOwner`), и ВСЕ его
 -- фильтры необязательны: `resource_id`, `account_id`, предикат владельца. Значит
 -- ведущего равенства у обхода нет, и порядок обязан приходить из индекса по
 -- самим ключам курсора.

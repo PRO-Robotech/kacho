@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/pgtest"
+	"github.com/PRO-Robotech/corelib/pgtest"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/migrations"
 )
 
@@ -23,7 +23,7 @@ import (
 // themselves). Either way it is a separate database, so the isolation the CAS /
 // partial-UNIQUE / advisory-lock race proofs depend on is unchanged, and
 // concurrent goroutines inside one test still contend on the same real rows. See
-// pkg/pgtest for the full argument.
+// corelib/pgtest for the full argument.
 //
 // The container starts lazily, so under -short — where every test above skips —
 // none is started.
@@ -32,7 +32,7 @@ func TestMain(m *testing.M) {
 		// Приведение схемы — ОДИН раз на пакет, у выдающего базу.
 		// Прежде его приписывал каждый вызывающий своей копией; забывший
 		// получал `relation … does not exist` — отказ, читающийся как дефект
-		// продукта. Довод целиком — `pkg/pgtest` §WithSearchPath.
+		// продукта. Довод целиком — `corelib/pgtest` §WithSearchPath.
 		SearchPath: "kacho_registry,public",
 		Name:       "registry",
 		Migrate:    pgtest.Goose(migrations.FS),

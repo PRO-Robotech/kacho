@@ -152,6 +152,34 @@ def production_registrations(root: pathlib.Path) -> dict[str, list[str]]:
     return hits
 
 
+def service_dirs(root: pathlib.Path) -> set[str]:
+    """Каталоги частей под `services/`, взятые у ИНДЕКСА GIT.
+
+    Зачем это перепись, а не удобство: носитель, чьи ИСХОДНИКИ уехали в свой
+    репозиторий, композиционного корня в этом дереве не имеет BY CONSTRUCTION.
+    Требовать от него регистрации — требовать координаты того, чего здесь нет;
+    не требовать молча — разоружить контроль. Различить эти два случая можно
+    только спросив дерево, есть ли у носителя исходники.
+
+    Единица счёта — отслеживаемый элемент, а не файл на диске: под деревом лежат
+    распакованные чужие чарты и рабочие каталоги полос, и обход диска считал бы
+    их частями продукта.
+
+    Пустое множество — «ноль прочитанного», а не «частей нет». Вызывающий обязан
+    это различать: на пустом сужать нельзя, иначе внешними окажутся ВСЕ.
+    """
+    rc, out = _git(root, "ls-files", "--", "services/*")
+    if rc not in (0, 1):
+        raise SystemExit(f"FATAL: git ls-files не отработал в {root} — предпосылка "
+                         f"предиката отпала, чинить надо предикат, а не молчать")
+    dirs: set[str] = set()
+    for line in out.splitlines():
+        parts = line.split("/")
+        if len(parts) >= 3 and parts[0] == "services":
+            dirs.add(parts[1])
+    return dirs
+
+
 def carrier_of(path: str) -> str:
     """Каталог сервиса-носителя по пути его композиционного корня.
 
@@ -173,6 +201,9 @@ def census(root: pathlib.Path) -> dict:
                        дереве, а не край: `subscription` служат пятеро;
       served         — домены, у ban #6 для которых ЕСТЬ предмет (хотя бы одна
                        служба провязана прод-кодом);
+      service_dirs   — каталоги частей под `services/` в индексе. Носитель вне
+                       этого множества композиционного корня здесь не имеет by
+                       construction, и требовать его регистрации нельзя;
       unserved       — домен → службы, чей контракт приземлён, но не провязан:
                        у ban #6 для них предмета НЕТ, и это печатается, а не
                        умалчивается;
@@ -207,6 +238,7 @@ def census(root: pathlib.Path) -> dict:
         "hosts": hosts,
         "served": served,
         "unserved": unserved,
+        "service_dirs": service_dirs(root),
         "proto_files_read": files_read,
         "domains_with_contract": len(services),
         "registrations_found": sum(len(v) for v in regs.values()),

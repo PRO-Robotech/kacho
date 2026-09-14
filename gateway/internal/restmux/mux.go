@@ -124,11 +124,11 @@ import (
 	computepb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	// geo.v1 — Region/Zone leaf-сервис kacho-geo.
 	geopb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
-	iampb "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
+	iampb "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
 	// kacho-nlb (loadbalancer.v1) — public RPC под /nlb/v1/*.
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
 	lbpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 
 	// kacho-registry (registry.v1) — public RPC под /registry/v1/*.
 	registrypb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
@@ -499,9 +499,10 @@ func NewMux(
 			return nil, fmt.Errorf("register CidrGroupService: %w", err)
 		}
 		// Quota — сколько ресурсов каждого вида арендатору позволено и сколько
-		// уже занято. Публичная поверхность и ТОЛЬКО чтение: величины меняет
-		// администратор облака через iam.v1.InternalLimitService на внутреннем
-		// слушателе. До этого сервиса вся поверхность квот была административной,
+		// уже занято. Публичная поверхность и ТОЛЬКО чтение: назначавший величины
+		// авторитет снят вместе с доменом величин (PRO-Robotech/kacho#2117), и
+		// производителя не осталось ни в одном дереве — владелец не назначен.
+		// До этого сервиса вся поверхность квот была административной,
 		// и арендатор, встретив отказ на пределе, не мог узнать ни своего
 		// потолка, ни своего расхода — работающий предел был неотличим от сбоя.
 		if err := vpcpb.RegisterQuotaServiceHandlerFromEndpoint(ctx, mux, vpcAddr, optsFor("vpc")); err != nil {
@@ -550,9 +551,10 @@ func NewMux(
 			return nil, fmt.Errorf("register compute InstanceService: %w", err)
 		}
 		// Quota — сколько ресурсов каждого вида арендатору позволено и сколько
-		// уже занято. Публичная поверхность и ТОЛЬКО чтение: величины меняет
-		// администратор облака через iam.v1.InternalLimitService на внутреннем
-		// слушателе. До этого сервиса вся поверхность квот домена была
+		// уже занято. Публичная поверхность и ТОЛЬКО чтение: назначавший величины
+		// авторитет снят вместе с доменом величин (PRO-Robotech/kacho#2117), и
+		// производителя не осталось ни в одном дереве — владелец не назначен.
+		// До этого сервиса вся поверхность квот домена была
 		// административной, и арендатор, встретив отказ на пределе, не мог узнать
 		// ни своего потолка, ни своего расхода — работающий предел был неотличим
 		// от сбоя.
@@ -604,9 +606,10 @@ func NewMux(
 				return nil, fmt.Errorf("register storage VolumeService: %w", err)
 			}
 			// Quota — сколько ресурсов каждого вида арендатору позволено и сколько
-			// уже занято. Публичная поверхность и ТОЛЬКО чтение: величины меняет
-			// администратор облака через iam.v1.InternalLimitService на внутреннем
-			// слушателе. До этого сервиса вся поверхность квот домена была
+			// уже занято. Публичная поверхность и ТОЛЬКО чтение: назначавший величины
+			// авторитет снят вместе с доменом величин (PRO-Robotech/kacho#2117), и
+			// производителя не осталось ни в одном дереве — владелец не назначен.
+			// До этого сервиса вся поверхность квот домена была
 			// административной, и арендатор, встретив отказ на пределе, не мог узнать
 			// ни своего потолка, ни своего расхода — работающий предел был неотличим
 			// от сбоя.
@@ -716,9 +719,11 @@ func NewMux(
 		// display_name/email берётся от поставщика личности при следующем UpsertFromIdentity.
 		if iamAddr != "" {
 			// Квоты личности — сколько аккаунтов вызывающему позволено и сколько
-			// уже занято. Публичная поверхность и ТОЛЬКО чтение о себе: величину
-			// меняет администратор облака через iam.v1.InternalLimitService на
-			// внутреннем слушателе. Обслуживает её kaname, поэтому адрес тот же.
+			// уже занято. Публичная поверхность и ТОЛЬКО чтение о себе: назначавший
+			// величину авторитет снят вместе с доменом величин
+			// (PRO-Robotech/kacho#2117), производителя не осталось ни в одном
+			// дереве — владелец не назначен. Чтение обслуживает kaname, поэтому
+			// адрес тот же.
 			if err := iampb.RegisterIdentityQuotaServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
 				return nil, fmt.Errorf("register iam IdentityQuotaService: %w", err)
 			}
@@ -762,30 +767,17 @@ func NewMux(
 			if err := iampb.RegisterAccessBindingServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
 				return nil, fmt.Errorf("register iam AccessBindingService: %w", err)
 			}
-			// LimitService — административная поверхность пределов на ПУБЛИЧНОМ
-			// бэкенде (ADM-1 S1, #878). Пять глаголов управления величиной под
-			// `/iam/v1/limits`, каждый гейтится `system_admin` @ `cluster`.
+			// ЗДЕСЬ РЕГИСТРИРОВАЛАСЬ административная поверхность величин на ПУБЛИЧНОМ
+			// бэкенде iam — пять глаголов управления под `/iam/v1/limits`.
 			//
-			// ЗАПРЕТ 6 НЕ СМЯГЧЁН: наружу выставлен публичный `LimitService`, а не
-			// `InternalLimitService`; предикат `HasInternalSuffix`, который ловит
-			// второе, не тронут. Переезжает ГЛАГОЛ, а не разрешение для внутреннего
-			// сервиса.
+			// Снята вместе с доменом величин (PRO-Robotech/kacho#2117, стадия S4); до
+			// края это дошло подъёмом пина службы (PRO-Robotech/kacho#2645): контракты
+			// приезжают сюда модулем, поэтому край регистрировал маршруты снятой службы,
+			// пока стоял прежний пин.
 			//
-			// ЧТО ЭТО ЧИНИТ. Величину назначает администратор облака, и назначает он
-			// её через край. Пока глагол жил только внутренним, страница пределов
-			// консоли получала 404 — отказ, неотличимый от «такого раздела нет
-			// вовсе», при полностью исправном сервисе. Теперь отказ честен: 403 у
-			// того, кому не положено, 200 у администратора.
-			//
-			// ДВА АДРЕСА ДО S3. Внутренний путь несёт сегмент `/internal/`, поэтому
-			// публичный не совпадает с ним дословно — в отличие от пула адресов, где
-			// оба глагола объявляли ОДИН путь и согласие их записей стерёг
-			// `TestSharedRestPair_CannotChangeAnAccessDecision`. Здесь пары нет, и
-			// согласие решения держит `TestLimits_AdminSurfaceIsReachableFromOutside`
-			// — тем же предикатом `accessDecisionDiffers`, а не своей копией.
-			if err := iampb.RegisterLimitServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
-				return nil, fmt.Errorf("register iam LimitService: %w", err)
-			}
+			// Имя снятой службы здесь НЕ воспроизводится: мёртвая координата читается
+			// проверкой свежести как живое утверждение, а предикат снятия задачи ищет
+			// её подстрокой и краснел бы на собственном объяснении.
 			// SAKeyService (ServiceAccount OAuth keys). Public under
 			// /iam/v1/serviceAccounts/{id}/keys. Без этой регистрации grpc-gateway
 			// не имеет REST-route → POST .../keys → 404, и SAKeyService.Issue/Revoke
@@ -847,19 +839,14 @@ func NewMux(
 			if err := iampb.RegisterInternalInteractiveClientServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
 				return nil, fmt.Errorf("register iam InternalInteractiveClientService: %w", err)
 			}
-			// InternalLimitService — resource-count ceilings (issue #291):
-			// Get / List / Create / Update / Delete plus the two owner-facing
-			// reads Resolve / ListChangedSince, under /iam/v1/internal/limits.
-			// Internal-only; isInternalRoute sends these paths to the internal
-			// sub-mux and the dispatcher 404s them on the external TLS listener,
-			// hiding existence. The five CRUD verbs are catalog-gated on
-			// `system_admin` @ cluster:cluster_root (mutations additionally
-			// at acr=2); the two reads carry the NARROW `quota_reader` relation,
-			// because an owner service must not need the whole cluster read tier
-			// to learn its tenant's ceiling.
-			if err := iampb.RegisterInternalLimitServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
-				return nil, fmt.Errorf("register iam InternalLimitService: %w", err)
-			}
+			// ЗДЕСЬ РЕГИСТРИРОВАЛСЯ внутренний авторитет величин — семь глаголов под
+			// `/iam/v1/internal/limits`: пять административных и два служебных чтения,
+			// которыми владельцы считаемых типов узнавали величину и её дельту.
+			//
+			// Домен величин выпилен из службы доступа целиком (PRO-Robotech/kacho#2117,
+			// приёмка KAN-QUOTA-1, стадия S4); до края это дошло подъёмом пина
+			// (PRO-Robotech/kacho#2645). Имя снятой службы здесь не воспроизводится —
+			// см. соседнее надгробие публичной поверхности.
 			// InternalOperationsService.ListIamOperations — cluster-wide IAM
 			// operations dump for admin-UI under GET /iam/v1/internal/operations.
 			// Internal-only; isInternalRoute routes /iam/v1/internal/* to
@@ -928,9 +915,10 @@ func NewMux(
 				return nil, fmt.Errorf("register loadbalancer NetworkLoadBalancerService: %w", err)
 			}
 			// Quota — сколько ресурсов каждого вида арендатору позволено и сколько
-			// уже занято. Публичная поверхность и ТОЛЬКО чтение: величины меняет
-			// администратор облака через iam.v1.InternalLimitService на внутреннем
-			// слушателе. До этого сервиса вся поверхность квот домена была
+			// уже занято. Публичная поверхность и ТОЛЬКО чтение: назначавший величины
+			// авторитет снят вместе с доменом величин (PRO-Robotech/kacho#2117), и
+			// производителя не осталось ни в одном дереве — владелец не назначен.
+			// До этого сервиса вся поверхность квот домена была
 			// административной, и арендатор, встретив отказ на пределе, не мог узнать
 			// ни своего потолка, ни своего расхода — работающий предел был неотличим
 			// от сбоя.
@@ -965,9 +953,10 @@ func NewMux(
 		// ingress, НЕ через api-gateway.
 		if registryAddr != "" {
 			// Quota — сколько ресурсов каждого вида арендатору позволено и сколько
-			// уже занято. Публичная поверхность и ТОЛЬКО чтение: величины меняет
-			// администратор облака через iam.v1.InternalLimitService на внутреннем
-			// слушателе. До этого сервиса вся поверхность квот домена была
+			// уже занято. Публичная поверхность и ТОЛЬКО чтение: назначавший величины
+			// авторитет снят вместе с доменом величин (PRO-Robotech/kacho#2117), и
+			// производителя не осталось ни в одном дереве — владелец не назначен.
+			// До этого сервиса вся поверхность квот домена была
 			// административной, и арендатор, встретив отказ на пределе, не мог узнать
 			// ни своего потолка, ни своего расхода — работающий предел был неотличим
 			// от сбоя.

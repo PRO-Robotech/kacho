@@ -7,7 +7,7 @@
 // # Предмет
 //
 // Рантайм спрашивает пробу о ПООБЪЕКТНЫХ типах, выведенных из карты прав
-// сервиса (`catalogderive.ObjectScopedTypes`, `pkg/servicehost/links.go`). Тип,
+// сервиса (`catalogderive.ObjectScopedTypes`, `corelib/servicehost/links.go`). Тип,
 // попавший в этот набор и не попавший в таблицу пробы, получает от неё ошибку
 // «неизвестный тип»; вызывающий отрабатывает fail-closed и оставляет отказ
 // отказом. Наблюдаемо это так: соседние типы ОДНОГО сервиса отвечают на одном и
@@ -33,7 +33,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
+	"github.com/PRO-Robotech/corelib/authz/catalogderive"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/check"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
 )

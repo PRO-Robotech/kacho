@@ -82,7 +82,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // payloadFloorIdent — имя величины. Гейт ищет ОБЪЯВЛЕНИЕ и ССЫЛКИ по разбору

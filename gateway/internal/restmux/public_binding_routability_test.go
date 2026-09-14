@@ -40,7 +40,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/contractroot"
+	"github.com/PRO-Robotech/corelib/contractroot"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 )

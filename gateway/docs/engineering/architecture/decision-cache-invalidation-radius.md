@@ -13,7 +13,8 @@
 
 ## Посылка задачи подтверждена, предложенный размен — нет
 
-Посылка верна: `pkg/subjectchange.Watcher.Poll` зовёт `Flush` на всякой непустой
+Посылка верна: `pkg/subjectchange.Watcher.Poll` (модуль
+`github.com/PRO-Robotech/kaname`) зовёт `Flush` на всякой непустой
 порции **безусловно**, а строкой ниже `closeNamed` уже работает поимённо — имена в
 порции есть.
 
@@ -39,7 +40,7 @@
 (`services/iam/internal/domain/access_binding.go:143` — отказ под условием
 `b.SubjectID == "*" && !(b.System && b.SubjectType == "user")`), и контракт называет её
 «единственный субъект, которого нельзя ни назвать, ни отозвать поимённо»
-(`proto/kaname/cloud/iam/v1/access_binding.proto`).
+(`kaname/cloud/iam/v1/access_binding.proto` того же модуля).
 
 ## Замер, на котором решение стоит
 
@@ -52,7 +53,7 @@
 | видов записи журнала объявлено | **7** | `sed -n '807p' services/iam/internal/migrations/0001_initial.sql` |
 | из них с производителем в дереве | **5** | `git grep -l '"<op>"' -- services/iam/internal \| grep -v _test \| grep -v migrations` |
 | такт перепроса (умолчание) | **2s** | `grep -n SUBJECT_CHANGE_POLL_INTERVAL gateway/internal/config/config.go` |
-| окно отзыва: умолчание · потолок | **5s · 10s** | `grep -n 'Default:\|Ceiling:' pkg/authz/revocation_policy.go` |
+| окно отзыва: умолчание · потолок | **5s · 10s** | `grep -n 'Default:\|Ceiling:' corelib/authz/revocation_policy.go` |
 | ключ кэша несёт субъект открыто | **нет**, только дайджест | `grep -n 'sha256.Sum256' gateway/internal/middleware/authz_cache.go` |
 
 ## Цена сплошного сброса — названа, а не замолчана
@@ -134,7 +135,8 @@
 
 ## Чем держится
 
-`pkg/subjectchange.TestNonAddressableSubjectFlushesTheWholeCache` — три вида строк,
+`pkg/subjectchange.TestNonAddressableSubjectFlushesTheWholeCache` (в дереве модуля
+службы) — три вида строк,
 по имени которых задетых записей не найти, обязаны гасить кэш целиком. Гейт
 **намеренно не требует** сплошного сброса для конкретной строки (`user:usr-…`):
 правильное сужение вправе её сузить, и запрещать его значило бы пинить нынешнее

@@ -18,7 +18,7 @@ import (
 // этом есть (конструктор раньше заводил кеш сам), но не объявлено ничем.
 const srcImplicit = `package check
 
-import "github.com/PRO-Robotech/kacho/pkg/authz"
+import "github.com/PRO-Robotech/corelib/authz"
 
 func NewInterceptor(opts Options) *authz.Interceptor {
 	return authz.NewInterceptor(authz.InterceptorOptions{
@@ -34,7 +34,7 @@ func NewInterceptor(opts Options) *authz.Interceptor {
 // отключит.
 const srcExplicit = `package check
 
-import "github.com/PRO-Robotech/kacho/pkg/authz"
+import "github.com/PRO-Robotech/corelib/authz"
 
 func NewInterceptor(opts Options) *authz.Interceptor {
 	return authz.NewInterceptor(authz.InterceptorOptions{
@@ -52,7 +52,7 @@ func NewInterceptor(opts Options) *authz.Interceptor {
 // называет кеш» обходится переносом литерала в переменную.
 const srcIndirect = `package check
 
-import "github.com/PRO-Robotech/kacho/pkg/authz"
+import "github.com/PRO-Robotech/corelib/authz"
 
 func NewInterceptor(opts Options) *authz.Interceptor {
 	cache := authz.NewCache(opts.CacheTTL)
@@ -68,7 +68,7 @@ func NewInterceptor(opts Options) *authz.Interceptor {
 // ради которого предикат берёт литерал, а не аргумент вызова.
 const srcIndirectImplicit = `package check
 
-import "github.com/PRO-Robotech/kacho/pkg/authz"
+import "github.com/PRO-Robotech/corelib/authz"
 
 func NewInterceptor(opts Options) *authz.Interceptor {
 	base := authz.InterceptorOptions{
@@ -80,7 +80,7 @@ func NewInterceptor(opts Options) *authz.Interceptor {
 `
 
 // srcCommentOnly — контроль на разбор вместо текста. Godoc конструктора в
-// pkg/authz содержит РОВНО ту форму, которую ищет гейт; текстовый поиск
+// corelib/authz содержит РОВНО ту форму, которую ищет гейт; текстовый поиск
 // объявил бы её дефектом. Это не гипотетическая опасность: перепись
 // регулярным выражением по дереву именно на этом примере и ошиблась.
 const srcCommentOnly = `package authz
@@ -185,7 +185,7 @@ func TestScanImplicitSites_ReportsAParseFailure(t *testing.T) {
 // выросло на единицу.
 const srcNoLiteralAtAll = `package check
 
-import "github.com/PRO-Robotech/kacho/pkg/authz"
+import "github.com/PRO-Robotech/corelib/authz"
 
 func NewInterceptor(opts Options) *authz.Interceptor {
 	var o authz.InterceptorOptions
@@ -200,7 +200,7 @@ func NewInterceptor(opts Options) *authz.Interceptor {
 // неявный путь.
 const srcNoLiteralCacheAssigned = `package check
 
-import "github.com/PRO-Robotech/kacho/pkg/authz"
+import "github.com/PRO-Robotech/corelib/authz"
 
 func NewInterceptor(opts Options) *authz.Interceptor {
 	var o authz.InterceptorOptions
@@ -215,7 +215,7 @@ func NewInterceptor(opts Options) *authz.Interceptor {
 // fail-closed, а «не смог посмотреть» это не «чисто».
 const srcOpaqueArgument = `package check
 
-import "github.com/PRO-Robotech/kacho/pkg/authz"
+import "github.com/PRO-Robotech/corelib/authz"
 
 func NewInterceptor(opts Options) *authz.Interceptor {
 	return authz.NewInterceptor(buildOptions(opts))

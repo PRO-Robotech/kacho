@@ -14,8 +14,8 @@ package config_test
 import (
 	"testing"
 
+	"github.com/PRO-Robotech/corelib/identityposture"
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
-	"github.com/PRO-Robotech/kacho/pkg/identityposture"
 )
 
 func TestDocumentedEnvName_IdentityProviderReachesTheField(t *testing.T) {

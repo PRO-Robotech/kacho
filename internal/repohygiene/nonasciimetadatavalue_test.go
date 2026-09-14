@@ -75,6 +75,61 @@ func auditMetadataHumanText(t *testing.T, root string) (string, []string, error)
 	var scanned, human int
 	var findings []string
 
+	// scanKeys — обе половины разбора одного файла: собрать ключи метаданных
+	// пофайлово, потом проверить у каждого человекочитаемого — есть ли двоичный
+	// близнец. Общая для диска и для пакета общего фундамента, читаемого из
+	// кэша модулей: предмет один, разница только в том, откуда взяты байты.
+	scanKeys := func(rel string, node *ast.File) {
+		perFile := map[string]bool{}
+		ast.Inspect(node, func(n ast.Node) bool {
+			vs, ok := n.(*ast.ValueSpec)
+			if !ok {
+				return true
+			}
+			for _, v := range vs.Values {
+				lit, ok := v.(*ast.BasicLit)
+				if !ok || lit.Kind != token.STRING {
+					continue
+				}
+				key := strings.Trim(lit.Value, `"`+"`")
+				// Ключ метаданных gRPC — строка в НИЖНЕМ регистре: метаданные
+				// приводятся к нижнему регистру по построению, а HTTP-заголовок
+				// в этом дереве объявляется в канонической форме («X-Kacho-…»).
+				// Различение по РЕГИСТРУ точно и не требует разбора типов:
+				// проверка по имени метода их не различает вовсе — `Set` есть
+				// и у метаданных, и у заголовков.
+				if key != strings.ToLower(key) || !strings.HasPrefix(key, "x-kacho-") {
+					continue
+				}
+				scanned++
+				perFile[key] = true
+			}
+			return true
+		})
+
+		// Второй проход по собранному: у ключа с человеческим текстом
+		// обязана СУЩЕСТВОВАТЬ двоичная форма. Сам прежний ключ при этом
+		// законен — он остаётся читаемым запасным путём на окно выкатки,
+		// когда край и сервисы катятся не одновременно.
+		//
+		// Послабление ИСТЕКАЕТ САМО: снимут прежний ключ — останется только
+		// двоичный, и проверка продолжит молчать; заведут новый ключ без
+		// пары — покраснеет.
+		for key := range perFile {
+			if hasAny(key, idLikeMarkers) || !hasAny(key, humanTextMarkers) {
+				continue
+			}
+			human++
+			if strings.HasSuffix(key, "-bin") || perFile[key+"-bin"] {
+				continue
+			}
+			findings = append(findings, rel+": ключ метаданных "+key+
+				" несёт текст, введённый человеком, а двоичной формы у него нет — "+
+				"первое же не-латинское значение уронит ВЕСЬ вызов, и упадёт он "+
+				"не здесь, а на любом последующем запросе вызывающего")
+		}
+	}
+
 	// Ключи собираются ПОФАЙЛОВО: законность прежней формы решается наличием
 	// её двоичного близнеца в том же объявлении, а не сама по себе.
 	var dirsSeen int
@@ -88,60 +143,36 @@ func auditMetadataHumanText(t *testing.T, root string) (string, []string, error)
 		}
 		dirsSeen++
 		for _, path := range trackedGoFiles(t, abs) {
-			perFile := map[string]bool{}
 			fset := token.NewFileSet()
 			node, perr := parser.ParseFile(fset, path, nil, 0)
 			if perr != nil {
 				continue
 			}
-			ast.Inspect(node, func(n ast.Node) bool {
-				vs, ok := n.(*ast.ValueSpec)
-				if !ok {
-					return true
-				}
-				for _, v := range vs.Values {
-					lit, ok := v.(*ast.BasicLit)
-					if !ok || lit.Kind != token.STRING {
-						continue
-					}
-					key := strings.Trim(lit.Value, `"`+"`")
-					// Ключ метаданных gRPC — строка в НИЖНЕМ регистре: метаданные
-					// приводятся к нижнему регистру по построению, а HTTP-заголовок
-					// в этом дереве объявляется в канонической форме («X-Kacho-…»).
-					// Различение по РЕГИСТРУ точно и не требует разбора типов:
-					// проверка по имени метода их не различает вовсе — `Set` есть
-					// и у метаданных, и у заголовков.
-					if key != strings.ToLower(key) || !strings.HasPrefix(key, "x-kacho-") {
-						continue
-					}
-					scanned++
-					perFile[key] = true
-				}
-				return true
-			})
+			rel, _ := filepath.Rel(root, path)
+			scanKeys(rel, node)
+		}
+	}
 
-			// Второй проход по собранному: у ключа с человеческим текстом
-			// обязана СУЩЕСТВОВАТЬ двоичная форма. Сам прежний ключ при этом
-			// законен — он остаётся читаемым запасным путём на окно выкатки,
-			// когда край и сервисы катятся не одновременно.
-			//
-			// Послабление ИСТЕКАЕТ САМО: снимут прежний ключ — останется только
-			// двоичный, и проверка продолжит молчать; заведут новый ключ без
-			// пары — покраснеет.
-			for key := range perFile {
-				if hasAny(key, idLikeMarkers) || !hasAny(key, humanTextMarkers) {
-					continue
-				}
-				human++
-				if strings.HasSuffix(key, "-bin") || perFile[key+"-bin"] {
-					continue
-				}
-				rel, _ := filepath.Rel(root, path)
-				findings = append(findings, rel+": ключ метаданных "+key+
-					" несёт текст, введённый человеком, а двоичной формы у него нет — "+
-					"первое же не-латинское значение уронит ВЕСЬ вызов, и упадёт он "+
-					"не здесь, а на любом последующем запросе вызывающего")
+	// Единственное объявление обоих поверхностных имён переехало из pkg/baggage
+	// в пакет principalwire общего фундамента (github.com/PRO-Robotech/corelib):
+	// gateway несёт только ПСЕВДОНИМЫ (`X = principalwire.X`, ast.SelectorExpr,
+	// а не строковый литерал), и разбор их не видит by construction. Читаем
+	// ТУДА, куда объявление переехало (см. corelibsource_test.go), а не только
+	// диск.
+	//
+	// Условие деклараций — намеренное, тот же приём, что у
+	// panicrecoverywiring_test.go: синтетическое дерево инъекции несёт свой
+	// минимальный go.mod, НЕ закрепляющий общий фундамент, и звать
+	// corelibPackageGoFiles на таком дереве значило бы падать по причине, не
+	// имеющей отношения к предмету пробы.
+	if declaresCorelibDependency(t, root) {
+		for rel, body := range corelibPackageGoFiles(t, root, "principalwire") {
+			fset := token.NewFileSet()
+			node, perr := parser.ParseFile(fset, rel, body, 0)
+			if perr != nil {
+				return "", nil, fmt.Errorf("%s: разбор: %w", rel, perr)
 			}
+			scanKeys(rel, node)
 		}
 	}
 

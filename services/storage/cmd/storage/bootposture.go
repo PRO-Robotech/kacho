@@ -4,8 +4,8 @@
 package main
 
 import (
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-	"github.com/PRO-Robotech/kacho/pkg/observability"
+	coredb "github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/observability"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/config"
 )

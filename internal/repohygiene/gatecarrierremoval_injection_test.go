@@ -40,8 +40,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/gitenv"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // injCarrierSrc — тело синтетического носителя. Форма та же, что в дереве:

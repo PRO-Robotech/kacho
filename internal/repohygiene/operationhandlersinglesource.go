@@ -23,12 +23,12 @@ const (
 	// печатает его в выводе каждым прогоном), а выписанное число устаревает
 	// молча — прежняя редакция несла величину, снятую ДО этого же коммита, в
 	// трёх местах сразу.
-	operationStubsPath = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	operationStubsPath = "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
 	// sharedOperationPbPath — общий слой, к которому ведёт законная прослойка.
-	sharedOperationPbPath = "github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
+	sharedOperationPbPath = "github.com/PRO-Robotech/corelib/operations/operationspb"
 	// operationsPkgPath — владелец строки операции; полоса владения выражается
 	// его глаголами.
-	operationsPkgPath = "github.com/PRO-Robotech/kacho/pkg/operations"
+	operationsPkgPath = "github.com/PRO-Robotech/corelib/operations"
 	// sharedLayerDir — каталог общего слоя относительно корня.
 	sharedLayerDir = "pkg/operations/operationspb"
 )

@@ -36,8 +36,6 @@ package repohygiene
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -47,6 +45,12 @@ import (
 // Канонический источник модели прав — `fgaModelPath` (объявлен соседним гейтом
 // этого же пакета): конфигмап чарта порождается из него, поэтому гейту достаточно
 // этого файла.
+//
+// Координата названа ОТНОСИТЕЛЬНО `proto/`, и файл лежит НЕ в этом дереве:
+// контракты службы доступа уехали в её репозиторий (kacho#2616, исход C,
+// 2026-09-13) и приезжают модулем `github.com/PRO-Robotech/kaname`. Путь на диске
+// резолвит `internal/contractsource` через [readContractFile] — литерал от корня
+// репозитория после переезда дал бы не находку, а молчание.
 
 // latentMarker — машинно различимая пометка спящего отношения. Строка с этим
 // префиксом над объявлением означает: производителя нет и это решение, а не
@@ -199,11 +203,7 @@ func countLatent(rels []modelRelation) int {
 // утверждением.
 func collectStructuralRelations(t *testing.T, root string) ([]modelRelation, int, int) {
 	t.Helper()
-	path := filepath.Join(root, fgaModelPath)
-	body, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("читаю %s: %v", path, err)
-	}
+	body := readContractFile(t, root, fgaModelPath)
 
 	var out []modelRelation
 	var curType string
@@ -211,7 +211,7 @@ func collectStructuralRelations(t *testing.T, root string) ([]modelRelation, int
 	var haveMarker bool
 	typesSeen, definesSeen := 0, 0
 
-	for i, line := range strings.Split(string(body), "\n") {
+	for i, line := range strings.Split(body, "\n") {
 		lineNo := i + 1
 		trimmed := strings.TrimSpace(line)
 

@@ -68,7 +68,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // consoleUIRoot — корень консоли относительно корня репозитория.
@@ -133,7 +133,6 @@ var consoleMutationLedger = []string{
 	"shared/src/components/organisms/SgRulesPanel/SgRulesPanel.tsx",
 	"shared/src/components/organisms/iam/IamCommon/IamCommon.tsx",
 	"shared/src/pages/InstanceDetailPage.tsx",
-	"shared/src/pages/system/LimitsPage.tsx",
 }
 
 // consoleMutationSite — место мутации: координата и текст вызова.

@@ -6,9 +6,9 @@ package handler
 import (
 	"context"
 
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	"github.com/PRO-Robotech/corelib/listnarrow"
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/placementgroup"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"

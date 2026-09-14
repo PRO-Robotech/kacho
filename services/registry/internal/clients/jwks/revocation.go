@@ -14,7 +14,7 @@
 //
 // Число окна — параметр безопасности. Заводя своё, мы получили бы параметр,
 // которого никто не выбирал: его нельзя ни обсудить, ни отозвать, ни заметить
-// при смене. Источник один — `pkg/authz`.RevocationPolicy.
+// при смене. Источник один — `corelib/authz`.RevocationPolicy.
 //
 // # Что кэшируется, а что нет
 //
@@ -44,7 +44,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/corelib/authz"
 )
 
 // RevocationReader — авторитет отзыва: отвечает, действует ли предъявленное

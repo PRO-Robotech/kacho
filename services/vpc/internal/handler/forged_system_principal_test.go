@@ -32,9 +32,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/operations"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
-	"github.com/PRO-Robotech/kacho/pkg/authz"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/services/nicinternal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/check"
@@ -43,7 +43,7 @@ import (
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
+	"github.com/PRO-Robotech/corelib/listnarrow/narrowtest"
 )
 
 func seedVictimNIC(t *testing.T, kr *kachomock.Repository, nicID, instanceID string) {
@@ -129,7 +129,7 @@ func TestListByInstance_RealPrincipalStillAsksTheModel(t *testing.T) {
 // До перевода у vpc стоял СВОЙ страж (`handler.AuthNUnaryInterceptor`), который
 // отвергал ЛЮБОЙ принципал типа `system` — и делал это только в боевом режиме.
 // Носитель такого звена не ставит: цепочку принести нельзя, а решение о доступе
-// он принимает одним звеном (`pkg/authz`), чей предикат анонимности — общий на
+// он принимает одним звеном (`corelib/authz`), чей предикат анонимности — общий на
 // платформу (`operations.Principal.IsAnonymous`) и сужает ИМЕННО анонимность:
 // пустую пару и зарезервированное слово `anonymous` в любом заявленном типе.
 //

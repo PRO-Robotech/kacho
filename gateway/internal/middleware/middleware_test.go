@@ -17,8 +17,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
 func testLogger() *slog.Logger {
@@ -66,7 +66,7 @@ func TestGateway_F2_RequestIDGeneratedWhenMissing(t *testing.T) {
 }
 
 // TestGateway_F3_PanicRecoveryReturnsInternal проверяет сценарий F3 на ОБЩЕМ
-// звене (pkg/grpcsrv): собственного gRPC-звена у края больше нет.
+// звене (corelib/grpcsrv): собственного gRPC-звена у края больше нет.
 //
 // Утверждается СООБЩЕНИЕ, а не только код. Прежняя редакция проверяла один лишь
 // codes.Internal и осталась бы зелёной, начни значение паники течь клиенту, —

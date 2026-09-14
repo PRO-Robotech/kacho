@@ -70,7 +70,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // Имена, по которым судится корень. Все три — узлы вызова, не подстроки.

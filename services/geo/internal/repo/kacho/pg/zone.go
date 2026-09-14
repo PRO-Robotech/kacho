@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho/pkg/outbox"
+	"github.com/PRO-Robotech/corelib/outbox"
 
 	zone "github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/api/zone"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/domain"

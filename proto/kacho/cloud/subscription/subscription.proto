@@ -7,7 +7,7 @@ package kacho.cloud.subscription;
 
 import "google/protobuf/any.proto";
 
-option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription;subscriptionv1";
+option go_package = "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription;subscriptionv1";
 
 // Единая форма подписки на изменения ресурсов.
 //
@@ -27,7 +27,7 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscript
 //
 // Форма утверждена фазой kacho#1017 отдельно от глагола и намеренно: под
 // объявление, которое ещё могут поправить, сервер не пишут. Глагол и сервер
-// (`pkg/subscription`) заведены фазой kacho#1018, когда форма уже стояла.
+// (`corelib/subscription`) заведены фазой kacho#1018, когда форма уже стояла.
 //
 // # Один язык подписки на всех владельцев
 //
@@ -208,7 +208,7 @@ message SubscriptionRequest {
     // граница по максимуму видимого — нет.
     //
     // Кодек позиции живёт там же, где объявлены прочие формы курсора этого
-    // дерева, — в пакете `pkg/pagetoken`, и объявляется СВОИМ типом. Уже
+    // дерева, — в пакете `corelib/pagetoken`, и объявляется СВОИМ типом. Уже
     // объявленный там `Cursor` для неё НЕ ГОДИТСЯ: его семантика — «последняя
     // ОТДАННАЯ строка», а это дословно та граница, которую обязательство выше и
     // запрещает.

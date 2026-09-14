@@ -58,8 +58,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/gitenv"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // gitEnvHelperPkg — каталог помощника. Единственное место, где прямой вызов
@@ -132,16 +132,40 @@ func TestGitCommandsRunWithScrubbedEnvironment(t *testing.T) {
 			"Это отказ, а не успех: пустой обход неотличим от чистого дерева.")
 	}
 	if helperFile == 0 {
-		t.Fatalf("помощника %s в дереве НЕТ (прочитано файлов: %d).\n"+
-			"Исключение из гейта пережило свой предмет: либо помощник переехал —\n"+
-			"тогда правится константа gitEnvHelperPkg, — либо его сняли, и тогда\n"+
-			"снимать надо весь гейт вместе с ним.", gitEnvHelperPkg, scanned)
+		// Помощник переехал ЦЕЛИКОМ из pkg/gitenv этого дерева в пакет gitenv
+		// общего фундамента (github.com/PRO-Robotech/corelib) — исключение из
+		// гейта живёт, если он найден ТАМ; отсутствие в ОБОИХ домах остаётся
+		// находкой (снимать гейт вместе с помощником).
+		moduleDir, merr := corelibModuleRootDir(root)
+		if merr != nil {
+			t.Fatalf("помощника %s нет ни в дереве, ни в общем фундаменте (%v) "+
+				"(прочитано файлов: %d).\nИсключение из гейта пережило свой предмет: "+
+				"снимать надо весь гейт вместе с ним.", gitEnvHelperPkg, merr, scanned)
+		}
+		if !dirHasGo(t, filepath.Join(moduleDir, "gitenv")) {
+			t.Fatalf("помощника %s нет ни в дереве, ни в общем фундаменте (%s) "+
+				"(прочитано файлов: %d).\nИсключение из гейта пережило свой предмет: "+
+				"снимать надо весь гейт вместе с ним.", gitEnvHelperPkg,
+				filepath.Join(moduleDir, "gitenv"), scanned)
+		}
 	}
 	if gitCalls == 0 {
-		t.Fatalf("вызовов git в дереве НЕ найдено (прочитано файлов: %d).\n"+
-			"Гейт, чей предмет — отсутствие, зеленеет и когда предмет исчез, и\n"+
-			"когда сломался разбор. Ноль здесь означает второе: git зовут как\n"+
-			"минимум внутри %s.", scanned, gitEnvHelperPkg)
+		// Помощник переехал ЦЕЛИКОМ: его СОБСТВЕННЫЕ вызовы git больше не
+		// разбираются обходом ЭТОГО дерева. Предпосылка «git зовут хоть где-то»
+		// проверяется по кэшу модулей общего фундамента — тем же разбором
+		// (scanGitUsage), а не вторым распознавателем.
+		moduleDir, merr := corelibModuleRootDir(root)
+		var corelibCalls int
+		if merr == nil {
+			corelibCalls = countGitCallsInDir(t, filepath.Join(moduleDir, "gitenv"))
+		}
+		if corelibCalls == 0 {
+			t.Fatalf("вызовов git не найдено ни в дереве (файлов %d), ни в общем "+
+				"фундаменте (%v) — гейт, чей предмет отсутствие, зеленеет и когда "+
+				"предмет исчез, и когда сломался разбор; ноль здесь означает второе",
+				scanned, merr)
+		}
+		gitCalls = corelibCalls
 	}
 
 	t.Logf("осмотрено файлов .go: %d; вызовов git найдено: %d, из них законных "+
@@ -197,6 +221,33 @@ func relPos(fset *token.FileSet, root string, p token.Pos) string {
 
 // scanGitUsage возвращает вызовы git через os/exec и места, где снятое
 // помощником окружение возвращается обратно.
+// countGitCallsInDir — сколько вызовов git разбор находит в НЕ-тестовых файлах
+// каталога. Тот же scanGitUsage, что и в основном обходе: два распознавателя
+// одного предмета разошлись бы молча, и разошлись бы именно там, где расхождение
+// не видно.
+func countGitCallsInDir(t *testing.T, dir string) int {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	fset := token.NewFileSet()
+	total := 0
+	for _, e := range entries {
+		n := e.Name()
+		if e.IsDir() || !strings.HasSuffix(n, ".go") || strings.HasSuffix(n, "_test.go") {
+			continue
+		}
+		file, perr := parser.ParseFile(fset, filepath.Join(dir, n), nil, parser.ParseComments)
+		if perr != nil {
+			continue
+		}
+		calls, _ := scanGitUsage(fset, file, dir)
+		total += len(calls)
+	}
+	return total
+}
+
 func scanGitUsage(fset *token.FileSet, file *ast.File, root string) ([]gitCall, []gitFinding) {
 	var (
 		calls []gitCall

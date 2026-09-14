@@ -237,7 +237,7 @@ HTTP-статусу: ветка `if status == 409` на предусловие �
 
 ## Идентификаторы
 
-Идентификатор Registry генерирует сервер: префикс **`reg`** + crockford-base32 (`pkg/ids`).
+Идентификатор Registry генерирует сервер: префикс **`reg`** + crockford-base32 (`corelib/ids`).
 Идентификатор LRO — префикс **`rop`**. Тип ресурса читается по префиксу; malformed id (не тот
 префикс) → `INVALID_ARGUMENT` первым стейтментом RPC. Repository и Tag не имеют собственного id — они
 адресуются составным ключом (`registryId` + `name` / `repository` + `tag`).

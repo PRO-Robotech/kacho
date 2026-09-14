@@ -37,7 +37,7 @@ const legitimateConsumer = `package main
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/pkg/observability/health"
+	"github.com/PRO-Robotech/corelib/observability/health"
 )
 
 func checkers(ping func(context.Context) error) []health.Checker {
@@ -185,7 +185,7 @@ type Step struct {
 			}
 			sort.Strings(serviceRels)
 
-			findings, cen, err := auditReadinessCarrierIsSingle(root, serviceRels, []string{carrierRel})
+			findings, cen, err := auditReadinessCarrierIsSingle(root, serviceRels, map[string][]byte{carrierRel: []byte(syntheticCarrier)})
 			if err != nil {
 				t.Fatalf("обход: %v", err)
 			}
@@ -240,7 +240,7 @@ func TestReadinessSingleCarrierNoticesItsOwnPremiseIsGone(t *testing.T) {
 	root := t.TempDir()
 	// Носитель СМЕНИЛ форму: поле переименовано, распознаватель его не узнаёт.
 	carrierRel := "pkg/observability/health/health.go"
-	ct3Write(t, root, carrierRel, `package health
+	renamedCarrier := `package health
 
 import "context"
 
@@ -248,11 +248,12 @@ type Checker struct {
 	Label string
 	Check func(context.Context) error
 }
-`)
+`
+	ct3Write(t, root, carrierRel, renamedCarrier)
 	serviceRel := "services/legit/cmd/legit/diag.go"
 	ct3Write(t, root, serviceRel, legitimateConsumer)
 
-	_, cen, err := auditReadinessCarrierIsSingle(root, []string{serviceRel}, []string{carrierRel})
+	_, cen, err := auditReadinessCarrierIsSingle(root, []string{serviceRel}, map[string][]byte{carrierRel: []byte(renamedCarrier)})
 	if err != nil {
 		t.Fatalf("обход: %v", err)
 	}

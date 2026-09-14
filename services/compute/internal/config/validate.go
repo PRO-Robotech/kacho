@@ -4,8 +4,8 @@
 package config
 
 import (
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/corelib/servicecontract"
 )
 
 // Validate — ДОПОЛНЕНИЕ к центральному стражу посадки, а не его замена.

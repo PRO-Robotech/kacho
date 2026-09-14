@@ -4,10 +4,13 @@
 package main
 
 import (
+	corequota "github.com/PRO-Robotech/corelib/quota"
+
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -229,7 +232,7 @@ func everyEdgeLive(t *testing.T) config.Config {
 		// требовать от него удостоверение. Объявление «не развёрнут» вывело бы
 		// ребро из наблюдения, и отключение его mTLS перестало бы что-либо
 		// значить — фикстура молча перестала бы быть представительной.
-		QuotaAuthority: "kaname-internal.kacho.svc:9091",
+		QuotaAuthority: corequota.NotDeployed,
 	}
 	v := reflect.ValueOf(&cfg).Elem()
 	for _, field := range dialedEdgeFields(t, moduleRoot(t)) {
@@ -340,6 +343,35 @@ func guardNamedEdgeFields(t *testing.T, root string) []string {
 	return out
 }
 
+// foundationModuleDir — каталог ЗАТРЕБОВАННОГО фундамента на ПРИПИНЕННОЙ версии.
+//
+// Транспортные пакеты уехали из этого дерева в отдельный опубликованный
+// модуль, и словарь резолверов надо сверять с той их редакцией, которую
+// собирает ЭТО дерево, — то есть с версией из его `go.mod`, а не с последней
+// выпущенной.
+// Инструмент отвечает на это одним вопросом, поэтому версия здесь не пишется
+// числом: число разошлось бы с пином молча.
+//
+// Каталог не скачан — это УСЛОВИЕ НЕ СОЗДАНО, а не «словаря нет»: сверять не с
+// чем, и вердикта о полноте словаря нет вовсе.
+func foundationModuleDir(t *testing.T) string {
+	t.Helper()
+	const mod = "github.com/PRO-Robotech/corelib"
+	cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", mod)
+	cmd.Dir = moduleRoot(t)
+	out, err := cmd.CombinedOutput()
+	dir := strings.TrimSpace(string(out))
+	if err != nil || dir == "" {
+		t.Fatalf("УСЛОВИЕ НЕ СОЗДАНО: каталог фундамента %s не разрешён (%v) — сверять словарь "+
+			"резолверов не с чем, и вердикта о его полноте нет вовсе\n%s", mod, err, out)
+	}
+	if _, statErr := os.Stat(dir); statErr != nil {
+		t.Fatalf("УСЛОВИЕ НЕ СОЗДАНО: каталог фундамента %s не читается (%v) — вердикта о "+
+			"полноте словаря нет вовсе", dir, statErr)
+	}
+	return dir
+}
+
 // TestEdgeCensus_ResolverVocabularyIsExhaustive — проверка СВОЕЙ предпосылки.
 //
 // Перепись опознаёт ребро по имени функции-резолвера. Значит она верна ровно
@@ -349,13 +381,20 @@ func guardNamedEdgeFields(t *testing.T, root string) []string {
 // означать «ноль прочитанных». Поэтому словарь сверяется не с местами вызова
 // (там его незнание как раз и не видно), а с ЭКСПОРТИРУЕМОЙ поверхностью
 // транспортных пакетов corelib.
+//
+// Поверхность читается из каталога ЗАТРЕБОВАННОГО модуля на припиненной версии.
+// Прежде она читалась из `pkg/` этого дерева — и читалась верно, пока фундамент
+// лежал здесь. После выноса в отдельный модуль координата перестала
+// резолвиться, и проба падала на собственной технике, ничего не сказав о
+// словаре. Словарь при этом оказался ПОЛОН: все четыре резолвера на месте,
+// переехало только место.
 func TestEdgeCensus_ResolverVocabularyIsExhaustive(t *testing.T) {
-	root := moduleRoot(t)
+	root := foundationModuleDir(t)
 
 	exported := map[string]struct{}{}
 	for _, rel := range []string{
-		filepath.Join("pkg", "grpcclient", "tls.go"),
-		filepath.Join("pkg", "grpcsrv", "tls.go"),
+		filepath.Join("grpcclient", "tls.go"),
+		filepath.Join("grpcsrv", "tls.go"),
 	} {
 		f := parseGoFile(t, filepath.Join(root, rel))
 		for _, decl := range f.Decls {

@@ -48,7 +48,7 @@ func parseShape(t *testing.T, script string) pmCollection {
 func TestFixtureNameJudgeCatchesTheDefectAndSparesTheTwin(t *testing.T) {
 	t.Parallel()
 	t.Run("на фикстуре с именем вне канона — краснеет и называет координату", func(t *testing.T) {
-		f, withName, judged, _ := judgeFixtureNames("проба/коллекция.json", parseShape(t, assertSuccess))
+		f, withName, judged, _ := judgeFixtureNames("проба/коллекция.json", parseShape(t, assertSuccess), nil)
 		if withName != 1 || judged != 1 {
 			t.Fatalf("предпосылка не создана: шагов с именем %d, судимых %d — ожидалось 1 и 1; "+
 				"проба не воспроизвела условие, и её зелёное ничего не значило бы", withName, judged)
@@ -62,7 +62,7 @@ func TestFixtureNameJudgeCatchesTheDefectAndSparesTheTwin(t *testing.T) {
 	})
 
 	t.Run("на шаге, УТВЕРЖДАЮЩЕМ отказ, с тем же именем — молчит", func(t *testing.T) {
-		f, withName, judged, _ := judgeFixtureNames("проба/коллекция.json", parseShape(t, assertRefusal))
+		f, withName, judged, _ := judgeFixtureNames("проба/коллекция.json", parseShape(t, assertRefusal), nil)
 		if withName != 1 {
 			t.Fatalf("предпосылка не создана: шагов с именем %d — ожидался 1", withName)
 		}
@@ -81,7 +81,7 @@ func TestFixtureNameJudgeCatchesTheDefectAndSparesTheTwin(t *testing.T) {
 		if err := json.Unmarshal([]byte(strings.Replace(body, "%s", assertSuccess, 1)), &c); err != nil {
 			t.Fatalf("фикстура не разбирается: %v", err)
 		}
-		f, _, judged, _ := judgeFixtureNames("проба/коллекция.json", c)
+		f, _, judged, _ := judgeFixtureNames("проба/коллекция.json", c, nil)
 		if judged != 1 {
 			t.Fatalf("положительный контроль не судился (судимых %d) — он ничего не подтверждает", judged)
 		}
@@ -119,21 +119,38 @@ func parseReferent(t *testing.T, url string) pmCollection {
 	return c
 }
 
+// syntheticSpare — ведомость освобождений, СОБРАННАЯ пробой.
+//
+// Живая ведомость сюда не берётся намеренно: доказательство, привязанное к её
+// записи, истекает вместе с записью и краснеет НЕ на дефекте, а на собственной
+// опустевшей фикстуре. Наблюдалось ровно это — запись `/iam/v1/roles` ушла
+// вместе со службой доступа, механизм освобождения остался цел, а близнец,
+// доказывавший его работу, покраснел.
+//
+// Адрес взят заведомо синтетический (`/synthetic/v1/spared`), чтобы он не мог
+// совпасть ни с одним живым ресурсом дерева и чтобы вердикт этой пробы не
+// зависел от того, какие ресурсы у платформы есть сегодня.
+var syntheticSpare = map[string]string{
+	"/synthetic/v1/spared": "синтетический референт пробы: живой ведомости здесь не место",
+}
+
 func TestFixtureNameJudgeSparesTheOtherReferentOnly(t *testing.T) {
 	t.Parallel()
-	t.Run("законный близнец: имя РОЛИ — судья молчит и считает освобождение", func(t *testing.T) {
+	t.Run("законный близнец: освобождённая цель — судья молчит и считает освобождение", func(t *testing.T) {
 		f, withName, judged, spared := judgeFixtureNames(
-			"проба/коллекция.json", parseReferent(t, "{{baseUrl}}/iam/v1/roles"))
+			"проба/коллекция.json", parseReferent(t, "{{baseUrl}}/synthetic/v1/spared"),
+			syntheticSpare)
 		if withName != 1 {
 			t.Fatalf("предпосылка не создана: шагов с именем %d, ожидался 1", withName)
 		}
 		if len(f) != 0 {
-			t.Fatalf("имя роли объявлено находкой (%d): %v — освобождение не действует", len(f), f)
+			t.Fatalf("имя освобождённой цели объявлено находкой (%d): %v — "+
+				"освобождение не действует", len(f), f)
 		}
 		if judged != 0 {
 			t.Errorf("шаг попал в судимые (%d) — освобождение обязано выводить его из-под меры", judged)
 		}
-		if spared["/iam/v1/roles"] != 1 {
+		if spared["/synthetic/v1/spared"] != 1 {
 			t.Errorf("освобождение не сосчитано (%v) — перепись не отличит запись с предметом "+
 				"от записи, пережившей его", spared)
 		}
@@ -144,7 +161,8 @@ func TestFixtureNameJudgeSparesTheOtherReferentOnly(t *testing.T) {
 		// нельзя списать на разный вход — а без этой половины освобождение
 		// ловило бы форму шага, а не существо его цели.
 		f, withName, judged, spared := judgeFixtureNames(
-			"проба/коллекция.json", parseReferent(t, "{{baseUrl}}/iam/v1/groups"))
+			"проба/коллекция.json", parseReferent(t, "{{baseUrl}}/synthetic/v1/judged"),
+			syntheticSpare)
 		if withName != 1 || judged != 1 {
 			t.Fatalf("предпосылка не создана: шагов с именем %d, судимых %d — ожидалось 1 и 1",
 				withName, judged)
@@ -162,19 +180,19 @@ func TestFixtureNameJudgeSparesTheOtherReferentOnly(t *testing.T) {
 	})
 
 	t.Run("освобождение действует по ЦЕЛИ, а не по имени шага", func(t *testing.T) {
-		// Шаг называется «create-role-…», но бьёт в группы. Предикат по имени шага
+		// Шаг называется «create-spared-…», но бьёт в НЕосвобождённую цель. Предикат по имени шага
 		// пропустил бы его — то есть стал бы маской для любой забытой фикстуры,
 		// которую так назвали.
-		body := strings.Replace(referentShape, "%s", "{{baseUrl}}/iam/v1/groups", 1)
-		body = strings.Replace(body, `"name":"mk"`, `"name":"create-role-decoy"`, 1)
+		body := strings.Replace(referentShape, "%s", "{{baseUrl}}/synthetic/v1/judged", 1)
+		body = strings.Replace(body, `"name":"mk"`, `"name":"create-spared-decoy"`, 1)
 		var c pmCollection
 		if err := json.Unmarshal([]byte(body), &c); err != nil {
 			t.Fatalf("фикстура пробы не разбирается: %v", err)
 		}
-		f, _, _, spared := judgeFixtureNames("проба/коллекция.json", c)
+		f, _, _, spared := judgeFixtureNames("проба/коллекция.json", c, syntheticSpare)
 		if len(f) != 1 {
-			t.Fatalf("шаг с именем «create-role-…», бьющий в ГРУППЫ, освобождён (находок %d) — "+
-				"предикат судит прозу, а не цель запроса", len(f))
+			t.Fatalf("шаг с именем «create-spared-…», бьющий в НЕосвобождённую цель, "+
+				"освобождён (находок %d) — предикат судит прозу, а не цель запроса", len(f))
 		}
 		if len(spared) != 0 {
 			t.Errorf("такой шаг сосчитан освобождённым: %v", spared)

@@ -138,7 +138,7 @@ software TOCTOU — data-integrity.md ban #10):
   **Но project-scope отвечает лишь «чей это проект», не «какие объекты этому caller'у
   можно».** Поэтому use-case, прочитав СТРАНИЦУ курсором, прогоняет её id через
   per-object фильтр `services/storage/internal/authzfilter` (kaname
-  `AuthorizeService.BatchCheck` через общий сужатель `pkg/listnarrow`, предикат
+  `AuthorizeService.BatchCheck` через общий сужатель `corelib/listnarrow`, предикат
   `v_get` — то же отношение, которым каталог гейтит `Get`; батчи ≤100 ограниченным
   fan-out'ом) и отдаёт только видимые
   строки в порядке курсора. Без этого слоя ЛЮБОЙ член проекта видел каждый том,

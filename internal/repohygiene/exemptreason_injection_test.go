@@ -153,7 +153,7 @@ func TestR893_ExemptJudgeCanFailAndCanStaySilent(t *testing.T) {
 			if exists == nil {
 				exists = allSitesExist
 			}
-			j := JudgeExemptLane(c.rows, c.sites, exists)
+			j := JudgeExemptLane(c.rows, c.sites, exists, nil)
 			if c.want == "" {
 				if len(j.Findings) != 0 {
 					t.Fatalf("законный близнец обязан молчать, а судья назвал: %v\n%s",

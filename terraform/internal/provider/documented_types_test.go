@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // TestDocumentedTypesMatchTheRegistry — перечни типов на страницах сверяются с реестром

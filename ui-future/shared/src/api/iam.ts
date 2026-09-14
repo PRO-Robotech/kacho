@@ -1,5 +1,7 @@
 // IAM API types + helpers — flat resources verbatim из kaname.cloud.iam.v1.
-// URL-ы из google.api.http annotations в kacho-proto/proto/kaname/cloud/iam/v1/*.
+// URL-ы из google.api.http annotations в kaname/cloud/iam/v1/* — контракты службы
+// доступа публикует модуль github.com/PRO-Robotech/kaname (kacho#2616, исход C,
+// 2026-09-13); прежняя координата вела в полирепо kacho-proto, где разработки нет.
 //
 // Все мутации возвращают Operation envelope (см. operation.proto).
 // Список ресурсов:
@@ -617,7 +619,8 @@ export interface UpdateAccessBindingBody {
 }
 
 // ====== CreateAccessBindingRequest body ======
-// Ground truth: proto/kaname/cloud/iam/v1/access_binding_service.proto.
+// Ground truth: kaname/cloud/iam/v1/access_binding_service.proto
+// (модуль github.com/PRO-Robotech/kaname).
 //   required : subjects[] (или legacy single subject_type/subject_id), role_id,
 //              scope_type (dotted), scope_id, target
 //   tombstone: теги 9/10/11 с именами target_ref / scope_ref

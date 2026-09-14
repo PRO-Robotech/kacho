@@ -35,7 +35,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
 

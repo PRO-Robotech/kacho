@@ -9,8 +9,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	corequota "github.com/PRO-Robotech/corelib/quota"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
 

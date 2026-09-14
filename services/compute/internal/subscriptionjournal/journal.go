@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // Package subscriptionjournal — объявление ЖУРНАЛА compute для общего сервера
-// потока изменений (`pkg/subscription`).
+// потока изменений (`corelib/subscription`).
 //
 // # Что здесь есть и чего здесь нет
 //
@@ -40,9 +40,9 @@ import (
 
 	"google.golang.org/protobuf/types/known/anypb"
 
-	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
-	"github.com/PRO-Robotech/kacho/pkg/authz"
-	"github.com/PRO-Robotech/kacho/pkg/subscription"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/subscription"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/protoconv"
@@ -62,7 +62,7 @@ const (
 	//
 	// Имя названо словом ЖУРНАЛА, а не «видом», намеренно: клиенту этот предмет
 	// едет как `compute_instance` — тип объекта модели прав, единственное
-	// написание вида на всё дерево (`pkg/subscription`, `Journal.KindDictionary`).
+	// написание вида на всё дерево (`corelib/subscription`, `Journal.KindDictionary`).
 	// Прежнее имя (`KindInstance`) утверждало обратное и было бы прочитано
 	// следующим как то, что клиент пишет в ось `kinds`.
 	//

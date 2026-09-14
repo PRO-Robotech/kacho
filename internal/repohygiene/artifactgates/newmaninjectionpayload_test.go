@@ -68,7 +68,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/validate/nameform"
+	"github.com/PRO-Robotech/corelib/validate/nameform"
 )
 
 // nmInjectionClaim — обещание, которое даёт ИМЯ вида нагрузки, и предикат этого

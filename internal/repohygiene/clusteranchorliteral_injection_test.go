@@ -146,34 +146,12 @@ const object = "cluster:cluster_kacho_root"
 	}
 }
 
-// TestClusterAnchorInjection_DeclarationsDisagree — инъекция СОСЕДНЕГО
-// свойства: объявления разошлись.
+// ЗДЕСЬ БЫЛА TestClusterAnchorInjection_DeclarationsDisagree — инъекция
+// соседнего свойства «объявления разошлись». Снята вместе со своим предметом:
+// свойство держалось пробой TestClusterAnchorDeclarationsAgree, а та требовала
+// ДВУХ объявлений, то есть двух модулей. Служба доступа вынесена отдельным
+// продуктом, объявление осталось одно, и разойтись ему не с чем.
 //
-// Краснеть обязана ТОЛЬКО проверка согласия; перепись литералов при этом
-// молчит — иначе её молчание в предыдущих пробах ничего не доказывало бы.
-func TestClusterAnchorInjection_DeclarationsDisagree(t *testing.T) {
-	t.Parallel()
-	world := anchorWorld()
-	world["services/iam/internal/domain/constants.go"] = `package domain
-
-const ClusterSingletonID = "cluster_root"
-`
-	decls, findings, census := anchorRun(t, world)
-
-	if census.Declarations != 2 {
-		t.Fatalf("объявлений %d, ожидалось 2", census.Declarations)
-	}
-	if decls[0].Value == decls[1].Value {
-		t.Fatalf("объявления не разошлись — инъекция не сработала")
-	}
-	// Перепись литералов молчит: законный близнец собирает объект сложением, а
-	// не литералом, и от смены написания это не меняется.
-	if len(findings) != 0 {
-		t.Errorf("перепись литералов покраснела на расхождении объявлений: %+v.\n"+
-			"Инъекция обязана ронять только своё — иначе два свойства неразличимы", findings)
-	}
-}
-
 // TestClusterAnchorInjection_NoDeclarationIsRefusal — предпосылка гейта: без
 // объявлений он ОТКАЗЫВАЕТ, а не молчит.
 //

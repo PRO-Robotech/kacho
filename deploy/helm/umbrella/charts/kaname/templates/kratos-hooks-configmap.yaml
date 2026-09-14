@@ -10,11 +10,15 @@ Kratos injects: `ctx.identity`, `ctx.flow`, `ctx.request_*`, …) and POSTs the
 result to the kaname provisioning route `/iam/v1/hooks/provision` on the
 :9092 HTTP hooks listener.
 
-The emitted JSON MUST match the shape decoded by
-`internal/handler/iamhooks/provision_hook_handler.go`
-(`kratosProvisionRequest`): {external_id, email, display_name}. Keep the two in
-lockstep — the handler test (`provision_hook_handler_test.go`) pins the same
-keys.
+The emitted JSON MUST match the shape decoded by the provisioning handler of the
+access service (`kratosProvisionRequest`): {external_id, email, display_name}.
+Keeping the two in lockstep is now a CROSS-REPOSITORY obligation, and that is
+said here rather than left implicit: the service was extracted into
+PRO-Robotech/kaname, so the decoder and its pinning test live there while this
+template stays in the umbrella. No gate of this tree compares the two any more —
+the coordinates of the reader are deliberately NOT quoted here, because a
+coordinate that resolves in another repository reads as one that resolves in
+this one.
 
   - external_id  = ctx.identity.id        — Kratos identity UUID == OIDC `sub`.
   - email        = ctx.identity.traits.email

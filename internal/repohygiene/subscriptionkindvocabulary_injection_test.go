@@ -99,7 +99,7 @@ func (s *kindStand) writeJournal(t *testing.T, kinds string) {
 	s.write(t, "services/probe/internal/subscriptionjournal/journal.go", `package subscriptionjournal
 
 import (
-	"github.com/PRO-Robotech/kacho/pkg/subscription"
+	"github.com/PRO-Robotech/corelib/subscription"
 	"github.com/PRO-Robotech/kacho/services/probe/internal/authzfilter"
 )
 
@@ -261,7 +261,7 @@ func TestKindVocabularyGateCatchesALocalName(t *testing.T) {
 	s.write(t, "services/probe/internal/subscriptionjournal/journal.go", `package subscriptionjournal
 
 import (
-	"github.com/PRO-Robotech/kacho/pkg/subscription"
+	"github.com/PRO-Robotech/corelib/subscription"
 	"github.com/PRO-Robotech/kacho/services/probe/internal/authzfilter"
 )
 

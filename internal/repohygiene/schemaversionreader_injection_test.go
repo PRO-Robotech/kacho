@@ -34,7 +34,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
+	"github.com/PRO-Robotech/corelib/schemaguard"
 )
 
 // wiredRoot — исходник корня, провязавшего читателя. Импорт настоящий: фикстура
@@ -42,8 +42,8 @@ import (
 const wiredRoot = `package main
 
 import (
-	"github.com/PRO-Robotech/kacho/pkg/observability/health"
-	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
+	"github.com/PRO-Robotech/corelib/observability/health"
+	"github.com/PRO-Robotech/corelib/schemaguard"
 )
 
 func buildReadinessCheckers() []health.Checker { return nil }
@@ -52,7 +52,7 @@ func buildReadinessCheckers() []health.Checker { return nil }
 // unwiredRoot — тот же корень БЕЗ провязки. Отличие ровно одно.
 const unwiredRoot = `package main
 
-import "github.com/PRO-Robotech/kacho/pkg/observability/health"
+import "github.com/PRO-Robotech/corelib/observability/health"
 
 func buildReadinessCheckers() []health.Checker { return nil }
 `

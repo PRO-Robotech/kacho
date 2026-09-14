@@ -43,15 +43,15 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
-	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	"github.com/PRO-Robotech/corelib/listnarrow/narrowtest"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/operations/operationspb"
+	"github.com/PRO-Robotech/corelib/servicecontract"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz"
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktypebinding"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
@@ -181,7 +181,7 @@ func TestDescribeIsAcceptedByTheConstructor(t *testing.T) {
 // Само это свойство держат пробы носителя, а не storage: `TestAccessLogRecordsThePanickingCall`,
 // `TestAccessLogRecordsAnOrdinaryCallToo`, `TestAccessLogRecordsAStreamCallToo`,
 // `TestAccessLogRecordsThePanickingStreamCall` и
-// `TestLatencyIsOutermostAccessLogNextAndDecisionIsLast` в `pkg/servicehost`.
+// `TestLatencyIsOutermostAccessLogNextAndDecisionIsLast` в `corelib/servicehost`.
 // Дублировать их здесь значило бы завести седьмое место об одном предмете.
 //
 // От storage требуется единственное, чего носитель за него сделать не может, —
@@ -368,7 +368,7 @@ func TestUnnarrowedForwarderCircleRefusesStart(t *testing.T) {
 // объяснении. Состав дерева берётся у git, а не с диска: вердикт обязан быть
 // свойством коммита, а не рабочего каталога с чужими распаковками.
 func TestStorageBringsNoBootGateYet(t *testing.T) {
-	const bootGatePkg = "github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
+	const bootGatePkg = "github.com/PRO-Robotech/corelib/outbox/bootgate"
 
 	root, err := filepath.Abs("../..") // services/storage
 	if err != nil {

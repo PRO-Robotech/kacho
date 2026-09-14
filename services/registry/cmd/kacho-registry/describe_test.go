@@ -43,14 +43,14 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz"
-	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
-	"github.com/PRO-Robotech/kacho/pkg/servicehost"
+	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/authz/catalogderive"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/operations/operationspb"
+	"github.com/PRO-Robotech/corelib/servicecontract"
+	"github.com/PRO-Robotech/corelib/servicehost"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/check"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/handler"
@@ -433,7 +433,7 @@ func TestRegistryServesNoGatedMutationBeyondItsOwn(t *testing.T) {
 // Появится импорт — проба покраснеет и потребует объявить гейт величиной, а не
 // изъятием. Предикат внешний: состояние дерева, а не память автора.
 func TestRegistryBringsNoBootGateYet(t *testing.T) {
-	const gatePkg = "github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
+	const gatePkg = "github.com/PRO-Robotech/corelib/outbox/bootgate"
 
 	entries, err := os.ReadDir(".")
 	if err != nil {

@@ -10,9 +10,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-	"github.com/PRO-Robotech/kacho/pkg/nameformdb"
-	"github.com/PRO-Robotech/kacho/pkg/pgtest"
+	coredb "github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/nameformdb"
+	"github.com/PRO-Robotech/corelib/pgtest"
 )
 
 // TestIntegration_Compute_NameFormConstraintIsEnforced — действие ограничения
@@ -25,7 +25,7 @@ import (
 //
 // Миграция 715001 ставит форму имени четырём таблицам compute; доказательство
 // того, что форма ДЕЙСТВУЕТ, было только у vpc. Разбор класса, перечень
-// утверждений и почему положительный контроль обязателен — `pkg/nameformdb`.
+// утверждений и почему положительный контроль обязателен — `corelib/nameformdb`.
 //
 // Строки вставляются НАПРЯМУЮ в таблицу, минуя домен и use-case: предмет — то,
 // что отвергнет сервер, когда слоя над ним не окажется.

@@ -17,7 +17,7 @@
 //     После DELETE — INSERT в `nlb_outbox` (DISTINCT per TG)
 //     событие `nlb_target_group:<tg_id> UPDATED` → trigger `nlb_outbox_notify_trg`
 //     шлёт `pg_notify('nlb_outbox', seq)` → пробуждение общего сервера потока
-//     (`pkg/subscription`). Прежняя редакция называла здесь «lifecycle stream к
+//     (`corelib/subscription`). Прежняя редакция называла здесь «lifecycle stream к
 //     iam» — такого потребителя нет: контракт снят задачей #814, а зеркало прав
 //     ходит очередью `fga_register_outbox`.
 //

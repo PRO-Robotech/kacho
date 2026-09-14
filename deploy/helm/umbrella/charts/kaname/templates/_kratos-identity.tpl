@@ -457,10 +457,9 @@ selfservice:
           # переживали восстановление.
           #
           # Отсрочка объяснялась тем, что «OnRecoveryCompleted не реализован».
-          # Утверждение пережило свой предмет: use-case существовал
-          # (internal/apps/kaname/api/user/internal_on_recovery.go) и вызывался
+          # Утверждение пережило свой предмет: use-case существовал и вызывался
           # по внутреннему gRPC; не хватало ровно HTTP-маршрута к нему. Маршрут
-          # заведён (internal/handler/iamhooks/recovery_hook_handler.go), и его
+          # заведён, и его
           # НАЛИЧИЕ держит проба, а не память автора.
           - hook: web_hook
             config:

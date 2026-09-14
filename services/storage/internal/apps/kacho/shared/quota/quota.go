@@ -46,8 +46,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/PRO-Robotech/kacho/pkg/peer"
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	"github.com/PRO-Robotech/corelib/peer"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 )
 
@@ -300,7 +300,7 @@ func (g *Guard) materialise(ctx context.Context, projectID string) error {
 }
 
 // peerRefusal переводит отказ соседа в нашу полосу — код и машинный признак
-// берутся у носителя (`pkg/peer`), а не выписываются здесь.
+// берутся у носителя (`corelib/peer`), а не выписываются здесь.
 //
 // Проза соседа наружу не идёт: она может нести имя хоста и текст драйвера
 // (`security.md` §Hardening #1).

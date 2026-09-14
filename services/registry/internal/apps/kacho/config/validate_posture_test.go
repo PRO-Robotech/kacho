@@ -6,7 +6,7 @@ package config
 import (
 	"testing"
 
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+	corequota "github.com/PRO-Robotech/corelib/quota"
 )
 
 // Свидетель отказа: страж посадки обязан ОТВЕРГАТЬ несуженный круг отправителей.

@@ -26,8 +26,8 @@ This suite owns the cluster-RBAC admin surface
 listener and therefore has no home in any per-service suite.
 
 LAYOUT (changed 2026-07-26): collections are written to `collections/`, NOT next to
-the case files. The shared CI gate (services/iam/tests/newman/scripts/
-assert-suites-green.sh) and the execution-coverage gate both walk
+the case files. The shared CI gate
+(tests/newman/scripts/assert-suites-green.sh) and the execution-coverage gate both walk
 `collections/*.postman_collection.json` against `out/<name>.json`. Emitting to
 `cases/` put this suite outside both gates — one of the reasons it could sit
 unexecuted without anything going red.
@@ -178,7 +178,11 @@ class Case:
 # одинаковых отказов, а 201 не дали НИ ОДНОГО утверждения — исполнялись против шаблона и
 # исчезали из вердикта («не выполнилось» тихо шло в зачёт «прошло», testing.md).
 #
-# Полный разбор класса и доказательство инъекцией — в `services/iam/tests/newman/scripts/gen.py`
+# Полный разбор класса и доказательство инъекцией живут в генераторе набора СЛУЖБЫ ДОСТУПА — в её
+# собственном репозитории. Координата здесь не приводится: путь, резолвящийся в
+# другом дереве, читается как резолвящийся в этом, а утверждение о ДОКАЗАННОСТИ
+# по нерезолвимой координате снимает работу с читателя, вместо того чтобы её
+# подтвердить
 # (там же перепись: 2571 опрос операции на 82 коллекции, под стражем helper'а — 188).
 #
 # ПРЕДИКАТ УЗКИЙ: срабатывает, только когда имя НЕ ОПРЕДЕЛЕНО НИ В ОДНОЙ области.
@@ -260,7 +264,8 @@ def save_from_response(jsonpath: str, env_var: str) -> List[str]:
     шага и идёт ПОСЛЕ `_op_id_guard`, который сам решает, находка это или
     санкционированный пропуск уборки.
 
-    Разбор класса с переписью — `services/iam/tests/newman/scripts/gen.py`, где он
+    Разбор класса с переписью живёт в генераторе набора службы доступа (её
+    репозиторий; координата здесь не приводится), где он
     был закрыт первым; гейт по дереву на обе половины пары «удаление → опрос» —
     `deploy/scripts/assert-delete-operation-outcome.py`.
     """
@@ -310,7 +315,7 @@ def assert_iam_operation_envelope() -> List[str]:
 # ТЕКСТ ОБЯЗАН СОВПАДАТЬ С ОСТАЛЬНЫМИ НАБОРАМИ ДОСЛОВНО. Вердикт по КАЖДОЙ
 # суите выносит один скрипт (tests/newman/scripts/assert-suites-green.sh,
 # запускается с cwd = каталог проверяемой суиты), а метку он читает у ОДНОГО
-# производителя — services/iam/tests/newman/scripts/gen.py, — потому что берёт её
+# производителя — генератор набора службы доступа, в её репозитории, — потому что берёт её
 # по `dirname "${BASH_SOURCE[0]}"`, а не по cwd. Набор, объявивший другой текст,
 # МОЛЧА выпадает из третьей категории: его стражи снова читаются находками о
 # продукте, хотя метка у них есть. Согласие держит гейт дерева

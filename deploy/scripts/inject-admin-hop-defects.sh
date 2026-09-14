@@ -91,9 +91,17 @@ CM_NAME="kacho-umbrella-hydra-admin-tls-nginx"
 restore_cm() {
   # Цепочка стенда — из единственной таблицы дерева: восстанавливать надо ровно
   # тот состав, которым стенд поднят, а копия цепочки стареет молча.
-  # shellcheck disable=SC2046,SC2086
+  #
+  # КОД ЧИТАТЕЛЯ ЦЕПОЧКИ ПОТРЕБОВАН: внутри аргумента `helm` подстановка роняет
+  # его, а здесь весь конвейер восстановления глушит вывод (`2>/dev/null`) и код
+  # (`>/dev/null 2>&1`). Пустая цепочка молча дала бы ноль байт на вход `kubectl
+  # apply`, и восстановление выглядело бы состоявшимся, не состоявшись.
+  local chain_args
+  chain_args="$(bash "$DEPLOY_ROOT/tests/helm/stacks.sh" --args dev-prod "$UMBRELLA")" || {
+    echo "ОТКАЗ: цепочка стенда не прочитана — helm без единого -f сел бы на умолчания чарта — объект НЕ восстановлен" >&2; return 2; }
+  # shellcheck disable=SC2086
   helm template kacho-umbrella "$UMBRELLA" \
-    $(bash "$DEPLOY_ROOT/tests/helm/stacks.sh" --args dev-prod "$UMBRELLA") \
+    $chain_args \
     ${IMAGE_IDS:+-f "$IMAGE_IDS"} --namespace "$NS" 2>/dev/null \
     | awk '/^# Source: kacho-umbrella\/templates\/hydra-admin-tls-configmap.yaml/,/^---/' \
     | kubectl -n "$NS" apply -f - >/dev/null 2>&1

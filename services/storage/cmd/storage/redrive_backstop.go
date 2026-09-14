@@ -10,7 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
+	"github.com/PRO-Robotech/corelib/outbox/reconciler"
 )
 
 // redriveInterval — как часто отравленные строки register-outbox возвращаются в

@@ -8,10 +8,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/option"
+	"github.com/PRO-Robotech/corelib/option"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/corelib/ids"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg/dto"
@@ -835,7 +835,7 @@ func nullableStr(s string) any {
 
 // targetIDPrefix — 3-char prefix для target row id. Target — embedded child
 // TargetGroup (не tenant-facing ресурс верхнего уровня), у него нет PrefixTarget
-// в pkg/ids. Локальный prefix "tgt" парный с TargetGroup prefix "tgr".
+// в corelib/ids. Локальный prefix "tgt" парный с TargetGroup prefix "tgr".
 const targetIDPrefix = "tgt"
 
 // newTargetID — генерит stable id для target row. Используем

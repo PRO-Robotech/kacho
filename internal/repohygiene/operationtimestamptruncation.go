@@ -41,12 +41,14 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // modulePath — префикс импортов этого модуля, чтобы перевести путь импорта в
@@ -116,6 +118,44 @@ func auditOperationTimestampTruncation(root string) (truncationReport, error) {
 			fsets[slashed] = fset
 
 			d := filepath.ToSlash(filepath.Dir(slashed))
+			if helpers[d] == nil {
+				helpers[d] = map[string]bool{}
+			}
+			for _, decl := range f.Decls {
+				fn, ok := decl.(*ast.FuncDecl)
+				if !ok || fn.Body == nil {
+					continue
+				}
+				helpers[d][fn.Name.Name] = bodyTruncates(fset, fn.Body)
+			}
+		}
+	}
+
+	// Единственный переводчик в проводной контракт переехал из сервисных
+	// каталогов в пакет operations/operationspb общего фундамента
+	// (github.com/PRO-Robotech/corelib): читаем ТУДА, куда он переехал, тем же
+	// разбором, что и дерево — файлы просто ДОБАВЛЯЮТСЯ в те же карты, поэтому
+	// цикл суда ниже видит их наравне с деревом.
+	//
+	// Синтетические деревья инъекции не несут go.mod вовсе (это намеренно —
+	// см. synthTruncationTree): для них corelibOperationspbFiles возвращает
+	// ok=false молча, не ошибкой, — тут нет предмета, а не отказавшего гейта.
+	extra, ok, cerr := corelibOperationspbFiles(root)
+	if cerr != nil {
+		return rep, cerr
+	}
+	if ok {
+		for rel, body := range extra {
+			fset := token.NewFileSet()
+			f, perr := parser.ParseFile(fset, rel, body, 0)
+			if perr != nil {
+				return rep, fmt.Errorf("разбор %s: %w", rel, perr)
+			}
+			rep.FilesRead++
+			files[rel] = f
+			fsets[rel] = fset
+
+			d := filepath.ToSlash(filepath.Dir(rel))
 			if helpers[d] == nil {
 				helpers[d] = map[string]bool{}
 			}
@@ -330,4 +370,68 @@ func sortedFileKeys(m map[string]*ast.File) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// corelibOperationspbFiles — не-тестовые файлы пакета operations/operationspb
+// общего фундамента (github.com/PRO-Robotech/corelib), под синтетическим путём
+// "corelib/operations/operationspb/<файл>" — тем же, которым `corelibPackageGoFiles`
+// (см. corelibsource_test.go) метит файлы, прочитанные из кэша модулей.
+//
+// Функция ПУРА (не берёт *testing.T) намеренно: этот файл — не тестовый, и
+// нести зависимость на тестовый хелпер значило бы протащить `testing` в прод-
+// сборку пакета. Поэтому ok=false здесь — ЗАКОННЫЙ, а не ошибочный исход:
+// дерево, у которого нет go.mod вовсе (синтетика инъекции) или закрепления
+// общего фундамента, этому гейту не подлежит — предмета у него нет, а не отказ.
+func corelibOperationspbFiles(root string) (files map[string][]byte, ok bool, err error) {
+	body, rerr := os.ReadFile(filepath.Join(root, "go.mod")) // #nosec G304 -- путь собран из корня дерева и имени объявления модуля, оба не от пользователя
+	if rerr != nil {
+		return nil, false, nil
+	}
+	// Литерал, а не тестовая константа corelibModulePath: этот файл участвует
+	// в НЕ-тестовой сборке пакета (`go build`), а corelibModulePath объявлена в
+	// corelibsource_test.go и туда не видна.
+	const corelibModulePathLiteral = "github.com/PRO-Robotech/corelib"
+	var dep DirectDependency
+	found := false
+	for _, d := range ParseGoModRequires(string(body)) {
+		if d.Path == corelibModulePathLiteral {
+			dep, found = d, true
+			break
+		}
+	}
+	if !found {
+		return nil, false, nil
+	}
+	out, cerr := exec.Command("go", "env", "GOMODCACHE").Output()
+	if cerr != nil {
+		return nil, false, fmt.Errorf("go env GOMODCACHE: %w", cerr)
+	}
+	cache := strings.TrimSpace(string(out))
+	if cache == "" {
+		return nil, false, fmt.Errorf("go env GOMODCACHE пуст")
+	}
+	const pkg = "operations/operationspb"
+	dir := filepath.Join(ModuleCacheDir(cache, dep), filepath.FromSlash(pkg))
+	entries, derr := os.ReadDir(dir)
+	if derr != nil {
+		return nil, false, fmt.Errorf("чтение %s общего фундамента (%s@%s): %w",
+			pkg, corelibModulePathLiteral, dep.Version, derr)
+	}
+	files = map[string][]byte{}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		src, rerr := os.ReadFile(filepath.Join(dir, name)) // #nosec G304 -- путь собран из каталога модуля в кэше и имени файла пакета, оба не от пользователя
+		if rerr != nil {
+			return nil, false, fmt.Errorf("чтение %s/%s: %w", pkg, name, rerr)
+		}
+		files["corelib/"+pkg+"/"+name] = src
+	}
+	if len(files) == 0 {
+		return nil, false, fmt.Errorf("в %s общего фундамента (%s@%s) не нашлось ни одного "+
+			"не-тестового файла — каталог пуст либо пакет переехал", pkg, corelibModulePathLiteral, dep.Version)
+	}
+	return files, true, nil
 }

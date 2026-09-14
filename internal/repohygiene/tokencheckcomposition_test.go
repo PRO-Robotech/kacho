@@ -57,15 +57,19 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+	"github.com/PRO-Robotech/corelib/tokenpolicy"
 )
 
 const (
-	// tokenCheckModulePath — путь модуля. Нужен, чтобы привести путь импорта к
-	// каталогу дерева и обратно.
+	// tokenCheckModulePath — путь модуля дерева. Нужен, чтобы привести путь
+	// импорта ПРОИЗВОДИТЕЛЯ (jwks/middleware — они остаются в дереве) к его
+	// каталогу и обратно.
 	tokenCheckModulePath = "github.com/PRO-Robotech/kacho"
-	// tokenCheckPolicyImport — единственный дом перечня.
-	tokenCheckPolicyImport = tokenCheckModulePath + "/pkg/tokenpolicy"
+	// tokenCheckPolicyImport — единственный дом перечня. Предмет живёт в
+	// пакете `tokenpolicy` общего фундамента (`github.com/PRO-Robotech/corelib`),
+	// а не в дереве: путь импорта производителя опознаётся ИМ, не
+	// tokenCheckModulePath-префиксом.
+	tokenCheckPolicyImport = "github.com/PRO-Robotech/corelib/tokenpolicy"
 	// tokenCheckListName — имя объявления обязательного перечня.
 	tokenCheckListName = "MandatoryChecks"
 	// tokenCheckDeclName — имя, которым реализация объявляет свой состав.
@@ -155,7 +159,6 @@ func TestMandatoryTokenChecksAreDeclaredOnceAndConsumed(t *testing.T) {
 		constructions []VerifierConstruction
 		calls         int
 	)
-	policyDir := strings.TrimPrefix(tokenCheckPolicyImport, tokenCheckModulePath+"/")
 
 	for _, rel := range rels {
 		src, ok := read(rel)
@@ -170,22 +173,35 @@ func TestMandatoryTokenChecksAreDeclaredOnceAndConsumed(t *testing.T) {
 		}
 		listDecls = append(listDecls, decls...)
 
-		if strings.HasPrefix(rel, policyDir+"/") {
-			consts, err := ScanCheckConstants(rel, src, tokenCheckTypeName)
-			if err != nil {
-				t.Fatalf("разбор констант %s: %v", rel, err)
-			}
-			for k, v := range consts {
-				constants[k] = v
-			}
-		}
-
 		found, census, err := ScanVerifierConstructions(rel, src, producerSet)
 		if err != nil {
 			t.Fatalf("разбор построений %s: %v", rel, err)
 		}
 		calls += census.Calls
 		constructions = append(constructions, found...)
+	}
+
+	// Перечень и его константы переехали в общий фундамент: `MandatoryChecks` и
+	// константы типа `Check` объявляет пакет `tokenpolicy`
+	// `github.com/PRO-Robotech/corelib`, а не каталог дерева. Читается ТУДА,
+	// куда перечень переехал, — иначе (1) ниже видел бы ноль объявлений и не
+	// отличал бы «перечень переехал» от «перечень пропал».
+	for path, src := range corelibPackageGoFiles(t, root, "tokenpolicy") {
+		parsed++
+
+		decls, _, err := ScanCheckListDeclarations(path, src, tokenCheckListName)
+		if err != nil {
+			t.Fatalf("разбор %s: %v", path, err)
+		}
+		listDecls = append(listDecls, decls...)
+
+		consts, err := ScanCheckConstants(path, src, tokenCheckTypeName)
+		if err != nil {
+			t.Fatalf("разбор констант %s: %v", path, err)
+		}
+		for k, v := range consts {
+			constants[k] = v
+		}
 	}
 
 	t.Logf("перепись: не-тестовых файлов Go разобрано %d, вызовов осмотрено %d, "+
@@ -200,7 +216,7 @@ func TestMandatoryTokenChecksAreDeclaredOnceAndConsumed(t *testing.T) {
 	}
 	if len(constants) == 0 {
 		t.Fatalf("не прочитано ни одной константы перечня из %s — сопоставить названный "+
-			"состав с обязательным нечем, и молчание гейта сказано ни о чём", policyDir)
+			"состав с обязательным нечем, и молчание гейта сказано ни о чём", tokenCheckPolicyImport)
 	}
 
 	// (1) Перечень объявлен РОВНО ОДИН раз.

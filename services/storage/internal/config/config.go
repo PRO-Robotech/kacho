@@ -12,9 +12,9 @@ import (
 
 	"fmt"
 
-	corecfg "github.com/PRO-Robotech/kacho/pkg/config"
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	corecfg "github.com/PRO-Robotech/corelib/config"
+	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 )
 
 // envPrefix — корневой сегмент env-имён kacho-storage (KACHO_<DOMAIN>).
@@ -63,10 +63,12 @@ type Config struct {
 	// :9091) — его переиспользует register-drainer + sync-registrar.
 	AuthZIAMGRPCAddr string `envconfig:"KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR" default:""`
 
-	// QuotaAuthority — ОБЪЯВЛЕНИЕ домена величин. Ровно два законных значения:
-	// адрес в форме host:port либо слово `not-deployed`. Незаданное значение —
-	// отказ старта: умолчание означало бы выбор за оператора между «потолки
-	// действуют» и «потолков нет», и выбор этот был бы невидим.
+	// QuotaAuthority — ОБЪЯВЛЕНИЕ домена величин. Действующее значение одно:
+	// слово `not-deployed`. Адрес был вторым — производителя у контракта
+	// авторитета величин не осталось, и адрес теперь отвергается стартом.
+	// Незаданное значение — тоже отказ старта: умолчание означало бы выбор за
+	// оператора между «потолки действуют» и «потолков нет», и выбор этот был бы
+	// невидим.
 	//
 	// Объявление ОДНО на обе полосы ребра — разрешение величины на пути запроса
 	// и фоновую дельту. Приёмка
@@ -80,7 +82,7 @@ type Config struct {
 	// grpcsrv.WithTrustedForwarders (см. cmd/storage/serve.go).
 	//
 	// Почему это ручка, а не константа, и почему её отсутствие было дырой: contract
-	// corelib (pkg/grpcsrv principalIsTrusted) сужает круг отправителей ТОЛЬКО когда
+	// corelib (corelib/grpcsrv principalIsTrusted) сужает круг отправителей ТОЛЬКО когда
 	// список непуст; на пустом он отвечает «доверяем» любому пиру, прошедшему
 	// проверку сертификата. Внутренний периметр у нас объявлен НЕдоверенным, поэтому
 	// пустой список означает: любой сосед со своим законным клиентским сертификатом
@@ -217,7 +219,7 @@ type Config struct {
 	HandlingBudget time.Duration `envconfig:"KACHO_STORAGE_HANDLING_BUDGET" default:"30s"`
 
 	// SubscriptionStreamBudget — СРОК ЖИЗНИ одного потока подписки
-	// (`pkg/subscription`, общий сервер потока изменений).
+	// (`corelib/subscription`, общий сервер потока изменений).
 	//
 	// По истечении поток закрывается ЧИСТО, и клиент возобновляется со своей
 	// позиции: обрыв — штатное событие, а не отказ. Величина обязана заметно
@@ -390,11 +392,8 @@ type Config struct {
 	// IAMClientMTLS — client-creds ребра storage→iam (:9090 / :9091 authz).
 	IAMClientMTLS grpcclient.TLSClient `envconfig:"IAM_CLIENT_MTLS"`
 
-	// QuotaAuthorityMTLS — client-creds ребра storage→домен величин (обе полосы:
-	// InternalLimitService.Resolve на пути запроса и ListChangedSince фоновой
-	// дельтой). Своё, а не заимствованное у authz-ребра: адрес домена величин
+	// глаголы `Resolve` на пути запроса и `ListChangedSince` фоновой дельтой). Своё, а не заимствованное у authz-ребра: адрес домена величин
 	// объявляется отдельно, и удостоверение обязано следовать за адресом.
-	QuotaAuthorityMTLS grpcclient.TLSClient `envconfig:"QUOTA_AUTHORITY_MTLS"`
 	// PublicServerMTLS — server-creds публичного листенера (:9090).
 	PublicServerMTLS grpcsrv.TLSServer `envconfig:"PUBLIC_SERVER_MTLS"`
 	// InternalServerMTLS — server-creds cluster-internal листенера (:9091).

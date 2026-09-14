@@ -93,7 +93,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
+	"github.com/PRO-Robotech/corelib/schemaguard"
 )
 
 // schemaRollbackBaselineFile — счётная ведомость файлов, лежавших в дереве до

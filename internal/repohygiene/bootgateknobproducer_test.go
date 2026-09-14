@@ -53,7 +53,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // bootGateKnobPathMarkers — как ручка гейта опознаётся в ссылке чарта на своё

@@ -49,7 +49,7 @@
 // у каждой своя проба в инъекции (`testing.md` §«Гейт на класс», п.7):
 //
 //	A  Reason: "TOKEN"            — литерал прямо в составном литерале ErrorInfo
-//	B  Reason{token: "TOKEN"}     — закрытый словарь полос (`pkg/errors/reason.go`)
+//	B  Reason{token: "TOKEN"}     — закрытый словарь полос (`corelib/errors/reason.go`)
 //	C  <ident>Reason<ident> = "…" — константа в файле, который строит ErrorInfo
 //
 // Форма, распознавателю неизвестная, не даёт ни красного, ни зелёного — она
@@ -110,7 +110,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // consoleRefusalDictRel — словарь вердиктов консоли относительно корня дерева.
@@ -141,21 +141,29 @@ var consoleDictBlock = regexp.MustCompile(`(?s)const REFUSALS: Record<string, Re
 // потребителя была бы послаблением без предмета. Потребители печатаются
 // переписью поимённо.
 //
-// Прежде перечень звался «полосой потока» и нёс два пути с одним потребителем.
-// Оснований у исключения оказалось два, а не одно: у полосы отзыва края отказ до
-// браузера не доезжает ВООБЩЕ — глагол внутренний (ban #6), и его читает Go
-// соседней реплики. Объявить такому токену вердикт консоли значило бы завести
-// запись, которая не сработает ни при каком входе.
-var offConsoleProducerPaths = []struct {
+// # ЗАПИСЬ ИСТЕКАЕТ ВМЕСТЕ С ПРЕДМЕТОМ, И ЭТО ТЕПЕРЬ ДЕРЖИТ ПРОВЕРКА
+//
+// Здесь стояли ещё два пути — `pkg/subscription/` и `pkg/subjectchange/`, — и
+// исключать им было НЕЧЕГО: отслеживаемых файлов под обоими ноль. Первый уехал в
+// общий фундамент (#2131), второй — вместе с контрактами и кодом службы доступа
+// (kacho#2616, исход C, 2026-09-13; канон теперь приезжает модулем
+// `github.com/PRO-Robotech/kaname`). Ни один из них не давал ни одного токена, и
+// заметить это было нечем: перечень печатался ПО ПОТРЕБИТЕЛЯМ, а мёртвый путь
+// делил потребителя с живым — «хаб подписки браузера» в переписи стоял, потому
+// что токены давал `gateway/internal/subscriptionstream/`.
+//
+// Так исключение шириной в каталог переживает свой предмет: следующий файл,
+// заведённый под мёртвым путём, наследует освобождение от вердикта консоли, о
+// котором никто не решал. Поэтому ниже стоит pathsWithoutSubject — предикат
+// самоистечения по КАЖДОМУ пути отдельно, а не по потребителю.
+type offConsolePath struct {
 	prefix   string
 	consumer string
-}{
-	{filepath.Join("pkg", "subscription") + string(filepath.Separator),
-		"хаб подписки браузера"},
+}
+
+var offConsoleProducerPaths = []offConsolePath{
 	{filepath.Join("gateway", "internal", "subscriptionstream") + string(filepath.Separator),
 		"хаб подписки браузера"},
-	{filepath.Join("pkg", "subjectchange") + string(filepath.Separator),
-		"читатель отзыва края (Go): глагол внутренний, до браузера отказ не доезжает"},
 }
 
 // offConsoleConsumer — чей это токен, если не консоли. Пустая строка означает
@@ -170,6 +178,36 @@ func offConsoleConsumer(rel string) string {
 		}
 	}
 	return ""
+}
+
+// pathsWithoutSubject — объявленные пути, из-под которых НЕ ПРИШЛО НИ ОДНОГО
+// токена, то есть исключения без предмета.
+//
+// Единица счёта — ТОКЕН, а не файл: предмет исключения — токен отказа, чей
+// потребитель не консоль. Путь, под которым файлы есть, а токенов нет, тоже
+// ничего не исключает — и с равным правом наследует освобождение следующему.
+//
+// Функция чистая намеренно, как и offConsoleConsumer: доказательство подаёт ей
+// и перечень, и найденное, не трогая дерево.
+func pathsWithoutSubject(produced []producedReason, paths []offConsolePath) (dead []string, subjects map[string]int) {
+	subjects = map[string]int{}
+	for _, p := range paths {
+		subjects[p.prefix] = 0
+	}
+	for _, r := range produced {
+		for _, p := range paths {
+			if strings.HasPrefix(r.where, p.prefix) {
+				subjects[p.prefix]++
+			}
+		}
+	}
+	for _, p := range paths {
+		if subjects[p.prefix] == 0 {
+			dead = append(dead, p.prefix+" (объявленный потребитель — "+p.consumer+")")
+		}
+	}
+	sort.Strings(dead)
+	return dead, subjects
 }
 
 // censusSkipPaths — не производители: гейты и утилиты держат СВОИ копии токенов,
@@ -270,15 +308,76 @@ func parseVerdictDict(text string) (map[string]bool, bool) {
 // которой арендатору показывают, что придётся; справа послабление, пережившее
 // свой предмет.
 func judgeCoverage(rest map[string][]string, declared map[string]bool) (missing, orphan []string) {
+	return judgeCoverageWithExternal(rest, declared, producedOutsideThisTree)
+}
+
+// producedOutsideThisTree — токены отказа, чей ПРОИЗВОДИТЕЛЬ живёт в другом
+// репозитории, а ПОТРЕБИТЕЛЬ (консоль) — здесь.
+//
+// # Почему ведомость, а не снятие вердикта
+//
+// Служба доступа вынесена отдельным продуктом (задача #1111). Отказы, которые
+// она производит, ДОЕЗЖАЮТ ДО АРЕНДАТОРА по-прежнему: умбрелла поднимает её из
+// опубликованного образа, край проксирует ответ, консоль его разбирает. Снять
+// вердикт консоли по такому токену значило бы сломать продукт ради зелёного
+// прогона — арендатор увидел бы прозу производителя вместо разобранного отказа.
+//
+// # Почему это не бессрочное послабление
+//
+// Ведомость самоистекает: запись, у которой производитель В ЭТОМ ДЕРЕВЕ нашёлся,
+// — находка. Тогда токен вернулся к нам, и прикрывать его записью значит
+// прикрывать живую координату.
+//
+// Значение — репозиторий-производитель. Оно не резолвится проверкой и не обязано:
+// предмет вне этого дерева, а назначение — сказать читателю, ГДЕ искать, и не
+// дать записи выродиться в голое имя без причины.
+var producedOutsideThisTree = map[string]string{
+	"MEMBERSHIP_CARRIES_RIGHTS": "PRO-Robotech/kaname",
+	"QUOTA_RATE_EXCEEDED":       "PRO-Robotech/kaname",
+	"REFERENCE_IN_USE":          "PRO-Robotech/kaname",
+	"REFERENCE_MISSING":         "PRO-Robotech/kaname",
+
+	// Шесть токенов ниже производит ОБЩАЯ БИБЛИОТЕКА: полосы разрешения ссылки
+	// и отсутствия домена величин объявлены в её пакете отказов, уехавшем из
+	// `pkg/` вместе с остальным фундаментом (задача #2131). Доезжают до
+	// арендатора они по-прежнему — сервис платформы линкует библиотеку и отдаёт
+	// её `reason` дословно, — поэтому вердикт консоли по ним законен, а снятие
+	// вердикта сломало бы продукт ради зелёного прогона.
+	//
+	// Запись самоистекает той же обратной стороной, что и четыре выше: найдётся
+	// производитель В ЭТОМ дереве — запись станет находкой.
+	"INVALID_RESOURCE_ID":    "PRO-Robotech/corelib",
+	"PEER_RESOURCE_MISSING":  "PRO-Robotech/corelib",
+	"PEER_RESOURCE_STATE":    "PRO-Robotech/corelib",
+	"PEER_UNAVAILABLE":       "PRO-Robotech/corelib",
+	"QUOTA_AUTHORITY_ABSENT": "PRO-Robotech/corelib",
+	"RESOURCE_NOT_FOUND":     "PRO-Robotech/corelib",
+}
+
+// judgeCoverageWithExternal — та же оценка, но ведомость внешних производителей
+// подаётся ЯВНО: доказательство способности падать обязано уметь предъявить обе
+// стороны, иначе один и тот же вход давал бы один и тот же вердикт.
+func judgeCoverageWithExternal(rest map[string][]string, declared map[string]bool,
+	external map[string]string) (missing, orphan []string) {
 	for tok := range rest {
 		if !declared[tok] {
 			missing = append(missing, tok)
 		}
+		if _, ok := external[tok]; ok {
+			// Обратная сторона ведомости: производитель нашёлся ЗДЕСЬ, значит
+			// запись пережила свой предмет.
+			orphan = append(orphan, tok+": объявлен производимым вне дерева ("+external[tok]+
+				"), но производитель найден ЗДЕСЬ — снимите запись из producedOutsideThisTree")
+		}
 	}
 	for tok := range declared {
-		if rest[tok] == nil {
-			orphan = append(orphan, tok)
+		if rest[tok] != nil {
+			continue
 		}
+		if _, ok := external[tok]; ok {
+			continue // производитель в другом репозитории — вердикт консоли законен
+		}
+		orphan = append(orphan, tok)
 	}
 	sort.Strings(missing)
 	sort.Strings(orphan)
@@ -345,6 +444,33 @@ func TestConsoleDeclaresEveryProducedRefusalReason(t *testing.T) {
 		sort.Strings(byConsumer[consumer])
 		t.Logf("вне консоли, потребитель — %s: %s",
 			consumer, strings.Join(byConsumer[consumer], " · "))
+	}
+
+	// САМОИСТЕЧЕНИЕ ИСКЛЮЧЕНИЯ ПО ПУТИ — отдельно от переписи по потребителям.
+	// Перепись выше складывает токены нескольких путей в одного потребителя,
+	// поэтому мёртвый путь в ней не виден: за него отвечает живой сосед с тем же
+	// именем потребителя.
+	deadPaths, pathSubjects := pathsWithoutSubject(produced, offConsoleProducerPaths)
+	for _, p := range offConsoleProducerPaths {
+		t.Logf("исключение по пути %s: токенов из-под него %d", p.prefix, pathSubjects[p.prefix])
+	}
+	if len(deadPaths) > 0 {
+		t.Errorf("объявлен путь вне консоли, из-под которого НЕ ПРИХОДИТ НИ ОДНОГО токена — %d:\n\t%s\n\n"+
+			"Исключению нечего исключать: оно пережило свой предмет и остаётся освобождением "+
+			"шириной в каталог. Следующий файл, заведённый под этим путём, унаследует свободу "+
+			"от вердикта консоли, о которой никто не решал. Снимите запись — либо верните "+
+			"производителя, ради которого она заведена.",
+			len(deadPaths), strings.Join(deadPaths, "\n\t"))
+	}
+
+	if len(producedOutsideThisTree) > 0 {
+		outside := make([]string, 0, len(producedOutsideThisTree))
+		for tok := range producedOutsideThisTree {
+			outside = append(outside, tok)
+		}
+		sort.Strings(outside)
+		t.Logf("вердикт консоли законен без производителя в дереве (производитель — "+
+			"другой репозиторий) — %d: %s", len(outside), strings.Join(outside, " "))
 	}
 
 	missing, orphan := judgeCoverage(rest, declared)

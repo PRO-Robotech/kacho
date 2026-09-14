@@ -22,10 +22,15 @@ var settledWatermarkAllowances []SettledWatermarkAllowance
 
 func settledWatermarkOptions(t *testing.T) SettledWatermarkOptions {
 	t.Helper()
+	root := repoRoot(t)
 	return SettledWatermarkOptions{
-		Root:    repoRoot(t),
+		Root:    root,
 		GoRoots: []string{"pkg", "services", "gateway", "terraform", "internal", "cmd"},
 		Allow:   settledWatermarkAllowances,
+		// Наблюдатель переехал из pkg/subscription в пакет subscription
+		// общего фундамента (github.com/PRO-Robotech/corelib) — читаем ТУДА,
+		// куда он переехал (см. corelibsource_test.go), а не только диск.
+		ExtraFiles: corelibPackageGoFiles(t, root, "subscription"),
 	}
 }
 

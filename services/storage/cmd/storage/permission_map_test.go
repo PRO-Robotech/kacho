@@ -34,13 +34,14 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/authz/catalogderive"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/operations/operationspb"
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
-	"github.com/PRO-Robotech/kacho/pkg/authz"
-	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktypebinding"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
@@ -418,9 +419,21 @@ func TestNoTenantDataOnTheClusterSingleton(t *testing.T) {
 //
 // Читается именно объявление, а не память автора: подстановка, добавленная в
 // админ-отношение, обессмыслила бы разделение выше — и сделала бы это молча.
+//
+// ПУТЬ РАЗРЕШАЕТСЯ, А НЕ ВЫПИСЫВАЕТСЯ. Здесь стоял литерал
+// `../../../../proto/kaname/…` — координата от каталога пробы. Под `proto/` этого
+// дерева модели больше нет: решением владельца (kacho#2616, исход C, 2026-09-13)
+// контракты службы доступа уехали в её репозиторий и приезжают опубликованным
+// модулем `github.com/PRO-Robotech/kaname`, каталогом `proto/kaname` внутри него.
+// Резолвер один на оба вида корня — `internal/contractsource`.
 func wildcardSatisfiableClusterRelations(t *testing.T) map[string]bool {
 	t.Helper()
-	const modelPath = "../../../../proto/kaname/cloud/iam/v1/fga_model.fga"
+	// Четыре сегмента вверх от `services/storage/cmd/storage` — корень дерева.
+	const repoRoot = "../../../.."
+	modelPath, err := contractsource.Path(repoRoot, "kaname/cloud/iam/v1/fga_model.fga")
+	if err != nil {
+		t.Fatalf("модель прав не разрешается: %v", err)
+	}
 	raw, err := os.ReadFile(modelPath)
 	if err != nil {
 		t.Fatalf("модель прав не прочитана (%s): %v", modelPath, err)

@@ -15,9 +15,9 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/PRO-Robotech/corelib/auth"
+	"github.com/PRO-Robotech/corelib/peer"
 	geov1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
-	"github.com/PRO-Robotech/kacho/pkg/auth"
-	"github.com/PRO-Robotech/kacho/pkg/peer"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
@@ -175,7 +175,7 @@ func (c *GeoClient) ZonesOfRegion(ctx context.Context, regionID string) ([]strin
 const serviceDomain = "storage"
 
 // Полосы ребра storage→geo — по одному helper'у на ресурс, и оба сводятся к
-// носителю (pkg/peer). Прежде здесь стояли два конструктора и четыре рукописных
+// носителю (corelib/peer). Прежде здесь стояли два конструктора и четыре рукописных
 // `switch status.Code(err)`, разложивших коды соседа по полосам каждый по-своему:
 // три места считали `PermissionDenied` недоступностью, то есть ВРЕМЕННОЙ полосой.
 // Отказ в правах повтором не лечится — арендатор получал «повтори позже» на

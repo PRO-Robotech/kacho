@@ -3,7 +3,7 @@
 
 // f1_declared_checks_test.go — F1-28, объявительная половина на стороне
 // ПОТРЕБИТЕЛЯ: состав обязательных проверок объявлен один раз, в
-// `pkg/tokenpolicy`, и эта реализация им пользуется.
+// `corelib/tokenpolicy`, и эта реализация им пользуется.
 //
 // Пока состав живёт у каждой поверхности свой, различие между поверхностями не
 // выражено и потому не может покраснеть: одна перестанет требовать срок, другая
@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz"
-	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/tokenpolicy"
 	"github.com/stretchr/testify/require"
 )
 

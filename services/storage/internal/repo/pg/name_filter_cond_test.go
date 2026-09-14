@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/pkg/filter"
+	"github.com/PRO-Robotech/corelib/filter"
 )
 
 // storageListAliases — псевдонимы таблиц трёх списков этого сервиса. Проверять

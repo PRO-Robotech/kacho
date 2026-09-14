@@ -283,20 +283,6 @@ spec:
             - name: KACHO_REGISTRY_IAM_AUTHZ_MTLS_SERVERNAME
               value: {{ .Values.mtls.serverName.iamAuthz | quote }}
             {{- end }}
-            {{- if .Values.mtls.edges.quotaAuthority }}
-            # registry→домен величин: ОБЕ полосы одного ребра (Resolve на пути
-            # запроса и ListChangedSince фоновой дельтой) — удостоверение одно.
-            - name: KACHO_REGISTRY_QUOTA_AUTHORITY_MTLS_ENABLE
-              value: "true"
-            - name: KACHO_REGISTRY_QUOTA_AUTHORITY_MTLS_CERTFILE
-              value: {{ printf "%s/tls.crt" $cli | quote }}
-            - name: KACHO_REGISTRY_QUOTA_AUTHORITY_MTLS_KEYFILE
-              value: {{ printf "%s/tls.key" $cli | quote }}
-            - name: KACHO_REGISTRY_QUOTA_AUTHORITY_MTLS_CAFILES
-              value: {{ printf "%s/ca.crt" $cli | quote }}
-            - name: KACHO_REGISTRY_QUOTA_AUTHORITY_MTLS_SERVERNAME
-              value: {{ .Values.mtls.serverName.quotaAuthority | quote }}
-            {{- end }}
             {{- if .Values.mtls.edges.tokenRevocation }}
             # registry→iam авторитет отзыва (internal :9097) client-creds. Ребро
             # СВОЁ: маршруту отзыва присылают предъявленный токен, поэтому

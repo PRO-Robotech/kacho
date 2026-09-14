@@ -31,8 +31,8 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/PRO-Robotech/corelib/identityposture"
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
-	"github.com/PRO-Robotech/kacho/pkg/identityposture"
 )
 
 // introspectionAdminPath — the path the identity provider's admin API serves

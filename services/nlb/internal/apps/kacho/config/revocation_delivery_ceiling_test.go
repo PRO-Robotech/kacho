@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/corelib/authz"
 )
 
 func TestValidate_PollFallbackAboveTheCeiling(t *testing.T) {

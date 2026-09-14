@@ -14,13 +14,36 @@
 //     (`github.com/PRO-Robotech/kacho`), константа `latentMarker`;
 //   - `services/vpc/internal/subscriptionjournal/exclusion_ground_test.go` —
 //     модуль платформы, строковый литерал в вызове;
-//   - `services/iam/internal/authzmap/verb_type_materializable_test.go` —
-//     модуль службы доступа (`github.com/PRO-Robotech/kaname`), константа
-//     `latentTypeMarker`.
+//   - `internal/authzmap/verb_type_materializable_test.go` РЕПОЗИТОРИЯ
+//     `PRO-Robotech/kaname` — модуль службы доступа
+//     (`github.com/PRO-Robotech/kaname`), константа `latentTypeMarker`.
 //
 // Производителей тоже три файла: обе байт-идентичные копии модели прав
-// (`proto/kaname/cloud/iam/v1/fga_model.fga` и
-// `services/iam/internal/authzmodel/fga_model.fga`) и `services/vpc/manifest.yaml`.
+// (`kaname/cloud/iam/v1/fga_model.fga` — дерево контрактов, и
+// `internal/authzmodel/fga_model.fga` репозитория `PRO-Robotech/kaname`) и
+// `services/vpc/manifest.yaml`.
+//
+// # Где эти файлы лежат ПОСЛЕ выноса службы, и что из этого следует для гейта
+//
+// Решением владельца kacho#2616 (исход C, 2026-09-13) служба доступа и её
+// контракты уехали в свой репозиторий; прежняя редакция этой шапки называла их
+// координатами ЭТОГО дерева (`services/iam/…`, `proto/kaname/…`) — утверждение
+// ОТМЕНЕНО. Раскладка сегодня такая:
+//
+//   - в индексе этого дерева — два распознавателя и один производитель
+//     (`services/vpc/manifest.yaml`): 6 вхождений в 5 файлах, все `kacho`;
+//   - в дереве КОНТРАКТОВ, приезжающем модулем `github.com/PRO-Robotech/kaname`
+//     и резолвимом через `internal/contractsource`, — канон модели: 2 вхождения,
+//     тоже `kacho`. Этот корпус гейт читает, и ниже названа отдельная величина;
+//   - ВНЕ ПОПУЛЯЦИИ гейта — внутренности службы (`internal/authzmodel/…`,
+//     `internal/authzmap/…` того же репозитория): 5 вхождений. Их этот гейт НЕ
+//     ВИДИТ, и односторонний переезд написания ТАМ он не покажет. Это граница
+//     владения: `contractsource` резолвит дерево контрактов, а не внутренности
+//     чужого продукта, и читать их платформе незачем. Замер оттуда получают
+//     командой над каталогом модуля:
+//     `grep -rhoE '#[ \t]*[a-z][a-z0-9_.-]*:latent' "$(go list -m -f '{{.Dir}}' github.com/PRO-Robotech/kaname)" | sort | uniq -c`
+//     → `7 kacho:latent` на 2026-09-13 (те же 2 контрактных плюс 5
+//     внутренних). Остаток назван числом, а не умолчан.
 //
 // # Чем опасен ОДНОСТОРОННИЙ переезд
 //
@@ -36,7 +59,12 @@
 // переехать вместе с её распознавателем. Замер говорит обратное, и он
 // повторяется одной командой:
 //
-//	sed -n '1072,1075p' proto/kaname/cloud/iam/v1/fga_model.fga
+//	sed -n '1084,1088p' "$(go list -m -f '{{.Dir}}' github.com/PRO-Robotech/kaname)/proto/kaname/cloud/iam/v1/fga_model.fga"
+//
+// Путь назван через каталог МОДУЛЯ, а не как `proto/kaname/…` этого дерева:
+// после kacho#2616 такого файла здесь нет, и прежняя команда давала ТРЕТИЙ
+// исход — «не выполнилось», — то есть замер, на который ссылается решение,
+// перестал быть воспроизводимым.
 //
 // Пометка стоит на типе `vpc_address_pool` — РЕСУРСЕ ДОМЕНА VPC, а сама модель
 // требует её «on a consumer-owned type». Второй производитель — манифест vpc.
@@ -54,6 +82,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 )
 
 // latentSpellingRe — пометка в ЛЮБОЙ из форм, которыми дерево её записывает.
@@ -175,15 +205,93 @@ func latentCensus(hits []latentHit, filesRead, filesWith int) string {
 		filesRead, filesWith, len(hits), strings.Join(parts, ", "))
 }
 
+// collectLatentSpellingsInExternalContracts — вхождения пометки в деревьях
+// контрактов, ЧЬИХ ИСХОДНИКОВ В ЭТОМ ДЕРЕВЕ НЕТ.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ЗАЧЕМ ОТДЕЛЬНЫЙ СБОР, А НЕ РАСШИРЕНИЕ ОБХОДА ИНДЕКСА
+//
+// Канон модели прав — один из трёх производителей пометки, и после kacho#2616
+// (исход C) он лежит вне индекса git этого дерева: приезжает модулем
+// `github.com/PRO-Robotech/kaname`, координата резолвится
+// `internal/contractsource`. Обход индекса его не видит и НЕ КРАСНЕЕТ — он
+// перестаёт читать целый вид производителя, честно печатая перепись по тому, что
+// прочитал. Ровно тот класс, который этот гейт и стережёт, только в применении к
+// самому гейту.
+//
+// Берутся ТОЛЬКО внешние корни (`contractsource.ExternalRootModules`): корни,
+// лежащие в `proto/` этого дерева, обход индекса уже прочитал, и второй проход
+// удвоил бы их вхождения в переписи.
+//
+// Пустой состав внешнего корня — ОТКАЗ, и его даёт сам `contractsource.Files`.
+func collectLatentSpellingsInExternalContracts(t *testing.T, root string) (hits []latentHit, filesRead int) {
+	t.Helper()
+	roots := make([]string, 0, len(contractsource.ExternalRootModules))
+	for r := range contractsource.ExternalRootModules {
+		roots = append(roots, r)
+	}
+	sort.Strings(roots)
+	if len(roots) == 0 {
+		t.Fatal("внешних корней дерева контрактов объявлено НОЛЬ — либо их больше нет " +
+			"(тогда снимите этот сбор вместе с его предметом), либо перечень опустел, " +
+			"и канон модели ушёл из наблюдения молча")
+	}
+	for _, r := range roots {
+		dir, err := contractsource.Dir(root, r)
+		if err != nil {
+			t.Fatalf("каталог дерева контрактов корня %q: %v", r, err)
+		}
+		files, err := contractsource.Files(root, r)
+		if err != nil {
+			t.Fatalf("состав дерева контрактов корня %q: %v", r, err)
+		}
+		base := filepath.Dir(dir)
+		for _, abs := range files {
+			rel, rerr := filepath.Rel(base, abs)
+			if rerr != nil {
+				t.Fatalf("путь %s относительно %s: %v", abs, base, rerr)
+			}
+			body, rerr := os.ReadFile(abs) // #nosec G304 -- путь из кэша модулей
+			if rerr != nil {
+				t.Fatalf("чтение %s: %v", abs, rerr)
+			}
+			filesRead++
+			coord := "proto/" + filepath.ToSlash(rel) + " [модуль " + contractsource.ExternalRootModules[r] + "]"
+			for i, line := range strings.Split(string(body), "\n") {
+				for _, m := range latentSpellingRe.FindAllStringSubmatch(line, -1) {
+					hits = append(hits, latentHit{File: coord, Line: i + 1, Spelling: m[1]})
+				}
+			}
+		}
+	}
+	return hits, filesRead
+}
+
 // TestLatentMarkerSpellingIsSingleValued — написаний ровно одно.
+//
+// Популяция СОСТАВНАЯ, и части названы порознь: индекс этого дерева плюс деревья
+// контрактов, приезжающие модулем. Одно число по их сумме скрыло бы ровно тот
+// случай, ради которого гейт заведён, — сторону, ушедшую из наблюдения целиком.
 func TestLatentMarkerSpellingIsSingleValued(t *testing.T) {
 	t.Parallel()
 
-	tt := newTrackedTree(t, repoRoot(t))
+	root := repoRoot(t)
+	tt := newTrackedTree(t, root)
 	hits, filesRead, filesWith := collectLatentSpellings(t, tt)
-	t.Logf("перепись: %s", latentCensus(hits, filesRead, filesWith))
+	t.Logf("перепись индекса дерева: %s", latentCensus(hits, filesRead, filesWith))
 
-	if v := latentSpellingVerdict(hits, filesRead); v != "" {
+	extHits, extFiles := collectLatentSpellingsInExternalContracts(t, root)
+	t.Logf("перепись внешних деревьев контрактов: файлов прочитано %d · вхождений %d",
+		extFiles, len(extHits))
+	if len(extHits) == 0 {
+		t.Errorf("во внешних деревьях контрактов прочитано %d файлов и не найдено НИ ОДНОГО "+
+			"вхождения пометки — а канон модели прав есть её ПЕРВЫЙ производитель. Ноль здесь "+
+			"означает одно из двух, и оба суть находка: пометку сняли в чужом репозитории, "+
+			"оставив производителей и распознавателей этого дерева утверждать то, чего канон "+
+			"не объявляет; либо закреплённая версия модуля перестала нести канон", extFiles)
+	}
+
+	if v := latentSpellingVerdict(append(hits, extHits...), filesRead+extFiles); v != "" {
 		t.Error(v)
 	}
 }

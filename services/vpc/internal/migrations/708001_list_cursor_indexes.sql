@@ -39,7 +39,7 @@
 --   * `address_pools` — админский ресурс (Internal*), колонки проекта у него нет
 --     вовсе; фильтры списка (`kind`, `zone_id`) необязательны, поэтому ведущего
 --     равенства не существует и индекс несёт только ключи курсора;
---   * `operations` — общий список операций (`pkg/operations`), фильтры которого
+--   * `operations` — общий список операций (`corelib/operations`), фильтры которого
 --     (`resource_id`, `account_id`, предикат владельца) тоже необязательны.
 --     Существующий `operations_account_id_idx (account_id, created_at, id)
 --     WHERE account_id IS NOT NULL` обслуживает ТОЛЬКО account-scoped ветку: он

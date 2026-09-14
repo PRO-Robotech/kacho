@@ -45,11 +45,12 @@
 package repohygiene
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // clientTruthTreeFiles — отслеживаемые файлы под каталогом dirRel с одним из
@@ -100,6 +101,36 @@ func clientTruthTreeFiles(
 // корня дерева и относительного имени, пришедшего из индекса: в таком виде он
 // не приходит извне ни одной своей частью и не приходит из обратного вызова
 // обхода.
+//
+// # Второй дом — pkg/ этого дерева переехал в общий фундамент
+//
+// Некоторые гейты семейства называют источник истины литералом вида
+// `pkg/<пакет>/<файл>.go` — единственную рукописную координату, которая
+// разъехалась бы с местами вызова, будь их несколько. Каталог `pkg/` целиком
+// уехал в модуль общего фундамента (`github.com/PRO-Robotech/corelib`), сохранив
+// внутреннюю раскладку (`pkg/<X>/…` → `<X>/…` в модуле). Отсутствие файла ПОД
+// `pkg/` этого дерева здесь — не «источника не стало», а «источник переехал»:
+// разбирать это молчанием означало бы читать «кэш не наполнен» как «предмета
+// нет» — те же два разных события, неотличимые по пустому результату
+// (`corelibsource_test.go`).
+//
+// Второй дом — ЛУЧШЕЕ УСИЛИЕ: у синтетического дерева проб (`t.TempDir()`, без
+// go.mod) второго дома нет и это законно — его источник целиком лежит в
+// синтетике, и `os.IsNotExist` там просачивается наверх как обычно.
 func clientTruthReadTreeFile(tree *treecorpus.Tree, rel string) ([]byte, error) {
-	return os.ReadFile(filepath.Join(tree.Root(), filepath.FromSlash(rel)))
+	path := filepath.Join(tree.Root(), filepath.FromSlash(rel))
+	body, err := os.ReadFile(path) // #nosec G304 -- путь собран из корня дерева и координаты из индекса git, оба не от пользователя
+	if err == nil || !errors.Is(err, os.ErrNotExist) {
+		return body, err
+	}
+	slashRel := filepath.ToSlash(rel)
+	tail, ok := strings.CutPrefix(slashRel, "pkg/")
+	if !ok {
+		return body, err
+	}
+	moduleDir, cerr := corelibModuleRootDir(tree.Root())
+	if cerr != nil {
+		return body, err // второй дом не резолвится — исходная ошибка честнее
+	}
+	return os.ReadFile(filepath.Join(moduleDir, filepath.FromSlash(tail))) // #nosec G304 -- путь собран из каталога модуля в кэше и координаты из индекса git
 }

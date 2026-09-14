@@ -44,14 +44,28 @@
 // типа, который эта строка моделирует, — то есть у того же источника, из которого
 // его берёт край. Цепочка источника названа, а не подразумевается:
 //
-//   fga_model.fga  ──(безусловный гейт дрейфа
-//                    services/iam/internal/authzmap/fga_model_drift_test.go)──▶
-//   authzmap.typeVerbRelations ──▶ VerbsOfType ──▶ CatalogResource.verbs ──▶ край
+//   fga_model.fga ──▶ таблица типов службы доступа ──▶ VerbsOfType ──▶
+//   CatalogResource.verbs ──▶ край
 //
-// Модель — канон, таблица типов iam — её зеркало, поэтому спрашивать надо модель.
-// Читать её с диска приходится по той же причине, по какой это уже делает
+// Модель — канон, таблица типов службы — её зеркало, поэтому спрашивать надо
+// модель. Читать её с диска приходится по той же причине, по какой это уже делает
 // ui-future/iam/src/access-binding-field-names.test.tsx с `.proto`: контракт, который проба
 // исполнить не может, и другого способа спросить у него нет.
+//
+// # Где лежит канон и почему путь РАЗРЕШАЕТСЯ
+//
+// Не в `proto/` монорепо: решением владельца (kacho#2616, исход C, 2026-09-13)
+// контракты службы доступа уехали в её репозиторий и приезжают опубликованным
+// модулем `github.com/PRO-Robotech/kaname`, каталогом `proto/kaname` внутри него.
+// Вместе с ними уехал и гейт дрейфа, который прежде назывался в этой цепочке
+// координатой `services/iam/internal/authzmap/fga_model_drift_test.go`: держит
+// зеркало теперь репозиторий службы, и ссылаться сюда на его файл значило бы
+// называть адрес, которого в этом дереве нет.
+//
+// Здесь стоял `path.resolve(here, "../../../../proto/kaname/…")`, и он бросал на
+// уровне МОДУЛЯ — до первого `it`, роняя весь файл сообщением о координате, а не о
+// причине. Координату разрешает `contractPath` (shared/test/proto-contract), один
+// резолвер на оба вида корня.
 //
 // Ожидаемые значения ниже остаются ЛИТЕРАЛАМИ. Это не забывчивость, а условие
 // работы: сверка фикстуры с её собственным источником зеленела бы при любом
@@ -60,14 +74,12 @@
 // ожидание покраснело С КООРДИНАТОЙ.
 
 import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 
+import { contractPath } from "../test/proto-contract";
 import { verbOptions, WILDCARD } from "./usePermissionCatalog";
 import type { PermissionCatalog } from "./iam";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const MODEL_PATH = path.resolve(here, "../../../../proto/kaname/cloud/iam/v1/fga_model.fga");
+const MODEL_PATH = contractPath("kaname/cloud/iam/v1/fga_model.fga");
 const model = readFileSync(MODEL_PATH, "utf8").split("\n");
 
 /**

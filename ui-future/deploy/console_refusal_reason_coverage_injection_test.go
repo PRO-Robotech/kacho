@@ -93,9 +93,10 @@ func TestCoverageJudgeFallsAndStaysSilentInBothDirections(t *testing.T) {
 	}
 
 	// ПРОГОН 1 — КОНТРОЛЬ: множества равны, гейт молчит с обеих сторон.
-	missing, orphan := judgeCoverage(produced, map[string]bool{
+	noExternal := map[string]string{}
+	missing, orphan := judgeCoverageWithExternal(produced, map[string]bool{
 		"AUTHZ_DENIED": true, "QUOTA_EXCEEDED": true,
-	})
+	}, noExternal)
 	if len(missing) != 0 || len(orphan) != 0 {
 		t.Fatalf("контроль: на равных множествах гейт обязан молчать, получено missing=%v orphan=%v — "+
 			"проверка, красная на верном дереве, будет отключена первой", missing, orphan)
@@ -103,7 +104,7 @@ func TestCoverageJudgeFallsAndStaysSilentInBothDirections(t *testing.T) {
 
 	// ПРОГОН 2 — ПРОИЗВЕДЕНО, НЕ РАЗОБРАНО: токен доезжает до арендатора
 	// необъяснённым. Это ровно то состояние, в котором дерево было до #1736.
-	missing, orphan = judgeCoverage(produced, map[string]bool{"QUOTA_EXCEEDED": true})
+	missing, orphan = judgeCoverageWithExternal(produced, map[string]bool{"QUOTA_EXCEEDED": true}, noExternal)
 	if len(missing) != 1 || missing[0] != "AUTHZ_DENIED" {
 		t.Errorf("непокрытый токен НЕ НАЗВАН: missing=%v — находка, не называющая координату, "+
 			"посылает читателя искать не там", missing)
@@ -115,15 +116,41 @@ func TestCoverageJudgeFallsAndStaysSilentInBothDirections(t *testing.T) {
 
 	// ПРОГОН 3 — САМОИСТЕЧЕНИЕ: вердикт есть, производителя нет. Без этого
 	// прогона молчание второй стороны в прогоне 2 неотличимо от молчания мёртвой.
-	missing, orphan = judgeCoverage(produced, map[string]bool{
+	missing, orphan = judgeCoverageWithExternal(produced, map[string]bool{
 		"AUTHZ_DENIED": true, "QUOTA_EXCEEDED": true, "QUOTA_RETIRED_LANE": true,
-	})
+	}, noExternal)
 	if len(orphan) != 1 || orphan[0] != "QUOTA_RETIRED_LANE" {
 		t.Errorf("вердикт, которому нечего разбирать, НЕ НАЙДЕН: orphan=%v — послабление "+
 			"пережило бы свой предмет и выглядело работающим", orphan)
 	}
 	if len(missing) != 0 {
 		t.Errorf("прогон 3 уронил ПЕРВУЮ сторону (missing=%v) — инъекция роняет не своё", missing)
+	}
+
+	// ПРОГОН 4 — ЗАКОННЫЙ БЛИЗНЕЦ ВЕДОМОСТИ: вердикт есть, производителя в
+	// дереве нет, и токен ОБЪЯВЛЕН производимым в другом репозитории. Гейт
+	// обязан молчать: иначе он краснел бы на верно исполненном разрезе и толкал
+	// снимать вердикт консоли — то есть ломать продукт ради зелёного.
+	missing, orphan = judgeCoverageWithExternal(produced, map[string]bool{
+		"AUTHZ_DENIED": true, "QUOTA_EXCEEDED": true, "REFERENCE_MISSING": true,
+	}, map[string]string{"REFERENCE_MISSING": "PRO-Robotech/kaname"})
+	if len(orphan) != 0 || len(missing) != 0 {
+		t.Errorf("объявленный внешний производитель дал находки missing=%v orphan=%v — "+
+			"гейт краснеет на верной работе", missing, orphan)
+	}
+
+	// ПРОГОН 5 — ОБРАТНАЯ ОСЬ ВЕДОМОСТИ: токен объявлен производимым вне дерева,
+	// а производитель нашёлся ЗДЕСЬ. Запись пережила свой предмет, и без этой
+	// оси она не истекала бы никогда.
+	missing, orphan = judgeCoverageWithExternal(produced, map[string]bool{
+		"AUTHZ_DENIED": true, "QUOTA_EXCEEDED": true,
+	}, map[string]string{"QUOTA_EXCEEDED": "PRO-Robotech/kaname"})
+	if len(orphan) != 1 || !strings.Contains(orphan[0], "QUOTA_EXCEEDED") {
+		t.Errorf("вернувшийся производитель НЕ НАЗВАН: orphan=%v — послабление осталось бы "+
+			"прикрывать живую координату", orphan)
+	}
+	if len(missing) != 0 {
+		t.Errorf("прогон 5 уронил ПЕРВУЮ сторону (missing=%v) — инъекция роняет не своё", missing)
 	}
 }
 
@@ -173,6 +200,15 @@ const QUOTA_TITLES: Record<QuotaLane, string> = {
 // консольным (пустой потребитель), путь вне консоли — назвать СВОЕГО. Без первой
 // половины проба зеленела бы на классификаторе, исключающем всё подряд; без
 // второй — на классификаторе, не исключающем ничего.
+//
+// СИНТЕТИЧЕСКИЕ ПУТИ ПЕРЕНАЦЕЛЕНЫ, И ЭТО НЕ КОСМЕТИКА. Здесь стояли
+// `pkg/subscription/server.go` и `pkg/subjectchange/positionlost.go` модуля
+// `github.com/PRO-Robotech/kaname` — обе
+// координаты умерли вместе со своими каталогами (фундамент в #2131, служба доступа
+// в kacho#2616), и записи перечня, которые они предъявляли, сняты как исключения
+// без предмета. Проба, продолжавшая требовать их исключения, требовала бы
+// ВОЗВРАТА снятых записей — то есть держала бы освобождение шириной в каталог за
+// каталогами, которых нет.
 func TestOffConsoleClassifierNamesAConsumerAndOnlyWhereItShould(t *testing.T) {
 	consoleLane := []string{
 		"services/iam/internal/apps/kaname/api/internal_iam/handler.go",
@@ -180,7 +216,7 @@ func TestOffConsoleClassifierNamesAConsumerAndOnlyWhereItShould(t *testing.T) {
 		"gateway/internal/middleware/permission_denied_response.go",
 		// Законный близнец: имя каталога начинается ТАК ЖЕ, но каталог другой.
 		// Исключение по префиксу без разделителя приняло бы его под себя.
-		"pkg/subscriptionpolicy/refusal.go",
+		"gateway/internal/subscriptionstreampolicy/refusal.go",
 	}
 	for _, rel := range consoleLane {
 		if got := offConsoleConsumer(rel); got != "" {
@@ -190,9 +226,7 @@ func TestOffConsoleClassifierNamesAConsumerAndOnlyWhereItShould(t *testing.T) {
 	}
 
 	offConsole := map[string]string{
-		"pkg/subscription/server.go":                     "хаб подписки браузера",
 		"gateway/internal/subscriptionstream/handler.go": "хаб подписки браузера",
-		"pkg/subjectchange/positionlost.go":              "читатель отзыва края",
 	}
 	for rel, want := range offConsole {
 		got := offConsoleConsumer(rel)
@@ -205,5 +239,59 @@ func TestOffConsoleClassifierNamesAConsumerAndOnlyWhereItShould(t *testing.T) {
 			t.Errorf("%s исключён с потребителем %q, ожидалось упоминание %q — "+
 				"основание исключения обязано быть названо, иначе запись не истечёт", rel, got, want)
 		}
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// САМОИСТЕЧЕНИЕ ИСКЛЮЧЕНИЯ ПО ПУТИ — предикат обязан краснеть на записи без
+// предмета и молчать на записи с предметом.
+//
+// Заведено вместе с предикатом, потому что ловит класс, который до него был
+// НЕВИДИМ: перечень печатался по ПОТРЕБИТЕЛЯМ, и мёртвый путь делил потребителя с
+// живым — в переписи стояло имя потребителя, а токены под ним давал сосед.
+// Измеренная цена: два пути из трёх не давали ни одного токена, гейт был зелёным,
+// и перепись это не показывала.
+//
+// Вход подаётся СТРОКАМИ, а не деревом: предикат чистый, и доказательство обязано
+// уметь предъявить обе стороны на одном и том же перечне.
+func TestOffConsolePathWithoutSubjectIsAFinding(t *testing.T) {
+	live := offConsolePath{prefix: "gateway/internal/subscriptionstream/", consumer: "хаб подписки браузера"}
+	dead := offConsolePath{prefix: "pkg/gone/", consumer: "читатель, которого нет"}
+	produced := []producedReason{
+		{token: "SUBSCRIPTION_SUBJECT_STREAM_LIMIT", where: "gateway/internal/subscriptionstream/limit.go"},
+		{token: "PROJECT_NOT_FOUND", where: "services/vpc/internal/apps/kacho/api/network/create.go"},
+	}
+
+	// Положительный контроль: путь, из-под которого токен пришёл, — НЕ находка.
+	deadPaths, subjects := pathsWithoutSubject(produced, []offConsolePath{live})
+	if len(deadPaths) != 0 {
+		t.Errorf("живое исключение объявлено без предмета: %v — предикат краснел бы на "+
+			"законной записи, и его сняли бы первым", deadPaths)
+	}
+	if subjects[live.prefix] != 1 {
+		t.Errorf("токенов из-под живого пути насчитано %d, ожидалось 1 — единица счёта "+
+			"сбита, и «ноль» станет неотличим от «не посчитано»", subjects[live.prefix])
+	}
+
+	// Отрицательная сторона: та же популяция, путь без предмета — находка.
+	deadPaths, subjects = pathsWithoutSubject(produced, []offConsolePath{live, dead})
+	if len(deadPaths) != 1 || !strings.Contains(deadPaths[0], dead.prefix) {
+		t.Errorf("путь без предмета не назван находкой: %v — исключение шириной в каталог "+
+			"переживало бы свой предмет молча", deadPaths)
+	}
+	if subjects[dead.prefix] != 0 {
+		t.Errorf("токенов из-под мёртвого пути насчитано %d, ожидался 0", subjects[dead.prefix])
+	}
+	// Находка обязана НАЗЫВАТЬ объявленного потребителя: без него читатель не
+	// поймёт, что именно снимать.
+	if !strings.Contains(deadPaths[0], dead.consumer) {
+		t.Errorf("находка не называет объявленного потребителя (%q): %q", dead.consumer, deadPaths[0])
+	}
+
+	// Пустая популяция НЕ ВСЕРАЗРЕШЕНИЕ: при нуле произведённых токенов КАЖДОЕ
+	// объявление — без предмета, и предикат обязан сказать это, а не промолчать.
+	deadPaths, _ = pathsWithoutSubject(nil, []offConsolePath{live, dead})
+	if len(deadPaths) != 2 {
+		t.Errorf("на пустой популяции находок %d из 2 — пустой вход стал всеразрешением", len(deadPaths))
 	}
 }

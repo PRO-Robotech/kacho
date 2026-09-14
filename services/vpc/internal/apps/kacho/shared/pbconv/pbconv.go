@@ -8,13 +8,13 @@ package pbconv
 import (
 	"context"
 
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/operations/operationspb"
 )
 
 // OperationToProto — прослойка к общему слою: перевод строки операции в контракт
-// объявлен в дереве ОДИН раз (`pkg/operations/operationspb`, задача #1369).
+// объявлен в дереве ОДИН раз (`corelib/operations/operationspb`, задача #1369).
 //
 // До сведения объявлений было двенадцать, а смысловых версий — пять; расходились
 // они именем помощника усечения времени и охраной пустого значения, то есть там,

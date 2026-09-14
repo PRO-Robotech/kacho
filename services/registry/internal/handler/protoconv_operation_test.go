@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/corelib/operations"
 )
 
 // TestOperationToProto_Nil — nil-guard: nil operation → nil proto (не паникует).

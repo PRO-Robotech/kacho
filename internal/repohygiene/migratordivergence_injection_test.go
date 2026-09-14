@@ -28,7 +28,7 @@ const (
 import (
 	"os"
 
-	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	"github.com/PRO-Robotech/corelib/migratorcli"
 )
 
 func main() {
@@ -100,7 +100,7 @@ func main() {
 import (
 	"os"
 
-	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	"github.com/PRO-Robotech/corelib/migratorcli"
 )
 
 func main() {
@@ -115,7 +115,7 @@ func main() {
 import (
 	"os"
 
-	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	"github.com/PRO-Robotech/corelib/migratorcli"
 )
 
 func main() {

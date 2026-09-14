@@ -66,7 +66,11 @@ func TestQSH_TheSameServiceInItsOwnPackageIsSilent(t *testing.T) {
 
 	// ЗАКОННЫЙ БЛИЗНЕЦ: тело побайтово то же, изменён ровно один факт — каталог.
 	// Так объявляют свою службу пять владельцев платформы, и находкой это не является.
-	const rel = "proto/kaname/cloud/iam/v1/identity_quota_service.proto"
+	// Контракт службы доступа уехал в её репозиторий (kacho#2616, исход C,
+	// 2026-09-13): координата названа так, как она лежит в модуле
+	// `github.com/PRO-Robotech/kaname`. Разбор судит вхождение каталога пакета
+	// формы, приставки `proto/` не требует, и близнец остаётся близнецом.
+	const rel = "kaname/cloud/iam/v1/identity_quota_service.proto"
 	require.False(t, InQuotaShapePackage(rel),
 		"служба, объявленная в СВОЁМ контракте, находкой не является — иначе проверка "+
 			"запрещала бы ровно то, ради чего она заведена")

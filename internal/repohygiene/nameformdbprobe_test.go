@@ -155,22 +155,16 @@ func sortedEntryMethods(entry map[string]bool) []string {
 func readNameFormEngineEntries(t *testing.T, root string) map[string]bool {
 	t.Helper()
 
-	dir := filepath.Join(root, filepath.FromSlash(nameFormEnginePkgDir))
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatalf("чтение %s: %v — гейт судит по входным методам двигателя, а двигателя нет",
-			nameFormEnginePkgDir, err)
-	}
-
+	// Двигатель переехал из pkg/nameformdb в пакет nameformdb общего фундамента
+	// (github.com/PRO-Robotech/corelib): читаем ТУДА, куда он переехал
+	// (corelibPackageGoFiles, см. corelibsource_test.go), а не по прежнему
+	// пути дерева, — там его больше нет ни файлом.
 	out := map[string]bool{}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
+	for rel, body := range corelibPackageGoFiles(t, root, "nameformdb") {
 		fset := token.NewFileSet()
-		af, perr := parser.ParseFile(fset, filepath.Join(dir, e.Name()), nil, parser.SkipObjectResolution)
+		af, perr := parser.ParseFile(fset, rel, body, parser.SkipObjectResolution)
 		if perr != nil {
-			t.Fatalf("%s/%s: разбор: %v", nameFormEnginePkgDir, e.Name(), perr)
+			t.Fatalf("%s: разбор: %v", rel, perr)
 		}
 		for _, d := range af.Decls {
 			fn, ok := d.(*ast.FuncDecl)
@@ -183,9 +177,9 @@ func readNameFormEngineEntries(t *testing.T, root string) map[string]bool {
 		}
 	}
 	if len(out) == 0 {
-		t.Fatalf("у типа %s.%s не нашлось ни одного экспортированного метода — "+
-			"гейту нечего считать вызовом, и его молчание ничего не значило бы",
-			nameFormEnginePkgDir, nameFormEngineType)
+		t.Fatalf("у типа nameformdb.%s не нашлось ни одного экспортированного метода в "+
+			"пакете общего фундамента — гейту нечего считать вызовом, и его молчание "+
+			"ничего не значило бы", nameFormEngineType)
 	}
 	return out
 }

@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho/pkg/validate"
+	"github.com/PRO-Robotech/corelib/validate"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 )
 
@@ -19,7 +19,7 @@ import (
 // relies on: a rich validation error handed to the mapper UNCHANGED comes out with
 // its google.rpc.BadRequest detail intact.
 //
-// This is load-bearing, not decorative. pkg/validate puts the offending field name
+// This is load-bearing, not decorative. corelib/validate puts the offending field name
 // ONLY in the details — the message stays the generic "invalid argument" — so a
 // mapper that recognised the error and rebuilt a fresh status.Error(code, text)
 // would silently strip the one machine-readable part of the answer. Today the

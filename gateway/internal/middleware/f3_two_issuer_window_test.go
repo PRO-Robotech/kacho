@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+	"github.com/PRO-Robotech/corelib/tokenpolicy"
 )
 
 // TestF3_TwoIssuerWindow — переход без разрыва: край принимает подписи ОБОИХ

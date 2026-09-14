@@ -21,7 +21,7 @@ import (
 // violatedFields returns the field names carried by the google.rpc.BadRequest
 // detail of err. Empty result ⇒ the status carries no field violation at all.
 //
-// The status MESSAGE is deliberately not asserted here: by contract pkg/validate
+// The status MESSAGE is deliberately not asserted here: by contract corelib/validate
 // returns the generic "invalid argument" text and puts the field name in the
 // DETAILS, so a message assertion would lock the wrong half of the contract.
 func violatedFields(err error) []string {

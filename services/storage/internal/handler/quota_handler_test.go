@@ -11,9 +11,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	quotav1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1"
+	quotav1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/quota/v1"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	quotaband "github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/quota"
 )
 

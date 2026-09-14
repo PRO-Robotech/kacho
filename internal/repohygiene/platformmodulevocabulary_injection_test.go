@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/platformmodules"
+	"github.com/PRO-Robotech/corelib/platformmodules"
 )
 
 // platformmodulevocabulary_injection_test.go — доказательство способности гейта
@@ -81,6 +81,48 @@ func TestVocabularyJudgeCatchesAServiceNameWithNoDirectory(t *testing.T) {
 	}
 }
 
+// TestVocabularyJudgeReadsTheExternalSourcesLedgerBothWays — ведомость вынесенных
+// модулей самоистекает в обе стороны, и обе оси подаются ЯВНО.
+//
+// Без первой половины гейт краснел бы на верно исполненном разрезе и толкал снять
+// запись из словаря — то есть сломать опубликованный фундамент, который эту
+// запись читает на пути запроса. Без второй половины запись не истекала бы
+// никогда: вернувшаяся служба осталась бы прикрытой.
+func TestVocabularyJudgeReadsTheExternalSourcesLedgerBothWays(t *testing.T) {
+	t.Parallel()
+
+	// ОСЬ 1 — законный близнец разреза: каталога службы нет, вынос ОБЪЯВЛЕН.
+	declared, serviceDirs, protoDirs, modelTypes := vocabularyFixture()
+	gone := declared[0].Service
+	delete(serviceDirs, gone)
+	faults, census := judgePlatformVocabularyWithExternal(declared, serviceDirs, protoDirs,
+		modelTypes, map[string]string{gone: "PRO-Robotech/kaname"})
+	if len(faults) != 0 {
+		t.Fatalf("объявленный вынос дал находки (%d) — гейт краснеет на верной работе:\n  %s",
+			len(faults), strings.Join(faults, "\n  "))
+	}
+	if census.SourcesElsewhere != 1 {
+		t.Fatalf("перепись не назвала вынесенный модуль числом: получено %d, ожидалось 1",
+			census.SourcesElsewhere)
+	}
+
+	// ОСЬ 2 — тот же мир, но вынос НЕ объявлен: находка о несуществующем каталоге.
+	faults, _ = judgePlatformVocabularyWithExternal(declared, serviceDirs, protoDirs,
+		modelTypes, map[string]string{})
+	if len(faults) != 1 || !strings.Contains(faults[0], "services/"+gone) {
+		t.Fatalf("необъявленный вынос не назван координатой: %v", faults)
+	}
+
+	// ОСЬ 3 — обратная: вынос объявлен, а каталог службы В ДЕРЕВЕ ЕСТЬ.
+	declared, serviceDirs, protoDirs, modelTypes = vocabularyFixture()
+	back := declared[0].Service
+	faults, _ = judgePlatformVocabularyWithExternal(declared, serviceDirs, protoDirs,
+		modelTypes, map[string]string{back: "PRO-Robotech/kaname"})
+	if len(faults) != 1 || !strings.Contains(faults[0], "пережило свой предмет") {
+		t.Fatalf("вернувшаяся служба не названа находкой: %v", faults)
+	}
+}
+
 func TestVocabularyJudgeCatchesACatalogModuleWithNoProtoDirectory(t *testing.T) {
 	t.Parallel()
 	declared, serviceDirs, protoDirs, modelTypes := vocabularyFixture()
@@ -92,7 +134,12 @@ func TestVocabularyJudgeCatchesACatalogModuleWithNoProtoDirectory(t *testing.T) 
 		t.Fatalf("ожидалась ровно одна находка, получено %d:\n  %s",
 			len(faults), strings.Join(faults, "\n  "))
 	}
-	if !strings.Contains(faults[0], "proto/kacho/cloud/nlb") {
+	// Ожидание НЕ несёт литерала корня: текст находки перестал его называть
+	// вместе с появлением второго корня и третьего дерева (kacho#2616, исход C) —
+	// путь `proto/kacho/cloud/iam` не существует ни в одном дереве, и посылать
+	// читателя по нему было бы хуже, чем не называть путь вовсе. Ветвь опознаётся
+	// по имени домена и по своей формулировке.
+	if !strings.Contains(faults[0], "каталога контрактов домена nlb") {
 		t.Fatalf("находка пришла не от той ветви: %s", faults[0])
 	}
 }

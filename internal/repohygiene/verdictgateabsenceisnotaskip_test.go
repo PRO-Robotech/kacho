@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // verdictGateRunnerRoot — каталог рецептов прогона. Одна координата, а не

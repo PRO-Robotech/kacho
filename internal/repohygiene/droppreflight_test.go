@@ -253,7 +253,14 @@ func TestEveryMigratorCountsBeforeItDrops(t *testing.T) {
 	// Пакет здесь ОДИН, поэтому его отсутствие — отказ, а не «нечего проверять»:
 	// перепись, не прочитавшая общего наката, утверждала бы о семи точках то,
 	// чего не смотрела ни у одной.
+	// Общий накат переехал ЦЕЛИКОМ из sharedApplyPkg этого дерева в пакет
+	// migratorrun общего фундамента (github.com/PRO-Robotech/corelib) —
+	// читаем ТУДА, куда он переехал, а не по прежнему пути дерева: там его
+	// больше нет ни файлом.
 	sharedDir := filepath.Join(root, sharedApplyPkg)
+	if moduleDir, merr := corelibModuleRootDir(root); merr == nil {
+		sharedDir = filepath.Join(moduleDir, "migratorrun")
+	}
 	shared, sharedFiles := readMigrator(t, sharedDir)
 	if sharedFiles == 0 {
 		t.Fatalf("общий накат не прочитан (%s) — эта проверка утверждала бы о счёте "+

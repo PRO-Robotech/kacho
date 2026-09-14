@@ -16,8 +16,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/contractroot"
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/contractroot"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 // synthScriptTree — синтетическое дерево с одним скриптом.

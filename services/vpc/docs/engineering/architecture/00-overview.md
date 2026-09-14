@@ -57,7 +57,7 @@ Owns:
 | SecurityGroup | firewall rules; `network_id` **обязателен** на Create и immutable после него | `sgr` |
 | Gateway | выход наружу: `NAT` (IPv4) либо `EGRESS_ONLY` (IPv6); якорь — подсеть | `gtw` |
 
-> Префиксы — из `pkg/ids` (3-char + 17 crockford-base32), у каждого ресурса свой.
+> Префиксы — из `corelib/ids` (3-char + 17 crockford-base32), у каждого ресурса свой.
 > Operation у VPC несет **отдельный** prefix `PrefixOperationVPC = "enp"` (декаплен от
 > ресурсных prefix'ов): api-gateway маршрутизирует `OperationService.Get` по первым 3
 > символам id на нужный backend.
@@ -114,7 +114,7 @@ internal/
   clients/                 gRPC-адаптеры: iam (project/authz/fga-register), geo
                            (zone/region), кеши существования и проекта.
   check/                   per-RPC authz-gate: permission_map, scope_filtered_rpcs.
-  authzfilter/             словарь сервиса для общего сужателя списков (pkg/listnarrow).
+  authzfilter/             словарь сервиса для общего сужателя списков (corelib/listnarrow).
   dto/toproto/             запись репозитория → proto-сообщение.
   handler/                 cross-cutting и internal-only transport (интерсепторы,
                            InternalAddressService, InternalNetworkService, …).
@@ -163,7 +163,7 @@ internal/
 - Region/Zone — это `kacho-geo` (leaf-домен Geography). VPC ссылается на `zone_id`
   по TEXT-id без FK, валидирует через `geo.v1.ZoneService.Get`.
 - Operations storage — таблица `operations` в схеме `kacho_vpc` (объявлена в `0001_initial.sql`),
-  логика worker'а — в `pkg/operations`.
+  логика worker'а — в `corelib/operations`.
 - Instance / MachineType — `kacho-compute`.
 - Volume / Snapshot / Image / DiskType (блочное хранение) — `kacho-storage`.
   Здесь стояло «Compute/instances/disks — kacho-compute»: раскол блочного хранения

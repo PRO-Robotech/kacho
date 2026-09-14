@@ -21,7 +21,7 @@ import (
 // violatedFields returns the field names carried by the google.rpc.BadRequest
 // detail of err. Empty result ⇒ the status carries no field violation at all.
 //
-// The status MESSAGE is deliberately not asserted here: by contract pkg/validate
+// The status MESSAGE is deliberately not asserted here: by contract corelib/validate
 // returns the generic "invalid argument" text and puts the field name in the
 // DETAILS, so a message assertion would lock the wrong half of the contract.
 func violatedFields(err error) []string {
@@ -56,7 +56,7 @@ func hasField(fields []string, want string) bool {
 // contract for Snapshot.Create: an over-limit description / labels map must come
 // back as INVALID_ARGUMENT whose details name the offending field.
 //
-// The use-case used to rebuild pkg/validate's rich error from its TEXT, dropping
+// The use-case used to rebuild corelib/validate's rich error from its TEXT, dropping
 // the BadRequest detail and handing the caller gRPC's own wire framing as the
 // message.
 func TestCreateOverLimitNamesTheField(t *testing.T) {

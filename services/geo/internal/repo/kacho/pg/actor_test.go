@@ -7,7 +7,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/corelib/operations"
 )
 
 // TestActorFromCtx_present — установленный principal форматируется как

@@ -4,7 +4,7 @@
 package config
 
 import (
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 )
 
 // Validate — стража старта, живущая РЯДОМ С КОНФИГУРАЦИЕЙ, а не в

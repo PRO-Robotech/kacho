@@ -72,7 +72,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // ct2WindowOwner — тот, кто кэширует вердикт и потому владеет своим слагаемым

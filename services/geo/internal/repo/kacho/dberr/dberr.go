@@ -15,7 +15,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/PRO-Robotech/kacho/pkg/db/pgfault"
+	"github.com/PRO-Robotech/corelib/db/pgfault"
 	geoerrors "github.com/PRO-Robotech/kacho/services/geo/internal/errors"
 )
 

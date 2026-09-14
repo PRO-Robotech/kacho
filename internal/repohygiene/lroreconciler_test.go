@@ -42,9 +42,24 @@ import (
 	"testing"
 )
 
-// operationsImportPath — путь corelib-пакета операций; по нему и опознаётся
-// локальное имя в каждом файле.
-const operationsImportPath = "/pkg/operations"
+// operationsImportSuffixes — ОБА написания пути пакета операций, по которым
+// опознаётся импорт вне зависимости от локального имени.
+//
+// Пакет переехал ЦЕЛИКОМ из pkg/operations этого дерева в operations общего
+// фундамента (github.com/PRO-Robotech/corelib): реальные импорты сегодня несут
+// суффикс "corelib/operations", а не "/pkg/operations". Оба варианта названы, а
+// не заменены один другим, чтобы прежняя форма (если где-то ещё уцелела) не
+// стала слепой зоной молча.
+var operationsImportSuffixes = []string{"/pkg/operations", "corelib/operations"}
+
+func hasOperationsImportSuffix(path string) bool {
+	for _, suf := range operationsImportSuffixes {
+		if strings.HasSuffix(path, suf) {
+			return true
+		}
+	}
+	return false
+}
 
 // TestEveryServiceWithAsyncMutationsResolvesOrphanedOperations — сам гейт.
 //
@@ -146,18 +161,12 @@ func TestOrphanGraceExceedsOperationTimeout(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 
-	worker, err := os.ReadFile(filepath.Join(root, "pkg/operations/worker.go"))
-	if err != nil {
-		t.Fatalf("pkg/operations/worker.go не читается: %v", err)
-	}
+	worker := readCorelibFallback(t, root, "pkg/operations/worker.go", "operations/worker.go")
 	if !strings.Contains(string(worker), "defaultOpTimeout = 4 * time.Minute") {
 		t.Fatalf("предел исполнения одной операции сменил значение или форму записи — " +
 			"пересчитай grace-окна разрешителей, гейт опирался на 4m")
 	}
-	rec, err := os.ReadFile(filepath.Join(root, "pkg/operations/reconciler.go"))
-	if err != nil {
-		t.Fatalf("pkg/operations/reconciler.go не читается: %v", err)
-	}
+	rec := readCorelibFallback(t, root, "pkg/operations/reconciler.go", "operations/reconciler.go")
 	if !strings.Contains(string(rec), "c.OrphanGrace = 5 * time.Minute") {
 		t.Fatalf("умолчание grace-окна в corelib сменило значение или форму записи — " +
 			"корни, окно не задающие, полагаются на него; проверь инвариант заново")
@@ -332,7 +341,7 @@ func operationsLocalName(file *ast.File) (string, bool) {
 		if imp.Path == nil {
 			continue
 		}
-		if !strings.HasSuffix(strings.Trim(imp.Path.Value, `"`), operationsImportPath) {
+		if !hasOperationsImportSuffix(strings.Trim(imp.Path.Value, `"`)) {
 			continue
 		}
 		if imp.Name != nil {
@@ -461,4 +470,25 @@ func calledFuncNames(files map[string]string) map[string]bool {
 		})
 	}
 	return called
+}
+
+// readCorelibFallback читает файл ЭТОГО дерева по localRel, а если такого файла
+// больше нет — тот же файл (по имени corelibRel относительно каталога модуля)
+// в общем фундаменте (github.com/PRO-Robotech/corelib), куда он мог переехать
+// целиком. Отсутствие в ОБОИХ домах — отказ, а не пропуск.
+func readCorelibFallback(t *testing.T, root, localRel, corelibRel string) []byte {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join(root, localRel))
+	if err == nil {
+		return body
+	}
+	moduleDir, merr := corelibModuleRootDir(root)
+	if merr != nil {
+		t.Fatalf("%s не читается ни в дереве (%v), ни в общем фундаменте (%v)", localRel, err, merr)
+	}
+	body, cerr := os.ReadFile(filepath.Join(moduleDir, filepath.FromSlash(corelibRel)))
+	if cerr != nil {
+		t.Fatalf("%s не читается ни в дереве (%v), ни в общем фундаменте (%v)", localRel, err, cerr)
+	}
+	return body
 }

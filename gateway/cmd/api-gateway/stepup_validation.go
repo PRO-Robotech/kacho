@@ -23,8 +23,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
 // countDeclaredACRFloors counts the catalog rows that demand a positive assurance

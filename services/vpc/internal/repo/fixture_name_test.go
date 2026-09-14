@@ -4,7 +4,7 @@
 package repo_test
 
 import (
-	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/corelib/ids"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 )
 

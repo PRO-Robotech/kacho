@@ -61,13 +61,14 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 	"path"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 const (
@@ -106,13 +107,32 @@ type ocrResult struct {
 func ocrIsTest(path string) bool { return strings.HasSuffix(path, "_test.go") }
 
 // ocrCorpus — состав дерева, поданный извне: абсолютные пути не-тестовых .go
-// файлов. Диска этот файл не касается.
+// файлов. Диска этот файл не касается (кроме чтения по этим самым путям —
+// разбор всё равно идёт с диска, `parser.ParseFile` этого не минует).
 type ocrCorpus struct {
 	root  string
 	files []string // отсортированные абсолютные пути
+	// overrides — путь ↔ синтетическая метка, для файлов, которые физически
+	// лежат ВНЕ root (кэш модулей общего фундамента). Без переопределения
+	// filepath.Rel дал бы уродливый, но не ошибочный путь вида
+	// "../../../…/corelib@v1.4.0/outbox/reconciler/reconciler.go" — рабочий
+	// для parser.ParseFile, но НЕ совпадающий с префиксом ocrOutboxRoot,
+	// которым держится вся остальная логика гейта (subdirsOf/under/inDir).
+	// Метка держит семью общей: она пишется В ТОМ ЖЕ пространстве имён
+	// ("pkg/outbox/…"), поэтому переехавший пакет опознаётся ровно тем же
+	// кодом, что и оставшийся в дереве, — второго набора правил не заводится.
+	overrides map[string]string
 }
 
 func ocrNewCorpus(root string, all []string) ocrCorpus {
+	return ocrNewCorpusWithOverrides(root, all, nil)
+}
+
+// ocrNewCorpusWithOverrides — то же самое, плюс явные метки для файлов вне
+// root. Инъекция зовёт ocrNewCorpus (оверрайдов у синтетического дерева нет и
+// не должно быть — оно само лежит под root целиком); настоящее дерево — эту
+// форму, чтобы включить семью, переехавшую в общий фундамент.
+func ocrNewCorpusWithOverrides(root string, all []string, overrides map[string]string) ocrCorpus {
 	var out []string
 	for _, f := range all {
 		if strings.HasSuffix(f, ".go") && !ocrIsTest(f) {
@@ -120,11 +140,16 @@ func ocrNewCorpus(root string, all []string) ocrCorpus {
 		}
 	}
 	sort.Strings(out)
-	return ocrCorpus{root: root, files: out}
+	return ocrCorpus{root: root, files: out, overrides: overrides}
 }
 
-// rel — путь относительно корня, в слэшах.
+// rel — путь относительно корня, в слэшах, либо явная метка из overrides.
 func (c ocrCorpus) rel(abs string) string {
+	if c.overrides != nil {
+		if r, ok := c.overrides[abs]; ok {
+			return r
+		}
+	}
 	r, err := filepath.Rel(c.root, abs)
 	if err != nil {
 		return filepath.ToSlash(abs)
@@ -262,15 +287,28 @@ func ocrIndexPackage(c ocrCorpus, rel string) (ocrPkgIndex, error) {
 	return idx, nil
 }
 
-// ocrImportAliases — alias -> относительный путь пакета этого модуля.
+// ocrCorelibModulePrefix — префикс импортов общего фундамента
+// (github.com/PRO-Robotech/corelib). Пакет outbox переехал туда целиком —
+// импорт "…/corelib/outbox/reconciler" опознаётся наравне с "…/kacho/pkg/outbox/reconciler"
+// и переводится в ТУ ЖЕ метку "pkg/outbox/reconciler": семья одна, и второго
+// пространства имён под неё не заводится.
+const ocrCorelibModulePrefix = "github.com/PRO-Robotech/corelib/"
+
+// ocrImportAliases — alias -> относительный путь пакета этого модуля (либо
+// синтетический эквивалент общего фундамента в том же пространстве имён).
 func ocrImportAliases(f *ast.File) map[string]string {
 	out := map[string]string{}
 	for _, imp := range f.Imports {
 		p := strings.Trim(imp.Path.Value, `"`)
-		if !strings.HasPrefix(p, ocrModulePrefix) {
+		var rel string
+		switch {
+		case strings.HasPrefix(p, ocrModulePrefix):
+			rel = strings.TrimPrefix(p, ocrModulePrefix)
+		case strings.HasPrefix(p, ocrCorelibModulePrefix):
+			rel = "pkg/" + strings.TrimPrefix(p, ocrCorelibModulePrefix)
+		default:
 			continue
 		}
-		rel := strings.TrimPrefix(p, ocrModulePrefix)
 		alias := filepath.Base(rel)
 		if imp.Name != nil {
 			alias = imp.Name.Name
@@ -422,7 +460,33 @@ func TestOutboxCapabilityHasADriver(t *testing.T) {
 	if err != nil {
 		t.Fatalf("состав дерева %s: %v", root, err)
 	}
-	res, err := ocrScan(ocrNewCorpus(root, tracked))
+
+	// Семья переехала из pkg/outbox в пакет outbox общего фундамента
+	// (github.com/PRO-Robotech/corelib), подпакетами: читаем ТУДА, куда она
+	// переехала (модуль резолвится тем же способом, что и corelibPackageGoFiles
+	// в corelibsource_test.go), помечая файлы синтетической меткой в ТОМ ЖЕ
+	// пространстве имён "pkg/outbox/…" — второго набора правил не заводится.
+	corelibDir, _ := corelibModuleDir(t, root)
+	overrides := map[string]string{}
+	for _, sub := range []string{"bootgate", "drainer", "metrics", "reconciler"} {
+		pkgDir := filepath.Join(corelibDir, "outbox", sub)
+		entries, derr := os.ReadDir(pkgDir)
+		if derr != nil {
+			t.Fatalf("каталог outbox/%s общего фундамента не читается: %v — гейту нечем "+
+				"проверить переехавшую семью", sub, derr)
+		}
+		for _, e := range entries {
+			name := e.Name()
+			if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+				continue
+			}
+			abs := filepath.Join(pkgDir, name)
+			tracked = append(tracked, abs)
+			overrides[abs] = "pkg/outbox/" + sub + "/" + name
+		}
+	}
+
+	res, err := ocrScan(ocrNewCorpusWithOverrides(root, tracked, overrides))
 	if err != nil {
 		t.Fatalf("разбор дерева %s: %v", root, err)
 	}

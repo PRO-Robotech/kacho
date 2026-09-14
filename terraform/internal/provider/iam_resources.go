@@ -17,8 +17,8 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/terraform/internal/client"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 )
 
 // Проект, группа и служебная учётка описываются ОДНИМ типом — их форма совпадает
@@ -30,7 +30,7 @@ import (
 // таблицу ниже и видны целиком.
 // Префиксы здесь — ЛИТЕРАЛЫ, и это не второй словарь.
 //
-// Общий каталог pkg/ids держит префиксы iam ровно так же — литералами, и объясняет почему:
+// Общий каталог corelib/ids держит префиксы iam ровно так же — литералами, и объясняет почему:
 // их владелец сервис iam, а его внутренние константы в общую библиотеку не импортируются
 // (запрет на internal). Принадлежность каталогу проверяет ids.HasKnownPrefix, форму —
 // ids.IsValid; здесь литерал стоит рядом с путём и полем метаданных, то есть весь вид

@@ -31,7 +31,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // peerProseScanRoots — область обхода. Каталог, которого здесь нет, гейтом не

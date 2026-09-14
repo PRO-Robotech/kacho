@@ -14,9 +14,9 @@ import (
 	"net/url"
 	"time"
 
-	corecfg "github.com/PRO-Robotech/kacho/pkg/config"
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	corecfg "github.com/PRO-Robotech/corelib/config"
+	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 )
 
 // envPrefix — корневой сегмент env-имён kacho-registry (KACHO_<DOMAIN>).
@@ -60,10 +60,12 @@ type Config struct {
 	// (Internal-only). Пусто + Breakglass=false → интерсептор НЕ подключается.
 	AuthZIAMGRPCAddr string `envconfig:"KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR" default:""`
 
-	// QuotaAuthority — ОБЪЯВЛЕНИЕ домена величин. Ровно два законных значения:
-	// адрес в форме host:port либо слово `not-deployed`. Незаданное значение —
-	// отказ старта: умолчание означало бы выбор за оператора между «потолки
-	// действуют» и «потолков нет», и выбор этот был бы невидим.
+	// QuotaAuthority — ОБЪЯВЛЕНИЕ домена величин. Действующее значение одно:
+	// слово `not-deployed`. Адрес был вторым — производителя у контракта
+	// авторитета величин не осталось, и адрес теперь отвергается стартом.
+	// Незаданное значение — тоже отказ старта: умолчание означало бы выбор за
+	// оператора между «потолки действуют» и «потолков нет», и выбор этот был бы
+	// невидим.
 	//
 	// Объявление ОДНО на обе полосы ребра — разрешение величины на пути запроса
 	// и фоновую дельту. Приёмка
@@ -88,14 +90,14 @@ type Config struct {
 	// метаданных x-kacho-principal-*. Уезжает в ОБА листенера через
 	// grpcsrv.WithTrustedForwarders (см. cmd/kacho-registry/serve.go).
 	//
-	// Почему это ручка, а не константа: contract corelib (pkg/grpcsrv
+	// Почему это ручка, а не константа: contract corelib (corelib/grpcsrv
 	// principalIsTrusted) сужает круг отправителей ТОЛЬКО когда список непуст; на
 	// пустом он отвечает «доверяем» любому пиру, прошедшему проверку сертификата.
 	// Внутренний периметр у нас объявлен НЕдоверенным, сетевой политики у registry
 	// нет вовсе, а клиентский сертификат всем соседям выдаёт один и тот же
 	// внутренний центр — то есть пустой список означает: любой под кластера
 	// присылает заголовки личности жертвы, и решение о правах принимается от её
-	// имени (pkg/authz subject_extract читает ровно эту личность).
+	// имени (corelib/authz subject_extract читает ровно эту личность).
 	//
 	// Формат — список через запятую. Законный отправитель ОДИН — api-gateway: по
 	// графу импортов заглушки registry вне самого сервиса импортирует только
@@ -220,7 +222,7 @@ type Config struct {
 	// Неположительное значение отвергает конструктор дескриптора.
 	HandlingBudget time.Duration `envconfig:"KACHO_REGISTRY_HANDLING_BUDGET" default:"30s"`
 
-	// ── ПОТОК ИЗМЕНЕНИЙ (общий сервер подписки, `pkg/subscription`) ──────────
+	// ── ПОТОК ИЗМЕНЕНИЙ (общий сервер подписки, `corelib/subscription`) ──────────
 	//
 	// Три величины ПОСАДКИ, а не журнала: журнал говорит, где он лежит и как его
 	// строка становится событием, а сколько потоков держать и сколько они живут —
@@ -445,11 +447,8 @@ type Config struct {
 	// ServerName = kacho-geo public dial-host'а (REG-1 F4 новое ребро).
 	GeoMTLS grpcclient.TLSClient `envconfig:"GEO_MTLS"`
 
-	// QuotaAuthorityMTLS — client-creds ребра registry→домен величин (обе полосы:
-	// InternalLimitService.Resolve на пути запроса и ListChangedSince фоновой
-	// дельтой). Своё, а не заимствованное у authz-ребра: адрес домена величин
+	// глаголы `Resolve` на пути запроса и `ListChangedSince` фоновой дельтой). Своё, а не заимствованное у authz-ребра: адрес домена величин
 	// объявляется отдельно, и удостоверение обязано следовать за адресом.
-	QuotaAuthorityMTLS grpcclient.TLSClient `envconfig:"QUOTA_AUTHORITY_MTLS"`
 
 	// PublicServerMTLS — server-creds для публичного листенера (:9090).
 	PublicServerMTLS grpcsrv.TLSServer `envconfig:"PUBLIC_SERVER_MTLS"`

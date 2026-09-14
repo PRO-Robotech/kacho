@@ -7,7 +7,7 @@
 -- потребителем.
 --
 -- Задача `PRO-Robotech/kacho#1414` (провязка общего сервера потока,
--- `pkg/subscription`).
+-- `corelib/subscription`).
 --
 -- ЗАЧЕМ. 0011 сняла `storage_outbox` как очередь БЕЗ потребителя и назвала
 -- условие возврата дословно: «Он вводится обратно вместе с этим сервисом». Здесь
@@ -122,7 +122,7 @@ SET search_path TO kacho_storage, public;
 CREATE TABLE kacho_storage.storage_outbox (
     -- Номер выдаётся счётчиком на ВСТАВКЕ, а строка становится видимой на
     -- ФИКСАЦИИ, поэтому порядок номеров и порядок фиксаций независимы. Границу
-    -- устоявшегося держит общий сервер (`pkg/subscription/watermark.go`), а не
+    -- устоявшегося держит общий сервер (`corelib/subscription/watermark.go`), а не
     -- эта таблица; здесь номер — только возрастающая координата.
     sequence_no   BIGSERIAL   PRIMARY KEY,
     resource_kind TEXT        NOT NULL,

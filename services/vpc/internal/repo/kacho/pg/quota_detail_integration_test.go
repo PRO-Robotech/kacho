@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotadetail"
+	"github.com/PRO-Robotech/corelib/quota/quotadetail"
 	vpcrepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 )

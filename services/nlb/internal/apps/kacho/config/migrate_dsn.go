@@ -17,7 +17,7 @@ import (
 	"fmt"
 	"strings"
 
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+	coredb "github.com/PRO-Robotech/corelib/db"
 )
 
 // MigrateDSN — строка подключения, которой точка наката (`cmd/migrator`)
@@ -94,7 +94,7 @@ func (c Config) MigrateDSN() (string, error) {
 // иначе первое же изменение сборки строки разведёт стража с соединением молча.
 //
 // Разбор строки подключения и перечень безопасных значений — НЕ свои: оба
-// приходят из дома семантики DSN (`pkg/db`), где объявлены один раз на всё
+// приходят из дома семантики DSN (`corelib/db`), где объявлены один раз на всё
 // дерево (#1464).
 func postgresTransportRefusal(dsn string) error {
 	dsn = strings.TrimSpace(dsn)

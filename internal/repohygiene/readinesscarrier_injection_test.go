@@ -36,7 +36,7 @@ const carrierMountSrc = `package main
 import (
 	"net/http"
 
-	"github.com/PRO-Robotech/kacho/pkg/observability/health"
+	"github.com/PRO-Robotech/corelib/observability/health"
 )
 
 func diagnosticMux(agg *health.Aggregator) *http.ServeMux {
@@ -197,7 +197,7 @@ func TestReadinessCarrierGateIgnoresTheImportWithoutTheCall(t *testing.T) {
 import (
 	"net/http"
 
-	"github.com/PRO-Robotech/kacho/pkg/observability/health"
+	"github.com/PRO-Robotech/corelib/observability/health"
 )
 
 var errWired = health.ErrDependencyNotWired
@@ -262,7 +262,7 @@ func TestReadinessCarrierGateKnowsBothPatternForms(t *testing.T) {
 import (
 	"net/http"
 
-	"github.com/PRO-Robotech/kacho/pkg/observability/health"
+	"github.com/PRO-Robotech/corelib/observability/health"
 )
 
 func diagnosticMux(agg *health.Aggregator) *http.ServeMux {

@@ -10,10 +10,10 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/PRO-Robotech/corelib/auth"
+	"github.com/PRO-Robotech/corelib/peer"
+	"github.com/PRO-Robotech/corelib/retry"
 	computepb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
-	"github.com/PRO-Robotech/kacho/pkg/auth"
-	"github.com/PRO-Robotech/kacho/pkg/peer"
-	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
@@ -144,7 +144,7 @@ func mapInstanceErr(instanceID string, err error) error {
 	if err == nil {
 		return nil
 	}
-	// Полосу выбирает носитель (pkg/peer), а не рукописный разбор кодов. Раскладка
+	// Полосу выбирает носитель (corelib/peer), а не рукописный разбор кодов. Раскладка
 	// полос по sentinel'ам сохранена дословно; изменилось то, ЧТО попадает в каждую:
 	// отказ в правах и негодная по мнению владельца ссылка больше не проваливаются
 	// в ветку «прочее», а собственный истёкший срок читается как недоступность.

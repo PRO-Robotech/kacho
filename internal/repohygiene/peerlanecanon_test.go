@@ -59,8 +59,8 @@ import (
 	"strings"
 	"testing"
 
-	kerrors "github.com/PRO-Robotech/kacho/pkg/errors"
-	"github.com/PRO-Robotech/kacho/pkg/peer"
+	kerrors "github.com/PRO-Robotech/corelib/errors"
+	"github.com/PRO-Robotech/corelib/peer"
 )
 
 // canonPeerMissLane — КАНОН полосы «чужой ресурс не резолвится у владельца».

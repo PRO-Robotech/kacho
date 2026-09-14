@@ -64,7 +64,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // PrefixSourceRel — единственный источник словаря префиксов. Объявлен здесь, а не

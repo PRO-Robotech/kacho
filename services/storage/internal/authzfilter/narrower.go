@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // Package authzfilter — словарь kacho-storage для общего сужателя списков
-// (`pkg/listnarrow`): типы объектов модели прав, аудит-строки действий и предикат
+// (`corelib/listnarrow`): типы объектов модели прав, аудит-строки действий и предикат
 // членства страницы.
 //
 // Механики сужения здесь БОЛЬШЕ НЕТ. Она жила в четырёх почти дословных копиях с
@@ -17,7 +17,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
+	"github.com/PRO-Robotech/corelib/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowiam"
 )
 

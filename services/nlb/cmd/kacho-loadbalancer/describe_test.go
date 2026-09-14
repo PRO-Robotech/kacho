@@ -30,11 +30,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
-	"github.com/PRO-Robotech/kacho/pkg/servicehost"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/outbox/bootgate"
+	"github.com/PRO-Robotech/corelib/servicehost"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/corelib/authz"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
 	kachopg "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg"
@@ -186,7 +186,7 @@ func TestDescribeProbeCanFail(t *testing.T) {
 // каждая из четырёх цепочек берёт пару извлечения личности у общего конструктора.
 // Её предмет исчез вместе с цепочками: собрать свою пару композиционный корень
 // больше НЕ МОЖЕТ — поля интерсепторного типа в дескрипторе нет, а цепочку ставит
-// носитель (порядок и полнота пары заперты в `pkg/servicehost`,
+// носитель (порядок и полнота пары заперты в `corelib/servicehost`,
 // `TestForwardedIdentityIsHonouredOnlyFromTheCircle` и
 // `TestUnnarrowedCircleWouldHonourAnyVerifiedPeer`). Осталось ровно то, что
 // носителю знать неоткуда: КАКОЙ круг приносит этот сервис — и что пустой он

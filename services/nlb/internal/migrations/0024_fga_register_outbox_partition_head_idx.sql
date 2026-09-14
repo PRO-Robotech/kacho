@@ -45,7 +45,7 @@
 -- table. The leading key matches Config.PartitionColumn byte-for-byte; the trailing
 -- id column serves the `p.id < t.id` range and the ORDER BY (…, id) tie-break.
 --
--- Behavioural lock: pkg/outbox/drainer Test_1_4_45_RegisterOutbox_UnregisterThenStale
+-- Behavioural lock: corelib/outbox/drainer Test_1_4_45_RegisterOutbox_UnregisterThenStale
 -- Register (no PartitionColumn → resurrect; with it → correctly ABSENT).
 --
 -- Plain (in-tx) CREATE INDEX IF NOT EXISTS, matching the table's sibling pending

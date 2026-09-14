@@ -6,8 +6,8 @@ package announce
 import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/PRO-Robotech/kacho/pkg/ids"
-	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
+	"github.com/PRO-Robotech/corelib/ids"
+	corevalidate "github.com/PRO-Robotech/corelib/validate"
 
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/shared"

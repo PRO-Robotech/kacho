@@ -7,7 +7,7 @@ package config_test
 //
 // Класс, который эти пробы закрывают: ручка транспорта у ребра есть, проводка её
 // читает, а отказа в старте при невзведённой ручке нет. Клиентские creds на
-// Enable=false вырождаются в insecure БЕЗ ошибки (pkg/grpcclient), поэтому
+// Enable=false вырождаются в insecure БЕЗ ошибки (corelib/grpcclient), поэтому
 // процесс поднимается, отчитывается «authz interceptor enabled» — и каждый Check
 // уходит по открытому каналу. Контроль присутствует и не отказывает ни разу за
 // свою жизнь.
@@ -16,10 +16,12 @@ package config_test
 // проходит» неотличимо от стража, который отвергает всё.
 
 import (
+	corequota "github.com/PRO-Robotech/corelib/quota"
+
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcclient"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/config"
 )
@@ -37,8 +39,7 @@ func armedProd() config.Config {
 	// Ребро величин поднимается и защищается наравне с остальными: отправная
 	// точка, где оно объявлено отсутствующим, вывела бы его из наблюдения, и
 	// ослабление его удостоверения перестало бы что-либо значить.
-	c.QuotaAuthority = "kaname-internal:9091"
-	c.QuotaAuthorityMTLS = grpcclient.TLSClient{Enable: true}
+	c.QuotaAuthority = corequota.NotDeployed
 	return c
 }
 

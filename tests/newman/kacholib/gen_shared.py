@@ -1771,7 +1771,21 @@ def retry_until_present(step, id_env_var, budget: int, interval_ms: int, ledger=
     negative / cross-account-deny / absent-id steps: a poll there would wait out
     exactly the deny the step was written to observe.
     """
-    want = [id_env_var] if isinstance(id_env_var, str) else list(id_env_var)
+    # ПРИНИМАЕТСЯ ОДНО ИМЯ. Приём перечня имён (списка либо кортежа) снят вместе
+    # со своим последним вызывающим: единственный кейс, ждавший появления НЕСКОЛЬКИХ
+    # строк, жил в наборе службы доступа, а набор уехал в её репозиторий.
+    #
+    # Возможность без вызывающего — обещание, за которое никто не отвечает: гейт
+    # `TestNewmanHelperShapeCapabilityHasACaller` называет такую форму находкой, и
+    # он прав — форма, которую никто не зовёт, не исполняется ни одним прогоном и
+    # потому не проверена ничем.
+    #
+    # ПОЧИНКА, РАДИ КОТОРОЙ ФОРМА ЗАВОДИЛАСЬ, НЕ УТРАЧЕНА, и это важнее самой
+    # формы: тело по-прежнему ждёт появления ВСЕХ названных имён (`_want.every`),
+    # а не первого из них. Разбор того дефекта остался в шапке выше. Понадобится
+    # перечень снова — он возвращается ОДНОЙ строкой и ВМЕСТЕ со своим кейсом, а
+    # не вперёд него.
+    want = [id_env_var]
     guard = [
         "// bounded read-your-writes retry until own fresh id is present in the list",
         "// (opgate removed -> eventual-consistency); retries SELF while id absent.",

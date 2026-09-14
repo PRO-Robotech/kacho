@@ -88,25 +88,11 @@ func writeJudgeWiringTree(t *testing.T, tree judgeWiringTree) string {
 	return root
 }
 
-// judgeWiringFaultsOn — находки гейта на синтетическом дереве для цели `target`.
+// Здесь стоял помощник, подававший синтетическое дерево гейту «у судьи,
+// объявленного СЕРВИСОМ, обязан быть вызывающий». Обоих таких судей объявляла
+// вынесенная служба доступа; вместе с ней уехали и они, и половина механизма,
+// которую этот помощник звал.
 //
-// Обход синтетики проверяется на непустоту ПЕРЕД тем, как читать находки: иначе
-// инъекция подала бы вход, которого гейт не видит, и её зелёное ничего не
-// значило бы.
-func judgeWiringFaultsOn(t *testing.T, target string, tree judgeWiringTree) []string {
-	t.Helper()
-	w, err := readJudgeTargetWiring(writeJudgeWiringTree(t, tree), target)
-	if err != nil {
-		t.Fatalf("синтетическое дерево не прочитано: %v", err)
-	}
-	if w.MakefilesRead == 0 || w.WorkflowsRead == 0 || w.WorkflowStepsRead == 0 || w.LocalRunnersRead == 0 {
-		t.Fatalf("обход синтетики пуст (Makefile %d · workflow %d · шагов run %d · прогонщиков %d) — "+
-			"инъекция подала бы вход, которого гейт не видит, и её зелёное ничего не значило бы",
-			w.MakefilesRead, w.WorkflowsRead, w.WorkflowStepsRead, w.LocalRunnersRead)
-	}
-	return findJudgeTargetWiringFaults(w)
-}
-
 // dirTargetWiringFaultsOn — находки гейта цели ОДНОГО каталога на синтетическом
 // дереве.
 //

@@ -21,7 +21,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
+	corevalidate "github.com/PRO-Robotech/corelib/validate"
 	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/shared/namepage"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"

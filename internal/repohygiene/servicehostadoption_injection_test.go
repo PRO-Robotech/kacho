@@ -22,7 +22,7 @@ const synthRootOwnAssembly = `package main
 import (
 	"google.golang.org/grpc"
 
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 )
 
 func serve() {
@@ -40,8 +40,8 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
-	"github.com/PRO-Robotech/kacho/pkg/servicehost"
+	"github.com/PRO-Robotech/corelib/servicecontract"
+	"github.com/PRO-Robotech/corelib/servicehost"
 )
 
 func serve(ctx context.Context, d servicecontract.Descriptor) error {

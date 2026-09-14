@@ -67,11 +67,11 @@ COPY --from=builder /kacho-migrator /usr/local/bin/kacho-migrator
 # а цель провенанса скажет словами, что величина не проставлена.
 # Разбор целиком — deploy/scripts/stand-provenance.sh; что величину проставляет
 # КАЖДАЯ сборка дерева — deploy/stand_provenance_declaration_test.go.
-ARG KACHO_IMAGE_REVISION=""
-ARG KACHO_IMAGE_VERSION=""
-LABEL org.opencontainers.image.revision="$KACHO_IMAGE_REVISION" \
-      org.opencontainers.image.version="$KACHO_IMAGE_VERSION"
-RUN mkdir -p /etc/kacho && printf '%s\n' "$KACHO_IMAGE_REVISION" > /etc/kacho/image-revision
+ARG OCI_IMAGE_REVISION=""
+ARG OCI_IMAGE_VERSION=""
+LABEL org.opencontainers.image.revision="$OCI_IMAGE_REVISION" \
+      org.opencontainers.image.version="$OCI_IMAGE_VERSION"
+RUN mkdir -p /etc/kacho && printf '%s\n' "$OCI_IMAGE_REVISION" > /etc/kacho/image-revision
 
 USER 65532
 ENTRYPOINT ["/usr/local/bin/kacho-registry"]

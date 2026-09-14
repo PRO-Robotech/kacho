@@ -6,11 +6,9 @@
 
 ПРЕДМЕТ
 -------
-Регрессионные пробы вокруг оснастки наборов newman. Живут они на ТРЁХ уровнях, и
-образцов состава поэтому три (см. `DEFAULT_PATTERNS` ниже):
+Регрессионные пробы вокруг оснастки наборов newman. Живут они на ДВУХ уровнях, и
+образцов состава поэтому два (см. `DEFAULT_PATTERNS` ниже):
 
-  * `services/*/tests/newman/scripts/*_test.py` — пробы генератора коллекций
-    (`gen.py`) и формы кейсов СВОЕГО набора;
   * `tests/newman/scripts/*_test.py` — пробы ВЕРДИКТНОГО СЛОЯ, общего на дерево:
     гейта суиты (`assert-suites-green.sh`), гейта ИСПОЛНЕННОСТИ прогона
     (`exec-coverage.py`) и гейта покрытия (`coverage.py`). Слой судит все восемь
@@ -113,8 +111,17 @@ from pathlib import Path
 # когда-нибудь уедет из дерева, образец останется без предмета и гейт
 # потребует решения — снять его либо назвать набор, ради которого он держится.
 # Это не поломка, а вопрос, который иначе был бы решён молчанием.
+# Здесь был ТРЕТИЙ образец — `services/*/tests/newman/scripts/*_test.py`, пробы
+# генератора коллекций СВОЕГО набора. Он снят вместе со своим предметом: такие
+# пробы нёс только набор службы доступа, а служба вынесена отдельным продуктом
+# (задача #1111). Образец, не находящий в дереве НИ ОДНОЙ пробы, — расширение
+# вхолостую: он выглядит покрытием и им не является.
+#
+# Снятие обратимо и восстанавливается САМО: заведёт служба свои пробы этого
+# уровня — вторая половина гейта (`tools/pythonprobes`, «всякий отслеживаемый
+# файл проб покрыт образцом») покраснеет с его именем, потому что покрыть его
+# станет нечем.
 DEFAULT_PATTERNS = (
-    "services/*/tests/newman/scripts/*_test.py",
     "tests/newman/scripts/*_test.py",
     "tests/authz-fixtures/*_test.py",
 )
@@ -395,8 +402,13 @@ def _tree(files: dict[str, str]) -> Path:
     return root
 
 
-def _at(name: str, body: str) -> dict[str, str]:
-    return {f"services/x/tests/newman/scripts/{name}": body}
+# `_at` СНЯТ вместе со своим предметом (2026-09-11): она писала синтетику под
+# `services/x/tests/newman/scripts/`, копируя площадку третьего образца, а тот
+# образец сам снят вместе со службой доступа (#1111) — обе площадки, которые
+# читали такую синтетику, из `DEFAULT_PATTERNS` исчезли, и самопроверка молча
+# перестала находить собственные фикстуры («не найдено ни одного файла проб»),
+# хотя сам гейт был исправен. Площадки, которые ей нужны, — `_at_root` и
+# `_at_seed` ниже; каждая привязана к образцу, который сегодня жив.
 
 
 def _at_root(name: str, body: str) -> dict[str, str]:
@@ -438,21 +450,21 @@ def self_test() -> int:
         return rc, buf.getvalue()
 
     print("(a) дефект внесён — прогонщик обязан покраснеть и назвать координату")
-    rc, out = run(_at("alpha_test.py", _OK_PROBE + _BAD_PROBE))
+    rc, out = run(_at_root("alpha_test.py", _OK_PROBE + _BAD_PROBE))
     check("краснеет на упавшей пробе", rc == 1, out)
     check("называет файл", "alpha_test.py" in out, out)
     check("печатает перепись исполненного", "проб исполнено 2" in out, out)
 
     print("(b) законная конструкция той же формы — прогонщик обязан молчать")
-    rc, out = run(_at("alpha_test.py", _OK_PROBE))
+    rc, out = run(_at_root("alpha_test.py", _OK_PROBE))
     check("молчит на зелёной пробе", rc == 0, out)
     check("перепись растёт, а не обнуляется", "проб исполнено 1" in out, out)
 
     print("(c) гейт со своим main исполняется и его вердикт доезжает")
-    rc, out = run(_at("gate_test.py", _SCRIPT_BAD))
+    rc, out = run(_at_root("gate_test.py", _SCRIPT_BAD))
     check("краснеет на упавшем гейте", rc == 1, out)
     check("называет гейт", "gate_test.py" in out, out)
-    rc, out = run(_at("gate_test.py", _SCRIPT_OK))
+    rc, out = run(_at_root("gate_test.py", _SCRIPT_OK))
     check("молчит на зелёном гейте", rc == 0, out)
 
     print("(d) ноль найденного и ноль исполненного — ОТКАЗ, а не успех")
@@ -461,13 +473,13 @@ def self_test() -> int:
     check("говорит, что обход ничего не нашёл", "не найдено ни одного файла" in out, out)
 
     print("(e) файл, который собрал бы ноль проб, — находка, а не тишина")
-    rc, out = run(_at("mute_test.py", _MUTE))
+    rc, out = run(_at_root("mute_test.py", _MUTE))
     check("немой файл отвергнут", rc == 1, out)
     check("вид не опознан по РАЗБОРУ, не по слову в тексте",
           "ВИД НЕ ОПОЗНАН" in out, out)
 
     print("(f) пропуск не засчитывается за проход")
-    rc, out = run(_at("skip_test.py", _OK_PROBE + _SKIPPED_PROBE))
+    rc, out = run(_at_root("skip_test.py", _OK_PROBE + _SKIPPED_PROBE))
     check("пропущенная проба роняет прогон", rc == 1, out)
     check("пропуск назван", "ПРОПУЩЕНО" in out, out)
 
@@ -503,18 +515,18 @@ def self_test() -> int:
     check("перепись по образцу посева не нулевая",
           "по образцу tests/authz-fixtures/*_test.py: 1" in out, out)
 
-    print("(h) все три полосы разом — перепись называет каждую своим числом")
-    rc, out = run({**_at("alpha_test.py", _OK_PROBE),
-                   **_at_root("verdict_layer_test.py", _OK_PROBE),
+    # Прежде здесь стояли ТРИ полосы — суитная, вердиктная, посевная. Суитная
+    # снята вместе со своим предметом (см. `DEFAULT_PATTERNS` выше); полос,
+    # которые нужно развести парой файлов, осталось две.
+    print("(h) обе полосы разом — перепись называет каждую своим числом")
+    rc, out = run({**_at_root("verdict_layer_test.py", _OK_PROBE),
                    **_at_seed("prodseed_synthetic_test.py", _SCRIPT_OK)})
-    check("все три образца дали по файлу", rc == 0, out)
-    check("перепись суиты не схлопнута",
-          "по образцу services/*/tests/newman/scripts/*_test.py: 1" in out, out)
+    check("оба образца дали по файлу", rc == 0, out)
     check("перепись вердиктного слоя не схлопнута",
           "по образцу tests/newman/scripts/*_test.py: 1" in out, out)
     check("перепись слоя посева не схлопнута",
           "по образцу tests/authz-fixtures/*_test.py: 1" in out, out)
-    check("проб исполнено 3", "проб исполнено 3" in out, out)
+    check("проб исполнено 2", "проб исполнено 2" in out, out)
 
     print()
     if failures:

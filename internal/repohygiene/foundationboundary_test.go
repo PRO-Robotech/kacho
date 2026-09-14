@@ -7,13 +7,15 @@ import (
 	"go/build"
 	"go/parser"
 	"go/token"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // foundationboundary_test.go — гейты над ДЕРЕВОМ по трём осям границы
@@ -31,10 +33,16 @@ import (
 // сверх того, учитывает ограничения сборки — то есть отвечает тем же составом
 // файлов, что и `go list`.
 
-const (
-	kachoModule  = "github.com/PRO-Robotech/kacho"
-	kanameModule = "github.com/PRO-Robotech/kaname"
-)
+// Здесь стояла и константа модуля службы доступа. Она снята вместе со своим
+// предметом: служба вынесена отдельным репозиторием, её пакетов в дереве нет, и
+// импортов её модуля не осталось ни одного (предикат:
+// `git grep -c '"github.com/PRO-Robotech/kaname' -- '*.go'` → пусто).
+//
+// Константа, называющая модуль, которого дерево не объявляет, — находка сама по
+// себе: гейт `TestModulePathConstantDoesNotOutliveItsModule` судит именно это, и
+// он прав. Вернётся зависимость от опубликованной службы — вернётся и константа,
+// но уже с живым предметом.
+const kachoModule = "github.com/PRO-Robotech/kacho"
 
 // packageImports — импорты одного каталога, разделённые на прод и пробы.
 //
@@ -163,11 +171,10 @@ func importsByFile(t *testing.T, dir string, names []string) map[string]int {
 // treePathOfImport переводит путь импорта в путь от корня дерева. Второе
 // значение — false для всего, что лежит вне обоих модулей продукта.
 func treePathOfImport(imp string) (string, bool) {
+	// Двух ветвей модуля службы доступа здесь больше нет: они переводили путь
+	// импорта в каталог `services/iam`, которого в дереве не существует, — то
+	// есть были недостижимы и при этом объявляли живую координату.
 	switch {
-	case imp == kanameModule:
-		return "services/iam", true
-	case strings.HasPrefix(imp, kanameModule+"/"):
-		return "services/iam/" + strings.TrimPrefix(imp, kanameModule+"/"), true
 	case imp == kachoModule:
 		return "", false
 	case strings.HasPrefix(imp, kachoModule+"/"):
@@ -196,6 +203,37 @@ func TestEveryFoundationCatalogDeclaresItsClass(t *testing.T) {
 		parts := strings.Split(filepath.ToSlash(rel), "/")
 		if len(parts) > 1 {
 			seen[parts[0]] = struct{}{}
+		}
+	}
+	// Второй дом: бо́льшая часть каталогов `pkg/*` переехала ЦЕЛИКОМ в модуль
+	// общего фундамента (github.com/PRO-Robotech/corelib) — предмет записи
+	// живёт ТАМ, а не в этом дереве, и это законно: карта объявляет класс, а
+	// не место хранения (§«Ключ — имя каталога, а не путь»). Отсутствие в
+	// ОБОИХ домах остаётся находкой; отсутствие только в этом — нет.
+	if moduleDir, merr := corelibModuleRootDir(root); merr == nil {
+		if entries, rerr := os.ReadDir(moduleDir); rerr == nil {
+			for _, e := range entries {
+				if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+					seen[e.Name()] = struct{}{}
+				}
+			}
+		}
+	}
+	// ТРЕТИЙ ДОМ: каталог `pkg/*` класса «служба доступа» с 2026-09-13 живёт в
+	// модуле службы (kacho#2616, исход C) — `ownerregister`, `subjectchange`,
+	// `api`. Раскладка там ТА ЖЕ, что здесь (`pkg/<каталог>`), в отличие от
+	// фундамента, который `pkg/` отбрасывает: поэтому дом отдельный, а не
+	// повторное применение второго.
+	//
+	// Отсутствие во ВСЕХ ТРЁХ домах остаётся находкой; отсутствие только в этом
+	// дереве — нет: карта объявляет класс, а не место хранения.
+	if moduleDir, merr := serviceModuleRootDir(root); merr == nil {
+		if entries, rerr := os.ReadDir(filepath.Join(moduleDir, "pkg")); rerr == nil {
+			for _, e := range entries {
+				if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+					seen[e.Name()] = struct{}{}
+				}
+			}
 		}
 	}
 	inTree := make([]string, 0, len(seen))
@@ -397,6 +435,38 @@ func TestEveryDeclaredPathPrefixHasASubjectInTheTree(t *testing.T) {
 			}
 		}
 	}
+	// Второй дом: приставка `pkg/<хвост>` переехала ЦЕЛИКОМ в модуль общего
+	// фундамента (github.com/PRO-Robotech/corelib) — предмет живёт под тем же
+	// хвостом, но без `pkg/`. Отсутствие в ОБОИХ домах остаётся находкой;
+	// отсутствие только в этом дереве — нет, запись описывает переехавшее, а
+	// не несуществующее.
+	if moduleDir, merr := corelibModuleRootDir(root); merr == nil {
+		for _, prefix := range declared {
+			if pathsUnder[prefix] > 0 {
+				continue
+			}
+			tail, ok := strings.CutPrefix(prefix, "pkg/")
+			if !ok {
+				continue
+			}
+			if _, serr := os.Stat(filepath.Join(moduleDir, filepath.FromSlash(tail))); serr == nil {
+				pathsUnder[prefix]++
+			}
+		}
+	}
+	// ТРЕТИЙ ДОМ — модуль службы доступа. Приставка там сохраняет написание
+	// ЦЕЛИКОМ, вместе с `pkg/`: раскладка модуля службы совпадает с раскладкой
+	// этого дерева, и отбрасывать `pkg/`, как у фундамента, было бы неверно.
+	if moduleDir, merr := serviceModuleRootDir(root); merr == nil {
+		for _, prefix := range declared {
+			if pathsUnder[prefix] > 0 {
+				continue
+			}
+			if _, serr := os.Stat(filepath.Join(moduleDir, filepath.FromSlash(prefix))); serr == nil {
+				pathsUnder[prefix]++
+			}
+		}
+	}
 
 	faults, census := judgeFoundationPrefixes(declared, pathsUnder)
 	t.Logf("перепись: %s · отслеживаемых путей прочитано %d",
@@ -535,5 +605,142 @@ func TestShippedBinariesExecuteNoForbiddenModule(t *testing.T) {
 	if len(faults) > 0 {
 		t.Fatalf("поставляемое двоичное исполняет модуль запрещённого направления (%d):\n  %s",
 			len(faults), strings.Join(faults, "\n  "))
+	}
+}
+
+// serviceModuleRootDir — каталог МОДУЛЯ службы доступа в кэше модулей, по версии,
+// закреплённой `go.mod` судимого дерева. Третий дом каталогов класса `kaname`
+// (kacho#2616, исход C): их пути уехали из этого дерева, класс — нет.
+func serviceModuleRootDir(root string) (string, error) {
+	return declaredModuleRootDir(root, "github.com/PRO-Robotech/kaname", os.ReadFile,
+		func() (string, error) {
+			out, err := exec.Command("go", "env", "GOMODCACHE").Output()
+			if err != nil {
+				return "", err
+			}
+			return strings.TrimSpace(string(out)), nil
+		})
+}
+
+// goModRequirePaths — пути модулей из `require` судимого `go.mod`.
+//
+// Отказ, а не пустой срез: пустой перечень заставил бы ось седьмую объявить
+// находкой каждую запись карты классов модулей, то есть покраснеть на подводе
+// разборщика, назвав это расхождением дерева.
+func goModRequirePaths(t *testing.T, root string) []string {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join(root, "go.mod")) // #nosec G304 -- путь собран из корня дерева
+	if err != nil {
+		t.Fatalf("чтение go.mod: %v", err)
+	}
+	deps := ParseGoModRequires(string(body))
+	if len(deps) == 0 {
+		t.Fatalf("в %s/go.mod не прочитано ни одной строки require — разборщик "+
+			"отказал, и «объявление без предмета» стало бы вердиктом о непрочитанном", root)
+	}
+	out := make([]string, 0, len(deps))
+	for _, d := range deps {
+		out = append(out, d.Path)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// moduleOfImport — модуль и его класс для пути импорта, ведущего в ЧУЖОЙ
+// объявленный модуль.
+//
+// ОТДЕЛЬНАЯ ФУНКЦИЯ, А НЕ РАСШИРЕНИЕ `treePathOfImport`, и это не вкус.
+// Контракт той — «путь ОТ КОРНЯ ЭТОГО ДЕРЕВА»; чужой модуль такого пути не
+// имеет, и вернув для него `pkg/api/kaname/…`, она заставила бы `classOfPackage`
+// разрешать чужой каталог как свой. Сверх того её разделяет гейт совместимости
+// лицензий (`licensecompat_test.go`), у которого «путь в дереве» — координата
+// починки: расширение сломало бы и его.
+//
+// Собственный модуль отбрасывается здесь: рёбра внутри него — предмет оси
+// второй, и удваивать её находки седьмая не должна.
+func moduleOfImport(imp string) (string, foundationClass, bool) {
+	module, cls, ok := classOfModule(imp)
+	if !ok || module == ownModulePath {
+		return "", "", false
+	}
+	return module, cls, true
+}
+
+// TestNoCrossModuleEdgeRunsAgainstTheTargetLayout — ось СЕДЬМАЯ по дереву.
+//
+// Предмет, отказы и границы разобраны у судьи (`foundationboundary.go`,
+// §«ОСЬ СЕДЬМАЯ»); здесь — только добыча входа.
+//
+// Обход идёт по дереву ЦЕЛИКОМ, а не по `pkg/`, по тому же доводу, что у оси
+// второй: импорт чужого модуля из `services/…` и из `gateway/…` — такое же
+// ребро, и сужение обхода отвечало бы одинаково на «ребра нет» и «ребро лежит
+// не там, куда мы посмотрели».
+func TestNoCrossModuleEdgeRunsAgainstTheTargetLayout(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	pkgs, files := readTreePackages(t, root)
+
+	type counts struct{ prod, test int }
+	tally := map[[2]string]*counts{}
+	pairs := map[[2]foundationClass]struct{}{}
+	imports := 0
+
+	for _, p := range pkgs {
+		fromClass, ok := classOfPackage(p.Dir)
+		if !ok {
+			// Каталог без объявленного класса ловит ось первая (`pkg/*`) либо
+			// пятая (верхний корень); здесь он не удваивает находку и не
+			// становится молчаливым пропуском.
+			continue
+		}
+		add := func(byImport map[string]int, isTest bool) {
+			for imp, n := range byImport {
+				module, toClass, external := moduleOfImport(imp)
+				if !external {
+					continue
+				}
+				imports += n
+				pairs[[2]foundationClass{fromClass, toClass}] = struct{}{}
+				key := [2]string{p.Dir, module}
+				if tally[key] == nil {
+					tally[key] = &counts{}
+				}
+				if isTest {
+					tally[key].test += n
+				} else {
+					tally[key].prod += n
+				}
+			}
+		}
+		add(p.Prod, false)
+		add(p.Test, true)
+	}
+
+	observed := make([]crossModuleEdge, 0, len(tally))
+	for k, c := range tally {
+		fromClass, _ := classOfPackage(k[0])
+		_, toClass, _ := moduleOfImport(k[1])
+		observed = append(observed, crossModuleEdge{
+			FromPkg: k[0], FromClass: fromClass, ToModule: k[1], ToClass: toClass,
+			Prod: c.prod, Test: c.test,
+		})
+	}
+	sort.Slice(observed, func(i, j int) bool { return observed[i].key() < observed[j].key() })
+
+	faults, census := judgeCrossModuleEdges(observed, goModRequirePaths(t, root), files, imports, len(pairs))
+	t.Logf("перепись: %s", census.ModuleEdgeSummary())
+
+	// Положительный близнец подан ЧИСЛОМ: перечисляем наблюдённые пары, чтобы
+	// «запрещённых нет» читалось на фоне того, что различать оси есть чем.
+	seen := make([]string, 0, len(pairs))
+	for pr := range pairs {
+		seen = append(seen, string(pr[0])+" -> "+string(pr[1]))
+	}
+	sort.Strings(seen)
+	t.Logf("наблюдённые пары классов (%d): %s", len(seen), strings.Join(seen, " · "))
+
+	if len(faults) > 0 {
+		t.Fatalf("межмодульное направление разошлось с целевой раскладкой (%d):\n  %s\n%s",
+			len(faults), strings.Join(faults, "\n  "), census.ModuleEdgeSummary())
 	}
 }

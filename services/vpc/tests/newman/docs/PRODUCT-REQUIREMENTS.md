@@ -151,7 +151,7 @@ RouteTable `static_routes[]`: непустой `destination_prefix` (валид�
 заглавные и подчёркивание отвергаются ВЕЗДЕ, цифра первым символом принимается ВЕЗДЕ.
 - Validated-by: `*-CR-VAL-NAME-UPPERCASE`, `*-CR-BVA-NAME-MAX-63`, `*-CR-BVA-NAME-OVER-64`
 - Проверка: `corevalidate.NameForm` — единственное объявление формы в дереве
-  (`pkg/validate/validate.go`); единственность держит гейт
+  (`corelib/validate/validate.go`); единственность держит гейт
   `internal/repohygiene` `TestResourceNameFormIsDeclaredOnce`.
 
 > [!note] Здесь стояли ДВЕ формы — permissive для пяти ресурсов и strict для Gateway
@@ -178,7 +178,7 @@ RouteTable `static_routes[]`: непустой `destination_prefix` (валид�
 валидаторы её отвергали, и кейс, утверждающий отказ на `1bad`, теперь неверен.
 - Validated-by: `*-CR-BVA-NAME-OVER-64`, `*-CR-VAL-NAME-HYPHEN-START`,
   `*-CR-VAL-NAME-SPECIAL-CHARS`, `*-CR-VAL-NAME-UPPERCASE`
-- Проверка: `pkg/validate/validate.go` (`Name`), плюс DB-CHECK `<таблица>_name_check`,
+- Проверка: `corelib/validate/validate.go` (`Name`), плюс DB-CHECK `<таблица>_name_check`,
   приведённый к той же форме миграцией `715001` — до неё база отвергала цифру первой,
   которую сервис уже принимал.
 
@@ -606,7 +606,7 @@ Boundary 1000 → ok; 1001 → `400`.
 `filter` (опционален): поддерживается `name="<value>"` (текущая фаза). Filter на не-whitelisted поле →
 `InvalidArgument`. Garbage filter syntax → `InvalidArgument`. Пустой filter → ok (опционален). SQLi в filter → НЕ 500.
 - Validated-by: `*-LST-FILTER-NAME-OK`/`-MATCH`/`-EMPTY`, `*-LST-FILTER-GARBAGE`, `*-LST-FILTER-UNKNOWN-FIELD`, `*-LST-SEC-FILTER-SQLI`, `*-LST-FILTER-CASE-SENSITIVITY`, `*-LST-FILTER-SPECIAL-CHARS`
-- Проверка: `pkg/filter`.`Parse(whitelist)` + вызовы; параметризация в `internal/repo/kacho/pg/*.go` (никакой строковой конкатенации в SQL).
+- Проверка: `corelib/filter`.`Parse(whitelist)` + вызовы; параметризация в `internal/repo/kacho/pg/*.go` (никакой строковой конкатенации в SQL).
 
 ### REQ-LIST-06 — child-list RPC: parent NotFound → 404 [P1]
 `Network.ListSubnets`/`ListSecurityGroups`/`ListRouteTables`, `Subnet.ListUsedAddresses`, `Address.ListBySubnet`,
@@ -685,7 +685,7 @@ sync-precheck `AddressesBySubnet` тоже покрывает обе семьи.
 ### REQ-OPS-01 — OperationService.Get свежесозданной op → done=true с response [P1]
 После завершения worker'а `OperationService.Get(id)` → `done=true`, `response` = ресурс (для Create/Update) или Empty (Delete), либо `error` (`google.rpc.Status`).
 - Validated-by: `OP-GET-CRUD-OK`
-- Проверка: `pkg/operations/operationspb/handler.go`; `pkg/operations` worker.
+- Проверка: `corelib/operations/operationspb/handler.go`; `corelib/operations` worker.
 
 ### REQ-OPS-02 — OperationService.Get bad id [P1]
 Несуществующий op-id с правильным prefix → `NOT_FOUND "operation <id> not found"`. Malformed / unknown-prefix id →
@@ -706,7 +706,7 @@ sync-precheck `AddressesBySubnet` тоже покрывает обе семьи.
 возвращает историю (create + delete), `OperationService.Get(<opId>)` по операции удаленного ресурса → 200.
 Таблица `operations` не имеет FK-cascade от ресурсных таблиц.
 - Validated-by: `NET-LISTOPS-AFTER-DELETE-OK`, `OP-LIST-AFTER-DELETE-OK`
-- Проверка: `internal/migrations/0001_initial.sql` (`operations` без FK на ресурсы); `internal/repo/kacho/pg/*.go` Delete (`DELETE FROM <table>` — не трогает `operations`); `pkg/operations` Repo.
+- Проверка: `internal/migrations/0001_initial.sql` (`operations` без FK на ресурсы); `internal/repo/kacho/pg/*.go` Delete (`DELETE FROM <table>` — не трогает `operations`); `corelib/operations` Repo.
 
 ---
 
@@ -748,7 +748,7 @@ RPC, оперирующие конкретным ресурсом, ДОЛЖНЫ 
   `200` недостижим ни для одной нагрузки; `413` край не производит ни для одного кода
   (`api-conventions.md` §«gRPC-код → HTTP-статус»);
 - **`filter`** — разбор идёт по whitelist полей, значение берётся в двойных кавычках и уезжает
-  ПАРАМЕТРОМ запроса (`pkg/filter`.`ToSQL` → `$N`), поэтому синтаксически годное выражение
+  ПАРАМЕТРОМ запроса (`corelib/filter`.`ToSQL` → `$N`), поэтому синтаксически годное выражение
   принимается и отдаёт пустую страницу: `200`. Отказ (`400`) даёт только негодный СИНТАКСИС.
 - Validated-by: `*-CR-SEC-SQLI`/`-XSS`/`-CMD`/`-PATH`/`-NULLBYTE`/`-UNION`/`-LONGPAYLOAD`, `*-LST-SEC-FILTER-SQLI`
 - Проверка: параметризованные запросы (pgx) во всех `internal/repo/kacho/pg/*.go`; `serviceerr.MapRepoErr` — generic `"internal database error"`, без сырого pgx-текста; то же для Internal handlers (`internalMapErr`).

@@ -18,29 +18,29 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
-	"github.com/PRO-Robotech/kacho/pkg/authz"
+	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/authz/authzmetrics"
+	"github.com/PRO-Robotech/corelib/authz/proxytuple"
+	coredb "github.com/PRO-Robotech/corelib/db"
+	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/corelib/listnarrow"
+	"github.com/PRO-Robotech/corelib/observability"
+	"github.com/PRO-Robotech/corelib/observability/health"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/operations/operationspb"
+	"github.com/PRO-Robotech/corelib/outbox"
+	"github.com/PRO-Robotech/corelib/outbox/drainer"
+	outboxmetrics "github.com/PRO-Robotech/corelib/outbox/metrics"
+	"github.com/PRO-Robotech/corelib/outbox/reconciler"
+	"github.com/PRO-Robotech/corelib/retention"
+	"github.com/PRO-Robotech/corelib/servicecontract"
+	"github.com/PRO-Robotech/corelib/servicehost"
 	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
-	"github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
-	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
-	coredb "github.com/PRO-Robotech/kacho/pkg/db"
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
-	"github.com/PRO-Robotech/kacho/pkg/observability"
-	"github.com/PRO-Robotech/kacho/pkg/observability/health"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
-	"github.com/PRO-Robotech/kacho/pkg/outbox"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
-	outboxmetrics "github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
-	"github.com/PRO-Robotech/kacho/pkg/retention"
-	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
-	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
-	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 
 	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/config"
@@ -55,7 +55,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/registry/internal/operationresolver"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/repo/kacho/pg"
 
-	"github.com/PRO-Robotech/kacho/pkg/schemaguard"
+	"github.com/PRO-Robotech/corelib/schemaguard"
 
 	"github.com/PRO-Robotech/kacho/services/registry/internal/migrations"
 )
@@ -177,7 +177,7 @@ func runServe(cfg config.Config) error {
 	// Строка заводится КАЖДОЙ мутацией — контракт объявляет мутации асинхронными,
 	// и `Operation` возвращается вместо ресурса, — а снятия строк не было ни у
 	// одного из восьми владельцев. Порог, предикат и расписание объявлены в
-	// `pkg/operations` и `pkg/retention` ОДИН раз: восемь расписаний об одном
+	// `corelib/operations` и `corelib/retention` ОДИН раз: восемь расписаний об одном
 	// предмете разошлись бы молча.
 	if _, err := operations.StartRetentionSweep(
 		ctx, opsRepo, operations.DefaultRetentionConfig(),
@@ -211,7 +211,7 @@ func runServe(cfg config.Config) error {
 	// Фоновая уборка РЕСУРСНОГО ЖУРНАЛА подписки (#1666). Строка в него пишется
 	// триггером на каждой мутации реестра, темп задаёт арендатор, а снятия строк
 	// не было ни на одном пути. Порог, предикат и обещание подписчику объявлены
-	// в `pkg/subscription` ОДИН раз — здесь только провязка.
+	// в `corelib/subscription` ОДИН раз — здесь только провязка.
 	if err := startJournalRetentionSweep(ctx, pool, cfg, logger); err != nil {
 		return err
 	}
@@ -501,7 +501,7 @@ func runServe(cfg config.Config) error {
 	})
 
 	// ── обработчики. Слушателей здесь больше нет: их поднимает носитель контура
-	// (`pkg/servicehost`), и регистратор получает `grpc.ServiceRegistrar` —
+	// (`corelib/servicehost`), и регистратор получает `grpc.ServiceRegistrar` —
 	// интерфейс с единственным методом. Приделать сюда своё звено не к чему, и это
 	// свойство ПОСТРОЕНИЯ, а не соглашение.
 	registryHandler := handler.NewRegistryHandler(registryUC, listAuthz, cfg.AuthZCacheTTL)
@@ -521,7 +521,7 @@ func runServe(cfg config.Config) error {
 	//   · окно звена решения — вопрос на ВЫЗОВ;
 	//   · окно самого сервиса перед сужателем (`handler.cachedAuthorizer`) —
 	//     вопрос на КАЖДЫЙ элемент страницы;
-	//   · окно ОБЩЕГО сужателя (`pkg/listnarrow`) — то, что не поймал предыдущий.
+	//   · окно ОБЩЕГО сужателя (`corelib/listnarrow`) — то, что не поймал предыдущий.
 	//
 	// Сложить их в одну серию значило бы сделать невидимым то из них, которое не
 	// попадает, — а это ровно то, ради которого величину и смотрят. Последнее до
@@ -871,7 +871,7 @@ func validateAuthMode(cfg config.Config, logger *slog.Logger) error {
 		}
 	case servicecontract.ModeProductionStrict:
 		// Перечень безопасных значений — тоже НЕ свой: он приходит из дома семантики
-		// строки подключения (`pkg/db`), где объявлен один раз на всё дерево
+		// строки подключения (`corelib/db`), где объявлен один раз на всё дерево
 		// (задача продукта #1464). Судится ИСХОД — режим строки, уходящей в пул.
 		if sslMode := coredb.SSLModeFromDSN(cfg.DSN()); !coredb.SSLModeSecure(sslMode) {
 			return fmt.Errorf("production-strict mode: KACHO_REGISTRY_DB_SSLMODE must be one of %s (got %q)",
@@ -1223,7 +1223,7 @@ func describe(cfg config.Config, mode servicecontract.Mode, logger *slog.Logger,
 		Existence: ports.existence,
 
 		// Загрузочный гейт мутаций — ИЗЪЯТИЕ, и оно названо, а не умолчано: такого
-		// гейта у реестра в дереве нет (`pkg/outbox/bootgate` его композиционный
+		// гейта у реестра в дереве нет (`corelib/outbox/bootgate` его композиционный
 		// корень не импортирует; на сегодня гейт несут vpc, compute и nlb). Принести
 		// сюда чужой было бы не переводом на носитель, а новой защитой под видом
 		// оформления — и вводить её следует своим изменением, со своей приёмкой и

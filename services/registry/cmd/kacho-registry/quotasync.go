@@ -9,14 +9,11 @@ import (
 	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"google.golang.org/grpc"
 
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	corequota "github.com/PRO-Robotech/corelib/quota"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/quota"
-	iamclient "github.com/PRO-Robotech/kacho/services/registry/internal/clients/iam"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/repo/kacho/pg"
 )
 
@@ -60,45 +57,24 @@ func buildQuotaAuthorityEdge(
 		return quotaAuthorityEdge{}, noop, err
 	}
 
-	var (
-		guard     *quota.Guard
-		src       corequota.Source
-		closeConn = noop
-	)
-	if authority.Deployed() {
-		creds, cerr := grpcclient.TLSClientCreds(cfg.QuotaAuthorityMTLS)
-		if cerr != nil {
-			return quotaAuthorityEdge{}, noop, fmt.Errorf("registry→quota authority mTLS creds: %w", cerr)
-		}
-		conn, derr := grpc.NewClient(authority.Endpoint(), creds,
-			grpcclient.KeepaliveDialOption(true))
-		if derr != nil {
-			return quotaAuthorityEdge{}, noop, fmt.Errorf("dial quota authority: %w", derr)
-		}
-		closeConn = func() { _ = conn.Close() }
-		limitClient := iamclient.NewLimitClient(conn)
-		src = limitClient
-		if store := pg.NewQuotaStore(pool); store != nil {
-			guard = quota.NewGuard(store, limitClient, accounts, "registry")
-		}
-		logger.Info("resource-count quota: limit authority edge configured",
-			"endpoint", authority.Endpoint(),
-			"mtls", cfg.QuotaAuthorityMTLS.Enable,
-			"service", "registry")
-	}
+	// Полосы пути запроса НЕТ и быть не может: производителя у контракта
+	// авторитета величин не осталось ни в одном дереве, и объявленный адрес
+	// отвергается стражем старта (`pkg/quota/quotaedge`.ValidateAuthorityHasAProducer).
+	// Порт остаётся сокетом: он переживает смерть своей реализации by construction,
+	// и это ровно то, ради чего он порт. Кто его наполнит — решает развилка
+	// PRO-Robotech/kacho#2190.
 
 	// Заведение стоит БЕЗУСЛОВНО — решение принимает StartLimitSync, читая
 	// объявление.
 	stopSync, serr := corequota.StartLimitSync(
-		ctx, pool, authority, src, pg.QuotaSchema, corequota.Config{}, logger)
+		ctx, pool, authority, nil, pg.QuotaSchema, corequota.Config{}, logger)
 	if serr != nil {
-		closeConn()
 		return quotaAuthorityEdge{}, noop, fmt.Errorf("start quota limit sync: %w", serr)
 	}
 
 	return quotaAuthorityEdge{
-			Guard:       guard,
+			Guard:       nil,
 			ReadPosture: corequota.ReadPosture(authority, "registry"),
 		},
-		func() { stopSync(); closeConn() }, nil
+		stopSync, nil
 }

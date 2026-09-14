@@ -4,7 +4,7 @@
 package config
 
 import (
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 )
 
 // RateLimitConfig — секция `api-server.rate-limit`: сколько запросов в секунду и

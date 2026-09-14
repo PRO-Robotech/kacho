@@ -21,7 +21,7 @@ production-posture (`authMode=production`, `db.sslMode=require`, mTLS на об�
 листенерах, `authzIamGrpcAddr`, `listFilter.enabled`) — **каждый из этих ключей
 несущий**: без любого из них под не стартует. Судьи двое и они разные:
 режим, круг доверенных отправителей, `db.sslMode` и mTLS обоих листенеров судит
-конструктор дескриптора (`pkg/servicecontract`) — один отказ на все сервисы;
+конструктор дескриптора (`corelib/servicecontract`) — один отказ на все сервисы;
 `listFilter.enabled`, его degraded-ручку и транспорт исходящих рёбер к iam и geo
 судит остаток собственного стража `Config.Validate()`.
 

@@ -13,7 +13,7 @@
 package main
 
 import (
-	"github.com/PRO-Robotech/kacho/pkg/identityposture"
+	"github.com/PRO-Robotech/corelib/identityposture"
 
 	"strings"
 	"testing"

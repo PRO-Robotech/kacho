@@ -10,7 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/PRO-Robotech/kacho/pkg/db/pgfault"
+	"github.com/PRO-Robotech/corelib/db/pgfault"
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
 )
 

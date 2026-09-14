@@ -52,6 +52,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 )
 
 const (
@@ -66,10 +68,32 @@ const (
 	// дерево, на котором доказывается способность гейта упасть, читало бы
 	// каталог продукта.
 	catalogRelPath = "gateway/internal/middleware/embed/permission_catalog.json"
-	// modelRelPath — канонический текст модели прав.
-	modelRelPath = "proto/kaname/cloud/iam/v1/fga_model.fga"
+	// modelInContractPath — канонический текст модели прав, названный
+	// координатой ВНУТРИ дерева контрактов (относительно `proto/`): контракты
+	// службы доступа вынесены в её репозиторий (kacho#2616, исход C,
+	// 2026-09-13) и приезжают модулем `github.com/PRO-Robotech/kaname`. В таком
+	// виде координату принимает `internal/contractsource`.
+	modelInContractPath = "kaname/cloud/iam/v1/fga_model.fga"
+	// modelRelPath — та же координата ОТ КОРНЯ ДЕРЕВА. Выведена конкатенацией, а
+	// не выписана вторым литералом: два литерала одного пути разошлись бы молча.
+	// В этом виде её пишет синтетическое дерево
+	// (modulemanifestrights_injection_test.go), и contractsource читает его
+	// собственную модель, а не модуль: корень, физически присутствующий в
+	// `proto/`, он берёт оттуда.
+	modelRelPath = "proto/" + modelInContractPath
 	// migrationsRelDir — применённые миграции iam: единственный источник
 	// системных ролей, а значит и правил, в которых живут устаревшие глаголы.
+	//
+	// В ЭТОМ ДЕРЕВЕ ЕГО БОЛЬШЕ НЕТ, и это сказано здесь, а не подразумевается:
+	// служба доступа вынесена отдельным продуктом (kacho#2616, исход C,
+	// 2026-09-13), схема её базы живёт в её репозитории. Половина гейта,
+	// читающая правила ролей, предмета на настоящем дереве НЕ ИМЕЕТ — это
+	// ТРЕТЬЯ КАТЕГОРИЯ («не с чем сверять»), и перепись говорит о ней отдельной
+	// строкой, как уже делает для манифестов. Способность этой половины падать
+	// доказывается на синтетическом дереве, где каталог есть by construction
+	// (modulemanifestrights_injection_test.go), поэтому координата остаётся
+	// объявленной здесь: она читается ОТ КОРНЯ ДЕРЕВА, и синтетика кладёт
+	// миграции именно по ней.
 	migrationsRelDir = "services/iam/internal/migrations"
 )
 
@@ -161,11 +185,17 @@ func readTreeRights(t *testing.T, tt *trackedTree) treeRights {
 		}
 		var rights manifestRights
 		if err := yaml.Unmarshal(body, &rights); err != nil {
-			// Форму судит загрузчик и его цель сборки; здесь неразбираемый
-			// манифест — не находка этого гейта, а его СЛЕПАЯ ЗОНА, и она
-			// обязана быть названа, а не пропущена.
+			// Здесь неразбираемый манифест — не находка этого гейта, а его
+			// СЛЕПАЯ ЗОНА, и она обязана быть названа, а не пропущена.
+			//
+			// Прежде рядом называлась цель сборки, судившая ФОРМУ манифеста. Её
+			// исполнитель уехал вместе со службой доступа, и цели в этом дереве
+			// больше нет: называть её значило бы посылать читателя набирать
+			// команду, отвечающую `No rule to make target`. Форму манифестов
+			// доменов в этом дереве не судит теперь НИКТО — остаток назван здесь
+			// прямо, а не спрятан за координатой, которая не резолвится.
 			t.Errorf("манифест %s не разбирается (%v) — этот гейт о нём не "+
-				"утверждает ничего; форму судит `make -C services/iam module-manifest-check`",
+				"утверждает ничего, а судьи ФОРМЫ в этом дереве не осталось",
 				rel, err)
 			continue
 		}
@@ -199,7 +229,11 @@ func readTreeRights(t *testing.T, tt *trackedTree) treeRights {
 		}
 	}
 
-	if raw, err := os.ReadFile(filepath.Join(tt.root, filepath.FromSlash(modelRelPath))); err == nil {
+	// Отказ резолва и отказ чтения здесь одинаково НЕ вердикт: перечень типов
+	// останется пустым, и `TestManifestIsNotASecondDeclarationOfARight` роняет
+	// прогон на нём отдельным утверждением («сверять не с чем»).
+	modelPath, modelErr := contractsource.Path(tt.root, modelInContractPath)
+	if raw, err := readFileIfResolved(modelPath, modelErr); err == nil {
 		for _, m := range regexp.MustCompile(`(?m)^type ([a-z_0-9]+)`).FindAllStringSubmatch(string(raw), -1) {
 			out.ModelTypes[m[1]] = true
 		}
@@ -288,6 +322,19 @@ func sortedKeysOfDeprecated(m map[string]struct {
 	return out
 }
 
+// readFileIfResolved — чтение файла, координата которого могла не разрешиться.
+//
+// Существует ради того, чтобы отказ РЕЗОЛВА и отказ ЧТЕНИЯ приходили к читателю
+// одним исходом: оба означают «типов модели не прочитано», и оба обязаны дойти до
+// утверждения «сверять не с чем», а не разойтись на два пути, из которых один
+// молчит.
+func readFileIfResolved(path string, resolveErr error) ([]byte, error) {
+	if resolveErr != nil {
+		return nil, resolveErr
+	}
+	return os.ReadFile(filepath.Clean(path))
+}
+
 // TestManifestIsNotASecondDeclarationOfARight — гейт устарелости порождённого
 // (MOD-MR-19, 25, 26) на дереве продукта.
 //
@@ -319,5 +366,11 @@ func TestManifestIsNotASecondDeclarationOfARight(t *testing.T) {
 	if len(tr.Manifests) == 0 {
 		t.Logf("манифестов НОЛЬ — половина гейта, читающая YAML, предмета не имела: " +
 			"это третья категория («не с чем сверять»), и в «находок ноль» она НЕ засчитывается")
+	}
+	if tr.MigrationFiles == 0 {
+		t.Logf("файлов миграций НОЛЬ (%s) — половина гейта, читающая правила ролей, "+
+			"предмета на этом дереве не имела: схема службы доступа живёт в её "+
+			"репозитории. Это третья категория («не с чем сверять»), и в «находок ноль» "+
+			"она НЕ засчитывается", migrationsRelDir)
 	}
 }

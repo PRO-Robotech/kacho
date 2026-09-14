@@ -48,7 +48,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
+	"github.com/PRO-Robotech/corelib/outbox/metrics"
 )
 
 // computeAuditOutboxTable — журнал аудита вычислений.

@@ -81,7 +81,7 @@ message LegacyWiring {
 const reachGoReferrer = `package server
 
 import (
-	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 )
 
 func Serve(req *subscriptionv1.SubscriptionRequest) (*subscriptionv1.SubscriptionOpened, error) {
@@ -98,7 +98,7 @@ func Serve(req *subscriptionv1.SubscriptionRequest) (*subscriptionv1.Subscriptio
 const reachGoBlankImport = `package wiring
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+	_ "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 )
 `
 
@@ -113,7 +113,7 @@ const reachGoTestReferrer = `package server_test
 import (
 	"testing"
 
-	subs "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+	subs "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 )
 
 func TestSomething(t *testing.T) {
@@ -129,7 +129,7 @@ func TestSomething(t *testing.T) {
 const reachGoGeneratedStub = `package subscriptionv1
 
 import (
-	other "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+	other "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 )
 
 var _ = other.SubscriptionRequest{}
@@ -141,7 +141,7 @@ var _ = other.SubscriptionRequest{}
 const reachGoNearMissName = `package neighbour
 
 import (
-	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 )
 
 var _ = subscriptionv1.SubscriptionRequestV2{}
@@ -160,7 +160,7 @@ const reachGoImportInsideAString = `package template
 const fixture = ` + "`" + `package server
 
 import (
-	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 )
 
 var _ = subscriptionv1.SubscriptionRequest{}

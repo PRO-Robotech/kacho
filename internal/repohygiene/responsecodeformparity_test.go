@@ -46,7 +46,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
+	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
 // responseCodeForm — одна форма утверждения и объявленный для неё набор исходов.

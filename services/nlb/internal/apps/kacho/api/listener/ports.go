@@ -6,7 +6,7 @@ package listener
 import (
 	"context"
 
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/corelib/operations"
 
 	iamclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/iam"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"

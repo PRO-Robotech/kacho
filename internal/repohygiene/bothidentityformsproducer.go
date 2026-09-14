@@ -54,7 +54,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/principalwire"
+	"github.com/PRO-Robotech/corelib/principalwire"
 )
 
 // credentialSymbolMarkers — имена, которыми выражение выдаёт в себе ключ

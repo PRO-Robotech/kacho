@@ -28,19 +28,26 @@
 //
 // Сторона ствола по-прежнему читается с диска: `.proto` — контракт, который
 // проба исполнить не может, и другого способа спросить у него нет.
+//
+// ГДЕ ЭТОТ ДИСК. Не в `proto/` монорепо: решением владельца (kacho#2616, исход C,
+// 2026-09-13) контракты службы доступа уехали в её репозиторий и приезжают
+// опубликованным модулем `github.com/PRO-Robotech/kaname`, каталогом `proto/kaname`
+// внутри него. Здесь стоял `path.resolve(here, "../../../proto/kaname/…")` — путь,
+// считанный от каталога пробы, — и после переезда он бросал на уровне МОДУЛЯ, то
+// есть до первого `it`: падал весь файл, а сообщение называло координату вместо
+// причины. Координату разрешает `contractPath` общего пакета, один резолвер на оба
+// вида корня.
 
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
 import { detailExtension } from "@shared/components/organisms/ResourceDetailExtensions";
+import { contractPath } from "@shared/test/proto-contract";
+import { readFileSync } from "node:fs";
 
 import "./registerExtensions";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const proto = readFileSync(path.resolve(here, "../../../proto/kaname/cloud/iam/v1/access_binding.proto"), "utf8");
+const proto = readFileSync(contractPath("kaname/cloud/iam/v1/access_binding.proto"), "utf8");
 
 /** Тело `message <name> { … }` со счётом скобок (вложенные enum/oneof не рвут). */
 function messageBody(name: string): string {

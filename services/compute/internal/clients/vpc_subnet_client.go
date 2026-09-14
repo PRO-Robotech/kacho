@@ -9,10 +9,10 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/PRO-Robotech/corelib/auth"
+	"github.com/PRO-Robotech/corelib/peer"
+	"github.com/PRO-Robotech/corelib/retry"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
-	"github.com/PRO-Robotech/kacho/pkg/auth"
-	"github.com/PRO-Robotech/kacho/pkg/peer"
-	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 )
@@ -63,7 +63,7 @@ func (c *VPCSubnetClient) GetSubnet(ctx context.Context, subnetID string) (*port
 			// Нет подсети / нет доступа / нечитаемый по мнению владельца id —
 			// одинаково: «ссылка не резолвится», и различать их наружу нельзя
 			// (иначе по коду отличают «нет доступа» от «не существует»). Решение
-			// принимает носитель (pkg/peer), а не рукописный список кодов: список
+			// принимает носитель (corelib/peer), а не рукописный список кодов: список
 			// был верен, но жил в одном файле из пяти и в соседних расходился.
 			if peer.Classify(rerr).RefusedReference() {
 				return ports.ErrNotFound

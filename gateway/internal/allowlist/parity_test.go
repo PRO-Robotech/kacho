@@ -60,7 +60,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/contractroot"
+	"github.com/PRO-Robotech/corelib/contractroot"
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
@@ -71,17 +72,17 @@ import (
 	// домена в protoregistry.GlobalFiles. Список сверяется с диском в
 	// TestAllowlist_CensusCoversEveryProtoFile — новый домен без импорта тут
 	// краснеет там.
-	_ "github.com/PRO-Robotech/kacho/pkg/api/corelib/api/v1"
+	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
+	_ "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	_ "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/reference"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
+	_ "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 )
 
 // Резолвер маршрутизирует ТОЛЬКО объявленные корни контракта
@@ -93,14 +94,43 @@ import (
 //
 // Файл дескриптора несёт путь без ведущего "proto/":
 // "kacho/cloud/vpc/v1/network_service.proto", "kaname/cloud/iam/v1/role.proto".
+//
+// КОРЕНЬ РЕЗОЛВИТСЯ, А НЕ СКЛЕИВАЕТСЯ С ЭТИМ ПУТЁМ. Здесь стояла склейка
+// `../../../proto/` + корень, и она была верна, пока все корни лежали в одном
+// дереве. С 2026-09-13 (kacho#2616, исход C) контракты службы доступа уехали в её
+// репозиторий: под `proto/kaname` в этом дереве НЕТ ни одного файла, а
+// дескрипторы её 41 контракт по-прежнему несут — потому что край их
+// маршрутизирует. Склейка давала 41 «дескриптор без файла на диске», то есть
+// находку о самом гейте вместо находки о дереве.
+//
+// Резолвер один на всё дерево — `internal/contractsource`: он отвечает о корне
+// этого дерева индексом git, о приезжающем модулем — кэшем модулей.
 const protoDirOnDiskBase = "../../../proto/"
+
+// monorepoRootForContracts — корень дерева, от которого резолвер отсчитывает
+// координаты. Каталог пробы лежит на три уровня ниже.
+func monorepoRootForContracts(t *testing.T) string {
+	t.Helper()
+	abs, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatalf("корень дерева не резолвится: %v — вердикт относился бы к непрочитанному", err)
+	}
+	return abs
+}
 
 // protoDirsOnDisk — каталоги, по которым идёт обход, для сообщений об отказе:
 // назвать надо ВСЕ корни, иначе читатель пойдёт искать причину не там.
-func protoDirsOnDisk() string {
+func protoDirsOnDisk(t *testing.T) string {
+	t.Helper()
+	root := monorepoRootForContracts(t)
 	dirs := make([]string, 0, len(contractroot.Roots))
-	for _, p := range routableFilePrefixes() {
-		dirs = append(dirs, filepath.Clean(protoDirOnDiskBase+p))
+	for _, r := range contractroot.Roots {
+		dir, err := contractsource.Dir(root, r)
+		if err != nil {
+			dirs = append(dirs, "(корень "+r+" не резолвится: "+err.Error()+")")
+			continue
+		}
+		dirs = append(dirs, filepath.Join(dir, "cloud"))
 	}
 	return strings.Join(dirs, ", ")
 }
@@ -186,8 +216,15 @@ func protoFilesOnDisk(t *testing.T) map[string]struct{} {
 	// Обход по КАЖДОМУ объявленному корню: ключ собирается из приставки того
 	// корня, под которым файл найден, — иначе путь дескриптора не совпал бы с
 	// тем, что отдаёт реестр.
+	treeRoot := monorepoRootForContracts(t)
 	for _, prefix := range routableFilePrefixes() {
-		root := filepath.Clean(protoDirOnDiskBase + prefix)
+		// prefix — "<корень>/cloud/"; корень резолвится в свой дом, а не
+		// склеивается с путём этого дерева.
+		dir, resolveErr := contractsource.Dir(treeRoot, strings.SplitN(prefix, "/", 2)[0])
+		if resolveErr != nil {
+			continue
+		}
+		root := filepath.Join(dir, "cloud")
 		if _, statErr := os.Stat(root); statErr != nil {
 			continue
 		}
@@ -254,7 +291,7 @@ func TestAllowlist_CensusCoversEveryProtoFile(t *testing.T) {
 	if len(disk) < minProtoFiles {
 		t.Fatalf("на диске под %s найдено %d .proto (< %d) — гейт читает не то дерево; "+
 			"пока это не починено, любой его зелёный вердикт беспредметен",
-			protoDirsOnDisk(), len(disk), minProtoFiles)
+			protoDirsOnDisk(t), len(disk), minProtoFiles)
 	}
 	if surface.services < minServices {
 		t.Fatalf("в дескрипторах %d сервисов (< %d) — реестр пуст или домены не слинкованы",
@@ -273,7 +310,7 @@ func TestAllowlist_CensusCoversEveryProtoFile(t *testing.T) {
 	}
 	if extra := sortedDiff(surface.files, disk); len(extra) > 0 {
 		t.Errorf("%d дескрипторов не имеют .proto на диске под %s — перепись читает не то дерево:\n  %s",
-			len(extra), protoDirsOnDisk(), strings.Join(extra, "\n  "))
+			len(extra), protoDirsOnDisk(t), strings.Join(extra, "\n  "))
 	}
 }
 

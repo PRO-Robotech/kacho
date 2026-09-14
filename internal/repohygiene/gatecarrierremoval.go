@@ -12,8 +12,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/gitenv"
-	"github.com/PRO-Robotech/kacho/pkg/treecorpus"
+	"github.com/PRO-Robotech/corelib/gitenv"
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // gatecarrierremoval.go — разбор класса «носитель гейта исчез МОЛЧА».
@@ -170,7 +170,39 @@ type GateCarrierRetirement struct {
 	// Successor — кто держит предмет теперь либо чем доказано, что предмета
 	// больше нет. Отвечает на единственный вопрос, ради которого запись и
 	// заводится: что стало со свойством, которое этот носитель стерёг.
+	//
+	// Проза ЧИТАТЕЛЮ. Машинное различение «уехало» от «исчезло» держит [Fate]:
+	// до его заведения обе мысли выражались этой одной строкой, поэтому
+	// расходились молча (задача продукта #2602).
 	Successor string `json:"successor"`
+	// Fate — судьба ПРЕДМЕТА закрытым словарём: [subjectFateGone],
+	// [subjectFateCarried] либо [subjectFateUnguarded]. Отсутствие значения есть
+	// отдельное состояние — «судьбу не объявляли», — и оно находка, а не тихое
+	// «предмета нет». Судит carriedsubjectdeclared.go.
+	Fate string `json:"fate"`
+	// CarriedTo — куда уехал предмет: репозиторий-преемник и, если держатель у
+	// предмета есть, его координата там.
+	//
+	// Обязательна при [subjectFateCarried] (с координатой) и при
+	// [subjectFateUnguarded] (без координаты: держателя нет, называть нечего);
+	// недопустима при [subjectFateGone] — запись, которая объявляет исчезновение
+	// и тут же называет преемника, содержит два утверждения об одном предмете.
+	CarriedTo *CarriedCoordinate `json:"carried_to,omitempty"`
+}
+
+// CarriedCoordinate — куда уехал предмет: репозиторий, и при [subjectFateCarried]
+// координата его держателя там.
+//
+// Репозиторий, а не «где-то в службе»: его имя сверяется со словарём, который
+// дерево объявляет само, а путь — с деревом-преемником, когда оно под рукой.
+// Разбор и причины — carriedsubjectdeclared.go.
+type CarriedCoordinate struct {
+	// Repo — репозиторий-преемник в форме `<владелец>/<имя>`, ровно как его
+	// называют productnaming.ExternallySourcedServices и go.mod.
+	Repo string `json:"repo"`
+	// Path — путь держателя ОТ КОРНЯ дерева-преемника, путями git. Пуст, когда
+	// держателя у предмета нет ([subjectFateUnguarded]).
+	Path string `json:"path,omitempty"`
 }
 
 // gateCarrierLedger — надгробие снятых носителей.

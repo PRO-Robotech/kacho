@@ -10,7 +10,7 @@ package repo
 //
 // # Что здесь проверяется сверх проб самого механизма
 //
-// Пробы `pkg/audit` гоняют вывоз по таблице, объявленной в них же, поэтому они
+// Пробы `corelib/audit` гоняют вывоз по таблице, объявленной в них же, поэтому они
 // утверждают о МЕХАНИЗМЕ и молчат о том, совпадает ли с ним ЖИВАЯ таблица.
 // Здесь применены настоящие миграции службы и работает настоящая функция
 // записи — то есть проверяется ровно то, чего механизм проверить не может: что
@@ -25,10 +25,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/pkg/audit"
-	"github.com/PRO-Robotech/kacho/pkg/observability"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
+	"github.com/PRO-Robotech/corelib/audit"
+	"github.com/PRO-Robotech/corelib/observability"
+	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/corelib/outbox/metrics"
 )
 
 type capturingSink struct {

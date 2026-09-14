@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	"github.com/PRO-Robotech/corelib/grpcclient"
+	"github.com/PRO-Robotech/corelib/grpcsrv"
 
-	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+	corequota "github.com/PRO-Robotech/corelib/quota"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/config"
 )
 
@@ -79,7 +79,7 @@ func TestLoad_defaultAuthModeProduction(t *testing.T) {
 // стражи НЕ отказывает старту в dev (WARN эмитит serve.go, не fatal).
 //
 // Круг отправителей здесь БОЛЬШЕ НЕ считается: его стража переехала в конструктор
-// дескриптора (`pkg/servicecontract`) и там срабатывает на ЛЮБОМ старте, а не
+// дескриптора (`corelib/servicecontract`) и там срабатывает на ЛЮБОМ старте, а не
 // только в боевом. Ослаблением это не является — наоборот: прежде круг судили два
 // места, теперь одно, и оно общее на все сервисы. Проба на сам круг живёт рядом с
 // дескриптором (cmd/storage/describe_test.go).

@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/contractroot"
+	"github.com/PRO-Robotech/corelib/contractroot"
 )
 
 // Разбор контракта и реестров консоли для гейта «ветвь контракта, достижимая из

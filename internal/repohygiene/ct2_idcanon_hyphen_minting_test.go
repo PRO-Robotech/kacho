@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/corelib/ids"
 )
 
 // TestEveryHyphenMintedPrefixIsInTheCanon — вердикт о НАСТОЯЩЕМ дереве.

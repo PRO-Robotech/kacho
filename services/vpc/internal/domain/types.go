@@ -14,7 +14,7 @@ import (
 	"regexp"
 	"unicode/utf8"
 
-	"github.com/PRO-Robotech/kacho/pkg/validate/nameform"
+	"github.com/PRO-Robotech/corelib/validate/nameform"
 )
 
 // ---- Newtypes для базовых строковых полей -----------------------------------

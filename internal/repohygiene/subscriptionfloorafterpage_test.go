@@ -20,7 +20,14 @@ func TestSubscriptionAsksTheFloorAfterThePage(t *testing.T) {
 	var log strings.Builder
 
 	findings, census, err := AuditSubscriptionFloorAfterPage(
-		SubscriptionFloorAfterPageOptions{Root: root}, &log)
+		SubscriptionFloorAfterPageOptions{
+			Root: root,
+			// Наблюдатель границы и сервер потока переехали в пакет
+			// subscription общего фундамента (github.com/PRO-Robotech/corelib)
+			// — читаем ТУДА, куда они переехали (см. corelibsource_test.go),
+			// а не только диск.
+			ExtraFiles: corelibPackageGoFiles(t, root, "subscription"),
+		}, &log)
 	if err != nil {
 		t.Fatalf("обход дерева: %v", err)
 	}

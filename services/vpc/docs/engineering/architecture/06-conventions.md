@@ -15,7 +15,7 @@ VPC-specific правила, error mapping, уроки из истории фи�
     законно и означает «назови сам»), на правке — `NameOnUpdate` (#715).
   - `Description` ≤ 256.
   - `Labels` ≤ 64 пар, key regex.
-  - `ZoneId` — required-only в `pkg/validate`.
+  - `ZoneId` — required-only в `corelib/validate`.
     Existence-проверка `zone_id`/`region_id` — sync, через порты `ZoneRegistry` /
     `RegionRegistry` (вызовы `geo.v1.ZoneService.Get` / `RegionService.Get` в `kacho-geo`);
     неизвестная зона → `FailedPrecondition` + машинный признак `PEER_RESOURCE_MISSING`

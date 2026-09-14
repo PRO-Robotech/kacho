@@ -10,8 +10,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/PRO-Robotech/kacho/pkg/peer"
-	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+	"github.com/PRO-Robotech/corelib/peer"
+	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 )
 
@@ -37,7 +37,7 @@ import (
 // упорядочены одинаково и строка не пропускается дельтой.
 const limitRevisionUnknown = 0
 
-// LimitResolver — порт владельца величин (`InternalLimitService.Resolve`).
+// LimitResolver — порт владельца величин (глагол `Resolve`).
 type LimitResolver interface {
 	Resolve(ctx context.Context, scopeID, service string) ([]ports.ResolvedLimit, error)
 }

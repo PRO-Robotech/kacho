@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
+	"github.com/PRO-Robotech/corelib/authz/proxytuple"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
-	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
@@ -29,7 +29,7 @@ import (
 //
 // THE PART THAT MAKES THIS MORE THAN "did we emit something". kaname guards
 // that proxy write-path with a least-privilege rule over the whole tuple
-// (pkg/authz/proxytuple.ValidateTuple). It runs BEFORE the mirror UPSERT, so a
+// (corelib/authz/proxytuple.ValidateTuple). It runs BEFORE the mirror UPSERT, so a
 // RegisterResource carrying a tuple the rule refuses is rejected and its
 // labels/parent payload is dropped on the floor — the mirror is never refreshed,
 // no `mirror.upsert` reconcile event is enqueued, and the stale label keeps
@@ -53,7 +53,7 @@ import (
 // tuple kaname will actually accept — i.e. that the labels/parent payload
 // reaches resource_mirror instead of being rejected before the UPSERT.
 //
-// It asks the RECEIVING SIDE'S OWN RULE, by import (pkg/authz/proxytuple), and
+// It asks the RECEIVING SIDE'S OWN RULE, by import (corelib/authz/proxytuple), and
 // about the whole TRIPLE the wire carries — subject, relation, object. Its
 // predecessor held a HAND-WRITTEN COPY of the accepted relation set, because the
 // rule then lived under services/iam/internal/ and Go's visibility rule made
@@ -250,7 +250,7 @@ func requireEveryTupleProxyRegistrable(t *testing.T, intent domain.FGARegisterIn
 //
 // AT THE TIME the refusal was classified as retryable, and that is what wedged the
 // partition: a row held in the retryable class is kept BELOW the poison threshold
-// by design (pkg/outbox/drainer/internal.go, markTransientFailure), so it never
+// by design (corelib/outbox/drainer/internal.go, markTransientFailure), so it never
 // left the partition-head blocking set at all and the block had no end — which is
 // why `lsn-post-revoke-deny` stayed {"allowed":true} well past its 15s budget with
 // no consistency race involved.

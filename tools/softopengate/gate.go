@@ -128,13 +128,20 @@ func (o observability) merge(other observability) observability {
 
 // Report is the census plus the findings of one run.
 type Report struct {
-	Roots        []string // roots walked, sorted
-	Files        int      // non-test .go files parsed
-	SwitchReads  int      // `if` branches whose condition reads a soft-open switch
-	SoftPasses   int      // of those, the ones that hand back the page (the subject)
-	Refusals     int      // of those, the ones that refuse instead (not the subject)
-	Findings     []string // soft passes that are not observable
-	PremiseNotes []string // the gate's own premise failing to hold
+	Roots       []string // roots walked, sorted
+	Files       int      // non-test .go files parsed
+	SwitchReads int      // `if` branches whose condition reads a soft-open switch
+	SoftPasses  int      // of those, the ones that hand back the page (the subject)
+	// SoftPassSites are where those soft passes are, sorted. Kept so that "a branch
+	// handing back the page exists somewhere this walk does not reach" is reportable
+	// WITH a coordinate instead of as a bare number. Refusals are deliberately NOT
+	// recorded here: a boot guard of the same shape is the opposite of the subject,
+	// and there are nine of them in this tree — a list mixing the two would send the
+	// reader to the guards that make the escape survivable.
+	SoftPassSites []string
+	Refusals      int      // of those, the ones that refuse instead (not the subject)
+	Findings      []string // soft passes that are not observable
+	PremiseNotes  []string // the gate's own premise failing to hold
 }
 
 // OK reports whether the run is clean.
@@ -214,6 +221,7 @@ func Run(roots []string) (Report, error) {
 			rep.Files, strings.Join(knownNames(), ", ")))
 	}
 	sort.Strings(rep.Findings)
+	sort.Strings(rep.SoftPassSites)
 	return rep, nil
 }
 
@@ -273,6 +281,8 @@ func inspectFile(fset *token.FileSet, f *ast.File, funcs map[string]*ast.FuncDec
 				return true
 			}
 			rep.SoftPasses++
+			rep.SoftPassSites = append(rep.SoftPassSites,
+				fmt.Sprintf("%s (%s)", fset.Position(ifStmt.Pos()), fn.Name.Name))
 			if observabilityOfBranch(ifStmt.Body, funcs).complete() {
 				return true
 			}

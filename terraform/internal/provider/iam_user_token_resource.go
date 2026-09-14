@@ -18,8 +18,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kaname/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/terraform/internal/client"
+	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 )
 
 // iamUsersPath — коллекция пользователей. Нужна дважды: из неё строится путь токена
@@ -45,7 +45,7 @@ const iamUsersPath = "/iam/v1/users"
 //
 // ЗДЕСЬ СТОЯЛО, ЧТО СЛУЖЕБНАЯ УЧЁТКА ПОРОГА НЕ ПРОХОДИТ, — и стояло сразу в трёх местах.
 // Это неверно: машинный принципал освобождён от порога уровня доверия ПЕРВЫМ ЖЕ условием
-// общего правила (pkg/grpcsrv/acr.go, EvaluateStepUp), и оба места энфорсмента — край и
+// общего правила (corelib/grpcsrv/acr.go, EvaluateStepUp), и оба места энфорсмента — край и
 // iam — приходят к вердикту через эту одну функцию. Текст объявлял препятствием то, чего
 // не существует, отговаривая конвейер от полосы, ради которой машинная личность и
 // заводится, — а НАСТОЯЩАЯ причина отказа не называлась вовсе. Комментарий,

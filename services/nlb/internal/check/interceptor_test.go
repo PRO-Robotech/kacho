@@ -16,9 +16,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/corelib/authz"
+	"github.com/PRO-Robotech/corelib/operations"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
-	"github.com/PRO-Robotech/kacho/pkg/authz"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/check"
 )
@@ -350,7 +350,7 @@ func TestAZD011_OperationCancel_Public_HandlerOwnsCreatorCheck(t *testing.T) {
 // ответила», — и это утверждение осталось. Код при этом сменился с
 // PermissionDenied (задача #497): отказ в правах означает «повторять
 // бессмысленно», а здесь про права не сказано ничего, и через мгновение ответ
-// будет. Полосы целиком — pkg/authz/decision_lane_codes_test.go.
+// будет. Полосы целиком — corelib/authz/decision_lane_codes_test.go.
 // ────────────────────────────────────────────────────────────────────────────
 
 func TestAZD012_FGAUnavailable_FailClosed(t *testing.T) {
@@ -369,7 +369,7 @@ func TestAZD012_FGAUnavailable_FailClosed(t *testing.T) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Breakglass — поле ОБЩЕГО перехватчика (pkg/authz), а НЕ настройка nlb.
+// Breakglass — поле ОБЩЕГО перехватчика (corelib/authz), а НЕ настройка nlb.
 //
 // Прежняя редакция этой шапки утверждала «production cfg rejects breakglass=true,
 // covered separately в config/validate_test.go»: ни ключа, ни поля, ни такой

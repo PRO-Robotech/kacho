@@ -6,7 +6,7 @@
 // unit-тестами `internal/service`, `internal/handler` и use-case-пакетов
 // `internal/apps/kacho/api/*`.
 //
-// Зависит только от `internal/repo`, `internal/domain` и `pkg/operations`
+// Зависит только от `internal/repo`, `internal/domain` и `corelib/operations`
 // — НЕ от `internal/service`/use-case-пакетов, поэтому white-box service-тесты
 // (`package service`) могут импортировать repomock без import-cycle.
 package repomock
@@ -22,7 +22,7 @@ import (
 	grpcstatus "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
 
-	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/corelib/operations"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
