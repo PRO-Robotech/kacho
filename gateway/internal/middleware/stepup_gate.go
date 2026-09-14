@@ -57,8 +57,24 @@ var (
 // either an exempt RPC (gated by in-handler ReBAC + FGA-exempt posture) or an
 // explicit routine downgrade — never an accidental un-gated privileged RPC.
 type PermissionRequirement struct {
-	RequiredACRMin string        // "" → no step-up requirement (Check fails open on it)
-	MFAMaxAge      time.Duration // 0 → no requirement
+	RequiredACRMin string // "" → no step-up requirement (Check fails open on it)
+
+	// MFAMaxAge — окно свежести церемонии. 0 → требования нет.
+	//
+	// ПРОИЗВОДИТЕЛЯ У НЕГО НА ЭТОМ КРАЕ НЕТ, И ЭТО РЕШЕНИЕ, А НЕ ПРОПУСК
+	// (#2569): окно свежести объявляется условием `mfa_fresh` модели прав, чьи
+	// доводы этот край уже производит (`setTokenContextHeaders`,
+	// `setSessionAssuranceHeaders`). Пер-RPC окно каталога вторым словарём об
+	// одном предмете не заводится. Разбор решения и то, что придётся сделать,
+	// если его пересмотрят, — `stepup_freshness_census_test.go`, §РЕШЕНИЕ; он же
+	// сторожит обе стороны и краснеет на записи каталога, объявившей окно.
+	//
+	// Поле при этом ЖИВОЕ и снятию не подлежит: оно параметр ОБЩЕГО правила
+	// фундамента (`grpcsrv.EvaluateStepUp`), к которому приходят оба энфорсера.
+	// Без него край перестал бы быть полным рендерером этого правила — два
+	// вердикта из четырёх стали бы отсюда недостижимы, и пробы паритета
+	// потеряли бы половину предмета.
+	MFAMaxAge time.Duration
 }
 
 // StepUpGate — stateless evaluator.
