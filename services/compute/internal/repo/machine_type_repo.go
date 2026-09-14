@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PRO-Robotech/corelib/validate"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 )
@@ -224,7 +225,8 @@ func (r *MachineTypeRepo) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		if isFKViolation(err) {
 			// Конвенционный тон вместо generic "The machinetype … is being used".
-			return fmt.Errorf("%w: machine type %s is in use", ports.ErrFailedPrecondition, id)
+			return refusal.Wrap(refusal.ReferredTo, refusal.Ref{ResourceType: "machine_type", ResourceID: id},
+				fmt.Errorf("%w: machine type %s is in use", ports.ErrFailedPrecondition, id))
 		}
 		return wrapPgErr(err, "MachineType", id)
 	}

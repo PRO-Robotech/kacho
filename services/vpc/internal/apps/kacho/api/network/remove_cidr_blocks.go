@@ -15,6 +15,7 @@ import (
 	"github.com/PRO-Robotech/corelib/operations"
 	corevalidate "github.com/PRO-Robotech/corelib/validate"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
@@ -94,7 +95,8 @@ func (u *RemoveCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6
 		if b, cerr := w.Subnets().SupernetBlockCoveringSubnet(ctx, id, candidate, retained); cerr != nil {
 			return nil, serviceerr.MapRepoErr(cerr)
 		} else if b != "" {
-			return nil, status.Errorf(codes.FailedPrecondition, "network CIDR block %s still contains subnets", b)
+			return nil, serviceerr.DeletionRefusal(refusal.HoldsChildren, "network", id,
+				"network CIDR block %s still contains subnets", b)
 		}
 
 		updated, uerr := w.Networks().SetCidrBlocks(ctx, id, remainingV4, remainingV6)

@@ -16,7 +16,9 @@ import (
 	"github.com/PRO-Robotech/corelib/ids"
 	"github.com/PRO-Robotech/corelib/operations"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/shared"
 	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
@@ -83,7 +85,7 @@ func (u *DeleteLoadBalancerUseCase) Execute(
 		return nil, mapDomainErr(err)
 	}
 	if cur.DeletionProtection {
-		return nil, status.Error(codes.FailedPrecondition,
+		return nil, shared.DeletionRefusal(refusal.Protected, "load_balancer", id,
 			"load balancer has deletion protection enabled")
 	}
 	hasListeners, err := rd.LoadBalancers().HasListeners(ctx, id)
@@ -100,7 +102,7 @@ func (u *DeleteLoadBalancerUseCase) Execute(
 		// было: путь FK отдавал безымянное «has dependent resources». Target groups
 		// wire in THROUGH listeners (NLB CONTRACT — no M:N pivot), so "no listeners"
 		// already implies "no wired target group": no separate TG precheck needed.
-		return nil, status.Errorf(codes.FailedPrecondition,
+		return nil, shared.DeletionRefusal(refusal.HoldsChildren, "load_balancer", id,
 			"NetworkLoadBalancer %s has listener(s); delete first", id)
 	}
 

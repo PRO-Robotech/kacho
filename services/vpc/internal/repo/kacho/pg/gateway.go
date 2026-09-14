@@ -14,6 +14,7 @@ import (
 
 	"github.com/PRO-Robotech/corelib/filter"
 	"github.com/PRO-Robotech/corelib/validate"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
@@ -288,7 +289,8 @@ func (w *gatewayWriter) Delete(ctx context.Context, id string) error {
 	tag, err := w.tx.Exec(ctx, `DELETE FROM gateways WHERE id = $1`, id)
 	if err != nil {
 		if helpers.IsFKViolation(err) {
-			return fmt.Errorf("%w: gateway is in use", helpers.ErrFailedPrecondition)
+			return refusal.Wrap(refusal.ReferredTo, refusal.Ref{ResourceType: "gateway", ResourceID: id},
+				fmt.Errorf("%w: gateway is in use", helpers.ErrFailedPrecondition))
 		}
 		return helpers.WrapGatewayErr(err, id)
 	}

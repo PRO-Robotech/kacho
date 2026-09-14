@@ -15,6 +15,7 @@ import (
 	"github.com/PRO-Robotech/corelib/filter"
 	"github.com/PRO-Robotech/corelib/safeconv"
 	"github.com/PRO-Robotech/corelib/validate"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
@@ -428,7 +429,8 @@ func (w *subnetWriter) Delete(ctx context.Context, id string) error {
 	tag, err := w.tx.Exec(ctx, `DELETE FROM subnets WHERE id = $1`, id)
 	if err != nil {
 		if helpers.IsFKViolation(err) {
-			return fmt.Errorf("%w: subnet has dependent resources", helpers.ErrFailedPrecondition)
+			return refusal.Wrap(refusal.ReferredUnnamed, refusal.Ref{ResourceType: "subnet", ResourceID: id},
+				fmt.Errorf("%w: subnet has dependent resources", helpers.ErrFailedPrecondition))
 		}
 		return helpers.WrapPgErr(err, "Subnet", id)
 	}

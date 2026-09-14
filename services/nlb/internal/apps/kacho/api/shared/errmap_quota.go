@@ -44,7 +44,7 @@ const (
 //
 // `loadbalancer`, а не `nlb`: наружу домен зовётся так же, как его контракт и
 // его токены каталога, — арендатор не обязан знать имя каталога сервиса.
-const quotaReasonDomain = "loadbalancer.kacho.cloud"
+const quotaReasonDomain = serviceDomain + ".kacho.cloud"
 
 // quotaRefusal собирает статус отказа учёта, если err им является; ok=false
 // означает «это не отказ учёта» и передаёт разбор общей классификации.

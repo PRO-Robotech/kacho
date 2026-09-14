@@ -55,7 +55,16 @@ func MapDomainErr(err error) error {
 	case errors.Is(err, domain.ErrAlreadyExists):
 		return status.Error(codes.AlreadyExists, StripSentinel(err, domain.ErrAlreadyExists))
 	case errors.Is(err, domain.ErrFailedPrecondition):
-		return status.Error(codes.FailedPrecondition, StripSentinel(err, domain.ErrFailedPrecondition))
+		// Полоса отказа на снятие приклеивается ЗДЕСЬ, в ветке предусловия, а не
+		// выше по switch'у: признак принадлежит состоянию ресурса, и поставить его
+		// на код, который полосе не принадлежит, значило бы объявить полосу там, где
+		// производитель её не называл. Полосы нет — ветка ведёт себя ровно как
+		// прежде, ни кода, ни текста не меняя.
+		msg := StripSentinel(err, domain.ErrFailedPrecondition)
+		if laned, ok := deletionRefusal(err, codes.FailedPrecondition, msg); ok {
+			return laned
+		}
+		return status.Error(codes.FailedPrecondition, msg)
 	case errors.Is(err, domain.ErrInvalidArg):
 		return status.Error(codes.InvalidArgument, StripSentinel(err, domain.ErrInvalidArg))
 	case errors.Is(err, domain.ErrUnavailable):

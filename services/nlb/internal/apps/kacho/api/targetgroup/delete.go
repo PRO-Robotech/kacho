@@ -17,7 +17,9 @@ import (
 	"github.com/PRO-Robotech/corelib/ids"
 	"github.com/PRO-Robotech/corelib/operations"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/shared"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
@@ -93,7 +95,7 @@ func (u *DeleteTargetGroupUseCase) Execute(
 		return nil, mapDomainErr(err)
 	}
 	if len(lstIDs) > 0 {
-		return nil, status.Errorf(codes.FailedPrecondition,
+		return nil, shared.DeletionRefusal(refusal.ReferredTo, "target_group", id,
 			"target group is referenced by listeners: [%s]", strings.Join(lstIDs, ", "))
 	}
 
