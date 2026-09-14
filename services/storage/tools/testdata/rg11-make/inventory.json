@@ -1,0 +1,333 @@
+{
+  "base_sha": "d941344bd972b2e994263a9e964afa1491aff293",
+  "corpus_sha256": "0664026559373f68b0602838ca71bea2e61c6c68a421391f1faca006407b76c5",
+  "source_reader_sha256": "42b738fc1ef9df195077c96c48a44cfb6bd44671d3ed1826fc47e90315a7d2b1",
+  "files": {
+    ".github/scripts/stand-up.sh": "399a0bc6c5e8d440f46862f6ffeae6e70a937acd96700567b9dea281ed26f87f",
+    ".github/workflows/branch-protection-drift.yml": "9aeefe494152b59a907b72f77b51a05ffb7c5e9d5d35528617282f5e1ba39a52",
+    ".github/workflows/ci.yaml": "4c309ae5ad66111aed45a7611a4f0fabbfc07841e7c60b6f4c997c76189e7e81",
+    ".github/workflows/console-e2e.yml": "6b9d5343dd0ecea7f523ea0eee9c9bc33b99011ee124dd2a56cc065fd35fec89",
+    ".github/workflows/continuous-fuzz.yml": "f40e60c8aac87fe1c67bdf7f0b153f99cec62af828a930ed7eeb1ee46972ab6f",
+    ".github/workflows/docker-build.yml": "9fda5eed44eb8d55a19450a9c182c346543e6939b8663608d0dd875225f1be54",
+    ".github/workflows/e2e-newman.yml": "e5964137a6c92a95aae45c17cdd8218daac37d80c425dc4b7f4c4659ac7455cd",
+    ".github/workflows/pinned-tools-freshness.yml": "91b1af6da9e297980b57613240930b946f139310c6efd917031a12dbbc529c88",
+    ".github/workflows/production-posture.yml": "2fb553dcc94db19ccb587a9f491cc61ccd1efe1c07f3b35597daff7f43564c88",
+    ".github/workflows/release.yml": "e6cbbca918726904c49c377bbb0835b2def430a8a4c18266544358f0bc79cd7f",
+    ".github/workflows/required-verdict.yml": "7acfed0050413593e95f6e182127c1108df64b6fdb31aafa4120b8be8a6d31f9",
+    ".github/workflows/runner-probe.yml": "767657748cdaa5613be3a6f1d03bbaa15b597a4d7630b12e1e36a24a7f1abe19",
+    ".github/workflows/security-scan.yml": "c415807b3b57e54c519a04c68c81a9af94e9845b6dcc15b983e1430925ad70ba",
+    ".github/workflows/ui.yml": "3651eb004bbb7726528b31447ec7d4506ebb5f977cd61f8e3499f6198e8b57e4",
+    "Makefile": "c491a3c6b36c8754027033237674a0761c406d026577b8290c8240f83875d314",
+    "deploy/Makefile": "9f3aad3ca8b078394d789aacff578a2b808ce573b76589e96c8c0cf12dce20b8",
+    "gateway/Makefile": "eea35f62aca082b0aa5ed112b6054cbe9efcfe67872f2818d58b160faa442730",
+    "services/compute/Makefile": "d5d00703b1ed0207a8ce1904c5be408e4b411ccd63f4451b939f22c0f7092843",
+    "services/geo/Makefile": "4e96e031fb50c0b5dc83d9bb3b041f72535c1a0bc2a8505f79f0cdac74454905",
+    "services/iam/Makefile": "f10c3416bc6df7634c7290c03979a8714775a89412c8b12faaddd69180a39719",
+    "services/iam/tests/k6/Makefile": "b6f11602eb7308624ff0c82badc882f392f13e15eec9992f16ab9aa19d6de7cd",
+    "services/nlb/Makefile": "972b2fdde58feaefde60cbcc2e393be9a88d6b558877a420c1df464f464fee84",
+    "services/nlb/tests/k6/Makefile": "2b729e99c59dcc2413e01e1608a2f7ecd338ce6f4655ed553eb5a05bc374915e",
+    "services/registry/Makefile": "d4ad0b2d972122376f743fb94371b51a57601757b5009f0e8ce00b533983e4ff",
+    "services/storage/Makefile": "c39aec43cad724b5f074563097f72d82c69c33a836e3c60622941b1052402643",
+    "services/vpc/Makefile": "1e9e5cd3433f445a9f29e6d17afcefb1d4629355b73ed4f59bc76eabd40a33c7"
+  },
+  "old": [
+    {
+      "workflow": "ci.yaml",
+      "job": "build-test",
+      "step": 12,
+      "dir": ".",
+      "target": "test-unit",
+      "run_sha256": "173ba1a45167bfb31d685325b47e96424eb9c524d42641d344db84183aaa6ace"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "integration",
+      "step": 3,
+      "dir": ".",
+      "target": "test-integration",
+      "run_sha256": "9a310237f982424d03e2e843742a5c17490ffc72daa47b97e6fb4664f8df0d12"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "pg-outside-selection",
+      "step": 4,
+      "dir": ".",
+      "target": "test-pg-outside-selection",
+      "run_sha256": "cab564aa9a4956b90df1130aba5aaa8d3ae0ed623bafed11b709d7a4020c44d8"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 3,
+      "dir": "gateway",
+      "target": "permission-catalog-check",
+      "run_sha256": "fa14b5b5d66351b1b18dfb1d811712f96a0f61b828fcacbfecb9f6acba7ee6eb"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 4,
+      "dir": "gateway",
+      "target": "rest-route-table-check",
+      "run_sha256": "0f052abb8c2567c72555d9f666f267d4fa588b731e36fb501549463fb3ff5cf0"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 5,
+      "dir": "gateway",
+      "target": "domain-generation-check",
+      "run_sha256": "66253e613fe665e81f60cc84f8b6ee16df8e909cdd80aea40567fa04f00a9f63"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 7,
+      "dir": "services/compute",
+      "target": "audit-list-filter",
+      "run_sha256": "63964f23b24de2d4b73d166986c836b5002440f60a24e283b777c08ee21fa548"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 7,
+      "dir": "services/geo",
+      "target": "audit-list-filter",
+      "run_sha256": "63964f23b24de2d4b73d166986c836b5002440f60a24e283b777c08ee21fa548"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 7,
+      "dir": "services/iam",
+      "target": "audit-list-filter",
+      "run_sha256": "63964f23b24de2d4b73d166986c836b5002440f60a24e283b777c08ee21fa548"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 7,
+      "dir": "services/nlb",
+      "target": "audit-list-filter",
+      "run_sha256": "63964f23b24de2d4b73d166986c836b5002440f60a24e283b777c08ee21fa548"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 7,
+      "dir": "services/registry",
+      "target": "audit-list-filter",
+      "run_sha256": "63964f23b24de2d4b73d166986c836b5002440f60a24e283b777c08ee21fa548"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 7,
+      "dir": "services/storage",
+      "target": "audit-list-filter",
+      "run_sha256": "63964f23b24de2d4b73d166986c836b5002440f60a24e283b777c08ee21fa548"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 7,
+      "dir": "services/vpc",
+      "target": "audit-list-filter",
+      "run_sha256": "63964f23b24de2d4b73d166986c836b5002440f60a24e283b777c08ee21fa548"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 9,
+      "dir": "services/iam",
+      "target": "module-manifest-check",
+      "run_sha256": "d4a2bbeec3fee8eabc0d106a327276cd758cc66f4d09234817fa9d38f10ceeb6"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 10,
+      "dir": "services/iam",
+      "target": "model-canon-check",
+      "run_sha256": "cdc8cb6a1aba71dc4cf96705cd2a2e81e368d35be9a2c91ab3b5d00da163b3df"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "authz-artifacts",
+      "step": 13,
+      "dir": "services/storage",
+      "target": "audit-known-failing",
+      "run_sha256": "4316b72fbc106ecf8d23de3b3c6a93de75257424b4a33c9849bd7fdf106ce6bf"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 7,
+      "dir": "services/vpc",
+      "target": "helm-render-guard",
+      "run_sha256": "c05b5226e5cf7fba9d9189dc05547ec8418146d4ffe40c5e62203c8b51a6fab5"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 7,
+      "dir": "services/nlb",
+      "target": "helm-render-guard",
+      "run_sha256": "c05b5226e5cf7fba9d9189dc05547ec8418146d4ffe40c5e62203c8b51a6fab5"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 7,
+      "dir": "services/iam",
+      "target": "helm-render-guard",
+      "run_sha256": "c05b5226e5cf7fba9d9189dc05547ec8418146d4ffe40c5e62203c8b51a6fab5"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 11,
+      "dir": "deploy",
+      "target": "waiter-discipline",
+      "run_sha256": "46bf145f6d3b7b8af4d2d5a051d8b7c54eb77d1dd492aee00d6655737952b17b"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 12,
+      "dir": "deploy",
+      "target": "report-reader-discipline",
+      "run_sha256": "f5014f6faa7e6a622ca269179c3c613c54a73904b0abd23e388f262c5add9c62"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 13,
+      "dir": "deploy",
+      "target": "alt-fixture-discipline",
+      "run_sha256": "b28e257e75ab89ba807c7354f6bdda7c62dcdad0d74dd13d0379afbef948ec65"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 14,
+      "dir": "deploy",
+      "target": "posture-branch-discipline",
+      "run_sha256": "589312e30316ac6a7f86aeadb1d8e594293dcd207c33c8a47020dda4b6f89148"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 15,
+      "dir": "deploy",
+      "target": "verdict-aggregator-discipline",
+      "run_sha256": "7cd8f2a9b1ca980cbc6d129867e33f5cd4d4896b6a4dc14faae6e04204a049c8"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 16,
+      "dir": "deploy",
+      "target": "ceremony-declaration-discipline",
+      "run_sha256": "dd84f3de75b60eff2ffd0ca351ffbc988b9feef114e089ffb7155502d606766d"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 17,
+      "dir": "deploy",
+      "target": "dialled-transport-discipline",
+      "run_sha256": "b1985ebf1608fd8460aaa0bb7c1e753b5b34eb20fc7a9559b21d51ff2e3f14a4"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 18,
+      "dir": "deploy",
+      "target": "generated-scripts-parse",
+      "run_sha256": "9c830bc1dc1dcafe8d04a4f27c7d44622f22de36fecc06089e1c4614993e7909"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 19,
+      "dir": "deploy",
+      "target": "delete-step-discipline",
+      "run_sha256": "320a0eadd468a05f7cd075b230ef5f810c3e1693842e41095c44e4e13e4d822f"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 20,
+      "dir": "deploy",
+      "target": "fixture-role-verbs",
+      "run_sha256": "5c2881782edef03a40b018f66fb31ae8baa4066f8ab220fa7d156391ffb68644"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 24,
+      "dir": "deploy",
+      "target": "gate-self-test",
+      "run_sha256": "6a9802f8b5b5467f9ba50bbd4da2249c96e184fce5b875d3e1d7f7a36c66b55f"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 25,
+      "dir": "deploy",
+      "target": "injection-proofs",
+      "run_sha256": "f21b73320b9e250b4cdec77eddfffc5bc84e54dc363f9cb6165728b6f4b8e33c"
+    },
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 26,
+      "dir": "deploy",
+      "target": "helm-manifest-test",
+      "run_sha256": "466bfa8e7f9f3c244afddfae2ded0a291c373672016ee5d78cbe615c35a24917"
+    },
+    {
+      "workflow": "console-e2e.yml",
+      "job": "probes",
+      "step": 28,
+      "dir": "deploy",
+      "target": "seed-vpc-pools-check",
+      "run_sha256": "3a5ba7b89c2f756a26b0090a71e33378951a771fab917ab224c630528690de80"
+    }
+  ],
+  "wrapped": [
+    {
+      "workflow": "ci.yaml",
+      "job": "helm",
+      "step": 21,
+      "dir": "deploy",
+      "target": "helm-deps",
+      "run_sha256": "9b6687dc22e1a48dbba77ef47fa2444576b0d3541d6c09202c82d690f7f13839"
+    },
+    {
+      "workflow": "console-e2e.yml",
+      "job": "probes",
+      "step": 24,
+      "dir": "deploy",
+      "target": "dev-up",
+      "run_sha256": "cb5f67661e32bf75d5f568c3877b699660cc914c6ed7abc3126877fef0c52f41"
+    },
+    {
+      "workflow": "e2e-newman.yml",
+      "job": "shard",
+      "step": 11,
+      "dir": "deploy",
+      "target": "dev-up",
+      "run_sha256": "6cfc43544aa23e5628f3b3500e2e843d139e7408abd6b8caff5d6528eef3aca7"
+    },
+    {
+      "workflow": "production-posture.yml",
+      "job": "stand",
+      "step": 8,
+      "dir": "deploy",
+      "target": "dev-prod-up",
+      "run_sha256": "ad2ad36f3bfb01c21b1a3a14752e03a5b95ae8d2bf5d4ea128637ca6acd9c353"
+    }
+  ]
+}
