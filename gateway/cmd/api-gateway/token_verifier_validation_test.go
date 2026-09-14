@@ -96,8 +96,14 @@ func TestTokenVerifier_TheGuardsInputHasAProducer(t *testing.T) {
 		require.Empty(t, cfg.ResolvedHydraIssuer(),
 			"а после разбора издателя не остаётся: вырожденное значение %q", issuer)
 
-		_, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: cfg.ResolvedHydraIssuer(), KeySetURL: cfg.ResolvedHydraJWKSURL(), TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}}})
+		// Адресат объявлен НАСТОЯЩИЙ — одно-фактность: красное обязано прийти
+		// от издателя, а не от соседней оси, которая тоже отвергает пустое
+		// (задача #2567). Без этого проба зеленела бы, ничего не доказав об
+		// издателе.
+		_, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: cfg.ResolvedHydraIssuer(), KeySetURL: cfg.ResolvedHydraJWKSURL(), TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}}, ExpectedAudience: testTokenAudience})
 		require.Error(t, err, "конструктор обязан отказать на пустом издателе")
+		require.NotContains(t, err.Error(), "audience",
+			"отказ обязан прийти от ИЗДАТЕЛЯ: красное от соседней оси ничего не доказывает")
 		produced++
 
 		require.Error(t, validateProductionTokenVerifierConfig("production", err),

@@ -51,15 +51,20 @@ func (c *countingLookup) LookupByExternalID(_ context.Context, _ string) (middle
 }
 
 // rs256Verifier builds a JWTVerifier wired to the fixture's JWKS server with
-// the fixture issuer/audience. allowMissing keeps aud optional (Hydra dev may
-// not stamp the gateway audience yet).
+// the fixture issuer/audience.
+//
+// Прежде здесь стояло `AllowMissingAudience: true` с доводом «Hydra dev может
+// ещё не ставить адресат края». Ручка снята вместе с полосой (задача #2567):
+// она отменяла сужение по адресату на ЛЮБОМ расхождении, а не только на
+// отсутствующем `aud`, то есть была вторым выключателем той же проверки.
+// Токены фикстуры адресат несут (standardClaims), поэтому снятие ничего здесь
+// не ослабляет и не усиливает.
 func rs256Verifier(t *testing.T, fix *jwksFixture) *middleware.JWTVerifier {
 	t.Helper()
 	v, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: fix.url, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
 
-		ExpectedAudience:     testAudience,
-		AllowMissingAudience: true,
-		JWKSCacheTTL:         time.Hour,
+		ExpectedAudience: testAudience,
+		JWKSCacheTTL:     time.Hour,
 	})
 	require.NoError(t, err)
 	return v
