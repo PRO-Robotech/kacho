@@ -110,7 +110,7 @@ func TestStubGoPackageJudgeCatchesUnparsableDescriptor(t *testing.T) {
 	t.Parallel()
 
 	faults, census := judgeStubGoPackagePlace(lawfulSites(),
-		[]string{"pkg/api/kacho/cloud/operation/operation.pb.go"}, 4, 1)
+		[]string{"pkg/api/corelib/operation/operation.pb.go"}, 4, 1)
 
 	if len(faults) != 1 {
 		t.Fatalf("ожидалась ровно одна находка, получено %d:\n  %s",

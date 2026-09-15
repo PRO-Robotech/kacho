@@ -9,7 +9,7 @@ import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "corelib/api/v1/operation.proto";
 import "kacho/cloud/vpc/v1/security_group.proto";
-import "kacho/cloud/operation/operation.proto";
+import "corelib/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
@@ -51,7 +51,7 @@ service SecurityGroupService {
   }
 
     // Creates a security group in the specified project and network.
-    rpc Create (CreateSecurityGroupRequest) returns (operation.Operation) {
+    rpc Create (CreateSecurityGroupRequest) returns (corelib.operation.Operation) {
         option (google.api.http) = { post: "/vpc/v1/securityGroups" body: "*" };
         option (corelib.api.v1.operation) = {
             metadata: "CreateSecurityGroupMetadata"
@@ -68,7 +68,7 @@ service SecurityGroupService {
 
     // Updates the specified security group.
     // Method starts an asynchronous operation that can be cancelled while it is in progress.
-    rpc Update (UpdateSecurityGroupRequest) returns (operation.Operation) {
+    rpc Update (UpdateSecurityGroupRequest) returns (corelib.operation.Operation) {
         option (google.api.http) = { patch: "/vpc/v1/securityGroups/{security_group_id}" body: "*" };
         option (corelib.api.v1.operation) = {
             metadata: "UpdateSecurityGroupMetadata"
@@ -84,7 +84,7 @@ service SecurityGroupService {
   }
 
     // Updates the rules of the specified security group.
-    rpc UpdateRules (UpdateSecurityGroupRulesRequest) returns (operation.Operation) {
+    rpc UpdateRules (UpdateSecurityGroupRulesRequest) returns (corelib.operation.Operation) {
         option (google.api.http) = { patch: "/vpc/v1/securityGroups/{security_group_id}/rules" body: "*" };
         option (corelib.api.v1.operation) = {
             metadata: "UpdateSecurityGroupMetadata"
@@ -100,7 +100,7 @@ service SecurityGroupService {
   }
 
     // Updates the specified rule.
-    rpc UpdateRule (UpdateSecurityGroupRuleRequest) returns (operation.Operation) {
+    rpc UpdateRule (UpdateSecurityGroupRuleRequest) returns (corelib.operation.Operation) {
         option (google.api.http) = { patch: "/vpc/v1/securityGroups/{security_group_id}/rules/{rule_id}" body: "*" };
         option (corelib.api.v1.operation) = {
             metadata: "UpdateSecurityGroupRuleMetadata"
@@ -116,7 +116,7 @@ service SecurityGroupService {
   }
 
     // Deletes the specified security group.
-    rpc Delete (DeleteSecurityGroupRequest) returns (operation.Operation) {
+    rpc Delete (DeleteSecurityGroupRequest) returns (corelib.operation.Operation) {
         option (google.api.http) = { delete: "/vpc/v1/securityGroups/{security_group_id}" };
         option (corelib.api.v1.operation) = {
             metadata: "DeleteSecurityGroupMetadata"
@@ -395,7 +395,7 @@ message ListSecurityGroupOperationsRequest {
 
 message ListSecurityGroupOperationsResponse {
     // List of operations for the specified security group.
-    repeated operation.Operation operations = 1;
+    repeated corelib.operation.Operation operations = 1;
 
     // Token for getting the next page of the list. If the number of results is greater than
     // the specified [ListSecurityGroupOperationsRequest.page_size], use `next_page_token` as the value

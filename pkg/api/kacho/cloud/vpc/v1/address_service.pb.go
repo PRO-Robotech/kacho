@@ -12,7 +12,7 @@ package vpcv1
 import (
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
-	operation "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -1112,7 +1112,7 @@ var File_kacho_cloud_vpc_v1_address_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_address_service_proto_rawDesc = "" +
 	"\n" +
-	"(kacho/cloud/vpc/v1/address_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a kacho/cloud/vpc/v1/address.proto\x1a$corelib/authz/v1/authz_options.proto\"2\n" +
+	"(kacho/cloud/vpc/v1/address_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a!corelib/operation/operation.proto\x1a kacho/cloud/vpc/v1/address.proto\x1a$corelib/authz/v1/authz_options.proto\"2\n" +
 	"\x11GetAddressRequest\x12\x1d\n" +
 	"\n" +
 	"address_id\x18\x01 \x01(\tR\taddressId\"\xc5\x01\n" +
@@ -1190,12 +1190,12 @@ const file_kacho_cloud_vpc_v1_address_service_proto_rawDesc = "" +
 	"address_id\x18\x01 \x01(\tR\taddressId\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tR\tpageToken\"\x89\x01\n" +
-	"\x1dListAddressOperationsResponse\x12@\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x85\x01\n" +
+	"\x1dListAddressOperationsResponse\x12<\n" +
 	"\n" +
-	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
+	"operations\x18\x01 \x03(\v2\x1c.corelib.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xbb\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xaf\n" +
 	"\n" +
 	"\x0eAddressService\x12\xb1\x01\n" +
 	"\x03Get\x12%.kacho.cloud.vpc.v1.GetAddressRequest\x1a\x1b.kacho.cloud.vpc.v1.Address\"f\x8a\xb5\x18\x11vpc.addresses.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x19\n" +
@@ -1203,16 +1203,16 @@ const file_kacho_cloud_vpc_v1_address_service_proto_rawDesc = "" +
 	"address_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02 \x12\x1e/vpc/v1/addresses/{address_id}\x12\xb4\x01\n" +
 	"\x04List\x12(.kacho.cloud.vpc.v1.ListAddressesRequest\x1a).kacho.cloud.vpc.v1.ListAddressesResponse\"W\x8a\xb5\x18\x12vpc.addresses.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x13\x12\x11/vpc/v1/addresses\x12\xd7\x01\n" +
-	"\x06Create\x12(.kacho.cloud.vpc.v1.CreateAddressRequest\x1a .kacho.cloud.operation.Operation\"\x80\x01\x8a\xb5\x18\x14vpc.addresses.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x13\x12\x11/vpc/v1/addresses\x12\xd3\x01\n" +
+	"\x06Create\x12(.kacho.cloud.vpc.v1.CreateAddressRequest\x1a\x1c.corelib.operation.Operation\"\x80\x01\x8a\xb5\x18\x14vpc.addresses.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\xb2\xd2* \n" +
-	"\x15CreateAddressMetadata\x12\aAddress\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/vpc/v1/addresses\x12\xea\x01\n" +
-	"\x06Update\x12(.kacho.cloud.vpc.v1.UpdateAddressRequest\x1a .kacho.cloud.operation.Operation\"\x93\x01\x8a\xb5\x18\x14vpc.addresses.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
+	"\x15CreateAddressMetadata\x12\aAddress\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/vpc/v1/addresses\x12\xe6\x01\n" +
+	"\x06Update\x12(.kacho.cloud.vpc.v1.UpdateAddressRequest\x1a\x1c.corelib.operation.Operation\"\x93\x01\x8a\xb5\x18\x14vpc.addresses.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
 	"\vvpc_address\x12\n" +
 	"address_id\xa2\xb5\x18\x011\xb2\xd2* \n" +
-	"\x15UpdateAddressMetadata\x12\aAddress\x82\xd3\xe4\x93\x02#:\x01*2\x1e/vpc/v1/addresses/{address_id}\x12\xf5\x01\n" +
-	"\x06Delete\x12(.kacho.cloud.vpc.v1.DeleteAddressRequest\x1a .kacho.cloud.operation.Operation\"\x9e\x01\x8a\xb5\x18\x14vpc.addresses.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x19\n" +
+	"\x15UpdateAddressMetadata\x12\aAddress\x82\xd3\xe4\x93\x02#:\x01*2\x1e/vpc/v1/addresses/{address_id}\x12\xf1\x01\n" +
+	"\x06Delete\x12(.kacho.cloud.vpc.v1.DeleteAddressRequest\x1a\x1c.corelib.operation.Operation\"\x9e\x01\x8a\xb5\x18\x14vpc.addresses.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x19\n" +
 	"\vvpc_address\x12\n" +
 	"address_id\xa2\xb5\x18\x011\xb2\xd2*.\n" +
 	"\x15DeleteAddressMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02 *\x1e/vpc/v1/addresses/{address_id}\x12\xfe\x01\n" +
@@ -1253,7 +1253,7 @@ var file_kacho_cloud_vpc_v1_address_service_proto_goTypes = []any{
 	nil,                                   // 16: kacho.cloud.vpc.v1.UpdateAddressRequest.LabelsEntry
 	(*Address)(nil),                       // 17: kacho.cloud.vpc.v1.Address
 	(*fieldmaskpb.FieldMask)(nil),         // 18: google.protobuf.FieldMask
-	(*operation.Operation)(nil),           // 19: kacho.cloud.operation.Operation
+	(*operation.Operation)(nil),           // 19: corelib.operation.Operation
 }
 var file_kacho_cloud_vpc_v1_address_service_proto_depIdxs = []int32{
 	17, // 0: kacho.cloud.vpc.v1.ListAddressesResponse.addresses:type_name -> kacho.cloud.vpc.v1.Address
@@ -1264,7 +1264,7 @@ var file_kacho_cloud_vpc_v1_address_service_proto_depIdxs = []int32{
 	7,  // 5: kacho.cloud.vpc.v1.CreateAddressRequest.external_ipv6_address_spec:type_name -> kacho.cloud.vpc.v1.ExternalIpv6AddressSpec
 	18, // 6: kacho.cloud.vpc.v1.UpdateAddressRequest.update_mask:type_name -> google.protobuf.FieldMask
 	16, // 7: kacho.cloud.vpc.v1.UpdateAddressRequest.labels:type_name -> kacho.cloud.vpc.v1.UpdateAddressRequest.LabelsEntry
-	19, // 8: kacho.cloud.vpc.v1.ListAddressOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	19, // 8: kacho.cloud.vpc.v1.ListAddressOperationsResponse.operations:type_name -> corelib.operation.Operation
 	0,  // 9: kacho.cloud.vpc.v1.AddressService.Get:input_type -> kacho.cloud.vpc.v1.GetAddressRequest
 	1,  // 10: kacho.cloud.vpc.v1.AddressService.List:input_type -> kacho.cloud.vpc.v1.ListAddressesRequest
 	3,  // 11: kacho.cloud.vpc.v1.AddressService.Create:input_type -> kacho.cloud.vpc.v1.CreateAddressRequest
@@ -1273,9 +1273,9 @@ var file_kacho_cloud_vpc_v1_address_service_proto_depIdxs = []int32{
 	13, // 14: kacho.cloud.vpc.v1.AddressService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListAddressOperationsRequest
 	17, // 15: kacho.cloud.vpc.v1.AddressService.Get:output_type -> kacho.cloud.vpc.v1.Address
 	2,  // 16: kacho.cloud.vpc.v1.AddressService.List:output_type -> kacho.cloud.vpc.v1.ListAddressesResponse
-	19, // 17: kacho.cloud.vpc.v1.AddressService.Create:output_type -> kacho.cloud.operation.Operation
-	19, // 18: kacho.cloud.vpc.v1.AddressService.Update:output_type -> kacho.cloud.operation.Operation
-	19, // 19: kacho.cloud.vpc.v1.AddressService.Delete:output_type -> kacho.cloud.operation.Operation
+	19, // 17: kacho.cloud.vpc.v1.AddressService.Create:output_type -> corelib.operation.Operation
+	19, // 18: kacho.cloud.vpc.v1.AddressService.Update:output_type -> corelib.operation.Operation
+	19, // 19: kacho.cloud.vpc.v1.AddressService.Delete:output_type -> corelib.operation.Operation
 	14, // 20: kacho.cloud.vpc.v1.AddressService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListAddressOperationsResponse
 	15, // [15:21] is the sub-list for method output_type
 	9,  // [9:15] is the sub-list for method input_type

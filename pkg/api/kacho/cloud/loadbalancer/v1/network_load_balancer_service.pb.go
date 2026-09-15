@@ -12,7 +12,7 @@ package loadbalancerv1
 import (
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
-	operation "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -1041,7 +1041,7 @@ var File_kacho_cloud_loadbalancer_v1_network_load_balancer_service_proto protore
 
 const file_kacho_cloud_loadbalancer_v1_network_load_balancer_service_proto_rawDesc = "" +
 	"\n" +
-	"?kacho/cloud/loadbalancer/v1/network_load_balancer_service.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a7kacho/cloud/loadbalancer/v1/network_load_balancer.proto\x1a$corelib/authz/v1/authz_options.proto\"X\n" +
+	"?kacho/cloud/loadbalancer/v1/network_load_balancer_service.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a!corelib/operation/operation.proto\x1a7kacho/cloud/loadbalancer/v1/network_load_balancer.proto\x1a$corelib/authz/v1/authz_options.proto\"X\n" +
 	"\x1dGetNetworkLoadBalancerRequest\x127\n" +
 	"\x18network_load_balancer_id\x18\x01 \x01(\tR\x15networkLoadBalancerId\"\x94\x01\n" +
 	"\x1fListNetworkLoadBalancersRequest\x12\x1d\n" +
@@ -1116,32 +1116,32 @@ const file_kacho_cloud_loadbalancer_v1_network_load_balancer_service_proto_rawDe
 	"\x18network_load_balancer_id\x18\x01 \x01(\tR\x15networkLoadBalancerId\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tR\tpageToken\"\x95\x01\n" +
-	")ListNetworkLoadBalancerOperationsResponse\x12@\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x91\x01\n" +
+	")ListNetworkLoadBalancerOperationsResponse\x12<\n" +
 	"\n" +
-	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
+	"operations\x18\x01 \x03(\v2\x1c.corelib.operation.OperationR\n" +
 	"operations\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"y\n" +
 	"\x16GetTargetStatesRequest\x127\n" +
 	"\x18network_load_balancer_id\x18\x01 \x01(\tR\x15networkLoadBalancerId\x12&\n" +
 	"\x0ftarget_group_id\x18\x02 \x01(\tR\rtargetGroupId\"h\n" +
 	"\x17GetTargetStatesResponse\x12M\n" +
-	"\rtarget_states\x18\x01 \x03(\v2(.kacho.cloud.loadbalancer.v1.TargetStateR\ftargetStates2\xa3\x14\n" +
+	"\rtarget_states\x18\x01 \x03(\v2(.kacho.cloud.loadbalancer.v1.TargetStateR\ftargetStates2\x93\x14\n" +
 	"\x1aNetworkLoadBalancerService\x12\xa5\x02\n" +
 	"\x03Get\x12:.kacho.cloud.loadbalancer.v1.GetNetworkLoadBalancerRequest\x1a0.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer\"\xaf\x01\x8a\xb5\x18%loadbalancer.networkLoadBalancers.get\x92\xb5\x18\x05v_get\x9a\xb5\x185\n" +
 	"\x19nlb_network_load_balancer\x12\x18network_load_balancer_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x029\x127/nlb/v1/networkLoadBalancers/{network_load_balancer_id}\x12\xdc\x01\n" +
-	"\x04List\x12<.kacho.cloud.loadbalancer.v1.ListNetworkLoadBalancersRequest\x1a=.kacho.cloud.loadbalancer.v1.ListNetworkLoadBalancersResponse\"W\x8a\xb5\x18&loadbalancer.networkLoadBalancers.list\xa2\xb5\x18\x011\xb0\xb5\x18\x01\x82\xd3\xe4\x93\x02\x1e\x12\x1c/nlb/v1/networkLoadBalancers\x12\xa3\x02\n" +
-	"\x06Create\x12=.kacho.cloud.loadbalancer.v1.CreateNetworkLoadBalancerRequest\x1a .kacho.cloud.operation.Operation\"\xb7\x01\x8a\xb5\x18(loadbalancer.networkLoadBalancers.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
+	"\x04List\x12<.kacho.cloud.loadbalancer.v1.ListNetworkLoadBalancersRequest\x1a=.kacho.cloud.loadbalancer.v1.ListNetworkLoadBalancersResponse\"W\x8a\xb5\x18&loadbalancer.networkLoadBalancers.list\xa2\xb5\x18\x011\xb0\xb5\x18\x01\x82\xd3\xe4\x93\x02\x1e\x12\x1c/nlb/v1/networkLoadBalancers\x12\x9f\x02\n" +
+	"\x06Create\x12=.kacho.cloud.loadbalancer.v1.CreateNetworkLoadBalancerRequest\x1a\x1c.corelib.operation.Operation\"\xb7\x01\x8a\xb5\x18(loadbalancer.networkLoadBalancers.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\xb2\xd2*8\n" +
-	"!CreateNetworkLoadBalancerMetadata\x12\x13NetworkLoadBalancer\x82\xd3\xe4\x93\x02!:\x01*\"\x1c/nlb/v1/networkLoadBalancers\x12\xe0\x02\n" +
-	"\x06Update\x12=.kacho.cloud.loadbalancer.v1.UpdateNetworkLoadBalancerRequest\x1a .kacho.cloud.operation.Operation\"\xf4\x01\x8a\xb5\x18(loadbalancer.networkLoadBalancers.update\x92\xb5\x18\bv_update\x9a\xb5\x185\n" +
+	"!CreateNetworkLoadBalancerMetadata\x12\x13NetworkLoadBalancer\x82\xd3\xe4\x93\x02!:\x01*\"\x1c/nlb/v1/networkLoadBalancers\x12\xdc\x02\n" +
+	"\x06Update\x12=.kacho.cloud.loadbalancer.v1.UpdateNetworkLoadBalancerRequest\x1a\x1c.corelib.operation.Operation\"\xf4\x01\x8a\xb5\x18(loadbalancer.networkLoadBalancers.update\x92\xb5\x18\bv_update\x9a\xb5\x185\n" +
 	"\x19nlb_network_load_balancer\x12\x18network_load_balancer_id\xa2\xb5\x18\x011\xb2\xd2*8\n" +
-	"!UpdateNetworkLoadBalancerMetadata\x12\x13NetworkLoadBalancer\x82\xd3\xe4\x93\x02<:\x01*27/nlb/v1/networkLoadBalancers/{network_load_balancer_id}\x12\xdf\x02\n" +
-	"\x06Delete\x12=.kacho.cloud.loadbalancer.v1.DeleteNetworkLoadBalancerRequest\x1a .kacho.cloud.operation.Operation\"\xf3\x01\x8a\xb5\x18(loadbalancer.networkLoadBalancers.delete\x92\xb5\x18\bv_delete\x9a\xb5\x185\n" +
+	"!UpdateNetworkLoadBalancerMetadata\x12\x13NetworkLoadBalancer\x82\xd3\xe4\x93\x02<:\x01*27/nlb/v1/networkLoadBalancers/{network_load_balancer_id}\x12\xdb\x02\n" +
+	"\x06Delete\x12=.kacho.cloud.loadbalancer.v1.DeleteNetworkLoadBalancerRequest\x1a\x1c.corelib.operation.Operation\"\xf3\x01\x8a\xb5\x18(loadbalancer.networkLoadBalancers.delete\x92\xb5\x18\bv_delete\x9a\xb5\x185\n" +
 	"\x19nlb_network_load_balancer\x12\x18network_load_balancer_id\xa2\xb5\x18\x011\xb2\xd2*:\n" +
-	"!DeleteNetworkLoadBalancerMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x029*7/nlb/v1/networkLoadBalancers/{network_load_balancer_id}\x12\xdd\x02\n" +
-	"\x04Move\x12;.kacho.cloud.loadbalancer.v1.MoveNetworkLoadBalancerRequest\x1a .kacho.cloud.operation.Operation\"\xf5\x01\x8a\xb5\x18&loadbalancer.networkLoadBalancers.move\x92\xb5\x18\bv_update\x9a\xb5\x185\n" +
+	"!DeleteNetworkLoadBalancerMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x029*7/nlb/v1/networkLoadBalancers/{network_load_balancer_id}\x12\xd9\x02\n" +
+	"\x04Move\x12;.kacho.cloud.loadbalancer.v1.MoveNetworkLoadBalancerRequest\x1a\x1c.corelib.operation.Operation\"\xf5\x01\x8a\xb5\x18&loadbalancer.networkLoadBalancers.move\x92\xb5\x18\bv_update\x9a\xb5\x185\n" +
 	"\x19nlb_network_load_balancer\x12\x18network_load_balancer_id\xa2\xb5\x18\x011\xb2\xd2*6\n" +
 	"\x1fMoveNetworkLoadBalancerMetadata\x12\x13NetworkLoadBalancer\x82\xd3\xe4\x93\x02A:\x01*\"</nlb/v1/networkLoadBalancers/{network_load_balancer_id}:move\x12\xc7\x02\n" +
 	"\x0fGetTargetStates\x123.kacho.cloud.loadbalancer.v1.GetTargetStatesRequest\x1a4.kacho.cloud.loadbalancer.v1.GetTargetStatesResponse\"\xc8\x01\x8a\xb5\x181loadbalancer.networkLoadBalancers.getTargetStates\x92\xb5\x18\x05v_get\x9a\xb5\x185\n" +
@@ -1188,7 +1188,7 @@ var file_kacho_cloud_loadbalancer_v1_network_load_balancer_service_proto_goTypes
 	(NetworkLoadBalancer_Placement)(0),                // 22: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.Placement
 	(NetworkLoadBalancer_AdminState)(0),               // 23: kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.AdminState
 	(*fieldmaskpb.FieldMask)(nil),                     // 24: google.protobuf.FieldMask
-	(*operation.Operation)(nil),                       // 25: kacho.cloud.operation.Operation
+	(*operation.Operation)(nil),                       // 25: corelib.operation.Operation
 	(*TargetState)(nil),                               // 26: kacho.cloud.loadbalancer.v1.TargetState
 }
 var file_kacho_cloud_loadbalancer_v1_network_load_balancer_service_proto_depIdxs = []int32{
@@ -1205,7 +1205,7 @@ var file_kacho_cloud_loadbalancer_v1_network_load_balancer_service_proto_depIdxs
 	16, // 10: kacho.cloud.loadbalancer.v1.UpdateNetworkLoadBalancerRequest.labels:type_name -> kacho.cloud.loadbalancer.v1.UpdateNetworkLoadBalancerRequest.LabelsEntry
 	19, // 11: kacho.cloud.loadbalancer.v1.UpdateNetworkLoadBalancerRequest.session_affinity:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.SessionAffinity
 	23, // 12: kacho.cloud.loadbalancer.v1.UpdateNetworkLoadBalancerRequest.admin_state:type_name -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.AdminState
-	25, // 13: kacho.cloud.loadbalancer.v1.ListNetworkLoadBalancerOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	25, // 13: kacho.cloud.loadbalancer.v1.ListNetworkLoadBalancerOperationsResponse.operations:type_name -> corelib.operation.Operation
 	26, // 14: kacho.cloud.loadbalancer.v1.GetTargetStatesResponse.target_states:type_name -> kacho.cloud.loadbalancer.v1.TargetState
 	0,  // 15: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Get:input_type -> kacho.cloud.loadbalancer.v1.GetNetworkLoadBalancerRequest
 	1,  // 16: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.List:input_type -> kacho.cloud.loadbalancer.v1.ListNetworkLoadBalancersRequest
@@ -1217,10 +1217,10 @@ var file_kacho_cloud_loadbalancer_v1_network_load_balancer_service_proto_depIdxs
 	11, // 22: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.ListOperations:input_type -> kacho.cloud.loadbalancer.v1.ListNetworkLoadBalancerOperationsRequest
 	17, // 23: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Get:output_type -> kacho.cloud.loadbalancer.v1.NetworkLoadBalancer
 	2,  // 24: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.List:output_type -> kacho.cloud.loadbalancer.v1.ListNetworkLoadBalancersResponse
-	25, // 25: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Create:output_type -> kacho.cloud.operation.Operation
-	25, // 26: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Update:output_type -> kacho.cloud.operation.Operation
-	25, // 27: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Delete:output_type -> kacho.cloud.operation.Operation
-	25, // 28: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Move:output_type -> kacho.cloud.operation.Operation
+	25, // 25: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Create:output_type -> corelib.operation.Operation
+	25, // 26: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Update:output_type -> corelib.operation.Operation
+	25, // 27: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Delete:output_type -> corelib.operation.Operation
+	25, // 28: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.Move:output_type -> corelib.operation.Operation
 	14, // 29: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.GetTargetStates:output_type -> kacho.cloud.loadbalancer.v1.GetTargetStatesResponse
 	12, // 30: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService.ListOperations:output_type -> kacho.cloud.loadbalancer.v1.ListNetworkLoadBalancerOperationsResponse
 	23, // [23:31] is the sub-list for method output_type

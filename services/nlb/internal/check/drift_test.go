@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operationpb "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/check"

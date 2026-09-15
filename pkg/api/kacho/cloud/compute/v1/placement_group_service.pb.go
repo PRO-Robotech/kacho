@@ -12,7 +12,7 @@ package computev1
 import (
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
-	operation "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -681,7 +681,7 @@ var File_kacho_cloud_compute_v1_placement_group_service_proto protoreflect.FileD
 
 const file_kacho_cloud_compute_v1_placement_group_service_proto_rawDesc = "" +
 	"\n" +
-	"4kacho/cloud/compute/v1/placement_group_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a,kacho/cloud/compute/v1/placement_group.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"H\n" +
+	"4kacho/cloud/compute/v1/placement_group_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a,kacho/cloud/compute/v1/placement_group.proto\x1a!corelib/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"H\n" +
 	"\x18GetPlacementGroupRequest\x12,\n" +
 	"\x12placement_group_id\x18\x01 \x01(\tR\x10placementGroupId\"\x8f\x01\n" +
 	"\x1aListPlacementGroupsRequest\x12\x1d\n" +
@@ -729,26 +729,26 @@ const file_kacho_cloud_compute_v1_placement_group_service_proto_rawDesc = "" +
 	"\x12placement_group_id\x18\x01 \x01(\tR\x10placementGroupId\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tR\tpageToken\"\x90\x01\n" +
-	"$ListPlacementGroupOperationsResponse\x12@\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x8c\x01\n" +
+	"$ListPlacementGroupOperationsResponse\x12<\n" +
 	"\n" +
-	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
+	"operations\x18\x01 \x03(\v2\x1c.corelib.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xb6\r\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xaa\r\n" +
 	"\x15PlacementGroupService\x12\xf9\x01\n" +
 	"\x03Get\x120.kacho.cloud.compute.v1.GetPlacementGroupRequest\x1a&.kacho.cloud.compute.v1.PlacementGroup\"\x97\x01\x8a\xb5\x18\x1ccompute.placement_groups.get\x92\xb5\x18\x05v_get\x9a\xb5\x18-\n" +
 	"\x17compute_placement_group\x12\x12placement_group_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x022\x120/compute/v1/placementGroups/{placement_group_id}\x12\xdd\x01\n" +
 	"\x04List\x122.kacho.cloud.compute.v1.ListPlacementGroupsRequest\x1a3.kacho.cloud.compute.v1.ListPlacementGroupsResponse\"l\x8a\xb5\x18\x1dcompute.placement_groups.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1d\x12\x1b/compute/v1/placementGroups\x12\x85\x02\n" +
-	"\x06Create\x123.kacho.cloud.compute.v1.CreatePlacementGroupRequest\x1a .kacho.cloud.operation.Operation\"\xa3\x01\x8a\xb5\x18\x1fcompute.placement_groups.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1d\x12\x1b/compute/v1/placementGroups\x12\x81\x02\n" +
+	"\x06Create\x123.kacho.cloud.compute.v1.CreatePlacementGroupRequest\x1a\x1c.corelib.operation.Operation\"\xa3\x01\x8a\xb5\x18\x1fcompute.placement_groups.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\xb2\xd2*.\n" +
-	"\x1cCreatePlacementGroupMetadata\x12\x0ePlacementGroup\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/compute/v1/placementGroups\x12\xb4\x02\n" +
-	"\x06Update\x123.kacho.cloud.compute.v1.UpdatePlacementGroupRequest\x1a .kacho.cloud.operation.Operation\"\xd2\x01\x8a\xb5\x18\x1fcompute.placement_groups.update\x92\xb5\x18\bv_update\x9a\xb5\x18-\n" +
+	"\x1cCreatePlacementGroupMetadata\x12\x0ePlacementGroup\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/compute/v1/placementGroups\x12\xb0\x02\n" +
+	"\x06Update\x123.kacho.cloud.compute.v1.UpdatePlacementGroupRequest\x1a\x1c.corelib.operation.Operation\"\xd2\x01\x8a\xb5\x18\x1fcompute.placement_groups.update\x92\xb5\x18\bv_update\x9a\xb5\x18-\n" +
 	"\x17compute_placement_group\x12\x12placement_group_id\xa2\xb5\x18\x011\xb2\xd2*.\n" +
-	"\x1cUpdatePlacementGroupMetadata\x12\x0ePlacementGroup\x82\xd3\xe4\x93\x025:\x01*20/compute/v1/placementGroups/{placement_group_id}\x12\xb8\x02\n" +
-	"\x06Delete\x123.kacho.cloud.compute.v1.DeletePlacementGroupRequest\x1a .kacho.cloud.operation.Operation\"\xd6\x01\x8a\xb5\x18\x1fcompute.placement_groups.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18-\n" +
+	"\x1cUpdatePlacementGroupMetadata\x12\x0ePlacementGroup\x82\xd3\xe4\x93\x025:\x01*20/compute/v1/placementGroups/{placement_group_id}\x12\xb4\x02\n" +
+	"\x06Delete\x123.kacho.cloud.compute.v1.DeletePlacementGroupRequest\x1a\x1c.corelib.operation.Operation\"\xd6\x01\x8a\xb5\x18\x1fcompute.placement_groups.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18-\n" +
 	"\x17compute_placement_group\x12\x12placement_group_id\xa2\xb5\x18\x011\xb2\xd2*5\n" +
 	"\x1cDeletePlacementGroupMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x022*0/compute/v1/placementGroups/{placement_group_id}\x12\xc6\x02\n" +
 	"\x0eListOperations\x12;.kacho.cloud.compute.v1.ListPlacementGroupOperationsRequest\x1a<.kacho.cloud.compute.v1.ListPlacementGroupOperationsResponse\"\xb8\x01\x8a\xb5\x181compute.placement_group_operations.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18-\n" +
@@ -785,7 +785,7 @@ var file_kacho_cloud_compute_v1_placement_group_service_proto_goTypes = []any{
 	(PlacementGroup_Strategy)(0),      // 14: kacho.cloud.compute.v1.PlacementGroup.Strategy
 	(PlacementGroup_PlacementType)(0), // 15: kacho.cloud.compute.v1.PlacementGroup.PlacementType
 	(*fieldmaskpb.FieldMask)(nil),     // 16: google.protobuf.FieldMask
-	(*operation.Operation)(nil),       // 17: kacho.cloud.operation.Operation
+	(*operation.Operation)(nil),       // 17: corelib.operation.Operation
 }
 var file_kacho_cloud_compute_v1_placement_group_service_proto_depIdxs = []int32{
 	13, // 0: kacho.cloud.compute.v1.ListPlacementGroupsResponse.placement_groups:type_name -> kacho.cloud.compute.v1.PlacementGroup
@@ -794,7 +794,7 @@ var file_kacho_cloud_compute_v1_placement_group_service_proto_depIdxs = []int32{
 	15, // 3: kacho.cloud.compute.v1.CreatePlacementGroupRequest.placement_type:type_name -> kacho.cloud.compute.v1.PlacementGroup.PlacementType
 	16, // 4: kacho.cloud.compute.v1.UpdatePlacementGroupRequest.update_mask:type_name -> google.protobuf.FieldMask
 	12, // 5: kacho.cloud.compute.v1.UpdatePlacementGroupRequest.labels:type_name -> kacho.cloud.compute.v1.UpdatePlacementGroupRequest.LabelsEntry
-	17, // 6: kacho.cloud.compute.v1.ListPlacementGroupOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	17, // 6: kacho.cloud.compute.v1.ListPlacementGroupOperationsResponse.operations:type_name -> corelib.operation.Operation
 	0,  // 7: kacho.cloud.compute.v1.PlacementGroupService.Get:input_type -> kacho.cloud.compute.v1.GetPlacementGroupRequest
 	1,  // 8: kacho.cloud.compute.v1.PlacementGroupService.List:input_type -> kacho.cloud.compute.v1.ListPlacementGroupsRequest
 	3,  // 9: kacho.cloud.compute.v1.PlacementGroupService.Create:input_type -> kacho.cloud.compute.v1.CreatePlacementGroupRequest
@@ -803,9 +803,9 @@ var file_kacho_cloud_compute_v1_placement_group_service_proto_depIdxs = []int32{
 	9,  // 12: kacho.cloud.compute.v1.PlacementGroupService.ListOperations:input_type -> kacho.cloud.compute.v1.ListPlacementGroupOperationsRequest
 	13, // 13: kacho.cloud.compute.v1.PlacementGroupService.Get:output_type -> kacho.cloud.compute.v1.PlacementGroup
 	2,  // 14: kacho.cloud.compute.v1.PlacementGroupService.List:output_type -> kacho.cloud.compute.v1.ListPlacementGroupsResponse
-	17, // 15: kacho.cloud.compute.v1.PlacementGroupService.Create:output_type -> kacho.cloud.operation.Operation
-	17, // 16: kacho.cloud.compute.v1.PlacementGroupService.Update:output_type -> kacho.cloud.operation.Operation
-	17, // 17: kacho.cloud.compute.v1.PlacementGroupService.Delete:output_type -> kacho.cloud.operation.Operation
+	17, // 15: kacho.cloud.compute.v1.PlacementGroupService.Create:output_type -> corelib.operation.Operation
+	17, // 16: kacho.cloud.compute.v1.PlacementGroupService.Update:output_type -> corelib.operation.Operation
+	17, // 17: kacho.cloud.compute.v1.PlacementGroupService.Delete:output_type -> corelib.operation.Operation
 	10, // 18: kacho.cloud.compute.v1.PlacementGroupService.ListOperations:output_type -> kacho.cloud.compute.v1.ListPlacementGroupOperationsResponse
 	13, // [13:19] is the sub-list for method output_type
 	7,  // [7:13] is the sub-list for method input_type

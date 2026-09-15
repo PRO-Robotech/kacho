@@ -38,7 +38,7 @@ import (
 var protoPackages = []string{
 	"kacho.cloud.registry.v1",
 	// LRO-конверт: Operation.Get/Cancel поднимает каждый сервис.
-	"kacho.cloud.operation",
+	"corelib.operation",
 }
 
 // PermissionMap — карта `<gRPC FullMethod>` → требуемое право, выведенная из

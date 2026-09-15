@@ -8,7 +8,7 @@ package kacho.cloud.vpc.v1;
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "corelib/api/v1/operation.proto";
-import "kacho/cloud/operation/operation.proto";
+import "corelib/operation/operation.proto";
 import "kacho/cloud/vpc/v1/network_interface.proto";
 import "corelib/authz/v1/authz_options.proto";
 
@@ -55,7 +55,7 @@ service NetworkInterfaceService {
   }
 
   // Creates a network interface in the specified project.
-  rpc Create(CreateNetworkInterfaceRequest) returns (operation.Operation) {
+  rpc Create(CreateNetworkInterfaceRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { post: "/vpc/v1/networkInterfaces" body: "*" };
     option (corelib.api.v1.operation) = {
       metadata: "CreateNetworkInterfaceMetadata"
@@ -71,7 +71,7 @@ service NetworkInterfaceService {
   }
 
   // Updates the specified network interface (name/description/labels/security_group_ids).
-  rpc Update(UpdateNetworkInterfaceRequest) returns (operation.Operation) {
+  rpc Update(UpdateNetworkInterfaceRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { patch: "/vpc/v1/networkInterfaces/{network_interface_id}" body: "*" };
     option (corelib.api.v1.operation) = {
       metadata: "UpdateNetworkInterfaceMetadata"
@@ -89,7 +89,7 @@ service NetworkInterfaceService {
   // Deletes the specified network interface. The primary private IPv4 address is
   // released back to the subnet IPAM. Fails if the interface is still attached
   // to an instance.
-  rpc Delete(DeleteNetworkInterfaceRequest) returns (operation.Operation) {
+  rpc Delete(DeleteNetworkInterfaceRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { delete: "/vpc/v1/networkInterfaces/{network_interface_id}" };
     option (corelib.api.v1.operation) = {
       metadata: "DeleteNetworkInterfaceMetadata"
@@ -251,6 +251,6 @@ message ListNetworkInterfaceOperationsRequest {
 }
 
 message ListNetworkInterfaceOperationsResponse {
-  repeated operation.Operation operations = 1;
+  repeated corelib.operation.Operation operations = 1;
   string next_page_token = 2;
 }

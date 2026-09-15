@@ -9,7 +9,7 @@ import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "corelib/api/v1/operation.proto";
 import "kacho/cloud/compute/v1/machine_type.proto";
-import "kacho/cloud/operation/operation.proto";
+import "corelib/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1";
@@ -21,11 +21,11 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v
 // (ban #6, security.md §Internal-vs-external; parity with GEO-1 internal catalog).
 //
 // Admin mutations follow the standard Kachō async form: Create/Update/Delete
-// return operation.Operation (done=false); the client polls OperationService.Get(id)
+// return corelib.operation.Operation (done=false); the client polls OperationService.Get(id)
 // until done=true, then reads the final resource via MachineTypeService.Get. Read
 // RPCs (MachineTypeService.Get/List) stay synchronous and public.
 service InternalMachineTypeService {
-  rpc Create (CreateMachineTypeRequest) returns (operation.Operation) {
+  rpc Create (CreateMachineTypeRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { post: "/compute/v1/internal/machineTypes" body: "*" };
     option (corelib.api.v1.operation) = {
       metadata: "CreateMachineTypeMetadata"
@@ -39,7 +39,7 @@ service InternalMachineTypeService {
     };
     option (corelib.authz.v1.required_acr_min) = "1";
   }
-  rpc Update (UpdateMachineTypeRequest) returns (operation.Operation) {
+  rpc Update (UpdateMachineTypeRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { patch: "/compute/v1/internal/machineTypes/{machine_type_id}" body: "*" };
     option (corelib.api.v1.operation) = {
       metadata: "UpdateMachineTypeMetadata"
@@ -53,7 +53,7 @@ service InternalMachineTypeService {
     };
     option (corelib.authz.v1.required_acr_min) = "1";
   }
-  rpc Delete (DeleteMachineTypeRequest) returns (operation.Operation) {
+  rpc Delete (DeleteMachineTypeRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { delete: "/compute/v1/internal/machineTypes/{machine_type_id}" };
     option (corelib.api.v1.operation) = {
       metadata: "DeleteMachineTypeMetadata"

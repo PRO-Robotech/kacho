@@ -9,7 +9,7 @@ import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "corelib/api/v1/operation.proto";
 import "kacho/cloud/compute/v1/guest_access_key.proto";
-import "kacho/cloud/operation/operation.proto";
+import "corelib/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1";
@@ -47,7 +47,7 @@ service GuestAccessKeyService {
     option (corelib.authz.v1.required_acr_min) = "1";
   }
 
-  rpc Create(CreateGuestAccessKeyRequest) returns (operation.Operation) {
+  rpc Create(CreateGuestAccessKeyRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/compute/v1/guestAccessKeys"
       body: "*"
@@ -72,7 +72,7 @@ service GuestAccessKeyService {
   // него с машин — то есть тихо переадресовать доступ. Смена материала
   // выражается парой «завести новый ключ, снять старый», и каждая половина этой
   // пары видна в журнале.
-  rpc Update(UpdateGuestAccessKeyRequest) returns (operation.Operation) {
+  rpc Update(UpdateGuestAccessKeyRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       patch: "/compute/v1/guestAccessKeys/{guest_access_key_id}"
       body: "*"
@@ -111,7 +111,7 @@ service GuestAccessKeyService {
   // снятия, живёт своей жизнью, и плоскость управления его не видит. Это
   // свойство прямого входа, а не пробел реализации, и оно названо здесь, чтобы
   // снятие не читалось как отзыв доступа.
-  rpc Delete(DeleteGuestAccessKeyRequest) returns (operation.Operation) {
+  rpc Delete(DeleteGuestAccessKeyRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       delete: "/compute/v1/guestAccessKeys/{guest_access_key_id}"
     };
@@ -183,7 +183,7 @@ message ListGuestAccessKeyOperationsRequest {
 }
 
 message ListGuestAccessKeyOperationsResponse {
-  repeated operation.Operation operations = 1;
+  repeated corelib.operation.Operation operations = 1;
   string next_page_token = 2;
 }
 

@@ -11,7 +11,7 @@ package vpcv1
 
 import (
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
-	operation "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -858,7 +858,7 @@ var File_kacho_cloud_vpc_v1_internal_address_service_proto protoreflect.FileDesc
 
 const file_kacho_cloud_vpc_v1_internal_address_service_proto_rawDesc = "" +
 	"\n" +
-	"1kacho/cloud/vpc/v1/internal_address_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/operation/operation.proto\x1a(kacho/cloud/vpc/v1/address_service.proto\x1a$corelib/authz/v1/authz_options.proto\":\n" +
+	"1kacho/cloud/vpc/v1/internal_address_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a!corelib/operation/operation.proto\x1a(kacho/cloud/vpc/v1/address_service.proto\x1a$corelib/authz/v1/authz_options.proto\":\n" +
 	"\x19AllocateInternalIPRequest\x12\x1d\n" +
 	"\n" +
 	"address_id\x18\x01 \x01(\tR\taddressId\":\n" +
@@ -924,7 +924,7 @@ const file_kacho_cloud_vpc_v1_internal_address_service_proto_rawDesc = "" +
 	"\bRELEASED\x10\x01\x12\x14\n" +
 	"\x10ALREADY_RELEASED\x10\x02\x12\f\n" +
 	"\bDETACHED\x10\x03\x12\x14\n" +
-	"\x10ALREADY_DETACHED\x10\x042\xc3\x0f\n" +
+	"\x10ALREADY_DETACHED\x10\x042\xbf\x0f\n" +
 	"\x16InternalAddressService\x12\xbf\x01\n" +
 	"\x12AllocateInternalIP\x12-.kacho.cloud.vpc.v1.AllocateInternalIPRequest\x1a&.kacho.cloud.vpc.v1.AllocateIPResponse\"R\x8a\xb5\x18 vpc.addresses.allocateInternalIp\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
 	"\vvpc_address\x12\n" +
@@ -949,8 +949,8 @@ const file_kacho_cloud_vpc_v1_internal_address_service_proto_rawDesc = "" +
 	"address_id\xa2\xb5\x18\x011\x12\xdc\x01\n" +
 	"\x19MarkAddressEphemeralInUse\x124.kacho.cloud.vpc.v1.MarkAddressEphemeralInUseRequest\x1a5.kacho.cloud.vpc.v1.MarkAddressEphemeralInUseResponse\"R\x8a\xb5\x18 vpc.addresses.markEphemeralInUse\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
 	"\vvpc_address\x12\n" +
-	"address_id\xa2\xb5\x18\x011\x12\xb4\x01\n" +
-	"\x12CreateOwnedAddress\x12-.kacho.cloud.vpc.v1.CreateOwnedAddressRequest\x1a .kacho.cloud.operation.Operation\"M\x8a\xb5\x18\x19vpc.addresses.createOwned\x92\xb5\x18\x06editor\x9a\xb5\x18\x1d\n" +
+	"address_id\xa2\xb5\x18\x011\x12\xb0\x01\n" +
+	"\x12CreateOwnedAddress\x12-.kacho.cloud.vpc.v1.CreateOwnedAddressRequest\x1a\x1c.corelib.operation.Operation\"M\x8a\xb5\x18\x19vpc.addresses.createOwned\x92\xb5\x18\x06editor\x9a\xb5\x18\x1d\n" +
 	"\aproject\x12\x12address.project_id\xa2\xb5\x18\x011\x12\xbe\x01\n" +
 	"\x13ReleaseOwnedAddress\x12..kacho.cloud.vpc.v1.ReleaseOwnedAddressRequest\x1a/.kacho.cloud.vpc.v1.ReleaseOwnedAddressResponse\"F\x8a\xb5\x18\x1avpc.addresses.releaseOwned\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
@@ -987,7 +987,7 @@ var file_kacho_cloud_vpc_v1_internal_address_service_proto_goTypes = []any{
 	(*ReleaseOwnedAddressResponse)(nil),       // 13: kacho.cloud.vpc.v1.ReleaseOwnedAddressResponse
 	(*timestamppb.Timestamp)(nil),             // 14: google.protobuf.Timestamp
 	(*CreateAddressRequest)(nil),              // 15: kacho.cloud.vpc.v1.CreateAddressRequest
-	(*operation.Operation)(nil),               // 16: kacho.cloud.operation.Operation
+	(*operation.Operation)(nil),               // 16: corelib.operation.Operation
 }
 var file_kacho_cloud_vpc_v1_internal_address_service_proto_depIdxs = []int32{
 	14, // 0: kacho.cloud.vpc.v1.AddressReference.attached_at:type_name -> google.protobuf.Timestamp
@@ -1011,7 +1011,7 @@ var file_kacho_cloud_vpc_v1_internal_address_service_proto_depIdxs = []int32{
 	7,  // 18: kacho.cloud.vpc.v1.InternalAddressService.ClearAddressReference:output_type -> kacho.cloud.vpc.v1.ClearAddressReferenceResponse
 	4,  // 19: kacho.cloud.vpc.v1.InternalAddressService.GetAddressReference:output_type -> kacho.cloud.vpc.v1.AddressReference
 	10, // 20: kacho.cloud.vpc.v1.InternalAddressService.MarkAddressEphemeralInUse:output_type -> kacho.cloud.vpc.v1.MarkAddressEphemeralInUseResponse
-	16, // 21: kacho.cloud.vpc.v1.InternalAddressService.CreateOwnedAddress:output_type -> kacho.cloud.operation.Operation
+	16, // 21: kacho.cloud.vpc.v1.InternalAddressService.CreateOwnedAddress:output_type -> corelib.operation.Operation
 	13, // 22: kacho.cloud.vpc.v1.InternalAddressService.ReleaseOwnedAddress:output_type -> kacho.cloud.vpc.v1.ReleaseOwnedAddressResponse
 	13, // [13:23] is the sub-list for method output_type
 	3,  // [3:13] is the sub-list for method input_type

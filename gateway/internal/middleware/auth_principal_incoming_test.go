@@ -58,6 +58,6 @@ func TestAuthUnary_InjectsPrincipalIntoIncomingForProxyHops(t *testing.T) {
 			"backend must receive principal id after OutgoingFromIncoming")
 		return nil, nil
 	}
-	_, err := auth.Unary()(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.operation.v1.OperationService/Get"}, handler)
+	_, err := auth.Unary()(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/corelib.operation.v1.OperationService/Get"}, handler)
 	require.NoError(t, err)
 }

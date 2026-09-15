@@ -117,8 +117,8 @@ func TestPermissionMap_Create_ParentProjectObjectType(t *testing.T) {
 func TestPermissionMap_OperationService_PublicExempt(t *testing.T) {
 	m := PermissionMap()
 	for _, rpc := range []string{
-		"/kacho.cloud.operation.OperationService/Get",
-		"/kacho.cloud.operation.OperationService/Cancel",
+		"/corelib.operation.OperationService/Get",
+		"/corelib.operation.OperationService/Cancel",
 	} {
 		e, ok := m[rpc]
 		require.True(t, ok, "%s must be mapped (interceptor fail-closes unmapped RPC)", rpc)

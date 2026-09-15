@@ -38,7 +38,7 @@
 // NOTE: OperationService.Get/Cancel are deliberately NOT on this list. They are
 // frequently polled but still require authentication — handled via the catalog
 // "<exempt>" path (authenticate, skip the FGA Check), never a blanket bypass at
-// the edge. Its proto package is "kacho.cloud.operation" (no ".v1."), so a
+// the edge. Its proto package is "corelib.operation" (no ".v1."), so a
 // "v1"-shaped entry here would never match and would only weaken the list.
 // (Get and Cancel are the whole service — earlier revisions of this note said
 // "Get/List"; there is no List, and naming an RPC that does not exist is the

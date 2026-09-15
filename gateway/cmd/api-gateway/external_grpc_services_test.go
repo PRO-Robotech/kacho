@@ -76,7 +76,7 @@ func TestExternalGRPCSurface_ServesNoReflection(t *testing.T) {
 	// gate green — the strongest possible false pass.
 	require.Contains(t, info, "grpc.health.v1.Health",
 		"the edge must keep answering health: kubelet probes and the readiness fan-out depend on it")
-	require.Contains(t, info, "kacho.cloud.operation.OperationService",
+	require.Contains(t, info, "corelib.operation.OperationService",
 		"the edge must keep answering OperationService natively: every async client polls it")
 
 	// ── The property. ─────────────────────────────────────────────────────
@@ -106,8 +106,8 @@ func TestExternalGRPCSurface_IsExactlyTheDocumentedSet(t *testing.T) {
 	_, info := externalSurface(t)
 
 	want := map[string]string{
-		"grpc.health.v1.Health":                  "gateway self-liveness; constant SERVING, ignores the requested service name",
-		"kacho.cloud.operation.OperationService": "async poll surface, fanned out across backends by the gateway",
+		"grpc.health.v1.Health":              "gateway self-liveness; constant SERVING, ignores the requested service name",
+		"corelib.operation.OperationService": "async poll surface, fanned out across backends by the gateway",
 	}
 
 	for svc := range info {

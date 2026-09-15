@@ -26,7 +26,7 @@ func publisherFixture() []contractPublication {
 			"kaname/cloud/iam/v1/account.proto",
 		}},
 		{Module: "github.com/PRO-Robotech/corelib", Paths: []string{
-			"kacho/cloud/operation/operation.proto",
+			"corelib/operation/operation.proto",
 		}},
 	}
 }

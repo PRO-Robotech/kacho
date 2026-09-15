@@ -12,7 +12,7 @@ package vpcv1
 import (
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
-	operation "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -712,7 +712,7 @@ var File_kacho_cloud_vpc_v1_route_table_service_proto protoreflect.FileDescripto
 
 const file_kacho_cloud_vpc_v1_route_table_service_proto_rawDesc = "" +
 	"\n" +
-	",kacho/cloud/vpc/v1/route_table_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a$kacho/cloud/vpc/v1/route_table.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"<\n" +
+	",kacho/cloud/vpc/v1/route_table_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a$kacho/cloud/vpc/v1/route_table.proto\x1a!corelib/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"<\n" +
 	"\x14GetRouteTableRequest\x12$\n" +
 	"\x0eroute_table_id\x18\x01 \x01(\tR\frouteTableId\"\x8b\x01\n" +
 	"\x16ListRouteTablesRequest\x12\x1d\n" +
@@ -760,28 +760,28 @@ const file_kacho_cloud_vpc_v1_route_table_service_proto_rawDesc = "" +
 	"\x0eroute_table_id\x18\x01 \x01(\tR\frouteTableId\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tR\tpageToken\"\x8c\x01\n" +
-	" ListRouteTableOperationsResponse\x12@\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x88\x01\n" +
+	" ListRouteTableOperationsResponse\x12<\n" +
 	"\n" +
-	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
+	"operations\x18\x01 \x03(\v2\x1c.corelib.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xb5\v\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xa9\v\n" +
 	"\x11RouteTableService\x12\xc8\x01\n" +
 	"\x03Get\x12(.kacho.cloud.vpc.v1.GetRouteTableRequest\x1a\x1e.kacho.cloud.vpc.v1.RouteTable\"w\x8a\xb5\x18\x14vpc.route_tables.get\x92\xb5\x18\x05v_get\x9a\xb5\x18!\n" +
 	"\x0fvpc_route_table\x12\x0eroute_table_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02&\x12$/vpc/v1/routeTables/{route_table_id}\x12\xbd\x01\n" +
 	"\x04List\x12*.kacho.cloud.vpc.v1.ListRouteTablesRequest\x1a+.kacho.cloud.vpc.v1.ListRouteTablesResponse\"\\\x8a\xb5\x18\x15vpc.route_tables.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x15\x12\x13/vpc/v1/routeTables\x12\xe5\x01\n" +
-	"\x06Create\x12+.kacho.cloud.vpc.v1.CreateRouteTableRequest\x1a .kacho.cloud.operation.Operation\"\x8b\x01\x8a\xb5\x18\x17vpc.route_tables.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x15\x12\x13/vpc/v1/routeTables\x12\xe1\x01\n" +
+	"\x06Create\x12+.kacho.cloud.vpc.v1.CreateRouteTableRequest\x1a\x1c.corelib.operation.Operation\"\x8b\x01\x8a\xb5\x18\x17vpc.route_tables.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\xb2\xd2*&\n" +
 	"\x18CreateRouteTableMetadata\x12\n" +
-	"RouteTable\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/vpc/v1/routeTables\x12\x84\x02\n" +
-	"\x06Update\x12+.kacho.cloud.vpc.v1.UpdateRouteTableRequest\x1a .kacho.cloud.operation.Operation\"\xaa\x01\x8a\xb5\x18\x17vpc.route_tables.update\x92\xb5\x18\bv_update\x9a\xb5\x18!\n" +
+	"RouteTable\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/vpc/v1/routeTables\x12\x80\x02\n" +
+	"\x06Update\x12+.kacho.cloud.vpc.v1.UpdateRouteTableRequest\x1a\x1c.corelib.operation.Operation\"\xaa\x01\x8a\xb5\x18\x17vpc.route_tables.update\x92\xb5\x18\bv_update\x9a\xb5\x18!\n" +
 	"\x0fvpc_route_table\x12\x0eroute_table_id\xa2\xb5\x18\x011\xb2\xd2*&\n" +
 	"\x18UpdateRouteTableMetadata\x12\n" +
-	"RouteTable\x82\xd3\xe4\x93\x02):\x01*2$/vpc/v1/routeTables/{route_table_id}\x12\x8c\x02\n" +
-	"\x06Delete\x12+.kacho.cloud.vpc.v1.DeleteRouteTableRequest\x1a .kacho.cloud.operation.Operation\"\xb2\x01\x8a\xb5\x18\x17vpc.route_tables.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18!\n" +
+	"RouteTable\x82\xd3\xe4\x93\x02):\x01*2$/vpc/v1/routeTables/{route_table_id}\x12\x88\x02\n" +
+	"\x06Delete\x12+.kacho.cloud.vpc.v1.DeleteRouteTableRequest\x1a\x1c.corelib.operation.Operation\"\xb2\x01\x8a\xb5\x18\x17vpc.route_tables.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18!\n" +
 	"\x0fvpc_route_table\x12\x0eroute_table_id\xa2\xb5\x18\x011\xb2\xd2*1\n" +
 	"\x18DeleteRouteTableMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02&*$/vpc/v1/routeTables/{route_table_id}\x12\x96\x02\n" +
 	"\x0eListOperations\x123.kacho.cloud.vpc.v1.ListRouteTableOperationsRequest\x1a4.kacho.cloud.vpc.v1.ListRouteTableOperationsResponse\"\x98\x01\x8a\xb5\x18)vpc.route_table_operations.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18!\n" +
@@ -817,7 +817,7 @@ var file_kacho_cloud_vpc_v1_route_table_service_proto_goTypes = []any{
 	(*RouteTable)(nil),                       // 13: kacho.cloud.vpc.v1.RouteTable
 	(*StaticRoute)(nil),                      // 14: kacho.cloud.vpc.v1.StaticRoute
 	(*fieldmaskpb.FieldMask)(nil),            // 15: google.protobuf.FieldMask
-	(*operation.Operation)(nil),              // 16: kacho.cloud.operation.Operation
+	(*operation.Operation)(nil),              // 16: corelib.operation.Operation
 }
 var file_kacho_cloud_vpc_v1_route_table_service_proto_depIdxs = []int32{
 	13, // 0: kacho.cloud.vpc.v1.ListRouteTablesResponse.route_tables:type_name -> kacho.cloud.vpc.v1.RouteTable
@@ -826,7 +826,7 @@ var file_kacho_cloud_vpc_v1_route_table_service_proto_depIdxs = []int32{
 	15, // 3: kacho.cloud.vpc.v1.UpdateRouteTableRequest.update_mask:type_name -> google.protobuf.FieldMask
 	12, // 4: kacho.cloud.vpc.v1.UpdateRouteTableRequest.labels:type_name -> kacho.cloud.vpc.v1.UpdateRouteTableRequest.LabelsEntry
 	14, // 5: kacho.cloud.vpc.v1.UpdateRouteTableRequest.static_routes:type_name -> kacho.cloud.vpc.v1.StaticRoute
-	16, // 6: kacho.cloud.vpc.v1.ListRouteTableOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	16, // 6: kacho.cloud.vpc.v1.ListRouteTableOperationsResponse.operations:type_name -> corelib.operation.Operation
 	0,  // 7: kacho.cloud.vpc.v1.RouteTableService.Get:input_type -> kacho.cloud.vpc.v1.GetRouteTableRequest
 	1,  // 8: kacho.cloud.vpc.v1.RouteTableService.List:input_type -> kacho.cloud.vpc.v1.ListRouteTablesRequest
 	3,  // 9: kacho.cloud.vpc.v1.RouteTableService.Create:input_type -> kacho.cloud.vpc.v1.CreateRouteTableRequest
@@ -835,9 +835,9 @@ var file_kacho_cloud_vpc_v1_route_table_service_proto_depIdxs = []int32{
 	9,  // 12: kacho.cloud.vpc.v1.RouteTableService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListRouteTableOperationsRequest
 	13, // 13: kacho.cloud.vpc.v1.RouteTableService.Get:output_type -> kacho.cloud.vpc.v1.RouteTable
 	2,  // 14: kacho.cloud.vpc.v1.RouteTableService.List:output_type -> kacho.cloud.vpc.v1.ListRouteTablesResponse
-	16, // 15: kacho.cloud.vpc.v1.RouteTableService.Create:output_type -> kacho.cloud.operation.Operation
-	16, // 16: kacho.cloud.vpc.v1.RouteTableService.Update:output_type -> kacho.cloud.operation.Operation
-	16, // 17: kacho.cloud.vpc.v1.RouteTableService.Delete:output_type -> kacho.cloud.operation.Operation
+	16, // 15: kacho.cloud.vpc.v1.RouteTableService.Create:output_type -> corelib.operation.Operation
+	16, // 16: kacho.cloud.vpc.v1.RouteTableService.Update:output_type -> corelib.operation.Operation
+	16, // 17: kacho.cloud.vpc.v1.RouteTableService.Delete:output_type -> corelib.operation.Operation
 	10, // 18: kacho.cloud.vpc.v1.RouteTableService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListRouteTableOperationsResponse
 	13, // [13:19] is the sub-list for method output_type
 	7,  // [7:13] is the sub-list for method input_type

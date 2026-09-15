@@ -6,6 +6,8 @@ package proxy
 import (
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/corelib/contractroot"
 )
 
 // Продукт называет себя ДВУМЯ корнями контракта одновременно: платформа —
@@ -51,6 +53,13 @@ func TestRoutableDomain_DerivesTheSameKeyUnderBothRoots(t *testing.T) {
 		{"/example.cloud.iam.v1.AccountService/Get", "", false},
 		// Трёхсегментная форма: ключ выводиться НЕ должен.
 		{"/kaname.iam.v1.AccountService/Get", "", false},
+		// Пакет фундамента: ключ — ВТОРОЙ сегмент, то же имя, каким служба
+		// операций называлась облачным доменом до kacho#2601.
+		{"/corelib.operation.OperationService/Get", "operation", true},
+		// Граница корня — точка: чужой корень, начинающийся тем же словом, не наш.
+		{"/corelibx.operation.OperationService/Get", "", false},
+		// Корень фундамента без пакета: ключа нет.
+		{"/corelib.OperationService/Get", "", false},
 	} {
 		got, ok := RoutableDomain(tc.method)
 		if ok != tc.ok || got != tc.want {
@@ -124,4 +133,23 @@ func TestOldContractName_ResolvesNowhere(t *testing.T) {
 		t.Errorf("прежнее имя перестало разбираться (%q, %v) — тогда утверждение выше "+
 			"доказывает не снятие записи, а поломку разбора", d, ok)
 	}
+}
+
+// TestFoundationRoots_AreDeclaredContractRoots — объявление корней фундамента в
+// крае не расходится со словарём корней: запись, которой в словаре нет, открыла
+// бы маршрут корню, которого дерево не знает.
+func TestFoundationRoots_AreDeclaredContractRoots(t *testing.T) {
+	if len(FoundationRoots) == 0 {
+		t.Fatal("корней фундамента не объявлено: служба операций под именем фундамента не маршрутизировалась бы")
+	}
+	declared := map[string]bool{}
+	for _, r := range contractroot.Roots {
+		declared[r] = true
+	}
+	for _, r := range FoundationRoots {
+		if !declared[r] {
+			t.Errorf("корень фундамента %q не объявлен словарём корней %v", r, contractroot.Roots)
+		}
+	}
+	t.Logf("перепись: корней фундамента %d — %v; словарь %v", len(FoundationRoots), FoundationRoots, contractroot.Roots)
 }

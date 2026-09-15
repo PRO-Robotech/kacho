@@ -11,7 +11,7 @@ package vpcv1
 
 import (
 	context "context"
-	operation "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -82,7 +82,7 @@ const (
 //
 // # Форма ответа приведена к конвенции
 //
-// Мутации возвращают `operation.Operation` (запрет 9), а не ресурс синхронно.
+// Мутации возвращают `corelib.operation.Operation` (запрет 9), а не ресурс синхронно.
 // Внутренний сервис отвечает ресурсом — ему не приходилось соблюдать конвенцию,
 // его не видел ни один арендатский клиент. Клиент публичного API вправе
 // рассчитывать на один и тот же контракт у всех мутаций, а консоль — на один и
@@ -273,7 +273,7 @@ func (c *addressPoolServiceClient) UnbindNetworkDefault(ctx context.Context, in 
 //
 // # Форма ответа приведена к конвенции
 //
-// Мутации возвращают `operation.Operation` (запрет 9), а не ресурс синхронно.
+// Мутации возвращают `corelib.operation.Operation` (запрет 9), а не ресурс синхронно.
 // Внутренний сервис отвечает ресурсом — ему не приходилось соблюдать конвенцию,
 // его не видел ни один арендатский клиент. Клиент публичного API вправе
 // рассчитывать на один и тот же контракт у всех мутаций, а консоль — на один и

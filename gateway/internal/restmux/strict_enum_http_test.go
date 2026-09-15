@@ -13,7 +13,7 @@ import (
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 
-	opv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	opv1 "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 )
 

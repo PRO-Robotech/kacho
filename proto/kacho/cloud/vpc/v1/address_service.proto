@@ -8,7 +8,7 @@ package kacho.cloud.vpc.v1;
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "corelib/api/v1/operation.proto";
-import "kacho/cloud/operation/operation.proto";
+import "corelib/operation/operation.proto";
 import "kacho/cloud/vpc/v1/address.proto";
 import "corelib/authz/v1/authz_options.proto";
 
@@ -51,7 +51,7 @@ service AddressService {
   }
 
   // Creates an address in the specified project and network.
-  rpc Create(CreateAddressRequest) returns (operation.Operation) {
+  rpc Create(CreateAddressRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/vpc/v1/addresses"
       body: "*"
@@ -70,7 +70,7 @@ service AddressService {
   }
 
   // Updates the specified address.
-  rpc Update(UpdateAddressRequest) returns (operation.Operation) {
+  rpc Update(UpdateAddressRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       patch: "/vpc/v1/addresses/{address_id}"
       body: "*"
@@ -89,7 +89,7 @@ service AddressService {
   }
 
   // Deletes the specified address.
-  rpc Delete(DeleteAddressRequest) returns (operation.Operation) {
+  rpc Delete(DeleteAddressRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {delete: "/vpc/v1/addresses/{address_id}"};
     option (corelib.api.v1.operation) = {
       metadata: "DeleteAddressMetadata"
@@ -405,7 +405,7 @@ message ListAddressOperationsRequest {
 
 message ListAddressOperationsResponse {
   // List of operations for the specified address.
-  repeated operation.Operation operations = 1;
+  repeated corelib.operation.Operation operations = 1;
 
   // Token for getting the next page of the list. If the number of results is greater than
   // the specified [ListAddressOperationsRequest.page_size], use `next_page_token` as the value

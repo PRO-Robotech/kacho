@@ -61,6 +61,15 @@ func TestClientDocsExamplesDoNotShowRetiredFields(t *testing.T) {
 		t.Fatalf("примеров JSON %d, ключей рассужено %d — сверка не состоялась",
 			census.Examples, census.KeysJudged)
 	}
+	// Третья половина: каждый объявленный ОБЩИЙ пакет обязан дать поля. Пакет,
+	// выпавший из обхода, превращает поля конверта в «снятые» поля домена — и
+	// гейт краснеет на верном тексте либо, хуже, молчит, пока совпадения нет.
+	if len(census.SharedSilent) > 0 {
+		t.Fatalf("общих пакетов объявлено %d, без полей в обходе %d (%s) — пакет снят либо "+
+			"обход не видит его корня; снимите объявление вместе с пакетом или научите обход "+
+			"его корню (contractDomainBases)",
+			census.SharedDeclared, len(census.SharedSilent), strings.Join(census.SharedSilent, " "))
+	}
 
 	if len(findings) == 0 {
 		return

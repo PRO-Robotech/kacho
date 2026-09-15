@@ -76,8 +76,8 @@ func TestGateway_D3_AllowlistPublicMethodsPresent(t *testing.T) {
 		"/kacho.cloud.vpc.v1.RouteTableService/Update",
 		"/kacho.cloud.vpc.v1.RouteTableService/Delete",
 		// operation (без v1) — только Get и Cancel
-		"/kacho.cloud.operation.OperationService/Get",
-		"/kacho.cloud.operation.OperationService/Cancel",
+		"/corelib.operation.OperationService/Get",
+		"/corelib.operation.OperationService/Cancel",
 	}
 
 	for _, m := range publicMethods {
@@ -96,8 +96,8 @@ func TestGateway_D3_AllowlistPublicMethodsPresent(t *testing.T) {
 // TestGateway_D6_OperationServiceAllowed проверяет OperationService методы — только Get и Cancel, без List.
 func TestGateway_D6_OperationServiceAllowed(t *testing.T) {
 	allowed := []string{
-		"/kacho.cloud.operation.OperationService/Get",
-		"/kacho.cloud.operation.OperationService/Cancel",
+		"/corelib.operation.OperationService/Get",
+		"/corelib.operation.OperationService/Cancel",
 	}
 	for _, m := range allowed {
 

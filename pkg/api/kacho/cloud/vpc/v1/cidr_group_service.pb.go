@@ -12,7 +12,7 @@ package vpcv1
 import (
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
-	operation "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -801,7 +801,7 @@ var File_kacho_cloud_vpc_v1_cidr_group_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_cidr_group_service_proto_rawDesc = "" +
 	"\n" +
-	"+kacho/cloud/vpc/v1/cidr_group_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a#kacho/cloud/vpc/v1/cidr_group.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"9\n" +
+	"+kacho/cloud/vpc/v1/cidr_group_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a#kacho/cloud/vpc/v1/cidr_group.proto\x1a!corelib/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"9\n" +
 	"\x13GetCidrGroupRequest\x12\"\n" +
 	"\rcidr_group_id\x18\x01 \x01(\tR\vcidrGroupId\"\x8a\x01\n" +
 	"\x15ListCidrGroupsRequest\x12\x1d\n" +
@@ -856,32 +856,32 @@ const file_kacho_cloud_vpc_v1_cidr_group_service_proto_rawDesc = "" +
 	"\rcidr_group_id\x18\x01 \x01(\tR\vcidrGroupId\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tR\tpageToken\"\x8b\x01\n" +
-	"\x1fListCidrGroupOperationsResponse\x12@\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x87\x01\n" +
+	"\x1fListCidrGroupOperationsResponse\x12<\n" +
 	"\n" +
-	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
+	"operations\x18\x01 \x03(\v2\x1c.corelib.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xee\x0f\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xda\x0f\n" +
 	"\x10CidrGroupService\x12\xc1\x01\n" +
 	"\x03Get\x12'.kacho.cloud.vpc.v1.GetCidrGroupRequest\x1a\x1d.kacho.cloud.vpc.v1.CidrGroup\"r\x8a\xb5\x18\x13vpc.cidr_groups.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x1f\n" +
 	"\x0evpc_cidr_group\x12\rcidr_group_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02$\x12\"/vpc/v1/cidrGroups/{cidr_group_id}\x12\xb9\x01\n" +
 	"\x04List\x12).kacho.cloud.vpc.v1.ListCidrGroupsRequest\x1a*.kacho.cloud.vpc.v1.ListCidrGroupsResponse\"Z\x8a\xb5\x18\x14vpc.cidr_groups.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x14\x12\x12/vpc/v1/cidrGroups\x12\xe0\x01\n" +
-	"\x06Create\x12*.kacho.cloud.vpc.v1.CreateCidrGroupRequest\x1a .kacho.cloud.operation.Operation\"\x87\x01\x8a\xb5\x18\x16vpc.cidr_groups.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x14\x12\x12/vpc/v1/cidrGroups\x12\xdc\x01\n" +
+	"\x06Create\x12*.kacho.cloud.vpc.v1.CreateCidrGroupRequest\x1a\x1c.corelib.operation.Operation\"\x87\x01\x8a\xb5\x18\x16vpc.cidr_groups.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\xb2\xd2*$\n" +
-	"\x17CreateCidrGroupMetadata\x12\tCidrGroup\x82\xd3\xe4\x93\x02\x17:\x01*\"\x12/vpc/v1/cidrGroups\x12\xfc\x01\n" +
-	"\x06Update\x12*.kacho.cloud.vpc.v1.UpdateCidrGroupRequest\x1a .kacho.cloud.operation.Operation\"\xa3\x01\x8a\xb5\x18\x16vpc.cidr_groups.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
+	"\x17CreateCidrGroupMetadata\x12\tCidrGroup\x82\xd3\xe4\x93\x02\x17:\x01*\"\x12/vpc/v1/cidrGroups\x12\xf8\x01\n" +
+	"\x06Update\x12*.kacho.cloud.vpc.v1.UpdateCidrGroupRequest\x1a\x1c.corelib.operation.Operation\"\xa3\x01\x8a\xb5\x18\x16vpc.cidr_groups.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
 	"\x0evpc_cidr_group\x12\rcidr_group_id\xa2\xb5\x18\x011\xb2\xd2*$\n" +
-	"\x17UpdateCidrGroupMetadata\x12\tCidrGroup\x82\xd3\xe4\x93\x02':\x01*2\"/vpc/v1/cidrGroups/{cidr_group_id}\x12\xa7\x02\n" +
-	"\rAddCidrBlocks\x121.kacho.cloud.vpc.v1.AddCidrGroupCidrBlocksRequest\x1a .kacho.cloud.operation.Operation\"\xc0\x01\x8a\xb5\x18#vpc.cidr_group_blocks.addCidrBlocks\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
+	"\x17UpdateCidrGroupMetadata\x12\tCidrGroup\x82\xd3\xe4\x93\x02':\x01*2\"/vpc/v1/cidrGroups/{cidr_group_id}\x12\xa3\x02\n" +
+	"\rAddCidrBlocks\x121.kacho.cloud.vpc.v1.AddCidrGroupCidrBlocksRequest\x1a\x1c.corelib.operation.Operation\"\xc0\x01\x8a\xb5\x18#vpc.cidr_group_blocks.addCidrBlocks\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
 	"\x0evpc_cidr_group\x12\rcidr_group_id\xa2\xb5\x18\x011\xb2\xd2*$\n" +
-	"\x17UpdateCidrGroupMetadata\x12\tCidrGroup\x82\xd3\xe4\x93\x027:\x01*\"2/vpc/v1/cidrGroups/{cidr_group_id}:add-cidr-blocks\x12\xb3\x02\n" +
-	"\x10RemoveCidrBlocks\x124.kacho.cloud.vpc.v1.RemoveCidrGroupCidrBlocksRequest\x1a .kacho.cloud.operation.Operation\"\xc6\x01\x8a\xb5\x18&vpc.cidr_group_blocks.removeCidrBlocks\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
+	"\x17UpdateCidrGroupMetadata\x12\tCidrGroup\x82\xd3\xe4\x93\x027:\x01*\"2/vpc/v1/cidrGroups/{cidr_group_id}:add-cidr-blocks\x12\xaf\x02\n" +
+	"\x10RemoveCidrBlocks\x124.kacho.cloud.vpc.v1.RemoveCidrGroupCidrBlocksRequest\x1a\x1c.corelib.operation.Operation\"\xc6\x01\x8a\xb5\x18&vpc.cidr_group_blocks.removeCidrBlocks\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
 	"\x0evpc_cidr_group\x12\rcidr_group_id\xa2\xb5\x18\x011\xb2\xd2*$\n" +
-	"\x17UpdateCidrGroupMetadata\x12\tCidrGroup\x82\xd3\xe4\x93\x02::\x01*\"5/vpc/v1/cidrGroups/{cidr_group_id}:remove-cidr-blocks\x12\x85\x02\n" +
-	"\x06Delete\x12*.kacho.cloud.vpc.v1.DeleteCidrGroupRequest\x1a .kacho.cloud.operation.Operation\"\xac\x01\x8a\xb5\x18\x16vpc.cidr_groups.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x1f\n" +
+	"\x17UpdateCidrGroupMetadata\x12\tCidrGroup\x82\xd3\xe4\x93\x02::\x01*\"5/vpc/v1/cidrGroups/{cidr_group_id}:remove-cidr-blocks\x12\x81\x02\n" +
+	"\x06Delete\x12*.kacho.cloud.vpc.v1.DeleteCidrGroupRequest\x1a\x1c.corelib.operation.Operation\"\xac\x01\x8a\xb5\x18\x16vpc.cidr_groups.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x1f\n" +
 	"\x0evpc_cidr_group\x12\rcidr_group_id\xa2\xb5\x18\x011\xb2\xd2*0\n" +
 	"\x17DeleteCidrGroupMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02$*\"/vpc/v1/cidrGroups/{cidr_group_id}\x12\x8f\x02\n" +
 	"\x0eListOperations\x122.kacho.cloud.vpc.v1.ListCidrGroupOperationsRequest\x1a3.kacho.cloud.vpc.v1.ListCidrGroupOperationsResponse\"\x93\x01\x8a\xb5\x18(vpc.cidr_group_operations.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x1f\n" +
@@ -918,14 +918,14 @@ var file_kacho_cloud_vpc_v1_cidr_group_service_proto_goTypes = []any{
 	nil,                                      // 14: kacho.cloud.vpc.v1.UpdateCidrGroupRequest.LabelsEntry
 	(*CidrGroup)(nil),                        // 15: kacho.cloud.vpc.v1.CidrGroup
 	(*fieldmaskpb.FieldMask)(nil),            // 16: google.protobuf.FieldMask
-	(*operation.Operation)(nil),              // 17: kacho.cloud.operation.Operation
+	(*operation.Operation)(nil),              // 17: corelib.operation.Operation
 }
 var file_kacho_cloud_vpc_v1_cidr_group_service_proto_depIdxs = []int32{
 	15, // 0: kacho.cloud.vpc.v1.ListCidrGroupsResponse.cidr_groups:type_name -> kacho.cloud.vpc.v1.CidrGroup
 	13, // 1: kacho.cloud.vpc.v1.CreateCidrGroupRequest.labels:type_name -> kacho.cloud.vpc.v1.CreateCidrGroupRequest.LabelsEntry
 	16, // 2: kacho.cloud.vpc.v1.UpdateCidrGroupRequest.update_mask:type_name -> google.protobuf.FieldMask
 	14, // 3: kacho.cloud.vpc.v1.UpdateCidrGroupRequest.labels:type_name -> kacho.cloud.vpc.v1.UpdateCidrGroupRequest.LabelsEntry
-	17, // 4: kacho.cloud.vpc.v1.ListCidrGroupOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	17, // 4: kacho.cloud.vpc.v1.ListCidrGroupOperationsResponse.operations:type_name -> corelib.operation.Operation
 	0,  // 5: kacho.cloud.vpc.v1.CidrGroupService.Get:input_type -> kacho.cloud.vpc.v1.GetCidrGroupRequest
 	1,  // 6: kacho.cloud.vpc.v1.CidrGroupService.List:input_type -> kacho.cloud.vpc.v1.ListCidrGroupsRequest
 	3,  // 7: kacho.cloud.vpc.v1.CidrGroupService.Create:input_type -> kacho.cloud.vpc.v1.CreateCidrGroupRequest
@@ -936,11 +936,11 @@ var file_kacho_cloud_vpc_v1_cidr_group_service_proto_depIdxs = []int32{
 	11, // 12: kacho.cloud.vpc.v1.CidrGroupService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListCidrGroupOperationsRequest
 	15, // 13: kacho.cloud.vpc.v1.CidrGroupService.Get:output_type -> kacho.cloud.vpc.v1.CidrGroup
 	2,  // 14: kacho.cloud.vpc.v1.CidrGroupService.List:output_type -> kacho.cloud.vpc.v1.ListCidrGroupsResponse
-	17, // 15: kacho.cloud.vpc.v1.CidrGroupService.Create:output_type -> kacho.cloud.operation.Operation
-	17, // 16: kacho.cloud.vpc.v1.CidrGroupService.Update:output_type -> kacho.cloud.operation.Operation
-	17, // 17: kacho.cloud.vpc.v1.CidrGroupService.AddCidrBlocks:output_type -> kacho.cloud.operation.Operation
-	17, // 18: kacho.cloud.vpc.v1.CidrGroupService.RemoveCidrBlocks:output_type -> kacho.cloud.operation.Operation
-	17, // 19: kacho.cloud.vpc.v1.CidrGroupService.Delete:output_type -> kacho.cloud.operation.Operation
+	17, // 15: kacho.cloud.vpc.v1.CidrGroupService.Create:output_type -> corelib.operation.Operation
+	17, // 16: kacho.cloud.vpc.v1.CidrGroupService.Update:output_type -> corelib.operation.Operation
+	17, // 17: kacho.cloud.vpc.v1.CidrGroupService.AddCidrBlocks:output_type -> corelib.operation.Operation
+	17, // 18: kacho.cloud.vpc.v1.CidrGroupService.RemoveCidrBlocks:output_type -> corelib.operation.Operation
+	17, // 19: kacho.cloud.vpc.v1.CidrGroupService.Delete:output_type -> corelib.operation.Operation
 	12, // 20: kacho.cloud.vpc.v1.CidrGroupService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListCidrGroupOperationsResponse
 	13, // [13:21] is the sub-list for method output_type
 	5,  // [5:13] is the sub-list for method input_type

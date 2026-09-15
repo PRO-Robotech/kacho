@@ -33,7 +33,7 @@ const (
 	svcZone           = "kacho.cloud.geo.v1.ZoneService"
 	svcInternalRegion = "kacho.cloud.geo.v1.InternalRegionService"
 	svcInternalZone   = "kacho.cloud.geo.v1.InternalZoneService"
-	svcOperation      = "kacho.cloud.operation.OperationService"
+	svcOperation      = "corelib.operation.OperationService"
 )
 
 // TestRegisterServices_InternalAdminNotOnPublic — фактическая регистрация через

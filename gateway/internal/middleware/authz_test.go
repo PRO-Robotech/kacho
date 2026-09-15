@@ -602,7 +602,7 @@ func TestAuthz_Constructor_NoOpWhenDisabled(t *testing.T) {
 
 // TestAuthz_EmbeddedCatalog_OperationServiceFQNsCorrect проверяет, что
 // встроенный каталог содержит OperationService записи с корректными FQN
-// (без ".v1." — proto package "kacho.cloud.operation"). Это гарантирует, что
+// (без ".v1." — proto package "corelib.operation"). Это гарантирует, что
 // allowlist-чек (который тоже использует FQN без v1) совпадет с маршрутной
 // таблицей.
 func TestAuthz_EmbeddedCatalog_OperationServiceFQNsCorrect(t *testing.T) {
@@ -610,17 +610,17 @@ func TestAuthz_EmbeddedCatalog_OperationServiceFQNsCorrect(t *testing.T) {
 	require.NoError(t, err)
 
 	// OperationService.Get — must be present with <exempt> permission.
-	get, ok := cat.Lookup("kacho.cloud.operation.OperationService/Get")
-	require.True(t, ok, "catalog must have kacho.cloud.operation.OperationService/Get (no .v1.)")
+	get, ok := cat.Lookup("corelib.operation.OperationService/Get")
+	require.True(t, ok, "catalog must have corelib.operation.OperationService/Get (no .v1.)")
 	assert.True(t, get.IsExempt(), "OperationService/Get must be <exempt>")
 
 	// OperationService.Cancel — must be present with <exempt> permission.
-	cancel, ok := cat.Lookup("kacho.cloud.operation.OperationService/Cancel")
-	require.True(t, ok, "catalog must have kacho.cloud.operation.OperationService/Cancel (no .v1.)")
+	cancel, ok := cat.Lookup("corelib.operation.OperationService/Cancel")
+	require.True(t, ok, "catalog must have corelib.operation.OperationService/Cancel (no .v1.)")
 	assert.True(t, cancel.IsExempt(), "OperationService/Cancel must be <exempt>")
 
 	// Wrong FQN (with .v1.) must NOT be in catalog.
-	_, badGet := cat.Lookup("kacho.cloud.operation.v1.OperationService/Get")
+	_, badGet := cat.Lookup("corelib.operation.v1.OperationService/Get")
 	assert.False(t, badGet, "catalog must NOT have the wrong v1-suffixed FQN")
 
 	// AccessBindingService listBy* entries must exist. The scope-based listing

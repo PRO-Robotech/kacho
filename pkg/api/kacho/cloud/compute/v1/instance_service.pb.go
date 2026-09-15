@@ -12,7 +12,7 @@ package computev1
 import (
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
-	operation "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -2759,7 +2759,7 @@ var File_kacho_cloud_compute_v1_instance_service_proto protoreflect.FileDescript
 
 const file_kacho_cloud_compute_v1_instance_service_proto_rawDesc = "" +
 	"\n" +
-	"-kacho/cloud/compute/v1/instance_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a%kacho/cloud/compute/v1/instance.proto\x1a(kacho/cloud/compute/v1/maintenance.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"A\n" +
+	"-kacho/cloud/compute/v1/instance_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a%kacho/cloud/compute/v1/instance.proto\x1a(kacho/cloud/compute/v1/maintenance.proto\x1a!corelib/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"A\n" +
 	"\x12GetInstanceRequest\x12\x1f\n" +
 	"\vinstance_id\x18\x01 \x01(\tR\n" +
 	"instanceIdJ\x04\b\x02\x10\x03R\x04view\"\x99\x01\n" +
@@ -2926,10 +2926,10 @@ const file_kacho_cloud_compute_v1_instance_service_proto_rawDesc = "" +
 	"instanceId\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tR\tpageToken\"\x8a\x01\n" +
-	"\x1eListInstanceOperationsResponse\x12@\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x86\x01\n" +
+	"\x1eListInstanceOperationsResponse\x12<\n" +
 	"\n" +
-	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
+	"operations\x18\x01 \x03(\v2\x1c.corelib.operation.OperationR\n" +
 	"operations\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x82\x02\n" +
 	"\x10AttachedDiskSpec\x12A\n" +
@@ -2974,51 +2974,51 @@ const file_kacho_cloud_compute_v1_instance_service_proto_rawDesc = "" +
 	"\x0fOneToOneNatSpec\x12@\n" +
 	"\n" +
 	"ip_version\x18\x01 \x01(\x0e2!.kacho.cloud.compute.v1.IpVersionR\tipVersion\x12\x18\n" +
-	"\aaddress\x18\x02 \x01(\tR\aaddressJ\x04\b\x03\x10\x04R\x10dns_record_specs2\xc0!\n" +
+	"\aaddress\x18\x02 \x01(\tR\aaddressJ\x04\b\x03\x10\x04R\x10dns_record_specs2\x94!\n" +
 	"\x0fInstanceService\x12\xca\x01\n" +
 	"\x03Get\x12*.kacho.cloud.compute.v1.GetInstanceRequest\x1a .kacho.cloud.compute.v1.Instance\"u\x8a\xb5\x18\x15compute.instances.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x1f\n" +
 	"\x10compute_instance\x12\vinstance_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02%\x12#/compute/v1/instances/{instance_id}\x12\xc6\x01\n" +
 	"\x04List\x12,.kacho.cloud.compute.v1.ListInstancesRequest\x1a-.kacho.cloud.compute.v1.ListInstancesResponse\"a\x8a\xb5\x18\x18compute.instanceses.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x17\x12\x15/compute/v1/instances\x12\xe6\x01\n" +
-	"\x06Create\x12-.kacho.cloud.compute.v1.CreateInstanceRequest\x1a .kacho.cloud.operation.Operation\"\x8a\x01\x8a\xb5\x18\x18compute.instances.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x17\x12\x15/compute/v1/instances\x12\xe2\x01\n" +
+	"\x06Create\x12-.kacho.cloud.compute.v1.CreateInstanceRequest\x1a\x1c.corelib.operation.Operation\"\x8a\x01\x8a\xb5\x18\x18compute.instances.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\xb2\xd2*\"\n" +
-	"\x16CreateInstanceMetadata\x12\bInstance\x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/compute/v1/instances\x12\x80\x02\n" +
-	"\x06Update\x12-.kacho.cloud.compute.v1.UpdateInstanceRequest\x1a .kacho.cloud.operation.Operation\"\xa4\x01\x8a\xb5\x18\x18compute.instances.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
+	"\x16CreateInstanceMetadata\x12\bInstance\x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/compute/v1/instances\x12\xfc\x01\n" +
+	"\x06Update\x12-.kacho.cloud.compute.v1.UpdateInstanceRequest\x1a\x1c.corelib.operation.Operation\"\xa4\x01\x8a\xb5\x18\x18compute.instances.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
 	"\x10compute_instance\x12\vinstance_id\xa2\xb5\x18\x011\xb2\xd2*\"\n" +
-	"\x16UpdateInstanceMetadata\x12\bInstance\x82\xd3\xe4\x93\x02(:\x01*2#/compute/v1/instances/{instance_id}\x12\x8a\x02\n" +
-	"\x06Delete\x12-.kacho.cloud.compute.v1.DeleteInstanceRequest\x1a .kacho.cloud.operation.Operation\"\xae\x01\x8a\xb5\x18\x18compute.instances.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x1f\n" +
+	"\x16UpdateInstanceMetadata\x12\bInstance\x82\xd3\xe4\x93\x02(:\x01*2#/compute/v1/instances/{instance_id}\x12\x86\x02\n" +
+	"\x06Delete\x12-.kacho.cloud.compute.v1.DeleteInstanceRequest\x1a\x1c.corelib.operation.Operation\"\xae\x01\x8a\xb5\x18\x18compute.instances.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x1f\n" +
 	"\x10compute_instance\x12\vinstance_id\xa2\xb5\x18\x011\xb2\xd2*/\n" +
 	"\x16DeleteInstanceMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02%*#/compute/v1/instances/{instance_id}\x12\xba\x02\n" +
 	"\x13GetSerialPortOutput\x12:.kacho.cloud.compute.v1.GetInstanceSerialPortOutputRequest\x1a;.kacho.cloud.compute.v1.GetInstanceSerialPortOutputResponse\"\xa9\x01\x8a\xb5\x188compute.instance_serial_port_outputs.getSerialPortOutput\x92\xb5\x18\x05v_get\x9a\xb5\x18\x1f\n" +
-	"\x10compute_instance\x12\vinstance_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x026\x124/compute/v1/instances/{instance_id}:serialPortOutput\x12\x87\x02\n" +
-	"\x04Stop\x12+.kacho.cloud.compute.v1.StopInstanceRequest\x1a .kacho.cloud.operation.Operation\"\xaf\x01\x8a\xb5\x18\x16compute.instances.stop\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
+	"\x10compute_instance\x12\vinstance_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x026\x124/compute/v1/instances/{instance_id}:serialPortOutput\x12\x83\x02\n" +
+	"\x04Stop\x12+.kacho.cloud.compute.v1.StopInstanceRequest\x1a\x1c.corelib.operation.Operation\"\xaf\x01\x8a\xb5\x18\x16compute.instances.stop\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
 	"\x10compute_instance\x12\vinstance_id\xa2\xb5\x18\x011\xb2\xd2*-\n" +
-	"\x14StopInstanceMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02*\"(/compute/v1/instances/{instance_id}:stop\x12\xff\x01\n" +
-	"\x05Start\x12,.kacho.cloud.compute.v1.StartInstanceRequest\x1a .kacho.cloud.operation.Operation\"\xa5\x01\x8a\xb5\x18\x17compute.instances.start\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
+	"\x14StopInstanceMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02*\"(/compute/v1/instances/{instance_id}:stop\x12\xfb\x01\n" +
+	"\x05Start\x12,.kacho.cloud.compute.v1.StartInstanceRequest\x1a\x1c.corelib.operation.Operation\"\xa5\x01\x8a\xb5\x18\x17compute.instances.start\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
 	"\x10compute_instance\x12\vinstance_id\xa2\xb5\x18\x011\xb2\xd2*!\n" +
-	"\x15StartInstanceMetadata\x12\bInstance\x82\xd3\xe4\x93\x02+\")/compute/v1/instances/{instance_id}:start\x12\x96\x02\n" +
-	"\aRestart\x12..kacho.cloud.compute.v1.RestartInstanceRequest\x1a .kacho.cloud.operation.Operation\"\xb8\x01\x8a\xb5\x18\x19compute.instances.restart\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
+	"\x15StartInstanceMetadata\x12\bInstance\x82\xd3\xe4\x93\x02+\")/compute/v1/instances/{instance_id}:start\x12\x92\x02\n" +
+	"\aRestart\x12..kacho.cloud.compute.v1.RestartInstanceRequest\x1a\x1c.corelib.operation.Operation\"\xb8\x01\x8a\xb5\x18\x19compute.instances.restart\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
 	"\x10compute_instance\x12\vinstance_id\xa2\xb5\x18\x011\xb2\xd2*0\n" +
-	"\x17RestartInstanceMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02-\"+/compute/v1/instances/{instance_id}:restart\x12\xa0\x02\n" +
+	"\x17RestartInstanceMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02-\"+/compute/v1/instances/{instance_id}:restart\x12\x9c\x02\n" +
 	"\n" +
-	"AttachDisk\x121.kacho.cloud.compute.v1.AttachInstanceDiskRequest\x1a .kacho.cloud.operation.Operation\"\xbc\x01\x8a\xb5\x18!compute.instance_disks.attachDisk\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
+	"AttachDisk\x121.kacho.cloud.compute.v1.AttachInstanceDiskRequest\x1a\x1c.corelib.operation.Operation\"\xbc\x01\x8a\xb5\x18!compute.instance_disks.attachDisk\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
 	"\x10compute_instance\x12\vinstance_id\xa2\xb5\x18\x011\xb2\xd2*&\n" +
-	"\x1aAttachInstanceDiskMetadata\x12\bInstance\x82\xd3\xe4\x93\x023:\x01*\"./compute/v1/instances/{instance_id}:attachDisk\x12\xa0\x02\n" +
+	"\x1aAttachInstanceDiskMetadata\x12\bInstance\x82\xd3\xe4\x93\x023:\x01*\"./compute/v1/instances/{instance_id}:attachDisk\x12\x9c\x02\n" +
 	"\n" +
-	"DetachDisk\x121.kacho.cloud.compute.v1.DetachInstanceDiskRequest\x1a .kacho.cloud.operation.Operation\"\xbc\x01\x8a\xb5\x18!compute.instance_disks.detachDisk\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
+	"DetachDisk\x121.kacho.cloud.compute.v1.DetachInstanceDiskRequest\x1a\x1c.corelib.operation.Operation\"\xbc\x01\x8a\xb5\x18!compute.instance_disks.detachDisk\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
 	"\x10compute_instance\x12\vinstance_id\xa2\xb5\x18\x011\xb2\xd2*&\n" +
-	"\x1aDetachInstanceDiskMetadata\x12\bInstance\x82\xd3\xe4\x93\x023:\x01*\"./compute/v1/instances/{instance_id}:detachDisk\x12\xe9\x02\n" +
-	"\x16AttachNetworkInterface\x12=.kacho.cloud.compute.v1.AttachInstanceNetworkInterfaceRequest\x1a .kacho.cloud.operation.Operation\"\xed\x01\x8a\xb5\x18:compute.instance_network_interfaces.attachNetworkInterface\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
+	"\x1aDetachInstanceDiskMetadata\x12\bInstance\x82\xd3\xe4\x93\x023:\x01*\"./compute/v1/instances/{instance_id}:detachDisk\x12\xe5\x02\n" +
+	"\x16AttachNetworkInterface\x12=.kacho.cloud.compute.v1.AttachInstanceNetworkInterfaceRequest\x1a\x1c.corelib.operation.Operation\"\xed\x01\x8a\xb5\x18:compute.instance_network_interfaces.attachNetworkInterface\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
 	"\x10compute_instance\x12\vinstance_id\xa2\xb5\x18\x011\xb2\xd2*2\n" +
-	"&AttachInstanceNetworkInterfaceMetadata\x12\bInstance\x82\xd3\xe4\x93\x02?:\x01*\":/compute/v1/instances/{instance_id}:attachNetworkInterface\x12\xe9\x02\n" +
-	"\x16DetachNetworkInterface\x12=.kacho.cloud.compute.v1.DetachInstanceNetworkInterfaceRequest\x1a .kacho.cloud.operation.Operation\"\xed\x01\x8a\xb5\x18:compute.instance_network_interfaces.detachNetworkInterface\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
+	"&AttachInstanceNetworkInterfaceMetadata\x12\bInstance\x82\xd3\xe4\x93\x02?:\x01*\":/compute/v1/instances/{instance_id}:attachNetworkInterface\x12\xe5\x02\n" +
+	"\x16DetachNetworkInterface\x12=.kacho.cloud.compute.v1.DetachInstanceNetworkInterfaceRequest\x1a\x1c.corelib.operation.Operation\"\xed\x01\x8a\xb5\x18:compute.instance_network_interfaces.detachNetworkInterface\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
 	"\x10compute_instance\x12\vinstance_id\xa2\xb5\x18\x011\xb2\xd2*2\n" +
 	"&DetachInstanceNetworkInterfaceMetadata\x12\bInstance\x82\xd3\xe4\x93\x02?:\x01*\":/compute/v1/instances/{instance_id}:detachNetworkInterface\x12\x9a\x02\n" +
 	"\x0eListOperations\x125.kacho.cloud.compute.v1.ListInstanceOperationsRequest\x1a6.kacho.cloud.compute.v1.ListInstanceOperationsResponse\"\x98\x01\x8a\xb5\x18,compute.instance_operationses.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x1f\n" +
-	"\x10compute_instance\x12\vinstance_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x020\x12./compute/v1/instances/{instance_id}/operations\x12\x80\x03\n" +
-	"\x18SimulateMaintenanceEvent\x12?.kacho.cloud.compute.v1.SimulateInstanceMaintenanceEventRequest\x1a .kacho.cloud.operation.Operation\"\x80\x02\x8a\xb5\x18<compute.instance_maintenance_events.simulateMaintenanceEvent\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
+	"\x10compute_instance\x12\vinstance_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x020\x12./compute/v1/instances/{instance_id}/operations\x12\xfc\x02\n" +
+	"\x18SimulateMaintenanceEvent\x12?.kacho.cloud.compute.v1.SimulateInstanceMaintenanceEventRequest\x1a\x1c.corelib.operation.Operation\"\x80\x02\x8a\xb5\x18<compute.instance_maintenance_events.simulateMaintenanceEvent\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
 	"\x10compute_instance\x12\vinstance_id\xa2\xb5\x18\x011\xb2\xd2*A\n" +
 	"(SimulateInstanceMaintenanceEventMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02A:\x01*\"</compute/v1/instances/{instance_id}:simulateMaintenanceEventBHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1b\x06proto3"
 
@@ -3089,7 +3089,7 @@ var file_kacho_cloud_compute_v1_instance_service_proto_goTypes = []any{
 	(*VmSpec)(nil),                                   // 49: kacho.cloud.compute.v1.VmSpec
 	(*ContainerSpec)(nil),                            // 50: kacho.cloud.compute.v1.ContainerSpec
 	(*fieldmaskpb.FieldMask)(nil),                    // 51: google.protobuf.FieldMask
-	(*operation.Operation)(nil),                      // 52: kacho.cloud.operation.Operation
+	(*operation.Operation)(nil),                      // 52: corelib.operation.Operation
 	(IpVersion)(0),                                   // 53: kacho.cloud.compute.v1.IpVersion
 }
 var file_kacho_cloud_compute_v1_instance_service_proto_depIdxs = []int32{
@@ -3116,7 +3116,7 @@ var file_kacho_cloud_compute_v1_instance_service_proto_depIdxs = []int32{
 	49, // 20: kacho.cloud.compute.v1.UpdateInstanceRequest.vm_spec:type_name -> kacho.cloud.compute.v1.VmSpec
 	33, // 21: kacho.cloud.compute.v1.AttachInstanceDiskRequest.attached_disk_spec:type_name -> kacho.cloud.compute.v1.AttachedDiskSpec
 	24, // 22: kacho.cloud.compute.v1.AttachInstanceNetworkInterfaceRequest.attached_nic_spec:type_name -> kacho.cloud.compute.v1.AttachedNicSpec
-	52, // 23: kacho.cloud.compute.v1.ListInstanceOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	52, // 23: kacho.cloud.compute.v1.ListInstanceOperationsResponse.operations:type_name -> corelib.operation.Operation
 	0,  // 24: kacho.cloud.compute.v1.AttachedDiskSpec.mode:type_name -> kacho.cloud.compute.v1.AttachedDiskSpec.Mode
 	35, // 25: kacho.cloud.compute.v1.AttachedLocalDiskSpec.physical_local_disk:type_name -> kacho.cloud.compute.v1.PhysicalLocalDiskSpec
 	1,  // 26: kacho.cloud.compute.v1.AttachedFilesystemSpec.mode:type_name -> kacho.cloud.compute.v1.AttachedFilesystemSpec.Mode
@@ -3141,19 +3141,19 @@ var file_kacho_cloud_compute_v1_instance_service_proto_depIdxs = []int32{
 	29, // 45: kacho.cloud.compute.v1.InstanceService.SimulateMaintenanceEvent:input_type -> kacho.cloud.compute.v1.SimulateInstanceMaintenanceEventRequest
 	42, // 46: kacho.cloud.compute.v1.InstanceService.Get:output_type -> kacho.cloud.compute.v1.Instance
 	4,  // 47: kacho.cloud.compute.v1.InstanceService.List:output_type -> kacho.cloud.compute.v1.ListInstancesResponse
-	52, // 48: kacho.cloud.compute.v1.InstanceService.Create:output_type -> kacho.cloud.operation.Operation
-	52, // 49: kacho.cloud.compute.v1.InstanceService.Update:output_type -> kacho.cloud.operation.Operation
-	52, // 50: kacho.cloud.compute.v1.InstanceService.Delete:output_type -> kacho.cloud.operation.Operation
+	52, // 48: kacho.cloud.compute.v1.InstanceService.Create:output_type -> corelib.operation.Operation
+	52, // 49: kacho.cloud.compute.v1.InstanceService.Update:output_type -> corelib.operation.Operation
+	52, // 50: kacho.cloud.compute.v1.InstanceService.Delete:output_type -> corelib.operation.Operation
 	13, // 51: kacho.cloud.compute.v1.InstanceService.GetSerialPortOutput:output_type -> kacho.cloud.compute.v1.GetInstanceSerialPortOutputResponse
-	52, // 52: kacho.cloud.compute.v1.InstanceService.Stop:output_type -> kacho.cloud.operation.Operation
-	52, // 53: kacho.cloud.compute.v1.InstanceService.Start:output_type -> kacho.cloud.operation.Operation
-	52, // 54: kacho.cloud.compute.v1.InstanceService.Restart:output_type -> kacho.cloud.operation.Operation
-	52, // 55: kacho.cloud.compute.v1.InstanceService.AttachDisk:output_type -> kacho.cloud.operation.Operation
-	52, // 56: kacho.cloud.compute.v1.InstanceService.DetachDisk:output_type -> kacho.cloud.operation.Operation
-	52, // 57: kacho.cloud.compute.v1.InstanceService.AttachNetworkInterface:output_type -> kacho.cloud.operation.Operation
-	52, // 58: kacho.cloud.compute.v1.InstanceService.DetachNetworkInterface:output_type -> kacho.cloud.operation.Operation
+	52, // 52: kacho.cloud.compute.v1.InstanceService.Stop:output_type -> corelib.operation.Operation
+	52, // 53: kacho.cloud.compute.v1.InstanceService.Start:output_type -> corelib.operation.Operation
+	52, // 54: kacho.cloud.compute.v1.InstanceService.Restart:output_type -> corelib.operation.Operation
+	52, // 55: kacho.cloud.compute.v1.InstanceService.AttachDisk:output_type -> corelib.operation.Operation
+	52, // 56: kacho.cloud.compute.v1.InstanceService.DetachDisk:output_type -> corelib.operation.Operation
+	52, // 57: kacho.cloud.compute.v1.InstanceService.AttachNetworkInterface:output_type -> corelib.operation.Operation
+	52, // 58: kacho.cloud.compute.v1.InstanceService.DetachNetworkInterface:output_type -> corelib.operation.Operation
 	32, // 59: kacho.cloud.compute.v1.InstanceService.ListOperations:output_type -> kacho.cloud.compute.v1.ListInstanceOperationsResponse
-	52, // 60: kacho.cloud.compute.v1.InstanceService.SimulateMaintenanceEvent:output_type -> kacho.cloud.operation.Operation
+	52, // 60: kacho.cloud.compute.v1.InstanceService.SimulateMaintenanceEvent:output_type -> corelib.operation.Operation
 	46, // [46:61] is the sub-list for method output_type
 	31, // [31:46] is the sub-list for method input_type
 	31, // [31:31] is the sub-list for extension type_name

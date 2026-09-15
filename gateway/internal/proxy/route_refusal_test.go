@@ -211,7 +211,7 @@ func TestRefuseInternalRoute_MatchesOnlyInternalServices(t *testing.T) {
 		"/kacho.cloud.storage.v1.InternalVolumeService/ListAttachments":      true,
 		"/kacho.cloud.vpc.v1.InternalNetworkInterfaceService/ListByInstance": true,
 		"/kacho.cloud.vpc.v1.NetworkService/Get":                             false,
-		"/kacho.cloud.operation.OperationService/Get":                        false,
+		"/corelib.operation.OperationService/Get":                            false,
 		"/grpc.health.v1.Health/Check":                                       false,
 		"/grpc.reflection.v1.ServerReflection/ServerReflectionInfo":          false,
 	}

@@ -1221,7 +1221,8 @@ baseline в `tests/k6/results/BASELINE.md`.)
    прежняя редакция предписывала polyrepo из семи sibling-репозиториев и `replace`-стрелки
    между ними; такой раскладки нет, а `replace` на внутренний модуль **запрещён** правилом
    воркспейса (`polyrepo.md`), потому что не резолвится при single-repo checkout.
-2. В `proto/kacho/cloud/vpc/v1/` определить `.proto` домена (+ `kacho.cloud.operation`).
+2. В `proto/kacho/cloud/vpc/v1/` определить `.proto` домена (+ `corelib.operation` — общий контракт операции под
+   нейтральным корнем `proto/corelib/`).
    Стабы генерируются в `pkg/api/...` и **руками не правятся**.
 3. Горизонтальное (нужное 2+ сервисам) — в `pkg/<package>/`; перечень нужных пакетов —
    таблица §13.

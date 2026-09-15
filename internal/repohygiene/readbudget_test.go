@@ -30,9 +30,9 @@ import (
 	// гейт с именем пакета, а не проходит молча.
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
+	_ "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/quota/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/subscription"
-	_ "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
@@ -46,16 +46,16 @@ import (
 // operationEnvelope — конверт асинхронной мутации.
 //
 // Имя выписано, и это осознанно: оно проверено обходом дерева, а не взято по
-// памяти. В первой редакции стража vpc здесь стояло `kacho.cloud.operation.v1.Operation`
-// — лишний `v1`, — и дискриминатор не находил НИ ОДНОЙ мутации, то есть гейт был
+// памяти. В первой редакции стража vpc здесь стояло имя конверта с лишним
+// сегментом `v1`, — и дискриминатор не находил НИ ОДНОЙ мутации, то есть гейт был
 // зелёным на всём. Отсюда премиса анализатора: «ни один метод не возвращает
 // конверт» — отказ, а не чистота.
-const operationEnvelope = "kacho.cloud.operation.Operation"
+const operationEnvelope = "corelib.operation.Operation"
 
 // exemptPackages — пакеты, для которых дискриминатор НЕСОСТОЯТЕЛЕН, с причиной.
 //
 // Ровно один, и он не «неудобный случай», а другой предмет: в
-// `kacho.cloud.operation` `Operation` — САМ РЕСУРС, а не конверт чужой мутации.
+// `corelib.operation` `Operation` — САМ РЕСУРС, а не конверт чужой мутации.
 // `OperationService/Get` возвращает его потому, что это чтение операции, которое
 // клиент поллит до `done=true`; читательский бюджет он покупает ПО ПРАВУ, и
 // покупать обязан — иначе поллинг завершения мутации оплачивался бы бюджетом
@@ -64,7 +64,7 @@ const operationEnvelope = "kacho.cloud.operation.Operation"
 // Запись самоистекает: если у пакета не останется метода, дающего находку,
 // анализатор пометит её STALE-EXEMPTION.
 var exemptPackages = map[string]string{
-	"kacho.cloud.operation": "Operation здесь — сам ресурс, а не конверт чужой мутации: " +
+	"corelib.operation": "Operation здесь — сам ресурс, а не конверт чужой мутации: " +
 		"OperationService/Get есть чтение операции (клиент поллит его до done=true), " +
 		"и читательский бюджет ему полагается по праву",
 }
@@ -124,5 +124,5 @@ func TestReadBudgetGate_SeesTheRealTreeFormWhenNotExempt(t *testing.T) {
 	require.Len(t, findings, 1,
 		"со снятым исключением в дереве обязана найтись ровно одна форма — чтение самой операции")
 	require.Equal(t, KindMutationBuysReadBudget, findings[0].Kind)
-	require.Equal(t, "/kacho.cloud.operation.OperationService/Get", findings[0].Method)
+	require.Equal(t, "/corelib.operation.OperationService/Get", findings[0].Method)
 }

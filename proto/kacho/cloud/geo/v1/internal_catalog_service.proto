@@ -11,7 +11,7 @@ import "corelib/api/v1/operation.proto";
 import "kacho/cloud/geo/v1/geo_common.proto";
 import "kacho/cloud/geo/v1/region.proto";
 import "kacho/cloud/geo/v1/zone.proto";
-import "kacho/cloud/operation/operation.proto";
+import "corelib/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1";
@@ -25,13 +25,13 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;ge
 //
 // Catalog mutations are spine-preserving but synchronously complete: topology is
 // cluster-scoped config in one DB with no provision saga (one INSERT), so
-// Create/Update/Delete return operation.Operation with done=true IMMEDIATELY
+// Create/Update/Delete return corelib.operation.Operation with done=true IMMEDIATELY
 // (metadata carries <res>Id + warnings°; result.response carries the full PUBLIC
 // resource body). The client unwraps .response — no OperationService.Get poll is
 // ever needed. GetInternal reads the full Internal projection synchronously.
 
 service InternalRegionService {
-  rpc Create (CreateRegionRequest) returns (operation.Operation) {
+  rpc Create (CreateRegionRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { post: "/geo/v1/internal/regions" body: "*" };
     option (corelib.api.v1.operation) = {
       metadata: "CreateRegionMetadata"
@@ -45,7 +45,7 @@ service InternalRegionService {
     };
     option (corelib.authz.v1.required_acr_min) = "1";
   }
-  rpc Update (UpdateRegionRequest) returns (operation.Operation) {
+  rpc Update (UpdateRegionRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { patch: "/geo/v1/internal/regions/{region_id}" body: "*" };
     option (corelib.api.v1.operation) = {
       metadata: "UpdateRegionMetadata"
@@ -59,7 +59,7 @@ service InternalRegionService {
     };
     option (corelib.authz.v1.required_acr_min) = "1";
   }
-  rpc Delete (DeleteRegionRequest) returns (operation.Operation) {
+  rpc Delete (DeleteRegionRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { delete: "/geo/v1/internal/regions/{region_id}" };
     option (corelib.api.v1.operation) = {
       metadata: "DeleteRegionMetadata"
@@ -144,7 +144,7 @@ message GetInternalRegionRequest {
 }
 
 service InternalZoneService {
-  rpc Create (CreateZoneRequest) returns (operation.Operation) {
+  rpc Create (CreateZoneRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { post: "/geo/v1/internal/zones" body: "*" };
     option (corelib.api.v1.operation) = {
       metadata: "CreateZoneMetadata"
@@ -158,7 +158,7 @@ service InternalZoneService {
     };
     option (corelib.authz.v1.required_acr_min) = "1";
   }
-  rpc Update (UpdateZoneRequest) returns (operation.Operation) {
+  rpc Update (UpdateZoneRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { patch: "/geo/v1/internal/zones/{zone_id}" body: "*" };
     option (corelib.api.v1.operation) = {
       metadata: "UpdateZoneMetadata"
@@ -172,7 +172,7 @@ service InternalZoneService {
     };
     option (corelib.authz.v1.required_acr_min) = "1";
   }
-  rpc Delete (DeleteZoneRequest) returns (operation.Operation) {
+  rpc Delete (DeleteZoneRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { delete: "/geo/v1/internal/zones/{zone_id}" };
     option (corelib.api.v1.operation) = {
       metadata: "DeleteZoneMetadata"

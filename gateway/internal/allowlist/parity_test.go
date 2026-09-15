@@ -67,14 +67,15 @@ import (
 	"google.golang.org/protobuf/reflect/protoregistry"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/allowlist"
+	"github.com/PRO-Robotech/kacho/gateway/internal/proxy"
 
 	// Население гейта. Каждый blank-импорт регистрирует дескрипторы своего
 	// домена в protoregistry.GlobalFiles. Список сверяется с диском в
 	// TestAllowlist_CensusCoversEveryProtoFile — новый домен без импорта тут
 	// краснеет там.
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
+	_ "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/subscription"
-	_ "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
@@ -135,10 +136,50 @@ func protoDirsOnDisk(t *testing.T) string {
 	return strings.Join(dirs, ", ")
 }
 
-func routableFilePrefixes() []string {
-	out := make([]string, 0, len(contractroot.Roots))
+// routableRoot — корень, чьи контракты маршрутизирует край, и подкаталог, под
+// которым они лежат: `cloud` у доменных корней, пусто у корней фундамента.
+//
+// Поверхность пробы обязана совпадать с тем, что разбирает резолвер края
+// (`proxy.RoutableDomain`), а не быть второй копией его правила: до kacho#2601
+// здесь стояла только облачная форма, и форма операции, получившая имя
+// фундамента, выпала из поверхности, оставшись в перечне разрешённых.
+type routableRoot struct {
+	root string
+	sub  string
+}
+
+func routableRoots() []routableRoot {
+	out := make([]routableRoot, 0, len(contractroot.Roots)+len(proxy.FoundationRoots))
 	for _, r := range contractroot.Roots {
-		out = append(out, r+"/cloud/")
+		out = append(out, routableRoot{root: r, sub: "cloud"})
+	}
+	for _, r := range proxy.FoundationRoots {
+		out = append(out, routableRoot{root: r})
+	}
+	return out
+}
+
+// filePrefix — приставка пути контракта под этим корнем (`kacho/cloud/`, `corelib/`).
+func (r routableRoot) filePrefix() string {
+	if r.sub == "" {
+		return r.root + "/"
+	}
+	return r.root + "/" + r.sub + "/"
+}
+
+// pkgPrefix — приставка полного имени метода (`/kacho.cloud.`, `/corelib.`).
+func (r routableRoot) pkgPrefix() string {
+	if r.sub == "" {
+		return "/" + r.root + "."
+	}
+	return "/" + r.root + "." + r.sub + "."
+}
+
+func routableFilePrefixes() []string {
+	roots := routableRoots()
+	out := make([]string, 0, len(roots))
+	for _, r := range roots {
+		out = append(out, r.filePrefix())
 	}
 	return out
 }
@@ -153,8 +194,8 @@ func hasRoutableFilePrefix(path string) bool {
 }
 
 func hasRoutablePkgPrefix(fullMethod string) bool {
-	for _, r := range contractroot.Roots {
-		if strings.HasPrefix(fullMethod, "/"+r+".cloud.") {
+	for _, r := range routableRoots() {
+		if strings.HasPrefix(fullMethod, r.pkgPrefix()) {
 			return true
 		}
 	}
@@ -217,14 +258,16 @@ func protoFilesOnDisk(t *testing.T) map[string]struct{} {
 	// корня, под которым файл найден, — иначе путь дескриптора не совпал бы с
 	// тем, что отдаёт реестр.
 	treeRoot := monorepoRootForContracts(t)
-	for _, prefix := range routableFilePrefixes() {
-		// prefix — "<корень>/cloud/"; корень резолвится в свой дом, а не
-		// склеивается с путём этого дерева.
-		dir, resolveErr := contractsource.Dir(treeRoot, strings.SplitN(prefix, "/", 2)[0])
+	for _, rr := range routableRoots() {
+		// Корень резолвится в свой дом, а не склеивается с путём этого дерева;
+		// под доменным корнем контракты лежат в `cloud`, под корнем фундамента —
+		// прямо в нём.
+		prefix := rr.filePrefix()
+		dir, resolveErr := contractsource.Dir(treeRoot, rr.root)
 		if resolveErr != nil {
 			continue
 		}
-		root := filepath.Join(dir, "cloud")
+		root := filepath.Join(dir, rr.sub)
 		if _, statErr := os.Stat(root); statErr != nil {
 			continue
 		}

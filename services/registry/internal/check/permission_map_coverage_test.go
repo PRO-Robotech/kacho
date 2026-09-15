@@ -12,7 +12,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 
-	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operationpb "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/check"
 )
 
@@ -46,7 +46,7 @@ func TestPermissionMap_CoversEveryServedRegistryRPC(t *testing.T) {
 		}
 		return true
 	})
-	// OperationService живёт в отдельном пакете (kacho.cloud.operation), но
+	// OperationService живёт в отдельном пакете (corelib.operation), но
 	// поднимается ОБОИМИ листенерами registry (serve.go) → тот же интерсептор,
 	// та же обязанность иметь запись.
 	for _, mi := range operationpb.OperationService_ServiceDesc.Methods {

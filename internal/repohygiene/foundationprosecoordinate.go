@@ -129,9 +129,6 @@ type knownBakedDescriptor struct {
 var knownBakedDescriptors = []knownBakedDescriptor{
 	{"pkg/api/corelib/api/v1/operation.pb.go", 1, "регенерация после публикации фундамента"},
 	{"pkg/api/corelib/authz/v1/authz_options.pb.go", 1, "регенерация после публикации фундамента"},
-	{"pkg/api/kacho/cloud/operation/operation.pb.go", 1, "регенерация после публикации фундамента"},
-	{"pkg/api/kacho/cloud/operation/operation_service.pb.go", 1, "регенерация после публикации фундамента"},
-	{"pkg/api/kacho/cloud/operation/package_options.pb.go", 1, "регенерация после публикации фундамента"},
 	{"pkg/api/kacho/cloud/quota/v1/quota.pb.go", 1, "регенерация после публикации фундамента"},
 	{"pkg/api/kacho/cloud/subscription/subscription.pb.go", 1, "регенерация после публикации фундамента"},
 	{"pkg/api/kacho/cloud/subscription/subscription_service.pb.go", 1, "регенерация после публикации фундамента"},

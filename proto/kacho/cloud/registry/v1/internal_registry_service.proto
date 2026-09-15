@@ -7,7 +7,7 @@ package kacho.cloud.registry.v1;
 
 import "google/protobuf/timestamp.proto";
 import "corelib/api/v1/operation.proto";
-import "kacho/cloud/operation/operation.proto";
+import "corelib/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1;registryv1";
@@ -22,7 +22,7 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/
 service InternalRegistryService {
   // TriggerGarbageCollection — async GC namespace реестра в zot (удаление
   // недостижимых блобов/манифестов). Admin-tier на registry_registry.
-  rpc TriggerGarbageCollection(TriggerGarbageCollectionRequest) returns (operation.Operation) {
+  rpc TriggerGarbageCollection(TriggerGarbageCollectionRequest) returns (corelib.operation.Operation) {
     option (corelib.api.v1.operation) = {
       metadata: "TriggerGarbageCollectionMetadata"
       response: "GarbageCollectionResult"

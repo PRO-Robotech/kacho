@@ -8,7 +8,7 @@ package kacho.cloud.storage.v1;
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "corelib/api/v1/operation.proto";
-import "kacho/cloud/operation/operation.proto";
+import "corelib/operation/operation.proto";
 import "kacho/cloud/storage/v1/image.proto";
 import "corelib/authz/v1/authz_options.proto";
 
@@ -43,7 +43,7 @@ service ImageService {
   }
 
   // Creates an image in the specified project.
-  rpc Create(CreateImageRequest) returns (operation.Operation) {
+  rpc Create(CreateImageRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/storage/v1/images"
       body: "*"
@@ -65,7 +65,7 @@ service ImageService {
   //
   // Mutable: name / description / labels.
   // Immutable: region_id / source_snapshot_id / source_volume_id / format.
-  rpc Update(UpdateImageRequest) returns (operation.Operation) {
+  rpc Update(UpdateImageRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       patch: "/storage/v1/images/{image_id}"
       body: "*"
@@ -88,7 +88,7 @@ service ImageService {
   // Deleting an image referenced by a boot Volume succeeds — the volume's
   // source_image_id is cleared (FK ON DELETE SET NULL, provenance, not a live
   // dependency).
-  rpc Delete(DeleteImageRequest) returns (operation.Operation) {
+  rpc Delete(DeleteImageRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {delete: "/storage/v1/images/{image_id}"};
     option (corelib.api.v1.operation) = {
       metadata: "DeleteImageMetadata"
@@ -114,7 +114,7 @@ service ImageService {
   // право создавать в Kachō спрашивают у родителя. Форма «v_get на источник»
   // отвергнута осознанно: она отдала бы наблюдателю проекта право порождать
   // образы. Разбор — у CopySnapshotRequest, здесь не дублируется.
-  rpc Copy(CopyImageRequest) returns (operation.Operation) {
+  rpc Copy(CopyImageRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/storage/v1/images/{image_id}:copy"
       body: "*"
@@ -321,7 +321,7 @@ message ListImageOperationsRequest {
 
 message ListImageOperationsResponse {
   // List of operations for the specified image.
-  repeated operation.Operation operations = 1;
+  repeated corelib.operation.Operation operations = 1;
 
   // This token allows you to get the next page of results for list requests.
   string next_page_token = 2;

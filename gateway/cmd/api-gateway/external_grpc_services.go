@@ -20,7 +20,7 @@ package main
 import (
 	"google.golang.org/grpc"
 
-	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operationpb "github.com/PRO-Robotech/corelib/api/corelib/operation"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/health"
 	"github.com/PRO-Robotech/kacho/gateway/internal/proxy"
@@ -68,7 +68,7 @@ func registerExternalGRPCServices(
 	// Unimplemented either way, and the pod probes are HTTP.
 	health.RegisterGRPCHealth(srv, backends)
 
-	// kacho.cloud.operation.OperationService — polled by every async client.
+	// corelib.operation.OperationService — polled by every async client.
 	// Routed here natively (not through the transparent proxy) because the
 	// gateway fans the poll out across backends itself.
 	//

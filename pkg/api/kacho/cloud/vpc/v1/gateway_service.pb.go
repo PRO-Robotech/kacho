@@ -12,7 +12,7 @@ package vpcv1
 import (
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
-	operation "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -853,7 +853,7 @@ var File_kacho_cloud_vpc_v1_gateway_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_gateway_service_proto_rawDesc = "" +
 	"\n" +
-	"(kacho/cloud/vpc/v1/gateway_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a kacho/cloud/vpc/v1/gateway.proto\x1a$corelib/authz/v1/authz_options.proto\"2\n" +
+	"(kacho/cloud/vpc/v1/gateway_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a!corelib/operation/operation.proto\x1a kacho/cloud/vpc/v1/gateway.proto\x1a$corelib/authz/v1/authz_options.proto\"2\n" +
 	"\x11GetGatewayRequest\x12\x1d\n" +
 	"\n" +
 	"gateway_id\x18\x01 \x01(\tR\tgatewayId\"\x88\x01\n" +
@@ -872,10 +872,10 @@ const file_kacho_cloud_vpc_v1_gateway_service_proto_rawDesc = "" +
 	"gateway_id\x18\x01 \x01(\tR\tgatewayId\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tR\tpageToken\"\x89\x01\n" +
-	"\x1dListGatewayOperationsResponse\x12@\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x85\x01\n" +
+	"\x1dListGatewayOperationsResponse\x12<\n" +
 	"\n" +
-	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
+	"operations\x18\x01 \x03(\v2\x1c.corelib.operation.OperationR\n" +
 	"operations\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x10\n" +
 	"\x0eNatGatewaySpec\"\x17\n" +
@@ -915,7 +915,7 @@ const file_kacho_cloud_vpc_v1_gateway_service_proto_rawDesc = "" +
 	"gateway_id\x18\x01 \x01(\tR\tgatewayId\"6\n" +
 	"\x15DeleteGatewayMetadata\x12\x1d\n" +
 	"\n" +
-	"gateway_id\x18\x01 \x01(\tR\tgatewayId2\xad\n" +
+	"gateway_id\x18\x01 \x01(\tR\tgatewayId2\xa1\n" +
 	"\n" +
 	"\x0eGatewayService\x12\xaf\x01\n" +
 	"\x03Get\x12%.kacho.cloud.vpc.v1.GetGatewayRequest\x1a\x1b.kacho.cloud.vpc.v1.Gateway\"d\x8a\xb5\x18\x10vpc.gateways.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x19\n" +
@@ -923,16 +923,16 @@ const file_kacho_cloud_vpc_v1_gateway_service_proto_rawDesc = "" +
 	"gateway_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1f\x12\x1d/vpc/v1/gateways/{gateway_id}\x12\xb0\x01\n" +
 	"\x04List\x12'.kacho.cloud.vpc.v1.ListGatewaysRequest\x1a(.kacho.cloud.vpc.v1.ListGatewaysResponse\"U\x8a\xb5\x18\x11vpc.gateways.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x12\x12\x10/vpc/v1/gateways\x12\xd4\x01\n" +
-	"\x06Create\x12(.kacho.cloud.vpc.v1.CreateGatewayRequest\x1a .kacho.cloud.operation.Operation\"~\x8a\xb5\x18\x13vpc.gateways.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x12\x12\x10/vpc/v1/gateways\x12\xd0\x01\n" +
+	"\x06Create\x12(.kacho.cloud.vpc.v1.CreateGatewayRequest\x1a\x1c.corelib.operation.Operation\"~\x8a\xb5\x18\x13vpc.gateways.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\xb2\xd2* \n" +
-	"\x15CreateGatewayMetadata\x12\aGateway\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/vpc/v1/gateways\x12\xe8\x01\n" +
-	"\x06Update\x12(.kacho.cloud.vpc.v1.UpdateGatewayRequest\x1a .kacho.cloud.operation.Operation\"\x91\x01\x8a\xb5\x18\x13vpc.gateways.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
+	"\x15CreateGatewayMetadata\x12\aGateway\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/vpc/v1/gateways\x12\xe4\x01\n" +
+	"\x06Update\x12(.kacho.cloud.vpc.v1.UpdateGatewayRequest\x1a\x1c.corelib.operation.Operation\"\x91\x01\x8a\xb5\x18\x13vpc.gateways.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
 	"\vvpc_gateway\x12\n" +
 	"gateway_id\xa2\xb5\x18\x011\xb2\xd2* \n" +
-	"\x15UpdateGatewayMetadata\x12\aGateway\x82\xd3\xe4\x93\x02\":\x01*2\x1d/vpc/v1/gateways/{gateway_id}\x12\xf3\x01\n" +
-	"\x06Delete\x12(.kacho.cloud.vpc.v1.DeleteGatewayRequest\x1a .kacho.cloud.operation.Operation\"\x9c\x01\x8a\xb5\x18\x13vpc.gateways.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x19\n" +
+	"\x15UpdateGatewayMetadata\x12\aGateway\x82\xd3\xe4\x93\x02\":\x01*2\x1d/vpc/v1/gateways/{gateway_id}\x12\xef\x01\n" +
+	"\x06Delete\x12(.kacho.cloud.vpc.v1.DeleteGatewayRequest\x1a\x1c.corelib.operation.Operation\"\x9c\x01\x8a\xb5\x18\x13vpc.gateways.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x19\n" +
 	"\vvpc_gateway\x12\n" +
 	"gateway_id\xa2\xb5\x18\x011\xb2\xd2*.\n" +
 	"\x15DeleteGatewayMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x1f*\x1d/vpc/v1/gateways/{gateway_id}\x12\xfd\x01\n" +
@@ -970,12 +970,12 @@ var file_kacho_cloud_vpc_v1_gateway_service_proto_goTypes = []any{
 	nil,                                   // 13: kacho.cloud.vpc.v1.CreateGatewayRequest.LabelsEntry
 	nil,                                   // 14: kacho.cloud.vpc.v1.UpdateGatewayRequest.LabelsEntry
 	(*Gateway)(nil),                       // 15: kacho.cloud.vpc.v1.Gateway
-	(*operation.Operation)(nil),           // 16: kacho.cloud.operation.Operation
+	(*operation.Operation)(nil),           // 16: corelib.operation.Operation
 	(*fieldmaskpb.FieldMask)(nil),         // 17: google.protobuf.FieldMask
 }
 var file_kacho_cloud_vpc_v1_gateway_service_proto_depIdxs = []int32{
 	15, // 0: kacho.cloud.vpc.v1.ListGatewaysResponse.gateways:type_name -> kacho.cloud.vpc.v1.Gateway
-	16, // 1: kacho.cloud.vpc.v1.ListGatewayOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	16, // 1: kacho.cloud.vpc.v1.ListGatewayOperationsResponse.operations:type_name -> corelib.operation.Operation
 	13, // 2: kacho.cloud.vpc.v1.CreateGatewayRequest.labels:type_name -> kacho.cloud.vpc.v1.CreateGatewayRequest.LabelsEntry
 	5,  // 3: kacho.cloud.vpc.v1.CreateGatewayRequest.nat_gateway_spec:type_name -> kacho.cloud.vpc.v1.NatGatewaySpec
 	6,  // 4: kacho.cloud.vpc.v1.CreateGatewayRequest.egress_only_gateway_spec:type_name -> kacho.cloud.vpc.v1.EgressOnlyGatewaySpec
@@ -989,9 +989,9 @@ var file_kacho_cloud_vpc_v1_gateway_service_proto_depIdxs = []int32{
 	3,  // 12: kacho.cloud.vpc.v1.GatewayService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListGatewayOperationsRequest
 	15, // 13: kacho.cloud.vpc.v1.GatewayService.Get:output_type -> kacho.cloud.vpc.v1.Gateway
 	2,  // 14: kacho.cloud.vpc.v1.GatewayService.List:output_type -> kacho.cloud.vpc.v1.ListGatewaysResponse
-	16, // 15: kacho.cloud.vpc.v1.GatewayService.Create:output_type -> kacho.cloud.operation.Operation
-	16, // 16: kacho.cloud.vpc.v1.GatewayService.Update:output_type -> kacho.cloud.operation.Operation
-	16, // 17: kacho.cloud.vpc.v1.GatewayService.Delete:output_type -> kacho.cloud.operation.Operation
+	16, // 15: kacho.cloud.vpc.v1.GatewayService.Create:output_type -> corelib.operation.Operation
+	16, // 16: kacho.cloud.vpc.v1.GatewayService.Update:output_type -> corelib.operation.Operation
+	16, // 17: kacho.cloud.vpc.v1.GatewayService.Delete:output_type -> corelib.operation.Operation
 	4,  // 18: kacho.cloud.vpc.v1.GatewayService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListGatewayOperationsResponse
 	13, // [13:19] is the sub-list for method output_type
 	7,  // [7:13] is the sub-list for method input_type

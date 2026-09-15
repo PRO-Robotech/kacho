@@ -8,7 +8,7 @@ package kacho.cloud.storage.v1;
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "corelib/api/v1/operation.proto";
-import "kacho/cloud/operation/operation.proto";
+import "corelib/operation/operation.proto";
 import "kacho/cloud/storage/v1/snapshot.proto";
 import "corelib/authz/v1/authz_options.proto";
 
@@ -43,7 +43,7 @@ service SnapshotService {
   }
 
   // Creates a snapshot of the specified volume.
-  rpc Create(CreateSnapshotRequest) returns (operation.Operation) {
+  rpc Create(CreateSnapshotRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/storage/v1/snapshots"
       body: "*"
@@ -90,7 +90,7 @@ service SnapshotService {
   // Читаемость источника при этом не теряется: `project_id` обязан совпадать с
   // проектом снимка, а роль, дающая editor в проекте, материализует и v_get на
   // его объекты. Копировать чужое из другого проекта нельзя by construction.
-  rpc Copy(CopySnapshotRequest) returns (operation.Operation) {
+  rpc Copy(CopySnapshotRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/storage/v1/snapshots/{snapshot_id}:copy"
       body: "*"
@@ -111,7 +111,7 @@ service SnapshotService {
   // Updates the specified snapshot.
   //
   // Values of omitted parameters are not changed.
-  rpc Update(UpdateSnapshotRequest) returns (operation.Operation) {
+  rpc Update(UpdateSnapshotRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       patch: "/storage/v1/snapshots/{snapshot_id}"
       body: "*"
@@ -130,7 +130,7 @@ service SnapshotService {
   }
 
   // Deletes the specified snapshot.
-  rpc Delete(DeleteSnapshotRequest) returns (operation.Operation) {
+  rpc Delete(DeleteSnapshotRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {delete: "/storage/v1/snapshots/{snapshot_id}"};
     option (corelib.api.v1.operation) = {
       metadata: "DeleteSnapshotMetadata"
@@ -329,7 +329,7 @@ message ListSnapshotOperationsRequest {
 
 message ListSnapshotOperationsResponse {
   // List of operations for the specified snapshot.
-  repeated operation.Operation operations = 1;
+  repeated corelib.operation.Operation operations = 1;
 
   // This token allows you to get the next page of results for list requests.
   string next_page_token = 2;

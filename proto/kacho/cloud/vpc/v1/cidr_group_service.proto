@@ -9,7 +9,7 @@ import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "corelib/api/v1/operation.proto";
 import "kacho/cloud/vpc/v1/cidr_group.proto";
-import "kacho/cloud/operation/operation.proto";
+import "corelib/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
@@ -55,7 +55,7 @@ service CidrGroupService {
 
   // Creates a CIDR group in the specified project.
   // Method starts an asynchronous operation that can be cancelled while it is in progress.
-  rpc Create (CreateCidrGroupRequest) returns (operation.Operation) {
+  rpc Create (CreateCidrGroupRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { post: "/vpc/v1/cidrGroups" body: "*" };
     option (corelib.api.v1.operation) = {
       metadata: "CreateCidrGroupMetadata"
@@ -79,7 +79,7 @@ service CidrGroupService {
   // of two sets rather than on a delta. Membership is edited by the two verbs
   // below, where "add 5 to 62" can be refused naming both the cap and the
   // current size.
-  rpc Update (UpdateCidrGroupRequest) returns (operation.Operation) {
+  rpc Update (UpdateCidrGroupRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { patch: "/vpc/v1/cidrGroups/{cidr_group_id}" body: "*" };
     option (corelib.api.v1.operation) = {
       metadata: "UpdateCidrGroupMetadata"
@@ -97,7 +97,7 @@ service CidrGroupService {
   // Adds CIDR block(s) to the group. Idempotent: a block already in the group is
   // a success without change, because the verb is asynchronous and a client that
   // did not learn the outcome must be able to repeat it.
-  rpc AddCidrBlocks (AddCidrGroupCidrBlocksRequest) returns (operation.Operation) {
+  rpc AddCidrBlocks (AddCidrGroupCidrBlocksRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/vpc/v1/cidrGroups/{cidr_group_id}:add-cidr-blocks"
       body: "*"
@@ -122,7 +122,7 @@ service CidrGroupService {
   // (FAILED_PRECONDITION): an empty referenced set would either make the rule
   // vanish or make its filter disappear — the first silently narrows, the second
   // silently widens, and both are a control with a form and no substance.
-  rpc RemoveCidrBlocks (RemoveCidrGroupCidrBlocksRequest) returns (operation.Operation) {
+  rpc RemoveCidrBlocks (RemoveCidrGroupCidrBlocksRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/vpc/v1/cidrGroups/{cidr_group_id}:remove-cidr-blocks"
       body: "*"
@@ -143,7 +143,7 @@ service CidrGroupService {
   // Deletes the specified CIDR group. A group a rule still points at cannot be
   // deleted (FAILED_PRECONDITION); the refusal names how many security groups
   // and rules hold it, never which.
-  rpc Delete (DeleteCidrGroupRequest) returns (operation.Operation) {
+  rpc Delete (DeleteCidrGroupRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { delete: "/vpc/v1/cidrGroups/{cidr_group_id}" };
     option (corelib.api.v1.operation) = {
       metadata: "DeleteCidrGroupMetadata"
@@ -293,7 +293,7 @@ message ListCidrGroupOperationsRequest {
 
 message ListCidrGroupOperationsResponse {
   // List of operations for the specified CIDR group.
-  repeated operation.Operation operations = 1;
+  repeated corelib.operation.Operation operations = 1;
 
   // Token for the next page of results, empty when this page is the last one.
   string next_page_token = 2;

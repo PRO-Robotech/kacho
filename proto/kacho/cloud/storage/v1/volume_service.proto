@@ -8,7 +8,7 @@ package kacho.cloud.storage.v1;
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "corelib/api/v1/operation.proto";
-import "kacho/cloud/operation/operation.proto";
+import "corelib/operation/operation.proto";
 import "kacho/cloud/storage/v1/volume.proto";
 import "corelib/authz/v1/authz_options.proto";
 
@@ -43,7 +43,7 @@ service VolumeService {
   }
 
   // Creates a volume in the specified project.
-  rpc Create(CreateVolumeRequest) returns (operation.Operation) {
+  rpc Create(CreateVolumeRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/storage/v1/volumes"
       body: "*"
@@ -69,7 +69,7 @@ service VolumeService {
   // disk_type_id стоит среди неизменяемых НЕ потому, что класс диска пожизненный,
   // а потому, что он меняется выделенным глаголом [ChangeDiskType]: здесь поле
   // отвергается как неизменяемое, и отказ называет глагол, которым это делается.
-  rpc Update(UpdateVolumeRequest) returns (operation.Operation) {
+  rpc Update(UpdateVolumeRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       patch: "/storage/v1/volumes/{volume_id}"
       body: "*"
@@ -91,7 +91,7 @@ service VolumeService {
   //
   // Deleting a volume that is attached to an instance is rejected with
   // FailedPrecondition "Volume <id> is in use" (FK RESTRICT).
-  rpc Delete(DeleteVolumeRequest) returns (operation.Operation) {
+  rpc Delete(DeleteVolumeRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {delete: "/storage/v1/volumes/{volume_id}"};
     option (corelib.api.v1.operation) = {
       metadata: "DeleteVolumeMetadata"
@@ -137,7 +137,7 @@ service VolumeService {
   // копией снимка). Том обязан быть в AVAILABLE либо IN_USE — иначе
   // FAILED_PRECONDITION "Volume <id> is not in a state that allows changing disk
   // type". Размер тома обязан укладываться в границы целевого класса.
-  rpc ChangeDiskType(ChangeDiskTypeRequest) returns (operation.Operation) {
+  rpc ChangeDiskType(ChangeDiskTypeRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/storage/v1/volumes/{volume_id}:changeDiskType"
       body: "*"
@@ -308,7 +308,7 @@ message ListVolumeOperationsRequest {
 
 message ListVolumeOperationsResponse {
   // List of operations for the specified volume.
-  repeated operation.Operation operations = 1;
+  repeated corelib.operation.Operation operations = 1;
 
   // This token allows you to get the next page of results for list requests.
   string next_page_token = 2;

@@ -12,7 +12,7 @@ package vpcv1
 import (
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
-	operation "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -1141,7 +1141,7 @@ var File_kacho_cloud_vpc_v1_security_group_service_proto protoreflect.FileDescri
 
 const file_kacho_cloud_vpc_v1_security_group_service_proto_rawDesc = "" +
 	"\n" +
-	"/kacho/cloud/vpc/v1/security_group_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a'kacho/cloud/vpc/v1/security_group.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"E\n" +
+	"/kacho/cloud/vpc/v1/security_group_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a'kacho/cloud/vpc/v1/security_group.proto\x1a!corelib/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"E\n" +
 	"\x17GetSecurityGroupRequest\x12*\n" +
 	"\x11security_group_id\x18\x01 \x01(\tR\x0fsecurityGroupId\"\x8e\x01\n" +
 	"\x19ListSecurityGroupsRequest\x12\x1d\n" +
@@ -1228,33 +1228,33 @@ const file_kacho_cloud_vpc_v1_security_group_service_proto_rawDesc = "" +
 	"\x11security_group_id\x18\x01 \x01(\tR\x0fsecurityGroupId\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tR\tpageToken\"\x8f\x01\n" +
-	"#ListSecurityGroupOperationsResponse\x12@\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x8b\x01\n" +
+	"#ListSecurityGroupOperationsResponse\x12<\n" +
 	"\n" +
-	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
+	"operations\x18\x01 \x03(\v2\x1c.corelib.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xa8\x11\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\x94\x11\n" +
 	"\x14SecurityGroupService\x12\xde\x01\n" +
 	"\x03Get\x12+.kacho.cloud.vpc.v1.GetSecurityGroupRequest\x1a!.kacho.cloud.vpc.v1.SecurityGroup\"\x86\x01\x8a\xb5\x18\x17vpc.security_groups.get\x92\xb5\x18\x05v_get\x9a\xb5\x18'\n" +
 	"\x12vpc_security_group\x12\x11security_group_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02,\x12*/vpc/v1/securityGroups/{security_group_id}\x12\xc9\x01\n" +
 	"\x04List\x12-.kacho.cloud.vpc.v1.ListSecurityGroupsRequest\x1a..kacho.cloud.vpc.v1.ListSecurityGroupsResponse\"b\x8a\xb5\x18\x18vpc.security_groups.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x18\x12\x16/vpc/v1/securityGroups\x12\xf4\x01\n" +
-	"\x06Create\x12..kacho.cloud.vpc.v1.CreateSecurityGroupRequest\x1a .kacho.cloud.operation.Operation\"\x97\x01\x8a\xb5\x18\x1avpc.security_groups.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x18\x12\x16/vpc/v1/securityGroups\x12\xf0\x01\n" +
+	"\x06Create\x12..kacho.cloud.vpc.v1.CreateSecurityGroupRequest\x1a\x1c.corelib.operation.Operation\"\x97\x01\x8a\xb5\x18\x1avpc.security_groups.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\xb2\xd2*,\n" +
-	"\x1bCreateSecurityGroupMetadata\x12\rSecurityGroup\x82\xd3\xe4\x93\x02\x1b:\x01*\"\x16/vpc/v1/securityGroups\x12\x9c\x02\n" +
-	"\x06Update\x12..kacho.cloud.vpc.v1.UpdateSecurityGroupRequest\x1a .kacho.cloud.operation.Operation\"\xbf\x01\x8a\xb5\x18\x1avpc.security_groups.update\x92\xb5\x18\bv_update\x9a\xb5\x18'\n" +
+	"\x1bCreateSecurityGroupMetadata\x12\rSecurityGroup\x82\xd3\xe4\x93\x02\x1b:\x01*\"\x16/vpc/v1/securityGroups\x12\x98\x02\n" +
+	"\x06Update\x12..kacho.cloud.vpc.v1.UpdateSecurityGroupRequest\x1a\x1c.corelib.operation.Operation\"\xbf\x01\x8a\xb5\x18\x1avpc.security_groups.update\x92\xb5\x18\bv_update\x9a\xb5\x18'\n" +
 	"\x12vpc_security_group\x12\x11security_group_id\xa2\xb5\x18\x011\xb2\xd2*,\n" +
-	"\x1bUpdateSecurityGroupMetadata\x12\rSecurityGroup\x82\xd3\xe4\x93\x02/:\x01*2*/vpc/v1/securityGroups/{security_group_id}\x12\xb6\x02\n" +
-	"\vUpdateRules\x123.kacho.cloud.vpc.v1.UpdateSecurityGroupRulesRequest\x1a .kacho.cloud.operation.Operation\"\xcf\x01\x8a\xb5\x18$vpc.security_group_rules.updateRules\x92\xb5\x18\bv_update\x9a\xb5\x18'\n" +
+	"\x1bUpdateSecurityGroupMetadata\x12\rSecurityGroup\x82\xd3\xe4\x93\x02/:\x01*2*/vpc/v1/securityGroups/{security_group_id}\x12\xb2\x02\n" +
+	"\vUpdateRules\x123.kacho.cloud.vpc.v1.UpdateSecurityGroupRulesRequest\x1a\x1c.corelib.operation.Operation\"\xcf\x01\x8a\xb5\x18$vpc.security_group_rules.updateRules\x92\xb5\x18\bv_update\x9a\xb5\x18'\n" +
 	"\x12vpc_security_group\x12\x11security_group_id\xa2\xb5\x18\x011\xb2\xd2*,\n" +
-	"\x1bUpdateSecurityGroupMetadata\x12\rSecurityGroup\x82\xd3\xe4\x93\x025:\x01*20/vpc/v1/securityGroups/{security_group_id}/rules\x12\xc1\x02\n" +
+	"\x1bUpdateSecurityGroupMetadata\x12\rSecurityGroup\x82\xd3\xe4\x93\x025:\x01*20/vpc/v1/securityGroups/{security_group_id}/rules\x12\xbd\x02\n" +
 	"\n" +
-	"UpdateRule\x122.kacho.cloud.vpc.v1.UpdateSecurityGroupRuleRequest\x1a .kacho.cloud.operation.Operation\"\xdc\x01\x8a\xb5\x18#vpc.security_group_rules.updateRule\x92\xb5\x18\bv_update\x9a\xb5\x18'\n" +
+	"UpdateRule\x122.kacho.cloud.vpc.v1.UpdateSecurityGroupRuleRequest\x1a\x1c.corelib.operation.Operation\"\xdc\x01\x8a\xb5\x18#vpc.security_group_rules.updateRule\x92\xb5\x18\bv_update\x9a\xb5\x18'\n" +
 	"\x12vpc_security_group\x12\x11security_group_id\xa2\xb5\x18\x011\xb2\xd2*0\n" +
-	"\x1fUpdateSecurityGroupRuleMetadata\x12\rSecurityGroup\x82\xd3\xe4\x93\x02?:\x01*2:/vpc/v1/securityGroups/{security_group_id}/rules/{rule_id}\x12\xa1\x02\n" +
-	"\x06Delete\x12..kacho.cloud.vpc.v1.DeleteSecurityGroupRequest\x1a .kacho.cloud.operation.Operation\"\xc4\x01\x8a\xb5\x18\x1avpc.security_groups.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18'\n" +
+	"\x1fUpdateSecurityGroupRuleMetadata\x12\rSecurityGroup\x82\xd3\xe4\x93\x02?:\x01*2:/vpc/v1/securityGroups/{security_group_id}/rules/{rule_id}\x12\x9d\x02\n" +
+	"\x06Delete\x12..kacho.cloud.vpc.v1.DeleteSecurityGroupRequest\x1a\x1c.corelib.operation.Operation\"\xc4\x01\x8a\xb5\x18\x1avpc.security_groups.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18'\n" +
 	"\x12vpc_security_group\x12\x11security_group_id\xa2\xb5\x18\x011\xb2\xd2*4\n" +
 	"\x1bDeleteSecurityGroupMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02,**/vpc/v1/securityGroups/{security_group_id}\x12\xab\x02\n" +
 	"\x0eListOperations\x126.kacho.cloud.vpc.v1.ListSecurityGroupOperationsRequest\x1a7.kacho.cloud.vpc.v1.ListSecurityGroupOperationsResponse\"\xa7\x01\x8a\xb5\x18,vpc.security_group_operations.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18'\n" +
@@ -1298,7 +1298,7 @@ var file_kacho_cloud_vpc_v1_security_group_service_proto_goTypes = []any{
 	(*PortRange)(nil),                // 21: kacho.cloud.vpc.v1.PortRange
 	(*CidrBlocks)(nil),               // 22: kacho.cloud.vpc.v1.CidrBlocks
 	(*fieldmaskpb.FieldMask)(nil),    // 23: google.protobuf.FieldMask
-	(*operation.Operation)(nil),      // 24: kacho.cloud.operation.Operation
+	(*operation.Operation)(nil),      // 24: corelib.operation.Operation
 }
 var file_kacho_cloud_vpc_v1_security_group_service_proto_depIdxs = []int32{
 	19, // 0: kacho.cloud.vpc.v1.ListSecurityGroupsResponse.security_groups:type_name -> kacho.cloud.vpc.v1.SecurityGroup
@@ -1314,7 +1314,7 @@ var file_kacho_cloud_vpc_v1_security_group_service_proto_depIdxs = []int32{
 	4,  // 10: kacho.cloud.vpc.v1.UpdateSecurityGroupRulesRequest.addition_rule_specs:type_name -> kacho.cloud.vpc.v1.SecurityGroupRuleSpec
 	23, // 11: kacho.cloud.vpc.v1.UpdateSecurityGroupRuleRequest.update_mask:type_name -> google.protobuf.FieldMask
 	18, // 12: kacho.cloud.vpc.v1.UpdateSecurityGroupRuleRequest.labels:type_name -> kacho.cloud.vpc.v1.UpdateSecurityGroupRuleRequest.LabelsEntry
-	24, // 13: kacho.cloud.vpc.v1.ListSecurityGroupOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	24, // 13: kacho.cloud.vpc.v1.ListSecurityGroupOperationsResponse.operations:type_name -> corelib.operation.Operation
 	0,  // 14: kacho.cloud.vpc.v1.SecurityGroupService.Get:input_type -> kacho.cloud.vpc.v1.GetSecurityGroupRequest
 	1,  // 15: kacho.cloud.vpc.v1.SecurityGroupService.List:input_type -> kacho.cloud.vpc.v1.ListSecurityGroupsRequest
 	3,  // 16: kacho.cloud.vpc.v1.SecurityGroupService.Create:input_type -> kacho.cloud.vpc.v1.CreateSecurityGroupRequest
@@ -1325,11 +1325,11 @@ var file_kacho_cloud_vpc_v1_security_group_service_proto_depIdxs = []int32{
 	13, // 21: kacho.cloud.vpc.v1.SecurityGroupService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListSecurityGroupOperationsRequest
 	19, // 22: kacho.cloud.vpc.v1.SecurityGroupService.Get:output_type -> kacho.cloud.vpc.v1.SecurityGroup
 	2,  // 23: kacho.cloud.vpc.v1.SecurityGroupService.List:output_type -> kacho.cloud.vpc.v1.ListSecurityGroupsResponse
-	24, // 24: kacho.cloud.vpc.v1.SecurityGroupService.Create:output_type -> kacho.cloud.operation.Operation
-	24, // 25: kacho.cloud.vpc.v1.SecurityGroupService.Update:output_type -> kacho.cloud.operation.Operation
-	24, // 26: kacho.cloud.vpc.v1.SecurityGroupService.UpdateRules:output_type -> kacho.cloud.operation.Operation
-	24, // 27: kacho.cloud.vpc.v1.SecurityGroupService.UpdateRule:output_type -> kacho.cloud.operation.Operation
-	24, // 28: kacho.cloud.vpc.v1.SecurityGroupService.Delete:output_type -> kacho.cloud.operation.Operation
+	24, // 24: kacho.cloud.vpc.v1.SecurityGroupService.Create:output_type -> corelib.operation.Operation
+	24, // 25: kacho.cloud.vpc.v1.SecurityGroupService.Update:output_type -> corelib.operation.Operation
+	24, // 26: kacho.cloud.vpc.v1.SecurityGroupService.UpdateRules:output_type -> corelib.operation.Operation
+	24, // 27: kacho.cloud.vpc.v1.SecurityGroupService.UpdateRule:output_type -> corelib.operation.Operation
+	24, // 28: kacho.cloud.vpc.v1.SecurityGroupService.Delete:output_type -> corelib.operation.Operation
 	14, // 29: kacho.cloud.vpc.v1.SecurityGroupService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListSecurityGroupOperationsResponse
 	22, // [22:30] is the sub-list for method output_type
 	14, // [14:22] is the sub-list for method input_type

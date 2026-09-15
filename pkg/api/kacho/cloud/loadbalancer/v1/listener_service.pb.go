@@ -12,7 +12,7 @@ package loadbalancerv1
 import (
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
-	operation "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -764,7 +764,7 @@ var File_kacho_cloud_loadbalancer_v1_listener_service_proto protoreflect.FileDes
 
 const file_kacho_cloud_loadbalancer_v1_listener_service_proto_rawDesc = "" +
 	"\n" +
-	"2kacho/cloud/loadbalancer/v1/listener_service.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a*kacho/cloud/loadbalancer/v1/listener.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"5\n" +
+	"2kacho/cloud/loadbalancer/v1/listener_service.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a*kacho/cloud/loadbalancer/v1/listener.proto\x1a!corelib/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"5\n" +
 	"\x12GetListenerRequest\x12\x1f\n" +
 	"\vlistener_id\x18\x01 \x01(\tR\n" +
 	"listenerId\"\xb3\x01\n" +
@@ -826,23 +826,23 @@ const file_kacho_cloud_loadbalancer_v1_listener_service_proto_rawDesc = "" +
 	"listenerId\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tR\tpageToken\"\x8a\x01\n" +
-	"\x1eListListenerOperationsResponse\x12@\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x86\x01\n" +
+	"\x1eListListenerOperationsResponse\x12<\n" +
 	"\n" +
-	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
+	"operations\x18\x01 \x03(\v2\x1c.corelib.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xcb\v\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xbf\v\n" +
 	"\x0fListenerService\x12\xd1\x01\n" +
 	"\x03Get\x12/.kacho.cloud.loadbalancer.v1.GetListenerRequest\x1a%.kacho.cloud.loadbalancer.v1.Listener\"r\x8a\xb5\x18\x1aloadbalancer.listeners.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x1b\n" +
 	"\fnlb_listener\x12\vlistener_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02!\x12\x1f/nlb/v1/listeners/{listener_id}\x12\xb0\x01\n" +
-	"\x04List\x121.kacho.cloud.loadbalancer.v1.ListListenersRequest\x1a2.kacho.cloud.loadbalancer.v1.ListListenersResponse\"A\x8a\xb5\x18\x1bloadbalancer.listeners.list\xa2\xb5\x18\x011\xb0\xb5\x18\x01\x82\xd3\xe4\x93\x02\x13\x12\x11/nlb/v1/listeners\x12\x84\x02\n" +
-	"\x06Create\x122.kacho.cloud.loadbalancer.v1.CreateListenerRequest\x1a .kacho.cloud.operation.Operation\"\xa3\x01\x8a\xb5\x18\x1dloadbalancer.listeners.create\x92\xb5\x18\x06editor\x9a\xb5\x18-\n" +
+	"\x04List\x121.kacho.cloud.loadbalancer.v1.ListListenersRequest\x1a2.kacho.cloud.loadbalancer.v1.ListListenersResponse\"A\x8a\xb5\x18\x1bloadbalancer.listeners.list\xa2\xb5\x18\x011\xb0\xb5\x18\x01\x82\xd3\xe4\x93\x02\x13\x12\x11/nlb/v1/listeners\x12\x80\x02\n" +
+	"\x06Create\x122.kacho.cloud.loadbalancer.v1.CreateListenerRequest\x1a\x1c.corelib.operation.Operation\"\xa3\x01\x8a\xb5\x18\x1dloadbalancer.listeners.create\x92\xb5\x18\x06editor\x9a\xb5\x18-\n" +
 	"\x19nlb_network_load_balancer\x12\x10load_balancer_id\xa2\xb5\x18\x011\xb2\xd2*\"\n" +
-	"\x16CreateListenerMetadata\x12\bListener\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/nlb/v1/listeners\x12\x82\x02\n" +
-	"\x06Update\x122.kacho.cloud.loadbalancer.v1.UpdateListenerRequest\x1a .kacho.cloud.operation.Operation\"\xa1\x01\x8a\xb5\x18\x1dloadbalancer.listeners.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x1b\n" +
+	"\x16CreateListenerMetadata\x12\bListener\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/nlb/v1/listeners\x12\xfe\x01\n" +
+	"\x06Update\x122.kacho.cloud.loadbalancer.v1.UpdateListenerRequest\x1a\x1c.corelib.operation.Operation\"\xa1\x01\x8a\xb5\x18\x1dloadbalancer.listeners.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x1b\n" +
 	"\fnlb_listener\x12\vlistener_id\xa2\xb5\x18\x011\xb2\xd2*\"\n" +
-	"\x16UpdateListenerMetadata\x12\bListener\x82\xd3\xe4\x93\x02$:\x01*2\x1f/nlb/v1/listeners/{listener_id}\x12\x8c\x02\n" +
-	"\x06Delete\x122.kacho.cloud.loadbalancer.v1.DeleteListenerRequest\x1a .kacho.cloud.operation.Operation\"\xab\x01\x8a\xb5\x18\x1dloadbalancer.listeners.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x1b\n" +
+	"\x16UpdateListenerMetadata\x12\bListener\x82\xd3\xe4\x93\x02$:\x01*2\x1f/nlb/v1/listeners/{listener_id}\x12\x88\x02\n" +
+	"\x06Delete\x122.kacho.cloud.loadbalancer.v1.DeleteListenerRequest\x1a\x1c.corelib.operation.Operation\"\xab\x01\x8a\xb5\x18\x1dloadbalancer.listeners.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x1b\n" +
 	"\fnlb_listener\x12\vlistener_id\xa2\xb5\x18\x011\xb2\xd2*/\n" +
 	"\x16DeleteListenerMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02!*\x1f/nlb/v1/listeners/{listener_id}\x12\x95\x02\n" +
 	"\x0eListOperations\x12:.kacho.cloud.loadbalancer.v1.ListListenerOperationsRequest\x1a;.kacho.cloud.loadbalancer.v1.ListListenerOperationsResponse\"\x89\x01\x8a\xb5\x18%loadbalancer.listeners.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x1b\n" +
@@ -878,7 +878,7 @@ var file_kacho_cloud_loadbalancer_v1_listener_service_proto_goTypes = []any{
 	(*Listener)(nil),                       // 13: kacho.cloud.loadbalancer.v1.Listener
 	(Listener_Protocol)(0),                 // 14: kacho.cloud.loadbalancer.v1.Listener.Protocol
 	(*fieldmaskpb.FieldMask)(nil),          // 15: google.protobuf.FieldMask
-	(*operation.Operation)(nil),            // 16: kacho.cloud.operation.Operation
+	(*operation.Operation)(nil),            // 16: corelib.operation.Operation
 }
 var file_kacho_cloud_loadbalancer_v1_listener_service_proto_depIdxs = []int32{
 	13, // 0: kacho.cloud.loadbalancer.v1.ListListenersResponse.listeners:type_name -> kacho.cloud.loadbalancer.v1.Listener
@@ -886,7 +886,7 @@ var file_kacho_cloud_loadbalancer_v1_listener_service_proto_depIdxs = []int32{
 	14, // 2: kacho.cloud.loadbalancer.v1.CreateListenerRequest.protocol:type_name -> kacho.cloud.loadbalancer.v1.Listener.Protocol
 	15, // 3: kacho.cloud.loadbalancer.v1.UpdateListenerRequest.update_mask:type_name -> google.protobuf.FieldMask
 	12, // 4: kacho.cloud.loadbalancer.v1.UpdateListenerRequest.labels:type_name -> kacho.cloud.loadbalancer.v1.UpdateListenerRequest.LabelsEntry
-	16, // 5: kacho.cloud.loadbalancer.v1.ListListenerOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	16, // 5: kacho.cloud.loadbalancer.v1.ListListenerOperationsResponse.operations:type_name -> corelib.operation.Operation
 	0,  // 6: kacho.cloud.loadbalancer.v1.ListenerService.Get:input_type -> kacho.cloud.loadbalancer.v1.GetListenerRequest
 	1,  // 7: kacho.cloud.loadbalancer.v1.ListenerService.List:input_type -> kacho.cloud.loadbalancer.v1.ListListenersRequest
 	3,  // 8: kacho.cloud.loadbalancer.v1.ListenerService.Create:input_type -> kacho.cloud.loadbalancer.v1.CreateListenerRequest
@@ -895,9 +895,9 @@ var file_kacho_cloud_loadbalancer_v1_listener_service_proto_depIdxs = []int32{
 	9,  // 11: kacho.cloud.loadbalancer.v1.ListenerService.ListOperations:input_type -> kacho.cloud.loadbalancer.v1.ListListenerOperationsRequest
 	13, // 12: kacho.cloud.loadbalancer.v1.ListenerService.Get:output_type -> kacho.cloud.loadbalancer.v1.Listener
 	2,  // 13: kacho.cloud.loadbalancer.v1.ListenerService.List:output_type -> kacho.cloud.loadbalancer.v1.ListListenersResponse
-	16, // 14: kacho.cloud.loadbalancer.v1.ListenerService.Create:output_type -> kacho.cloud.operation.Operation
-	16, // 15: kacho.cloud.loadbalancer.v1.ListenerService.Update:output_type -> kacho.cloud.operation.Operation
-	16, // 16: kacho.cloud.loadbalancer.v1.ListenerService.Delete:output_type -> kacho.cloud.operation.Operation
+	16, // 14: kacho.cloud.loadbalancer.v1.ListenerService.Create:output_type -> corelib.operation.Operation
+	16, // 15: kacho.cloud.loadbalancer.v1.ListenerService.Update:output_type -> corelib.operation.Operation
+	16, // 16: kacho.cloud.loadbalancer.v1.ListenerService.Delete:output_type -> corelib.operation.Operation
 	10, // 17: kacho.cloud.loadbalancer.v1.ListenerService.ListOperations:output_type -> kacho.cloud.loadbalancer.v1.ListListenerOperationsResponse
 	12, // [12:18] is the sub-list for method output_type
 	6,  // [6:12] is the sub-list for method input_type

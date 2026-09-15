@@ -434,8 +434,8 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.registry.v1.RegistryService/RenameRepository": {},
 
 	// operation (без v1!) — OperationService (in-process OpsProxy, фан-аут по domain-prefix)
-	"/kacho.cloud.operation.OperationService/Get":    {},
-	"/kacho.cloud.operation.OperationService/Cancel": {},
+	"/corelib.operation.OperationService/Get":    {},
+	"/corelib.operation.OperationService/Cancel": {},
 }
 
 // IsAllowed проверяет, что метод находится в списке разрешенных публичных RPC.

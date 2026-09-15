@@ -1016,7 +1016,7 @@ func main() {
 		grpc.ChainStreamInterceptor(grpcStreamInterceptors...),
 	)
 	// Нативная поверхность внешне достижимого gRPC-сервера — один список,
-	// external_grpc_services.go. Запросы /kacho.cloud.operation.OperationService/*
+	// external_grpc_services.go. Запросы /corelib.operation.OperationService/*
 	// идут напрямую туда, минуя transparent-proxy routing (server.go Resolver).
 	opsProxy := opsproxy.New(backends)
 	registerExternalGRPCServices(grpcSrv, externalAdmission.Registrar(grpcSrv), backends, opsProxy)

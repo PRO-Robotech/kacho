@@ -12,7 +12,7 @@ package vpcv1
 import (
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
-	operation "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -781,7 +781,7 @@ var File_kacho_cloud_vpc_v1_network_interface_service_proto protoreflect.FileDes
 
 const file_kacho_cloud_vpc_v1_network_interface_service_proto_rawDesc = "" +
 	"\n" +
-	"2kacho/cloud/vpc/v1/network_interface_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a*kacho/cloud/vpc/v1/network_interface.proto\x1a$corelib/authz/v1/authz_options.proto\"N\n" +
+	"2kacho/cloud/vpc/v1/network_interface_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a!corelib/operation/operation.proto\x1a*kacho/cloud/vpc/v1/network_interface.proto\x1a$corelib/authz/v1/authz_options.proto\"N\n" +
 	"\x1aGetNetworkInterfaceRequest\x120\n" +
 	"\x14network_interface_id\x18\x01 \x01(\tR\x12networkInterfaceId\"\xd6\x01\n" +
 	"\x1cListNetworkInterfacesRequest\x12\x1d\n" +
@@ -843,26 +843,26 @@ const file_kacho_cloud_vpc_v1_network_interface_service_proto_rawDesc = "" +
 	"\x14network_interface_id\x18\x01 \x01(\tR\x12networkInterfaceId\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tR\tpageToken\"\x92\x01\n" +
-	"&ListNetworkInterfaceOperationsResponse\x12@\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x8e\x01\n" +
+	"&ListNetworkInterfaceOperationsResponse\x12<\n" +
 	"\n" +
-	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
+	"operations\x18\x01 \x03(\v2\x1c.corelib.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xa0\r\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\x94\r\n" +
 	"\x17NetworkInterfaceService\x12\xf3\x01\n" +
 	"\x03Get\x12..kacho.cloud.vpc.v1.GetNetworkInterfaceRequest\x1a$.kacho.cloud.vpc.v1.NetworkInterface\"\x95\x01\x8a\xb5\x18\x1avpc.network_interfaces.get\x92\xb5\x18\x05v_get\x9a\xb5\x18-\n" +
 	"\x15vpc_network_interface\x12\x14network_interface_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x022\x120/vpc/v1/networkInterfaces/{network_interface_id}\x12\xd5\x01\n" +
 	"\x04List\x120.kacho.cloud.vpc.v1.ListNetworkInterfacesRequest\x1a1.kacho.cloud.vpc.v1.ListNetworkInterfacesResponse\"h\x8a\xb5\x18\x1bvpc.network_interfaces.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1b\x12\x19/vpc/v1/networkInterfaces\x12\x83\x02\n" +
-	"\x06Create\x121.kacho.cloud.vpc.v1.CreateNetworkInterfaceRequest\x1a .kacho.cloud.operation.Operation\"\xa3\x01\x8a\xb5\x18\x1dvpc.network_interfaces.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1b\x12\x19/vpc/v1/networkInterfaces\x12\xff\x01\n" +
+	"\x06Create\x121.kacho.cloud.vpc.v1.CreateNetworkInterfaceRequest\x1a\x1c.corelib.operation.Operation\"\xa3\x01\x8a\xb5\x18\x1dvpc.network_interfaces.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\xb2\xd2*2\n" +
-	"\x1eCreateNetworkInterfaceMetadata\x12\x10NetworkInterface\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/vpc/v1/networkInterfaces\x12\xb4\x02\n" +
-	"\x06Update\x121.kacho.cloud.vpc.v1.UpdateNetworkInterfaceRequest\x1a .kacho.cloud.operation.Operation\"\xd4\x01\x8a\xb5\x18\x1dvpc.network_interfaces.update\x92\xb5\x18\bv_update\x9a\xb5\x18-\n" +
+	"\x1eCreateNetworkInterfaceMetadata\x12\x10NetworkInterface\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/vpc/v1/networkInterfaces\x12\xb0\x02\n" +
+	"\x06Update\x121.kacho.cloud.vpc.v1.UpdateNetworkInterfaceRequest\x1a\x1c.corelib.operation.Operation\"\xd4\x01\x8a\xb5\x18\x1dvpc.network_interfaces.update\x92\xb5\x18\bv_update\x9a\xb5\x18-\n" +
 	"\x15vpc_network_interface\x12\x14network_interface_id\xa2\xb5\x18\x011\xb2\xd2*2\n" +
-	"\x1eUpdateNetworkInterfaceMetadata\x12\x10NetworkInterface\x82\xd3\xe4\x93\x025:\x01*20/vpc/v1/networkInterfaces/{network_interface_id}\x12\xb6\x02\n" +
-	"\x06Delete\x121.kacho.cloud.vpc.v1.DeleteNetworkInterfaceRequest\x1a .kacho.cloud.operation.Operation\"\xd6\x01\x8a\xb5\x18\x1dvpc.network_interfaces.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18-\n" +
+	"\x1eUpdateNetworkInterfaceMetadata\x12\x10NetworkInterface\x82\xd3\xe4\x93\x025:\x01*20/vpc/v1/networkInterfaces/{network_interface_id}\x12\xb2\x02\n" +
+	"\x06Delete\x121.kacho.cloud.vpc.v1.DeleteNetworkInterfaceRequest\x1a\x1c.corelib.operation.Operation\"\xd6\x01\x8a\xb5\x18\x1dvpc.network_interfaces.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18-\n" +
 	"\x15vpc_network_interface\x12\x14network_interface_id\xa2\xb5\x18\x011\xb2\xd2*7\n" +
 	"\x1eDeleteNetworkInterfaceMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x022*0/vpc/v1/networkInterfaces/{network_interface_id}\x12\xc0\x02\n" +
 	"\x0eListOperations\x129.kacho.cloud.vpc.v1.ListNetworkInterfaceOperationsRequest\x1a:.kacho.cloud.vpc.v1.ListNetworkInterfaceOperationsResponse\"\xb6\x01\x8a\xb5\x18/vpc.network_interface_operations.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18-\n" +
@@ -897,14 +897,14 @@ var file_kacho_cloud_vpc_v1_network_interface_service_proto_goTypes = []any{
 	nil,                           // 12: kacho.cloud.vpc.v1.UpdateNetworkInterfaceRequest.LabelsEntry
 	(*NetworkInterface)(nil),      // 13: kacho.cloud.vpc.v1.NetworkInterface
 	(*fieldmaskpb.FieldMask)(nil), // 14: google.protobuf.FieldMask
-	(*operation.Operation)(nil),   // 15: kacho.cloud.operation.Operation
+	(*operation.Operation)(nil),   // 15: corelib.operation.Operation
 }
 var file_kacho_cloud_vpc_v1_network_interface_service_proto_depIdxs = []int32{
 	13, // 0: kacho.cloud.vpc.v1.ListNetworkInterfacesResponse.network_interfaces:type_name -> kacho.cloud.vpc.v1.NetworkInterface
 	11, // 1: kacho.cloud.vpc.v1.CreateNetworkInterfaceRequest.labels:type_name -> kacho.cloud.vpc.v1.CreateNetworkInterfaceRequest.LabelsEntry
 	14, // 2: kacho.cloud.vpc.v1.UpdateNetworkInterfaceRequest.update_mask:type_name -> google.protobuf.FieldMask
 	12, // 3: kacho.cloud.vpc.v1.UpdateNetworkInterfaceRequest.labels:type_name -> kacho.cloud.vpc.v1.UpdateNetworkInterfaceRequest.LabelsEntry
-	15, // 4: kacho.cloud.vpc.v1.ListNetworkInterfaceOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	15, // 4: kacho.cloud.vpc.v1.ListNetworkInterfaceOperationsResponse.operations:type_name -> corelib.operation.Operation
 	0,  // 5: kacho.cloud.vpc.v1.NetworkInterfaceService.Get:input_type -> kacho.cloud.vpc.v1.GetNetworkInterfaceRequest
 	1,  // 6: kacho.cloud.vpc.v1.NetworkInterfaceService.List:input_type -> kacho.cloud.vpc.v1.ListNetworkInterfacesRequest
 	3,  // 7: kacho.cloud.vpc.v1.NetworkInterfaceService.Create:input_type -> kacho.cloud.vpc.v1.CreateNetworkInterfaceRequest
@@ -913,9 +913,9 @@ var file_kacho_cloud_vpc_v1_network_interface_service_proto_depIdxs = []int32{
 	9,  // 10: kacho.cloud.vpc.v1.NetworkInterfaceService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListNetworkInterfaceOperationsRequest
 	13, // 11: kacho.cloud.vpc.v1.NetworkInterfaceService.Get:output_type -> kacho.cloud.vpc.v1.NetworkInterface
 	2,  // 12: kacho.cloud.vpc.v1.NetworkInterfaceService.List:output_type -> kacho.cloud.vpc.v1.ListNetworkInterfacesResponse
-	15, // 13: kacho.cloud.vpc.v1.NetworkInterfaceService.Create:output_type -> kacho.cloud.operation.Operation
-	15, // 14: kacho.cloud.vpc.v1.NetworkInterfaceService.Update:output_type -> kacho.cloud.operation.Operation
-	15, // 15: kacho.cloud.vpc.v1.NetworkInterfaceService.Delete:output_type -> kacho.cloud.operation.Operation
+	15, // 13: kacho.cloud.vpc.v1.NetworkInterfaceService.Create:output_type -> corelib.operation.Operation
+	15, // 14: kacho.cloud.vpc.v1.NetworkInterfaceService.Update:output_type -> corelib.operation.Operation
+	15, // 15: kacho.cloud.vpc.v1.NetworkInterfaceService.Delete:output_type -> corelib.operation.Operation
 	10, // 16: kacho.cloud.vpc.v1.NetworkInterfaceService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListNetworkInterfaceOperationsResponse
 	11, // [11:17] is the sub-list for method output_type
 	5,  // [5:11] is the sub-list for method input_type

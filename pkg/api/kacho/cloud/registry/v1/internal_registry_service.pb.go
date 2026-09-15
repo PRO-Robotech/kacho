@@ -12,7 +12,7 @@ package registryv1
 import (
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
-	operation "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -309,7 +309,7 @@ var File_kacho_cloud_registry_v1_internal_registry_service_proto protoreflect.Fi
 
 const file_kacho_cloud_registry_v1_internal_registry_service_proto_rawDesc = "" +
 	"\n" +
-	"7kacho/cloud/registry/v1/internal_registry_service.proto\x12\x17kacho.cloud.registry.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"B\n" +
+	"7kacho/cloud/registry/v1/internal_registry_service.proto\x12\x17kacho.cloud.registry.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a!corelib/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"B\n" +
 	"\x1fTriggerGarbageCollectionRequest\x12\x1f\n" +
 	"\vregistry_id\x18\x01 \x01(\tR\n" +
 	"registryId\"C\n" +
@@ -333,9 +333,9 @@ const file_kacho_cloud_registry_v1_internal_registry_service_proto_rawDesc = "" 
 	"\n" +
 	"blob_count\x18\x05 \x01(\x03R\tblobCount\x128\n" +
 	"\n" +
-	"last_gc_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\blastGcAt2\xd7\x03\n" +
-	"\x17InternalRegistryService\x12\x84\x02\n" +
-	"\x18TriggerGarbageCollection\x128.kacho.cloud.registry.v1.TriggerGarbageCollectionRequest\x1a .kacho.cloud.operation.Operation\"\x8b\x01\x8a\xb5\x18\x16registry.registries.gc\x92\xb5\x18\x05admin\x9a\xb5\x18 \n" +
+	"last_gc_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\blastGcAt2\xd3\x03\n" +
+	"\x17InternalRegistryService\x12\x80\x02\n" +
+	"\x18TriggerGarbageCollection\x128.kacho.cloud.registry.v1.TriggerGarbageCollectionRequest\x1a\x1c.corelib.operation.Operation\"\x8b\x01\x8a\xb5\x18\x16registry.registries.gc\x92\xb5\x18\x05admin\x9a\xb5\x18 \n" +
 	"\x11registry_registry\x12\vregistry_id\xa2\xb5\x18\x011\xb2\xd2*;\n" +
 	" TriggerGarbageCollectionMetadata\x12\x17GarbageCollectionResult\x12\xb4\x01\n" +
 	"\x10GetRegistryStats\x120.kacho.cloud.registry.v1.GetRegistryStatsRequest\x1a&.kacho.cloud.registry.v1.RegistryStats\"F\x8a\xb5\x18\x1cregistry.registries.getStats\x92\xb5\x18\rsystem_viewer\x9a\xb5\x18\f\n" +
@@ -361,13 +361,13 @@ var file_kacho_cloud_registry_v1_internal_registry_service_proto_goTypes = []any
 	(*GetRegistryStatsRequest)(nil),          // 3: kacho.cloud.registry.v1.GetRegistryStatsRequest
 	(*RegistryStats)(nil),                    // 4: kacho.cloud.registry.v1.RegistryStats
 	(*timestamppb.Timestamp)(nil),            // 5: google.protobuf.Timestamp
-	(*operation.Operation)(nil),              // 6: kacho.cloud.operation.Operation
+	(*operation.Operation)(nil),              // 6: corelib.operation.Operation
 }
 var file_kacho_cloud_registry_v1_internal_registry_service_proto_depIdxs = []int32{
 	5, // 0: kacho.cloud.registry.v1.RegistryStats.last_gc_at:type_name -> google.protobuf.Timestamp
 	0, // 1: kacho.cloud.registry.v1.InternalRegistryService.TriggerGarbageCollection:input_type -> kacho.cloud.registry.v1.TriggerGarbageCollectionRequest
 	3, // 2: kacho.cloud.registry.v1.InternalRegistryService.GetRegistryStats:input_type -> kacho.cloud.registry.v1.GetRegistryStatsRequest
-	6, // 3: kacho.cloud.registry.v1.InternalRegistryService.TriggerGarbageCollection:output_type -> kacho.cloud.operation.Operation
+	6, // 3: kacho.cloud.registry.v1.InternalRegistryService.TriggerGarbageCollection:output_type -> corelib.operation.Operation
 	4, // 4: kacho.cloud.registry.v1.InternalRegistryService.GetRegistryStats:output_type -> kacho.cloud.registry.v1.RegistryStats
 	3, // [3:5] is the sub-list for method output_type
 	1, // [1:3] is the sub-list for method input_type

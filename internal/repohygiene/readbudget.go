@@ -27,7 +27,7 @@
 //
 // # Дискриминатор НЕСОСТОЯТЕЛЕН внутри пакета самого конверта, и это записано
 //
-// В `kacho.cloud.operation` `Operation` — не конверт асинхронной мутации, а САМ
+// В `corelib.operation` `Operation` — не конверт асинхронной мутации, а САМ
 // РЕСУРС: `OperationService/Get` возвращает его потому, что это чтение операции,
 // которое клиент и поллит до `done=true` (`api-conventions.md` §«Форма ресурса»).
 // Признак «возвращает Operation ⇒ мутирует» там означает обратное, поэтому пакет
@@ -52,6 +52,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/PRO-Robotech/corelib/contractroot"
 	"github.com/PRO-Robotech/corelib/treecorpus"
 
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -277,12 +278,32 @@ func AuditReadBudgetClassification(opts ReadBudgetOptions, out io.Writer) ([]Rea
 // подбирает то, что лежит у разработчика и не отслеживается, — распаковки
 // чартов, сборочные каталоги, отчёты прогонов. Два обхода поддерева в этом
 // дереве уже оказались дефектными по этой самой причине.
+//
+// Обходятся ВСЕ объявленные корни, лежащие в этом дереве, а не литерал
+// `proto/kacho`: форма операции получила имя фундамента и лежит под `proto/corelib`
+// (kacho#2601), а её служба поднимается каждым листенером платформы. Литерал
+// оставлял пакет вне популяции, и исключение для него объявлялось беспредметным
+// — то есть гейт краснел на верном дереве и был бы «починен» снятием исключения.
+// Корень, чьего каталога в дереве нет (приезжает модулем), популяцию не
+// расширяет и обход не роняет.
 func DeclaredProtoPackages(root string) ([]string, error) {
-	// Пути возвращаются АБСОЛЮТНЫМИ — так объявлено контрактом treecorpus.Under,
-	// поэтому join с корнем здесь был бы вторым корнем в пути.
-	files, err := treecorpus.UnderWithSuffix(filepath.Join(root, "proto", "kacho"), ".proto")
-	if err != nil {
-		return nil, err
+	var files []string
+	for _, r := range contractroot.Roots {
+		dir := filepath.Join(root, "proto", r)
+		if st, statErr := os.Stat(dir); statErr != nil || !st.IsDir() {
+			continue
+		}
+		// Пути возвращаются АБСОЛЮТНЫМИ — так объявлено контрактом treecorpus.Under,
+		// поэтому join с корнем здесь был бы вторым корнем в пути.
+		sub, err := treecorpus.UnderWithSuffix(dir, ".proto")
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, sub...)
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("readbudget: ни под одним объявленным корнем (%v) контрактов нет — "+
+			"перечень пакетов вывести не из чего", contractroot.Roots)
 	}
 	set := map[string]struct{}{}
 	for _, path := range files {

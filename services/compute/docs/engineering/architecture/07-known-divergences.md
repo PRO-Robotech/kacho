@@ -444,7 +444,7 @@ compute), которое γ будет читать для selector-матчин
 ### OperationService.Get/Cancel — не гейтятся моделью прав; владелец энфорсится в сервисе
 
 `OperationService.Get`/`Cancel` объявлены в контракте с `permission = "<exempt>"`
-(`proto/kacho/cloud/operation/operation_service.proto`) — на них **не** гоняется
+(`proto/corelib/operation/operation_service.proto`) — на них **не** гоняется
 per-RPC FGA-Check.
 
 **Почему не Check.** В модели прав нет типа объекта под операцию, и per-operation

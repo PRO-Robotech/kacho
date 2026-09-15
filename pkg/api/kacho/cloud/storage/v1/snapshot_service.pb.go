@@ -12,7 +12,7 @@ package storagev1
 import (
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
-	operation "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -843,7 +843,7 @@ var File_kacho_cloud_storage_v1_snapshot_service_proto protoreflect.FileDescript
 
 const file_kacho_cloud_storage_v1_snapshot_service_proto_rawDesc = "" +
 	"\n" +
-	"-kacho/cloud/storage/v1/snapshot_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a%kacho/cloud/storage/v1/snapshot.proto\x1a$corelib/authz/v1/authz_options.proto\"5\n" +
+	"-kacho/cloud/storage/v1/snapshot_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a!corelib/operation/operation.proto\x1a%kacho/cloud/storage/v1/snapshot.proto\x1a$corelib/authz/v1/authz_options.proto\"5\n" +
 	"\x12GetSnapshotRequest\x12\x1f\n" +
 	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
 	"snapshotId\"\x99\x01\n" +
@@ -912,30 +912,30 @@ const file_kacho_cloud_storage_v1_snapshot_service_proto_rawDesc = "" +
 	"snapshotId\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tR\tpageToken\"\x8a\x01\n" +
-	"\x1eListSnapshotOperationsResponse\x12@\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x86\x01\n" +
+	"\x1eListSnapshotOperationsResponse\x12<\n" +
 	"\n" +
-	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
+	"operations\x18\x01 \x03(\v2\x1c.corelib.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xa3\r\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\x93\r\n" +
 	"\x0fSnapshotService\x12\xca\x01\n" +
 	"\x03Get\x12*.kacho.cloud.storage.v1.GetSnapshotRequest\x1a .kacho.cloud.storage.v1.Snapshot\"u\x8a\xb5\x18\x15storage.snapshots.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x1f\n" +
 	"\x10storage_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02%\x12#/storage/v1/snapshots/{snapshot_id}\x12\xc4\x01\n" +
 	"\x04List\x12,.kacho.cloud.storage.v1.ListSnapshotsRequest\x1a-.kacho.cloud.storage.v1.ListSnapshotsResponse\"_\x8a\xb5\x18\x16storage.snapshots.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x17\x12\x15/storage/v1/snapshots\x12\xe6\x01\n" +
-	"\x06Create\x12-.kacho.cloud.storage.v1.CreateSnapshotRequest\x1a .kacho.cloud.operation.Operation\"\x8a\x01\x8a\xb5\x18\x18storage.snapshots.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x17\x12\x15/storage/v1/snapshots\x12\xe2\x01\n" +
+	"\x06Create\x12-.kacho.cloud.storage.v1.CreateSnapshotRequest\x1a\x1c.corelib.operation.Operation\"\x8a\x01\x8a\xb5\x18\x18storage.snapshots.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\xb2\xd2*\"\n" +
-	"\x16CreateSnapshotMetadata\x12\bSnapshot\x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/storage/v1/snapshots\x12\xf1\x01\n" +
-	"\x04Copy\x12+.kacho.cloud.storage.v1.CopySnapshotRequest\x1a .kacho.cloud.operation.Operation\"\x99\x01\x8a\xb5\x18\x16storage.snapshots.copy\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
+	"\x16CreateSnapshotMetadata\x12\bSnapshot\x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/storage/v1/snapshots\x12\xed\x01\n" +
+	"\x04Copy\x12+.kacho.cloud.storage.v1.CopySnapshotRequest\x1a\x1c.corelib.operation.Operation\"\x99\x01\x8a\xb5\x18\x16storage.snapshots.copy\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\xb2\xd2* \n" +
-	"\x14CopySnapshotMetadata\x12\bSnapshot\x82\xd3\xe4\x93\x02-:\x01*\"(/storage/v1/snapshots/{snapshot_id}:copy\x12\x80\x02\n" +
-	"\x06Update\x12-.kacho.cloud.storage.v1.UpdateSnapshotRequest\x1a .kacho.cloud.operation.Operation\"\xa4\x01\x8a\xb5\x18\x18storage.snapshots.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
+	"\x14CopySnapshotMetadata\x12\bSnapshot\x82\xd3\xe4\x93\x02-:\x01*\"(/storage/v1/snapshots/{snapshot_id}:copy\x12\xfc\x01\n" +
+	"\x06Update\x12-.kacho.cloud.storage.v1.UpdateSnapshotRequest\x1a\x1c.corelib.operation.Operation\"\xa4\x01\x8a\xb5\x18\x18storage.snapshots.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
 	"\x10storage_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x011\xb2\xd2*\"\n" +
-	"\x16UpdateSnapshotMetadata\x12\bSnapshot\x82\xd3\xe4\x93\x02(:\x01*2#/storage/v1/snapshots/{snapshot_id}\x12\x8a\x02\n" +
-	"\x06Delete\x12-.kacho.cloud.storage.v1.DeleteSnapshotRequest\x1a .kacho.cloud.operation.Operation\"\xae\x01\x8a\xb5\x18\x18storage.snapshots.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x1f\n" +
+	"\x16UpdateSnapshotMetadata\x12\bSnapshot\x82\xd3\xe4\x93\x02(:\x01*2#/storage/v1/snapshots/{snapshot_id}\x12\x86\x02\n" +
+	"\x06Delete\x12-.kacho.cloud.storage.v1.DeleteSnapshotRequest\x1a\x1c.corelib.operation.Operation\"\xae\x01\x8a\xb5\x18\x18storage.snapshots.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x1f\n" +
 	"\x10storage_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x011\xb2\xd2*/\n" +
 	"\x16DeleteSnapshotMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02%*#/storage/v1/snapshots/{snapshot_id}\x12\x8e\x02\n" +
 	"\x0eListOperations\x125.kacho.cloud.storage.v1.ListSnapshotOperationsRequest\x1a6.kacho.cloud.storage.v1.ListSnapshotOperationsResponse\"\x8c\x01\x8a\xb5\x18 storage.snapshots.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x1f\n" +
@@ -973,7 +973,7 @@ var file_kacho_cloud_storage_v1_snapshot_service_proto_goTypes = []any{
 	nil,                                    // 15: kacho.cloud.storage.v1.UpdateSnapshotRequest.LabelsEntry
 	(*Snapshot)(nil),                       // 16: kacho.cloud.storage.v1.Snapshot
 	(*fieldmaskpb.FieldMask)(nil),          // 17: google.protobuf.FieldMask
-	(*operation.Operation)(nil),            // 18: kacho.cloud.operation.Operation
+	(*operation.Operation)(nil),            // 18: corelib.operation.Operation
 }
 var file_kacho_cloud_storage_v1_snapshot_service_proto_depIdxs = []int32{
 	16, // 0: kacho.cloud.storage.v1.ListSnapshotsResponse.snapshots:type_name -> kacho.cloud.storage.v1.Snapshot
@@ -981,7 +981,7 @@ var file_kacho_cloud_storage_v1_snapshot_service_proto_depIdxs = []int32{
 	14, // 2: kacho.cloud.storage.v1.CopySnapshotRequest.labels:type_name -> kacho.cloud.storage.v1.CopySnapshotRequest.LabelsEntry
 	17, // 3: kacho.cloud.storage.v1.UpdateSnapshotRequest.update_mask:type_name -> google.protobuf.FieldMask
 	15, // 4: kacho.cloud.storage.v1.UpdateSnapshotRequest.labels:type_name -> kacho.cloud.storage.v1.UpdateSnapshotRequest.LabelsEntry
-	18, // 5: kacho.cloud.storage.v1.ListSnapshotOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	18, // 5: kacho.cloud.storage.v1.ListSnapshotOperationsResponse.operations:type_name -> corelib.operation.Operation
 	0,  // 6: kacho.cloud.storage.v1.SnapshotService.Get:input_type -> kacho.cloud.storage.v1.GetSnapshotRequest
 	1,  // 7: kacho.cloud.storage.v1.SnapshotService.List:input_type -> kacho.cloud.storage.v1.ListSnapshotsRequest
 	3,  // 8: kacho.cloud.storage.v1.SnapshotService.Create:input_type -> kacho.cloud.storage.v1.CreateSnapshotRequest
@@ -991,10 +991,10 @@ var file_kacho_cloud_storage_v1_snapshot_service_proto_depIdxs = []int32{
 	11, // 12: kacho.cloud.storage.v1.SnapshotService.ListOperations:input_type -> kacho.cloud.storage.v1.ListSnapshotOperationsRequest
 	16, // 13: kacho.cloud.storage.v1.SnapshotService.Get:output_type -> kacho.cloud.storage.v1.Snapshot
 	2,  // 14: kacho.cloud.storage.v1.SnapshotService.List:output_type -> kacho.cloud.storage.v1.ListSnapshotsResponse
-	18, // 15: kacho.cloud.storage.v1.SnapshotService.Create:output_type -> kacho.cloud.operation.Operation
-	18, // 16: kacho.cloud.storage.v1.SnapshotService.Copy:output_type -> kacho.cloud.operation.Operation
-	18, // 17: kacho.cloud.storage.v1.SnapshotService.Update:output_type -> kacho.cloud.operation.Operation
-	18, // 18: kacho.cloud.storage.v1.SnapshotService.Delete:output_type -> kacho.cloud.operation.Operation
+	18, // 15: kacho.cloud.storage.v1.SnapshotService.Create:output_type -> corelib.operation.Operation
+	18, // 16: kacho.cloud.storage.v1.SnapshotService.Copy:output_type -> corelib.operation.Operation
+	18, // 17: kacho.cloud.storage.v1.SnapshotService.Update:output_type -> corelib.operation.Operation
+	18, // 18: kacho.cloud.storage.v1.SnapshotService.Delete:output_type -> corelib.operation.Operation
 	12, // 19: kacho.cloud.storage.v1.SnapshotService.ListOperations:output_type -> kacho.cloud.storage.v1.ListSnapshotOperationsResponse
 	13, // [13:20] is the sub-list for method output_type
 	6,  // [6:13] is the sub-list for method input_type

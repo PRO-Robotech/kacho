@@ -11,7 +11,7 @@ import "google/protobuf/field_mask.proto";
 import "corelib/api/v1/operation.proto";
 import "kacho/cloud/loadbalancer/v1/health_check.proto";
 import "kacho/cloud/loadbalancer/v1/target_group.proto";
-import "kacho/cloud/operation/operation.proto";
+import "corelib/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1";
@@ -47,7 +47,7 @@ service TargetGroupService {
     option (corelib.authz.v1.required_acr_min) = "1";
   }
 
-  rpc Create(CreateTargetGroupRequest) returns (operation.Operation) {
+  rpc Create(CreateTargetGroupRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/nlb/v1/targetGroups"
       body: "*"
@@ -65,7 +65,7 @@ service TargetGroupService {
     option (corelib.authz.v1.required_acr_min) = "1";
   }
 
-  rpc Update(UpdateTargetGroupRequest) returns (operation.Operation) {
+  rpc Update(UpdateTargetGroupRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       patch: "/nlb/v1/targetGroups/{target_group_id}"
       body: "*"
@@ -83,7 +83,7 @@ service TargetGroupService {
     option (corelib.authz.v1.required_acr_min) = "1";
   }
 
-  rpc Delete(DeleteTargetGroupRequest) returns (operation.Operation) {
+  rpc Delete(DeleteTargetGroupRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {delete: "/nlb/v1/targetGroups/{target_group_id}"};
     option (corelib.api.v1.operation) = {
       metadata: "DeleteTargetGroupMetadata"
@@ -100,7 +100,7 @@ service TargetGroupService {
 
   // Move the target group to another project. Blocked if currently attached
   // to any NetworkLoadBalancer (design §3.4).
-  rpc Move(MoveTargetGroupRequest) returns (operation.Operation) {
+  rpc Move(MoveTargetGroupRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/nlb/v1/targetGroups/{target_group_id}:move"
       body: "*"
@@ -120,7 +120,7 @@ service TargetGroupService {
     option (corelib.authz.v1.required_acr_min) = "1";
   }
 
-  rpc AddTargets(AddTargetsRequest) returns (operation.Operation) {
+  rpc AddTargets(AddTargetsRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/nlb/v1/targetGroups/{target_group_id}:addTargets"
       body: "*"
@@ -141,7 +141,7 @@ service TargetGroupService {
     option (corelib.authz.v1.required_acr_min) = "1";
   }
 
-  rpc RemoveTargets(RemoveTargetsRequest) returns (operation.Operation) {
+  rpc RemoveTargets(RemoveTargetsRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/nlb/v1/targetGroups/{target_group_id}:removeTargets"
       body: "*"
@@ -342,6 +342,6 @@ message ListTargetGroupOperationsRequest {
 }
 
 message ListTargetGroupOperationsResponse {
-  repeated operation.Operation operations = 1;
+  repeated corelib.operation.Operation operations = 1;
   string next_page_token = 2;
 }

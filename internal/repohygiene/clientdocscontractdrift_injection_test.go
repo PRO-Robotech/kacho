@@ -38,9 +38,11 @@ func clientDocsDriftFixture(t *testing.T) string {
 	}
 
 	// Общий пакет: конверт операции. Его поля законны в примере ЛЮБОГО домена.
-	write("proto/kacho/cloud/operation/v1/operation.proto", `
+	// Лежит под НЕЙТРАЛЬНЫМ корнем фундамента — там же, где в настоящем дереве
+	// (kacho#2601): каталога `cloud` у этого корня нет, и обход обязан это знать.
+	write(clientDocsSharedOperationProto, `
 syntax = "proto3";
-package kacho.cloud.operation.v1;
+package corelib.operation;
 message Operation {
   string id = 1;
   bool done = 2;
@@ -94,6 +96,9 @@ message Gadget {
 	write("services/gadget/docs/docusaurus.config.ts", "export default {}\n")
 	return root
 }
+
+// clientDocsSharedOperationProto — общий пакет операции синтетического дерева.
+const clientDocsSharedOperationProto = "proto/corelib/operation/operation.proto"
 
 func clientDocsDriftOpts(root string) ClientDocsContractDriftOptions {
 	return ClientDocsContractDriftOptions{Root: root, ProtoRoot: "proto"}
@@ -373,4 +378,92 @@ func TestBothGatesFallOnAnEmptyWalk(t *testing.T) {
 	// (`clientdocscontractdrift_test.go`): они требуют непустой переписи и падают
 	// раньше вердикта. Здесь доказано, что перепись пустоту ПОКАЗЫВАЕТ, — без
 	// этого требовать от неё было бы нечего.
+}
+
+// ── Ось «общий пакет под нейтральным корнем» ────────────────────────────────
+//
+// Пара различается ОДНИМ фактом — присутствием общего пакета операции под
+// нейтральным корнем. Домен sprocket ЗАБИРАЕТ имя `metadata` (как домен
+// вычислений в настоящем дереве), а пример ответа мутации его показывает — как
+// поле КОНВЕРТА. Обход, не видящий нейтрального корня, объявил бы поле конверта
+// снятым полем домена: ровно так после kacho#2601 краснели семь страниц
+// вычислений.
+
+// clientDocsSprocketWorld — фикстура плюс домен, забирающий имя `metadata`, и
+// страница с примером ответа мутации.
+func clientDocsSprocketWorld(t *testing.T, withSharedPackage bool) string {
+	t.Helper()
+	root := clientDocsDriftFixture(t)
+	clientDocsWritePage(t, root, "proto/kacho/cloud/sprocket/v1/sprocket.proto", `
+syntax = "proto3";
+package kacho.cloud.sprocket.v1;
+message Sprocket {
+  reserved "metadata";
+  string id = 1;
+}
+`)
+	clientDocsWritePage(t, root, "services/sprocket/docs/docusaurus.config.ts", "export default {}\n")
+	clientDocsWritePage(t, root, "services/sprocket/docs/content/api/operations.mdx", `
+# Операции
+
+<CodeBlock language="json">
+  {dedent`+"`"+`
+    {
+      "id": "op1",
+      "done": true,
+      "metadata": { "sprocketId": "spr1" }
+    }
+  `+"`"+`}
+</CodeBlock>
+`)
+	if !withSharedPackage {
+		// Снимается корень целиком: в дереве git пакета без файлов не бывает, а
+		// пустой каталог обход законно отвергает как «смотреть не на что».
+		if err := os.RemoveAll(filepath.Join(root, "proto", "corelib")); err != nil {
+			t.Fatalf("снятие общего пакета: %v", err)
+		}
+	}
+	return clientDocsTracked(t, root)
+}
+
+func TestRetiredFieldGateReadsSharedPackagesUnderTheNeutralRoot(t *testing.T) {
+	t.Parallel()
+	findings, census, err := AuditClientDocsRetiredFieldInExample(
+		clientDocsDriftOpts(clientDocsSprocketWorld(t, true)), nil)
+	if err != nil {
+		t.Fatalf("анализатор не отработал: %v", err)
+	}
+	for _, d := range census.SharedSilent {
+		if d == "operation" {
+			t.Fatalf("общий пакет под нейтральным корнем не прочитан: без полей в обходе %v", census.SharedSilent)
+		}
+	}
+	if len(findings) != 0 {
+		t.Fatalf("поле конверта операции объявлено снятым полем домена — обход не видит "+
+			"нейтрального корня: %v", findings)
+	}
+	if census.KeysJudged < 3 {
+		t.Fatalf("ключей рассужено %d — молчание получено пустым обходом, а не разбором", census.KeysJudged)
+	}
+}
+
+func TestRetiredFieldGateFallsWhenTheSharedPackageIsAbsent(t *testing.T) {
+	t.Parallel()
+	findings, census, err := AuditClientDocsRetiredFieldInExample(
+		clientDocsDriftOpts(clientDocsSprocketWorld(t, false)), nil)
+	if err != nil {
+		t.Fatalf("анализатор не отработал: %v", err)
+	}
+	silent := false
+	for _, d := range census.SharedSilent {
+		if d == "operation" {
+			silent = true
+		}
+	}
+	if !silent {
+		t.Fatalf("общего пакета в дереве нет, а перепись его не назвала: без полей %v", census.SharedSilent)
+	}
+	if len(findings) != 1 || findings[0].Key != "metadata" || findings[0].Domain != "sprocket" {
+		t.Fatalf("без общего пакета ожидалась ровно одна находка `metadata` домена sprocket, получено: %v", findings)
+	}
 }
