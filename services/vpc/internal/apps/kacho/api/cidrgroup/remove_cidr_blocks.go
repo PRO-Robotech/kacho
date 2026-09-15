@@ -15,6 +15,7 @@ import (
 	"github.com/PRO-Robotech/corelib/operations"
 	corevalidate "github.com/PRO-Robotech/corelib/validate"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
@@ -107,7 +108,7 @@ func (u *RemoveCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6
 				return nil, serviceerr.MapRepoErr(rerr)
 			}
 			if held := refs[id]; len(held) > 0 {
-				return nil, status.Errorf(codes.FailedPrecondition,
+				return nil, serviceerr.DeletionRefusal(refusal.ReferredTo, "cidr_group", id,
 					"CidrGroup %s is in use (%s)", id, blockersText(held))
 			}
 		}

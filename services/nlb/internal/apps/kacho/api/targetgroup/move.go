@@ -16,6 +16,7 @@ import (
 	"github.com/PRO-Robotech/corelib/ids"
 	"github.com/PRO-Robotech/corelib/operations"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/shared"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
@@ -137,7 +138,7 @@ func (u *MoveTargetGroupUseCase) Execute(
 	}
 	if len(lstIDs) > 0 {
 		_ = rd.Close()
-		return nil, status.Errorf(codes.FailedPrecondition,
+		return nil, shared.DeletionRefusal(refusal.ReferredTo, "target_group", id,
 			"target group is referenced by %d listener(s); repoint them before moving", len(lstIDs))
 	}
 	_ = rd.Close()

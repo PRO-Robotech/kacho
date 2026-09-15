@@ -16,6 +16,7 @@ import (
 	"github.com/PRO-Robotech/corelib/db/pgfault"
 	coreerrors "github.com/PRO-Robotech/corelib/errors"
 	"github.com/PRO-Robotech/corelib/pagetoken"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
 
@@ -72,11 +73,13 @@ func mapPgErr(err error, kind, id string) error {
 		switch f.Constraint {
 		case "listeners_target_group_fk":
 			if kind == "TargetGroup" {
-				return fmt.Errorf("%w: target group is referenced by listeners", kacho.ErrFailedPrecondition)
+				return refusal.Wrap(refusal.ReferredTo, refusal.Ref{ResourceType: "target_group", ResourceID: id},
+					fmt.Errorf("%w: target group is referenced by listeners", kacho.ErrFailedPrecondition))
 			}
 			return fmt.Errorf("%w: listener requires an existing target group", kacho.ErrFailedPrecondition)
 		}
-		return fmt.Errorf("%w: %s has dependent resources", kacho.ErrFailedPrecondition, kind)
+		return refusal.Wrap(refusal.ReferredUnnamed, refusal.Ref{ResourceType: kind, ResourceID: id},
+			fmt.Errorf("%w: %s has dependent resources", kacho.ErrFailedPrecondition, kind))
 	case pgfault.Check:
 		return wrapCheckViolation(f, err, kind)
 	case pgfault.Exclusion:

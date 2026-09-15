@@ -199,6 +199,16 @@ func main() {
 		logger.Error("api-gateway refusing to start: token acceptance declaration", "err", accErr)
 		os.Exit(1)
 	}
+	// АДРЕСАТ — судится ДО построения проверяющего, чтобы отказ назвал РУЧКУ.
+	//
+	// Конструктор ниже тоже откажет на незаявленном адресате, и это не второе
+	// место об одном предмете: он судит своё ПОЛЕ и пишет о нём, а оператору
+	// нужно имя переменной окружения. Порядок поэтому несущий — первым говорит
+	// тот, чей текст даёт следующий шаг.
+	if audErr := validateProductionTokenAudience(cfg.AppEnv, cfg.DeclaredTokenAudience()); audErr != nil {
+		logger.Error("api-gateway refusing to start", "err", audErr)
+		os.Exit(1)
+	}
 	issuerRecords := make([]middleware.IssuerKeySet, 0, len(acceptance))
 	acceptedIssuers := make([]string, 0, len(acceptance))
 	platformAccepted := false
@@ -219,7 +229,7 @@ func main() {
 		JWKSCacheTTL:     time.Duration(cfg.JWKSCacheTTLSeconds) * time.Second,
 		JWKSFetchTimeout: time.Duration(cfg.JWKSFetchTimeoutSeconds) * time.Second,
 		HTTPClient:       jwksHopClient,
-		ExpectedAudience: cfg.ExpectedAudience(),
+		ExpectedAudience: cfg.DeclaredTokenAudience(),
 		ClockSkew:        time.Duration(cfg.JWTClockSkewSeconds) * time.Second,
 	})
 	if tvErr := validateProductionTokenVerifierConfig(cfg.AppEnv, jverr); tvErr != nil {
@@ -616,7 +626,7 @@ func main() {
 		logger.Info("dpop-mw wired",
 			"api_domain", cfg.APIDomain,
 			"accepted_issuers", acceptedIssuers,
-			"audience", cfg.ExpectedAudience(),
+			"audience", cfg.DeclaredTokenAudience(),
 			"stepup_catalog_entries", stepUpCatalog.Size(),
 		)
 	} else {

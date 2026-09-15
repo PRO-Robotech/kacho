@@ -17,6 +17,7 @@ import (
 	"github.com/PRO-Robotech/corelib/operations"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
@@ -85,7 +86,7 @@ func (u *DeleteNetworkInterfaceUseCase) doDelete(ctx context.Context, id string)
 		return nil, serviceerr.MapRepoErr(err)
 	}
 	if cur.UsedByID != "" {
-		return nil, status.Errorf(codes.FailedPrecondition,
+		return nil, serviceerr.DeletionRefusal(refusal.ReferredTo, "network_interface", id,
 			"network interface %s is still attached to %s %s; detach it first", id, cur.UsedByType, cur.UsedByID)
 	}
 	// Снимаем used + referrer со всех привязанных Address-ресурсов в ТОЙ ЖЕ

@@ -57,6 +57,7 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/corelib/treecorpus"
+	"gopkg.in/yaml.v3"
 )
 
 // ── сбор пакетов под признаком ──────────────────────────────────────────────
@@ -322,6 +323,9 @@ var (
 	// вызов пробника: `go test`, `$(GO) test`, `${GO} test`.
 	reGoTest = regexp.MustCompile(`(?:\bgo|\$\(GO\)|\$\{GO\})\s+test\b`)
 	reGoList = regexp.MustCompile(`(?:\bgo|\$\(GO\)|\$\{GO\})\s+list\b`)
+	// собственное присваивание GOFLAGS в строке вызова: оно ПЕРЕБИВАЕТ окружение
+	// шага целиком, поэтому признак шага к такому вызову не относится.
+	reGoflagsAssign = regexp.MustCompile(`\bGOFLAGS=`)
 	// операнд-путь: `./services/$(SVC)/...`, `./deploy/`, `./...`
 	reOperand = regexp.MustCompile(`\./[A-Za-z0-9_./*-]*(?:\$\([A-Za-z0-9_]+\)|\$\{[A-Za-z0-9_]+\})?[A-Za-z0-9_./*-]*`)
 	// отбор конвейером: grep -E '<re>' / grep -E "<re>"
@@ -366,6 +370,118 @@ func topLevelPattern(pat string) string {
 	return pat
 }
 
+// ── признак, объявленный ОКРУЖЕНИЕМ ─────────────────────────────────────────
+
+// envTagScope — признаки сборки, действующие с начала одного шага процесса.
+//
+// `go test` читает `GOFLAGS` наравне с флагами строки вызова (`go help
+// environment`), поэтому шаг объявляет признак ДВУМЯ законными формами: флагом
+// и переменной окружения. Форма, о которой распознаватель не знает, делает
+// объявленный прогон невидимым — то есть даёт находку на ПОКРЫТОМ пакете, и
+// «покрытия нет» становится неотличимо от «судья этой формы не читает»
+// (`testing.md` §«Гейт на класс», п. 7).
+//
+// Наблюдалось: шаг `security-scan.yml` объявляет `GOFLAGS: -tags=rg11trivy`,
+// проверяет отбор признака на старте (`go env GOFLAGS`) и зовёт `go test` без
+// флага. Прогон есть, тег передаётся, пакет покрыт — а гейт называл его
+// непокрытым.
+type envTagScope struct {
+	StartLine int      // строка, с которой начинается шаг
+	Tags      []string // признаки этого шага; пусто — ни одного
+}
+
+// mapNodeValue — значение ключа отображения YAML.
+func mapNodeValue(n *yaml.Node, key string) *yaml.Node {
+	if n == nil || n.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		if n.Content[i].Value == key {
+			return n.Content[i+1]
+		}
+	}
+	return nil
+}
+
+// envBlockTags — признаки сборки, объявленные одним блоком `env`.
+//
+// Значение читается тем же `reTagFlag` и тем же правилом «последний выигрывает»,
+// что и флаг строки вызова: два места об одном предмете разошлись бы молча.
+func envBlockTags(env *yaml.Node) []string {
+	v := mapNodeValue(env, "GOFLAGS")
+	if v == nil || v.Kind != yaml.ScalarNode {
+		return nil
+	}
+	raw := lastFlagValue(reTagFlag, v.Value)
+	if raw == "" {
+		return nil
+	}
+	var out []string
+	for _, tag := range strings.Split(raw, ",") {
+		if tag = strings.TrimSpace(tag); tag != "" {
+			out = append(out, tag)
+		}
+	}
+	return out
+}
+
+// envTagScopesOf — признаки окружения по шагам процесса.
+//
+// РАЗБОРОМ документа, а не строкой: границу шага задаёт документ, а не отступ,
+// и комментарий `# GOFLAGS: -tags=x` разбором не читается вовсе — то же
+// требование, что и к вызову (прогоном является объявление, а не проза о нём).
+//
+// ШАГ БЕЗ СВОЕГО ПРИЗНАКА ТОЖЕ ПОЛУЧАЕТ ЗАПИСЬ, и это несущее: без неё признак
+// предыдущего шага протекал бы в следующий, и гейт считал бы покрытым пакет,
+// который никакой прогон под этим признаком не запускает.
+//
+// Область действия — шаг, джоба и процесс: `env` любого из трёх уровней
+// доезжает до вызова, и читать только нижний значило бы завести ту же слепоту
+// уровнем выше.
+func envTagScopesOf(raw []byte) []envTagScope {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(raw, &doc); err != nil || len(doc.Content) == 0 {
+		return nil // неразбираемый процесс прогонов не объявляет
+	}
+	root := doc.Content[0]
+	workflow := envBlockTags(mapNodeValue(root, "env"))
+	jobs := mapNodeValue(root, "jobs")
+	if jobs == nil || jobs.Kind != yaml.MappingNode {
+		return nil
+	}
+	var scopes []envTagScope
+	for i := 1; i < len(jobs.Content); i += 2 {
+		job := jobs.Content[i]
+		jobTags := append(append([]string{}, workflow...), envBlockTags(mapNodeValue(job, "env"))...)
+		steps := mapNodeValue(job, "steps")
+		if steps == nil || steps.Kind != yaml.SequenceNode {
+			continue
+		}
+		for _, step := range steps.Content {
+			tags := append(append([]string{}, jobTags...), envBlockTags(mapNodeValue(step, "env"))...)
+			scopes = append(scopes, envTagScope{StartLine: step.Line, Tags: tags})
+		}
+	}
+	sort.Slice(scopes, func(a, b int) bool { return scopes[a].StartLine < scopes[b].StartLine })
+	return scopes
+}
+
+// envTagsAt — признаки окружения, действующие на строке вызова.
+//
+// Строка принадлежит ПОСЛЕДНЕМУ шагу, начавшемуся не позже её: шаги в файле
+// идут по возрастанию строки, а тело шага лежит между его началом и началом
+// следующего.
+func envTagsAt(scopes []envTagScope, line int) []string {
+	var tags []string
+	for _, s := range scopes {
+		if s.StartLine > line {
+			break
+		}
+		tags = s.Tags
+	}
+	return tags
+}
+
 // lookBack — сколько строк назад искать питающий `go list` и `grep -E`.
 //
 // Вызов, питаемый через `xargs`, своих операндов не несёт: область задана выше,
@@ -374,39 +490,70 @@ func topLevelPattern(pat string) string {
 // область и СКАЖЕТ об этом находкой, а не сочтёт пакет непокрытым молча.
 const lookBack = 20
 
+// runDeclScan — прогоны, вычитанные из объявлений, и объём осмотренного.
+//
+// Счётчики едут ВМЕСТЕ с результатом: «шагов с признаком в окружении ноль» и
+// «шагов не прочитано ни одного» — разные исходы, и вызывающий обязан их
+// различать.
+type runDeclScan struct {
+	Runs             []taggedRun
+	DeclarationFiles int
+	StepsRead        int
+	StepsWithEnvTag  int
+}
+
 // extractTaggedRuns — читает объявления и достаёт из них прогоны с признаком.
-func extractTaggedRuns(root string) ([]taggedRun, int, error) {
+func extractTaggedRuns(root string) (runDeclScan, error) {
 	files, err := declarationFiles(root)
 	if err != nil {
-		return nil, 0, err
+		return runDeclScan{}, err
 	}
 
-	var runs []taggedRun
+	scan := runDeclScan{DeclarationFiles: len(files)}
 	for _, abs := range files {
 		rel, err := filepath.Rel(root, abs)
 		if err != nil {
-			return nil, 0, err
+			return runDeclScan{}, err
 		}
 		rel = filepath.ToSlash(rel)
 
 		raw, err := os.ReadFile(abs) // #nosec G304 — путь из индекса git этого дерева
 		if err != nil {
-			return nil, 0, fmt.Errorf("чтение %s: %w", rel, err)
+			return runDeclScan{}, fmt.Errorf("чтение %s: %w", rel, err)
 		}
 		kind := kindOf(rel)
 		lines := strings.Split(string(raw), "\n")
+
+		var envScopes []envTagScope
+		if kind == kindYAML {
+			envScopes = envTagScopesOf(raw)
+			scan.StepsRead += len(envScopes)
+			for _, sc := range envScopes {
+				if len(sc.Tags) != 0 {
+					scan.StepsWithEnvTag++
+				}
+			}
+		}
 
 		for i, rawLine := range lines {
 			line := stripComment(rawLine)
 			if line == "" || !reGoTest.MatchString(line) {
 				continue
 			}
-			m := reTagFlag.FindStringSubmatch(line)
-			if m == nil {
+			// Признак приходит ДВУМЯ законными формами. Флаг строки вызова
+			// сильнее: `go test -tags=X` при `GOFLAGS=-tags=Y` идёт под X.
+			tags := envTagsAt(envScopes, i+1)
+			if reGoflagsAssign.MatchString(line) {
+				tags = nil // строка задала GOFLAGS сама — окружение шага перебито
+			}
+			if m := reTagFlag.FindStringSubmatch(line); m != nil {
+				// `-tags=a,b` — прогон передаёт оба.
+				tags = strings.Split(m[1], ",")
+			}
+			if len(tags) == 0 {
 				continue
 			}
-			// `-tags=a,b` — прогон передаёт оба.
-			for _, tag := range strings.Split(m[1], ",") {
+			for _, tag := range tags {
 				tag = strings.TrimSpace(tag)
 				if tag == "" {
 					continue
@@ -433,11 +580,11 @@ func extractTaggedRuns(root string) ([]taggedRun, int, error) {
 				if len(run.Scopes) == 0 {
 					run.Scopes, run.Filters = feedingSelection(lines, i, kind)
 				}
-				runs = append(runs, run)
+				scan.Runs = append(scan.Runs, run)
 			}
 		}
 	}
-	return runs, len(files), nil
+	return scan, nil
 }
 
 // operandsOf — операнды-пути вызова, без флагов и их значений.
@@ -561,6 +708,8 @@ func (f tagRunFinding) String() string {
 
 type tagRunCensus struct {
 	DeclarationFiles int
+	StepsRead        int
+	StepsWithEnvTag  int
 	RunsFound        int
 	TagsInRuns       []string
 	FilesScanned     int
@@ -571,10 +720,12 @@ type tagRunCensus struct {
 
 func (c tagRunCensus) String() string {
 	return fmt.Sprintf(
-		"перепись: объявлений прочитано %d · прогонов с признаком найдено %d (признаки: %s) · "+
+		"перепись: объявлений прочитано %d · шагов процессов прочитано %d, из них объявляют "+
+			"признак окружением %d · прогонов с признаком найдено %d (признаки: %s) · "+
 			"файлов проб прочитано %d · из них с признаком %d · пакетов под признаком %d · "+
 			"пар пакет×признак проверено %d",
-		c.DeclarationFiles, c.RunsFound, strings.Join(c.TagsInRuns, ", "),
+		c.DeclarationFiles, c.StepsRead, c.StepsWithEnvTag,
+		c.RunsFound, strings.Join(c.TagsInRuns, ", "),
 		c.FilesScanned, c.FilesWithTag, c.PackagesChecked, c.PairsChecked)
 }
 
@@ -591,11 +742,14 @@ func auditTaggedPackagesAreExecuted(root, modulePath string) ([]tagRunFinding, t
 	census.FilesWithTag = scan.FilesWithTag
 	census.PackagesChecked = len(scan.ByPkg)
 
-	runs, declFiles, err := extractTaggedRuns(root)
+	scan2, err := extractTaggedRuns(root)
 	if err != nil {
 		return nil, census, err
 	}
-	census.DeclarationFiles = declFiles
+	runs := scan2.Runs
+	census.DeclarationFiles = scan2.DeclarationFiles
+	census.StepsRead = scan2.StepsRead
+	census.StepsWithEnvTag = scan2.StepsWithEnvTag
 	census.RunsFound = len(runs)
 
 	tagSet := map[string]bool{}

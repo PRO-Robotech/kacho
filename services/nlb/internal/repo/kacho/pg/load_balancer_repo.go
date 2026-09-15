@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/PRO-Robotech/corelib/db/pgfault"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg/dto"
@@ -524,9 +525,11 @@ func (w *loadBalancerWriter) markDeletingBlockReason(ctx context.Context, id str
 	}
 	switch {
 	case protected:
-		return fmt.Errorf("%w: NetworkLoadBalancer %s has deletion protection enabled", kacho.ErrFailedPrecondition, id)
+		return refusal.Wrap(refusal.Protected, refusal.Ref{ResourceType: "load_balancer", ResourceID: id},
+			fmt.Errorf("%w: NetworkLoadBalancer %s has deletion protection enabled", kacho.ErrFailedPrecondition, id))
 	case hasListener:
-		return fmt.Errorf("%w: NetworkLoadBalancer %s has listener(s); delete first", kacho.ErrFailedPrecondition, id)
+		return refusal.Wrap(refusal.HoldsChildren, refusal.Ref{ResourceType: "load_balancer", ResourceID: id},
+			fmt.Errorf("%w: NetworkLoadBalancer %s has listener(s); delete first", kacho.ErrFailedPrecondition, id))
 	}
 	// Guards очистились между UPDATE и этим SELECT (ребёнок удалён под гонку) —
 	// generic precondition-miss; повторный Delete пройдёт.
@@ -632,8 +635,9 @@ func (w *loadBalancerWriter) DeleteIfUnprotected(ctx context.Context, id string)
 			return mapPgErr(e, "NetworkLoadBalancer", id)
 		}
 		// Row exists → guard заблокировал: защита включена.
-		return fmt.Errorf("%w: NetworkLoadBalancer %s has deletion protection enabled",
-			kacho.ErrFailedPrecondition, id)
+		return refusal.Wrap(refusal.Protected, refusal.Ref{ResourceType: "load_balancer", ResourceID: id},
+			fmt.Errorf("%w: NetworkLoadBalancer %s has deletion protection enabled",
+				kacho.ErrFailedPrecondition, id))
 	}
 	return nil
 }

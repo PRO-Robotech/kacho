@@ -14,6 +14,7 @@ import (
 	"github.com/PRO-Robotech/corelib/filter"
 	"github.com/PRO-Robotech/corelib/safeconv"
 	"github.com/PRO-Robotech/corelib/validate"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
@@ -448,7 +449,8 @@ func (w *cidrGroupWriter) Delete(ctx context.Context, id string) error {
 	tag, err := w.tx.Exec(ctx, `DELETE FROM cidr_groups WHERE id = $1`, id)
 	if err != nil {
 		if helpers.IsFKViolation(err) {
-			return fmt.Errorf("%w: CidrGroup %s is in use", helpers.ErrFailedPrecondition, id)
+			return refusal.Wrap(refusal.ReferredTo, refusal.Ref{ResourceType: "cidr_group", ResourceID: id},
+				fmt.Errorf("%w: CidrGroup %s is in use", helpers.ErrFailedPrecondition, id))
 		}
 		return helpers.WrapPgErr(err, "CidrGroup", id)
 	}

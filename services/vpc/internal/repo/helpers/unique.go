@@ -14,6 +14,7 @@ import (
 
 	"github.com/PRO-Robotech/corelib/db/pgfault"
 	"github.com/PRO-Robotech/corelib/quota/quotadetail"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 )
 
 // IsUniqueViolation — Postgres unique-constraint violation (SQLSTATE 23505).
@@ -178,7 +179,8 @@ func WrapPgErr(err error, kind, id string) error {
 		return fmt.Errorf("%w: invalid %s id '%s'", ErrInvalidArg, resourceKindText(kind), id)
 	}
 	if IsFKViolation(err) {
-		return fmt.Errorf("%w: %s has dependent resources", ErrFailedPrecondition, kind)
+		return refusal.Wrap(refusal.ReferredUnnamed, refusal.Ref{ResourceType: kind, ResourceID: id},
+			fmt.Errorf("%w: %s has dependent resources", ErrFailedPrecondition, kind))
 	}
 	if IsCheckViolation(err) {
 		return wrapCheckViolation(err, kind)

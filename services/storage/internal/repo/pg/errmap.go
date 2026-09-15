@@ -13,6 +13,7 @@ import (
 
 	"github.com/PRO-Robotech/corelib/db/pgfault"
 	"github.com/PRO-Robotech/corelib/quota/quotadetail"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 )
 
@@ -191,7 +192,8 @@ func mapVolumeErr(err error, c volErrCtx) error {
 			case cnVolumeImageFK:
 				return fmt.Errorf("%w: Image %s not found", storageerr.ErrFailedPrecondition, c.imageID)
 			case cnAttachmentVolumeFK:
-				return fmt.Errorf("%w: Volume %s is in use", storageerr.ErrFailedPrecondition, c.volumeID)
+				return refusal.Wrap(refusal.ReferredTo, refusal.Ref{ResourceType: "volume", ResourceID: c.volumeID},
+					fmt.Errorf("%w: Volume %s is in use", storageerr.ErrFailedPrecondition, c.volumeID))
 			}
 			return fmt.Errorf("%w: volume violates a reference constraint", storageerr.ErrFailedPrecondition)
 		case pgfault.Check: // size_bytes>0 / block_size>0 / name / labels
@@ -365,7 +367,8 @@ func mapDiskTypeErr(err error, c dtErrCtx) error {
 			return fmt.Errorf("%w: DiskType %s already exists", storageerr.ErrAlreadyExists, c.diskTypeID)
 		case pgfault.ForeignKey: // volumes.disk_type_id RESTRICT (delete in-use, Q4)
 			if f.Constraint == cnVolumeDiskTypeFK {
-				return fmt.Errorf("%w: DiskType %s is in use", storageerr.ErrFailedPrecondition, c.diskTypeID)
+				return refusal.Wrap(refusal.ReferredTo, refusal.Ref{ResourceType: "disk_type", ResourceID: c.diskTypeID},
+					fmt.Errorf("%w: DiskType %s is in use", storageerr.ErrFailedPrecondition, c.diskTypeID))
 			}
 			return fmt.Errorf("%w: disk type violates a reference constraint", storageerr.ErrFailedPrecondition)
 		case pgfault.Check: // description length / zone_ids array

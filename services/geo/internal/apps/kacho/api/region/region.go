@@ -24,6 +24,7 @@ import (
 	"github.com/PRO-Robotech/corelib/operations"
 	"github.com/PRO-Robotech/corelib/validate"
 	geov1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 
 	"github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/shared/lro"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/shared/serviceerr"
@@ -336,7 +337,8 @@ func (u *UseCase) Delete(ctx context.Context, id string) (*operations.Operation,
 		// (module-geo rule 13; DB-backstop, не software-precheck). Прочие ошибки —
 		// как есть. Держим доменные sentinel'ы, errStatus конвертит в gRPC.
 		if errors.Is(derr, geoerrors.ErrFailedPrecondition) {
-			derr = failedPrecondition(fmt.Sprintf("region %s is not empty", id))
+			derr = refusal.Wrap(refusal.HoldsChildren, refusal.Ref{ResourceType: serviceerr.RegionKind, ResourceID: id},
+				failedPrecondition(fmt.Sprintf("region %s is not empty", id)))
 		}
 		return syncop.Fail(ctx, u.ops, op, u.errStatus(directReadLane(derr, id)))
 	}

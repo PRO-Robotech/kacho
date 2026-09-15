@@ -94,7 +94,16 @@ func MapRepoErr(err error) error {
 			// логов), stripSentinel вернул бы pgx-tail → leak. Отдаём чистый sentinel.
 			return status.Error(codes.Aborted, ErrConflict.Error())
 		}
-		return status.Error(code, stripSentinel(err, sentinel))
+		msg := stripSentinel(err, sentinel)
+		// Полоса отказа на снятие приклеивается ЗДЕСЬ, в ветке предусловия, а не
+		// выше по switch'у: признак принадлежит состоянию ресурса, и поставить его
+		// на код, который полосе не принадлежит, значило бы объявить полосу там, где
+		// производитель её не называл. Полосы нет — ветка ведёт себя ровно как
+		// прежде, ни кода, ни текста не меняя.
+		if laned, ok := deletionRefusal(err, code, msg); ok {
+			return laned
+		}
+		return status.Error(code, msg)
 	}
 	// Defensive: raw error из repo без обертки → не leak'аем текст.
 	return status.Error(codes.Internal, "internal database error")
@@ -134,6 +143,12 @@ func MapRepoErrLeakSafe(err error, fallback string) error {
 	if code, sentinel, ok := classifyRepoSentinel(err); ok {
 		if sentinel == ErrInternal {
 			return status.Error(codes.Internal, "internal database error")
+		}
+		// Признак едет и на внутреннем слушателе — по тому же доводу, по какому
+		// на нём же едет признак отказа учёта: одна полоса, читаемая по-разному в
+		// зависимости от того, куда постучались, есть два контракта об одном факте.
+		if laned, ok := deletionRefusal(err, code, sentinel.Error()); ok {
+			return laned
 		}
 		return status.Error(code, sentinel.Error())
 	}

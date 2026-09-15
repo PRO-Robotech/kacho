@@ -15,6 +15,7 @@ import (
 	"github.com/PRO-Robotech/corelib/ids"
 	"github.com/PRO-Robotech/corelib/operations"
 	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
+	"github.com/PRO-Robotech/kacho/pkg/refusal"
 
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
@@ -45,7 +46,7 @@ func (u *UseCase) Delete(ctx context.Context, registryID string) (*operations.Op
 		return nil, mapRepoErr(err)
 	}
 	if !empty {
-		return nil, failFailedPrecondition("registry is not empty")
+		return nil, failDeletionRefusal(refusal.HoldsChildren, "registry", registryID, "registry is not empty")
 	}
 
 	op, err := operations.NewFromContext(ctx,
@@ -94,7 +95,7 @@ func (u *UseCase) doDelete(ctx context.Context, registryID string) (*anypb.Any, 
 		return nil, mapRepoErr(err)
 	}
 	if !empty {
-		return nil, failFailedPrecondition("registry is not empty")
+		return nil, failDeletionRefusal(refusal.HoldsChildren, "registry", registryID, "registry is not empty")
 	}
 
 	// zot-namespace снятие: data-plane wired (cmd/kacho-registry/serve.go
