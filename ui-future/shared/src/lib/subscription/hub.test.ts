@@ -1,4 +1,4 @@
-import { SubscriptionHub, type EventSourceLike } from "./hub";
+import { MAX_OPEN_STREAMS, ORIGIN_CONNECTION_BUDGET, SubscriptionHub, type EventSourceLike } from "./hub";
 
 /**
  * Мультиплексор потока изменений.
@@ -58,8 +58,9 @@ const event = (kind: string, resourceId: string, change = "UPDATED") => ({
   event: { position: "p1", kind, resourceId, projectId: "prj-1", change },
 });
 
-function makeHub(sources: FakeSource[]) {
+function makeHub(sources: FakeSource[], maxOpenStreams?: number) {
   return new SubscriptionHub({
+    maxOpenStreams,
     open: (url) => {
       const s = new FakeSource(url);
       sources.push(s);
@@ -90,8 +91,13 @@ describe("хаб подписки: один поток на владельца, 
   });
 
   it("разные проекты и разные владельцы — разные потоки", () => {
+    // ПРЕДМЕТ ЗДЕСЬ — КЛЮЧ КАНАЛА, а не бюджет соединений: утверждается, что
+    // пара «владелец + проект» не схлопывается в один поток. Потолок задаётся
+    // явно и выше трёх ровно поэтому — иначе проба мерила бы потолок, о котором
+    // ничего не говорит, и её заголовок стал бы шире её тела. Сам потолок
+    // утверждается своим describe ниже, вместе с умолчанием.
     const sources: FakeSource[] = [];
-    const hub = makeHub(sources);
+    const hub = makeHub(sources, 3);
     hub.subscribe({ owner: "vpc", kind: "vpc_network", projectId: "prj-1" }, () => undefined);
     hub.subscribe({ owner: "vpc", kind: "vpc_network", projectId: "prj-2" }, () => undefined);
     hub.subscribe({ owner: "compute", kind: "compute_instance", projectId: "prj-1" }, () => undefined);
@@ -99,8 +105,9 @@ describe("хаб подписки: один поток на владельца, 
   });
 
   it("поток закрывается, когда ушёл последний подписчик", () => {
-    // Потолок потоков на вызывающего — восемь; поток, переживший свою страницу,
-    // занимает место, которого потом не хватит соседней вкладке.
+    // Поток, переживший свою страницу, занимает место дважды: в потолке
+    // вызывающего у края и в бюджете соединений браузера, где его не хватит
+    // уже обычному запросу этой же вкладки.
     const sources: FakeSource[] = [];
     const hub = makeHub(sources);
     const off1 = hub.subscribe({ owner: "vpc", kind: "vpc_network", projectId: "prj-1" }, () => undefined);
@@ -497,5 +504,127 @@ describe("посадочный отказ края отличается от с�
     expect(posture.join("\n")).toContain("ОБЪЯВЛЕННАЯ посадка");
     expect(broken.join("\n")).not.toContain("ОБЪЯВЛЕННАЯ посадка");
     expect(broken.join("\n")).toContain("vpc");
+  });
+});
+
+/**
+ * ПОТОЛОК ОДНОВРЕМЕННЫХ ПОТОКОВ: страница не занимает бюджет соединений
+ * источника целиком.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ПРЕДМЕТ. Поток изменений живёт ДОЛГО и всё это время держит соединение
+ * браузера. Соединений к одному источнику по http/1.1 браузер даёт шесть —
+ * и это не запас, а весь бюджет: обычные запросы страницы берутся оттуда же.
+ * Открой потоков ровно шесть — и ни один запрос к тому же источнику больше не
+ * доедет НИКОГДА: ни чтение списка, ни загрузка модуля после перехода.
+ *
+ * ЧИСЛО ИЗМЕРЕНО, А НЕ ВЗЯТО ИЗ ПАМЯТИ. Одно-фактная лестница (то же дерево,
+ * тот же источник, различие только в числе бесконечных потоков; обычный запрос
+ * к тому же источнику спустя 1.5 с, окно ожидания 12 с):
+ *
+ *     потоков 0 → доехал, +1842 мс
+ *     потоков 4 → доехал, +1846 мс
+ *     потоков 5 → доехал, +1851 мс
+ *     потоков 6 → НЕ доехал
+ *     потоков 7 → НЕ доехал (седьмой поток и сам не открылся)
+ *
+ * ЧТО НАБЛЮДАЛОСЬ. Посадка объявила ШЕСТОГО владельца журнала, дашборд
+ * подписывает по плитке на владельца — и страница заняла бюджет ровно целиком.
+ * Две сквозные пробы консоли падали по 90 секунд с пустым экраном: переход по
+ * прямому адресу отдавал документ за 2 мс, а его же связка не приезжала вовсе,
+ * пока потоки не сняли при разборе прогона. Прочитано это было как «каркас не
+ * отдал область арендатора» — то есть обвиняло страницу в том, что у неё
+ * отобрали последнее соединение.
+ *
+ * ПОЧЕМУ ПОТОЛОК, А НЕ ОТКАЗ ОТ ПОТОКОВ. Опрос остаётся штатным путём и не
+ * отзывается: владелец без потока покрытым не считается, и его список
+ * перечитывается повторителем — медленнее, но верно. Потолок меняет ТОЛЬКО то,
+ * скольким владельцам достаётся дешёвый путь.
+ */
+describe("потолок одновременных потоков", () => {
+  const OWNERS = ["compute", "iam", "loadbalancer", "registry", "storage", "vpc"] as const;
+
+  function hubCeiling(sources: FakeSource[], maxOpenStreams?: number) {
+    return new SubscriptionHub({
+      open: (url) => {
+        const s = new FakeSource(url);
+        sources.push(s);
+        return s;
+      },
+      diagnose: () => Promise.resolve({ status: 503, contentType: "text/plain", body: "" }),
+      log: () => undefined,
+      maxOpenStreams,
+    });
+  }
+
+  /** Подписать по одному виду на каждого объявленного посадкой владельца —
+   *  ровно то, что делает дашборд: плитка на модуль, поток на владельца. */
+  function subscribeEveryOwner(hub: SubscriptionHub): (() => void)[] {
+    return OWNERS.map((owner) => hub.subscribe({ owner, kind: `${owner}_thing`, projectId: "prj-1" }, () => undefined));
+  }
+
+  it("шесть владельцев не дают шести потоков: бюджет источника не занимается целиком", () => {
+    // Это и есть предмет. Без потолка здесь открывается ШЕСТЬ потоков — столько
+    // же, сколько браузер даёт соединений, — и обычный запрос страницы к тому же
+    // источнику не доезжает ни один.
+    const sources: FakeSource[] = [];
+    const hub = hubCeiling(sources);
+    subscribeEveryOwner(hub);
+    // Перепись парой: одно число не отличило бы «потолок сработал» от «никто не
+    // подписался», а это ровно тот случай, ради которого проба и написана.
+    expect({ ownersSubscribed: OWNERS.length, streamsOpened: sources.length }).toEqual({
+      ownersSubscribed: 6,
+      streamsOpened: 2,
+    });
+  });
+
+  it("владелец без потока остаётся на опросе, а не молчит", () => {
+    // Положительный контроль в той же пробе: покрытым обязан быть тот, кому
+    // поток достался. Без него утверждение «не покрыт» зеленело бы на хабе,
+    // который не покрывает вообще никого.
+    const sources: FakeSource[] = [];
+    const hub = hubCeiling(sources, 1);
+    hub.subscribe({ owner: "vpc", kind: "vpc_network", projectId: "prj-1" }, () => undefined);
+    hub.subscribe({ owner: "compute", kind: "compute_instance", projectId: "prj-1" }, () => undefined);
+    // Кадр открытия отдаётся КАЖДОМУ заведённому потоку, а не первому: иначе
+    // «не покрыт» было бы верно просто потому, что словаря никто не присылал, —
+    // и проба зеленела бы на хабе без всякого потолка.
+    for (const s of sources) s.emit("opened", opened(["vpc_network", "compute_instance"]));
+
+    expect(hub.covers({ owner: "vpc", kind: "vpc_network", projectId: "prj-1" })).toBe(true);
+    expect(hub.covers({ owner: "compute", kind: "compute_instance", projectId: "prj-1" })).toBe(false);
+  });
+
+  it("освободившееся место достаётся ждущему владельцу", () => {
+    // Потолок, который только запрещает, превратил бы первого подписчика в
+    // вечного владельца места: ушёл его список — поток закрылся, а ждущий так и
+    // остался бы на опросе до перезагрузки вкладки.
+    const sources: FakeSource[] = [];
+    const hub = hubCeiling(sources, 1);
+    const offVpc = hub.subscribe({ owner: "vpc", kind: "vpc_network", projectId: "prj-1" }, () => undefined);
+    hub.subscribe({ owner: "compute", kind: "compute_instance", projectId: "prj-1" }, () => undefined);
+    expect(sources).toHaveLength(1);
+
+    offVpc();
+    expect(sources).toHaveLength(2);
+    expect(new URL(sources[1].url, "http://stand").searchParams.get("owner")).toBe("compute");
+  });
+
+  it("потолок НЕ отбирает поток у того, кто уже подписан вторым видом того же владельца", () => {
+    // Один поток на владельца — прежнее свойство, и потолок его не трогает:
+    // второй вид того же владельца места не занимает вовсе.
+    const sources: FakeSource[] = [];
+    const hub = hubCeiling(sources, 1);
+    hub.subscribe({ owner: "vpc", kind: "vpc_network", projectId: "prj-1" }, () => undefined);
+    hub.subscribe({ owner: "vpc", kind: "vpc_subnet", projectId: "prj-1" }, () => undefined);
+    expect(sources).toHaveLength(1);
+  });
+
+  it("умолчание потолка строго ниже измеренного бюджета источника", () => {
+    // Потолок, равный бюджету, — это отсутствие потолка: страница снова
+    // занимает все соединения. Утверждается ПАРА, иначе «2 < 6» осталось бы
+    // верным и при бюджете, выписанном от балды.
+    expect({ budget: ORIGIN_CONNECTION_BUDGET, ceiling: MAX_OPEN_STREAMS }).toEqual({ budget: 6, ceiling: 2 });
+    expect(MAX_OPEN_STREAMS).toBeLessThan(ORIGIN_CONNECTION_BUDGET);
   });
 });
