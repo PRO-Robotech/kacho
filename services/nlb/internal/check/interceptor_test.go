@@ -313,7 +313,7 @@ func TestAZD010_OperationGet_Public(t *testing.T) {
 	resp, err := intr.Unary()(
 		principalCtx("user", "usr_anyone"),
 		struct{}{},
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.operation.OperationService/Get"},
+		&grpc.UnaryServerInfo{FullMethod: "/corelib.operation.OperationService/Get"},
 		func(context.Context, any) (any, error) { called = true; return "ok", nil },
 	)
 	require.NoError(t, err)
@@ -335,7 +335,7 @@ func TestAZD011_OperationCancel_Public_HandlerOwnsCreatorCheck(t *testing.T) {
 	resp, err := intr.Unary()(
 		principalCtx("user", "usr_bob"),
 		struct{}{},
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.operation.OperationService/Cancel"},
+		&grpc.UnaryServerInfo{FullMethod: "/corelib.operation.OperationService/Cancel"},
 		func(context.Context, any) (any, error) { return "ok-from-handler", nil },
 	)
 	require.NoError(t, err)

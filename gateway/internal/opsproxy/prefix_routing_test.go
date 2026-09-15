@@ -6,7 +6,7 @@ package opsproxy
 import (
 	"testing"
 
-	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operationpb "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	"github.com/PRO-Robotech/corelib/ids"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

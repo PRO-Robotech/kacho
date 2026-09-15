@@ -39,8 +39,8 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/authz/authziam"
 	"github.com/PRO-Robotech/kaname/pkg/ownerregister"
 
+	operationpb "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
-	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 

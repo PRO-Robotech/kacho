@@ -12,7 +12,7 @@ package computev1
 import (
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
-	operation "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -626,7 +626,7 @@ var File_kacho_cloud_compute_v1_guest_access_key_service_proto protoreflect.File
 
 const file_kacho_cloud_compute_v1_guest_access_key_service_proto_rawDesc = "" +
 	"\n" +
-	"5kacho/cloud/compute/v1/guest_access_key_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a-kacho/cloud/compute/v1/guest_access_key.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"I\n" +
+	"5kacho/cloud/compute/v1/guest_access_key_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a-kacho/cloud/compute/v1/guest_access_key.proto\x1a!corelib/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"I\n" +
 	"\x18GetGuestAccessKeyRequest\x12-\n" +
 	"\x13guest_access_key_id\x18\x01 \x01(\tR\x10guestAccessKeyId\"\x8f\x01\n" +
 	"\x1aListGuestAccessKeysRequest\x12\x1d\n" +
@@ -666,32 +666,32 @@ const file_kacho_cloud_compute_v1_guest_access_key_service_proto_rawDesc = "" +
 	"\x13guest_access_key_id\x18\x01 \x01(\tR\x10guestAccessKeyId\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tR\tpageToken\"\x90\x01\n" +
-	"$ListGuestAccessKeyOperationsResponse\x12@\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x8c\x01\n" +
+	"$ListGuestAccessKeyOperationsResponse\x12<\n" +
 	"\n" +
-	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
+	"operations\x18\x01 \x03(\v2\x1c.corelib.operation.OperationR\n" +
 	"operations\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"L\n" +
 	"\x1bDeleteGuestAccessKeyRequest\x12-\n" +
 	"\x13guest_access_key_id\x18\x01 \x01(\tR\x10guestAccessKeyId\"M\n" +
 	"\x1cDeleteGuestAccessKeyMetadata\x12-\n" +
-	"\x13guest_access_key_id\x18\x01 \x01(\tR\x10guestAccessKeyId2\xc8\r\n" +
+	"\x13guest_access_key_id\x18\x01 \x01(\tR\x10guestAccessKeyId2\xbc\r\n" +
 	"\x15GuestAccessKeyService\x12\xfd\x01\n" +
 	"\x03Get\x120.kacho.cloud.compute.v1.GetGuestAccessKeyRequest\x1a&.kacho.cloud.compute.v1.GuestAccessKey\"\x9b\x01\x8a\xb5\x18\x1dcompute.guest_access_keys.get\x92\xb5\x18\x05v_get\x9a\xb5\x18/\n" +
 	"\x18compute_guest_access_key\x12\x13guest_access_key_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x023\x121/compute/v1/guestAccessKeys/{guest_access_key_id}\x12\xde\x01\n" +
 	"\x04List\x122.kacho.cloud.compute.v1.ListGuestAccessKeysRequest\x1a3.kacho.cloud.compute.v1.ListGuestAccessKeysResponse\"m\x8a\xb5\x18\x1ecompute.guest_access_keys.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1d\x12\x1b/compute/v1/guestAccessKeys\x12\x86\x02\n" +
-	"\x06Create\x123.kacho.cloud.compute.v1.CreateGuestAccessKeyRequest\x1a .kacho.cloud.operation.Operation\"\xa4\x01\x8a\xb5\x18 compute.guest_access_keys.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1d\x12\x1b/compute/v1/guestAccessKeys\x12\x82\x02\n" +
+	"\x06Create\x123.kacho.cloud.compute.v1.CreateGuestAccessKeyRequest\x1a\x1c.corelib.operation.Operation\"\xa4\x01\x8a\xb5\x18 compute.guest_access_keys.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\xb2\xd2*.\n" +
-	"\x1cCreateGuestAccessKeyMetadata\x12\x0eGuestAccessKey\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/compute/v1/guestAccessKeys\x12\xb8\x02\n" +
-	"\x06Update\x123.kacho.cloud.compute.v1.UpdateGuestAccessKeyRequest\x1a .kacho.cloud.operation.Operation\"\xd6\x01\x8a\xb5\x18 compute.guest_access_keys.update\x92\xb5\x18\bv_update\x9a\xb5\x18/\n" +
+	"\x1cCreateGuestAccessKeyMetadata\x12\x0eGuestAccessKey\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/compute/v1/guestAccessKeys\x12\xb4\x02\n" +
+	"\x06Update\x123.kacho.cloud.compute.v1.UpdateGuestAccessKeyRequest\x1a\x1c.corelib.operation.Operation\"\xd6\x01\x8a\xb5\x18 compute.guest_access_keys.update\x92\xb5\x18\bv_update\x9a\xb5\x18/\n" +
 	"\x18compute_guest_access_key\x12\x13guest_access_key_id\xa2\xb5\x18\x011\xb2\xd2*.\n" +
 	"\x1cUpdateGuestAccessKeyMetadata\x12\x0eGuestAccessKey\x82\xd3\xe4\x93\x026:\x01*21/compute/v1/guestAccessKeys/{guest_access_key_id}\x12\xca\x02\n" +
 	"\x0eListOperations\x12;.kacho.cloud.compute.v1.ListGuestAccessKeyOperationsRequest\x1a<.kacho.cloud.compute.v1.ListGuestAccessKeyOperationsResponse\"\xbc\x01\x8a\xb5\x182compute.guest_access_key_operations.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18/\n" +
-	"\x18compute_guest_access_key\x12\x13guest_access_key_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02>\x12</compute/v1/guestAccessKeys/{guest_access_key_id}/operations\x12\xbc\x02\n" +
-	"\x06Delete\x123.kacho.cloud.compute.v1.DeleteGuestAccessKeyRequest\x1a .kacho.cloud.operation.Operation\"\xda\x01\x8a\xb5\x18 compute.guest_access_keys.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18/\n" +
+	"\x18compute_guest_access_key\x12\x13guest_access_key_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02>\x12</compute/v1/guestAccessKeys/{guest_access_key_id}/operations\x12\xb8\x02\n" +
+	"\x06Delete\x123.kacho.cloud.compute.v1.DeleteGuestAccessKeyRequest\x1a\x1c.corelib.operation.Operation\"\xda\x01\x8a\xb5\x18 compute.guest_access_keys.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18/\n" +
 	"\x18compute_guest_access_key\x12\x13guest_access_key_id\xa2\xb5\x18\x011\xb2\xd2*5\n" +
 	"\x1cDeleteGuestAccessKeyMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x023*1/compute/v1/guestAccessKeys/{guest_access_key_id}BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1b\x06proto3"
 
@@ -724,14 +724,14 @@ var file_kacho_cloud_compute_v1_guest_access_key_service_proto_goTypes = []any{
 	nil,                                          // 12: kacho.cloud.compute.v1.UpdateGuestAccessKeyRequest.LabelsEntry
 	(*GuestAccessKey)(nil),                       // 13: kacho.cloud.compute.v1.GuestAccessKey
 	(*fieldmaskpb.FieldMask)(nil),                // 14: google.protobuf.FieldMask
-	(*operation.Operation)(nil),                  // 15: kacho.cloud.operation.Operation
+	(*operation.Operation)(nil),                  // 15: corelib.operation.Operation
 }
 var file_kacho_cloud_compute_v1_guest_access_key_service_proto_depIdxs = []int32{
 	13, // 0: kacho.cloud.compute.v1.ListGuestAccessKeysResponse.guest_access_keys:type_name -> kacho.cloud.compute.v1.GuestAccessKey
 	11, // 1: kacho.cloud.compute.v1.CreateGuestAccessKeyRequest.labels:type_name -> kacho.cloud.compute.v1.CreateGuestAccessKeyRequest.LabelsEntry
 	14, // 2: kacho.cloud.compute.v1.UpdateGuestAccessKeyRequest.update_mask:type_name -> google.protobuf.FieldMask
 	12, // 3: kacho.cloud.compute.v1.UpdateGuestAccessKeyRequest.labels:type_name -> kacho.cloud.compute.v1.UpdateGuestAccessKeyRequest.LabelsEntry
-	15, // 4: kacho.cloud.compute.v1.ListGuestAccessKeyOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	15, // 4: kacho.cloud.compute.v1.ListGuestAccessKeyOperationsResponse.operations:type_name -> corelib.operation.Operation
 	0,  // 5: kacho.cloud.compute.v1.GuestAccessKeyService.Get:input_type -> kacho.cloud.compute.v1.GetGuestAccessKeyRequest
 	1,  // 6: kacho.cloud.compute.v1.GuestAccessKeyService.List:input_type -> kacho.cloud.compute.v1.ListGuestAccessKeysRequest
 	3,  // 7: kacho.cloud.compute.v1.GuestAccessKeyService.Create:input_type -> kacho.cloud.compute.v1.CreateGuestAccessKeyRequest
@@ -740,10 +740,10 @@ var file_kacho_cloud_compute_v1_guest_access_key_service_proto_depIdxs = []int32
 	9,  // 10: kacho.cloud.compute.v1.GuestAccessKeyService.Delete:input_type -> kacho.cloud.compute.v1.DeleteGuestAccessKeyRequest
 	13, // 11: kacho.cloud.compute.v1.GuestAccessKeyService.Get:output_type -> kacho.cloud.compute.v1.GuestAccessKey
 	2,  // 12: kacho.cloud.compute.v1.GuestAccessKeyService.List:output_type -> kacho.cloud.compute.v1.ListGuestAccessKeysResponse
-	15, // 13: kacho.cloud.compute.v1.GuestAccessKeyService.Create:output_type -> kacho.cloud.operation.Operation
-	15, // 14: kacho.cloud.compute.v1.GuestAccessKeyService.Update:output_type -> kacho.cloud.operation.Operation
+	15, // 13: kacho.cloud.compute.v1.GuestAccessKeyService.Create:output_type -> corelib.operation.Operation
+	15, // 14: kacho.cloud.compute.v1.GuestAccessKeyService.Update:output_type -> corelib.operation.Operation
 	8,  // 15: kacho.cloud.compute.v1.GuestAccessKeyService.ListOperations:output_type -> kacho.cloud.compute.v1.ListGuestAccessKeyOperationsResponse
-	15, // 16: kacho.cloud.compute.v1.GuestAccessKeyService.Delete:output_type -> kacho.cloud.operation.Operation
+	15, // 16: kacho.cloud.compute.v1.GuestAccessKeyService.Delete:output_type -> corelib.operation.Operation
 	11, // [11:17] is the sub-list for method output_type
 	5,  // [5:11] is the sub-list for method input_type
 	5,  // [5:5] is the sub-list for extension type_name

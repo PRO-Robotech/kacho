@@ -12,7 +12,7 @@ package computev1
 import (
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
-	operation "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -418,7 +418,7 @@ var File_kacho_cloud_compute_v1_internal_machine_type_service_proto protoreflect
 
 const file_kacho_cloud_compute_v1_internal_machine_type_service_proto_rawDesc = "" +
 	"\n" +
-	":kacho/cloud/compute/v1/internal_machine_type_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a)kacho/cloud/compute/v1/machine_type.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"\xef\x03\n" +
+	":kacho/cloud/compute/v1/internal_machine_type_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a)kacho/cloud/compute/v1/machine_type.proto\x1a!corelib/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"\xef\x03\n" +
 	"\x18CreateMachineTypeRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12B\n" +
@@ -450,15 +450,15 @@ const file_kacho_cloud_compute_v1_internal_machine_type_service_proto_rawDesc = 
 	"\x18DeleteMachineTypeRequest\x12&\n" +
 	"\x0fmachine_type_id\x18\x01 \x01(\tR\rmachineTypeId\"C\n" +
 	"\x19DeleteMachineTypeMetadata\x12&\n" +
-	"\x0fmachine_type_id\x18\x01 \x01(\tR\rmachineTypeId2\xc1\x06\n" +
-	"\x1aInternalMachineTypeService\x12\xfb\x01\n" +
-	"\x06Create\x120.kacho.cloud.compute.v1.CreateMachineTypeRequest\x1a .kacho.cloud.operation.Operation\"\x9c\x01\x8a\xb5\x18\x1bcompute.machineTypes.create\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\x0fmachine_type_id\x18\x01 \x01(\tR\rmachineTypeId2\xb5\x06\n" +
+	"\x1aInternalMachineTypeService\x12\xf7\x01\n" +
+	"\x06Create\x120.kacho.cloud.compute.v1.CreateMachineTypeRequest\x1a\x1c.corelib.operation.Operation\"\x9c\x01\x8a\xb5\x18\x1bcompute.machineTypes.create\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*(\n" +
-	"\x19CreateMachineTypeMetadata\x12\vMachineType\x82\xd3\xe4\x93\x02&:\x01*\"!/compute/v1/internal/machineTypes\x12\x8d\x02\n" +
-	"\x06Update\x120.kacho.cloud.compute.v1.UpdateMachineTypeRequest\x1a .kacho.cloud.operation.Operation\"\xae\x01\x8a\xb5\x18\x1bcompute.machineTypes.update\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\x19CreateMachineTypeMetadata\x12\vMachineType\x82\xd3\xe4\x93\x02&:\x01*\"!/compute/v1/internal/machineTypes\x12\x89\x02\n" +
+	"\x06Update\x120.kacho.cloud.compute.v1.UpdateMachineTypeRequest\x1a\x1c.corelib.operation.Operation\"\xae\x01\x8a\xb5\x18\x1bcompute.machineTypes.update\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*(\n" +
-	"\x19UpdateMachineTypeMetadata\x12\vMachineType\x82\xd3\xe4\x93\x028:\x01*23/compute/v1/internal/machineTypes/{machine_type_id}\x12\x94\x02\n" +
-	"\x06Delete\x120.kacho.cloud.compute.v1.DeleteMachineTypeRequest\x1a .kacho.cloud.operation.Operation\"\xb5\x01\x8a\xb5\x18\x1bcompute.machineTypes.delete\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\x19UpdateMachineTypeMetadata\x12\vMachineType\x82\xd3\xe4\x93\x028:\x01*23/compute/v1/internal/machineTypes/{machine_type_id}\x12\x90\x02\n" +
+	"\x06Delete\x120.kacho.cloud.compute.v1.DeleteMachineTypeRequest\x1a\x1c.corelib.operation.Operation\"\xb5\x01\x8a\xb5\x18\x1bcompute.machineTypes.delete\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*2\n" +
 	"\x19DeleteMachineTypeMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x025*3/compute/v1/internal/machineTypes/{machine_type_id}BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1b\x06proto3"
 
@@ -488,7 +488,7 @@ var file_kacho_cloud_compute_v1_internal_machine_type_service_proto_goTypes = []
 	(*EffectiveResources)(nil),        // 9: kacho.cloud.compute.v1.EffectiveResources
 	(MachineType_Status)(0),           // 10: kacho.cloud.compute.v1.MachineType.Status
 	(*fieldmaskpb.FieldMask)(nil),     // 11: google.protobuf.FieldMask
-	(*operation.Operation)(nil),       // 12: kacho.cloud.operation.Operation
+	(*operation.Operation)(nil),       // 12: corelib.operation.Operation
 }
 var file_kacho_cloud_compute_v1_internal_machine_type_service_proto_depIdxs = []int32{
 	8,  // 0: kacho.cloud.compute.v1.CreateMachineTypeRequest.family:type_name -> kacho.cloud.compute.v1.MachineType.Family
@@ -503,9 +503,9 @@ var file_kacho_cloud_compute_v1_internal_machine_type_service_proto_depIdxs = []
 	0,  // 9: kacho.cloud.compute.v1.InternalMachineTypeService.Create:input_type -> kacho.cloud.compute.v1.CreateMachineTypeRequest
 	2,  // 10: kacho.cloud.compute.v1.InternalMachineTypeService.Update:input_type -> kacho.cloud.compute.v1.UpdateMachineTypeRequest
 	4,  // 11: kacho.cloud.compute.v1.InternalMachineTypeService.Delete:input_type -> kacho.cloud.compute.v1.DeleteMachineTypeRequest
-	12, // 12: kacho.cloud.compute.v1.InternalMachineTypeService.Create:output_type -> kacho.cloud.operation.Operation
-	12, // 13: kacho.cloud.compute.v1.InternalMachineTypeService.Update:output_type -> kacho.cloud.operation.Operation
-	12, // 14: kacho.cloud.compute.v1.InternalMachineTypeService.Delete:output_type -> kacho.cloud.operation.Operation
+	12, // 12: kacho.cloud.compute.v1.InternalMachineTypeService.Create:output_type -> corelib.operation.Operation
+	12, // 13: kacho.cloud.compute.v1.InternalMachineTypeService.Update:output_type -> corelib.operation.Operation
+	12, // 14: kacho.cloud.compute.v1.InternalMachineTypeService.Delete:output_type -> corelib.operation.Operation
 	12, // [12:15] is the sub-list for method output_type
 	9,  // [9:12] is the sub-list for method input_type
 	9,  // [9:9] is the sub-list for extension type_name

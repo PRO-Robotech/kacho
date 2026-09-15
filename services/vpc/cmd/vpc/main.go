@@ -34,8 +34,8 @@ import (
 	"github.com/PRO-Robotech/corelib/outbox/reconciler"
 	"github.com/PRO-Robotech/corelib/servicehost"
 
+	operationpb "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
-	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
 	"github.com/PRO-Robotech/corelib/retention"
 	"github.com/PRO-Robotech/corelib/subscription"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"

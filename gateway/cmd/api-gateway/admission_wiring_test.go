@@ -151,10 +151,10 @@ func TestEdgeSurfaceSplitsTenantTrafficFromTheHostSurface(t *testing.T) {
 	require.NotContains(t, guarded.names(), "grpc.health.v1.Health",
 		"…и обязана не уехать под обёртку")
 
-	require.Equal(t, []string{"kacho.cloud.operation.OperationService"}, guarded.names(),
+	require.Equal(t, []string{"corelib.operation.OperationService"}, guarded.names(),
 		"опрос операций — поток АРЕНДАТОРА, самый частый вызов, на который край "+
 			"отвечает сам, и он обязан идти ЧЕРЕЗ потолок")
-	require.NotContains(t, unguarded, "kacho.cloud.operation.OperationService",
+	require.NotContains(t, unguarded, "corelib.operation.OperationService",
 		"…и не обязан заодно оставаться снаружи: две дороги к одной службе означали бы "+
 			"либо двойное списание, либо необъявленный обход")
 

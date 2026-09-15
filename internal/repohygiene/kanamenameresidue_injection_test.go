@@ -152,7 +152,7 @@ func nameResidueBorderTwins() map[string]struct{ Path, Body string } {
 		},
 		borderFoundationContract: {
 			"proto/kacho/cloud/iam/v1/probe_import.proto",
-			"import \"kacho/cloud/operation/operation.proto\";\n",
+			"import \"kacho/cloud/vpc/v1/network.proto\";\n",
 		},
 		borderForeignModule: {
 			"services/iam/docs/engineering/probe-edges.md",

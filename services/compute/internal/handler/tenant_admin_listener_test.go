@@ -74,7 +74,7 @@ func TestTenantUnaryInterceptor_PublicListenerNeverAdmin(t *testing.T) {
 	var seen TenantCtx
 	_, err := TenantUnaryInterceptor(false /*requireAdmin → public*/, false)(
 		forgedAdminCtx(), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.operation.OperationService/Get"},
+		&grpc.UnaryServerInfo{FullMethod: "/corelib.operation.OperationService/Get"},
 		func(c context.Context, _ any) (any, error) {
 			seen = TenantFromCtx(c)
 			return nil, nil

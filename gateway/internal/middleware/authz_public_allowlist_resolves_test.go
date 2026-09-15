@@ -48,7 +48,7 @@ import (
 	_ "google.golang.org/grpc/reflection/grpc_reflection_v1"
 	_ "google.golang.org/grpc/reflection/grpc_reflection_v1alpha"
 
-	_ "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	_ "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"

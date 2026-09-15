@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	operationv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operationv1 "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 )
 

@@ -94,6 +94,10 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/corelib/contractroot"
+
+	"github.com/PRO-Robotech/kacho/internal/contractsource"
 )
 
 // dsReadingVerbs — глаголы, читающие РЕСУРС.
@@ -363,6 +367,41 @@ type dsServiceCensus struct {
 }
 
 // readOnlyServiceCensus — перепись по ИНДЕКСУ дерева контрактов, а не по диску.
+// contractSurfaceProtoFiles — контракты ПУБЛИЧНОЙ поверхности: доменные корни
+// (contractDomainProtoFiles) плюс корни фундамента, у которых каталога `cloud`
+// нет.
+//
+// Предмет этого гейта — читаемая поверхность, которую видит арендатор, а не
+// дерево доменов. Служба операций на ней стоит с первого дня; до kacho#2601 она
+// называлась облачным доменом `operation` и попадала в популяцию доменным
+// обходом, а получив имя фундамента (`corelib.operation`), выпала бы из неё — и
+// записанное решение «источника у операции нет» объявлялось бы прикрывающим
+// пустоту. Паритет ресурсов (terraformresourceparity_test.go) остаётся на
+// доменном обходе: ресурсов у фундамента нет.
+func contractSurfaceProtoFiles(t *testing.T, root string) []string {
+	t.Helper()
+	out := contractDomainProtoFiles(t, root)
+	for _, r := range contractroot.Roots {
+		dir, err := contractsource.Dir(root, r)
+		if err != nil {
+			continue
+		}
+		if st, serr := os.Stat(filepath.Join(dir, "cloud")); serr == nil && st.IsDir() {
+			continue // доменный корень уже прочитан выше
+		}
+		if st, serr := os.Stat(dir); serr != nil || !st.IsDir() {
+			continue
+		}
+		files, ferr := contractsource.Files(root, r, ".proto")
+		if ferr != nil {
+			t.Fatalf("состав корня фундамента %s: %v", r, ferr)
+		}
+		out = append(out, files...)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func readOnlyServiceCensus(t *testing.T, root string) dsServiceCensus {
 	t.Helper()
 	out := dsServiceCensus{verbsSeen: map[string]bool{}}
@@ -372,8 +411,9 @@ func readOnlyServiceCensus(t *testing.T, root string) dsServiceCensus {
 	// источников — пережившей свой сервис, а исключение — прикрывающим пустоту.
 	// Все три — находки про собственную слепоту обхода, а не про дерево, и ровно
 	// это дал переезд контрактов службы доступа (kacho#2616, исход C, 2026-09-13).
-	// Состав и условие «корень без доменов законен» — contractDomainProtoFiles.
-	for _, abs := range contractDomainProtoFiles(t, root) {
+	// Состав и условие «корень без доменов законен» — contractDomainProtoFiles;
+	// сверх него — корни фундамента (contractSurfaceProtoFiles).
+	for _, abs := range contractSurfaceProtoFiles(t, root) {
 		src, err := os.ReadFile(abs) // #nosec G304 -- путь из состава дерева контрактов
 		if err != nil {
 			t.Fatalf("чтение %s: %v", abs, err)

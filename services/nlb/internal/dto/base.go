@@ -27,7 +27,7 @@ import (
 	"sync"
 	"time"
 
-	operationv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operationv1 "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 	"google.golang.org/protobuf/types/known/timestamppb"

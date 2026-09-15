@@ -53,7 +53,7 @@ func scopeFilteredRPCs() []string {
 var storageProtoPackages = []string{
 	"kacho.cloud.storage.v1",
 	// LRO-конверт: Operation.Get/Cancel поднимает каждый сервис.
-	"kacho.cloud.operation",
+	"corelib.operation",
 }
 
 // Validate — остаток собственного стража старта: измерения, которых НОСИТЕЛЬ НЕ

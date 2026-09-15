@@ -51,7 +51,7 @@ func opInjectAudit(t *testing.T, files map[string]string) ([]opSourceFinding, op
 const opImports = `package handler
 
 import (
-	%s "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	%s "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	"github.com/PRO-Robotech/corelib/operations"
 	"github.com/PRO-Robotech/corelib/operations/operationspb"
 )
@@ -301,7 +301,7 @@ func TestInjectionDotImportDoesNotHideTheSubject(t *testing.T) {
 	src := `package handler
 
 import (
-	. "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	. "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	"github.com/PRO-Robotech/corelib/operations"
 )
 
@@ -402,7 +402,7 @@ func TestInjectionCrossFileAliasDoesNotHideTheSubject(t *testing.T) {
 	t.Parallel()
 	alias := `package handler
 
-import operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+import operationpb "github.com/PRO-Robotech/corelib/api/corelib/operation"
 
 type getReq = operationpb.GetOperationRequest
 type unimpl = operationpb.UnimplementedOperationServiceServer
@@ -644,7 +644,7 @@ func TestGuardGoesRedWhenTheRecogniserGoesBlind(t *testing.T) {
 	blind := `package handler
 
 import (
-	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operationXX"
+	operationpb "github.com/PRO-Robotech/corelib/api/corelib/operationXX"
 	"github.com/PRO-Robotech/corelib/operations"
 )
 
@@ -666,7 +666,13 @@ func (h *H) Get(ctx context.Context, req *operationpb.GetOperationRequest) (*ope
 	}
 	// А вот тот же предмет по КАНОНИЧЕСКОМУ пути обязан находиться. Пара
 	// доказывает, что молчание выше — свойство фикстуры, а не сломанного гейта.
-	good := strings.Replace(blind, "cloud/operationXX", "cloud/operation", 1)
+	// Замена привязана к КОНСТАНТЕ канонического пути, а не к его написанию: прежде
+	// здесь стоял литерал сегмента пути, и первый же переезд контракта (kacho#2601)
+	// сделал замену пустой — «канонический» близнец совпал со слепым.
+	good := strings.Replace(blind, operationStubsPath+"XX", operationStubsPath, 1)
+	if good == blind {
+		t.Fatalf("фикстура ослепления не несёт путь %q с приставкой XX — близнец не построен", operationStubsPath)
+	}
 	g, _ := opInjectAudit(t, map[string]string{"services/x/internal/handler/h.go": good})
 	if len(g) == 0 {
 		t.Fatal("канонический путь не распознаётся — гейт сломан, и страж обязан был бы " +

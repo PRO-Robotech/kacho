@@ -12,7 +12,7 @@ package geov1
 import (
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
-	operation "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -789,7 +789,7 @@ var File_kacho_cloud_geo_v1_internal_catalog_service_proto protoreflect.FileDesc
 
 const file_kacho_cloud_geo_v1_internal_catalog_service_proto_rawDesc = "" +
 	"\n" +
-	"1kacho/cloud/geo/v1/internal_catalog_service.proto\x12\x12kacho.cloud.geo.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a#kacho/cloud/geo/v1/geo_common.proto\x1a\x1fkacho/cloud/geo/v1/region.proto\x1a\x1dkacho/cloud/geo/v1/zone.proto\x1a%kacho/cloud/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"\xc2\x01\n" +
+	"1kacho/cloud/geo/v1/internal_catalog_service.proto\x12\x12kacho.cloud.geo.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a#kacho/cloud/geo/v1/geo_common.proto\x1a\x1fkacho/cloud/geo/v1/region.proto\x1a\x1dkacho/cloud/geo/v1/zone.proto\x1a!corelib/operation/operation.proto\x1a$corelib/authz/v1/authz_options.proto\"\xc2\x01\n" +
 	"\x13CreateRegionRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fcountry_code\x18\x03 \x01(\tR\vcountryCode\x125\n" +
@@ -834,27 +834,27 @@ const file_kacho_cloud_geo_v1_internal_catalog_service_proto_rawDesc = "" +
 	"\x12DeleteZoneMetadata\x12\x17\n" +
 	"\azone_id\x18\x01 \x01(\tR\x06zoneId\"1\n" +
 	"\x16GetInternalZoneRequest\x12\x17\n" +
-	"\azone_id\x18\x01 \x01(\tR\x06zoneId2\x96\a\n" +
-	"\x15InternalRegionService\x12\xd6\x01\n" +
-	"\x06Create\x12'.kacho.cloud.geo.v1.CreateRegionRequest\x1a .kacho.cloud.operation.Operation\"\x80\x01\x8a\xb5\x18\x12geo.regions.create\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\azone_id\x18\x01 \x01(\tR\x06zoneId2\x8a\a\n" +
+	"\x15InternalRegionService\x12\xd2\x01\n" +
+	"\x06Create\x12'.kacho.cloud.geo.v1.CreateRegionRequest\x1a\x1c.corelib.operation.Operation\"\x80\x01\x8a\xb5\x18\x12geo.regions.create\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*\x1e\n" +
-	"\x14CreateRegionMetadata\x12\x06Region\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/geo/v1/internal/regions\x12\xe2\x01\n" +
-	"\x06Update\x12'.kacho.cloud.geo.v1.UpdateRegionRequest\x1a .kacho.cloud.operation.Operation\"\x8c\x01\x8a\xb5\x18\x12geo.regions.update\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\x14CreateRegionMetadata\x12\x06Region\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/geo/v1/internal/regions\x12\xde\x01\n" +
+	"\x06Update\x12'.kacho.cloud.geo.v1.UpdateRegionRequest\x1a\x1c.corelib.operation.Operation\"\x8c\x01\x8a\xb5\x18\x12geo.regions.update\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*\x1e\n" +
-	"\x14UpdateRegionMetadata\x12\x06Region\x82\xd3\xe4\x93\x02):\x01*2$/geo/v1/internal/regions/{region_id}\x12\xee\x01\n" +
-	"\x06Delete\x12'.kacho.cloud.geo.v1.DeleteRegionRequest\x1a .kacho.cloud.operation.Operation\"\x98\x01\x8a\xb5\x18\x12geo.regions.delete\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\x14UpdateRegionMetadata\x12\x06Region\x82\xd3\xe4\x93\x02):\x01*2$/geo/v1/internal/regions/{region_id}\x12\xea\x01\n" +
+	"\x06Delete\x12'.kacho.cloud.geo.v1.DeleteRegionRequest\x1a\x1c.corelib.operation.Operation\"\x98\x01\x8a\xb5\x18\x12geo.regions.delete\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*-\n" +
 	"\x14DeleteRegionMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02&*$/geo/v1/internal/regions/{region_id}\x12\xcd\x01\n" +
 	"\vGetInternal\x12,.kacho.cloud.geo.v1.GetInternalRegionRequest\x1a\".kacho.cloud.geo.v1.InternalRegion\"l\x8a\xb5\x18\x17geo.regions.getInternal\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02&\x12$/geo/v1/internal/regions/{region_id}2\xe9\x06\n" +
-	"\x13InternalZoneService\x12\xcb\x01\n" +
-	"\x06Create\x12%.kacho.cloud.geo.v1.CreateZoneRequest\x1a .kacho.cloud.operation.Operation\"x\x8a\xb5\x18\x10geo.zones.create\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02&\x12$/geo/v1/internal/regions/{region_id}2\xdd\x06\n" +
+	"\x13InternalZoneService\x12\xc7\x01\n" +
+	"\x06Create\x12%.kacho.cloud.geo.v1.CreateZoneRequest\x1a\x1c.corelib.operation.Operation\"x\x8a\xb5\x18\x10geo.zones.create\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*\x1a\n" +
-	"\x12CreateZoneMetadata\x12\x04Zone\x82\xd3\xe4\x93\x02\x1b:\x01*\"\x16/geo/v1/internal/zones\x12\xd6\x01\n" +
-	"\x06Update\x12%.kacho.cloud.geo.v1.UpdateZoneRequest\x1a .kacho.cloud.operation.Operation\"\x82\x01\x8a\xb5\x18\x10geo.zones.update\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\x12CreateZoneMetadata\x12\x04Zone\x82\xd3\xe4\x93\x02\x1b:\x01*\"\x16/geo/v1/internal/zones\x12\xd2\x01\n" +
+	"\x06Update\x12%.kacho.cloud.geo.v1.UpdateZoneRequest\x1a\x1c.corelib.operation.Operation\"\x82\x01\x8a\xb5\x18\x10geo.zones.update\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*\x1a\n" +
-	"\x12UpdateZoneMetadata\x12\x04Zone\x82\xd3\xe4\x93\x02%:\x01*2 /geo/v1/internal/zones/{zone_id}\x12\xe4\x01\n" +
-	"\x06Delete\x12%.kacho.cloud.geo.v1.DeleteZoneRequest\x1a .kacho.cloud.operation.Operation\"\x90\x01\x8a\xb5\x18\x10geo.zones.delete\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\x12UpdateZoneMetadata\x12\x04Zone\x82\xd3\xe4\x93\x02%:\x01*2 /geo/v1/internal/zones/{zone_id}\x12\xe0\x01\n" +
+	"\x06Delete\x12%.kacho.cloud.geo.v1.DeleteZoneRequest\x1a\x1c.corelib.operation.Operation\"\x90\x01\x8a\xb5\x18\x10geo.zones.delete\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*+\n" +
 	"\x12DeleteZoneMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\"* /geo/v1/internal/zones/{zone_id}\x12\xc3\x01\n" +
 	"\vGetInternal\x12*.kacho.cloud.geo.v1.GetInternalZoneRequest\x1a .kacho.cloud.geo.v1.InternalZone\"f\x8a\xb5\x18\x15geo.zones.getInternal\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
@@ -892,7 +892,7 @@ var file_kacho_cloud_geo_v1_internal_catalog_service_proto_goTypes = []any{
 	(*RegionInfra)(nil),              // 15: kacho.cloud.geo.v1.RegionInfra
 	(*fieldmaskpb.FieldMask)(nil),    // 16: google.protobuf.FieldMask
 	(*ZoneInfra)(nil),                // 17: kacho.cloud.geo.v1.ZoneInfra
-	(*operation.Operation)(nil),      // 18: kacho.cloud.operation.Operation
+	(*operation.Operation)(nil),      // 18: corelib.operation.Operation
 	(*InternalRegion)(nil),           // 19: kacho.cloud.geo.v1.InternalRegion
 	(*InternalZone)(nil),             // 20: kacho.cloud.geo.v1.InternalZone
 }
@@ -915,13 +915,13 @@ var file_kacho_cloud_geo_v1_internal_catalog_service_proto_depIdxs = []int32{
 	9,  // 15: kacho.cloud.geo.v1.InternalZoneService.Update:input_type -> kacho.cloud.geo.v1.UpdateZoneRequest
 	11, // 16: kacho.cloud.geo.v1.InternalZoneService.Delete:input_type -> kacho.cloud.geo.v1.DeleteZoneRequest
 	13, // 17: kacho.cloud.geo.v1.InternalZoneService.GetInternal:input_type -> kacho.cloud.geo.v1.GetInternalZoneRequest
-	18, // 18: kacho.cloud.geo.v1.InternalRegionService.Create:output_type -> kacho.cloud.operation.Operation
-	18, // 19: kacho.cloud.geo.v1.InternalRegionService.Update:output_type -> kacho.cloud.operation.Operation
-	18, // 20: kacho.cloud.geo.v1.InternalRegionService.Delete:output_type -> kacho.cloud.operation.Operation
+	18, // 18: kacho.cloud.geo.v1.InternalRegionService.Create:output_type -> corelib.operation.Operation
+	18, // 19: kacho.cloud.geo.v1.InternalRegionService.Update:output_type -> corelib.operation.Operation
+	18, // 20: kacho.cloud.geo.v1.InternalRegionService.Delete:output_type -> corelib.operation.Operation
 	19, // 21: kacho.cloud.geo.v1.InternalRegionService.GetInternal:output_type -> kacho.cloud.geo.v1.InternalRegion
-	18, // 22: kacho.cloud.geo.v1.InternalZoneService.Create:output_type -> kacho.cloud.operation.Operation
-	18, // 23: kacho.cloud.geo.v1.InternalZoneService.Update:output_type -> kacho.cloud.operation.Operation
-	18, // 24: kacho.cloud.geo.v1.InternalZoneService.Delete:output_type -> kacho.cloud.operation.Operation
+	18, // 22: kacho.cloud.geo.v1.InternalZoneService.Create:output_type -> corelib.operation.Operation
+	18, // 23: kacho.cloud.geo.v1.InternalZoneService.Update:output_type -> corelib.operation.Operation
+	18, // 24: kacho.cloud.geo.v1.InternalZoneService.Delete:output_type -> corelib.operation.Operation
 	20, // 25: kacho.cloud.geo.v1.InternalZoneService.GetInternal:output_type -> kacho.cloud.geo.v1.InternalZone
 	18, // [18:26] is the sub-list for method output_type
 	10, // [10:18] is the sub-list for method input_type

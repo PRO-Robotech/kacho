@@ -42,6 +42,15 @@ func RoutableDomain(fullMethod string) (string, bool) {
 		return "", false
 	}
 	pkgParts := strings.Split(parts[1], ".")
+	// Пакет фундамента — `<корень>.<пакет>[.<версия>].<Служба>`: ключ — ВТОРОЙ
+	// сегмент (см. FoundationRoots). Облачный пакет — `<корень>.cloud.<домен>.…`:
+	// ключ — третий.
+	if _, ok := foundationRootOf(parts[1]); ok {
+		if len(pkgParts) < 3 || pkgParts[1] == "" {
+			return "", false
+		}
+		return pkgParts[1], true
+	}
 	if len(pkgParts) < 4 {
 		return "", false
 	}

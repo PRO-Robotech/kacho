@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
-	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operationpb "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	"github.com/PRO-Robotech/corelib/operations"
 	"github.com/PRO-Robotech/corelib/operations/operationspb"
 )
@@ -99,7 +99,7 @@ func TestOperationService_PublicChainYieldsNoAdmin(t *testing.T) {
 	var seen TenantCtx
 	_, err := TenantUnaryInterceptor(false, false)(
 		forgedAdminCtx(), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.operation.OperationService/Get"},
+		&grpc.UnaryServerInfo{FullMethod: "/corelib.operation.OperationService/Get"},
 		func(c context.Context, _ any) (any, error) {
 			seen = TenantFromCtx(c)
 			return nil, nil

@@ -12,7 +12,7 @@ package vpcv1
 import (
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
-	operation "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	reference "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/reference"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -1098,7 +1098,7 @@ var File_kacho_cloud_vpc_v1_subnet_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_subnet_service_proto_rawDesc = "" +
 	"\n" +
-	"'kacho/cloud/vpc/v1/subnet_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a%kacho/cloud/reference/reference.proto\x1a\x1fkacho/cloud/vpc/v1/subnet.proto\x1a$corelib/authz/v1/authz_options.proto\"/\n" +
+	"'kacho/cloud/vpc/v1/subnet_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a!corelib/operation/operation.proto\x1a%kacho/cloud/reference/reference.proto\x1a\x1fkacho/cloud/vpc/v1/subnet.proto\x1a$corelib/authz/v1/authz_options.proto\"/\n" +
 	"\x10GetSubnetRequest\x12\x1b\n" +
 	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\"\x87\x01\n" +
 	"\x12ListSubnetsRequest\x12\x1d\n" +
@@ -1161,10 +1161,10 @@ const file_kacho_cloud_vpc_v1_subnet_service_proto_rawDesc = "" +
 	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tR\tpageToken\"\x88\x01\n" +
-	"\x1cListSubnetOperationsResponse\x12@\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x84\x01\n" +
+	"\x1cListSubnetOperationsResponse\x12<\n" +
 	"\n" +
-	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
+	"operations\x18\x01 \x03(\v2\x1c.corelib.operation.OperationR\n" +
 	"operations\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x8b\x01\n" +
 	"\x18ListUsedAddressesRequest\x12\x1b\n" +
@@ -1182,31 +1182,31 @@ const file_kacho_cloud_vpc_v1_subnet_service_proto_rawDesc = "" +
 	"ip_version\x18\x02 \x01(\x0e2\x1d.kacho.cloud.vpc.v1.IpVersionR\tipVersion\x12@\n" +
 	"\n" +
 	"references\x18\x03 \x03(\v2 .kacho.cloud.reference.ReferenceR\n" +
-	"references2\xac\x10\n" +
+	"references2\x98\x10\n" +
 	"\rSubnetService\x12\xa8\x01\n" +
 	"\x03Get\x12$.kacho.cloud.vpc.v1.GetSubnetRequest\x1a\x1a.kacho.cloud.vpc.v1.Subnet\"_\x8a\xb5\x18\x0fvpc.subnets.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x17\n" +
 	"\n" +
 	"vpc_subnet\x12\tsubnet_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1d\x12\x1b/vpc/v1/subnets/{subnet_id}\x12\xac\x01\n" +
 	"\x04List\x12&.kacho.cloud.vpc.v1.ListSubnetsRequest\x1a'.kacho.cloud.vpc.v1.ListSubnetsResponse\"S\x8a\xb5\x18\x10vpc.subnets.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x11\x12\x0f/vpc/v1/subnets\x12\xcf\x01\n" +
-	"\x06Create\x12'.kacho.cloud.vpc.v1.CreateSubnetRequest\x1a .kacho.cloud.operation.Operation\"z\x8a\xb5\x18\x12vpc.subnets.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x11\x12\x0f/vpc/v1/subnets\x12\xcb\x01\n" +
+	"\x06Create\x12'.kacho.cloud.vpc.v1.CreateSubnetRequest\x1a\x1c.corelib.operation.Operation\"z\x8a\xb5\x18\x12vpc.subnets.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\xb2\xd2*\x1e\n" +
-	"\x14CreateSubnetMetadata\x12\x06Subnet\x82\xd3\xe4\x93\x02\x14:\x01*\"\x0f/vpc/v1/subnets\x12\xe0\x01\n" +
-	"\x06Update\x12'.kacho.cloud.vpc.v1.UpdateSubnetRequest\x1a .kacho.cloud.operation.Operation\"\x8a\x01\x8a\xb5\x18\x12vpc.subnets.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x17\n" +
+	"\x14CreateSubnetMetadata\x12\x06Subnet\x82\xd3\xe4\x93\x02\x14:\x01*\"\x0f/vpc/v1/subnets\x12\xdc\x01\n" +
+	"\x06Update\x12'.kacho.cloud.vpc.v1.UpdateSubnetRequest\x1a\x1c.corelib.operation.Operation\"\x8a\x01\x8a\xb5\x18\x12vpc.subnets.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x17\n" +
 	"\n" +
 	"vpc_subnet\x12\tsubnet_id\xa2\xb5\x18\x011\xb2\xd2*\x1e\n" +
-	"\x14UpdateSubnetMetadata\x12\x06Subnet\x82\xd3\xe4\x93\x02 :\x01*2\x1b/vpc/v1/subnets/{subnet_id}\x12\x90\x02\n" +
-	"\rAddCidrBlocks\x12..kacho.cloud.vpc.v1.AddSubnetCidrBlocksRequest\x1a .kacho.cloud.operation.Operation\"\xac\x01\x8a\xb5\x18$vpc.subnet_cidr_blocks.addCidrBlocks\x92\xb5\x18\bv_update\x9a\xb5\x18\x17\n" +
+	"\x14UpdateSubnetMetadata\x12\x06Subnet\x82\xd3\xe4\x93\x02 :\x01*2\x1b/vpc/v1/subnets/{subnet_id}\x12\x8c\x02\n" +
+	"\rAddCidrBlocks\x12..kacho.cloud.vpc.v1.AddSubnetCidrBlocksRequest\x1a\x1c.corelib.operation.Operation\"\xac\x01\x8a\xb5\x18$vpc.subnet_cidr_blocks.addCidrBlocks\x92\xb5\x18\bv_update\x9a\xb5\x18\x17\n" +
 	"\n" +
 	"vpc_subnet\x12\tsubnet_id\xa2\xb5\x18\x011\xb2\xd2*\x1e\n" +
-	"\x14UpdateSubnetMetadata\x12\x06Subnet\x82\xd3\xe4\x93\x020:\x01*\"+/vpc/v1/subnets/{subnet_id}:add-cidr-blocks\x12\x9c\x02\n" +
-	"\x10RemoveCidrBlocks\x121.kacho.cloud.vpc.v1.RemoveSubnetCidrBlocksRequest\x1a .kacho.cloud.operation.Operation\"\xb2\x01\x8a\xb5\x18'vpc.subnet_cidr_blocks.removeCidrBlocks\x92\xb5\x18\bv_update\x9a\xb5\x18\x17\n" +
+	"\x14UpdateSubnetMetadata\x12\x06Subnet\x82\xd3\xe4\x93\x020:\x01*\"+/vpc/v1/subnets/{subnet_id}:add-cidr-blocks\x12\x98\x02\n" +
+	"\x10RemoveCidrBlocks\x121.kacho.cloud.vpc.v1.RemoveSubnetCidrBlocksRequest\x1a\x1c.corelib.operation.Operation\"\xb2\x01\x8a\xb5\x18'vpc.subnet_cidr_blocks.removeCidrBlocks\x92\xb5\x18\bv_update\x9a\xb5\x18\x17\n" +
 	"\n" +
 	"vpc_subnet\x12\tsubnet_id\xa2\xb5\x18\x011\xb2\xd2*\x1e\n" +
-	"\x14UpdateSubnetMetadata\x12\x06Subnet\x82\xd3\xe4\x93\x023:\x01*\"./vpc/v1/subnets/{subnet_id}:remove-cidr-blocks\x12\xec\x01\n" +
-	"\x06Delete\x12'.kacho.cloud.vpc.v1.DeleteSubnetRequest\x1a .kacho.cloud.operation.Operation\"\x96\x01\x8a\xb5\x18\x12vpc.subnets.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x17\n" +
+	"\x14UpdateSubnetMetadata\x12\x06Subnet\x82\xd3\xe4\x93\x023:\x01*\"./vpc/v1/subnets/{subnet_id}:remove-cidr-blocks\x12\xe8\x01\n" +
+	"\x06Delete\x12'.kacho.cloud.vpc.v1.DeleteSubnetRequest\x1a\x1c.corelib.operation.Operation\"\x96\x01\x8a\xb5\x18\x12vpc.subnets.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x17\n" +
 	"\n" +
 	"vpc_subnet\x12\tsubnet_id\xa2\xb5\x18\x011\xb2\xd2*-\n" +
 	"\x14DeleteSubnetMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x1d*\x1b/vpc/v1/subnets/{subnet_id}\x12\xf6\x01\n" +
@@ -1252,7 +1252,7 @@ var file_kacho_cloud_vpc_v1_subnet_service_proto_goTypes = []any{
 	(*Subnet)(nil),                        // 18: kacho.cloud.vpc.v1.Subnet
 	(SubnetPlacementType)(0),              // 19: kacho.cloud.vpc.v1.SubnetPlacementType
 	(*fieldmaskpb.FieldMask)(nil),         // 20: google.protobuf.FieldMask
-	(*operation.Operation)(nil),           // 21: kacho.cloud.operation.Operation
+	(*operation.Operation)(nil),           // 21: corelib.operation.Operation
 	(IpVersion)(0),                        // 22: kacho.cloud.vpc.v1.IpVersion
 	(*reference.Reference)(nil),           // 23: kacho.cloud.reference.Reference
 }
@@ -1262,7 +1262,7 @@ var file_kacho_cloud_vpc_v1_subnet_service_proto_depIdxs = []int32{
 	19, // 2: kacho.cloud.vpc.v1.CreateSubnetRequest.placement_type:type_name -> kacho.cloud.vpc.v1.SubnetPlacementType
 	20, // 3: kacho.cloud.vpc.v1.UpdateSubnetRequest.update_mask:type_name -> google.protobuf.FieldMask
 	17, // 4: kacho.cloud.vpc.v1.UpdateSubnetRequest.labels:type_name -> kacho.cloud.vpc.v1.UpdateSubnetRequest.LabelsEntry
-	21, // 5: kacho.cloud.vpc.v1.ListSubnetOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	21, // 5: kacho.cloud.vpc.v1.ListSubnetOperationsResponse.operations:type_name -> corelib.operation.Operation
 	15, // 6: kacho.cloud.vpc.v1.ListUsedAddressesResponse.addresses:type_name -> kacho.cloud.vpc.v1.UsedAddress
 	22, // 7: kacho.cloud.vpc.v1.UsedAddress.ip_version:type_name -> kacho.cloud.vpc.v1.IpVersion
 	23, // 8: kacho.cloud.vpc.v1.UsedAddress.references:type_name -> kacho.cloud.reference.Reference
@@ -1277,11 +1277,11 @@ var file_kacho_cloud_vpc_v1_subnet_service_proto_depIdxs = []int32{
 	13, // 17: kacho.cloud.vpc.v1.SubnetService.ListUsedAddresses:input_type -> kacho.cloud.vpc.v1.ListUsedAddressesRequest
 	18, // 18: kacho.cloud.vpc.v1.SubnetService.Get:output_type -> kacho.cloud.vpc.v1.Subnet
 	2,  // 19: kacho.cloud.vpc.v1.SubnetService.List:output_type -> kacho.cloud.vpc.v1.ListSubnetsResponse
-	21, // 20: kacho.cloud.vpc.v1.SubnetService.Create:output_type -> kacho.cloud.operation.Operation
-	21, // 21: kacho.cloud.vpc.v1.SubnetService.Update:output_type -> kacho.cloud.operation.Operation
-	21, // 22: kacho.cloud.vpc.v1.SubnetService.AddCidrBlocks:output_type -> kacho.cloud.operation.Operation
-	21, // 23: kacho.cloud.vpc.v1.SubnetService.RemoveCidrBlocks:output_type -> kacho.cloud.operation.Operation
-	21, // 24: kacho.cloud.vpc.v1.SubnetService.Delete:output_type -> kacho.cloud.operation.Operation
+	21, // 20: kacho.cloud.vpc.v1.SubnetService.Create:output_type -> corelib.operation.Operation
+	21, // 21: kacho.cloud.vpc.v1.SubnetService.Update:output_type -> corelib.operation.Operation
+	21, // 22: kacho.cloud.vpc.v1.SubnetService.AddCidrBlocks:output_type -> corelib.operation.Operation
+	21, // 23: kacho.cloud.vpc.v1.SubnetService.RemoveCidrBlocks:output_type -> corelib.operation.Operation
+	21, // 24: kacho.cloud.vpc.v1.SubnetService.Delete:output_type -> corelib.operation.Operation
 	12, // 25: kacho.cloud.vpc.v1.SubnetService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListSubnetOperationsResponse
 	14, // 26: kacho.cloud.vpc.v1.SubnetService.ListUsedAddresses:output_type -> kacho.cloud.vpc.v1.ListUsedAddressesResponse
 	18, // [18:27] is the sub-list for method output_type

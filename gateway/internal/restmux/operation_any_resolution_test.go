@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	operationv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operationv1 "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	"google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/known/anypb"
 )
@@ -102,7 +102,7 @@ func TestOperationResponseResolutionPredicateAnswersBothWays(t *testing.T) {
 		t.Fatalf("реестр разрешил несуществующий адрес %q — предикат ничего не измеряет", absent)
 	}
 	// Положительный: тип, который край линкует, обслуживая свои маршруты.
-	const present = "type.googleapis.com/kacho.cloud.operation.Operation"
+	const present = "type.googleapis.com/corelib.operation.Operation"
 	if _, err := protoregistry.GlobalTypes.FindMessageByURL(present); err != nil {
 		t.Fatalf("реестр не разрешил заведомо влинкованный %q: %v — проба красна не по предмету", present, err)
 	}

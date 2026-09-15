@@ -127,7 +127,7 @@ import (
 	iampb "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
 	// kacho-nlb (loadbalancer.v1) — public RPC под /nlb/v1/*.
-	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operationpb "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	lbpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 
 	// kacho-registry (registry.v1) — public RPC под /registry/v1/*.

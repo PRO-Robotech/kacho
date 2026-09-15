@@ -10,7 +10,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	operationv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operationv1 "github.com/PRO-Robotech/corelib/api/corelib/operation"
 )
 
 // OperationServiceClient — alias на сгенерированный gRPC-клиент LRO.

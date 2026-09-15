@@ -74,8 +74,8 @@ var exemptReasonDictionary = map[string]string{
 // и координата снова станет обязательной; исчезнут записи из каталога — истечёт и
 // предмет.
 var EnforcementSite = map[string]string{
-	"kacho.cloud.operation.OperationService/Get":    "gateway/internal/opsproxy/proxy.go",
-	"kacho.cloud.operation.OperationService/Cancel": "gateway/internal/opsproxy/proxy.go",
+	"corelib.operation.OperationService/Get":    "gateway/internal/opsproxy/proxy.go",
+	"corelib.operation.OperationService/Cancel": "gateway/internal/opsproxy/proxy.go",
 }
 
 // ExemptCatalogRow — запись каталога прав вместе с копией, из которой прочитана.

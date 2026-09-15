@@ -339,6 +339,12 @@ type ClientDocsRetiredFieldCensus struct {
 	RetiredNames  int
 	LedgerEntries int
 	LedgerUsed    int
+	// SharedDeclared — общих пакетов объявлено (clientDocsSharedProtoDomains).
+	SharedDeclared int
+	// SharedSilent — объявленные общие пакеты, у которых в обходе НОЛЬ живых
+	// полей: пакет снят либо обход не видит его корня. Молчание такого пакета
+	// гейт не прощает — поля конверта становились бы «снятыми» полями домена.
+	SharedSilent []string
 }
 
 // ClientDocsRetiredFieldFinding — одна находка.
@@ -376,6 +382,13 @@ func AuditClientDocsRetiredFieldInExample(
 		return nil, census, err
 	}
 	census.Sites = len(sites)
+
+	census.SharedDeclared = len(clientDocsSharedProtoDomains)
+	for _, d := range clientDocsSharedProtoDomains {
+		if len(live[d]) == 0 {
+			census.SharedSilent = append(census.SharedSilent, d)
+		}
+	}
 
 	var findings []ClientDocsRetiredFieldFinding
 	for _, site := range sites {
@@ -445,9 +458,12 @@ func AuditClientDocsRetiredFieldInExample(
 
 	if log != nil {
 		_, _ = fmt.Fprintf(log, "снятое поле в примере: файлов контракта %d · забранных имён %d · "+
+			"общих пакетов %d (без полей в обходе %d%s) · "+
 			"сайтов %d · страниц %d · примеров JSON %d · ключей рассужено %d · "+
 			"записей ведомости %d (использовано %d) · находок %d\n",
-			census.ProtoFiles, census.RetiredNames, census.Sites, census.Pages,
+			census.ProtoFiles, census.RetiredNames,
+			census.SharedDeclared, len(census.SharedSilent), clientDocsListSuffix(census.SharedSilent),
+			census.Sites, census.Pages,
 			census.Examples, census.KeysJudged, census.LedgerEntries, census.LedgerUsed,
 			len(findings))
 	}
@@ -638,6 +654,34 @@ func contractDomainBases(root, protoRoot string) ([]contractDomainBase, error) {
 		// Корень — родитель каталога `cloud`.
 		inTree[filepath.Base(filepath.Dir(base))] = true
 	}
+	// НЕЙТРАЛЬНЫЙ КОРЕНЬ ФУНДАМЕНТА — ТРЕТЬЯ ФОРМА, и без неё общие пакеты выпадают
+	// МОЛЧА. Корень без каталога `cloud` (`corelib/`) доменов не несёт, зато несёт
+	// общие пакеты: форму операции, словарь разметки, форму учёта, форму подписки.
+	// База здесь — сам корень, поэтому пакет называется первым сегментом под ним
+	// (`corelib/operation/…` → `operation`) — тем же именем, каким его называл
+	// облачный корень, пока пакет лежал там.
+	//
+	// Цена отсутствия измерена (kacho#2601): три общих пакета из пяти переехали
+	// под этот корень раньше и выпали из множества живых полей, не дав ни одной
+	// находки — совпадений с забранными именами у них не было. Четвёртый, форма
+	// операции, дал СЕМЬ ложных находок `metadata` на страницах вычислений: поле
+	// конверта стало для гейта «снятым» полем домена. Выпадение держит перепись
+	// общих пакетов (TestClientDocsExamplesDoNotShowRetiredFields).
+	for _, r := range contractroot.Roots {
+		if inTree[r] {
+			continue
+		}
+		dir := filepath.Join(root, protoRoot, r)
+		if st, serr := os.Stat(dir); serr != nil || !st.IsDir() {
+			continue
+		}
+		sub, serr := treecorpus.UnderWithSuffix(dir, ".proto")
+		if serr != nil {
+			return nil, serr
+		}
+		out = append(out, contractDomainBase{Base: dir, Paths: sub})
+		inTree[r] = true
+	}
 	// ВНЕШНИЙ ДОМ ПРИМЕНИМ ТОЛЬКО К НАСТОЯЩЕМУ ДЕРЕВУ, и различает их наличие
 	// объявления модуля. Синтетические деревья проб (созданные в `t.TempDir()`)
 	// `go.mod` не несут: спрашивать у них каталог чужого модуля бессмысленно, и
@@ -685,4 +729,12 @@ func contractDomainBases(root, protoRoot string) ([]contractDomainBase, error) {
 type contractDomainBase struct {
 	Base  string
 	Paths []string
+}
+
+// clientDocsListSuffix — перечень для строки переписи: пусто, если перечень пуст.
+func clientDocsListSuffix(items []string) string {
+	if len(items) == 0 {
+		return ""
+	}
+	return ": " + strings.Join(items, " ")
 }

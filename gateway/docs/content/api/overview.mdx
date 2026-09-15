@@ -40,7 +40,7 @@ REST-пути, формат JSON, аутентификацию и авториз
     <tr><td>Geography</td><td><code>/geo/v1/</code></td><td><code>kacho.cloud.geo.v1</code></td><td>Region / Zone</td></tr>
     <tr><td>Load Balancer</td><td><code>/nlb/v1/</code></td><td><code>kacho.cloud.loadbalancer.v1</code></td><td>NetworkLoadBalancer / Listener / TargetGroup</td></tr>
     <tr><td>Registry</td><td><code>/registry/v1/</code></td><td><code>kacho.cloud.registry.v1</code></td><td>RegistryService (control-plane)</td></tr>
-    <tr><td>Operations</td><td><code>/operations</code></td><td><code>kacho.cloud.operation</code></td><td><code>OperationService</code> (fan-out, native)</td></tr>
+    <tr><td>Operations</td><td><code>/operations</code></td><td><code>corelib.operation</code></td><td><code>OperationService</code> (fan-out, native)</td></tr>
     <tr><td>Подписка на изменения</td><td><code>/subscription/v1/events</code></td><td><code>corelib.subscription</code></td><td>поток изменений ресурсов, SSE (<a href="/api/subscription">Подписка</a>) — ручка края, gRPC-метод наружу не публикуется</td></tr>
   </tbody>
 </table>
@@ -104,7 +104,7 @@ deny-by-default, fail-closed. Нет права → `PERMISSION_DENIED` (HTTP `4
 
 ## Async-операции
 
-Мутации возвращают `Operation` (`kacho.cloud.operation.v1`): `id`, `description`, `createdAt`,
+Мутации возвращают `Operation` (`corelib.operation`): `id`, `description`, `createdAt`,
 `done`, `metadata`, и `oneof result { error | response }`. Клиент **поллит**
 `OperationService.Get(id)` до `done=true`. Гейтвей направляет поллинг во владеющий backend по
 prefix id. Подробнее — [Operations](/api/operations).

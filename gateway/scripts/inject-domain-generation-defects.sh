@@ -24,21 +24,27 @@ LIB="$GW/scripts/lib/stage-proto-tree.sh"
 GEN_CAT="$GW/scripts/gen-permission-catalog.sh"
 PLUGIN="$GW/cmd/protoc-gen-kacho-permissions/main.go"
 GATE="$GW/scripts/check-domain-generation.sh"
+# Контракт, в который оси 6 и 7 ставят межддоменный импорт — их предмет (см. ось 6).
+EDGE_PROTO="$ROOT/proto/kacho/cloud/geo/v1/region.proto"
 
-for f in "$LIB" "$GEN_CAT" "$PLUGIN" "$GATE"; do
+for f in "$LIB" "$GEN_CAT" "$PLUGIN" "$GATE" "$EDGE_PROTO"; do
     [ -f "$f" ] || { echo "ОТКАЗ: нет $f — предмета инъекции не существует" >&2; exit 2; }
 done
 command -v buf >/dev/null || { echo "ОТКАЗ: buf не установлен — прогон не выполнен" >&2; exit 2; }
 command -v go  >/dev/null || { echo "ОТКАЗ: go не установлен — прогон не выполнен"  >&2; exit 2; }
 
-if [ -n "$(git -C "$ROOT" status --porcelain -- "$LIB" "$GEN_CAT" "$PLUGIN" 2>/dev/null)" ]; then
+if [ -n "$(git -C "$ROOT" status --porcelain -- "$LIB" "$GEN_CAT" "$PLUGIN" "$EDGE_PROTO" 2>/dev/null)" ]; then
     echo "ПРЕДУПРЕЖДЕНИЕ: предметы инъекции уже правлены — восстановление вернёт их" \
          "к состоянию НА МОМЕНТ ЗАПУСКА, а не к HEAD." >&2
 fi
 
 BACKUP="$(mktemp -d)"
 cp "$LIB" "$BACKUP/lib.sh"; cp "$GEN_CAT" "$BACKUP/gen.sh"; cp "$PLUGIN" "$BACKUP/plugin.go"
-restore() { cp "$BACKUP/lib.sh" "$LIB"; cp "$BACKUP/gen.sh" "$GEN_CAT"; cp "$BACKUP/plugin.go" "$PLUGIN"; }
+cp "$EDGE_PROTO" "$BACKUP/edge.proto"
+restore() {
+    cp "$BACKUP/lib.sh" "$LIB"; cp "$BACKUP/gen.sh" "$GEN_CAT"; cp "$BACKUP/plugin.go" "$PLUGIN"
+    cp "$BACKUP/edge.proto" "$EDGE_PROTO"
+}
 trap 'restore; rm -rf "$BACKUP"' EXIT
 
 fails=0
@@ -132,7 +138,7 @@ import sys
 print('порядок отбора переставлен для контроля')
 PY
 axes=$((axes + 1))
-if ( cd "$GW" && ./scripts/check-domain-generation.sh reference operation iam ) >"$LOG" 2>&1; then
+if ( cd "$GW" && ./scripts/check-domain-generation.sh reference iam ) >"$LOG" 2>&1; then
     echo "  ✓ близнец 1: тот же набор доменов в другом порядке — гейт молчит"
 else
     echo "  ✗ близнец 1: перестановка отбора покраснела — гейт судит порядок, а не множество" >&2
@@ -186,22 +192,25 @@ echo "== ось 4: замыкание импортов снято =="
 #
 # Инъекция оси выбрасывает замыкание импортов — значит её предмет есть ровно то,
 # что замыкание ДОБИРАЕТ сверх объявленного отбора. У умолчательного отбора
-# (`iam operation`) замыкание не добирает НИЧЕГО, поэтому выброс замыкания там
-# ничего не меняет, гейт законно зелен, а харнесс объявлял «дефект возвращён, а
-# гейт ЗЕЛЁНЫЙ — он не способен упасть»: ЛОЖНОЕ обвинение проверке, у инъекции
+# (`iam`) замыкание не добирает НИЧЕГО, поэтому выброс замыкания там ничего не
+# меняет, гейт законно зелен, а харнесс объявлял бы «дефект возвращён, а гейт
+# ЗЕЛЁНЫЙ — он не способен упасть»: ЛОЖНОЕ обвинение проверке, у инъекции
 # которой не было предмета.
 #
 # Замер, которым выбран отбор (перемеряй, а не помни):
-#   for sel in iam "iam operation" vpc compute registry geo; do
+#   for sel in iam vpc compute registry geo storage loadbalancer; do
 #     KACHO_GEN_DOMAINS="$sel" gateway/scripts/gen-permission-catalog.sh /dev/null 2>&1 |
 #       grep 'добрано замыканием'
 #   done
-# `iam` → operation · `iam operation` → (нечего) · `vpc` → operation reference.
-# `iam` в одиночку не годится ДРУГИМ концом: замыкание добирает им `operation`, а
-# он ЭМИТИРУЕТ, и на чистом дереве краснеет A7 («необъявленных доменов 1») — ось
-# была бы красной без всякой инъекции. У `vpc operation` замыкание добирает
-# `reference`, который не эмитирует ни одной записи каталога: чистое дерево
-# зелено, а предмет у инъекции есть.
+# `iam` `registry` `geo` `loadbalancer` → (нечего) · `vpc` `compute` `storage` →
+# reference. У `vpc` замыкание добирает `reference`, который не эмитирует ни
+# одной записи каталога: чистое дерево зелено, а предмет у инъекции есть.
+#
+# ЗДЕСЬ СТОЯЛ ОТБОР `vpc operation`, И ДОМЕН `operation` ПЕРЕЕХАЛ. Форма
+# операции получила имя фундамента (`corelib.operation`, kacho#2601) и лежит под
+# нейтральным корнем, у которого каталога `cloud` нет: облачным доменом она
+# перестала быть, отбор с ней отказывал «выбранного домена нет в дереве
+# контрактов», и ось краснела на самом харнессе, а не на гейте.
 #
 # ЗДЕСЬ СТОЯЛ ДОМЕН `quota`, И ОН ПЕРЕЕХАЛ. Форма учёта переименована в
 # `corelib.quota.v1`: её контракт лежит теперь под нейтральным корнем
@@ -212,7 +221,7 @@ echo "== ось 4: замыкание импортов снято =="
 #
 # ПРЕДМЕТ ПРОВЕРЯЕТСЯ ЗДЕСЬ ЖЕ: отбор, чьё замыкание опустело, обязан уронить
 # харнесс, а не тихо превратить ось в вакуумную.
-AXIS4_DOMAINS="vpc operation"
+AXIS4_DOMAINS="vpc"
 axes=$((axes + 1))
 # Вердикт НЕ берётся из трубы: харнесс идёт под `pipefail`, а `grep -q` закрывает
 # трубу на первом совпадении — пишущий получает SIGPIPE, код пайплайна 141, и
@@ -269,10 +278,34 @@ gate_axis "близнец 5: комментарий в плагине — гей
 restore
 
 echo "== ось 6: утверждение генератора об объявленном домене (свой предмет) =="
-gen_axis "отбор 'vpc' тянет замыканием эмитирующие домены — генератор отказывает и называет их" \
-    1 "vpc" "эмитированы домены вне отбора:"
+# ПРЕДМЕТ ОСЕЙ 6 И 7 СОЗДАЁТСЯ ИНЪЕКЦИЕЙ, И ЭТО ВЫНУЖДЕНО, а не выбрано.
+#
+# Утверждение генератора — «домен, эмитированный мимо отбора, есть находка» —
+# срабатывает, когда замыкание импортов добирает ЭМИТИРУЮЩИЙ домен. Такое ребро
+# в дереве было одно: доменные контракты импортировали форму операции, пока она
+# лежала облачным доменом `operation`. Форма получила имя фундамента
+# (`corelib.operation`, kacho#2601) и легла под нейтральный корень, который стадия
+# несёт целиком, — и замыкание ни одного отбора эмитирующего домена больше не
+# добирает (замер у оси 4). Утверждение при этом НЕ снимается: оно стережёт
+# межддоменный импорт службы, которого сегодня нет, а завтра хватит одной строки.
+#
+# Поэтому ребро ставится ОДНИМ фактом — строкой импорта в контракт geo на
+# контракт vpc (vpc эмитирует, geo его сегодня не импортирует, кольца нет) — и
+# снимается `restore` вместе с остальными инъекциями. Предмет проверяется тут же:
+# без ребра отбор `geo` проходит, с ним — отказывает.
+gen_axis "контроль 6: без межддоменного ребра отбор 'geo' проходит" 0 "geo"
+pyedit "ось 6: межддоменный импорт geo → vpc" "$EDGE_PROTO" <<'PY'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old='import "kacho/cloud/geo/v1/geo_common.proto";\n'
+assert old in s, 'ось 6: место инъекции не найдено'
+open(p,'w').write(s.replace(old, old + 'import "kacho/cloud/vpc/v1/network.proto";\n', 1))
+PY
+gen_axis "отбор 'geo' тянет замыканием эмитирующий домен — генератор отказывает и называет его" \
+    1 "geo" "эмитированы домены вне отбора:"
 gen_axis "близнец 6: те же домены ОБЪЯВЛЕНЫ — генератор проходит" \
-    0 "vpc iam operation reference"
+    0 "geo vpc reference"
+restore
 gen_axis "отбор называет несуществующий домен — генератор отказывает" \
     1 "iam nosuchdomain" "выбранного домена 'nosuchdomain' нет в дереве контрактов"
 
@@ -284,9 +317,18 @@ old='if [[ -n "${GEN_DOMAINS// /}" ]]; then\n  undeclared=""'
 assert old in s, 'ось 7: место инъекции не найдено'
 open(p,'w').write(s.replace(old,'if false; then  # ИНЪЕКЦИЯ: утверждение генератора снято\n  undeclared=""',1))
 PY
+# Предмет тот же, что у оси 6, и ставится тем же одним фактом: без межддоменного
+# ребра необъявленного домена нет вовсе, и зелёный гейт ничего бы не доказал.
+pyedit "ось 7: межддоменный импорт geo → vpc" "$EDGE_PROTO" <<'PY'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old='import "kacho/cloud/geo/v1/geo_common.proto";\n'
+assert old in s, 'ось 7: место инъекции не найдено'
+open(p,'w').write(s.replace(old, old + 'import "kacho/cloud/vpc/v1/network.proto";\n', 1))
+PY
 axes=$((axes + 1))
-if ( cd "$GW" && ./scripts/check-domain-generation.sh vpc ) >"$LOG" 2>&1; then
-    echo "  ✗ ось 7: утверждение снято, гейт ЗЕЛЁНЫЙ на отборе 'vpc' — предмет никем не держится" >&2
+if ( cd "$GW" && ./scripts/check-domain-generation.sh geo ) >"$LOG" 2>&1; then
+    echo "  ✗ ось 7: утверждение снято, гейт ЗЕЛЁНЫЙ на отборе 'geo' — предмет никем не держится" >&2
     fails=$((fails + 1))
 elif grep -qF "необъявленных доменов" "$LOG"; then
     echo "  ✓ ось 7: гейт ловит необъявленный домен и БЕЗ утверждения генератора"

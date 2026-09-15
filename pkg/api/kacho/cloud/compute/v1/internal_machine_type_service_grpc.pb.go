@@ -11,7 +11,7 @@ package computev1
 
 import (
 	context "context"
-	operation "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -39,7 +39,7 @@ const (
 // (ban #6, security.md §Internal-vs-external; parity with GEO-1 internal catalog).
 //
 // Admin mutations follow the standard Kachō async form: Create/Update/Delete
-// return operation.Operation (done=false); the client polls OperationService.Get(id)
+// return corelib.operation.Operation (done=false); the client polls OperationService.Get(id)
 // until done=true, then reads the final resource via MachineTypeService.Get. Read
 // RPCs (MachineTypeService.Get/List) stay synchronous and public.
 type InternalMachineTypeServiceClient interface {
@@ -97,7 +97,7 @@ func (c *internalMachineTypeServiceClient) Delete(ctx context.Context, in *Delet
 // (ban #6, security.md §Internal-vs-external; parity with GEO-1 internal catalog).
 //
 // Admin mutations follow the standard Kachō async form: Create/Update/Delete
-// return operation.Operation (done=false); the client polls OperationService.Get(id)
+// return corelib.operation.Operation (done=false); the client polls OperationService.Get(id)
 // until done=true, then reads the final resource via MachineTypeService.Get. Read
 // RPCs (MachineTypeService.Get/List) stay synchronous and public.
 type InternalMachineTypeServiceServer interface {

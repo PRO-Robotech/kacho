@@ -154,7 +154,7 @@ func TestReadBudget_RefusesWhenItsPremiseFails(t *testing.T) {
 	t.Parallel()
 	t.Run("имя конверта разошлось с деревом", func(t *testing.T) {
 		opts := syntheticOptions(t)
-		opts.OperationMessage = "kacho.cloud.operation.v1.Operation" // опечатка вида «лишний v1»
+		opts.OperationMessage = "corelib.operation.v1.Operation" // опечатка вида «лишний v1»
 		_, _, err := AuditReadBudgetClassification(opts, io.Discard)
 		require.ErrorContains(t, err, "дискриминатор мутации")
 	})

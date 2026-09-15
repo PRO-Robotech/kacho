@@ -12,7 +12,7 @@ package vpcv1
 import (
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
 	_ "github.com/PRO-Robotech/corelib/api/corelib/authz/v1"
-	operation "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operation "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -234,7 +234,7 @@ var File_kacho_cloud_vpc_v1_address_pool_service_proto protoreflect.FileDescript
 
 const file_kacho_cloud_vpc_v1_address_pool_service_proto_rawDesc = "" +
 	"\n" +
-	"-kacho/cloud/vpc/v1/address_pool_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a6kacho/cloud/vpc/v1/internal_address_pool_service.proto\x1a$corelib/authz/v1/authz_options.proto\"C\n" +
+	"-kacho/cloud/vpc/v1/address_pool_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1ecorelib/api/v1/operation.proto\x1a!corelib/operation/operation.proto\x1a6kacho/cloud/vpc/v1/internal_address_pool_service.proto\x1a$corelib/authz/v1/authz_options.proto\"C\n" +
 	"\x19CreateAddressPoolMetadata\x12&\n" +
 	"\x0faddress_pool_id\x18\x01 \x01(\tR\raddressPoolId\"C\n" +
 	"\x19UpdateAddressPoolMetadata\x12&\n" +
@@ -244,7 +244,7 @@ const file_kacho_cloud_vpc_v1_address_pool_service_proto_rawDesc = "" +
 	"\x1aAddressPoolBindingMetadata\x12\x1d\n" +
 	"\n" +
 	"network_id\x18\x01 \x01(\tR\tnetworkId\x12&\n" +
-	"\x0faddress_pool_id\x18\x02 \x01(\tR\raddressPoolId2\xe0\x15\n" +
+	"\x0faddress_pool_id\x18\x02 \x01(\tR\raddressPoolId2\xc4\x15\n" +
 	"\x12AddressPoolService\x12\xb7\x01\n" +
 	"\x03Get\x12).kacho.cloud.vpc.v1.GetAddressPoolRequest\x1a\x1f.kacho.cloud.vpc.v1.AddressPool\"d\x8a\xb5\x18\x15vpc.address_pools.get\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02 \x12\x1e/vpc/v1/addressPools/{pool_id}\x12\xbe\x01\n" +
@@ -253,26 +253,26 @@ const file_kacho_cloud_vpc_v1_address_pool_service_proto_rawDesc = "" +
 	"\rListAddresses\x123.kacho.cloud.vpc.v1.ListAddressPoolAddressesRequest\x1a4.kacho.cloud.vpc.v1.ListAddressPoolAddressesResponse\"y\x8a\xb5\x18 vpc.address_pools.list_addresses\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02*\x12(/vpc/v1/addressPools/{pool_id}/addresses\x12\xf0\x01\n" +
 	"\x0eGetUtilization\x124.kacho.cloud.vpc.v1.GetAddressPoolUtilizationRequest\x1a*.kacho.cloud.vpc.v1.AddressPoolUtilization\"|\x8a\xb5\x18!vpc.address_pools.get_utilization\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02,\x12*/vpc/v1/addressPools/{pool_id}/utilization\x12\xe7\x01\n" +
-	"\x06Create\x12,.kacho.cloud.vpc.v1.CreateAddressPoolRequest\x1a .kacho.cloud.operation.Operation\"\x8c\x01\x8a\xb5\x18\x18vpc.address_pools.create\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02,\x12*/vpc/v1/addressPools/{pool_id}/utilization\x12\xe3\x01\n" +
+	"\x06Create\x12,.kacho.cloud.vpc.v1.CreateAddressPoolRequest\x1a\x1c.corelib.operation.Operation\"\x8c\x01\x8a\xb5\x18\x18vpc.address_pools.create\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*(\n" +
-	"\x19CreateAddressPoolMetadata\x12\vAddressPool\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/vpc/v1/addressPools\x12\xf1\x01\n" +
-	"\x06Update\x12,.kacho.cloud.vpc.v1.UpdateAddressPoolRequest\x1a .kacho.cloud.operation.Operation\"\x96\x01\x8a\xb5\x18\x18vpc.address_pools.update\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\x19CreateAddressPoolMetadata\x12\vAddressPool\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/vpc/v1/addressPools\x12\xed\x01\n" +
+	"\x06Update\x12,.kacho.cloud.vpc.v1.UpdateAddressPoolRequest\x1a\x1c.corelib.operation.Operation\"\x96\x01\x8a\xb5\x18\x18vpc.address_pools.update\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*(\n" +
-	"\x19UpdateAddressPoolMetadata\x12\vAddressPool\x82\xd3\xe4\x93\x02#:\x01*2\x1e/vpc/v1/addressPools/{pool_id}\x12\xf8\x01\n" +
-	"\x06Delete\x12,.kacho.cloud.vpc.v1.DeleteAddressPoolRequest\x1a .kacho.cloud.operation.Operation\"\x9d\x01\x8a\xb5\x18\x18vpc.address_pools.delete\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\x19UpdateAddressPoolMetadata\x12\vAddressPool\x82\xd3\xe4\x93\x02#:\x01*2\x1e/vpc/v1/addressPools/{pool_id}\x12\xf4\x01\n" +
+	"\x06Delete\x12,.kacho.cloud.vpc.v1.DeleteAddressPoolRequest\x1a\x1c.corelib.operation.Operation\"\x9d\x01\x8a\xb5\x18\x18vpc.address_pools.delete\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*2\n" +
-	"\x19DeleteAddressPoolMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02 *\x1e/vpc/v1/addressPools/{pool_id}\x12\x9e\x02\n" +
-	"\rAddCidrBlocks\x123.kacho.cloud.vpc.v1.AddAddressPoolCidrBlocksRequest\x1a .kacho.cloud.operation.Operation\"\xb5\x01\x8a\xb5\x18!vpc.address_pools.add_cidr_blocks\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\x19DeleteAddressPoolMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02 *\x1e/vpc/v1/addressPools/{pool_id}\x12\x9a\x02\n" +
+	"\rAddCidrBlocks\x123.kacho.cloud.vpc.v1.AddAddressPoolCidrBlocksRequest\x1a\x1c.corelib.operation.Operation\"\xb5\x01\x8a\xb5\x18!vpc.address_pools.add_cidr_blocks\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*(\n" +
-	"\x19UpdateAddressPoolMetadata\x12\vAddressPool\x82\xd3\xe4\x93\x029:\x01*\"4/vpc/v1/addressPools/{address_pool_id}:addCidrBlocks\x12\xaa\x02\n" +
-	"\x10RemoveCidrBlocks\x126.kacho.cloud.vpc.v1.RemoveAddressPoolCidrBlocksRequest\x1a .kacho.cloud.operation.Operation\"\xbb\x01\x8a\xb5\x18$vpc.address_pools.remove_cidr_blocks\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\x19UpdateAddressPoolMetadata\x12\vAddressPool\x82\xd3\xe4\x93\x029:\x01*\"4/vpc/v1/addressPools/{address_pool_id}:addCidrBlocks\x12\xa6\x02\n" +
+	"\x10RemoveCidrBlocks\x126.kacho.cloud.vpc.v1.RemoveAddressPoolCidrBlocksRequest\x1a\x1c.corelib.operation.Operation\"\xbb\x01\x8a\xb5\x18$vpc.address_pools.remove_cidr_blocks\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*(\n" +
-	"\x19UpdateAddressPoolMetadata\x12\vAddressPool\x82\xd3\xe4\x93\x02<:\x01*\"7/vpc/v1/addressPools/{address_pool_id}:removeCidrBlocks\x12\x9d\x02\n" +
-	"\x14BindAsNetworkDefault\x12/.kacho.cloud.vpc.v1.BindAsNetworkDefaultRequest\x1a .kacho.cloud.operation.Operation\"\xb1\x01\x8a\xb5\x18\x16vpc.address_pools.bind\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\x19UpdateAddressPoolMetadata\x12\vAddressPool\x82\xd3\xe4\x93\x02<:\x01*\"7/vpc/v1/addressPools/{address_pool_id}:removeCidrBlocks\x12\x99\x02\n" +
+	"\x14BindAsNetworkDefault\x12/.kacho.cloud.vpc.v1.BindAsNetworkDefaultRequest\x1a\x1c.corelib.operation.Operation\"\xb1\x01\x8a\xb5\x18\x16vpc.address_pools.bind\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*3\n" +
-	"\x1aAddressPoolBindingMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x025:\x01*\"0/vpc/v1/networks/{network_id}/addressPoolBinding\x12\x9c\x02\n" +
-	"\x14UnbindNetworkDefault\x12/.kacho.cloud.vpc.v1.UnbindNetworkDefaultRequest\x1a .kacho.cloud.operation.Operation\"\xb0\x01\x8a\xb5\x18\x18vpc.address_pools.unbind\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\x1aAddressPoolBindingMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x025:\x01*\"0/vpc/v1/networks/{network_id}/addressPoolBinding\x12\x98\x02\n" +
+	"\x14UnbindNetworkDefault\x12/.kacho.cloud.vpc.v1.UnbindNetworkDefaultRequest\x1a\x1c.corelib.operation.Operation\"\xb0\x01\x8a\xb5\x18\x18vpc.address_pools.unbind\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\xb2\xd2*3\n" +
 	"\x1aAddressPoolBindingMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x022*0/vpc/v1/networks/{network_id}/addressPoolBindingB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
 
@@ -309,7 +309,7 @@ var file_kacho_cloud_vpc_v1_address_pool_service_proto_goTypes = []any{
 	(*ListAddressPoolsResponse)(nil),           // 16: kacho.cloud.vpc.v1.ListAddressPoolsResponse
 	(*ListAddressPoolAddressesResponse)(nil),   // 17: kacho.cloud.vpc.v1.ListAddressPoolAddressesResponse
 	(*AddressPoolUtilization)(nil),             // 18: kacho.cloud.vpc.v1.AddressPoolUtilization
-	(*operation.Operation)(nil),                // 19: kacho.cloud.operation.Operation
+	(*operation.Operation)(nil),                // 19: corelib.operation.Operation
 }
 var file_kacho_cloud_vpc_v1_address_pool_service_proto_depIdxs = []int32{
 	4,  // 0: kacho.cloud.vpc.v1.AddressPoolService.Get:input_type -> kacho.cloud.vpc.v1.GetAddressPoolRequest
@@ -327,13 +327,13 @@ var file_kacho_cloud_vpc_v1_address_pool_service_proto_depIdxs = []int32{
 	16, // 12: kacho.cloud.vpc.v1.AddressPoolService.List:output_type -> kacho.cloud.vpc.v1.ListAddressPoolsResponse
 	17, // 13: kacho.cloud.vpc.v1.AddressPoolService.ListAddresses:output_type -> kacho.cloud.vpc.v1.ListAddressPoolAddressesResponse
 	18, // 14: kacho.cloud.vpc.v1.AddressPoolService.GetUtilization:output_type -> kacho.cloud.vpc.v1.AddressPoolUtilization
-	19, // 15: kacho.cloud.vpc.v1.AddressPoolService.Create:output_type -> kacho.cloud.operation.Operation
-	19, // 16: kacho.cloud.vpc.v1.AddressPoolService.Update:output_type -> kacho.cloud.operation.Operation
-	19, // 17: kacho.cloud.vpc.v1.AddressPoolService.Delete:output_type -> kacho.cloud.operation.Operation
-	19, // 18: kacho.cloud.vpc.v1.AddressPoolService.AddCidrBlocks:output_type -> kacho.cloud.operation.Operation
-	19, // 19: kacho.cloud.vpc.v1.AddressPoolService.RemoveCidrBlocks:output_type -> kacho.cloud.operation.Operation
-	19, // 20: kacho.cloud.vpc.v1.AddressPoolService.BindAsNetworkDefault:output_type -> kacho.cloud.operation.Operation
-	19, // 21: kacho.cloud.vpc.v1.AddressPoolService.UnbindNetworkDefault:output_type -> kacho.cloud.operation.Operation
+	19, // 15: kacho.cloud.vpc.v1.AddressPoolService.Create:output_type -> corelib.operation.Operation
+	19, // 16: kacho.cloud.vpc.v1.AddressPoolService.Update:output_type -> corelib.operation.Operation
+	19, // 17: kacho.cloud.vpc.v1.AddressPoolService.Delete:output_type -> corelib.operation.Operation
+	19, // 18: kacho.cloud.vpc.v1.AddressPoolService.AddCidrBlocks:output_type -> corelib.operation.Operation
+	19, // 19: kacho.cloud.vpc.v1.AddressPoolService.RemoveCidrBlocks:output_type -> corelib.operation.Operation
+	19, // 20: kacho.cloud.vpc.v1.AddressPoolService.BindAsNetworkDefault:output_type -> corelib.operation.Operation
+	19, // 21: kacho.cloud.vpc.v1.AddressPoolService.UnbindNetworkDefault:output_type -> corelib.operation.Operation
 	11, // [11:22] is the sub-list for method output_type
 	0,  // [0:11] is the sub-list for method input_type
 	0,  // [0:0] is the sub-list for extension type_name

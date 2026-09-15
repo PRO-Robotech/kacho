@@ -124,7 +124,7 @@ func TestOperationHandlerHasASingleSource(t *testing.T) {
 		{"обработчик", `package p
 
 import (
-	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operationpb "github.com/PRO-Robotech/corelib/api/corelib/operation"
 )
 
 type H struct{}
@@ -136,7 +136,7 @@ func (h *H) Get(ctx context.Context, req *operationpb.GetOperationRequest) (*ope
 		{"преобразователь", `package p
 
 import (
-	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operationpb "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	"github.com/PRO-Robotech/corelib/operations"
 )
 
@@ -162,7 +162,7 @@ func lane(ctx context.Context, repo operations.Repo) {
 		{"полоса прочитанного владельца", `package p
 
 import (
-	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
+	operationpb "github.com/PRO-Robotech/corelib/api/corelib/operation"
 	"github.com/PRO-Robotech/corelib/operations"
 )
 
