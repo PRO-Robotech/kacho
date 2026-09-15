@@ -9,7 +9,7 @@ import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "corelib/api/v1/operation.proto";
 import "kacho/cloud/compute/v1/placement_group.proto";
-import "kacho/cloud/operation/operation.proto";
+import "corelib/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1";
@@ -43,7 +43,7 @@ service PlacementGroupService {
     option (corelib.authz.v1.required_acr_min) = "1";
   }
 
-  rpc Create(CreatePlacementGroupRequest) returns (operation.Operation) {
+  rpc Create(CreatePlacementGroupRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/compute/v1/placementGroups"
       body: "*"
@@ -66,7 +66,7 @@ service PlacementGroupService {
   // Стратегия и якорь размещения НЕИЗМЕНЯЕМЫ: смена любого из них меняет смысл
   // размещения уже стоящих машин, а перекладывать их задним числом мы не будем.
   // Нужна другая стратегия — заводится другая группа.
-  rpc Update(UpdatePlacementGroupRequest) returns (operation.Operation) {
+  rpc Update(UpdatePlacementGroupRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       patch: "/compute/v1/placementGroups/{placement_group_id}"
       body: "*"
@@ -89,7 +89,7 @@ service PlacementGroupService {
   // Группа, в которой стоят машины, не снимается: снятие означало бы, что
   // правило размещения перестало действовать, а машины остались размещёнными по
   // нему. Отказ называет машины — арендатор видит радиус до, а не после.
-  rpc Delete(DeletePlacementGroupRequest) returns (operation.Operation) {
+  rpc Delete(DeletePlacementGroupRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       delete: "/compute/v1/placementGroups/{placement_group_id}"
     };
@@ -198,6 +198,6 @@ message ListPlacementGroupOperationsRequest {
 }
 
 message ListPlacementGroupOperationsResponse {
-  repeated operation.Operation operations = 1;
+  repeated corelib.operation.Operation operations = 1;
   string next_page_token = 2;
 }

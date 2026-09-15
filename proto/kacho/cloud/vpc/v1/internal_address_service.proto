@@ -6,7 +6,7 @@ syntax = "proto3";
 package kacho.cloud.vpc.v1;
 
 import "google/protobuf/timestamp.proto";
-import "kacho/cloud/operation/operation.proto";
+import "corelib/operation/operation.proto";
 import "kacho/cloud/vpc/v1/address_service.proto";
 import "corelib/authz/v1/authz_options.proto";
 
@@ -187,7 +187,7 @@ service InternalAddressService {
   // UNIQUE(project,name), как и у публичного пути. Отказ на любом шаге
   // откатывает ВСЮ транзакцию, поэтому half-allocated адреса и компенсации у
   // вызывающего больше не существует by construction.
-  rpc CreateOwnedAddress(CreateOwnedAddressRequest) returns (operation.Operation) {
+  rpc CreateOwnedAddress(CreateOwnedAddressRequest) returns (corelib.operation.Operation) {
     option (corelib.authz.v1.permission) = "vpc.addresses.createOwned";
     option (corelib.authz.v1.required_relation) = "editor";
     option (corelib.authz.v1.scope_extractor) = {

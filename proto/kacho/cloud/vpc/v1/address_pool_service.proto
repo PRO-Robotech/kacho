@@ -7,7 +7,7 @@ package kacho.cloud.vpc.v1;
 
 import "google/api/annotations.proto";
 import "corelib/api/v1/operation.proto";
-import "kacho/cloud/operation/operation.proto";
+import "corelib/operation/operation.proto";
 import "kacho/cloud/vpc/v1/internal_address_pool_service.proto";
 import "corelib/authz/v1/authz_options.proto";
 
@@ -55,7 +55,7 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vp
 //
 // # Форма ответа приведена к конвенции
 //
-// Мутации возвращают `operation.Operation` (запрет 9), а не ресурс синхронно.
+// Мутации возвращают `corelib.operation.Operation` (запрет 9), а не ресурс синхронно.
 // Внутренний сервис отвечает ресурсом — ему не приходилось соблюдать конвенцию,
 // его не видел ни один арендатский клиент. Клиент публичного API вправе
 // рассчитывать на один и тот же контракт у всех мутаций, а консоль — на один и
@@ -117,7 +117,7 @@ service AddressPoolService {
 
   // -- Мутации (async, Operation) --
 
-  rpc Create(CreateAddressPoolRequest) returns (operation.Operation) {
+  rpc Create(CreateAddressPoolRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/vpc/v1/addressPools"
       body: "*"
@@ -135,7 +135,7 @@ service AddressPoolService {
     option (corelib.authz.v1.required_acr_min) = "1";
   }
 
-  rpc Update(UpdateAddressPoolRequest) returns (operation.Operation) {
+  rpc Update(UpdateAddressPoolRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       patch: "/vpc/v1/addressPools/{pool_id}"
       body: "*"
@@ -153,7 +153,7 @@ service AddressPoolService {
     option (corelib.authz.v1.required_acr_min) = "1";
   }
 
-  rpc Delete(DeleteAddressPoolRequest) returns (operation.Operation) {
+  rpc Delete(DeleteAddressPoolRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {delete: "/vpc/v1/addressPools/{pool_id}"};
     option (corelib.api.v1.operation) = {
       metadata: "DeleteAddressPoolMetadata"
@@ -168,7 +168,7 @@ service AddressPoolService {
     option (corelib.authz.v1.required_acr_min) = "1";
   }
 
-  rpc AddCidrBlocks(AddAddressPoolCidrBlocksRequest) returns (operation.Operation) {
+  rpc AddCidrBlocks(AddAddressPoolCidrBlocksRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/vpc/v1/addressPools/{address_pool_id}:addCidrBlocks"
       body: "*"
@@ -186,7 +186,7 @@ service AddressPoolService {
     option (corelib.authz.v1.required_acr_min) = "1";
   }
 
-  rpc RemoveCidrBlocks(RemoveAddressPoolCidrBlocksRequest) returns (operation.Operation) {
+  rpc RemoveCidrBlocks(RemoveAddressPoolCidrBlocksRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/vpc/v1/addressPools/{address_pool_id}:removeCidrBlocks"
       body: "*"
@@ -204,7 +204,7 @@ service AddressPoolService {
     option (corelib.authz.v1.required_acr_min) = "1";
   }
 
-  rpc BindAsNetworkDefault(BindAsNetworkDefaultRequest) returns (operation.Operation) {
+  rpc BindAsNetworkDefault(BindAsNetworkDefaultRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/vpc/v1/networks/{network_id}/addressPoolBinding"
       body: "*"
@@ -222,7 +222,7 @@ service AddressPoolService {
     option (corelib.authz.v1.required_acr_min) = "1";
   }
 
-  rpc UnbindNetworkDefault(UnbindNetworkDefaultRequest) returns (operation.Operation) {
+  rpc UnbindNetworkDefault(UnbindNetworkDefaultRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {delete: "/vpc/v1/networks/{network_id}/addressPoolBinding"};
     option (corelib.api.v1.operation) = {
       metadata: "AddressPoolBindingMetadata"

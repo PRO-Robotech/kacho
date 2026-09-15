@@ -11,7 +11,7 @@ import "google/protobuf/field_mask.proto";
 import "corelib/api/v1/operation.proto";
 import "kacho/cloud/compute/v1/instance.proto";
 import "kacho/cloud/compute/v1/maintenance.proto";
-import "kacho/cloud/operation/operation.proto";
+import "corelib/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1";
@@ -54,7 +54,7 @@ service InstanceService {
 
   // Creates an instance in the specified project.
   // Method starts an asynchronous operation that can be cancelled while it is in progress.
-  rpc Create(CreateInstanceRequest) returns (operation.Operation) {
+  rpc Create(CreateInstanceRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/compute/v1/instances"
       body: "*"
@@ -73,7 +73,7 @@ service InstanceService {
   }
 
   // Updates the specified instance.
-  rpc Update(UpdateInstanceRequest) returns (operation.Operation) {
+  rpc Update(UpdateInstanceRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       patch: "/compute/v1/instances/{instance_id}"
       body: "*"
@@ -92,7 +92,7 @@ service InstanceService {
   }
 
   // Deletes the specified instance.
-  rpc Delete(DeleteInstanceRequest) returns (operation.Operation) {
+  rpc Delete(DeleteInstanceRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {delete: "/compute/v1/instances/{instance_id}"};
     option (corelib.api.v1.operation) = {
       metadata: "DeleteInstanceMetadata"
@@ -122,7 +122,7 @@ service InstanceService {
   // Stops the running instance.
   //
   // You can start the instance later using the [InstanceService.Start] method.
-  rpc Stop(StopInstanceRequest) returns (operation.Operation) {
+  rpc Stop(StopInstanceRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {post: "/compute/v1/instances/{instance_id}:stop"};
     option (corelib.api.v1.operation) = {
       metadata: "StopInstanceMetadata"
@@ -138,7 +138,7 @@ service InstanceService {
   }
 
   // Starts the stopped instance.
-  rpc Start(StartInstanceRequest) returns (operation.Operation) {
+  rpc Start(StartInstanceRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {post: "/compute/v1/instances/{instance_id}:start"};
     option (corelib.api.v1.operation) = {
       metadata: "StartInstanceMetadata"
@@ -154,7 +154,7 @@ service InstanceService {
   }
 
   // Restarts the running instance.
-  rpc Restart(RestartInstanceRequest) returns (operation.Operation) {
+  rpc Restart(RestartInstanceRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {post: "/compute/v1/instances/{instance_id}:restart"};
     option (corelib.api.v1.operation) = {
       metadata: "RestartInstanceMetadata"
@@ -170,7 +170,7 @@ service InstanceService {
   }
 
   // Attaches the disk to the instance.
-  rpc AttachDisk(AttachInstanceDiskRequest) returns (operation.Operation) {
+  rpc AttachDisk(AttachInstanceDiskRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/compute/v1/instances/{instance_id}:attachDisk"
       body: "*"
@@ -189,7 +189,7 @@ service InstanceService {
   }
 
   // Detaches the disk from the instance.
-  rpc DetachDisk(DetachInstanceDiskRequest) returns (operation.Operation) {
+  rpc DetachDisk(DetachInstanceDiskRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/compute/v1/instances/{instance_id}:detachDisk"
       body: "*"
@@ -213,7 +213,7 @@ service InstanceService {
   // (multiple NICs per instance are allowed). The instance must be `RUNNING` or
   // `STOPPED` ([Instance.status]). kacho-vpc owns the binding and enforces
   // zone-coherence (anycast/REGIONAL subnets excepted).
-  rpc AttachNetworkInterface(AttachInstanceNetworkInterfaceRequest) returns (operation.Operation) {
+  rpc AttachNetworkInterface(AttachInstanceNetworkInterfaceRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/compute/v1/instances/{instance_id}:attachNetworkInterface"
       body: "*"
@@ -235,7 +235,7 @@ service InstanceService {
   //
   // The instance must be `RUNNING` or `STOPPED` ([Instance.status]). The NIC itself
   // (a kacho-vpc resource) is not deleted; only the binding is released.
-  rpc DetachNetworkInterface(DetachInstanceNetworkInterfaceRequest) returns (operation.Operation) {
+  rpc DetachNetworkInterface(DetachInstanceNetworkInterfaceRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/compute/v1/instances/{instance_id}:detachNetworkInterface"
       body: "*"
@@ -267,7 +267,7 @@ service InstanceService {
 
   // maintenance
 
-  rpc SimulateMaintenanceEvent(SimulateInstanceMaintenanceEventRequest) returns (operation.Operation) {
+  rpc SimulateMaintenanceEvent(SimulateInstanceMaintenanceEventRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/compute/v1/instances/{instance_id}:simulateMaintenanceEvent"
       body: "*"
@@ -798,7 +798,7 @@ message ListInstanceOperationsRequest {
 
 message ListInstanceOperationsResponse {
   // List of operations for the specified instance.
-  repeated operation.Operation operations = 1;
+  repeated corelib.operation.Operation operations = 1;
 
   // This token allows you to get the next page of results for list requests. If the number of results
   // is larger than [ListInstanceOperationsRequest.page_size], use the [next_page_token] as the value

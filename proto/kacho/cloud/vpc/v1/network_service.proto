@@ -9,7 +9,7 @@ import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "corelib/api/v1/operation.proto";
 import "kacho/cloud/vpc/v1/network.proto";
-import "kacho/cloud/operation/operation.proto";
+import "corelib/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
@@ -71,7 +71,7 @@ service NetworkService {
 
   // Creates a network in the specified project using the data specified in the request.
   // Method starts an asynchronous operation that can be cancelled while it is in progress.
-  rpc Create (CreateNetworkRequest) returns (operation.Operation) {
+  rpc Create (CreateNetworkRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { post: "/vpc/v1/networks" body: "*" };
     option (corelib.api.v1.operation) = {
       metadata: "CreateNetworkMetadata"
@@ -88,7 +88,7 @@ service NetworkService {
 
   // Updates the specified network.
   // Method starts an asynchronous operation that can be cancelled while it is in progress.
-  rpc Update (UpdateNetworkRequest) returns (operation.Operation) {
+  rpc Update (UpdateNetworkRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { patch: "/vpc/v1/networks/{network_id}" body: "*" };
     option (corelib.api.v1.operation) = {
       metadata: "UpdateNetworkMetadata"
@@ -104,7 +104,7 @@ service NetworkService {
   }
 
   // Deletes the specified network.
-  rpc Delete (DeleteNetworkRequest) returns (operation.Operation) {
+  rpc Delete (DeleteNetworkRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = { delete: "/vpc/v1/networks/{network_id}" };
     option (corelib.api.v1.operation) = {
       metadata: "DeleteNetworkMetadata"
@@ -122,7 +122,7 @@ service NetworkService {
   // Extends the network's declared IPv4/IPv6 supernet with additional CIDR
   // block(s). The declared supernet is immutable through Update — it is grown
   // only via this verb-pair. Returns an Operation carrying the updated Network.
-  rpc AddCidrBlocks (AddNetworkCidrBlocksRequest) returns (operation.Operation) {
+  rpc AddCidrBlocks (AddNetworkCidrBlocksRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/vpc/v1/networks/{network_id}:add-cidr-blocks"
       body: "*"
@@ -142,7 +142,7 @@ service NetworkService {
 
   // Shrinks the network's declared supernet by removing CIDR block(s). A block
   // that still contains a live subnet cannot be removed (FAILED_PRECONDITION).
-  rpc RemoveCidrBlocks (RemoveNetworkCidrBlocksRequest) returns (operation.Operation) {
+  rpc RemoveCidrBlocks (RemoveNetworkCidrBlocksRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/vpc/v1/networks/{network_id}:remove-cidr-blocks"
       body: "*"
@@ -344,7 +344,7 @@ message ListNetworkOperationsRequest {
 
 message ListNetworkOperationsResponse {
   // List of operations for the specified network.
-  repeated operation.Operation operations = 1;
+  repeated corelib.operation.Operation operations = 1;
 
   // This token allows you to get the next page of results for list requests. If the number of results
   // is larger than [ListNetworkOperationsRequest.page_size], use the [next_page_token] as the value

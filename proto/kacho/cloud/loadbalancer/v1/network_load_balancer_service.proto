@@ -8,7 +8,7 @@ package kacho.cloud.loadbalancer.v1;
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "corelib/api/v1/operation.proto";
-import "kacho/cloud/operation/operation.proto";
+import "corelib/operation/operation.proto";
 import "kacho/cloud/loadbalancer/v1/network_load_balancer.proto";
 import "corelib/authz/v1/authz_options.proto";
 
@@ -49,7 +49,7 @@ service NetworkLoadBalancerService {
     option (corelib.authz.v1.required_acr_min) = "1";
   }
 
-  rpc Create(CreateNetworkLoadBalancerRequest) returns (operation.Operation) {
+  rpc Create(CreateNetworkLoadBalancerRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/nlb/v1/networkLoadBalancers"
       body: "*"
@@ -67,7 +67,7 @@ service NetworkLoadBalancerService {
     option (corelib.authz.v1.required_acr_min) = "1";
   }
 
-  rpc Update(UpdateNetworkLoadBalancerRequest) returns (operation.Operation) {
+  rpc Update(UpdateNetworkLoadBalancerRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       patch: "/nlb/v1/networkLoadBalancers/{network_load_balancer_id}"
       body: "*"
@@ -85,7 +85,7 @@ service NetworkLoadBalancerService {
     option (corelib.authz.v1.required_acr_min) = "1";
   }
 
-  rpc Delete(DeleteNetworkLoadBalancerRequest) returns (operation.Operation) {
+  rpc Delete(DeleteNetworkLoadBalancerRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {delete: "/nlb/v1/networkLoadBalancers/{network_load_balancer_id}"};
     option (corelib.api.v1.operation) = {
       metadata: "DeleteNetworkLoadBalancerMetadata"
@@ -104,7 +104,7 @@ service NetworkLoadBalancerService {
   // Blocked if any child listener is wired to a target group (cross-project
   // reference guard); child listeners are repointed in the same worker
   // transaction (denorm sync).
-  rpc Move(MoveNetworkLoadBalancerRequest) returns (operation.Operation) {
+  rpc Move(MoveNetworkLoadBalancerRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/nlb/v1/networkLoadBalancers/{network_load_balancer_id}:move"
       body: "*"
@@ -335,7 +335,7 @@ message ListNetworkLoadBalancerOperationsRequest {
 }
 
 message ListNetworkLoadBalancerOperationsResponse {
-  repeated operation.Operation operations = 1;
+  repeated corelib.operation.Operation operations = 1;
   string next_page_token = 2;
 }
 

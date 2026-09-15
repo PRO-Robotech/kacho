@@ -9,7 +9,7 @@ import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "corelib/api/v1/operation.proto";
 import "kacho/cloud/loadbalancer/v1/listener.proto";
-import "kacho/cloud/operation/operation.proto";
+import "corelib/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1";
@@ -54,7 +54,7 @@ service ListenerService {
   // Creates a listener under the specified load balancer. VIP allocation
   // (BYO `address_id` or auto via vpc.InternalAddressService) happens in
   // the worker — see design §4.2.
-  rpc Create(CreateListenerRequest) returns (operation.Operation) {
+  rpc Create(CreateListenerRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/nlb/v1/listeners"
       body: "*"
@@ -74,7 +74,7 @@ service ListenerService {
     option (corelib.authz.v1.required_acr_min) = "1";
   }
 
-  rpc Update(UpdateListenerRequest) returns (operation.Operation) {
+  rpc Update(UpdateListenerRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       patch: "/nlb/v1/listeners/{listener_id}"
       body: "*"
@@ -92,7 +92,7 @@ service ListenerService {
     option (corelib.authz.v1.required_acr_min) = "1";
   }
 
-  rpc Delete(DeleteListenerRequest) returns (operation.Operation) {
+  rpc Delete(DeleteListenerRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {delete: "/nlb/v1/listeners/{listener_id}"};
     option (corelib.api.v1.operation) = {
       metadata: "DeleteListenerMetadata"
@@ -278,6 +278,6 @@ message ListListenerOperationsRequest {
 }
 
 message ListListenerOperationsResponse {
-  repeated operation.Operation operations = 1;
+  repeated corelib.operation.Operation operations = 1;
   string next_page_token = 2;
 }

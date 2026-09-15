@@ -8,7 +8,7 @@ package kacho.cloud.vpc.v1;
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "corelib/api/v1/operation.proto";
-import "kacho/cloud/operation/operation.proto";
+import "corelib/operation/operation.proto";
 import "kacho/cloud/vpc/v1/gateway.proto";
 import "corelib/authz/v1/authz_options.proto";
 
@@ -50,7 +50,7 @@ service GatewayService {
   }
 
   // Creates a gateway in the specified project.
-  rpc Create (CreateGatewayRequest) returns (operation.Operation) {
+  rpc Create (CreateGatewayRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {post: "/vpc/v1/gateways" body: "*"};
     option (corelib.api.v1.operation) = {
       metadata: "CreateGatewayMetadata"
@@ -66,7 +66,7 @@ service GatewayService {
   };
 
   // Updates the specified gateway.
-  rpc Update (UpdateGatewayRequest) returns (operation.Operation) {
+  rpc Update (UpdateGatewayRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {patch: "/vpc/v1/gateways/{gateway_id}" body: "*"};
     option (corelib.api.v1.operation) = {
       metadata: "UpdateGatewayMetadata"
@@ -82,7 +82,7 @@ service GatewayService {
   };
 
   // Deletes the specified gateway.
-  rpc Delete (DeleteGatewayRequest) returns (operation.Operation) {
+  rpc Delete (DeleteGatewayRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {delete: "/vpc/v1/gateways/{gateway_id}"};
     option (corelib.api.v1.operation) = {
       metadata: "DeleteGatewayMetadata"
@@ -180,7 +180,7 @@ message ListGatewayOperationsRequest {
 
 message ListGatewayOperationsResponse {
   // List of operations for the specified gateway.
-  repeated operation.Operation operations = 1;
+  repeated corelib.operation.Operation operations = 1;
 
   // Token for getting the next page of the list. If the number of results is greater than
   // the specified [ListGatewayOperationsRequest.page_size], use `next_page_token` as the value

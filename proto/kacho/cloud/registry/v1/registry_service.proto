@@ -8,7 +8,7 @@ package kacho.cloud.registry.v1;
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "corelib/api/v1/operation.proto";
-import "kacho/cloud/operation/operation.proto";
+import "corelib/operation/operation.proto";
 import "kacho/cloud/registry/v1/registry.proto";
 import "corelib/authz/v1/authz_options.proto";
 
@@ -50,7 +50,7 @@ service RegistryService {
 
   // Create — async. create-child = editor-tier на parent-project (Check на
   // iam_project, объекта registry ещё нет). Owner-tuple эмитится в outbox.
-  rpc Create(CreateRegistryRequest) returns (operation.Operation) {
+  rpc Create(CreateRegistryRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/registry/v1/registries"
       body: "*"
@@ -75,7 +75,7 @@ service RegistryService {
   // NO deny reason; without this the deny would surface 403 + `deny_reasons`
   // (relations oracle). The registry backend is already opaque; this closes the
   // gateway echo for the gated mutation.
-  rpc Update(UpdateRegistryRequest) returns (operation.Operation) {
+  rpc Update(UpdateRegistryRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       patch: "/registry/v1/registries/{registry_id}"
       body: "*"
@@ -99,7 +99,7 @@ service RegistryService {
   // hide_existence: same rationale as Update — a caller without v_delete must not
   // learn the registry exists nor have its grants enumerated; deny → NotFound,
   // no `deny_reasons` echo (security.md #6). Mirrors the v_get read-deny hide.
-  rpc Delete(DeleteRegistryRequest) returns (operation.Operation) {
+  rpc Delete(DeleteRegistryRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {delete: "/registry/v1/registries/{registry_id}"};
     option (corelib.api.v1.operation) = {
       metadata: "DeleteRegistryMetadata"
@@ -185,7 +185,7 @@ service RegistryService {
   // uniqueness (registry_id,name) — DB UNIQUE (дубликат → ALREADY_EXISTS, ban #10).
   // Handler: namespace call-gate (невидимый реестр → NOT_FOUND, X04) + v_create;
   // явный visibility=PUBLIC требует registry admin (B08 → PERMISSION_DENIED).
-  rpc CreateRepository(CreateRepositoryRequest) returns (operation.Operation) {
+  rpc CreateRepository(CreateRepositoryRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/registry/v1/registries/{registry_id}/repositories"
       body: "*"
@@ -204,7 +204,7 @@ service RegistryService {
   // в mask → registry admin (B02 → PERMISSION_DENIED). Promote ephemeral→durable
   // (overlay upsert). Deny|absent → NOT_FOUND.
   // Bare `{repository=**}` catch-all — объявлен ПЕРЕД sub-resource'ами (precedence).
-  rpc UpdateRepository(UpdateRepositoryRequest) returns (operation.Operation) {
+  rpc UpdateRepository(UpdateRepositoryRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       patch: "/registry/v1/registries/{registry_id}/repositories/{repository=**}"
       body: "*"
@@ -224,7 +224,7 @@ service RegistryService {
   // Handler: per-repo v_delete Check синхронно ДО LRO; unauthorized|absent → sync
   // NOT_FOUND, Operation НЕ создаётся (A15 — как DeleteTag).
   // Bare `{repository=**}` catch-all — объявлен ПЕРЕД sub-resource'ами (precedence).
-  rpc DeleteRepository(DeleteRepositoryRequest) returns (operation.Operation) {
+  rpc DeleteRepository(DeleteRepositoryRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {delete: "/registry/v1/registries/{registry_id}/repositories/{repository=**}"};
     option (corelib.api.v1.operation) = {
       metadata: "DeleteRepositoryMetadata"
@@ -250,7 +250,7 @@ service RegistryService {
   // DELETE отвергается 405). Per-repo v_delete Check синхронно в handler'е ДО
   // создания Operation → полоса `scope_filtered`. Sub-resource `…/tags/{tag}` — объявлен
   // ПОСЛЕ DeleteRepository catch-all'а → пробуется РАНЬШЕ, не затеняется.
-  rpc DeleteTag(DeleteTagRequest) returns (operation.Operation) {
+  rpc DeleteTag(DeleteTagRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {delete: "/registry/v1/registries/{registry_id}/repositories/{repository}/tags/{tag}"};
     option (corelib.api.v1.operation) = {
       metadata: "DeleteTagMetadata"
@@ -272,7 +272,7 @@ service RegistryService {
   // Operation error UNAVAILABLE fail-closed (без частичного rename, A21). Handler:
   // v_update@repo + v_create@registry; deny|absent → NOT_FOUND. Verb-action
   // `:rename` — объявлен ПОСЛЕ catch-all'ов → пробуется РАНЬШЕ (precedence).
-  rpc RenameRepository(RenameRepositoryRequest) returns (operation.Operation) {
+  rpc RenameRepository(RenameRepositoryRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/registry/v1/registries/{registry_id}/repositories/{repository=**}:rename"
       body: "*"
@@ -408,7 +408,7 @@ message ListRegistryOperationsRequest {
 }
 
 message ListRegistryOperationsResponse {
-  repeated operation.Operation operations = 1;
+  repeated corelib.operation.Operation operations = 1;
   string next_page_token = 2;
 }
 

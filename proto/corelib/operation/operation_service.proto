@@ -3,13 +3,13 @@
 
 syntax = "proto3";
 
-package kacho.cloud.operation;
+package corelib.operation;
 
 import "google/api/annotations.proto";
-import "kacho/cloud/operation/operation.proto";
+import "corelib/operation/operation.proto";
 import "corelib/authz/v1/authz_options.proto";
 
-option go_package = "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation;operationv1";
+option go_package = "github.com/PRO-Robotech/corelib/api/corelib/operation;operationv1";
 
 // A set of methods for managing operations for asynchronous API requests.
 service OperationService {

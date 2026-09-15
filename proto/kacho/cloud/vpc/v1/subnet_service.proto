@@ -8,7 +8,7 @@ package kacho.cloud.vpc.v1;
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "corelib/api/v1/operation.proto";
-import "kacho/cloud/operation/operation.proto";
+import "corelib/operation/operation.proto";
 import "kacho/cloud/reference/reference.proto";
 import "kacho/cloud/vpc/v1/subnet.proto";
 import "corelib/authz/v1/authz_options.proto";
@@ -53,7 +53,7 @@ service SubnetService {
 
   // Creates a subnet in the specified project and network.
   // Method starts an asynchronous operation that can be cancelled while it is in progress.
-  rpc Create(CreateSubnetRequest) returns (operation.Operation) {
+  rpc Create(CreateSubnetRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/vpc/v1/subnets"
       body: "*"
@@ -73,7 +73,7 @@ service SubnetService {
 
   // Updates the specified subnet.
   // Method starts an asynchronous operation that can be cancelled while it is in progress.
-  rpc Update(UpdateSubnetRequest) returns (operation.Operation) {
+  rpc Update(UpdateSubnetRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       patch: "/vpc/v1/subnets/{subnet_id}"
       body: "*"
@@ -93,7 +93,7 @@ service SubnetService {
 
   // Adds CIDR blocks to the specified subnet.
   // Method starts an asynchronous operation that can be cancelled while it is in progress.
-  rpc AddCidrBlocks(AddSubnetCidrBlocksRequest) returns (operation.Operation) {
+  rpc AddCidrBlocks(AddSubnetCidrBlocksRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/vpc/v1/subnets/{subnet_id}:add-cidr-blocks"
       body: "*"
@@ -113,7 +113,7 @@ service SubnetService {
 
   // Removes CIDR blocks from the specified subnet.
   // Method starts an asynchronous operation that can be cancelled while it is in progress.
-  rpc RemoveCidrBlocks(RemoveSubnetCidrBlocksRequest) returns (operation.Operation) {
+  rpc RemoveCidrBlocks(RemoveSubnetCidrBlocksRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {
       post: "/vpc/v1/subnets/{subnet_id}:remove-cidr-blocks"
       body: "*"
@@ -132,7 +132,7 @@ service SubnetService {
   }
 
   // Deletes the specified subnet.
-  rpc Delete(DeleteSubnetRequest) returns (operation.Operation) {
+  rpc Delete(DeleteSubnetRequest) returns (corelib.operation.Operation) {
     option (google.api.http) = {delete: "/vpc/v1/subnets/{subnet_id}"};
     option (corelib.api.v1.operation) = {
       metadata: "DeleteSubnetMetadata"
@@ -383,7 +383,7 @@ message ListSubnetOperationsRequest {
 
 message ListSubnetOperationsResponse {
   // List of operations for the specified Subnet resource.
-  repeated operation.Operation operations = 1;
+  repeated corelib.operation.Operation operations = 1;
 
   // This token allows you to get the next page of results for list requests. If the number of results
   // is larger than [ListSubnetOperationsRequest.page_size], use the [next_page_token] as the value
