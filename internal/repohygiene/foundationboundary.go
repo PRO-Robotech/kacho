@@ -226,8 +226,13 @@ var foundationSubtrees = []struct {
 	// объявляет класс, а не место, и ось четвёртая резолвит её в третьем доме.
 	{"pkg/api/kaname/cloud/iam", classKaname},
 	{"pkg/api/kacho/cloud/operation", classCorelib},
-	{"pkg/api/kacho/cloud/subscription", classCorelib},
-	{"pkg/api/kacho/cloud/quota", classCorelib},
+	// Записей `pkg/api/kacho/cloud/quota` (kacho#2601, форма учёта) и
+	// `pkg/api/kacho/cloud/subscription` (kacho#2601, форма подписки) здесь БОЛЬШЕ
+	// НЕТ: оба контракта переименованы под дом фундамента (`corelib.quota.v1`,
+	// `corelib.subscription`) и легли под нейтральный корень, то есть класс им
+	// раздаёт запись `pkg/api/corelib` ниже — по пути, а не переопределением.
+	// Переопределение, пережившее свой каталог, есть слепая зона: класс оно
+	// раздаёт, а предмета у него нет.
 	// Нейтральный корень объявляется ЦЕЛИКОМ, а не по одному словарю. Прежде здесь
 	// стоял `pkg/api/corelib/authz`, и записи хватало ровно на один переезд: второй
 	// словарь (#2395, разметка операции) лёг рядом в `pkg/api/corelib/api/v1` и

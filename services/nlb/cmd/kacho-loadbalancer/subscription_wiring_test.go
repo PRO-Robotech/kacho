@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
-	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 	"github.com/PRO-Robotech/corelib/operations"
 	kachopg "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg"
 )
@@ -19,7 +19,7 @@ import (
 // Он записан здесь строкой, а не выведен из дескриптора служб: предмет пробы —
 // что служится ИМЕННО он, и вывод имени из того же источника, что и регистрация,
 // сделал бы утверждение тождественно истинным при любой ошибке.
-const subscribeVerb = "/kacho.cloud.subscription.InternalSubscriptionService/Subscribe"
+const subscribeVerb = "/corelib.subscription.InternalSubscriptionService/Subscribe"
 
 // TestNlbStreamBudgetIsDeclaredWithItsSubject — ось объявлена ВЕЛИЧИНОЙ, и
 // величина переживает границу обработки одиночного вызова.

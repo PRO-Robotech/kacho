@@ -298,7 +298,7 @@ func (u *CreateNetworkUseCase) doCreate(ctx context.Context, netID string, n dom
 	// строка, объявленная сразу, несла пустые `default_security_group_id` и
 	// `default_route_table_id`, а следом шли два `UPDATED` — по одному на каждое
 	// достроенное умолчание. Подписчик вправе читать непустую нагрузку как ПОЛНОЕ
-	// состояние предмета (`proto/kacho/cloud/subscription/subscription.proto`,
+	// состояние предмета (`proto/corelib/subscription/subscription.proto`,
 	// поле `state`) — и читал: показывал и записывал сеть БЕЗ группы безопасности
 	// и БЕЗ таблицы маршрутов, а затем дважды себя поправлял. Состояние это было
 	// правдой ровно внутри нашей транзакции и ложью к её концу.

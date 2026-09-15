@@ -81,7 +81,7 @@ func TestCSD_Run2_PlatformImportingTheServiceIsAFinding(t *testing.T) {
 	t.Parallel()
 	platform, service := splitFixture(t)
 
-	const victim = "kacho/cloud/quota/v1/quota.proto"
+	const victim = "kacho/cloud/vpc/v1/quota_service.proto"
 	injected := withInjectedImport(t, platform, victim,
 		`import "kaname/cloud/iam/v1/membership.proto";`)
 
@@ -105,7 +105,7 @@ func TestCSD_Run3_ServiceImportingThePlatformIsSilent(t *testing.T) {
 
 	const twin = "kaname/cloud/iam/v1/membership.proto"
 	injected := withInjectedImport(t, service, twin,
-		`import "kacho/cloud/quota/v1/quota.proto";`)
+		`import "kacho/cloud/vpc/v1/quota_service.proto";`)
 
 	f, cen := repohygiene.AuditContractSplitDirection(platform, injected, "kacho", "kaname")
 	require.Emptyf(t, f, "гейт покраснел на ЗАКОННОМ импорте службы в платформу:\n  %s",
@@ -122,7 +122,7 @@ func TestCSD_Run4_PublicImportFormIsSeenToo(t *testing.T) {
 	t.Parallel()
 	platform, service := splitFixture(t)
 
-	const victim = "kacho/cloud/quota/v1/quota.proto"
+	const victim = "kacho/cloud/vpc/v1/quota_service.proto"
 	injected := withInjectedImport(t, platform, victim,
 		`import public "kaname/cloud/iam/v1/membership.proto";`)
 

@@ -109,7 +109,7 @@ func subscriptionShapeOptions(t *testing.T) SubscriptionShapeOptions {
 	return SubscriptionShapeOptions{
 		Root:          repoRoot(t),
 		ProtoRoot:     "proto",
-		FormFile:      "kacho/cloud/subscription/subscription.proto",
+		FormFile:      "corelib/subscription/subscription.proto",
 		RequestFields: subscriptionRequestFieldLedger,
 		AbsentAxes:    subscriptionAbsentAxes,
 		Expect:        subscriptionShapeExpectation(),

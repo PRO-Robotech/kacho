@@ -46,7 +46,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	_ "github.com/PRO-Robotech/corelib/api/corelib/api/v1"
-	_ "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	_ "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 	"github.com/PRO-Robotech/corelib/authz/catalogderive"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
@@ -85,14 +85,14 @@ var catalogProtoPackages = []string{
 	// чтение квот, носителем которых является личность, — и её аннотация обязана
 	// сверяться так же, как всякая другая. Пропусти его здесь, и строка каталога
 	// осталась бы без источника, а гейт назвал бы находкой сам каталог.
-	"kacho.cloud.quota.v1",
+	"corelib.quota.v1",
 	"kacho.cloud.operation",
 	// Пакет ОБЩЕЙ формы подписки. До kacho#1018 он нёс только сообщения и потому
 	// здесь не значился; с этой задачи в нём объявлен глагол платформы —
 	// единственный на всю подписку, — и его аннотация обязана сверяться так же,
 	// как всякая другая. Пропусти его здесь, и строка каталога осталась бы без
 	// источника, а гейт назвал бы находкой сам каталог.
-	"kacho.cloud.subscription",
+	"corelib.subscription",
 }
 
 // domainsWithoutAWiredMap — домены, у которых каталог несёт строки

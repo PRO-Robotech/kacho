@@ -484,3 +484,140 @@ export const STREAM_SUBJECTS = {
 		}
 	})
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ЖУРНАЛ В ЧУЖОМ РЕПОЗИТОРИИ — ИНЪЕКЦИЯ ПО КАЖДОЙ ОСИ, В ОБЕ СТОРОНЫ
+//
+// Ведомость `journalsOutsideThisTree` прощает написания владельца, чей журнал
+// ведёт другой репозиторий, пока пин этого журнала не несёт. Прощение есть
+// послабление, поэтому доказывается не только то, что оно РАБОТАЕТ, но и то,
+// что оно УЗКОЕ (чужого владельца не покрывает) и что оно ИСТЕКАЕТ.
+//
+// Ведомость подаётся синтетикой, а не берётся действующая: проба, опирающаяся на
+// живую запись, умирает вместе с ней — ровно тогда, когда та правильно истекает
+// (testing.md §«Четыре класса проверок», п. 2).
+
+// probeExternalLedger — синтетическая ведомость одной записи.
+var probeExternalLedger = map[string]string{"identity": "example.com/identity"}
+
+func TestExternalJournalLedger_ExcusesOnlyItsOwnOwner(t *testing.T) {
+	// Владелец ведомости называет вид, которого нет ни в одном словаре, — и это
+	// ПРОЩАЕТСЯ: сверять нечем, журнал ведёт другой репозиторий.
+	const src = `
+export const STREAM_SUBJECTS = {
+  networks: { owner: "vpc", kind: "vpc_network" },
+  users: { owner: "identity", kind: "identity_user" },
+};
+`
+	dict := map[string][]string{"services/vpc/internal/subscriptionjournal": {"vpc_network"}}
+
+	v := judgeConsoleKindsWithExternal(consoleStreamSubjectsOf(src), dict, probeExternalLedger)
+	if !v.empty() {
+		t.Fatalf("ведомость не прощает написание своего владельца — гейт краснел бы на "+
+			"верной карте, и снять его требование пришлось бы целиком: %+v", v)
+	}
+	if v.ExcusedExternal != 1 {
+		t.Fatalf("перепись несверенных написаний: %d, ожидалось 1 — прощённое обязано "+
+			"быть СОСЧИТАНО, иначе послабление невидимо", v.ExcusedExternal)
+	}
+
+	// ЗАКОННЫЙ БЛИЗНЕЦ ТОЙ ЖЕ ФОРМЫ: тот же неизвестный вид у владельца, КОТОРОГО
+	// ведомость не называет, обязан остаться находкой. Без этого прогона
+	// прощение было бы неотличимо от снятия проверки написаний целиком.
+	const twin = `
+export const STREAM_SUBJECTS = {
+  networks: { owner: "vpc", kind: "vpc_network" },
+  users: { owner: "storage", kind: "identity_user" },
+};
+`
+	tw := judgeConsoleKindsWithExternal(consoleStreamSubjectsOf(twin), dict, probeExternalLedger)
+	if len(tw.Undeclared) != 1 {
+		t.Fatalf("вид, не объявленный НИ ОДНИМ журналом, у владельца ВНЕ ведомости "+
+			"находкой не стал (%d) — прощение растеклось с записи на всё дерево",
+			len(tw.Undeclared))
+	}
+	if tw.ExcusedExternal != 0 {
+		t.Fatalf("прощено %d написаний у владельца вне ведомости — счётчик прощает "+
+			"шире записи", tw.ExcusedExternal)
+	}
+}
+
+func TestExternalJournalLedger_ReadablePinKeepsBindingCountHonest(t *testing.T) {
+	// ПЕРЕХОДНОЕ СОСТОЯНИЕ: пин журнал уже несёт, запись ведомости ещё стоит.
+	// Виды владельца сверяются по-настоящему, а его привязку держит запись —
+	// одноимённого каталога у него в этом дереве нет by construction.
+	//
+	// Без этой ветви владелец попал бы в счётчик взаимной однозначности, тот стал
+	// бы равен двум, и премиса свойства 4 оборвала бы прогон СВОИМ отказом —
+	// вместо того чтобы сказать «журнал стал читаем, снимите запись». Диагностика
+	// здесь часть свойства, а не украшение.
+	const src = `
+export const STREAM_SUBJECTS = {
+  listeners: { owner: "loadbalancer", kind: "nlb_listener" },
+  users: { owner: "identity", kind: "identity_user" },
+};
+`
+	dict := map[string][]string{
+		"services/nlb/internal/subscriptionjournal":         {"nlb_listener"},
+		"example.com/identity/internal/subscriptionjournal": {"identity_user"},
+	}
+	v := judgeConsoleKindsWithExternal(consoleStreamSubjectsOf(src), dict, probeExternalLedger)
+	if !v.empty() {
+		t.Fatalf("читаемый внешний журнал даёт находку: %+v", v)
+	}
+	if v.PinnedByLedger != 1 || v.PinnedByBijection != 1 {
+		t.Fatalf("перепись привязки: ведомостью %d, однозначностью %d — ожидалось 1 и 1. "+
+			"Внешний владелец, посчитанный однозначностью, надувает её счётчик и "+
+			"обрывает прогон премисой вместо внятной находки",
+			v.PinnedByLedger, v.PinnedByBijection)
+	}
+	if v.ExcusedExternal != 0 {
+		t.Fatalf("прощено %d написаний при ЧИТАЕМОМ журнале — послабление применяется "+
+			"там, где сверять уже есть чем", v.ExcusedExternal)
+	}
+}
+
+func TestExternalJournalLedger_RecordOutlivesItsSubject(t *testing.T) {
+	named := map[string]bool{"identity": true}
+	empty := map[string][]string{}
+	none := map[string]string{}
+
+	// КОНТРОЛЬ: предмет записи на месте — журнала нет ни здесь, ни в пине,
+	// владелец картой назван. Молчание.
+	if got := outlivedLedgerRecords(probeExternalLedger, empty, named, none); len(got) != 0 {
+		t.Fatalf("ведомость объявлена истёкшей при живом предмете — тогда запись "+
+			"пришлось бы держать ради зелёного: %v", got)
+	}
+
+	// ОСЬ 1: журнал владельца нашёлся В ЭТОМ дереве.
+	here := map[string][]string{
+		"services/identity/internal/subscriptionjournal": {"identity_user"},
+	}
+	if got := outlivedLedgerRecords(probeExternalLedger, here, named, none); len(got) != 1 {
+		t.Fatalf("журнал приехал в это дерево, а запись не истекла (%d) — она "+
+			"прикрывала бы живую координату", len(got))
+	}
+
+	// ЧИТАЕМОСТЬ ОСЬЮ НЕ ЯВЛЯЕТСЯ — и это утверждается прямо, потому что здесь
+	// стояла обратная проба. Запись несёт ДВЕ роли: адрес модуля, по которому
+	// журнал читается, и прощение написаний, пока читать нечего. Читаемость гасит
+	// вторую и не трогает первую; снятие записи у читаемого журнала отняло бы
+	// адрес, и владелец пропал бы из обхода целиком.
+	readable := map[string]string{"identity": "example.com/identity/internal/subscriptionjournal"}
+	if got := outlivedLedgerRecords(probeExternalLedger, empty, named, readable); len(got) != 0 {
+		t.Fatalf("читаемый журнал объявлен истечением записи (%v) — снятие отняло бы "+
+			"адрес, по которому он и читается", got)
+	}
+
+	// ОСЬ 2: карта владельца больше не называет.
+	if got := outlivedLedgerRecords(probeExternalLedger, empty, map[string]bool{}, none); len(got) != 1 {
+		t.Fatalf("карта не называет владельца, а запись не истекла (%d) — она стала "+
+			"слепой зоной, выданной вперёд", len(got))
+	}
+
+	// ПУСТАЯ ВЕДОМОСТЬ — ЦЕЛЬ, А НЕ ПОЛОМКА: прощать нечего, находок нет.
+	if got := outlivedLedgerRecords(none, here, named, readable); len(got) != 0 {
+		t.Fatalf("пустая ведомость объявлена находкой (%v) — отказ на ней толкал бы "+
+			"держать запись ради зелёного", got)
+	}
+}

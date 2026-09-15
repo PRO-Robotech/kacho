@@ -6,7 +6,7 @@ syntax = "proto3";
 package kacho.cloud.vpc.v1;
 
 import "google/api/annotations.proto";
-import "kacho/cloud/quota/v1/quota.proto";
+import "corelib/quota/v1/quota.proto";
 import "corelib/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
@@ -82,5 +82,5 @@ message ListQuotasResponse {
   // project has no quotas". A tenant given `[]` would conclude they are
   // unlimited, and they are not (api-conventions, "an empty value must mean
   // empty").
-  repeated kacho.cloud.quota.v1.Quota quotas = 1;
+  repeated corelib.quota.v1.Quota quotas = 1;
 }

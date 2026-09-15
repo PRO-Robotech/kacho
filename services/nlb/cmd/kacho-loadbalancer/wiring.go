@@ -25,8 +25,8 @@ import (
 	"github.com/PRO-Robotech/corelib/outbox/drainer"
 	"github.com/PRO-Robotech/corelib/outbox/metrics"
 
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 	operationpb "github.com/PRO-Robotech/corelib/api/kacho/cloud/operation"
-	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
 	"github.com/PRO-Robotech/corelib/listnarrow"
 	"github.com/PRO-Robotech/corelib/subscription"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"

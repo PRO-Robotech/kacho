@@ -18,9 +18,9 @@ import (
 func TestSubscriptionSingularity_CatchesDomainOwnRequest(t *testing.T) {
 	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
-		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
-		"proto/kacho/cloud/demo/v1/demo_watch.proto":        standDomainOwnRequest,
-		"proto/kacho/cloud/other/v1/other.proto":            standFiller,
+		"proto/corelib/subscription/subscription.proto": standCommonForm,
+		"proto/kacho/cloud/demo/v1/demo_watch.proto":    standDomainOwnRequest,
+		"proto/kacho/cloud/other/v1/other.proto":        standFiller,
 	})
 
 	findings, census, err := AuditSubscriptionFormSingularity(subscriptionStandOptions(root), nil)
@@ -44,9 +44,9 @@ func TestSubscriptionSingularity_CatchesDomainOwnRequest(t *testing.T) {
 func TestSubscriptionSingularity_SilentWhenDomainImportsCommonForm(t *testing.T) {
 	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
-		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
-		"proto/kacho/cloud/demo/v1/demo_watch.proto":        standDomainImportsCommon,
-		"proto/kacho/cloud/other/v1/other.proto":            standFiller,
+		"proto/corelib/subscription/subscription.proto": standCommonForm,
+		"proto/kacho/cloud/demo/v1/demo_watch.proto":    standDomainImportsCommon,
+		"proto/kacho/cloud/other/v1/other.proto":        standFiller,
 	})
 
 	findings, census, err := AuditSubscriptionFormSingularity(subscriptionStandOptions(root), nil)
@@ -70,9 +70,9 @@ func TestSubscriptionSingularity_SilentWhenDomainImportsCommonForm(t *testing.T)
 func TestSubscriptionSingularity_DomainRequestIsExcusedByLedger(t *testing.T) {
 	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
-		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
-		"proto/kacho/cloud/demo/v1/demo_watch.proto":        standDomainOwnRequest,
-		"proto/kacho/cloud/other/v1/other.proto":            standFiller,
+		"proto/corelib/subscription/subscription.proto": standCommonForm,
+		"proto/kacho/cloud/demo/v1/demo_watch.proto":    standDomainOwnRequest,
+		"proto/kacho/cloud/other/v1/other.proto":        standFiller,
 	})
 	excuse := SubscriptionRequestAllowance{
 		Symbol: "kacho.cloud.demo.v1.WatchRequest", Issue: "kacho#0",
@@ -100,8 +100,8 @@ func TestSubscriptionSingularity_DomainRequestIsExcusedByLedger(t *testing.T) {
 func TestSubscriptionSingularity_CatchesStaleAllowance(t *testing.T) {
 	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
-		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
-		"proto/kacho/cloud/other/v1/other.proto":            standFiller,
+		"proto/corelib/subscription/subscription.proto": standCommonForm,
+		"proto/kacho/cloud/other/v1/other.proto":        standFiller,
 	})
 	stale := SubscriptionRequestAllowance{
 		Symbol: "kacho.cloud.demo.v1.WatchRequest", Issue: "kacho#0",
@@ -127,8 +127,8 @@ func TestSubscriptionSingularity_CatchesStaleAllowance(t *testing.T) {
 func TestSubscriptionSingularity_EmptyLedgerIsTheGoalNotAFailure(t *testing.T) {
 	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
-		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
-		"proto/kacho/cloud/other/v1/other.proto":            standFiller,
+		"proto/corelib/subscription/subscription.proto": standCommonForm,
+		"proto/kacho/cloud/other/v1/other.proto":        standFiller,
 	})
 
 	findings, census, err := AuditSubscriptionFormSingularity(subscriptionStandOptions(root), nil)
@@ -173,15 +173,15 @@ func TestSubscriptionSingularity_MissingCommonFormIsAFinding(t *testing.T) {
 func TestSubscriptionSingularity_SecondFormInCommonPackageIsAFinding(t *testing.T) {
 	t.Parallel()
 	second := `syntax = "proto3";
-package kacho.cloud.subscription;
+package corelib.subscription;
 message LegacySubscriptionRequest {
   string anything = 1;
 }
 `
 	root := subscriptionStand(t, map[string]string{
-		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
-		"proto/kacho/cloud/subscription/legacy.proto":       second,
-		"proto/kacho/cloud/other/v1/other.proto":            standFiller,
+		"proto/corelib/subscription/subscription.proto": standCommonForm,
+		"proto/corelib/subscription/legacy.proto":       second,
+		"proto/kacho/cloud/other/v1/other.proto":        standFiller,
 	})
 
 	findings, _, err := AuditSubscriptionFormSingularity(subscriptionStandOptions(root), nil)
@@ -199,8 +199,8 @@ message LegacySubscriptionRequest {
 func TestSubscriptionSingularity_NestedNameIsNotADeclaration(t *testing.T) {
 	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
-		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
-		"proto/kacho/cloud/other/v1/other.proto":            standFiller,
+		"proto/corelib/subscription/subscription.proto": standCommonForm,
+		"proto/kacho/cloud/other/v1/other.proto":        standFiller,
 	})
 
 	_, census, err := AuditSubscriptionFormSingularity(subscriptionStandOptions(root), nil)
@@ -231,8 +231,8 @@ func TestSubscriptionSingularity_EmptyWalkIsAnError(t *testing.T) {
 func TestSubscriptionSingularity_AllowanceWithoutIssueIsRejected(t *testing.T) {
 	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
-		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
-		"proto/kacho/cloud/other/v1/other.proto":            standFiller,
+		"proto/corelib/subscription/subscription.proto": standCommonForm,
+		"proto/kacho/cloud/other/v1/other.proto":        standFiller,
 	})
 	noIssue := SubscriptionRequestAllowance{Symbol: "kacho.cloud.demo.v1.WatchRequest", Reason: "потом"}
 	if _, _, err := AuditSubscriptionFormSingularity(subscriptionStandOptions(root, noIssue), nil); err == nil {
@@ -255,11 +255,11 @@ func TestSubscriptionSingularity_AllowanceWithoutIssueIsRejected(t *testing.T) {
 func TestSubscriptionSingularity_ControlBothBranchesSilent(t *testing.T) {
 	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
-		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
-		"proto/kacho/cloud/other/v1/paged_list.proto":       standPagedListTwin,
-		"proto/kacho/cloud/other/v1/upload.proto":           standClientStreamingTwin,
-		"proto/kacho/cloud/other/v1/nested.proto":           standNestedShapeIsNotADeclaration,
-		"proto/kacho/cloud/other/v1/other.proto":            standFiller,
+		"proto/corelib/subscription/subscription.proto": standCommonForm,
+		"proto/kacho/cloud/other/v1/paged_list.proto":   standPagedListTwin,
+		"proto/kacho/cloud/other/v1/upload.proto":       standClientStreamingTwin,
+		"proto/kacho/cloud/other/v1/nested.proto":       standNestedShapeIsNotADeclaration,
+		"proto/kacho/cloud/other/v1/other.proto":        standFiller,
 	})
 
 	findings, census, err := AuditSubscriptionFormSingularity(subscriptionStandOptions(root), nil)
@@ -308,10 +308,10 @@ func TestSubscriptionSingularity_CatchesForeignNamedSubscription(t *testing.T) {
 	} {
 		t.Run(tc.symbol, func(t *testing.T) {
 			root := subscriptionStand(t, map[string]string{
-				"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
-				"proto/kacho/cloud/demo/v1/" + tc.file:              tc.body,
-				"proto/kacho/cloud/other/v1/paged_list.proto":       standPagedListTwin,
-				"proto/kacho/cloud/other/v1/other.proto":            standFiller,
+				"proto/corelib/subscription/subscription.proto": standCommonForm,
+				"proto/kacho/cloud/demo/v1/" + tc.file:          tc.body,
+				"proto/kacho/cloud/other/v1/paged_list.proto":   standPagedListTwin,
+				"proto/kacho/cloud/other/v1/other.proto":        standFiller,
 			})
 
 			findings, census, err := AuditSubscriptionFormSingularity(subscriptionStandOptions(root), nil)
@@ -350,10 +350,10 @@ func TestSubscriptionSingularity_CatchesForeignNamedSubscription(t *testing.T) {
 func TestSubscriptionSingularity_CatchesSubscriptionByStreamingUse(t *testing.T) {
 	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
-		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
-		"proto/kacho/cloud/demo/v1/demo_feed.proto":         standStreamingVerbOverPlainName,
-		"proto/kacho/cloud/other/v1/upload.proto":           standClientStreamingTwin,
-		"proto/kacho/cloud/other/v1/other.proto":            standFiller,
+		"proto/corelib/subscription/subscription.proto": standCommonForm,
+		"proto/kacho/cloud/demo/v1/demo_feed.proto":     standStreamingVerbOverPlainName,
+		"proto/kacho/cloud/other/v1/upload.proto":       standClientStreamingTwin,
+		"proto/kacho/cloud/other/v1/other.proto":        standFiller,
 	})
 
 	findings, census, err := AuditSubscriptionFormSingularity(subscriptionStandOptions(root), nil)
@@ -398,10 +398,10 @@ func TestSubscriptionSingularity_CatchesSubscriptionByStreamingUse(t *testing.T)
 func TestSubscriptionSingularity_NameBranchStillCatchesShapelessRequest(t *testing.T) {
 	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
-		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
-		"proto/kacho/cloud/demo/v1/demo_name_only.proto":    standNameOnlyRequest,
-		"proto/kacho/cloud/other/v1/paged_list.proto":       standPagedListTwin,
-		"proto/kacho/cloud/other/v1/other.proto":            standFiller,
+		"proto/corelib/subscription/subscription.proto":  standCommonForm,
+		"proto/kacho/cloud/demo/v1/demo_name_only.proto": standNameOnlyRequest,
+		"proto/kacho/cloud/other/v1/paged_list.proto":    standPagedListTwin,
+		"proto/kacho/cloud/other/v1/other.proto":         standFiller,
 	})
 
 	findings, census, err := AuditSubscriptionFormSingularity(subscriptionStandOptions(root), nil)
@@ -431,8 +431,8 @@ func TestSubscriptionSingularity_NameBranchStillCatchesShapelessRequest(t *testi
 func TestSubscriptionSingularity_SilentOnPagedListTwin(t *testing.T) {
 	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
-		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
-		"proto/kacho/cloud/other/v1/paged_list.proto":       standPagedListTwin,
+		"proto/corelib/subscription/subscription.proto": standCommonForm,
+		"proto/kacho/cloud/other/v1/paged_list.proto":   standPagedListTwin,
 	})
 
 	findings, census, err := AuditSubscriptionFormSingularity(subscriptionStandOptions(root), nil)
@@ -456,8 +456,8 @@ func TestSubscriptionSingularity_SilentOnPagedListTwin(t *testing.T) {
 func TestSubscriptionSingularity_SilentOnNestedShape(t *testing.T) {
 	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
-		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
-		"proto/kacho/cloud/other/v1/nested.proto":           standNestedShapeIsNotADeclaration,
+		"proto/corelib/subscription/subscription.proto": standCommonForm,
+		"proto/kacho/cloud/other/v1/nested.proto":       standNestedShapeIsNotADeclaration,
 	})
 
 	findings, census, err := AuditSubscriptionFormSingularity(subscriptionStandOptions(root), nil)
@@ -498,10 +498,10 @@ func TestSubscriptionSingularity_CatchesShapeInEveryFieldForm(t *testing.T) {
 	} {
 		t.Run(tc.form, func(t *testing.T) {
 			root := subscriptionStand(t, map[string]string{
-				"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
-				"proto/kacho/cloud/demo/v1/tail.proto":              tc.body,
-				"proto/kacho/cloud/other/v1/paged.proto":            standPagedListOptionalSize,
-				"proto/kacho/cloud/other/v1/other.proto":            standFiller,
+				"proto/corelib/subscription/subscription.proto": standCommonForm,
+				"proto/kacho/cloud/demo/v1/tail.proto":          tc.body,
+				"proto/kacho/cloud/other/v1/paged.proto":        standPagedListOptionalSize,
+				"proto/kacho/cloud/other/v1/other.proto":        standFiller,
 			})
 
 			findings, census, err := AuditSubscriptionFormSingularity(subscriptionStandOptions(root), nil)
@@ -539,8 +539,8 @@ func TestSubscriptionSingularity_CatchesShapeInEveryFieldForm(t *testing.T) {
 func TestSubscriptionSingularity_SilentOnPagedListWithModifiedSize(t *testing.T) {
 	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
-		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
-		"proto/kacho/cloud/other/v1/paged.proto":            standPagedListOptionalSize,
+		"proto/corelib/subscription/subscription.proto": standCommonForm,
+		"proto/kacho/cloud/other/v1/paged.proto":        standPagedListOptionalSize,
 	})
 
 	findings, census, err := AuditSubscriptionFormSingularity(subscriptionStandOptions(root), nil)
@@ -567,8 +567,8 @@ func TestSubscriptionSingularity_SilentOnPagedListWithModifiedSize(t *testing.T)
 func TestSubscriptionSingularity_BlindFieldFormIsAnError(t *testing.T) {
 	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
-		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
-		"proto/kacho/cloud/other/v1/odd.proto":              standUnknownFieldForm,
+		"proto/corelib/subscription/subscription.proto": standCommonForm,
+		"proto/kacho/cloud/other/v1/odd.proto":          standUnknownFieldForm,
 	})
 
 	_, _, err := AuditSubscriptionFormSingularity(subscriptionStandOptions(root), nil)
@@ -589,8 +589,8 @@ func TestSubscriptionSingularity_BlindFieldFormIsAnError(t *testing.T) {
 func TestSubscriptionSingularity_SilentOnMapField(t *testing.T) {
 	t.Parallel()
 	root := subscriptionStand(t, map[string]string{
-		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
-		"proto/kacho/cloud/other/v1/labels.proto":           standMapFieldTwin,
+		"proto/corelib/subscription/subscription.proto": standCommonForm,
+		"proto/kacho/cloud/other/v1/labels.proto":       standMapFieldTwin,
 	})
 
 	findings, census, err := AuditSubscriptionFormSingularity(subscriptionStandOptions(root), nil)

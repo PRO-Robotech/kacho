@@ -14,7 +14,7 @@ import (
 
 	"github.com/PRO-Robotech/kaname/pkg/subjectchange"
 
-	subscriptionv1 "github.com/PRO-Robotech/corelib/api/kacho/cloud/subscription"
+	subscriptionv1 "github.com/PRO-Robotech/corelib/api/corelib/subscription"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/clients"
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"

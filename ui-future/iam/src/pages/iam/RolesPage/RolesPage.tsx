@@ -23,6 +23,7 @@ import { useContext } from "@shared/lib/context-store";
 import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
 import { clientScope, scopeSuffix } from "@shared/lib/list-scope";
 import { MONO_FONT } from "@shared/components/organisms/form/editor-surface";
+import { useResourceStream } from "@shared/lib/subscription/use-resource-stream";
 
 export function RolesPage() {
   const navigate = useNavigate();
@@ -48,11 +49,18 @@ export function RolesPage() {
     [navigate],
   );
 
+  // Роли ведёт журнал службы доступа (вид `iam_role`). Ось проекта пуста: роли
+  // живут уровнем аккаунта, и сужение по проекту не отдало бы ни одной строки.
+  const { streamed } = useResourceStream({
+    specId: "roles",
+    projectId: null,
+    invalidate: ["iam", "roles", "list"],
+  });
+
   const { data, isLoading } = useQuery({
     queryKey: ["iam", "roles", "list"],
     queryFn: () => iamApi.listRoles({ pageSize: "1000" }),
-    // поллинг остаётся: журнала у iam нет, подписаться не на что.
-    refetchInterval: 5_000,
+    refetchInterval: streamed ? false : 5_000,
     staleTime: 0,
   });
 

@@ -293,7 +293,7 @@ func TestEveryKindTheOwnerDeclaresIsNamedOrDeclaredUnshown(t *testing.T) {
 	}
 	subjects := consoleStreamSubjectsOf(string(raw))
 	ledger, declaredLedgerFields, ledgerFound := unshownKindsOf(string(raw))
-	dict := journalDictionaries(t, root)
+	dict, _ := journalDictionaries(t, root)
 
 	declared := 0
 	perOwner := make([]string, 0, len(dict))

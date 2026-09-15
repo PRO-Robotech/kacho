@@ -114,19 +114,51 @@ func injCarriedControl(t *testing.T) []GateCarrierRetirement {
 			Fate:      subjectFateUnguarded,
 			CarriedTo: &CarriedCoordinate{Repo: repo},
 		},
+		// Семья `delta`: предмет остался ЗДЕСЬ и снова стережётся. Координаты
+		// берутся у ЖИВЫХ файлов этого дерева — выдуманные доказали бы резолв по
+		// несуществующему дереву, а не по тому, о котором гейт говорит.
+		{
+			Carrier:     gateCorpusDir + "/delta_test.go",
+			Reason:      "синтетический носитель",
+			Successor:   "предмет остался здесь, держатель завёлся заново",
+			Fate:        subjectFateRegained,
+			GuardedHere: injRegainedPath,
+		},
+		{
+			Carrier:     gateCorpusDir + "/delta_injection_test.go",
+			Reason:      "синтетический носитель",
+			Successor:   "доказательство падучести держателя соседней записи семьи",
+			Fate:        subjectFateRegained,
+			GuardedHere: injRegainedInjectionPath,
+		},
 	}
 }
 
+// injRegainedPath, injRegainedInjectionPath — координаты держателей В ЭТОМ
+// дереве. Живые файлы, а не выдуманные: судьба [subjectFateRegained] — та
+// единственная, чью координату дерево резолвит само, и синтетика доказала бы
+// резолв по несуществующему пути.
+const (
+	injRegainedPath          = gateCorpusDir + "/carriedsubjectdeclared.go"
+	injRegainedInjectionPath = gateCorpusDir + "/carriedsubjectdeclared_injection_test.go"
+)
+
 // injCarriedJudge — весь путь суждения на синтетической ведомости. ТА ЖЕ
 // функция, что зовёт держатель по дереву.
+//
+// Корнем подаётся ЖИВОЕ дерево: координата держателя судьбы
+// [subjectFateRegained] резолвится в нём, и подставной корень доказывал бы
+// резолв по выдуманному дереву, а не по тому, о котором гейт говорит.
 func injCarriedJudge(
 	t *testing.T, rows []GateCarrierRetirement, resolve carriedCoordinateResolver,
 ) []string {
 	t.Helper()
-	findings, census := judgeCarriedSubjects(rows, injRepos(t), resolve)
-	t.Logf("осмотрено: записей %d; семей %d; %q %d, %q %d, %q %d; координат сверено %d, не сверялось %d",
+	findings, census := judgeCarriedSubjects(repoRoot(t), rows, injRepos(t), resolve)
+	t.Logf("осмотрено: записей %d; семей %d; %q %d, %q %d, %q %d, %q %d; "+
+		"координат сверено %d, не сверялось %d",
 		census.Rows, census.Families, subjectFateGone, census.Gone,
 		subjectFateCarried, census.Carried, subjectFateUnguarded, census.Unguarded,
+		subjectFateRegained, census.Regained,
 		census.Checked, census.Unchecked)
 	return findings
 }
@@ -273,6 +305,89 @@ func TestCarriedSubject_UnguardedNamingAHolderIsFound(t *testing.T) {
 	// ОДИН факт: остаток назвал координату того, кого сам объявил отсутствующим.
 	rows[4].CarriedTo = &CarriedCoordinate{Repo: injDeclaredRepo(t), Path: injCarriedPath}
 	injCarriedOnly(t, injCarriedJudge(t, rows, nil), rows[4].Carrier)
+}
+
+// ── СУДЬБА «ОСТАЛСЯ ЗДЕСЬ И СНОВА СТЕРЕЖЁТСЯ»: обе стороны по каждой оси ────
+//
+// Законный близнец у всех пяти отрицаний один и тот же — семья `delta`
+// контрольного мира, которую судит TestCarriedSubject_ControlCoherentLedgerIsSilent.
+// Каждое отрицание меняет в ней РОВНО ОДИН факт.
+
+// TestCarriedSubject_RegainedWithoutAHolderIsFound — «снова стережётся» без
+// координаты держателя неотличимо от «не стережётся никем».
+func TestCarriedSubject_RegainedWithoutAHolderIsFound(t *testing.T) {
+	t.Parallel()
+	rows := injCarriedControl(t)
+	rows[5].GuardedHere = "" // ОДИН факт: держатель объявлен и не назван
+	injCarriedOnly(t, injCarriedJudge(t, rows, nil), rows[5].Carrier)
+}
+
+// TestCarriedSubject_RegainedWithADanglingHolderIsFound — координата держателя
+// В ЭТОМ дереве резолвится ВСЕГДА, и висячей быть не вправе.
+//
+// Ось, которой нет ни у одной другой судьбы: координата чужого дерева
+// проверяется лишь при поднятой ручке, а эта — при каждом прогоне.
+func TestCarriedSubject_RegainedWithADanglingHolderIsFound(t *testing.T) {
+	t.Parallel()
+	rows := injCarriedControl(t)
+	// ОДИН факт: путь той же формы, но файла с таким именем в дереве нет.
+	rows[5].GuardedHere = gateCorpusDir + "/no_such_holder_ever_existed.go"
+	injCarriedOnly(t, injCarriedJudge(t, rows, nil), rows[5].Carrier)
+}
+
+// TestCarriedSubject_RegainedNamingASuccessorIsFound — предмет не уезжал, и
+// координата преемника рядом с ним есть второе утверждение об одном предмете.
+func TestCarriedSubject_RegainedNamingASuccessorIsFound(t *testing.T) {
+	t.Parallel()
+	rows := injCarriedControl(t)
+	// ОДИН факт: запись объявила «остался здесь» и назвала преемника.
+	rows[5].CarriedTo = &CarriedCoordinate{Repo: injDeclaredRepo(t), Path: injCarriedPath}
+	injCarriedOnly(t, injCarriedJudge(t, rows, nil), rows[5].Carrier)
+}
+
+// TestCarriedSubject_HolderHereUnderAnotherFateIsFound — поле держателя
+// принадлежит одной судьбе и только ей.
+//
+// Мир меняет запись семьи `alpha` (судьба `carried`): она остаётся во всём
+// остальном годной, поэтому красное приходит от НОВОЙ оси, а не от соседней.
+func TestCarriedSubject_HolderHereUnderAnotherFateIsFound(t *testing.T) {
+	t.Parallel()
+	rows := injCarriedControl(t)
+	rows[0].GuardedHere = injRegainedPath // ОДИН факт: «уехало» и тут же «стережётся здесь»
+	injCarriedOnly(t, injCarriedJudge(t, rows, nil), rows[0].Carrier)
+}
+
+// TestCarriedSubject_RegainedFamilyDisagreementIsFound — гейт и его инъекция не
+// вправе объявлять разную судьбу и в новой судьбе тоже.
+func TestCarriedSubject_RegainedFamilyDisagreementIsFound(t *testing.T) {
+	t.Parallel()
+	rows := injCarriedControl(t)
+	// ОДИН факт: инъекция семьи сказала «предмета нет» там, где гейт сказал
+	// «остался здесь». Поле держателя снимается вместе с судьбой — иначе мир
+	// менял бы два факта и вердикт был бы недействителен.
+	rows[6].Fate = subjectFateGone
+	rows[6].GuardedHere = ""
+	injCarriedOnly(t, injCarriedJudge(t, rows, nil), "РАЗНУЮ судьбу")
+}
+
+// TestCarriedSubject_RegainedIsCountedApartFromTheOtherFates — перепись считает
+// новую судьбу СВОЕЙ величиной.
+//
+// Без этой оси её можно было бы молча зачесть в остаток либо в «уехало», и
+// число названного остатка перестало бы называть остаток.
+func TestCarriedSubject_RegainedIsCountedApartFromTheOtherFates(t *testing.T) {
+	t.Parallel()
+	rows := injCarriedControl(t)
+	_, census := judgeCarriedSubjects(repoRoot(t), rows, injRepos(t), nil)
+	if census.Regained != 2 {
+		t.Fatalf("перепись насчитала %q %d, а в контрольном мире их 2 — судьба не считается "+
+			"своей величиной", subjectFateRegained, census.Regained)
+	}
+	if census.Gone+census.Carried+census.Unguarded+census.Regained != census.Rows {
+		t.Fatalf("сумма судеб (%d+%d+%d+%d) не равна числу записей (%d) — часть записей "+
+			"не попала ни в одну величину, и перепись перестала быть переписью",
+			census.Gone, census.Carried, census.Unguarded, census.Regained, census.Rows)
+	}
 }
 
 // ── СВЕРКА КООРДИНАТЫ С ДЕРЕВОМ-ПРЕЕМНИКОМ: обе стороны ────────────────────
