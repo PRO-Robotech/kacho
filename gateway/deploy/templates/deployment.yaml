@@ -176,6 +176,9 @@ spec:
             # имени релиза с тем, что кто-то однажды набрал, и ломался бы молча
             # при установке под другим именем. Значение `disabled` выключает
             # сессионную аутентификацию целиком (сигнальное значение config.go).
+            # ЧИТАЕТСЯ ТОЛЬКО ПОД ПОСАДКОЙ `external` (Ф3, kacho#1269): под `own`
+            # сессию человека читает служба доступа, и адрес поставщика краем не
+            # читается вовсе — читатель его носителя под `own` не заводится.
             - name: KACHO_API_GATEWAY_KRATOS_PUBLIC_URL
               value: {{ .Values.kratosPublicUrl | default (printf "http://%s-kratos-public.%s.svc:80" .Release.Name .Release.Namespace) | quote }}
             {{- if .Values.tls.enabled }}
