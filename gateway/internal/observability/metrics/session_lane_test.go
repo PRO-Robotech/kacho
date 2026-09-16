@@ -93,3 +93,22 @@ func TestSessionLane_F3_48_PasswordChangeRequiredIsADecisionCell(t *testing.T) {
 	authz.RecordPasswordChangeRequired()
 	require.Contains(t, expose(t, m), `kacho_api_gateway_authz_check_decisions_total{decision="password_change_required"} 1`)
 }
+
+// Клетка «уровень вне оси сессии» (Ф11-19): существует с нулём до первого
+// ответа службы без уровня и растёт на единицу с каждым таким ответом.
+// Отдельная клетка, а не исход отказа: на глаголе без пола такой ответ
+// ПРОХОДИТ, и отказом он не является — состояние докладывается само по себе.
+func TestSessionLane_F11_19_OffAxisAssuranceCellExistsWithZeroAndGrows(t *testing.T) {
+	lane := middleware.SessionLaneSnapshot{}
+	relay := handler.LoginLaneRelaySnapshot{Relayed: map[string]uint64{}}
+	m := gwmetrics.New("test", "deadbeef")
+	m.RegisterSessionLane(func() gwmetrics.SessionLaneSnapshot {
+		return gwmetrics.SessionLaneSnapshot{Lane: lane, Relay: relay}
+	})
+	require.Contains(t, expose(t, m), `kacho_api_gateway_session_lane_assurance_off_axis_total 0`)
+	lane.AssuranceOffAxis = 1
+	body := expose(t, m)
+	require.Contains(t, body, `kacho_api_gateway_session_lane_assurance_off_axis_total 1`)
+	require.Contains(t, body, `kacho_api_gateway_session_lane_refusals_total{outcome="no_session"} 0`,
+		"соседняя клетка не должна была вырасти")
+}

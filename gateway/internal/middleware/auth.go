@@ -194,6 +194,11 @@ type AuthInterceptor struct {
 	// его вовсе). Состояние означает «пол на этой полосе не удовлетворить
 	// ничем», и оно не исчезает само — см. auth_session_stepup.go.
 	sessionAssuranceUnknown *introspectionFailureReporter
+	// ownAssuranceOffAxis — окно доклада полосы НАШЕЙ сессии об ответе службы с
+	// уровнем вне оси сессии (Ф11-19, own_session_assurance.go). Своё, а не
+	// общее с полосой поставщика: у той словарь чужой и диагноз «не перевели»,
+	// у этой — ось своя и диагноз «служба отдала то, чего не производит».
+	ownAssuranceOffAxis *introspectionFailureReporter
 	// basicAssuranceUnknown — то же окно доклада для полосы базового
 	// удостоверения: величина уровня уехала с оси каталога, и полоса больше не
 	// может поручиться ни за один уровень (auth_basic_stepup.go). Окно своё, а
@@ -253,6 +258,9 @@ func (a *AuthInterceptor) WithHumanSession(r HumanSessionReader) *AuthIntercepto
 	if a.sessionCutoffFailures == nil {
 		a.sessionCutoffFailures = newIntrospectionFailureReporter(0, nil)
 	}
+	// Полоса смонтирована — значит у неё есть и доклад об уровне вне оси
+	// сессии (Ф11-19). Своей ручки у состояния нет: оно свойство ответа службы.
+	a.ownAssuranceOffAxis = newIntrospectionFailureReporter(0, nil)
 	return a
 }
 

@@ -100,14 +100,19 @@ type SessionLaneSnapshot struct {
 	// RolloutWindow — проходов «громко»: авторитет не предлагает вопроса об
 	// отсечке при подтверждённой сессии (F4d-29).
 	RolloutWindow uint64
+	// AssuranceOffAxis — ответов службы о живой сессии с уровнем вне оси сессии
+	// (нет, «0», словарь поставщика — Ф11-19). Не исход отказа: на глаголе без
+	// пола такой ответ проходит, а состояние докладывается само по себе.
+	AssuranceOffAxis uint64
 }
 
 // SessionLaneCounts — накопитель клеток полосы сессии на горячем пути.
 type SessionLaneCounts struct {
-	cutoffDenied  atomic.Uint64
-	noSession     atomic.Uint64
-	unavailable   atomic.Uint64
-	rolloutWindow atomic.Uint64
+	cutoffDenied     atomic.Uint64
+	noSession        atomic.Uint64
+	unavailable      atomic.Uint64
+	rolloutWindow    atomic.Uint64
+	assuranceOffAxis atomic.Uint64
 }
 
 // Snapshot — слепок клеток для коллектора.
@@ -116,10 +121,11 @@ func (c *SessionLaneCounts) Snapshot() SessionLaneSnapshot {
 		return SessionLaneSnapshot{}
 	}
 	return SessionLaneSnapshot{
-		CutoffDenied:  c.cutoffDenied.Load(),
-		NoSession:     c.noSession.Load(),
-		Unavailable:   c.unavailable.Load(),
-		RolloutWindow: c.rolloutWindow.Load(),
+		CutoffDenied:     c.cutoffDenied.Load(),
+		NoSession:        c.noSession.Load(),
+		Unavailable:      c.unavailable.Load(),
+		RolloutWindow:    c.rolloutWindow.Load(),
+		AssuranceOffAxis: c.assuranceOffAxis.Load(),
 	}
 }
 
@@ -146,5 +152,11 @@ func (c *SessionLaneCounts) recordUnavailable() {
 func (c *SessionLaneCounts) recordRolloutWindow() {
 	if c != nil {
 		c.rolloutWindow.Add(1)
+	}
+}
+
+func (c *SessionLaneCounts) recordAssuranceOffAxis() {
+	if c != nil {
+		c.assuranceOffAxis.Add(1)
 	}
 }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // session_lane.go — клетки полосы сессии человека и ретрансляции полосы формы
-// (приёмка Ф3, Ф3-48).
+// (приёмка Ф3, Ф3-48) и клетка уровня вне оси сессии (приёмка Ф11, Ф11-19).
 //
 // Клетки существуют с нулём с первой секунды жизни процесса — «отказов по
 // отсечке не было» и «полосы нет» обязаны различаться без единого запроса.
@@ -65,6 +65,13 @@ var (
 		"Sessions let through LOUDLY because the authority does not yet offer the cutoff question "+
 			"(image skew during a rollout). Non-zero after a rollout settled means the check is not enforced.",
 		nil, nil)
+	sessionAssuranceOffAxisDesc = prometheus.NewDesc(
+		"kacho_api_gateway_session_lane_assurance_off_axis_total",
+		"Answers about a live session from our identity service whose assurance level is off the "+
+			"session axis (absent, \"0\" or a foreign vocabulary such as aal2). Every positive "+
+			"authentication floor refuses such a session; a floorless verb passes. Non-zero means a "+
+			"service/edge version skew or a direct write into the session store.",
+		nil, nil)
 	loginLaneRelayedDesc = prometheus.NewDesc(
 		"kacho_api_gateway_login_lane_relayed_total",
 		"Login-lane requests relayed to the identity service's form listener, by verb.",
@@ -90,6 +97,7 @@ type sessionLaneCollector struct {
 func (c *sessionLaneCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- sessionRefusalsDesc
 	ch <- sessionRolloutWindowDesc
+	ch <- sessionAssuranceOffAxisDesc
 	ch <- loginLaneRelayedDesc
 	ch <- loginLaneUnreachableDesc
 }
@@ -108,6 +116,7 @@ func (c *sessionLaneCollector) Collect(ch chan<- prometheus.Metric) {
 		ch <- prometheus.MustNewConstMetric(sessionRefusalsDesc, prometheus.CounterValue, float64(value), outcome)
 	}
 	ch <- prometheus.MustNewConstMetric(sessionRolloutWindowDesc, prometheus.CounterValue, float64(s.Lane.RolloutWindow))
+	ch <- prometheus.MustNewConstMetric(sessionAssuranceOffAxisDesc, prometheus.CounterValue, float64(s.Lane.AssuranceOffAxis))
 	for verb, value := range map[string]uint64{
 		loginLaneVerbLogin:    s.Relay.Relayed[loginLaneVerbLogin],
 		loginLaneVerbLogout:   s.Relay.Relayed[loginLaneVerbLogout],

@@ -111,8 +111,9 @@ func (a *AuthInterceptor) tryOwnSession(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Пол уверенности — тот же вопрос, что на полосе поставщика; уровень нашей
-	// сессии уже на оси каталога (Ф11), перевода нет.
-	assurance := StepUpAssurance{PrincipalType: subj.Type, ACR: sess.AssuranceLevel, AuthTime: sess.AuthenticatedAt}
+	// сессии уже на оси каталога (Ф11 Р7): перевода нет, есть проверка оси
+	// сессии, и значение вне неё уезжает пустым — громко (Ф11-19).
+	assurance := a.ownSessionAssurance(subj, sess, route)
 	if a.enforceStepUpHTTP(w, r, assurance, stepUpLaneSession) {
 		return r, false, true
 	}
