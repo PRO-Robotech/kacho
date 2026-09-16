@@ -13,7 +13,7 @@
 
 import { useState, useMemo } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { Button, Cascader, Form, Input, Segmented, Select, Space, Table, Tabs, Tag, Typography, Alert } from "antd";
+import { Button, Cascader, Form, Segmented, Select, Space, Table, Tabs, Tag, Typography, Alert } from "antd";
 import { toast } from "@shared/lib/toast";
 import { PlusOutlined, MailOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -262,7 +262,6 @@ export function AccessGrantPage() {
   const [form] = Form.useForm();
   const qc = useQueryClient();
   const [subjectInput, setSubjectInput] = useState("");
-  const [magicLink, setMagicLink] = useState<string | null>(null);
   useHeaderRight(useMemo(() => null, []));
   useBreadcrumb(
     useMemo(
@@ -377,12 +376,20 @@ export function AccessGrantPage() {
           project_id: targetScopeTier === "PROJECT" ? targetScopeId : undefined,
           role_id: roleIds[0], // одну роль кладём в invite payload; остальные — отдельные AB
         });
-        const link = resp?.metadata?.magic_link_url;
-        if (link) setMagicLink(link);
-        toast.success("Пользователь приглашён");
+        if (resp?.error) {
+          toast.error(resp.error.message || "Не удалось пригласить пользователя");
+          return;
+        }
+        // Ссылки в ответе нет (поле снято с контракта, ID-MAIL-1 Р10): письмо
+        // уходит само, а не дошедшее отправляется ещё раз из списка
+        // пользователей. Форма завершает работу, а не остаётся открытой в
+        // неопределённом состоянии (MAIL-36).
+        toast.success("Пользователь приглашён — письмо уйдёт на указанный адрес");
         qc.invalidateQueries({ queryKey: ["iam", "access-bindings"] });
         qc.invalidateQueries({ queryKey: ["iam", "users"] });
-        // НЕ закрываем модалку — показываем magic-link для копирования.
+        form.resetFields();
+        setSubjectInput("");
+        navigate("/iam/access");
         return;
       }
 
@@ -449,21 +456,7 @@ export function AccessGrantPage() {
             showIcon
             icon={<MailOutlined />}
             message={`Пользователь с адресом ${subjectInput} не найден в вашей организации.`}
-            description="Вы можете отправить ему приглашение для присоединения к организации. Magic-link появится после Сохранить (admin копирует и отправляет вручную)."
-          />
-        ) : null}
-
-        {magicLink ? (
-          <Alert
-            type="success"
-            showIcon
-            message="Приглашение создано!"
-            description={
-              <Space direction="vertical" style={{ width: "100%" }} size={4}>
-                <Typography.Text>Скопируйте ссылку для входа и отправьте пользователю:</Typography.Text>
-                <Input.TextArea value={magicLink} rows={3} readOnly />
-              </Space>
-            }
+            description="Вы можете отправить ему приглашение: письмо уйдёт на этот адрес само. Если не дойдёт — отправьте его ещё раз из списка пользователей."
           />
         ) : null}
 
@@ -508,18 +501,10 @@ export function AccessGrantPage() {
           />
         </Form.Item>
         <FormFooter
-          submitLabel={magicLink ? "Готово" : "Сохранить"}
+          submitLabel="Сохранить"
           submitting={false}
-          onSubmit={
-            magicLink
-              ? () => {
-                  setMagicLink(null);
-                  navigate("/iam/access");
-                }
-              : handleSubmit
-          }
+          onSubmit={handleSubmit}
           onCancel={() => {
-            setMagicLink(null);
             setSubjectInput("");
             form.resetFields();
             navigate("/iam/access");

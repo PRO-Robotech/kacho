@@ -741,13 +741,16 @@ export const iamApi = {
     api.list<ProjectList>(IAM.projects, q),
   // Users
   // KAC-125: Invite user by email (admin OR editor permission on account).
+  // Метаданные операции несут человека и аккаунт. Поля ссылки первого входа
+  // здесь НЕТ: оно снято с контракта (номер и имя зарезервированы, ID-MAIL-1
+  // Р10) — письмо уходит само, а не дошедшее отправляется ещё раз глаголом
+  // службы `UserService.ResendInvite`.
   inviteUser: (req: InviteUserRequest) =>
     api.post<{
       id?: string;
       metadata?: {
         user_id?: string;
         account_id?: string;
-        magic_link_url?: string;
       };
       response?: User;
       error?: { code: number; message: string };

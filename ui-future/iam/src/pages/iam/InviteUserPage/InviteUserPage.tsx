@@ -1,13 +1,13 @@
 // InviteUserPage — приглашение пользователя в аккаунт: POST /iam/v1/users:invite.
 //
-// Прямого создания пользователя нет и не предполагается: он появляется либо по
-// magic-link из приглашения, либо при первом входе через поставщика личности.
+// Прямого создания пользователя нет и не предполагается: он появляется по
+// приглашению (письмо уходит само, ссылки консоль не показывает — ID-MAIL-1 Р10)
+// либо при первом входе через поставщика личности.
 // Аккаунт берётся из выбранного в разделе IAM.
 
 import { useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { Alert, Button, Cascader, Form, Input, Select, Space, Typography } from "antd";
-import { LinkOutlined } from "@ant-design/icons";
+import { Cascader, Form, Input, Select, Typography } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import { iamApi } from "@shared/api/iam";
 import { groupedRoleOptions } from "@shared/components/organisms/iam/IamCommon";
@@ -54,7 +54,6 @@ export function InviteUserPage() {
   const navigate = useNavigate();
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
-  const [magicLink, setMagicLink] = useState<string | null>(null);
   const noHeaderRight = useMemo(() => null, []);
   useHeaderRight(noHeaderRight);
 
@@ -129,7 +128,6 @@ export function InviteUserPage() {
 
   const close = () => {
     form.resetFields();
-    setMagicLink(null);
     navigate("/iam/users");
   };
 
@@ -151,13 +149,11 @@ export function InviteUserPage() {
         toast.error(resp.error.message || "Не удалось пригласить пользователя");
         return;
       }
-      const link = resp.metadata?.magic_link_url;
-      toast.success("Приглашение отправлено");
-      if (link) {
-        setMagicLink(link);
-      } else {
-        navigate("/iam/users");
-      }
+      // Ссылки в ответе нет и не будет (поле снято с контракта, ID-MAIL-1 Р10):
+      // письмо уходит само, а не дошедшее отправляется ещё раз из списка
+      // пользователей — пункт «Отправить приглашение ещё раз».
+      toast.success("Приглашение отправлено — письмо уйдёт на указанный адрес");
+      navigate("/iam/users");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Ошибка приглашения");
     } finally {
@@ -175,103 +171,81 @@ export function InviteUserPage() {
 
   return (
     <FormShell specId="users" mode="create" singular="Пользователь" title="Приглашение пользователя">
-      {magicLink ? (
-        <Space direction="vertical" size={12} style={{ width: "100%" }}>
-          <Alert
-            type="success"
-            showIcon
-            message="Пользователь приглашён"
-            description="Передайте пользователю magic-link для активации аккаунта."
-          />
-          <Input addonBefore={<LinkOutlined />} value={magicLink} readOnly onFocus={(e) => e.currentTarget.select()} />
-          <Button
-            icon={<LinkOutlined />}
-            onClick={() => {
-              void navigator.clipboard.writeText(magicLink);
-              toast.success("Ссылка скопирована");
+      <Form
+        form={form}
+        layout="horizontal"
+        labelCol={{ flex: "200px" }}
+        wrapperCol={{ flex: "auto" }}
+        labelAlign="left"
+        colon={false}
+        onFinish={onFinish}
+      >
+        <Form.Item label="Аккаунт / проект" required>
+          <Cascader
+            options={cascaderQuery.data ?? []}
+            value={scope}
+            onChange={(val) => setScope((val as string[]) ?? [])}
+            loading={cascaderQuery.isLoading}
+            changeOnSelect
+            allowClear={false}
+            expandTrigger="hover"
+            showSearch={{
+              filter: (input, path) => path.some((o) => String(o.label).toLowerCase().includes(input.toLowerCase())),
             }}
-          >
-            Скопировать ссылку
-          </Button>
-          <FormFooter submitLabel="Готово" submitting={false} onSubmit={close} onCancel={close} />
-        </Space>
-      ) : (
-        <Form
-          form={form}
-          layout="horizontal"
-          labelCol={{ flex: "200px" }}
-          wrapperCol={{ flex: "auto" }}
-          labelAlign="left"
-          colon={false}
-          onFinish={onFinish}
-        >
-          <Form.Item label="Аккаунт / проект" required>
-            <Cascader
-              options={cascaderQuery.data ?? []}
-              value={scope}
-              onChange={(val) => setScope((val as string[]) ?? [])}
-              loading={cascaderQuery.isLoading}
-              changeOnSelect
-              allowClear={false}
-              expandTrigger="hover"
-              showSearch={{
-                filter: (input, path) => path.some((o) => String(o.label).toLowerCase().includes(input.toLowerCase())),
-              }}
-              placeholder="Сначала аккаунт, затем проект (необязательно)"
-              displayRender={(labels) => labels.join(" / ")}
-              title={SCOPE_TREE_SCOPE.notice}
-              // Пустой ответ обязан называть свою ОБЛАСТЬ: «нет среди
-              // загруженных», а не «такого аккаунта или проекта нет». Дерево
-              // читается двумя ярусами страниц по тысяче, и за их краем ответ
-              // молчит — см. SCOPE_TREE_SCOPE.
-              notFoundContent={SCOPE_TREE_SCOPE.emptyText}
-              style={{ width: "100%" }}
-            />
-          </Form.Item>
-          <Form.Item
-            label="Эл. почта"
-            name="email"
-            required
-            rules={[
-              { required: true, message: "Укажите email" },
-              { type: "email", message: "Некорректный email" },
-            ]}
-          >
-            <Input placeholder="user@example.com" />
-          </Form.Item>
-          <Form.Item label="Отображаемое имя" name="display_name">
-            <Input placeholder="Иван Петров" />
-          </Form.Item>
-          <Form.Item label="Роль" name="role_id">
-            <Select
-              allowClear
-              placeholder="Без роли"
-              loading={roles.isLoading}
-              showSearch
-              onSearch={setRoleTerm}
-              // Сузил сервер — клиент НЕ пересеивает: владелец сравнивает с полем
-              // `name`, а метка варианта склеена из имени и идентификатора, и
-              // повторное сужение вычло бы из ответа строки, присланные краем
-              // именно по этому вводу.
-              {...(ROLE_SCOPE.asksServer ? { filterOption: false as const } : { optionFilterProp: "label" as const })}
-              title={ROLE_SCOPE.notice}
-              // Пустой ответ обязан называть свою ОБЛАСТЬ. Именно здесь жила
-              // ложь: «нет совпадений» на месте «нет среди загруженных».
-              notFoundContent={roles.isLoading ? undefined : ROLE_SCOPE.emptyText}
-              options={roleOptions}
-            />
-          </Form.Item>
-          <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 0, marginLeft: 200 }}>
-            Проект и роль необязательны — можно назначить позже через привязки доступа.
-          </Typography.Paragraph>
-          <FormFooter
-            submitLabel="Пригласить"
-            submitting={submitting}
-            onSubmit={() => form.submit()}
-            onCancel={close}
+            placeholder="Сначала аккаунт, затем проект (необязательно)"
+            displayRender={(labels) => labels.join(" / ")}
+            title={SCOPE_TREE_SCOPE.notice}
+            // Пустой ответ обязан называть свою ОБЛАСТЬ: «нет среди
+            // загруженных», а не «такого аккаунта или проекта нет». Дерево
+            // читается двумя ярусами страниц по тысяче, и за их краем ответ
+            // молчит — см. SCOPE_TREE_SCOPE.
+            notFoundContent={SCOPE_TREE_SCOPE.emptyText}
+            style={{ width: "100%" }}
           />
-        </Form>
-      )}
+        </Form.Item>
+        <Form.Item
+          label="Эл. почта"
+          name="email"
+          required
+          rules={[
+            { required: true, message: "Укажите email" },
+            { type: "email", message: "Некорректный email" },
+          ]}
+        >
+          <Input placeholder="user@example.com" />
+        </Form.Item>
+        <Form.Item label="Отображаемое имя" name="display_name">
+          <Input placeholder="Иван Петров" />
+        </Form.Item>
+        <Form.Item label="Роль" name="role_id">
+          <Select
+            allowClear
+            placeholder="Без роли"
+            loading={roles.isLoading}
+            showSearch
+            onSearch={setRoleTerm}
+            // Сузил сервер — клиент НЕ пересеивает: владелец сравнивает с полем
+            // `name`, а метка варианта склеена из имени и идентификатора, и
+            // повторное сужение вычло бы из ответа строки, присланные краем
+            // именно по этому вводу.
+            {...(ROLE_SCOPE.asksServer ? { filterOption: false as const } : { optionFilterProp: "label" as const })}
+            title={ROLE_SCOPE.notice}
+            // Пустой ответ обязан называть свою ОБЛАСТЬ. Именно здесь жила
+            // ложь: «нет совпадений» на месте «нет среди загруженных».
+            notFoundContent={roles.isLoading ? undefined : ROLE_SCOPE.emptyText}
+            options={roleOptions}
+          />
+        </Form.Item>
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 0, marginLeft: 200 }}>
+          Проект и роль необязательны — можно назначить позже через привязки доступа.
+        </Typography.Paragraph>
+        <FormFooter
+          submitLabel="Пригласить"
+          submitting={submitting}
+          onSubmit={() => form.submit()}
+          onCancel={close}
+        />
+      </Form>
     </FormShell>
   );
 }

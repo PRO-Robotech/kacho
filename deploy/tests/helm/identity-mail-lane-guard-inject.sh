@@ -146,7 +146,30 @@ assert "источник объявлен наполовину: имя без к
 assert "источник объявлен наполовину: ключ без имени" RED 'задан, а' \
   --set global.kacho.identity.smtp.credentialSecret.key=password
 
+# ── ОГРАНИЧЕНИЕ ЧАСТОТЫ ПИСЕМ НА АДРЕС: СНЯТЬ НЕЛЬЗЯ (Р14, MAIL-43) ────────
+#
+# Ручка нашего отправителя — `kaname.config.invite.mailRateLimit` — рендерится
+# подчартом службы, и его страж (место С1) отвергает ноль, отрицательное и слово:
+# значения «без ограничения» в словаре ручки нет. Каждая ось двигает ОДНУ
+# величину поверх неизменного дерева; фраза-улика — имя ручки в отказе.
+echo "=== ограничение частоты писем: непозитивное отвергается ==="
+assert "ноль писем на адрес"            RED "mailRateLimit.maxPerWindow" \
+  --set kaname.config.invite.mailRateLimit.maxPerWindow=0
+assert "отрицательное число писем"      RED "mailRateLimit.maxPerWindow" \
+  --set kaname.config.invite.mailRateLimit.maxPerWindow=-3
+assert "слово вместо числа писем"       RED "mailRateLimit.maxPerWindow" \
+  --set-string kaname.config.invite.mailRateLimit.maxPerWindow=unlimited
+assert "нулевое окно"                   RED "mailRateLimit.window" \
+  --set-string kaname.config.invite.mailRateLimit.window=0s
+assert "слово вместо окна"              RED "mailRateLimit.window" \
+  --set-string kaname.config.invite.mailRateLimit.window=off
+
 echo "=== законные близнецы: страж обязан молчать ==="
+# ПАРНЫЙ ПОЛОЖИТЕЛЬНЫЙ К ОСЯМ ЧАСТОТЫ: объявленная положительная пара проходит,
+# иначе отрицания выше зеленели бы на страже, отвергающем ЛЮБОЕ объявление.
+assert "положительное ограничение частоты" GREEN "" \
+  --set kaname.config.invite.mailRateLimit.maxPerWindow=5 \
+  --set-string kaname.config.invite.mailRateLimit.window=30m
 # СВОЙСТВО, РАДИ КОТОРОГО ЛИТЕРАЛ И СНЯТ: полоса профиля сходится с ЛЮБЫМ именем
 # релиза, потому что берёт имя оттуда же, откуда его берёт манифест приёмника.
 # Без этого близнеца возврат к литералу прошёл бы незамеченным — красные оси
