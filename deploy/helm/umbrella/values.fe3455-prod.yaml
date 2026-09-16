@@ -410,10 +410,13 @@ kaname:
   platform:
     iam:
       hydraTokenURL: http://kacho-umbrella-hydra-public.kacho.svc:4444/oauth2/token
-      # registry-iam-jwks-unify — upstream the cluster-INTERNAL jwks-proxy (:9097)
-      # mirrors byte-for-byte (env KANAME_HYDRA_JWKS_URL). In-cluster hydra-public
-      # base so the iam→Hydra JWKS fetch never leaves the cluster; iam re-serves it to
-      # the registry data-plane over one-way server-TLS. Hydra stays signer/issuer.
+      # Upstream of the PREVIOUS issuer's key-set mirror served by the cluster-INTERNAL
+      # key-set listener (:9097, env KANAME_HYDRA_JWKS_URL). In-cluster hydra-public
+      # base so the fetch never leaves the cluster. The mirror is one record of that
+      # listener and lives only while tokens of the previous issue are presentable
+      # (#2564); the tokens this stand mints are signed by OUR key set
+      # (`kaname.config.authn.tokenSigning`, `api-gateway.tokenAcceptance` and
+      # `registry.tokenAcceptance` below name the same issuer).
       hydraJwksUrl: http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json
       # In-cluster Hydra ADMIN endpoint для sa_keys (SAKeyService.Issue/Revoke) +
       # user_tokens (POST /admin/clients + jwt-bearer trust-grants). Без него

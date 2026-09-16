@@ -194,10 +194,11 @@ spec:
                   key: password
             {{- end }}
             # ─── data-plane OCI auth-proxy (registry.kacho.local) ───
-            # registry-iam-jwks-unify — the docker-Bearer verifier fetches its JWKS from
-            # the cluster-INTERNAL kaname JWKS proxy (:9097), a byte-for-byte mirror of
-            # Hydra's PUBLIC JWKS, instead of dialing Hydra directly. Hydra stays the
-            # signer/issuer (issuer-pin below is unchanged — separate knob). The registry
+            # The docker-Bearer verifier fetches every key set from the cluster-INTERNAL
+            # kaname key-set listener (:9097) — one record per accepted issuer, named by
+            # `tokenAcceptance.issuerKeySets`: the platform's OWN key set for tokens it
+            # mints, and a byte-for-byte mirror of the previous issuer's PUBLIC JWKS
+            # while tokens of that issue are still presentable (#2564). The registry
             # pod trusts the internal-CA leaf terminating iam :9097 via SSL_CERT_DIR (the
             # ca.crt mounted at /etc/registry-ca — see the internal-ca volume, present
             # whenever mtls (prod) or the data-plane TLS-sidecar is on). The sidecar no
