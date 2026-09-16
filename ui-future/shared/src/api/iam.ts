@@ -296,6 +296,17 @@ export function userRemoveFromAccountPath(userId: string): string {
   return `${IAM.users}/${encodeURIComponent(userId)}:removeFromAccount`;
 }
 
+// ====== Повторная отправка письма приглашения (UserService.ResendInvite) ======
+//
+// То, что приходит взамен снятого поля ссылки: письмо приглашения уходит ещё
+// раз тому, кто приглашён и ещё не выкупил приглашение (ID-MAIL-1, §10 п. 9).
+// Ссылки консоль не получает и не показывает — доступ даёт владение почтовым
+// ящиком, а не обладание письмом. Аккаунт называется ТЕЛОМ по той же причине,
+// что у исключения: у человека аккаунтов несколько, а приглашение — пара.
+export function userResendInvitePath(userId: string): string {
+  return `${IAM.users}/${encodeURIComponent(userId)}:resendInvite`;
+}
+
 // ====== Group ======
 export interface Group {
   id: string;
@@ -743,8 +754,8 @@ export const iamApi = {
   // KAC-125: Invite user by email (admin OR editor permission on account).
   // Метаданные операции несут человека и аккаунт. Поля ссылки первого входа
   // здесь НЕТ: оно снято с контракта (номер и имя зарезервированы, ID-MAIL-1
-  // Р10) — письмо уходит само, а не дошедшее отправляется ещё раз глаголом
-  // службы `UserService.ResendInvite`.
+  // Р10) — письмо уходит само, а не дошедшее отправляется ещё раз
+  // (`userResendInvitePath`).
   inviteUser: (req: InviteUserRequest) =>
     api.post<{
       id?: string;

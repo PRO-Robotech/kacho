@@ -4,7 +4,7 @@
 
 import type { ReactNode } from "react";
 import { Tag, Tooltip, Typography } from "antd";
-import { StopOutlined, UnlockOutlined, UserDeleteOutlined } from "@ant-design/icons";
+import { MailOutlined, StopOutlined, UnlockOutlined, UserDeleteOutlined } from "@ant-design/icons";
 import type { FormField } from "./form-schema";
 import { NAME_FORM, NAME_FORM_REGISTRY, NAME_HINT, NAME_HINT_OPTIONAL, NAME_HINT_REGISTRY } from "./name-form";
 import { setByPath, getByPath as getByPathImpl } from "./path";
@@ -48,6 +48,7 @@ import {
   userBlockPath,
   userUnblockPath,
   userRemoveFromAccountPath,
+  userResendInvitePath,
   type AccessBindingTarget,
   type DefinitionTier,
 } from "@shared/api/iam";
@@ -809,6 +810,40 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       { header: "Создан", path: "created_at", format: "datetime" },
     ],
     rowVerbs: [
+      {
+        // ПОВТОРНАЯ ОТПРАВКА ПИСЬМА ПРИГЛАШЕНИЯ — то, что приходит взамен снятого
+        // поля ссылки (ID-MAIL-1, Р10, MAIL-38). Консоль показывает СОСТОЯНИЕ
+        // приглашения (столбец «Статус») и предлагает отправить письмо ещё раз;
+        // ссылки она не обещает ни одним словом: доступ даёт владение почтовым
+        // ящиком, а не обладание письмом. Пункт рисуется только у
+        // неподтверждённого приглашения: выкупленному письмо не о чем.
+        //
+        // Аккаунт — вторая половина предмета, и без него пункта НЕТ (как у
+        // исключения ниже): приглашение есть пара «человек + аккаунт».
+        key: "resend-invite",
+        resolve: (row, ctx): RowVerbState | null => {
+          const id = (row.id as string | undefined) ?? "";
+          const who = (row.email as string | undefined) || id;
+          if (row.invite_status !== "PENDING") return null;
+          if (!accountScopeChosen(ctx)) return null;
+          return {
+            label: "Отправить приглашение ещё раз",
+            icon: <MailOutlined />,
+            path: userResendInvitePath(id),
+            body: { accountId: ctx.accountId ?? "" },
+            confirmTitle: "Отправить приглашение ещё раз?",
+            // Цена названа: писем одному адресу за окно уходит не больше
+            // объявленного, и сверх нормы письмо не отправляется — ответ при этом
+            // тот же (отказ по частоте не оракул). Ссылки здесь не будет.
+            confirmText:
+              `На адрес «${who}» уйдёт ещё одно письмо приглашения. Ссылку консоль не ` +
+              `показывает: человек заводит вход обычным путём. Писем одному адресу за час ` +
+              `уходит не больше объявленного предела — сверх него письмо не отправляется.`,
+            okText: "Отправить",
+            progressTitle: "Отправка приглашения",
+          };
+        },
+      },
       {
         // ОДИН пункт на три состояния, а не пара кнопок: состояние здесь —
         // предмет, и предлагать «запретить» уже запрещённому значит предлагать

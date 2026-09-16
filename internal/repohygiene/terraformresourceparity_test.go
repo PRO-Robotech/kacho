@@ -75,7 +75,13 @@ var nonCreatingVerbs = map[string]bool{
 	// человека из аккаунта, не заводя ничего. Провайдер зовёт его уничтожением
 	// ресурса `kaname_user_invitation` — ресурс моделирует ЧЛЕНСТВО, поэтому
 	// снятие членства и есть его destroy (#1127).
-	"RemoveFromAccount":        true,
+	"RemoveFromAccount": true,
+	// ResendInvite — глагол ПОВТОРНОЙ ОТПРАВКИ письма приглашения (приёмка
+	// ID-MAIL-1, MAIL-38; kacho#1774): строки он не заводит — письмо ставится в
+	// очередь по УЖЕ существующему членству, и ресурс провайдера у него тот же
+	// `kaname_user_invitation`, чьё создание — `Invite`. Действие «отправить ещё
+	// раз» декларативное описание не выражает: оно не состояние, а событие.
+	"ResendInvite":             true,
 	"SimulateMaintenanceEvent": true, "Start": true, "Stop": true, "Unblock": true, "Update": true, "UpdateAccessBindings": true,
 	"UpdateMetadata": true, "UpdateNetworkInterface": true, "UpdateRepository": true, "UpdateRoute": true, "UpdateRule": true,
 	"UpdateRules": true, "WhoAmI": true,

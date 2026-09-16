@@ -261,9 +261,12 @@ describe("console addresses only verb-routes the contract serves", () => {
     // 29→30 распознанных адресов и 32→33 использования: заведено исключение
     // человека из аккаунта (`:removeFromAccount`, #1127) — третий глагол
     // пользователя, и строится он там же, в поверхности API домена.
+    // 30→31 и 33→34: заведена повторная отправка письма приглашения
+    // (`:resendInvite`, kacho#1774) — четвёртый глагол пользователя, взамен
+    // снятого поля ссылки; строится там же, в поверхности API домена.
     const distinct = new Set(uses.map((u) => u.resolved));
-    expect(distinct.size).toBe(30);
-    expect(uses.length).toBe(33);
+    expect(distinct.size).toBe(31);
+    expect(uses.length).toBe(34);
   });
 
   it("every verb-route the console addresses exists in the contract", () => {

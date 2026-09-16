@@ -272,6 +272,12 @@ var AllowedMethods = map[string]struct{}{
 	// Приглашение по адресу почты (REST POST /iam/v1/users:invite) — единственный
 	// публичный путь появления пользователя; Create по-прежнему только internal.
 	"/kaname.cloud.iam.v1.UserService/Invite": {},
+	// Повторная отправка письма приглашения (REST POST
+	// /iam/v1/users/{user_id}:resendInvite) — то, что пришло взамен снятого поля
+	// ссылки первого входа (приёмка ID-MAIL-1, Р10, §10 п. 9). Тот же круг, что
+	// у Invite (`editor` на аккаунте), acr 2; ограничение частоты писем на адрес
+	// стоит у службы на пути обоих глаголов.
+	"/kaname.cloud.iam.v1.UserService/ResendInvite": {},
 	// Исключение человека из аккаунта (REST POST
 	// /iam/v1/users/{user_id}:removeFromAccount) — ПАРА к приглашению выше, и
 	// стоять они обязаны обе: аккаунт, который умеет только вводить людей и не

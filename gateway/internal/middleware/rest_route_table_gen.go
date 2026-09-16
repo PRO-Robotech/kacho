@@ -163,6 +163,7 @@ var generatedRestRoutes = []restRoute{
 	{Method: "DELETE", Template: "/iam/v1/users/{user_id}/tokens/{token_id}", FQN: "kaname.cloud.iam.v1.UserTokenService/Revoke"},
 	{Method: "POST", Template: "/iam/v1/users/{user_id}:block", FQN: "kaname.cloud.iam.v1.UserService/Block"},
 	{Method: "POST", Template: "/iam/v1/users/{user_id}:removeFromAccount", FQN: "kaname.cloud.iam.v1.UserService/RemoveFromAccount"},
+	{Method: "POST", Template: "/iam/v1/users/{user_id}:resendInvite", FQN: "kaname.cloud.iam.v1.UserService/ResendInvite"},
 	{Method: "POST", Template: "/iam/v1/users/{user_id}:unblock", FQN: "kaname.cloud.iam.v1.UserService/Unblock"},
 	{Method: "POST", Template: "/iam/v1/users:invite", FQN: "kaname.cloud.iam.v1.UserService/Invite"},
 	{Method: "GET", Template: "/nlb/v1/listeners", FQN: "kacho.cloud.loadbalancer.v1.ListenerService/List"},

@@ -137,6 +137,14 @@ func sensitiveACR2Set() map[string]struct{} {
 		// стоит здесь же, поэтому оставить исключение на нижнем пороге значило бы
 		// сделать более дешёвую дверь к тому же исходу (#1127).
 		"kaname.cloud.iam.v1.UserService/RemoveFromAccount",
+		// ResendInvite — письмо приглашения уходит ещё раз (приёмка ID-MAIL-1,
+		// §10 п. 9; kacho#1774). Порог тот же, что у Invite, по решению
+		// контракта службы: это та же поверхность допуска в аккаунт, и более
+		// дешёвая дверь к письму от имени платформы заводиться не должна.
+		// Само по себе письмо прав не выдаёт — ограничение частоты стоит у
+		// службы, — но пара Invite/ResendInvite на разных порогах дала бы
+		// обходной путь к рассылке тому, у кого ceremony нет.
+		"kaname.cloud.iam.v1.UserService/ResendInvite",
 		// C — compute per-resource grant. Поверхность выдачи на самой машине снята
 		// целиком вместе с остальной мёртвой: ни `SetAccessBindings`, ни
 		// `UpdateAccessBindings` у машины больше нет — выдача на ресурс идёт
@@ -238,7 +246,10 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 	// службы (PRO-Robotech/kacho#2645). Число по-прежнему утверждается, а не
 	// выводится из списка: молчаливое сокращение — ровно то, что произошло бы
 	// при случайно выпавшей записи, и отличить его от этого снятия было бы нечем.
-	require.Len(t, sensitive, 27, "the acceptance-doc sensitive set must contain exactly 27 FQNs")
+	// 27 → 28: заведён `UserService/ResendInvite` (kacho#1774) — тем же порогом,
+	// что Invite. Число утверждается, а не выводится из списка: молчаливое
+	// сокращение — ровно то, что произошло бы при случайно выпавшей записи.
+	require.Len(t, sensitive, 28, "the acceptance-doc sensitive set must contain exactly 28 FQNs")
 
 	got2 := map[string]struct{}{}
 	for _, fqn := range c.FQNs() {
@@ -259,7 +270,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 		_, want := sensitive[fqn]
 		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive allowlist (over-inclusion): %s", fqn)
 	}
-	assert.Len(t, got2, 27, "exactly 27 FQNs must carry required_acr_min=2")
+	assert.Len(t, got2, 28, "exactly 28 FQNs must carry required_acr_min=2")
 }
 
 // TestPermissionCatalog_ACR_ComplementNotTwo — SEC-ACR-13 / I1: explicit
@@ -688,7 +699,10 @@ func TestPermissionCatalog_ACR_Counts(t *testing.T) {
 	// Числа ЗАМЕРЕНЫ прогоном, а не вычтены в уме: их напечатали сами упавшие
 	// утверждения этой пробы после регенерации каталога. Сумма сходится
 	// (27+284+27=338) — и это единственное, ради чего её стоит называть.
-	assert.Equal(t, 27, n2, "sensitive count")
+	// 27→28 и 338→339: заведён `UserService/ResendInvite` (kacho#1774) на полосе
+	// «чувствительное»; остальные полосы не сдвинулись. Числа ЗАМЕРЕНЫ прогоном
+	// после регенерации каталога с пином службы, а не сложены в уме.
+	assert.Equal(t, 28, n2, "sensitive count")
 	// ТРИ линии завели по одной записи каждая, и объяснения всех трёх остаются —
 	// они про разные глаголы. Числа ниже ЗАМЕРЕНЫ по дереву после слияния,
 	// а не сложены в уме: арифметика трёх переписей даёт совпадение, которое
@@ -757,7 +771,7 @@ func TestPermissionCatalog_ACR_Counts(t *testing.T) {
 	// n2=32 (не двигалась), n1=287, nEmpty=27, итог 346.
 	assert.Equal(t, 284, n1, "routine count")
 	assert.Equal(t, 27, nEmpty, "no-acr-requirement count (подмножество `<exempt>`, не равное ему)")
-	assert.Equal(t, 338, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 339, n2+n1+nEmpty, "catalog total")
 
 	// Здесь сверялась ПОБАЙТОВАЯ идентичность двух вшитых копий каталога — края
 	// и посева службы доступа. Половина утверждения снята вместе со своим
