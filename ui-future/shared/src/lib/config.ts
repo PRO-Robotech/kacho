@@ -29,8 +29,6 @@ interface AppConfig {
   webauthnRpId: string;
   /** WebAuthn RP display-name. */
   webauthnRpName: string;
-  /** Step-up MFA TTL (минуты). */
-  mfaFreshTtlMin: number;
   /** Допустимый clock-skew для DPoP nonce/iat (секунды). */
   dpopClockSkewSec: number;
   /** Recovery magic-link TTL (минуты) — для UI hint. */
@@ -68,7 +66,6 @@ export const config: AppConfig = {
   hydraScopes: envStr("VITE_HYDRA_SCOPES", "openid profile email offline_access"),
   webauthnRpId: envStr("VITE_WEBAUTHN_RP_ID", "kacho.cloud"),
   webauthnRpName: envStr("VITE_WEBAUTHN_RP_NAME", "Kachō Cloud"),
-  mfaFreshTtlMin: envNum("VITE_MFA_FRESH_TTL_MIN", 15),
   dpopClockSkewSec: envNum("VITE_DPOP_CLOCK_SKEW_SEC", 30),
   recoveryLinkTtlMin: envNum("VITE_RECOVERY_LINK_TTL_MIN", 5),
 };

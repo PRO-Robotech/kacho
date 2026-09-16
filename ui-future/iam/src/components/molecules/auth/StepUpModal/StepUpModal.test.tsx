@@ -12,7 +12,6 @@ const setStepUpHandler = jest.fn((h: StepUpHandler) => {
 
 const auth = {
   setStepUpHandler,
-  markMfaFresh: jest.fn(),
   refresh: jest.fn(),
 } as unknown as AuthContextValue;
 

@@ -110,7 +110,7 @@ export function offeredStepUpMethod(flow: SelfServiceFlow): StepUpMethod | null 
 }
 
 export function StepUpModal() {
-  const { setStepUpHandler, markMfaFresh, refresh } = useAuth();
+  const { setStepUpHandler, refresh } = useAuth();
   const [pending, setPending] = useState<PendingRequest | null>(null);
   const [flow, setFlow] = useState<SelfServiceFlow | null>(null);
   const [method, setMethod] = useState<StepUpMethod | null>(null);
@@ -181,7 +181,8 @@ export function StepUpModal() {
   };
 
   const done = async () => {
-    markMfaFresh();
+    // Уровень после церемонии знает край по нашей сессии (Ф11 Р7); консоли
+    // достаточно перечитать личность и повторить отвергнутый запрос.
     await refresh();
     pending?.resolve();
     setPending(null);
