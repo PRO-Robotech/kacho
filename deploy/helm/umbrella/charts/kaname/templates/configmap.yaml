@@ -341,3 +341,70 @@ data:
       */}}
       compose-model: {{ .Values.manifests.composeModel }}
       admission: {{ .Values.manifests.admission | quote }}
+
+    {{- /*
+    ─── ПОЧТОВАЯ ПОЛОСА НАШЕГО ОТПРАВИТЕЛЯ (MAIL-48 приёмки ID-MAIL-1) ───────
+
+    ОТПРАВИТЕЛЕЙ ДВА, ОБЪЯВЛЕНИЕ ОДНО. Письма подтверждения адреса и
+    восстановления доступа отправляет почтовый процесс поставщика личности —
+    он читает раздел `courier.smtp` нашей конфигурации личности
+    (`_kratos-identity.tpl`). Письмо приглашения отправляем МЫ: предмет
+    приглашения — строка в нашей базе, и поставщику о ней не известно ничего
+    (решение Р23).
+
+    Узел, адрес отправителя и удостоверение оба читателя берут ИЗ ОДНОГО УЗЛА
+    значений — `global.kacho.identity.smtp`. Два читателя одной величины,
+    разошедшиеся молча, дают письма разных видов, уехавшие в разные места, при
+    том что каждое по отдельности уходит исправно: заметить это неоткуда.
+    Совпадение путей питания держит ГЕЙТ, а не эта проза:
+    deploy/identity_mail_lane_feeds_both_senders_test.go.
+
+    ВЕЛИЧИНЫ ЗДЕСЬ НЕ ОБЪЯВЛЯЮТСЯ, А ВЫВОДЯТСЯ. Адрес узла и посадка полосы
+    берутся из того же `connectionURI`, который уезжает поставщику: вторая
+    запись того же узла разошлась бы с первой ровно там, где расхождение
+    опасно. Раскрытие (`tpl`) обязательно — профиль называет узел выражением по
+    имени релиза, а не литералом.
+
+    ЯКОРЬ ДОВЕРИЯ СЮДА НЕ ВХОДИТ, и это симметрично поставщику: его якорь
+    объявлен переменной `SSL_CERT_FILE` у рабочего объекта, а не разделом
+    полосы. Пусто ⇒ проверка идёт по системным корням — верно для публичного
+    ретранслятора и неверно для узла с сертификатом внутреннего центра;
+    последнее — предмет шага доставки (MAIL-05), а не этого объявления.
+
+    ПОЛОСА НЕОБЯЗАТЕЛЬНА: незаданный узел означает «почты на этой установке
+    нет», и это законный выбор. Пустой узел, подставленный дословно, означал бы
+    то же самое, но уже молча.
+    */}}
+    {{- $mailNode := (((.Values.global).kacho).identity).smtp | default dict }}
+    {{- $mailRaw := tpl (toString ($mailNode.connectionURI | default "")) . }}
+    {{- if trim $mailRaw }}
+    {{- $mailScheme := ternary "smtps://" (ternary "smtp://" "" (hasPrefix "smtp://" $mailRaw)) (hasPrefix "smtps://" $mailRaw) }}
+    {{- $mailRest := trimPrefix $mailScheme $mailRaw }}
+    {{- $mailParts := splitn "@" 2 $mailRest }}
+    {{- $mailUser := ternary (index $mailParts "_0") "" (contains "@" $mailRest) }}
+    {{- $mailHostPart := ternary (index $mailParts "_1") $mailRest (contains "@" $mailRest) }}
+    {{- $mailHost := trimSuffix "/" (index (splitn "/" 2 (index (splitn "?" 2 $mailHostPart) "_0")) "_0") }}
+    {{- $mailCred := ($mailNode.credentialSecret) | default dict }}
+    {{- $mailCredDeclared := and (ne (trim (toString ($mailCred.name | default ""))) "") (ne (trim (toString ($mailCred.key | default ""))) "") }}
+    invite-mail:
+      relay: {{ $mailHost | quote }}
+      {{- with $mailNode.fromAddress }}
+      from: {{ . | quote }}
+      {{- end }}
+      {{- with $mailNode.fromName }}
+      from-name: {{ . | quote }}
+      {{- end }}
+      {{- /* `smtps://` — полоса шифрована с первого байта, `smtp://` — через
+      STARTTLS. Незащищённой посадки среди имён нет намеренно (ban #16): её не
+      производит разбор процесса, поэтому оператор не выберет её никак. */}}
+      tls-mode: {{ ternary "implicit" "starttls" (eq $mailScheme "smtps://") | quote }}
+      {{- /* ИМЕНА ПЕРЕМЕННЫХ, А НЕ ВЕЛИЧИНЫ (решение Р6): карта настроек
+      читается шире секрета. Пара отдаётся ЦЕЛИКОМ либо не отдаётся вовсе —
+      половина выглядит настроенной и отвергается стражем старта процесса.
+      Имена принадлежат ШАБЛОНУ, а не профилю: профиль, выписавший их руками,
+      разошёлся бы с рабочим объектом молча. */}}
+      {{- if and $mailCredDeclared (ne $mailUser "") }}
+      username-env: "KANAME_INVITE_MAIL_USERNAME"
+      password-env: "KANAME_INVITE_MAIL_PASSWORD"
+      {{- end }}
+    {{- end }}

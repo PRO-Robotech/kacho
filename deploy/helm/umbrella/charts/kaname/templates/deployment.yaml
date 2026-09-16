@@ -583,6 +583,44 @@ spec:
                   name: {{ .Values.platform.iam.jwks.encKeySecretName }}
                   key: {{ .Values.platform.iam.jwks.encKeySecretKey }}
                   optional: true
+            {{- /*
+            ─── УДОСТОВЕРЕНИЕ ПОЧТОВОГО УЗЛА (Р6, MAIL-48) ──────────────────
+
+            ВЕЛИЧИНЫ, А НЕ ИМЕНА: имена переменных объявляет карта настроек
+            (`invite-mail.username-env` / `.password-env`), сами величины
+            приезжают сюда — пароль ссылкой на секрет, имя пользователя из того
+            же адреса соединения, который уезжает поставщику. Второй записи
+            узла или пользователя не заводится: она разошлась бы с первой ровно
+            там, где расхождение опасно.
+
+            ПАРА ОТДАЁТСЯ ЦЕЛИКОМ либо не отдаётся вовсе — то же условие, что и
+            у карты настроек: половина настройки выглядит настроенной и
+            отвергается стражем старта процесса.
+
+            `%40` РАСКРЫВАЕТСЯ, и это названо, а не умолчано: имя пользователя
+            почтового узла обычно есть адрес, а «собака» внутри части до «@»
+            обязана быть закодирована — иначе разбор адреса разъедет. Прочие
+            процентные последовательности здесь не раскрываются; профилю, чьё
+            имя пользователя их требует, этого механизма не хватит, и он обязан
+            завести свой предметом, а не молча.
+            */}}
+            {{- $mailNode := (((.Values.global).kacho).identity).smtp | default dict }}
+            {{- $mailRaw := tpl (toString ($mailNode.connectionURI | default "")) . }}
+            {{- $mailScheme := ternary "smtps://" (ternary "smtp://" "" (hasPrefix "smtp://" $mailRaw)) (hasPrefix "smtps://" $mailRaw) }}
+            {{- $mailRest := trimPrefix $mailScheme $mailRaw }}
+            {{- $mailUser := ternary (index (splitn "@" 2 $mailRest) "_0") "" (contains "@" $mailRest) }}
+            {{- $mailCred := ($mailNode.credentialSecret) | default dict }}
+            {{- $mailCredName := trim (toString ($mailCred.name | default "")) }}
+            {{- $mailCredKey := trim (toString ($mailCred.key | default "")) }}
+            {{- if and (ne $mailCredName "") (ne $mailCredKey "") (ne $mailUser "") }}
+            - name: KANAME_INVITE_MAIL_USERNAME
+              value: {{ replace "%40" "@" $mailUser | quote }}
+            - name: KANAME_INVITE_MAIL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $mailCredName | quote }}
+                  key: {{ $mailCredKey | quote }}
+            {{- end }}
             # SA-key lifetime discipline. A service-account key is the machine's
             # credential; machine principals are exempt from step-up (a machine
             # has no second factor), which holds only while the credential is
