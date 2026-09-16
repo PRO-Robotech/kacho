@@ -392,10 +392,10 @@ zot:
       type: RuntimeDefault
 
 # ─── data-plane OCI auth-proxy (registry.kacho.local) ─────────────────────────
-# registry-iam-jwks-unify — JWKS key-distribution moved from Hydra to the cluster-
-# INTERNAL kaname JWKS proxy (:9097). iam serves a byte-for-byte mirror of Hydra's
-# PUBLIC JWKS over one-way server-TLS; Hydra stays the token SIGNER/ISSUER (the
-# issuer-pin below is a SEPARATE knob and is unchanged).
+# Key distribution: every accepted issuer's key set is read from the cluster-
+# INTERNAL kaname key-set listener (:9097) over one-way server-TLS — the platform's
+# OWN key set for the tokens it mints, and a byte-for-byte mirror of the previous
+# issuer's PUBLIC JWKS while tokens of that issue are still presentable (#2564).
 # tokenAcceptance — приём identity-JWT: КТО принимается и ОТКУДА берётся его набор
 # проверочных ключей. Платформа чеканит свои токены сама (F1, #897), а прежний
 # издатель на переходе остаётся, поэтому издатель здесь — множество.

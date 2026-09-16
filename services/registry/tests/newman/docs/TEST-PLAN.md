@@ -119,8 +119,10 @@ cannot access.** Deny is indistinguishable from absence.
 ## 6. How to run
 
 Prereqs: `python3`, `newman` (`npm i -g newman`), a live api-gateway (fe3455 or kind-stand),
-and — for the data-plane harness — the `docker` CLI, DNS/ingress to `registry.kacho.local`,
-a valid SA-key, and a reachable Hydra.
+and — for the data-plane harness — the `docker` CLI, DNS/ingress to `registry.kacho.local`
+and a valid SA-key. The harness obtains the docker token from the platform's `/iam/token`
+shim; a reachable external OAuth server is needed only on a contour not moved to the
+platform's own minting.
 
 ### 6.1 Control-plane (registry CRUD + authz) via newman
 

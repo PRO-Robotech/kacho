@@ -297,9 +297,10 @@ authn:
   # Держит это deploy/identity_posture_profiles_test.go.
   identityProvider: external
 
-# Hydra — OAuth2/OIDC token verification.
-# The auth path verifies Hydra-issued RS256 access tokens by fetching Hydra's
-# JWKS. config.go reads KACHO_HYDRA_JWKS_URL (explicit) and otherwise derives
+# Previous external OAuth server — the scalar knobs below are its transition-era
+# form; the accepted issuers and their key sets are declared by `tokenAcceptance`
+# (platform-minted tokens included). The auth path verifies each token against the
+# key set of the issuer it names. config.go reads KACHO_HYDRA_JWKS_URL (explicit) and otherwise derives
 # `{KACHO_HYDRA_ISSUER}/.well-known/jwks.json` — whose default issuer
 # (`https://hydra.api.kacho.cloud`) is NOT reachable from inside the cluster
 # (in dev Hydra's self.issuer is `http://localhost:28080/...`). So the JWKS URL
