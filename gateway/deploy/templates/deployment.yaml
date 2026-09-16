@@ -212,6 +212,16 @@ spec:
             - name: KACHO_API_GATEWAY_IDENTITY_PROVIDER
               value: {{ . | quote }}
             {{- end }}
+            {{- /* АДРЕС ПОЛОСЫ ФОРМЫ службы доступа (Ф3, kacho#1269): куда край
+                 ретранслирует вход, выход, смену пароля и признак формы под
+                 посадкой `own`. Эмитится ТОЛЬКО при непустом значении: пустая
+                 переменная под `external` читалась бы стражем как «задано
+                 пустым», а под `own` пустота и есть отказ старта — оба исхода
+                 обязаны приходить от значения профиля, а не от шаблона. */}}
+            {{- with .Values.authn.iamLoginLaneUrl }}
+            - name: KACHO_API_GATEWAY_IAM_LOGIN_LANE_URL
+              value: {{ . | quote }}
+            {{- end }}
             # There is deliberately NO way here to hand the gateway a shared signing
             # key. The chart used to offer one (inline and via a Secret reference) for
             # the local stand; both are gone, and this comment stands in their place so

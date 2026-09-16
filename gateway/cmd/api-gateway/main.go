@@ -28,6 +28,7 @@ import (
 	_ "google.golang.org/genproto/googleapis/rpc/errdetails"
 
 	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/corelib/identityposture"
 	"github.com/PRO-Robotech/corelib/observability"
 	"github.com/PRO-Robotech/corelib/servicehost"
 	"github.com/PRO-Robotech/kaname/pkg/subjectchange"
@@ -144,15 +145,71 @@ func main() {
 		// известно ДО того, как рост станет предметом разбора (#1218).
 		"verdict_cache_capacity", basicLane.CacheStats().Capacity)
 
-	// Kratos session-based auth для SPA (cookie ory_kratos_session).
-	// Env KACHO_API_GATEWAY_KRATOS_PUBLIC_URL — base URL Kratos public API.
-	// Default = cluster-internal kratos-public service.
+	// ПОСАДКА ЛИЧНОСТИ разбирается ДО того, как выбран читатель носителя: по
+	// ней заводятся три места корня — полоса личности, маршрут «кто я»,
+	// ретрансляция полосы формы (Ф3 Р15). Незаданное и негодное значения не
+	// доживают до провязки — страж ниже (validateProductionRevocationConfig)
+	// отказывает в старте, а здесь отказывается только разбор.
+	identityLane, ipErr := cfg.ResolvedIdentityProvider()
+	if ipErr != nil {
+		log.Fatalf("identity posture startup-validation: %v", ipErr)
+	}
+
+	// ЧИТАТЕЛЬ НОСИТЕЛЯ БРАУЗЕРНОЙ СЕССИИ ВЫБИРАЕТСЯ ПОСАДКОЙ (Ф3 Р15, Ф3-12,
+	// Ф3-45), а не наличием адреса поставщика. До Ф3 три места корня заводились
+	// условием `kratosURL != "disabled"` — и под `own` читатель носителя
+	// поставщика оставался заведённым: печенье поставщика становилось личностью
+	// на посадке, где сессию человека судит наша служба. Гейт
+	// `own_lane_readers_wiring_test.go` требует у каждого читателя ветки посадки.
+	//
+	// Под `external` — сессия поставщика (cookie ory_kratos_session), адрес
+	// KACHO_API_GATEWAY_KRATOS_PUBLIC_URL, «disabled» выключает полосу.
 	kratosURL := cfg.KratosPublicURL
-	if kratosURL != "disabled" {
-		authInterceptor = authInterceptor.WithKratos(middleware.NewKratosClient(kratosURL))
-		logger.Info("kratos session-auth wired", "kratos_url", kratosURL)
-	} else {
-		logger.Info("kratos session-auth disabled by env")
+	if identityLane == identityposture.External {
+		if kratosURL != "disabled" {
+			authInterceptor = authInterceptor.WithKratos(middleware.NewKratosClient(kratosURL))
+			logger.Info("provider session-auth wired", "kratos_url", kratosURL, "identity_provider", identityLane.String())
+		} else {
+			logger.Info("provider session-auth disabled by env")
+		}
+	}
+	// Под `own` — НАША сессия по носителю kaname_session: `Resolve` на внутреннем
+	// слушателе службы, тем же соединением, что вопрос об отсечке; кэша нет
+	// (Р7). Плюс ретрансляция четырёх глаголов формы на слушатель полосы службы
+	// — взаимный TLS клиентской парой края, адрес — своя ручка, страж старта
+	// ниже отказывает без неё.
+	var loginLaneRelay *handler.LoginLaneRelay
+	if identityLane == identityposture.Own {
+		if iamConn := backends["iamInternal"]; iamConn != nil {
+			authInterceptor = authInterceptor.WithHumanSession(clients.NewSessionRevocationsAdapter(iamConn))
+			logger.Info("own session-auth wired", "authority", cfg.IAMInternalAddr, "cache", "none")
+		}
+		if llErr := validateLoginLaneConfig(identityLane, LoginLaneConfig{
+			URL:            cfg.LoginLaneURL,
+			ClientCertFile: cfg.MTLSClientCertFile,
+			ClientKeyFile:  cfg.MTLSClientKeyFile,
+			CAFile:         cfg.MTLSCAFile,
+		}); llErr != nil {
+			log.Fatalf("login lane startup-validation: %v", llErr)
+		}
+		loginLaneTransport, ltErr := newLoginLaneTransport(cfg)
+		if ltErr != nil {
+			log.Fatalf("login lane transport: %v", ltErr)
+		}
+		relay, rErr := handler.NewLoginLaneRelay(handler.LoginLaneRelayConfig{
+			Logger:    logger,
+			Target:    cfg.LoginLaneURL,
+			Transport: loginLaneTransport,
+			// ТОТ ЖЕ оператор чтения цепочки, что кормит условие client_ip модели
+			// прав: справа по числу доверенных прыжков (Ф3 Р2).
+			ClientIP: newClientAddressOperator(cfg).ClientIP,
+		})
+		if rErr != nil {
+			log.Fatalf("login lane relay: %v", rErr)
+		}
+		loginLaneRelay = relay
+		logger.Info("login lane relay wired", "target", cfg.LoginLaneURL,
+			"verbs", len(middleware.LoginLaneRoutes()), "strips", "authorization + x-kacho-* (both forms)")
 	}
 
 	// --- Hydra JWKS verifier wired into the principal-setting path ---
@@ -296,10 +353,7 @@ func main() {
 	// требование АДМИНИСТРАТИВНОГО адреса, и только его. Негодное значение
 	// отвергается здесь же — откат к «безопасному» не производится, потому что
 	// безопасного среди двух значений нет: каждое снимает требования другого.
-	identityLane, ipErr := cfg.ResolvedIdentityProvider()
-	if ipErr != nil {
-		log.Fatalf("identity posture startup-validation: %v", ipErr)
-	}
+	// Разбор посадки стоит выше — до выбора читателя носителя (Ф3 Р15).
 	if rvErr := validateProductionRevocationConfig(cfg.AppEnv, RevocationConfig{
 		IntrospectionURL: cfg.ResolvedHydraIntrospectionURL(),
 		AdminURL:         cfg.ResolvedHydraAdminURL(),
@@ -455,15 +509,18 @@ func main() {
 	// причине, что у блока выше: соединение к службе прав критическое — без него
 	// край не обслуживает ни одного запроса, потому что она фронтит и личность, и
 	// права. Ветка была бы веткой, в которой край всё равно не работает.
-	if kratosURL != "disabled" {
-		if iamConn := backends["iamInternal"]; iamConn != nil {
-			authInterceptor = authInterceptor.WithSessionCutoffCheck(
-				clients.NewSessionRevocationsAdapter(iamConn), 0)
-			logger.Info("session revocation is read on the browser lane",
-				"keyed_by", "subject + authentication instant",
-				"unanswered_verdict", "refuse",
-				"revoked_verdict", "refuse and end the carrier")
-		}
+	//
+	// Читатель отсечки — НА ОБЕИХ посадках (Ф3 Р7): под `own` наша сессия
+	// сравнивается с отсечкой тем же читателем, что сессия поставщика под
+	// `external`. Прежнее условие «адрес поставщика задан» снято: оно заводило
+	// читатель отсечки только вместе с поставщиком.
+	if iamConn := backends["iamInternal"]; iamConn != nil {
+		authInterceptor = authInterceptor.WithSessionCutoffCheck(
+			clients.NewSessionRevocationsAdapter(iamConn), 0)
+		logger.Info("session revocation is read on the browser lane",
+			"keyed_by", "subject + authentication instant",
+			"unanswered_verdict", "refuse",
+			"revoked_verdict", "refuse and end the carrier")
 	}
 
 	// --- Per-RPC authentication floor, on the layer that always runs ---
@@ -815,6 +872,18 @@ func main() {
 		}
 		return snap
 	})
+	// Клетки полосы сессии и ретрансляции полосы формы (Ф3-48): существуют с
+	// нулём с первой секунды; ретранслятор под `external` не заведён, и его
+	// клетки стоят нулями — отличимо от «ретрансляций не было» по посадке в
+	// самоотчёте, а не по этим нулям.
+	diagMetrics.RegisterSessionLane(func() gwmetrics.SessionLaneSnapshot {
+		snap := gwmetrics.SessionLaneSnapshot{Lane: authInterceptor.SessionLane().Snapshot(),
+			Relay: handler.LoginLaneRelaySnapshot{Relayed: map[string]uint64{}}}
+		if loginLaneRelay != nil {
+			snap.Relay = loginLaneRelay.Stats()
+		}
+		return snap
+	})
 	diagDesc, diagDescErr := describeDiagnosticSurface(
 		cfg.MetricsAddr, diagMetrics, posture.Spec().Mode, logger)
 	if diagDescErr != nil {
@@ -1053,19 +1122,31 @@ func main() {
 	httpMux.HandleFunc("/healthz", health.HTTPHealthz)
 	httpMux.Handle("/readyz", health.HTTPReadyz(backends, criticalBackends, logger))
 
-	// GET /iam/v1/auth/me — личность за сессией развёрнутого провайдера.
-	// Регистрируется ДО `/` чтобы перебить grpc-gateway catch-all.
-	sessionIdentity := middleware.NewSessionIdentityHandler(logger)
-	// /me читает Kratos session если есть cookie ory_kratos_session.
-	if kratosURL != "disabled" {
-		sessionIdentity = sessionIdentity.
-			// Тот же вопрос, что на полосе личности: две полосы, читающие одну
-			// сессию, обязаны отвечать про неё одинаково.
-			WithSessionCutoff(clients.NewSessionRevocationsAdapter(backends["iamInternal"])).
-			WithKratos(middleware.NewKratosClient(kratosURL), iamSubjectClient).
-			WithAdminChecker(iamSubjectClient) // permissions = ["*","admin"] для system-admin
+	// GET /iam/v1/auth/me — личность за браузерной сессией. Регистрируется ДО
+	// `/` чтобы перебить grpc-gateway catch-all. Читатель — ПО ПОСАДКЕ (Ф3 Р15),
+	// тот же, что на полосе личности: две полосы, читающие одну сессию, обязаны
+	// отвечать про неё одинаково. Свой читатель отсечки маршрут держит на обеих
+	// посадках — точки предъявления вложены (Ф3-52, F4d-28).
+	sessionIdentity := middleware.NewSessionIdentityHandler(logger).
+		WithSessionCutoff(clients.NewSessionRevocationsAdapter(backends["iamInternal"])).
+		WithAdminChecker(iamSubjectClient) // permissions = ["*","admin"] для system-admin
+	if identityLane == identityposture.External && kratosURL != "disabled" {
+		sessionIdentity = sessionIdentity.WithKratos(middleware.NewKratosClient(kratosURL), iamSubjectClient)
+	}
+	if identityLane == identityposture.Own {
+		sessionIdentity = sessionIdentity.WithHumanSession(clients.NewSessionRevocationsAdapter(backends["iamInternal"]))
 	}
 	sessionIdentity.Register(httpMux)
+
+	// ЧЕТЫРЕ ГЛАГОЛА ПОЛОСЫ ФОРМЫ (Ф3 Р2) — ретрансляция на слушатель службы,
+	// ЗА полосой личности (как «кто я»): носитель отсечённой сессии до службы не
+	// доходит (Ф3-51). Под `external` не заведена — четыре пути отвечают 404
+	// краем. Пути — из того же объявления, что читают полоса и isPublicHTTPPath.
+	if loginLaneRelay != nil {
+		for _, rt := range middleware.LoginLaneRoutes() {
+			httpMux.Handle(rt.Path, loginLaneRelay)
+		}
+	}
 
 	// POST /oauth/logout — RFC 7009 token revocation +
 	// best-effort Hydra session-kill (triggers RFC 8254 back-channel logout
@@ -1501,7 +1582,7 @@ func buildAuthzMiddleware(cfg config.Config, logger *slog.Logger) (authzWiring, 
 		FailOpen:        cfg.AuthZFailOpen,
 		Catalog:         catalog,
 		Subjects:        middleware.NewSubjectExtractor(true),
-		Context:         middleware.NewContextExtractor(time.Now, cfg.AuthZTrustedXForwardedFor, middleware.WithTrustedProxyHops(cfg.AuthZTrustedProxyCount)),
+		Context:         newClientAddressOperator(cfg),
 		Resources:       middleware.NewResourceExtractor(restRouter.PathTemplates()),
 		Checker:         clients.NewAuthzChecker(authzClient),
 		Overrides:       overrides,

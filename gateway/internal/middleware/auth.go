@@ -254,10 +254,11 @@ func (a *AuthInterceptor) WithHumanSession(r HumanSessionReader) *AuthIntercepto
 	return a
 }
 
-// SessionLaneStats — слепок клеток полосы сессии для диагностической
-// поверхности (Ф3-48).
-func (a *AuthInterceptor) SessionLaneStats() SessionLaneSnapshot {
-	return a.sessionLane.Snapshot()
+// SessionLane — накопитель клеток полосы сессии (Ф3-48). Композиционный корень
+// отдаёт его слепок (`Snapshot`) коллектору диагностической поверхности:
+// читатель ВНЕ пакета — то, что отличает величину от счёта в никуда.
+func (a *AuthInterceptor) SessionLane() *SessionLaneCounts {
+	return a.sessionLane
 }
 
 // WithRequireMachineTokenBinding demands that MACHINE principals present a

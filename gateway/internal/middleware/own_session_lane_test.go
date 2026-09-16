@@ -163,7 +163,7 @@ func TestOwnSessionLane_F3_10_NoSessionIsOneRefusalThatEndsTheCarrier(t *testing
 	if reader.asked != 2 || reader.lastBearer != "n1-unknown" {
 		t.Fatalf("дублёр спрошен %d раз с носителем %q — ожидалось 2 раза значением печенья как есть", reader.asked, reader.lastBearer)
 	}
-	if s := a.SessionLaneStats(); s.NoSession != 2 {
+	if s := a.SessionLane().Snapshot(); s.NoSession != 2 {
 		t.Fatalf("клетка «сессии нет» = %d, ожидалось 2", s.NoSession)
 	}
 	// Отказ по отсечке — ТОТ ЖЕ ответ побайтово (Ф1-17: пять причин, один отказ).
@@ -176,7 +176,7 @@ func TestOwnSessionLane_F3_10_NoSessionIsOneRefusalThatEndsTheCarrier(t *testing
 	if !ourCarrierEnded(rec.Result()) {
 		t.Fatal("отказ по отсечке обязан гасить носитель")
 	}
-	if s := a.SessionLaneStats(); s.CutoffDenied != 1 {
+	if s := a.SessionLane().Snapshot(); s.CutoffDenied != 1 {
 		t.Fatalf("клетка «отказ по отсечке» = %d, ожидалось 1", s.CutoffDenied)
 	}
 }
@@ -238,7 +238,7 @@ func TestOwnSessionLane_F3_13_UnavailableAndUnimplementedRefuseWithTheCutoffText
 			t.Fatalf("%s: носитель обязан остаться целым, Set-Cookie: %v", name, rec.Result().Header["Set-Cookie"])
 		}
 	}
-	if s := a.SessionLaneStats(); s.Unavailable != 2 {
+	if s := a.SessionLane().Snapshot(); s.Unavailable != 2 {
 		t.Fatalf("клетка «недоступность» = %d, ожидалось 2", s.Unavailable)
 	}
 	// Повтор через мгновение при ответившей службе проходит.
@@ -257,7 +257,7 @@ func TestOwnSessionLane_F3_13_CutoffUnsupportedPassesLoudlyWithACounter(t *testi
 	if rec.Code != http.StatusOK || next.served != 1 {
 		t.Fatalf("UNIMPLEMENTED только об отсечке — проход (окно раската): %d, дошло %d", rec.Code, next.served)
 	}
-	if s := a.SessionLaneStats(); s.RolloutWindow != 1 {
+	if s := a.SessionLane().Snapshot(); s.RolloutWindow != 1 {
 		t.Fatalf("клетка «окно раската» = %d, ожидалось 1 — проход обязан быть громким", s.RolloutWindow)
 	}
 	// Личность при этом выставлена — проход, а не анонимность.
@@ -461,7 +461,7 @@ func TestOwnSessionLane_F3_51_FormVerbsRefuseTheCutOffCarrierAndRelayNoSession(t
 	if got := relay.lastReq.Header.Get(principalmeta.HeaderPrincipalID); got != "usr-own-1" {
 		t.Fatalf("на живой сессии полоса не выставила личность перед ретрансляцией: %q", got)
 	}
-	if s := a.SessionLaneStats(); s.CutoffDenied != 3 || s.NoSession != 1 {
+	if s := a.SessionLane().Snapshot(); s.CutoffDenied != 3 || s.NoSession != 1 {
 		t.Fatalf("клетки: отсечка %d (ожидалось 3), «сессии нет» %d (ожидалось 1 — только «кто я»)", s.CutoffDenied, s.NoSession)
 	}
 }

@@ -297,6 +297,23 @@ authn:
   # Держит это deploy/identity_posture_profiles_test.go.
   identityProvider: external
 
+  # ─── адрес полосы формы службы доступа (Ф3, kacho#1269) ───────────────────
+  # HTTPS-слушатель службы, на который край РЕТРАНСЛИРУЕТ четыре глагола формы
+  # (вход · выход · смена пароля · признак формы) под посадкой `own`.
+  # Слушатель взаимный по TLS и допускает ровно край: по нему идут та же
+  # клиентская пара и якорь, что у gRPC-рёбер (`mtls.*`), и имя сервера ребра
+  # iam для SNI. Драйвит KACHO_API_GATEWAY_IAM_LOGIN_LANE_URL.
+  #
+  # ЧИТАЕТСЯ ТОЛЬКО ПОД `own`: под `own` пустое значение — отказ старта с именем
+  # ручки (ретрансляция без цели отвечала бы 503 на каждом запросе всю жизнь,
+  # неотличимо от «служба лежит»); под `external` не читается вовсе. Базовый
+  # профиль объявляет `external`, поэтому здесь пусто: на день заведения ни один
+  # профиль чарта посадку `own` не объявляет (перемерено: `identityProvider: own`
+  # в deploy/ и gateway/deploy/ — 0 профилей), и ручка объявлена с пустым
+  # значением, чтобы профиль, переходящий на `own`, задал её рядом с посадкой.
+  # Пример: https://kacho-umbrella-kaname-internal.kacho.svc:9098
+  iamLoginLaneUrl: ""
+
 # Hydra — OAuth2/OIDC token verification.
 # The auth path verifies Hydra-issued RS256 access tokens by fetching Hydra's
 # JWKS. config.go reads KACHO_HYDRA_JWKS_URL (explicit) and otherwise derives
