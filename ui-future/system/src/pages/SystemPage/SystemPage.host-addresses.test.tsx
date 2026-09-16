@@ -25,7 +25,14 @@ const marker = (name: string) => () => React.createElement("div", null, name);
 // маршруты, и проба отвечает никогда: посадка остаётся неизвестной, адрес
 // от этого не зависит.
 jest.unstable_mockModule("@shared/api/client", () => ({
-  api: { list: () => new Promise(() => {}), get: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn(), action: jest.fn() },
+  api: {
+    list: () => new Promise(() => {}),
+    get: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+    delete: jest.fn(),
+    action: jest.fn(),
+  },
   ApiError,
 }));
 

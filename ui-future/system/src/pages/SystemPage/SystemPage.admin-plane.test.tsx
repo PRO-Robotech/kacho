@@ -21,12 +21,24 @@ jest.unstable_mockModule("@shared/api/client", () => ({
 }));
 
 const opsMarker = (name: string) => (p: { spec: ResourceSpec }) =>
-  React.createElement("div", null, `${name} ${p.spec.id} create=${String(p.spec.ops.create)} update=${String(p.spec.ops.update)} delete=${String(p.spec.ops.delete)}`);
+  React.createElement(
+    "div",
+    null,
+    `${name} ${p.spec.id} create=${String(p.spec.ops.create)} update=${String(p.spec.ops.update)} delete=${String(p.spec.ops.delete)}`,
+  );
 
-jest.unstable_mockModule("@shared/components/organisms/ResourceListPage", () => ({ ResourceListPage: opsMarker("список") }));
-jest.unstable_mockModule("@shared/components/organisms/ResourceCreatePage", () => ({ ResourceCreatePage: opsMarker("создание") }));
-jest.unstable_mockModule("@shared/components/organisms/ResourceDetailPage", () => ({ ResourceDetailPage: opsMarker("карточка") }));
-jest.unstable_mockModule("@shared/components/organisms/ResourceEditPage", () => ({ ResourceEditPage: opsMarker("правка") }));
+jest.unstable_mockModule("@shared/components/organisms/ResourceListPage", () => ({
+  ResourceListPage: opsMarker("список"),
+}));
+jest.unstable_mockModule("@shared/components/organisms/ResourceCreatePage", () => ({
+  ResourceCreatePage: opsMarker("создание"),
+}));
+jest.unstable_mockModule("@shared/components/organisms/ResourceDetailPage", () => ({
+  ResourceDetailPage: opsMarker("карточка"),
+}));
+jest.unstable_mockModule("@shared/components/organisms/ResourceEditPage", () => ({
+  ResourceEditPage: opsMarker("правка"),
+}));
 jest.unstable_mockModule("@shared/pages/AddressPoolDetailPage", () => ({
   AddressPoolDetailPage: () => React.createElement("div", null, "пул"),
 }));
@@ -40,8 +52,12 @@ jest.unstable_mockModule("@shared/pages/system/ClusterAdminsPage", () => ({
 jest.unstable_mockModule("@/components/organisms/AdminLayout", () => ({
   AdminLayout: () => React.createElement(Outlet, null),
 }));
-jest.unstable_mockModule("@/pages/RemoteShell", () => ({ RemoteShell: () => React.createElement("div", null, "оболочка") }));
-jest.unstable_mockModule("@/pages/TokensPage", () => ({ TokensRoutes: () => React.createElement("div", null, "токены") }));
+jest.unstable_mockModule("@/pages/RemoteShell", () => ({
+  RemoteShell: () => React.createElement("div", null, "оболочка"),
+}));
+jest.unstable_mockModule("@/pages/TokensPage", () => ({
+  TokensRoutes: () => React.createElement("div", null, "токены"),
+}));
 
 const { SystemRoutes } = await import("./SystemPage");
 
