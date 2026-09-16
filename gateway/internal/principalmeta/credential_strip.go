@@ -128,15 +128,52 @@ func StripPresentedCredential(md metadata.MD) metadata.MD {
 // пропустил бы `AUTHORIZATION` молча.
 func StripCredentialBeforeForwarding(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		for name := range r.Header {
-			lower := strings.ToLower(name)
-			for _, want := range credentialHeaderNames {
-				if lower == want {
-					delete(r.Header, name)
-					break
-				}
-			}
-		}
+		stripHeaders(r.Header, isCredentialHeader)
 		next.ServeHTTP(w, r)
 	})
+}
+
+// StripCredentialAndIdentityHeaders — ТОТ ЖЕ оператор, расширенный на ВСЁ
+// пространство `x-kacho-` в обеих формах написания (голой и мостовой), — для
+// ретрансляции на поверхность, где переданную личность не читает никто.
+//
+// Предмет — полоса формы службы (приёмка Ф3 Р2, Р16; круг 2 Б-2): на ней
+// личность производит ОДИН механизм — носитель, судимый по записи. Полоса
+// личности края пишет шесть заголовков принципала в запрос ДО его продолжения
+// (по проверенному носителю), и ретрансляция «как есть» уносила бы их на
+// слушатель, который их не проверял бы заново, — второй механизм личности на
+// той же поверхности. Снимается пространство целиком, а не перечень имён: имя,
+// которого ещё нет, перечень забыл бы.
+//
+// Это НЕ замена оператору моста: за краем (REST→gRPC) переданная личность
+// обязана доехать до владельца — там снимается только удостоверение.
+func StripCredentialAndIdentityHeaders(h http.Header) {
+	stripHeaders(h, func(lower string) bool {
+		if isCredentialHeader(lower) {
+			return true
+		}
+		_, inNamespace := KachoNamespaceKey(lower)
+		return inNamespace
+	})
+}
+
+// isCredentialHeader — обе формы имени удостоверения.
+func isCredentialHeader(lower string) bool {
+	for _, want := range credentialHeaderNames {
+		if lower == want {
+			return true
+		}
+	}
+	return false
+}
+
+// stripHeaders — ядро обоих операторов: удаляет заголовки, чьё
+// нормализованное имя удовлетворяет предикату. Одно ядро на две поверхности —
+// второй экземпляр разошёлся бы с первым на регистре или на мостовой форме.
+func stripHeaders(h http.Header, drop func(lower string) bool) {
+	for name := range h {
+		if drop(strings.ToLower(name)) {
+			delete(h, name)
+		}
+	}
 }

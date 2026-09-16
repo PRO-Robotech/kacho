@@ -480,6 +480,17 @@ func (m *AuthzMiddleware) HTTP(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		// ТРЕБОВАНИЕ СМЕНИТЬ ПАРОЛЬ (приёмка Ф3 Р8, Ф5 Р5) — на всяком пути С
+		// ЗАПИСЬЮ каталога, ДО вопроса к модели прав. Множество проходящих —
+		// ровно перечень без записи каталога (ветка выше), и он выводится из
+		// дерева, а не выписывается здесь. Полоса сессии донесла поле
+		// контекстом; отказ называет следующий шаг и ветвится клиентом по
+		// `reason`, не по прозе.
+		if PasswordChangeRequiredFromContext(r.Context()) {
+			m.metrics.RecordPasswordChangeRequired()
+			writeHTTPPasswordChangeRequired(w)
+			return
+		}
 		fqn := m.resolveRestFQN(r)
 		decision := m.decide(r.Context(), decisionRequest{
 			FQN:     fqn,
