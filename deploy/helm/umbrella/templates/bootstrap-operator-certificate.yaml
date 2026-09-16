@@ -6,7 +6,8 @@
   A DEDICATED operator identity for the cluster-admin token mint
   (`iam.v1.InternalBootstrapTokenService/MintBootstrapToken`, kaname :9091).
 
-  WHY IT EXISTS AT ALL. The mint hands out a Hydra-signed RS256 Bearer for a
+  WHY IT EXISTS AT ALL. The mint hands out a platform-signed Bearer (our own signer,
+  kaname `bootstrap_token/local_mint.go`) for a
   cluster `system_admin` ServiceAccount. It cannot be gated by a ReBAC relation
   (it exists to obtain the FIRST token, when no relation exists yet) and it must
   NOT be gated by network position ("internal = trusted" is a forbidden premise,

@@ -40,7 +40,7 @@ const (
 	AlgEdDSA = "EdDSA"
 )
 
-// AllowedJWTAlgs — algorithm whitelist for Hydra-issued access tokens (RFC 8725
+// AllowedJWTAlgs — algorithm whitelist for asymmetric access tokens (RFC 8725
 // §2.1; algorithm-confusion mitigation).
 var AllowedJWTAlgs = map[string]struct{}{
 	AlgRS256: {},

@@ -35,7 +35,9 @@
 #                                 #   refuses to deploy if a posture key appears here.
 #
 # ── SECURITY POSTURE (what "production" means here) ──
-#   authN  : Hydra-issued JWT verified at the edge (production-strict, no dev HMAC).
+#   authN  : asymmetric JWT of an accepted issuer verified at the edge — the platform's
+#            own minting plus, while the transition window is open, the previous
+#            external OAuth server (production-strict, no dev HMAC).
 #   authZ  : per-RPC ReBAC Check, fail-closed (RBAC roles).
 #   mTLS   : service↔service on both listeners incl. api-gateway internal :9091;
 #            EVERY certificate issued by cert-manager (ClusterIssuer
@@ -410,10 +412,13 @@ kaname:
   platform:
     iam:
       hydraTokenURL: http://kacho-umbrella-hydra-public.kacho.svc:4444/oauth2/token
-      # registry-iam-jwks-unify — upstream the cluster-INTERNAL jwks-proxy (:9097)
-      # mirrors byte-for-byte (env KANAME_HYDRA_JWKS_URL). In-cluster hydra-public
-      # base so the iam→Hydra JWKS fetch never leaves the cluster; iam re-serves it to
-      # the registry data-plane over one-way server-TLS. Hydra stays signer/issuer.
+      # Upstream of the PREVIOUS issuer's key-set mirror served by the cluster-INTERNAL
+      # key-set listener (:9097, env KANAME_HYDRA_JWKS_URL). In-cluster hydra-public
+      # base so the fetch never leaves the cluster. The mirror is one record of that
+      # listener and lives only while tokens of the previous issue are presentable
+      # (#2564); the tokens this stand mints are signed by OUR key set
+      # (`kaname.config.authn.tokenSigning`, `api-gateway.tokenAcceptance` and
+      # `registry.tokenAcceptance` below name the same issuer).
       hydraJwksUrl: http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json
       # In-cluster Hydra ADMIN endpoint для sa_keys (SAKeyService.Issue/Revoke) +
       # user_tokens (POST /admin/clients + jwt-bearer trust-grants). Без него
@@ -652,10 +657,10 @@ registry:
           privateKey:
             algorithm: ""
             size: ""
-  # registry-iam-jwks-unify — the data-plane docker-Bearer verifier now fetches JWKS
-  # from the cluster-INTERNAL kaname JWKS proxy (:9097) instead of dialing Hydra.
-  # iam serves a byte-for-byte mirror of Hydra's PUBLIC JWKS over one-way server-TLS
-  # (internal-CA leaf) — kids/alg match Hydra-signed tokens; the registry pod trusts
+  # The data-plane docker-Bearer verifier fetches every key set from the cluster-
+  # INTERNAL kaname key-set listener (:9097): the platform's OWN set for the tokens it
+  # mints and, while the transition window is open, a byte-for-byte mirror of the
+  # previous issuer's PUBLIC JWKS — over one-way server-TLS (internal-CA leaf); the registry pod trusts
   # the internal-CA via SSL_CERT_DIR. This is an https in-cluster Service, so
   # production requireSecureJWKSURL passes without needing an external hydra-https
   # terminator.

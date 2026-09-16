@@ -361,11 +361,15 @@ ports:
   # (TLS terminated externally), distinct from hooks (:9092) / metrics (:9095). The
   # registry data-plane TLS-sidecar proxies docker token exchange here.
   registryToken: 9096
-  # Cluster-INTERNAL Hydra-JWKS proxy HTTP listener (GET /.well-known/jwks.json) — a
-  # short-TTL caching reverse-proxy of Hydra's PUBLIC JWKS. The registry data-plane
-  # fetches its docker-Bearer verification keys from iam HERE instead of dialing Hydra
-  # directly (Hydra stays signer/issuer; served kids are Hydra's). ONE-WAY server-TLS,
-  # exposed ONLY on the kaname-internal Service (never external, ban #6).
+  # Cluster-INTERNAL listener of verification KEY SETS, one record per accepted
+  # issuer (`jwksproxyhttp.NewBinding`): OUR key set at
+  # `config.authn.tokenSigning.keySetPath` — the signer of every token the service
+  # mints — and, at `/.well-known/jwks.json`, a short-TTL mirror of the previous
+  # issuer's PUBLIC JWKS, kept only while tokens of its issue are still presentable
+  # (#2564). The registry data-plane and the edge read the record named by the
+  # token's issuer (`tokenAcceptance.issuerKeySets`); there is no fallback across
+  # records. ONE-WAY server-TLS, exposed ONLY on the kaname-internal Service
+  # (never external, ban #6).
   jwksProxy: 9097
   # Собственные REST-фронты службы (KAN-REST-1). Вынесенная отдельным продуктом,
   # служба края платформы не имеет by construction — её HTTP-поверхность обязана
