@@ -128,6 +128,20 @@ describe("InlineResourceEditForm", () => {
     expect(body()).not.toHaveProperty("name");
   });
 
+  // Ресурс с admin-плоскостью (каталог размещения geo) правится ТОЛЬКО по
+  // admin-пути: PATCH по публичному пути не смаршрутизирован, и край отвечает
+  // отказом каталога, который администратор читает как «нет прав» (#2692). У
+  // страницы-формы (`ResourceEditPage`) путь берётся у `mutationBasePath`; эта
+  // форма — вторая точка правки того же ресурса, и она уходила на публичный.
+  it("ресурс с admin-плоскостью правится по admin-пути, а не по публичному", async () => {
+    show({ spec: spec({ apiPath: "/geo/v1/regions", admin: { basePath: "/geo/v1/internal/regions", readForEdit: true } }) });
+
+    fireEvent.change(field("было"), { target: { value: "стало" } });
+    save();
+
+    await waitFor(() => expect(update).toHaveBeenCalledWith("/geo/v1/internal/regions/net-1", expect.anything()));
+  });
+
   it("тело правки не тащит поля, которых в сообщении правки нет", async () => {
     show();
 

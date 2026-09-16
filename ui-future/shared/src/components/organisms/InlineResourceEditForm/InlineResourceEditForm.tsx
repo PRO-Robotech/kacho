@@ -15,7 +15,7 @@ import { resolveMutationResponse } from "@shared/lib/operation-outcome";
 import { ResourceFormBody } from "@shared/components/organisms/form/ResourceFormBody";
 import { buildUpdateBody, computeUpdateMask } from "@shared/lib/update-mask";
 import { api } from "@shared/api/client";
-import { applyFieldDefaults, type ResourceSpec } from "@shared/lib/resource-registry";
+import { applyFieldDefaults, mutationBasePath, type ResourceSpec } from "@shared/lib/resource-registry";
 import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
 import { errorText } from "@shared/lib/error-presentation";
@@ -62,8 +62,13 @@ export function InlineResourceEditForm({ spec, data, projectId, onCancel, onSucc
   const [pendingOpId, setPendingOpId] = useState<string | null>(null);
   const { data: op } = useOperation(pendingOpId);
 
+  // Правка уходит на admin-плоскость ресурса, если она у него есть (см.
+  // `mutationBasePath`): у каталога размещения geo PATCH по публичному пути не
+  // смаршрутизирован, и край отвечал отказом каталога — «нет прав» для
+  // администратора (#2692). Страница-форма брала путь оттуда же; эта форма —
+  // вторая точка правки того же ресурса, и она разошлась с первой молча.
   const mutation = useMutation({
-    mutationFn: (item: unknown) => api.update(`${spec.apiPath}/${id}`, item),
+    mutationFn: (item: unknown) => api.update(`${mutationBasePath(spec)}/${id}`, item),
     onSuccess: (resp) => {
       // Три исхода: операция · синхронный ответ ресурсом · нарушение
       // контракта. Умолчание и разбор — те же, что у `ResourceEditPage`.

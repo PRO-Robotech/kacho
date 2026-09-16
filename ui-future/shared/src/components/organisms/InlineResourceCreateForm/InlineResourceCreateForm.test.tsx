@@ -96,6 +96,16 @@ describe("InlineResourceCreateForm", () => {
     expect(screen.queryByRole("button", { name: /Создать/ })).not.toBeInTheDocument();
   });
 
+  // Тот же класс, что у формы правки: ресурс с admin-плоскостью создаётся по
+  // admin-пути, POST по публичному пути geo не смаршрутизирован (#2692).
+  it("ресурс с admin-плоскостью создаётся по admin-пути, а не по публичному", async () => {
+    show({ spec: spec({ apiPath: "/geo/v1/regions", admin: { basePath: "/geo/v1/internal/regions" } }) });
+
+    submit();
+
+    await waitFor(() => expect(create).toHaveBeenCalledWith("/geo/v1/internal/regions", expect.anything()));
+  });
+
   it("имя подставляется само — безымянный повтор упёрся бы в занятое имя", () => {
     show();
 
