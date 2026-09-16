@@ -58,18 +58,62 @@ const quotaServicesDir = "services"
 const quotaCeilingCatalogFile = "quota_ceilings.go"
 
 var (
-	// вид в объявлении триггера учёта: EXECUTE FUNCTION kacho_quota_count('vpc.network' …)
+	// ОБЪЯВЛЕНИЕ списывающего триггера целиком, вместе со списком аргументов.
 	//
-	// Перенос строки ТЕРПИМ: объявление триггера переносит вид на следующую
-	// строку у двух владельцев из пяти, и однострочная форма теряла бы их молча.
-	quotaChargedKindRe = regexp.MustCompile(`kacho_quota_count\(\s*'([a-zA-Z0-9.]+)'`)
+	// Читается ВЫЗОВ, а не первый его аргумент: вид носителя-РОДИТЕЛЯ стоит в
+	// том же списке дальше (`kacho_quota_count('vpc.subnet', '', 'network_id',
+	// 'vpc.network.subnet')`), а у объявления жизненного цикла носителя он
+	// единственный. Однострочная форма первого аргумента теряла бы обе эти
+	// записи молча — ровно тот класс, ради которого гейт и переписан.
+	//
+	// Вложенных скобок в списке аргументов не бывает: аргументы объявления
+	// триггера — строковые литералы, и `[^)]` доходит до конца списка. Форма
+	// эта проверяется самим гейтом: пустой набор видов у владельца он объявляет
+	// находкой, а не молчанием.
+	quotaChargeCallRe = regexp.MustCompile(`kacho_quota_(?:count|carrier_lifecycle)\(([^)]*)\)`)
+	// строковый литерал SQL внутри объявления.
+	quotaSQLLiteralRe = regexp.MustCompile(`'([^']*)'`)
 	// форма ВИДА: два и более сегмента, первый со строчной буквы.
 	//
 	// Ключ ручки односегментен (`network`), имя переменной пишется прописными,
-	// довод оператору — проза с пробелами: ни одна из трёх форм под неё не
-	// подпадает.
+	// довод оператору — проза с пробелами, имя столбца (`network_id`) точки не
+	// несёт: ни одна из этих форм под неё не подпадает.
 	quotaKindShapeRe = regexp.MustCompile(`^[a-z][a-zA-Z0-9]*(\.[a-zA-Z0-9]+)+$`)
 )
+
+// quotaChargedKinds — виды, которые СПИСЫВАЮТ триггеры этого файла миграции,
+// разделённые ПО НОСИТЕЛЮ.
+//
+// Разделение несущее, а не косметическое. Величину потолка объявляет посадка
+// домена, и каталог посадки — виды, считаемые В ПРОЕКТЕ: приёмка называет для
+// `vpc` восемь. Вид, считаемый в РОДИТЕЛЕ («по скольку подсетей в одной сети»),
+// величину назначает иначе и в каталог посадки не входит; смешать их значило бы
+// потребовать от оператора ручек, которых приёмка не заводила.
+//
+// Совещательная полоса при этом спрашивает про ОБА, поэтому её гейт судит союз.
+func quotaChargedKinds(sql string) (onProject, nested map[string]bool) {
+	onProject, nested = map[string]bool{}, map[string]bool{}
+	for _, call := range quotaChargeCallRe.FindAllStringSubmatch(sql, -1) {
+		lifecycle := strings.Contains(call[0], "carrier_lifecycle")
+		first := true
+		for _, lit := range quotaSQLLiteralRe.FindAllStringSubmatch(call[1], -1) {
+			v := lit[1]
+			if !quotaKindShapeRe.MatchString(v) {
+				continue
+			}
+			// У объявления жизненного цикла носителя вид ЕДИНСТВЕННЫЙ и он
+			// родительский; у списывающего первый кинд-образный литерал —
+			// проектный, остальные называют родителя.
+			if first && !lifecycle {
+				onProject[v] = true
+				first = false
+				continue
+			}
+			nested[v] = true
+		}
+	}
+	return onProject, nested
+}
 
 // quotaOwner — один владелец величин: что он списывает, что объявляет и зовёт ли
 // стража мощности.
@@ -202,14 +246,17 @@ func quotaOwnersFromTree(t *testing.T, root string) map[string]*quotaOwner {
 		if rerr != nil {
 			t.Fatalf("чтение %s: %v", path, rerr)
 		}
-		hits := quotaChargedKindRe.FindAllStringSubmatch(string(b), -1)
-		if len(hits) == 0 {
+		// Каталог посадки сверяется с видами, считаемыми В ПРОЕКТЕ: вид,
+		// считаемый в родителе, величину назначает иначе и ручкой посадки не
+		// объявляется (§9 приёмки — предмет задачи kacho#705).
+		onProject, _ := quotaChargedKinds(string(b))
+		if len(onProject) == 0 {
 			continue
 		}
 		o := owner(service)
 		o.sqlFiles++
-		for _, m := range hits {
-			o.charged[m[1]] = true
+		for kind := range onProject {
+			o.charged[kind] = true
 		}
 	}
 
