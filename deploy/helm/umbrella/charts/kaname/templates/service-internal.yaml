@@ -39,3 +39,12 @@ spec:
       port: {{ .Values.service.internal.internalRestPort | default .Values.ports.internalRest }}
       targetPort: http-rest-int
     {{- end }}
+    # Слушатель полосы входа паролем (Ф3, kacho#1269). Выставлен ТОЛЬКО здесь:
+    # его единственный вызывающий — край платформы, и до него край дотягивается
+    # адресом внутреннего Service (ручка адреса полосы формы у края); наружу
+    # глаголы формы публикует край на origin консоли, а не эта поверхность.
+    {{- if .Values.ports.loginLane }}
+    - name: http-login-lane
+      port: {{ .Values.service.internal.loginLanePort | default .Values.ports.loginLane }}
+      targetPort: http-login-lane
+    {{- end }}

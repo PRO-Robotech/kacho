@@ -72,6 +72,16 @@ data:
       {{- if .Values.ports.internalRest }}
       internal-rest-endpoint: {{ printf "tcp://0.0.0.0:%v" .Values.ports.internalRest | quote }}
       {{- end }}
+      # Слушатель полосы входа паролем (Ф3, kacho#1269): четыре глагола формы,
+      # на которые край ретранслирует вход, выход, смену пароля и признак формы.
+      # Поднимается ПОСАДКОЙ `config.authn.identityProvider: own`, а не адресом:
+      # под `external` процесс адрес читает, объявляет поверхность выключенной с
+      # причиной и слушателя не поднимает. Умолчания нет — та же форма, что у
+      # REST-фронтов выше: порт не объявлен ⇒ адреса в настройках нет; под `own`
+      # это отказ старта с именем ручки.
+      {{- if .Values.ports.loginLane }}
+      login-lane-endpoint: {{ printf "tcp://0.0.0.0:%v" .Values.ports.loginLane | quote }}
+      {{- end }}
       {{- $rt := .Values.config.apiServer.registryToken | default dict }}
       {{- /* Адресат полосы ВЫВОДИТСЯ из объявленной стороны реестра — одно
            объявление на обе стороны, см. kaname.laneServiceAud. Прежде здесь
@@ -276,6 +286,63 @@ data:
       # must not ship "trust anybody".
       trusted-forwarder-sans:
 {{ toYaml (.Values.config.authn.trustedForwarderSANs | default list) | indent 8 }}
+
+      {{- with .Values.config.authn.login }}
+      # ПОЛОСА ВХОДА ПАРОЛЕМ (Ф3, kacho#1269). Каждая величина — условие старта
+      # под `identityProvider: own`, и умолчания нет ни у одной: срок сессии,
+      # предел частоты, правило пароля и ёмкость проверяющего — решения
+      # установки, которые нельзя подставить за оператора. Под `external` блок
+      # не читается: полосы на той посадке нет. Целые проходят через `int64`:
+      # большое число из значений чарта приходит в шаблон плавающим и без
+      # приведения рендерится как `2.68e+08`, чего разборщик настроек не примет.
+      # Тот же блок и та же форма, что у собственного чарта службы.
+      login:
+        {{- with .sessionTtl }}
+        session-ttl: {{ . | quote }}
+        {{- end }}
+        {{- with .cookieDomain }}
+        cookie-domain: {{ . | quote }}
+        {{- end }}
+        {{- if hasKey . "addressAttempts" }}
+        address-attempts: {{ int64 .addressAttempts }}
+        {{- end }}
+        {{- with .addressWindow }}
+        address-window: {{ . | quote }}
+        {{- end }}
+        {{- if hasKey . "sourceAttempts" }}
+        source-attempts: {{ int64 .sourceAttempts }}
+        {{- end }}
+        {{- with .sourceWindow }}
+        source-window: {{ . | quote }}
+        {{- end }}
+        {{- if hasKey . "passwordMinLength" }}
+        password-min-length: {{ int64 .passwordMinLength }}
+        {{- end }}
+        {{- with .breachCheck }}
+        breach-check: {{ . | quote }}
+        {{- end }}
+        {{- with .breachCheckUrl }}
+        breach-check-url: {{ . | quote }}
+        {{- end }}
+        {{- with .hasherFormat }}
+        hasher-format: {{ . | quote }}
+        {{- end }}
+        {{- if hasKey . "hasherMemory" }}
+        hasher-memory: {{ int64 .hasherMemory }}
+        {{- end }}
+        {{- if hasKey . "hasherIterations" }}
+        hasher-iterations: {{ int64 .hasherIterations }}
+        {{- end }}
+        {{- if hasKey . "hasherParallelism" }}
+        hasher-parallelism: {{ int64 .hasherParallelism }}
+        {{- end }}
+        {{- if hasKey . "verifierCapacity" }}
+        verifier-capacity: {{ int64 .verifierCapacity }}
+        {{- end }}
+        {{- if hasKey . "memoryReserveBytes" }}
+        memory-reserve-bytes: {{ int64 .memoryReserveBytes }}
+        {{- end }}
+      {{- end }}
 
       # Домен доверия установки: то, чьи сертификаты процесс признаёт своими.
       # Круг выше называет, КОМУ позволено говорить за пользователя; домен

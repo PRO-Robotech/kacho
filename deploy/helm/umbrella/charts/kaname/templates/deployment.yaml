@@ -239,6 +239,13 @@ spec:
             - name: http-rest-int
               containerPort: {{ .Values.ports.internalRest }}
             {{- end }}
+            # Слушатель полосы входа паролем (Ф3, kacho#1269): по нему край
+            # ретранслирует четыре глагола формы. Порт объявляется ПРОФИЛЕМ,
+            # умолчания нет; поднимается посадкой `own`.
+            {{- if .Values.ports.loginLane }}
+            - name: http-login-lane
+              containerPort: {{ .Values.ports.loginLane }}
+            {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/kaname
@@ -452,6 +459,34 @@ spec:
             - name: KANAME_INTERNALREST_SERVER_MTLS_KEYFILE
               value: {{ printf "%s/tls.key" $srv | quote }}
             - name: KANAME_INTERNALREST_SERVER_MTLS_CLIENTCAFILES
+              value: {{ printf "%s/ca.crt" $srv | quote }}
+            {{- end }}
+            {{- if (dig "loginLane" .Values.mtls.httpListeners .Values.mtls) }}
+            # ─── СЛУШАТЕЛЬ ПОЛОСЫ ВХОДА ПАРОЛЕМ (Ф3, kacho#1269) ──────────────
+            #
+            # Своя ручка, а не общая с фронтами: у этого слушателя ДРУГОЙ
+            # вызывающий и другое требование к нему. Транспорт ВЗАИМНЫЙ: вызывать
+            # полосу вправе ровно край платформы, и слушатель судит его по SAN
+            # проверенного клиентского сертификата — тем же различителем, что
+            # ярус «только край» внутреннего gRPC-слушателя (приёмка Ф3, Р16).
+            # Круг законных отправителей переданной личности здесь НЕ читается:
+            # он шире края by construction (семь SAN, шесть — не край), и допуск
+            # по нему открывал бы вход, выход и смену пароля с носителем шести
+            # пирам кластера. По этому проводу едет носитель сессии человека и
+            # его пароль — объявленного исключения нет и быть не может.
+            #
+            # Режим клиента объявляет ПРОФИЛЬ; умолчание — единственное годное
+            # под `own` значение: иной режим страж старта службы отвергает
+            # (requireLoginLaneTLS), поэтому подставить неверное умолчание нельзя.
+            - name: KANAME_LOGINLANE_SERVER_MTLS_ENABLE
+              value: "true"
+            - name: KANAME_LOGINLANE_SERVER_MTLS_CLIENTAUTHMODE
+              value: {{ .Values.mtls.loginLaneClientAuthMode | default "mutual" | quote }}
+            - name: KANAME_LOGINLANE_SERVER_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $srv | quote }}
+            - name: KANAME_LOGINLANE_SERVER_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $srv | quote }}
+            - name: KANAME_LOGINLANE_SERVER_MTLS_CLIENTCAFILES
               value: {{ printf "%s/ca.crt" $srv | quote }}
             {{- end }}
             {{- if or (dig "publicRest" .Values.mtls.httpListeners .Values.mtls) (dig "internalRest" .Values.mtls.httpListeners .Values.mtls) }}
