@@ -1079,7 +1079,7 @@ func (a *AuthInterceptor) tryKratosSession(w http.ResponseWriter, r *http.Reques
 		return false, false
 	}
 	cookieHdr := r.Header.Get("Cookie")
-	if !strings.Contains(cookieHdr, "ory_kratos_session") {
+	if !strings.Contains(cookieHdr, providerSessionCarrierName) {
 		return false, false
 	}
 	res := a.kratos.Whoami(r.Context(), cookieHdr)
@@ -1108,7 +1108,7 @@ func (a *AuthInterceptor) tryKratosSession(w http.ResponseWriter, r *http.Reques
 		// Отказ И окончание носителя — вместе. Порознь первое даёт СТОЯЩИЙ
 		// отказ: сессия жива, момент её аутентификации прежний, и повторной
 		// аутентификации ничто не запросит.
-		endSessionCarrier(w)
+		EndSessionCarriers(w)
 		writeHTTPUnauthorized(w, sessionCutoffDenyDescription)
 		return false, true
 	case sessionCutoffUnanswered:

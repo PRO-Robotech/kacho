@@ -113,7 +113,7 @@ func (h *SessionIdentityHandler) Me(w http.ResponseWriter, r *http.Request) {
 
 	if h.kratos != nil {
 		cookieHdr := r.Header.Get("Cookie")
-		if strings.Contains(cookieHdr, "ory_kratos_session") {
+		if strings.Contains(cookieHdr, providerSessionCarrierName) {
 			res := h.kratos.Whoami(r.Context(), cookieHdr)
 			if res.Active && res.IdentityID != "" {
 				userObj := map[string]any{

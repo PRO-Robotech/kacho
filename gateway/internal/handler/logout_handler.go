@@ -21,6 +21,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
+
+	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
 // SessionRevocationsClient — minimal port the logout handler needs to push
@@ -202,22 +204,14 @@ func (h *LogoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		cancel()
 	}
 
-	// 6. Clear the session cookie of the deployed identity provider. Always done,
-	//    even for a token-less request, so a user can drop their browser session.
-	//    Прежде здесь чистился и второй, «legacy», cookie. Его единственный
-	//    производитель — обработчик церемонии снятого провайдера — снят, и
-	//    читателя на пути аутентификации у него больше нет: чистить стало нечего.
-	for _, c := range []string{"ory_kratos_session"} {
-		http.SetCookie(w, &http.Cookie{
-			Name:     c,
-			Value:    "",
-			Path:     "/",
-			MaxAge:   -1,
-			HttpOnly: true,
-			Secure:   true,
-			SameSite: http.SameSiteLaxMode,
-		})
-	}
+	// 6. Clear the browser session carriers. Always done, even for a token-less
+	//    request, so a user can drop their browser session. The NAMES live in ONE
+	//    declaration (`middleware.EndSessionCarriers`, F4d-26): this handler and
+	//    the refusal path of the identity lane end the same carriers the same
+	//    way, otherwise "logout" and "refusal" would leave the same browser in
+	//    different states. A second list here is what the gate
+	//    `session_carrier_names_gate_test.go` calls a finding.
+	middleware.EndSessionCarriers(w)
 
 	out := map[string]any{"ok": true}
 	if len(revocErrs) > 0 {

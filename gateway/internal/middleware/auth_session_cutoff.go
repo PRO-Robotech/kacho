@@ -64,7 +64,6 @@ package middleware
 import (
 	"context"
 	"errors"
-	"net/http"
 	"time"
 )
 
@@ -149,25 +148,6 @@ func (a *AuthInterceptor) WithSessionCutoffCheck(r SessionCutoffReader, reportIn
 	a.sessionCutoff = r
 	a.sessionCutoffFailures = newIntrospectionFailureReporter(reportInterval, nil)
 	return a
-}
-
-// endSessionCarrier заканчивает носителя браузерной сессии.
-//
-// Тот же набор имён и та же форма, что у выхода (`handler.LogoutHandler`), —
-// одно место продукта гасит cookie одним способом, иначе «выход» и «отказ»
-// оставляли бы разное состояние у одного и того же браузера.
-func endSessionCarrier(w http.ResponseWriter) {
-	for _, c := range []string{"ory_kratos_session"} {
-		http.SetCookie(w, &http.Cookie{
-			Name:     c,
-			Value:    "",
-			Path:     "/",
-			MaxAge:   -1,
-			HttpOnly: true,
-			Secure:   true,
-			SameSite: http.SameSiteLaxMode,
-		})
-	}
 }
 
 // sessionCutoffCheck спрашивает НАШ авторитет про сессию и докладывает вердикт,
