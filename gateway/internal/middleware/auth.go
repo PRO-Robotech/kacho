@@ -118,7 +118,9 @@ type Subject struct {
 	DisplayName string
 }
 
-// TokenVerifier — port для JWKS-валидации Hydra-issued RS256 access JWT.
+// TokenVerifier — port для JWKS-валидации асимметричного access JWT любого
+// принимаемого издателя (`tokenAcceptance`: платформа сама и, пока окно перехода
+// открыто, прежний внешний OAuth-сервер).
 // Реализация — `*JWTVerifier` (jwt_verifier.go), уже сконструированная
 // в cmd/main.go для DPoP; тот же инстанс переиспользуется в principal-path.
 // Декларирован интерфейсом, чтобы AuthInterceptor не был жестко привязан к
@@ -323,7 +325,8 @@ func (a *AuthInterceptor) WithKratos(c *KratosClient) *AuthInterceptor {
 	return a
 }
 
-// WithVerifier подключает JWKS-валидатор Hydra-issued RS256 access JWT.
+// WithVerifier подключает JWKS-валидатор асимметричного access JWT принимаемых
+// издателей.
 // Когда выставлен, validateJWT детектит signing method: RS256/ES256/EdDSA →
 // проверка через JWKS-verifier (verified claims), HMAC → существующий dev-path.
 // Principal строится из верифицированных `kaname_principal_*` claims напрямую
@@ -486,7 +489,7 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 		return withBasicCredentialLevel(ctx, as.ACR), nil
 	}
 
-	// Hydra-issued RS256/ES256/EdDSA access JWT → validate via JWKS
+	// Asymmetric RS256/ES256/EdDSA access JWT of an accepted issuer → validate via JWKS
 	// verifier (a SECOND strategy alongside the HMAC-dev path). On a verified
 	// token the Principal is derived directly from the `kaname_principal_*`
 	// claims (top-level or ext_claims) — no SubjectLookuper round-trip unless
@@ -701,8 +704,8 @@ func (a *AuthInterceptor) injectPrincipal(ctx context.Context, pType, pID, displ
 }
 
 // isAsymmetricJWT peeks the unverified JWT header and reports whether its `alg`
-// is in the asymmetric whitelist (RS256/ES256/EdDSA) — i.e. a Hydra-issued
-// access token that must go through the JWKS verifier rather than the HMAC-dev
+// is in the asymmetric whitelist (RS256/ES256/EdDSA) — i.e. an access token of
+// an accepted issuer that must go through the JWKS verifier rather than the HMAC-dev
 // path. HS* / none / non-JWT → false (handled by the HMAC branch / rejected).
 // This is a strategy selector only; the verifier re-checks the alg authoritatively
 // against the pinned JWK (algorithm-confusion is impossible here — a forged HS256
@@ -1199,7 +1202,8 @@ func (a *AuthInterceptor) tryKratosSession(w http.ResponseWriter, r *http.Reques
 	return true, false
 }
 
-// tryHydraJWT validates a Hydra-issued asymmetric (RS256/ES256/EdDSA) access JWT
+// tryHydraJWT validates an asymmetric (RS256/ES256/EdDSA) access JWT of an accepted
+// issuer (the name keeps the lane's original issuer; the verifier is issuer-agnostic)
 // over REST via the JWKS verifier (parity with the gRPC interceptor path) and
 // derives the principal from the verified `kaname_principal_*` claims (top-level
 // or ext_claims), falling back to SubjectLookuper on the verified sub. A

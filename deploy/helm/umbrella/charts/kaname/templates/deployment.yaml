@@ -222,9 +222,13 @@ spec:
             # и metrics (:9095). Публикуется как Service-порт registry-token.
             - name: registry-token
               containerPort: {{ .Values.ports.registryToken | default 9096 }}
-            # registry-iam-jwks-unify — cluster-INTERNAL Hydra-JWKS proxy listener
-            # (GET /.well-known/jwks.json), one-way server-TLS. The registry data-plane
-            # fetches docker-Bearer verification keys here (Hydra stays signer/issuer).
+            # Cluster-INTERNAL listener of verification KEY SETS, one-way server-TLS,
+            # one record per accepted issuer: OUR key set at the path declared by
+            # `config.authn.tokenSigning.keySetPath` (the signer of every token the
+            # service mints), and at `/.well-known/jwks.json` a short-TTL mirror of the
+            # previous issuer's PUBLIC JWKS — kept only while tokens of its issue are
+            # still presentable (#2564). The registry data-plane reads the record named
+            # by the token's issuer (`registry.tokenAcceptance.issuerKeySets`).
             # Exposed ONLY on kaname-internal (never external, ban #6).
             - name: http-jwks
               containerPort: {{ .Values.ports.jwksProxy | default 9097 }}

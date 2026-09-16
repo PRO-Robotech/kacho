@@ -212,10 +212,11 @@ func main() {
 			"verbs", len(middleware.LoginLaneRoutes()), "strips", "authorization + x-kacho-* (both forms)")
 	}
 
-	// --- Hydra JWKS verifier wired into the principal-setting path ---
+	// --- JWKS verifier wired into the principal-setting path ---
 	//
-	// The same JWTVerifier is the authoritative validator for Hydra-issued
-	// RS256 access JWTs. It is constructed here (independent of the DPoP
+	// The same JWTVerifier is the authoritative validator for asymmetric access
+	// JWTs of every accepted issuer (platform-minted and, while the transition
+	// window is open, the previous external OAuth server). It is constructed here (independent of the DPoP
 	// feature flag) and wired into the AuthInterceptor so a real login token
 	// authenticates on the principal path.
 	// The DPoP middleware (below) reuses the SAME instance when enabled.
@@ -572,7 +573,7 @@ func main() {
 	// All wiring is feature-gated by KACHO_API_GATEWAY_AUTHN_ENABLE_DPOP.
 	// When disabled (default) the legacy auth-interceptor path remains the only
 	// authN code path. When enabled we add a second middleware after the legacy
-	// one — verified Hydra-issued tokens flow through it; dev / Kratos / HMAC
+	// one — verified asymmetric tokens of accepted issuers flow through it; dev / Kratos / HMAC
 	// tokens pass through unchanged (they're not in JWT alg whitelist and the
 	// JWT verifier rejects them gracefully → middleware passes through as
 	// anonymous when requireForAllRequests=false).

@@ -731,7 +731,7 @@ func registerInternal(reg grpc.ServiceRegistrar, h registryv1.InternalRegistrySe
 }
 
 // buildDataplaneHandler собирает data-plane OCI auth-proxy (fail-closed). Штатно:
-// JWKS-verify Hydra-issued identity-JWT (RS256/ES256) + per-request
+// JWKS-verify identity-JWT (RS256/ES256) of an accepted issuer + per-request
 // InternalIAMService.Check + zot stream-proxy. breakglass → bypass AuthN+AuthZ
 // (аварийный режим, как gRPC-листенеры).
 func buildDataplaneHandler(cfg config.Config, authzConn *grpc.ClientConn, repoReg dataplane.RepoRegistrar, backend dataplane.Backend, presence dataplane.RepositoryPresence, regLookup dataplane.RegistryLookup, uploads dataplane.UploadRecorder, pushGrants dataplane.PushGrantRecorder, logger *slog.Logger) (http.Handler, error) {
@@ -809,7 +809,7 @@ func runStaleSweeper(ctx context.Context, sweeper staleSweeper, interval time.Du
 
 // requireDataplaneTLSAck — data-plane OCI-листенер (DataplaneAddr) обслуживает открытый
 // HTTP; штатно TLS терминируется внешним ingress/mesh перед подом. По этому сокету
-// транзитят bearer identity-JWT (Hydra-issued, реплеябельные в пределах TTL). В
+// транзитят bearer identity-JWT (реплеябельные в пределах TTL). В
 // production/production-strict молчаливый plaintext-старт запрещён: если ingress
 // ошибочно настроен на plaintext-passthrough, docker-login токены утекают в открытом
 // виде (harvest+replay, CWE-319). Оператор обязан ЯВНО подтвердить внешнюю TLS-
