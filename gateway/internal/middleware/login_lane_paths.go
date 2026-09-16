@@ -30,7 +30,7 @@ package middleware
 const (
 	LoginLanePathLogin    = "/iam/v1/auth/login"
 	LoginLanePathLogout   = "/iam/v1/auth/logout"
-	LoginLanePathPassword = "/iam/v1/auth/password"
+	LoginLanePathPassword = "/iam/v1/auth/password" // #nosec G101 -- путь глагола смены пароля, а не удостоверение
 	LoginLanePathCSRF     = "/iam/v1/auth/csrf"
 )
 

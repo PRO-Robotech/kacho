@@ -71,6 +71,19 @@ func countPresent(body string, lines []string) int {
 	return n
 }
 
+// Словарь меток `verb` сходится с объявлением путей формы — в обе стороны.
+// Второе объявление глаголов здесь есть словарь ПОВЕРХНОСТИ (тот же порядок,
+// что у полос решений), и расхождение с объявлением путей обязано краснеть.
+func TestSessionLane_F3_48_VerbLabelsMatchTheDeclaredRoutes(t *testing.T) {
+	labels := gwmetrics.LoginLaneVerbLabels()
+	routes := middleware.LoginLaneRoutes()
+	require.Equal(t, len(routes), len(labels), "число меток и число глаголов формы")
+	for i, rt := range routes {
+		require.Equal(t, rt.Verb, labels[i], "метка %d расходится с объявлением пути %s", i, rt.Path)
+	}
+	t.Logf("перепись: глаголов объявлено %d · меток %d · сошлись %d", len(routes), len(labels), len(routes))
+}
+
 // Клетка отказа по требованию смены пароля — в семействе решений (Ф3-23, Ф3-48).
 func TestSessionLane_F3_48_PasswordChangeRequiredIsADecisionCell(t *testing.T) {
 	authz := middleware.NewAuthzMetrics()

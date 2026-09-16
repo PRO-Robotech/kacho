@@ -6,9 +6,9 @@
 //
 // Клетки существуют с нулём с первой секунды жизни процесса — «отказов по
 // отсечке не было» и «полосы нет» обязаны различаться без единого запроса.
-// Словарь меток закрыт: исходы полосы — константы этого файла, глаголы формы —
-// объявление `middleware.LoginLaneRoutes` (единственное; второе здесь было бы
-// вторым местом об одном предмете).
+// Словарь меток закрыт константами этого файла; словарь глаголов сверяется с
+// объявлением путей `middleware.LoginLaneRoutes` пробой, а не читается из него
+// в момент сбора.
 package metrics
 
 import (
@@ -24,6 +24,25 @@ const (
 	sessionOutcomeNoSession    = "no_session"
 	sessionOutcomeUnavailable  = "unavailable"
 )
+
+// Глаголы формы — закрытый словарь МЕТОК. Это словарь поверхности, а не второе
+// объявление путей: пути и их имена объявляет `middleware.LoginLaneRoutes`, а
+// сходимость двух словарей держит проба `TestSessionLane_F3_48_VerbLabelsMatchTheDeclaredRoutes`
+// — тем же порядком, что у полос решений (`decision*` выше и `AuthzCounts`).
+// Коллектор в момент сбора не зовёт НИЧЕГО вне пакета: гейт дерева
+// `TestDiagnosticCollectorsDoNotDialOut` судит любой вызов как поход наружу.
+const (
+	loginLaneVerbLogin    = "login"
+	loginLaneVerbLogout   = "logout"
+	loginLaneVerbPassword = "password"
+	loginLaneVerbCSRF     = "csrf"
+)
+
+// LoginLaneVerbLabels — значения метки `verb` в порядке объявления; для пробы
+// сходимости со словарём путей.
+func LoginLaneVerbLabels() []string {
+	return []string{loginLaneVerbLogin, loginLaneVerbLogout, loginLaneVerbPassword, loginLaneVerbCSRF}
+}
 
 // SessionLaneSnapshot — то, что корень отдаёт коллектору на каждый сбор: клетки
 // полосы личности и клетки ретранслятора вместе — они собраны в разных местах
@@ -76,8 +95,9 @@ func (c *sessionLaneCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 // Collect — ни одного внешнего вызова: `read` возвращает величины, уже лежащие
-// в процессе. Глаголы обходятся по ОБЪЯВЛЕНИЮ, а не по ключам снимка: клетка
-// глагола, по которому ретрансляций не было, обязана стоять нулём.
+// в процессе. Глаголы обходятся по закрытому словарю меток, а не по ключам
+// снимка: клетка глагола, по которому ретрансляций не было, обязана стоять
+// нулём.
 func (c *sessionLaneCollector) Collect(ch chan<- prometheus.Metric) {
 	s := c.read()
 	for outcome, value := range map[string]uint64{
@@ -88,8 +108,13 @@ func (c *sessionLaneCollector) Collect(ch chan<- prometheus.Metric) {
 		ch <- prometheus.MustNewConstMetric(sessionRefusalsDesc, prometheus.CounterValue, float64(value), outcome)
 	}
 	ch <- prometheus.MustNewConstMetric(sessionRolloutWindowDesc, prometheus.CounterValue, float64(s.Lane.RolloutWindow))
-	for _, rt := range middleware.LoginLaneRoutes() {
-		ch <- prometheus.MustNewConstMetric(loginLaneRelayedDesc, prometheus.CounterValue, float64(s.Relay.Relayed[rt.Verb]), rt.Verb)
+	for verb, value := range map[string]uint64{
+		loginLaneVerbLogin:    s.Relay.Relayed[loginLaneVerbLogin],
+		loginLaneVerbLogout:   s.Relay.Relayed[loginLaneVerbLogout],
+		loginLaneVerbPassword: s.Relay.Relayed[loginLaneVerbPassword],
+		loginLaneVerbCSRF:     s.Relay.Relayed[loginLaneVerbCSRF],
+	} {
+		ch <- prometheus.MustNewConstMetric(loginLaneRelayedDesc, prometheus.CounterValue, float64(value), verb)
 	}
 	ch <- prometheus.MustNewConstMetric(loginLaneUnreachableDesc, prometheus.CounterValue, float64(s.Relay.Unreachable))
 }
