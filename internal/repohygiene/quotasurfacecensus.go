@@ -381,6 +381,20 @@ var quotaCensusRules = []quotaCensusRule{
 		Token:    regexp.MustCompile(`quota`),
 	},
 	{
+		Surface: quotaSurfaceOwners, Code: "B11",
+		// ВЕЛИЧИНА потолка, объявленная ПОСАДКОЙ владельца: таблица ручек в его
+		// настройке, страж мощности объявленного множества и привязка ручек к
+		// переменным в разборе настроек.
+		//
+		// Поверхность та же, что у счётчика, и по той же причине: величину
+		// объявляет ВЛАДЕЛЕЦ ресурса, а не авторитет. Из службы доступа она не
+		// уходит, потому что там её никогда и не было, — решение о судьбе
+		// авторитета отдало объявление величины посадке домена.
+		Why:      "величина потолка, объявленная посадкой владельца, и страж её мощности",
+		NotScope: []string{iamServicePrefix},
+		Token:    regexp.MustCompile(`quotaceiling|QuotaCeiling|quota\.ceilings|QUOTA_CEILING`),
+	},
+	{
 		Surface: quotaSurfaceOwners, Code: "B8",
 		Why:      "имя общего контракта ответа об учёте",
 		NotScope: []string{iamServicePrefix},

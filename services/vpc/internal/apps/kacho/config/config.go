@@ -27,6 +27,14 @@ import (
 //
 // Все секции — `mapstructure`-теги (viper по умолчанию использует mapstructure
 // для Unmarshal). Default'ы — в defaults.go.
+// EnvPrefix — корневой сегмент имён переменных окружения службы.
+//
+// Объявлен ОДИН раз и читается всеми, кто выводит из него имена: разборщик
+// настроек (`load.go`), посадка mTLS и каталог величин потолков. Написанный
+// вторым литералом, он разошёлся бы с первым молча — и переменная, названная
+// текстом отказа, перестала бы доезжать до поля.
+const EnvPrefix = "KACHO_VPC"
+
 type Config struct {
 	Logger      LoggerConfig      `mapstructure:"logger"`
 	APIServer   APIServerConfig   `mapstructure:"api-server"`
@@ -63,6 +71,11 @@ type QuotaConfig struct {
 	//
 	// ENV `KACHO_VPC_QUOTA__AUTHORITY`.
 	Authority string `mapstructure:"authority"`
+
+	// Ceilings — ВЕЛИЧИНЫ потолков, объявленные посадкой домена. Множество
+	// либо пустое, либо равное каталогу (`quota_ceilings.go`); промежуточного
+	// не бывает — оно роняет старт.
+	Ceilings QuotaCeilingsConfig `mapstructure:"ceilings"`
 }
 
 // IAMConfig — секция iam: интеграция с kaname (fail-closed boot-gate +

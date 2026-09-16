@@ -67,6 +67,20 @@ func parse(path string) (*Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", envKeyDelimiter))
 	v.AutomaticEnv()
 
+	// ВЕЛИЧИНЫ ПОТОЛКОВ привязываются ЯВНО, и перечень ВЫВОДИТСЯ из каталога,
+	// а не выписывается вторым списком: выписанный разошёлся бы с ним молча.
+	//
+	// Явно — потому что замена ключа на имя переменной у этой службы дефис не
+	// трогает, а расширить её правило значило бы сделать читаемыми три десятка
+	// чужих ключей заодно (`quota_ceilings.go`). Привязка регистрирует ключ,
+	// значения ему НЕ назначая: незаданная переменная оставляет поле нулевым,
+	// и страж мощности видит вид необъявленным.
+	for _, k := range QuotaCeilingCatalog {
+		if err := v.BindEnv(k.Key, k.Env); err != nil {
+			return nil, fmt.Errorf("bind %s env: %w", k.Key, err)
+		}
+	}
+
 	RegisterDefaults(v)
 
 	path = strings.TrimSpace(path)

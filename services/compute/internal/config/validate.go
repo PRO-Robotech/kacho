@@ -56,6 +56,12 @@ func (c Config) Validate() error {
 		return err
 	}
 
+	// Множество объявленных ВЕЛИЧИН судится там же и на любом старте: частично
+	// объявленный набор выглядит настроенным и не ограничивает пропущенный вид.
+	if err := c.ValidateQuotaCeilings(); err != nil {
+		return err
+	}
+
 	// Стража общая на все семь сервисов: grpcsrv.TrustedForwarders.Require — один
 	// исход, один текст отказа, различаются только имена ручек.
 	if c.AuthZBreakglass {

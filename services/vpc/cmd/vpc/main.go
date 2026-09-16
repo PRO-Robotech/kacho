@@ -278,6 +278,15 @@ func runServe(cfg config.Config) error {
 		return fmt.Errorf("config validate (quota authority): %w", err)
 	}
 
+	// МНОЖЕСТВО объявленных ВЕЛИЧИН потолков: пусто либо каталог целиком.
+	// Промежуточное роняет старт — частично объявленный набор выглядит
+	// настроенным и не ограничивает пропущенный вид, не сообщая об этом ничем.
+	// Проверка стоит рядом с объявлением домена величин: предмет у них один —
+	// откуда берётся потолок.
+	if err := cfg.ValidateQuotaCeilings(); err != nil {
+		return fmt.Errorf("config validate (quota ceilings): %w", err)
+	}
+
 	pool, err := coredb.NewPool(ctx, cfg.DSN())
 	if err != nil {
 		return err

@@ -73,6 +73,11 @@ type Config struct {
 	// стадия S1, решение Д1.
 	QuotaAuthority string `envconfig:"KACHO_REGISTRY_QUOTA_AUTHORITY" default:""`
 
+	// QuotaCeilings — ВЕЛИЧИНЫ потолков, объявленные посадкой домена. Множество
+	// либо пустое, либо равное каталогу (`quota_ceilings.go`); промежуточного
+	// не бывает — оно роняет старт.
+	QuotaCeilings QuotaCeilingsConfig
+
 	// IAMProjectGRPCAddr — PUBLIC endpoint kaname (:9090) для ProjectService.Get
 	// (existence-валидация project на Create). ProjectService зарегистрирован ТОЛЬКО
 	// на public :9090; на internal :9091 (AuthZIAMGRPCAddr) его НЕТ — вызов там

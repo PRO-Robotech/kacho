@@ -15,7 +15,7 @@ import (
 // LoadPrefixed (envconfig) выводит env-имя каждого поля из иерархии:
 // mtlsEnvPrefix + tag родительского поля + tag/field примитива →
 // KACHO_VPC_<EDGE>_<NAME>.
-const mtlsEnvPrefix = "KACHO_VPC"
+const mtlsEnvPrefix = EnvPrefix
 
 // MTLSConfig — per-edge opt-in mTLS. Загружается ОТДЕЛЬНО от основного
 // viper-конфига через envconfig (LoadMTLS) — это горизонтальные corelib

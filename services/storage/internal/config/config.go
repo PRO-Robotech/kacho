@@ -76,6 +76,11 @@ type Config struct {
 	// стадия S1, решение Д1.
 	QuotaAuthority string `envconfig:"KACHO_STORAGE_QUOTA_AUTHORITY" default:""`
 
+	// QuotaCeilings — ВЕЛИЧИНЫ потолков, объявленные посадкой домена. Множество
+	// либо пустое, либо равное каталогу (`quota_ceilings.go`); промежуточного
+	// не бывает — оно роняет старт.
+	QuotaCeilings QuotaCeilingsConfig
+
 	// AuthZTrustedForwarderSANs — allow-list личностей сертификата (SPIFFE-SAN),
 	// которым разрешено ПЕРЕДАВАТЬ личность конечного пользователя в метаданных
 	// x-kacho-principal-*. Пробрасывается в оба листенера через

@@ -955,6 +955,7 @@ func (c Config) ValidateBoot(m MTLSConfig) error {
 		c.ValidateRequestRateLimits(),
 		c.ValidatePeerTransport(m),
 		c.ValidateQuotaAuthority(),
+		c.ValidateQuotaCeilings(),
 	)
 }
 

@@ -35,9 +35,24 @@ func Load(path string) (Config, error) {
 	RegisterDefaults(v)
 
 	// ENV-binding.
-	v.SetEnvPrefix("KACHO_VPC")
+	v.SetEnvPrefix(EnvPrefix)
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "__", "-", "_"))
 	v.AutomaticEnv()
+
+	// ВЕЛИЧИНЫ ПОТОЛКОВ привязываются ЯВНО, и перечень ВЫВОДИТСЯ из каталога, а
+	// не выписывается вторым списком: выписанный разошёлся бы с ним молча, и
+	// переменная, названная текстом отказа, перестала бы доезжать до поля.
+	//
+	// `AutomaticEnv` разрешает переменную только для ключа, который viper УЖЕ
+	// знает, а умолчания у этих ключей нет НАМЕРЕННО (`quota_ceilings.go`).
+	// Привязка регистрирует ключ, значения ему НЕ назначая: незаданная
+	// переменная оставляет поле нулевым, и страж мощности видит вид
+	// необъявленным.
+	for _, k := range QuotaCeilingCatalog {
+		if err := v.BindEnv(k.Key, k.Env); err != nil {
+			return Config{}, fmt.Errorf("bind %s env: %w", k.Key, err)
+		}
+	}
 
 	// YAML-файл (опционально).
 	if path != "" {

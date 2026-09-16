@@ -88,6 +88,11 @@ type QuotaConfig struct {
 	//
 	// ENV `KACHO_NLB_QUOTA__AUTHORITY`.
 	Authority string `mapstructure:"authority"`
+
+	// Ceilings — ВЕЛИЧИНЫ потолков, объявленные посадкой домена. Множество
+	// либо пустое, либо равное каталогу (`quota_ceilings.go`); промежуточного
+	// не бывает — оно роняет старт.
+	Ceilings QuotaCeilingsConfig `mapstructure:"ceilings"`
 }
 
 // Mode возвращает резолвленный enum-режим (после `Validate`).

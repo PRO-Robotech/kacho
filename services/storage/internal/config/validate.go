@@ -94,6 +94,12 @@ func (c Config) Validate() error {
 		return qerr
 	}
 
+	// Множество объявленных ВЕЛИЧИН судится там же и на любом старте: частично
+	// объявленный набор выглядит настроенным и не ограничивает пропущенный вид.
+	if cerr := c.ValidateQuotaCeilings(); cerr != nil {
+		return cerr
+	}
+
 	if !mode.IsProduction() {
 		// dev — insecure-дефолты допустимы (WARN в serve.go, не fatal): локальные
 		// фикстуры и dev-профиль стенда. Круг отправителей здесь больше не
