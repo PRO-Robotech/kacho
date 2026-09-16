@@ -1,7 +1,9 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// jwt_verifier.go — JWKS-cached JWT verifier for Hydra-issued access tokens.
+// jwt_verifier.go — JWKS-cached JWT verifier for asymmetric access tokens of every
+// accepted issuer: the key set is resolved by the token's `iss` through the declared
+// «issuer → key set» records (tokenissuers.go).
 //
 // Pipeline (RFC 8725 hardening applied):
 //  1. Parse JWT header → require `kid` + alg ∈ {RS256, ES256, EdDSA}; reject

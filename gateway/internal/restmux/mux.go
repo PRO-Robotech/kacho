@@ -885,7 +885,7 @@ func NewMux(
 			// InternalBootstrapTokenService.MintBootstrapToken (#58) is DELIBERATELY
 			// NOT registered here — do not add it back.
 			//
-			// It mints a Hydra-signed RS256 Bearer for a cluster `system_admin`
+			// It mints a platform-signed Bearer (kaname's own signer) for a cluster `system_admin`
 			// ServiceAccount, and its catalog permission is `<exempt>`. The authz
 			// middleware admits an `<exempt>` Internal* RPC that arrives on the
 			// cluster-internal listener WITHOUT extracting a principal
