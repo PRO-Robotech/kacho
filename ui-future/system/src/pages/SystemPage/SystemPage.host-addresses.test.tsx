@@ -16,8 +16,18 @@ import React from "react";
 import { jest } from "@jest/globals";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Outlet, Route, Routes, useLocation } from "react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ApiError } from "@shared/api/client";
 
 const marker = (name: string) => () => React.createElement("div", null, name);
+
+// Раздел спрашивает у края посадку admin-плоскости (#2692); здесь предмет —
+// маршруты, и проба отвечает никогда: посадка остаётся неизвестной, адрес
+// от этого не зависит.
+jest.unstable_mockModule("@shared/api/client", () => ({
+  api: { list: () => new Promise(() => {}), get: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn(), action: jest.fn() },
+  ApiError,
+}));
 
 jest.unstable_mockModule("@shared/components/organisms/ResourceListPage", () => ({
   ResourceListPage: marker("список"),
@@ -54,12 +64,15 @@ function Address() {
 }
 
 function openAt(address: string) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <MemoryRouter initialEntries={[address]}>
-      <Address />
-      <Routes>
-        <Route path="/system/*" element={<SystemRoutes />} />
-      </Routes>
+      <QueryClientProvider client={client}>
+        <Address />
+        <Routes>
+          <Route path="/system/*" element={<SystemRoutes />} />
+        </Routes>
+      </QueryClientProvider>
     </MemoryRouter>,
   );
   // Перенаправление правила-ловушки происходит В ХОДЕ отрисовки, поэтому адрес
