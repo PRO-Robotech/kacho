@@ -1,0 +1,145 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+// auth_own_session.go — полоса личности под посадкой `own`: НАША сессия,
+// прочитанная по носителю (приёмка Ф3, Р7; §4.1 п.9).
+//
+// # Два вопроса службе, и ответ о сессии отсечку не применяет
+//
+// На каждом предъявлении полоса спрашивает службу ДВАЖДЫ: о сессии по носителю
+// (`Resolve`) и об отсечке субъекта (`SessionCutoffOf`), и сравнивает момент
+// аутентификации с отсечкой сама — включающе, на микросекундах, тем же
+// читателем, что полоса поставщика (`sessionCutoffCheck`). Один вопрос, применивший
+// отсечку внутри службы, оставил бы второго читателя отсечки в службе и сделал
+// бы неконструируемым «UNIMPLEMENTED только об отсечке — проход громко»
+// (Ф1-56, F4d-29).
+//
+// # Что полоса делает на каждом исходе — на путях платформы и на «кто я»
+//
+//   - носителя нет → анонимно дальше, как сегодня (судит следующее звено);
+//   - «сессии нет» при носителе → F4d-22: 401 текстом отсечки, носитель
+//     гасится. Пять причин (неизвестен · снят выходом · истёк · заблокирована ·
+//     отсечён) — один отказ (Ф1-17, Ф3-10). ЭТО СМЕНА ПОВЕДЕНИЯ полосы: прежняя
+//     полоса пропускала такой носитель анонимно с целым печеньем (§1.8);
+//   - служба не ответила ни на один из двух вопросов, ответила UNAVAILABLE либо
+//     UNIMPLEMENTED о сессии → F4d-23: ТОТ ЖЕ код и ТОТ ЖЕ текст, носитель цел;
+//   - UNIMPLEMENTED только об отсечке при живой сессии → проход, громко, со
+//     счётчиком (окно раската);
+//   - неклассифицированный ответ → отказ. Корзины «прочее» нет.
+//
+// # На четырёх глаголах формы полоса отличается РОВНО ОДНИМ исходом (Р7, Р16)
+//
+// «Сессии нет» она РЕТРАНСЛИРУЕТ — исход судит служба по записи (выход
+// идемпотентен, смена отвергает, вход выдаёт, признак выдаётся). Отсечку она
+// отвергает и здесь: носитель отсечённой сессии до службы не доходит (Ф3-51),
+// потому что читатель отсечки ОДИН и он на крае. Недоступность на входе,
+// выходе и признаке ретранслируется (служба ответит своим 503 — Ф3-17); на
+// смене пароля — единственном глаголе, меняющем состояние ПОД сессией носителя,
+// — F4d-23 (Ф3-20 «д»). Ветка читает то же объявление четырёх путей, которым
+// регистрируется ретрансляция (`login_lane_paths.go`), а не `isPublicHTTPPath`:
+// «кто я» стоит в последнем и точкой предъявления остаётся.
+package middleware
+
+import (
+	"errors"
+	"net/http"
+)
+
+// tryOwnSession — полоса нашей сессии. Возвращает запрос, с которым цепочка
+// продолжается (тот же либо с помеченным контекстом), и ту же пару, что
+// tryKratosSession: injected — личность выставлена; handled — полоса ответила
+// сама и вызывающий обязан вернуться.
+func (a *AuthInterceptor) tryOwnSession(w http.ResponseWriter, r *http.Request) (next *http.Request, injected, handled bool) {
+	if a.humanSession == nil {
+		return r, false, false
+	}
+	// Носитель читается по имени печенья, а не подстрокой заголовка: значение
+	// уходит службе КАК ЕСТЬ, и его границы обязаны быть теми, что провёл
+	// браузер. Печенье поставщика без нашего носителем не является (Ф1-52).
+	carrier, err := r.Cookie(OurSessionCarrierName)
+	if err != nil || carrier.Value == "" {
+		return r, false, false
+	}
+	route := r.URL.Path
+	formVerb := IsLoginLanePath(route)
+	// Недоступность на форме ретранслируется на всех глаголах, КРОМЕ смены
+	// пароля — она меняет состояние под сессией носителя, чью отсечку установить
+	// не удалось (Р7, круг 2 Б-4).
+	relayOnUnavailable := formVerb && route != LoginLanePathPassword
+
+	sess, found, err := a.humanSession.ResolveHumanSession(r.Context(), carrier.Value)
+	if err != nil {
+		if relayOnUnavailable {
+			return r, false, false
+		}
+		// F4d-23. `UNIMPLEMENTED` о сессии — тот же отказ: годность носителя не
+		// подтверждена ничем, и «проход громко» означал бы личность из ниоткуда.
+		a.sessionLane.recordUnavailable()
+		a.reportOwnSessionUnavailable(err, route)
+		writeHTTPUnauthorized(w, sessionCutoffDenyDescription)
+		return r, false, true
+	}
+	if !found {
+		if formVerb {
+			// Исход судит служба по записи (Ф1-18, Ф3-20 «в», Ф3-01, Ф3-35).
+			return r, false, false
+		}
+		a.sessionLane.recordNoSession()
+		EndSessionCarriers(w)
+		writeHTTPUnauthorized(w, sessionCutoffDenyDescription)
+		return r, false, true
+	}
+
+	subj := Subject{Type: "user", ID: sess.UserID, DisplayName: sess.DisplayName}
+	switch a.sessionCutoffCheck(r.Context(), subj, sess.AuthenticatedAt, route) {
+	case sessionCutoffEnded:
+		// На ЛЮБОМ пути, включая четыре глагола формы (Ф3-51).
+		a.sessionLane.recordCutoffDenied()
+		EndSessionCarriers(w)
+		writeHTTPUnauthorized(w, sessionCutoffDenyDescription)
+		return r, false, true
+	case sessionCutoffUnanswered:
+		if relayOnUnavailable {
+			return r, false, false
+		}
+		a.sessionLane.recordUnavailable()
+		writeHTTPUnauthorized(w, sessionCutoffDenyDescription)
+		return r, false, true
+	case sessionCutoffUnsupported:
+		a.sessionLane.recordRolloutWindow()
+	case sessionCutoffNotAsked, sessionCutoffLive:
+	}
+
+	// Пол уверенности — тот же вопрос, что на полосе поставщика; уровень нашей
+	// сессии уже на оси каталога (Ф11), перевода нет.
+	assurance := StepUpAssurance{PrincipalType: subj.Type, ACR: sess.AssuranceLevel, AuthTime: sess.AuthenticatedAt}
+	if a.enforceStepUpHTTP(w, r, assurance, stepUpLaneSession) {
+		return r, false, true
+	}
+	// Множества предъявленного наша сессия не несёт (Ф11 Р7): довод условия
+	// `mfa_fresh` о ВИДЕ способа отсутствует, о свежести — момент аутентификации.
+	setSessionAssuranceHeaders(r, assurance, nil)
+	setPrincipalHeaders(r, subj.Type, subj.ID, subj.DisplayName)
+	if sess.PasswordChangeRequired {
+		// Доносится до решения по каталогу (Р8) — контекстом, не заголовком.
+		r = r.WithContext(WithPasswordChangeRequired(r.Context()))
+	}
+	a.logger.Info("auth.HTTP: Principal injected (own session)", "type", subj.Type, "id", subj.ID)
+	return r, true, false
+}
+
+// reportOwnSessionUnavailable докладывает о службе, не ответившей о сессии, с
+// тем же ограничением частоты, что у отсечки: два вопроса одному соседу — одно
+// окно доклада, иначе всплеск одного подавлял бы первый доклад другого.
+func (a *AuthInterceptor) reportOwnSessionUnavailable(err error, route string) {
+	report, total, represents := a.sessionCutoffFailures.observe()
+	if !report {
+		return
+	}
+	msg := "human session lookup unanswered; refusing browser session"
+	if errors.Is(err, ErrHumanSessionUnsupported) {
+		msg = "human session lookup not offered by the authority; refusing browser session (image skew)"
+	}
+	a.logger.Error(msg, "err", err, "route", route,
+		"session_lane_failures_total", total, "occurrences_since_last_report", represents)
+}

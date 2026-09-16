@@ -37,6 +37,13 @@ type SessionRevocationsAdapter struct {
 	// отдельно, — то есть половину, которую можно ЗАБЫТЬ отдельно, и забытая
 	// выглядела бы исполняемым контролем ровно для той полосы, что осталась.
 	iam iamv1.InternalIAMServiceClient
+
+	// human — вопрос о НАШЕЙ сессии по носителю (Ф3 Р7): тот же внутренний
+	// слушатель, то же соединение, что у вопроса об отсечке. Два вопроса края на
+	// одном предъявлении идут одному соседу по одному каналу, и второй адаптер
+	// в точке сборки был бы половиной, которую можно провязать — и забыть —
+	// отдельно.
+	human iamv1.InternalHumanSessionServiceClient
 }
 
 // NewSessionRevocationsAdapter wires the adapter onto an existing gRPC
@@ -45,7 +52,46 @@ func NewSessionRevocationsAdapter(cc grpc.ClientConnInterface) *SessionRevocatio
 	return &SessionRevocationsAdapter{
 		client: iamv1.NewInternalSessionRevocationsServiceClient(cc),
 		iam:    iamv1.NewInternalIAMServiceClient(cc),
+		human:  iamv1.NewInternalHumanSessionServiceClient(cc),
 	}
+}
+
+// ResolveHumanSession спрашивает службу, какая НАША сессия стоит за носителем
+// (`InternalHumanSessionService.Resolve`; приёмка Ф3 Р7, Ф3-09).
+//
+// Три исхода владельца переводятся ЗДЕСЬ, и ни один не сливается:
+//   - `OK, found` → сессия составом Ф3-09; момент аутентификации берётся
+//     В РАЗРЕШЕНИИ ПРОВОДА (микросекунды) — край сравнивает его с отсечкой
+//     включающе, и усечение здесь сделало бы замок Ф3-16 красным by construction;
+//   - `OK, !found` → «сессии нет» — один ответ на все причины, БЕЗ ошибки;
+//   - `UNIMPLEMENTED` → типизированный признак ErrHumanSessionUnsupported
+//     (окно раската): знание о кодах транспорта принадлежит адаптеру, решение —
+//     полосе (там это отказ F4d-23, а не проход);
+//   - прочее → «спросить не удалось», ошибка без подмены.
+func (a *SessionRevocationsAdapter) ResolveHumanSession(
+	ctx context.Context, bearer string,
+) (middleware.HumanSession, bool, error) {
+	resp, err := a.human.Resolve(ctx, &iamv1.ResolveHumanSessionRequest{Bearer: bearer})
+	if err != nil {
+		if status.Code(err) == codes.Unimplemented {
+			return middleware.HumanSession{}, false, middleware.ErrHumanSessionUnsupported
+		}
+		return middleware.HumanSession{}, false, err
+	}
+	if !resp.GetFound() || resp.GetSession() == nil {
+		return middleware.HumanSession{}, false, nil
+	}
+	s := resp.GetSession()
+	return middleware.HumanSession{
+		UserID:                 s.GetUserId(),
+		Email:                  s.GetEmail(),
+		DisplayName:            s.GetDisplayName(),
+		AuthenticatedAt:        s.GetAuthenticatedAt().AsTime(),
+		ExpiresAt:              s.GetExpiresAt().AsTime(),
+		AssuranceLevel:         s.GetAssuranceLevel(),
+		EmailVerified:          s.GetEmailVerified(),
+		PasswordChangeRequired: s.GetPasswordChangeRequired(),
+	}, true, nil
 }
 
 // IsBasicCredentialLive спрашивает НАШ авторитет, живо ли базовое удостоверение,

@@ -48,6 +48,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // AdminChecker — port для проверки system-admin.
@@ -65,6 +66,10 @@ type SessionIdentityHandler struct {
 	adminCheck    AdminChecker    // optional admin-tuple lookup
 	// sessionCutoff — НАШ авторитет отзыва. См. WithSessionCutoff.
 	sessionCutoff SessionCutoffReader
+	// humanSession — читатель НАШЕЙ сессии (посадка `own`, Ф3 Р7). Провязывается
+	// ВМЕСТО `kratos`, никогда рядом с ним: композиционный корень выбирает
+	// читателя по посадке.
+	humanSession HumanSessionReader
 }
 
 func NewSessionIdentityHandler(logger *slog.Logger) *SessionIdentityHandler {
@@ -94,6 +99,19 @@ func (h *SessionIdentityHandler) WithSessionCutoff(r SessionCutoffReader) *Sessi
 	return h
 }
 
+// WithHumanSession — подключает читателя НАШЕЙ сессии (посадка `own`).
+//
+// Маршрут «кто я» стоит ЗА полосой личности (Д13): отвергнутую сессию полоса
+// гасит F4d-22 до этого обработчика. Но читатель здесь СВОЙ — вложенная точка
+// предъявления (Ф3-52, F4d-28): обработчику нужны поля сессии (срок, уровень,
+// подтверждённость, требование смены), которых полоса в запрос не кладёт, и
+// свой вопрос об отсечке он задаёт сам — снимать его ради одного вызова
+// запрещает гейт.
+func (h *SessionIdentityHandler) WithHumanSession(r HumanSessionReader) *SessionIdentityHandler {
+	h.humanSession = r
+	return h
+}
+
 // WithAdminChecker — system-admin tuple lookup для /me.
 // Возвращает permissions:["*","admin"] если subject имеет соответствующий tuple.
 func (h *SessionIdentityHandler) WithAdminChecker(a AdminChecker) *SessionIdentityHandler {
@@ -110,6 +128,11 @@ func (h *SessionIdentityHandler) Register(mux *http.ServeMux) {
 // либо `{"user":{...}}` с userinfo из сессии провайдера личности.
 func (h *SessionIdentityHandler) Me(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	if h.humanSession != nil {
+		h.meFromOwnSession(w, r)
+		return
+	}
 
 	if h.kratos != nil {
 		cookieHdr := r.Header.Get("Cookie")
@@ -138,7 +161,7 @@ func (h *SessionIdentityHandler) Me(w http.ResponseWriter, r *http.Request) {
 						// вошедший: анонимный ответ здесь и отказ на пути
 						// запроса суть одно состояние, названное двумя полосами
 						// одинаково.
-						if h.sessionRevoked(r.Context(), subj, res) {
+						if h.sessionRevoked(r.Context(), subj, res.AuthenticatedAt) {
 							_, _ = w.Write([]byte(`{"user":null}`))
 							return
 						}
@@ -169,6 +192,65 @@ func (h *SessionIdentityHandler) Me(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(`{"user":null}`))
 }
 
+// meFromOwnSession — «кто я» из НАШЕЙ сессии (Ф3-14).
+//
+// Форма ответа прежняя, объект `session` добавлен: срок (усечён до секунды —
+// показывается, не сравнивается), уровень, подтверждённость адреса, требование
+// сменить пароль (из него консоль узнаёт, что показать экран смены — Р8).
+// Без носителя и с печеньем поставщика без нашего — `{"user":null}` побайтово
+// (Ф1-52): под `own` печенье поставщика носителем не является.
+//
+// «Сессии нет», недоступность и отсечка отвечают анонимом: через боевую
+// цепочку сюда доходит только запрос, который полоса уже пропустила, и эти
+// исходы здесь — гонка между двумя вопросами одного запроса, а не отказ (его
+// произвела бы полоса). Fail-closed в ту же сторону, что прежде: анонимный
+// ответ и отказ на пути запроса суть одно состояние.
+func (h *SessionIdentityHandler) meFromOwnSession(w http.ResponseWriter, r *http.Request) {
+	carrier, err := r.Cookie(OurSessionCarrierName)
+	if err != nil || carrier.Value == "" {
+		_, _ = w.Write([]byte(`{"user":null}`))
+		return
+	}
+	sess, found, err := h.humanSession.ResolveHumanSession(r.Context(), carrier.Value)
+	if err != nil {
+		h.logger.Error("/me: human session lookup unanswered; answering anonymous", "err", err.Error())
+		_, _ = w.Write([]byte(`{"user":null}`))
+		return
+	}
+	if !found {
+		_, _ = w.Write([]byte(`{"user":null}`))
+		return
+	}
+	subj := Subject{Type: "user", ID: sess.UserID, DisplayName: sess.DisplayName}
+	if h.sessionRevoked(r.Context(), subj, sess.AuthenticatedAt) {
+		_, _ = w.Write([]byte(`{"user":null}`))
+		return
+	}
+	userObj := map[string]any{
+		"id":          subj.ID,
+		"email":       sess.Email,
+		"displayName": subj.DisplayName,
+		"subjectType": subj.Type,
+		"permissions": []string{},
+	}
+	// `permissions` — как сегодня (`system_admin` на кластере), по НАШЕМУ субъекту.
+	if h.adminCheck != nil {
+		ok, _ := h.adminCheck.IsSystemAdmin(r.Context(), subj.Type+":"+subj.ID)
+		if ok {
+			userObj["permissions"] = []string{"*", "admin"}
+		}
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"user": userObj,
+		"session": map[string]any{
+			"expiresAt":              sess.ExpiresAt.UTC().Truncate(time.Second).Format(time.RFC3339),
+			"assuranceLevel":         sess.AssuranceLevel,
+			"emailVerified":          sess.EmailVerified,
+			"passwordChangeRequired": sess.PasswordChangeRequired,
+		},
+	})
+}
+
 // sessionRevoked — отвергнута ли эта сессия НАШЕЙ отсечкой.
 //
 // Fail-closed по обоим неопределённым исходам, и это то же решение, что на
@@ -177,7 +259,7 @@ func (h *SessionIdentityHandler) Me(w http.ResponseWriter, r *http.Request) {
 // доказать своё непревышение не может. Обратное — мягкий проход — означало бы
 // «отзываем и свой же отзыв не исполняем».
 func (h *SessionIdentityHandler) sessionRevoked(
-	ctx context.Context, subj Subject, sess KratosWhoamiResult,
+	ctx context.Context, subj Subject, authenticatedAt time.Time,
 ) bool {
 	if h.sessionCutoff == nil || subj.Type != "user" || subj.ID == "" {
 		return false
@@ -197,8 +279,8 @@ func (h *SessionIdentityHandler) sessionRevoked(
 	if !found {
 		return false
 	}
-	if sess.AuthenticatedAt.IsZero() {
+	if authenticatedAt.IsZero() {
 		return true
 	}
-	return !sess.AuthenticatedAt.After(cutoff)
+	return !authenticatedAt.After(cutoff)
 }

@@ -128,6 +128,10 @@ var (
 // конце пробы, а не принимается на веру.
 func laneQuestions() map[string]laneQuestion {
 	return map[string]laneQuestion{
+		// Наша сессия — та же пара (человек, момент): перепрос на открытом
+		// соединении задаёт про неё тот же вопрос об отсечке, что и про сессию
+		// поставщика (Ф3 Р7: читатель отсечки один).
+		"tryOwnSession":      questionSubjectCutoff,
 		"tryKratosSession":   questionSubjectCutoff,
 		"tryHydraJWT":        questionSessionRevocation,
 		"tryBasicCredential": questionBasicCredentialLiveness,

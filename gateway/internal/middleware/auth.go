@@ -179,6 +179,14 @@ type AuthInterceptor struct {
 	// своё последствие, и слитое с полосой предъявителя окно подавляло бы первый
 	// доклад одной из них.
 	sessionCutoffFailures *introspectionFailureReporter
+	// humanSession — читатель НАШЕЙ сессии по носителю `kaname_session` (посадка
+	// `own`, приёмка Ф3 Р7). nil → полоса нашей сессии не провязана. Композиционный
+	// корень провязывает ровно ОДНОГО из двух читателей — этот либо `kratos` —
+	// по посадке; оба разом не провязываются (гейт композиционного корня).
+	humanSession HumanSessionReader
+	// sessionLane — клетки полосы сессии (Ф3-48). Заводится сразу, чтобы ноль в
+	// клетке отличался от «полосы нет».
+	sessionLane *SessionLaneCounts
 	// sessionAssuranceUnknown — своё окно доклада для полосы сессии, назвавшей
 	// уровень уверенности, который край перевести не может (или не назвавшей
 	// его вовсе). Состояние означает «пол на этой полосе не удовлетворить
@@ -223,7 +231,33 @@ func NewAuthInterceptor(mode AuthMode, devSecret string, lookup SubjectLookuper,
 		mdKeyPrincipalID:      principalmeta.MetaPrincipalID,
 		mdKeyPrincipalDisplay: principalmeta.MetaPrincipalDisplay,
 		authMethodsUnusable:   newIntrospectionFailureReporter(0, nil),
+		sessionLane:           &SessionLaneCounts{},
 	}
+}
+
+// WithHumanSession провязывает читателя НАШЕЙ сессии человека (посадка `own`,
+// приёмка Ф3 Р7). Полоса читает носитель `kaname_session`, спрашивает службу о
+// сессии на КАЖДОМ предъявлении (кэша нет — Р7) и затем нашу отсечку —
+// `sessionCutoffCheck`, тем же читателем, что полоса поставщика.
+//
+// nil оставляет полосу непровязанной.
+func (a *AuthInterceptor) WithHumanSession(r HumanSessionReader) *AuthInterceptor {
+	if r == nil {
+		return a
+	}
+	a.humanSession = r
+	// Окно доклада о неотвечающей службе — ОДНО на оба вопроса к ней (сессия и
+	// отсечка): заводится здесь, если читатель отсечки ещё не завёл его.
+	if a.sessionCutoffFailures == nil {
+		a.sessionCutoffFailures = newIntrospectionFailureReporter(0, nil)
+	}
+	return a
+}
+
+// SessionLaneStats — слепок клеток полосы сессии для диагностической
+// поверхности (Ф3-48).
+func (a *AuthInterceptor) SessionLaneStats() SessionLaneSnapshot {
+	return a.sessionLane.Snapshot()
 }
 
 // WithRequireMachineTokenBinding demands that MACHINE principals present a
@@ -942,9 +976,19 @@ func (a *AuthInterceptor) HTTP(next http.Handler) http.Handler {
 		// сама ответить отказом. Прежде она умела только «резолвил / не
 		// резолвил», и отвергнуть сессию ей было нечем — оттого наш отзыв на ней
 		// и не действовал (auth_session_cutoff.go).
-		injected, handled := a.tryKratosSession(w, r)
+		//
+		// Читателей носителя ДВА по посадке и ОДИН в процессе (Ф3 Р15): под `own`
+		// — наша сессия, под `external` — сессия поставщика. Оба терминальны и
+		// оба выставляют личность одними именами.
+		r, injected, handled := a.tryOwnSession(w, r)
 		if handled {
 			return
+		}
+		if !injected {
+			injected, handled = a.tryKratosSession(w, r)
+			if handled {
+				return
+			}
 		}
 
 		if !injected {
@@ -1103,23 +1147,28 @@ func (a *AuthInterceptor) tryKratosSession(w http.ResponseWriter, r *http.Reques
 	// Отзыв спрашивается ДО того, как личность попадёт в заголовки: принципал,
 	// выставленный отвергнутой сессии, доехал бы до прав и до backend прежде,
 	// чем отказ успел бы что-то значить.
-	switch a.sessionCutoffCheck(r.Context(), subj, res, r.URL.Path) {
+	switch a.sessionCutoffCheck(r.Context(), subj, res.AuthenticatedAt, r.URL.Path) {
 	case sessionCutoffEnded:
 		// Отказ И окончание носителя — вместе. Порознь первое даёт СТОЯЩИЙ
 		// отказ: сессия жива, момент её аутентификации прежний, и повторной
 		// аутентификации ничто не запросит.
+		a.sessionLane.recordCutoffDenied()
 		EndSessionCarriers(w)
 		writeHTTPUnauthorized(w, sessionCutoffDenyDescription)
 		return false, true
 	case sessionCutoffUnanswered:
 		// Носителя НЕ гасим: заминка своего же соседа не повод выкидывать тех,
-		// кого никто не отзывал.
-		writeHTTPUnauthorized(w, sessionCutoffUnavailableReason)
+		// кого никто не отзывал. Текст — ТОТ ЖЕ, что у отсечки (F4d-23, Д3).
+		a.sessionLane.recordUnavailable()
+		writeHTTPUnauthorized(w, sessionCutoffDenyDescription)
 		return false, true
-	case sessionCutoffNotAsked, sessionCutoffLive, sessionCutoffUnsupported:
+	case sessionCutoffUnsupported:
+		a.sessionLane.recordRolloutWindow()
 		// Полоса продолжается. `unsupported` — окно раската, а не решение: край
 		// впереди службы прав, и отвергать здесь значило бы уронить консоль на
 		// время раската. Состояние сходится само и докладывается громко.
+	case sessionCutoffNotAsked, sessionCutoffLive:
+		// Полоса продолжается.
 	}
 	// Достаточно ли СИЛЬНО человек аутентифицировался ДЛЯ ЭТОГО обращения?
 	// Спрашивается ровно там же, где на полосе предъявителя, и по тем же
