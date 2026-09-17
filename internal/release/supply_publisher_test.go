@@ -28,6 +28,9 @@ import (
 // holder. Only the receiving forge, proxy, clock and the owned receive-pack
 // server endpoint are test adapters; no command result is manufactured.
 func rsPublisherBridgeSource(t *testing.T) string {
+	return rsPublicChecksumBridgeSource(t, rsPublisherBridgeBaseSource(t))
+}
+func rsPublisherBridgeBaseSource(t *testing.T) string {
 	t.Helper()
 	s := rsConsumerBridgeSource
 	replace := func(old, next string) {
@@ -598,6 +601,8 @@ type rsPublisherObservation struct {
 
 func rsInvokePublisher(h *rsHarness, p *rsPublisherFixture, f *rsForgeProcess, binary, label string, args []string) rsPublisherObservation {
 	h.t.Helper()
+	checksum := rsNewPublisherChecksumService(h, p, label)
+	defer checksum.close()
 	dir := filepath.Join(h.root, "publisher-result-"+label)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		h.t.Fatal(err)
@@ -607,10 +612,15 @@ func rsInvokePublisher(h *rsHarness, p *rsPublisherFixture, f *rsForgeProcess, b
 		remotes[k] = v
 	}
 	remotes["https://github.com/PRO-Robotech/corelib.git"] = "file://" + f.repository
-	req := map[string]any{"args": args, "output": dir, "remotes": remotes, "endpoint": f.endpoint, "receive_pack": f.wrapper}
+	req := map[string]any{"args": args, "output": dir, "remotes": remotes, "endpoint": f.endpoint, "receive_pack": f.wrapper, "checksum": checksum.mapping}
 	path := filepath.Join(h.root, "publisher-request-"+label+".json")
 	h.put(h.root, filepath.Base(path), string(rsCanonicalJSON(h.t, req)))
-	_, stderr, rc := h.run(h.root, []string{"CI_RS_BRIDGE_REQUEST=" + path, "GOPROXY=off", "GOSUMDB=off"}, binary, "-test.run=^TestCIRSConsumerBridge$", "-test.v", "-test.timeout=115s")
+	ownedTmp := filepath.Join(h.root, "publisher-sut-tmp-"+label)
+	if err := os.MkdirAll(ownedTmp, 0700); err != nil {
+		h.t.Fatal(err)
+	}
+	producerCache := h.must(h.root, h.goBin, "env", "GOMODCACHE")
+	_, stderr, rc := h.run(h.root, []string{"CI_RS_BRIDGE_REQUEST=" + path, "GOPROXY=off", "GOSUMDB=off", "GOPATH=" + filepath.Join(h.root, "publisher-sut-gopath-"+label), "GOMODCACHE=" + producerCache, "TMPDIR=" + ownedTmp}, binary, "-test.run=^TestCIRSConsumerBridge$", "-test.v", "-test.timeout=115s")
 	if rc != 0 {
 		h.t.Fatalf("HARNESS_NOT_EXECUTED: publisher bridge rc%d %s", rc, stderr)
 	}
@@ -629,6 +639,7 @@ func rsInvokePublisher(h *rsHarness, p *rsPublisherFixture, f *rsForgeProcess, b
 	if len(state["unknown"].([]any)) != 0 {
 		h.t.Fatalf("HARNESS_NOT_EXECUTED: undeclared fixture routes %+v", state["unknown"])
 	}
+	rsCleanupPublicChecksumCaches(h, dir)
 	result := rsValidateResult(h, mustRSRead(h.t, filepath.Join(dir, "sut.stdout")), label)
 	commands := []map[string]any{}
 	entries, err := os.ReadDir(dir)
@@ -644,7 +655,12 @@ func rsInvokePublisher(h *rsHarness, p *rsPublisherFixture, f *rsForgeProcess, b
 			commands = append(commands, cmd)
 		}
 	}
-	return rsPublisherObservation{result, meta, dir, commands}
+	observation := rsPublisherObservation{result, meta, dir, commands}
+	checksum.close()
+	if len(args) > 1 && args[0] == "--phase" && args[1] == "probe" && result["outcome"] == "GREEN" {
+		rsCheckChecksumCommandWithContext(h, checksum, rsPublisherCase{Name: "lawful", Phase: "probe", Outcome: "GREEN", Reason: "OK", Stage: "ARCHIVE_VERIFIED"}, observation, 110*time.Second, false)
+	}
+	return observation
 }
 
 func rsCheckPublisher(h *rsHarness, c rsPublisherCase, o rsPublisherObservation, plan, candidate string) {
@@ -775,6 +791,7 @@ func rsPublisherVerb(t *testing.T, args []string) string {
 func TestReleaseSupplyPublisherProtocol(t *testing.T) {
 	p := rsPreparePublisher(t)
 	h := p.f.h
+	rsPublisherChecksumPrerequisite(h, p)
 	rsPublisherParserControls(h)
 	rsPublisherTransportControls(p)
 	rsPublisherLeaseOracleControls(h)

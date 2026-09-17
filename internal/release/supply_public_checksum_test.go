@@ -527,8 +527,7 @@ func rsChecksumAdapterDeclarations(t *testing.T) string {
 	}
 	return out.String()
 }
-func rsChecksumBridgeSource(t *testing.T) string {
-	s := rsPublisherBridgeSource(t)
+func rsPublicChecksumBridgeSource(t *testing.T, s string) string {
 	replace := func(old, new string) {
 		if strings.Count(s, old) != 1 {
 			t.Fatalf("HARNESS_NOT_EXECUTED: checksum bridge anchor %q", old)
@@ -543,13 +542,23 @@ func rsChecksumBridgeSource(t *testing.T) string {
     return release.SupplyCommandResult{Stdout:stdout,Stderr:stderr,ExitCode:rc,Err:err}
    }
    args:=append([]string(nil),c.Args...)`)
+	return s + "\n" + rsChecksumAdapterDeclarations(t)
+}
+func rsChecksumBridgeSource(t *testing.T) string {
+	s := rsPublisherBridgeSource(t)
+	replace := func(old, new string) {
+		if strings.Count(s, old) != 1 {
+			t.Fatalf("HARNESS_NOT_EXECUTED: checksum context anchor %q", old)
+		}
+		s = strings.Replace(s, old, new, 1)
+	}
 	// The seven-second limit is this test's explicit parent context, not the
 	// product's HTTP network budget or its ordinary600s Go command policy.
 	replace("rc:=release.RunSupplyPublisher(ctx,request.Args,deps,&stdout,&stderr)", `sutCtx:=ctx;sutCancel:=func(){};probeContext:=len(request.Args)>1&&request.Args[0]=="--phase"&&request.Args[1]=="probe"
  sutBudget:=time.Duration(0);if probeContext{sutBudget=7*time.Second;sutCtx,sutCancel=context.WithTimeout(ctx,sutBudget)};defer sutCancel()
  rc:=release.RunSupplyPublisher(sutCtx,request.Args,deps,&stdout,&stderr)`)
 	replace(`"deadline_exceeded":ctx.Err()!=nil,`, `"deadline_exceeded":ctx.Err()!=nil,"harness_deadline_exceeded":errors.Is(ctx.Err(),context.DeadlineExceeded),"sut_deadline_exceeded":errors.Is(sutCtx.Err(),context.DeadlineExceeded),"sut_probe_context_applied":probeContext,"sut_parent_budget_nanoseconds":int64(sutBudget),`)
-	return s + "\n" + rsChecksumAdapterDeclarations(t)
+	return s
 }
 func rsBuildChecksumBridge(h *rsHarness) string {
 	_ = rsBuildConsumerBridge(h)
@@ -599,33 +608,7 @@ func rsChecksumInvoke(h *rsHarness, p *rsPublisherFixture, f *rsForgeProcess, s 
 	if meta["sut_probe_context_applied"] != probe || meta["sut_parent_budget_nanoseconds"] != wantBudget || (!probe && meta["sut_deadline_exceeded"] != false) {
 		h.t.Fatalf("HARNESS_NOT_EXECUTED: checksum explicit parent context metadata %+v", meta)
 	}
-	publicCommands, globErr := filepath.Glob(filepath.Join(dir, "public-go-*.json"))
-	if globErr != nil {
-		h.t.Fatal(globErr)
-	}
-	for _, path := range publicCommands {
-		var record map[string]any
-		if e := json.Unmarshal(mustRSRead(h.t, path), &record); e != nil {
-			h.t.Fatal(e)
-		}
-		original, ok := record["original_env"].(map[string]any)
-		if !ok {
-			continue
-		}
-		cache, ok := original["GOMODCACHE"].(string)
-		if !ok || !rsChecksumWithin(h.root, cache) {
-			continue
-		}
-		h.t.Cleanup(func() {
-			if _, e := os.Stat(cache); os.IsNotExist(e) {
-				return
-			}
-			_, stderr, rc := h.run(h.root, []string{"GOMODCACHE=" + cache}, h.goBin, "clean", "-modcache")
-			if rc != 0 {
-				h.t.Errorf("HARNESS_NOT_EXECUTED: owned public probe cache cleanup: %s", stderr)
-			}
-		})
-	}
+	rsCleanupPublicChecksumCaches(h, dir)
 	result := rsValidateResult(h, mustRSRead(h.t, filepath.Join(dir, "sut.stdout")), label)
 	commands := []map[string]any{}
 	entries, e := os.ReadDir(dir)
@@ -763,6 +746,9 @@ func TestReleaseSupplyPublicChecksum(t *testing.T) {
 	}
 }
 func rsCheckChecksumCommand(h *rsHarness, s *rsChecksumService, c rsPublisherCase, o rsPublisherObservation) {
+	rsCheckChecksumCommandWithContext(h, s, c, o, 7*time.Second, true)
+}
+func rsCheckChecksumCommandWithContext(h *rsHarness, s *rsChecksumService, c rsPublisherCase, o rsPublisherObservation, parentBudget time.Duration, shortProbe bool) {
 	h.t.Helper()
 	paths, e := filepath.Glob(filepath.Join(o.directory, "public-go-*.json"))
 	if e != nil || len(paths) != 1 {
@@ -796,10 +782,10 @@ func rsCheckChecksumCommand(h *rsHarness, s *rsChecksumService, c rsPublisherCas
 		h.t.Errorf("SEMANTIC_MISMATCH: actual checksum command exit %v", r["exit_code"])
 	}
 	remaining, finite := r["context_remaining_nanoseconds"].(float64)
-	if !finite || remaining <= 0 || remaining > float64(7*time.Second) {
-		h.t.Errorf("SEMANTIC_MISMATCH: public command not clipped by explicit test parent context7s: %v", r["context_remaining_nanoseconds"])
+	if !finite || remaining <= 0 || remaining > float64(parentBudget) {
+		h.t.Errorf("SEMANTIC_MISMATCH: public command not clipped by explicit test parent context%s: %v", parentBudget, r["context_remaining_nanoseconds"])
 	}
-	if o.meta["sut_deadline_exceeded"] != (c.Name == "deadline") {
+	if shortProbe && o.meta["sut_deadline_exceeded"] != (c.Name == "deadline") {
 		h.t.Errorf("SEMANTIC_MISMATCH: inner SUT deadline observation %+v", o.meta)
 	}
 	if c.Name == "deadline" && r["context_deadline_exceeded"] != true {
@@ -828,5 +814,52 @@ func rsCheckChecksumCommand(h *rsHarness, s *rsChecksumService, c rsPublisherCas
 	}
 	if c.Outcome != "GREEN" && o.result["stage"] == "ARCHIVE_VERIFIED" {
 		h.t.Error("SEMANTIC_MISMATCH: failed mandatory checksum gate advanced archive")
+	}
+}
+
+// Old publisher scenarios compose the same real adapter with a lawful signed
+// endpoint. Their110s outer parent and all outcome expectations stay unchanged.
+func rsNewPublisherChecksumService(h *rsHarness, p *rsPublisherFixture, label string) *rsChecksumService {
+	signer, verifier, err := note.GenerateKey(rand.Reader, "ci-rs-checksum.invalid")
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	return rsNewChecksumService(h, p, "publisher-"+label, "lawful", signer, verifier)
+}
+func rsPublisherChecksumPrerequisite(h *rsHarness, p *rsPublisherFixture) {
+	signer, verifier, err := note.GenerateKey(rand.Reader, "ci-rs-checksum.invalid")
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	rsChecksumPrerequisite(h, p, "lawful", signer, verifier)
+}
+
+func rsCleanupPublicChecksumCaches(h *rsHarness, dir string) {
+	publicCommands, globErr := filepath.Glob(filepath.Join(dir, "public-go-*.json"))
+	if globErr != nil {
+		h.t.Fatal(globErr)
+	}
+	for _, path := range publicCommands {
+		var record map[string]any
+		if e := json.Unmarshal(mustRSRead(h.t, path), &record); e != nil {
+			h.t.Fatal(e)
+		}
+		original, ok := record["original_env"].(map[string]any)
+		if !ok {
+			continue
+		}
+		cache, ok := original["GOMODCACHE"].(string)
+		if !ok || !rsChecksumWithin(h.root, cache) {
+			continue
+		}
+		h.t.Cleanup(func() {
+			if _, e := os.Stat(cache); os.IsNotExist(e) {
+				return
+			}
+			_, stderr, rc := h.run(h.root, []string{"GOMODCACHE=" + cache}, h.goBin, "clean", "-modcache")
+			if rc != 0 {
+				h.t.Errorf("HARNESS_NOT_EXECUTED: owned public probe cache cleanup: %s", stderr)
+			}
+		})
 	}
 }
