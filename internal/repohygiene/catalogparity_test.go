@@ -128,6 +128,19 @@ var domainsWithoutAWiredMap = []string{
 // Что делать, если гейт сработал, — ровно два исхода: перегенерировать каталог
 // (обе копии) либо вернуть аннотацию. «Поправить JSON руками» исходом не
 // является: он генерируется, и правка переживёт ровно до следующей генерации.
+//
+// ВТОРОЕ УТВЕРЖДЕНИЕ ТОГО ЖЕ ОБХОДА (задача #2692): каждый обойдённый RPC несёт
+// аннотацию, попадающую в одну из трёх полос края. Сверка «аннотация == строка»
+// этого НЕ утверждала: плагин эмитит на неаннотированный метод строку с пустыми
+// полями, и равенство двух пустот проходило молча. Живого экземпляра в дереве
+// нет (перепись ниже печатает «без аннотации 0»), способность падать доказана
+// инъекцией — catalogannotationlane_injection_test.go.
+//
+// Посылка задачи здесь ОПРОВЕРГНУТА и записана: `InternalRegionService/List`,
+// на котором гейт «обязан покраснеть», в контракте не объявлен вовсе
+// (`internal_catalog_service.proto`: Create/Update/Delete/GetInternal), и
+// `GET /geo/v1/internal/regions` отказывает промахом каталога по ненайденному
+// маршруту, а не по неаннотированному методу.
 func TestCatalogMatchesTheAnnotationsItWasGeneratedFrom(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -151,9 +164,20 @@ func TestCatalogMatchesTheAnnotationsItWasGeneratedFrom(t *testing.T) {
 	seen := map[string]bool{}
 	var mismatches []string
 	methods := 0
+	lanes := map[string]int{}
+	unannotated := 0
 	catalogderive.RangeAnnotated(catalogProtoPackages, func(fullMethod string, _ protoreflect.MethodDescriptor, a catalogderive.Annotations) {
 		methods++
 		seen[fullMethod] = true
+		// Полоса судится ДО сверки со строкой: на методе без аннотации строка
+		// тоже пуста, и одна лишь сверка прошла бы его молча.
+		lane, complaint := annotationLane(a)
+		if complaint != "" {
+			unannotated++
+			mismatches = append(mismatches, fmt.Sprintf("%s: %s", fullMethod, complaint))
+		} else {
+			lanes[lane]++
+		}
 		row, ok := byFQN[fullMethod]
 		if !ok {
 			mismatches = append(mismatches, fmt.Sprintf(
@@ -193,9 +217,12 @@ func TestCatalogMatchesTheAnnotationsItWasGeneratedFrom(t *testing.T) {
 	// этом дереве НИЧЕМ. Свойство «каталог порождён из аннотаций» держится
 	// по-прежнему — им и занят весь обход выше.
 
-	t.Logf("перепись: строк каталога %d, аннотированных RPC %d в %d пакетах, расхождений %d; "+
+	t.Logf("перепись: строк каталога %d, обойдённых RPC %d в %d пакетах "+
+		"(exempt %d · scope_filtered %d · relation %d · без аннотации %d), расхождений %d; "+
 		"копий в дереве 1, байт %d",
-		len(rows), methods, len(catalogProtoPackages), len(mismatches), len(raw))
+		len(rows), methods, len(catalogProtoPackages),
+		lanes[laneExempt], lanes[laneScopeFiltered], lanes[laneRelation], unannotated,
+		len(mismatches), len(raw))
 }
 
 // diffAnnotationAgainstRow сверяет одну аннотацию с одной строкой каталога по

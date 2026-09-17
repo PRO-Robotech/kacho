@@ -110,6 +110,19 @@ describe("ResourceFormModal", () => {
     expect(apiGet).toHaveBeenCalledWith("/vpc/v1/networks/net-1");
   });
 
+  // Двухпроекционный ресурс (каталог размещения) читается для правки с
+  // Internal-проекции: на публичной нет ни сырого статуса, ни блока infra°, и
+  // форма показала бы пустое там, где значение есть (#2692). Спека берётся из
+  // живого реестра: `readForEdit` объявлен у неё, а не подставлен пробой.
+  it("правка двухпроекционного ресурса читает его с admin-пути", async () => {
+    apiGet.mockResolvedValue({ id: "region-1", status: "UP" });
+
+    at("?modal=regions-edit&id=region-1");
+
+    expect(await screen.findByText(/^форма regions\/edit/)).toBeInTheDocument();
+    expect(apiGet).toHaveBeenCalledWith("/geo/v1/internal/regions/region-1");
+  });
+
   it("правка без id ресурс не запрашивает", () => {
     at("?modal=networks-edit");
 
