@@ -504,7 +504,9 @@ def mixed_helm_case(h, root, case):
     case.check(mixed["rc"] == 1, "mixed full Helm path must preserve the real independent finding")
     case.check("РАЗОШЛИСЬ" in complete_output and "newman-live.py" in complete_output, "independent real self-test assertion fault was not reached")
     case.check("нет pytest" in complete_output, "missing child pytest condition was not reached alongside the finding")
-    record = case.record(mixed, "ci-local", "finding", declarations=5, failed=1, unmet=1)
+    case.check(local_summary(mixed) == (5, 1, 1), "mixed local summary lost the separate failed and unmet categories")
+    case.check(local_declarations(mixed) == 5, "mixed local summary changed the declared five-check denominator")
+    record = case.record(mixed, "ci-local", "finding", declarations=5, executed=5, failed=1, unmet=1)
     if isinstance(record, dict):
         case.check(bool(record["findings"]), "mixed local result lost the separate finding reason")
         case.check("newman-live" in json.dumps(record["findings"], ensure_ascii=False), "mixed local finding no longer identifies the actual independent failed participant")
