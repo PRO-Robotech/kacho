@@ -86,6 +86,12 @@ import (
 // вопрос края к нашей сессии, обслуживаемый службой в её дереве; в каталоге края
 // она появилась подъёмом пина модуля на ствол службы af0ca8f3. Перемерено
 // прогоном после регенерации каталога: строк службы 106 из 339.
+//
+// Посадка службы в ствол 94352d9c (Ф4 регистрация, Ф5 восстановление, членство,
+// повтор письма) добавила ДВЕ строки — `MembershipService/Create` (kaname#181) и
+// `UserService/ResendInvite` (kaname#184); обе обслуживаются службой в её дереве и
+// приехали сюда подъёмом пина модуля. Перемерено прогоном после регенерации:
+// строк службы 108 из 341.
 var knownInertCatalogRows = []string{
 	"kaname.cloud.iam.v1.AccessBindingService/Create",
 	"kaname.cloud.iam.v1.AccessBindingService/Delete",
@@ -155,6 +161,7 @@ var knownInertCatalogRows = []string{
 	"kaname.cloud.iam.v1.InternalUserService/Get",
 	"kaname.cloud.iam.v1.InternalUserService/OnRecoveryCompleted",
 	"kaname.cloud.iam.v1.InternalUserService/UpsertFromIdentity",
+	"kaname.cloud.iam.v1.MembershipService/Create",
 	"kaname.cloud.iam.v1.MembershipService/Get",
 	"kaname.cloud.iam.v1.MembershipService/List",
 	"kaname.cloud.iam.v1.PermissionCatalogService/ListPermissionCatalog",
@@ -188,6 +195,7 @@ var knownInertCatalogRows = []string{
 	"kaname.cloud.iam.v1.UserService/List",
 	"kaname.cloud.iam.v1.UserService/ListOperations",
 	"kaname.cloud.iam.v1.UserService/RemoveFromAccount",
+	"kaname.cloud.iam.v1.UserService/ResendInvite",
 	"kaname.cloud.iam.v1.UserService/Unblock",
 	"kaname.cloud.iam.v1.UserService/Update",
 	"kaname.cloud.iam.v1.UserTokenService/Issue",

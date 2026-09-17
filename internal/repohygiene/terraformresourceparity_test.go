@@ -75,7 +75,12 @@ var nonCreatingVerbs = map[string]bool{
 	// человека из аккаунта, не заводя ничего. Провайдер зовёт его уничтожением
 	// ресурса `kaname_user_invitation` — ресурс моделирует ЧЛЕНСТВО, поэтому
 	// снятие членства и есть его destroy (#1127).
-	"RemoveFromAccount":        true,
+	"RemoveFromAccount": true,
+	// ResendInvite — повтор письма приглашения (kaname#184): ничего не заводит и
+	// ничего не снимает, строка приглашения та же, срок её выдачи не двигается.
+	// Провайдер его не зовёт: письмо — побочный эффект заведения членства, а не
+	// свойство ресурса, и «повторить письмо» в декларативной форме не выражается.
+	"ResendInvite":             true,
 	"SimulateMaintenanceEvent": true, "Start": true, "Stop": true, "Unblock": true, "Update": true, "UpdateAccessBindings": true,
 	"UpdateMetadata": true, "UpdateNetworkInterface": true, "UpdateRepository": true, "UpdateRoute": true, "UpdateRule": true,
 	"UpdateRules": true, "WhoAmI": true,
@@ -106,6 +111,12 @@ var tfCoverage = map[string]string{
 	"RoleService":           "kaname_role",
 	"AccessBindingService":  "kaname_access_binding",
 	"UserService":           "kaname_user_invitation",
+	// MembershipService.Create — ПЕРЕЕЗД глагола приглашения на ресурс членства
+	// (IAM-ID-1 §4, S3.2; kaname#181): тот же поток, та же пара «человек ×
+	// аккаунт», то же членство — и тот же ресурс провайдера, что у `Invite`. До
+	// стадии S4 оба глагола живут рядом, и провайдер зовёт первый; второй ресурс
+	// провайдера об одном членстве был бы двумя адресами одной связи.
+	"MembershipService": "kaname_user_invitation",
 
 	"UserTokenService": "kaname_user_token",
 

@@ -280,6 +280,12 @@ var AllowedMethods = map[string]struct{}{
 	// строку личности не трогает — её снятие спрашивает `identity_remover`
 	// (#1131).
 	"/kaname.cloud.iam.v1.UserService/RemoveFromAccount": {},
+	// Повтор письма приглашения (REST POST /iam/v1/users/{user_id}:resendInvite,
+	// kaname#184) — способ администратора повторить письмо, если оно не дошло;
+	// ссылки он не получает ни в каком ответе. Тот же круг и тот же порог, что у
+	// Invite (`editor` на аккаунте, acr 2): более дешёвая дверь к письму от имени
+	// платформы заводиться не должна.
+	"/kaname.cloud.iam.v1.UserService/ResendInvite": {},
 	// iam.v1 — UserTokenService (REST .../users/{user_id}/tokens) —
 	// выдача, перечисление и отзыв неинтерактивных токенов пользователя.
 	"/kaname.cloud.iam.v1.UserTokenService/Issue":  {},
@@ -321,10 +327,16 @@ var AllowedMethods = map[string]struct{}{
 	"/kaname.cloud.iam.v1.GroupService/ListMembers":    {},
 	"/kaname.cloud.iam.v1.GroupService/ListOperations": {},
 
-	// iam.v1 — MembershipService: чтение членства на аккаунт-скоупных путях.
-	// Только два ЧТЕНИЯ: глаголов изменения у ресурса на этой поверхности нет.
-	"/kaname.cloud.iam.v1.MembershipService/Get":  {},
-	"/kaname.cloud.iam.v1.MembershipService/List": {},
+	// iam.v1 — MembershipService: чтение членства на аккаунт-скоупных путях и
+	// заведение членства (REST POST /iam/v1/memberships, kaname#181): ввод
+	// ЗАРЕГИСТРИРОВАВШЕГОСЯ человека в аккаунт по адресу почты — вторая дверь к
+	// допуску рядом с приглашением, и порог у неё тот же (`editor` на аккаунте,
+	// acr 2). Здесь стояло «только два чтения: глаголов изменения у ресурса на
+	// этой поверхности нет» — верно до Ф4 и неверно после: утверждение пережило
+	// свой предмет, и оно снято, а не оставлено.
+	"/kaname.cloud.iam.v1.MembershipService/Get":    {},
+	"/kaname.cloud.iam.v1.MembershipService/List":   {},
+	"/kaname.cloud.iam.v1.MembershipService/Create": {},
 	// iam.v1 — RoleService
 	// Role.rules[].module — скалярная строка; REST Create/Update маршалят это
 	// поле; отдельной allowlist-записи не требуется (новых RPC нет).
