@@ -36,12 +36,21 @@ const (
 	loginLaneVerbLogout   = "logout"
 	loginLaneVerbPassword = "password"
 	loginLaneVerbCSRF     = "csrf"
+	// Регистрация (Ф4, kacho#2699) и восстановление доступа (Ф5, kacho#2701) —
+	// те же клетки, что у четырёх глаголов Ф3: словарь поверхности растёт
+	// вместе с объявлением путей, и проба сходимости это держит.
+	loginLaneVerbRegister         = "register"
+	loginLaneVerbRecovery         = "recovery"
+	loginLaneVerbRecoveryComplete = "recovery-complete"
 )
 
 // LoginLaneVerbLabels — значения метки `verb` в порядке объявления; для пробы
 // сходимости со словарём путей.
 func LoginLaneVerbLabels() []string {
-	return []string{loginLaneVerbLogin, loginLaneVerbLogout, loginLaneVerbPassword, loginLaneVerbCSRF}
+	return []string{
+		loginLaneVerbLogin, loginLaneVerbLogout, loginLaneVerbPassword, loginLaneVerbCSRF,
+		loginLaneVerbRegister, loginLaneVerbRecovery, loginLaneVerbRecoveryComplete,
+	}
 }
 
 // SessionLaneSnapshot — то, что корень отдаёт коллектору на каждый сбор: клетки
@@ -118,10 +127,13 @@ func (c *sessionLaneCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(sessionRolloutWindowDesc, prometheus.CounterValue, float64(s.Lane.RolloutWindow))
 	ch <- prometheus.MustNewConstMetric(sessionAssuranceOffAxisDesc, prometheus.CounterValue, float64(s.Lane.AssuranceOffAxis))
 	for verb, value := range map[string]uint64{
-		loginLaneVerbLogin:    s.Relay.Relayed[loginLaneVerbLogin],
-		loginLaneVerbLogout:   s.Relay.Relayed[loginLaneVerbLogout],
-		loginLaneVerbPassword: s.Relay.Relayed[loginLaneVerbPassword],
-		loginLaneVerbCSRF:     s.Relay.Relayed[loginLaneVerbCSRF],
+		loginLaneVerbLogin:            s.Relay.Relayed[loginLaneVerbLogin],
+		loginLaneVerbLogout:           s.Relay.Relayed[loginLaneVerbLogout],
+		loginLaneVerbPassword:         s.Relay.Relayed[loginLaneVerbPassword],
+		loginLaneVerbCSRF:             s.Relay.Relayed[loginLaneVerbCSRF],
+		loginLaneVerbRegister:         s.Relay.Relayed[loginLaneVerbRegister],
+		loginLaneVerbRecovery:         s.Relay.Relayed[loginLaneVerbRecovery],
+		loginLaneVerbRecoveryComplete: s.Relay.Relayed[loginLaneVerbRecoveryComplete],
 	} {
 		ch <- prometheus.MustNewConstMetric(loginLaneRelayedDesc, prometheus.CounterValue, float64(value), verb)
 	}

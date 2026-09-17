@@ -41,6 +41,9 @@ func TestSessionLane_F3_48_EveryCellExistsWithZeroBeforeTheFirstEvent(t *testing
 		`kacho_api_gateway_login_lane_relayed_total{verb="logout"} 0`,
 		`kacho_api_gateway_login_lane_relayed_total{verb="password"} 0`,
 		`kacho_api_gateway_login_lane_relayed_total{verb="csrf"} 0`,
+		`kacho_api_gateway_login_lane_relayed_total{verb="register"} 0`,
+		`kacho_api_gateway_login_lane_relayed_total{verb="recovery"} 0`,
+		`kacho_api_gateway_login_lane_relayed_total{verb="recovery-complete"} 0`,
 		`kacho_api_gateway_login_lane_unreachable_total 0`,
 	}
 	for _, line := range zeroes {
