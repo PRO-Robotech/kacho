@@ -1,8 +1,10 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// login_lane_relay.go — ретрансляция четырёх глаголов полосы формы на слушатель
-// службы (приёмка Ф3 Р2, Р7, Р16; задача kacho#1269).
+// login_lane_relay.go — ретрансляция глаголов полосы формы на слушатель службы
+// (приёмка Ф3 Р2, Р7, Р16; задача kacho#1269): четыре глагола Ф3, регистрация
+// Ф4 (kacho#2699) и два глагола восстановления Ф5 (kacho#2701). Перечень —
+// одно объявление, `middleware.LoginLaneRoutes`.
 //
 // # Почему ретрансляция, а не перевод в RPC
 //
@@ -37,8 +39,8 @@
 // # Служба недостижима САМОЙ ретрансляцией
 //
 // Соединения нет — иная посылка, чем «хранилище службы недоступно»: край
-// отвечает `UNAVAILABLE` / 503 своим фиксированным текстом, одним на четыре
-// глагола, без `Set-Cookie`, носитель цел. Текст причины не несёт (§8 инв. 3).
+// отвечает `UNAVAILABLE` / 503 своим фиксированным текстом, одним на все
+// глаголы, без `Set-Cookie`, носитель цел. Текст причины не несёт (§8 инв. 3).
 package handler
 
 import (
@@ -56,7 +58,7 @@ import (
 )
 
 // LoginLaneUnreachableMessage — текст отказа края, когда слушатель формы
-// недостижим. Один на четыре глагола; причины не несёт.
+// недостижим. Один на все глаголы перечня; причины не несёт.
 const LoginLaneUnreachableMessage = "service unavailable; try again later"
 
 // LoginLaneRelayConfig — DI-мешок ретранслятора.
@@ -83,7 +85,7 @@ type LoginLaneRelaySnapshot struct {
 	Unreachable uint64
 }
 
-// LoginLaneRelay — обработчик четырёх путей формы.
+// LoginLaneRelay — обработчик путей формы из объявления перечня.
 type LoginLaneRelay struct {
 	logger  *slog.Logger
 	proxy   *httputil.ReverseProxy

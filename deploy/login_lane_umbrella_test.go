@@ -13,7 +13,9 @@ import (
 )
 
 // login_lane_umbrella_test.go — umbrella-подчарт службы доступа ВЫРАЖАЕТ посадку
-// полосы входа паролем (приёмка Ф3, kacho#1269; Ф3-44, Ф3-45).
+// полосы входа паролем (приёмка Ф3, kacho#1269; Ф3-44, Ф3-45) — и вместе с ней
+// величины регистрации (Ф4, kacho#2699) и срок кода восстановления (Ф5,
+// kacho#2701): у стража службы под `own` они в одном ряду с величинами Ф3.
 //
 // # Предмет
 //
@@ -60,7 +62,23 @@ var loginLaneConfigKeys = []struct{ configKey, valueKey string }{
 	{"hasher-parallelism", "hasherParallelism"},
 	{"verifier-capacity", "verifierCapacity"},
 	{"memory-reserve-bytes", "memoryReserveBytes"},
+	// Срок кода восстановления доступа (Ф5, kacho#2701) — ручка ТОГО ЖЕ блока
+	// `authn.login`: страж службы требует её под `own` наравне с остальными.
+	{"recovery-code-ttl", "recoveryCodeTtl"},
 }
+
+// registrationConfigKeys — ключи блока `authn.registration` (Ф4, kacho#2699):
+// потолок темпа заведения аккаунтов одной личностью и окно счёта. Оба — условие
+// старта под `own` (Ф4-18/19), у обоих нет умолчания.
+var registrationConfigKeys = []struct{ configKey, valueKey string }{
+	{"admissions-per-window", "admissionsPerWindow"},
+	{"admission-window", "admissionWindow"},
+}
+
+// registrationIntegerKeys — целые блока регистрации; ноль у предела ЗАКОНЕН
+// («сверх первого — ни одного»), поэтому ветвь обязана быть по `hasKey`, а не
+// по `with`: `with` считает ноль пустым и выбросил бы объявленную величину.
+var registrationIntegerKeys = []string{"admissionsPerWindow"}
 
 // loginLaneIntegerKeys — целые, обязанные проходить через `int64`: большое число
 // из значений приходит в шаблон плавающим и без приведения рендерится как
@@ -95,6 +113,12 @@ var loginLaneProdLedger = map[string]string{
 	"mtls.loginLaneClientAuthMode": loginLaneProdReason,
 }
 
+// registrationProdReason — та же причина для двух величин регистрации (Ф4).
+const registrationProdReason = "величина РЕГИСТРАЦИИ НАШЕЙ ПОЛОСОЙ (Ф4, kacho#2699): страж службы читает её " +
+	"только под посадкой `own`, а боевой профиль стоит на `external`. Объявлена по приёмке Ф4 (Р5, Ф4-18/19): " +
+	"перенос величины справочника (3 за 1 ч) живёт в профиле, где его видит читающий, и перевод на `own` не " +
+	"заводит полосу с нуля. Запись истекает с первым профилем на `own`: там снятие ручки роняет СТАРТ"
+
 func init() {
 	for _, k := range loginLaneConfigKeys {
 		if k.valueKey == "breachCheckUrl" {
@@ -103,6 +127,9 @@ func init() {
 			continue
 		}
 		loginLaneProdLedger["config.authn.login."+k.valueKey] = loginLaneProdReason
+	}
+	for _, k := range registrationConfigKeys {
+		loginLaneProdLedger["config.authn.registration."+k.valueKey] = registrationProdReason
 	}
 }
 
@@ -267,6 +294,11 @@ func TestLoginLane_F3_45_ProductionProfilesDeclareTheLaneWithAReason(t *testing.
 					t.Errorf("стенд %s на посадке own: `kaname.config.authn.login.%s` не объявлен — отказ старта службы", name, k.valueKey)
 				}
 			}
+			for _, k := range registrationConfigKeys {
+				if _, ok := lookup(declared, "kaname", "config", "authn", "registration", k.valueKey); !ok {
+					t.Errorf("стенд %s на посадке own: `kaname.config.authn.registration.%s` не объявлен — отказ старта службы (Ф4-18)", name, k.valueKey)
+				}
+			}
 		}
 	}
 	if production == 0 {
@@ -298,6 +330,83 @@ func TestLoginLane_F3_45_ProductionProfilesDeclareTheLaneWithAReason(t *testing.
 			}
 		}
 	}
+	if reg, ok := lookup(prod, "kaname", "config", "authn", "registration"); ok {
+		if m, isMap := reg.(map[string]any); isMap {
+			for k := range m {
+				if _, named := loginLaneProdLedger["config.authn.registration."+k]; !named {
+					t.Errorf("values.prod.yaml объявляет kaname.config.authn.registration.%s, а ведомость его не называет — причина не записана", k)
+				}
+			}
+		}
+	}
 	t.Logf("перепись: стендов боевой посадки %d · из них на posture own %d · записей ведомости %d · объявлено боевым профилем %d",
 		production, ownPosture, len(loginLaneProdLedger), declaredKeys)
+}
+
+// TestLoginLane_F4_F5_UmbrellaSubchartExpressesRegistrationAndRecovery —
+// подчарт рендерит блок `authn.registration` (Ф4, kacho#2699) и ключ
+// `authn.login.recovery-code-ttl` (Ф5, kacho#2701), а базовый профиль называет
+// образец обоих читающему.
+//
+// # Предмет — та же форма, что у полосы Ф3, и тот же класс дефекта
+//
+// Страж старта службы под `own` требует три величины (Ф4 Р5, Ф4-18/19; Ф5-06/07),
+// у которых нет умолчания. Подчарт, знающий только блок `login` Ф3, не может
+// подать их ни одним ключом профиля: профиль, переводящий стенд на `own`,
+// проходил бы отказ старта по трём именам подряд, и оператору оставалось бы
+// угадывать карту `KANAME_AUTHN__REGISTRATION__*` /
+// `KANAME_AUTHN__LOGIN__RECOVERY_CODE_TTL` — цикл выкатки на ручку. Собственный
+// чарт службы несёт тот же долг (kaname#205); здесь — зонтичный подчарт.
+//
+// # Ноль у предела темпа законен, и ветвь обязана его пропустить
+//
+// `admissions-per-window: 0` означает «сверх первого заведения — ни одного»
+// (Ф4 Р5), а `with` считает ноль пустым. Целое обязано идти через `hasKey` и
+// `int64` — тот же довод, что у целых блока `login`.
+func TestLoginLane_F4_F5_UmbrellaSubchartExpressesRegistrationAndRecovery(t *testing.T) {
+	chart := kanameSubchart(t)
+	configmap := readChartText(t, filepath.Join(chart, "templates", "configmap.yaml"))
+	values := readChartText(t, filepath.Join(chart, "values.yaml"))
+
+	login := templateBlockBody(configmap, regexp.MustCompile(`\{\{-?\s*with\s+\.Values\.config\.authn\.login\s*\}\}`))
+	if login == "" {
+		t.Fatal("configmap.yaml: блока `login:` под `with .Values.config.authn.login` нет")
+	}
+	if !strings.Contains(login, "recovery-code-ttl:") {
+		t.Error("configmap.yaml: ключ `authn.login.recovery-code-ttl` не рендерится — под `own` служба отказывает в старте: срок кода восстановления не задан (Ф5-06)")
+	}
+
+	registration := templateBlockBody(configmap, regexp.MustCompile(`\{\{-?\s*with\s+\.Values\.config\.authn\.registration\s*\}\}`))
+	if registration == "" {
+		t.Fatal("configmap.yaml: блока `registration:` под `with .Values.config.authn.registration` нет — профиль на `own` не может выразить ни потолок темпа, ни окно (Ф4-18)")
+	}
+	missing := 0
+	for _, k := range registrationConfigKeys {
+		if !strings.Contains(registration, k.configKey+":") {
+			missing++
+			t.Errorf("configmap.yaml: ключ `authn.registration.%s` не рендерится", k.configKey)
+		}
+	}
+	for _, ik := range registrationIntegerKeys {
+		if !regexp.MustCompile(`hasKey\s+\.\s+"` + ik + `"`).MatchString(registration) {
+			t.Errorf("configmap.yaml: целое `%s` не ветвится по `hasKey` — ноль (законная величина) выбрасывался бы как пустое", ik)
+		}
+		if !regexp.MustCompile(`int64\s+\.` + ik + `\b`).MatchString(registration) {
+			t.Errorf("configmap.yaml: целое `%s` рендерится без `int64`", ik)
+		}
+	}
+
+	// Базовый профиль называет образец обоих блоков читающему — вместе с именами
+	// переменных, которыми та же величина подаётся окружением.
+	for _, must := range []string{
+		"recoveryCodeTtl", "KANAME_AUTHN__LOGIN__RECOVERY_CODE_TTL",
+		"registration:", "admissionsPerWindow", "admissionWindow",
+		"KANAME_AUTHN__REGISTRATION__ADMISSIONS_PER_WINDOW", "KANAME_AUTHN__REGISTRATION__ADMISSION_WINDOW",
+	} {
+		if !strings.Contains(values, must) {
+			t.Errorf("values.yaml подчарта: образец `%s` для профиля на `own` не назван", must)
+		}
+	}
+	t.Logf("перепись: ключей блока registration объявлено %d · рендерится %d · целых через hasKey/int64 %d · recovery-code-ttl в блоке login %v",
+		len(registrationConfigKeys), len(registrationConfigKeys)-missing, len(registrationIntegerKeys), strings.Contains(login, "recovery-code-ttl:"))
 }

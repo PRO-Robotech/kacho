@@ -152,10 +152,10 @@ func TestOwnLane_F3_45_OurReaderAndTheRelayAreWiredUnderOwnOnly(t *testing.T) {
 	}
 	relays := wiringSites(fset, f, "NewLoginLaneRelay")
 	if len(relays) != 1 {
-		t.Fatalf("ретрансляция четырёх глаголов заведена %d раз, ожидалось 1", len(relays))
+		t.Fatalf("ретрансляция глаголов формы заведена %d раз, ожидалось 1", len(relays))
 	}
 	if relays[0].posture != "Own" {
-		t.Errorf("ретрансляция заведена вне ветки посадки own: %s (ветка: %q) — под external четыре глагола обязаны отвечать 404", relays[0].pos, relays[0].posture)
+		t.Errorf("ретрансляция заведена вне ветки посадки own: %s (ветка: %q) — под external глаголы формы обязаны отвечать 404", relays[0].pos, relays[0].posture)
 	}
 	t.Logf("перепись: читателей нашей сессии %d (под own %d) · ретрансляций %d", len(readers), len(readers), len(relays))
 }

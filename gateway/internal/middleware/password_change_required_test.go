@@ -76,7 +76,7 @@ func TestPasswordChangeRequired_F3_23_CataloguedPathIsRefusedBeforeTheModelIsAsk
 }
 
 // Множество проходящих — ровно перечень путей без записи каталога: «кто я»,
-// четыре глагола формы, пробы живости, выход полосы токенов.
+// глаголы формы, пробы живости, выход полосы токенов.
 func TestPasswordChangeRequired_F3_23_PathsWithoutACatalogEntryPass(t *testing.T) {
 	mw := buildAuthzMiddleware(t, buildCatalog(t, getEntry), &fakeChecker{allowed: true})
 	reached := map[string]int{}

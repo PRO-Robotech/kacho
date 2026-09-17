@@ -447,7 +447,7 @@ func TestOwnSessionLane_F3_51_FormVerbsRefuseTheCutOffCarrierAndRelayNoSession(t
 
 	// Отрицательный контроль Ф3-51 (последняя «And»): путь ВНЕ перечня глаголов
 	// на том же носителе снятой сессии — отказ, не проход: ветка снимает исход
-	// ровно на четырёх путях объявления, а не на всём `isPublicHTTPPath`.
+	// ровно на путях объявления, а не на всём `isPublicHTTPPath`.
 	rec := serve(chain, withOurCarrier(httptest.NewRequest(http.MethodGet, "/iam/v1/auth/me", nil), "s3-gone"))
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("«кто я» на носителе снятой сессии обязан отвергаться F4d-22: %d", rec.Code)
@@ -508,4 +508,89 @@ func TestOwnSessionLane_F3_17_UnavailabilityIsRelayedExceptOnPasswordChange(t *t
 	if relay.served != 4 || rec.Code != http.StatusUnauthorized {
 		t.Fatalf("недоступная отсечка: выход обязан ретранслироваться (счёт %d), смена — F4d-23 (%d)", relay.served, rec.Code)
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ф4/Ф5 (kacho#2699, kacho#2701) — регистрация и восстановление на полосе.
+
+// TestOwnSessionLane_F4_F5_RegistrationAndRecoveryFollowTheFormVerbRules —
+// три новых глагола формы ведут себя на полосе сессии как глаголы формы, а не
+// как пути платформы: носитель отсечённой сессии отвергается краем (Ф3-51),
+// «сессии нет» ретранслируется (исход судит служба), недоступность вопросов
+// края ретранслируется — ни один из трёх не меняет состояния ПОД сессией
+// носителя (регистрация заводит новую личность, восстановление ключуется кодом,
+// а не носителем), поэтому асимметрия смены пароля (F4d-23) на них не
+// распространяется. Решение записано здесь, а не выведено умолчанием: до
+// расширения перечня те же запросы получали 401 на «сессии нет» — как пути
+// платформы.
+func TestOwnSessionLane_F4_F5_RegistrationAndRecoveryFollowTheFormVerbRules(t *testing.T) {
+	verbs := []string{LoginLanePathRegister, LoginLanePathRecovery, LoginLanePathRecoveryComplete}
+
+	// Отсечённый носитель — отказ края, до службы не доходит.
+	reader := &fakeHumanSession{found: true, sess: liveOwnSession()}
+	cut := &fakeCutoff{found: true, cutoff: ownAuthAt}
+	a := ownLane(t, reader, cut)
+	relay := &countingNext{}
+	mux := http.NewServeMux()
+	for _, rt := range LoginLaneRoutes() {
+		mux.Handle(rt.Path, relay)
+	}
+	chain := a.HTTP(mux)
+	for _, p := range verbs {
+		rec := serve(chain, withOurCarrier(httptest.NewRequest(http.MethodPost, p, strings.NewReader(`{}`)), "s1-cut"))
+		if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), sessionCutoffDenyDescription) {
+			t.Fatalf("%s с носителем отсечённой сессии: обязан быть F4d-22 на крае, получено %d %s", p, rec.Code, rec.Body.String())
+		}
+		if !ourCarrierEnded(rec.Result()) {
+			t.Fatalf("%s: носитель обязан гаситься", p)
+		}
+	}
+	if relay.served != 0 {
+		t.Fatalf("ретранслировано %d при отсечённом носителе — запрос не должен доходить до службы", relay.served)
+	}
+
+	// «Сессии нет» — ретрансляция без личности и без гашения носителя.
+	reader.found = false
+	for _, p := range verbs {
+		rec := serve(chain, withOurCarrier(httptest.NewRequest(http.MethodPost, p, strings.NewReader(`{}`)), "s3-gone"))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s с носителем снятой сессии: «сессии нет» обязано ретранслироваться, получено %d %s", p, rec.Code, rec.Body.String())
+		}
+		if len(rec.Result().Header["Set-Cookie"]) != 0 {
+			t.Fatalf("%s: край не гасит носитель на ретрансляции — исход судит служба", p)
+		}
+		if got := relay.lastReq.Header.Get(principalmeta.HeaderPrincipalID); got != "" {
+			t.Fatalf("%s: на «сессии нет» полоса выставила личность %q", p, got)
+		}
+	}
+	if relay.served != len(verbs) {
+		t.Fatalf("ретранслировано %d, ожидалось %d", relay.served, len(verbs))
+	}
+
+	// Недоступность вопросов края — ретрансляция (служба ответит своим 503), а
+	// не F4d-23: состояния под сессией носителя эти глаголы не меняют.
+	unavailable := ownLane(t, &fakeHumanSession{err: errors.New("rpc error: code = Unavailable")}, &fakeCutoff{})
+	relay2 := &countingNext{}
+	mux2 := http.NewServeMux()
+	for _, rt := range LoginLaneRoutes() {
+		mux2.Handle(rt.Path, relay2)
+	}
+	chain2 := unavailable.HTTP(mux2)
+	for _, p := range verbs {
+		rec := serve(chain2, withOurCarrier(httptest.NewRequest(http.MethodPost, p, strings.NewReader(`{}`)), "s1"))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s при недоступном Resolve обязан ретранслироваться (служба ответит своим 503): %d %s", p, rec.Code, rec.Body.String())
+		}
+	}
+	if relay2.served != len(verbs) {
+		t.Fatalf("ретранслировано %d при недоступности, ожидалось %d", relay2.served, len(verbs))
+	}
+	// Положительный контроль асимметрии: смена пароля на той же полосе —
+	// по-прежнему F4d-23, иначе утверждение выше зеленело бы на полосе,
+	// ретранслирующей всё подряд.
+	rec := serve(chain2, withOurCarrier(httptest.NewRequest(http.MethodPost, LoginLanePathPassword, strings.NewReader(`{}`)), "s1"))
+	if rec.Code != http.StatusUnauthorized || relay2.served != len(verbs) {
+		t.Fatalf("смена пароля при недоступном Resolve обязана получать F4d-23, а не ретранслироваться: %d, ретранслировано %d", rec.Code, relay2.served)
+	}
+	t.Logf("перепись: глаголов Ф4/Ф5 %d · исходов проверено по каждому 3 (отсечка · «сессии нет» · недоступность)", len(verbs))
 }
