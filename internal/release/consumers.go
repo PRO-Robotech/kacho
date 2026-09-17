@@ -68,8 +68,8 @@ func (r *supplyReport) finish(stdout io.Writer) int {
 	return rc
 }
 
-// RunSupplyPreflight implements the read-only consumers and internal-pins modes.
-// Candidate/publisher phases and legacy P9 wiring have separate transitions.
+// RunSupplyPreflight implements the read-only candidate, consumers and pins modes.
+// Publisher phases and legacy P9 wiring have separate transitions.
 func RunSupplyPreflight(ctx context.Context, args []string, deps SupplyDependencies, stdout, stderr io.Writer) int {
 	report := supplyNewReport()
 	invocation, valid := supplyParseInvocation(args)
@@ -81,6 +81,9 @@ func RunSupplyPreflight(ctx context.Context, args []string, deps SupplyDependenc
 	report.check("invocation", nil, []string{invocation.Mode}, 1)
 	if invocation.Mode == "pins" {
 		return runSupplyPins(ctx, invocation, deps, report, stdout)
+	}
+	if invocation.Mode == "candidate" {
+		return runSupplyCandidate(ctx, invocation, deps, report, stdout)
 	}
 	return runSupplyConsumers(ctx, invocation, deps, report, stdout)
 }
@@ -124,27 +127,32 @@ func runSupplyConsumers(ctx context.Context, invocation supplyInvocation, deps S
 	report.document["candidate_sha"] = revision
 	report.census["input_files"] = len(archive.Files)
 	report.check("input", nil, []string{manifest.Repository, revision, archive.Digest}, len(archive.Files))
-	report.census["consumers"] = len(manifest.Consumers)
-	if len(manifest.Consumers) == 0 {
+	engine.checkConsumers(revision, archive, report)
+	return report.finish(stdout)
+}
+
+func (e *supplyEngine) checkConsumers(revision string, archive supplyArchive, report *supplyReport) {
+	report.census["consumers"] = len(e.manifest.Consumers)
+	if len(e.manifest.Consumers) == 0 {
 		report.census["consumer_imports"] = 0
 		report.check("consumer-census", supplyRed("CONSUMER_CENSUS_EMPTY"), nil, 0)
-		return report.finish(stdout)
+		return
 	}
-	if failure = engine.dependencies(); failure != nil {
+	if failure := e.dependencies(); failure != nil {
 		report.check("consumer-census", failure, nil, nil)
-		return report.finish(stdout)
+		return
 	}
-	supported, failure := engine.platforms()
+	supported, failure := e.platforms()
 	if failure != nil {
 		report.check("consumer-census", failure, nil, nil)
-		return report.finish(stdout)
+		return
 	}
 	prepared := []supplyPrepared{}
 	var censusFailure *supplyFailure
 	totalImports := 0
 	subjects := []string{}
-	for i, consumer := range manifest.Consumers {
-		p, failed := engine.prepareConsumer(consumer, revision, i, archive.GoMod, supported)
+	for i, consumer := range e.manifest.Consumers {
+		p, failed := e.prepareConsumer(consumer, revision, i, archive.GoMod, supported)
 		if failed != nil {
 			if censusFailure == nil || (censusFailure.Outcome == "NOT_EXECUTED" && failed.Outcome == "RED") {
 				censusFailure = failed
@@ -165,7 +173,7 @@ func runSupplyConsumers(ctx context.Context, invocation supplyInvocation, deps S
 	}
 	report.check("consumer-census", censusFailure, subjects, report.census["consumer_imports"])
 	if censusFailure != nil {
-		return report.finish(stdout)
+		return
 	}
 	missing := []string{}
 	for _, p := range prepared {
@@ -178,19 +186,19 @@ func runSupplyConsumers(ctx context.Context, invocation supplyInvocation, deps S
 	if len(missing) != 0 {
 		sort.Strings(missing)
 		report.check("consumer-archive", supplyRed("CONSUMER_IMPORT_MISSING"), missing, totalImports)
-		return report.finish(stdout)
+		return
 	}
 	var buildFailure *supplyFailure
 	for _, p := range prepared {
 		for _, c := range p.Contexts {
-			failed := engine.buildConsumer(p, c)
+			failed := e.buildConsumer(p, c)
 			if failed != nil && (buildFailure == nil || (buildFailure.Outcome == "NOT_EXECUTED" && failed.Outcome == "RED")) {
 				buildFailure = failed
 			}
 		}
 	}
 	report.check("consumer-archive", buildFailure, append(subjects, archive.Digest), totalImports)
-	return report.finish(stdout)
+	return
 }
 
 func (e *supplyEngine) platforms() (map[string]bool, *supplyFailure) {

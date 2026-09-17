@@ -224,7 +224,7 @@ func supplyParseInvocation(args []string) (supplyInvocation, bool) {
 		return result, false
 	}
 	switch result.Mode {
-	case "consumers":
+	case "consumers", "candidate":
 		return result, len(values) == 3 && !result.FinalMain && supplySHA.MatchString(result.Revision)
 	case "pins":
 		_, hasRevision := values["--revision"]

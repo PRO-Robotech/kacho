@@ -11,6 +11,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"go/parser"
+	"go/token"
 	"io"
 	"io/fs"
 	"net/url"
@@ -231,42 +233,9 @@ func (e *supplyEngine) archive(revision string) (supplyArchive, *supplyFailure) 
 		}
 		return result, supplyRed("INPUT_INVALID")
 	}
-	result.Digest = supplyDigest(buffer.Bytes())
-	reader, err = zip.NewReader(bytes.NewReader(buffer.Bytes()), int64(buffer.Len()))
-	if err != nil {
-		return result, supplyRed("INPUT_INVALID")
-	}
-	result.Files, result.Packages = map[string][]byte{}, map[string]bool{}
-	prefix := e.manifest.ModulePath + "@" + e.version + "/"
-	for _, file := range reader.File {
-		if !strings.HasPrefix(file.Name, prefix) {
-			return result, supplyRed("INPUT_INVALID")
-		}
-		name := strings.TrimPrefix(file.Name, prefix)
-		stream, err := file.Open()
-		if err != nil {
-			return result, supplyRed("INPUT_INVALID")
-		}
-		data, readErr := io.ReadAll(stream)
-		closeErr := stream.Close()
-		if readErr != nil || closeErr != nil {
-			return result, supplyRed("INPUT_INVALID")
-		}
-		result.Files[name] = data
-		if strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, "_test.go") {
-			packagePath := e.manifest.ModulePath
-			if dir := filepath.ToSlash(filepath.Dir(name)); dir != "." {
-				packagePath += "/" + dir
-			}
-			result.Packages[packagePath] = true
-		}
-	}
-	result.GoMod, err = modfile.Parse("go.mod", result.Files["go.mod"], nil)
-	if err != nil || result.GoMod.Module == nil {
-		return result, supplyRed("INPUT_INVALID")
-	}
-	if result.GoMod.Module.Mod.Path != e.manifest.ModulePath {
-		return result, supplyRed("REPOSITORY_MISMATCH")
+	result, failure = supplyReadModuleArchive(buffer.Bytes(), e.manifest.ModulePath, e.version)
+	if failure != nil {
+		return result, failure
 	}
 	escaped, err := module.EscapePath(e.manifest.ModulePath)
 	if err != nil {
@@ -368,4 +337,58 @@ func supplySortedSet(set map[string]bool) []string {
 	}
 	sort.Strings(values)
 	return values
+}
+
+// Both candidate and previous-release census reads the actual module ZIP.
+// Build constraints affect consumer contexts, not this structural source floor.
+func supplyReadModuleArchive(raw []byte, name, version string) (supplyArchive, *supplyFailure) {
+	result := supplyArchive{Files: map[string][]byte{}, Packages: map[string]bool{}, Digest: supplyDigest(raw)}
+	reader, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
+	if err != nil {
+		return result, supplyRed("INPUT_INVALID")
+	}
+	prefix := name + "@" + version + "/"
+	for _, file := range reader.File {
+		if file.FileInfo().IsDir() {
+			continue
+		}
+		if !strings.HasPrefix(file.Name, prefix) || !file.Mode().IsRegular() {
+			return result, supplyRed("INPUT_INVALID")
+		}
+		rel := strings.TrimPrefix(file.Name, prefix)
+		if !supplyRelative(rel, false) {
+			return result, supplyRed("INPUT_INVALID")
+		}
+		if _, duplicate := result.Files[rel]; duplicate {
+			return result, supplyRed("INPUT_INVALID")
+		}
+		stream, err := file.Open()
+		if err != nil {
+			return result, supplyRed("INPUT_INVALID")
+		}
+		data, readErr := io.ReadAll(stream)
+		closeErr := stream.Close()
+		if readErr != nil || closeErr != nil {
+			return result, supplyRed("INPUT_INVALID")
+		}
+		result.Files[rel] = data
+		if strings.HasSuffix(rel, ".go") && !strings.HasSuffix(rel, "_test.go") {
+			if _, err := parser.ParseFile(token.NewFileSet(), rel, data, parser.PackageClauseOnly); err != nil {
+				return result, supplyRed("INPUT_INVALID")
+			}
+			packagePath := name
+			if dir := filepath.ToSlash(filepath.Dir(rel)); dir != "." {
+				packagePath += "/" + dir
+			}
+			result.Packages[packagePath] = true
+		}
+	}
+	result.GoMod, err = modfile.Parse("go.mod", result.Files["go.mod"], nil)
+	if err != nil || result.GoMod.Module == nil {
+		return result, supplyRed("INPUT_INVALID")
+	}
+	if result.GoMod.Module.Mod.Path != name {
+		return result, supplyRed("REPOSITORY_MISMATCH")
+	}
+	return result, nil
 }
