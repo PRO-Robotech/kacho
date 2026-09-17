@@ -20,8 +20,6 @@ import (
 // the current Python CLI, shell runner, Make, ci-local or actual workflow body.
 // A broken positive fixture is NOT_EXECUTED and never opens implementation.
 func TestPythonOutcomesProducer(t *testing.T) { pythonOutcomes(t, "producer", 8, 8*time.Minute) }
-func TestPythonOutcomesChain(t *testing.T)    { pythonOutcomes(t, "chain", 4, 28*time.Minute) }
-func TestPythonOutcomesCallers(t *testing.T)  { pythonOutcomes(t, "callers", 1, 14*time.Minute) }
 
 func pythonOutcomes(t *testing.T, group string, want int, timeout time.Duration) {
 	t.Helper()

@@ -519,9 +519,9 @@ def caller_record_cases(h, root, case, captures):
         # Actual independent invocations, distinct current ids and working dirs.
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
             futures = [pool.submit(read, "parallel-"+str(i), record) for i,record in enumerate(actual)]
-            concurrent = [f.result() for f in futures]
+            parallel_results = [f.result() for f in futures]
         case.check(actual[0]["invocation_id"] != actual[1]["invocation_id"], "fixture did not capture distinct real invocation ids")
-        case.check(all(result["rc"] == 0 for result in concurrent), "concurrent current invocations contaminate one another")
+        case.check(all(result["rc"] == 0 for result in parallel_results), "concurrent current invocations contaminate one another")
     # Full actual path for the subtle false exception: gate-self-test is GREEN,
     # then the manifest recipe fails. Only this one recipe line is introduced.
     makefile = root / "deploy/Makefile"
