@@ -142,7 +142,16 @@ func rsPreparePublisher(t *testing.T) *rsPublisherFixture {
 		contexts := []any{map[string]any{"goos": "linux", "goarch": "amd64", "cgo_enabled": false, "tags": []string{}}}
 		consumers = append(consumers, map[string]any{"type": "repository", "repository": repository, "root": repo, "revision": sha, "module_roots": []string{"."}, "contexts": contexts})
 		products = append(products, map[string]any{"repository": repository, "root": repo, "revision": sha, "module_roots": []string{"."}})
-		_, stderr, rc := h.run(repo, []string{"GOPROXY=file://" + filepath.ToSlash(f.baseline.proxy), "GOMODCACHE=" + filepath.Join(h.root, "publisher-cache-"+product), "GOSUMDB=off", "GOPRIVATE=", "GONOPROXY=", "GONOSUMDB=", "GOFLAGS=-mod=mod", "CGO_ENABLED=0"}, h.goBin, "build", "-o", filepath.Join(h.root, product+"-control"), ".")
+		cache := filepath.Join(h.root, "publisher-cache-"+product)
+		// Register before the build and before later forge children: Go runs
+		// cleanups in reverse order, so those children join before cache removal.
+		t.Cleanup(func() {
+			_, stderr, rc := h.run(h.root, []string{"GOMODCACHE=" + cache}, h.goBin, "clean", "-modcache")
+			if rc != 0 {
+				t.Errorf("HARNESS_NOT_EXECUTED: owned publisher cache cleanup %s rc%d: %s", cache, rc, stderr)
+			}
+		})
+		_, stderr, rc := h.run(repo, []string{"GOPROXY=file://" + filepath.ToSlash(f.baseline.proxy), "GOMODCACHE=" + cache, "GOSUMDB=off", "GOPRIVATE=", "GONOPROXY=", "GONOSUMDB=", "GOFLAGS=-mod=mod", "CGO_ENABLED=0"}, h.goBin, "build", "-o", filepath.Join(h.root, product+"-control"), ".")
 		if rc != 0 {
 			t.Fatalf("HARNESS_NOT_EXECUTED: actual %s consumer control: %s", product, stderr)
 		}
