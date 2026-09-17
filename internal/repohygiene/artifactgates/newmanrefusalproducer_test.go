@@ -385,6 +385,12 @@ func (c rpCensus) declared() int { return c.eqlAsserts + c.containsAsserts }
 // проверяются в самом гейте ниже.
 var producedInAnotherRepository = map[string]string{
 	"gateway/tests/newman/collections/cluster_admin.postman_collection.json::revoke-non-admin": "PRO-Robotech/kaname",
+	// Связка «живая сеть vpc держит проект» (kacho#2684, пункт 1 предиката
+	// kacho#1231): отказ `Project <id> is not empty (<вид>: <число>, …)` производит
+	// оператор удаления проекта в службе доступа (PRO-Robotech/kaname#166), край его
+	// проксирует. Дом кейса — набор платформы (e2e-flow.md §7а): чужой ресурс набор
+	// службы завести не может, а текст владелец здесь произвести не может.
+	"services/vpc/tests/newman/collections/project-container.postman_collection.json::poll-op-3": "PRO-Robotech/kaname",
 }
 
 // rpStepKey — ключ ведомости: коллекция и имя шага. Номер строки не годится —

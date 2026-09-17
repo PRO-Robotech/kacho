@@ -1,8 +1,10 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// login_lane_paths.go — ЕДИНСТВЕННОЕ объявление четырёх глаголов полосы формы
-// (приёмка Ф3 Р2, §8 инв. 7).
+// login_lane_paths.go — ЕДИНСТВЕННОЕ объявление глаголов полосы формы
+// (приёмка Ф3 Р2, §8 инв. 7): четыре глагола Ф3, регистрация Ф4 (kacho#2699)
+// и два глагола восстановления доступа Ф5 (kacho#2701) — семь путей, тот же
+// перечень, что служба объявляет у своего слушателя (`loginlanehttp.Paths()`).
 //
 // # Кто это читает — трое, и второго объявления нет
 //
@@ -16,22 +18,32 @@
 //
 // Второе объявление тех же путей разошлось бы молча: путь, освобождённый и не
 // ретранслируемый, отвечал бы 404 краем; ретранслируемый и не освобождённый —
-// отказом каталога до службы.
+// отказом каталога до службы. Ровно так три глагола Ф4/Ф5 и выглядели до
+// расширения: служба их обслуживала, край отвечал 404 (kacho#2699, kacho#2701).
 //
 // # Совпадение ТОЧНОЕ
 //
 // Не приставка: `/iam/v1/auth/` уже однажды была приставкой, и всякий новый
 // маршрут под ней наследовал освобождение, никем не решённое (`authz_util.go`).
-// Параметры запроса (`?form=<вид>`) к пути не относятся.
+// Параметры запроса (`?form=<вид>`) к пути не относятся. Путь завершения
+// восстановления — подпуть пути запроса кода, и точное совпадение здесь несущее:
+// приставочное не различало бы два глагола.
 package middleware
 
-// Пути четырёх глаголов. Написание подпутём, а не суффиксом `:verb`, взято у
+// Пути глаголов. Написание подпутём, а не суффиксом `:verb`, взято у
 // существующего маршрута «кто я» того же семейства (Р2).
 const (
 	LoginLanePathLogin    = "/iam/v1/auth/login"
 	LoginLanePathLogout   = "/iam/v1/auth/logout"
 	LoginLanePathPassword = "/iam/v1/auth/password" // #nosec G101 -- путь глагола смены пароля, а не удостоверение
 	LoginLanePathCSRF     = "/iam/v1/auth/csrf"
+	// LoginLanePathRegister — регистрация паролем (Ф4): та же форма ответа, то
+	// же печенье, свой вид признака формы.
+	LoginLanePathRegister = "/iam/v1/auth/register"
+	// Восстановление доступа (Ф5): запрос кода и его предъявление с новым
+	// паролем — два глагола, две формы, два вида признака.
+	LoginLanePathRecovery         = "/iam/v1/auth/recovery"
+	LoginLanePathRecoveryComplete = "/iam/v1/auth/recovery/complete"
 )
 
 // LoginLaneRoute — глагол формы: имя для счётчиков и путь на адресе консоли.
@@ -42,13 +54,16 @@ type LoginLaneRoute struct {
 	Path string
 }
 
-// loginLaneRoutes — сам перечень. Порядок — порядок Р2; читатели по нему не
-// ветвятся.
+// loginLaneRoutes — сам перечень. Порядок — порядок Р2, затем Ф4 и Ф5;
+// читатели по нему не ветвятся.
 var loginLaneRoutes = []LoginLaneRoute{
 	{Verb: "login", Path: LoginLanePathLogin},
 	{Verb: "logout", Path: LoginLanePathLogout},
 	{Verb: "password", Path: LoginLanePathPassword},
 	{Verb: "csrf", Path: LoginLanePathCSRF},
+	{Verb: "register", Path: LoginLanePathRegister},
+	{Verb: "recovery", Path: LoginLanePathRecovery},
+	{Verb: "recovery-complete", Path: LoginLanePathRecoveryComplete},
 }
 
 // LoginLaneRoutes отдаёт КОПИЮ перечня глаголов формы.

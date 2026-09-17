@@ -100,6 +100,15 @@ func TestProjectDeletionSurfacesNameTheSameSuccessor(t *testing.T) {
 			projectDeletionDecisionDoc, SuccessorMarker)
 	}
 
+	refusal := DeclaredRefusalLiterals(doc)
+	if len(refusal) == 0 {
+		t.Fatalf("документ решения %s не объявляет литералы отказа строкой %q.\n\n"+
+			"Механизм посажен (PRO-Robotech/kaname#166), и у решения появилось наблюдаемое: "+
+			"тон отказа и его машинный признак. Документ, который их не объявляет, нельзя "+
+			"сверить с контрактом — а контракт приезжает модулем, и отставший пин без этой "+
+			"сверки выглядел бы согласием.", projectDeletionDecisionDoc, RefusalMarker)
+	}
+
 	coords := DeclaredCoordinates(doc)
 	census := DecisionCensus{Successor: successor, Coordinates: len(coords)}
 
@@ -108,6 +117,7 @@ func TestProjectDeletionSurfacesNameTheSameSuccessor(t *testing.T) {
 		missing  []string
 	)
 	external := 0
+	literalsChecked := 0
 	for _, rel := range coords {
 		abs, fromModule, perr := decisionSurfacePath(root, rel)
 		if perr != nil {
@@ -134,13 +144,23 @@ func TestProjectDeletionSurfacesNameTheSameSuccessor(t *testing.T) {
 			findings = append(findings, SuccessorFinding(
 				DecisionSurface{Path: rel, Cites: cites, Found: found}, successor))
 		}
+		// Вторая ось: поверхность несёт объявленный отказ ДОСЛОВНО. Для контракта,
+		// приехавшего модулем, это и есть сверка пина с документом: до подъёма
+		// пина контракт в дереве обещает прежнее поведение, и находка называет
+		// ровно то, чего он не несёт.
+		literalsChecked += len(refusal)
+		if gap := MissingRefusalLiterals(src, refusal); len(gap) > 0 {
+			findings = append(findings, RefusalFinding(rel, gap))
+		}
 	}
 
 	t.Logf("перепись: документ решения %s; объявленная задача-преемник #%d; "+
 		"координат прочитано %d, поверхностей разобрано %d (из них приехало модулем %d), "+
-		"ссылок на задачи встречено %d; находок %d, ненайденных координат %d",
+		"ссылок на задачи встречено %d; литералов отказа объявлено %d, сверено %d; "+
+		"находок %d, ненайденных координат %d",
 		projectDeletionDecisionDoc, census.Successor, census.Coordinates,
-		census.Surfaces, external, census.Citations, len(findings), len(missing))
+		census.Surfaces, external, census.Citations, len(refusal), literalsChecked,
+		len(findings), len(missing))
 
 	// Предпосылка: поверхности вообще есть. Ноль означает, что документ перестал
 	// называть координаты, и суждение выполняется тождественно.
@@ -156,12 +176,15 @@ func TestProjectDeletionSurfacesNameTheSameSuccessor(t *testing.T) {
 	}
 	if len(findings) > 0 {
 		sort.Strings(findings)
-		t.Fatalf("поверхностей решения, не называющих задачу-преемника #%d: %d\n%s\n\n"+
-			"Читатель такой поверхности идёт к задаче, которую она называет. Если та "+
-			"закрыта, он читает «закрыта» как «сделано» — то есть ссылка лжёт в сторону, "+
-			"которая успокаивает. Номер объявляется ОДИН раз (%s в документе решения), "+
-			"остальные поверхности обязаны его содержать; историческая ссылка на задачу, "+
-			"при которой решение принималось, при этом законна и гейтом не запрещена.",
-			successor, len(findings), strings.Join(findings, "\n"), SuccessorMarker)
+		t.Fatalf("поверхностей решения, расходящихся с документом: %d\n%s\n\n"+
+			"Две оси. ПРЕЕМНИК (#%d): читатель поверхности идёт к задаче, которую она "+
+			"называет; если та закрыта, он читает «закрыта» как «сделано» — ссылка лжёт в "+
+			"сторону, которая успокаивает. Номер объявляется ОДИН раз (%s в документе "+
+			"решения), остальные поверхности обязаны его содержать; историческая ссылка "+
+			"на задачу, при которой решение принималось, законна и гейтом не запрещена. "+
+			"ОТКАЗ (%s): поверхность, приехавшая модулем, несёт объявленный отказ только "+
+			"с той ревизии службы, где механизм посажен, — находка здесь означает пин "+
+			"go.mod, отставший от документа, а не ошибку документа.",
+			len(findings), strings.Join(findings, "\n"), successor, SuccessorMarker, RefusalMarker)
 	}
 }
