@@ -605,7 +605,26 @@ def chain_cases(h):
     script.write_text(original)
     c10.check(bad["rc"] == 1 and local_summary(bad) == (5, 1, 0), "real selftest defect must remain one failing local check")
     c10.record(bad, "ci-local", "finding", declarations=5, failed=1, unmet=0)
-    c9.capture(bad); c9.check("САМОПРОВЕРКА ПРОВАЛЕНА" in bad["stdout"] or "ПРОВАЛ" in bad["stdout"], "genuine selftest failure missing from actual caller")
+    c9.capture(bad)
+    c9.check(bad["rc"] == 1 and local_summary(bad) == (5, 1, 0) and local_declarations(bad) == 5,
+             "genuine Python selftest defect lost its complete caller refusal")
+    bad_record = c9.record(bad, "ci-local", "finding", declarations=5, executed=5, failed=1, skipped=0, unmet=0)
+    if bad_record is not None:
+        c9.check(type(bad_record.get("schema_version")) is int, "selftest refusal schema version is not an integer")
+        c9.check(bad_record.get("unmet_reasons") == [], "genuine selftest defect was confused with an unmet condition")
+        findings = bad_record.get("findings")
+        valid_findings = isinstance(findings, list) and all(
+            isinstance(item, dict) and all(isinstance(item.get(key), str) and item[key].strip()
+                                         for key in ("producer", "code", "coordinate", "message"))
+            for item in findings)
+        c9.check(valid_findings, "selftest findings lost their producer, code or coordinate")
+        if valid_findings:
+            c9.check(any(item["producer"] == "gate-self-test" and item["code"] == "check-failed"
+                         and item["coordinate"] == RUNNER for item in findings),
+                     "actual caller lost the failed Python selftest runner coordinate")
+            c9.check(any(item["producer"] == "run-python-probes/self-test"
+                         and item["code"] == "self-test-failed" for item in findings),
+                     "actual caller lost the underlying Python selftest finding")
     mixed_helm_case(h, root, c10)
     c11 = h.case("CI_PY_11_record_authenticity")
     caller_record_cases(h, root, c11, [direct, made])
