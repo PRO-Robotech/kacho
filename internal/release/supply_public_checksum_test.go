@@ -543,6 +543,12 @@ func rsChecksumBridgeSource(t *testing.T) string {
     return release.SupplyCommandResult{Stdout:stdout,Stderr:stderr,ExitCode:rc,Err:err}
    }
    args:=append([]string(nil),c.Args...)`)
+	// The seven-second limit is this test's explicit parent context, not the
+	// product's HTTP network budget or its ordinary600s Go command policy.
+	replace("rc:=release.RunSupplyPublisher(ctx,request.Args,deps,&stdout,&stderr)", `sutCtx:=ctx;sutCancel:=func(){};probeContext:=len(request.Args)>1&&request.Args[0]=="--phase"&&request.Args[1]=="probe"
+ sutBudget:=time.Duration(0);if probeContext{sutBudget=7*time.Second;sutCtx,sutCancel=context.WithTimeout(ctx,sutBudget)};defer sutCancel()
+ rc:=release.RunSupplyPublisher(sutCtx,request.Args,deps,&stdout,&stderr)`)
+	replace(`"deadline_exceeded":ctx.Err()!=nil,`, `"deadline_exceeded":ctx.Err()!=nil,"harness_deadline_exceeded":errors.Is(ctx.Err(),context.DeadlineExceeded),"sut_deadline_exceeded":errors.Is(sutCtx.Err(),context.DeadlineExceeded),"sut_probe_context_applied":probeContext,"sut_parent_budget_nanoseconds":int64(sutBudget),`)
 	return s + "\n" + rsChecksumAdapterDeclarations(t)
 }
 func rsBuildChecksumBridge(h *rsHarness) string {
@@ -579,8 +585,16 @@ func rsChecksumInvoke(h *rsHarness, p *rsPublisherFixture, f *rsForgeProcess, s 
 		h.t.Fatal(e)
 	}
 	rsCopyCaptures(h, dir, label)
-	if meta["deadline_exceeded"] != false || len(meta["unhandled_boundaries"].([]any)) != 0 {
+	if meta["deadline_exceeded"] != false || meta["harness_deadline_exceeded"] != false || len(meta["unhandled_boundaries"].([]any)) != 0 {
 		h.t.Fatalf("HARNESS_NOT_EXECUTED: checksum outer bridge %+v", meta)
+	}
+	probe := len(args) > 1 && args[0] == "--phase" && args[1] == "probe"
+	wantBudget := float64(0)
+	if probe {
+		wantBudget = float64(7 * time.Second)
+	}
+	if meta["sut_probe_context_applied"] != probe || meta["sut_parent_budget_nanoseconds"] != wantBudget || (!probe && meta["sut_deadline_exceeded"] != false) {
+		h.t.Fatalf("HARNESS_NOT_EXECUTED: checksum explicit parent context metadata %+v", meta)
 	}
 	publicCommands, globErr := filepath.Glob(filepath.Join(dir, "public-go-*.json"))
 	if globErr != nil {
@@ -780,7 +794,10 @@ func rsCheckChecksumCommand(h *rsHarness, s *rsChecksumService, c rsPublisherCas
 	}
 	remaining, finite := r["context_remaining_nanoseconds"].(float64)
 	if !finite || remaining <= 0 || remaining > float64(7*time.Second) {
-		h.t.Errorf("SEMANTIC_MISMATCH: public command not clipped by enclosing7s stage budget: %v", r["context_remaining_nanoseconds"])
+		h.t.Errorf("SEMANTIC_MISMATCH: public command not clipped by explicit test parent context7s: %v", r["context_remaining_nanoseconds"])
+	}
+	if o.meta["sut_deadline_exceeded"] != (c.Name == "deadline") {
+		h.t.Errorf("SEMANTIC_MISMATCH: inner SUT deadline observation %+v", o.meta)
 	}
 	if c.Name == "deadline" && r["context_deadline_exceeded"] != true {
 		h.t.Error("SEMANTIC_MISMATCH: checksum budget case did not reach actual deadline")
