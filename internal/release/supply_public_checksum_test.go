@@ -576,7 +576,10 @@ func rsChecksumInvoke(h *rsHarness, p *rsPublisherFixture, f *rsForgeProcess, s 
 	if e := os.MkdirAll(ownedTmp, 0700); e != nil {
 		h.t.Fatal(e)
 	}
-	_, stderr, rc := h.run(h.root, []string{"CI_RS_BRIDGE_REQUEST=" + path, "GOPROXY=off", "GOSUMDB=off", "GOPATH=" + filepath.Join(h.root, "checksum-sut-gopath-"+label), "TMPDIR=" + ownedTmp}, binary, "-test.run=^TestCIRSConsumerBridge$", "-test.v", "-test.timeout=115s")
+	// Isolate SumDB checkpoints without changing the existing producer dependency
+	// cache. The public command still must explicitly override it with a fresh one.
+	producerCache := h.must(h.root, h.goBin, "env", "GOMODCACHE")
+	_, stderr, rc := h.run(h.root, []string{"CI_RS_BRIDGE_REQUEST=" + path, "GOPROXY=off", "GOSUMDB=off", "GOPATH=" + filepath.Join(h.root, "checksum-sut-gopath-"+label), "GOMODCACHE=" + producerCache, "TMPDIR=" + ownedTmp}, binary, "-test.run=^TestCIRSConsumerBridge$", "-test.v", "-test.timeout=115s")
 	if rc != 0 {
 		h.t.Fatalf("HARNESS_NOT_EXECUTED: checksum bridge rc%d %s", rc, stderr)
 	}
