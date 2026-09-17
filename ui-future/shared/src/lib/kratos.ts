@@ -82,7 +82,8 @@ export interface KratosSession {
   active: boolean;
   expires_at: string;
   authenticated_at: string;
-  authenticator_assurance_level: "aal0" | "aal1" | "aal2";
+  // Поля уровня уверенности здесь нет намеренно: консоль по уровню не решает
+  // (приёмка Ф11 §1.3 Ч8) — решает край, а консоль отвечает на его вызов.
   authentication_methods?: Array<{
     method: string;
     aal: string;

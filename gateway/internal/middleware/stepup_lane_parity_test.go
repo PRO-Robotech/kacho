@@ -28,11 +28,13 @@ package middleware_test
 // скрывает ровно тот случай, ради которого перепись заведена.
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -154,6 +156,10 @@ func newLaneRig(t *testing.T) *laneRig {
 	).
 		WithVerifier(rs256Verifier(t, fix)).
 		WithKratos(middleware.NewKratosClient(fakeKratos(t).URL)).
+		// Читатель НАШЕЙ сессии (посадка `own`, Ф3). В бою провязывается ВМЕСТО
+		// поставщика — здесь рядом с ним, потому что сравниваются полосы, а не
+		// сборки: у каждой свой носитель, и на чужом носителе полоса молчит.
+		WithHumanSession(fakeOwnSession{}).
 		WithBasicCredentialLane(middleware.NewBasicCredentialLane(authority)).
 		WithStepUp(
 			middleware.NewStepUpGate(nil),
@@ -178,9 +184,32 @@ type laneDriver struct {
 	arrange                     func(t *testing.T, rig *laneRig, r *http.Request)
 }
 
+// fakeOwnSession — читатель НАШЕЙ сессии, отвечающий живой сессией уровня «1»:
+// тот же уровень, что aal1 у поставщика, acr="1" у предъявителя и «1» у
+// базового удостоверения, — полосы сравниваются на РАВНОМ входе.
+type fakeOwnSession struct{}
+
+func (fakeOwnSession) ResolveHumanSession(_ context.Context, bearer string) (middleware.HumanSession, bool, error) {
+	if bearer != "opaque-own" {
+		return middleware.HumanSession{}, false, nil
+	}
+	at := time.Date(2026, 8, 24, 10, 0, 0, 0, time.UTC)
+	return middleware.HumanSession{
+		UserID: "usr_alice_acc_a1b2", Email: "alice@example.test", DisplayName: "Alice A",
+		AuthenticatedAt: at, ExpiresAt: at.Add(24 * time.Hour), AssuranceLevel: "1", EmailVerified: true,
+	}, true, nil
+}
+
 // laneDrivers — реестр приводов, ключ = имя метода-полосы В ДЕРЕВЕ.
 func laneDrivers() map[string]laneDriver {
 	return map[string]laneDriver{
+		"tryOwnSession": {
+			name:                        "наша сессия (kaname_session, уровень 1)",
+			carriesIdentityInProduction: true,
+			arrange: func(_ *testing.T, _ *laneRig, r *http.Request) {
+				r.Header.Set("Cookie", middleware.OurSessionCarrierName+"=opaque-own")
+			},
+		},
 		"tryKratosSession": {
 			name:                        "сессия провайдера (ory_kratos_session, aal1)",
 			carriesIdentityInProduction: true,

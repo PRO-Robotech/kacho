@@ -43,7 +43,8 @@ import (
 //	KACHO_API_GATEWAY_STORAGE_GRPC           — адрес backend kacho-storage (public, port 9090)
 //	KACHO_API_GATEWAY_STORAGE_INTERNAL_GRPC  — адрес backend kacho-storage internal-port (9091)
 //	KACHO_APP_ENV                            — deployment-env label (keys the prod authz guard)
-//	KACHO_API_GATEWAY_KRATOS_PUBLIC_URL      — Ory Kratos public API base ("disabled" turns it off)
+//	KACHO_API_GATEWAY_KRATOS_PUBLIC_URL      — Ory Kratos public API base ("disabled" turns it off); read under `external` only
+//	KACHO_API_GATEWAY_IAM_LOGIN_LANE_URL     — адрес HTTPS-слушателя полосы формы службы доступа (own only, required)
 //	KACHO_API_GATEWAY_ADMISSION_PUBLIC_*     — потолок темпа/одновременности внешнего
 //	                                           слушателя (READ_PER_SEC, MUTATION_PER_SEC,
 //	                                           BURST_FACTOR, IN_FLIGHT; молчание — пол платформы)
@@ -264,7 +265,23 @@ type Config struct {
 	// KratosPublicURL — base URL of the Ory Kratos public API (session /whoami).
 	// The sentinel "disabled" turns Kratos session-auth off entirely. Default is
 	// the cluster-internal kratos-public Service.
+	//
+	// Читается ТОЛЬКО под посадкой `external` (Ф3 Р15, Ф3-12): под `own` сессию
+	// человека читает наша служба, и читатель носителя поставщика не заводится
+	// вовсе — независимо от того, задан ли этот адрес.
 	KratosPublicURL string `envconfig:"KACHO_API_GATEWAY_KRATOS_PUBLIC_URL" default:"http://kacho-umbrella-kratos-public.kacho.svc:80"`
+
+	// LoginLaneURL — адрес HTTPS-слушателя ПОЛОСЫ ФОРМЫ службы доступа (вход ·
+	// выход · смена пароля · признак формы), на который край ретранслирует
+	// четыре глагола под посадкой `own` (приёмка Ф3 Р2, Р16).
+	//
+	// Слушатель взаимный по TLS и допускает ровно край: по нему идут
+	// клиентская пара и якорь `KACHO_API_GATEWAY_MTLS_CLIENT_CERT_FILE/_KEY_FILE/_CA_FILE`
+	// и имя сервера `KACHO_API_GATEWAY_MTLS_IAM_SERVER_NAME` (как у gRPC-ребра к
+	// службе). УМОЛЧАНИЯ НЕТ: под `own` пустое значение — отказ старта с именем
+	// ручки (ретрансляция без цели отвечала бы 503 на каждом запросе всю жизнь,
+	// неотличимо от «служба лежит»); под `external` ручка не читается.
+	LoginLaneURL string `envconfig:"KACHO_API_GATEWAY_IAM_LOGIN_LANE_URL" default:""`
 
 	// MetricsAddr — адрес cluster-internal ДИАГНОСТИЧЕСКОЙ поверхности края
 	// (`GET /metrics`).
@@ -834,6 +851,10 @@ func (c Config) ResolvedHydraIntrospectionURL() string {
 // раз: его называют текст отказа старта и документация профиля; две копии
 // разошлись бы на той, которую забыли поправить.
 const IdentityProviderKnob = "KACHO_API_GATEWAY_IDENTITY_PROVIDER"
+
+// LoginLaneURLKnob — имя ручки адреса полосы формы. Объявлено один раз: его
+// называют текст отказа старта, профиль и проба чарта.
+const LoginLaneURLKnob = "KACHO_API_GATEWAY_IAM_LOGIN_LANE_URL"
 
 // ResolvedIdentityProvider разбирает объявленную посадку личности.
 //

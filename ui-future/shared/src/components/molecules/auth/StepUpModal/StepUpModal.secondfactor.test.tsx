@@ -28,10 +28,9 @@ let registered: StepUpHandler = null;
 const setStepUpHandler = jest.fn((h: StepUpHandler) => {
   registered = h;
 });
-const markMfaFresh = jest.fn();
 const refresh = jest.fn(async () => {});
 
-const auth = { setStepUpHandler, markMfaFresh, refresh } as unknown as AuthContextValue;
+const auth = { setStepUpHandler, refresh } as unknown as AuthContextValue;
 
 jest.unstable_mockModule("@shared/contexts/AuthContext", () => ({ useAuth: () => auth }));
 // Кодировщик — чистая функция; подменяется, чтобы не тянуть страницу входа
@@ -147,7 +146,9 @@ describe("StepUpModal — второй фактор", () => {
     await waitFor(() => expect(p.settled()).toBe(true));
     expect(p.rejected()).toBe(false);
     expect(requests[1].body).toMatchObject({ method: "totp", totp_code: "123456", csrf_token: "csrf-1" });
-    expect(markMfaFresh).toHaveBeenCalledTimes(1);
+    // Уровень после церемонии знает край по нашей сессии (Ф11 Р7): консоль
+    // перечитывает личность, своего значения «свежести» она не ведёт.
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 
   it("без второго фактора НАЗЫВАЕТ это, ведёт настраивать и запрос НЕ пропускает", async () => {

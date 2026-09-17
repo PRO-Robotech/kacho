@@ -24,11 +24,10 @@ let registered: StepUpHandler[] = [];
 const setStepUpHandler = jest.fn((h: StepUpHandler) => {
   registered.push(h);
 });
-const markMfaFresh = jest.fn();
 const refresh = jest.fn(async () => {});
 
 jest.unstable_mockModule("@shared/contexts/AuthContext", () => ({
-  useAuth: () => ({ setStepUpHandler, markMfaFresh, refresh }),
+  useAuth: () => ({ setStepUpHandler, refresh }),
 }));
 
 const { StepUpModal } = await import("./StepUpModal");

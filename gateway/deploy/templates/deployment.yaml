@@ -176,6 +176,9 @@ spec:
             # имени релиза с тем, что кто-то однажды набрал, и ломался бы молча
             # при установке под другим именем. Значение `disabled` выключает
             # сессионную аутентификацию целиком (сигнальное значение config.go).
+            # ЧИТАЕТСЯ ТОЛЬКО ПОД ПОСАДКОЙ `external` (Ф3, kacho#1269): под `own`
+            # сессию человека читает служба доступа, и адрес поставщика краем не
+            # читается вовсе — читатель его носителя под `own` не заводится.
             - name: KACHO_API_GATEWAY_KRATOS_PUBLIC_URL
               value: {{ .Values.kratosPublicUrl | default (printf "http://%s-kratos-public.%s.svc:80" .Release.Name .Release.Namespace) | quote }}
             {{- if .Values.tls.enabled }}
@@ -210,6 +213,16 @@ spec:
                  Умолчание живёт в базовом профиле чарта. */}}
             {{- with .Values.authn.identityProvider }}
             - name: KACHO_API_GATEWAY_IDENTITY_PROVIDER
+              value: {{ . | quote }}
+            {{- end }}
+            {{- /* АДРЕС ПОЛОСЫ ФОРМЫ службы доступа (Ф3, kacho#1269): куда край
+                 ретранслирует вход, выход, смену пароля и признак формы под
+                 посадкой `own`. Эмитится ТОЛЬКО при непустом значении: пустая
+                 переменная под `external` читалась бы стражем как «задано
+                 пустым», а под `own` пустота и есть отказ старта — оба исхода
+                 обязаны приходить от значения профиля, а не от шаблона. */}}
+            {{- with .Values.authn.iamLoginLaneUrl }}
+            - name: KACHO_API_GATEWAY_IAM_LOGIN_LANE_URL
               value: {{ . | quote }}
             {{- end }}
             # There is deliberately NO way here to hand the gateway a shared signing

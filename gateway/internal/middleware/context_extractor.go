@@ -190,6 +190,16 @@ func (e *ContextExtractor) fillFromToken(out map[string]any, t *VerifiedToken) {
 	}
 }
 
+// ClientIP — адрес клиента, выведенный ТЕМ ЖЕ оператором, что кормит условие
+// `client_ip` модели прав: доверенные заголовки пересылки читаются справа по
+// числу доверенных прыжков, иначе — TCP-пир. Экспортирован для ретрансляции
+// полосы формы (приёмка Ф3 Р2): служба читает `X-Forwarded-For` как ОДИН адрес,
+// и адрес этот выводит край — не цепочка, которую строит раздача консоли перед
+// ним. Второй оператор чтения цепочки разошёлся бы с первым молча.
+func (e *ContextExtractor) ClientIP(r *http.Request) string {
+	return e.resolveClientIP(r)
+}
+
 // resolveClientIP returns the canonical client IP literal for an HTTP request.
 // Forwarded headers are consulted only via clientIPFromForwardHeaders (trusted,
 // hop-indexed); otherwise the authoritative TCP peer (RemoteAddr) is used.

@@ -125,6 +125,11 @@ type AuthzCounts struct {
 	// отвечает; край не сужает. Допуск края здесь — не суждение о правах.
 	ScopeFiltered uint64
 
+	// PasswordChangeRequired — отказов по требованию сменить пароль (Ф3 Р8):
+	// сессия выдана восстановлением, глагол платформы отвергнут ДО вопроса к
+	// модели. Своя полоса: это не «отказано моделью» и не «не спрашивали».
+	PasswordChangeRequired uint64
+
 	// Enforcing — проверка ВКЛЮЧЕНА в этом процессе.
 	//
 	// Отдельная величина, а не вывод из нулей: при выключенной проверке звено
@@ -168,6 +173,8 @@ type AuthzMetrics struct {
 	overrideAllowTotal  atomic.Uint64
 	exemptTotal         atomic.Uint64
 	scopeFilteredTotal  atomic.Uint64
+
+	passwordChangeRequiredTotal atomic.Uint64
 
 	enforcing atomic.Bool
 
@@ -239,6 +246,9 @@ func (m *AuthzMetrics) RecordExempt() { m.exemptTotal.Add(1) }
 // RecordScopeFiltered — сужение пообъектное ниже по стеку.
 func (m *AuthzMetrics) RecordScopeFiltered() { m.scopeFilteredTotal.Add(1) }
 
+// RecordPasswordChangeRequired — отказ по требованию сменить пароль (Ф3 Р8).
+func (m *AuthzMetrics) RecordPasswordChangeRequired() { m.passwordChangeRequiredTotal.Add(1) }
+
 // SetEnforcing объявляет, включена ли проверка в этом процессе. Зовётся сборкой
 // звена — единственным местом, где это известно.
 func (m *AuthzMetrics) SetEnforcing(on bool) {
@@ -301,6 +311,8 @@ func (m *AuthzMetrics) Counts() AuthzCounts {
 		OverrideAllow:  m.overrideAllowTotal.Load(),
 		Exempt:         m.exemptTotal.Load(),
 		ScopeFiltered:  m.scopeFilteredTotal.Load(),
+
+		PasswordChangeRequired: m.passwordChangeRequiredTotal.Load(),
 
 		Enforcing: m.enforcing.Load(),
 	}

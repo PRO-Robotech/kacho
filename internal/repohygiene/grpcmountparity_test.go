@@ -79,6 +79,12 @@ import (
 // перестанет модуль публиковать заглушки сервиса — тот исчезнет из контракта, и
 // записи снова станет нечего прощать (у гейта каталога — сразу, у этого — как
 // только пакетом начнут владеть). Оба исхода роняют прогон сами.
+//
+// Ф3 (kacho#1269) добавила службе ОДИН сервис — `InternalHumanSessionService`,
+// вопрос края к нашей сессии по носителю; он приехал подъёмом пина модуля на
+// ствол службы af0ca8f3, и монтирует его, как и остальные, только она. Запись
+// заведена по тому же основанию; перепись «исключений вне предмета» после этого
+// печатает 22 (перемерено прогоном, а не сложено в уме).
 var mountAllow = []string{
 	"kaname.cloud.iam.v1.AccessBindingService",
 	"kaname.cloud.iam.v1.AccountService",
@@ -87,6 +93,7 @@ var mountAllow = []string{
 	"kaname.cloud.iam.v1.IdentityQuotaService",
 	"kaname.cloud.iam.v1.InternalBootstrapTokenService",
 	"kaname.cloud.iam.v1.InternalClusterService",
+	"kaname.cloud.iam.v1.InternalHumanSessionService",
 	"kaname.cloud.iam.v1.InternalIAMService",
 	"kaname.cloud.iam.v1.InternalInteractiveClientService",
 	"kaname.cloud.iam.v1.InternalModuleService",

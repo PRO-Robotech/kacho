@@ -81,6 +81,11 @@ import (
 // Перечень ТОЧНЫЙ и истекает сам: строка ушла — либо метод смонтировали, либо
 // край снял её из каталога, снимайте запись; строка появилась — контракт объявил
 // полосу для метода, которого никто не обслуживает.
+//
+// Ф3 (kacho#1269) добавила ОДНУ строку — `InternalHumanSessionService/Resolve`:
+// вопрос края к нашей сессии, обслуживаемый службой в её дереве; в каталоге края
+// она появилась подъёмом пина модуля на ствол службы af0ca8f3. Перемерено
+// прогоном после регенерации каталога: строк службы 106 из 339.
 var knownInertCatalogRows = []string{
 	"kaname.cloud.iam.v1.AccessBindingService/Create",
 	"kaname.cloud.iam.v1.AccessBindingService/Delete",
@@ -123,6 +128,7 @@ var knownInertCatalogRows = []string{
 	"kaname.cloud.iam.v1.InternalClusterService/GrantAdmin",
 	"kaname.cloud.iam.v1.InternalClusterService/ListAdmins",
 	"kaname.cloud.iam.v1.InternalClusterService/RevokeAdmin",
+	"kaname.cloud.iam.v1.InternalHumanSessionService/Resolve",
 	"kaname.cloud.iam.v1.InternalIAMService/Check",
 	"kaname.cloud.iam.v1.InternalIAMService/CheckBasicCredentialLive",
 	"kaname.cloud.iam.v1.InternalIAMService/ForceLogout",

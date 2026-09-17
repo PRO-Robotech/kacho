@@ -254,12 +254,20 @@ func (m *AuthzMiddleware) resolveRestFQN(r *http.Request) string {
 // /iam/v1/auth/me is listed because it must answer an anonymous caller (with
 // `{"user":null}`) and because it acts on a provider SESSION, never on a
 // bearer's authority — so there is no revocation question to ask of it.
+//
+// ЧЕТЫРЕ ГЛАГОЛА ФОРМЫ (Ф3 Р2, Р8) — из ЕДИНОГО объявления `login_lane_paths.go`,
+// а не литералами здесь: то же объявление читают ветка полосы сессии и
+// регистрация ретрансляции, и второй перечень тех же путей разошёлся бы с
+// первым молча. Что членство снимает: решение по каталогу прав, пол уверенности
+// и полосу привязки предъявителя. Чего НЕ снимает: полосу сессии — она
+// исполняется на каждом пути и на глаголах формы отвергает отсечённый носитель
+// до ретрансляции (Ф3-51, §1.8 приёмки).
 func isPublicHTTPPath(path string) bool {
 	switch path {
 	case "/healthz", "/readyz", "/oauth/logout", "/iam/v1/auth/me":
 		return true
 	}
-	return false
+	return IsLoginLanePath(path)
 }
 
 // traceFromContext extracts the request-id for correlation, prioritising

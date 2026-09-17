@@ -64,7 +64,6 @@ package middleware
 import (
 	"context"
 	"errors"
-	"net/http"
 	"time"
 )
 
@@ -127,12 +126,13 @@ const (
 // sessionCutoffDenyDescription — что видит клиент на отвергнутой сессии.
 // Называет состояние ЕГО СОБСТВЕННОЙ сессии и ничего про чужие, поэтому
 // оракулом не является; говорит «войди заново», а не «повтори».
+//
+// ТОТ ЖЕ ТЕКСТ ИДЁТ И НА НЕДОСТУПНОСТЬ АВТОРИТЕТА (F4d-23; приёмка Ф3 Д3,
+// Ф3-13). Прежде «спросить не удалось» отвечало другим текстом — и различимый
+// текст был оракулом исправности соседа: по нему можно было отличить «меня
+// отозвали» от «служба лежит». Носитель при этом различается ПОВЕДЕНИЕМ, а не
+// текстом: на отсечке он гасится, на недоступности остаётся цел.
 const sessionCutoffDenyDescription = "session ended; sign in again"
-
-// sessionCutoffUnavailableReason — что видит клиент, когда спросить не удалось.
-// Намеренно тонкое: какой именно адрес этого развёртывания молчит — дело
-// оператора, и оно идёт в журнал, а не на провод.
-const sessionCutoffUnavailableReason = "session revocation check unavailable"
 
 // WithSessionCutoffCheck — провязывает читателя нашей отсечки на браузерную
 // полосу. nil оставляет полосу непровязанной.
@@ -151,33 +151,20 @@ func (a *AuthInterceptor) WithSessionCutoffCheck(r SessionCutoffReader, reportIn
 	return a
 }
 
-// endSessionCarrier заканчивает носителя браузерной сессии.
-//
-// Тот же набор имён и та же форма, что у выхода (`handler.LogoutHandler`), —
-// одно место продукта гасит cookie одним способом, иначе «выход» и «отказ»
-// оставляли бы разное состояние у одного и того же браузера.
-func endSessionCarrier(w http.ResponseWriter) {
-	for _, c := range []string{"ory_kratos_session"} {
-		http.SetCookie(w, &http.Cookie{
-			Name:     c,
-			Value:    "",
-			Path:     "/",
-			MaxAge:   -1,
-			HttpOnly: true,
-			Secure:   true,
-			SameSite: http.SameSiteLaxMode,
-		})
-	}
-}
-
 // sessionCutoffCheck спрашивает НАШ авторитет про сессию и докладывает вердикт,
 // беря на себя доклад о неотвечающем авторитете (с ограничением частоты и
 // нарастающим итогом) — чтобы «контроль не исполнился» никогда не выглядело как
 // «контроль прошёл».
 //
+// ОДИН читатель отсечки на обе посадки: полоса сессии поставщика и полоса нашей
+// сессии (Ф3) подают сюда пару (субъект, момент аутентификации) — и только её.
+// Второй экземпляр сравнения разошёлся бы с первым на границе (включающая /
+// строгая), и разошёлся бы молча (§1.2 приёмки Ф3: такое расхождение у полосы
+// токенов уже есть).
+//
 // route — только контекст журнала; вердикта он не меняет.
 func (a *AuthInterceptor) sessionCutoffCheck(
-	ctx context.Context, subj Subject, sess KratosWhoamiResult, route string,
+	ctx context.Context, subj Subject, authenticatedAt time.Time, route string,
 ) sessionCutoffVerdict {
 	if a.sessionCutoff == nil {
 		return sessionCutoffNotAsked
@@ -222,7 +209,7 @@ func (a *AuthInterceptor) sessionCutoffCheck(
 		// работает.
 		return sessionCutoffLive
 	}
-	if sess.AuthenticatedAt.IsZero() {
+	if authenticatedAt.IsZero() {
 		// Отсечка есть, а сравнивать не с чем: провайдер момента не назвал.
 		// Пропустить — значит дать обходить отзыв ОТСУТСТВИЕМ поля в чужом
 		// ответе. Та же посадка принята хуком обновления, где «нет момента ⇒
@@ -242,7 +229,7 @@ func (a *AuthInterceptor) sessionCutoffCheck(
 	// РОВНО в него сессия недействительна. Иначе принудительный выход,
 	// совпавший по метке с входом, не подействовал бы — а совпадают они тем
 	// чаще, чем грубее разрешение метки времени у хранилища.
-	if sess.AuthenticatedAt.After(cutoff) {
+	if authenticatedAt.After(cutoff) {
 		return sessionCutoffLive
 	}
 	return sessionCutoffEnded

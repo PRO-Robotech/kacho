@@ -65,6 +65,9 @@ const (
 	decisionExempt         = "exempt"
 	decisionScopeFiltered  = "scope_filtered"
 
+	// Отказ ДО вопроса к модели: сессия требует сменить пароль (Ф3 Р8).
+	decisionPasswordChangeRequired = "password_change_required"
+
 	cacheHit  = "hit"
 	cacheMiss = "miss"
 )
@@ -220,6 +223,8 @@ func (c *authzCollector) Collect(ch chan<- prometheus.Metric) {
 		decisionOverrideAllow:  s.Counts.OverrideAllow,
 		decisionExempt:         s.Counts.Exempt,
 		decisionScopeFiltered:  s.Counts.ScopeFiltered,
+
+		decisionPasswordChangeRequired: s.Counts.PasswordChangeRequired,
 	} {
 		ch <- prometheus.MustNewConstMetric(decisionsDesc, prometheus.CounterValue,
 			float64(value), decision)

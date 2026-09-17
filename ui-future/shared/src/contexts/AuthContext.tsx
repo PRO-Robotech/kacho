@@ -3,8 +3,14 @@
 // Что внутри:
 //   - user / session (из api-gateway /iam/v1/auth/me + Kratos /sessions/whoami)
 //   - access-token (in-memory только; никогда не в localStorage)
-//   - mfaFreshUntil (timestamp) — для step-up RequireMFAFresh-guard
 //   - login() / logout() / refresh() — высокоуровневые actions
+//
+// Уровня уверенности сессии здесь НЕТ, и это решение (приёмка Ф11 «уровень
+// уверенности объявляет наша сессия», §1.3 Ч8). Прежде контекст читал поле
+// уровня сессии поставщика и вычислял из него «свежесть подтверждения» —
+// значение, которое не читал ни один прод-файл консоли: его писали и не
+// читали. По уровню решает край (пол каталога прав, вызов RFC 9470), консоль
+// отвечает на вызов церемонией повышения (StepUpModal) и перечитывает личность.
 //
 // Аутентификация data-plane запросов — ambient httpOnly session cookie
 // (Kratos/Hydra), выписанная api-gateway middleware; access-token держится
@@ -18,7 +24,6 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { setStepUpRequester } from "@shared/api/step-up";
 import { authApi, hasPermission as checkPerm, type AuthUser, type WhoAmIResponse } from "@shared/api/auth";
 import { kratos, type KratosSession } from "@shared/lib/kratos";
-import { config } from "@shared/lib/config";
 
 /** Периодический whoami-refresh — каждые 5 минут (KAC items 1-5 Foundation). */
 const WHOAMI_REFETCH_MS = 5 * 60 * 1000;
@@ -28,8 +33,6 @@ export interface AuthContextValue {
   session: KratosSession | null;
   loading: boolean;
   accessToken: string | null;
-  /** Unix-seconds timestamp, до которого MFA «свежий». */
-  mfaFreshUntil: number;
   /** Bootstrap-info из GET /iam/v1/me (KAC items 1-5): system_admin /
    *  cluster_viewer / per-account roles. null до первого успешного fetch'а
    *  или при 401/403. */
@@ -45,8 +48,6 @@ export interface AuthContextValue {
   refreshWhoAmI: () => Promise<void>;
   /** Установить access-token (после Hydra token-exchange). */
   setAccessToken: (token: string | null) => void;
-  /** Установить mfa-fresh timestamp (после успешного step-up). */
-  markMfaFresh: (ttlSec?: number) => void;
   /** Проверка permission (admin `*` wildcard). */
   hasPermission: (perm: string) => boolean;
   /** Зарегистрировать step-up handler — обычно StepUpModal. */
@@ -60,7 +61,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<KratosSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [accessToken, setAccessTokenState] = useState<string | null>(null);
-  const [mfaFreshUntil, setMfaFreshUntil] = useState<number>(0);
   const [whoami, setWhoami] = useState<WhoAmIResponse | null>(null);
 
   // Refs для apiClient callbacks (mutable без re-render-ов).
@@ -93,11 +93,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       if (whoamiKratosResp.status === "fulfilled") {
         setSession(whoamiKratosResp.value);
-        // Kratos AAL2 → considered MFA-fresh; user_verification флаг — на бэке.
-        if (whoamiKratosResp.value?.authenticator_assurance_level === "aal2") {
-          const lastAuth = new Date(whoamiKratosResp.value.authenticated_at).getTime() / 1000;
-          setMfaFreshUntil(lastAuth + config.mfaFreshTtlMin * 60);
-        }
       } else {
         setSession(null);
       }
@@ -153,7 +148,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
     setAccessTokenState(null);
     tokenRef.current = null;
-    setMfaFreshUntil(0);
     setWhoami(null);
     try {
       authApi.logout();
@@ -165,11 +159,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const setAccessToken = useCallback((token: string | null) => {
     setAccessTokenState(token);
     tokenRef.current = token;
-  }, []);
-
-  const markMfaFresh = useCallback((ttlSec?: number) => {
-    const ttl = ttlSec ?? config.mfaFreshTtlMin * 60;
-    setMfaFreshUntil(Math.floor(Date.now() / 1000) + ttl);
   }, []);
 
   const hasPermission = useCallback((perm: string) => checkPerm(user, perm), [user]);
@@ -191,14 +180,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       loading,
       accessToken,
-      mfaFreshUntil,
       whoami,
       login,
       logout,
       refresh,
       refreshWhoAmI,
       setAccessToken,
-      markMfaFresh,
       hasPermission,
       setStepUpHandler,
     }),
@@ -207,14 +194,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       loading,
       accessToken,
-      mfaFreshUntil,
       whoami,
       login,
       logout,
       refresh,
       refreshWhoAmI,
       setAccessToken,
-      markMfaFresh,
       hasPermission,
       setStepUpHandler,
     ],
@@ -248,9 +233,4 @@ export function useAuth(): AuthContextValue {
  */
 export function useSelfUserId(): string | undefined {
   return useContext(AuthContext)?.whoami?.user_id;
-}
-
-/** True если MFA свежий (для RequireMFAFresh guard). */
-export function isMfaFresh(value: { mfaFreshUntil: number }): boolean {
-  return value.mfaFreshUntil > Math.floor(Date.now() / 1000);
 }
