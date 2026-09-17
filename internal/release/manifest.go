@@ -195,6 +195,45 @@ func supplyAbsolute(value string) bool {
 	return filepath.IsAbs(value) && filepath.Clean(value) == value && !strings.ContainsAny(value, "\x00\r\n")
 }
 
+type supplyInvocation struct {
+	Mode, Manifest, Revision string
+	FinalMain                bool
+}
+
+func supplyParseInvocation(args []string) (supplyInvocation, bool) {
+	var result supplyInvocation
+	values := map[string]string{}
+	for i := 0; i < len(args); i++ {
+		name := args[i]
+		if _, duplicate := values[name]; duplicate {
+			return result, false
+		}
+		if name == "--final-main" {
+			values[name] = ""
+			result.FinalMain = true
+			continue
+		}
+		if (name != "--mode" && name != "--manifest" && name != "--revision") || i+1 >= len(args) || args[i+1] == "" {
+			return result, false
+		}
+		i++
+		values[name] = args[i]
+	}
+	result.Mode, result.Manifest, result.Revision = values["--mode"], values["--manifest"], values["--revision"]
+	if result.Manifest == "" {
+		return result, false
+	}
+	switch result.Mode {
+	case "consumers":
+		return result, len(values) == 3 && !result.FinalMain && supplySHA.MatchString(result.Revision)
+	case "pins":
+		_, hasRevision := values["--revision"]
+		return result, !hasRevision && (len(values) == 2 || (result.FinalMain && len(values) == 3))
+	default:
+		return result, false
+	}
+}
+
 func supplyParseManifest(raw []byte) (supplyManifest, *supplyFailure) {
 	var result supplyManifest
 	parsed, ok := supplyJSON(raw)

@@ -68,32 +68,25 @@ func (r *supplyReport) finish(stdout io.Writer) int {
 	return rc
 }
 
-// RunSupplyPreflight implements the read-only declared-consumers boundary.
-// Candidate, pins, publisher phases and legacy P9 wiring have separate source
-// transitions; an invocation of those modes cannot acquire a consumers permit.
+// RunSupplyPreflight implements the read-only consumers and internal-pins modes.
+// Candidate/publisher phases and legacy P9 wiring have separate transitions.
 func RunSupplyPreflight(ctx context.Context, args []string, deps SupplyDependencies, stdout, stderr io.Writer) int {
 	report := supplyNewReport()
-	arguments := map[string]string{}
-	valid := len(args)%2 == 0
-	for i := 0; valid && i < len(args); i += 2 {
-		flag := args[i]
-		if flag != "--mode" && flag != "--manifest" && flag != "--revision" {
-			valid = false
-			break
-		}
-		if _, duplicate := arguments[flag]; duplicate || args[i+1] == "" {
-			valid = false
-			break
-		}
-		arguments[flag] = args[i+1]
-	}
-	if !valid || len(arguments) != 3 || arguments["--mode"] != "consumers" || !supplySHA.MatchString(arguments["--revision"]) {
+	invocation, valid := supplyParseInvocation(args)
+	if !valid {
 		report.check("invocation", &supplyFailure{"USAGE_ERROR", "INVALID_INVOCATION"}, nil, nil)
 		return report.finish(stdout)
 	}
-	report.document["phase"] = "consumers"
-	report.check("invocation", nil, []string{"consumers"}, 1)
-	raw, err := os.ReadFile(arguments["--manifest"])
+	report.document["phase"] = invocation.Mode
+	report.check("invocation", nil, []string{invocation.Mode}, 1)
+	if invocation.Mode == "pins" {
+		return runSupplyPins(ctx, invocation, deps, report, stdout)
+	}
+	return runSupplyConsumers(ctx, invocation, deps, report, stdout)
+}
+
+func runSupplyConsumers(ctx context.Context, invocation supplyInvocation, deps SupplyDependencies, report *supplyReport, stdout io.Writer) int {
+	raw, err := os.ReadFile(invocation.Manifest)
 	if err != nil {
 		report.check("input", supplyUnavailable("SOURCE_UNAVAILABLE"), nil, nil)
 		return report.finish(stdout)
@@ -117,7 +110,7 @@ func RunSupplyPreflight(ctx context.Context, args []string, deps SupplyDependenc
 		deps.Command = supplyOSCommand
 	}
 	engine := supplyEngine{ctx: stage, deps: deps, manifest: manifest, work: work}
-	revision := arguments["--revision"]
+	revision := invocation.Revision
 	failure = engine.identify(manifest.CandidateRoot, manifest.Repository, revision)
 	report.check("identity", failure, []string{manifest.Repository, revision}, 1)
 	if failure != nil {
