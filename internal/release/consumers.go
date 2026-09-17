@@ -239,6 +239,7 @@ type supplyPrepared struct {
 type supplyGoSource struct {
 	Path, Root string
 	Imports    []string
+	CGO        bool
 }
 
 func (e *supplyEngine) prepareConsumer(consumer supplyConsumer, candidate string, index int, target *modfile.File, supported map[string]bool) (supplyPrepared, *supplyFailure) {
@@ -338,7 +339,10 @@ func (e *supplyEngine) prepareConsumer(consumer supplyConsumer, candidate string
 			if err != nil {
 				return prepared, supplyRed("CONSUMER_DECLARATION_INVALID")
 			}
-			if value == e.manifest.ModulePath || strings.HasPrefix(value, e.manifest.ModulePath+"/") {
+			if value == "C" {
+				source.CGO = true
+			}
+			if supplyImportBelongs(value, e.manifest.ModulePath, moduleFiles[owner]) {
 				source.Imports = append(source.Imports, value)
 				allImports[value] = true
 			}
@@ -364,7 +368,7 @@ func (e *supplyEngine) prepareConsumer(consumer supplyConsumer, candidate string
 			if err != nil {
 				return prepared, supplyRed("CONSUMER_DECLARATION_INVALID")
 			}
-			if !matches {
+			if !matches || (source.CGO && !context.CGO) {
 				continue
 			}
 			if packages[source.Root] == nil {
@@ -434,6 +438,23 @@ func (e *supplyEngine) prepareConsumer(consumer supplyConsumer, candidate string
 		}
 	}
 	return prepared, nil
+}
+
+func supplyImportBelongs(importPath, target string, consumer *modfile.File) bool {
+	if importPath != target && !strings.HasPrefix(importPath, target+"/") {
+		return false
+	}
+	// A separately required nested module owns its own imports; the parent
+	// archive cannot contain that module's files under Go ZIP rules.
+	if consumer != nil {
+		for _, requirement := range consumer.Require {
+			name := requirement.Mod.Path
+			if len(name) > len(target) && (importPath == name || strings.HasPrefix(importPath, name+"/")) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 type supplyListedPackage struct {
