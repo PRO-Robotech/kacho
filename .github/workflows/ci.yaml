@@ -2051,9 +2051,9 @@ jobs:
         with:
           version: v4.2.4
 
-      # Go нужен ровно одному шагу — пробам под тегом `helmcharts`, которые
-      # РЕНДЕРЯТ умбреллу: их условие создаёт `helm dependency build` (локальные
-      # сабчарты из исходников), а не unit-прогон, поэтому они живут здесь.
+      # Go нужен пробам под тегом `helmcharts` и обязательной полосе Python
+      # outcomes. Они РЕНДЕРЯТ умбреллу: условие создаёт `helm dependency build`
+      # (локальные сабчарты из исходников), поэтому обе проверки живут здесь.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7
         with:
           go-version-file: go.mod
