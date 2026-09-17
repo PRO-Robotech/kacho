@@ -104,7 +104,9 @@ func TestFoundationNamesNoMovingPackageOutsideAnImport(t *testing.T) {
 	if len(moving) == 0 {
 		t.Skipf("переезжающих каталогов pkg/* нет: 0 предметов класса corelib/оснастка "+
 			"сборки в дереве (%d прод-файлов pkg/ осмотрено) — ось не проверяет прозу "+
-			"о том, чего не существует. Возобновится сама, если такой каталог появится",
+			"о том, чего не существует. Возобновится сама, если такой каталог появится. "+
+			"ВЕДОМОСТЬ этот Skip НЕ прячет: её самоистечение судит своя ось "+
+			"(TestBakedDescriptorLedgerEntryHasASubjectInTheTree), безусловно",
 			len(contents))
 	}
 
