@@ -21,6 +21,8 @@ const decisionDocFixture = `# Решение
 
 ` + SurfacesMarker + " `proto/x/y.proto` ·\n`services/x/docs/page.mdx`\n" + `
 
+` + RefusalMarker + " `Project <id> is not empty (` · `REFERENCE_IN_USE`\n" + `
+
 ## Разбор
 
 Правило корпуса ` + "`data-integrity.md`" + ` названо здесь ПРОЗОЙ и поверхностью
@@ -114,5 +116,69 @@ func TestSuccessorFindingNamesThePathAndWhatWasCitedInstead(t *testing.T) {
 	none := SuccessorFinding(DecisionSurface{Path: "proto/x/y.proto"}, 1231)
 	if !strings.Contains(none, "НИ ОДНОЙ") {
 		t.Errorf("поверхность без ссылок обязана называться отдельно: %s", none)
+	}
+}
+
+// ─── ОСЬ 6: объявленный отказ — на каждой поверхности ДОСЛОВНО ──────────────
+
+func TestRefusalLiteralsAreReadFromTheDeclarationAndNotFromProse(t *testing.T) {
+	t.Parallel()
+	got := DeclaredRefusalLiterals([]byte(decisionDocFixture))
+	want := []string{"Project <id> is not empty (", "REFERENCE_IN_USE"}
+	if len(got) != len(want) {
+		t.Fatalf("литералов отказа прочитано %d, ожидалось %d: %q", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("литерал %d прочитан как %q, ожидалось %q", i, got[i], want[i])
+		}
+	}
+	// Близнец: РОВНО ОДИН изменённый факт — строки объявления нет, а тот же тон
+	// назван в прозе документа (в обратных кавычках, как его пишет корпус). Без
+	// этой пары разбор собирал бы литералы со всего документа и требовал бы от
+	// контракта дословного присутствия каждого примера из разбора.
+	without := strings.Replace(decisionDocFixture,
+		RefusalMarker+" `Project <id> is not empty (` · `REFERENCE_IN_USE`",
+		"Тон отказа — форма сети: `Project <id> is not empty (`, признак `REFERENCE_IN_USE`.", 1)
+	if got := DeclaredRefusalLiterals([]byte(without)); len(got) != 0 {
+		t.Fatalf("без строки объявления литералов отказа быть НЕ ДОЛЖНО, прочитано: %q", got)
+	}
+}
+
+func TestMissingRefusalLiteralsRedOnTheOldContractAndAreSilentOnTheNewOne(t *testing.T) {
+	t.Parallel()
+	lits := []string{"Project <id> is not empty (", "REFERENCE_IN_USE"}
+	// Контракт ДО посадки механизма (kaname@40bd49a3): называет преемника, но
+	// объявляет обратное поведение. Именно эту поверхность гейт видел до
+	// подъёма пина — и обязан был на ней краснеть.
+	old := []byte("// NOT BLOCKED BY LIVE RESOURCES. See PRO-Robotech/kacho#1231.")
+	missing := MissingRefusalLiterals(old, lits)
+	if len(missing) != 2 {
+		t.Fatalf("на прежнем контракте недостающих литералов обязано быть 2, найдено %d: %q", len(missing), missing)
+	}
+	// Законный близнец: РОВНО ОДИН изменённый факт — те же литералы стоят в
+	// комментарии контракта дословно, среди чужого текста.
+	fresh := []byte("//   message \"Project <id> is not empty (vpc.network: 3)\"\n" +
+		"//   details ErrorInfo{reason: \"REFERENCE_IN_USE\"}\n// See PRO-Robotech/kacho#1231.")
+	if got := MissingRefusalLiterals(fresh, lits); len(got) != 0 {
+		t.Fatalf("на контракте, несущем оба литерала, недостающих быть не должно: %q", got)
+	}
+	// Половина — тоже находка, и находка называет ИМЕННО отсутствующее: пропажа
+	// признака при живом тексте есть тот самый случай, когда клиент, ключующийся
+	// на токене, перестаёт различать полосу.
+	half := []byte("//   message \"Project <id> is not empty (vpc.network: 3)\"")
+	got := MissingRefusalLiterals(half, lits)
+	if len(got) != 1 || got[0] != "REFERENCE_IN_USE" {
+		t.Fatalf("при живом тексте и пропавшем признаке находка обязана назвать признак, получено: %q", got)
+	}
+}
+
+func TestRefusalFindingNamesThePathAndEveryMissingLiteral(t *testing.T) {
+	t.Parallel()
+	msg := RefusalFinding("proto/x/y.proto", []string{"Project <id> is not empty (", "REFERENCE_IN_USE"})
+	for _, want := range []string{"proto/x/y.proto", "Project <id> is not empty (", "REFERENCE_IN_USE"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("текст находки не называет %q: %s", want, msg)
+		}
 	}
 }
