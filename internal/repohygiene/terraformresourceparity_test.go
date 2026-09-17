@@ -75,7 +75,16 @@ var nonCreatingVerbs = map[string]bool{
 	// человека из аккаунта, не заводя ничего. Провайдер зовёт его уничтожением
 	// ресурса `kaname_user_invitation` — ресурс моделирует ЧЛЕНСТВО, поэтому
 	// снятие членства и есть его destroy (#1127).
-	"RemoveFromAccount":        true,
+	"RemoveFromAccount": true,
+	// ResendInvite — письмо приглашения уходит ещё раз (kaname#186, приехал
+	// пином вместе с PRO-Robotech/kacho#1281): ресурса не заводит, у ресурса
+	// `kaname_user_invitation` это не правка, а разовое действие оператора.
+	"ResendInvite": true,
+	// ResetSecondFactor — сброс второго фактора распорядителем (Ф12 Р10,
+	// PRO-Robotech/kacho#1281): снимает у человека код по времени и запасные
+	// коды и завершает его сессии; ничего не заводит, и декларативному
+	// управлению не подлежит — это надзорное действие, а не состояние ландшафта.
+	"ResetSecondFactor":        true,
 	"SimulateMaintenanceEvent": true, "Start": true, "Stop": true, "Unblock": true, "Update": true, "UpdateAccessBindings": true,
 	"UpdateMetadata": true, "UpdateNetworkInterface": true, "UpdateRepository": true, "UpdateRoute": true, "UpdateRule": true,
 	"UpdateRules": true, "WhoAmI": true,
@@ -106,6 +115,19 @@ var tfCoverage = map[string]string{
 	"RoleService":           "kaname_role",
 	"AccessBindingService":  "kaname_access_binding",
 	"UserService":           "kaname_user_invitation",
+	// ОСОЗНАННОЕ ОТСУТСТВИЕ, а не долг. Членство — СВЯЗЬ «человек × аккаунт», и
+	// глагол `MembershipService/Create` (kaname#181, IAM-ID-1 S3.2; в каталог края
+	// приехал пином вместе с PRO-Robotech/kacho#1281) заводит её напрямую, минуя
+	// письмо. Ресурс провайдера над ней делал бы план несходящимся: состояние
+	// связи меняет событие вне всякой конфигурации — первый вход человека
+	// переводит в «состоит» ВСЕ его приглашённые членства разом, и ни один
+	// `apply` при этом не исполняется. Идентификатор связи ВЫЧИСЛЯЕТСЯ из пары и
+	// переиспользуется — снятие есть удаление строки, повторное заведение
+	// возвращает тот же идентификатор, — так что ресурс не различал бы «ту же
+	// связь» и «заведённую заново». Декларативная форма участия человека в
+	// аккаунте у провайдера уже есть — `kaname_user_invitation`: тот же предмет,
+	// заведённый письмом; второй ресурс об одном предмете разошёлся бы с ним.
+	"MembershipService": "",
 
 	"UserTokenService": "kaname_user_token",
 

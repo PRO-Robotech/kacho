@@ -280,6 +280,16 @@ var AllowedMethods = map[string]struct{}{
 	// строку личности не трогает — её снятие спрашивает `identity_remover`
 	// (#1131).
 	"/kaname.cloud.iam.v1.UserService/RemoveFromAccount": {},
+	// Повторная отправка письма приглашения (REST POST
+	// /iam/v1/users/{user_id}:resendInvite; kaname#186, PRO-Robotech/kacho#1774)
+	// — глагол службы, приехавший пином вместе с Ф12; та же полоса, что Invite.
+	"/kaname.cloud.iam.v1.UserService/ResendInvite": {},
+	// Сброс второго фактора распорядителем (REST POST
+	// /iam/v1/users/{user_id}:resetSecondFactor; Ф12 Р10, PRO-Robotech/kacho#1281):
+	// человек без устройства и запасных кодов снять фактор сам не может —
+	// снятие требует кода. Тот же круг держателей и тот же порог, что у
+	// Block/Unblock: `identity_suspender` on iam_user, acr 2.
+	"/kaname.cloud.iam.v1.UserService/ResetSecondFactor": {},
 	// iam.v1 — UserTokenService (REST .../users/{user_id}/tokens) —
 	// выдача, перечисление и отзыв неинтерактивных токенов пользователя.
 	"/kaname.cloud.iam.v1.UserTokenService/Issue":  {},
@@ -321,10 +331,15 @@ var AllowedMethods = map[string]struct{}{
 	"/kaname.cloud.iam.v1.GroupService/ListMembers":    {},
 	"/kaname.cloud.iam.v1.GroupService/ListOperations": {},
 
-	// iam.v1 — MembershipService: чтение членства на аккаунт-скоупных путях.
-	// Только два ЧТЕНИЯ: глаголов изменения у ресурса на этой поверхности нет.
+	// iam.v1 — MembershipService: чтение членства на аккаунт-скоупных путях и
+	// одно заведение (Create, kaname#181); глаголов правки и снятия у ресурса
+	// на этой поверхности нет.
 	"/kaname.cloud.iam.v1.MembershipService/Get":  {},
 	"/kaname.cloud.iam.v1.MembershipService/List": {},
+	// Заведение членства (REST POST /iam/v1/memberships; kaname#181,
+	// PRO-Robotech/kacho#1351) — приехало пином службы вместе с Ф12; acr 2, как
+	// у Invite: меняет состав участников аккаунта.
+	"/kaname.cloud.iam.v1.MembershipService/Create": {},
 	// iam.v1 — RoleService
 	// Role.rules[].module — скалярная строка; REST Create/Update маршалят это
 	// поле; отдельной allowlist-записи не требуется (новых RPC нет).

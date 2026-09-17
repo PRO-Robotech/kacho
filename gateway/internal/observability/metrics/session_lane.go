@@ -36,12 +36,23 @@ const (
 	loginLaneVerbLogout   = "logout"
 	loginLaneVerbPassword = "password"
 	loginLaneVerbCSRF     = "csrf"
+	// Второй фактор (Ф12 Р4): шесть глаголов той же полосы.
+	loginLaneVerbSecondFactorStatus      = "second-factor-status"
+	loginLaneVerbSecondFactorEnroll      = "second-factor-enroll"
+	loginLaneVerbSecondFactorConfirm     = "second-factor-confirm"
+	loginLaneVerbSecondFactorRemove      = "second-factor-remove"
+	loginLaneVerbSecondFactorBackupCodes = "second-factor-backup-codes"
+	loginLaneVerbStepUp                  = "step-up"
 )
 
 // LoginLaneVerbLabels — значения метки `verb` в порядке объявления; для пробы
 // сходимости со словарём путей.
 func LoginLaneVerbLabels() []string {
-	return []string{loginLaneVerbLogin, loginLaneVerbLogout, loginLaneVerbPassword, loginLaneVerbCSRF}
+	return []string{
+		loginLaneVerbLogin, loginLaneVerbLogout, loginLaneVerbPassword, loginLaneVerbCSRF,
+		loginLaneVerbSecondFactorStatus, loginLaneVerbSecondFactorEnroll, loginLaneVerbSecondFactorConfirm,
+		loginLaneVerbSecondFactorRemove, loginLaneVerbSecondFactorBackupCodes, loginLaneVerbStepUp,
+	}
 }
 
 // SessionLaneSnapshot — то, что корень отдаёт коллектору на каждый сбор: клетки
