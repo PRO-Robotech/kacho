@@ -99,7 +99,14 @@ func runSupplyCandidate(ctx context.Context, invocation supplyInvocation, deps S
 			failure = supplyRed("BASELINE_EMPTY")
 		}
 	}
-	report.check("baseline", failure, []string{candidate.Baseline, baselineSHA, baseline.Digest}, report.census["previous_packages"])
+	baselineSubjects := []string{candidate.Baseline}
+	if baselineSHA != "" {
+		baselineSubjects = append(baselineSubjects, baselineSHA)
+	}
+	if baseline.Digest != "" {
+		baselineSubjects = append(baselineSubjects, baseline.Digest)
+	}
+	report.check("baseline", failure, baselineSubjects, report.census["previous_packages"])
 	if failure != nil {
 		return report.finish(stdout)
 	}
@@ -115,7 +122,11 @@ func runSupplyCandidate(ctx context.Context, invocation supplyInvocation, deps S
 			}
 		}
 	}
-	report.check("package-floor", failure, []string{baseline.Digest, archive.Digest}, report.census["candidate_packages"])
+	floorSubjects := []string{baseline.Digest}
+	if archive.Digest != "" {
+		floorSubjects = append(floorSubjects, archive.Digest)
+	}
+	report.check("package-floor", failure, floorSubjects, report.census["candidate_packages"])
 	if failure != nil {
 		return report.finish(stdout)
 	}
