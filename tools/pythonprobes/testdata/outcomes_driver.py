@@ -316,12 +316,15 @@ def producer_cases(h):
 
 
 def local_summary(result):
-    record = result.get("record")
-    if isinstance(record, dict) and record.get("producer") == "ci-local":
-        counts = record.get("counters", {})
-        return counts.get("declarations"), counts.get("failed"), counts.get("unmet")
+    # Read the human summary independently of the structured record. Its first
+    # quantity is executed checks; declarations have their own separate field.
     match = re.search(r"итог: проверок исполнено (\d+), отказов (\d+), НЕ выполнено (\d+)", result["stdout"])
     return tuple(map(int, match.groups())) if match else None
+
+
+def local_declarations(result):
+    match = re.search(r"объявлено проверок: (\d+)", result["stdout"])
+    return int(match.group(1)) if match else None
 
 
 def checked_tools(h):
@@ -484,13 +487,23 @@ def mixed_helm_case(h, root, case):
     # Change one real assertion, while hiding pytest only from child interpreters.
     script = root / ".github/scripts/newman-live.py"
     original = replace_one(script, "st.expected == 2 and st.reported == 2", "st.expected == 3 and st.reported == 2")
+    logs = h.work / "mixed-helm-local-logs"
     try:
-        mixed = case.capture(h.run("full-helm-mixed-finding-and-unmet", ["bash", "scripts/ci-local.sh", "helm"], cwd=root, fault="pytest-absent", timeout=900))
+        mixed = case.capture(h.run("full-helm-mixed-finding-and-unmet", ["bash", "scripts/ci-local.sh", "helm"], cwd=root, fault="pytest-absent", extra={"CI_LOCAL_WORK": str(logs)}, timeout=900))
     finally:
         script.write_text(original)
+    # ci-local prints only a tail. Preserve the complete logs from this same
+    # invocation before fixture cleanup, so both injected causes are observable.
+    saved_logs = Path(mixed["evidence"]) / "full-local-logs"
+    saved_logs.mkdir()
+    complete_output = mixed["stdout"]
+    for log in sorted(logs.glob("log-*.txt")):
+        shutil.copy2(log, saved_logs / log.name)
+        complete_output += "\n" + log.read_text()
+    case.check(bool(list(saved_logs.glob("log-*.txt"))), "actual full Helm logs were not captured")
     case.check(mixed["rc"] == 1, "mixed full Helm path must preserve the real independent finding")
-    case.check("РАЗОШЛИСЬ" in mixed["stdout"] and "newman-live.py" in mixed["stdout"], "independent real self-test assertion fault was not reached")
-    case.check("нет pytest" in mixed["stdout"], "missing child pytest condition was not reached alongside the finding")
+    case.check("РАЗОШЛИСЬ" in complete_output and "newman-live.py" in complete_output, "independent real self-test assertion fault was not reached")
+    case.check("нет pytest" in complete_output, "missing child pytest condition was not reached alongside the finding")
     record = case.record(mixed, "ci-local", "finding", declarations=5, failed=1, unmet=1)
     if isinstance(record, dict):
         case.check(bool(record["findings"]), "mixed local result lost the separate finding reason")
@@ -580,7 +593,8 @@ def chain_cases(h):
     c10 = h.case("CI_PY_10_full_helm_chain")
     c10.capture(base); c10.record(base, "ci-local", "green", declarations=5, executed=5, failed=0, unmet=0)
     absent = c10.capture(h.run("full-helm-no-pytest", ["bash", "scripts/ci-local.sh", "helm"], cwd=root, fault="pytest-absent", timeout=900))
-    c10.check(absent["rc"] == 0 and local_summary(absent) == (5, 0, 1), f"actual helm path loses third category: rc={absent['rc']} summary={local_summary(absent)}")
+    c10.check(absent["rc"] == 0 and local_summary(absent) == (4, 0, 1), f"actual helm path loses third category or executed count: rc={absent['rc']} summary={local_summary(absent)}")
+    c10.check(local_declarations(absent) == 5, "missing pytest reduced the declared five-check denominator in the local summary")
     c10.check("нет pytest" in absent["stdout"] and "манифест" in absent["stdout"], "local summary loses named missing Python prerequisite")
     c10.record(absent, "ci-local", "unmet", declarations=5, executed=4, failed=0, unmet=1)
     script = root / RUNNER
