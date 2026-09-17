@@ -150,7 +150,7 @@ if MODE!='--fixture-forge': raise RuntimeError('unknown test-only mode')
 REPO=Path(C['repository']).resolve()
 if not REPO.is_relative_to(ROOT): raise RuntimeError('foreign receiving endpoint')
 CONTROL=Path(C['control']); STATE=Path(C['state'])
-state={'prs':[],'notes':[],'writes':[],'reads':{},'unknown':[],'faults_used':{},'requests':0}
+state={'prs':[],'notes':[],'writes':[],'reads':{},'read_recovers_active_attempts':0,'unknown':[],'faults_used':{},'requests':0}
 BASE='/repos/PRO-Robotech/corelib'
 def controls(): return json.loads(CONTROL.read_text())
 def persist(): save(STATE,state)
@@ -249,7 +249,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.answer(404,{'message':'not found'},record)
         if path==BASE:
             if fault=='read-unavailable':return self.answer(503,{'message':'fixture unavailable'},record)
-            if fault=='read-recovers' and state['reads'][key]<3:return self.answer(503,{'message':'transient fixture'},record)
+            if fault=='read-recovers' and method=='GET':
+                state['read_recovers_active_attempts']+=1
+                if state['read_recovers_active_attempts']<3:return self.answer(503,{'message':'transient fixture'},record)
             return self.answer(200,{'full_name':'PRO-Robotech/corelib','default_branch':'main','permissions':{'pull':True,'push':True,'admin':False}},record)
         if path==BASE+'/branches/main/protection':
             return self.answer(200,{'required_status_checks':{'strict':True,'contexts':['fixture-required'],'checks':[{'context':'fixture-required','app_id':1}]},'required_pull_request_reviews':{'required_approving_review_count':1},'enforce_admins':{'enabled':True},'allow_force_pushes':{'enabled':False}},record)

@@ -1164,6 +1164,7 @@ func rsRunReleaseCase(h *rsHarness, p *rsPublisherFixture, f *rsForgeProcess, bi
 // the publisher. Lost responses are actual closed TCP responses after mutation;
 // Git commit/ref readbacks prove the resulting receiving state.
 func rsForgeFaultControls(h *rsHarness, p *rsPublisherFixture) {
+	rsForgeReadRecoveryControl(h, p)
 	for _, fault := range []string{"pr-rejected", "pr-lost-present", "pr-lost-unavailable", "pr-lost-empty", "pr-duplicate", "merge-rejected", "merge-head-conflict", "merge-lost-present", "merge-lost-unavailable", "merge-content-mismatch", "merge-ancestry-lost", "note-lost-present", "note-lost-unavailable", "note-conflict"} {
 		f := rsStartForge(h, p, "control-"+fault)
 		plan := rsSHA([]byte("forge control " + fault))
@@ -1970,4 +1971,32 @@ func rsCheckPublisherCAS(h *rsHarness, p *rsPublisherFixture, f *rsForgeProcess,
 	if !pushed {
 		h.t.Error("SEMANTIC_MISMATCH: intended actual CAS boundary was not reached")
 	}
+}
+
+// Lawful plan reads must not consume the later fault's two transient responses.
+func rsForgeReadRecoveryControl(h *rsHarness, p *rsPublisherFixture) {
+	f := rsStartForge(h, p, "read-recovery-control")
+	codes := []int{}
+	read := func(want int) {
+		status, _, err := rsForgeCall(h, f, "GET", "", nil)
+		if err != nil || status != want {
+			h.t.Fatalf("HARNESS_NOT_EXECUTED: read-recovery wire want%d got%d %v", want, status, err)
+		}
+		codes = append(codes, status)
+	}
+	read(200)
+	f.fault(h.t, "read-recovers")
+	read(503)
+	read(503)
+	read(200)
+	f.fault(h.t, "lawful")
+	read(200)
+	var state map[string]any
+	if err := json.Unmarshal(mustRSRead(h.t, f.state), &state); err != nil {
+		h.t.Fatal(err)
+	}
+	if state["read_recovers_active_attempts"] != float64(3) || state["reads"].(map[string]any)["GET /repos/PRO-Robotech/corelib"] != float64(5) || len(state["writes"].([]any)) != 0 || len(state["unknown"].([]any)) != 0 {
+		h.t.Fatalf("HARNESS_NOT_EXECUTED: active fault counter or no-write control %+v", state)
+	}
+	h.save("publisher-read-recovery-control.json", rsCanonicalJSON(h.t, map[string]any{"classification": "ACTUAL_HTTP_PREREQUISITE_ONLY_NO_SUT", "statuses": codes, "lifetime_BASE_GET": 5, "fault_active_BASE_GET": 3, "expected_SUT_pauses_nanoseconds": []int64{int64(time.Second), int64(2 * time.Second)}, "sut_invocations": 0}))
 }
