@@ -468,6 +468,34 @@ def ci_steps(h, root, case):
             case.check(collect["rc"] == 0, "legal CI collector not green")
         else:
             case.check("pytest-unavailable" not in collect["stdout"] + collect["stderr"], "genuine finding mislabeled pytest absence")
+    # An interrupted collector leaves no current result. Execute the actual final
+    # YAML body in a fresh step environment, not a fabricated successful record.
+    stage = h.work / "github-no-result"
+    stage.mkdir()
+    env_file, output_file = stage / "env", stage / "output"
+    env_file.touch(); output_file.touch()
+    env = dict(GITHUB_ENV=str(env_file), GITHUB_OUTPUT=str(output_file), RUNNER_TEMP=str(stage), GITHUB_WORKSPACE=str(root), CI="true")
+    missing = case.capture(run_workflow_body(h, root, {"step":verdict}, "CI-verdict-no-result", extra=env))
+    case.check(missing["rc"] == 1, "actual CI final verdict accepts an absent current collector result")
+
+
+def mixed_helm_case(h, root, case):
+    # The full legal Helm run in CI10 already proved this independent self-test.
+    # Change one real assertion, while hiding pytest only from child interpreters.
+    script = root / ".github/scripts/newman-live.py"
+    original = replace_one(script, "st.expected == 2 and st.reported == 2", "st.expected == 3 and st.reported == 2")
+    try:
+        mixed = case.capture(h.run("full-helm-mixed-finding-and-unmet", ["bash", "scripts/ci-local.sh", "helm"], cwd=root, fault="pytest-absent", timeout=900))
+    finally:
+        script.write_text(original)
+    case.check(mixed["rc"] == 1, "mixed full Helm path must preserve the real independent finding")
+    case.check("РАЗОШЛИСЬ" in mixed["stdout"] and "newman-live.py" in mixed["stdout"], "independent real self-test assertion fault was not reached")
+    case.check("нет pytest" in mixed["stdout"], "missing child pytest condition was not reached alongside the finding")
+    record = case.record(mixed, "ci-local", "finding", declarations=5, failed=1, unmet=1)
+    if isinstance(record, dict):
+        case.check(bool(record["findings"]), "mixed local result lost the separate finding reason")
+        case.check("newman-live" in json.dumps(record["findings"], ensure_ascii=False), "mixed local finding no longer identifies the actual independent failed participant")
+        case.check(any(reason.get("code") == "pytest-unavailable" for reason in record["unmet_reasons"] if isinstance(reason, dict)), "mixed local result lost the separate pytest-unavailable reason")
 
 
 def caller_record_cases(h, root, case, captures):
@@ -562,6 +590,7 @@ def chain_cases(h):
     c10.check(bad["rc"] == 1 and local_summary(bad) == (5, 1, 0), "real selftest defect must remain one failing local check")
     c10.record(bad, "ci-local", "finding", declarations=5, failed=1, unmet=0)
     c9.capture(bad); c9.check("САМОПРОВЕРКА ПРОВАЛЕНА" in bad["stdout"] or "ПРОВАЛ" in bad["stdout"], "genuine selftest failure missing from actual caller")
+    mixed_helm_case(h, root, c10)
     c11 = h.case("CI_PY_11_record_authenticity")
     caller_record_cases(h, root, c11, [direct, made])
     c12 = h.case("CI_PY_12_CI_collector_and_final_verdict")
