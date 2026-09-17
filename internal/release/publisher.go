@@ -109,7 +109,7 @@ func supplyParsePublisher(args []string) (supplyPublisherInvocation, *supplyFail
 	if v.Phase != "release" && v.Landed != "" {
 		return bad()
 	}
-	if v.Commit != "" && (v.Commit != v.Repository || !supplySHA256.MatchString(v.Plan)) {
+	if v.Commit != "" && (!supplyRepository.MatchString(v.Commit) || !supplySHA256.MatchString(v.Plan)) {
 		return v, &supplyFailure{"USAGE_ERROR", "INVALID_CONFIRMATION"}
 	}
 	if v.Commit == "" && v.Plan != "" {
@@ -167,7 +167,7 @@ func RunSupplyPublisher(ctx context.Context, args []string, deps SupplyDependenc
 		p.fail("input", failure)
 		return report.finish(stdout)
 	}
-	if inv.Commit != "" && inv.Plan != p.plan {
+	if inv.Commit != "" && (inv.Commit != inv.Repository || inv.Plan != p.plan) {
 		p.fail("invocation", &supplyFailure{"USAGE_ERROR", "INVALID_CONFIRMATION"})
 		return report.finish(stdout)
 	}

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 )
@@ -48,16 +49,51 @@ func supplyRuntimeHTTP(ctx context.Context, r *http.Request) (*http.Response, er
 	copy := r.Clone(ctx)
 	copy.Header = r.Header.Clone()
 	if copy.URL.Host == "api.github.com" {
-		token := os.Getenv("GH_TOKEN")
-		if token == "" {
-			token = os.Getenv("GITHUB_TOKEN")
+		token, err := supplyGitHubToken(ctx)
+		if err != nil {
+			return nil, err
 		}
-		if token != "" {
-			copy.Header.Set("Authorization", "Bearer "+token)
-		}
+		copy.Header.Set("Authorization", "Bearer "+token)
 	}
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	return client.Do(copy)
+}
+
+// Existing user credentials stay inside the runtime HTTP adapter. Credential
+// stdout/stderr never enter the command evidence seam or public diagnostics.
+func supplyGitHubToken(ctx context.Context) (string, error) {
+	unavailable := func() (string, error) { return "", fmt.Errorf("GitHub authorization unavailable") }
+	token := os.Getenv("GH_TOKEN")
+	if token == "" {
+		token = os.Getenv("GITHUB_TOKEN")
+	}
+	if token == "" {
+		cmd := exec.CommandContext(ctx, "gh", "auth", "token", "--hostname", "github.com")
+		for _, entry := range supplyPublisherEnvironment() {
+			key, _, _ := strings.Cut(entry, "=")
+			if key != "GH_PROMPT_DISABLED" {
+				cmd.Env = append(cmd.Env, entry)
+			}
+		}
+		cmd.Env = append(cmd.Env, "GH_PROMPT_DISABLED=1")
+		var private bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &private, io.Discard
+		cmd.WaitDelay = time.Second
+		if cmd.Run() != nil {
+			return unavailable()
+		}
+		// gh emits one trailing LF; arbitrary whitespace is not token framing.
+		token = strings.TrimSuffix(private.String(), "\n")
+	}
+	if token == "" {
+		return unavailable()
+	}
+	for _, b := range []byte(token) {
+		if b < 33 || b > 126 {
+			return unavailable()
+		}
+	}
+	return token, nil
 }
 
 // A read owns one deadline over all attempts. A mutation uses one attempt;

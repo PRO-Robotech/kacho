@@ -22,6 +22,17 @@ import (
 )
 
 func (p *supplyPublisher) ancestry(target, point string) *supplyFailure {
+	if !supplySHA.MatchString(target) {
+		return supplyRed("INPUT_INVALID")
+	}
+	// A confirmed PR merge may cease to be advertised after main changes.
+	// Read that exact object before asking Git for a semantic ancestry verdict.
+	if _, f := p.transport("fetch", "--quiet", "--no-tags", "--no-recurse-submodules", "--no-write-fetch-head", "origin", target); f != nil {
+		return f
+	}
+	if _, f := p.e.git(p.root, nil, "cat-file", "commit", target); f != nil {
+		return f
+	}
 	if _, f := p.transport("fetch", "--quiet", "--force", "--prune", "--no-recurse-submodules", "origin", "+refs/heads/*:refs/remotes/origin/*", "+refs/tags/*:refs/tags/*"); f != nil {
 		return f
 	}
