@@ -295,6 +295,9 @@ func rsPublisherCases() []rsPublisherCase {
 		}
 		add(fault, "CI-RS-12", "plan", fault, outcome, reason, "NONE", false, true, map[string]string{})
 	}
+	for _, fault := range []string{"branch-cas-before", "branch-cas-after"} {
+		add(fault, "CI-RS-19", "deliver", fault, "RED", "EFFECT_IDENTITY_CONFLICT", "NONE", true, false, map[string]string{"branch": "CONFLICT"})
+	}
 	add("branch-existing-conflict", "CI-RS-19", "deliver", "branch-conflict", "RED", "EFFECT_IDENTITY_CONFLICT", "NONE", true, false, map[string]string{"branch": "CONFLICT"})
 	add("branch-terminal-rejection", "CI-RS-19", "deliver", "branch-rejected", "RED", "REMOTE_WRITE_REJECTED", "NONE", true, false, map[string]string{"branch": "ABSENT"})
 	add("branch-lost-readable", "CI-RS-12/19", "deliver", "branch-lost-present", "GREEN", "OK", "MERGED_VERIFIED", true, false, lawful)
@@ -484,6 +487,9 @@ func rsCopyCaptures(h *rsHarness, root, label string) {
 func rsInstallPublisherTransport(h *rsHarness, origin, mode, ref, sha string) string {
 	h.t.Helper()
 	cfg := map[string]any{"root": h.root, "captures": filepath.Join(filepath.Dir(origin), "transport-captures"), "repository": origin, "transport_mode": mode}
+	if strings.HasPrefix(mode, "cas-") {
+		cfg["cas_base"] = h.must(h.root, "git", "--git-dir", origin, "rev-parse", "refs/heads/main")
+	}
 	if mode == "post-tag-reset" {
 		cfg["base"] = h.must(h.root, "git", "--git-dir", origin, "rev-parse", "refs/tags/v1.0.0^{}")
 	}
@@ -720,10 +726,9 @@ func rsCheckPublisher(h *rsHarness, c rsPublisherCase, o rsPublisherObservation,
 			continue
 		}
 		pushes++
-		for _, arg := range args {
-			if arg == "--force" || arg == "-f" || strings.HasPrefix(arg, "--force-with-lease") || strings.HasPrefix(arg, "+") || strings.Contains(arg, ":refs/heads/main") || arg == "--delete" {
-				t.Errorf("SEMANTIC_MISMATCH: forbidden push flag/ref %q", args)
-			}
+		version, _ := r["version"].(string)
+		if err := rsPublisherPushPolicyError(args, "PRO-Robotech/corelib", plan, candidate, version); err != nil {
+			t.Errorf("SEMANTIC_MISMATCH: forbidden push command %q: %v", args, err)
 		}
 	}
 	if (c.DryRun || c.Phase == "probe" || len(c.Effects) == 0) && pushes != 0 {
@@ -762,6 +767,8 @@ func TestReleaseSupplyPublisherProtocol(t *testing.T) {
 	h := p.f.h
 	rsPublisherParserControls(h)
 	rsPublisherTransportControls(p)
+	rsPublisherLeaseOracleControls(h)
+	rsPublisherCASControls(p)
 	rsForgeBirth(h, p)
 	rsForgeFaultControls(h, p)
 	rsForgeMutationControls(h, p)
@@ -884,6 +891,8 @@ func TestReleaseSupplyPublisherProtocol(t *testing.T) {
 				ch.must(h.root, "git", "--git-dir", f.repository, "update-ref", "refs/tags/v1.0.0", strings.Repeat("0", 40))
 			case "branch-conflict":
 				ch.must(h.root, "git", "--git-dir", f.repository, "update-ref", "refs/heads/release/module-"+plan, p.f.base, strings.Repeat("0", 40))
+			case "branch-cas-before", "branch-cas-after":
+				f.wrapper = rsInstallPublisherTransport(&ch, f.repository, strings.TrimPrefix(c.Fault, "branch-"), "refs/heads/release/module-"+plan, candidate)
 			case "branch-rejected":
 				f.wrapper = rsInstallPublisherTransport(&ch, f.repository, "reject", "refs/heads/release/module-"+plan, candidate)
 			case "branch-lost-present", "branch-lost-unavailable":
@@ -923,6 +932,7 @@ func TestReleaseSupplyPublisherProtocol(t *testing.T) {
 			observed := rsInvokePublisher(&ch, p, f, binary, c.Name+"-subject", invocation)
 			rsCheckPublisher(&ch, c, observed, plan, candidate)
 			rsCheckActualEffects(&ch, f, c, observed)
+			rsCheckPublisherCAS(&ch, p, f, c, observed, plan, candidate)
 			var state map[string]any
 			if err := json.Unmarshal(mustRSRead(t, f.state), &state); err != nil {
 				t.Fatal(err)
@@ -1667,5 +1677,278 @@ func rsPublisherRecovery(h *rsHarness, p *rsPublisherFixture, f *rsForgeProcess,
 		if rsPublisherVerb(h.t, args) == "push" {
 			h.t.Error("SEMANTIC_MISMATCH: recovery rewrote already-created branch/tag")
 		}
+	}
+}
+
+// rsPublisherPushPolicyError permits only create-only publication of the exact
+// derived branch. It checks the production argv before fixture transport edits.
+// Ordinary non-force exact tag creation remains a separate allowed operation.
+func rsPublisherPushPolicyError(args []string, repository, plan, candidate, version string) error {
+	validHex := func(value string, length int) bool {
+		if len(value) != length {
+			return false
+		}
+		for _, c := range value {
+			if !strings.ContainsRune("0123456789abcdef", c) {
+				return false
+			}
+		}
+		return true
+	}
+	if !validHex(plan, 64) || !validHex(candidate, 40) {
+		return fmt.Errorf("invalid derived identity")
+	}
+	index := -1
+	for i := range args {
+		if rsPublisherVerb(nil, args[:i+1]) == "push" {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		return fmt.Errorf("not an actual push command")
+	}
+	branch := "refs/heads/release/module-" + plan
+	lease := "--force-with-lease=" + branch + ":"
+	leases := 0
+	operands := []string{}
+	flags := map[string]bool{}
+	for _, a := range args[index+1:] {
+		if strings.HasPrefix(a, "--force-with-lease") {
+			if a != lease {
+				return fmt.Errorf("lease is not exact explicit-empty own branch")
+			}
+			leases++
+			continue
+		}
+		if strings.HasPrefix(a, "-") {
+			if (a != "--porcelain" && a != "--no-follow-tags") || flags[a] {
+				return fmt.Errorf("forbidden/duplicate push option %q", a)
+			}
+			flags[a] = true
+			continue
+		}
+		if strings.HasPrefix(a, "+") {
+			return fmt.Errorf("forced refspec")
+		}
+		operands = append(operands, a)
+	}
+	if len(operands) != 2 || operands[0] != "https://github.com/"+repository+".git" {
+		return fmt.Errorf("not one exact repository and refspec")
+	}
+	if operands[1] == candidate+":"+branch && leases == 1 {
+		return nil
+	}
+	if version != "" && !strings.ContainsAny(version, "/: \t\n") && operands[1] == candidate+":refs/tags/"+version && leases == 0 {
+		return nil
+	}
+	return fmt.Errorf("not exact create-only branch or ordinary exact tag")
+}
+
+func rsPublisherLeaseOracleControls(h *rsHarness) {
+	plan, candidate := rsSHA([]byte("lease policy fixture")), strings.Repeat("a", 40)
+	ref := "refs/heads/release/module-" + plan
+	remote := "https://github.com/PRO-Robotech/corelib.git"
+	lease := "--force-with-lease=" + ref + ":"
+	spec := candidate + ":" + ref
+	good := []string{"push", "--porcelain", "--no-follow-tags", lease, remote, spec}
+	type control struct {
+		name  string
+		args  []string
+		valid bool
+	}
+	cases := []control{{"exact-empty-own-branch", good, true}, {"ordinary-exact-tag", []string{"push", remote, candidate + ":refs/tags/v1.0.1"}, true}, {"global-option-value-push", append([]string{"-C", "push", "-c", "probe.mode=push"}, good...), true}}
+	for _, flag := range []string{"--force", "-f", "--force-if-includes", "--delete", "--mirror", "--tags", "--all", "--follow-tags"} {
+		args := append([]string{}, good...)
+		args = append(args[:1], append([]string{flag}, args[1:]...)...)
+		cases = append(cases, control{"forbidden-" + flag, args, false})
+	}
+	for name, bad := range map[string]string{"implicit": "--force-with-lease", "tracking": "--force-with-lease=" + ref, "nonempty": "--force-with-lease=" + ref + ":" + strings.Repeat("b", 40), "main": "--force-with-lease=refs/heads/main:", "tag": "--force-with-lease=refs/tags/v1.0.1:", "other-ref": "--force-with-lease=refs/heads/release/module-" + strings.Repeat("b", 64) + ":"} {
+		args := append([]string{}, good...)
+		args[3] = bad
+		cases = append(cases, control{"lease-" + name, args, false})
+	}
+	cases = append(cases, control{"ordinary-branch-no-lease", []string{"push", remote, spec}, false}, control{"duplicate-lease", append(append([]string{}, good...), lease), false}, control{"two-refspecs", append(append([]string{}, good...), spec), false})
+	for name, bad := range map[string]string{"plus-ref": "+" + spec, "main-ref": candidate + ":refs/heads/main", "tag-with-lease": candidate + ":refs/tags/v1.0.1", "other-ref": candidate + ":refs/heads/release/module-" + strings.Repeat("b", 64), "wrong-source": strings.Repeat("b", 40) + ":" + ref, "delete-ref": ":" + ref} {
+		args := append([]string{}, good...)
+		args[len(args)-1] = bad
+		cases = append(cases, control{name, args, false})
+	}
+	wrongRemote := append([]string{}, good...)
+	wrongRemote[len(wrongRemote)-2] = "https://github.com/PRO-Robotech/kacho.git"
+	cases = append(cases, control{"wrong-repository", wrongRemote, false})
+	ledger := []any{}
+	for _, c := range cases {
+		err := rsPublisherPushPolicyError(c.args, "PRO-Robotech/corelib", plan, candidate, "v1.0.1")
+		if (err == nil) != c.valid {
+			h.t.Fatalf("HARNESS_NOT_EXECUTED: lease oracle control %s expected%t got%v", c.name, c.valid, err)
+		}
+		ledger = append(ledger, map[string]any{"name": c.name, "argv": c.args, "allowed": err == nil, "expected_allowed": c.valid})
+	}
+	h.save("publisher-lease-oracle-controls.json", rsCanonicalJSON(h.t, map[string]any{"classification": "HOLDER_ORACLE_CONTROLS_NO_SUT", "executed": len(cases), "passed": len(cases), "controls": ledger}))
+}
+
+func rsPublisherCASControls(p *rsPublisherFixture) {
+	h := p.f.h
+	client := h.initRepo("cas-client", map[string]string{"value.txt": "baseline owned bytes\n"})
+	base := h.must(client, "git", "rev-parse", "HEAD")
+	h.must(client, "git", "tag", "v0.0.1", base)
+	origins := map[string]string{}
+	for _, name := range []string{"ordinary-before", "lease-before", "lease-after", "lawful"} {
+		origin := filepath.Join(h.root, "cas-"+name+".git")
+		h.must(h.root, "git", "clone", "--bare", "--no-local", client, origin)
+		origins[name] = origin
+	}
+	h.put(client, "value.txt", "candidate owned bytes\n")
+	h.must(client, "git", "add", "value.txt")
+	h.must(client, "git", "commit", "--quiet", "-m", "CAS candidate")
+	candidate := h.must(client, "git", "rev-parse", "HEAD")
+	h.must(client, "git", "merge-base", "--is-ancestor", base, candidate)
+	ref := "refs/heads/release/module-" + rsSHA([]byte("actual publisher CAS control"))
+	ledger := []any{}
+	for _, name := range []string{"ordinary-before", "lease-before", "lease-after", "lawful"} {
+		origin := origins[name]
+		mode := "cas-before"
+		if name == "lease-after" {
+			mode = "cas-after"
+		}
+		if name == "lawful" {
+			mode = "lawful"
+		}
+		capture := filepath.Join(h.root, "cas-captures-"+name)
+		cfg := map[string]any{"root": h.root, "captures": capture, "repository": origin, "transport_mode": mode, "expected_ref": ref, "expected_sha": candidate, "cas_base": base}
+		config := filepath.Join(h.root, "cas-config-"+name+".json")
+		h.put(h.root, filepath.Base(config), string(rsCanonicalJSON(h.t, cfg)))
+		raw := h.must(h.root, "bash", filepath.Join(moduleRoot(h.t), "scripts/release/publish-module-tree-inject.sh"), "--fixture-transport", config)
+		var installed map[string]string
+		if err := json.Unmarshal([]byte(raw), &installed); err != nil {
+			h.t.Fatal(err)
+		}
+		before := h.must(h.root, "git", "--git-dir", origin, "show-ref")
+		if vacancy := h.must(h.root, "git", "-c", "protocol.allow=never", "-c", "protocol.file.allow=always", "ls-remote", "--heads", "file://"+origin, ref); vacancy != "" {
+			h.t.Fatal("HARNESS_NOT_EXECUTED: CAS branch not initially absent")
+		}
+		args := []string{"-c", "protocol.allow=never", "-c", "protocol.file.allow=always", "push", "--porcelain", "--no-follow-tags", "--receive-pack=" + installed["wrapper"]}
+		if name != "ordinary-before" {
+			args = append(args, "--force-with-lease="+ref+":")
+		}
+		args = append(args, "file://"+origin, candidate+":"+ref)
+		_, stderr, rc := h.run(client, nil, "git", args...)
+		actual := h.must(h.root, "git", "--git-dir", origin, "rev-parse", ref)
+		payload := h.must(h.root, "git", "--git-dir", origin, "show", ref+":value.txt")
+		want, wantPayload := base, "baseline owned bytes"
+		wantSuccess := false
+		if name == "ordinary-before" || name == "lawful" {
+			want, wantPayload, wantSuccess = candidate, "candidate owned bytes", true
+		}
+		if (rc == 0) != wantSuccess || actual != want || payload != wantPayload {
+			h.t.Fatalf("HARNESS_NOT_EXECUTED: actual CAS %s rc%d actual%s payload%q stderr%s", name, rc, actual, payload, stderr)
+		}
+		after := h.must(h.root, "git", "--git-dir", origin, "show-ref")
+		unchanged := []string{}
+		for _, line := range strings.Split(after, "\n") {
+			if !strings.HasSuffix(line, " "+ref) {
+				unchanged = append(unchanged, line)
+			}
+		}
+		if strings.Join(unchanged, "\n") != before {
+			h.t.Fatal("HARNESS_NOT_EXECUTED: CAS changed unrelated refs")
+		}
+		if mode != "lawful" {
+			rsCheckCASRecord(h, capture, origin, mode, base, candidate, ref)
+		}
+		// An already exact candidate is recognized by readback, with no next push.
+		if name == "lawful" {
+			read := h.must(h.root, "git", "ls-remote", "--heads", "file://"+origin, ref)
+			if !strings.HasPrefix(read, candidate+"\t") {
+				h.t.Fatal("HARNESS_NOT_EXECUTED: same-candidate resume readback")
+			}
+		}
+		rsVerifyHookChildren(h, capture)
+		rsCopyCaptures(h, capture, "cas-control-"+name)
+		ledger = append(ledger, map[string]any{"name": name, "mode": mode, "push_exit": rc, "base": base, "candidate": candidate, "actual_ref": actual, "actual_payload": payload, "main_other_refs_unchanged": true, "same_candidate_resume_writes": 0, "classification": "ACTUAL_GIT_PREREQUISITE_ONLY_NO_SUT"})
+	}
+	h.save("publisher-cas-controls.json", rsCanonicalJSON(h.t, ledger))
+}
+
+func rsCheckCASRecord(h *rsHarness, capture, origin, mode, base, candidate, ref string) {
+	var record map[string]any
+	if err := json.Unmarshal(mustRSRead(h.t, filepath.Join(capture, filepath.Base(origin)+"-cas.json")), &record); err != nil {
+		h.t.Fatal(err)
+	}
+	if record["mode"] != mode || record["created_sha"] != base || record["exit_code"] != float64(0) || record["expected_absent"] != true {
+		h.t.Fatalf("HARNESS_NOT_EXECUTED: CAS race prerequisite%+v", record)
+	}
+	if mode == "cas-after" {
+		updates, ok := record["updates"].([]any)
+		if !ok || len(updates) != 3 || updates[0] != strings.Repeat("0", 40) || updates[1] != candidate || updates[2] != ref {
+			h.t.Fatal("HARNESS_NOT_EXECUTED: after-advertisement old-object identity")
+		}
+	}
+	lines := bytes.Split(bytes.TrimSpace(mustRSRead(h.t, filepath.Join(capture, filepath.Base(origin)+"-cas-invocations.jsonl"))), []byte{'\n'})
+	if len(lines) != 1 {
+		h.t.Fatalf("SEMANTIC_MISMATCH: CAS receive-pack invocations=%d", len(lines))
+	}
+}
+
+func rsCheckPublisherCAS(h *rsHarness, p *rsPublisherFixture, f *rsForgeProcess, c rsPublisherCase, o rsPublisherObservation, plan, candidate string) {
+	if c.Fault != "branch-cas-before" && c.Fault != "branch-cas-after" {
+		return
+	}
+	ref := "refs/heads/release/module-" + plan
+	rsCheckCASRecord(h, filepath.Join(filepath.Dir(f.repository), "transport-captures"), f.repository, strings.TrimPrefix(c.Fault, "branch-"), p.f.base, candidate, ref)
+	actual := h.must(h.root, "git", "--git-dir", f.repository, "rev-parse", ref)
+	if actual != p.f.base {
+		h.t.Errorf("SEMANTIC_MISMATCH: competing branch overwritten: %s", actual)
+	}
+	if h.must(h.root, "git", "--git-dir", f.repository, "rev-parse", "refs/heads/main") != p.f.base || h.must(h.root, "git", "--git-dir", f.repository, "rev-parse", "refs/tags/v1.0.0^{}") != p.f.base {
+		h.t.Error("SEMANTIC_MISMATCH: CAS changed main/tag")
+	}
+	var state map[string]any
+	if err := json.Unmarshal(mustRSRead(h.t, f.state), &state); err != nil {
+		h.t.Fatal(err)
+	}
+	if len(state["prs"].([]any)) != 0 || len(state["writes"].([]any)) != 0 {
+		h.t.Error("SEMANTIC_MISMATCH: CAS conflict reached PR/dependent write")
+	}
+	entries, err := os.ReadDir(o.directory)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	vacant, pushed := false, false
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name(), "command-") || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		var cmd map[string]any
+		if err := json.Unmarshal(mustRSRead(h.t, filepath.Join(o.directory, entry.Name())), &cmd); err != nil {
+			h.t.Fatal(err)
+		}
+		if filepath.Base(cmd["program"].(string)) != "git" {
+			continue
+		}
+		args := []string{}
+		hasRef := false
+		for _, v := range cmd["args"].([]any) {
+			a := v.(string)
+			args = append(args, a)
+			hasRef = hasRef || a == ref
+		}
+		verb := rsPublisherVerb(h.t, args)
+		if !pushed && verb == "ls-remote" && hasRef && cmd["exit_code"] == float64(0) {
+			raw := mustRSRead(h.t, filepath.Join(o.directory, strings.TrimSuffix(entry.Name(), ".json")+".stdout"))
+			if len(bytes.TrimSpace(raw)) == 0 {
+				vacant = true
+			}
+		}
+		if verb == "push" {
+			pushed = true
+			if !vacant {
+				h.t.Error("SEMANTIC_MISMATCH: branch CAS lacks prior successful exact vacancy read")
+			}
+		}
+	}
+	if !pushed {
+		h.t.Error("SEMANTIC_MISMATCH: intended actual CAS boundary was not reached")
 	}
 }

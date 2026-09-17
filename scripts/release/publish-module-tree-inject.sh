@@ -47,11 +47,62 @@ def ref(repo, name):
     if p.returncode == 128: return None
     raise RuntimeError('actual Git ref read unavailable')
 
+def install_cas_transport(repo, mode, expected_ref, expected_sha, receive):
+    base=C.get('cas_base')
+    if mode not in ('cas-before','cas-after') or not re.fullmatch(r'refs/heads/release/module-[0-9a-f]{64}',expected_ref or '') or not re.fullmatch(r'[0-9a-f]{40}',expected_sha or '') or not re.fullmatch(r'[0-9a-f]{40}',base or ''):
+        raise RuntimeError('closed owned branch CAS fixture identity required')
+    wrapper=ROOT/(repo.name+'-receive-pack')
+    config={'repository':str(repo),'capture':str(CAP),'receive':str(receive),'git':GIT,'mode':mode,'ref':expected_ref,'candidate':expected_sha,'base':base}
+    common='''#!/usr/bin/python3
+from pathlib import Path
+import os,sys,json,subprocess,time
+C=json.loads(%r);root=Path(C['repository']);cap=Path(C['capture'])
+env={k:v for k,v in os.environ.items() if not k.startswith('GIT_')};env.update(GIT_CONFIG_NOSYSTEM='1',GIT_CONFIG_GLOBAL='/dev/null')
+def save(name,value):
+ with (cap/name).open('w') as f:json.dump(value,f,indent=2);f.write('\\n');f.flush();os.fsync(f.fileno())
+def create_competitor(record):
+ args=[C['git'],'--git-dir='+str(root),'update-ref',C['ref'],C['base'],'0'*40]
+ p=subprocess.run(args,env=env,capture_output=True,timeout=20)
+ (cap/(root.name+'-cas-update.stdout')).write_bytes(p.stdout);(cap/(root.name+'-cas-update.stderr')).write_bytes(p.stderr)
+ record.update(command=args,exit_code=p.returncode,expected_absent=True,created_sha=C['base'])
+ save(root.name+'-cas.json',record)
+ if p.returncode:raise SystemExit(p.returncode)
+'''%json.dumps(config)
+    body=common+'''
+if len(sys.argv)!=2 or Path(sys.argv[1]).resolve()!=root:raise SystemExit('foreign fixture CAS endpoint')
+with (cap/(root.name+'-cas-invocations.jsonl')).open('a') as f:
+ f.write(json.dumps({'argv':sys.argv,'pid':os.getpid(),'mode':C['mode'],'time_ns':time.time_ns()})+'\\n');f.flush();os.fsync(f.fileno())
+if C['mode']=='cas-before':create_competitor({'trigger':'after caller vacancy read, before actual receive-pack advertisement','mode':C['mode']})
+os.execve(C['receive'],[C['receive'],str(root)],env)
+'''
+    compile(body,str(wrapper),'exec');wrapper.write_text(body);wrapper.chmod(0o755)
+    for name in ('pre-receive','post-receive'):
+        p=repo/'hooks'/name
+        if p.exists():p.unlink()
+    if mode=='cas-after':
+        hook=common+'''
+parent=os.getppid();proc=Path('/proc')/str(parent)
+argv=[x.decode() for x in (proc/'cmdline').read_bytes().split(b'\\0') if x]
+exe=os.readlink(proc/'exe');parts=sys.stdin.read().split()
+verified=(os.path.samefile(exe,C['receive']) and len(argv)==2 and Path(argv[1]).resolve()==root and parts==['0'*40,C['candidate'],C['ref']])
+record={'hook_pid':os.getpid(),'receive_pack_pid':parent,'receive_pack_command':argv,'receive_pack_executable':exe,'git_root':str(root),'updates':parts,'mode':C['mode'],'verified_owned_receive_pack':verified}
+save(root.name+'-hook.json',record)
+if not verified:raise SystemExit('unexpected actual old-zero branch command')
+create_competitor({'trigger':'actual pre-receive after advertisement, before old-object update','mode':C['mode'],'updates':parts})
+'''
+        p=repo/'hooks/pre-receive';compile(hook,str(p),'exec');p.write_text(hook);p.chmod(0o755)
+        (CAP/(repo.name+'-server-hook.py')).write_bytes(p.read_bytes())
+    (CAP/(repo.name+'-receive-pack.py')).write_bytes(wrapper.read_bytes())
+    save(CAP/(repo.name+'-transport.json'),{'mode':mode,'wrapper':str(wrapper),'wrapper_sha256':sha(wrapper.read_bytes()),'receive_pack':str(receive),'endpoint':str(repo),'expected_ref':expected_ref,'expected_sha':expected_sha,'cas_base':base})
+    return str(wrapper)
+
 def install_transport(repo, mode, expected_ref=None, expected_sha=None):
     repo=Path(repo).resolve()
     if not repo.is_relative_to(ROOT) or not (repo/'HEAD').is_file():
         raise RuntimeError('transport endpoint is not an owned bare fixture')
     receive=Path(run(['--exec-path']).stdout.decode().strip())/'git-receive-pack'
+    if mode.startswith('cas-'):
+        return install_cas_transport(repo,mode,expected_ref,expected_sha,receive)
     wrapper=ROOT/(repo.name+'-receive-pack')
     wrapper.write_text('#!/bin/sh\nset -eu\n[ "$#" -eq 1 ] && [ "$1" = '+repr(str(repo))+' ] || exit 125\nunset GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT\nexec '+repr(str(receive))+' "$@"\n')
     wrapper.chmod(0o755)
