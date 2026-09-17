@@ -120,6 +120,12 @@ func sensitiveACR2Set() map[string]struct{} {
 		// holders, and the cloud administrator reaches it as he reaches everything.
 		"kaname.cloud.iam.v1.UserService/Block",
 		"kaname.cloud.iam.v1.UserService/Unblock",
+		// ResetSecondFactor (Ф12 Р10, PRO-Robotech/kacho#1281) — третий читатель
+		// того же отношения: снимает у человека код по времени и запасные коды и
+		// завершает все его сессии. Тот же порог, что у Block/Unblock, и по тому
+		// же доводу: человек, которому хватило бы пароля для сброса чужого
+		// фактора, получил бы через дешёвую дверь больше, чем отзыв одного токена.
+		"kaname.cloud.iam.v1.UserService/ResetSecondFactor",
 		// B — iam binding grant (5; Create is exempt-permission + acr=2, net-strengthening).
 		// Invite belongs here: it inlines an AccessBinding create (project_id+role_id)
 		// in the invite tx — the same privilege AccessBindingService/Create issues.
@@ -146,6 +152,10 @@ func sensitiveACR2Set() map[string]struct{} {
 		// через более дешёвую дверь.
 		"kaname.cloud.iam.v1.MembershipService/Create",
 		"kaname.cloud.iam.v1.UserService/ResendInvite",
+		// ResetSecondFactor — сброс второго фактора распорядителем (Ф12 Р10,
+		// PRO-Robotech/kacho#1281): снимает у человека код по времени и запасные
+		// коды и завершает его сессии; тот же круг и порог, что у Block/Unblock.
+		"kaname.cloud.iam.v1.UserService/ResetSecondFactor",
 		// C — compute per-resource grant. Поверхность выдачи на самой машине снята
 		// целиком вместе с остальной мёртвой: ни `SetAccessBindings`, ни
 		// `UpdateAccessBindings` у машины больше нет — выдача на ресурс идёт
@@ -247,7 +257,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 	// службы (PRO-Robotech/kacho#2645). Число по-прежнему утверждается, а не
 	// выводится из списка: молчаливое сокращение — ровно то, что произошло бы
 	// при случайно выпавшей записи, и отличить его от этого снятия было бы нечем.
-	require.Len(t, sensitive, 29, "the acceptance-doc sensitive set must contain exactly 29 FQNs")
+	require.Len(t, sensitive, 30, "the acceptance-doc sensitive set must contain exactly 30 FQNs")
 
 	got2 := map[string]struct{}{}
 	for _, fqn := range c.FQNs() {
@@ -268,7 +278,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 		_, want := sensitive[fqn]
 		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive allowlist (over-inclusion): %s", fqn)
 	}
-	assert.Len(t, got2, 29, "exactly 29 FQNs must carry required_acr_min=2")
+	assert.Len(t, got2, 30, "exactly 30 FQNs must carry required_acr_min=2")
 }
 
 // TestPermissionCatalog_ACR_ComplementNotTwo — SEC-ACR-13 / I1: explicit
@@ -697,7 +707,7 @@ func TestPermissionCatalog_ACR_Counts(t *testing.T) {
 	// Числа ЗАМЕРЕНЫ прогоном, а не вычтены в уме: их напечатали сами упавшие
 	// утверждения этой пробы после регенерации каталога. Сумма сходится
 	// (27+284+27=338) — и это единственное, ради чего её стоит называть.
-	assert.Equal(t, 29, n2, "sensitive count")
+	assert.Equal(t, 30, n2, "sensitive count")
 	// ТРИ линии завели по одной записи каждая, и объяснения всех трёх остаются —
 	// они про разные глаголы. Числа ниже ЗАМЕРЕНЫ по дереву после слияния,
 	// а не сложены в уме: арифметика трёх переписей даёт совпадение, которое
@@ -781,9 +791,16 @@ func TestPermissionCatalog_ACR_Counts(t *testing.T) {
 	// (kaname#184): полоса допуска в аккаунт, та же, что у Invite. Полосы
 	// «рутина» и «без порога» не двигаются. Числа ЗАМЕРЕНЫ прогоном после
 	// регенерации каталога: 27→29 и 339→341.
-	assert.Equal(t, 284, n1, "routine count")
+	//
+	// Подъём пина на kaname@16b5cade (Ф12 и срез 2 линии службы) привёз ДВЕ
+	// записи: `UserService/ResetSecondFactor` (Ф12 Р10, kacho#1281) — в полосу
+	// «чувствительное» контрактом службы, как Block/Unblock; и
+	// `MembershipService/ListMine` (kaname#206) — чтение своих членств, в
+	// полосу «рутина». Полоса «без порога» не сдвинулась. Числа ЗАМЕРЕНЫ
+	// прогоном после регенерации: 29→30, 284→285, 341→343.
+	assert.Equal(t, 285, n1, "routine count")
 	assert.Equal(t, 28, nEmpty, "no-acr-requirement count (подмножество `<exempt>`, не равное ему)")
-	assert.Equal(t, 341, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 343, n2+n1+nEmpty, "catalog total")
 
 	// Здесь сверялась ПОБАЙТОВАЯ идентичность двух вшитых копий каталога — края
 	// и посева службы доступа. Половина утверждения снята вместе со своим

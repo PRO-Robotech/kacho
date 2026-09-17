@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // login_lane_paths.go — ЕДИНСТВЕННОЕ объявление глаголов полосы формы
-// (приёмка Ф3 Р2, §8 инв. 7): четыре глагола Ф3, регистрация Ф4 (kacho#2699)
-// и два глагола восстановления доступа Ф5 (kacho#2701) — семь путей, тот же
+// (приёмка Ф3 Р2, §8 инв. 7): четыре глагола Ф3, регистрация Ф4 (kacho#2699),
+// два глагола восстановления доступа Ф5 (kacho#2701) и шесть глаголов второго
+// фактора Ф12 (приёмка Ф12 Р4, kacho#1281) — тринадцать путей, тот же
 // перечень, что служба объявляет у своего слушателя (`loginlanehttp.Paths()`).
 //
 // # Кто это читает — трое, и второго объявления нет
@@ -44,6 +45,16 @@ const (
 	// паролем — два глагола, две формы, два вида признака.
 	LoginLanePathRecovery         = "/iam/v1/auth/recovery"
 	LoginLanePathRecoveryComplete = "/iam/v1/auth/recovery/complete"
+	// Второй фактор (Ф12 Р4, kacho#1281): четыре глагола семейства подпутями,
+	// чтение состояния на корне семейства, церемония повышения своим подпутём.
+	// Те же полоса, признак формы и ретрансляция, что у четырёх глаголов Ф3;
+	// исход «сессии нет» ретранслируется — судит служба (401 у всех шести).
+	LoginLanePathSecondFactor            = "/iam/v1/auth/second-factor"
+	LoginLanePathSecondFactorEnroll      = "/iam/v1/auth/second-factor/enroll"
+	LoginLanePathSecondFactorConfirm     = "/iam/v1/auth/second-factor/confirm"
+	LoginLanePathSecondFactorRemove      = "/iam/v1/auth/second-factor/remove"
+	LoginLanePathSecondFactorBackupCodes = "/iam/v1/auth/second-factor/backup-codes"
+	LoginLanePathStepUp                  = "/iam/v1/auth/step-up"
 )
 
 // LoginLaneRoute — глагол формы: имя для счётчиков и путь на адресе консоли.
@@ -64,6 +75,12 @@ var loginLaneRoutes = []LoginLaneRoute{
 	{Verb: "register", Path: LoginLanePathRegister},
 	{Verb: "recovery", Path: LoginLanePathRecovery},
 	{Verb: "recovery-complete", Path: LoginLanePathRecoveryComplete},
+	{Verb: "second-factor-status", Path: LoginLanePathSecondFactor},
+	{Verb: "second-factor-enroll", Path: LoginLanePathSecondFactorEnroll},
+	{Verb: "second-factor-confirm", Path: LoginLanePathSecondFactorConfirm},
+	{Verb: "second-factor-remove", Path: LoginLanePathSecondFactorRemove},
+	{Verb: "second-factor-backup-codes", Path: LoginLanePathSecondFactorBackupCodes},
+	{Verb: "step-up", Path: LoginLanePathStepUp},
 }
 
 // LoginLaneRoutes отдаёт КОПИЮ перечня глаголов формы.

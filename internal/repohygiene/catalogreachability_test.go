@@ -196,6 +196,7 @@ var knownInertCatalogRows = []string{
 	"kaname.cloud.iam.v1.UserService/ListOperations",
 	"kaname.cloud.iam.v1.UserService/RemoveFromAccount",
 	"kaname.cloud.iam.v1.UserService/ResendInvite",
+	"kaname.cloud.iam.v1.UserService/ResetSecondFactor",
 	"kaname.cloud.iam.v1.UserService/Unblock",
 	"kaname.cloud.iam.v1.UserService/Update",
 	"kaname.cloud.iam.v1.UserTokenService/Issue",

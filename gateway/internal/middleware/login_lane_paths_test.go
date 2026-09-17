@@ -8,9 +8,10 @@ import (
 )
 
 // loginLaneWant — перечень глаголов формы, как его объявляет служба
-// (`loginlanehttp.Paths()` в дереве службы — семь путей одним объявлением):
-// четыре глагола Ф3 (Р2), регистрация Ф4 (kacho#2699) и два глагола
-// восстановления Ф5 (kacho#2701). Перечень выписан здесь ДОСЛОВНО, а не прочитан
+// (`loginlanehttp.Paths()` в дереве службы — тринадцать путей одним объявлением):
+// четыре глагола Ф3 (Р2), регистрация Ф4 (kacho#2699), два глагола
+// восстановления Ф5 (kacho#2701) и шесть глаголов второго фактора Ф12 (Р4,
+// kacho#1281). Перечень выписан здесь ДОСЛОВНО, а не прочитан
 // из модуля службы: у края СВОЁ объявление (§8 инв. 7 Ф3), и проба сверяет его с
 // тем, что обязано быть верно по приёмке, — иначе она зеленела бы на любом
 // перечне, который край взял бы у службы как есть.
@@ -22,6 +23,14 @@ var loginLaneWant = map[string]string{
 	"register":          "/iam/v1/auth/register",
 	"recovery":          "/iam/v1/auth/recovery",
 	"recovery-complete": "/iam/v1/auth/recovery/complete",
+	// Второй фактор (Ф12 Р4): четыре глагола семейства подпутями, чтение
+	// состояния на корне семейства, церемония повышения своим подпутём.
+	"second-factor-status":       "/iam/v1/auth/second-factor",
+	"second-factor-enroll":       "/iam/v1/auth/second-factor/enroll",
+	"second-factor-confirm":      "/iam/v1/auth/second-factor/confirm",
+	"second-factor-remove":       "/iam/v1/auth/second-factor/remove",
+	"second-factor-backup-codes": "/iam/v1/auth/second-factor/backup-codes",
+	"step-up":                    "/iam/v1/auth/step-up",
 }
 
 // TestLoginLanePaths_F3_51_OneDeclarationFeedsThePublicListAndTheLane — глаголы
@@ -35,7 +44,7 @@ var loginLaneWant = map[string]string{
 func TestLoginLanePaths_F3_51_OneDeclarationFeedsThePublicListAndTheLane(t *testing.T) {
 	routes := LoginLaneRoutes()
 	if len(routes) != len(loginLaneWant) {
-		t.Fatalf("глаголов формы объявлено %d, ожидалось %d (Р2 + Ф4 + Ф5)", len(routes), len(loginLaneWant))
+		t.Fatalf("глаголов формы объявлено %d, ожидалось %d (Р2 + Ф4 + Ф5 + Ф12)", len(routes), len(loginLaneWant))
 	}
 	for _, rt := range routes {
 		if loginLaneWant[rt.Verb] != rt.Path {
@@ -60,7 +69,8 @@ func TestLoginLanePaths_F3_51_OneDeclarationFeedsThePublicListAndTheLane(t *test
 	// Отрицательный контроль: соседний путь того же семейства НЕ освобождён и
 	// НЕ глагол формы — точное совпадение, не приставка (§1.8: приставка была
 	// снята ровно из-за наследования освобождения).
-	for _, p := range []string{"/iam/v1/auth/login/", "/iam/v1/auth/loginx", "/iam/v1/auth", "/iam/v1/auth/csrf/x"} {
+	for _, p := range []string{"/iam/v1/auth/login/", "/iam/v1/auth/loginx", "/iam/v1/auth", "/iam/v1/auth/csrf/x",
+		"/iam/v1/auth/second-factor/", "/iam/v1/auth/second-factor/enrollx", "/iam/v1/auth/step-up/x"} {
 		if IsLoginLanePath(p) || isPublicHTTPPath(p) {
 			t.Errorf("путь %q признан глаголом формы или освобождённым — совпадение обязано быть точным", p)
 		}

@@ -286,6 +286,12 @@ var AllowedMethods = map[string]struct{}{
 	// Invite (`editor` на аккаунте, acr 2): более дешёвая дверь к письму от имени
 	// платформы заводиться не должна.
 	"/kaname.cloud.iam.v1.UserService/ResendInvite": {},
+	// Сброс второго фактора распорядителем (REST POST
+	// /iam/v1/users/{user_id}:resetSecondFactor; Ф12 Р10, PRO-Robotech/kacho#1281):
+	// человек без устройства и запасных кодов снять фактор сам не может —
+	// снятие требует кода. Тот же круг держателей и тот же порог, что у
+	// Block/Unblock: `identity_suspender` on iam_user, acr 2.
+	"/kaname.cloud.iam.v1.UserService/ResetSecondFactor": {},
 	// iam.v1 — UserTokenService (REST .../users/{user_id}/tokens) —
 	// выдача, перечисление и отзыв неинтерактивных токенов пользователя.
 	"/kaname.cloud.iam.v1.UserTokenService/Issue":  {},
@@ -337,6 +343,11 @@ var AllowedMethods = map[string]struct{}{
 	"/kaname.cloud.iam.v1.MembershipService/Get":    {},
 	"/kaname.cloud.iam.v1.MembershipService/List":   {},
 	"/kaname.cloud.iam.v1.MembershipService/Create": {},
+	// Свой список членств человека (REST GET /iam/v1/me/memberships;
+	// kaname#206, IAM-ID-2 §2.5) — чтение под личностью вызывающего, без
+	// поля аккаунта: полоса «рутина» каталога, приехала пином службы на
+	// 16b5cade вместе с Ф12.
+	"/kaname.cloud.iam.v1.MembershipService/ListMine": {},
 	// iam.v1 — RoleService
 	// Role.rules[].module — скалярная строка; REST Create/Update маршалят это
 	// поле; отдельной allowlist-записи не требуется (новых RPC нет).

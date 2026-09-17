@@ -80,7 +80,12 @@ var nonCreatingVerbs = map[string]bool{
 	// ничего не снимает, строка приглашения та же, срок её выдачи не двигается.
 	// Провайдер его не зовёт: письмо — побочный эффект заведения членства, а не
 	// свойство ресурса, и «повторить письмо» в декларативной форме не выражается.
-	"ResendInvite":             true,
+	"ResendInvite": true,
+	// ResetSecondFactor — сброс второго фактора распорядителем (Ф12 Р10,
+	// PRO-Robotech/kacho#1281): снимает у человека код по времени и запасные
+	// коды и завершает его сессии; ничего не заводит, и декларативному
+	// управлению не подлежит — это надзорное действие, а не состояние ландшафта.
+	"ResetSecondFactor":        true,
 	"SimulateMaintenanceEvent": true, "Start": true, "Stop": true, "Unblock": true, "Update": true, "UpdateAccessBindings": true,
 	"UpdateMetadata": true, "UpdateNetworkInterface": true, "UpdateRepository": true, "UpdateRoute": true, "UpdateRule": true,
 	"UpdateRules": true, "WhoAmI": true,
