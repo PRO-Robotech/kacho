@@ -57,10 +57,6 @@ type HumanSession struct {
 	AssuranceLevel string
 	// EmailVerified — подтверждён ли ТЕКУЩИЙ адрес (Ф2 П1).
 	EmailVerified bool
-	// PasswordChangeRequired — сессия выдана восстановлением и требует сменить
-	// пароль до иного действия (Ф5 Р5). Отвергает КРАЙ — в решении по каталогу
-	// прав (Р8), а не здесь.
-	PasswordChangeRequired bool
 }
 
 // ErrHumanSessionUnsupported — авторитет ЖИВ, но такого вопроса не предлагает

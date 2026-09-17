@@ -358,25 +358,6 @@ func writeHTTPDeny(w http.ResponseWriter, desc permissionDeniedDescriptor, reaso
 	_ = json.NewEncoder(w).Encode(body)
 }
 
-// writeHTTPPasswordChangeRequired — 403 / PERMISSION_DENIED с
-// `ErrorInfo.reason = PASSWORD_CHANGE_REQUIRED` (приёмка Ф3 Р8, Ф3-23). Форма —
-// `google.rpc.Status` JSON, как у прочих отказов края; текст называет
-// следующий шаг клиента и ничего о ресурсе.
-func writeHTTPPasswordChangeRequired(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusForbidden)
-	body := map[string]any{
-		"code":    7, // gRPC code PermissionDenied
-		"message": passwordChangeRequiredMessage,
-		"details": []map[string]any{{
-			"@type":  "type.googleapis.com/google.rpc.ErrorInfo",
-			"reason": passwordChangeRequiredReason,
-			"domain": "kaname.cloud.iam.v1",
-		}},
-	}
-	_ = json.NewEncoder(w).Encode(body)
-}
-
 // classifyDenyReasonType inspects a deny reason string and assigns it a
 // machine-readable type. The leftmost token (before ':') is the convention
 // the IAM service uses ("mfa_fresh: acr=2 (need 3)" → "mfa_fresh").

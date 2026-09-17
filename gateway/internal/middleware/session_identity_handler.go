@@ -243,10 +243,9 @@ func (h *SessionIdentityHandler) meFromOwnSession(w http.ResponseWriter, r *http
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"user": userObj,
 		"session": map[string]any{
-			"expiresAt":              sess.ExpiresAt.UTC().Truncate(time.Second).Format(time.RFC3339),
-			"assuranceLevel":         sess.AssuranceLevel,
-			"emailVerified":          sess.EmailVerified,
-			"passwordChangeRequired": sess.PasswordChangeRequired,
+			"expiresAt":      sess.ExpiresAt.UTC().Truncate(time.Second).Format(time.RFC3339),
+			"assuranceLevel": sess.AssuranceLevel,
+			"emailVerified":  sess.EmailVerified,
 		},
 	})
 }

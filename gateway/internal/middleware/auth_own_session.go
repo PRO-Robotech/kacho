@@ -124,10 +124,6 @@ func (a *AuthInterceptor) tryOwnSession(w http.ResponseWriter, r *http.Request) 
 	// `mfa_fresh` о ВИДЕ способа отсутствует, о свежести — момент аутентификации.
 	setSessionAssuranceHeaders(r, assurance, nil)
 	setPrincipalHeaders(r, subj.Type, subj.ID, subj.DisplayName)
-	if sess.PasswordChangeRequired {
-		// Доносится до решения по каталогу (Р8) — контекстом, не заголовком.
-		r = r.WithContext(WithPasswordChangeRequired(r.Context()))
-	}
 	a.logger.Info("auth.HTTP: Principal injected (own session)", "type", subj.Type, "id", subj.ID)
 	return r, true, false
 }
