@@ -182,6 +182,12 @@ var coordinates = []coordinate{
 	{"AWS_ACCESS_KEY_ID", "environment variable read by the S3 credential chain of the registry storage driver"},
 	{"AWS_SECRET_ACCESS_KEY", "environment variable read by the S3 credential chain of the registry storage driver"},
 	{"aws-sdk", "the SDK that defines the S3 credential chain, named as the mechanism"},
+	// Хост почтового ретранслятора, который НАБИРАЕТ стенд a8f60d: имя выбрал его
+	// оператор, мы его только вызываем. Это координата потребляемого сервиса,
+	// а не наше имя и не сравнение (ban #2 — о том, что называем МЫ). Строка
+	// живёт в профиле стенда (`deploy/helm/umbrella/values.a8f60d.yaml`,
+	// `global.kacho.identity.smtp.connectionURI`); истекает вместе с ней.
+	{"smtp.yandex.ru", "hostname of the mail relay the a8f60d stand dials; its operator named it, we only consume it"},
 }
 
 // exemptFile is a whole file that carries a token because the ban was enforced,
