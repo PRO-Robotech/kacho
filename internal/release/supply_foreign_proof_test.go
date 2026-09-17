@@ -95,6 +95,13 @@ func TestReleaseSupplyForeignCanonicalProof(t *testing.T) {
 			twin = cases[3]
 		}
 		h.save(c.Name+".manifest.json", rsCanonicalJSON(t, c.Manifest))
+		for _, response := range c.HTTP {
+			body := mustRSRead(t, response.BodyPath)
+			if rsSHA(body) != response.BodySHA {
+				t.Fatal("HARNESS_NOT_EXECUTED: HTTP fixture body changed")
+			}
+			h.save("http-body-"+response.BodySHA, body)
+		}
 		ledger = append(ledger, map[string]any{"name": c.Name, "scenario": c.Scenario, "changed_fact": c.Axis, "lawful_twin": twin.Name, "expected_outcome": c.Outcome, "expected_reason": c.Reason, "manifest_sha256": rsSHA(rsCanonicalJSON(t, c.Manifest)), "computed_manifest_fields": rsChangedJSON(rsCloneJSON(twin.Manifest), rsCloneJSON(c.Manifest), "$"), "authority_scope": "synthetic fixture only"})
 	}
 	h.save("foreign-case-ledger.json", rsCanonicalJSON(t, ledger))
@@ -124,6 +131,7 @@ func TestReleaseSupplyForeignCanonicalProof(t *testing.T) {
 			raw, _ := json.Marshal(request)
 			requestPath := filepath.Join(h.root, c.Name+".request.json")
 			ch.put(h.root, c.Name+".request.json", string(raw))
+			ch.save("request.json", raw)
 			_, stderr, rc := ch.run(h.root, []string{"CI_RS_BRIDGE_REQUEST=" + requestPath, "GOPROXY=off", "GOSUMDB=off"}, binary, "-test.run=^TestCIRSConsumerBridge$", "-test.v", "-test.timeout=115s")
 			if rc != 0 {
 				t.Fatalf("HARNESS_NOT_EXECUTED: candidate bridge rc%d: %s", rc, stderr)
