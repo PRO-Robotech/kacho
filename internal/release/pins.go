@@ -407,8 +407,11 @@ func (e *supplyEngine) resolvePin(pin supplyPin, remote supplyPinRemote) (string
 			if failed != nil {
 				return "", failed
 			}
-			if ancestor.ExitCode != 0 {
+			if ancestor.ExitCode == 1 {
 				return "", supplyRed("PIN_UNREACHABLE")
+			}
+			if ancestor.ExitCode != 0 {
+				return "", supplyUnavailable("SOURCE_UNAVAILABLE")
 			}
 		}
 	}
