@@ -204,7 +204,7 @@ class Handler(BaseHTTPRequestHandler):
         if re.fullmatch(re.escape(BASE)+r'/commits/[0-9a-f]{40}/(check-runs|status)',path):
             commit=path.split('/')[-2];bad=fault=='checks-failed';pending=fault=='checks-pending'
             if fault=='pr-head-changed' and state['prs'] and not state['faults_used'].get(fault):
-                pr=state['prs'][0];name='refs/heads/'+pr['head_ref'];old=ref(REPO,name);tree=bare(['rev-parse',old+'^{tree}']).stdout.decode().strip();new=bare(['commit-tree',tree,'-p',old],b'changed PR head fixture\n').stdout.decode().strip();bare(['update-ref',name,new,old]);state['faults_used'][fault]=True
+                pr=state['prs'][0];name='refs/heads/'+pr['head_ref'];old=ref(REPO,name);tree=bare(['rev-parse',old+'^{tree}']).stdout.decode().strip();new=bare(['commit-tree',tree,'-p',old],b'changed PR head fixture\n').stdout.decode().strip();bare(['update-ref',name,new,old]);state['head_mutation']={'ref':name,'before_sha':old,'after_sha':new,'trigger':'required-check read'};state['faults_used'][fault]=True
             if fault=='checks-last-sleep' and state['reads'][key]<2:pending=True
             if path.endswith('/status'):return self.answer(200,{'sha':commit,'state':'pending' if pending else 'failure' if bad else 'success','statuses':[{'context':'fixture-required','state':'pending' if pending else 'failure' if bad else 'success'}]},record)
             return self.answer(200,{'total_count':1,'check_runs':[{'id':41,'name':'fixture-required','head_sha':commit,'status':'in_progress' if pending else 'completed','conclusion':None if pending else 'failure' if bad else 'success','app':{'id':1}}]},record)
@@ -213,7 +213,7 @@ class Handler(BaseHTTPRequestHandler):
             if observed is None:return self.answer(404,{'message':'not found'},record)
             return self.answer(200,{'ref':name,'object':{'type':'commit','sha':observed}},record)
         if path==BASE+'/pulls' and method=='GET':
-            if fault=='pr-lost-unavailable' and state['prs']:return self.answer(503,{'message':'readback unavailable'},record)
+            if fault in ('pr-lost-unavailable','merge-lost-unavailable') and state['prs'] and (fault=='pr-lost-unavailable' or state['prs'][0]['merged']):return self.answer(503,{'message':'readback unavailable'},record)
             if fault=='pr-lost-empty' and state['prs']:return self.answer(200,[],record)
             prs=[pr_view(p) for p in state['prs']]
             if fault=='pr-duplicate' and prs:prs.append(dict(prs[0],number=102))
@@ -224,7 +224,7 @@ class Handler(BaseHTTPRequestHandler):
             head=body.get('head','').split(':')[-1]
             if body.get('base')!='main' or not head.startswith('release/module-') or ref(REPO,'refs/heads/'+head) is None:
                 raise RuntimeError('fixture PR request does not bind actual pushed branch')
-            pr={'number':101,'head_ref':head,'body':body.get('body',''),'title':body.get('title',''),'state':'open','merged':False,'merge_commit_sha':None}
+            pr={'number':101,'head_ref':head,'created_head_sha':ref(REPO,'refs/heads/'+head),'body':body.get('body',''),'title':body.get('title',''),'state':'open','merged':False,'merge_commit_sha':None}
             state['prs'].append(pr)
             controlled_mutation(pr)
             return self.answer(201,pr_view(pr),record,fault in ('pr-lost-present','pr-lost-unavailable','pr-lost-empty','pr-duplicate'))
@@ -240,7 +240,7 @@ class Handler(BaseHTTPRequestHandler):
                 if fault=='merge-rejected':return self.answer(405,{'merged':False,'message':'terminal rejection'},record)
                 if body.get('sha')!=ref(REPO,'refs/heads/'+pr['head_ref']):return self.answer(409,{'message':'head changed'},record)
                 if fault=='merge-head-conflict':
-                    name='refs/heads/'+pr['head_ref'];old=ref(REPO,name);tree=bare(['rev-parse',old+'^{tree}']).stdout.decode().strip();new=bare(['commit-tree',tree,'-p',old],b'changed at merge write fixture\n').stdout.decode().strip();bare(['update-ref',name,new,old]);return self.answer(409,{'message':'head changed'},record)
+                    name='refs/heads/'+pr['head_ref'];old=ref(REPO,name);tree=bare(['rev-parse',old+'^{tree}']).stdout.decode().strip();new=bare(['commit-tree',tree,'-p',old],b'changed at merge write fixture\n').stdout.decode().strip();bare(['update-ref',name,new,old]);state['head_mutation']={'ref':name,'before_sha':old,'after_sha':new,'trigger':'merge write'};return self.answer(409,{'message':'head changed'},record)
                 commit=actual_merge(pr)
                 return self.answer(200,{'sha':commit,'merged':True,'message':'merged'},record,fault.startswith('merge-lost'))
         if path.startswith(BASE+'/releases/tags/') and method=='GET':
@@ -248,7 +248,11 @@ class Handler(BaseHTTPRequestHandler):
             if fault=='note-conflict' and notes:notes=[dict(notes[0],target_commitish=C['base'])]
             if fault=='note-lost-unavailable' and notes:return self.answer(503,{'message':'unavailable'},record)
             return self.answer(200 if notes else 404,notes[0] if notes else {'message':'not found'},record)
-        if path==BASE+'/releases' and method=='GET':return self.answer(200,state['notes'],record)
+        if path==BASE+'/releases' and method=='GET':
+            if fault=='note-lost-unavailable' and state['notes']:return self.answer(503,{'message':'unavailable'},record)
+            notes=state['notes']
+            if fault=='note-conflict' and notes:notes=[dict(notes[0],target_commitish=C['base'])]
+            return self.answer(200,notes,record)
         if path==BASE+'/releases' and method=='POST':
             state['writes'].append({'kind':'release-note','method':method,'body':body})
             target=ref(REPO,'refs/tags/'+body.get('tag_name',''))

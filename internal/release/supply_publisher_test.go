@@ -949,6 +949,7 @@ func TestReleaseSupplyPublisherProtocol(t *testing.T) {
 					t.Errorf("SEMANTIC_MISMATCH: clipped checks 5/2 seconds %v", sleeps)
 				}
 			}
+			rsPublisherRecovery(&ch, p, f, binary, c, invocation, plan, candidate)
 			// Repeated exact delivery may read the objects but never write again.
 			if c.Name == "lawful-protected-delivery" && !t.Failed() {
 				before := len(state["writes"].([]any))
@@ -1113,6 +1114,7 @@ func rsRunReleaseCase(h *rsHarness, p *rsPublisherFixture, f *rsForgeProcess, bi
 			}
 		}
 	}
+	rsPublisherRecovery(h, p, f, binary, c, invocation, plan, candidate)
 	if c.Name == "release-lawful" && !t.Failed() {
 		count := len(after["writes"].([]any))
 		resume := rsInvokePublisher(h, p, f, binary, c.Name+"-resume", invocation)
@@ -1459,8 +1461,14 @@ func rsCheckActualEffects(h *rsHarness, f *rsForgeProcess, c rsPublisherCase, o 
 			observed := readRef(effect["ref"].(string) + "^{}")
 			switch status {
 			case "PRESENT", "CONFLICT":
-				if observed == "" || effect["sha"] != observed {
-					t.Errorf("SEMANTIC_MISMATCH: claimed %s %s differs from actual Git %s", kind, status, observed)
+				historical := false
+				if kind == "branch" && status == "PRESENT" && (c.Fault == "pr-head-changed" || c.Fault == "merge-head-conflict") {
+					if mutation, ok := state["head_mutation"].(map[string]any); ok {
+						historical = mutation["ref"] == effect["ref"] && mutation["before_sha"] == effect["sha"] && mutation["after_sha"] == observed
+					}
+				}
+				if observed == "" || (effect["sha"] != observed && !historical) {
+					t.Errorf("SEMANTIC_MISMATCH: claimed %s %s differs from actual Git facts %s", kind, status, observed)
 				}
 			case "ABSENT":
 				if observed != "" {
@@ -1600,4 +1608,61 @@ func rsPublisherParserControls(h *rsHarness) {
 		}
 	}
 	h.save("publisher-parser-controls.json", rsCanonicalJSON(h.t, map[string]any{"classification": "HARNESS_ONLY_NO_SUT", "actual_extracted_source_sha256": rsSHA([]byte(program)), "executed": len(controls), "passed": len(controls)}))
+}
+
+func rsPublisherRecovery(h *rsHarness, p *rsPublisherFixture, f *rsForgeProcess, binary string, c rsPublisherCase, invocation []string, plan, candidate string) {
+	if h.t.Failed() {
+		return
+	}
+	if c.Fault != "branch-lost-unavailable" && c.Fault != "pr-lost-unavailable" && c.Fault != "pr-lost-empty" && c.Fault != "merge-lost-unavailable" && c.Fault != "tag-lost-unavailable" && c.Fault != "note-lost-unavailable" {
+		return
+	}
+	// Only availability changes between these explicit invocations. No ref,
+	// PR, merge or note is fabricated/replaced and no new key is supplied.
+	if _, err := os.Stat(f.repository); os.IsNotExist(err) {
+		if err := os.Rename(f.repository+".hidden", f.repository); err != nil {
+			h.t.Fatal(err)
+		}
+	}
+	f.fault(h.t, "lawful")
+	recovery := c
+	recovery.Name = c.Name + "-readback-recovery"
+	recovery.Fault = "lawful"
+	recovery.Outcome = "GREEN"
+	recovery.Reason = "OK"
+	recovery.Stage = "MERGED_VERIFIED"
+	recovery.Effects = map[string]string{"branch": "PRESENT", "pr": "PRESENT", "merge": "PRESENT"}
+	if c.Phase == "release" {
+		recovery.Stage = "TAG_PRESENT"
+		recovery.Effects["tag"] = "PRESENT"
+		recovery.Effects["release-note"] = "PRESENT"
+	}
+	observed := rsInvokePublisher(h, p, f, binary, recovery.Name, invocation)
+	rsCheckPublisher(h, recovery, observed, plan, candidate)
+	rsCheckActualEffects(h, f, recovery, observed)
+	var state map[string]any
+	if err := json.Unmarshal(mustRSRead(h.t, f.state), &state); err != nil {
+		h.t.Fatal(err)
+	}
+	counts := map[string]int{}
+	for _, raw := range state["writes"].([]any) {
+		counts[raw.(map[string]any)["kind"].(string)]++
+	}
+	for kind, n := range counts {
+		if n > 1 {
+			h.t.Errorf("SEMANTIC_MISMATCH: recovery duplicated already-created %s (%d writes)", kind, n)
+		}
+	}
+	for _, cmd := range observed.commands {
+		if filepath.Base(cmd["program"].(string)) != "git" {
+			continue
+		}
+		args := []string{}
+		for _, arg := range cmd["args"].([]any) {
+			args = append(args, arg.(string))
+		}
+		if rsPublisherVerb(h.t, args) == "push" {
+			h.t.Error("SEMANTIC_MISMATCH: recovery rewrote already-created branch/tag")
+		}
+	}
 }
