@@ -727,7 +727,8 @@ func rsCheckPublisher(h *rsHarness, c rsPublisherCase, o rsPublisherObservation,
 		}
 		pushes++
 		version, _ := r["version"].(string)
-		if err := rsPublisherPushPolicyError(args, "PRO-Robotech/corelib", plan, candidate, version); err != nil {
+		expectedTagTarget, _ := r["tag_target_sha"].(string)
+		if err := rsPublisherPushPolicyError(args, "PRO-Robotech/corelib", plan, candidate, expectedTagTarget, version); err != nil {
 			t.Errorf("SEMANTIC_MISMATCH: forbidden push command %q: %v", args, err)
 		}
 	}
@@ -1683,7 +1684,7 @@ func rsPublisherRecovery(h *rsHarness, p *rsPublisherFixture, f *rsForgeProcess,
 // rsPublisherPushPolicyError permits only create-only publication of the exact
 // derived branch. It checks the production argv before fixture transport edits.
 // Ordinary non-force exact tag creation remains a separate allowed operation.
-func rsPublisherPushPolicyError(args []string, repository, plan, candidate, version string) error {
+func rsPublisherPushPolicyError(args []string, repository, plan, candidate, expectedTagTarget, version string) error {
 	validHex := func(value string, length int) bool {
 		if len(value) != length {
 			return false
@@ -1739,7 +1740,7 @@ func rsPublisherPushPolicyError(args []string, repository, plan, candidate, vers
 	if operands[1] == candidate+":"+branch && leases == 1 {
 		return nil
 	}
-	if version != "" && !strings.ContainsAny(version, "/: \t\n") && operands[1] == candidate+":refs/tags/"+version && leases == 0 {
+	if validHex(expectedTagTarget, 40) && version != "" && !strings.ContainsAny(version, "/: \t\n") && operands[1] == expectedTagTarget+":refs/tags/"+version && leases == 0 {
 		return nil
 	}
 	return fmt.Errorf("not exact create-only branch or ordinary exact tag")
@@ -1747,6 +1748,7 @@ func rsPublisherPushPolicyError(args []string, repository, plan, candidate, vers
 
 func rsPublisherLeaseOracleControls(h *rsHarness) {
 	plan, candidate := rsSHA([]byte("lease policy fixture")), strings.Repeat("a", 40)
+	tagTarget := strings.Repeat("b", 40) // Accepted squash commit differs from the branch candidate.
 	ref := "refs/heads/release/module-" + plan
 	remote := "https://github.com/PRO-Robotech/corelib.git"
 	lease := "--force-with-lease=" + ref + ":"
@@ -1757,7 +1759,7 @@ func rsPublisherLeaseOracleControls(h *rsHarness) {
 		args  []string
 		valid bool
 	}
-	cases := []control{{"exact-empty-own-branch", good, true}, {"ordinary-exact-tag", []string{"push", remote, candidate + ":refs/tags/v1.0.1"}, true}, {"global-option-value-push", append([]string{"-C", "push", "-c", "probe.mode=push"}, good...), true}}
+	cases := []control{{"exact-empty-own-branch", good, true}, {"ordinary-exact-distinct-tag-target", []string{"push", remote, tagTarget + ":refs/tags/v1.0.1"}, true}, {"global-option-value-push", append([]string{"-C", "push", "-c", "probe.mode=push"}, good...), true}}
 	for _, flag := range []string{"--force", "-f", "--force-if-includes", "--delete", "--mirror", "--tags", "--all", "--follow-tags"} {
 		args := append([]string{}, good...)
 		args = append(args[:1], append([]string{flag}, args[1:]...)...)
@@ -1776,16 +1778,24 @@ func rsPublisherLeaseOracleControls(h *rsHarness) {
 	}
 	wrongRemote := append([]string{}, good...)
 	wrongRemote[len(wrongRemote)-2] = "https://github.com/PRO-Robotech/kacho.git"
-	cases = append(cases, control{"wrong-repository", wrongRemote, false})
+	cases = append(cases, control{"wrong-repository", wrongRemote, false}, control{"candidate-is-not-accepted-tag-target", []string{"push", remote, candidate + ":refs/tags/v1.0.1"}, false}, control{"wrong-tag-target", []string{"push", remote, strings.Repeat("c", 40) + ":refs/tags/v1.0.1"}, false})
 	ledger := []any{}
 	for _, c := range cases {
-		err := rsPublisherPushPolicyError(c.args, "PRO-Robotech/corelib", plan, candidate, "v1.0.1")
+		err := rsPublisherPushPolicyError(c.args, "PRO-Robotech/corelib", plan, candidate, tagTarget, "v1.0.1")
 		if (err == nil) != c.valid {
 			h.t.Fatalf("HARNESS_NOT_EXECUTED: lease oracle control %s expected%t got%v", c.name, c.valid, err)
 		}
 		ledger = append(ledger, map[string]any{"name": c.name, "argv": c.args, "allowed": err == nil, "expected_allowed": c.valid})
 	}
-	h.save("publisher-lease-oracle-controls.json", rsCanonicalJSON(h.t, map[string]any{"classification": "HOLDER_ORACLE_CONTROLS_NO_SUT", "executed": len(cases), "passed": len(cases), "controls": ledger}))
+	for _, invalid := range []string{"", strings.Repeat("b", 39)} {
+		args := []string{"push", remote, invalid + ":refs/tags/v1.0.1"}
+		err := rsPublisherPushPolicyError(args, "PRO-Robotech/corelib", plan, candidate, invalid, "v1.0.1")
+		if err == nil {
+			h.t.Fatal("HARNESS_NOT_EXECUTED: invalid expected tag identity accepted")
+		}
+		ledger = append(ledger, map[string]any{"name": fmt.Sprintf("invalid-expected-tag-target-%d", len(invalid)), "argv": args, "expected_tag_target": invalid, "allowed": false, "expected_allowed": false})
+	}
+	h.save("publisher-lease-oracle-controls.json", rsCanonicalJSON(h.t, map[string]any{"classification": "HOLDER_ORACLE_CONTROLS_NO_SUT", "candidate": candidate, "expected_tag_target": tagTarget, "executed": len(ledger), "passed": len(ledger), "controls": ledger}))
 }
 
 func rsPublisherCASControls(p *rsPublisherFixture) {
