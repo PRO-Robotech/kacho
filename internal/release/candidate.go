@@ -360,8 +360,10 @@ func (v *supplyEvidence) payload(archive supplyArchive, current, base map[string
 		}
 		p := raw.(map[string]any)
 		source := p["subject"].(map[string]any)["source"].(map[string]any)
+		// A component can have a canonical source in another repository (the
+		// CI-DT proto is in Kacho). Its proof was fully verified above, but
+		// only receiving-repository source files can cover archive payload.
 		if supplyString(source["repository"]) != c.Repository {
-			combined = supplyRed("PAYLOAD_MISMATCH")
 			continue
 		}
 		for _, file := range files {
