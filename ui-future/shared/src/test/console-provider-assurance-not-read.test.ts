@@ -101,9 +101,9 @@ describe("консоль не читает уровень уверенности
     // ноль означал бы, что обход шёл не по тому корню.
     expect(files.length).toBeGreaterThan(300);
     expect(nodesJudged).toBeGreaterThan(10_000);
-    console.log(
+    process.stdout.write(
       `перепись: прод-файлов консоли осмотрено ${files.length} · узлов разбора ${nodesJudged} · ` +
-        `имён под запретом ${RETIRED_PROVIDER_ASSURANCE_NAMES.length} · находок ${found.length}`,
+        `имён под запретом ${RETIRED_PROVIDER_ASSURANCE_NAMES.length} · находок ${found.length}\n`,
     );
   });
 
