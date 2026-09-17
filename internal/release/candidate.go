@@ -43,23 +43,30 @@ func runSupplyCandidate(ctx context.Context, invocation supplyInvocation, deps S
 		deps.Command = supplyOSCommand
 	}
 	engine := supplyEngine{ctx: stage, deps: deps, manifest: candidate.supplyManifest, work: work}
-	evidence := supplyEvidence{engine: &engine, candidate: candidate, revision: invocation.Revision, roots: map[string]string{candidate.Repository: candidate.CandidateRoot}, trees: map[string]map[string]supplyTrackedFile{}}
-	failure = engine.identify(candidate.CandidateRoot, candidate.Repository, invocation.Revision)
+	engine.checkCandidate(candidate, invocation.Revision, report, "")
+	return report.finish(stdout)
+}
+
+// checkCandidate is the single candidate predicate implementation for both entrypoints.
+func (e *supplyEngine) checkCandidate(candidate supplyCandidate, revision string, report *supplyReport, publishedVersion string) supplyArchive {
+	var archive supplyArchive
+	evidence := supplyEvidence{engine: e, candidate: candidate, revision: revision, roots: map[string]string{candidate.Repository: candidate.CandidateRoot}, trees: map[string]map[string]supplyTrackedFile{}}
+	failure := e.identify(candidate.CandidateRoot, candidate.Repository, revision)
 	if failure == nil {
 		failure = evidence.producerIdentity()
 	}
 	// Input drift remains an input failure, while missing/stale authority is an
 	// identity failure; neither can become candidate permission.
 	if failure != nil && failure.Reason == "INPUT_CHANGED" {
-		report.check("identity", nil, []string{candidate.Repository, invocation.Revision}, 1)
+		report.check("identity", nil, []string{candidate.Repository, revision}, 1)
 		report.check("input", failure, nil, nil)
-		return report.finish(stdout)
+		return archive
 	}
-	report.check("identity", failure, []string{candidate.Repository, invocation.Revision, "PRO-Robotech/kacho@" + supplyString(candidate.Producer["commit"])}, 2)
+	report.check("identity", failure, []string{candidate.Repository, revision, "PRO-Robotech/kacho@" + supplyString(candidate.Producer["commit"])}, 2)
 	if failure != nil {
-		return report.finish(stdout)
+		return archive
 	}
-	current, failure := engine.tracked(candidate.CandidateRoot, invocation.Revision)
+	current, failure := e.tracked(candidate.CandidateRoot, revision)
 	if failure == nil && supplyDigest(supplyCanonical(candidate.Raw["input_files"])) != candidate.InputDigest {
 		failure = supplyRed("INPUT_CHANGED")
 	}
@@ -74,25 +81,25 @@ func runSupplyCandidate(ctx context.Context, invocation supplyInvocation, deps S
 	}
 	if failure == nil {
 		report.census["input_files"] = len(candidate.Input)
-		report.document["candidate_sha"] = invocation.Revision
+		report.document["candidate_sha"] = revision
 	}
-	report.check("input", failure, []string{invocation.Revision, candidate.InputDigest}, report.census["input_files"])
+	report.check("input", failure, []string{revision, candidate.InputDigest}, report.census["input_files"])
 	if failure != nil {
-		return report.finish(stdout)
+		return archive
 	}
-	evidence.trees[candidate.Repository+"@"+invocation.Revision] = actual
-	base, failure := engine.tracked(candidate.CandidateRoot, candidate.Base)
+	evidence.trees[candidate.Repository+"@"+revision] = actual
+	base, failure := e.tracked(candidate.CandidateRoot, candidate.Base)
 	if failure == nil {
 		failure = supplyOwnership(candidate, actual, supplyTrackedMap(base))
 	}
 	if failure == nil {
 		report.census["preserved_files"] = len(candidate.Preserve)
 	}
-	report.check("ownership", failure, []string{candidate.Base, invocation.Revision}, report.census["preserved_files"])
+	report.check("ownership", failure, []string{candidate.Base, revision}, report.census["preserved_files"])
 	if failure != nil {
-		return report.finish(stdout)
+		return archive
 	}
-	baseline, baselineSHA, failure := engine.previousArchive(candidate)
+	baseline, baselineSHA, failure := e.previousArchiveFor(candidate, publishedVersion)
 	if failure == nil {
 		report.census["previous_packages"] = len(baseline.Packages)
 		if len(baseline.Packages) == 0 {
@@ -108,9 +115,9 @@ func runSupplyCandidate(ctx context.Context, invocation supplyInvocation, deps S
 	}
 	report.check("baseline", failure, baselineSubjects, report.census["previous_packages"])
 	if failure != nil {
-		return report.finish(stdout)
+		return archive
 	}
-	archive, failure := engine.archive(invocation.Revision)
+	archive, failure = e.archive(revision)
 	if failure == nil {
 		report.census["candidate_packages"] = len(archive.Packages)
 		if len(archive.Packages) == 0 {
@@ -128,15 +135,15 @@ func runSupplyCandidate(ctx context.Context, invocation supplyInvocation, deps S
 	}
 	report.check("package-floor", failure, floorSubjects, report.census["candidate_packages"])
 	if failure != nil {
-		return report.finish(stdout)
+		return archive
 	}
-	engine.checkConsumers(invocation.Revision, archive, report)
+	e.checkConsumers(revision, archive, report)
 	failure = evidence.payload(archive, actual, supplyTrackedMap(base))
 	if failure == nil {
 		report.census["payload_files"] = len(candidate.Payload)
 	}
 	report.check("payload", failure, []string{archive.Digest}, report.census["payload_files"])
-	return report.finish(stdout)
+	return archive
 }
 
 func supplyOwnership(c supplyCandidate, current, base map[string]supplyTrackedFile) *supplyFailure {
@@ -213,16 +220,21 @@ func supplyOwnership(c supplyCandidate, current, base map[string]supplyTrackedFi
 }
 
 func (e *supplyEngine) previousArchive(c supplyCandidate) (supplyArchive, string, *supplyFailure) {
-	var archive supplyArchive
-	remote, failure := e.pinRemote(c.Repository, 0)
-	if failure != nil {
-		return archive, "", failure
-	}
+	return e.previousArchiveFor(c, "")
+}
+
+func supplyLatestBaseline(c supplyCandidate, refs []string, publishedVersion string) (string, *supplyFailure) {
 	latest := ""
-	for _, ref := range remote.Refs {
+	for _, ref := range refs {
 		fields := strings.Fields(ref)
+		if len(fields) != 2 || !supplySHA.MatchString(fields[0]) {
+			return "", supplyUnavailable("SOURCE_UNAVAILABLE")
+		}
 		tag := strings.TrimPrefix(fields[1], "refs/tags/")
 		if tag == fields[1] || tag == "" || semver.Canonical(tag) != tag || semver.Major(tag) != semver.Major(c.Version) || module.Check(c.ModulePath, tag) != nil {
+			continue
+		}
+		if tag == publishedVersion {
 			continue
 		}
 		if latest == "" || semver.Compare(tag, latest) > 0 {
@@ -230,10 +242,24 @@ func (e *supplyEngine) previousArchive(c supplyCandidate) (supplyArchive, string
 		}
 	}
 	if latest == "" {
-		return archive, "", supplyRed("BASELINE_EMPTY")
+		return "", supplyRed("BASELINE_EMPTY")
 	}
 	if latest != c.Baseline {
-		return archive, "", supplyRed("BASELINE_STALE")
+		return "", supplyRed("BASELINE_STALE")
+	}
+	return latest, nil
+}
+
+// publishedVersion is excluded only for a publisher rechecking its same-plan target.
+func (e *supplyEngine) previousArchiveFor(c supplyCandidate, publishedVersion string) (supplyArchive, string, *supplyFailure) {
+	var archive supplyArchive
+	remote, failure := e.pinRemote(c.Repository, 0)
+	if failure != nil {
+		return archive, "", failure
+	}
+	latest, failure := supplyLatestBaseline(c, remote.Refs, publishedVersion)
+	if failure != nil {
+		return archive, "", failure
 	}
 	target, failure := e.git(remote.Root, nil, "rev-parse", "--verify", "refs/tags/"+latest+"^{commit}")
 	if failure != nil {

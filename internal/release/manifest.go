@@ -394,6 +394,20 @@ func supplyEnvironment(extra ...string) []string {
 	return env
 }
 
+// Default configuration is needed only by the publisher's native personal
+// identity and fixed GitHub transport. All inherited GIT_* remain removed;
+// candidate, consumer and pin checks keep supplyEnvironment unchanged.
+func supplyPublisherEnvironment() []string {
+	result := []string{}
+	for _, entry := range supplyEnvironment() {
+		key, _, _ := strings.Cut(entry, "=")
+		if key != "GIT_CONFIG_GLOBAL" && key != "GIT_CONFIG_NOSYSTEM" {
+			result = append(result, entry)
+		}
+	}
+	return result
+}
+
 func supplyOSCommand(ctx context.Context, request SupplyCommand) SupplyCommandResult {
 	cmd := exec.CommandContext(ctx, request.Program, request.Args...)
 	cmd.Dir, cmd.Env, cmd.Stdin = request.Dir, request.Env, bytes.NewReader(request.Stdin)
