@@ -373,7 +373,7 @@ func supplyReadModuleArchive(raw []byte, name, version string) (supplyArchive, *
 		}
 		result.Files[rel] = data
 		if strings.HasSuffix(rel, ".go") && !strings.HasSuffix(rel, "_test.go") {
-			if _, err := parser.ParseFile(token.NewFileSet(), rel, data, parser.PackageClauseOnly); err != nil {
+			if _, err := parser.ParseFile(token.NewFileSet(), rel, data, parser.AllErrors); err != nil {
 				return result, supplyRed("INPUT_INVALID")
 			}
 			packagePath := name
