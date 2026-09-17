@@ -1121,6 +1121,10 @@ managed-image-pins-check:
 # дублируется: копия отставала от него молча и уже отстала однажды. Он был написан и не вызывался ниоткуда — то есть гейт над гейтами
 # доказывал всё, кроме себя. Идёт ПЕРВЫМ: пустой или ослепший обход делает
 # зелёный основного прохода бессмысленным.
+# Make сохраняет собственный rc2; текущую категорию передаёт отдельная запись.
+# Путь и ID выделяет вызывающий, общего файла в checkout нет.
+export KACHO_CI_OUTCOME_FILE KACHO_CI_INVOCATION_ID
+
 gate-self-test:
 	@bash scripts/run-gate-self-tests.sh --verify-discovery
 	@bash scripts/run-gate-self-tests.sh

@@ -1320,20 +1320,47 @@ jobs:
       - name: модули python для гейтов этого задания (pyyaml, pyjwt, pytest)
         run: python3 -m pip install --quiet --disable-pip-version-check pyyaml pyjwt[crypto] pytest
 
-      - name: регрессионные пробы оснастки сюит исполняются (не только существуют)
+      - name: Python — сбор исходов обычного прохода и самопроверки
+        id: python-probes-collect
         run: |
-          set -euo pipefail
-          python3 .github/scripts/run-python-probes.py --self-test
-          python3 .github/scripts/run-python-probes.py
+          set -uo pipefail
+          outcome_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/python-probes.XXXXXXXX")"
+          invocation="${outcome_dir##*/}"
+          printf 'PYTHON_PROBES_OUTCOME_DIR=%s\nPYTHON_PROBES_INVOCATION_ID=%s\n' "$outcome_dir" "$invocation" >> "$GITHUB_ENV"
+          finding=0
+          for mode in self-test ordinary; do
+            args=()
+            producer=run-python-probes
+            if [ "$mode" = self-test ]; then args+=(--self-test); producer=run-python-probes/self-test; fi
+            export KACHO_CI_OUTCOME_FILE="$outcome_dir/$mode.json" KACHO_CI_INVOCATION_ID="$invocation"
+            python3 .github/scripts/run-python-probes.py "${args[@]}" && rc=0 || rc=$?
+            if status="$(python3 .github/scripts/ci_outcomes.py read --outcome-file "$outcome_dir/$mode.json" \
+                --invocation-id "$invocation" --producer "$producer" --format status)"; then
+              read -r category unmet missing_pytest <<<"$status"
+              if [ "$unmet" = 1 ]; then
+                if [ "$missing_pytest" = 1 ]; then
+                  echo "::warning::УСЛОВИЕ НЕ СОЗДАНО: нет pytest ($mode)"
+                else
+                  echo "::warning::УСЛОВИЕ НЕ СОЗДАНО: Python проход неполон ($mode)"
+                fi
+              fi
+              case "$category:$rc" in green:0|unmet:2) ;; *) finding=1 ;; esac
+            else
+              finding=1
+            fi
+          done
+          exit "$finding"
 
-          # Пробы вокруг решения сводного вердикта лежат ВНЕ образца прогонщика
-          # (`services/*/tests/newman/scripts/*_test.py`), поэтому зовутся здесь
-          # поимённо. До #1073 их не звал никто: во всём дереве имя файла
-          # встречалось РОВНО ОДИН раз — в комментарии `required-verdict.yml`,
-          # который перечислял их как доказательство. Гейт достижимости считает
-          # упоминание в сыром тексте вызовом, поэтому немоту не показывал, а
-          # одиннадцать утверждений о вердикте не исполнялись ни разу.
-          python3 -m pytest -q .github/scripts/pr_verdict_test.py
+      - name: Python — обязательный полный итог
+        id: python-probes-verdict
+        if: ${{ always() }}
+        run: |
+          python3 .github/scripts/ci_outcomes.py require-complete \
+            --directory "${PYTHON_PROBES_OUTCOME_DIR:-}" \
+            --invocation-id "${PYTHON_PROBES_INVOCATION_ID:-}"
+
+      - name: пробы обязательного сводного вердикта
+        run: python3 -m pytest -q .github/scripts/pr_verdict_test.py
 
       # Сетевая поверхность сборки образа равна её графу импортов.
       #
@@ -2003,6 +2030,7 @@ jobs:
   helm:
     name: helm lint · template (dev + prod)
     runs-on: ubuntu-latest
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
       # ПИН ОБЯЗАТЕЛЕН: без `version` setup-helm ставит ПОСЛЕДНЮЮ, то есть версия
@@ -2566,7 +2594,7 @@ jobs:
 
       # ─── ЗЕЛЁНОЕ РАБОТЫ ЕСТЬ ГАРАНТИЯ, А НЕ «МЫ НЕ СПРАШИВАЛИ» ──────────────
       #
-      # Отметка `STAND_PRECONDITION_UNMET=1` гасит пять шагов выше — и это верно:
+      # Отметка `STAND_PRECONDITION_UNMET=1` гасит объявленные шаги — и это верно:
       # судить дерево на стенде, исполняющем чужое, значит вынести вердикт не о том
       # предмете. Неверно было другое: погашенный шаг НЕ ПАДАЕТ, он пропускается, а
       # работа без упавших шагов выходит `success`. То есть отсутствие вердикта
@@ -2586,6 +2614,20 @@ jobs:
       #
       # ШАГ ИДЁТ ПОСЛЕДНИМ И НЕ ГАСИТСЯ: перепись, гасимая тем, о чём обязана
       # доложить, промолчала бы ровно в своём случае.
+      - name: Python outcomes — полный обязательный интеграционный прогон
+        id: python-outcomes-integration
+        if: ${{ env.STAND_PRECONDITION_UNMET != '1' }}
+        run: |
+          integration_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/python-integration.XXXXXXXX")"
+          printf 'CI_PY_INTEGRATION_EVENTS=%s/events.jsonl\n' "$integration_dir" >> "$GITHUB_ENV"
+          CI_PY_INTEGRATION_EVENTS="$integration_dir/events.jsonl" bash scripts/run-python-outcomes-integration.sh
+
+      - name: Python outcomes — отсутствие полного результата запрещает GREEN
+        id: python-outcomes-integration-verdict
+        if: ${{ always() }}
+        run: |
+          python3 .github/scripts/ci_outcomes.py integration-verdict --events "${CI_PY_INTEGRATION_EVENTS:-}"
+
       - name: перепись исходов — объявленное против исполненного
         id: verdict-census
         if: ${{ always() }}

@@ -456,9 +456,20 @@ if [ "$scanned" -eq 0 ]; then
   exit 1
 fi
 
+# Каждый вызов владеет своим ребёнком: наследованный результат родителя
+# не отдаётся другим самопроверкам и не перезаписывается их фикстурами.
+parent_outcome="${KACHO_CI_OUTCOME_FILE:-}"
+parent_invocation="${KACHO_CI_INVOCATION_ID:-}"
+unset KACHO_CI_OUTCOME_FILE KACHO_CI_INVOCATION_ID
+outcome_work="$(mktemp -d "${TMPDIR:-/tmp}/gate-outcome.XXXXXXXX")" || exit 2
+trap 'rm -rf "$outcome_work"' EXIT
+child_id="${outcome_work##*/}"
+child_file="$outcome_work/python.json"
+child_valid=0
 failed=""
 unmet=""
 ran=0
+executed=0
 for f in $FOUND; do
   echo
   echo "=== $f --self-test ==="
@@ -473,20 +484,53 @@ for f in $FOUND; do
   # здесь стояло `if "${cmd[@]}"`, единица и двойка схлопывались в одно
   # «самопроверка провалена», и отсутствие условия читалось как «гейт не доказал,
   # что умеет краснеть» — то есть как находка о дереве.
-  "${cmd[@]}" && rc=0 || rc=$?
-  case "$rc" in
-    0) ran=$((ran + 1)) ;;
-    2) unmet="$unmet $f" ;;
-    *) failed="$failed $f" ;;
-  esac
+  if [ "$f" = ".github/scripts/run-python-probes.py" ]; then
+    KACHO_CI_OUTCOME_FILE="$child_file" KACHO_CI_INVOCATION_ID="$child_id" \
+      "${cmd[@]}" && rc=0 || rc=$?
+    if status="$(python3 .github/scripts/ci_outcomes.py read --outcome-file "$child_file" \
+        --invocation-id "$child_id" --producer run-python-probes/self-test --format status)"; then
+      read -r category child_unmet missing_pytest <<<"$status"
+      child_valid=1
+      if [ "$child_unmet" = 1 ]; then unmet="$unmet $f"; fi
+      case "$category:$rc" in
+        green:0) ran=$((ran + 1)); executed=$((executed + 1)) ;;
+        unmet:2) ;; # отсутствие исполнения не превращается в failed
+        finding:1) failed="$failed $f"; executed=$((executed + 1)) ;;
+        *) failed="$failed $f"; executed=$((executed + 1)) ;;
+      esac
+    else
+      failed="$failed $f"; executed=$((executed + 1))
+    fi
+  else
+    "${cmd[@]}" && rc=0 || rc=$?
+    case "$rc" in
+      0) ran=$((ran + 1)); executed=$((executed + 1)) ;;
+      2) unmet="$unmet $f" ;;
+      *) failed="$failed $f"; executed=$((executed + 1)) ;;
+    esac
+  fi
 done
+
+# Запись относится к текущему invocation даже при соседних finding и unmet.
+if [ -n "$parent_outcome$parent_invocation" ]; then
+  writer=(python3 .github/scripts/ci_outcomes.py write-shell --producer gate-self-test
+    --outcome-file "$parent_outcome" --invocation-id "$parent_invocation"
+    --files "$scanned" --declarations "$count" --executed "$executed")
+  for f in $failed; do writer+=(--failure "$f"); done
+  for f in $unmet; do writer+=(--unmet "$f"); done
+  if [ "$child_valid" = 1 ]; then
+    writer+=(--child-file "$child_file" --child-id "$child_id"
+      --child-producer run-python-probes/self-test --child-coordinate .github/scripts/run-python-probes.py)
+  fi
+  "${writer[@]}" || exit 1
+fi
 
 echo
 if [ -n "$unmet" ]; then
   echo "!!! УСЛОВИЕ НЕ СОЗДАНО (код 2):$unmet"
   echo "    Не вердикт о дереве и не «самопроверка провалена»: нет инструмента,"
   echo "    не собраны зависимости умбреллы, нет профиля на диске. В зачёт «прошло»"
-  echo "    это не идёт — прогон ниже выйдет кодом 2."
+  echo "    это не идёт: без находок код 2; при соседней находке код 1."
 fi
 if [ -n "$failed" ]; then
   echo "!!! самопроверки провалены:$failed"
