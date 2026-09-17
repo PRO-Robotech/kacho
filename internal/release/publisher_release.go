@@ -327,7 +327,7 @@ func (p *supplyPublisher) probeArchive() *supplyFailure {
 			return supplyRed("PUBLISHED_ARCHIVE_MISMATCH")
 		}
 	}
-	verified, f := p.publicChecksum(archive, mod, info, sum)
+	verified, f := p.publicChecksum(archive, mod, sum)
 	if f != nil {
 		return f
 	}
@@ -362,7 +362,7 @@ func (p *supplyPublisher) probeArchive() *supplyFailure {
 
 // publicChecksum asks the ordinary Go verifier in a new empty cache. The
 // private candidate proxy and its GOSUMDB=off cannot establish this predicate.
-func (p *supplyPublisher) publicChecksum(expected supplyArchive, mod, info []byte, expectedSum string) ([]string, *supplyFailure) {
+func (p *supplyPublisher) publicChecksum(expected supplyArchive, mod []byte, expectedSum string) ([]string, *supplyFailure) {
 	unavailable := func() ([]string, *supplyFailure) { return nil, supplyUnavailable("PROXY_UNAVAILABLE") }
 	mismatch := func() ([]string, *supplyFailure) { return nil, supplyRed("PUBLISHED_ARCHIVE_MISMATCH") }
 	root := filepath.Join(p.e.work, "public-checksum")
@@ -456,13 +456,11 @@ func (p *supplyPublisher) publicChecksum(expected supplyArchive, mod, info []byt
 		paths[key] = name
 	}
 	metadata, ok := supplyJSON(files["Info"])
-	prior, priorOK := supplyJSON(info)
-	if !ok || !priorOK {
+	if !ok {
 		return unavailable()
 	}
 	observedTime, err := time.Parse(time.RFC3339Nano, supplyString(metadata["Time"]))
-	priorTime, priorErr := time.Parse(time.RFC3339Nano, supplyString(prior["Time"]))
-	if err != nil || priorErr != nil || !observedTime.Equal(priorTime) || supplyString(metadata["Version"]) != p.c.Version || !validOrigin(metadata["Origin"]) {
+	if err != nil || observedTime.IsZero() || supplyString(metadata["Version"]) != p.c.Version || !validOrigin(metadata["Origin"]) {
 		return mismatch()
 	}
 	if _, err := modzip.CheckZip(module.Version{Path: p.c.ModulePath, Version: p.c.Version}, paths["Zip"]); err != nil {
