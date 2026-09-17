@@ -5,6 +5,7 @@ package release
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -326,6 +327,10 @@ func (p *supplyPublisher) probeArchive() *supplyFailure {
 			return supplyRed("PUBLISHED_ARCHIVE_MISMATCH")
 		}
 	}
+	verified, f := p.publicChecksum(archive, mod, info, sum)
+	if f != nil {
+		return f
+	}
 	// Published bytes get their own proxy/version/cache; no candidate ZIP is
 	// substituted for this second consumer proof.
 	engine := *p.e
@@ -350,9 +355,140 @@ func (p *supplyPublisher) probeArchive() *supplyFailure {
 	if f = p.ancestry(p.target, "post-write"); f != nil {
 		return f
 	}
-	p.pass("proxy", []string{p.c.ModulePath, p.c.Version, p.target, archive.Digest, sum, p.baselineSHA, p.baselineDigest}, len(archive.Files))
+	p.pass("proxy", append([]string{p.c.ModulePath, p.c.Version, p.target, archive.Digest, sum, p.baselineSHA, p.baselineDigest}, verified...), len(archive.Files))
 	p.stage("ARCHIVE_VERIFIED")
 	return nil
+}
+
+// publicChecksum asks the ordinary Go verifier in a new empty cache. The
+// private candidate proxy and its GOSUMDB=off cannot establish this predicate.
+func (p *supplyPublisher) publicChecksum(expected supplyArchive, mod, info []byte, expectedSum string) ([]string, *supplyFailure) {
+	unavailable := func() ([]string, *supplyFailure) { return nil, supplyUnavailable("PROXY_UNAVAILABLE") }
+	mismatch := func() ([]string, *supplyFailure) { return nil, supplyRed("PUBLISHED_ARCHIVE_MISMATCH") }
+	root := filepath.Join(p.e.work, "public-checksum")
+	cache, consumer := filepath.Join(root, "cache"), filepath.Join(root, "consumer")
+	for _, dir := range []string{cache, consumer, filepath.Join(root, "gopath")} {
+		if os.MkdirAll(dir, 0700) != nil {
+			return unavailable()
+		}
+	}
+	if p.e.goBinary == "" || os.WriteFile(filepath.Join(consumer, "go.mod"), []byte("module ci-rs-public-probe.invalid/consumer\n\ngo 1.21\n"), 0600) != nil {
+		return unavailable()
+	}
+	result, failure := p.e.command(SupplyCommand{Program: p.e.goBinary,
+		Args: []string{"mod", "download", "-json", p.c.ModulePath + "@" + p.c.Version}, Dir: consumer,
+		Env: supplyEnvironment("GOWORK=off", "GOENV=off", "GOFLAGS=", "GOTOOLCHAIN=local",
+			"GOPROXY=https://proxy.golang.org", "GOSUMDB=sum.golang.org", "GOPRIVATE=", "GONOPROXY=", "GONOSUMDB=",
+			"GOMODCACHE="+cache, "GOPATH="+filepath.Join(root, "gopath"))}, 600*time.Second)
+	if failure != nil {
+		if failure.Reason == "BUDGET_EXHAUSTED" {
+			return nil, failure
+		}
+		return unavailable()
+	}
+	if result.ExitCode != 0 || result.Err != nil {
+		return unavailable()
+	}
+	download, ok := supplyJSON(result.Stdout)
+	if !ok || download["Error"] != nil {
+		return unavailable()
+	}
+	if supplyString(download["Path"]) != p.c.ModulePath || supplyString(download["Version"]) != p.c.Version {
+		return mismatch()
+	}
+	validOrigin := func(value any) bool {
+		if value == nil {
+			return true
+		}
+		origin, ok := value.(map[string]any)
+		if !ok || supplyString(origin["Hash"]) != p.target {
+			return false
+		}
+		u := supplyString(origin["URL"])
+		return u == "https://github.com/"+p.c.Repository || u == "https://github.com/"+p.c.Repository+".git"
+	}
+	if !validOrigin(download["Origin"]) {
+		return mismatch()
+	}
+	validSum := func(value any) (string, bool) {
+		s, ok := value.(string)
+		if !ok || !strings.HasPrefix(s, "h1:") {
+			return "", false
+		}
+		b, err := base64.StdEncoding.Strict().DecodeString(strings.TrimPrefix(s, "h1:"))
+		return s, err == nil && len(b) == 32 && "h1:"+base64.StdEncoding.EncodeToString(b) == s
+	}
+	sum, sumOK := validSum(download["Sum"])
+	modSum, modSumOK := validSum(download["GoModSum"])
+	if !sumOK || !modSumOK {
+		return unavailable()
+	}
+	files := map[string][]byte{}
+	paths := map[string]string{}
+	for _, key := range []string{"Info", "GoMod", "Zip"} {
+		name, ok := download[key].(string)
+		if !ok || !filepath.IsAbs(name) {
+			return mismatch()
+		}
+		rel, err := filepath.Rel(cache, name)
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return mismatch()
+		}
+		st, err := os.Lstat(name)
+		if err != nil {
+			return unavailable()
+		}
+		if !st.Mode().IsRegular() {
+			return mismatch()
+		}
+		resolved, err := filepath.EvalSymlinks(name)
+		if err != nil {
+			return unavailable()
+		}
+		rel, err = filepath.Rel(cache, resolved)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return mismatch()
+		}
+		files[key], err = os.ReadFile(name)
+		if err != nil {
+			return unavailable()
+		}
+		paths[key] = name
+	}
+	metadata, ok := supplyJSON(files["Info"])
+	prior, priorOK := supplyJSON(info)
+	if !ok || !priorOK {
+		return unavailable()
+	}
+	observedTime, err := time.Parse(time.RFC3339Nano, supplyString(metadata["Time"]))
+	priorTime, priorErr := time.Parse(time.RFC3339Nano, supplyString(prior["Time"]))
+	if err != nil || priorErr != nil || !observedTime.Equal(priorTime) || supplyString(metadata["Version"]) != p.c.Version || !validOrigin(metadata["Origin"]) {
+		return mismatch()
+	}
+	if _, err := modzip.CheckZip(module.Version{Path: p.c.ModulePath, Version: p.c.Version}, paths["Zip"]); err != nil {
+		return mismatch()
+	}
+	actualSum, err := dirhash.HashZip(paths["Zip"], dirhash.Hash1)
+	if err != nil || actualSum != sum || sum != expectedSum {
+		return mismatch()
+	}
+	actualModSum, err := dirhash.Hash1([]string{"go.mod"}, func(string) (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(files["GoMod"])), nil
+	})
+	if err != nil || actualModSum != modSum || !bytes.Equal(files["GoMod"], mod) {
+		return mismatch()
+	}
+	archive, failure := supplyReadModuleArchive(files["Zip"], p.c.ModulePath, p.c.Version)
+	if failure != nil || len(archive.Files) != len(expected.Files) {
+		return mismatch()
+	}
+	for name, wanted := range expected.Files {
+		if actual, exists := archive.Files[name]; !exists || !bytes.Equal(actual, wanted) {
+			return mismatch()
+		}
+	}
+	return []string{"public-go-checksum", p.e.goBinary, sum, modSum,
+		supplyDigest(files["Info"]), supplyDigest(files["GoMod"]), supplyDigest(files["Zip"])}, nil
 }
 
 func (p *supplyPublisher) compatibility(target string) *supplyFailure {
