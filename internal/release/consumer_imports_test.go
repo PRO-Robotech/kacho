@@ -340,6 +340,37 @@ import (
  release "github.com/PRO-Robotech/kacho/internal/release"
 )
 
+// Only the first Git command word selects a transport operation. Values of
+// global options are never commands. Unknown/malformed global options fail
+// closed (no rewrite); Git still receives the unchanged original arguments.
+func rsGitCommandVerb(args []string) string {
+ for i:=0;i<len(args);i++ {
+  arg:=args[i]
+  if !strings.HasPrefix(arg,"-") {return arg}
+  switch arg {
+  case "-C","-c","--git-dir","--work-tree","--namespace","--super-prefix","--config-env","--attr-source":
+   if i+1>=len(args) {return ""};i++
+  case "-p","--paginate","-P","--no-pager","--bare","--no-replace-objects","--literal-pathspecs","--glob-pathspecs","--noglob-pathspecs","--icase-pathspecs","--no-optional-locks","--no-lazy-fetch","--no-advice":
+  case "--version","-v","--help","-h","--exec-path":
+   return ""
+  default:
+   known:=false
+   for _,option:=range []string{"--git-dir=","--work-tree=","--namespace=","--super-prefix=","--config-env=","--attr-source=","--exec-path="} {if strings.HasPrefix(arg,option){known=true;break}}
+   if !known{return ""}
+  }
+ }
+ return ""
+}
+
+func rsGitTransportArgs(args []string,remotes map[string]string) []string {
+ prefix:=[]string{"-c","protocol.allow=never","-c","protocol.file.allow=always"}
+ switch rsGitCommandVerb(args) {
+ case "clone","fetch","ls-remote","push":
+  for canonical,local:=range remotes {prefix=append(prefix,"-c","url."+local+".insteadOf="+canonical)}
+ }
+ return append(prefix,args...)
+}
+
 type bridgeRequest struct {
  Args []string ` + "`" + `json:"args"` + "`" + `
  Output string ` + "`" + `json:"output"` + "`" + `
@@ -362,9 +393,7 @@ func TestCIRSConsumerBridge(t *testing.T) {
    for _,v:=range c.Env{k,val,ok:=strings.Cut(v,"=");if ok{values[k]=val}}
    args:=append([]string(nil),c.Args...)
    if name=="git" {
-    prefix:=[]string{"-c","protocol.allow=never","-c","protocol.file.allow=always"}
-    for canonical,local:=range request.Remotes {prefix=append(prefix,"-c","url."+local+".insteadOf="+canonical)}
-    args=append(prefix,args...)
+    args=rsGitTransportArgs(c.Args,request.Remotes)
    }
    env:=[]string{};for k,v:=range values{env=append(env,k+"="+v)}
    if name=="go" {proxy:=values["GOPROXY"];allowed:=proxy!="";for _,part:=range strings.FieldsFunc(proxy,func(r rune)bool{return r==','||r=='|'}){if part!="off"&&!strings.HasPrefix(part,"file://"){allowed=false}};if !allowed{mu.Lock();unhandled=append(unhandled,"non-file Go proxy");mu.Unlock();return release.SupplyCommandResult{ExitCode:-1,Err:fmt.Errorf("network Go proxy forbidden in fixture")}}}
@@ -921,7 +950,96 @@ func rsRunConsumerCases(t *testing.T) {
 	}
 }
 
+// Compile the exact parser from the bridge source without adding a fake SUT.
+// The independent real-Git controls prove both identity preservation and local
+// transport, including a -C value named "clone" and -c configuration values.
+func rsGitTransportPrerequisites(t *testing.T) {
+	h := newRSHarness(t)
+	fset := token.NewFileSet()
+	parsed, err := parser.ParseFile(fset, "bridge.go", rsConsumerBridgeSource, parser.AllErrors)
+	if err != nil {
+		t.Fatal(err)
+	}
+	function := ""
+	for _, decl := range parsed.Decls {
+		if f, ok := decl.(*ast.FuncDecl); ok && (f.Name.Name == "rsGitCommandVerb" || f.Name.Name == "rsGitTransportArgs") {
+			file := fset.File(f.Pos())
+			function += rsConsumerBridgeSource[file.Offset(f.Pos()):file.Offset(f.End())] + "\n"
+		}
+	}
+	if function == "" {
+		t.Fatal("HARNESS_NOT_EXECUTED: actual bridge parser absent")
+	}
+	h.save("actual-bridge-parser.go.txt", []byte(function+"\n"))
+	program := "package main\nimport(\"encoding/json\";\"fmt\";\"os\";\"strings\")\n" + function + "\nfunc main(){if len(os.Args)>3&&os.Args[1]==\"--test-transport\"{b,_:=json.Marshal(rsGitTransportArgs(os.Args[4:],map[string]string{os.Args[2]:os.Args[3]}));fmt.Println(string(b));return};fmt.Println(rsGitCommandVerb(os.Args[1:]))}\n"
+	h.put(h.root, "git-verb.go", program)
+	binary := filepath.Join(h.root, "git-verb")
+	h.must(h.root, h.goBin, "build", "-o", binary, filepath.Join(h.root, "git-verb.go"))
+	controls := []struct {
+		args []string
+		want string
+	}{
+		{[]string{"remote", "get-url", "origin"}, "remote"},
+		{[]string{"-C", "clone", "remote", "get-url", "origin"}, "remote"},
+		{[]string{"-Cclone", "remote", "get-url", "origin"}, ""},
+		{[]string{"-c", "fetch", "remote", "get-url", "origin"}, "remote"},
+		{[]string{"-c", "probe.mode=clone", "-C", "push", "remote", "get-url", "origin"}, "remote"},
+		{[]string{"-cprobe.mode=fetch", "ls-remote", "origin"}, ""},
+		{[]string{"--git-dir", "clone", "--work-tree", "fetch", "remote", "get-url", "origin"}, "remote"},
+		{[]string{"--namespace=clone", "--config-env", "probe.mode=ENV", "fetch", "origin"}, "fetch"},
+		{[]string{"--super-prefix", "ls-remote", "--attr-source=HEAD", "remote", "get-url", "origin"}, "remote"},
+		{[]string{"--bare", "--no-pager", "--no-replace-objects", "clone", "source", "dest"}, "clone"},
+		{[]string{"-C", "one", "-C", "two", "-c", "probe.mode=ls-remote", "push", "origin"}, "push"},
+		{[]string{"--exec-path=/fixture/bin", "ls-remote", "origin"}, "ls-remote"},
+		{[]string{"--unknown", "clone"}, ""},
+		{[]string{"-C"}, ""},
+		{[]string{"--version", "fetch"}, ""},
+		{[]string{}, ""},
+	}
+	for _, c := range controls {
+		got := h.must(h.root, binary, c.args...)
+		if got != c.want {
+			t.Fatalf("HARNESS_NOT_EXECUTED: bridge parser %q -> %q want%q", c.args, got, c.want)
+		}
+	}
+	repo := h.initRepo("clone", map[string]string{"README": "real Git transport fixture\n"})
+	remote := filepath.Join(h.root, "origin.git")
+	h.must(h.root, "git", "clone", "--bare", "--no-local", repo, remote)
+	canonical := "https://github.com/PRO-Robotech/kacho.git"
+	h.must(repo, "git", "remote", "add", "origin", canonical)
+	sha := h.must(repo, "git", "rev-parse", "HEAD")
+	run := func(args []string) string {
+		raw := h.must(h.root, binary, append([]string{"--test-transport", canonical, "file://" + filepath.ToSlash(remote)}, args...)...)
+		var forwarded []string
+		if err := json.Unmarshal([]byte(raw), &forwarded); err != nil {
+			t.Fatal(err)
+		}
+		return h.must(h.root, "git", forwarded...)
+	}
+	for _, args := range [][]string{
+		{"-C", "clone", "remote", "get-url", "origin"},
+		{"-C", repo, "-c", "probe.mode=clone", "remote", "get-url", "origin"},
+		{"--git-dir", filepath.Join(repo, ".git"), "--work-tree", repo, "remote", "get-url", "origin"},
+	} {
+		if got := run(args); got != canonical {
+			t.Fatalf("HARNESS_NOT_EXECUTED: identity changed by transport adapter: %q", got)
+		}
+	}
+	for _, args := range [][]string{
+		{"-C", "clone", "ls-remote", "--refs", "origin"},
+		{"-c", "probe.mode=fetch", "-C", repo, "ls-remote", "--refs", "origin"},
+	} {
+		if got := run(args); got != sha+"\trefs/heads/main" {
+			t.Fatalf("HARNESS_NOT_EXECUTED: transport did not read actual local origin: %q", got)
+		}
+	}
+	evidence, _ := json.MarshalIndent(map[string]any{"parser_controls": len(controls), "real_git_identity_controls": 3, "real_git_transport_controls": 2, "canonical_origin": canonical, "actual_remote_sha": sha, "parser_sha256": rsSHA([]byte(function)), "sut_invocations": 0}, "", "  ")
+	h.save("git-transport-controls.json", append(evidence, '\n'))
+	t.Logf("HARNESS_PREREQUISITES: exact bridge parser %d controls; canonical identity 3 controls; real local transport 2 controls; no SUT invoked", len(controls))
+}
+
 func TestReleaseDeclaredConsumerImports(t *testing.T) {
+	t.Run("git_transport_prerequisites", func(t *testing.T) { rsGitTransportPrerequisites(t) })
 	t.Run("real_archive_prerequisites", func(t *testing.T) { rsTwoImportPrerequisites(t) })
 	t.Run("declared_consumers_contract", func(t *testing.T) { rsRunConsumerCases(t) })
 }
