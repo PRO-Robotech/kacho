@@ -85,7 +85,12 @@ var nonCreatingVerbs = map[string]bool{
 	// PRO-Robotech/kacho#1281): снимает у человека код по времени и запасные
 	// коды и завершает его сессии; ничего не заводит, и декларативному
 	// управлению не подлежит — это надзорное действие, а не состояние ландшафта.
-	"ResetSecondFactor":        true,
+	"ResetSecondFactor": true,
+	// ListMine — свой список членств человека (kaname#206, IAM-ID-2 §2.5):
+	// чтение под личностью вызывающего, ничего не заводит; приехал пином
+	// службы на 16b5cade. У провайдера предмета нет — чтение чужого состояния
+	// без конфигурации не выражается ресурсом.
+	"ListMine":                 true,
 	"SimulateMaintenanceEvent": true, "Start": true, "Stop": true, "Unblock": true, "Update": true, "UpdateAccessBindings": true,
 	"UpdateMetadata": true, "UpdateNetworkInterface": true, "UpdateRepository": true, "UpdateRoute": true, "UpdateRule": true,
 	"UpdateRules": true, "WhoAmI": true,
