@@ -86,6 +86,8 @@ sys.exit(0)
     if mode!='lawful':
         p=repo/'hooks'/('pre-receive' if mode=='reject' else 'post-receive')
         p.write_text(hook);p.chmod(0o755)
+    (CAP/(repo.name+'-receive-pack.sh')).write_bytes(wrapper.read_bytes())
+    if mode!='lawful':(CAP/(repo.name+'-server-hook.py')).write_bytes(p.read_bytes())
     save(CAP/(repo.name+'-transport.json'),{'mode':mode,'wrapper':str(wrapper),'wrapper_sha256':sha(wrapper.read_bytes()),'receive_pack':str(receive),'endpoint':str(repo),'hook_capture':str(hook_capture)})
     return str(wrapper)
 

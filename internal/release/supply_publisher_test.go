@@ -446,6 +446,9 @@ func rsStartForge(h *rsHarness, p *rsPublisherFixture, label string) *rsForgePro
 		}
 		h.save(label+"-forge.stderr", proc.stderr.Bytes())
 		rsCopyCaptures(h, proc.capture, label+"-forge")
+		transportCapture := filepath.Join(filepath.Dir(proc.repository), "transport-captures")
+		rsVerifyHookChildren(h, transportCapture)
+		rsCopyCaptures(h, transportCapture, label+"-transport")
 		if b, e := os.ReadFile(proc.state); e == nil {
 			h.save(label+"-forge-state.json", b)
 		}
