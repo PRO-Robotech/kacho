@@ -226,6 +226,7 @@ type supplyPreparedContext struct {
 
 type supplyBuildModule struct {
 	Root, ModulePath string
+	Requirements     *modfile.File
 	Packages         []string
 	Imports          []string
 }
@@ -394,7 +395,8 @@ func (e *supplyEngine) prepareConsumer(consumer supplyConsumer, candidate string
 			}
 			preparedContext.Modules = append(preparedContext.Modules, supplyBuildModule{
 				Root: filepath.Join(root, filepath.FromSlash(moduleRoot)), ModulePath: moduleFiles[moduleRoot].Module.Mod.Path,
-				Packages: supplySortedSet(packages[moduleRoot]), Imports: supplySortedSet(imports[moduleRoot]),
+				Requirements: moduleFiles[moduleRoot],
+				Packages:     supplySortedSet(packages[moduleRoot]), Imports: supplySortedSet(imports[moduleRoot]),
 			})
 		}
 		prepared.Contexts = append(prepared.Contexts, preparedContext)
@@ -507,7 +509,7 @@ func (e *supplyEngine) buildConsumer(consumer supplyPrepared, plan supplyPrepare
 				return supplyUnavailable("SOURCE_UNAVAILABLE")
 			}
 			examined++
-			target := pkg.ImportPath == e.manifest.ModulePath || strings.HasPrefix(pkg.ImportPath, e.manifest.ModulePath+"/")
+			target := supplyImportBelongs(pkg.ImportPath, e.manifest.ModulePath, module.Requirements)
 			if pkg.Error != nil {
 				if !target && pkg.ImportPath != module.ModulePath && !strings.HasPrefix(pkg.ImportPath, module.ModulePath+"/") && !pkg.Standard {
 					dependencyFailure = true

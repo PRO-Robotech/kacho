@@ -288,7 +288,8 @@ func (e *supplyEngine) archive(revision string) (supplyArchive, *supplyFailure) 
 }
 
 // Link only dependency download trees. The target module's entire proxy
-// coordinate is absent, so missing target bytes cannot fall back to cache.
+// @v namespace is absent, so missing target bytes cannot fall back to cache.
+// Separately required nested module namespaces remain dependency sources.
 func supplyDependencyProxy(source, destination, excluded, relative string) error {
 	entries, err := os.ReadDir(source)
 	if err != nil {
@@ -341,7 +342,7 @@ func (e *supplyEngine) dependencies() *supplyFailure {
 	}
 	excluded, _ := module.EscapePath(e.manifest.ModulePath)
 	destination := filepath.Join(e.work, "dependency-proxy")
-	if err := supplyDependencyProxy(source, destination, excluded, ""); err != nil {
+	if err := supplyDependencyProxy(source, destination, excluded+"/@v", ""); err != nil {
 		return supplyUnavailable("SOURCE_UNAVAILABLE")
 	}
 	e.proxy += "," + (&url.URL{Scheme: "file", Path: filepath.ToSlash(destination)}).String()
