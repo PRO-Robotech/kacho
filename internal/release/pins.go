@@ -156,17 +156,23 @@ func runSupplyPins(ctx context.Context, invocation supplyInvocation, deps Supply
 	}
 	engine := supplyEngine{ctx: stage, deps: deps, work: work,
 		manifest: supplyManifest{NetworkSeconds: manifest.NetworkSeconds, ChecksSeconds: manifest.ChecksSeconds}}
+	engine.checkPins(manifest, invocation.FinalMain, report)
+	return report.finish(stdout)
+}
+
+func (e *supplyEngine) checkPins(manifest supplyPinManifest, finalMain bool, report *supplyReport) {
+	var failure *supplyFailure
 	identitySubjects := []string{}
 	for _, product := range manifest.Products {
-		failed := engine.identify(product.Root, product.Repository, product.Revision)
+		failed := e.identify(product.Root, product.Repository, product.Revision)
 		failure = supplyPinFailure(failure, failed)
 		identitySubjects = append(identitySubjects, product.Repository+"@"+product.Revision)
 	}
 	report.check("identity", failure, identitySubjects, len(manifest.Products))
 	if failure != nil {
-		return report.finish(stdout)
+		return
 	}
-	pins, modules, files, failure := engine.pinCensus(manifest)
+	pins, modules, files, failure := e.pinCensus(manifest)
 	if failure == nil || failure.Reason == "MODULE_CENSUS_EMPTY" || failure.Reason == "INTERNAL_CENSUS_EMPTY" {
 		report.census["modules"], report.census["input_files"] = modules, files
 		report.census["internal_requirements"] = len(pins)
@@ -180,7 +186,7 @@ func runSupplyPins(ctx context.Context, invocation supplyInvocation, deps Supply
 	}
 	report.check("input", failure, identitySubjects, report.census["modules"])
 	if failure != nil {
-		return report.finish(stdout)
+		return
 	}
 	owners := map[string]bool{}
 	for _, pin := range pins {
@@ -189,7 +195,7 @@ func runSupplyPins(ctx context.Context, invocation supplyInvocation, deps Supply
 	remotes, remoteFailures := map[string]supplyPinRemote{}, map[string]*supplyFailure{}
 	originSubjects, mainSubjects := []string{}, []string{}
 	for index, owner := range supplySortedSet(owners) {
-		remote, failed := engine.pinRemote(owner, index)
+		remote, failed := e.pinRemote(owner, index)
 		remotes[owner], remoteFailures[owner] = remote, failed
 		for _, ref := range remote.Refs {
 			originSubjects = append(originSubjects, owner+" "+ref)
@@ -203,7 +209,7 @@ func runSupplyPins(ctx context.Context, invocation supplyInvocation, deps Supply
 		failed := remoteFailures[pin.Owner]
 		commit := ""
 		if failed == nil {
-			commit, failed = engine.resolvePin(pin, remote)
+			commit, failed = e.resolvePin(pin, remote)
 		}
 		originFailure = supplyPinFailure(originFailure, failed)
 		if failed == nil {
@@ -213,10 +219,10 @@ func runSupplyPins(ctx context.Context, invocation supplyInvocation, deps Supply
 			subject += " " + failed.Outcome + "/" + failed.Reason
 		}
 		originSubjects = append(originSubjects, subject)
-		if invocation.FinalMain && pin.Pseudo {
+		if finalMain && pin.Pseudo {
 			if failed == nil {
 				mainExamined++
-				failed = engine.pinOnMain(remote, commit)
+				failed = e.pinOnMain(remote, commit)
 				mainSubject := pin.Owner + " commit=" + commit + " main=" + remote.Main
 				if failed != nil {
 					mainSubject += " " + failed.Outcome + "/" + failed.Reason
@@ -233,10 +239,10 @@ func runSupplyPins(ctx context.Context, invocation supplyInvocation, deps Supply
 	}
 	report.census["resolved_pins"] = resolved
 	report.check("pins-origin", originFailure, originSubjects, len(pins))
-	if invocation.FinalMain {
+	if finalMain {
 		report.check("pins-main", mainFailure, mainSubjects, mainExamined)
 	}
-	return report.finish(stdout)
+	return
 }
 
 func (e *supplyEngine) pinCensus(manifest supplyPinManifest) ([]supplyPin, int, int, *supplyFailure) {

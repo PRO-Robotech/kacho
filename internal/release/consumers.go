@@ -565,3 +565,31 @@ func (e *supplyEngine) buildConsumer(consumer supplyPrepared, plan supplyPrepare
 	}
 	return nil
 }
+
+// replaceCheck updates a named publisher predicate without duplicating its
+// policy/head/merged observations. Failures keep fixed predicate precedence.
+func (r *supplyReport) replaceCheck(predicate string, failure *supplyFailure, subjects []string, examined any) {
+	for i, c := range r.checks {
+		if c["predicate"] == predicate {
+			r.checks = append(r.checks[:i], r.checks[i+1:]...)
+			break
+		}
+	}
+	r.check(predicate, failure, subjects, examined)
+	order := []string{"invocation", "identity", "input", "ownership", "baseline", "package-floor", "consumer-census", "consumer-archive", "payload", "compatibility", "pr", "required-checks", "main-ancestry", "tag", "proxy", "pins-origin", "pins-main"}
+	rank := map[string]int{}
+	for i, p := range order {
+		rank[p] = i
+	}
+	sort.SliceStable(r.checks, func(i, j int) bool {
+		return rank[r.checks[i]["predicate"].(string)] < rank[r.checks[j]["predicate"].(string)]
+	})
+	r.document["outcome"], r.document["reason"] = "GREEN", "OK"
+	for _, c := range r.checks {
+		o := c["outcome"].(string)
+		current := r.document["outcome"].(string)
+		if o != "GREEN" && (current == "GREEN" || (current == "NOT_EXECUTED" && (o == "RED" || o == "USAGE_ERROR"))) {
+			r.document["outcome"], r.document["reason"] = o, c["reason"]
+		}
+	}
+}
