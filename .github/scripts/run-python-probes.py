@@ -87,6 +87,8 @@ import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+from ci_outcomes import Outcome
+
 # Образцы состава. Тот же вид, что у сверщиков переписи кейсов
 # (`services/*/tests/newman/scripts/validate-cases.py`): сюита названа звёздочкой,
 # поэтому новая попадает под гейт сама.
@@ -189,187 +191,179 @@ def classify(path: Path) -> tuple[str | None, list[str]]:
     return None, []
 
 
-def run_pytest(root: Path, files: list[str]) -> tuple[int, int, list[str]]:
-    """Прогон набора. Возвращает (исполнено, провалено, замечания).
-
-    Счёт берётся из junit-XML, а не из разбора человекочитаемого хвоста: хвост
-    меняется между версиями, и проверка, читающая его глазами, разошлась бы молча.
-    """
-    if not files:
-        return 0, 0, []
-    xml_dir = Path(tempfile.mkdtemp(prefix="probes-junit-"))
-    xml = xml_dir / "probes.xml"
+def pytest_condition() -> str | None:
+    # Только отсутствие именно pytest называется этой причиной. Отказ импорта
+    # его зависимости или недоступный процесс — другая невыполненная предпосылка.
+    probe = """try:
+    import pytest
+except ModuleNotFoundError as error:
+    raise SystemExit(2 if error.name == 'pytest' else 3)
+except Exception:
+    raise SystemExit(3)
+"""
     try:
-        proc = subprocess.run(
-            [sys.executable, "-m", "pytest", *files,
-             "-q", "-p", "no:cacheprovider", f"--junit-xml={xml}"],
-            cwd=str(root), capture_output=True, text=True, timeout=900)
+        proc = subprocess.run([sys.executable, "-c", probe],
+                              capture_output=True, timeout=60)
+    except (subprocess.SubprocessError, OSError):
+        return "pytest-import-incomplete"
+    if proc.returncode == 0:
+        return None
+    return "pytest-unavailable" if proc.returncode == 2 else "pytest-import-incomplete"
+
+
+def report_pytest_condition(result: Outcome, reason: str) -> None:
+    result.unmet(reason)
+    message = "нет pytest" if reason == "pytest-unavailable" else "импорт pytest не завершён"
+    print(f"УСЛОВИЕ НЕ СОЗДАНО: {message}; "
+          f"объявлено {result.declarations}, исполнение pytest не подтверждено",
+          file=sys.stderr)
+
+
+def run_pytest(root: Path, files: list[str], result: Outcome) -> None:
+    """Считаем исполненные экземпляры по пригодному JUnit, skip — отдельно."""
+    with tempfile.TemporaryDirectory(prefix="probes-junit-") as directory:
+        xml = Path(directory) / "probes.xml"
+        try:
+            proc = subprocess.run(
+                [sys.executable, "-m", "pytest", *files,
+                 "-q", "-p", "no:cacheprovider", f"--junit-xml={xml}"],
+                cwd=str(root), capture_output=True, text=True, timeout=900)
+        except (subprocess.SubprocessError, OSError):
+            result.unmet("pytest-execution-unavailable")
+            print("УСЛОВИЕ НЕ СОЗДАНО: исполнение pytest не завершено", file=sys.stderr)
+            return
         sys.stdout.write(proc.stdout)
-        if proc.stderr.strip():
-            sys.stderr.write(proc.stderr)
-
-        if not xml.is_file():
-            return 0, 0, [
-                "pytest не оставил junit-отчёта — прогон НЕ ВЫПОЛНЕН, "
-                f"и это не «ноль находок» (код выхода {proc.returncode})"]
-
-        suite = ET.parse(xml).getroot()
-        if suite.tag == "testsuites":
-            inner = suite.find("testsuite")
-            # `or` здесь читать нельзя: пустой элемент ложен по истинностному
-            # значению, и вложенный отчёт без проб молча подменился бы внешним.
-            if inner is not None:
-                suite = inner
-        total = int(suite.get("tests", 0))
-        failures = int(suite.get("failures", 0))
-        errors = int(suite.get("errors", 0))
-        skipped = int(suite.get("skipped", 0))
-
-        notes = []
-        if skipped:
-            # Маскировка запрещена: пропуск не идёт в зачёт прохода.
-            notes.append(
-                f"{skipped} проб(а) ПРОПУЩЕНО — пропуск не засчитывается за проход; "
-                f"пробе нужна своя посадка, а не skip")
-        if proc.returncode == 5:
-            notes.append("pytest не собрал НИ ОДНОЙ пробы из переданных файлов")
-        elif proc.returncode not in (0, 1):
-            notes.append(f"pytest вышел кодом {proc.returncode} — прогон недействителен")
-        return total, failures + errors + skipped, notes
-    finally:
-        shutil.rmtree(xml_dir, ignore_errors=True)
-
-
-def run_script(root: Path, rel: str) -> tuple[int, list[str]]:
-    """Гейт со своим main: считается ОДНОЙ пробой, вердикт — его код выхода."""
-    proc = subprocess.run([sys.executable, rel], cwd=str(root),
-                          capture_output=True, text=True, timeout=600)
-    sys.stdout.write(proc.stdout)
-    if proc.stderr.strip():
         sys.stderr.write(proc.stderr)
+        try:
+            report = ET.parse(xml).getroot()
+            suites = list(report) if report.tag == "testsuites" else [report]
+            if not suites or any(suite.tag != "testsuite" for suite in suites):
+                raise ValueError("unexpected JUnit structure")
+            counts = []
+            for suite in suites:
+                values = tuple(int(suite.attrib[key]) for key in
+                               ("tests", "failures", "errors", "skipped"))
+                total, failures, errors, skipped = values
+                if min(values) < 0 or failures + errors + skipped > total:
+                    raise ValueError("inconsistent JUnit counters")
+                if len(suite.findall("testcase")) != total:
+                    raise ValueError("JUnit counter does not match test cases")
+                counts.append(values)
+        except (OSError, ET.ParseError, ValueError, KeyError):
+            result.unmet("pytest-report-unavailable")
+            print("УСЛОВИЕ НЕ СОЗДАНО: нет пригодного JUnit-отчёта pytest; "
+                  "исполненные пробы не подтверждены", file=sys.stderr)
+            return
+
+        total, failures, errors, skipped = (sum(row[i] for row in counts) for i in range(4))
+        executed = total - skipped
+        result.executed += executed
+        result.failed += failures + errors
+        result.skipped += skipped
+        if failures or errors:
+            for suite in suites:
+                for case in suite.findall("testcase"):
+                    if case.find("failure") is not None or case.find("error") is not None:
+                        coordinate = "::".join(filter(None, (case.get("classname"), case.get("name"))))
+                        result.finding("pytest-failed", coordinate, "утверждение или исполнение пробы завершилось отказом")
+        if skipped:
+            result.finding("pytest-skipped", ", ".join(files),
+                           f"{skipped} проб(а) ПРОПУЩЕНО — пропуск не засчитывается за проход")
+        if total == 0 or proc.returncode == 5:
+            result.finding("pytest-empty", ", ".join(files), "pytest не собрал НИ ОДНОЙ пробы")
+        elif proc.returncode not in (0, 1):
+            result.unmet("pytest-execution-incomplete")
+            print(f"УСЛОВИЕ НЕ СОЗДАНО: pytest вышел кодом {proc.returncode}", file=sys.stderr)
+        elif proc.returncode == 1 and not failures and not errors:
+            result.finding("pytest-exit-inconsistent", ", ".join(files),
+                           "pytest отказал, но отчёт не называет упавшую пробу")
+        if total and total < result.pytest_declarations:
+            result.finding("pytest-undercollection", ", ".join(files),
+                           f"объявлено {result.pytest_declarations} проб, собрано {total} — недобор состава")
+        print(f"проб исполнено (junit): {executed}; "
+              f"объявлено разбором: {result.pytest_declarations}; пропущено {skipped}")
+
+
+def run_script(root: Path, rel: str, result: Outcome) -> None:
+    """Гейт со своим main — один реально завершившийся экземпляр."""
+    try:
+        proc = subprocess.run([sys.executable, rel], cwd=str(root),
+                              capture_output=True, text=True, timeout=600)
+    except (subprocess.SubprocessError, OSError):
+        result.unmet("script-execution-unavailable")
+        print(f"УСЛОВИЕ НЕ СОЗДАНО: исполнение {rel} не завершено", file=sys.stderr)
+        return
+    sys.stdout.write(proc.stdout)
+    sys.stderr.write(proc.stderr)
+    result.executed += 1
     if proc.returncode != 0:
-        return 1, [f"{rel}: вышел кодом {proc.returncode}"]
-    return 1, []
+        result.failed += 1
+        result.finding("script-failed", rel, f"вышел кодом {proc.returncode}")
 
 
-def execute(root: Path, patterns: tuple[str, ...]) -> int:
+def finish(result: Outcome) -> int:
+    print(f"===== ИТОГ: файлов {result.files}; объявлено {result.declarations}; "
+          f"проб исполнено {result.executed}; провалено {result.failed}; "
+          f"пропущено {result.skipped}; не выполнено {len(result.unmet_reasons)} =====")
+    for finding in result.findings:
+        print(f"  - {finding['coordinate']}: {finding['message']}", file=sys.stderr)
+    if result.unmet_reasons:
+        print("НЕПОЛНЫЙ ПРОГОН: обязательный результат не получен", file=sys.stderr)
+    if result.category == "finding":
+        print("ПРОВАЛ: есть находки; неполнота, если она названа, сохраняется отдельно", file=sys.stderr)
+    elif result.category == "green":
+        print(f"PASS: все {result.executed} проб(ы) исполнены и зелёные")
+    return result.returncode
+
+
+def execute(root: Path, patterns: tuple[str, ...], result: Outcome | None = None) -> int:
+    result = result if result is not None else Outcome("run-python-probes")
     files = list_tracked(root, patterns)
-
+    result.files = len(files)
     shown = ", ".join(patterns)
     print("===== регрессионные пробы python: перепись состава =====")
     print(f"образцов: {len(patterns)} — {shown}")
-    # Перепись ПО КАЖДОМУ образцу отдельно. Одно суммарное число скрывает ровно
-    # тот случай, ради которого образцов два: образец, переставший что-либо
-    # находить, не меняет суммы, пока второй жив, — и его смерть неотличима от
-    # исправной работы.
     for pat in patterns:
-        n = sum(1 for rel in files if fnmatch.fnmatch(rel, pat))
-        print(f"  по образцу {pat}: {n}")
+        print(f"  по образцу {pat}: {sum(1 for rel in files if fnmatch.fnmatch(rel, pat))}")
     print(f"файлов проб найдено: {len(files)}")
-
-    # Ноль файлов — ОТКАЗ. Пустой состав отчитался бы «всё чисто», и именно так
-    # 48 проб прожили в дереве, не исполнившись ни разу.
     if not files:
-        print(f"ОТКАЗ: по образцам {shown} не найдено ни одного файла проб — "
-              f"обход сломан либо пробы переехали. Пустой обход не является "
-              f"доказательством чистоты.", file=sys.stderr)
-        return 1
+        result.finding("empty-population", shown, "не найдено ни одного файла проб — пустой обход не доказывает чистоту")
+        return finish(result)
 
     pytest_files: list[str] = []
     script_files: list[str] = []
-    problems: list[str] = []
-    declared = 0
-
     for rel in files:
         kind, probes = classify(root / rel)
         if kind == KIND_PYTEST:
             pytest_files.append(rel)
-            declared += len(probes)
+            result.pytest_declarations += len(probes)
             print(f"  {rel}: {KIND_PYTEST}, проб объявлено {len(probes)}")
         elif kind == KIND_SCRIPT:
             script_files.append(rel)
+            result.script_entries += 1
             print(f"  {rel}: {KIND_SCRIPT}")
         else:
             detail = f" ({probes[0]})" if probes else ""
             print(f"  {rel}: ВИД НЕ ОПОЗНАН{detail}")
-            problems.append(
-                f"{rel}: ни одной функции `test_*` верхнего уровня, ни ветки "
-                f"`__main__` — такой файл собрал бы ноль проб и промолчал; "
-                f"это немота, а не чистота")
-
-    if shutil.which(sys.executable) and pytest_files:
-        try:
-            subprocess.run([sys.executable, "-c", "import pytest"],
-                           capture_output=True, check=True, timeout=60)
-        except (subprocess.SubprocessError, OSError):
-            # Отсутствие инструмента — ОТКАЗ, а не пропуск: «не выполнилось» не
-            # идёт в зачёт «прошло».
-            print("ОТКАЗ: нет pytest, а 48 проб написаны под него — прогон НЕ "
-                  "ВЫПОЛНЕН. Установи его в шаге (`python3 -m pip install pytest`).",
-                  file=sys.stderr)
-            return 2
-
-    print()
-    executed = 0
-    failed = 0
+            result.finding("unrecognized-probe", rel,
+                           "ни функции test_ верхнего уровня, ни ветки __main__ — файл собрал бы ноль проб")
+    result.declarations = result.pytest_declarations + result.script_entries
 
     if pytest_files:
-        print(f"===== прогон набора pytest ({len(pytest_files)} файл(ов)) =====")
-        ran, bad, notes = run_pytest(root, pytest_files)
-        executed += ran
-        failed += bad
-        problems += notes
-        print(f"проб исполнено (junit): {ran}; объявлено разбором: {declared}")
-        # НЕДОБОР — находка: часть файла молча не собралась (ошибка импорта на
-        # уровне модуля читается именно так). ПЕРЕБОР находкой не является и
-        # быть не может: `@pytest.mark.parametrize` разворачивает ОДНО
-        # объявление в несколько прогонов, и это штатная форма, а не дефект.
-        #
-        # Прежнее сравнение было на неравенство и потому краснело на законном
-        # разворачивании: 109 объявлений против 114 прогонов, упавших проб ноль,
-        # а прогон красен. Хуже того, текст описывал ОБРАТНОЕ направление —
-        # читатель шёл искать несобравшийся файл, которого не существует, потому
-        # что у ошибки импорта исход `исполнено > объявлено` невозможен by
-        # construction.
-        if ran and declared and ran < declared:
-            problems.append(
-                f"объявлено {declared} проб, исполнено {ran} — часть файла не "
-                f"собралась; недобор состава молчать не должен")
-
+        condition = pytest_condition()
+        if condition is None:
+            print(f"===== прогон набора pytest ({len(pytest_files)} файл(ов)) =====")
+            run_pytest(root, pytest_files, result)
+        else:
+            report_pytest_condition(result, condition)
+    # Независимые участники исполняются и при отсутствии pytest: их находка
+    # не исчезает за ранним return с третьей категорией другого участника.
     for rel in script_files:
         print(f"===== {rel} (гейт со своим main) =====")
-        ran, notes = run_script(root, rel)
-        executed += ran
-        failed += len(notes)
-        problems += notes
-
-    print()
-    print(f"===== ИТОГ: файлов {len(files)} "
-          f"(набор {len(pytest_files)}, гейт {len(script_files)}); "
-          f"проб исполнено {executed}; провалено {failed} =====")
-
-    if executed == 0:
-        print("ОТКАЗ: не исполнено НИ ОДНОЙ пробы — это провал, а не чистота.",
-              file=sys.stderr)
-        return 1
-
-    # ВЕРДИКТ ЧИТАЕТ ЧИСЛО УПАВШИХ, а не только перечень замечаний.
-    #
-    # Первая редакция выводила вердикт из `problems` — и печатала PASS, имея
-    # `провалено 1`: упавшее утверждение даёт число, но не «замечание», поэтому
-    # перечень оставался пуст. Ровно тот класс, который этот прогонщик и обслуживает
-    # (прогонщик, печатающий зелёное при красном). Найдено собственной
-    # самопроверкой, пункт (a).
-    if failed or problems:
-        print(f"ПРОВАЛ: пробы на python не зелёные "
-              f"(упавших проб: {failed}; замечаний о составе: {len(problems)})",
-              file=sys.stderr)
-        for p in problems:
-            print(f"  - {p}", file=sys.stderr)
-        return 1
-
-    print(f"PASS: все {executed} проб(ы) исполнены и зелёные")
-    return 0
+        run_script(root, rel, result)
+    if not result.executed and not result.findings and not result.unmet_reasons:
+        result.finding("empty-execution", shown, "не исполнено НИ ОДНОЙ пробы")
+    return finish(result)
 
 
 # ── ДОКАЗАТЕЛЬСТВО ИНЪЕКЦИЕЙ, В ОБЕ СТОРОНЫ ─────────────────────────────────
@@ -426,15 +420,32 @@ def _elsewhere(name: str, body: str) -> dict[str, str]:
     return {f"tools/x/{name}": body}
 
 
-def self_test() -> int:
+def self_test(result: Outcome | None = None) -> int:
+    result = result if result is not None else Outcome("run-python-probes/self-test")
+    result.files = 1
+    # Объявленные проверки считаются по исполняемым вызовам check этой функции;
+    # синтетические test_ файлы ниже имеют другую единицу и сюда не входят.
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    own = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+               and node.name == "self_test")
+    result.declarations = sum(isinstance(node, ast.Call)
+                              and isinstance(node.func, ast.Name)
+                              and node.func.id == "check" for node in ast.walk(own))
+    condition = pytest_condition()
+    if condition is not None:
+        report_pytest_condition(result, condition)
+        return finish(result)
     failures = []
 
     def check(label, cond, detail=""):
+        result.executed += 1
         if cond:
             print(f"  ок     {label}")
         else:
             print(f"  ПРОВАЛ {label}  {detail}")
             failures.append(label)
+            result.failed += 1
+            result.finding("self-test-failed", label, "утверждение самопроверки не выполнено")
 
     import io
     import contextlib
@@ -532,10 +543,10 @@ def self_test() -> int:
     if failures:
         print(f"САМОПРОВЕРКА ПРОВАЛЕНА: {len(failures)} — {', '.join(failures)}",
               file=sys.stderr)
-        return 1
+        return finish(result)
     print("ДОКАЗАНО: прогонщик краснеет на дефекте, молчит на законной форме, "
           "отвергает пустой обход, немой файл и пропуск.")
-    return 0
+    return finish(result)
 
 
 def main(argv=None) -> int:
@@ -547,12 +558,27 @@ def main(argv=None) -> int:
                          "по умолчанию — объявленный перечень)")
     ap.add_argument("--self-test", action="store_true",
                     help="доказать инъекцией: прогонщик краснеет на дефекте и молчит на законной форме")
+    ap.add_argument("--outcome-file", default=os.environ.get("KACHO_CI_OUTCOME_FILE"),
+                    help="файл текущего структурированного результата")
+    ap.add_argument("--invocation-id", default=os.environ.get("KACHO_CI_INVOCATION_ID"),
+                    help="идентификатор именно этого вызова")
     args = ap.parse_args(argv)
-
+    if bool(args.outcome_file) != bool(args.invocation_id):
+        ap.error("outcome-file и invocation-id задаются вместе")
+    producer = "run-python-probes/self-test" if args.self_test else "run-python-probes"
+    result = Outcome(producer)
     if args.self_test:
-        return self_test()
-    return execute(Path(args.root).resolve() if args.root else repo_root(),
-                   tuple(args.pattern) if args.pattern else DEFAULT_PATTERNS)
+        rc = self_test(result)
+    else:
+        rc = execute(Path(args.root).resolve() if args.root else repo_root(),
+                     tuple(args.pattern) if args.pattern else DEFAULT_PATTERNS, result)
+    if args.outcome_file:
+        try:
+            result.write(Path(args.outcome_file), args.invocation_id)
+        except (OSError, ValueError):
+            print("ОТКАЗ: текущий результат не записан", file=sys.stderr)
+            return 1
+    return rc
 
 
 if __name__ == "__main__":
