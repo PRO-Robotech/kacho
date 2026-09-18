@@ -14,6 +14,8 @@
 //     привязки предъявителя — но НЕ от полосы сессии (§1.8);
 //   - ветка полосы сессии (`tryOwnSession`, Р7): на этих путях «сессии нет»
 //     РЕТРАНСЛИРУЕТСЯ службе, а не отвергается; отсечка отвергается как всюду;
+//     недоступность службы ретранслируется ровно на глаголах, чья запись это
+//     разрешает (`relayWhenUnanswered`), на остальных — F4d-23;
 //   - регистрация ретрансляции в композиционном корне: обработчик крепится на
 //     каждый путь перечня под посадкой `own`.
 //
@@ -49,6 +51,8 @@ const (
 	// чтение состояния на корне семейства, церемония повышения своим подпутём.
 	// Те же полоса, признак формы и ретрансляция, что у четырёх глаголов Ф3;
 	// исход «сессии нет» ретранслируется — судит служба (401 у всех шести).
+	// Недоступность службы — F4d-23 на крае, как на смене пароля: все шесть
+	// читают сессию носителя (Ф12 Р4, Ф12-38).
 	LoginLanePathSecondFactor            = "/iam/v1/auth/second-factor"
 	LoginLanePathSecondFactorEnroll      = "/iam/v1/auth/second-factor/enroll"
 	LoginLanePathSecondFactorConfirm     = "/iam/v1/auth/second-factor/confirm"
@@ -63,18 +67,35 @@ type LoginLaneRoute struct {
 	Verb string
 	// Path — точный путь на origin консоли.
 	Path string
+	// relayWhenUnanswered — что полоса сессии делает на этом глаголе, когда
+	// служба не ответила краю (`Resolve` не ответил либо отсечку установить не
+	// удалось). Критерий один — читает ли глагол носитель:
+	//
+	//   - true — ретранслировать, служба ответит своим 503. Глагол носителя не
+	//     читает (вход, признак формы — Ф3 Р7; регистрация; запрос и предъявление
+	//     кода восстановления ключуются адресом и кодом) либо сессию оканчивает
+	//     (выход — Ф3-17);
+	//   - нулевое значение — отказ F4d-23 на крае, носитель цел. Глагол читает
+	//     сессию носителя (смена пароля — Ф3-20 «д»; шесть глаголов второго
+	//     фактора, включая чтение состояния, — Ф12 Р4), и запрос с носителем,
+	//     чью отсечку установить не удалось, до него не доходит.
+	//
+	// Отказ — умолчание: глагол, дописанный без решения, получает F4d-23.
+	// Поле не экспортируется: решение принадлежит полосе сессии, и прочие
+	// читатели объявления его не видят.
+	relayWhenUnanswered bool
 }
 
-// loginLaneRoutes — сам перечень. Порядок — порядок Р2, затем Ф4 и Ф5;
+// loginLaneRoutes — сам перечень. Порядок — порядок Р2, затем Ф4, Ф5 и Ф12;
 // читатели по нему не ветвятся.
 var loginLaneRoutes = []LoginLaneRoute{
-	{Verb: "login", Path: LoginLanePathLogin},
-	{Verb: "logout", Path: LoginLanePathLogout},
+	{Verb: "login", Path: LoginLanePathLogin, relayWhenUnanswered: true},
+	{Verb: "logout", Path: LoginLanePathLogout, relayWhenUnanswered: true},
 	{Verb: "password", Path: LoginLanePathPassword},
-	{Verb: "csrf", Path: LoginLanePathCSRF},
-	{Verb: "register", Path: LoginLanePathRegister},
-	{Verb: "recovery", Path: LoginLanePathRecovery},
-	{Verb: "recovery-complete", Path: LoginLanePathRecoveryComplete},
+	{Verb: "csrf", Path: LoginLanePathCSRF, relayWhenUnanswered: true},
+	{Verb: "register", Path: LoginLanePathRegister, relayWhenUnanswered: true},
+	{Verb: "recovery", Path: LoginLanePathRecovery, relayWhenUnanswered: true},
+	{Verb: "recovery-complete", Path: LoginLanePathRecoveryComplete, relayWhenUnanswered: true},
 	{Verb: "second-factor-status", Path: LoginLanePathSecondFactor},
 	{Verb: "second-factor-enroll", Path: LoginLanePathSecondFactorEnroll},
 	{Verb: "second-factor-confirm", Path: LoginLanePathSecondFactorConfirm},
@@ -96,6 +117,18 @@ func IsLoginLanePath(path string) bool {
 	for _, rt := range loginLaneRoutes {
 		if rt.Path == path {
 			return true
+		}
+	}
+	return false
+}
+
+// loginLaneRelaysWhenUnanswered — ретранслирует ли полоса сессии запрос на этот
+// путь, когда служба не ответила краю. Путь вне перечня — false: на путях
+// платформы недоступность всегда F4d-23.
+func loginLaneRelaysWhenUnanswered(path string) bool {
+	for _, rt := range loginLaneRoutes {
+		if rt.Path == path {
+			return rt.relayWhenUnanswered
 		}
 	}
 	return false
