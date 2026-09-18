@@ -92,6 +92,11 @@ import (
 // `UserService/ResendInvite` (kaname#184); обе обслуживаются службой в её дереве и
 // приехали сюда подъёмом пина модуля. Перемерено прогоном после регенерации:
 // строк службы 108 из 341.
+//
+// Подъём пина на 16b5cade (срез 2 линии службы: Ф12, ListMine) добавил ДВЕ —
+// `UserService/ResetSecondFactor` (Ф12 Р10, kacho#1281) и
+// `MembershipService/ListMine` (kaname#206); обе обслуживаются службой в её
+// дереве. Перемерено прогоном после регенерации: строк службы 110 из 343.
 var knownInertCatalogRows = []string{
 	"kaname.cloud.iam.v1.AccessBindingService/Create",
 	"kaname.cloud.iam.v1.AccessBindingService/Delete",
@@ -164,6 +169,7 @@ var knownInertCatalogRows = []string{
 	"kaname.cloud.iam.v1.MembershipService/Create",
 	"kaname.cloud.iam.v1.MembershipService/Get",
 	"kaname.cloud.iam.v1.MembershipService/List",
+	"kaname.cloud.iam.v1.MembershipService/ListMine",
 	"kaname.cloud.iam.v1.PermissionCatalogService/ListPermissionCatalog",
 	"kaname.cloud.iam.v1.ProjectService/Create",
 	"kaname.cloud.iam.v1.ProjectService/Delete",
@@ -196,6 +202,7 @@ var knownInertCatalogRows = []string{
 	"kaname.cloud.iam.v1.UserService/ListOperations",
 	"kaname.cloud.iam.v1.UserService/RemoveFromAccount",
 	"kaname.cloud.iam.v1.UserService/ResendInvite",
+	"kaname.cloud.iam.v1.UserService/ResetSecondFactor",
 	"kaname.cloud.iam.v1.UserService/Unblock",
 	"kaname.cloud.iam.v1.UserService/Update",
 	"kaname.cloud.iam.v1.UserTokenService/Issue",

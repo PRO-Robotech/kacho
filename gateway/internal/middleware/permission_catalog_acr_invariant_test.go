@@ -61,12 +61,13 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// sensitiveACR2Set — the 29 FQNs that MUST carry required_acr_min="2" after the
-// refinement (grant-surface + credential + tenancy-root + shared-resource
-// ceiling, domain-agnostic). Any drift (an RPC added or dropped) fails this
-// test. Categories A–J per the APPROVED acceptance docs.
-func sensitiveACR2Set() map[string]struct{} {
-	fqns := []string{
+// sensitiveACR2FQNs — the FQNs that MUST carry required_acr_min="2" after the
+// refinement (grant-surface + credential + tenancy-root, domain-agnostic), one
+// entry per FQN. Any drift (an RPC added or dropped) fails
+// TestPermissionCatalog_ACR_SetInvariant, which also asserts the count and that
+// no FQN is listed twice. Categories per the APPROVED acceptance docs.
+func sensitiveACR2FQNs() []string {
+	return []string{
 		// A — credential mint/destroy (6). ServiceAccount Disable/Enable belong
 		// here and not with the routine lifecycle: they decide whether a machine
 		// identity may authenticate AT ALL. Disable is every Revoke this account
@@ -120,6 +121,12 @@ func sensitiveACR2Set() map[string]struct{} {
 		// holders, and the cloud administrator reaches it as he reaches everything.
 		"kaname.cloud.iam.v1.UserService/Block",
 		"kaname.cloud.iam.v1.UserService/Unblock",
+		// ResetSecondFactor (Ф12 Р10, PRO-Robotech/kacho#1281) — третий читатель
+		// того же отношения: снимает у человека код по времени и запасные коды и
+		// завершает все его сессии. Тот же порог, что у Block/Unblock, и по тому
+		// же доводу: человек, которому хватило бы пароля для сброса чужого
+		// фактора, получил бы через дешёвую дверь больше, чем отзыв одного токена.
+		"kaname.cloud.iam.v1.UserService/ResetSecondFactor",
 		// B — iam binding grant (5; Create is exempt-permission + acr=2, net-strengthening).
 		// Invite belongs here: it inlines an AccessBinding create (project_id+role_id)
 		// in the invite tx — the same privilege AccessBindingService/Create issues.
@@ -215,11 +222,29 @@ func sensitiveACR2Set() map[string]struct{} {
 		// would be a lie about the requirement.
 		"kaname.cloud.iam.v1.InternalModuleService/Apply",
 	}
+}
+
+// sensitiveACR2Set — the same FQNs as a set.
+func sensitiveACR2Set() map[string]struct{} {
+	fqns := sensitiveACR2FQNs()
 	set := make(map[string]struct{}, len(fqns))
 	for _, f := range fqns {
 		set[f] = struct{}{}
 	}
 	return set
+}
+
+// repeatedFQNs — FQNs listed more than once, each named once, in list order.
+func repeatedFQNs(fqns []string) []string {
+	seen := make(map[string]int, len(fqns))
+	var repeated []string
+	for _, f := range fqns {
+		seen[f]++
+		if seen[f] == 2 {
+			repeated = append(repeated, f)
+		}
+	}
+	return repeated
 }
 
 // TestPermissionCatalog_ACR_SetInvariant — SEC-ACR-13 / I1: the set of FQNs
@@ -247,7 +272,13 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 	// службы (PRO-Robotech/kacho#2645). Число по-прежнему утверждается, а не
 	// выводится из списка: молчаливое сокращение — ровно то, что произошло бы
 	// при случайно выпавшей записи, и отличить его от этого снятия было бы нечем.
-	require.Len(t, sensitive, 29, "the acceptance-doc sensitive set must contain exactly 29 FQNs")
+	// Повтор в перечне множество схлопывает, и утверждение числа его не видит:
+	// перечень обязан называть каждое имя ровно один раз, иначе вторая запись
+	// с иным обоснованием читается как решение, которого никто не принимал.
+	fqns := sensitiveACR2FQNs()
+	require.Empty(t, repeatedFQNs(fqns), "the sensitive list must name each FQN once")
+	require.Len(t, fqns, len(sensitive), "the sensitive list and its set must be the same size")
+	require.Len(t, sensitive, 30, "the acceptance-doc sensitive set must contain exactly 30 FQNs")
 
 	got2 := map[string]struct{}{}
 	for _, fqn := range c.FQNs() {
@@ -268,7 +299,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 		_, want := sensitive[fqn]
 		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive allowlist (over-inclusion): %s", fqn)
 	}
-	assert.Len(t, got2, 29, "exactly 29 FQNs must carry required_acr_min=2")
+	assert.Len(t, got2, 30, "exactly 30 FQNs must carry required_acr_min=2")
 }
 
 // TestPermissionCatalog_ACR_ComplementNotTwo — SEC-ACR-13 / I1: explicit
@@ -697,7 +728,7 @@ func TestPermissionCatalog_ACR_Counts(t *testing.T) {
 	// Числа ЗАМЕРЕНЫ прогоном, а не вычтены в уме: их напечатали сами упавшие
 	// утверждения этой пробы после регенерации каталога. Сумма сходится
 	// (27+284+27=338) — и это единственное, ради чего её стоит называть.
-	assert.Equal(t, 29, n2, "sensitive count")
+	assert.Equal(t, 30, n2, "sensitive count")
 	// ТРИ линии завели по одной записи каждая, и объяснения всех трёх остаются —
 	// они про разные глаголы. Числа ниже ЗАМЕРЕНЫ по дереву после слияния,
 	// а не сложены в уме: арифметика трёх переписей даёт совпадение, которое
@@ -781,9 +812,16 @@ func TestPermissionCatalog_ACR_Counts(t *testing.T) {
 	// (kaname#184): полоса допуска в аккаунт, та же, что у Invite. Полосы
 	// «рутина» и «без порога» не двигаются. Числа ЗАМЕРЕНЫ прогоном после
 	// регенерации каталога: 27→29 и 339→341.
-	assert.Equal(t, 284, n1, "routine count")
+	//
+	// Подъём пина на kaname@16b5cade (Ф12 и срез 2 линии службы) привёз ДВЕ
+	// записи: `UserService/ResetSecondFactor` (Ф12 Р10, kacho#1281) — в полосу
+	// «чувствительное» контрактом службы, как Block/Unblock; и
+	// `MembershipService/ListMine` (kaname#206) — чтение своих членств, в
+	// полосу «рутина». Полоса «без порога» не сдвинулась. Числа ЗАМЕРЕНЫ
+	// прогоном после регенерации: 29→30, 284→285, 341→343.
+	assert.Equal(t, 285, n1, "routine count")
 	assert.Equal(t, 28, nEmpty, "no-acr-requirement count (подмножество `<exempt>`, не равное ему)")
-	assert.Equal(t, 341, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 343, n2+n1+nEmpty, "catalog total")
 
 	// Здесь сверялась ПОБАЙТОВАЯ идентичность двух вшитых копий каталога — края
 	// и посева службы доступа. Половина утверждения снята вместе со своим

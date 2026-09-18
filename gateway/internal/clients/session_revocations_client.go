@@ -83,14 +83,13 @@ func (a *SessionRevocationsAdapter) ResolveHumanSession(
 	}
 	s := resp.GetSession()
 	return middleware.HumanSession{
-		UserID:                 s.GetUserId(),
-		Email:                  s.GetEmail(),
-		DisplayName:            s.GetDisplayName(),
-		AuthenticatedAt:        s.GetAuthenticatedAt().AsTime(),
-		ExpiresAt:              s.GetExpiresAt().AsTime(),
-		AssuranceLevel:         s.GetAssuranceLevel(),
-		EmailVerified:          s.GetEmailVerified(),
-		PasswordChangeRequired: s.GetPasswordChangeRequired(),
+		UserID:          s.GetUserId(),
+		Email:           s.GetEmail(),
+		DisplayName:     s.GetDisplayName(),
+		AuthenticatedAt: s.GetAuthenticatedAt().AsTime(),
+		ExpiresAt:       s.GetExpiresAt().AsTime(),
+		AssuranceLevel:  s.GetAssuranceLevel(),
+		EmailVerified:   s.GetEmailVerified(),
 	}, true, nil
 }
 

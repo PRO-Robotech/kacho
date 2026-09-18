@@ -287,7 +287,6 @@ func TestExternalSessionLane_F3_13_UnavailableTextEqualsTheDenyText(t *testing.T
 
 func TestOwnSessionLane_F3_14_WhoAmIAnswersFromOurSessionThroughTheChain(t *testing.T) {
 	reader := &fakeHumanSession{found: true, sess: liveOwnSession()}
-	reader.sess.PasswordChangeRequired = true
 	cut := &fakeCutoff{}
 	a := ownLane(t, reader, cut)
 	mux := http.NewServeMux()
@@ -319,8 +318,13 @@ func TestOwnSessionLane_F3_14_WhoAmIAnswersFromOurSessionThroughTheChain(t *test
 	if body.Session["expiresAt"] != ownAuthAt.Add(24*time.Hour).Format(time.RFC3339) {
 		t.Errorf("session.expiresAt = %v — срок показывается усечённым до секунды", body.Session["expiresAt"])
 	}
-	if body.Session["assuranceLevel"] != "1" || body.Session["emailVerified"] != true || body.Session["passwordChangeRequired"] != true {
+	if body.Session["assuranceLevel"] != "1" || body.Session["emailVerified"] != true {
 		t.Errorf("поля сессии: %v", body.Session)
+	}
+	// Поле «требуется сменить пароль» снято с контракта службы (kaname#201,
+	// kacho#2707): «кто я» его не несёт — ни истиной, ни ложью.
+	if _, present := body.Session["passwordChangeRequired"]; present {
+		t.Errorf("session несёт снятое поле passwordChangeRequired: %v", body.Session)
 	}
 
 	// Без носителя и с печеньем поставщика без нашего — `{"user":null}` побайтово.
@@ -362,27 +366,22 @@ func TestOwnSessionLane_F3_52_WhoAmIKeepsItsOwnCutoffReader(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Ф3-23 — требование сменить пароль доносится до решения по каталогу.
+// Ф5-24 — сессия, выданная восстановлением, полноправна: полоса личности
+// пропускает её к решению по каталогу как всякую сессию входа. ЗДЕСЬ СТОЯЛА
+// проба Ф3-23 «требование сменить пароль доносится до решения по каталогу» —
+// снята вместе с предметом (kaname#201, kacho#2707): поле с контракта службы
+// снято, производителя значения `true` не было ни одного. Положительный близнец
+// остался: сессия доходит до следующего звена с личностью и уровнем.
 
-func TestOwnSessionLane_F3_23_PasswordChangeRequiredReachesTheAuthzDecision(t *testing.T) {
+func TestOwnSessionLane_F5_24_RecoveryIssuedSessionIsJudgedByTheCatalogLikeAnyLogin(t *testing.T) {
 	reader := &fakeHumanSession{found: true, sess: liveOwnSession()}
 	a := ownLane(t, reader, &fakeCutoff{})
 	next := &countingNext{}
 	chain := a.HTTP(next)
 
-	reader.sess.PasswordChangeRequired = true
 	serve(chain, withOurCarrier(httptest.NewRequest(http.MethodGet, platformPath, nil), "r"))
 	if next.served != 1 {
-		t.Fatalf("полоса личности обязана ПРОПУСТИТЬ запрос — отказ принадлежит решению по каталогу (Р8)")
-	}
-	if !PasswordChangeRequiredFromContext(next.lastReq.Context()) {
-		t.Fatal("требование сменить пароль не донесено до следующего звена")
-	}
-	// Отрицательный контроль: сессия без поля.
-	reader.sess.PasswordChangeRequired = false
-	serve(chain, withOurCarrier(httptest.NewRequest(http.MethodGet, platformPath, nil), "l"))
-	if PasswordChangeRequiredFromContext(next.lastReq.Context()) {
-		t.Fatal("сессия без требования несёт требование")
+		t.Fatalf("полоса личности обязана ПРОПУСТИТЬ запрос — решение принадлежит каталогу прав")
 	}
 	// Личность и уровень выставлены — по тем же именам, что у полосы поставщика.
 	if got := next.lastReq.Header.Get(principalmeta.HeaderPrincipalID); got != "usr-own-1" {

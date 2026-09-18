@@ -271,9 +271,10 @@ type Config struct {
 	// вовсе — независимо от того, задан ли этот адрес.
 	KratosPublicURL string `envconfig:"KACHO_API_GATEWAY_KRATOS_PUBLIC_URL" default:"http://kacho-umbrella-kratos-public.kacho.svc:80"`
 
-	// LoginLaneURL — адрес HTTPS-слушателя ПОЛОСЫ ФОРМЫ службы доступа (вход ·
-	// выход · смена пароля · признак формы), на который край ретранслирует
-	// четыре глагола под посадкой `own` (приёмка Ф3 Р2, Р16).
+	// LoginLaneURL — адрес HTTPS-слушателя ПОЛОСЫ ФОРМЫ службы доступа, на
+	// который край ретранслирует глаголы формы под посадкой `own` — все, что
+	// перечислены в объявлении `middleware/login_lane_paths.go` (приёмка Ф3 Р2,
+	// Р16).
 	//
 	// Слушатель взаимный по TLS и допускает ровно край: по нему идут
 	// клиентская пара и якорь `KACHO_API_GATEWAY_MTLS_CLIENT_CERT_FILE/_KEY_FILE/_CA_FILE`

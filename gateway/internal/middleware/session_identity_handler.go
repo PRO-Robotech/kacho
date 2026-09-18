@@ -104,7 +104,7 @@ func (h *SessionIdentityHandler) WithSessionCutoff(r SessionCutoffReader) *Sessi
 // Маршрут «кто я» стоит ЗА полосой личности (Д13): отвергнутую сессию полоса
 // гасит F4d-22 до этого обработчика. Но читатель здесь СВОЙ — вложенная точка
 // предъявления (Ф3-52, F4d-28): обработчику нужны поля сессии (срок, уровень,
-// подтверждённость, требование смены), которых полоса в запрос не кладёт, и
+// подтверждённость адреса), которых полоса в запрос не кладёт, и
 // свой вопрос об отсечке он задаёт сам — снимать его ради одного вызова
 // запрещает гейт.
 func (h *SessionIdentityHandler) WithHumanSession(r HumanSessionReader) *SessionIdentityHandler {
@@ -195,8 +195,7 @@ func (h *SessionIdentityHandler) Me(w http.ResponseWriter, r *http.Request) {
 // meFromOwnSession — «кто я» из НАШЕЙ сессии (Ф3-14).
 //
 // Форма ответа прежняя, объект `session` добавлен: срок (усечён до секунды —
-// показывается, не сравнивается), уровень, подтверждённость адреса, требование
-// сменить пароль (из него консоль узнаёт, что показать экран смены — Р8).
+// показывается, не сравнивается), уровень и подтверждённость адреса.
 // Без носителя и с печеньем поставщика без нашего — `{"user":null}` побайтово
 // (Ф1-52): под `own` печенье поставщика носителем не является.
 //
@@ -243,10 +242,9 @@ func (h *SessionIdentityHandler) meFromOwnSession(w http.ResponseWriter, r *http
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"user": userObj,
 		"session": map[string]any{
-			"expiresAt":              sess.ExpiresAt.UTC().Truncate(time.Second).Format(time.RFC3339),
-			"assuranceLevel":         sess.AssuranceLevel,
-			"emailVerified":          sess.EmailVerified,
-			"passwordChangeRequired": sess.PasswordChangeRequired,
+			"expiresAt":      sess.ExpiresAt.UTC().Truncate(time.Second).Format(time.RFC3339),
+			"assuranceLevel": sess.AssuranceLevel,
+			"emailVerified":  sess.EmailVerified,
 		},
 	})
 }

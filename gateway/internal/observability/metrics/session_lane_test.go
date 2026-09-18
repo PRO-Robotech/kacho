@@ -87,14 +87,18 @@ func TestSessionLane_F3_48_VerbLabelsMatchTheDeclaredRoutes(t *testing.T) {
 	t.Logf("перепись: глаголов объявлено %d · меток %d · сошлись %d", len(routes), len(labels), len(routes))
 }
 
-// Клетка отказа по требованию смены пароля — в семействе решений (Ф3-23, Ф3-48).
-func TestSessionLane_F3_48_PasswordChangeRequiredIsADecisionCell(t *testing.T) {
+// ЗДЕСЬ СТОЯЛА проба клетки `password_change_required` в семействе решений
+// (Ф3-23, Ф3-48) — снята вместе с предметом (kaname#201, kacho#2707): у отказа
+// не осталось производителя, и клетка с вечным нулём утверждала бы о полосе,
+// которой нет. Отсутствие клетки — предмет утверждения ниже.
+func TestSessionLane_PasswordChangeRequiredCellIsGoneWithItsSubject(t *testing.T) {
 	authz := middleware.NewAuthzMetrics()
 	m := gwmetrics.New("test", "deadbeef")
 	m.RegisterAuthz(func() gwmetrics.AuthzSnapshot { return gwmetrics.AuthzSnapshot{Counts: authz.Counts()} })
-	require.Contains(t, expose(t, m), `kacho_api_gateway_authz_check_decisions_total{decision="password_change_required"} 0`)
-	authz.RecordPasswordChangeRequired()
-	require.Contains(t, expose(t, m), `kacho_api_gateway_authz_check_decisions_total{decision="password_change_required"} 1`)
+	out := expose(t, m)
+	require.NotContains(t, out, `decision="password_change_required"`)
+	// Положительный контроль: семейство решений живо — соседняя клетка на месте.
+	require.Contains(t, out, `kacho_api_gateway_authz_check_decisions_total{decision="scope_filtered"} 0`)
 }
 
 // Клетка «уровень вне оси сессии» (Ф11-19): существует с нулём до первого
