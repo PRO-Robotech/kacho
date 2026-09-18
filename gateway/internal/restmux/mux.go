@@ -119,7 +119,6 @@ import (
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
 	computepb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	// geo.v1 — Region/Zone leaf-сервис kacho-geo.
@@ -410,21 +409,13 @@ func NewMux(
 		runtime.WithMetadata(principalMetadata),
 	)
 
-	// optsFor returns the dial-options for one backend-key: that backend's
-	// per-edge transport credentials (mTLS client-cert + ServerName when the edge
-	// is enabled, else insecure) plus the shared round-robin service-config. When
-	// dialOpts has no entry for the key the dial falls back to insecure — dev
-	// backward-compat.
+	// optsFor returns the dial-options for one backend-key. Тело живёт в
+	// package-level restBridgeDialOpts (backend_call_deadline.go), чтобы у него
+	// был испытуемый шов: закрытие captur'ит dialOpts, а функция принимает его
+	// аргументом — dial-опции REST-моста проверяются пробой над реальным
+	// транспортом, не через полный NewMux (в который bufconn-диалер не внести).
 	optsFor := func(backendKey string) []grpc.DialOption {
-		transport, ok := dialOpts[backendKey]
-		if !ok {
-			transport = grpc.WithTransportCredentials(insecure.NewCredentials())
-		}
-		return []grpc.DialOption{
-			transport,
-			// Client-side round-robin; pair with `dns:///<headless-svc>:<port>` dial target.
-			grpc.WithDefaultServiceConfig(`{"loadBalancingConfig":[{"round_robin":{}}]}`),
-		}
+		return restBridgeDialOpts(backendKey, dialOpts)
 	}
 
 	// lbAddr обслуживает kacho-nlb (loadbalancer.v1). Внутреннего адреса
