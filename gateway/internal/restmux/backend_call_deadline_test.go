@@ -5,6 +5,7 @@ package restmux
 
 import (
 	"context"
+	"errors"
 	"net"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -167,5 +169,166 @@ func TestRestBridgeDeadline_NeighborWithinLimitPasses(t *testing.T) {
 	if err := conn.Invoke(context.Background(), "/kacho.cloud.restmuxprobe.v1.Backend/Call",
 		&emptypb.Empty{}, &emptypb.Empty{}); err != nil {
 		t.Fatalf("сосед в пределе обязан проходить, получено: %v", err)
+	}
+}
+
+// ── стрим-пара: backendCallDeadlineStreamInterceptor ────────────────────────
+//
+// Прод-код перехватчика одобрен и НЕ меняется. Прод-фикс уже на месте, поэтому
+// честный красный этих проб показан ИНЪЕКЦИЕЙ (замыканием перехватчика в no-op),
+// как у гейта класса, а не отсутствием фикса.
+
+const streamProbeMethod = "/kacho.cloud.restmuxprobe.v1.Backend/Sub"
+
+func streamDesc() *grpc.StreamDesc {
+	return &grpc.StreamDesc{StreamName: "Sub", ServerStreams: true, ClientStreams: true}
+}
+
+func dialWithStreamDeadline(t *testing.T, dialer grpc.DialOption, d time.Duration) *grpc.ClientConn {
+	t.Helper()
+	conn, err := grpc.NewClient("passthrough:///bufnet",
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithChainStreamInterceptor(backendCallDeadlineStreamInterceptor(d)),
+		dialer)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	return conn
+}
+
+// TestRestBridgeStreamDeadline_SlowNeighborFailsFast — негатив предиката #2713
+// для СТРИМ-грани: сосед, отвечающий позже предела, даёт отказ по пределу
+// (DeadlineExceeded) и не зависает — под сторожевым таймером. Инъекция no-op
+// перехватчика краснит это: стрим уходит без предела, RecvMsg висит до соседа
+// (5 s), сторожевой таймер (2 s) срабатывает раньше.
+func TestRestBridgeStreamDeadline_SlowNeighborFailsFast(t *testing.T) {
+	const limit = 100 * time.Millisecond
+	dialer := backendSleeping(t, 5*time.Second) // сосед намного медленнее предела
+	conn := dialWithStreamDeadline(t, dialer, limit)
+
+	start := time.Now()
+	done := make(chan error, 1)
+	go func() {
+		cs, err := conn.NewStream(context.Background(), streamDesc(), streamProbeMethod)
+		if err != nil {
+			done <- err
+			return
+		}
+		_ = cs.SendMsg(&emptypb.Empty{})
+		_ = cs.CloseSend()
+		var out emptypb.Empty
+		done <- cs.RecvMsg(&out)
+	}()
+
+	select {
+	case err := <-done:
+		if status.Code(err) != codes.DeadlineExceeded {
+			t.Fatalf("ожидался DeadlineExceeded, получено: %v", err)
+		}
+		if elapsed := time.Since(start); elapsed > time.Second {
+			t.Fatalf("стрим не отдал управление по пределу: elapsed=%s (предел=%s)", elapsed, limit)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("стрим ушёл БЕЗ предела и завис (сторожевой таймер): перехватчик не ставит дедлайн")
+	}
+}
+
+// TestRestBridgeStreamDeadline_NeighborWithinLimitPasses — позитив (законный
+// близнец): стрим-сосед, отвечающий в пределе, проходит без отказа.
+func TestRestBridgeStreamDeadline_NeighborWithinLimitPasses(t *testing.T) {
+	dialer := backendSleeping(t, 0) // отвечает сразу
+	conn := dialWithStreamDeadline(t, dialer, restBridgeCallTimeout)
+
+	cs, err := conn.NewStream(context.Background(), streamDesc(), streamProbeMethod)
+	if err != nil {
+		t.Fatalf("open stream: %v", err)
+	}
+	if err := cs.SendMsg(&emptypb.Empty{}); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if err := cs.CloseSend(); err != nil {
+		t.Fatalf("close send: %v", err)
+	}
+	var out emptypb.Empty
+	if err := cs.RecvMsg(&out); err != nil {
+		t.Fatalf("стрим в пределе обязан проходить, получено: %v", err)
+	}
+}
+
+// fakeClientStream — управляемый ClientStream: его Context() отдаёт заданный
+// контекст, чтобы детерминированно проверить ветки перехватчика (горутина
+// на успехе, cancel на ошибке) без гонок и без опоры на runtime.NumGoroutine.
+type fakeClientStream struct{ ctx context.Context }
+
+func (f *fakeClientStream) Header() (metadata.MD, error) { return nil, nil }
+func (f *fakeClientStream) Trailer() metadata.MD         { return nil }
+func (f *fakeClientStream) CloseSend() error             { return nil }
+func (f *fakeClientStream) Context() context.Context     { return f.ctx }
+func (f *fakeClientStream) SendMsg(any) error            { return nil }
+func (f *fakeClientStream) RecvMsg(any) error            { return nil }
+
+// TestRestBridgeStreamDeadline_GoroutineExitsOnStreamEnd — ветка успеха: на
+// живом потоке перехватчик плодит горутину `<-stream.Context().Done()→cancel`.
+// Проба доказывает, что горутина завершается по концу потока (не течёт): по
+// завершению потока childCtx (созданный перехватчиком WithTimeout) обязан быть
+// отменён горутиной. Инъекция no-op краснит: без горутины childCtx == входной
+// контекст, конца потока он не слышит → сторож срабатывает.
+func TestRestBridgeStreamDeadline_GoroutineExitsOnStreamEnd(t *testing.T) {
+	streamCtx, endStream := context.WithCancel(context.Background())
+	defer endStream()
+
+	var childCtx context.Context
+	streamer := func(ctx context.Context, _ *grpc.StreamDesc, _ *grpc.ClientConn, _ string, _ ...grpc.CallOption) (grpc.ClientStream, error) {
+		childCtx = ctx
+		return &fakeClientStream{ctx: streamCtx}, nil
+	}
+
+	interceptor := backendCallDeadlineStreamInterceptor(restBridgeCallTimeout)
+	cs, err := interceptor(context.Background(), &grpc.StreamDesc{}, nil, streamProbeMethod, streamer)
+	if err != nil || cs == nil {
+		t.Fatalf("открытие потока: cs=%v err=%v", cs, err)
+	}
+	// Поток жив — предел ещё не должен был сработать.
+	select {
+	case <-childCtx.Done():
+		t.Fatal("предел сработал до конца потока")
+	default:
+	}
+	// Поток завершился — горутина обязана проснуться и отменить childCtx.
+	endStream()
+	select {
+	case <-childCtx.Done():
+		// горутина отработала cancel() и вышла — течи нет
+	case <-time.After(2 * time.Second):
+		t.Fatal("горутина перехватчика не завершилась по концу потока: течь горутины/контекста")
+	}
+}
+
+// TestRestBridgeStreamDeadline_CancelsOnStreamerError — ветка ошибки создания
+// потока: перехватчик обязан пробросить ошибку И немедленно отменить свой
+// контекст (иначе течёт). Инъекция no-op краснит: без отмены childCtx == входной
+// контекст и не отменяется → сторож срабатывает.
+func TestRestBridgeStreamDeadline_CancelsOnStreamerError(t *testing.T) {
+	boom := errors.New("dial boom")
+	var childCtx context.Context
+	streamer := func(ctx context.Context, _ *grpc.StreamDesc, _ *grpc.ClientConn, _ string, _ ...grpc.CallOption) (grpc.ClientStream, error) {
+		childCtx = ctx
+		return nil, boom
+	}
+
+	interceptor := backendCallDeadlineStreamInterceptor(restBridgeCallTimeout)
+	cs, err := interceptor(context.Background(), &grpc.StreamDesc{}, nil, streamProbeMethod, streamer)
+	if !errors.Is(err, boom) {
+		t.Fatalf("ошибка создания потока обязана проброситься, получено: %v", err)
+	}
+	if cs != nil {
+		t.Fatal("на ошибке создания поток обязан быть nil")
+	}
+	select {
+	case <-childCtx.Done():
+		// контекст отменён немедленно — течи нет
+	case <-time.After(time.Second):
+		t.Fatal("контекст не отменён на ошибке создания потока: течь контекста")
 	}
 }
