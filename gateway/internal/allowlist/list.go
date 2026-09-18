@@ -286,7 +286,7 @@ var AllowedMethods = map[string]struct{}{
 	// Invite (`editor` на аккаунте, acr 2): более дешёвая дверь к письму от имени
 	// платформы заводиться не должна.
 	"/kaname.cloud.iam.v1.UserService/ResendInvite": {},
-	// Сброс второго фактора распорядителем (REST POST
+	// Сброс второго фактора администратором облака (REST POST
 	// /iam/v1/users/{user_id}:resetSecondFactor; Ф12 Р10, PRO-Robotech/kacho#1281):
 	// человек без устройства и запасных кодов снять фактор сам не может —
 	// снятие требует кода. Тот же круг держателей и тот же порог, что у
