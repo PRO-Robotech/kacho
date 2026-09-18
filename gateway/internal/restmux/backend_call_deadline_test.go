@@ -98,6 +98,50 @@ func TestRestBridgeBackendCallCarriesDeadline(t *testing.T) {
 	}
 }
 
+// TestRestBridgeStreamBackendCallCarriesDeadline — обвязочный близнец
+// предыдущей пробы для СТРИМ-грани: дозвон идёт ЧЕРЕЗ прод-обвязку
+// restBridgeDialOpts (а не через ручной dialWithStreamDeadline и не прямым
+// вызовом перехватчика), поэтому проба ловит и МОНТАЖ WithChainStreamInterceptor
+// на реальном соединении моста, а не только поведение самого перехватчика.
+// Unary-грань это же ловит соседней пробой (снятие WithChainUnaryInterceptor);
+// stream-грань без этой пробы оставалась замаскированной отсутствием.
+//
+// Вызов делается стримом с context.Background() (без дедлайна) — если дедлайн
+// появится у сервера, его поставил смонтированный стрим-перехватчик моста.
+func TestRestBridgeStreamBackendCallCarriesDeadline(t *testing.T) {
+	dialer, obs := backendObservingDeadline(t)
+
+	opts := append(restBridgeDialOpts("iam", nil), dialer)
+	conn, err := grpc.NewClient("passthrough:///bufnet", opts...)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+
+	cs, err := conn.NewStream(context.Background(), streamDesc(), streamProbeMethod)
+	if err != nil {
+		t.Fatalf("open stream: %v", err)
+	}
+	_ = cs.SendMsg(&emptypb.Empty{})
+	_ = cs.CloseSend()
+	var out emptypb.Empty
+	_ = cs.RecvMsg(&out)
+
+	select {
+	case o := <-obs:
+		if !o.has {
+			t.Fatalf("стрим-backend увидел контекст БЕЗ дедлайна: dial-опции " +
+				"REST-моста обязаны монтировать стрим-предел на соединение (#2713)")
+		}
+		if o.remaining <= 0 || o.remaining > restBridgeCallTimeout {
+			t.Fatalf("дедлайн вне ожидаемого окна: remaining=%s, предел=%s",
+				o.remaining, restBridgeCallTimeout)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("стрим-backend не получил вызов")
+	}
+}
+
 // backendSleeping поднимает bufconn-сервер, чей handler спит sleep перед ответом
 // (unary echo пустого сообщения). Возвращает bufconn-диалер клиента.
 func backendSleeping(t *testing.T, sleep time.Duration) grpc.DialOption {
