@@ -61,12 +61,13 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// sensitiveACR2Set — the 29 FQNs that MUST carry required_acr_min="2" after the
-// refinement (grant-surface + credential + tenancy-root + shared-resource
-// ceiling, domain-agnostic). Any drift (an RPC added or dropped) fails this
-// test. Categories A–J per the APPROVED acceptance docs.
-func sensitiveACR2Set() map[string]struct{} {
-	fqns := []string{
+// sensitiveACR2FQNs — the FQNs that MUST carry required_acr_min="2" after the
+// refinement (grant-surface + credential + tenancy-root, domain-agnostic), one
+// entry per FQN. Any drift (an RPC added or dropped) fails
+// TestPermissionCatalog_ACR_SetInvariant, which also asserts the count and that
+// no FQN is listed twice. Categories per the APPROVED acceptance docs.
+func sensitiveACR2FQNs() []string {
+	return []string{
 		// A — credential mint/destroy (6). ServiceAccount Disable/Enable belong
 		// here and not with the routine lifecycle: they decide whether a machine
 		// identity may authenticate AT ALL. Disable is every Revoke this account
@@ -152,10 +153,6 @@ func sensitiveACR2Set() map[string]struct{} {
 		// через более дешёвую дверь.
 		"kaname.cloud.iam.v1.MembershipService/Create",
 		"kaname.cloud.iam.v1.UserService/ResendInvite",
-		// ResetSecondFactor — сброс второго фактора распорядителем (Ф12 Р10,
-		// PRO-Robotech/kacho#1281): снимает у человека код по времени и запасные
-		// коды и завершает его сессии; тот же круг и порог, что у Block/Unblock.
-		"kaname.cloud.iam.v1.UserService/ResetSecondFactor",
 		// C — compute per-resource grant. Поверхность выдачи на самой машине снята
 		// целиком вместе с остальной мёртвой: ни `SetAccessBindings`, ни
 		// `UpdateAccessBindings` у машины больше нет — выдача на ресурс идёт
@@ -225,11 +222,29 @@ func sensitiveACR2Set() map[string]struct{} {
 		// would be a lie about the requirement.
 		"kaname.cloud.iam.v1.InternalModuleService/Apply",
 	}
+}
+
+// sensitiveACR2Set — the same FQNs as a set.
+func sensitiveACR2Set() map[string]struct{} {
+	fqns := sensitiveACR2FQNs()
 	set := make(map[string]struct{}, len(fqns))
 	for _, f := range fqns {
 		set[f] = struct{}{}
 	}
 	return set
+}
+
+// repeatedFQNs — FQNs listed more than once, each named once, in list order.
+func repeatedFQNs(fqns []string) []string {
+	seen := make(map[string]int, len(fqns))
+	var repeated []string
+	for _, f := range fqns {
+		seen[f]++
+		if seen[f] == 2 {
+			repeated = append(repeated, f)
+		}
+	}
+	return repeated
 }
 
 // TestPermissionCatalog_ACR_SetInvariant — SEC-ACR-13 / I1: the set of FQNs
@@ -257,6 +272,12 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 	// службы (PRO-Robotech/kacho#2645). Число по-прежнему утверждается, а не
 	// выводится из списка: молчаливое сокращение — ровно то, что произошло бы
 	// при случайно выпавшей записи, и отличить его от этого снятия было бы нечем.
+	// Повтор в перечне множество схлопывает, и утверждение числа его не видит:
+	// перечень обязан называть каждое имя ровно один раз, иначе вторая запись
+	// с иным обоснованием читается как решение, которого никто не принимал.
+	fqns := sensitiveACR2FQNs()
+	require.Empty(t, repeatedFQNs(fqns), "the sensitive list must name each FQN once")
+	require.Len(t, fqns, len(sensitive), "the sensitive list and its set must be the same size")
 	require.Len(t, sensitive, 30, "the acceptance-doc sensitive set must contain exactly 30 FQNs")
 
 	got2 := map[string]struct{}{}

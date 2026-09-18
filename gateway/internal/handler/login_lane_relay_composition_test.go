@@ -82,90 +82,87 @@ func TestLoginLaneRelay_F12_38_EveryDeclaredVerbCarriesTheNamedCompositionOnly(t
 		name string
 		own  *fakeOwn
 	}{
-		{"A (живая сессия)", &fakeOwn{found: true, sess: liveSession()}},
-		{"C (сессии нет)", &fakeOwn{found: false}},
+		{"A_live_session", &fakeOwn{found: true, sess: liveSession()}},
+		{"C_no_session", &fakeOwn{found: false}},
 	} {
-		relayComposition(t, carrier.name, carrier.own, routes)
-	}
-}
+		t.Run(carrier.name, func(t *testing.T) {
+			stub := &formListenerStub{status: http.StatusOK, body: `{}`}
+			srv := httptest.NewServer(stub)
+			t.Cleanup(srv.Close)
+			chain, relay := chainWithRelay(t, carrier.own, &fakeCut{}, srv.URL)
 
-func relayComposition(t *testing.T, carrier string, own *fakeOwn, routes []middleware.LoginLaneRoute) {
-	t.Helper()
-	stub := &formListenerStub{status: http.StatusOK, body: `{}`}
-	srv := httptest.NewServer(stub)
-	t.Cleanup(srv.Close)
-	chain, relay := chainWithRelay(t, own, &fakeCut{}, srv.URL)
+			var withCookie, oneForwardedFor, kachoLeft, credentialLeft, forgedLeft int
+			for _, rt := range routes {
+				before := stub.count()
+				req, body := forgedFormRequest(rt)
+				rec := httptest.NewRecorder()
+				chain.ServeHTTP(rec, req)
+				if rec.Code != http.StatusOK || stub.count() != before+1 {
+					t.Errorf("%s: глагол обязан ретранслироваться; получено %d, дошло до службы %d", rt.Verb, rec.Code, stub.count()-before)
+					continue
+				}
+				got := stub.last()
 
-	var withCookie, oneForwardedFor, kachoLeft, credentialLeft, forgedLeft int
-	for _, rt := range routes {
-		before := stub.count()
-		req, body := forgedFormRequest(rt)
-		rec := httptest.NewRecorder()
-		chain.ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK || stub.count() != before+1 {
-			t.Errorf("%s · %s: глагол обязан ретранслироваться; получено %d, дошло до службы %d", carrier, rt.Verb, rec.Code, stub.count()-before)
-			continue
-		}
-		got := stub.last()
+				// Метод, путь с параметрами и тело — как есть (Ф3 Р2).
+				if got.method != req.Method || got.path != rt.Path || got.body != body {
+					t.Errorf("%s: метод/путь/тело не переданы как есть: %s %s %q", rt.Verb, got.method, got.path, got.body)
+				}
+				if rt.Path == middleware.LoginLanePathCSRF && got.query != "form=login" {
+					t.Errorf("%s: параметры пути не доехали: %q", rt.Verb, got.query)
+				}
+				if got.header.Get("Content-Type") != "application/json" {
+					t.Errorf("%s: Content-Type: %q", rt.Verb, got.header.Get("Content-Type"))
+				}
 
-		// Метод, путь с параметрами и тело — как есть (Ф3 Р2).
-		if got.method != req.Method || got.path != rt.Path || got.body != body {
-			t.Errorf("%s · %s: метод/путь/тело не переданы как есть: %s %s %q", carrier, rt.Verb, got.method, got.path, got.body)
-		}
-		if rt.Path == middleware.LoginLanePathCSRF && got.query != "form=login" {
-			t.Errorf("%s · %s: параметры пути не доехали: %q", carrier, rt.Verb, got.query)
-		}
-		if got.header.Get("Content-Type") != "application/json" {
-			t.Errorf("%s · %s: Content-Type: %q", carrier, rt.Verb, got.header.Get("Content-Type"))
-		}
+				// Cookie — есть, оба наших.
+				c := got.header.Get("Cookie")
+				if strings.Contains(c, middleware.OurSessionCarrierName+"=s2-live") && strings.Contains(c, "kaname_form=ctx") {
+					withCookie++
+				} else {
+					t.Errorf("%s: печенья не доехали: %q", rt.Verb, c)
+				}
 
-		// Cookie — есть, оба наших.
-		c := got.header.Get("Cookie")
-		if strings.Contains(c, middleware.OurSessionCarrierName+"=s2-live") && strings.Contains(c, "kaname_form=ctx") {
-			withCookie++
-		} else {
-			t.Errorf("%s · %s: печенья не доехали: %q", carrier, rt.Verb, c)
-		}
+				// X-Forwarded-For — ровно один заголовок одним значением: адрес,
+				// выведенный оператором цепочки, а не присланная клиентом цепочка.
+				if xff := got.header.Values("X-Forwarded-For"); len(xff) == 1 && xff[0] == relayedClientIP {
+					oneForwardedFor++
+				} else {
+					t.Errorf("%s: X-Forwarded-For обязан быть ровно одним значением %q, получено %q", rt.Verb, relayedClientIP, xff)
+				}
 
-		// X-Forwarded-For — ровно один заголовок одним значением: адрес,
-		// выведенный оператором цепочки, а не присланная клиентом цепочка.
-		if xff := got.header.Values("X-Forwarded-For"); len(xff) == 1 && xff[0] == relayedClientIP {
-			oneForwardedFor++
-		} else {
-			t.Errorf("%s · %s: X-Forwarded-For обязан быть ровно одним значением %q, получено %q", carrier, rt.Verb, relayedClientIP, xff)
-		}
+				// Ноль заголовков пространства x-kacho- в обеих формах написания —
+				// ни поставленных полосой, ни присланных клиентом.
+				if left := kachoHeaders(got.header); len(left) != 0 {
+					sort.Strings(left)
+					kachoLeft++
+					t.Errorf("%s: на слушатель формы уехали заголовки пространства x-kacho-: %v", rt.Verb, left)
+				}
 
-		// Ноль заголовков пространства x-kacho- в обеих формах написания — ни
-		// поставленных полосой, ни присланных клиентом.
-		if left := kachoHeaders(got.header); len(left) != 0 {
-			sort.Strings(left)
-			kachoLeft++
-			t.Errorf("%s · %s: на слушатель формы уехали заголовки пространства x-kacho-: %v", carrier, rt.Verb, left)
-		}
+				// Удостоверения нет.
+				if got.header.Get("Authorization") != "" {
+					credentialLeft++
+					t.Errorf("%s: удостоверение уехало на слушатель формы", rt.Verb)
+				}
 
-		// Удостоверения нет.
-		if got.header.Get("Authorization") != "" {
-			credentialLeft++
-			t.Errorf("%s · %s: удостоверение уехало на слушатель формы", carrier, rt.Verb)
-		}
-
-		// Чужой субъект не доезжает ни под каким именем.
-		for name, values := range got.header {
-			for _, v := range values {
-				if strings.Contains(v, forgedSubject) {
-					forgedLeft++
-					t.Errorf("%s · %s: заголовок %s несёт чужого субъекта: %q", carrier, rt.Verb, name, v)
+				// Чужой субъект не доезжает ни под каким именем.
+				for name, values := range got.header {
+					for _, v := range values {
+						if strings.Contains(v, forgedSubject) {
+							forgedLeft++
+							t.Errorf("%s: заголовок %s несёт чужого субъекта: %q", rt.Verb, name, v)
+						}
+					}
 				}
 			}
-		}
-	}
 
-	stats := relay.Stats()
-	for _, rt := range routes {
-		if stats.Relayed[rt.Verb] != 1 {
-			t.Errorf("%s: клетка ретрансляции %q = %d, ожидалось 1", carrier, rt.Verb, stats.Relayed[rt.Verb])
-		}
+			stats := relay.Stats()
+			for _, rt := range routes {
+				if stats.Relayed[rt.Verb] != 1 {
+					t.Errorf("клетка ретрансляции %q = %d, ожидалось 1", rt.Verb, stats.Relayed[rt.Verb])
+				}
+			}
+			t.Logf("перепись: путей объявления %d · дошло до службы %d · с печеньями %d · с одним X-Forwarded-For %d · с x-kacho- %d · с Authorization %d · с чужим субъектом %d",
+				len(routes), stub.count(), withCookie, oneForwardedFor, kachoLeft, credentialLeft, forgedLeft)
+		})
 	}
-	t.Logf("перепись: носитель %s — путей объявления %d · дошло до службы %d · с печеньями %d · с одним X-Forwarded-For %d · с x-kacho- %d · с Authorization %d · с чужим субъектом %d",
-		carrier, len(routes), stub.count(), withCookie, oneForwardedFor, kachoLeft, credentialLeft, forgedLeft)
 }

@@ -253,21 +253,25 @@ func TestOwnSessionLane_F12_38_SecondFactorVerbsThroughTheSessionLane(t *testing
 		refusedEnded // F4d-22, носитель гасится
 		refusedKept  // F4d-23, носитель цел
 	)
+	// cutoffAsked — задан ли вопрос об отсечке. Порядок вопросов несущий:
+	// отсечку спрашивают только о сессии, которую `Resolve` назвал, — не
+	// ответил он либо ответил «сессии нет», второго вопроса нет.
 	cases := []struct {
-		mode    unansweredMode
-		carrier string
-		want    want
+		mode        unansweredMode
+		carrier     string
+		want        want
+		cutoffAsked bool
 	}{
-		{serviceAnswers, carrierA, relayedAsA},
-		{serviceAnswers, carrierB, refusedEnded},
-		{serviceAnswers, carrierC, relayedAnonymous},
-		{unansweredModes[0], carrierA, refusedKept},
-		{unansweredModes[0], carrierB, refusedKept},
-		{unansweredModes[0], carrierC, refusedKept},
-		{unansweredModes[1], carrierA, refusedKept},
-		{unansweredModes[1], carrierB, refusedKept},
+		{serviceAnswers, carrierA, relayedAsA, true},
+		{serviceAnswers, carrierB, refusedEnded, true},
+		{serviceAnswers, carrierC, relayedAnonymous, false},
+		{unansweredModes[0], carrierA, refusedKept, false},
+		{unansweredModes[0], carrierB, refusedKept, false},
+		{unansweredModes[0], carrierC, refusedKept, false},
+		{unansweredModes[1], carrierA, refusedKept, true},
+		{unansweredModes[1], carrierB, refusedKept, true},
 		// «Сессии нет» отвечено службой до вопроса об отсечке — судит служба.
-		{unansweredModes[1], carrierC, relayedAnonymous},
+		{unansweredModes[1], carrierC, relayedAnonymous, false},
 	}
 
 	relayedTotal := map[string]int{}
@@ -310,6 +314,21 @@ func TestOwnSessionLane_F12_38_SecondFactorVerbsThroughTheSessionLane(t *testing
 			if withForeign != got {
 				t.Errorf("%s: чужие заголовки x-kacho- изменили исход:\n без них %+v\n с ними  %+v", where, got, withForeign)
 			}
+		}
+
+		// Два запроса на путь — без чужих заголовков и с ними. `Resolve`
+		// спрашивается на каждом ровно раз; отсечка — только там, где строка
+		// таблицы это обещает.
+		requests := 2 * len(secondFactorPaths)
+		if book.asked != requests {
+			t.Errorf("%s · носитель %s: Resolve спрошен %d раз, ожидалось %d — по одному на запрос", tc.mode.name, tc.carrier, book.asked, requests)
+		}
+		wantCutoffAsked := 0
+		if tc.cutoffAsked {
+			wantCutoffAsked = requests
+		}
+		if cut.asked != wantCutoffAsked {
+			t.Errorf("%s · носитель %s: вопрос об отсечке задан %d раз, ожидалось %d", tc.mode.name, tc.carrier, cut.asked, wantCutoffAsked)
 		}
 	}
 
@@ -386,6 +405,9 @@ func TestOwnSessionLane_UnansweredServiceRefusesEveryFormVerbOutsideThePassList(
 // отказ на недоступности — не отказ пути платформы.
 func TestOwnSessionLane_UnansweredServiceRefusesAFormVerbAddedWithoutADecision(t *testing.T) {
 	const futurePath = "/iam/v1/auth/future-verb"
+	// Проба подменяет переменную пакета и потому НЕ может идти `t.Parallel`:
+	// параллельная ей проба читала бы перечень во время подмены — гонка по
+	// `loginLaneRoutes`, а не вердикт.
 	saved := loginLaneRoutes
 	loginLaneRoutes = append(append([]LoginLaneRoute(nil), saved...), LoginLaneRoute{Verb: "future-verb", Path: futurePath})
 	t.Cleanup(func() { loginLaneRoutes = saved })
