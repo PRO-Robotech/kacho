@@ -22,6 +22,16 @@ import (
 	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 )
 
+// sessionRevocationsCallTimeout — предел края на КАЖДЫЙ вызов к внутреннему
+// слушателю службы о сессии (#2713). Без него неотвечающий сосед (сборка мусора,
+// перегрузка, полуоткрытый TCP) держит горутину края, пока клиент сам не
+// разорвёт соединение: сервер края отвечает по чтению запроса (ReadTimeout), но
+// не по ожиданию соседа. Одна величина на все sibling-глаголы — per
+// architecture.md: «все sibling-методы клиента обязаны применять один и тот же
+// configured-timeout (не „часть — да, часть — нет")». Величина та же, что у
+// соседних клиентов внутреннего слушателя (iam_subject: 5s; opsproxy: 5s).
+const sessionRevocationsCallTimeout = 5 * time.Second
+
 // SessionRevocationsAdapter wraps the generated gRPC client to satisfy
 // handler.SessionRevocationsClient. The Operation result is discarded —
 // callers care only about success/failure of the synchronous DB write.
@@ -44,15 +54,22 @@ type SessionRevocationsAdapter struct {
 	// в точке сборки был бы половиной, которую можно провязать — и забыть —
 	// отдельно.
 	human iamv1.InternalHumanSessionServiceClient
+
+	// callTimeout — единый источник per-call предела, от которого производит
+	// дедлайн КАЖДЫЙ глагол адаптера (#2713). Одно поле держит поведение
+	// одинаковым под задержкой соседа; ноль означал бы мгновенное истечение,
+	// поэтому конструктор всегда выставляет его в sessionRevocationsCallTimeout.
+	callTimeout time.Duration
 }
 
 // NewSessionRevocationsAdapter wires the adapter onto an existing gRPC
 // connection to kaname:9091.
 func NewSessionRevocationsAdapter(cc grpc.ClientConnInterface) *SessionRevocationsAdapter {
 	return &SessionRevocationsAdapter{
-		client: iamv1.NewInternalSessionRevocationsServiceClient(cc),
-		iam:    iamv1.NewInternalIAMServiceClient(cc),
-		human:  iamv1.NewInternalHumanSessionServiceClient(cc),
+		client:      iamv1.NewInternalSessionRevocationsServiceClient(cc),
+		iam:         iamv1.NewInternalIAMServiceClient(cc),
+		human:       iamv1.NewInternalHumanSessionServiceClient(cc),
+		callTimeout: sessionRevocationsCallTimeout,
 	}
 }
 
@@ -71,6 +88,8 @@ func NewSessionRevocationsAdapter(cc grpc.ClientConnInterface) *SessionRevocatio
 func (a *SessionRevocationsAdapter) ResolveHumanSession(
 	ctx context.Context, bearer string,
 ) (middleware.HumanSession, bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, a.callTimeout)
+	defer cancel()
 	resp, err := a.human.Resolve(ctx, &iamv1.ResolveHumanSessionRequest{Bearer: bearer})
 	if err != nil {
 		if status.Code(err) == codes.Unimplemented {
@@ -114,6 +133,8 @@ func (a *SessionRevocationsAdapter) ResolveHumanSession(
 func (a *SessionRevocationsAdapter) IsBasicCredentialLive(
 	ctx context.Context, credentialID string,
 ) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, a.callTimeout)
+	defer cancel()
 	_, err := a.iam.CheckBasicCredentialLive(ctx,
 		&iamv1.CheckBasicCredentialLiveRequest{CredentialId: credentialID})
 	switch {
@@ -132,6 +153,8 @@ func (a *SessionRevocationsAdapter) IsBasicCredentialLive(
 // Operation envelope. Returns the underlying gRPC error unchanged — the
 // handler caller is responsible for mapping it to a user-visible warning.
 func (a *SessionRevocationsAdapter) Revoke(ctx context.Context, in *iamv1.RevokeRequest) error {
+	ctx, cancel := context.WithTimeout(ctx, a.callTimeout)
+	defer cancel()
 	_, err := a.client.Revoke(ctx, in)
 	return err
 }
@@ -151,6 +174,8 @@ func (a *SessionRevocationsAdapter) Revoke(ctx context.Context, in *iamv1.Revoke
 // различать, иначе недоступность соседа читалась бы как отзыв, а отзыв — как
 // недоступность.
 func (a *SessionRevocationsAdapter) IsSessionRevoked(ctx context.Context, jti string) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, a.callTimeout)
+	defer cancel()
 	resp, err := a.client.IsRevoked(ctx, &iamv1.IsRevokedRequest{TokenJti: jti})
 	if err != nil {
 		return false, err
@@ -175,6 +200,8 @@ func (a *SessionRevocationsAdapter) IsSessionRevoked(ctx context.Context, jti st
 func (a *SessionRevocationsAdapter) SessionCutoffOf(
 	ctx context.Context, userID string,
 ) (time.Time, bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, a.callTimeout)
+	defer cancel()
 	resp, err := a.client.SessionCutoffOf(ctx, &iamv1.SessionCutoffOfRequest{UserId: userID})
 	if err != nil {
 		// «Метода нет» — НЕ «не ответил». Раскат не атомарен: реплика края
