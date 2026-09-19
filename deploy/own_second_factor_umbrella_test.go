@@ -218,7 +218,6 @@ func TestOwnSecondFactor_StacksOnOwnDeclareBothKnobs(t *testing.T) {
 // получает helm.
 func readSecondFactorStackFacts(t *testing.T) []secondFactorStackFacts {
 	t.Helper()
-	chartDefaults := readYAML(t, filepath.Join(kanameSubchart(t), "values.yaml"))
 	stacksTbl := deployStacks(t)
 
 	names := make([]string, 0, len(stacksTbl))
@@ -229,7 +228,10 @@ func readSecondFactorStackFacts(t *testing.T) []secondFactorStackFacts {
 
 	out := make([]secondFactorStackFacts, 0, len(names))
 	for _, name := range names {
-		declared := map[string]any{"kaname": chartDefaults}
+		// Базовые значения подчарта читаются ЗАНОВО на каждый стенд: `mergeValues`
+		// правит карту НА МЕСТЕ, и одна общая карта умолчаний протекала бы из
+		// стенда в стенд, приписывая одному профилю объявления другого.
+		declared := map[string]any{"kaname": readYAML(t, filepath.Join(kanameSubchart(t), "values.yaml"))}
 		for _, p := range stacksTbl[name] {
 			declared = mergeValues(declared, readYAML(t, filepath.Join(umbrellaDir, p)))
 		}
