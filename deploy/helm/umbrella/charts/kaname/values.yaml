@@ -129,6 +129,23 @@ platform:
     jwks:
       encKeySecretName: kaname-jwks-enc-key
       encKeySecretKey: enc_key
+    # secondFactor — КООРДИНАТА СЕКРЕТА с перечнем ключей обёртки секретов второго
+    # фактора (Ф12, kacho#1281; переменная KANAME_SECOND_FACTOR_ENC_KEY).
+    #
+    # Требуется стражем старта ТОЛЬКО под `config.authn.identityProvider: own`; под
+    # `external` второго фактора нет, секрета может не быть вовсе, и `optional: true`
+    # у ссылки оставляет такой стенд поднимаемым.
+    #
+    # Здесь КООРДИНАТА, а не величина: сама величина живёт в объекте Secret кластера,
+    # потому что профиль отслеживается git. Умолчание имени — то же соглашение, что у
+    # ключницы выше: один секрет на ручку, имя выводится из предмета.
+    #
+    # СВОЙ секрет, а не ключ ключницы (Ф12 Р2): предмет другой — секретов второго
+    # фактора много, по одному на человека, — и смена одного перечня не обязана
+    # останавливать выдачу токенов.
+    secondFactor:
+      encKeySecretName: kaname-second-factor-enc-key
+      encKeySecretKey: enc_key
     # saKey — lifetime discipline for service-account keys (the machine
     # credential). Go duration strings.
     #   defaultTtl    — applied when the caller omits ttl_seconds. Finite by
@@ -577,6 +594,17 @@ config:
     #   registration:
     #     admissionsPerWindow: 3        # KANAME_AUTHN__REGISTRATION__ADMISSIONS_PER_WINDOW
     #     admissionWindow: 1h           # KANAME_AUTHN__REGISTRATION__ADMISSION_WINDOW
+    #
+    # ─── окно свежести правки своих данных (Ф12, kacho#1281) ──────────────────
+    # Рендерится в config.yaml как authn.self-service-freshness (env-override:
+    # KANAME_AUTHN__SELF_SERVICE_FRESHNESS).
+    #
+    # Условие старта под `identityProvider: own`: заведение и подтверждение второго
+    # фактора требуют предъявления не старше окна, и тем же окном ограничен срок
+    # неподтверждённого заведения. УМОЛЧАНИЯ НЕТ намеренно — перенос прежней величины
+    # (15 мин) объявляет профиль, где его видит читающий, а не построение, где его не
+    # видит никто. Под `external` страж её не читает.
+    #   selfServiceFreshness: 15m
     # ─── своя чеканка токенов (#897) ──────────────────────────────────────────
     # Рендерится в config.yaml как authn.token-signing.* (env-override:
     # KANAME_AUTHN__TOKEN_SIGNING__<KEY>).
