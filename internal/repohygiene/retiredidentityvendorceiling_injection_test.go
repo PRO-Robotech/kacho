@@ -4,7 +4,13 @@
 package repohygiene
 
 import (
+	"archive/tar"
+	"archive/zip"
+	"bytes"
+	"compress/gzip"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -16,17 +22,31 @@ import (
 //
 // Каждая пара названа своим фактом.
 
-// vendorFixture — корпус трёх деревьев: одна строка предмета в платформе, пустые
-// (но НЕ отсутствующие) фундамент и служба доступа.
+// vendorCorpusOf — корпус дерева с согласованной переписью обхода: всякий путь
+// лежит ровно в одной категории, и Walked равен их сумме.
+func vendorCorpusOf(bodies, blobs map[string]string, archives []vendorArchive, prose []string, lines int) vendorTreeCorpus {
+	if bodies == nil {
+		bodies = map[string]string{}
+	}
+	if blobs == nil {
+		blobs = map[string]string{}
+	}
+	c := vendorTreeCorpus{Bodies: bodies, Blobs: blobs, Archives: archives, Prose: prose, LinesRead: lines}
+	c.Walked = len(bodies) + len(blobs) + len(archives) + len(prose)
+	return c
+}
+
+// vendorFixture — корпус трёх деревьев: предмет кладётся в платформу, а пустые
+// (но НЕ отсутствующие) фундамент и служба доступа остаются под судом.
 func vendorFixture(platform map[string]string, archives []vendorArchive) map[string]vendorTreeCorpus {
 	base := map[string]string{"deploy/helm/umbrella/values.x.yaml": "a: 1\nb: 2\n"}
 	for k, v := range platform {
 		base[k] = v
 	}
 	return map[string]vendorTreeCorpus{
-		vendorTreePlatform:   {Bodies: base, Archives: archives, LinesRead: 3},
-		vendorTreeAccess:     {Bodies: map[string]string{"go.mod": "module x\n"}, LinesRead: 2},
-		vendorTreeFoundation: {Bodies: map[string]string{"go.mod": "module y\n"}, LinesRead: 2},
+		vendorTreePlatform:   vendorCorpusOf(base, nil, archives, nil, 3),
+		vendorTreeAccess:     vendorCorpusOf(map[string]string{"go.mod": "module x\n"}, nil, nil, nil, 2),
+		vendorTreeFoundation: vendorCorpusOf(map[string]string{"go.mod": "module y\n"}, nil, nil, nil, 2),
 	}
 }
 
@@ -36,7 +56,7 @@ var vendorZeroCeilings = map[string]int{
 	vendorTreeFoundation: 0,
 }
 
-// judgeOne — сколько привязок нашлось в платформе и первая из них.
+// judgeOne — сколько привязок нашлось в платформе и какие именно.
 func judgeOne(t *testing.T, corpora map[string]vendorTreeCorpus) (int, []vendorBinding) {
 	t.Helper()
 	_, census, bindings, err := judgeRetiredVendorCeiling(corpora, vendorZeroCeilings)
@@ -46,7 +66,70 @@ func judgeOne(t *testing.T, corpora map[string]vendorTreeCorpus) (int, []vendorB
 	return census[vendorTreePlatform].Bindings, bindings
 }
 
-// TestRetiredVendorCeiling_NameAxisInjection — ОДИН ФАКТ: имя издателя в строке.
+// vendorTarGz — настоящий gzip+tar с одной записью. Байты, а не подделка: то же,
+// что лежит в дереве.
+func vendorTarGz(t *testing.T, member, body string) []byte {
+	t.Helper()
+	var raw bytes.Buffer
+	gz := gzip.NewWriter(&raw)
+	tw := tar.NewWriter(gz)
+	if err := tw.WriteHeader(&tar.Header{Name: member, Mode: 0o600, Size: int64(len(body))}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write([]byte(body)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return raw.Bytes()
+}
+
+// vendorZip — настоящий zip с одной записью.
+func vendorZip(t *testing.T, member, body string) []byte {
+	t.Helper()
+	var raw bytes.Buffer
+	zw := zip.NewWriter(&raw)
+	w, err := zw.Create(member)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write([]byte(body)); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return raw.Bytes()
+}
+
+// vendorReadTree — платформа, прочитанная ЧИТАТЕЛЕМ с диска, и два пустых, но
+// присутствующих дерева. Инъекция, проверяющая читателя, обязана звать читателя.
+func vendorReadTree(t *testing.T, root string, rels []string) map[string]vendorTreeCorpus {
+	t.Helper()
+	return map[string]vendorTreeCorpus{
+		vendorTreePlatform:   vendorCorpusFromPaths(root, rels),
+		vendorTreeAccess:     vendorCorpusOf(map[string]string{"go.mod": "module x\n"}, nil, nil, nil, 2),
+		vendorTreeFoundation: vendorCorpusOf(map[string]string{"go.mod": "module y\n"}, nil, nil, nil, 2),
+	}
+}
+
+// vendorWriteAt — файл под корнем временного дерева.
+func vendorWriteAt(t *testing.T, root, rel string, data []byte) {
+	t.Helper()
+	abs := filepath.Join(root, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(abs), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(abs, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRetiredVendorCeiling_NameAxisInjection — ОДИН ФАКТ: чьё имя в строке.
 //
 // Обе половины пары — утверждения одной формы и одного знака; меняется только
 // имя: издателя на своё. Формы взяты те самые, которые источник перечислял
@@ -90,6 +173,34 @@ func TestRetiredVendorCeiling_NameAxisInjection(t *testing.T) {
 	}
 }
 
+// TestRetiredVendorCeiling_PathAxisInjection — ОДИН ФАКТ: чьё имя в ПУТИ файла.
+//
+// Тело у обеих половин одно и то же и нейтрально; меняется только имя в пути —
+// издателя на наше. Прежде судилось одно тело, а шапка гейта уже перечисляла
+// путь среди накрываемых форм: гейт молчал там, где заявлял, что смотрит.
+func TestRetiredVendorCeiling_PathAxisInjection(t *testing.T) {
+	t.Parallel()
+
+	const neutral = "image: prorobotech/platform:v1\n"
+	const defect = "deploy/helm/umbrella/charts/kratos-selfservice-ui/values.yaml"
+	const twin = "deploy/helm/umbrella/charts/kaname-selfservice-ui/values.yaml"
+
+	n, bindings := judgeOne(t, vendorFixture(map[string]string{defect: neutral}, nil))
+	if n != 1 {
+		t.Fatalf("имя издателя В ПУТИ обязано краснеть: привязок %d (%v)", n, bindings)
+	}
+	if bindings[0].File != defect || bindings[0].Axis != vendorAxisPath {
+		t.Fatalf("находка обязана называть путь и свою ось: %s (%q)", bindings[0].File, bindings[0].Axis)
+	}
+	if bindings[0].Line != 0 {
+		t.Fatalf("путь судится целиком, номер строки у него 0, получено %d", bindings[0].Line)
+	}
+
+	if m, _ := judgeOne(t, vendorFixture(map[string]string{twin: neutral}, nil)); m != 0 {
+		t.Fatalf("наше имя в том же месте пути обязано молчать: привязок %d", m)
+	}
+}
+
 // TestRetiredVendorCeiling_SurfaceAxisInjection — ОДИН ФАКТ: путь API издателя.
 //
 // Строка одна и та же, вызов один и тот же, знак один и тот же; меняется путь —
@@ -108,6 +219,32 @@ func TestRetiredVendorCeiling_SurfaceAxisInjection(t *testing.T) {
 	}
 	if m, _ := judgeOne(t, vendorFixture(map[string]string{file: "package clients\n" + twin + "\n"}, nil)); m != 0 {
 		t.Fatalf("законный близнец обязан молчать: привязок %d при строке %q", m, twin)
+	}
+}
+
+// TestRetiredVendorCeiling_GluedNameInjection — ОДИН ФАКТ: чьё имя собрано из
+// соседних литералов в одной строке.
+//
+// Форма записи, которой не знает ни одно плечо перечня: имя издателя не лежит в
+// строке целиком. Склейка ЧЕРЕЗ ПЕРЕМЕННУЮ и через перенос строки объявлена
+// границей (шапка гейта, границы, п. 3) — эта ось закрывает только однострочную.
+func TestRetiredVendorCeiling_GluedNameInjection(t *testing.T) {
+	t.Parallel()
+
+	const file = "gateway/internal/clients/addr.go"
+	defect := `const host = "hy" + "dra-admin"`
+	twin := `const host = "kan" + "ame-admin"`
+
+	n, bindings := judgeOne(t, vendorFixture(map[string]string{file: "package clients\n" + defect + "\n"}, nil))
+	if n != 1 || bindings[0].Axis != vendorAxisGlued {
+		t.Fatalf("склеенное имя издателя обязано краснеть своей осью: привязок %d, ось %q",
+			n, axisOf(bindings))
+	}
+	if bindings[0].Line != 2 {
+		t.Fatalf("находка обязана называть строку: %d", bindings[0].Line)
+	}
+	if m, _ := judgeOne(t, vendorFixture(map[string]string{file: "package clients\n" + twin + "\n"}, nil)); m != 0 {
+		t.Fatalf("наше имя, склеенное так же, обязано молчать: привязок %d", m)
 	}
 }
 
@@ -137,10 +274,11 @@ func TestRetiredVendorCeiling_RetainedDependencyIsSilent(t *testing.T) {
 	}
 }
 
-// TestRetiredVendorCeiling_ProseIsSilent — ДВЕ пары, в каждой ровно один факт.
+// TestRetiredVendorCeiling_ProseIsSilent — ТРИ пары, в каждой ровно один факт.
 //
-//	факт 1: расширение файла — одна и та же строка в `.yaml` и в `.md`;
-//	факт 2: маркер комментария в начале строки — одна и та же строка с ним и без.
+//	факт 1: категория файла — одна и та же строка в судимом файле и в прозе;
+//	факт 2: маркер комментария в начале строки — одна и та же строка с ним и без;
+//	факт 3: категория файла при имени издателя В ПУТИ — проза не судится и путём.
 //
 // Проза не привязывает дерево к издателю, а утверждение о нём как о действующем
 // судит соседнее надгробие `retiredissuerclaim.go`. Давить числом на надгробия
@@ -151,7 +289,7 @@ func TestRetiredVendorCeiling_ProseIsSilent(t *testing.T) {
 	const line = "hydraAdminURL: https://provider-admin.kacho.svc"
 
 	if n, _ := judgeOne(t, vendorFixture(map[string]string{"deploy/notes.yaml": line + "\n"}, nil)); n != 1 {
-		t.Fatalf("строка исполняемого файла обязана краснеть: привязок %d", n)
+		t.Fatalf("строка судимого файла обязана краснеть: привязок %d", n)
 	}
 	if m, _ := judgeOne(t, vendorFixture(map[string]string{"deploy/notes.md": line + "\n"}, nil)); m != 0 {
 		t.Fatalf("та же строка в прозе обязана молчать: привязок %d", m)
@@ -159,6 +297,15 @@ func TestRetiredVendorCeiling_ProseIsSilent(t *testing.T) {
 	if m, _ := judgeOne(t, vendorFixture(map[string]string{"deploy/notes.yaml": "# " + line + "\n"}, nil)); m != 0 {
 		t.Fatalf("та же строка под маркером комментария обязана молчать: привязок %d", m)
 	}
+
+	// Проза не судится и ПУТЁМ: надгробие в `docs/` остаётся историей.
+	if n, _ := judgeOne(t, vendorFixture(map[string]string{"docs/hydra-retirement.yaml": "a: 1\n"}, nil)); n != 1 {
+		t.Fatalf("имя издателя в пути судимого файла обязано краснеть: привязок %d", n)
+	}
+	if m, _ := judgeOne(t, vendorFixture(map[string]string{"docs/hydra-retirement.md": "a: 1\n"}, nil)); m != 0 {
+		t.Fatalf("тот же путь у прозы обязан молчать: привязок %d", m)
+	}
+
 	// Хвост-подпорка: `--` без пробела — не комментарий, а флаг, и привязку он несёт.
 	flag := `    --env-var "providerPublicBaseUrl=http://localhost:${HYDRA_PUBLIC_PORT}" \`
 	if n, _ := judgeOne(t, vendorFixture(map[string]string{"deploy/scripts/run.sh": flag + "\n"}, nil)); n != 1 {
@@ -166,6 +313,83 @@ func TestRetiredVendorCeiling_ProseIsSilent(t *testing.T) {
 	}
 	if m, _ := judgeOne(t, vendorFixture(map[string]string{"deploy/scripts/x.sql": "-- " + line + "\n"}, nil)); m != 0 {
 		t.Fatalf("`-- ` с пробелом — комментарий и обязан молчать: привязок %d", m)
+	}
+}
+
+// TestRetiredVendorCeiling_ArchiveSuffixDoesNotDecide — ОДИН ФАКТ: суффикс имени
+// архива. Байты у трёх половин ОДНИ И ТЕ ЖЕ, и все три обязаны краснеть: архив
+// не перестаёт быть архивом от переименования.
+//
+// Прежде архивность решал перечень суффиксов: те же байты под именем `.zip`
+// уходили в счётчик пропущенного — зелёное при физически присутствующем
+// предмете. Здесь корпус читается ЧИТАТЕЛЕМ с диска: проверяется то, что
+// исполняется на дереве, а не пересказ.
+func TestRetiredVendorCeiling_ArchiveSuffixDoesNotDecide(t *testing.T) {
+	t.Parallel()
+
+	data := vendorTarGz(t, "idp/values.yaml", "image: oryd/kratos:v1.3.1\n")
+	dir := t.TempDir()
+	for _, name := range []string{"charts/idp-0.62.1.tgz", "charts/idp-0.62.1.zip", "charts/idp-0.62.1.bin"} {
+		vendorWriteAt(t, dir, name, data)
+		_, census, bindings, err := judgeRetiredVendorCeiling(vendorReadTree(t, dir, []string{name}), vendorZeroCeilings)
+		if err != nil {
+			t.Fatalf("%s: фикстура обязана судиться: %v", name, err)
+		}
+		c := census[vendorTreePlatform]
+		if c.Bindings != 1 || c.Archives != 1 || bindings[0].Axis != vendorAxisArchiveBody {
+			t.Fatalf("те же байты архива под именем %s обязаны краснеть содержимым: "+
+				"привязок %d · архивов %d · ось %q", name, c.Bindings, c.Archives, axisOf(bindings))
+		}
+		if c.Prose != 0 {
+			t.Fatalf("%s: архив не имеет права уходить в пропущенное: прозы %d", name, c.Prose)
+		}
+	}
+
+	// Законный близнец: те же байты в том же формате, чужое вендоренное внутри.
+	twin := vendorTarGz(t, "db/values.yaml", "image: bitnami/postgresql:16\n")
+	vendorWriteAt(t, dir, "charts/db-13.4.4.zip", twin)
+	_, census, _, err := judgeRetiredVendorCeiling(vendorReadTree(t, dir, []string{"charts/db-13.4.4.zip"}), vendorZeroCeilings)
+	if err != nil {
+		t.Fatalf("фикстура обязана судиться: %v", err)
+	}
+	if census[vendorTreePlatform].Bindings != 0 {
+		t.Fatalf("чужое вендоренное обязано молчать: привязок %d", census[vendorTreePlatform].Bindings)
+	}
+}
+
+// TestRetiredVendorCeiling_ArchiveFormatIsReadFromTheBytes — ОДИН ФАКТ: чьё имя
+// внутри архива. Формат один и тот же настоящий `zip`, имя файла одно и то же и
+// нейтральное; меняется только содержимое.
+//
+// Пара доказывает, что признак архивности снят с ПЕРВЫХ БАЙТОВ, а содержимое
+// разворачивается по формату, а не по имени.
+func TestRetiredVendorCeiling_ArchiveFormatIsReadFromTheBytes(t *testing.T) {
+	t.Parallel()
+
+	const name = "charts/idp-0.62.1.pkg"
+	dir := t.TempDir()
+
+	vendorWriteAt(t, dir, name, vendorZip(t, "idp/values.yaml", "image: oryd/kratos:v1.3.1\n"))
+	_, census, bindings, err := judgeRetiredVendorCeiling(vendorReadTree(t, dir, []string{name}), vendorZeroCeilings)
+	if err != nil {
+		t.Fatalf("фикстура обязана судиться: %v", err)
+	}
+	if census[vendorTreePlatform].Bindings != 1 || bindings[0].Axis != vendorAxisArchiveBody {
+		t.Fatalf("zip с предметом внутри обязан краснеть содержимым: привязок %d · ось %q",
+			census[vendorTreePlatform].Bindings, axisOf(bindings))
+	}
+	if census[vendorTreePlatform].Sealed != 0 {
+		t.Fatalf("zip разворачивается стандартной библиотекой: нераспакованных %d",
+			census[vendorTreePlatform].Sealed)
+	}
+
+	vendorWriteAt(t, dir, name, vendorZip(t, "db/values.yaml", "image: bitnami/postgresql:16\n"))
+	_, census, _, err = judgeRetiredVendorCeiling(vendorReadTree(t, dir, []string{name}), vendorZeroCeilings)
+	if err != nil {
+		t.Fatalf("фикстура обязана судиться: %v", err)
+	}
+	if census[vendorTreePlatform].Bindings != 0 {
+		t.Fatalf("тот же zip без предмета обязан молчать: привязок %d", census[vendorTreePlatform].Bindings)
 	}
 }
 
@@ -182,14 +406,16 @@ func TestRetiredVendorCeiling_ArchiveNameInjection(t *testing.T) {
 
 	const renamedInside = "idp/Chart.yaml\nname: idp\nversion: 0.62.1\n"
 
-	defect := []vendorArchive{{Name: "deploy/helm/umbrella/charts/hydra-0.62.1.tgz", Text: renamedInside}}
+	defect := []vendorArchive{{Name: "deploy/helm/umbrella/charts/hydra-0.62.1.tgz",
+		Format: "gzip", Opened: true, Text: renamedInside}}
 	n, bindings := judgeOne(t, vendorFixture(nil, defect))
 	if n != 1 || bindings[0].Axis != vendorAxisArchiveName {
 		t.Fatalf("архив издателя обязан краснеть по ИМЕНИ при переименованном содержимом: "+
 			"привязок %d, ось %q", n, axisOf(bindings))
 	}
 
-	twin := []vendorArchive{{Name: "deploy/helm/umbrella/charts/postgresql-13.4.4.tgz", Text: renamedInside}}
+	twin := []vendorArchive{{Name: "deploy/helm/umbrella/charts/postgresql-13.4.4.tgz",
+		Format: "gzip", Opened: true, Text: renamedInside}}
 	if m, _ := judgeOne(t, vendorFixture(nil, twin)); m != 0 {
 		t.Fatalf("чужое вендоренное обязано молчать: привязок %d", m)
 	}
@@ -204,16 +430,88 @@ func TestRetiredVendorCeiling_ArchiveBodyInjection(t *testing.T) {
 
 	const name = "deploy/helm/umbrella/charts/idp-0.62.1.tgz"
 
-	defect := []vendorArchive{{Name: name, Text: "idp/values.yaml\nimage: oryd/kratos:v1.3.1\n"}}
+	defect := []vendorArchive{{Name: name, Format: "gzip", Opened: true,
+		Text: "idp/values.yaml\nimage: oryd/kratos:v1.3.1\n"}}
 	n, bindings := judgeOne(t, vendorFixture(nil, defect))
 	if n != 1 || bindings[0].Axis != vendorAxisArchiveBody {
 		t.Fatalf("архив издателя обязан краснеть по СОДЕРЖИМОМУ при нейтральном имени: "+
 			"привязок %d, ось %q", n, axisOf(bindings))
 	}
 
-	twin := []vendorArchive{{Name: name, Text: "idp/values.yaml\nimage: bitnami/postgresql:16\n"}}
+	twin := []vendorArchive{{Name: name, Format: "gzip", Opened: true,
+		Text: "idp/values.yaml\nimage: bitnami/postgresql:16\n"}}
 	if m, _ := judgeOne(t, vendorFixture(nil, twin)); m != 0 {
 		t.Fatalf("архив без предмета обязан молчать: привязок %d", m)
+	}
+}
+
+// TestRetiredVendorCeiling_BinaryCarrierInjection — ОДИН ФАКТ: чьё имя внутри
+// двоичного файла. Имя файла и сама двоичность у обеих половин одни и те же.
+//
+// Читается ЧИТАТЕЛЕМ с диска: двоичное прежде уходило в пропущенное целиком, и
+// собранный двоичник издателя лежал бы в дереве беззвучно.
+func TestRetiredVendorCeiling_BinaryCarrierInjection(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	const name = "deploy/bin/payload.dat"
+	bindingsFor := func(mark string) (vendorTreeCensus, []vendorBinding) {
+		t.Helper()
+		vendorWriteAt(t, dir, name, append([]byte{0x00, 0x01, 0x02}, []byte(mark+"\x00")...))
+		_, census, bindings, err := judgeRetiredVendorCeiling(vendorReadTree(t, dir, []string{name}), vendorZeroCeilings)
+		if err != nil {
+			t.Fatalf("фикстура обязана судиться: %v", err)
+		}
+		return census[vendorTreePlatform], bindings
+	}
+
+	c, bindings := bindingsFor("ory_kratos_session")
+	if c.Bindings != 1 || bindings[0].Axis != vendorAxisBinary {
+		t.Fatalf("двоичный файл с именем издателя внутри обязан краснеть своей осью: "+
+			"привязок %d, ось %q", c.Bindings, axisOf(bindings))
+	}
+	if c.Blobs != 1 || c.Files != 0 {
+		t.Fatalf("двоичное обязано лежать в своей категории: двоичных %d · судимо построчно %d",
+			c.Blobs, c.Files)
+	}
+
+	if c, _ := bindingsFor("kacho_session"); c.Bindings != 0 {
+		t.Fatalf("тот же двоичный файл с нашим именем обязан молчать: привязок %d", c.Bindings)
+	}
+}
+
+// TestRetiredVendorCeiling_EmptiedTreeIsNotZero — ГЛАВНОЕ: сценарий отказа.
+//
+// ОДИН ФАКТ: присутствует ли путь издателя в дереве. Тела очищены у ОБЕИХ
+// половин — так выглядит последний шаг снятия. Пока каталог стоит, ноль
+// печатать нельзя: по этому нулю подпишут «предмет снят целиком».
+func TestRetiredVendorCeiling_EmptiedTreeIsNotZero(t *testing.T) {
+	t.Parallel()
+
+	emptied := map[string]string{
+		"deploy/helm/umbrella/charts/kratos-selfservice-ui/values.yaml": "",
+		"deploy/helm/umbrella/templates/hydra-admin-certificate.yaml":   "",
+		"gateway/internal/middleware/kratos_session.go":                 "",
+	}
+	n, bindings := judgeOne(t, vendorFixture(emptied, nil))
+	if n != 3 {
+		t.Fatalf("очищенные тела при ОСТАВШЕМСЯ каталоге не равны снятому предмету: "+
+			"привязок %d, ждали 3 (%v)", n, bindings)
+	}
+	for _, b := range bindings {
+		if b.Axis != vendorAxisPath {
+			t.Fatalf("осью обязан быть путь: %q у %s", b.Axis, b.File)
+		}
+	}
+
+	// Законный близнец: те же тела, путей издателя в дереве больше нет.
+	renamed := map[string]string{
+		"deploy/helm/umbrella/charts/kaname-selfservice-ui/values.yaml": "",
+		"deploy/helm/umbrella/templates/kaname-admin-certificate.yaml":  "",
+		"gateway/internal/middleware/kaname_session.go":                 "",
+	}
+	if m, _ := judgeOne(t, vendorFixture(renamed, nil)); m != 0 {
+		t.Fatalf("дерево без путей издателя обязано давать ноль: привязок %d", m)
 	}
 }
 
@@ -227,10 +525,8 @@ func TestRetiredVendorCeiling_FoundationIsWalked(t *testing.T) {
 	t.Parallel()
 
 	defect := vendorFixture(nil, nil)
-	defect[vendorTreeFoundation] = vendorTreeCorpus{
-		Bodies:    map[string]string{"identity/session.go": "package identity\n\nconst cookie = \"ory_kratos_session\"\n"},
-		LinesRead: 4,
-	}
+	defect[vendorTreeFoundation] = vendorCorpusOf(map[string]string{
+		"identity/session.go": "package identity\n\nconst cookie = \"ory_kratos_session\"\n"}, nil, nil, nil, 4)
 	f, census, bindings, err := judgeRetiredVendorCeiling(defect, vendorZeroCeilings)
 	if err != nil {
 		t.Fatalf("фикстура обязана судиться: %v", err)
@@ -246,10 +542,8 @@ func TestRetiredVendorCeiling_FoundationIsWalked(t *testing.T) {
 	}
 
 	twin := vendorFixture(nil, nil)
-	twin[vendorTreeFoundation] = vendorTreeCorpus{
-		Bodies:    map[string]string{"identity/session.go": "package identity\n\nconst cookie = \"kacho_session\"\n"},
-		LinesRead: 4,
-	}
+	twin[vendorTreeFoundation] = vendorCorpusOf(map[string]string{
+		"identity/session.go": "package identity\n\nconst cookie = \"kacho_session\"\n"}, nil, nil, nil, 4)
 	if _, c2, _, err := judgeRetiredVendorCeiling(twin, vendorZeroCeilings); err != nil || c2[vendorTreeFoundation].Bindings != 0 {
 		t.Fatalf("законный близнец в фундаменте обязан молчать: привязок %d (%v)",
 			c2[vendorTreeFoundation].Bindings, err)
@@ -285,6 +579,101 @@ func TestRetiredVendorCeiling_ShrunkLedgerIsAFinding(t *testing.T) {
 	}
 }
 
+// TestRetiredVendorCeiling_FindingNamesItsAddresses — ОДИН ФАКТ: назвала ли
+// находка координату, на которую выросла.
+//
+// Перечень адресов обязан быть ПОЛНЫМ и идти ПО ПУТИ. Порядок здесь — часть
+// свойства: фикстура нарочно ставит одинокую строку в файл, который по числу
+// строк оказался бы последним, а по пути стоит первым. По убыванию числа
+// выросшая на единицу координата всегда внизу — там, где перечень и обрезают.
+func TestRetiredVendorCeiling_FindingNamesItsAddresses(t *testing.T) {
+	t.Parallel()
+
+	corpora := vendorFixture(map[string]string{
+		"deploy/helm/umbrella/charts/hydra-injected/values.yaml": "image: prorobotech/platform:v1\n",
+		"gateway/internal/clients/one.go":                        "package clients\nconst h = \"kratos-public\"\nconst a = \"hydra-admin\"\n",
+	}, nil)
+	f, _, _, err := judgeRetiredVendorCeiling(corpora, vendorZeroCeilings)
+	if err != nil {
+		t.Fatalf("фикстура обязана судиться: %v", err)
+	}
+	if len(f) != 1 || f[0].Kind != vendorFindingGrown {
+		t.Fatalf("рост обязан быть находкой: %+v", f)
+	}
+	text := f[0].String()
+	for _, want := range []string{
+		"    1 · deploy/helm/umbrella/charts/hydra-injected/values.yaml",
+		"    2 · gateway/internal/clients/one.go",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("находка обязана называть адрес %q, напечатано:\n%s", want, text)
+		}
+	}
+	if strings.Index(text, "hydra-injected") > strings.Index(text, "one.go") {
+		t.Fatalf("адреса обязаны идти ПО ПУТИ, а не по числу строк:\n%s", text)
+	}
+	if len(f[0].Coords) != 2 || !strings.Contains(text, "все 2, по пути") {
+		t.Fatalf("перечень обязан быть полным и назвать своё число:\n%s", text)
+	}
+}
+
+// TestRetiredVendorCeiling_NarrowedLedgerIsARefusal — ОДИН ФАКТ: наличие строки
+// ведомости для фундамента.
+//
+// Снятие одной строки уводило бы ЦЕЛОЕ ДЕРЕВО с суда молча: перепись печатала бы
+// «деревьев два», а нули необойдённого дерева были бы неотличимы от законного
+// нуля. Это тот же класс, что арифметическая проверка, слепая к отсутствующей
+// строке, и лечится он одинаково: ОТКАЗ, а не «находок ноль».
+func TestRetiredVendorCeiling_NarrowedLedgerIsARefusal(t *testing.T) {
+	t.Parallel()
+
+	corpora := vendorFixture(nil, nil)
+
+	full := map[string]int{vendorTreePlatform: 0, vendorTreeAccess: 0, vendorTreeFoundation: 0}
+	_, census, _, err := judgeRetiredVendorCeiling(corpora, full)
+	if err != nil || len(census) != len(retiredVendorTrees) {
+		t.Fatalf("полная ведомость обязана судить три дерева: деревьев %d (%v)", len(census), err)
+	}
+
+	narrowed := map[string]int{vendorTreePlatform: 0, vendorTreeAccess: 0}
+	if _, _, _, err := judgeRetiredVendorCeiling(corpora, narrowed); !errors.Is(err, errVendorLedger) {
+		t.Fatalf("ведомость без строки фундамента обязана быть ОТКАЗОМ, получено: %v", err)
+	}
+
+	swapped := map[string]int{vendorTreePlatform: 0, vendorTreeAccess: 0, "kanaris": 0}
+	if _, _, _, err := judgeRetiredVendorCeiling(corpora, swapped); !errors.Is(err, errVendorLedger) {
+		t.Fatalf("подмена строки чужим деревом обязана быть ОТКАЗОМ, получено: %v", err)
+	}
+
+	extra := map[string]int{vendorTreePlatform: 0, vendorTreeAccess: 0,
+		vendorTreeFoundation: 0, "kanaris": 0}
+	if _, _, _, err := judgeRetiredVendorCeiling(corpora, extra); !errors.Is(err, errVendorLedger) {
+		t.Fatalf("лишняя строка ведомости обязана быть ОТКАЗОМ, получено: %v", err)
+	}
+}
+
+// TestRetiredVendorCeiling_PartitionMismatchIsARefusal — ОДИН ФАКТ: сошлось ли
+// разбиение обхода с числом обойдённых путей.
+//
+// Этим и доказана полнота списка границ ПО КАТЕГОРИЯМ ФАЙЛОВ: категория, о
+// которой забыли, обрушит сверку, а не замолчит.
+func TestRetiredVendorCeiling_PartitionMismatchIsARefusal(t *testing.T) {
+	t.Parallel()
+
+	ok := vendorFixture(nil, nil)
+	if _, _, _, err := judgeRetiredVendorCeiling(ok, vendorZeroCeilings); err != nil {
+		t.Fatalf("сошедшееся разбиение обязано судиться: %v", err)
+	}
+
+	lost := vendorFixture(nil, nil)
+	c := lost[vendorTreePlatform]
+	c.Walked++ // путь обойден, но ни в одну категорию не положен
+	lost[vendorTreePlatform] = c
+	if _, _, _, err := judgeRetiredVendorCeiling(lost, vendorZeroCeilings); !errors.Is(err, errVendorPartition) {
+		t.Fatalf("путь, выпавший из разбиения, обязан быть ОТКАЗОМ, получено: %v", err)
+	}
+}
+
 // TestRetiredVendorCeiling_EmptyWalkIsNotAVerdict — проверка ПРЕДПОСЫЛКИ.
 //
 // Обход, не принёсший файлов, и дерево, не обойдённое вовсе, дают ОТКАЗ, а не
@@ -293,7 +682,7 @@ func TestRetiredVendorCeiling_EmptyWalkIsNotAVerdict(t *testing.T) {
 	t.Parallel()
 
 	empty := vendorFixture(nil, nil)
-	empty[vendorTreeFoundation] = vendorTreeCorpus{Bodies: map[string]string{}}
+	empty[vendorTreeFoundation] = vendorCorpusOf(nil, nil, nil, nil, 0)
 	if _, _, _, err := judgeRetiredVendorCeiling(empty, vendorZeroCeilings); !errors.Is(err, errVendorEmptyWalk) {
 		t.Fatalf("пустой обход дерева обязан быть отказом, получено: %v", err)
 	}
@@ -304,7 +693,7 @@ func TestRetiredVendorCeiling_EmptyWalkIsNotAVerdict(t *testing.T) {
 		t.Fatalf("необойдённое дерево обязано быть отказом, получено: %v", err)
 	}
 
-	if _, _, _, err := judgeRetiredVendorCeiling(vendorFixture(nil, nil), map[string]int{}); !errors.Is(err, errVendorEmptyWalk) {
+	if _, _, _, err := judgeRetiredVendorCeiling(vendorFixture(nil, nil), map[string]int{}); !errors.Is(err, errVendorLedger) {
 		t.Fatalf("ноль объявленных потолков обязан быть отказом, получено: %v", err)
 	}
 }

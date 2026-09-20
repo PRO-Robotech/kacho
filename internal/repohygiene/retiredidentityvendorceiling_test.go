@@ -4,10 +4,7 @@
 package repohygiene
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -16,7 +13,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-	"unicode/utf8"
 
 	"github.com/PRO-Robotech/corelib/treecorpus"
 )
@@ -25,90 +21,9 @@ import (
 //
 //	go test ./internal/repohygiene/ -run TestRetiredIdentityVendorBindingsStayUnderTheirCeiling -count=1 -v
 //
-// Печатает перепись по каждому дереву (файлов · строк прочитано · архивов ·
-// привязок с разбивкой по осям · потолок) и итог с ЕДИНИЦЕЙ СЧЁТА.
-
-// vendorArchiveTextCap — сколько текста берётся из архива. Архив судится по
-// признаку «принадлежит издателю», а не по числу совпадений; читать его целиком
-// незачем, а предел держит прогон конечным на чужом вендоренном чарте.
-const vendorArchiveTextCap = 4 << 20
-
-// vendorReadFile — тело файла, если оно ТЕКСТ. Двоичное молча пропускается: по
-// нему нельзя считать строки, и «прочитано» о нём было бы ложью.
-func vendorReadFile(abs string) (string, bool) {
-	b, err := os.ReadFile(abs) // #nosec G304 -- путь получен обходом дерева под его корнем
-	if err != nil {
-		return "", false
-	}
-	if len(b) == 0 {
-		return "", false
-	}
-	if strings.IndexByte(string(b), 0) >= 0 || !utf8.Valid(b) {
-		return "", false
-	}
-	return string(b), true
-}
-
-// vendorReadArchive — текст из архива: распаковка gzip+tar, до предела.
-//
-// Нечитаемый архив возвращает пустой текст, и его судьбу решает ОДНО имя — это
-// и есть подпорка: содержимое может стать нечитаемым или быть переименованным у
-// издателя, имя остаётся.
-func vendorReadArchive(abs string) string {
-	f, err := os.Open(abs) // #nosec G304 -- путь получен обходом дерева под его корнем
-	if err != nil {
-		return ""
-	}
-	defer func() { _ = f.Close() }()
-	gz, err := gzip.NewReader(f)
-	if err != nil {
-		return ""
-	}
-	defer func() { _ = gz.Close() }()
-	var b strings.Builder
-	tr := tar.NewReader(gz)
-	for b.Len() < vendorArchiveTextCap {
-		h, err := tr.Next()
-		if err != nil {
-			break
-		}
-		b.WriteString(h.Name)
-		b.WriteString("\n")
-		if h.Typeflag != tar.TypeReg {
-			continue
-		}
-		chunk, err := io.ReadAll(io.LimitReader(tr, int64(vendorArchiveTextCap-b.Len())))
-		if err != nil {
-			break
-		}
-		b.Write(chunk)
-	}
-	return b.String()
-}
-
-// vendorCorpusFromPaths — корпус дерева из перечня относительных путей.
-func vendorCorpusFromPaths(root string, rels []string) vendorTreeCorpus {
-	corpus := vendorTreeCorpus{Bodies: map[string]string{}}
-	for _, rel := range rels {
-		abs := filepath.Join(root, filepath.FromSlash(rel))
-		switch {
-		case vendorArchiveFile(rel):
-			corpus.Archives = append(corpus.Archives, vendorArchive{Name: rel, Text: vendorReadArchive(abs)})
-		case vendorProseFile(rel):
-			corpus.ProseSkipped++
-			continue
-		default:
-			body, ok := vendorReadFile(abs)
-			if !ok {
-				corpus.ProseSkipped++
-				continue
-			}
-			corpus.Bodies[rel] = body
-			corpus.LinesRead += strings.Count(body, "\n") + 1
-		}
-	}
-	return corpus
-}
+// Печатает перепись по каждому дереву (разбиение обхода по четырём категориям ·
+// строк прочитано · привязки с разбивкой по шести осям · потолок) и итог с
+// ЕДИНИЦЕЙ СЧЁТА.
 
 // vendorWalkModuleDir — пути модуля из кэша: пин go.mod читается целиком.
 func vendorWalkModuleDir(t *testing.T, root string) []string {
@@ -173,10 +88,7 @@ func TestRetiredIdentityVendorBindingsStayUnderTheirCeiling(t *testing.T) {
 	corpora := map[string]vendorTreeCorpus{
 		vendorTreePlatform: vendorCorpusFromPaths(repo, tree.SortedFiles()),
 	}
-	for name, module := range map[string]string{
-		vendorTreeAccess:     "github.com/PRO-Robotech/kaname",
-		vendorTreeFoundation: "github.com/PRO-Robotech/corelib",
-	} {
+	for name, module := range retiredVendorTreeModules {
 		dir := vendorModuleDir(t, repo, module)
 		corpora[name] = vendorCorpusFromPaths(dir, vendorWalkModuleDir(t, dir))
 	}
@@ -186,24 +98,88 @@ func TestRetiredIdentityVendorBindingsStayUnderTheirCeiling(t *testing.T) {
 		t.Fatalf("проверка НЕ ИСПОЛНЯЛАСЬ: %v", err)
 	}
 
-	total, ceiling := 0, 0
-	for _, name := range []string{vendorTreePlatform, vendorTreeAccess, vendorTreeFoundation} {
+	total, ceiling, walked := 0, 0, 0
+	for _, name := range retiredVendorTrees {
 		c := census[name]
 		t.Logf("перепись %s: %s", name, c)
 		total += c.Bindings
 		ceiling += c.Ceiling
+		walked += c.Walked
 	}
 	t.Logf("ИТОГО привязок к снимаемому издателю личности: %d СТРОК при потолке %d СТРОК "+
-		"(деревьев обойдено %d; единица счёта — строка исходника, архив — одна строка "+
-		"независимо от числа совпадений внутри)", total, ceiling, len(census))
+		"(деревьев обойдено %d · путей обойдено %d; единица счёта — строка исходника, "+
+		"путь — одна строка за файл, архив и двоичный файл — одна строка за файл)",
+		total, ceiling, len(census), walked)
 
 	if total == 0 && ceiling == 0 {
-		t.Log("предмет снят целиком: привязок ноль во всех трёх деревьях — снимите этот " +
-			"гейт вместе с предметом, он больше не стережёт ничего")
+		t.Logf("предмет снят целиком: в трёх деревьях (путей обойдено %d) нет ни строки, "+
+			"ни пути, ни архива, ни двоичного файла, несущих имя издателя — снимите этот "+
+			"гейт вместе с предметом, он больше не стережёт ничего", walked)
 	}
 	for _, f := range findings {
 		t.Error(f)
 	}
+}
+
+// TestRetiredVendorCeilingLedgerCoversEveryTreeOfTheBuildGraph — ПРЕДПОСЫЛКА
+// «деревьев три», без которой ведомость сужается одним фактом.
+//
+// Снятие одной строки ведомости убирало бы целое дерево с суда молча. Поэтому
+// перечень деревьев выводится не памятью, а ГРАФОМ СБОРКИ: внутренние рёбра
+// `go.mod` (модули семейства `PRO-Robotech`, кроме самой платформы) — это и есть
+// деревья, против которых платформа собирается. Появилось четвёртое ребро —
+// проба краснеет и называет его: дерево, о котором ведомость не знает, было бы
+// слепой зоной с законно выглядящим нулём.
+func TestRetiredVendorCeilingLedgerCoversEveryTreeOfTheBuildGraph(t *testing.T) {
+	t.Parallel()
+
+	repo := repoRoot(t)
+	raw, err := os.ReadFile(filepath.Join(repo, "go.mod"))
+	if err != nil {
+		t.Fatalf("проверка НЕ ИСПОЛНЯЛАСЬ: %v", err)
+	}
+	edge := regexp.MustCompile(`(?m)^\s*(github\.com/PRO-Robotech/[a-z0-9-]+)\s+v`)
+	found := map[string]bool{}
+	for _, m := range edge.FindAllStringSubmatch(string(raw), -1) {
+		found[m[1]] = true
+	}
+	if len(found) == 0 {
+		t.Fatal("проверка НЕ ИСПОЛНЯЛАСЬ: внутренних рёбер в go.mod не найдено — " +
+			"предикат меряет не то, а «рёбер ноль» было бы прочитано как порядок")
+	}
+
+	declared := map[string]bool{}
+	for _, m := range retiredVendorTreeModules {
+		declared[m] = true
+	}
+	for module := range found {
+		if !declared[module] {
+			t.Errorf("граф сборки несёт ребро %s, а ведомость гейта о нём не знает: "+
+				"это дерево не обходится, и его ноль неотличим от законного нуля", module)
+		}
+	}
+	for module := range declared {
+		if !found[module] {
+			t.Errorf("ведомость гейта объявляет дерево %s, которого в графе сборки нет: "+
+				"обходить нечего, а число берётся неизвестно откуда", module)
+		}
+	}
+
+	if want := len(found) + 1; len(retiredVendorTrees) != want {
+		t.Errorf("деревьев под судом %d, а граф сборки даёт %d (платформа + рёбер %d): %v",
+			len(retiredVendorTrees), want, len(found), retiredVendorTrees)
+	}
+	if len(retiredVendorCeilings) != len(retiredVendorTrees) {
+		t.Errorf("строк ведомости %d при %d деревьях: ведомость сузилась",
+			len(retiredVendorCeilings), len(retiredVendorTrees))
+	}
+	for _, tree := range retiredVendorTrees {
+		if _, ok := retiredVendorCeilings[tree]; !ok {
+			t.Errorf("у дерева %q нет строки ведомости", tree)
+		}
+	}
+	t.Logf("перепись предпосылки: внутренних рёбер go.mod %d · деревьев под судом %d · "+
+		"строк ведомости %d", len(found), len(retiredVendorTrees), len(retiredVendorCeilings))
 }
 
 // vendorSourceArm — одно ИМЕННОЕ плечо предиката-источника: та форма записи, в
@@ -220,7 +196,7 @@ type vendorSourceArm struct {
 // vendorSourceArms — восемь ИМЕННЫХ плеч источника. Три оставшихся (пути
 // `/admin/...`, `/sessions/whoami`, `/self-service/` и порты 4444/4445) сюда не
 // входят: первые два — безымянная поверхность, её дом `ProviderSurfaces`, порт
-// под ось не заведён (см. шапку гейта, п. 2 границы).
+// под ось не заведён (см. шапку гейта, границы, п. 2).
 var vendorSourceArms = []vendorSourceArm{
 	{"образ издателя", regexp.MustCompile(`(?i)oryd/(hydra|kratos)`)},
 	{"переменная окружения", regexp.MustCompile(`[A-Z0-9]+_(HYDRA|KRATOS)_[A-Z0-9_]+`)},
@@ -243,9 +219,10 @@ var vendorSourceArms = []vendorSourceArm{
 //
 // ЧЕМ ОБХОД ОГРАНИЧЕН, названо вслух: он видит только дерево платформы (kaname и
 // corelib читаются по пину и на состав форм не влияют — там тех же форм не
-// больше), только судимые файлы (проза и двоичное исключены тем же правилом, что
-// в гейте) и только строки, не начинающиеся маркером комментария. Плечо, ушедшее
-// в ноль, здесь не падение, а ЦЕЛЬ: оно печатается как «ноль — форма снята».
+// больше), только судимые построчно файлы (проза, двоичное и архивы исключены
+// тем же правилом, что в гейте) и только строки, не начинающиеся маркером
+// комментария. Плечо, ушедшее в ноль, здесь не падение, а ЦЕЛЬ: оно печатается
+// как «ноль — форма снята».
 func TestRetiredVendorClassSubsumesEverySourceArm(t *testing.T) {
 	t.Parallel()
 
