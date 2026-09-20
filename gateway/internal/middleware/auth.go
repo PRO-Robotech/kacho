@@ -159,6 +159,11 @@ type AuthInterceptor struct {
 	// not be asked about at all (no identifier). Separate window and counter — see
 	// WithRevocationCheck.
 	revocationSkips *introspectionFailureReporter
+	// revocationOwnSourceFailures — доклад о молчании НАШЕГО источника отзыва в
+	// композиции «свой, потом чужой». Своё окно и свой счётчик: у этой
+	// неисправности другой адресат и противоположное последствие — отказ, а не
+	// объявленный мягкий проход чужого провайдера (#2728).
+	revocationOwnSourceFailures *introspectionFailureReporter
 	// platformRevocation — авторитет отзыва НАШИХ токенов.
 	//
 	// Полоса выбирается по ИЗДАТЕЛЮ, а не по настройке процесса: прежний
@@ -537,17 +542,23 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 		// leaves a valid signature behind. Only the provider knows, and it is
 		// asked here, on the layer that always runs, using the token this branch
 		// has ALREADY verified (no second parse of the same bearer).
-		switch a.revocationCheck(ctx, vt, "grpc", fullMethod) {
-		case revocationRevoked:
+		//
+		// Вердикт читается ЧЕРЕЗ ОБЩИЙ СЛОВАРЬ (`disposition`), а не собственной
+		// развилкой этой поверхности. Здесь стояла развилка на два исхода из
+		// шести и без `default`, поэтому третий исход проваливался сквозь неё к
+		// обработчику молча (#2728); вторая такая же стояла на REST-поверхности,
+		// и разойтись им было нечем, кроме внимания.
+		switch a.revocationCheck(ctx, vt, "grpc", fullMethod).disposition() {
+		case revocationDenyCredential:
 			// The credential is dead, which is an authN failure like any other and
 			// carries the same constant message (no varying text to read state off).
 			a.logger.Warn("auth: token reported not live by the provider; rejected",
 				"method", fullMethod)
 			return nil, status.Error(codes.Unauthenticated, authFailedMsg)
-		case revocationUnanswerable:
-			// The fault is this deployment's configuration, not the caller's
-			// credential: Unavailable, so a client retries instead of pointlessly
-			// re-authenticating.
+		case revocationDenyService:
+			// Неисправность НАША — настройка посадки либо молчание нашей службы
+			// доступа, — а не удостоверение вызывающего: Unavailable, чтобы клиент
+			// повторял, а не аутентифицировался заново без всякого толку.
 			return nil, status.Error(codes.Unavailable, revocationUnavailableReason)
 		}
 		// Same floor, same reason, on the native surface — where the method is
@@ -1288,13 +1299,16 @@ func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, ne
 	// the same list for the same reason — none of them acts on the credential's
 	// authority.
 	if !isPublicHTTPPath(r.URL.Path) {
-		switch a.revocationCheck(r.Context(), vt, "rest", r.URL.Path) {
-		case revocationRevoked:
+		// Тот же словарь, что на нативной gRPC-поверхности, и по той же причине:
+		// пробел на одной поверхности обессмысливает другую — держатель
+		// отозванного удостоверения просто пользуется неохраняемой.
+		switch a.revocationCheck(r.Context(), vt, "rest", r.URL.Path).disposition() {
+		case revocationDenyCredential:
 			a.logger.Warn("auth.HTTP: token reported not live by the provider; rejected",
 				"path", r.URL.Path)
 			writeHTTPUnauthorized(w, revocationDenyDescription)
 			return true
-		case revocationUnanswerable:
+		case revocationDenyService:
 			writeHTTPServiceUnavailable(w, revocationUnavailableReason)
 			return true
 		}

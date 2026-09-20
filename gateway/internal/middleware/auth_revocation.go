@@ -61,7 +61,7 @@ type TokenRevocationChecker interface {
 	Introspect(ctx context.Context, jti, rawToken string) (IntrospectionResult, error)
 }
 
-// revocationVerdict — the five answers. Only two of them change what the caller
+// revocationVerdict — the six answers. Three of them change what the caller
 // does; the other three all mean "carry on", and they are kept apart because they
 // mean different things to whoever reads the log: asked-and-fine, could-not-ask,
 // and asked-but-nobody-answered are three different states of the same control.
@@ -78,11 +78,64 @@ const (
 	// revocationUnanswerable — what answered is not an introspection endpoint.
 	// Permanent until someone changes configuration; refuse to serve.
 	revocationUnanswerable
-	// revocationUnanswered — the provider did not answer this time. Passes on its
-	// own, so the request continues and the process reports that it is not
-	// currently enforcing.
+	// revocationUnanswered — the FOREIGN provider did not answer this time. Passes
+	// on its own, so the request continues and the process reports that it is not
+	// currently enforcing. Чья доступность — того и размен: провайдер третья
+	// сторона, ею мы не управляем.
 	revocationUnanswered
+	// revocationOwnSourceUnanswered — НАШ источник отзыва не ответил. ОТКАЗ.
+	//
+	// Отдельно от revocationUnanswered потому, что это другой предмет с другим
+	// разменом, и слитые в один они дали бы ровно #2728: молчание нашей службы
+	// доступа читалось бы как объявленный мягкий проход чужого провайдера, и
+	// отозванное удостоверение действовало бы всё время её недоступности.
+	//
+	// Отдельно от revocationUnanswerable потому, что это состояние ВРЕМЕННОЕ:
+	// сосед вернётся сам, повтор осмыслен, и читателю журнала это говорит другое.
+	// Наружу оба отвечают одинаково (Unavailable) — различие в диагнозе, а не в
+	// ответе арендатору.
+	revocationOwnSourceUnanswered
 )
+
+// revocationDisposition — ЧТО край делает с вердиктом.
+//
+// Словарь ОДИН на обе поверхности. Прежде решение было выписано дважды —
+// развилкой в gRPC-ветви и развилкой в REST-ветви, — и сойтись им было нечем,
+// кроме внимания: обе несли по два `case` и ни одной ветки `default`, поэтому
+// третий исход проваливался сквозь развилку к обработчику МОЛЧА. Свойство,
+// объявленное для двух полос одного механизма, проверяется их СРАВНЕНИЕМ, и
+// сравнивать надёжнее всего одно место с самим собой.
+type revocationDisposition int
+
+const (
+	// revocationProceed — запрос идёт дальше по цепочке.
+	revocationProceed revocationDisposition = iota
+	// revocationDenyCredential — отказ по УДОСТОВЕРЕНИЮ: 401 / Unauthenticated.
+	revocationDenyCredential
+	// revocationDenyService — отказ по НАШЕЙ неисправности: 503 / Unavailable.
+	// Клиенту полагается повтор, а не повторная аутентификация: никакое его
+	// удостоверение этой неисправности не снимет.
+	revocationDenyService
+)
+
+// disposition переводит вердикт в действие.
+//
+// Ветка `default` здесь НЕСУЩАЯ и закрывает fail-closed: новый исход, о котором
+// этот словарь ещё не знает, обязан отказать, а не проскользнуть. Ровно так
+// #2728 и появился — исход завели, читателя не завели, и запрос пошёл к
+// обработчику. Закреплено TestEveryRevocationVerdictIsRead.
+func (v revocationVerdict) disposition() revocationDisposition {
+	switch v {
+	case revocationNotAsked, revocationLive, revocationUnanswered:
+		return revocationProceed
+	case revocationRevoked:
+		return revocationDenyCredential
+	case revocationUnanswerable, revocationOwnSourceUnanswered:
+		return revocationDenyService
+	default:
+		return revocationDenyService
+	}
+}
 
 // revocationDenyDescription — the client-visible reason on a revoked credential,
 // on the REST surface. It names the caller's OWN token state and nothing about
@@ -122,6 +175,12 @@ func (a *AuthInterceptor) WithRevocationCheck(c TokenRevocationChecker, reportIn
 	// answers neither question.
 	a.revocationFailures = newIntrospectionFailureReporter(reportInterval, nil)
 	a.revocationSkips = newIntrospectionFailureReporter(reportInterval, nil)
+	// Третий репортёр по тому же доводу, что и второй: «чужой провайдер молчит»
+	// и «НАША служба доступа молчит» — разные неисправности, с разными
+	// адресатами и противоположными последствиями (проход против отказа). Общее
+	// окно дало бы всплеску первой подавить ПЕРВЫЙ доклад второй — то есть
+	// скрыть ровно тот момент, когда край начал отказывать арендаторам.
+	a.revocationOwnSourceFailures = newIntrospectionFailureReporter(reportInterval, nil)
 	return a
 }
 
@@ -212,6 +271,25 @@ func (a *AuthInterceptor) revocationCheck(ctx context.Context, vt *VerifiedToken
 	case errors.Is(err, ErrTokenInactive):
 		return revocationRevoked
 
+	case errors.Is(err, ErrOwnRevocationSourceSilent):
+		// Замолчал НАШ источник, а не чужой провайдер. Мягкий проход относится
+		// к третьей стороне; свой отзыв, который мы сами и записали, мягким
+		// проходом не обходится — иначе контроль действует на выдаче и не
+		// действует на предъявлении.
+		//
+		// Признак ТИПИЗИРОВАН и поставлен тем, кто знает, чей источник ответил
+		// (LocalThenProviderRevocation). Сравнения текста ошибки здесь нет и
+		// быть не может: текст пишет сосед, и он меняется от его версии.
+		if report, total, represents := a.revocationOwnSourceFailures.observe(); report {
+			a.logger.Error("our own revocation source did not answer; refusing requests",
+				"err", err, "surface", surface, "route", route,
+				"own_revocation_source_failures_total", total,
+				"occurrences_since_last_report", represents,
+				"hint", "kaname InternalSessionRevocationsService.IsRevoked on the "+
+					"cluster-internal listener must answer")
+		}
+		return revocationOwnSourceUnanswered
+
 	case errors.Is(err, ErrIntrospectionMisconfigured):
 		// What answered is not an introspection endpoint. That does not heal, so
 		// continuing means every request from here on is served with the
@@ -228,9 +306,11 @@ func (a *AuthInterceptor) revocationCheck(ctx context.Context, vt *VerifiedToken
 		return revocationUnanswerable
 
 	default:
-		// The provider did not answer this time. That passes on its own, so the
-		// request continues — and the process says so, because a control that
-		// stops enforcing in silence is one nobody knows they lost.
+		// The FOREIGN provider did not answer this time. That passes on its own,
+		// so the request continues — and the process says so, because a control
+		// that stops enforcing in silence is one nobody knows they lost. Молчание
+		// НАШЕГО источника сюда НЕ попадает: оно отобрано веткой выше по
+		// типизированному признаку.
 		if report, total, represents := a.revocationFailures.observe(); report {
 			a.logger.Error("revocation check unavailable; requests continue unchecked",
 				"err", err, "surface", surface, "route", route,
