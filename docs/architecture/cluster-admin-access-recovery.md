@@ -2,7 +2,9 @@
 
 **Статус:** принято 2026-09-06 (задача #2087, поверхность F5 приёмки
 `sub-phase-KAN-WIRE-1-four-surface-producers-acceptance.md`, сценарий KAN-W5-07,
-предмет ПР-7) · **Область:** служба `services/iam` · **Это ЕДИНСТВЕННОЕ место,
+предмет ПР-7) · **Область:** служба доступа — с 2026-09-13 (kacho#2616) это
+модуль `github.com/PRO-Robotech/kaname`, и координаты `services/iam/<X>` ниже
+читаются как `<X>` в КОРНЕ того же модуля, а не этого дерева · **Это ЕДИНСТВЕННОЕ место,
 где процедура объявлена** — шапки функций базы на него ссылаются и своей
 редакции не имеют.
 
@@ -109,7 +111,9 @@ SELECT kaname.restore_cluster_admin('service_account', 'sva…');
 | прерывание отличимо от завершения | `TestClusterAnchor_InterruptedRenameIsNotHalfDone` |
 | остатка прежнего написания нет, объём осмотренного напечатан | `TestClusterAnchor_ResidueIsZeroAfterTheRename` |
 
-Все — `services/iam/internal/migrations/cluster_anchor_way_back_integration_test.go`,
+Все — `internal/migrations/cluster_anchor_way_back_integration_test.go` модуля
+`github.com/PRO-Robotech/kaname` (проверено 2026-09-20 в клоне модуля; в ЭТОМ дереве
+службы нет),
 интеграционные (нужен Postgres в контейнере), под `-short` пропускаются.
 
 ## Чего этот документ НЕ объявляет

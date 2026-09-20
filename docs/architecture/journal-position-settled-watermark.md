@@ -89,8 +89,8 @@ WHERE sequence_no > $1 ORDER BY sequence_no ASC
 
 | что | чем |
 |---|---|
-| гарантия исполнена | `corelib/subscription/watermark.go`; чтение — окно `(курсор, устоявшееся]` в `corelib/subscription/drain.go` и в `services/iam/internal/repo/kaname/pg/subject_change_repo.go` |
-| гарантия доказана | `corelib/subscription/commitorder_integration_test.go` — три подслучая: инверсный порядок фиксаций, откат писателя, писатель без идентификатора транзакции; `services/iam/internal/repo/kaname/pg/subject_change_commit_order_integration_test.go` — те же окно и откат на журнале изменений субъекта плюс урезание позиции на полной странице |
+| гарантия исполнена | `corelib/subscription/watermark.go`; чтение — окно `(курсор, устоявшееся]` в `corelib/subscription/drain.go` и в `internal/repo/kaname/pg/subject_change_repo.go` модуля `github.com/PRO-Robotech/kaname` |
+| гарантия доказана | `corelib/subscription/commitorder_integration_test.go` — три подслучая: инверсный порядок фиксаций, откат писателя, писатель без идентификатора транзакции; `internal/repo/kaname/pg/subject_change_commit_order_integration_test.go` модуля `github.com/PRO-Robotech/kaname` — те же окно и откат на журнале изменений субъекта плюс урезание позиции на полной странице |
 | наблюдатель один и в фундаменте | гейт `settledwatermarksingularity`; общее состояние защищено замком, и это доказано `corelib/subscription`.`TestWatermarkSurvivesConcurrentPasses` |
 | **никто не читает по голому номеру** | гейт `journalcursorupperbound` — судит по дереву, а не по перечню |
 
@@ -121,7 +121,8 @@ WHERE sequence_no > $1 ORDER BY sequence_no ASC
 ведомости гейта». Это больше не так, **ведомость пуста**, и способы закрытия у
 двух чтений оказались разными — что и есть содержательная часть записи.
 
-* `services/iam/.../subject_change_repo.go` — журнал изменений субъекта
+* `internal/repo/kaname/pg/subject_change_repo.go` модуля `github.com/PRO-Robotech/kaname`
+  (координата переписана 2026-09-20: служба уехала из этого дерева, kacho#2616) — журнал изменений субъекта
   (задача **#1374**): посылка ПОДТВЕРДИЛАСЬ, чтение переведено на окно
   `(курсор, устоявшееся]` тем же наблюдателем из фундамента. Полос потери было
   **две**, и вторая писателя в полёте не требовала вовсе: позиция бралась
@@ -131,7 +132,11 @@ WHERE sequence_no > $1 ORDER BY sequence_no ASC
   неотличим от «журнал пуст», и вызывающий, усвоивший его позицией, сел бы в
   начало журнала.
 
-* `services/iam/.../limit_repo.go` — дельта величин (задача **#1373**): посылка
+* `limit_repo.go` владельца величин — **файла нет ни в одном дереве**: авторитет
+  величин выпилен из службы доступа целиком (kaname#64, `f8f8fb60`), а клиентская
+  половина — из платформы (kacho#2648). Запись ниже архивная: она объясняет, почему
+  чтение было закрыто ОПРОВЕРЖЕНИЕМ посылки, и это объяснение переживает свой файл.
+  Дельта величин (задача **#1373**): посылка
   ОПРОВЕРГНУТА замером. Окна здесь нет **by construction** — ревизию штампует
   триггер `limits_stamp_revision` (миграция 0092), берущий `pg_advisory_xact_lock`
   ПЕРЕД `nextval` и держащий её до фиксации, поэтому порядок ревизий есть
