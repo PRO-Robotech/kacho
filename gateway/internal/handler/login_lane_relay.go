@@ -136,7 +136,8 @@ func NewLoginLaneRelay(cfg LoginLaneRelayConfig) (*LoginLaneRelay, error) {
 				pr.Out.Header.Set("X-Forwarded-For", ip)
 			}
 		},
-		ErrorHandler: r.unreachableHandler,
+		ModifyResponse: endEveryCarrierOnLogout,
+		ErrorHandler:   r.unreachableHandler,
 		ErrorLog:     slog.NewLogLogger(cfg.Logger.Handler(), slog.LevelError),
 	}
 	return r, nil
@@ -175,4 +176,56 @@ func (r *LoginLaneRelay) Stats() LoginLaneRelaySnapshot {
 		out.Relayed[verb] = c.Load()
 	}
 	return out
+}
+
+// endEveryCarrierOnLogout дополняет ответ глагола ВЫХОДА гашением тех имён
+// носителя, которых служба не погасила.
+//
+// # Почему это делает край, а не служба
+//
+// Имён носителя два, и служба знает ровно одно — своё. Чужое принадлежит
+// стороне, которой она не управляет и о которой не обязана знать; попроси мы её
+// гасить чужое имя, мы завели бы в службе знание о соседе, снимаемом с
+// платформы.
+//
+// # Почему это несущее, а не аккуратность
+//
+// Выход, гасящий одно имя из двух, оставляет человека ВОШЕДШИМ по второму. В
+// переходном состоянии это буквально так: нажав «выйти», человек продолжает
+// ходить по чужой сессии. Обработчик `/oauth/logout` гасит оба имени, но выход,
+// который предлагает форма, идёт не через него — а гасит то, что гасит, не
+// обработчик с лучшими намерениями.
+//
+// # Что функция НЕ делает
+//
+// Она не трогает имена, которые служба погасила сама: у ответа службы своя
+// власть над своим именем, и переписывать его значило бы решать за неё. Она
+// молчит на всех глаголах, кроме выхода: гашение на любом ответе полосы формы
+// выбрасывало бы человека при каждом обращении к ней.
+func endEveryCarrierOnLogout(resp *http.Response) error {
+	if middleware.LoginLaneVerb(resp.Request.URL.Path) != middleware.LoginLaneVerbLogout {
+		return nil
+	}
+	already := map[string]bool{}
+	for _, c := range resp.Cookies() {
+		already[c.Name] = true
+	}
+	for _, name := range middleware.SessionCarrierNames() {
+		if already[name] {
+			continue
+		}
+		// Атрибуты те же, что у выдачи и у `EndSessionCarriers`: браузер
+		// сопоставляет печенье по имени, пути и домену, и гашение с другим путём
+		// его не нашло бы.
+		resp.Header.Add("Set-Cookie", (&http.Cookie{
+			Name:     name,
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1,
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteLaxMode,
+		}).String())
+	}
+	return nil
 }
