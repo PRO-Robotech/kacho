@@ -1666,16 +1666,44 @@ spire-rotate-trust-domain:
 	@echo "✓ SPIRE Server pods restarting; new root CA will be issued."
 
 # Dry-run Cilium policies — render и валидация без apply.
+# ИСХОДОВ ТРИ, И ОНИ РАЗЛИЧИМЫ (#2038). Здесь стояла форма `A && B || C`:
+#
+#     command -v kubeconform >/dev/null && kubeconform … || echo "(not installed)"
+#
+# `||` срабатывает на ненулевом коде ЛЮБОЙ левой части, а не только на отсутствии
+# инструмента. Значит при УСТАНОВЛЕННОМ kubeconform и УПАВШЕЙ валидации рецепт
+# печатал «kubeconform not installed» и выходил НУЛЁМ: сообщение называло не ту
+# причину, читатель шёл ставить инструмент, которого хватало, а найденное
+# нарушение оставалось ненайденным.
+#
+# Логика вынесена в скрипт, и это не стиль: (1) в рецепте различение выражается
+# ровно теми `&&`/`||`, которые дефект и породили; (2) код возврата через make не
+# проходит — make отвечает своей двойкой на любой упавший рецепт, поэтому
+# категорию называет СЛОВОМ тот, кто её наблюдал; (3) рецепт нельзя прогнать, а
+# скрипт прогоняется: `--self-test` подменяет ровно один факт на случай и требует
+# предсказанного кода (включая законный близнец каждой стороны).
+#
+# Цель остаётся НЕНУЛЕВОЙ и на третьей категории: «не проверяли» в зачёт
+# «замечаний нет» не идёт. Что именно случилось, говорит текст, а не код make.
+#
+# ПРЕДМЕТ САМОЙ ЦЕЛИ СЕГОДНЯ ОТСУТСТВУЕТ, и это измерено, а не предположено
+# (2026-09-21): `git ls-files | grep -ci cilium` → 0, `grep -ci cilium
+# helm/umbrella/Chart.yaml` → 0. Чарта `charts/cilium` в дереве нет ни своим
+# каталогом, ни зависимостью умбреллы, поэтому рендер отказывает «could not find
+# template … in chart», и до валидации цель не доходит вовсе. Починка выше — о
+# РАЗЛИЧЕНИИ ИСХОДОВ, и она свою работу делает: прежняя запись на этом же дереве
+# сказала бы «kubeconform not installed», а эта называет настоящую причину.
+# Судьба самой цели (снять вместе с предметом либо вернуть чарт) — решение
+# владельца чартов, не этой правки; тот же вопрос стоит у соседней `spire-lint`.
 cilium-policy-dry-run:
-	@echo "Phase 10: rendering CiliumNetworkPolicy manifests..."
-	@helm template kacho-umbrella ./helm/umbrella -f ./helm/umbrella/values.prod.yaml \
-		--set cilium.enabled=true \
-		--show-only charts/cilium/templates/network-policies.yaml \
-		--show-only charts/cilium/templates/cilium-mtls-enforce.yaml > /tmp/cilium-policies.yaml
-	@echo "✓ Rendered to /tmp/cilium-policies.yaml ($$(wc -l < /tmp/cilium-policies.yaml) lines)"
-	@command -v kubeconform > /dev/null && \
-		kubeconform -skip CiliumNetworkPolicy,CiliumClusterwideNetworkPolicy /tmp/cilium-policies.yaml \
-		|| echo "(kubeconform not installed; install via: brew install kubeconform)"
+	@rc=0; ./scripts/cilium-policy-dry-run.sh || rc=$$?; \
+	case "$$rc" in \
+	  0) exit 0 ;; \
+	  1) echo "ОТКАЗ: см. причину выше — она названа своим именем (рендер либо валидация)"; exit 1 ;; \
+	  3) echo "НЕ ВЫПОЛНИЛОСЬ: условие не создано, вердикта о политиках нет ни одного."; \
+	     echo "   Это не «замечаний нет»: цель выходит ненулевой намеренно."; exit 1 ;; \
+	  *) echo "ОТКАЗ: неизвестный код $$rc — он не входит в три объявленных исхода"; exit 1 ;; \
+	esac
 
 # Lint все Phase 10 charts.
 spire-lint:
