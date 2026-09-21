@@ -55,7 +55,12 @@ var foreignIDPNameLedger = []ForeignIDPNameLedgerEntry{
 //
 // Обход диска не знает правил игнорирования и судил бы чужой рабочий каталог —
 // произведённые файлы, чужие копии, остатки прогонов.
-func foreignIDPNameSources(t *testing.T) map[string]string {
+//
+// Отсев — СВОЙ (ForeignIDPNameSkipRules), не унаследованный: чужой перечень под
+// чужой предмет предикатом этого гейта не является. Отсеянное возвращается
+// числом и по правилам, потому что «там ничего нет» обязано быть отличимо от
+// «туда не смотрели».
+func foreignIDPNameSources(t *testing.T) (map[string]string, int, int, []ForeignIDPNameSkipCount) {
 	t.Helper()
 	root := repoRoot(t)
 	out, err := gitenv.Command(root, "ls-files", "-z", "--", "*.go").Output()
@@ -64,12 +69,16 @@ func foreignIDPNameSources(t *testing.T) map[string]string {
 			"здесь означало бы «ноль прочитанного»", err)
 	}
 	sources := map[string]string{}
+	listed, skipped := 0, 0
+	byRule := map[string]int{}
 	for _, rel := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
-		if rel == "" || skipPath(rel) {
+		if rel == "" {
 			continue
 		}
-		// Порождённое не правится переименованием: имя там приходит из контракта.
-		if strings.HasSuffix(rel, ".pb.go") || strings.HasSuffix(rel, ".pb.gw.go") {
+		listed++
+		if rule := ForeignIDPNameSkipRuleFor(rel); rule != "" {
+			skipped++
+			byRule[rule]++
 			continue
 		}
 		b, readErr := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- путь из индекса своего дерева
@@ -78,7 +87,11 @@ func foreignIDPNameSources(t *testing.T) map[string]string {
 		}
 		sources[rel] = string(b)
 	}
-	return sources
+	counts := make([]ForeignIDPNameSkipCount, 0, len(ForeignIDPNameSkipRules))
+	for _, r := range ForeignIDPNameSkipRules {
+		counts = append(counts, ForeignIDPNameSkipCount{Rule: r.Name, N: byRule[r.Name]})
+	}
+	return sources, listed, skipped, counts
 }
 
 // TestForeignIDPNameIsBoundedByTheLedger — наши имена не носят названия чужого
@@ -88,13 +101,21 @@ func foreignIDPNameSources(t *testing.T) map[string]string {
 // обход дерева и вердикт.
 func TestForeignIDPNameIsBoundedByTheLedger(t *testing.T) {
 	t.Parallel()
-	sources := foreignIDPNameSources(t)
+	sources, listed, skipped, byRule := foreignIDPNameSources(t)
 
 	findings, census, err := JudgeForeignIDPNames(sources, foreignIDPNameLedger)
 	if err != nil {
 		t.Fatalf("разбор: %v", err)
 	}
+	census.Listed, census.Skipped, census.SkippedBy = listed, skipped, byRule
 	t.Log(census.String())
+
+	// Отсеянное обязано СХОДИТЬСЯ: число, которое не сходится с предложенным и
+	// прочитанным, — украшение, а не перепись.
+	if listed != len(sources)+skipped {
+		t.Fatalf("перепись не сходится: предложено %d, прочитано %d, отсеяно %d",
+			listed, len(sources), skipped)
+	}
 
 	// Предпосылка: гейт обязан ОТКАЗЫВАТЬ на беспредметности, а не молчать.
 	// Ноль разобранных файлов снаружи неотличим от «имён нет».
@@ -140,12 +161,20 @@ func TestForeignIDPNameIsBoundedByTheLedger(t *testing.T) {
 // Поэтому пустая ведомость здесь ПРОХОДИТ, объявляя перепись.
 func TestForeignIDPNameLedgerPremiseHolds(t *testing.T) {
 	t.Parallel()
-	sources := foreignIDPNameSources(t)
+	sources, listed, skipped, byRule := foreignIDPNameSources(t)
 	hits, census, err := CollectForeignIDPNames(sources)
 	if err != nil {
 		t.Fatalf("разбор: %v", err)
 	}
+	census.Listed, census.Skipped, census.SkippedBy = listed, skipped, byRule
 	t.Logf("%s; записей ведомости %d", census.String(), len(foreignIDPNameLedger))
+
+	// СОСТАВ, а не только сумма: ведомость держит число, и замещение внутри
+	// области («одно имя ушло, другое пришло») прошло бы молча. Здесь оно видно
+	// глазами на обзоре диффа — ровно то, ради чего полоса и заведена.
+	for _, row := range ForeignIDPNameComposition(hits) {
+		t.Log(row)
+	}
 
 	if len(foreignIDPNameLedger) == 0 {
 		t.Log("ведомость пуста — исход, к которому гейт ведёт; проверять нечего")
@@ -173,6 +202,39 @@ func TestForeignIDPNameLedgerPremiseHolds(t *testing.T) {
 		if got == 0 {
 			t.Errorf("запись ведомости %q не накрывает ни одного имени — она вакуумна",
 				e.Area)
+		}
+	}
+}
+
+// TestForeignIDPNameSkipRulesHaveASubject — у каждого правила отсева есть что
+// отсеивать.
+//
+// Правило, которому нечего исключать, — находка, а не безобидная строка: оно
+// сужает обход обещанием, которого никто не проверял, и переживает свой предмет
+// молча. Ровно так унаследованный отсев лицензионного гейта отсеивал ноль
+// файлов, оставаясь в коде.
+func TestForeignIDPNameSkipRulesHaveASubject(t *testing.T) {
+	t.Parallel()
+	_, listed, skipped, byRule := foreignIDPNameSources(t)
+	t.Logf("предложено путей %d · отсеяно путей %d · правил отсева %d",
+		listed, skipped, len(ForeignIDPNameSkipRules))
+
+	if len(ForeignIDPNameSkipRules) == 0 {
+		t.Log("правил отсева ноль — судится ВСЁ предложенное; исход законный")
+		if skipped != 0 {
+			t.Errorf("правил ноль, а отсеяно %d путей — этого состояния быть не может", skipped)
+		}
+		return
+	}
+	for _, c := range byRule {
+		if c.N == 0 {
+			t.Errorf("правило отсева %q не отсеяло ни одного пути — ему нечего "+
+				"исключать, и оно обязано быть снято вместе со своим предметом", c.Rule)
+		}
+	}
+	for _, r := range ForeignIDPNameSkipRules {
+		if strings.TrimSpace(r.Why) == "" {
+			t.Errorf("правило отсева %q без основания — сужение обхода без довода", r.Name)
 		}
 	}
 }

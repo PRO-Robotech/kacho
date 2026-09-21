@@ -47,13 +47,42 @@ package repohygiene
 // и у каждой её записи стоит предикат снятия.
 //
 // ─────────────────────────────────────────────────────────────────────────────
+// ЧТО ГЕЙТ ВИДИТ — ПЕРЕЧЕНЬ УЗЛОВ, ЗАКРЫТЫЙ И ПРОВЕРЕННЫЙ ПООТДЕЛЬНОСТИ
+//
+// Объявленным именем считаются: имя пакета · псевдоним импорта · функция ·
+// тип · константа/переменная · короткое объявление · переменная `range` ·
+// поле/параметр (включая приёмник и параметр типа) · метка. Каждый узел гоняется
+// инъекцией ОТДЕЛЬНО (`_injection_test.go`, «форма записи»): узел, о котором
+// распознаватель не знает, даёт не красное и не зелёное, а молчание — и для него
+// не растёт даже знаменатель.
+//
+// Три узла — имя пакета, псевдоним импорта и переменная `range` — добраны
+// опытом приёмки, который нашёл на них молчание. Классы были ЛАТЕНТНЫМИ: в
+// дереве таких имён нет ни одного, и число находок от добора не изменилось
+// (103 ИМЕНИ до и после). Изменилось обещание заголовка, ради которого проба и
+// стоит.
+//
+// ─────────────────────────────────────────────────────────────────────────────
 // ЧЕГО ГЕЙТ НЕ ВИДИТ — НАЗВАНО ВСЛУХ
 //
-// Имя, собранное в рантайме, и имя внешнего пакета, приходящее импортом, под
-// ось не подпадают. Строковый литерал и комментарий — намеренно: это координаты
-// и проза, у них свои держатели (`providersurface.go`, `retiredissuerclaim.go`).
+// Имя, собранное в рантайме, и имя внешнего пакета, приходящее импортом БЕЗ
+// псевдонима, под ось не подпадают: второе не наше и переименованием не
+// правится. Строковый литерал и комментарий — намеренно: это координаты и
+// проза, у них свои держатели (`providersurface.go`, `retiredissuerclaim.go`).
+// Порождённые стабы отсеяны со своим основанием (`ForeignIDPNameSkipRules`).
 // Дерево вне Go (python-фикстуры, shell, чарты) этот гейт не читает: там имя
 // поставщика почти всегда координата стенда, и предикат по ним дал бы перебор.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ДВА РАЗНЫХ «103» — ЕДИНИЦА НАЗЫВАЕТСЯ ПРИ КАЖДОМ ЧИСЛЕ
+//
+// У этой полосы два замера одного предмета, и числа у них совпали СЛУЧАЙНО:
+// 103 ИМЕНИ (объявленный идентификатор Go) по всему дереву — предмет этого
+// гейта; 103 СТРОКИ с именем поставщика в пакете `services/registry/internal/
+// clients/jwks` на базе bec320cf47d — предмет строчного замера полосы, снятый
+// до одной строки. Разные единицы, разные области, разные предметы. Поэтому
+// перепись называет единицу при каждом числе, и то же требуется от всякого,
+// кто эти числа пересказывает.
 
 import (
 	"errors"
@@ -77,7 +106,71 @@ var foreignIDPWords = []string{"hydra", "kratos", "ory", "oryd"}
 // `hydrate`/`hydration`/`dehydrated` — гидратация, другой референт. Он живёт в
 // консоли, а не в Go, но распознаватель, не знающий о нём, назвал бы его
 // находкой в первый же день, когда такое имя появится.
-var foreignIDPNotWords = []string{"hydrat"}
+//
+// Перечень ЗАКРЫТ и сверяется РАВЕНСТВОМ слова, а не вхождением подстроки.
+// Вхождением он гасил бы находку целиком: `hydratest`, `hydratokenTTL` — имена,
+// где `hydrat` оказался стыком двух слов, записанных сплошной строчной, — не
+// находились бы ВОВСЕ, и для них не рос бы даже знаменатель. Опыт приёмки нашёл
+// ровно этот класс; он латентный (сегодня в дереве из `hydrat-` только формы
+// гидратации), но достижим первым же именем такого вида.
+//
+// ГРАНИЦА НАЗВАНА: слово гидратации, слипшееся со вторым словом сплошной
+// строчной (`hydratefoo`), в перечень не попадёт и станет находкой. Это
+// намеренно: ложная находка видна и правится, молчание — нет.
+var foreignIDPNotWords = []string{
+	"hydrate", "hydrates", "hydrated", "hydrating", "hydration",
+	"rehydrate", "rehydrates", "rehydrated", "rehydrating",
+	"dehydrate", "dehydrates", "dehydrated", "dehydrating",
+}
+
+// ForeignIDPNameSkipRule — одно правило отсева ЭТОГО гейта.
+//
+// Отсев не наследуется. Чужой перечень, заведённый под чужой предмет (у
+// лицензионного гейта это `.git .claude docs node_modules vendor bin`), твоим
+// предикатом не является: он сужает обход по основанию, которое здесь никто не
+// переутверждал, и любой файл вошёл бы в него, просто выбрав каталог. Замерено
+// на bec320cf47d: под ВСЕМИ шестью сегментами отслеженных `.go` ноль — то есть
+// унаследованный перечень не отсеивал НИЧЕГО и был чистым обещанием.
+//
+// Каждое правило несёт основание и ОБЯЗАНО иметь предмет: правило, которому
+// нечего отсеивать, — находка пробы, а не безобидная строка.
+type ForeignIDPNameSkipRule struct {
+	// Name — как правило называется в переписи.
+	Name string
+	// Why — основание: почему эти файлы судить нечем.
+	Why string
+	// Match — предикат по пути от корня дерева.
+	Match func(rel string) bool
+}
+
+// ForeignIDPNameSkipRules — отсев этого гейта. Перечень закрыт.
+var ForeignIDPNameSkipRules = []ForeignIDPNameSkipRule{
+	{
+		Name: "порождённые стабы контракта",
+		Why: "имя в них приходит из `.proto` и переименованием НЕ правится: правка " +
+			"пережила бы ровно до следующей генерации. Предмет там — контракт, и " +
+			"держат его proto-полоса и край, а не этот гейт",
+		Match: func(rel string) bool {
+			return strings.HasSuffix(rel, ".pb.go") || strings.HasSuffix(rel, ".pb.gw.go")
+		},
+	},
+}
+
+// ForeignIDPNameSkipCount — сколько путей отсеяло одно правило.
+type ForeignIDPNameSkipCount struct {
+	Rule string
+	N    int
+}
+
+// ForeignIDPNameSkipRuleFor — каким правилом отсеян путь. Пусто — не отсеян.
+func ForeignIDPNameSkipRuleFor(rel string) string {
+	for _, r := range ForeignIDPNameSkipRules {
+		if r.Match(rel) {
+			return r.Name
+		}
+	}
+	return ""
+}
 
 // errForeignIDPEmptyCorpus — обход не принёс ни одного файла.
 var errForeignIDPEmptyCorpus = errors.New("обход пуст: разобрано ноль файлов")
@@ -131,6 +224,13 @@ type ForeignIDPNameFinding struct {
 // ForeignIDPNameCensus — объём осмотренного: «ноль находок» обязано быть
 // отличимо от «ноль прочитанного».
 type ForeignIDPNameCensus struct {
+	// Listed — сколько путей предложено обходу индексом.
+	Listed int
+	// Skipped — сколько из них отсеяно правилами. Печатается отдельно: без
+	// этого числа «там ничего нет» неотличимо от «туда не смотрели».
+	Skipped int
+	// SkippedBy — отсеянное по правилам, в порядке их объявления.
+	SkippedBy []ForeignIDPNameSkipCount
 	// Files — разобрано файлов Go.
 	Files int
 	// Idents — осмотрено объявленных имён (весь знаменатель обхода).
@@ -147,10 +247,25 @@ type ForeignIDPNameCensus struct {
 	Findings int
 }
 
+// String — единица счёта названа ПРИ КАЖДОМ числе намеренно: рядом с этим
+// гейтом живёт второй замер того же предмета в СТРОКАХ, и числа у них совпадают
+// случайно. «103 имени по дереву» и «103 строки в пакете» — разные предметы.
 func (c ForeignIDPNameCensus) String() string {
-	return fmt.Sprintf("перепись: файлов Go %d · объявленных имён %d · из них с названием "+
-		"поставщика %d в %d областях · записей ведомости %d (имён объявлено %d) · находок %d",
-		c.Files, c.Idents, c.Names, c.Areas, c.LedgerEntries, c.LedgerNames, c.Findings)
+	var by strings.Builder
+	for i, s := range c.SkippedBy {
+		if i > 0 {
+			by.WriteString(", ")
+		}
+		fmt.Fprintf(&by, "%s %d", s.Rule, s.N)
+	}
+	if by.Len() == 0 {
+		by.WriteString("правил не объявлено")
+	}
+	return fmt.Sprintf("перепись: путей предложено %d · отсеяно путей %d (%s) · "+
+		"разобрано файлов Go %d · осмотрено объявленных ИМЁН %d · из них ИМЁН с названием "+
+		"поставщика %d в %d областях · записей ведомости %d (ИМЁН объявлено %d) · находок %d",
+		c.Listed, c.Skipped, by.String(), c.Files, c.Idents, c.Names, c.Areas,
+		c.LedgerEntries, c.LedgerNames, c.Findings)
 }
 
 // ForeignIDPNameHit — одно найденное имя вместе с координатой.
@@ -218,7 +333,7 @@ func ForeignIDPNameWord(name string) string {
 		lw := strings.ToLower(w)
 		skip := false
 		for _, nw := range foreignIDPNotWords {
-			if strings.Contains(lw, nw) {
+			if lw == nw {
 				skip = true
 				break
 			}
@@ -280,10 +395,28 @@ func CollectForeignIDPNames(sources map[string]string) ([]ForeignIDPNameHit, For
 				})
 			}
 		}
+		// Имя пакета — объявленное имя файла, и правится оно переименованием
+		// так же, как всякое другое.
+		add("пакет", file.Name)
 		ast.Inspect(file, func(n ast.Node) bool {
 			switch v := n.(type) {
 			case *ast.FuncDecl:
 				add("функция", v.Name)
+			case *ast.ImportSpec:
+				// Псевдоним импорта — НАШЕ имя: чужой пакет им не называется, а
+				// переживёт поставщика той же ложью. Импорт без псевдонима не
+				// судится: там имя приходит из чужого модуля.
+				add("псевдоним импорта", v.Name)
+			case *ast.RangeStmt:
+				if v.Tok != token.DEFINE {
+					return true
+				}
+				if id, ok := v.Key.(*ast.Ident); ok {
+					add("переменная range", id)
+				}
+				if id, ok := v.Value.(*ast.Ident); ok {
+					add("переменная range", id)
+				}
 			case *ast.TypeSpec:
 				add("тип", v.Name)
 			case *ast.ValueSpec:
@@ -390,4 +523,30 @@ func JudgeForeignIDPNames(
 	})
 	census.Findings = len(findings)
 	return findings, census, nil
+}
+
+// ForeignIDPNameComposition — СОСТАВ найденного по областям.
+//
+// Ведомость держит СУММУ, и замещение внутри области проходит молча: одно имя
+// ушло, другое пришло, число не изменилось. Сумму гейт судить не перестаёт —
+// состав печатается рядом, чтобы подмена была видна глазами на обзоре диффа.
+func ForeignIDPNameComposition(hits []ForeignIDPNameHit) []string {
+	byArea := map[string][]string{}
+	for _, h := range hits {
+		byArea[foreignIDPArea(h.File)] = append(byArea[foreignIDPArea(h.File)],
+			fmt.Sprintf("%s:%d %s (%s)", h.File, h.Line, h.Name, h.Kind))
+	}
+	areas := make([]string, 0, len(byArea))
+	for a := range byArea {
+		areas = append(areas, a)
+	}
+	sort.Strings(areas)
+	out := make([]string, 0, len(hits)+len(areas))
+	for _, a := range areas {
+		rows := byArea[a]
+		sort.Strings(rows)
+		out = append(out, fmt.Sprintf("── область %s: ИМЁН %d", a, len(rows)))
+		out = append(out, rows...)
+	}
+	return out
 }

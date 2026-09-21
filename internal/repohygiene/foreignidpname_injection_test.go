@@ -144,6 +144,30 @@ import "testing"
 
 func TestLogout_HydraSessionKill(t *testing.T) { _ = t }
 `,
+		"псевдоним импорта": `package p
+
+import hydraadmin "net/http"
+
+var _ = hydraadmin.StatusOK
+`,
+		"переменная range": `package p
+
+func f(m map[string]int) {
+	for hydraKid := range m {
+		_ = hydraKid
+	}
+}
+`,
+		"имя пакета": `package hydraclient
+`,
+		"сплошная строчная с hydrat": `package p
+
+func hydratest() {}
+`,
+		"сплошная строчная с hydrat (константа)": `package p
+
+const hydratokenTTL = 1
+`,
 	}
 	for name, body := range forms {
 		findings, census, err := JudgeForeignIDPNames(injSources("svc/a_test.go", body), nil)
