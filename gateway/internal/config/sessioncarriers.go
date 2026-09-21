@@ -115,11 +115,21 @@ func (s SessionCarrierSet) String() string {
 // коде у самого множества поэтому нет — оно наследует умолчание посадки, у
 // которой его тоже нет намеренно.
 func (c Config) ResolvedSessionCarriers() (SessionCarrierSet, error) {
-	raw := strings.TrimSpace(c.SessionCarriers)
+	// ДВА ВОПРОСА — ДВЕ ВЕЛИЧИНЫ, и это намеренно, а не недосмотр соседних
+	// строк.
+	//
+	// «Объявил ли профиль ручку вообще» спрашивается у величины КАК ЕСТЬ:
+	// значение из одних пробелов — ОБЪЯВЛЕНИЕ, оператор его набрал, и молча
+	// прочитать его как «не задано» значило бы вывести множество из посадки
+	// там, где человек пытался его задать. Такое значение уходит в разбор и
+	// получает отказ, называющий и длину, и число элементов.
+	//
+	// «Какие стороны названы» спрашивается у ОБРЕЗАННОЙ: значение есть
+	// перечень, и обрамляющие пробелы в нём разделители, а не часть имени.
 	if c.SessionCarriers == "" {
 		return c.sessionCarriersFromPosture()
 	}
-	return c.sessionCarriersFromDeclaration(raw)
+	return c.sessionCarriersFromDeclaration(strings.TrimSpace(c.SessionCarriers))
 }
 
 // sessionCarriersFromPosture — сегодняшнее поведение, выведенное из посадки.

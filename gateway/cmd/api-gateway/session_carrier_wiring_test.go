@@ -202,7 +202,7 @@ func identifiersDeclaredIn(t *testing.T, dir string) map[string]bool {
 // способно завести читателя там, где множество его не назвало. Отрицание и
 // дизъюнкция с участием множества — находка: первое переворачивает решение,
 // вторая расширяет его.
-func carrierDecisionBranchOf(f *ast.File, pos token.Pos) string {
+func carrierDecisionBranchOf(f *ast.File, pos token.Pos, receiver string) string {
 	decision := ""
 	ast.Inspect(f, func(n ast.Node) bool {
 		ifs, ok := n.(*ast.IfStmt)
@@ -212,7 +212,7 @@ func carrierDecisionBranchOf(f *ast.File, pos token.Pos) string {
 		if pos <= ifs.Body.Lbrace || pos >= ifs.Body.Rbrace {
 			return true
 		}
-		if d := lawfulSetDecision(ifs.Cond); d != "" {
+		if d := lawfulSetDecision(ifs.Cond, receiver); d != "" {
 			decision = d
 		}
 		return true
@@ -222,12 +222,12 @@ func carrierDecisionBranchOf(f *ast.File, pos token.Pos) string {
 
 // lawfulSetDecision — имя метода множества, если условие имеет ЗАКОННУЮ форму;
 // "" иначе, в том числе когда множество в условии есть, но форма незаконна.
-func lawfulSetDecision(cond ast.Expr) string {
-	if usesSetUnlawfully(cond) {
+func lawfulSetDecision(cond ast.Expr, receiver string) string {
+	if usesSetUnlawfully(cond, receiver) {
 		return ""
 	}
 	for _, term := range conjuncts(cond) {
-		if name := bareSetCall(term); name != "" {
+		if name := bareSetCall(term, receiver); name != "" {
 			return name
 		}
 	}
@@ -242,15 +242,55 @@ func conjuncts(e ast.Expr) []ast.Expr {
 	return []ast.Expr{e}
 }
 
-// bareSetCall — имя метода, если выражение есть ГОЛЫЙ вызов `X.ReadsOwn()` или
-// `X.ReadsProvider()` без обёрток.
-func bareSetCall(e ast.Expr) string {
+// carrierSetReceiver — ИМЯ ВЕЛИЧИНЫ, держащей множество читателей, выведенное
+// из дерева: то, чему присвоен результат `ResolvedSessionCarriers`.
+//
+// Прежде признак решения смотрел только на ИМЯ МЕТОДА, и приёмник не проверял
+// вовсе: `somethingElse.ReadsOwn()` прошёл бы как решение множества. Имя
+// величины не выписывается здесь по той же причине, по которой не выписываются
+// стороны, — оно берётся оттуда, где заводится.
+func carrierSetReceiver(t *testing.T, f *ast.File) string {
+	t.Helper()
+	name := ""
+	ast.Inspect(f, func(n ast.Node) bool {
+		as, ok := n.(*ast.AssignStmt)
+		if !ok || len(as.Lhs) == 0 || len(as.Rhs) != 1 {
+			return true
+		}
+		call, ok := as.Rhs[0].(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || sel.Sel.Name != "ResolvedSessionCarriers" {
+			return true
+		}
+		if id, ok := as.Lhs[0].(*ast.Ident); ok {
+			name = id.Name
+		}
+		return true
+	})
+	if name == "" {
+		t.Fatal("величина множества читателей не найдена: результат ResolvedSessionCarriers " +
+			"никому не присваивается — признак решения не на чем основать")
+	}
+	return name
+}
+
+// bareSetCall — имя метода, если выражение есть ГОЛЫЙ вызов `<множество>.ReadsOwn()`
+// или `.ReadsProvider()` без обёрток. Приёмник обязан быть названной величиной:
+// чужой объект с тем же именем метода решением множества не является.
+func bareSetCall(e ast.Expr, receiver string) string {
 	call, ok := e.(*ast.CallExpr)
 	if !ok || len(call.Args) != 0 {
 		return ""
 	}
 	sel, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
+		return ""
+	}
+	id, ok := sel.X.(*ast.Ident)
+	if !ok || (receiver != "" && id.Name != receiver) {
 		return ""
 	}
 	switch sel.Sel.Name {
@@ -261,16 +301,16 @@ func bareSetCall(e ast.Expr) string {
 }
 
 // usesSetUnlawfully — участвует ли множество в ОТРИЦАНИИ либо в ДИЗЪЮНКЦИИ.
-func usesSetUnlawfully(cond ast.Expr) bool {
+func usesSetUnlawfully(cond ast.Expr, receiver string) bool {
 	bad := false
 	ast.Inspect(cond, func(n ast.Node) bool {
 		switch x := n.(type) {
 		case *ast.UnaryExpr:
-			if x.Op == token.NOT && mentionsSet(x.X) {
+			if x.Op == token.NOT && mentionsSet(x.X, receiver) {
 				bad = true
 			}
 		case *ast.BinaryExpr:
-			if x.Op == token.LOR && (mentionsSet(x.X) || mentionsSet(x.Y)) {
+			if x.Op == token.LOR && (mentionsSet(x.X, receiver) || mentionsSet(x.Y, receiver)) {
 				bad = true
 			}
 		}
@@ -280,10 +320,10 @@ func usesSetUnlawfully(cond ast.Expr) bool {
 }
 
 // mentionsSet — упоминает ли выражение вызов множества.
-func mentionsSet(e ast.Expr) bool {
+func mentionsSet(e ast.Expr, receiver string) bool {
 	found := false
 	ast.Inspect(e, func(n ast.Node) bool {
-		if call, ok := n.(*ast.CallExpr); ok && bareSetCall(call) != "" {
+		if call, ok := n.(*ast.CallExpr); ok && bareSetCall(call, receiver) != "" {
 			found = true
 		}
 		return true
@@ -295,6 +335,7 @@ func mentionsSet(e ast.Expr) bool {
 // заведено решением множества M · заведено посадкой K», требуется M = N, K = 0.
 func TestSessionCarrierWiring_EveryReaderIsWiredByTheCarrierSet(t *testing.T) {
 	fset, f := parseMain(t)
+	receiver := carrierSetReceiver(t, f)
 
 	total, bySet, byPosture := 0, 0, 0
 	for callee, want := range carrierReaderConstructors {
@@ -304,7 +345,7 @@ func TestSessionCarrierWiring_EveryReaderIsWiredByTheCarrierSet(t *testing.T) {
 		}
 		for _, s := range sites {
 			total++
-			decision := carrierDecisionBranchOf(f, mustPosOf(t, fset, f, callee, s.pos))
+			decision := carrierDecisionBranchOf(f, mustPosOf(t, fset, f, callee, s.pos), receiver)
 			switch {
 			case decision == want:
 				bySet++
@@ -319,8 +360,9 @@ func TestSessionCarrierWiring_EveryReaderIsWiredByTheCarrierSet(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("перепись: мест провязки читателя носителя %d · заведено решением множества %d · "+
-		"заведено веткой посадки %d · сторон носителя 2 (наша, чужая)", total, bySet, byPosture)
+	t.Logf("перепись: мест провязки читателя носителя %d · заведено решением множества %d "+
+		"(приёмник %q, выведен из дерева) · заведено веткой посадки %d · сторон носителя 2",
+		total, bySet, receiver, byPosture)
 }
 
 // mustPosOf возвращает позицию вызова по её текстовой координате: wiringSites
@@ -357,7 +399,7 @@ func TestSessionCarrierWiringGate_Injection_APostureBranchIsFound(t *testing.T) 
 		"\tif lane == identityposture.External { who = who.WithKratos(middleware.NewKratosClient(url), lookup) }")
 	var bare []string
 	for _, s := range wiringSites(fset, f, "NewKratosClient") {
-		if carrierDecisionBranchOf(f, mustPosOf(t, fset, f, "NewKratosClient", s.pos)) != "ReadsProvider" {
+		if carrierDecisionBranchOf(f, mustPosOf(t, fset, f, "NewKratosClient", s.pos), "carriers") != "ReadsProvider" {
 			bare = append(bare, s.pos)
 		}
 	}
@@ -372,7 +414,7 @@ func TestSessionCarrierWiringGate_Twin_ASetDecisionIsSilent(t *testing.T) {
 	fset, f := judgeCarrierFixture(t, "")
 	for callee, want := range carrierReaderConstructors {
 		for _, s := range wiringSites(fset, f, callee) {
-			if got := carrierDecisionBranchOf(f, mustPosOf(t, fset, f, callee, s.pos)); got != want {
+			if got := carrierDecisionBranchOf(f, mustPosOf(t, fset, f, callee, s.pos), "carriers"); got != want {
 				t.Fatalf("законный читатель %q объявлен находкой: решение %q, ожидалось %q", callee, got, want)
 			}
 		}
@@ -389,19 +431,25 @@ func TestSessionCarrierWiringGate_Twin_ASetDecisionIsSilent(t *testing.T) {
 
 func TestSessionCarrierWiringGate_Injection_EveryEvasionOfTheNameCheckIsFound(t *testing.T) {
 	cases := []struct {
-		name   string
-		cond   string
-		lawful bool
+		name     string
+		cond     string
+		receiver string
+		lawful   bool
 	}{
-		{"голый вызов множества", "carriers.ReadsOwn()", true},
-		{"сужающее слагаемое рядом", `carriers.ReadsOwn() && url != "disabled"`, true},
-		{"сужающее слагаемое слева", `url != "disabled" && carriers.ReadsProvider()`, true},
-		{"ОТРИЦАНИЕ переворачивает решение", "!carriers.ReadsOwn()", false},
-		{"отрицание внутри конъюнкции", `carriers.ReadsProvider() && !carriers.ReadsOwn()`, false},
-		{"ДИЗЪЮНКЦИЯ расширяет решение", `carriers.ReadsOwn() || legacyFlag`, false},
-		{"дизъюнкция справа", `legacyFlag || carriers.ReadsOwn()`, false},
-		{"ветка посадки", "lane == identityposture.Own", false},
-		{"условие вовсе не о множестве", `url != "disabled"`, false},
+		{"голый вызов множества", "carriers.ReadsOwn()", "carriers", true},
+		{"сужающее слагаемое рядом", `carriers.ReadsOwn() && url != "disabled"`, "carriers", true},
+		{"сужающее слагаемое слева", `url != "disabled" && carriers.ReadsProvider()`, "carriers", true},
+		{"ОТРИЦАНИЕ переворачивает решение", "!carriers.ReadsOwn()", "carriers", false},
+		{"отрицание внутри конъюнкции", `carriers.ReadsProvider() && !carriers.ReadsOwn()`, "carriers", false},
+		{"ДИЗЪЮНКЦИЯ расширяет решение", `carriers.ReadsOwn() || legacyFlag`, "carriers", false},
+		{"дизъюнкция справа", `legacyFlag || carriers.ReadsOwn()`, "carriers", false},
+		{"ветка посадки", "lane == identityposture.Own", "carriers", false},
+		{"условие вовсе не о множестве", `url != "disabled"`, "carriers", false},
+		// ПРИЁМНИК: то же имя метода у ЧУЖОГО объекта решением множества не
+		// является. Без этих строк признак опознавал имя метода и пропускал
+		// любой приёмник.
+		{"ЧУЖОЙ приёмник с тем же именем метода", "somethingElse.ReadsOwn()", "carriers", false},
+		{"чужой приёмник в конъюнкции", `somethingElse.ReadsProvider() && url != ""`, "carriers", false},
 	}
 	found := 0
 	for _, tc := range cases {
@@ -417,7 +465,7 @@ func TestSessionCarrierWiringGate_Injection_EveryEvasionOfTheNameCheckIsFound(t 
 			if len(sites) != 1 {
 				t.Fatalf("мест %d, ожидалось 1", len(sites))
 			}
-			got := carrierDecisionBranchOf(f, mustPosOf(t, fset, f, "WithHumanSession", sites[0].pos))
+			got := carrierDecisionBranchOf(f, mustPosOf(t, fset, f, "WithHumanSession", sites[0].pos), tc.receiver)
 			if tc.lawful && got == "" {
 				t.Fatalf("законная форма %q объявлена находкой", tc.cond)
 			}
@@ -430,7 +478,8 @@ func TestSessionCarrierWiringGate_Injection_EveryEvasionOfTheNameCheckIsFound(t 
 			}
 		})
 	}
-	t.Logf("перепись: форм условия проверено %d · законных 3 · найденных обходов %d", len(cases), found)
+	t.Logf("перепись: форм условия проверено %d · законных 3 · найденных обходов %d "+
+		"(включая чужой приёмник)", len(cases), found)
 }
 
 func judgeCarrierFixture(t *testing.T, extra string) (*token.FileSet, *ast.File) {
@@ -593,6 +642,7 @@ var tokenAcceptanceSites = []string{"TokenAcceptance", "NewJWTVerifier"}
 
 func TestSessionCarrierWiring_NoCarrierStateReachesTokenAcceptance(t *testing.T) {
 	fset, f := parseMain(t)
+	receiver := carrierSetReceiver(t, f)
 	seen := 0
 	for _, callee := range tokenAcceptanceSites {
 		positions := f1bFindCall(f, callee)
@@ -601,7 +651,7 @@ func TestSessionCarrierWiring_NoCarrierStateReachesTokenAcceptance(t *testing.T)
 		}
 		for _, pos := range positions {
 			seen++
-			if d := carrierDecisionBranchOf(f, pos); d != "" {
+			if d := carrierDecisionBranchOf(f, pos, receiver); d != "" {
 				t.Errorf("приём токена %q стоит внутри ветки решения о носителе (%s) в %s: "+
 					"появилось бы состояние носителя, в котором издателей принимается больше "+
 					"или проверяется меньше", callee, d, fset.Position(pos).String())
