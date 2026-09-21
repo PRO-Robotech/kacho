@@ -36,6 +36,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -389,12 +390,30 @@ func judgeCarrierFixture(t *testing.T, extra string) (*token.FileSet, *ast.File)
 func TestSessionCarrierWiring_TheTransitionalWindowIsDeclaredByTheSameSet(t *testing.T) {
 	fset, f := parseMain(t)
 	sites := f1bFindCall(f, "WithTransitionalCarrierWindow")
-	if len(sites) != 1 {
-		t.Fatalf("объявлений переходного окна %d, ожидалось 1: второе разошлось бы с первым молча",
-			len(sites))
+	if len(sites) == 0 {
+		t.Fatal("окно не объявляется никому — молчание гейта ничего не утверждало бы")
 	}
-	// Величина, которой объявляется окно.
-	arg := windowArgIdent(t, f, sites[0])
+	// ПОТРЕБИТЕЛЕЙ ОКНА НЕСКОЛЬКО, И ЭТО ЗАКОННО: полос, читающих чужую
+	// сессию, две, и каждая держит свой читатель окна — вложенные точки
+	// предъявления. Запрещено не второе объявление, а ВТОРОЙ ИСТОЧНИК: величина
+	// у всех обязана быть ОДНА, иначе полосы разойдутся молча, и разойдутся
+	// ровно в ту сторону, где одна пускает то, что вторая отвергает.
+	idents := map[string]bool{}
+	arg := ""
+	for _, pos := range sites {
+		id := windowArgIdent(t, f, pos)
+		idents[id] = true
+		arg = id
+	}
+	if len(idents) != 1 {
+		names := make([]string, 0, len(idents))
+		for n := range idents {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		t.Fatalf("окно объявляется %d величинами (%s) — у потребителей разные источники, и они "+
+			"разойдутся молча", len(idents), strings.Join(names, ", "))
+	}
 
 	// Вопрос об окне ОДИН и задаётся множеству читателей.
 	asks := f1bFindCall(f, "IsTransitionalWindow")
@@ -410,8 +429,8 @@ func TestSessionCarrierWiring_TheTransitionalWindowIsDeclaredByTheSameSet(t *tes
 			"читатели разошлись бы: профиль назвал бы одну сторону, а окно осталось бы открытым",
 			pos)
 	}
-	t.Logf("перепись: объявлений окна %d · вопросов «открыто ли окно» %d · непустых присваиваний "+
-		"вне ветки %d", len(sites), len(asks), len(bare))
+	t.Logf("перепись: потребителей окна %d · различных величин %d · вопросов «открыто ли окно» %d · "+
+		"непустых присваиваний вне ветки %d", len(sites), len(idents), len(asks), len(bare))
 }
 
 // windowArgIdent — имя величины, переданной объявлению окна.
