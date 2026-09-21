@@ -689,3 +689,123 @@ func TestTransitionalWindow_WhenClosedTheForeignSideAdmitsANewSignIn(t *testing.
 	}
 	t.Logf("перепись: окно закрыто · момент аутентификации на 48ч новее · код %d", rec.Code)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ОТКАЗ ОКНА НЕ ЗАПИРАЕТ ЧЕЛОВЕКА СНАРУЖИ.
+//
+// Граница окна ввелась как отказ, не оканчивающий носитель, и полоса
+// исполняется на КАЖДОМ пути. Человек с чужой сессией вне окна получал 401 и
+// на глаголе выхода, и на глаголе входа: ни сдать носитель, ни получить новый.
+// Состояние держится до ручной чистки браузера, а снять его можно только
+// откатом профиля — то есть снятием самого контроля.
+//
+// ОБА ДОВОДА УЖЕ ЗАПИСАНЫ В ЭТОМ ПАКЕТЕ, и новая граница введена без них:
+//
+//   - отсечка отвечает отказом ВМЕСТЕ с окончанием носителя: «порознь первое
+//     даёт СТОЯЩИЙ отказ» — сессия жива, момент её прежний, и повторной
+//     аутентификации ничто не запросит;
+//   - у пред-аутентификационного перечня (`isPublicHTTPPath`) сказано прямо:
+//     человек, чью сессию отозвали, обязан СОХРАНИТЬ возможность завершить
+//     выход.
+//
+// Знаменатель называется: проверяются ВСЕ пути браузерной сессии, а не путь
+// платформы, на котором свойство «отказ» и так очевидно.
+
+// windowRefusedChain — край в окне, чужая сессия заведена ПОСЛЕ его открытия.
+func windowRefusedChain(t *testing.T) (http.Handler, *countingNext) {
+	t.Helper()
+	windowOpened := ownAuthAt
+	provider := providerStubAt(t, windowOpened.Add(time.Hour)) // вход заново
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	a := NewAuthInterceptor(AuthModeDev, "",
+		cutoffLookup{subj: Subject{Type: "user", ID: "usr-foreign", DisplayName: "F"}}, logger).
+		WithHumanSession(&fakeHumanSession{found: false}).
+		WithKratos(NewKratosClient(provider.URL)).
+		WithSessionCutoffCheck(&fakeCutoff{}, time.Hour).
+		WithTransitionalCarrierWindow(windowOpened)
+	next := &countingNext{}
+	return a.HTTP(next), next
+}
+
+// endedBothCarriers — погашены ли ОБА имени ответом.
+func endedBothCarriers(res *http.Response) bool {
+	ended := map[string]bool{}
+	for _, c := range res.Cookies() {
+		if c.MaxAge < 0 {
+			ended[c.Name] = true
+		}
+	}
+	for _, n := range SessionCarrierNames() {
+		if !ended[n] {
+			return false
+		}
+	}
+	return true
+}
+
+// Половина первая: отказ по границе ОКАНЧИВАЕТ носитель — на каждом пути.
+// Иначе браузер предъявляет отвергнутое печенье вечно.
+func TestTransitionalWindow_ARefusalEndsTheCarrierOnEveryPath(t *testing.T) {
+	paths := allBrowserPaths()
+	chain, _ := windowRefusedChain(t)
+	kept := 0
+	for _, path := range paths {
+		rec := serve(chain, withForeignCarrier(
+			httptest.NewRequest(http.MethodPost, path, nil), "foreign-after-window"))
+		if !endedBothCarriers(rec.Result()) {
+			kept++
+			t.Errorf("%s: отказ по границе окна не погасил носитель (Set-Cookie: %v) — браузер "+
+				"предъявляет отвергнутое печенье на каждом следующем запросе, и состояние держится "+
+				"до ручной чистки", path, rec.Result().Header["Set-Cookie"])
+		}
+	}
+	t.Logf("перепись: путей браузерной сессии %d · пройдено %d · оставивших носитель %d",
+		len(paths), len(paths), kept)
+}
+
+// Половина вторая: на пред-аутентификационных путях отказа НЕТ — человек
+// доходит до глагола выхода и до глагола входа.
+func TestTransitionalWindow_ARefusalLeavesSignOutAndSignInReachable(t *testing.T) {
+	escapes := []string{
+		LoginLanePathLogout, // завершить выход
+		LoginLanePathLogin,  // начать вход заново
+		LoginLanePathCSRF,   // признак формы, без которого вход не начать
+		"/oauth/logout",     // выход края
+		"/iam/v1/auth/me",   // консоль обязана узнать, что она анонимна
+	}
+	chain, next := windowRefusedChain(t)
+	blocked := 0
+	for _, path := range escapes {
+		before := next.served
+		rec := serve(chain, withForeignCarrier(
+			httptest.NewRequest(http.MethodPost, path, nil), "foreign-after-window"))
+		if rec.Code == http.StatusUnauthorized || next.served == before {
+			blocked++
+			t.Errorf("%s: путь выхода закрыт отказом окна (код %d, дошло до звена %v) — человек "+
+				"не может ни сдать носитель, ни получить новый, и снять состояние можно только "+
+				"откатом профиля, то есть снятием самого контроля",
+				path, rec.Code, next.served != before)
+		}
+	}
+	t.Logf("перепись: путей спасения проверено %d · закрытых %d", len(escapes), blocked)
+}
+
+// Половина третья, наблюдаемая: браузер, исполнивший гашение, СЛЕДУЮЩИМ
+// запросом анонимен и проходит. Без неё первые две можно было бы удовлетворить,
+// не дав человеку выйти из состояния.
+func TestTransitionalWindow_AfterTheRefusalTheNextRequestIsAnonymousAndPasses(t *testing.T) {
+	chain, next := windowRefusedChain(t)
+	first := serve(chain, withForeignCarrier(
+		httptest.NewRequest(http.MethodGet, platformPath, nil), "foreign-after-window"))
+	if !endedBothCarriers(first.Result()) {
+		t.Fatal("первый ответ не погасил носитель — второму запросу неоткуда стать анонимным")
+	}
+	// Браузер исполнил Set-Cookie: печенья больше нет.
+	before := next.served
+	second := serve(chain, httptest.NewRequest(http.MethodGet, platformPath, nil))
+	if second.Code != http.StatusOK || next.served != before+1 {
+		t.Fatalf("после гашения запрос без носителя дал %d (дошло до звена %v) — выхода из "+
+			"состояния нет", second.Code, next.served != before)
+	}
+	t.Logf("перепись: запросов 2 · первый отказан и погасил носитель · второй анонимен и прошёл")
+}
