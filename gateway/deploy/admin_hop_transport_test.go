@@ -103,6 +103,28 @@ func TestStacks_GatewayAdminHopIsNotInTheClear(t *testing.T) {
 				t.Skipf("%s is dev-class by its own declaration — the transport requirement "+
 					"rides the same exemption as the gateway's boot guard", name)
 			}
+			// ПОСАДКА `own`: административного хопа к поставщику НЕТ — ни
+			// интроспекции его токенов, ни выхода на его стороне. Требование
+			// транспорта переезжает на хоп, который эту посадку ИСПОЛНЯЕТ, и
+			// проверяется там же: снять требование, не назвав его новый предмет,
+			// значило бы объявить стенд чистым по причине пустоты.
+			if edgeIdentityPostureOfStack(t, stack) == edgePostureOwn {
+				repl, ok := resolveStack(t, stack, "tokenAcceptance", "revocationUrl")
+				if !ok {
+					t.Fatalf("%s: посадка %q, и хоп к авторитету отзыва "+
+						"(api-gateway.tokenAcceptance.revocationUrl) не объявлен — "+
+						"требование транспорта переехало в пустоту", name, edgePostureOwn)
+				}
+				if err := requireTLSHop(repl); err != nil {
+					t.Errorf("%s: api-gateway.tokenAcceptance.revocationUrl %v", name, err)
+				}
+				if _, ok := resolveStack(t, stack, "tokenAcceptance", "revocationCa", "secretName"); !ok {
+					t.Errorf("%s: api-gateway.tokenAcceptance.revocationCa.secretName is not "+
+						"declared while the hop is https — по этому хопу едет ПРЕДЪЯВЛЕННЫЙ "+
+						"токен, и проверка по системным корням не сойдётся никогда", name)
+				}
+				return
+			}
 			for _, knob := range []string{"introspectionUrl", "adminUrl"} {
 				got, ok := resolveStack(t, stack, "hydra", knob)
 				if !ok {

@@ -32,6 +32,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 // readRepoFile reads a file addressed from the repository root. Like
@@ -147,14 +149,92 @@ func resolveStack(t *testing.T, stack []string, path ...string) (string, bool) {
 	return s, ok && strings.TrimSpace(s) != ""
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ПОСАДКА ЛИЧНОСТИ — ТА ЖЕ ОСЬ, ЧТО У СТРАЖА СТАРТА
+//
+// Требования ниже мирроруют validateProductionRevocationConfig, и ось посадки
+// у стража есть с самого начала: под `own` требование адреса ПОСТАВЩИКА не
+// снимается, а ЗАМЕЩАЕТСЯ — интроспекция чужих токенов на нашу
+// (`tokenAcceptance.revocationUrl`), выход на стороне поставщика на нашу полосу
+// формы (`authn.iamLoginLaneUrl`). Пока этой оси здесь не было, половины
+// расходились: процесс поднимался, а объявление профиля признавалось
+// НЕПОЛНЫМ — и наоборот, «снять чужое» упиралось в гейт, судящий по посадке,
+// которой стенд не объявлял.
+//
+// Замена ТРЕБУЕТСЯ, а не подразумевается: требование, снятое без названной
+// замены, — это контроль, у которого не осталось механизма исполниться.
+const (
+	edgePostureOwn      = "own"
+	edgePostureExternal = "external"
+)
+
+// edgeChartDefaultIdentityPosture — умолчание посадки у базового профиля чарта.
+// Читается, а не пишется литералом: переезд умолчания иначе сделал бы «стенд не
+// объявил» неотличимым от «стенд объявил external».
+func edgeChartDefaultIdentityPosture(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile("values.yaml")
+	if err != nil {
+		t.Fatalf("чтение базового профиля чарта: %v", err)
+	}
+	var values struct {
+		Authn map[string]any `yaml:"authn"`
+	}
+	if err := yaml.Unmarshal(raw, &values); err != nil {
+		t.Fatalf("values.yaml не разбирается: %v", err)
+	}
+	s, _ := values.Authn["identityProvider"].(string)
+	if strings.TrimSpace(s) == "" {
+		t.Fatal("в values.yaml чарта края нет authn.identityProvider — умолчание посадки " +
+			"исчезло, и классификация стендов стала бы догадкой")
+	}
+	return strings.TrimSpace(s)
+}
+
+// edgeIdentityPostureOfStack — посадка, объявленная краю этим стендом.
+//
+// Незнакомое значение — ОТКАЗ, а не «значит external»: опечатка в посадке
+// (`Own`, `OWN`) иначе молча переводила бы стенд на ветку требований
+// поставщика, и стенд, который человека проверяет своей полосой, судился бы по
+// чужой.
+func edgeIdentityPostureOfStack(t *testing.T, stack []string) string {
+	t.Helper()
+	posture := edgeChartDefaultIdentityPosture(t)
+	if s, ok := resolveStack(t, stack, "authn", "identityProvider"); ok {
+		posture = strings.TrimSpace(s)
+	}
+	if posture != edgePostureOwn && posture != edgePostureExternal {
+		t.Fatalf("посадка личности объявлена значением %q, которого контракт настройки не "+
+			"знает (допустимы %q и %q)", posture, edgePostureOwn, edgePostureExternal)
+	}
+	return posture
+}
+
 // Every stack that deploys the gateway must name the introspection endpoint, and
 // it must be the admin path — pointing it at the public API is exactly the state
 // this contract exists to prevent.
+//
+// Under `own` the provider issues nothing this stand accepts, so the question
+// itself moves: the revocation check asks OUR authority. The requirement is
+// therefore transferred, not dropped.
 func TestStacks_DeclareIntrospectionEndpoint(t *testing.T) {
 	for name, stack := range deployableStacks(t) {
 		t.Run(name, func(t *testing.T) {
 			got, ok := resolveStack(t, stack, "hydra", "introspectionUrl")
 			if !ok {
+				if edgeIdentityPostureOfStack(t, stack) == edgePostureOwn {
+					repl, rok := resolveStack(t, stack, "tokenAcceptance", "revocationUrl")
+					if !rok {
+						t.Fatalf("%s (%s): посадка %q, и адрес интроспекции поставщика законно "+
+							"не объявлен — но ЗАМЕНА (api-gateway.tokenAcceptance.revocationUrl) "+
+							"не объявлена тоже, и читателя отзыва на этом стенде не остаётся ни одного",
+							name, strings.Join(stack, " + "), edgePostureOwn)
+					}
+					if err := requireTLSHop(repl); err != nil {
+						t.Errorf("%s: api-gateway.tokenAcceptance.revocationUrl %v", name, err)
+					}
+					return
+				}
 				t.Fatalf("%s (%s): api-gateway.hydra.introspectionUrl is not declared — the "+
 					"revocation check has nowhere to ask, so every token stays good until it "+
 					"expires no matter what is revoked",
@@ -169,11 +249,29 @@ func TestStacks_DeclareIntrospectionEndpoint(t *testing.T) {
 
 // And the admin base the logout handler needs to end the provider-side session.
 // Unset, the session kill is skipped and signing out leaves the session alive.
+//
+// Under `own` there IS no provider-side session: the browser-session carrier is
+// ours and the sign-out verb is relayed to our own login lane. The requirement
+// transfers to that lane's address, which the gateway's own boot guard
+// (validateLoginLaneConfig) refuses to start without.
 func TestStacks_DeclareAdminEndpoint(t *testing.T) {
 	for name, stack := range deployableStacks(t) {
 		t.Run(name, func(t *testing.T) {
 			got, ok := resolveStack(t, stack, "hydra", "adminUrl")
 			if !ok {
+				if edgeIdentityPostureOfStack(t, stack) == edgePostureOwn {
+					lane, lok := resolveStack(t, stack, "authn", "iamLoginLaneUrl")
+					if !lok {
+						t.Fatalf("%s (%s): посадка %q, и административный адрес поставщика "+
+							"законно не объявлен — но ЗАМЕНА (api-gateway.authn.iamLoginLaneUrl) "+
+							"не объявлена тоже, и выходу человека некуда ехать",
+							name, strings.Join(stack, " + "), edgePostureOwn)
+					}
+					if err := requireTLSHop(lane); err != nil {
+						t.Errorf("%s: api-gateway.authn.iamLoginLaneUrl %v", name, err)
+					}
+					return
+				}
 				t.Fatalf("%s (%s): api-gateway.hydra.adminUrl is not declared — signing out "+
 					"then leaves the session alive at the identity provider",
 					name, strings.Join(stack, " + "))
