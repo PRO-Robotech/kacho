@@ -4,6 +4,9 @@
 package metrics_test
 
 import (
+	"reflect"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -118,4 +121,64 @@ func TestSessionLane_F11_19_OffAxisAssuranceCellExistsWithZeroAndGrows(t *testin
 	require.Contains(t, body, `kacho_api_gateway_session_lane_assurance_off_axis_total 1`)
 	require.Contains(t, body, `kacho_api_gateway_session_lane_refusals_total{outcome="no_session"} 0`,
 		"соседняя клетка не должна была вырасти")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// У КАЖДОЙ КЛЕТКИ СНИМКА ЕСТЬ ЧИТАТЕЛЬ, И ЭТО СУДИТСЯ ОБХОДОМ ПОЛЕЙ.
+//
+// Величина, объявленная в снимке и не собранная коллектором, невидима на
+// стенде — а вместе с ней невидим и вопрос, ради которого её завели. Так и
+// вышло: клетки переходного окна объявились в снимке, их предложили как
+// свидетельство («достижима ли чужая форма входа судить счётчиком»), и судить
+// им было нельзя — ни в `Describe`, ни в `Collect` их не было.
+//
+// Гейт судит ПОВЕДЕНИЕМ, а не текстом: каждому полю снимка даётся СВОЁ число,
+// и после сбора каждое обязано найтись в выдаче. Поле, которого коллектор не
+// читает, своего числа не даст — и назовётся по имени.
+//
+// Так же этот гейт ИСТЕКАЕТ САМ: новое поле снимка без читателя краснеет в тот
+// же прогон, а не ждёт, пока кто-нибудь заметит.
+func TestSessionLane_EveryLaneSnapshotFieldIsRead(t *testing.T) {
+	lane := middleware.SessionLaneSnapshot{}
+	rv := reflect.ValueOf(&lane).Elem()
+	rt := rv.Type()
+
+	// Числа заметные и различные: значение, совпавшее с чужим, скрыло бы
+	// непрочитанное поле за чужой клеткой.
+	want := map[string]uint64{}
+	for i := 0; i < rt.NumField(); i++ {
+		f := rt.Field(i)
+		if f.Type.Kind() != reflect.Uint64 || !rv.Field(i).CanSet() {
+			continue
+		}
+		v := uint64(9000 + i*111)
+		rv.Field(i).SetUint(v)
+		want[f.Name] = v
+	}
+	require.NotEmpty(t, want, "полей-счётчиков в снимке не найдено — гейт судил бы о непрочитанном")
+
+	relay := handler.LoginLaneRelaySnapshot{Relayed: map[string]uint64{}}
+	for _, r := range middleware.LoginLaneRoutes() {
+		relay.Relayed[r.Verb] = 0
+	}
+	m := gwmetrics.New("test", "deadbeef")
+	m.RegisterSessionLane(func() gwmetrics.SessionLaneSnapshot {
+		return gwmetrics.SessionLaneSnapshot{Lane: lane, Relay: relay}
+	})
+	body := expose(t, m)
+
+	unread := []string{}
+	for name, v := range want {
+		if !strings.Contains(body, " "+strconv.FormatUint(v, 10)+"\n") {
+			unread = append(unread, name)
+		}
+	}
+	sort.Strings(unread)
+	if len(unread) > 0 {
+		t.Errorf("поля снимка без читателя в коллекторе: %s. Величина, которую никто не собирает, "+
+			"невидима на стенде — а вместе с ней невидим и вопрос, ради которого её завели",
+			strings.Join(unread, ", "))
+	}
+	t.Logf("перепись: полей-счётчиков в снимке %d · прочитанных коллектором %d",
+		len(want), len(want)-len(unread))
 }
