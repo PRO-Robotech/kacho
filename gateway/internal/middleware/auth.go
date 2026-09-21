@@ -186,6 +186,10 @@ type AuthInterceptor struct {
 	// корень провязывает ровно ОДНОГО из двух читателей — этот либо `kratos` —
 	// по посадке; оба разом не провязываются (гейт композиционного корня).
 	humanSession HumanSessionReader
+
+	// transitionalCarrierWindow — профиль назвал ОБЕ стороны носителя.
+	// См. WithTransitionalCarrierWindow.
+	transitionalCarrierWindow bool
 	// sessionLane — клетки полосы сессии (Ф3-48). Заводится сразу, чтобы ноль в
 	// клетке отличался от «полосы нет».
 	sessionLane *SessionLaneCounts
@@ -1061,6 +1065,22 @@ func (a *AuthInterceptor) HTTP(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// WithTransitionalCarrierWindow объявляет ПЕРЕХОДНОЕ ОКНО носителя: профиль
+// назвал ОБЕ стороны, и край дочитывает живые чужие сессии.
+//
+// Что это меняет: в окне положительный пол второго фактора на чужой полосе не
+// удовлетворяется — новое полномочие берётся через нашу чеканку. Обычный
+// доступ чужой сессии сохраняется, ради него окно и заводится. Разбор — в
+// `auth_session_stepup.go`.
+//
+// Объявление, а не вывод из провязки: «читатель провязан» и «профиль назвал обе
+// стороны» — разные утверждения, и решать о полномочии по второму, выведенному
+// из первого, значит решать по косвенному признаку.
+func (a *AuthInterceptor) WithTransitionalCarrierWindow(declared bool) *AuthInterceptor {
+	a.transitionalCarrierWindow = declared
+	return a
 }
 
 // ownSessionOwnsRequest — ВЛАДЕЕТ ли наша сторона этим запросом.

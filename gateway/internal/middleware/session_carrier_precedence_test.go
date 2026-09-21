@@ -473,3 +473,123 @@ func TestCarrierPredicates_AValueNoBrowserCanFrameIsNotACarrier(t *testing.T) {
 	}
 	t.Logf("перепись: сторон проверено 2 · непроводимых значений отвергнуто 2 · проводимых принято 2")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ПОЛ ВТОРОГО ФАКТОРА НЕ ПОВЫШАЕТСЯ СНЯТИЕМ НАШЕГО НОСИТЕЛЯ.
+//
+// Свойство названо ровно тем, чем оно является, — и не шире. Две сессии одного
+// человека суть две РАЗНЫЕ аутентификации, и требовать, чтобы уровень вовсе не
+// зависел от того, какая из них предъявлена, значило бы требовать, чтобы
+// аутентификации не различались. Требуется другое, и оно о полномочии:
+// СНЯТИЕ нашего носителя не может ПОДНЯТЬ уровень, доехавший до замка.
+//
+// Иначе пол второго фактора выбирал бы предъявитель: удалив у себя одно
+// печенье, человек проходил бы замок, которого не проходил, — и переходное
+// состояние стало бы способом обойти второй фактор, а не способом не потерять
+// вход.
+//
+// Механизм: в состоянии «оба» чужая полоса уезжает с ПУСТЫМ уровнем. Пустой
+// ранжируется нулём — положительного пола он не удовлетворяет, нулевого не
+// касается, — то есть обычный доступ чужой сессии сохраняется, а НОВОЕ
+// полномочие берётся только через нашу чеканку. Это та же форма, которой наша
+// полоса отвечает на уровень вне оси, и второго механизма не заводится.
+
+// stepUpFloorPath — глагол с ПОЛОЖИТЕЛЬНЫМ полом в каталоге прав.
+const stepUpFloorPath = "/iam/v1/users/usr-abc/tokens"
+
+// mfaProviderStub — чужая сторона, называющая уровень `aal2`.
+func mfaProviderStub(t *testing.T, asked *atomic.Int64) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		asked.Add(1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"active":true,"authenticated_at":"`+
+			ownAuthAt.UTC().Format(time.RFC3339Nano)+
+			`","authenticator_assurance_level":"aal2",`+
+			`"identity":{"id":"kid-foreign","traits":{"email":"foreign@example.com"}}}`)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestBothCarriers_DroppingOurCarrierCannotRaiseTheAuthenticationFloor(t *testing.T) {
+	var asked atomic.Int64
+	provider := mfaProviderStub(t, &asked)
+	// Наша сессия уровня «1», чужая — `aal2`: тот самый перекос, на котором
+	// снятие печенья становилось повышением.
+	sess := liveOwnSession()
+	sess.AssuranceLevel = "1"
+	reader := &fakeHumanSession{found: true, sess: sess}
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	foreignSubject := cutoffLookup{subj: Subject{Type: "user", ID: "usr-own-1", DisplayName: "A"}}
+	both := NewAuthInterceptor(AuthModeDev, "", foreignSubject, logger).
+		WithHumanSession(reader).
+		WithKratos(NewKratosClient(provider.URL)).
+		WithSessionCutoffCheck(&fakeCutoff{}, time.Hour).
+		WithTransitionalCarrierWindow(true)
+
+	withOurs := serveForACR(t, both, withForeignCarrier(
+		withOurCarrier(httptest.NewRequest(http.MethodGet, stepUpFloorPath, nil), "ours-live"),
+		"foreign-live"))
+	withoutOurs := serveForACR(t, both, withForeignCarrier(
+		httptest.NewRequest(http.MethodGet, stepUpFloorPath, nil), "foreign-live"))
+
+	if rank(withoutOurs) > rank(withOurs) {
+		t.Fatalf("снятие нашего носителя ПОДНЯЛО уровень: с нашим %q, без него %q — пол второго "+
+			"фактора выбирает предъявитель", withOurs, withoutOurs)
+	}
+	t.Logf("перепись: состояние «оба» · уровень с нашим носителем %q · без него %q · "+
+		"повышение снятием невозможно", withOurs, withoutOurs)
+}
+
+// rank — порядок уровней оси каталога; пустой ранжируется нулём.
+func rank(acr string) int {
+	switch acr {
+	case "1":
+		return 1
+	case "2":
+		return 2
+	case "3":
+		return 3
+	}
+	return 0
+}
+
+// serveForACR прогоняет запрос и возвращает уровень, доехавший до следующего
+// звена. Отказ замка — тоже исход: уровень при нём пуст либо недостаточен.
+func serveForACR(t *testing.T, a *AuthInterceptor, req *http.Request) string {
+	t.Helper()
+	got := ""
+	next := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get(principalmeta.HeaderTokenACR)
+	})
+	serve(a.HTTP(next), req)
+	return got
+}
+
+// Законный близнец: в состоянии «ТОЛЬКО ЧУЖОЙ» уровень чужой сессии доезжает
+// до замка как прежде. Без этой половины зелёное выше достигалось бы снятием
+// второго фактора у всех, кто сегодня живёт на чужой посадке, — и выглядело
+// бы это как «стало строже».
+func TestForeignOnlyState_KeepsTheForeignSecondFactor(t *testing.T) {
+	var asked atomic.Int64
+	provider := mfaProviderStub(t, &asked)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	foreignOnly := NewAuthInterceptor(AuthModeDev, "",
+		cutoffLookup{subj: Subject{Type: "user", ID: "usr-foreign", DisplayName: "F"}}, logger).
+		WithKratos(NewKratosClient(provider.URL)).
+		WithSessionCutoffCheck(&fakeCutoff{}, time.Hour)
+
+	got := serveForACR(t, foreignOnly, withForeignCarrier(
+		httptest.NewRequest(http.MethodGet, stepUpFloorPath, nil), "foreign-live"))
+	if got != "2" {
+		t.Fatalf("в состоянии «только чужой» уровень чужой сессии доехал как %q, ожидалось \"2\" — "+
+			"второй фактор отнят у тех, кому его нечем заменить", got)
+	}
+	if n := foreignOnly.SessionLane().Snapshot().TransitionalFloorWithheld; n != 0 {
+		t.Fatalf("клетка удержания пола = %d вне переходного состояния, ожидалось 0", n)
+	}
+	t.Logf("перепись: состояние «только чужой» · уровень, доехавший до замка %q · удержаний пола %d",
+		got, foreignOnly.SessionLane().Snapshot().TransitionalFloorWithheld)
+}

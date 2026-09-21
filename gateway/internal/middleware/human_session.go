@@ -100,6 +100,12 @@ type SessionLaneSnapshot struct {
 	// (нет, «0», словарь поставщика — Ф11-19). Не исход отказа: на глаголе без
 	// пола такой ответ проходит, а состояние докладывается само по себе.
 	AssuranceOffAxis uint64
+
+	// TransitionalFloorWithheld — сколько раз чужая сессия предъявила уровень,
+	// а край его не пропустил, потому что живы ОБА читателя носителя. Величина
+	// показывает, скольким людям переходное окно мешает выполнить действие с
+	// полом второго фактора, — то есть пора ли его закрывать.
+	TransitionalFloorWithheld uint64
 }
 
 // SessionLaneCounts — накопитель клеток полосы сессии на горячем пути.
@@ -109,6 +115,9 @@ type SessionLaneCounts struct {
 	unavailable      atomic.Uint64
 	rolloutWindow    atomic.Uint64
 	assuranceOffAxis atomic.Uint64
+
+	// transitionalFloorWithheld — см. recordTransitionalFloorWithheld.
+	transitionalFloorWithheld atomic.Uint64
 }
 
 // Snapshot — слепок клеток для коллектора.
@@ -122,6 +131,8 @@ func (c *SessionLaneCounts) Snapshot() SessionLaneSnapshot {
 		Unavailable:      c.unavailable.Load(),
 		RolloutWindow:    c.rolloutWindow.Load(),
 		AssuranceOffAxis: c.assuranceOffAxis.Load(),
+
+		TransitionalFloorWithheld: c.transitionalFloorWithheld.Load(),
 	}
 }
 
@@ -154,5 +165,18 @@ func (c *SessionLaneCounts) recordRolloutWindow() {
 func (c *SessionLaneCounts) recordAssuranceOffAxis() {
 	if c != nil {
 		c.assuranceOffAxis.Add(1)
+	}
+}
+
+// recordTransitionalFloorWithheld — чужая сессия предъявила уровень, а край его
+// не пропустил, потому что живы оба читателя.
+//
+// Своя клетка обязательна: без неё «в этом окне положительный пол на чужой
+// полосе не удовлетворяется» осталось бы невидимым до первой жалобы человека,
+// у которого действие с полом перестало выполняться. Клетка же называет
+// величину, по которой видно, ПОРА ЛИ закрывать окно.
+func (c *SessionLaneCounts) recordTransitionalFloorWithheld() {
+	if c != nil {
+		c.transitionalFloorWithheld.Add(1)
 	}
 }

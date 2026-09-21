@@ -181,6 +181,45 @@ func judgeCarrierFixture(t *testing.T, extra string) (*token.FileSet, *ast.File)
 	return fset, f
 }
 
+// ПЕРЕХОДНОЕ ОКНО ОБЪЯВЛЯЕТСЯ ТЕМ ЖЕ МНОЖЕСТВОМ, ЧТО И ЧИТАТЕЛИ.
+//
+// Окно решает о полномочии (в нём положительный пол второго фактора на чужой
+// полосе не удовлетворяется), и объявить его чем-то ДРУГИМ, чем множество
+// читателей, значило бы завести второй источник одного состояния: профиль
+// назвал бы обе стороны, а окно осталось бы закрытым — молча.
+func TestSessionCarrierWiring_TheTransitionalWindowIsDeclaredByTheSameSet(t *testing.T) {
+	fset, f := parseMain(t)
+	sites := f1bFindCall(f, "WithTransitionalCarrierWindow")
+	if len(sites) != 1 {
+		t.Fatalf("объявлений переходного окна %d, ожидалось 1: второе разошлось бы с первым молча",
+			len(sites))
+	}
+	named := map[string]bool{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || call.Pos() != sites[0] {
+			return true
+		}
+		for _, a := range call.Args {
+			ast.Inspect(a, func(c ast.Node) bool {
+				if sel, ok := c.(*ast.SelectorExpr); ok {
+					named[sel.Sel.Name] = true
+				}
+				return true
+			})
+		}
+		return false
+	})
+	for _, want := range []string{"ReadsOwn", "ReadsProvider"} {
+		if !named[want] {
+			t.Errorf("объявление окна не спрашивает %s() у множества читателей (%s): окно и читатели "+
+				"разошлись бы — профиль назвал бы обе стороны, а окно осталось бы закрытым",
+				want, fset.Position(sites[0]).String())
+		}
+	}
+	t.Logf("перепись: объявлений окна %d · спрошенных сторон множества %d из 2", len(sites), len(named))
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // НИ ОДНО СОСТОЯНИЕ НОСИТЕЛЯ НЕ ОСЛАБЛЯЕТ ПРИЁМ ТОКЕНА.
 //

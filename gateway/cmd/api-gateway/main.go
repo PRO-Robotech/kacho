@@ -200,6 +200,13 @@ func main() {
 			logger.Info("provider session-auth disabled by env")
 		}
 	}
+	// ПЕРЕХОДНОЕ ОКНО объявляется краю ТЕМ ЖЕ множеством, что и читатели:
+	// названы обе стороны — окно открыто. В окне положительный пол второго
+	// фактора на чужой полосе не удовлетворяется: новое полномочие берётся
+	// через нашу чеканку, обычный доступ чужой сессии сохраняется.
+	authInterceptor = authInterceptor.WithTransitionalCarrierWindow(
+		sessionCarriers.ReadsOwn() && sessionCarriers.ReadsProvider())
+
 	// НАША сторона — носитель kaname_session: `Resolve` на внутреннем слушателе
 	// службы, тем же соединением, что вопрос об отсечке; кэша нет (Р7).
 	if sessionCarriers.ReadsOwn() {
