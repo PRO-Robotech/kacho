@@ -819,8 +819,7 @@ func (m *AuthzMiddleware) phaseUnservedOnThisListener(dr decisionRequest) (decis
 		return decision{}, false
 	}
 	fqn, routed := m.cfg.RestRouter.Resolve(dr.HTTPReq.Method, dr.HTTPReq.URL.Path)
-	// Маршрут есть и он публичный — обслуживается, решает общий путь ниже.
-	if routed && !allowlist.HasInternalSuffix("/"+fqn) {
+	if routed && servedOnExternalListener(fqn) {
 		return decision{}, false
 	}
 	// СВОЯ полоса: ни модель, ни каталог, ни личность здесь не спрашивались —
@@ -835,6 +834,45 @@ func (m *AuthzMiddleware) phaseUnservedOnThisListener(dr decisionRequest) (decis
 	// могли бы попасть, — неразличимость держится конструкцией, а не вниманием.
 	return decision{outcome: outcomeUnserved}, true
 }
+
+// servedOnExternalListener — обслуживает ли ВНЕШНИЙ слушатель метод, в который
+// разобрался путь.
+//
+// Имя метода — признак ПОЧТИ достаточный: маршруты строятся из `google.api.http`
+// контракта, и аннотация службы `Internal*` наружу не выставляется (диспетчер
+// отдаёт такой запрос публичному мультиплексору, где её регистраций нет).
+//
+// ПОЧТИ — и вот исключение, которое здесь обязано быть названо. У края есть
+// СОБСТВЕННЫЕ ручки, которых в контракте нет и быть не может (rest_route_edge.go).
+// Имя метода им дано НАСТОЯЩЕЕ — то самое, под которым право объявлено каталогом,
+// — и у потока изменений ресурсов это имя внутренней службы фундамента:
+// `corelib.subscription.InternalSubscriptionService/Subscribe`. Ручка при этом
+// обслуживается наружу: её вешает композиционный корень, а не диспетчер.
+//
+// Предикат по одному имени объявил бы её необслуживаемой и укрыл бы поток
+// изменений от консоли целиком — «стало безопаснее» выглядело бы именно так.
+// Поэтому собственные ручки края берутся ИЗ ТОГО ЖЕ ОБЪЯВЛЕНИЯ, что и их
+// маршруты; второй перечень тех же имён разошёлся бы с первым молча.
+//
+// Держит TestEdgeOwnHandlesAreNotHiddenOnTheExternalListener — он обходит
+// объявление, а не перечисляет ручки.
+func servedOnExternalListener(fqn string) bool {
+	if !allowlist.HasInternalSuffix("/" + fqn) {
+		return true
+	}
+	_, edgeOwn := edgeOwnHandleFQNs[fqn]
+	return edgeOwn
+}
+
+// edgeOwnHandleFQNs — имена методов собственных ручек края, выведенные из
+// объявления их маршрутов.
+var edgeOwnHandleFQNs = func() map[string]struct{} {
+	out := make(map[string]struct{}, len(edgeRestRoutes))
+	for _, rt := range edgeRestRoutes {
+		out[rt.FQN] = struct{}{}
+	}
+	return out
+}()
 
 // phaseOverride applies a file-based per-route override (explicit allow/deny).
 func (m *AuthzMiddleware) phaseOverride(dr decisionRequest) (decision, bool) {
