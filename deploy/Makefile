@@ -777,6 +777,16 @@ dev-prod-up: dev-up
 # при разборе рецепта — то есть и на отказном пути, где стенда ещё нет, — и
 # печатало отказ чтения таблицы поверх собственного сообщения цели.
 #
+# ПРЕДУСЛОВНЫЕ СЕКРЕТЫ — ШАГ РЕЦЕПТА, А НЕ ПАМЯТЬ РАСКАТЫВАЮЩЕГО (kacho#2724).
+# Цепочка боевого слоя объявляет одиннадцать секретов ссылкой `existingSecret`, и
+# ни один шаблон их не создаёт; ещё четыре заводит посев, которого эта цель не
+# звала. Без них применение проходит, поды встают в `CreateContainerConfigError`
+# либо в отказ стража старта, а `helm --wait` выстаивает свой предел и падает ПО
+# СРОКУ, не называя причины. Шаг ниже судит ДО применения и на локальном стенде
+# kind заводит недостающее (производителя вне дерева там нет вовсе); на
+# управляемом кластере он только судит и отказывает, называя производителя —
+# ключевой материал там приходит вне дерева. Разбор — в шапке самого скрипта.
+#
 #   make -C deploy stack-up STACK=a8f60d
 #   make -C deploy stack-up STACK=prod STACK_EXTRA_ARGS='-f ./helm/umbrella/values.digests.yaml'
 stack-up:
@@ -822,6 +832,9 @@ stack-up:
 	$(MAKE) --no-print-directory module-manifests-configmap \
 	  MODULE_MANIFESTS_STACK=$(STACK) STACK_NAMESPACE=$(STACK_NAMESPACE) \
 	  EXPECT_CONTEXT="$$ctx"; \
+	STACK_NAMESPACE=$(STACK_NAMESPACE) STACK_RELEASE=$(STACK_RELEASE) \
+	  bash scripts/stack-secrets.sh $(STACK) \
+	    -f ./$(MODULE_MANIFESTS_VALUES) $(UMBRELLA_OPTS) $(STACK_EXTRA_ARGS); \
 	set -x; \
 	helm upgrade --install $(STACK_RELEASE) ./helm/umbrella -n $(STACK_NAMESPACE) --create-namespace \
 	  $$args -f ./$(MODULE_MANIFESTS_VALUES) \
