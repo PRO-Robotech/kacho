@@ -86,6 +86,14 @@
   1. ИМЯ ПОЛЯ ВНЕ ЗАКРЫТОГО СЛОВАРЯ. `{"x-my-ticket": "<материал>"}` не
      распознаётся ничем, если само значение не имеет узнаваемой формы. Словарь
      расширяется правкой, а не догадкой.
+  1а. ФОРМА, ЧЕЙ МАТЕРИАЛ ДЛИННЕЕ СОВПАДЕНИЯ, — ЗАКРЫТЫЙ КЛАСС, НЕ ГРАНИЦА.
+     Он назван здесь, потому что дороже любой из границ ниже: изъятие первой
+     строки блока СТИРАЕТ ПРИЗНАК и отдаёт тело, то есть делает обнаружимую
+     утечку необнаружимой. Два известных представителя закрыты: блок закрытого
+     ключа изымается целиком от маркера до маркера, а незакрытый блок и обёртка
+     base64 длиннее потолка разбора судиться отказываются — публикация
+     запрещается. Заводя НОВУЮ форму, спроси первым делом: совпадение покрывает
+     весь материал или только его начало?
   2. СЖАТОЕ ВЛОЖЕНИЕ. Архив, gzip-тело, любой непрозрачный контейнер: материал
      внутри нечитаем, и распаковка здесь не делается. Двоичный файл С
      ПОПАДАНИЕМ публикацию запрещает, но попадание в сжатом не наблюдаемо.
@@ -188,6 +196,30 @@ def norm_key(name: str) -> str:
 # а не угадывание по длине.
 RE_JWT = re.compile(rb"eyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}")
 RE_PEM = re.compile(rb"-----BEGIN [A-Z ]*PRIVATE KEY-----")
+# БЛОК ЦЕЛИКОМ, А НЕ ЕГО ПЕРВАЯ СТРОКА — и это не строгость впрок.
+#
+# Прежняя редакция знала у закрытого ключа ровно строку-маркер, и замена
+# накрывала ровно её. Тело шло СЛЕДУЮЩИМИ строками и ни под одну форму не
+# подпадало. Значит чистка стирала ЕДИНСТВЕННЫЙ признак, по которому утечку
+# можно было найти, и разрешала публикацию: осмотр «до» видел находку, рабочий
+# режим объявлял файл чистым, повторная сверка видела ноль.
+#
+# Опыт приёмки, воспроизведён здесь: настоящий RSA-2048 в журнале. Из
+# «чистого» файла тело восстановлено побайтно — 26 строк, и `openssl rsa
+# -check` ответил `RSA key ok`. То есть чистка не пропускала утечку, а
+# ПРЕВРАЩАЛА ОБНАРУЖИМУЮ В НЕОБНАРУЖИМУЮ: без неё было бы безопаснее.
+#
+# КЛАСС, А НЕ ЧАСТНОСТЬ: так ведёт себя ЛЮБАЯ форма, чей материал длиннее
+# совпадения. Второй её представитель — обёртка base64 длиннее потолка разбора:
+# замена накрыла бы начало, хвост уехал бы. Оба лечатся одинаково — либо
+# изымать целиком, либо отказываться судить.
+RE_PEM_BLOCK = re.compile(
+    rb"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
+    re.S,
+)
+# Незакрытый блок изъять доказуемо нельзя: где кончается тело — неизвестно, а
+# «до конца файла» снесло бы чужое содержимое. Это находка, а не повод пропустить.
+RE_PEM_OPEN = re.compile(rb"-----BEGIN [A-Z ]*PRIVATE KEY-----(?!.*?-----END [A-Z ]*PRIVATE KEY-----)", re.S)
 RE_HEADER = re.compile(
     rb"(?im)^[ \t>|\"']*(authorization|proxy-authorization|cookie|set-cookie|"
     rb"x-api-key|x-auth-token)[ \t]*[:=][ \t]*(?P<v>[^\r\n]+)"
@@ -200,6 +232,7 @@ RE_QUERY = re.compile(
 # Обёртка base64: кандидат берётся по форме, раскрывается один раз и судится теми
 # же правилами. Потолок на длину — чтобы обход не превращался в раскрытие всего
 # файла по каждому смещению.
+B64_CEILING = 4096
 RE_B64 = re.compile(rb"[A-Za-z0-9+/=_-]{24,4096}")
 
 TEXT_FORMS = (
@@ -355,6 +388,25 @@ def _json_lines(data: bytes) -> list[tuple[bytes, object]] | None:
     return out if seen_json else None
 
 
+def unredactable(data: bytes) -> list[str]:
+    """Формы, которые нельзя изъять ДОКАЗУЕМО, — они запрещают публикацию.
+
+    Отказ судить — честный исход; частичное изъятие — нет: оно стирает признак и
+    отдаёт остаток. Класс найден на закрытом ключе и здесь же закрыт для его
+    второго представителя — обёртки длиннее потолка разбора.
+    """
+    out: list[str] = []
+    if RE_PEM_OPEN.search(data):
+        out.append("незакрытый блок закрытого ключа (нет конечного маркера): "
+                   "где кончается тело — неизвестно, изъять доказуемо нечем")
+    for m in RE_B64.finditer(data):
+        if len(m.group(0)) >= B64_CEILING and _b64_carries_secret(m.group(0)):
+            out.append(f"обёртка base64 длиннее потолка разбора ({B64_CEILING} знаков): "
+                       f"замена накрыла бы начало, хвост уехал бы")
+            break
+    return out
+
+
 def scan_document(data: bytes) -> dict[str, int]:
     """Осмотр ОДНОГО документа во всех трёх его формах. Значения не возвращаются."""
     hits = scan_bytes(data)
@@ -428,6 +480,16 @@ def redact_text(data: bytes, counts: dict[str, int]) -> tuple[bytes, int]:
             return m.group(0).replace(val, rep, 1)
 
         return rx.sub(_one, buf)
+
+    # БЛОК ЗАКРЫТОГО КЛЮЧА — ПЕРВЫМ И ЦЕЛИКОМ. Иначе строка-маркер была бы
+    # съедена формой `pem` ниже, и тело осталось бы без единого признака.
+    def _pem_block(m: re.Match[bytes]) -> bytes:
+        nonlocal total
+        total += 1
+        counts["pem"] = counts.get("pem", 0) + 1
+        return rep
+
+    data = RE_PEM_BLOCK.sub(_pem_block, data)
 
     for name, rx in TEXT_FORMS:
         data = sub_group(name, rx, data)
@@ -578,6 +640,12 @@ def process(path: Path, root: Path, scan_only: bool, rep: Report) -> None:
     rep.files += 1
     rep.bytes += len(data)
 
+    hard = unredactable(data)
+    if hard:
+        for why in hard:
+            rep.findings.append(f"{rel}: {why} — публиковать нельзя")
+        return
+
     if scan_only:
         hits = scan_document(data)
         if hits:
@@ -720,28 +788,45 @@ def run(
 # Прогоняется НАСТОЯЩИЙ этот скрипт отдельным процессом: проверка, зовущая свою
 # же функцию, доказывает работу функции, а не работу скрипта.
 
+# У КАЖДОЙ КАНАРЕЙКИ ТРИ ЧАСТИ: имя файла · содержимое · ТЕЛО, которое обязано
+# НЕ ПЕРЕЖИТЬ рабочий режим.
+#
+# Третья часть заведена после приёмки и стоит дороже двух первых. Прежде
+# положительный контроль проверял только ОСМОТР: «канарейка краснит» —
+# и этого достаточно ровно до формы, чей материал ДЛИННЕЕ совпадения. У
+# закрытого ключа совпадала строка-маркер, а тело шло следующими строками:
+# канарейка зеленела, потому что красился маркер, то есть ПО ДРУГОЙ ПРИЧИНЕ, чем
+# заявлено, — и из «чистого» файла ключ доставался побайтно.
+PEM_BODY = ("MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDVPBWZUIxUcgBF",
+            "u3X3C8TLB0H9S1DRNVi9lGSkczFSc2BR1XipRe3tEkKK5I3gGy4ZfL6bsy0fdqn5",
+            "s2E9B/ja+tnrkgUH82mS2phS")
+B64_WRAPPED = base64.b64encode(b'{"Authorization": "Bearer AAAABBBBCCCCDDDD"}').decode()
+
 CANARIES = {
-    # форма: (имя файла, содержимое)
-    "key": ("report.json", json.dumps({"request": {"headers": {"Authorization": "Bearer AAAABBBBCCCCDDDD"}}})),
-    "pair": (
-        "postman.json",
-        json.dumps({"request": {"header": [{"key": "Authorization", "value": "Bearer AAAABBBBCCCCDDDD"}]}}),
-    ),
-    "header": ("stand.log", "ts=1 msg=req\nAuthorization: Bearer AAAABBBBCCCCDDDD\n"),
-    "cookie": ("cookie.log", "Set-Cookie: session=abcdefghijklmnop; Path=/\n"),
-    "jwt": ("jwt.log", "token accepted eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.c2lnbmF0dXJlX2hlcmU\n"),
-    "pem": ("key.log", "-----BEGIN RSA PRIVATE KEY-----\nQUJDREVGRw==\n-----END RSA PRIVATE KEY-----\n"),
-    "query": ("url.log", "GET /v1/projects?access_token=AAAABBBBCCCCDDDD HTTP/1.1\n"),
-    "pair-cookie": (
-        "cookie.json",
-        json.dumps({"response": {"header": [{"key": "Set-Cookie", "value": "kacho_session=abcdefghijklmnop; Path=/"}]}}),
-    ),
-    "base64": (
-        "wrapped.log",
-        "payload "
-        + base64.b64encode(b'{"Authorization": "Bearer AAAABBBBCCCCDDDD"}').decode()
-        + "\n",
-    ),
+    # форма: (имя файла, содержимое, части материала, НЕ ИМЕЮЩИЕ ПРАВА УЦЕЛЕТЬ)
+    "key": ("report.json",
+            json.dumps({"request": {"headers": {"Authorization": "Bearer AAAABBBBCCCCDDDD"}}}),
+            ("AAAABBBBCCCCDDDD",)),
+    "pair": ("postman.json",
+             json.dumps({"request": {"header": [{"key": "Authorization", "value": "Bearer AAAABBBBCCCCDDDD"}]}}),
+             ("AAAABBBBCCCCDDDD",)),
+    "header": ("stand.log", "ts=1 msg=req\nAuthorization: Bearer AAAABBBBCCCCDDDD\n",
+               ("AAAABBBBCCCCDDDD",)),
+    "cookie": ("cookie.log", "Set-Cookie: session=abcdefghijklmnop; Path=/\n",
+               ("abcdefghijklmnop",)),
+    "jwt": ("jwt.log", "token accepted eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.c2lnbmF0dXJlX2hlcmU\n",
+            ("c2lnbmF0dXJlX2hlcmU", "eyJzdWIiOiJ4In0")),
+    # ТЕЛО ИЗ НЕСКОЛЬКИХ СТРОК — иначе случай не отличал бы изъятие блока от
+    # изъятия одной строки, а именно это различие здесь и держится.
+    "pem": ("key.log",
+            "-----BEGIN RSA PRIVATE KEY-----\n" + "\n".join(PEM_BODY) + "\n-----END RSA PRIVATE KEY-----\n",
+            PEM_BODY),
+    "query": ("url.log", "GET /v1/projects?access_token=AAAABBBBCCCCDDDD HTTP/1.1\n",
+              ("AAAABBBBCCCCDDDD",)),
+    "pair-cookie": ("cookie.json",
+                    json.dumps({"response": {"header": [{"key": "Set-Cookie", "value": "kacho_session=abcdefghijklmnop; Path=/"}]}}),
+                    ("abcdefghijklmnop",)),
+    "base64": ("wrapped.log", "payload " + B64_WRAPPED + "\n", (B64_WRAPPED,)),
 }
 
 LAWFUL_TWIN = {
@@ -815,7 +900,7 @@ def self_test() -> int:
     print("=== scrub-publication.py --self-test ===")
 
     # (1) ИНЪЕКЦИЯ ПО КАЖДОЙ ФОРМЕ: канарейка обязана краснить осмотр.
-    for form, (nm, body) in CANARIES.items():
+    for form, (nm, body, _) in CANARIES.items():
         cases += 1
         root = make_root({nm: body})
         r = call(root, ["--scan-only"])
@@ -844,7 +929,7 @@ def self_test() -> int:
     # (3) РАБОЧИЙ РЕЖИМ: изъятие сходится, повторный осмотр чист, значение не
     #     осталось в файле, структура отчёта сохранена.
     cases += 1
-    root = make_root({nm: body for nm, body in CANARIES.values()})
+    root = make_root({nm: body for nm, body, _ in CANARIES.values()})
     r = call(root, [])
     left = [p for p in (root / "out").iterdir() if "AAAABBBBCCCCDDDD" in p.read_text(errors="replace")]
     if r.returncode != CLEAN:
@@ -861,6 +946,41 @@ def self_test() -> int:
             ok = False
         else:
             print("  ОК  изъятие → повторный осмотр чист, значения нет, структура цела")
+
+    # (3-тело) ТЕЛО КАЖДОЙ КАНАРЕЙКИ ОБЯЗАНО НЕ ПЕРЕЖИТЬ РАБОЧИЙ РЕЖИМ.
+    #
+    # Это утверждение отдельное от «канарейка краснит осмотр», и разница стоила
+    # дефекта: у закрытого ключа краснел МАРКЕР, а тело оставалось в файле —
+    # канарейка зеленела по другой причине, чем заявлено, и из «чистого» файла
+    # ключ восстанавливался побайтно. Проверяется каждая форма по отдельности:
+    # общий случай сказал бы «что-то уцелело», не назвав, что именно.
+    for form, (nm, body, parts) in CANARIES.items():
+        cases += 1
+        root = make_root({nm: body})
+        r = call(root, [])
+        after = (root / "out" / nm).read_text(encoding="utf-8", errors="replace")
+        alive = [x for x in parts if x in after]
+        if r.returncode != CLEAN:
+            print(f"  ПРОВАЛ тело {form}: рабочий режим дал код {r.returncode}, ждали {CLEAN}")
+            print("        " + (r.stdout + r.stderr).replace("\n", "\n        ")[:700])
+            ok = False
+        elif alive:
+            print(f"  ПРОВАЛ тело {form}: в «чистом» файле уцелело частей материала "
+                  f"{len(alive)} из {len(parts)} — изъят признак, а не материал")
+            ok = False
+        else:
+            print(f"  ОК  тело {form} → ни одна часть материала не пережила изъятия")
+
+    # (3-блок) НЕЗАКРЫТЫЙ БЛОК: изъять доказуемо нечем — публикация запрещена,
+    #          а не разрешена. Законный близнец — тот же блок с конечным маркером.
+    cases += 1
+    root = make_root({"open.log": "-----BEGIN RSA PRIVATE KEY-----\n" + "\n".join(PEM_BODY) + "\n"})
+    r = call(root, [])
+    if r.returncode != FINDING:
+        print(f"  ПРОВАЛ незакрытый блок: код {r.returncode}, ждали {FINDING}")
+        ok = False
+    else:
+        print("  ОК  незакрытый блок закрытого ключа → НАХОДКА, публикация запрещена")
 
     # (3а) ПОСТРОЧНЫЙ JSON — ОДНО-ФАКТНАЯ ПАРА.
     #
