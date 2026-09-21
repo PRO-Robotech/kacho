@@ -32,7 +32,7 @@ subscriptionStream:
 
 # Response security headers emitted by every nginx UI server (host + remotes).
 # Internal serving config only - no API/proto/wire contract surface.
-# Everything the console talks to (api-gateway, kratos, hydra) is reached
+# Everything the console talks to (api-gateway, kratos) is reached
 # same-origin through the host nginx proxy, so a 'self'-based CSP is sufficient.
 #
 # style-src carries 'unsafe-inline' (script-src does NOT). antd v6 renders its
@@ -117,7 +117,6 @@ host:
   upstreams:
     apiGateway: api-gateway.kacho.svc.cluster.local:8080
     kratosPublic: kacho-umbrella-kratos-public.kacho.svc.cluster.local:80
-    hydraPublic: kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444
     kratosUi: kratos-selfservice-ui.kacho.svc.cluster.local:3000
     dashboard: ""
     vpc: ""

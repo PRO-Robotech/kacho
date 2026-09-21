@@ -12,9 +12,9 @@
 // читали. По уровню решает край (пол каталога прав, вызов RFC 9470), консоль
 // отвечает на вызов церемонией повышения (StepUpModal) и перечитывает личность.
 //
-// Аутентификация data-plane запросов — ambient httpOnly session cookie
-// (Kratos/Hydra), выписанная api-gateway middleware; access-token держится
-// in-memory (setAccessToken) для консюмеров, которым он нужен явно.
+// Аутентификация data-plane запросов — ambient httpOnly печенье сессии,
+// выписанное поставщиком личности; access-token держится in-memory
+// (setAccessToken) для консюмеров, которым он нужен явно.
 //
 // Backward-compat для KAC-115 (Logout, HeaderAuth, LoginButton, UserMenu) —
 // `useAuth` экспозит те же поля `user / loading / login / logout / refresh /
@@ -40,13 +40,15 @@ export interface AuthContextValue {
 
   /** Старт self-service login flow (Kratos browser redirect). */
   login: (returnTo?: string) => void;
-  /** Logout: Kratos token-flow + Hydra BCL. */
+  /** Выход: token-flow поставщика личности. Обратного канала выхода к службе
+   *  выдачи токена здесь нет и не было — её край консоль не зовёт вовсе. */
   logout: () => Promise<void>;
   /** Перезапросить /me + whoami. */
   refresh: () => Promise<void>;
   /** Перезапросить только whoami (например, после 403 — роль могла измениться). */
   refreshWhoAmI: () => Promise<void>;
-  /** Установить access-token (после Hydra token-exchange). */
+  /** Установить access-token. Производителя в дереве консоли сегодня нет:
+   *  поле держит значение для консюмеров, которым токен нужен явно. */
   setAccessToken: (token: string | null) => void;
   /** Проверка permission (admin `*` wildcard). */
   hasPermission: (perm: string) => boolean;
@@ -106,7 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Init: начальный refresh (сессия — по httpOnly cookie Kratos/Hydra).
+  // Init: начальный refresh (сессия — по httpOnly печенью поставщика личности).
   useEffect(() => {
     let cancelled = false;
     void (async () => {

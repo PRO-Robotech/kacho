@@ -219,23 +219,6 @@ data:
             proxy_send_timeout 30s;
         }
 
-        # `^~` — по той же причине, что у блока выше: обычный префикс проигрывает
-        # регулярке статики. Расширений из её перечня у этого края сегодня не
-        # встречается, но правило разрешения от этого не меняется, и первый же
-        # такой адрес уехал бы мимо — молча и с чужим ответом.
-        location ^~ /.ory/hydra/public/ {
-            set $hydra_public "${KACHO_UI_HYDRA_PUBLIC_UPSTREAM}";
-            rewrite ^/\.ory/hydra/public/(.*)$ /$1 break;
-            proxy_pass http://$hydra_public;
-            proxy_http_version 1.1;
-            proxy_set_header Host $host;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_read_timeout 30s;
-            proxy_send_timeout 30s;
-        }
-
         location ~ ^/(login|registration|recovery|verification|settings|error|consent|logout)(/|$) {
             set $kratos_ui "${KACHO_UI_KRATOS_UI_UPSTREAM}";
             proxy_pass http://$kratos_ui;

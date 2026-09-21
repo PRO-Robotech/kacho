@@ -17,14 +17,6 @@ interface AppConfig {
   appDomain: string;
   /** Kratos public base path (browser-flows). Default `/.ory/kratos/public`. */
   kratosUrl: string;
-  /** Hydra base (OAuth2 endpoints). Default `/oauth2`. */
-  hydraUrl: string;
-  /** Hydra client_id для kacho-ui (Public client, PKCE). */
-  hydraClientId: string;
-  /** Redirect URI после OAuth-callback. Default `/auth/callback`. */
-  hydraRedirectUri: string;
-  /** OAuth scopes для access-token. */
-  hydraScopes: string;
   /** WebAuthn RP-ID (eTLD+1 от app-домена). Kratos config обязан совпадать. */
   webauthnRpId: string;
   /** WebAuthn RP display-name. */
@@ -60,10 +52,6 @@ export const config: AppConfig = {
   apiDomain: envStr("VITE_KACHO_API_DOMAIN", DEFAULT_API_DOMAIN),
   appDomain: envStr("VITE_APP_DOMAIN", DEFAULT_APP_DOMAIN),
   kratosUrl: envStr("VITE_KRATOS_URL", "/.ory/kratos/public"),
-  hydraUrl: envStr("VITE_HYDRA_URL", "/oauth2"),
-  hydraClientId: envStr("VITE_HYDRA_CLIENT_ID", "kacho-ui"),
-  hydraRedirectUri: envStr("VITE_HYDRA_REDIRECT_URI", "/auth/callback"),
-  hydraScopes: envStr("VITE_HYDRA_SCOPES", "openid profile email offline_access"),
   webauthnRpId: envStr("VITE_WEBAUTHN_RP_ID", "kacho.cloud"),
   webauthnRpName: envStr("VITE_WEBAUTHN_RP_NAME", "Kachō Cloud"),
   dpopClockSkewSec: envNum("VITE_DPOP_CLOCK_SKEW_SEC", 30),
@@ -73,13 +61,6 @@ export const config: AppConfig = {
 /** Полный URL для Kratos endpoint. */
 export function kratosUrl(path: string): string {
   const base = config.kratosUrl.replace(/\/$/, "");
-  const p = path.startsWith("/") ? path : `/${path}`;
-  return `${base}${p}`;
-}
-
-/** Полный URL для Hydra endpoint. */
-export function hydraUrl(path: string): string {
-  const base = config.hydraUrl.replace(/\/$/, "");
   const p = path.startsWith("/") ? path : `/${path}`;
   return `${base}${p}`;
 }
