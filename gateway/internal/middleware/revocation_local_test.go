@@ -6,23 +6,22 @@ package middleware
 // revocation_local_test.go — ОТЗЫВ, ЗАПИСАННЫЙ У НАС, ОБЯЗАН ДЕЙСТВОВАТЬ НА
 // ПУТИ ЗАПРОСА.
 //
-// ПРЕДМЕТ (#797). Край спрашивает об отзыве ПРОВАЙДЕРА — и делает это на каждом
-// запросе, это верно и остаётся. Но выход пользователя записывает отзыв В НАШУ
-// базу: по идентификатору удостоверения и отсечкой по времени. Провайдер об
-// этой записи не знает и знать не может, поэтому предъявленное удостоверение
-// проходит его проверку и после нашего отзыва.
+// ПРЕДМЕТ (#797). Выход человека записывает отзыв В НАШУ базу: по
+// идентификатору удостоверения и отсечкой по времени. Контроль, действующий на
+// ВЫДАЧЕ и не действующий на ПРЕДЪЯВЛЕНИИ, отзывом не является — предъявленное
+// проходит до истечения срока, и это состояние не сходится само.
 //
-// Наблюдение на живом стенде (2026-08-21): сессий входа у провайдера — ноль,
-// выданных удостоверений — полсотни. Механизм, которым мы «закрываем вход», не
-// имеет предмета: удостоверения выданы машинным потоком и к сессии не привязаны.
-//
-// РЕШЕНИЕ. Источников отзыва два, и спрашивать надо оба. Наш — первым: он
-// дешевле (свой сосед против внешнего провайдера) и отвечает на вопрос, которого
-// провайдер не понимает.
+// ИСТОЧНИК ОДИН. Их было два, и спрашивались оба: сперва наша запись, потом
+// чужой поставщик по административному пути его интроспекции. Второй снят
+// вместе с самим поставщиком — его токенов край не принимает, и вопрос ему был
+// бы утверждением о предмете, которого у него нет. Композиция выродилась в свою
+// первую половину, и половина эта — авторитет.
 //
 // ПОЧЕМУ FAIL-CLOSED. Недоступность источника отзыва не есть «не отозван».
 // Ответ «не знаю» на вопрос о безопасности означает отказ — тот же контракт, что
-// у проверки доступа, которую край уже делает рядом.
+// у проверки доступа, которую край уже делает рядом. Мягкого прохода для ЭТОГО
+// источника не было и нет: авторитет наш, и проход означал бы «отзываем и свой
+// же отзыв не исполняем».
 
 import (
 	"context"
@@ -45,22 +44,10 @@ func (f *fakeLocalReader) IsSessionRevoked(_ context.Context, _ string) (bool, e
 	return f.revoked, nil
 }
 
-// fakeProvider — источник провайдера.
-type fakeProvider struct {
-	err   error
-	asked int
-}
-
-func (f *fakeProvider) Introspect(_ context.Context, _, _ string) (IntrospectionResult, error) {
-	f.asked++
-	return IntrospectionResult{}, f.err
-}
-
 func TestLocalRevocationIsAskedAndStopsTheRequest(t *testing.T) {
 	local := &fakeLocalReader{revoked: true}
-	provider := &fakeProvider{}
 
-	c := NewLocalThenProviderRevocation(local, provider)
+	c := NewOwnRevocationSource(local)
 	_, err := c.Introspect(context.Background(), "jti-1", "raw")
 
 	if !errors.Is(err, ErrTokenInactive) {
@@ -71,36 +58,38 @@ func TestLocalRevocationIsAskedAndStopsTheRequest(t *testing.T) {
 	if local.asked != 1 {
 		t.Fatalf("наш источник спрошен %d раз, ждали 1", local.asked)
 	}
-	if provider.asked != 0 {
-		t.Fatalf("провайдер спрошен %d раз при уже известном отзыве — лишний "+
-			"обход к соседу на каждом запросе отозванного", provider.asked)
-	}
 }
 
-func TestLiveTokenStillGoesToTheProvider(t *testing.T) {
+func TestLiveTokenPassesAndTheAnswerIsWhole(t *testing.T) {
 	// ЗАКОННЫЙ БЛИЗНЕЦ: без него проба выше зеленела бы на проверке, которая
 	// отвергает всё подряд.
+	//
+	// Отличие от предмета РОВНО ОДНО — что ответил источник.
 	local := &fakeLocalReader{revoked: false}
-	provider := &fakeProvider{}
 
-	c := NewLocalThenProviderRevocation(local, provider)
-	if _, err := c.Introspect(context.Background(), "jti-2", "raw"); err != nil {
+	c := NewOwnRevocationSource(local)
+	res, err := c.Introspect(context.Background(), "jti-2", "raw")
+	if err != nil {
 		t.Fatalf("не отозванное удостоверение отвергнуто: %v", err)
 	}
-	if provider.asked != 1 {
-		t.Fatalf("провайдер спрошен %d раз, ждали 1: наш источник не заменяет "+
-			"его, а дополняет — провайдер знает об отзывах, которых не знаем мы",
-			provider.asked)
+	if local.asked != 1 {
+		t.Fatalf("наш источник спрошен %d раз, ждали 1", local.asked)
+	}
+	// «Не отозвано» здесь ПОЛНЫЙ ответ, а не половина прежнего: спрашивать
+	// больше некого, и вызывающий обязан получить годность, а не пустоту,
+	// которую следующий слой прочитает как «неизвестно».
+	if !res.Active {
+		t.Fatal("источник ответил «не отозвано», а исход не назван годным — " +
+			"вызывающий не отличит его от неотвеченного вопроса")
 	}
 }
 
-func TestUnavailableLocalSourceIsNotAnAnswer(t *testing.T) {
+func TestUnavailableSourceIsNotAnAnswer(t *testing.T) {
 	// FAIL-CLOSED: «не знаю» — не «не отозван».
 	boom := errors.New("сосед не ответил")
 	local := &fakeLocalReader{err: boom}
-	provider := &fakeProvider{}
 
-	c := NewLocalThenProviderRevocation(local, provider)
+	c := NewOwnRevocationSource(local)
 	_, err := c.Introspect(context.Background(), "jti-3", "raw")
 
 	if err == nil {
@@ -111,29 +100,30 @@ func TestUnavailableLocalSourceIsNotAnAnswer(t *testing.T) {
 		t.Fatalf("недоступность подана как отзыв: %v. Это разные исходы, и "+
 			"вызывающий обязан их различать", err)
 	}
-	if provider.asked != 0 {
-		t.Fatalf("провайдер спрошен при неотвечающем своём источнике (%d) — "+
-			"вердикт был бы вынесен по половине картины", provider.asked)
+	// Признак молчания ТИПИЗИРОВАН, а не выведен из текста: текст пишет тот, кто
+	// ошибку породил, и он меняется от версии соседа. Читает признак слой
+	// решения (auth_revocation.go), и без него молчание нашего источника попало
+	// бы в мягкий проход, объявленный когда-то для ЧУЖОГО.
+	if !errors.Is(err, ErrOwnRevocationSourceSilent) {
+		t.Fatalf("молчание не несёт своего признака: %v", err)
+	}
+	// Причина сохранена цепочкой: журнал обязан назвать диагноз, а не только
+	// класс исхода.
+	if !errors.Is(err, boom) {
+		t.Fatalf("причина молчания потеряна: %v", err)
 	}
 }
 
-func TestProviderVerdictSurvivesUntouched(t *testing.T) {
-	// Ответ провайдера проходит НАСКВОЗЬ: композиция добавляет источник, а не
-	// переписывает чужие исходы.
-	for _, tc := range []struct {
-		name string
-		err  error
-	}{
-		{"отозван у провайдера", ErrTokenInactive},
-		{"провайдер настроен неверно", ErrIntrospectionMisconfigured},
-		{"провайдер не ответил", errors.New("таймаут")},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			c := NewLocalThenProviderRevocation(
-				&fakeLocalReader{revoked: false}, &fakeProvider{err: tc.err})
-			if _, err := c.Introspect(context.Background(), "jti", "raw"); !errors.Is(err, tc.err) {
-				t.Fatalf("исход провайдера подменён: получено %v, ждали %v", err, tc.err)
-			}
-		})
+func TestReaderWithoutASourceRefuses(t *testing.T) {
+	// Конструктор участника ТРЕБУЕТ, но не проверяет. Читатель без источника
+	// отвечал бы на вопрос о безопасности, ничего не спросив, и отличить это от
+	// исправной работы было бы нечем.
+	//
+	// Признак — ErrIntrospectionMisconfigured, а не «не ответил»: неполная
+	// сборка не лечится повтором.
+	c := NewOwnRevocationSource(nil)
+	_, err := c.Introspect(context.Background(), "jti-4", "raw")
+	if !errors.Is(err, ErrIntrospectionMisconfigured) {
+		t.Fatalf("читатель без источника обязан отвечать признаком настройки, получено: %v", err)
 	}
 }

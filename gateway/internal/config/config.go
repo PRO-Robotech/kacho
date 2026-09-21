@@ -830,7 +830,8 @@ const AudienceKnob = "KACHO_API_GATEWAY_TOKEN_AUDIENCE"
 // значение здесь возможно и означает «не объявлено». Прежняя `ExpectedAudience`
 // возвращала «https://» + APIDomain и пустой не бывала никогда, поэтому
 // «объявлено» и «подставлено построением» на месте вызова не различались — тот
-// же разрыв, ради которого у службы доступа заведена `DeclaredHydraAdminURL`.
+// же разрыв, ради которого у КАЖДОЙ величины опознания на этом крае нет
+// встроенного умолчания (перепись — `token_audience_validation_test.go`).
 func (c Config) DeclaredTokenAudience() string {
 	return strings.TrimSpace(c.TokenAudience)
 }

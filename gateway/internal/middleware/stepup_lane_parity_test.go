@@ -29,7 +29,6 @@ package middleware_test
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"sort"
@@ -97,29 +96,9 @@ func (p laneProbe) laneName() string { return p.driver.name }
 
 // fakeKratos — провайдер сессий, отвечающий ЖИВОЙ сессией уровня aal1: человек
 // вошёл, второго фактора НЕ предъявлял. Это тот же уровень уверенности, что
-// acr="1" у подписанного предъявителя и уровень «1» у базового удостоверения, —
-// полосы сравниваются на РАВНОМ входе.
-func fakeKratos(t *testing.T) *httptest.Server {
-	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/sessions/whoami" {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{
-		  "active": true,
-		  "authenticated_at": "2026-08-24T10:00:00Z",
-		  "authenticator_assurance_level": "aal1",
-		  "identity": {
-		    "id": "dc609064-d9f3-4e24-b574-d561c9f18359",
-		    "traits": {"email": "alice@example.test", "name": {"first": "Alice", "last": "A"}}
-		  }
-		}`)
-	}))
-	t.Cleanup(srv.Close)
-	return srv
-}
+// ЗДЕСЬ СТОЯЛ ДУБЛЁР ЧУЖОГО ПОСТАВЩИКА СЕССИЙ. Он снят вместе с полосой,
+// которую изображал: читателя печенья поставщика на крае больше нет, и привод
+// к несуществующей полосе сравнивал бы её саму с собой.
 
 // laneRig — композиционный корень, несущий ВСЕ полосы личности сразу и
 // смонтированный пол, как это делает край в production-посадке. Один корень на
@@ -155,10 +134,8 @@ func newLaneRig(t *testing.T) *laneRig {
 		authTestLogger(),
 	).
 		WithVerifier(rs256Verifier(t, fix)).
-		WithKratos(middleware.NewKratosClient(fakeKratos(t).URL)).
-		// Читатель НАШЕЙ сессии (посадка `own`, Ф3). В бою провязывается ВМЕСТО
-		// поставщика — здесь рядом с ним, потому что сравниваются полосы, а не
-		// сборки: у каждой свой носитель, и на чужом носителе полоса молчит.
+		// Читатель НАШЕЙ сессии (Ф3 Р7) — единственный читатель носителя
+		// браузерной сессии на этом крае.
 		WithHumanSession(fakeOwnSession{}).
 		WithBasicCredentialLane(middleware.NewBasicCredentialLane(authority)).
 		WithStepUp(
@@ -185,8 +162,8 @@ type laneDriver struct {
 }
 
 // fakeOwnSession — читатель НАШЕЙ сессии, отвечающий живой сессией уровня «1»:
-// тот же уровень, что aal1 у поставщика, acr="1" у предъявителя и «1» у
-// базового удостоверения, — полосы сравниваются на РАВНОМ входе.
+// тот же уровень, что acr="1" у подписанного предъявителя и «1» у базового
+// удостоверения, — полосы сравниваются на РАВНОМ входе.
 type fakeOwnSession struct{}
 
 func (fakeOwnSession) ResolveHumanSession(_ context.Context, bearer string) (middleware.HumanSession, bool, error) {
@@ -208,13 +185,6 @@ func laneDrivers() map[string]laneDriver {
 			carriesIdentityInProduction: true,
 			arrange: func(_ *testing.T, _ *laneRig, r *http.Request) {
 				r.Header.Set("Cookie", middleware.OurSessionCarrierName+"=opaque-own")
-			},
-		},
-		"tryKratosSession": {
-			name:                        "сессия провайдера (ory_kratos_session, aal1)",
-			carriesIdentityInProduction: true,
-			arrange: func(_ *testing.T, _ *laneRig, r *http.Request) {
-				r.Header.Set("Cookie", "ory_kratos_session=opaque-a")
 			},
 		},
 		"tryHydraJWT": {

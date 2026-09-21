@@ -188,9 +188,9 @@ type IntrospectionCache struct {
 // IntrospectionCacheConfig — construction parameters.
 type IntrospectionCacheConfig struct {
 	IntrospectionURL string
-	HTTPClient            *http.Client
-	MaxEntries            int
-	TTL                   time.Duration
+	HTTPClient       *http.Client
+	MaxEntries       int
+	TTL              time.Duration
 	// Timeout bounds one round-trip to the provider. Zero → defaultIntrospectionTimeout.
 	Timeout       time.Duration
 	Now           func() time.Time

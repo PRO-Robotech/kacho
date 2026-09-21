@@ -7,8 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -38,8 +36,11 @@ import (
 // цепочку недостижима. Вердикт «назвал ли человека» читается из тела: 401 тела
 // с `user` не несёт.
 //
-// Посадок ДВЕ (`external` — сессия поставщика; `own` — наша, Ф3), и полосы
-// обязаны сходиться на каждой: под `own` читатель другой, а свойство то же.
+// ПОСАДКА ОДНА. Их было две (`external` — сессия чужого поставщика; `own` —
+// наша), и сравнение шло по четырём полосам. Поставщик снят целиком, его
+// читателя больше нет, и поднять две выбывшие полосы нечем — они убраны ВМЕСТЕ
+// со своим предметом, а не оставлены на подставном приводе. Сравнение остаётся
+// сравнением: полос по-прежнему две, и они по-прежнему читают ОДИН носитель.
 
 // laneVerdict — что полоса сказала про сессию: считает ли она человека вошедшим.
 type laneVerdict struct {
@@ -47,47 +48,10 @@ type laneVerdict struct {
 	signed bool
 }
 
-// askIdentityLane — вердикт полосы личности: дошёл ли запрос до backend.
-func askIdentityLane(t *testing.T, kratosURL string, cut SessionCutoffReader) laneVerdict {
-	t.Helper()
-	served := false
-	next := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { served = true })
-	a := NewAuthInterceptor(AuthModeDev, "",
-		cutoffLookup{subj: Subject{Type: "user", ID: "usr-1", DisplayName: "A"}},
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-	).WithKratos(NewKratosClient(kratosURL))
-	if cut != nil {
-		a = a.WithSessionCutoffCheck(cut, time.Hour)
-	}
-	req := httptest.NewRequest(http.MethodGet, "/vpc/v1/networks", nil)
-	req.Header.Set("Cookie", "ory_kratos_session="+t.Name()+"-identity")
-	rec := httptest.NewRecorder()
-	a.HTTP(next).ServeHTTP(rec, req)
-	return laneVerdict{name: "полоса личности на пути запроса", signed: served}
-}
-
-// askWhoAmILane — вердикт маршрута «кто я» ЧЕРЕЗ ЦЕПОЧКУ: назвал ли ответ
-// человека. Полоса личности стоит перед маршрутом, как в боевой провязке.
-func askWhoAmILane(t *testing.T, kratosURL string, cut SessionCutoffReader) laneVerdict {
-	t.Helper()
-	lookup := cutoffLookup{subj: Subject{Type: "user", ID: "usr-1", DisplayName: "A"}}
-	a := NewAuthInterceptor(AuthModeDev, "", lookup,
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-	).WithKratos(NewKratosClient(kratosURL))
-	h := NewSessionIdentityHandler(slog.New(slog.NewTextHandler(io.Discard, nil))).
-		WithKratos(NewKratosClient(kratosURL), lookup)
-	if cut != nil {
-		a = a.WithSessionCutoffCheck(cut, time.Hour)
-		h = h.WithSessionCutoff(cut)
-	}
-	mux := http.NewServeMux()
-	h.Register(mux)
-	req := httptest.NewRequest(http.MethodGet, "/iam/v1/auth/me", nil)
-	req.Header.Set("Cookie", "ory_kratos_session="+t.Name()+"-whoami")
-	rec := httptest.NewRecorder()
-	a.HTTP(mux).ServeHTTP(rec, req)
-	return laneVerdict{name: "маршрут «кто я»", signed: whoAmINamedAPerson(rec)}
-}
+// ЗДЕСЬ СТОЯЛИ ДВЕ ПОЛОСЫ ПОД ПОСАДКОЙ `external` — та же пара вопросов,
+// заданная читателю печенья чужого поставщика. Они сняты вместе с читателем:
+// привод у них был сам поставщик, и оставить их значило бы держать пробу на
+// фикстуре, которой нечего изображать.
 
 // whoAmINamedAPerson читает вердикт «кто я» из ответа цепочки: только 200 с
 // непустым `user` называет человека; 401 полосы — нет.
@@ -188,13 +152,10 @@ func TestBrowserSessionLanesAgree(t *testing.T) {
 			if tc.name == "сессия без момента аутентификации при живой отсечке" {
 				at = time.Time{}
 			}
-			url := kratosStub(t, at).URL
 			own := liveOwnSession()
 			own.AuthenticatedAt = at
 
 			verdicts := []laneVerdict{
-				askIdentityLane(t, url, tc.cut),
-				askWhoAmILane(t, url, tc.cut),
 				askOwnIdentityLane(t, own, tc.cut),
 				askOwnWhoAmILane(t, own, tc.cut),
 			}
@@ -223,17 +184,15 @@ func TestBrowserSessionLanesAgree(t *testing.T) {
 // одинаково на обеих. Иначе «одна полоса спрашивает, вторая нет» вернулось бы
 // через непровязку.
 func TestBrowserSessionLanesAgree_UnmountedReaderIsAlsoSymmetric(t *testing.T) {
-	url := kratosStub(t, time.Now()).URL
 	own := liveOwnSession()
-	for _, v := range []laneVerdict{
-		askIdentityLane(t, url, nil), askWhoAmILane(t, url, nil),
-		askOwnIdentityLane(t, own, nil), askOwnWhoAmILane(t, own, nil),
-	} {
+	lanes := []laneVerdict{askOwnIdentityLane(t, own, nil), askOwnWhoAmILane(t, own, nil)}
+	for _, v := range lanes {
 		if !v.signed {
 			t.Fatalf("без читателя отсечки полоса обязана работать как прежде: %s=%v", v.name, v.signed)
 		}
 	}
-	t.Log("перепись: полос осмотрено 4 · сошлись с ожидаемым 4 (читатель не провязан)")
+	t.Logf("перепись: полос осмотрено %d · сошлись с ожидаемым %d (читатель не провязан)",
+		len(lanes), len(lanes))
 }
 
 // ctxUnused держит импорт context значимым для читателя: порт объявлен на нём, и

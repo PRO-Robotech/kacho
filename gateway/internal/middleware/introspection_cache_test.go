@@ -43,8 +43,8 @@ func TestIntrospection_HappyPath_Caches(t *testing.T) {
 	defer srv.Close()
 
 	c, err := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: srv.URL,
-		TTL:                   1 * time.Hour,
+		IntrospectionURL: srv.URL,
+		TTL:              1 * time.Hour,
 	})
 	require.NoError(t, err)
 	res, err := c.Introspect(context.Background(), "jti-1", "rawtoken")
@@ -61,8 +61,8 @@ func TestIntrospection_InactiveCached_Negative(t *testing.T) {
 	srv, hits := newIntrospectionServer(false, 0)
 	defer srv.Close()
 	c, _ := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: srv.URL,
-		TTL:                   1 * time.Hour,
+		IntrospectionURL: srv.URL,
+		TTL:              1 * time.Hour,
 	})
 	_, err := c.Introspect(context.Background(), "jti", "raw")
 	assert.ErrorIs(t, err, middleware.ErrTokenInactive)
@@ -78,8 +78,8 @@ func TestIntrospection_ExpiredAlreadyAtFetch_TreatedAsInactive(t *testing.T) {
 	srv, hits := newIntrospectionServer(true, time.Now().Add(-time.Hour).Unix())
 	defer srv.Close()
 	c, _ := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: srv.URL,
-		TTL:                   1 * time.Hour,
+		IntrospectionURL: srv.URL,
+		TTL:              1 * time.Hour,
 	})
 	_, err := c.Introspect(context.Background(), "jti", "raw")
 	assert.ErrorIs(t, err, middleware.ErrTokenInactive)
@@ -104,9 +104,9 @@ func TestIntrospection_ShortExp_ClampsCacheTTL(t *testing.T) {
 	srv, hits := newIntrospectionServer(true, base.Add(2*time.Second).Unix())
 	defer srv.Close()
 	c, _ := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: srv.URL,
-		TTL:                   1 * time.Hour,
-		Now:                   clock,
+		IntrospectionURL: srv.URL,
+		TTL:              1 * time.Hour,
+		Now:              clock,
 	})
 
 	// First call at now=base → cached with TTL clamped to the ~2s exp window.
@@ -132,8 +132,8 @@ func TestIntrospection_Invalidate(t *testing.T) {
 	srv, hits := newIntrospectionServer(true, time.Now().Add(15*time.Minute).Unix())
 	defer srv.Close()
 	c, _ := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: srv.URL,
-		TTL:                   1 * time.Hour,
+		IntrospectionURL: srv.URL,
+		TTL:              1 * time.Hour,
 	})
 	_, _ = c.Introspect(context.Background(), "jti", "raw")
 	assert.Equal(t, int32(1), hits.Load())
@@ -168,8 +168,8 @@ func TestIntrospection_WriteAfterInvalidate_Dropped(t *testing.T) {
 
 	var err error
 	c, err = middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: srv.URL,
-		TTL:                   1 * time.Hour,
+		IntrospectionURL: srv.URL,
+		TTL:              1 * time.Hour,
 	})
 	require.NoError(t, err)
 
@@ -192,8 +192,8 @@ func TestIntrospection_HydraError_Bubbles(t *testing.T) {
 	}))
 	defer srv.Close()
 	c, _ := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: srv.URL,
-		TTL:                   1 * time.Hour,
+		IntrospectionURL: srv.URL,
+		TTL:              1 * time.Hour,
 	})
 	_, err := c.Introspect(context.Background(), "jti", "raw")
 	require.Error(t, err)
@@ -207,7 +207,7 @@ func TestIntrospection_Construction_RequiresURL(t *testing.T) {
 
 func TestIntrospection_EmptyJTI_Rejected(t *testing.T) {
 	c, _ := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: "http://x",
+		IntrospectionURL: "http://x",
 	})
 	_, err := c.Introspect(context.Background(), "", "raw")
 	require.Error(t, err)

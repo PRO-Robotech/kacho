@@ -76,9 +76,9 @@ func newRevocationHarness(t *testing.T, hydra *hydraFixture, introspectURL strin
 	})
 	require.NoError(t, err)
 	introspection, err := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: introspectURL,
-		TTL:                   time.Minute,
-		Timeout:               500 * time.Millisecond,
+		IntrospectionURL: introspectURL,
+		TTL:              time.Minute,
+		Timeout:          500 * time.Millisecond,
 	})
 	require.NoError(t, err)
 

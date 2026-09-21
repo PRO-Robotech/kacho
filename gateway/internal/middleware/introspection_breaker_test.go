@@ -134,10 +134,10 @@ func askDistinct(t *testing.T, c *middleware.IntrospectionCache, tag string, n i
 func newBreakerCache(t *testing.T, url string, clock *testClock) *middleware.IntrospectionCache {
 	t.Helper()
 	c, err := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: url,
-		TTL:                   time.Hour,
-		Now:                   clock.now,
-		Timeout:               5 * time.Second,
+		IntrospectionURL: url,
+		TTL:              time.Hour,
+		Now:              clock.now,
+		Timeout:          5 * time.Second,
 	})
 	require.NoError(t, err)
 	return c

@@ -30,8 +30,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/corelib/identityposture"
-
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 )
 
@@ -93,9 +91,14 @@ func TestDevClassToleratesUndeclaredTokenAudience(t *testing.T) {
 // ПЕРЕПИСЬ ПОЛОС: сверка МЕЖДУ СОБОЙ, а не по каждой отдельно
 //
 // Механизм один — опознание токена на крае, — и у него несколько РАВНОПРАВНЫХ
-// полос: адресат, авторитет отзыва поставщика, административный хоп, наш
-// авторитет отзыва. Каждая называет ЭТУ установку либо её соседа, и ни одну
-// построение подставить не вправе.
+// полос: адресат и наш авторитет отзыва. Каждая называет ЭТУ установку либо её
+// соседа, и ни одну построение подставить не вправе.
+//
+// ПОЛОС БЫЛО ЧЕТЫРЕ. Две из них — авторитет отзыва поставщика и его
+// административный хоп — сняты вместе с самим поставщиком, и перепись поэтому
+// печатает меньшее число. Это не сужение обхода: перечень полос и есть предмет
+// переписи, и полоса, чьего предмета в дереве нет, держалась бы здесь записью
+// без предмета — тем самым, что перепись и ловит.
 //
 // Свойство проверяется ДВУМЯ половинами, потому что каждая по отдельности
 // проходима при сломанной второй: величина без встроенного умолчания, но без
@@ -108,31 +111,15 @@ type identityLane struct {
 	knob string
 	// field — поле config.Config, несущее её.
 	field string
-	// posture — посадка, на которой величина ТРЕБУЕТСЯ. Полосность снимает
-	// требование НАЛИЧИЯ у соседа, поэтому каждая полоса судится там, где её
-	// предмет жив.
-	posture identityposture.Provider
 	// refuseWhenUnset — страж, позванный с ЭТОЙ полосой незаданной и всеми
 	// остальными объявленными. Одно-фактность: красное приходит от предмета, а
 	// не от соседа.
+	//
+	// ЗДЕСЬ СТОЯЛО ПОЛЕ `posture` — посадка, на которой величина ТРЕБОВАЛАСЬ.
+	// Развилки по посадке у стража больше нет (её вторая ветвь была «отзыв
+	// читает чужой поставщик»), поэтому поле снято вместе с ней: величина,
+	// которую никто не читает, приглашает вернуть развилку обратно.
 	refuseWhenUnset func() error
-}
-
-// goodRevocation — годная боевая настройка полос отзыва на названной посадке.
-func goodRevocation(p identityposture.Provider) RevocationConfig {
-	cfg := RevocationConfig{
-		IdentityProvider: p,
-		IntrospectionURL: tlsIntrospectURL,
-		AdminURL:         tlsAdminURL,
-		AdminCAFile:      "/etc/api-gateway/hydra-admin-ca/ca.crt",
-	}
-	if p == identityposture.Own {
-		cfg.PlatformRevocationURL = tlsAdminURL
-		cfg.PlatformRevocationCAFile = "/etc/api-gateway/platform-revocation-ca/ca.crt"
-		cfg.PlatformRevocationCertFile = "/etc/api-gateway/mtls/tls.crt"
-		cfg.PlatformRevocationKeyFile = "/etc/api-gateway/mtls/tls.key"
-	}
-	return cfg
 }
 
 // tokenIdentityLanes — полосы механизма. Перечень выписан ЗДЕСЬ намеренно:
@@ -142,39 +129,17 @@ func goodRevocation(p identityposture.Provider) RevocationConfig {
 func tokenIdentityLanes() []identityLane {
 	return []identityLane{
 		{
-			knob:    config.AudienceKnob,
-			field:   "TokenAudience",
-			posture: identityposture.External,
+			knob:  config.AudienceKnob,
+			field: "TokenAudience",
 			refuseWhenUnset: func() error {
 				return validateProductionTokenAudience("production", "")
 			},
 		},
 		{
-			knob:    "KACHO_HYDRA_INTROSPECTION_URL",
-			field:   "HydraIntrospectionURL",
-			posture: identityposture.External,
+			knob:  platformRevocationURLKnob,
+			field: "PlatformTokenRevocationURL",
 			refuseWhenUnset: func() error {
-				c := goodRevocation(identityposture.External)
-				c.IntrospectionURL = ""
-				return validateProductionRevocationConfig("production", c)
-			},
-		},
-		{
-			knob:    "KACHO_HYDRA_ADMIN_URL",
-			field:   "HydraAdminURL",
-			posture: identityposture.External,
-			refuseWhenUnset: func() error {
-				c := goodRevocation(identityposture.External)
-				c.AdminURL = ""
-				return validateProductionRevocationConfig("production", c)
-			},
-		},
-		{
-			knob:    "KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL",
-			field:   "PlatformTokenRevocationURL",
-			posture: identityposture.Own,
-			refuseWhenUnset: func() error {
-				c := goodRevocation(identityposture.Own)
+				c := ourAuthorityWired()
 				c.PlatformRevocationURL = ""
 				return validateProductionRevocationConfig("production", c)
 			},
@@ -228,8 +193,8 @@ func TestTokenIdentityLanesAreDeclaredNotDerived(t *testing.T) {
 		err := lane.refuseWhenUnset()
 		switch {
 		case err == nil:
-			t.Errorf("%s (посадка %s): незаданное значение прошло старт — "+
-				"полоса объявлена и ничем не держится", lane.knob, lane.posture)
+			t.Errorf("%s: незаданное значение прошло старт — "+
+				"полоса объявлена и ничем не держится", lane.knob)
 			ok = false
 		case !strings.Contains(err.Error(), lane.knob):
 			t.Errorf("%s: отказ не называет ручку, оператору нечего искать: %v",

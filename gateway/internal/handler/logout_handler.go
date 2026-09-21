@@ -70,11 +70,16 @@ type CallerVerifier interface {
 //     subject, so it cannot be abused to revoke another user's sessions.
 //  3. Call kaname `InternalSessionRevocationsService.Revoke` for the caller's
 //     own identity — revoke_all_user_tokens=false (single jti) or true (full).
-//  4. Call Hydra admin `DELETE /admin/oauth2/auth/sessions/login?subject=...`
-//     with the caller's own subject to invalidate the upstream SSO session —
-//     Hydra then fans out back-channel logout notifications (RFC 8254).
-//  5. Clear the client session cookie (ory_kratos_session).
-//  6. Respond `200 {}`.
+//     Эта запись и есть отзыв: её читает проверка на КАЖДОМ предъявлении.
+//  4. End the browser session carriers through the single declaration
+//     `middleware.EndSessionCarriers` (F4d-26) — the same names the identity
+//     lane ends on refusal.
+//  5. Respond `200 {}`.
+//
+// ШАГОМ 4 ЗДЕСЬ СТОЯЛО СНЯТИЕ СЕССИИ ВХОДА НА СТОРОНЕ ЧУЖОГО ПОСТАВЩИКА, а
+// шагом 5 — гашение его печенья. Оба сняты вместе с ним: вход человека заводит
+// НАШУ запись сессии, такой сессии у поставщика больше не существует, а печенье,
+// которое край не выписывал, он и не гасит.
 //
 // Вызов отзыва в службу доступа — best-effort относительно снятия печенья:
 // человек ОБЯЗАН увидеть успешный выход со своей стороны, даже если служба на
@@ -132,7 +137,7 @@ func (h *LogoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// A "server-side revoke" is any request that asks the gateway to invalidate
-	// sessions/tokens in iam/Hydra (as opposed to merely clearing the caller's
+	// sessions/tokens in iam (as opposed to merely clearing the caller's
 	// own browser cookies). Historically the target subject/jti were read from
 	// the request body, which let an unauthenticated caller revoke ANY user.
 	// These client-supplied targets are no longer trusted — the identity is

@@ -6,32 +6,36 @@
 //
 // # Предмет
 //
-// Читателя носителя выбирает ПОСАДКА (`cfg.ResolvedIdentityProvider()`): под
+// Читателя носителя выбирала ПОСАДКА (`cfg.ResolvedIdentityProvider()`): под
 // `own` — наша сессия, под `external` — сессия поставщика. Три места
 // композиционного корня — полоса личности, отзыв на ней, маршрут «кто я» —
-// заводились сегодня НАЛИЧИЕМ АДРЕСА поставщика (`kratosURL != "disabled"`), а
-// не посадкой (§1.1 приёмки): под `own` читатель носителя поставщика оставался
-// заведённым, и печенье поставщика продолжало становиться личностью.
+// заводились НАЛИЧИЕМ АДРЕСА поставщика, а не посадкой (§1.1 приёмки): под
+// `own` читатель носителя поставщика оставался заведённым, и печенье
+// поставщика продолжало становиться личностью.
+//
+// # ЧИТАТЕЛЬ ОСТАЛСЯ ОДИН, И ОТРИЦАТЕЛЬНАЯ ПОЛОВИНА СНЯТА С ПРЕДМЕТОМ
+//
+// Чужой поставщик снят целиком: его читателя в дереве нет ни одного. Случай
+// «читатель поставщика не заведён под own» вместе с ним стал БЕСПРЕДМЕТНЫМ —
+// не выполненным, а неизмеримым: его перепись обязана была требовать N ≥ 1
+// мест, и на нуле она честно краснела «молчание гейта ничего не утверждает».
+// Оставить его значило бы либо держать красное о снятом предмете, либо снять
+// проверку предпосылки — то есть получить гейт, зелёный на пустом обходе.
+//
+// Требование «у каждого читателя есть ветка посадки» исполняется тем, что
+// читатель остался один и он наш, а его ветка посадки проверяется ниже.
 //
 // # Что судится — вложенность узлов, не текст
 //
-//   - читатель носителя ПОСТАВЩИКА — вызов `NewKratosClient`: заведён под
-//     `own`, если не лежит внутри ветки `if`, чьё условие называет посадку
-//     `external`. Требуется «мест N · заведено под own 0», N ≥ 1 (положительный
-//     контроль: под `external` поставщик по-прежнему читается).
-//     ЕДИНИЦА СЧЁТА НАЗВАНА, потому что она не та, что у приёмки: здесь «место»
-//     — ВЫЗОВ КОНСТРУКТОРА читателя (их 2: полоса личности и маршрут «кто я»),
-//     а «три места §1.1» приёмки — ПОТРЕБИТЕЛИ читателя: полоса личности, отзыв
-//     на ней и «кто я». Первые два стоят за ОДНИМ конструктором — отзыв на
-//     полосе читает тот же клиент, что и полоса, — поэтому 2 вызова обслуживают
-//     три места, и перепись печатает обе величины, чтобы «2» не читалось как
-//     «одно из трёх мест не осмотрено»;
-//   - читатель НАШЕЙ сессии — вызов `WithHumanSession`: заведён под `external`,
-//     если не лежит в ветке с посадкой `own`. N ≥ 2 (полоса и «кто я»);
+//   - читатель НАШЕЙ сессии — вызов `WithHumanSession`: обязан лежать внутри
+//     ветки `if`, чьё условие называет посадку `own`. N ≥ 2 (полоса личности и
+//     маршрут «кто я»);
 //   - ретрансляция — вызов `NewLoginLaneRelay`: ровно 1, под `own`.
 //
 // Инъекция в обе стороны на синтетике: читатель без условия посадки — красное с
-// координатой; читатель под `external` — молчит.
+// координатой; читатель под названной посадкой — молчит. Синтетика намеренно
+// НЕ опирается на живой корень: опирайся она на него, доказательство исчезало
+// бы вместе с каждой правкой провязки.
 package main
 
 import (
@@ -110,31 +114,13 @@ func parseMain(t *testing.T) (*token.FileSet, *ast.File) {
 	return fset, f
 }
 
-// TestOwnLane_F3_12_NoProviderCarrierReaderIsWiredUnderOwn — «мест N · заведено
-// под own M», M = 0.
-func TestOwnLane_F3_12_NoProviderCarrierReaderIsWiredUnderOwn(t *testing.T) {
-	fset, f := parseMain(t)
-	sites := wiringSites(fset, f, "NewKratosClient")
-	if len(sites) == 0 {
-		t.Fatal("читатель носителя поставщика не провязывается вовсе — под external посадка осталась бы без сессии, и молчание гейта ничего не утверждает")
-	}
-	underOwn := 0
-	for _, s := range sites {
-		if s.posture != "External" {
-			underOwn++
-			t.Errorf("читатель носителя поставщика заведён без условия посадки external: %s (ветка посадки: %q). "+
-				"Под own печенье поставщика становилось бы личностью (Ф1-52).", s.pos, s.posture)
-		}
-	}
-	t.Logf("перепись: мест (вызовов конструктора читателя поставщика) %d · заведено под own %d · "+
-		"потребителей читателя по §1.1 приёмки 3 (полоса личности и отзыв на ней — за первым вызовом, «кто я» — за вторым)",
-		len(sites), underOwn)
-	if len(sites) != 2 {
-		t.Errorf("вызовов конструктора %d, ожидалось 2: третий потребитель §1.1 (отзыв на полосе) читает клиент полосы, "+
-			"и свой конструктор ему не полагается — новый вызов означает новый читатель носителя поставщика, чьё место в перечне не названо",
-			len(sites))
-	}
-}
+// ЗДЕСЬ СТОЯЛ TestOwnLane_F3_12_NoProviderCarrierReaderIsWiredUnderOwn —
+// перепись «мест N · заведено под own M», M = 0, по вызовам конструктора
+// читателя носителя ЧУЖОГО поставщика. Случай снят вместе со своим предметом:
+// таких вызовов в дереве ноль, и его собственная проверка предпосылки это и
+// сказала — «читатель не провязывается вовсе, молчание гейта ничего не
+// утверждает». Единственные исходы у такого случая — снять с предметом либо
+// снять проверку предпосылки; второе дало бы гейт, зелёный на пустом обходе.
 
 // TestOwnLane_F3_45_OurReaderAndTheRelayAreWiredUnderOwnOnly — наш читатель
 // (полоса и «кто я») и ретрансляция заведены под `own` и не заведены под
@@ -163,12 +149,17 @@ func TestOwnLane_F3_45_OurReaderAndTheRelayAreWiredUnderOwnOnly(t *testing.T) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Инъекция в обе стороны — синтетика.
 
+// wiringFixture — СИНТЕТИКА, а не живой корень. Предмет инъекции — предикат
+// «лежит ли вызов внутри ветки названной посадки», и опирайся он на дерево,
+// доказательство менялось бы вместе с каждой правкой провязки — и исчезло бы
+// ровно тогда, когда предикат достиг цели.
+//
+// Вызов в фикстуре назван ЖИВЫМ именем (`WithHumanSession`): прежняя редакция
+// изображала здесь читателя чужого поставщика, снятого из дерева, и синтетика,
+// именующая снятое, — утверждение, пережившее свой предмет.
 const wiringFixture = `package main
 import "github.com/PRO-Robotech/corelib/identityposture"
 func wire(lane identityposture.Provider) {
-	if lane == identityposture.External {
-		auth = auth.WithKratos(middleware.NewKratosClient(url))
-	}
 	if lane == identityposture.Own {
 		auth = auth.WithHumanSession(ad)
 	}
@@ -186,36 +177,37 @@ func judgeWiringFixture(t *testing.T, extra string) (*token.FileSet, *ast.File) 
 	return fset, f
 }
 
-// Инъекция: читатель поставщика БЕЗ условия посадки — красное с координатой.
-func TestOwnLaneGate_Injection_AProviderReaderOutsideThePostureBranchIsNamed(t *testing.T) {
-	fset, f := judgeWiringFixture(t, "\twho = who.WithKratos(middleware.NewKratosClient(url), lookup)")
-	sites := wiringSites(fset, f, "NewKratosClient")
+// Инъекция: читатель БЕЗ условия посадки — красное с координатой.
+func TestOwnLaneGate_Injection_AReaderOutsideThePostureBranchIsNamed(t *testing.T) {
+	fset, f := judgeWiringFixture(t, "\twho = who.WithHumanSession(ad)")
+	sites := wiringSites(fset, f, "WithHumanSession")
 	if len(sites) != 2 {
 		t.Fatalf("мест %d, ожидалось 2", len(sites))
 	}
 	var bare []string
 	for _, s := range sites {
-		if s.posture != "External" {
+		if s.posture != "Own" {
 			bare = append(bare, s.pos)
 		}
 	}
-	if len(bare) != 1 || !strings.HasPrefix(bare[0], "main.go:10:") {
+	if len(bare) != 1 || !strings.HasPrefix(bare[0], "main.go:7:") {
 		t.Fatalf("внесённый читатель без условия не назван координатой: %v", bare)
 	}
 }
 
-// Близнец: читатель под `external` — молчит; ветка `else` посадкой не считается.
-func TestOwnLaneGate_Twin_AProviderReaderUnderExternalIsSilent(t *testing.T) {
+// Близнец: читатель под названной посадкой — молчит; ветка `else` посадкой не
+// считается.
+func TestOwnLaneGate_Twin_AReaderUnderTheNamedPostureIsSilent(t *testing.T) {
 	fset, f := judgeWiringFixture(t, "")
-	for _, s := range wiringSites(fset, f, "NewKratosClient") {
-		if s.posture != "External" {
-			t.Fatalf("законный читатель под external объявлен заведённым без посадки: %+v", s)
+	for _, s := range wiringSites(fset, f, "WithHumanSession") {
+		if s.posture != "Own" {
+			t.Fatalf("законный читатель под own объявлен заведённым без посадки: %+v", s)
 		}
 	}
-	// Читатель в ветке `else` посадки own — НЕ под external: «не own» есть
-	// «external или не задано», и это не решение о посадке.
-	fset, f = judgeWiringFixture(t, "\tif lane == identityposture.Own { _ = 1 } else { auth = auth.WithKratos(middleware.NewKratosClient(url)) }")
-	sites := wiringSites(fset, f, "NewKratosClient")
+	// Читатель в ветке `else` посадки own — НЕ под own: «не own» есть «external
+	// или не задано», и это не решение о посадке.
+	fset, f = judgeWiringFixture(t, "\tif lane == identityposture.Own { _ = 1 } else { auth = auth.WithHumanSession(ad) }")
+	sites := wiringSites(fset, f, "WithHumanSession")
 	if sites[len(sites)-1].posture != "" {
 		t.Fatalf("читатель в ветке else признан заведённым под посадкой: %+v", sites[len(sites)-1])
 	}

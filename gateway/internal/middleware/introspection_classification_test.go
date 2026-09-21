@@ -42,8 +42,8 @@ func newStatusServer(status int, contentType, body string) *httptest.Server {
 func introspectAgainst(t *testing.T, url string) error {
 	t.Helper()
 	c, err := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: url,
-		TTL:                   time.Minute,
+		IntrospectionURL: url,
+		TTL:              time.Minute,
 	})
 	require.NoError(t, err)
 	_, ierr := c.Introspect(context.Background(), "jti-x", "raw-token")
@@ -134,9 +134,9 @@ func TestIntrospection_HonoursConfiguredTimeout(t *testing.T) {
 	defer srv.Close()
 
 	c, err := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: srv.URL,
-		TTL:                   time.Minute,
-		Timeout:               100 * time.Millisecond,
+		IntrospectionURL: srv.URL,
+		TTL:              time.Minute,
+		Timeout:          100 * time.Millisecond,
 	})
 	require.NoError(t, err)
 

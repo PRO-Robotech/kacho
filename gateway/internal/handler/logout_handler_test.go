@@ -22,6 +22,7 @@ import (
 	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/handler"
+	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
 type recordingRevocations struct {
@@ -70,24 +71,33 @@ func TestLogout_ClearsCookies(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	cookies := rec.Result().Cookies()
-	var saw_retired, saw_kratos bool
+	var sawRetired, sawOurs bool
 	for _, c := range cookies {
 		if c.Name == "kacho_session" {
-			saw_retired = true
+			sawRetired = true
 		}
-		if c.Name == "ory_kratos_session" {
-			saw_kratos = true
+		if c.Name == middleware.OurSessionCarrierName {
+			sawOurs = true
 			assert.True(t, c.MaxAge < 0)
 		}
 	}
-	// Положительная половина: сессия развёрнутого провайдера действительно гасится.
-	// Без неё отрицание ниже зеленело бы и на мёртвом обработчике.
-	assert.True(t, saw_kratos, "logout must expire the deployed provider's session cookie")
+	// Положительная половина: НАШ носитель сессии действительно гасится. Без неё
+	// отрицание ниже зеленело бы и на мёртвом обработчике.
+	//
+	// Носитель назван КОНСТАНТОЙ края, а не литералом: перечень гасимых имён
+	// объявлен один раз (`middleware.EndSessionCarriers`, F4d-26), и вторая
+	// копия имени разошлась бы с первой молча.
+	//
+	// ЗДЕСЬ ЖЕ СТОЯЛА ПОЛОЖИТЕЛЬНАЯ ПОЛОВИНА ПРО ПЕЧЕНЬЕ ЧУЖОГО ПОСТАВЩИКА. Она
+	// снята вместе с ним: имя ушло из перечня гасимых одним изменением с его
+	// читателем, и гасить печенье, которого край не выписывал, значило бы стирать
+	// у клиента чужое без основания.
+	assert.True(t, sawOurs, "logout must expire our own session carrier")
 	// Отрицательная половина: cookie снятой церемонии больше не упоминается.
 	// Её единственный производитель снят вместе с обработчиком, а читателя на пути
 	// аутентификации у неё нет — чистить стало нечего, и возврат этой строки
 	// означал бы возврат носителя, которого никто не может произвести.
-	assert.False(t, saw_retired, "logout must not emit a cookie no producer can set")
+	assert.False(t, sawRetired, "logout must not emit a cookie no producer can set")
 }
 
 // TestLogout_RevokesOwnSubjectFromToken_IgnoresClientSubject — with a validated
@@ -159,49 +169,15 @@ func TestLogout_RevocationFailure_DoesNotFailRequest(t *testing.T) {
 	assert.Contains(t, string(body), "warnings")
 }
 
-func TestLogout_HydraSessionKill(t *testing.T) {
-	var hydraCalls atomic.Int32
-	hydra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hydraCalls.Add(1)
-		assert.Equal(t, http.MethodDelete, r.Method)
-		assert.Contains(t, r.URL.Path, "/admin/oauth2/auth/sessions/login")
-		assert.Equal(t, "usr_a", r.URL.Query().Get("subject"))
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	defer hydra.Close()
-
-	rev := &recordingRevocations{}
-	h, _ := handler.NewLogoutHandler(handler.LogoutHandlerConfig{
-		Logger:        newLogger(),
-		Revocations:   rev,
-		HydraAdminURL: hydra.URL,
-		Verifier:      &fakeVerifier{caller: &handler.VerifiedCaller{Subject: "usr_a"}},
-	})
-	req := httptest.NewRequest(http.MethodPost, "/oauth/logout", nil)
-	req.Header.Set("Authorization", "Bearer valid.access.token")
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.Equal(t, int32(1), hydraCalls.Load())
-}
-
-func TestLogout_HydraReturns404_NoWarn(t *testing.T) {
-	hydra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer hydra.Close()
-	h, _ := handler.NewLogoutHandler(handler.LogoutHandlerConfig{
-		Logger:        newLogger(),
-		HydraAdminURL: hydra.URL,
-		Verifier:      &fakeVerifier{caller: &handler.VerifiedCaller{Subject: "usr_x"}},
-	})
-	req := httptest.NewRequest(http.MethodPost, "/oauth/logout", nil)
-	req.Header.Set("Authorization", "Bearer valid.access.token")
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	body, _ := io.ReadAll(rec.Result().Body)
-	assert.NotContains(t, string(body), "warnings", "404 from Hydra is non-fatal — no warning should surface")
-}
+// ЗДЕСЬ СТОЯЛИ ДВА СЛУЧАЯ ПРО СНЯТИЕ СЕССИИ ВХОДА НА СТОРОНЕ ЧУЖОГО
+// ПОСТАВЩИКА — вызов его административного пути и терпимость к его «404». Оба
+// сняты вместе с предметом: такой сессии у человека больше не заводится, хоп
+// ехал бы в никуда, а случай, чей вход непредставим, замолкает МОЛЧА и
+// переживает то, что им обозначалось.
+//
+// Что осталось от шага: выход снимает НАШУ запись сессии (случай
+// TestLogout_RevokesOwnSubjectFromToken_IgnoresClientSubject выше) — ту самую,
+// которую читает проверка отзыва на каждом предъявлении.
 
 func TestLogout_NoSubject_NoRevocationCall(t *testing.T) {
 	rev := &recordingRevocations{}
@@ -222,22 +198,15 @@ func TestLogout_Construction_RequiresLogger(t *testing.T) {
 }
 
 // TestLogout_UnauthenticatedRevokeRejected — an unauthenticated caller supplying
-// an arbitrary victim `subject` must NOT be able to revoke that user's sessions
-// or kill their SSO session. Without a validated access token the endpoint must
-// refuse the server-side revocation (401) and never touch iam/Hydra.
+// an arbitrary victim `subject` must NOT be able to revoke that user's sessions.
+// Without a validated access token the endpoint must refuse the server-side
+// revocation (401) and never touch iam.
 func TestLogout_UnauthenticatedRevokeRejected(t *testing.T) {
 	rev := &recordingRevocations{}
-	var hydraCalls atomic.Int32
-	hydra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		hydraCalls.Add(1)
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	defer hydra.Close()
 
 	h, _ := handler.NewLogoutHandler(handler.LogoutHandlerConfig{
-		Logger:        newLogger(),
-		Revocations:   rev,
-		HydraAdminURL: hydra.URL,
+		Logger:      newLogger(),
+		Revocations: rev,
 		// No Verifier wired ⇒ no credential can be authenticated ⇒ fail closed.
 	})
 	form := url.Values{
@@ -251,5 +220,4 @@ func TestLogout_UnauthenticatedRevokeRejected(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code, "unauth revoke of arbitrary subject must be 401")
 	assert.Equal(t, int32(0), rev.calls.Load(), "must not revoke another user's tokens without auth")
-	assert.Equal(t, int32(0), hydraCalls.Load(), "must not kill another user's SSO session without auth")
 }

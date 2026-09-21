@@ -147,7 +147,7 @@ func (a *SessionRevocationsAdapter) Revoke(ctx context.Context, in *iamv1.Revoke
 // административными путями (#797).
 //
 // Ошибка возвращается БЕЗ ПОДМЕНЫ: «спросить не удалось» и «отозван» — разные
-// исходы, и вызывающий (middleware.LocalThenProviderRevocation) обязан их
+// исходы, и вызывающий (middleware.OwnRevocationSource) обязан их
 // различать, иначе недоступность соседа читалась бы как отзыв, а отзыв — как
 // недоступность.
 func (a *SessionRevocationsAdapter) IsSessionRevoked(ctx context.Context, jti string) (bool, error) {

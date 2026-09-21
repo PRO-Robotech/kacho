@@ -278,7 +278,7 @@ func (a *AuthInterceptor) revocationCheck(ctx context.Context, vt *VerifiedToken
 		// действует на предъявлении.
 		//
 		// Признак ТИПИЗИРОВАН и поставлен тем, кто знает, чей источник ответил
-		// (LocalThenProviderRevocation). Сравнения текста ошибки здесь нет и
+		// (OwnRevocationSource). Сравнения текста ошибки здесь нет и
 		// быть не может: текст пишет сосед, и он меняется от его версии.
 		if report, total, represents := a.revocationOwnSourceFailures.observe(); report {
 			a.logger.Error("our own revocation source did not answer; refusing requests",
@@ -291,17 +291,23 @@ func (a *AuthInterceptor) revocationCheck(ctx context.Context, vt *VerifiedToken
 		return revocationOwnSourceUnanswered
 
 	case errors.Is(err, ErrIntrospectionMisconfigured):
-		// What answered is not an introspection endpoint. That does not heal, so
-		// continuing means every request from here on is served with the
-		// revocation check silently absent. Refuse instead: the gateway cannot
-		// establish that this token is still valid.
+		// Проверка собрана неполно. Это не лечится повтором, и продолжить значило
+		// бы обслуживать каждый следующий запрос с молча отсутствующей проверкой
+		// отзыва. Отказ: край не может установить, действительно ли удостоверение.
+		//
+		// ПОДСКАЗКА НАЗЫВАЕТ ЖИВУЮ ПРИЧИНУ. Здесь стоял адрес административного
+		// пути интроспекции ЧУЖОГО поставщика и имя его ручки — обе сняты вместе
+		// с ним, и оператор, пошедший по такой подсказке, правил бы ручку,
+		// которой у процесса нет. Читатель на этом пути один
+		// (`OwnRevocationSource`), и этот признак он ставит ровно в одном
+		// случае: его собрали без источника.
 		if report, total, represents := a.revocationFailures.observe(); report {
 			a.logger.Error("revocation check misconfigured; refusing requests",
 				"err", err, "surface", surface, "route", route,
 				"introspection_failures_total", total,
 				"occurrences_since_last_report", represents,
-				"hint", "KACHO_HYDRA_INTROSPECTION_URL must address the identity "+
-					"provider's admin API path /admin/oauth2/introspect")
+				"hint", "the revocation reader was assembled without a source: the "+
+					"composition root must build it over the kaname internal listener")
 		}
 		return revocationUnanswerable
 

@@ -215,13 +215,13 @@ func newF1bStandWith(t *testing.T, acceptPlatform, requireBinding bool) *f1bStan
 	require.NoError(t, err)
 
 	legacyIntrospection, err := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: st.oldAuth.url,
-		TTL:                   time.Millisecond, Timeout: 500 * time.Millisecond,
+		IntrospectionURL: st.oldAuth.url,
+		TTL:              time.Millisecond, Timeout: 500 * time.Millisecond,
 	})
 	require.NoError(t, err)
 	platformIntrospection, err := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: st.ourAuth.url,
-		TTL:                   time.Millisecond, Timeout: 500 * time.Millisecond,
+		IntrospectionURL: st.ourAuth.url,
+		TTL:              time.Millisecond, Timeout: 500 * time.Millisecond,
 	})
 	require.NoError(t, err)
 
