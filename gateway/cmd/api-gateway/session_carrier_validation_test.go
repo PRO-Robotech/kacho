@@ -199,3 +199,56 @@ func TestSessionCarrierGuard_ADerivedSetKeepsTodaysBehaviourOnADisabledAddress(t
 			"перестал бы подниматься от одного появления ручки", err)
 	}
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// МОМЕНТ ОТКРЫТИЯ ОКНА ОБЯЗАН БЫТЬ ФАКТОМ, А НЕ НАМЕРЕНИЕМ.
+//
+// Страж судил момент по двум признакам — «разбирается» и «ненулевой», — и
+// момент ВПЕРЕДИ по оси времени проходил оба. А он обращает свойство окна в
+// тождество: приём пропускает всякую чужую сессию вплоть до названного момента,
+// включая заведённую только что, и отзыв снова снимается входом заново.
+//
+// Момент называет то, что УЖЕ СЛУЧИЛОСЬ: окно открыто, живые сессии
+// дочитываются. Момент в будущем не описывает ни одного факта — он описывает
+// намерение, и до его наступления граница не отделяет ничего.
+
+func TestSessionCarrierGuard_AWindowInstantInTheFutureIsRefused(t *testing.T) {
+	bootAt := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name     string
+		openedAt time.Time
+		lawful   bool
+	}{
+		{"в прошлом — факт", bootAt.Add(-time.Hour), true},
+		{"ровно момент старта — факт, граница закрыта", bootAt, true},
+		{"в будущем на минуту — намерение", bootAt.Add(time.Minute), false},
+		{"в будущем на год — намерение", bootAt.AddDate(1, 0, 0), false},
+	}
+	refused := 0
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateSessionCarrierConfig(SessionCarrierConfig{
+				Posture:        identityposture.Own,
+				Carriers:       carrierSet(t, "own,external"),
+				ProviderURL:    "http://kratos:80",
+				WindowOpenedAt: tc.openedAt,
+				Now:            bootAt,
+			})
+			switch {
+			case tc.lawful && err != nil:
+				t.Fatalf("момент %s отвергнут: %v", tc.openedAt.Format(time.RFC3339), err)
+			case !tc.lawful && err == nil:
+				t.Fatalf("момент %s принят: граница не отделяет ничего, и всякая чужая сессия, "+
+					"включая заведённую только что, проходит как «живая»",
+					tc.openedAt.Format(time.RFC3339))
+			}
+			if !tc.lawful {
+				refused++
+				if !strings.Contains(err.Error(), config.SessionCarrierWindowOpenedAtKnob) {
+					t.Fatalf("отказ не называет ручку: %v", err)
+				}
+			}
+		})
+	}
+	t.Logf("перепись: моментов проверено %d · законных 2 · отвергнутых %d", len(cases), refused)
+}

@@ -80,6 +80,13 @@ type SessionCarrierConfig struct {
 	ProviderURL string
 	// WindowOpenedAt — момент открытия переходного окна; нулевой = не объявлен.
 	WindowOpenedAt time.Time
+	// Now — момент СТАРТА, относительно которого судится, может ли момент
+	// открытия окна быть фактом.
+	//
+	// Часы приходят аргументом, а не берутся внутри: страж обязан быть
+	// проверяем на своём же предмете, а проверка «момент в будущем» с
+	// неуправляемыми часами проверяема только ожиданием.
+	Now time.Time
 }
 
 // validateSessionCarrierConfig отвергает пару (посадка, множество), при которой
@@ -127,6 +134,28 @@ func validateSessionCarrierConfig(cfg SessionCarrierConfig) error {
 	// Обратная половина — объявление вне окна — снимается тем же правилом, и
 	// поэтому оно ИСТЕКАЕТ САМО: закрыв окно и забыв убрать момент, оператор
 	// получит отказ, а не переживший свой предмет остаток.
+	// МОМЕНТ ОБЯЗАН БЫТЬ ФАКТОМ, А НЕ НАМЕРЕНИЕМ.
+	//
+	// Момент впереди по оси времени проходит и разбор, и проверку на ненулевое
+	// — и обращает свойство окна в тождество: приём пропускает ВСЯКУЮ чужую
+	// сессию вплоть до названного момента, включая заведённую только что.
+	// Граница перестаёт отделять что-либо, и отзыв снова снимается входом
+	// заново — ровно тот дефект, ради закрытия которого окно и заводилось.
+	//
+	// Момент называет СЛУЧИВШЕЕСЯ: окно открыто, живые сессии дочитываются.
+	// Граница закрыта включающе — момент, равный старту, фактом уже является.
+	if !cfg.WindowOpenedAt.IsZero() && !cfg.Now.IsZero() && cfg.WindowOpenedAt.After(cfg.Now) {
+		return fmt.Errorf("%s=%q lies in the FUTURE (this process started at %q): the instant names "+
+			"what has already happened — the window is open and live foreign sessions are being read "+
+			"out. An instant ahead of now bounds nothing: every foreign session is older than it, "+
+			"including one signed in a second ago, so the boundary becomes an identity and a "+
+			"revocation is again lifted by signing in on the foreign side. Name the instant the "+
+			"window actually opened",
+			config.SessionCarrierWindowOpenedAtKnob,
+			cfg.WindowOpenedAt.UTC().Format(time.RFC3339),
+			cfg.Now.UTC().Format(time.RFC3339))
+	}
+
 	switch {
 	case cfg.Carriers.IsTransitionalWindow() && cfg.WindowOpenedAt.IsZero():
 		return fmt.Errorf("%s names both sides, so %s is required: the window means the edge READS "+
@@ -153,18 +182,4 @@ func validateSessionCarrierConfig(cfg SessionCarrierConfig) error {
 		}
 	}
 	return nil
-}
-
-// mustCarrierWindowOpenedAt — момент открытия окна для стража.
-//
-// Неразбираемое значение отдаётся НУЛЁМ намеренно: о нём отказывает разбор в
-// композиционном корне, своим текстом и своей ручкой. Страж же обязан судить
-// ПАРУ, и подмена здесь ошибки разбора на «не объявлено» дала бы ему второй
-// текст об одном предмете.
-func mustCarrierWindowOpenedAt(cfg config.Config) time.Time {
-	at, err := cfg.ResolvedSessionCarrierWindowOpenedAt()
-	if err != nil {
-		return time.Time{}
-	}
-	return at
 }

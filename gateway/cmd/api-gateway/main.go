@@ -180,18 +180,48 @@ func main() {
 		// отправлял бы оператора искать не там.
 		log.Fatalf("session carrier declaration: %v", scErr)
 	}
+	// Момент открытия окна разбирается ДО стража: страж судит ПАРУ и обязан
+	// получить величину, а не ошибку разбора, — у неё свой отказ и своя ручка.
+	declaredWindowOpenedAt, cwErr := cfg.ResolvedSessionCarrierWindowOpenedAt()
+	if cwErr != nil {
+		log.Fatalf("session carrier window declaration: %v", cwErr)
+	}
 	kratosURL := cfg.KratosPublicURL
 	if scErr := validateSessionCarrierConfig(SessionCarrierConfig{
 		Posture:        identityLane,
 		Carriers:       sessionCarriers,
 		ProviderURL:    kratosURL,
-		WindowOpenedAt: mustCarrierWindowOpenedAt(cfg),
+		WindowOpenedAt: declaredWindowOpenedAt,
+		// Часы старта: страж спрашивает, МОЖЕТ ЛИ названный момент быть фактом.
+		Now: time.Now(),
 	}); scErr != nil {
 		log.Fatalf("session carrier / identity posture coherence: %v", scErr)
 	}
+
+	// Окно существует только при ОБЕИХ сторонах, и вопрос об этом ОДИН
+	// (`IsTransitionalWindow`): два его вычисления разошлись бы молча. Страж
+	// выше уже отверг и окно без момента, и момент без окна, и момент в
+	// будущем; здесь момент остаётся нулевым вне окна, чтобы провязка не
+	// зависела от порядка проверок.
+	//
+	// Вопрос задаётся ОДИН раз на обе величины — провязку и самоотчёт: два
+	// вычисления одного состояния разошлись бы молча, и самоотчёт назвал бы
+	// окно, которого полоса не получила (или наоборот).
+	carrierWindowOpenedAt := time.Time{}
+	// САМООТЧЁТ НАЗЫВАЕТ МОМЕНТ ОКНА, а не только состав множества. Без него
+	// величина, решающая, какие чужие сессии край ещё принимает, не наблюдается
+	// НИГДЕ: клетка отвергнутых стоит нулём и при исправном окне, и при
+	// границе, которая ничего не отделяет, — и эти два состояния неразличимы
+	// на стенде.
+	windowReport := "<окна нет>"
+	if sessionCarriers.IsTransitionalWindow() {
+		carrierWindowOpenedAt = declaredWindowOpenedAt
+		windowReport = carrierWindowOpenedAt.UTC().Format(time.RFC3339)
+	}
 	logger.Info("browser session carrier readers resolved",
 		"carriers", sessionCarriers.String(), "declared", sessionCarriers.Declared(),
-		"identity_provider", identityLane.String())
+		"identity_provider", identityLane.String(),
+		"transitional_window_opened_at", windowReport)
 
 	// Чужая сторона — cookie ory_kratos_session, адрес
 	// KACHO_API_GATEWAY_KRATOS_PUBLIC_URL; «disabled» выключает полосу, и на
@@ -208,18 +238,6 @@ func main() {
 	// названы обе стороны — окно открыто. В окне положительный пол второго
 	// фактора на чужой полосе не удовлетворяется: новое полномочие берётся
 	// через нашу чеканку, обычный доступ чужой сессии сохраняется.
-	declaredWindowOpenedAt, cwErr := cfg.ResolvedSessionCarrierWindowOpenedAt()
-	if cwErr != nil {
-		log.Fatalf("session carrier window startup-validation: %v", cwErr)
-	}
-	// Окно существует только при ОБЕИХ сторонах, и вопрос об этом ОДИН
-	// (`IsTransitionalWindow`): два его вычисления разошлись бы молча. Страж
-	// выше уже отверг и окно без момента, и момент без окна; здесь момент
-	// остаётся нулевым вне окна, чтобы провязка не зависела от порядка проверок.
-	carrierWindowOpenedAt := time.Time{}
-	if sessionCarriers.IsTransitionalWindow() {
-		carrierWindowOpenedAt = declaredWindowOpenedAt
-	}
 	authInterceptor = authInterceptor.WithTransitionalCarrierWindow(carrierWindowOpenedAt)
 
 	// НАША сторона — носитель kaname_session: `Resolve` на внутреннем слушателе

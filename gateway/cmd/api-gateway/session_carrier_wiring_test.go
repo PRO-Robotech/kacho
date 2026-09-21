@@ -529,3 +529,53 @@ func TestSessionCarrierWiring_NoCarrierStateReachesTokenAcceptance(t *testing.T)
 	}
 	t.Logf("перепись: мест приёма токена осмотрено %d · внутри ветки решения о носителе 0", seen)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// САМООТЧЁТ СТАРТА НАЗЫВАЕТ МОМЕНТ ОКНА.
+//
+// Величина, решающая, какие чужие сессии край ещё принимает, обязана быть
+// наблюдаемой. Пока самоотчёт печатал только состав множества и посадку, два
+// состояния были НЕРАЗЛИЧИМЫ на стенде: исправное окно и граница, которая
+// ничего не отделяет, — клетка отвергнутых в обоих стоит нулём, а её смысл
+// «ноль здоров» этого не различает.
+//
+// Гейт судит РАЗОБРАННЫЙ вызов самоотчёта: ключ, названный в нём, обязан быть
+// величиной окна, а не строкой рядом.
+func TestSessionCarrierWiring_TheBootSelfReportNamesTheWindowInstant(t *testing.T) {
+	fset, f := parseMain(t)
+
+	const reportMessage = "browser session carrier readers resolved"
+	const windowKey = "transitional_window_opened_at"
+
+	found, named := 0, false
+	var coord string
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || len(call.Args) == 0 {
+			return true
+		}
+		lit, ok := call.Args[0].(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING || strings.Trim(lit.Value, `"`) != reportMessage {
+			return true
+		}
+		found++
+		coord = fset.Position(call.Pos()).String()
+		for _, a := range call.Args[1:] {
+			if l, ok := a.(*ast.BasicLit); ok && l.Kind == token.STRING &&
+				strings.Trim(l.Value, `"`) == windowKey {
+				named = true
+			}
+		}
+		return true
+	})
+
+	if found != 1 {
+		t.Fatalf("самоотчётов о читателях носителя %d, ожидался 1: второй разошёлся бы с первым молча",
+			found)
+	}
+	if !named {
+		t.Errorf("самоотчёт (%s) не называет %q — момент окна не наблюдается нигде, и «окно "+
+			"исправно» неотличимо от «граница не отделяет ничего»", coord, windowKey)
+	}
+	t.Logf("перепись: самоотчётов о носителе %d · называющих момент окна %d", found, map[bool]int{true: 1}[named])
+}
