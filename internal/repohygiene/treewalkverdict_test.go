@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -99,6 +100,8 @@ func treeWalkCountCommitPaths(t *testing.T, root string, keep func(rel string) b
 	t.Helper()
 	out, err := gitenv.Command(root, "ls-tree", "-r", "-z", "--name-only", "HEAD").Output()
 	if err != nil {
+		// Коммита нет — путей коммита ноль. Судья назовёт это несостоявшимся
+		// обходом; отказывать здесь значит судить инструмент вместо дерева.
 		return 0
 	}
 	n := 0
@@ -242,19 +245,134 @@ func treeWalkExactWord(exact bool) string {
 // Запись меняется ТОЛЬКО ВНИЗ и тем же изменением, которым число снижено: рост
 // означает новый гейт дерева, у которого «ничего не нашёл» неотличимо от «не
 // искал», и ловиться это обязано в тот же день, а не через полгода.
-const treeWalkSilentCeiling = 603
+const treeWalkSilentCeiling = 649
 
-// treeWalkRootFns — где обход берёт КОРЕНЬ ПРОДУКТА. Проба, не доходящая сюда,
-// дерева продукта не читает: корень ей обязаны передать, а передают только
-// временный каталог.
-var treeWalkRootFns = map[string]bool{
-	"repoRoot": true, "repoRootFromWD": true, "repoRootForCoverage": true,
+// treeWalkUnknownFormCeiling — проб, читающих дерево корнем, которого обход не
+// производит. Держится потолком по той же причине: форма, не сводимая к
+// примитиву среды, обязана быть заметна числом, а не молчать.
+const treeWalkUnknownFormCeiling = 0
+
+// treeWalkRootPrimitives — ПЕРВИЧНЫЕ источники корня: те, что берут его у СРЕДЫ,
+// а не получают аргументом.
+//
+// Это перечень ПРИМИТИВОВ, а не перечень форм. Формы — функции вроде `repoRoot`
+// или `repoRootForCoverage` — здесь НЕ выписаны: они ПРОИЗВОДЯТСЯ обходом графа
+// вызовов пакета от этих примитивов, и потому пятая форма появляется в переписи
+// сама, без правки словаря.
+//
+// ЦЕНА НАЗВАНА: способ, построенный не на этих примитивах — вшитый абсолютный
+// путь, каталог из ответа внешней программы, значение из окружения, — обходом
+// не производится. Он не молчит: проба, читающая дерево и не доходящая ни до
+// одного примитива, считается отдельным числом «форма неизвестна» и держится
+// своим потолком.
+//
+// Прежняя редакция выписывала ТРИ имени форм памятью и сверяла их по простому
+// имени вызова. Из-за этого `os.Getwd` и `runtime.Caller` — вызовы через
+// селектор — до сверки не доходили НИКОГДА по построению разбора, и настоящий
+// гейт дерева, добывающий корень четвёртым способом, проходил мимо мета-гейта
+// молча. Разбор ниже читает и `Ident`, и `SelectorExpr`.
+var treeWalkRootPrimitives = map[string]bool{
+	"os.Getwd":       true,
+	"runtime.Caller": true,
+	"os.Executable":  true,
+	// `filepath.Abs` от ОТНОСИТЕЛЬНОГО пути — тоже рабочий каталог, просто
+	// спрошенный не по имени. Внесён не по памяти: счётчик «форма неизвестна»
+	// назвал восемь проб, и все восемь свелись к `repoRootFor`, который
+	// добывает корень именно так. Ровно ради этого счётчик и заведён: форма,
+	// которой обход не знает, обязана звучать числом, а не молчать.
+	"filepath.Abs": true,
+	// Пятая форма — не вызов, а ЗАПИСЬ: относительный путь литералом.
+	// Опознаётся отдельной веткой разбора, см. treeWalkCarriesRelativeRoot.
+	treeWalkRelativeRootMark: true,
 }
+
+// treeWalkCarriesRelativeRoot — функция берёт корень ОТНОСИТЕЛЬНЫМ ПУТЁМ: в её
+// теле стоит строковый литерал, начинающийся с `..`.
+//
+// Это пятая форма добычи корня, и она не имя, а ФОРМА ЗАПИСИ: `auditX(t, "../..")`
+// доходит до рабочего каталога, не позвав ни одного примитива среды. Признак
+// выведен разбором узла, а не перечислен, поэтому шестое такое место найдётся
+// само.
+func treeWalkCarriesRelativeRoot(fd *ast.FuncDecl, relConsts map[string]bool) bool {
+	found := false
+	ast.Inspect(fd, func(n ast.Node) bool {
+		if found {
+			return false
+		}
+		if id, ok := n.(*ast.Ident); ok && relConsts[id.Name] {
+			found = true
+			return false
+		}
+		lit, ok := n.(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			return true
+		}
+		val, err := strconv.Unquote(lit.Value)
+		if err != nil {
+			return true
+		}
+		if val == ".." || strings.HasPrefix(val, "../") {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
+
+// collectRelativeRootConsts — объявления пакета, чьё значение есть
+// относительный путь. Читается значение, а не имя: имя может быть любым.
+func collectRelativeRootConsts(gd *ast.GenDecl, into map[string]bool) {
+	if gd.Tok != token.CONST && gd.Tok != token.VAR {
+		return
+	}
+	for _, spec := range gd.Specs {
+		vs, ok := spec.(*ast.ValueSpec)
+		if !ok {
+			continue
+		}
+		for i, name := range vs.Names {
+			if i >= len(vs.Values) {
+				continue
+			}
+			lit, ok := vs.Values[i].(*ast.BasicLit)
+			if !ok || lit.Kind != token.STRING {
+				continue
+			}
+			val, err := strconv.Unquote(lit.Value)
+			if err != nil {
+				continue
+			}
+			if val == ".." || strings.HasPrefix(val, "../") {
+				into[name.Name] = true
+			}
+		}
+	}
+}
+
+// treeWalkTreePrimitives — чем читают дерево. Нужны, чтобы отличить пробу,
+// которая дерево ЧИТАЕТ, но корень добыла неизвестным способом, от синтетики,
+// которой корень передали.
+var treeWalkTreePrimitives = map[string]bool{
+	"gitenv.Command":     true,
+	"treecorpus.NewTree": true,
+	"filepath.WalkDir":   true,
+	"filepath.Walk":      true,
+	"os.ReadDir":         true,
+}
+
+// treeWalkGivenRoot — корень ПЕРЕДАН, а не добыт: временный каталог пробы.
+var treeWalkGivenRoot = map[string]bool{"t.TempDir": true}
 
 // treeWalkPkgFuncs — объявления пакета проб, разобранные из исходников индекса.
 type treeWalkPkgFuncs struct {
 	decls map[string]*ast.FuncDecl
 	file  map[string]string
+	// relConsts — имена объявлений пакета, чьё значение есть ОТНОСИТЕЛЬНЫЙ путь.
+	// Собираются обходом объявлений, а не выписываются: шестая форма добычи
+	// корня — константа с путём — иначе была бы невидима так же, как была
+	// невидима четвёртая.
+	relConsts map[string]bool
 }
 
 // treeWalkParsePackage — разбирает `_test.go` пакета гигиены ПО ИНДЕКСУ git.
@@ -265,7 +383,10 @@ func treeWalkParsePackage(t *testing.T, root string) (treeWalkPkgFuncs, int) {
 		t.Fatalf("состав пакета не установлен: %v — «проб ноль» означало бы "+
 			"«ноль прочитанного»", err)
 	}
-	p := treeWalkPkgFuncs{decls: map[string]*ast.FuncDecl{}, file: map[string]string{}}
+	p := treeWalkPkgFuncs{
+		decls: map[string]*ast.FuncDecl{}, file: map[string]string{},
+		relConsts: map[string]bool{},
+	}
 	files := 0
 	fset := token.NewFileSet()
 	for _, rel := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
@@ -283,6 +404,10 @@ func treeWalkParsePackage(t *testing.T, root string) (treeWalkPkgFuncs, int) {
 		}
 		files++
 		for _, d := range f.Decls {
+			if gd, ok := d.(*ast.GenDecl); ok {
+				collectRelativeRootConsts(gd, p.relConsts)
+				continue
+			}
 			fd, ok := d.(*ast.FuncDecl)
 			if !ok || fd.Body == nil || fd.Recv != nil {
 				continue
@@ -294,7 +419,26 @@ func treeWalkParsePackage(t *testing.T, root string) (treeWalkPkgFuncs, int) {
 	return p, files
 }
 
-// reaches — транзитивно ли имя доходит до одной из целевых функций.
+// treeWalkCallName — имя вызываемого, КАК ОНО НАПИСАНО: `Ident` даёт простое
+// имя, `SelectorExpr` — `пакет.Имя`.
+//
+// Прежняя редакция читала только `Ident`, и потому целый род вызовов —
+// `os.Getwd`, `runtime.Caller` — не доходил до сверки ни разу.
+func treeWalkCallName(ce *ast.CallExpr) string {
+	switch fn := ce.Fun.(type) {
+	case *ast.Ident:
+		return fn.Name
+	case *ast.SelectorExpr:
+		if x, ok := fn.X.(*ast.Ident); ok {
+			return x.Name + "." + fn.Sel.Name
+		}
+		return "." + fn.Sel.Name
+	}
+	return ""
+}
+
+// reaches — транзитивно ли имя доходит до целевого вызова. Через `SelectorExpr`
+// не спускается: чужой пакет здесь не разобран, и это названо границей.
 func (p treeWalkPkgFuncs) reaches(name string, target func(string) bool, seen map[string]bool) bool {
 	if seen[name] {
 		return false
@@ -303,6 +447,9 @@ func (p treeWalkPkgFuncs) reaches(name string, target func(string) bool, seen ma
 	fd, ok := p.decls[name]
 	if !ok {
 		return false
+	}
+	if target(treeWalkRelativeRootMark) && treeWalkCarriesRelativeRoot(fd, p.relConsts) {
+		return true
 	}
 	hit := false
 	ast.Inspect(fd, func(n ast.Node) bool {
@@ -313,17 +460,38 @@ func (p treeWalkPkgFuncs) reaches(name string, target func(string) bool, seen ma
 		if !ok {
 			return true
 		}
-		id, ok := ce.Fun.(*ast.Ident)
-		if !ok {
+		called := treeWalkCallName(ce)
+		if called == "" {
 			return true
 		}
-		if target(id.Name) || p.reaches(id.Name, target, seen) {
+		if target(called) || p.reaches(called, target, seen) {
 			hit = true
 			return false
 		}
 		return true
 	})
 	return hit
+}
+
+// treeWalkRelativeRootMark — имя пятой формы в наборе примитивов. Вызовом не
+// является и потому опознаётся отдельной веткой разбора.
+const treeWalkRelativeRootMark = "<относительный путь к корню>"
+
+// treeWalkRootProducers — формы добычи корня, ПРОИЗВЕДЁННЫЕ обходом: всякая
+// функция пакета, транзитивно доходящая до примитива среды.
+func (p treeWalkPkgFuncs) treeWalkRootProducers() []string {
+	var out []string
+	for name := range p.decls {
+		if strings.HasPrefix(name, "Test") {
+			continue
+		}
+		if p.reaches(name, func(n string) bool { return treeWalkRootPrimitives[n] },
+			map[string]bool{}) {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // TestEveryTreeGateAsksTheWalkJudge — гейт, забывший спросить судью, ловится в
@@ -338,17 +506,29 @@ func TestEveryTreeGateAsksTheWalkJudge(t *testing.T) {
 	root := repoRoot(t)
 	pkg, files := treeWalkParsePackage(t, root)
 
-	isRoot := func(n string) bool { return treeWalkRootFns[n] }
+	isRoot := func(n string) bool { return treeWalkRootPrimitives[n] }
 	isJudge := func(n string) bool { return n == "RequireTreeWalk" }
+	isTree := func(n string) bool { return treeWalkTreePrimitives[n] }
+	isGiven := func(n string) bool { return treeWalkGivenRoot[n] }
 
-	var silent []string
+	producers := pkg.treeWalkRootProducers()
+
+	var silent, unknownForm []string
 	treeGates := 0
 	for name := range pkg.decls {
 		if !strings.HasPrefix(name, "Test") {
 			continue
 		}
 		if !pkg.reaches(name, isRoot, map[string]bool{}) {
-			continue // дерева продукта не читает: корень ему передают
+			// Корень до примитива среды не доходит. Два разных случая, и
+			// смешивать их нельзя: корень ПЕРЕДАН (синтетика) либо добыт
+			// СПОСОБОМ, которого обход не производит, — и второй молчать не
+			// имеет права.
+			if pkg.reaches(name, isTree, map[string]bool{}) &&
+				!pkg.reaches(name, isGiven, map[string]bool{}) {
+				unknownForm = append(unknownForm, name+" ("+pkg.file[name]+")")
+			}
+			continue
 		}
 		treeGates++
 		if pkg.reaches(name, isJudge, map[string]bool{}) {
@@ -357,6 +537,7 @@ func TestEveryTreeGateAsksTheWalkJudge(t *testing.T) {
 		silent = append(silent, name+" ("+pkg.file[name]+")")
 	}
 	sort.Strings(silent)
+	sort.Strings(unknownForm)
 
 	RequireTreeWalk(t, TreeWalkCensus{
 		Walked: files, Judged: files, Subjects: len(silent),
@@ -367,8 +548,32 @@ func TestEveryTreeGateAsksTheWalkJudge(t *testing.T) {
 				strings.HasSuffix(rel, "_test.go")
 		}))
 
-	t.Logf("проб дерева всего %d · спросили судью %d · НЕ спросили %d при потолке %d",
-		treeGates, treeGates-len(silent), len(silent), treeWalkSilentCeiling)
+	t.Logf("формы добычи корня ПРОИЗВЕДЕНЫ обходом от %d примитивов среды: "+
+		"производителей %d (%s)", len(treeWalkRootPrimitives), len(producers),
+		strings.Join(producers, ", "))
+	t.Logf("проб дерева всего %d · спросили судью %d · НЕ спросили %d при потолке %d · "+
+		"форма корня неизвестна у %d при потолке %d",
+		treeGates, treeGates-len(silent), len(silent), treeWalkSilentCeiling,
+		len(unknownForm), treeWalkUnknownFormCeiling)
+	if len(producers) == 0 {
+		t.Fatal("производителей корня ноль — перечень форм не произведён, и «все спросили " +
+			"судью» было бы вердиктом о непрочитанном")
+	}
+	if len(unknownForm) > treeWalkUnknownFormCeiling {
+		var head []string
+		for i, u := range unknownForm {
+			if i >= 15 {
+				break
+			}
+			head = append(head, u)
+		}
+		t.Errorf("проб, читающих дерево корнем НЕИЗВЕСТНОЙ формы, %d при потолке %d (+%d): "+
+			"обход таких форм не производит, и их молчание неотличимо от «не искал». "+
+			"Либо сведите форму к примитиву среды, либо внесите примитив в "+
+			"treeWalkRootPrimitives вместе с инъекцией.\n  %s",
+			len(unknownForm), treeWalkUnknownFormCeiling,
+			len(unknownForm)-treeWalkUnknownFormCeiling, strings.Join(head, "\n  "))
+	}
 
 	switch {
 	case len(silent) > treeWalkSilentCeiling:
