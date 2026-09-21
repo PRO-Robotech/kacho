@@ -393,6 +393,13 @@ func (m *AuthzMiddleware) Unary() grpc.UnaryServerInterceptor {
 		case outcomeNotFound:
 			// Hide existence: read-deny on a verb-bearing IAM read → NotFound(5).
 			return nil, decision.gRPCStatus().Err()
+		case outcomeUnserved:
+			// Этот слушатель такого маршрута не обслуживает. На нативной полосе
+			// исход сегодня не рождается (phaseUnservedOnThisListener требует
+			// запроса HTTP), и случай выписан НЕ ради сегодняшнего пути, а ради
+			// того, чтобы он не попал в `default` ниже: тот ВЫЗЫВАЕТ ОБРАБОТЧИК,
+			// то есть неразобранный исход означал бы допуск.
+			return nil, decision.gRPCStatus().Err()
 		case outcomeError:
 			if m.cfg.FailOpen {
 				m.metrics.RecordErrorPassed()
@@ -441,6 +448,10 @@ func (m *AuthzMiddleware) Stream() grpc.StreamServerInterceptor {
 			return decision.gRPCStatus().Err()
 		case outcomeNotFound:
 			// Hide existence: read-deny on a verb-bearing IAM read → NotFound(5).
+			return decision.gRPCStatus().Err()
+		case outcomeUnserved:
+			// См. довод в Unary: случай выписан ради того, чтобы исход не попал
+			// в `default`, который ВЫЗЫВАЕТ ОБРАБОТЧИК.
 			return decision.gRPCStatus().Err()
 		case outcomeError:
 			if m.cfg.FailOpen {
@@ -624,11 +635,22 @@ func (d decision) gRPCStatus() *status.Status {
 	case outcomeNotFound:
 		return buildGRPCNotFoundStatus(d.descriptor)
 	case outcomeUnserved:
-		// На нативной полосе этот исход не рождается: phaseUnservedOnThisListener
-		// требует запроса HTTP. Случай выписан, чтобы отображение исходов было
-		// ПОЛНЫМ: молчаливое падение в `default` выдало бы «доступ запрещён» —
-		// ровно тот ответ, которого этот исход и заведён не давать.
+		// «Маршрута нет» — не «доступ запрещён». Падение в `default` выдало бы
+		// второе, то есть ровно тот ответ, которого этот исход заведён не давать.
 		return status.New(codes.NotFound, unservedRouteMessage)
+	case outcomeAllow, outcomeDeny, outcomeError:
+		// Разобраны ЯВНО, хотя ответ у всех трёх один.
+		//
+		// outcomeDeny — здесь по существу. outcomeError — до этой функции не
+		// доходит: оба нативных разбора и разбор HTTP строят свой ответ
+		// «недоступно» сами. outcomeAllow статуса не спрашивают вовсе.
+		//
+		// Почему тогда выписаны: неразобранный исход тихо падал бы в `default`,
+		// и по этому файлу нельзя было бы сказать, РЕШЕНИЕ это или недосмотр.
+		// Оба недостижимых случая отвечают ОТКАЗОМ — если достижимость появится,
+		// она появится fail-closed. Полноту держит
+		// TestEveryDecisionOutcomeSwitchIsExhaustive.
+		return buildGRPCDenyStatus(d.descriptor, d.reasons)
 	default:
 		return buildGRPCDenyStatus(d.descriptor, d.reasons)
 	}
