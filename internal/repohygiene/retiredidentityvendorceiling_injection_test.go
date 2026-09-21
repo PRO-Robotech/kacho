@@ -891,3 +891,114 @@ func TestRetiredVendorCeiling_ZeroIsReachableInPrinciple(t *testing.T) {
 	t.Logf("ноль достижим: судимо файлов %d · привязок 0 · отброшено границей %d строк (%v)",
 		c.Files, c.BoundaryDropped, c.BoundaryWords)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// СМЕЩЕНИЕ ИЩЕТСЯ В ОДНОМ ТЕКСТЕ, БАЙТ ГРАНИЦЫ ЧИТАЕТСЯ В ДРУГОМ
+
+// TestRetiredVendorCeiling_LoweringPreservesLength — приведение, которым ищется
+// смещение, обязано СОХРАНЯТЬ ДЛИНУ.
+//
+// Пара к ней — положительный контроль на библиотечном приведении: он показывает,
+// что расхождение длин не выдумано, а существует на том же входе.
+func TestRetiredVendorCeiling_LoweringPreservesLength(t *testing.T) {
+	t.Parallel()
+	for _, in := range []string{
+		"\xffHYDRAte",     // невалидный байт: библиотечное растит его втрое
+		"\xff\xffKRATOSx", // два невалидных байта подряд
+		"İHYDRA",          // прописная I с точкой: две руны в нижнем регистре
+		"обычная строка с hydra-admin", // кириллица без смещения — контроль
+	} {
+		if got, want := len(vendorASCIILower(in)), len(in); got != want {
+			t.Errorf("приведение по байтам изменило длину %q: %d против %d — смещение, "+
+				"найденное в приведённом тексте, указывает в исходном мимо", in, got, want)
+		}
+	}
+	// Положительный контроль: библиотечное приведение длину НЕ сохраняет, иначе
+	// эта проба зеленела бы и на сломанном коде.
+	drifted := 0
+	for _, in := range []string{"\xffHYDRAte", "\xff\xffKRATOSx", "İHYDRA"} {
+		if len(strings.ToLower(in)) != len(in) {
+			drifted++
+		}
+	}
+	if drifted == 0 {
+		t.Fatal("библиотечное приведение на всех трёх входах длину сохранило — " +
+			"положительный контроль беспредметен, и зелёное выше ничего не значит")
+	}
+	t.Logf("контроль: библиотечное приведение сместило длину на %d входах из 3", drifted)
+}
+
+// TestRetiredVendorCeiling_OffsetInjection_InvalidByteDoesNotMoveTheVerdict —
+// вердикт не зависит от невалидного байта ПЕРЕД именем.
+//
+// Пара однофактная: те же две строки без ведущего байта и с ним.
+func TestRetiredVendorCeiling_OffsetInjection_InvalidByteDoesNotMoveTheVerdict(t *testing.T) {
+	t.Parallel()
+	pairs := []struct {
+		clean, dirty string
+		want         bool
+		why          string
+	}{
+		{"HYDRAte", "\xffHYDRAte", false, "английское слово прописными продолжено строчной"},
+		{"hydra-admin", "\xffhydra-admin", true, "имя отдельным словом"},
+		{"hydrate", "\xff\xffhydrate", false, "английское слово"},
+	}
+	for _, p := range pairs {
+		if got := vendorMarkBoundedIn(p.clean); got != p.want {
+			t.Errorf("чистый вход %q дал %v, ожидалось %v (%s)", p.clean, got, p.want, p.why)
+		}
+		if got := vendorMarkBoundedIn(p.dirty); got != p.want {
+			t.Errorf("тот же вход с невалидным байтом впереди (%q) дал %v, ожидалось %v — "+
+				"смещение уехало, и граница прочитана по чужому байту", p.dirty, got, p.want)
+		}
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ВТОРАЯ ЦЕНА ГРАНИЦЫ
+
+// TestRetiredVendorCeiling_UpperCostIsNamedByTheCensus — ложное СРАБАТЫВАНИЕ
+// названо числом и словами, как и ложное отрицание.
+func TestRetiredVendorCeiling_UpperCostIsNamedByTheCensus(t *testing.T) {
+	t.Parallel()
+	corpora := vendorFixture(map[string]string{
+		"deploy/helm/umbrella/values.y.yaml": "X_HYDRATE_Y: 1\nimage: oryd/hydra:v2\n",
+	}, nil)
+	_, census, _, err := judgeRetiredVendorCeiling(corpora, map[string]int{
+		vendorTreePlatform: 2, vendorTreeAccess: 0, vendorTreeFoundation: 0})
+	if err != nil {
+		t.Fatalf("судья: %v", err)
+	}
+	c := census[vendorTreePlatform]
+	if c.UpperKept != 1 {
+		t.Errorf("засчитано именем прописными с прописной следом %d строк, ожидалась 1 — "+
+			"вторая цена границы не считается, и перепись, честная в одну сторону, "+
+			"читается как честная целиком", c.UpperKept)
+	}
+	if len(c.UpperWords) != 1 || c.UpperWords[0] != "X_HYDRATE_Y" {
+		t.Errorf("слова второй цены %v, ожидалось X_HYDRATE_Y — без перечня слов число "+
+			"ничего не объясняет", c.UpperWords)
+	}
+}
+
+// TestRetiredVendorCeiling_CamelCaseIsNotTheAmbiguousForm — ЗАКОННЫЙ БЛИЗНЕЦ
+// второй цены: шов camelCase спорным случаем НЕ является.
+//
+// Без этой пары счётчик второй цены считал бы каждую настоящую привязку и стал
+// бы шумом, в котором единственный спорный случай не виден.
+func TestRetiredVendorCeiling_CamelCaseIsNotTheAmbiguousForm(t *testing.T) {
+	t.Parallel()
+	corpora := vendorFixture(map[string]string{
+		"ui-future/shared/src/lib/a.ts": "const hydraClaims = 1;\nconst x = HydraIssuer;\n" +
+			"const y = kratosURL;\n",
+	}, nil)
+	_, census, _, err := judgeRetiredVendorCeiling(corpora, map[string]int{
+		vendorTreePlatform: 3, vendorTreeAccess: 0, vendorTreeFoundation: 0})
+	if err != nil {
+		t.Fatalf("судья: %v", err)
+	}
+	if c := census[vendorTreePlatform]; c.UpperKept != 0 || len(c.UpperWords) != 0 {
+		t.Errorf("шов camelCase назван спорным случаем: %d строк, слова %v — счётчик "+
+			"второй цены стал бы шумом", c.UpperKept, c.UpperWords)
+	}
+}

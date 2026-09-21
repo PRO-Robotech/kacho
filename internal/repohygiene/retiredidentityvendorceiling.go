@@ -251,7 +251,19 @@ var retiredVendorCeilings = map[string]int{
 	// ХВОСТ измерен по всему пакету гейтов и входит в число: 119 строк в 13
 	// файлах `internal/repohygiene` (было 106 до проб этой границы). Из них сам
 	// гейт с двумя пробами — 50, соседи — 69.
-	vendorTreePlatform: 1884,
+	//
+	// 1884 -> 1893: ПОТОЛОК ПОДНЯТ СОЗНАТЕЛЬНО, и причина одна — ХВОСТ четырёх
+	// новых проб этого же гейта. Координата: `retiredidentityvendorceiling_injection_test.go`,
+	// разделы про смещение приведения и про вторую цену границы. Девять строк
+	// суть их синтетические входы: `X_HYDRATE_Y`, `oryd/hydra`, `hydra-admin`,
+	// `hydraClaims`, `HydraIssuer`, `kratosURL` и три входа со смещением. Ни
+	// одна привязка продукта не вернулась: в службе доступа и фундаменте числа
+	// не изменились (1107 и 0).
+	//
+	// Рост этого рода — плата за то, что пробы работают НАСТОЯЩИМ входом, а не
+	// подставным. Снимать его подделкой входа нельзя: проба, спрятавшаяся от
+	// собственного гейта, перестаёт быть пробой.
+	vendorTreePlatform: 1893,
 	// служба доступа по пину `go.mod`: по пути 10 · по имени 1057 ·
 	// по пути API 40; архивов и двоичного нет. Граница слова здесь не сняла ни
 	// одной строки: слитных написаний два (`hydraadminurl`,
@@ -349,6 +361,16 @@ type vendorTreeCensus struct {
 	// BoundaryWords — РАЗНЫЕ слова, составившие предыдущее число. Новое слово
 	// здесь — находка: так видно слитное написание настоящей привязки.
 	BoundaryWords []string
+	// UpperKept — строк, где имя издателя продолжено ПРОПИСНОЙ буквой и потому
+	// ЗАСЧИТАНО привязкой. Вторая цена границы, и она зеркальна первой: правило
+	// смотрит на регистр следующего байта, поэтому `hydraClaims` (настоящая
+	// привязка) и `HYDRATE` (английское слово прописными) для него НЕРАЗЛИЧИМЫ
+	// в принципе. Ложное срабатывание здесь так же возможно, как ложное
+	// отрицание выше, и обязано звучать тем же числом — перепись, честная в
+	// одну сторону, читается как честная целиком.
+	UpperKept int
+	// UpperWords — РАЗНЫЕ слова, составившие предыдущее число.
+	UpperWords []string
 
 	Bindings  int
 	ByPath    int
@@ -365,10 +387,12 @@ func (c vendorTreeCensus) String() string {
 		"(нераспакованных %d) · прозы %d (граница) · строк прочитано %d · "+
 		"привязок %d строк (по пути %d · по имени %d · склейкой %d · по пути API %d · "+
 		"двоичных %d · архивов %d) · потолок %d · отброшено границей слова %d строк "+
+		"(разных слов %d: %s) · засчитано именем ПРОПИСНЫМИ с прописной следом %d строк "+
 		"(разных слов %d: %s)",
 		c.Walked, c.Files, c.Blobs, c.Archives, c.Sealed, c.Prose, c.Lines,
 		c.Bindings, c.ByPath, c.ByName, c.ByGlue, c.BySurface, c.ByBinary, c.ByArchive,
-		c.Ceiling, c.BoundaryDropped, len(c.BoundaryWords), strings.Join(c.BoundaryWords, ", "))
+		c.Ceiling, c.BoundaryDropped, len(c.BoundaryWords), strings.Join(c.BoundaryWords, ", "),
+		c.UpperKept, len(c.UpperWords), strings.Join(c.UpperWords, ", "))
 }
 
 // vendorCeilingFinding — расхождение числа с записью.
@@ -419,7 +443,7 @@ func (f vendorCeilingFinding) String() string {
 // целиком, телом И путём. Суффикс здесь решает законно: `.md`/`.mdx` — это
 // ОБЪЯВЛЕННЫЙ вид содержимого, а не догадка о физической форме файла.
 func vendorProseFile(rel string) bool {
-	lower := strings.ToLower(rel)
+	lower := vendorASCIILower(rel)
 	return strings.HasSuffix(lower, ".md") || strings.HasSuffix(lower, ".mdx")
 }
 
@@ -564,6 +588,44 @@ func vendorCarriesMark(lower string) bool {
 	return false
 }
 
+// vendorASCIILower — приведение к нижнему регистру ПО БАЙТАМ, только латиница.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ЗАЧЕМ СВОЁ, А НЕ БИБЛИОТЕЧНОЕ
+//
+// Смещение ищется в приведённом тексте, а байт границы читается в ИСХОДНОМ, и
+// это верно только пока приведение СОХРАНЯЕТ ДЛИНУ. Библиотечное её не
+// сохраняет: `İ` (U+0130) даёт две руны, а на невалидной последовательности
+// каждый негодный байт превращается в U+FFFD и РАСТЁТ ВТРОЕ. Тогда смещение,
+// найденное в одном тексте, указывает в другом мимо — и промах идёт в сторону
+// ЗАНИЖЕНИЯ: граница читается по чужому байту, привязка не засчитывается,
+// потолок пропускает её и называет это успехом.
+//
+// Радиус на день правки НУЛЕВОЙ: ни один путь, ни одна строка, ни одно
+// двоичное и ни один из шести архивов дерева смещения не дают. Механизм
+// оживает от первого архива формата, который разворачивается в невалидную
+// последовательность, — молча.
+//
+// Приведение по байтам годится здесь по построению: метки (`hydra`, `kratos`,
+// `oryd/`) — ASCII, и признак границы — «строчная буква латиницы» — тоже ASCII.
+// Всё, что вне ASCII, границей является в обоих приведениях одинаково.
+func vendorASCIILower(s string) string {
+	var b []byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' {
+			if b == nil {
+				b = []byte(s)
+			}
+			b[i] = c + ('a' - 'A')
+		}
+	}
+	if b == nil {
+		return s
+	}
+	return string(b)
+}
+
 // vendorLowerLetter — строчная буква латиницы. Ровно она продолжает СЛОВО:
 // прописная буква, цифра, разделитель и конец строки — всё это границы токена в
 // любом из здешних написаний (camelCase, SNAKE_CASE, kebab-case, путь, точка).
@@ -595,7 +657,7 @@ func vendorLowerLetter(b byte) bool { return b >= 'a' && b <= 'z' }
 // `kratosURL`), как и `_`, `-`, `.`, `/`, кавычка, цифра и конец строки.
 //
 // ─────────────────────────────────────────────────────────────────────────────
-// ЧТО ГРАНИЦА СТОИТ — НАЗВАНО ЧИСЛОМ, А НЕ ЗАМОЛЧАНО
+// ЧТО ГРАНИЦА СТОИТ — НАЗВАНО ЧИСЛОМ В ОБЕ СТОРОНЫ
 //
 // Слитное написание строчными (`hydraadminurl`, `hydraadmintokenenv` — два
 // таких слова в службе доступа) правило отбрасывает, хотя это настоящие
@@ -605,10 +667,19 @@ func vendorLowerLetter(b byte) bool { return b >= 'a' && b <= 'z' }
 // РАЗНЫМИ словами, которые его составили: новое слово в этом перечне видно
 // сразу и разбирается как находка.
 //
+// ЛОЖНОЕ СРАБАТЫВАНИЕ названо тем же способом, иначе перепись, честная в одну
+// сторону, читалась бы как честная целиком. Правило смотрит на регистр
+// следующего байта, поэтому имя ПРОПИСНЫМИ, продолженное прописной, неотличимо
+// от английского слова прописными: `HYDRAADMIN` и `HYDRATE` для него одно и то
+// же. Шов camelCase сюда не входит — там прописная следом есть начало второго
+// корня, то есть законная граница. Счётчик `засчитано именем ПРОПИСНЫМИ с
+// прописной следом` печатается рядом с первым; сегодня он НОЛЬ по всем трём
+// деревьям.
+//
 // Имя, кончающееся разделителем (`oryd/`), границу несёт в самом разделителе:
 // искать его продолжение незачем.
 func vendorMarkBoundedIn(text string) bool {
-	lower := strings.ToLower(text)
+	lower := vendorASCIILower(text)
 	for _, m := range retiredVendorMarks {
 		if strings.HasSuffix(m, "/") {
 			if strings.Contains(lower, m) {
@@ -631,15 +702,74 @@ func vendorMarkBoundedIn(text string) bool {
 	return false
 }
 
+// vendorMarkWordsContinuedByUpper — РАЗНЫЕ слова, где имя издателя написано
+// ПРОПИСНЫМИ и продолжено прописной буквой.
+//
+// Это ЕДИНСТВЕННАЯ форма, в которой ложное срабатывание границы неотличимо от
+// настоящей привязки. Шов camelCase (`hydraClaims`, `HydraIssuer`) сюда НЕ
+// входит: там имя написано смешанным регистром, а прописная следом — начало
+// второго корня, то есть законная граница. А вот `HYDRATE` — имя прописными и
+// прописная следом, ровно как у законного `HYDRAADMIN`: правило смотрит на
+// регистр следующего байта и различить их не может В ПРИНЦИПЕ.
+//
+// Зачем считать отдельно: первая цена границы (ложное отрицание) печатается
+// числом и словами, и перепись, честная в одну сторону, читается как честная
+// целиком. Обе цены названы числом, иначе вторая молчит.
+func vendorMarkWordsContinuedByUpper(text string, into map[string]struct{}) {
+	lower := vendorASCIILower(text)
+	for _, m := range retiredVendorMarks {
+		if strings.HasSuffix(m, "/") {
+			continue
+		}
+		for idx := 0; ; {
+			k := strings.Index(lower[idx:], m)
+			if k < 0 {
+				break
+			}
+			at := idx + k
+			end := at + len(m)
+			idx = end
+			if end >= len(text) || !vendorUpperLetter(text[end]) {
+				continue
+			}
+			// Само имя обязано быть ПРОПИСНЫМИ: смешанный регистр — это шов
+			// camelCase, а он законная граница, а не спорный случай.
+			allUpper := true
+			for i := at; i < end; i++ {
+				if !vendorUpperLetter(text[i]) {
+					allUpper = false
+					break
+				}
+			}
+			if !allUpper {
+				continue
+			}
+			lo, hi := at, end
+			for lo > 0 && vendorWordByte(text[lo-1]) {
+				lo--
+			}
+			for hi < len(text) && vendorWordByte(text[hi]) {
+				hi++
+			}
+			into[text[lo:hi]] = struct{}{}
+		}
+	}
+}
+
+// vendorUpperLetter — прописная буква латиницы.
+func vendorUpperLetter(b byte) bool { return b >= 'A' && b <= 'Z' }
+
+// vendorWordByte — байт, продолжающий слово.
+func vendorWordByte(b byte) bool {
+	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '_'
+}
+
 // vendorMarkWordsWithoutBoundary — РАЗНЫЕ слова, в которых имя издателя втекло в
 // другое слово. Перечень печатается переписью: цена границы названа словами, а
 // не оценкой.
 func vendorMarkWordsWithoutBoundary(text string, into map[string]struct{}) {
-	isWord := func(b byte) bool {
-		return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' ||
-			b >= '0' && b <= '9' || b == '_'
-	}
-	lower := strings.ToLower(text)
+	isWord := vendorWordByte
+	lower := vendorASCIILower(text)
 	for _, m := range retiredVendorMarks {
 		if strings.HasSuffix(m, "/") {
 			continue
@@ -675,7 +805,7 @@ func vendorPathAxis(rel string) bool {
 	for _, m := range retiredVendorMarks {
 		stems = append(stems, strings.TrimSuffix(m, "/"))
 	}
-	lower := strings.ToLower(rel)
+	lower := vendorASCIILower(rel)
 	for _, m := range stems {
 		for idx := 0; ; {
 			k := strings.Index(lower[idx:], m)
@@ -706,9 +836,9 @@ func vendorLineAxis(line string) string {
 	}
 	// Безымянная поверхность берётся у единственного дома — словаря путей
 	// поставщика. Своего перечня здесь нет.
-	lower := strings.ToLower(line)
+	lower := vendorASCIILower(line)
 	for _, s := range ProviderSurfaces {
-		if strings.Contains(lower, strings.ToLower(s.Path)) {
+		if strings.Contains(lower, vendorASCIILower(s.Path)) {
 			return vendorAxisSurface
 		}
 	}
@@ -734,6 +864,14 @@ func vendorCommentLine(line string) bool {
 		return true
 	}
 	return false
+}
+
+// vendorLineHasUpperContinuation — в строке есть имя издателя, продолженное
+// прописной буквой.
+func vendorLineHasUpperContinuation(text string) bool {
+	seen := map[string]struct{}{}
+	vendorMarkWordsContinuedByUpper(text, seen)
+	return len(seen) > 0
 }
 
 // vendorArchiveAxis — чем архив привязан к издателю. Пусто — не привязан.
@@ -793,6 +931,7 @@ func judgeRetiredVendorCeiling(
 		}
 
 		boundaryWords := map[string]struct{}{}
+		upperWords := map[string]struct{}{}
 		c := vendorTreeCensus{
 			Walked:   walked,
 			Blobs:    len(corpus.Blobs),
@@ -825,7 +964,7 @@ func judgeRetiredVendorCeiling(
 				add(rel, 0, vendorAxisPath, rel)
 			}
 			body := corpus.Bodies[rel]
-			lowerBody := strings.ToLower(body)
+			lowerBody := vendorASCIILower(body)
 			// Быстрый путь берёт ПРЕ-ФИЛЬТР без границ: файл, где имени нет
 			// вовсе, дальше не читается, а файл, где оно втекло в другое слово,
 			// читается — иначе счётчик отброшенных границей был бы слеп ровно
@@ -846,6 +985,16 @@ func judgeRetiredVendorCeiling(
 					// отброшена ГРАНИЦЕЙ. Цена границы — число и слова.
 					c.BoundaryDropped++
 					vendorMarkWordsWithoutBoundary(line, boundaryWords)
+				}
+				if axis == vendorAxisName {
+					// Вторая цена границы: строка засчитана, а регистр
+					// следующего байта отличить привязку от английского слова
+					// прописными не может.
+					before := len(upperWords)
+					vendorMarkWordsContinuedByUpper(line, upperWords)
+					if len(upperWords) > before || vendorLineHasUpperContinuation(line) {
+						c.UpperKept++
+					}
 				}
 				switch axis {
 				case vendorAxisName:
@@ -895,6 +1044,10 @@ func judgeRetiredVendorCeiling(
 			c.BoundaryWords = append(c.BoundaryWords, w)
 		}
 		sort.Strings(c.BoundaryWords)
+		for w := range upperWords {
+			c.UpperWords = append(c.UpperWords, w)
+		}
+		sort.Strings(c.UpperWords)
 		c.Bindings = c.ByPath + c.ByName + c.ByGlue + c.BySurface + c.ByBinary + c.ByArchive
 		census[tree] = c
 
