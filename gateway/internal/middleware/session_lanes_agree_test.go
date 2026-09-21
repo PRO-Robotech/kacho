@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -41,6 +42,30 @@ import (
 // Посадок ДВЕ (`external` — сессия поставщика; `own` — наша, Ф3), и полосы
 // обязаны сходиться на каждой: под `own` читатель другой, а свойство то же.
 
+// cookieSafeName — имя пробы, приведённое к байтам, КОТОРЫЕ БРАУЗЕР МОЖЕТ
+// ПРОВЕСТИ в значении печенья (RFC 6265).
+//
+// Прежде значение бралось из `t.Name()` как есть, а имена здесь русские.
+// Такого печенья не существует: разбор отвергает его, клиент Go при отправке
+// печатает «dropping invalid bytes», и ни один браузер этих байтов не пошлёт.
+// Фикстура была СНИСХОДИТЕЛЬНЕЕ настоящего входа — и держалась на том, что
+// предикат присутствия смотрел на подстроку заголовка, а не на разобранное
+// печенье. Как только край стал решать по имени, которое провёл браузер,
+// фикстура перестала представлять что-либо реальное.
+func cookieSafeName(t *testing.T) string {
+	var b strings.Builder
+	for _, c := range []byte(t.Name()) {
+		// Октеты значения печенья по RFC 6265, без кавычки, точки с запятой и
+		// обратной косой: ровно то, что примет разбор на принимающей стороне.
+		if c > 0x20 && c < 0x7f && c != '"' && c != ';' && c != '\\' && c != ',' {
+			b.WriteByte(c)
+		} else {
+			b.WriteByte('-')
+		}
+	}
+	return b.String()
+}
+
 // laneVerdict — что полоса сказала про сессию: считает ли она человека вошедшим.
 type laneVerdict struct {
 	name   string
@@ -60,7 +85,7 @@ func askIdentityLane(t *testing.T, kratosURL string, cut SessionCutoffReader) la
 		a = a.WithSessionCutoffCheck(cut, time.Hour)
 	}
 	req := httptest.NewRequest(http.MethodGet, "/vpc/v1/networks", nil)
-	req.Header.Set("Cookie", "ory_kratos_session="+t.Name()+"-identity")
+	req.Header.Set("Cookie", "ory_kratos_session="+cookieSafeName(t)+"-identity")
 	rec := httptest.NewRecorder()
 	a.HTTP(next).ServeHTTP(rec, req)
 	return laneVerdict{name: "полоса личности на пути запроса", signed: served}
@@ -83,7 +108,7 @@ func askWhoAmILane(t *testing.T, kratosURL string, cut SessionCutoffReader) lane
 	mux := http.NewServeMux()
 	h.Register(mux)
 	req := httptest.NewRequest(http.MethodGet, "/iam/v1/auth/me", nil)
-	req.Header.Set("Cookie", "ory_kratos_session="+t.Name()+"-whoami")
+	req.Header.Set("Cookie", "ory_kratos_session="+cookieSafeName(t)+"-whoami")
 	rec := httptest.NewRecorder()
 	a.HTTP(mux).ServeHTTP(rec, req)
 	return laneVerdict{name: "маршрут «кто я»", signed: whoAmINamedAPerson(rec)}

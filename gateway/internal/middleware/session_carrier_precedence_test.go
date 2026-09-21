@@ -46,6 +46,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -317,4 +319,157 @@ func TestBothCarriersWired_TheForeignLaneStillWorksOnEveryPathWithoutOurCarrier(
 			"состояние перестало быть переходным", len(paths))
 	}
 	t.Logf("перепись: путей пройдено %d · обращений к чужому читателю %d", len(paths), foreignAsked.Load())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// НАШ НОСИТЕЛЬ НЕ УЕЗЖАЕТ ЧУЖОЙ СТОРОНЕ.
+//
+// Значение нашего носителя предъявительское: кто его держит, тот и предъявляет
+// сессию. До состояния «оба» два печенья не могли жить в одном браузере, и
+// передача заголовка `Cookie` целиком ничего не выносила. Теперь это
+// объявленное состояние, и второй путь того же класса — откат «оба» → «только
+// чужой»: наш носитель остаётся в браузерах при снятом читателе, и тогда его
+// несёт каждый запрос.
+//
+// Дублёр ЗАПИСЫВАЕТ полученный заголовок: свойство читается из наблюдения, а
+// не из кода.
+
+// recordingProviderStub — чужая сторона, запоминающая КАЖДЫЙ полученный `Cookie`.
+func recordingProviderStub(t *testing.T, got *[]string, mu *sync.Mutex) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		*got = append(*got, r.Header.Get("Cookie"))
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"active":true,"authenticated_at":"`+
+			ownAuthAt.UTC().Format(time.RFC3339Nano)+
+			`","identity":{"id":"kid-foreign","traits":{"email":"foreign@example.com"}}}`)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+const ourBearerValue = "OURS-LIVE-BEARER"
+
+func TestForeignLane_NeverCarriesOurBearerToTheForeignSide(t *testing.T) {
+	var mu sync.Mutex
+	var seen []string
+	provider := recordingProviderStub(t, &seen, &mu)
+
+	// Состояние отката: наш читатель СНЯТ, наш носитель в браузере остался.
+	// Здесь чужая полоса обязана сработать — и обязана уйти без нашего значения.
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	foreignSubject := cutoffLookup{subj: Subject{Type: "user", ID: "usr-foreign", DisplayName: "F"}}
+	a := NewAuthInterceptor(AuthModeDev, "", foreignSubject, logger).
+		WithKratos(NewKratosClient(provider.URL)).
+		WithSessionCutoffCheck(&fakeCutoff{}, time.Hour)
+	who := NewSessionIdentityHandler(logger).
+		WithKratos(NewKratosClient(provider.URL), foreignSubject).
+		WithSessionCutoff(&fakeCutoff{})
+	mux := http.NewServeMux()
+	who.Register(mux)
+	mux.Handle("/", &countingNext{})
+	chain := a.HTTP(mux)
+
+	paths := []string{platformPath, "/iam/v1/auth/me"}
+	for _, path := range paths {
+		serve(chain, withForeignCarrier(
+			withOurCarrier(httptest.NewRequest(http.MethodGet, path, nil), ourBearerValue),
+			"foreign-live"))
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seen) == 0 {
+		t.Fatalf("чужая сторона не спрошена ни разу на %d путях — проба судила бы о непроисходившем",
+			len(paths))
+	}
+	leaked := 0
+	for _, hdr := range seen {
+		if strings.Contains(hdr, ourBearerValue) || strings.Contains(hdr, OurSessionCarrierName) {
+			leaked++
+			t.Errorf("чужой стороне ушёл наш носитель в заголовке %q: значение предъявительское, "+
+				"и державший его предъявляет нашу сессию", hdr)
+		}
+		if !strings.Contains(hdr, providerSessionCarrierName) {
+			t.Errorf("чужой стороне ушёл заголовок БЕЗ её печенья (%q) — она не смогла бы ответить", hdr)
+		}
+	}
+	t.Logf("перепись: обращений к чужой стороне %d · несущих значение нашего носителя %d · путей %d",
+		len(seen), leaked, len(paths))
+}
+
+// Граница имени. Предикат присутствия чужого носителя искал ПОДСТРОКУ в
+// заголовке: имя, оказавшееся ЧАСТЬЮ чужого имени печенья, считалось
+// предъявлением. Половины парные — и сужение обязано не съесть законное.
+func TestProviderCarrierPredicate_MatchesTheNameAndNotItsSubstring(t *testing.T) {
+	cases := []struct {
+		name    string
+		cookies []*http.Cookie
+		want    bool
+	}{
+		{"своё имя — предъявлено", []*http.Cookie{{Name: providerSessionCarrierName, Value: "v"}}, true},
+		{"рядом с нашим — предъявлено", []*http.Cookie{
+			{Name: OurSessionCarrierName, Value: "o"},
+			{Name: providerSessionCarrierName, Value: "v"},
+		}, true},
+		{"имя как ПРИСТАВКА чужого печенья", []*http.Cookie{
+			{Name: providerSessionCarrierName + "_debug", Value: "v"}}, false},
+		{"имя как ОКОНЧАНИЕ чужого печенья", []*http.Cookie{
+			{Name: "x_" + providerSessionCarrierName, Value: "v"}}, false},
+		{"имя в ЗНАЧЕНИИ чужого печенья", []*http.Cookie{
+			{Name: "note", Value: providerSessionCarrierName}}, false},
+		{"печенья нет вовсе", nil, false},
+	}
+	for _, tc := range cases {
+		req := httptest.NewRequest(http.MethodGet, platformPath, nil)
+		for _, c := range tc.cookies {
+			req.AddCookie(c)
+		}
+		if got := providerSessionCarrierPresented(req); got != tc.want {
+			t.Errorf("%s: предикат ответил %v, ожидалось %v (заголовок %q)",
+				tc.name, got, tc.want, req.Header.Get("Cookie"))
+		}
+	}
+	t.Logf("перепись: форм заголовка проверено %d · положительных 2 · отрицательных 4", len(cases))
+}
+
+// Решение, ставшее наблюдаемым вместе с разбором по имени: значение, которого
+// браузер провести НЕ МОЖЕТ, носителем не является — ни нашим, ни чужим.
+//
+// Выбор fail-closed и назван вслух: принять неразбираемое значение значило бы
+// вынести соседу то, чего мы сами не прочитали, а отказ здесь неотличим для
+// человека от «сессии нет» — состояния, в котором он и находится, раз его
+// печенье до нас не доехало целым.
+func TestCarrierPredicates_AValueNoBrowserCanFrameIsNotACarrier(t *testing.T) {
+	// Октеты вне RFC 6265 для значения печенья: разбор их отвергает, а клиент
+	// Go при отправке печатает «dropping invalid bytes».
+	const unframeable = "знач;ение"
+	req := httptest.NewRequest(http.MethodGet, platformPath, nil)
+	req.Header.Set("Cookie",
+		OurSessionCarrierName+"="+unframeable+"; "+providerSessionCarrierName+"="+unframeable)
+
+	if _, ours := ourSessionCarrierOf(req); ours {
+		t.Error("наш носитель признан предъявленным на значении, которого браузер провести не может")
+	}
+	if providerSessionCarrierPresented(req) {
+		t.Error("чужой носитель признан предъявленным на значении, которого браузер провести не может")
+	}
+	if got := ProviderSessionCarrierHeader(req); got != "" {
+		t.Errorf("чужой стороне собран заголовок %q из непрочитанного значения", got)
+	}
+
+	// Положительная половина: то же имя с ПРОВОДИМЫМ значением — носитель.
+	// Без неё проба зеленела бы и на предикатах, отвергающих всё подряд.
+	ok := httptest.NewRequest(http.MethodGet, platformPath, nil)
+	ok.AddCookie(&http.Cookie{Name: OurSessionCarrierName, Value: "v-own"})
+	ok.AddCookie(&http.Cookie{Name: providerSessionCarrierName, Value: "v-foreign"})
+	if _, ours := ourSessionCarrierOf(ok); !ours {
+		t.Fatal("наш носитель с проводимым значением не признан — предикат отвергает законный вход")
+	}
+	if !providerSessionCarrierPresented(ok) {
+		t.Fatal("чужой носитель с проводимым значением не признан — предикат отвергает законный вход")
+	}
+	t.Logf("перепись: сторон проверено 2 · непроводимых значений отвергнуто 2 · проводимых принято 2")
 }

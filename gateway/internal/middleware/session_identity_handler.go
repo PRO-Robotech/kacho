@@ -153,8 +153,10 @@ func (h *SessionIdentityHandler) Me(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.kratos != nil {
-		if providerSessionCarrierPresented(r) {
-			cookieHdr := r.Header.Get("Cookie")
+		// Та же сборка заголовка, что на полосе: чужой стороне уходит ровно её
+		// печенье. Две полосы, спрашивающие одного соседа, обязаны спрашивать
+		// его одним и тем же.
+		if cookieHdr := ProviderSessionCarrierHeader(r); cookieHdr != "" {
 			res := h.kratos.Whoami(r.Context(), cookieHdr)
 			if res.Active && res.IdentityID != "" {
 				userObj := map[string]any{

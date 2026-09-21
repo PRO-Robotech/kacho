@@ -1198,10 +1198,13 @@ func (a *AuthInterceptor) tryKratosSession(w http.ResponseWriter, r *http.Reques
 	if a.kratos == nil {
 		return false, false
 	}
-	if !providerSessionCarrierPresented(r) {
+	// Чужой стороне уходит РОВНО её печенье (`ProviderSessionCarrierHeader`), а
+	// не заголовок целиком: наш носитель предъявительский, и вынести его к
+	// соседу значит отдать нашу сессию тому, кто её не выдавал.
+	cookieHdr := ProviderSessionCarrierHeader(r)
+	if cookieHdr == "" {
 		return false, false
 	}
-	cookieHdr := r.Header.Get("Cookie")
 	res := a.kratos.Whoami(r.Context(), cookieHdr)
 	if !res.Active || res.IdentityID == "" {
 		return false, false
