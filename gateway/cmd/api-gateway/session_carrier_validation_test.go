@@ -35,27 +35,86 @@ func carrierSet(t *testing.T, declared string) config.SessionCarrierSet {
 	return set
 }
 
-// Три законных состояния проходят стража — положительный контроль, без
-// которого «отказ всегда» выглядел бы строгостью.
-func TestSessionCarrierGuard_TheThreeLawfulStatesPass(t *testing.T) {
-	cases := []struct {
-		declared string
-		posture  identityposture.Provider
-	}{
-		{"external", identityposture.External},
-		{"own,external", identityposture.Own},
-		{"own", identityposture.Own},
+// ─────────────────────────────────────────────────────────────────────────────
+// ПОЛНОЕ ПРОИЗВЕДЕНИЕ «посадка × множество», а не перечень удобных пар.
+//
+// Прежняя редакция называла ТРИ пары и объявляла их законными. Пар при двух
+// посадках и трёх состояниях носителя ШЕСТЬ, и та, что осталась вне перечня,
+// осталась и вне суда: посадка `own` с множеством БЕЗ нашего читателя. На ней
+// край поднимает нашу полосу формы входа, наша служба чеканит `kaname_session`,
+// а читателя этого печенья в процессе нет — человек проходит форму и остаётся
+// анонимом. Перечень удобных пар не способен такое увидеть: он утверждает о
+// том, что в нём есть.
+//
+// Произведение поэтому ВЫВОДИТСЯ: посадки берутся из словаря
+// (`identityposture.Values`), состояния носителя — из трёх объявлений профиля.
+// Третье значение посадки, если оно когда-нибудь появится, сделает пробу
+// красной, а не молчаливой.
+
+// carrierStateDeclarations — три состояния, которые профиль умеет объявить.
+var carrierStateDeclarations = []string{"external", "own,external", "own"}
+
+// lawfulCarrierPairs — пары, на которых провязка состоится и будет полной.
+// Ключ — «<посадка>/<объявление>».
+var lawfulCarrierPairs = map[string]bool{
+	"own/own":           true,
+	"own/own,external":  true,
+	"external/external": true,
+}
+
+func TestSessionCarrierGuard_EveryPostureCarrierPairIsJudged(t *testing.T) {
+	postures := identityposture.Values()
+	if len(postures) == 0 {
+		t.Fatal("словарь посадок пуст — произведение строить не из чего")
 	}
-	for _, tc := range cases {
-		set := carrierSet(t, tc.declared)
-		err := validateSessionCarrierConfig(SessionCarrierConfig{
-			Posture: tc.posture, Carriers: set, ProviderURL: "http://kratos:80",
-		})
-		if err != nil {
-			t.Fatalf("законное состояние %q на посадке %s отвергнуто: %v", tc.declared, tc.posture, err)
+	pairs, lawful, refused := 0, 0, 0
+	for _, posture := range postures {
+		for _, declared := range carrierStateDeclarations {
+			pairs++
+			key := posture.String() + "/" + declared
+			err := validateSessionCarrierConfig(SessionCarrierConfig{
+				Posture: posture, Carriers: carrierSet(t, declared), ProviderURL: "http://kratos:80",
+			})
+			switch {
+			case lawfulCarrierPairs[key] && err != nil:
+				t.Errorf("законная пара %s отвергнута: %v", key, err)
+			case !lawfulCarrierPairs[key] && err == nil:
+				t.Errorf("пара %s принята, а провязка на ней НЕПОЛНА: край заводит не всех "+
+					"читателей, чей носитель на этом стенде кто-то чеканит, и человек, прошедший "+
+					"вход, остаётся анонимом", key)
+			}
+			if lawfulCarrierPairs[key] {
+				lawful++
+			} else {
+				refused++
+			}
 		}
 	}
-	t.Logf("перепись: законных состояний проверено %d · отвергнуто 0", len(cases))
+	t.Logf("перепись: посадок в словаре %d · состояний носителя %d · пар осмотрено %d · "+
+		"законных %d · обязанных отказать %d", len(postures), len(carrierStateDeclarations),
+		pairs, lawful, refused)
+}
+
+// ЧЕТВЁРТАЯ ПАРА, ради которой заведено произведение: посадка `own` без нашего
+// читателя. Названа отдельно, потому что это ВХОД БЕЗ ЧИТАТЕЛЯ — зеркало
+// правила «читатель без производителя», и отказ обязан называть обе ручки.
+func TestSessionCarrierGuard_OurMintWithoutOurReaderIsRefused(t *testing.T) {
+	err := validateSessionCarrierConfig(SessionCarrierConfig{
+		Posture:     identityposture.Own,
+		Carriers:    carrierSet(t, "external"),
+		ProviderURL: "http://kratos:80",
+	})
+	if err == nil {
+		t.Fatal("посадка own без нашего читателя принята: край поднимает нашу полосу формы входа, " +
+			"служба чеканит kaname_session, и читателя этого печенья в процессе нет — человек " +
+			"проходит вход и остаётся анонимом")
+	}
+	for _, want := range []string{config.SessionCarriersKnob, config.IdentityProviderKnob} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("отказ не называет ручку %s: %v", want, err)
+		}
+	}
+	t.Logf("отказ: %v", err)
 }
 
 // НАШ носитель под ЧУЖОЙ посадкой — читатель без производителя: печенье нашей

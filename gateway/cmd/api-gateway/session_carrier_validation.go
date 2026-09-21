@@ -15,16 +15,37 @@
 //
 // # Но разведены они НЕ до независимости
 //
-// Не всякая пара осмысленна, и бессмысленная обязана отказывать при СТАРТЕ:
+// Не всякая пара осмысленна, и правило одно, двустороннее: НА СТЕНДЕ ЧИТАЕТСЯ
+// РОВНО ТО, ЧТО НА НЁМ ЧЕКАНИТСЯ. Обе его половины уже стоили бы дефекта, и
+// каждая отказывает при СТАРТЕ — отказ при старте виден оператору, а перекос
+// между чеканкой и чтением виден только по жалобе человека, который не смог
+// войти:
 //
-//   - НАШ читатель под ЧУЖОЙ посадкой — читатель без производителя. Печенье
+//   - ЧИТАТЕЛЬ БЕЗ ПРОИЗВОДИТЕЛЯ: наш читатель под чужой посадкой. Печенье
 //     нашей сессии чеканит наша полоса входа, а её край поднимает только под
 //     `own`. Провязанный впустую, он выглядел бы включённым контролем;
+//   - ПРОИЗВОДИТЕЛЬ БЕЗ ЧИТАТЕЛЯ, и это ВХОД, КОТОРЫЙ НЕ ВЕДЁТ ВНУТРЬ: посадка
+//     `own` с множеством БЕЗ нашей стороны. Край поднимает нашу полосу формы
+//     входа, служба чеканит `kaname_session`, и читателя у этого печенья в
+//     процессе нет. Человек проходит форму, получает носитель и остаётся
+//     АНОНИМОМ — отказа при этом никто не видит, потому что отказывать нечему.
+//
+// Третья половина о другом предмете — об адресе, без которого объявленный
+// читатель не заводится:
+//
 //   - ЧУЖОЙ читатель ОБЪЯВЛЕН, а адреса чужой стороны нет — объявление принято
 //     и не действует. Профиль назвал переходное состояние, оно молча не
 //     наступило, и вход потерял ровно тот, ради кого состояние заводилось.
 //
-// # Почему второе правило спрашивает, ОБЪЯВЛЕНО ли множество
+// # Почему правило спрашивает ПАРУ, а не каждую ручку по отдельности
+//
+// Пар при двух посадках и трёх состояниях носителя ШЕСТЬ, законных ТРИ.
+// Перечень удобных пар судит только то, что в нём названо, и четвёртая —
+// «вход, который не ведёт внутрь» — ровно так и прожила один круг ревью:
+// правило о ней не написали, и проба её не называла. Страж поэтому формулирует
+// СВОЙСТВО пары, а его проба выводит ПРОИЗВЕДЕНИЕ из словаря посадок.
+//
+// # Почему правило об адресе спрашивает, ОБЪЯВЛЕНО ли множество
 //
 // То же различие, что у приёма издателей токена (`config/tokenissuers.go`):
 // «ручка не задана» — сегодняшнее, работающее и повсеместное состояние края,
@@ -41,6 +62,7 @@ import (
 	"github.com/PRO-Robotech/corelib/identityposture"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
+	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
 // providerAddressDisabled — значение ручки адреса чужой стороны, выключающее
@@ -68,6 +90,21 @@ func validateSessionCarrierConfig(cfg SessionCarrierConfig) error {
 			"at all and answer every browser anonymously", config.SessionCarriersKnob)
 	}
 
+	// ПРОИЗВОДИТЕЛЬ БЕЗ ЧИТАТЕЛЯ. Проверяется ПЕРВЫМ из двух половин, потому что
+	// это единственная пара, на которой край поднимается, выглядит исправным и
+	// отдаёт человеку носитель, который сам же не читает.
+	if cfg.Posture == identityposture.Own && !cfg.Carriers.ReadsOwn() {
+		return fmt.Errorf("%s=%q while %s=%q does not name %q: under the %q posture the edge raises "+
+			"OUR sign-in lane and our authority mints the %q cookie — but no reader of it would be "+
+			"wired. A person would pass the sign-in form, receive the carrier and stay ANONYMOUS, "+
+			"and nothing would refuse: there is nothing left to refuse with. A stand reads exactly "+
+			"what it mints. Add %q to the carrier set, or declare the %q posture",
+			config.IdentityProviderKnob, cfg.Posture, config.SessionCarriersKnob,
+			cfg.Carriers.String(), identityposture.Own, identityposture.Own,
+			middleware.OurSessionCarrierName, identityposture.Own, identityposture.External)
+	}
+
+	// ЧИТАТЕЛЬ БЕЗ ПРОИЗВОДИТЕЛЯ — та же несогласованность, зеркально.
 	if cfg.Carriers.ReadsOwn() && cfg.Posture != identityposture.Own {
 		return fmt.Errorf("%s names %q while %s=%q: the cookie of OUR session is minted by our own "+
 			"sign-in lane, and the edge raises that lane only under the %q posture. Under %q nothing "+
