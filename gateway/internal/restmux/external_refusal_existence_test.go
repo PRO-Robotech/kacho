@@ -40,6 +40,25 @@
 // существующий внутренний путь и на путь, которого нет, обязан совпадать
 // ПОБАЙТОВО — код, заголовки, тело, — и ни один из них не смеет называть
 // внутреннее имя метода.
+//
+// ЧЕГО ЭТИ ПРОБЫ НЕ ЗАКРЫВАЮТ — ВРЕМЯ ОТВЕТА. Ось названа, а не умолчана.
+// Здесь сверяется то, что вызывающий ЧИТАЕТ; сколько он ЖДЁТ, не сверяет ничто,
+// и по этой оси свойство НЕ доказано. Разница выводится из устройства разбора
+// маршрута: он возвращается на первом совпадении, поэтому две ветви делают
+// разный объём работы. Замерена в процессе и оказалась не нулевой.
+//
+// Ось оставлена открытой осознанно, а не забыта: снять её значит отказаться от
+// раннего возврата на пути, который исполняется на КАЖДОМ запросе края, либо
+// завести второй разборщик с постоянным временем. Это другой предмет, другая
+// цена и другая полоса.
+//
+// ПРЕДИКАТ СНЯТИЯ: медианы обеих ветвей совпадают в пределах разброса — замер по
+// 20 000 запросов на ветвь после разогрева, на той же паре путей, что берёт
+// проба ниже.
+//
+// Пока предикат не выполнен, зелёное этих проб читается УЖЕ, чем слово
+// «неразличимо»: оно про код, заголовки и тело, и только про них.
+
 package restmux
 
 import (
@@ -54,6 +73,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PRO-Robotech/kacho/gateway/internal/allowlist"
 	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
@@ -176,6 +196,24 @@ func internalSubjects() []publicBinding {
 	return out
 }
 
+// sharesAPublicRoute — на этой паре (метод, путь) внешний слушатель обслуживает
+// ПУБЛИЧНЫЙ глагол, и «маршрута нет» про неё просто неверно.
+//
+// Так устроена поверхность пулов адресов: `AddressPoolService` выставлен наружу
+// НАМЕРЕННО и гейтится отношением `system_admin` @ `cluster`, а пути совпадают с
+// внутренними, потому что второго адреса у ресурса быть не должно (см. решение
+// в шапке регистрации, restmux/mux.go). Укрыть такой путь значило бы убрать
+// публичный глагол; отвечать на нём «есть маршрут» — не оракул, а опубликованная
+// таблица маршрутов.
+//
+// Признак берётся ТОЙ ЖЕ таблицей и ТЕМ ЖЕ предикатом, которыми пользуется сама
+// полоса прав. Второй источник ответа на этот вопрос разошёлся бы с первым
+// молча — и разошёлся бы ровно на тех путях, ради которых заводится.
+func sharesAPublicRoute(rr *middleware.RestRouter, method, path string) bool {
+	fqn, ok := rr.Resolve(method, path)
+	return ok && !allowlist.HasInternalSuffix("/"+fqn)
+}
+
 // TestExternalListener_RefusalDoesNotDependOnExistence — условие 1:
 // неразличимость доказывается СРАВНЕНИЕМ двух снятых целиком ответов.
 func TestExternalListener_RefusalDoesNotDependOnExistence(t *testing.T) {
@@ -240,13 +278,22 @@ func TestExternalListener_ExistenceOracleCensus(t *testing.T) {
 	}
 
 	var (
-		distinguishable []string
-		namesTheMethod  int
-		compared        int
-		twinResolved    int
+		distinguishable  []string
+		namesTheMethod   int
+		compared         int
+		twinResolved     int
+		sharedWithPublic int
 	)
 	shapes := map[string]int{}
 	for _, b := range subjects {
+		if sharesAPublicRoute(rr, b.method, b.path) {
+			// Путь обслуживается публичным глаголом — «маршрута нет» про него
+			// неверно, сравнивать не с чем. Считается ОТДЕЛЬНО, а не
+			// выбрасывается молча: исключение, которого не видно в переписи,
+			// однажды поглотит настоящую находку.
+			sharedWithPublic++
+			continue
+		}
 		twinPath := absentTwin(b.path)
 		if _, twinOK := rr.Resolve(b.method, twinPath); twinOK {
 			// Близнец оказался настоящим маршрутом — сравнивать нечего, и
@@ -269,9 +316,9 @@ func TestExternalListener_ExistenceOracleCensus(t *testing.T) {
 		}
 	}
 
-	t.Logf("перепись: внутренних биндингов %d · сверено с близнецом %d · близнец оказался маршрутом %d · "+
-		"различных форм ответа на «есть» %d · тело называет имя метода у %d",
-		len(subjects), compared, twinResolved, len(shapes), namesTheMethod)
+	t.Logf("перепись: внутренних биндингов %d · сверено с близнецом %d · делят путь с публичным глаголом %d · "+
+		"близнец оказался маршрутом %d · различных форм ответа на «есть» %d · тело называет имя метода у %d",
+		len(subjects), compared, sharedWithPublic, twinResolved, len(shapes), namesTheMethod)
 	if compared == 0 {
 		t.Fatal("ни один внутренний биндинг не получил близнеца — сверка выродилась, её молчание пусто")
 	}
@@ -403,7 +450,12 @@ func TestExternalListener_OwnCallerKeepsAPreciseRefusal(t *testing.T) {
 // сделало бы административную поверхность недостижимой для тех, кому она
 // адресована, — и показалось бы «ещё более безопасным».
 func TestInternalListener_KeepsTellingItsOwnCallersApart(t *testing.T) {
+	dispatcher, err := NewMux(context.Background(), probeAddrs(t), nil, nil)
+	if err != nil {
+		t.Fatalf("NewMux: %v", err)
+	}
 	chain, _ := externalEdgeChain(t)
+	reference := hiddenAnswer(t, dispatcher)
 	subjects := internalSubjects()
 	if len(subjects) < minInternalBindings {
 		t.Fatalf("административных REST-биндингов %d (< %d) — предмета нет", len(subjects), minInternalBindings)
@@ -415,7 +467,7 @@ func TestInternalListener_KeepsTellingItsOwnCallersApart(t *testing.T) {
 		req = req.WithContext(listenerorigin.WithInternal(req.Context()))
 		rec := httptest.NewRecorder()
 		chain.ServeHTTP(rec, req)
-		if rec.Code == http.StatusNotFound && strings.Contains(rec.Body.String(), `"message":"Not Found"`) {
+		if rec.Code == reference.code && rec.Body.String() == reference.body {
 			hidden++
 		}
 	}
@@ -424,4 +476,66 @@ func TestInternalListener_KeepsTellingItsOwnCallersApart(t *testing.T) {
 		t.Errorf("укрытие внешнего слушателя действует и на ВНУТРЕННЕМ: %d из %d биндингов "+
 			"отвечают «маршрута нет» там, где ходят свои", hidden, len(subjects))
 	}
+}
+
+// TestExternalListener_PublicSurfaceIsNotHidden — ОТРИЦАНИЕ В ПАРЕ С
+// ПОЛОЖИТЕЛЬНЫМ, и без него соседняя перепись ничего не стоит.
+//
+// «Ответы неразличимы» достигается двумя способами: убрать различие — и убрать
+// ответы. Второй дал бы зелёное на всех пробах выше и снял бы наружу весь
+// публичный контракт. Поэтому здесь утверждается обратное: НИ ОДИН публичный
+// биндинг контракта не смеет получить укрытие на внешнем слушателе.
+//
+// Проба сторожит и вторую, менее очевидную беду. Часть административных путей
+// СОВПАДАЕТ с публичными, и какой глагол увидит вызывающий, решает порядок
+// разбора таблицы маршрутов. Поменяйся он — укрытие накрыло бы публичную
+// поверхность пулов адресов, и снаружи это выглядело бы как «стало безопаснее».
+func TestExternalListener_PublicSurfaceIsNotHidden(t *testing.T) {
+	dispatcher, err := NewMux(context.Background(), probeAddrs(t), nil, nil)
+	if err != nil {
+		t.Fatalf("NewMux: %v", err)
+	}
+	chain, _ := externalEdgeChain(t)
+	reference := hiddenAnswer(t, dispatcher)
+
+	var subject []publicBinding
+	for _, b := range loadedHTTPBindings() {
+		if b.internal {
+			continue
+		}
+		subject = append(subject, publicBinding{method: b.method, path: probePath(b.template), fqn: b.fqn})
+	}
+	if len(subject) == 0 {
+		t.Fatal("публичных биндингов в дескрипторах ноль — пустой обход вердиктом не является")
+	}
+
+	var hidden []string
+	for _, b := range subject {
+		if askExternalNoCredential(t, chain, b.method, b.path) == reference {
+			hidden = append(hidden, "  "+b.method+" "+b.path+" ("+b.fqn+")")
+		}
+	}
+	t.Logf("перепись: публичных биндингов %d · укрыто %d", len(subject), len(hidden))
+	if len(hidden) > 0 {
+		t.Errorf("укрытие накрыло %d ПУБЛИЧНЫХ биндингов из %d — снаружи пропал контракт, "+
+			"а «неразличимость» получена тем, что различать стало нечего:\n%s",
+			len(hidden), len(subject), strings.Join(hidden, "\n"))
+	}
+}
+
+// hiddenAnswer — ответ укрытия, взятый у САМОГО ДИСПЕТЧЕРА на заведомо
+// отсутствующем маршруте, а не выписанный литералом.
+//
+// Литерал здесь не годится, и это измерено: `protojson` намеренно подмешивает в
+// вывод пробелы и выбирает их ОДИН РАЗ ЗА ПРОЦЕСС. Выписанное тело совпадало бы
+// с настоящим в одних запусках и расходилось бы в других — проба мигала бы, а
+// мигающая проба вердикта не даёт.
+func hiddenAnswer(t *testing.T, dispatcher http.Handler) edgeAnswer {
+	t.Helper()
+	a := askExternalNoCredential(t, dispatcher, "GET", "/kachoAbsentDomain/v1/kachoAbsentCollection")
+	if a.code != http.StatusNotFound {
+		t.Fatalf("диспетчер ответил на заведомо отсутствующий маршрут кодом %d, а не отсутствием — "+
+			"эталон укрытия брать неоткуда", a.code)
+	}
+	return a
 }

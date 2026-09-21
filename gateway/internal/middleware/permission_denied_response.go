@@ -26,8 +26,10 @@ import (
 	"strings"
 
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	spb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // safeDenyDescription returns a generic, NON-LEAKING violation description for a
@@ -250,6 +252,66 @@ func writeHTTPNotFound(w http.ResponseWriter, desc permissionDeniedDescriptor) {
 		"message": notFoundMessage(desc),
 	}
 	_ = json.NewEncoder(w).Encode(body)
+}
+
+// ---- ответ «этот слушатель такого не обслуживает» — ОДИН производитель ----
+
+// unservedRouteMessage — текст, который на этом же слушателе производит
+// диспетчер маршрутов (grpc-gateway) на обычном промахе.
+const unservedRouteMessage = "Not Found"
+
+// unservedRouteBody — тело того же ответа, собранное ТЕМ ЖЕ СПОСОБОМ, что и у
+// диспетчера: тот же proto-статус, тот же маршалер, те же его настройки
+// (`restmux.newPublicJSONPb`: UseProtoNames=false, EmitUnpopulated=true —
+// отсюда пустое `details`).
+//
+// ПОЧЕМУ НЕ СТРОКОВЫЙ ЛИТЕРАЛ. Он уже был здесь и не годится: `protojson`
+// НАМЕРЕННО подмешивает в вывод пробелы, чтобы на его байты не опирались, и
+// решение принимает ОДИН РАЗ ЗА ПРОЦЕСС. Измерено: 40 одинаковых промахов в
+// одном процессе дают 40 одинаковых тел, а в другом процессе то же тело идёт с
+// пробелами после запятых. То есть литерал совпал бы с ответом диспетчера в
+// одних запусках и расходился бы в других — а в живом процессе расхождение
+// держалось бы всю его жизнь и стало бы устойчивым признаком «кто ответил».
+// Собирая тело тем же маршалером, мы берём то же решение о пробелах, каким бы
+// оно в этом процессе ни выпало.
+//
+// ПОЧЕМУ НЕ ПОЗВАТЬ ДИСПЕТЧЕР. `middleware` не импортирует `restmux` и не
+// должен — ребро пошло бы против направления сборки цепи. Совпадение двух
+// производителей держит проба на той стороне, которая видит обоих:
+// restmux/external_refusal_existence_test.go,
+// `TestExternalListener_HiddenRefusalMatchesTheDispatcherNotFound`. Разойдись
+// настройки маршалера — покраснеет она, а не свойство расщепится молча.
+var unservedRouteBody = marshalUnservedRouteBody()
+
+func marshalUnservedRouteBody() []byte {
+	b, err := protojson.MarshalOptions{
+		UseProtoNames:   false,
+		EmitUnpopulated: true,
+	}.Marshal(&spb.Status{
+		Code:    int32(codes.NotFound),
+		Message: unservedRouteMessage,
+	})
+	if err != nil {
+		// Маршалинг статуса с двумя заданными полями отказать не может. Запасной
+		// путь существует, чтобы отказ на этапе инициализации не ронял процесс
+		// края целиком; расхождение с диспетчером, если бы оно так возникло,
+		// назовёт проба-сторож.
+		return []byte(`{"code":5,"message":"Not Found","details":[]}`)
+	}
+	return b
+}
+
+// writeHTTPUnserved отвечает на запрос к маршруту, которого этот слушатель не
+// обслуживает.
+//
+// У функции НЕТ АРГУМЕНТОВ, и это не упрощение: ответу неоткуда взять ни имя
+// метода, ни путь, ни причину, ни субъекта — нечему протечь by construction.
+// Всякий, кто захочет добавить сюда параметр, заведёт ровно тот дефект, ради
+// которого функция появилась.
+func writeHTTPUnserved(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotFound)
+	_, _ = w.Write(unservedRouteBody)
 }
 
 // buildGRPCUnauthStatus constructs a *status.Status for missing/invalid

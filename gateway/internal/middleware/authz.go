@@ -518,6 +518,10 @@ func (m *AuthzMiddleware) HTTP(next http.Handler) http.Handler {
 		case outcomeNotFound:
 			// Hide existence: read-deny on a verb-bearing IAM read → 404, no reasons.
 			writeHTTPNotFound(w, decision.descriptor)
+		case outcomeUnserved:
+			// Этот слушатель такого маршрута не обслуживает → тот же ответ, что
+			// на любом обычном промахе. Аргументов у писателя нет намеренно.
+			writeHTTPUnserved(w)
 		case outcomeError:
 			if m.cfg.FailOpen {
 				m.metrics.RecordErrorPassed()
@@ -590,6 +594,13 @@ const (
 	// A well-formed-but-nonexistent id and an existing-but-denied id both yield the
 	// same FGA deny → the same NotFound → no enumeration leak.
 	outcomeNotFound
+	// outcomeUnserved — ЭТОТ слушатель такого маршрута не обслуживает: пути нет
+	// вовсе либо он принадлежит административной службе, а слушатель внешний.
+	// Отвечает тем же, чем отвечает на этом слушателе диспетчер маршрутов на
+	// обычном промахе, и не несёт ни описателя, ни причин — иначе форма ответа
+	// снова отвечала бы на вопрос «есть ли здесь такой предмет».
+	// См. phaseUnservedOnThisListener.
+	outcomeUnserved
 )
 
 type decision struct {
@@ -612,6 +623,12 @@ func (d decision) gRPCStatus() *status.Status {
 		return buildGRPCInvalidArgStatus(d.invalidArgMessage)
 	case outcomeNotFound:
 		return buildGRPCNotFoundStatus(d.descriptor)
+	case outcomeUnserved:
+		// На нативной полосе этот исход не рождается: phaseUnservedOnThisListener
+		// требует запроса HTTP. Случай выписан, чтобы отображение исходов было
+		// ПОЛНЫМ: молчаливое падение в `default` выдало бы «доступ запрещён» —
+		// ровно тот ответ, которого этот исход и заведён не давать.
+		return status.New(codes.NotFound, unservedRouteMessage)
 	default:
 		return buildGRPCDenyStatus(d.descriptor, d.reasons)
 	}
@@ -658,6 +675,10 @@ func (m *AuthzMiddleware) decide(ctx context.Context, dr decisionRequest) decisi
 	}
 	// 1b. Internal-listener-origin exempt gate.
 	if dec, handled := m.phaseInternalOriginExempt(dr); handled {
+		return dec
+	}
+	// 1c. Маршрут, которого ЭТОТ слушатель не обслуживает.
+	if dec, handled := m.phaseUnservedOnThisListener(dr); handled {
 		return dec
 	}
 	// 2. Per-route file override (allow/deny).
@@ -741,6 +762,78 @@ func (m *AuthzMiddleware) phaseInternalOriginExempt(dr decisionRequest) (decisio
 		}
 	}
 	return decision{}, false
+}
+
+// phaseUnservedOnThisListener отвечает за ВНЕШНИЙ слушатель на всё, чего он не
+// обслуживает, ОДНИМ и тем же ответом — тем самым, что на этом слушателе даёт
+// диспетчер маршрутов на обычном промахе.
+//
+// # Что чинится
+//
+// Отказ зависел от того, СУЩЕСТВУЕТ ли внутренний предмет. Запросчик без
+// единого удостоверения получал на существующий административный путь
+// «требуется удостоверение» (401) с ПОЛНЫМ ВНУТРЕННИМ ИМЕНЕМ МЕТОДА в теле, а
+// на путь, которого нет, — «доступ запрещён» (403) с сырым путём. Разный код,
+// разная причина, разное тело: различая их, он обходил всю внутреннюю
+// поверхность и узнавал её состав, ничего не предъявив.
+//
+// # Почему это чинится ЗДЕСЬ, а не в диспетчере
+//
+// Диспетчер это свойство уже держит и держит верно: запрос к административному
+// пути, пришедший на внешний слушатель, он отдаёт публичному мультиплексору и
+// отвечает ровно тем, чем отвечает на маршрут, которого у него нет (см. шапку
+// restmux/mux.go и external_refusal_shape_test.go). Но в собранном крае эта
+// полоса стоит СНАРУЖИ диспетчера (`cmd/api-gateway/main.go`: `inner =
+// authzMW.HTTP(inner)` оборачивает `httpMux`, который держит `restHandler`), и
+// до диспетчера запрос не доходил вовсе. Починка была, держателя у неё в
+// собранном крае не было — предметом держателя был диспетчер в одиночку.
+//
+// # Почему ответ пишется ЗДЕСЬ, а не делегируется диспетчеру
+//
+// Делегирование дало бы одного производителя даром, но ценой перевода
+// незасвидетельствованного запроса дальше по цепи. Тогда всякая будущая ручка,
+// повешенная на `httpMux` мимо таблицы маршрутов, стала бы достижимой без
+// удостоверения — и никто бы этого не решал. Здесь запрос ОСТАНАВЛИВАЕТСЯ:
+// `next` не зовётся, fail-closed не ослаблен. Совпадение двух производителей
+// побайтово держит сторож расхождения — restmux/external_refusal_existence_test.go,
+// там же, где живёт и сам диспетчер.
+//
+// # Область
+//
+// Только ВНЕШНИЙ слушатель. На внутреннем различимость законна: там ходят свои,
+// и укрытие сделало бы административную поверхность недостижимой для тех, кому
+// она адресована. Только полоса HTTP: у нативной полосы свой отказ по маршруту
+// (internal/proxy), и он это свойство уже держит.
+//
+// Решение не ослаблено: запрос отвергнут, обработчик не достигнут. Меняются
+// только вынесенный наружу код и тело — тот же приём, которым закрыт
+// outcomeNotFound.
+func (m *AuthzMiddleware) phaseUnservedOnThisListener(dr decisionRequest) (decision, bool) {
+	// Нет запроса HTTP — нативная полоса, не её предмет. Нет таблицы маршрутов —
+	// спросить «обслуживается ли путь» нечем; прежнее поведение сохраняется, и
+	// оно тоже отвергающее, так что это не послабление.
+	if dr.HTTPReq == nil || m.cfg.RestRouter == nil {
+		return decision{}, false
+	}
+	if !m.isExternalRequest(dr) {
+		return decision{}, false
+	}
+	fqn, routed := m.cfg.RestRouter.Resolve(dr.HTTPReq.Method, dr.HTTPReq.URL.Path)
+	// Маршрут есть и он публичный — обслуживается, решает общий путь ниже.
+	if routed && !allowlist.HasInternalSuffix("/"+fqn) {
+		return decision{}, false
+	}
+	// СВОЯ полоса: ни модель, ни каталог, ни личность здесь не спрашивались —
+	// отказ дан по одному признаку «этот слушатель такого не обслуживает».
+	// Слитая с промахом каталога, она выглядела бы решением о правах (#798).
+	m.metrics.RecordUnserved()
+	// Координата остаётся В ЖУРНАЛЕ и только в нём: наружу она и есть предмет
+	// починки. Оператору нужен путь, запросчику — нет.
+	m.cfg.Logger.Debug("authz: route not served on this listener, answering as a miss",
+		"method", dr.HTTPReq.Method, "path", dr.HTTPReq.URL.Path, "routed", routed)
+	// Описателя НЕТ намеренно: у ответа нет поля, в которое имя метода или путь
+	// могли бы попасть, — неразличимость держится конструкцией, а не вниманием.
+	return decision{outcome: outcomeUnserved}, true
 }
 
 // phaseOverride applies a file-based per-route override (explicit allow/deny).

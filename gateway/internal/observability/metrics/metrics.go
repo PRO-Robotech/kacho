@@ -64,6 +64,7 @@ const (
 	decisionOverrideAllow  = "override_allow"
 	decisionExempt         = "exempt"
 	decisionScopeFiltered  = "scope_filtered"
+	decisionUnserved       = "unserved"
 
 	cacheHit  = "hit"
 	cacheMiss = "miss"
@@ -220,6 +221,7 @@ func (c *authzCollector) Collect(ch chan<- prometheus.Metric) {
 		decisionOverrideAllow:  s.Counts.OverrideAllow,
 		decisionExempt:         s.Counts.Exempt,
 		decisionScopeFiltered:  s.Counts.ScopeFiltered,
+		decisionUnserved:       s.Counts.Unserved,
 	} {
 		ch <- prometheus.MustNewConstMetric(decisionsDesc, prometheus.CounterValue,
 			float64(value), decision)

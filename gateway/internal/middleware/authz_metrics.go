@@ -124,6 +124,12 @@ type AuthzCounts struct {
 	// ScopeFiltered — авторизует ВЛАДЕЮЩИЙ СЕРВИС над данными, которыми
 	// отвечает; край не сужает. Допуск края здесь — не суждение о правах.
 	ScopeFiltered uint64
+	// Unserved — ВНЕШНИЙ слушатель такого маршрута не обслуживает: пути нет
+	// вовсе либо он административный. Отказ дан по одному этому признаку — ни
+	// каталог, ни личность, ни модель не спрашивались, поэтому «доступ
+	// запрещён» это не значит. Слитый с Deny, поток перечисляющих обходов
+	// внешней поверхности выглядел бы решениями о правах, а он ими не является.
+	Unserved uint64
 
 	// Enforcing — проверка ВКЛЮЧЕНА в этом процессе.
 	//
@@ -168,6 +174,7 @@ type AuthzMetrics struct {
 	overrideAllowTotal  atomic.Uint64
 	exemptTotal         atomic.Uint64
 	scopeFilteredTotal  atomic.Uint64
+	unservedTotal       atomic.Uint64
 
 	enforcing atomic.Bool
 
@@ -239,6 +246,9 @@ func (m *AuthzMetrics) RecordExempt() { m.exemptTotal.Add(1) }
 // RecordScopeFiltered — сужение пообъектное ниже по стеку.
 func (m *AuthzMetrics) RecordScopeFiltered() { m.scopeFilteredTotal.Add(1) }
 
+// RecordUnserved — внешний слушатель такого маршрута не обслуживает.
+func (m *AuthzMetrics) RecordUnserved() { m.unservedTotal.Add(1) }
+
 // SetEnforcing объявляет, включена ли проверка в этом процессе. Зовётся сборкой
 // звена — единственным местом, где это известно.
 func (m *AuthzMetrics) SetEnforcing(on bool) {
@@ -301,6 +311,7 @@ func (m *AuthzMetrics) Counts() AuthzCounts {
 		OverrideAllow:  m.overrideAllowTotal.Load(),
 		Exempt:         m.exemptTotal.Load(),
 		ScopeFiltered:  m.scopeFilteredTotal.Load(),
+		Unserved:       m.unservedTotal.Load(),
 
 		Enforcing: m.enforcing.Load(),
 	}

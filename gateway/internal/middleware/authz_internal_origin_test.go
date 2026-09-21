@@ -72,8 +72,27 @@ func isInternalFQN(fqn string) bool {
 
 // TestInternalExempt_ExternalOrigin_Unauthenticated (P0, RED→GREEN) — an
 // unauthenticated call to an Internal* exempt RPC arriving on the EXTERNAL
-// listener is rejected with 401 (no global allowlist bypass). Before the fix
-// the allowlist short-circuit returned 200/allow with no credentials.
+// listener is rejected (no global allowlist bypass). Before the fix the
+// allowlist short-circuit returned 200/allow with no credentials.
+//
+// СВЕРЯЕМЫЙ КОД СМЕНИЛСЯ 401 → 404, И ВОТ ПОЧЕМУ. Свойство, ради которого проба
+// заведена, — «глобального обхода нет, обработчик не достигнут» — не изменилось
+// и утверждается ниже первым (`called` остаётся false). Изменился вынесенный
+// НАРУЖУ код, и изменился он потому, что прежний был оракулом: 401 «требуется
+// удостоверение» приходил только на СУЩЕСТВУЮЩИЙ внутренний путь, а на
+// несуществующий приходил 403, — и запросчик без единого удостоверения отличал
+// одно от другого и так перечислял внутреннюю поверхность. Тело 401 к тому же
+// называло полное внутреннее имя метода.
+//
+// Утверждение «на внешнем крае это обязан быть именно 401» и было тем, на чём
+// оракул держался: проба фиксировала ответ, отличный от ответа на маршрут,
+// которого нет. Теперь внешний слушатель на всё, чего он не обслуживает,
+// отвечает одинаково — тем же, чем отвечает его диспетчер на обычном промахе
+// (phaseUnservedOnThisListener). Исполнение не ослаблено ни на шаг; сменилось
+// только то, что видит вызывающий.
+//
+// Неразличимость двух ответов держится не здесь, а там, где видно обоих
+// производителей: restmux/external_refusal_existence_test.go.
 func TestInternalExempt_ExternalOrigin_Unauthenticated(t *testing.T) {
 	checker := &fakeChecker{allowed: true}
 	rr := middleware.NewRestRouter()
@@ -92,8 +111,12 @@ func TestInternalExempt_ExternalOrigin_Unauthenticated(t *testing.T) {
 	h.ServeHTTP(w, r)
 
 	assert.False(t, called, "external unauth Internal* call must NOT reach handler")
-	assert.Equal(t, http.StatusUnauthorized, w.Code,
-		"external unauth Internal* call must be 401 (no allowlist bypass)")
+	assert.Equal(t, http.StatusNotFound, w.Code,
+		"внешний слушатель такого маршрута не обслуживает — ответ тот же, что на любом промахе")
+	assert.NotContains(t, w.Body.String(), "InternalIAMService",
+		"тело отказа не смеет называть внутреннее имя метода — это и есть перечислимость")
+	assert.NotContains(t, w.Body.String(), "/iam/v1/internal",
+		"тело отказа не смеет возвращать сырой путь")
 }
 
 // TestInternalExempt_InternalOrigin_Allowed (P0, RED→GREEN) — the SAME
