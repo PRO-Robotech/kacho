@@ -35,6 +35,29 @@
 Нейтральные и пропущенные считаются отдельно и НЕ зачитываются в успех: молча
 зачесть их в зелёное значило бы повторить тот же класс на уровень ниже.
 
+ТРЕТЬЯ КАТЕГОРИЯ ПЕЧАТАЕТСЯ ОТДЕЛЬНОЙ СТРОКОЙ (#958)
+----------------------------------------------------
+Работа, чьё условие не создано (стенд не поднялся, посторонний источник не
+ответил), СВОЮ категорию узнаёт и называет — и сообщает её аннотацией с
+заголовком «НЕ ВЫПОЛНИЛОСЬ». До этого места она доезжала неотличимой от
+настоящего красного: у прогона два состояния, и «не выполнилось» отображалось в
+отказ БЕЗ СЛЕДА. Читающий вердикт не мог отличить «продукт сломан» от «стенд не
+поднялся», а лечатся они противоположным — восемь ночей подряд отказ читался как
+дефект.
+
+Имена таких проверок подаёт вызывающий (`--unmet-names-file`), а собирает их
+`pr-verdict-wait.sh` из аннотаций не-зелёных проверок.
+
+ЦВЕТ ПРИ ЭТОМ НЕ МЕНЯЕТСЯ, И ЭТО ОБЪЯВЛЕННОЕ РЕШЕНИЕ, А НЕ УМОЛЧАНИЕ. Владелец
+2026-09-12, дословно: «сделай так, чтобы можно было гарантировать зелёный; если
+что-то не так — в красный». Значит такая проверка остаётся блокирующей: слияние
+по ней не разрешается. Меняется то, ЧТО читателю предложат разбирать: число и
+перечень печатаются ОТДЕЛЬНО от настоящих красных, а не сливаются с ними.
+
+Список пуст, когда канал недоступен (аннотации не прочитались). Тогда всё
+считается красным ровно как прежде: неизвестное обязано быть красным, а не
+прощённым.
+
 Вход — JSON от `repos/{repo}/commits/{sha}/check-runs` (или список его элементов)
 на stdin. Имя собственной джобы исключается: она завершается последней by
 construction, и без исключения вердикт ждал бы сам себя вечно.
@@ -67,6 +90,11 @@ class Verdict:
     pending: int
     reason: str
     offenders: tuple[str, ...] = ()
+    # Третья категория: проверки, чья работа САМА объявила «условие не создано».
+    # Считается отдельно и НИКОГДА не вычитается из числа блокирующих — она их
+    # подмножество, а не соседнее множество.
+    unmet: int = 0
+    unmet_names: tuple[str, ...] = ()
 
     @property
     def exit_code(self) -> int:
@@ -81,8 +109,9 @@ def _runs(payload: object) -> list[dict]:
     return [r for r in payload if isinstance(r, dict)]
 
 
-def decide(payload: object, self_name: str = "") -> Verdict:
+def decide(payload: object, self_name: str = "", unmet_names: object = ()) -> Verdict:
     """Вердикт по набору проверок. Чистая функция: ни сети, ни времени, ни файлов."""
+    unmet_set = {str(n) for n in (unmet_names or ())}
     runs = [r for r in _runs(payload) if r.get("name") != self_name]
 
     pending = [r for r in runs if str(r.get("status")) in PENDING]
@@ -92,6 +121,8 @@ def decide(payload: object, self_name: str = "") -> Verdict:
     neutralish = [r for r in done if str(r.get("conclusion")) in NEUTRALISH]
     green = [r for r in done if str(r.get("conclusion")) == "success"]
 
+    unmet = [r for r in blocking if str(r.get("name")) in unmet_set]
+
     counts = dict(
         total=len(runs), green=len(green), blocking=len(blocking),
         neutralish=len(neutralish), pending=len(pending),
@@ -100,8 +131,21 @@ def decide(payload: object, self_name: str = "") -> Verdict:
     # Отказ решает СРАЗУ, не дожидаясь остальных: держать ранеры ради заведомо
     # красного вердикта — расход без предмета.
     if blocking:
-        return Verdict(RED, **counts, reason="есть не-зелёные проверки",
-                       offenders=tuple(sorted(str(r.get("name")) for r in blocking)))
+        unmet_sorted = tuple(sorted(str(r.get("name")) for r in unmet))
+        real = tuple(sorted(str(r.get("name")) for r in blocking
+                            if str(r.get("name")) not in unmet_set))
+        if unmet_sorted and not real:
+            reason = ("не-зелёные проверки есть, и ВСЕ они — «не выполнилось»: "
+                      "вердикта о продукте не вынесла ни одна. Слияние не разрешается "
+                      "(решение владельца 2026-09-12), но разбирать надо УСЛОВИЕ, "
+                      "а не дерево")
+        elif unmet_sorted:
+            reason = "есть не-зелёные проверки, и часть из них — «не выполнилось»"
+        else:
+            reason = "есть не-зелёные проверки"
+        return Verdict(RED, **counts, reason=reason,
+                       offenders=real,
+                       unmet=len(unmet_sorted), unmet_names=unmet_sorted)
     if pending:
         return Verdict(NOT_READY, **counts, reason="часть проверок ещё идёт",
                        offenders=tuple(sorted(str(r.get("name")) for r in pending)))
@@ -121,15 +165,39 @@ def render(v: Verdict) -> str:
             f"осмотрено проверок {v.total}: зелёных {v.green}, "
             f"не-зелёных {v.blocking}, нейтральных или пропущенных {v.neutralish}, "
             f"идущих {v.pending}")
+    # ТРЕТЬЯ КАТЕГОРИЯ — СВОЕЙ СТРОКОЙ, А НЕ В ЧИСЛЕ КРАСНЫХ. Она остаётся
+    # блокирующей (решение владельца 2026-09-12), но разбирать её надо иначе:
+    # «продукт сломан» и «условие не создано» лечатся противоположным.
+    head += (f"\nиз них «не выполнилось» (условие не создано): {v.unmet} — "
+             f"вердикта о продукте у них нет")
     if v.offenders:
+        head += "\nкрасные (вердикт о продукте вынесен и он отрицательный):"
         head += "\n" + "\n".join(f"   • {n}" for n in v.offenders)
+    if v.unmet_names:
+        head += "\n«не выполнилось» (разбирать условие, а не дерево):"
+        head += "\n" + "\n".join(f"   • {n}" for n in v.unmet_names)
     return head
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--self-name", default="", help="имя собственной джобы (исключается из счёта)")
+    ap.add_argument("--unmet-names-file", default="",
+                    help="файл с именами проверок, чья работа объявила «не выполнилось» "
+                         "(по имени на строку); собирает его pr-verdict-wait.sh из аннотаций")
     args = ap.parse_args()
+
+    unmet: list[str] = []
+    if args.unmet_names_file:
+        try:
+            unmet = [ln.strip() for ln in
+                     open(args.unmet_names_file, encoding="utf-8").read().splitlines() if ln.strip()]
+        except OSError as exc:
+            # Канал недоступен — считаем ВСЁ красным, как прежде. Неизвестное
+            # обязано быть красным, а не прощённым.
+            print(f"перечень «не выполнилось» не прочитан ({exc}) — третья категория "
+                  f"в этом прогоне не различается, и всё не-зелёное считается красным",
+                  file=sys.stderr)
 
     try:
         payload = json.load(sys.stdin)
@@ -138,7 +206,7 @@ def main() -> int:
               f"и это НЕ «зелено»", file=sys.stderr)
         return 2
 
-    v = decide(payload, args.self_name)
+    v = decide(payload, args.self_name, unmet)
     print(render(v))
     # «Не готово» — это не вердикт: вызывающий обязан подождать и спросить снова.
     if v.state == NOT_READY:

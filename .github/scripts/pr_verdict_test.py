@@ -117,3 +117,62 @@ def test_garbage_input_is_not_read_as_green() -> None:
         except ValueError:
             continue
         raise AssertionError(f"мусор {junk!r} не отвергнут — вердикт был бы о неизвестно чём")
+
+
+# ── ТРЕТЬЯ КАТЕГОРИЯ ДОЕЗЖАЕТ ДО ВЕРДИКТА (#958) ────────────────────────────
+#
+# Механизм различения у работ ЕСТЬ и работает: они третью категорию узнают и
+# называют. Умирала она на границе — у прогона два состояния, и «не выполнилось»
+# отображалось в отказ БЕЗ СЛЕДА. Здесь проверяется ровно граница: имя приходит
+# извне (его собирает pr-verdict-wait.sh из аннотаций), и вердикт обязан
+# напечатать категорию отдельно, НЕ меняя цвета.
+
+render = pr_verdict.render
+
+
+def test_unmet_is_counted_separately_and_still_blocks() -> None:
+    """Считается отдельно — и остаётся блокирующей (решение владельца 2026-09-12)."""
+    v = decide(
+        [run("ci", "completed", "success"),
+         run("e2e", "completed", "failure"),
+         run("консоль", "completed", "failure")],
+        unmet_names=["консоль"],
+    )
+    assert v.state == RED, v
+    assert v.exit_code == 1, "цвет не меняется: слияние по такой проверке не разрешается"
+    assert v.blocking == 2, "третья категория НЕ вычитается из числа не-зелёных"
+    assert v.unmet == 1 and v.unmet_names == ("консоль",), v
+    assert v.offenders == ("e2e",), "настоящие красные перечисляются отдельно от третьей категории"
+
+
+def test_all_blocking_are_unmet_says_so_in_the_reason() -> None:
+    """Ни одна проверка вердикта о продукте не вынесла — и причина обязана это сказать,
+    иначе читатель пойдёт разбирать дерево."""
+    v = decide([run("шард", "completed", "failure")], unmet_names=["шард"])
+    assert v.state == RED, v
+    assert v.unmet == 1 and v.offenders == ()
+    assert "не вынесла ни одна" in v.reason, v.reason
+
+
+def test_unmet_name_of_a_green_check_changes_nothing() -> None:
+    """Законный близнец: имя в перечне есть, а проверка зелёная. Перечень не вправе
+    делать «не выполнилось» из того, что исполнилось и прошло."""
+    v = decide([run("ci", "completed", "success")], unmet_names=["ci"])
+    assert v.state == GREEN, v
+    assert v.unmet == 0 and v.unmet_names == ()
+
+
+def test_empty_unmet_list_reproduces_the_previous_behaviour() -> None:
+    """Канал недоступен — всё не-зелёное считается красным ровно как прежде."""
+    v = decide([run("e2e", "completed", "failure")], unmet_names=[])
+    assert v.state == RED and v.unmet == 0 and v.offenders == ("e2e",)
+
+
+def test_render_prints_the_third_category_on_its_own_line() -> None:
+    """Число печатается ВСЕГДА, в том числе нулём: «строки нет» и «их ноль» —
+    разные утверждения, и первое читается как «об этом не спрашивали»."""
+    text = render(decide([run("ci", "completed", "success")]))
+    assert "«не выполнилось»" in text and ": 0" in text, text
+    text = render(decide([run("шард", "completed", "failure")], unmet_names=["шард"]))
+    assert "«не выполнилось» (условие не создано): 1" in text, text
+    assert "разбирать условие, а не дерево" in text, text

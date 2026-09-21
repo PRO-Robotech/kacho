@@ -126,6 +126,7 @@ gateway/deploy/revocation_authority_inject.sh
 scripts/ci-local-outcome-inject.sh
 scripts/go-mod-tidy-check-inject.sh
 scripts/overwritten-work-inject.sh
+scripts/third-category-channel-inject.sh
 scripts/hooks/install-inject.sh
 scripts/hooks/prepush-groups-inject.sh
 scripts/hooks/prepush-range-inject.sh

@@ -40,6 +40,25 @@ set -uo pipefail
 : "${VERDICT_INTERVAL:=20}"
 : "${VERDICT_FETCH_CMD:=}"
 : "${VERDICT_DECIDE_CMD:=}"
+: "${VERDICT_ANNOTATIONS_CMD:=}"
+
+# ── КАНАЛ ТРЕТЬЕЙ КАТЕГОРИИ (#958) ──────────────────────────────────────────
+#
+# Работа, чьё условие не создано, свою категорию УЗНАЁТ и НАЗЫВАЕТ — и сообщает
+# её аннотацией с этим заголовком. Дальше она умирала на границе: до сводного
+# вердикта доезжает только заключение check-run, и «не выполнилось» приходило
+# неотличимым от настоящего красного. Читающий не мог отличить «продукт сломан»
+# от «стенд не поднялся», а лечатся они противоположным.
+#
+# Здесь эта метка ЧИТАЕТСЯ. Цвет от неё не меняется — проверка остаётся
+# блокирующей (решение владельца 2026-09-12), — но вердикт печатает её ОТДЕЛЬНОЙ
+# СТРОКОЙ и отдельным перечнем.
+#
+# Метка одна на всё дерево; перепись «кто различает и кто умеет сообщить» её же
+# и считает (.github/scripts/third-category-census.py), и она же падает, если
+# метка перестанет здесь искаться: число, пережившее своего читателя, означало
+# бы то, чего нет.
+UNMET_ANNOTATION_TITLE="НЕ ВЫПОЛНИЛОСЬ"
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -51,11 +70,55 @@ fetch_checks() {
   fi
 }
 
+# Аннотации ОДНОЙ проверки. Спрашиваются только у НЕ-ЗЕЛЁНЫХ завершившихся: у
+# зелёной третьей категории быть не может by construction, а лишний запрос на
+# каждую проверку — это десятки обращений на каждый заход цикла.
+fetch_annotations() { # <id проверки>
+  if [ -n "$VERDICT_ANNOTATIONS_CMD" ]; then
+    "$VERDICT_ANNOTATIONS_CMD" "$1"
+  else
+    gh api "repos/$REPO/check-runs/$1/annotations?per_page=100"
+  fi
+}
+
+# collect_unmet — имена проверок, чья работа САМА объявила третью категорию.
+#
+# Отказ опроса НЕ считается «не выполнилось»: тогда имя просто не попадёт в
+# перечень, и проверка останется в числе красных ровно как прежде. Неизвестное
+# обязано быть красным, а не прощённым.
+collect_unmet() { # <файл набора> <куда писать имена>
+  : > "$2"
+  python3 -c '
+import json, sys
+try:
+    p = json.load(open(sys.argv[1], encoding="utf-8"))
+except Exception:
+    sys.exit(0)
+runs = p.get("check_runs", p) if isinstance(p, dict) else p
+for r in runs if isinstance(runs, list) else []:
+    if not isinstance(r, dict):
+        continue
+    if str(r.get("status")) != "completed" or str(r.get("conclusion")) == "success":
+        continue
+    rid, name = r.get("id"), r.get("name")
+    if rid is None or not name:
+        continue
+    print(f"{rid}\t{name}")
+' "$1" | while IFS=$'\t' read -r id name; do
+    [ -n "$id" ] || continue
+    ann="$(fetch_annotations "$id" 2>/dev/null)" || continue
+    case "$ann" in
+      *"$UNMET_ANNOTATION_TITLE"*) printf '%s\n' "$name" >> "$2" ;;
+    esac
+  done
+}
+
 decide_verdict() {
   if [ -n "$VERDICT_DECIDE_CMD" ]; then
     "$VERDICT_DECIDE_CMD"
   else
-    python3 "$here/pr-verdict.py" --self-name "$SELF"
+    collect_unmet runs.json unmet.txt
+    python3 "$here/pr-verdict.py" --self-name "$SELF" --unmet-names-file unmet.txt
   fi
 }
 

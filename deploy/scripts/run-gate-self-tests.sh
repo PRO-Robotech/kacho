@@ -110,6 +110,7 @@ DECLARED="
 .github/scripts/run-python-probes.py
 .github/scripts/shard-verdict.py
 .github/scripts/stand-revision-verdict.sh
+.github/scripts/third-category-census.py
 .github/scripts/stand-up.sh
 .github/scripts/unit-shards.py
 deploy/scripts/assert-admin-hop-transport.sh
