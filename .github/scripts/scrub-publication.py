@@ -66,12 +66,48 @@
     query    — удостоверение в параметрах адреса (`?access_token=…`);
     base64   — обёртка, под которой лежит любая из форм выше (глубина 1).
 
+Форма документа определяется отдельно и раньше форм значения: ЦЕЛЫЙ JSON ·
+ПОСТРОЧНЫЙ JSON (журналы подов — по записи на строку) · текст · двоичное.
+
 Словарь закрыт намеренно: распознаватель, который «ищет похожее на секрет»,
 молчит ровно там, где форма ему незнакома, и молчание это неотличимо от чистоты.
 Незнакомая форма здесь не выдаётся за чистую — она просто не заявляется
 распознанной, и потому рядом стоит вторая половина: файл, который нельзя
 прочитать и переписать доказуемо (двоичный с попаданием, ссылка за пределы
 дерева), публикацию запрещает, а не пропускает.
+
+ЧЕГО ЭТА ЧИСТКА НЕ ЛОВИТ — ПЕРЕЧЕНЬ, А НЕ ОГОВОРКА
+--------------------------------------------------
+Проверка, чьи границы не названы, читается как «закрыто всё», и это опаснее
+отсутствия проверки: на неё ссылаются там, где она ничего не утверждает. Ниже —
+то, что она пропускает СЕГОДНЯ и будет пропускать, пока перечень не сократят
+отдельной работой. Каждый пункт перепроверен на этой же редакции.
+
+  1. ИМЯ ПОЛЯ ВНЕ ЗАКРЫТОГО СЛОВАРЯ. `{"x-my-ticket": "<материал>"}` не
+     распознаётся ничем, если само значение не имеет узнаваемой формы. Словарь
+     расширяется правкой, а не догадкой.
+  2. СЖАТОЕ ВЛОЖЕНИЕ. Архив, gzip-тело, любой непрозрачный контейнер: материал
+     внутри нечитаем, и распаковка здесь не делается. Двоичный файл С
+     ПОПАДАНИЕМ публикацию запрещает, но попадание в сжатом не наблюдаемо.
+  3. BASE64 ГЛУБЖЕ ОДНОГО УРОВНЯ. Раскрытие ровно одно: обёртка в обёртке
+     проходит.
+  4. ШЕСТНАДЦАТЕРИЧНОЕ И ПРОЦЕНТНОЕ КОДИРОВАНИЕ. `%42%65%61...`, `4265...` —
+     ни одна форма их не раскрывает.
+  5. УДОСТОВЕРЕНИЕ В АДРЕСЕ ВНЕ ИЗВЕСТНЫХ ИМЁН ПАРАМЕТРОВ. Ловятся
+     `access_token`, `token`, `api_key` и родня; `?k=<материал>` — нет.
+  6. ЗНАЧЕНИЕ, РАЗБИТОЕ ПО СТРОКАМ, — И ЭТОТ ПУНКТ КОВАРНЕЕ ОСТАЛЬНЫХ.
+     Осмотр текста построчный, поэтому изымается ПЕРВЫЙ фрагмент, а хвост
+     остаётся — и повторная сверка объявляет файл ЧИСТЫМ, потому что искать
+     ей больше нечего. Проверено: `authorization: sk-AAAA` + перенос +
+     `BBBBCCCCDDDD` даёт «ЧИСТО» при уцелевшем хвосте. Частичное изъятие здесь
+     читается как полное.
+
+ОТДЕЛЬНО — ТРАССЫ БРАУЗЕРНЫХ ПРОБ. Их выкладывает `console-e2e.yml`
+(`ui-future/e2e/test-results/`), и трасса Playwright несёт заголовки запросов
+целиком, внутри своего архива, то есть под пунктом 2 этого перечня. Сегодня от
+публикации их отделяет НЕ эта чистка, а одна настройка: `trace: "off"` в
+`ui-future/e2e/playwright.config.ts`. Вернут штатную запись трассы — и канал
+откроется, а чистка этого не заметит.
 
 ЗАПУСК
 ------
@@ -260,6 +296,81 @@ def scan_bytes(data: bytes) -> dict[str, int]:
             n64 += 1
     if n64:
         hits["base64"] = n64
+    return hits
+
+
+# ─── ФОРМА ДОКУМЕНТА: ЦЕЛЫЙ JSON · ПОСТРОЧНЫЙ JSON · ТЕКСТ ──────────────────
+#
+# ПОСТРОЧНЫЙ JSON — ЖИВОЙ ФОРМАТ НАШИХ ЖУРНАЛОВ, И ОН ЗДЕСЬ ПРОХОДИЛ МИМО.
+#
+# `gateway/cmd/api-gateway/main.go` ставит обработчик журнала в JSON
+# (`slog.NewJSONHandler`), поэтому `stand-logs/*.log` — записи подов — это JSON
+# ПО СТРОКЕ НА ЗАПИСЬ по построению. Целым документом такой файл не разбирается:
+# со второй строки `json.loads` отказывает.
+#
+# Прежняя редакция на этом отказе переходила к регулярным формам, а они
+# привязаны к началу строки (`^authorization:`). В записи `{"msg":"request",
+# "authorization":"…"}` имя поля стоит в середине, значит не совпадало ничего.
+#
+# Пара, на которой это видно одним фактом (её принёс приёмщик, воспроизведено):
+# один и тот же материал в ОДНУ строку давал находку, он же в ТРИ строки —
+# «ЧИСТО». Различал исходы не материал, а число переводов строки. Главная маска
+# выкладки шарда (`stand-logs/*`) проходила мимо целиком.
+#
+# Поэтому форма документа определяется ЯВНО и одинаково в обоих режимах —
+# осмотре и изъятии. Порога «сколько строк обязано разобраться» нет намеренно:
+# каждая строка судится сама по себе, разобравшаяся — структурно, не
+# разобравшаяся — как текст. Порог был бы ещё одним числом, которое молча
+# разойдётся с деревом.
+
+
+def _json_lines(data: bytes) -> list[tuple[bytes, object]] | None:
+    """Строки файла и разобранный JSON каждой, либо None — если ни одна не JSON.
+
+    Возвращает ПАРЫ (исходная строка с концом, разобранное или None), чтобы
+    изъятие могло переписать только разобравшиеся, сохранив остальные байт в
+    байт — журнал подов несёт и не-JSON строки (вывод самого ранера, трассы).
+    """
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    lines = text.splitlines(keepends=True)
+    if not lines:
+        return None
+    out: list[tuple[bytes, object]] = []
+    seen_json = False
+    for ln in lines:
+        stripped = ln.strip()
+        doc: object = None
+        if stripped.startswith(("{", "[")):
+            try:
+                parsed = json.loads(stripped)
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, (dict, list)):
+                doc = parsed
+                seen_json = True
+        out.append((ln.encode("utf-8"), doc))
+    return out if seen_json else None
+
+
+def scan_document(data: bytes) -> dict[str, int]:
+    """Осмотр ОДНОГО документа во всех трёх его формах. Значения не возвращаются."""
+    hits = scan_bytes(data)
+    try:
+        whole = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        whole = None
+    if whole is not None:
+        if _json_carries_secret(whole):
+            hits["key"] = hits.get("key", 0) + 1
+        return hits
+    per_line = _json_lines(data)
+    if per_line:
+        n = sum(1 for _, doc in per_line if doc is not None and _json_carries_secret(doc))
+        if n:
+            hits["ndjson"] = hits.get("ndjson", 0) + n
     return hits
 
 
@@ -463,13 +574,7 @@ def process(path: Path, root: Path, scan_only: bool, rep: Report) -> None:
     rep.bytes += len(data)
 
     if scan_only:
-        hits = scan_bytes(data)
-        try:
-            doc = json.loads(data.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            doc = None
-        if doc is not None and _json_carries_secret(doc):
-            hits["key"] = hits.get("key", 0) + 1
+        hits = scan_document(data)
         if hits:
             rep.add(hits)
             rep.findings.append(
@@ -487,9 +592,31 @@ def process(path: Path, root: Path, scan_only: bool, rep: Report) -> None:
         doc = json.loads(data.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
         doc = None
+    per_line = None if doc is not None else _json_lines(data)
     if doc is not None:
         cleaned = redact_json(doc, counts)
         out = json.dumps(cleaned, ensure_ascii=False).encode("utf-8")
+    elif per_line:
+        # ПОСТРОЧНЫЙ JSON. Разобравшаяся строка переписывается СТРУКТУРНО (имя
+        # поля — единственный признак непрозрачного значения), не разобравшаяся
+        # остаётся текстом и проходит те же регулярные формы. Конец строки
+        # сохраняется как был: журнал читают построчно, и склейка сломала бы
+        # его читателям не меньше, чем утечка.
+        rebuilt: list[bytes] = []
+        for raw, node in per_line:
+            if node is None:
+                red, _ = redact_text(raw, counts)
+                rebuilt.append(red)
+                continue
+            tail = b""
+            body = raw
+            while body.endswith((b"\n", b"\r")):
+                tail = body[-1:] + tail
+                body = body[:-1]
+            lead = body[: len(body) - len(body.lstrip())]
+            cleaned_line = redact_json(node, counts)
+            rebuilt.append(lead + json.dumps(cleaned_line, ensure_ascii=False).encode("utf-8") + tail)
+        out = b"".join(rebuilt)
     else:
         try:
             text = data.decode("utf-8")
@@ -497,7 +624,7 @@ def process(path: Path, root: Path, scan_only: bool, rep: Report) -> None:
             # Двоичное содержимое переписать доказуемо чисто нельзя: структуры
             # мы не знаем, а подмена байтов в неизвестном формате ломает файл и
             # не доказывает изъятия. Попадание здесь — запрет публикации.
-            hits = scan_bytes(data)
+            hits = scan_document(data)
             if hits:
                 rep.add(hits)
                 rep.findings.append(
@@ -520,13 +647,7 @@ def process(path: Path, root: Path, scan_only: bool, rep: Report) -> None:
     # что мы собирались записать: расхождение между намерением и содержимым —
     # ровно тот класс, ради которого этот шаг и заведён.
     after = path.read_bytes()
-    left = scan_bytes(after)
-    try:
-        doc2 = json.loads(after.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        doc2 = None
-    if doc2 is not None and _json_carries_secret(doc2):
-        left["key"] = left.get("key", 0) + 1
+    left = scan_document(after)
     if left:
         rep.findings.append(
             f"{rel}: после изъятия остался материал — "
@@ -655,12 +776,28 @@ def self_test() -> int:
     ok = True
     cases = 0
 
-    def call(root: Path, extra: list[str]) -> subprocess.CompletedProcess:
+    def call(root: Path, extra: list[str], prog: str | None = None) -> subprocess.CompletedProcess:
         return subprocess.run(
-            [sys.executable, me, "--workflow", str(root / "wf.yml"), "--job", "проба",
+            [sys.executable, prog or me, "--workflow", str(root / "wf.yml"), "--job", "проба",
              "--step-id", "выкладка", "--root", str(root), *extra],
             capture_output=True, text=True, check=False,
         )
+
+    def mutant(marker: str, replacement: str) -> str:
+        """КОПИЯ этого файла с выключенной формой изъятия.
+
+        Мутация живёт ЗДЕСЬ, а не в прод-пути: доказательство повторной сверки
+        делается подменой ПРОГРАММЫ, а не поведения изнутри — ветви, которую
+        можно снять снаружи, в рабочем пути нет вовсе.
+        """
+        src = Path(me).read_text(encoding="utf-8")
+        n = src.count(marker)
+        if n != 1:
+            raise AssertionError(f"якорь мутации встречается {n} раз, нужен ровно один: {marker!r}")
+        d = Path(tempfile.mkdtemp())
+        out = d / "scrub-mutant.py"
+        out.write_text(src.replace(marker, replacement, 1), encoding="utf-8")
+        return str(out)
 
     def make_root(files: dict[str, str]) -> Path:
         d = Path(tempfile.mkdtemp())
@@ -719,6 +856,97 @@ def self_test() -> int:
             ok = False
         else:
             print("  ОК  изъятие → повторный осмотр чист, значения нет, структура цела")
+
+    # (3а) ПОСТРОЧНЫЙ JSON — ОДНО-ФАКТНАЯ ПАРА.
+    #
+    # Один и тот же материал в ОДНУ строку и в ТРИ обязан давать ОДИН исход.
+    # Различать их могло только число переводов строки, и до починки оно и
+    # различало: одна строка — находка, три — «ЧИСТО». Это форма наших
+    # журналов подов по построению (обработчик журнала края — JSON), то есть
+    # главная маска выкладки шарда проходила мимо целиком.
+    record = json.dumps({"msg": "request", "authorization": "sk-AAAABBBBCCCCDDDD"})
+    pair: dict[str, int] = {}
+    for label, body in (("одной строкой", record + "\n"),
+                        ("тремя строками", "\n".join([record] * 3) + "\n")):
+        cases += 1
+        root = make_root({"pods.log": body})
+        r = call(root, ["--scan-only"])
+        pair[label] = r.returncode
+        if r.returncode != FINDING:
+            print(f"  ПРОВАЛ построчный JSON {label}: код {r.returncode}, ждали {FINDING}")
+            print("        " + (r.stdout + r.stderr).replace("\n", "\n        ")[:800])
+            ok = False
+        elif "AAAABBBBCCCCDDDD" in (r.stdout + r.stderr):
+            print(f"  ПРОВАЛ построчный JSON {label}: напечатано ЗНАЧЕНИЕ")
+            ok = False
+        else:
+            print(f"  ОК  построчный JSON {label} → находка, значение не напечатано")
+    cases += 1
+    if len(set(pair.values())) != 1:
+        print(f"  ПРОВАЛ одно-фактная пара: исходы разошлись {pair} — их различает "
+              f"число переводов строки, а не материал")
+        ok = False
+    else:
+        print(f"  ОК  одно-фактная пара → один исход на оба написания (код {next(iter(pair.values()))})")
+
+    # (3б) СМЕШАННЫЙ ЖУРНАЛ: не-JSON строки обязаны уцелеть ДОСЛОВНО, строки
+    #      JSON — быть переписаны структурно, число строк — сохраниться.
+    cases += 1
+    noise_a = 'Error from server (NotFound): pods "x" not found'
+    noise_b = "=== служб поднято: 17 ==="
+    root = make_root({"mix.log": f"{noise_a}\n{record}\n{noise_b}\n"})
+    r = call(root, [])
+    after = (root / "out" / "mix.log").read_text(encoding="utf-8")
+    if r.returncode != CLEAN:
+        print(f"  ПРОВАЛ смешанный журнал: код {r.returncode}, ждали {CLEAN}")
+        ok = False
+    elif "AAAABBBBCCCCDDDD" in after:
+        print("  ПРОВАЛ смешанный журнал: материал остался в файле")
+        ok = False
+    elif noise_a not in after or noise_b not in after or len(after.splitlines()) != 3:
+        print(f"  ПРОВАЛ смешанный журнал: не-JSON строки или их число не сохранены "
+              f"({len(after.splitlines())} строк)")
+        ok = False
+    else:
+        print("  ОК  смешанный журнал → запись изъята, чужие строки и их число целы")
+
+    # (3в) ПОВТОРНАЯ СВЕРКА ДЕРЖИТСЯ ЭТИМ СЛУЧАЕМ, А НЕ ВНИМАНИЕМ.
+    #
+    # Берётся КОПИЯ этого файла с выключенной формой изъятия и прогоняется она.
+    # Осмотр при этом не трогается, значит найти оставшийся материал может
+    # ТОЛЬКО чтение файла после записи. Снимут повторную сверку — случай станет
+    # «ЧИСТО».
+    for label, marker, replacement, payload in (
+        ("имя из словаря",
+         "            if norm_key(k) in AUTH_KEYS and _nonempty(v):\n"
+         "                counts[\"key\"] = counts.get(\"key\", 0) + 1",
+         "            if False:  # мутация самопроверки\n"
+         "                counts[\"key\"] = counts.get(\"key\", 0) + 1",
+         {"report.json": json.dumps({"headers": {"Authorization": "sk-AAAABBBBCCCCDDDD"}})}),
+    ):
+        cases += 1
+        root = make_root(payload)
+        r = call(root, [], prog=mutant(marker, replacement))
+        if r.returncode != FINDING:
+            print(f"  ПРОВАЛ повторная сверка ({label}): код {r.returncode}, ждали {FINDING} — "
+                  f"пропуск при записи не пойман, значит записанные байты никто не читал")
+            print("        " + (r.stdout + r.stderr).replace("\n", "\n        ")[:700])
+            ok = False
+        elif "после изъятия остался материал" not in r.stdout:
+            print(f"  ПРОВАЛ повторная сверка ({label}): находка не названа своим текстом")
+            ok = False
+        else:
+            print(f"  ОК  повторная сверка ({label}) → пропуск при записи пойман чтением файла")
+
+        # ЗАКОННЫЙ БЛИЗНЕЦ: та же подача НЕмутировавшей программе — чисто.
+        cases += 1
+        root = make_root(payload)
+        r = call(root, [])
+        if r.returncode != CLEAN:
+            print(f"  ПРОВАЛ близнец повторной сверки ({label}): код {r.returncode}, ждали {CLEAN}")
+            ok = False
+        else:
+            print(f"  ОК  близнец повторной сверки ({label}) → без мутации чисто")
 
     # (4) ТРЕТИЙ ИСХОД: ноль входов — не «чисто».
     cases += 1
