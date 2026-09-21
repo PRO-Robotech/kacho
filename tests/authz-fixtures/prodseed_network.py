@@ -3,8 +3,9 @@
 # SPDX-License-Identifier: BUSL-1.1
 """Production-mode SA-principal seed for the vpc `network` collection (#59).
 
-Proves the production-strict path at SUITE level: every authenticating token is a
-Hydra-signed RS256 ServiceAccount token (acr-exempt, api-audience whitelisted) —
+Proves the production-strict path at SUITE level: every authenticating token is an
+asymmetrically signed ServiceAccount token from our own issuer (acr-exempt,
+api-audience whitelisted) —
 NO HS256 dev-bypass. The org/geo structure is provisioned through the same
 production APIs (bootstrap-admin SA + iam internal upsert + geo internal catalog).
 

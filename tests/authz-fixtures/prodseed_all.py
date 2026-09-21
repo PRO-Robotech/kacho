@@ -6,7 +6,8 @@
 HISTORY, in the past tense on purpose. `setup.sh` USED TO seed a stand whose api-gateway
 ran `authn.mode=dev`: it forged HS256 Bearers from a signing literal shared with the tree
 and handed one to each matrix subject. Against PRODUCTION posture that was inert by
-design — the gateway accepts only Hydra-signed RS256, and iam's internal listener demands
+design — the gateway accepts only asymmetrically signed Bearers from a declared issuer,
+and iam's internal listener demands
 a verified client certificate — so it died on its third step (Account.Create → 401) and
 the whole regression suite proved nothing about the posture we actually ship.
 
@@ -23,11 +24,11 @@ This module is the production path setup.sh delegates to. Nothing is forged here
     reached by a direct mTLS gRPC dial to kaname :9091 with the dedicated
     bootstrap-operator client certificate (the mint has no REST route, and the caller's
     SPIFFE SAN IS the credential);
-  * every subject Bearer comes from iam `SAKeyService.Issue` — iam provisions the Hydra
-    OAuth client and returns an ES256 private key ONCE; we sign a private_key_jwt
-    `client_assertion` with it and run the standard OAuth2 client_credentials exchange.
-    That last hop is the one sanctioned direct-Hydra call (RFC 7521/7523 client flow);
-    issuance, client lifecycle and JWKS all stay behind the iam facade.
+  * every subject Bearer comes from iam `SAKeyService.Issue` — iam returns an ES256
+    private key ONCE; we sign a private_key_jwt `client_assertion` with it and run the
+    standard OAuth2 client_credentials exchange (RFC 7521/7523 client flow) against OUR
+    OWN token endpoint `POST /iam/v1/token` (mint_rs256.exchange_at_platform).
+    Issuance, client lifecycle and JWKS all stay behind the iam facade.
 
 WHY EVERY SUBJECT IS A ServiceAccount, not a User. Two independent product facts, both
 verified in the tree rather than assumed:
@@ -39,7 +40,7 @@ verified in the tree rather than assumed:
      against a catalog two retirements ago — recheck it rather than quoting it, the
      command is in prodseed_matrix.py). `StepUpGate.Check` exempts principals whose
      `kaname_principal_type` is exactly `service_account` and NEVER a user.
-A human User principal with an `acr` requires the interactive Kratos→Hydra login, which
+A human User principal with an `acr` requires the interactive login ceremony, which
 a machine harness cannot drive. So each matrix slot is backed by a ServiceAccount
 carrying the exact bindings that slot assumes — the FGA relation resolved is identical,
 only the principal class differs.
@@ -55,13 +56,8 @@ import base64
 import json
 import os
 import pathlib
-import shutil
-import socket
 import subprocess
 import sys
-import time
-import urllib.error
-import urllib.request
 
 HERE = pathlib.Path(__file__).resolve().parent
 REPO = HERE.parent.parent
@@ -74,19 +70,13 @@ sys.path.insert(0, str(HERE))
 ALL_SERVICES = ("iam", "vpc", "compute", "nlb", "storage", "registry", "geo", "api-gateway")
 
 NS = os.environ.get("KACHO_NAMESPACE", os.environ.get("SETUP_NS", "kacho"))
-HYDRA_PF_PORT = int(os.environ.get("HYDRA_PUBLIC_PORT", "14444"))
-HYDRA_SVC = os.environ.get("HYDRA_PUBLIC_SVC", "kacho-umbrella-hydra-public")
-# Бюджет прогрева проброса — ОДИН на оба пути (см. ensure_hydra_forward). Двадцать
-# секунд взяты от прежнего собственного пути (40 попыток × 0.5s), чтобы правка не
-# сужала того, что уже работало; наблюдавшемуся окну (единицы секунд) этого с запасом.
-HYDRA_WARMUP_BUDGET_S = float(os.environ.get("HYDRA_FORWARD_WARMUP_SECONDS", "20"))
 
 
 def log(msg: str) -> None:
     print(f"[prodseed] {msg}", file=sys.stderr, flush=True)
 
 
-# ── prerequisites: client certificates + the Hydra token-endpoint forward ────
+# ── prerequisites: client certificates ──────────────────────────────────────
 def ensure_certs() -> None:
     """Provision BOTH client identities the seed needs on the internal port.
 
@@ -139,98 +129,6 @@ def ensure_certs() -> None:
             f"указывающий на заранее извлечённый корень.")
     log(f"client certs ready: operator={m.BOOTSTRAP_MINT_MTLS_CERT} gateway={m.IAM_INTERNAL_MTLS_CERT} "
         f"iam-ca={m.IAM_SERVER_CA_FILE}")
-
-
-def _hydra_serves(port: int) -> bool:
-    """Does Hydra actually ANSWER on this port — not merely: is the port bound?
-
-    A `kubectl port-forward` left over from before a rollout keeps its listening socket
-    but its backend connection is gone: `connect()` succeeds and the first request dies
-    `[Errno 111] Connection refused`. A TCP-level probe calls that healthy and the seed
-    then fails 8 minutes later, mid-token-exchange, looking like an auth defect (observed
-    exactly once, right after the production helm upgrade re-rolled Hydra). Ask the
-    endpoint a question instead: the discovery document is unauthenticated and cheap.
-    """
-    try:
-        with urllib.request.urlopen(
-                f"http://127.0.0.1:{port}/.well-known/openid-configuration", timeout=3) as r:
-            return r.status == 200
-    except (urllib.error.URLError, OSError, ValueError):
-        return False
-
-
-def _wait_until_hydra_serves(port: int, budget_s: float) -> bool:
-    """Ask until Hydra answers on `port` or the budget runs out; the first ask is free.
-
-    A `kubectl port-forward` binds its listening socket at once and only THEN opens the
-    stream to the API server. Between the two the port is bound and answers nothing —
-    indistinguishable, at TCP level, from a forward whose backend is gone. Telling the two
-    apart is not possible in one shot; it is possible with time, and that is the whole
-    reason this budget exists.
-    """
-    deadline = time.monotonic() + budget_s
-    while True:
-        if _hydra_serves(port):
-            return True
-        if time.monotonic() >= deadline:
-            return False
-        time.sleep(0.5)
-
-
-def ensure_hydra_forward() -> subprocess.Popen | None:
-    """Make Hydra's public token endpoint reachable for the client_credentials exchange.
-
-    Hydra public is a ClusterIP Service with no ingress route on this stand, so the final
-    OAuth2 hop needs a forward. Idempotent: a forward that genuinely serves is reused and
-    None is returned, so the caller never kills a forward it does not own.
-
-    ОДИН БЮДЖЕТ ПРОГРЕВА НА ОБА ПУТИ — и это несущее свойство, а не аккуратность.
-    Прежняя редакция давала прогреться ТОЛЬКО пробросу, который открывала сама (сорок
-    попыток), а пробросу, открытому кем-то другим, — ОДНУ попытку с трёхсекундным сроком,
-    после чего объявляла его протухшим и роняла посев. Предмет у обеих проверок один
-    («отвечает ли Hydra на этом порту»), а бюджет различался по тому, КТО открыл проброс,
-    — величина, к длительности прогрева отношения не имеющая.
-
-    Цена измерена на вершине ствола 052ac97a39: харнесс (`deploy/scripts/newman-parallel.sh`)
-    открывает одиннадцать пробросов разом, спит четыре секунды и проверяет лишь то, что
-    ЖИВ НАШ ПРОЦЕСС, — то есть путь «проброс открыт не нами» и есть единственный, каким
-    ходит конвейер. Два шарда одного прогона спросили Hydra через 6.1s и 6.2s после
-    открытия проброса: первый не дождался за три секунды и убил прогон, второй получил
-    ответ за 0.3s. Один код, одно дерево, разный исход — это гонка, а не протухший проброс.
-    """
-    if _port_is_bound(HYDRA_PF_PORT):
-        if _wait_until_hydra_serves(HYDRA_PF_PORT, HYDRA_WARMUP_BUDGET_S):
-            log(f"hydra token endpoint answers on :{HYDRA_PF_PORT} (reusing existing forward)")
-            return None
-        # Диагностика называет ИЗМЕРЕННОЕ, а не предполагаемую причину. Прежняя
-        # утверждала «его под перекатили» — на том прогоне под Hydra был 95s от роду,
-        # `2/2 Running`, перезапусков ноль и отвечал 200 на пробы здоровья. Отказ,
-        # объясняющий себя причиной, которой не измерял, посылает читателя не туда.
-        raise SystemExit(
-            f"[prodseed] FATAL: :{HYDRA_PF_PORT} принимает соединения, но Hydra не ответила "
-            f"на нём за {HYDRA_WARMUP_BUDGET_S:g}s. Порт держит либо проброс, чей поток к "
-            f"API-серверу не встал, либо ЧУЖОЙ проброс/процесс — этого различия TCP не даёт, "
-            f"его даёт `ss -ltnp` на :{HYDRA_PF_PORT}. Посев, пущенный через такой сокет, "
-            f"умирает посреди обмена токенами и читается как дефект аутентификации. Бюджет "
-            f"переносится ручкой HYDRA_FORWARD_WARMUP_SECONDS.")
-    if not shutil.which("kubectl"):
-        raise SystemExit("[prodseed] FATAL: kubectl not found and Hydra public is not forwarded")
-    log(f"port-forward {HYDRA_SVC} :{HYDRA_PF_PORT} → 4444")
-    proc = subprocess.Popen(
-        ["kubectl", "-n", NS, "port-forward", f"svc/{HYDRA_SVC}", f"{HYDRA_PF_PORT}:4444"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    if _wait_until_hydra_serves(HYDRA_PF_PORT, HYDRA_WARMUP_BUDGET_S):
-        return proc
-    proc.terminate()
-    raise SystemExit(
-        f"[prodseed] FATAL: Hydra не ответила на :{HYDRA_PF_PORT} за "
-        f"{HYDRA_WARMUP_BUDGET_S:g}s после того, как проброс открыли мы сами.")
-
-
-def _port_is_bound(port: int) -> bool:
-    with socket.socket() as s:
-        s.settimeout(1.0)
-        return s.connect_ex(("127.0.0.1", port)) == 0
 
 
 # ── env patching ────────────────────────────────────────────────────────────
@@ -305,7 +203,7 @@ def patch(fixtures: dict, paths: list[pathlib.Path]) -> None:
 #
 # So it is MEASURED instead: git is asked about each path we actually wrote. That cannot
 # drift, and it keeps the real hazard armed — if any of these ever becomes tracked, the
-# next production seed writes a live Hydra-signed bearer into a file `git add -A` would
+# next production seed writes a live cluster bearer into a file `git add -A` would
 # commit, and this says so by name instead of by assumption.
 def env_disposition(paths: list[pathlib.Path], root: pathlib.Path | None = None) -> dict:
     """Ask git how it treats each path: 'tracked' | 'ignored' | 'untracked-not-ignored'.
@@ -341,7 +239,7 @@ def report_env_disposition(paths: list[pathlib.Path], root: pathlib.Path | None 
     log(f"env files written: {len(disp)}  (ignored by git: {len(ignored)}, "
         f"committable: {len(committable)}, unknown: {len(unknown)})")
     if committable:
-        log("WARNING: these now hold LIVE Hydra-signed bearers AND git would commit them:")
+        log("WARNING: these now hold LIVE cluster bearers AND git would commit them:")
         for k in committable:
             log(f"           {k}  [{disp[k]}]")
         log("         commit by explicit path only — never `git add -A`.")
@@ -622,59 +520,54 @@ def main() -> int:
     services = [s for s in args.services.replace(",", " ").split() if s]
 
     ensure_certs()
-    forward = ensure_hydra_forward()
-    try:
-        # Imported AFTER the prerequisites: prodseed_matrix mints the bootstrap Bearer at
-        # import time, which needs the operator certificate on disk and iam :9091 reachable.
-        import prodseed_matrix as pm
+    # Imported AFTER the prerequisites: prodseed_matrix mints the bootstrap Bearer at
+    # import time, which needs the operator certificate on disk and iam :9091 reachable.
+    import prodseed_matrix as pm
 
-        log("minting the matrix (iam MintBootstrapToken → SAKeyService.Issue → OAuth2)")
-        fixtures = pm.seed()
-        boot = fixtures["jwtBootstrap"]
-        out_dir = pathlib.Path(os.environ.get("OUT_DIR", str(HERE / "out")))
-        out_dir.mkdir(parents=True, exist_ok=True)
-        (out_dir / "authz-fixtures.json").write_text(json.dumps(fixtures, indent=2) + "\n")
-        # /tmp/matrix.json is the handoff the extension seeders (and prodrun.sh) read.
-        pathlib.Path("/tmp/matrix.json").write_text(json.dumps(fixtures))
-        log(f"matrix seeded: acctA={fixtures['accountAId']} projA1={fixtures['projectA1Id']}")
+    log("minting the matrix (iam MintBootstrapToken → SAKeyService.Issue → OAuth2)")
+    fixtures = pm.seed()
+    boot = fixtures["jwtBootstrap"]
+    out_dir = pathlib.Path(os.environ.get("OUT_DIR", str(HERE / "out")))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "authz-fixtures.json").write_text(json.dumps(fixtures, indent=2) + "\n")
+    # /tmp/matrix.json is the handoff the extension seeders (and prodrun.sh) read.
+    pathlib.Path("/tmp/matrix.json").write_text(json.dumps(fixtures))
+    log(f"matrix seeded: acctA={fixtures['accountAId']} projA1={fixtures['projectA1Id']}")
 
-        if args.no_patch_env:
-            print(json.dumps(fixtures))
-            return 0
-
-        # Shared keys first (every suite), then per-suite extensions on top.
-        patch(fixtures, [env_path(s) for s in services])
-
-        proj = fixtures["projectA1Id"]
-        proj_cross = fixtures["projectA2Id"]
-        nlb_ids = {}
-        if "nlb" in services:
-            nlb_ids = seed_nlb_resources(boot, fixtures["baseUrl"],
-                                         fixtures["internalBaseUrl"], proj, out_dir)
-        for svc in services:
-            if svc == "nlb":
-                # prodseed_nlb_ext.py exists for the STANDALONE prodrun.sh flow, which does
-                # not run seed-nlb-fixtures.sh. Here the shell seeder already ran, and it is
-                # the placement-coherent author: it seeds into the nlb-DEDICATED zone, while
-                # the extension seeds into zone `a`. Running both would hand the suite a set
-                # whose ids straddle two zones — the exact incoherence seed-nlb-fixtures.sh's
-                # own header documents. Dev parity too: setup.sh runs only the shell seeder.
-                extra = dict(nlb_ids)
-            else:
-                extra = run_ext(svc, proj, proj_cross)
-            if extra:
-                (out_dir / f"{svc}-fixtures.json").write_text(json.dumps(extra, indent=2) + "\n")
-                patch(extra, [env_path(svc)])
-        # In this posture the tokens written into the env files are genuine Hydra-signed
-        # cluster credentials with a real lifetime — not the well-known dev HMAC strings
-        # the dev path leaves behind. Whether that is a hazard depends on what version
-        # control does with those files, so it is MEASURED, never asserted.
-        report_env_disposition([env_path(s) for s in services])
-        log("DONE")
+    if args.no_patch_env:
+        print(json.dumps(fixtures))
         return 0
-    finally:
-        if forward is not None:
-            forward.terminate()
+
+    # Shared keys first (every suite), then per-suite extensions on top.
+    patch(fixtures, [env_path(s) for s in services])
+
+    proj = fixtures["projectA1Id"]
+    proj_cross = fixtures["projectA2Id"]
+    nlb_ids = {}
+    if "nlb" in services:
+        nlb_ids = seed_nlb_resources(boot, fixtures["baseUrl"],
+                                     fixtures["internalBaseUrl"], proj, out_dir)
+    for svc in services:
+        if svc == "nlb":
+            # prodseed_nlb_ext.py exists for the STANDALONE prodrun.sh flow, which does
+            # not run seed-nlb-fixtures.sh. Here the shell seeder already ran, and it is
+            # the placement-coherent author: it seeds into the nlb-DEDICATED zone, while
+            # the extension seeds into zone `a`. Running both would hand the suite a set
+            # whose ids straddle two zones — the exact incoherence seed-nlb-fixtures.sh's
+            # own header documents. Dev parity too: setup.sh runs only the shell seeder.
+            extra = dict(nlb_ids)
+        else:
+            extra = run_ext(svc, proj, proj_cross)
+        if extra:
+            (out_dir / f"{svc}-fixtures.json").write_text(json.dumps(extra, indent=2) + "\n")
+            patch(extra, [env_path(svc)])
+    # In this posture the tokens written into the env files are genuine cluster
+    # credentials minted by our own issuer, with a real lifetime — not the dev HMAC strings
+    # the dev path leaves behind. Whether that is a hazard depends on what version
+    # control does with those files, so it is MEASURED, never asserted.
+    report_env_disposition([env_path(s) for s in services])
+    log("DONE")
+    return 0
 
 
 if __name__ == "__main__":

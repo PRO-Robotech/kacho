@@ -4,10 +4,10 @@
 """Production-mode RS256 token minter for the newman authz seed (Phase C, #59).
 
 Production authN (api-gateway `authn.mode=production-strict`) accepts ONLY
-Hydra-signed RS256 Bearers with `aud=https://{API_DOMAIN}`. Symmetric HS256 Bearers
-are inert against it (401), which is why the harness has no minter of its own any
-more: this module produces real RS256 tokens through the SAME machinery the platform
-uses, no dev-bypass, no direct Hydra-admin:
+asymmetrically signed Bearers from a declared issuer, with `aud=https://{API_DOMAIN}`.
+Symmetric HS256 Bearers are inert against it (401), which is why the harness has no
+minter of its own any more: this module produces real tokens through the SAME
+machinery the platform uses, no dev-bypass, no admin side-door:
 
   1. bootstrap admin  — InternalBootstrapTokenService.MintBootstrapToken, called by
      a DIRECT mTLS gRPC dial to kaname :9091 (there is no REST route — see
