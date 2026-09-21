@@ -32,10 +32,15 @@ func TestResolvedHydraIntrospectionURL_UnsetIsNotDerived(t *testing.T) {
 		"an unset introspection endpoint must stay unset; deriving one from the issuer "+
 			"points the revocation check at an address that cannot serve it")
 
-	cfg.HydraIssuer = "https://hydra.api.kacho.cloud"
+	// ЗДЕСЬ СТОЯЛ СКАЛЯРНЫЙ ПИН `HydraIssuer`, и он снят вместе со своей ветвью.
+	// Утверждение от этого не ослабло, а стало БЕЗУСЛОВНЫМ: издателя край теперь
+	// знает ТОЛЬКО объявленной записью, и никакая объявленная запись адреса
+	// интроспекции не рождает — ни одна, а не «ни одна из заданных пином».
+	cfg.TokenIssuers = "https://hydra.api.kacho.cloud"
+	cfg.TokenIssuerKeySets = "https://hydra.api.kacho.cloud=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
 	require.Empty(t, cfg.ResolvedHydraIntrospectionURL(),
-		"an explicit issuer is still not an introspection endpoint — introspection lives "+
-			"on the admin API, on another Service and port")
+		"объявленный издатель — всё ещё не адрес интроспекции: интроспекция живёт на "+
+			"административном API, на другом Service и порту")
 }
 
 // The explicit value is returned verbatim.
@@ -43,7 +48,6 @@ func TestResolvedHydraIntrospectionURL_ExplicitIsVerbatim(t *testing.T) {
 	const want = "http://kacho-umbrella-hydra-admin.kacho.svc:4445/admin/oauth2/introspect"
 	cfg := config.Config{
 		APIDomain:             "api.kacho.cloud",
-		HydraIssuer:           "https://hydra.api.kacho.cloud",
 		HydraIntrospectionURL: want,
 	}
 	require.Equal(t, want, cfg.ResolvedHydraIntrospectionURL())
@@ -54,7 +58,10 @@ func TestResolvedHydraIntrospectionURL_ExplicitIsVerbatim(t *testing.T) {
 // one does something worse — it POSTs the kill to whatever answers on the public
 // issuer host, and then reports success or failure about the wrong server.
 func TestResolvedHydraAdminURL_UnsetIsNotDerived(t *testing.T) {
-	cfg := config.Config{APIDomain: "api.kacho.cloud", HydraIssuer: "https://hydra.api.kacho.cloud"}
+	cfg := config.Config{
+		APIDomain:    "api.kacho.cloud",
+		TokenIssuers: "https://hydra.api.kacho.cloud",
+	}
 	require.Empty(t, cfg.ResolvedHydraAdminURL(),
 		"an unset admin base must stay unset; the issuer host does not serve the admin API")
 }

@@ -350,8 +350,12 @@ type Config struct {
 	// --- AuthN core (DPoP / JWT / mTLS-bound / step-up / BCL) ---
 
 	// APIDomain — публичный домен kacho-api: из него строится канонический `htu`
-	// в проверке доказательства владения и выводится издатель прежнего
-	// поставщика (см. ResolvedHydraIssuer).
+	// в проверке доказательства владения.
+	//
+	// ИЗДАТЕЛЬ ОТСЮДА БОЛЬШЕ НЕ ВЫВОДИТСЯ. Пока выводился, край поднимался с
+	// записью приёма на хост `https://hydra.<домен>`, которого на стенде нет, и
+	// отвергал каждый токен при первом же запросе — без отказа старта. Адрес
+	// издателя объявляется записью (tokenissuers.go) и не выводится ниоткуда.
 	//
 	// АДРЕСАТ ТОКЕНА ОТСЮДА БОЛЬШЕ НЕ ВЫВОДИТСЯ (задача #2567). Умолчание у
 	// этого поля живёт, поэтому пустым оно не бывает никогда, — и пока адресат
@@ -393,13 +397,19 @@ type Config struct {
 	// старта (`validateProductionTokenAudience` в композиционном корне).
 	TokenAudience string `envconfig:"KACHO_API_GATEWAY_TOKEN_AUDIENCE" default:""`
 
-	// HydraIssuer — issuer URL Ory Hydra; используется как expected `iss` в
-	// access tokens + base URL для JWKS fetch (`{HydraIssuer}/.well-known/jwks.json`).
-	// Пустой → derived as `https://hydra.{APIDomain}`.
-	HydraIssuer string `envconfig:"KACHO_HYDRA_ISSUER" default:""`
-
-	// HydraJWKSURL — explicit JWKS endpoint; пустой → derived from HydraIssuer.
-	HydraJWKSURL string `envconfig:"KACHO_HYDRA_JWKS_URL" default:""`
+	// ЗДЕСЬ СТОЯЛИ ДВЕ РУЧКИ СКАЛЯРНОГО ПИНА — `KACHO_HYDRA_ISSUER` и
+	// `KACHO_HYDRA_JWKS_URL`. Они сняты вместе со своим единственным читателем:
+	// запасной ветвью разбора, строившей ОДНУ запись приёма, когда перечень
+	// издателей не объявлен, и ВЫВОДИВШЕЙ адрес из домена установки при пустом
+	// пине. Разбор см. tokenissuers.go — там же объяснено, почему «не объявлено»
+	// стало отказом в старте, а не сегодняшней посадкой.
+	//
+	// Пустыми они не оставлены намеренно: ручка, которую никто не читает,
+	// приглашает вернуть снятую ветвь обратно «чтобы ручка заработала».
+	//
+	// Кого это НЕ касается: `KACHO_HYDRA_INTROSPECTION_URL`, `KACHO_HYDRA_ADMIN_URL`
+	// и два якоря доверия ниже. У них свои читатели и свои живые полосы, и снятие
+	// каждой — отдельный предмет со своим предикатом.
 
 	// HydraIntrospectionURL — token-introspection endpoint on the identity
 	// provider's ADMIN API (`{admin}/admin/oauth2/introspect`). Never derived:
@@ -808,28 +818,6 @@ func (c Config) ExternalListenerClientAuth(base *tls.Config) (*tls.Config, error
 	base.ClientAuth = tls.VerifyClientCertIfGiven
 	base.ClientCAs = pool
 	return base, nil
-}
-
-// ResolvedHydraIssuer returns the Hydra issuer URL, deriving it from APIDomain
-// when explicitly unset. Trailing slash is stripped.
-func (c Config) ResolvedHydraIssuer() string {
-	iss := c.HydraIssuer
-	if iss == "" {
-		iss = "https://hydra." + c.APIDomain
-	}
-	for len(iss) > 0 && iss[len(iss)-1] == '/' {
-		iss = iss[:len(iss)-1]
-	}
-	return iss
-}
-
-// ResolvedHydraJWKSURL returns the JWKS endpoint, deriving from issuer when
-// not explicitly set.
-func (c Config) ResolvedHydraJWKSURL() string {
-	if c.HydraJWKSURL != "" {
-		return c.HydraJWKSURL
-	}
-	return c.ResolvedHydraIssuer() + "/.well-known/jwks.json"
 }
 
 // ResolvedHydraIntrospectionURL returns the token-introspection endpoint, or the
