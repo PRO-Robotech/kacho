@@ -18,9 +18,12 @@
 > стоит §3 и вся оценка обратной привязки: «`proto/` остаётся в `kacho`, а с ним
 > остаются и стабы». Что именно отменено и чем заменено — врезка в §3.
 >
-> Из этого дерева ИЗЪЯТЫ четыре семейства координат, и всякое их упоминание ниже
-> читается как координата **внутри модуля** `github.com/PRO-Robotech/kaname`, а не
-> этого репозитория:
+> Из этого дерева ИЗЪЯТЫ восемь семейств координат. Таблица ниже — **ключ резолва
+> всего документа**: всякое упоминание такой координаты ниже читается как координата
+> внутри названного модуля, а не этого репозитория, — кроме последней строки, у
+> которой сегодняшнего дома нет вовсе, и это сказано ею прямо. Проверено 2026-09-20 на
+> `f445aaaa` — каждая строка правой колонки резолвится командой, приведённой под
+> таблицей:
 >
 > | координата в тексте ниже | где она теперь |
 > |---|---|
@@ -28,6 +31,31 @@
 > | `pkg/api/kaname/**` | `pkg/api/kaname/**` того же модуля |
 > | `pkg/ownerregister` | `pkg/ownerregister` того же модуля |
 > | `pkg/subjectchange` | `pkg/subjectchange` того же модуля |
+> | `services/iam/**` — служба целиком | **корень** того же модуля: `services/iam/internal/<X>` → `internal/<X>`, `services/iam/tools/<X>` → `tools/<X>`, `services/iam/cmd/<X>` → `cmd/<X>` |
+> | `internal/authzplan`, `tools/authzformbench` | `internal/authzplan` и `tools/authzformbench` того же модуля — уехали вместе со службой (§6, шаг 3 исполнен) |
+> | `internal/pgtest`, `internal/gitenv`, `internal/treecorpus`, `internal/dropguard`, `internal/listcursorplan`, `internal/migratorrun`, `internal/nameformdb`, `tools/listfiltergate` | одноимённый каталог в **корне** модуля `github.com/PRO-Robotech/corelib` (приставка корня снята); `internal/dropguardtest` → `dropguard/dropguardtest` |
+> | `pkg/quota/quotaiam` | **НИГДЕ.** Клиент к авторитету величин снят целиком (kacho#2648, `ca7cc5039f8`); каталога нет ни в этом дереве, ни в `kaname`, ни в `corelib`. Это единственное семейство, у которого нет сегодняшнего дома |
+>
+> Команда ключа (единица счёта — **упоминание-координата**: код-спан markdown,
+> синтаксически являющийся путём, чей первый сегмент — отслеживаемый каталог
+> верхнего уровня этого дерева):
+>
+> ```sh
+> # путь ищется в этом дереве, затем в модуле ключа с объявленным сдвигом приставки
+> git ls-files --error-unmatch <путь>                       # здесь
+> git -C <клон kaname>  ls-files --error-unmatch <путь без services/iam/>
+> git -C <клон corelib> ls-files --error-unmatch <путь без internal/ или tools/>
+> ```
+>
+> Исход предиката на ЭТОЙ редакции документа против дерева `f445aaaa`:
+> упоминаний-координат **167**, из них резолвится в этом дереве **34**, в модуле по
+> ключу — **120**, не резолвится нигде — **13**. Тринадцать последних названы
+> поимённо, и каждое умышленно: `pkg/quota/quotaiam` (3 упоминания) и
+> `pkg/quota/quotaiam/delta.go` (4) — снятое семейство из таблицы выше, строка так
+> и говорит; `pkg/api/kacho/cloud/api` (2) — координата ДО #2395, названная в §1.3
+> своей эпохой; `pkg/api/.../iam/v1` (2) и `services/iam/internal/...` (2) — не
+> координаты, а сокращения с многоточием: первое внутри цитаты отменённой редакции,
+> второе внутри сообщения компилятора Go.
 >
 > **Провод не изменился:** имя proto-пакета, путь файла внутри корня контрактов,
 > номера полей и расширений, шаблоны REST — те же; изменилась ровно строка
@@ -334,23 +362,40 @@ awk -F'\t' '$1 ~ /^pkg\// && $2 ~ /kacho\/services\//' <таблица разб�
 Шире: **ни один** файл `pkg/` не импортирует **ни один** `services/*`. Цикла на уровне
 кода нет by construction.
 
-**Стабами iam типизированы 18 файлов `pkg/`** — 10 прод и 8 проб. Таблица ниже —
-состояние на ревизию переписи; три её строки (`pkg/ownerregister/*`,
-`pkg/subjectchange/*`) координатами этого дерева быть перестали, а десять лежат в
-`corelib/`. Сегодняшние три файла названы замером выше:
+**Стабами iam типизированы 18 файлов `pkg/`** — 10 прод и 8 проб. Это запись СВОЕЙ
+ревизии, и ни одна её строка не читается как координата сегодняшнего дерева сама по
+себе: третья колонка называет дом каждой, проверенный 2026-09-20 на `f445aaaa`
+командой `git ls-files --error-unmatch` в соответствующем клоне. Состав восемнадцати
+сегодня — **10** строк в модуле `github.com/PRO-Robotech/corelib`, **5** уехали со
+службой в `github.com/PRO-Robotech/kaname`, **2** остались в этом дереве (одна из них
+под другим именем), **1** снята целиком и не существует нигде:
 
-| прод | пробы |
-|---|---|
-| `corelib/api/kacho/cloud/quota/v1/quota.pb.go` | `corelib/listnarrow/narrower_cache_stats_test.go` |
-| `corelib/listnarrow/client.go` | `corelib/listnarrow/narrower_contract_test.go` |
-| `corelib/listnarrow/narrower.go` | `corelib/listnarrow/page_bench_test.go` |
-| `corelib/listnarrow/narrowtest/narrowtest.go` | `pkg/ownerregister/ownerregister_test.go` |
-| `corelib/listnarrow/object.go` | `corelib/servicehost/wiring_test.go` |
-| `pkg/ownerregister/ownerregister.go` | `pkg/subjectchange/readerpositionlost_test.go` |
-| `pkg/quota/quotaiam/delta.go` | `pkg/subjectchange/reader_test.go` |
-| `pkg/quota/quotapb/convert.go` | `corelib/subscription/revocation_integration_test.go` |
-| `corelib/servicehost/serve.go` | |
-| `pkg/subjectchange/reader.go` | |
+| строка переписи | вид | где она сегодня |
+|---|---|---|
+| `corelib/api/kacho/cloud/quota/v1/quota.pb.go` | прод | модуль `corelib`, `api/corelib/quota/v1/quota.pb.go` — форма учёта переименована в `corelib.quota.v1` (corelib#6) |
+| `corelib/listnarrow/client.go` | прод | **в этом дереве**: `pkg/listnarrow/narrowiam/client.go`. В `corelib` такого файла нет и не было: приставку `corelib/` строка получила общей заменой при выносе фундамента (`0cc1cd54c38`, #2598), а сам файл переименован ещё раньше (#2118) |
+| `corelib/listnarrow/narrower.go` | прод | модуль `corelib`, `listnarrow/narrower.go` |
+| `corelib/listnarrow/narrowtest/narrowtest.go` | прод | модуль `corelib`, `listnarrow/narrowtest/narrowtest.go` |
+| `corelib/listnarrow/object.go` | прод | модуль `corelib`, `listnarrow/object.go` |
+| `corelib/servicehost/serve.go` | прод | модуль `corelib`, `servicehost/serve.go` |
+| `pkg/ownerregister/ownerregister.go` | прод | модуль `kaname`, `pkg/ownerregister/ownerregister.go` — уехал со службой (`546d5b08d7a`, #2637) |
+| `pkg/subjectchange/reader.go` | прод | модуль `kaname`, `pkg/subjectchange/reader.go` — тот же переезд |
+| `pkg/quota/quotapb/convert.go` | прод | **в этом дереве**, по тому же пути |
+| `pkg/quota/quotaiam/delta.go` | прод | **НИГДЕ.** Клиент к авторитету величин снят целиком (`ca7cc5039f8`, #2648): авторитет выпилен из службы доступа, производителя не осталось ни в одном дереве. Файла нет ни здесь, ни в `kaname`, ни в `corelib` |
+| `corelib/listnarrow/narrower_cache_stats_test.go` | проба | модуль `corelib`, `listnarrow/narrower_cache_stats_test.go` |
+| `corelib/listnarrow/narrower_contract_test.go` | проба | модуль `corelib`, `listnarrow/narrower_contract_test.go` |
+| `corelib/listnarrow/page_bench_test.go` | проба | модуль `corelib`, `listnarrow/page_bench_test.go` |
+| `corelib/servicehost/wiring_test.go` | проба | модуль `corelib`, `servicehost/wiring_test.go` |
+| `corelib/subscription/revocation_integration_test.go` | проба | модуль `corelib`, `subscription/revocation_integration_test.go` |
+| `pkg/ownerregister/ownerregister_test.go` | проба | модуль `kaname`, `pkg/ownerregister/ownerregister_test.go` |
+| `pkg/subjectchange/reader_test.go` | проба | модуль `kaname`, `pkg/subjectchange/reader_test.go` |
+| `pkg/subjectchange/readerpositionlost_test.go` | проба | модуль `kaname`, `pkg/subjectchange/readerpositionlost_test.go` |
+
+Строка `corelib/listnarrow/client.go` — след того же класса, который документ называет
+в §5 и §7: **написание, наведённое переименованием поверх текста, который никто не
+перезапускал.** Замена приставки прошла по таблице целиком, включая строку, чей файл
+в фундамент не уезжал; отличить переехавшее от переименованного заменой нельзя, и
+поэтому третья колонка выше заведена не пересказом, а проверкой каждой строки.
 
 > [!warning] ЗДЕСЬ СТОЯЛ ОТМЕНЁННЫЙ ВЫВОД, И ОТМЕНЁН ОН ЦЕЛИКОМ
 >
@@ -379,19 +424,28 @@ awk -F'\t' '$1 ~ /^pkg\// && $2 ~ /kacho\/services\//' <таблица разб�
 несущий импорт из модуля службы**:
 
 ```sh
-git grep -lI '"github.com/PRO-Robotech/kaname/' -- 'pkg/**/*.go'   # → 3 файла
+git grep -lI '"github.com/PRO-Robotech/kaname/' -- 'pkg/**/*.go'   # → 2 файла (f445aaaa, 2026-09-20)
 #   pkg/authz/authziam/check.go
 #   pkg/listnarrow/narrowiam/client.go
-#   pkg/quota/quotaiam/delta.go
 git grep -hoI '"github.com/PRO-Robotech/kaname/[a-z0-9/._-]*"' -- 'pkg/**/*.go' | sort -u
 #   → один путь: "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 ```
 
-Было 18 файлов `pkg/`, стало 3, и **сокращение не означает работы по их снятию**: из
-восемнадцати десять лежали в `corelib/`, уехавшем отдельным модулем ранее, а три — в
-самих `pkg/ownerregister` и `pkg/subjectchange`, которые уехали ВМЕСТЕ со службой и
-потому перестали быть файлами этого дерева. Единица счёта у «18» и у «3» одна, эпохи
-разные; ни одно из чисел не отменяет другого.
+> **Здесь стояло «3 файла», третьим — `pkg/quota/quotaiam/delta.go`, и число СНЯТО
+> перемером.** Файл убран вместе со всем клиентом к авторитету величин
+> (`ca7cc5039f8`, #2648) после того, как замер был записан. Единица счёта прежняя —
+> отслеживаемый файл `.go` под `pkg/`, несущий импорт из модуля службы; изменилось
+> дерево, а не мерка.
+
+Было 18 файлов `pkg/`, стало 2, и **сокращение не означает работы по их снятию**:
+десять из восемнадцати лежат в модуле `github.com/PRO-Robotech/corelib`, уехавшем
+ранее, пять — в `pkg/ownerregister` и `pkg/subjectchange` модуля службы, один
+(`pkg/quota/quotaiam/delta.go`) снят целиком вместе со своим предметом, и два
+остались здесь — таблица выше называет каждую строку поимённо. Сегодняшние два файла
+и восемнадцать прежних пересекаются ровно одним (`pkg/listnarrow/narrowiam/client.go`,
+он же `corelib/listnarrow/client.go` в записи переписи): «18» считало файлы,
+типизированные стабами службы, «2» — файлы, несущие импорт её модуля. Эпохи и отборы
+разные; ни одно из чисел не отменяет другого и вычитать их друг из друга нельзя.
 
 **Взаимности нет, и это проверяется предикатом, а не глазом.** Ребро
 `kacho → kaname` объявлено (`go.mod`); обратного `require` быть не должно, иначе
@@ -399,9 +453,23 @@ git grep -hoI '"github.com/PRO-Robotech/kaname/[a-z0-9/._-]*"' -- 'pkg/**/*.go' 
 `scripts/release/assert-no-module-reciprocity.sh`; на одном дереве он даёт третий
 исход («вердикта нет», код 3), потому что объявление здесь одно.
 
-`pkg/quota/quotaiam` (имя обманчиво) — клиентская сторона для разговора **с** iam:
-его импортируют пять файлов, и все пять — `limit_client.go` у compute, nlb, registry,
-storage, vpc. iam его не импортирует. Он остаётся в `kacho`.
+> **ЗДЕСЬ СТОЯЛО УТВЕРЖДЕНИЕ О `pkg/quota/quotaiam`, И ОНО СНЯТО ЦЕЛИКОМ.**
+>
+> Стояло: «клиентская сторона для разговора **с** iam: его импортируют пять файлов,
+> и все пять — `limit_client.go` у compute, nlb, registry, storage, vpc. iam его не
+> импортирует. Он остаётся в `kacho`».
+>
+> Последнее предложение перестало быть верным: пакет снят целиком (`ca7cc5039f8`,
+> #2648) — модуль квотирования выпилен из службы доступа, производителя величин не
+> осталось ни в одном дереве, и клиент к снятому контракту прибивал платформу к той
+> версии модуля службы, где символ ещё лежит. Вместе с пакетом ушли и пять его
+> потребителей: `git ls-files | grep -c limit_client` → 0 на `f445aaaa`.
+>
+> Сегодня `quotaiam` не существует ни здесь, ни в `kaname`, ни в `corelib`; в дереве
+> от него осталась одна запись — объяснение снятия в
+> `internal/repohygiene/foundationboundary.go`, и она говорит то же самое. Единственное
+> живое упоминание приставки в карте путей снято тем же заходом: объявление,
+> пережившее свой каталог, раздаёт класс, а проверить его нечем.
 
 ---
 
@@ -572,8 +640,14 @@ geo 3 · subscription 1 · operation 1 — сумма 44. Против преж�
 
 > [!important] ШАГИ 1, 2, 3 и 5 УЖЕ ИСПОЛНЕНЫ — таблица ниже сохранена как план своей ревизии
 > Записанные в ней предикаты снятия сегодня выполнены, а координаты «откуда переезжать»
-> в шагах 1–3 в корне дерева больше не резолвятся: `internal/pgtest` живёт в `corelib/pgtest`,
-> `internal/authzplan` и `tools/authzformbench` — в `services/iam/`.
+> в шагах 1–3 в корне дерева больше не резолвятся. Сегодняшние их дома — по ключу
+> резолва во вступлении: `internal/pgtest` и остальные общеплатформенные живут
+> одноимёнными каталогами в **корне** модуля `github.com/PRO-Robotech/corelib`
+> (`pgtest/`, `migratorrun/`, `listcursorplan/`, `nameformdb/`, `dropguard/`,
+> `listfiltergate/`, а также `gitenv/` и `treecorpus/`), а `internal/authzplan` и
+> `tools/authzformbench` уехали со службой и лежат в `internal/authzplan` и
+> `tools/authzformbench` модуля `github.com/PRO-Robotech/kaname`. Координата
+> `services/iam/` в тексте шага 3 читается как **корень** этого модуля.
 >
 > ```sh
 > git ls-files internal/pgtest internal/migratorrun internal/listcursorplan \
@@ -658,8 +732,10 @@ awk -F'\t' -v m=$M '$1 ~ /^pkg\// && index($2,m"/services/")==1' imports.tsv    
 #    $M (модуль этого дерева) даёт сегодня 0. Модуль службы подставляется свой:
 awk -F'\t' -v k=github.com/PRO-Robotech/kaname \
   '$1 ~ /^pkg\// && $2==k"/pkg/api/kaname/cloud/iam/v1" {print $1}' imports.tsv | sort -u
-#    → 3 файла (проверка без таблицы разбора:
+#    → 2 файла на f445aaaa (проверка без таблицы разбора:
 #      git grep -lI '"github.com/PRO-Robotech/kaname/' -- 'pkg/**/*.go')
+#      ЗДЕСЬ СТОЯЛО 3: третьим был pkg/quota/quotaiam/delta.go, снятый вместе со
+#      всем клиентом к авторитету величин (#2648). Единица счёта не менялась.
 
 # 6. цена для соседей
 awk -F'\t' -v m=$M '$1 !~ /^services\/iam\// && index($2,m"/services/iam/")==1' imports.tsv   # пусто

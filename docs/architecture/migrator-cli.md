@@ -162,7 +162,7 @@ git show <ревизия-пина>:services/nlb/Dockerfile | grep -oE '/usr/loca
 | требование | артефакт |
 |---|---|
 | оба порядка флага, отказы по имени, приоритет DSN, разбор версии | пробы `corelib/migratorcli` |
-| тексты отказа делегирующей формы равны общим; перечень команд; пустая строка — отказ | `services/{vpc,iam,nlb}/cmd/migrator/main_test.go` |
+| тексты отказа делегирующей формы равны общим; перечень команд; пустая строка — отказ | `services/{vpc,nlb}/cmd/migrator/main_test.go` — третья копия уехала со службой доступа (kacho#2616) и живёт в `cmd/migrator/main_test.go` модуля `github.com/PRO-Robotech/kaname` |
 | общая переменная адреса базы читается седьмым сервисом | `services/nlb/cmd/migrator/main_test.go` |
 | имя бинаря одно во всех местах, где называется, включая то, чем инструмент зовёт себя сам | `internal/repohygiene` `TestMigratorBinaryIsNamedTheSameEverywhere` |
 | третьего разбора аргументов не появится; `Args` решено; корень отвечает на пустую строку | `internal/repohygiene` `TestMigratorArgumentParsingIsOneOfTwoAndDecidesExtraArguments` |

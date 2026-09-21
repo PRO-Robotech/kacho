@@ -51,7 +51,7 @@
 
 `Config.Narrower` в `corelib/subscription/server.go` объявлен как
 `*listnarrow.Narrower`, а владелец прав намеренно держит свою реализацию
-(`services/iam/internal/authzfilter`): у него видимость строки определяется
+(`internal/authzfilter` модуля `github.com/PRO-Robotech/kaname`): у него видимость строки определяется
 НАБОРОМ отношений, а не одним действием. Решение записано с обеих сторон и
 держится гейтом `TestListNarrowSecondImplementationKeepsItsReason`.
 
