@@ -668,6 +668,8 @@ func reachingTestsIn(t *testing.T, src string) int {
 // отношению к самой записи: существование каталога и файла-держателя в индексе git.
 func TestSanctionedProvidersStillExist(t *testing.T) {
 	t.Parallel()
+	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
+	requireTreeWalkOver(t, repoRoot(t), treeWalkKeepAll, "git ls-tree -r HEAD, все пути", "записей санкционированных поставщиков", len(sanctionedProviders))
 	root := repoRoot(t)
 	// --others --exclude-standard добавляет к индексу файлы, ЕЩЁ не добавленные, но
 	// которые git добавит (не игнорируемые). Без них тест падал бы на каждом честном
@@ -726,6 +728,8 @@ func TestSanctionedProvidersStillExist(t *testing.T) {
 // потеряет предмет.
 func TestScannerClassifiesKnownStartersInTheTree(t *testing.T) {
 	t.Parallel()
+	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepGo, "git ls-tree -r HEAD -- *.go", "файлов Go")
 	sc := scanTree(t, repoRoot(t))
 
 	must := []funcKey{

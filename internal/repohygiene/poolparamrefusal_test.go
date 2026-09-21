@@ -70,6 +70,8 @@ func poolParamTreeSources(t *testing.T) map[string]string {
 // TestPoolParamPredicateHasASingleHome — предикат пулового ключа один на дерево.
 func TestPoolParamPredicateHasASingleHome(t *testing.T) {
 	t.Parallel()
+	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepProdGo, "git ls-tree -r HEAD -- *.go, непроверочные, вне игнорирования", "непроверочных файлов Go")
 	findings, census := FindPoolParamSubstringChecks(poolParamTreeSources(t))
 	if census.Files == 0 {
 		t.Fatal("разобрано ноль файлов Go — гейт беспредметен, «ноль находок» " +

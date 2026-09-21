@@ -372,6 +372,8 @@ func sortedTagSet(m map[string]struct{}) []string {
 // и ломает сборку пакета.
 func TestExcludingBuildTagLeavesThePackageBuildable(t *testing.T) {
 	t.Parallel()
+	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepGo, "git ls-tree -r HEAD -- *.go", "файлов Go")
 	root := repoRoot(t)
 
 	findings, census, err := auditExcludingBuildTags(root)

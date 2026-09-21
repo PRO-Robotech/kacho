@@ -156,6 +156,8 @@ func TestListNarrowingHasExactlyOneImplementation(t *testing.T) {
 // TestListNarrowerExceptionsHaveSubject — исключение живёт, пока у него есть предмет.
 func TestListNarrowerExceptionsHaveSubject(t *testing.T) {
 	t.Parallel()
+	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
+	requireTreeWalkOver(t, repoRoot(t), treeWalkKeepProdGo, "git ls-tree -r HEAD -- *.go, непроверочные, вне игнорирования", "записей перечня послаблений", len(narrowerConstructionExceptions))
 	root := repoRoot(t)
 	for rel, why := range narrowerConstructionExceptions {
 		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {

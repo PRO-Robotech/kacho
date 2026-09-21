@@ -100,6 +100,8 @@ var pendingHandoff = []string{}
 // прогоне не стоит: строка либо даёт находку, либо нет.
 func TestNoInertGosecSuppressions(t *testing.T) {
 	t.Parallel()
+	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepGo, "git ls-tree -r HEAD -- *.go", "файлов Go")
 	root := repoRoot(t)
 
 	var hits []string
@@ -153,6 +155,8 @@ func TestNoInertGosecSuppressions(t *testing.T) {
 // нужно».
 func TestPendingHandoffExemptionsStillHaveSubject(t *testing.T) {
 	t.Parallel()
+	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
+	requireTreeWalkOver(t, repoRoot(t), treeWalkKeepGo, "git ls-tree -r HEAD -- *.go", "записей отложенной передачи", len(pendingHandoff))
 	root := repoRoot(t)
 
 	// «Ноль находок» обязано быть отличимо от «ноль прочитанного»: на пустой

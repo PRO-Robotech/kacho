@@ -189,6 +189,8 @@ func TestNoBlindPrincipalAbsenceAssertions(t *testing.T) {
 // исключение здесь считается ошибкой, а не «просто больше не нужно».
 func TestContractOwnerExemptionsStillHaveSubject(t *testing.T) {
 	t.Parallel()
+	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
+	requireTreeWalkOver(t, repoRoot(t), treeWalkKeepProdGo, "git ls-tree -r HEAD -- *.go, непроверочные, вне игнорирования", "записей перечня владельцев контракта", len(contractOwners))
 	root := repoRoot(t)
 
 	for _, rel := range contractOwners {

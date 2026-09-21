@@ -258,6 +258,8 @@ func TestEveryFoundationCatalogDeclaresItsClass(t *testing.T) {
 // не различает сделанное и перенесённое (приёмка §7.4).
 func TestNoModuleEdgeRunsAgainstTheTargetLayout(t *testing.T) {
 	t.Parallel()
+	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepProdGo, "git ls-tree -r HEAD -- *.go, непроверочные, вне игнорирования", "непроверочных файлов Go")
 	root := repoRoot(t)
 	pkgs, files := readTreePackages(t, root)
 

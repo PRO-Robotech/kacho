@@ -265,6 +265,8 @@ func stripLineComments(path, body string) string {
 // TestNoCheckReadsTheRetiredValidationFamily — полоса Л-04.
 func TestNoCheckReadsTheRetiredValidationFamily(t *testing.T) {
 	t.Parallel()
+	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepAll, "git ls-tree -r HEAD, все пути", "отслеживаемых путей")
 	root := repoRoot(t)
 
 	// ОХВАТ ВЫВОДИТСЯ ИЗ ИНДЕКСА ЦЕЛИКОМ, а не выписывается перечнем каталогов.

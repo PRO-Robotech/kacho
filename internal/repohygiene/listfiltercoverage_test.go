@@ -134,6 +134,8 @@ func hasAnalyser(root, svc string) bool {
 // impossible. iam and geo sat in it for the whole life of the class.
 func TestCoverage_EveryServiceHasAListFilterAnalyser(t *testing.T) {
 	t.Parallel()
+	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepProdGo, "git ls-tree -r HEAD -- *.go, непроверочные, вне игнорирования", "непроверочных файлов Go")
 	root := repoRootForCoverage(t)
 	svcs := servicesFromGit(t, root)
 
@@ -173,6 +175,8 @@ func TestCoverage_EveryServiceHasAListFilterAnalyser(t *testing.T) {
 // green.
 func TestCoverage_PredicateFindsAMissingAnalyser(t *testing.T) {
 	t.Parallel()
+	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepProdGo, "git ls-tree -r HEAD -- *.go, непроверочные, вне игнорирования", "непроверочных файлов Go")
 	root := repoRootForCoverage(t)
 
 	const absent = "no-such-service-listfiltergate-control"
@@ -200,6 +204,8 @@ func TestCoverage_PredicateFindsAMissingAnalyser(t *testing.T) {
 // therefore read out of the workflow and compared against the tree.
 func TestCoverage_CIRunsEveryAnalyser(t *testing.T) {
 	t.Parallel()
+	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepAll, "git ls-tree -r HEAD, все пути", "отслеживаемых путей")
 	root := repoRootForCoverage(t)
 	svcs := servicesFromGit(t, root)
 
@@ -315,6 +321,8 @@ func ciAuditedServices(t *testing.T, workflow string) []string {
 // a pointless analyser.
 func TestCoverage_PremiseEveryServiceHasAListingSurface(t *testing.T) {
 	t.Parallel()
+	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepProdGo, "git ls-tree -r HEAD -- *.go, непроверочные, вне игнорирования", "непроверочных файлов Go")
 	root := repoRootForCoverage(t)
 	svcs := servicesFromGit(t, root)
 

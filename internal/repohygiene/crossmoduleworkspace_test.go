@@ -237,6 +237,8 @@ func checkCrossModuleWorkspace(modules []string, exampleSrc string, examplePrese
 // TestCrossModuleWorkspaceExampleNamesEveryModule — гейт на дереве.
 func TestCrossModuleWorkspaceExampleNamesEveryModule(t *testing.T) {
 	t.Parallel()
+	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepAll, "git ls-tree -r HEAD, все пути", "отслеживаемых путей")
 	root := repoRoot(t)
 	tree := newTrackedTree(t, root)
 
@@ -313,6 +315,8 @@ func TestCrossModuleWorkspaceExampleNamesEveryModule(t *testing.T) {
 // нельзя было бы взять копией — его бы просто не было в свежем клоне.
 func TestCrossModuleWorkspaceItselfStaysOutOfTheIndex(t *testing.T) {
 	t.Parallel()
+	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepAll, "git ls-tree -r HEAD, все пути", "отслеживаемых путей")
 	root := repoRoot(t)
 	tree := newTrackedTree(t, root)
 

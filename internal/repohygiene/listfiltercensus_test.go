@@ -154,6 +154,8 @@ func analyserListingCount(t *testing.T, root, svc string) int {
 // count against a sweep of the committed tree.
 func TestCensus_EveryTransportListingIsSeenByItsAnalyser(t *testing.T) {
 	t.Parallel()
+	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepProdGo, "git ls-tree -r HEAD -- *.go, непроверочные, вне игнорирования", "непроверочных файлов Go")
 	if testing.Short() {
 		t.Skip("runs each service's analyser; skipped in -short")
 	}
@@ -192,6 +194,8 @@ func TestCensus_EveryTransportListingIsSeenByItsAnalyser(t *testing.T) {
 // methods that are certainly there.
 func TestCensus_SweepFindsSomething(t *testing.T) {
 	t.Parallel()
+	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepProdGo, "git ls-tree -r HEAD -- *.go, непроверочные, вне игнорирования", "непроверочных файлов Go")
 	root := repoRootForCoverage(t)
 
 	// PREMISE ANCHOR: the service with the widest listing surface in the tree. A
@@ -244,6 +248,8 @@ func TestCensus_SweepFindsSomething(t *testing.T) {
 // the step between jobs does not silently unwire it.
 func TestCIRunsThisCensus(t *testing.T) {
 	t.Parallel()
+	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepAll, "git ls-tree -r HEAD, все пути", "отслеживаемых путей")
 	b, err := os.ReadFile(filepath.Join(repoRootForCoverage(t), ".github", "workflows", "ci.yaml"))
 	if err != nil {
 		t.Fatal(err)
