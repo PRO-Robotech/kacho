@@ -977,9 +977,16 @@ func extractBearer(ctx context.Context) string {
 //	tryBasicCredential  — базовый секрет с нашей маркой в `Authorization`;
 //	tryHydraJWT         — подписанный предъявитель в `Authorization`.
 //
-// Две сессии — читатели ОДНОГО носителя по посадке: под `own` личность выставляет
-// наша, под `external` — поставщика; в процессе провязан один из них, обе
-// терминальны и выставляют личность одними именами.
+// Две сессии — читатели ДВУХ РАЗНЫХ носителей, и провязаны они МНОЖЕСТВОМ
+// (`config.SessionCarrierSet`), а не посадкой: состояний три — только чужой ·
+// ОБА · только наш. Обе терминальны и выставляют личность одними именами.
+//
+// СТАРШИНСТВО МЕЖДУ НИМИ — РЕШЕНИЕ, А НЕ ПОРЯДОК СТРОК. При двух предъявленных
+// носителях действует НАША личность, и чужой читатель не спрашивается вовсе;
+// наша полоса терминальна на каждом своём исходе, поэтому мёртвое наше печенье
+// не откатывает запрос на чужую полосу — иначе полосу выбирал бы предъявитель.
+// Доводы — в шапке `auth_own_session.go`, наблюдение — в
+// `session_carrier_precedence_test.go`.
 //
 // Полоса базового секрета стоит ПЕРЕД полосой подписанного и терминальна: иначе
 // строка с нашей маркой ушла бы дальше как «удостоверения нет вовсе». Тот же
@@ -1010,9 +1017,9 @@ func (a *AuthInterceptor) HTTP(next http.Handler) http.Handler {
 		// резолвил», и отвергнуть сессию ей было нечем — оттого наш отзыв на ней
 		// и не действовал (auth_session_cutoff.go).
 		//
-		// Читателей носителя ДВА по посадке и ОДИН в процессе (Ф3 Р15): под `own`
-		// — наша сессия, под `external` — сессия поставщика. Оба терминальны и
-		// оба выставляют личность одними именами.
+		// Читателей носителя ДВА, и в переходном состоянии оба живы. Порядок
+		// здесь — НЕ «кого спросили первым»: наша полоса терминальна на каждом
+		// исходе, поэтому чужая достаётся ровно запросу без нашего носителя.
 		r, injected, handled := a.tryOwnSession(w, r)
 		if handled {
 			return
@@ -1155,10 +1162,10 @@ func (a *AuthInterceptor) tryKratosSession(w http.ResponseWriter, r *http.Reques
 	if a.kratos == nil {
 		return false, false
 	}
-	cookieHdr := r.Header.Get("Cookie")
-	if !strings.Contains(cookieHdr, providerSessionCarrierName) {
+	if !providerSessionCarrierPresented(r) {
 		return false, false
 	}
+	cookieHdr := r.Header.Get("Cookie")
 	res := a.kratos.Whoami(r.Context(), cookieHdr)
 	if !res.Active || res.IdentityID == "" {
 		return false, false

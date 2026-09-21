@@ -47,7 +47,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -66,9 +65,10 @@ type SessionIdentityHandler struct {
 	adminCheck    AdminChecker    // optional admin-tuple lookup
 	// sessionCutoff — НАШ авторитет отзыва. См. WithSessionCutoff.
 	sessionCutoff SessionCutoffReader
-	// humanSession — читатель НАШЕЙ сессии (посадка `own`, Ф3 Р7). Провязывается
-	// ВМЕСТО `kratos`, никогда рядом с ним: композиционный корень выбирает
-	// читателя по посадке.
+	// humanSession — читатель НАШЕЙ сессии (Ф3 Р7). Провязывается РЯДОМ с
+	// `kratos`, когда профиль назвал обе стороны носителя: композиционный корень
+	// заводит читателей по множеству (`config.SessionCarrierSet`), и состояний
+	// три — только чужой · оба · только наш.
 	humanSession HumanSessionReader
 }
 
@@ -99,7 +99,7 @@ func (h *SessionIdentityHandler) WithSessionCutoff(r SessionCutoffReader) *Sessi
 	return h
 }
 
-// WithHumanSession — подключает читателя НАШЕЙ сессии (посадка `own`).
+// WithHumanSession — подключает читателя НАШЕЙ сессии.
 //
 // Маршрут «кто я» стоит ЗА полосой личности (Д13): отвергнутую сессию полоса
 // гасит F4d-22 до этого обработчика. Но читатель здесь СВОЙ — вложенная точка
@@ -129,14 +129,32 @@ func (h *SessionIdentityHandler) Register(mux *http.ServeMux) {
 func (h *SessionIdentityHandler) Me(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
+	// СТАРШИНСТВО — ТО ЖЕ, ЧТО НА ПОЛОСЕ ЛИЧНОСТИ, И ЭТО НЕ СОВПАДЕНИЕ.
+	//
+	// Полос, читающих одну и ту же браузерную сессию, две, и свойство,
+	// обязательное для одной, проверяется СРАВНЕНИЕМ полос
+	// (`session_lanes_agree_test.go`). Прежде здесь стояло другое условие —
+	// «наш читатель провязан» вместо «наш носитель предъявлен», — и в
+	// переходном состоянии оно давало расхождение: человек с одной живой ЧУЖОЙ
+	// сессией проходил полосу личности и видел себя НЕВОШЕДШИМ на этом
+	// маршруте. Консоль решает «вошёл ли я» именно отсюда, поэтому расхождение
+	// наблюдаемо как потеря входа при работающем доступе.
+	//
+	// Предикат носителя ОБЩИЙ с полосой (`ourSessionCarrierOf`), и наш носитель
+	// решает на КАЖДОМ своём исходе: «сессии нет» отвечает анонимом и на чужую
+	// сторону не откатывается. До этого маршрута такой запрос через боевую
+	// цепочку и не доходит — полоса отвергает его раньше (Д13), — но условие
+	// стоит здесь, потому что обработчик обязан быть верен сам по себе.
 	if h.humanSession != nil {
-		h.meFromOwnSession(w, r)
-		return
+		if _, ours := ourSessionCarrierOf(r); ours {
+			h.meFromOwnSession(w, r)
+			return
+		}
 	}
 
 	if h.kratos != nil {
-		cookieHdr := r.Header.Get("Cookie")
-		if strings.Contains(cookieHdr, providerSessionCarrierName) {
+		if providerSessionCarrierPresented(r) {
+			cookieHdr := r.Header.Get("Cookie")
 			res := h.kratos.Whoami(r.Context(), cookieHdr)
 			if res.Active && res.IdentityID != "" {
 				userObj := map[string]any{
@@ -187,12 +205,14 @@ func (h *SessionIdentityHandler) Me(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Никакой второй ветки нет: единственный носитель личности на этом маршруте —
-	// сессия развёрнутого провайдера. Не нашли её — отвечаем анонимом.
+	// Ни один провязанный читатель не признал запрос своим — отвечаем анонимом.
+	// Байты ответа те же, что у «сессии нет» на каждой из полос: «носителя нет»
+	// и «носитель не резолвится» для консоли суть одно состояние.
 	_, _ = w.Write([]byte(`{"user":null}`))
 }
 
-// meFromOwnSession — «кто я» из НАШЕЙ сессии (Ф3-14).
+// meFromOwnSession — «кто я» из НАШЕЙ сессии (Ф3-14). Зовётся только когда наш
+// носитель ПРЕДЪЯВЛЕН, и решает на каждом исходе (см. старшинство в Me).
 //
 // Форма ответа прежняя, объект `session` добавлен: срок (усечён до секунды —
 // показывается, не сравнивается), уровень и подтверждённость адреса.
