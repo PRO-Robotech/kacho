@@ -1,7 +1,11 @@
-#!/usr/bin/env python3
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 """ci_text.py — ИСПОЛНЯЕМАЯ часть текста: один дом на все читающие её гейты.
+
+СТРОКИ ЗАПУСКА У ЭТОГО ФАЙЛА НЕТ НАМЕРЕННО: он библиотека, его импортируют, а не
+зовут. Shebang означал бы «этот файл запускают», и гейт исполняемости
+(internal/repohygiene TestShebangScriptsAreExecutable) справедливо потребовал бы
+бита исполнения на то, что исполнять нечем.
 
 ПРЕДМЕТ
 -------
