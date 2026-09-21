@@ -12,6 +12,7 @@
 package main
 
 import (
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -58,15 +59,48 @@ func carrierSet(t *testing.T, declared string) config.SessionCarrierSet {
 // Третье значение посадки, если оно когда-нибудь появится, сделает пробу
 // красной, а не молчаливой.
 
-// carrierStateDeclarations — три состояния, которые профиль умеет объявить.
-var carrierStateDeclarations = []string{"external", "own,external", "own"}
+// carrierStateDeclarations — ВСЕ состояния, которые профиль умеет объявить,
+// ВЫВЕДЕННЫЕ из словаря сторон: непустые подмножества.
+//
+// Прежде они были ВЫПИСАНЫ тремя строками, а шапка обещала полное
+// произведение. При третьей стороне проба продолжала печатать «пар осмотрено
+// 6» и проходила, тогда как произведение — 14: число читалось как полнота,
+// которой у него не было. Дыру закрывал соседний гейт, и это было сказано
+// честно, — но честная оговорка не делает число верным.
+//
+// Порядок внутри состояния не перебирается намеренно: множество на него не
+// реагирует, и это держит своя проба. Перебирались бы перестановки — росло бы
+// число, а не осмотренное.
+func carrierStateDeclarations() []string {
+	sides := identityposture.Names()
+	var out []string
+	for mask := 1; mask < 1<<len(sides); mask++ {
+		var parts []string
+		for i, name := range sides {
+			if mask&(1<<i) != 0 {
+				parts = append(parts, name)
+			}
+		}
+		out = append(out, strings.Join(parts, ","))
+	}
+	sort.Strings(out)
+	return out
+}
 
-// lawfulCarrierPairs — пары, на которых провязка состоится и будет полной.
-// Ключ — «<посадка>/<объявление>».
-var lawfulCarrierPairs = map[string]bool{
-	"own/own":           true,
-	"own/own,external":  true,
-	"external/external": true,
+// lawfulCarrierPair — законна ли пара, и правило ВЫВОДИТСЯ из свойства, а не
+// перечисляется: на стенде читается ровно то, что на нём чеканится.
+//
+// Наша сторона в множестве ⇔ посадка `own`. Обе половины этой равносильности и
+// есть два правила стража; третья сторона, появись она, получит вердикт по
+// тому же свойству, а не по отсутствию строки в перечне.
+func lawfulCarrierPair(posture identityposture.Provider, declared string) bool {
+	namesOwn := false
+	for _, s := range strings.Split(declared, ",") {
+		if s == identityposture.Own.String() {
+			namesOwn = true
+		}
+	}
+	return namesOwn == (posture == identityposture.Own)
 }
 
 func TestSessionCarrierGuard_EveryPostureCarrierPairIsJudged(t *testing.T) {
@@ -75,10 +109,12 @@ func TestSessionCarrierGuard_EveryPostureCarrierPairIsJudged(t *testing.T) {
 		t.Fatal("словарь посадок пуст — произведение строить не из чего")
 	}
 	pairs, lawful, refused := 0, 0, 0
+	states := carrierStateDeclarations()
 	for _, posture := range postures {
-		for _, declared := range carrierStateDeclarations {
+		for _, declared := range states {
 			pairs++
 			key := posture.String() + "/" + declared
+			want := lawfulCarrierPair(posture, declared)
 			set := carrierSet(t, declared)
 			// Момент открытия объявляется РОВНО там, где есть окно: страж судит
 			// пару целиком, и подать момент всюду значило бы не проверить
@@ -92,23 +128,26 @@ func TestSessionCarrierGuard_EveryPostureCarrierPairIsJudged(t *testing.T) {
 				WindowOpenedAt: opened,
 			})
 			switch {
-			case lawfulCarrierPairs[key] && err != nil:
+			case want && err != nil:
 				t.Errorf("законная пара %s отвергнута: %v", key, err)
-			case !lawfulCarrierPairs[key] && err == nil:
+			case !want && err == nil:
 				t.Errorf("пара %s принята, а провязка на ней НЕПОЛНА: край заводит не всех "+
 					"читателей, чей носитель на этом стенде кто-то чеканит, и человек, прошедший "+
 					"вход, остаётся анонимом", key)
 			}
-			if lawfulCarrierPairs[key] {
+			if want {
 				lawful++
 			} else {
 				refused++
 			}
 		}
 	}
-	t.Logf("перепись: посадок в словаре %d · состояний носителя %d · пар осмотрено %d · "+
-		"законных %d · обязанных отказать %d", len(postures), len(carrierStateDeclarations),
-		pairs, lawful, refused)
+	// Обе оси ВЫВЕДЕНЫ, и перепись называет их источники: число «пар осмотрено»
+	// есть полнота, а не столько, сколько удобно перечислить.
+	t.Logf("перепись: посадок в словаре %d (выведены из identityposture.Values) · состояний "+
+		"носителя %d (выведены как непустые подмножества сторон: %s) · пар осмотрено %d = "+
+		"произведение · законных %d · обязанных отказать %d",
+		len(postures), len(states), strings.Join(states, " | "), pairs, lawful, refused)
 }
 
 // ЧЕТВЁРТАЯ ПАРА, ради которой заведено произведение: посадка `own` без нашего
