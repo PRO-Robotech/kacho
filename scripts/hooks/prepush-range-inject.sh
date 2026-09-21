@@ -544,25 +544,44 @@ assert_verdict_subject() { # $1 — метка, $2 — файл для числ�
         *) vfail "игнорируемый артефакт объявлен расхождением — обычная отправка теряет быстрый путь" ;;
     esac
 
-    # ── точка 3: осиротевшая выкладка прошлой отправки собирается ──────────────
-    # Идентификатор заведомо мёртвый: выше предела ядра, занять его нельзя.
+    # ── точка 3: сборщик снимает СВОЁ и не трогает ЧУЖОГО ─────────────────────
+    #
+    # Обе стороны обязательны, и вторая здесь несущая. «Своё снято» доказывает,
+    # что сборщик работает; «чужое живо» — что он работает ТОЛЬКО по своему
+    # признаку. Без второй стороны расширение обхода (общий `git worktree prune`,
+    # приставка пошире, снятие проверки живости) прошло бы молча — а в этом клоне
+    # рядом лежат два десятка чужих рабочих копий, и снявший их не узнал бы об
+    # этом от пробы.
+    #
+    # Идентификатор своего остатка заведомо мёртвый: выше предела ядра, занять его
+    # нельзя. Чужая копия лежит РЯДОМ, в том же каталоге, и отличается только
+    # именем — то есть проба ловит именно признак, а не расположение.
     local dead="$subj/.git/kacho-prepush-subject/kacho-prepush-4194305"
+    local alien="$subj/.git/kacho-prepush-subject/chuzhaya-kopiya"
     mkdir -p "$(dirname "$dead")"
-    if s worktree add --detach --quiet "$dead" "$main_sha" > /dev/null 2>&1; then
+    if s worktree add --detach --quiet "$dead" "$main_sha" > /dev/null 2>&1 &&
+        s worktree add --detach --quiet "$alien" "$main_sha" > /dev/null 2>&1; then
         r="$(subj_run feature/y - "refs/heads/feature/y $feat_sha refs/heads/feature/y $zero" KACHO_X=1)"
         if [ -e "$dead" ]; then
             vfail "осиротевшая выкладка прошлой отправки не собрана — мусор копится в .git"
-            s worktree remove --force "$dead" > /dev/null 2>&1 || true
-            rm -rf "$dead"
         else
             vok "осиротевшая выкладка прошлой отправки собрана"
+        fi
+        # ОТРИЦАТЕЛЬНАЯ сторона: чужая рабочая копия пережила сборку.
+        if [ -e "$alien" ]; then
+            vok "…а чужая рабочая копия рядом ЖИВА — сборщик снимает только своё"
+        else
+            vfail "…но чужая рабочая копия рядом снесена: сборщик вышел за свой признак"
         fi
         case "$r" in
             *"собрано осиротевших выкладок"*) vok "…и сборка НАЗВАНА числом, а не сделана молча" ;;
             *) vfail "…но о сборке не сказано: уборка, о которой молчат, неотличима от её отсутствия" ;;
         esac
+        s worktree remove --force "$dead" > /dev/null 2>&1 || true
+        s worktree remove --force "$alien" > /dev/null 2>&1 || true
+        rm -rf "$dead" "$alien"
     else
-        vfail "фикстуру осиротевшей выкладки завести не удалось — утверждать о сборке нечем"
+        vfail "фикстуру выкладок (своей и чужой) завести не удалось — утверждать о сборке нечем"
     fi
 
     printf '%s' "$f" > "$out"
@@ -580,6 +599,17 @@ make_broken_draft() {
 make_broken_reap() {
     sed 's/^reap_own_subject_trees$/: сборщик снят/' "$HOOK" > "$tmp/hook-no-reap"
     grep -q '^: сборщик снят$' "$tmp/hook-no-reap"
+}
+
+# Дефект ОБЛАСТИ сборщика — расширенный обход: он ходит по всему каталогу и не
+# разбирает идентификатор. Ровно та правка, которую сделают «заодно», и ровно та,
+# от которой отрицательная сторона утверждения и защищает.
+make_broken_reap_scope() {
+    sed -e 's|^    for dir in "\$subject_tree_parent"/kacho-prepush-\*; do$|    for dir in "$subject_tree_parent"/*; do|' \
+        -e "s|^        case \"\$pid\" in '' \| \*\[!0-9\]\*) continue ;; esac$|        :|" \
+        "$HOOK" > "$tmp/hook-wide-reap"
+    grep -q '^    for dir in "\$subject_tree_parent"/\*; do$' "$tmp/hook-wide-reap" &&
+        ! grep -q 'case "\$pid" in' "$tmp/hook-wide-reap"
 }
 
 # Дефект предмета — та же форма: прогон идёт в рабочей копии, чем бы она ни была.
@@ -613,6 +643,14 @@ if make_broken_reap; then
     assert_verdict_subject дефект-сборщика "$tmp/reap-broken.n"; reap_broken="$(cat "$tmp/reap-broken.n")"
 fi
 
+scope_broken="н/д"
+if make_broken_reap_scope; then
+    echo
+    echo "── прогон против дефекта «сборщик ходит шире своего признака» (ждём хотя бы один провал)"
+    subject_fixture "$tmp/hook-wide-reap"
+    assert_verdict_subject дефект-области "$tmp/scope-broken.n"; scope_broken="$(cat "$tmp/scope-broken.n")"
+fi
+
 subj_broken="н/д"
 if make_broken_subject; then
     echo
@@ -623,7 +661,7 @@ fi
 
 echo
 printf 'prepush-range-inject: утверждений на прогон — 6 (база диапазона) · 7 (полосы вердикта)\n'
-printf '                      · 6 (черновик по входу) · 13 (предмет вердикта)\n'
+printf '                      · 6 (черновик по входу) · 14 (предмет вердикта)\n'
 printf '  провалов у настоящего: %s (норма 0)\n' "$real_fails"
 printf '  провалов у дефекта базы: %s (норма ≥1 — иначе проба ничего не проверяет)\n' "$broken_fails"
 printf '  провалов у настоящего (полосы): %s (норма 0)\n' "$lanes_real"
@@ -633,6 +671,7 @@ printf '  провалов у дефекта черновика:              %s
 printf '  провалов у настоящего (предмет вердикта):  %s (норма 0)\n' "$subj_real"
 printf '  провалов у дефекта предмета:               %s (норма ≥1)\n' "$subj_broken"
 printf '  провалов у дефекта сборщика остатков:      %s (норма ≥1)\n' "$reap_broken"
+printf '  провалов у дефекта ОБЛАСТИ сборщика:       %s (норма ≥1 — чужая копия рядом)\n' "$scope_broken"
 
 rc=0
 [ "$real_fails" = "0" ] || { echo "ОТКАЗ: настоящий хук не проходит собственных утверждений" >&2; rc=1; }
@@ -665,6 +704,13 @@ if [ "$reap_broken" = "н/д" ]; then
     rc=1
 elif [ "${reap_broken:-0}" -lt 1 ]; then
     echo "ОТКАЗ: проба ЗЕЛЁНАЯ на снятом сборщике — остатки жёсткого обрыва не собирает ничто" >&2
+    rc=1
+fi
+if [ "$scope_broken" = "н/д" ]; then
+    echo "ОТКАЗ: дефект области сборщика не воссоздан — форма обхода в хуке изменилась" >&2
+    rc=1
+elif [ "${scope_broken:-0}" -lt 1 ]; then
+    echo "ОТКАЗ: проба ЗЕЛЁНАЯ на расширенном обходе — чужие рабочие копии не защищены ничем" >&2
     rc=1
 fi
 if [ "$subj_broken" = "н/д" ]; then
