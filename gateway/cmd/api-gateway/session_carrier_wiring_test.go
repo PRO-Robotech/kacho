@@ -47,12 +47,23 @@ var carrierReaderConstructors = map[string]string{
 	"WithHumanSession": "ReadsOwn",
 }
 
-// carrierDecisionBranchOf — имя метода множества, которым спрашивает условие
-// самой внутренней ветки `if`, охватывающей позицию; "" если такой ветки нет.
+// carrierDecisionBranchOf — РЕШЕНИЕ МНОЖЕСТВА, которым открыта самая внутренняя
+// охватывающая позицию ветка `if`; "" если такой ветки нет.
 //
-// Ветка `else` решением не считается по той же причине, что у прежнего гейта:
-// «не наш» есть «чужой или никакой», и это не ответ на вопрос «читаем ли мы
-// чужой носитель».
+// # Судится ФОРМА условия, а не наличие имени
+//
+// Прежняя редакция искала в условии имя метода и на этом останавливалась.
+// Опознавание по имени обходится отрицанием: «если НЕ читаем нашу сторону —
+// завести нашего читателя» несёт то же имя и означает ровно обратное, и гейт
+// молчал бы. Дизъюнкция обходит его так же: «читаем нашу сторону ИЛИ что-то
+// ещё» заводит читателя там, где множество его не называло.
+//
+// Законная форма названа положительно: условие раскладывается по `&&`, и среди
+// слагаемых обязан стоять ГОЛЫЙ вызов `<множество>.ReadsOwn()` либо
+// `.ReadsProvider()`. Прочие слагаемые допустимы — они только СУЖАЮТ: `&&` не
+// способно завести читателя там, где множество его не назвало. Отрицание и
+// дизъюнкция с участием множества — находка: первое переворачивает решение,
+// вторая расширяет его.
 func carrierDecisionBranchOf(f *ast.File, pos token.Pos) string {
 	decision := ""
 	ast.Inspect(f, func(n ast.Node) bool {
@@ -63,24 +74,83 @@ func carrierDecisionBranchOf(f *ast.File, pos token.Pos) string {
 		if pos <= ifs.Body.Lbrace || pos >= ifs.Body.Rbrace {
 			return true
 		}
-		ast.Inspect(ifs.Cond, func(c ast.Node) bool {
-			call, ok := c.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok {
-				return true
-			}
-			switch sel.Sel.Name {
-			case "ReadsOwn", "ReadsProvider":
-				decision = sel.Sel.Name
-			}
-			return true
-		})
+		if d := lawfulSetDecision(ifs.Cond); d != "" {
+			decision = d
+		}
 		return true
 	})
 	return decision
+}
+
+// lawfulSetDecision — имя метода множества, если условие имеет ЗАКОННУЮ форму;
+// "" иначе, в том числе когда множество в условии есть, но форма незаконна.
+func lawfulSetDecision(cond ast.Expr) string {
+	if usesSetUnlawfully(cond) {
+		return ""
+	}
+	for _, term := range conjuncts(cond) {
+		if name := bareSetCall(term); name != "" {
+			return name
+		}
+	}
+	return ""
+}
+
+// conjuncts раскладывает выражение по `&&`.
+func conjuncts(e ast.Expr) []ast.Expr {
+	if b, ok := e.(*ast.BinaryExpr); ok && b.Op == token.LAND {
+		return append(conjuncts(b.X), conjuncts(b.Y)...)
+	}
+	return []ast.Expr{e}
+}
+
+// bareSetCall — имя метода, если выражение есть ГОЛЫЙ вызов `X.ReadsOwn()` или
+// `X.ReadsProvider()` без обёрток.
+func bareSetCall(e ast.Expr) string {
+	call, ok := e.(*ast.CallExpr)
+	if !ok || len(call.Args) != 0 {
+		return ""
+	}
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return ""
+	}
+	switch sel.Sel.Name {
+	case "ReadsOwn", "ReadsProvider":
+		return sel.Sel.Name
+	}
+	return ""
+}
+
+// usesSetUnlawfully — участвует ли множество в ОТРИЦАНИИ либо в ДИЗЪЮНКЦИИ.
+func usesSetUnlawfully(cond ast.Expr) bool {
+	bad := false
+	ast.Inspect(cond, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.UnaryExpr:
+			if x.Op == token.NOT && mentionsSet(x.X) {
+				bad = true
+			}
+		case *ast.BinaryExpr:
+			if x.Op == token.LOR && (mentionsSet(x.X) || mentionsSet(x.Y)) {
+				bad = true
+			}
+		}
+		return true
+	})
+	return bad
+}
+
+// mentionsSet — упоминает ли выражение вызов множества.
+func mentionsSet(e ast.Expr) bool {
+	found := false
+	ast.Inspect(e, func(n ast.Node) bool {
+		if call, ok := n.(*ast.CallExpr); ok && bareSetCall(call) != "" {
+			found = true
+		}
+		return true
+	})
+	return found
 }
 
 // TestSessionCarrierWiring_EveryReaderIsWiredByTheCarrierSet — «мест N ·
@@ -169,6 +239,60 @@ func TestSessionCarrierWiringGate_Twin_ASetDecisionIsSilent(t *testing.T) {
 			}
 		}
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ФОРМА УСЛОВИЯ: инъекция по КАЖДОМУ способу обойти опознавание по имени.
+//
+// Гейт провязки — единственный контроль, держащий свойство «читателей заводит
+// множество, а не посадка». Пока он опознавал ветку по имени метода, обойти его
+// можно было не убрав имя: отрицанием и дизъюнкцией. Инъекция подавала только
+// ветку посадки — то есть проверяла один способ из трёх.
+
+func TestSessionCarrierWiringGate_Injection_EveryEvasionOfTheNameCheckIsFound(t *testing.T) {
+	cases := []struct {
+		name   string
+		cond   string
+		lawful bool
+	}{
+		{"голый вызов множества", "carriers.ReadsOwn()", true},
+		{"сужающее слагаемое рядом", `carriers.ReadsOwn() && url != "disabled"`, true},
+		{"сужающее слагаемое слева", `url != "disabled" && carriers.ReadsProvider()`, true},
+		{"ОТРИЦАНИЕ переворачивает решение", "!carriers.ReadsOwn()", false},
+		{"отрицание внутри конъюнкции", `carriers.ReadsProvider() && !carriers.ReadsOwn()`, false},
+		{"ДИЗЪЮНКЦИЯ расширяет решение", `carriers.ReadsOwn() || legacyFlag`, false},
+		{"дизъюнкция справа", `legacyFlag || carriers.ReadsOwn()`, false},
+		{"ветка посадки", "lane == identityposture.Own", false},
+		{"условие вовсе не о множестве", `url != "disabled"`, false},
+	}
+	found := 0
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			src := "package main\nfunc wire() {\n\tif " + tc.cond +
+				" {\n\t\tauth = auth.WithHumanSession(ad)\n\t}\n}\n"
+			fset := token.NewFileSet()
+			f, err := parser.ParseFile(fset, "main.go", src, 0)
+			if err != nil {
+				t.Fatalf("синтетика не разбирается: %v", err)
+			}
+			sites := wiringSites(fset, f, "WithHumanSession")
+			if len(sites) != 1 {
+				t.Fatalf("мест %d, ожидалось 1", len(sites))
+			}
+			got := carrierDecisionBranchOf(f, mustPosOf(t, fset, f, "WithHumanSession", sites[0].pos))
+			if tc.lawful && got == "" {
+				t.Fatalf("законная форма %q объявлена находкой", tc.cond)
+			}
+			if !tc.lawful && got != "" {
+				t.Fatalf("форма %q принята как решение множества (%q) — гейт обходится, не убирая "+
+					"имени метода из условия", tc.cond, got)
+			}
+			if !tc.lawful {
+				found++
+			}
+		})
+	}
+	t.Logf("перепись: форм условия проверено %d · законных 3 · найденных обходов %d", len(cases), found)
 }
 
 func judgeCarrierFixture(t *testing.T, extra string) (*token.FileSet, *ast.File) {
