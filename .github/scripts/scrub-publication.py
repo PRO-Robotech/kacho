@@ -499,10 +499,15 @@ def declared_paths(
         if str(step.get("id") or "") != step_id:
             continue
         uses = str(step.get("uses") or "")
-        if "upload-artifact" not in uses:
-            raise LookupError(f"шаг {step_id!r} не является выкладкой (uses: {uses!r})")
+        # ДВА ВИДА ПУБЛИКУЮЩЕГО ШАГА, И У НИХ РАЗНЫЕ КЛЮЧИ ПУТИ. Выкладка
+        # артефакта несёт `path`, выгрузка отчёта сканера — `sarif_file`.
+        # Второй публикует документ на ПУБЛИЧНУЮ поверхность репозитория
+        # (вкладка безопасности), то есть канал тот же по существу, а ключ
+        # другой. Читать один ключ значило бы видеть половину каналов.
+        if "upload-artifact" not in uses and "upload-sarif" not in uses:
+            raise LookupError(f"шаг {step_id!r} не публикует ничего (uses: {uses!r})")
         with_ = step.get("with") or {}
-        raw = str(with_.get("path") or "")
+        raw = str(with_.get("path") or with_.get("sarif_file") or "")
         include, exclude = [], []
         for line in raw.splitlines():
             line = line.strip()

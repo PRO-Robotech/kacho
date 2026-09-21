@@ -100,6 +100,17 @@ jobs:
       # что «latest» у них и у тебя в разные дни разный. Свежесть пина стережёт
       # pinned-tools-freshness (см. .github/scripts/check-pinned-tools.sh) — она
       # заведёт issue, когда апстрим уйдёт вперёд.
+      # МОДУЛЬ ПОДАЁТ САМО ЗАДАНИЕ, А НЕ ОБРАЗ РАНЕРА: под меткой `ubuntu-latest`
+      # работают два пула, и системный интерпретатор наших ранеров идёт без
+      # `pyyaml` и без `pip`. Здесь модуль нужен чистке выкладываемого (#1810) —
+      # она читает маски публикации из объявления процесса. Держит требование
+      # гейт .github/scripts/assert-jobs-provide-python-modules.py.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
+        with:
+          python-version: '3.13'
+      - name: сторонний модуль python, который читают скрипты этого задания
+        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+
       - name: install gosec
         run: go install github.com/securego/gosec/v2/cmd/gosec@v2.28.0
 
@@ -132,8 +143,31 @@ jobs:
             *) echo "::error::скан вернул неизвестный код $rc — он не входит в два объявленных исхода"; exit 1 ;;
           esac
 
-      - uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28  # v4
+      # ОТЧЁТ СКАНЕРА — ТОЖЕ ПУБЛИКАЦИЯ (#1810). Он уезжает не в артефакт, а на
+      # вкладку безопасности ПУБЛИЧНОГО репозитория; канал тот же по существу, и
+      # до этой правки чистка его не видела — у выгрузки другой ключ пути
+      # (`sarif_file`, а не `path`). Маски чистка берёт из того же узла.
+      - name: чистка выкладываемого перед публикацией (fail-closed)
+        id: gosec-sarif-scrub
         if: always()
+        run: |
+          rc=0
+          python3 .github/scripts/scrub-publication.py \
+            --workflow .github/workflows/security-scan.yml \
+            --job gosec --step-id gosec-sarif || rc=$?
+          case "$rc" in
+            0) echo "чистка сошлась — публикация разрешена" ;;
+            1) echo "::error title=Отчёт НЕ публикуется::в отчёте остался материал удостоверения (координаты и числа — выше)."
+               exit 1 ;;
+            3) echo "::error title=НЕ ВЫПОЛНИЛОСЬ — чистка не состоялась::осматривать нечего либо не по чему (причина выше). Это не «чисто»: публикации нет."
+               exit 1 ;;
+            *) echo "::error title=Чистка вернула неизвестный код::код $rc не входит в три объявленных исхода — публикации нет."
+               exit 1 ;;
+          esac
+
+      - uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28  # v4
+        id: gosec-sarif
+        if: ${{ always() && steps.gosec-sarif-scrub.outcome == 'success' }}
         with:
           sarif_file: gosec.sarif
           category: gosec
@@ -334,14 +368,54 @@ jobs:
           severity: 'CRITICAL,HIGH'
           exit-code: '0'
 
-      - uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28  # v4
+      # Тот же разбор, что у соседней выгрузки выше: отчёт сканера — публикация.
+      - name: чистка выкладываемого перед публикацией (fail-closed)
+        id: trivy-fs-sarif-scrub
         if: always()
+        run: |
+          rc=0
+          python3 .github/scripts/scrub-publication.py \
+            --workflow .github/workflows/security-scan.yml \
+            --job trivy --step-id trivy-fs-sarif || rc=$?
+          case "$rc" in
+            0) echo "чистка сошлась — публикация разрешена" ;;
+            1) echo "::error title=Отчёт НЕ публикуется::в отчёте остался материал удостоверения (координаты и числа — выше)."
+               exit 1 ;;
+            3) echo "::error title=НЕ ВЫПОЛНИЛОСЬ — чистка не состоялась::осматривать нечего либо не по чему (причина выше). Это не «чисто»: публикации нет."
+               exit 1 ;;
+            *) echo "::error title=Чистка вернула неизвестный код::код $rc не входит в три объявленных исхода — публикации нет."
+               exit 1 ;;
+          esac
+
+      - uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28  # v4
+        id: trivy-fs-sarif
+        if: ${{ always() && steps.trivy-fs-sarif-scrub.outcome == 'success' }}
         with:
           sarif_file: trivy-fs.sarif
           category: trivy-fs
 
-      - uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28  # v4
+      # Тот же разбор, что у соседней выгрузки выше: отчёт сканера — публикация.
+      - name: чистка выкладываемого перед публикацией (fail-closed)
+        id: trivy-config-sarif-scrub
         if: always()
+        run: |
+          rc=0
+          python3 .github/scripts/scrub-publication.py \
+            --workflow .github/workflows/security-scan.yml \
+            --job trivy --step-id trivy-config-sarif || rc=$?
+          case "$rc" in
+            0) echo "чистка сошлась — публикация разрешена" ;;
+            1) echo "::error title=Отчёт НЕ публикуется::в отчёте остался материал удостоверения (координаты и числа — выше)."
+               exit 1 ;;
+            3) echo "::error title=НЕ ВЫПОЛНИЛОСЬ — чистка не состоялась::осматривать нечего либо не по чему (причина выше). Это не «чисто»: публикации нет."
+               exit 1 ;;
+            *) echo "::error title=Чистка вернула неизвестный код::код $rc не входит в три объявленных исхода — публикации нет."
+               exit 1 ;;
+          esac
+
+      - uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28  # v4
+        id: trivy-config-sarif
+        if: ${{ always() && steps.trivy-config-sarif-scrub.outcome == 'success' }}
         with:
           sarif_file: trivy-config.sarif
           category: trivy-config

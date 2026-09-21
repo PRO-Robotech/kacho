@@ -89,6 +89,68 @@ UPLOAD_ACTION = "actions/upload-artifact"
 # откроет канал заново и молча.
 BUILD_ACTION = "docker/build-push-action"
 RECORD_KNOB = "DOCKER_BUILD_RECORD_UPLOAD"
+SARIF_ACTION = "github/codeql-action/upload-sarif"
+
+# ── СЛОВАРЬ ПРОИЗВОДИТЕЛЕЙ ЗАКРЫТ С ОБЕИХ СТОРОН, И ЭТО РЕШЕНИЕ ─────────────
+#
+# Прежняя редакция знала ДВА имени и молчала обо всём остальном: приёмка завела
+# по одному четыре других способа выложить артефакт, и гейт остался зелёным,
+# продолжая считать «выкладок 6». Словарь из двух имён — это утверждение о двух
+# именах, выданное за утверждение о дереве.
+#
+# ВЫБРАН ОТКАЗ НА НЕЗНАКОМОМ, А НЕ РАСШИРЕНИЕ СЛОВАРЯ. Довод: словарь устареет
+# снова — он стареет от каждого нового действия, — а отказ на незнакомом не
+# устаревает никогда. Неизвестный способ выложить это «не смотрели», а не
+# «чисто», и цена ошибки здесь односторонняя: канал необратим.
+#
+# Поэтому КАЖДОЕ действие, встречающееся в объявлениях, обязано иметь явный
+# вердикт в этой ведомости. Вердиктов три, словарь их закрыт:
+#
+#   "no"       — не публикует ничего за пределы прогона;
+#   "artifact" — публикует; обязана быть связь с чисткой и погашение её исходом;
+#   "record"   — публикует СВОЮ запись внутри себя; канал обязан быть закрыт
+#                ручкой (чистить нечем: нашего шага между «собрал» и «выложил»
+#                нет).
+#
+# Ведомость сверяется В ОБЕ СТОРОНЫ: действие без записи — находка (неизвестный
+# производитель), запись без действия — тоже находка (пережила свой предмет).
+ACTION_VERDICTS = {
+    "actions/cache/restore": "no",
+    "actions/cache/save": "no",
+    "actions/checkout": "no",
+    "actions/download-artifact": "no",
+    "actions/setup-go": "no",
+    "actions/setup-node": "no",
+    "actions/setup-python": "no",
+    "actions/upload-artifact": "artifact",
+    "aquasecurity/trivy-action": "no",
+    "azure/setup-helm": "no",
+    "azure/setup-kubectl": "no",
+    "bufbuild/buf-setup-action": "no",
+    "docker/build-push-action": "record",
+    "docker/login-action": "no",
+    "docker/setup-buildx-action": "no",
+    "docker/setup-qemu-action": "no",
+    "github/codeql-action/upload-sarif": "artifact",
+    "opentofu/setup-opentofu": "no",
+}
+
+# ВТОРАЯ ПОЛОВИНА — ПУБЛИКАЦИЯ ИЗ ТЕЛА ШАГА, и она ПРИЗНАНА СЛОВАРЁМ ГЛАГОЛОВ.
+# Отказ на незнакомом здесь неприменим by construction: тело шага — произвольная
+# оболочка, и «незнакомая команда» это каждая вторая строка дерева. Значит здесь
+# остаётся перечень, и он назван честно: он устаревает, и держать его может
+# только правка. Перечень закрыт и короток — каждая запись есть способ вынести
+# байты наружу прогона.
+PUBLISH_VERBS = (
+    "gh release upload",
+    "gh release create",
+    "gh api",
+    "actions/upload-artifact",
+    "upload-pages-artifact",
+    "aws s3 cp",
+    "gsutil cp",
+    "curl -T",
+)
 
 # Выражение объявления внутри маски пути (`${{ matrix.dir }}`) вычисляет
 # провайдер. Чистка читает маску из файла и видит его дословно, поэтому значение
@@ -117,26 +179,79 @@ class Finding(str):
     pass
 
 
-def audit_workflow(path: Path, doc: dict) -> tuple[list[str], int, int, int, int]:
-    """Разбирает одно объявление. Возвращает (находки, работ, шагов, выкладок, сборок)."""
+class Counts:
+    """Объём осмотренного. «Ноль находок» обязано быть отличимо от «ноль прочитанного»."""
+
+    def __init__(self) -> None:
+        self.jobs = 0
+        self.steps = 0
+        self.uploads = 0
+        self.builds = 0
+        self.verbs = 0
+        self.actions: set[str] = set()
+
+    def add(self, other: "Counts") -> None:
+        self.jobs += other.jobs
+        self.steps += other.steps
+        self.uploads += other.uploads
+        self.builds += other.builds
+        self.verbs += other.verbs
+        self.actions |= other.actions
+
+
+def audit_workflow(path: Path, doc: dict) -> tuple[list[str], Counts]:
+    """Разбирает одно объявление. Возвращает (находки, перепись)."""
     findings: list[str] = []
     jobs = (doc or {}).get("jobs") or {}
-    njobs = nsteps = nuploads = nbuilds = 0
+    c = Counts()
 
     for job_name, spec in jobs.items():
         if not isinstance(spec, dict):
             continue
-        njobs += 1
+        c.jobs += 1
         steps = spec.get("steps") or []
         for i, step in enumerate(steps):
             if not isinstance(step, dict):
                 continue
-            nsteps += 1
+            c.steps += 1
             uses = str(step.get("uses") or "")
+            where0 = f"{path.name} / {job_name} / шаг #{i + 1}"
+
+            # ── НЕИЗВЕСТНЫЙ ПРОИЗВОДИТЕЛЬ — НАХОДКА, А НЕ МОЛЧАНИЕ ──────────
+            if uses:
+                action = uses.split("@")[0].strip()
+                c.actions.add(action)
+                verdict = ACTION_VERDICTS.get(action)
+                if verdict is None:
+                    findings.append(
+                        f"{where0}: действие «{action}» ведомости НЕ ИЗВЕСТНО. "
+                        f"Публикует оно что-нибудь или нет — здесь не знают, а "
+                        f"«не знаем» это «не смотрели», а не «чисто». Внесите "
+                        f"вердикт (no · artifact · record) в ACTION_VERDICTS."
+                    )
+                    continue
+                if verdict == "no":
+                    continue
+
+            # ── ПУБЛИКАЦИЯ ИЗ ТЕЛА ШАГА ────────────────────────────────────
+            body = shell_executable(str(step.get("run") or ""))
+            if body and not uses:
+                hit = [v for v in PUBLISH_VERBS if v in body]
+                # Сама чистка и этот гейт зовут внешние средства ПО ДЕЛУ: они
+                # читают, а не публикуют. Признак — вызов нашего же скрипта.
+                if hit and SCRUBBER not in body and "assert-uploads-are-scrubbed" not in body:
+                    c.verbs += 1
+                    findings.append(
+                        f"{where0}: тело шага выносит байты наружу прогона "
+                        f"({', '.join(hit)}), и чистка его не читала. Либо "
+                        f"проведите публикацию через выкладку со своей чисткой, "
+                        f"либо снимите её."
+                    )
+                continue
 
             # Второй производитель: выкладывает запись сборки САМ.
             if BUILD_ACTION in uses:
-                nbuilds += 1
+                c.builds += 1
                 env = step.get("env") or {}
                 val = str(env.get(RECORD_KNOB, "")).strip().strip("'\"").lower()
                 if val != "false":
@@ -149,9 +264,9 @@ def audit_workflow(path: Path, doc: dict) -> tuple[list[str], int, int, int, int
                     )
                 continue
 
-            if UPLOAD_ACTION not in uses:
+            if UPLOAD_ACTION not in uses and SARIF_ACTION not in uses:
                 continue
-            nuploads += 1
+            c.uploads += 1
             where = f"{path.name} / {job_name} / шаг #{i + 1}"
             up_id = str(step.get("id") or "")
             if not up_id:
@@ -203,7 +318,8 @@ def audit_workflow(path: Path, doc: dict) -> tuple[list[str], int, int, int, int
             # Маска, чьё выражение нечем вычислить, найдёт ноль файлов — и это
             # «не смотрели», а не «чисто». Требование стоит ЗДЕСЬ, потому что
             # прогон покажет его только когда артефакт уже не уедет.
-            need = expr_keys(str((step.get("with") or {}).get("path") or ""))
+            with_node = step.get("with") or {}
+            need = expr_keys(str(with_node.get("path") or with_node.get("sarif_file") or ""))
             have = {re.sub(r"\s+", "", m.group("k"))
                     for m in RE_SET.finditer(shell_executable(str(scrub.get("run") or "")))}
             missing = sorted(need - have)
@@ -227,7 +343,7 @@ def audit_workflow(path: Path, doc: dict) -> tuple[list[str], int, int, int, int
                     f"{got or '(условия нет)'}\n      Без этого шаг чистки краснеет, "
                     f"а артефакт уезжает сырым: у выкладки своё условие."
                 )
-    return findings, njobs, nsteps, nuploads, nbuilds
+    return findings, c
 
 
 def audit(root: Path) -> tuple[int, str]:
@@ -235,7 +351,7 @@ def audit(root: Path) -> tuple[int, str]:
     files = sorted(p for p in wf_dir.glob("*.y*ml") if p.is_file())
     out: list[str] = []
     findings: list[str] = []
-    njobs = nsteps = nuploads = nbuilds = 0
+    total = Counts()
 
     if not files:
         return 2, (
@@ -249,24 +365,38 @@ def audit(root: Path) -> tuple[int, str]:
         except yaml.YAMLError as exc:
             findings.append(f"{f.name}: объявление не разбирается ({exc.__class__.__name__}) — не осмотрено")
             continue
-        fnd, j, s, u, b = audit_workflow(f, doc if isinstance(doc, dict) else {})
+        fnd, c = audit_workflow(f, doc if isinstance(doc, dict) else {})
         findings.extend(fnd)
-        njobs += j
-        nsteps += s
-        nuploads += u
-        nbuilds += b
+        total.add(c)
+
+    # ВЕДОМОСТЬ СВЕРЯЕТСЯ В ОБРАТНУЮ СТОРОНУ: запись, которой в дереве больше
+    # нечего судить, переживает свой предмет и превращается в слепую зону —
+    # её принимают за покрытие.
+    # Судится ТОЛЬКО настоящее дерево: на синтетическом корне населением служат
+    # две-три фикстуры, и «записи без предмета» там по построению почти все.
+    # Признак настоящего дерева — наличие каталога версий; он же отличает
+    # прогон гейта от его самопроверки.
+    stale = sorted(set(ACTION_VERDICTS) - total.actions) if (root / ".git").exists() else []
+    if stale and total.actions:
+        findings.append(
+            "ведомость вердиктов пережила свой предмет: в объявлениях больше нет "
+            + ", ".join(stale) + ". Снимите записи — иначе они читаются как покрытие."
+        )
 
     out.append(
-        f"перепись: объявлений {len(files)}, работ {njobs}, шагов {nsteps}, "
-        f"выкладок {nuploads}, сборок образов {nbuilds}, находок {len(findings)}"
+        f"перепись: объявлений {len(files)}, работ {total.jobs}, шагов {total.steps}, "
+        f"публикующих шагов {total.uploads}, сборок образов {total.builds}, "
+        f"различных действий {len(total.actions)} (все с вердиктом), "
+        f"публикаций из тела шага {total.verbs}, находок {len(findings)}"
     )
 
     # ПРЕДПОСЫЛКА ГЕЙТА. Он утверждает свойство выкладок; выкладок ноль — значит
     # факт о дереве изменился, и запрет стал утверждением ни о чём.
-    if nuploads == 0:
+    if total.uploads == 0:
         out.append(
-            "НЕ ВЫПОЛНИЛОСЬ: осмотрено объявлений {}, а выкладок не нашлось ни одной. "
-            "Предпосылка гейта не выполняется: он судит выкладки, а судить нечего.".format(len(files))
+            "НЕ ВЫПОЛНИЛОСЬ: осмотрено объявлений {}, а публикующих шагов не нашлось "
+            "ни одного. Предпосылка гейта не выполняется: он судит публикацию, а "
+            "судить нечего.".format(len(files))
         )
         return 2, "\n".join(out)
 
@@ -520,6 +650,74 @@ jobs:
           path: out/*.json
 """
 
+UNKNOWN_ACTION = """
+name: проба
+jobs:
+  работа:
+    steps:
+      - name: чужой способ выложить
+        uses: some-org/publish-things@0000000000000000000000000000000000000000
+      - name: чистка
+        id: чистка-отчётов
+        run: python3 .github/scripts/scrub-publication.py --workflow .github/workflows/w.yml --job работа --step-id выкладка
+      - name: выкладка
+        id: выкладка
+        if: ${{ steps.чистка-отчётов.outcome == 'success' }}
+        uses: actions/upload-artifact@0000000000000000000000000000000000000000
+        with:
+          name: отчёты
+          path: out/*.json
+"""
+
+PUBLISH_FROM_BODY = """
+name: проба
+jobs:
+  работа:
+    steps:
+      - name: выложить мимо выкладки
+        run: gh release upload v1 ./out/report.json
+      - name: чистка
+        id: чистка-отчётов
+        run: python3 .github/scripts/scrub-publication.py --workflow .github/workflows/w.yml --job работа --step-id выкладка
+      - name: выкладка
+        id: выкладка
+        if: ${{ steps.чистка-отчётов.outcome == 'success' }}
+        uses: actions/upload-artifact@0000000000000000000000000000000000000000
+        with:
+          name: отчёты
+          path: out/*.json
+"""
+
+SARIF_BOUND = """
+name: проба
+jobs:
+  работа:
+    steps:
+      - name: чистка отчёта сканера
+        id: отчёт-scrub
+        if: always()
+        run: python3 .github/scripts/scrub-publication.py --workflow .github/workflows/w.yml --job работа --step-id отчёт
+      - name: выгрузка отчёта
+        id: отчёт
+        if: ${{ always() && steps.отчёт-scrub.outcome == 'success' }}
+        uses: github/codeql-action/upload-sarif@0000000000000000000000000000000000000000
+        with:
+          sarif_file: gosec.sarif
+"""
+
+SARIF_UNBOUND = """
+name: проба
+jobs:
+  работа:
+    steps:
+      - name: выгрузка отчёта
+        id: отчёт
+        if: always()
+        uses: github/codeql-action/upload-sarif@0000000000000000000000000000000000000000
+        with:
+          sarif_file: gosec.sarif
+"""
+
 NO_UPLOADS = """
 name: проба
 jobs:
@@ -535,18 +733,20 @@ def self_test() -> int:
     ok = True
     cases = 0
 
-    def run_on(body: str) -> subprocess.CompletedProcess:
+    def run_on(body: str, git: bool = False) -> subprocess.CompletedProcess:
         d = Path(tempfile.mkdtemp())
         (d / ".github" / "workflows").mkdir(parents=True)
         (d / ".github" / "workflows" / "w.yml").write_text(body, encoding="utf-8")
+        if git:
+            (d / ".git").mkdir()
         return subprocess.run(
             [sys.executable, me, "--root", str(d)], capture_output=True, text=True, check=False
         )
 
-    def case(label: str, body: str, want: int) -> None:
+    def case(label: str, body: str, want: int, git: bool = False) -> None:
         nonlocal ok, cases
         cases += 1
-        r = run_on(body)
+        r = run_on(body, git)
         if r.returncode == want:
             print(f"  ОК  {label} → код {r.returncode}")
         else:
@@ -568,6 +768,11 @@ def self_test() -> int:
     case("вызов только в хвостовом комментарии", TRAILING_COMMENT, 1)
     case("решётка внутри кавычек кода не отнимает", QUOTED_HASH, 0)
     case("чистка адресована чужой работе", WRONG_ADDRESS, 1)
+    case("неизвестное действие — находка, а не молчание", UNKNOWN_ACTION, 1)
+    case("публикация из тела шага мимо выкладки", PUBLISH_FROM_BODY, 1)
+    case("отчёт сканера связан с чисткой", SARIF_BOUND, 0)
+    case("отчёт сканера без чистки", SARIF_UNBOUND, 1)
+    case("ведомость пережила свой предмет (настоящее дерево)", BOUND, 1, git=True)
     case("сборщик образов выкладывает запись сам", BUILD_OPEN, 1)
     case("сборщик образов: канал записи закрыт", BUILD_CLOSED, 0)
     # Предпосылка: судить нечего — это не зелёное.
