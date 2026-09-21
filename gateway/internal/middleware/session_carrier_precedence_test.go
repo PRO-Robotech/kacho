@@ -243,3 +243,78 @@ func TestBothCarriersWired_NoCarrierAsksNeitherReader(t *testing.T) {
 	}
 	t.Logf("перепись: обращений к чужому читателю %d · к нашему %d", foreignAsked.Load(), reader.asked)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ЗНАМЕНАТЕЛЬ. Прежняя редакция этих проб брала два пути — путь платформы и
+// «кто я», — и оба свойством обладали. Утверждение «наш носитель решает на
+// каждом своём исходе» было доказано на подмножестве, которое его и так несёт:
+// узкая проба, а не ложная. Пути формы входа ведут себя иначе по устройству —
+// на них исход судит служба, — и именно там старшинство доставалось
+// предъявителю.
+//
+// Перечень путей теперь ВЫВОДИТСЯ из объявления (`LoginLaneRoutes`), а не
+// выписывается: глагол, дописанный к полосе формы, попадает под пробу сам.
+
+// allBrowserPaths — ВСЕ пути, на которых край читает браузерную сессию:
+// глаголы формы входа, путь платформы и «кто я».
+func allBrowserPaths() []string {
+	out := make([]string, 0, len(LoginLaneRoutes())+2)
+	for _, rt := range LoginLaneRoutes() {
+		out = append(out, rt.Path)
+	}
+	return append(out, platformPath, "/iam/v1/auth/me")
+}
+
+// На КАЖДОМ пути мёртвый наш носитель при живом чужом не отдаёт запрос чужой
+// стороне: обращений к чужому читателю ноль, чужой личности не возникает.
+func TestBothCarriersPresented_ADeadOwnCarrierYieldsNothingToTheForeignLaneOnEveryPath(t *testing.T) {
+	paths := allBrowserPaths()
+	if len(paths) == 0 {
+		t.Fatal("перечень путей пуст — проба прошла бы по нулю путей и молчала")
+	}
+	var foreignAsked atomic.Int64
+	provider := countingProviderStub(t, &foreignAsked)
+	reader := &fakeHumanSession{found: false} // наша сессия снята выходом либо истекла
+	chain, next := bothCarriersChain(t, provider.URL, reader, &fakeCutoff{})
+
+	foreignPrincipals := 0
+	for _, path := range paths {
+		next.lastReq = nil
+		before := foreignAsked.Load()
+		serve(chain, withForeignCarrier(
+			withOurCarrier(httptest.NewRequest(http.MethodGet, path, nil), "ours-dead"),
+			"foreign-live"))
+		if got := foreignAsked.Load() - before; got != 0 {
+			t.Errorf("%s: чужой читатель спрошен %d раз при предъявленном нашем носителе — "+
+				"полосу выбрал предъявитель, а не край", path, got)
+		}
+		if next.lastReq != nil &&
+			next.lastReq.Header.Get(principalmeta.HeaderPrincipalID) == "usr-foreign" {
+			foreignPrincipals++
+			t.Errorf("%s: за нашим носителем действует ЧУЖАЯ личность usr-foreign", path)
+		}
+	}
+	t.Logf("перепись: путей браузерной сессии в перечне %d (глаголов формы %d + путь платформы + «кто я») · "+
+		"пройдено %d · обращений к чужому читателю %d · чужих личностей %d",
+		len(paths), len(LoginLaneRoutes()), len(paths), foreignAsked.Load(), foreignPrincipals)
+}
+
+// Законный близнец того же знаменателя: БЕЗ нашего носителя чужая сессия
+// работает на каждом пути, который её вообще читает. Без этой половины
+// предыдущая проба зеленела бы и на крае, который чужую полосу снял совсем.
+func TestBothCarriersWired_TheForeignLaneStillWorksOnEveryPathWithoutOurCarrier(t *testing.T) {
+	var foreignAsked atomic.Int64
+	provider := countingProviderStub(t, &foreignAsked)
+	reader := &fakeHumanSession{found: true, sess: liveOwnSession()}
+	chain, _ := bothCarriersChain(t, provider.URL, reader, &fakeCutoff{})
+
+	paths := allBrowserPaths()
+	for _, path := range paths {
+		serve(chain, withForeignCarrier(httptest.NewRequest(http.MethodGet, path, nil), "foreign-live"))
+	}
+	if foreignAsked.Load() == 0 {
+		t.Fatalf("чужой читатель не спрошен НИ РАЗУ на %d путях без нашего носителя — переходное "+
+			"состояние перестало быть переходным", len(paths))
+	}
+	t.Logf("перепись: путей пройдено %d · обращений к чужому читателю %d", len(paths), foreignAsked.Load())
+}
