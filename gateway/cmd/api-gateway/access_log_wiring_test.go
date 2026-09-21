@@ -31,6 +31,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -193,4 +194,95 @@ func TestRequestHeaderCapIsADecision(t *testing.T) {
 		return
 	}
 	t.Logf("перепись: предел строки запроса объявлен (%s)", fset.Position(pos))
+}
+
+// prependedInterceptors возвращает элементы ВНЕШНЕГО довеска цепи звеньев —
+// того самого `append([]T{…}, <цепь>...)`, который ставит звено ПЕРВЫМ, то есть
+// самым внешним.
+//
+// На нативной полосе порядок задаётся не позицией в файле, а позицией в срезе:
+// цепь копится присваиваниями сверху вниз, но один довесок ставится СПЕРЕДИ.
+// Поэтому гейт ищет именно его, а не сравнивает координаты, как на полосе HTTP.
+func prependedInterceptors(t *testing.T, file *ast.File, chainVar string) []string {
+	t.Helper()
+	var names []string
+	found := false
+	ast.Inspect(file, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || len(call.Args) != 2 {
+			return true
+		}
+		fn, isIdent := call.Fun.(*ast.Ident)
+		if !isIdent || fn.Name != "append" {
+			return true
+		}
+		// `append(lit, chain...)` — многоточие помечает САМ вызов, а не
+		// отдельным узлом в аргументах.
+		if !call.Ellipsis.IsValid() {
+			return true
+		}
+		tail, isTail := call.Args[1].(*ast.Ident)
+		if !isTail || tail.Name != chainVar {
+			return true
+		}
+		lit, isLit := call.Args[0].(*ast.CompositeLit)
+		if !isLit {
+			return true
+		}
+		found = true
+		for _, el := range lit.Elts {
+			c, isCall := el.(*ast.CallExpr)
+			if !isCall {
+				continue
+			}
+			if sel, isSel := c.Fun.(*ast.SelectorExpr); isSel {
+				names = append(names, sel.Sel.Name)
+			}
+		}
+		return true
+	})
+	if !found {
+		t.Fatalf("в корне не найден внешний довесок цепи %s — порядок звеньев выяснять нечем, "+
+			"и молчание гейта пусто", chainVar)
+	}
+	return names
+}
+
+// TestNativeAccessLogIsOutsideTheRefusingLinks — ТОТ ЖЕ КЛАСС, что и на полосе
+// HTTP, и он обязан быть закрыт на ОБЕИХ.
+//
+// На нативной полосе журнал доступа дописывался в цепь ПОСЛЕДНИМ, а первый
+// элемент там самый внешний, — значит журнал стоял ВНУТРИ всех отказных
+// звеньев: личности, привязки удостоверения, допуска по темпу, отказа по
+// маршруту и решения о правах. Отказ любого из них не оставлял записи.
+//
+// Довод здесь тот же, что уже выписан в корне для измерителя задержки: стоя за
+// звеном прав, он оставил бы неизмеренным каждый отказ. Измеритель по этому
+// доводу поставлен первым, а журнал — нет; одно и то же рассуждение применено к
+// одному звену из двух.
+func TestNativeAccessLogIsOutsideTheRefusingLinks(t *testing.T) {
+	file, _ := parsedMainForWiring(t)
+
+	for _, lane := range []struct{ chainVar, accessLog string }{
+		{"grpcUnaryInterceptors", "UnaryAccessLog"},
+		{"grpcStreamInterceptors", "StreamAccessLog"},
+	} {
+		outer := prependedInterceptors(t, file, lane.chainVar)
+		t.Logf("перепись: внешний довесок %s несёт %d звено(ьев): %s",
+			lane.chainVar, len(outer), strings.Join(outer, ", "))
+
+		carries := false
+		for _, n := range outer {
+			if n == lane.accessLog {
+				carries = true
+			}
+		}
+		if !carries {
+			t.Errorf("%s не стоит во внешнем довеске цепи %s (там: %s) — значит он дописан в "+
+				"цепь и стоит ВНУТРИ отказных звеньев. Отказ по личности, по привязке "+
+				"удостоверения, по темпу, по маршруту и по правам не оставляет записи: "+
+				"ровно тот класс, что закрыт на полосе HTTP.",
+				lane.accessLog, lane.chainVar, strings.Join(outer, ", "))
+		}
+	}
 }

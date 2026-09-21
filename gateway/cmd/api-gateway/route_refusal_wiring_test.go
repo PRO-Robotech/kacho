@@ -20,7 +20,7 @@ import (
 func TestCompositionRoot_RefusesTheInternalRouteBeforeAuthorization(t *testing.T) {
 	src := compositionRoot(t)
 
-	refusal := strings.Index(src, "proxy.StreamRefuseInternalRoute()")
+	refusal := strings.Index(src, "proxy.StreamRefuseInternalRoute(")
 	require.Greater(t, refusal, -1,
 		"the external listener must mount the Internal* route refusal; without it an Internal* method "+
 			"whose permission the caller lacks answers PermissionDenied naming the permission, while its "+
@@ -40,7 +40,7 @@ func TestCompositionRoot_RefusesTheInternalRouteAfterAuthentication(t *testing.T
 
 	authn := strings.Index(src, "authInterceptor.Stream()")
 	require.Greater(t, authn, -1, "authN interceptor not found — this test can no longer judge the order")
-	refusal := strings.Index(src, "proxy.StreamRefuseInternalRoute()")
+	refusal := strings.Index(src, "proxy.StreamRefuseInternalRoute(")
 	require.Greater(t, refusal, -1, "route refusal not mounted")
 
 	require.Less(t, authn, refusal,
@@ -51,9 +51,9 @@ func TestCompositionRoot_RefusesTheInternalRouteAfterAuthentication(t *testing.T
 
 func TestCompositionRoot_RefusalIsMountedOnBothCallShapes(t *testing.T) {
 	src := compositionRoot(t)
-	require.Regexp(t, regexp.MustCompile(`grpcUnaryInterceptors\s*=\s*append\([^)]*proxy\.UnaryRefuseInternalRoute\(\)`), src,
+	require.Regexp(t, regexp.MustCompile(`grpcUnaryInterceptors\s*=\s*append\([^)]*proxy\.UnaryRefuseInternalRoute\(`), src,
 		"unary shape must carry the refusal too")
-	require.Regexp(t, regexp.MustCompile(`grpcStreamInterceptors\s*=\s*append\([^)]*proxy\.StreamRefuseInternalRoute\(\)`), src,
+	require.Regexp(t, regexp.MustCompile(`grpcStreamInterceptors\s*=\s*append\([^)]*proxy\.StreamRefuseInternalRoute\(`), src,
 		"the STREAM shape is the load-bearing one: proxied domain traffic goes through UnknownServiceHandler, "+
 			"which grpc-go dispatches as a stream")
 }

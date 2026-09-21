@@ -61,7 +61,7 @@ func refuseRoute(fullMethod string) error {
 }
 
 // UnaryRefuseInternalRoute refuses the route for Internal*Service on unary RPCs.
-func UnaryRefuseInternalRoute() grpc.UnaryServerInterceptor {
+func UnaryRefuseInternalRoute(obs *RouteRefusalObserver) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler) (any, error) {
 		if info != nil && IsInternalRoute(info.FullMethod) {
@@ -76,7 +76,7 @@ func UnaryRefuseInternalRoute() grpc.UnaryServerInterceptor {
 // grpc-go dispatches as a stream, so THIS is the interceptor that carries the
 // property for proxied traffic — the unary one covers natively-registered
 // services and is kept for parity rather than left as an asymmetry.
-func StreamRefuseInternalRoute() grpc.StreamServerInterceptor {
+func StreamRefuseInternalRoute(obs *RouteRefusalObserver) grpc.StreamServerInterceptor {
 	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo,
 		handler grpc.StreamHandler) error {
 		method := ""

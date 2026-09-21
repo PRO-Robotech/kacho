@@ -115,7 +115,7 @@ func withoutTheCallersOwnInput(st *status.Status, method string) string {
 
 func TestExternalListener_InternalMethodAnswersExactlyAsAMethodThatDoesNotExist(t *testing.T) {
 	cc := externalServer(t,
-		proxy.StreamRefuseInternalRoute(),
+		proxy.StreamRefuseInternalRoute(nil),
 		denyingAuthz(),
 	)
 
@@ -166,7 +166,7 @@ func TestExternalListener_WithoutTheRefusal_TheAnswersDiffer(t *testing.T) {
 // Control in the other direction: refusing MORE than Internal* would trade one
 // blindness for another — the public surface must keep routing.
 func TestExternalListener_PublicMethodStillRoutes(t *testing.T) {
-	cc := externalServer(t, proxy.StreamRefuseInternalRoute(), denyingAuthz())
+	cc := externalServer(t, proxy.StreamRefuseInternalRoute(nil), denyingAuthz())
 
 	st := answer(t, cc, publicMethod)
 	if st.Code() == codes.NotFound {

@@ -1063,8 +1063,8 @@ func main() {
 	// method; refusing ahead of authN would hand that caller NotFound for
 	// Internal* and Unauthenticated for everything else — the same leak in
 	// different clothes.
-	grpcUnaryInterceptors = append(grpcUnaryInterceptors, proxy.UnaryRefuseInternalRoute())
-	grpcStreamInterceptors = append(grpcStreamInterceptors, proxy.StreamRefuseInternalRoute())
+	grpcUnaryInterceptors = append(grpcUnaryInterceptors, proxy.UnaryRefuseInternalRoute(nil))
+	grpcStreamInterceptors = append(grpcStreamInterceptors, proxy.StreamRefuseInternalRoute(nil))
 	if authzMW != nil {
 		grpcUnaryInterceptors = append(grpcUnaryInterceptors, authzMW.Unary())
 		grpcStreamInterceptors = append(grpcStreamInterceptors, authzMW.Stream())
