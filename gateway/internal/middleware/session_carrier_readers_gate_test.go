@@ -361,24 +361,32 @@ func TestSessionCarrierEndings_AreBuiltInExactlyOnePlace(t *testing.T) {
 		t.Fatal("обход пуст — гейт судил бы о непрочитанном")
 	}
 
-	var sites []string
+	var sites, unresolved []string
 	for _, path := range files {
 		fset := token.NewFileSet()
 		f, err := parser.ParseFile(fset, path, nil, 0)
 		if err != nil {
 			continue
 		}
+		consts := stringConstsOf(f)
 		ast.Inspect(f, func(n ast.Node) bool {
 			cl, ok := n.(*ast.CompositeLit)
-			if !ok || !isHTTPCookieLit(cl) || !looksLikeAnEnding(cl) {
+			if !ok || !isHTTPCookieLit(cl) {
 				return true
 			}
 			rel, _ := filepath.Rel(root, path)
-			sites = append(sites, filepath.ToSlash(rel)+":"+
-				strconv.Itoa(fset.Position(cl.Pos()).Line))
+			at := filepath.ToSlash(rel) + ":" + strconv.Itoa(fset.Position(cl.Pos()).Line)
+			switch looksLikeAnEnding(cl, consts) {
+			case valueEmpty:
+				sites = append(sites, at)
+			case valueUnknown:
+				unresolved = append(unresolved, at)
+			case valueNonEmpty:
+			}
 			return true
 		})
 	}
+	sort.Strings(unresolved)
 	sort.Strings(sites)
 	if len(sites) != 1 {
 		t.Errorf("мест сборки гасящего печенья %d, ожидалось 1 (%s): второе совпадало бы с первым "+
@@ -386,13 +394,28 @@ func TestSessionCarrierEndings_AreBuiltInExactlyOnePlace(t *testing.T) {
 			"путём, и «выйти» оставит человека вошедшим при верном знаке срока",
 			len(sites), strings.Join(sites, ", "))
 	}
-	t.Logf("перепись: ОБЛАСТЬ ОБХОДА — весь модуль, корень выведен по go.mod; непроверочных "+
-		"файлов Go осмотрено %d · мест сборки гасящего печенья %d (%s)",
-		len(files), len(sites), strings.Join(sites, ", "))
+	// ТРЕТИЙ ИСХОД ПЕЧАТАЕТСЯ ЧИСЛОМ. Значение величиной, которую разбор не
+	// разрешил, — не «выдача» и не «гашение»: это место, о котором гейт не
+	// высказывается, и молча отнести его к выдаче значило бы вернуть обход.
+	t.Logf("перепись: ОБЛАСТЬ ОБХОДА — весь модуль, корень выведен по go.mod (состав взят у "+
+		"индекса); ОСТАТОК: файлы вне индекса и неразбираемые. Осмотрено непроверочных файлов "+
+		"Go %d · мест сборки гасящего печенья %d (%s) · значений, не разрешённых разбором, %d%s",
+		len(files), len(sites), strings.Join(sites, ", "), len(unresolved),
+		func() string {
+			if len(unresolved) == 0 {
+				return ""
+			}
+			return " (" + strings.Join(unresolved, ", ") + ")"
+		}())
 }
 
-// moduleRootOf — корень модуля, найденный по go.mod. Корень ВЫВЕДЕН: сузить
-// область, не тронув модуль, нечем.
+// moduleRootOf — корень модуля, найденный по go.mod.
+//
+// Корень ВЫВЕДЕН, и это означает ровно одно: он не задан строкой в этом файле,
+// а найден подъёмом до объявления модуля. Обещания «сузить нечем» здесь нет —
+// механизма, который бы его держал, не существует: перенеси кто-нибудь go.mod
+// либо подмени рабочий каталог, и корень станет другим. Держится это
+// устройством модуля, а не проверкой.
 func moduleRootOf(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()
@@ -444,12 +467,33 @@ func isHTTPCookieLit(cl *ast.CompositeLit) bool {
 	return ok && pkg.Name == "http"
 }
 
+// cookieValueKind — что разбор смог сказать о значении печенья.
+type cookieValueKind int
+
+const (
+	// valueEmpty — значение ПУСТО: литерал "" либо константа, разрешённая
+	// разбором в пустую строку, либо поле опущено (нулевое значение).
+	valueEmpty cookieValueKind = iota
+	// valueNonEmpty — значение непусто литералом: печенье выдаётся.
+	valueNonEmpty
+	// valueUnknown — значение приходит величиной, которую разбор разрешить не
+	// смог. ТРЕТИЙ исход, а не «значит, выдача»: молча отнести его к выдаче
+	// означало бы вернуть обход, закрытый на литерале, в форме константы.
+	valueUnknown
+)
+
 // looksLikeAnEnding — ПЕЧЕНЬЕ С ПУСТЫМ ЗНАЧЕНИЕМ.
 //
-// Один признак вместо двух, и он не обходится записью: опущенное поле — то же
-// пустое значение, а срок может быть назван как угодно. Выдачей такое печенье
-// не бывает: пустое значение выдавать незачем.
-func looksLikeAnEnding(cl *ast.CompositeLit) bool {
+// Признак один и по существу: пустое значение не выдают — выдача пустого не
+// значила бы ничего. Опущенное поле считается пустым, потому что таково нулевое
+// значение.
+//
+// КОНСТАНТА, РАВНАЯ ПУСТОЙ СТРОКЕ, — ТО ЖЕ ПУСТОЕ ЗНАЧЕНИЕ. Прежняя редакция
+// читала её как выдачу и потому не видела второго места гашения, названного
+// константой: обход, закрытый на литерале, вернулся в форме имени. Константы
+// пакета разрешаются разбором; неразрешённое остаётся ТРЕТЬИМ исходом и
+// печатается переписью числом, а не приписывается к выдаче.
+func looksLikeAnEnding(cl *ast.CompositeLit, consts map[string]string) cookieValueKind {
 	for _, e := range cl.Elts {
 		kv, ok := e.(*ast.KeyValueExpr)
 		if !ok {
@@ -459,13 +503,56 @@ func looksLikeAnEnding(cl *ast.CompositeLit) bool {
 		if !ok || key.Name != "Value" {
 			continue
 		}
-		lit, ok := kv.Value.(*ast.BasicLit)
-		if !ok || lit.Kind != token.STRING {
-			// Значение приходит величиной — печенье выдаётся, а не гасится.
-			return false
+		switch v := kv.Value.(type) {
+		case *ast.BasicLit:
+			if v.Kind != token.STRING {
+				return valueUnknown
+			}
+			if strings.Trim(v.Value, `"`+"`") == "" {
+				return valueEmpty
+			}
+			return valueNonEmpty
+		case *ast.Ident:
+			val, known := consts[v.Name]
+			if !known {
+				return valueUnknown
+			}
+			if val == "" {
+				return valueEmpty
+			}
+			return valueNonEmpty
+		default:
+			return valueUnknown
 		}
-		return strings.Trim(lit.Value, `"`+"`") == ""
 	}
 	// Поле ОПУЩЕНО: нулевое значение поля есть пустая строка, то есть гашение.
-	return true
+	return valueEmpty
+}
+
+// stringConstsOf — строковые константы файла, имя → значение. Разрешаются
+// только константы ЭТОГО файла: импортированная константа разбором отсюда не
+// видна, и такое значение остаётся третьим исходом.
+func stringConstsOf(f *ast.File) map[string]string {
+	out := map[string]string{}
+	for _, d := range f.Decls {
+		gd, ok := d.(*ast.GenDecl)
+		if !ok || gd.Tok != token.CONST {
+			continue
+		}
+		for _, sp := range gd.Specs {
+			vs, ok := sp.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for i, n := range vs.Names {
+				if i >= len(vs.Values) {
+					continue
+				}
+				if lit, ok := vs.Values[i].(*ast.BasicLit); ok && lit.Kind == token.STRING {
+					out[n.Name] = strings.Trim(lit.Value, `"`+"`")
+				}
+			}
+		}
+	}
+	return out
 }

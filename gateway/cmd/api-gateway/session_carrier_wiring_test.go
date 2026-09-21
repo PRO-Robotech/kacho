@@ -28,6 +28,23 @@
 // свойство полосы, а не корня, и держит его
 // `middleware/session_carrier_precedence_test.go`: множество нарочно устроено
 // так, что порядок в нём непредставим.
+//
+// ОБЛАСТЬ ОБХОДА: композиционный корень (`main.go`) — для гейтов провязки; и
+// непроверочные файлы ДВУХ пакетов, `internal/middleware` и `internal/config`,
+// — для сверки перечня с деревом. Корни выписаны здесь и уходят параметром
+// помощникам.
+//
+// ОСТАТОК: весь прочий модуль. Читатель носителя, заведённый НЕ в
+// композиционном корне, этими гейтами не осматривается; имя конструктора,
+// объявленное вне двух названных пакетов, опознано не будет. Свойство держится
+// тем, что сборка зависимостей края живёт в одном корне (`arch-wiring-cmd-only`),
+// и этой оговоркой — не обходом.
+//
+// Объявление стоит здесь потому, что МЕХАНИЗМ ЭТОТ СЛУЧАЙ НЕ ВИДИТ: корень
+// уходит параметром помощнику, а такая форма — одна из одиннадцати, названных
+// невидимыми в шапке `internal/repohygiene/gatescopedeclared_test.go`. Нашёл
+// его человек, а не обход, и это ровно та цена частичного предиката, которая
+// там объявлена.
 package main
 
 import (
@@ -735,44 +752,53 @@ func TestSessionCarrierWiring_TheGuardIsGivenEveryFieldItsAxesNeed(t *testing.T)
 		"ProviderURL":    "ось адреса объявленного читателя",
 	}
 
-	var lit *ast.CompositeLit
+	// Судятся ВСЕ конфигурации стража в корне, а не последняя найденная.
+	// Прежде обход присваивал и перезаписывал, и появись вторая — судилась бы
+	// только она, а первая прошла бы молча.
+	var lits []*ast.CompositeLit
 	ast.Inspect(f, func(n ast.Node) bool {
 		cl, ok := n.(*ast.CompositeLit)
 		if !ok {
 			return true
 		}
 		if id, ok := cl.Type.(*ast.Ident); ok && id.Name == "SessionCarrierConfig" {
-			lit = cl
+			lits = append(lits, cl)
 		}
 		return true
 	})
-	if lit == nil {
+	if len(lits) == 0 {
 		t.Fatal("вызова стража с SessionCarrierConfig в корне не найдено — обход судил бы о " +
 			"непроисходящем")
 	}
 
-	given := map[string]bool{}
-	for _, e := range lit.Elts {
-		kv, ok := e.(*ast.KeyValueExpr)
-		if !ok {
-			continue
+	complete := 0
+	for _, lit := range lits {
+		given := map[string]bool{}
+		for _, e := range lit.Elts {
+			kv, ok := e.(*ast.KeyValueExpr)
+			if !ok {
+				continue
+			}
+			if id, ok := kv.Key.(*ast.Ident); ok {
+				given[id.Name] = true
+			}
 		}
-		if id, ok := kv.Key.(*ast.Ident); ok {
-			given[id.Name] = true
+		var missing []string
+		for field, axis := range axisFields {
+			if !given[field] {
+				missing = append(missing, field+" ("+axis+")")
+			}
+		}
+		sort.Strings(missing)
+		for _, m := range missing {
+			t.Errorf("корень не передаёт стражу поле %s: нулевое значение выключает ось МОЛЧА, и "+
+				"снятие одной строки из корня возвращает закрытую находку при зелёном наборе (%s)",
+				m, fset.Position(lit.Pos()).String())
+		}
+		if len(missing) == 0 {
+			complete++
 		}
 	}
-	var missing []string
-	for field, axis := range axisFields {
-		if !given[field] {
-			missing = append(missing, field+" ("+axis+")")
-		}
-	}
-	sort.Strings(missing)
-	for _, m := range missing {
-		t.Errorf("корень не передаёт стражу поле %s: нулевое значение выключает ось МОЛЧА, и "+
-			"снятие одной строки из корня возвращает закрытую находку при зелёном наборе (%s)",
-			m, fset.Position(lit.Pos()).String())
-	}
-	t.Logf("перепись: полей, от которых зависят оси стража, %d · передано корнем %d",
-		len(axisFields), len(axisFields)-len(missing))
+	t.Logf("перепись: конфигураций стража в корне %d · полей, от которых зависят оси, %d · "+
+		"конфигураций, передавших все поля, %d", len(lits), len(axisFields), complete)
 }
