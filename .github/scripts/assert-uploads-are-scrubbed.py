@@ -175,6 +175,22 @@ def audit_workflow(path: Path, doc: dict) -> tuple[list[str], int, int, int, int
                 )
                 continue
 
+            # АДРЕС ЧИСТКИ СВЕРЯЕТСЯ С МЕСТОМ, ГДЕ ОНА СТОИТ. Ключи `--workflow`
+            # и `--job` — это координаты узла, из которого берутся маски. Опечатка
+            # в них не ловится ничем до прогона: чистка честно ответит «объявление
+            # выкладки не прочитано» (код 3), и артефакт не уедет — то есть цена
+            # опечатки будет заплачена прогоном, хотя видна она здесь.
+            run_txt = str(scrub.get("run") or "")
+            want_wf = f"--workflow .github/workflows/{path.name}"
+            want_job = f"--job {job_name}"
+            if want_wf not in run_txt or want_job not in run_txt:
+                findings.append(
+                    f"{where} (id={up_id}): шаг чистки адресован не своему узлу — "
+                    f"ожидались «{want_wf}» и «{want_job}». Маски он взял бы из "
+                    f"чужого объявления либо не взял вовсе."
+                )
+                continue
+
             # Маска, чьё выражение нечем вычислить, найдёт ноль файлов — и это
             # «не смотрели», а не «чисто». Требование стоит ЗДЕСЬ, потому что
             # прогон покажет его только когда артефакт уже не уедет.
@@ -421,6 +437,23 @@ jobs:
           path: out/*.json
 """
 
+WRONG_ADDRESS = """
+name: проба
+jobs:
+  работа:
+    steps:
+      - name: чистка, адресованная чужой работе
+        id: чистка-отчётов
+        run: python3 .github/scripts/scrub-publication.py --workflow .github/workflows/w.yml --job другая-работа --step-id выкладка
+      - name: выкладка
+        id: выкладка
+        if: ${{ steps.чистка-отчётов.outcome == 'success' }}
+        uses: actions/upload-artifact@0000000000000000000000000000000000000000
+        with:
+          name: отчёты
+          path: out/*.json
+"""
+
 NO_UPLOADS = """
 name: проба
 jobs:
@@ -465,6 +498,7 @@ def self_test() -> int:
     case("чистка называет ЧУЖОЙ шаг", FOREIGN_SCRUB, 1)
     case("выражение в маске без --set", EXPR_UNSET, 1)
     case("выражение в маске с --set", EXPR_SET, 0)
+    case("чистка адресована чужой работе", WRONG_ADDRESS, 1)
     case("сборщик образов выкладывает запись сам", BUILD_OPEN, 1)
     case("сборщик образов: канал записи закрыт", BUILD_CLOSED, 0)
     # Предпосылка: судить нечего — это не зелёное.
