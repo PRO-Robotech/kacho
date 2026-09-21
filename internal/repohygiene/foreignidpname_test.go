@@ -1,0 +1,178 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+package repohygiene
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/PRO-Robotech/corelib/gitenv"
+)
+
+// foreignIDPNameLedger — ВЕДОМОСТЬ: области, где наши имена сегодня носят
+// название чужого поставщика личности, с ТОЧНЫМ их числом.
+//
+// Ведомость — не список прощённых. Предмет гейта — не наличие имён, а то, что
+// они растут и переживают поставщика незамеченными. У каждой записи стоит
+// `Until` — факт о дереве, при котором её снимают; без него запись бессрочна.
+//
+// Числа получены обходом этого же дерева на ревизии bec320cf47d и обязаны
+// СОКРАЩАТЬСЯ. Расхождение ловится в обе стороны: вверх — поверхность выросла;
+// вниз — запись пережила часть предмета, и её надо переписать.
+var foreignIDPNameLedger = []ForeignIDPNameLedgerEntry{
+	{
+		Area:  "gateway/",
+		Names: 99,
+		Why: "край — единственное место, где платформа РАЗГОВАРИВАЕТ с поставщиком " +
+			"по его протоколу: сессия входа, интроспекция, снятие сессии. Имена здесь " +
+			"расходятся на две половины: координаты разговора (их снимут вместе с " +
+			"полосой) и фикстуры проб, носящие название без нужды",
+		Until: "полоса развода ручки посадки края закончена и в `gateway/**` не " +
+			"осталось ни одного объявленного имени этой оси",
+	},
+	{
+		Area:  "deploy/",
+		Names: 3,
+		Why: "пробы посадки судят профили, где поставщик объявлен подчартом: имя " +
+			"ручки профиля попало в имя переменной пробы",
+		Until: "подчарт поставщика снят с профилей посадки",
+	},
+	{
+		Area:  "terraform/",
+		Names: 1,
+		Why: "поле отображения ответа края `json:\"hydraClientId\"`: имя поля Go " +
+			"повторяет имя поля контракта, и расхождение между ними читалось бы как " +
+			"ошибка отображения",
+		Until: "поле контракта `hydraClientId` переименовано на крае",
+	},
+}
+
+// foreignIDPNameSources — дерево Go, спрошенное У ИНДЕКСА, включая пробы:
+// предмет гейта живёт как раз в них.
+//
+// Обход диска не знает правил игнорирования и судил бы чужой рабочий каталог —
+// произведённые файлы, чужие копии, остатки прогонов.
+func foreignIDPNameSources(t *testing.T) map[string]string {
+	t.Helper()
+	root := repoRoot(t)
+	out, err := gitenv.Command(root, "ls-files", "-z", "--", "*.go").Output()
+	if err != nil {
+		t.Fatalf("git ls-files: %v — состав дерева не установлен, и «ноль находок» "+
+			"здесь означало бы «ноль прочитанного»", err)
+	}
+	sources := map[string]string{}
+	for _, rel := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
+		if rel == "" || skipPath(rel) {
+			continue
+		}
+		// Порождённое не правится переименованием: имя там приходит из контракта.
+		if strings.HasSuffix(rel, ".pb.go") || strings.HasSuffix(rel, ".pb.gw.go") {
+			continue
+		}
+		b, readErr := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- путь из индекса своего дерева
+		if readErr != nil {
+			t.Fatalf("чтение %s: %v", rel, readErr)
+		}
+		sources[rel] = string(b)
+	}
+	return sources
+}
+
+// TestForeignIDPNameIsBoundedByTheLedger — наши имена не носят названия чужого
+// поставщика личности вне ведомости, и это утверждение О ДЕРЕВЕ.
+//
+// Разбор класса и граница предиката — в шапке foreignidpname.go. Здесь только
+// обход дерева и вердикт.
+func TestForeignIDPNameIsBoundedByTheLedger(t *testing.T) {
+	t.Parallel()
+	sources := foreignIDPNameSources(t)
+
+	findings, census, err := JudgeForeignIDPNames(sources, foreignIDPNameLedger)
+	if err != nil {
+		t.Fatalf("разбор: %v", err)
+	}
+	t.Log(census.String())
+
+	// Предпосылка: гейт обязан ОТКАЗЫВАТЬ на беспредметности, а не молчать.
+	// Ноль разобранных файлов снаружи неотличим от «имён нет».
+	if census.Files == 0 {
+		t.Fatal("разобрано ноль файлов — гейт не читал дерева, и его молчание ничего не значит")
+	}
+	if census.Idents == 0 {
+		t.Fatal("осмотрено ноль объявленных имён — разбор не дошёл до исполняемой части")
+	}
+
+	for _, f := range findings {
+		switch f.Kind {
+		case ForeignIDPNameUnledgered:
+			t.Errorf("%s:%d: имя %q — %s.\n"+
+				"Координаты поставщика (адрес, путь его API, имя ручки посадки) законны и "+
+				"пишутся строковым литералом — их держат providersurface.go и "+
+				"retiredissuerclaim.go. Здесь же НАШЕ имя носит его название: снимут "+
+				"поставщика — имя останется ложью, которую компилятор не заметит.\n"+
+				"Исходов три: снять вместе с предметом одним изменением · перевести на "+
+				"производимый деревом признак (`testLegacyIss` рядом) · переутвердить новое "+
+				"свойство того же предмета. «Оставить как есть» исходом не является — для "+
+				"этого есть foreignIDPNameLedger, и у каждой записи стоит предикат снятия",
+				f.File, f.Line, f.Name, f.Detail)
+		case ForeignIDPNameCountDrift:
+			t.Errorf("область %s: %s — %s.\n"+
+				"Число в ведомости ТОЧНОЕ, а не потолок: потолок прощает рост до себя и "+
+				"перестаёт быть наблюдением", f.File, f.Kind, f.Detail)
+		case ForeignIDPNameStale:
+			t.Errorf("область %s: %s — %s.\n"+
+				"Ведомость обязана сокращаться вместе с деревом: запись, которой нечего "+
+				"называть, молча разрешит следующее имя в этой области", f.File, f.Kind, f.Detail)
+		default:
+			t.Errorf("%s:%d: неизвестный вид находки %q", f.File, f.Line, f.Kind)
+		}
+	}
+}
+
+// TestForeignIDPNameLedgerPremiseHolds — предпосылка ведомости: она не пуста и
+// её записи не вакуумны.
+//
+// Пустая ведомость при нуле имён — ЦЕЛЬ, а не поломка: проба, падающая на
+// достижении собственной цели, подталкивает держать запись ради зелёного.
+// Поэтому пустая ведомость здесь ПРОХОДИТ, объявляя перепись.
+func TestForeignIDPNameLedgerPremiseHolds(t *testing.T) {
+	t.Parallel()
+	sources := foreignIDPNameSources(t)
+	hits, census, err := CollectForeignIDPNames(sources)
+	if err != nil {
+		t.Fatalf("разбор: %v", err)
+	}
+	t.Logf("%s; записей ведомости %d", census.String(), len(foreignIDPNameLedger))
+
+	if len(foreignIDPNameLedger) == 0 {
+		t.Log("ведомость пуста — исход, к которому гейт ведёт; проверять нечего")
+		if census.Names != 0 {
+			t.Errorf("ведомость пуста, а имён в дереве %d — этого состояния быть не может",
+				census.Names)
+		}
+		return
+	}
+	for _, e := range foreignIDPNameLedger {
+		if strings.TrimSpace(e.Until) == "" {
+			t.Errorf("запись ведомости %q без предиката снятия — она бессрочна, и снять "+
+				"её будет некому", e.Area)
+		}
+		if e.Names <= 0 {
+			t.Errorf("запись ведомости %q объявляет имён %d — запись, которой нечего "+
+				"называть, заводить нельзя", e.Area, e.Names)
+		}
+		got := 0
+		for _, h := range hits {
+			if foreignIDPArea(h.File) == e.Area {
+				got++
+			}
+		}
+		if got == 0 {
+			t.Errorf("запись ведомости %q не накрывает ни одного имени — она вакуумна",
+				e.Area)
+		}
+	}
+}
