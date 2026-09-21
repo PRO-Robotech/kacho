@@ -98,6 +98,30 @@ func bootConfig(t *testing.T, env map[string]string) config.Config {
 	return c
 }
 
+// requireEphemeralListeners — СТРАЖ ПРЕДУСЛОВИЯ проб носителя: слушатели процесса
+// подняты на порту, который назначит ЯДРО, а не на умолчании конфигурации.
+//
+// Он стоит ДО вызова носителя, и это не перестраховка. Имя ручки, которого разбор
+// конфигурации не знает, не отказывает и не предупреждает: величина остаётся
+// умолчанием, носитель занимает 9090/9091, а проба падает не на своём предмете, а
+// на том, что ещё поднято на машине прогона, — и падает чужим текстом («bind:
+// address already in use»), уводящим читателя к соседнему стенду (#2678).
+//
+// Страж превращает это в отказ, называющий РУЧКУ.
+func requireEphemeralListeners(t *testing.T, cfg config.Config) {
+	t.Helper()
+	for _, l := range []struct{ knob, port string }{
+		{"KACHO_STORAGE_GRPC_PORT", cfg.GrpcPort},
+		{"KACHO_STORAGE_INTERNAL_PORT", cfg.InternalGrpcPort},
+	} {
+		if l.port != "0" {
+			t.Fatalf("слушатель ручки %s объявлен на порту %q — это не порт, назначенный ядром: "+
+				"подстановка не доехала до разбора конфигурации, и вердикт пробы стал функцией "+
+				"того, что ещё поднято на машине прогона", l.knob, l.port)
+		}
+	}
+}
+
 // describeWith собирает дескриптор на данной конфигурации с тем же сужателем, что
 // уезжает в use-cases.
 func describeWith(t *testing.T, cfg config.Config) (servicecontract.Descriptor, error) {

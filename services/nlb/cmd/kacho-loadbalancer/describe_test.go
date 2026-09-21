@@ -24,6 +24,7 @@ package main
 
 import (
 	"context"
+	"net"
 	"strings"
 	"testing"
 
@@ -85,6 +86,33 @@ func bootConfig(t *testing.T, env map[string]string) *config.Config {
 		t.Fatalf("конфигурация не загрузилась: %v", err)
 	}
 	return c
+}
+
+// requireEphemeralListeners — СТРАЖ ПРЕДУСЛОВИЯ проб носителя: слушатели процесса
+// подняты на порту, который назначит ЯДРО, а не на умолчании конфигурации.
+//
+// Он стоит ДО вызова носителя, и это не перестраховка. Имя ручки, которого разбор
+// конфигурации не знает, не отказывает и не предупреждает: величина остаётся
+// умолчанием, носитель занимает 9090/9091, а проба падает не на своём предмете, а
+// на том, что ещё поднято на машине прогона, — и падает чужим текстом («bind:
+// address already in use»), уводящим читателя к соседнему стенду (#2678).
+//
+// Страж превращает это в отказ, называющий РУЧКУ. Утверждается ключ конфигурации,
+// а не имя переменной окружения: имя переменной — способ доставки, а предмет здесь
+// — доехала подстановка или нет.
+func requireEphemeralListeners(t *testing.T, cfg *config.Config) {
+	t.Helper()
+	for _, l := range []struct{ key, endpoint string }{
+		{"api-server.endpoint", cfg.APIServer.Endpoint},
+		{"api-server.internal-endpoint", cfg.APIServer.InternalEndpoint},
+	} {
+		_, port, err := net.SplitHostPort(hostPort(l.endpoint))
+		if err != nil || port != "0" {
+			t.Fatalf("слушатель %q объявлен как %q — это не порт, назначенный ядром: "+
+				"подстановка ручки не доехала до разбора конфигурации, и вердикт пробы "+
+				"стал функцией того, что ещё поднято на машине прогона", l.key, l.endpoint)
+		}
+	}
 }
 
 // probeNarrower / probeGate — то, что композиционный корень приносит дескриптору
@@ -232,16 +260,22 @@ func TestDeclaredCircleIsTheOneTheProcessCarries(t *testing.T) {
 // регистраторы».
 //
 // Контекст отменён заранее: если носитель дойдёт до слушателей, он тут же их
-// погасит и вернёт управление. Портов проба не занимает, к БД не ходит —
+// погасит и вернёт управление. Фиксированных портов проба не занимает — это
+// утверждает страж предусловия, а не комментарий, — к БД не ходит,
 // обработчики строятся с нулевыми зависимостями, потому что предмет здесь —
 // НАБОР служимых методов, а не их поведение.
 func TestCarrierRaisesTheService(t *testing.T) {
 	cfg := bootConfig(t, map[string]string{
 		// Слушатели на эфемерных портах локального интерфейса: если старт всё же
 		// дойдёт до них, проба не подерётся за 9090/9091 с чужим прогоном.
-		"KACHO_NLB_API_SERVER__ENDPOINT":          "tcp://127.0.0.1:0",
-		"KACHO_NLB_API_SERVER__INTERNAL_ENDPOINT": "tcp://127.0.0.1:0",
+		// Имена — с ДЕФИСАМИ: ключи зовутся `api-server.endpoint` и
+		// `api-server.internal-endpoint`, а viper заменяет на `__` только точки.
+		// Форма с подчёркиваниями, стоявшая здесь, не читается ничем — и слушатели
+		// молча поднимались на умолчании 9090/9091 (#2678).
+		"KACHO_NLB_API-SERVER__ENDPOINT":          "tcp://127.0.0.1:0",
+		"KACHO_NLB_API-SERVER__INTERNAL-ENDPOINT": "tcp://127.0.0.1:0",
 	})
+	requireEphemeralListeners(t, cfg)
 	desc, err := describe(cfg, quietLogger(), probeNarrower(), probeGate(), probeExistence{}, probeAuthzObserve, prometheus.NewRegistry())
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут: %v", err)
