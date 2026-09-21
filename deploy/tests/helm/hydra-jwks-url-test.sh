@@ -101,24 +101,44 @@ env_val() {
 [ -d "$AGW" ] \
   || fatal "чарта края нет по пути $AGW (объявлен в $UMBRELLA/Chart.yaml) — судить не о чем"
 
-# ── (1) sibling chart standalone — hydra.jwksUrl drives the env ───────────────
-helm_try ag "$AGW" --set hydra.jwksUrl="$WANT"
-render_or_fatal "чарт края, hydra.jwksUrl задан"
+# ── (1) чарт края отдельно — адрес набора едет ЗАПИСЬЮ ИЗДАТЕЛЯ ──────────────
+#
+# ЗДЕСЬ ПРОВЕРЯЛАСЬ ОДИНОЧНАЯ РУЧКА `hydra.jwksUrl` → `KACHO_HYDRA_JWKS_URL`, и
+# обе половины проверки ушли вместе со своим предметом: ручка снята из чарта
+# края, а из процесса снят её единственный читатель — запасная ветвь разбора,
+# выводившая адрес издателя из домена установки. Вторая половина («умолчание не
+# течёт env») истекла тем же: течь нечему.
+#
+# Свойство, ради которого раздел написан, НЕ ослабло — оно переехало на
+# единственную оставшуюся форму объявления. Разделы (2) и (3) ниже обе формы уже
+# умели, и вопрос у всех трёх один: КАЖДЫЙ адрес, который край будет тянуть,
+# достижим из пода.
+SIB_ISSUER="https://hydra.api.kacho.test"
+helm_try ag "$AGW" \
+        --set tokenAcceptance.issuers="$SIB_ISSUER" \
+        --set tokenAcceptance.issuerKeySets="$SIB_ISSUER=$WANT"
+render_or_fatal "чарт края, запись издателя задана"
 ON="$HELM_OUT"
-jw="$(env_val KACHO_HYDRA_JWKS_URL "$ON")"
-[ -n "$jw" ] || fail "sibling chart did not render KACHO_HYDRA_JWKS_URL env when hydra.jwksUrl set"
-[ "$jw" = "$WANT" ] || fail "sibling KACHO_HYDRA_JWKS_URL=$jw (want $WANT)"; ok
+sks="$(env_val KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS "$ON")"
+[ -n "$sks" ] \
+  || fail "чарт края не отрендерил KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS при заданной записи издателя"
+[ "$sks" = "$SIB_ISSUER=$WANT" ] || fail "sibling KEYSETS=$sks (want $SIB_ISSUER=$WANT)"; ok
+jw="${sks#*=}"
 case "$jw" in
   *localhost*) fail "sibling JWKS URL points at localhost ($jw) — unreachable in-cluster" ;;
   https://hydra.*) fail "sibling JWKS URL points at the PUBLIC issuer ($jw) — unreachable in-cluster" ;;
 esac; ok
 
-# Default (no hydra.jwksUrl) must NOT leak the env — Go config default applies,
-# zero regression for overlays that don't opt in.
+# ЗАКОННЫЙ БЛИЗНЕЦ: та же посадка БЕЗ записи издателя. Перечень рендерится
+# пустым НАМЕРЕННО — «не объявлено» и «объявлено пустым» различает процесс, а не
+# шаблон, — поэтому утверждается пустота ЗНАЧЕНИЯ, а не отсутствие имени.
 helm_try ag "$AGW"
 render_or_fatal "чарт края, умолчание"
 OFF="$HELM_OUT"
-[ -z "$(env_val KACHO_HYDRA_JWKS_URL "$OFF")" ] || fail "sibling leaks KACHO_HYDRA_JWKS_URL when hydra.jwksUrl unset"; ok
+[ -z "$(env_val KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS "$OFF")" ] \
+  || fail "чарт края объявил запись издателя там, где её не задавали"
+[ -z "$(env_val KACHO_HYDRA_JWKS_URL "$OFF")" ] \
+  || fail "чарт края всё ещё рендерит снятую ручку KACHO_HYDRA_JWKS_URL"; ok
 
 # ── (2) umbrella + values.dev.yaml — the actual dev stand ─────────────────────
 # `helm template` resolves the file:// api-gateway dep from the vendored .tgz; if
