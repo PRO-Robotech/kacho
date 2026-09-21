@@ -66,7 +66,18 @@ const SessionCarriersKnob = "KACHO_API_GATEWAY_SESSION_CARRIERS"
 type SessionCarrierSet struct {
 	own      bool
 	provider bool
+	// declared — НАЗВАЛ ли множество профиль, или оно выведено из посадки.
+	//
+	// Различие несущее, и оно то же, что у приёма издателей токена: «ручка не
+	// задана» — сегодняшнее, работающее и повсеместное состояние, а «задано» —
+	// утверждение оператора. Требовать от утверждения исполнимости можно, от
+	// сегодняшнего состояния — значит сломать профиль, который ничего не
+	// объявлял и ни в чём не виноват.
+	declared bool
 }
+
+// Declared — назвал ли множество профиль (в отличие от выведенного из посадки).
+func (s SessionCarrierSet) Declared() bool { return s.declared }
 
 // ReadsOwn — читает ли край НАШ носитель (`kaname_session`).
 func (s SessionCarrierSet) ReadsOwn() bool { return s.own }
@@ -134,7 +145,7 @@ func (c Config) sessionCarriersFromPosture() (SessionCarrierSet, error) {
 // Считаются ЭЛЕМЕНТЫ, а не длина строки: значение «,» непусто как строка и
 // пусто как множество, и именно на таком входе предикат по длине молчит.
 func (c Config) sessionCarriersFromDeclaration(raw string) (SessionCarrierSet, error) {
-	var out SessionCarrierSet
+	out := SessionCarrierSet{declared: true}
 	seen := map[string]bool{}
 	elements := 0
 	for _, part := range strings.Split(raw, ",") {
