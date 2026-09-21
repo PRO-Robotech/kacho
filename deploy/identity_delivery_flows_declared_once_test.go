@@ -108,7 +108,7 @@ func deliveryFlowFindings(t *testing.T, root string) []string {
 		for _, prof := range chain {
 			texts = append(texts, readFileForTest(t, filepath.Join(root, prof)))
 		}
-		if !identityChainRaisesIdentity(texts) {
+		if !identityChainLandsIdentity(t, texts) {
 			continue
 		}
 		raising++
@@ -152,10 +152,12 @@ func deliveryFlowFindings(t *testing.T, root string) []string {
 	}
 
 	if raising == 0 {
-		t.Fatalf("ни один стенд не поднимает службу личности — проверка беспредметна, "+
-			"и её зелёный ничего не значит (корень %s)", root)
+		t.Fatalf("ни один стенд не объявляет посадку личности — ни цепочкой профилей, "+
+			"ни базами подчартов. Это не «личности на стендах нет», а исчезнувшая "+
+			"предпосылка: проверка беспредметна, и её зелёный ничего не значит "+
+			"(корень %s)", root)
 	}
-	t.Logf("перепись стендов: объявлено %d · поднимают службу личности %d · доводят "+
+	t.Logf("перепись стендов: объявлено %d · объявляют посадку личности %d · доводят "+
 		"нашу конфигурацию до процесса %d · не заводят второго мнения о потоках "+
 		"доставки %d", len(stacks), raising, mounting, clean)
 	return findings

@@ -50,12 +50,15 @@ package deploy_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -383,17 +386,136 @@ func identityChainMountsOurConfig(texts []string) bool {
 	return false
 }
 
-// identityChainRaisesIdentity — цепочка поднимает службу личности.
-func identityChainRaisesIdentity(texts []string) bool {
-	for _, t := range texts {
-		if kratosEnabled.MatchString(t) {
-			return true
-		}
-	}
-	return false
+// ─────────────────────────────────────────────────────────────────────────────
+// КОГО СУДЯТ ЧЕТЫРЕ СТРАЖА ЛИЧНОСТИ
+//
+// Четыре проверки развёртывания (второй фактор, потоки доставки, зеркало
+// требования подтверждённого адреса, решённые замещения списков) отбирают
+// стенды одним предикатом. Предикат этот СУДИЛ ПО ЧУЖОМУ ФЛАГУ — по
+// `kratos.enabled` подчарта внешнего поставщика удостоверений.
+//
+// Чем это кончалось, измерено инъекцией 2026-09-21: выключение
+// чужих флагов в боевом профиле (`values.prod.yaml`: `kratos.enabled: false`,
+// `hydra.enabled: false`) уводило из-под суда РОВНО боевой стенд и стенд
+// посадки `own` — 7 стендов превращались в 5, и все четыре стража оставались
+// ЗЕЛЁНЫМИ. То есть чужая ручка, к которой у стражей нет ни предмета, ни
+// владения, отключала их ровно на тех двух стендах, ради которых они заведены.
+//
+// Поэтому предикат переутверждён на НАШ признак: посадку личности объявляет
+// наша ручка `identityProvider`, по одной у каждой из двух половин стенда —
+//
+//	kaname.config.authn.identityProvider    — служба доступа
+//	api-gateway.authn.identityProvider      — край
+//
+// Признак переживает снятие чужих служб ЦЕЛИКОМ: ручка живёт в нашем чарте, её
+// значения (`external` · `own`) объявляют, КТО проверяет человека, а не какой
+// подчарт поднят. Снять kratos и hydra из профиля можно, не тронув ни одного её
+// значения, — и стенд останется под судом, потому что о личности он по-прежнему
+// решает.
+//
+// ОТСУТСТВИЕ значения у обеих половин и у баз подчартов предикат считает НЕ
+// «стендом без личности», а исчезнувшей предпосылкой: он отвечает «нет», и у
+// каждого из четырёх стражей нулевая перепись — отказ (`t.Fatal`), а не тишина.
+
+const (
+	// iamLandingDefaults — база подчарта службы доступа: значение посадки,
+	// которое стенд получает, не объявив её сам.
+	iamLandingDefaults = umbrellaDir + "/charts/kaname/values.yaml"
+	// edgeLandingDefaults — то же у края.
+	edgeLandingDefaults = "../gateway/deploy/values.yaml"
+)
+
+// identityLanding — посадка личности стенда: что объявлено каждой половине и
+// откуда значение взято.
+type identityLanding struct {
+	IAM  string // kaname.config.authn.identityProvider
+	Edge string // api-gateway.authn.identityProvider
+	Base bool   // ни один профиль цепочки посадку не назвал — значение с базы подчарта
 }
 
-var kratosEnabled = regexp.MustCompile(`(?m)^kratos:\n(?:[ \t].*\n|\n)*?\s+enabled:\s*true`)
+// lands — стенд решает о личности человека, то есть подлежит суду стражей.
+func (l identityLanding) lands() bool { return l.IAM != "" || l.Edge != "" }
+
+// posture — значение посадки для переписи. Половины, разошедшиеся о посадке,
+// судит отдельная проба зонта (identity_posture_profiles_test.go), поэтому
+// здесь расхождение печатается, а не замалчивается.
+func (l identityLanding) posture() string {
+	switch {
+	case l.IAM != "" && l.Edge != "" && l.IAM != l.Edge:
+		return "iam=" + l.IAM + "/gateway=" + l.Edge
+	case l.IAM != "":
+		return l.IAM
+	default:
+		return l.Edge
+	}
+}
+
+// identityLandingOfProfile — что ОДИН профиль объявил половинам.
+//
+// Профиль, который не разбирается как YAML, значения не даёт: его форму судит
+// своя проверка, и подменять её вердикт молчаливым «посадки нет» здесь нельзя.
+func identityLandingOfProfile(text string) (iam, edge string) {
+	var tree map[string]any
+	if err := yaml.Unmarshal([]byte(text), &tree); err != nil {
+		return "", ""
+	}
+	if v, ok := lookup(tree, "kaname", "config", "authn", "identityProvider"); ok {
+		iam, _ = v.(string)
+	}
+	if v, ok := lookup(tree, "api-gateway", "authn", "identityProvider"); ok {
+		edge, _ = v.(string)
+	}
+	return iam, edge
+}
+
+// identityLandingOfChain — посадка, которую получает ЦЕПОЧКА профилей.
+//
+// Спрашивается у цепочки, а не у отдельного профиля, по той же причине, что и
+// провязка настроек: накладка поднимает продукт вместе со слоем под собой.
+// Профили накладываются слева направо — ровно как их накладывает helm, —
+// поэтому последнее непустое объявление побеждает.
+func identityLandingOfChain(t *testing.T, texts []string) identityLanding {
+	t.Helper()
+	var l identityLanding
+	for _, text := range texts {
+		iam, edge := identityLandingOfProfile(text)
+		if iam != "" {
+			l.IAM = iam
+		}
+		if edge != "" {
+			l.Edge = edge
+		}
+	}
+	if l.lands() {
+		return l
+	}
+	// Цепочка промолчала — значение стенду даёт база подчарта. Это не
+	// умолчание «на всякий случай»: базы обеих половин держит проба зонта
+	// TestIdentityPostureIsDeclaredByBothSubchartDefaults, и исчезни они —
+	// не поднимется ни один стенд.
+	l.Base = true
+	l.IAM = identityLandingDefault(t, iamLandingDefaults, "config", "authn", "identityProvider")
+	l.Edge = identityLandingDefault(t, edgeLandingDefaults, "authn", "identityProvider")
+	return l
+}
+
+// identityLandingDefault — значение посадки из базовых значений подчарта.
+func identityLandingDefault(t *testing.T, path string, keys ...string) string {
+	t.Helper()
+	v, ok := lookup(readYAML(t, path), keys...)
+	if !ok {
+		return ""
+	}
+	s, _ := v.(string)
+	return s
+}
+
+// identityChainLandsIdentity — цепочка объявляет посадку личности, то есть
+// стенд решает о человеке и подлежит суду стражей личности.
+func identityChainLandsIdentity(t *testing.T, texts []string) bool {
+	t.Helper()
+	return identityLandingOfChain(t, texts).lands()
+}
 
 // shadowedSecondFactors — методы второго фактора, О КОТОРЫХ ПРОФИЛЬ ВЫСКАЗАЛСЯ
 // САМ, в обход единственного объявления.
@@ -420,6 +542,7 @@ func TestIdentity_EveryStackDeclaresTheSecondFactor(t *testing.T) {
 	stacks := deployStacks(t)
 
 	raising, mounting, clean := 0, 0, 0
+	postures := map[string]int{}
 	names := make([]string, 0, len(stacks))
 	for n := range stacks {
 		names = append(names, n)
@@ -432,13 +555,15 @@ func TestIdentity_EveryStackDeclaresTheSecondFactor(t *testing.T) {
 		for _, prof := range chain {
 			texts = append(texts, readFileForTest(t, filepath.Join(umbrellaDir, prof)))
 		}
-		if !identityChainRaisesIdentity(texts) {
+		landing := identityLandingOfChain(t, texts)
+		if !landing.lands() {
 			continue
 		}
 		raising++
+		postures[landing.posture()]++
 
 		if !identityChainMountsOurConfig(texts) {
-			t.Errorf("стенд %q (%v) поднимает службу личности и НЕ доводит до неё наши "+
+			t.Errorf("стенд %q (%v) объявляет посадку личности и НЕ доводит до службы наши "+
 				"настройки (%s): процесс работает на умолчаниях подчарта поставщика, "+
 				"где метода второго фактора нет вовсе. Значит объявленный каталогом "+
 				"прав пол уровня «2» на этом стенде недостижим ДЛЯ ВСЕХ",
@@ -470,10 +595,16 @@ func TestIdentity_EveryStackDeclaresTheSecondFactor(t *testing.T) {
 	}
 
 	if raising == 0 {
-		t.Fatal("ни один стенд не поднимает службу личности — проверка беспредметна, " +
-			"и её зелёный ничего не значит")
+		t.Fatal("ни один стенд не объявляет посадку личности — ни цепочкой профилей, " +
+			"ни базами подчартов. Это не «личности на стендах нет», а исчезнувшая " +
+			"предпосылка: проверка беспредметна, и её зелёный ничего не значит")
 	}
-	t.Logf("перепись стендов: объявлено %d · поднимают службу личности %d · "+
+	shapes := make([]string, 0, len(postures))
+	for p, n := range postures {
+		shapes = append(shapes, fmt.Sprintf("%s %d", p, n))
+	}
+	sort.Strings(shapes)
+	t.Logf("перепись стендов: объявлено %d · объявляют посадку личности %d (%s) · "+
 		"доводят настройки до процесса %d · не заводят второго мнения о втором факторе %d",
-		len(stacks), raising, mounting, clean)
+		len(stacks), raising, strings.Join(shapes, " · "), mounting, clean)
 }
