@@ -170,4 +170,19 @@ func TestIdentitySecondFactorInjection_ChainPredicatesReadBothSides(t *testing.T
 	if identityChainRaisesIdentity([]string{"hydra:\n  enabled: true\n"}) {
 		t.Fatal("служба личности распознана по чужому объявлению")
 	}
+
+	// НАКЛАДКА, ВЫКЛЮЧИВШАЯ СЛУЖБУ, ЧИТАЕТСЯ — последнее высказывание цепочки
+	// побеждает, ровно как у helm. Без этой оси предикат объявлял бы стенд
+	// поднимающим службу, которой на нём нет, и перепись гейтов росла бы на
+	// стенд, чьи настройки поставщика никогда не поедут (kacho#2735).
+	down := []string{"kratos:\n  enabled: true\n  deployment: {}\n", "kratos:\n  enabled: false\n"}
+	if identityChainRaisesIdentity(down) {
+		t.Fatal("накладка, выключившая службу личности, предикатом не прочитана — " +
+			"перепись считала бы стенд, на котором службы нет")
+	}
+	// ЗАКОННЫЙ БЛИЗНЕЦ: накладка, о флаге промолчавшая, службу не выключает.
+	if !identityChainRaisesIdentity([]string{"kratos:\n  enabled: true\n", "kaname:\n  name: x\n"}) {
+		t.Fatal("накладка, о флаге промолчавшая, принята за выключение — " +
+			"предикат путал бы молчание с решением")
+	}
 }
