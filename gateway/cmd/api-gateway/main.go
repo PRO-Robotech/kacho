@@ -179,9 +179,10 @@ func main() {
 	}
 	kratosURL := cfg.KratosPublicURL
 	if scErr := validateSessionCarrierConfig(SessionCarrierConfig{
-		Posture:     identityLane,
-		Carriers:    sessionCarriers,
-		ProviderURL: kratosURL,
+		Posture:        identityLane,
+		Carriers:       sessionCarriers,
+		ProviderURL:    kratosURL,
+		WindowOpenedAt: mustCarrierWindowOpenedAt(cfg),
 	}); scErr != nil {
 		log.Fatalf("session carrier startup-validation: %v", scErr)
 	}
@@ -204,8 +205,19 @@ func main() {
 	// названы обе стороны — окно открыто. В окне положительный пол второго
 	// фактора на чужой полосе не удовлетворяется: новое полномочие берётся
 	// через нашу чеканку, обычный доступ чужой сессии сохраняется.
-	authInterceptor = authInterceptor.WithTransitionalCarrierWindow(
-		sessionCarriers.ReadsOwn() && sessionCarriers.ReadsProvider())
+	declaredWindowOpenedAt, cwErr := cfg.ResolvedSessionCarrierWindowOpenedAt()
+	if cwErr != nil {
+		log.Fatalf("session carrier window startup-validation: %v", cwErr)
+	}
+	// Окно существует только при ОБЕИХ сторонах, и вопрос об этом ОДИН
+	// (`IsTransitionalWindow`): два его вычисления разошлись бы молча. Страж
+	// выше уже отверг и окно без момента, и момент без окна; здесь момент
+	// остаётся нулевым вне окна, чтобы провязка не зависела от порядка проверок.
+	carrierWindowOpenedAt := time.Time{}
+	if sessionCarriers.IsTransitionalWindow() {
+		carrierWindowOpenedAt = declaredWindowOpenedAt
+	}
+	authInterceptor = authInterceptor.WithTransitionalCarrierWindow(carrierWindowOpenedAt)
 
 	// НАША сторона — носитель kaname_session: `Resolve` на внутреннем слушателе
 	// службы, тем же соединением, что вопрос об отсечке; кэша нет (Р7).

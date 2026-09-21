@@ -58,6 +58,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/PRO-Robotech/corelib/identityposture"
 
@@ -77,6 +78,8 @@ type SessionCarrierConfig struct {
 	Carriers config.SessionCarrierSet
 	// ProviderURL — адрес публичного API чужого поставщика.
 	ProviderURL string
+	// WindowOpenedAt — момент открытия переходного окна; нулевой = не объявлен.
+	WindowOpenedAt time.Time
 }
 
 // validateSessionCarrierConfig отвергает пару (посадка, множество), при которой
@@ -115,6 +118,29 @@ func validateSessionCarrierConfig(cfg SessionCarrierConfig) error {
 			cfg.Posture, identityposture.Own, cfg.Posture, identityposture.Own, identityposture.Own)
 	}
 
+	// МОМЕНТ ОТКРЫТИЯ ОКНА — ровно там, где есть окно, и нигде больше.
+	//
+	// Без момента окно не имеет границы, и «дочитываем живые» превращается в
+	// «принимаем любые»: отзыв на чужой полосе снимался бы входом заново, и
+	// переходное состояние стало бы постоянной второй дверью.
+	//
+	// Обратная половина — объявление вне окна — снимается тем же правилом, и
+	// поэтому оно ИСТЕКАЕТ САМО: закрыв окно и забыв убрать момент, оператор
+	// получит отказ, а не переживший свой предмет остаток.
+	switch {
+	case cfg.Carriers.IsTransitionalWindow() && cfg.WindowOpenedAt.IsZero():
+		return fmt.Errorf("%s names both sides, so %s is required: the window means the edge READS "+
+			"OUT the foreign sessions that are already live and admits no new ones, and that instant "+
+			"is the boundary between the two. Without it every foreign sign-in is admitted — "+
+			"including one made after a revocation, which would lift the revocation",
+			config.SessionCarriersKnob, config.SessionCarrierWindowOpenedAtKnob)
+	case !cfg.Carriers.IsTransitionalWindow() && !cfg.WindowOpenedAt.IsZero():
+		return fmt.Errorf("%s is declared while %s=%q names a single side: there is no window for it "+
+			"to bound, and a declaration with nothing to bound outlives its subject silently. "+
+			"Remove it, or name both sides",
+			config.SessionCarrierWindowOpenedAtKnob, config.SessionCarriersKnob, cfg.Carriers.String())
+	}
+
 	if cfg.Carriers.Declared() && cfg.Carriers.ReadsProvider() {
 		url := strings.TrimSpace(cfg.ProviderURL)
 		if url == "" || url == providerAddressDisabled {
@@ -127,4 +153,18 @@ func validateSessionCarrierConfig(cfg SessionCarrierConfig) error {
 		}
 	}
 	return nil
+}
+
+// mustCarrierWindowOpenedAt — момент открытия окна для стража.
+//
+// Неразбираемое значение отдаётся НУЛЁМ намеренно: о нём отказывает разбор в
+// композиционном корне, своим текстом и своей ручкой. Страж же обязан судить
+// ПАРУ, и подмена здесь ошибки разбора на «не объявлено» дала бы ему второй
+// текст об одном предмете.
+func mustCarrierWindowOpenedAt(cfg config.Config) time.Time {
+	at, err := cfg.ResolvedSessionCarrierWindowOpenedAt()
+	if err != nil {
+		return time.Time{}
+	}
+	return at
 }

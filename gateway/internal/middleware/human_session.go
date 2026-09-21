@@ -106,6 +106,12 @@ type SessionLaneSnapshot struct {
 	// показывает, скольким людям переходное окно мешает выполнить действие с
 	// полом второго фактора, — то есть пора ли его закрывать.
 	TransitionalFloorWithheld uint64
+
+	// TransitionalWindowClosed — сколько чужих сессий отвергнуто как заведённые
+	// ПОСЛЕ открытия окна. Ненулевая величина означает, что чужая форма входа
+	// достижима: окно объявлено, а новые сессии на той стороне продолжают
+	// заводиться.
+	TransitionalWindowClosed uint64
 }
 
 // SessionLaneCounts — накопитель клеток полосы сессии на горячем пути.
@@ -118,6 +124,9 @@ type SessionLaneCounts struct {
 
 	// transitionalFloorWithheld — см. recordTransitionalFloorWithheld.
 	transitionalFloorWithheld atomic.Uint64
+
+	// transitionalWindowClosed — см. recordTransitionalWindowClosed.
+	transitionalWindowClosed atomic.Uint64
 }
 
 // Snapshot — слепок клеток для коллектора.
@@ -133,6 +142,7 @@ func (c *SessionLaneCounts) Snapshot() SessionLaneSnapshot {
 		AssuranceOffAxis: c.assuranceOffAxis.Load(),
 
 		TransitionalFloorWithheld: c.transitionalFloorWithheld.Load(),
+		TransitionalWindowClosed:  c.transitionalWindowClosed.Load(),
 	}
 }
 
@@ -178,5 +188,17 @@ func (c *SessionLaneCounts) recordAssuranceOffAxis() {
 func (c *SessionLaneCounts) recordTransitionalFloorWithheld() {
 	if c != nil {
 		c.transitionalFloorWithheld.Add(1)
+	}
+}
+
+// recordTransitionalWindowClosed — чужая сессия отвергнута как заведённая после
+// открытия окна.
+//
+// Клетка отвечает на вопрос, которого больше негде задать: ДОСТИЖИМА ЛИ чужая
+// форма входа. Ноль означает, что новых сессий на той стороне не заводится;
+// растущая величина — что окно объявлено, а вторая дверь открыта.
+func (c *SessionLaneCounts) recordTransitionalWindowClosed() {
+	if c != nil {
+		c.transitionalWindowClosed.Add(1)
 	}
 }

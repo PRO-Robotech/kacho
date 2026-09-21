@@ -52,6 +52,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"google.golang.org/grpc"
@@ -187,9 +188,10 @@ type AuthInterceptor struct {
 	// по посадке; оба разом не провязываются (гейт композиционного корня).
 	humanSession HumanSessionReader
 
-	// transitionalCarrierWindow — профиль назвал ОБЕ стороны носителя.
+	// transitionalCarrierWindowOpenedAt — момент открытия переходного окна
+	// носителя; нулевой означает «окно закрыто».
 	// См. WithTransitionalCarrierWindow.
-	transitionalCarrierWindow bool
+	transitionalCarrierWindowOpenedAt time.Time
 	// sessionLane — клетки полосы сессии (Ф3-48). Заводится сразу, чтобы ноль в
 	// клетке отличался от «полосы нет».
 	sessionLane *SessionLaneCounts
@@ -1067,20 +1069,47 @@ func (a *AuthInterceptor) HTTP(next http.Handler) http.Handler {
 	})
 }
 
-// WithTransitionalCarrierWindow объявляет ПЕРЕХОДНОЕ ОКНО носителя: профиль
-// назвал ОБЕ стороны, и край дочитывает живые чужие сессии.
+// WithTransitionalCarrierWindow объявляет ПЕРЕХОДНОЕ ОКНО носителя моментом его
+// ОТКРЫТИЯ. Нулевой момент означает «окно закрыто».
 //
-// Что это меняет: в окне положительный пол второго фактора на чужой полосе не
-// удовлетворяется — новое полномочие берётся через нашу чеканку. Обычный
-// доступ чужой сессии сохраняется, ради него окно и заводится. Разбор — в
-// `auth_session_stepup.go`.
+// СМЫСЛ ОКНА ОДИН, И ОН НАЗВАН СЛОВАМИ: дочитываем ЖИВЫЕ чужие сессии, новых
+// не заводим. Отсюда оба его следствия, и оба несёт одно объявление — второй
+// источник одного состояния разошёлся бы с первым молча:
+//
+//   - чужая сессия принимается, только если она СТАРШЕ момента открытия
+//     (`tryKratosSession`). Без этой границы отзыв снимался бы входом заново на
+//     чужой стороне: её форма называет момент аутентификации сама, и любой наш
+//     отзыв оказывался бы старше следующего входа. Механизм замкнут краем и не
+//     опирается на обещание профиля закрыть чужую форму — годная сессия обязана
+//     попасть в промежуток «новее нашей отсечки, старше открытия окна», и вход
+//     заново выпадает из него с той стороны, с которой его не подделать;
+//   - положительный пол второго фактора на чужой полосе не удовлетворяется
+//     (`auth_session_stepup.go`): новое полномочие берётся через нашу чеканку.
+//
+// Обычный доступ живой чужой сессии сохраняется — ради него окно и заводится.
 //
 // Объявление, а не вывод из провязки: «читатель провязан» и «профиль назвал обе
 // стороны» — разные утверждения, и решать о полномочии по второму, выведенному
 // из первого, значит решать по косвенному признаку.
-func (a *AuthInterceptor) WithTransitionalCarrierWindow(declared bool) *AuthInterceptor {
-	a.transitionalCarrierWindow = declared
+func (a *AuthInterceptor) WithTransitionalCarrierWindow(openedAt time.Time) *AuthInterceptor {
+	a.transitionalCarrierWindowOpenedAt = openedAt
 	return a
+}
+
+// transitionalWindowAdmits — годна ли чужая сессия к приёму в окне.
+//
+// Закрытое окно не ограничивает ничего: состояние «только чужой» — это
+// сегодняшний стенд, и вход заново там единственный способ войти.
+//
+// Нулевой момент аутентификации при ОТКРЫТОМ окне — отказ, а не проход: сессия,
+// не назвавшая своего момента, не может доказать, что она старше окна, и
+// «неизвестно» здесь означает «не доказано».
+func (a *AuthInterceptor) transitionalWindowAdmits(authenticatedAt time.Time) bool {
+	if a.transitionalCarrierWindowOpenedAt.IsZero() {
+		return true
+	}
+	return !authenticatedAt.IsZero() &&
+		authenticatedAt.Before(a.transitionalCarrierWindowOpenedAt)
 }
 
 // ownSessionOwnsRequest — ВЛАДЕЕТ ли наша сторона этим запросом.
@@ -1243,6 +1272,17 @@ func (a *AuthInterceptor) tryKratosSession(w http.ResponseWriter, r *http.Reques
 			"identity_id", res.IdentityID, "err", err.Error())
 		return false, false
 	}
+	// ГРАНИЦА ОКНА спрашивается ДО отсечки и по той же причине, по которой
+	// отсечка спрашивается до заголовков: сессия, заведённая после открытия
+	// окна, не должна доехать ни до прав, ни до backend. Носитель при этом НЕ
+	// гасится — отказ обратим откатом профиля, а гашение отняло бы у человека
+	// сессию, которую мы всего лишь перестали дочитывать.
+	if !a.transitionalWindowAdmits(res.AuthenticatedAt) {
+		a.sessionLane.recordTransitionalWindowClosed()
+		writeHTTPUnauthorized(w, sessionCutoffDenyDescription)
+		return false, true
+	}
+
 	// Отзыв спрашивается ДО того, как личность попадёт в заголовки: принципал,
 	// выставленный отвергнутой сессии, доехал бы до прав и до backend прежде,
 	// чем отказ успел бы что-то значить.

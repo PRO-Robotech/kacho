@@ -50,6 +50,7 @@ package config
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/PRO-Robotech/corelib/identityposture"
 )
@@ -57,6 +58,10 @@ import (
 // SessionCarriersKnob — имя ручки множества читателей носителя. Объявлено один
 // раз: его называют текст отказа разбора, страж старта и профиль.
 const SessionCarriersKnob = "KACHO_API_GATEWAY_SESSION_CARRIERS"
+
+// SessionCarrierWindowOpenedAtKnob — момент ОТКРЫТИЯ переходного окна носителя,
+// RFC 3339. Объявляется вместе с состоянием «оба» и только с ним.
+const SessionCarrierWindowOpenedAtKnob = "KACHO_API_GATEWAY_SESSION_CARRIER_WINDOW_OPENED_AT"
 
 // SessionCarrierSet — МНОЖЕСТВО читателей носителя браузерной сессии.
 //
@@ -195,4 +200,34 @@ func (c Config) sessionCarriersFromDeclaration(raw string) (SessionCarrierSet, e
 			strings.Join(identityposture.Names(), ", "))
 	}
 	return out, nil
+}
+
+// IsTransitionalWindow — названы ли ОБЕ стороны, то есть открыто ли переходное
+// окно. Вопрос задаётся в одном месте: два его вычисления разошлись бы молча.
+func (s SessionCarrierSet) IsTransitionalWindow() bool { return s.own && s.provider }
+
+// ResolvedSessionCarrierWindowOpenedAt разбирает момент открытия окна.
+//
+// Момент несёт ОБА следствия окна (граница приёма чужой сессии и пол второго
+// фактора), и разбор у него один: второе прочтение той же величины разошлось бы
+// с первым на первом же вырожденном значении.
+//
+// Незаданное значение возвращается НУЛЁМ без ошибки: обязательность решает
+// страж старта, который видит ещё и множество. Отказ здесь назвал бы то же
+// самое вторым текстом и не смог бы назвать, ПОЧЕМУ момент обязателен.
+func (c Config) ResolvedSessionCarrierWindowOpenedAt() (time.Time, error) {
+	raw := strings.TrimSpace(c.SessionCarrierWindowOpenedAt)
+	if raw == "" {
+		return time.Time{}, nil
+	}
+	at, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}, fmt.Errorf(
+			"%s=%q is not an RFC 3339 instant (%w). This instant is the boundary between the "+
+				"foreign sessions the edge reads out and the ones it refuses to admit, so it is "+
+				"refused rather than read as «no boundary»: an unparsed boundary would admit every "+
+				"foreign sign-in, including the ones made after a revocation",
+			SessionCarrierWindowOpenedAtKnob, c.SessionCarrierWindowOpenedAt, err)
+	}
+	return at, nil
 }

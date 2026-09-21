@@ -14,11 +14,15 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/PRO-Robotech/corelib/identityposture"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 )
+
+// windowOpenedAtFixture — момент открытия окна в пробах.
+var windowOpenedAtFixture = time.Date(2026, 9, 21, 0, 0, 0, 0, time.UTC)
 
 func carrierSet(t *testing.T, declared string) config.SessionCarrierSet {
 	t.Helper()
@@ -72,8 +76,17 @@ func TestSessionCarrierGuard_EveryPostureCarrierPairIsJudged(t *testing.T) {
 		for _, declared := range carrierStateDeclarations {
 			pairs++
 			key := posture.String() + "/" + declared
+			set := carrierSet(t, declared)
+			// Момент открытия объявляется РОВНО там, где есть окно: страж судит
+			// пару целиком, и подать момент всюду значило бы не проверить
+			// половину правила.
+			opened := time.Time{}
+			if set.IsTransitionalWindow() {
+				opened = windowOpenedAtFixture
+			}
 			err := validateSessionCarrierConfig(SessionCarrierConfig{
-				Posture: posture, Carriers: carrierSet(t, declared), ProviderURL: "http://kratos:80",
+				Posture: posture, Carriers: set, ProviderURL: "http://kratos:80",
+				WindowOpenedAt: opened,
 			})
 			switch {
 			case lawfulCarrierPairs[key] && err != nil:
@@ -121,9 +134,10 @@ func TestSessionCarrierGuard_OurMintWithoutOurReaderIsRefused(t *testing.T) {
 // сессии чеканит наша полоса входа, а её под `external` край не поднимает.
 func TestSessionCarrierGuard_OurReaderUnderTheForeignPostureIsRefused(t *testing.T) {
 	err := validateSessionCarrierConfig(SessionCarrierConfig{
-		Posture:     identityposture.External,
-		Carriers:    carrierSet(t, "own,external"),
-		ProviderURL: "http://kratos:80",
+		Posture:        identityposture.External,
+		Carriers:       carrierSet(t, "own,external"),
+		ProviderURL:    "http://kratos:80",
+		WindowOpenedAt: windowOpenedAtFixture,
 	})
 	if err == nil {
 		t.Fatal("наш читатель под посадкой external принят: край читал бы печенье, которое на этом " +
@@ -142,9 +156,10 @@ func TestSessionCarrierGuard_OurReaderUnderTheForeignPostureIsRefused(t *testing
 func TestSessionCarrierGuard_ADeclaredProviderReaderWithoutItsAddressIsRefused(t *testing.T) {
 	for _, url := range []string{"disabled", "", "   "} {
 		err := validateSessionCarrierConfig(SessionCarrierConfig{
-			Posture:     identityposture.Own,
-			Carriers:    carrierSet(t, "own,external"),
-			ProviderURL: url,
+			Posture:        identityposture.Own,
+			Carriers:       carrierSet(t, "own,external"),
+			ProviderURL:    url,
+			WindowOpenedAt: windowOpenedAtFixture,
 		})
 		if err == nil {
 			t.Fatalf("адрес %q принят при объявленном чужом читателе: профиль назвал переходное "+

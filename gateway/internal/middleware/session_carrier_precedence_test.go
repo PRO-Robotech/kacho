@@ -527,7 +527,7 @@ func TestBothCarriers_DroppingOurCarrierCannotRaiseTheAuthenticationFloor(t *tes
 		WithHumanSession(reader).
 		WithKratos(NewKratosClient(provider.URL)).
 		WithSessionCutoffCheck(&fakeCutoff{}, time.Hour).
-		WithTransitionalCarrierWindow(true)
+		WithTransitionalCarrierWindow(ownAuthAt.Add(time.Hour))
 
 	withOurs := serveForACR(t, both, withForeignCarrier(
 		withOurCarrier(httptest.NewRequest(http.MethodGet, stepUpFloorPath, nil), "ours-live"),
@@ -592,4 +592,100 @@ func TestForeignOnlyState_KeepsTheForeignSecondFactor(t *testing.T) {
 	}
 	t.Logf("перепись: состояние «только чужой» · уровень, доехавший до замка %q · удержаний пола %d",
 		got, foreignOnly.SessionLane().Snapshot().TransitionalFloorWithheld)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// В ОКНЕ ДОЧИТЫВАЮТСЯ ЖИВЫЕ ЧУЖИЕ СЕССИИ, НОВЫЕ НЕ ЗАВОДЯТСЯ.
+//
+// Отсечка отзыва на чужой полосе сравнивает НАШ отзыв с моментом
+// аутентификации, который называет ЧУЖАЯ сторона. Пока её форма входа
+// достижима, отозванный проходит вход заново, получает момент новее нашей
+// отсечки — и отзыв снят. Переходное состояние тогда не переходное, а
+// постоянная вторая дверь.
+//
+// Окно поэтому несёт МОМЕНТ СВОЕГО ОТКРЫТИЯ, и чужая сессия принимается, только
+// если она СТАРШЕ его. Механизм замкнут краем и не опирается на обещание
+// профиля закрыть чужую форму: годная сессия обязана попасть в промежуток
+// «новее нашей отсечки, старше открытия окна», и вход заново из него выпадает
+// с той стороны, с которой его не подделать — момент называет чужая сторона по
+// факту входа.
+
+func windowedChain(t *testing.T, providerURL string, openedAt time.Time, cut SessionCutoffReader) http.Handler {
+	t.Helper()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	a := NewAuthInterceptor(AuthModeDev, "",
+		cutoffLookup{subj: Subject{Type: "user", ID: "usr-foreign", DisplayName: "F"}}, logger).
+		WithHumanSession(&fakeHumanSession{found: false}).
+		WithKratos(NewKratosClient(providerURL)).
+		WithSessionCutoffCheck(cut, time.Hour).
+		WithTransitionalCarrierWindow(openedAt)
+	return a.HTTP(&countingNext{})
+}
+
+// providerStubAt — чужая сторона, называющая ЗАДАННЫЙ момент аутентификации.
+func providerStubAt(t *testing.T, at time.Time) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"active":true,"authenticated_at":"`+
+			at.UTC().Format(time.RFC3339Nano)+
+			`","authenticator_assurance_level":"aal1",`+
+			`"identity":{"id":"kid-foreign","traits":{"email":"foreign@example.com"}}}`)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestTransitionalWindow_AForeignSignInAfterTheWindowOpenedIsNotAdmitted(t *testing.T) {
+	windowOpened := ownAuthAt.Add(time.Hour)
+	cases := []struct {
+		name   string
+		authAt time.Time
+		admit  bool
+	}{
+		{"живая сессия СТАРШЕ открытия окна — дочитывается", windowOpened.Add(-time.Minute), true},
+		{"вход заново ПОСЛЕ открытия окна — не заводится", windowOpened.Add(time.Minute), false},
+		{"ровно в момент открытия — не заводится (граница закрыта)", windowOpened, false},
+		{"момента аутентификации нет вовсе — доказать старшинство нечем", time.Time{}, false},
+	}
+	admitted := 0
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			provider := providerStubAt(t, tc.authAt)
+			chain := windowedChain(t, provider.URL, windowOpened, &fakeCutoff{})
+			rec := serve(chain, withForeignCarrier(
+				httptest.NewRequest(http.MethodGet, platformPath, nil), "foreign"))
+			got := rec.Code == http.StatusOK
+			if got != tc.admit {
+				t.Fatalf("код %d (впущен=%v), ожидалось впущен=%v", rec.Code, got, tc.admit)
+			}
+			if got {
+				admitted++
+			}
+		})
+	}
+	t.Logf("перепись: моментов аутентификации проверено %d · впущено %d · отвергнуто %d",
+		len(cases), admitted, len(cases)-admitted)
+}
+
+// Законный близнец: ОКНО ЗАКРЫТО (состояние «только чужой») — момент
+// аутентификации ничем не ограничен, и вход заново работает как прежде. Без
+// этой половины зелёное выше добывалось бы запретом входа на чужой посадке,
+// где его нечем заменить.
+func TestTransitionalWindow_WhenClosedTheForeignSideAdmitsANewSignIn(t *testing.T) {
+	fresh := ownAuthAt.Add(48 * time.Hour)
+	provider := providerStubAt(t, fresh)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	a := NewAuthInterceptor(AuthModeDev, "",
+		cutoffLookup{subj: Subject{Type: "user", ID: "usr-foreign", DisplayName: "F"}}, logger).
+		WithKratos(NewKratosClient(provider.URL)).
+		WithSessionCutoffCheck(&fakeCutoff{}, time.Hour).
+		WithTransitionalCarrierWindow(time.Time{}) // окно закрыто
+	rec := serve(a.HTTP(&countingNext{}), withForeignCarrier(
+		httptest.NewRequest(http.MethodGet, platformPath, nil), "foreign"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("при закрытом окне свежая чужая сессия отвергнута кодом %d — вход отнят там, "+
+			"где его нечем заменить", rec.Code)
+	}
+	t.Logf("перепись: окно закрыто · момент аутентификации на 48ч новее · код %d", rec.Code)
 }

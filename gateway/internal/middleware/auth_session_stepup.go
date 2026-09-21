@@ -155,7 +155,7 @@ func (a *AuthInterceptor) sessionAssurance(subj Subject, res KratosWhoamiResult,
 	// Состояние «только чужой» не трогается: там наша сессия не выдаётся никому,
 	// снимать нечего, и обнуление уровня отняло бы у людей второй фактор без
 	// всякой замены.
-	if a.transitionalCarrierWindow && acr != "" {
+	if !a.transitionalCarrierWindowOpenedAt.IsZero() && acr != "" {
 		a.sessionLane.recordTransitionalFloorWithheld()
 		acr = ""
 	}

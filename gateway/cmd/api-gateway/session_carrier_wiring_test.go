@@ -194,30 +194,108 @@ func TestSessionCarrierWiring_TheTransitionalWindowIsDeclaredByTheSameSet(t *tes
 		t.Fatalf("объявлений переходного окна %d, ожидалось 1: второе разошлось бы с первым молча",
 			len(sites))
 	}
-	named := map[string]bool{}
+	// Величина, которой объявляется окно.
+	arg := windowArgIdent(t, f, sites[0])
+
+	// Вопрос об окне ОДИН и задаётся множеству читателей.
+	asks := f1bFindCall(f, "IsTransitionalWindow")
+	if len(asks) != 1 {
+		t.Fatalf("вопросов «открыто ли окно» %d, ожидался 1: два вычисления одного состояния "+
+			"разошлись бы молча", len(asks))
+	}
+
+	// Непустое значение присваивается величине ТОЛЬКО под этим вопросом.
+	bare := assignmentsOutsideWindowBranch(fset, f, arg)
+	for _, pos := range bare {
+		t.Errorf("момент открытия окна присваивается вне ветки «открыто ли окно»: %s. Окно и "+
+			"читатели разошлись бы: профиль назвал бы одну сторону, а окно осталось бы открытым",
+			pos)
+	}
+	t.Logf("перепись: объявлений окна %d · вопросов «открыто ли окно» %d · непустых присваиваний "+
+		"вне ветки %d", len(sites), len(asks), len(bare))
+}
+
+// windowArgIdent — имя величины, переданной объявлению окна.
+func windowArgIdent(t *testing.T, f *ast.File, pos token.Pos) string {
+	t.Helper()
+	name := ""
 	ast.Inspect(f, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
-		if !ok || call.Pos() != sites[0] {
+		if !ok || call.Pos() != pos || len(call.Args) != 1 {
 			return true
 		}
-		for _, a := range call.Args {
-			ast.Inspect(a, func(c ast.Node) bool {
-				if sel, ok := c.(*ast.SelectorExpr); ok {
-					named[sel.Sel.Name] = true
-				}
-				return true
-			})
+		if id, ok := call.Args[0].(*ast.Ident); ok {
+			name = id.Name
 		}
 		return false
 	})
-	for _, want := range []string{"ReadsOwn", "ReadsProvider"} {
-		if !named[want] {
-			t.Errorf("объявление окна не спрашивает %s() у множества читателей (%s): окно и читатели "+
-				"разошлись бы — профиль назвал бы обе стороны, а окно осталось бы закрытым",
-				want, fset.Position(sites[0]).String())
-		}
+	if name == "" {
+		t.Fatal("окно объявляется не именованной величиной — судить о её происхождении нечем")
 	}
-	t.Logf("перепись: объявлений окна %d · спрошенных сторон множества %d из 2", len(sites), len(named))
+	return name
+}
+
+// assignmentsOutsideWindowBranch — присваивания НЕПУСТОГО значения названной
+// величине вне ветки, спрашивающей `IsTransitionalWindow`.
+//
+// Обнуление (`time.Time{}`) находкой не является: оно закрывает окно, а не
+// открывает его, и стоять обязано именно снаружи.
+func assignmentsOutsideWindowBranch(fset *token.FileSet, f *ast.File, ident string) []string {
+	var out []string
+	ast.Inspect(f, func(n ast.Node) bool {
+		as, ok := n.(*ast.AssignStmt)
+		if !ok {
+			return true
+		}
+		for i, lhs := range as.Lhs {
+			id, ok := lhs.(*ast.Ident)
+			if !ok || id.Name != ident || i >= len(as.Rhs) {
+				continue
+			}
+			if isZeroTimeLiteral(as.Rhs[i]) {
+				continue
+			}
+			if !insideWindowQuestion(f, as.Pos()) {
+				out = append(out, fset.Position(as.Pos()).String())
+			}
+		}
+		return true
+	})
+	return out
+}
+
+// isZeroTimeLiteral — выражение вида `time.Time{}`.
+func isZeroTimeLiteral(e ast.Expr) bool {
+	cl, ok := e.(*ast.CompositeLit)
+	if !ok || len(cl.Elts) != 0 {
+		return false
+	}
+	sel, ok := cl.Type.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	return ok && pkg.Name == "time" && sel.Sel.Name == "Time"
+}
+
+// insideWindowQuestion — лежит ли позиция внутри ветки, чьё условие спрашивает
+// `IsTransitionalWindow`.
+func insideWindowQuestion(f *ast.File, pos token.Pos) bool {
+	found := false
+	ast.Inspect(f, func(n ast.Node) bool {
+		ifs, ok := n.(*ast.IfStmt)
+		if !ok || pos <= ifs.Body.Lbrace || pos >= ifs.Body.Rbrace {
+			return true
+		}
+		ast.Inspect(ifs.Cond, func(c ast.Node) bool {
+			if sel, ok := c.(*ast.SelectorExpr); ok && sel.Sel.Name == "IsTransitionalWindow" {
+				found = true
+			}
+			return true
+		})
+		return true
+	})
+	return found
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
