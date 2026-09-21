@@ -4,6 +4,7 @@
 package repohygiene
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -205,7 +206,7 @@ func TestForeignIDPNameLedgerPremiseHolds(t *testing.T) {
 	// Число о дереве верно НА РЕВИЗИИ, а не вообще. Голое число уже один раз
 	// рассудило чужую работу: снятое обходом одной головы, оно судило дерево
 	// сведённой — и разошлось ровно на то, что принесло сведение.
-	for _, gap := range ForeignIDPNameProvenanceGaps(foreignIDPNameLedger) {
+	for _, gap := range ForeignIDPNameProvenanceGaps(foreignIDPNameLedger, foreignIDPRevisionResolver(t)) {
 		t.Errorf("%s.\nРасхождение читается как рост поверхности только тогда, когда "+
 			"видно, ОТКУДА взято прежнее число", gap)
 	}
@@ -229,6 +230,25 @@ func TestForeignIDPNameLedgerPremiseHolds(t *testing.T) {
 			t.Errorf("запись ведомости %q не накрывает ни одного имени — она вакуумна",
 				e.Area)
 		}
+	}
+}
+
+// foreignIDPRevisionResolver — РАЗРЕШИТЕЛЬ РЕВИЗИИ: спрашивает систему
+// контроля версий, знает ли это дерево названный объект-коммит.
+//
+// Форма без разрешимости не судит ничего: выдуманный набор шестнадцатеричных
+// знаков и ревизия ЧУЖОГО дерева выглядят как ревизия и ею не являются. Ровно
+// это и есть та ложь, которой красное полосы началось, — число с чужой головы,
+// объявленное снятым здесь.
+func foreignIDPRevisionResolver(t *testing.T) ForeignIDPNameRevisionResolver {
+	t.Helper()
+	root := repoRoot(t)
+	return func(rev string) error {
+		if err := gitenv.Command(root, "rev-parse", "--verify", "--quiet",
+			rev+"^{commit}").Run(); err != nil {
+			return fmt.Errorf("объекта-коммита %s в этом дереве нет: %w", rev, err)
+		}
+		return nil
 	}
 }
 

@@ -4,6 +4,7 @@
 package repohygiene
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -339,41 +340,108 @@ func TestForeignIDPNameSplitterKnowsTheWritingForms(t *testing.T) {
 	}
 }
 
-// TestForeignIDPNameInjection_EntryWithoutItsRevisionIsFound — запись ведомости,
-// чьё число стоит ГОЛЫМ, — находка.
+// ─────────────────────────────────────────────────────────────────────────────
+// ПРОВЕНАНС ЧИСЛА: ФОРМА И РАЗРЕШИМОСТЬ — ДВЕ ОСИ, И КАЖДАЯ ДОКАЗЫВАЕТСЯ
+// ОДНО-ФАКТНОЙ ПАРОЙ
 //
-// Число о дереве верно не вообще, а на ревизии, на которой снято. Ведомость
-// этого гейта уже один раз рассудила чужую работу: её число было снято обходом
-// одной головы, а судило дерево другой — сведённой, — и разошлось ровно на то,
-// что принесло сведение. Расхождение читается как рост поверхности только
-// тогда, когда видно, ОТКУДА взято прежнее число; голое число такого чтения не
-// даёт, и следующий, кто перепишет его, оставит ту же ловушку.
-func TestForeignIDPNameInjection_EntryWithoutItsRevisionIsFound(t *testing.T) {
-	t.Parallel()
-	gaps := ForeignIDPNameProvenanceGaps([]ForeignIDPNameLedgerEntry{{
-		Area: "gateway/", Names: 2, Why: "w", Until: "полоса края закончена",
-	}})
-	if len(gaps) != 1 {
-		t.Fatalf("запись с голым числом не найдена: пропусков %d, ожидался 1 (%v)",
-			len(gaps), gaps)
-	}
-	if !strings.Contains(gaps[0], "gateway/") {
-		t.Errorf("находка не называет координаты записи: %q", gaps[0])
+// Первая редакция судила строку НА НЕПУСТОТУ, а объявляла, что судит ревизию.
+// Пара инъекции была двух-фактной: дефектом стояла пустая строка, близнецом —
+// настоящая ревизия, и между ними менялось ДВА факта сразу — «непустая» и
+// «является ревизией». Такая пара зелёная при любом из двух свойств, и предикат
+// молчал на «a», «нет», заглушке, выдуманном наборе знаков и на ЧУЖОЙ ревизии.
+//
+// Цена последнего и есть та самая ложь, которой красное этой полосы началось:
+// число, снятое с чужой головы, объявленное снятым здесь, — и гейт зелёный.
+//
+// Поэтому осей две, и у каждой пара меняет РОВНО ОДИН факт:
+//   форма        — «a» против «5b20df5c638» при разрешителе, принимающем всё;
+//   разрешимость — две строки ОДИНАКОВОЙ формы, из которых дерево знает одну.
+
+// injResolveAll — разрешитель, принимающий всё: изолирует ось ФОРМЫ.
+func injResolveAll(string) error { return nil }
+
+// injResolveOnly — разрешитель, знающий ровно одну ревизию: изолирует ось
+// РАЗРЕШИМОСТИ, оставляя форму обоих концов пары одинаковой.
+func injResolveOnly(known string) ForeignIDPNameRevisionResolver {
+	return func(rev string) error {
+		if rev == known {
+			return nil
+		}
+		return fmt.Errorf("объекта %s в этом дереве нет", rev)
 	}
 }
 
-// TestForeignIDPNameInjection_EntryNamingItsRevisionIsSilent — законный близнец
-// той же формы: запись, чьё число названо вместе с ревизией, молчит.
-//
-// Без него зелёное выше достигалось бы предикатом, находящим что угодно.
-func TestForeignIDPNameInjection_EntryNamingItsRevisionIsSilent(t *testing.T) {
+// injLedgerMeasured — ведомость из одной записи с названной ревизией.
+func injLedgerMeasured(rev string) []ForeignIDPNameLedgerEntry {
+	return []ForeignIDPNameLedgerEntry{{
+		Area: "gateway/", Names: 2, Why: "w", Until: "полоса края закончена", Measured: rev,
+	}}
+}
+
+// TestForeignIDPNameInjection_RevisionShapeIsJudgedNotEmptiness — ОСЬ ФОРМЫ,
+// пара одно-фактная: обе строки непустые, разрешитель принимает обе, и
+// различает их ровно одно — похоже ли значение на ревизию.
+func TestForeignIDPNameInjection_RevisionShapeIsJudgedNotEmptiness(t *testing.T) {
 	t.Parallel()
-	gaps := ForeignIDPNameProvenanceGaps([]ForeignIDPNameLedgerEntry{{
-		Area: "gateway/", Names: 2, Why: "w", Until: "полоса края закончена",
-		Measured: "bec320cf47d",
-	}})
-	if len(gaps) != 0 {
-		t.Fatalf("запись, назвавшая свою ревизию, сочтена находкой: %v", gaps)
+	if gaps := ForeignIDPNameProvenanceGaps(injLedgerMeasured("a"), injResolveAll); len(gaps) != 1 {
+		t.Fatalf("непустое значение, не являющееся ревизией, принято: пропусков %d (%v)",
+			len(gaps), gaps)
+	}
+	if gaps := ForeignIDPNameProvenanceGaps(injLedgerMeasured("5b20df5c638"), injResolveAll); len(gaps) != 0 {
+		t.Fatalf("настоящая ревизия сочтена находкой: %v", gaps)
+	}
+}
+
+// TestForeignIDPNameInjection_EveryNonRevisionStandInIsFound — тот перебор,
+// которым предикат первой редакции и был опровергнут: ни одно из этих значений
+// ревизией не является, и каждое обязано находиться.
+//
+// Здесь важен не объём, а то, что молчание хотя бы на одном возвращает ровно ту
+// неразличимость, ради снятия которой ось и заведена.
+func TestForeignIDPNameInjection_EveryNonRevisionStandInIsFound(t *testing.T) {
+	t.Parallel()
+	for _, v := range []string{"", " ", "a", "нет", "TBD", "позже", "HEAD", "main", "0"} {
+		if gaps := ForeignIDPNameProvenanceGaps(injLedgerMeasured(v), injResolveAll); len(gaps) != 1 {
+			t.Errorf("значение %q принято за ревизию: пропусков %d", v, len(gaps))
+		}
+	}
+}
+
+// TestForeignIDPNameInjection_UnresolvableRevisionIsFound — ОСЬ РАЗРЕШИМОСТИ,
+// пара одно-фактная: обе строки ОДНОЙ формы (одиннадцать шестнадцатеричных
+// знаков), и различает их ровно одно — знает ли эту ревизию дерево.
+//
+// Дефект настоящий: так выглядит число, снятое обходом ЧУЖОГО дерева.
+func TestForeignIDPNameInjection_UnresolvableRevisionIsFound(t *testing.T) {
+	t.Parallel()
+	const known, foreign = "5b20df5c638", "0123456789a"
+	if len(known) != len(foreign) {
+		t.Fatalf("концы пары разной формы (%d против %d) — менялся бы не один факт",
+			len(known), len(foreign))
+	}
+	resolve := injResolveOnly(known)
+	gaps := ForeignIDPNameProvenanceGaps(injLedgerMeasured(foreign), resolve)
+	if len(gaps) != 1 {
+		t.Fatalf("ревизия, которой в дереве нет, принята: пропусков %d (%v)", len(gaps), gaps)
+	}
+	if !strings.Contains(gaps[0], foreign) {
+		t.Errorf("находка не называет неразрешённой ревизии: %q", gaps[0])
+	}
+	if gaps := ForeignIDPNameProvenanceGaps(injLedgerMeasured(known), resolve); len(gaps) != 0 {
+		t.Fatalf("разрешимая ревизия сочтена находкой: %v", gaps)
+	}
+}
+
+// TestForeignIDPNameInjection_ProvenanceGapNamesItsEntry — находка называет
+// координату записи: пропуск без области чинить негде.
+func TestForeignIDPNameInjection_ProvenanceGapNamesItsEntry(t *testing.T) {
+	t.Parallel()
+	gaps := ForeignIDPNameProvenanceGaps(injLedgerMeasured("TBD"), injResolveAll)
+	if len(gaps) != 1 {
+		t.Fatalf("пропусков %d, ожидался 1", len(gaps))
+	}
+	if !strings.Contains(gaps[0], "gateway/") {
+		t.Errorf("находка не называет координаты записи: %q", gaps[0])
 	}
 }
 
@@ -381,7 +449,65 @@ func TestForeignIDPNameInjection_EntryNamingItsRevisionIsSilent(t *testing.T) {
 // — ЦЕЛЬ гейта, а не поломка: пропусков в ней нет.
 func TestForeignIDPNameInjection_EmptyLedgerHasNoProvenanceGaps(t *testing.T) {
 	t.Parallel()
-	if gaps := ForeignIDPNameProvenanceGaps(nil); len(gaps) != 0 {
+	if gaps := ForeignIDPNameProvenanceGaps(nil, injResolveAll); len(gaps) != 0 {
 		t.Fatalf("пустая ведомость дала пропуски %v — проба падает на достижении своей цели", gaps)
+	}
+}
+
+// TestForeignIDPNameInjection_DriftFindingCarriesTheEntryRevision — ТЕКСТ
+// находки есть часть свойства.
+//
+// Находка дрейфа говорила «объявляет столько-то, в дереве столько-то» и не
+// называла ревизии записи — то есть оставляла читающему ровно ту
+// неразличимость, ради снятия которой ревизия и заводилась: «поверхность
+// выросла» и «число снято с другой головы» выглядели одинаково.
+//
+// Пара одно-фактная: ведомости различаются РОВНО ревизией записи, и текст
+// находки обязан различаться так же.
+func TestForeignIDPNameInjection_DriftFindingCarriesTheEntryRevision(t *testing.T) {
+	t.Parallel()
+	const body = `package p
+
+func hydraClaims() {}
+`
+	for _, rev := range []string{"bec320cf47d", "5b20df5c638"} {
+		ledger := []ForeignIDPNameLedgerEntry{{
+			Area: "gateway/", Names: 7, Why: "w", Until: "полоса края закончена", Measured: rev,
+		}}
+		findings, _, err := JudgeForeignIDPNames(injSources("gateway/internal/a_test.go", body), ledger)
+		if err != nil {
+			t.Fatalf("разбор: %v", err)
+		}
+		if !findingAt(findings, ForeignIDPNameCountDrift, "") {
+			t.Fatalf("дрейф не найден: %+v", findings)
+		}
+		if !strings.Contains(findings[0].Detail, rev) {
+			t.Errorf("текст находки дрейфа не называет ревизии записи %q: %q", rev, findings[0].Detail)
+		}
+	}
+}
+
+// TestForeignIDPNameInjection_StaleFindingCarriesTheEntryRevision — то же о
+// записи, пережившей предмет: её число тоже снято на какой-то голове, и без неё
+// «предмет ушёл» неотличимо от «число было не отсюда».
+func TestForeignIDPNameInjection_StaleFindingCarriesTheEntryRevision(t *testing.T) {
+	t.Parallel()
+	const body = `package p
+
+func ownClaims() {}
+`
+	ledger := []ForeignIDPNameLedgerEntry{{
+		Area: "gateway/", Names: 2, Why: "w", Until: "полоса края закончена",
+		Measured: "bec320cf47d",
+	}}
+	findings, _, err := JudgeForeignIDPNames(injSources("gateway/internal/a_test.go", body), ledger)
+	if err != nil {
+		t.Fatalf("разбор: %v", err)
+	}
+	if !findingAt(findings, ForeignIDPNameStale, "") {
+		t.Fatalf("пережившая запись не найдена: %+v", findings)
+	}
+	if !strings.Contains(findings[0].Detail, "bec320cf47d") {
+		t.Errorf("текст находки не называет ревизии записи: %q", findings[0].Detail)
 	}
 }
