@@ -61,6 +61,9 @@ from pathlib import Path
 
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ci_text import strip_comment_lines  # noqa: E402 — путь дописывается строкой выше
+
 # ── ЕДИНЫЙ ИСТОЧНИК ДВУХ МЕТОК ───────────────────────────────────────────────
 # Первая — как третья категория НАЗЫВАЕТСЯ, вторая — как она СООБЩАЕТСЯ. Обе
 # перечислены здесь ровно один раз: две копии разошлись бы молча, и перепись
@@ -78,14 +81,14 @@ def executable_part(text: str, suffix: str) -> str:
     Читается ИСПОЛНЯЕМАЯ часть, а не файл целиком: этот самый файл называет обе
     метки в своей шапке, и перепись по сырому тексту нашла бы сама себя — тот же
     класс, который корпус ловит у гейтов, читающих слово вместо кода.
+
+    Предикат живёт в ОДНОМ доме (`ci_text.py`) и оттуда же берётся гейтом связи
+    выкладок: две копии разошлись бы молча — одна научилась бы видеть хвостовой
+    комментарий, другая нет, и обе продолжали бы считать каждая своё.
     """
-    out = []
-    for line in text.split("\n"):
-        stripped = line.lstrip()
-        if suffix in (".sh", ".py", ".yml", ".yaml") and stripped.startswith("#"):
-            continue
-        out.append(line)
-    return "\n".join(out)
+    if suffix in (".sh", ".py", ".yml", ".yaml"):
+        return strip_comment_lines(text)
+    return text
 
 
 def tracked(root: Path) -> list[str]:

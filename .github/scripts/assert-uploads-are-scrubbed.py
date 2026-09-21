@@ -17,6 +17,12 @@
      `scrub-publication.py` и называющий ИМЕННО этот `--step-id`. Маски путей
      чистка берёт из того же узла, что и выкладка, поэтому «чистят одно,
      выкладывают другое» невозможно by construction.
+  1а. ВЫЗОВ — ИСПОЛНЯЕМЫЙ, А НЕ НАПИСАННЫЙ. Тело шага читается без строк-
+     комментариев и без хвостовых (`.github/scripts/ci_text.py`). Приёмка
+     показала цену сырого чтения: шаг, где вызов чистки закрыт решёткой, был
+     засчитан чистящим — «выкладок семь, находок ноль», а артефакт уехал бы
+     сырым. Закомментированный вызов не делает ничего и обязан читаться как
+     его отсутствие.
   2. ВЫКЛАДКА ПОГАШЕНА ЕЁ ИСХОДОМ. Условие выкладки обязано быть в точности
      условием чистки плюс `steps.<id>.outcome == 'success'`. Это и есть
      fail-closed: чистка не сошлась (находка), не выполнилась (код 3) или
@@ -55,6 +61,9 @@ import tempfile
 from pathlib import Path
 
 import yaml
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ci_text import shell_executable  # noqa: E402 — путь дописывается строкой выше
 
 SCRUBBER = "scrub-publication.py"
 UPLOAD_ACTION = "actions/upload-artifact"
@@ -157,7 +166,7 @@ def audit_workflow(path: Path, doc: dict) -> tuple[list[str], int, int, int, int
             for prev in steps[:i]:
                 if not isinstance(prev, dict):
                     continue
-                run = str(prev.get("run") or "")
+                run = shell_executable(str(prev.get("run") or ""))
                 if SCRUBBER in run and f"--step-id {up_id}" in run:
                     scrub = prev
             if scrub is None:
@@ -180,7 +189,7 @@ def audit_workflow(path: Path, doc: dict) -> tuple[list[str], int, int, int, int
             # в них не ловится ничем до прогона: чистка честно ответит «объявление
             # выкладки не прочитано» (код 3), и артефакт не уедет — то есть цена
             # опечатки будет заплачена прогоном, хотя видна она здесь.
-            run_txt = str(scrub.get("run") or "")
+            run_txt = shell_executable(str(scrub.get("run") or ""))
             want_wf = f"--workflow .github/workflows/{path.name}"
             want_job = f"--job {job_name}"
             if want_wf not in run_txt or want_job not in run_txt:
@@ -195,7 +204,8 @@ def audit_workflow(path: Path, doc: dict) -> tuple[list[str], int, int, int, int
             # «не смотрели», а не «чисто». Требование стоит ЗДЕСЬ, потому что
             # прогон покажет его только когда артефакт уже не уедет.
             need = expr_keys(str((step.get("with") or {}).get("path") or ""))
-            have = {re.sub(r"\s+", "", m.group("k")) for m in RE_SET.finditer(str(scrub.get("run") or ""))}
+            have = {re.sub(r"\s+", "", m.group("k"))
+                    for m in RE_SET.finditer(shell_executable(str(scrub.get("run") or "")))}
             missing = sorted(need - have)
             if missing:
                 findings.append(
@@ -454,6 +464,62 @@ jobs:
           path: out/*.json
 """
 
+COMMENTED_OUT = """
+name: проба
+jobs:
+  работа:
+    steps:
+      - name: чистка только на бумаге
+        id: чистка-отчётов
+        run: |
+          # python3 .github/scripts/scrub-publication.py --workflow .github/workflows/w.yml --job работа --step-id выкладка
+          echo "чистить не будем"
+      - name: выкладка
+        id: выкладка
+        if: ${{ steps.чистка-отчётов.outcome == 'success' }}
+        uses: actions/upload-artifact@0000000000000000000000000000000000000000
+        with:
+          name: отчёты
+          path: out/*.json
+"""
+
+TRAILING_COMMENT = """
+name: проба
+jobs:
+  работа:
+    steps:
+      - name: чистка с хвостовым объяснением
+        id: чистка-отчётов
+        run: |
+          echo "сейчас почистим"   # python3 .github/scripts/scrub-publication.py --step-id выкладка
+      - name: выкладка
+        id: выкладка
+        if: ${{ steps.чистка-отчётов.outcome == 'success' }}
+        uses: actions/upload-artifact@0000000000000000000000000000000000000000
+        with:
+          name: отчёты
+          path: out/*.json
+"""
+
+QUOTED_HASH = """
+name: проба
+jobs:
+  работа:
+    steps:
+      - name: чистка, в чьём теле есть решётка внутри кавычек
+        id: чистка-отчётов
+        run: |
+          echo "правка по задаче #1810"
+          python3 .github/scripts/scrub-publication.py --workflow .github/workflows/w.yml --job работа --step-id выкладка
+      - name: выкладка
+        id: выкладка
+        if: ${{ steps.чистка-отчётов.outcome == 'success' }}
+        uses: actions/upload-artifact@0000000000000000000000000000000000000000
+        with:
+          name: отчёты
+          path: out/*.json
+"""
+
 NO_UPLOADS = """
 name: проба
 jobs:
@@ -498,6 +564,9 @@ def self_test() -> int:
     case("чистка называет ЧУЖОЙ шаг", FOREIGN_SCRUB, 1)
     case("выражение в маске без --set", EXPR_UNSET, 1)
     case("выражение в маске с --set", EXPR_SET, 0)
+    case("вызов чистки ЗАКОММЕНТИРОВАН", COMMENTED_OUT, 1)
+    case("вызов только в хвостовом комментарии", TRAILING_COMMENT, 1)
+    case("решётка внутри кавычек кода не отнимает", QUOTED_HASH, 0)
     case("чистка адресована чужой работе", WRONG_ADDRESS, 1)
     case("сборщик образов выкладывает запись сам", BUILD_OPEN, 1)
     case("сборщик образов: канал записи закрыт", BUILD_CLOSED, 0)
