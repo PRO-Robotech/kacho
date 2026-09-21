@@ -65,6 +65,7 @@ func UnaryRefuseInternalRoute(obs *RouteRefusalObserver) grpc.UnaryServerInterce
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler) (any, error) {
 		if info != nil && IsInternalRoute(info.FullMethod) {
+			obs.record(info.FullMethod)
 			return nil, refuseRoute(info.FullMethod)
 		}
 		return handler(ctx, req)
@@ -87,6 +88,7 @@ func StreamRefuseInternalRoute(obs *RouteRefusalObserver) grpc.StreamServerInter
 			method = m
 		}
 		if IsInternalRoute(method) {
+			obs.record(method)
 			return refuseRoute(method)
 		}
 		return handler(srv, ss)

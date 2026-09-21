@@ -1063,23 +1063,36 @@ func main() {
 	// method; refusing ahead of authN would hand that caller NotFound for
 	// Internal* and Unauthenticated for everything else — the same leak in
 	// different clothes.
-	grpcUnaryInterceptors = append(grpcUnaryInterceptors, proxy.UnaryRefuseInternalRoute(nil))
-	grpcStreamInterceptors = append(grpcStreamInterceptors, proxy.StreamRefuseInternalRoute(nil))
+	routeRefusal := proxy.NewRouteRefusalObserver(logger)
+	// Величина выходит НАРУЖУ, а не живёт в процессе: полоса, которой нет на
+	// поверхности, для оператора не существует — тот же довод, по которому
+	// заведена её близнец `unserved` на полосе HTTP.
+	diagMetrics.RegisterRouteRefusal(routeRefusal.Refused)
+	grpcUnaryInterceptors = append(grpcUnaryInterceptors, proxy.UnaryRefuseInternalRoute(routeRefusal))
+	grpcStreamInterceptors = append(grpcStreamInterceptors, proxy.StreamRefuseInternalRoute(routeRefusal))
 	if authzMW != nil {
 		grpcUnaryInterceptors = append(grpcUnaryInterceptors, authzMW.Unary())
 		grpcStreamInterceptors = append(grpcStreamInterceptors, authzMW.Stream())
 	}
-	grpcUnaryInterceptors = append(grpcUnaryInterceptors, middleware.UnaryAccessLog(logger))
-	grpcStreamInterceptors = append(grpcStreamInterceptors, middleware.StreamAccessLog(logger))
-	// Измеритель СТАВИТСЯ ПЕРВЫМ, то есть самым внешним: он обязан накрывать всё,
-	// что край делает ради запроса, включая отказ по правам и отказ маршрутизации.
-	// Стоя за звеном прав, он оставил бы неизмеренным каждый отказ — исход, ради
-	// которого в разбор происшествия и приходят.
+	// Измеритель И ЖУРНАЛ СТАВЯТСЯ ПЕРВЫМИ, то есть самыми внешними: оба обязаны
+	// накрывать всё, что край делает ради запроса, включая отказ по правам и
+	// отказ маршрутизации. Стоя за звеном прав, они оставили бы неизмеренным и
+	// НЕЗАПИСАННЫМ каждый отказ — исход, ради которого в разбор происшествия и
+	// приходят.
+	//
+	// Журнал стоял здесь ДОПИСАННЫМ В ЦЕПЬ, то есть внутри всех отказных
+	// звеньев: личности, привязки удостоверения, допуска по темпу, отказа по
+	// маршруту и решения о правах. Довод выше был выписан для измерителя и
+	// применён к одному звену из двух. Тот же класс на полосе HTTP закрыт
+	// отдельно; положение на обеих держит
+	// TestNativeAccessLogIsOutsideTheRefusingLinks.
 	grpcUnaryInterceptors = append([]grpc.UnaryServerInterceptor{
 		edgeLatency.UnaryServerInterceptor(grpcsrv.ListenerPublic),
+		middleware.UnaryAccessLog(logger),
 	}, grpcUnaryInterceptors...)
 	grpcStreamInterceptors = append([]grpc.StreamServerInterceptor{
 		edgeLatency.StreamServerInterceptor(grpcsrv.ListenerPublic),
+		middleware.StreamAccessLog(logger),
 	}, grpcStreamInterceptors...)
 	grpcSrv := proxy.NewServer(resolver,
 		grpc.ChainUnaryInterceptor(grpcUnaryInterceptors...),

@@ -82,3 +82,27 @@ func TestEveryCounterFieldReachesTheExposition(t *testing.T) {
 			len(lost), len(want), strings.Join(lost, "\n"))
 	}
 }
+
+// TestRouteRefusalSeriesIsDeclaredAndReadable — нативный близнец полосы
+// `unserved` доезжает до экспозиции, и нулевая величина объявляется наравне с
+// ненулевой.
+//
+// Отсутствие серии и нулевая серия обязаны быть различимы: «отказов по маршруту
+// не было» и «счётчик отвалился» — противоположные состояния, и по пустой
+// поверхности они неотличимы.
+func TestRouteRefusalSeriesIsDeclaredAndReadable(t *testing.T) {
+	const name = "kacho_api_gateway_route_refusals_total"
+
+	zero := gwmetrics.New("test", "deadbeef")
+	zero.RegisterRouteRefusal(func() uint64 { return 0 })
+	if body := expose(t, zero); !strings.Contains(body, name+" 0") {
+		t.Errorf("нулевая величина отказов по маршруту не объявлена на поверхности — "+
+			"«отказов не было» неотличимо от «счётчик отвалился»:\n%s", body)
+	}
+
+	grown := gwmetrics.New("test", "deadbeef")
+	grown.RegisterRouteRefusal(func() uint64 { return 700123 })
+	if body := expose(t, grown); !strings.Contains(body, "700123") {
+		t.Errorf("величина отказов по маршруту не доехала до экспозиции:\n%s", body)
+	}
+}
