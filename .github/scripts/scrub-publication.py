@@ -136,6 +136,7 @@ import glob as globmod
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -895,6 +896,48 @@ jobs:
 
 
 def self_test() -> int:
+    """Оболочка: всё временное живёт в ОДНОМ каталоге и снимается за собой.
+
+    ПРЕДМЕТ. Здесь было объявлено свойство — «мутация живёт в пробе, рабочий путь
+    её не содержит», — и половина его была неверна буквально: мутация жила НА
+    ДИСКЕ. Каждый случай создавал временный каталог и не убирал ни одного;
+    измерено: после успешного прогона 43 каталога и 2 запускаемые копии чистки с
+    ВЫКЛЮЧЕННЫМ изъятием ключа, за три прогона 129 и 6, при обрыве на середине —
+    16 и 32.
+    
+    Утечки это не давало (каталоги закрытые, материал в них — литерал из дерева,
+    под маски выкладки временное не попадает), и возврат был не за неё: проверка,
+    чья собственная оснастка переживает прогон, подрывает доверие ко всему
+    остальному, что она утверждает.
+
+    СНИМАЕТСЯ НА ТРЁХ ИСХОДАХ, и это разные механизмы, а не один:
+      · успех и отказ — выход из менеджера контекста;
+      · исключение, включая прерывание с клавиатуры, — тот же выход;
+      · сигнал завершения — обработчик, переводящий его в исключение, иначе
+        менеджер не отработал бы вовсе.
+    Чего снять нельзя, названо прямо: `SIGKILL` не перехватывается ничем, и
+    остаток после него — свойство сигнала, а не этой пробы.
+    """
+    prev_term = signal.getsignal(signal.SIGTERM)
+
+    def _terminate(_sig: int, _frm: object) -> None:
+        raise KeyboardInterrupt("получен сигнал завершения")
+
+    try:
+        signal.signal(signal.SIGTERM, _terminate)
+    except ValueError:  # не главный поток — обработчик не ставится, и это не отказ
+        pass
+    try:
+        with tempfile.TemporaryDirectory(prefix="scrub-selftest-") as scratch:
+            return _self_test_in(Path(scratch))
+    finally:
+        try:
+            signal.signal(signal.SIGTERM, prev_term)
+        except ValueError:
+            pass
+
+
+def _self_test_in(scratch: Path) -> int:
     me = str(Path(__file__).resolve())
     ok = True
     cases = 0
@@ -924,13 +967,13 @@ def self_test() -> int:
         n = src.count(marker)
         if n != 1:
             raise AssertionError(f"якорь мутации встречается {n} раз, нужен ровно один: {marker!r}")
-        d = Path(tempfile.mkdtemp())
+        d = Path(tempfile.mkdtemp(dir=scratch))
         out = d / "scrub-mutant.py"
         out.write_text(src.replace(marker, replacement, 1), encoding="utf-8")
         return str(out)
 
     def make_root(files: dict[str, str]) -> Path:
-        d = Path(tempfile.mkdtemp())
+        d = Path(tempfile.mkdtemp(dir=scratch))
         (d / "wf.yml").write_text(SELFTEST_WORKFLOW, encoding="utf-8")
         (d / "out").mkdir()
         for nm, body in files.items():
