@@ -1,7 +1,7 @@
 // AuthContext — централизованный auth state для kacho-ui (KAC-127 Phase 2).
 //
 // Что внутри:
-//   - user / session (из api-gateway /iam/v1/auth/me + Kratos /sessions/whoami)
+//   - user (из api-gateway /iam/v1/auth/me)
 //   - access-token (in-memory только; никогда не в localStorage)
 //   - login() / logout() / refresh() — высокоуровневые actions
 //
@@ -23,14 +23,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { setStepUpRequester } from "@shared/api/step-up";
 import { authApi, hasPermission as checkPerm, type AuthUser, type WhoAmIResponse } from "@shared/api/auth";
-import { kratos, type KratosSession } from "@shared/lib/kratos";
+import { kratos } from "@shared/lib/kratos";
 
 /** Периодический whoami-refresh — каждые 5 минут (KAC items 1-5 Foundation). */
 const WHOAMI_REFETCH_MS = 5 * 60 * 1000;
 
 export interface AuthContextValue {
   user: AuthUser | null;
-  session: KratosSession | null;
   loading: boolean;
   accessToken: string | null;
   /** Bootstrap-info из GET /iam/v1/me (KAC items 1-5): system_admin /
@@ -60,7 +59,6 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [session, setSession] = useState<KratosSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [accessToken, setAccessTokenState] = useState<string | null>(null);
   const [whoami, setWhoami] = useState<WhoAmIResponse | null>(null);
@@ -83,20 +81,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [meResp, whoamiKratosResp, whoamiIamResp] = await Promise.allSettled([
-        authApi.me(),
-        kratos.whoami(),
-        authApi.whoami(),
-      ]);
+      // ДВЕ ручки, обе — СВОЕГО края. Третьей была сессия у чужой службы
+      // личности (`/.ory/kratos/public/sessions/whoami`), и её ответ не читал
+      // НИКТО: поле `session` контекста не разбирал ни один потребитель во всём
+      // дереве консоли. Запрос уходил на каждый подъём страницы и ни на что
+      // видимое не влиял — снят вместе с полем (#2733). Наблюдаемое держит
+      // `AuthContext.own-edge-only.test.tsx`.
+      const [meResp, whoamiIamResp] = await Promise.allSettled([authApi.me(), authApi.whoami()]);
       if (meResp.status === "fulfilled") {
         setUser(meResp.value.user ?? null);
       } else {
         setUser(null);
-      }
-      if (whoamiKratosResp.status === "fulfilled") {
-        setSession(whoamiKratosResp.value);
-      } else {
-        setSession(null);
       }
       if (whoamiIamResp.status === "fulfilled") {
         setWhoami(whoamiIamResp.value);
@@ -121,7 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // KAC items 1-5 Foundation: периодически refresh'им whoami каждые 5 минут,
   // чтобы поймать изменение ролей (e.g. админ grant'нул system_admin) без
-  // полного `refresh` (который дополнительно дёргает /me и kratos/whoami).
+  // полного `refresh` (который дополнительно дёргает /me).
   useEffect(() => {
     if (!user) return;
     // поллинг остаётся: предмет здесь не ресурс, а ЛИЧНОСТЬ вызывающего и её
@@ -147,7 +142,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Session уже истекла — игнорируем.
     }
     setUser(null);
-    setSession(null);
     setAccessTokenState(null);
     tokenRef.current = null;
     setWhoami(null);
@@ -179,7 +173,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
-      session,
       loading,
       accessToken,
       whoami,
@@ -193,7 +186,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }),
     [
       user,
-      session,
       loading,
       accessToken,
       whoami,

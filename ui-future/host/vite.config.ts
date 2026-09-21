@@ -94,10 +94,6 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/\.ory\/kratos\/public/, ""),
       },
-      "/self-service": {
-        target: kratos,
-        changeOrigin: true,
-      },
       ...Object.fromEntries(
         kratosUiRoutes.map((route) => [
           route,

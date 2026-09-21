@@ -6,7 +6,14 @@
 // document-time defaults (домен `api.kacho.cloud`).
 //
 // Запрет: НЕ хардкодить `api.kacho.cloud` / `app.kacho.cloud` в компонентах.
-// Только через `config.apiDomain` / `config.appDomain` / `config.webauthnRpId`.
+// Только через `config.apiDomain` / `config.appDomain`.
+//
+// Ручек беспарольного входа (`VITE_WEBAUTHN_RP_ID` / `VITE_WEBAUTHN_RP_NAME`)
+// здесь больше нет: их читали только две обёртки клиента службы личности, а те
+// не звал никто. Вызов ключа доступа консоль берёт ИЗ УЗЛА ПОТОКА, который
+// служба ей отдаёт (`StepUpModal.tsx`, узел `webauthn`), — не из ручки. Ручка,
+// объявленная без читателя, заставляет развёртывание ЗАДАВАТЬ значение, от
+// которого не зависит ни одна ветка (#2733).
 
 interface AppConfig {
   /** Базовый origin для api-gateway REST. Пусто = same-origin (prod через ingress). */
@@ -17,10 +24,6 @@ interface AppConfig {
   appDomain: string;
   /** Kratos public base path (browser-flows). Default `/.ory/kratos/public`. */
   kratosUrl: string;
-  /** WebAuthn RP-ID (eTLD+1 от app-домена). Kratos config обязан совпадать. */
-  webauthnRpId: string;
-  /** WebAuthn RP display-name. */
-  webauthnRpName: string;
   /** Допустимый clock-skew для DPoP nonce/iat (секунды). */
   dpopClockSkewSec: number;
   /** Recovery magic-link TTL (минуты) — для UI hint. */
@@ -52,8 +55,6 @@ export const config: AppConfig = {
   apiDomain: envStr("VITE_KACHO_API_DOMAIN", DEFAULT_API_DOMAIN),
   appDomain: envStr("VITE_APP_DOMAIN", DEFAULT_APP_DOMAIN),
   kratosUrl: envStr("VITE_KRATOS_URL", "/.ory/kratos/public"),
-  webauthnRpId: envStr("VITE_WEBAUTHN_RP_ID", "kacho.cloud"),
-  webauthnRpName: envStr("VITE_WEBAUTHN_RP_NAME", "Kachō Cloud"),
   dpopClockSkewSec: envNum("VITE_DPOP_CLOCK_SKEW_SEC", 30),
   recoveryLinkTtlMin: envNum("VITE_RECOVERY_LINK_TTL_MIN", 5),
 };

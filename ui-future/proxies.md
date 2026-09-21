@@ -93,12 +93,10 @@ The host app uses relative browser URLs. `host/vite.config.ts` proxies them to t
 /operations/*           -> http://localhost:8080
 /healthz, /readyz       -> http://localhost:8080
 /.ory/kratos/public/*   -> http://localhost:4433
-/self-service/*         -> http://localhost:4433
 /login, /registration,
 /recovery, /settings,
 /verification, /error,
 /consent, /logout       -> http://localhost:4300
-/oauth2/*               -> http://localhost:4444
 ```
 
 Frontend code should keep using relative paths:

@@ -8,22 +8,18 @@
 //   POST   /self-service/login/browser         → 303 with ?flow=<id>     (init login)
 //   GET    /self-service/login/flows?id=...    → flow JSON + UI schema
 //   POST   /self-service/login?flow=<id>       → submit credentials (csrf+method+...)
-//   POST   /self-service/registration/browser  → 303 with ?flow=<id>     (init registration)
-//   GET    /self-service/registration/flows?id=...  → flow JSON
-//   POST   /self-service/registration?flow=<id>     → submit
-//   POST   /self-service/recovery/browser      → init recovery
-//   GET    /self-service/recovery/flows?id=...
-//   POST   /self-service/recovery?flow=<id>    → submit (email → magic-link)
 //   GET    /self-service/settings/browser      → init settings (управление passkeys / TOTP)
-//   GET    /self-service/settings/flows?id=...
-//   POST   /self-service/settings?flow=<id>
 //   GET    /self-service/logout/browser        → init logout
 //   POST   /self-service/logout?token=<token>
-//   GET    /sessions/whoami                    → 200 session | 401 unauthorised
 //
 // Все запросы — `credentials: 'include'` для cookie `ory_kratos_session`.
+//
+// Перечень — ровно то, что зовут: член без вызывающего здесь не живёт, и это
+// держит `kratos.member-has-a-caller.test.ts`. Дверь временная — полосу входа
+// край уже отдаёт тринадцатью глаголами `/iam/v1/auth/*`, и клиент уходит вместе
+// с экранами входа (#1274).
 
-import { config, kratosUrl } from "@shared/lib/config";
+import { kratosUrl } from "@shared/lib/config";
 import { displayText } from "@shared/lib/display-text";
 
 export type FlowType = "login" | "registration" | "recovery" | "settings" | "verification";
@@ -75,26 +71,6 @@ export interface SelfServiceFlow {
   requested_aal?: "aal1" | "aal2";
   // Recovery / settings specific:
   state?: string;
-}
-
-export interface KratosSession {
-  id: string;
-  active: boolean;
-  expires_at: string;
-  authenticated_at: string;
-  // Поля уровня уверенности здесь нет намеренно: консоль по уровню не решает
-  // (приёмка Ф11 §1.3 Ч8) — решает край, а консоль отвечает на его вызов.
-  authentication_methods?: Array<{
-    method: string;
-    aal: string;
-    completed_at: string;
-  }>;
-  identity: {
-    id: string;
-    schema_id: string;
-    traits: Record<string, unknown>;
-    metadata_public?: Record<string, unknown>;
-  };
 }
 
 export interface KratosError extends Error {
@@ -195,28 +171,10 @@ export const kratos = {
     return kratosFetch<T>("GET", `/self-service/${flow}/browser${qs ? `?${qs}` : ""}`);
   },
 
-  /** Получить flow по ID (после init redirect). */
-  async getFlow<T = SelfServiceFlow>(flow: FlowType, id: string): Promise<T> {
-    const params = new URLSearchParams({ id });
-    return kratosFetch<T>("GET", `/self-service/${flow}/flows?${params}`);
-  },
-
   /** Submit flow с body. */
   async submitFlow<T = SelfServiceFlow>(flow: FlowType, id: string, body: Record<string, unknown>): Promise<T> {
     const params = new URLSearchParams({ flow: id });
     return kratosFetch<T>("POST", `/self-service/${flow}?${params}`, body);
-  },
-
-  /** Текущая session — 200 / 401. */
-  async whoami(): Promise<KratosSession | null> {
-    try {
-      return await kratosFetch<KratosSession>("GET", "/sessions/whoami");
-    } catch (e) {
-      if ((e as KratosError).status === 401 || (e as KratosError).status === 403) {
-        return null;
-      }
-      throw e;
-    }
   },
 
   /** Init logout — возвращает {logout_token, logout_url}. */
@@ -233,21 +191,7 @@ export const kratos = {
   loginUrl(returnTo?: string): string {
     return this.initFlowUrl("login", returnTo);
   },
-  registrationUrl(returnTo?: string): string {
-    return this.initFlowUrl("registration", returnTo);
-  },
-  recoveryUrl(returnTo?: string): string {
-    return this.initFlowUrl("recovery", returnTo);
-  },
   settingsUrl(returnTo?: string): string {
     return this.initFlowUrl("settings", returnTo);
-  },
-
-  /** WebAuthn RP-ID (для navigator.credentials.create options). */
-  webauthnRpId(): string {
-    return config.webauthnRpId;
-  },
-  webauthnRpName(): string {
-    return config.webauthnRpName;
   },
 };

@@ -1,11 +1,16 @@
-// Auth API — обращения к Ory Kratos self-service endpoints + api-gateway /iam/v1/auth/me.
+// Auth API — обращения к СВОЕМУ краю (`/iam/v1/auth/me`, `/iam/v1/me`) плюс два
+// перехода на экраны прежнего поставщика личности (вход, регистрация, выход).
+//
+// Печенье сессии поставщика отсюда БОЛЬШЕ НЕ ЧИТАЕТСЯ: ручка
+// `/.ory/kratos/public/sessions/whoami` стояла в этом перечне и не звалась ни
+// одним читателем ответа (#2733). Переходы останутся, пока у консоли нет своих
+// экранов входа (#1274); полоса входа продукта уже объявлена краем глаголами
+// `/iam/v1/auth/*`.
 //
 // Контракт (KAC-115 Ory stack):
 //   GET  /login                       → Kratos self-service Login UI
 //                                       (Kratos выставляет ory_kratos_session cookie)
 //   GET  /registration                → Kratos self-service Registration UI
-//   GET  /.ory/kratos/public/sessions/whoami
-//                                    → 200 session.identity | 401 если cookie не валидна
 //   GET  /iam/v1/auth/me             → 200 {user, permissions[]} | 401 если нет session
 //                                       (api-gateway резолвит principal по Kratos session)
 //   GET  /iam/v1/me                  → 200 WhoAmIResponse (KAC items 1-5):
