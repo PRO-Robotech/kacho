@@ -196,3 +196,50 @@ pg-kratos:
 pg-hydra:
   image: { registry: docker.io, repository: bitnamilegacy/postgresql }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ОБРАЗЫ ПРОДУКТА: ОДНА РЕВИЗИЯ НА СЛУЖБЫ И КРАЙ
+#
+# Базовый слой пинит семь образов на `main-d941344b` (11 сентября). Полоса формы
+# — четыре глагола, которые край ретранслирует ТОЛЬКО под посадкой `own`, — вошла
+# в ствол позже, коммитом `275240ef` (17 сентября, kacho#1269), а шесть глаголов
+# второго фактора — ещё позже. Следствие ИЗМЕРЕНО на этом стенде: край честно
+# отчитывается `identity_provider: own`, а на `/iam/v1/auth/csrf` отвечает 403
+# AUTHZ_DENIED — глагола в его сборке нет вовсе. То есть стенд выглядел бы
+# поднятым и не был бы свидетелем ни одной из задач, ради которых он поднят.
+#
+# ОДНОЙ РЕВИЗИЕЙ, А НЕ ТОЛЬКО КРАЙ. Расширение контракта выходит наружу лишь
+# когда пересобраны ОБЕ половины: у службы поле есть, у клиента его нет, и проба
+# читает это как дефект продукта. Поэтому здесь все семь стоят на одном коммите —
+# тем же приёмом, каким это сделал слой площадки `a8f60d`.
+#
+# ПИН НЕ СТАВИТСЯ РУКОЙ, А ВЫВОДИТСЯ ИЗ ЗАПИСИ: тег, собранный мимо неё, был бы
+# неотличим от выведенного и лгал бы молча. Запись одна на профиль, обе формы
+# тега выводятся из неё.
+#
+# порождено-от: main bec320cf47d668173bf27f60ebaf6cbe413a4903
+#
+# Это вершина ствола на день подъёма и база этой ветки; образ этой ревизии
+# опубликован у ВСЕХ семи (пересечение перечней тегов реестра, замер 2026-09-21).
+# Служба доступа сюда не входит: её исходники вынесены отдельным продуктом, её
+# пин объявлен базовым слоем и из записи выше не выводится by construction.
+vpc:
+  image: docker.io/prorobotech/kacho-vpc:main-bec320cf
+compute:
+  image: docker.io/prorobotech/kacho-compute:main-bec320cf
+kacho-geo:
+  image: docker.io/prorobotech/kacho-geo:main-bec320cf
+api-gateway:
+  image: docker.io/prorobotech/kacho-api-gateway:main-bec320cf
+kacho-nlb:
+  image:
+    repository: docker.io/prorobotech/kacho-nlb
+    tag: main-bec320cf
+storage:
+  image:
+    repository: docker.io/prorobotech/kacho-storage
+    tag: main-bec320cf
+registry:
+  image:
+    repository: docker.io/prorobotech/kacho-registry
+    tag: main-bec320cf
