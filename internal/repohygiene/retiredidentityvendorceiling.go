@@ -221,23 +221,38 @@ var retiredVendorTreeModules = map[string]string{
 //
 // Запись меняется ТОЛЬКО вниз и тем же изменением, которым снижено число.
 var retiredVendorCeilings = map[string]int{
-	// платформа: по пути 25 · по имени 1889 · склейкой 1 · по пути API 45 ·
+	// платформа: по пути 25 · по имени 1810 · склейкой 1 · по пути API 45 ·
 	// архивов 3. Архивы: два чарта издателя по имени и
 	// `services/storage/tools/testdata/rg11-make/live-corpus.json.gz` по
-	// СОДЕРЖИМОМУ — архив, которого перечень суффиксов не видел вовсе: он не
-	// кончается на `.tgz`, уходил в «пропущено» и не был ничьим числом.
+	// СОДЕРЖИМОМУ — архив, которого перечень суффиксов не видел вовсе.
 	//
-	// ХВОСТ измерен по всему пакету гейтов и входит в число: 106 строк в 13
-	// файлах `internal/repohygiene`. Из них сам гейт с двумя пробами — 37
-	// (в самом гейте одна строка: `retiredVendorMarks`; шапка и комментарии не
-	// судятся), соседи — 69: словарь поверхностей поставщика с пробами 39,
-	// надгробие издателя с инъекцией 19, прочие 11. Прежняя запись называла 23
-	// строки и соседей не считала вовсе — занижение на 83 строки.
-	vendorTreePlatform: 1963,
+	// ЧИСЛО СНИЖЕНО НА 79 ГРАНИЦЕЙ СЛОВА, а не снятием привязок, и это сказано
+	// прямо: прежняя запись 1963 включала 92 строки в 28 файлах, где имя
+	// издателя втекло в английское слово семейства `hydrate`. Из них 15 — по
+	// три строки в каждом из ПЯТИ файлов блокировок консоли, где лежит чужой
+	// пакет `@radix-ui/react-use-is-hydrated`: их снимает обновление чужой
+	// зависимости, а не снятие издателя, то есть предикат «ноль» был
+	// НЕВЫПОЛНИМ никакой нашей работой. Сегодня строк в файлах блокировок НОЛЬ,
+	// и ноль достижим: снятие всех 2991 привязок в одноразовой копии даёт ноль
+	// по всем трём деревьям при 6380 · 3266 · 466 судимых файлах.
+	//
+	// Разница 92 против 79 — ХВОСТ этого же изменения: пробы границы слова
+	// несут имя издателя в своих синтетических входах и добавили 13 строк.
+	//
+	// ХВОСТ измерен по всему пакету гейтов и входит в число: 119 строк в 13
+	// файлах `internal/repohygiene` (было 106 до проб этой границы). Из них сам
+	// гейт с двумя пробами — 50, соседи — 69.
+	vendorTreePlatform: 1884,
 	// служба доступа по пину `go.mod`: по пути 10 · по имени 1057 ·
-	// по пути API 40; архивов и двоичного нет
+	// по пути API 40; архивов и двоичного нет. Граница слова здесь не сняла ни
+	// одной строки: слитных написаний два (`hydraadminurl`,
+	// `hydraadmintokenenv`), и обе строки несут написание с границей рядом.
 	vendorTreeAccess: 1107,
-	// фундамент по пину `go.mod`: движок сюда ещё не приехал, и потолок держит ноль
+	// фундамент по пину `go.mod`: движок сюда ещё не приехал, и потолок держит
+	// ноль. Рабочая копия соседнего клона тут не при чём: платформа собирается
+	// против ПИНА, и `replace` на внутренний модуль запрещён нормой
+	// (`polyrepo.md`), поэтому иное число в чужом клоне — свойство несведённой
+	// работы, а не этого дерева.
 	vendorTreeFoundation: 0,
 }
 
@@ -318,6 +333,13 @@ type vendorTreeCensus struct {
 	// Sealed — архивов, которые развернуть нечем: судятся путём и сырыми байтами.
 	Sealed int
 	Lines  int
+	// BoundaryDropped — строк, где имя издателя ЕСТЬ, но отдельным словом не
+	// стоит: английское `hydrate` и его родня. Цена границы слова, названная
+	// числом, а не замолчанная.
+	BoundaryDropped int
+	// BoundaryWords — РАЗНЫЕ слова, составившие предыдущее число. Новое слово
+	// здесь — находка: так видно слитное написание настоящей привязки.
+	BoundaryWords []string
 
 	Bindings  int
 	ByPath    int
@@ -333,9 +355,11 @@ func (c vendorTreeCensus) String() string {
 	return fmt.Sprintf("путей обойдено %d = судимо построчно %d · двоичных %d · архивов %d "+
 		"(нераспакованных %d) · прозы %d (граница) · строк прочитано %d · "+
 		"привязок %d строк (по пути %d · по имени %d · склейкой %d · по пути API %d · "+
-		"двоичных %d · архивов %d) · потолок %d",
+		"двоичных %d · архивов %d) · потолок %d · отброшено границей слова %d строк "+
+		"(разных слов %d: %s)",
 		c.Walked, c.Files, c.Blobs, c.Archives, c.Sealed, c.Prose, c.Lines,
-		c.Bindings, c.ByPath, c.ByName, c.ByGlue, c.BySurface, c.ByBinary, c.ByArchive, c.Ceiling)
+		c.Bindings, c.ByPath, c.ByName, c.ByGlue, c.BySurface, c.ByBinary, c.ByArchive,
+		c.Ceiling, c.BoundaryDropped, len(c.BoundaryWords), strings.Join(c.BoundaryWords, ", "))
 }
 
 // vendorCeilingFinding — расхождение числа с записью.
@@ -518,8 +542,10 @@ func vendorCorpusFromPaths(root string, rels []string) vendorTreeCorpus {
 // строки, сюда не попадает и объявлено границей (шапка, п. 3).
 var vendorGlueJoin = regexp.MustCompile("[\"'`]\\s*\\+?\\s*[\"'`]")
 
-// vendorCarriesMark — текст несёт имя издателя. Текст обязан быть уже в нижнем
-// регистре.
+// vendorCarriesMark — текст несёт имя издателя ГДЕ-НИБУДЬ, без разбора границ.
+// Это ПРЕ-ФИЛЬТР, а не признак привязки: он отсеивает файлы, где искать нечего,
+// и он же служит знаменателем для счётчика отброшенных границей слова. Текст
+// обязан быть уже в нижнем регистре.
 func vendorCarriesMark(lower string) bool {
 	for _, m := range retiredVendorMarks {
 		if strings.Contains(lower, m) {
@@ -529,28 +555,149 @@ func vendorCarriesMark(lower string) bool {
 	return false
 }
 
-// vendorPathAxis — путь несёт имя издателя. `oryd/` берётся без косой черты:
-// в пути это каталог.
-func vendorPathAxis(rel string) bool {
-	lower := strings.ToLower(rel)
+// vendorLowerLetter — строчная буква латиницы. Ровно она продолжает СЛОВО:
+// прописная буква, цифра, разделитель и конец строки — всё это границы токена в
+// любом из здешних написаний (camelCase, SNAKE_CASE, kebab-case, путь, точка).
+func vendorLowerLetter(b byte) bool { return b >= 'a' && b <= 'z' }
+
+// vendorMarkBoundedIn — текст несёт имя издателя КАК ОТДЕЛЬНОЕ СЛОВО.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ЗАЧЕМ ГРАНИЦА
+//
+// Подстрока без границы засчитывает привязкой английское слово `hydrate`:
+// `hydrate`, `hydrated`, `setHydrated`, `hydrateStringListFields`,
+// `hydrateHealthCheck`, `hydrates` — шесть разных слов, ни одно из которых к
+// издателю отношения не имеет. Измерено на ревизии заведения границы: 92 строки
+// в 28 файлах платформы были привязаны ТОЛЬКО так, и 15 из них — три строки в
+// каждом из пяти файлов блокировок консоли, где лежит чужой пакет
+// `@radix-ui/react-use-is-hydrated`. Пока они считались, предикат «ноль»
+// НЕВЫПОЛНИМ никакой работой: их снимает не снятие издателя, а обновление
+// чужой зависимости.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ПОЧЕМУ ГРАНИЦА ОДНОСТОРОННЯЯ — ТОЛЬКО СПРАВА
+//
+// Слева границы не требуется намеренно: имя приходит вторым корнем сплошь и
+// рядом (`stubHydra`, `testHydraIss`, `newHydra`, `tryKratosSession`), и
+// требование границы слева снесло бы настоящие привязки. Справа же продолжение
+// СТРОЧНОЙ буквой означает, что имя втекло в другое слово: `hydra` + `te`.
+// Прописная буква границей ЯВЛЯЕТСЯ — это шов camelCase (`hydraClaims`,
+// `kratosURL`), как и `_`, `-`, `.`, `/`, кавычка, цифра и конец строки.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ЧТО ГРАНИЦА СТОИТ — НАЗВАНО ЧИСЛОМ, А НЕ ЗАМОЛЧАНО
+//
+// Слитное написание строчными (`hydraadminurl`, `hydraadmintokenenv` — два
+// таких слова в службе доступа) правило отбрасывает, хотя это настоящие
+// привязки. Измерено: строк, привязанных ТОЛЬКО ими, НОЛЬ — на тех же строках
+// стоит написание с границей. Чтобы завтрашнее такое слово не пропало молча,
+// перепись печатает отдельный счётчик `отброшено границей слова` вместе с
+// РАЗНЫМИ словами, которые его составили: новое слово в этом перечне видно
+// сразу и разбирается как находка.
+//
+// Имя, кончающееся разделителем (`oryd/`), границу несёт в самом разделителе:
+// искать его продолжение незачем.
+func vendorMarkBoundedIn(text string) bool {
+	lower := strings.ToLower(text)
 	for _, m := range retiredVendorMarks {
-		if strings.Contains(lower, strings.TrimSuffix(m, "/")) {
-			return true
+		if strings.HasSuffix(m, "/") {
+			if strings.Contains(lower, m) {
+				return true
+			}
+			continue
+		}
+		for idx := 0; ; {
+			k := strings.Index(lower[idx:], m)
+			if k < 0 {
+				break
+			}
+			end := idx + k + len(m)
+			if end >= len(text) || !vendorLowerLetter(text[end]) {
+				return true
+			}
+			idx = end
+		}
+	}
+	return false
+}
+
+// vendorMarkWordsWithoutBoundary — РАЗНЫЕ слова, в которых имя издателя втекло в
+// другое слово. Перечень печатается переписью: цена границы названа словами, а
+// не оценкой.
+func vendorMarkWordsWithoutBoundary(text string, into map[string]struct{}) {
+	isWord := func(b byte) bool {
+		return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' ||
+			b >= '0' && b <= '9' || b == '_'
+	}
+	lower := strings.ToLower(text)
+	for _, m := range retiredVendorMarks {
+		if strings.HasSuffix(m, "/") {
+			continue
+		}
+		for idx := 0; ; {
+			k := strings.Index(lower[idx:], m)
+			if k < 0 {
+				break
+			}
+			at := idx + k
+			end := at + len(m)
+			idx = end
+			if end >= len(text) || !vendorLowerLetter(text[end]) {
+				continue
+			}
+			lo := at
+			for lo > 0 && isWord(text[lo-1]) {
+				lo--
+			}
+			hi := end
+			for hi < len(text) && isWord(text[hi]) {
+				hi++
+			}
+			into[text[lo:hi]] = struct{}{}
+		}
+	}
+}
+
+// vendorPathAxis — путь несёт имя издателя ОТДЕЛЬНЫМ СЛОВОМ. `oryd/` берётся без
+// косой черты: в пути это каталог, и следом за ним стоит разделитель.
+func vendorPathAxis(rel string) bool {
+	stems := make([]string, 0, len(retiredVendorMarks))
+	for _, m := range retiredVendorMarks {
+		stems = append(stems, strings.TrimSuffix(m, "/"))
+	}
+	lower := strings.ToLower(rel)
+	for _, m := range stems {
+		for idx := 0; ; {
+			k := strings.Index(lower[idx:], m)
+			if k < 0 {
+				break
+			}
+			end := idx + k + len(m)
+			if end >= len(rel) || !vendorLowerLetter(rel[end]) {
+				return true
+			}
+			idx = end
 		}
 	}
 	return false
 }
 
 // vendorLineAxis — чем строка привязана к издателю. Пусто — не привязана.
-func vendorLineAxis(lower string) string {
-	if vendorCarriesMark(lower) {
+//
+// Принимает строку В ИСХОДНОМ РЕГИСТРЕ: граница слова читается по нему, и
+// приведение к нижнему регистру ДО разбора стёрло бы шов camelCase, то есть
+// ровно ту границу, ради которой правило заведено.
+func vendorLineAxis(line string) string {
+	if vendorMarkBoundedIn(line) {
 		return vendorAxisName
 	}
-	if vendorCarriesMark(vendorGlueJoin.ReplaceAllString(lower, "")) {
+	if vendorMarkBoundedIn(vendorGlueJoin.ReplaceAllString(line, "")) {
 		return vendorAxisGlued
 	}
 	// Безымянная поверхность берётся у единственного дома — словаря путей
 	// поставщика. Своего перечня здесь нет.
+	lower := strings.ToLower(line)
 	for _, s := range ProviderSurfaces {
 		if strings.Contains(lower, strings.ToLower(s.Path)) {
 			return vendorAxisSurface
@@ -587,7 +734,7 @@ func vendorArchiveAxis(a vendorArchive) string {
 	if vendorPathAxis(a.Name) {
 		return vendorAxisArchiveName
 	}
-	if vendorCarriesMark(strings.ToLower(a.Text)) {
+	if vendorMarkBoundedIn(a.Text) {
 		return vendorAxisArchiveBody
 	}
 	return ""
@@ -636,6 +783,7 @@ func judgeRetiredVendorCeiling(
 				"объявлена границей", errVendorPartition, tree, walked, parts)
 		}
 
+		boundaryWords := map[string]struct{}{}
 		c := vendorTreeCensus{
 			Walked:   walked,
 			Blobs:    len(corpus.Blobs),
@@ -669,8 +817,12 @@ func judgeRetiredVendorCeiling(
 			}
 			body := corpus.Bodies[rel]
 			lowerBody := strings.ToLower(body)
-			if vendorLineAxis(lowerBody) == "" {
-				continue // быстрый путь: в файле нет ни одного признака класса
+			// Быстрый путь берёт ПРЕ-ФИЛЬТР без границ: файл, где имени нет
+			// вовсе, дальше не читается, а файл, где оно втекло в другое слово,
+			// читается — иначе счётчик отброшенных границей был бы слеп ровно
+			// на свой предмет.
+			if !vendorCarriesMark(lowerBody) && vendorLineAxis(body) == "" {
+				continue
 			}
 			lines := strings.Split(body, "\n")
 			lowerLines := strings.Split(lowerBody, "\n")
@@ -678,7 +830,14 @@ func judgeRetiredVendorCeiling(
 				if vendorCommentLine(line) {
 					continue
 				}
-				axis := vendorLineAxis(lowerLines[i])
+				axis := vendorLineAxis(line)
+				if axis != vendorAxisName && axis != vendorAxisGlued &&
+					vendorCarriesMark(lowerLines[i]) {
+					// Имя в строке есть, но отдельным словом не стоит: строка
+					// отброшена ГРАНИЦЕЙ. Цена границы — число и слова.
+					c.BoundaryDropped++
+					vendorMarkWordsWithoutBoundary(line, boundaryWords)
+				}
 				switch axis {
 				case vendorAxisName:
 					c.ByName++
@@ -703,7 +862,7 @@ func judgeRetiredVendorCeiling(
 				c.ByPath++
 				add(rel, 0, vendorAxisPath, rel)
 			}
-			if vendorCarriesMark(strings.ToLower(corpus.Blobs[rel])) {
+			if vendorMarkBoundedIn(corpus.Blobs[rel]) {
 				c.ByBinary++
 				add(rel, 0, vendorAxisBinary, rel)
 			}
@@ -723,6 +882,10 @@ func judgeRetiredVendorCeiling(
 			add(a.Name, 0, axis, a.Name)
 		}
 
+		for w := range boundaryWords {
+			c.BoundaryWords = append(c.BoundaryWords, w)
+		}
+		sort.Strings(c.BoundaryWords)
 		c.Bindings = c.ByPath + c.ByName + c.ByGlue + c.BySurface + c.ByBinary + c.ByArchive
 		census[tree] = c
 

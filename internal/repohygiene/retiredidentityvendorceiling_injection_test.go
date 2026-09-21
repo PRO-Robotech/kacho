@@ -704,3 +704,190 @@ func axisOf(b []vendorBinding) string {
 	}
 	return b[0].Axis
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ГРАНИЦА СЛОВА. Пары однофактные: слева и справа одна и та же строка, и
+// различает их ровно то, СТРОЧНАЯ ли буква продолжает имя издателя.
+
+// TestRetiredVendorCeiling_WordBoundaryInjection_EnglishWordIsNotABinding —
+// английское слово семейства `hydrate` привязкой НЕ является.
+func TestRetiredVendorCeiling_WordBoundaryInjection_EnglishWordIsNotABinding(t *testing.T) {
+	t.Parallel()
+	for _, line := range []string{
+		"const hydrate = (s) => s;",
+		"export function hydrated(x) { return x; }",
+		"  setHydrated(true);",
+		"func hydrateStringListFields(v any) {}",
+		"def dehydrate(obj): pass",
+		"  await rehydration(store);",
+		"if (!isHydrated) return null;",
+	} {
+		got, bindings := judgeOne(t, vendorFixture(map[string]string{
+			"ui-future/shared/src/lib/store.ts": line + "\n"}, nil))
+		if got != 0 {
+			t.Errorf("строка %q засчитана привязкой (%d): %v.\nАнглийское слово, в "+
+				"которое втекло имя издателя, снимается не снятием издателя, а чужим "+
+				"рефактором — пока оно считается, предикат «ноль» невыполним",
+				line, got, bindings)
+		}
+	}
+}
+
+// TestRetiredVendorCeiling_WordBoundaryTwin_NameAtABoundaryIsABinding — ЗАКОННЫЙ
+// БЛИЗНЕЦ: то же место, но имя стоит отдельным словом — привязка.
+//
+// Пара к предыдущей пробе неделима: без неё «ноль находок» было бы неотличимо
+// от распознавателя, ослепшего на всё имя сразу.
+func TestRetiredVendorCeiling_WordBoundaryTwin_NameAtABoundaryIsABinding(t *testing.T) {
+	t.Parallel()
+	for _, line := range []string{
+		"const hydraClaims = decode(token);",   // шов camelCase
+		"  kratosURL: string;",                 // шов camelCase, прописные
+		"KACHO_HYDRA_ADMIN_URL: https://x",     // SNAKE_CASE
+		"image: oryd/hydra:v2",                 // пространство образов
+		"  host: hydra-admin.svc",              // kebab-case
+		"stub := stubHydra(t)",                 // имя вторым корнем, конец слова
+		"  - /etc/config/hydra.yaml",           // точка
+		"select hydra_client_id from clients;", // подчёркивание
+		"cookie := \"ory_kratos_session\"",     // подчёркивание с обеих сторон
+		"const c = kratos2Client;",             // цифра
+	} {
+		got, _ := judgeOne(t, vendorFixture(map[string]string{
+			"deploy/helm/umbrella/values.y.yaml": line + "\n"}, nil))
+		if got != 1 {
+			t.Errorf("строка %q дала привязок %d, ожидалась 1 — граница слова снесла "+
+				"настоящую привязку", line, got)
+		}
+	}
+}
+
+// TestRetiredVendorCeiling_WordBoundaryInjection_ForeignLockEntryIsNotABinding —
+// запись чужого пакета в файле блокировок консоли.
+//
+// ПРЕДМЕТ: пока она считалась, «ноль» был недостижим никакой нашей работой —
+// её снимает обновление чужой зависимости, а не снятие издателя.
+func TestRetiredVendorCeiling_WordBoundaryInjection_ForeignLockEntryIsNotABinding(t *testing.T) {
+	t.Parallel()
+	lock := "    \"@radix-ui/react-use-is-hydrated\": \"0.1.3\",\n" +
+		"    \"node_modules/@radix-ui/react-use-is-hydrated\": {\n" +
+		"      \"resolved\": \"https://registry.npmjs.org/@radix-ui/react-use-is-hydrated/-/" +
+		"react-use-is-hydrated-0.1.3.tgz\",\n"
+	got, bindings := judgeOne(t, vendorFixture(map[string]string{
+		"ui-future/package-lock.json": lock}, nil))
+	if got != 0 {
+		t.Errorf("записи чужого пакета засчитаны привязками (%d): %v", got, bindings)
+	}
+}
+
+// TestRetiredVendorCeiling_WordBoundaryTwin_LockEntryNamingTheIssuerIsABinding —
+// ЗАКОННЫЙ БЛИЗНЕЦ: тот же файл блокировок, но пакет НАЗЫВАЕТ издателя.
+func TestRetiredVendorCeiling_WordBoundaryTwin_LockEntryNamingTheIssuerIsABinding(t *testing.T) {
+	t.Parallel()
+	got, _ := judgeOne(t, vendorFixture(map[string]string{
+		"ui-future/package-lock.json": "    \"@ory/hydra-client\": \"2.2.0\",\n"}, nil))
+	if got != 1 {
+		t.Errorf("запись пакета издателя дала привязок %d, ожидалась 1 — граница слова "+
+			"вывела из-под суда настоящую зависимость от издателя", got)
+	}
+}
+
+// TestRetiredVendorCeiling_WordBoundaryInjection_PathOfAnEnglishWordIsSilent —
+// та же граница на оси ПУТИ: каталог чужого пакета не привязка.
+func TestRetiredVendorCeiling_WordBoundaryInjection_PathOfAnEnglishWordIsSilent(t *testing.T) {
+	t.Parallel()
+	got, bindings := judgeOne(t, vendorFixture(map[string]string{
+		"ui-future/vendor/react-use-is-hydrated/index.js": "export default 1;\n"}, nil))
+	if got != 0 {
+		t.Errorf("путь чужого пакета засчитан привязкой (%d): %v", got, bindings)
+	}
+}
+
+// TestRetiredVendorCeiling_WordBoundaryTwin_PathNamingTheIssuerIsABinding —
+// ЗАКОННЫЙ БЛИЗНЕЦ оси пути.
+func TestRetiredVendorCeiling_WordBoundaryTwin_PathNamingTheIssuerIsABinding(t *testing.T) {
+	t.Parallel()
+	got, bindings := judgeOne(t, vendorFixture(map[string]string{
+		"deploy/helm/umbrella/charts/hydra-2.0.0/values.yaml": "x: 1\n"}, nil))
+	if got != 1 {
+		t.Errorf("путь чарта издателя дал привязок %d, ожидалась 1: %v", got, bindings)
+	}
+}
+
+// TestRetiredVendorCeiling_WordBoundaryCostIsNamedByTheCensus — ЦЕНА границы
+// названа числом и СЛОВАМИ.
+//
+// Слитное написание строчными — настоящая привязка, которую граница отбрасывает.
+// Замолчать это нельзя: перепись печатает счётчик и разные слова, и завтрашнее
+// такое слово видно сразу.
+func TestRetiredVendorCeiling_WordBoundaryCostIsNamedByTheCensus(t *testing.T) {
+	t.Parallel()
+	corpora := vendorFixture(map[string]string{
+		"ui-future/shared/src/lib/store.ts": "const hydrate = 1;\nconst hydraadminurl = 2;\n",
+	}, nil)
+	_, census, _, err := judgeRetiredVendorCeiling(corpora, vendorZeroCeilings)
+	if err != nil {
+		t.Fatalf("судья: %v", err)
+	}
+	c := census[vendorTreePlatform]
+	if c.BoundaryDropped != 2 {
+		t.Errorf("отброшено границей %d строк, ожидалось 2 — цена границы не считается, "+
+			"и слитное написание пропало бы молча", c.BoundaryDropped)
+	}
+	want := map[string]bool{"hydrate": true, "hydraadminurl": true}
+	if len(c.BoundaryWords) != 2 || !want[c.BoundaryWords[0]] || !want[c.BoundaryWords[1]] {
+		t.Errorf("слова границы %v, ожидались hydrate и hydraadminurl — без перечня слов "+
+			"число ничего не объясняет", c.BoundaryWords)
+	}
+}
+
+// TestRetiredVendorCeiling_BoundaryCensusIsSilentOnACleanTree — ЗАКОННЫЙ
+// БЛИЗНЕЦ переписи границы: дерево без английской родни не даёт ни одного
+// отброшенного.
+func TestRetiredVendorCeiling_BoundaryCensusIsSilentOnACleanTree(t *testing.T) {
+	t.Parallel()
+	corpora := vendorFixture(map[string]string{
+		"deploy/helm/umbrella/values.y.yaml": "image: oryd/hydra:v2\n",
+	}, nil)
+	_, census, _, err := judgeRetiredVendorCeiling(corpora, map[string]int{
+		vendorTreePlatform: 1, vendorTreeAccess: 0, vendorTreeFoundation: 0})
+	if err != nil {
+		t.Fatalf("судья: %v", err)
+	}
+	if c := census[vendorTreePlatform]; c.BoundaryDropped != 0 || len(c.BoundaryWords) != 0 {
+		t.Errorf("на дереве без английской родни отброшено %d строк (%v) — счётчик "+
+			"границы срабатывает на чём угодно", c.BoundaryDropped, c.BoundaryWords)
+	}
+}
+
+// TestRetiredVendorCeiling_ZeroIsReachableInPrinciple — ПРЕДИКАТ «НОЛЬ»
+// ВЫПОЛНИМ.
+//
+// Дерево, где издателя нет ни в одном виде, но ЕСТЬ его английская родня и
+// чужое вендоренное, обязано дать ноль привязок при нулевом потолке — и это
+// зелёный без находок. Пока родня считалась, такого дерева не существовало:
+// ноль был недостижим никакой работой по снятию.
+func TestRetiredVendorCeiling_ZeroIsReachableInPrinciple(t *testing.T) {
+	t.Parallel()
+	corpora := vendorFixture(map[string]string{
+		"ui-future/package-lock.json":       "    \"@radix-ui/react-use-is-hydrated\": \"0.1.3\",\n",
+		"ui-future/shared/src/lib/store.ts": "const hydrate = (s) => s;\nsetHydrated(true);\n",
+		"vendor/cert-manager/values.yaml":   "replicas: 2\n",
+		"services/iam/internal/token.go":    "package token\n\nconst issuer = \"kacho\"\n",
+	}, nil)
+	findings, census, bindings, err := judgeRetiredVendorCeiling(corpora, vendorZeroCeilings)
+	if err != nil {
+		t.Fatalf("судья: %v", err)
+	}
+	if len(bindings) != 0 {
+		t.Fatalf("привязок %d при нуле ожидаемых: %v", len(bindings), bindings)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("находок %d при нулевом потолке и нуле привязок: %v", len(findings), findings)
+	}
+	c := census[vendorTreePlatform]
+	if c.Files == 0 {
+		t.Fatal("ноль судимых файлов — «ноль привязок» здесь означало бы «ноль прочитанного»")
+	}
+	t.Logf("ноль достижим: судимо файлов %d · привязок 0 · отброшено границей %d строк (%v)",
+		c.Files, c.BoundaryDropped, c.BoundaryWords)
+}
