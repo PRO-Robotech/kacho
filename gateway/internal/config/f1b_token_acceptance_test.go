@@ -255,10 +255,27 @@ func TestF1b05_AmbiguousAndIncompleteDeclarationsRefuseTheStart(t *testing.T) {
 	}
 }
 
-// TestF1b01_UnsetDeclarationFallsBackToTheSingleLegacyRecord — переход
+// TestF1b01_UnsetDeclarationFallsBackToTheDeclaredLegacyRecord — переход
 // АДДИТИВЕН: «не объявлено» отличается от «объявлено пустым».
-func TestF1b01_UnsetDeclarationFallsBackToTheSingleLegacyRecord(t *testing.T) {
-	cfg := config.Config{AppEnv: "production", APIDomain: "api.kacho.test"}
+//
+// УТВЕРЖДЕНИЕ ПЕРЕУТВЕРЖДЕНО БЕЗУСЛОВНО, А НЕ УРЕЗАНО. Прежняя редакция сверяла
+// запись запасного пути с `ResolvedHydraIssuer()`/`ResolvedHydraJWKSURL()` —
+// теми самыми функциями, которые адрес ВЫВОДИЛИ. Она поэтому была тождественно
+// истинной по построению: «запись совпадает с тем, что построит та же функция»
+// верно при любом выводе, включая вывод из домена установки. Сверка теперь идёт
+// с ОБЪЯВЛЕННЫМ оператором литералом фикстуры, а не с производной величиной, и
+// предмет пробы от этого не сузился, а впервые стал проверяемым.
+//
+// Состояний по-прежнему ТРИ, и проба называет все три: не объявлено ⇒ одна
+// запись из объявленного пина; объявлено и вырождено ⇒ отказ (TestF1b02);
+// объявлено ⇒ ровно объявленные (TestF1b03).
+func TestF1b01_UnsetDeclarationFallsBackToTheDeclaredLegacyRecord(t *testing.T) {
+	cfg := config.Config{
+		AppEnv:       "production",
+		APIDomain:    "api.kacho.test",
+		HydraIssuer:  f1bLegacy,
+		HydraJWKSURL: f1bLegKS,
+	}
 	got, err := cfg.TokenAcceptance()
 	if err != nil {
 		t.Fatalf("посадка, не объявляющая перечня, отвергнута: %v — это сегодняшнее, "+
@@ -268,13 +285,16 @@ func TestF1b01_UnsetDeclarationFallsBackToTheSingleLegacyRecord(t *testing.T) {
 		t.Fatalf("записей приёма %d, ожидалась ровно одна — множество мощности 1 остаётся "+
 			"сужением, а не «принимаем любого»", len(got))
 	}
-	if got[0].Issuer != cfg.ResolvedHydraIssuer() {
-		t.Fatalf("издатель записи %q не совпадает с сегодняшним пином %q",
-			got[0].Issuer, cfg.ResolvedHydraIssuer())
+	if got[0].Issuer != f1bLegacy {
+		t.Fatalf("издатель записи %q не совпадает с ОБЪЯВЛЕННЫМ пином %q", got[0].Issuer, f1bLegacy)
 	}
-	if got[0].KeySetURL != cfg.ResolvedHydraJWKSURL() {
-		t.Fatalf("адрес записи %q не совпадает с сегодняшним адресом набора %q",
-			got[0].KeySetURL, cfg.ResolvedHydraJWKSURL())
+	if got[0].KeySetURL != f1bLegKS {
+		t.Fatalf("адрес записи %q не совпадает с ОБЪЯВЛЕННЫМ адресом набора %q",
+			got[0].KeySetURL, f1bLegKS)
+	}
+	if got[0].SourceKnob != "KACHO_HYDRA_JWKS_URL" {
+		t.Fatalf("запись называет источником %q — отказ, указывающий не на ту настройку, "+
+			"отправляет оператора править то, что в этой посадке пусто", got[0].SourceKnob)
 	}
 	if got[0].ReadRevocation {
 		t.Fatalf("полоса прежнего издателя объявила чтение НАШЕГО авторитета отзыва")
@@ -328,5 +348,77 @@ func TestF1b04_TransportRequirementIsSymmetricAcrossBothPaths(t *testing.T) {
 	declared.AppEnv = "dev"
 	if _, err := declared.TokenAcceptance(); err != nil {
 		t.Fatalf("незащищённый адрес отвергнут в режиме разработки на объявленном пути: %v", err)
+	}
+}
+
+// TestF1b06_UnsetLegacyPinIsNotATrustAnchorDerivedFromTheDomain — незаданный
+// прежний пин НЕ становится якорем доверия, построенным из домена установки.
+//
+// ПРЕДМЕТ. Запасной путь приёма (перечень издателей не объявлен) строил запись
+// из `ResolvedHydraIssuer()`/`ResolvedHydraJWKSURL()`, а те при пустой ручке
+// ВЫВОДИЛИ адрес: «https://hydra.» + домен API и «…/.well-known/jwks.json» к
+// нему. Производное значение непусто ВСЕГДА, поэтому состояние «источник набора
+// не объявлен» не наступало ни при какой посадке: край поднимался и брал якорь
+// доверия проверки подписи по адресу, которого ему никто не давал. Кто держит
+// имя `hydra.<домен>`, тот чеканит токен любому субъекту — то есть проверка
+// подлинности обходится целиком, и обходится молча.
+//
+// Это тот же класс, что здесь уже назван у авторитета отзыва: «умолчание вида
+// «взять базовый адрес соседа и приклеить путь» запрещено — оно всегда непусто,
+// поэтому контроль выглядит включённым, ведя в никуда».
+//
+// ПРЕДИКАТ СНЯТИЯ пробы: запасной путь ушёл вместе с записью прежнего издателя.
+func TestF1b06_UnsetLegacyPinIsNotATrustAnchorDerivedFromTheDomain(t *testing.T) {
+	// (1) КРАСНОЕ: ни перечня, ни прежнего пина — объявлено НИЧЕГО.
+	bare := config.Config{AppEnv: "production", APIDomain: "api.kacho.test"}
+	got, err := bare.TokenAcceptance()
+	if err == nil {
+		t.Fatalf("посадка, не объявившая НИ перечня издателей, НИ прежнего пина, принята "+
+			"и дала %d записей приёма (%+v) — якорь доверия построен из домена установки, "+
+			"а не объявлен оператором", len(got), got)
+	}
+	// Отказ обязан назвать ОБЕ ручки: оператор чинит либо переходом на перечень,
+	// либо объявлением прежнего пина, и отказ, назвавший одну, отправляет его
+	// ровно в половину случаев не туда.
+	for _, knob := range []string{
+		"KACHO_API_GATEWAY_TOKEN_ISSUERS",
+		"KACHO_HYDRA_JWKS_URL",
+	} {
+		if !strings.Contains(err.Error(), knob) {
+			t.Errorf("отказ не называет ручку %s: %v", knob, err)
+		}
+	}
+
+	// (2) ЗАКОННЫЙ БЛИЗНЕЦ, меняющий РОВНО ОДИН факт: прежний пин объявлен явно.
+	// Это сегодняшний стенд разработки, и он обязан подниматься.
+	declaredPin := bare
+	declaredPin.HydraIssuer = f1bLegacy
+	declaredPin.HydraJWKSURL = f1bLegKS
+	pinned, pinErr := declaredPin.TokenAcceptance()
+	if pinErr != nil {
+		t.Fatalf("посадка с ЯВНО объявленным прежним пином отвергнута: %v — объявивший "+
+			"оператор наказан за правильный поступок", pinErr)
+	}
+	if len(pinned) != 1 {
+		t.Fatalf("записей приёма %d, ожидалась ровно одна", len(pinned))
+	}
+	if pinned[0].Issuer != f1bLegacy || pinned[0].KeySetURL != f1bLegKS {
+		t.Fatalf("запись построена не из объявленного: издатель %q, набор %q — "+
+			"ожидались %q и %q", pinned[0].Issuer, pinned[0].KeySetURL, f1bLegacy, f1bLegKS)
+	}
+
+	// (3) ВТОРОЙ ЗАКОННЫЙ БЛИЗНЕЦ: перечень объявлен — запасного пути нет вовсе.
+	if _, decErr := f1bFullDeclaration().TokenAcceptance(); decErr != nil {
+		t.Fatalf("полное объявление отвергнуто: %v", decErr)
+	}
+
+	// (4) Половина пина — тоже «не объявлено»: издатель без источника набора не
+	// разрешается ни во что, и вывод источника ИЗ ИЗДАТЕЛЯ запрещён тем же
+	// доводом, что на объявленном пути (издатель приходит от предъявителя).
+	halfPin := bare
+	halfPin.HydraIssuer = f1bLegacy
+	if _, halfErr := halfPin.TokenAcceptance(); halfErr == nil {
+		t.Fatalf("издатель объявлен, источник его набора — нет, и посадка принята: " +
+			"адрес набора выведен из строки издателя")
 	}
 }

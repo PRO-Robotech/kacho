@@ -91,16 +91,23 @@ func TestCompositionRoot_FeedsTheVerifierErrorToTheGuard(t *testing.T) {
 func TestTokenVerifier_TheGuardsInputHasAProducer(t *testing.T) {
 	produced := 0
 	for _, issuer := range []string{"/", "//", "///"} {
-		cfg := config.Config{HydraIssuer: issuer, APIDomain: "kacho.local"}
+		// Адрес набора объявлен НАСТОЯЩИЙ — по той же причине, что и адресат
+		// ниже: он больше не выводится из издателя, и оставить его пустым
+		// значило бы менять ДВА факта против законного близнеца сразу.
+		cfg := config.Config{
+			HydraIssuer:  issuer,
+			HydraJWKSURL: "https://kaname-internal.kacho.svc:9097/.well-known/jwks.json",
+			APIDomain:    "kacho.local",
+		}
 		require.NotEmpty(t, issuer, "настройка НЕПУСТА — профиль выглядит заполненным")
-		require.Empty(t, cfg.ResolvedHydraIssuer(),
+		require.Empty(t, cfg.DeclaredHydraIssuer(),
 			"а после разбора издателя не остаётся: вырожденное значение %q", issuer)
 
 		// Адресат объявлен НАСТОЯЩИЙ — одно-фактность: красное обязано прийти
 		// от издателя, а не от соседней оси, которая тоже отвергает пустое
 		// (задача #2567). Без этого проба зеленела бы, ничего не доказав об
 		// издателе.
-		_, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: cfg.ResolvedHydraIssuer(), KeySetURL: cfg.ResolvedHydraJWKSURL(), TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}}, ExpectedAudience: testTokenAudience})
+		_, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: cfg.DeclaredHydraIssuer(), KeySetURL: cfg.DeclaredHydraKeySetURL(), TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}}, ExpectedAudience: testTokenAudience})
 		require.Error(t, err, "конструктор обязан отказать на пустом издателе")
 		require.NotContains(t, err.Error(), "audience",
 			"отказ обязан прийти от ИЗДАТЕЛЯ: красное от соседней оси ничего не доказывает")

@@ -810,26 +810,42 @@ func (c Config) ExternalListenerClientAuth(base *tls.Config) (*tls.Config, error
 	return base, nil
 }
 
-// ResolvedHydraIssuer returns the Hydra issuer URL, deriving it from APIDomain
-// when explicitly unset. Trailing slash is stripped.
-func (c Config) ResolvedHydraIssuer() string {
-	iss := c.HydraIssuer
-	if iss == "" {
-		iss = "https://hydra." + c.APIDomain
-	}
+// DeclaredHydraIssuer — издатель прежнего поставщика, ОБЪЯВЛЕННЫЙ оператором, и
+// пустая строка, когда он не объявлен. Замыкающая косая черта снимается:
+// сравнение `iss` точное, и одна и та же личность, записанная с чертой и без,
+// не должна быть двумя разными издателями.
+//
+// ИМЯ ГОВОРИТ «ОБЪЯВЛЕННЫЙ», А НЕ «РАЗРЕШЁННЫЙ», И ЭТО НЕ КОСМЕТИКА. Прежняя
+// `ResolvedHydraIssuer` при пустой ручке ВЫВОДИЛА значение — «https://hydra.» +
+// домен API, — поэтому состояние «прежний издатель не объявлен» не наступало НИ
+// ПРИ КАКОЙ посадке: у величины не было представления для отсутствия. Следствие
+// не косметическое. Запасной путь приёма (`TokenAcceptance`, перечень издателей
+// не объявлен) строил из этой пары ЯКОРЬ ДОВЕРИЯ проверки подписи — то есть
+// край поднимался и забирал набор проверочных ключей по адресу, которого ему
+// никто не давал. Кто держит имя `hydra.<домен>`, тот чеканит токен любому
+// субъекту.
+//
+// Это тот же класс, что уже назван у авторитета отзыва (`requirePlatformRevocationAuthority`)
+// и у адресата (`DeclaredTokenAudience`): умолчание вида «взять адрес соседа и
+// приклеить к нему» всегда непусто, поэтому контроль выглядит включённым, ведя
+// в никуда, и ни один профиль развёртывания не обязан ничего задавать, чтобы
+// это заметить.
+func (c Config) DeclaredHydraIssuer() string {
+	iss := strings.TrimSpace(c.HydraIssuer)
 	for len(iss) > 0 && iss[len(iss)-1] == '/' {
 		iss = iss[:len(iss)-1]
 	}
 	return iss
 }
 
-// ResolvedHydraJWKSURL returns the JWKS endpoint, deriving from issuer when
-// not explicitly set.
-func (c Config) ResolvedHydraJWKSURL() string {
-	if c.HydraJWKSURL != "" {
-		return c.HydraJWKSURL
-	}
-	return c.ResolvedHydraIssuer() + "/.well-known/jwks.json"
+// DeclaredHydraKeySetURL — адрес набора проверочных ключей прежнего поставщика,
+// ОБЪЯВЛЕННЫЙ оператором, и пустая строка, когда он не объявлен.
+//
+// Вывод адреса ИЗ ИЗДАТЕЛЯ снят по тому же доводу, каким он запрещён на
+// объявленном пути (`TokenIssuerKeySetMap`): строка издателя приходит от
+// ПРЕДЪЯВИТЕЛЯ, и производный от неё адрес получался бы у всякого издателя.
+func (c Config) DeclaredHydraKeySetURL() string {
+	return strings.TrimSpace(c.HydraJWKSURL)
 }
 
 // ResolvedHydraIntrospectionURL returns the token-introspection endpoint, or the

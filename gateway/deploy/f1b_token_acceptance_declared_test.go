@@ -78,10 +78,14 @@ type f1bProfile struct {
 func f1bGatewayConfig(gw map[string]any) (config.Config, bool) {
 	var cfg config.Config
 	cfg.AppEnv, _ = gw["appEnv"].(string)
-	// APIDomain нужен запасной ветке разбора (перечень издателей не объявлен —
-	// запись строится из сегодняшнего пина). Значение фиктивно намеренно: оно
-	// не должно быть неотличимо от боевого, иначе проба кормит собственный
-	// предмет правдоподобным входом.
+	// APIDomain фиктивен намеренно: он не должен быть неотличим от боевого,
+	// иначе проба кормит собственный предмет правдоподобным входом.
+	//
+	// ЗДЕСЬ СТОЯЛО «нужен запасной ветке разбора: запись строится из сегодняшнего
+	// пина». Это утверждение пережило свой предмет: запасная ветка больше не
+	// ВЫВОДИТ издателя из домена установки — обе половины пина объявляются, — и
+	// домен на неё не влияет вовсе. Величина оставлена, потому что её читают
+	// соседние поля разбора, а не приём токена.
 	cfg.APIDomain = "api.kacho.test"
 	if hydra, ok := gw["hydra"].(map[string]any); ok {
 		cfg.HydraIssuer, _ = hydra["issuer"].(string)
@@ -143,36 +147,89 @@ func f1bReadProfiles(t *testing.T) []f1bProfile {
 	return out
 }
 
-// TestF1b_EveryProfileDeclaresAnAcceptanceTheProcessWillBoot — каждый профиль,
-// называющий край, обязан объявить приём так, чтобы процесс поднялся.
-func TestF1b_EveryProfileDeclaresAnAcceptanceTheProcessWillBoot(t *testing.T) {
-	profiles := f1bReadProfiles(t)
-	if len(profiles) == 0 {
-		t.Fatalf("прочитано НОЛЬ профилей, называющих край — «ноль находок» на таком объёме " +
-			"означало бы «ноль прочитанного», и молчание этой пробы сказано ни о чём")
+// f1bStackAcceptance — объявление приёма, которое получает ПРОЦЕСС на стенде:
+// цепочка профилей, сложенная так же, как её складывает helm.
+//
+// ЕДИНИЦА СУЖДЕНИЯ — СТЕНД, А НЕ ФАЙЛ, и это исправление, а не послабление.
+// Прежняя редакция спрашивала `TokenAcceptance()` у КАЖДОГО файла профиля
+// отдельно и была зелёной — но зелёной тождественно, а не по существу: запасная
+// ветка разбора ВЫВОДИЛА издателя из домена установки, поэтому любой файл, не
+// объявивший ничего, выглядел объявившим полный пин. Слой, несущий одни образы
+// или одну посадку (`values.own.yaml`, `values.a8f60d.yaml`, `values.fe3455.yaml`),
+// приёма не объявляет и объявлять не обязан — он его НАСЛЕДУЕТ. Судить такой
+// слой в одиночку значит спрашивать о контракте у половины его текста.
+//
+// Цепочка берётся из `deploy/stacks.txt` — единственного места в дереве, где она
+// объявлена. Вторая копия цепочки разошлась бы с первой молча.
+func f1bStackAcceptance(t *testing.T, stack []string) (config.Config, bool) {
+	t.Helper()
+	merged := map[string]any{}
+	for _, profile := range stack {
+		merged = mergeInto(merged, umbrellaValues(t, profile))
+	}
+	gw, _ := merged[edgeChartKey].(map[string]any)
+	if gw == nil {
+		return config.Config{}, false
+	}
+	return f1bGatewayConfig(gw)
+}
+
+// TestF1b_EveryStackDeclaresAnAcceptanceTheProcessWillBoot — каждый стенд,
+// поднимающий край, обязан объявить приём так, чтобы процесс поднялся.
+func TestF1b_EveryStackDeclaresAnAcceptanceTheProcessWillBoot(t *testing.T) {
+	stacks := deployableStacks(t)
+	if len(stacks) == 0 {
+		t.Fatalf("прочитано НОЛЬ стендов — «ноль находок» на таком объёме означало бы " +
+			"«ноль прочитанного», и молчание этой пробы сказано ни о чём")
 	}
 
-	declaring, falling := 0, 0
-	for _, p := range profiles {
-		bindings, err := p.Cfg.TokenAcceptance()
+	declaring, falling, carrying := 0, 0, 0
+	for _, name := range f1bSortedKeys(stacks) {
+		stack := stacks[name]
+		cfg, declares := f1bStackAcceptance(t, stack)
+		if !declares && strings.TrimSpace(cfg.HydraIssuer) == "" &&
+			strings.TrimSpace(cfg.HydraJWKSURL) == "" {
+			// Стенд, не называющий края вовсе, судить нечем — и это отличается
+			// от «назвал и объявил негодно».
+			continue
+		}
+		carrying++
+		bindings, err := cfg.TokenAcceptance()
 		if err != nil {
-			t.Errorf("профиль %s объявляет приём, с которым процесс НЕ ПОДНИМЕТСЯ: %v\n\n"+
+			t.Errorf("стенд %s (%s) объявляет приём, с которым процесс НЕ ПОДНИМЕТСЯ: %v\n\n"+
 				"Отказ верен и не смягчается: место, пройденное не полностью, даёт отказ "+
-				"проверки при первом же запросе вместо отказа при старте.", p.Name, err)
+				"проверки при первом же запросе вместо отказа при старте.",
+				name, strings.Join(stack, " + "), err)
 			continue
 		}
 		if len(bindings) == 0 {
-			t.Errorf("профиль %s дал НОЛЬ записей приёма — «принимаем любого издателя»", p.Name)
+			t.Errorf("стенд %s дал НОЛЬ записей приёма — «принимаем любого издателя»", name)
 			continue
 		}
-		if p.Declares {
+		if declares {
 			declaring++
 		} else {
 			falling++
 		}
 	}
-	t.Logf("перепись: профилей, называющих край, %d; объявляют перечень издателей %d; "+
-		"остаются на прежнем скалярном пине %d", len(profiles), declaring, falling)
+	if carrying == 0 {
+		t.Fatal("ни один стенд не несёт объявления края — предпосылка пробы отказала, и её " +
+			"молчание не означает исправного дерева")
+	}
+	t.Logf("перепись: стендов объявлено %d; из них несут объявление края %d; "+
+		"объявляют перечень издателей %d; остаются на прежнем скалярном пине %d",
+		len(stacks), carrying, declaring, falling)
+}
+
+// f1bSortedKeys — устойчивый порядок обхода: вывод пробы обязан быть
+// сравнимым между прогонами.
+func f1bSortedKeys(m map[string][]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // TestF1b_DeclaringProfilesAcceptOurIssuerWithARecordAndAnAuthority — профиль,

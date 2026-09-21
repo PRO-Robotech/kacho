@@ -46,6 +46,7 @@ const (
 	// приехать адрес набора. Названы константами, потому что их называет ОТКАЗ,
 	// а отказ, указывающий не на ту настройку, хуже отсутствующего: он
 	// отправляет оператора править то, что в этой посадке пусто.
+	knobDeclaredIssuers = "KACHO_API_GATEWAY_TOKEN_ISSUERS"
 	knobDeclaredKeySets = "KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS"
 	knobLegacyKeySet    = "KACHO_HYDRA_JWKS_URL"
 
@@ -197,7 +198,29 @@ func (c Config) TokenAcceptance() ([]TokenIssuerBinding, error) {
 				"KACHO_API_GATEWAY_TOKEN_ISSUERS declares no issuer set — the platform would mint "+
 				"tokens this edge rejects on the first request", c.PlatformTokenIssuer)
 		}
-		b := legacyBinding(c.ResolvedHydraIssuer(), c.ResolvedHydraJWKSURL(), knobLegacyKeySet)
+		// ОБЕ ПОЛОВИНЫ ПИНА ОБЪЯВЛЯЮТСЯ, И НИ ОДНА НЕ ВЫВОДИТСЯ.
+		//
+		// Здесь строился ЯКОРЬ ДОВЕРИЯ проверки подписи, а обе величины прежде
+		// имели производную форму: издатель — «https://hydra.» + домен API,
+		// адрес набора — издатель плюс общеизвестный хвост. Производное значение
+		// непусто ВСЕГДА, поэтому состояние «прежний издатель не объявлен» не
+		// наступало ни при какой посадке: край поднимался и забирал ключи по
+		// адресу, которого ему никто не давал. Отказ называет ОБЕ ручки, потому
+		// что чинится это двумя разными поступками — переходом на перечень либо
+		// объявлением пина, — и отказ, назвавший одну, отправляет оператора
+		// ровно в половине случаев не туда.
+		issuer, keySetURL := c.DeclaredHydraIssuer(), c.DeclaredHydraKeySetURL()
+		if issuer == "" || keySetURL == "" {
+			return nil, fmt.Errorf("token acceptance is not declared: %s names no issuer set, and "+
+				"the retired scalar pin is incomplete (KACHO_HYDRA_ISSUER=%q / %s=%q). Both halves "+
+				"are DECLARED and neither is derived: a key-set address built from the installation "+
+				"domain is never empty, so «no trust anchor declared» would never occur — the edge "+
+				"would boot and fetch its signature-verification keys from an address nobody gave "+
+				"it. Declare %s (preferred), or declare both halves of the pin",
+				knobDeclaredIssuers, c.HydraIssuer, knobLegacyKeySet, c.HydraJWKSURL,
+				knobDeclaredIssuers)
+		}
+		b := legacyBinding(issuer, keySetURL, knobLegacyKeySet)
 		// Требование к транспорту источника набора действует и здесь.
 		//
 		// Асимметрия была бы хуже строгости: объявивший перечень оператор
