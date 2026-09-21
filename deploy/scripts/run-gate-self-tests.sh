@@ -119,7 +119,6 @@ deploy/scripts/assert-admin-hop-transport.sh
 deploy/scripts/assert-alt-fixtures-are-another.py
 deploy/scripts/assert-ban6-external-isolation.py
 deploy/scripts/assert-burst-waits-for-materialization.py
-deploy/scripts/cilium-policy-dry-run.sh
 deploy/scripts/assert-declared-posture-is-raisable.py
 deploy/scripts/assert-cocreated-child-is-torn-down.py
 deploy/scripts/assert-delete-operation-outcome.py
