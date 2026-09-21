@@ -302,3 +302,105 @@ func TestSessionCarrierReaders_TheNarrowedScopeHasALivingLawfulTwinOutside(t *te
 	t.Logf("перепись: законных квалифицированных упоминаний вне пакета полос %d (%s) — "+
 		"имя НАЗЫВАЕТСЯ, а не читается", qualified, strings.Join(places, ", "))
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ГАШЕНИЕ ПРОИЗВОДИТСЯ В ОДНОМ МЕСТЕ.
+//
+// Мест, ОТКУДА носитель гасится, законно больше одного — путь отказа полосы,
+// обработчик выхода, ответ глагола выхода на ретрансляции. Запрещено второе
+// место, где СОБИРАЮТСЯ АТРИБУТЫ: совпадение атрибутов держалось бы вниманием
+// автора, а расхождение молчит — браузер сопоставляет печенье по имени, пути и
+// домену, и гашение с другим путём он не находит. «Выйти» оставляет человека
+// вошедшим, и ни одна проверка знака срока этого не видит.
+//
+// Судится литерал `http.Cookie` с ПУСТЫМ значением и отрицательным сроком:
+// это и есть форма гашения. Выдача печенья (непустое значение) предметом не
+// является — её производит служба, а край её лишь пропускает.
+func TestSessionCarrierEndings_AreBuiltInExactlyOnePlace(t *testing.T) {
+	roots := map[string]string{
+		"пакет полос":           ".",
+		"обработчики":           "../handler",
+		"композиционный корень": "../../cmd/api-gateway",
+	}
+	var sites []string
+	filesRead := 0
+	for _, dir := range roots {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatalf("каталог %s не прочитан: %v", dir, err)
+		}
+		for _, e := range entries {
+			name := e.Name()
+			if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+				continue
+			}
+			fset := token.NewFileSet()
+			f, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, 0)
+			if err != nil {
+				t.Fatalf("%s не разбирается: %v", name, err)
+			}
+			filesRead++
+			ast.Inspect(f, func(n ast.Node) bool {
+				cl, ok := n.(*ast.CompositeLit)
+				if !ok || !isHTTPCookieLit(cl) {
+					return true
+				}
+				if !looksLikeAnEnding(cl) {
+					return true
+				}
+				sites = append(sites, fset.Position(cl.Pos()).String())
+				return true
+			})
+		}
+	}
+	if filesRead == 0 {
+		t.Fatal("обход пуст — гейт судил бы о непрочитанном")
+	}
+	sort.Strings(sites)
+	if len(sites) != 1 {
+		t.Errorf("мест сборки гасящего печенья %d, ожидалось 1 (%s): второе совпадало бы с первым "+
+			"лишь вниманием автора, а расхождение молчит — браузер не сопоставит гашение с чужим "+
+			"путём, и «выйти» оставит человека вошедшим при верном знаке срока",
+			len(sites), strings.Join(sites, ", "))
+	}
+	t.Logf("перепись: файлов осмотрено %d (пакет полос · обработчики · композиционный корень) · "+
+		"мест сборки гасящего печенья %d", filesRead, len(sites))
+}
+
+// isHTTPCookieLit — литерал типа `http.Cookie`.
+func isHTTPCookieLit(cl *ast.CompositeLit) bool {
+	sel, ok := cl.Type.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != "Cookie" {
+		return false
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	return ok && pkg.Name == "http"
+}
+
+// looksLikeAnEnding — несёт ли литерал форму ГАШЕНИЯ: пустое значение и
+// отрицательный срок. Выдача (непустое значение) предметом не является.
+func looksLikeAnEnding(cl *ast.CompositeLit) bool {
+	emptyValue, negativeAge := false, false
+	for _, e := range cl.Elts {
+		kv, ok := e.(*ast.KeyValueExpr)
+		if !ok {
+			continue
+		}
+		key, ok := kv.Key.(*ast.Ident)
+		if !ok {
+			continue
+		}
+		switch key.Name {
+		case "Value":
+			if lit, ok := kv.Value.(*ast.BasicLit); ok && lit.Kind == token.STRING &&
+				strings.Trim(lit.Value, `"`+"`") == "" {
+				emptyValue = true
+			}
+		case "MaxAge":
+			if u, ok := kv.Value.(*ast.UnaryExpr); ok && u.Op == token.SUB {
+				negativeAge = true
+			}
+		}
+	}
+	return emptyValue && negativeAge
+}

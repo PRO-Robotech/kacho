@@ -22,6 +22,7 @@
 package handler_test
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -41,6 +42,28 @@ func endedNames(res *http.Response) map[string]bool {
 	for _, c := range res.Cookies() {
 		if c.MaxAge < 0 {
 			out[c.Name] = true
+		}
+	}
+	return out
+}
+
+// carrierEndingShape — форма гашения без имени: путь, срок и флаги защиты.
+//
+// Смотреть только на ЗНАК СРОКА недостаточно, и это не придирка: браузер
+// сопоставляет печенье по имени, пути и домену. Гашение с другим путём он не
+// находит — печенье остаётся, «выйти» оставляет человека вошедшим, а знак
+// срока при этом верен, и проверка по нему молчит.
+func carrierEndingShape(c *http.Cookie) string {
+	return fmt.Sprintf("path=%q maxage=%d httponly=%v secure=%v samesite=%d",
+		c.Path, c.MaxAge, c.HttpOnly, c.Secure, c.SameSite)
+}
+
+// endingShapesOf — формы гашения из ответа, по имени.
+func endingShapesOf(res *http.Response) map[string]string {
+	out := map[string]string{}
+	for _, c := range res.Cookies() {
+		if c.MaxAge < 0 {
+			out[c.Name] = carrierEndingShape(c)
 		}
 	}
 	return out
@@ -78,10 +101,20 @@ func TestLogoutExits_EveryExitReachableThroughTheEdgeEndsEveryName(t *testing.T)
 			serve: func(t *testing.T) *http.Response {
 				// Служба гасит ТОЛЬКО своё имя: чужого она не знает и знать не
 				// может — оно принадлежит стороне, которой она не управляет.
+				//
+				// Форма её гашения — КАНОНИЧЕСКАЯ. Дублёр не вправе быть
+				// снисходительнее настоящего: служба выдаёт наше печенье с
+				// полными атрибутами защиты и гасит его так же, а небрежная
+				// форма в фикстуре проверяла бы вход, которого продукт не
+				// производит. Её заголовок проходит через край НЕИЗМЕННЫМ и
+				// судится её стороной — сравнение форм ниже о том, что КРАЙ не
+				// заводит второй формы.
 				upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-					http.SetCookie(w, &http.Cookie{
-						Name: middleware.OurSessionCarrierName, Value: "", MaxAge: -1, Path: "/",
-					})
+					for _, c := range middleware.SessionCarrierEndings() {
+						if c.Name == middleware.OurSessionCarrierName {
+							http.SetCookie(w, c)
+						}
+					}
 					w.WriteHeader(http.StatusOK)
 				}))
 				t.Cleanup(upstream.Close)
@@ -98,6 +131,22 @@ func TestLogoutExits_EveryExitReachableThroughTheEdgeEndsEveryName(t *testing.T)
 				return rec.Result()
 			},
 		},
+	}
+
+	// ЗНАМЕНАТЕЛЬ ПРОВЕРЯЕТСЯ, А НЕ ПОДРАЗУМЕВАЕТСЯ. Записей здесь две, и
+	// заголовок обещает «на КАЖДОМ выходе, который предлагает продукт».
+	// Выходов на полосе формы ровно столько, сколько глаголов выхода в
+	// объявлении путей: появится второй — перечень выше обязано пересмотреть то
+	// же изменение, а не заметить потом.
+	laneExits := 0
+	for _, rt := range middleware.LoginLaneRoutes() {
+		if rt.Verb == middleware.LoginLaneVerbLogout {
+			laneExits++
+		}
+	}
+	if laneExits != 1 {
+		t.Fatalf("глаголов выхода в объявлении путей %d, перечень выходов рассчитан на 1 — "+
+			"знаменатель переписи разошёлся с деревом", laneExits)
 	}
 
 	full := 0
@@ -119,10 +168,49 @@ func TestLogoutExits_EveryExitReachableThroughTheEdgeEndsEveryName(t *testing.T)
 			full++
 		})
 	}
+	// ФОРМА ГАШЕНИЯ ОДНА НА ВСЕ ВЫХОДЫ, и это про то, что КРАЙ не заводит
+	// второй формы. Разные атрибуты у двух выходов — расхождение, которого
+	// никто не решал, и молчащее: знак срока у обоих верен, а браузер одно из
+	// них не сопоставит и печенье оставит.
+	shapes := map[string]map[string]string{}
+	for _, e := range exits {
+		shapes[e.name] = endingShapesOf(e.serve(t))
+	}
+	reference := map[string]string{}
+	for _, n := range names {
+		for exitName, got := range shapes {
+			if got[n] == "" {
+				continue
+			}
+			if reference[n] == "" {
+				reference[n] = got[n]
+				continue
+			}
+			if got[n] != reference[n] {
+				t.Errorf("имя %q гасится РАЗНОЙ формой: %s против %s (выход %q). Браузер "+
+					"сопоставляет печенье по имени, пути и домену — одно из гашений он не найдёт, "+
+					"и «выйти» оставит человека вошедшим при верном знаке срока",
+					n, reference[n], got[n], exitName)
+			}
+		}
+	}
+
 	t.Logf("перепись: выходов, достижимых через край, осмотрено %d · гасят все имена %d · "+
-		"имён в перечне %d. ВНЕ ОСМОТРА: собственный выход консолей — четыре консоли живут "+
+		"имён в перечне %d · различных форм гашения %d. ВНЕ ОСМОТРА: собственный выход консолей — четыре консоли живут "+
 		"вне этого дерева, и переход на самообслуживание чужой стороны отсюда не наблюдается",
-		len(exits), full, len(names))
+		len(exits), full, len(names), len(distinctShapes(shapes)))
+}
+
+// distinctShapes — сколько РАЗЛИЧНЫХ форм гашения встретилось на всех выходах.
+// Единица означает «одна форма на все», и это то, что обязано быть.
+func distinctShapes(shapes map[string]map[string]string) map[string]bool {
+	out := map[string]bool{}
+	for _, byName := range shapes {
+		for _, shape := range byName {
+			out[shape] = true
+		}
+	}
+	return out
 }
 
 // Законный близнец: глагол, который выходом НЕ является, печений не гасит.

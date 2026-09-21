@@ -227,22 +227,17 @@ func endEveryCarrierOnLogout(resp *http.Response) error {
 	for _, c := range resp.Cookies() {
 		already[c.Name] = true
 	}
-	for _, name := range middleware.SessionCarrierNames() {
-		if already[name] {
+	// Печенья берутся у ЕДИНСТВЕННОГО производителя гашения
+	// (`middleware.SessionCarrierEndings`), а не собираются здесь литералами.
+	// Собранные на месте, они совпадали бы с остальными местами лишь вниманием
+	// автора, и расхождение молчало бы: браузер сопоставляет печенье по имени,
+	// пути и домену, и гашение с другим путём он не находит — «выйти» оставило
+	// бы человека вошедшим, а знак срока при этом верен.
+	for _, c := range middleware.SessionCarrierEndings() {
+		if already[c.Name] {
 			continue
 		}
-		// Атрибуты те же, что у выдачи и у `EndSessionCarriers`: браузер
-		// сопоставляет печенье по имени, пути и домену, и гашение с другим путём
-		// его не нашло бы.
-		resp.Header.Add("Set-Cookie", (&http.Cookie{
-			Name:     name,
-			Value:    "",
-			Path:     "/",
-			MaxAge:   -1,
-			HttpOnly: true,
-			Secure:   true,
-			SameSite: http.SameSiteLaxMode,
-		}).String())
+		resp.Header.Add("Set-Cookie", c.String())
 	}
 	return nil
 }
