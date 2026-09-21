@@ -48,14 +48,18 @@ func carrierState(s config.SessionCarrierSet) string {
 	return "ни одного"
 }
 
+// resolveCarriers задаёт ОБЕ ручки ЯВНО, в том числе пустым значением.
+//
+// Прежде пустой аргумент означал «не звать t.Setenv», и величина приезжала ИЗ
+// ОКРУЖЕНИЯ ПРОГОНА: на машине, где ручка объявлена, проба судила бы чужое
+// значение и дала бы чужой вердикт — зелёный или красный, в зависимости от
+// того, что стоит в оболочке у запустившего. Вход пробы обязан задаваться
+// пробой целиком; «не задано» — такое же её утверждение, как всякое другое, и
+// пустая строка выражает его.
 func resolveCarriers(t *testing.T, posture, carriers string) (config.SessionCarrierSet, error) {
 	t.Helper()
-	if posture != "" {
-		t.Setenv(config.IdentityProviderKnob, posture)
-	}
-	if carriers != "" {
-		t.Setenv(config.SessionCarriersKnob, carriers)
-	}
+	t.Setenv(config.IdentityProviderKnob, posture)
+	t.Setenv(config.SessionCarriersKnob, carriers)
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -188,6 +192,10 @@ func TestSessionCarriers_RefusesValuesThatWouldLeaveTheStandWithoutAReader(t *te
 // Посадка не объявлена и ручка не объявлена — выводить не из чего. Отказ
 // называет ОБЕ ручки: оператору решать, какую объявить.
 func TestSessionCarriers_UndeclaredWithUndeclaredPostureIsRefused(t *testing.T) {
+	// Обе ручки объявлены ПУСТЫМИ явно: «не задано» — утверждение пробы, а не
+	// то, что случилось оказаться в окружении прогона.
+	t.Setenv(config.IdentityProviderKnob, "")
+	t.Setenv(config.SessionCarriersKnob, "")
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)

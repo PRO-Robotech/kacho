@@ -93,6 +93,17 @@ func TestDocsExample_TheCarrierPairItPublishesPassesTheStartupGuard(t *testing.T
 		}
 	}
 
+	// Ручки, которые судит гейт, обнуляются ПЕРЕД тем, как задать объявленные
+	// примером: величина, приехавшая из окружения прогона и примером не
+	// названная, сделала бы вердикт вердиктом о чужом значении.
+	for _, knob := range []string{
+		config.IdentityProviderKnob,
+		config.SessionCarriersKnob,
+		config.SessionCarrierWindowOpenedAtKnob,
+		"KACHO_API_GATEWAY_KRATOS_PUBLIC_URL",
+	} {
+		t.Setenv(knob, "")
+	}
 	for k, v := range env {
 		t.Setenv(k, v)
 	}
@@ -108,8 +119,13 @@ func TestDocsExample_TheCarrierPairItPublishesPassesTheStartupGuard(t *testing.T
 	if err != nil {
 		t.Fatalf("множество читателей примера не разбирается: %v", err)
 	}
+	windowOpenedAt, err := cfg.ResolvedSessionCarrierWindowOpenedAt()
+	if err != nil {
+		t.Fatalf("момент открытия окна из примера не разбирается: %v", err)
+	}
 	if err := validateSessionCarrierConfig(SessionCarrierConfig{
 		Posture: posture, Carriers: carriers, ProviderURL: cfg.KratosPublicURL,
+		WindowOpenedAt: windowOpenedAt,
 	}); err != nil {
 		t.Fatalf("опубликованный пример ОТВЕРГАЕТСЯ стражем старта: %v\n\n"+
 			"Оператор, скопировавший единственный образец новой ручки, получит неподнимающийся "+

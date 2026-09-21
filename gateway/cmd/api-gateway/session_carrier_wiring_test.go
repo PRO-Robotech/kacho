@@ -34,17 +34,92 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 // carrierReaderConstructors — конструкторы читателей носителя, по одному на
-// сторону. Перечень закрыт: новый читатель, не названный здесь, гейтом не
-// осматривается, и это названо вслух — свойство держится тем, что читателей
-// носителя ровно два, и переписью ниже.
+// сторону, и КАЖДАЯ половина пары проверяется против дерева, а не только этого
+// файла:
+//
+//   - имя конструктора обязано существовать в пакете полос
+//     (`internal/middleware`). Переименование роняет гейт переписью, а не делает
+//     его тихо беспредметным — прежде перечень держался сам на себе, и
+//     переименованный читатель просто переставал осматриваться;
+//   - имя вопроса обязано существовать методом множества
+//     (`internal/config`). Сторона, добавленная множеству и забытая здесь, —
+//     находка предпосылки, а не молчание.
+//
+// Перечень при этом остаётся объявленным: вывести «что есть читатель носителя»
+// из дерева одним обходом нечем — читатель узнаётся по смыслу, а не по форме, —
+// и это сказано вслух вместо того, чтобы выглядеть выведенным.
 var carrierReaderConstructors = map[string]string{
 	"NewKratosClient":  "ReadsProvider",
 	"WithHumanSession": "ReadsOwn",
+}
+
+// TestSessionCarrierWiringGate_ItsRosterIsCheckedAgainstTheTree — ПРЕДПОСЫЛКА
+// гейта провязки: и конструкторы, и вопросы множества существуют.
+func TestSessionCarrierWiringGate_ItsRosterIsCheckedAgainstTheTree(t *testing.T) {
+	lanes := identifiersDeclaredIn(t, "../../internal/middleware")
+	set := identifiersDeclaredIn(t, "../../internal/config")
+
+	sides := map[string]bool{}
+	for constructor, question := range carrierReaderConstructors {
+		if !lanes[constructor] {
+			t.Errorf("конструктор читателя %q не объявлен в пакете полос — перечень гейта пережил "+
+				"своё имя, и читатель перестал осматриваться молча", constructor)
+		}
+		if !set[question] {
+			t.Errorf("вопрос множества %q не объявлен в пакете настройки — перечень гейта "+
+				"спрашивает о стороне, которой нет", question)
+		}
+		sides[question] = true
+	}
+	// Стороны множества выводятся ИЗ НЕГО: сторона, добавленная множеству и
+	// забытая здесь, обязана быть находкой.
+	for _, question := range []string{"ReadsOwn", "ReadsProvider"} {
+		if set[question] && !sides[question] {
+			t.Errorf("множество отвечает на %q, а перечень гейта эту сторону не называет — её "+
+				"читатель не осматривается", question)
+		}
+	}
+	t.Logf("перепись: записей перечня %d · сторон покрыто %d · опознано в пакете полос %d · "+
+		"в пакете настройки %d", len(carrierReaderConstructors), len(sides), len(lanes), len(set))
+}
+
+// identifiersDeclaredIn — имена функций и методов, объявленные непроверочными
+// файлами пакета.
+func identifiersDeclaredIn(t *testing.T, dir string) map[string]bool {
+	t.Helper()
+	out := map[string]bool{}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("каталог %s не прочитан: %v", dir, err)
+	}
+	files := 0
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(token.NewFileSet(), filepath.Join(dir, name), nil, 0)
+		if err != nil {
+			t.Fatalf("%s не разбирается: %v", name, err)
+		}
+		files++
+		for _, d := range f.Decls {
+			if fn, ok := d.(*ast.FuncDecl); ok {
+				out[fn.Name.Name] = true
+			}
+		}
+	}
+	if files == 0 {
+		t.Fatalf("в %s не найдено непроверочных файлов Go — предпосылка судила бы о непрочитанном", dir)
+	}
+	return out
 }
 
 // carrierDecisionBranchOf — РЕШЕНИЕ МНОЖЕСТВА, которым открыта самая внутренняя

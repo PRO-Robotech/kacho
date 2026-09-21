@@ -175,7 +175,10 @@ func main() {
 	// РЕШЕНИЯ МНОЖЕСТВА и объявляет ветку посадки находкой.
 	sessionCarriers, scErr := cfg.ResolvedSessionCarriers()
 	if scErr != nil {
-		log.Fatalf("session carrier startup-validation: %v", scErr)
+		// Префикс называет ЭТОТ отказ, а не соседний: разбор объявления и
+		// сверка пары — разные вопросы с разными починками, и общий префикс
+		// отправлял бы оператора искать не там.
+		log.Fatalf("session carrier declaration: %v", scErr)
 	}
 	kratosURL := cfg.KratosPublicURL
 	if scErr := validateSessionCarrierConfig(SessionCarrierConfig{
@@ -184,7 +187,7 @@ func main() {
 		ProviderURL:    kratosURL,
 		WindowOpenedAt: mustCarrierWindowOpenedAt(cfg),
 	}); scErr != nil {
-		log.Fatalf("session carrier startup-validation: %v", scErr)
+		log.Fatalf("session carrier / identity posture coherence: %v", scErr)
 	}
 	logger.Info("browser session carrier readers resolved",
 		"carriers", sessionCarriers.String(), "declared", sessionCarriers.Declared(),

@@ -26,8 +26,11 @@ var windowOpenedAtFixture = time.Date(2026, 9, 21, 0, 0, 0, 0, time.UTC)
 
 func carrierSet(t *testing.T, declared string) config.SessionCarrierSet {
 	t.Helper()
+	// Обе ручки задаются ЯВНО: величина, приехавшая из окружения прогона, дала
+	// бы вердикт о чужом значении.
 	t.Setenv(config.IdentityProviderKnob, "own")
 	t.Setenv(config.SessionCarriersKnob, declared)
+	t.Setenv(config.SessionCarrierWindowOpenedAtKnob, "")
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)

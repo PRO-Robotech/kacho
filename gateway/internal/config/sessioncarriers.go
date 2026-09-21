@@ -126,7 +126,12 @@ func (c Config) ResolvedSessionCarriers() (SessionCarrierSet, error) {
 func (c Config) sessionCarriersFromPosture() (SessionCarrierSet, error) {
 	provider, err := c.ResolvedIdentityProvider()
 	if err != nil {
-		return SessionCarrierSet{}, err
+		// Обёртка называет, ЧТО спрашивали: отказ разбора посадки, пришедший
+		// голым, читается как отказ самой посадки, и оператор правит её, не
+		// зная, что вопрос задало множество читателей, выводящее из неё себя.
+		return SessionCarrierSet{}, fmt.Errorf(
+			"%s is not declared, so the browser-session carrier readers are derived from %s: %w",
+			SessionCarriersKnob, IdentityProviderKnob, err)
 	}
 	switch provider {
 	case identityposture.Own:
@@ -170,11 +175,13 @@ func (c Config) sessionCarriersFromDeclaration(raw string) (SessionCarrierSet, e
 		if perr != nil {
 			return SessionCarrierSet{}, fmt.Errorf(
 				"%s names %q, which is not a side of the browser-session carrier "+
-					"(legal elements, verbatim: %s). The value is matched exactly: case is not "+
-					"folded, whitespace is not trimmed, and a look-alike letter from another "+
-					"alphabet is not the same letter. This knob decides WHOSE cookie the edge "+
-					"still reads, so an unrecognised element is refused rather than dropped: "+
-					"a dropped element silently narrows the set and takes someone's sign-in away",
+					"(legal elements, verbatim: %s). Separating whitespace around an element is "+
+					"trimmed — the value is a list, and «own, external» is one list written with a "+
+					"space — but nothing else is forgiven: case is not folded, and a look-alike "+
+					"letter from another alphabet is not the same letter. This knob decides WHOSE "+
+					"cookie the edge still reads, so an unrecognised element is refused rather than "+
+					"dropped: a dropped element silently narrows the set and takes someone's "+
+					"sign-in away",
 				SessionCarriersKnob, name, strings.Join(identityposture.Names(), ", "))
 		}
 		if seen[name] {
