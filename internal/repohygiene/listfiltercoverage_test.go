@@ -50,7 +50,6 @@ package repohygiene
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -58,32 +57,27 @@ import (
 	"github.com/PRO-Robotech/corelib/gitenv"
 )
 
-// repoRootForCoverage walks up from this file until it finds the repository root
-// (the directory holding both .github/workflows and services/).
+// repoRootForCoverage — корень СУДИМОГО дерева.
 //
-// It fails rather than returning "": a test that cannot find the tree has proven
-// nothing, and must not be indistinguishable from one that found it clean.
+// ─────────────────────────────────────────────────────────────────────────────
+// ЗДЕСЬ БЫЛ `runtime.Caller`, И ЭТО ДЕЛАЛО ПРОБЫ ВАКУУМНЫМИ
+//
+// Прежняя редакция отталкивалась от пути ЭТОГО ИСХОДНИКА, то есть от каталога
+// СБОРКИ: путь вшивается в бинарь при компиляции и не меняется от того, какое
+// дерево бинарю велено судить. Пробы покрытия читали одно дерево, а судья
+// обхода — другое, и инъекция в судимое дерево до предмета не долетала вовсе.
+//
+// Измерено прогоном собранного бинаря из подложного дерева: судья печатал
+// «путей обойдено 1», а собственная строка той же пробы — «examined 6
+// service(s) from the committed tree». Две строки одного вывода говорили о
+// РАЗНЫХ деревьях, и вторая была о дереве, которого прогону не задавали.
+//
+// Корень берётся оттуда же, откуда его берут остальные гейты: от РАБОЧЕГО
+// каталога вверх до файла модуля. Тогда подделка судимого дерева роняет и эти
+// пробы, а не проходит мимо них.
 func repoRootForCoverage(t *testing.T) string {
 	t.Helper()
-	_, self, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed — cannot locate this test file, so the tree was never opened")
-	}
-	dir := filepath.Dir(self)
-	for range 12 {
-		_, werr := os.Stat(filepath.Join(dir, ".github", "workflows"))
-		_, serr := os.Stat(filepath.Join(dir, "services"))
-		if werr == nil && serr == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-	t.Fatal("could not find the repository root above this test file — nothing was examined")
-	return ""
+	return repoRoot(t)
 }
 
 // servicesFromGit lists services/<name> from the COMMITTED tree.
