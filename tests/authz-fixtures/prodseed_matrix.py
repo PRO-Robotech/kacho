@@ -5,7 +5,7 @@
 
 Generalises `prodseed_network.py` from the single vpc `network` collection to the
 whole 6-subject authz matrix + per-service resource deps. EVERY authenticating
-token is a Hydra-signed RS256 ServiceAccount token (acr-exempt, api-audience) — no
+token is a platform-signed RS256 ServiceAccount token (acr-exempt, api-audience) — no
 HS256 dev-bypass, no interactive OIDC. The authz-deny EXPECT matrices are purely
 grant-semantic (editor/viewer/admin/no-grant/cross-account/cross-project), so each
 "subject" slot is backed by a ServiceAccount with the exact bindings the matrix
@@ -554,7 +554,7 @@ def _seed_network(project_id, name):
 def seed() -> dict:
     """Provision the production-mode matrix and return the fixtures dict.
 
-    Every authenticating token in the result is a Hydra-signed RS256 ServiceAccount
+    Every authenticating token in the result is a platform-signed RS256 ServiceAccount
     Bearer obtained through the iam facade — MintBootstrapToken (mTLS gRPC, iam :9091)
     for the admin, then SAKeyService.Issue + a private_key_jwt client_assertion
     exchange for each subject. Nothing here is minted by the harness.

@@ -4,10 +4,10 @@
 """Production-mode RS256 token minter for the newman authz seed (Phase C, #59).
 
 Production authN (api-gateway `authn.mode=production-strict`) accepts ONLY
-Hydra-signed RS256 Bearers with `aud=https://{API_DOMAIN}`. Symmetric HS256 Bearers
-are inert against it (401), which is why the harness has no minter of its own any
-more: this module produces real RS256 tokens through the SAME machinery the platform
-uses, no dev-bypass, no direct Hydra-admin:
+RS256 Bearers signed by the platform issuer, with `aud=https://{API_DOMAIN}`.
+Symmetric HS256 Bearers are inert against it (401), which is why the harness has no
+minter of its own any more: this module produces real RS256 tokens through the SAME
+machinery the platform uses, no dev-bypass and no foreign admin handle:
 
   1. bootstrap admin  — InternalBootstrapTokenService.MintBootstrapToken, called by
      a DIRECT mTLS gRPC dial to kaname :9091 (there is no REST route — see
@@ -383,7 +383,11 @@ def _extract_oauth(resp: dict) -> tuple[str, str, str]:
             if tok.get(k):
                 return tok[k]
         return ""
-    client_id = pick("clientId", "client_id", "oauthClientId", "hydraClientId")
+    # Имя `hydraClientId` из этого перебора СНЯТО: зеркало клиента у прежнего
+    # поставщика не заводится (#1120), поэтому поле приходит пустым всегда и
+    # ветка никогда не выбиралась. Перебор, знающий адрес снятой полосы, читается
+    # следующим как действующая.
+    client_id = pick("clientId", "client_id", "oauthClientId")
     private_key = pick("privateKeyPem", "private_key_pem")
     key_id = pick("keyId", "key_id")
     if not (client_id and private_key and key_id):

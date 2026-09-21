@@ -69,8 +69,8 @@ Production-путь (`prodseed_all.py` → `prodseed_matrix.py` → `mint_rs256.
 отдаёт `<prefix>/user/<id>`, что не может совпасть с `ExpectedAudience` шлюза; а токен
 `client_credentials` не несёт `acr`, тогда как 292 из 357 RPC каталога требуют
 `required_acr_min ≥ 1`, и `StepUpGate.Check` освобождает от acr **только**
-`kaname_principal_type == "service_account"`. User с `acr` требует интерактивного
-Kratos→Hydra логина, который машинный харнесс не проводит.
+`kaname_principal_type == "service_account"`. User с `acr` требует интерактивной
+церемонии входа, которую машинный харнесс не проводит.
 
 **Намеренно НЕ чеканится в production**: `jwtAccountAdminAStepUp` и статические
 `apiToken*` — им нужен настоящий step-up/интерактивный credential. Ключи остаются как
@@ -129,8 +129,8 @@ internal-RPC) в файлы `0600` под `/tmp`. В репозиторий кл
 2. **`AccountService.Create`** выводит `owner_user_id` из вызывающего, поэтому SA-caller
    роняет его на FK: асинхронный `9 FAILED_PRECONDITION "referenced resource not found
    or still in use"`. Создать аккаунт машинным принципалом нельзя.
-3. **`jwtAccountAdminAStepUp` / `apiToken*`** — требуют интерактивного step-up (Kratos→
-   Hydra). Не чеканятся; их кейсы падают честно.
+3. **`jwtAccountAdminAStepUp` / `apiToken*`** — требуют интерактивного step-up
+   (церемония входа). Не чеканятся; их кейсы падают честно.
 
 ## Environment knobs
 
@@ -140,7 +140,6 @@ internal-RPC) в файлы `0600` под `/tmp`. В репозиторий кл
 | `POSTURE_PROBE_PATH` | `/iam/v1/projects` | маршрут пробы посадки; обязан требовать аутентификации (никогда не pre-auth allowlist) |
 | `POSTURE_PROBE_RETRIES` | `5` | повторы **только** на отсутствие ответа транспорта; решённый статус не повторяется |
 | ~~`SEED_POSTURE`~~ | — | **удалена.** Посадку нельзя назначить снаружи; заданная переменная отвергает вызов (см. выше) |
-| `HYDRA_PUBLIC_PORT` | `14444` | порт-форвард Hydra public (OAuth2 обмен, только production) |
 | `OUT_DIR` | `tests/authz-fixtures/out` | куда посев пишет свои артефакты. Каталог целиком под `.gitignore` этого каталога, поэтому в дереве его файлов нет by construction. Что туда кладут: реестр фикстур (пишет `prodseed_all.py`) и провенанс посадки (`out/seed-posture`, см. выше). Прежняя редакция называла здесь ещё один файл с токенами — его **не пишет ни одна строка дерева**: единственное упоминание того имени было в этой же таблице |
 | `PATCH_ENV` | `true` | патчить ли окружение newman-суит. Отслеживается git **шаблон** — `environments/local.postman_environment.template.json` каждой суиты; рабочий файл прогонщик делает из него копией и патчит уже копию. Копия намеренно не отслеживается (корневой `.gitignore`), потому что несёт значения конкретного стенда |
 | `VERBOSE` | `false` | echo каждый curl |

@@ -82,7 +82,7 @@ GW_INTERNAL_PORT="${GW_INTERNAL_PORT:-18081}"
 # to find it — so it is forwarded here like the other two.
 GW_TLS_PORT="${GW_TLS_PORT:-18443}"
 IAM_INTERNAL_PORT="${IAM_INTERNAL_PORT:-19091}"
-HYDRA_PORT="${HYDRA_PUBLIC_PORT:-14444}"   # OAuth2 token endpoint (production-posture seed)
+HYDRA_PORT="${HYDRA_PUBLIC_PORT:-14444}"   # ТОЛЬКО волна церемонии (см. блок посадки ниже)
 # Адреса ПОЛОСЫ ФАСАДА (#59). Это не api-gateway: кейсы IBT-* обязаны спросить сами
 # слушатели, иначе «токен проверяется через фасад» останется утверждением о конфиге,
 # а не о поведении. Оба адресата — ЯДРО (iam), то есть есть на каждом стенде.
@@ -163,11 +163,13 @@ kubectl -n "$NS" port-forward svc/api-gateway "$GW_PORT:8080" >/tmp/e2e-pp-gw.lo
 kubectl -n "$NS" port-forward svc/api-gateway "$GW_INTERNAL_PORT:8081" >/tmp/e2e-pp-gwint.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$GW_INTERNAL_PORT|api-gateway internal (:8081)|/tmp/e2e-pp-gwint.log")
 kubectl -n "$NS" port-forward svc/api-gateway "$GW_TLS_PORT:8443" >/tmp/e2e-pp-gwtls.log 2>&1 &     PF_PIDS+=($!); PF_WHAT+=("$GW_TLS_PORT|api-gateway external TLS (:8443)|/tmp/e2e-pp-gwtls.log")
 kubectl -n "$NS" port-forward svc/kaname-internal "$IAM_INTERNAL_PORT:9091" >/tmp/e2e-pp-iam.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$IAM_INTERNAL_PORT|iam internal gRPC (:9091)|/tmp/e2e-pp-iam.log")
-# Hydra public — the POST target of the OAuth2 client_credentials exchange that turns an
-# iam-issued SA key into the RS256 Bearer a production-posture stand accepts. ClusterIP
-# with no ingress route here, so the exchange needs this forward. Harmless in dev (the
-# seed never dials it); required in production, and setting it HERE means the seed does
-# not have to open one per invocation.
+# Публичная поверхность прежнего издателя. ПОСЕВ ЕЁ БОЛЬШЕ НЕ НАБИРАЕТ: обмен идёт у
+# нашего издателя (`POST /iam/v1/token`, PLATFORM_TOKEN_URL ниже), поэтому и проверка
+# достижимости, и передача HYDRA_PUBLIC_PORT в посев сняты вместе со своим читателем.
+# Проброс остаётся РОВНО из-за одного предмета — волны церемонии (prodseed_ceremony.py),
+# которая ведёт интерактивный вход человека через прежнего поставщика личности. Снимается
+# вместе с ней, одним изменением: предикат снятия — ноль читателей KRATOS_*/HYDRA_* URL
+# в tests/authz-fixtures.
 kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-public "$HYDRA_PORT:4444" >/tmp/e2e-pp-hydra.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$HYDRA_PORT|hydra public token endpoint (:4444)|/tmp/e2e-pp-hydra.log")
 # Ceremony transports (WAVE 4). Opened unconditionally, next to the other five, and torn
 # down by the same trap. Deliberately NOT guarded by "skip the wave if the service is
@@ -416,12 +418,12 @@ if [ "$SEED" = "true" ]; then
   # падает. На стенде, поднятом `make dev-up`, тот же базовый каталог уже посеян целью
   # `make seed-geo`, и делегат становится подтверждённым no-op — но прогон не вправе
   # ЗАВИСЕТЬ от того, чем поднимали стенд, поэтому посев остаётся.
-  # ЗДЕСЬ ПЕРЕДАВАЛСЯ HYDRA_TOKEN_URL — адрес обмена у прежнего издателя. Читателя у
-  # него не осталось (задача #1120): ключ служебной учётки зеркала у поставщика не
-  # заводит и обменивается только у нашего издателя (PLATFORM_TOKEN_URL ниже).
-  # Переменная, которую никто не читает, читается следующим как действующая полоса,
-  # поэтому снята вместе с ней. HYDRA_PUBLIC_PORT остаётся: проброс нужен другим
-  # потребителям (проверка достижимости в prodseed_all.py, providerPublicBaseUrl суит).
+  # ЗДЕСЬ ПЕРЕДАВАЛИСЬ HYDRA_TOKEN_URL и HYDRA_PUBLIC_PORT — адрес обмена у прежнего
+  # издателя и порт его проброса. Читателей не осталось ни у того, ни у другого: ключ
+  # служебной учётки зеркала у поставщика не заводит и обменивается только у нашего
+  # издателя (PLATFORM_TOKEN_URL ниже, задача #1120), а проверка достижимости прежнего
+  # издателя снята вместе с посевом. Переменная, которую никто не читает, читается
+  # следующим как действующая полоса, поэтому снята вместе с ней.
   # ПОСЕВ ШИРЕ, ЧЕМ НАБОР СУИТ, И ЭТО НЕ ОПЛОШНОСТЬ.
   #
   # Что посеять — вопрос про СТЕНД, а не про то, чьи кейсы мы сегодня гоняем.
@@ -448,7 +450,7 @@ if [ "$SEED" = "true" ]; then
   fi
 
   env BASE_URL="http://localhost:$GW_PORT" INTERNAL_BASE_URL="http://localhost:$GW_INTERNAL_PORT" \
-      IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" HYDRA_PUBLIC_PORT="$HYDRA_PORT" \
+      IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" \
       PLATFORM_TOKEN_URL="https://127.0.0.1:$IAM_REGTOKEN_PORT/iam/v1/token" \
       SERVICES="$SEED_SERVICES" \
       PATCH_ENV=true SETUP_NS="$NS" "${MTLS_ENV[@]}" \
@@ -583,7 +585,6 @@ launch_wave() {  # $@ = суиты волны; одновременно испо
         --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
         --env-var "externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
         --env-var "iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT" \
-        --env-var "providerPublicBaseUrl=http://localhost:$HYDRA_PORT" \
         --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
         "${OWN_FRONT_ENV_ARGS[@]}" \
         ${OWN_FRONT_TLS_ARGS[@]+"${OWN_FRONT_TLS_ARGS[@]}"} \
@@ -725,7 +726,7 @@ if [[ " $SERVICES " == *" iam "* ]] && [ -f "$CEREMONY_SH" ] && [ -f "$CEREMONY_
              HYDRA_PUBLIC_URL="http://localhost:$HYDRA_PORT" \
              HYDRA_ADMIN_URL="https://localhost:$HYDRA_ADMIN_PORT" \
              IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" "${MTLS_ENV[@]}" \
-             EXTRA_NEWMAN_ARGS="--env-var baseUrl=http://localhost:$GW_PORT --env-var internalBaseUrl=http://localhost:$GW_INTERNAL_PORT --env-var externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT --env-var iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT --env-var providerPublicBaseUrl=http://localhost:$HYDRA_PORT --env-var iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT$OWN_FRONT_ENV_STR$OPT_ENV_ARGS" \
+             EXTRA_NEWMAN_ARGS="--env-var baseUrl=http://localhost:$GW_PORT --env-var internalBaseUrl=http://localhost:$GW_INTERNAL_PORT --env-var externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT --env-var iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT --env-var iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT$OWN_FRONT_ENV_STR$OPT_ENV_ARGS" \
              bash "$CEREMONY_SH" ); then
       echo "===== [ceremony] GREEN ====="
     else

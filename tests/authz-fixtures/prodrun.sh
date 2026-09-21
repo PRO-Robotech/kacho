@@ -36,7 +36,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Reseed if missing, forced, or STALE: Hydra issues SA access tokens with a 900s
+# Reseed if missing, forced, or STALE: the platform issuer mints SA access tokens with a 900s
 # (15min) lifespan, so a matrix older than ~10min mints tokens that expire mid-run
 # (gateway: "token is expired" → 401 cascade). Reseed aggressively; each suite must
 # then finish inside the remaining token window (keep --delay low).
