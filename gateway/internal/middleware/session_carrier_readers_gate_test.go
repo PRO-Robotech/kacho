@@ -44,9 +44,15 @@
 // переменной цикла и имени в аргументах не несёт — то же различие, которым
 // пользуется гейт перечня имён.
 //
-// Перепись печатает «файлов ПАКЕТА ПОЛОС осмотрено N · мест чтения M · вне
-// объявления K» — знаменатель назван областью, а не умолчанием; пустой обход —
-// отказ, а не ноль находок.
+// ОБЛАСТЬ ОБХОДА: непроверочные файлы Go пакета полос (`internal/middleware`) —
+// обе полосы, читающие браузерную сессию, живут здесь.
+//
+// ОСТАТОК: остальной модуль. Вне пакета имя носителя НАЗЫВАЕТСЯ (текст отказа
+// старта, обход перечня гасимых), а не читается из запроса; читателем носителя
+// это не является, и законные такие места названы отдельной пробой ниже —
+// их 2, и обе координаты печатаются.
+//
+// Перепись начинается с области; пустой обход — отказ, а не ноль находок.
 package middleware
 
 import (
@@ -59,6 +65,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/corelib/treecorpus"
 )
 
 // carrierReadersHome — файл, которому принадлежат предикаты присутствия.
@@ -388,28 +396,24 @@ func moduleRootOf(t *testing.T) string {
 	}
 }
 
-// prodGoFilesUnder — НЕПРОВЕРОЧНЫЕ файлы Go модуля.
+// prodGoFilesUnder — НЕПРОВЕРОЧНЫЕ файлы Go модуля, ВЗЯТЫЕ У ИНДЕКСА.
+//
+// Не обходом диска: под корнем лежат каталоги, которых в репозитории нет —
+// рабочие копии агентов, отчёты прогонов, сборочные каталоги. Обход диска
+// сделал бы вердикт свойством чужого рабочего каталога, а не коммита, и ошибся
+// бы в обе стороны — красным на файле, которого в репозитории нет, и молчанием
+// в свежем checkout.
 func prodGoFilesUnder(t *testing.T, root string) []string {
 	t.Helper()
-	var out []string
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			switch d.Name() {
-			case ".git", "node_modules", "vendor", "build", ".docusaurus", "dist":
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, "_test.go") {
-			out = append(out, path)
-		}
-		return nil
-	})
+	tree, err := treecorpus.NewTree(root)
 	if err != nil {
-		t.Fatalf("обход модуля: %v", err)
+		t.Fatalf("состав дерева %s: %v — гейт не может назвать дерево, о котором говорит", root, err)
+	}
+	var out []string
+	for rel := range tree.Files() {
+		if strings.HasSuffix(rel, ".go") && !strings.HasSuffix(rel, "_test.go") {
+			out = append(out, filepath.Join(root, rel))
+		}
 	}
 	sort.Strings(out)
 	return out

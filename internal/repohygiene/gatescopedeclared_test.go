@@ -127,6 +127,8 @@ func changedTestFiles(t *testing.T, root, base string) map[string]bool {
 // TestGateScopeIsDeclaredWhereTheWalkIsWrittenOut — «в области: обещают полноту
 // M · объявили область K», требуется K = M; остаток модуля измерен числом.
 func TestGateScopeIsDeclaredWhereTheWalkIsWrittenOut(t *testing.T) {
+	t.Parallel()
+
 	root := repoRoot(t)
 	base := requireTrunkRef(t, root)
 	delta := changedTestFiles(t, root, base)
@@ -139,7 +141,8 @@ func TestGateScopeIsDeclaredWhereTheWalkIsWrittenOut(t *testing.T) {
 	inScopePromising, outsideScopePromising := 0, 0
 	var undeclared []string
 	for _, path := range files {
-		src, err := os.ReadFile(path) //nolint:gosec // путь получен обходом дерева репозитория
+		// #nosec G304 -- путь пришёл из ИНДЕКСА репозитория, а не от вызывающего
+		src, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("%s: %v", path, err)
 		}
@@ -354,29 +357,24 @@ func literalPathIdents(f *ast.File) map[string]string {
 	return out
 }
 
-// goTestFilesUnder — проверочные файлы Go под корнем, кроме вендоренного и
-// сборочных каталогов.
+// goTestFilesUnder — проверочные файлы Go, ВЗЯТЫЕ У ИНДЕКСА репозитория.
+//
+// Не обходом диска: под корнем лежат каталоги, которых в репозитории нет —
+// рабочие копии агентов, отчёты прогонов, локальные оверлеи. Прочитав их, гейт
+// сделал бы свой вердикт свойством ЧУЖОГО рабочего каталога, а не коммита, и
+// ошибался бы в обе стороны: краснел на файле, которого в репозитории нет, и
+// молчал в свежем checkout там, где обязан говорить.
+//
+// Это ровно тот же род, что гейт и судит: область, выведенная не из того
+// источника, тихо перестаёт быть тем, чем названа.
 func goTestFilesUnder(t *testing.T, root string) []string {
 	t.Helper()
+	tree := newTrackedTree(t, root)
 	var out []string
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
+	for rel := range tree.files {
+		if strings.HasSuffix(rel, "_test.go") {
+			out = append(out, filepath.Join(root, rel))
 		}
-		if d.IsDir() {
-			switch d.Name() {
-			case ".git", "node_modules", "vendor", "build", ".docusaurus", "dist":
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if strings.HasSuffix(path, "_test.go") {
-			out = append(out, path)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("обход дерева: %v", err)
 	}
 	sort.Strings(out)
 	return out
