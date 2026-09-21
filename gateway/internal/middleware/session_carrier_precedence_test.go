@@ -41,6 +41,7 @@
 package middleware
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -808,4 +809,79 @@ func TestTransitionalWindow_AfterTheRefusalTheNextRequestIsAnonymousAndPasses(t 
 			"состояния нет", second.Code, next.served != before)
 	}
 	t.Logf("перепись: запросов 2 · первый отказан и погасил носитель · второй анонимен и прошёл")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// СТОРОНА, КОТОРУЮ МЫ РЕШИЛИ БОЛЬШЕ НЕ ЗАВОДИТЬ, НЕ ЗАВОДИТ У НАС ЗАПИСЕЙ.
+//
+// Граница окна стояла ПОСЛЕ резолва субъекта, а резолв на этой полосе умеет
+// заводить зеркало лениво. Сессия, которую мы отвергаем, успевала создать у нас
+// запись — тем самым действием, которое мы отвергаем. Смысл окна «новых не
+// заводим» нарушался буквально, в единственном числе, каким его вообще можно
+// нарушить.
+
+// upsertingLookup — резолвер с ленивым заведением зеркала, считающий заведения.
+type upsertingLookup struct {
+	subj     Subject
+	upserted int
+	looked   int
+}
+
+func (u *upsertingLookup) LookupByExternalID(context.Context, string) (Subject, error) {
+	u.looked++
+	return u.subj, nil
+}
+
+func (u *upsertingLookup) LookupOrUpsertFromKratos(_ context.Context, _, _, _ string) (Subject, error) {
+	u.upserted++
+	return u.subj, nil
+}
+
+func TestTransitionalWindow_ARefusedForeignSessionCreatesNoMirror(t *testing.T) {
+	windowOpened := ownAuthAt
+	provider := providerStubAt(t, windowOpened.Add(time.Hour)) // вход заново — отвергается
+	lookup := &upsertingLookup{subj: Subject{Type: "user", ID: "usr-foreign", DisplayName: "F"}}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	a := NewAuthInterceptor(AuthModeDev, "", lookup, logger).
+		WithKratos(NewKratosClient(provider.URL)).
+		WithSessionCutoffCheck(&fakeCutoff{}, time.Hour).
+		WithTransitionalCarrierWindow(windowOpened)
+
+	rec := serve(a.HTTP(&countingNext{}), withForeignCarrier(
+		httptest.NewRequest(http.MethodGet, platformPath, nil), "foreign-after-window"))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("сессия вне окна не отвергнута (код %d) — проба судила бы не тот исход", rec.Code)
+	}
+	if lookup.upserted != 0 || lookup.looked != 0 {
+		t.Fatalf("отвергнутая сессия обратилась к резолверу: заведений зеркала %d, поисков %d — "+
+			"сторона, которую мы решили больше не заводить, продолжает заводить у нас записи "+
+			"ТЕМ САМЫМ действием, которое мы отвергаем", lookup.upserted, lookup.looked)
+	}
+	t.Logf("перепись: заведений зеркала %d · поисков субъекта %d · код %d",
+		lookup.upserted, lookup.looked, rec.Code)
+}
+
+// Законный близнец: сессия ВНУТРИ окна зеркало заводит, как прежде. Без него
+// зелёное выше достигалось бы снятием ленивого заведения вовсе.
+func TestTransitionalWindow_AnAdmittedForeignSessionStillResolvesItsSubject(t *testing.T) {
+	windowOpened := ownAuthAt.Add(time.Hour)
+	provider := providerStubAt(t, ownAuthAt) // старше окна — дочитывается
+	lookup := &upsertingLookup{subj: Subject{Type: "user", ID: "usr-foreign", DisplayName: "F"}}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	a := NewAuthInterceptor(AuthModeDev, "", lookup, logger).
+		WithKratos(NewKratosClient(provider.URL)).
+		WithSessionCutoffCheck(&fakeCutoff{}, time.Hour).
+		WithTransitionalCarrierWindow(windowOpened)
+
+	next := &countingNext{}
+	rec := serve(a.HTTP(next), withForeignCarrier(
+		httptest.NewRequest(http.MethodGet, platformPath, nil), "foreign-in-window"))
+	if rec.Code != http.StatusOK || next.served != 1 {
+		t.Fatalf("живая чужая сессия внутри окна не прошла: код %d", rec.Code)
+	}
+	if lookup.upserted+lookup.looked == 0 {
+		t.Fatal("впущенная сессия не резолвила субъекта — личность взялась бы из ниоткуда")
+	}
+	t.Logf("перепись: заведений зеркала %d · поисков субъекта %d · код %d",
+		lookup.upserted, lookup.looked, rec.Code)
 }

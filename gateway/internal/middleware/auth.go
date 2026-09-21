@@ -1258,24 +1258,17 @@ func (a *AuthInterceptor) tryKratosSession(w http.ResponseWriter, r *http.Reques
 	if !res.Active || res.IdentityID == "" {
 		return false, false
 	}
-	var subj Subject
-	var err error
-	// Если lookuper поддерживает lazy-upsert (Kratos new-user path) — используем
-	// его; иначе обычный lookup.
-	if kl, ok := a.subjectLookup.(KratosSubjectLookuper); ok {
-		subj, err = kl.LookupOrUpsertFromKratos(r.Context(), res.IdentityID, res.Email, res.DisplayName)
-	} else {
-		subj, err = a.subjectLookup.LookupByExternalID(r.Context(), res.IdentityID)
-	}
-	if err != nil {
-		a.logger.Debug("auth.HTTP: Kratos SubjectLookup failed",
-			"identity_id", res.IdentityID, "err", err.Error())
-		return false, false
-	}
-	// ГРАНИЦА ОКНА спрашивается ДО отсечки и по той же причине: сессия,
-	// заведённая после открытия окна, не должна доехать ни до прав, ни до
-	// backend — и, как сказано ниже о зеркале, не должна ДО этого ничего у нас
-	// завести.
+	// ГРАНИЦА ОКНА СПРАШИВАЕТСЯ ПЕРВОЙ — ДО РЕЗОЛВА СУБЪЕКТА.
+	//
+	// Не только потому, что отвергнутая сессия не должна доехать до прав и до
+	// backend: резолв на этой полосе умеет заводить зеркало ЛЕНИВО, и стоя
+	// после него граница пропускала сторону, которую мы решили больше не
+	// заводить, СОЗДАТЬ у нас запись — тем самым действием, которое мы
+	// отвергаем. Смысл окна «новых не заводим» нарушался буквально, в
+	// единственном числе, каким его вообще можно нарушить.
+	//
+	// Величина, по которой судит граница, приходит из ответа чужой стороны и
+	// субъекта не требует: момент аутентификации назван в самом ответе.
 	//
 	// ОТКАЗ ИДЁТ ВМЕСТЕ С ОКОНЧАНИЕМ НОСИТЕЛЯ, и это не симметрия ради красоты,
 	// а тот же довод, что у отсечки: порознь первое даёт СТОЯЩИЙ отказ. Печенье
@@ -1301,6 +1294,20 @@ func (a *AuthInterceptor) tryKratosSession(w http.ResponseWriter, r *http.Reques
 		return false, true
 	}
 
+	var subj Subject
+	var err error
+	// Если lookuper поддерживает lazy-upsert (Kratos new-user path) — используем
+	// его; иначе обычный lookup.
+	if kl, ok := a.subjectLookup.(KratosSubjectLookuper); ok {
+		subj, err = kl.LookupOrUpsertFromKratos(r.Context(), res.IdentityID, res.Email, res.DisplayName)
+	} else {
+		subj, err = a.subjectLookup.LookupByExternalID(r.Context(), res.IdentityID)
+	}
+	if err != nil {
+		a.logger.Debug("auth.HTTP: Kratos SubjectLookup failed",
+			"identity_id", res.IdentityID, "err", err.Error())
+		return false, false
+	}
 	// Отзыв спрашивается ДО того, как личность попадёт в заголовки: принципал,
 	// выставленный отвергнутой сессии, доехал бы до прав и до backend прежде,
 	// чем отказ успел бы что-то значить.
