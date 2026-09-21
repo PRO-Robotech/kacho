@@ -684,3 +684,108 @@ func TestHiddenRefusalLeavesARecord(t *testing.T) {
 			"Без неё в журнале 404 полосы прав неотличим от 404 диспетчера.", len(asked))
 	}
 }
+
+// ---- объём записи не управляется запросчиком ----
+
+// loggedBytesForPathOfLength — сколько байт журнала оставляет ОДИН
+// незасвидетельствованный запрос к необслуживаемому пути указанной длины.
+func loggedBytesForPathOfLength(t *testing.T, dispatcher http.Handler, n int) (bytes int, lines int, body string) {
+	t.Helper()
+	sink := newLogSink()
+	mw := buildExternalAuthz(t, sink.logger)
+	chain := middleware.HTTPAccessLog(sink.logger)(mw.HTTP(dispatcher))
+	path := "/vpc/v1/" + strings.Repeat("a", n)
+	rec := httptest.NewRecorder()
+	chain.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("путь длиной %d ответил %d, а не укрытием — проба меряет не тот предмет", n, rec.Code)
+	}
+	return sink.buf.Len(), len(sink.records()), sink.buf.String()
+}
+
+// TestRecordSizeIsNotDrivenByTheRequester — объём записи ограничен КОНСТАНТОЙ,
+// а не длиной пути запросчика.
+//
+// # Предмет
+//
+// Наблюдаемость, которой можно залить диск, наблюдаемостью не остаётся. Запись
+// об укрытом отказе несёт путь, путь приходит от незасвидетельствованного
+// запросчика, и предел длины строки запроса у сервера края — умолчание
+// библиотеки в мегабайт. Без усечения один запрос писал бы в журнал кратно
+// своему размеру, и ротация вымывала бы историю ровно во время события, ради
+// разбора которого запись и заводилась.
+//
+// Ограничителя темпа на этой полосе нет ни одного, поэтому объём на ОДИН запрос
+// обязан быть конечным сам по себе, а не в среднем.
+func TestRecordSizeIsNotDrivenByTheRequester(t *testing.T) {
+	dispatcher, err := NewMux(context.Background(), probeAddrs(t), nil, nil)
+	if err != nil {
+		t.Fatalf("NewMux: %v", err)
+	}
+
+	small, smallLines, _ := loggedBytesForPathOfLength(t, dispatcher, 1_000)
+	large, largeLines, largeBody := loggedBytesForPathOfLength(t, dispatcher, 900_000)
+
+	t.Logf("перепись: путь 1 000 байт -> строк %d, журнала %d байт · "+
+		"путь 900 000 байт -> строк %d, журнала %d байт · прирост %d",
+		smallLines, small, largeLines, large, large-small)
+
+	// Премиса: запись вообще ведётся. Ноль строк сделал бы «объём не растёт»
+	// истинным даром — и это ровно то состояние, которое чинили до этого.
+	if smallLines == 0 || largeLines == 0 {
+		t.Fatal("записей не ведётся вовсе — «объём не растёт» получено тем, что писать нечего")
+	}
+
+	// ГЛАВНОЕ: прирост объёма на рост пути в 900 раз обязан быть ограничен
+	// константой. Допуск покрывает саму пометку об усечении и длину в ней.
+	const growthAllowance = 512
+	if large-small > growthAllowance {
+		t.Errorf("объём записи вырос на %d байт при росте пути на %d байт — записью управляет "+
+			"ЗАПРОСЧИК. Один незасвидетельствованный запрос под предел строки запроса пишет в "+
+			"журнал кратно своему размеру; ротация вымоет историю ровно во время события, ради "+
+			"которого запись и заводилась.", large-small, 900_000-1_000)
+	}
+
+	// Усечение обязано быть ЯВНЫМ: молча укороченный путь читается как настоящий
+	// и уводит разбор происшествия по ложному следу.
+	if !strings.Contains(largeBody, middleware.LogTruncationMark) {
+		t.Errorf("в записи о длинном пути нет признака усечения %q — укороченный путь неотличим "+
+			"от настоящего", middleware.LogTruncationMark)
+	}
+	// И обязано называть ИСХОДНУЮ длину: без неё по записи не отличить запрос в
+	// сто байт сверх предела от запроса в мегабайт.
+	if !strings.Contains(largeBody, "900008") {
+		t.Errorf("в записи не названа исходная длина пути — запрос чуть длиннее предела " +
+			"неотличим от запроса под мегабайт")
+	}
+}
+
+// TestShortPathIsLoggedWhole — законный близнец: путь в пределах разумного
+// пишется ЦЕЛИКОМ. Без него «объём ограничен» достигалось бы тем, что в журнал
+// не попадает ничего полезного.
+func TestShortPathIsLoggedWhole(t *testing.T) {
+	dispatcher, err := NewMux(context.Background(), probeAddrs(t), nil, nil)
+	if err != nil {
+		t.Fatalf("NewMux: %v", err)
+	}
+	subjects := internalSubjects()
+	if len(subjects) == 0 {
+		t.Fatal("предмета нет")
+	}
+	sink := newLogSink()
+	mw := buildExternalAuthz(t, sink.logger)
+	chain := middleware.HTTPAccessLog(sink.logger)(mw.HTTP(dispatcher))
+
+	b := subjects[0]
+	rec := httptest.NewRecorder()
+	chain.ServeHTTP(rec, httptest.NewRequest(b.method, b.path, nil))
+	body := sink.buf.String()
+
+	if !strings.Contains(body, b.path) {
+		t.Errorf("путь обычной длины %q не попал в журнал целиком — усечение съело предмет записи:\n%s",
+			b.path, body)
+	}
+	if strings.Contains(body, middleware.LogTruncationMark) {
+		t.Errorf("путь обычной длины помечен усечённым — предел стоит слишком низко:\n%s", body)
+	}
+}
