@@ -174,19 +174,45 @@ mailpit:
 api-gateway:
   # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: authn.mode).
   authMode: production-strict
-  # ─── Объявление приёма токена (Ф1б, задача #926) — НЕ ОБЪЯВЛЕНО НАМЕРЕННО
+  # ─── Объявление приёма токена (Ф1б, задача #926) — ОБЪЯВЛЕНО ЯВНО
   #
-  # Своя чеканка на этой фазе стенда не включена (см. kaname ниже: блока
-  # tokenSigning здесь нет вовсе), поэтому принимать нашего издателя краю
-  # нечего, и объявлять перечень не требуется.
+  # ЗДЕСЬ СТОЯЛО «НЕ ОБЪЯВЛЕНО НАМЕРЕННО» с доводом «своей чеканки на этой фазе
+  # нет, значит принимать нашего издателя нечего». Довод верен и сегодня — наш
+  # издатель в перечне ниже и не значится. Неверно было следствие: из «нашего
+  # издателя принимать не надо» не следует «перечень объявлять не надо».
   #
-  # «Не объявлено» и «объявлено пустым» — РАЗНЫЕ состояния, и различает их
-  # процесс: не объявлено ⇒ строится одна запись из hydra.issuer/jwksUrl ниже
-  # (ровно сегодняшнее поведение); объявлено, но элементов ноль ⇒ отказ в
-  # старте. Именно поэтому здесь стоит комментарий, а не `tokenAcceptance:` с
-  # пустыми полями: пустая строка тут означала бы «принимаем любого издателя».
+  # Не объявив перечня, стенд уходил на ЗАПАСНОЙ путь разбора, и край строил
+  # ОДНУ запись из `hydra.issuer`/`hydra.jwksUrl` ниже — то есть якорь доверия
+  # проверки подписи приезжал из ручек ЧУЖОГО издателя. Сам по себе путь
+  # исправен: обе половины пина объявляются, ни одна не выводится, неполный пин
+  # даёт отказ при старте. Неисправно было то, что стенд шёл по нему МОЛЧА:
+  # читающий профиль видел непустые ручки провайдера и отсутствие перечня, и
+  # отличить «решено принимать прежнего издателя» от «никто не переводил» было
+  # нечем. Снять же ручки чужого издателя, пока хоть один стенд ими пользуется,
+  # значит уронить приём токенов — и уронить не рендеру и не прогону, а
+  # арендатору на первом же запросе.
   #
-  # Третья фаза подъёма переводит и это.
+  # Теперь перечень объявлен САМ, а скалярный пин ниже очищен: два объявления об
+  # одном предмете разборщик отвергает, и старшинство между ними не назначается
+  # молча. Держит это `TestF1b07_EveryLiveStackDeclaresItsIssuerSetExplicitly`
+  # (gateway/deploy/f1b_issuer_set_declared_test.go) — он краснеет на стенде,
+  # получившем перечень умолчанием.
+  #
+  # ИЗДАТЕЛЬ ВЗЯТ ДОСЛОВНО ИЗ `hydra.config.urls.self.issuer` ЭТОГО ЖЕ ПРОФИЛЯ,
+  # включая замыкающую косую черту, и это ИСПРАВЛЕНИЕ, названное вслух. Сверка
+  # `iss` точная: строка обязана совпадать с той, которую провайдер ставит в
+  # токен. Запасной путь замыкающую черту СНИМАЛ (`DeclaredHydraIssuer`), то
+  # есть край ждал строку, которой провайдер не выпускает ни одного токена;
+  # объявленный путь берёт строку оператора дословно. Ту же пару — издатель
+  # провайдера дословно и адрес его набора — уже несут `values.dev-prod.yaml` и
+  # `values.prod.yaml`, каждый со своим написанием `self.issuer`.
+  #
+  # Наша чеканка здесь по-прежнему не объявлена (`platformIssuer` отсутствует,
+  # блока `kaname.tokenSigning` на этой фазе нет вовсе), и потому авторитет
+  # отзыва не требуется: он требуется ровно тем, кто принимает НАШЕГО издателя.
+  tokenAcceptance:
+    issuers: "http://localhost:28080/.ory/hydra/public/"
+    issuerKeySets: "http://localhost:28080/.ory/hydra/public/=http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json"
   advertisedEndpoint: localhost:18443
   image: kacho-api-gateway:dev
   imagePullPolicy: IfNotPresent
@@ -315,15 +341,23 @@ api-gateway:
   # JWKS path `/.well-known/jwks.json` (Ory Hydra chart service-public.yaml).
   # Without this the gateway fetches the unreachable default → Hydra tokens are
   # never validated → WhoAmI / Account / Project return code 16 AUTHN_REQUIRED.
-  # SEC-J: the verifier does an EXACT-match `iss` check, so the gateway issuer
-  # MUST equal Hydra's `self.issuer` (hydra.config.urls.self.issuer below =
-  # `http://localhost:28080/.ory/hydra/public/`) — the identity-string Hydra
-  # stamps into the token `iss` claim (browser never navigates there). Without
-  # it, KACHO_HYDRA_ISSUER derives the unreachable external default and every
-  # real login token fails the iss check → AUTHN_REQUIRED persists.
+  # SEC-J: сверка `iss` у проверяющего ТОЧНАЯ, поэтому издатель, объявленный
+  # краю, обязан совпадать с `hydra.config.urls.self.issuer` ниже
+  # (`http://localhost:28080/.ory/hydra/public/`) — той самой строкой, которую
+  # Hydra ставит в `iss` (браузер туда не ходит, это личность, а не адрес
+  # перехода). Требование не снято и не ослаблено: оно ПЕРЕЕХАЛО в
+  # `tokenAcceptance` выше, где та же строка стоит дословно.
+  #
+  # ОБЕ ПОЛОВИНЫ СКАЛЯРНОГО ПИНА ОЧИЩЕНЫ ВМЕСТЕ С ПРИХОДОМ ПЕРЕЧНЯ — так же, как
+  # в `values.dev-prod.yaml` и `values.prod.yaml`. Два объявления об одном
+  # предмете разборщик отвергает: значение, которое принято и не действует, хуже
+  # отвергнутого. Сами РУЧКИ при этом остаются — и в чарте, и в разборе: их
+  # снятие — отдельный шаг, и открыть его вправе только зелёное
+  # `TestF1b07_EveryLiveStackDeclaresItsIssuerSetExplicitly`, то есть отсутствие
+  # стендов, которые этими ручками ещё пользуются.
   hydra:
-    jwksUrl: "http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json"
-    issuer: "http://localhost:28080/.ory/hydra/public/"
+    jwksUrl: ""
+    issuer: ""
     # ─── Revocation path (ADMIN API — a different Service from the two above) ──
     # Where the gateway asks whether an access token has been revoked, and where
     # the logout handler ends the provider-side session. Neither is derivable:

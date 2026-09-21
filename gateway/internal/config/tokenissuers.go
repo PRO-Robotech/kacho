@@ -18,8 +18,14 @@
 //
 // # Почему у края «не объявлено» отличается от «объявлено пустым»
 //
-// «Перечень не объявлен» — сегодняшнее, работающее и повсеместное состояние, а
-// не забытая настройка. Отсюда три состояния, а не два:
+// «Перечень не объявлен» — состояние ПРЕДСТАВИМОЕ, но в дереве беспредметное:
+// перечень объявляет каждый стенд (перепись печатает
+// `TestF1b07_EveryLiveStackDeclaresItsIssuerSetExplicitly` в `gateway/deploy`).
+// Здесь стояло «сегодняшнее, работающее и повсеместное», и это пережило свой
+// предмет: последний стенд, шедший запасным путём, переведён вместе с этой
+// правкой. Разбор состояние тем не менее РАЗЛИЧАЕТ и будет различать, пока
+// ручки прежнего издателя существуют: их снятие — отдельный шаг, и открывает
+// его зелёное той самой переписи. Отсюда три состояния, а не два:
 //
 //   - не задано ⇒ строится ОДНА запись из ОБЪЯВЛЕННОГО пина и ОБЪЯВЛЕННОГО
 //     адреса набора. Множество мощности 1 остаётся сужением. Ни одна из двух
@@ -45,13 +51,19 @@ import (
 )
 
 const (
-	// knobDeclaredKeySets / knobLegacyKeySet — настройки, из которых может
+	// KnobDeclaredKeySets / KnobLegacyKeySet — настройки, из которых может
 	// приехать адрес набора. Названы константами, потому что их называет ОТКАЗ,
 	// а отказ, указывающий не на ту настройку, хуже отсутствующего: он
 	// отправляет оператора править то, что в этой посадке пусто.
-	knobDeclaredIssuers = "KACHO_API_GATEWAY_TOKEN_ISSUERS"
-	knobDeclaredKeySets = "KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS"
-	knobLegacyKeySet    = "KACHO_HYDRA_JWKS_URL"
+	//
+	// ВЫВЕДЕНЫ НАРУЖУ НАМЕРЕННО. Имя настройки попадает и в отказ, и в запись
+	// приёма (`SourceKnob`), и в вопрос, который задаёт профилю проба
+	// развёртывания: «из ЧЬЕЙ ручки приехал адрес». Выписанный у пробы литерал
+	// разошёлся бы с этим объявлением молча — и разошёлся бы ровно при
+	// переименовании ручки, то есть тогда, когда проба обязана покраснеть.
+	KnobDeclaredIssuers = "KACHO_API_GATEWAY_TOKEN_ISSUERS"
+	KnobDeclaredKeySets = "KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS"
+	KnobLegacyKeySet    = "KACHO_HYDRA_JWKS_URL"
 
 	// TokenTypePlatform — тип токена доступа НАШЕЙ чеканки (RFC 9068).
 	// Значение НЕ объявляется здесь второй раз: оно живёт в `corelib/tokenpolicy`,
@@ -174,12 +186,18 @@ func absoluteKeySetURL(raw string) error {
 	return nil
 }
 
-// declaresIssuerSet отвечает, объявил ли профиль перечень издателей ЯВНО.
+// DeclaresTokenIssuerSet отвечает, объявил ли профиль перечень издателей ЯВНО.
 //
 // Различие «не задано» / «задано и вырождено» — предмет этой функции, и оно
 // намеренно решается ДО отбрасывания пустых элементов: именно на нём предикат
 // по длине строки молчит, а предикат по элементам говорит.
-func (c Config) declaresIssuerSet() bool { return c.TokenIssuers != "" }
+//
+// ВЫВЕДЕН НАРУЖУ НАМЕРЕННО: ровно этот вопрос задаёт профилю проба
+// развёртывания, и задать его обязан ТОТ ЖЕ предикат, который исполняет процесс
+// при старте. Второй предикат, сформулированный у пробы заново, разошёлся бы с
+// этим молча — и разошёлся бы на вырожденном значении, где один говорит
+// «непусто», а другой «пусто».
+func (c Config) DeclaresTokenIssuerSet() bool { return c.TokenIssuers != "" }
 
 // TokenAcceptance возвращает записи приёма и отвергает объявление, с которым
 // край не поднимется.
@@ -192,10 +210,11 @@ func (c Config) declaresIssuerSet() bool { return c.TokenIssuers != "" }
 // вместо отказа при СТАРТЕ. Разница не косметическая: первый виден арендатору и
 // не виден оператору, второй виден оператору и не доходит до арендатора.
 func (c Config) TokenAcceptance() ([]TokenIssuerBinding, error) {
-	if !c.declaresIssuerSet() {
-		// Перечень не объявлен — сегодняшняя посадка. Одна запись из
-		// сегодняшнего пина и сегодняшнего адреса набора; наша чеканка на ней
-		// не принимается, потому что не объявлена.
+	if !c.DeclaresTokenIssuerSet() {
+		// Перечень не объявлен. Одна запись из ОБЪЯВЛЕННОГО пина и
+		// ОБЪЯВЛЕННОГО адреса набора; наша чеканка на ней не принимается,
+		// потому что не объявлена. Стенда, идущего сюда, в дереве нет ни
+		// одного — путь держится ради ручек, которые ещё существуют.
 		if strings.TrimSpace(c.PlatformTokenIssuer) != "" {
 			return nil, fmt.Errorf("KACHO_API_GATEWAY_PLATFORM_TOKEN_ISSUER names %q, but "+
 				"KACHO_API_GATEWAY_TOKEN_ISSUERS declares no issuer set — the platform would mint "+
@@ -220,10 +239,10 @@ func (c Config) TokenAcceptance() ([]TokenIssuerBinding, error) {
 				"domain is never empty, so «no trust anchor declared» would never occur — the edge "+
 				"would boot and fetch its signature-verification keys from an address nobody gave "+
 				"it. Declare %s (preferred), or declare both halves of the pin",
-				knobDeclaredIssuers, c.HydraIssuer, knobLegacyKeySet, c.HydraJWKSURL,
-				knobDeclaredIssuers)
+				KnobDeclaredIssuers, c.HydraIssuer, KnobLegacyKeySet, c.HydraJWKSURL,
+				KnobDeclaredIssuers)
 		}
-		b := legacyBinding(issuer, keySetURL, knobLegacyKeySet)
+		b := legacyBinding(issuer, keySetURL, KnobLegacyKeySet)
 		// Требование к транспорту источника набора действует и здесь.
 		//
 		// Асимметрия была бы хуже строгости: объявивший перечень оператор
@@ -293,7 +312,7 @@ func (c Config) TokenAcceptance() ([]TokenIssuerBinding, error) {
 				"without a record resolves to nothing, and deriving its address from the issuer "+
 				"string is forbidden (the issuer comes from the presenter)", iss)
 		}
-		b := legacyBinding(iss, keySetURL, knobDeclaredKeySets)
+		b := legacyBinding(iss, keySetURL, KnobDeclaredKeySets)
 		if iss == platform {
 			// НАША полоса: производитель типа — мы сами, отсутствие типа
 			// означало бы, что мы не выпускаем того, что требуем; и отзыв
