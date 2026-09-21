@@ -27,12 +27,12 @@ import (
 )
 
 const (
-	testAud      = "registry.kacho.local"
-	testHydraIss = "https://hydra.api.kacho.cloud"
+	testAud = "registry.kacho.local"
 )
 
-// jwksServer поднимает httptest Hydra-JWKS с RSA- и/или EC-ключами и считает число
-// фетчей (для проверки кэша/рефетча по неизвестному kid). Hydra отдаёт RS256 ИЛИ
+// jwksServer поднимает подставной набор ключей ПРЕЖНЕГО издателя с RSA- и/или
+// EC-ключами и считает число скачиваний (для проверки кэша и перечитывания по
+// неизвестному идентификатору ключа). Прежний издатель отдаёт RS256 ИЛИ
 // ES256 — оба алгоритма верифицируются data-plane по одному JWKS.
 type jwksServer struct {
 	srv     *httptest.Server
@@ -163,44 +163,50 @@ func joseSigningInput(alg, kid string, claims map[string]any) string {
 	return b64u(hb) + "." + b64u(cb)
 }
 
-// hydraClaims — Hydra-issued identity-JWT: sub = client_id (принципал для Check),
-// aud ⊇ наш service, iss = Hydra.
-func hydraClaims(sub string, exp time.Time) map[string]any {
-	return map[string]any{"sub": sub, "aud": testAud, "iss": testHydraIss, "exp": exp.Unix()}
+// legacyIdentityClaims — тело identity-JWT ПРЕЖНЕГО издателя: sub = идентификатор
+// его клиента (принципал для Check), aud ⊇ наша служба, iss = прежний издатель.
+//
+// Набор минимальный — без iat/nbf/jti. Этим он и отличается от legacyClaims из
+// f1_harness_test.go: случаи ниже проверяют проверяющего на теле БЕЗ временных
+// меток, и добавить их значило бы проверять другое.
+func legacyIdentityClaims(sub string, exp time.Time) map[string]any {
+	return map[string]any{"sub": sub, "aud": testAud, "iss": testLegacyIss, "exp": exp.Unix()}
 }
 
-// REG-TX-13 — валидный Hydra RS256-JWT (Ory default) → Verify возвращает sub.
+// REG-TX-13 — годный RS256-JWT прежнего издателя → Verify возвращает sub.
 func TestJWKS_Verify_RS256_Valid(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
-	tok := js.mintRS256(t, "kid-rsa", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
+	tok := js.mintRS256(t, "kid-rsa", legacyIdentityClaims("cid-ci", time.Now().Add(time.Hour)))
 
 	sub, err := v.Verify(context.Background(), tok)
 	require.NoError(t, err)
 	require.Equal(t, "cid-ci", sub)
 }
 
-// REG-TX-13 — валидный Hydra ES256-JWT → Verify возвращает sub. Hydra может отдавать
+// REG-TX-13 — годный ES256-JWT прежнего издателя → Verify возвращает sub. Прежний
+// издатель может отдавать
 // как RS256, так и ES256 — data-plane обязан верифицировать оба по одному JWKS.
 func TestJWKS_Verify_ES256_Valid(t *testing.T) {
 	js := newJWKSServer(t)
 	js.addEC(t, "kid-ec")
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
-	tok := js.mintES256(t, "kid-ec", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
+	tok := js.mintES256(t, "kid-ec", legacyIdentityClaims("cid-ci", time.Now().Add(time.Hour)))
 
 	sub, err := v.Verify(context.Background(), tok)
 	require.NoError(t, err)
 	require.Equal(t, "cid-ci", sub)
 }
 
-// Федеративный SA-токен: Hydra `sub` — это client_id, а Kachō principal id (sva…/usr…)
+// Федеративный SA-токен: `sub` прежнего издателя — это идентификатор его клиента,
+// а principal id Kachō (sva…/usr…)
 // лежит в `ext.ext_claims.kaname_principal_id` (обогащение IAM token-hook'а). Verify
 // обязан вернуть principal id, а не сырой client_id — иначе data-plane authz Check
 // целится в несуществующий service_account:<client_id> и отказывает любой push/pull.
 func TestJWKS_Verify_ReturnsKachoPrincipalID(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
-	claims := hydraClaims("81f92eee-client-uuid", time.Now().Add(time.Hour))
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
+	claims := legacyIdentityClaims("81f92eee-client-uuid", time.Now().Add(time.Hour))
 	claims["ext"] = map[string]any{"ext_claims": map[string]any{"kaname_principal_id": "svaz7x4kcr58s59fx75v"}}
 	tok := js.mintRS256(t, "kid-rsa", claims)
 
@@ -213,19 +219,19 @@ func TestJWKS_Verify_ReturnsKachoPrincipalID(t *testing.T) {
 // (back-compat: user-OIDC / not-yet-enriched токены).
 func TestJWKS_Verify_FallsBackToSubWhenNoPrincipalClaim(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
-	tok := js.mintRS256(t, "kid-rsa", hydraClaims("usr-bare", time.Now().Add(time.Hour)))
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
+	tok := js.mintRS256(t, "kid-rsa", legacyIdentityClaims("usr-bare", time.Now().Add(time.Hour)))
 
 	sub, err := v.Verify(context.Background(), tok)
 	require.NoError(t, err)
 	require.Equal(t, "usr-bare", sub)
 }
 
-// REG-TX-13 — истёкший Hydra-JWT → 401 (invalid_token на стороне proxy).
+// REG-TX-13 — истёкший JWT прежнего издателя → 401 (invalid_token на стороне proxy).
 func TestJWKS_Verify_Expired(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
-	tok := js.mintRS256(t, "kid-rsa", hydraClaims("cid-ci", time.Now().Add(-time.Minute)))
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
+	tok := js.mintRS256(t, "kid-rsa", legacyIdentityClaims("cid-ci", time.Now().Add(-time.Minute)))
 
 	_, err := v.Verify(context.Background(), tok)
 	require.Error(t, err)
@@ -234,8 +240,8 @@ func TestJWKS_Verify_Expired(t *testing.T) {
 // REG-TX-05/13 — wrong audience (токен для другого service) → отвергается.
 func TestJWKS_Verify_WrongAudience(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
-	claims := hydraClaims("cid-ci", time.Now().Add(time.Hour))
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
+	claims := legacyIdentityClaims("cid-ci", time.Now().Add(time.Hour))
 	claims["aud"] = "some-other-service"
 	tok := js.mintRS256(t, "kid-rsa", claims)
 
@@ -243,12 +249,12 @@ func TestJWKS_Verify_WrongAudience(t *testing.T) {
 	require.Error(t, err)
 }
 
-// REG-TX-13 — wrong issuer (iss ≠ Hydra) → отвергается (старый IAM-native токен /
+// REG-TX-13 — не тот издатель (iss ≠ привязанный) → отвергается (старый IAM-native токен /
 // чужой issuer после переключения не принимается).
 func TestJWKS_Verify_WrongIssuer(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
-	claims := hydraClaims("cid-ci", time.Now().Add(time.Hour))
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
+	claims := legacyIdentityClaims("cid-ci", time.Now().Add(time.Hour))
 	claims["iss"] = "https://api.kacho.local/iam/token" // старый IAM-native issuer
 	tok := js.mintRS256(t, "kid-rsa", claims)
 
@@ -256,17 +262,17 @@ func TestJWKS_Verify_WrongIssuer(t *testing.T) {
 	require.Error(t, err)
 }
 
-// REG-TX-13 — самоподписанный/чужой ключ (kid не в Hydra JWKS) → отвергается.
+// REG-TX-13 — самоподписанный/чужой ключ (идентификатора нет в наборе) → отвергается.
 func TestJWKS_Verify_UnknownKid(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
 	// подписываем ключом, которого нет в JWKS.
 	rogue, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 	js.rsaKeys["kid-rogue"] = rogue
-	tok := js.mintRS256(t, "kid-rogue", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
+	tok := js.mintRS256(t, "kid-rogue", legacyIdentityClaims("cid-ci", time.Now().Add(time.Hour)))
 	delete(js.rsaKeys, "kid-rogue") // JWKS больше его не отдаёт
 
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
 	_, err = v.Verify(context.Background(), tok)
 	require.Error(t, err)
 }
@@ -274,8 +280,8 @@ func TestJWKS_Verify_UnknownKid(t *testing.T) {
 // REG-TX-13 — подпись не сходится (tampered payload) → отвергается.
 func TestJWKS_Verify_BadSignature(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
-	tok := js.mintRS256(t, "kid-rsa", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
+	tok := js.mintRS256(t, "kid-rsa", legacyIdentityClaims("cid-ci", time.Now().Add(time.Hour)))
 
 	// Подмена обязана ДЕЙСТВИТЕЛЬНО менять токен. Прежняя редакция дописывала
 	// «AA» вслепую: подпись кончается на эти два знака примерно раз на 4096
@@ -298,8 +304,8 @@ func TestJWKS_Verify_BadSignature(t *testing.T) {
 // подсунуть как HMAC-секрет (alg-confusion). Allowlist — только {RS256, ES256}.
 func TestJWKS_Verify_HS256_Rejected(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
-	signingInput := joseSigningInput("HS256", "kid-rsa", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
+	signingInput := joseSigningInput("HS256", "kid-rsa", legacyIdentityClaims("cid-ci", time.Now().Add(time.Hour)))
 	tok := signingInput + "." + b64u([]byte("sig"))
 	_, err := v.Verify(context.Background(), tok)
 	require.Error(t, err)
@@ -308,8 +314,8 @@ func TestJWKS_Verify_HS256_Rejected(t *testing.T) {
 // REG-TX-21 alg-guard — alg=none (unsigned) → отвергается. Никогда не принимать none.
 func TestJWKS_Verify_NoneAlg_Rejected(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
-	signingInput := joseSigningInput("none", "kid-rsa", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
+	signingInput := joseSigningInput("none", "kid-rsa", legacyIdentityClaims("cid-ci", time.Now().Add(time.Hour)))
 	tok := signingInput + "." // пустая подпись
 	_, err := v.Verify(context.Background(), tok)
 	require.Error(t, err)
@@ -325,8 +331,8 @@ func TestJWKS_Verify_KeyTypeAlgConfusion_Rejected(t *testing.T) {
 	// header alg=ES256, но kid указывает на RSA-ключ → key.(*ecdsa.PublicKey) не проходит.
 	t.Run("es256-header-over-rsa-key", func(t *testing.T) {
 		js := newJWKSServer(t, "kid-rsa")
-		v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
-		signingInput := joseSigningInput("ES256", "kid-rsa", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
+		v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
+		signingInput := joseSigningInput("ES256", "kid-rsa", legacyIdentityClaims("cid-ci", time.Now().Add(time.Hour)))
 		// подпись-заглушка нужной для ES256 длины (64B) — type-assert падает ДО её проверки.
 		tok := signingInput + "." + b64u(make([]byte, 64))
 		_, err := v.Verify(context.Background(), tok)
@@ -336,8 +342,8 @@ func TestJWKS_Verify_KeyTypeAlgConfusion_Rejected(t *testing.T) {
 	t.Run("rs256-header-over-ec-key", func(t *testing.T) {
 		js := newJWKSServer(t)
 		js.addEC(t, "kid-ec")
-		v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
-		signingInput := joseSigningInput("RS256", "kid-ec", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
+		v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
+		signingInput := joseSigningInput("RS256", "kid-ec", legacyIdentityClaims("cid-ci", time.Now().Add(time.Hour)))
 		tok := signingInput + "." + b64u([]byte("stub-signature"))
 		_, err := v.Verify(context.Background(), tok)
 		require.ErrorIs(t, err, ErrInvalidToken)
@@ -347,9 +353,9 @@ func TestJWKS_Verify_KeyTypeAlgConfusion_Rejected(t *testing.T) {
 // JWKS кэшируется (TTL): повторные Verify известным kid не рефетчат JWKS.
 func TestJWKS_Verify_Caches(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
 	for i := 0; i < 3; i++ {
-		tok := js.mintRS256(t, "kid-rsa", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
+		tok := js.mintRS256(t, "kid-rsa", legacyIdentityClaims("cid-ci", time.Now().Add(time.Hour)))
 		_, err := v.Verify(context.Background(), tok)
 		require.NoError(t, err)
 	}
@@ -357,26 +363,26 @@ func TestJWKS_Verify_Caches(t *testing.T) {
 }
 
 // REG-TX-21(b) — неизвестный kid → рефетч JWKS (key rotation). Новый ES256-ключ,
-// добавленный Hydra после первого фетча, подхватывается рефетчем → verify OK.
+// добавленный издателем после первого скачивания, подхватывается перечитыванием → verify OK.
 // Рефетч по неизвестному kid'у троттлится (minRefresh), поэтому второй Verify
 // выполняется по часам, продвинутым за окно троттла (иначе — throttled-fail).
 func TestJWKS_Verify_RefetchOnUnknownKid(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
 	clock := time.Now()
 	v.now = func() time.Time { return clock }
 
-	tok1 := js.mintRS256(t, "kid-rsa", hydraClaims("cid-ci", clock.Add(time.Hour)))
+	tok1 := js.mintRS256(t, "kid-rsa", legacyIdentityClaims("cid-ci", clock.Add(time.Hour)))
 	_, err := v.Verify(context.Background(), tok1)
 	require.NoError(t, err)
 	require.Equal(t, int32(1), js.fetch.Load())
 
-	// ротация Hydra: добавляем ES256 kid-ec2 в JWKS. Продвигаем часы за окно троттла
+	// ротация у издателя: добавляем ES256 kid-ec2 в набор. Продвигаем часы за окно троттла
 	// (кэш ещё свеж по TTL: minRefresh << ttl), чтобы рефетч по новому kid'у не был
 	// подавлен троттлом.
 	js.addEC(t, "kid-ec2")
 	clock = clock.Add(defaultMinRefresh + time.Second)
-	tok2 := js.mintES256(t, "kid-ec2", hydraClaims("cid-ci2", clock.Add(time.Hour)))
+	tok2 := js.mintES256(t, "kid-ec2", legacyIdentityClaims("cid-ci2", clock.Add(time.Hour)))
 
 	sub, err := v.Verify(context.Background(), tok2)
 	require.NoError(t, err)
@@ -390,11 +396,11 @@ func TestJWKS_Verify_RefetchOnUnknownKid(t *testing.T) {
 // DoS-амплификация закрыта).
 func TestJWKS_Verify_UnknownKidThrottled_NoRefetch(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
 	clock := time.Now()
 	v.now = func() time.Time { return clock }
 
-	tok := js.mintRS256(t, "kid-rsa", hydraClaims("cid-ci", clock.Add(time.Hour)))
+	tok := js.mintRS256(t, "kid-rsa", legacyIdentityClaims("cid-ci", clock.Add(time.Hour)))
 	_, err := v.Verify(context.Background(), tok)
 	require.NoError(t, err)
 	require.Equal(t, int32(1), js.fetch.Load())
@@ -403,7 +409,7 @@ func TestJWKS_Verify_UnknownKidThrottled_NoRefetch(t *testing.T) {
 	// kid'ами. Ни один не форсит рефетч — kid читается до верификации подписи.
 	for i := 0; i < 5; i++ {
 		bogus := joseSigningInput("RS256", fmt.Sprintf("bogus-%d", i),
-			hydraClaims("cid-x", clock.Add(time.Hour))) + ".QUFB"
+			legacyIdentityClaims("cid-x", clock.Add(time.Hour))) + ".QUFB"
 		_, verr := v.Verify(context.Background(), bogus)
 		require.Error(t, verr)
 	}
@@ -416,11 +422,11 @@ func TestJWKS_Verify_UnknownKidThrottled_NoRefetch(t *testing.T) {
 // одновременных промахов не веерятся в N исходящих JWKS-фетчей (thundering herd).
 func TestJWKS_Verify_ConcurrentUnknownKid_BoundsRefetch(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
 	clock := time.Now()
 	v.now = func() time.Time { return clock }
 
-	tok := js.mintRS256(t, "kid-rsa", hydraClaims("cid-ci", clock.Add(time.Hour)))
+	tok := js.mintRS256(t, "kid-rsa", legacyIdentityClaims("cid-ci", clock.Add(time.Hour)))
 	_, err := v.Verify(context.Background(), tok)
 	require.NoError(t, err)
 	require.Equal(t, int32(1), js.fetch.Load())
@@ -437,7 +443,7 @@ func TestJWKS_Verify_ConcurrentUnknownKid_BoundsRefetch(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			bogus := joseSigningInput("RS256", fmt.Sprintf("cc-bogus-%d", i),
-				hydraClaims("cid-x", clock.Add(time.Hour))) + ".QUFB"
+				legacyIdentityClaims("cid-x", clock.Add(time.Hour))) + ".QUFB"
 			_, _ = v.Verify(context.Background(), bogus)
 		}(i)
 	}
@@ -454,17 +460,17 @@ func TestJWKS_Verify_ConcurrentUnknownKid_BoundsRefetch(t *testing.T) {
 // ротированным ключом, отвергается как "unknown kid" на всё окно minRefresh.
 func TestJWKS_Verify_RefreshDetachedFromRequestCtx(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
 	clock := time.Now()
 	v.now = func() time.Time { return clock }
 
 	// Первый Verify: наполняем кэш (kid-rsa), fetch=1.
-	tok := js.mintRS256(t, "kid-rsa", hydraClaims("cid-ci", clock.Add(24*time.Hour)))
+	tok := js.mintRS256(t, "kid-rsa", legacyIdentityClaims("cid-ci", clock.Add(24*time.Hour)))
 	_, err := v.Verify(context.Background(), tok)
 	require.NoError(t, err)
 	require.Equal(t, int32(1), js.fetch.Load())
 
-	// Ротация Hydra: добавлен новый ES256-ключ kid-ec2. Часы за окном TTL (max-age=300) →
+	// Ротация у издателя: добавлен новый ES256-ключ kid-ec2. Часы за окном TTL (max-age=300) →
 	// следующий Verify инициирует рефетч.
 	js.addEC(t, "kid-ec2")
 	clock = clock.Add(6 * time.Minute)
@@ -474,14 +480,14 @@ func TestJWKS_Verify_RefreshDetachedFromRequestCtx(t *testing.T) {
 	// фетч ключей не должен быть сорван его отменой, а троттл-слот — сожжён впустую.
 	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
-	bogus := joseSigningInput("RS256", "attacker-kid", hydraClaims("cid-x", clock.Add(time.Hour))) + ".QUFB"
+	bogus := joseSigningInput("RS256", "attacker-kid", legacyIdentityClaims("cid-x", clock.Add(time.Hour))) + ".QUFB"
 	_, _ = v.Verify(canceled, bogus)
 
 	// Легитимный токен, подписанный только что ротированным kid-ec2, в пределах окна
 	// minRefresh после хода атакующего. С рефетчем на request-ctx атакующего фетч сорвался,
 	// троттл-слот сожжён → здесь был бы "unknown kid". С detached-ctx рефетч довёл ключи —
 	// токен верифицируется.
-	tok2 := js.mintES256(t, "kid-ec2", hydraClaims("cid-ci2", clock.Add(time.Hour)))
+	tok2 := js.mintES256(t, "kid-ec2", legacyIdentityClaims("cid-ci2", clock.Add(time.Hour)))
 	sub, err := v.Verify(context.Background(), tok2)
 	require.NoError(t, err,
 		"legit token signed by a freshly-rotated key must verify; a disconnecting client's canceled ctx must not poison the shared JWKS refresh")
@@ -491,10 +497,10 @@ func TestJWKS_Verify_RefreshDetachedFromRequestCtx(t *testing.T) {
 // REG-TX-21(a) — JWKS недоступен И ключа нет в кэше → fail-closed (не пропускаем).
 func TestJWKS_Verify_JWKSUnreachable_FailClosed(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	tok := js.mintRS256(t, "kid-rsa", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
+	tok := js.mintRS256(t, "kid-rsa", legacyIdentityClaims("cid-ci", time.Now().Add(time.Hour)))
 	js.srv.Close() // JWKS больше недоступен, кэш пуст
 
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
 	_, err := v.Verify(context.Background(), tok)
 	require.Error(t, err)
 }
@@ -504,18 +510,18 @@ func TestJWKS_Verify_JWKSUnreachable_FailClosed(t *testing.T) {
 // fail-closed (ротированный/отозванный ключ не остаётся валидным бесконечно).
 func TestJWKS_Verify_StaleCacheJWKSDown_FailClosed(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa") // JWKS отдаёт Cache-Control: max-age=300
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
 
 	clock := time.Now()
 	v.now = func() time.Time { return clock }
 
-	tok := js.mintRS256(t, "kid-rsa", hydraClaims("cid-ci", clock.Add(time.Hour)))
+	tok := js.mintRS256(t, "kid-rsa", legacyIdentityClaims("cid-ci", clock.Add(time.Hour)))
 	sub, err := v.Verify(context.Background(), tok)
 	require.NoError(t, err)
 	require.Equal(t, "cid-ci", sub)
 	require.Equal(t, int32(1), js.fetch.Load())
 
-	// Кэш-TTL (max-age=300) истёк + Hydra JWKS недоступен → рефетч падает.
+	// Кэш-TTL (max-age=300) истёк + набор ключей недоступен → перечитывание падает.
 	clock = clock.Add(6 * time.Minute)
 	js.srv.Close()
 
@@ -535,11 +541,11 @@ func TestJWKS_Verify_StaleCacheJWKSDown_FailClosed(t *testing.T) {
 // TestJWKS_Verify_PermanentlyDownSource_StopsAcceptingStaleKey.
 func TestJWKS_Verify_KnownKidServedFromCache_WhileRefetchThrottled(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa") // Cache-Control: max-age=300
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
 	clock := time.Now()
 	v.now = func() time.Time { return clock }
 
-	tok := js.mintRS256(t, "kid-rsa", hydraClaims("cid-ci", clock.Add(24*time.Hour)))
+	tok := js.mintRS256(t, "kid-rsa", legacyIdentityClaims("cid-ci", clock.Add(24*time.Hour)))
 	sub, err := v.Verify(context.Background(), tok)
 	require.NoError(t, err)
 	require.Equal(t, "cid-ci", sub)
@@ -568,12 +574,12 @@ func TestJWKS_Verify_KnownKidServedFromCache_WhileRefetchThrottled(t *testing.T)
 func TestJWKS_Verify_CacheControlTTL_ClampedToMax(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
 	js.cacheControl = "max-age=999999999" // ~31 год
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
 
 	clock := time.Now()
 	v.now = func() time.Time { return clock }
 
-	tok := js.mintRS256(t, "kid-rsa", hydraClaims("cid-ci", clock.Add(time.Hour)))
+	tok := js.mintRS256(t, "kid-rsa", legacyIdentityClaims("cid-ci", clock.Add(time.Hour)))
 	_, err := v.Verify(context.Background(), tok)
 	require.NoError(t, err)
 
@@ -589,7 +595,7 @@ func TestJWKS_Verify_CacheControlTTL_ClampedToMax(t *testing.T) {
 // Malformed token (не три сегмента) → отвергается.
 func TestJWKS_Verify_Malformed(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
 	_, err := v.Verify(context.Background(), "not-a-jwt")
 	require.Error(t, err)
 }
@@ -615,8 +621,9 @@ func TestJWKS_toRSA_RejectsSmallModulus(t *testing.T) {
 	require.Contains(t, err.Error(), "modulus")
 }
 
-// SEC — нормальный 2048-битный ключ (Ory Hydra default) проходит toRSA без изменений
-// поведения (регресс-страховка к минимальному размеру модуля).
+// SEC — нормальный 2048-битный ключ проходит toRSA без изменений поведения
+// (регресс-страховка к минимальному размеру модуля). Число взято не у поставщика,
+// а у нашего объявления: tokenpolicy.MinRSAModulusBits, см. verifier.go:719.
 func TestJWKS_toRSA_Accepts2048(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
@@ -629,14 +636,14 @@ func TestJWKS_toRSA_Accepts2048(t *testing.T) {
 
 // SEC (end-to-end) — JWKS с коротким (1024-бит) RSA-ключом: refresh пропускает такой
 // ключ, поэтому токен, подписанный им, отвергается (kid не попал в кэш). Верификатор
-// не должен принимать forgeable-токен даже если Hydra по ошибке отдала слабый ключ.
+// не должен принимать подделываемый токен даже если издатель по ошибке отдал слабый ключ.
 func TestJWKS_Verify_SmallModulusKey_Rejected(t *testing.T) {
 	js := newJWKSServer(t)
 	weak, err := rsa.GenerateKey(rand.Reader, 1024)
 	require.NoError(t, err)
 	js.rsaKeys["kid-weak"] = weak
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
-	tok := js.mintRS256(t, "kid-weak", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
+	tok := js.mintRS256(t, "kid-weak", legacyIdentityClaims("cid-ci", time.Now().Add(time.Hour)))
 
 	_, err = v.Verify(context.Background(), tok)
 	require.Error(t, err)
