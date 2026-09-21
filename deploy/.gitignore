@@ -36,15 +36,12 @@ helm/umbrella/charts/*.tgz
 !helm/umbrella/charts/postgresql-*.tgz
 helm/umbrella/charts/ingress-nginx/
 helm/umbrella/charts/postgresql/
-helm/umbrella/charts/zitadel/
 helm/umbrella/charts/api-gateway/
 helm/umbrella/charts/compute/
-helm/umbrella/charts/resource-manager/
-helm/umbrella/charts/ui/
 helm/umbrella/charts/vpc/
 # KAC-NLB: kacho-nlb sub-chart is materialised by `helm dep update` from the
 # sibling repo (file://../../../kacho-nlb/deploy). Ignore the extracted copy
-# the same way we do for vpc/compute/api-gateway/ui above.
+# the same way we do for vpc/compute/api-gateway above.
 helm/umbrella/charts/kacho-nlb/
 helm/umbrella/Chart.lock
 ci/.seeded-ids.env
