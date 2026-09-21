@@ -1207,7 +1207,12 @@ func main() {
 		WithSessionCutoff(clients.NewSessionRevocationsAdapter(backends["iamInternal"])).
 		WithAdminChecker(iamSubjectClient) // permissions = ["*","admin"] для system-admin
 	if sessionCarriers.ReadsProvider() && kratosURL != "disabled" {
-		sessionIdentity = sessionIdentity.WithKratos(middleware.NewKratosClient(kratosURL), iamSubjectClient)
+		sessionIdentity = sessionIdentity.WithKratos(middleware.NewKratosClient(kratosURL), iamSubjectClient).
+			// СВОЙ читатель окна, как и свой читатель отсечки: полос, читающих
+			// одну чужую сессию, две, и равенство между ними проверяется
+			// сравнением, а не по каждой отдельно. Момент — ТОТ ЖЕ, что у
+			// полосы: второй источник разошёлся бы с первым молча.
+			WithTransitionalCarrierWindow(carrierWindowOpenedAt)
 	}
 	if sessionCarriers.ReadsOwn() {
 		sessionIdentity = sessionIdentity.WithHumanSession(clients.NewSessionRevocationsAdapter(backends["iamInternal"]))

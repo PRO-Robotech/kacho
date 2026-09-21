@@ -70,6 +70,10 @@ type SessionIdentityHandler struct {
 	// заводит читателей по множеству (`config.SessionCarrierSet`), и состояний
 	// три — только чужой · оба · только наш.
 	humanSession HumanSessionReader
+
+	// transitionalWindowOpenedAt — момент открытия переходного окна носителя;
+	// нулевой означает «окна нет». См. WithTransitionalCarrierWindow.
+	transitionalWindowOpenedAt time.Time
 }
 
 func NewSessionIdentityHandler(logger *slog.Logger) *SessionIdentityHandler {
@@ -110,6 +114,34 @@ func (h *SessionIdentityHandler) WithSessionCutoff(r SessionCutoffReader) *Sessi
 func (h *SessionIdentityHandler) WithHumanSession(r HumanSessionReader) *SessionIdentityHandler {
 	h.humanSession = r
 	return h
+}
+
+// WithTransitionalCarrierWindow — СВОЙ читатель окна у маршрута «кто я».
+//
+// Вложенная точка предъявления, ровно как у отсечки, и по той же причине:
+// полос, читающих одну и ту же чужую сессию, две, и свойство, обязательное для
+// одной, проверяется СРАВНЕНИЕМ полос, а не по каждой отдельно. Через боевую
+// цепочку сюда доходит только запрос, который полоса уже пропустила, — но
+// обработчик обязан быть верен сам по себе: иначе «одна полоса спрашивает,
+// вторая нет» возвращается при первой же перестановке звеньев, и возвращается
+// молча.
+//
+// Прежде окна здесь не было вовсе, и сравнение полос по его оси никто не вёл —
+// остаток того же класса, что и три находки аудита: свойство доказано на одной
+// полосе из двух.
+func (h *SessionIdentityHandler) WithTransitionalCarrierWindow(openedAt time.Time) *SessionIdentityHandler {
+	h.transitionalWindowOpenedAt = openedAt
+	return h
+}
+
+// transitionalWindowAdmits — годна ли чужая сессия к приёму в окне. Тот же
+// предикат, что на полосе личности, и та же fail-closed посадка на нулевом
+// моменте: «неизвестно» означает «не доказано».
+func (h *SessionIdentityHandler) transitionalWindowAdmits(authenticatedAt time.Time) bool {
+	if h.transitionalWindowOpenedAt.IsZero() {
+		return true
+	}
+	return !authenticatedAt.IsZero() && authenticatedAt.Before(h.transitionalWindowOpenedAt)
 }
 
 // WithAdminChecker — system-admin tuple lookup для /me.
@@ -158,6 +190,13 @@ func (h *SessionIdentityHandler) Me(w http.ResponseWriter, r *http.Request) {
 		// его одним и тем же.
 		if cookieHdr := ProviderSessionCarrierHeader(r); cookieHdr != "" {
 			res := h.kratos.Whoami(r.Context(), cookieHdr)
+			// ГРАНИЦА ОКНА — до всего прочего, как на полосе личности: сессия,
+			// заведённая после его открытия, не называет человека и не резолвит
+			// субъекта (иначе отвергнутая сторона заводила бы у нас зеркало).
+			if !h.transitionalWindowAdmits(res.AuthenticatedAt) {
+				_, _ = w.Write([]byte(`{"user":null}`))
+				return
+			}
 			if res.Active && res.IdentityID != "" {
 				userObj := map[string]any{
 					"id":          res.IdentityID,
