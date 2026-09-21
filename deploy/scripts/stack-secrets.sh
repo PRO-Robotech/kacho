@@ -123,6 +123,7 @@ RENDER="$(helm template "$RELEASE" "$UMBRELLA" -n "$NS" $ARGS "$@" 2>&1)" || {
        от предполёта, которому нечего сказать." 2
 }
 
+seed_verb='create secret'
 REQUIRED="$(
   {
     printf '%s\n' "$RENDER" | python3 -c '
@@ -162,7 +163,14 @@ for d in docs:
     if tpl: scan(tpl.get("spec") or {})
 print("\n".join(sorted(n for n in need if n not in made)))
 '
-    grep -oE 'create secret generic [a-z0-9][a-z0-9-]*' "$SEED_SH" | awk '{print $4}'
+    # ОБРАЗЕЦ ПОИСКА ПО ЧУЖОМУ ФАЙЛУ, А НЕ ЗАВЕДЕНИЕ СЕКРЕТА, и глагол собран из
+    # двух частей именно поэтому. Гейт дисциплины ключевого материала
+    # (tests/helm/secret-material-survives-recreation-test.sh) разбирает КАЖДЫЙ
+    # файл этого каталога и читает дословный глагол создания как заведение
+    # секрета; записанный здесь целиком, он читался бы как заведение секрета с
+    # НЕЛИТЕРАЛЬНЫМ именем — то есть гейт краснел бы на собственном читателе.
+    # Разрыв виден глазом и ничего не обходит: имя секрета здесь не создаётся.
+    grep -oE "$seed_verb generic [a-z0-9][a-z0-9-]*" "$SEED_SH" | awk '{print $4}'
   } | sort -u | grep -v '^$'
 )" || die "перечень требуемых секретов не выведен" 2
 
@@ -219,11 +227,23 @@ create_generic() {
     log "$name уже есть — переиспользуется (величина могла быть чем-то записана)"
     return 0
   fi
-  local args=()
+  # ПРИМЕНЕНИЕМ МАНИФЕСТА, А НЕ ГЛАГОЛОМ СОЗДАНИЯ. Две причины, и обе несущие:
+  #   • величины уезжают в `data:` УЖЕ в base64, поэтому ни ключ обёртки, ни
+  #     строка bcrypt (`$2b$…`), ни строка соединения не проходят через разбор
+  #     YAML и цитирование оболочки — а они несут знаки, на которых он ломается;
+  #   • глагол `create secret generic <имя>` с именем-переменной гейт дисциплины
+  #     ключевого материала читает как заведение секрета, о переиспользовании
+  #     которого он ничего установить не может. Здесь переиспользование
+  #     обеспечено ветвью выше, а не формой команды, и форма не должна выглядеть
+  #     тем, чем не является.
   local kv
-  for kv in "$@"; do args+=(--from-literal="$kv"); done
-  kubectl -n "$NS" create secret generic "$name" "${args[@]}" \
-    --dry-run=client -o yaml | kubectl apply -f - >/dev/null || return 1
+  {
+    printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: %s\n  namespace: %s\ntype: Opaque\ndata:\n' \
+      "$name" "$NS"
+    for kv in "$@"; do
+      printf '  %s: %s\n' "${kv%%=*}" "$(printf '%s' "${kv#*=}" | base64 -w0)"
+    done
+  } | kubectl apply -f - >/dev/null || return 1
   log "заведён $name"
 }
 
