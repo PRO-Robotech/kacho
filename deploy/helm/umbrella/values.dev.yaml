@@ -174,19 +174,63 @@ mailpit:
 api-gateway:
   # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: authn.mode).
   authMode: production-strict
-  # ─── Объявление приёма токена (Ф1б, задача #926) — НЕ ОБЪЯВЛЕНО НАМЕРЕННО
+  # ─── Объявление приёма токена (Ф1б, задача #926) — ОБЪЯВЛЕНО ЯВНО
   #
-  # Своя чеканка на этой фазе стенда не включена (см. kaname ниже: блока
-  # tokenSigning здесь нет вовсе), поэтому принимать нашего издателя краю
-  # нечего, и объявлять перечень не требуется.
+  # ЗДЕСЬ СТОЯЛО «НЕ ОБЪЯВЛЕНО НАМЕРЕННО», И НАМЕРЕНИЕ ПРАВИТСЯ ВМЕСТЕ СО
+  # ЗНАЧЕНИЕМ, А НЕ МОЛЧА. Прежний довод был верен наполовину и потому опасен:
+  # своя чеканка на этой фазе действительно не включена (блока
+  # `kaname.tokenSigning` в этом файле нет), и НАШЕГО издателя край здесь
+  # по-прежнему не принимает — это в объявлении ниже сохранено дословно
+  # (`platformIssuer` пуст). Неверной была вторая половина: из «нашего издателя
+  # принимать нечего» не следует «перечень объявлять не требуется».
   #
-  # «Не объявлено» и «объявлено пустым» — РАЗНЫЕ состояния, и различает их
-  # процесс: не объявлено ⇒ строится одна запись из hydra.issuer/jwksUrl ниже
-  # (ровно сегодняшнее поведение); объявлено, но элементов ноль ⇒ отказ в
-  # старте. Именно поэтому здесь стоит комментарий, а не `tokenAcceptance:` с
-  # пустыми полями: пустая строка тут означала бы «принимаем любого издателя».
+  # Чего прежний довод не назвал. Состояние «не объявлено» разбирается кодом
+  # края так: если при этом пуст И скалярный пин, адрес ЧУЖОГО издателя
+  # ВЫВОДИТСЯ из домена установки (`https://hydra.` + домен). Отказа старта на
+  # этом пути нет: край поднимается, объявляет одну запись приёма на хост,
+  # которого на стенде нет, и отвергает каждый токен при первом же запросе.
+  # Ровно от этой ямы стенд спасал скалярный пин ниже, то есть держался он на
+  # том, что НИЖЕ ЕСТЬ ещё одно объявление о том же предмете, — а не на
+  # намерении, записанном здесь.
   #
-  # Третья фаза подъёма переводит и это.
+  # Теперь предмет объявлен ОДИН РАЗ и в одном месте: перечень издателей ниже,
+  # а скалярный пин снят (`hydra.issuer` / `hydra.jwksUrl` = "" ниже по файлу).
+  # Держать оба нельзя: два объявления об одном предмете дают ОТКАЗ В СТАРТЕ, а
+  # не молчаливое старшинство.
+  #
+  # ЗАВЕРШАЮЩИЙ СЛЕШ У ИЗДАТЕЛЯ ОБЯЗАТЕЛЕН, И ЭТО НЕ КОСМЕТИКА. Провайдер этого
+  # стенда ставит в `iss` ровно `…/public/` — ту же строку, что объявлена ниже в
+  # `hydra.config.urls.self.issuer`. Проверяющий ищет запись издателя ТОЧНЫМ
+  # совпадением по карте (`middleware/jwt_verifier.go`), нормализации у него
+  # нет. Снятый скалярный пин доезжал до записи через разбор, который слеш
+  # СРЕЗАЛ, — то есть край этого стенда пинил строку, которой провайдер не
+  # ставит никогда, и токену не находилось записи. Объявление ниже эту строку
+  # исправляет, а держит исправление не комментарий, а существующий гейт
+  # deploy/tests/helm/hydra-jwks-url-test.sh: он сверяет объявленного издателя
+  # с `self.issuer` дословно и на форме без слеша краснеет.
+  #
+  # Адрес набора ключей — тот же, что называл снятый `hydra.jwksUrl`. Поведения
+  # стенда в этой части правка не меняет; уходит состояние «не объявлено».
+  #
+  # Схема http здесь законна и остаётся: метка окружения этого стенда — `dev`
+  # (`appEnv` ниже), и требование https к адресу набора ключей под ней не
+  # действует — симметрично незашифрованному соединению к базе. Боевой слой
+  # (values.dev-prod.yaml) накладывается поверх и перекрывает ВСЕ ключи этого
+  # блока своими — там и метка, и схема, и наш издатель другие.
+  tokenAcceptance:
+    issuers: "http://localhost:28080/.ory/hydra/public/"
+    # Адрес ОБЪЯВЛЯЕТСЯ, а не выводится из издателя: издателя приносит
+    # предъявитель, и производный адрес получался бы у ВСЯКОГО издателя —
+    # состояние «записи нет» не наступало бы никогда, а страж старта стал бы
+    # тождественно истинным. Хост — внутренний Service провайдера, тот самый,
+    # что называл снятый `hydra.jwksUrl`.
+    issuerKeySets: "http://localhost:28080/.ory/hydra/public/=http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json"
+    # НАШ издатель на этой фазе не принимается — своей чеканки у стенда нет.
+    # Пусто здесь значит именно это и ничего больше: непустое значение вне
+    # `issuers` дало бы отказ в старте, а внутри — потребовало бы авторитета
+    # отзыва, которого фаза не несёт.
+    platformIssuer: ""
+    revocationUrl: ""
   advertisedEndpoint: localhost:18443
   image: kacho-api-gateway:dev
   imagePullPolicy: IfNotPresent
@@ -301,29 +345,39 @@ api-gateway:
     # gRPC connection is warm Checks are sub-ms, so this only widens the cold-start
     # window. Prod keeps the 200ms default (values.prod.yaml unaffected).
     checkTimeoutMs: 2000
-  # KAC-127 Phase 2 — Hydra JWKS for RS256 access-token verification.
+  # KAC-127 Phase 2 — приём RS256-токена провайдера.
   #
-  # After register+login the SPA carries a Hydra-issued RS256 access token. The
-  # gateway auth path validates it by fetching Hydra's JWKS. config.go derives
-  # the JWKS endpoint from KACHO_HYDRA_ISSUER unless KACHO_HYDRA_JWKS_URL is set
-  # explicitly; the derived default (`https://hydra.api.kacho.cloud/...`) is NOT
-  # reachable from inside the cluster (Hydra's dev self.issuer is
-  # `http://localhost:28080/.ory/hydra/public/`). So point the gateway at the
-  # in-cluster Hydra PUBLIC Service directly.
+  # ЗДЕСЬ СТОЯЛО ОПИСАНИЕ ДВУХ РУЧЕК, КОТОРЫХ В ЭТОМ ПРОФИЛЕ БОЛЬШЕ НЕТ: как
+  # `KACHO_HYDRA_JWKS_URL` задаёт адрес набора, а `KACHO_HYDRA_ISSUER` — строку
+  # `iss`, и что без них край выводит недостижимое умолчание
+  # `https://hydra.<домен>`. Предмет переехал в `tokenAcceptance` выше, и текст,
+  # переживший свой предмет, отправлял бы читателя править пустые значения.
   #
-  # Service: `kacho-umbrella-hydra-public` (release kacho-umbrella), port 4444,
-  # JWKS path `/.well-known/jwks.json` (Ory Hydra chart service-public.yaml).
-  # Without this the gateway fetches the unreachable default → Hydra tokens are
-  # never validated → WhoAmI / Account / Project return code 16 AUTHN_REQUIRED.
-  # SEC-J: the verifier does an EXACT-match `iss` check, so the gateway issuer
-  # MUST equal Hydra's `self.issuer` (hydra.config.urls.self.issuer below =
-  # `http://localhost:28080/.ory/hydra/public/`) — the identity-string Hydra
-  # stamps into the token `iss` claim (browser never navigates there). Without
-  # it, KACHO_HYDRA_ISSUER derives the unreachable external default and every
-  # real login token fails the iss check → AUTHN_REQUIRED persists.
+  # Что из прежнего текста остаётся ВЕРНЫМ и потому сохранено:
+  #
+  #   - после регистрации и входа приложение несёт RS256-токен провайдера, и
+  #     край проверяет его, забирая набор ключей;
+  #   - набор берётся у внутреннего Service `kacho-umbrella-hydra-public`
+  #     (выпуск kacho-umbrella), порт 4444, путь `/.well-known/jwks.json`
+  #     (чарт Ory Hydra, service-public.yaml) — внешний адрес из пода
+  #     недостижим;
+  #   - SEC-J: проверяющий сверяет `iss` ТОЧНЫМ совпадением, поэтому строка
+  #     издателя обязана дословно равняться `hydra.config.urls.self.issuer`
+  #     ниже по файлу — той, что провайдер ставит в токен (браузер по этому
+  #     адресу не ходит никогда).
+  #
+  # Все три утверждения теперь держит объявление `tokenAcceptance` выше, а не
+  # эти две ручки.
   hydra:
-    jwksUrl: "http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json"
-    issuer: "http://localhost:28080/.ory/hydra/public/"
+    # СКАЛЯРНЫЙ ПИН СНЯТ — предмет переехал в `tokenAcceptance` выше.
+    #
+    # Оставить его там нельзя: два объявления об одном предмете дают отказ в
+    # старте. Пустая строка здесь — не «забыли», а «объявлено выше»: у обеих
+    # ручек в дереве остался ровно один читатель — запасная ветвь разбора, та
+    # самая, что выводила адрес из домена, и ни один профиль её больше не
+    # исполняет.
+    jwksUrl: ""
+    issuer: ""
     # ─── Revocation path (ADMIN API — a different Service from the two above) ──
     # Where the gateway asks whether an access token has been revoked, and where
     # the logout handler ends the provider-side session. Neither is derivable:
