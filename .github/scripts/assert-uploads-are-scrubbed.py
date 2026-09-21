@@ -63,7 +63,7 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ci_text import shell_executable  # noqa: E402 — путь дописывается строкой выше
+from ci_text import shell_code_only, shell_executable  # noqa: E402 — путь дописан выше
 
 SCRUBBER = "scrub-publication.py"
 UPLOAD_ACTION = "actions/upload-artifact"
@@ -188,6 +188,7 @@ class Counts:
         self.uploads = 0
         self.builds = 0
         self.verbs = 0
+        self.calls = 0
         self.actions: set[str] = set()
 
     def add(self, other: "Counts") -> None:
@@ -196,6 +197,7 @@ class Counts:
         self.uploads += other.uploads
         self.builds += other.builds
         self.verbs += other.verbs
+        self.calls += other.calls
         self.actions |= other.actions
 
 
@@ -209,6 +211,25 @@ def audit_workflow(path: Path, doc: dict) -> tuple[list[str], Counts]:
         if not isinstance(spec, dict):
             continue
         c.jobs += 1
+
+        # ВЫЗОВ ДЕЙСТВИЯ НА УРОВНЕ РАБОТЫ — ДВЕРЬ, КОТОРУЮ ВЕДОМОСТЬ НЕ
+        # ОСМАТРИВАЛА ВОВСЕ. Работа вида `uses: org/flow@sha` шагов не имеет, и
+        # обход по шагам проходил мимо неё молча. На сегодняшнем дереве таких
+        # работ ноль — это открытая дверь, а не течь, и закрывается она тем же
+        # правилом: неизвестное — находка.
+        if spec.get("uses"):
+            c.calls += 1
+            action = str(spec["uses"]).split("@")[0].strip()
+            c.actions.add(action)
+            if ACTION_VERDICTS.get(action) != "no":
+                findings.append(
+                    f"{path.name} / {job_name}: работа целиком делегирована действию "
+                    f"«{action}», и шагов у неё нет — ни один шаг чистки туда не "
+                    f"вставить. Публикует оно что-нибудь или нет, здесь не знают: "
+                    f"внесите вердикт в ACTION_VERDICTS либо снимите делегирование."
+                )
+            continue
+
         steps = spec.get("steps") or []
         for i, step in enumerate(steps):
             if not isinstance(step, dict):
@@ -236,10 +257,14 @@ def audit_workflow(path: Path, doc: dict) -> tuple[list[str], Counts]:
             # ── ПУБЛИКАЦИЯ ИЗ ТЕЛА ШАГА ────────────────────────────────────
             body = shell_executable(str(step.get("run") or ""))
             if body and not uses:
-                hit = [v for v in PUBLISH_VERBS if v in body]
+                # ПРОБЕЛЫ НОРМАЛИЗУЮТСЯ ПЕРЕД СЛИЧЕНИЕМ. Подстрочное сравнение
+                # не узнавало собственную запись, написанную с двойным пробелом
+                # (`gh  release upload`), — то есть перечень не узнавал сам себя.
+                flat = re.sub(r"[ \t]+", " ", body)
+                hit = [v for v in PUBLISH_VERBS if re.sub(r"[ \t]+", " ", v) in flat]
                 # Сама чистка и этот гейт зовут внешние средства ПО ДЕЛУ: они
                 # читают, а не публикуют. Признак — вызов нашего же скрипта.
-                if hit and SCRUBBER not in body and "assert-uploads-are-scrubbed" not in body:
+                if hit and SCRUBBER not in flat and "assert-uploads-are-scrubbed" not in flat:
                     c.verbs += 1
                     findings.append(
                         f"{where0}: тело шага выносит байты наружу прогона "
@@ -281,14 +306,22 @@ def audit_workflow(path: Path, doc: dict) -> tuple[list[str], Counts]:
             for prev in steps[:i]:
                 if not isinstance(prev, dict):
                     continue
-                run = shell_executable(str(prev.get("run") or ""))
+                # ПРИЗНАК «ВЫЗОВ ЕСТЬ» ЧИТАЕТ КОД БЕЗ ЛИТЕРАЛОВ И БЕЗ ТЕЛ
+                # ВЛОЖЕННЫХ ДОКУМЕНТОВ. Приёмка показала ложное молчание: шаг, где
+                # единственное упоминание чистки — строка в кавычках, засчитывался
+                # связывающим, и выкладка объявлялась чистой. Выбор назван в шапке
+                # ci_text.py: исключение ошибается в безопасную сторону — вызов,
+                # написанный целиком внутри кавычек, будет объявлен отсутствующим.
+                run = shell_code_only(str(prev.get("run") or ""))
                 if SCRUBBER in run and f"--step-id {up_id}" in run:
                     scrub = prev
             if scrub is None:
                 findings.append(
                     f"{where} (id={up_id}): выше в работе нет шага, зовущего "
-                    f"{SCRUBBER} с `--step-id {up_id}`. Артефакт уедет, "
-                    f"не будучи прочитанным ни одним шагом."
+                    f"{SCRUBBER} с `--step-id {up_id}` ИСПОЛНЯЕМОЙ строкой. "
+                    f"Вызов внутри кавычек, внутри вложенного документа или под "
+                    f"решёткой вызовом не считается: артефакт уедет, не будучи "
+                    f"прочитанным ни одним шагом."
                 )
                 continue
             scrub_id = str(scrub.get("id") or "")
@@ -387,7 +420,8 @@ def audit(root: Path) -> tuple[int, str]:
         f"перепись: объявлений {len(files)}, работ {total.jobs}, шагов {total.steps}, "
         f"публикующих шагов {total.uploads}, сборок образов {total.builds}, "
         f"различных действий {len(total.actions)} (все с вердиктом), "
-        f"публикаций из тела шага {total.verbs}, находок {len(findings)}"
+        f"публикаций из тела шага {total.verbs}, работ-делегирований {total.calls}, "
+        f"находок {len(findings)}"
     )
 
     # ПРЕДПОСЫЛКА ГЕЙТА. Он утверждает свойство выкладок; выкладок ноль — значит
@@ -718,6 +752,100 @@ jobs:
           sarif_file: gosec.sarif
 """
 
+CALL_IN_LITERAL = """
+name: проба
+jobs:
+  работа:
+    steps:
+      - name: чистка только в кавычках
+        id: чистка-отчётов
+        run: |
+          echo "позвать бы python3 .github/scripts/scrub-publication.py --workflow .github/workflows/w.yml --job работа --step-id выкладка"
+      - name: выкладка
+        id: выкладка
+        if: ${{ steps.чистка-отчётов.outcome == 'success' }}
+        uses: actions/upload-artifact@0000000000000000000000000000000000000000
+        with:
+          name: отчёты
+          path: out/*.json
+"""
+
+CALL_IN_HEREDOC = """
+name: проба
+jobs:
+  работа:
+    steps:
+      - name: чистка внутри вложенного документа
+        id: чистка-отчётов
+        run: |
+          cat <<'EOF' > памятка.txt
+          python3 .github/scripts/scrub-publication.py --workflow .github/workflows/w.yml --job работа --step-id выкладка
+          EOF
+      - name: выкладка
+        id: выкладка
+        if: ${{ steps.чистка-отчётов.outcome == 'success' }}
+        uses: actions/upload-artifact@0000000000000000000000000000000000000000
+        with:
+          name: отчёты
+          path: out/*.json
+"""
+
+CALL_WITH_QUOTED_ARG = """
+name: проба
+jobs:
+  работа:
+    steps:
+      - name: настоящий вызов с аргументом в кавычках
+        id: чистка-отчётов
+        run: |
+          python3 .github/scripts/scrub-publication.py --workflow .github/workflows/w.yml --job работа --step-id выкладка --set 'matrix.dir=out'
+      - name: выкладка
+        id: выкладка
+        if: ${{ steps.чистка-отчётов.outcome == 'success' }}
+        uses: actions/upload-artifact@0000000000000000000000000000000000000000
+        with:
+          name: отчёты
+          path: ${{ matrix.dir }}/*.json
+"""
+
+JOB_LEVEL_USES = """
+name: проба
+jobs:
+  работа:
+    uses: some-org/reusable-flow@0000000000000000000000000000000000000000
+  вторая:
+    steps:
+      - name: чистка
+        id: чистка-отчётов
+        run: python3 .github/scripts/scrub-publication.py --workflow .github/workflows/w.yml --job вторая --step-id выкладка
+      - name: выкладка
+        id: выкладка
+        if: ${{ steps.чистка-отчётов.outcome == 'success' }}
+        uses: actions/upload-artifact@0000000000000000000000000000000000000000
+        with:
+          name: отчёты
+          path: out/*.json
+"""
+
+VERB_DOUBLE_SPACE = """
+name: проба
+jobs:
+  работа:
+    steps:
+      - name: публикация с двойным пробелом
+        run: gh  release  upload v1 ./out/report.json
+      - name: чистка
+        id: чистка-отчётов
+        run: python3 .github/scripts/scrub-publication.py --workflow .github/workflows/w.yml --job работа --step-id выкладка
+      - name: выкладка
+        id: выкладка
+        if: ${{ steps.чистка-отчётов.outcome == 'success' }}
+        uses: actions/upload-artifact@0000000000000000000000000000000000000000
+        with:
+          name: отчёты
+          path: out/*.json
+"""
+
 NO_UPLOADS = """
 name: проба
 jobs:
@@ -768,6 +896,11 @@ def self_test() -> int:
     case("вызов только в хвостовом комментарии", TRAILING_COMMENT, 1)
     case("решётка внутри кавычек кода не отнимает", QUOTED_HASH, 0)
     case("чистка адресована чужой работе", WRONG_ADDRESS, 1)
+    case("вызов ТОЛЬКО внутри кавычек", CALL_IN_LITERAL, 1)
+    case("вызов ТОЛЬКО внутри вложенного документа", CALL_IN_HEREDOC, 1)
+    case("настоящий вызов с аргументом в кавычках", CALL_WITH_QUOTED_ARG, 0)
+    case("работа целиком делегирована действию", JOB_LEVEL_USES, 1)
+    case("глагол публикации с двойным пробелом", VERB_DOUBLE_SPACE, 1)
     case("неизвестное действие — находка, а не молчание", UNKNOWN_ACTION, 1)
     case("публикация из тела шага мимо выкладки", PUBLISH_FROM_BODY, 1)
     case("отчёт сканера связан с чисткой", SARIF_BOUND, 0)
