@@ -59,6 +59,28 @@ import yaml
 SCRUBBER = "scrub-publication.py"
 UPLOAD_ACTION = "actions/upload-artifact"
 
+# ── ВТОРОЙ ПРОИЗВОДИТЕЛЬ АРТЕФАКТОВ, И ОН НЕ ВИДЕН ПЕРВОМУ ПРЕДИКАТУ ────────
+#
+# Сборщик образов выкладывает СВОЙ артефакт — запись сборки (`*.dockerbuild`) —
+# САМ, не обращаясь к `actions/upload-artifact`. Предикат «шаг зовёт выкладку»
+# такого производителя не видит вовсе: перечислив связанные выкладки, он
+# умалчивал о существовании ЦЕЛОГО ВИДА производителей.
+#
+# Ни объёма этого вида, ни его доли здесь не приводится, и это не пробел:
+# читатель этого файла публичен, а всякая величина о живущем сегодня отвечает
+# ему на вопрос «куда смотреть» — правка закрывает канал ВПЕРЁД, тогда как уже
+# выложенное живёт до истечения своего срока хранения.
+#
+# Чистить их нельзя by construction: файл собирает и выкладывает чужое действие
+# внутри себя, между «собрал» и «выложил» нашего шага нет. Значит исход ровно
+# один — канал ЗАКРЫТЬ: у действия есть ручка `DOCKER_BUILD_RECORD_UPLOAD`, и
+# `false` отключает выкладку записи. Сводка задания при этом остаётся.
+#
+# Требование стоит здесь, а не «в договорённости»: без него следующий сборщик
+# откроет канал заново и молча.
+BUILD_ACTION = "docker/build-push-action"
+RECORD_KNOB = "DOCKER_BUILD_RECORD_UPLOAD"
+
 # Выражение объявления внутри маски пути (`${{ matrix.dir }}`) вычисляет
 # провайдер. Чистка читает маску из файла и видит его дословно, поэтому значение
 # ей подаёт вызывающий — ключом `--set`. Не подал — чистка честно ответит «не
@@ -86,11 +108,11 @@ class Finding(str):
     pass
 
 
-def audit_workflow(path: Path, doc: dict) -> tuple[list[str], int, int, int]:
-    """Разбирает одно объявление. Возвращает (находки, работ, шагов, выкладок)."""
+def audit_workflow(path: Path, doc: dict) -> tuple[list[str], int, int, int, int]:
+    """Разбирает одно объявление. Возвращает (находки, работ, шагов, выкладок, сборок)."""
     findings: list[str] = []
     jobs = (doc or {}).get("jobs") or {}
-    njobs = nsteps = nuploads = 0
+    njobs = nsteps = nuploads = nbuilds = 0
 
     for job_name, spec in jobs.items():
         if not isinstance(spec, dict):
@@ -101,7 +123,24 @@ def audit_workflow(path: Path, doc: dict) -> tuple[list[str], int, int, int]:
             if not isinstance(step, dict):
                 continue
             nsteps += 1
-            if UPLOAD_ACTION not in str(step.get("uses") or ""):
+            uses = str(step.get("uses") or "")
+
+            # Второй производитель: выкладывает запись сборки САМ.
+            if BUILD_ACTION in uses:
+                nbuilds += 1
+                env = step.get("env") or {}
+                val = str(env.get(RECORD_KNOB, "")).strip().strip("'\"").lower()
+                if val != "false":
+                    findings.append(
+                        f"{path.name} / {job_name} / шаг #{i + 1}: сборщик образов "
+                        f"выкладывает запись сборки САМ, минуя чистку, а "
+                        f"`env.{RECORD_KNOB}` у него не выставлен в `false`. "
+                        f"Чистить её нечем: между «собрал» и «выложил» нашего шага "
+                        f"нет, — значит канал обязан быть закрыт."
+                    )
+                continue
+
+            if UPLOAD_ACTION not in uses:
                 continue
             nuploads += 1
             where = f"{path.name} / {job_name} / шаг #{i + 1}"
@@ -162,7 +201,7 @@ def audit_workflow(path: Path, doc: dict) -> tuple[list[str], int, int, int]:
                     f"{got or '(условия нет)'}\n      Без этого шаг чистки краснеет, "
                     f"а артефакт уезжает сырым: у выкладки своё условие."
                 )
-    return findings, njobs, nsteps, nuploads
+    return findings, njobs, nsteps, nuploads, nbuilds
 
 
 def audit(root: Path) -> tuple[int, str]:
@@ -170,7 +209,7 @@ def audit(root: Path) -> tuple[int, str]:
     files = sorted(p for p in wf_dir.glob("*.y*ml") if p.is_file())
     out: list[str] = []
     findings: list[str] = []
-    njobs = nsteps = nuploads = 0
+    njobs = nsteps = nuploads = nbuilds = 0
 
     if not files:
         return 2, (
@@ -184,15 +223,16 @@ def audit(root: Path) -> tuple[int, str]:
         except yaml.YAMLError as exc:
             findings.append(f"{f.name}: объявление не разбирается ({exc.__class__.__name__}) — не осмотрено")
             continue
-        fnd, j, s, u = audit_workflow(f, doc if isinstance(doc, dict) else {})
+        fnd, j, s, u, b = audit_workflow(f, doc if isinstance(doc, dict) else {})
         findings.extend(fnd)
         njobs += j
         nsteps += s
         nuploads += u
+        nbuilds += b
 
     out.append(
         f"перепись: объявлений {len(files)}, работ {njobs}, шагов {nsteps}, "
-        f"выкладок {nuploads}, находок {len(findings)}"
+        f"выкладок {nuploads}, сборок образов {nbuilds}, находок {len(findings)}"
     )
 
     # ПРЕДПОСЫЛКА ГЕЙТА. Он утверждает свойство выкладок; выкладок ноль — значит
@@ -337,6 +377,50 @@ jobs:
           path: ${{ matrix.dir }}/out/*.json
 """
 
+BUILD_OPEN = """
+name: проба
+jobs:
+  работа:
+    steps:
+      - name: сборка
+        uses: docker/build-push-action@0000000000000000000000000000000000000000
+        with:
+          context: .
+      - name: чистка
+        id: чистка-отчётов
+        run: python3 .github/scripts/scrub-publication.py --workflow .github/workflows/w.yml --job работа --step-id выкладка
+      - name: выкладка
+        id: выкладка
+        if: ${{ steps.чистка-отчётов.outcome == 'success' }}
+        uses: actions/upload-artifact@0000000000000000000000000000000000000000
+        with:
+          name: отчёты
+          path: out/*.json
+"""
+
+BUILD_CLOSED = """
+name: проба
+jobs:
+  работа:
+    steps:
+      - name: сборка
+        uses: docker/build-push-action@0000000000000000000000000000000000000000
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: "false"
+        with:
+          context: .
+      - name: чистка
+        id: чистка-отчётов
+        run: python3 .github/scripts/scrub-publication.py --workflow .github/workflows/w.yml --job работа --step-id выкладка
+      - name: выкладка
+        id: выкладка
+        if: ${{ steps.чистка-отчётов.outcome == 'success' }}
+        uses: actions/upload-artifact@0000000000000000000000000000000000000000
+        with:
+          name: отчёты
+          path: out/*.json
+"""
+
 NO_UPLOADS = """
 name: проба
 jobs:
@@ -381,6 +465,8 @@ def self_test() -> int:
     case("чистка называет ЧУЖОЙ шаг", FOREIGN_SCRUB, 1)
     case("выражение в маске без --set", EXPR_UNSET, 1)
     case("выражение в маске с --set", EXPR_SET, 0)
+    case("сборщик образов выкладывает запись сам", BUILD_OPEN, 1)
+    case("сборщик образов: канал записи закрыт", BUILD_CLOSED, 0)
     # Предпосылка: судить нечего — это не зелёное.
     case("выкладок ноль — предпосылка гейта не выполняется", NO_UPLOADS, 2)
 
