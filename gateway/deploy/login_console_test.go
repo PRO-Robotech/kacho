@@ -4,6 +4,7 @@
 package deploy_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,68 +36,350 @@ import (
 // whole answer rests on, the premise is asserted here too rather than assumed:
 // see TestLoginConsole_PremiseLateSilenceDoesNotClearAnEarlierKey.
 
-// consolePath — where the sign-in console declares itself in the umbrella values.
-// The sub-chart is `kratos-selfservice-ui`; its own values sit under the nested
-// `kratosSelfServiceUI` key.
-var consolePath = []string{"kratos-selfservice-ui", "kratosSelfServiceUI", "enabled"}
-
-// gitignoredStackMember — the LAST `-f` of the live fe3455 chain, deliberately
-// OUTSIDE the tree: it carries per-cluster site credentials. Its absence is
-// therefore NOT a finding, and this gate says so out loud instead of quietly
-// reporting a partial fold as if it were completeness.
+// ─────────────────────────────────────────────────────────────────────────────
+// ЧЕМ ИМЕННО ЧЕЛОВЕК ВХОДИТ — РЕШАЕТ ПОСАДКА, А НЕ АДРЕС, ВЫПИСАННЫЙ ЗДЕСЬ
 //
-// The count is derived, never restated: an earlier edition said "3 of 4" in
-// prose, the chain then gained a tracked posture layer, and the prose kept
-// asserting the old arithmetic while the fold had changed underneath it.
+// Вопрос у гейта один и он не менялся: «может ли человек на этом стенде пройти
+// церемонию и оказаться с предъявителем, который край примет?» Адрес ответа —
+// менялся.
+//
+// Прежняя редакция отождествляла церемонию с интерфейсом входа ЧУЖОГО
+// поставщика (`kratos-selfservice-ui`). На посадке `external` это верно. На
+// посадке `own` — неверно by construction: читателя печенья поставщика под `own`
+// не заводится ВОВСЕ, и это напечатано переписью соседнего гейта
+// композиционного корня (own_lane_readers_wiring_test.go,
+// TestOwnLane_F3_12_NoProviderCarrierReaderIsWiredUnderOwn: «мест 2 · заведено
+// под own 0»). Четыре глагола формы на этой посадке ретранслирует край на
+// слушатель полосы службы.
+//
+// Значит стек на `own`, выключивший чужой интерфейс, прежняя редакция объявляла
+// находкой, называя при этом ВЕРНУЮ причину о НЕВЕРНОМ предмете: «интерфейс входа
+// ВЫКЛЮЧИЛИ» — тогда как консоль этой посадки стоит в
+// другом месте и включена. Требование пережило бы свой предмет и было бы снято
+// не по предикату, а как непонятное.
+//
+// ПОСЛАБЛЕНИЕМ ЭТО НЕ ЯВЛЯЕТСЯ: отказ остаётся на КАЖДОМ боевом стеке, на обеих
+// посадках. Меняется адрес, по которому гейт спрашивает, а не наличие спроса.
+// На `own` спрашиваются ОБЕ половины полосы — слушатель службы и адрес
+// ретрансляции края, — потому что половина полосы даёт стенд, где форма
+// отвечает 503 на каждом запросе, неотличимо от «служба лежит».
+//
+// ЧЕГО ГЕЙТ НЕ СУДИТ. Включённый чужой интерфейс на посадке `own` находкой не
+// объявляется: он там не читается, но и вреда собственной церемонии не наносит,
+// а предмет этого гейта — ОДИН, «есть ли чем войти». Снятие чужого интерфейса
+// как мёртвого груза — предмет переписи чужих служб, а не этого файла.
+
+// gitignoredStackMember — ПОСЛЕДНИЙ `-f` живой цепочки fe3455, намеренно ВНЕ
+// дерева: он несёт учётные данные площадки. Его отсутствие находкой НЕ является,
+// и гейт говорит об этом вслух, вместо того чтобы тихо выдать частичное слитие
+// за полноту.
+//
+// Число ВЫВОДИТСЯ и никогда не пересказывается: прежняя редакция писала прозой
+// «3 из 4», цепочка затем получила отслеживаемый слой посадки, и проза
+// продолжала утверждать прежнюю арифметику, пока слитие под ней менялось.
 const gitignoredStackMember = "values.fe3455-ory.yaml"
 
-// The BOOLEAN leaf is read through the package's existing `resolveStackBoolAt`
-// (admin_hop_transport_test.go) rather than a second copy of the same walk. Its
-// two return values are what this gate needs and a string resolver could not
-// give: `enabled: false` declared and `enabled` never mentioned are OPPOSITE
-// findings — "somebody turned the console off" versus "nobody ever wired it" —
-// and a gate that collapses them names the wrong cause in its own message.
+// consolePath — где интерфейс входа ЧУЖОГО поставщика объявляет себя в
+// значениях зонта. Подчарт — `kratos-selfservice-ui`, его собственные значения
+// лежат под вложенным ключом `kratosSelfServiceUI`.
+var consolePath = []string{"kratos-selfservice-ui", "kratosSelfServiceUI", "enabled"}
 
-// TestStacks_ProductionClassResolvesTheLoginConsole — scenario IAM-INT-1-18.
+// lanePortPath / laneURLPath — две половины СОБСТВЕННОЙ полосы формы: порт, на
+// котором служба поднимает слушатель, и адрес, на который край ретранслирует
+// глаголы. Обе — абсолютные пути в слитом дереве зонта.
+var (
+	lanePortPath = []string{"kaname", "ports", "loginLane"}
+	laneURLPath  = []string{"api-gateway", "authn", "iamLoginLaneUrl"}
+)
+
+// posturePathService / posturePathEdge — где посадка объявляется каждой
+// половиной. Читается сначала служба, затем край: СОГЛАСИЕ половин — предмет
+// deploy/helm/umbrella/identity_posture_profiles_test.go, и второго суждения о
+// нём здесь не заводится.
+var (
+	posturePathService = []string{"kaname", "config", "authn", "identityProvider"}
+	posturePathEdge    = []string{"api-gateway", "authn", "identityProvider"}
+)
+
+// postureExternal — значение, которое получает цепочка, посадку не объявившая.
+// Умолчание живёт в базовом профиле чарта службы
+// (`deploy/helm/umbrella/charts/kaname/values.yaml`), поэтому молчание цепочки
+// есть `external`, а не «не решено»: гейт обязан спрашивать с неё чужой
+// интерфейс ровно так же, как с объявившей.
+const (
+	postureExternal = "external"
+	postureOwn      = "own"
+)
+
+// loginConsoleFacts — что ОДНА цепочка объявила о том, чем на ней входит человек.
+type loginConsoleFacts struct {
+	Stack string
+	// Posture — посадка личности; "" означает «цепочка молчит», и это НЕ третье
+	// состояние: молчание разрешается в `external` умолчанием чарта. Поле
+	// хранится сырым, чтобы перепись могла отличить объявивших от наследующих.
+	Posture string
+	// ForeignUI / ForeignUIDeclared — `enabled: false` и «ключа нет вовсе» суть
+	// ПРОТИВОПОЛОЖНЫЕ находки («интерфейс выключили» против «его никто не
+	// провязывал»), и гейт, их схлопнувший, называет неверную причину.
+	ForeignUI         bool
+	ForeignUIDeclared bool
+	// LanePort / LaneURL — половины собственной полосы формы.
+	LanePort string
+	LaneURL  string
+}
+
+// loginConsoleCensus — ОБЪЁМ ОСМОТРЕННОГО. «Ноль находок» обязано быть отличимо
+// от «ноль прочитанного», и от «боевых стеков не нашлось» тоже.
+type loginConsoleCensus struct {
+	Stacks     int
+	Production int
+	OnExternal int
+	OnOwn      int
+	Inherited  int
+}
+
+func (c loginConsoleCensus) String() string {
+	return fmt.Sprintf("стеков в таблице %d · боевых %d · из них на чужой посадке %d "+
+		"(из них посадку НЕ объявляют, а наследуют умолчание чарта %d) · на собственной %d",
+		c.Stacks, c.Production, c.OnExternal, c.Inherited, c.OnOwn)
+}
+
+// judgeLoginConsole — НАХОДКИ по перечню боевых цепочек.
 //
-// Today this passes by construction, and that is precisely its worth: it pins
-// the state an earlier reading declared broken, so the next person to reach the
-// same wrong conclusion is contradicted by a gate rather than by an argument.
+// Функция чистая: вход ей подаёт и дерево, и инъекция. Второго разбора значений
+// внутри неё нет — она судит уже прочитанное.
+func judgeLoginConsole(facts []loginConsoleFacts) ([]string, loginConsoleCensus) {
+	var findings []string
+	census := loginConsoleCensus{}
+	for _, f := range facts {
+		census.Production++
+		posture := strings.TrimSpace(f.Posture)
+		if posture == "" {
+			census.Inherited++
+			posture = postureExternal
+		}
+		switch posture {
+		case postureExternal:
+			census.OnExternal++
+			switch {
+			case !f.ForeignUIDeclared:
+				findings = append(findings, fmt.Sprintf(
+					"%s: посадка %q, а слитый стек НЕ объявляет %s. Боевой стенд без интерфейса "+
+						"входа не проводит церемонию, которую человек завершает предъявителем, и "+
+						"всякая проверка про человека на нём утверждает про никого",
+					f.Stack, posture, strings.Join(consolePath, ".")))
+			case !f.ForeignUI:
+				findings = append(findings, fmt.Sprintf(
+					"%s: посадка %q, а слитый стек разрешает %s в false. Интерфейс входа ВЫКЛЮЧИЛИ — "+
+						"это объявленное значение, а не пропуск, поэтому оно отвергается здесь, а не "+
+						"подставляется умолчанием",
+					f.Stack, posture, strings.Join(consolePath, ".")))
+			}
+		case postureOwn:
+			census.OnOwn++
+			// ОБЕ половины, и каждая называется отдельно: общий отказ «полоса не
+			// настроена» скрыл бы, какая именно половина отсутствует, а половины
+			// правят разные файлы.
+			if strings.TrimSpace(f.LanePort) == "" {
+				findings = append(findings, fmt.Sprintf(
+					"%s: посадка %q, а слитый стек НЕ объявляет %s — слушатель формы не "+
+						"поднимается, и службе нечем провести церемонию, которую на этой посадке "+
+						"проводит она, а не чужой поставщик",
+					f.Stack, posture, strings.Join(lanePortPath, ".")))
+			}
+			if strings.TrimSpace(f.LaneURL) == "" {
+				findings = append(findings, fmt.Sprintf(
+					"%s: посадка %q, а слитый стек НЕ объявляет %s — краю некуда ретранслировать "+
+						"четыре глагола формы, и человек получает 503 на каждом запросе, "+
+						"неотличимо от «служба лежит»",
+					f.Stack, posture, strings.Join(laneURLPath, ".")))
+			}
+		default:
+			findings = append(findings, fmt.Sprintf(
+				"%s: посадка объявлена значением %q, которого этот гейт не знает. Молчание "+
+					"здесь означало бы, что стенд не осмотрен, — а не что он исправен",
+				f.Stack, posture))
+		}
+	}
+	return findings, census
+}
+
+// resolveStackScalarAt читает СКАЛЯР по абсолютному пути в слитом стеке и
+// отдаёт его текстом.
+//
+// Соседи `resolveStackAt` и `resolveStackBoolAt` требуют конкретного типа и
+// отдают («», false) на числе; порт полосы — число, и строковый читатель молча
+// объявил бы его необъявленным. Отдельный читатель, а не правка соседей: у них
+// свой предмет, и смена их типа поменяла бы вердикт у чужих проверок.
+func resolveStackScalarAt(t *testing.T, stack []string, path ...string) string {
+	t.Helper()
+	merged := map[string]any{}
+	for _, profile := range stack {
+		merged = mergeInto(merged, umbrellaValues(t, profile))
+	}
+	var cur any = merged
+	for _, key := range path {
+		m, ok := cur.(map[string]any)
+		if !ok {
+			return ""
+		}
+		if cur, ok = m[key]; !ok {
+			return ""
+		}
+	}
+	switch v := cur.(type) {
+	case nil:
+		return ""
+	case string:
+		return strings.TrimSpace(v)
+	case map[string]any, []any:
+		return ""
+	default:
+		return strings.TrimSpace(fmt.Sprint(v))
+	}
+}
+
+// TestStacks_ProductionClassResolvesTheLoginConsole — сценарий IAM-INT-1-18.
 func TestStacks_ProductionClassResolvesTheLoginConsole(t *testing.T) {
-	// SCOPE OF INSPECTION IS AN ASSERTION OF ITS OWN. "No findings" has to be
-	// distinguishable from "nothing was read" — a table that quietly emptied, or
-	// a production-class predicate that stopped matching anything, would otherwise
-	// report exactly the same green as a healthy tree.
-	inspected := 0
-	for name, stack := range deployableStacks(t) {
+	// ОБЪЁМ ОСМОТРЕННОГО — УТВЕРЖДЕНИЕ САМО ПО СЕБЕ. «Находок нет» обязано
+	// отличаться от «читать было нечего»: опустевшая таблица и переставший
+	// совпадать боевой предикат печатали бы ровно тот же зелёный.
+	var facts []loginConsoleFacts
+	stacks := deployableStacks(t)
+	for name, stack := range stacks {
 		if !stackIsProductionClass(t, stack) {
-			t.Logf("%s: dev-class by its own declaration — skipped (%d profile(s))", name, len(stack))
+			t.Logf("%s: dev-класс по собственному объявлению — пропущен (%d профиль(ей))", name, len(stack))
 			continue
 		}
-		inspected++
-		t.Logf("%s: production-class, folding %d profile(s): %s",
+		t.Logf("%s: боевой класс, слитие %d профиль(ей): %s",
 			name, len(stack), strings.Join(stack, " -> "))
 
-		enabled, declared := resolveStackBoolAt(t, stack, consolePath...)
-		switch {
-		case !declared:
-			t.Errorf("%s: the folded stack never declares %s. A production-class stand with no "+
-				"sign-in console cannot conduct the ceremony a human completes to obtain a bearer, "+
-				"and every human-caller check on that stand asserts against nobody.",
-				name, strings.Join(consolePath, "."))
-		case !enabled:
-			t.Errorf("%s: the folded stack resolves %s to false. Somebody turned the sign-in "+
-				"console OFF — this is a deliberate value, not an omission, so it is refused here "+
-				"rather than defaulted.",
-				name, strings.Join(consolePath, "."))
+		posture := resolveStackScalarAt(t, stack, posturePathService...)
+		if posture == "" {
+			posture = resolveStackScalarAt(t, stack, posturePathEdge...)
 		}
+		enabled, declared := resolveStackBoolAt(t, stack, consolePath...)
+		facts = append(facts, loginConsoleFacts{
+			Stack:             name,
+			Posture:           posture,
+			ForeignUI:         enabled,
+			ForeignUIDeclared: declared,
+			LanePort:          resolveStackScalarAt(t, stack, lanePortPath...),
+			LaneURL:           resolveStackScalarAt(t, stack, laneURLPath...),
+		})
 	}
-	if inspected == 0 {
-		t.Fatalf("this gate inspected ZERO production-class stacks out of %d declared. "+
-			"Either the stack table emptied or stackIsProductionClass stopped matching — "+
-			"whichever it is, the green above means nothing.", len(deployableStacks(t)))
+	findings, census := judgeLoginConsole(facts)
+	census.Stacks = len(stacks)
+	if census.Production == 0 {
+		t.Fatalf("гейт осмотрел НОЛЬ боевых стеков из %d объявленных. Либо опустела таблица "+
+			"стеков, либо stackIsProductionClass перестал совпадать — что бы из двух ни "+
+			"случилось, зелёное выше не значит ничего", len(stacks))
 	}
-	t.Logf("inspected %d production-class stack(s) of %d declared", inspected, len(deployableStacks(t)))
+	for _, f := range findings {
+		t.Error(f)
+	}
+	t.Logf("перепись: %s", census)
+}
+
+// TestLoginConsoleGate_Injection_TheOwnLaneHalvesAreEachNamed — гейт УМЕЕТ
+// УПАСТЬ на посадке `own`, и называет ту половину, которой нет.
+//
+// Без этого посадочная ветка была бы объявлением, а не проверкой: стек на `own`
+// сегодня в дереве один и он полон, поэтому ветка исполняется, ничего не находя,
+// и «зелено» о ней означало бы «условие не создано».
+func TestLoginConsoleGate_Injection_TheOwnLaneHalvesAreEachNamed(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		facts loginConsoleFacts
+		want  string
+	}{
+		{"нет слушателя службы", loginConsoleFacts{
+			Stack: "synthetic", Posture: postureOwn, LaneURL: "https://kaname-internal.kacho.svc:9100",
+		}, "kaname.ports.loginLane"},
+		{"нет адреса ретрансляции края", loginConsoleFacts{
+			Stack: "synthetic", Posture: postureOwn, LanePort: "9100",
+		}, "api-gateway.authn.iamLoginLaneUrl"},
+		{"посадка неизвестного значения", loginConsoleFacts{
+			Stack: "synthetic", Posture: "provider-x", LanePort: "9100",
+		}, "которого этот гейт не знает"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			findings, census := judgeLoginConsole([]loginConsoleFacts{tc.facts})
+			if len(findings) != 1 {
+				t.Fatalf("находок %d, ожидалась ровно одна: %v (перепись: %s)", len(findings), findings, census)
+			}
+			if !strings.Contains(findings[0], tc.want) {
+				t.Fatalf("находка не называет %q: %s", tc.want, findings[0])
+			}
+		})
+	}
+}
+
+// TestLoginConsoleGate_Twin_ACompleteOwnLaneIsSilent — ЗАКОННЫЙ БЛИЗНЕЦ к
+// инъекции выше: тот же вход с обеими половинами полосы обязан молчать. Без
+// него инъекция удовлетворялась бы гейтом, который краснеет на всяком `own`.
+func TestLoginConsoleGate_Twin_ACompleteOwnLaneIsSilent(t *testing.T) {
+	findings, census := judgeLoginConsole([]loginConsoleFacts{{
+		Stack: "synthetic", Posture: postureOwn,
+		LanePort: "9100", LaneURL: "https://kaname-internal.kacho.svc:9100",
+		// Чужой интерфейс ВЫКЛЮЧЕН — и это молчание намеренное: под `own` его
+		// никто не читает, и предмет этого гейта им не затронут.
+		ForeignUI: false, ForeignUIDeclared: true,
+	}})
+	if len(findings) != 0 {
+		t.Fatalf("полная собственная полоса объявлена находкой: %v", findings)
+	}
+	if census.OnOwn != 1 {
+		t.Fatalf("перепись не отнесла стек к собственной посадке: %s", census)
+	}
+}
+
+// TestLoginConsoleGate_Injection_TheForeignLaneStillRefuses — ПОЛОЖИТЕЛЬНЫЙ
+// КОНТРОЛЬ прежнего требования: на посадке `external` выключенный и
+// необъявленный интерфейс остаются ДВУМЯ РАЗНЫМИ находками.
+//
+// Посадка здесь подаётся и объявленной, и ПУСТОЙ: пустая означает наследование
+// умолчания чарта, и стек, посадку не объявивший, обязан спрашиваться так же.
+func TestLoginConsoleGate_Injection_TheForeignLaneStillRefuses(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		facts loginConsoleFacts
+		want  string
+	}{
+		{"выключен явно", loginConsoleFacts{
+			Stack: "synthetic", Posture: postureExternal, ForeignUI: false, ForeignUIDeclared: true,
+		}, "ВЫКЛЮЧИЛИ"},
+		{"не объявлен вовсе", loginConsoleFacts{
+			Stack: "synthetic", Posture: postureExternal,
+		}, "НЕ объявляет"},
+		{"посадка унаследована, интерфейс выключен", loginConsoleFacts{
+			Stack: "synthetic", Posture: "", ForeignUI: false, ForeignUIDeclared: true,
+		}, "ВЫКЛЮЧИЛИ"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			findings, _ := judgeLoginConsole([]loginConsoleFacts{tc.facts})
+			if len(findings) != 1 {
+				t.Fatalf("находок %d, ожидалась ровно одна: %v", len(findings), findings)
+			}
+			if !strings.Contains(findings[0], tc.want) {
+				t.Fatalf("находка не называет %q: %s", tc.want, findings[0])
+			}
+		})
+	}
+}
+
+// TestLoginConsoleGate_Twin_AnEnabledForeignConsoleIsSilent — законный близнец
+// к предыдущей инъекции.
+func TestLoginConsoleGate_Twin_AnEnabledForeignConsoleIsSilent(t *testing.T) {
+	findings, census := judgeLoginConsole([]loginConsoleFacts{{
+		Stack: "synthetic", Posture: "", ForeignUI: true, ForeignUIDeclared: true,
+	}})
+	if len(findings) != 0 {
+		t.Fatalf("включённый чужой интерфейс объявлен находкой: %v", findings)
+	}
+	if census.Inherited != 1 || census.OnExternal != 1 {
+		t.Fatalf("перепись не отнесла молчащий стек к наследующим чужую посадку: %s", census)
+	}
 }
 
 // TestLoginConsole_PremiseLateSilenceDoesNotClearAnEarlierKey — the gate above
