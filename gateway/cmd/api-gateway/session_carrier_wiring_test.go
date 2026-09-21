@@ -180,3 +180,36 @@ func judgeCarrierFixture(t *testing.T, extra string) (*token.FileSet, *ast.File)
 	}
 	return fset, f
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// НИ ОДНО СОСТОЯНИЕ НОСИТЕЛЯ НЕ ОСЛАБЛЯЕТ ПРИЁМ ТОКЕНА.
+//
+// Множество читателей отвечает на «чьё печенье мы читаем» и ни на что больше.
+// Приём токена решает СВОЁ объявление (`KACHO_API_GATEWAY_TOKEN_ISSUERS`),
+// разбираемое `config.TokenAcceptance`, и переходное состояние у него своё, с
+// первого дня. Свойство судится ВЛОЖЕННОСТЬЮ: приём токена, оказавшийся внутри
+// ветки решения о носителе, означал бы состояние носителя, в котором издателей
+// принимается больше или проверяется меньше.
+
+// tokenAcceptanceSites — места, где край решает, чей токен он принимает.
+var tokenAcceptanceSites = []string{"TokenAcceptance", "NewJWTVerifier"}
+
+func TestSessionCarrierWiring_NoCarrierStateReachesTokenAcceptance(t *testing.T) {
+	fset, f := parseMain(t)
+	seen := 0
+	for _, callee := range tokenAcceptanceSites {
+		positions := f1bFindCall(f, callee)
+		if len(positions) == 0 {
+			t.Fatalf("место приёма токена %q не найдено — молчание гейта ничего не утверждало бы", callee)
+		}
+		for _, pos := range positions {
+			seen++
+			if d := carrierDecisionBranchOf(f, pos); d != "" {
+				t.Errorf("приём токена %q стоит внутри ветки решения о носителе (%s) в %s: "+
+					"появилось бы состояние носителя, в котором издателей принимается больше "+
+					"или проверяется меньше", callee, d, fset.Position(pos).String())
+			}
+		}
+	}
+	t.Logf("перепись: мест приёма токена осмотрено %d · внутри ветки решения о носителе 0", seen)
+}
