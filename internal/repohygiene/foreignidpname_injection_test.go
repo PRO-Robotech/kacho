@@ -338,3 +338,50 @@ func TestForeignIDPNameSplitterKnowsTheWritingForms(t *testing.T) {
 		}
 	}
 }
+
+// TestForeignIDPNameInjection_EntryWithoutItsRevisionIsFound — запись ведомости,
+// чьё число стоит ГОЛЫМ, — находка.
+//
+// Число о дереве верно не вообще, а на ревизии, на которой снято. Ведомость
+// этого гейта уже один раз рассудила чужую работу: её число было снято обходом
+// одной головы, а судило дерево другой — сведённой, — и разошлось ровно на то,
+// что принесло сведение. Расхождение читается как рост поверхности только
+// тогда, когда видно, ОТКУДА взято прежнее число; голое число такого чтения не
+// даёт, и следующий, кто перепишет его, оставит ту же ловушку.
+func TestForeignIDPNameInjection_EntryWithoutItsRevisionIsFound(t *testing.T) {
+	t.Parallel()
+	gaps := ForeignIDPNameProvenanceGaps([]ForeignIDPNameLedgerEntry{{
+		Area: "gateway/", Names: 2, Why: "w", Until: "полоса края закончена",
+	}})
+	if len(gaps) != 1 {
+		t.Fatalf("запись с голым числом не найдена: пропусков %d, ожидался 1 (%v)",
+			len(gaps), gaps)
+	}
+	if !strings.Contains(gaps[0], "gateway/") {
+		t.Errorf("находка не называет координаты записи: %q", gaps[0])
+	}
+}
+
+// TestForeignIDPNameInjection_EntryNamingItsRevisionIsSilent — законный близнец
+// той же формы: запись, чьё число названо вместе с ревизией, молчит.
+//
+// Без него зелёное выше достигалось бы предикатом, находящим что угодно.
+func TestForeignIDPNameInjection_EntryNamingItsRevisionIsSilent(t *testing.T) {
+	t.Parallel()
+	gaps := ForeignIDPNameProvenanceGaps([]ForeignIDPNameLedgerEntry{{
+		Area: "gateway/", Names: 2, Why: "w", Until: "полоса края закончена",
+		Measured: "bec320cf47d",
+	}})
+	if len(gaps) != 0 {
+		t.Fatalf("запись, назвавшая свою ревизию, сочтена находкой: %v", gaps)
+	}
+}
+
+// TestForeignIDPNameInjection_EmptyLedgerHasNoProvenanceGaps — пустая ведомость
+// — ЦЕЛЬ гейта, а не поломка: пропусков в ней нет.
+func TestForeignIDPNameInjection_EmptyLedgerHasNoProvenanceGaps(t *testing.T) {
+	t.Parallel()
+	if gaps := ForeignIDPNameProvenanceGaps(nil); len(gaps) != 0 {
+		t.Fatalf("пустая ведомость дала пропуски %v — проба падает на достижении своей цели", gaps)
+	}
+}

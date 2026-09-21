@@ -257,6 +257,30 @@ type ForeignIDPNameLedgerEntry struct {
 	Why string
 	// Until — при каком факте о дереве запись обязана быть снята.
 	Until string
+	// Measured — ревизия, ОБХОДОМ КОТОРОЙ снято `Names`.
+	//
+	// Число о дереве верно не вообще, а на ревизии. Запись, чьё число стоит
+	// голым, разойдётся со сведённым деревом молча: расхождение прочтут как
+	// рост поверхности, хотя оно означает, что число снято с другой головы.
+	Measured string
+}
+
+// ForeignIDPNameProvenanceGaps — записи ведомости, чьё число стоит ГОЛЫМ: без
+// ревизии, обходом которой оно снято.
+//
+// Отдельной функцией, а не строкой внутри пробы: проверка, которую нельзя
+// позвать с синтетическим входом, инъекцией не доказывается, и её способность
+// находить неотличима от её молчания.
+func ForeignIDPNameProvenanceGaps(ledger []ForeignIDPNameLedgerEntry) []string {
+	gaps := make([]string, 0, len(ledger))
+	for _, e := range ledger {
+		if strings.TrimSpace(e.Measured) != "" {
+			continue
+		}
+		gaps = append(gaps, fmt.Sprintf("запись ведомости %q объявляет имён %d, "+
+			"не называя ревизии, обходом которой это число снято", e.Area, e.Names))
+	}
+	return gaps
 }
 
 // ForeignIDPNameFinding — одно расхождение дерева с ведомостью.
