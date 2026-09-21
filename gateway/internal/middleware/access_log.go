@@ -116,8 +116,11 @@ func HTTPAccessLog(logger *slog.Logger) func(http.Handler) http.Handler {
 			rw := newResponseWriter(w)
 			next.ServeHTTP(rw, r)
 			id := RequestIDFromContext(r.Context())
+			// Путь приходит от запросчика и на внешнем слушателе — от запросчика
+			// БЕЗ удостоверения, поэтому в запись он идёт усечённым: иначе объёмом
+			// журнала управлял бы тот, кого записывают. См. log_field_limits.go.
 			logger.Info("access",
-				"method", r.Method+" "+r.URL.Path,
+				"method", r.Method+" "+TruncateForLog(r.URL.Path),
 				"status", rw.statusCode,
 				"duration_ms", time.Since(start).Milliseconds(),
 				"request_id", id,

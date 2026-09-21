@@ -860,8 +860,11 @@ func (m *AuthzMiddleware) phaseUnservedOnThisListener(dr decisionRequest) (decis
 	// выставленного наружу края, а не отклонение в работе системы. Почему
 	// запись вообще нужна при живом журнале доступа: в журнале этот отказ
 	// выглядит как 404 и НЕОТЛИЧИМ от 404 диспетчера. Различие — здесь.
+	//
+	// Путь — УСЕЧЁННЫЙ: его выбирает незасвидетельствованный запросчик, а записей
+	// о нём две, и объём журнала на запрос иначе был бы кратен его длине.
 	m.cfg.Logger.Info("authz: route not served on this listener, answering as a miss",
-		"method", dr.HTTPReq.Method, "path", dr.HTTPReq.URL.Path, "routed", routed)
+		"method", dr.HTTPReq.Method, "path", TruncateForLog(dr.HTTPReq.URL.Path), "routed", routed)
 	// Описателя НЕТ намеренно: у ответа нет поля, в которое имя метода или путь
 	// могли бы попасть, — неразличимость держится конструкцией, а не вниманием.
 	return decision{outcome: outcomeUnserved}, true
