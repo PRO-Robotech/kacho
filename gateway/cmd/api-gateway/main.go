@@ -155,24 +155,18 @@ func main() {
 		log.Fatalf("identity posture startup-validation: %v", ipErr)
 	}
 
-	// ЧИТАТЕЛЬ НОСИТЕЛЯ БРАУЗЕРНОЙ СЕССИИ ВЫБИРАЕТСЯ ПОСАДКОЙ (Ф3 Р15, Ф3-12,
-	// Ф3-45), а не наличием адреса поставщика. До Ф3 три места корня заводились
-	// условием `kratosURL != "disabled"` — и под `own` читатель носителя
-	// поставщика оставался заведённым: печенье поставщика становилось личностью
-	// на посадке, где сессию человека судит наша служба. Гейт
-	// `own_lane_readers_wiring_test.go` требует у каждого читателя ветки посадки.
+	// ЗДЕСЬ ЗАВОДИЛСЯ ЧИТАТЕЛЬ ПЕЧЕНЬЯ СЕССИИ ЧУЖОЙ СЛУЖБЫ ЛИЧНОСТИ.
 	//
-	// Под `external` — сессия поставщика (cookie ory_kratos_session), адрес
-	// KACHO_API_GATEWAY_KRATOS_PUBLIC_URL, «disabled» выключает полосу.
-	kratosURL := cfg.KratosPublicURL
-	if identityLane == identityposture.External {
-		if kratosURL != "disabled" {
-			authInterceptor = authInterceptor.WithKratos(middleware.NewKratosClient(kratosURL))
-			logger.Info("provider session-auth wired", "kratos_url", kratosURL, "identity_provider", identityLane.String())
-		} else {
-			logger.Info("provider session-auth disabled by env")
-		}
-	}
+	// Читателей носителя браузерной сессии было два, и выбирал между ними
+	// объявленный профилем поставщик. Остался ОДИН — наш, — потому что чужого
+	// поставщика у платформы больше нет: личность человека судит наша служба, а
+	// печенье, выписанное не нами, личностью на нашем крае не становится ни при
+	// какой настройке. Вместе с читателем снят его клиент и ручка адреса.
+	//
+	// Ветка посадки поэтому больше не разводит ЧИТАТЕЛЕЙ — разводить нечего, — и
+	// требование `own_lane_readers_wiring_test.go` («у каждого читателя есть
+	// ветка посадки») исполняется тем, что читатель остался один и он наш.
+
 	// Под `own` — НАША сессия по носителю kaname_session: `Resolve` на внутреннем
 	// слушателе службы, тем же соединением, что вопрос об отсечке; кэша нет
 	// (Р7). Плюс ретрансляция глаголов формы на слушатель полосы службы
@@ -234,7 +228,7 @@ func main() {
 	// а не тихий откат к системным корням: край, который «настроен проверять» и не
 	// проверяет, — худшее из состояний, потому что снаружи неотличим от исправного.
 	jwksHopClient, jwksCAErr := newJWKSHopClient(
-		cfg.HydraJWKSCAFile, time.Duration(cfg.JWKSFetchTimeoutSeconds)*time.Second)
+		cfg.TokenKeySetCAFile, time.Duration(cfg.JWKSFetchTimeoutSeconds)*time.Second)
 	if jwksCAErr != nil {
 		logger.Error("api-gateway refusing to start", "err", jwksCAErr)
 		os.Exit(1)
@@ -336,30 +330,21 @@ func main() {
 
 	// --- Revocation path: refuse to boot production without its addresses ---
 	//
-	// A verified signature says who minted the token and when it expires; it says
-	// nothing about whether the token is still good. Only the identity provider
-	// knows that, and only over its ADMIN API — which is a different Service and
-	// port from the public issuer, so neither address can be worked out from what
-	// the gateway already has. Left unset, both controls are simply off: no
-	// request is ever checked for revocation, and signing out does not end the
-	// provider-side session. Refuse rather than run without them.
-	// AdminCAFile is part of what this guard JUDGES: it refuses the start when the
-	// hop is https and no anchor is pinned. Omitting it here does not weaken the
-	// guard, it makes it unsatisfiable — the field stays at its zero value, so the
-	// answer is "nothing pinned" whatever the operator configured, and the refusal
-	// names the knob that is already set. Locked by
-	// admin_hop_wiring_test.go::TestCompositionRoot_FeedsTheTrustAnchorToTheRevocationGuard.
+	// Проверенная подпись говорит, КТО токен отчеканил и когда он истечёт. О том,
+	// годен ли он ещё, она не говорит ничего: выход, отозванный машинный ключ и
+	// обратный вызов выхода оставляют подпись целой. Спросить об этом можно
+	// только того, кто токен чеканил, — а чеканим их МЫ, и авторитет отзыва у нас
+	// свой, со своим адресом, своим якорем доверия и своей клиентской парой.
 	//
-	// ПОСАДКА ЛИЧНОСТИ подаётся тем же стражем (задача #1125): она разводит
-	// требование АДМИНИСТРАТИВНОГО адреса, и только его. Негодное значение
-	// отвергается здесь же — откат к «безопасному» не производится, потому что
-	// безопасного среди двух значений нет: каждое снимает требования другого.
-	// Разбор посадки стоит выше — до выбора читателя носителя (Ф3 Р15).
+	// ЗДЕСЬ СУДИЛАСЬ ЕЩЁ И ОСЬ ЧУЖОГО ПОСТАВЩИКА — адрес его интроспекции, его
+	// административный адрес и якорь доверия хопа к нему. Она снята вместе с
+	// самим поставщиком: ось, у которой нет предмета, требовала бы адресов у
+	// посадки, где спрашивать некого, а её послабление было бы способом выключить
+	// чтение отзыва, ничего об этом не объявляя.
+	//
+	// Посадка личности стражу больше НЕ подаётся: она разводила требование
+	// административного адреса, и только его. Адреса нет — разводить нечего.
 	if rvErr := validateProductionRevocationConfig(cfg.AppEnv, RevocationConfig{
-		IntrospectionURL: cfg.ResolvedHydraIntrospectionURL(),
-		AdminURL:         cfg.ResolvedHydraAdminURL(),
-		AdminCAFile:      cfg.HydraAdminCAFile,
-		IdentityProvider: identityLane,
 		// Все четыре величины НАШЕГО авторитета отзыва подаются стражу, потому
 		// что он их судит. Собранная без них структура оставила бы их нулевыми,
 		// и вердикт «нашего авторитета нет» не зависел бы от настройки вовсе —
@@ -372,73 +357,25 @@ func main() {
 		log.Fatalf("revocation config startup-validation: %v", rvErr)
 	}
 
-	// --- Revocation check: mounted on the authN layer that always runs ---
+	// --- ОТЗЫВ ЧИТАЕТСЯ У НАШЕЙ СЛУЖБЫ, ВНУТРЕННИМ ПУТЁМ ---
 	//
-	// It used to be wired inside the sender-constrained-token middleware below,
-	// which is gated by KACHO_API_GATEWAY_AUTHN_ENABLE_DPOP — a toggle no profile
-	// sets. So the check was configured, guarded and deployed, and never once
-	// asked. Turning that toggle on is not the way to fix it: it would also start
-	// DEMANDING proof-of-possession, which issuance does not yet mint (see
-	// AuthNRequireMachineTokenBinding), so it would refuse every machine
-	// credential. Whether a token was revoked is a question about ANY token, so
-	// it belongs on the layer every request passes through.
-	// One client for BOTH calls to the provider's admin API — introspection here
-	// and the logout session-kill below. They address the same host, so a trust
-	// anchor configured for one and not the other would be a difference nobody
-	// intended. Built before either consumer so an unusable anchor stops the
-	// process at the composition root rather than at the first request.
-	adminHopClient, ahErr := newAdminHopClient(
-		cfg.HydraAdminCAFile,
-		time.Duration(cfg.IntrospectionTimeoutMs)*time.Millisecond)
-	if ahErr != nil {
-		log.Fatalf("admin API client: %v", ahErr)
-	}
-	if strings.TrimSpace(cfg.HydraAdminCAFile) != "" {
-		logger.Info("admin API hop verified against a pinned trust anchor",
-			"ca_file", cfg.HydraAdminCAFile)
-	}
-
-	if introspectionURL := cfg.ResolvedHydraIntrospectionURL(); introspectionURL != "" {
-		revocationCache, rcErr := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-			HydraIntrospectionURL: introspectionURL,
-			HTTPClient:            adminHopClient,
-			MaxEntries:            cfg.IntrospectionCacheSize,
-			TTL:                   time.Duration(cfg.IntrospectionCacheTTLSeconds) * time.Second,
-			Timeout:               time.Duration(cfg.IntrospectionTimeoutMs) * time.Millisecond,
-		})
-		if rcErr != nil {
-			log.Fatalf("revocation check: %v", rcErr)
-		}
-		// ИСТОЧНИКОВ ОТЗЫВА ДВА, И СПРАШИВАЮТСЯ ОБА (#797).
-		//
-		// Провайдер знает о своих отзывах и об истечении срока. О записи, которую
-		// делает НАШ выход — по идентификатору удостоверения, — он не знает и
-		// знать не может. До этой провязки наш отзыв не участвовал в решении на
-		// пути запроса вовсе: он писался и читался только административными
-		// путями, то есть выход записывал намерение, а не прекращал доступ.
-		//
-		// Соединение к iam уже поднято выше (dialBackends) и является
-		// критическим: без него край не обслуживает ни одного запроса, потому
-		// что iam фронтит и личность, и права. Поэтому отдельной ветки «а вдруг
-		// его нет» здесь не заводится — она была бы веткой, в которой край всё
-		// равно не работает.
-		var revocationChecker middleware.TokenRevocationChecker = revocationCache
-		if iamConn := backends["iamInternal"]; iamConn != nil {
-			revocationChecker = middleware.NewLocalThenProviderRevocation(
-				clients.NewSessionRevocationsAdapter(iamConn), revocationCache)
-		}
-		authInterceptor = authInterceptor.WithRevocationCheck(revocationChecker, 0)
+	// Полоса, спрашивавшая чужого поставщика по его административному пути
+	// интроспекции, снята. Остался читатель, который был заведён рядом с ней и
+	// спрашивал первым, — запись сессий НАШЕЙ службы доступа на внутреннем
+	// слушателе. Прежде он был первой половиной составного читателя
+	// «сначала своя запись, потом поставщик»; вторая половина исчезла вместе со
+	// своим предметом, и составной читатель выродился в свою первую половину.
+	//
+	// Соединение к iam поднято выше (dialBackends) и является критическим: без
+	// него край не обслуживает ни одного запроса, потому что iam фронтит и
+	// личность, и права. Поэтому ветки «а вдруг его нет» здесь не заводится — она
+	// была бы веткой, в которой край всё равно не работает.
+	if iamConn := backends["iamInternal"]; iamConn != nil {
+		authInterceptor = authInterceptor.WithRevocationCheck(
+			middleware.NewOwnRevocationSource(clients.NewSessionRevocationsAdapter(iamConn)), 0)
 		logger.Info("revocation check active on the authN path",
-			"sources", "own record + provider introspection",
-			"cache_ttl_s", cfg.IntrospectionCacheTTLSeconds,
-			"cache_entries", cfg.IntrospectionCacheSize,
+			"source", "own session record (iam internal listener)",
 			"per_call_timeout_ms", cfg.IntrospectionTimeoutMs)
-	} else {
-		// Production-class environments never reach this branch — the guard above
-		// refuses to start. A dev stand may legitimately have no admin API to ask.
-		logger.Warn("revocation check NOT mounted: no introspection endpoint configured; "+
-			"a revoked token stays usable until it expires on its own",
-			"knob", "KACHO_HYDRA_INTROSPECTION_URL")
 	}
 
 	// ─── ОТЗЫВ НАШИХ ТОКЕНОВ — У НАС (Ф1б, задача #926) ─────────────────────
@@ -470,11 +407,11 @@ func main() {
 			log.Fatalf("platform revocation authority client: %v", phErr)
 		}
 		platformCache, pcErr := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-			HydraIntrospectionURL: cfg.PlatformTokenRevocationURL,
-			HTTPClient:            platformHopClient,
-			MaxEntries:            cfg.IntrospectionCacheSize,
-			TTL:                   time.Duration(cfg.IntrospectionCacheTTLSeconds) * time.Second,
-			Timeout:               time.Duration(cfg.IntrospectionTimeoutMs) * time.Millisecond,
+			IntrospectionURL: cfg.PlatformTokenRevocationURL,
+			HTTPClient:       platformHopClient,
+			MaxEntries:       cfg.IntrospectionCacheSize,
+			TTL:              time.Duration(cfg.IntrospectionCacheTTLSeconds) * time.Second,
+			Timeout:          time.Duration(cfg.IntrospectionTimeoutMs) * time.Millisecond,
 		})
 		if pcErr != nil {
 			// Наш издатель принимается, а спросить о его токенах некого. Отказ
@@ -705,16 +642,14 @@ func main() {
 	if jverr == nil {
 		logoutVerifier = logoutVerifierAdapter{v: jwtVerifier}
 	}
+	// СНЯТИЯ СЕССИИ НА СТОРОНЕ ЧУЖОГО ПОСТАВЩИКА ЗДЕСЬ БОЛЬШЕ НЕТ: ни адреса его
+	// административного пути, ни клиента этого хопа. Выход человека снимает НАШУ
+	// запись сессии — ту самую, которую читает проверка отзыва выше, — и второй
+	// стороны, где сессия могла бы пережить выход, не существует.
 	logoutHandler, lerr := handler.NewLogoutHandler(handler.LogoutHandlerConfig{
-		Logger:        logger,
-		Verifier:      logoutVerifier,
-		Revocations:   clients.NewSessionRevocationsAdapter(backends["iamInternal"]),
-		HydraAdminURL: cfg.ResolvedHydraAdminURL(),
-		// Same client as the introspection hop: same host, same trust anchor.
-		// Without this the session kill would keep dialing on the system root
-		// store, so an operator who moved the hop to TLS would find revocation
-		// verified and sign-out silently failing on every logout.
-		HTTPClient:      adminHopClient,
+		Logger:          logger,
+		Verifier:        logoutVerifier,
+		Revocations:     clients.NewSessionRevocationsAdapter(backends["iamInternal"]),
 		HookSharedToken: cfg.HookSharedSecret,
 	})
 	if lerr != nil {
@@ -1131,9 +1066,8 @@ func main() {
 	sessionIdentity := middleware.NewSessionIdentityHandler(logger).
 		WithSessionCutoff(clients.NewSessionRevocationsAdapter(backends["iamInternal"])).
 		WithAdminChecker(iamSubjectClient) // permissions = ["*","admin"] для system-admin
-	if identityLane == identityposture.External && kratosURL != "disabled" {
-		sessionIdentity = sessionIdentity.WithKratos(middleware.NewKratosClient(kratosURL), iamSubjectClient)
-	}
+	// ЧИТАТЕЛЬ ПЕЧЕНЬЯ ЧУЖОЙ СЛУЖБЫ ЛИЧНОСТИ ЗДЕСЬ СНЯТ вместе со своей полосой:
+	// «кто я» отвечает ровно тот же читатель, что и полоса личности, и он наш.
 	if identityLane == identityposture.Own {
 		sessionIdentity = sessionIdentity.WithHumanSession(clients.NewSessionRevocationsAdapter(backends["iamInternal"]))
 	}

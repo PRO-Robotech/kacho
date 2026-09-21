@@ -13,7 +13,7 @@
 //
 // The endpoint lives on the provider's ADMIN API (`/admin/oauth2/introspect`),
 // not on the public OAuth2 API — a distinct Service and port. Its address is
-// configuration and is never derived; see config.ResolvedHydraIntrospectionURL
+// configuration and is never derived; see the composition root
 // and the boot guard in cmd/api-gateway/revocation_validation.go.
 //
 // Negative caching: when introspection returns `active=false`, we still cache
@@ -187,7 +187,7 @@ type IntrospectionCache struct {
 
 // IntrospectionCacheConfig — construction parameters.
 type IntrospectionCacheConfig struct {
-	HydraIntrospectionURL string
+	IntrospectionURL string
 	HTTPClient            *http.Client
 	MaxEntries            int
 	TTL                   time.Duration
@@ -200,8 +200,8 @@ type IntrospectionCacheConfig struct {
 
 // NewIntrospectionCache constructs a cache. Returns error on empty URL.
 func NewIntrospectionCache(cfg IntrospectionCacheConfig) (*IntrospectionCache, error) {
-	if cfg.HydraIntrospectionURL == "" {
-		return nil, errors.New("introspection cache: HydraIntrospectionURL is required")
+	if cfg.IntrospectionURL == "" {
+		return nil, errors.New("introspection cache: IntrospectionURL is required")
 	}
 	if cfg.MaxEntries <= 0 {
 		cfg.MaxEntries = 10000
@@ -224,7 +224,7 @@ func NewIntrospectionCache(cfg IntrospectionCacheConfig) (*IntrospectionCache, e
 		hc = &http.Client{Timeout: cfg.Timeout}
 	}
 	return &IntrospectionCache{
-		url:        cfg.HydraIntrospectionURL,
+		url:        cfg.IntrospectionURL,
 		httpClient: hc,
 		ttl:        cfg.TTL,
 		timeout:    cfg.Timeout,
@@ -458,7 +458,7 @@ func (c *IntrospectionCache) fetchHydra(ctx context.Context, rawToken string) (I
 
 	form := url.Values{}
 	form.Set("token", rawToken)
-	// #nosec G704 -- адрес берётся из настроек процесса (cfg.HydraIntrospectionURL,
+	// #nosec G704 -- адрес берётся из настроек процесса (cfg.IntrospectionURL,
 	// проверяется при старте и не может быть пустым), а не из запроса: подставить его
 	// вызывающему нечем. Правило видит "переменная в адресе" и не различает источник.
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url, strings.NewReader(form.Encode()))

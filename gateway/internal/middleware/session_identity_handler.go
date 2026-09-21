@@ -47,7 +47,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -59,16 +58,15 @@ type AdminChecker interface {
 // SessionIdentityHandler serves the edge's single session-identity route.
 type SessionIdentityHandler struct {
 	logger *slog.Logger
-	// kratos resolves the deployed identity provider's session cookie. When nil
-	// the route answers anonymous — it never falls back to another carrier.
-	kratos        *KratosClient
+	// ЧИТАТЕЛЬ ПЕЧЕНЬЯ ЧУЖОЙ СЛУЖБЫ ЛИЧНОСТИ СНЯТ вместе со своей полосой:
+	// носитель на этом маршруте один и он наш.
 	subjectLookup SubjectLookuper // resolves identity.id → User/SA mirror in kaname
 	adminCheck    AdminChecker    // optional admin-tuple lookup
 	// sessionCutoff — НАШ авторитет отзыва. См. WithSessionCutoff.
 	sessionCutoff SessionCutoffReader
-	// humanSession — читатель НАШЕЙ сессии (посадка `own`, Ф3 Р7). Провязывается
-	// ВМЕСТО `kratos`, никогда рядом с ним: композиционный корень выбирает
-	// читателя по посадке.
+	// humanSession — читатель НАШЕЙ сессии (посадка `own`, Ф3 Р7). Читатель на
+	// этом маршруте ОДИН: второго, читавшего печенье чужой службы личности,
+	// больше нет.
 	humanSession HumanSessionReader
 }
 
@@ -76,9 +74,8 @@ func NewSessionIdentityHandler(logger *slog.Logger) *SessionIdentityHandler {
 	return &SessionIdentityHandler{logger: logger}
 }
 
-// WithKratos — подключает session client + SubjectLookup для /me.
-func (h *SessionIdentityHandler) WithKratos(c *KratosClient, lookup SubjectLookuper) *SessionIdentityHandler {
-	h.kratos = c
+// WithSubjectLookup — подключает разбор личности в зеркало субъекта для «кто я».
+func (h *SessionIdentityHandler) WithSubjectLookup(lookup SubjectLookuper) *SessionIdentityHandler {
 	h.subjectLookup = lookup
 	return h
 }
@@ -125,7 +122,7 @@ func (h *SessionIdentityHandler) Register(mux *http.ServeMux) {
 }
 
 // Me — UI hook /me. Возвращает либо `{"user":null}` если не залогинен,
-// либо `{"user":{...}}` с userinfo из сессии провайдера личности.
+// либо `{"user":{...}}` с userinfo из НАШЕЙ сессии.
 func (h *SessionIdentityHandler) Me(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -134,61 +131,12 @@ func (h *SessionIdentityHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.kratos != nil {
-		cookieHdr := r.Header.Get("Cookie")
-		if strings.Contains(cookieHdr, providerSessionCarrierName) {
-			res := h.kratos.Whoami(r.Context(), cookieHdr)
-			if res.Active && res.IdentityID != "" {
-				userObj := map[string]any{
-					"id":          res.IdentityID,
-					"email":       res.Email,
-					"displayName": res.DisplayName,
-					"subjectType": "user",
-					"permissions": []string{},
-				}
-				// Если есть SubjectLookup — резолвим в Kachō User id (mirror).
-				// Если lookuper поддерживает lazy-upsert — используем (new identity → Upsert).
-				if h.subjectLookup != nil {
-					var subj Subject
-					var lerr error
-					if kl, ok := h.subjectLookup.(KratosSubjectLookuper); ok {
-						subj, lerr = kl.LookupOrUpsertFromKratos(r.Context(), res.IdentityID, res.Email, res.DisplayName)
-					} else {
-						subj, lerr = h.subjectLookup.LookupByExternalID(r.Context(), res.IdentityID)
-					}
-					if lerr == nil {
-						// Отозванная сессия — не «вошедший без прав», а НЕ
-						// вошедший: анонимный ответ здесь и отказ на пути
-						// запроса суть одно состояние, названное двумя полосами
-						// одинаково.
-						if h.sessionRevoked(r.Context(), subj, res.AuthenticatedAt) {
-							_, _ = w.Write([]byte(`{"user":null}`))
-							return
-						}
-						userObj["id"] = subj.ID
-						userObj["subjectType"] = subj.Type
-						if subj.DisplayName != "" {
-							userObj["displayName"] = subj.DisplayName
-						}
-						// Проверка system-admin через AdminChecker.
-						// Если subject имеет admin-tuple → permissions = ["*","admin"].
-						// UI ServiceSidebar показывает "Администрирование" tab по hasPermission("admin").
-						if h.adminCheck != nil {
-							ok, _ := h.adminCheck.IsSystemAdmin(r.Context(), subj.Type+":"+subj.ID)
-							if ok {
-								userObj["permissions"] = []string{"*", "admin"}
-							}
-						}
-					}
-				}
-				_ = json.NewEncoder(w).Encode(map[string]any{"user": userObj})
-				return
-			}
-		}
-	}
+	// ЗДЕСЬ ЧИТАЛОСЬ ПЕЧЕНЬЕ ЧУЖОЙ СЛУЖБЫ ЛИЧНОСТИ. Ветка снята вместе с самим
+	// поставщиком; вместе с ней ушёл и ленивый завод зеркала субъекта по его
+	// идентификатору — зеркало заводит наша служба, когда человек у неё входит.
 
 	// Никакой второй ветки нет: единственный носитель личности на этом маршруте —
-	// сессия развёрнутого провайдера. Не нашли её — отвечаем анонимом.
+	// НАША сессия. Не нашли её — отвечаем анонимом.
 	_, _ = w.Write([]byte(`{"user":null}`))
 }
 

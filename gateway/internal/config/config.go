@@ -43,7 +43,6 @@ import (
 //	KACHO_API_GATEWAY_STORAGE_GRPC           — адрес backend kacho-storage (public, port 9090)
 //	KACHO_API_GATEWAY_STORAGE_INTERNAL_GRPC  — адрес backend kacho-storage internal-port (9091)
 //	KACHO_APP_ENV                            — deployment-env label (keys the prod authz guard)
-//	KACHO_API_GATEWAY_KRATOS_PUBLIC_URL      — Ory Kratos public API base ("disabled" turns it off); read under `external` only
 //	KACHO_API_GATEWAY_IAM_LOGIN_LANE_URL     — адрес HTTPS-слушателя полосы формы службы доступа (own only, required)
 //	KACHO_API_GATEWAY_ADMISSION_PUBLIC_*     — потолок темпа/одновременности внешнего
 //	                                           слушателя (READ_PER_SEC, MUTATION_PER_SEC,
@@ -262,14 +261,13 @@ type Config struct {
 	// via extraEnv.
 	AppEnv string `envconfig:"KACHO_APP_ENV" default:""`
 
-	// KratosPublicURL — base URL of the Ory Kratos public API (session /whoami).
-	// The sentinel "disabled" turns Kratos session-auth off entirely. Default is
-	// the cluster-internal kratos-public Service.
+	// ЗДЕСЬ СТОЯЛА РУЧКА ПУБЛИЧНОГО АДРЕСА ЧУЖОЙ СЛУЖБЫ ЛИЧНОСТИ
+	// (`KACHO_API_GATEWAY_KRATOS_PUBLIC_URL`). Её единственным читателем был
+	// клиент печенья сессии, снятый вместе с полосой: личность человека читает
+	// НАША служба, и второго читателя носителя у края нет.
 	//
-	// Читается ТОЛЬКО под посадкой `external` (Ф3 Р15, Ф3-12): под `own` сессию
-	// человека читает наша служба, и читатель носителя поставщика не заводится
-	// вовсе — независимо от того, задан ли этот адрес.
-	KratosPublicURL string `envconfig:"KACHO_API_GATEWAY_KRATOS_PUBLIC_URL" default:"http://kacho-umbrella-kratos-public.kacho.svc:80"`
+	// Пустой она не оставлена намеренно: ручка, которую никто не читает,
+	// приглашает вернуть снятую полосу обратно «чтобы ручка заработала».
 
 	// LoginLaneURL — адрес HTTPS-слушателя ПОЛОСЫ ФОРМЫ службы доступа, на
 	// который край ретранслирует глаголы формы под посадкой `own` — все, что
@@ -407,72 +405,32 @@ type Config struct {
 	// Пустыми они не оставлены намеренно: ручка, которую никто не читает,
 	// приглашает вернуть снятую ветвь обратно «чтобы ручка заработала».
 	//
-	// Кого это НЕ касается: `KACHO_HYDRA_INTROSPECTION_URL`, `KACHO_HYDRA_ADMIN_URL`
-	// и два якоря доверия ниже. У них свои читатели и свои живые полосы, и снятие
-	// каждой — отдельный предмет со своим предикатом.
+	// ЗДЕСЬ ЖЕ СНЯТЫ ЧЕТЫРЕ ОСТАВШИЕСЯ РУЧКИ ЧУЖОГО ПОСТАВЩИКА —
+	// `KACHO_HYDRA_INTROSPECTION_URL`, `KACHO_HYDRA_ADMIN_URL`,
+	// `KACHO_HYDRA_ADMIN_CA_FILE` и публичный адрес его службы личности выше.
+	// Сняты они не по одной, а вместе со своими читателями: полосой отзыва через
+	// ЕГО интроспекцию, снятием сессии входа на ЕГО стороне и клиентом ЕГО
+	// печенья сессии. Край принимает ровно объявленных издателей, а отзыв
+	// токенов НАШЕЙ чеканки читается у нашего авторитета — внутренним путём
+	// интроспекции службы доступа и её же записью сессий.
 
-	// HydraIntrospectionURL — token-introspection endpoint on the identity
-	// provider's ADMIN API (`{admin}/admin/oauth2/introspect`). Never derived:
-	// the admin API is a different Service and port from the public issuer, so
-	// there is nothing to derive it from. Empty ⇒ the revocation check is not
-	// configured, and a production-class gateway refuses to start (see the boot
-	// guard in cmd/api-gateway/revocation_validation.go).
-	HydraIntrospectionURL string `envconfig:"KACHO_HYDRA_INTROSPECTION_URL" default:""`
-
-	// HydraAdminURL — base URL of the identity provider's ADMIN API, used by the
-	// logout handler to kill the provider-side session
-	// (`DELETE /admin/oauth2/auth/sessions/login`). Never derived, same reason.
-	// Empty ⇒ the session kill is disabled, and a production-class gateway
-	// refuses to start.
+	// TokenKeySetCAFile — якорь доверия ХОПА ЗА КЛЮЧАМИ ВЕРИФИКАЦИИ.
 	//
-	// THE ADMIN API AUTHENTICATES NOBODY. Ory Hydra's admin API has no
-	// authentication of its own — anyone who can reach it can mint clients, read
-	// sessions and introspect tokens. Its only protection is that it is not
-	// routable, so the two addresses above must always name a cluster-internal
-	// Service and that Service must never be published (no ingress, no
-	// LoadBalancer, no NodePort). Enforced offline by
-	// deploy/tests/helm/admin-hop-transport-test.sh.
-	HydraAdminURL string `envconfig:"KACHO_HYDRA_ADMIN_URL" default:""`
-
-	// HydraAdminCAFile — path to the PEM bundle the gateway verifies the ADMIN
-	// API's certificate against, when that hop is served over TLS.
+	// ПЕРЕИМЕНОВАНА, А НЕ СНЯТА (прежде `KACHO_HYDRA_JWKS_CA_FILE`). Имя несло
+	// чужой продукт (ban #2), а предмет у ручки НАШ и живой: по этому хопу едет
+	// материал, которым край проверяет ПОДПИСЬ каждого предъявителя, и сегодня
+	// хоп идёт к нашему зеркалу набора на внутреннем слушателе службы доступа.
+	// Подменивший этот материал в пути подменяет и решение о доступе — дальше
+	// край добросовестно верит собственному ответу.
 	//
-	// Why it exists: since the revocation check moved onto the authN layer, the
-	// admin hop carries the caller's LIVE bearer on every introspection cache
-	// miss, not just administrative calls. Over plaintext that bearer is
-	// readable by anything on the path. Moving the hop to https only helps if
-	// the certificate is VERIFIED, and an in-cluster provider certificate comes
-	// from the internal CA — which this process does not trust by default (its
-	// default pool is the system roots).
-	//
-	// Empty ⇒ no anchor, default transport. Set ⇒ the bundle becomes the ONLY
-	// trust anchor for the hop, and a bundle that cannot be read or holds no
-	// certificate REFUSES THE START (cmd/api-gateway/admin_hop_client.go):
-	// falling back to the system roots would read as configured while verifying
-	// nothing.
-	HydraAdminCAFile string `envconfig:"KACHO_HYDRA_ADMIN_CA_FILE" default:""`
-
-	// HydraJWKSCAFile — то же для ХОПА ЗА КЛЮЧАМИ ВЕРИФИКАЦИИ.
-	//
-	// Зачем. По этому хопу едет материал, которым край проверяет ПОДПИСЬ каждого
-	// предъявителя. Подменивший его в пути подменяет и решение о доступе: дальше край
-	// добросовестно верит собственному ответу. Требование то же, что у
-	// административного хопа, и по той же причине — сертификат внутрикластерного
-	// адреса выписан внутренним центром, которого в корнях процесса по умолчанию нет.
-	//
-	// ЧЕГО НЕ БЫЛО. Ручка АДРЕСА у этого хопа существовала, ручки ДОВЕРИЯ — нет,
-	// поэтому «перевести хоп на защищённый транспорт» было недостижимо: клиент шёл
-	// транспортом по умолчанию и отвергал внутренний сертификат. Обходов было два, и
-	// оба хуже проблемы: увести край НАПРЯМУЮ к провайдеру мимо фасада (ровно тот
-	// обход, который у края уже однажды находили и чинили) либо снять проверку
-	// сертификата — то есть объявить защиту и не выполнять её.
-	//
-	// Пусто ⇒ якоря нет, транспорт по умолчанию (незащищённый внутрикластерный адрес
-	// связки не требует). Задано ⇒ связка становится ЕДИНСТВЕННЫМ якорем доверия
-	// хопа, а нечитаемая связка или связка без сертификата ОТКАЗЫВАЮТ В СТАРТЕ
-	// (cmd/api-gateway/admin_hop_client.go): откат к системным корням читался бы как
-	// настроенная проверка, не проверяя при этом ничего.
-	HydraJWKSCAFile string `envconfig:"KACHO_HYDRA_JWKS_CA_FILE" default:""`
+	// Сертификат внутрикластерного адреса выписан внутренним центром, которого в
+	// корнях процесса по умолчанию нет. Пусто ⇒ якоря нет, транспорт по
+	// умолчанию (незащищённый внутрикластерный адрес связки не требует). Задано ⇒
+	// связка становится ЕДИНСТВЕННЫМ якорем доверия хопа, а нечитаемая связка или
+	// связка без сертификата ОТКАЗЫВАЮТ В СТАРТЕ
+	// (cmd/api-gateway/admin_hop_client.go): откат к системным корням читался бы
+	// как настроенная проверка, не проверяя при этом ничего.
+	TokenKeySetCAFile string `envconfig:"KACHO_API_GATEWAY_TOKEN_KEYSET_CA_FILE" default:""`
 
 	// ─── Объявление приёма токена (Ф1б, задача #926) ──────────────────────
 	//
@@ -822,21 +780,9 @@ func (c Config) ExternalListenerClientAuth(base *tls.Config) (*tls.Config, error
 	return base, nil
 }
 
-// ResolvedHydraIntrospectionURL returns the token-introspection endpoint, or the
-// empty string when none is configured.
-//
-// It is deliberately NOT derived from the issuer. Introspection is served by the
-// identity provider's ADMIN API — a different Service and port from the public
-// issuer, reachable only inside the cluster — so an issuer-derived address names
-// a server that does not serve this endpoint. Aiming a revocation check at a
-// guessed address is worse than having none: the check runs, never gets an
-// answer, and the caller cannot distinguish that from "the token is fine".
-//
-// Empty means the revocation check is not configured. The composition root
-// refuses to start a production-class gateway in that state.
-func (c Config) ResolvedHydraIntrospectionURL() string {
-	return strings.TrimSpace(c.HydraIntrospectionURL)
-}
+// ЗДЕСЬ СТОЯЛ ЧИТАТЕЛЬ АДРЕСА ИНТРОСПЕКЦИИ ЧУЖОГО ПОСТАВЩИКА. Он снят вместе
+// со своей ручкой и со своей полосой: отзыв спрашивается у того, кто токен
+// чеканил, а чеканим их мы.
 
 // IdentityProviderKnob — имя ручки посадки личности НА КРАЕ. Объявлено один
 // раз: его называют текст отказа старта и документация профиля; две копии
@@ -860,13 +806,9 @@ func (c Config) ResolvedIdentityProvider() (identityposture.Provider, error) {
 	return identityposture.Parse(IdentityProviderKnob, raw)
 }
 
-// ResolvedHydraAdminURL returns the admin API base, or the empty string when
-// none is configured. Same rule and same reason as the introspection endpoint
-// above: the admin API is not the issuer, and a guessed base sends the logout
-// handler's provider-side session kill to whatever answers on the issuer host.
-func (c Config) ResolvedHydraAdminURL() string {
-	return strings.TrimSpace(c.HydraAdminURL)
-}
+// ЗДЕСЬ СТОЯЛ ЧИТАТЕЛЬ АДМИНИСТРАТИВНОГО АДРЕСА ЧУЖОГО ПОСТАВЩИКА. Он снят
+// вместе со своим единственным потребителем — снятием сессии входа на его
+// стороне: такой сессии у человека больше не заводится.
 
 // AudienceKnob — имя ручки АДРЕСАТА. Объявлено один раз: его называют текст
 // отказа старта, профиль и документация. Две копии разошлись бы на той,
