@@ -834,9 +834,32 @@ jobs:
           fi
           exit "$rc"
 
+      # ЧИСТКА ПЕРЕД ВЫКЛАДКОЙ (#1810): маски путей берутся ИЗ ТОГО ЖЕ узла, что
+      # и у выкладки ниже, поэтому «чистят одно, выкладывают другое» невозможно
+      # by construction. Исходов три, публикацию разрешает только нулевой; связь
+      # «выкладка ↔ своя чистка» держит .github/scripts/assert-uploads-are-scrubbed.py,
+      # разбор каждого решения — в .github/scripts/scrub-publication.py.
+      - name: чистка выкладываемого перед публикацией (fail-closed)
+        id: scrub
+        if: always()
+        run: |
+          rc=0
+          python3 .github/scripts/scrub-publication.py \
+            --workflow .github/workflows/console-e2e.yml \
+            --job probes --step-id artifact || rc=$?
+          case "$rc" in
+            0) echo "чистка сошлась — публикация разрешена" ;;
+            1) echo "::error title=Артефакт НЕ публикуется::в выкладываемом остался материал удостоверения (координаты, формы и числа — выше). Выложенное удалением не отзывается, поэтому публикации нет."
+               exit 1 ;;
+            3) echo "::error title=НЕ ВЫПОЛНИЛОСЬ — чистка не состоялась::осматривать нечего либо не по чему (причина выше). Это не «чисто» и не «находка»: публикации нет."
+               exit 1 ;;
+            *) echo "::error title=Чистка вернула неизвестный код::код $rc не входит в три объявленных исхода — публикации нет."
+               exit 1 ;;
+          esac
+
       - name: отчёт (в том числе на красном)
         id: artifact
-        if: always()
+        if: ${{ always() && steps.scrub.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: console-e2e-results

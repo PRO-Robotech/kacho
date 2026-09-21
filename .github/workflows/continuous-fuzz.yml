@@ -82,6 +82,19 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # МОДУЛЬ ПОДАЁТ САМО ЗАДАНИЕ, А НЕ ОБРАЗ РАНЕРА. Под меткой `ubuntu-latest`
+      # работают два пула: системный интерпретатор наших ранеров идёт без `pyyaml`
+      # и без `pip`, у GitHub-hosted они в образе есть, — поэтому задание, берущее
+      # условие от пула, получает вердикт жребием. Здесь модуль нужен чистке
+      # выкладываемого (#1810): она читает маски путей из объявления процесса.
+      # Держит это гейт .github/scripts/assert-jobs-provide-python-modules.py —
+      # он вывел нужду из скрипта и потребовал установки ПОСЛЕ интерпретатора.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7
+        with:
+          python-version: '3.13'
+      - name: сторонний модуль python, который читают скрипты этого задания
+        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+
       # Корпус переживает прогоны: фаззер накапливает интересные входы, и без
       # восстановления каждая ночь начинала бы с нуля.
       #
@@ -127,8 +140,34 @@ jobs:
           path: ${{ matrix.dir }}/testdata/fuzz/${{ matrix.target }}
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
 
-      - name: upload failure artifacts
+      # ЧИСТКА ПЕРЕД ВЫКЛАДКОЙ (#1810): маски путей берутся ИЗ ТОГО ЖЕ узла, что
+      # и у выкладки ниже, поэтому «чистят одно, выкладывают другое» невозможно
+      # by construction. Исходов три, публикацию разрешает только нулевой; связь
+      # «выкладка ↔ своя чистка» держит .github/scripts/assert-uploads-are-scrubbed.py,
+      # разбор каждого решения — в .github/scripts/scrub-publication.py.
+      - name: чистка выкладываемого перед публикацией (fail-closed)
+        id: scrub
         if: failure()
+        run: |
+          rc=0
+          python3 .github/scripts/scrub-publication.py \
+            --workflow .github/workflows/continuous-fuzz.yml \
+            --job fuzz --step-id upload \\
+            --set 'matrix.dir=${{ matrix.dir }}' \\
+            --set 'matrix.target=${{ matrix.target }}' || rc=$?
+          case "$rc" in
+            0) echo "чистка сошлась — публикация разрешена" ;;
+            1) echo "::error title=Артефакт НЕ публикуется::в выкладываемом остался материал удостоверения (координаты, формы и числа — выше). Выложенное удалением не отзывается, поэтому публикации нет."
+               exit 1 ;;
+            3) echo "::error title=НЕ ВЫПОЛНИЛОСЬ — чистка не состоялась::осматривать нечего либо не по чему (причина выше). Это не «чисто» и не «находка»: публикации нет."
+               exit 1 ;;
+            *) echo "::error title=Чистка вернула неизвестный код::код $rc не входит в три объявленных исхода — публикации нет."
+               exit 1 ;;
+          esac
+
+      - name: upload failure artifacts
+        id: upload
+        if: ${{ failure() && steps.scrub.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: fuzz-failure-${{ matrix.target }}
