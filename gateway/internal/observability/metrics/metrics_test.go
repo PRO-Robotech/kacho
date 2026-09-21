@@ -36,9 +36,9 @@ func expose(t *testing.T, m *gwmetrics.Metrics) string {
 
 // TestFreshProcessDeclaresEveryBandWithZero — OBS-1-02.
 //
-// Ни одного запроса не обслужено, а все десять полос решений, обе полосы окна
-// вердиктов, обращения по проводу и число наблюдений длительности уже стоят на
-// поверхности нулями. Это и есть предмет #208: отсутствие серии и нулевая серия
+// Ни одного запроса не обслужено, а все одиннадцать полос решений, обе полосы
+// окна вердиктов, обращения по проводу и число наблюдений длительности уже
+// стоят на поверхности нулями. Это и есть предмет #208: отсутствие серии и нулевая серия
 // обязаны быть различимы.
 func TestFreshProcessDeclaresEveryBandWithZero(t *testing.T) {
 	authzMetrics := middleware.NewAuthzMetrics()
@@ -61,6 +61,7 @@ func TestFreshProcessDeclaresEveryBandWithZero(t *testing.T) {
 		`kacho_api_gateway_authz_check_decisions_total{decision="override_allow"} 0`,
 		`kacho_api_gateway_authz_check_decisions_total{decision="exempt"} 0`,
 		`kacho_api_gateway_authz_check_decisions_total{decision="scope_filtered"} 0`,
+		`kacho_api_gateway_authz_check_decisions_total{decision="unserved"} 0`,
 		`kacho_api_gateway_authz_cache_total{result="hit"} 0`,
 		`kacho_api_gateway_authz_cache_total{result="miss"} 0`,
 		`kacho_api_gateway_authz_client_calls_total 0`,
