@@ -93,13 +93,10 @@ The host app uses relative browser URLs. `host/vite.config.ts` proxies them to t
 /operations/*           -> http://localhost:8080
 /healthz, /readyz       -> http://localhost:8080
 /.ory/kratos/public/*   -> http://localhost:4433
-/self-service/*         -> http://localhost:4433
 /login, /registration,
 /recovery, /settings,
 /verification, /error,
 /consent, /logout       -> http://localhost:4300
-/.ory/hydra/public/*    -> http://localhost:4444
-/oauth2/*               -> http://localhost:4444
 ```
 
 Frontend code should keep using relative paths:
@@ -130,7 +127,6 @@ Usually `localhost:<port>` works from Windows to WSL. If it does not, bind port-
 kubectl -n kacho port-forward --address 0.0.0.0 svc/api-gateway 8080:8080
 kubectl -n kacho port-forward --address 0.0.0.0 svc/kacho-umbrella-kratos-public 4433:80
 kubectl -n kacho port-forward --address 0.0.0.0 svc/kratos-selfservice-ui 4300:3000
-kubectl -n kacho port-forward --address 0.0.0.0 svc/kacho-umbrella-hydra-public 4444:4444
 ```
 
 You can override proxy targets before starting Vite:
@@ -139,6 +135,5 @@ You can override proxy targets before starting Vite:
 $env:KACHO_API_BASE="http://localhost:8080"
 $env:KACHO_KRATOS_BASE="http://localhost:4433"
 $env:KACHO_KRATOS_UI_BASE="http://localhost:4300"
-$env:KACHO_HYDRA_BASE="http://localhost:4444"
 npm run dev
 ```
