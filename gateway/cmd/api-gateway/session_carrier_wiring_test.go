@@ -46,11 +46,9 @@
 // его человек, а не обход, и это ровно та цена частичного предиката, которая
 // там объявлена.
 //
-// СУДИТ ЛИ ЭТОТ ФАЙЛ СОСЕДНИЙ ГЕЙТ — НЕТ, и вот число: из семнадцати файлов
-// дельты он судит ОДИН, и это не он. Форма его обхода — каталог через параметр
-// помощнику — первая в перечне невидимых. Сказано здесь потому, что молчание
-// об этом и есть та разница между «зелено» и «проверено», против которой
-// сосед заведён. Измерено на `9ae1ca86`, 2026-09-22.
+// Гейт формы суждения о дереве, который мог бы это заметить, живёт в своей
+// ветке (`fix/repohygiene-gate-forms`): предмет там горизонтальный, и держать
+// из-за него носитель сессии незачем.
 package main
 
 import (
@@ -747,21 +745,23 @@ func TestSessionCarrierWiring_TheBootSelfReportNamesTheWindowInstant(t *testing.
 func TestSessionCarrierWiring_TheGuardIsGivenEveryFieldItsAxesNeed(t *testing.T) {
 	fset, f := parseMain(t)
 
-	// СОСТАВ ПОЛЕЙ ТИПА ВЫВОДИТСЯ ИЗ РАЗБОРА, а перечень ниже только приписывает
-	// каждому полю ЕГО ОСЬ.
+	// ПЕРЕЧЕНЬ ОСЕЙ ОБЪЯВЛЕН, И ЭТО СКАЗАНО ПРЯМО: он не выведен из типа.
 	//
-	// Прежде перечень был выписан целиком, и утверждение «корень передаёт все
-	// поля, от которых зависят оси» держалось им одним: шестое поле, прочитанное
-	// новой осью, в перечень не попало бы, гейт остался бы зелёным, и ось
-	// выключилась бы МОЛЧА. Это дословно тот дефект, который закрыт коммитом
-	// `bce51658458` на одно касание раньше в этом же диффе — там ось выключалась
-	// отсутствием ЗНАЧЕНИЯ, здесь выключилась бы отсутствием СТРОКИ в перечне.
+	// Каждому полю здесь приписана ЕГО ОСЬ — то, что выключается его
+	// отсутствием, — и вывести это из объявления нечем: зависимость живёт в
+	// теле стража, а не в полях.
 	//
-	// Довод прежней шапки «вывести из типа нечем» верен про то, КАКАЯ ось читает
-	// поле — это живёт в теле стража, — и неверен про то, КАКИЕ ПОЛЯ у типа
-	// есть: их называет объявление, и разбирается оно тем же `go/ast`, которым
-	// проба уже пользуется. Сегодня поля осей = все поля типа, и расхождение
-	// между перечнем и объявлением — находка.
+	// ЧЕГО ЭТОТ ГЕЙТ НЕ УТВЕРЖДАЕТ: что перечень ПОЛОН. Поле, добавленное типу
+	// и забытое здесь, он не найдёт. Вывод состава полей из разбора — предмет
+	// отдельный, горизонтальный и отделённый в свою ветку вместе с перебором
+	// форм его входа (`fix/repohygiene-gate-forms`,
+	// `internal/repohygiene/structfieldnames_test.go`): там у него двенадцать
+	// форм входа и инъекция в обе стороны, а здесь он был бы ложным числом под
+	// словом «выведено» — ровно тем, чем и оказался.
+	//
+	// Объявленный перечень честен о своей природе; выведенный, но неполный —
+	// нет. Пока вывода здесь нет, гейт судит РОВНО то, что названо: каждое
+	// НАЗВАННОЕ поле обязано передаваться корнем.
 	axisFields := map[string]string{
 		"Now":            "ось «момент окна обязан быть фактом»",
 		"Carriers":       "ось согласованности пары",
@@ -773,29 +773,6 @@ func TestSessionCarrierWiring_TheGuardIsGivenEveryFieldItsAxesNeed(t *testing.T)
 	// Судятся ВСЕ конфигурации стража в корне, а не последняя найденная.
 	// Прежде обход присваивал и перезаписывал, и появись вторая — судилась бы
 	// только она, а первая прошла бы молча.
-	// Перечень обязан покрывать ВСЕ поля типа, и это сверяется с объявлением.
-	declared := structFieldsOf(t, f, "SessionCarrierConfig")
-	if len(declared) == 0 {
-		// Тип объявлен в непроверочном файле пакета — ищем и там.
-		declared = structFieldsInPackage(t, ".", "SessionCarrierConfig")
-	}
-	if len(declared) == 0 {
-		t.Fatal("объявление SessionCarrierConfig не найдено — сверять перечень не с чем, и " +
-			"гейт судил бы о непрочитанном")
-	}
-	var uncovered []string
-	for _, name := range declared {
-		if _, ok := axisFields[name]; !ok {
-			uncovered = append(uncovered, name)
-		}
-	}
-	sort.Strings(uncovered)
-	for _, name := range uncovered {
-		t.Errorf("поле %s объявлено у SessionCarrierConfig и не названо в перечне осей: новая "+
-			"ось, прочитавшая его, выключится МОЛЧА — гейт останется зелёным, потому что о поле "+
-			"его никто не спросил", name)
-	}
-
 	var lits []*ast.CompositeLit
 	ast.Inspect(f, func(n ast.Node) bool {
 		cl, ok := n.(*ast.CompositeLit)
@@ -840,96 +817,8 @@ func TestSessionCarrierWiring_TheGuardIsGivenEveryFieldItsAxesNeed(t *testing.T)
 			complete++
 		}
 	}
-	t.Logf("перепись: конфигураций стража в корне %d · полей У ТИПА (выведено разбором) %d · "+
-		"названо перечнем осей %d · не названо %d · конфигураций, передавших все поля, %d",
-		len(lits), len(declared), len(axisFields), len(uncovered), complete)
-}
-
-// structFieldsOf — имена полей названной структуры, объявленной в этом файле.
-func structFieldsOf(t *testing.T, f *ast.File, typeName string) []string {
-	t.Helper()
-	return fieldsOfStructIn(f, typeName)
-}
-
-// structFieldsInPackage — то же, но по НЕПРОВЕРОЧНЫМ файлам каталога: тип
-// объявлен в продуктовом файле, а проба живёт рядом.
-//
-// ОБЛАСТЬ ОБХОДА: один каталог — тот, где лежит страж. ОСТАТОК: остальной
-// модуль; тип, переехавший в другой пакет, здесь найден не будет, и об этом
-// скажет отказ «объявление не найдено», а не молчание.
-func structFieldsInPackage(t *testing.T, dir, typeName string) []string {
-	t.Helper()
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatalf("каталог %s не прочитан: %v", dir, err)
-	}
-	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			continue
-		}
-		parsed, err := parser.ParseFile(token.NewFileSet(), filepath.Join(dir, name), nil, 0)
-		if err != nil {
-			continue
-		}
-		if fields := fieldsOfStructIn(parsed, typeName); len(fields) > 0 {
-			return fields
-		}
-	}
-	return nil
-}
-
-// fieldsOfStructIn — имена полей структуры в разобранном файле.
-func fieldsOfStructIn(f *ast.File, typeName string) []string {
-	var out []string
-	ast.Inspect(f, func(n ast.Node) bool {
-		ts, ok := n.(*ast.TypeSpec)
-		if !ok || ts.Name.Name != typeName {
-			return true
-		}
-		st, ok := ts.Type.(*ast.StructType)
-		if !ok || st.Fields == nil {
-			return false
-		}
-		for _, fld := range st.Fields.List {
-			if len(fld.Names) == 0 {
-				// ВСТРОЕННОЕ ПОЛЕ: список имён ПУСТ, и имя даёт ТИП. Прежде
-				// цикл такое поле пропускал молча, и перепись печатала состав
-				// без него — ложное число под словом «выведено». Ключом
-				// составного литерала у встроенного поля служит имя типа, и
-				// именно его обязан называть перечень осей.
-				if name := embeddedFieldName(fld.Type); name != "" {
-					out = append(out, name)
-				}
-				continue
-			}
-			for _, nm := range fld.Names {
-				out = append(out, nm.Name)
-			}
-		}
-		return false
-	})
-	sort.Strings(out)
-	return out
-}
-
-// embeddedFieldName — имя, под которым встроенное поле стоит в составном
-// литерале: последний идентификатор типа, без звёздочки и без квалификатора
-// пакета.
-//
-// Формы перечислены и опробованы в `struct_fields_forms_test.go`; граница
-// названа там же — продвинутые поля встроенного типа отсюда не видны.
-func embeddedFieldName(e ast.Expr) string {
-	switch x := e.(type) {
-	case *ast.Ident:
-		return x.Name
-	case *ast.StarExpr:
-		return embeddedFieldName(x.X)
-	case *ast.SelectorExpr:
-		return x.Sel.Name
-	case *ast.IndexExpr:
-		// Встроенный обобщённый тип: имя даёт его основа.
-		return embeddedFieldName(x.X)
-	}
-	return ""
+	t.Logf("перепись: конфигураций стража в корне %d · полей, НАЗВАННЫХ перечнем осей, %d · "+
+		"конфигураций, передавших все названные, %d. ОСТАТОК: полнота перечня здесь НЕ судится "+
+		"— вывод состава полей отделён в fix/repohygiene-gate-forms",
+		len(lits), len(axisFields), complete)
 }
