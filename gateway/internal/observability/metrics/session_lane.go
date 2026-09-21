@@ -23,6 +23,14 @@ const (
 	sessionOutcomeCutoffDenied = "cutoff_denied"
 	sessionOutcomeNoSession    = "no_session"
 	sessionOutcomeUnavailable  = "unavailable"
+	// sessionOutcomeWindowClosed — чужая сессия отвергнута как заведённая ПОСЛЕ
+	// открытия переходного окна.
+	//
+	// Это ОТКАЗ, и потому он стоит здесь, а не отдельной клеткой: край отвечает
+	// 401, и оператор, смотрящий на общую клетку отказов, обязан видеть его в
+	// ней. Пока исхода не было, «отказов нет» означало «край никому не
+	// отказывает», а край отказывал.
+	sessionOutcomeWindowClosed = "window_closed"
 )
 
 // Глаголы формы — закрытый словарь МЕТОК. Это словарь поверхности, а не второе
@@ -76,7 +84,10 @@ var (
 		"Browser-session refusals at the edge, by outcome: cutoff_denied (ended by our revocation, "+
 			"carrier ended), no_session (a carrier the service does not know: unknown, logged out, "+
 			"expired or blocked — one answer, carrier ended), unavailable (the service did not answer; "+
-			"carrier intact).",
+			"carrier intact), window_closed (a foreign session signed in AFTER the transitional "+
+			"window opened: the edge reads out the sessions that were already live and admits no "+
+			"new ones; carrier ended). A growing window_closed means the foreign side's sign-in "+
+			"form is still reachable.",
 		[]string{"outcome"}, nil)
 	sessionRolloutWindowDesc = prometheus.NewDesc(
 		"kacho_api_gateway_session_lane_rollout_window_total",
@@ -89,6 +100,14 @@ var (
 			"session axis (absent, \"0\" or a foreign vocabulary such as aal2). Every positive "+
 			"authentication floor refuses such a session; a floorless verb passes. Non-zero means a "+
 			"service/edge version skew or a direct write into the session store.",
+		nil, nil)
+	sessionTransitionalFloorWithheldDesc = prometheus.NewDesc(
+		"kacho_api_gateway_session_lane_transitional_floor_withheld_total",
+		"Foreign sessions whose assurance level was NOT carried to the inner lock because the "+
+			"transitional carrier window is open: in that window a positive authentication floor is "+
+			"satisfied only by our own mint, while ordinary access by a live foreign session is "+
+			"kept. The value says how many people the window is keeping from a floor-bearing "+
+			"action — that is, whether it is time to close it.",
 		nil, nil)
 	loginLaneRelayedDesc = prometheus.NewDesc(
 		"kacho_api_gateway_login_lane_relayed_total",
@@ -116,6 +135,7 @@ func (c *sessionLaneCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- sessionRefusalsDesc
 	ch <- sessionRolloutWindowDesc
 	ch <- sessionAssuranceOffAxisDesc
+	ch <- sessionTransitionalFloorWithheldDesc
 	ch <- loginLaneRelayedDesc
 	ch <- loginLaneUnreachableDesc
 }
@@ -130,11 +150,14 @@ func (c *sessionLaneCollector) Collect(ch chan<- prometheus.Metric) {
 		sessionOutcomeCutoffDenied: s.Lane.CutoffDenied,
 		sessionOutcomeNoSession:    s.Lane.NoSession,
 		sessionOutcomeUnavailable:  s.Lane.Unavailable,
+		sessionOutcomeWindowClosed: s.Lane.TransitionalWindowClosed,
 	} {
 		ch <- prometheus.MustNewConstMetric(sessionRefusalsDesc, prometheus.CounterValue, float64(value), outcome)
 	}
 	ch <- prometheus.MustNewConstMetric(sessionRolloutWindowDesc, prometheus.CounterValue, float64(s.Lane.RolloutWindow))
 	ch <- prometheus.MustNewConstMetric(sessionAssuranceOffAxisDesc, prometheus.CounterValue, float64(s.Lane.AssuranceOffAxis))
+	ch <- prometheus.MustNewConstMetric(sessionTransitionalFloorWithheldDesc, prometheus.CounterValue,
+		float64(s.Lane.TransitionalFloorWithheld))
 	for verb, value := range map[string]uint64{
 		loginLaneVerbLogin:            s.Relay.Relayed[loginLaneVerbLogin],
 		loginLaneVerbLogout:           s.Relay.Relayed[loginLaneVerbLogout],
