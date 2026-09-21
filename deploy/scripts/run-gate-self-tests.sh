@@ -97,6 +97,7 @@ DECLARED="
 .github/scripts/assert-jobs-provide-python-modules.py
 .github/scripts/assert-jobs-provide-their-tools.py
 .github/scripts/assert-required-contexts-match-jobs.py
+.github/scripts/assert-uploads-are-scrubbed.py
 .github/scripts/assert-unit-shard-wiring.py
 .github/scripts/check-newman-suite-gates.py
 .github/scripts/check-pinned-tools.sh
@@ -108,6 +109,7 @@ DECLARED="
 .github/scripts/lint-service-charts.sh
 .github/scripts/newman-live.py
 .github/scripts/run-python-probes.py
+.github/scripts/scrub-publication.py
 .github/scripts/shard-verdict.py
 .github/scripts/stand-revision-verdict.sh
 .github/scripts/third-category-census.py
