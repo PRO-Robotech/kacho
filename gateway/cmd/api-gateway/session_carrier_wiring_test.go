@@ -45,6 +45,12 @@
 // невидимыми в шапке `internal/repohygiene/gatescopedeclared_test.go`. Нашёл
 // его человек, а не обход, и это ровно та цена частичного предиката, которая
 // там объявлена.
+//
+// СУДИТ ЛИ ЭТОТ ФАЙЛ СОСЕДНИЙ ГЕЙТ — НЕТ, и вот число: из семнадцати файлов
+// дельты он судит ОДИН, и это не он. Форма его обхода — каталог через параметр
+// помощнику — первая в перечне невидимых. Сказано здесь потому, что молчание
+// об этом и есть та разница между «зелено» и «проверено», против которой
+// сосед заведён. Измерено на `9ae1ca86`, 2026-09-22.
 package main
 
 import (
@@ -886,6 +892,17 @@ func fieldsOfStructIn(f *ast.File, typeName string) []string {
 			return false
 		}
 		for _, fld := range st.Fields.List {
+			if len(fld.Names) == 0 {
+				// ВСТРОЕННОЕ ПОЛЕ: список имён ПУСТ, и имя даёт ТИП. Прежде
+				// цикл такое поле пропускал молча, и перепись печатала состав
+				// без него — ложное число под словом «выведено». Ключом
+				// составного литерала у встроенного поля служит имя типа, и
+				// именно его обязан называть перечень осей.
+				if name := embeddedFieldName(fld.Type); name != "" {
+					out = append(out, name)
+				}
+				continue
+			}
 			for _, nm := range fld.Names {
 				out = append(out, nm.Name)
 			}
@@ -894,4 +911,25 @@ func fieldsOfStructIn(f *ast.File, typeName string) []string {
 	})
 	sort.Strings(out)
 	return out
+}
+
+// embeddedFieldName — имя, под которым встроенное поле стоит в составном
+// литерале: последний идентификатор типа, без звёздочки и без квалификатора
+// пакета.
+//
+// Формы перечислены и опробованы в `struct_fields_forms_test.go`; граница
+// названа там же — продвинутые поля встроенного типа отсюда не видны.
+func embeddedFieldName(e ast.Expr) string {
+	switch x := e.(type) {
+	case *ast.Ident:
+		return x.Name
+	case *ast.StarExpr:
+		return embeddedFieldName(x.X)
+	case *ast.SelectorExpr:
+		return x.Sel.Name
+	case *ast.IndexExpr:
+		// Встроенный обобщённый тип: имя даёт его основа.
+		return embeddedFieldName(x.X)
+	}
+	return ""
 }
