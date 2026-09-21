@@ -131,22 +131,21 @@ func TestConfig_AnonymousSubject_Override(t *testing.T) {
 // работающую посадку с чужими умолчаниями.
 func TestConfig_TokenAcceptance_Override(t *testing.T) {
 	env := baseEnv()
-	env["KACHO_REGISTRY_TOKEN_ISSUERS"] = "https://kaname.kacho.local,https://hydra.api.kacho.cloud"
+	env["KACHO_REGISTRY_TOKEN_ISSUERS"] = "https://kaname.kacho.local,https://legacy-issuer.kacho.invalid"
 	env["KACHO_REGISTRY_TOKEN_ISSUER_KEYSETS"] =
 		"https://kaname.kacho.local=https://kaname-internal.example:9097/.well-known/kaname/jwks.json," +
-			"https://hydra.api.kacho.cloud=https://kaname-internal.example:9097/.well-known/jwks.json"
+			"https://legacy-issuer.kacho.invalid=https://kaname-internal.example:9097/.well-known/jwks.json"
 	env["KACHO_REGISTRY_PLATFORM_TOKEN_ISSUER"] = "https://kaname.kacho.local"
 	env["KACHO_REGISTRY_TOKEN_REVOCATION_URL"] = "https://kaname-internal.example:9097/internal/tokens/introspect"
-	// Снятые с контракта имена — умышленно выставлены: они не должны ничего менять.
-	env["KACHO_REGISTRY_IAM_JWKS_URL"] = "http://hydra.example:4444/.well-known/jwks.json"
-	env["KACHO_REGISTRY_HYDRA_ISSUER"] = "https://hydra.example"
+	// Снятое с контракта имя — умышленно выставлено: оно не должно ничего менять.
+	env["KACHO_REGISTRY_IAM_JWKS_URL"] = "https://legacy-issuer.kacho.invalid/.well-known/jwks.json"
 
 	var c Config
 	require.NoError(t, LoadInto(&c, env))
 
 	issuers, err := c.AcceptedTokenIssuers()
 	require.NoError(t, err)
-	assert.Equal(t, []string{"https://kaname.kacho.local", "https://hydra.api.kacho.cloud"}, issuers,
+	assert.Equal(t, []string{"https://kaname.kacho.local", "https://legacy-issuer.kacho.invalid"}, issuers,
 		"перечень читается ЭЛЕМЕНТАМИ из KACHO_REGISTRY_TOKEN_ISSUERS")
 
 	bindings, err := c.TokenIssuerBindings()
@@ -170,8 +169,6 @@ func TestConfig_TokenAcceptance_Override(t *testing.T) {
 func TestConfig_RetiredTokenEnvsAreNotConsulted(t *testing.T) {
 	env := baseEnv()
 	env["KACHO_REGISTRY_IAM_JWKS_URL"] = "https://kaname-internal.example:9097/.well-known/jwks.json"
-	env["KACHO_REGISTRY_HYDRA_ISSUER"] = "https://hydra.api.kacho.cloud"
-	env["KACHO_REGISTRY_HYDRA_JWKS_URL"] = "http://hydra.example:4444/.well-known/jwks.json"
 
 	var c Config
 	require.NoError(t, LoadInto(&c, env))

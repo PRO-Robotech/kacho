@@ -23,14 +23,14 @@ import (
 // истёкшее окно, а все остальные обслуживались из протухшего кэша.
 func TestJWKS_Verify_PermanentlyDownSource_StopsAcceptingStaleKey(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa") // Cache-Control: max-age=300
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
 
 	clock := time.Now()
 	v.now = func() time.Time { return clock }
 
 	// Токен подписан ключом, который сейчас в JWKS; срок действия — сутки, поэтому
 	// единственное, что может его отвергнуть, — недоверие к ключу.
-	tok := js.mintRS256(t, "kid-rsa", hydraClaims("cid-ci", clock.Add(24*time.Hour)))
+	tok := js.mintRS256(t, "kid-rsa", priorIssuerClaims("cid-ci", clock.Add(24*time.Hour)))
 	sub, err := v.Verify(context.Background(), tok)
 	require.NoError(t, err, "пока источник жив, токен валиден")
 	require.Equal(t, "cid-ci", sub)
@@ -63,12 +63,12 @@ func TestJWKS_Verify_PermanentlyDownSource_StopsAcceptingStaleKey(t *testing.T) 
 // остаётся. Граница ограничивает отсрочку, а не отменяет её.
 func TestJWKS_Verify_TransientBlip_StillServesWithinGrace(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testLegacyIss)
 
 	clock := time.Now()
 	v.now = func() time.Time { return clock }
 
-	tok := js.mintRS256(t, "kid-rsa", hydraClaims("cid-ci", clock.Add(24*time.Hour)))
+	tok := js.mintRS256(t, "kid-rsa", priorIssuerClaims("cid-ci", clock.Add(24*time.Hour)))
 	_, err := v.Verify(context.Background(), tok)
 	require.NoError(t, err)
 

@@ -401,8 +401,8 @@ type Config struct {
 
 	// TokenRealm — realm для WWW-Authenticate; docker сам идёт туда за Bearer-токеном.
 	// Остаётся token-шимом (kaname /iam/token): docker предъявляет SA-key шиму,
-	// шим брокерит токен у Hydra. Для data-plane realm — непрозрачный указатель на
-	// auth-сервер клиента, поэтому Hydra-переключение его не меняет.
+	// шим отдаёт токен нашей чеканки. Для data-plane realm — непрозрачный указатель
+	// на auth-сервер клиента, поэтому смена издателя его не меняет.
 	TokenRealm string `envconfig:"KACHO_REGISTRY_TOKEN_REALM" default:"https://api.kacho.local/iam/token"`
 	// ServiceAud — expected audience identity-JWT (наш service) + значение service=
 	// в WWW-Authenticate. Токен обязан нести aud ⊇ ServiceAud (federation-out на
@@ -416,7 +416,7 @@ type Config struct {
 	// (CWE-319). Параллель Config.TokenAcceptance. В dev игнорируется.
 	DataplaneTLSTerminatedExternally bool `envconfig:"KACHO_REGISTRY_DATAPLANE_TLS_TERMINATED_EXTERNALLY" default:"false"`
 
-	// AnonymousSubjectID — the anonymous principal id (the iam-issued anon Hydra client
+	// AnonymousSubjectID — the anonymous principal id (the iam-issued anon machine-client
 	// id, kaname AnonymousClientID) the data-plane resolves to the FGA wildcard
 	// `user:*` for anonymous public pull (RG-1 D-7). A VALID anon Bearer whose sub
 	// equals this id reads only PUBLIC repos (repo `user:* v_get` tuple) and can never

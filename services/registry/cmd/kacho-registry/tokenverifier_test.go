@@ -32,7 +32,7 @@ import (
 
 const (
 	probePlatformIssuer = "https://kaname.kacho.local"
-	probeLegacyIssuer   = "https://hydra.api.kacho.cloud"
+	probeLegacyIssuer   = "https://legacy-issuer.kacho.invalid"
 	probePlatformKeySet = "https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
 	probeLegacyKeySet   = "https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
 	probeRevocationURL  = "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
