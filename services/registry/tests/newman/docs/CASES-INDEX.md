@@ -9,7 +9,7 @@ its three surfaces:
 - **control-plane authz** — `cases/registry-authz.py` (existence-hiding / listauthz /
   grant-latency / owner-tuple), also black-box through api-gateway;
 - **data-plane + token-exchange** — `scripts/dataplane-e2e.sh` (Docker Registry v2 / OCI
-  handshake, push/pull, `/v2/` Bearer, IAM `/iam/token` shim, Hydra federation), a bash
+  handshake, push/pull, `/v2/` Bearer, IAM `/iam/token` shim, federation), a bash
   harness driving the docker CLI + raw HTTP, **not** a gen.py collection.
 
 `validate-cases.py` enforces that every case-id emitted by `gen.py` (i.e. from
@@ -38,7 +38,7 @@ so `validate-cases.py` does not gate them).
 | `CONF` | conflict / immutability / concurrency (UNIQUE, immutable field) |
 | `AZ` | authorization (existence-hiding deny→404, listauthz, grant-latency, owner-tuple) |
 | `DP` | data-plane (Docker Registry v2 / OCI HTTP surface) |
-| `TX` | token-exchange (IAM `/iam/token` shim, Hydra federation, JWKS) |
+| `TX` | token-exchange (IAM `/iam/token` shim, federation, JWKS) |
 
 ---
 
@@ -203,7 +203,7 @@ the subject cannot see returns `NOT_FOUND` (deny→404, `corelib ErrHideExistenc
 ## 3. Data-plane + token-exchange — `scripts/dataplane-e2e.sh` (PENDING — not yet in repo)
 
 > STATUS: **not yet present** in `tests/newman/scripts/`. This is a **bash harness** (docker
-> CLI login/push/pull + raw-HTTP `/v2/`, `/iam/token`, Hydra `/oauth2/token`), run against
+> CLI login/push/pull + raw-HTTP `/v2/`, `/iam/token`, `/oauth2/token`), run against
 > the live stack; it is **not** a gen.py collection and is not gated by `validate-cases.py`.
 > The scenario ids below are the **intended** coverage from REG-10..REG-25/35/37 (data-plane)
 > and REG-TX-01..22 (token-exchange). Each maps 1:1 to a scenario in the acceptance docs.
@@ -235,9 +235,9 @@ down to blob-level** (per-repo blob-scope): deny → `404`. push into a **new** 
 | `DP-DELETETAG-VDELETE` | DP, CRUD | P1 | DeleteTag async `v_delete` + repo-unregister on last tag (worker-principal) | REG-25 |
 | `DP-TOKEN-SAKEY-VALID` | DP, TX | P1 | IAM `/token` with a valid SA-key → identity-JWT accepted at `/v2/` | REG-11 |
 | `DP-TOKEN-SAKEY-INVALID-401` | DP, TX, NEG | P1 | IAM `/token` with invalid/revoked SA-key → 401 | REG-12 |
-| `DP-TOKEN-JWKS-VERIFY` | DP, TX | P1 | registry verifies token via IAM/Hydra JWKS (does not trust blindly) + revocation-residual | REG-13, REG-39 |
+| `DP-TOKEN-JWKS-VERIFY` | DP, TX | P1 | registry verifies token via the issuer's JWKS (does not trust blindly) + revocation-residual | REG-13, REG-39 |
 
-### 3b. Token-exchange (Hydra federation, Variant H) — REG-TX-01..22
+### 3b. Token-exchange (federation, Variant H) — REG-TX-01..22
 
 > **ИМЕНА СЦЕНАРИЕВ НЕСУТ `HYDRA` ИСТОРИЧЕСКИ — предмет у них шире имени.** Идентификаторы
 > сохранены дословно: они машинно сверяются (`validate-cases.py`, гейт покрытия дерева), и
@@ -273,7 +273,7 @@ down to blob-level** (per-repo blob-scope): deny → `404`. push into a **new** 
 | `TX-TOKEN-RATE-LIMIT` | TX | P2 | rate-limit on `/iam/token` shim and `/v2/` | REG-TX-18, REG-43 |
 | `TX-FEDERATION-OUT-AUDIENCE` | TX, NEG | P2 | federation-out audience — only `registry.kacho.local` accepted | REG-TX-19 |
 | `TX-HYDRA-MINT-UNAVAIL-FAILCLOSED` | TX, NEG | P0 | Hydra unavailable on mint path (docker shim) → fail-closed, no-leak | REG-TX-20 |
-| `TX-DP-JWKS-UNAVAIL-FAILCLOSED` | TX, DP, NEG | P0 | Hydra JWKS unreachable / unknown-kid → fail-closed + kid-miss refetch, cache-TTL | REG-TX-21 |
+| `TX-DP-JWKS-UNAVAIL-FAILCLOSED` | TX, DP, NEG | P0 | issuer JWKS unreachable / unknown-kid → fail-closed + kid-miss refetch, cache-TTL | REG-TX-21 |
 | `TX-E2E-LIVE-GATE` | TX, DP, CRUD | P0 | end-to-end live: docker login+pull + k8s projected-token pull; negatives in same run | REG-TX-22 |
 
 ---
@@ -287,7 +287,7 @@ down to blob-level** (per-repo blob-scope): deny → `404`. push into a **new** 
 | Config-overlay Repository (RG-1) | `cases/registry-repository.py` | present | 24 | RG-1-A01..C04 + A02/A05/A06/A10/A17/A19/C02/X01 parity |
 | Control-plane authz | `cases/registry-authz.py` | present | 18 | REG-01a/05/06/07/26/28/29/30/36 + per-repo v_* (RG-1 A06/A08/A15/X04) + hide-existence byte-identity |
 | Data-plane OCI proxy | `scripts/dataplane-e2e.sh` | **pending** | 18 intended | REG-10..25, 35, 37, 39 |
-| Token-exchange (Hydra) | `scripts/dataplane-e2e.sh` | **pending** | 22 intended | REG-TX-01..22 |
+| Token-exchange | `scripts/dataplane-e2e.sh` | **pending** | 22 intended | REG-TX-01..22 |
 
 Not covered by newman/harness (out of scope, see TEST-PLAN §Out-of-scope): real GC
 execution internals, zot HA/S3 failover, OCI-1.1 Referrers signature verification,

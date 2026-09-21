@@ -33,7 +33,7 @@ quota:
 #   - goose migrator init-container (kacho-migrator up) → schema kacho_registry;
 #   - data-plane :8080 (Docker Registry v2 / OCI token-auth proxy in front of zot);
 #   - runtime edges registry→iam INTERNAL (:9091 Check + fga-proxy) and registry→iam
-#     PUBLIC (:9090 ProjectService.Get); data-plane verifies Hydra identity-JWT (JWKS);
+#     PUBLIC (:9090 ProjectService.Get); data-plane verifies identity-JWT (JWKS);
 #   - own pg-registry Postgres (schema kacho_registry) — the bitnami dependency is
 #     added at the umbrella level (NOT in this chart);
 #   - bundled zot OCI backend StatefulSet + Service + blob-storage PVC.

@@ -2,7 +2,7 @@
 
 Normative coverage plan for the kacho-registry regression suite across its three
 surfaces: control-plane RegistryService (CRUD), the OCI data-plane auth-proxy, and the
-IAM `/iam/token` ↔ Hydra token-exchange. The production-readiness gate (acceptance §12 /
+IAM `/iam/token` ↔ token-exchange lane. The production-readiness gate (acceptance §12 /
 functional-gate REG-TX-22) requires every **REQUIRED** cell to be covered and green on the
 live stack.
 
@@ -59,7 +59,7 @@ data-plane invariant assertion.
 | `_catalog` / `tags/list` | ▢ | ⚪ | ⚪ | ▢ DP-CATALOG / DP-TAGS-LIST per-repo filter | ✅ |
 | HTTP `DELETE` method | ⚪ | ▢ DP-DELETE-METHOD-405 | ⚪ | ⚪ | ✅ |
 
-## 4. Token-exchange — IAM `/iam/token` shim + Hydra federation (Variant H)
+## 4. Token-exchange — IAM `/iam/token` shim + federation (Variant H)
 
 | Flow | happy | negative | corner | authz | data-plane |
 |---|---|---|---|---|---|
@@ -168,11 +168,11 @@ Operation workers time; use
 ```bash
 cd tests/newman
 
-# docker push/pull through authz + IAM /iam/token shim + Hydra federation
+# docker push/pull through authz + IAM /iam/token shim + federation
 ./scripts/dataplane-e2e.sh --env environments/fe3455.postman_environment.json
 #   (drives docker login/push/pull + raw-HTTP /v2/ and /iam/token; requires the
 #    docker CLI, registry.kacho.local reachability, a SECRET-kind credential for
-#    the docker lane, and live Hydra)
+#    the docker lane, and a live issuer)
 ```
 
 The harness is the **functional-gate** for REG-TX-22: unit/integration green ≠ works.
@@ -192,7 +192,7 @@ Report its outcome into `RESULTS.md` alongside the newman summary.
 | `runId` | per-run isolation suffix (set by `run.sh`) |
 | `saKeyStandard` / `saKeyFederated` | data-plane: k8s SA-keys (harness only). Докер-вход ими НЕ выполняется — полоса принимает только базовый токен доступа (#1143) |
 | `registryHost` | data-plane: `registry.kacho.local` ingress host (harness only) |
-| `hydraTokenUrl` | data-plane: Hydra `/oauth2/token` (harness only) |
+| `legacyTokenUrl` | data-plane: `/oauth2/token` прежнего издателя (harness only) |
 
 ---
 

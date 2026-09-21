@@ -1,7 +1,7 @@
 # RESULTS — kacho-registry newman + data-plane run history
 
 > Live-run verification against the **fe3455** stack (api-gateway REST + OCI `/v2/`
-> data-plane + Hydra token-exchange). Three surfaces: control-plane CRUD (newman),
+> data-plane + token-exchange). Three surfaces: control-plane CRUD (newman),
 > control-plane authz (newman), and the data-plane + token-exchange bash harness.
 
 ## Latest baseline — fe3455
@@ -165,15 +165,15 @@ Existence-hiding + verb-tier invariants black-box through api-gateway:
   enforced. The v_get→NOT_FOUND boundary these cases target is covered unconditionally by
   the Go seam `internal/check/viewer_boundary_test.go`, so the SKIP path reports no
   green, not a false green. fe3455 has exactly one registered IAM user (the
-  cluster-admin) and a user's `external_id` is Kratos-IdP-projected — it cannot be
+  cluster-admin) and a user's `external_id` is projected by the identity provider — it cannot be
   created via the public API — so a viewer-tier user is not provisionable here.
 
 ### Data-plane OCI proxy + token-exchange (`scripts/dataplane-e2e.sh`) — ALL hard assertions GREEN
 
 Bash harness driving the docker CLI + raw HTTP against the live OCI `/v2/` surface and
-the Hydra token-exchange. All hard assertions GREEN on fe3455:
+the token-exchange lane. All hard assertions GREEN on fe3455:
 
-- token-mint (IAM `/token` shim → Hydra federation → identity-JWT);
+- token-mint (IAM `/token` shim → federation → identity-JWT);
 - `GET /v2/` ping without a token → 401, with a valid token → 200;
 - push-init (`POST /v2/<repo>/blobs/uploads/`) → 202;
 - blob upload + manifest PUT → 201;
@@ -219,7 +219,7 @@ the Hydra token-exchange. All hard assertions GREEN on fe3455:
 
 - **Viewer-tier authz fixture.** The 3 viewer-tier authz cases are fixture-gated and
   SKIP on the single-user fe3455 stand. Full enforcement needs a **registered viewer
-  user**; a user's `external_id` is Kratos-IdP-projected and cannot be minted via the
+  user**; a user's `external_id` is projected by the identity provider and cannot be minted via the
   public API, so this requires provisioning a second IdP identity + a project
   viewer-role grant on the lane. Once `jwtProjectViewerA` is populated the cases run
   and enforce automatically (no code change).
@@ -243,7 +243,7 @@ the Hydra token-exchange. All hard assertions GREEN on fe3455:
 |---|---|---|---|
 | Control-plane CRUD (`registry.py`, 30) | ✅ | ✅ | fe3455 — 150 assertions, 0 failed |
 | Control-plane authz (`registry-authz.py`, 9) | ✅ | ✅ | fe3455 — stranger/anon GREEN; 3 viewer-tier fixture-gated (console-only SKIP, no green) |
-| Data-plane OCI proxy + token-exchange (`dataplane-e2e.sh`) | ✅ | ✅ | fe3455 — all hard assertions GREEN (docker CLI + `/v2/` + Hydra) |
+| Data-plane OCI proxy + token-exchange (`dataplane-e2e.sh`) | ✅ | ✅ | fe3455 — all hard assertions GREEN (docker CLI + `/v2/` + token-exchange) |
 | InternalRegistryService (:9091, mTLS) | 🔬 integration | 🔬 | Go integration only (no public REST) |
 
 Legend: ✅ done · ▢ pending · 🔬 covered by Go integration (not newman/harness).

@@ -261,7 +261,7 @@ func requireDataplaneIsUnconditional(t *testing.T) {
 func TestDeclaredAcceptance_SelfTest(t *testing.T) {
 	const (
 		ours   = "https://kaname.kacho.local"
-		theirs = "https://hydra.example.invalid"
+		theirs = "https://other-issuer.example.invalid"
 		oursKS = "https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
 		legKS  = "https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
 		revURL = "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"

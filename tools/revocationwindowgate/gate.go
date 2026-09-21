@@ -87,7 +87,7 @@
 // cache, the zone/region projection cache — is not this subject. Those cache
 // FACTS about peer resources, not DECISIONS about access, and withdrawing a
 // grant does not make a zone stop existing. The same line separates the edge's
-// credential caches — token introspection, Kratos session, DPoP replay — from
+// credential caches — token introspection, the identity-provider session, DPoP replay — from
 // its decision cache: revoking a CREDENTIAL is a different lane with its own
 // immediate mechanism, and folding the two together would push someone to shrink
 // the grant window hoping to fix a problem it never governed.
@@ -197,7 +197,7 @@ var knobNames = map[string]string{
 // (`newDecisionCache`), because which of the two a call site uses is a fact
 // about package layout, not about security posture.
 //
-// A cache of CREDENTIALS — token introspection, Kratos session, DPoP replay —
+// A cache of CREDENTIALS — token introspection, the identity-provider session, DPoP replay —
 // is not a member: revoking a credential is a different lane with its own
 // immediate mechanism, and folding the two together pushes people to shrink
 // this window hoping to fix a problem it never governed.

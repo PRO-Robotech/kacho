@@ -32,7 +32,7 @@ func TestFGASubjectFromID(t *testing.T) {
 }
 
 // TestFGASubjectForPrincipalID_Anon — RG-1 D-7: the data-plane resolves the
-// configured anonymous principal id (the iam-issued anon Hydra client id) to the FGA
+// configured anonymous principal id (the iam-issued anon client id) to the FGA
 // wildcard FGASubjectPublicWildcard ("user:*"); every other id resolves by id-prefix
 // via FGASubjectFromID. Empty anonPrincipalID → anonymous disabled (the token, if
 // any, resolves as an ordinary principal — secure-by-default). This is the single
