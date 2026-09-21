@@ -9,6 +9,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -54,26 +55,62 @@ func TreeWalkFloor(
 	t *testing.T, root string, exact bool, expression string, keep func(rel string) bool,
 ) TreeWalkDenominator {
 	t.Helper()
+	pkgPath := reflect.TypeOf(TreeWalkCensus{}).PkgPath()
+	module := treeWalkModulePath(t, root)
 	d := TreeWalkDenominator{
 		Exact:           exact,
 		Expression:      expression,
 		BuildGraphEdges: TreeWalkBuildGraphEdges(t, root),
+		ModulePath:      module,
+		PkgPath:         pkgPath,
 	}
+	// Каталог собственного пакета ВЫВОДИТСЯ из пары «путь пакета — модуль
+	// дерева», а не выписывается: выписанный, он разъехался бы с переездом
+	// пакета молча.
+	if module != "" && strings.HasPrefix(pkgPath, module+"/") {
+		selfDir := strings.TrimPrefix(pkgPath, module+"/")
+		d.SelfFilesInCommit = treeWalkCountCommitPaths(t, root, func(rel string) bool {
+			return strings.HasPrefix(rel, selfDir+"/")
+		})
+	}
+	d.CommitPaths = treeWalkCountCommitPaths(t, root, keep)
+	return d
+}
+
+// treeWalkModulePath — модуль, объявленный судимым деревом в КОММИТЕ.
+//
+// У коммита, а не с диска: правка файла модуля в рабочем каталоге не обязана
+// делать чужое дерево нашим.
+func treeWalkModulePath(t *testing.T, root string) string {
+	t.Helper()
+	out, err := gitenv.Command(root, "show", "HEAD:go.mod").Output()
+	if err != nil {
+		return ""
+	}
+	m := regexp.MustCompile(`(?m)^module\s+(\S+)`).FindSubmatch(out)
+	if m == nil {
+		return ""
+	}
+	return string(m[1])
+}
+
+// treeWalkCountCommitPaths — путей КОММИТА, отобранных предикатом.
+func treeWalkCountCommitPaths(t *testing.T, root string, keep func(rel string) bool) int {
+	t.Helper()
 	out, err := gitenv.Command(root, "ls-tree", "-r", "-z", "--name-only", "HEAD").Output()
 	if err != nil {
-		// Коммита нет — путей коммита ноль. Судья назовёт это несостоявшимся
-		// обходом; отказывать здесь значит судить инструмент вместо дерева.
-		return d
+		return 0
 	}
+	n := 0
 	for _, rel := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
 		if rel == "" {
 			continue
 		}
 		if keep == nil || keep(rel) {
-			d.CommitPaths++
+			n++
 		}
 	}
-	return d
+	return n
 }
 
 // TrackedPaths — ПЕРВОЕ выражение состава дерева: пути ИНДЕКСА git, отобранные
@@ -171,6 +208,8 @@ func RequireTreeWalk(t *testing.T, c TreeWalkCensus, d TreeWalkDenominator) Tree
 		"графа %d || ИСХОД: %s",
 		c.Gate, c.Walked, c.Judged, unit, c.Subjects,
 		d.CommitPaths, d.Expression, treeWalkExactWord(d.Exact), d.BuildGraphEdges, v.Outcome)
+	t.Logf("ЯКОРЬ %s: дерево объявляет модуль %q · гейт собран из пакета %q · файлов "+
+		"собственного пакета в коммите %d", c.Gate, d.ModulePath, d.PkgPath, d.SelfFilesInCommit)
 
 	if v.Outcome == TreeWalkFailed {
 		for _, reason := range v.Blind {

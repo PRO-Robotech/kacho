@@ -21,6 +21,9 @@ func healthyTreeWalk() (TreeWalkCensus, TreeWalkDenominator) {
 		}, TreeWalkDenominator{
 			CommitPaths: 3578, Exact: true,
 			Expression: "git ls-tree -r HEAD -- *.go", BuildGraphEdges: 2,
+			ModulePath:        "github.com/PRO-Robotech/kacho",
+			PkgPath:           "github.com/PRO-Robotech/kacho/internal/repohygiene",
+			SelfFilesInCommit: 884,
 		}
 }
 
@@ -193,4 +196,69 @@ func TestTreeWalkInjection_EveryBlindReasonIsNamed(t *testing.T) {
 	if len(v.Blind) < 3 {
 		t.Fatalf("названо причин %d при трёх внесённых: %v", len(v.Blind), v.Blind)
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ВТОРАЯ ПРЕДПОСЫЛКА — О НАШЕМ ДЕРЕВЕ. Пары однофактные: первая предпосылка
+// (внутренние рёбра) во всех четырёх ВЫПОЛНЕНА, чтобы видно было, что работает
+// именно вторая.
+
+// TestTreeWalkInjection_ForeignModuleIsBlind — дерево объявляет ЧУЖОЙ модуль.
+//
+// Так выглядит прогон гейта внутри постороннего продукта на Go: обход честен,
+// файлы есть, внутренние рёбра есть — а судит он чужой код.
+func TestTreeWalkInjection_ForeignModuleIsBlind(t *testing.T) {
+	t.Parallel()
+	c, d := healthyTreeWalk()
+	d.ModulePath = "github.com/klauspost/compress"
+	d.SelfFilesInCommit = 0
+
+	treeWalkBlindBecause(t, JudgeTreeWalk(c, d), "НЕ его дерево")
+}
+
+// TestTreeWalkInjection_OurModuleNameWithoutOurGateIsBlind — ПРЕДМЕТ: дереву
+// приписали имя нашего модуля.
+//
+// Один факт против здорового близнеца: файлов собственного пакета гейта в
+// коммите ноль. Первая предпосылка выполнена — две строки в файле модуля дают
+// и имя, и внутренние рёбра, — и ровно поэтому одной её недостаточно.
+func TestTreeWalkInjection_OurModuleNameWithoutOurGateIsBlind(t *testing.T) {
+	t.Parallel()
+	c, d := healthyTreeWalk()
+	d.SelfFilesInCommit = 0
+
+	treeWalkBlindBecause(t, JudgeTreeWalk(c, d), "имя нашего модуля просто приписали")
+}
+
+// TestTreeWalkInjection_OneSelfFileIsEnough — ГРАНИЦА предыдущего с законной
+// стороны: ОДНОГО файла собственного пакета в коммите достаточно.
+func TestTreeWalkInjection_OneSelfFileIsEnough(t *testing.T) {
+	t.Parallel()
+	c, d := healthyTreeWalk()
+	d.SelfFilesInCommit = 1
+
+	if v := JudgeTreeWalk(c, d); v.Outcome == TreeWalkFailed {
+		t.Fatalf("дерево с одним файлом собственного пакета названо чужим: %v", v.Blind)
+	}
+}
+
+// TestTreeWalkInjection_TreeWithoutAModuleIsBlind — дерево не объявляет модуля
+// вовсе: объяснять путь пакета гейта нечем.
+func TestTreeWalkInjection_TreeWithoutAModuleIsBlind(t *testing.T) {
+	t.Parallel()
+	c, d := healthyTreeWalk()
+	d.ModulePath = ""
+	d.SelfFilesInCommit = 0
+
+	treeWalkBlindBecause(t, JudgeTreeWalk(c, d), "не объявляет модуля")
+}
+
+// TestTreeWalkInjection_UnknownPkgPathIsBlind — путь пакета гейта не установлен:
+// вторая предпосылка беспредметна, и молчать об этом нельзя.
+func TestTreeWalkInjection_UnknownPkgPathIsBlind(t *testing.T) {
+	t.Parallel()
+	c, d := healthyTreeWalk()
+	d.PkgPath = ""
+
+	treeWalkBlindBecause(t, JudgeTreeWalk(c, d), "путь пакета гейта не установлен")
 }
