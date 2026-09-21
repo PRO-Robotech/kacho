@@ -187,9 +187,32 @@ func TestLoginLaneRelay_F3_51_RelayedRequestCarriesCookiesAndOneForwardedForAndN
 	if len(xff) != 1 || xff[0] != "10.0.0.1" {
 		t.Fatalf("X-Forwarded-For обязан быть РОВНО ОДНИМ адресом, выведенным оператором цепочки (справа по числу прыжков): %v", xff)
 	}
-	// Ответ службы уходит клиенту как есть — включая Set-Cookie.
-	if sc := rec.Result().Header["Set-Cookie"]; len(sc) != 1 || !strings.HasPrefix(sc[0], "kaname_session=; Max-Age=0") {
-		t.Fatalf("Set-Cookie службы не доехал до клиента: %v", sc)
+	// Ответ службы уходит клиенту как есть — включая её Set-Cookie. На
+	// ВЫПОЛНЕННОМ выходе край ДОПОЛНЯЕТ его гашением имён, которых служба не
+	// знает: имён носителя два, своё у неё одно, а чужое принадлежит стороне,
+	// которой она не управляет. Проверяются обе половины — доехавшее от службы
+	// и дополненное краем, — потому что «как есть» здесь означает «не изменено»,
+	// а не «ничего не добавлено».
+	sc := rec.Result().Header["Set-Cookie"]
+	fromService := 0
+	ended := map[string]bool{}
+	for _, h := range sc {
+		if strings.HasPrefix(h, "kaname_session=; Max-Age=0") {
+			fromService++
+		}
+		for _, name := range middleware.SessionCarrierNames() {
+			if strings.HasPrefix(h, name+"=;") {
+				ended[name] = true
+			}
+		}
+	}
+	if fromService != 1 {
+		t.Fatalf("Set-Cookie службы не доехал до клиента неизменным: %v", sc)
+	}
+	for _, name := range middleware.SessionCarrierNames() {
+		if !ended[name] {
+			t.Fatalf("выполненный выход не погасил имя %q: %v", name, sc)
+		}
 	}
 	if rec.Body.String() != `{}` {
 		t.Fatalf("тело ответа изменено: %q", rec.Body.String())

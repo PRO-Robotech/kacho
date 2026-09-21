@@ -138,7 +138,7 @@ func NewLoginLaneRelay(cfg LoginLaneRelayConfig) (*LoginLaneRelay, error) {
 		},
 		ModifyResponse: endEveryCarrierOnLogout,
 		ErrorHandler:   r.unreachableHandler,
-		ErrorLog:     slog.NewLogLogger(cfg.Logger.Handler(), slog.LevelError),
+		ErrorLog:       slog.NewLogLogger(cfg.Logger.Handler(), slog.LevelError),
 	}
 	return r, nil
 }
@@ -204,6 +204,13 @@ func (r *LoginLaneRelay) Stats() LoginLaneRelaySnapshot {
 // выбрасывало бы человека при каждом обращении к ней.
 func endEveryCarrierOnLogout(resp *http.Response) error {
 	if middleware.LoginLaneVerb(resp.Request.URL.Path) != middleware.LoginLaneVerbLogout {
+		return nil
+	}
+	// ТОЛЬКО НА ВЫПОЛНЕННОМ ВЫХОДЕ. Край ДОПОЛНЯЕТ то, что сделала служба, а не
+	// решает о выходе сам: на её отказе — «выход не выполнен, попробуйте
+	// позже» — гашение означало бы, что человек выброшен ровно тогда, когда
+	// служба сказала, что не выбрасывала. Исход выхода судит она, по записи.
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return nil
 	}
 	already := map[string]bool{}

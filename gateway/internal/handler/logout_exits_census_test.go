@@ -158,3 +158,37 @@ func TestLoginLaneRelay_ANonLogoutVerbEndsNothing(t *testing.T) {
 	t.Logf("перепись: глаголов полосы формы осмотрено %d (из %d, выход исключён) · погасивших имена 0",
 		checked, len(middleware.LoginLaneRoutes()))
 }
+
+// Вторая половина того же решения: край ДОПОЛНЯЕТ выполненный выход, а не
+// решает о выходе сам. На отказе службы — «выход не выполнен» — не гасится
+// ничто, иначе человек оказывался бы выброшен ровно тогда, когда служба
+// сказала, что не выбрасывала.
+func TestLoginLaneRelay_ARefusedLogoutEndsNothing(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	refusals := []int{
+		http.StatusServiceUnavailable,
+		http.StatusUnauthorized,
+		http.StatusInternalServerError,
+	}
+	for _, code := range refusals {
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(code)
+			_, _ = w.Write([]byte(`{"message":"logout not performed; try again later"}`))
+		}))
+		relay, err := handler.NewLoginLaneRelay(handler.LoginLaneRelayConfig{
+			Logger:   logger,
+			Target:   upstream.URL,
+			ClientIP: middleware.NewContextExtractor(time.Now, true, middleware.WithTrustedProxyHops(1)).ClientIP,
+			Timeout:  2 * time.Second,
+		})
+		require.NoError(t, err)
+		rec := httptest.NewRecorder()
+		relay.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, middleware.LoginLanePathLogout, nil))
+		if n := len(endedNames(rec.Result())); n != 0 {
+			t.Errorf("отказ выхода кодом %d погасил %d имени — человек выброшен там, где служба "+
+				"сказала, что не выбрасывала", code, n)
+		}
+		upstream.Close()
+	}
+	t.Logf("перепись: исходов отказа проверено %d · погасивших имена 0", len(refusals))
+}
