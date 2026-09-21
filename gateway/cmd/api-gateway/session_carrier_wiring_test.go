@@ -741,9 +741,21 @@ func TestSessionCarrierWiring_TheBootSelfReportNamesTheWindowInstant(t *testing.
 func TestSessionCarrierWiring_TheGuardIsGivenEveryFieldItsAxesNeed(t *testing.T) {
 	fset, f := parseMain(t)
 
-	// Поля, без которых у стража выключается ось. Перечень объявлен, и это
-	// сказано: вывести «от чего зависит ось» из типа нечем — зависимость живёт
-	// в теле стража, а не в полях.
+	// СОСТАВ ПОЛЕЙ ТИПА ВЫВОДИТСЯ ИЗ РАЗБОРА, а перечень ниже только приписывает
+	// каждому полю ЕГО ОСЬ.
+	//
+	// Прежде перечень был выписан целиком, и утверждение «корень передаёт все
+	// поля, от которых зависят оси» держалось им одним: шестое поле, прочитанное
+	// новой осью, в перечень не попало бы, гейт остался бы зелёным, и ось
+	// выключилась бы МОЛЧА. Это дословно тот дефект, который закрыт коммитом
+	// `bce51658458` на одно касание раньше в этом же диффе — там ось выключалась
+	// отсутствием ЗНАЧЕНИЯ, здесь выключилась бы отсутствием СТРОКИ в перечне.
+	//
+	// Довод прежней шапки «вывести из типа нечем» верен про то, КАКАЯ ось читает
+	// поле — это живёт в теле стража, — и неверен про то, КАКИЕ ПОЛЯ у типа
+	// есть: их называет объявление, и разбирается оно тем же `go/ast`, которым
+	// проба уже пользуется. Сегодня поля осей = все поля типа, и расхождение
+	// между перечнем и объявлением — находка.
 	axisFields := map[string]string{
 		"Now":            "ось «момент окна обязан быть фактом»",
 		"Carriers":       "ось согласованности пары",
@@ -755,6 +767,29 @@ func TestSessionCarrierWiring_TheGuardIsGivenEveryFieldItsAxesNeed(t *testing.T)
 	// Судятся ВСЕ конфигурации стража в корне, а не последняя найденная.
 	// Прежде обход присваивал и перезаписывал, и появись вторая — судилась бы
 	// только она, а первая прошла бы молча.
+	// Перечень обязан покрывать ВСЕ поля типа, и это сверяется с объявлением.
+	declared := structFieldsOf(t, f, "SessionCarrierConfig")
+	if len(declared) == 0 {
+		// Тип объявлен в непроверочном файле пакета — ищем и там.
+		declared = structFieldsInPackage(t, ".", "SessionCarrierConfig")
+	}
+	if len(declared) == 0 {
+		t.Fatal("объявление SessionCarrierConfig не найдено — сверять перечень не с чем, и " +
+			"гейт судил бы о непрочитанном")
+	}
+	var uncovered []string
+	for _, name := range declared {
+		if _, ok := axisFields[name]; !ok {
+			uncovered = append(uncovered, name)
+		}
+	}
+	sort.Strings(uncovered)
+	for _, name := range uncovered {
+		t.Errorf("поле %s объявлено у SessionCarrierConfig и не названо в перечне осей: новая "+
+			"ось, прочитавшая его, выключится МОЛЧА — гейт останется зелёным, потому что о поле "+
+			"его никто не спросил", name)
+	}
+
 	var lits []*ast.CompositeLit
 	ast.Inspect(f, func(n ast.Node) bool {
 		cl, ok := n.(*ast.CompositeLit)
@@ -799,6 +834,64 @@ func TestSessionCarrierWiring_TheGuardIsGivenEveryFieldItsAxesNeed(t *testing.T)
 			complete++
 		}
 	}
-	t.Logf("перепись: конфигураций стража в корне %d · полей, от которых зависят оси, %d · "+
-		"конфигураций, передавших все поля, %d", len(lits), len(axisFields), complete)
+	t.Logf("перепись: конфигураций стража в корне %d · полей У ТИПА (выведено разбором) %d · "+
+		"названо перечнем осей %d · не названо %d · конфигураций, передавших все поля, %d",
+		len(lits), len(declared), len(axisFields), len(uncovered), complete)
+}
+
+// structFieldsOf — имена полей названной структуры, объявленной в этом файле.
+func structFieldsOf(t *testing.T, f *ast.File, typeName string) []string {
+	t.Helper()
+	return fieldsOfStructIn(f, typeName)
+}
+
+// structFieldsInPackage — то же, но по НЕПРОВЕРОЧНЫМ файлам каталога: тип
+// объявлен в продуктовом файле, а проба живёт рядом.
+//
+// ОБЛАСТЬ ОБХОДА: один каталог — тот, где лежит страж. ОСТАТОК: остальной
+// модуль; тип, переехавший в другой пакет, здесь найден не будет, и об этом
+// скажет отказ «объявление не найдено», а не молчание.
+func structFieldsInPackage(t *testing.T, dir, typeName string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("каталог %s не прочитан: %v", dir, err)
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		parsed, err := parser.ParseFile(token.NewFileSet(), filepath.Join(dir, name), nil, 0)
+		if err != nil {
+			continue
+		}
+		if fields := fieldsOfStructIn(parsed, typeName); len(fields) > 0 {
+			return fields
+		}
+	}
+	return nil
+}
+
+// fieldsOfStructIn — имена полей структуры в разобранном файле.
+func fieldsOfStructIn(f *ast.File, typeName string) []string {
+	var out []string
+	ast.Inspect(f, func(n ast.Node) bool {
+		ts, ok := n.(*ast.TypeSpec)
+		if !ok || ts.Name.Name != typeName {
+			return true
+		}
+		st, ok := ts.Type.(*ast.StructType)
+		if !ok || st.Fields == nil {
+			return false
+		}
+		for _, fld := range st.Fields.List {
+			for _, nm := range fld.Names {
+				out = append(out, nm.Name)
+			}
+		}
+		return false
+	})
+	sort.Strings(out)
+	return out
 }
