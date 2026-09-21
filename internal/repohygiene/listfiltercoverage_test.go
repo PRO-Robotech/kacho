@@ -129,7 +129,7 @@ func hasAnalyser(root, svc string) bool {
 func TestCoverage_EveryServiceHasAListFilterAnalyser(t *testing.T) {
 	t.Parallel()
 	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
-	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepProdGo, "git ls-tree -r HEAD -- *.go, непроверочные, вне игнорирования", "непроверочных файлов Go")
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepProdGo, "непроверочных файлов Go")
 	root := repoRootForCoverage(t)
 	svcs := servicesFromGit(t, root)
 
@@ -170,7 +170,7 @@ func TestCoverage_EveryServiceHasAListFilterAnalyser(t *testing.T) {
 func TestCoverage_PredicateFindsAMissingAnalyser(t *testing.T) {
 	t.Parallel()
 	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
-	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepProdGo, "git ls-tree -r HEAD -- *.go, непроверочные, вне игнорирования", "непроверочных файлов Go")
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepProdGo, "непроверочных файлов Go")
 	root := repoRootForCoverage(t)
 
 	const absent = "no-such-service-listfiltergate-control"
@@ -199,7 +199,7 @@ func TestCoverage_PredicateFindsAMissingAnalyser(t *testing.T) {
 func TestCoverage_CIRunsEveryAnalyser(t *testing.T) {
 	t.Parallel()
 	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
-	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepAll, "git ls-tree -r HEAD, все пути", "отслеживаемых путей")
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepAll, "отслеживаемых путей")
 	root := repoRootForCoverage(t)
 	svcs := servicesFromGit(t, root)
 
@@ -316,7 +316,7 @@ func ciAuditedServices(t *testing.T, workflow string) []string {
 func TestCoverage_PremiseEveryServiceHasAListingSurface(t *testing.T) {
 	t.Parallel()
 	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
-	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepProdGo, "git ls-tree -r HEAD -- *.go, непроверочные, вне игнорирования", "непроверочных файлов Go")
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepProdGo, "непроверочных файлов Go")
 	root := repoRootForCoverage(t)
 	svcs := servicesFromGit(t, root)
 

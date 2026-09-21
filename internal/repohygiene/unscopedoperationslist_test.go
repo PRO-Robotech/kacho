@@ -116,7 +116,7 @@ func TestNoUnscopedOperationsListOutsideAdminTier(t *testing.T) {
 func TestAdminTierExemptionsStillHaveSubject(t *testing.T) {
 	t.Parallel()
 	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
-	requireTreeWalkOver(t, repoRoot(t), treeWalkKeepGo, "git ls-tree -r HEAD -- *.go", "записей ведомости яруса", len(adminTierUnscopedList))
+	requireTreeWalkOver(t, repoRoot(t), treeWalkKeepGo, "записей ведомости яруса", len(adminTierUnscopedList))
 	root := repoRoot(t)
 
 	for rel, why := range adminTierUnscopedList {

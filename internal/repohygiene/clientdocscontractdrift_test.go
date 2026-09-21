@@ -96,7 +96,7 @@ func TestClientDocsExamplesDoNotShowRetiredFields(t *testing.T) {
 func TestClientDocsRetiredFieldLedgerHasSubject(t *testing.T) {
 	t.Parallel()
 	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
-	requireTreeWalkOver(t, repoRoot(t), treeWalkKeepAll, "git ls-tree -r HEAD, все пути", "записей ведомости снятых полей", len(clientDocsRetiredFieldLedger))
+	requireTreeWalkOver(t, repoRoot(t), treeWalkKeepAll, "записей ведомости снятых полей", len(clientDocsRetiredFieldLedger))
 	opts := clientDocsContractDriftOptions(t)
 	if len(clientDocsRetiredFieldLedger) == 0 {
 		t.Log("ведомость пуста — прощать нечего; это цель, а не поломка")

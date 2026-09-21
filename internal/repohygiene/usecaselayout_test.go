@@ -157,7 +157,7 @@ func TestUseCaseLayerHasOneLayout(t *testing.T) {
 func TestUseCaseLayoutExemptionsStillHaveSubject(t *testing.T) {
 	t.Parallel()
 	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
-	requireTreeWalkOver(t, repoRoot(t), treeWalkKeepAll, "git ls-tree -r HEAD, все пути", "записей отложенной раскладки", len(useCaseLayoutHandoff))
+	requireTreeWalkOver(t, repoRoot(t), treeWalkKeepAll, "записей отложенной раскладки", len(useCaseLayoutHandoff))
 	root := repoRoot(t)
 
 	for _, rel := range useCaseLayoutHandoff {

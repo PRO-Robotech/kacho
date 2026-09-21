@@ -44,7 +44,7 @@ import (
 func TestIdentifiersAreASCII(t *testing.T) {
 	t.Parallel()
 	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
-	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepGo, "git ls-tree -r HEAD -- *.go", "файлов Go")
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepGo, "файлов Go")
 	root := repoRoot(t)
 
 	out, err := gitenv.Command(root, "ls-files", "-z", "*.go").Output()

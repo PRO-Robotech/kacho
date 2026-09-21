@@ -238,7 +238,7 @@ func checkCrossModuleWorkspace(modules []string, exampleSrc string, examplePrese
 func TestCrossModuleWorkspaceExampleNamesEveryModule(t *testing.T) {
 	t.Parallel()
 	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
-	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepAll, "git ls-tree -r HEAD, все пути", "отслеживаемых путей")
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepAll, "отслеживаемых путей")
 	root := repoRoot(t)
 	tree := newTrackedTree(t, root)
 
@@ -316,7 +316,7 @@ func TestCrossModuleWorkspaceExampleNamesEveryModule(t *testing.T) {
 func TestCrossModuleWorkspaceItselfStaysOutOfTheIndex(t *testing.T) {
 	t.Parallel()
 	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
-	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepAll, "git ls-tree -r HEAD, все пути", "отслеживаемых путей")
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepAll, "отслеживаемых путей")
 	root := repoRoot(t)
 	tree := newTrackedTree(t, root)
 

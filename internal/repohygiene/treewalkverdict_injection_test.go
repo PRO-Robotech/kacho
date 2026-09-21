@@ -262,3 +262,123 @@ func TestTreeWalkInjection_UnknownPkgPathIsBlind(t *testing.T) {
 
 	treeWalkBlindBecause(t, JudgeTreeWalk(c, d), "путь пакета гейта не установлен")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ТРЕТИЙ ИСХОД: СПРОСИТЬ НЕ УДАЛОСЬ
+
+// TestTreeWalkInjection_UnreadableTreeIsItsOwnReason — отказ инструмента не есть
+// свойство дерева.
+//
+// Прежде добытчики знаменателя возвращали НОЛЬ и на «такого в коммите нет», и
+// на «git не ответил»: один ноль в двух разных мирах. Теперь у второго своя
+// причина, и она называется первой — пока она жива, числа ниже считаны по
+// неполному знаменателю.
+func TestTreeWalkInjection_UnreadableTreeIsItsOwnReason(t *testing.T) {
+	t.Parallel()
+	c, d := healthyTreeWalk()
+	d.Unreadable = "состав коммита не прочитан: exit status 128"
+
+	treeWalkBlindBecause(t, JudgeTreeWalk(c, d), "отказ инструмента")
+}
+
+// TestTreeWalkInjection_ReadableTreeSaysNothingAboutTheTool — ЗАКОННЫЙ БЛИЗНЕЦ:
+// тот же знаменатель без отказа инструмента даёт вердикт о предмете.
+func TestTreeWalkInjection_ReadableTreeSaysNothingAboutTheTool(t *testing.T) {
+	t.Parallel()
+	c, d := healthyTreeWalk()
+
+	if v := JudgeTreeWalk(c, d); v.Outcome == TreeWalkFailed {
+		t.Fatalf("исправно прочитанное дерево названо несостоявшимся обходом: %v", v.Blind)
+	}
+}
+
+// TestTreeWalkInjection_UnreadableComesFirst — причина инструмента называется
+// ПЕРВОЙ: объяснять остальные числа свойствами дерева, пока она жива, нельзя.
+func TestTreeWalkInjection_UnreadableComesFirst(t *testing.T) {
+	t.Parallel()
+	c, d := healthyTreeWalk()
+	d.Unreadable = "файл модуля коммита не прочитан: exit status 128"
+	d.BuildGraphEdges = 0
+	d.SelfFilesInCommit = 0
+
+	v := JudgeTreeWalk(c, d)
+	if v.Outcome != TreeWalkFailed {
+		t.Fatalf("исход %q, ожидался %q", v.Outcome, TreeWalkFailed)
+	}
+	if len(v.Blind) < 2 || !strings.Contains(v.Blind[0], "отказ инструмента") {
+		t.Fatalf("первой названа причина %q — отказ инструмента обязан идти первым, "+
+			"иначе читатель объяснит числа свойствами дерева: %v", v.Blind[0], v.Blind)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ПАКЕТ ГЕЙТА В КОРНЕ МОДУЛЯ
+
+// TestTreeWalkInjection_PackageAtTheModuleRootIsNotForeign — путь пакета РАВЕН
+// модулю: собственные файлы лежат в корне, и обвинять своё дерево не за что.
+//
+// Без этой ветви префикс с косой чертой не совпадал, файлов собственного пакета
+// насчитывалось ноль, и судья называл НАШЕ дерево чужим.
+func TestTreeWalkInjection_PackageAtTheModuleRootIsNotForeign(t *testing.T) {
+	t.Parallel()
+	c, d := healthyTreeWalk()
+	d.ModulePath = "github.com/PRO-Robotech/kacho"
+	d.PkgPath = "github.com/PRO-Robotech/kacho"
+	d.SelfFilesInCommit = 7
+
+	if v := JudgeTreeWalk(c, d); v.Outcome == TreeWalkFailed {
+		t.Fatalf("пакет в корне модуля назван чужим деревом: %v", v.Blind)
+	}
+}
+
+// TestTreeWalkInjection_PackageAtTheModuleRootWithoutFilesIsBlind — та же ветвь
+// с дефектной стороны: корень модуля объявлен, а файлов в нём нет.
+func TestTreeWalkInjection_PackageAtTheModuleRootWithoutFilesIsBlind(t *testing.T) {
+	t.Parallel()
+	c, d := healthyTreeWalk()
+	d.ModulePath = "github.com/PRO-Robotech/kacho"
+	d.PkgPath = "github.com/PRO-Robotech/kacho"
+	d.SelfFilesInCommit = 0
+
+	treeWalkBlindBecause(t, JudgeTreeWalk(c, d), "имя нашего модуля просто приписали")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ОТБОР И ЕГО ОПИСАНИЕ — ОДНА ПАРА
+
+// TestTreeWalkInjection_SelectorCarriesItsOwnDescription — описание отбора
+// нельзя прочитать, не взяв тот же предикат.
+//
+// Прежде описание приезжало отдельной строкой рядом с предикатом и могло
+// разъехаться с ним молча: правишь предикат — строка остаётся, и знаменатель
+// печатает про один отбор, а считает другой.
+func TestTreeWalkInjection_SelectorCarriesItsOwnDescription(t *testing.T) {
+	t.Parallel()
+	for _, sel := range []TreeSelector{
+		treeWalkKeepAll, treeWalkKeepGo, treeWalkKeepProdGo,
+		treeWalkKeepChart, treeWalkSelfPackage,
+	} {
+		if sel.Describe == "" {
+			t.Errorf("отбор без описания: знаменатель нечем перепроверить")
+		}
+		if sel.Match == nil {
+			t.Errorf("описание %q без отбора: перепись говорила бы о предикате, "+
+				"которого нет", sel.Describe)
+		}
+	}
+	// Отбор и описание обязаны быть СОГЛАСНЫ: проверяем на входе, который
+	// описание накрывать не должно.
+	if treeWalkKeepProdGo.Match("services/x/a_test.go") {
+		t.Error("отбор «непроверочные» принял проверочный файл — описание и предикат разошлись")
+	}
+	if !treeWalkKeepGo.Match("services/x/a_test.go") {
+		t.Error("отбор «все *.go» отверг файл Go — описание и предикат разошлись")
+	}
+	if treeWalkKeepChart.Match("services/x/values.yaml") {
+		t.Error("отбор чартов принял путь вне deploy/ — описание и предикат разошлись")
+	}
+	if !treeWalkSelfPackage.Match("internal/repohygiene/a.go") {
+		t.Error("отбор собственного пакета отверг обычный файл пакета — разбор снова " +
+			"видел бы только пробные")
+	}
+}

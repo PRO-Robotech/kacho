@@ -15,7 +15,7 @@ import (
 func TestBakedDescriptorLedgerEntryHasASubjectInTheTree(t *testing.T) {
 	t.Parallel()
 	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
-	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepAll, "git ls-tree -r HEAD, все пути", "отслеживаемых путей")
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepAll, "отслеживаемых путей")
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 

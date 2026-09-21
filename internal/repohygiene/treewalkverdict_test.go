@@ -4,6 +4,7 @@
 package repohygiene
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -31,50 +32,76 @@ var treeWalkEdgeRe = regexp.MustCompile(`(?m)^\s*(github\.com/PRO-Robotech/[a-z0
 //
 // Читается у коммита, а не с диска: правка файла модуля в рабочем каталоге не
 // обязана делать чужое дерево продуктом.
-func TreeWalkBuildGraphEdges(t *testing.T, root string) int {
+func TreeWalkBuildGraphEdges(t *testing.T, root string) (int, error) {
 	t.Helper()
 	out, err := gitenv.Command(root, "show", "HEAD:go.mod").Output()
 	if err != nil {
-		// Файла модуля в коммите нет — рёбер ноль, и это законный ответ:
-		// судья назовёт дерево не-продуктом. Отказывать здесь нельзя, иначе
-		// предпосылка судилась бы ошибкой инструмента, а не деревом.
-		return 0
+		// ТРЕТИЙ ИСХОД: спросить НЕ УДАЛОСЬ. Прежде здесь возвращался ноль, и
+		// «файла модуля в коммите нет» было неотличимо от «git не ответил» —
+		// один и тот же ноль в двух разных мирах, ровно тот класс, который
+		// этот пакет ловит по всему дереву.
+		return 0, fmt.Errorf("файл модуля коммита не прочитан: %w", err)
 	}
 	seen := map[string]struct{}{}
 	for _, m := range treeWalkEdgeRe.FindAllStringSubmatch(string(out), -1) {
 		seen[m[1]] = struct{}{}
 	}
-	return len(seen)
+	return len(seen), nil
 }
 
 // TreeWalkFloor — знаменатель обхода, снятый ВТОРЫМ выражением.
 //
-// keep — тот же отбор, каким гейт отбирает свои пути. exact говорит, совпадает
-// ли отбор точно: ложь означает, что отбор коммита ШИРЕ, и тогда требуется
-// вложение, а не равенство.
+// keep — тот же отбор, каким гейт отбирает свои пути, ВМЕСТЕ с его описанием:
+// разъехаться им нечем. exact говорит, совпадает ли отбор точно: ложь означает,
+// что отбор коммита ШИРЕ, и тогда требуется вложение, а не равенство.
 func TreeWalkFloor(
-	t *testing.T, root string, exact bool, expression string, keep func(rel string) bool,
+	t *testing.T, root string, exact bool, keep TreeSelector,
 ) TreeWalkDenominator {
 	t.Helper()
 	pkgPath := reflect.TypeOf(TreeWalkCensus{}).PkgPath()
-	module := treeWalkModulePath(t, root)
+	var unreadable []string
+	note := func(err error) {
+		if err != nil {
+			unreadable = append(unreadable, err.Error())
+		}
+	}
+	module, merr := treeWalkModulePath(t, root)
+	note(merr)
+	edges, eerr := TreeWalkBuildGraphEdges(t, root)
+	note(eerr)
 	d := TreeWalkDenominator{
 		Exact:           exact,
-		Expression:      expression,
-		BuildGraphEdges: TreeWalkBuildGraphEdges(t, root),
+		Expression:      keep.Describe,
+		BuildGraphEdges: edges,
 		ModulePath:      module,
 		PkgPath:         pkgPath,
 	}
 	// Каталог собственного пакета ВЫВОДИТСЯ из пары «путь пакета — модуль
 	// дерева», а не выписывается: выписанный, он разъехался бы с переездом
 	// пакета молча.
-	if module != "" && strings.HasPrefix(pkgPath, module+"/") {
+	// Пакет гейта может лежать и В КОРНЕ модуля: тогда путь пакета РАВЕН
+	// модулю, префикса с косой чертой нет, а собственными файлами считаются
+	// файлы корня. Без этой ветви судья обвинял бы собственное дерево.
+	switch {
+	case module == "":
+	case pkgPath == module:
+		n, cerr := treeWalkCountCommitPaths(t, root, func(rel string) bool {
+			return !strings.Contains(rel, "/") && strings.HasSuffix(rel, ".go")
+		})
+		note(cerr)
+		d.SelfFilesInCommit = n
+	case strings.HasPrefix(pkgPath, module+"/"):
 		selfDir := strings.TrimPrefix(pkgPath, module+"/")
-		d.SelfFilesInCommit = treeWalkCountCommitPaths(t, root, func(rel string) bool {
+		n, cerr := treeWalkCountCommitPaths(t, root, func(rel string) bool {
 			return strings.HasPrefix(rel, selfDir+"/")
 		})
+		note(cerr)
+		d.SelfFilesInCommit = n
 	}
-	d.CommitPaths = treeWalkCountCommitPaths(t, root, keep)
+	n, cerr := treeWalkCountCommitPaths(t, root, keep.Match)
+	note(cerr)
+	d.CommitPaths = n
+	d.Unreadable = strings.Join(unreadable, "; ")
 	return d
 }
 
@@ -82,27 +109,28 @@ func TreeWalkFloor(
 //
 // У коммита, а не с диска: правка файла модуля в рабочем каталоге не обязана
 // делать чужое дерево нашим.
-func treeWalkModulePath(t *testing.T, root string) string {
+func treeWalkModulePath(t *testing.T, root string) (string, error) {
 	t.Helper()
 	out, err := gitenv.Command(root, "show", "HEAD:go.mod").Output()
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("файл модуля коммита не прочитан: %w", err)
 	}
 	m := regexp.MustCompile(`(?m)^module\s+(\S+)`).FindSubmatch(out)
 	if m == nil {
-		return ""
+		return "", nil
 	}
-	return string(m[1])
+	return string(m[1]), nil
 }
 
 // treeWalkCountCommitPaths — путей КОММИТА, отобранных предикатом.
-func treeWalkCountCommitPaths(t *testing.T, root string, keep func(rel string) bool) int {
+func treeWalkCountCommitPaths(t *testing.T, root string, keep func(rel string) bool) (int, error) {
 	t.Helper()
 	out, err := gitenv.Command(root, "ls-tree", "-r", "-z", "--name-only", "HEAD").Output()
 	if err != nil {
-		// Коммита нет — путей коммита ноль. Судья назовёт это несостоявшимся
-		// обходом; отказывать здесь значит судить инструмент вместо дерева.
-		return 0
+		// ТРЕТИЙ ИСХОД: спросить НЕ УДАЛОСЬ. «Путей такого вида в коммите нет»
+		// и «коммит не прочитан» — разные миры, и один ноль на оба означал бы,
+		// что отказ инструмента судится как свойство дерева.
+		return 0, fmt.Errorf("состав коммита не прочитан: %w", err)
 	}
 	n := 0
 	for _, rel := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
@@ -113,7 +141,7 @@ func treeWalkCountCommitPaths(t *testing.T, root string, keep func(rel string) b
 			n++
 		}
 	}
-	return n
+	return n, nil
 }
 
 // TrackedPaths — ПЕРВОЕ выражение состава дерева: пути ИНДЕКСА git, отобранные
@@ -121,7 +149,7 @@ func treeWalkCountCommitPaths(t *testing.T, root string, keep func(rel string) b
 //
 // Индекс, а не диск: посторонний каталог рядом с репозиторием не имеет права
 // влиять на вердикт. Пара к нему — `TreeWalkFloor`, спрашивающая КОММИТ.
-func TrackedPaths(t *testing.T, root string, keep func(rel string) bool) []string {
+func TrackedPaths(t *testing.T, root string, sel TreeSelector) []string {
 	t.Helper()
 	out, err := gitenv.Command(root, "ls-files", "-z").Output()
 	if err != nil {
@@ -133,55 +161,80 @@ func TrackedPaths(t *testing.T, root string, keep func(rel string) bool) []strin
 		if rel == "" {
 			continue
 		}
-		if keep == nil || keep(rel) {
+		if sel.Match == nil || sel.Match(rel) {
 			kept = append(kept, rel)
 		}
 	}
 	return kept
 }
 
-// Общие отборы путей. Отбор ОДИН на оба выражения — индекс и коммит: разные
-// отборы сравнивали бы разное и расходились бы молча.
-func treeWalkKeepAll(rel string) bool { return rel != "" }
-
-func treeWalkKeepGo(rel string) bool { return strings.HasSuffix(rel, ".go") }
-
-func treeWalkKeepProdGo(rel string) bool {
-	return strings.HasSuffix(rel, ".go") && !strings.HasSuffix(rel, "_test.go") && !skipPath(rel)
+// TreeSelector — отбор путей ВМЕСТЕ с его описанием.
+//
+// Пара неразделима намеренно. Прежде описание приезжало отдельной строкой
+// рядом с предикатом, и разъехаться они могли молча: правишь предикат — строка
+// остаётся, и знаменатель печатает про один отбор, а считает другой. Здесь
+// описание прочитать нельзя, не взяв тот же предикат.
+type TreeSelector struct {
+	// Describe — чем отбор описан в переписи.
+	Describe string
+	// Match — сам отбор. ОДИН на оба выражения, индекс и коммит: разные отборы
+	// сравнивали бы разное.
+	Match func(rel string) bool
 }
 
-func treeWalkKeepChart(rel string) bool {
-	if !strings.HasPrefix(rel, "deploy/") {
-		return false
+// Общие отборы путей.
+var (
+	treeWalkKeepAll = TreeSelector{
+		Describe: "git ls-tree -r HEAD, все пути",
+		Match:    func(rel string) bool { return rel != "" },
 	}
-	return strings.HasSuffix(rel, ".yaml") || strings.HasSuffix(rel, ".yml") ||
-		strings.HasSuffix(rel, ".tpl")
-}
+	treeWalkKeepGo = TreeSelector{
+		Describe: "git ls-tree -r HEAD -- *.go",
+		Match:    func(rel string) bool { return strings.HasSuffix(rel, ".go") },
+	}
+	treeWalkKeepProdGo = TreeSelector{
+		Describe: "git ls-tree -r HEAD -- *.go, непроверочные, вне игнорирования",
+		Match: func(rel string) bool {
+			return strings.HasSuffix(rel, ".go") &&
+				!strings.HasSuffix(rel, "_test.go") && !skipPath(rel)
+		},
+	}
+	treeWalkKeepChart = TreeSelector{
+		Describe: "git ls-tree -r HEAD -- deploy/**/*.yaml|*.yml|*.tpl",
+		Match: func(rel string) bool {
+			if !strings.HasPrefix(rel, "deploy/") {
+				return false
+			}
+			return strings.HasSuffix(rel, ".yaml") || strings.HasSuffix(rel, ".yml") ||
+				strings.HasSuffix(rel, ".tpl")
+		},
+	}
+)
 
 // requireTreeWalkOver — общий зов судьи: первое выражение состава берётся у
 // индекса, второе — у коммита, ТЕМ ЖЕ отбором.
 func requireTreeWalkOver(
-	t *testing.T, root string, keep func(string) bool, expression, unit string, subjects int,
+	t *testing.T, root string, sel TreeSelector, unit string, subjects int,
 ) {
 	t.Helper()
-	paths := TrackedPaths(t, root, keep)
+	paths := TrackedPaths(t, root, sel)
 	RequireTreeWalk(t, TreeWalkCensus{
 		Gate: t.Name(), Walked: len(paths), Judged: len(paths),
 		Subjects: subjects, Unit: unit,
-	}, TreeWalkFloor(t, root, true, expression, keep))
+	}, TreeWalkFloor(t, root, true, sel))
 }
 
 // requireTreeWalkOverCorpus — зов судьи для гейта, чей ПРЕДМЕТ и есть корпус:
 // там «предмета нет» означало бы пустое дерево, и рулит предпосылка продукта.
 func requireTreeWalkOverCorpus(
-	t *testing.T, root string, keep func(string) bool, expression, unit string,
+	t *testing.T, root string, sel TreeSelector, unit string,
 ) {
 	t.Helper()
-	paths := TrackedPaths(t, root, keep)
+	paths := TrackedPaths(t, root, sel)
 	RequireTreeWalk(t, TreeWalkCensus{
 		Gate: t.Name(), Walked: len(paths), Judged: len(paths),
 		Subjects: len(paths), Unit: unit,
-	}, TreeWalkFloor(t, root, true, expression, keep))
+	}, TreeWalkFloor(t, root, true, sel))
 }
 
 // ЗДЕСЬ СТОЯЛ СЧЁТЧИК ЗОВОВ, И ОН СНЯТ ЦЕЛИКОМ
@@ -397,13 +450,32 @@ type treeWalkPkgFuncs struct {
 	relConsts map[string]bool
 }
 
-// treeWalkParsePackage — разбирает `_test.go` пакета гигиены ПО ИНДЕКСУ git.
+// treeWalkSelfPackage — отбор собственного пакета гейтов.
+//
+// ВСЕ файлы Go, а не только пробные. Прежде разбирались только `_test.go`, и
+// помощник, переехавший в обычный файл, уводил своих зовущих из переписи МОЛЧА:
+// проба переставала считаться пробой дерева, убывающий потолок читал убыль как
+// успех, и гейт, забывший судью, снова становился невидим. Обычных файлов в
+// пакете 176, и 30 из них уже трогают примитивы среды или дерева — переезд не
+// гипотетический.
+var treeWalkSelfPackage = TreeSelector{
+	Describe: "git ls-tree -r HEAD -- internal/repohygiene/*.go",
+	Match: func(rel string) bool {
+		return strings.HasPrefix(rel, "internal/repohygiene/") && strings.HasSuffix(rel, ".go")
+	},
+}
+
+// treeWalkParsePackage — разбирает файлы Go пакета гигиены ПО ИНДЕКСУ git.
+//
+// Отказ разведён на ДВЕ причины: состав пакета не установлен (git не ответил) и
+// исходник не разобран. Прежде обе приводили к одному «проверка не исполнялась»,
+// а лечатся они по-разному.
 func treeWalkParsePackage(t *testing.T, root string) (treeWalkPkgFuncs, int) {
 	t.Helper()
-	out, err := gitenv.Command(root, "ls-files", "-z", "--", "internal/repohygiene/*_test.go").Output()
+	out, err := gitenv.Command(root, "ls-files", "-z", "--", "internal/repohygiene/*.go").Output()
 	if err != nil {
-		t.Fatalf("состав пакета не установлен: %v — «проб ноль» означало бы "+
-			"«ноль прочитанного»", err)
+		t.Fatalf("СОСТАВ ПАКЕТА НЕ УСТАНОВЛЕН (git не ответил): %v — «проб ноль» означало "+
+			"бы «ноль прочитанного». Это отказ инструмента, а не свойство дерева", err)
 	}
 	p := treeWalkPkgFuncs{
 		decls: map[string]*ast.FuncDecl{}, file: map[string]string{},
@@ -412,7 +484,7 @@ func treeWalkParsePackage(t *testing.T, root string) (treeWalkPkgFuncs, int) {
 	files := 0
 	fset := token.NewFileSet()
 	for _, rel := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
-		if rel == "" {
+		if rel == "" || !treeWalkSelfPackage.Match(rel) {
 			continue
 		}
 		raw, rerr := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel))) // #nosec G304 -- путь из индекса своего дерева
@@ -421,8 +493,9 @@ func treeWalkParsePackage(t *testing.T, root string) (treeWalkPkgFuncs, int) {
 		}
 		f, perr := parser.ParseFile(fset, rel, raw, 0)
 		if perr != nil {
-			t.Fatalf("разбор %s: %v — молчаливый пропуск превратил бы «не прочитали» "+
-				"в «нарушений нет»", rel, perr)
+			t.Fatalf("ИСХОДНИК НЕ РАЗОБРАН %s: %v — молчаливый пропуск превратил бы "+
+				"«не прочитали» в «нарушений нет». Это отказ разбора, а не отказ git",
+				rel, perr)
 		}
 		files++
 		for _, d := range f.Decls {
@@ -459,18 +532,42 @@ func treeWalkCallName(ce *ast.CallExpr) string {
 	return ""
 }
 
+// treeWalkReach — ПАМЯТЬ достижимости для ОДНОГО предиката.
+//
+// Пересчёт без памяти стоит обхода графа на каждую пробу: проб дерева под семь
+// сотен, и каждая шла по своему поддереву заново. Память на предикат — одна
+// карта, и она же служит защитой от цикла: `treeWalkInProgress` помечает имя,
+// которое сейчас разбирается, и возврат в него читается как «не доходит».
+type treeWalkReach map[string]int
+
+const (
+	treeWalkUnknown    = 0
+	treeWalkInProgress = 1
+	treeWalkYes        = 2
+	treeWalkNo         = 3
+)
+
 // reaches — транзитивно ли имя доходит до целевого вызова. Через `SelectorExpr`
 // не спускается: чужой пакет здесь не разобран, и это названо границей.
-func (p treeWalkPkgFuncs) reaches(name string, target func(string) bool, seen map[string]bool) bool {
-	if seen[name] {
+func (p treeWalkPkgFuncs) reaches(name string, target func(string) bool, seen treeWalkReach) bool {
+	switch seen[name] {
+	case treeWalkInProgress, treeWalkNo:
 		return false
+	case treeWalkYes:
+		return true
 	}
-	seen[name] = true
+	seen[name] = treeWalkInProgress
+	defer func() {
+		if seen[name] == treeWalkInProgress {
+			seen[name] = treeWalkNo
+		}
+	}()
 	fd, ok := p.decls[name]
 	if !ok {
 		return false
 	}
 	if target(treeWalkRelativeRootMark) && treeWalkCarriesRelativeRoot(fd, p.relConsts) {
+		seen[name] = treeWalkYes
 		return true
 	}
 	hit := false
@@ -492,6 +589,9 @@ func (p treeWalkPkgFuncs) reaches(name string, target func(string) bool, seen ma
 		}
 		return true
 	})
+	if hit {
+		seen[name] = treeWalkYes
+	}
 	return hit
 }
 
@@ -501,14 +601,13 @@ const treeWalkRelativeRootMark = "<относительный путь к кор
 
 // treeWalkRootProducers — формы добычи корня, ПРОИЗВЕДЁННЫЕ обходом: всякая
 // функция пакета, транзитивно доходящая до примитива среды.
-func (p treeWalkPkgFuncs) treeWalkRootProducers() []string {
+func (p treeWalkPkgFuncs) treeWalkRootProducers(memo treeWalkReach) []string {
 	var out []string
 	for name := range p.decls {
 		if strings.HasPrefix(name, "Test") {
 			continue
 		}
-		if p.reaches(name, func(n string) bool { return treeWalkRootPrimitives[n] },
-			map[string]bool{}) {
+		if p.reaches(name, func(n string) bool { return treeWalkRootPrimitives[n] }, memo) {
 			out = append(out, name)
 		}
 	}
@@ -533,7 +632,13 @@ func TestEveryTreeGateAsksTheWalkJudge(t *testing.T) {
 	isTree := func(n string) bool { return treeWalkTreePrimitives[n] }
 	isGiven := func(n string) bool { return treeWalkGivenRoot[n] }
 
-	producers := pkg.treeWalkRootProducers()
+	// По ПАМЯТИ на предикат, а не по свежей карте на каждую пробу: пересчёт без
+	// памяти обходил граф заново под семь сотен раз.
+	memoRoot := treeWalkReach{}
+	memoJudge := treeWalkReach{}
+	memoTree := treeWalkReach{}
+	memoGiven := treeWalkReach{}
+	producers := pkg.treeWalkRootProducers(memoRoot)
 
 	var silent, unknownForm []string
 	treeGates := 0
@@ -541,19 +646,19 @@ func TestEveryTreeGateAsksTheWalkJudge(t *testing.T) {
 		if !strings.HasPrefix(name, "Test") {
 			continue
 		}
-		if !pkg.reaches(name, isRoot, map[string]bool{}) {
+		if !pkg.reaches(name, isRoot, memoRoot) {
 			// Корень до примитива среды не доходит. Два разных случая, и
 			// смешивать их нельзя: корень ПЕРЕДАН (синтетика) либо добыт
 			// СПОСОБОМ, которого обход не производит, — и второй молчать не
 			// имеет права.
-			if pkg.reaches(name, isTree, map[string]bool{}) &&
-				!pkg.reaches(name, isGiven, map[string]bool{}) {
+			if pkg.reaches(name, isTree, memoTree) &&
+				!pkg.reaches(name, isGiven, memoGiven) {
 				unknownForm = append(unknownForm, name+" ("+pkg.file[name]+")")
 			}
 			continue
 		}
 		treeGates++
-		if pkg.reaches(name, isJudge, map[string]bool{}) {
+		if pkg.reaches(name, isJudge, memoJudge) {
 			continue
 		}
 		silent = append(silent, name+" ("+pkg.file[name]+")")
@@ -564,11 +669,7 @@ func TestEveryTreeGateAsksTheWalkJudge(t *testing.T) {
 	RequireTreeWalk(t, TreeWalkCensus{
 		Walked: files, Judged: files, Subjects: len(silent),
 		Unit: "проб дерева без судьи",
-	}, TreeWalkFloor(t, root, true, "git ls-tree -r HEAD -- internal/repohygiene/*_test.go",
-		func(rel string) bool {
-			return strings.HasPrefix(rel, "internal/repohygiene/") &&
-				strings.HasSuffix(rel, "_test.go")
-		}))
+	}, TreeWalkFloor(t, root, true, treeWalkSelfPackage))
 
 	t.Logf("формы добычи корня ПРОИЗВЕДЕНЫ обходом от %d примитивов среды: "+
 		"производителей %d (%s)", len(treeWalkRootPrimitives), len(producers),

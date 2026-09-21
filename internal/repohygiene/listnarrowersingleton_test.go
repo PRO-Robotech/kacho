@@ -157,7 +157,7 @@ func TestListNarrowingHasExactlyOneImplementation(t *testing.T) {
 func TestListNarrowerExceptionsHaveSubject(t *testing.T) {
 	t.Parallel()
 	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
-	requireTreeWalkOver(t, repoRoot(t), treeWalkKeepProdGo, "git ls-tree -r HEAD -- *.go, непроверочные, вне игнорирования", "записей перечня послаблений", len(narrowerConstructionExceptions))
+	requireTreeWalkOver(t, repoRoot(t), treeWalkKeepProdGo, "записей перечня послаблений", len(narrowerConstructionExceptions))
 	root := repoRoot(t)
 	for rel, why := range narrowerConstructionExceptions {
 		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {

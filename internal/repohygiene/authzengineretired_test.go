@@ -75,7 +75,7 @@ func engineRetirementSources(t *testing.T) (string, map[string]string) {
 func TestR7_3_26_EngineIsNotInTheDecisionPath(t *testing.T) {
 	t.Parallel()
 	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
-	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepProdGo, "git ls-tree -r HEAD -- *.go, непроверочные, вне игнорирования", "непроверочных файлов Go")
+	requireTreeWalkOverCorpus(t, repoRoot(t), treeWalkKeepProdGo, "непроверочных файлов Go")
 	_, sources := engineRetirementSources(t)
 
 	findings, census, err := FindRetiredEngineSurface(sources, exemptFromEngineRetirement)
@@ -121,7 +121,7 @@ func TestR7_3_26_EngineIsNotInTheDecisionPath(t *testing.T) {
 func TestR7_3_26_EngineExemptionsStillHaveASubject(t *testing.T) {
 	t.Parallel()
 	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
-	requireTreeWalkOver(t, repoRoot(t), treeWalkKeepProdGo, "git ls-tree -r HEAD -- *.go, непроверочные, вне игнорирования", "записей послаблений движка", len(engineRetirementExemptions))
+	requireTreeWalkOver(t, repoRoot(t), treeWalkKeepProdGo, "записей послаблений движка", len(engineRetirementExemptions))
 	_, sources := engineRetirementSources(t)
 
 	// Разбор БЕЗ послаблений: что гейт увидел бы, не будь их вовсе.

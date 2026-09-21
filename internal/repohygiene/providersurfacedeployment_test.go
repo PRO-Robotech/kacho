@@ -173,7 +173,7 @@ func TestChartTemplatesDoNotDialTheProviderAdminSurface(t *testing.T) {
 func TestDeploymentProviderLedger_StillHasASubject(t *testing.T) {
 	t.Parallel()
 	// ПРЕДПОСЫЛКА ОБХОДА: три исхода вместо одного зелёного.
-	requireTreeWalkOver(t, repoRoot(t), treeWalkKeepChart, "git ls-tree -r HEAD -- deploy/**/*.yaml|*.tpl", "записей ведомости шаблонов", len(deploymentProviderLedger))
+	requireTreeWalkOver(t, repoRoot(t), treeWalkKeepChart, "записей ведомости шаблонов", len(deploymentProviderLedger))
 	templates := chartTemplateBodies(t)
 	for rel, permitted := range deploymentProviderLedger {
 		body, ok := templates[rel]
