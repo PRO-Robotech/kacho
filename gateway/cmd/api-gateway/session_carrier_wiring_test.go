@@ -79,17 +79,79 @@ func TestSessionCarrierWiringGate_ItsRosterIsCheckedAgainstTheTree(t *testing.T)
 		}
 		sides[question] = true
 	}
-	// Стороны множества выводятся ИЗ НЕГО: сторона, добавленная множеству и
-	// забытая здесь, обязана быть находкой.
-	for _, question := range []string{"ReadsOwn", "ReadsProvider"} {
-		if set[question] && !sides[question] {
+	// СТОРОНЫ ВЫВОДЯТСЯ ИЗ САМОГО МНОЖЕСТВА, а не выписываются. Прежде здесь
+	// стоял литерал из двух имён, а над ним — утверждение о выведении: цикл не
+	// мог узнать о третьей стороне и молчал бы о ней, то есть ровно о том
+	// случае, ради которого заведён.
+	questions := carrierSetQuestions(t, "../../internal/config")
+	if len(questions) == 0 {
+		t.Fatal("у множества не найдено ни одного вопроса вида Reads* — предикат перестал " +
+			"опознавать свой предмет, и перечень гейта сверять не с чем")
+	}
+	for _, question := range questions {
+		if !sides[question] {
 			t.Errorf("множество отвечает на %q, а перечень гейта эту сторону не называет — её "+
 				"читатель не осматривается", question)
 		}
 	}
-	t.Logf("перепись: записей перечня %d · сторон покрыто %d · опознано в пакете полос %d · "+
-		"в пакете настройки %d", len(carrierReaderConstructors), len(sides), len(lanes), len(set))
+	t.Logf("перепись: записей перечня %d · сторон У МНОЖЕСТВА %d (%s) · покрыто перечнем %d · "+
+		"опознано имён в пакете полос %d · в пакете настройки %d",
+		len(carrierReaderConstructors), len(questions), strings.Join(questions, ", "),
+		len(sides), len(lanes), len(set))
 }
+
+// carrierSetQuestions — ВОПРОСЫ МНОЖЕСТВА, выведенные из его собственного
+// объявления: методы с приёмником `SessionCarrierSet`, чьё имя начинается на
+// `Reads`.
+//
+// Выводится, а не выписывается, и предмет вывода назван точно: сторона
+// множества есть метод-вопрос о ней. Добавит кто-нибудь третью сторону —
+// перечень гейта станет неполным в тот же прогон, а не когда заметят.
+func carrierSetQuestions(t *testing.T, dir string) []string {
+	t.Helper()
+	var out []string
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("каталог %s не прочитан: %v", dir, err)
+	}
+	files := 0
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(token.NewFileSet(), filepath.Join(dir, name), nil, 0)
+		if err != nil {
+			t.Fatalf("%s не разбирается: %v", name, err)
+		}
+		files++
+		for _, d := range f.Decls {
+			fn, ok := d.(*ast.FuncDecl)
+			if !ok || fn.Recv == nil || len(fn.Recv.List) != 1 {
+				continue
+			}
+			if !strings.HasPrefix(fn.Name.Name, "Reads") {
+				continue
+			}
+			// Приёмник обязан быть именно множеством: метод `ReadsSomething` у
+			// соседнего типа стороной носителя не является.
+			id, ok := fn.Recv.List[0].Type.(*ast.Ident)
+			if !ok || id.Name != carrierSetTypeName {
+				continue
+			}
+			out = append(out, fn.Name.Name)
+		}
+	}
+	if files == 0 {
+		t.Fatalf("в %s не найдено непроверочных файлов Go", dir)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// carrierSetTypeName — тип множества читателей. Назван константой: его
+// переименование обязано ронять вывод перепись, а не делать его беспредметным.
+const carrierSetTypeName = "SessionCarrierSet"
 
 // identifiersDeclaredIn — имена функций и методов, объявленные непроверочными
 // файлами пакета.
