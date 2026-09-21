@@ -146,8 +146,8 @@ func (h *SessionIdentityHandler) Me(w http.ResponseWriter, r *http.Request) {
 	// цепочку и не доходит — полоса отвергает его раньше (Д13), — но условие
 	// стоит здесь, потому что обработчик обязан быть верен сам по себе.
 	if h.humanSession != nil {
-		if _, ours := ourSessionCarrierOf(r); ours {
-			h.meFromOwnSession(w, r)
+		if bearer, ours := ourSessionCarrierOf(r); ours {
+			h.meFromOwnSession(w, r, bearer)
 			return
 		}
 	}
@@ -211,26 +211,27 @@ func (h *SessionIdentityHandler) Me(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(`{"user":null}`))
 }
 
-// meFromOwnSession — «кто я» из НАШЕЙ сессии (Ф3-14). Зовётся только когда наш
-// носитель ПРЕДЪЯВЛЕН, и решает на каждом исходе (см. старшинство в Me).
+// meFromOwnSession — «кто я» из НАШЕЙ сессии (Ф3-14).
+//
+// НОСИТЕЛЬ ПРИХОДИТ АРГУМЕНТОМ, а не читается здесь заново, и это не экономия
+// строки. Предикат присутствия носителя объявлен ОДНИМ на сторону
+// (`session_carrier_readers.go`), потому что расхождение двух его копий есть
+// решение о том, чья личность действует. Копия, читающая тот же запрос вторым
+// способом, обращает это объявление в утверждение о дереве, которого дерево не
+// исполняет, — и делает недостижимой собственную ветку «носителя нет»:
+// единственный вызывающий зовёт эту функцию ровно тогда, когда носитель есть.
+// Ветка снята вместе со своей докстрокой.
 //
 // Форма ответа прежняя, объект `session` добавлен: срок (усечён до секунды —
 // показывается, не сравнивается), уровень и подтверждённость адреса.
-// Без носителя и с печеньем поставщика без нашего — `{"user":null}` побайтово
-// (Ф1-52): под `own` печенье поставщика носителем не является.
 //
 // «Сессии нет», недоступность и отсечка отвечают анонимом: через боевую
 // цепочку сюда доходит только запрос, который полоса уже пропустила, и эти
 // исходы здесь — гонка между двумя вопросами одного запроса, а не отказ (его
 // произвела бы полоса). Fail-closed в ту же сторону, что прежде: анонимный
 // ответ и отказ на пути запроса суть одно состояние.
-func (h *SessionIdentityHandler) meFromOwnSession(w http.ResponseWriter, r *http.Request) {
-	carrier, err := r.Cookie(OurSessionCarrierName)
-	if err != nil || carrier.Value == "" {
-		_, _ = w.Write([]byte(`{"user":null}`))
-		return
-	}
-	sess, found, err := h.humanSession.ResolveHumanSession(r.Context(), carrier.Value)
+func (h *SessionIdentityHandler) meFromOwnSession(w http.ResponseWriter, r *http.Request, bearer string) {
+	sess, found, err := h.humanSession.ResolveHumanSession(r.Context(), bearer)
 	if err != nil {
 		h.logger.Error("/me: human session lookup unanswered; answering anonymous", "err", err.Error())
 		_, _ = w.Write([]byte(`{"user":null}`))
