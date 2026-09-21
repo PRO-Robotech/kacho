@@ -64,6 +64,15 @@ g() { git -C "$repo" -c user.email=p@i -c user.name=p -c commit.gpgsign=false "$
 mkdir -p "$repo/services" "$repo/ui-future/vpc" "$repo/scripts/hooks"
 g init -q -b main
 echo core > "$repo/services/a.go"; echo ui > "$repo/ui-future/vpc/a.ts"
+# Оснастка самой пробы (хук, производители, заглушка прогонщика) кладётся в
+# `scripts/` НЕ коммитом, и она объявляется игнорируемой — тем же словом, каким
+# дерево объявляет порождённые артефакты.
+#
+# Без этого фикстура опиралась бы на послабление, которого у продукта нет: хук
+# считает расхождением всякое неотслеживаемое, НЕ попадающее под игнор, и гонял
+# бы прогон во временной выкладке, где этой оснастки нет. Фикстура, живущая
+# вольготнее продукта, судила бы не то.
+printf 'scripts/\n' > "$repo/.gitignore"
 g add -A; g commit -qm "основание"
 m0="$(g rev-parse HEAD)"
 
@@ -340,8 +349,10 @@ subject_fixture() { # $1 — хук, который кладётся в дере
 set -uo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 marker="$(cat "$root/MARKER" 2> /dev/null || printf 'МЕТКИ-НЕТ')"
+stray=no
+[ -e "$root/services/stray.go" ] && stray=yes
 printf '\n== заглушка прогонщика судит дерево\n'
-printf '   MARKER:%s\n' "$marker"
+printf '   MARKER:%s STRAY:%s\n' "$marker" "$stray"
 if [ "$marker" = "broken" ]; then
     printf '\n== итог: проверок исполнено 1, отказов 1, НЕ выполнено 0\n'
     printf '   красное: дерево объявлено сломанным\n'
@@ -353,6 +364,9 @@ SUBJSTUB
     chmod +x "$subj/scripts/ci-local.sh"
 
     printf 'base\n' > "$subj/MARKER"; printf 'package a\n' > "$subj/services/a.go"
+    # Правило игнора — часть фикстуры: игнорируемый артефакт и неотслеживаемый
+    # исходник различаются ровно им, и без него две ветки «расхождения» слиплись бы.
+    printf 'ignored-artifact\n' > "$subj/.gitignore"
     s add -A; s commit -qm "основание"
     s update-ref refs/remotes/origin/main "$(s rev-parse HEAD)"
 
@@ -383,12 +397,21 @@ subj_run() {
         *)        s checkout -q "$at" ;;
     esac
     s checkout -q -- MARKER 2> /dev/null || true
-    [ "$dirty" = "-" ] || printf '%s\n' "$dirty" > "$subj/MARKER"
+    rm -f "$subj/services/stray.go" "$subj/ignored-artifact"
+    case "$dirty" in
+        -) : ;;
+        # Лишний исходник рядом: не отслеживается, под игнор не попадает.
+        stray) printf 'package stray\n' > "$subj/services/stray.go" ;;
+        # Порождённый артефакт: не отслеживается И попадает под игнор.
+        ignored) printf 'кэш\n' > "$subj/ignored-artifact" ;;
+        *) printf '%s\n' "$dirty" > "$subj/MARKER" ;;
+    esac
     local out rc
     out="$(cd "$subj" && printf '%s\n' "$input" \
         | env "$@" PATH="$tmp/bin:$PATH" bash scripts/hooks/pre-push origin "$subj" 2>&1)"
     rc=$?
     s checkout -q -- MARKER 2> /dev/null || true
+    rm -f "$subj/services/stray.go" "$subj/ignored-artifact"
     printf 'rc%s\n%s\n' "$rc" "$out"
 }
 
@@ -491,9 +514,56 @@ assert_verdict_subject() { # $1 — метка, $2 — файл для числ�
 
     # Временных рабочих деревьев за собой хук не оставляет: состояние, которое он
     # завёл, он и снимает. Иначе следующая отправка начинается с мусора в .git.
-    trees="$(s worktree list 2> /dev/null | grep -c . )"
-    if [ "${trees:-0}" -le 1 ]; then vok "временных рабочих деревьев за собой не оставлено"
-    else vfail "в .git осталось рабочих деревьев: $((trees - 1))"; fi
+    #
+    # Отказ САМОЙ КОМАНДЫ не гасится: `grep -c` на пустом входе даёт ноль, и
+    # утверждение «ничего не осталось» прошло бы, не посмотрев никуда. Перепись
+    # берётся только у состоявшегося опроса.
+    if ! trees="$(s worktree list 2>&1)"; then
+        vfail "опрос рабочих копий не состоялся — утверждать об остатках нечем: $trees"
+    else
+        local n; n="$(printf '%s\n' "$trees" | grep -c .)"
+        if [ "$n" -le 1 ]; then vok "временных рабочих деревьев за собой не оставлено (осмотрено записей $n)"
+        else vfail "в .git осталось рабочих деревьев: $((n - 1))"; fi
+    fi
+
+    # ── точка 4: неотслеживаемое, не попадающее под игнор, в вердикт НЕ входит ──
+    # Лишний `.go` рядом компилируется в рабочей копии и отсутствует в отправляемой
+    # ревизии: «забыл `git add`» — самый частый случай ложного зелёного.
+    r="$(subj_run feature/y stray "refs/heads/feature/y $feat_sha refs/heads/feature/y $zero" KACHO_X=1)"
+    case "$r" in
+        *"STRAY:no"*) vok "лишний неотслеживаемый исходник в вердикт не вошёл" ;;
+        *) vfail "лишний неотслеживаемый исходник вошёл в вердикт — судилась рабочая копия" ;;
+    esac
+
+    # …а ИГНОРИРУЕМЫЙ артефакт расхождением не считается: он вход прогонщика, не
+    # часть контракта, и объявив его расхождением, мы отняли бы у обычной отправки
+    # быстрый путь вместе с её артефактами.
+    r="$(subj_run feature/y ignored "refs/heads/feature/y $feat_sha refs/heads/feature/y $zero" KACHO_X=1)"
+    case "$r" in
+        *"вердикт — о рабочей копии"*) vok "игнорируемый артефакт расхождением не считается" ;;
+        *) vfail "игнорируемый артефакт объявлен расхождением — обычная отправка теряет быстрый путь" ;;
+    esac
+
+    # ── точка 3: осиротевшая выкладка прошлой отправки собирается ──────────────
+    # Идентификатор заведомо мёртвый: выше предела ядра, занять его нельзя.
+    local dead="$subj/.git/kacho-prepush-subject/kacho-prepush-4194305"
+    mkdir -p "$(dirname "$dead")"
+    if s worktree add --detach --quiet "$dead" "$main_sha" > /dev/null 2>&1; then
+        r="$(subj_run feature/y - "refs/heads/feature/y $feat_sha refs/heads/feature/y $zero" KACHO_X=1)"
+        if [ -e "$dead" ]; then
+            vfail "осиротевшая выкладка прошлой отправки не собрана — мусор копится в .git"
+            s worktree remove --force "$dead" > /dev/null 2>&1 || true
+            rm -rf "$dead"
+        else
+            vok "осиротевшая выкладка прошлой отправки собрана"
+        fi
+        case "$r" in
+            *"собрано осиротевших выкладок"*) vok "…и сборка НАЗВАНА числом, а не сделана молча" ;;
+            *) vfail "…но о сборке не сказано: уборка, о которой молчат, неотличима от её отсутствия" ;;
+        esac
+    else
+        vfail "фикстуру осиротевшей выкладки завести не удалось — утверждать о сборке нечем"
+    fi
 
     printf '%s' "$f" > "$out"
 }
@@ -503,6 +573,13 @@ assert_verdict_subject() { # $1 — метка, $2 — файл для числ�
 make_broken_draft() {
     sed 's/^    if \[ "\$push_refs_total" -eq 0 \]; then$/    if true; then/' "$HOOK" > "$tmp/hook-draft-by-head"
     grep -q '^    if true; then$' "$tmp/hook-draft-by-head"
+}
+
+# Дефект сборщика — снятый вызов: уборка по выходу остаётся, а остатки жёсткого
+# обрыва собирать становится некому. Свойство своё, дефект свой.
+make_broken_reap() {
+    sed 's/^reap_own_subject_trees$/: сборщик снят/' "$HOOK" > "$tmp/hook-no-reap"
+    grep -q '^: сборщик снят$' "$tmp/hook-no-reap"
 }
 
 # Дефект предмета — та же форма: прогон идёт в рабочей копии, чем бы она ни была.
@@ -528,6 +605,14 @@ if make_broken_draft; then
     assert_draft_by_input дефект-черновика "$tmp/draft-broken.n"; draft_broken="$(cat "$tmp/draft-broken.n")"
 fi
 
+reap_broken="н/д"
+if make_broken_reap; then
+    echo
+    echo "── прогон против дефекта «сборщика остатков нет» (ждём хотя бы один провал)"
+    subject_fixture "$tmp/hook-no-reap"
+    assert_verdict_subject дефект-сборщика "$tmp/reap-broken.n"; reap_broken="$(cat "$tmp/reap-broken.n")"
+fi
+
 subj_broken="н/д"
 if make_broken_subject; then
     echo
@@ -538,7 +623,7 @@ fi
 
 echo
 printf 'prepush-range-inject: утверждений на прогон — 6 (база диапазона) · 7 (полосы вердикта)\n'
-printf '                      · 6 (черновик по входу) · 9 (предмет вердикта)\n'
+printf '                      · 6 (черновик по входу) · 13 (предмет вердикта)\n'
 printf '  провалов у настоящего: %s (норма 0)\n' "$real_fails"
 printf '  провалов у дефекта базы: %s (норма ≥1 — иначе проба ничего не проверяет)\n' "$broken_fails"
 printf '  провалов у настоящего (полосы): %s (норма 0)\n' "$lanes_real"
@@ -547,6 +632,7 @@ printf '  провалов у настоящего (черновик по вхо
 printf '  провалов у дефекта черновика:              %s (норма ≥1)\n' "$draft_broken"
 printf '  провалов у настоящего (предмет вердикта):  %s (норма 0)\n' "$subj_real"
 printf '  провалов у дефекта предмета:               %s (норма ≥1)\n' "$subj_broken"
+printf '  провалов у дефекта сборщика остатков:      %s (норма ≥1)\n' "$reap_broken"
 
 rc=0
 [ "$real_fails" = "0" ] || { echo "ОТКАЗ: настоящий хук не проходит собственных утверждений" >&2; rc=1; }
@@ -574,6 +660,13 @@ elif [ "${draft_broken:-0}" -lt 1 ]; then
     rc=1
 fi
 [ "$subj_real" = "0" ] || { echo "ОТКАЗ: настоящий хук судит не отправляемую ревизию" >&2; rc=1; }
+if [ "$reap_broken" = "н/д" ]; then
+    echo "ОТКАЗ: дефект сборщика не воссоздан — форма вызова сборщика в хуке изменилась" >&2
+    rc=1
+elif [ "${reap_broken:-0}" -lt 1 ]; then
+    echo "ОТКАЗ: проба ЗЕЛЁНАЯ на снятом сборщике — остатки жёсткого обрыва не собирает ничто" >&2
+    rc=1
+fi
 if [ "$subj_broken" = "н/д" ]; then
     echo "ОТКАЗ: дефект предмета не воссоздан — форма выбора судимого дерева в хуке изменилась" >&2
     rc=1

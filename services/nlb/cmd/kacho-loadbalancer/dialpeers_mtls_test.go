@@ -59,7 +59,7 @@ func TestPeerDialSpecs_VPCComputeWiredToPerEdgeMTLS(t *testing.T) {
 	t.Setenv("KACHO_NLB_MTLS__COMPUTE__SERVERNAME", "compute.kacho.svc")
 	// Give vpc/compute peer addrs so the specs are populated.
 	t.Setenv("KACHO_NLB_EXTAPI__VPC__ADDR", "kacho-vpc.kacho.svc:9090")
-	t.Setenv("KACHO_NLB_EXTAPI__VPC__INTERNAL_ADDR", "kacho-vpc.kacho.svc:9091")
+	t.Setenv("KACHO_NLB_EXTAPI__VPC__INTERNAL-ADDR", "kacho-vpc.kacho.svc:9091")
 	t.Setenv("KACHO_NLB_EXTAPI__COMPUTE__ADDR", "kacho-compute.kacho.svc:9090")
 
 	cfg, err := config.Load("")
