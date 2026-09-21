@@ -56,6 +56,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -304,57 +305,56 @@ func TestSessionCarrierReaders_TheNarrowedScopeHasALivingLawfulTwinOutside(t *te
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ГАШЕНИЕ ПРОИЗВОДИТСЯ В ОДНОМ МЕСТЕ.
+// ГАШЕНИЕ ПРОИЗВОДИТСЯ В ОДНОМ МЕСТЕ — ПО ВСЕМУ МОДУЛЮ.
 //
-// Мест, ОТКУДА носитель гасится, законно больше одного — путь отказа полосы,
-// обработчик выхода, ответ глагола выхода на ретрансляции. Запрещено второе
-// место, где СОБИРАЮТСЯ АТРИБУТЫ: совпадение атрибутов держалось бы вниманием
-// автора, а расхождение молчит — браузер сопоставляет печенье по имени, пути и
-// домену, и гашение с другим путём он не находит. «Выйти» оставляет человека
-// вошедшим, и ни одна проверка знака срока этого не видит.
+// Мест, ОТКУДА носитель гасится, законно больше одного. Запрещено второе место,
+// где СОБИРАЮТСЯ АТРИБУТЫ: совпадение держалось бы вниманием автора, а
+// расхождение молчит — браузер сопоставляет печенье по имени, пути и домену, и
+// гашение с другим путём он не находит. «Выйти» оставляет человека вошедшим, и
+// ни одна проверка знака срока этого не видит.
 //
-// Судится литерал `http.Cookie` с ПУСТЫМ значением и отрицательным сроком:
-// это и есть форма гашения. Выдача печенья (непустое значение) предметом не
-// является — её производит служба, а край её лишь пропускает.
+// # ОБЛАСТЬ ВЫВЕДЕНА, А НЕ ВЫПИСАНА, и это правка предыдущей редакции
+//
+// Прежде обход шёл по трём ВЫПИСАННЫМ каталогам — 72 файла из 118, — а шапка
+// обещала полноту. Найти второе гашение можно было, просто положив его в
+// четвёртый каталог: обход туда не заглядывал, и обе половины переписи
+// печатали ноль. Корень теперь один и выведенный — корень модуля, — и сузить
+// его, не тронув модуль, нечем.
+//
+// # ПРЕДИКАТ ГАШЕНИЯ СУЖЕН ДО ПРИЗНАКА, КОТОРЫЙ НЕ ОБОЙТИ ЗАПИСЬЮ
+//
+// Прежний ждал ДВУХ примет разом: пустое значение литералом и срок унарным
+// минусом. Обе обходятся записью, не меняя смысла: значение можно ОПУСТИТЬ
+// (нулевое значение поля — та же пустая строка), а срок назвать КОНСТАНТОЙ.
+//
+// Признак теперь один и по существу: ПЕЧЕНЬЕ С ПУСТЫМ ЗНАЧЕНИЕМ. Пустое
+// значение не выдают — его выдача не значила бы ничего; печенье с пустым
+// значением есть гашение, какой бы записью ни был назван срок. Опущенное поле
+// считается пустым, потому что таково нулевое значение.
 func TestSessionCarrierEndings_AreBuiltInExactlyOnePlace(t *testing.T) {
-	roots := map[string]string{
-		"пакет полос":           ".",
-		"обработчики":           "../handler",
-		"композиционный корень": "../../cmd/api-gateway",
-	}
-	var sites []string
-	filesRead := 0
-	for _, dir := range roots {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			t.Fatalf("каталог %s не прочитан: %v", dir, err)
-		}
-		for _, e := range entries {
-			name := e.Name()
-			if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-				continue
-			}
-			fset := token.NewFileSet()
-			f, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, 0)
-			if err != nil {
-				t.Fatalf("%s не разбирается: %v", name, err)
-			}
-			filesRead++
-			ast.Inspect(f, func(n ast.Node) bool {
-				cl, ok := n.(*ast.CompositeLit)
-				if !ok || !isHTTPCookieLit(cl) {
-					return true
-				}
-				if !looksLikeAnEnding(cl) {
-					return true
-				}
-				sites = append(sites, fset.Position(cl.Pos()).String())
-				return true
-			})
-		}
-	}
-	if filesRead == 0 {
+	root := moduleRootOf(t)
+	files := prodGoFilesUnder(t, root)
+	if len(files) == 0 {
 		t.Fatal("обход пуст — гейт судил бы о непрочитанном")
+	}
+
+	var sites []string
+	for _, path := range files {
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, path, nil, 0)
+		if err != nil {
+			continue
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			cl, ok := n.(*ast.CompositeLit)
+			if !ok || !isHTTPCookieLit(cl) || !looksLikeAnEnding(cl) {
+				return true
+			}
+			rel, _ := filepath.Rel(root, path)
+			sites = append(sites, filepath.ToSlash(rel)+":"+
+				strconv.Itoa(fset.Position(cl.Pos()).Line))
+			return true
+		})
 	}
 	sort.Strings(sites)
 	if len(sites) != 1 {
@@ -363,8 +363,56 @@ func TestSessionCarrierEndings_AreBuiltInExactlyOnePlace(t *testing.T) {
 			"путём, и «выйти» оставит человека вошедшим при верном знаке срока",
 			len(sites), strings.Join(sites, ", "))
 	}
-	t.Logf("перепись: файлов осмотрено %d (пакет полос · обработчики · композиционный корень) · "+
-		"мест сборки гасящего печенья %d", filesRead, len(sites))
+	t.Logf("перепись: ОБЛАСТЬ ОБХОДА — весь модуль, корень выведен по go.mod; непроверочных "+
+		"файлов Go осмотрено %d · мест сборки гасящего печенья %d (%s)",
+		len(files), len(sites), strings.Join(sites, ", "))
+}
+
+// moduleRootOf — корень модуля, найденный по go.mod. Корень ВЫВЕДЕН: сузить
+// область, не тронув модуль, нечем.
+func moduleRootOf(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatalf("go.mod не найден выше %s — корень области не выводится", dir)
+		}
+		dir = parent
+	}
+}
+
+// prodGoFilesUnder — НЕПРОВЕРОЧНЫЕ файлы Go модуля.
+func prodGoFilesUnder(t *testing.T, root string) []string {
+	t.Helper()
+	var out []string
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case ".git", "node_modules", "vendor", "build", ".docusaurus", "dist":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, "_test.go") {
+			out = append(out, path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("обход модуля: %v", err)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // isHTTPCookieLit — литерал типа `http.Cookie`.
@@ -377,30 +425,28 @@ func isHTTPCookieLit(cl *ast.CompositeLit) bool {
 	return ok && pkg.Name == "http"
 }
 
-// looksLikeAnEnding — несёт ли литерал форму ГАШЕНИЯ: пустое значение и
-// отрицательный срок. Выдача (непустое значение) предметом не является.
+// looksLikeAnEnding — ПЕЧЕНЬЕ С ПУСТЫМ ЗНАЧЕНИЕМ.
+//
+// Один признак вместо двух, и он не обходится записью: опущенное поле — то же
+// пустое значение, а срок может быть назван как угодно. Выдачей такое печенье
+// не бывает: пустое значение выдавать незачем.
 func looksLikeAnEnding(cl *ast.CompositeLit) bool {
-	emptyValue, negativeAge := false, false
 	for _, e := range cl.Elts {
 		kv, ok := e.(*ast.KeyValueExpr)
 		if !ok {
 			continue
 		}
 		key, ok := kv.Key.(*ast.Ident)
-		if !ok {
+		if !ok || key.Name != "Value" {
 			continue
 		}
-		switch key.Name {
-		case "Value":
-			if lit, ok := kv.Value.(*ast.BasicLit); ok && lit.Kind == token.STRING &&
-				strings.Trim(lit.Value, `"`+"`") == "" {
-				emptyValue = true
-			}
-		case "MaxAge":
-			if u, ok := kv.Value.(*ast.UnaryExpr); ok && u.Op == token.SUB {
-				negativeAge = true
-			}
+		lit, ok := kv.Value.(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			// Значение приходит величиной — печенье выдаётся, а не гасится.
+			return false
 		}
+		return strings.Trim(lit.Value, `"`+"`") == ""
 	}
-	return emptyValue && negativeAge
+	// Поле ОПУЩЕНО: нулевое значение поля есть пустая строка, то есть гашение.
+	return true
 }
