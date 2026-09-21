@@ -144,7 +144,24 @@ func validateSessionCarrierConfig(cfg SessionCarrierConfig) error {
 	//
 	// Момент называет СЛУЧИВШЕЕСЯ: окно открыто, живые сессии дочитываются.
 	// Граница закрыта включающе — момент, равный старту, фактом уже является.
-	if !cfg.WindowOpenedAt.IsZero() && !cfg.Now.IsZero() && cfg.WindowOpenedAt.After(cfg.Now) {
+	// ЧАСЫ НЕ ОПЦИОНАЛЬНЫ. Прежде ось выключалась ОТСУТСТВИЕМ величины: `Now`
+	// приходит полем композиционного корня, и поле, не переданное вызывающим,
+	// давало нулевое значение — ось молча не срабатывала. Следствие точное:
+	// снятие одного поля из корня возвращало закрытую находку, а набор
+	// оставался зелёным.
+	//
+	// Контроль, выключаемый отсутствием, контролем не является: у него нет
+	// состояния «не спросили» — есть только «спросили и промолчали».
+	if !cfg.WindowOpenedAt.IsZero() && cfg.Now.IsZero() {
+		return fmt.Errorf("%s is declared, but the guard was given no clock (SessionCarrierConfig.Now "+
+			"is zero): whether the instant can be a FACT is decided against the moment this process "+
+			"started, and without it the axis silently does not run. An axis switched off by a "+
+			"missing value is not a control — it has no «not asked» state, only «asked and stayed "+
+			"silent». Pass the start instant",
+			config.SessionCarrierWindowOpenedAtKnob)
+	}
+
+	if !cfg.WindowOpenedAt.IsZero() && cfg.WindowOpenedAt.After(cfg.Now) {
 		return fmt.Errorf("%s=%q lies in the FUTURE (this process started at %q): the instant names "+
 			"what has already happened — the window is open and live foreign sessions are being read "+
 			"out. An instant ahead of now bounds nothing: every foreign session is older than it, "+

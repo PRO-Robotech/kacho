@@ -710,3 +710,69 @@ func TestSessionCarrierWiring_TheBootSelfReportNamesTheWindowInstant(t *testing.
 	}
 	t.Logf("перепись: самоотчётов о носителе %d · называющих момент окна %d", found, map[bool]int{true: 1}[named])
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// КОРЕНЬ ПЕРЕДАЁТ СТРАЖУ ВСЕ ПОЛЯ, ОТ КОТОРЫХ ЗАВИСЯТ ЕГО ОСИ.
+//
+// Оси стража включаются переданными величинами, и поле, забытое в корне, даёт
+// НУЛЕВОЕ значение — ось молча не срабатывает. Сам страж теперь отказывает без
+// часов, но этого мало: отказ увидит только тот, кто дошёл до стража с окном.
+// Обход корня закрывает вторую половину — что поле вообще передают.
+//
+// Два контроля об одном предмете здесь не дублирование, а разные вопросы:
+// страж спрашивает «могу ли я судить», обход — «спросили ли меня».
+func TestSessionCarrierWiring_TheGuardIsGivenEveryFieldItsAxesNeed(t *testing.T) {
+	fset, f := parseMain(t)
+
+	// Поля, без которых у стража выключается ось. Перечень объявлен, и это
+	// сказано: вывести «от чего зависит ось» из типа нечем — зависимость живёт
+	// в теле стража, а не в полях.
+	axisFields := map[string]string{
+		"Now":            "ось «момент окна обязан быть фактом»",
+		"Carriers":       "ось согласованности пары",
+		"Posture":        "ось согласованности пары",
+		"WindowOpenedAt": "ось обязательности момента",
+		"ProviderURL":    "ось адреса объявленного читателя",
+	}
+
+	var lit *ast.CompositeLit
+	ast.Inspect(f, func(n ast.Node) bool {
+		cl, ok := n.(*ast.CompositeLit)
+		if !ok {
+			return true
+		}
+		if id, ok := cl.Type.(*ast.Ident); ok && id.Name == "SessionCarrierConfig" {
+			lit = cl
+		}
+		return true
+	})
+	if lit == nil {
+		t.Fatal("вызова стража с SessionCarrierConfig в корне не найдено — обход судил бы о " +
+			"непроисходящем")
+	}
+
+	given := map[string]bool{}
+	for _, e := range lit.Elts {
+		kv, ok := e.(*ast.KeyValueExpr)
+		if !ok {
+			continue
+		}
+		if id, ok := kv.Key.(*ast.Ident); ok {
+			given[id.Name] = true
+		}
+	}
+	var missing []string
+	for field, axis := range axisFields {
+		if !given[field] {
+			missing = append(missing, field+" ("+axis+")")
+		}
+	}
+	sort.Strings(missing)
+	for _, m := range missing {
+		t.Errorf("корень не передаёт стражу поле %s: нулевое значение выключает ось МОЛЧА, и "+
+			"снятие одной строки из корня возвращает закрытую находку при зелёном наборе (%s)",
+			m, fset.Position(lit.Pos()).String())
+	}
+	t.Logf("перепись: полей, от которых зависят оси стража, %d · передано корнем %d",
+		len(axisFields), len(axisFields)-len(missing))
+}

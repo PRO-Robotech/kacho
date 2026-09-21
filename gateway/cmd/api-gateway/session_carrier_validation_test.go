@@ -25,6 +25,10 @@ import (
 // windowOpenedAtFixture — момент открытия окна в пробах.
 var windowOpenedAtFixture = time.Date(2026, 9, 21, 0, 0, 0, 0, time.UTC)
 
+// guardClockFixture — часы старта в пробах: ПОЗЖЕ момента открытия окна, иначе
+// проба судила бы не свой предмет, а ось «момент обязан быть фактом».
+var guardClockFixture = windowOpenedAtFixture.Add(time.Hour)
+
 func carrierSet(t *testing.T, declared string) config.SessionCarrierSet {
 	t.Helper()
 	// Обе ручки задаются ЯВНО: величина, приехавшая из окружения прогона, дала
@@ -126,6 +130,9 @@ func TestSessionCarrierGuard_EveryPostureCarrierPairIsJudged(t *testing.T) {
 			err := validateSessionCarrierConfig(SessionCarrierConfig{
 				Posture: posture, Carriers: set, ProviderURL: "http://kratos:80",
 				WindowOpenedAt: opened,
+				// Часы обязательны там, где объявлен момент: ось, выключаемая
+				// отсутствием величины, контролем не является.
+				Now: guardClockFixture,
 			})
 			switch {
 			case want && err != nil:
@@ -180,6 +187,7 @@ func TestSessionCarrierGuard_OurReaderUnderTheForeignPostureIsRefused(t *testing
 		Carriers:       carrierSet(t, "own,external"),
 		ProviderURL:    "http://kratos:80",
 		WindowOpenedAt: windowOpenedAtFixture,
+		Now:            guardClockFixture,
 	})
 	if err == nil {
 		t.Fatal("наш читатель под посадкой external принят: край читал бы печенье, которое на этом " +
@@ -202,6 +210,7 @@ func TestSessionCarrierGuard_ADeclaredProviderReaderWithoutItsAddressIsRefused(t
 			Carriers:       carrierSet(t, "own,external"),
 			ProviderURL:    url,
 			WindowOpenedAt: windowOpenedAtFixture,
+			Now:            guardClockFixture,
 		})
 		if err == nil {
 			t.Fatalf("адрес %q принят при объявленном чужом читателе: профиль назвал переходное "+
@@ -290,4 +299,46 @@ func TestSessionCarrierGuard_AWindowInstantInTheFutureIsRefused(t *testing.T) {
 		})
 	}
 	t.Logf("перепись: моментов проверено %d · законных 2 · отвергнутых %d", len(cases), refused)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ОСЬ НЕ ВЫКЛЮЧАЕТСЯ ОТСУТСТВИЕМ ВЕЛИЧИНЫ.
+//
+// Часы приходят стражу полем. Поле, не переданное вызывающим, давало нулевое
+// значение — и ось «момент обязан быть фактом» молча не срабатывала. Обхода,
+// который бы это стерёг, не было, и следствие точное: снятие ОДНОГО поля из
+// композиционного корня возвращало закрытую находку высокой тяжести, а набор
+// оставался зелёным.
+//
+// Сценария отказа у этого нет — пока поле передают. Тем и опасно: свойство
+// держалось тем, что никто не трогал одну строку.
+func TestSessionCarrierGuard_TheClockIsNotOptional(t *testing.T) {
+	err := validateSessionCarrierConfig(SessionCarrierConfig{
+		Posture:        identityposture.Own,
+		Carriers:       carrierSet(t, "own,external"),
+		ProviderURL:    "http://kratos:80",
+		WindowOpenedAt: windowOpenedAtFixture,
+		// Now не передан — ровно то, что даёт снятие одной строки из корня.
+	})
+	if err == nil {
+		t.Fatal("страж принял объявленное окно БЕЗ часов: ось «момент обязан быть фактом» молча " +
+			"не сработала, и момент в будущем снова прошёл бы. Контроль, выключаемый отсутствием " +
+			"величины, контролем не является")
+	}
+	if !strings.Contains(err.Error(), config.SessionCarrierWindowOpenedAtKnob) {
+		t.Fatalf("отказ не называет ручку: %v", err)
+	}
+	t.Logf("отказ: %v", err)
+
+	// Законный близнец: окна НЕТ — часы не нужны, и отсутствие их не отказ.
+	// Без этой половины страж требовал бы часов там, где судить нечего.
+	if err := validateSessionCarrierConfig(SessionCarrierConfig{
+		Posture: identityposture.External, Carriers: carrierSet(t, "external"),
+		ProviderURL: "http://kratos:80",
+	}); err != nil {
+		t.Fatalf("пара без окна отвергнута из-за часов: %v — часы требуются там, где есть что "+
+			"судить, а не всегда", err)
+	}
+	t.Logf("перепись: пар проверено 2 · окно с часами не судится здесь · без часов отказ 1 · " +
+		"без окна отказов 0")
 }
