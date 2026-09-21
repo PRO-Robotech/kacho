@@ -192,3 +192,106 @@ func TestLoginLaneRelay_ARefusedLogoutEndsNothing(t *testing.T) {
 	}
 	t.Logf("перепись: исходов отказа проверено %d · погасивших имена 0", len(refusals))
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// КОРЗИНЫ «ПРОЧЕЕ» У ИСХОДА ВЫХОДА НЕТ.
+//
+// Классификация была БИНАРНОЙ: дополняется полоса успеха (2xx), всё прочее —
+// нет. «Прочее» при этом не пусто и не экзотично: перенаправление — обычная
+// форма успеха браузерного выхода, и оно попадало в ветку «ничего не гасим»,
+// то есть в сторону «оставить вошедшим».
+//
+// Исходов три, и третий назван, а не подразумевается:
+//
+//   - ВЫХОД ВЫПОЛНЕН (2xx либо перенаправление) → гасим;
+//   - ВЫХОД ОТВЕРГНУТ службой (4xx/5xx с её ответом) → не гасим: человек
+//     выброшен ровно тогда, когда служба сказала, что не выбрасывала;
+//   - ИСХОД НЕ РАСПОЗНАН → гасим. Решение в сторону безопасности принято
+//     явно: форму ответа чужого слушателя отсюда не измерить, и «не знаю»
+//     обязано вести к состоянию, из которого человек может войти заново, а не
+//     к состоянию, в котором он считается вошедшим.
+//
+// Знаменатель называется: проверяются все классы кода, КОТОРЫЕ МОГУТ БЫТЬ
+// окончательным ответом на ретрансляции. Код 1xx таким не бывает — клиент Go
+// его потребляет и ждёт окончательного, — и ставить его сюда значило бы
+// проверять вход, которого ни один производитель не может выдать. Сам
+// классификатор на нераспознанном коде судится отдельно и напрямую
+// (`login_lane_relay_outcome_test.go`): его предмет — полнота разбора, а не
+// путь запроса.
+
+// logoutOutcomeClasses — по одному представителю на класс кода ответа.
+func logoutOutcomeClasses() []struct {
+	name    string
+	code    int
+	mustEnd bool
+	why     string
+} {
+	return []struct {
+		name    string
+		code    int
+		mustEnd bool
+		why     string
+	}{
+		{"200 — выход выполнен", http.StatusOK, true, "обычный успех"},
+		{"204 — выполнен, тела нет", http.StatusNoContent, true, "успех без тела"},
+		{"302 — ПЕРЕНАПРАВЛЕНИЕ", http.StatusFound, true,
+			"обычная форма успеха браузерного выхода; прежде попадала в «ничего не гасим»"},
+		{"303 — перенаправление после POST", http.StatusSeeOther, true, "та же форма успеха"},
+		{"401 — служба отвергла", http.StatusUnauthorized, false, "исход судит служба по записи"},
+		{"409 — служба отвергла", http.StatusConflict, false, "исход судит служба по записи"},
+		{"503 — выход не выполнен", http.StatusServiceUnavailable, false,
+			"человек был бы выброшен ровно тогда, когда служба сказала, что не выбрасывала"},
+	}
+}
+
+func TestLoginLaneRelay_LogoutOutcomeHasNoOtherBucket(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	names := middleware.SessionCarrierNames()
+	classes := logoutOutcomeClasses()
+	agreed := 0
+	for _, tc := range classes {
+		t.Run(tc.name, func(t *testing.T) {
+			code := tc.code
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if code >= 300 && code < 400 {
+					w.Header().Set("Location", "/signed-out")
+				}
+				w.WriteHeader(code)
+			}))
+			t.Cleanup(upstream.Close)
+
+			relay, err := handler.NewLoginLaneRelay(handler.LoginLaneRelayConfig{
+				Logger:   logger,
+				Target:   upstream.URL,
+				ClientIP: middleware.NewContextExtractor(time.Now, true, middleware.WithTrustedProxyHops(1)).ClientIP,
+				Timeout:  2 * time.Second,
+			})
+			require.NoError(t, err)
+			rec := httptest.NewRecorder()
+			relay.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, middleware.LoginLanePathLogout, nil))
+
+			ended := endedNames(rec.Result())
+			all := true
+			for _, n := range names {
+				if !ended[n] {
+					all = false
+				}
+			}
+			if all != tc.mustEnd {
+				t.Fatalf("код %d: погашено %d имени из %d, ожидалось гашение=%v — %s",
+					tc.code, len(ended), len(names), tc.mustEnd, tc.why)
+			}
+			agreed++
+		})
+	}
+	t.Logf("перепись: классов исхода проверено %d · сошлись %d · гасящих %d",
+		len(classes), agreed, func() int {
+			n := 0
+			for _, c := range classes {
+				if c.mustEnd {
+					n++
+				}
+			}
+			return n
+		}())
+}
