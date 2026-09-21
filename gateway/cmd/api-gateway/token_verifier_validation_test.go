@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
-	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
 // Тот же класс, что и у первичной установки прав: мягкий проход, не
@@ -81,29 +80,34 @@ func TestCompositionRoot_FeedsTheVerifierErrorToTheGuard(t *testing.T) {
 //
 // Проверка, чей вход никем не производится, не может упасть никогда: она
 // выглядит защитой и ею не является. Поэтому здесь берётся НАСТОЯЩАЯ
-// конфигурация края и НАСТОЯЩИЙ конструктор проверяющего подпись, а не
-// подставленная ошибка.
+// конфигурация края, а не подставленная ошибка.
 //
-// Производитель — вырожденное значение настройки издателя: строка из одних
-// косых черт непуста, поэтому «издатель задан» по любому взгляду на профиль, а
-// после снятия хвостовых черт от неё не остаётся ничего. Тот же класс, что у
-// одинокой запятой в круге доверенных отправителей: длина есть, записей ноль.
+// ПРОИЗВОДИТЕЛЬ ПЕРЕЕХАЛ, И ЭТО ЧАСТЬ ПРЕДМЕТА. Прежде им был скалярный пин
+// издателя: вырожденное значение из одних косых черт непусто, поэтому «издатель
+// задан» по любому взгляду на профиль, а после снятия хвостовых черт от него не
+// оставалось ничего — и пустой издатель доезжал до конструктора проверяющего.
+// Пин снят вместе с ветвью вывода, и вход этой формы стал непредставим.
+//
+// Класс никуда не делся, производитель у него прежний по существу — настройка,
+// непустая как строка и пустая как перечень, — но живёт он теперь в ОБЪЯВЛЕНИИ
+// приёма. Разница в пользу края: отказ наступает РАНЬШЕ конструктора, при
+// разборе объявления, и потому называет оператору ту ручку, которую править.
 func TestTokenVerifier_TheGuardsInputHasAProducer(t *testing.T) {
 	produced := 0
-	for _, issuer := range []string{"/", "//", "///"} {
-		cfg := config.Config{HydraIssuer: issuer, APIDomain: "kacho.local"}
-		require.NotEmpty(t, issuer, "настройка НЕПУСТА — профиль выглядит заполненным")
-		require.Empty(t, cfg.ResolvedHydraIssuer(),
-			"а после разбора издателя не остаётся: вырожденное значение %q", issuer)
+	for _, issuers := range []string{" ", ",", " , , ", "\t"} {
+		cfg := config.Config{
+			AppEnv:       "production",
+			APIDomain:    "kacho.local",
+			TokenIssuers: issuers,
+		}
+		require.NotEmpty(t, issuers, "настройка НЕПУСТА — профиль выглядит заполненным")
 
-		// Адресат объявлен НАСТОЯЩИЙ — одно-фактность: красное обязано прийти
-		// от издателя, а не от соседней оси, которая тоже отвергает пустое
-		// (задача #2567). Без этого проба зеленела бы, ничего не доказав об
-		// издателе.
-		_, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: cfg.ResolvedHydraIssuer(), KeySetURL: cfg.ResolvedHydraJWKSURL(), TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}}, ExpectedAudience: testTokenAudience})
-		require.Error(t, err, "конструктор обязан отказать на пустом издателе")
-		require.NotContains(t, err.Error(), "audience",
-			"отказ обязан прийти от ИЗДАТЕЛЯ: красное от соседней оси ничего не доказывает")
+		bindings, err := cfg.TokenAcceptance()
+		require.Error(t, err,
+			"вырожденный перечень %q принят: записей приёма %d — пустой перечень означает "+
+				"«принимаем любого издателя»", issuers, len(bindings))
+		require.Contains(t, err.Error(), "KACHO_API_GATEWAY_TOKEN_ISSUERS",
+			"отказ обязан назвать ручку, которую оператору править")
 		produced++
 
 		require.Error(t, validateProductionTokenVerifierConfig("production", err),
@@ -111,5 +115,21 @@ func TestTokenVerifier_TheGuardsInputHasAProducer(t *testing.T) {
 	}
 	require.Positive(t, produced,
 		"ноль произведённых входов означал бы стража, который не может упасть")
-	t.Logf("ОСМОТРЕНО значений настройки: 3, произведено отказов конструктора: %d", produced)
+
+	// ЗАКОННЫЙ БЛИЗНЕЦ: против ряда выше меняется РОВНО ОДИН факт — перечень
+	// даёт элемент. Без него проба зеленеет на разборе, отвергающем всё.
+	twin := config.Config{
+		AppEnv:             "production",
+		APIDomain:          "kacho.local",
+		TokenIssuers:       "https://kaname.kacho.local",
+		TokenIssuerKeySets: "https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json",
+	}
+	twinBindings, twinErr := twin.TokenAcceptance()
+	require.NoError(t, twinErr, "законное объявление отвергнуто")
+	require.Len(t, twinBindings, 1)
+	require.NoError(t, validateProductionTokenVerifierConfig("production", nil),
+		"страж роняет старт там, где отказа не было")
+
+	t.Logf("ОСМОТРЕНО вырожденных значений перечня: %d, произведено отказов разбора: %d; "+
+		"законных близнецов: 1", produced, produced)
 }

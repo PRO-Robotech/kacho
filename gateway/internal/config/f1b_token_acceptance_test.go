@@ -236,18 +236,17 @@ func TestF1b05_AmbiguousAndIncompleteDeclarationsRefuseTheStart(t *testing.T) {
 			"ответ решает доступ и не вправе ехать открытым текстом")
 	}
 
-	// ДВА объявления об одном предмете — отказ, а не молчаливое старшинство.
-	ambiguous := f1bFullDeclaration()
-	ambiguous.HydraIssuer = f1bLegacy
-	_, err := ambiguous.TokenAcceptance()
-	if err == nil {
-		t.Fatalf("одновременно заданы новое объявление приёма и прежний скалярный пин — " +
-			"старшинство назначено молча, и оператор задаёт значение, которое не действует")
-	}
-	if !strings.Contains(err.Error(), "KACHO_HYDRA_ISSUER") ||
-		!strings.Contains(err.Error(), "KACHO_API_GATEWAY_TOKEN_ISSUERS") {
-		t.Fatalf("отказ по двойному объявлению обязан назвать ОБЕ настройки: %v", err)
-	}
+	// ЗДЕСЬ СТОЯЛА ПРОВЕРКА ДВОЙНОГО ОБЪЯВЛЕНИЯ — «заданы и перечень, и прежний
+	// скалярный пин ⇒ отказ, а не молчаливое старшинство». Она снята ВМЕСТЕ СО
+	// СВОИМ ПРЕДМЕТОМ: пина в объявлении процесса больше нет, второго объявления
+	// об этом предмете стало неоткуда взяться, и вход, на котором эта проверка
+	// краснела, теперь непредставим. Держать её значило бы держать ветвь ради
+	// пробы.
+	//
+	// Свойство, ради которого она существовала, не осиротело, а усилилось:
+	// объявление издателя у края ровно одно, и это утверждение держит
+	// f1d_issuer_address_is_never_derived_test.go — разбором полей структуры
+	// настроек, а не проверкой согласия двух ручек.
 
 	// Положительный контроль на каждый: убрать нарушение — объявление принимается.
 	if _, err := f1bFullDeclaration().TokenAcceptance(); err != nil {
@@ -255,78 +254,50 @@ func TestF1b05_AmbiguousAndIncompleteDeclarationsRefuseTheStart(t *testing.T) {
 	}
 }
 
-// TestF1b01_UnsetDeclarationFallsBackToTheSingleLegacyRecord — переход
-// АДДИТИВЕН: «не объявлено» отличается от «объявлено пустым».
-func TestF1b01_UnsetDeclarationFallsBackToTheSingleLegacyRecord(t *testing.T) {
-	cfg := config.Config{AppEnv: "production", APIDomain: "api.kacho.test"}
-	got, err := cfg.TokenAcceptance()
-	if err != nil {
-		t.Fatalf("посадка, не объявляющая перечня, отвергнута: %v — это сегодняшнее, "+
-			"работающее и повсеместное состояние, а не забытая настройка", err)
-	}
-	if len(got) != 1 {
-		t.Fatalf("записей приёма %d, ожидалась ровно одна — множество мощности 1 остаётся "+
-			"сужением, а не «принимаем любого»", len(got))
-	}
-	if got[0].Issuer != cfg.ResolvedHydraIssuer() {
-		t.Fatalf("издатель записи %q не совпадает с сегодняшним пином %q",
-			got[0].Issuer, cfg.ResolvedHydraIssuer())
-	}
-	if got[0].KeySetURL != cfg.ResolvedHydraJWKSURL() {
-		t.Fatalf("адрес записи %q не совпадает с сегодняшним адресом набора %q",
-			got[0].KeySetURL, cfg.ResolvedHydraJWKSURL())
-	}
-	if got[0].ReadRevocation {
-		t.Fatalf("полоса прежнего издателя объявила чтение НАШЕГО авторитета отзыва")
-	}
-}
-
-// TestF1b04_TransportRequirementIsSymmetricAcrossBothPaths — требование к
-// транспорту источника набора одинаково на ОБОИХ путях объявления.
+// ЗДЕСЬ СТОЯЛА `TestF1b01_UnsetDeclarationFallsBackToTheSingleLegacyRecord` —
+// «переход АДДИТИВЕН: не объявлено ⇒ одна запись из сегодняшнего пина». Она
+// утверждала снятую ветвь и снята вместе с ней, а не переписана: её
+// положительный исход («посадка без перечня принимается») стал ровно тем, чего
+// край больше не делает.
 //
-// Асимметрия была бы хуже строгости: объявивший перечень получал бы проверку, а
-// не объявивший — нет, и правильный поступок оказывался бы наказуем. Предмет при
-// этом один: источник набора есть единственный якорь доверия проверки подписи, и
-// он не становится безопаснее оттого, что адрес приехал прежней ручкой.
-func TestF1b04_TransportRequirementIsSymmetricAcrossBothPaths(t *testing.T) {
-	// (1) Путь ЗАПАСНОЙ — перечень не объявлен, адрес приехал прежней ручкой.
-	fallback := config.Config{
-		AppEnv: "production", APIDomain: "api.kacho.test",
-		HydraIssuer:  f1bLegacy,
-		HydraJWKSURL: "http://kaname-internal.kacho.svc:9097/.well-known/jwks.json",
-	}
-	if _, err := fallback.TokenAcceptance(); err == nil {
-		t.Fatalf("незащищённый адрес набора принят на ЗАПАСНОМ пути в производственной " +
-			"посадке — тогда не объявивший перечня оператор проверки не получает, а " +
-			"объявивший получает")
-	}
+// Заменяет её `TestF1d_AnUndeclaredIssuerSetRefusesTheStartUnconditionally` в
+// f1d_issuer_address_is_never_derived_test.go, и утверждение там ПРОТИВОПОЛОЖНОЕ
+// и безусловное: перечень не объявлен ⇒ отказ в старте под любой меткой
+// окружения.
 
-	// (2) Путь ОБЪЯВЛЕННЫЙ — тот же адрес, то же отвержение.
+// TestF1b04_TransportRequirementHoldsOnTheOnlyPathThatRemains — требование к
+// транспорту источника набора.
+//
+// ЗДЕСЬ БЫЛА СИММЕТРИЯ ДВУХ ПУТЕЙ, и она была нужна: объявленный путь и запасной
+// проверялись по-разному, поэтому «объявивший перечень оператор получает
+// проверку, а не объявивший — нет» было настоящей опасностью, и правильный
+// поступок оказывался наказуем. Запасной путь снят целиком, сравнивать больше
+// нечего, и утверждение из ПОЛОВИННОГО стало БЕЗУСЛОВНЫМ: требование действует
+// на единственном пути, каким адрес набора вообще попадает к краю.
+//
+// Предмет требования не изменился: источник набора есть единственный якорь
+// доверия проверки подписи. По открытому HTTP его документ подменяется в пути, и
+// тогда подделывается токен под любого субъекта, то есть проверка подлинности
+// обходится целиком.
+func TestF1b04_TransportRequirementHoldsOnTheOnlyPathThatRemains(t *testing.T) {
+	// (1) Незащищённый адрес набора в производственной посадке — отказ.
 	declared := f1bFullDeclaration()
 	declared.TokenIssuerKeySets = f1bOurs + "=" + f1bOursKS + "," +
 		f1bLegacy + "=http://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
 	if _, err := declared.TokenAcceptance(); err == nil {
-		t.Fatalf("незащищённый адрес набора принят на ОБЪЯВЛЕННОМ пути")
+		t.Fatalf("незащищённый адрес набора принят в производственной посадке")
 	}
 
-	// (3) Положительный контроль на обоих: защищённый адрес принимается.
-	fallback.HydraJWKSURL = "https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
-	if _, err := fallback.TokenAcceptance(); err != nil {
-		t.Fatalf("защищённый адрес отвергнут на запасном пути: %v", err)
-	}
+	// (2) Положительный контроль: против (1) меняется РОВНО ОДИН факт — схема
+	// адреса. Без него проба зеленеет на разборе, отвергающем любую посадку.
 	if _, err := f1bFullDeclaration().TokenAcceptance(); err != nil {
-		t.Fatalf("защищённый адрес отвергнут на объявленном пути: %v", err)
+		t.Fatalf("защищённый адрес отвергнут: %v", err)
 	}
 
-	// (4) В режиме разработки послабление действует одинаково на обоих путях —
-	// иначе асимметрия просто переезжает на другую метку окружения.
-	fallback.AppEnv, fallback.HydraJWKSURL = "dev",
-		"http://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
-	if _, err := fallback.TokenAcceptance(); err != nil {
-		t.Fatalf("незащищённый адрес отвергнут в режиме разработки на запасном пути: %v", err)
-	}
+	// (3) В режиме разработки послабление действует — симметрично
+	// незашифрованному соединению к базе.
 	declared.AppEnv = "dev"
 	if _, err := declared.TokenAcceptance(); err != nil {
-		t.Fatalf("незащищённый адрес отвергнут в режиме разработки на объявленном пути: %v", err)
+		t.Fatalf("незащищённый адрес отвергнут в режиме разработки: %v", err)
 	}
 }

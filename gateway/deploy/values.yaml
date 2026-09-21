@@ -327,20 +327,19 @@ authn:
   # с портом службы судит теперь проба, названная выше.
   iamLoginLaneUrl: ""
 
-# Previous external OAuth server — the scalar knobs below are its transition-era
-# form; the accepted issuers and their key sets are declared by `tokenAcceptance`
-# (platform-minted tokens included). The auth path verifies each token against the
-# key set of the issuer it names. config.go reads KACHO_HYDRA_JWKS_URL (explicit) and otherwise derives
-# `{KACHO_HYDRA_ISSUER}/.well-known/jwks.json` — whose default issuer
-# (`https://hydra.api.kacho.cloud`) is NOT reachable from inside the cluster
-# (in dev Hydra's self.issuer is `http://localhost:28080/...`). So the JWKS URL
-# MUST be set explicitly to the cluster-internal Hydra PUBLIC Service. Unset →
-# no env emitted; the Go config default applies (zero regression for overlays
-# that don't opt in). The dev/prod overlays set `jwksUrl` to the in-cluster
-# `kacho-umbrella-hydra-public:4444/.well-known/jwks.json`.
-#   jwksUrl:    explicit cluster-internal Hydra JWKS endpoint (reachable from
-#               the gateway pod). Drives KACHO_HYDRA_JWKS_URL.
-#   issuer:     expected `iss` claim. Drives KACHO_HYDRA_ISSUER.
+# Прежний внешний OAuth-сервер — то, что от его настроек осталось.
+#
+# ДВУХ СКАЛЯРНЫХ РУЧЕК ЗДЕСЬ БОЛЬШЕ НЕТ. `jwksUrl` задавал адрес набора ключей,
+# `issuer` — ожидаемую строку `iss`, а незаданными они означали не «выключено», а
+# «вывести адрес из домена установки» — то есть край поднимался на хосте
+# `https://hydra.<домен>`, которого на стенде нет, и отвергал каждый токен при
+# первом же запросе, не отказав при старте. Ветвь вывода снята вместе с обеими
+# ручками: принимаемые издатели и адрес набора КАЖДОГО объявляются ключом
+# `tokenAcceptance` ниже, и необъявленный перечень теперь ОТКАЗЫВАЕТ В СТАРТЕ.
+#
+# Проверка подписи от этого не изменилась: край и прежде сверял токен с набором
+# ключей ТОГО издателя, которого токен называет. Изменилось одно — откуда край
+# узнаёт адрес этого набора: только из объявления, и ниоткуда больше.
 #
 # The revocation path needs two MORE addresses, and neither is derivable from
 # the issuer: both are served by the provider's ADMIN API, on its own Service
@@ -363,8 +362,6 @@ authn:
 # admin Service outside the cluster.
 #
 #   hydra:
-#     jwksUrl:          http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json
-#     issuer:           https://hydra.api.kacho.cloud
 #     introspectionUrl: http://kacho-umbrella-hydra-admin.kacho.svc:4445/admin/oauth2/introspect
 #     adminUrl:         http://kacho-umbrella-hydra-admin.kacho.svc:4445
 #   adminCa:    trust anchor for the admin hop, when that hop is served over
@@ -417,20 +414,24 @@ tokenAudience: "https://api.kacho.cloud"
 # набор проверочных ключей. Платформа чеканит свои токены сама (задача #897), а
 # прежний издатель на переходе остаётся, поэтому издатель здесь — МНОЖЕСТВО.
 #
-# ПЕРЕХОД АДДИТИВЕН, и это отличается от ПЕРВОЙ конфигурации проверяющего
-# осознанно: край ВЫВОДИТ издателя из домена API по умолчанию, поэтому «issuers
-# не задано» — сегодняшнее, работающее и повсеместное состояние, а не забытая
-# настройка. Три состояния, а не два:
+# ПЕРЕХОД АДДИТИВЕН по составу издателей: наш издатель ДОБАВЛЯЕТСЯ к прежнему, а
+# не подставляется вместо него.
 #
-#   - не задано ⇒ строится ОДНА запись из hydra.issuer/hydra.jwksUrl ниже —
-#     ровно сегодняшнее поведение;
-#   - задано, но элементов ноль («,», пробелы) ⇒ ОТКАЗ В СТАРТЕ, безусловный:
-#     пустой перечень означает «принимаем любого издателя». Страж считает
-#     ЭЛЕМЕНТЫ, а не длину строки;
+# СОСТОЯНИЙ ДВА, А НЕ ТРИ. Прежде их было три, и третьим было «не задано ⇒
+# строится одна запись из скалярного пина, а при пустом пине адрес ВЫВОДИТСЯ из
+# домена установки». Ровно это и было опасно: выведенный хост на стенде не
+# существует, край поднимался на нём и отвергал каждый токен — без отказа старта.
+# Ветвь снята вместе с обеими ручками пина, и осталось:
+#
+#   - не задано ЛИБО задано, но элементов ноль («,», пробелы) ⇒ ОТКАЗ В СТАРТЕ,
+#     безусловный, под любой меткой окружения. Страж считает ЭЛЕМЕНТЫ, а не
+#     длину строки;
 #   - задано ⇒ принимаются ровно объявленные, у каждого своя запись источника.
 #
-# Задать И это, И скалярный hydra.issuer/jwksUrl — ОТКАЗ В СТАРТЕ, а не
-# старшинство: значение, принятое и не действующее, хуже отвергнутого.
+# Перечень цепочка объявляет СВОИМИ слоями; повторять его в каждом слое не нужно
+# и вредно — повтор в последнем слое при расхождении с нижним выигрывает молча.
+# Что каждый стенд получает объявленный перечень, судит
+# gateway/deploy/f1c_issuer_set_reaches_every_stand_test.go.
 #
 # ОТКАТ состоит в снятии platformIssuer (и нашего издателя из issuers), а не в
 # перекатке образа.
@@ -481,8 +482,11 @@ tokenAcceptance:
     keyFile: ""
 
 hydra:
-  jwksUrl: ""
-  issuer: ""
+  # ЗДЕСЬ БЫЛИ `jwksUrl` и `issuer` — скалярный пин издателя и адрес его набора
+  # ключей. Сняты вместе с читателем: запасная ветвь разбора у края, строившая
+  # из них одну запись приёма (а при пустом пине ВЫВОДИВШАЯ адрес из домена
+  # установки), больше не существует. Перечень издателей и адрес набора каждого
+  # объявляются ключом `tokenAcceptance` ниже.
   introspectionUrl: ""
   adminUrl: ""
   # Empty secretName ⇒ no volume, no mount, no env: the hop keeps the default
