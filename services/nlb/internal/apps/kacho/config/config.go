@@ -9,11 +9,15 @@
 //	authn / extapi / authz.iam (+ cache, deny-budget) /
 //	fga.register-drainer  / mtls (opt-in).
 //
-// ENV-binding через viper с делимитером `__`:
+// ENV-binding через viper с делимитером `__`. Заменяется ТОЛЬКО ТОЧКА: дефис в
+// имени ключа доезжает до имени переменной КАК ЕСТЬ, и форма с подчёркиванием на
+// его месте не читается ничем — ни отказа, ни предупреждения, величина просто
+// остаётся умолчанием. Замерено обеими формами по обоим дефисным ключам ниже.
+// Исключение — ключи с явным `BindEnv` в `defaults.go`: там имя названо целиком.
 //
-//	KACHO_NLB_API_SERVER__ENDPOINT              → api-server.endpoint
+//	KACHO_NLB_API-SERVER__ENDPOINT              → api-server.endpoint
 //	KACHO_NLB_REPOSITORY__POSTGRES__URL         → repository.postgres.url
-//	KACHO_NLB_FGA__REGISTER_DRAINER__ENABLE     → fga.register-drainer.enable
+//	KACHO_NLB_FGA__REGISTER-DRAINER__ENABLE     → fga.register-drainer.enable
 //	KACHO_NLB_LOGGER__LEVEL                     → logger.level
 //
 // Defaults — в `defaults.go` (`RegisterDefaults`); validation — в `validate.go`

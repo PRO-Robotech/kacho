@@ -24,6 +24,8 @@ package main
 
 import (
 	"context"
+	"net"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -52,17 +54,23 @@ const probeGatewaySAN = "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
 // так пропала бы, например, величина бюджета отказов: она приезжает умолчанием.
 func bootConfig(t *testing.T, env map[string]string) *config.Config {
 	t.Helper()
-	// Имя переменной круга отправителей — с ДЕФИСАМИ, и это не описка: viper
-	// заменяет на `__` только точки, дефисы в имени ключа остаются как есть, а
-	// явного BindEnv у этого ключа нет (в отличие от `trust-any-forwarder`).
-	// Замерено загрузкой обоих написаний: подчёркивания НЕ биндятся. Форма с
-	// подчёркиваниями, которую называют комментарии конфигурации, — отдельная
-	// находка, и здесь она не воспроизводится, иначе проба зеленела бы на круге,
-	// которого процесс не получил.
+	// ДЕФИСЫ В ИМЕНАХ — НЕ ОПИСКА, И ЭТО ПРАВИЛО О КЛАССЕ КЛЮЧЕЙ, А НЕ ОБ ОДНОМ.
+	//
+	// viper заменяет на `__` ТОЛЬКО точку; дефис в имени ключа доезжает до имени
+	// переменной как есть. Значит всякий ключ с дефисом — `trusted-forwarder-sans`,
+	// `api-server.endpoint`, `extapi.*.internal-addr` — требует дефиса и в
+	// переменной. Исключение одно: ключи с явным `BindEnv` в `defaults.go`
+	// (`trust-any-forwarder`, `trust-domain`, `require-iam`, `extapi.geo.addr`) —
+	// там имя названо целиком и написание берётся оттуда.
+	//
+	// Замерено прямым опросом разборщика по каждому имени, а не прочитано: форма с
+	// подчёркиванием уходит в пустоту молча — ни отказа, ни предупреждения,
+	// величина остаётся умолчанием. Так проба зеленела бы на конфигурации,
+	// которой процесс не получал.
 	base := map[string]string{
 		"KACHO_NLB_MODE":                          "dev",
 		"KACHO_NLB_REPOSITORY__POSTGRES__URL":     "postgres://u:p@pg-nlb:5432/kacho_nlb?sslmode=require",
-		"KACHO_NLB_EXTAPI__IAM__INTERNAL_ADDR":    "kaname-internal:9091",
+		"KACHO_NLB_EXTAPI__IAM__INTERNAL-ADDR":    "kaname-internal:9091",
 		"KACHO_NLB_EXTAPI__IAM__ADDR":             "kaname:9090",
 		"KACHO_NLB_AUTHZ__TRUSTED-FORWARDER-SANS": probeGatewaySAN,
 		// Имя ЭТОЙ переменной — с подчёркиваниями, и это не описка рядом с дефисами
@@ -85,6 +93,66 @@ func bootConfig(t *testing.T, env map[string]string) *config.Config {
 		t.Fatalf("конфигурация не загрузилась: %v", err)
 	}
 	return c
+}
+
+// requireEphemeralListeners — СТРАЖ ПРЕДУСЛОВИЯ проб носителя: слушатели процесса
+// подняты на порту, который назначит ЯДРО, а не на умолчании конфигурации.
+//
+// Он стоит ДО вызова носителя, и это не перестраховка. Имя ручки, которого разбор
+// конфигурации не знает, не отказывает и не предупреждает: величина остаётся
+// умолчанием, носитель занимает 9090/9091, а проба падает не на своём предмете, а
+// на том, что ещё поднято на машине прогона, — и падает чужим текстом («bind:
+// address already in use»), уводящим читателя к соседнему стенду (#2678).
+//
+// Страж превращает это в отказ, называющий РУЧКУ. Утверждается ключ конфигурации,
+// а не имя переменной окружения: имя переменной — способ доставки, а предмет здесь
+// — доехала подстановка или нет.
+func requireEphemeralListeners(t *testing.T, cfg *config.Config) {
+	t.Helper()
+	for _, l := range []struct{ key, endpoint string }{
+		{"api-server.endpoint", cfg.APIServer.Endpoint},
+		{"api-server.internal-endpoint", cfg.APIServer.InternalEndpoint},
+	} {
+		if !endpointIsKernelAssigned(l.endpoint) {
+			t.Fatalf("слушатель %q объявлен как %q — это не порт, назначенный ядром: "+
+				"подстановка ручки не доехала до разбора конфигурации, и вердикт пробы "+
+				"стал функцией того, что ещё поднято на машине прогона", l.key, l.endpoint)
+		}
+	}
+}
+
+// endpointIsKernelAssigned — просит ли эндпойнт порт, который назначит ЯДРО.
+//
+// Распознаватель знает все ЧИСЛОВЫЕ написания своего предмета и расходится с
+// настоящим слушателем на ПУСТОМ — намеренно. Мера та же, что в заголовке пробы
+// рядом (`ephemeralport_test.go`): утверждать «знает ВСЕ законные написания»
+// нельзя, это замером опровергнуто.
+//
+// Ядру порт отдаёт не строка «0», а ЧИСЛО ноль: `net.Listen` поднимает эфемерный
+// слушатель и на `:0`, и на `:00`, и на `:0000` (замерено). Сравнение строкой
+// краснело бы на законном входе — ложная тревога, которая дороже пропуска:
+// читатель идёт чинить исправное.
+//
+// На пустом написании слушатель тоже поднялся бы, а распознаватель отвечает «нет»:
+// он судит не то, что сделает ядро, а доехала ли ручка. Разбор — в заголовке пробы.
+func endpointIsKernelAssigned(endpoint string) bool {
+	_, port, err := net.SplitHostPort(hostPort(endpoint))
+	if err != nil {
+		return false
+	}
+	return portIsKernelAssigned(port)
+}
+
+// portIsKernelAssigned — порт числом, а не строкой.
+//
+// Разбор — `strconv.Atoi`, и он выбран замером, а не на вкус: его область приёма
+// совпадает с областью приёма `net.Listen` на всех восьми написаниях, которые
+// проверялись («0», «00», «0000», «+0», «-0», « 0», «0x0», «9090»). `ParseUint`
+// отверг бы «+0» и «-0», которые продукт принимает, — то есть страж краснел бы на
+// входе, на котором слушатель законно поднимается.
+func portIsKernelAssigned(port string) bool {
+	n, err := strconv.Atoi(port)
+	return err == nil && n == 0
 }
 
 // probeNarrower / probeGate — то, что композиционный корень приносит дескриптору
@@ -164,10 +232,30 @@ func TestDescribeProbeCanFail(t *testing.T) {
 	// Ребро решения о доступе не названо — отказ О6. Оба ключа пусты: адрес
 	// резолвится firstNonEmpty(internal, public), и обнулить надо ОБА, иначе
 	// проба зеленела бы на живом ребре.
+	//
+	// Имя внутреннего адреса — с ДЕФИСОМ: ключ зовётся `extapi.iam.internal-addr`,
+	// а viper заменяет на `__` только точки. Форма с подчёркиванием, стоявшая
+	// здесь, не доезжала никуда — и обнулялся ОДИН адрес из двух. Отрицание
+	// проходило потому, что второго и не было: умолчания у ключа нет. Сам этот
+	// дефект и обнаружил, что предпосылку надо проверять, а не подразумевать.
 	cfg := bootConfig(t, map[string]string{
-		"KACHO_NLB_EXTAPI__IAM__INTERNAL_ADDR": "",
+		"KACHO_NLB_EXTAPI__IAM__INTERNAL-ADDR": "",
 		"KACHO_NLB_EXTAPI__IAM__ADDR":          "",
 	})
+
+	// СТРАЖ ПРЕДПОСЫЛКИ отрицания, и он до вызова конструктора. Отрицание
+	// утверждает «нет ребра — нет дескриптора», и оно вправе что-то значить
+	// только если ребра ДЕЙСТВИТЕЛЬНО нет. Без стража подстановка, не доехавшая
+	// до разбора, превращает отрицание в утверждение о другом входе — молча, а
+	// при обратном знаке (адрес остался жив) даёт отказ, обвиняющий конструктор
+	// в том, чего тот не делал.
+	if cfg.ExtAPI.IAM.InternalAddr != "" || cfg.ExtAPI.IAM.Addr != "" {
+		t.Fatalf("предпосылка отрицания НЕ СОЗДАНА: ребро решения о доступе живо — "+
+			"internal-addr=%q addr=%q. Подстановка ручки не доехала до разбора конфигурации; "+
+			"о конструкторе это не говорит ничего",
+			cfg.ExtAPI.IAM.InternalAddr, cfg.ExtAPI.IAM.Addr)
+	}
+
 	_, err := describe(cfg, quietLogger(), probeNarrower(), probeGate(), probeExistence{}, probeAuthzObserve, prometheus.NewRegistry())
 	if err == nil {
 		t.Fatal("дескриптор без ребра решения о доступе принят — конструктор не судит ничего, " +
@@ -212,7 +300,7 @@ func TestDeclaredCircleIsTheOneTheProcessCarries(t *testing.T) {
 	// законных значения, и незаданное среди них не значится.
 	t.Setenv("KACHO_NLB_QUOTA__AUTHORITY", "not-deployed")
 	t.Setenv("KACHO_NLB_REPOSITORY__POSTGRES__URL", "postgres://u:p@pg-nlb:5432/kacho_nlb?sslmode=require")
-	t.Setenv("KACHO_NLB_EXTAPI__IAM__INTERNAL_ADDR", "kaname-internal:9091")
+	t.Setenv("KACHO_NLB_EXTAPI__IAM__INTERNAL-ADDR", "kaname-internal:9091")
 	t.Setenv("KACHO_NLB_AUTHZ__TRUSTED-FORWARDER-SANS", "")
 	if _, lerr := config.Load(""); lerr == nil {
 		t.Fatal("пустой круг принят без явного опт-ина — сужения нет, а выглядит оно как есть")
@@ -232,16 +320,22 @@ func TestDeclaredCircleIsTheOneTheProcessCarries(t *testing.T) {
 // регистраторы».
 //
 // Контекст отменён заранее: если носитель дойдёт до слушателей, он тут же их
-// погасит и вернёт управление. Портов проба не занимает, к БД не ходит —
+// погасит и вернёт управление. Фиксированных портов проба не занимает — это
+// утверждает страж предусловия, а не комментарий, — к БД не ходит,
 // обработчики строятся с нулевыми зависимостями, потому что предмет здесь —
 // НАБОР служимых методов, а не их поведение.
 func TestCarrierRaisesTheService(t *testing.T) {
 	cfg := bootConfig(t, map[string]string{
 		// Слушатели на эфемерных портах локального интерфейса: если старт всё же
 		// дойдёт до них, проба не подерётся за 9090/9091 с чужим прогоном.
-		"KACHO_NLB_API_SERVER__ENDPOINT":          "tcp://127.0.0.1:0",
-		"KACHO_NLB_API_SERVER__INTERNAL_ENDPOINT": "tcp://127.0.0.1:0",
+		// Имена — с ДЕФИСАМИ: ключи зовутся `api-server.endpoint` и
+		// `api-server.internal-endpoint`, а viper заменяет на `__` только точки.
+		// Форма с подчёркиваниями, стоявшая здесь, не читается ничем — и слушатели
+		// молча поднимались на умолчании 9090/9091 (#2678).
+		"KACHO_NLB_API-SERVER__ENDPOINT":          "tcp://127.0.0.1:0",
+		"KACHO_NLB_API-SERVER__INTERNAL-ENDPOINT": "tcp://127.0.0.1:0",
 	})
+	requireEphemeralListeners(t, cfg)
 	desc, err := describe(cfg, quietLogger(), probeNarrower(), probeGate(), probeExistence{}, probeAuthzObserve, prometheus.NewRegistry())
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут: %v", err)
