@@ -62,7 +62,9 @@
 package restmux
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -99,6 +101,20 @@ func externalEdgeChain(t *testing.T) (http.Handler, *countingChecker) {
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
+	checker := &countingChecker{}
+	mw := buildExternalAuthzWithChecker(t, slog.New(slog.NewTextHandler(io.Discard, nil)), checker)
+	return mw.HTTP(dispatcher), checker
+}
+
+// buildExternalAuthz — полоса прав с настоящим встроенным каталогом и настоящей
+// таблицей маршрутов, пишущая в переданный журнал.
+func buildExternalAuthz(t *testing.T, logger *slog.Logger) *middleware.AuthzMiddleware {
+	t.Helper()
+	return buildExternalAuthzWithChecker(t, logger, &countingChecker{})
+}
+
+func buildExternalAuthzWithChecker(t *testing.T, logger *slog.Logger, checker middleware.AuthorizeChecker) *middleware.AuthzMiddleware {
+	t.Helper()
 	catalog, err := middleware.LoadEmbeddedPermissionCatalog("")
 	if err != nil {
 		t.Fatalf("LoadEmbeddedPermissionCatalog: %v", err)
@@ -107,7 +123,6 @@ func externalEdgeChain(t *testing.T) (http.Handler, *countingChecker) {
 		t.Fatal("встроенный каталог прав пуст — предмета у пробы нет")
 	}
 	rr := middleware.NewRestRouter()
-	checker := &countingChecker{}
 	mw, err := middleware.NewAuthzMiddleware(middleware.AuthzMiddlewareConfig{
 		Enabled:         true,
 		Catalog:         catalog,
@@ -116,7 +131,7 @@ func externalEdgeChain(t *testing.T) (http.Handler, *countingChecker) {
 		Resources:       middleware.NewResourceExtractor(rr.PathTemplates()),
 		Checker:         checker,
 		RestRouter:      rr,
-		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Logger:          logger,
 		CacheTTL:        5 * time.Second,
 		CacheMaxEntries: 100,
 		PublicAllowlist: middleware.DefaultPublicAllowlist(),
@@ -124,7 +139,7 @@ func externalEdgeChain(t *testing.T) (http.Handler, *countingChecker) {
 	if err != nil {
 		t.Fatalf("NewAuthzMiddleware: %v", err)
 	}
-	return mw.HTTP(dispatcher), checker
+	return mw
 }
 
 // ---- что видит запросчик ----
@@ -538,4 +553,119 @@ func hiddenAnswer(t *testing.T, dispatcher http.Handler) edgeAnswer {
 			"эталон укрытия брать неоткуда", a.code)
 	}
 	return a
+}
+
+// ---- запись об укрытом отказе ----
+
+// logSink — журнал процесса, собранный С ТЕМ ЖЕ ПОРОГОМ, что ставит корень
+// (`slog.LevelInfo`, cmd/api-gateway/main.go). Порог здесь не выбран, а
+// повторён; связь держит cmd/api-gateway/access_log_wiring_test.go,
+// `TestProcessLogLevelIsTheOneTheProbesAssume` — сменится уровень в корне,
+// покраснеет он, а не разойдётся молча смысл зелёного этих проб.
+type logSink struct {
+	buf    *bytes.Buffer
+	logger *slog.Logger
+}
+
+func newLogSink() *logSink {
+	buf := &bytes.Buffer{}
+	return &logSink{
+		buf: buf,
+		logger: slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{
+			Level: slog.LevelInfo,
+		})),
+	}
+}
+
+// records разбирает напечатанное в записи. Считаются СТРОКИ, которые процесс
+// действительно напечатал бы: запись ниже порога сюда не попадает вовсе, и в
+// этом весь предмет.
+func (s *logSink) records() []map[string]any {
+	var out []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(s.buf.String()), "\n") {
+		if line == "" {
+			continue
+		}
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			continue
+		}
+		out = append(out, rec)
+	}
+	return out
+}
+
+// TestHiddenRefusalLeavesARecord — укрытый отказ оставляет запись, и записей
+// столько же, сколько запросов.
+//
+// ЧТО ЭТО ДЕРЖИТ И ЧЕГО НЕ ДЕРЖИТ. Здесь проверяется МЕХАНИЗМ: журнал доступа,
+// стоящий снаружи полосы прав, видит укрытый отказ, и собственная запись фазы
+// печатается. Сам ПОРЯДОК звеньев в собранном крае держит другой гейт —
+// cmd/api-gateway/access_log_wiring_test.go,
+// `TestHTTPAccessLogIsOutsideTheRightsLane`, — потому что порядок живёт в
+// композиционном корне, а не здесь. Разделение намеренное: проба, которая сама
+// собрала бы цепь в нужном порядке и на нём обрадовалась, проверяла бы себя.
+func TestHiddenRefusalLeavesARecord(t *testing.T) {
+	sink := newLogSink()
+	dispatcher, err := NewMux(context.Background(), probeAddrs(t), nil, nil)
+	if err != nil {
+		t.Fatalf("NewMux: %v", err)
+	}
+	mw := buildExternalAuthz(t, sink.logger)
+	// Порядок, который держит гейт корня: журнал доступа СНАРУЖИ полосы прав.
+	chain := middleware.HTTPAccessLog(sink.logger)(mw.HTTP(dispatcher))
+
+	subjects := internalSubjects()
+	var asked []publicBinding
+	rr := middleware.NewRestRouter()
+	for _, b := range subjects {
+		if sharesAPublicRoute(rr, b.method, b.path) {
+			continue
+		}
+		asked = append(asked, b)
+	}
+	if len(asked) < minInternalBindings {
+		t.Fatalf("необслуживаемых путей для опроса %d (< %d) — пустой обход вердиктом не является",
+			len(asked), minInternalBindings)
+	}
+
+	for _, b := range asked {
+		rec := httptest.NewRecorder()
+		chain.ServeHTTP(rec, httptest.NewRequest(b.method, b.path, nil))
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("%s %s ответил %d — это не укрытый отказ, и проба меряет не тот предмет",
+				b.method, b.path, rec.Code)
+		}
+	}
+
+	var access, phase int
+	pathsSeen := map[string]bool{}
+	for _, r := range sink.records() {
+		switch r["msg"] {
+		case "access":
+			access++
+			if m, ok := r["method"].(string); ok {
+				pathsSeen[m] = true
+			}
+		default:
+			phase++
+		}
+	}
+	t.Logf("перепись: запросов %d · строк журнала доступа %d · прочих строк %d · различных путей в журнале %d",
+		len(asked), access, phase, len(pathsSeen))
+
+	if access != len(asked) {
+		t.Errorf("строк журнала доступа %d при %d запросах к необслуживаемым путям. "+
+			"Анонимный перебор внешней поверхности не оставляет следа, по которому его можно было бы "+
+			"разобрать: ровно этот класс событий и ищут в разборе происшествия.", access, len(asked))
+	}
+	if len(pathsSeen) != len(asked) {
+		t.Errorf("различных путей в журнале %d при %d опрошенных — по записи нельзя сказать, ЧТО спрашивали",
+			len(pathsSeen), len(asked))
+	}
+	if phase == 0 {
+		t.Errorf("собственная запись фазы укрытия не напечатана НИ РАЗУ при %d укрытых отказах: "+
+			"она идёт уровнем ниже порога процесса, то есть не существует для оператора. "+
+			"Без неё в журнале 404 полосы прав неотличим от 404 диспетчера.", len(asked))
+	}
 }
