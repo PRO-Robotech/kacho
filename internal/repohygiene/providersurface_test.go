@@ -125,6 +125,59 @@ func providerSurfaceSources(t *testing.T) map[string]string {
 	return sources
 }
 
+// providerSurfaceDenominator — ЗНАМЕНАТЕЛЬ обхода, снятый вторым выражением.
+//
+// Разбор пар «первое выражение против второго» — в шапке
+// providerwalkverdict.go. Здесь только добыча:
+//
+//   - состав дерева спрашивается у КОММИТА (`git ls-tree -r HEAD`), тогда как
+//     сам обход берёт его у ИНДЕКСА (`git ls-files`). Одинаково сломаться эти
+//     два вопроса не могут: между ними лежит вся незакоммиченная работа;
+//   - литералы считаются ЛЕКСИЧЕСКИМ проходом, без синтаксического дерева;
+//   - словарь проверяется положительным контролем на синтетическом входе.
+func providerSurfaceDenominator(
+	t *testing.T, sources map[string]string, exempt func(path string) bool,
+) ProviderWalkDenominator {
+	t.Helper()
+	root := repoRoot(t)
+
+	out, err := gitenv.Command(root, "ls-tree", "-r", "-z", "--name-only", "HEAD").Output()
+	if err != nil {
+		t.Fatalf("git ls-tree HEAD: %v — знаменатель обхода не установлен, и «ноль "+
+			"находок» здесь означало бы «ноль прочитанного»", err)
+	}
+	denom := ProviderWalkDenominator{DictionaryPaths: len(ProviderSurfaces)}
+	for _, rel := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
+		if rel == "" || !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
+			continue
+		}
+		denom.CommitGoFiles++
+		if skipPath(rel) {
+			denom.SkippedGoFiles++
+		}
+	}
+
+	lexFiles, lexLiterals, lexErr := MeasureLiteralsLexically(sources, exempt)
+	if lexErr != nil {
+		t.Fatalf("лексический проход: %v", lexErr)
+	}
+	denom.LexicalLiterals = lexLiterals
+
+	found, missed, reachErr := MeasureRecogniserReach(ProviderSurfaces)
+	if reachErr != nil {
+		t.Fatalf("положительный контроль распознавателя: %v", reachErr)
+	}
+	denom.RecogniserReach = found
+
+	t.Logf("ЗНАМЕНАТЕЛЬ ОБХОДА (второе выражение): непроверочных файлов Go в КОММИТЕ %d "+
+		"(из них отброшено правилом игнорирования %d); строковых литералов по "+
+		"ЛЕКСИЧЕСКОМУ проходу %d в %d файлах; путей словаря %d, из них распознаватель "+
+		"находит на синтетическом входе %d (не найдены: %v)",
+		denom.CommitGoFiles, denom.SkippedGoFiles, denom.LexicalLiterals, lexFiles,
+		denom.DictionaryPaths, denom.RecogniserReach, missed)
+	return denom
+}
+
 // TestProviderSurfaceIsBoundedByTheLedger — поверхность к внешнему поставщику
 // удостоверений ограничена ведомостью, и это утверждение О ДЕРЕВЕ.
 //
@@ -139,26 +192,37 @@ func TestProviderSurfaceIsBoundedByTheLedger(t *testing.T) {
 		t.Fatalf("разбор: %v", err)
 	}
 
-	t.Logf("осмотрено непроверочных файлов Go: %d; строковых литералов: %d; "+
-		"мест разговора с поставщиком: %d в %d файлах; записей ведомости: %d "+
-		"(объявлений поверхностей: %d); файлов, называющих поставщика ТОЛЬКО в прозе: %d",
-		census.Files, census.Literals, census.Reaches, census.Carriers,
+	t.Logf("ОБХОД (первое выражение): осмотрено непроверочных файлов Go: %d "+
+		"(снято послаблением: %d); строковых литералов: %d; мест разговора с "+
+		"поставщиком: %d в %d файлах; записей ведомости: %d (объявлений поверхностей: "+
+		"%d); файлов, называющих поставщика ТОЛЬКО в прозе: %d",
+		census.Files, census.Exempt, census.Literals, census.Reaches, census.Carriers,
 		census.LedgerEntries, census.LedgerSurfaces, census.ProseMentions)
 
-	// Предпосылка гейта: он обязан ОТКАЗЫВАТЬ на беспредметности, а не молчать.
-	// Ноль прочитанных файлов снаружи неотличим от «нарушений нет».
-	if census.Files == 0 {
-		t.Fatal("осмотрено ноль файлов — гейт не читал дерева, и его молчание ничего не значит")
+	denom := providerSurfaceDenominator(t, sources, exemptFromProviderSurface)
+	verdict := JudgeProviderWalk(census, denom)
+	t.Logf("ИСХОД ОБХОДА: %s", verdict.Outcome)
+
+	// Исходов три, и третий — не зелёный. «Проверено N, находок 0» и «посмотреть
+	// не смог» обязаны различаться: пустой результат — законный вердикт только
+	// при доказанном знаменателе обхода.
+	if verdict.Outcome == ProviderOutcomeBlind {
+		for _, reason := range verdict.Blind {
+			t.Errorf("обход не состоялся: %s", reason)
+		}
+		t.Fatalf("исход %q — у гейта НЕТ вердикта о поверхности, и его молчание ничего "+
+			"не утверждает. Причин названо: %d. Пока хоть одна из них жива, «находок "+
+			"ноль» неотличимо от «искать было нечем»", verdict.Outcome, len(verdict.Blind))
 	}
-	if census.Literals == 0 {
-		t.Fatal("осмотрено ноль строковых литералов — разбор не дошёл до исполняемой части")
-	}
-	// Пустая ведомость при нуле мест — ЦЕЛЬ фазы Ф4, а не поломка: проба,
-	// падающая на достижении собственной цели, подталкивает держать запись ради
-	// зелёного. Поэтому предпосылкой требуется только прочитанное дерево.
-	if census.Reaches == 0 && census.LedgerEntries == 0 {
-		t.Log("мест разговора с поставщиком ноль и ведомость пуста — исход, к которому " +
-			"ведёт задача #900")
+	if verdict.Outcome == ProviderOutcomeNoSurface {
+		// ЦЕЛЬ фазы Ф4 (задача #900), а не поломка: проба, падающая на достижении
+		// собственной цели, подталкивает держать запись ведомости ради зелёного.
+		// Исход назван отдельно именно потому, что знаменатель обхода доказан выше:
+		// иначе он был бы неотличим от ослепшего гейта.
+		t.Logf("поверхности нет: мест разговора с поставщиком ноль и ведомость пуста "+
+			"при знаменателе обхода — файлов Go %d, строковых литералов %d, путей "+
+			"словаря %d (все доказанно находимы). Это исход, к которому ведёт задача #900",
+			denom.CommitGoFiles, denom.LexicalLiterals, denom.DictionaryPaths)
 	}
 
 	for _, f := range findings {
