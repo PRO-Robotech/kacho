@@ -275,9 +275,14 @@ spec:
             # Hydra JWKS for RS256 access-token verification.
             # KACHO_HYDRA_JWKS_URL MUST be the cluster-internal Hydra PUBLIC
             # Service (e.g. kacho-umbrella-hydra-public:4444/.well-known/jwks.json),
-            # reachable from the gateway pod. Without it config.ResolvedHydraJWKSURL()
-            # derives the public issuer host, which the pod cannot reach → Hydra
-            # login tokens never validate → WhoAmI/Account/Project → code 16.
+            # reachable from the gateway pod.
+            #
+            # ЗДЕСЬ СТОЯЛО «без неё config.ResolvedHydraJWKSURL() выводит публичный
+            # хост издателя, до которого под не дотянется». Это утверждение
+            # пережило свой предмет: вывода больше нет. Незаданная ручка теперь
+            # означает «источник набора НЕ ОБЪЯВЛЕН», и профиль, не объявивший ни
+            # её, ни перечня издателей, получает ОТКАЗ ПРИ СТАРТЕ с именами обеих
+            # ручек — вместо края, молча забравшего ключи по выведенному адресу.
             {{- if .Values.hydra.jwksUrl }}
             - name: KACHO_HYDRA_JWKS_URL
               value: {{ .Values.hydra.jwksUrl | quote }}
