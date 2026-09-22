@@ -123,7 +123,7 @@ func TestPremise_EveryStackProfileExists(t *testing.T) {
 			t.Errorf("stack %q names no profile — it cannot be checked", name)
 		}
 		for _, profile := range stack {
-			path := filepath.Join("..", "..", "deploy", "helm", "umbrella", profile)
+			path := filepath.Join(umbrellaDir, profile)
 			if _, err := os.Stat(path); err != nil {
 				t.Errorf("stack %q names %s, which does not resolve (%v) — every question "+
 					"asked of it would answer \"nothing declared\"", name, profile, err)
@@ -197,7 +197,7 @@ func TestStacks_DeclareNoSymmetricSecret(t *testing.T) {
 // Per FILE as well as per stack: a profile that no stack names yet is still a profile
 // somebody will deploy, and the stack table is maintained by hand.
 func TestEveryUmbrellaProfile_DeclaresNoSymmetricSecret(t *testing.T) {
-	dir := filepath.Join("..", "..", "deploy", "helm", "umbrella")
+	dir := umbrellaDir
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("read %s: %v", dir, err)

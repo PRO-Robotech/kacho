@@ -99,7 +99,7 @@ func f1bGatewayConfig(gw map[string]any) (config.Config, bool) {
 // разошёлся бы с деревом молча, и новый профиль остался бы непроверенным.
 func f1bReadProfiles(t *testing.T) []f1bProfile {
 	t.Helper()
-	dir := filepath.Join("..", "..", "deploy", "helm", "umbrella")
+	dir := umbrellaDir
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("каталог профилей зонта не прочитан: %v", err)
@@ -231,7 +231,7 @@ func TestF1b_DeclaringProfilesAcceptOurIssuerWithARecordAndAnAuthority(t *testin
 // одного издателя, плоскость данных другого, и обнаружилось бы это не при
 // старте, а на живом токене.
 func TestF1b_BothVerifierConfigurationsInOneProfileNameOnePlatform(t *testing.T) {
-	dir := filepath.Join("..", "..", "deploy", "helm", "umbrella")
+	dir := umbrellaDir
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("каталог профилей зонта не прочитан: %v", err)
@@ -360,7 +360,7 @@ type f1bMintDecl struct {
 // f1bReadMintDecls читает стык двух подчартов по каждому профилю зонта.
 func f1bReadMintDecls(t *testing.T) []f1bMintDecl {
 	t.Helper()
-	dir := filepath.Join("..", "..", "deploy", "helm", "umbrella")
+	dir := umbrellaDir
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("каталог профилей зонта не прочитан: %v", err)
