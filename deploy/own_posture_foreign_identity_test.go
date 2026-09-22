@@ -226,18 +226,43 @@ type identityRemainder struct {
 // стоит на этом стенде намеренно, вот почему, и вот чем держится предикат его
 // снятия». Запись, чей компонент на стенде уже выключен, — находка: она
 // объявляла бы решённым то, что решать больше нечего.
-var foreignIdentityRemainders = map[string][]identityRemainder{
-	"own": {
-		{Component: "kratos", Reason: "хранилище личности чужого экрана входа: " +
-			"полосы экранов входа в консоли (`ui-future`) ещё нет, и заход человека на этом " +
-			"стенде идёт только через чужой экран. Предикат снятия: консоль обслуживает вход " +
-			"своей полосой, и gateway/deploy/login_console_test.go признаёт её церемонией"},
-		{Component: "pg-kratos", Reason: "база того же хранилища: выключается вместе с ним, " +
-			"не раньше — иначе служба поднимется без данных"},
-		{Component: "kratos-selfservice-ui", Reason: "сам чужой экран входа. Снять его сегодня " +
-			"значит оставить боевой стенд без церемонии входа; держит это " +
-			"gateway/deploy/login_console_test.go"},
-	},
+// foreignIdentityRemainders — ВЕДОМОСТЬ ОСТАТКА, объявленная для ВСЕХ стендов.
+//
+// # Почему ключа-стенда больше нет
+//
+// Ключ был стендом, пока посадку `own` объявлял один стенд из семи. Теперь её
+// объявляют все семь, и у ключа-стенда два исхода: либо три записи
+// превращаются в двадцать одну, либо шесть стендов дают находки.
+//
+// Двадцать одна запись — ЦЕНА: один и тот же довод, переписанный семь раз;
+// предикат снятия, который придётся удовлетворить семь раз; восьмой стенд,
+// молча дающий три находки в день своего заведения; и размер ведомости,
+// следящий за числом стендов вместо своего предмета. Но главное — такая
+// ведомость СОЛГАЛА БЫ О СВОЁМ ПРЕДМЕТЕ: остаток не есть «этот стенд держит
+// чужое хранилище личности», остаток есть «в консоли ещё нет полосы экранов
+// входа». Это ОДИН факт о продукте, а не семь о стендах.
+//
+// Ключ «все стенды» — тоже ЦЕНА, и она называется: теряется различение по
+// стендам. Стенд, законно выключивший компонент, больше не отличается от
+// прочих, а самоистечение слабеет — запись, переставшая быть при деле на
+// шести стендах из семи, останется зелёной из-за седьмого.
+//
+// Эта цена уплачена ИЗМЕРЕНИЕМ, а не обещанием: самоистечение считает РАДИУС —
+// на скольких судимых стендах компонент ещё поднимается, — и печатает его в
+// переписи. Сжатие 7 → 1 видно глазом; 7 → 0 есть находка.
+//
+// Запись САМОИСТЕКАЕТ: ведомость, называющая компонент, которого не поднимает
+// ни один судимый стенд, — находка. Исключению нечего исключать.
+var foreignIdentityRemainders = []identityRemainder{
+	{Component: "kratos", Reason: "хранилище личности чужого экрана входа: " +
+		"полосы экранов входа в консоли (`ui-future`) ещё нет, и заход человека на этом " +
+		"стенде идёт только через чужой экран. Предикат снятия: консоль обслуживает вход " +
+		"своей полосой, и gateway/deploy/login_console_test.go признаёт её церемонией"},
+	{Component: "pg-kratos", Reason: "база того же хранилища: выключается вместе с ним, " +
+		"не раньше — иначе служба поднимется без данных"},
+	{Component: "kratos-selfservice-ui", Reason: "сам чужой экран входа. Снять его сегодня " +
+		"значит оставить боевой стенд без церемонии входа; держит это " +
+		"gateway/deploy/login_console_test.go"},
 }
 
 // judgeStandIdentity — ЧИСТЫЙ предикат: посадка стенда против включённого
@@ -248,31 +273,11 @@ var foreignIdentityRemainders = map[string][]identityRemainder{
 // предмет соседа (helm/umbrella/identity_posture_profiles_test.go), и второй
 // вердикт об одном предмете разъехался бы с первым.
 func judgeStandIdentity(stack string, p standPosture, enabled []string, remainders []identityRemainder) []identityPostureFinding {
-	onStand := map[string]bool{}
-	for _, c := range enabled {
-		onStand[c] = true
-	}
 	decided := map[string]string{}
-	var out []identityPostureFinding
-
 	for _, r := range remainders {
-		// САМОИСТЕЧЕНИЕ. Запись об остатке, которого на стенде нет, — находка:
-		// либо компонент уже снят и ведомость пережила свой предмет, либо его
-		// переименовали и ведомость перестала его узнавать.
-		if !onStand[r.Component] || !p.any("own") {
-			out = append(out, identityPostureFinding{
-				Stack:  stack,
-				Reason: remainderIsStale,
-				Text: fmt.Sprintf("ведомость остатка называет компонент %q стенда %q, "+
-					"а на стенде его нет (посадка iam=%s gateway=%s, включено: %s).\n"+
-					"Исключению нечего исключать: запись объявляет решённым то, что решать "+
-					"больше нечего, и переживёт любой следующий разбор. Снимите её.",
-					r.Component, stack, p.IAM, p.Edge, joinOrNone(enabled)),
-			})
-			continue
-		}
 		decided[r.Component] = r.Reason
 	}
+	var out []identityPostureFinding
 
 	var undecided []string
 	for _, c := range enabled {
@@ -290,10 +295,9 @@ func judgeStandIdentity(stack string, p standPosture, enabled []string, remainde
 				"но поднимает чужую службу личности, о которой не решал никто: %s.\n"+
 				"Это ВТОРАЯ действующая дверь в ту же систему рядом с нашей полосой: накладка "+
 				"посадки чужие службы не выключает — наследует их включёнными из слоя под "+
-				"собой.\nИсходов два: объявить флаг ложью в том слое, который объявил посадку "+
-				"(выключение в боевом слое сняло бы чужую службу и у стендов, которые на ней "+
-				"стоят по решению), либо внести компонент в ведомость остатка с причиной и "+
-				"предикатом снятия.\nРешённый остаток этого стенда: %s",
+				"собой.\nИсходов два: объявить флаг ложью в том слое, который объявил посадку, "+
+				"либо внести компонент в ведомость остатка с причиной и предикатом снятия.\n"+
+				"Решённый остаток: %s",
 				stack, p.IAM, p.Edge, strings.Join(undecided, ", "), joinOrNone(decidedComponentNames(decided))),
 		})
 	case p.both("external") && len(enabled) == 0:
@@ -308,6 +312,38 @@ func judgeStandIdentity(stack string, p standPosture, enabled []string, remainde
 		})
 	}
 	return out
+}
+
+// judgeRemainderLedger — САМОИСТЕЧЕНИЕ ведомости, судимое ПО ДЕРЕВУ.
+//
+// Пока ключом была пара «стенд + компонент», истечение судилось на стенде.
+// Ведомость объявлена для ВСЕХ стендов, поэтому и истекает она по всем: запись
+// при деле, пока компонент поднимает хоть один судимый стенд.
+//
+// РАДИУС возвращается вторым значением и печатается перепиской: он и есть та
+// цена, которую платит ключ «все стенды». Без него сжатие предмета с семи
+// стендов до одного прошло бы молча, и ведомость выглядела бы прежней.
+func judgeRemainderLedger(
+	ledger []identityRemainder, raisedOn map[string][]string,
+) (findings []identityPostureFinding, radius map[string]int) {
+	radius = map[string]int{}
+	for _, r := range ledger {
+		stands := raisedOn[r.Component]
+		radius[r.Component] = len(stands)
+		if len(stands) > 0 {
+			continue
+		}
+		findings = append(findings, identityPostureFinding{
+			Stack:  "(все стенды)",
+			Reason: remainderIsStale,
+			Text: fmt.Sprintf("ведомость остатка называет компонент %q, которого не поднимает "+
+				"НИ ОДИН судимый стенд.\nИсключению нечего исключать: запись объявляет "+
+				"решённым то, что решать больше нечего, и переживёт любой следующий разбор. "+
+				"Снимите её вместе с её предметом.", r.Component),
+		})
+	}
+	sort.Slice(findings, func(i, j int) bool { return findings[i].Text < findings[j].Text })
+	return findings, radius
 }
 
 // joinOrNone — перечень либо прямое слово о пустоте: пустая строка в тексте
@@ -334,15 +370,17 @@ type standIdentityCensus struct {
 	Own        int
 	External   int
 	Mixed      int
+	Undeclared int
 	Components int
 	Remainders int
 }
 
 func (c standIdentityCensus) String() string {
-	return fmt.Sprintf("стендов осмотрено %d · на посадке own %d · на посадке external %d · "+
-		"половины разошлись %d · компонентов чужой службы личности в дереве %d · "+
-		"записей ведомости остатка %d",
-		c.Stacks, c.Own, c.External, c.Mixed, c.Components, c.Remainders)
+	return fmt.Sprintf("стендов осмотрено %d · классифицировано %d · на посадке own %d · "+
+		"на посадке external %d · половины разошлись %d · посадку не объявили %d · "+
+		"компонентов чужой службы личности в дереве %d · записей ведомости остатка %d",
+		c.Stacks, c.Own+c.External+c.Mixed+c.Undeclared, c.Own, c.External, c.Mixed,
+		c.Undeclared, c.Components, c.Remainders)
 }
 
 // TestOwnPostureRaisesNoForeignIdentityService — посадка и флаги говорят об одном.
@@ -383,11 +421,14 @@ func TestOwnPostureRaisesNoForeignIdentityService(t *testing.T) {
 	}
 	sort.Strings(names)
 
-	census := standIdentityCensus{Stacks: len(names), Components: len(components)}
-	for _, rs := range foreignIdentityRemainders {
-		census.Remainders += len(rs)
+	census := standIdentityCensus{
+		Stacks:     len(names),
+		Components: len(components),
+		Remainders: len(foreignIdentityRemainders),
 	}
 	var findings []identityPostureFinding
+	// Радиус ведомости: на каких судимых стендах компонент ещё поднимается.
+	raisedOn := map[string][]string{}
 
 	for _, name := range names {
 		merged, _, _ := mergedValuesOfStack(t, stacks[name])
@@ -406,6 +447,7 @@ func TestOwnPostureRaisesNoForeignIdentityService(t *testing.T) {
 					"на этом стенде ОТКАЖЕТ В СТАРТЕ с именем ручки. Объявите посадку тем "+
 					"слоем, который решает о стенде", name, p.IAM),
 			})
+			census.Undeclared++
 			continue
 		}
 
@@ -430,7 +472,23 @@ func TestOwnPostureRaisesNoForeignIdentityService(t *testing.T) {
 		t.Logf("  %s: iam=%s gateway=%s · чужого включено %d (%s)",
 			name, p.IAM, p.Edge, len(enabled), strings.Join(enabled, ", "))
 
-		findings = append(findings, judgeStandIdentity(name, p, enabled, foreignIdentityRemainders[name])...)
+		// Радиус считается ТОЛЬКО по судимым стендам: компонент на стенде, о
+		// котором гейт не высказывается, записи ведомости не оправдывает.
+		if p.any("own") {
+			for _, c := range enabled {
+				raisedOn[c] = append(raisedOn[c], name)
+			}
+		}
+
+		findings = append(findings, judgeStandIdentity(name, p, enabled, foreignIdentityRemainders)...)
+	}
+
+	stale, radius := judgeRemainderLedger(foreignIdentityRemainders, raisedOn)
+	findings = append(findings, stale...)
+	for _, r := range foreignIdentityRemainders {
+		t.Logf("  ведомость %s: радиус %d из %d судимых стендов (%s)",
+			r.Component, radius[r.Component], census.Own+census.Mixed,
+			joinOrNone(raisedOn[r.Component]))
 	}
 
 	t.Logf("перепись: %s · находок %d", census, len(findings))
@@ -441,21 +499,44 @@ func TestOwnPostureRaisesNoForeignIdentityService(t *testing.T) {
 		t.Fatalf("ни один стенд не стоит на посадке `own` (осмотрено %d) — гейт судил бы "+
 			"пустоту: «находок ноль» здесь неотличимо от «нечего было проверять»", census.Stacks)
 	}
+	// ВТОРАЯ СТОРОНА ПРЕДИКАТА ЖИВА, НО НОСИТЕЛЯ У НЕЁ БОЛЬШЕ НЕТ — И ЭТО ЦЕЛЬ.
+	//
+	// Здесь стоял отказ: «ни один стенд не стоит на посадке `external` — вторая
+	// сторона предиката осталась без единого носителя». Он был фикстурой,
+	// привязанной к СНИМАЕМОМУ предмету, и истёк вместе с ним: ноль стендов на
+	// `external` есть ровно то, ради чего эпик и шёл. Проба, падающая на
+	// ДОСТИЖЕНИИ СВОЕЙ ЦЕЛИ, свойства не держит — её снимают, а не чинят.
+	//
+	// Правило `externalRaisesNothing` при этом НЕ снято: стенд, выключивший
+	// чужую службу и оставшийся на `external`, проверять человека нечем, и
+	// вернуться это состояние может завтра. Способность этой ветви УПАСТЬ
+	// доказана не живым носителем, а СИНТЕТИКОЙ — доказательство, опирающееся
+	// на живой носитель, исчезло бы вместе с починкой:
+	// `own_posture_foreign_identity_injection_test.go`,
+	// TestOwnPostureForeignIdentityGate_FindsTheStandWithNoProviderAtAll
+	// (дефект краснит) и его законный близнец там же.
 	if census.External == 0 {
-		t.Fatalf("ни один стенд не стоит на посадке `external` (осмотрено %d) — вторая "+
-			"сторона предиката осталась без единого носителя", census.Stacks)
+		t.Logf("на посадке `external` не стоит ни один стенд из %d — это ЦЕЛЬ, а не отказ. "+
+			"Ветвь о таком стенде жива и падать умеет; доказано синтетикой "+
+			"(TestOwnPostureForeignIdentityGate_FindsTheStandWithNoProviderAtAll)",
+			census.Stacks)
+	}
+
+	// ЧТО ЭТА ПРЕДПОСЫЛКА ДЕРЖАЛА НА САМОМ ДЕЛЕ — что обход КОГО-ТО судил.
+	// «Находок ноль» обязано быть отличимо от «ни один стенд не классифицирован».
+	if classified := census.Own + census.External + census.Mixed + census.Undeclared; classified != census.Stacks {
+		t.Fatalf("классифицировано %d стендов из %d — обход потерял стенды молча, и "+
+			"«находок ноль» сказано не обо всех", classified, census.Stacks)
 	}
 	if census.Components < 2 {
 		t.Fatalf("состав чужой службы личности выведен из дерева как %d компонент(ов) — "+
 			"признак перестал их узнавать", census.Components)
 	}
-	// Ведомость, называющая стенд, которого в таблице состава нет, судит
-	// несуществующее и молчала бы об этом.
-	for stack := range foreignIdentityRemainders {
-		if _, ok := stacks[stack]; !ok {
-			t.Errorf("ведомость остатка называет стенд %q, которого в таблице состава нет", stack)
-		}
-	}
+	// Ведомость стендами больше не ключуется — она объявлена для ВСЕХ, — поэтому
+	// проверки «называет стенд, которого нет» здесь нет: называть стенд ей
+	// нечем. Её предмет судят две другие оси: компонент обязан быть в выведенном
+	// составе (инъекционный файл) и обязан подниматься хоть одним судимым
+	// стендом (`judgeRemainderLedger`, радиус выше).
 
 	for _, f := range findings {
 		t.Errorf("%s: %s", f.Reason, f.Text)

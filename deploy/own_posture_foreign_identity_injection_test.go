@@ -65,32 +65,81 @@ func TestOwnPostureForeignIdentityGate_FindsTheInheritedFlag(t *testing.T) {
 	}
 }
 
-// Запись ведомости, чей компонент на стенде уже выключен, — НАХОДКА. Без этой
-// оси послабление пережило бы свой предмет и укрывало бы вернувшийся дефект.
-func TestOwnPostureForeignIdentityGate_RefusesARemainderThatOutlivedItsSubject(t *testing.T) {
-	own := standPosture{IAM: "own", Edge: "own"}
+// САМОИСТЕЧЕНИЕ ВЕДОМОСТИ, судимое по ДЕРЕВУ. Запись, чей компонент не
+// поднимает НИ ОДИН судимый стенд, — находка: без этой оси послабление
+// пережило бы свой предмет и укрывало бы вернувшийся дефект.
+//
+// Ось переехала со стенда на дерево вместе с ключом ведомости, поэтому
+// инъекция поставлена ЗАНОВО, а не сверена по прежним числам: перестроенный
+// гейт доказывается тем же дефектом, а не памятью о нём.
+//
+// ИМЯ КОМПОНЕНТА ЗДЕСЬ СИНТЕТИЧЕСКОЕ, и это не безразличие к предмету, а
+// требование к фикстуре: предикат судит ПУСТОТУ РАДИУСА, а не чьё-то имя.
+// Фикстура, набранная именем снимаемого издателя, истекла бы вместе с ним —
+// проба покраснела бы на достижении своей цели, — и вдобавок считалась бы
+// привязкой к нему в убывающем потолке, то есть проба о снятии сама двигала бы
+// число вверх.
+const syntheticForeignComponent = "foreign-identity-component"
 
-	got := judgeStandIdentity("own", own, nil, []identityRemainder{{Component: "kratos", Reason: "экран входа"}})
+func TestOwnPostureForeignIdentityGate_RefusesARemainderThatOutlivedItsSubject(t *testing.T) {
+	ledger := []identityRemainder{{Component: syntheticForeignComponent, Reason: "экран входа"}}
+
+	// ДЕФЕКТ: компонента нет ни на одном судимом стенде.
+	got, radius := judgeRemainderLedger(ledger, map[string][]string{})
 	if len(got) != 1 || got[0].Reason != remainderIsStale {
 		t.Fatalf("ведомость, пережившая свой предмет, принята молча: %v", reasons(got))
 	}
-	if !strings.Contains(got[0].Text, "kratos") {
+	if !strings.Contains(got[0].Text, syntheticForeignComponent) {
 		t.Errorf("находка не называет запись: %s", got[0].Text)
 	}
-
-	// ЗАКОННЫЙ БЛИЗНЕЦ: тот же компонент включён — запись при деле.
-	if f := judgeStandIdentity("own", own, []string{"kratos"},
-		[]identityRemainder{{Component: "kratos", Reason: "экран входа"}}); len(f) != 0 {
-		t.Errorf("гейт краснеет на действующей записи ведомости: %v", reasons(f))
+	if radius[syntheticForeignComponent] != 0 {
+		t.Errorf("радиус истёкшей записи %d, ожидался 0", radius[syntheticForeignComponent])
 	}
 
-	// Ведомость на стенде, который на `own` не стоит, — тоже находка: остаток
-	// объявлен там, где посадку никто не переводил.
-	external := standPosture{IAM: "external", Edge: "external"}
-	if f := judgeStandIdentity("prod", external, []string{"kratos"},
-		[]identityRemainder{{Component: "kratos", Reason: "экран входа"}}); len(f) != 1 ||
-		f[0].Reason != remainderIsStale {
-		t.Errorf("ведомость остатка принята на стенде посадки `external`: %v", reasons(f))
+	// ЗАКОННЫЙ БЛИЗНЕЦ: тот же компонент поднят хоть одним стендом — запись при
+	// деле. Против дефекта меняется РОВНО ОДИН факт: радиус.
+	f, radius := judgeRemainderLedger(ledger,
+		map[string][]string{syntheticForeignComponent: {"prod"}})
+	if len(f) != 0 {
+		t.Errorf("гейт краснеет на действующей записи ведомости: %v", reasons(f))
+	}
+	if radius[syntheticForeignComponent] != 1 {
+		t.Errorf("радиус действующей записи %d, ожидался 1", radius[syntheticForeignComponent])
+	}
+
+	// ЦЕНА КЛЮЧА «ВСЕ СТЕНДЫ» ИЗМЕРЯЕТСЯ, А НЕ ОБЕЩАЕТСЯ: сжатие предмета с
+	// семи стендов до одного молчит — и обязано быть ВИДНО радиусом.
+	f, wide := judgeRemainderLedger(ledger, map[string][]string{
+		syntheticForeignComponent: {"a8f60d", "dev", "dev-prod", "fe3455", "own", "prod", "prorobotech"},
+	})
+	if len(f) != 0 {
+		t.Errorf("гейт краснеет на записи, действующей на всех стендах: %v", reasons(f))
+	}
+	if wide[syntheticForeignComponent] != 7 || radius[syntheticForeignComponent] != 1 {
+		t.Errorf("радиус не различает семь стендов и один (%d против %d) — сжатие предмета "+
+			"прошло бы молча", wide[syntheticForeignComponent], radius[syntheticForeignComponent])
+	}
+}
+
+// Ведомость теперь ОДНА на все стенды: постендового укрытия больше нет.
+// Компонент, решённый ведомостью, молчит на любом судимом стенде, а НЕ
+// решённый — находка на каждом.
+func TestOwnPostureForeignIdentityGate_LedgerAppliesToEveryStand(t *testing.T) {
+	own := standPosture{IAM: "own", Edge: "own"}
+	const undecided = "another-foreign-component"
+	ledger := []identityRemainder{{Component: syntheticForeignComponent, Reason: "экран входа"}}
+
+	for _, stack := range []string{"dev", "prod", "fe3455", "own"} {
+		if f := judgeStandIdentity(stack, own, []string{syntheticForeignComponent}, ledger); len(f) != 0 {
+			t.Errorf("стенд %q: решённый ведомостью компонент дал находку: %v", stack, reasons(f))
+		}
+		f := judgeStandIdentity(stack, own, []string{syntheticForeignComponent, undecided}, ledger)
+		if len(f) != 1 || f[0].Reason != ownRaisesForeign {
+			t.Fatalf("стенд %q: нерешённый компонент укрыт ведомостью: %v", stack, reasons(f))
+		}
+		if !strings.Contains(f[0].Text, undecided) {
+			t.Errorf("стенд %q: находка не называет нерешённый компонент: %s", stack, f[0].Text)
+		}
 	}
 }
 
@@ -167,16 +216,14 @@ func TestOwnPostureForeignIdentityGate_DerivesTheForeignComponentsFromTheTree(t 
 	for _, c := range got {
 		known[c.Name] = true
 	}
-	for stack, rs := range foreignIdentityRemainders {
-		for _, r := range rs {
-			if !known[r.Component] {
-				t.Errorf("ведомость остатка стенда %q называет компонент %q, которого нет в "+
-					"выведенном составе чужого (%s)", stack, r.Component, strings.Join(names, ", "))
-			}
-			if strings.TrimSpace(r.Reason) == "" {
-				t.Errorf("запись ведомости %q/%q без причины — послабление без объяснения "+
-					"переживает своего автора", stack, r.Component)
-			}
+	for _, r := range foreignIdentityRemainders {
+		if !known[r.Component] {
+			t.Errorf("ведомость остатка называет компонент %q, которого нет в выведенном "+
+				"составе чужого (%s)", r.Component, strings.Join(names, ", "))
+		}
+		if strings.TrimSpace(r.Reason) == "" {
+			t.Errorf("запись ведомости %q без причины — послабление без объяснения "+
+				"переживает своего автора", r.Component)
 		}
 	}
 }
