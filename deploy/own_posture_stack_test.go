@@ -30,12 +30,19 @@
 // что стенд на `own` назвал величины полосы; own_lane_memory_budget_test.go —
 // что предел памяти покрывает бюджет.
 //
-// Здесь — СОГЛАСИЕ ДВУХ ПОЛОВИН ОБ ОДНОМ ЧИСЛЕ: порт, на котором служба
-// поднимает слушатель формы, и порт, на который край ретранслирует четыре
+// Здесь — СОГЛАСИЕ ДВУХ ПОЛОВИН ОБ ОДНОМ ЧИСЛЕ: порт, на котором внутренняя
+// Служба выставляет полосу формы, и порт, на который край ретранслирует четыре
 // глагола. Это ровно тот класс, который не виден ни с одной стороны по
 // отдельности: обе половины исправны, каждая проверяется своими пробами, а
-// вместе они не работают — край стучится в дверь, которой у пода нет, и отвечает
-// 503 на каждом запросе, неотличимо от «служба лежит».
+// вместе они не работают — край стучится в дверь, которой у Службы нет, и
+// отвечает 503 на каждом запросе, неотличимо от «служба лежит».
+//
+// Сверяется порт СЛУЖБЫ, а не слушателя (kacho#2725): край набирает адрес
+// Службы, а Служба ведёт на слушатель по имени порта, и её собственный порт
+// профиль вправе переопределить (`service.internal.loginLanePort`). Сверка
+// с портом слушателя молчала бы ровно в день, когда переопределение появится.
+// Выражение порта Службы проба берёт из шаблона не на веру: его сверяет
+// TestOwnPostureStack_ServicePortModelIsTheTemplateExpression.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // СТЕК ОБЯЗАН СУЩЕСТВОВАТЬ, А НЕ «ЕСЛИ ЕСТЬ»
@@ -50,6 +57,7 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -60,7 +68,8 @@ type ownStackFacts struct {
 	Stack       string
 	IAMPosture  string // kaname.config.authn.identityProvider
 	EdgePosture string // api-gateway.authn.identityProvider
-	LanePort    string // kaname.ports.loginLane
+	LanePort    string // kaname.ports.loginLane — порт слушателя в поде
+	ServicePort string // kaname.service.internal.loginLanePort — переопределение порта Службы
 	LaneURL     string // api-gateway.authn.iamLoginLaneUrl
 	ServiceName string // kaname.name — из него выводится имя внутреннего Service
 	AccessKeys  bool   // объявлены ли все три величины привязки ключей доступа
@@ -127,14 +136,18 @@ func judgeOwnStacks(facts []ownStackFacts, pinNeedsBinding bool) ([]string, ownS
 					"сессии человека, и открытый участок нёс бы его в чистом виде; слушатель полосы "+
 					"взаимный по TLS", f.Stack, raw))
 		}
-		// СОГЛАСИЕ ДВУХ ПОЛОВИН ОБ ОДНОМ ЧИСЛЕ — предмет этой пробы.
-		if port := u.Port(); port != strings.TrimSpace(f.LanePort) {
+		// СОГЛАСИЕ ДВУХ ПОЛОВИН ОБ ОДНОМ ЧИСЛЕ — предмет этой пробы. Край набирает
+		// порт СЛУЖБЫ, а не слушателя: Служба ведёт на слушатель по ИМЕНИ порта
+		// (`targetPort: http-login-lane`), и потому со слушателем она согласна
+		// всегда, а с адресом края — только если её порт и есть порт адреса.
+		if port, svcPort := u.Port(), laneServicePort(f); port != svcPort {
 			findings = append(findings, fmt.Sprintf(
-				"стек %s: край ретранслирует на порт %q, а служба поднимает слушатель формы на %q — "+
+				"стек %s: край ретранслирует на порт %q, а внутренняя Служба выставляет полосе %q "+
+					"(`service.internal.loginLanePort` = %q, по умолчанию `ports.loginLane` = %q) — "+
 					"половины называют РАЗНЫЕ двери. Обе исправны по отдельности, и ни одна проба "+
-					"половины этого не увидит: край постучится туда, где у пода двери нет, и ответит "+
-					"503 на каждом запросе",
-				f.Stack, port, strings.TrimSpace(f.LanePort)))
+					"половины этого не увидит: край постучится в порт, которого у Службы нет, и "+
+					"ответит 503 на каждом запросе",
+				f.Stack, port, svcPort, f.ServicePort, f.LanePort))
 		}
 		if svc := strings.TrimSpace(f.ServiceName); svc != "" {
 			if host := u.Hostname(); !strings.HasPrefix(host, svc+"-internal") {
@@ -179,8 +192,8 @@ func TestOwnPostureStack_ExistsAndBothHalvesNameOneListener(t *testing.T) {
 		if f.IAMPosture != "own" && f.EdgePosture != "own" {
 			continue
 		}
-		t.Logf("  %s: служба=%s край=%s порт=%s адрес=%s привязка=%v",
-			f.Stack, f.IAMPosture, f.EdgePosture, f.LanePort, f.LaneURL, f.AccessKeys)
+		t.Logf("  %s: служба=%s край=%s слушатель=%s порт Службы=%s адрес=%s привязка=%v",
+			f.Stack, f.IAMPosture, f.EdgePosture, f.LanePort, laneServicePort(f), f.LaneURL, f.AccessKeys)
 	}
 	for _, f := range findings {
 		t.Error(f)
@@ -214,6 +227,7 @@ func readOwnStackFacts(t *testing.T) []ownStackFacts {
 		f.IAMPosture = declaredString(lookup(declared, "kaname", "config", "authn", "identityProvider"))
 		f.EdgePosture = declaredString(lookup(declared, "api-gateway", "authn", "identityProvider"))
 		f.LanePort = declaredString(lookup(declared, "kaname", "ports", "loginLane"))
+		f.ServicePort = declaredString(lookup(declared, "kaname", "service", "internal", "loginLanePort"))
 		f.LaneURL = declaredString(lookup(declared, "api-gateway", "authn", "iamLoginLaneUrl"))
 		f.ServiceName = declaredString(lookup(declared, "kaname", "name"))
 
@@ -227,6 +241,76 @@ func readOwnStackFacts(t *testing.T) []ownStackFacts {
 		out = append(out, f)
 	}
 	return out
+}
+
+// laneServicePortCondition и laneServicePortExpression — выражения записи
+// `http-login-lane` внутреннего Service (charts/kaname/templates/
+// service-internal.yaml), которые laneServicePort воспроизводит. Их сверяет с
+// шаблоном TestOwnPostureStack_ServicePortModelIsTheTemplateExpression: сменит
+// шаблон выражение — модель здесь устареет, и проба скажет это, а не начнёт
+// сверять порт, которого Служба не выставляет (kacho#2725).
+const (
+	laneServicePortCondition  = `.Values.ports.loginLane`
+	laneServicePortExpression = `.Values.service.internal.loginLanePort | default .Values.ports.loginLane`
+)
+
+// laneServicePort — порт, который внутренний Service выставляет полосе:
+//
+//	{{- if .Values.ports.loginLane }}
+//	  port: {{ .Values.service.internal.loginLanePort | default .Values.ports.loginLane }}
+//
+// Пустота — по правилам `if` и `default` шаблонов: отсутствие, пустая строка и
+// нуль. Без объявленного слушателя записи порта у Службы нет вовсе — "".
+func laneServicePort(f ownStackFacts) string {
+	if helmEmpty(f.LanePort) {
+		return ""
+	}
+	if !helmEmpty(f.ServicePort) {
+		return f.ServicePort
+	}
+	return f.LanePort
+}
+
+// helmEmpty — пусто ли скалярное значение для `if` и `default` шаблона.
+// Строка приходит из declaredString: отсутствие уже дало "".
+func helmEmpty(s string) bool {
+	return s == "" || s == "0" || s == "false"
+}
+
+// laneServicePortTemplate — условие записи `http-login-lane` и выражение её
+// порта в тексте шаблона внутреннего Service; ok=false, если записи нет.
+func laneServicePortTemplate(tmpl string) (condition, expression string, ok bool) {
+	m := laneServicePortEntryRe.FindStringSubmatch(tmpl)
+	if m == nil {
+		return "", "", false
+	}
+	return strings.TrimSpace(m[1]), strings.TrimSpace(m[2]), true
+}
+
+// laneServicePortEntryRe — `{{- if <условие> }}`, затем запись с именем
+// `http-login-lane`, затем её `port: {{ <выражение> }}`. Между условием и
+// записью — только строки-комментарии и пробелы: иначе условие принадлежало
+// бы другой записи.
+var laneServicePortEntryRe = regexp.MustCompile(
+	`\{\{-?\s*if\s+([^}]+?)\s*-?\}\}[ \t]*\n(?:[ \t]*#[^\n]*\n)*[ \t]*- name:[ \t]*http-login-lane[ \t]*\n[ \t]*port:[ \t]*\{\{-?\s*([^}]+?)\s*-?\}\}`)
+
+// TestOwnPostureStack_ServicePortModelIsTheTemplateExpression — предпосылка
+// пробы: шаблон Службы выводит порт полосы тем выражением, которое
+// воспроизводит laneServicePort.
+func TestOwnPostureStack_ServicePortModelIsTheTemplateExpression(t *testing.T) {
+	path := filepath.Join(kanameSubchart(t), "templates", "service-internal.yaml")
+	cond, expr, ok := laneServicePortTemplate(readChartText(t, path))
+	if !ok {
+		t.Fatalf("%s: записи `http-login-lane` под условием `{{- if … }}` не найдено — проба "+
+			"сверяет адрес края с портом, выставление которого больше не читается", path)
+	}
+	t.Logf("перепись: %s · условие записи %q · выражение порта %q", path, cond, expr)
+	if cond != laneServicePortCondition || expr != laneServicePortExpression {
+		t.Errorf("%s: запись `http-login-lane` выставляется условием %q и портом %q, а проба "+
+			"воспроизводит %q и %q — модель порта Службы устарела, и согласие половин "+
+			"судится не о той двери (kacho#2725)",
+			path, cond, expr, laneServicePortCondition, laneServicePortExpression)
+	}
 }
 
 // declaredString — значение как строка; отсутствие даёт пустую строку.
