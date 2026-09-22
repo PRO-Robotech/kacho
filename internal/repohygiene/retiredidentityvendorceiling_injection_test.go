@@ -11,6 +11,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -1000,5 +1001,128 @@ func TestRetiredVendorCeiling_CamelCaseIsNotTheAmbiguousForm(t *testing.T) {
 	if c := census[vendorTreePlatform]; c.UpperKept != 0 || len(c.UpperWords) != 0 {
 		t.Errorf("шов camelCase назван спорным случаем: %d строк, слова %v — счётчик "+
 			"второй цены стал бы шумом", c.UpperKept, c.UpperWords)
+	}
+}
+
+// Пробы ЕДИНИЦЫ СЧЁТА волны снятия (#2761). Их предмет — не распознавание имени,
+// а то, КАК прибор складывает и называет число. Поэтому имя издателя в их входах
+// собирается из `retiredVendorMarks` во время прогона: судья видит настоящее
+// имя, а исходник пробы его не пишет. Написанное имя добавило бы строки в хвост
+// гейта, и эти строки ничего бы не утверждали.
+
+// vendorUnitFixture — четыре привязки в трёх областях платформы: две в крае, одна
+// в консоли, одна в файле корня дерева.
+func vendorUnitFixture(consoleFile string) map[string]vendorTreeCorpus {
+	m := retiredVendorMarks[0]
+	return vendorFixture(map[string]string{
+		"gateway/internal/clients/a.go": "package clients\nconst a = \"" + m + "-admin\"\n",
+		consoleFile:                     "package main\nconst b = \"" + m + "-public\"\n",
+		"ui-future/shared/src/lib/c.ts": "export const c = '" + m + "-public';\n",
+		"Makefile":                      "X := " + m + "-admin\n",
+	}, nil)
+}
+
+// vendorPrintedAreaSum — сумма областей, КАК ОНИ НАПЕЧАТАНЫ переписью. Судится
+// напечатанное, потому что полоса берёт число из вывода прогона, а не из поля.
+func vendorPrintedAreaSum(t *testing.T, census string) int {
+	t.Helper()
+	const head = "по областям (первый сегмент пути): "
+	i := strings.Index(census, head)
+	if i < 0 {
+		t.Fatalf("перепись не раскладывает число по областям: %s", census)
+	}
+	sum := 0
+	for _, part := range strings.Split(census[i+len(head):], " · ") {
+		k := strings.LastIndex(part, " ")
+		n, err := strconv.Atoi(part[k+1:])
+		if k < 0 || err != nil {
+			t.Fatalf("область %q напечатана без числа: %s", part, census)
+		}
+		sum += n
+	}
+	return sum
+}
+
+// TestRetiredVendorCeiling_AreaCensusNamesEveryArea — прибор раскладывает число
+// дерева по ОБЛАСТЯМ, и сумма областей равна числу дерева.
+//
+// Область — первый сегмент пути. Правило выбрано так, чтобы о нём не нужно было
+// договариваться: у каждого пути один первый сегмент, и файл корня дерева
+// попадает в область «(корень)», а не выпадает. Отсюда полосы волны снятия берут
+// свои числа тем же прибором, которым меряется потолок.
+func TestRetiredVendorCeiling_AreaCensusNamesEveryArea(t *testing.T) {
+	t.Parallel()
+
+	_, census, _, err := judgeRetiredVendorCeiling(
+		vendorUnitFixture("gateway/cmd/x/main.go"), vendorZeroCeilings)
+	if err != nil {
+		t.Fatalf("фикстура обязана судиться: %v", err)
+	}
+	c := census[vendorTreePlatform]
+	if c.Bindings != 4 {
+		t.Fatalf("привязок %d, ждали 4", c.Bindings)
+	}
+	want := "по областям (первый сегмент пути): (корень) 1 · gateway 2 · ui-future 1"
+	if !strings.Contains(c.String(), want) {
+		t.Fatalf("перепись обязана раскладывать число по областям:\n  ждали %q\n  получено %s", want, c)
+	}
+	if sum := vendorPrintedAreaSum(t, c.String()); sum != c.Bindings {
+		t.Fatalf("сумма напечатанных областей %d не равна числу дерева %d: %s", sum, c.Bindings, c)
+	}
+	if got := census[vendorTreeFoundation].String(); !strings.Contains(got, "по областям (первый сегмент пути): привязок нет") {
+		t.Fatalf("дерево без привязок обязано сказать это словами, а не пустым перечнем: %s", got)
+	}
+}
+
+// TestRetiredVendorCeiling_AreaCensusTwin_MovedFileMovesOneUnit — ЗАКОННЫЙ
+// БЛИЗНЕЦ: ОДИН ФАКТ, в какой области лежит файл. Одна привязка переезжает из
+// края в консоль: число дерева прежнее, области сдвигаются ровно на единицу.
+func TestRetiredVendorCeiling_AreaCensusTwin_MovedFileMovesOneUnit(t *testing.T) {
+	t.Parallel()
+
+	_, census, _, err := judgeRetiredVendorCeiling(
+		vendorUnitFixture("ui-future/host/src/main.ts"), vendorZeroCeilings)
+	if err != nil {
+		t.Fatalf("фикстура обязана судиться: %v", err)
+	}
+	c := census[vendorTreePlatform]
+	if c.Bindings != 4 {
+		t.Fatalf("переезд файла не меняет числа дерева: привязок %d, ждали 4", c.Bindings)
+	}
+	want := "по областям (первый сегмент пути): (корень) 1 · gateway 1 · ui-future 2"
+	if !strings.Contains(c.String(), want) {
+		t.Fatalf("переезд файла обязан сдвинуть области на единицу:\n  ждали %q\n  получено %s", want, c)
+	}
+}
+
+// TestRetiredVendorCeiling_TotalNamesTheOneUnit — итог прогона называет ЕДИНИЦУ
+// СЧЁТА одним текстом и раскладывает число по деревьям.
+//
+// Текст здесь выписан дословно намеренно: это замок. Маршрут волны снятия в эпике
+// цитирует ту же фразу, и правка единицы без правки этой пробы краснеет, а не
+// расходится с эпиком молча.
+func TestRetiredVendorCeiling_TotalNamesTheOneUnit(t *testing.T) {
+	t.Parallel()
+
+	_, census, _, err := judgeRetiredVendorCeiling(
+		vendorUnitFixture("gateway/cmd/x/main.go"), vendorZeroCeilings)
+	if err != nil {
+		t.Fatalf("фикстура обязана судиться: %v", err)
+	}
+	line, bindings, ceiling, walked := vendorTotal(census)
+	if bindings != 4 || ceiling != 0 || walked != 7 {
+		t.Fatalf("слагаемые итога: привязок %d · потолок %d · путей %d, ждали 4 · 0 · 7",
+			bindings, ceiling, walked)
+	}
+	for _, want := range []string{
+		"по деревьям: kacho 4 · kaname 0 · corelib 0",
+		"единица счёта — строка исходника, несущая имя издателя, — одна единица, сколько " +
+			"бы вхождений в ней ни было; путь, несущий имя, — одна единица за файл сверх его " +
+			"строк; двоичный файл с именем в байтах — одна единица; архив — одна единица, " +
+			"сколько бы совпадений в нём ни было",
+	} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("итог обязан нести %q, напечатано:\n  %s", want, line)
+		}
 	}
 }

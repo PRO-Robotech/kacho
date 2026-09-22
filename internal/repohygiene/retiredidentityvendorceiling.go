@@ -47,6 +47,19 @@ package repohygiene
 // Число нельзя читать как «столько мест в коде»: мест меньше, а вхождений
 // больше.
 //
+// У волны снятия единица ОДНА, и называется она одним текстом —
+// `vendorCountingUnit`. Итог каждого прогона печатает его дословно, маршрут волны
+// в эпике цитирует его же (#2761). Число в другой единице (вхождение, путь,
+// файл) с числом этого гейта не складывается и не вычитается: такое число
+// относится к другой оси, и эту ось называют.
+//
+// Число дерева раскладывается по ОБЛАСТЯМ — первому сегменту пути. Правило
+// выбрано так, чтобы о нём не нужно было договариваться: у каждого пути ровно
+// один первый сегмент, файл корня дерева попадает в «(корень)». Полосы волны
+// снятия берут свои числа из этой раскладки и из перечня адресов, который
+// прогон печатает по каждому дереву (`-v`). Сумма по полосам сходится с числом
+// гейта тем же прибором, а не отдельным подсчётом.
+//
 // ─────────────────────────────────────────────────────────────────────────────
 // ТРИ ДЕРЕВА, И ВЕДОМОСТЬ НЕ СУЖАЕТСЯ МОЛЧА
 //
@@ -191,6 +204,17 @@ import (
 // чеканки токенов. Ось по слову `ory` краснела бы на коде, ради которого снятие
 // и делается.
 var retiredVendorMarks = []string{"hydra", "kratos", "oryd/"}
+
+// vendorCountingUnit — ЕДИНИЦА СЧЁТА одним текстом. Печатается итогом прогона и
+// дословно цитируется маршрутом волны снятия. Пробой она заперта дословно:
+// правка текста без правки пробы краснеет, а не расходится с эпиком молча.
+const vendorCountingUnit = "строка исходника, несущая имя издателя, — одна единица, " +
+	"сколько бы вхождений в ней ни было; путь, несущий имя, — одна единица за файл " +
+	"сверх его строк; двоичный файл с именем в байтах — одна единица; архив — одна " +
+	"единица, сколько бы совпадений в нём ни было"
+
+// vendorRootArea — область файла, лежащего в корне дерева.
+const vendorRootArea = "(корень)"
 
 // Имена деревьев продукта — как в переписи.
 const (
@@ -419,6 +443,35 @@ type vendorTreeCensus struct {
 	ByBinary  int
 	ByArchive int
 	Ceiling   int
+	// Areas — привязки дерева по областям: первый сегмент пути → строк. Сумма
+	// равна Bindings по построению: у каждой привязки есть файл.
+	Areas map[string]int
+}
+
+// vendorArea — область файла: первый сегмент пути.
+func vendorArea(rel string) string {
+	if i := strings.IndexByte(rel, '/'); i > 0 {
+		return rel[:i]
+	}
+	return vendorRootArea
+}
+
+// vendorAreasText — раскладка по областям, по имени области: два прогона
+// сравнимы построчно.
+func vendorAreasText(areas map[string]int) string {
+	if len(areas) == 0 {
+		return "привязок нет"
+	}
+	names := make([]string, 0, len(areas))
+	for a := range areas {
+		names = append(names, a)
+	}
+	sort.Strings(names)
+	parts := make([]string, 0, len(names))
+	for _, a := range names {
+		parts = append(parts, fmt.Sprintf("%s %d", a, areas[a]))
+	}
+	return strings.Join(parts, " · ")
 }
 
 func (c vendorTreeCensus) String() string {
@@ -427,25 +480,27 @@ func (c vendorTreeCensus) String() string {
 		"привязок %d строк (по пути %d · по имени %d · склейкой %d · по пути API %d · "+
 		"двоичных %d · архивов %d) · потолок %d · отброшено границей слова %d строк "+
 		"(разных слов %d: %s) · засчитано именем ПРОПИСНЫМИ с прописной следом %d строк "+
-		"(разных слов %d: %s)",
+		"(разных слов %d: %s) · по областям (первый сегмент пути): %s",
 		c.Walked, c.Files, c.Blobs, c.Archives, c.Sealed, c.Prose, c.Lines,
 		c.Bindings, c.ByPath, c.ByName, c.ByGlue, c.BySurface, c.ByBinary, c.ByArchive,
 		c.Ceiling, c.BoundaryDropped, len(c.BoundaryWords), strings.Join(c.BoundaryWords, ", "),
-		c.UpperKept, len(c.UpperWords), strings.Join(c.UpperWords, ", "))
+		c.UpperKept, len(c.UpperWords), strings.Join(c.UpperWords, ", "),
+		vendorAreasText(c.Areas))
 }
 
 // vendorTotal — строка итога прогона и её слагаемые.
 func vendorTotal(census map[string]vendorTreeCensus) (line string, bindings, ceiling, walked int) {
+	perTree := make([]string, 0, len(retiredVendorTrees))
 	for _, name := range retiredVendorTrees {
 		c := census[name]
 		bindings += c.Bindings
 		ceiling += c.Ceiling
 		walked += c.Walked
+		perTree = append(perTree, fmt.Sprintf("%s %d", name, c.Bindings))
 	}
 	line = fmt.Sprintf("ИТОГО привязок к снимаемому издателю личности: %d СТРОК при потолке %d СТРОК "+
-		"(деревьев обойдено %d · путей обойдено %d; единица счёта — строка исходника, "+
-		"путь — одна строка за файл, архив и двоичный файл — одна строка за файл)",
-		bindings, ceiling, len(census), walked)
+		"(по деревьям: %s; деревьев обойдено %d · путей обойдено %d; единица счёта — %s)",
+		bindings, ceiling, strings.Join(perTree, " · "), len(census), walked, vendorCountingUnit)
 	return line, bindings, ceiling, walked
 }
 
@@ -1103,6 +1158,12 @@ func judgeRetiredVendorCeiling(
 		}
 		sort.Strings(c.UpperWords)
 		c.Bindings = c.ByPath + c.ByName + c.ByGlue + c.BySurface + c.ByBinary + c.ByArchive
+		c.Areas = map[string]int{}
+		for _, b := range bindings {
+			if b.Tree == tree {
+				c.Areas[vendorArea(b.File)]++
+			}
+		}
 		census[tree] = c
 
 		switch {
