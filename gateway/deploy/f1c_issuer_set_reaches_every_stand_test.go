@@ -402,13 +402,17 @@ func TestF1c_TheIssuerSetPredicateCanFail(t *testing.T) {
 		{"перечень пуст", f1cWithIssuers(live, ""), false},
 		{"перечень из одних разделителей", f1cWithIssuers(live, " , , "), false},
 	}
+	defective := 0
 	for _, c := range cases {
+		if !c.expect {
+			defective++
+		}
 		if got := f1cDeclares(c.gw); got != c.expect {
 			t.Errorf("%s (донор %s): предикат сказал %v, ожидалось %v", c.name, donor, got, c.expect)
 		}
 	}
 
-	t.Logf("самопроверка: донор %s, осмотрено половин %d (дефектных %d)", donor, len(cases), 3)
+	t.Logf("самопроверка: донор %s, осмотрено половин %d (дефектных %d)", donor, len(cases), defective)
 }
 
 // f1cWithout — копия блока края БЕЗ одного ключа.
