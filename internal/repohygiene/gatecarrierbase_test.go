@@ -330,3 +330,95 @@ func gateBaseRealExitError(t *testing.T) error {
 	}
 	return err
 }
+
+// TestGateCarrierRefusalSaysOnlyWhatItChecked — ОТКАЗ УТВЕРЖДАЕТ РОВНО ТО, ЧТО
+// ПРОВЕРИЛ.
+//
+// `gateCarrierToolDidNotRefuse` есть КОНЪЮНКЦИЯ: «инструмент не отказал» И
+// «ревизии не назвал». Первое известно из `e`; второе — факт о ВЫВОДЕ, и
+// функция его не проверяла, а утверждала. Измерено 2026-09-22: подан `e == nil`
+// с непустым выводом — отказ напечатал
+// `вывод "0123456789abcdef…", инструмент НЕ отказал и ревизии не назвал`,
+// то есть противоречие в одном предложении, и ничто не покраснело.
+//
+// Пара одно-фактна: те же ref, глубина и ошибка — меняется ровно вывод.
+func TestGateCarrierRefusalSaysOnlyWhatItChecked(t *testing.T) {
+	t.Parallel()
+	const ref = "refs/remotes/origin/main"
+	const rev = "0123456789abcdef0123456789abcdef01234567"
+
+	// Законный близнец: вывод ПУСТ — обе половины конъюнкции верны, и слово о
+	// них законно.
+	silent := gateCarrierNoParentRefusal(ref, false, []byte("  \n"), nil)
+	t.Logf("e==nil, вывод ПУСТ: %v", silent)
+	if !strings.Contains(silent.Error(), gateCarrierToolDidNotRefuse) {
+		t.Errorf("пустой вывод без отказа не назван словом %q: %v",
+			gateCarrierToolDidNotRefuse, silent)
+	}
+	if strings.Contains(silent.Error(), gateCarrierToolNamedARevision) {
+		t.Errorf("пустой вывод объявлен НАЗВАННОЙ ревизией: %v", silent)
+	}
+
+	// Отрицательный конец: ровно один изменённый факт — вывод непуст.
+	named := gateCarrierNoParentRefusal(ref, false, []byte(rev+"\n"), nil)
+	t.Logf("e==nil, вывод НЕПУСТОЙ: %v", named)
+	if strings.Contains(named.Error(), gateCarrierToolDidNotRefuse) {
+		t.Errorf("отказ утверждает %q, НАПЕЧАТАВ рядом названную ревизию — "+
+			"предложение противоречит себе: %v", gateCarrierToolDidNotRefuse, named)
+	}
+	if !strings.Contains(named.Error(), gateCarrierToolNamedARevision) {
+		t.Errorf("названная ревизия не названа словом %q: %v",
+			gateCarrierToolNamedARevision, named)
+	}
+	if !strings.Contains(named.Error(), rev) {
+		t.Errorf("ответ инструмента до читающего не доехал: %v", named)
+	}
+	if silent.Error() == named.Error() {
+		t.Errorf("два разных ответа инструмента дали один текст — утверждение о нём "+
+			"неопровержимо by construction: %q", silent.Error())
+	}
+}
+
+// TestGateCarrierParentUnresolvedGuardsBothHalves — СТРАЖ ВЫЗЫВАЮЩЕГО ЗАКРЕПЛЁН
+// ПО ОБЕИМ СВОИМ ПОЛОВИНАМ.
+//
+// Вторую половину — «отказа не было, а ревизии не назвал» — не держала ни одна
+// проба: `--verify --quiet` отвечает на несуществующий объект кодом 1, и пустой
+// успех на боевом пути сегодня недостижим. Недостижимость есть свойство
+// ИНСТРУМЕНТА, а не кода, и переживёт его молча; пустая строка, принятая за
+// базу, увела бы сравнение в пустоту fail-open.
+//
+// Зовётся ТОТ ЖЕ код, что стоит у вызывающего, а не его копия рядом, и это
+// проверяется переписью зовущих: копия доказывала бы свойство себя самой.
+func TestGateCarrierParentUnresolvedGuardsBothHalves(t *testing.T) {
+	t.Parallel()
+
+	boom := errors.New("exit status 1")
+	for _, c := range []struct {
+		name   string
+		parent []byte
+		err    error
+		want   bool
+	}{
+		{"ревизия названа, отказа нет", []byte("4374f8736\n"), nil, false},
+		{"вывод пуст, отказа нет", []byte(""), nil, true},
+		{"вывод — одни пробелы, отказа нет", []byte("  \n\t"), nil, true},
+		{"ревизия названа, но инструмент отказал", []byte("4374f8736\n"), boom, true},
+		{"вывод пуст и инструмент отказал", nil, boom, true},
+	} {
+		if got := gateCarrierParentUnresolved(c.parent, c.err); got != c.want {
+			t.Errorf("%s: страж дал %v, ожидалось %v — половина дизъюнкции потеряна",
+				c.name, got, c.want)
+		}
+	}
+
+	// Страж обязан стоять у ВЫЗЫВАЮЩЕГО, а не только здесь: проба, судящая
+	// функцию, которой никто не пользуется, зелена при любом коде боевого пути.
+	prod, probe := packageCallSites(t, "gateCarrierParentUnresolved")
+	t.Logf("перепись: зовущих `gateCarrierParentUnresolved` — боевых %d %v, пробных %d %v",
+		len(prod), prod, len(probe), probe)
+	if len(prod) == 0 {
+		t.Errorf("страж `gateCarrierParentUnresolved` не зовёт НИ ОДИН боевой файл — " +
+			"вызывающий держит условие своими руками, и проба судит чужой код")
+	}
+}
