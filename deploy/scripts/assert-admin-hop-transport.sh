@@ -195,6 +195,25 @@ paired() {
   return 0
 }
 
+# own_absence_verdict <посадка службы> <посадка края> <подов провайдера> <адресов перехода у потребителей>
+#   → именованный исход (kacho#2816).
+#
+# ПОСАДКА `own` — ПРОВАЙДЕРА НЕТ ПО ОБЪЯВЛЕНИЮ, И ПЕРЕХОДУ СУДИТЬ НЕЧЕГО. Но
+# «нечего» обязано быть НАСТОЯЩИМ: под провайдера на такой посадке — нагрузка,
+# которую никто не читает; адрес административного перехода у потребителя —
+# дорога к соседу, которого нет. Посадку называют ЖИВЫЕ процессы (строка
+# самоотчёта при старте), а не настройки: чужой флаг подчарта признаком не
+# служит. Половины, назвавшие разное, — отказ: такой стенд решает о личности
+# двумя способами сразу.
+own_absence_verdict() {
+  local iam="$1" edge="$2" pods="$3" addrs="$4"
+  if [ "$iam" != own ] && [ "$edge" != own ]; then echo not-own; return; fi
+  if [ "$iam" != "$edge" ]; then echo halves-disagree; return; fi
+  if [ "$pods" -ne 0 ]; then echo provider-present; return; fi
+  if [ "$addrs" -ne 0 ]; then echo consumer-names-provider; return; fi
+  echo ok
+}
+
 # ═════════════════════════════════════════════════════════════════════════════
 # САМОПРОВЕРКА — БЕЗ КЛАСТЕРА.
 # ═════════════════════════════════════════════════════════════════════════════
@@ -322,6 +341,21 @@ http_code=400'
   else echo "  ✗ протокол не извлечён (получено '$p')"; rc=1; fi
 
   echo
+  echo "-- посадка own: провайдера нет по объявлению, отсутствие обязано быть настоящим --"
+  expect_own() { # <метка> <ожидаемо> <служба> <край> <подов> <адресов>
+    local label="$1" want="$2" got
+    checked=$((checked + 1))
+    got="$(own_absence_verdict "$3" "$4" "$5" "$6")"
+    if [ "$got" = "$want" ]; then echo "  ✓ $label → $got"
+    else echo "  ✗ $label → получено '$got', ожидалось '$want'"; rc=1; fi
+  }
+  expect_own "own обеих половин, провайдера нет, адресов нет" ok own own 0 0
+  expect_own "own, но под провайдера поднят" provider-present own own 1 0
+  expect_own "own, но потребитель называет адрес перехода" consumer-names-provider own own 0 1
+  expect_own "половины назвали разное" halves-disagree own external 0 0
+  expect_own "external — судит прежняя половина гейта" not-own external external 1 2
+
+  echo
   echo "синтетических наблюдений и законных входов проверено: $checked"
   [ $rc -eq 0 ] && echo "PASS: $SCRIPT --self-test" || echo "FAIL: $SCRIPT --self-test"
   exit $rc
@@ -361,6 +395,44 @@ if [ "$want_srv" != "$have_srv" ]; then
 fi
 
 echo "=== D. административный переход: свидетельство стороны, не участвующей в оценке ==="
+
+# ── ПОСАДКА ЧИТАЕТСЯ У ЖИВЫХ ПРОЦЕССОВ (kacho#2816) ──────────────────────────
+# identity_provider из строки «boot security posture» текущего контейнера службы
+# доступа и края. Пусто — посадка не прочитана, и тогда судит прежняя половина
+# (провайдер обязан быть): молчание процесса за объявление отсутствия не идёт.
+boot_identity_provider() { # <deployment>
+  kubectl -n "$NS" logs "deploy/$1" 2>/dev/null | grep -F '"boot security posture"' | tail -1 \
+    | jq -r '.identity_provider // empty' 2>/dev/null
+}
+IAM_POSTURE="$(boot_identity_provider kaname)"
+EDGE_POSTURE="$(boot_identity_provider api-gateway)"
+if [ "$IAM_POSTURE" = own ] || [ "$EDGE_POSTURE" = own ]; then
+  PROVIDER_PODS="$(kubectl -n "$NS" get pods -l 'app.kubernetes.io/name in (hydra,kratos)' -o name 2>/dev/null | grep -c .)"
+  CONSUMER_ADDRS="$(kubectl -n "$NS" get deploy api-gateway kaname -o json 2>/dev/null | jq -r '
+    [ .items[].spec.template.spec.containers[].env[]?
+      | select(.name == "KACHO_HYDRA_INTROSPECTION_URL" or .name == "KACHO_HYDRA_ADMIN_URL"
+               or .name == "KANAME_HYDRA_ADMIN_URL")
+      | select((.value // "") != "") ] | length' 2>/dev/null)"
+  CONSUMER_ADDRS="${CONSUMER_ADDRS:-x}"
+  if ! [ "$CONSUMER_ADDRS" -ge 0 ] 2>/dev/null; then
+    fail "окружение потребителей перехода (api-gateway, kaname) не прочитано — отсутствие адресов НЕ установлено"
+    exit 1
+  fi
+  assertion
+  case "$(own_absence_verdict "$IAM_POSTURE" "$EDGE_POSTURE" "$PROVIDER_PODS" "$CONSUMER_ADDRS")" in
+    ok)
+      ok "посадка own (служба: $IAM_POSTURE, край: $EDGE_POSTURE): провайдера нет по объявлению — подов провайдера $PROVIDER_PODS, адресов административного перехода у потребителей $CONSUMER_ADDRS; переходу судить нечего"
+      exit 0 ;;
+    halves-disagree)
+      fail "посадку половины назвали РАЗНУЮ: служба '$IAM_POSTURE', край '$EDGE_POSTURE'"; exit 1 ;;
+    provider-present)
+      fail "посадка own, а подов провайдера $PROVIDER_PODS — объявленное отсутствие не выполнено"; exit 1 ;;
+    consumer-names-provider)
+      fail "посадка own, а потребители называют адрес административного перехода ($CONSUMER_ADDRS) — дорога к соседу, которого нет"; exit 1 ;;
+    *)
+      fail "исход суждения о посадке own не распознан"; exit 1 ;;
+  esac
+fi
 
 RELEASE="$(kubectl -n "$NS" get pod -l app.kubernetes.io/name=hydra \
   -o jsonpath='{.items[0].metadata.labels.app\.kubernetes\.io/instance}' 2>/dev/null)"
