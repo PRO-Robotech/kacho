@@ -256,6 +256,34 @@ api-gateway:
     # can quietly drop it, the same discipline the forwarder allow-list follows
     # below. Machine principals are exempt from the floor by the shared rule.
     enforceStepUp: true
+
+    # ─── АДРЕС ПОЛОСЫ ФОРМЫ СЛУЖБЫ ДОСТУПА (Ф3, kacho#1269; предпосылка #2735) ──
+    #
+    # ПОЧЕМУ ЗДЕСЬ, НА `external`. Тот же довод, что у `kaname.ports.loginLane`,
+    # `kaname.mtls.loginLane` и всего блока `kaname.config.authn.login` этого же
+    # профиля (приёмка Ф3, Р3, Р11, Ф3-42): величина полосы живёт в профиле, где
+    # её видит читающий, и перевод стенда на `own` НЕ ЗАВОДИТ ПОЛОСУ С НУЛЯ.
+    # Страж края `validateLoginLaneConfig` читает её ТОЛЬКО под `own`; под
+    # `external` она не читается вовсе, и эмиссия переменной ничего не включает —
+    # ретранслятор глаголов формы заводится посадкой, а не адресом.
+    #
+    # ЧЕМ ДЕРЖИТСЯ, ЧТО ЭТО НЕ ЗАГЛУШКА. Адрес не выдуман под ручку: это тот же
+    # внутренний Service службы, куда этот же профиль уже ходит за набором ключей
+    # и к авторитету отзыва (`kaname-internal.kacho.svc:9097` выше) и куда край
+    # дозванивается по gRPC (`backends.iamInternal`). Имя выводится из
+    # `kaname.name` (умолчание подчарта `kaname` → Service `kaname-internal`),
+    # пространство имён — то, в котором стенд ставится (`STACK_NAMESPACE`,
+    # `deploy/Makefile`), порт — `kaname.ports.loginLane` ЭТОГО ЖЕ профиля.
+    # Согласие порта адреса с портом слушателя судит `deploy/own_posture_stack_test.go`.
+    #
+    # Схема `https` обязательна: по ретрансляции едет печенье сессии человека, а
+    # слушатель полосы взаимный по TLS. Клиентская пара и якорь — те же `mtls.*`,
+    # что у gRPC-рёбер; второго объявления об одном предмете не заводится.
+    #
+    # НАСЛЕДУЮТ ЭТУ СТРОКУ стенды `prod` и `fe3455`; стенд `own` перекрывает её
+    # тем же значением в `values.own.yaml` — там она условие СТАРТА, а не
+    # предпосылка. Перепись объявивших печатает проба, а не этот комментарий.
+    iamLoginLaneUrl: https://kaname-internal.kacho.svc:9100
   # Hydra JWKS — the verifier fetches Hydra's JWKS from the cluster-internal
   # Hydra PUBLIC Service (NOT the public ingress hairpin); `issuer` is the public
   # OIDC issuer string the token `iss` claim must match (SEC-J exact-match).
