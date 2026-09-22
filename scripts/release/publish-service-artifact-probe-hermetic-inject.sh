@@ -43,8 +43,9 @@
 # Прогоны независимы и идут параллельно: каждый — полная проба, и
 # последовательно их цена легла бы на прогон вчетверо.
 #
-# Исходы: 0 — доказано; 1 — провалено утверждение; 3 — вердикта нет (условие
-# прогона не создано, дефект не внесён, утверждений ноль).
+# Исходы — по контракту доказательств дерева (`deploy/tests/helm/README.md`
+# §«Три исхода»): 0 — доказано; 1 — провалено утверждение; 2 — условие не
+# создано (условие прогона не создано, дефект не внесён, утверждений ноль).
 set -uo pipefail
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
       GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX
@@ -53,16 +54,16 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROBE_NAME="publish-service-artifact-inject.sh"
 SUT_NAME="publish-service-artifact.sh"
 for f in "$PROBE_NAME" "$SUT_NAME"; do
-    [ -r "$HERE/$f" ] || { echo "нет $HERE/$f — доказывать нечего, это НЕ ВЫПОЛНИЛОСЬ" >&2; exit 3; }
+    [ -r "$HERE/$f" ] || { echo "нет $HERE/$f — доказывать нечего, это НЕ ВЫПОЛНИЛОСЬ" >&2; exit 2; }
 done
-command -v go >/dev/null 2>&1 || { echo "нет go — проба не исполнима, доказать нечем" >&2; exit 3; }
+command -v go >/dev/null 2>&1 || { echo "нет go — проба не исполнима, доказать нечем" >&2; exit 2; }
 
 PASS=0; FAIL=0; NOTRUN=0
 ok()     { PASS=$((PASS+1)); printf '  ok   %s\n' "$1"; }
 bad()    { FAIL=$((FAIL+1)); printf '  FAIL %s\n     %s\n' "$1" "$2"; }
 notrun() { NOTRUN=$((NOTRUN+$1)); printf '  НЕ ВЫПОЛНИЛОСЬ %s\n     %s\n' "$2" "$3"; }
 
-T="$(mktemp -d)" || exit 3
+T="$(mktemp -d)" || exit 2
 trap 'rm -rf "$T"' EXIT
 
 # ── Вызывающий: два окружения одного устройства ─────────────────────────────
@@ -237,8 +238,8 @@ fi
 echo "── 4. дефект пробы: изоляция настройки вызывающего снята"
 if [ "$WITH_OK" = 1 ] && [ "$PROBE_DEFECT" = 1 ]; then
     OUT="$(out probe)"; RC="$(rc_of probe)"
-    if [ "$RC" = 3 ]; then ok "4a вердикта нет — код 3, а не находка"
-    else bad "4a вердикта нет — код 3, а не находка" "код $RC; провалены: '$(failed probe)'; $(census probe)"; fi
+    if [ "$RC" = 2 ]; then ok "4a вердикта нет — код 2, а не находка"
+    else bad "4a вердикта нет — код 2, а не находка" "код $RC; провалены: '$(failed probe)'; $(census probe)"; fi
     if [ -z "$(failed probe)" ]; then ok "4b о производителе не объявлено ни одной находки"
     else bad "4b о производителе не объявлено ни одной находки" "провалены: '$(failed probe)'"; fi
     SAID="$(printf '%s\n' "$OUT" | grep -A1 '^  НЕ ВЫПОЛНИЛОСЬ I' )"
@@ -254,6 +255,6 @@ echo
 printf 'перепись доказательства: утверждений %d, прошло %d, провалено %d, не выполнено %d\n' \
     "$((PASS+FAIL))" "$PASS" "$FAIL" "$NOTRUN"
 [ "$FAIL" = "0" ] || exit 1
-[ "$NOTRUN" = "0" ] || { echo "ВЕРДИКТА НЕТ по $NOTRUN утверждениям — это не «доказано»" >&2; exit 3; }
-[ "$PASS" -gt 0 ] || { echo "утверждений ноль — доказательство беспредметно" >&2; exit 3; }
+[ "$NOTRUN" = "0" ] || { echo "ВЕРДИКТА НЕТ по $NOTRUN утверждениям — это не «доказано»" >&2; exit 2; }
+[ "$PASS" -gt 0 ] || { echo "утверждений ноль — доказательство беспредметно" >&2; exit 2; }
 exit 0
