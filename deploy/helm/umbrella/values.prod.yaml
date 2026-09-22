@@ -153,7 +153,11 @@ mtls:
   # certificate, the terminator and the consumer addresses move together or not
   # at all.
   hydraAdminTls:
-    enabled: true
+    # Терминатор TLS перед административным слушателем чужого выдающего. Его
+    # объекты (Service, Certificate, карта настроек) открываются ОТДЕЛЬНЫМ
+    # ключом, а не `hydra.enabled`, — и при выключенной службе остались бы
+    # висеть сиротами: адрес, который резолвится в ничто.
+    enabled: false
     secretName: kacho-umbrella-hydra-admin-tls
 cert-manager:
   enabled: true
@@ -1654,7 +1658,10 @@ pg-kratos:
       requests: { cpu: 250m, memory: 512Mi }
       limits: { cpu: 1000m, memory: 1Gi }
 pg-hydra:
-  enabled: true
+  # База чужого выдающего гасится СВОИМ флагом: без него она осталась бы стоять
+  # при выключенной службе — узел Postgres с данными, которые больше никто не
+  # читает. Выключается ВМЕСТЕ с ним, не раньше и не позже.
+  enabled: false
   auth:
     username: hydra
     database: hydra
@@ -1904,7 +1911,18 @@ kratos:
         level: info
         format: json
 hydra:
-  enabled: true
+  # ВЫКЛЮЧЕН ВМЕСТЕ С ПЕРЕВОДОМ СТЕНДОВ НА ПОСАДКУ `own` (#2735).
+  #
+  # Человека на всех семи стендах проверяет наша полоса, и чужой выдающий рядом
+  # с ней — ВТОРАЯ ДЕЙСТВУЮЩАЯ ДВЕРЬ в ту же систему: он продолжал бы чеканить
+  # и обновлять токены, о которых наша сторона не знает ничего. Флаг стоит в
+  # КОРНЕ ЦЕПОЧКИ, а не в накладке одного стенда: накладка выключала его у
+  # одного из семи, и шесть остальных поднимали бы его молча.
+  #
+  # ОСТАЛЬНОЕ СОДЕРЖИМОЕ БЛОКА НЕ СНЯТО НАМЕРЕННО: при `enabled: false` оно
+  # инертно, а снятие подчарта и его базы — отдельный предмет (#1276), у
+  # которого свой порядок и своя миграция данных.
+  enabled: false
   # Sub-phase 5.5 (kacho-iam#137) — prod transport hardening for the :9092 hooks
   # listener. The OAuth2 token/refresh webhooks now go over https://…:9092 (the
   # listener runs server-tls-only) and the Hydra pod mounts the SEC-F internal-CA
