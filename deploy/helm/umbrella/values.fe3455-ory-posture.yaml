@@ -57,7 +57,18 @@ global:
           url: "base64://eyIkaWQiOiJodHRwczovL3NjaGVtYXMua2FjaG8ubG9jYWwvaWRlbnRpdHkvdjEuMC4wL2RlZmF1bHQuanNvbiIsIiRzY2hlbWEiOiJodHRwOi8vanNvbi1zY2hlbWEub3JnL2RyYWZ0LTA3L3NjaGVtYSMiLCJ0aXRsZSI6IlBlcnNvbiIsInR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7InRyYWl0cyI6eyJ0eXBlIjoib2JqZWN0IiwicHJvcGVydGllcyI6eyJlbWFpbCI6eyJ0eXBlIjoic3RyaW5nIiwiZm9ybWF0IjoiZW1haWwiLCJ0aXRsZSI6IkUtTWFpbCIsIm9yeS5zaC9rcmF0b3MiOnsiY3JlZGVudGlhbHMiOnsicGFzc3dvcmQiOnsiaWRlbnRpZmllciI6dHJ1ZX19LCJyZWNvdmVyeSI6eyJ2aWEiOiJlbWFpbCJ9LCJ2ZXJpZmljYXRpb24iOnsidmlhIjoiZW1haWwifX19LCJuYW1lIjp7InR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7ImZpcnN0Ijp7InR5cGUiOiJzdHJpbmciLCJ0aXRsZSI6IkZpcnN0IE5hbWUifSwibGFzdCI6eyJ0eXBlIjoic3RyaW5nIiwidGl0bGUiOiJMYXN0IE5hbWUifX19fSwicmVxdWlyZWQiOlsiZW1haWwiXSwiYWRkaXRpb25hbFByb3BlcnRpZXMiOmZhbHNlfX19"
 
 hydra:
-  enabled: true
+  # ВЫКЛЮЧЕН ВМЕСТЕ С ПЕРЕВОДОМ СТЕНДОВ НА ПОСАДКУ `own` (#2735).
+  #
+  # Человека на всех семи стендах проверяет наша полоса, и чужой выдающий рядом
+  # с ней — ВТОРАЯ ДЕЙСТВУЮЩАЯ ДВЕРЬ в ту же систему: он продолжал бы чеканить
+  # и обновлять токены, о которых наша сторона не знает ничего. Флаг стоит в
+  # КОРНЕ ЦЕПОЧКИ, а не в накладке одного стенда: накладка выключала его у
+  # одного из семи, и шесть остальных поднимали бы его молча.
+  #
+  # ОСТАЛЬНОЕ СОДЕРЖИМОЕ БЛОКА НЕ СНЯТО НАМЕРЕННО: при `enabled: false` оно
+  # инертно, а снятие подчарта и его базы — отдельный предмет (#1276), у
+  # которого свой порядок и своя миграция данных.
+  enabled: false
   hydra:
     automigration: { enabled: true, type: initContainer }
     # Боевая посадка: провайдер требует https у собственного issuer.
