@@ -36,6 +36,7 @@ const gitRevToolAbsentChildMark = "KACHO_GITREV_CAUSE="
 // Снять PATH в общем процессе нельзя — пробы этого пакета идут параллельно, и
 // снятие уронило бы соседей на чужой причине.
 func TestGitRevCauseToolAbsentChild(t *testing.T) {
+	t.Parallel()
 	dir := os.Getenv(gitRevToolAbsentChildEnv)
 	if dir == "" {
 		return
