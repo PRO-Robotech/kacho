@@ -369,6 +369,70 @@ else
     say "I2 и ничего не отправлено" 3 "ничего не отправлено" "$OUT" "$RC"
 fi
 
+echo "── I'. личность ТОЛЬКО в корневой настройке — ею и подписан коммит артефакта"
+# Положительная половина случая I (#2822). Решение владельца 2026-09-22: подпись
+# — только личностью из корневой настройки. Случай I держит отказ, когда её нет,
+# но не то, ОТКУДА она взята: фикстуры несут локальную личность `probe`, и
+# производитель, задающий себе личность сам (`git config --local user.*` во
+# временном клоне), проходил все прочие утверждения — подделка совпадала с
+# фикстурой. Здесь личность лежит только в корневой настройке ИЗОЛИРОВАННОГО дома
+# пробы (свой файл, не вызывающего), локальной у источника нет, и автор и
+# коммиттер коммита артефакта обязаны быть ею.
+#
+# Переменные личности коммита (GIT_AUTHOR_*, GIT_COMMITTER_*, EMAIL) сняты в самом
+# случае: они сильнее любой настройки, и значение вызывающего в них подписало бы
+# коммит мимо производителя — случай судил бы окружение, а не производителя.
+RHOME="$SCRATCH/root-home"; mkdir -p "$RHOME"
+printf '[user]\n\tname = root-only\n\temail = root-only@invalid\n' > "$RHOME/.gitconfig"
+root_only() {  # root_only <команда...> — корневая настройка случая, без переменных личности
+    ( unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL EMAIL
+      export GIT_CONFIG_GLOBAL="$RHOME/.gitconfig"; "$@" )
+}
+make_tree "$SCRATCH/i3" "example.test/owner/probe" pass
+( cd "$SCRATCH/i3" && git config --unset user.name; git config --unset user.email ) >/dev/null 2>&1
+RBARE="$SCRATCH/bare-root.git"
+git init --quiet --bare -b main "$RBARE"
+RSEED="$SCRATCH/seed-root"; mkdir -p "$RSEED"
+printf 'прежнее дерево\n' > "$RSEED/OLD-ROOT-FILE"
+( cd "$RSEED" && git init --quiet -b main \
+  && git -c user.name=p -c user.email=p@invalid add -A \
+  && git -c user.name=p -c user.email=p@invalid commit --quiet -m seed \
+  && git push --quiet "$RBARE" main ) >/dev/null 2>&1
+# ПРЕДПОСЫЛКА СПРАШИВАЕТСЯ У GIT В ТОМ ЖЕ ОКРУЖЕНИИ, в котором позван
+# производитель: личность видна ровно одна и ровно из корневого файла случая.
+# Иначе (утечка настройки вызывающего, лишний уровень) условие не создано, и это
+# «НЕ ВЫПОЛНИЛОСЬ» с названным источником, а не находка о производителе.
+SEEN="$( cd "$SCRATCH/i3" && root_only sh -c \
+    'git config --show-origin --get-all user.name; git config --show-origin --get-all user.email' 2>/dev/null )"
+WANT="file:$RHOME/.gitconfig	root-only
+file:$RHOME/.gitconfig	root-only@invalid"
+# И какой подписью git подписал бы коммит в этом окружении: переменные личности
+# сильнее настройки, и настройка без них ещё не всё окружение.
+IDENT="$( cd "$SCRATCH/i3" && root_only sh -c 'git var GIT_AUTHOR_IDENT; git var GIT_COMMITTER_IDENT' 2>/dev/null \
+          | sed -E 's/ [0-9]+ [+-][0-9]{4}$//' )"
+WANT_IDENT="root-only <root-only@invalid>
+root-only <root-only@invalid>"
+if [ "$SEEN" != "$WANT" ] || [ "$IDENT" != "$WANT_IDENT" ]; then
+    notrun 3 "I3, I4, I5" "условие «личность только в корневой настройке» не создано — git видит: $(printf '%s' "$SEEN" | tr '\t\n' ' ;'); подписал бы: $(printf '%s' "$IDENT" | tr '\n' ';')"
+else
+    OUT="$(KACHO_ARTIFACT_URL="$RBARE" root_only run_sut "$SCRATCH/i3" --publish)"; RC=$?
+    say "I3 личность только корневая — выложено" 0 "Выложено" "$OUT" "$RC"
+    # Сверяется КОММИТ на удалённом, а не вывод производителя: подпись — свойство
+    # выложенного объекта, и пересказ её в выводе ничего о нём не утверждает.
+    GOT_AUTHOR="$(git --git-dir="$RBARE" log -1 --format='%an <%ae>' main 2>/dev/null)"
+    GOT_COMMITTER="$(git --git-dir="$RBARE" log -1 --format='%cn <%ce>' main 2>/dev/null)"
+    if [ "$GOT_AUTHOR" = "root-only <root-only@invalid>" ]; then
+        ok "I4 автор коммита артефакта — личность корневой настройки"
+    else
+        bad "I4 автор коммита артефакта — личность корневой настройки" "автор: '$GOT_AUTHOR'"
+    fi
+    if [ "$GOT_COMMITTER" = "root-only <root-only@invalid>" ]; then
+        ok "I5 коммиттер коммита артефакта — личность корневой настройки"
+    else
+        bad "I5 коммиттер коммита артефакта — личность корневой настройки" "коммиттер: '$GOT_COMMITTER'"
+    fi
+fi
+
 echo "── J. транспорт наследуется у источника, а не назначается"
 make_tree "$SCRATCH/j" "example.test/owner/probe" pass
 ( cd "$SCRATCH/j" && git remote add origin "git@example.test:owner/mono.git" ) >/dev/null 2>&1
