@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PRO-Robotech/corelib/tokenpolicy"
 	"github.com/stretchr/testify/require"
 )
 
@@ -621,11 +622,13 @@ func TestJWKS_toRSA_RejectsSmallModulus(t *testing.T) {
 	require.Contains(t, err.Error(), "modulus")
 }
 
-// SEC — нормальный 2048-битный ключ проходит toRSA без изменений поведения
-// (регресс-страховка к минимальному размеру модуля). Число взято не у поставщика,
-// а у нашего объявления: tokenpolicy.MinRSAModulusBits, см. `jsonWebKey.toRSA`.
-func TestJWKS_toRSA_Accepts2048(t *testing.T) {
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+// SEC — ключ ровно минимальной длины модуля проходит toRSA без изменений
+// поведения (регресс-страховка к границе). Длина берётся не литералом, а у
+// нашего объявления — tokenpolicy.MinRSAModulusBits, которым судит
+// `jsonWebKey.toRSA`: поднимут минимум — проба поднимется вместе с ним и
+// продолжит судить ГРАНИЦУ.
+func TestJWKS_toRSA_AcceptsTheDeclaredMinimumModulus(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, tokenpolicy.MinRSAModulusBits)
 	require.NoError(t, err)
 
 	got, err := rsaJWK(&key.PublicKey).toRSA()
