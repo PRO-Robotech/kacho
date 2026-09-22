@@ -704,7 +704,8 @@ help:
 ##                             вердикта не двигает, обратное require — двигает
 ##   release-dry-run         — весь набор гейтов разом, без создания чего-либо
 ##   release-artifact        — сойдутся ли предпосылки ПОСТАВКИ дерева службы в
-##                             репозиторий артефакта (ARTIFACT_SVC/ARTIFACT_REPO).
+##                             репозиторий артефакта (ARTIFACT_SVC/ARTIFACT_REPO,
+##                             ARTIFACT_ISSUE — номер задачи того репозитория).
 ##                             Гоняет четыре гейта производителя поставки и
 ##                             печатает перепись; необратимого шага не делает —
 ##                             как и все цели этого блока
@@ -806,11 +807,16 @@ release-dry-run:
 # «сойдутся ли предпосылки», а выкладку делает тот же скрипт с `--publish` и
 # дословным подтверждением, набранным человеком. Подтверждение, которое
 # подставляет рецепт, подтверждением не является.
+#
+# НОМЕР ЗАДАЧИ РЕПОЗИТОРИЯ АРТЕФАКТА — БЕЗ УМОЛЧАНИЯ (#2819). Им производитель
+# называет ветку, первую строку коммита, заголовок запроса и коммит слияния
+# (правило git 2026-09-22); подставленное здесь умолчание назвало бы чужую задачу.
 ARTIFACT_SVC  ?= iam
 ARTIFACT_REPO ?= PRO-Robotech/kaname
 
 release-artifact:
 	@test -n "$(ARTIFACT_SVC)" || { echo "нужна ARTIFACT_SVC, напр. make release-artifact ARTIFACT_SVC=iam" >&2; exit 2; }
 	@test -n "$(ARTIFACT_REPO)" || { echo "нужен ARTIFACT_REPO, напр. ARTIFACT_REPO=PRO-Robotech/kaname" >&2; exit 2; }
+	@test -n "$(ARTIFACT_ISSUE)" || { echo "нужен ARTIFACT_ISSUE — номер задачи в $(ARTIFACT_REPO), напр. ARTIFACT_ISSUE=123" >&2; exit 2; }
 	scripts/release/publish-service-artifact.sh $(ARTIFACT_SVC) $(ARTIFACT_REPO) \
-	  --confirm $(ARTIFACT_REPO) $(if $(REV),--rev $(REV))
+	  --confirm $(ARTIFACT_REPO) --issue $(ARTIFACT_ISSUE) $(if $(REV),--rev $(REV))
