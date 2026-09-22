@@ -112,3 +112,39 @@ func TestRefusalCarriesTheMitigatingFactAndDoesNotTurnItIntoAnExcuse(t *testing.
 		}
 	}
 }
+
+// TestCachedRefusalReportsTheMarkNotTheToolThatSetIt — текст отказа по факту
+// говорит о том, что ЗАМЕРЕНО, и не утверждает того, чего прибор не наблюдал.
+//
+// Оба флага — величины командной строки, и набрать их может кто угодно. На argv
+// собранного руками двоичного с журналом обращений состояние остаётся
+// «кэшируемый» — это верно и намеренно (направление безопасное: прибор
+// отказывает). Ложным было бы УТВЕРЖДЕНИЕ, что прогон запустил `go test` и
+// именно он положит результат в кеш: никакого `go test` в этой форме нет.
+func TestCachedRefusalReportsTheMarkNotTheToolThatSetIt(t *testing.T) {
+	t.Parallel()
+
+	// Форма, на которой прежний текст лгал: собранный двоичный, запущенный
+	// руками, с ОБОИМИ флагами. Состояние обязано остаться кэшируемым.
+	argvHandRunWithJournal := []string{
+		"/home/dk/x.test",
+		"-test.paniconexit0",
+		"-test.testlogfile=/home/dk/testlog.txt",
+	}
+	if got := observe(argvHandRunWithJournal, true); got != StateCached {
+		t.Fatalf("argv с журналом дал состояние %q — отказ бы не сработал, а направление обязано быть безопасным", got)
+	}
+
+	msg := refusalFor("helm", StateCached)
+	// Замеренное названо: метка, по которой состояние прочитано.
+	for _, want := range []string{"-test.testlogfile", "ПОМЕЧЕН кэшируемым", "прочтение МЕТКИ"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("текст отказа не называет замеренного (%q) — читателю нечем проверить вывод:\n%s", want, msg)
+		}
+	}
+	// И не утверждает незамеренного.
+	if strings.Contains(msg, "результат этого прогона `go test`\nположит в кеш") {
+		t.Errorf("текст отказа утверждает, что прогон запустил `go test` — на собранном руками " +
+			"двоичном с журналом это ложь, а прибор такого не наблюдал")
+	}
+}

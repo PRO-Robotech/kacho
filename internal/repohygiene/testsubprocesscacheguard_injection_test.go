@@ -133,9 +133,10 @@ func TestSubprocessGuardInjection_GuardThatDoesNotRefuseIsFound(t *testing.T) {
 }
 
 // TestSubprocessGuardInjection_GuardAtTheEntryPointIsSilent — ВТОРАЯ законная
-// форма: страж в точке входа, запуск двумя вызовами глубже. Так написан образец
-// дерева (gateway/deploy/login_lane_prereq_test.go), и гейт обязан на нём
-// молчать.
+// форма: страж в точке входа, запуск глубже по графу вызовов. Так написан
+// образец дерева (services/compute/cmd/compute/deploy_geo_edge_render_test.go:
+// страж первым оператором TestGeoEdge_HelmRender_GeoEnvPresent), и гейт обязан
+// на нём молчать.
 func TestSubprocessGuardInjection_GuardAtTheEntryPointIsSilent(t *testing.T) {
 	t.Parallel()
 	c := mutate(t, guardBlock, "")
@@ -285,5 +286,122 @@ func TestSubprocessGuardInjection_GuardSunkIntoABranchOfTheHelperIsFound(t *test
 	t.Parallel()
 	if f := auditSynth(t, withFactoredGuard(t, requireHelmDeep)); len(f) == 0 {
 		t.Fatal("страж утоплен в ветку помощника, а гейт засчитал его за отказ на входе")
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A4. Каталог держит ДВА пакета
+// ─────────────────────────────────────────────────────────────────────────────
+
+// externalPackageLaunch — второй пакет ТОГО ЖЕ каталога (`probe_test` рядом с
+// `probe`) с НЕЗАЩИЩЁННЫМ запуском в функции, одноимённой функции первого
+// пакета. Имя файла выбрано так, чтобы он читался ПОСЛЕ `render_test.go`:
+// иначе отбрасывался бы защищённый близнец, и дефект проявлялся бы сам собой.
+const externalPackageLaunch = `package probe_test
+
+import (
+	"os/exec"
+	"testing"
+)
+
+func render(t *testing.T) string {
+	out, _ := exec.Command("helm", "template", ".").CombinedOutput()
+	return string(out)
+}
+
+func TestExternalRenderCarriesTheHost(t *testing.T) {
+	if render(t) == "" {
+		t.Fatal("нет")
+	}
+}
+`
+
+// TestSubprocessGuardInjection_SecondPackageOfTheSameDirectoryIsWalked —
+// одноимённое объявление во ВТОРОМ пакете каталога не отбрасывается молча.
+//
+// Каталог в Go держит два пакета: `x` и внешний `x_test`. Обход группирует
+// файлы по КАТАЛОГУ, поэтому одноимённые объявления двух пакетов попадали в
+// один ключ, и второе отбрасывалось — вместе со своими местами запуска. Исход
+// был двойным ложным зелёным: находок ноль, и место запуска не попадало даже в
+// перепись.
+//
+// Проверяется и то и другое: перепись обязана знать ОБА места (`helm×2`), а
+// находка — назвать координату незащищённого.
+func TestSubprocessGuardInjection_SecondPackageOfTheSameDirectoryIsWalked(t *testing.T) {
+	t.Parallel()
+	c := baseSynthCorpus()
+	c["synth/zz_external_test.go"] = externalPackageLaunch
+
+	findings, cen := repohygiene.AuditTestSubprocessCacheGuards(c)
+	if got := cen.Programs["helm"]; got != 2 {
+		t.Errorf("перепись знает helm×%d, а мест запуска в корпусе ДВА — "+
+			"объявление второго пакета отброшено вместе со своим местом запуска; перепись: %s",
+			got, cen.Line())
+	}
+	joined := strings.Join(findings, "\n")
+	if !strings.Contains(joined, "synth/zz_external_test.go") {
+		t.Errorf("незащищённый запуск во втором пакете каталога гейту невидим:\n%s", joined)
+	}
+}
+
+// TestSubprocessGuardInjection_TwinInTwoPackagesIsSilent — законный близнец той
+// же формы: каталог держит два пакета, и в ОБОИХ страж стоит. Один факт против
+// случая выше. Без него красное там означало бы лишь «гейт краснеет на всяком
+// втором пакете».
+func TestSubprocessGuardInjection_TwinInTwoPackagesIsSilent(t *testing.T) {
+	t.Parallel()
+	c := baseSynthCorpus()
+	c["synth/zz_external_test.go"] = strings.Replace(externalPackageLaunch,
+		"	out, _ := exec.Command",
+		`	if msg := cachedverdict.SubprocessRefusal("helm"); msg != "" {
+		t.Fatal(msg)
+	}
+	out, _ := exec.Command`, 1)
+	if f := auditSynth(t, c); len(f) != 0 {
+		t.Fatalf("оба пакета каталога защищены, а гейт дал находки:\n%s", strings.Join(f, "\n"))
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A2. Страж, стоящий ПОД УСЛОВИЕМ
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestSubprocessGuardInjection_GuardUnderACondditionIsFound — страж в ветви
+// `if` не исполняется на всех путях, и за безусловный не засчитывается.
+//
+// Требование к помощнику уже было («страж РОВНО в голове тела»), а к
+// собственному стражу функции — нет: `ast.Inspect` находил `IfStmt` на любой
+// глубине. Вынести страж под `if os.Getenv(...)` и получить зелёное можно было
+// одной строкой.
+func TestSubprocessGuardInjection_GuardUnderAConditionIsFound(t *testing.T) {
+	t.Parallel()
+	c := mutate(t, guardBlock, `	if os.Getenv("STRICT") != "" {
+		if msg := cachedverdict.SubprocessRefusal("helm"); msg != "" {
+			t.Fatal(msg)
+		}
+	}
+`)
+	findings, cen := repohygiene.AuditTestSubprocessCacheGuards(c)
+	if cen.Guarded != 0 {
+		t.Errorf("перепись объявила защищёнными на всех путях %d мест, а страж стоит под условием; перепись: %s",
+			cen.Guarded, cen.Line())
+	}
+	if len(findings) == 0 {
+		t.Fatal("страж утоплен под условие, а гейт засчитал его за безусловный")
+	}
+}
+
+// TestSubprocessGuardInjection_GuardUnderALoopIsFound — то же одним фактом
+// иначе: тело цикла тоже не исполняется гарантированно.
+func TestSubprocessGuardInjection_GuardUnderALoopIsFound(t *testing.T) {
+	t.Parallel()
+	c := mutate(t, guardBlock, `	for range attempts {
+		if msg := cachedverdict.SubprocessRefusal("helm"); msg != "" {
+			t.Fatal(msg)
+		}
+	}
+`)
+	if f := auditSynth(t, c); len(f) == 0 {
+		t.Fatal("страж утоплен в цикл, а гейт засчитал его за безусловный")
 	}
 }

@@ -22,10 +22,28 @@
 // строится граф вызовов внутри того же каталога, и на КАЖДОМ пути до места
 // запуска внешнего инструмента обязан встретиться страж — РАНЬШЕ по позиции,
 // чем продолжение пути. Это не украшение: в дереве обе формы законны и обе
-// живые — страж у самого места запуска (помощник `helmTemplate`, тогда под ним
-// все нынешние и будущие его вызывающие) и страж в точке входа, когда запуск
-// лежит двумя вызовами глубже (`gateway/deploy/login_lane_prereq_test.go`).
-// Распознаватель, знающий одну из них, молчал бы на второй.
+// живые — страж у самого места запуска (помощник `helmTemplate`,
+// `gateway/deploy/render_geo_test.go`, тогда под ним все нынешние и будущие его
+// вызывающие) и страж, вынесенный в помощника, отказывающего на входе
+// (`requireHelm`, `services/registry/deploy/render_test.go`: точка входа зовёт
+// его, а запуск лежит в третьей функции `runHelmTemplate`, у которой `*testing.T`
+// нет вовсе). Распознаватель, знающий одну из них, молчал бы на второй.
+//
+// # Страж засчитывается только БЕЗУСЛОВНЫЙ
+//
+// Страж — оператор ВЕРХНЕГО УРОВНЯ тела функции: лишь такой доминирует над всем,
+// что ниже. Страж в ветви `if`, в теле цикла, в `select`, в `switch` или в
+// замыкании исполнится или нет — неизвестно, и «неизвестно» за отказ не
+// выдаётся. Разбор — `unconditionalGuardPos`.
+//
+// # Каталог держит ДВА пакета
+//
+// Обход группирует файлы по каталогу, а каталог Go держит до двух пакетов: `x`
+// и внешний `x_test`. Ключ функции поэтому несёт ИМЯ ПАКЕТА
+// (`subprocessFuncKey`): без него одноимённые объявления двух пакетов — один
+// ключ, и второе отбрасывалось бы вместе со своими местами запуска. Перепись
+// печатает оба числа, каталоги и единицы разбора, и они расходятся: на дереве
+// этой полосы 206 против 260.
 //
 // # Словарь инструментов ЗАКРЫТ
 //
@@ -55,13 +73,48 @@ import (
 	"strings"
 )
 
+// subprocessToolDecision — состояние записи словаря. Их ТРИ, а не два, и
+// третье — не оттенок второго.
+//
+// Запись `guard: false` читалась ЧИТАТЕЛЮ как «разобрали, страж не нужен», а
+// ГЕЙТУ — как разрешение пройти мимо, и различить по структуре два этих смысла
+// было нечем: «НЕ РАЗБИРАЛИ» жило только в прозе комментария. Состояние,
+// существующее в прозе и отсутствующее в типе, — это незнание, выданное за
+// факт. Поэтому оно названо значением.
+type subprocessToolDecision string
+
+const (
+	// toolGuardRequired — разобрано: вердикт зовущей пробы зависит от состояния
+	// дерева, которого проба сама не читает, и страж обязателен.
+	toolGuardRequired subprocessToolDecision = "разобрано: страж НУЖЕН"
+	// toolGuardNotNeeded — разобрано: не зависит, страж не нужен. Сегодня в
+	// словаре таких записей НОЛЬ, и это не пропуск: ни один инструмент этой
+	// полосой до конца не разобран.
+	toolGuardNotNeeded subprocessToolDecision = "разобрано: страж не нужен"
+	// toolNotAnalysed — НЕ РАЗБИРАЛИ. Заявления нет ни в какую сторону; гейт о
+	// таких местах не судит и говорит об этом числом в переписи, а не молчанием.
+	toolNotAnalysed subprocessToolDecision = "НЕ РАЗБИРАЛИ"
+)
+
+// notAnalysedRemoval — предикат снятия, общий у всех записей «НЕ РАЗБИРАЛИ».
+// Он машинный лишь наполовину: второй машинный предикат («инструмент ушёл из
+// дерева») держится самоистечением словаря ниже, а этот исполняется человеком.
+// Открытый остаток назван, а не спрятан: пока хоть одна проба зовёт `bash`,
+// запись о нём сама не истечёт.
+const notAnalysedRemoval = "по инструменту установлено, зависит ли вердикт зовущей пробы " +
+	"от состояния дерева, которого проба не читает сама, — и запись заменяется " +
+	"решением toolGuardRequired либо toolGuardNotNeeded"
+
 // subprocessToolPolicy — решение по одному внешнему инструменту.
 type subprocessToolPolicy struct {
-	// guard — обязан ли путь до его запуска нести страж кэшируемого прогона.
-	guard bool
-	// reason — почему решение такое. Для записи без стража это ещё и предикат
-	// снятия: сказано, чем именно её положено заменить.
+	// decision — одно из трёх состояний выше.
+	decision subprocessToolDecision
+	// reason — почему решение такое. Читается пробой словаря рядом с гейтом:
+	// запись без причины — находка, а не умолчание.
 	reason string
+	// removal — предикат снятия записи. Обязателен ровно у toolNotAnalysed: у
+	// решённых записей снятие держит самоистечение словаря по дереву.
+	removal string
 }
 
 // subprocessToolCanon — ЗАКРЫТЫЙ словарь инструментов, запускаемых пробами
@@ -69,22 +122,20 @@ type subprocessToolPolicy struct {
 // памяти.
 var subprocessToolCanon = map[string]subprocessToolPolicy{
 	"helm": {
-		guard: true,
+		decision: toolGuardRequired,
 		reason: "рендер чарта читает шаблоны, профили и подчарты — ни один из этих " +
 			"файлов проба не открывает сама, поэтому их правка кеш не сбрасывает",
 	},
 
 	// ── ниже: инструменты, у которых пути до дерева в этой полосе НЕ РАЗБИРАЛИ.
 	// Запись не утверждает «им страж не нужен»; она утверждает «эта полоса о них
-	// не судила». Предикат снятия у всех один: по инструменту установлено,
-	// зависит ли вердикт зовущей пробы от состояния дерева, которого проба не
-	// читает сама, — и запись заменяется решением со стражем или без него.
-	"go":      {reason: "полоса не разбирала: вход инструмента — модуль и его кеш, не профили посадки"},
-	"bash":    {reason: "полоса не разбирала: скрипт задаётся путём, содержимое читает оболочка"},
-	"python3": {reason: "полоса не разбирала: генератор задаётся путём, содержимое читает интерпретатор"},
-	"gh":      {reason: "полоса не разбирала: вход — состояние трекера, а не дерева"},
-	"make":    {reason: "полоса не разбирала: цель читает Makefile и всё, до чего он дотянется"},
-	"jq":      {reason: "полоса не разбирала: программа фильтра приходит из самой пробы"},
+	// не судила», и состояние это — значение поля, а не строка комментария.
+	"go":      {decision: toolNotAnalysed, removal: notAnalysedRemoval, reason: "вход инструмента — модуль и его кеш, не профили посадки"},
+	"bash":    {decision: toolNotAnalysed, removal: notAnalysedRemoval, reason: "скрипт задаётся путём, содержимое читает оболочка"},
+	"python3": {decision: toolNotAnalysed, removal: notAnalysedRemoval, reason: "генератор задаётся путём, содержимое читает интерпретатор"},
+	"gh":      {decision: toolNotAnalysed, removal: notAnalysedRemoval, reason: "вход — состояние трекера, а не дерева"},
+	"make":    {decision: toolNotAnalysed, removal: notAnalysedRemoval, reason: "цель читает Makefile и всё, до чего он дотянется"},
+	"jq":      {decision: toolNotAnalysed, removal: notAnalysedRemoval, reason: "программа фильтра приходит из самой пробы"},
 }
 
 // Формы записи программы, которые распознаватель знает. Перечень выведен тем же
@@ -112,18 +163,25 @@ type subprocessSite struct {
 // Перепись печатается ОТДЕЛЬНО от находок: «ноль находок» обязано быть отличимо
 // от «ноль прочитанного», а «не установлено» — от того и другого.
 type SubprocessGuardCensus struct {
-	FilesRead  int
-	LinesRead  int
+	FilesRead int
+	LinesRead int
+	// Packages — КАТАЛОГОВ. Units — единиц разбора (каталог×пакет): каталог Go
+	// держит до двух пакетов, `x` и внешний `x_test`, и числа эти расходятся.
 	Packages   int
+	Units      int
 	Funcs      int
 	Sites      int
 	Programs   map[string]int
 	Forms      map[string]int
 	Unresolved []string // координаты мест, где программа НЕ УСТАНОВЛЕНА
-	NeedGuard  int      // мест, требующих стража по словарю
-	Guarded    int      // из них защищённых на всех путях
-	Entries    int      // точек входа, доходящих до таких мест
-	Findings   int
+	// Undecided — места, чей инструмент в словаре ЕСТЬ, но со состоянием «НЕ
+	// РАЗБИРАЛИ». Печатаются числом: незнание гейта обязано быть видно, а не
+	// неотличимо от «страж не нужен».
+	Undecided map[string]int
+	NeedGuard int // мест, требующих стража по словарю
+	Guarded   int // из них защищённых на всех путях
+	Entries   int // точек входа, доходящих до таких мест
+	Findings  int
 }
 
 // AuditTestSubprocessCacheGuards — судящая функция гейта.
@@ -131,7 +189,7 @@ type SubprocessGuardCensus struct {
 // Вход — карта «путь относительно корня → текст файла»: так проба гоняется и по
 // живому дереву, и по синтетике инъекции, ОДНИМ И ТЕМ ЖЕ кодом.
 func AuditTestSubprocessCacheGuards(sources map[string]string) ([]string, SubprocessGuardCensus) {
-	cen := SubprocessGuardCensus{Programs: map[string]int{}, Forms: map[string]int{}}
+	cen := SubprocessGuardCensus{Programs: map[string]int{}, Forms: map[string]int{}, Undecided: map[string]int{}}
 	var findings []string
 
 	byPkg := map[string][]string{}
@@ -152,6 +210,7 @@ func AuditTestSubprocessCacheGuards(sources map[string]string) ([]string, Subpro
 		fset := token.NewFileSet()
 		funcs := map[string]*subprocessFunc{}
 		var order []string
+		units := map[string]bool{}
 		for _, rel := range files {
 			src := sources[rel]
 			cen.FilesRead++
@@ -163,8 +222,10 @@ func AuditTestSubprocessCacheGuards(sources map[string]string) ([]string, Subpro
 				findings = append(findings, fmt.Sprintf("%s: разбор не удался: %v — обход неполон", rel, err))
 				continue
 			}
-			collectSubprocessFuncs(fset, rel, f, funcs, &order)
+			units[f.Name.Name] = true
+			findings = append(findings, collectSubprocessFuncs(fset, rel, f, funcs, &order)...)
 		}
+		cen.Units += len(units)
 		cen.Funcs += len(funcs)
 		for _, name := range order {
 			for _, s := range funcs[name].sites {
@@ -177,6 +238,9 @@ func AuditTestSubprocessCacheGuards(sources map[string]string) ([]string, Subpro
 				}
 				cen.Programs[s.program]++
 				seenProgram[s.program] = true
+				if pol, known := subprocessToolCanon[s.program]; known && pol.decision == toolNotAnalysed {
+					cen.Undecided[s.program]++
+				}
 			}
 		}
 		findings = append(findings, auditPackageGuards(dir, funcs, order, &cen)...)
@@ -204,6 +268,11 @@ func AuditTestSubprocessCacheGuards(sources map[string]string) ([]string, Subpro
 // subprocessFunc — одна функция пакета: где у неё страж, кого она зовёт и где
 // запускает подпроцессы.
 type subprocessFunc struct {
+	// pkg — ИМЯ ПАКЕТА объявления. Каталог держит до двух пакетов (`x` и внешний
+	// `x_test`), и ключ функции без пакета склеивал бы одноимённые объявления
+	// двух РАЗНЫХ единиц разбора — второе отбрасывалось бы вместе со своими
+	// местами запуска.
+	pkg  string
 	name string
 	file string
 	line int
@@ -232,7 +301,15 @@ type subprocessCall struct {
 	pos    token.Pos
 }
 
-func collectSubprocessFuncs(fset *token.FileSet, rel string, f *ast.File, out map[string]*subprocessFunc, order *[]string) {
+// subprocessFuncKey — ключ функции в графе каталога. Пакет в ключе несущий: без
+// него `x.render` и `x_test.render` одного каталога — один ключ.
+func subprocessFuncKey(pkg, name string) string { return pkg + "\x00" + name }
+
+// collectSubprocessFuncs — разбор одного файла. Возвращает НАХОДКИ: молчание на
+// том, чего обход не разобрал, означало бы вердикт о дереве меньше объявленного.
+func collectSubprocessFuncs(fset *token.FileSet, rel string, f *ast.File, out map[string]*subprocessFunc, order *[]string) []string {
+	var findings []string
+	pkg := f.Name.Name
 	fileLiterals := fileLevelStringIdents(f)
 	for _, decl := range f.Decls {
 		fd, ok := decl.(*ast.FuncDecl)
@@ -244,46 +321,76 @@ func collectSubprocessFuncs(fset *token.FileSet, rel string, f *ast.File, out ma
 		if method {
 			name = subprocessReceiverName(fd.Recv) + "." + name
 		}
-		if _, dup := out[name]; dup {
-			// Одноимённых объявлений в одном пакете не бывает; если вход подан
-			// так, что они есть, обход об этом говорит, а не склеивает молча.
+		key := subprocessFuncKey(pkg, name)
+		if prev, dup := out[key]; dup {
+			// Внутри ОДНОГО пакета одноимённых объявлений не бывает: такой вход
+			// не компилируется. Если он подан, обход об этом ГОВОРИТ — иначе
+			// второе объявление отбрасывалось бы вместе со своими местами
+			// запуска, и «ноль находок» означало бы «половину не смотрели».
+			findings = append(findings, fmt.Sprintf(
+				"%s:%d: пакет %s объявляет %s повторно (первое — %s:%d) — "+
+					"обход второе объявление не разбирает, вердикт был бы о меньшем дереве",
+				rel, fset.Position(fd.Pos()).Line, pkg, name, prev.file, prev.line))
 			continue
 		}
 		info := &subprocessFunc{
+			pkg:        pkg,
 			name:       name,
 			file:       rel,
 			line:       fset.Position(fd.Pos()).Line,
 			entry:      !method && isTestEntryPoint(name),
 			standalone: method,
-			guardPos:   token.NoPos,
+			guardPos:   unconditionalGuardPos(fd),
 			headPos:    headStatementPos(fd),
 		}
 		locals := localStringIdents(fd, fileLiterals)
 		ast.Inspect(fd.Body, func(n ast.Node) bool {
-			switch node := n.(type) {
-			case *ast.IfStmt:
-				if isCacheGuardIf(node) && (info.guardPos == token.NoPos || node.Pos() < info.guardPos) {
-					info.guardPos = node.Pos()
-				}
-			case *ast.CallExpr:
-				if id, ok := node.Fun.(*ast.Ident); ok {
-					info.calls = append(info.calls, subprocessCall{callee: id.Name, pos: node.Pos()})
-					return true
-				}
-				prog, form, ok := subprocessProgramOf(node, locals)
-				if !ok {
-					return true
-				}
-				info.sites = append(info.sites, subprocessSite{
-					file: rel, line: fset.Position(node.Pos()).Line, pos: node.Pos(),
-					program: prog, form: form, fn: name,
-				})
+			node, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
 			}
+			if id, ok := node.Fun.(*ast.Ident); ok {
+				info.calls = append(info.calls, subprocessCall{callee: subprocessFuncKey(pkg, id.Name), pos: node.Pos()})
+				return true
+			}
+			prog, form, ok := subprocessProgramOf(node, locals)
+			if !ok {
+				return true
+			}
+			info.sites = append(info.sites, subprocessSite{
+				file: rel, line: fset.Position(node.Pos()).Line, pos: node.Pos(),
+				program: prog, form: form, fn: name,
+			})
 			return true
 		})
-		out[name] = info
-		*order = append(*order, name)
+		out[key] = info
+		*order = append(*order, key)
 	}
+	return findings
+}
+
+// unconditionalGuardPos — позиция САМОГО РАННЕГО стража, исполняющегося
+// БЕЗУСЛОВНО, и token.NoPos, когда такого нет.
+//
+// Засчитывается только оператор ВЕРХНЕГО УРОВНЯ тела функции: лишь он
+// доминирует над всем, что ниже по телу. Страж в ветви `if`, в теле цикла, в
+// `select`, в `switch` или в замыкании исполнится или нет — неизвестно, и
+// «неизвестно» за отказ не выдаётся. Требование это уже стояло к ПОМОЩНИКУ
+// (страж ровно в голове тела), а к собственному стражу функции — нет: обход
+// брал `IfStmt` на любой глубине, и вынести страж под `if os.Getenv(…)`,
+// сохранив зелёное, можно было одной строкой.
+func unconditionalGuardPos(fd *ast.FuncDecl) token.Pos {
+	at := token.NoPos
+	for _, st := range fd.Body.List {
+		ifs, ok := st.(*ast.IfStmt)
+		if !ok || !isCacheGuardIf(ifs) {
+			continue
+		}
+		if at == token.NoPos || ifs.Pos() < at {
+			at = ifs.Pos()
+		}
+	}
+	return at
 }
 
 // headStatementPos — позиция первого значащего оператора тела функции.
@@ -544,7 +651,7 @@ func auditPackageGuards(dir string, funcs map[string]*subprocessFunc, order []st
 		fn := funcs[name]
 		for _, s := range fn.sites {
 			pol, known := subprocessToolCanon[s.program]
-			if !known || !pol.guard {
+			if !known || pol.decision != toolGuardRequired {
 				continue
 			}
 			if fn.standalone {
@@ -616,7 +723,7 @@ func auditPackageGuards(dir string, funcs map[string]*subprocessFunc, order []st
 
 		for _, s := range fn.sites {
 			pol, known := subprocessToolCanon[s.program]
-			if !known || !pol.guard {
+			if !known || pol.decision != toolGuardRequired {
 				continue
 			}
 			k := siteKey{s.file, s.line}
@@ -706,12 +813,21 @@ func (c SubprocessGuardCensus) Line() string {
 		forms = append(forms, fmt.Sprintf("%s×%d", name, n))
 	}
 	sort.Strings(forms)
+	undecided := make([]string, 0, len(c.Undecided))
+	n := 0
+	for name, k := range c.Undecided {
+		undecided = append(undecided, fmt.Sprintf("%s×%d", name, k))
+		n += k
+	}
+	sort.Strings(undecided)
 	return fmt.Sprintf(
-		"перепись: файлов прочитано %d, строк %d, каталогов %d, функций %d; "+
+		"перепись: файлов прочитано %d, строк %d, каталогов %d, единиц разбора (каталог×пакет) %d, функций %d; "+
 			"мест запуска подпроцесса %d [%s]; формы записи [%s]; "+
-			"НЕ УСТАНОВЛЕНО программ %d; требуют стража %d, защищены на всех путях %d; "+
+			"НЕ УСТАНОВЛЕНО программ %d; НЕ РАЗБИРАЛИ мест %d [%s]; "+
+			"требуют стража %d, защищены на всех путях %d; "+
 			"точек входа, доходящих до них, %d; находок %d",
-		c.FilesRead, c.LinesRead, c.Packages, c.Funcs,
+		c.FilesRead, c.LinesRead, c.Packages, c.Units, c.Funcs,
 		c.Sites, strings.Join(progs, " "), strings.Join(forms, " "),
-		len(c.Unresolved), c.NeedGuard, c.Guarded, c.Entries, c.Findings)
+		len(c.Unresolved), n, strings.Join(undecided, " "),
+		c.NeedGuard, c.Guarded, c.Entries, c.Findings)
 }
