@@ -99,7 +99,7 @@ func f1cEdgeBlock(t *testing.T, profile string) map[string]any {
 // разошёлся бы с деревом молча, и новый профиль остался бы непроверенным.
 func f1cProfileNames(t *testing.T) []string {
 	t.Helper()
-	dir := filepath.Join("..", "..", "deploy", "helm", "umbrella")
+	dir := umbrellaDir
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("каталог профилей зонта не прочитан (%v) — посылка этой проверки "+
@@ -140,7 +140,7 @@ var f1cRecordedExclusions = map[string]f1cExclusion{
 			"Перечень объявляет цепочка, и предикат ниже это ПРОВЕРЯЕТ",
 		subject: func(t *testing.T) (bool, string) {
 			t.Helper()
-			root := filepath.Join("..", "..", "deploy", "helm", "umbrella")
+			root := umbrellaDir
 			if _, err := os.Stat(filepath.Join(root, "Chart.yaml")); err != nil {
 				return false, fmt.Sprintf("рядом нет Chart.yaml (%v) — это больше не корень чарта", err)
 			}
@@ -174,8 +174,7 @@ var f1cRecordedExclusions = map[string]f1cExclusion{
 			"ОДНУ ручку (тег образа) и о приёме токена не решает ничего",
 		subject: func(t *testing.T) (bool, string) {
 			t.Helper()
-			path := filepath.Join("..", "..", "deploy", "helm", "umbrella",
-				"values.digests.example.yaml")
+			path := filepath.Join(umbrellaDir, "values.digests.example.yaml")
 			raw, err := os.ReadFile(path) // #nosec G304 -- путь выписан константой, не вводом
 			if err != nil {
 				return false, fmt.Sprintf("файл не читается (%v) — исключать нечего", err)
@@ -402,13 +401,17 @@ func TestF1c_TheIssuerSetPredicateCanFail(t *testing.T) {
 		{"перечень пуст", f1cWithIssuers(live, ""), false},
 		{"перечень из одних разделителей", f1cWithIssuers(live, " , , "), false},
 	}
+	defective := 0
 	for _, c := range cases {
+		if !c.expect {
+			defective++
+		}
 		if got := f1cDeclares(c.gw); got != c.expect {
 			t.Errorf("%s (донор %s): предикат сказал %v, ожидалось %v", c.name, donor, got, c.expect)
 		}
 	}
 
-	t.Logf("самопроверка: донор %s, осмотрено половин %d (дефектных %d)", donor, len(cases), 3)
+	t.Logf("самопроверка: донор %s, осмотрено половин %d (дефектных %d)", donor, len(cases), defective)
 }
 
 // f1cWithout — копия блока края БЕЗ одного ключа.
