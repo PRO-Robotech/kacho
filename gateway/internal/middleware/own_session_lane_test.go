@@ -68,9 +68,8 @@ func liveOwnSession() HumanSession {
 	}
 }
 
-// ownLane — полоса личности в состоянии множества `own` (только наш носитель):
-// наш читатель сессии + наш читатель отсечки; читателя поставщика в этом
-// состоянии нет. Посадка `own` его не исключает: при `own,external` он провязан.
+// ownLane — полоса личности под `own`: наш читатель сессии + наш читатель
+// отсечки; поставщик НЕ провязан.
 func ownLane(t *testing.T, reader HumanSessionReader, cut SessionCutoffReader) *AuthInterceptor {
 	t.Helper()
 	a := NewAuthInterceptor(AuthModeDev, "", cutoffLookup{}, slog.New(slog.NewTextHandler(io.Discard, nil))).
@@ -183,8 +182,7 @@ func TestOwnSessionLane_F3_10_NoSessionIsOneRefusalThatEndsTheCarrier(t *testing
 }
 
 // Запрос БЕЗ нашего носителя полосу не занимает — анонимен, как сегодня; печенье
-// поставщика без нашего при множестве `own` — тоже не носитель (Ф1-52): его
-// читателя в этом состоянии нет.
+// поставщика без нашего под `own` — тоже не носитель (Ф1-52).
 func TestOwnSessionLane_F3_10_ARequestWithoutOurCarrierStaysAnonymous(t *testing.T) {
 	reader := &fakeHumanSession{found: true, sess: liveOwnSession()}
 	a := ownLane(t, reader, &fakeCutoff{})
