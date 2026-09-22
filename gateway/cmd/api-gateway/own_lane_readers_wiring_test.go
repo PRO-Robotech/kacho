@@ -153,7 +153,10 @@ func judgeWiringFixture(t *testing.T, extra string) (*token.FileSet, *ast.File) 
 	return fset, f
 }
 
-// Инъекция: читатель поставщика БЕЗ условия посадки — красное с координатой.
+// Распознаватель ветки посадки, инъекция: читатель поставщика вне ветки `if`,
+// называющей посадку, получает ПУСТУЮ посадку и называется координатой. Вердикта
+// о читателе здесь нет: его выносит session_carrier_wiring_test.go по решению
+// множества, а посадку этот распознаватель лишь называет в тексте находки.
 func TestOwnLaneGate_Injection_AProviderReaderOutsideThePostureBranchIsNamed(t *testing.T) {
 	fset, f := judgeWiringFixture(t, "\twho = who.WithKratos(middleware.NewKratosClient(url), lookup)")
 	sites := wiringSites(fset, f, "NewKratosClient")
@@ -171,7 +174,8 @@ func TestOwnLaneGate_Injection_AProviderReaderOutsideThePostureBranchIsNamed(t *
 	}
 }
 
-// Близнец: читатель под `external` — молчит; ветка `else` посадкой не считается.
+// Близнец распознавателя: читатель в ветке `lane == identityposture.External`
+// распознаётся под этой посадкой; ветка `else` посадкой не считается.
 func TestOwnLaneGate_Twin_AProviderReaderUnderExternalIsSilent(t *testing.T) {
 	fset, f := judgeWiringFixture(t, "")
 	for _, s := range wiringSites(fset, f, "NewKratosClient") {
