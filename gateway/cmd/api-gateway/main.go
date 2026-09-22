@@ -94,6 +94,15 @@ func main() {
 	}
 	defer closeBackends()
 
+	// СОЕДИНЕНИЕ, БЕЗ КОТОРОГО КРАЙ НЕ РАБОТАЕТ, ОТКАЗЫВАЕТ В СТАРТЕ ЗДЕСЬ —
+	// один раз, до провязок. Ниже читатели отзыва берут его БЕЗУСЛОВНО, и это
+	// не смелость, а следствие: ветка «а вдруг его нет» была бы веткой, в
+	// которой край всё равно не работает, — и, не имея `else`, она оставляла
+	// путь запроса без читателя отзыва МОЛЧА.
+	if cbErr := validateCriticalBackends(backends); cbErr != nil {
+		log.Fatalf("critical backends: %v", cbErr)
+	}
+
 	// --- IAM subject client (gRPC-direct к kaname:9091 для LookupSubject) ---
 	// gRPC-direct ЗДЕСЬ — чтобы не рекурсировать через собственный middleware:
 	// этот клиент зовут из auth-интерсептора, и пойти к себе же по REST значило бы
@@ -181,10 +190,9 @@ func main() {
 	// ниже отказывает без неё.
 	var loginLaneRelay *handler.LoginLaneRelay
 	if identityLane == identityposture.Own {
-		if iamConn := backends["iamInternal"]; iamConn != nil {
-			authInterceptor = authInterceptor.WithHumanSession(clients.NewSessionRevocationsAdapter(iamConn))
-			logger.Info("own session-auth wired", "authority", cfg.IAMInternalAddr, "cache", "none")
-		}
+		authInterceptor = authInterceptor.WithHumanSession(
+			clients.NewSessionRevocationsAdapter(backends["iamInternal"]))
+		logger.Info("own session-auth wired", "authority", cfg.IAMInternalAddr, "cache", "none")
 		if llErr := validateLoginLaneConfig(identityLane, LoginLaneConfig{
 			URL:            cfg.LoginLaneURL,
 			ClientCertFile: cfg.MTLSClientCertFile,
@@ -375,15 +383,23 @@ func main() {
 	//
 	// Соединение к iam поднято выше (dialBackends) и является критическим: без
 	// него край не обслуживает ни одного запроса, потому что iam фронтит и
-	// личность, и права. Поэтому ветки «а вдруг его нет» здесь не заводится — она
-	// была бы веткой, в которой край всё равно не работает.
-	if iamConn := backends["iamInternal"]; iamConn != nil {
-		authInterceptor = authInterceptor.WithRevocationCheck(
-			middleware.NewOwnRevocationSource(clients.NewSessionRevocationsAdapter(iamConn)), 0)
-		logger.Info("revocation check active on the authN path",
-			"source", "own session record (iam internal listener)",
-			"per_call_timeout_ms", cfg.IntrospectionTimeoutMs)
-	}
+	// личность, и права. Ветки «а вдруг его нет» здесь не заводится — и теперь
+	// это правда, а не намерение: отсутствие соединения отвергает
+	// `validateCriticalBackends` ОТКАЗОМ СТАРТА сразу после набора соединений.
+	// Прежде та же проза стояла над веткой без `else`, и ветка оставляла путь
+	// запроса без читателя отзыва молча.
+	//
+	// БЮДЖЕТ ОДНОГО ВОПРОСА объявляется рядом с вызовом, в самом читателе
+	// (`middleware.OwnRevocationCallBudget`), и оператору печатается ТА ЖЕ
+	// величина, а не ручка, которая на этой полосе больше ничего не задаёт:
+	// утверждение о защите, пережившее свой предмет, стоит ровно там, куда
+	// оператор смотрит, проверяя, что защита есть.
+	authInterceptor = authInterceptor.WithRevocationCheck(
+		middleware.NewOwnRevocationSource(
+			clients.NewSessionRevocationsAdapter(backends["iamInternal"])), 0)
+	logger.Info("revocation check active on the authN path",
+		"source", "own session record (iam internal listener)",
+		"per_call_timeout_ms", middleware.OwnRevocationCallBudget.Milliseconds())
 
 	// ─── ОТЗЫВ НАШИХ ТОКЕНОВ — У НАС (Ф1б, задача #926) ─────────────────────
 	//
@@ -451,22 +467,20 @@ func main() {
 	// работать в консоли.
 	//
 	// Отдельной ветки «а вдруг соединения нет» здесь не заводится по той же
-	// причине, что у блока выше: соединение к службе прав критическое — без него
-	// край не обслуживает ни одного запроса, потому что она фронтит и личность, и
-	// права. Ветка была бы веткой, в которой край всё равно не работает.
+	// причине, что у блока выше: соединение к службе прав критическое, и его
+	// отсутствие отвергнуто ОТКАЗОМ СТАРТА (`validateCriticalBackends`), а не
+	// тихим пропуском провязки.
 	//
 	// Читатель отсечки — НА ОБЕИХ посадках (Ф3 Р7): под `own` наша сессия
 	// сравнивается с отсечкой тем же читателем, что сессия поставщика под
 	// `external`. Прежнее условие «адрес поставщика задан» снято: оно заводило
 	// читатель отсечки только вместе с поставщиком.
-	if iamConn := backends["iamInternal"]; iamConn != nil {
-		authInterceptor = authInterceptor.WithSessionCutoffCheck(
-			clients.NewSessionRevocationsAdapter(iamConn), 0)
-		logger.Info("session revocation is read on the browser lane",
-			"keyed_by", "subject + authentication instant",
-			"unanswered_verdict", "refuse",
-			"revoked_verdict", "refuse and end the carrier")
-	}
+	authInterceptor = authInterceptor.WithSessionCutoffCheck(
+		clients.NewSessionRevocationsAdapter(backends["iamInternal"]), 0)
+	logger.Info("session revocation is read on the browser lane",
+		"keyed_by", "subject + authentication instant",
+		"unanswered_verdict", "refuse",
+		"revoked_verdict", "refuse and end the carrier")
 
 	// --- Per-RPC authentication floor, on the layer that always runs ---
 	//
@@ -1060,7 +1074,7 @@ func main() {
 	// gateway не обслуживает аутентифицированный трафик → его недоступность валит
 	// readiness. Прочие backends (vpc/compute/geo/nlb) — деградация одного домена,
 	// реплика остается в rotation (см. health.HTTPReadyz).
-	criticalBackends := map[string]bool{"iam": true, "iamInternal": true}
+	criticalBackends := criticalBackendKeys()
 	httpMux := http.NewServeMux()
 	httpMux.HandleFunc("/healthz", health.HTTPHealthz)
 	httpMux.Handle("/readyz", health.HTTPReadyz(backends, criticalBackends, logger))

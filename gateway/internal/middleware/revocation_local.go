@@ -40,6 +40,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 )
 
 // ErrOwnRevocationSourceSilent — НАШ источник отзыва не ответил.
@@ -67,6 +68,20 @@ import (
 //
 // Закреплено TestE2E_Revocation_OurSourceAnsweringUnimplementedIsSilenceNotARolloutPass.
 var ErrOwnRevocationSourceSilent = errors.New("наш источник отзыва не ответил")
+
+// OwnRevocationCallBudget — бюджет ОДНОГО вопроса нашему источнику отзыва.
+//
+// Названный бюджет обязателен: вопрос стоит на пути запроса, а сырой контекст
+// запроса пределом не является — своего предела нет ни у внешнего слушателя
+// края, ни у соединения к службе (`mtls_config.go` не ставит ни `WithTimeout`,
+// ни `WithDefaultCallOptions`). Неотвечающий сосед без бюджета держит горутину
+// столько, сколько держится клиент.
+//
+// Величина — та же, что у полосы базового секрета
+// (`BasicCredentialCallBudget`): тот же сосед, то же соединение, тот же путь
+// запроса и та же семантика молчания (fail-closed). Два разных числа на одном
+// ребре были бы двумя решениями об одном предмете.
+const OwnRevocationCallBudget = time.Second
 
 // SessionRevocationsReader — наш источник отзыва: знает ли служба доступа, что
 // удостоверение с этим идентификатором отозвано.
@@ -118,7 +133,14 @@ func (c *OwnRevocationSource) Introspect(
 			ErrIntrospectionMisconfigured)
 	}
 
-	revoked, err := c.local.IsSessionRevoked(ctx, jti)
+	// СВОЙ предел на вызове соседа. Ставится ЗДЕСЬ, а не в адаптере: бюджет —
+	// решение о пути запроса, а адаптер знает только транспорт. Свой контекст
+	// не заменяет чужого: `WithTimeout` берёт МЕНЬШИЙ из двух, поэтому предел,
+	// уже поставленный вызывающим, остаётся в силе.
+	callCtx, cancel := context.WithTimeout(ctx, OwnRevocationCallBudget)
+	defer cancel()
+
+	revoked, err := c.local.IsSessionRevoked(callCtx, jti)
 	switch {
 	case err != nil:
 		// Признак молчания несётся типом, а причина — цепочкой: первый %w

@@ -27,6 +27,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 // fakeLocalReader — наш источник отзыва.
@@ -125,5 +126,93 @@ func TestReaderWithoutASourceRefuses(t *testing.T) {
 	_, err := c.Introspect(context.Background(), "jti-4", "raw")
 	if !errors.Is(err, ErrIntrospectionMisconfigured) {
 		t.Fatalf("читатель без источника обязан отвечать признаком настройки, получено: %v", err)
+	}
+}
+
+// ─── БЮДЖЕТ ОДНОГО ВОПРОСА (C1) ────────────────────────────────────────────
+//
+// Вопрос об отзыве стоит НА ПУТИ ЗАПРОСА и уходит к соседу по кластеру. Сырой
+// контекст запроса пределом не является: у внешнего слушателя края своего
+// предела нет, а у соединения к службе — ни `WithTimeout`, ни
+// `WithDefaultCallOptions`. Неотвечающий сосед без названного бюджета держит
+// горутину столько, сколько держится клиент.
+//
+// Прежде предел на этой полосе НЁС второй участник композиции — кеш
+// интроспекции чужого поставщика с `Timeout: cfg.IntrospectionTimeoutMs`. Он
+// снят вместе со своим предметом, и полоса осталась без бюджета целиком: ручку
+// `KACHO_INTROSPECTION_TIMEOUT_MS` читают три места прод-кода, и ни одно из них
+// не на этой полосе.
+//
+// Соседняя полоса того же соседа по тому же соединению бюджет ставит
+// (`BasicCredentialCallBudget`), и форма взята у неё.
+
+// deadlineProbe — источник отзыва, ЗАПОМИНАЮЩИЙ предел, с которым его спросили.
+type deadlineProbe struct {
+	asked       int
+	hadDeadline bool
+	left        time.Duration
+}
+
+func (d *deadlineProbe) IsSessionRevoked(ctx context.Context, _ string) (bool, error) {
+	d.asked++
+	dl, ok := ctx.Deadline()
+	d.hadDeadline = ok
+	if ok {
+		d.left = time.Until(dl)
+	}
+	return false, nil
+}
+
+// TestOwnRevocationSourceCarriesItsOwnCallBudget — ДЕФЕКТ: вызов соседа уходит
+// на сыром контексте запроса.
+func TestOwnRevocationSourceCarriesItsOwnCallBudget(t *testing.T) {
+	probe := &deadlineProbe{}
+
+	if _, err := NewOwnRevocationSource(probe).Introspect(
+		context.Background(), "jti-1", "raw"); err != nil {
+		t.Fatalf("живое удостоверение отвергнуто: %v", err)
+	}
+
+	if probe.asked != 1 {
+		t.Fatalf("источник спрошен %d раз, ждали 1", probe.asked)
+	}
+	if !probe.hadDeadline {
+		t.Fatalf("вопрос об отзыве ушёл к соседу БЕЗ своего предела: вызывающий не " +
+			"обязан его ставить, у внешнего слушателя края предела нет, у соединения " +
+			"к службе — тоже. Неотвечающий сосед держит горутину пути запроса столько, " +
+			"сколько держится клиент. Объяви бюджет рядом с вызовом, как это делает " +
+			"полоса базового секрета (BasicCredentialCallBudget)")
+	}
+	if probe.left > OwnRevocationCallBudget {
+		t.Errorf("предел вызова %v ШИРЕ объявленного бюджета %v", probe.left, OwnRevocationCallBudget)
+	}
+	if probe.left < OwnRevocationCallBudget/2 {
+		t.Errorf("предел вызова %v много уже объявленного бюджета %v — бюджет "+
+			"объявлен один, а применяется другой", probe.left, OwnRevocationCallBudget)
+	}
+}
+
+// TestOwnRevocationSourceDoesNotExtendATighterCallerDeadline — ЗАКОННЫЙ
+// БЛИЗНЕЦ: бюджет НЕ расширяет предел, уже поставленный вызывающим.
+//
+// Против дефекта меняется РОВНО ОДИН факт: у контекста вызывающего предел уже
+// есть. Без этой половины «бюджет поставлен» было бы неотличимо от «бюджет
+// поставлен ВМЕСТО чужого, более строгого».
+func TestOwnRevocationSourceDoesNotExtendATighterCallerDeadline(t *testing.T) {
+	probe := &deadlineProbe{}
+	const tighter = 20 * time.Millisecond
+
+	ctx, cancel := context.WithTimeout(context.Background(), tighter)
+	defer cancel()
+
+	if _, err := NewOwnRevocationSource(probe).Introspect(ctx, "jti-1", "raw"); err != nil {
+		t.Fatalf("живое удостоверение отвергнуто: %v", err)
+	}
+	if !probe.hadDeadline {
+		t.Fatal("предел вызывающего до источника не доехал — измеряется не то")
+	}
+	if probe.left > tighter {
+		t.Errorf("бюджет РАСШИРИЛ предел вызывающего: у источника %v при заданных %v. "+
+			"Свой бюджет — потолок, а не замена чужого решения", probe.left, tighter)
 	}
 }

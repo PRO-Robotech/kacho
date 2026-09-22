@@ -36,7 +36,13 @@
 package main
 
 import (
+	"bytes"
+	"go/ast"
+	"go/parser"
+	"go/printer"
+	"go/token"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -219,5 +225,80 @@ func TestCompositionRoot_ForeignAxisPredicateCanFail(t *testing.T) {
 	}
 	if strings.Contains(m[0][1], "IntrospectionURL:") {
 		t.Fatal("предикат захватил СОСЕДНИЙ литерал: законный близнец объявлен находкой")
+	}
+}
+
+// TestCompositionRoot_BootLogNamesTheBudgetItApplies — УТВЕРЖДЕНИЕ О ЗАЩИТЕ НЕ
+// ПЕРЕЖИВАЕТ СВОЙ ПРЕДМЕТ (C2).
+//
+// Журнал старта объявлял оператору `per_call_timeout_ms` из ручки
+// `KACHO_INTROSPECTION_TIMEOUT_MS`. Предел, который эта ручка задавала, ушёл
+// вместе со второй половиной читателя отзыва (кешем интроспекции чужого
+// поставщика), а строка осталась — и стоит ровно там, куда оператор смотрит,
+// проверяя, что бюджет задан.
+//
+// Исходов у такой строки два: применить бюджет и сделать утверждение истинным
+// либо снять поле. Взят первый, и величина берётся ИЗ ТОГО ЖЕ объявления, что
+// применяется на вызове: второй копии числа не заводится, разойтись нечему.
+//
+// Судится ДОСТИЖИМОЕ от `main()`, а не текст файла: строка журнала в функции,
+// в которую корень не заходит, оператору не печатается.
+func TestCompositionRoot_BootLogNamesTheBudgetItApplies(t *testing.T) {
+	const (
+		line  = "revocation check active on the authN path"
+		field = "per_call_timeout_ms"
+		want  = "middleware.OwnRevocationCallBudget.Milliseconds()"
+	)
+
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, compositionRootLabel, compositionRoot(t), parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatalf("достижимый код корня не разбирается: %v", err)
+	}
+
+	// Судится ВЫРАЖЕНИЕ, поданное журналу, а не строка вокруг него. Своё
+	// выражение проверяется раньше чужой работы: первая редакция этого случая
+	// брала значение регуляркой `[^,\n)]+` и обрывала его на скобке внутри
+	// `Milliseconds()` — то есть сравнивала одно и то же с самим собой и
+	// краснела.
+	var got string
+	found := false
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || len(call.Args) == 0 {
+			return true
+		}
+		first, isLit := call.Args[0].(*ast.BasicLit)
+		if !isLit || first.Kind != token.STRING || first.Value != strconv.Quote(line) {
+			return true
+		}
+		found = true
+		for i := 1; i+1 < len(call.Args); i++ {
+			key, isKey := call.Args[i].(*ast.BasicLit)
+			if !isKey || key.Kind != token.STRING || key.Value != strconv.Quote(field) {
+				continue
+			}
+			var buf bytes.Buffer
+			if perr := printer.Fprint(&buf, fset, call.Args[i+1]); perr != nil {
+				t.Fatalf("печать поданного значения: %v", perr)
+			}
+			got = buf.String()
+		}
+		return true
+	})
+
+	if !found {
+		t.Fatal("в достижимом коде корня нет строки журнала о читателе отзыва — " +
+			"предмет утверждения исчез, и это НЕ то же самое, что «утверждение истинно»")
+	}
+	if got == "" {
+		t.Fatalf("строка журнала не объявляет %s — если поле снято намеренно, снимай "+
+			"вместе с ним и этот случай: утверждения без предмета переживают свой "+
+			"предмет ровно так же, как поля", field)
+	}
+	if got != want {
+		t.Errorf("журнал старта объявляет оператору бюджет из %s, а на вызове применяется %s.\n\n"+
+			"Величина, которую печатают, обязана быть той, которую применяют: иначе "+
+			"оператор читает подтверждение защиты, которой на этой полосе нет.", got, want)
 	}
 }
