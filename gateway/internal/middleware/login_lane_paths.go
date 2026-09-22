@@ -36,8 +36,9 @@ package middleware
 // Пути глаголов. Написание подпутём, а не суффиксом `:verb`, взято у
 // существующего маршрута «кто я» того же семейства (Р2).
 const (
-	LoginLanePathLogin    = "/iam/v1/auth/login"
-	LoginLanePathLogout   = "/iam/v1/auth/logout"
+	LoginLanePathLogin  = "/iam/v1/auth/login"
+	LoginLanePathLogout = "/iam/v1/auth/logout"
+
 	LoginLanePathPassword = "/iam/v1/auth/password" // #nosec G101 -- путь глагола смены пароля, а не удостоверение
 	LoginLanePathCSRF     = "/iam/v1/auth/csrf"
 	// LoginLanePathRegister — регистрация паролем (Ф4): та же форма ответа, то
@@ -90,7 +91,7 @@ type LoginLaneRoute struct {
 // читатели по нему не ветвятся.
 var loginLaneRoutes = []LoginLaneRoute{
 	{Verb: "login", Path: LoginLanePathLogin, relayWhenUnanswered: true},
-	{Verb: "logout", Path: LoginLanePathLogout, relayWhenUnanswered: true},
+	{Verb: LoginLaneVerbLogout, Path: LoginLanePathLogout, relayWhenUnanswered: true},
 	{Verb: "password", Path: LoginLanePathPassword},
 	{Verb: "csrf", Path: LoginLanePathCSRF, relayWhenUnanswered: true},
 	{Verb: "register", Path: LoginLanePathRegister, relayWhenUnanswered: true},
@@ -103,6 +104,15 @@ var loginLaneRoutes = []LoginLaneRoute{
 	{Verb: "second-factor-backup-codes", Path: LoginLanePathSecondFactorBackupCodes},
 	{Verb: "step-up", Path: LoginLanePathStepUp},
 }
+
+// LoginLaneVerbLogout — ГЛАГОЛ ВЫХОДА, названный константой.
+//
+// Имя глагола читает не только перечень: край дополняет ответ выхода гашением
+// имён носителя, которых служба не знает (`handler/login_lane_relay.go`).
+// Написанная там строкой, эта связь разошлась бы с перечнем молча — глагол
+// переименовали бы, дополнение перестало бы срабатывать, и выход снова гасил
+// бы одно имя из двух, ничего при этом не сломав на вид.
+const LoginLaneVerbLogout = "logout"
 
 // LoginLaneRoutes отдаёт КОПИЮ перечня глаголов формы.
 func LoginLaneRoutes() []LoginLaneRoute {

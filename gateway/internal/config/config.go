@@ -43,7 +43,11 @@ import (
 //	KACHO_API_GATEWAY_STORAGE_GRPC           — адрес backend kacho-storage (public, port 9090)
 //	KACHO_API_GATEWAY_STORAGE_INTERNAL_GRPC  — адрес backend kacho-storage internal-port (9091)
 //	KACHO_APP_ENV                            — deployment-env label (keys the prod authz guard)
-//	KACHO_API_GATEWAY_KRATOS_PUBLIC_URL      — Ory Kratos public API base ("disabled" turns it off); read under `external` only
+//	KACHO_API_GATEWAY_KRATOS_PUBLIC_URL      — Ory Kratos public API base ("disabled" turns it off);
+//	                                           читается, когда множество носителей читает чужую
+//	                                           сторону (решает множество, а не посадка); обязателен,
+//	                                           если KACHO_API_GATEWAY_SESSION_CARRIERS называет
+//	                                           `external`, — в том числе `own,external` под `own`
 //	KACHO_API_GATEWAY_IAM_LOGIN_LANE_URL     — адрес HTTPS-слушателя полосы формы службы доступа (own only, required)
 //	KACHO_API_GATEWAY_ADMISSION_PUBLIC_*     — потолок темпа/одновременности внешнего
 //	                                           слушателя (READ_PER_SEC, MUTATION_PER_SEC,
@@ -227,6 +231,26 @@ type Config struct {
 	// первом же новом значении — молча, потому что обе стороны компилируются.
 	IdentityProvider string `envconfig:"KACHO_API_GATEWAY_IDENTITY_PROVIDER" default:""`
 
+	// SessionCarriers — ЧЬЁ ПЕЧЕНЬЕ край читает: множество читателей носителя
+	// браузерной сессии. Разбор и полный разбор доводов — `sessioncarriers.go`.
+	//
+	// Ручка РАЗВЕДЕНА с посадкой выше намеренно: посадка отвечает на «чья
+	// чеканка выдаёт личность», множество — на «чьё печенье мы ещё согласны
+	// прочитать», и во время переезда ответы расходятся. Пока ручка не
+	// объявлена, множество выводится из посадки, и поведение края то же, что
+	// до её появления, — поэтому умолчание здесь пустое, а не одно из значений.
+	SessionCarriers string `envconfig:"KACHO_API_GATEWAY_SESSION_CARRIERS" default:""`
+
+	// SessionCarrierWindowOpenedAt — МОМЕНТ ОТКРЫТИЯ переходного окна носителя,
+	// RFC 3339. Смысл окна: дочитываем живые чужие сессии, новых не заводим, —
+	// и момент есть граница между ними.
+	//
+	// Обязателен ровно тогда, когда множество выше называет обе стороны, и
+	// запрещён, когда не называет: объявление, которому нечего ограничивать,
+	// пережило бы свой предмет молча. Решает страж старта — он видит и момент,
+	// и множество, а поле по отдельности не видит ни того ни другого.
+	SessionCarrierWindowOpenedAt string `envconfig:"KACHO_API_GATEWAY_SESSION_CARRIER_WINDOW_OPENED_AT" default:""`
+
 	// AuthNTrustDomain — ДОМЕН ДОВЕРИЯ установки: то, чьи сертификаты край
 	// признаёт своими.
 	//
@@ -266,9 +290,15 @@ type Config struct {
 	// The sentinel "disabled" turns Kratos session-auth off entirely. Default is
 	// the cluster-internal kratos-public Service.
 	//
-	// Читается ТОЛЬКО под посадкой `external` (Ф3 Р15, Ф3-12): под `own` сессию
-	// человека читает наша служба, и читатель носителя поставщика не заводится
-	// вовсе — независимо от того, задан ли этот адрес.
+	// Читает ли его край, решает МНОЖЕСТВО читателей носителя
+	// (ResolvedSessionCarriers, ручка KACHO_API_GATEWAY_SESSION_CARRIERS), а не
+	// посадка: читатель носителя поставщика заводится, когда множество называет
+	// сторону `external` (main.go, ветки `sessionCarriers.ReadsProvider()`).
+	// Пока ручка не объявлена, множество выводится из посадки, и под `own` это
+	// только наш носитель: адрес тогда не читается, задан он или нет.
+	// Объявленное множество со стороной `external` — в том числе переходное
+	// `own,external` под `own` — адрес ОБЯЗАТЕЛЕН: пустой или `disabled` страж
+	// старта отвергает (validateSessionCarrierConfig).
 	KratosPublicURL string `envconfig:"KACHO_API_GATEWAY_KRATOS_PUBLIC_URL" default:"http://kacho-umbrella-kratos-public.kacho.svc:80"`
 
 	// LoginLaneURL — адрес HTTPS-слушателя ПОЛОСЫ ФОРМЫ службы доступа, на

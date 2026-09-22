@@ -198,6 +198,7 @@ data:
             proxy_read_timeout {{ .Values.subscriptionStream.proxyReadTimeout }}s;
         }
 
+        {{- if .Values.host.upstreams.kratosPublic }}
         # `^~`, а НЕ голый префикс. Раздача выбирает блок не по порядку в файле:
         # обычный префикс проигрывает регулярке, где бы та ни стояла, — а ниже
         # объявлена регулярка статики по расширению с уходом в запасной путь.
@@ -218,7 +219,9 @@ data:
             proxy_read_timeout 30s;
             proxy_send_timeout 30s;
         }
+        {{- end }}
 
+        {{- if .Values.host.upstreams.hydraPublic }}
         # `^~` — по той же причине, что у блока выше: обычный префикс проигрывает
         # регулярке статики. Расширений из её перечня у этого края сегодня не
         # встречается, но правило разрешения от этого не меняется, и первый же
@@ -235,6 +238,31 @@ data:
             proxy_read_timeout 30s;
             proxy_send_timeout 30s;
         }
+        {{- end }}
+
+        # ПОЛОСА ПОТОКОВ ЛИЧНОСТИ — ЕДИНСТВЕННАЯ ЦЕРЕМОНИЯ ВХОДА, КОТОРАЯ НА ЭТОМ
+        # СТЕНДЕ РАБОТАЕТ, И ЕЁ НАЛИЧИЕ — СВОЙСТВО ПОСАДКИ, А НЕ ЧАРТА.
+        #
+        # Собственных экранов входа у консоли нет ни одного: семь страниц церемоний
+        # сняты #1225 ровно потому, что эти адреса раздача отдаёт внешнему
+        # поставщику (разбор — ui-future/shared/src/pages/auth/README.md). Значит
+        # снятие этой полосы снимает ЕДИНСТВЕННЫЙ способ войти, а объявленные
+        # браузерные адреса потоков (ключ `ui_url` в чартах поставщика) остаются
+        # висеть в никуда: неизвестный раздаче путь достаётся общему `location /`,
+        # и тот отвечает `200` с оболочкой консоли — отказ выглядит УСПЕХОМ.
+        #
+        # Поэтому полоса не снимается и не возвращается безусловно: она ЕСТЬ ровно
+        # там, где посадка объявила адрес интерфейса поставщика, и её НЕТ там, где
+        # посадка его не объявила. Условие и следствие здесь неразделимы —
+        # проксировать некуда, когда адресата не объявлено, и второй ручки «а
+        # обслуживать ли» не заводится: она разошлась бы с первой молча.
+        #
+        # ЧТО ОБЯЗАНО ПРОИЗОЙТИ ВМЕСТЕ С ОТКЛЮЧЕНИЕМ. Посадка, снявшая внешнего
+        # поставщика, обязана снять и ОБЪЯВЛЕНИЯ его браузерных адресов: шесть-
+        # десять объявлений, ведущих в никуда, хуже отсутствия объявления. Это не
+        # пожелание — это держит deploy/tests/helm/console-serves-identity-flows-test.sh,
+        # который судит РЕНДЕР каждой цепочки: либо полоса есть, либо объявлений нет.
+        {{- if .Values.host.upstreams.kratosUi }}
 
         location ~ ^/(login|registration|recovery|verification|settings|error|consent|logout)(/|$) {
             set $kratos_ui "${KACHO_UI_KRATOS_UI_UPSTREAM}";
@@ -247,6 +275,13 @@ data:
             proxy_read_timeout 30s;
             proxy_send_timeout 30s;
         }
+        {{- else }}
+
+        # Посадка НЕ объявила адрес интерфейса поставщика личности
+        # (`host.upstreams.kratosUi` пуст), поэтому церемонии входа на ней нет, и
+        # полоса потоков не обслуживается. Сказано строкой, а не оставлено
+        # молчанием: пустое место в конфигурации неотличимо от потерянного блока.
+        {{- end }}
 
         location = /healthz {
             access_log off;
@@ -261,19 +296,31 @@ data:
         }
 
         location ^~ /assets/ {
+            {{- if .Values.host.upstreams.kratosUi }}
             try_files $uri @kratos_ui_assets_fallback;
+            {{- else }}
+            try_files $uri =404;
+            {{- end }}
             expires 1y;
             add_header Cache-Control "public, immutable";
             {{- include "ui.securityHeaders" . | nindent 12 }}
         }
 
         location ~* \.(js|css|svg|png|jpg|jpeg|gif|ico|woff2?|ttf|eot|otf)$ {
+            {{- if .Values.host.upstreams.kratosUi }}
             try_files $uri @kratos_ui_assets_fallback;
+            {{- else }}
+            try_files $uri =404;
+            {{- end }}
             expires 1y;
             add_header Cache-Control "public, immutable";
             {{- include "ui.securityHeaders" . | nindent 12 }}
         }
 
+        {{- if .Values.host.upstreams.kratosUi }}
+        # Именованный блок объявляется ТОЛЬКО вместе с адресатом: `try_files` на
+        # несуществующий именованный блок — не предупреждение, а отказ старта
+        # nginx, то есть раздача не поднимется вовсе.
         location @kratos_ui_assets_fallback {
             set $kratos_ui_fallback "${KACHO_UI_KRATOS_UI_UPSTREAM}";
             proxy_pass http://$kratos_ui_fallback;
@@ -284,6 +331,7 @@ data:
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_read_timeout 10s;
         }
+        {{- end }}
 
         location / {
             try_files $uri $uri/ /index.html;

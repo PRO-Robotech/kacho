@@ -346,3 +346,180 @@ func TestIdentityFlowPathKnobDiscovery_ProvenByInjection(t *testing.T) {
 			"и отбор, который не берёт никого, оба прошли бы такую пробу")
 	}
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ИНЪЕКЦИЯ ПРИЗНАКА ПОЛОСЫ: ОБЪЯВЛЕНИЕ ПРОТИВ УПОМИНАНИЯ О НЁМ
+//
+// Ось заведена по измеренному дефекту (2026-09-22): образец шёл поиском по
+// подстроке, и дерево, где полоса СНЯТА, а комментарий о ней остался,
+// прочитывалось гейтом как обслуживаемое. Зелёное при нуле переадресаций.
+//
+// Зовётся ТА ЖЕ функция, что исполняет гейт (`flowSegmentsFrom`), а не её копия.
+// Каждый отрицательный случай отличается от законного близнеца РОВНО ОДНИМ
+// фактом — иначе неизвестно, который из двух дал красное.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// flowServingFixture — законный вход: полоса объявлена строкой и переадресует.
+const flowServingFixture = `    server {
+        location ~ ^/(login|registration)(/|$) {
+            set $kratos_ui "${KACHO_UI_KRATOS_UI_UPSTREAM}";
+            proxy_pass http://$kratos_ui;
+        }
+    }
+`
+
+// flowTwoBandFixture — законный вход о ДВУХ полосах: первая не переадресует,
+// вторая переадресует. Обслуживается только вторая. Отсюда строится случай со
+// скобкой в комментарии, поэтому близнец объявлен отдельно, а не выписан дважды.
+const flowTwoBandFixture = `    server {
+        location ~ ^/(login)(/|$) {
+            set $kratos_ui "${KACHO_UI_KRATOS_UI_UPSTREAM}";
+        }
+        location ~ ^/(consent)(/|$) {
+            proxy_pass http://$kratos_ui;
+        }
+    }
+`
+
+// flowNoProxyBodyLine — строка тела полосы, которая НЕ переадресует. Точка
+// подстановки комментария в близнеца.
+const flowNoProxyBodyLine = `            set $kratos_ui "${KACHO_UI_KRATOS_UI_UPSTREAM}";`
+
+// flowProxyBodyLine — строка переадресации. Точка подстановки комментария в
+// законный вход.
+const flowProxyBodyLine = "            proxy_pass http://$kratos_ui;"
+
+// TestFlowBandIsADeclarationNotAMentionOfOne — полосой считается объявление,
+// а не упоминание: комментарий, строка-не-с-начала и блок без переадресации
+// обслуживанием НЕ являются.
+func TestFlowBandIsADeclarationNotAMentionOfOne(t *testing.T) {
+	// ── СКОБКА В СТРОКЕ-КОММЕНТАРИИ: ЧТО ИМЕННО ДЕРЖИТ СНЯТИЕ КОММЕНТАРИЕВ ──
+	//
+	// Шесть прежних случаев оставались зелёными при ОБЕЗВРЕЖЕННОМ
+	// `nginxCommentLineRe` — то есть признак «строки-комментарии сняты ДО
+	// разбора» не был доказан ни одним из них. Это дыра в доказательстве, а не
+	// в признаке: признак защищает не образец полосы (тот анкерован и решётку
+	// не пропускает), а СЧЁТ СКОБОК в `blockBodyAt`, который считает `{` и `}`
+	// буквально и о комментариях не знает.
+	//
+	// Оба случая строятся ИЗ СВОЕГО ЗАКОННОГО БЛИЗНЕЦА подстановкой ОДНОЙ
+	// строки: разница ровно в один факт держится тогда конструкцией, а не
+	// внимательностью читателя. Обезвредьте `nginxCommentLineRe` — краснеют
+	// ровно эти два, а остальные семь, включая обоих близнецов, молчат.
+	closingInComment := strings.Replace(flowServingFixture, flowProxyBodyLine,
+		"            # прежняя ветка кончалась здесь: }\n"+flowProxyBodyLine, 1)
+	if closingInComment == flowServingFixture {
+		t.Fatalf("случай не построен: в законном входе нет строки %q — проба сравнивала бы "+
+			"близнеца с самим собой", flowProxyBodyLine)
+	}
+	openingInComment := strings.Replace(flowTwoBandFixture, flowNoProxyBodyLine,
+		"            # раньше тут было: if ($slow) {\n"+flowNoProxyBodyLine, 1)
+	if openingInComment == flowTwoBandFixture {
+		t.Fatalf("случай не построен: в близнеце о двух полосах нет строки %q — проба "+
+			"сравнивала бы близнеца с самим собой", flowNoProxyBodyLine)
+	}
+
+	cases := []struct {
+		name string
+		conf string
+		want []string // пусто = гейт обязан ОТКАЗАТЬ
+	}{
+		{
+			name: "законный вход: полоса объявлена и переадресует — сегменты прочитаны",
+			conf: flowServingFixture,
+			want: []string{"login", "registration"},
+		},
+		{
+			name: "полоса СНЯТА, комментарий о ней остался — обслуживания нет",
+			conf: `    server {
+        # Снята полоса ` + "`" + `location ~ ^/(login|registration)(/|$)` + "`" + ` вместе с поставщиком.
+        location / { try_files $uri /index.html; }
+    }
+`,
+		},
+		{
+			name: "законный близнец того же дерева: та же полоса БЕЗ решётки — обслуживание есть",
+			conf: `    server {
+        location ~ ^/(login|registration)(/|$) { proxy_pass http://$kratos_ui; }
+        location / { try_files $uri /index.html; }
+    }
+`,
+			want: []string{"login", "registration"},
+		},
+		{
+			name: "объявление не с начала строки — полосой не является",
+			conf: "    server {\n        try_files $uri; location ~ ^/(login)(/|$) { proxy_pass http://$x; }\n    }\n",
+		},
+		{
+			name: "полоса объявлена, но НЕ переадресует — не обслуживает ничего",
+			conf: `    server {
+        location ~ ^/(login|registration)(/|$) {
+            set $kratos_ui "${KACHO_UI_KRATOS_UI_UPSTREAM}";
+        }
+    }
+`,
+		},
+		{
+			name: "`}` в комментарии ВНУТРИ тела рабочей полосы — обслуживание есть",
+			conf: closingInComment,
+			want: []string{"login", "registration"},
+		},
+		{
+			name: "законный близнец о двух полосах: первая не переадресует — обслуживает вторая",
+			conf: flowTwoBandFixture,
+			want: []string{"consent"},
+		},
+		{
+			name: "незакрытая `{` в комментарии НЕ отдаёт полосе переадресацию соседней",
+			conf: openingInComment,
+			want: []string{"consent"},
+		},
+		{
+			name: "две полосы: сегменты ОБЪЕДИНЯЮТСЯ, а не берётся первая",
+			conf: `    server {
+        location ~ ^/(login)(/|$) { proxy_pass http://$a; }
+        location ~ ^/(registration|recovery)(/|$) { proxy_pass http://$b; }
+    }
+`,
+			want: []string{"login", "recovery", "registration"},
+		},
+	}
+
+	var served, refused int
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, why := flowSegmentsFrom(c.conf)
+			if len(c.want) == 0 {
+				if why == "" {
+					keys := make([]string, 0, len(got))
+					for k := range got {
+						keys = append(keys, k)
+					}
+					sort.Strings(keys)
+					t.Fatalf("разбор объявил обслуживаемыми %v, хотя обслуживания нет — "+
+						"это ровно то ложное зелёное, ради которого ось заведена", keys)
+				}
+				refused++
+				return
+			}
+			if why != "" {
+				t.Fatalf("законный вход отвергнут: %s", why)
+			}
+			keys := make([]string, 0, len(got))
+			for k := range got {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			if strings.Join(keys, " ") != strings.Join(c.want, " ") {
+				t.Fatalf("сегменты прочитаны как %v, ожидались %v", keys, c.want)
+			}
+			served++
+		})
+	}
+	t.Logf("перепись инъекции признака полосы: случаев %d; обслуживание прочитано %d; отказов %d",
+		len(cases), served, refused)
+	if served == 0 || refused == 0 {
+		t.Fatalf("ось односторонняя: прочитано %d, отказов %d — доказательство без одной из сторон "+
+			"ловит форму, а не существо", served, refused)
+	}
+}

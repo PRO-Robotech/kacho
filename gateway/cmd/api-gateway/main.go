@@ -155,17 +155,78 @@ func main() {
 		log.Fatalf("identity posture startup-validation: %v", ipErr)
 	}
 
-	// ЧИТАТЕЛЬ НОСИТЕЛЯ БРАУЗЕРНОЙ СЕССИИ ВЫБИРАЕТСЯ ПОСАДКОЙ (Ф3 Р15, Ф3-12,
-	// Ф3-45), а не наличием адреса поставщика. До Ф3 три места корня заводились
-	// условием `kratosURL != "disabled"` — и под `own` читатель носителя
-	// поставщика оставался заведённым: печенье поставщика становилось личностью
-	// на посадке, где сессию человека судит наша служба. Гейт
-	// `own_lane_readers_wiring_test.go` требует у каждого читателя ветки посадки.
+	// ЧИТАТЕЛИ НОСИТЕЛЯ БРАУЗЕРНОЙ СЕССИИ ЗАВОДЯТСЯ МНОЖЕСТВОМ, А НЕ ПОСАДКОЙ.
 	//
-	// Под `external` — сессия поставщика (cookie ory_kratos_session), адрес
-	// KACHO_API_GATEWAY_KRATOS_PUBLIC_URL, «disabled» выключает полосу.
+	// До этой правки их выбирала посадка, у которой два взаимоисключающих
+	// значения, — и состояния «наш носитель читается, и чужой ЕЩЁ читается» не
+	// существовало. Следствие наблюдаемо: перевод стенда с людьми был АТОМАРЕН,
+	// и в момент правки профиля вход терял каждый, чья чужая сессия жива.
+	//
+	// Множество (`KACHO_API_GATEWAY_SESSION_CARRIERS`) выражает три состояния —
+	// только чужой · оба · только наш, — и переход между ними есть решение
+	// ПРОФИЛЯ, а не правка кода. Ручка не объявлена — множество выводится из
+	// посадки, и поведение края то же, что прежде.
+	//
+	// Посадка при этом никуда не девается: она отвечает на «чья чеканка выдаёт
+	// личность» и продолжает решать полосу формы входа, адреса поставщика и
+	// авторитет отзыва. Страж ниже сверяет пару: не всякая осмысленна.
+	//
+	// Гейт `session_carrier_wiring_test.go` требует у каждого читателя ветки
+	// РЕШЕНИЯ МНОЖЕСТВА и объявляет ветку посадки находкой.
+	sessionCarriers, scErr := cfg.ResolvedSessionCarriers()
+	if scErr != nil {
+		// Префикс называет ЭТОТ отказ, а не соседний: разбор объявления и
+		// сверка пары — разные вопросы с разными починками, и общий префикс
+		// отправлял бы оператора искать не там.
+		log.Fatalf("session carrier declaration: %v", scErr)
+	}
+	// Момент открытия окна разбирается ДО стража: страж судит ПАРУ и обязан
+	// получить величину, а не ошибку разбора, — у неё свой отказ и своя ручка.
+	declaredWindowOpenedAt, cwErr := cfg.ResolvedSessionCarrierWindowOpenedAt()
+	if cwErr != nil {
+		log.Fatalf("session carrier window declaration: %v", cwErr)
+	}
 	kratosURL := cfg.KratosPublicURL
-	if identityLane == identityposture.External {
+	if scErr := validateSessionCarrierConfig(SessionCarrierConfig{
+		Posture:        identityLane,
+		Carriers:       sessionCarriers,
+		ProviderURL:    kratosURL,
+		WindowOpenedAt: declaredWindowOpenedAt,
+		// Часы старта: страж спрашивает, МОЖЕТ ЛИ названный момент быть фактом.
+		Now: time.Now(),
+	}); scErr != nil {
+		log.Fatalf("session carrier / identity posture coherence: %v", scErr)
+	}
+
+	// Окно существует только при ОБЕИХ сторонах, и вопрос об этом ОДИН
+	// (`IsTransitionalWindow`): два его вычисления разошлись бы молча. Страж
+	// выше уже отверг и окно без момента, и момент без окна, и момент в
+	// будущем; здесь момент остаётся нулевым вне окна, чтобы провязка не
+	// зависела от порядка проверок.
+	//
+	// Вопрос задаётся ОДИН раз на обе величины — провязку и самоотчёт: два
+	// вычисления одного состояния разошлись бы молча, и самоотчёт назвал бы
+	// окно, которого полоса не получила (или наоборот).
+	carrierWindowOpenedAt := time.Time{}
+	// САМООТЧЁТ НАЗЫВАЕТ МОМЕНТ ОКНА, а не только состав множества. Без него
+	// величина, решающая, какие чужие сессии край ещё принимает, не наблюдается
+	// НИГДЕ: клетка отвергнутых стоит нулём и при исправном окне, и при
+	// границе, которая ничего не отделяет, — и эти два состояния неразличимы
+	// на стенде.
+	windowReport := "<окна нет>"
+	if sessionCarriers.IsTransitionalWindow() {
+		carrierWindowOpenedAt = declaredWindowOpenedAt
+		windowReport = carrierWindowOpenedAt.UTC().Format(time.RFC3339)
+	}
+	logger.Info("browser session carrier readers resolved",
+		"carriers", sessionCarriers.String(), "declared", sessionCarriers.Declared(),
+		"identity_provider", identityLane.String(),
+		"transitional_window_opened_at", windowReport)
+
+	// Чужая сторона — cookie ory_kratos_session, адрес
+	// KACHO_API_GATEWAY_KRATOS_PUBLIC_URL; «disabled» выключает полосу, и на
+	// ОБЪЯВЛЕННОМ множестве такая пара до сюда не доходит — её отверг страж.
+	if sessionCarriers.ReadsProvider() {
 		if kratosURL != "disabled" {
 			authInterceptor = authInterceptor.WithKratos(middleware.NewKratosClient(kratosURL))
 			logger.Info("provider session-auth wired", "kratos_url", kratosURL, "identity_provider", identityLane.String())
@@ -173,17 +234,30 @@ func main() {
 			logger.Info("provider session-auth disabled by env")
 		}
 	}
-	// Под `own` — НАША сессия по носителю kaname_session: `Resolve` на внутреннем
-	// слушателе службы, тем же соединением, что вопрос об отсечке; кэша нет
-	// (Р7). Плюс ретрансляция глаголов формы на слушатель полосы службы
-	// — взаимный TLS клиентской парой края, адрес — своя ручка, страж старта
-	// ниже отказывает без неё.
-	var loginLaneRelay *handler.LoginLaneRelay
-	if identityLane == identityposture.Own {
+	// ПЕРЕХОДНОЕ ОКНО объявляется краю ТЕМ ЖЕ множеством, что и читатели:
+	// названы обе стороны — окно открыто. В окне положительный пол второго
+	// фактора на чужой полосе не удовлетворяется: новое полномочие берётся
+	// через нашу чеканку, обычный доступ чужой сессии сохраняется.
+	authInterceptor = authInterceptor.WithTransitionalCarrierWindow(carrierWindowOpenedAt)
+
+	// НАША сторона — носитель kaname_session: `Resolve` на внутреннем слушателе
+	// службы, тем же соединением, что вопрос об отсечке; кэша нет (Р7).
+	if sessionCarriers.ReadsOwn() {
 		if iamConn := backends["iamInternal"]; iamConn != nil {
 			authInterceptor = authInterceptor.WithHumanSession(clients.NewSessionRevocationsAdapter(iamConn))
 			logger.Info("own session-auth wired", "authority", cfg.IAMInternalAddr, "cache", "none")
 		}
+	}
+
+	// РЕТРАНСЛЯЦИЯ ГЛАГОЛОВ ФОРМЫ — предмет ПОСАДКИ, а не множества, и это не
+	// оплошность разведения. Форма входа принадлежит той чеканке, которая
+	// личность ВЫДАЁТ; множество говорит лишь о том, чьё печенье край ещё
+	// согласен прочитать. В переходном состоянии посадка уже `own`, поэтому
+	// полоса формы поднимается, а чужое печенье продолжает читаться — это и
+	// есть переход. Взаимный TLS клиентской парой края, адрес — своя ручка,
+	// страж старта ниже отказывает без неё.
+	var loginLaneRelay *handler.LoginLaneRelay
+	if identityLane == identityposture.Own {
 		if llErr := validateLoginLaneConfig(identityLane, LoginLaneConfig{
 			URL:            cfg.LoginLaneURL,
 			ClientCertFile: cfg.MTLSClientCertFile,
@@ -1124,17 +1198,23 @@ func main() {
 	httpMux.Handle("/readyz", health.HTTPReadyz(backends, criticalBackends, logger))
 
 	// GET /iam/v1/auth/me — личность за браузерной сессией. Регистрируется ДО
-	// `/` чтобы перебить grpc-gateway catch-all. Читатель — ПО ПОСАДКЕ (Ф3 Р15),
-	// тот же, что на полосе личности: две полосы, читающие одну сессию, обязаны
-	// отвечать про неё одинаково. Свой читатель отсечки маршрут держит на обеих
+	// `/` чтобы перебить grpc-gateway catch-all. Читатели — ТЕ ЖЕ, что на полосе
+	// личности, и заводит их ТО ЖЕ множество: две полосы, читающие одну сессию,
+	// обязаны отвечать про неё одинаково, а старшинство между читателями у них
+	// одно и стоит в `middleware` (наш носитель решает на каждом своём исходе). Свой читатель отсечки маршрут держит на обеих
 	// посадках — точки предъявления вложены (Ф3-52, F4d-28).
 	sessionIdentity := middleware.NewSessionIdentityHandler(logger).
 		WithSessionCutoff(clients.NewSessionRevocationsAdapter(backends["iamInternal"])).
 		WithAdminChecker(iamSubjectClient) // permissions = ["*","admin"] для system-admin
-	if identityLane == identityposture.External && kratosURL != "disabled" {
-		sessionIdentity = sessionIdentity.WithKratos(middleware.NewKratosClient(kratosURL), iamSubjectClient)
+	if sessionCarriers.ReadsProvider() && kratosURL != "disabled" {
+		sessionIdentity = sessionIdentity.WithKratos(middleware.NewKratosClient(kratosURL), iamSubjectClient).
+			// СВОЙ читатель окна, как и свой читатель отсечки: полос, читающих
+			// одну чужую сессию, две, и равенство между ними проверяется
+			// сравнением, а не по каждой отдельно. Момент — ТОТ ЖЕ, что у
+			// полосы: второй источник разошёлся бы с первым молча.
+			WithTransitionalCarrierWindow(carrierWindowOpenedAt)
 	}
-	if identityLane == identityposture.Own {
+	if sessionCarriers.ReadsOwn() {
 		sessionIdentity = sessionIdentity.WithHumanSession(clients.NewSessionRevocationsAdapter(backends["iamInternal"]))
 	}
 	sessionIdentity.Register(httpMux)
