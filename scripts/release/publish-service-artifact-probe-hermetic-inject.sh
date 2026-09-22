@@ -210,7 +210,11 @@ if [ "$WITHOUT_OK" = 1 ]; then
     RC="$(rc_of twin)"
     if [ "$RC" = 0 ]; then ok "2a проба зелёная"
     else bad "2a проба зелёная" "код $RC; провалены: $(failed twin); $(census twin)"; fi
-    if [ "$WITH_OK" = 1 ] && [ -n "$(census twin)" ] && [ "$(census twin)" = "$(census control)" ]; then
+    # 2b сличает близнеца с КОНТРОЛЕМ, и предпосылок у него две: без контроля
+    # сличать не с чем, и это третья категория, а не провал сличения.
+    if [ "$WITH_OK" != 1 ]; then
+        notrun 1 "2b перепись та же, что у контроля" "контроль не создан: git не видит форм:$MISSING — сличать не с чем"
+    elif [ -n "$(census twin)" ] && [ "$(census twin)" = "$(census control)" ]; then
         ok "2b перепись та же, что у контроля: $(census twin)"
     else
         bad "2b перепись та же, что у контроля" "близнец: '$(census twin)' · контроль: '$(census control)'"

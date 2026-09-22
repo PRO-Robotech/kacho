@@ -310,7 +310,6 @@ AFTER="$( cd "$SCRATCH/h" && git status --porcelain | sort )"
 say "H1 выкладка проходит" 0 "Выложено" "$OUT" "$RC"
 say "H2 набор равен дереву службы" 0 "набор равен дереву службы" "$OUT" "$RC"
 
-PASS_TOTAL_BEFORE=$PASS
 if [ "$BEFORE" = "$AFTER" ]; then
     ok "H3 рабочая копия вызывающего НЕ тронута"
 else
