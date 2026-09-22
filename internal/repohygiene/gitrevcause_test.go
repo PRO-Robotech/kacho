@@ -281,9 +281,9 @@ func TestGitRevRemedyVocabularyHasASingleSource(t *testing.T) {
 		want   string
 		absent []string
 	}{
-		{"объекта нет", absent, gitRevRemedyLedger, []string{gitRevRemedyCloneDepth, gitRevRemedyWorkingDir}},
-		{"не довезён", undelivered, gitRevRemedyCloneDepth, []string{gitRevRemedyLedger, gitRevRemedyWorkingDir}},
-		{"дерево не спрошено", notasked, gitRevRemedyWorkingDir, []string{gitRevRemedyLedger, gitRevRemedyCloneDepth}},
+		{"объекта нет", absent, gitRevRemedyLedger, []string{gitRevRemedyCloneDepth, gitRevRemedyWorkingDir, gitRevRemedyDeclaredBase}},
+		{"не довезён", undelivered, gitRevRemedyCloneDepth, []string{gitRevRemedyLedger, gitRevRemedyWorkingDir, gitRevRemedyDeclaredBase}},
+		{"дерево не спрошено", notasked, gitRevRemedyWorkingDir, []string{gitRevRemedyLedger, gitRevRemedyCloneDepth, gitRevRemedyDeclaredBase}},
 	} {
 		if c.err == nil {
 			t.Errorf("%s: отказа нет вовсе — предпосылка не выполнена", c.name)

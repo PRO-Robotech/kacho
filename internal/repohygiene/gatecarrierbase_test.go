@@ -4,6 +4,7 @@
 package repohygiene
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -149,7 +150,72 @@ func TestGateCarrierBaseNamesARootCommitAsItIs(t *testing.T) {
 		t.Errorf("ПОЛНОМУ клону велено чинить глубину — ремонт назван противоположный "+
 			"истинному: %v", err)
 	}
-	if !strings.Contains(err.Error(), "корневой") {
-		t.Errorf("отказ не называет истинной причины (корневой коммит): %v", err)
+	// Причина утверждается КЛАУЗОЙ ОБЩЕГО СЛОВАРЯ, а не подстрокой по прозе.
+	// Прежняя редакция искала слово «корневой» — то есть ровно тот поиск по
+	// свободному тексту, ради снятия которого словарь заводился; и заведена она
+	// была потому, что четвёртой клаузы в словаре не существовало, а ветвь
+	// корневого коммита ремонта не называла вовсе.
+	if !gitRevRemedyNamed(err, gitRevRemedyDeclaredBase) {
+		t.Errorf("отказ не называет своего ремонта %q: %v", gitRevRemedyDeclaredBase, err)
+	}
+}
+
+// TestGateCarrierNoParentRefusalCarriesTheToolsAnswer — ОТКАЗ НЕСЁТ ОТВЕТ
+// ИНСТРУМЕНТА, А НЕ ТОЛЬКО СВОЙ ВЫВОД О НЁМ.
+//
+// Обе ветви УТВЕРЖДАЮТ причину по отдельному вопросу о глубине, а не по тому,
+// что ответил `rev-parse`. Утверждение, выбросившее единственное своё
+// опровержение, проверить нечем: при отказе иного рода — битый объект, права —
+// код так же уверенно назовёт корневой коммит либо недовезённость. Сегодня этот
+// вход недостижим (путь идёт после успешных `for-each-ref` и `merge-base`),
+// поэтому ложного зелёного нет; недостижимость же есть свойство МАРШРУТА и
+// переживёт его молча.
+//
+// Пара одно-фактна: те же ref, глубина и вывод — меняется ровно ошибка.
+func TestGateCarrierNoParentRefusalCarriesTheToolsAnswer(t *testing.T) {
+	t.Parallel()
+
+	const ref = "refs/remotes/origin/main"
+	for _, shallow := range []bool{false, true} {
+		// Законный близнец: достижимый сегодня вход — код 1 с пустым выводом.
+		reachable := gateCarrierNoParentRefusal(ref, shallow, nil, errors.New("exit status 1"))
+		if !strings.Contains(reachable.Error(), "exit status 1") {
+			t.Errorf("мелкий=%v: отказ не несёт ответа инструмента — проверить его "+
+				"утверждение о причине нечем: %v", shallow, reachable)
+		}
+
+		// Тот же вход, ОДИН изменённый факт: отказ иного рода. Текст обязан
+		// смениться и понести именно его.
+		other := gateCarrierNoParentRefusal(ref, shallow, nil,
+			errors.New("error: object file .git/objects/4b/825d is empty"))
+		if !strings.Contains(other.Error(), "object file") {
+			t.Errorf("мелкий=%v: отказ иного рода не доехал до читающего: %v", shallow, other)
+		}
+		if strings.Contains(other.Error(), "exit status 1") {
+			t.Errorf("мелкий=%v: отказ назвал ЧУЖУЮ ошибку: %v", shallow, other)
+		}
+		if reachable.Error() == other.Error() {
+			t.Errorf("мелкий=%v: два разных ответа инструмента дали один текст — "+
+				"утверждение о причине неопровержимо by construction: %q",
+				shallow, reachable.Error())
+		}
+
+		// Вторая половина дизъюнкции: инструмент НЕ отказал, а ревизии не назвал.
+		// Названо словом, а не молчанием.
+		silent := gateCarrierNoParentRefusal(ref, shallow, []byte("  \n"), nil)
+		if !strings.Contains(silent.Error(), "<nil>") {
+			t.Errorf("мелкий=%v: пустой ответ без отказа неотличим от отказа: %v", shallow, silent)
+		}
+	}
+
+	// Ремонты двух ветвей ПРОТИВОПОЛОЖНЫ и не перепутаны — та же проверка, что
+	// у клонированной пары выше, но здесь она не зависит от среды.
+	root := gateCarrierNoParentRefusal(ref, false, nil, errors.New("exit status 1"))
+	shal := gateCarrierNoParentRefusal(ref, true, nil, errors.New("exit status 1"))
+	if !gitRevRemedyNamed(root, gitRevRemedyDeclaredBase) || gitRevRemedyNamed(root, gitRevRemedyCloneDepth) {
+		t.Errorf("корневому коммиту назван не свой ремонт: %v", root)
+	}
+	if !gitRevRemedyNamed(shal, gitRevRemedyCloneDepth) || gitRevRemedyNamed(shal, gitRevRemedyDeclaredBase) {
+		t.Errorf("мелкому клону назван не свой ремонт: %v", shal)
 	}
 }
