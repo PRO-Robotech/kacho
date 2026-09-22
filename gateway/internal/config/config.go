@@ -43,11 +43,7 @@ import (
 //	KACHO_API_GATEWAY_STORAGE_GRPC           — адрес backend kacho-storage (public, port 9090)
 //	KACHO_API_GATEWAY_STORAGE_INTERNAL_GRPC  — адрес backend kacho-storage internal-port (9091)
 //	KACHO_APP_ENV                            — deployment-env label (keys the prod authz guard)
-//	KACHO_API_GATEWAY_KRATOS_PUBLIC_URL      — Ory Kratos public API base ("disabled" turns it off);
-//	                                           читается, когда множество носителей читает чужую
-//	                                           сторону (решает множество, а не посадка); обязателен,
-//	                                           если KACHO_API_GATEWAY_SESSION_CARRIERS называет
-//	                                           `external`, — в том числе `own,external` под `own`
+//	KACHO_API_GATEWAY_KRATOS_PUBLIC_URL      — Ory Kratos public API base ("disabled" turns it off); read under `external` only
 //	KACHO_API_GATEWAY_IAM_LOGIN_LANE_URL     — адрес HTTPS-слушателя полосы формы службы доступа (own only, required)
 //	KACHO_API_GATEWAY_ADMISSION_PUBLIC_*     — потолок темпа/одновременности внешнего
 //	                                           слушателя (READ_PER_SEC, MUTATION_PER_SEC,
@@ -231,26 +227,6 @@ type Config struct {
 	// первом же новом значении — молча, потому что обе стороны компилируются.
 	IdentityProvider string `envconfig:"KACHO_API_GATEWAY_IDENTITY_PROVIDER" default:""`
 
-	// SessionCarriers — ЧЬЁ ПЕЧЕНЬЕ край читает: множество читателей носителя
-	// браузерной сессии. Разбор и полный разбор доводов — `sessioncarriers.go`.
-	//
-	// Ручка РАЗВЕДЕНА с посадкой выше намеренно: посадка отвечает на «чья
-	// чеканка выдаёт личность», множество — на «чьё печенье мы ещё согласны
-	// прочитать», и во время переезда ответы расходятся. Пока ручка не
-	// объявлена, множество выводится из посадки, и поведение края то же, что
-	// до её появления, — поэтому умолчание здесь пустое, а не одно из значений.
-	SessionCarriers string `envconfig:"KACHO_API_GATEWAY_SESSION_CARRIERS" default:""`
-
-	// SessionCarrierWindowOpenedAt — МОМЕНТ ОТКРЫТИЯ переходного окна носителя,
-	// RFC 3339. Смысл окна: дочитываем живые чужие сессии, новых не заводим, —
-	// и момент есть граница между ними.
-	//
-	// Обязателен ровно тогда, когда множество выше называет обе стороны, и
-	// запрещён, когда не называет: объявление, которому нечего ограничивать,
-	// пережило бы свой предмет молча. Решает страж старта — он видит и момент,
-	// и множество, а поле по отдельности не видит ни того ни другого.
-	SessionCarrierWindowOpenedAt string `envconfig:"KACHO_API_GATEWAY_SESSION_CARRIER_WINDOW_OPENED_AT" default:""`
-
 	// AuthNTrustDomain — ДОМЕН ДОВЕРИЯ установки: то, чьи сертификаты край
 	// признаёт своими.
 	//
@@ -290,15 +266,9 @@ type Config struct {
 	// The sentinel "disabled" turns Kratos session-auth off entirely. Default is
 	// the cluster-internal kratos-public Service.
 	//
-	// Читает ли его край, решает МНОЖЕСТВО читателей носителя
-	// (ResolvedSessionCarriers, ручка KACHO_API_GATEWAY_SESSION_CARRIERS), а не
-	// посадка: читатель носителя поставщика заводится, когда множество называет
-	// сторону `external` (main.go, ветки `sessionCarriers.ReadsProvider()`).
-	// Пока ручка не объявлена, множество выводится из посадки, и под `own` это
-	// только наш носитель: адрес тогда не читается, задан он или нет.
-	// Объявленное множество со стороной `external` — в том числе переходное
-	// `own,external` под `own` — адрес ОБЯЗАТЕЛЕН: пустой или `disabled` страж
-	// старта отвергает (validateSessionCarrierConfig).
+	// Читается ТОЛЬКО под посадкой `external` (Ф3 Р15, Ф3-12): под `own` сессию
+	// человека читает наша служба, и читатель носителя поставщика не заводится
+	// вовсе — независимо от того, задан ли этот адрес.
 	KratosPublicURL string `envconfig:"KACHO_API_GATEWAY_KRATOS_PUBLIC_URL" default:"http://kacho-umbrella-kratos-public.kacho.svc:80"`
 
 	// LoginLaneURL — адрес HTTPS-слушателя ПОЛОСЫ ФОРМЫ службы доступа, на
@@ -380,8 +350,7 @@ type Config struct {
 	// --- AuthN core (DPoP / JWT / mTLS-bound / step-up / BCL) ---
 
 	// APIDomain — публичный домен kacho-api: из него строится канонический `htu`
-	// в проверке доказательства владения и выводится издатель прежнего
-	// поставщика (см. ResolvedHydraIssuer).
+	// в проверке доказательства владения.
 	//
 	// АДРЕСАТ ТОКЕНА ОТСЮДА БОЛЬШЕ НЕ ВЫВОДИТСЯ (задача #2567). Умолчание у
 	// этого поля живёт, поэтому пустым оно не бывает никогда, — и пока адресат
@@ -389,19 +358,10 @@ type Config struct {
 	// посадке. Адресат объявляется своей ручкой без умолчания: TokenAudience
 	// ниже.
 	//
-	// ИЗДАТЕЛЬ прежнего поставщика отсюда выводится ПО-ПРЕЖНЕМУ, и это решение,
-	// а не остаток той же правки. Оно записано в профиле края
-	// (`deploy/values.yaml`, блок tokenAcceptance) и принадлежит переходу на
-	// свою чеканку: «issuers не задано» — сегодняшнее, работающее и повсеместное
-	// состояние, а не забытая настройка, и снятие вывода до конца перехода
-	// сделало бы отказом старта каждый профиль дерева.
-	//
-	// Направление отказа у двух координат РАЗНОЕ, и этим они отличаются по
-	// существу, а не по срочности. Издатель приходит ОТ ПРЕДЪЯВИТЕЛЯ и
-	// выбирает запись точным равенством: выведенный неверно, он токен
-	// ОТВЕРГАЕТ — отказ громкий и немедленный. Адресат же сравнивается с нашим
-	// ожиданием: выведенный неверно, он токен ЧУЖОЙ УСТАНОВКИ ПРИНИМАЕТ, и
-	// заметить это нечем.
+	// ИЗДАТЕЛЬ отсюда тоже больше не выводится: принимаемых издателей и адрес
+	// набора ключей каждого объявляет перечень (TokenIssuers ниже), и перечень,
+	// не объявленный профилем, есть отказ старта, а не запись, построенная краем
+	// из домена (tokenissuers.go).
 	APIDomain string `envconfig:"KACHO_API_DOMAIN" default:"api.kacho.cloud"`
 
 	// TokenAudience — АДРЕСАТ, которому адресованы принимаемые краем токены
@@ -422,14 +382,6 @@ type Config struct {
 	// Умолчание живёт в ПРОФИЛЕ, а не здесь; незаданное доезжает до стража
 	// старта (`validateProductionTokenAudience` в композиционном корне).
 	TokenAudience string `envconfig:"KACHO_API_GATEWAY_TOKEN_AUDIENCE" default:""`
-
-	// HydraIssuer — issuer URL Ory Hydra; используется как expected `iss` в
-	// access tokens + base URL для JWKS fetch (`{HydraIssuer}/.well-known/jwks.json`).
-	// Пустой → derived as `https://hydra.{APIDomain}`.
-	HydraIssuer string `envconfig:"KACHO_HYDRA_ISSUER" default:""`
-
-	// HydraJWKSURL — explicit JWKS endpoint; пустой → derived from HydraIssuer.
-	HydraJWKSURL string `envconfig:"KACHO_HYDRA_JWKS_URL" default:""`
 
 	// HydraIntrospectionURL — token-introspection endpoint on the identity
 	// provider's ADMIN API (`{admin}/admin/oauth2/introspect`). Never derived:
@@ -506,10 +458,11 @@ type Config struct {
 
 	// TokenIssuers — принимаемые издатели через запятую.
 	//
-	// Не задано ⇒ строится ОДНА запись из HydraIssuer/HydraJWKSURL —
-	// сегодняшняя посадка. Задано, но элементов ноль (`","`, пробелы) ⇒ ОТКАЗ
-	// В СТАРТЕ, безусловный: пустой перечень означает «принимаем любого
-	// издателя». Страж считает ЭЛЕМЕНТЫ, а не длину строки.
+	// Не задано, либо задано и элементов ноль (`","`, пробелы) ⇒ ОТКАЗ В
+	// СТАРТЕ, безусловный: краю некого принимать, а пустой перечень означал бы
+	// «принимаем любого издателя». Умолчания нет намеренно — его нет и в чарте:
+	// ненулевое умолчание сделало бы состояние «не объявлено» недостижимым, и
+	// отказ не сработал бы ни разу. Страж считает ЭЛЕМЕНТЫ, а не длину строки.
 	TokenIssuers string `envconfig:"KACHO_API_GATEWAY_TOKEN_ISSUERS" default:""`
 
 	// TokenIssuerKeySets — привязка «издатель=адрес набора», записи через
@@ -838,28 +791,6 @@ func (c Config) ExternalListenerClientAuth(base *tls.Config) (*tls.Config, error
 	base.ClientAuth = tls.VerifyClientCertIfGiven
 	base.ClientCAs = pool
 	return base, nil
-}
-
-// ResolvedHydraIssuer returns the Hydra issuer URL, deriving it from APIDomain
-// when explicitly unset. Trailing slash is stripped.
-func (c Config) ResolvedHydraIssuer() string {
-	iss := c.HydraIssuer
-	if iss == "" {
-		iss = "https://hydra." + c.APIDomain
-	}
-	for len(iss) > 0 && iss[len(iss)-1] == '/' {
-		iss = iss[:len(iss)-1]
-	}
-	return iss
-}
-
-// ResolvedHydraJWKSURL returns the JWKS endpoint, deriving from issuer when
-// not explicitly set.
-func (c Config) ResolvedHydraJWKSURL() string {
-	if c.HydraJWKSURL != "" {
-		return c.HydraJWKSURL
-	}
-	return c.ResolvedHydraIssuer() + "/.well-known/jwks.json"
 }
 
 // ResolvedHydraIntrospectionURL returns the token-introspection endpoint, or the

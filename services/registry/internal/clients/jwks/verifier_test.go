@@ -167,9 +167,9 @@ func joseSigningInput(alg, kid string, claims map[string]any) string {
 // legacyIdentityClaims — тело identity-JWT ПРЕЖНЕГО издателя: sub = идентификатор
 // его клиента (принципал для Check), aud ⊇ наша служба, iss = прежний издатель.
 //
-// Набор минимальный — без iat/nbf/jti. Этим он и отличается от legacyClaims из
-// f1_harness_test.go: случаи ниже проверяют проверяющего на теле БЕЗ временных
-// меток, и добавить их значило бы проверять другое.
+// Набор минимальный — без iat/nbf/jti. Этим он и отличается от `legacyClaims`
+// (объявлен в f1_issuer_binding_test.go): случаи ниже проверяют проверяющего на
+// теле БЕЗ временных меток, и добавить их значило бы проверять другое.
 func legacyIdentityClaims(sub string, exp time.Time) map[string]any {
 	return map[string]any{"sub": sub, "aud": testAud, "iss": testLegacyIss, "exp": exp.Unix()}
 }
@@ -186,8 +186,8 @@ func TestJWKS_Verify_RS256_Valid(t *testing.T) {
 }
 
 // REG-TX-13 — годный ES256-JWT прежнего издателя → Verify возвращает sub. Прежний
-// издатель может отдавать
-// как RS256, так и ES256 — data-plane обязан верифицировать оба по одному JWKS.
+// издатель может отдавать как RS256, так и ES256 — data-plane обязан
+// верифицировать оба по одному JWKS.
 func TestJWKS_Verify_ES256_Valid(t *testing.T) {
 	js := newJWKSServer(t)
 	js.addEC(t, "kid-ec")
@@ -624,8 +624,9 @@ func TestJWKS_toRSA_RejectsSmallModulus(t *testing.T) {
 
 // SEC — ключ ровно минимальной длины модуля проходит toRSA без изменений
 // поведения (регресс-страховка к границе). Длина берётся не литералом, а у
-// нашего объявления — tokenpolicy.MinRSAModulusBits, которым судит toRSA:
-// поднимут минимум — проба поднимется вместе с ним и продолжит судить ГРАНИЦУ.
+// нашего объявления — tokenpolicy.MinRSAModulusBits, которым судит
+// `jsonWebKey.toRSA`: поднимут минимум — проба поднимется вместе с ним и
+// продолжит судить ГРАНИЦУ.
 func TestJWKS_toRSA_AcceptsTheDeclaredMinimumModulus(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, tokenpolicy.MinRSAModulusBits)
 	require.NoError(t, err)

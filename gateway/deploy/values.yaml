@@ -297,36 +297,6 @@ authn:
   # Держит это deploy/identity_posture_profiles_test.go.
   identityProvider: external
 
-  # ─── ЧЬЁ ПЕЧЕНЬЕ КРАЙ ЧИТАЕТ: множество читателей носителя сессии ──────────
-  # Посадка выше отвечает на «чья чеканка ВЫДАЁТ личность», эта ручка — на
-  # «чьё печенье край ещё СОГЛАСЕН ПРОЧИТАТЬ». Во время переезда ответы
-  # расходятся: в этом расхождении переезд и состоит, и одной ручкой его не
-  # выразить — у неё два взаимоисключающих значения, а состояний требуется три:
-  #   external      — только чужое печенье: стенд до переезда;
-  #   own,external  — ОБА: наше уже читается, чужое ещё читается. Человек с
-  #                   живой чужой сессией входа не теряет;
-  #   own           — только наше: состояние, к которому платформа приходит.
-  # Порядок записи ни на что не влияет: при двух предъявленных носителях
-  # действует НАША личность. Это решение о том, чья личность действует, и
-  # профилю оно не принадлежит.
-  #
-  # ПУСТО в базовом профиле намеренно: пока ручка не объявлена, множество
-  # выводится из посадки, и край ведёт себя ровно как прежде. Непустое значение
-  # здесь молча включило бы состояние на каждом стенде, который его не
-  # переопределял.
-  sessionCarriers: ""
-
-  # ─── момент ОТКРЫТИЯ переходного окна носителя, RFC 3339 ──────────────────
-  # Смысл окна один: дочитываем ЖИВЫЕ чужие сессии, новых не заводим. Момент
-  # есть граница между ними, и без него «дочитываем живые» превращается в
-  # «принимаем любые»: отзыв снимался бы входом заново на чужой стороне.
-  #
-  # Обязателен РОВНО в состоянии `own,external` и запрещён вне его — объявление,
-  # которому нечего ограничивать, пережило бы свой предмет молча. Момент обязан
-  # лежать в ПРОШЛОМ относительно старта процесса: он называет случившееся, а
-  # момент впереди не ограничивает ничего. Все три правила держит страж старта.
-  sessionCarrierWindowOpenedAt: ""
-
   # ─── адрес полосы формы службы доступа (Ф3, kacho#1269) ───────────────────
   # HTTPS-слушатель службы, на который край РЕТРАНСЛИРУЕТ четыре глагола формы
   # (вход · выход · смена пароля · признак формы) под посадкой `own`.
@@ -357,24 +327,13 @@ authn:
   # с портом службы судит теперь проба, названная выше.
   iamLoginLaneUrl: ""
 
-# Previous external OAuth server — the scalar knobs below are its transition-era
-# form; the accepted issuers and their key sets are declared by `tokenAcceptance`
-# (platform-minted tokens included). The auth path verifies each token against the
-# key set of the issuer it names. config.go reads KACHO_HYDRA_JWKS_URL (explicit) and otherwise derives
-# `{KACHO_HYDRA_ISSUER}/.well-known/jwks.json` — whose default issuer
-# (`https://hydra.api.kacho.cloud`) is NOT reachable from inside the cluster
-# (in dev Hydra's self.issuer is `http://localhost:28080/...`). So the JWKS URL
-# MUST be set explicitly to the cluster-internal Hydra PUBLIC Service. Unset →
-# no env emitted; the Go config default applies (zero regression for overlays
-# that don't opt in). The dev/prod overlays set `jwksUrl` to the in-cluster
-# `kacho-umbrella-hydra-public:4444/.well-known/jwks.json`.
-#   jwksUrl:    explicit cluster-internal Hydra JWKS endpoint (reachable from
-#               the gateway pod). Drives KACHO_HYDRA_JWKS_URL.
-#   issuer:     expected `iss` claim. Drives KACHO_HYDRA_ISSUER.
+# Previous external OAuth server. The accepted issuers and their key sets are
+# declared by `tokenAcceptance` (platform-minted tokens included); the auth path
+# verifies each token against the key set of the issuer it names.
 #
-# The revocation path needs two MORE addresses, and neither is derivable from
-# the issuer: both are served by the provider's ADMIN API, on its own Service
-# and port, reachable only inside the cluster.
+# The revocation path needs two addresses, and neither is derivable from the
+# issuer: both are served by the provider's ADMIN API, on its own Service and
+# port, reachable only inside the cluster.
 #
 #   introspectionUrl: where the gateway asks whether an access token has been
 #               revoked — the admin path `/admin/oauth2/introspect`. Asked per
@@ -393,8 +352,6 @@ authn:
 # admin Service outside the cluster.
 #
 #   hydra:
-#     jwksUrl:          http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json
-#     issuer:           https://hydra.api.kacho.cloud
 #     introspectionUrl: http://kacho-umbrella-hydra-admin.kacho.svc:4445/admin/oauth2/introspect
 #     adminUrl:         http://kacho-umbrella-hydra-admin.kacho.svc:4445
 #   adminCa:    trust anchor for the admin hop, when that hop is served over
@@ -447,20 +404,15 @@ tokenAudience: "https://api.kacho.cloud"
 # набор проверочных ключей. Платформа чеканит свои токены сама (задача #897), а
 # прежний издатель на переходе остаётся, поэтому издатель здесь — МНОЖЕСТВО.
 #
-# ПЕРЕХОД АДДИТИВЕН, и это отличается от ПЕРВОЙ конфигурации проверяющего
-# осознанно: край ВЫВОДИТ издателя из домена API по умолчанию, поэтому «issuers
-# не задано» — сегодняшнее, работающее и повсеместное состояние, а не забытая
-# настройка. Три состояния, а не два:
+# Состояний два:
 #
-#   - не задано ⇒ строится ОДНА запись из hydra.issuer/hydra.jwksUrl ниже —
-#     ровно сегодняшнее поведение;
-#   - задано, но элементов ноль («,», пробелы) ⇒ ОТКАЗ В СТАРТЕ, безусловный:
-#     пустой перечень означает «принимаем любого издателя». Страж считает
-#     ЭЛЕМЕНТЫ, а не длину строки;
+#   - не задано, либо задано и элементов ноль («,», пробелы) ⇒ ОТКАЗ В СТАРТЕ,
+#     безусловный: краю некого принимать, а пустой перечень означал бы
+#     «принимаем любого издателя». Страж считает ЭЛЕМЕНТЫ, а не длину строки;
 #   - задано ⇒ принимаются ровно объявленные, у каждого своя запись источника.
 #
-# Задать И это, И скалярный hydra.issuer/jwksUrl — ОТКАЗ В СТАРТЕ, а не
-# старшинство: значение, принятое и не действующее, хуже отвергнутого.
+# Издатель из домена API краем больше не выводится: перечень, не объявленный
+# профилем, есть отказ старта с именем ручки, а не запись, построенная краем.
 #
 # ОТКАТ состоит в снятии platformIssuer (и нашего издателя из issuers), а не в
 # перекатке образа.
@@ -489,20 +441,13 @@ tokenAcceptance:
   #    издателя, не выразил согласия принимать его; чарт, назвавший издателя за
   #    него, это согласие подделывает.
   #
-  # 3. ПУСТОТА ЗДЕСЬ — НЕ «НЕ ЗАДАНО», А РАЗВИЛКА. Процесс различает три
-  #    состояния, и первое из них — «перечень не объявлен» — выбирается ровно
-  #    предикатом `TokenIssuers != ""`. Непустое умолчание делает это состояние
-  #    недостижимым ИЗ ЧАРТА: отказ по вырожденному перечню и отказ по
-  #    platformIssuer-вне-перечня начинают судить только то, что оператор набрал
-  #    рукой. Ручка, по которой судит страж старта, получив ненулевое умолчание,
-  #    оставляет стража живым лишь на словах.
-  #
-  # ЧТО ЭТО ЗНАЧИТ ДЛЯ СНЯТИЯ ЗАПАСНОЙ ВЕТВИ. Ветвь «не объявлено ⇒ одна запись
-  # из hydra.issuer/jwksUrl» снимается не тем, что чарт подставит значение, а
-  # тем, что её место займёт ОТКАЗ В СТАРТЕ с именем этой ручки. Пустая строка
-  # рендерится, доезжает до стража и становится этим отказом — ровно так же, как
-  # у `tokenAudience`. Самостоятельная установка обязана объявить перечень; все
-  # семь цепочек зонта его уже объявляют.
+  # 3. ПУСТОТА ЗДЕСЬ — ВХОД СТРАЖА СТАРТА. Перечень, не объявленный профилем,
+  #    рендерится пустой строкой, доезжает до стража и становится ОТКАЗОМ В
+  #    СТАРТЕ с именем этой ручки — ровно так же, как у `tokenAudience`.
+  #    Непустое умолчание сделало бы этот отказ недостижимым ИЗ ЧАРТА: ручка, по
+  #    которой судит страж старта, получив ненулевое умолчание, оставляет стража
+  #    живым лишь на словах. Самостоятельная установка обязана объявить перечень;
+  #    все семь цепочек зонта его объявляют.
   issuers: ""
   # TOKEN_ISSUER_KEYSETS — привязка «издатель=адрес его набора ключей».
   # Адрес ОБЪЯВЛЯЕТСЯ и никогда не выводится из издателя: издатель приходит от
@@ -548,8 +493,6 @@ tokenAcceptance:
     keyFile: ""
 
 hydra:
-  jwksUrl: ""
-  issuer: ""
   introspectionUrl: ""
   adminUrl: ""
   # Empty secretName ⇒ no volume, no mount, no env: the hop keeps the default
