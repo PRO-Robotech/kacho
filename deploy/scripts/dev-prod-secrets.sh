@@ -7,6 +7,8 @@
 #
 #   - kaname-hook-token   key=token    — общий секрет обратных вызовов провайдера
 #   - kaname-jwks-enc-key key=enc_key  — 32-byte-hex JWKS private-key encryption key
+#   - kaname-second-factor-enc-key key=enc_key — 32-byte-hex ключ обёртки секретов
+#                                       второго фактора (читается под identityProvider: own)
 #
 # ЗАПУСКАЕТСЯ ДО ПЕРВОГО ПРОГОНА helm, А НЕ МЕЖДУ ПРОГОНАМИ (задача #948). Общий
 # секрет обратных вызовов — ПРЕДУСЛОВИЕ: провайдер берёт его величину обязательной
@@ -51,6 +53,44 @@ else
     --from-literal=enc_key="$ENC_KEY" \
     --dry-run=client -o yaml | kubectl apply -f - >/dev/null
   echo "provisioned kaname-jwks-enc-key (enc_key, 32B hex) — generated ONCE"
+fi
+
+# ─── КЛЮЧ ОБЁРТКИ СЕКРЕТОВ ВТОРОГО ФАКТОРА: ОДИН РАЗ, НЕ РОТИРУЕТСЯ ──────────
+#
+# 32-byte hex (64 знака) — та же форма, что у ключа обёртки ключницы выше:
+# резолв декодирует hex и требует РОВНО 32 байта. Величина может быть перечнем
+# через запятую (первый оборачивает, все открывают); так ключ и меняется.
+#
+# Требуется стражем старта службы ТОЛЬКО под `config.authn.identityProvider: own`
+# (Ф12, kacho#1281; переменная KANAME_SECOND_FACTOR_ENC_KEY). Ссылка у пода —
+# `optional: true`, поэтому недостающий секрет даёт ИМЕНОВАННЫЙ отказ стража, а
+# не `CreateContainerConfigError`, по которому не видно, какой ручки не хватает.
+# Под `external` второго фактора нет, секрета может не быть вовсе, и такой стенд
+# остаётся поднимаемым.
+#
+# ПОЧЕМУ ПОСЕВ, А НЕ ШАБЛОН ЧАРТА — довод безопасности, а не вкуса. Репозиторий
+# ПУБЛИЧЕН, поэтому величина в дерево не попадает ни при каких условиях. Шаблон,
+# который её ПОРОЖДАЕТ (`randAlphaNum` / `genPrivateKey`), порождает её заново на
+# КАЖДОМ рендере — то есть на каждом `helm upgrade`, `helm template` и
+# `--dry-run`: уже обёрнутые секреты второго фактора становятся нечитаемыми
+# НАВСЕГДА, и отказ при этом тихий. Шаблон с `lookup` дыру не закрывает: на любом
+# рендере без кластера `lookup` пуст, и величина расходится между тем, что
+# показали, и тем, что применили. Третий довод — площадка: на настоящем кластере
+# ключевой материал приходит ВНЕ дерева (external-secrets / хранилище секретов),
+# а чарт, чеканящий его сам, этот путь закрывает.
+#
+# Ключ ОБЯЗАН пережить повторный подъём по той же причине, что и ключ ключницы
+# выше: новый ключ не разворачивает ни одного уже записанного секрета второго
+# фактора, и вернуть их нечем. Порождаем ОДНАЖДЫ, дальше переиспользуем
+# (идемпотентно, НЕ ротация) — дисциплину держит
+# deploy/tests/helm/secret-material-survives-recreation-test.sh.
+if kubectl -n "$NS" get secret kaname-second-factor-enc-key >/dev/null 2>&1; then
+  echo "kaname-second-factor-enc-key already present — reusing (wrapping key, must survive re-runs)"
+else
+  kubectl -n "$NS" create secret generic kaname-second-factor-enc-key \
+    --from-literal=enc_key="$(openssl rand -hex 32)" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  echo "provisioned kaname-second-factor-enc-key (enc_key, 32B hex) — generated ONCE"
 fi
 
 # ─── ОБЩИЙ СЕКРЕТ ОБРАТНОГО ВЫЗОВА: СОЗДАЁТСЯ ОДИН РАЗ, НЕ РОТИРУЕТСЯ ────────

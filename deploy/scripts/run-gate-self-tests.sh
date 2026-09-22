@@ -155,6 +155,7 @@ deploy/tests/helm/admin-hop-pod-shape-test.sh
 deploy/tests/helm/admin-hop-port-policy-test.sh
 deploy/tests/helm/admin-hop-transport-test.sh
 deploy/tests/helm/config-rollout-binding-test.sh
+deploy/tests/helm/console-serves-identity-flows-test.sh
 deploy/tests/helm/geo-authz-edge-armed-test.sh
 deploy/tests/helm/identity-callback-credential-source-test.sh
 deploy/tests/helm/image-rollout-binding-test.sh

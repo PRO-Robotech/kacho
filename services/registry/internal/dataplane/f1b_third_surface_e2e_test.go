@@ -40,7 +40,7 @@ import (
 
 const (
 	f1bOurIssuer    = "https://kaname.kacho.local"
-	f1bLegacyIssuer = "https://hydra.api.kacho.test"
+	f1bLegacyIssuer = "https://legacy.api.kacho.test"
 	f1bServiceAud   = "registry.kacho.local"
 	f1bSubject      = "sva-ci"
 )

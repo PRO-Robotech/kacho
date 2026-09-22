@@ -39,7 +39,13 @@ prod:values.prod.yaml
 # поверх боевого слоя, а не отдельный набор: величины полосы, порт слушателя,
 # его транспорт и предел памяти контейнера боевой слой уже несёт по приёмке Ф3
 # (Р3, Р11) — перевод на `own` не заводит полосу с нуля.
-own:values.prod.yaml,values.own.yaml
+#
+# Третий слой — СЛОЙ ПЛОЩАДКИ (kacho#2724). Боевой слой намеренно неполон: адрес
+# хранилища поставщиков, перенос их схемы и снятие зеркала образов приходят
+# слоем площадки, и у боевой площадки он есть (`values.fe3455-ory.yaml`, вне
+# git). У стенда `own` его не было ни одного — поэтому цепочка не поднималась
+# вовсе, и ни один из трёх пропусков к посадке личности отношения не имеет.
+own:values.prod.yaml,values.own.yaml,values.own-stand.yaml
 fe3455:values.prod.yaml,values.fe3455.yaml,values.fe3455-prod.yaml,values.fe3455-ory-posture.yaml
 prorobotech:values.dev.yaml,values.dev-prod.yaml,values.prorobotech.yaml
 a8f60d:values.dev.yaml,values.dev-prod.yaml,values.a8f60d.yaml

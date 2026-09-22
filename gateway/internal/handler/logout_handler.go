@@ -75,7 +75,10 @@ type CallerVerifier interface {
 //  4. Call Hydra admin `DELETE /admin/oauth2/auth/sessions/login?subject=...`
 //     with the caller's own subject to invalidate the upstream SSO session —
 //     Hydra then fans out back-channel logout notifications (RFC 8254).
-//  5. Clear the client session cookie (ory_kratos_session).
+//  5. Issue an ending for every browser session carrier name
+//     (`middleware.EndSessionCarriers`). The ending carries no `Domain`, so it
+//     matches only a cookie that was issued without one; the precondition this
+//     implies is stated in the header of `middleware/session_carrier_names.go`.
 //  6. Respond `200 {}`.
 //
 // All Hydra/IAM calls are best-effort relative to clearing the user cookie —
