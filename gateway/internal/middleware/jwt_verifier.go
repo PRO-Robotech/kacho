@@ -463,8 +463,9 @@ func (c *JWKSCache) refresh(ctx context.Context, forced bool) error {
 	} else if fresh {
 		return nil
 	}
-	// c.url is the operator-configured JWKS endpoint (KACHO_HYDRA_JWKS_URL /
-	// derived from KACHO_API_DOMAIN), never request-derived — not an SSRF sink.
+	// c.url is the operator-declared JWKS endpoint of the issuer's record
+	// (KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS), never request-derived — not an
+	// SSRF sink.
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url, nil) // #nosec G704 -- JWKS URL is operator config, not user input
 	if err != nil {
 		return fmt.Errorf("%w: build request: %v", ErrJWKSFetchFailed, err)

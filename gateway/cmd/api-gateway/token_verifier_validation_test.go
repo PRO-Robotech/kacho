@@ -81,35 +81,42 @@ func TestCompositionRoot_FeedsTheVerifierErrorToTheGuard(t *testing.T) {
 //
 // Проверка, чей вход никем не производится, не может упасть никогда: она
 // выглядит защитой и ею не является. Поэтому здесь берётся НАСТОЯЩАЯ
-// конфигурация края и НАСТОЯЩИЙ конструктор проверяющего подпись, а не
-// подставленная ошибка.
+// конфигурация края, НАСТОЯЩИЙ разбор объявления приёма и НАСТОЯЩИЙ
+// конструктор проверяющего подпись, а не подставленная ошибка.
 //
-// Производитель — вырожденное значение настройки издателя: строка из одних
-// косых черт непуста, поэтому «издатель задан» по любому взгляду на профиль, а
-// после снятия хвостовых черт от неё не остаётся ничего. Тот же класс, что у
-// одинокой запятой в круге доверенных отправителей: длина есть, записей ноль.
+// Производитель — незаявленный адресат. Прежде им служил и вырожденный
+// скалярный пин издателя; пин снят вместе с выводом издателя из домена, и
+// записи приёма теперь строит только объявленный перечень, который разбор
+// пропускает лишь годным. ГРАНИЦА НАЗВАНА: в боевом классе окружения тот же
+// вход раньше отвергает страж адресата (validateProductionTokenAudience), и
+// до этого стража он там не доходит.
 func TestTokenVerifier_TheGuardsInputHasAProducer(t *testing.T) {
-	produced := 0
-	for _, issuer := range []string{"/", "//", "///"} {
-		cfg := config.Config{HydraIssuer: issuer, APIDomain: "kacho.local"}
-		require.NotEmpty(t, issuer, "настройка НЕПУСТА — профиль выглядит заполненным")
-		require.Empty(t, cfg.ResolvedHydraIssuer(),
-			"а после разбора издателя не остаётся: вырожденное значение %q", issuer)
-
-		// Адресат объявлен НАСТОЯЩИЙ — одно-фактность: красное обязано прийти
-		// от издателя, а не от соседней оси, которая тоже отвергает пустое
-		// (задача #2567). Без этого проба зеленела бы, ничего не доказав об
-		// издателе.
-		_, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: cfg.ResolvedHydraIssuer(), KeySetURL: cfg.ResolvedHydraJWKSURL(), TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}}, ExpectedAudience: testTokenAudience})
-		require.Error(t, err, "конструктор обязан отказать на пустом издателе")
-		require.NotContains(t, err.Error(), "audience",
-			"отказ обязан прийти от ИЗДАТЕЛЯ: красное от соседней оси ничего не доказывает")
-		produced++
-
-		require.Error(t, validateProductionTokenVerifierConfig("production", err),
-			"и этот отказ обязан ронять старт в боевом классе окружения")
+	cfg := config.Config{
+		AppEnv:             "dev",
+		TokenIssuers:       "https://issuer.kacho.test",
+		TokenIssuerKeySets: "https://issuer.kacho.test=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json",
 	}
-	require.Positive(t, produced,
-		"ноль произведённых входов означал бы стража, который не может упасть")
-	t.Logf("ОСМОТРЕНО значений настройки: 3, произведено отказов конструктора: %d", produced)
+	acceptance, err := cfg.TokenAcceptance()
+	require.NoError(t, err, "объявление приёма обязано разобраться — иначе красное придёт не от адресата")
+	records := make([]middleware.IssuerKeySet, 0, len(acceptance))
+	for _, b := range acceptance {
+		records = append(records, middleware.IssuerKeySet{
+			Issuer: b.Issuer, KeySetURL: b.KeySetURL, TokenTypes: b.TokenTypes,
+			TolerateAbsentTokenType: b.TolerateAbsentTokenType, ReadRevocation: b.ReadRevocation,
+		})
+	}
+	require.NoError(t, validateProductionTokenAudience(cfg.AppEnv, cfg.DeclaredTokenAudience()),
+		"в классе разработки незаявленный адресат страж адресата пропускает — вход доходит до конструктора")
+
+	_, err = middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
+		Issuers: records, ExpectedAudience: cfg.DeclaredTokenAudience(),
+	})
+	require.Error(t, err, "конструктор обязан отказать на незаявленном адресате")
+	require.Contains(t, err.Error(), "audience", "отказ обязан прийти от АДРЕСАТА, а не от записей приёма")
+
+	require.NoError(t, validateProductionTokenVerifierConfig(cfg.AppEnv, err),
+		"в классе разработки этот отказ даёт мягкий проход с предупреждением")
+	require.Error(t, validateProductionTokenVerifierConfig("production", err),
+		"и тот же отказ обязан ронять старт в боевом классе окружения")
+	t.Logf("ОСМОТРЕНО: записей приёма %d · производитель отказа конструктора — незаявленный адресат", len(records))
 }

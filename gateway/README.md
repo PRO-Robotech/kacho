@@ -107,11 +107,10 @@ Region/Zone, AddressPool, internal-проекции ресурсов) регис
 | `KACHO_API_GATEWAY_NLB_GRPC` | `kacho-nlb.kacho.svc:9090` | backend nlb |
 | `KACHO_API_GATEWAY_AUTHN_MODE` | `dev` | `dev` / `production` / `production-strict` |
 | `KACHO_API_GATEWAY_AUTHZ_ENABLED` | `false` | per-RPC authz-middleware |
-| `KACHO_API_GATEWAY_TOKEN_ISSUERS` | не объявлено | принимаемые издатели через запятую; вырожденное значение — отказ в старте |
+| `KACHO_API_GATEWAY_TOKEN_ISSUERS` | не объявлено | принимаемые издатели через запятую; **обязателен** — не объявлен либо вырожден ⇒ отказ в старте |
 | `KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS` | пусто | привязка «издатель=адрес его набора ключей»; адрес объявляется, не выводится |
 | `KACHO_API_GATEWAY_PLATFORM_TOKEN_ISSUER` | пусто | наш издатель; выбирает строгую полосу приёма и чтение отзыва |
 | `KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL` | пусто | наш авторитет отзыва; при принимаемом нашем издателе не задан ⇒ **отказ в старте**, мягкого прохода на этой полосе нет |
-| `KACHO_HYDRA_ISSUER` | derived | прежний скалярный пин; действует, пока `_TOKEN_ISSUERS` не объявлен |
 
 В production-окружении (`KACHO_APP_ENV=production`) gateway **отказывается стартовать**
 при authz-disabled / fail-open / неproduction-режиме authN — secure-by-default.
