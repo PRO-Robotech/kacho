@@ -803,6 +803,9 @@ initContainer:
     enabled: true
     command: ["/usr/local/bin/kaname-migrator", "up"]
 
+# Ресурсы контейнера службы. На посадке `config.authn.identityProvider: own`
+# `requests.memory` НЕ читается: запрос памяти равен `limits.memory` — пределу,
+# который несёт бюджет полосы входа (`kaname.containerResources`, kacho#2727).
 resources:
   requests:
     cpu: 100m

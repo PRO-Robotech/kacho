@@ -825,5 +825,7 @@ spec:
               {{- end }}
             initialDelaySeconds: 10
             periodSeconds: 30
+          # Ресурсы — через `kaname.containerResources`: на посадке `own` запрос
+          # памяти выводится из предела (kacho#2727), довод — у помощника.
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+            {{- include "kaname.containerResources" . | nindent 12 }}
