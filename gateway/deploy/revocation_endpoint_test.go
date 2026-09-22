@@ -4,7 +4,15 @@
 // revocation_endpoint_test.go — every deployed stand must tell the gateway where
 // to ask whether a token has been revoked.
 //
-// The gateway cannot work this address out. Introspection is served by the
+// WHICH AUTHORITY depends on the edge's identity posture. On `external` it is the
+// identity provider's admin API, and the two addresses below are required. On
+// `own` the provider is not on the stand and our own revocation authority takes
+// its place (TestStacks_AcceptingOurIssuerNameTheRevocationAuthority below), so
+// the provider's addresses are required to be ABSENT — see
+// provider_road_posture_test.go for how the posture is read and why absence is
+// asserted rather than skipped.
+//
+// The gateway cannot work the provider's address out. Introspection is served by the
 // identity provider's ADMIN API, on a Service and port distinct from the public
 // issuer, and reachable only inside the cluster — so a profile that leaves it
 // out does not fall back to something workable, it leaves the check with nowhere
@@ -102,6 +110,18 @@ func deployableStacks(t *testing.T) map[string][]string {
 	return out
 }
 
+// sortedStackNames — имена цепочек таблицы в устойчивом порядке. Обход карты
+// давал бы подпробы и находки в порядке, разном от прогона к прогону, и два
+// прогона одного дерева нельзя было бы сравнить построчно.
+func sortedStackNames(stacks map[string][]string) []string {
+	names := make([]string, 0, len(stacks))
+	for name := range stacks {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
 // introspectionAdminPath — the path the provider's admin API serves token
 // introspection on, mirrored from the gateway's own boot guard. An address
 // ending anywhere else is the public API, which serves no introspection at all.
@@ -147,42 +167,46 @@ func resolveStack(t *testing.T, stack []string, path ...string) (string, bool) {
 	return s, ok && strings.TrimSpace(s) != ""
 }
 
-// Every stack that deploys the gateway must name the introspection endpoint, and
-// it must be the admin path — pointing it at the public API is exactly the state
-// this contract exists to prevent.
+// Every stack whose edge posture is `external` must name the introspection
+// endpoint, and it must be the admin path — pointing it at the public API is
+// exactly the state this contract exists to prevent. A stack on `own` must name
+// none: the edge's boot guard does not require it there, and a named address is
+// still wired (provider_road_posture_test.go).
 func TestStacks_DeclareIntrospectionEndpoint(t *testing.T) {
-	for name, stack := range deployableStacks(t) {
-		t.Run(name, func(t *testing.T) {
-			got, ok := resolveStack(t, stack, "hydra", "introspectionUrl")
-			if !ok {
-				t.Fatalf("%s (%s): api-gateway.hydra.introspectionUrl is not declared — the "+
-					"revocation check has nowhere to ask, so every token stays good until it "+
-					"expires no matter what is revoked",
-					name, strings.Join(stack, " + "))
-			}
-			if err := checkAdminEndpoint(got, introspectionAdminPath); err != nil {
-				t.Errorf("%s: api-gateway.hydra.introspectionUrl %v", name, err)
-			}
-		})
-	}
+	testStacksDeclareProviderRoad(t, introspectionRoad, introspectionAdminPath)
 }
 
 // And the admin base the logout handler needs to end the provider-side session.
-// Unset, the session kill is skipped and signing out leaves the session alive.
+// Unset on `external`, the session kill is skipped and signing out leaves the
+// session alive; on `own` there is no provider-side session to end.
 func TestStacks_DeclareAdminEndpoint(t *testing.T) {
-	for name, stack := range deployableStacks(t) {
+	testStacksDeclareProviderRoad(t, adminRoad, "")
+}
+
+// testStacksDeclareProviderRoad — общее тело двух проб выше: наличие адреса
+// судится посадкой края, форма объявленного — одинаково на обеих посадках.
+func testStacksDeclareProviderRoad(t *testing.T, k providerRoadKnob, wantPath string) {
+	t.Helper()
+	stacks := deployableStacks(t)
+	census := postureCensus{}
+	for _, name := range sortedStackNames(stacks) {
+		stack := stacks[name]
+		posture := stackPosture(t, stack, k.half)
+		census.add(posture)
 		t.Run(name, func(t *testing.T) {
-			got, ok := resolveStack(t, stack, "hydra", "adminUrl")
-			if !ok {
-				t.Fatalf("%s (%s): api-gateway.hydra.adminUrl is not declared — signing out "+
-					"then leaves the session alive at the identity provider",
-					name, strings.Join(stack, " + "))
+			got, _ := scalarAt(foldStack(t, stack), k.path...)
+			if f := roadPresenceFinding(name, k, posture, got); f != "" {
+				t.Fatalf("%s (%s)", f, strings.Join(stack, " + "))
 			}
-			if err := checkAdminEndpoint(got, ""); err != nil {
-				t.Errorf("%s: api-gateway.hydra.adminUrl %v", name, err)
+			if strings.TrimSpace(got) == "" {
+				return
+			}
+			if err := checkAdminEndpoint(got, wantPath); err != nil {
+				t.Errorf("%s: %s %v", name, k.label, err)
 			}
 		})
 	}
+	t.Logf("перепись %s по посадке %s: %s", k.label, k.half.who, census)
 }
 
 // The chart must still emit the environment variables these values drive. A

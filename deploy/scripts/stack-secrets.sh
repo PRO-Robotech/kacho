@@ -280,7 +280,6 @@ producer_of() {
     "$RELEASE"-pg-*)          echo "учётные данные базы (ключи password + postgres-password) — профиль объявляет их existingSecret, на площадке заводит оператор" ;;
     zot-auth)                 echo "учётные данные хранилища слоёв (username + password + htpasswd, bcrypt того же пароля) — на площадке заводит оператор" ;;
     kratos-selfservice-ui-cookie-secret) echo "подписной секрет печенья консоли входа (ключ cookieSecret, 32 знака) — на площадке заводит оператор" ;;
-    "$RELEASE"-hydra-stand|"$RELEASE"-kratos-stand) echo "секрет поставщика ВНЕ helm (ключи dsn + величины сессий) — вторая законная форма из identity-session-secret-guard; на площадке заводит слой площадки" ;;
     *)                        echo "" ;;
   esac
 }
@@ -346,49 +345,6 @@ print(u + ":" + bcrypt.hashpw(p.encode(), bcrypt.gensalt(prefix=b"2b")).decode()
 PY
 }
 
-# pg_facts <имя набора> — «<пользователь> <база> <режим шифрования>», прочитанные
-# из РЕНДЕРА того же применения. Выписывать их здесь значило бы завести вторую
-# копию того, что объявляет профиль, и копия разошлась бы молча.
-pg_facts() {
-  printf '%s\n' "$RENDER" | python3 -c '
-import sys, yaml
-want=sys.argv[1]
-for d in yaml.safe_load_all(sys.stdin):
-    if not isinstance(d, dict) or d.get("kind")!="StatefulSet": continue
-    if d["metadata"]["name"]!=want: continue
-    env={}
-    for c in (d["spec"]["template"]["spec"].get("containers") or []):
-        for e in (c.get("env") or []):
-            if e.get("value") is not None: env[e["name"]]=e["value"]
-    tls = str(env.get("POSTGRESQL_ENABLE_TLS","no")).lower()=="yes"
-    print(env.get("POSTGRES_USER",""), env.get("POSTGRES_DATABASE",""), "require" if tls else "disable")
-    break
-' "$1"
-}
-
-# ory_stand_secret <имя секрета> <имя набора базы> <ключ величины сессии>…
-# Строка соединения и величины сессий чеканятся ОДНИМ объектом: чарт поставщика,
-# переведённый на секрет вне helm, перенаправляет на него ВСЕ ключи.
-ory_stand_secret() {
-  local name="$1" pg="$2"; shift 2
-  produce "$pg" || return 1
-  local pass user db mode facts
-  pass="$(kubectl -n "$NS" get secret "$pg" -o jsonpath='{.data.password}' | base64 -d)" || return 1
-  [ -n "$pass" ] || { warn "у секрета $pg нет ключа password — строку соединения собрать не из чего"; return 1; }
-  facts="$(pg_facts "$pg")"
-  user="$(printf '%s' "$facts" | awk '{print $1}')"
-  db="$(printf '%s' "$facts" | awk '{print $2}')"
-  mode="$(printf '%s' "$facts" | awk '{print $3}')"
-  [ -n "$user" ] && [ -n "$db" ] && [ -n "$mode" ] || {
-    warn "рендер не назвал пользователя/базу/режим для $pg — собирать строку соединения вслепую нельзя"
-    return 1
-  }
-  local kv=("dsn=postgres://$user:$pass@$pg:5432/$db?sslmode=$mode")
-  local k
-  for k in "$@"; do kv+=("$k=$(openssl rand -hex 16)"); done
-  create_generic "$name" "${kv[@]}"
-}
-
 seed_ran=0
 produce() {
   local name="$1"
@@ -423,12 +379,6 @@ produce() {
       ;;
     kratos-selfservice-ui-cookie-secret)
       create_generic "$name" "cookieSecret=$(openssl rand -hex 16)"
-      ;;
-    "$RELEASE"-hydra-stand)
-      ory_stand_secret "$name" "$RELEASE-pg-hydra" secretsSystem secretsCookie
-      ;;
-    "$RELEASE"-kratos-stand)
-      ory_stand_secret "$name" "$RELEASE-pg-kratos" secretsDefault secretsCookie secretsCipher
       ;;
     *) return 1 ;;
   esac
