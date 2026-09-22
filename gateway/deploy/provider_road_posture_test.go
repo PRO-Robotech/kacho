@@ -54,7 +54,6 @@ package deploy_test
 import (
 	"fmt"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 
@@ -287,15 +286,4 @@ func (c *postureCensus) add(r postureReading) {
 func (c postureCensus) String() string {
 	return fmt.Sprintf("стеков %d · посадка external %d (из них наследуют умолчание чарта %d) · "+
 		"own %d · посадку судить нельзя %d", c.Stacks, c.External, c.Inherited, c.Own, c.Unjudged)
-}
-
-// sortedStackNames — имена цепочек в устойчивом порядке: обход карты дал бы
-// вывод, разный от прогона к прогону.
-func sortedStackNames(stacks map[string][]string) []string {
-	names := make([]string, 0, len(stacks))
-	for name := range stacks {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
 }

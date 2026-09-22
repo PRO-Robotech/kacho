@@ -31,6 +31,7 @@ package deploy_test
 import (
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -310,7 +311,14 @@ var adminHopConsumers = map[string][]string{
 // fail a handshake — it fails to resolve. That is the intended shape: loud and
 // immediate, rather than a timeout against something that looks like an address.
 func TestStacks_AdminHopConsumersAgreeWithTheListener(t *testing.T) {
-	for name, stack := range deployableStacks(t) {
+	stacks := deployableStacks(t)
+	labels := make([]string, 0, len(adminHopConsumers))
+	for label := range adminHopConsumers {
+		labels = append(labels, label)
+	}
+	sort.Strings(labels)
+	for _, name := range sortedStackNames(stacks) {
+		stack := stacks[name]
 		t.Run(name, func(t *testing.T) {
 			on, _ := resolveStackBoolAt(t, stack, "mtls", "hydraAdminTls", "enabled")
 			if !on {
@@ -318,8 +326,8 @@ func TestStacks_AdminHopConsumersAgreeWithTheListener(t *testing.T) {
 					"it over http, and the transport gates above cover whether it may stay that way", name)
 			}
 			checked := 0
-			for label, path := range adminHopConsumers {
-				got, ok := resolveStackAt(t, stack, path...)
+			for _, label := range labels {
+				got, ok := resolveStackAt(t, stack, adminHopConsumers[label]...)
 				if !ok {
 					continue // a consumer this stack does not deploy or does not name
 				}
@@ -407,7 +415,9 @@ func TestStacks_OnlyNamedDevStacksAreDevClass(t *testing.T) {
 		t.Fatal("набор стеков пуст — «все боевые» здесь означало бы «ни одного не смотрели»")
 	}
 	devFound := 0
-	for name, stack := range deployableStacks(t) {
+	stacks := deployableStacks(t)
+	for _, name := range sortedStackNames(stacks) {
+		stack := stacks[name]
 		production := stackIsProductionClass(t, stack)
 		if devClassStackNames[name] {
 			devFound++
