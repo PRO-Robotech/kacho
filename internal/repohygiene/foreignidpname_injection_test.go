@@ -511,3 +511,37 @@ func ownClaims() {}
 		t.Errorf("текст находки не называет ревизии записи: %q", findings[0].Detail)
 	}
 }
+
+// TestForeignIDPNameInjection_UpperCaseRevisionIsSilent — РЕГИСТР: пара
+// одно-фактна, обе строки суть один и тот же объект, различает их только
+// написание. Система контроля версий принимает оба — гейт, отвергающий то, что
+// инструмент принимает, красит исправную запись.
+func TestForeignIDPNameInjection_UpperCaseRevisionIsSilent(t *testing.T) {
+	t.Parallel()
+	const lower = "5b20df5c638"
+	upper := strings.ToUpper(lower)
+	resolve := func(rev string) error {
+		if strings.EqualFold(rev, lower) {
+			return nil
+		}
+		return fmt.Errorf("объекта %s нет", rev)
+	}
+	for _, rev := range []string{lower, upper} {
+		if gaps := ForeignIDPNameProvenanceGaps(injLedgerMeasured(rev), resolve); len(gaps) != 0 {
+			t.Errorf("ревизия %q сочтена находкой: %v", rev, gaps)
+		}
+	}
+}
+
+// TestForeignIDPNameInjection_TooShortRevisionIsFound — НИЖНИЙ ПРЕДЕЛ, следствие
+// названо прямо и закреплено: шестизначная запись даёт находку, хотя система
+// контроля версий её принимает. Это размен против заглушек вида `deface`.
+func TestForeignIDPNameInjection_TooShortRevisionIsFound(t *testing.T) {
+	t.Parallel()
+	for _, v := range []string{"5b20df", "deface", "decade", "facade", "beef"} {
+		if gaps := ForeignIDPNameProvenanceGaps(injLedgerMeasured(v), injResolveAll); len(gaps) != 1 {
+			t.Errorf("значение %q длиной %d принято за ревизию: пропусков %d",
+				v, len(v), len(gaps))
+		}
+	}
+}

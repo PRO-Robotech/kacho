@@ -4,8 +4,10 @@
 package repohygiene
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -233,23 +235,61 @@ func TestForeignIDPNameLedgerPremiseHolds(t *testing.T) {
 	}
 }
 
-// foreignIDPRevisionResolver — РАЗРЕШИТЕЛЬ РЕВИЗИИ: спрашивает систему
-// контроля версий, знает ли это дерево названный объект-коммит.
+// foreignIDPRevisionResolver — РАЗРЕШИТЕЛЬ РЕВИЗИИ для этого дерева.
+func foreignIDPRevisionResolver(t *testing.T) ForeignIDPNameRevisionResolver {
+	t.Helper()
+	return foreignIDPRevisionResolverAt(repoRoot(t))
+}
+
+// foreignIDPRevisionResolverAt — спрашивает систему контроля версий, знает ли
+// дерево по этому пути названный объект-коммит.
 //
 // Форма без разрешимости не судит ничего: выдуманный набор шестнадцатеричных
 // знаков и ревизия ЧУЖОГО дерева выглядят как ревизия и ею не являются. Ровно
 // это и есть та ложь, которой красное полосы началось, — число с чужой головы,
 // объявленное снятым здесь.
-func foreignIDPRevisionResolver(t *testing.T) ForeignIDPNameRevisionResolver {
-	t.Helper()
-	root := repoRoot(t)
+//
+// ПРИЧИН ОТКАЗА ТРИ, И ОНИ НЕ ОДНО И ТО ЖЕ. Направление у всех одно —
+// fail-closed, — но чинятся они по-разному, и одна формулировка на всех
+// превращает «дерево не спросили» в «число не подтвердилось»:
+//
+//	объекта нет      — ведомость называет то, чего в дереве не существует;
+//	                   чинится записью в ведомости. Признак узкий: код возврата
+//	                   1 при молчаливом `--verify --quiet`;
+//	дерево не спрошено — каталог не репозиторий, клон мелкий, инструмента нет
+//	                   вовсе; чинится рабочим каталогом или глубиной клона.
+//	                   Сюда же намеренно отнесён отсутствующий инструмент:
+//	                   создать это состояние пробой нечем, а исход тот же —
+//	                   мы НЕ СПРОСИЛИ, и «не подтвердилось» было бы ложью.
+func foreignIDPRevisionResolverAt(root string) ForeignIDPNameRevisionResolver {
 	return func(rev string) error {
-		if err := gitenv.Command(root, "rev-parse", "--verify", "--quiet",
-			rev+"^{commit}").Run(); err != nil {
-			return fmt.Errorf("объекта-коммита %s в этом дереве нет: %w", rev, err)
+		err := gitenv.Command(root, "rev-parse", "--verify", "--quiet", rev+"^{commit}").Run()
+		if err == nil {
+			return nil
 		}
-		return nil
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			return fmt.Errorf("дерево не знает объекта-коммита %s", rev)
+		}
+		return fmt.Errorf("дерево не спрошено о ревизии %s — система контроля версий "+
+			"не ответила (%w); это НЕ «число не подтвердилось», а «мы не спросили», "+
+			"и чинится рабочим каталогом либо глубиной клона", rev, err)
 	}
+}
+
+// foreignIDPHeadRevision — голова этого дерева сокращением в одиннадцать знаков:
+// законный близнец для отрицательных проб разрешителя.
+func foreignIDPHeadRevision(t *testing.T) string {
+	t.Helper()
+	out, err := gitenv.Command(repoRoot(t), "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatalf("голова дерева не установлена: %v — близнец взять неоткуда", err)
+	}
+	full := strings.TrimSpace(string(out))
+	if len(full) < 11 {
+		t.Fatalf("голова дерева записана как %q — сократить до одиннадцати нечем", full)
+	}
+	return full[:11]
 }
 
 // TestForeignIDPNameSkipRulesHaveASubject — у каждого правила отсева есть что
@@ -282,5 +322,72 @@ func TestForeignIDPNameSkipRulesHaveASubject(t *testing.T) {
 		if strings.TrimSpace(r.Why) == "" {
 			t.Errorf("правило отсева %q без основания — сужение обхода без довода", r.Name)
 		}
+	}
+}
+
+// TestForeignIDPRevisionResolverRefusesAnAbsentObject — ОТРИЦАТЕЛЬНАЯ ВЕТВЬ
+// НАСТОЯЩЕГО разрешителя.
+//
+// На живой ведомости он зовётся только положительно: все её ревизии разрешимы,
+// и текст, который увидит читающий красное, не исполняется ни разу. Инъекция
+// рядом гоняет СИНТЕТИЧЕСКИЙ разрешитель и об этом тексте ничего не говорит.
+//
+// Текст находки объявлен на этой полосе частью свойства — значит и здесь он
+// доказывается исполнением, а не чтением.
+func TestForeignIDPRevisionResolverRefusesAnAbsentObject(t *testing.T) {
+	t.Parallel()
+	resolve := foreignIDPRevisionResolver(t)
+
+	// Законный близнец: голова этого дерева разрешается.
+	head := foreignIDPHeadRevision(t)
+	if err := resolve(head); err != nil {
+		t.Fatalf("голова дерева %s не разрешилась: %v — близнец не зелёный, "+
+			"и отказ ниже падал бы на чём угодно", head, err)
+	}
+
+	// Дефект: форма та же, объекта нет.
+	const absent = "0123456789a"
+	if len(absent) != len(head) {
+		t.Fatalf("концы пары разной длины (%d против %d) — менялся бы не один факт",
+			len(absent), len(head))
+	}
+	err := resolve(absent)
+	if err == nil {
+		t.Fatal("ревизия, которой в дереве нет, разрешена — отказ fail-open")
+	}
+	t.Logf("текст отказа: %v", err)
+	if !strings.Contains(err.Error(), absent) {
+		t.Errorf("отказ не называет ревизии: %v", err)
+	}
+	if !strings.Contains(err.Error(), "не знает") {
+		t.Errorf("отказ не называет ПРИЧИНЫ «объекта нет»: %v", err)
+	}
+}
+
+// TestForeignIDPRevisionResolverSeparatesItsCauses — ПРИЧИН ТРИ, и одна на всех
+// формулировка превращает «дерево не спросили» в «числа не подтвердились».
+//
+// Направление у обеих ветвей одно — fail-closed, — но чинятся они по-разному:
+// отсутствующий объект правится записью в ведомости, неспрошенное дерево —
+// глубиной клона или рабочим каталогом. Третья причина (инструмента нет вовсе)
+// неотличима здесь от второй намеренно: создать её пробой нечем, и она сказана
+// той же формулировкой «дерево не спрошено».
+func TestForeignIDPRevisionResolverSeparatesItsCauses(t *testing.T) {
+	t.Parallel()
+	head := foreignIDPHeadRevision(t)
+
+	absent := foreignIDPRevisionResolverAt(repoRoot(t))("0123456789a")
+	notree := foreignIDPRevisionResolverAt(t.TempDir())(head)
+	if absent == nil || notree == nil {
+		t.Fatalf("обе ветви обязаны отказывать: объект %v, дерево %v", absent, notree)
+	}
+	t.Logf("объекта нет:      %v", absent)
+	t.Logf("дерево не спрошено: %v", notree)
+	if absent.Error() == notree.Error() {
+		t.Fatalf("две разные причины дали один текст %q — читающий не узнает, "+
+			"чинить ведомость или рабочий каталог", absent.Error())
+	}
+	if !strings.Contains(notree.Error(), "не спрошено") {
+		t.Errorf("неспрошенное дерево названо не своей причиной: %v", notree)
 	}
 }
