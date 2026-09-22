@@ -136,6 +136,7 @@ scripts/release/assert-pin-reachable-inject.sh
 scripts/release/assert-trunk-green-inject.sh
 scripts/release/probe-published-inject.sh
 scripts/release/publish-service-artifact-inject.sh
+scripts/release/publish-service-artifact-probe-hermetic-inject.sh
 scripts/release/publish-tag-inject.sh
 scripts/release/publish-version-inject.sh
 scripts/release/summarize-run-inject.sh
