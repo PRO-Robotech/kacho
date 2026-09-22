@@ -83,7 +83,7 @@ if [ ! -t 0 ]; then
     push_input="$(cat)"
 fi
 # Имя удалённого репозитория git передаёт первым аргументом; оно нужно строке
-# постусловия в конце, а `$1` к тому месту уже перекрыт функциями.
+# постусловия в конце и берётся здесь, рядом со входом отправки.
 PUSH_REMOTE_NAME="${1:-origin}"
 
 zero_sha="0000000000000000000000000000000000000000"
@@ -505,7 +505,7 @@ announce_runs_this_push_will_cancel
 # сервере равна отправленной sha. Печать, а не код: код у читателя могут отнять.
 # Причину обрыва лечит keepalive клона (`scripts/hooks/install.sh`).
 postcondition_note() {
-    local remote="${PUSH_REMOTE_NAME:-origin}" lref lsha rref rsha
+    local remote="${PUSH_REMOTE_NAME:-origin}" _lref lsha rref _rsha
     echo "" >&2
     echo "pre-push: код этого хука — исход ПРОВЕРОК, а не отправки." >&2
     if [ -z "$push_input" ]; then
@@ -514,7 +514,7 @@ postcondition_note() {
         return 0
     fi
     echo "  Отправка состоялась, только если ссылка на сервере равна отправленной sha:" >&2
-    while read -r lref lsha rref rsha; do
+    while read -r _lref lsha rref _rsha; do
         [ -n "${rref:-}" ] || continue
         [ -n "${lsha:-}" ] && [ "$lsha" != "$zero_sha" ] || continue
         echo "    git ls-remote $remote $rref   # ожидается $lsha" >&2
