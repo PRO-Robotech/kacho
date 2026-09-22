@@ -341,23 +341,65 @@ func TestGitRevRemedyVocabularyHasASingleSource(t *testing.T) {
 	}
 }
 
-// repohygienePackageWalk — РАЗБОР ВСЕГО ПАКЕТА, а не одного файла.
+// repohygienePackageName — имя пакета, который этот обход судит.
 //
-// Единица обхода — КАТАЛОГ ПАКЕТА. Константа пакетного уровня видна всему
-// пакету и объявляется в ЛЮБОМ его файле, поэтому перепись, читающая один файл,
-// верна ровно до той минуты, пока автор пятой клаузы не положил её соседним
-// файлом того же пакета: «за пределами разбираемого файла находок ноль» было бы
-// свойством СОВПАДЕНИЯ, а не построения. Измерено инъекцией 2026-09-22: пятая
-// клауза, объявленная в gatecarrierremoval.go, оставила обе переписи зелёными.
+// Отдельным именем, потому что оно стоит в ТРЁХ ролях разом: отбор файлов,
+// текст переписи и текст отказа. Выписанное трижды, оно разошлось бы молча.
+const repohygienePackageName = "repohygiene"
+
+// repohygienePackageCensus — что обход УВИДЕЛ и что из увиденного СУДИЛ.
 //
-// Дерево целиком единицей НЕ является: `gitRevRemedy*` есть идентификатор
-// пакетного уровня, и одноимённая константа чужого пакета — другой предмет.
-// Обход дерева дал бы ЛОЖНЫЕ находки, а не более полный счёт, — расширение
-// объёма без смены референта ровно так и портит число.
+// Две величины, а не одна, и это не педантизм: каталог и пакет — РАЗНЫЕ
+// единицы, и пока перепись печатала одно число под ярлыком «файлов пакета», их
+// расхождение было невидимо. Здесь оно проявляется само, без отдельной
+// проверки: 832 в каталоге против 813 в пакете видно с первой строки лога.
+type repohygienePackageCensus struct {
+	// filesInDir — файлов `.go` в каталоге, сколько их ни есть.
+	filesInDir int
+	// filesInPkg — из них объявляющих [repohygienePackageName]. Только они
+	// доходят до судьи.
+	filesInPkg int
+	// foreignPkgs — чужие пакеты ТОГО ЖЕ каталога: имя → файлов. Печатается
+	// всегда: «чужих ноль» обязано быть отличимо от «чужих не считали».
+	foreignPkgs map[string]int
+}
+
+func (c repohygienePackageCensus) String() string {
+	return fmt.Sprintf("файлов .go в каталоге %d · из них пакета %q %d · чужих пакетов "+
+		"того же каталога %d %v", c.filesInDir, repohygienePackageName, c.filesInPkg,
+		len(c.foreignPkgs), c.foreignPkgs)
+}
+
+// repohygienePackageWalk — РАЗБОР ВСЕГО ПАКЕТА, а не одного файла и не всего
+// каталога.
+//
+// # Единица обхода — ПАКЕТ
+//
+// Константа пакетного уровня видна всему пакету и объявляется в ЛЮБОМ его
+// файле, поэтому перепись, читающая один файл, верна ровно до той минуты, пока
+// автор пятой клаузы не положил её соседним файлом: «за пределами разбираемого
+// файла находок ноль» было бы свойством СОВПАДЕНИЯ, а не построения. Измерено
+// инъекцией 2026-09-22: пятая клауза в gatecarrierremoval.go оставила обе
+// переписи зелёными.
+//
+// Ровно тот же довод отсекает и ЧУЖОЙ ПАКЕТ ИЗ ТОГО ЖЕ КАТАЛОГА. Рядом с
+// `package repohygiene` в этом каталоге лежит `package repohygiene_test`
+// (измерено: 813 файлов против 19), и его объявления этому пакету невидимы —
+// одноимённая константа там ДРУГОЙ ПРЕДМЕТ, а вызов оттуда до неэкспортированного
+// дома не дотянется вовсе. Прежняя редакция отсекала подкаталоги и не отсекала
+// чужой пакет, хотя довод один: судящая перепись давала ЛОЖНУЮ находку на
+// константе чужого пакета, а гейт дома предписывал ремонт, неисполнимый по
+// построению (`undefined: gitRevParentArgv`) — измерено обеими инъекциями
+// 2026-09-22. «Чужого не попалось» было свойством совпадения: сегодня таких имён
+// в тех 19 файлах просто нет.
 //
 // Подкаталоги пропускаются по той же причине: `internal/repohygiene/artifactgates`
-// есть отдельный пакет, и его объявления этому пакету не видны.
-func repohygienePackageWalk(t *testing.T, visit func(path string, fset *token.FileSet, file *ast.File)) int {
+// есть отдельный пакет.
+//
+// Дерево целиком единицей тем более не является: одноимённая константа чужого
+// пакета — другой предмет, и обход дерева дал бы ложные находки, а не более
+// полный счёт.
+func repohygienePackageWalk(t *testing.T, visit func(path string, fset *token.FileSet, file *ast.File)) repohygienePackageCensus {
 	t.Helper()
 
 	dir := filepath.Join(repoRoot(t), "internal", "repohygiene")
@@ -367,7 +409,7 @@ func repohygienePackageWalk(t *testing.T, visit func(path string, fset *token.Fi
 	}
 
 	fset := token.NewFileSet()
-	parsed := 0
+	c := repohygienePackageCensus{foreignPkgs: map[string]int{}}
 	for _, e := range ents {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") {
 			continue
@@ -377,19 +419,29 @@ func repohygienePackageWalk(t *testing.T, visit func(path string, fset *token.Fi
 		if err != nil {
 			t.Fatalf("разбор %s: %v — перепись беспредметна", path, err)
 		}
-		parsed++
+		c.filesInDir++
+		if file.Name == nil || file.Name.Name != repohygienePackageName {
+			name := "<без объявления>"
+			if file.Name != nil {
+				name = file.Name.Name
+			}
+			c.foreignPkgs[name]++
+			continue
+		}
+		c.filesInPkg++
 		visit(path, fset, file)
 	}
 
-	// ПРЕДПОСЫЛКА ОБХОДА. Файлов в пакете заведомо больше одного; единица
+	// ПРЕДПОСЫЛКА ОБХОДА. Файлов В ПАКЕТЕ заведомо больше одного; единица
 	// означала бы, что обход вернулся к чтению единственного дома — то есть
 	// ровно к той слепоте, ради снятия которой он заведён, — и «ноль находок»
-	// снова стало бы «мы не смотрели».
-	if parsed <= 1 {
-		t.Fatalf("обход пакета %s дал файлов %d — не больше, чем давало чтение одного "+
-			"дома; это отказ обхода, а не пустой успех", dir, parsed)
+	// снова стало бы «мы не смотрели». Считается ПОСЛЕ отбора: до отбора это
+	// число о каталоге, а судится пакет.
+	if c.filesInPkg <= 1 {
+		t.Fatalf("обход пакета %s дал файлов пакета %d (%s) — не больше, чем давало "+
+			"чтение одного дома; это отказ обхода, а не пустой успех", dir, c.filesInPkg, c)
 	}
-	return parsed
+	return c
 }
 
 // TestGitRevRemedyDictionaryIsCountedFromItsDeclarations — ПЕРЕЧЕНЬ И
@@ -404,15 +456,18 @@ func repohygienePackageWalk(t *testing.T, visit func(path string, fset *token.Fi
 // а не поиском подстроки: комментарий, называющий имя клаузы, законен и за
 // объявление не проходит.
 //
-// Разбор идёт по ВСЕМУ ПАКЕТУ (см. [repohygienePackageWalk]). Прежняя редакция
-// читала один файл, и её заголовок обещал шире тела: пятая клауза, объявленная
-// соседним файлом того же пакета, проходила молча — измерено инъекцией
-// 2026-09-22, обе переписи напечатали «4 · 4» и остались зелёными.
+// Разбор идёт по ВСЕМУ ПАКЕТУ и только по нему (см. [repohygienePackageWalk]).
+// Первая редакция читала один файл, и её заголовок обещал шире тела: пятая
+// клауза, объявленная соседним файлом того же пакета, проходила молча —
+// измерено инъекцией, обе переписи напечатали «4 · 4». Вторая читала весь
+// КАТАЛОГ, и тело обещало шире предмета: константа чужого пакета
+// (`repohygiene_test`) давала ЛОЖНУЮ находку — словарём она не является и в
+// [gitRevRemedies] попасть не может by construction.
 func TestGitRevRemedyDictionaryIsCountedFromItsDeclarations(t *testing.T) {
 	t.Parallel()
 
 	names := map[string]string{}
-	parsed := repohygienePackageWalk(t, func(path string, fset *token.FileSet, file *ast.File) {
+	census := repohygienePackageWalk(t, func(path string, fset *token.FileSet, file *ast.File) {
 		for _, decl := range file.Decls {
 			gen, ok := decl.(*ast.GenDecl)
 			if !ok || gen.Tok != token.CONST {
@@ -437,12 +492,12 @@ func TestGitRevRemedyDictionaryIsCountedFromItsDeclarations(t *testing.T) {
 	// словаря переехал либо разбор перестал его видеть, — и то и другое находка,
 	// а не повод молчать.
 	if len(names) == 0 {
-		t.Fatalf("в пакете (разобрано файлов %d) не нашлось ни одного объявления "+
-			"`gitRevRemedy*` — дом словаря переехал либо разбор ослеп; молчание здесь "+
-			"означало бы «не смотрели»", parsed)
+		t.Fatalf("в пакете (%s) не нашлось ни одного объявления `gitRevRemedy*` — дом "+
+			"словаря переехал либо разбор ослеп; молчание здесь означало бы "+
+			"«не смотрели»", census)
 	}
-	t.Logf("перепись: файлов пакета разобрано %d · объявлений `gitRevRemedy*` %d %v · "+
-		"строк перечня %d", parsed, len(names), names, len(gitRevRemedies()))
+	t.Logf("перепись: %s · объявлений `gitRevRemedy*` %d %v · строк перечня %d",
+		census, len(names), names, len(gitRevRemedies()))
 
 	if len(names) != len(gitRevRemedies()) {
 		t.Errorf("объявлено констант %d, а перечень отдаёт %d — два места об одном "+

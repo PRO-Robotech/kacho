@@ -71,7 +71,7 @@ const (
 // выражает — два боевых зовущих при нуле пробных дали бы то же «2».
 func packageCallSites(t *testing.T, name string) (prod, test []string) {
 	t.Helper()
-	repohygienePackageWalk(t, func(path string, fset *token.FileSet, file *ast.File) {
+	_ = repohygienePackageWalk(t, func(path string, fset *token.FileSet, file *ast.File) {
 		ast.Inspect(file, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
 			if !ok {
@@ -100,7 +100,7 @@ func TestGitRevParentQuestionHasASingleArgvHome(t *testing.T) {
 	var homes, literalAskers, prodAskers, probeAskers []string
 	commandCalls := 0
 
-	parsed := repohygienePackageWalk(t, func(path string, fset *token.FileSet, file *ast.File) {
+	census := repohygienePackageWalk(t, func(path string, fset *token.FileSet, file *ast.File) {
 		base := filepath.Base(path)
 		ast.Inspect(file, func(n ast.Node) bool {
 			switch x := n.(type) {
@@ -160,14 +160,14 @@ func TestGitRevParentQuestionHasASingleArgvHome(t *testing.T) {
 	// Ноль вызовов означает, что разбор ослеп либо пакет переехал, — и тогда
 	// «литеральных спрашивающих ноль» есть «мы не смотрели», а не находка.
 	if commandCalls == 0 {
-		t.Fatalf("обход %d файлов пакета не нашёл НИ ОДНОГО вызова `gitenv.Command` — "+
-			"распознаватель слеп; молчание здесь означало бы «не смотрели»", parsed)
+		t.Fatalf("обход пакета (%s) не нашёл НИ ОДНОГО вызова `gitenv.Command` — "+
+			"распознаватель слеп; молчание здесь означало бы «не смотрели»", census)
 	}
 
-	t.Logf("перепись: файлов пакета разобрано %d · вызовов `gitenv.Command` %d · "+
+	t.Logf("перепись: %s · вызовов `gitenv.Command` %d · "+
 		"домов `%s` %d %v · спрашивающих литералами %q+%q %d %v · спрашивающих ИЗ "+
 		"ДОМА: боевых %d %v, пробных %d %v",
-		parsed, commandCalls, gitRevParentHome, len(homes), homes,
+		census, commandCalls, gitRevParentHome, len(homes), homes,
 		gitRevParentVerb, gitRevParentObject, len(literalAskers), literalAskers,
 		len(prodAskers), prodAskers, len(probeAskers), probeAskers)
 
