@@ -194,7 +194,7 @@ func TestEdgeSurfaceSplitsTenantTrafficFromTheHostSurface(t *testing.T) {
 //	  перестало бы приниматься для ВСЕХ.
 func TestExternalAdmissionSitsAfterIdentityAndBeforeAuthorization(t *testing.T) {
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, "main.go", nil, parser.SkipObjectResolution)
+	f, err := parser.ParseFile(fset, compositionRootLabel, compositionRoot(t), parser.SkipObjectResolution)
 	require.NoError(t, err, "композиционный корень обязан разбираться")
 
 	// Позиция ВЫЗОВА, а не упоминания: объявление и комментарий вызовом не

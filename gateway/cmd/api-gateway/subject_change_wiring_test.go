@@ -4,7 +4,6 @@
 package main
 
 import (
-	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -45,12 +44,7 @@ func collapse(src string) string {
 // Судится текст композиционного корня, а не поведение: поднять край целиком ради
 // одной строки дороже, чем прочитать её, и предмет здесь — именно строка.
 func TestSubjectChangeReaderIsWiredToTheVerdictCache(t *testing.T) {
-	src, err := os.ReadFile("main.go")
-	if err != nil {
-		t.Fatalf("чтение композиционного корня: %v", err)
-	}
-	root := string(src)
-	flat := collapse(root)
+	flat := collapse(compositionRoot(t))
 
 	// Читатель собирается ПРОДОВОЙ функцией (`buildSubjectChangeWatcher`), а не
 	// конструктором напрямую: только так провязка закрывателя потоков попадает
@@ -83,12 +77,16 @@ func TestSubjectChangeReaderIsWiredToTheVerdictCache(t *testing.T) {
 
 	// И обратное: толчка от владельца больше нет. Появись он снова, ребро из
 	// листа обратно к потребителю вернулось бы вместе с ним.
+	// ОТРИЦАНИЕ читает файл ЦЕЛИКОМ: сузить корпус отрицанию значит ослабить
+	// его молча — вернувшееся объявление в непозванной функции есть такое же
+	// возвращение обратного ребра, как позванное.
+	verbatim := collapse(compositionRootVerbatim(t))
 	for _, gone := range []string{
 		"InternalAuthzCacheService",
 		"startInternalGRPCListener",
 		"AsInvalidator",
 	} {
-		if strings.Contains(flat, gone) {
+		if strings.Contains(verbatim, gone) {
 			t.Errorf("композиционный корень снова знает %q: обратное ребро "+
 				"владелец→потребитель вернулось", gone)
 		}

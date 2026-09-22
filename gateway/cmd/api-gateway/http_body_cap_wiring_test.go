@@ -37,15 +37,9 @@ import (
 // (и его удаление) красит гейт и называет обе координаты; текущий порядок он
 // пропускает молча.
 func TestHTTPBodyCapIsOutermostBodyReader(t *testing.T) {
-	root := gatewayTreeRootForWiring(t)
-	rel := "cmd/api-gateway/main.go"
-	body, err := os.ReadFile(filepath.Join(root, rel))
-	if err != nil {
-		t.Fatalf("чтение %s: %v", rel, err)
-	}
-
+	const rel = "код композиционного корня, достижимый от main()"
 	fset := token.NewFileSet()
-	file, parseErr := parser.ParseFile(fset, rel, body, 0)
+	file, parseErr := parser.ParseFile(fset, rel, compositionRoot(t), 0)
 	if parseErr != nil {
 		t.Fatalf("разбор %s: %v", rel, parseErr)
 	}

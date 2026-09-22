@@ -26,7 +26,7 @@ import (
 // rootFile parses the composition root.
 func rootFile(t *testing.T) *ast.File {
 	t.Helper()
-	f, err := parser.ParseFile(token.NewFileSet(), "main.go", nil, 0)
+	f, err := parser.ParseFile(token.NewFileSet(), compositionRootLabel, compositionRoot(t), 0)
 	if err != nil {
 		t.Fatalf("composition root must parse: %v", err)
 	}

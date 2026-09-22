@@ -33,9 +33,9 @@ import (
 func parseMainFile(t *testing.T) (*token.FileSet, *ast.File) {
 	t.Helper()
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, "main.go", nil, parser.SkipObjectResolution)
+	f, err := parser.ParseFile(fset, compositionRootLabel, compositionRoot(t), parser.SkipObjectResolution)
 	if err != nil {
-		t.Fatalf("разбор main.go: %v", err)
+		t.Fatalf("разбор композиционного корня: %v", err)
 	}
 	return fset, f
 }

@@ -5,7 +5,6 @@ package main
 
 import (
 	"errors"
-	"os"
 	"regexp"
 	"testing"
 
@@ -67,11 +66,9 @@ func TestTokenVerifier_ConstructedVerifierPassesEverywhere(t *testing.T) {
 // утверждается там, где живёт: в исходнике композиционного корня — ровно как у
 // соседнего admin_hop_wiring_test.go.
 func TestCompositionRoot_FeedsTheVerifierErrorToTheGuard(t *testing.T) {
-	b, err := os.ReadFile("main.go")
-	require.NoError(t, err)
 	require.Regexp(t,
 		regexp.MustCompile(`validateProductionTokenVerifierConfig\(\s*cfg\.AppEnv,\s*jverr\s*\)`),
-		string(b),
+		compositionRoot(t),
 		"композиционный корень обязан отдать стражу ИМЕННО ошибку сборки проверяющего подпись; "+
 			"страж, которому её не передали, зелен всегда")
 }

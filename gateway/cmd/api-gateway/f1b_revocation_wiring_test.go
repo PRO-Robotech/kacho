@@ -107,7 +107,7 @@ func enclosingIfCond(fset *token.FileSet, f *ast.File, pos token.Pos) string {
 // другим.
 func TestF1b_OurRevocationReaderIsWiredOnTheIssuerRecordAlone(t *testing.T) {
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, "main.go", nil, 0)
+	f, err := parser.ParseFile(fset, compositionRootLabel, compositionRoot(t), 0)
 	if err != nil {
 		t.Fatalf("композиционный корень не разбирается: %v", err)
 	}

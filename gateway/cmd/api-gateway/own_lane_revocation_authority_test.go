@@ -174,7 +174,7 @@ func TestCompositionRoot_ShowsNoForeignProviderAxisToTheGuard(t *testing.T) {
 	// редакция этой пробы так и покраснела, найдя `IntrospectionURL:` в
 	// СОСЕДНЕМ литерале кеша интроспекции этажом ниже. Свой разборщик — тоже
 	// распознаватель, и проверять его надо раньше, чем чужую работу.
-	lit := regexp.MustCompile(`RevocationConfig\{([^{}]*)\}`).FindAllStringSubmatch(compositionRoot(t), -1)
+	lit := regexp.MustCompile(`RevocationConfig\{([^{}]*)\}`).FindAllStringSubmatch(compositionRootVerbatim(t), -1)
 	if len(lit) == 0 {
 		t.Fatal("в композиционном корне нет ни одного литерала RevocationConfig — " +
 			"предмет пробы недоступен, и её молчание сказано ни о чём")

@@ -126,9 +126,9 @@ func TestUnsetKnobIsJudgedAsThePolicyDefault(t *testing.T) {
 // зелёным при любой ручке чарта.
 func TestRevocationWindowReachesTheGuard(t *testing.T) {
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, "main.go", nil, 0)
+	f, err := parser.ParseFile(fset, compositionRootLabel, compositionRoot(t), 0)
 	if err != nil {
-		t.Fatalf("main.go не разбирается: %v", err)
+		t.Fatalf("композиционный корень не разбирается: %v", err)
 	}
 
 	guardCalls, windowSupplied, knobRead := 0, 0, 0

@@ -4,7 +4,6 @@
 package main
 
 import (
-	"os"
 	"regexp"
 	"testing"
 
@@ -37,19 +36,10 @@ import (
 // старте на негодной) исполняется по-настоящему в `jwks_hop_client_test.go` и
 // `platform_revocation_client_cert_test.go`.
 //
-// Помощник `compositionRoot` объявлен здесь и читается соседями
-// (`own_lane_revocation_authority_test.go`): координата корня — одна, и вторая
-// её копия разъехалась бы с первой молча.
-
-// compositionRoot — исходник композиционного корня. Координата объявлена ОДИН
-// раз: соседние пробы читают тот же корень, и вторая копия пути разъехалась бы
-// с первой молча.
-func compositionRoot(t *testing.T) string {
-	t.Helper()
-	b, err := os.ReadFile("main.go")
-	require.NoError(t, err, "composition root must be readable")
-	return string(b)
-}
+// Помощник `compositionRoot` живёт в `composition_root_reach_test.go` и отдаёт
+// не файл, а код, ДОСТИЖИМЫЙ от `main()`: присутствие текста провязкой не
+// является — вызов, перенесённый в непозванную функцию, оставлял зелёными и
+// пакет, и линтер.
 
 // ─── Хоп за ключами верификации ─────────────────────────────────────────────
 

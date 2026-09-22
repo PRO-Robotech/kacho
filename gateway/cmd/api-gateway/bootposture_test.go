@@ -8,7 +8,6 @@ import (
 
 	"bytes"
 	"encoding/json"
-	"os"
 	"strings"
 	"testing"
 
@@ -111,11 +110,7 @@ func TestBootPosture_InsecureIsReportedHonestly(t *testing.T) {
 // «самоотчёт печатается после решений и до обслуживания», — изменились точки, по
 // которым оно проверяется.
 func TestBootPosture_EmittedFromTheLiveBootPath(t *testing.T) {
-	src, err := os.ReadFile("main.go")
-	if err != nil {
-		t.Fatalf("read composition root: %v", err)
-	}
-	root := string(src)
+	root := compositionRoot(t)
 
 	call := strings.Index(root, "observability.LogBootPosture(logger, bootPosture(cfg, identityLane))")
 	if call < 0 {
