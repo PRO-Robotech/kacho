@@ -350,8 +350,7 @@ type Config struct {
 	// --- AuthN core (DPoP / JWT / mTLS-bound / step-up / BCL) ---
 
 	// APIDomain — публичный домен kacho-api: из него строится канонический `htu`
-	// в проверке доказательства владения и выводится издатель прежнего
-	// поставщика (см. ResolvedHydraIssuer).
+	// в проверке доказательства владения.
 	//
 	// АДРЕСАТ ТОКЕНА ОТСЮДА БОЛЬШЕ НЕ ВЫВОДИТСЯ (задача #2567). Умолчание у
 	// этого поля живёт, поэтому пустым оно не бывает никогда, — и пока адресат
@@ -359,19 +358,10 @@ type Config struct {
 	// посадке. Адресат объявляется своей ручкой без умолчания: TokenAudience
 	// ниже.
 	//
-	// ИЗДАТЕЛЬ прежнего поставщика отсюда выводится ПО-ПРЕЖНЕМУ, и это решение,
-	// а не остаток той же правки. Оно записано в профиле края
-	// (`deploy/values.yaml`, блок tokenAcceptance) и принадлежит переходу на
-	// свою чеканку: «issuers не задано» — сегодняшнее, работающее и повсеместное
-	// состояние, а не забытая настройка, и снятие вывода до конца перехода
-	// сделало бы отказом старта каждый профиль дерева.
-	//
-	// Направление отказа у двух координат РАЗНОЕ, и этим они отличаются по
-	// существу, а не по срочности. Издатель приходит ОТ ПРЕДЪЯВИТЕЛЯ и
-	// выбирает запись точным равенством: выведенный неверно, он токен
-	// ОТВЕРГАЕТ — отказ громкий и немедленный. Адресат же сравнивается с нашим
-	// ожиданием: выведенный неверно, он токен ЧУЖОЙ УСТАНОВКИ ПРИНИМАЕТ, и
-	// заметить это нечем.
+	// ИЗДАТЕЛЬ отсюда тоже больше не выводится: принимаемых издателей и адрес
+	// набора ключей каждого объявляет перечень (TokenIssuers ниже), и перечень,
+	// не объявленный профилем, есть отказ старта, а не запись, построенная краем
+	// из домена (tokenissuers.go).
 	APIDomain string `envconfig:"KACHO_API_DOMAIN" default:"api.kacho.cloud"`
 
 	// TokenAudience — АДРЕСАТ, которому адресованы принимаемые краем токены
@@ -392,14 +382,6 @@ type Config struct {
 	// Умолчание живёт в ПРОФИЛЕ, а не здесь; незаданное доезжает до стража
 	// старта (`validateProductionTokenAudience` в композиционном корне).
 	TokenAudience string `envconfig:"KACHO_API_GATEWAY_TOKEN_AUDIENCE" default:""`
-
-	// HydraIssuer — issuer URL Ory Hydra; используется как expected `iss` в
-	// access tokens + base URL для JWKS fetch (`{HydraIssuer}/.well-known/jwks.json`).
-	// Пустой → derived as `https://hydra.{APIDomain}`.
-	HydraIssuer string `envconfig:"KACHO_HYDRA_ISSUER" default:""`
-
-	// HydraJWKSURL — explicit JWKS endpoint; пустой → derived from HydraIssuer.
-	HydraJWKSURL string `envconfig:"KACHO_HYDRA_JWKS_URL" default:""`
 
 	// HydraIntrospectionURL — token-introspection endpoint on the identity
 	// provider's ADMIN API (`{admin}/admin/oauth2/introspect`). Never derived:
@@ -476,10 +458,11 @@ type Config struct {
 
 	// TokenIssuers — принимаемые издатели через запятую.
 	//
-	// Не задано ⇒ строится ОДНА запись из HydraIssuer/HydraJWKSURL —
-	// сегодняшняя посадка. Задано, но элементов ноль (`","`, пробелы) ⇒ ОТКАЗ
-	// В СТАРТЕ, безусловный: пустой перечень означает «принимаем любого
-	// издателя». Страж считает ЭЛЕМЕНТЫ, а не длину строки.
+	// Не задано, либо задано и элементов ноль (`","`, пробелы) ⇒ ОТКАЗ В
+	// СТАРТЕ, безусловный: краю некого принимать, а пустой перечень означал бы
+	// «принимаем любого издателя». Умолчания нет намеренно — его нет и в чарте:
+	// ненулевое умолчание сделало бы состояние «не объявлено» недостижимым, и
+	// отказ не сработал бы ни разу. Страж считает ЭЛЕМЕНТЫ, а не длину строки.
 	TokenIssuers string `envconfig:"KACHO_API_GATEWAY_TOKEN_ISSUERS" default:""`
 
 	// TokenIssuerKeySets — привязка «издатель=адрес набора», записи через
@@ -808,28 +791,6 @@ func (c Config) ExternalListenerClientAuth(base *tls.Config) (*tls.Config, error
 	base.ClientAuth = tls.VerifyClientCertIfGiven
 	base.ClientCAs = pool
 	return base, nil
-}
-
-// ResolvedHydraIssuer returns the Hydra issuer URL, deriving it from APIDomain
-// when explicitly unset. Trailing slash is stripped.
-func (c Config) ResolvedHydraIssuer() string {
-	iss := c.HydraIssuer
-	if iss == "" {
-		iss = "https://hydra." + c.APIDomain
-	}
-	for len(iss) > 0 && iss[len(iss)-1] == '/' {
-		iss = iss[:len(iss)-1]
-	}
-	return iss
-}
-
-// ResolvedHydraJWKSURL returns the JWKS endpoint, deriving from issuer when
-// not explicitly set.
-func (c Config) ResolvedHydraJWKSURL() string {
-	if c.HydraJWKSURL != "" {
-		return c.HydraJWKSURL
-	}
-	return c.ResolvedHydraIssuer() + "/.well-known/jwks.json"
 }
 
 // ResolvedHydraIntrospectionURL returns the token-introspection endpoint, or the

@@ -16,21 +16,23 @@
 // РАЗВЁРТЫВАНИЯ и спросить у объявленного профилем ровно то, что спросит
 // процесс при старте.
 //
-// # Почему у края «не объявлено» отличается от «объявлено пустым»
+// # Состояний два, и одно из них — отказ старта
 //
-// Край ВЫВОДИТ издателя из домена API по умолчанию, поэтому «ручка не задана» —
-// сегодняшнее, работающее и повсеместное состояние, а не забытая настройка.
-// Отсюда три состояния, а не два:
-//
-//   - не задано ⇒ строится ОДНА запись из сегодняшнего пина и сегодняшнего
-//     адреса набора. Множество мощности 1 остаётся сужением;
-//   - задано и даёт НОЛЬ элементов ⇒ отказ в старте, безусловный: пустой
-//     перечень означает «принимаем любого издателя»;
+//   - не задано ЛИБО задано и даёт НОЛЬ элементов ⇒ отказ в старте,
+//     безусловный: краю некого принимать, а пустой перечень означал бы
+//     «принимаем любого издателя»;
 //   - задано и даёт элементы ⇒ принимаются ровно они, у каждого своя запись.
 //
-// Двусмысленность (задано и новое объявление, и прежний скалярный пин)
-// закрывается ОТКАЗОМ, а не старшинством: молчаливое старшинство означало бы,
-// что оператор задаёт значение, оно принимается и не действует.
+// Третьего состояния — «не задано, и край строит запись сам» — нет. Прежде оно
+// было: издатель выводился из домена установки, адрес набора из издателя, и
+// отказа старта на этом пути не существовало. Выведенное имя вело на хост,
+// которого нет ни на одном стенде, и край, поднявшись готовым, отвергал каждый
+// токен при первом же запросе — оператор видел зелёный выкат, арендатор
+// сплошное 401.
+//
+// Отказы двух путей названы РАЗНЫМИ текстами: «не объявлено» и «объявлено, но
+// элементов ноль» чинятся по-разному, и отказ, не различающий их, отправлял бы
+// оператора искать опечатку там, где строки нет вовсе.
 package config
 
 import (
@@ -42,12 +44,11 @@ import (
 )
 
 const (
-	// knobDeclaredKeySets / knobLegacyKeySet — настройки, из которых может
-	// приехать адрес набора. Названы константами, потому что их называет ОТКАЗ,
-	// а отказ, указывающий не на ту настройку, хуже отсутствующего: он
-	// отправляет оператора править то, что в этой посадке пусто.
+	// knobIssuers / knobDeclaredKeySets — настройки объявления приёма.
+	// Названы константами, потому что их называет ОТКАЗ, а отказ, указывающий
+	// не на ту настройку, хуже отсутствующего.
+	knobIssuers         = "KACHO_API_GATEWAY_TOKEN_ISSUERS"
 	knobDeclaredKeySets = "KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS"
-	knobLegacyKeySet    = "KACHO_HYDRA_JWKS_URL"
 
 	// TokenTypePlatform — тип токена доступа НАШЕЙ чеканки (RFC 9068).
 	// Значение НЕ объявляется здесь второй раз: оно живёт в `corelib/tokenpolicy`,
@@ -72,13 +73,6 @@ type TokenIssuerBinding struct {
 	// ReadRevocation — читать НАШ авторитет отзыва на предъявлении токена
 	// этого издателя.
 	ReadRevocation bool
-	// SourceKnob — настройка, ИЗ КОТОРОЙ приехал адрес набора.
-	//
-	// Нужна отказу, а не логике: у адреса два источника — объявленный перечень
-	// и прежний скалярный пин, — и отказ, называющий не тот, отправляет
-	// оператора править настройку, которая в этой посадке пуста. Ровно так и
-	// было: страж защищённости схемы называл перечень на пути, где перечня нет.
-	SourceKnob string
 }
 
 // isProductionPosture — режимы, в которых послаблений нет. Тот же разделитель
@@ -170,18 +164,19 @@ func absoluteKeySetURL(raw string) error {
 	return nil
 }
 
-// declaresIssuerSet отвечает, объявил ли профиль перечень издателей ЯВНО.
+// declaresIssuerSet отвечает, объявил ли профиль перечень издателей вообще.
 //
-// Различие «не задано» / «задано и вырождено» — предмет этой функции, и оно
-// намеренно решается ДО отбрасывания пустых элементов: именно на нём предикат
-// по длине строки молчит, а предикат по элементам говорит.
+// Различие «не задано» / «задано и вырождено» решается ДО отбрасывания пустых
+// элементов, и исход у обоих один — отказ. Различаются ТЕКСТЫ: значение из
+// одних пробелов или запятых оператор набрал, и отказ обязан назвать, сколько в
+// нём символов и сколько элементов, а незаданное набрать забыли.
 func (c Config) declaresIssuerSet() bool { return c.TokenIssuers != "" }
 
 // TokenAcceptance возвращает записи приёма и отвергает объявление, с которым
 // край не поднимется.
 //
 // Порядок — от того, без чего не построить ничего, к тому, что уточняет
-// посадку: двусмысленность → перечень издателей → привязка «издатель →
+// посадку: перечень издателей объявлен → непуст → привязка «издатель →
 // источник» → защищённость адресов → авторитет отзыва.
 //
 // Место, пройденное не полностью, даёт отказ проверки при ПЕРВОМ ЖЕ ЗАПРОСЕ
@@ -189,37 +184,12 @@ func (c Config) declaresIssuerSet() bool { return c.TokenIssuers != "" }
 // не виден оператору, второй виден оператору и не доходит до арендатора.
 func (c Config) TokenAcceptance() ([]TokenIssuerBinding, error) {
 	if !c.declaresIssuerSet() {
-		// Перечень не объявлен — сегодняшняя посадка. Одна запись из
-		// сегодняшнего пина и сегодняшнего адреса набора; наша чеканка на ней
-		// не принимается, потому что не объявлена.
-		if strings.TrimSpace(c.PlatformTokenIssuer) != "" {
-			return nil, fmt.Errorf("KACHO_API_GATEWAY_PLATFORM_TOKEN_ISSUER names %q, but "+
-				"KACHO_API_GATEWAY_TOKEN_ISSUERS declares no issuer set — the platform would mint "+
-				"tokens this edge rejects on the first request", c.PlatformTokenIssuer)
-		}
-		b := legacyBinding(c.ResolvedHydraIssuer(), c.ResolvedHydraJWKSURL(), knobLegacyKeySet)
-		// Требование к транспорту источника набора действует и здесь.
-		//
-		// Асимметрия была бы хуже строгости: объявивший перечень оператор
-		// получал бы проверку, а не объявивший — нет, и правильный поступок
-		// оказывался бы наказуем. Правило одно, потому что предмет один —
-		// источник набора есть единственный якорь доверия проверки подписи, и
-		// он не становится безопаснее оттого, что адрес приехал прежней ручкой.
-		if err := c.requireSecureKeySetURL(b); err != nil {
-			return nil, err
-		}
-		return []TokenIssuerBinding{b}, nil
-	}
-
-	// ДВА объявления об одном предмете. Отказ, а не старшинство: значение,
-	// принятое и не действующее, хуже отвергнутого — отказ виден сразу, а
-	// несделанное только по последствиям.
-	if c.HydraIssuer != "" || c.HydraJWKSURL != "" {
-		return nil, fmt.Errorf("both KACHO_API_GATEWAY_TOKEN_ISSUERS and the retired scalar pin "+
-			"(KACHO_HYDRA_ISSUER=%q / KACHO_HYDRA_JWKS_URL=%q) are set — two declarations of one "+
-			"subject. Precedence is not assigned silently: a value that is accepted and does not "+
-			"take effect is worse than a refused one. Keep the issuer set and clear the scalar pin",
-			c.HydraIssuer, c.HydraJWKSURL)
+		// Отказ не зависит от режима: край, который не знает, чьи токены он
+		// проверяет, не становится законным оттого, что стенд назвали
+		// разработческим.
+		return nil, fmt.Errorf("%s is not declared: the edge has no accepted token issuer, and "+
+			"there is nothing to derive one from — declare the issuers whose tokens this "+
+			"installation accepts, each with its key-set record in %s", knobIssuers, knobDeclaredKeySets)
 	}
 
 	issuers, err := c.AcceptedTokenIssuers()
@@ -267,7 +237,7 @@ func (c Config) TokenAcceptance() ([]TokenIssuerBinding, error) {
 				"without a record resolves to nothing, and deriving its address from the issuer "+
 				"string is forbidden (the issuer comes from the presenter)", iss)
 		}
-		b := legacyBinding(iss, keySetURL, knobDeclaredKeySets)
+		b := legacyBinding(iss, keySetURL)
 		if iss == platform {
 			// НАША полоса: производитель типа — мы сами, отсутствие типа
 			// означало бы, что мы не выпускаем того, что требуем; и отзыв
@@ -312,7 +282,7 @@ func (c Config) TokenAcceptance() ([]TokenIssuerBinding, error) {
 	return out, nil
 }
 
-// legacyBinding — запись полосы ПРЕЖНЕГО издателя.
+// legacyBinding — запись полосы издателя, чья чеканка НЕ наша.
 //
 // Тип сверяется, если объявлен, и не требуется, если не объявлен. Его токены
 // чеканим не мы, форму заголовка диктует он, и требовать от неё того, чего мы у
@@ -336,11 +306,10 @@ func (c Config) TokenAcceptance() ([]TokenIssuerBinding, error) {
 //
 // ПРЕДИКАТ СНЯТИЯ: послабление и второе значение уходят вместе с самой записью
 // прежнего издателя.
-func legacyBinding(issuer, keySetURL, sourceKnob string) TokenIssuerBinding {
+func legacyBinding(issuer, keySetURL string) TokenIssuerBinding {
 	return TokenIssuerBinding{
 		Issuer:                  issuer,
 		KeySetURL:               keySetURL,
-		SourceKnob:              sourceKnob,
 		TokenTypes:              []string{TokenTypeLegacy, TokenTypePlatform},
 		TolerateAbsentTokenType: true,
 	}
@@ -357,20 +326,17 @@ func (c Config) requireSecureKeySetURL(b TokenIssuerBinding) error {
 	if !c.isProductionPosture() {
 		return nil
 	}
-	u, err := url.Parse(b.KeySetURL)
-	if err != nil {
-		// Собственный отказ, а не обёртка чужого: за ним НЕТ ни одной нашей
-		// ветки — разбор адреса ведёт библиотека. Он называет ту настройку, из
-		// которой адрес приехал: на запасном пути перечня не существует, и
-		// прежняя редакция отправляла оператора править пустое значение.
-		return fmt.Errorf("%s: key-set URL %q for issuer %q is not a URL: %w",
-			b.SourceKnob, b.KeySetURL, b.Issuer, err)
-	}
+	// Ошибка разбора здесь не спрашивается, и это не пропуск: адрес каждой
+	// записи уже разобран и признан абсолютным при чтении привязки
+	// (TokenIssuerKeySetMap → absoluteKeySetURL), и запись, не прошедшая разбор,
+	// до этой строки не доходит. Второй отказ о том же входе был бы веткой,
+	// которую не достигает ни одно объявление.
+	u, _ := url.Parse(b.KeySetURL)
 	if !strings.EqualFold(u.Scheme, "https") {
 		return fmt.Errorf("KACHO_APP_ENV=%q requires an https:// key-set URL in %s "+
 			"for issuer %q (the key set is the trust anchor of signature verification and must "+
 			"not be fetched over plaintext; got scheme %q)",
-			c.AppEnv, b.SourceKnob, b.Issuer, u.Scheme)
+			c.AppEnv, knobDeclaredKeySets, b.Issuer, u.Scheme)
 	}
 	return nil
 }

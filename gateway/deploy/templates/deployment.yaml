@@ -271,22 +271,6 @@ spec:
               value: "true"
             {{- end }}
             {{- end }}
-            {{- if .Values.hydra }}
-            # Hydra JWKS for RS256 access-token verification.
-            # KACHO_HYDRA_JWKS_URL MUST be the cluster-internal Hydra PUBLIC
-            # Service (e.g. kacho-umbrella-hydra-public:4444/.well-known/jwks.json),
-            # reachable from the gateway pod. Without it config.ResolvedHydraJWKSURL()
-            # derives the public issuer host, which the pod cannot reach → Hydra
-            # login tokens never validate → WhoAmI/Account/Project → code 16.
-            {{- if .Values.hydra.jwksUrl }}
-            - name: KACHO_HYDRA_JWKS_URL
-              value: {{ .Values.hydra.jwksUrl | quote }}
-            {{- end }}
-            {{- if .Values.hydra.issuer }}
-            - name: KACHO_HYDRA_ISSUER
-              value: {{ .Values.hydra.issuer | quote }}
-            {{- end }}
-            {{- end }}
             {{- if .Values.tokenAcceptance }}
             # Ф1б (#926) — издатель на крае стал МНОЖЕСТВОМ, и у каждого
             # принимаемого издателя СВОЯ объявленная запись источника ключей.
@@ -294,9 +278,9 @@ spec:
             # ради которой развязка делается: ключ одного издателя проверял бы
             # токен, объявляющий другого.
             #
-            # Пустое значение рендерится НАМЕРЕННО: «не объявлено» и «объявлено
-            # пустым» различает сам процесс, и различие это — предмет стража
-            # старта, а не шаблона.
+            # Пустое значение рендерится НАМЕРЕННО: пустой перечень доезжает до
+            # стража старта, и тот отказывает в пуске, называя ручку. Судит
+            # процесс, а не шаблон.
             {{- /* АДРЕСАТ принимаемых токенов (задача #2567).
 
                  `aud` — единственное утверждение, которым токен говорит, КАКОЙ
