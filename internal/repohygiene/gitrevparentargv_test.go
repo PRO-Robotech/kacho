@@ -141,7 +141,7 @@ func carriesBothWords(exprs []ast.Expr, verb, object string) bool {
 // выражает — два боевых зовущих при нуле пробных дали бы то же «2».
 func packageCallSites(t *testing.T, name string) (prod, test []string) {
 	t.Helper()
-	_ = repohygienePackageWalk(t, func(path string, fset *token.FileSet, file *ast.File) {
+	repohygienePackageWalk(t, func(path string, fset *token.FileSet, file *ast.File) {
 		ast.Inspect(file, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
 			if !ok {
