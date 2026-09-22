@@ -6,6 +6,7 @@ package repohygiene
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -128,6 +129,13 @@ func TestGateCarrierBaseTellsAnUndeliveredParentFromAMissingOne(t *testing.T) {
 		t.Errorf("отказ УТВЕРЖДАЕТ отсутствие родителя, которого не проверял: родитель "+
 			"есть у источника, он не довезён — это ложь о причине: %v", err)
 	}
+	// Предикат предъявимости — на НАСТОЯЩЕМ отказе целого производителя, а не
+	// только на синтетике соседней пробы: цепь обязана доживать до вызывающего
+	// через весь путь gateCarrierBase.
+	if !errors.As(err, new(*exec.ExitError)) {
+		t.Errorf("errors.As(*exec.ExitError) ложен на отказе НАСТОЯЩЕГО производителя — "+
+			"причина пересказана прозой: %v", err)
+	}
 }
 
 // TestGateCarrierBaseNamesARootCommitAsItIs — ВТОРАЯ ПОЛОВИНА ПАРЫ: когда
@@ -158,6 +166,10 @@ func TestGateCarrierBaseNamesARootCommitAsItIs(t *testing.T) {
 	if !gitRevRemedyNamed(err, gitRevRemedyDeclaredBase) {
 		t.Errorf("отказ не называет своего ремонта %q: %v", gitRevRemedyDeclaredBase, err)
 	}
+	if !errors.As(err, new(*exec.ExitError)) {
+		t.Errorf("errors.As(*exec.ExitError) ложен на отказе НАСТОЯЩЕГО производителя — "+
+			"причина пересказана прозой: %v", err)
+	}
 }
 
 // TestGateCarrierNoParentRefusalCarriesTheToolsAnswer — ОТКАЗ НЕСЁТ ОТВЕТ
@@ -176,12 +188,32 @@ func TestGateCarrierNoParentRefusalCarriesTheToolsAnswer(t *testing.T) {
 	t.Parallel()
 
 	const ref = "refs/remotes/origin/main"
+
+	// НАСТОЯЩИЙ отказ инструмента, а не сочинённый: `*exec.ExitError` берётся у
+	// той же команды и того же кода 1, что приходит на этот путь в жизни. На
+	// сочинённом `errors.New` предикат `errors.As` был бы ложен by construction,
+	// и проба доказывала бы свойство своей выдумки.
+	realExit := gateBaseRealExitError(t)
+	var probe *exec.ExitError
+	if !errors.As(realExit, &probe) {
+		t.Fatalf("вход пробы не является отказом инструмента (%T) — условие не "+
+			"создано, и её исход ничего не значил бы", realExit)
+	}
+
 	for _, shallow := range []bool{false, true} {
 		// Законный близнец: достижимый сегодня вход — код 1 с пустым выводом.
-		reachable := gateCarrierNoParentRefusal(ref, shallow, nil, errors.New("exit status 1"))
-		if !strings.Contains(reachable.Error(), "exit status 1") {
-			t.Errorf("мелкий=%v: отказ не несёт ответа инструмента — проверить его "+
-				"утверждение о причине нечем: %v", shallow, reachable)
+		reachable := gateCarrierNoParentRefusal(ref, shallow, nil, realExit)
+
+		// ПРЕДИКАТ ЗАКРЫТИЯ. Не «текст называет ответ инструмента» и не
+		// вхождение подстроки: причина обязана быть ПРЕДЪЯВИМА на возвращённом
+		// отказе. Текст, пересказавший ошибку прозой, полон и при этом обрывает
+		// цепь — различить отказы можно было бы только чтением строки.
+		if !errors.As(reachable, new(*exec.ExitError)) {
+			t.Errorf("мелкий=%v: errors.As(*exec.ExitError) ЛОЖЕН на возвращённом "+
+				"отказе — причина пересказана прозой, а цепь оборвана: %v", shallow, reachable)
+		}
+		if !errors.Is(reachable, realExit) {
+			t.Errorf("мелкий=%v: errors.Is не находит исходной ошибки: %v", shallow, reachable)
 		}
 
 		// Тот же вход, ОДИН изменённый факт: отказ иного рода. Текст обязан
@@ -191,8 +223,9 @@ func TestGateCarrierNoParentRefusalCarriesTheToolsAnswer(t *testing.T) {
 		if !strings.Contains(other.Error(), "object file") {
 			t.Errorf("мелкий=%v: отказ иного рода не доехал до читающего: %v", shallow, other)
 		}
-		if strings.Contains(other.Error(), "exit status 1") {
-			t.Errorf("мелкий=%v: отказ назвал ЧУЖУЮ ошибку: %v", shallow, other)
+		if errors.As(other, new(*exec.ExitError)) {
+			t.Errorf("мелкий=%v: отказ иного рода предъявлен как отказ инструмента: %v",
+				shallow, other)
 		}
 		if reachable.Error() == other.Error() {
 			t.Errorf("мелкий=%v: два разных ответа инструмента дали один текст — "+
@@ -201,21 +234,92 @@ func TestGateCarrierNoParentRefusalCarriesTheToolsAnswer(t *testing.T) {
 		}
 
 		// Вторая половина дизъюнкции: инструмент НЕ отказал, а ревизии не назвал.
-		// Названо словом, а не молчанием.
+		// Оборачивать нечего, и состояние названо ОБЪЯВЛЕННЫМ словом, а не
+		// побочным выводом `%v` от nil: за литерал `<nil>`, не объявленный
+		// нигде, утверждение держаться не вправе.
 		silent := gateCarrierNoParentRefusal(ref, shallow, []byte("  \n"), nil)
-		if !strings.Contains(silent.Error(), "<nil>") {
-			t.Errorf("мелкий=%v: пустой ответ без отказа неотличим от отказа: %v", shallow, silent)
+		if !strings.Contains(silent.Error(), gateCarrierToolDidNotRefuse) {
+			t.Errorf("мелкий=%v: пустой ответ без отказа не назван словом: %v", shallow, silent)
+		}
+		if errors.As(silent, new(*exec.ExitError)) {
+			t.Errorf("мелкий=%v: отказа инструмента не было, а он предъявлен: %v", shallow, silent)
+		}
+		// Предикат печатается, а не только утверждается: читающий прогон видит
+		// ОБА его значения и не обязан верить зелёному на слово.
+		t.Logf("мелкий=%v · errors.As(*exec.ExitError): на отказе инструмента %v, "+
+			"на «инструмент не отказал» %v", shallow,
+			errors.As(reachable, new(*exec.ExitError)), errors.As(silent, new(*exec.ExitError)))
+		if silent.Error() == reachable.Error() {
+			t.Errorf("мелкий=%v: «инструмент не отказал» и «инструмент отказал» дали "+
+				"один текст: %q", shallow, silent.Error())
+		}
+
+		// ОБЕ ВЕТВИ ОГОВОРЕНЫ ОДИНАКОВО. Классификация выведена из ОДНОГО
+		// признака — глубины клона, — и опровергает её только приписанная
+		// улика. Категорическое утверждение рядом с гадательным оставляло класс
+		// закрытым на две трети: при отказе иного рода оно осталось бы ложным.
+		// Асимметрия рождается молча, поэтому оговорка берётся из объявленного
+		// источника, а не выписывается в каждой ветви своими словами.
+		if !strings.Contains(reachable.Error(), gateCarrierCauseIsInferred) {
+			t.Errorf("мелкий=%v: ветвь утверждает причину КАТЕГОРИЧЕСКИ, опираясь на "+
+				"один признак: %v", shallow, reachable)
 		}
 	}
 
-	// Ремонты двух ветвей ПРОТИВОПОЛОЖНЫ и не перепутаны — та же проверка, что
-	// у клонированной пары выше, но здесь она не зависит от среды.
-	root := gateCarrierNoParentRefusal(ref, false, nil, errors.New("exit status 1"))
-	shal := gateCarrierNoParentRefusal(ref, true, nil, errors.New("exit status 1"))
-	if !gitRevRemedyNamed(root, gitRevRemedyDeclaredBase) || gitRevRemedyNamed(root, gitRevRemedyCloneDepth) {
-		t.Errorf("корневому коммиту назван не свой ремонт: %v", root)
+	// Ремонты двух ветвей ПРОТИВОПОЛОЖНЫ и не перепутаны, и исключение полно по
+	// ВСЕМУ словарю, а не по одной соседней клаузе: выписанная рядом пара
+	// разошлась бы со словарём молча.
+	for _, c := range []struct {
+		name    string
+		shallow bool
+		want    string
+	}{
+		{"корневой коммит", false, gitRevRemedyDeclaredBase},
+		{"мелкий клон", true, gitRevRemedyCloneDepth},
+	} {
+		err := gateCarrierNoParentRefusal(ref, c.shallow, nil, realExit)
+		if !gitRevRemedyNamed(err, c.want) {
+			t.Errorf("%s: отказ не называет своего ремонта %q: %v", c.name, c.want, err)
+		}
+		for _, other := range gitRevRemedies() {
+			if other == c.want {
+				continue
+			}
+			if gitRevRemedyNamed(err, other) {
+				t.Errorf("%s: отказ называет ЧУЖОЙ ремонт %q — две причины сошлись в "+
+					"один совет: %v", c.name, other, err)
+			}
+		}
 	}
-	if !gitRevRemedyNamed(shal, gitRevRemedyCloneDepth) || gitRevRemedyNamed(shal, gitRevRemedyDeclaredBase) {
-		t.Errorf("мелкому клону назван не свой ремонт: %v", shal)
+}
+
+// gateBaseRealExitError — НАСТОЯЩИЙ отказ `rev-parse`, какой приходит на этот
+// путь: код 1 у дерева с одним коммитом, где родителя нет.
+//
+// Отдельным помощником, потому что подделать его нечем: `errors.New` даёт
+// строку, на которой предикат предъявимости ложен by construction, и проба,
+// построенная на ней, доказывала бы свойство своей выдумки.
+func gateBaseRealExitError(t *testing.T) error {
+	t.Helper()
+	repo := gateBaseOriginRepo(t, 1)
+	_, err := gitenv.Command(repo, "rev-parse", "--verify", "--quiet", "HEAD^").Output()
+	if err == nil {
+		t.Fatal("дерево с одним коммитом назвало родителя HEAD — условие не создано")
 	}
+	// ФИКСТУРА ОБЯЗАНА ВОСПРОИЗВОДИТЬ ТО, ЧТО ПРИХОДИТ НА БОЕВОЙ ПУТЬ, а не
+	// «какой-нибудь отказ». Команда здесь — вторая запись той же команды, что
+	// стоит в gateCarrierNoParentRefusal-вызывающем; разойтись они могут молча,
+	// и тогда проба доказывала бы свойство на входе, которого не бывает.
+	// Признак совпадения — КОД 1: именно он неотличим у корневого коммита и у
+	// недовезённого родителя, и именно ради него вся эта развязка.
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("фикстура дала не отказ инструмента (%T): %v — вход пробы не тот, "+
+			"что приходит на боевой путь", err, err)
+	}
+	if exitErr.ExitCode() != 1 {
+		t.Fatalf("фикстура дала код %d, а боевой путь приносит 1 — две записи одной "+
+			"команды разошлись, и проба судила бы чужой вход", exitErr.ExitCode())
+	}
+	return err
 }

@@ -6,6 +6,9 @@ package repohygiene
 import (
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -275,16 +278,48 @@ func TestGitRevRemedyVocabularyHasASingleSource(t *testing.T) {
 	undelivered := foreignIDPRevisionResolverAt(shallow)(older)
 	notasked := foreignIDPRevisionResolverAt(filepath.Join(t.TempDir(), "нет-такого"))(older)
 
-	for _, c := range []struct {
-		name   string
-		err    error
-		want   string
-		absent []string
+	// ЧЕТВЁРТАЯ КЛАУЗА — у ДРУГОГО производителя, и без неё перепись ниже не
+	// сошлась бы: словарь один на оба, а строка «DeclaredBase как want» до сих
+	// пор не существовала нигде.
+	rootCommit := gateCarrierNoParentRefusal("refs/remotes/origin/main", false, nil,
+		errors.New("exit status 1"))
+
+	rows := []struct {
+		name string
+		err  error
+		want string
 	}{
-		{"объекта нет", absent, gitRevRemedyLedger, []string{gitRevRemedyCloneDepth, gitRevRemedyWorkingDir, gitRevRemedyDeclaredBase}},
-		{"не довезён", undelivered, gitRevRemedyCloneDepth, []string{gitRevRemedyLedger, gitRevRemedyWorkingDir, gitRevRemedyDeclaredBase}},
-		{"дерево не спрошено", notasked, gitRevRemedyWorkingDir, []string{gitRevRemedyLedger, gitRevRemedyCloneDepth, gitRevRemedyDeclaredBase}},
-	} {
+		{"объекта нет", absent, gitRevRemedyLedger},
+		{"не довезён", undelivered, gitRevRemedyCloneDepth},
+		{"дерево не спрошено", notasked, gitRevRemedyWorkingDir},
+		{"родителя нет по существу", rootCommit, gitRevRemedyDeclaredBase},
+	}
+
+	// ПЕРЕПИСЬ ПО ОБЪЯВЛЕННОМУ СЛОВАРЮ, а не по памяти таблицы: у каждой клаузы
+	// обязан быть ровно один производитель. Пятая клауза, заведённая завтра и
+	// никем не произведённая, краснеет здесь, а не проходит молча.
+	declared := gitRevRemedies()
+	t.Logf("перепись: клауз объявлено %d · строк таблицы %d", len(declared), len(rows))
+	if len(rows) != len(declared) {
+		t.Fatalf("клауз объявлено %d, а судится %d — словарь и таблица разошлись; "+
+			"несуженная клауза прошла бы молча", len(declared), len(rows))
+	}
+	covered := map[string]int{}
+	for _, r := range rows {
+		covered[r.want]++
+	}
+	for _, clause := range declared {
+		if covered[clause] != 1 {
+			t.Errorf("клауза %q произведена %d отказами, а обязана ровно одним — "+
+				"либо её никто не называет, либо две причины дают один совет",
+				clause, covered[clause])
+		}
+	}
+
+	// ВЗАИМНОЕ ИСКЛЮЧЕНИЕ ПОЛНО В ОБЕ СТОРОНЫ И ВЫВЕДЕНО ИЗ СЛОВАРЯ, а не
+	// выписано рядом: выписанный перечень «чужих» разойдётся со словарём молча,
+	// и полнота будет верна ровно для тех клауз, о которых проба помнила.
+	for _, c := range rows {
 		if c.err == nil {
 			t.Errorf("%s: отказа нет вовсе — предпосылка не выполнена", c.name)
 			continue
@@ -294,11 +329,71 @@ func TestGitRevRemedyVocabularyHasASingleSource(t *testing.T) {
 			t.Errorf("%s: отказ не называет своего ремонта %q — читающий пойдёт чинить "+
 				"не то: %v", c.name, c.want, c.err)
 		}
-		for _, other := range c.absent {
+		for _, other := range declared {
+			if other == c.want {
+				continue
+			}
 			if gitRevRemedyNamed(c.err, other) {
 				t.Errorf("%s: отказ называет ЧУЖОЙ ремонт %q — две причины сошлись в "+
 					"один совет: %v", c.name, other, c.err)
 			}
 		}
+	}
+}
+
+// TestGitRevRemedyDictionaryIsCountedFromItsDeclarations — ПЕРЕЧЕНЬ И
+// ОБЪЯВЛЕНИЯ — ДВА МЕСТА ОБ ОДНОМ ПРЕДМЕТЕ.
+//
+// [gitRevRemedies] перечисляет клаузы вручную, и разойтись с блоком констант он
+// может молча: добавили пятую константу, в перечень не внесли — перепись выше
+// продолжает считать четыре и остаётся зелёной, ничего не зная о пятой.
+//
+// Спросить у Go «все константы с этим префиксом» нечем: отражения над
+// объявлениями пакета нет. Поэтому счёт снимается РАЗБОРОМ файла — узлами
+// объявления, а не поиском подстроки: комментарий, называющий имя клаузы,
+// законен и за объявление не проходит.
+func TestGitRevRemedyDictionaryIsCountedFromItsDeclarations(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(repoRoot(t), "internal", "repohygiene", "gitrevcause.go")
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatalf("разбор %s: %v — перепись беспредметна", path, err)
+	}
+
+	names := map[string]bool{}
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.CONST {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			vs, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for _, n := range vs.Names {
+				if strings.HasPrefix(n.Name, "gitRevRemedy") {
+					names[n.Name] = true
+				}
+			}
+		}
+	}
+
+	// Предпосылка: разбор обязан НАЙТИ объявления. Ноль имён означает, что дом
+	// переехал либо разбор перестал его видеть, — и то и другое находка, а не
+	// повод молчать.
+	if len(names) == 0 {
+		t.Fatalf("в %s не нашлось ни одного объявления `gitRevRemedy*` — дом словаря "+
+			"переехал либо разбор ослеп; молчание здесь означало бы «не смотрели»", path)
+	}
+	t.Logf("перепись: объявлений `gitRevRemedy*` в файле %d · строк перечня %d",
+		len(names), len(gitRevRemedies()))
+
+	if len(names) != len(gitRevRemedies()) {
+		t.Errorf("объявлено констант %d, а перечень отдаёт %d — два места об одном "+
+			"предмете разошлись, и несуженная клауза прошла бы молча: %v",
+			len(names), len(gitRevRemedies()), names)
 	}
 }
