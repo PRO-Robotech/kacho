@@ -241,6 +241,36 @@ func foreignIDPRevisionResolver(t *testing.T) ForeignIDPNameRevisionResolver {
 	return foreignIDPRevisionResolverAt(repoRoot(t))
 }
 
+// Три исхода разрешителя — СИГНАЛАМИ, а не подстрокой.
+//
+// Текст пишется человеку и будет переписан; проба, утверждающая его дословно,
+// краснеет на правке формулировки и молчит на подмене смысла. Классификацию
+// проверяют сигналом, а ТЕКСТ — отдельно и по тому, что в нём обязано быть:
+// названному РЕМОНТУ.
+var (
+	// errForeignIDPRevisionAbsent — объекта нет, и клон полный: ремонт в ведомости.
+	errForeignIDPRevisionAbsent = errors.New("дерево не знает объекта-коммита")
+	// errForeignIDPRevisionUndelivered — объекта нет, НО дерево мелкое: объект
+	// может существовать у источника. Ремонт начинается с глубины клона.
+	errForeignIDPRevisionUndelivered = errors.New("объекта-коммита нет, а дерево МЕЛКОЕ")
+	// errForeignIDPTreeNotAsked — дерева не спросили вовсе.
+	errForeignIDPTreeNotAsked = errors.New("дерево не спрошено")
+)
+
+// foreignIDPShallowClone — МЕЛКИЙ ЛИ КЛОН по этому пути.
+//
+// Это и есть недостающий разделитель. Код возврата 1 при молчаливом
+// `--verify --quiet` одинаков у «объекта нет вовсе» и у «объект существует, но
+// не довезён»: из одного числа их не различить (измерено на паре
+// origin/`--depth=1`). Спрошенная глубина различает их до классификации.
+//
+// Отказ самого вопроса означает «не знаем» и читается как НЕ мелкий: на этом
+// пути мы уже знаем, что дерево спрошено — иначе код был бы не 1.
+func foreignIDPShallowClone(root string) bool {
+	out, err := gitenv.Command(root, "rev-parse", "--is-shallow-repository").Output()
+	return err == nil && strings.TrimSpace(string(out)) == "true"
+}
+
 // foreignIDPRevisionResolverAt — спрашивает систему контроля версий, знает ли
 // дерево по этому пути названный объект-коммит.
 //
@@ -249,18 +279,21 @@ func foreignIDPRevisionResolver(t *testing.T) ForeignIDPNameRevisionResolver {
 // это и есть та ложь, которой красное полосы началось, — число с чужой головы,
 // объявленное снятым здесь.
 //
-// ПРИЧИН ОТКАЗА ТРИ, И ОНИ НЕ ОДНО И ТО ЖЕ. Направление у всех одно —
-// fail-closed, — но чинятся они по-разному, и одна формулировка на всех
-// превращает «дерево не спросили» в «число не подтвердилось»:
+// ПРИЧИН ТРИ, И ОНИ НЕ ОДНО И ТО ЖЕ. Направление у всех одно — fail-closed, —
+// но РЕМОНТ у них разный, и одна формулировка на всех разворачивает читающего:
 //
-//	объекта нет      — ведомость называет то, чего в дереве не существует;
-//	                   чинится записью в ведомости. Признак узкий: код возврата
-//	                   1 при молчаливом `--verify --quiet`;
-//	дерево не спрошено — каталог не репозиторий, клон мелкий, инструмента нет
-//	                   вовсе; чинится рабочим каталогом или глубиной клона.
-//	                   Сюда же намеренно отнесён отсутствующий инструмент:
-//	                   создать это состояние пробой нечем, а исход тот же —
-//	                   мы НЕ СПРОСИЛИ, и «не подтвердилось» было бы ложью.
+//	объекта нет           — ведомость называет то, чего в дереве не существует;
+//	                        чинится записью в ведомости;
+//	объект не довезён     — дерево МЕЛКОЕ, и объект может существовать у
+//	                        источника; чинится глубиной клона, а ведомость,
+//	                        возможно, верна. Этот случай неотличим от первого
+//	                        по коду возврата, поэтому глубина спрашивается
+//	                        ОТДЕЛЬНО, до классификации;
+//	дерево не спрошено    — каталога нет, он не репозиторий, инструмента нет
+//	                        вовсе; чинится рабочим каталогом. Отсутствующий
+//	                        инструмент отнесён сюда намеренно: создать это
+//	                        состояние пробой нечем, а исход тот же — НЕ
+//	                        СПРОСИЛИ, и «не подтвердилось» было бы ложью.
 func foreignIDPRevisionResolverAt(root string) ForeignIDPNameRevisionResolver {
 	return func(rev string) error {
 		err := gitenv.Command(root, "rev-parse", "--verify", "--quiet", rev+"^{commit}").Run()
@@ -269,11 +302,18 @@ func foreignIDPRevisionResolverAt(root string) ForeignIDPNameRevisionResolver {
 		}
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
-			return fmt.Errorf("дерево не знает объекта-коммита %s", rev)
+			if foreignIDPShallowClone(root) {
+				return fmt.Errorf("%w: ревизия %s — объект может существовать у "+
+					"источника и просто не быть довезён. Ремонт начинается с ГЛУБИНЫ "+
+					"клона, и только если ревизия не найдётся и полным клоном — с "+
+					"записи в ведомости", errForeignIDPRevisionUndelivered, rev)
+			}
+			return fmt.Errorf("%w %s, и клон ПОЛНЫЙ — ремонт в записи ведомости",
+				errForeignIDPRevisionAbsent, rev)
 		}
-		return fmt.Errorf("дерево не спрошено о ревизии %s — система контроля версий "+
-			"не ответила (%w); это НЕ «число не подтвердилось», а «мы не спросили», "+
-			"и чинится рабочим каталогом либо глубиной клона", rev, err)
+		return fmt.Errorf("%w о ревизии %s — система контроля версий не ответила (%v); "+
+			"это НЕ «число не подтвердилось», а «мы не спросили», и ремонт — в РАБОЧЕМ "+
+			"КАТАЛОГЕ", errForeignIDPTreeNotAsked, rev, err)
 	}
 }
 
@@ -356,38 +396,176 @@ func TestForeignIDPRevisionResolverRefusesAnAbsentObject(t *testing.T) {
 		t.Fatal("ревизия, которой в дереве нет, разрешена — отказ fail-open")
 	}
 	t.Logf("текст отказа: %v", err)
+	t.Logf("рабочая копия мелкая: %v", foreignIDPShallowClone(repoRoot(t)))
 	if !strings.Contains(err.Error(), absent) {
 		t.Errorf("отказ не называет ревизии: %v", err)
 	}
-	if !strings.Contains(err.Error(), "не знает") {
-		t.Errorf("отказ не называет ПРИЧИНЫ «объекта нет»: %v", err)
+	// ИСХОД ЗАВИСИТ ОТ СРЕДЫ, и это утверждается, а не подразумевается: рабочие
+	// копии этого воркспейса — МЕЛКИЕ клоны (измерено `rev-parse
+	// --is-shallow-repository`: true), и тогда отсутствующий объект обязан
+	// разбираться как «мог не быть довезён», а не как «перепишите ведомость».
+	// На полном клоне — наоборот. Проба требует ТОГО ИЗ ДВУХ, что отвечает
+	// среде, и не молчит ни в одной из них.
+	if foreignIDPShallowClone(repoRoot(t)) {
+		if !errors.Is(err, errForeignIDPRevisionUndelivered) {
+			t.Errorf("мелкая рабочая копия отнесена не к своей причине: %v", err)
+		}
+	} else if !errors.Is(err, errForeignIDPRevisionAbsent) {
+		t.Errorf("полная рабочая копия отнесена не к своей причине: %v", err)
+	}
+	if errors.Is(err, errForeignIDPTreeNotAsked) {
+		t.Errorf("спрошенное дерево названо неспрошенным: %v", err)
 	}
 }
 
-// TestForeignIDPRevisionResolverSeparatesItsCauses — ПРИЧИН ТРИ, и одна на всех
-// формулировка превращает «дерево не спросили» в «числа не подтвердились».
+// foreignIDPScratchRepo — СВОЁ дерево под пробу: два пустых коммита.
 //
-// Направление у обеих ветвей одно — fail-closed, — но чинятся они по-разному:
-// отсутствующий объект правится записью в ведомости, неспрошенное дерево —
-// глубиной клона или рабочим каталогом. Третья причина (инструмента нет вовсе)
-// неотличима здесь от второй намеренно: создать её пробой нечем, и она сказана
-// той же формулировкой «дерево не спрошено».
+// Вход отрицательных проб обязан СОЗДАВАТЬСЯ, а не наследоваться из окружения.
+// Прежняя редакция брала `t.TempDir()` как «не репозиторий» — и это было
+// наследование: временный каталог ложится туда, куда укажет TMPDIR, система
+// контроля версий поднимается вверх по родителям, и внутри нашего же дерева
+// она находила репозиторий. Проба краснела на ИСПРАВНОМ дереве от чужой
+// настройки, и прогон группы увёл бы разбор.
+func foreignIDPScratchRepo(t *testing.T) (dir, older, newer string) {
+	t.Helper()
+	dir = filepath.Join(t.TempDir(), "origin")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatalf("каталог дерева пробы: %v", err)
+	}
+	run := func(args ...string) string {
+		t.Helper()
+		out, err := gitenv.Command(dir, args...).Output()
+		if err != nil {
+			t.Fatalf("git %v в дереве пробы: %v", args, err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	run("init", "-q", ".")
+	commit := []string{"-c", "user.email=probe@example.invalid", "-c", "user.name=probe",
+		"commit", "-q", "--allow-empty", "-m"}
+	run(append(append([]string{}, commit...), "older")...)
+	older = run("rev-parse", "HEAD")
+	run(append(append([]string{}, commit...), "newer")...)
+	newer = run("rev-parse", "HEAD")
+	return dir, older, newer
+}
+
+// TestForeignIDPRevisionResolverSeparatesItsCauses — ПРИЧИН ТРИ, и одна на всех
+// формулировка превращает «дерево не спросили» в «число не подтвердилось».
+//
+// Вход у обоих концов СВОЙ: дерево пробы против пути, которого нет. Каталог,
+// которого нет, система контроля версий не может ни открыть, ни унаследовать у
+// родителя — исход не зависит от того, где лежит TMPDIR.
 func TestForeignIDPRevisionResolverSeparatesItsCauses(t *testing.T) {
 	t.Parallel()
-	head := foreignIDPHeadRevision(t)
+	dir, older, _ := foreignIDPScratchRepo(t)
 
-	absent := foreignIDPRevisionResolverAt(repoRoot(t))("0123456789a")
-	notree := foreignIDPRevisionResolverAt(t.TempDir())(head)
+	// Законный близнец ОТРИЦАТЕЛЬНОЙ ветви: то же построение, тот же путь —
+	// дерево есть, ревизия своя, отказа нет. Без него красное ниже
+	// достигалось бы отказом на чём угодно.
+	if err := foreignIDPRevisionResolverAt(dir)(older); err != nil {
+		t.Fatalf("своя ревизия своего дерева не разрешилась: %v — близнец не зелёный", err)
+	}
+
+	absent := foreignIDPRevisionResolverAt(dir)("0123456789a")
+	notree := foreignIDPRevisionResolverAt(filepath.Join(t.TempDir(), "дерева-тут-нет"))(older)
 	if absent == nil || notree == nil {
 		t.Fatalf("обе ветви обязаны отказывать: объект %v, дерево %v", absent, notree)
 	}
-	t.Logf("объекта нет:      %v", absent)
+	t.Logf("объекта нет:        %v", absent)
 	t.Logf("дерево не спрошено: %v", notree)
 	if absent.Error() == notree.Error() {
 		t.Fatalf("две разные причины дали один текст %q — читающий не узнает, "+
 			"чинить ведомость или рабочий каталог", absent.Error())
 	}
-	if !strings.Contains(notree.Error(), "не спрошено") {
+	if !errors.Is(notree, errForeignIDPTreeNotAsked) {
 		t.Errorf("неспрошенное дерево названо не своей причиной: %v", notree)
+	}
+	if !errors.Is(absent, errForeignIDPRevisionAbsent) {
+		t.Errorf("отсутствующий объект полного дерева назван не своей причиной: %v", absent)
+	}
+	// Текст проверяется отдельно от классификации: человеку нужен РЕМОНТ.
+	if !strings.Contains(notree.Error(), "РАБОЧЕМ КАТАЛОГЕ") {
+		t.Errorf("отказ не называет ремонта: %v", notree)
+	}
+	if !strings.Contains(absent.Error(), "записи ведомости") {
+		t.Errorf("отказ не называет ремонта: %v", absent)
+	}
+}
+
+// TestForeignIDPRevisionResolverDoesNotSendAShallowCloneToRewriteTheLedger —
+// МЕЛКИЙ КЛОН РАЗВОРАЧИВАЛ РЕМОНТ.
+//
+// Код возврата 1 при молчаливом `--verify --quiet` даёт И «объекта нет вовсе»,
+// И «объект существует, но не довезён мелким клоном»: разделителя из одного
+// числа не существует. Прежняя редакция относила мелкий клон ко ВТОРОЙ ветви
+// («дерево не спрошено, чинится глубиной клона»), а получала ПЕРВУЮ, чей ремонт
+// — «перепишите число в ведомости». Читающему красное велели переписать
+// ПРАВИЛЬНОЕ число, а текст про глубину клона при мелком клоне не печатался
+// никогда.
+//
+// Пара одно-фактна: то же дерево, та же ревизия, меняется только глубина клона.
+func TestForeignIDPRevisionResolverDoesNotSendAShallowCloneToRewriteTheLedger(t *testing.T) {
+	t.Parallel()
+	origin, older, _ := foreignIDPScratchRepo(t)
+
+	// Законный близнец: полное дерево ту же ревизию знает.
+	if err := foreignIDPRevisionResolverAt(origin)(older); err != nil {
+		t.Fatalf("полное дерево не знает своей ревизии: %v — близнец не зелёный", err)
+	}
+
+	shallow := filepath.Join(t.TempDir(), "shallow")
+	if out, err := gitenv.Command(filepath.Dir(shallow), "clone", "-q", "--depth=1",
+		"file://"+origin, shallow).CombinedOutput(); err != nil {
+		t.Fatalf("мелкий клон не создан (%v): %s — условие пробы не создано, и её "+
+			"молчание ничего не значило бы", err, out)
+	}
+	if !foreignIDPShallowClone(shallow) {
+		t.Fatal("клон не признан мелким — предпосылка пробы не выполнена")
+	}
+
+	err := foreignIDPRevisionResolverAt(shallow)(older)
+	if err == nil {
+		t.Fatal("мелкий клон принял ревизию, которой у него нет — fail-open")
+	}
+	t.Logf("текст отказа мелкому клону: %v", err)
+	if !errors.Is(err, errForeignIDPRevisionUndelivered) {
+		t.Errorf("мелкий клон отнесён не к своей причине — читающий пойдёт "+
+			"править ПРАВИЛЬНОЕ число: %v", err)
+	}
+	if errors.Is(err, errForeignIDPRevisionAbsent) {
+		t.Errorf("мелкому клону велено чинить ведомость: %v", err)
+	}
+	if !strings.Contains(err.Error(), "ГЛУБИНЫ") {
+		t.Errorf("отказ не называет ремонта глубиной клона: %v", err)
+	}
+}
+
+// TestForeignIDPProvenanceGapDoesNotOutrankItsNestedCause — СУДЬЯ НЕ НАЗЫВАЕТ
+// ПРИЧИНЫ ПОВЕРХ РАЗРЕШИТЕЛЯ.
+//
+// Причины разведены у разрешителя — и не были разведены у судьи: внешний текст
+// пропуска утверждал «число снято обходом ЧУЖОЙ головы либо ревизия названа
+// неверно», тогда как вложенная ошибка могла говорить прямо обратное — «дерево
+// не спрошено». Противоречие создавалось в одной строке вывода.
+func TestForeignIDPProvenanceGapDoesNotOutrankItsNestedCause(t *testing.T) {
+	t.Parallel()
+	resolve := func(string) error {
+		return errors.New("дерево не спрошено о ревизии — система контроля версий не ответила")
+	}
+	gaps := ForeignIDPNameProvenanceGaps([]ForeignIDPNameLedgerEntry{{
+		Area: "gateway/", Names: 2, Why: "w", Until: "u", Measured: "5b20df5c638",
+	}}, resolve)
+	if len(gaps) != 1 {
+		t.Fatalf("пропусков %d, ожидался 1", len(gaps))
+	}
+	t.Logf("текст пропуска: %s", gaps[0])
+	if !strings.Contains(gaps[0], "дерево не спрошено") {
+		t.Errorf("текст судьи не донёс причины разрешителя: %q", gaps[0])
+	}
+	for _, claim := range []string{"ЧУЖОЙ головы", "названа неверно"} {
+		if strings.Contains(gaps[0], claim) {
+			t.Errorf("судья назвал причину %q поверх вложенной: %q", claim, gaps[0])
+		}
 	}
 }
