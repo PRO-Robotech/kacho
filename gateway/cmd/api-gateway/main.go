@@ -1443,13 +1443,13 @@ func main() {
 // заводился условием `kratosURL != "disabled"`, и под `own` печенье поставщика
 // становилось личностью на посадке, где сессию человека судит наша служба.
 func wireLaneCarrierReader(
-	a *middleware.AuthInterceptor, lane identityposture.Provider, kratosURL string,
+	a *middleware.AuthInterceptor, lane identityposture.Provider, providerURL string,
 	ours middleware.HumanSessionReader, logger *slog.Logger,
 ) *middleware.AuthInterceptor {
 	if lane == identityposture.External {
-		if kratosURL != providerAddressDisabled {
-			a = a.WithKratos(middleware.NewKratosClient(kratosURL))
-			logger.Info("provider session-auth wired", "kratos_url", kratosURL, "identity_provider", lane.String())
+		if providerURL != providerAddressDisabled {
+			a = a.WithKratos(middleware.NewKratosClient(providerURL))
+			logger.Info("provider session-auth wired", "kratos_url", providerURL, "identity_provider", lane.String())
 		} else {
 			logger.Info("provider session-auth disabled by env")
 		}
@@ -1465,11 +1465,11 @@ func wireLaneCarrierReader(
 // читающие одну сессию, обязаны отвечать про неё одинаково, и читателя им
 // выбирает одна и та же посадка.
 func wireWhoAmICarrierReader(
-	who *middleware.SessionIdentityHandler, lane identityposture.Provider, kratosURL string,
+	who *middleware.SessionIdentityHandler, lane identityposture.Provider, providerURL string,
 	ours middleware.HumanSessionReader, subjects middleware.SubjectLookuper,
 ) *middleware.SessionIdentityHandler {
-	if lane == identityposture.External && kratosURL != providerAddressDisabled {
-		who = who.WithKratos(middleware.NewKratosClient(kratosURL), subjects)
+	if lane == identityposture.External && providerURL != providerAddressDisabled {
+		who = who.WithKratos(middleware.NewKratosClient(providerURL), subjects)
 	}
 	if lane == identityposture.Own {
 		who = who.WithHumanSession(ours)
