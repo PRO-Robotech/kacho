@@ -82,7 +82,7 @@ GW_INTERNAL_PORT="${GW_INTERNAL_PORT:-18081}"
 # to find it — so it is forwarded here like the other two.
 GW_TLS_PORT="${GW_TLS_PORT:-18443}"
 IAM_INTERNAL_PORT="${IAM_INTERNAL_PORT:-19091}"
-HYDRA_PORT="${HYDRA_PUBLIC_PORT:-14444}"   # OAuth2 token endpoint (production-posture seed)
+HYDRA_PORT="${HYDRA_PUBLIC_PORT:-14444}"   # provider public: providerPublicBaseUrl of the suites + the ceremony
 # Адреса ПОЛОСЫ ФАСАДА (#59). Это не api-gateway: кейсы IBT-* обязаны спросить сами
 # слушатели, иначе «токен проверяется через фасад» останется утверждением о конфиге,
 # а не о поведении. Оба адресата — ЯДРО (iam), то есть есть на каждом стенде.
@@ -420,8 +420,10 @@ if [ "$SEED" = "true" ]; then
   # него не осталось (задача #1120): ключ служебной учётки зеркала у поставщика не
   # заводит и обменивается только у нашего издателя (PLATFORM_TOKEN_URL ниже).
   # Переменная, которую никто не читает, читается следующим как действующая полоса,
-  # поэтому снята вместе с ней. HYDRA_PUBLIC_PORT остаётся: проброс нужен другим
-  # потребителям (проверка достижимости в prodseed_all.py, providerPublicBaseUrl суит).
+  # поэтому снята вместе с ней. Посеву не передаётся и HYDRA_PUBLIC_PORT: его
+  # проверка достижимости проброса снята вместе с предметом (задача #2685) — посев по
+  # этому пробросу не ходит ни одним шагом. Сам проброс остаётся: его читают
+  # providerPublicBaseUrl суит и посев церемонии (HYDRA_PUBLIC_URL ниже).
   # ПОСЕВ ШИРЕ, ЧЕМ НАБОР СУИТ, И ЭТО НЕ ОПЛОШНОСТЬ.
   #
   # Что посеять — вопрос про СТЕНД, а не про то, чьи кейсы мы сегодня гоняем.
@@ -448,7 +450,7 @@ if [ "$SEED" = "true" ]; then
   fi
 
   env BASE_URL="http://localhost:$GW_PORT" INTERNAL_BASE_URL="http://localhost:$GW_INTERNAL_PORT" \
-      IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" HYDRA_PUBLIC_PORT="$HYDRA_PORT" \
+      IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" \
       PLATFORM_TOKEN_URL="https://127.0.0.1:$IAM_REGTOKEN_PORT/iam/v1/token" \
       SERVICES="$SEED_SERVICES" \
       PATCH_ENV=true SETUP_NS="$NS" "${MTLS_ENV[@]}" \

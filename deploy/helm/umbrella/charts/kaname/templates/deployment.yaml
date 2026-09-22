@@ -714,8 +714,16 @@ spec:
               value: "true"
             {{- end }}
             {{- end }}
+            {{- /* ИЗДАТЕЛЬ ПОСТАВЩИКА — ТОЛЬКО ПОД ПОСАДКОЙ С ВНЕШНИМ ПОСТАВЩИКОМ
+            (kacho#2816). Под `own` поставщика нет: служба зеркала его набора ключей
+            не публикует, дорог к нему не строит, и выставленный адрес называл бы
+            соседа, которого на стенде нет. Признак — посадка, объявленная НАШЕЙ
+            службой, а не флаг чужого подчарта. Под `external` строка рендерится
+            побайтово как прежде. */}}
+            {{- if ne (toString .Values.config.authn.identityProvider) "own" }}
             - name: KANAME_HYDRA_ISSUER
               value: {{ printf "https://%s.%s" .Values.platform.subdomains.hydra .Values.platform.domain | quote }}
+            {{- end }}
             # Bootstrap-token (#58) — requested token audience the gateway accepts
             # (ExpectedAudience = https://{APIDomain}); signing key from a Secret
             # (optional — empty ⇒ env absent ⇒ MintBootstrapToken fails closed).
