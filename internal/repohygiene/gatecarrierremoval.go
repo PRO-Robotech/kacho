@@ -461,9 +461,24 @@ func gateCarrierBase(root string) (rev, how string, err error) {
 		if gitenv.Command(root, "merge-base", "--is-ancestor", "HEAD", ref).Run() == nil {
 			parent, e := gitenv.Command(root, "rev-parse", "--verify", "--quiet", "HEAD^").Output()
 			if e != nil || strings.TrimSpace(string(parent)) == "" {
+				// ПРИЧИН ДВЕ, И ЛЕЧАТСЯ ОНИ ПРОТИВОПОЛОЖНЫМ. Код возврата их не
+				// разделяет: корневой коммит полного клона и недовезённый
+				// родитель мелкого дают ОДНУ единицу с пустым выводом (замер —
+				// шапка gitrevcause.go). Прежняя редакция утверждала «родителя
+				// НЕТ» на обеих, то есть лгала о причине ровно там, где родитель
+				// был, и ремонта не называла вовсе.
+				if gitCloneIsShallow(root) {
+					return "", "", fmt.Errorf(
+						"HEAD принадлежит линии %s, а его родитель в этом дереве не "+
+							"разрешается — но клон МЕЛКИЙ, и родитель, скорее всего, "+
+							"существует у источника и просто не довезён; %s "+
+							"(`actions/checkout` с `fetch-depth: 0` либо `git fetch "+
+							"--no-tags --deepen=<N>`); ведомость и история здесь ни при "+
+							"чём. Это отказ, а не пустой успех", ref, gitRevRemedyCloneDepth)
+				}
 				return "", "", fmt.Errorf(
-					"HEAD принадлежит линии %s, но у него нет родителя — сравнить не с чем; "+
-						"это отказ, а не пустой успех", ref)
+					"HEAD принадлежит линии %s, клон ПОЛНЫЙ, и родителя у HEAD нет — это "+
+						"корневой коммит, сравнить не с чем; это отказ, а не пустой успех", ref)
 			}
 			return strings.TrimSpace(string(parent)),
 				fmt.Sprintf("HEAD^ (изменение уже принадлежит линии %s)", ref), nil
