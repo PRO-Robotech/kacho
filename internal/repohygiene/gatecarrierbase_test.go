@@ -5,9 +5,13 @@ package repohygiene
 
 import (
 	"errors"
+	"fmt"
+	"go/ast"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -428,13 +432,87 @@ func TestGateCarrierParentUnresolvedGuardsBothHalves(t *testing.T) {
 
 	// Страж обязан стоять у ВЫЗЫВАЮЩЕГО, а не только здесь: проба, судящая
 	// функцию, которой никто не пользуется, зелена при любом коде боевого пути.
-	prod, probe := packageCallSites(t, "gateCarrierParentUnresolved")
-	t.Logf("перепись: зовущих `gateCarrierParentUnresolved` — боевых %d %v, пробных %d %v",
-		len(prod), prod, len(probe), probe)
+	prod, probe := packageCallSites(t, gateCarrierGuardName)
+	t.Logf("перепись: зовущих `%s` — боевых %d %v, пробных %d %v",
+		gateCarrierGuardName, len(prod), prod, len(probe), probe)
 	if len(prod) == 0 {
-		t.Errorf("страж `gateCarrierParentUnresolved` не зовёт НИ ОДИН боевой файл — " +
-			"вызывающий держит условие своими руками, и проба судит чужой код")
+		t.Errorf("страж `%s` не зовёт НИ ОДИН боевой файл — вызывающий держит условие "+
+			"своими руками, и проба судит чужой код", gateCarrierGuardName)
 	}
+
+	// И ЭТОГО МАЛО. «Стража не зовут вовсе» и «условие переписали рядом» — два
+	// разных отказа, и перепись выше держит только первый: ВТОРОЕ место
+	// разрешения родителя, решающее «не разрешился» своим
+	// `e != nil || strings.TrimSpace(string(parent)) == ""`, оставило бы её
+	// зелёной — зовущий-то есть, просто не тот.
+	//
+	// Поэтому судится СОВМЕСТНОСТЬ: боевая функция, спрашивающая родителя из
+	// дома [gitRevParentArgv], обязана и решать стражем. Кто спрашивает — знает
+	// гейт дома, и связка двух свойств закрывает обход каждого из них.
+	resolvers, guarded := gateCarrierParentResolvers(t)
+	t.Logf("перепись: боевых мест разрешения родителя %d %v · из них решают стражем %d %v",
+		len(resolvers), resolvers, len(guarded), guarded)
+	if len(resolvers) == 0 {
+		t.Fatal("боевых мест разрешения родителя не найдено вовсе — распознаватель " +
+			"слеп либо путь переехал; молчание здесь означало бы «не смотрели»")
+	}
+	for _, r := range resolvers {
+		if !slices.Contains(guarded, r) {
+			t.Errorf("%s спрашивает родителя из дома `%s`, но «не разрешился» решает НЕ "+
+				"стражем `%s` — условие переписано рядом, и вторая его половина "+
+				"(«отказа не было, а вывод пуст») осталась без пробы",
+				r, gitRevParentHome, gateCarrierGuardName)
+		}
+	}
+}
+
+// gateCarrierGuardName — имя стража, судимого переписью.
+const gateCarrierGuardName = "gateCarrierParentUnresolved"
+
+// gateCarrierParentResolvers — БОЕВЫЕ функции, спрашивающие родителя из общего
+// дома, и те из них, что решают исход стражем.
+//
+// Единица — ФУНКЦИЯ, а не файл: два места разрешения в одном файле разошлись бы
+// молча, а перепись по файлам сочла бы их одним.
+func gateCarrierParentResolvers(t *testing.T) (resolvers, guarded []string) {
+	t.Helper()
+	repohygienePackageWalk(t, func(path string, fset *token.FileSet, file *ast.File) {
+		base := filepath.Base(path)
+		if strings.HasSuffix(base, "_test.go") {
+			return
+		}
+		for _, d := range file.Decls {
+			fn, ok := d.(*ast.FuncDecl)
+			if !ok || fn.Body == nil {
+				continue
+			}
+			var asks, guards bool
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				if id, ok := call.Fun.(*ast.Ident); ok {
+					switch id.Name {
+					case gitRevParentHome:
+						asks = true
+					case gateCarrierGuardName:
+						guards = true
+					}
+				}
+				return true
+			})
+			if !asks {
+				continue
+			}
+			coord := fmt.Sprintf("%s:%d (%s)", base, fset.Position(fn.Name.Pos()).Line, fn.Name.Name)
+			resolvers = append(resolvers, coord)
+			if guards {
+				guarded = append(guarded, coord)
+			}
+		}
+	})
+	return resolvers, guarded
 }
 
 // TestGateCarrierHedgeIsBoundToItsCause — ОГОВОРКА СВЯЗАНА СО СВОИМ ПРЕДМЕТОМ
