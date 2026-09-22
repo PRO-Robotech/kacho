@@ -341,55 +341,108 @@ func TestGitRevRemedyVocabularyHasASingleSource(t *testing.T) {
 	}
 }
 
+// repohygienePackageWalk — РАЗБОР ВСЕГО ПАКЕТА, а не одного файла.
+//
+// Единица обхода — КАТАЛОГ ПАКЕТА. Константа пакетного уровня видна всему
+// пакету и объявляется в ЛЮБОМ его файле, поэтому перепись, читающая один файл,
+// верна ровно до той минуты, пока автор пятой клаузы не положил её соседним
+// файлом того же пакета: «за пределами разбираемого файла находок ноль» было бы
+// свойством СОВПАДЕНИЯ, а не построения. Измерено инъекцией 2026-09-22: пятая
+// клауза, объявленная в gatecarrierremoval.go, оставила обе переписи зелёными.
+//
+// Дерево целиком единицей НЕ является: `gitRevRemedy*` есть идентификатор
+// пакетного уровня, и одноимённая константа чужого пакета — другой предмет.
+// Обход дерева дал бы ЛОЖНЫЕ находки, а не более полный счёт, — расширение
+// объёма без смены референта ровно так и портит число.
+//
+// Подкаталоги пропускаются по той же причине: `internal/repohygiene/artifactgates`
+// есть отдельный пакет, и его объявления этому пакету не видны.
+func repohygienePackageWalk(t *testing.T, visit func(path string, fset *token.FileSet, file *ast.File)) int {
+	t.Helper()
+
+	dir := filepath.Join(repoRoot(t), "internal", "repohygiene")
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("читать каталог пакета %s: %v — перепись беспредметна", dir, err)
+	}
+
+	fset := token.NewFileSet()
+	parsed := 0
+	for _, e := range ents {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		file, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+		if err != nil {
+			t.Fatalf("разбор %s: %v — перепись беспредметна", path, err)
+		}
+		parsed++
+		visit(path, fset, file)
+	}
+
+	// ПРЕДПОСЫЛКА ОБХОДА. Файлов в пакете заведомо больше одного; единица
+	// означала бы, что обход вернулся к чтению единственного дома — то есть
+	// ровно к той слепоте, ради снятия которой он заведён, — и «ноль находок»
+	// снова стало бы «мы не смотрели».
+	if parsed <= 1 {
+		t.Fatalf("обход пакета %s дал файлов %d — не больше, чем давало чтение одного "+
+			"дома; это отказ обхода, а не пустой успех", dir, parsed)
+	}
+	return parsed
+}
+
 // TestGitRevRemedyDictionaryIsCountedFromItsDeclarations — ПЕРЕЧЕНЬ И
 // ОБЪЯВЛЕНИЯ — ДВА МЕСТА ОБ ОДНОМ ПРЕДМЕТЕ.
 //
 // [gitRevRemedies] перечисляет клаузы вручную, и разойтись с блоком констант он
-// может молча: добавили пятую константу, в перечень не внесли — перепись выше
+// может молча: добавили пятую константу, в перечень не внесли — перепись судящая
 // продолжает считать четыре и остаётся зелёной, ничего не зная о пятой.
 //
 // Спросить у Go «все константы с этим префиксом» нечем: отражения над
-// объявлениями пакета нет. Поэтому счёт снимается РАЗБОРОМ файла — узлами
-// объявления, а не поиском подстроки: комментарий, называющий имя клаузы,
-// законен и за объявление не проходит.
+// объявлениями пакета нет. Поэтому счёт снимается РАЗБОРОМ — узлами объявления,
+// а не поиском подстроки: комментарий, называющий имя клаузы, законен и за
+// объявление не проходит.
+//
+// Разбор идёт по ВСЕМУ ПАКЕТУ (см. [repohygienePackageWalk]). Прежняя редакция
+// читала один файл, и её заголовок обещал шире тела: пятая клауза, объявленная
+// соседним файлом того же пакета, проходила молча — измерено инъекцией
+// 2026-09-22, обе переписи напечатали «4 · 4» и остались зелёными.
 func TestGitRevRemedyDictionaryIsCountedFromItsDeclarations(t *testing.T) {
 	t.Parallel()
 
-	path := filepath.Join(repoRoot(t), "internal", "repohygiene", "gitrevcause.go")
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
-	if err != nil {
-		t.Fatalf("разбор %s: %v — перепись беспредметна", path, err)
-	}
-
-	names := map[string]bool{}
-	for _, decl := range file.Decls {
-		gen, ok := decl.(*ast.GenDecl)
-		if !ok || gen.Tok != token.CONST {
-			continue
-		}
-		for _, spec := range gen.Specs {
-			vs, ok := spec.(*ast.ValueSpec)
-			if !ok {
+	names := map[string]string{}
+	parsed := repohygienePackageWalk(t, func(path string, fset *token.FileSet, file *ast.File) {
+		for _, decl := range file.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.CONST {
 				continue
 			}
-			for _, n := range vs.Names {
-				if strings.HasPrefix(n.Name, "gitRevRemedy") {
-					names[n.Name] = true
+			for _, spec := range gen.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+				for _, n := range vs.Names {
+					if strings.HasPrefix(n.Name, "gitRevRemedy") {
+						names[n.Name] = fmt.Sprintf("%s:%d", filepath.Base(path),
+							fset.Position(n.Pos()).Line)
+					}
 				}
 			}
 		}
-	}
+	})
 
 	// Предпосылка: разбор обязан НАЙТИ объявления. Ноль имён означает, что дом
-	// переехал либо разбор перестал его видеть, — и то и другое находка, а не
-	// повод молчать.
+	// словаря переехал либо разбор перестал его видеть, — и то и другое находка,
+	// а не повод молчать.
 	if len(names) == 0 {
-		t.Fatalf("в %s не нашлось ни одного объявления `gitRevRemedy*` — дом словаря "+
-			"переехал либо разбор ослеп; молчание здесь означало бы «не смотрели»", path)
+		t.Fatalf("в пакете (разобрано файлов %d) не нашлось ни одного объявления "+
+			"`gitRevRemedy*` — дом словаря переехал либо разбор ослеп; молчание здесь "+
+			"означало бы «не смотрели»", parsed)
 	}
-	t.Logf("перепись: объявлений `gitRevRemedy*` в файле %d · строк перечня %d",
-		len(names), len(gitRevRemedies()))
+	t.Logf("перепись: файлов пакета разобрано %d · объявлений `gitRevRemedy*` %d %v · "+
+		"строк перечня %d", parsed, len(names), names, len(gitRevRemedies()))
 
 	if len(names) != len(gitRevRemedies()) {
 		t.Errorf("объявлено констант %d, а перечень отдаёт %d — два места об одном "+
