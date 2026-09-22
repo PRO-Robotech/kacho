@@ -260,9 +260,10 @@ func TestGateCarrierNoParentRefusalCarriesTheToolsAnswer(t *testing.T) {
 		// закрытым на две трети: при отказе иного рода оно осталось бы ложным.
 		// Асимметрия рождается молча, поэтому оговорка берётся из объявленного
 		// источника, а не выписывается в каждой ветви своими словами.
-		if !strings.Contains(reachable.Error(), gateCarrierCauseIsInferred) {
+		if !strings.Contains(reachable.Error(), gateCarrierHedgedCause(shallow)) {
 			t.Errorf("мелкий=%v: ветвь утверждает причину КАТЕГОРИЧЕСКИ, опираясь на "+
-				"один признак: %v", shallow, reachable)
+				"один признак; оговоренной клаузы %q в отказе нет: %v",
+				shallow, gateCarrierHedgedCause(shallow), reachable)
 		}
 	}
 
@@ -329,6 +330,19 @@ func gateBaseRealExitError(t *testing.T) error {
 			exitErr.ExitCode())
 	}
 	return err
+}
+
+// gateCarrierHedgedCause — ОГОВОРЕННАЯ ПРИЧИНА ветви, собранная тем же
+// шаблоном, что и производитель.
+//
+// Тем же, а не своей копией: утверждение, переписавшее склейку рядом, ловило бы
+// переименование и молчало на подмене смысла — ровно та болезнь, от которой
+// шаблон и заведён.
+func gateCarrierHedgedCause(shallow bool) string {
+	if shallow {
+		return gateCarrierInferredCause(gateCarrierCauseUndelivered)
+	}
+	return gateCarrierInferredCause(gateCarrierCauseRootCommit)
 }
 
 // TestGateCarrierRefusalSaysOnlyWhatItChecked — ОТКАЗ УТВЕРЖДАЕТ РОВНО ТО, ЧТО
@@ -420,5 +434,61 @@ func TestGateCarrierParentUnresolvedGuardsBothHalves(t *testing.T) {
 	if len(prod) == 0 {
 		t.Errorf("страж `gateCarrierParentUnresolved` не зовёт НИ ОДИН боевой файл — " +
 			"вызывающий держит условие своими руками, и проба судит чужой код")
+	}
+}
+
+// TestGateCarrierHedgeIsBoundToItsCause — ОГОВОРКА СВЯЗАНА СО СВОИМ ПРЕДМЕТОМ
+// ЦЕЛОЙ ФОРМУЛИРОВКОЙ, А НЕ ФРАГМЕНТОМ.
+//
+// Оговорка — грамматический модификатор, она втискивается ВНУТРЬ фразы, и
+// утверждение о ней вырождалось в поиск подстроки `"скорее всего,"`. Измерено
+// инъекцией 2026-09-22: категоричность вернули причине («родителя НЕТ по
+// существу»), фрагмент оставили при другом существительном («точку сравнения
+// скорее всего, вывести неоткуда») — все пять проб остались зелёными.
+//
+// Судятся три вещи, и каждая — свойство СКЛЕЙКИ, а не слова:
+//
+//  1. оговоренная причина своей ветви присутствует ЦЕЛИКОМ;
+//  2. фрагмент оговорки встречается в отказе РОВНО ОДИН раз, и это вхождение —
+//     то самое, что внутри клаузы: припаркованный при чужом существительном
+//     второй фрагмент есть находка сам по себе;
+//  3. оговорка обособлена С ОБЕИХ сторон — запятая слева приходит от
+//     вызывающего, справа от шаблона, и односторонним обособление больше не
+//     бывает («родителя скорее всего, нет» — прежняя редакция, обе ветви).
+//
+// Чужая оговоренная причина в отказе отсутствует: ветви лечатся
+// противоположным, и сойтись в одном тексте им нельзя.
+func TestGateCarrierHedgeIsBoundToItsCause(t *testing.T) {
+	t.Parallel()
+	const ref = "refs/remotes/origin/main"
+
+	for _, shallow := range []bool{false, true} {
+		text := gateCarrierNoParentRefusal(ref, shallow, nil, errors.New("exit status 1")).Error()
+		mine, foreign := gateCarrierHedgedCause(shallow), gateCarrierHedgedCause(!shallow)
+		t.Logf("мелкий=%v: %s", shallow, text)
+
+		at := strings.Index(text, mine)
+		if at < 0 {
+			t.Errorf("мелкий=%v: оговоренной причины %q в отказе НЕТ — оговорка "+
+				"оторвана от своего предмета: %q", shallow, mine, text)
+			continue
+		}
+		if strings.Contains(text, foreign) {
+			t.Errorf("мелкий=%v: отказ несёт и ЧУЖУЮ оговоренную причину %q — две "+
+				"причины сошлись в одном тексте: %q", shallow, foreign, text)
+		}
+		if n := strings.Count(text, gateCarrierCauseHedge); n != 1 {
+			t.Errorf("мелкий=%v: фрагмент оговорки %q встречается %d раз(а) — лишнее "+
+				"вхождение стоит при чужом предмете: %q",
+				shallow, gateCarrierCauseHedge, n, text)
+		}
+		if strings.Index(text, gateCarrierCauseHedge) != at {
+			t.Errorf("мелкий=%v: первое вхождение оговорки — НЕ то, что внутри клаузы "+
+				"%q: %q", shallow, mine, text)
+		}
+		if !strings.Contains(text, ", "+mine) {
+			t.Errorf("мелкий=%v: оговорка обособлена ОДНОСТОРОННЕ — запятой слева нет: "+
+				"%q", shallow, text)
+		}
 	}
 }
