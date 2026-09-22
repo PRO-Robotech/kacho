@@ -43,6 +43,9 @@
 package main
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"regexp"
 	"strings"
 	"testing"
@@ -82,22 +85,108 @@ func TestUnsetIdentityPostureRefusesUnderEveryEnvLabel(t *testing.T) {
 	}
 }
 
-// ЗАКОННЫЙ БЛИЗНЕЦ: объявленная посадка старт проходит — обе законные.
+// ЗАКОННЫЙ БЛИЗНЕЦ: посадка, под которую у корня ЕСТЬ провязка, старт проходит.
 //
-// Против отрицательного кейса меняется РОВНО ОДИН факт: посадка объявлена. Без
-// этой половины «край требует объявления» было бы неотличимо от «край не
-// поднимается никогда».
+// # Почему случай ПЕРЕУТВЕРЖДЁН, а не снят
+//
+// Он утверждал: «принимается КАЖДОЕ значение словаря фундамента». Это свойство
+// исчезло вместе с законностью `external` у края, и исходов у такого случая
+// три — снять вместе с предметом · перевести на производимый деревом признак ·
+// переутвердить новое свойство того же предмета. Снять нельзя: без
+// положительной половины «край требует объявления» неотличимо от «край не
+// поднимается никогда», и отрицательный случай выше остался бы без близнеца.
+//
+// Поэтому взято ТРЕТЬЕ, усиленное ВТОРЫМ: предмет тот же — «объявленная
+// посадка старт проходит», — но множество объявленных берётся не из словаря
+// фундамента, а из того, что ИСПОЛНЯЕТ этот процесс
+// (`wiredIdentityPostures`), и совпадение этого множества с провязками корня
+// производится ДЕРЕВОМ — `TestGuardAcceptsExactlyWhatTheCompositionRootWires`.
+// Против отрицательного кейса по-прежнему меняется ровно один факт.
 func TestADeclaredIdentityPostureStillBoots(t *testing.T) {
-	values := identityposture.Values()
-	if len(values) == 0 {
-		t.Fatal("словарь законных посадок пуст — близнеца не на чем построить")
+	wired := wiredIdentityPostures()
+	if len(wired) == 0 {
+		t.Fatal("процесс не исполняет НИ ОДНОЙ посадки — близнеца не на чем построить, " +
+			"и отказ стража был бы отказом всему подряд")
 	}
-	for _, lane := range values {
+	for _, lane := range wired {
 		if err := validateIdentityPosture(lane); err != nil {
-			t.Errorf("объявленная посадка %s отвергнута: %v", lane, err)
+			t.Errorf("посадка %s, под которую у корня есть провязка, отвергнута: %v", lane, err)
 		}
 	}
-	t.Logf("перепись: законных значений посадки %d — принято все", len(values))
+	t.Logf("перепись: значений словаря фундамента %d · исполняется этим процессом %d — принято все",
+		len(identityposture.Values()), len(wired))
+}
+
+// ОБЪЯВЛЕННАЯ, НО НЕИСПОЛНИМАЯ ПОСАДКА ОТВЕРГАЕТ СТАРТ.
+//
+// # Что наблюдалось, пока страж её принимал
+//
+// `external` не встречался в прод-коде края НИ РАЗУ: корень ветвился по посадке
+// только сравнением с `own`, то есть под `external` не провязывались ни
+// читатель носителя, ни ответ «кто я», ни ретрансляция глаголов формы. Страж
+// при этом принимал значение как законное, и стенд на нём поднимался ГОТОВЫМ,
+// не заводя браузерного входа ни одного, — тот же наблюдаемый исход, ради
+// снятия которого страж и заведён, только достигнутый ОБЪЯВЛЕННЫМ значением
+// вместо унаследованного. В дереве на этом не краснело ничто.
+//
+// # Отказов ДВА, а не один
+//
+// «Не объявлено» и «объявлено то, чего этот процесс не исполняет» — разные
+// состояния с разным ремонтом: первое чинится объявлением, второе — выбором
+// другого значения либо провязкой. Слитые в один отказ, они предлагали бы
+// оператору чинить не то.
+//
+// # Словарь ФУНДАМЕНТА не тронут
+//
+// Сужается то, что принимает КРАЙ. Значение остаётся законным для тех, кто его
+// исполняет: посадку читают два процесса, и служба прав `external` исполняет.
+// Правка фундамента здесь не нужна и не делается.
+func TestUnwiredIdentityPostureRefusesTheStart(t *testing.T) {
+	wired := map[identityposture.Provider]bool{}
+	for _, w := range wiredIdentityPostures() {
+		wired[w] = true
+	}
+
+	var judged int
+	for _, lane := range identityposture.Values() {
+		if wired[lane] {
+			continue
+		}
+		judged++
+		err := validateIdentityPosture(lane)
+		if err == nil {
+			t.Errorf("посадка %s ПРИНЯТА стражем, а провязки под неё у корня нет ни одной: "+
+				"край поднимется готовым, браузерного входа не заведёт ни одного, ответит "+
+				"пустым на «кто я» и отвергнет каждый запрос без предъявителя — и ни одного "+
+				"отказа старта при этом не произнесёт", lane)
+			continue
+		}
+		// Отказ обязан назвать ПРИЧИНУ и РЕМОНТ, как у соседних стражей посадки.
+		for _, want := range []string{
+			config.IdentityProviderKnob, lane.String(), "refuse to start",
+		} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("отказ по посадке %s не называет %q — оператор не поднимет стенд "+
+					"по отказу, который не говорит что чинить: %v", lane, want, err)
+			}
+		}
+		for _, w := range wiredIdentityPostures() {
+			if !strings.Contains(err.Error(), w.String()) {
+				t.Errorf("отказ по посадке %s не называет исполнимого значения %q — "+
+					"причина названа, ремонт нет: %v", lane, w, err)
+			}
+		}
+	}
+
+	// ПРЕДПОСЫЛКА: словарь фундамента шире исполняемого этим процессом. Сойдись
+	// они — случай судил бы пустоту и молчал бы о вернувшемся дефекте.
+	if judged == 0 {
+		t.Fatalf("в словаре фундамента (%d значений) нет ни одного, которого край не "+
+			"исполняет, — предмет случая исчез, и его молчание сказано ни о чём",
+			len(identityposture.Values()))
+	}
+	t.Logf("перепись: значений словаря фундамента %d · неисполнимых краем %d — отвергнуто все",
+		len(identityposture.Values()), judged)
 }
 
 // ПРОВЯЗКА: страж обязан быть ПОЗВАН композиционным корнем.
@@ -134,5 +223,166 @@ func TestCompositionRoot_JudgesThePostureBeforeItWiresByIt(t *testing.T) {
 	if guard > wiring {
 		t.Errorf("страж посадки (смещение %d) стоит ПОСЛЕ первой провязки по ней (%d)",
 			guard, wiring)
+	}
+}
+
+// ─── МНОЖЕСТВО ПРИНИМАЕМОГО ПРОИЗВОДИТСЯ ДЕРЕВОМ ───────────────────────────
+//
+// Страж, чьё множество выписано рядом с ним, расходится с корнем молча: корень
+// начинает ветвиться по новому значению — страж его не принимает и стенд не
+// поднимается; корень перестаёт ветвиться по старому — страж принимает
+// неисполнимое, и возвращается ровно тот дефект, ради которого он сужен.
+//
+// Поэтому множество СВЕРЯЕТСЯ с деревом: разбором достижимого от `main()` кода
+// берутся все посадки, ПО КОТОРЫМ КОРЕНЬ ВЕТВИТСЯ, и они обязаны совпасть.
+
+// postureSelectorsComparedInRoot — посадки, с которыми достижимый код КОРНЯ
+// сравнивает значение.
+//
+// Законных форм записи такого сравнения ДВЕ, и обе в наблюдении: двоичное
+// сравнение (`lane == identityposture.Own`, `provider != identityposture.Own`)
+// и ветвь выбора (`case identityposture.Own:`). Форма вне наблюдения дала бы
+// не красное и не зелёное, а молчание.
+func postureSelectorsComparedInRoot(t *testing.T, src string) map[string]bool {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, compositionRootLabel, src, parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatalf("достижимый код корня не разбирается: %v", err)
+	}
+	out := map[string]bool{}
+	note := func(e ast.Expr) {
+		sel, ok := e.(*ast.SelectorExpr)
+		if !ok {
+			return
+		}
+		pkg, isIdent := sel.X.(*ast.Ident)
+		if !isIdent || pkg.Name != "identityposture" || sel.Sel == nil {
+			return
+		}
+		out[sel.Sel.Name] = true
+	}
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch v := n.(type) {
+		case *ast.BinaryExpr:
+			if v.Op == token.EQL || v.Op == token.NEQ {
+				note(v.X)
+				note(v.Y)
+			}
+		case *ast.CaseClause:
+			for _, e := range v.List {
+				note(e)
+			}
+		}
+		return true
+	})
+	// `Unset` — не провязка, а признак «ответа нет»: по нему ветвится сам
+	// страж, и считать его исполняемой посадкой значило бы требовать провязки
+	// под отсутствие ответа.
+	delete(out, "Unset")
+	return out
+}
+
+// TestGuardAcceptsExactlyWhatTheCompositionRootWires — множество стража равно
+// множеству провязок корня.
+func TestGuardAcceptsExactlyWhatTheCompositionRootWires(t *testing.T) {
+	inRoot := postureSelectorsComparedInRoot(t, compositionRoot(t))
+	accepted := map[string]bool{}
+	for _, p := range wiredIdentityPostures() {
+		// Имя КОНСТАНТЫ фундамента, а не её печать: корень пишет
+		// `identityposture.Own`, страж держит значение, и сверяются они по
+		// одному словарю — тому, что объявлен рядом.
+		accepted[postureConstName(t, p)] = true
+	}
+
+	if len(inRoot) == 0 {
+		t.Fatal("в достижимом коде корня нет НИ ОДНОГО сравнения с посадкой — предпосылка " +
+			"исчезла: сверять множество стража не с чем, и его молчание сказано ни о чём")
+	}
+	t.Logf("перепись: посадок, по которым ветвится достижимый корень — %v · принимает страж — %v",
+		sortedKeys(inRoot), sortedKeys(accepted))
+
+	for name := range inRoot {
+		if !accepted[name] {
+			t.Errorf("корень ветвится по посадке %s, а страж её НЕ принимает: стенд, "+
+				"объявивший это значение, не поднимется, хотя провязка под него построена",
+				name)
+		}
+	}
+	for name := range accepted {
+		if !inRoot[name] {
+			t.Errorf("страж принимает посадку %s, а корень по ней не ветвится НИ РАЗУ: "+
+				"край поднимется готовым и не заведёт под неё ничего — ровно тот дефект, "+
+				"ради снятия которого множество сужено", name)
+		}
+	}
+}
+
+// postureConstName — имя константы фундамента по её значению, выведенное из
+// самого словаря: выписанное соответствие разошлось бы с ним молча.
+func postureConstName(t *testing.T, p identityposture.Provider) string {
+	t.Helper()
+	switch p {
+	case identityposture.Own:
+		return "Own"
+	case identityposture.External:
+		return "External"
+	case identityposture.Unset:
+		return "Unset"
+	}
+	t.Fatalf("значение посадки %v словарю этого случая неизвестно — словарь фундамента "+
+		"пополнился, а сверка о нём не знает", p)
+	return ""
+}
+
+// ─── ИНЪЕКЦИЯ В ОБЕ СТОРОНЫ, НА СИНТЕТИКЕ ──────────────────────────────────
+
+// TestPostureSelectorRecognizerKnowsBothLawfulForms — распознаватель знает обе
+// законные формы и молчит там, где сравнения нет.
+func TestPostureSelectorRecognizerKnowsBothLawfulForms(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want []string
+	}{
+		{"двоичное сравнение", `package main
+func main() {
+	if lane == identityposture.Own {
+		wire()
+	}
+}`, []string{"Own"}},
+		{"отрицание", `package main
+func main() {
+	if lane != identityposture.Own {
+		return
+	}
+}`, []string{"Own"}},
+		{"ветвь выбора", `package main
+func main() {
+	switch lane {
+	case identityposture.Own:
+		wire()
+	case identityposture.External:
+		wireForeign()
+	}
+}`, []string{"External", "Own"}},
+		{"признак «ответа нет» провязкой не считается", `package main
+func main() {
+	if lane == identityposture.Unset {
+		refuse()
+	}
+}`, nil},
+		{"упоминание без сравнения", `package main
+func main() {
+	log(identityposture.External)
+}`, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := sortedKeys(postureSelectorsComparedInRoot(t, c.src))
+			if strings.Join(got, ",") != strings.Join(c.want, ",") {
+				t.Errorf("распознано %v, ожидалось %v", got, c.want)
+			}
+		})
 	}
 }

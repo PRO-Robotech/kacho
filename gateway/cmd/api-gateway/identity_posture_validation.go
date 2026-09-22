@@ -46,21 +46,61 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 )
 
+// wiredIdentityPostures — посадки, под которые у ЭТОГО процесса есть провязка.
+//
+// Словарь фундамента шире: посадку читают ДВА процесса, и `external` служба
+// прав исполняет. Сужается здесь то, что принимает КРАЙ, — и сужается до того,
+// что корень действительно строит. Совпадение множества с провязками корня
+// производится ДЕРЕВОМ, а не обещанием:
+// `TestGuardAcceptsExactlyWhatTheCompositionRootWires` выводит его разбором
+// достижимого от `main()` кода и краснеет, если корень начал ветвиться по
+// значению, которого здесь нет, — или перестал ветвиться по тому, которое есть.
+func wiredIdentityPostures() []identityposture.Provider {
+	return []identityposture.Provider{identityposture.Own}
+}
+
+// wiredIdentityPostureNames — то же множество словами, для текста отказа.
+func wiredIdentityPostureNames() []string {
+	wired := wiredIdentityPostures()
+	out := make([]string, 0, len(wired))
+	for _, p := range wired {
+		out = append(out, p.String())
+	}
+	return out
+}
+
 // validateIdentityPosture отказывает в старте, пока посадка не объявлена.
 //
 // Негодное значение до этой проверки не доходит: его отвергает разбор
 // (`config.ResolvedIdentityProvider`) с именем той же ручки. Здесь судится
 // ровно ОТСУТСТВИЕ ответа.
 func validateIdentityPosture(provider identityposture.Provider) error {
-	if provider != identityposture.Unset {
-		return nil
+	if provider == identityposture.Unset {
+		return fmt.Errorf(
+			"%s is not declared — the posture decides three wirings of this process (the "+
+				"identity lane, the answer to «who am I» and the relay of the sign-in form's "+
+				"verbs), and an undeclared value wires NONE of them: the edge would come up "+
+				"ready with no browser sign-in at all, answering empty to «who am I» and "+
+				"refusing every request that carries no presenter, without a single start-up "+
+				"refusal. Declare it as one of %v (refuse to start)",
+			config.IdentityProviderKnob, wiredIdentityPostureNames())
 	}
+	for _, wired := range wiredIdentityPostures() {
+		if provider == wired {
+			return nil
+		}
+	}
+	// ВТОРОЙ отказ, а не тот же. «Не объявлено» чинится объявлением;
+	// «объявлено то, чего этот процесс не исполняет» — выбором другого значения
+	// либо провязкой. Слитые в один, они предлагали бы чинить не то.
 	return fmt.Errorf(
-		"%s is not declared — the posture decides three wirings of this process (the "+
-			"identity lane, the answer to «who am I» and the relay of the sign-in form's "+
-			"verbs), and an undeclared value wires NONE of them: the edge would come up "+
-			"ready with no browser sign-in at all, answering empty to «who am I» and "+
-			"refusing every request that carries no presenter, without a single start-up "+
-			"refusal. Declare it as one of %v (refuse to start)",
-		config.IdentityProviderKnob, identityposture.Names())
+		"%s=%s is declared, but this process wires NOTHING under it: the posture decides "+
+			"three wirings of the edge (the identity lane, the answer to «who am I» and the "+
+			"relay of the sign-in form's verbs), and under %s not one of the three is "+
+			"constructed — the edge would come up READY with no browser sign-in at all, "+
+			"answering empty to «who am I» and refusing every request that carries no "+
+			"presenter, and it would say nothing about it. The value stays lawful in the "+
+			"shared vocabulary for the processes that DO implement it (the identity service "+
+			"is one); this edge accepts only %v. Declare one of them (refuse to start)",
+		config.IdentityProviderKnob, provider, provider, wiredIdentityPostureNames())
 }
