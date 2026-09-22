@@ -96,30 +96,45 @@ ka_interval=20
 ka_count=3
 ka_want="ssh -o ServerAliveInterval=$ka_interval -o ServerAliveCountMax=$ka_count"
 
-# ka_state — печатает «<состояние>|<значение>»: set (наш либо чужой с keepalive),
-# foreign (чужой без keepalive), none.
+# ka_state — печатает «<состояние>|<источник>|<значение>»: set (транспорт с
+# keepalive), foreign (чужой транспорт без keepalive), none (транспорта не задано).
+#
+# Источник выбирается в том же порядке старшинства, что у git (connect.c; замер
+# 2026-09-22, git 2.53): GIT_SSH_COMMAND сильнее core.sshCommand, а тот сильнее
+# GIT_SSH. Отсюда два следствия. При GIT_SSH_COMMAND настройка клона не действует,
+# и назвать её — значит солгать о транспорте. При GIT_SSH выставленный
+# core.sshCommand ПЕРЕБИЛ бы обёртку — ровно то, чего здесь не делают.
 ka_state() {
-    local cur
-    cur="$(git -C "$root" config --get core.sshCommand 2>/dev/null || true)"
+    local cur src
+    if [ -n "${GIT_SSH_COMMAND:-}" ]; then
+        cur="$GIT_SSH_COMMAND" src="окружение GIT_SSH_COMMAND"
+    else
+        cur="$(git -C "$root" config --get core.sshCommand 2>/dev/null || true)"
+        src="core.sshCommand"
+        if [ -z "$cur" ] && [ -n "${GIT_SSH:-}" ]; then
+            cur="$GIT_SSH" src="окружение GIT_SSH"
+        fi
+    fi
     if [ -z "$cur" ]; then
-        printf 'none|\n'
+        printf 'none||\n'
     # Сравнение БЕЗ внешнего процесса: `printf | grep -q` под `pipefail` роняет
     # писателя SIGPIPE'ом, и найденное объявляется ненайденным (класс держит
     # TestPipefailVerdictNeverComesFromAPipe, #658 — он эту строку и нашёл).
     elif [[ "${cur,,}" == *serveraliveinterval* ]]; then
-        printf 'set|%s\n' "$cur"
+        printf 'set|%s|%s\n' "$src" "$cur"
     else
-        printf 'foreign|%s\n' "$cur"
+        printf 'foreign|%s|%s\n' "$src" "$cur"
     fi
 }
 
 ka_report() {
-    local st; st="$(ka_state)"
+    local st rest src val
+    st="$(ka_state)"; rest="${st#*|}"; src="${rest%%|*}"; val="${rest#*|}"
     case "${st%%|*}" in
         set)
-            echo "keepalive транспорта: есть — core.sshCommand = «${st#*|}»" ;;
+            echo "keepalive транспорта: есть — $src = «$val»" ;;
         foreign)
-            echo "keepalive транспорта: НЕТ — core.sshCommand задан снаружи: «${st#*|}»" >&2
+            echo "keepalive транспорта: НЕТ — транспорт задан снаружи, $src = «$val»" >&2
             echo "  Не перебиваем: там могут быть ключ, порт, прокси. Добавьте в него сами:" >&2
             echo "    -o ServerAliveInterval=$ka_interval -o ServerAliveCountMax=$ka_count" >&2 ;;
         *)
@@ -281,8 +296,9 @@ for name in "${hooks[@]}"; do
 done
 
 # Keepalive выставляется ОДИН РАЗ на клон и наследуется всеми его worktree:
-# `core.sshCommand` живёт в общем каталоге репозитория. Чужое значение не
-# трогается — про него говорит `ka_report`.
+# `core.sshCommand` живёт в общем каталоге репозитория. Выставляется только при
+# состоянии none: чужой транспорт — в настройке или в окружении — не трогается,
+# про него говорит `ka_report`.
 ka_now="$(ka_state)"
 if [ "${ka_now%%|*}" = none ]; then
     if git -C "$root" config --local core.sshCommand "$ka_want"; then
