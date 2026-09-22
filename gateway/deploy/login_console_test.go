@@ -248,7 +248,8 @@ func TestStacks_ProductionClassResolvesTheLoginConsole(t *testing.T) {
 	// совпадать боевой предикат печатали бы ровно тот же зелёный.
 	var facts []loginConsoleFacts
 	stacks := deployableStacks(t)
-	for name, stack := range stacks {
+	for _, name := range sortedStackNames(stacks) {
+		stack := stacks[name]
 		if !stackIsProductionClass(t, stack) {
 			t.Logf("%s: dev-класс по собственному объявлению — пропущен (%d профиль(ей))", name, len(stack))
 			continue
@@ -444,8 +445,9 @@ func TestLoginConsole_GitignoredStackMemberExclusionStillHasASubject(t *testing.
 			"says so; with the ignore rule gone the exclusion has no subject — either fold the "+
 			"profile in and delete this test, or restore the rule.", gitignoredStackMember)
 	}
-	for name, stack := range deployableStacks(t) {
-		for _, profile := range stack {
+	stacks := deployableStacks(t)
+	for _, name := range sortedStackNames(stacks) {
+		for _, profile := range stacks[name] {
 			if profile == gitignoredStackMember {
 				t.Fatalf("%s now appears in stack %q. It is excluded precisely because it is not "+
 					"in the tree; if it has become foldable, remove the exclusion instead of "+

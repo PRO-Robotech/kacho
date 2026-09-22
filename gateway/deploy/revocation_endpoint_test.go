@@ -102,6 +102,18 @@ func deployableStacks(t *testing.T) map[string][]string {
 	return out
 }
 
+// sortedStackNames — имена цепочек таблицы в устойчивом порядке. Обход карты
+// давал бы подпробы и находки в порядке, разном от прогона к прогону, и два
+// прогона одного дерева нельзя было бы сравнить построчно.
+func sortedStackNames(stacks map[string][]string) []string {
+	names := make([]string, 0, len(stacks))
+	for name := range stacks {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
 // introspectionAdminPath — the path the provider's admin API serves token
 // introspection on, mirrored from the gateway's own boot guard. An address
 // ending anywhere else is the public API, which serves no introspection at all.
