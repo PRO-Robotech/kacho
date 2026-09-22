@@ -275,7 +275,7 @@ func TestRetiredVendorClassSubsumesEverySourceArm(t *testing.T) {
 			if vendorCommentLine(line) || !carries(lowerLines[i]) {
 				continue
 			}
-			caught := vendorLineAxis(lowerLines[i]) != ""
+			caught := vendorLineAxis(line) != ""
 			for a, arm := range vendorSourceArms {
 				if !arm.Re.MatchString(line) {
 					continue
