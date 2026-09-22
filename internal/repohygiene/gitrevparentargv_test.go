@@ -33,11 +33,15 @@ import (
 // # Что именно судится
 //
 //  1. ДОМ ОДИН. Объявление [gitRevParentArgv] в пакете ровно одно.
-//  2. МИМО ДОМА НИКТО НЕ СПРАШИВАЕТ. Ни один вызов `gitenv.Command` не несёт
-//     литералами СРАЗУ `rev-parse` и `HEAD^`: это и есть вторая запись того же
-//     вопроса, а две записи расходятся молча — ровно это и было измерено.
-//     Одного `HEAD^` мало: `log HEAD^` спрашивает другое, и краснеть на нём
-//     значило бы объявлять находкой законного близнеца.
+//  2. ОБА СЛОВА ВОПРОСА СТОЯТ ЛИТЕРАЛАМИ РОВНО В ОДНОМ МЕСТЕ — в теле дома.
+//     Судятся СЛОВА, а не способ их записи: любой вызов любой функции и любой
+//     составной литерал, несущий рядом `rev-parse` и `HEAD^`, есть вторая
+//     запись вопроса. Прежняя редакция снимала признак только с прямых
+//     литералов у `gitenv.Command`, и это закрывало форму, а не класс: 20 из 90
+//     вызовов подают аргументы раскрытием `args...`, и один из них — обёртка
+//     `run` В ТОЙ ЖЕ ФИКСТУРЕ, чью вторую запись эта полоса снимала. Измерено
+//     инъекцией 2026-09-22: `run("rev-parse", "--verify", "--quiet", "HEAD^")`,
+//     дописанная в gateBaseOriginRepo, прошла молча — `ok`, EXIT=0.
 //  3. ВОПРОС ЗАДАН ИЗ ДОМА ОБЕИМИ СТОРОНАМИ. Вызов вида
 //     `gitenv.Command(<дерево>, gitRevParentArgv()...)` есть и в боевом файле, и
 //     в пробном. Судится именно ВЫЗОВ, а не упоминание имени: фикстура называет
@@ -45,23 +49,56 @@ import (
 //     значило бы оставить дыру — подмену спрашивающей команды на `cat-file`
 //     такая перепись пережила бы молча, а это ровно снятый дефект.
 //
-// Согласованная смена — правка тела [gitRevParentArgv] — не трогает ни одного
-// из трёх пунктов и молчит: именно этого от общего источника и ждут.
+// СЛОВАРЬ ВОПРОСА БЕРЁТСЯ У ДОМА, а не выписывается здесь: третья запись тех же
+// слов расходилась бы с первыми двумя ровно так же молча. Согласованная смена
+// внутри дома двигает и предмет, и распознаватель — и молчит, как должна.
+//
+// ЗАКОННЫЙ БЛИЗНЕЦ — чужой вопрос о том же объекте (`log … HEAD^`): одного
+// `HEAD^` мало, нужны ОБА слова рядом, иначе гейт краснел бы на законном.
 
 // gitRevParentHome — имя общего дома аргументов вопроса о родителе.
 const gitRevParentHome = "gitRevParentArgv"
 
-// Признак ВТОРОЙ ЗАПИСИ вопроса: подкоманда и объект, стоящие литералами в
-// одном вызове `gitenv.Command`.
+// gitRevParentWords — слова вопроса, взятые У САМОГО ДОМА.
 //
-// Оба слова, а не одно: `HEAD^` встречается и в чужих вопросах об этом объекте,
-// и объявлять их находкой значило бы краснеть на законном близнеце; `rev-parse`
-// же спрашивают и о других объектах — в этом же пакете о ссылке линии и о
-// ревизии ведомости.
-const (
-	gitRevParentVerb   = "rev-parse"
-	gitRevParentObject = "HEAD^"
-)
+// Не выписаны здесь намеренно: выписанные, они стали бы третьей записью тех же
+// слов и разошлись бы с домом молча — ровно тем же способом, каким расходились
+// первые две.
+func gitRevParentWords(t *testing.T) (verb, object string) {
+	t.Helper()
+	argv := gitRevParentArgv()
+	if len(argv) < 2 {
+		t.Fatalf("дом `%s` отдал %d аргумент(ов) %v — вопроса из них не составить, и "+
+			"распознавателю нечем судить", gitRevParentHome, len(argv), argv)
+	}
+	return argv[0], argv[len(argv)-1]
+}
+
+// carriesBothWords — несёт ли этот список выражений ОБА слова вопроса прямыми
+// строковыми литералами.
+//
+// Список — это либо аргументы вызова, либо элементы составного литерала: обе
+// формы суть «слова, записанные рядом», и различать их незачем.
+func carriesBothWords(exprs []ast.Expr, verb, object string) bool {
+	var seenVerb, seenObject bool
+	for _, e := range exprs {
+		lit, ok := e.(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			continue
+		}
+		v, err := strconv.Unquote(lit.Value)
+		if err != nil {
+			continue
+		}
+		switch v {
+		case verb:
+			seenVerb = true
+		case object:
+			seenObject = true
+		}
+	}
+	return seenVerb && seenObject
+}
 
 // packageCallSites — КТО ЗОВЁТ функцию пакета, с координатами, раздельно по
 // боевым и пробным файлам.
@@ -97,60 +134,73 @@ func packageCallSites(t *testing.T, name string) (prod, test []string) {
 func TestGitRevParentQuestionHasASingleArgvHome(t *testing.T) {
 	t.Parallel()
 
-	var homes, literalAskers, prodAskers, probeAskers []string
+	verb, object := gitRevParentWords(t)
+
+	var homes, atHome, offHome, prodAskers, probeAskers []string
 	commandCalls := 0
 
 	census := repohygienePackageWalk(t, func(path string, fset *token.FileSet, file *ast.File) {
 		base := filepath.Base(path)
+
+		// Границы дома: слова вопроса законны ВНУТРИ него и только там.
+		// Берутся разбором, а не по имени файла: дом вправе переехать.
+		var homeFrom, homeTo token.Pos
+		for _, d := range file.Decls {
+			fn, ok := d.(*ast.FuncDecl)
+			if !ok || fn.Recv != nil || fn.Name.Name != gitRevParentHome {
+				continue
+			}
+			homes = append(homes, fmt.Sprintf("%s:%d", base, fset.Position(fn.Name.Pos()).Line))
+			homeFrom, homeTo = fn.Pos(), fn.End()
+		}
+		inHome := func(p token.Pos) bool {
+			return homeFrom != token.NoPos && p >= homeFrom && p < homeTo
+		}
+
 		ast.Inspect(file, func(n ast.Node) bool {
+			var exprs []ast.Expr
+			var at token.Pos
 			switch x := n.(type) {
-			case *ast.FuncDecl:
-				if x.Recv == nil && x.Name.Name == gitRevParentHome {
-					homes = append(homes, fmt.Sprintf("%s:%d", base,
-						fset.Position(x.Name.Pos()).Line))
-				}
 			case *ast.CallExpr:
-				sel, ok := x.Fun.(*ast.SelectorExpr)
-				if !ok || sel.Sel.Name != "Command" {
-					return true
-				}
-				pkg, ok := sel.X.(*ast.Ident)
-				if !ok || pkg.Name != "gitenv" {
-					return true
-				}
-				commandCalls++
-				coord := fmt.Sprintf("%s:%d", base, fset.Position(x.Lparen).Line)
-				words := map[string]bool{}
-				fromHome := false
-				for _, a := range x.Args {
-					if lit, ok := a.(*ast.BasicLit); ok && lit.Kind == token.STRING {
-						if v, err := strconv.Unquote(lit.Value); err == nil {
-							words[v] = true
+				exprs, at = x.Args, x.Lparen
+				// Половина вторая: спрашивающие ИЗ ДОМА. Здесь предмет — именно
+				// `gitenv.Command`, потому что утверждение о нём — «обе стороны
+				// задают вопрос одной и той же командой».
+				if sel, ok := x.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Command" {
+					if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "gitenv" {
+						commandCalls++
+						coord := fmt.Sprintf("%s:%d", base, fset.Position(x.Lparen).Line)
+						for _, a := range x.Args {
+							inner, ok := a.(*ast.CallExpr)
+							if !ok || x.Ellipsis == token.NoPos {
+								continue
+							}
+							id, ok := inner.Fun.(*ast.Ident)
+							if !ok || id.Name != gitRevParentHome {
+								continue
+							}
+							if strings.HasSuffix(base, "_test.go") {
+								probeAskers = append(probeAskers, coord)
+							} else {
+								prodAskers = append(prodAskers, coord)
+							}
 						}
-						continue
-					}
-					// Спрашивающий ИЗ ДОМА: аргументы команды суть развёрнутый
-					// результат [gitRevParentArgv]. Судится вызов, а не
-					// упоминание имени, — упоминание живёт и в текстах отказов
-					// фикстуры и подмену команды пережило бы молча.
-					inner, ok := a.(*ast.CallExpr)
-					if !ok || x.Ellipsis == token.NoPos {
-						continue
-					}
-					if id, ok := inner.Fun.(*ast.Ident); ok && id.Name == gitRevParentHome {
-						fromHome = true
 					}
 				}
-				if words[gitRevParentVerb] && words[gitRevParentObject] {
-					literalAskers = append(literalAskers, coord)
-				}
-				if fromHome {
-					if strings.HasSuffix(base, "_test.go") {
-						probeAskers = append(probeAskers, coord)
-					} else {
-						prodAskers = append(prodAskers, coord)
-					}
-				}
+			case *ast.CompositeLit:
+				exprs, at = x.Elts, x.Lbrace
+			default:
+				return true
+			}
+
+			if !carriesBothWords(exprs, verb, object) {
+				return true
+			}
+			coord := fmt.Sprintf("%s:%d", base, fset.Position(at).Line)
+			if inHome(at) {
+				atHome = append(atHome, coord)
+			} else {
+				offHome = append(offHome, coord)
 			}
 			return true
 		})
@@ -158,17 +208,17 @@ func TestGitRevParentQuestionHasASingleArgvHome(t *testing.T) {
 
 	// Предпосылка распознавателя: он обязан ВИДЕТЬ вызовы `gitenv.Command`.
 	// Ноль вызовов означает, что разбор ослеп либо пакет переехал, — и тогда
-	// «литеральных спрашивающих ноль» есть «мы не смотрели», а не находка.
+	// «спрашивающих мимо дома ноль» есть «мы не смотрели», а не находка.
 	if commandCalls == 0 {
 		t.Fatalf("обход пакета (%s) не нашёл НИ ОДНОГО вызова `gitenv.Command` — "+
 			"распознаватель слеп; молчание здесь означало бы «не смотрели»", census)
 	}
 
-	t.Logf("перепись: %s · вызовов `gitenv.Command` %d · "+
-		"домов `%s` %d %v · спрашивающих литералами %q+%q %d %v · спрашивающих ИЗ "+
-		"ДОМА: боевых %d %v, пробных %d %v",
-		census, commandCalls, gitRevParentHome, len(homes), homes,
-		gitRevParentVerb, gitRevParentObject, len(literalAskers), literalAskers,
+	t.Logf("перепись: %s · вызовов `gitenv.Command` %d · домов `%s` %d %v · мест со "+
+		"словами %q+%q: в доме %d %v, мимо дома %d %v · спрашивающих ИЗ ДОМА: "+
+		"боевых %d %v, пробных %d %v",
+		census, commandCalls, gitRevParentHome, len(homes), homes, verb, object,
+		len(atHome), atHome, len(offHome), offHome,
 		len(prodAskers), prodAskers, len(probeAskers), probeAskers)
 
 	switch len(homes) {
@@ -182,11 +232,21 @@ func TestGitRevParentQuestionHasASingleArgvHome(t *testing.T) {
 			"сойтись им нечем", gitRevParentHome, len(homes), homes)
 	}
 
-	if len(literalAskers) > 0 {
-		t.Errorf("вопрос о родителе задан ЛИТЕРАЛАМИ %q+%q мимо общего дома `%s` — "+
-			"координаты %v; это вторая запись того же вопроса, и разойтись с первой "+
-			"она может молча", gitRevParentVerb, gitRevParentObject, gitRevParentHome,
-			literalAskers)
+	// ВТОРАЯ ПРЕДПОСЫЛКА: слова обязаны найтись В САМОМ ДОМЕ. Ноль означал бы,
+	// что распознаватель ищет не то, что дом спрашивает, — и тогда «мимо дома
+	// ноль» снова есть «мы не смотрели».
+	if len(atHome) != 1 {
+		t.Fatalf("слова вопроса %q+%q стоят в теле дома `%s` %d раз(а) %v, ожидалась "+
+			"ровно одна запись — распознаватель и дом разошлись, и его молчание "+
+			"ничего не значит", verb, object, gitRevParentHome, len(atHome), atHome)
+	}
+
+	if len(offHome) > 0 {
+		t.Errorf("слова вопроса %q+%q стоят рядом МИМО общего дома `%s` — координаты "+
+			"%v; это вторая запись того же вопроса, и разойтись с первой она может "+
+			"молча. Судится запись СЛОВ, а не её форма: прямые литералы, элементы "+
+			"`[]string{…}` и аргументы любой обёртки суть одно и то же",
+			verb, object, gitRevParentHome, offHome)
 	}
 
 	if len(prodAskers) == 0 {
