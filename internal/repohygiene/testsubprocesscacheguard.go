@@ -174,14 +174,17 @@ type SubprocessGuardCensus struct {
 	Programs   map[string]int
 	Forms      map[string]int
 	Unresolved []string // координаты мест, где программа НЕ УСТАНОВЛЕНА
-	// Undecided — места, чей инструмент в словаре ЕСТЬ, но со состоянием «НЕ
-	// РАЗБИРАЛИ». Печатаются числом: незнание гейта обязано быть видно, а не
-	// неотличимо от «страж не нужен».
-	Undecided map[string]int
-	NeedGuard int // мест, требующих стража по словарю
-	Guarded   int // из них защищённых на всех путях
-	Entries   int // точек входа, доходящих до таких мест
-	Findings  int
+	// Undecided и NoGuardNeeded — места, чей инструмент в словаре ЕСТЬ, но
+	// стража не требует. Две карты, а не одна: «НЕ РАЗБИРАЛИ» и «разобрано,
+	// страж не нужен» ведут гейт одинаково и значат РАЗНОЕ, и если печатать их
+	// одним числом, перевод записи из первого состояния во второе виден только
+	// как убыль — то есть не виден.
+	Undecided     map[string]int
+	NoGuardNeeded map[string]int
+	NeedGuard     int // мест, требующих стража по словарю
+	Guarded       int // из них защищённых на всех путях
+	Entries       int // точек входа, доходящих до таких мест
+	Findings      int
 }
 
 // AuditTestSubprocessCacheGuards — судящая функция гейта.
@@ -189,7 +192,10 @@ type SubprocessGuardCensus struct {
 // Вход — карта «путь относительно корня → текст файла»: так проба гоняется и по
 // живому дереву, и по синтетике инъекции, ОДНИМ И ТЕМ ЖЕ кодом.
 func AuditTestSubprocessCacheGuards(sources map[string]string) ([]string, SubprocessGuardCensus) {
-	cen := SubprocessGuardCensus{Programs: map[string]int{}, Forms: map[string]int{}, Undecided: map[string]int{}}
+	cen := SubprocessGuardCensus{
+		Programs: map[string]int{}, Forms: map[string]int{},
+		Undecided: map[string]int{}, NoGuardNeeded: map[string]int{},
+	}
 	var findings []string
 
 	byPkg := map[string][]string{}
@@ -238,8 +244,13 @@ func AuditTestSubprocessCacheGuards(sources map[string]string) ([]string, Subpro
 				}
 				cen.Programs[s.program]++
 				seenProgram[s.program] = true
-				if pol, known := subprocessToolCanon[s.program]; known && pol.decision == toolNotAnalysed {
-					cen.Undecided[s.program]++
+				if pol, known := subprocessToolCanon[s.program]; known {
+					switch pol.decision {
+					case toolNotAnalysed:
+						cen.Undecided[s.program]++
+					case toolGuardNotNeeded:
+						cen.NoGuardNeeded[s.program]++
+					}
 				}
 			}
 		}
@@ -299,6 +310,12 @@ type subprocessFunc struct {
 type subprocessCall struct {
 	callee string
 	pos    token.Pos
+	// unconditional — вызов стоит ВЕРХНИМ УРОВНЕМ тела и потому исполняется
+	// всегда. Кредит стража от помощника даёт только такой вызов: помощник,
+	// позванный из ветви `if`, из тела цикла или из незваного замыкания,
+	// отказать не успевает. Для обхода графа берутся ВСЕ вызовы — иначе гейт
+	// терял бы рёбра и не доходил бы до мест запуска в глубине.
+	unconditional bool
 }
 
 // subprocessFuncKey — ключ функции в графе каталога. Пакет в ключе несущий: без
@@ -344,13 +361,18 @@ func collectSubprocessFuncs(fset *token.FileSet, rel string, f *ast.File, out ma
 			headPos:    headStatementPos(fd),
 		}
 		locals := localStringIdents(fd, fileLiterals)
+		unconditional := unconditionalCallPositions(fd)
 		ast.Inspect(fd.Body, func(n ast.Node) bool {
 			node, ok := n.(*ast.CallExpr)
 			if !ok {
 				return true
 			}
 			if id, ok := node.Fun.(*ast.Ident); ok {
-				info.calls = append(info.calls, subprocessCall{callee: subprocessFuncKey(pkg, id.Name), pos: node.Pos()})
+				info.calls = append(info.calls, subprocessCall{
+					callee:        subprocessFuncKey(pkg, id.Name),
+					pos:           node.Pos(),
+					unconditional: unconditional[node.Pos()],
+				})
 				return true
 			}
 			prog, form, ok := subprocessProgramOf(node, locals)
@@ -369,16 +391,48 @@ func collectSubprocessFuncs(fset *token.FileSet, rel string, f *ast.File, out ma
 	return findings
 }
 
+// unconditionalCallPositions — позиции вызовов, стоящих ВЕРХНИМ УРОВНЕМ тела:
+// только они исполняются безусловно.
+//
+// Безусловность — свойство ПОЛОЖЕНИЯ, а не синтаксиса оператора, поэтому
+// засчитывается и голый вызов (`requireHelm(t)`), и вызов, связанный значением
+// (`bin := requireHelm(t)`): оба верхним уровнем, оба исполняются. `defer` и
+// `go` сюда не попадают намеренно — отложенный помощник отказывает ПОСЛЕ
+// запуска, то есть не отказывает; условие, ветвь, цикл и замыкание — тем более.
+func unconditionalCallPositions(fd *ast.FuncDecl) map[token.Pos]bool {
+	out := map[token.Pos]bool{}
+	mark := func(e ast.Expr) {
+		call, ok := e.(*ast.CallExpr)
+		if !ok {
+			return
+		}
+		if _, ok := call.Fun.(*ast.Ident); !ok {
+			return
+		}
+		out[call.Pos()] = true
+	}
+	for _, st := range fd.Body.List {
+		switch stmt := st.(type) {
+		case *ast.ExprStmt:
+			mark(stmt.X)
+		case *ast.AssignStmt:
+			for _, rhs := range stmt.Rhs {
+				mark(rhs)
+			}
+		}
+	}
+	return out
+}
+
 // unconditionalGuardPos — позиция САМОГО РАННЕГО стража, исполняющегося
 // БЕЗУСЛОВНО, и token.NoPos, когда такого нет.
 //
 // Засчитывается только оператор ВЕРХНЕГО УРОВНЯ тела функции: лишь он
 // доминирует над всем, что ниже по телу. Страж в ветви `if`, в теле цикла, в
 // `select`, в `switch` или в замыкании исполнится или нет — неизвестно, и
-// «неизвестно» за отказ не выдаётся. Требование это уже стояло к ПОМОЩНИКУ
-// (страж ровно в голове тела), а к собственному стражу функции — нет: обход
-// брал `IfStmt` на любой глубине, и вынести страж под `if os.Getenv(…)`,
-// сохранив зелёное, можно было одной строкой.
+// «неизвестно» за отказ не выдаётся. Парная проверка для ВТОРОЙ формы стража —
+// `unconditionalCallPositions`: требование к обеим формам одно, а держится в
+// двух местах, потому что и форм записи две.
 func unconditionalGuardPos(fd *ast.FuncDecl) token.Pos {
 	at := token.NoPos
 	for _, st := range fd.Body.List {
@@ -697,7 +751,10 @@ func auditPackageGuards(dir string, funcs map[string]*subprocessFunc, order []st
 	guardFrom := func(fn *subprocessFunc) token.Pos {
 		at := fn.guardPos
 		for _, c := range fn.calls {
-			if !refusesOnEntry[c.callee] {
+			// Безусловность требуется от ОБЕИХ форм одинаково: страж, до
+			// которого путь может не дойти, отказом не является, записан он в
+			// теле самой функции или вынесен в помощника.
+			if !c.unconditional || !refusesOnEntry[c.callee] {
 				continue
 			}
 			if at == token.NoPos || c.pos < at {
@@ -813,21 +870,32 @@ func (c SubprocessGuardCensus) Line() string {
 		forms = append(forms, fmt.Sprintf("%s×%d", name, n))
 	}
 	sort.Strings(forms)
-	undecided := make([]string, 0, len(c.Undecided))
-	n := 0
-	for name, k := range c.Undecided {
-		undecided = append(undecided, fmt.Sprintf("%s×%d", name, k))
-		n += k
-	}
-	sort.Strings(undecided)
+	undecided, nUndecided := subprocessTally(c.Undecided)
+	noGuard, nNoGuard := subprocessTally(c.NoGuardNeeded)
 	return fmt.Sprintf(
 		"перепись: файлов прочитано %d, строк %d, каталогов %d, единиц разбора (каталог×пакет) %d, функций %d; "+
 			"мест запуска подпроцесса %d [%s]; формы записи [%s]; "+
 			"НЕ УСТАНОВЛЕНО программ %d; НЕ РАЗБИРАЛИ мест %d [%s]; "+
+			"разобрано «страж не нужен» мест %d [%s]; "+
 			"требуют стража %d, защищены на всех путях %d; "+
 			"точек входа, доходящих до них, %d; находок %d",
 		c.FilesRead, c.LinesRead, c.Packages, c.Units, c.Funcs,
 		c.Sites, strings.Join(progs, " "), strings.Join(forms, " "),
-		len(c.Unresolved), n, strings.Join(undecided, " "),
+		len(c.Unresolved), nUndecided, strings.Join(undecided, " "),
+		nNoGuard, strings.Join(noGuard, " "),
 		c.NeedGuard, c.Guarded, c.Entries, c.Findings)
+}
+
+// subprocessTally — разложение «имя×число» и сумма. Общее у двух состояний,
+// которые печатаются рядом: перевод записи между ними обязан быть виден как
+// ПЕРЕМЕЩЕНИЕ, а не как убыль одного числа.
+func subprocessTally(m map[string]int) ([]string, int) {
+	out := make([]string, 0, len(m))
+	n := 0
+	for name, k := range m {
+		out = append(out, fmt.Sprintf("%s×%d", name, k))
+		n += k
+	}
+	sort.Strings(out)
+	return out, n
 }

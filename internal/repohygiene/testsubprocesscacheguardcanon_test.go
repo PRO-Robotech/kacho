@@ -51,8 +51,8 @@ func TestSubprocessToolCanonHasThreeStatesAndEveryEntryIsReasoned(t *testing.T) 
 		}
 		byState[pol.decision] = append(byState[pol.decision], name)
 
-		// Причина обязательна у КАЖДОЙ записи: запись без причины — умолчание,
-		// выданное за решение.
+		// Непустота причины — необходимое, но не достаточное: СОДЕРЖАНИЕ
+		// пришпилено ведомостью ниже. Здесь остаётся форма.
 		if strings.TrimSpace(pol.reason) == "" {
 			t.Errorf("%q (%s): причины нет — решение не отличимо от того, что о нём забыли", name, pol.decision)
 		}
@@ -74,17 +74,106 @@ func TestSubprocessToolCanonHasThreeStatesAndEveryEntryIsReasoned(t *testing.T) 
 		}
 	}
 
-	// Состав требующих стража назван поимённо: гейт судит ИМЕННО их, и тихое
-	// пополнение этого множества обязано быть видно в диффе пробы.
-	got := byState[toolGuardRequired]
-	sort.Strings(got)
-	want := []string{"helm"}
-	if strings.Join(got, ",") != strings.Join(want, ",") {
-		t.Errorf("страж требуется от %v, а проба знает %v — множество судимого изменилось молча", got, want)
+	// Состав КАЖДОГО из трёх состояний назван поимённо, а не одного. Пока
+	// закреплено было только `toolGuardRequired`, перевод записи между двумя
+	// другими состояниями проходил молча: гейт ведёт себя в них одинаково, и
+	// отличить их можно было лишь глазом по строке переписи.
+	for _, st := range []struct {
+		decision subprocessToolDecision
+		want     []string
+	}{
+		{toolGuardRequired, []string{"helm"}},
+		{toolGuardNotNeeded, nil},
+		{toolNotAnalysed, []string{"bash", "gh", "go", "jq", "make", "python3"}},
+	} {
+		got := byState[st.decision]
+		sort.Strings(got)
+		if strings.Join(got, ",") != strings.Join(st.want, ",") {
+			t.Errorf("состояние %q несут %v, а ведомость знает %v — состав состояния изменился молча",
+				st.decision, got, st.want)
+		}
 	}
-	if len(byState[toolNotAnalysed]) == 0 {
-		t.Error("записей «НЕ РАЗБИРАЛИ» ноль, а в переписи гейта по дереву они есть — " +
-			"либо словарь разобран целиком (тогда снимается и эта проба), либо состояние потеряно")
+}
+
+// subprocessCanonLedger — ВЕДОМОСТЬ словаря: решение и ОСНОВАНИЕ каждой записи,
+// дословно.
+//
+// Вторая копия текста здесь намеренна и несущая. Словарь — исполняемая часть
+// гейта: по нему решается, требует ли место запуска стража. Пока проба читала
+// причину лишь на непустоту, основание можно было заменить на "x", а запись
+// перевести из «НЕ РАЗБИРАЛИ» в «страж не нужен», не тронув ни одного
+// основания, — и всё оставалось зелёным. Ведомость превращает такую правку в
+// правку, ВИДНУЮ В ДИФФЕ: изменить решение нельзя, не изменив запись здесь.
+//
+// Это не чтение чужого исходника текстом (тот запрет — про гейт, добывающий
+// предикат разбором чужого файла): обе стороны компилируются вместе, и
+// расхождение даёт красную пробу, а не молчание.
+var subprocessCanonLedger = map[string]struct {
+	decision subprocessToolDecision
+	reason   string
+}{
+	"helm": {toolGuardRequired,
+		"рендер чарта читает шаблоны, профили и подчарты — ни один из этих " +
+			"файлов проба не открывает сама, поэтому их правка кеш не сбрасывает"},
+	"go":      {toolNotAnalysed, "вход инструмента — модуль и его кеш, не профили посадки"},
+	"bash":    {toolNotAnalysed, "скрипт задаётся путём, содержимое читает оболочка"},
+	"python3": {toolNotAnalysed, "генератор задаётся путём, содержимое читает интерпретатор"},
+	"gh":      {toolNotAnalysed, "вход — состояние трекера, а не дерева"},
+	"make":    {toolNotAnalysed, "цель читает Makefile и всё, до чего он дотянется"},
+	"jq":      {toolNotAnalysed, "программа фильтра приходит из самой пробы"},
+}
+
+// TestSubprocessToolCanonMatchesItsLedger — словарь сходится с ведомостью по
+// СОСТАВУ, по решению и по ОСНОВАНИЮ каждой записи.
+func TestSubprocessToolCanonMatchesItsLedger(t *testing.T) {
+	t.Parallel()
+
+	for name, want := range subprocessCanonLedger {
+		pol, ok := subprocessToolCanon[name]
+		if !ok {
+			t.Errorf("%q: ведомость знает запись, а словаря о ней нет — "+
+				"запись снята, но ведомость этого не заметила", name)
+			continue
+		}
+		if pol.decision != want.decision {
+			t.Errorf("%q: решение %q, а ведомость знает %q — запись переклассифицирована молча",
+				name, pol.decision, want.decision)
+		}
+		if pol.reason != want.reason {
+			t.Errorf("%q: основание разошлось с ведомостью; словарь %q, ведомость %q — "+
+				"основание есть часть решения, и менять его молча нельзя",
+				name, pol.reason, want.reason)
+		}
+	}
+	for name := range subprocessToolCanon {
+		if _, ok := subprocessCanonLedger[name]; !ok {
+			t.Errorf("%q: словарь несёт запись, которой нет в ведомости — "+
+				"инструмент заведён молча, основание никем не прочитано", name)
+		}
+	}
+}
+
+// TestSubprocessGuardCensusSeparatesNotAnalysedFromNoGuardNeeded — два
+// состояния, ведущие гейт одинаково, печатаются РАЗНЫМИ числами.
+//
+// Пока они складывались в одно, перевод записи между ними читался как убыль:
+// «НЕ РАЗБИРАЛИ мест» молча 56 → 38, и ничто не говорило, куда делись 18.
+func TestSubprocessGuardCensusSeparatesNotAnalysedFromNoGuardNeeded(t *testing.T) {
+	t.Parallel()
+	line := SubprocessGuardCensus{
+		FilesRead: 1, Sites: 3, NeedGuard: 1, Guarded: 1,
+		Programs:      map[string]int{"helm": 1, "bash": 1, "jq": 1},
+		Forms:         map[string]int{formLiteral: 3},
+		Undecided:     map[string]int{"bash": 1},
+		NoGuardNeeded: map[string]int{"jq": 1},
+	}.Line()
+	for _, want := range []string{
+		"НЕ РАЗБИРАЛИ мест 1 [bash×1]",
+		"разобрано «страж не нужен» мест 1 [jq×1]",
+	} {
+		if !strings.Contains(line, want) {
+			t.Errorf("перепись не несёт %q — перевод записи между состояниями читался бы как убыль:\n%s", want, line)
+		}
 	}
 }
 

@@ -405,3 +405,93 @@ func TestSubprocessGuardInjection_GuardUnderALoopIsFound(t *testing.T) {
 		t.Fatal("страж утоплен в цикл, а гейт засчитал его за безусловный")
 	}
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A2, вторая законная форма: ВЫЗОВ ПОМОЩНИКА
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Форм стража у гейта две, и требование «исполняется безусловно» одинаково
+// несущее для обеих. Первая — страж в теле самой функции — закрыта
+// `unconditionalGuardPos`. Вторая — вызов помощника, отказывающего на входе, —
+// считывалась с ЛЮБОЙ глубины: `info.calls` собирался тем же `ast.Inspect`,
+// который у стража уже был снят, и вынести под условие можно было ровно одну
+// строку, только другую. Держит её теперь `unconditionalCallPositions`.
+//
+// Случаи ниже меняют РОВНО ОДИН факт против `…GuardFactoredIntoAHelperIsSilent`:
+// сам вызов помощника остаётся на месте, меняется только то, исполнится ли он.
+
+// sinkHelperCall — базовый корпус с ВЫНЕСЕННЫМ стражем, где вызов помощника
+// обёрнут заданной формой.
+func sinkHelperCall(t *testing.T, wrapped string) map[string]string {
+	t.Helper()
+	c := withFactoredGuard(t, requireHelmHead)
+	src := c["synth/render_test.go"]
+	if !strings.Contains(src, "\trequireHelm(t)\n") {
+		t.Fatalf("инъекция не нашла своего места: вызова помощника нет в корпусе")
+	}
+	c["synth/render_test.go"] = strings.Replace(src, "\trequireHelm(t)\n", wrapped, 1)
+	return c
+}
+
+// TestSubprocessGuardInjection_HelperCallUnderAConditionIsFound — живая форма
+// второго рода: вызов помощника под `if os.Getenv(…)`. Ровно то, чем шапка
+// гейта объявила себя починенной.
+func TestSubprocessGuardInjection_HelperCallUnderAConditionIsFound(t *testing.T) {
+	t.Parallel()
+	c := sinkHelperCall(t, `	if os.Getenv("STRICT_CACHE_GUARD") != "" {
+		requireHelm(t)
+	}
+`)
+	findings, cen := repohygiene.AuditTestSubprocessCacheGuards(c)
+	if cen.Guarded != 0 {
+		t.Errorf("перепись объявила защищёнными на всех путях %d мест, а вызов помощника стоит под условием; перепись: %s",
+			cen.Guarded, cen.Line())
+	}
+	if len(findings) == 0 {
+		t.Fatal("вызов помощника утоплен под условие, а гейт засчитал его за безусловный")
+	}
+}
+
+// TestSubprocessGuardInjection_HelperCallInsideAClosureIsFound — замыкание,
+// которого никто не зовёт: вызов в дереве разбора есть, в прогоне его нет.
+func TestSubprocessGuardInjection_HelperCallInsideAClosureIsFound(t *testing.T) {
+	t.Parallel()
+	c := sinkHelperCall(t, `	_ = func() {
+		requireHelm(t)
+	}
+`)
+	if f := auditSynth(t, c); len(f) == 0 {
+		t.Fatal("вызов помощника заперт в незваном замыкании, а гейт засчитал его за безусловный")
+	}
+}
+
+// TestSubprocessGuardInjection_HelperCallUnderIfFalseIsFound — предел формы:
+// ветвь, не исполняющаяся НИКОГДА. Если и здесь молчание — зачитывается сам
+// факт присутствия текста, а не исполнение.
+func TestSubprocessGuardInjection_HelperCallUnderIfFalseIsFound(t *testing.T) {
+	t.Parallel()
+	c := sinkHelperCall(t, `	if false {
+		requireHelm(t)
+	}
+`)
+	if f := auditSynth(t, c); len(f) == 0 {
+		t.Fatal("вызов помощника стоит под `if false`, а гейт засчитал его за безусловный")
+	}
+}
+
+// TestSubprocessGuardInjection_HelperCallBoundToAValueIsSilent — законный
+// близнец второго рода, и он НЕ тот же, что контроль выше: вызов помощника
+// связан значением (`dir := helmDir(t)`-подобная форма), но стоит верхним
+// уровнем. Безусловность — свойство ПОЛОЖЕНИЯ, а не синтаксиса оператора, и
+// сужение не имеет права съесть эту форму.
+func TestSubprocessGuardInjection_HelperCallBoundToAValueIsSilent(t *testing.T) {
+	t.Parallel()
+	c := withFactoredGuard(t, strings.Replace(requireHelmHead,
+		"func requireHelm(t *testing.T) {", "func requireHelm(t *testing.T) string {", 1))
+	src := c["synth/render_test.go"]
+	src = strings.Replace(src, "}\n", "\treturn \"helm\"\n}\n", 1)
+	c["synth/render_test.go"] = strings.Replace(src, "\trequireHelm(t)\n", "\tbin := requireHelm(t)\n\t_ = bin\n", 1)
+	if f := auditSynth(t, c); len(f) != 0 {
+		t.Fatalf("вызов помощника верхним уровнем со связыванием значения не засчитан:\n%s", strings.Join(f, "\n"))
+	}
+}
