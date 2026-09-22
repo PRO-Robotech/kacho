@@ -1553,11 +1553,37 @@ hydra:
 # Sub-chart `kratos-selfservice-ui` — значения под вложенным ключом kratosSelfServiceUI.
 kratos-selfservice-ui:
   kratosSelfServiceUI:
-    # KAC-127: включён вместе с kratos. kacho-ui nginx безусловно проксирует
-    # /login,/registration,... → upstream `kratos-selfservice-ui.kacho.svc` —
-    # при enabled=false Service не существует → nginx падает на старте
-    # (`host not found in upstream`). С включённым Kratos-стеком этот UI-pod
-    # обязателен для рабочего IAM-стенда.
+    # KAC-127: включён вместе с kratos. Раздача консоли отдаёт этому поду
+    # /login,/registration,... — но НЕ безусловно: полоса потоков стоит под
+    # `uif.host.upstreams.kratosUi` (ui-future/deploy/templates/configmap-nginx.yaml).
+    #
+    # ЦЕНА ВЫКЛЮЧЕНИЯ НАЗВАНА ЗДЕСЬ НЕВЕРНО, И ЭТО ПЕРЕМЕРЕНО (2026-09-22,
+    # nginx:1.29-alpine, обе стороны):
+    #
+    #   • прежняя редакция обещала «nginx падает на старте
+    #     (`host not found in upstream`)». Этот отказ даёт ЛИТЕРАЛЬНЫЙ
+    #     `proxy_pass http://имя:порт` — замерено: `nginx -t` → `[emerg] host not
+    #     found in upstream`;
+    #   • раздача консоли литерала НЕ использует: она резолвит через `resolver` и
+    #     ПЕРЕМЕННУЮ (`set $kratos_ui "${KACHO_UI_KRATOS_UI_UPSTREAM}"`), а такая
+    #     связка откладывает разрешение имени на ЗАПРОС. Замерено на той же
+    #     конфигурации с заведомо отсутствующим именем: `nginx -t` успешен,
+    #     контейнер жив, `/healthz` → 200, `/login` → 502, и в журнале
+    #     `could not be resolved (3: Host not found)` появляется при ЗАПРОСЕ.
+    #
+    # То есть `enabled: false` в одиночку роняет не старт, а КАЖДЫЙ вход: стенд
+    # поднимается, выглядит здоровым и отвечает 502 на церемонии.
+    #
+    # ЧТО ОБЯЗАНО ИДТИ ВМЕСТЕ С ВЫКЛЮЧЕНИЕМ. Тем же изменением опустошается
+    # `uif.host.upstreams.kratosUi` (тогда полоса, именованный запасной путь и
+    # ссылки на него не рендерятся вовсе) И снимаются объявления браузерных
+    # адресов потока (ключ `ui_url`). Второе не пожелание: этого требует
+    # deploy/tests/helm/console-serves-identity-flows-test.sh — он судит рендер
+    # каждой цепочки и краснеет, когда объявления остались без обслуживания.
+    #
+    # С включённым Kratos-стеком этот UI-pod обязателен для рабочего IAM-стенда:
+    # своих экранов входа у консоли нет ни одного
+    # (ui-future/shared/src/pages/auth/README.md — там же предикат перемера).
     enabled: true
     image:
       repository: oryd/kratos-selfservice-ui-node
