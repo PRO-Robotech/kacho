@@ -98,18 +98,11 @@ func TestRetiredIdentityVendorBindingsStayUnderTheirCeiling(t *testing.T) {
 		t.Fatalf("проверка НЕ ИСПОЛНЯЛАСЬ: %v", err)
 	}
 
-	total, ceiling, walked := 0, 0, 0
 	for _, name := range retiredVendorTrees {
-		c := census[name]
-		t.Logf("перепись %s: %s", name, c)
-		total += c.Bindings
-		ceiling += c.Ceiling
-		walked += c.Walked
+		t.Logf("перепись %s: %s", name, census[name])
 	}
-	t.Logf("ИТОГО привязок к снимаемому издателю личности: %d СТРОК при потолке %d СТРОК "+
-		"(деревьев обойдено %d · путей обойдено %d; единица счёта — строка исходника, "+
-		"путь — одна строка за файл, архив и двоичный файл — одна строка за файл)",
-		total, ceiling, len(census), walked)
+	line, total, ceiling, walked := vendorTotal(census)
+	t.Log(line)
 
 	if total == 0 && ceiling == 0 {
 		t.Logf("предмет снят целиком: в трёх деревьях (путей обойдено %d) нет ни строки, "+

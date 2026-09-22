@@ -434,6 +434,21 @@ func (c vendorTreeCensus) String() string {
 		c.UpperKept, len(c.UpperWords), strings.Join(c.UpperWords, ", "))
 }
 
+// vendorTotal — строка итога прогона и её слагаемые.
+func vendorTotal(census map[string]vendorTreeCensus) (line string, bindings, ceiling, walked int) {
+	for _, name := range retiredVendorTrees {
+		c := census[name]
+		bindings += c.Bindings
+		ceiling += c.Ceiling
+		walked += c.Walked
+	}
+	line = fmt.Sprintf("ИТОГО привязок к снимаемому издателю личности: %d СТРОК при потолке %d СТРОК "+
+		"(деревьев обойдено %d · путей обойдено %d; единица счёта — строка исходника, "+
+		"путь — одна строка за файл, архив и двоичный файл — одна строка за файл)",
+		bindings, ceiling, len(census), walked)
+	return line, bindings, ceiling, walked
+}
+
 // vendorCeilingFinding — расхождение числа с записью.
 type vendorCeilingFinding struct {
 	Tree    string
