@@ -55,11 +55,13 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SUBJECT="$HERE/assert-pin-reachable.sh"
 NEIGHBOUR="$HERE/assert-pin-agrees.sh"
 
+# Код 2 — «условие не создано» по контракту доказательств дерева
+# (`deploy/tests/helm/README.md` §«Три исхода»); тройка ниже — код ИСПЫТУЕМОГО.
 if [ ! -x "$SUBJECT" ]; then
     echo "ОТКАЗ: испытуемого нет либо он не исполняем: $SUBJECT" >&2
     echo "  Инъекция без испытуемого вердикта не даёт — это НЕ ВЫПОЛНИЛОСЬ," >&2
     echo "  а не зелёное: утверждений исполнено 0." >&2
-    exit 3
+    exit 2
 fi
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/pinreach.XXXXXX")"
@@ -370,7 +372,7 @@ printf 'вне разбора: класс «вердикт из трубы» —
 printf '            его держит TestPipefailVerdictNeverComesFromAPipe (гейт дерева)\n'
 if [ "$checked" = "0" ]; then
     echo "ВЕРДИКТА НЕТ: утверждений исполнено 0 — инъекция беспредметна" >&2
-    exit 3
+    exit 2
 fi
 [ "$failed" = "0" ] || exit 1
 echo "инъекция сошлась: гейт способен упасть по каждой оси и молчать на законных близнецах"
