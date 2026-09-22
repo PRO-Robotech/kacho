@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kacho/internal/cachedverdict"
 )
 
 // deploy-wiring render-guard for the compute→geo edge in the Helm chart. The Go
@@ -111,6 +113,15 @@ func TestGeoEdge_Deployment_EmitsPerEdgeMTLS(t *testing.T) {
 // compute Deployment contains the geo dial addr and the geo mTLS enable env. Skipped if
 // helm is absent (local dev); the source guards above still hold deterministically.
 func TestGeoEdge_HelmRender_GeoEnvPresent(t *testing.T) {
+	// Прогон, результат которого `go test` положит в кеш, здесь недействителен:
+	// манифест строит ПОДПРОЦЕСС `helm`, и читает он шаблоны, профили и
+	// подчарты, которых журнал обращений пробы не видит. Правка профиля кеш не
+	// сбрасывает — над деревом с дефектом печаталось бы `ok (cached)`. Страж
+	// стоит ПЕРВЫМ, до пропуска по отсутствию helm: пропуск кешируется как `ok`
+	// ровно так же. Разбор и замеры — internal/cachedverdict.
+	if msg := cachedverdict.SubprocessRefusal("helm"); msg != "" {
+		t.Fatal(msg)
+	}
 	helm, err := exec.LookPath("helm")
 	if err != nil {
 		t.Skip("helm not on PATH — chart-source guards cover the render assertion locally")

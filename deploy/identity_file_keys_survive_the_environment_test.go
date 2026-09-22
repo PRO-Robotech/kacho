@@ -103,6 +103,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/PRO-Robotech/kacho/internal/cachedverdict"
 )
 
 // ourIdentityConfigLabel — метка, которой НАШ подчарт метит свою карту настроек
@@ -121,6 +123,15 @@ const (
 // у renderIdentitySubchart.
 func renderStack(t *testing.T, chain []string, sets ...string) (string, error) {
 	t.Helper()
+	// Прогон, результат которого `go test` положит в кеш, здесь недействителен:
+	// манифест строит ПОДПРОЦЕСС `helm`, и читает он шаблоны, профили и
+	// подчарты, которых журнал обращений пробы не видит. Правка профиля кеш не
+	// сбрасывает — над деревом с дефектом печаталось бы `ok (cached)`. Страж
+	// стоит ПЕРВЫМ, до пропуска по отсутствию helm: пропуск кешируется как `ok`
+	// ровно так же. Разбор и замеры — internal/cachedverdict.
+	if msg := cachedverdict.SubprocessRefusal("helm"); msg != "" {
+		t.Fatal(msg)
+	}
 	if _, err := exec.LookPath("helm"); err != nil {
 		if os.Getenv("CI") != "" {
 			t.Fatalf("helm не в PATH при CI — рендер-гейт обязан исполняться, а не пропускаться")

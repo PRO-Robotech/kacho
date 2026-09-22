@@ -20,6 +20,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/PRO-Robotech/kacho/internal/cachedverdict"
 )
 
 // helmTemplate рендерит чарт с --set-переопределениями. На машине без helm
@@ -55,6 +57,15 @@ func helmTemplateMustFail(t *testing.T, wantMsg string, sets ...string) {
 
 func requireHelm(t *testing.T) {
 	t.Helper()
+	// Прогон, результат которого `go test` положит в кеш, здесь недействителен:
+	// манифест строит ПОДПРОЦЕСС `helm`, и читает он шаблоны, профили и
+	// подчарты, которых журнал обращений пробы не видит. Правка профиля кеш не
+	// сбрасывает — над деревом с дефектом печаталось бы `ok (cached)`. Страж
+	// стоит ПЕРВЫМ, до пропуска по отсутствию helm: пропуск кешируется как `ok`
+	// ровно так же. Разбор и замеры — internal/cachedverdict.
+	if msg := cachedverdict.SubprocessRefusal("helm"); msg != "" {
+		t.Fatal(msg)
+	}
 	if _, err := exec.LookPath("helm"); err != nil {
 		if os.Getenv("CI") != "" {
 			t.Fatalf("helm binary not on PATH in CI — render-guard must run, not skip (add azure/setup-helm to the job)")
