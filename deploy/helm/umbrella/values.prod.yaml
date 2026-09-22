@@ -250,6 +250,15 @@ api-gateway:
   # AuthN: production-strict → Bearer REQUIRED (reject missing token) + Hydra
   # JWKS RS256 validation. No devSecret (HS256 dev path is never used in prod).
   authn:
+    # ─── ПОСАДКА ЛИЧНОСТИ (#1125): объявляется СТЕНДОМ, а не наследуется ──────
+    # Умолчания нет ни у процесса края, ни у его чарта: профиль, посадку не
+    # объявивший, получает отказ старта с именем ручки. Прежнее значение
+    # (`external`) остаётся законным — поставщик на этом стенде ещё развёрнут, —
+    # но ТОЛЬКО названное явно: унаследованное молча означает «не выбирали», а
+    # не «выбрали прежнее», и страж этих двух состояний не различает.
+    #
+    # Значение обязано СОВПАДАТЬ с тем, что объявлено службе прав ниже.
+    identityProvider: external
     # Apply the per-RPC authentication floor the catalog declares. The gateway
     # refuses to start in a production-class environment without it, so this is
     # not optional here — it is stated so that no future edit to a chart default
@@ -732,6 +741,11 @@ kaname:
     # AuthN secrets (KANAME_HOOK_TOKEN + KANAME_JWKS_ENC_KEY) — wired via
     # secretKeyRef (kacho.hooks.* / kacho.iam.jwks.*); operator provisions them.
     authn:
+      # ─── ПОСАДКА ЛИЧНОСТИ (#1125): объявляется СТЕНДОМ, а не наследуется ────
+      # Вторая половина того же стенда. Объявлена здесь по той же причине, что
+      # у края: половина, молчащая о посадке, наследует умолчание подчарта, и
+      # половины одного стенда расходятся без чьего-либо решения.
+      identityProvider: external
       # Who may FORWARD an end-user identity (x-kacho-principal-*) to iam.
       # Restated here even though the chart default already carries it: an EMPTY
       # list does not mean "nobody" — the corelib contract narrows the circle only

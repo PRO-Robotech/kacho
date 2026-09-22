@@ -211,6 +211,7 @@ const (
 	ownRaisesForeign      = "посадка `own`, а чужая служба личности включена"
 	externalRaisesNothing = "посадка `external`, а чужой службы личности нет"
 	remainderIsStale      = "запись ведомости пережила свой предмет"
+	postureUndeclared     = "посадка краю не объявлена ни одним слоем цепочки"
 )
 
 // identityRemainder — ОСТАТОК, снять который сегодня нельзя, с причиной.
@@ -349,16 +350,31 @@ func TestOwnPostureRaisesNoForeignIdentityService(t *testing.T) {
 	stacks := deployStacks(t)
 	components := foreignIdentityComponents(t)
 
-	// Умолчания половин живут в профилях ПОДЧАРТОВ: стенд, посадку не
-	// объявивший, получает их, а не пустоту.
+	// ПОДСТАНОВКА УМОЛЧАНИЯ ЗДЕСЬ БОЛЬШЕ НЕ ДЕЛАЕТСЯ ЗА КРАЙ.
+	//
+	// Стояло: «умолчания половин живут в профилях подчартов, стенд, посадку не
+	// объявивший, получает их, а не пустоту» — и обход подставлял умолчание
+	// края, вынося вердикт о значении, которого стенд не называл. Умолчание у
+	// чарта края снято (посадка решает три места провязки, и наследованное
+	// значение означает «не выбирали»), поэтому подставлять стало нечего:
+	// необъявленная посадка края здесь ОСТАЁТСЯ ПУСТОЙ и роняет прогон ниже
+	// вместе с именем стенда — тем же вердиктом, что у стража старта.
+	//
+	// У службы прав умолчание в вендоренной копии чарта ещё есть, и оно
+	// читается: снятие копии — предмет владельца чарта
+	// (deploy/helm/umbrella/identity_posture_profiles_test.go, ведомость
+	// остатков).
 	iamDefault := postureDefaultOf(t, filepath.Join(umbrellaDir, "charts", "kaname", "values.yaml"),
 		"config", "authn", "identityProvider")
+	if iamDefault == "" {
+		t.Fatalf("умолчание посадки службы прав не прочитано (iam=%q) — вердикт о стендах, "+
+			"посадку не объявивших, был бы вынесен неизвестно о чём", iamDefault)
+	}
 	edgeDefault := postureDefaultOf(t, filepath.Join("..", "gateway", "deploy", "values.yaml"),
 		"authn", "identityProvider")
-	if iamDefault == "" || edgeDefault == "" {
-		t.Fatalf("умолчание посадки не прочитано у одной из половин (iam=%q gateway=%q) — "+
-			"вердикт о стендах, посадку не объявивших, был бы вынесен неизвестно о чём",
-			iamDefault, edgeDefault)
+	if edgeDefault != "" {
+		t.Errorf("базовый профиль чарта края снова объявляет посадку (%q) — умолчание решает "+
+			"за стенд, и «не объявлено» перестаёт наступать где бы то ни было", edgeDefault)
 	}
 
 	names := make([]string, 0, len(stacks))
@@ -379,6 +395,18 @@ func TestOwnPostureRaisesNoForeignIdentityService(t *testing.T) {
 		p := standPosture{
 			IAM:  stringAt(merged, iamDefault, "kaname", "config", "authn", "identityProvider"),
 			Edge: stringAt(merged, edgeDefault, "api-gateway", "authn", "identityProvider"),
+		}
+
+		if strings.TrimSpace(p.Edge) == "" {
+			findings = append(findings, identityPostureFinding{
+				Stack:  name,
+				Reason: postureUndeclared,
+				Text: fmt.Sprintf("стенд %q посадку КРАЮ не объявил ни одним слоем цепочки "+
+					"(служба прав: %s).\nУмолчания у чарта края нет намеренно, поэтому край "+
+					"на этом стенде ОТКАЖЕТ В СТАРТЕ с именем ручки. Объявите посадку тем "+
+					"слоем, который решает о стенде", name, p.IAM),
+			})
+			continue
 		}
 
 		var enabled []string
