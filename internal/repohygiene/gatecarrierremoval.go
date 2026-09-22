@@ -548,7 +548,7 @@ func gateCarrierBase(root string) (rev, how string, err error) {
 	// предметом станет чужая, уже судившаяся работа.
 	for _, ref := range refs {
 		if gitenv.Command(root, "merge-base", "--is-ancestor", "HEAD", ref).Run() == nil {
-			parent, e := gitenv.Command(root, "rev-parse", "--verify", "--quiet", "HEAD^").Output()
+			parent, e := gitenv.Command(root, gitRevParentArgv()...).Output()
 			if e != nil || strings.TrimSpace(string(parent)) == "" {
 				return "", "", gateCarrierNoParentRefusal(ref, gitCloneIsShallow(root), parent, e)
 			}
