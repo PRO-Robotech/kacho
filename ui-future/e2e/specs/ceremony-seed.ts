@@ -2,8 +2,18 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { createHmac } from "node:crypto";
-import { expect, request, type APIRequestContext, type APIResponse, type BrowserContext, type TestInfo } from "@playwright/test";
-import { runTag } from "./fixtures";
+import {
+  expect,
+  request,
+  test,
+  type APIRequest,
+  type APIRequestContext,
+  type APIResponse,
+  type BrowserContext,
+  type TestInfo,
+} from "@playwright/test";
+import { noteRefusal, recordableRefusal } from "./ceremony-budget";
+import { E2E_PASSWORD, SESSION_COOKIE, runTag } from "./fixtures";
 
 /**
  * Посев «Дано» сценариев церемонии — глаголами НАШЕЙ службы, отдельным
@@ -35,11 +45,10 @@ import { runTag } from "./fixtures";
  * держит статическая перепись набора, а не эта запись.
  */
 
-/** Пароль посева. Отличим от ввода человека: ни один сценарий его не вводит сам. */
-export const SEED_PASSWORD = "Kacho-E2E-2026!x";
+/** Пароль посева — тот же, что у фикстуры набора: одно значение, одно объявление. */
+export const SEED_PASSWORD = E2E_PASSWORD;
 
-/** Имя носителя сессии нашей службы — то, что браузер держит после входа. */
-export const SESSION_COOKIE = "kaname_session";
+export { SESSION_COOKIE };
 
 /** Виды признака формы глаголов полосы (`GET /iam/v1/auth/csrf?form=<вид>`). */
 export type FormKind = "login" | "logout" | "password" | "register" | "second-factor" | "step-up";
@@ -88,6 +97,10 @@ export function seedAddress(scenario: string): string {
 
 async function record(issued: IssuedCall[], method: "GET" | "POST", path: string, res: APIResponse) {
   const text = await res.text();
+  // Отказ посева тратит ту же ось источника, что и отказ страницы: он идёт в
+  // запись сторожа бюджета (F8-41) за текущей пробой.
+  const refused = recordableRefusal(new URL(path, "http://seed.invalid").pathname, res.status(), text);
+  if (refused) noteRefusal(test.info().testId, refused);
   let body: unknown = text;
   try {
     body = text ? (JSON.parse(text) as unknown) : null;
@@ -130,7 +143,9 @@ export async function newSeed(testInfo: TestInfo, carrying: readonly Cookie[] = 
           "Это УСЛОВИЕ сценария, а не его предмет",
       ).toBe(200);
       const token = body?.csrfToken;
-      expect(typeof token === "string" && token !== "", `посев: ответ признака формы «${kind}» без csrfToken`).toBe(true);
+      expect(typeof token === "string" && token !== "", `посев: ответ признака формы «${kind}» без csrfToken`).toBe(
+        true,
+      );
       return token as string;
     },
     async submit(path, kind, body) {
@@ -306,4 +321,42 @@ export async function seedSecondFactor(seed: Seed): Promise<SeededSecondFactor> 
     backupCodes: (codes as unknown[]).map(String),
     assuranceLevel: String(confirmBody?.session?.assuranceLevel ?? ""),
   };
+}
+
+// ─── условие прогона (приёмка F8, §4) ─────────────────────────────────────────
+
+/**
+ * Посадка, на которой эти сценарии вообще исполнимы: край ретранслирует полосу
+ * формы нашей службы, и адрес церемонии отдаёт ОБОЛОЧКА консоли, а не чужой
+ * экран. Без этого исход — «не выполнилось», а не красное: сценарии судили бы
+ * не консоль, а посадку.
+ *
+ * Документ `/login` сравнивается с документом `/dashboard`: оболочка отдаёт на
+ * оба пути один и тот же документ, а чужой экран — свой.
+ */
+export async function assertCeremonyLanding(testInfo: TestInfo, pw: { request: APIRequest }) {
+  const use = testInfo.project.use;
+  const api = await pw.request.newContext({ baseURL: use.baseURL, ignoreHTTPSErrors: use.ignoreHTTPSErrors });
+  try {
+    const csrf = await api.get(`${LANE.csrf}?form=login`, { headers: { Accept: "application/json" } });
+    const csrfText = await csrf.text();
+    if (csrf.status() !== 200 || !/"csrfToken"\s*:\s*"[^"]+"/.test(csrfText)) {
+      throw new Error(
+        `УСЛОВИЕ ПРОГОНА НЕ СОЗДАНО (приёмка F8, §4): край не ретранслирует полосу формы нашей службы — ` +
+          `${LANE.csrf}?form=login ответил ${csrf.status()} ${csrfText.slice(0, 200)}. ` +
+          `Вердикта о консоли такой прогон не даёт (${testInfo.project.use.baseURL})`,
+      );
+    }
+    const login = await (await api.get("/login", { headers: { Accept: "text/html" } })).text();
+    const shell = await (await api.get("/dashboard", { headers: { Accept: "text/html" } })).text();
+    if (login !== shell) {
+      throw new Error(
+        "УСЛОВИЕ ПРОГОНА НЕ СОЗДАНО (приёмка F8, §4): документ /login не совпадает с документом " +
+          "оболочки консоли — адрес церемонии отдаёт не консоль, а чужой экран. Посадки, где так, " +
+          "приёмка не поддерживает (Р1); вердикта о консоли такой прогон не даёт",
+      );
+    }
+  } finally {
+    await api.dispose();
+  }
 }

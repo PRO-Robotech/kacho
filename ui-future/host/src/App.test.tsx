@@ -102,6 +102,48 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Virtual Private Cloud" })).toHaveAttribute("data-active", "true");
   });
 
+  /*
+   * Адреса церемоний принадлежат консоли МАРШРУТОМ (приёмка F8, Р3): все шесть
+   * получают маршрут, четыре консоль ведёт, два отвечают названной страницей —
+   * и ни один не уводится замыкающим правилом на панель. Радиус правки назван:
+   * адрес вне шести (`/error`) по-прежнему уходит на панель.
+   */
+  it.each([
+    ["/login", "Вход в консоль"],
+    ["/registration", "Новая учётная запись"],
+    ["/logout", "Выход из консоли"],
+    ["/recovery", "Такого адреса здесь нет"],
+    ["/verification", "Такого адреса здесь нет"],
+  ])("F8-01/F8-03 · адрес церемонии %s отвечает экраном консоли, а не переводом на панель", async (path, title) => {
+    window.history.pushState(null, "", path);
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: title })).toBeInTheDocument();
+    expect(window.location.pathname).toBe(path);
+    // Экраны церемоний стоят вне каркаса: рейла с разделами у них нет.
+    expect(screen.queryByRole("navigation", { name: "Host navigation" })).toBeNull();
+  });
+
+  it("F8-01 · /settings — экран параметров учётной записи внутри каркаса", async () => {
+    window.history.pushState(null, "", "/settings");
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Параметры учётной записи" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/settings");
+    expect(screen.getByRole("navigation", { name: "Host navigation" })).toBeInTheDocument();
+  });
+
+  it("радиус правки: адрес вне шести церемоний по-прежнему уходит на панель", async () => {
+    window.history.pushState(null, "", "/error");
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "Сервисы облака" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/dashboard");
+  });
+
   it("routes IAM module paths to the IAM remote", async () => {
     window.history.pushState(null, "", "/iam/accounts");
 

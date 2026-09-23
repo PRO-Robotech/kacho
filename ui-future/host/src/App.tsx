@@ -4,6 +4,12 @@ import { ConfigProvider } from "antd";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
 import { ModuleErrorBoundary } from "@shared/components/organisms/ModuleErrorBoundary";
 import { buildTheme } from "@shared/lib/theme";
+import { AccountSettingsPage } from "@shared/pages/auth/AccountSettingsPage";
+import { CeremonyAddressNotServedPage } from "@shared/pages/auth/CeremonyAddressNotServedPage";
+import { LoginPage } from "@shared/pages/auth/LoginPage";
+import { LogoutPage } from "@shared/pages/auth/LogoutPage";
+import { RegistrationPage } from "@shared/pages/auth/RegistrationPage";
+import { NOT_SERVED_CEREMONY_ADDRESSES } from "@shared/pages/auth/ceremony-addresses";
 import { HostShell } from "./components";
 import { ModulePlaceholderPage, ReachabilityPage } from "./pages";
 import {
@@ -69,7 +75,36 @@ const App: FC = () => {
   );
 };
 
+/**
+ * Маршруты консоли — два яруса.
+ *
+ * ЭКРАНЫ ЦЕРЕМОНИЙ стоят ВНЕ каркаса: у человека без сессии нет ни проекта, ни
+ * разделов, и рейл с ними обещал бы то, чего он получить не может. Адреса
+ * церемоний объявлены одним местом (`ceremony-addresses.ts`) и получают маршрут
+ * ВСЕ шесть (приёмка F8, Р3): четыре консоль ведёт, два — восстановление доступа
+ * и подтверждение адреса — отвечают названной страницей, а не переводом на
+ * панель. Параметры учётной записи (`/settings`) живут в каркасе: их открывает
+ * вошедший человек, и рейл ему нужен.
+ *
+ * Замыкающее правило `*` каркаса этим НЕ трогается: радиус правки — шесть
+ * именованных адресов, чтобы починка не растеклась на весь маршрутизатор.
+ */
 const AppRoutes: FC<{
+  dark: boolean;
+  setDark: Dispatch<SetStateAction<boolean>>;
+}> = ({ dark, setDark }) => (
+  <Routes>
+    <Route path="/login" element={<LoginPage />} />
+    <Route path="/registration" element={<RegistrationPage />} />
+    <Route path="/logout" element={<LogoutPage />} />
+    {NOT_SERVED_CEREMONY_ADDRESSES.map((address) => (
+      <Route key={address} path={address} element={<CeremonyAddressNotServedPage />} />
+    ))}
+    <Route path="*" element={<ShellRoutes dark={dark} setDark={setDark} />} />
+  </Routes>
+);
+
+const ShellRoutes: FC<{
   dark: boolean;
   setDark: Dispatch<SetStateAction<boolean>>;
 }> = ({ dark, setDark }) => {
@@ -99,6 +134,7 @@ const AppRoutes: FC<{
           <Route path="/projects/:projectId/:moduleKey/*" element={<ModulePlaceholderPage />} />
           <Route path="/iam/*" element={<IamRemote context={context} />} />
           <Route path="/system/*" element={<SystemRemote context={context} />} />
+          <Route path="/settings" element={<AccountSettingsPage />} />
           <Route path="/dev/reachability" element={<ReachabilityPage />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

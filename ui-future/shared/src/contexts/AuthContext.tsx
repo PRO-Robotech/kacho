@@ -1,36 +1,37 @@
 // AuthContext — централизованный auth state для kacho-ui (KAC-127 Phase 2).
 //
 // Что внутри:
-//   - user / session (из api-gateway /iam/v1/auth/me + Kratos /sessions/whoami)
-//   - access-token (in-memory только; никогда не в localStorage)
-//   - login() / logout() / refresh() — высокоуровневые actions
+//   - user / session — из ответа края о сессии (`GET /iam/v1/auth/me`): кто за
+//     браузерной сессией и её срок, уровень и подтверждённость адреса;
+//   - whoami — bootstrap прав из `GET /iam/v1/me`;
+//   - login() / logout() / refresh() — высокоуровневые действия.
 //
-// Уровня уверенности сессии здесь НЕТ, и это решение (приёмка Ф11 «уровень
-// уверенности объявляет наша сессия», §1.3 Ч8). Прежде контекст читал поле
-// уровня сессии поставщика и вычислял из него «свежесть подтверждения» —
-// значение, которое не читал ни один прод-файл консоли: его писали и не
-// читали. По уровню решает край (пол каталога прав, вызов RFC 9470), консоль
-// отвечает на вызов церемонией повышения (StepUpModal) и перечитывает личность.
+// Церемонии входа и выхода ведёт КОНСОЛЬ своими экранами и глаголами нашей
+// службы (приёмка F8): `login()` уводит на экран входа консоли, `logout()` зовёт
+// глагол выхода. Чужой поставщик личности отсюда не зовётся ни одним путём — ни
+// переходом, ни запросом к его потоку, ни чтением его сессии.
 //
-// Аутентификация data-plane запросов — ambient httpOnly session cookie
-// (Kratos/Hydra), выписанная api-gateway middleware; access-token держится
-// in-memory (setAccessToken) для консюмеров, которым он нужен явно.
+// Уровня уверенности как РЕШЕНИЯ здесь нет (приёмка Ф11 §1.3 Ч8): по уровню
+// решает край (пол каталога прав, вызов RFC 9470), консоль отвечает на вызов
+// церемонией повышения (StepUpModal) и перечитывает личность. Поле
+// `session.assuranceLevel` — факт ответа края, а не суждение консоли.
 //
-// Backward-compat для KAC-115 (Logout, HeaderAuth, LoginButton, UserMenu) —
-// `useAuth` экспозит те же поля `user / loading / login / logout / refresh /
-// hasPermission` плюс новые расширения. Старые consumers продолжают работать.
+// Аутентификация data-plane запросов — ambient httpOnly носитель сессии, его
+// держит браузер; консоль носитель не читает и не пишет.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { setStepUpRequester } from "@shared/api/step-up";
 import { authApi, hasPermission as checkPerm, type AuthUser, type WhoAmIResponse } from "@shared/api/auth";
-import { kratos, type KratosSession } from "@shared/lib/kratos";
+import { FormTokenHolder, loginLane, type LaneSession } from "@shared/api/login-lane";
+import { loginAddress } from "@shared/pages/auth/ceremony-addresses";
 
 /** Периодический whoami-refresh — каждые 5 минут (KAC items 1-5 Foundation). */
 const WHOAMI_REFETCH_MS = 5 * 60 * 1000;
 
 export interface AuthContextValue {
   user: AuthUser | null;
-  session: KratosSession | null;
+  /** Сессия по ответу края; `null` — сессии нет. */
+  session: LaneSession | null;
   loading: boolean;
   accessToken: string | null;
   /** Bootstrap-info из GET /iam/v1/me (KAC items 1-5): system_admin /
@@ -38,9 +39,12 @@ export interface AuthContextValue {
    *  или при 401/403. */
   whoami: WhoAmIResponse | null;
 
-  /** Старт self-service login flow (Kratos browser redirect). */
+  /** Увести на экран входа консоли с адресом возврата. */
   login: (returnTo?: string) => void;
-  /** Logout: Kratos token-flow + Hydra BCL. */
+  /**
+   * Выход глаголом службы. Отказ ПРОБРАСЫВАЕТСЯ: экран не вправе показать
+   * «вышли», пока служба выхода не подтвердила (приёмка F8, F8-19).
+   */
   logout: () => Promise<void>;
   /** Перезапросить /me + whoami. */
   refresh: () => Promise<void>;
@@ -58,7 +62,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [session, setSession] = useState<KratosSession | null>(null);
+  const [session, setSession] = useState<LaneSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [accessToken, setAccessTokenState] = useState<string | null>(null);
   const [whoami, setWhoami] = useState<WhoAmIResponse | null>(null);
@@ -81,19 +85,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [meResp, whoamiKratosResp, whoamiIamResp] = await Promise.allSettled([
-        authApi.me(),
-        kratos.whoami(),
-        authApi.whoami(),
-      ]);
+      const [meResp, whoamiIamResp] = await Promise.allSettled([authApi.me(), authApi.whoami()]);
       if (meResp.status === "fulfilled") {
         setUser(meResp.value.user ?? null);
+        setSession(meResp.value.session ?? null);
       } else {
         setUser(null);
-      }
-      if (whoamiKratosResp.status === "fulfilled") {
-        setSession(whoamiKratosResp.value);
-      } else {
         setSession(null);
       }
       if (whoamiIamResp.status === "fulfilled") {
@@ -106,7 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Init: начальный refresh (сессия — по httpOnly cookie Kratos/Hydra).
+  // Init: начальный refresh (сессия — по httpOnly носителю, его держит браузер).
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -119,7 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // KAC items 1-5 Foundation: периодически refresh'им whoami каждые 5 минут,
   // чтобы поймать изменение ролей (e.g. админ grant'нул system_admin) без
-  // полного `refresh` (который дополнительно дёргает /me и kratos/whoami).
+  // полного `refresh` (который дополнительно перечитывает личность и сессию).
   useEffect(() => {
     if (!user) return;
     // поллинг остаётся: предмет здесь не ресурс, а ЛИЧНОСТЬ вызывающего и её
@@ -134,27 +131,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, refreshWhoAmI]);
 
   const login = useCallback((returnTo?: string) => {
-    window.location.assign(kratos.loginUrl(returnTo));
+    window.location.assign(loginAddress(returnTo));
   }, []);
 
+  const logoutHolder = useMemo(() => new FormTokenHolder("logout"), []);
   const logout = useCallback(async () => {
-    try {
-      const { logout_token } = await kratos.initLogout();
-      await kratos.submitLogout(logout_token);
-    } catch {
-      // Session уже истекла — игнорируем.
-    }
+    await loginLane.logout(logoutHolder);
     setUser(null);
     setSession(null);
     setAccessTokenState(null);
     tokenRef.current = null;
     setWhoami(null);
-    try {
-      authApi.logout();
-    } catch {
-      window.location.assign("/");
-    }
-  }, []);
+    window.location.replace(loginAddress());
+  }, [logoutHolder]);
 
   const setAccessToken = useCallback((token: string | null) => {
     setAccessTokenState(token);
@@ -206,6 +195,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+/**
+ * Контекст личности, если провайдер смонтирован, иначе `null`.
+ *
+ * Для тех, кому личность — уточнение, а не условие: окно повышения живёт и на
+ * странице каркаса, где провайдера нет, и перечитывать личность там некому.
+ */
+export function useOptionalAuth(): AuthContextValue | null {
+  return useContext(AuthContext);
 }
 
 /** Hook для доступа к auth state. Throws вне AuthProvider. */

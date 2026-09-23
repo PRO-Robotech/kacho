@@ -1,18 +1,12 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import {
-  expect,
-  type APIRequestContext,
-  type BrowserContext,
-  type Locator,
-  type Page,
-  type Response,
-  type TestInfo,
-} from "@playwright/test";
+import { expect, type BrowserContext, type Locator, type Page, type Response, type TestInfo } from "@playwright/test";
+import { raiseAssurance } from "./assurance";
 import {
   LANE,
   SEED_PASSWORD,
+  assertCeremonyLanding,
   SESSION_COOKIE,
   backupCodeOutside,
   newSeed,
@@ -22,7 +16,7 @@ import {
   transferSession,
   type SeededHuman,
 } from "./ceremony-seed";
-import { ceremonyCensus, formatCall, register, test, type CeremonyCensus } from "./fixtures";
+import { ceremonyCensus, formatCall, register, test, watchRefusals, type CeremonyCensus } from "./fixtures";
 
 /**
  * Церемонии личности ведёт КОНСОЛЬ — вход, регистрация, выход (приёмка F8, S1).
@@ -56,46 +50,8 @@ import { ceremonyCensus, formatCall, register, test, type CeremonyCensus } from 
 
 // ─── условие прогона (приёмка F8, §4) ─────────────────────────────────────────
 
-/**
- * Посадка, на которой эти сценарии вообще исполнимы: край ретранслирует полосу
- * формы нашей службы, и адрес церемонии отдаёт ОБОЛОЧКА консоли, а не чужой
- * экран. Без этого исход — «не выполнилось», а не красное: сценарии судили бы
- * не консоль, а посадку.
- *
- * Документ `/login` сравнивается с документом `/dashboard`: оболочка отдаёт на
- * оба пути один и тот же документ, а чужой экран — свой.
- */
-async function assertCeremonyLanding(testInfo: TestInfo, newContext: () => Promise<APIRequestContext>) {
-  const api = await newContext();
-  try {
-    const csrf = await api.get(`${LANE.csrf}?form=login`, { headers: { Accept: "application/json" } });
-    const csrfText = await csrf.text();
-    if (csrf.status() !== 200 || !/"csrfToken"\s*:\s*"[^"]+"/.test(csrfText)) {
-      throw new Error(
-        `УСЛОВИЕ ПРОГОНА НЕ СОЗДАНО (приёмка F8, §4): край не ретранслирует полосу формы нашей службы — ` +
-          `${LANE.csrf}?form=login ответил ${csrf.status()} ${csrfText.slice(0, 200)}. ` +
-          `Вердикта о консоли такой прогон не даёт (${testInfo.project.use.baseURL})`,
-      );
-    }
-    const login = await (await api.get("/login", { headers: { Accept: "text/html" } })).text();
-    const shell = await (await api.get("/dashboard", { headers: { Accept: "text/html" } })).text();
-    if (login !== shell) {
-      throw new Error(
-        "УСЛОВИЕ ПРОГОНА НЕ СОЗДАНО (приёмка F8, §4): документ /login не совпадает с документом " +
-          "оболочки консоли — адрес церемонии отдаёт не консоль, а чужой экран. Посадки, где так, " +
-          "приёмка не поддерживает (Р1); вердикта о консоли такой прогон не даёт",
-      );
-    }
-  } finally {
-    await api.dispose();
-  }
-}
-
 test.beforeAll(async ({ playwright }, testInfo) => {
-  const use = testInfo.project.use;
-  await assertCeremonyLanding(testInfo, () =>
-    playwright.request.newContext({ baseURL: use.baseURL, ignoreHTTPSErrors: use.ignoreHTTPSErrors }),
-  );
+  await assertCeremonyLanding(testInfo, playwright);
 });
 
 // ─── экраны: доступные имена, а не классы ─────────────────────────────────────
@@ -461,6 +417,8 @@ test("F8-13 · адрес возврата чужого происхождени
    */
   async function landsAt(returnTo: string, expected: string) {
     const context = await browser.newContext({ baseURL: use.baseURL, ignoreHTTPSErrors: use.ignoreHTTPSErrors });
+    // Контекст заведён пробой сама — его отказы полосы пишет она же (F8-41).
+    const reading = watchRefusals(context, testInfo.testId);
     try {
       const page = await context.newPage();
       await page.goto(`/login?returnTo=${encodeURIComponent(returnTo)}`, { waitUntil: "domcontentloaded" });
@@ -478,6 +436,7 @@ test("F8-13 · адрес возврата чужого происхождени
         .toBe(expected);
       expect(new URL(page.url()).origin, `returnTo=${returnTo}: происхождение страницы после входа чужое`).toBe(origin);
     } finally {
+      await reading.settled();
       await context.close();
     }
   }
@@ -676,7 +635,10 @@ test("F8-19 · служба не подтвердила выход: экран �
   await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "Учётная запись" }).click();
   const account = page.getByRole("dialog", { name: "Учётная запись" });
-  const [res] = await Promise.all([lanePost(page, LANE.logout), account.getByRole("button", { name: "Выйти" }).click()]);
+  const [res] = await Promise.all([
+    lanePost(page, LANE.logout),
+    account.getByRole("button", { name: "Выйти" }).click(),
+  ]);
   expect(res.status()).toBe(503);
   await expect(account.getByRole("alert")).toContainText(unavailable.message);
   expect(pathOf(page), "экран сделал вид, что вышли: адрес сменился").toBe("/dashboard");
@@ -888,7 +850,9 @@ test("F8-35 · повышение уровня по вызову края идё
     await dialog.getByRole("textbox", { name: "Код", exact: true }).fill(codes[0]);
     const replayed = page.waitForResponse(
       (r) =>
-        new URL(r.url()).pathname === `/iam/v1/groups/${groupId}` && r.request().method() === "DELETE" && r.status() !== 401,
+        new URL(r.url()).pathname === `/iam/v1/groups/${groupId}` &&
+        r.request().method() === "DELETE" &&
+        r.status() !== 401,
     );
     const [raised] = await Promise.all([
       lanePost(page, LANE.stepUp),
@@ -931,4 +895,27 @@ test("F8-36 · повышать нечем: назван отказ и путь,
   await expect(dialog, "окно повышения закрылось молча").toBeVisible();
   await dialog.getByRole("link", { name: "Настроить второй фактор" }).click();
   await expectPath(page, "/settings", "путь на экран заведения второго фактора не привёл туда");
+});
+
+// ═══ S2 — второй путь посева переезжает на наши глаголы ═══════════════════════
+
+test("F8-43 · оснастка поднимает уровень НАШИМИ глаголами, одним предъявлением кода", async ({ page }) => {
+  // verifies #1274
+  const registered = page.waitForResponse(
+    (r) => new URL(r.url()).pathname === LANE.register && r.request().method() === "POST",
+  );
+  await register(page);
+  const before = (await (await registered).json()) as { session?: { assuranceLevel?: unknown } };
+  expect(String(before.session?.assuranceLevel), "до подъёма уровень ответа регистрации не «1»").toBe("1");
+
+  const issued = await raiseAssurance(page);
+  const posts = issued.filter((c) => c.method === "POST").map((c) => c.path);
+  expect(posts, "оснастка вела не заведение и подтверждение").toEqual([LANE.enroll, LANE.confirm]);
+  expect(posts, "оснастка звала повышение: уровень поднимает само подтверждение").not.toContain(LANE.stepUp);
+  const confirm = issued.find((c) => c.path === LANE.confirm)!;
+  expect(confirm.status).toBe(200);
+  expect(
+    String((confirm.body as { session?: { assuranceLevel?: unknown } }).session?.assuranceLevel),
+    "после подтверждения уровень ответа не «2»",
+  ).toBe("2");
 });

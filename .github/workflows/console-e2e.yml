@@ -219,6 +219,17 @@ jobs:
         working-directory: ui-future/e2e
         run: node scripts/quota-posture-selftest.ts
 
+      # И ДЛЯ СТОРОЖА БЮДЖЕТА ОСИ ИСТОЧНИКА (приёмка F8, F8-41). Потолок темпа
+      # полосы формы по источнику один на весь прогон и снимается только
+      # временем; сценарии тратят его отказами, и бюджет объявлен числом.
+      # Сторож, неспособный покраснеть, отвечал бы «в бюджете» всегда, поэтому
+      # его способность упасть доказывается подсадкой во ВХОД, который он читает,
+      # — без стенда и без трат самой оси.
+      - name: гейт — самопроверка сторожа бюджета оси источника
+        id: selftest-ceremony-budget
+        working-directory: ui-future/e2e
+        run: node scripts/ceremony-budget-selftest.ts
+
       # И для установки системных пакетов: она решает, что считать полной
       # установкой, а неспособная ошибиться проверка полноты объявляла бы полным
       # что угодно.
@@ -834,6 +845,24 @@ jobs:
           fi
           exit "$rc"
 
+      # ВЕРДИКТ О БЮДЖЕТЕ ОСИ ИСТОЧНИКА (приёмка F8, F8-41, ч. 1). Каждая проба
+      # сдала запись отказов полосы вложением отчёта; сторож складывает их и судит
+      # по семи глаголам, пишущим след. Величина — ВХОД сторожа и ставится ЗДЕСЬ,
+      # тем же рецептом, что поднимает стенд с профилем: браузерная проба профилей
+      # не читает. Сверку величины с потолком профиля (≤ 80 % `sourceAttempts`)
+      # держит проба уровня развёртывания — вторая половина F8-41.
+      #
+      # Условие — то же, что у гейта отчёта: без созданного условия прогона
+      # вердикта о бюджете нет, и второй красный рядом с «не выполнилось» дал бы
+      # два разных ответа на один вопрос.
+      - name: гейт — бюджет оси источника не превышен прогоном
+        id: source-axis-budget
+        if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && steps.console.outcome == 'success' }}
+        working-directory: ui-future/e2e
+        env:
+          KACHO_CEREMONY_FAILURE_BUDGET: "11"
+        run: node scripts/ceremony-budget.ts results.json
+
       - name: отчёт (в том числе на красном)
         id: artifact
         if: always()
@@ -879,7 +908,7 @@ jobs:
           python3 .github/scripts/console-run-category.py \
             --steps "$steps_file" \
             --probe-step probes \
-            --verdict-step report-gate \
+            --verdict-step report-gate,source-axis-budget \
             --verdict-unmet "$VERDICT_UNMET" \
             --bookkeeping pods,provenance,stand_revision,artifact,category,teardown
 

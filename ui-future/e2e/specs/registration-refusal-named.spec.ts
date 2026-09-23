@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { expect } from "@playwright/test";
+import { expect, type Route } from "@playwright/test";
 import { identityRefusalFromText, identityRefusalOnPage, register, test } from "./fixtures";
 
 /**
@@ -11,43 +11,71 @@ import { identityRefusalFromText, identityRefusalOnPage, register, test } from "
  * ПРЕДМЕТ
  *
  * У регистрации ТРИ наблюдаемых исхода, а не два: печенье сессии выдано ·
- * служба личности отвергла поток и напечатала свой отказ · ещё не готово.
- * Фикстур входа различал два — «печенье есть» и «печенья нет», — поэтому отказ
- * читался как «не готово», проба ждала полный срок и сообщала, что печенья нет.
+ * служба отвергла форму и экран назвал отказ · ещё не готово. Фикстура,
+ * различавшая два, читала отказ как «не готово», ждала полный срок и сообщала,
+ * что печенья нет, — тогда как причина стояла НА ТОМ ЖЕ ЭКРАНЕ. Это класс
+ * `testing.md` §«Диагноз ставится по ТЕКСТУ отказа, а не по имени упавшего
+ * шага» (прогон 33352816209: пять падений одним текстом про печенье при
+ * разборе отказа в снимке каждой страницы).
  *
- * Причина при этом стояла НА ТОМ ЖЕ ЭКРАНЕ: провайдер печатает разбор отказа
- * (код перехода, состояние, сообщение). Прогон 33352816209 отдал пять падений
- * одним текстом про печенье, а в снимке каждой из пяти страниц лежало
- * `webhook failed with status code 401` — то есть поток был отвергнут на
- * обратном вызове, и до выдачи сессии дело не доходило вовсе.
+ * ПЕРЕЕЗД НА ФОРМУ ОТКАЗА НАШЕЙ СЛУЖБЫ (приёмка F8, F8-44). Посев набора ходит
+ * нашим экраном регистрации, поэтому распознаватель узнаёт отказ НАШЕЙ службы —
+ * `google.rpc.Status` `{code, message, details}` в ответе глагола и его текст,
+ * названный экраном. Предмет этих проб — не поставщик, а ПОРЯДОК РЕШЕНИЯ:
+ * печенье и поле формы решают раньше распознавателя, и разбор берётся из
+ * текста, а не из разметки. Оба свойства переживают смену поставщика и
+ * сохранены; формы отказа чужого поставщика в наборе нет ни в одном месте.
  *
- * Это класс `testing.md` §«Диагноз ставится по ТЕКСТУ отказа, а не по имени
- * упавшего шага»: имя падения назвало последствие, текст на странице — причину.
+ * ПОЧЕМУ ЭТИ ПРОБЫ НЕ ТРЕБУЮТ СТЕНДА
  *
- * ПОЧЕМУ ЭТА ПРОБА НЕ ТРЕБУЕТ СТЕНДА
- *
- * Её предмет — РАСПОЗНАВАНИЕ отказа, а не поведение продукта на кластере.
- * Страница подаётся содержимым (`setContent`), поэтому проба судит ровно то,
- * ради чего заведена, и не зависит ни от подъёма стенда, ни от службы личности.
- * Способность упасть доказывается парой: страница отказа обязана быть узнана,
- * ЗАКОННЫЙ БЛИЗНЕЦ — обычная страница консоли — обязан остаться неузнанным.
- * Без второй половины распознаватель, отвечающий «отказ» на что угодно, был бы
- * зелёным.
+ * Предмет — поведение пробы, а не продукта. Экран и ответ глагола подаются
+ * перехватом, поэтому проба судит ровно распознавание и провязку. Каждая пара
+ * держит обе стороны: отказ узнан — и законный близнец не узнан; без второй
+ * половины распознаватель, отвечающий «отказ» на что угодно, был бы зелёным.
  */
 
-/** Разметка страницы отказа — снята с падения прогона 33352816209 дословно. */
-const REFUSAL_PAGE = `
+/** Отказ регистрации нашей службы — тело, как его отдаёт полоса формы. */
+const REFUSAL = {
+  code: 9,
+  message: "registration refused",
+  details: [
+    { "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "REGISTRATION_REFUSED", domain: "iam.kaname.cloud" },
+  ],
+};
+
+/**
+ * Экран регистрации — в той форме, какую видит человек: подписи полей, кнопка,
+ * отказ предупреждением. Отправка идёт глаголом и показывает `message` ответа
+ * дословно, как это делает экран консоли.
+ */
+function registrationScreen(extra = ""): string {
+  return `
 <main>
-  <div>
-    <h2>An error occurred</h2>
-    <div>Error details</div>
-    <div>{ "id": "b07c5b0d-7fb4-442d-8163-6f4cf437bb33", "error": { "code": 502,
-      "reason": "A third-party upstream service responded improperly. Please try again later.",
-      "status": "Bad Gateway", "message": "webhook failed with status code 401" },
-      "created_at": "2026-08-31T03:24:32.346049Z" }</div>
-    <a href="welcome">Go Back</a>
-  </div>
+  <form aria-label="Новая учётная запись" id="f">
+    <label for="e">Адрес электронной почты</label><input id="e" type="email">
+    <label for="p">Пароль</label><input id="p" type="password">
+    <button type="submit">Завести учётную запись</button>
+    <div id="out"></div>
+  </form>
+  ${extra}
+  <script>
+    document.getElementById("f").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const res = await fetch("/iam/v1/auth/register", { method: "POST", body: "{}" });
+      if (!res.ok) {
+        const body = await res.json();
+        const a = document.createElement("div");
+        a.setAttribute("role", "alert");
+        a.textContent = body.message;
+        document.getElementById("out").appendChild(a);
+      }
+    });
+  </script>
 </main>`;
+}
+
+/** Экран, назвавший отказ вместо формы, — отказ на первом шаге. */
+const REFUSAL_INSTEAD_OF_FORM = `<main><h1>Новая учётная запись</h1><div role="alert">${REFUSAL.message}</div></main>`;
 
 /** Законный близнец: обычная страница консоли, отказом НЕ являющаяся. */
 const ORDINARY_PAGE = `
@@ -57,130 +85,91 @@ const ORDINARY_PAGE = `
   <button>Создать сеть</button>
 </main>`;
 
+/** Подать экран и ответ глагола; `cookie` — выдаёт ли ответ носитель сессии. */
+async function serve(route: Route, screen: string, answer: { status: number; body: unknown; cookie?: boolean }) {
+  const url = new URL(route.request().url());
+  // Кодировка объявляется явно: подписи экрана — кириллица, и без неё браузер
+  // прочтёт документ однобайтной кодировкой, а доступные имена полей разойдутся
+  // с теми, что видит человек.
+  if (url.pathname === "/registration") {
+    await route.fulfill({ contentType: "text/html; charset=utf-8", body: screen });
+    return;
+  }
+  if (url.pathname === "/iam/v1/auth/register") {
+    await route.fulfill({
+      status: answer.status,
+      contentType: "application/json; charset=utf-8",
+      headers: answer.cookie ? { "set-cookie": "kaname_session=probe; Path=/" } : {},
+      body: JSON.stringify(answer.body),
+    });
+    return;
+  }
+  await route.fulfill({ contentType: "text/html; charset=utf-8", body: ORDINARY_PAGE });
+}
+
 test.describe("отказ регистрации назван своим текстом", () => {
-  test("страница отказа службы личности узнаётся и отдаёт СВОЙ разбор", async ({ page }) => {
+  test("F8-44 · экран, назвавший отказ, узнаётся, и разбор несёт текст службы дословно", async ({ page }) => {
     // verifies #1740
-    await page.setContent(REFUSAL_PAGE);
+    // verifies #2780
+    await page.setContent(REFUSAL_INSTEAD_OF_FORM);
 
     const named = await identityRefusalOnPage(page);
     expect(
       named,
-      "страница, на которой продукт напечатал разбор отказа, обязана быть узнана: " +
-        "иначе проба входа сообщит про отсутствующее печенье, а причина останется " +
-        "лежать в артефакте прогона",
+      "экран, на котором продукт назвал отказ, обязан быть узнан: иначе проба входа " +
+        "сообщит про отсутствующее печенье, а причина останется лежать в артефакте прогона",
     ).not.toBe("");
-    expect(named, "разбор обязан нести сообщение провайдера дословно").toContain(
-      "webhook failed with status code 401",
-    );
-    expect(named, "разбор обязан нести код перехода — по нему видно, чей это отказ").toContain(
-      "502",
-    );
+    expect(named, "разбор обязан нести текст службы дословно").toBe("registration refused");
   });
 
-  test("обычная страница консоли отказом НЕ считается", async ({ page }) => {
+  test("F8-44 · обычная страница консоли отказом НЕ считается", async ({ page }) => {
     // verifies #1740
+    // verifies #2780
     await page.setContent(ORDINARY_PAGE);
 
     expect(
       await identityRefusalOnPage(page),
-      "распознаватель, отвечающий «отказ» на обычную страницу, остановил бы вход " +
-        "там, где он исправен: без этой половины пара односторонняя",
+      "распознаватель, отвечающий «отказ» на обычную страницу, остановил бы вход там, " +
+        "где он исправен: без этой половины пара односторонняя",
     ).toBe("");
   });
 
-  test("фикстур входа сообщает отказ провайдера, а не отсутствие печенья", async ({ page }) => {
+  test("F8-44 · фикстура сообщает отказ службы, а не отсутствие печенья", async ({ page }) => {
     // verifies #1740
+    // verifies #2780
     //
-    // Утверждается ПРОВЯЗКА, а не распознаватель: пробы выше доказывают, что
-    // страница отказа узнаётся, и молчат о том, спрашивает ли её `register`.
-    // Здесь поток регистрации подаётся перехватом — два шага и отказ на втором,
-    // ровно как это выглядело в прогоне 33352816209, — и утверждается ТЕКСТ, с
-    // которым падает сам фикстур. Стенд для этого не нужен: предмет — поведение
-    // пробы, а не продукта.
-    await page.route("**/*", async (route) => {
-      // Шаги различаются ПУТЁМ, а не запросом: форма GET отбрасывает строку
-      // запроса из своего адреса и подставляет собственные поля, поэтому
-      // «шаг» в запросе до обработчика не доезжает — на этом первая редакция
-      // подставы и обожглась.
-      const url = new URL(route.request().url());
-      if (url.pathname === "/registration") {
-        await route.fulfill({
-          contentType: "text/html",
-          body:
-            '<form action="/step2" method="GET">' +
-            '<input name="traits.email"><input name="traits.display_name">' +
-            '<button type="submit">Далее</button></form>',
-        });
-        return;
-      }
-      if (url.pathname === "/step2") {
-        await route.fulfill({
-          contentType: "text/html",
-          body:
-            '<form action="/error" method="GET">' +
-            '<input type="password" name="password">' +
-            '<button type="submit">Готово</button></form>',
-        });
-        return;
-      }
-      await route.fulfill({ contentType: "text/html", body: REFUSAL_PAGE });
-    });
+    // Утверждается ПРОВЯЗКА, а не распознаватель: экран подаётся перехватом, ответ
+    // глагола — отказом нашей формы, и утверждается ТЕКСТ, с которым падает сама
+    // фикстура.
+    await page.route("**/*", (route) => serve(route, registrationScreen(), { status: 400, body: REFUSAL }));
 
     const failure = await register(page).then(
       () => "",
       (e: unknown) => (e instanceof Error ? e.message : String(e)),
     );
 
-    expect(failure, "отвергнутая регистрация обязана уронить фикстур").not.toBe("");
+    expect(failure, "отвергнутая регистрация обязана уронить фикстуру").not.toBe("");
     expect(
       failure,
-      "вердикт обязан нести отказ ПРОВАЙДЕРА: без него читатель идёт разбирать " +
-        "ожидание печенья, тогда как поток до выдачи не дошёл вовсе",
-    ).toContain("webhook failed with status code 401");
-    expect(failure, "и назвать, чей это отказ").toContain("ОТВЕРГНУТА службой личности");
+      "вердикт обязан нести отказ СЛУЖБЫ, снятый с экрана: без него читатель идёт " +
+        "разбирать ожидание печенья, тогда как регистрация отвергнута",
+    ).toContain("registration refused");
+    expect(failure, "и назвать, чей это отказ").toContain("ОТВЕРГНУТА службой");
+    expect(failure, "и код из ответа глагола — по нему видно, что это отказ службы").toContain(
+      "9 · registration refused",
+    );
   });
 
-  test("печенье сессии решает РАНЬШЕ распознавателя отказа", async ({ page }) => {
+  test("F8-44 · печенье сессии решает РАНЬШЕ распознавателя отказа", async ({ page }) => {
     // verifies #1740
+    // verifies #2780
     //
-    // ЗАКОННЫЙ БЛИЗНЕЦ провязки выше, и он несущий: распознаватель отказа стоит
-    // на пути КАЖДОГО входа, поэтому проба «отказ назван» без этой половины
-    // зеленела бы и на фикстуре, который роняет исправный вход.
-    //
-    // ПОЧЕМУ СТРАНИЦА НЕСЁТ И ПЕЧЕНЬЕ, И РАЗБОР ОТКАЗА. Первая редакция этой
-    // пробы подавала чистую страницу успеха — и оставалась зелёной, когда
-    // распознаватель заменяли на «отказ на что угодно»: до него дело просто не
-    // доходило. То есть проба не могла упасть и доказывала не порядок, а
-    // собственную беспредметность. Здесь оба признака стоят ОДНОВРЕМЕННО,
-    // поэтому вердикт решает ПОРЯДОК проверок — и перестановка его роняет.
-    await page.route("**/*", async (route) => {
-      const url = new URL(route.request().url());
-      if (url.pathname === "/registration") {
-        await route.fulfill({
-          contentType: "text/html",
-          body:
-            '<form action="/step2" method="GET">' +
-            '<input name="traits.email"><input name="traits.display_name">' +
-            '<button type="submit">Далее</button></form>',
-        });
-        return;
-      }
-      if (url.pathname === "/step2") {
-        await route.fulfill({
-          contentType: "text/html",
-          body:
-            '<form action="/welcome" method="GET">' +
-            '<input type="password" name="password">' +
-            '<button type="submit">Готово</button></form>',
-        });
-        return;
-      }
-      await route.fulfill({
-        contentType: "text/html",
-        headers: { "set-cookie": "ory_kratos_session=probe; Path=/" },
-        body: REFUSAL_PAGE,
-      });
-    });
+    // ЗАКОННЫЙ БЛИЗНЕЦ провязки выше, и он несущий: распознаватель стоит на пути
+    // КАЖДОГО входа. Экран несёт И печенье, И отказ ОДНОВРЕМЕННО, поэтому вердикт
+    // решает ПОРЯДОК проверок — и перестановка его роняет.
+    await page.route("**/*", (route) =>
+      serve(route, registrationScreen(), { status: 400, body: REFUSAL, cookie: true }),
+    );
 
     const failure = await register(page).then(
       () => "",
@@ -188,102 +177,47 @@ test.describe("отказ регистрации назван своим тек�
     );
     expect(
       failure,
-      "вход, который завершился печеньем сессии, обязан пройти, даже если на " +
-        "странице остался разбор отказа: распознаватель стоит на пути каждого " +
-        "входа, и ложное срабатывание здесь остановило бы весь набор",
+      "регистрация, завершившаяся печеньем сессии, обязана пройти, даже если на экране " +
+        "остался отказ: ложное срабатывание здесь остановило бы весь набор",
     ).toBe("");
   });
 
-  test("фикстур входа сообщает отказ провайдера НА ПЕРВОМ шаге, а не отсутствие пароля", async ({
-    page,
-  }) => {
+  test("F8-44 · фикстура сообщает отказ НА ШАГЕ ЭКРАНА, а не отсутствие формы", async ({ page }) => {
     // verifies #1740
+    // verifies #2780
     //
-    // ВТОРАЯ ПОЛОСА ТОГО ЖЕ МЕХАНИЗМА. У `register` ДВА ожидания, и отказ
-    // представим на каждом: поле пароля на шаге способа входа · печенье сессии
-    // после него. Первая редакция фикса научила говорить причину только второе,
-    // и это ровно тот случай, о котором `architecture.md` §«Параллельные полосы
-    // одного механизма обязаны сверяться МЕЖДУ СОБОЙ»: обе полосы по отдельности
-    // защитимы, неверна их РАЗНИЦА.
-    //
-    // Замер до правки: отказ на шаге профиля давал «второй шаг регистрации не
-    // предложил пароль» через полные 30 с, тогда как на той же странице лежал
-    // разбор провайдера, а распознаватель, умеющий его назвать, стоял в том же
-    // файле тремя строками ниже и не спрашивался.
-    await page.route("**/*", async (route) => {
-      const url = new URL(route.request().url());
-      if (url.pathname === "/registration") {
-        await route.fulfill({
-          contentType: "text/html",
-          body:
-            '<form action="/error" method="GET">' +
-            '<input name="traits.email"><input name="traits.display_name">' +
-            '<button type="submit">Далее</button></form>',
-        });
-        return;
-      }
-      await route.fulfill({ contentType: "text/html", body: REFUSAL_PAGE });
-    });
+    // ВТОРАЯ ПОЛОСА ТОГО ЖЕ МЕХАНИЗМА: у фикстуры ДВА ожидания — форма
+    // регистрации на экране и печенье сессии после отправки, — и отказ представим
+    // на каждом.
+    await page.route("**/*", (route) => serve(route, REFUSAL_INSTEAD_OF_FORM, { status: 400, body: REFUSAL }));
 
     const failure = await register(page).then(
       () => "",
       (e: unknown) => (e instanceof Error ? e.message : String(e)),
     );
 
-    expect(failure, "отвергнутая на первом шаге регистрация обязана уронить фикстур").not.toBe("");
-    expect(
-      failure,
-      "вердикт обязан нести отказ ПРОВАЙДЕРА: без него читатель идёт разбирать " +
-        "неполный поток входа, тогда как поток был ОТВЕРГНУТ и сказал это на экране",
-    ).toContain("webhook failed with status code 401");
-    expect(failure, "и назвать, чей это отказ").toContain("ОТВЕРГНУТА службой личности");
-    expect(
-      failure,
-      "и назвать, ГДЕ он случился: у двух ожиданий разные предметы, и читателю " +
-        "нужно знать, до какого шага поток дошёл",
-    ).toContain("на шаге профиля");
+    expect(failure, "отказ на шаге экрана обязан уронить фикстуру").not.toBe("");
+    expect(failure, "вердикт обязан нести текст отказа с экрана").toContain("registration refused");
+    expect(failure, "и назвать, чей это отказ").toContain("ОТВЕРГНУТА службой");
+    expect(failure, "и назвать, ГДЕ он случился: у двух ожиданий разные предметы").toContain(
+      "на шаге экрана регистрации",
+    );
   });
 
-  test("поле пароля решает РАНЬШЕ распознавателя отказа", async ({ page }) => {
+  test("F8-44 · форма регистрации решает РАНЬШЕ распознавателя отказа", async ({ page }) => {
     // verifies #1740
+    // verifies #2780
     //
-    // ЗАКОННЫЙ БЛИЗНЕЦ полосы выше — тот же, что у полосы печенья. Распознаватель
-    // встаёт на путь КАЖДОГО входа дважды, поэтому без этой половины проба «отказ
-    // назван на первом шаге» зеленела бы и на фикстуре, который роняет исправный
-    // вход: страница второго шага вправе нести и поле пароля, и прозу, похожую на
-    // разбор отказа.
-    await page.route("**/*", async (route) => {
-      const url = new URL(route.request().url());
-      if (url.pathname === "/registration") {
-        await route.fulfill({
-          contentType: "text/html",
-          body:
-            '<form action="/step2" method="GET">' +
-            '<input name="traits.email"><input name="traits.display_name">' +
-            '<button type="submit">Далее</button></form>',
-        });
-        return;
-      }
-      if (url.pathname === "/step2") {
-        // Поле пароля И разбор отказа СТОЯТ ОДНОВРЕМЕННО — иначе вердикт решал бы
-        // не порядок проверок, а наличие единственного признака, и перестановка
-        // порядка пробу не роняла бы.
-        await route.fulfill({
-          contentType: "text/html",
-          body:
-            '<form action="/welcome" method="GET">' +
-            '<input type="password" name="password">' +
-            '<button type="submit">Готово</button></form>' +
-            REFUSAL_PAGE,
-        });
-        return;
-      }
-      await route.fulfill({
-        contentType: "text/html",
-        headers: { "set-cookie": "ory_kratos_session=probe; Path=/" },
-        body: "<main><h1>Консоль</h1></main>",
-      });
-    });
+    // Близнец полосы выше: экран несёт И форму, И прежний отказ одновременно —
+    // вердикт решает порядок проверок. Форма есть — шаг пройден, и регистрация
+    // доходит до сессии.
+    await page.route("**/*", (route) =>
+      serve(route, registrationScreen(`<div role="alert">${REFUSAL.message}</div>`), {
+        status: 200,
+        body: { user: {}, session: {} },
+        cookie: true,
+      }),
+    );
 
     const failure = await register(page).then(
       () => "",
@@ -291,26 +225,21 @@ test.describe("отказ регистрации назван своим тек�
     );
     expect(
       failure,
-      "шаг, предложивший пароль, обязан быть пройден, даже если на странице есть " +
-        "разбор отказа: распознаватель стоит на пути каждого входа, и ложное " +
-        "срабатывание здесь остановило бы весь набор",
+      "экран, предложивший форму, обязан быть пройден, даже если на нём остался отказ: " +
+        "ложное срабатывание здесь остановило бы весь набор",
     ).toBe("");
   });
 
-  test("разбор берётся из ТЕКСТА страницы, а не из её разметки", async () => {
+  test("F8-44 · разбор ответа берётся из ТЕКСТА, и обе величины обязательны", async () => {
     // verifies #1740
-    // Форма страницы отказа принадлежит провайдеру и меняется с его версией;
-    // разбор внутри неё — часть контракта отказа. Поэтому распознаватель судит
-    // текст, и проба утверждает это отдельно от разметки выше.
+    // verifies #2780
+    expect(identityRefusalFromText(JSON.stringify(REFUSAL))).toBe("9 · registration refused");
     expect(
-      identityRefusalFromText('{"error": {"code": 502, "message": "webhook failed with status code 401"}}'),
-    ).toContain("webhook failed with status code 401");
-    expect(identityRefusalFromText("Сети · Ничего не найдено"), "проза отказом не является").toBe(
-      "",
-    );
-    expect(
-      identityRefusalFromText('{"error": {"code": 400, "message": "traits: invalid"}}'),
-      "любой отказ провайдера, а не только один его код",
-    ).toContain("traits: invalid");
+      identityRefusalFromText('{"code":3,"message":"Illegal argument password: required","details":[]}'),
+      "любой отказ службы, а не только один его код",
+    ).toBe("3 · Illegal argument password: required");
+    expect(identityRefusalFromText("Сети · Ничего не найдено"), "проза отказом не является").toBe("");
+    expect(identityRefusalFromText('{"message":"registration refused","details":[]}'), "без кода — не отказ").toBe("");
+    expect(identityRefusalFromText('{"user":{},"session":{}}'), "ответ успеха — не отказ").toBe("");
   });
 });

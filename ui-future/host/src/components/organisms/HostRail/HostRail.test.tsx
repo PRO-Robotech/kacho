@@ -13,7 +13,8 @@ describe("HostRail", () => {
     expect(screen.getByRole("button", { name: "Load Balancer" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Identity and Access Management" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Администрирование" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Войти" })).toBeInTheDocument();
+    // «Войти» появляется, когда край ответил, что сессии нет, — не раньше.
+    expect(await screen.findByRole("button", { name: "Войти" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Настройки" })).not.toBeInTheDocument();
   });
 

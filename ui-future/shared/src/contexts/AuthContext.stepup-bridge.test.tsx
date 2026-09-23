@@ -21,18 +21,8 @@ jest.unstable_mockModule("@shared/api/auth", () => ({
   authApi: {
     me: jest.fn(() => Promise.resolve({ user: null })),
     whoami: jest.fn(() => Promise.resolve(null)),
-    logout: jest.fn(() => Promise.resolve()),
   },
   hasPermission: () => false,
-}));
-
-jest.unstable_mockModule("@shared/lib/kratos", () => ({
-  kratos: {
-    whoami: jest.fn(() => Promise.resolve(null)),
-    initLogout: jest.fn(() => Promise.resolve({ logout_token: "", logout_url: "" })),
-    submitLogout: jest.fn(() => Promise.resolve()),
-    loginUrl: () => "#idp",
-  },
 }));
 
 const { AuthProvider, useAuth } = await import("./AuthContext");

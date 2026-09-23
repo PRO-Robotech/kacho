@@ -1,0 +1,64 @@
+import { jest } from "@jest/globals";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { SessionIdentity } from "@shared/api/login-lane";
+import { installLane, refusal } from "@shared/test/lane-fake";
+import { HostRail } from ".";
+
+// Учётная запись в каркасе (приёмка F8, F8-17…F8-19): вход — экраном консоли,
+// выход — глаголом службы на месте; ни то, ни другое не уходит к чужому
+// поставщику.
+
+const WHO: SessionIdentity = {
+  user: { id: "usr-1", email: "a@kacho.local", displayName: "a", permissions: [] },
+  session: { expiresAt: "2026-09-24T00:00:00Z", assuranceLevel: "1", emailVerified: false },
+};
+
+let lane: ReturnType<typeof installLane> | null = null;
+afterEach(() => {
+  lane?.restore();
+  jest.restoreAllMocks();
+});
+
+describe("учётная запись в рейле", () => {
+  it("без сессии — «Войти», и ведёт она на экран входа консоли с адресом возврата", () => {
+    render(<HostRail showReachability={false} identity={null} currentPath="/iam/users" />);
+    expect(screen.getByRole("button", { name: "Войти" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Учётная запись" })).toBeNull();
+  });
+
+  it("пока край не ответил, рейл не обещает ни входа, ни учётной записи", () => {
+    render(<HostRail showReachability={false} identity={undefined} />);
+    expect(screen.queryByRole("button", { name: "Войти" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Учётная запись" })).toBeNull();
+  });
+
+  it("F8-17 · учётная запись: адрес и признак подтверждённости, действия «подтвердить» нет", () => {
+    render(<HostRail showReachability={false} identity={WHO} />);
+    fireEvent.click(screen.getByRole("button", { name: "Учётная запись" }));
+    const panel = screen.getByRole("dialog", { name: "Учётная запись" });
+    expect(panel).toHaveTextContent("a@kacho.local");
+    expect(panel).toHaveTextContent("Адрес не подтверждён");
+    expect(within(panel).queryByRole("button", { name: /подтвердить/i })).toBeNull();
+  });
+
+  it("F8-18 · «Выйти» зовёт глагол выхода с признаком своего вида и уводит на экран входа", async () => {
+    lane = installLane({ "POST /iam/v1/auth/logout": { status: 200, body: {} } });
+    const leave = jest.fn<(to: string) => void>();
+    const { AccountPanel } = await import("../AccountPanel");
+    render(<AccountPanel identity={WHO} onClose={() => undefined} navigate={() => undefined} leave={leave} />);
+    fireEvent.click(screen.getByRole("button", { name: "Выйти" }));
+    await waitFor(() => expect(leave).toHaveBeenCalledWith("/login"));
+    expect(lane.of("POST", "/iam/v1/auth/logout")[0].body).toEqual({ csrfToken: "tok-logout-1" });
+    expect(lane.calls.every((c) => c.path.startsWith("/iam/v1/auth/"))).toBe(true);
+  });
+
+  it("F8-19 · служба не подтвердила выход: текст отказа на месте, ухода нет", async () => {
+    lane = installLane({ "POST /iam/v1/auth/logout": refusal(503, 14, "logout not performed; try again later") });
+    const leave = jest.fn<(to: string) => void>();
+    const { AccountPanel } = await import("../AccountPanel");
+    render(<AccountPanel identity={WHO} onClose={() => undefined} navigate={() => undefined} leave={leave} />);
+    fireEvent.click(screen.getByRole("button", { name: "Выйти" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("logout not performed; try again later");
+    expect(leave).not.toHaveBeenCalled();
+  });
+});

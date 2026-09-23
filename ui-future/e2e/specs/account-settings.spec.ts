@@ -5,6 +5,7 @@ import { expect, type BrowserContext, type Page, type Response, type TestInfo } 
 import {
   LANE,
   SESSION_COOKIE,
+  assertCeremonyLanding,
   codeOutsideWindow,
   lastIssued,
   newSeed,
@@ -31,6 +32,12 @@ import { ceremonyCensus, formatCall, test, type CeremonyCensus } from "./fixture
  * кодом из ответа того же подтверждения (Р9, ось 4). Ожидания следующего шага
  * кода здесь нет.
  */
+
+// Условие прогона то же, что у экранов входа (приёмка F8, §4): без него исход —
+// «не выполнилось» с названной причиной, а не красное.
+test.beforeAll(async ({ playwright }, testInfo) => {
+  await assertCeremonyLanding(testInfo, playwright);
+});
 
 // ─── экран ───────────────────────────────────────────────────────────────────
 
@@ -178,7 +185,9 @@ test("F8-24 · текущий пароль неверен: отказ назва
   });
 });
 
-test("F8-25 · служба молчит на глаголе с носителем: отказ края назван, сессия не гасится", async ({ page }, testInfo) => {
+test("F8-25 · служба молчит на глаголе с носителем: отказ края назван, сессия не гасится", async ({
+  page,
+}, testInfo) => {
   // verifies #1274 — близнец F8-23: изменено только то, отвечает ли служба краю.
   // Ответ края (F4d-23) подставляется побайтово: остановить службу проба не вправе.
   const ended = { code: 16, message: "session ended; sign in again" };
@@ -235,7 +244,9 @@ test("F8-27 · заведение второго фактора доводитс
     expect(confirmed.status(), `подтверждение не прошло: ${await confirmed.text()}`).toBe(200);
     const { backupCodes } = (await confirmed.json()) as { backupCodes: string[] };
     for (const code of backupCodes) await expect(s.factor.region).toContainText(code);
-    await expect(s.factor.region, "не предупреждено, что коды показаны один раз").toContainText("показываются один раз");
+    await expect(s.factor.region, "не предупреждено, что коды показаны один раз").toContainText(
+      "показываются один раз",
+    );
 
     const posts = census.calls.filter((c) => c.method === "POST").map((c) => c.path);
     expect(posts.indexOf(LANE.enroll), `заведение не предшествует подтверждению:\n${census.describe()}`).toBeLessThan(
@@ -279,7 +290,9 @@ test("F8-29 · сессия не свежа: консоль ведёт повы�
   const notFresh = {
     code: 7,
     message: "re-authentication required: present a credential again",
-    details: [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "SESSION_NOT_FRESH", domain: "iam.kaname.cloud" }],
+    details: [
+      { "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "SESSION_NOT_FRESH", domain: "iam.kaname.cloud" },
+    ],
   };
   let substituted = false;
   await page.route(
@@ -298,7 +311,9 @@ test("F8-29 · сессия не свежа: консоль ведёт повы�
 
     const dialog = page.getByRole("dialog", { name: "Подтверждение действия" });
     await expect(dialog, "консоль не открыла церемонию повышения на SESSION_NOT_FRESH").toBeVisible();
-    await dialog.getByRole("radio", { name: "Пароль" }).check();
+    // Ветвь пароля: подпись переключателя — «Паролем», поле — «Пароль»; одно
+    // имя на обоих сделало бы выбор поля неоднозначным.
+    await dialog.getByRole("radio", { name: "Паролем" }).check();
     await dialog.getByLabel("Пароль", { exact: true }).fill(human.password);
     // Ожидание повтора ставится ДО нажатия: повтор уходит сразу за ответом
     // повышения, и ожидание, поставленное после, могло бы его пропустить.

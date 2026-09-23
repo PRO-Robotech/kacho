@@ -1,20 +1,17 @@
-// Auth API — обращения к Ory Kratos self-service endpoints + api-gateway /iam/v1/auth/me.
+// Auth API — ответ края о личности за браузерной сессией и bootstrap прав.
 //
-// Контракт (KAC-115 Ory stack):
-//   GET  /login                       → Kratos self-service Login UI
-//                                       (Kratos выставляет ory_kratos_session cookie)
-//   GET  /registration                → Kratos self-service Registration UI
-//   GET  /.ory/kratos/public/sessions/whoami
-//                                    → 200 session.identity | 401 если cookie не валидна
-//   GET  /iam/v1/auth/me             → 200 {user, permissions[]} | 401 если нет session
-//                                       (api-gateway резолвит principal по Kratos session)
-//   GET  /iam/v1/me                  → 200 WhoAmIResponse (KAC items 1-5):
-//                                       subject + user_id + email + display_name +
-//                                       system_admin + cluster_viewer + accounts[]
-//   GET  /logout                      → Kratos self-service logout flow (token-based)
+// Контракт:
+//   GET  /iam/v1/auth/me  → 200 {user, session} | 200 {user: null} без сессии
+//                           (край резолвит НАШУ сессию; `session` — срок, уровень
+//                           и подтверждённость адреса)
+//   GET  /iam/v1/me       → 200 WhoAmIResponse (KAC items 1-5):
+//                           subject + user_id + email + display_name +
+//                           system_admin + cluster_viewer + accounts[]
 //
-// Все запросы — `credentials: 'include'` для cookie ory_kratos_session.
+// Церемоний здесь нет: вход, регистрацию и выход консоль ведёт своими экранами
+// через клиент полосы формы (`@shared/api/login-lane`).
 
+import type { LaneSession } from "@shared/api/login-lane";
 import { camelToSnake } from "@shared/lib/case";
 import { displayText } from "@shared/lib/display-text";
 
@@ -35,13 +32,15 @@ export interface AuthUser {
 
 export interface AuthMeResponse {
   user: AuthUser;
+  /** Сессия по ответу края; нет — сессии нет. */
+  session?: LaneSession | null;
 }
 
 // ====== WhoAmIResponse (KAC items 1-5) ======
 //
 // GET /iam/v1/me — единая ручка, отдающая всё что нужно UI для bootstrap-а
-// разрешений и навигации. Backend строит ответ на основе принципала (Kratos
-// session → IAM Subject) + FGA (cluster-level relations + per-account roles).
+// разрешений и навигации. Backend строит ответ на основе принципала (нашей
+// сессии → IAM Subject) + FGA (cluster-level relations + per-account roles).
 //
 // Wire-format: api-gateway сериализует proto в JSON camelCase; адаптер
 // `api/client.ts` конвертирует в snake_case на приёме, поэтому здесь поля в
@@ -156,16 +155,6 @@ async function fetchWhoAmI(): Promise<WhoAmIResponse> {
 }
 
 export const authApi = {
-  /** Перейти на Kratos self-service login page. */
-  login(): void {
-    window.location.assign("/login");
-  },
-
-  /** Перейти на Kratos self-service registration page. */
-  register(): void {
-    window.location.assign("/registration");
-  },
-
   /** Получить текущего user'а. 401 → AuthContext выставит user=null. */
   me(): Promise<AuthMeResponse> {
     return fetchAuth<AuthMeResponse>("GET", "/iam/v1/auth/me");
@@ -177,12 +166,6 @@ export const authApi = {
    */
   whoami(): Promise<WhoAmIResponse> {
     return fetchWhoAmI();
-  },
-
-  /** Запустить Kratos logout flow — POST к /.ory/kratos/public/self-service/logout/browser
-   * сначала получит logout_token, потом редирект на logout-url. Простейший вариант — full-page nav. */
-  logout(): void {
-    window.location.assign("/.ory/kratos/public/self-service/logout/browser");
   },
 };
 
