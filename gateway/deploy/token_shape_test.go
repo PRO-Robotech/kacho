@@ -42,10 +42,16 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// umbrellaDir — каталог чарта-зонта, адресованный от этого пакета. Единственное
+// место пакета, где путь выписан: копия в каждом файле разошлась бы с деревом на
+// той, которую забыли поправить при переезде каталога, — и такая проба читала
+// бы «профилей нет» вместо того, чтобы упасть.
+var umbrellaDir = filepath.Join("..", "..", "deploy", "helm", "umbrella")
+
 // umbrellaValues loads one umbrella profile as a generic tree.
 func umbrellaValues(t *testing.T, profile string) map[string]any {
 	t.Helper()
-	path := filepath.Join("..", "..", "deploy", "helm", "umbrella", profile)
+	path := filepath.Join(umbrellaDir, profile)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)

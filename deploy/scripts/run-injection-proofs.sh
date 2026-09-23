@@ -113,6 +113,7 @@ DECLARED="
 deploy/load-tests/restart-verdict-inject.sh
 deploy/scripts/declared-verdicts-census-inject.sh
 deploy/scripts/deps-failure-class-inject.sh
+deploy/tests/helm/identity-guards-on-our-own-posture-inject.sh
 deploy/tests/helm/identity-hook-credential-provenance-inject.sh
 deploy/tests/helm/identity-hook-credential-source-inject.sh
 deploy/tests/helm/identity-mail-lane-guard-inject.sh
@@ -445,6 +446,13 @@ tools/zz-gamma-inject.sh"
   verdict_probe "доказательство провалено → красное" 1 "$tmp/red"   "zz-broken-inject.sh"
   verdict_probe "условие не создано → код 2"         2 "$tmp/unmet" "zz-unmet-inject.sh"
 
+  # Один факт против `unmet`: код 2 тот же, но его дал bash на синтаксической
+  # ошибке, а не доказательство своим контрактом. Обязано быть красным (#2821).
+  mkdir -p "$tmp/syntax/deploy/scripts"
+  printf '#!/usr/bin/env bash\necho "инъекция зелена"\nexit 0\n' >"$tmp/syntax/deploy/scripts/zz-ok-inject.sh"
+  printf '#!/usr/bin/env bash\necho "до разбора"\nif then\n' >"$tmp/syntax/deploy/scripts/zz-unparsed-inject.sh"
+  verdict_probe "код 2 от синтаксиса bash → красное"  1 "$tmp/syntax" "сценарий не разбирается"
+
   # ЗЕРКАЛО НА УРОВНЕ ГЕЙТА, обе стороны. Слева — дерево, где не-доказательств нет
   # вовсе: ведомость пуста, и это ЦЕЛЬ, а не поломка. Справа — то же дерево плюс
   # файл со словом в имени и без формы: он обязан быть назван, а не пропущен.
@@ -520,7 +528,7 @@ EOF
 
   echo
   echo "случаев проверено: $checked"
-  [ "$checked" -eq 23 ] || { echo "ПРОВАЛ исполнено $checked случаев из 23"; rc=1; }
+  [ "$checked" -eq 24 ] || { echo "ПРОВАЛ исполнено $checked случаев из 24"; rc=1; }
   [ $rc -eq 0 ] && echo "PASS: обход доказательств инъекцией" || echo "FAIL: обход доказательств инъекцией"
   exit $rc
 fi
@@ -659,6 +667,15 @@ for f in $HERE_DECLARED; do
   # КОД ВОЗВРАТА БЕРЁТСЯ КАК ДАННЫЕ. Исходов три, и третий — «условие не создано»
   # — не вердикт о дереве (`tests/helm/README.md` §«Три исхода», `e2e-flow.md` §1).
   ( cd "$TREE" && bash "$f" ) && rc=0 || rc=$?
+  # ДВОЙКУ ДАЁТ И САМ bash — на синтаксической ошибке сценария (замер: `bash` на
+  # файле с `if then` выходит кодом 2). Засчитать её «условием не создано» значило
+  # бы выдать сломанное доказательство за нехватку инструмента, поэтому код 2
+  # принимается только у сценария, который bash разобрал (#2821). Тот же
+  # предикат стоит у второго читателя контракта — `proof` в `scripts/ci-local.sh`.
+  if [ "$rc" = 2 ] && ! bash -n "$TREE/$f" >/dev/null 2>&1; then
+    echo "!!! $f: код 2 дал bash, а не доказательство — сценарий не разбирается (bash -n)"
+    rc=1
+  fi
   case "$rc" in
     0) ran=$((ran + 1)) ;;
     2) unmet="$unmet $f" ;;

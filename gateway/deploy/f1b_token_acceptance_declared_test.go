@@ -53,8 +53,8 @@ const (
 type f1bProfile struct {
 	// Name — имя файла профиля.
 	Name string
-	// Declares — объявлен ли перечень издателей вообще. «Не объявлено» и
-	// «объявлено пустым» — разные состояния, и различает их процесс.
+	// Declares — объявляет ли профиль блок приёма сам. Профиль без блока
+	// получает его слоем цепочки ниже, и это судит F1c, а не эта проба.
 	Declares bool
 	// AppEnv — метка окружения; она выбирает строгость стражей.
 	AppEnv string
@@ -78,15 +78,6 @@ type f1bProfile struct {
 func f1bGatewayConfig(gw map[string]any) (config.Config, bool) {
 	var cfg config.Config
 	cfg.AppEnv, _ = gw["appEnv"].(string)
-	// APIDomain нужен запасной ветке разбора (перечень издателей не объявлен —
-	// запись строится из сегодняшнего пина). Значение фиктивно намеренно: оно
-	// не должно быть неотличимо от боевого, иначе проба кормит собственный
-	// предмет правдоподобным входом.
-	cfg.APIDomain = "api.kacho.test"
-	if hydra, ok := gw["hydra"].(map[string]any); ok {
-		cfg.HydraIssuer, _ = hydra["issuer"].(string)
-		cfg.HydraJWKSURL, _ = hydra["jwksUrl"].(string)
-	}
 	ta, declares := gw["tokenAcceptance"].(map[string]any)
 	if !declares {
 		return cfg, false
@@ -108,7 +99,7 @@ func f1bGatewayConfig(gw map[string]any) (config.Config, bool) {
 // разошёлся бы с деревом молча, и новый профиль остался бы непроверенным.
 func f1bReadProfiles(t *testing.T) []f1bProfile {
 	t.Helper()
-	dir := filepath.Join("..", "..", "deploy", "helm", "umbrella")
+	dir := umbrellaDir
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("каталог профилей зонта не прочитан: %v", err)
@@ -144,7 +135,13 @@ func f1bReadProfiles(t *testing.T) []f1bProfile {
 }
 
 // TestF1b_EveryProfileDeclaresAnAcceptanceTheProcessWillBoot — каждый профиль,
-// называющий край, обязан объявить приём так, чтобы процесс поднялся.
+// объявляющий приём сам, обязан объявить его так, чтобы процесс поднялся.
+//
+// Профиль, приёма не объявляющий, здесь не судится: сам по себе он даёт отказ
+// старта (перечень не объявлен), но слоем цепочки он получает перечень от слоя
+// ниже, и вопрос «объявлено ли за него» — предмет соседнего файла
+// (f1c_issuer_set_reaches_every_stand_test.go), который складывает стенд так,
+// как его складывает helm.
 func TestF1b_EveryProfileDeclaresAnAcceptanceTheProcessWillBoot(t *testing.T) {
 	profiles := f1bReadProfiles(t)
 	if len(profiles) == 0 {
@@ -152,8 +149,13 @@ func TestF1b_EveryProfileDeclaresAnAcceptanceTheProcessWillBoot(t *testing.T) {
 			"означало бы «ноль прочитанного», и молчание этой пробы сказано ни о чём")
 	}
 
-	declaring, falling := 0, 0
+	declaring, inheriting := 0, 0
 	for _, p := range profiles {
+		if !p.Declares {
+			inheriting++
+			continue
+		}
+		declaring++
 		bindings, err := p.Cfg.TokenAcceptance()
 		if err != nil {
 			t.Errorf("профиль %s объявляет приём, с которым процесс НЕ ПОДНИМЕТСЯ: %v\n\n"+
@@ -163,24 +165,15 @@ func TestF1b_EveryProfileDeclaresAnAcceptanceTheProcessWillBoot(t *testing.T) {
 		}
 		if len(bindings) == 0 {
 			t.Errorf("профиль %s дал НОЛЬ записей приёма — «принимаем любого издателя»", p.Name)
-			continue
-		}
-		if p.Declares {
-			declaring++
-		} else {
-			falling++
 		}
 	}
-	// ЗДЕСЬ СТОЯЛО «остаются на прежнем скалярном пине N», и эта величина пережила
-	// свой предмет: скалярного пина не осталось НИ В ОДНОМ профиле дерева. Хуже
-	// того, число читалось как находка, которой у ЭТОЙ пробы нет: её вопрос —
-	// «поднимется ли процесс», а на необъявившем профиле он поднимается. Вердикт
-	// о необъявленном перечне выносит соседний файл
-	// (f1c_issuer_set_reaches_every_stand_test.go), и в строке ниже он назван,
-	// чтобы измерение без вердикта не читалось как вердикт.
-	t.Logf("перепись: профилей, называющих край, %d; объявляют перечень издателей САМИ %d; "+
+	if declaring == 0 {
+		t.Errorf("ни один из %d профилей, называющих край, приёма сам не объявляет — судить "+
+			"этой пробе нечего, и её молчание было бы сказано ни о чём", len(profiles))
+	}
+	t.Logf("перепись: профилей, называющих край, %d; объявляют приём САМИ %d (судятся здесь); "+
 		"не объявляют сами %d — объявлено ли за них слоем ниже, судит F1c, а не эта проба",
-		len(profiles), declaring, falling)
+		len(profiles), declaring, inheriting)
 }
 
 // TestF1b_DeclaringProfilesAcceptOurIssuerWithARecordAndAnAuthority — профиль,
@@ -238,7 +231,7 @@ func TestF1b_DeclaringProfilesAcceptOurIssuerWithARecordAndAnAuthority(t *testin
 // одного издателя, плоскость данных другого, и обнаружилось бы это не при
 // старте, а на живом токене.
 func TestF1b_BothVerifierConfigurationsInOneProfileNameOnePlatform(t *testing.T) {
-	dir := filepath.Join("..", "..", "deploy", "helm", "umbrella")
+	dir := umbrellaDir
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("каталог профилей зонта не прочитан: %v", err)
@@ -367,7 +360,7 @@ type f1bMintDecl struct {
 // f1bReadMintDecls читает стык двух подчартов по каждому профилю зонта.
 func f1bReadMintDecls(t *testing.T) []f1bMintDecl {
 	t.Helper()
-	dir := filepath.Join("..", "..", "deploy", "helm", "umbrella")
+	dir := umbrellaDir
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("каталог профилей зонта не прочитан: %v", err)

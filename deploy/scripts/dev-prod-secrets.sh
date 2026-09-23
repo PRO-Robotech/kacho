@@ -17,7 +17,7 @@
 # этом выглядит поднятым. Здесь стояло «Run BEFORE the production helm upgrade» —
 # верно для прежнего порядка, когда ссылку нёс только слой боевой посадки.
 #
-# Idempotent (apply). NB: these are LOCAL kind
+# Idempotent (atomic create; AlreadyExists = reuse). NB: these are LOCAL kind
 # dev-stand secrets, generated fresh each run — NOT committed, NOT production key
 # material. A real cluster provisions them out-of-band / via external-secrets.
 #
@@ -33,6 +33,49 @@
 set -euo pipefail
 NS="${KACHO_NAMESPACE:-kacho}"
 
+# ── «ЕСТЬ ЛИ СЕКРЕТ» СПРАШИВАЕТСЯ У API-СЕРВЕРА, А НЕ ВЫВОДИТСЯ ИЗ КОДА ВОЗВРАТА ─
+#
+# (задача #2803) Прежде присутствие решал код возврата `kubectl get secret`, и
+# ЛЮБОЙ отказ — срок, сеть, RBAC — читался как «секрета нет». Величина чеканилась
+# заново и уходила `kubectl apply`, а он существующий объект ПЕРЕЗАПИСЫВАЕТ. Для
+# ключей обёртки это необратимо: записанное прежним ключом больше не открывается,
+# и отказ при этом тихий.
+#
+# Поэтому исходов у проверки ТРИ, и различаются они ответом сервера:
+#   есть                → переиспользовать, величину не трогать;
+#   NotFound            → завести — АТОМАРНО на сервере (`create`, не `apply`):
+#                         объект, заведённый кем-то между проверкой и заведением,
+#                         отвечает AlreadyExists и переиспользуется, а не
+#                         перезаписывается;
+#   любой иной отказ    → отказ шага. «Не знаю» — не «нет».
+#
+# Держит deploy/tests/helm/seed-secrets-refuse-unknown-state-test.sh.
+
+# create_once <имя> <что заведено> — манифест на stdin заводится атомарно.
+create_once() {
+  local name="$1" what="$2" out
+  if out="$(kubectl -n "$NS" create -f - 2>&1)"; then
+    echo "provisioned $name ($what) — generated ONCE"
+    return 0
+  fi
+  case "$out" in
+    *"(AlreadyExists)"*)
+      echo "$name появился между проверкой и заведением — переиспользуется, величина не тронута"
+      return 0 ;;
+  esac
+  echo "ABORT: dev-prod-secrets — заведение секрета $name отказало: $out" >&2
+  return 1
+}
+
+# refuse_unknown <имя> <ответ сервера> — присутствие не установлено: отказ шага.
+refuse_unknown() {
+  echo "ABORT: dev-prod-secrets — есть ли секрет $1, НЕ УСТАНОВЛЕНО: сервер ответил не" >&2
+  echo "       NotFound, а отказом: $2" >&2
+  echo "       Прочитать это как «секрета нет» значило бы перечеканить величину поверх" >&2
+  echo "       существующей. Повтори, когда кластер отвечает." >&2
+  exit 1
+}
+
 # ── Ключ ОБЁРТКИ приватной половины подписного ключа ────────────────────────
 # 32-byte hex (64 chars) — iam ResolveJWKSEncryptionKey() requires exactly 32 bytes.
 #
@@ -45,14 +88,15 @@ NS="${KACHO_NAMESPACE:-kacho}"
 # Значение негодной формы здесь не чинится намеренно: iam сверяет длину при
 # старте и отказывается подниматься, называя ручку. Молча заменить его на новое
 # значило бы, что ошибка настройки становится рабочим режимом.
-if kubectl -n "$NS" get secret kaname-jwks-enc-key >/dev/null 2>&1; then
+if out="$(kubectl -n "$NS" get secret kaname-jwks-enc-key -o name 2>&1)"; then
   echo "kaname-jwks-enc-key already present — reusing (wrapping key, must survive re-runs)"
-else
+elif [[ "$out" == *"(NotFound)"* ]]; then
   ENC_KEY="$(openssl rand -hex 32)"
   kubectl -n "$NS" create secret generic kaname-jwks-enc-key \
     --from-literal=enc_key="$ENC_KEY" \
-    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-  echo "provisioned kaname-jwks-enc-key (enc_key, 32B hex) — generated ONCE"
+    --dry-run=client -o yaml | create_once kaname-jwks-enc-key "enc_key, 32B hex"
+else
+  refuse_unknown kaname-jwks-enc-key "$out"
 fi
 
 # ─── КЛЮЧ ОБЁРТКИ СЕКРЕТОВ ВТОРОГО ФАКТОРА: ОДИН РАЗ, НЕ РОТИРУЕТСЯ ──────────
@@ -84,13 +128,14 @@ fi
 # фактора, и вернуть их нечем. Порождаем ОДНАЖДЫ, дальше переиспользуем
 # (идемпотентно, НЕ ротация) — дисциплину держит
 # deploy/tests/helm/secret-material-survives-recreation-test.sh.
-if kubectl -n "$NS" get secret kaname-second-factor-enc-key >/dev/null 2>&1; then
+if out="$(kubectl -n "$NS" get secret kaname-second-factor-enc-key -o name 2>&1)"; then
   echo "kaname-second-factor-enc-key already present — reusing (wrapping key, must survive re-runs)"
-else
+elif [[ "$out" == *"(NotFound)"* ]]; then
   kubectl -n "$NS" create secret generic kaname-second-factor-enc-key \
     --from-literal=enc_key="$(openssl rand -hex 32)" \
-    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-  echo "provisioned kaname-second-factor-enc-key (enc_key, 32B hex) — generated ONCE"
+    --dry-run=client -o yaml | create_once kaname-second-factor-enc-key "enc_key, 32B hex"
+else
+  refuse_unknown kaname-second-factor-enc-key "$out"
 fi
 
 # ─── ОБЩИЙ СЕКРЕТ ОБРАТНОГО ВЫЗОВА: СОЗДАЁТСЯ ОДИН РАЗ, НЕ РОТИРУЕТСЯ ────────
@@ -107,13 +152,14 @@ fi
 # Поэтому: сгенерировать ОДИН раз, дальше переиспользовать — той же формой, что
 # у подписного ключа ниже. Ротация общего секрета — осознанное действие: снять
 # секрет и перекатить ОБА пода, а не побочный эффект подъёма стенда.
-if kubectl -n "$NS" get secret kaname-hook-token >/dev/null 2>&1; then
+if out="$(kubectl -n "$NS" get secret kaname-hook-token -o name 2>&1)"; then
   echo "kaname-hook-token already present — reusing (обе стороны держат одну величину)"
-else
+elif [[ "$out" == *"(NotFound)"* ]]; then
   kubectl -n "$NS" create secret generic kaname-hook-token \
     --from-literal=token="$(openssl rand -hex 24)" \
-    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-  echo "provisioned kaname-hook-token (token, 24B hex)"
+    --dry-run=client -o yaml | create_once kaname-hook-token "token, 24B hex"
+else
+  refuse_unknown kaname-hook-token "$out"
 fi
 
 # Bootstrap-admin SA ES256 (P-256, PKCS#8) signing key — the private key that
@@ -124,14 +170,15 @@ fi
 # key MUST be STABLE across re-runs (regenerating it would orphan the already-
 # registered Hydra client's JWK → assertion signature no longer verifies). Hence:
 # generate ONCE; reuse the existing secret on re-run (idempotent, NOT rotate).
-if kubectl -n "$NS" get secret kaname-bootstrap-sa-key >/dev/null 2>&1; then
+if out="$(kubectl -n "$NS" get secret kaname-bootstrap-sa-key -o name 2>&1)"; then
   echo "kaname-bootstrap-sa-key already present — reusing (stable signing key)"
-else
+elif [[ "$out" == *"(NotFound)"* ]]; then
   BOOTSTRAP_KEY="$(openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt)"
   kubectl -n "$NS" create secret generic kaname-bootstrap-sa-key \
     --from-literal=private_key_pem="$BOOTSTRAP_KEY" \
-    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-  echo "provisioned kaname-bootstrap-sa-key (private_key_pem, ES256 P-256)"
+    --dry-run=client -o yaml | create_once kaname-bootstrap-sa-key "private_key_pem, ES256 P-256"
+else
+  refuse_unknown kaname-bootstrap-sa-key "$out"
 fi
 
 echo "prerequisite secrets ready in ns/$NS"

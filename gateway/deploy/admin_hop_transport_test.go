@@ -31,6 +31,7 @@ package deploy_test
 import (
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -96,63 +97,160 @@ func stackIsProductionClass(t *testing.T, stack []string) bool {
 // Every production-class stack must address the gateway's two admin-API endpoints
 // over TLS. A plaintext address here is refused at start by the gateway's boot
 // guard — this gate is what keeps that refusal from being discovered on a stand.
+//
+// Whether the endpoints must EXIST is the edge posture's question, read the way
+// its boot guard reads it (provider_road_posture_test.go): required on
+// `external`, absent on `own`. A DECLARED address is judged for transport on
+// both postures, exactly as the guard judges it.
 func TestStacks_GatewayAdminHopIsNotInTheClear(t *testing.T) {
-	for name, stack := range deployableStacks(t) {
+	stacks := deployableStacks(t)
+	census := postureCensus{}
+	for _, name := range sortedStackNames(stacks) {
+		stack := stacks[name]
 		t.Run(name, func(t *testing.T) {
 			if !stackIsProductionClass(t, stack) {
 				t.Skipf("%s is dev-class by its own declaration — the transport requirement "+
 					"rides the same exemption as the gateway's boot guard", name)
 			}
-			for _, knob := range []string{"introspectionUrl", "adminUrl"} {
-				got, ok := resolveStack(t, stack, "hydra", knob)
-				if !ok {
-					t.Errorf("%s: api-gateway.hydra.%s is not declared", name, knob)
-					continue
-				}
-				if err := requireTLSHop(got); err != nil {
-					t.Errorf("%s: api-gateway.hydra.%s %v", name, knob, err)
-				}
+			merged := foldStack(t, stack)
+			facts := gatewayHopFacts{
+				Stack:   name,
+				Posture: readPosture(edgePostureHalf, merged, edgePostureHalf.chartDefaults(t)),
 			}
-			// TLS without an anchor is not a partial improvement: the provider's
-			// in-cluster certificate is internal-CA issued, the gateway trusts the
-			// system roots, and the introspection layer files an unknown authority
-			// as a PERMANENT misconfiguration — after which it refuses every request.
-			if _, ok := resolveStack(t, stack, "hydra", "adminCa", "secretName"); !ok {
-				t.Errorf("%s: api-gateway.hydra.adminCa.secretName is not declared while the hop "+
-					"is https — the gateway would verify against the system roots, which an "+
-					"internal-CA certificate never chains to, and then refuse every request", name)
+			facts.Introspection, _ = scalarAt(merged, introspectionRoad.path...)
+			facts.Admin, _ = scalarAt(merged, adminRoad.path...)
+			facts.AdminCASecret, _ = scalarAt(merged, "api-gateway", "hydra", "adminCa", "secretName")
+			census.add(facts.Posture)
+			for _, f := range judgeGatewayAdminHop(facts) {
+				t.Error(f)
 			}
 		})
 	}
+	t.Logf("перепись боевых стеков по посадке края: %s", census)
+}
+
+// gatewayHopFacts — что слитая цепочка объявляет о переходе края к
+// административному API поставщика.
+type gatewayHopFacts struct {
+	Stack         string
+	Posture       postureReading
+	Introspection string
+	Admin         string
+	AdminCASecret string
+}
+
+// judgeGatewayAdminHop — чистая: находки о переходе края боевой цепочки.
+// Вход ей подаёт и дерево, и инъекция.
+func judgeGatewayAdminHop(f gatewayHopFacts) []string {
+	required, err := providerRoadRequired(edgePostureHalf.who, f.Posture)
+	if err != nil {
+		return []string{fmt.Sprintf("%s: %v", f.Stack, err)}
+	}
+	var out []string
+	hop := false
+	for _, knob := range []struct{ name, value string }{
+		{"introspectionUrl", f.Introspection}, {"adminUrl", f.Admin},
+	} {
+		got := strings.TrimSpace(knob.value)
+		if got == "" {
+			if required {
+				out = append(out, fmt.Sprintf("%s: api-gateway.hydra.%s is not declared", f.Stack, knob.name))
+			}
+			continue
+		}
+		hop = true
+		if err := requireTLSHop(got); err != nil {
+			out = append(out, fmt.Sprintf("%s: api-gateway.hydra.%s %v", f.Stack, knob.name, err))
+		}
+	}
+	anchored := strings.TrimSpace(f.AdminCASecret) != ""
+	switch {
+	case (required || hop) && !anchored:
+		// TLS without an anchor is not a partial improvement: the provider's
+		// in-cluster certificate is internal-CA issued, the gateway trusts the
+		// system roots, and the introspection layer files an unknown authority
+		// as a PERMANENT misconfiguration — after which it refuses every request.
+		out = append(out, fmt.Sprintf("%s: api-gateway.hydra.adminCa.secretName is not declared "+
+			"while the hop is https — the gateway would verify against the system roots, which "+
+			"an internal-CA certificate never chains to, and then refuse every request", f.Stack))
+	case !required && !hop && anchored:
+		// Якорь без перехода. Он называет секрет сертификата административного
+		// слушателя поставщика, а шаблон края монтирует его томом без
+		// `optional`: на посадке без поставщика секрет выпускать некому, и под
+		// края с таким монтированием не стартует.
+		out = append(out, fmt.Sprintf("%s: посадка края — %s, адресов перехода к поставщику нет, "+
+			"а api-gateway.hydra.adminCa.secretName объявлен (%q): якорь проверяет переход, "+
+			"которого нет, и называет секрет сертификата слушателя, которого нет, — том с ним "+
+			"не смонтируется, и под края не стартует", f.Stack, f.Posture.Provider, f.AdminCASecret))
+	}
+	return out
 }
 
 // And the same for iam, the platform's sole facade to the provider. Its hop must
 // additionally be DECLARED rather than derived: the derivation is never empty, so
 // a profile that never named the address still read as configured — while
 // addressing the public ingress hostname, which does not resolve in-cluster.
+//
+// That requirement is iam's posture's to make, read the way iam's boot guard
+// reads it: its lane table declares the admin road `external`-only. On `own`
+// the address is required to be absent (provider_road_posture_test.go).
 func TestStacks_IAMProviderAdminHopIsDeclaredAndNotInTheClear(t *testing.T) {
-	for name, stack := range deployableStacks(t) {
+	stacks := deployableStacks(t)
+	census := postureCensus{}
+	for _, name := range sortedStackNames(stacks) {
+		stack := stacks[name]
+		merged := foldStack(t, stack)
+		facts := iamHopFacts{
+			Stack:      name,
+			Posture:    readPosture(iamPostureHalf, merged, iamPostureHalf.chartDefaults(t)),
+			Production: stackIsProductionClass(t, stack),
+		}
+		facts.AdminURL, _ = scalarAt(merged, iamAdminRoad.path...)
+		facts.CAFile, _ = scalarAt(merged, "kaname", "platform", "iam", "hydraAdminCaFile")
+		census.add(facts.Posture)
 		t.Run(name, func(t *testing.T) {
-			got, ok := resolveStackAt(t, stack, "kaname", "platform", "iam", "hydraAdminUrl")
-			if !ok {
-				t.Fatalf("%s: kaname.platform.iam.hydraAdminUrl is not declared — iam then "+
-					"DERIVES it from the issuer, which names the public ingress host and does "+
-					"not resolve inside the cluster; the derivation is never empty, so the "+
-					"facade reads as configured while addressing a host nobody chose", name)
-			}
-			if !stackIsProductionClass(t, stack) {
-				return // declared is required everywhere; TLS only where production posture applies
-			}
-			if err := requireTLSHop(got); err != nil {
-				t.Errorf("%s: kaname.platform.iam.hydraAdminUrl %v", name, err)
-			}
-			if _, ok := resolveStackAt(t, stack, "kaname", "platform", "iam", "hydraAdminCaFile"); !ok {
-				t.Errorf("%s: kaname.platform.iam.hydraAdminCaFile is not declared while the hop "+
-					"is https — iam would verify against the system roots and every call on the "+
-					"hop would fail with an unknown authority", name)
+			for _, f := range judgeIAMProviderHop(facts) {
+				t.Error(f)
 			}
 		})
 	}
+	t.Logf("перепись по посадке службы доступа: %s", census)
+}
+
+// iamHopFacts — что слитая цепочка объявляет об административной дороге
+// службы доступа к поставщику.
+type iamHopFacts struct {
+	Stack      string
+	Posture    postureReading
+	Production bool
+	AdminURL   string
+	CAFile     string
+}
+
+// judgeIAMProviderHop — чистая: находки об административной дороге службы
+// доступа. Вход ей подаёт и дерево, и инъекция.
+//
+// Якорь дороги (hydraAdminCaFile) под `own` не судится: его читатель — строка
+// таблицы требований полосы `external`, без адреса проверять по нему нечего, и
+// следствия, которое проба могла бы назвать, у него нет.
+func judgeIAMProviderHop(f iamHopFacts) []string {
+	if finding := roadPresenceFinding(f.Stack, iamAdminRoad, f.Posture, f.AdminURL); finding != "" {
+		return []string{finding}
+	}
+	got := strings.TrimSpace(f.AdminURL)
+	if got == "" || !f.Production {
+		return nil // declared is required on `external` everywhere; TLS only where production posture applies
+	}
+	var out []string
+	if err := requireTLSHop(got); err != nil {
+		out = append(out, fmt.Sprintf("%s: kaname.platform.iam.hydraAdminUrl %v", f.Stack, err))
+	}
+	if strings.TrimSpace(f.CAFile) == "" {
+		out = append(out, fmt.Sprintf("%s: kaname.platform.iam.hydraAdminCaFile is not declared while "+
+			"the hop is https — iam would verify against the system roots and every call on the "+
+			"hop would fail with an unknown authority", f.Stack))
+	}
+	return out
 }
 
 // requireTLSHop reports why an address is unfit to carry a credential.
@@ -213,7 +311,14 @@ var adminHopConsumers = map[string][]string{
 // fail a handshake — it fails to resolve. That is the intended shape: loud and
 // immediate, rather than a timeout against something that looks like an address.
 func TestStacks_AdminHopConsumersAgreeWithTheListener(t *testing.T) {
-	for name, stack := range deployableStacks(t) {
+	stacks := deployableStacks(t)
+	labels := make([]string, 0, len(adminHopConsumers))
+	for label := range adminHopConsumers {
+		labels = append(labels, label)
+	}
+	sort.Strings(labels)
+	for _, name := range sortedStackNames(stacks) {
+		stack := stacks[name]
 		t.Run(name, func(t *testing.T) {
 			on, _ := resolveStackBoolAt(t, stack, "mtls", "hydraAdminTls", "enabled")
 			if !on {
@@ -221,8 +326,8 @@ func TestStacks_AdminHopConsumersAgreeWithTheListener(t *testing.T) {
 					"it over http, and the transport gates above cover whether it may stay that way", name)
 			}
 			checked := 0
-			for label, path := range adminHopConsumers {
-				got, ok := resolveStackAt(t, stack, path...)
+			for _, label := range labels {
+				got, ok := resolveStackAt(t, stack, adminHopConsumers[label]...)
 				if !ok {
 					continue // a consumer this stack does not deploy or does not name
 				}
@@ -310,7 +415,9 @@ func TestStacks_OnlyNamedDevStacksAreDevClass(t *testing.T) {
 		t.Fatal("набор стеков пуст — «все боевые» здесь означало бы «ни одного не смотрели»")
 	}
 	devFound := 0
-	for name, stack := range deployableStacks(t) {
+	stacks := deployableStacks(t)
+	for _, name := range sortedStackNames(stacks) {
+		stack := stacks[name]
 		production := stackIsProductionClass(t, stack)
 		if devClassStackNames[name] {
 			devFound++

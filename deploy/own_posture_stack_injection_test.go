@@ -51,6 +51,32 @@ func TestOwnStackJudgement_CanFailAndStaysSilent(t *testing.T) {
 			mustSay: "называют РАЗНЫЕ двери",
 		},
 		{
+			// kacho#2725: край набирает порт СЛУЖБЫ, а не слушателя. Профиль
+			// переопределил порт Службы, адрес края остался на порту слушателя —
+			// край стучится в порт, которого у Службы нет.
+			name:    "Служба переопределила порт, край идёт на порт слушателя — находка",
+			mutate:  func(f *ownStackFacts) { f.ServicePort = "9101" },
+			want:    1,
+			mustSay: "service.internal.loginLanePort",
+		},
+		{
+			// Законный близнец случая выше: переопределение есть, и край идёт
+			// ровно на него. Меняется один факт против красного — порт адреса.
+			name: "Служба переопределила порт, и край идёт на него — молчит",
+			mutate: func(f *ownStackFacts) {
+				f.ServicePort = "9101"
+				f.LaneURL = "https://kaname-internal.kacho.svc:9101"
+			},
+			want: 0,
+		},
+		{
+			// `default` шаблона считает нуль пустым: Служба остаётся на порту
+			// слушателя, и край, идущий на него, прав.
+			name:   "переопределение нулём — умолчание шаблона, молчит",
+			mutate: func(f *ownStackFacts) { f.ServicePort = "0" },
+			want:   0,
+		},
+		{
 			name:    "адрес полосы не объявлен — находка",
 			mutate:  func(f *ownStackFacts) { f.LaneURL = "" },
 			want:    1,
@@ -159,5 +185,55 @@ func TestOwnStackJudgement_BindingArmsItselfWithThePin(t *testing.T) {
 	}
 	if !strings.Contains(armed[0], "access-keys") {
 		t.Errorf("находка не называет ручек привязки: %s", armed[0])
+	}
+}
+
+// TestOwnStackServicePortModel_StaleTemplateIsSaid — предпосылка пробы порта
+// Службы способна упасть: шаблон, выставляющий порт полосы иным выражением или
+// не выставляющий его вовсе, распознаётся, а сегодняшняя форма — нет (kacho#2725).
+func TestOwnStackServicePortModel_StaleTemplateIsSaid(t *testing.T) {
+	const lawful = "    {{- if .Values.ports.loginLane }}\n" +
+		"    - name: http-login-lane\n" +
+		"      port: {{ .Values.service.internal.loginLanePort | default .Values.ports.loginLane }}\n" +
+		"      targetPort: http-login-lane\n" +
+		"    {{- end }}\n"
+	cases := []struct {
+		name      string
+		tmpl      string
+		wantFound bool
+		wantAgree bool
+	}{
+		{name: "законный близнец: сегодняшняя форма шаблона — модель верна", tmpl: lawful, wantFound: true, wantAgree: true},
+		{
+			name:      "комментарий между условием и записью — та же запись, модель верна",
+			tmpl:      strings.Replace(lawful, "    - name:", "    # слушатель полосы\n    - name:", 1),
+			wantFound: true, wantAgree: true,
+		},
+		{
+			name:      "порт выставлен без переопределения — модель устарела",
+			tmpl:      strings.Replace(lawful, ".Values.service.internal.loginLanePort | default .Values.ports.loginLane", ".Values.ports.loginLane", 1),
+			wantFound: true,
+		},
+		{
+			name:      "запись под другим условием — модель устарела",
+			tmpl:      strings.Replace(lawful, "if .Values.ports.loginLane", "if .Values.service.internal.loginLaneEnabled", 1),
+			wantFound: true,
+		},
+		{
+			name: "записи порта полосы нет — не найдена",
+			tmpl: strings.Replace(lawful, "http-login-lane\n      port", "http-other\n      port", 1),
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cond, expr, ok := laneServicePortTemplate(c.tmpl)
+			if ok != c.wantFound {
+				t.Fatalf("запись найдена=%v, ожидалось %v (условие %q, выражение %q)", ok, c.wantFound, cond, expr)
+			}
+			agree := cond == laneServicePortCondition && expr == laneServicePortExpression
+			if ok && agree != c.wantAgree {
+				t.Errorf("модель согласна=%v, ожидалось %v: условие %q, выражение %q", agree, c.wantAgree, cond, expr)
+			}
+		})
 	}
 }

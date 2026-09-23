@@ -15,6 +15,9 @@
 package deploy_test
 
 import (
+	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -162,12 +165,140 @@ func TestIdentitySecondFactorInjection_ChainPredicatesReadBothSides(t *testing.T
 		t.Fatal("провязка найдена там, где её нет — гейт молчал бы на стенде без настроек")
 	}
 
-	up := []string{"kratos:\n  enabled: true\n  deployment: {}\n"}
-	if !identityChainRaisesIdentity(up) {
-		t.Fatal("поднятая служба личности не распознана — вся проверка стала бы " +
-			"беспредметной и вышла бы зелёной")
+	// НАША посадка личности читается у обеих половин по отдельности: профиль
+	// вправе назвать любую одну, и стенд от этого под судом не перестаёт быть.
+	for _, c := range []struct {
+		name, text, iam, edge string
+	}{
+		{"обе половины", "kaname:\n  config:\n    authn:\n      identityProvider: own\n" +
+			"api-gateway:\n  authn:\n    identityProvider: own\n", "own", "own"},
+		{"только служба", "kaname:\n  config:\n    authn:\n      identityProvider: external\n", "external", ""},
+		{"только край", "api-gateway:\n  authn:\n    identityProvider: own\n", "", "own"},
+	} {
+		iam, edge := identityLandingOfProfile(c.text)
+		if iam != c.iam || edge != c.edge {
+			t.Fatalf("%s: посадка прочитана как iam=%q gateway=%q, объявлено iam=%q gateway=%q — "+
+				"разбор перестал узнавать НАШУ ручку, и стражи отбирали бы стенды вслепую",
+				c.name, iam, edge, c.iam, c.edge)
+		}
 	}
-	if identityChainRaisesIdentity([]string{"hydra:\n  enabled: true\n"}) {
-		t.Fatal("служба личности распознана по чужому объявлению")
+
+	// ЧУЖОЙ ФЛАГ ПОСАДКОЙ НЕ СЧИТАЕТСЯ — ни поднятый, ни выключенный. Ровно этим
+	// предикат и отличается от прежнего: ручка подчарта поставщика к нашему
+	// решению о личности отношения не имеет.
+	for _, foreign := range []string{
+		"kratos:\n  enabled: true\n  deployment: {}\n",
+		"hydra:\n  enabled: true\n",
+		"kratos:\n  enabled: false\n",
+	} {
+		if iam, edge := identityLandingOfProfile(foreign); iam != "" || edge != "" {
+			t.Fatalf("чужой флаг %q прочитан как объявление посадки (iam=%q gateway=%q)",
+				foreign, iam, edge)
+		}
+	}
+
+	// Цепочка накладывается слева направо, как её накладывает helm: побеждает
+	// последнее непустое объявление, а не первое.
+	l := identityLandingOfChain(t, []string{
+		"kaname:\n  config:\n    authn:\n      identityProvider: external\n",
+		"kaname:\n  config:\n    authn:\n      identityProvider: own\n",
+	})
+	if !l.lands() || l.IAM != "own" || l.Base {
+		t.Fatalf("накладка посадки не победила слой под собой: %+v", l)
+	}
+
+	// ЗАКОННЫЙ БЛИЗНЕЦ: цепочка, посадку не называющая, беспредметной проверку
+	// НЕ делает — значение ей даёт база подчарта, и стенд остаётся под судом.
+	base := identityLandingOfChain(t, []string{"a: 1\n", "b: 2\n"})
+	if !base.lands() || !base.Base {
+		t.Fatalf("молчаливая цепочка осталась без посадки (%+v) — стенд выпал бы "+
+			"из-под суда ровно так же, как выпадал по чужому флагу", base)
+	}
+}
+
+// TestIdentitySecondFactorInjection_ForeignFlagOffKeepsEveryStandUnderJudgement —
+// ВОЗВРАЩЁННЫЙ ДЕФЕКТ на НАСТОЯЩЕМ входе дерева.
+//
+// Дефект: предикат отбора стендов судил по `kratos.enabled` — флагу ЧУЖОГО
+// подчарта. Измерено инъекцией: выключение чужих флагов в боевом профиле уводило
+// из-под суда боевой стенд и стенд посадки `own`, 7 стендов становились 5, и все
+// четыре стража личности оставались зелёными — пустыми операциями ровно там, где
+// они нужны.
+//
+// Проба берёт НАСТОЯЩИЕ цепочки из таблицы стеков, выключает в их текстах чужие
+// флаги (в памяти — дерево не трогается) и утверждает ДВЕ вещи сразу:
+//
+//   - инъекция ДЕЙСТВИТЕЛЬНО кусает: прежний признак («поднят чужой подчарт»)
+//     после неё находит меньше стендов, чем до. Без этого утверждения проба
+//     зеленела бы на инъекции, которая ничего не изменила;
+//   - наш признак посадки после той же инъекции судит ТЕ ЖЕ стенды.
+func TestIdentitySecondFactorInjection_ForeignFlagOffKeepsEveryStandUnderJudgement(t *testing.T) {
+	stacks := deployStacks(t)
+	names := make([]string, 0, len(stacks))
+	for n := range stacks {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+
+	// Прежний признак, выписанный здесь ДОСЛОВНО: он больше не судит ничего,
+	// но доказывает, что инъекция кусает.
+	foreignChartRaised := regexp.MustCompile(`(?m)^kratos:\n(?:[ \t].*\n|\n)*?\s+enabled:\s*true`)
+	foreignOff := regexp.MustCompile(`(?m)^(kratos|hydra):\n(\s+)enabled: true$`)
+
+	var judgedBefore, judgedAfter, foreignBefore, foreignAfter int
+	var lost []string
+	for _, name := range names {
+		texts := make([]string, 0, len(stacks[name]))
+		for _, prof := range stacks[name] {
+			texts = append(texts, readFileForTest(t, filepath.Join(umbrellaDir, prof)))
+		}
+		injected := make([]string, 0, len(texts))
+		for _, text := range texts {
+			injected = append(injected, foreignOff.ReplaceAllString(text, "$1:\n${2}enabled: false"))
+		}
+
+		raised := func(in []string) bool {
+			for _, text := range in {
+				if foreignChartRaised.MatchString(text) {
+					return true
+				}
+			}
+			return false
+		}
+		if raised(texts) {
+			foreignBefore++
+		}
+		if raised(injected) {
+			foreignAfter++
+		}
+		if identityChainLandsIdentity(t, texts) {
+			judgedBefore++
+		}
+		if identityChainLandsIdentity(t, injected) {
+			judgedAfter++
+			continue
+		}
+		lost = append(lost, name)
+	}
+
+	t.Logf("перепись: стендов %d · под судом до инъекции %d · после %d · "+
+		"прежний признак (чужой подчарт поднят): до %d · после %d",
+		len(names), judgedBefore, judgedAfter, foreignBefore, foreignAfter)
+
+	if judgedBefore != len(names) {
+		t.Fatalf("на исправном дереве под судом %d стендов из %d — предикат сузился "+
+			"сам по себе, и утверждать об инъекции нечего", judgedBefore, len(names))
+	}
+	if foreignAfter >= foreignBefore {
+		t.Fatalf("инъекция не кусает: по прежнему признаку до неё %d стендов, после %d. "+
+			"Либо форма чужого флага в профилях сменилась, либо подстановка перестала "+
+			"его находить — и тогда зелёное этой пробы ничего не значит",
+			foreignBefore, foreignAfter)
+	}
+	if len(lost) > 0 {
+		t.Fatalf("выключение ЧУЖИХ флагов увело из-под суда стенды %v: %d из %d. "+
+			"Это ровно тот дефект, ради которого предикат переутверждён — признак "+
+			"посадки снова взят у чужой службы, а не у нашей ручки identityProvider",
+			lost, len(lost), len(names))
 	}
 }

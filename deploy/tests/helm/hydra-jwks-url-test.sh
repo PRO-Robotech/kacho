@@ -1,39 +1,35 @@
 #!/usr/bin/env bash
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
-# api-gateway must resolve a REACHABLE cluster-internal Hydra JWKS URL.
+# api-gateway must fetch every key set from a REACHABLE cluster-internal address.
 #
-# Bug: the api-gateway auth path validates Hydra-issued RS256 login tokens by
-# fetching Hydra's JWKS. cfg.ResolvedHydraJWKSURL() reads KACHO_HYDRA_JWKS_URL
-# (explicit) and otherwise derives `{HydraIssuer}/.well-known/jwks.json` — whose
-# default issuer (`https://hydra.api.kacho.cloud`) is NOT reachable in-cluster
-# (Hydra self.issuer in dev is `http://localhost:28080/...`). With no env set the
-# gateway pod fetches an unreachable URL → JWKS load fails → Hydra tokens are
-# never validated → WhoAmI/Account/Project return code 16 AUTHN_REQUIRED.
+# The edge verifies each token against the key set of the issuer it names, and
+# the address of every key set is DECLARED by the issuer record
+# (`tokenAcceptance.issuerKeySets` → KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS).
+# An address the pod cannot reach — localhost, the PUBLIC issuer host — means no
+# key set ever arrives and every token is refused.
 #
-# The dev stand's in-cluster Hydra PUBLIC Service is `kacho-umbrella-hydra-public`
-# (release `kacho-umbrella`), port 4444, JWKS path `/.well-known/jwks.json`
-# (verified: `helm template ... charts/hydra/templates/service-public.yaml`).
+# The previous scalar pin (`hydra.jwksUrl` / `hydra.issuer` →
+# KACHO_HYDRA_JWKS_URL / KACHO_HYDRA_ISSUER) is RETIRED: the edge no longer reads
+# it and refuses to start without a declared issuer set. The chart therefore
+# must not render either variable at all — neither by default nor when a stale
+# profile still names the retired keys.
 #
 # ── ЦЕЛЬ ХОПА ЗАВИСИТ ОТ ПРОФИЛЯ, И ЭТО НЕ ПОСЛАБЛЕНИЕ ───────────────────────
 # core-правило #16: iam — ЕДИНСТВЕННЫЙ фасад к провайдеру, ключи верификации
 # раздаёт его зеркало (:9097, https, якорь доверия — внутренний CA). Боевой
 # профиль на этот маршрут уже переведён; прямой хоп к провайдеру там — обход
 # фасада, однажды уже найденный и починенный. Утверждение о боевом профиле
-# поэтому не ослаблено, а ПЕРЕНАЦЕЛЕНО и усилено: теперь оно требует зеркало
-# ИМЕННО по защищённому транспорту и ОТДЕЛЬНО запрещает адрес провайдера в любом
-# написании. Профиль dev остаётся на прямом внутрикластерном адресе провайдера —
-# это его текущее состояние, и утверждение о нём не тронуто.
+# требует зеркало ИМЕННО по защищённому транспорту и ОТДЕЛЬНО запрещает адрес
+# провайдера в любом написании. Профиль dev остаётся на прямом внутрикластерном
+# адресе провайдера — это его текущее состояние.
 #
-# This renders BOTH:
+# This renders:
 #   (1) the api-gateway chart standalone (the source the umbrella vendors via
-#       `repository: file://../../../gateway/deploy` in helm/umbrella/Chart.yaml)
-#       with values that set hydra.jwksUrl, and
-#   (2) the umbrella with values.dev.yaml (the actual dev stand) restricted to
-#       the api-gateway Deployment.
-# It asserts the rendered KACHO_HYDRA_JWKS_URL is the cluster-internal endpoint the
-# profile is supposed to use — never localhost, never the public `hydra.<domain>`
-# issuer, and in production never the provider's own address.
+#       `repository: file://../../../gateway/deploy` in helm/umbrella/Chart.yaml),
+#       by default and with the retired keys set, and
+#   (2) the umbrella with values.dev.yaml and values.prod.yaml restricted to the
+#       api-gateway Deployment.
 #
 # Offline manifest-assertion harness (no kind cluster). Mirrors tests/helm/*.
 set -euo pipefail
@@ -66,7 +62,7 @@ MONOREPO="$(cd "$REPO_ROOT/.." && pwd)"
 # того, что скрипт собирает зависимости сам (задача #1214).
 # shellcheck source=deploy/tests/helm/outcome.sh
 . "$HERE/outcome.sh"
-EXPECTED_ASSERTIONS=7
+EXPECTED_ASSERTIONS=6
 require_helm
 require_mikefarah_yq
 UMBRELLA="$REPO_ROOT/helm/umbrella"
@@ -84,7 +80,6 @@ while IFS= read -r _cand; do
   if [[ "$_cand" == *gateway* ]]; then AGW="$_cand"; break; fi
 done <<<"$AGW_CANDIDATES"
 AGW="$MONOREPO/$AGW"
-WANT="http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json"
 # Боевой профиль забирает ключи через зеркало iam — единственный фасад к
 # провайдеру (core #16), по защищённому транспорту с якорем доверия. Адрес пинится
 # здесь ЛИТЕРАЛОМ: вычитывать ожидание из того же профиля, который и рендерится,
@@ -101,24 +96,26 @@ env_val() {
 [ -d "$AGW" ] \
   || fatal "чарта края нет по пути $AGW (объявлен в $UMBRELLA/Chart.yaml) — судить не о чем"
 
-# ── (1) sibling chart standalone — hydra.jwksUrl drives the env ───────────────
-helm_try ag "$AGW" --set hydra.jwksUrl="$WANT"
-render_or_fatal "чарт края, hydra.jwksUrl задан"
-ON="$HELM_OUT"
-jw="$(env_val KACHO_HYDRA_JWKS_URL "$ON")"
-[ -n "$jw" ] || fail "sibling chart did not render KACHO_HYDRA_JWKS_URL env when hydra.jwksUrl set"
-[ "$jw" = "$WANT" ] || fail "sibling KACHO_HYDRA_JWKS_URL=$jw (want $WANT)"; ok
-case "$jw" in
-  *localhost*) fail "sibling JWKS URL points at localhost ($jw) — unreachable in-cluster" ;;
-  https://hydra.*) fail "sibling JWKS URL points at the PUBLIC issuer ($jw) — unreachable in-cluster" ;;
-esac; ok
+# no_pin <render> <label> — neither retired scalar-pin variable is rendered.
+no_pin() {
+  local v
+  for v in KACHO_HYDRA_JWKS_URL KACHO_HYDRA_ISSUER; do
+    [ -z "$(env_val "$v" "$1")" ] \
+      || fail "$2: renders the retired $v — the edge no longer reads it, and a variable nobody reads outlives its subject silently"
+  done
+}
 
-# Default (no hydra.jwksUrl) must NOT leak the env — Go config default applies,
-# zero regression for overlays that don't opt in.
+# ── (1) sibling chart standalone — the retired pin is never rendered ──────────
+# Законный близнец и предмет отличаются ОДНИМ фактом: во втором рендере профиль
+# ещё называет снятые ключи. Шаблон обязан молчать на обоих.
+helm_try ag "$AGW" --set hydra.jwksUrl="http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json" \
+        --set hydra.issuer="https://hydra.api.kacho.cloud"
+render_or_fatal "чарт края, заданы снятые ключи hydra.jwksUrl / hydra.issuer"
+no_pin "$HELM_OUT" "sibling chart with the retired keys set"; ok
+
 helm_try ag "$AGW"
 render_or_fatal "чарт края, умолчание"
-OFF="$HELM_OUT"
-[ -z "$(env_val KACHO_HYDRA_JWKS_URL "$OFF")" ] || fail "sibling leaks KACHO_HYDRA_JWKS_URL when hydra.jwksUrl unset"; ok
+no_pin "$HELM_OUT" "sibling chart by default"; ok
 
 # ── (2) umbrella + values.dev.yaml — the actual dev stand ─────────────────────
 # `helm template` resolves the file:// api-gateway dep from the vendored .tgz; if
@@ -129,30 +126,19 @@ helm_try kacho-umbrella "$UMBRELLA" -f "$UMBRELLA/values.dev.yaml" \
 render_or_fatal "умбрелла + values.dev.yaml, шаблон пода края"
 DEV="$HELM_OUT"
 [ -n "$DEV" ] || fail "рендер шаблона пода края (dev) ПУСТ при успешном helm template"
-# ФОРМ ОБЪЯВЛЕНИЯ ДВЕ, СВОЙСТВО ОДНО — то же, что для боевого профиля ниже.
-# Здесь проба требовала одиночную ручку ИМЕНЕМ и потому краснела на верной
-# посадке: третья фаза (#899) объявляет обоих издателей записью, а одиночную
-# ручку снимает — держать обе значило бы иметь два объявления одного предмета,
-# и страж старта на этом отказывает.
-djw="$(env_val KACHO_HYDRA_JWKS_URL "$DEV")"
+# Адрес набора объявляется ЗАПИСЬЮ издателя — единственной формой, которую край
+# читает.
+no_pin "$DEV" "dev"
 dks="$(env_val KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS "$DEV")"
-if [ -n "$djw" ] && [ -n "$dks" ]; then
-  fail "dev объявляет адрес набора ДВАЖДЫ (одиночная ручка и запись издателей) — старшинство между ними не назначается молча"
-fi
-if [ -z "$djw" ] && [ -z "$dks" ]; then
-  fail "dev не объявляет адрес набора НИ ОДНОЙ формой — край выведет недостижимое умолчание, и ни один токен не проверится"
-fi
+[ -n "$dks" ] \
+  || fail "dev не объявляет адрес набора — без записи издателя край не поднимется"
 ok
 
 # Свойство, ради которого проба написана: КАЖДЫЙ адрес, который край будет
-# тянуть, достижим из пода. Одиночная ручка даёт один адрес, запись издателей —
-# по одному на издателя, и проверить надо все: достижимый первый и недостижимый
-# второй дают ровно тот отказ, который проба обязана ловить.
-if [ -n "$dks" ]; then
-  dev_urls="$(printf '%s' "$dks" | tr ',' '\n' | sed 's/^[^=]*=//')"
-else
-  dev_urls="$djw"
-fi
+# тянуть, достижим из пода. Запись издателей даёт по адресу на издателя, и
+# проверить надо все: достижимый первый и недостижимый второй дают ровно тот
+# отказ, который проба обязана ловить.
+dev_urls="$(printf '%s' "$dks" | tr ',' '\n' | sed 's/^[^=]*=//')"
 while IFS= read -r u; do
   [ -n "$u" ] || continue
   case "$u" in
@@ -164,25 +150,17 @@ $dev_urls
 EOF_DEV_URLS
 ok
 
-# SEC-J: the verifier does an EXACT-match `iss` check, so the dev gateway issuer
+# SEC-J: the verifier does an EXACT-match `iss` check, so the dev issuer record
 # MUST equal Hydra's dev self.issuer (values.dev.yaml hydra.config.urls.self.issuer
-# = http://localhost:28080/.ory/hydra/public/). Without it, KACHO_HYDRA_ISSUER
-# derives the unreachable external default → every real login token fails the iss
-# check → AUTHN_REQUIRED persists even with a reachable JWKS URL.
+# = http://localhost:28080/.ory/hydra/public/) — дословно, включая завершающий
+# слеш: `iss` сверяется целиком, и лишний символ здесь означает отказ каждому
+# живому токену.
 DEV_ISSUER="http://localhost:28080/.ory/hydra/public/"
-dis="$(env_val KACHO_HYDRA_ISSUER "$DEV")"
 dissuers="$(env_val KACHO_API_GATEWAY_TOKEN_ISSUERS "$DEV")"
-if [ -n "$dis" ]; then
-  [ "$dis" = "$DEV_ISSUER" ] || fail "dev KACHO_HYDRA_ISSUER=$dis (want $DEV_ISSUER matching Hydra dev self.issuer)"
-else
-  # Издатель назван записью перечня — его строка обязана совпадать ДОСЛОВНО,
-  # включая завершающий слеш: `iss` сверяется целиком, и лишний символ здесь
-  # означает отказ каждому живому токену.
-  case ",$dissuers," in
-    *",$DEV_ISSUER,"*) ;;
-    *) fail "dev не называет издателя провайдера ни ручкой, ни записью перечня (перечень: $dissuers) — токены прежней чеканки перестанут приниматься" ;;
-  esac
-fi
+case ",$dissuers," in
+  *",$DEV_ISSUER,"*) ;;
+  *) fail "dev перечень принимаемых издателей не называет издателя провайдера (перечень: $dissuers) — токены его чеканки перестанут приниматься" ;;
+esac
 ok
 
 # ── (3) umbrella + values.prod.yaml — production-strict makes the verifier
@@ -196,29 +174,14 @@ helm_try kacho-umbrella "$UMBRELLA" -f "$UMBRELLA/values.prod.yaml" \
 render_or_fatal "умбрелла + values.prod.yaml, шаблон пода края"
 PROD="$HELM_OUT"
 [ -n "$PROD" ] || fail "рендер шаблона пода края (prod) ПУСТ при успешном helm template"
-# ФОРМ ОБЪЯВЛЕНИЯ ДВЕ, СВОЙСТВО ОДНО. Адрес набора ключей объявляется либо
-# прежней одиночной ручкой, либо записью издателей (Ф1б, #926: платформа
-# принимает ДВУХ издателей, и у каждого свой набор). Проба обязана судить
-# СВОЙСТВО — «материал проверки едет через зеркало iam, по TLS, не от
-# провайдера напрямую», — а не имя ручки: иначе она переживает свой предмет и
-# краснеет на верной посадке. Ровно это и произошло, когда запись издателей
-# пришла, а проба продолжала требовать снятую ручку.
-pjw="$(env_val KACHO_HYDRA_JWKS_URL "$PROD")"
+# Проба судит СВОЙСТВО — «материал проверки едет через зеркало iam, по TLS, не
+# от провайдера напрямую» — по записи издателей (Ф1б, #926: у каждого
+# принимаемого издателя свой набор).
+no_pin "$PROD" "prod"
 pks="$(env_val KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS "$PROD")"
-if [ -n "$pjw" ] && [ -n "$pks" ]; then
-  fail "prod объявляет адрес набора ДВАЖДЫ (одиночная ручка и запись издателей) — два объявления об одном предмете, из которых верно одно"
-fi
-if [ -z "$pjw" ] && [ -z "$pks" ]; then
-  fail "prod не объявляет адрес набора НИ ОДНОЙ формой — краю нечем проверять подписи, и это не будет видно до первого предъявления"
-fi
-
-# Перечень адресов, которые край реально будет тянуть: одиночная ручка даёт
-# один, запись издателей — по одному на издателя.
-if [ -n "$pks" ]; then
-  prod_urls="$(printf '%s' "$pks" | tr ',' '\n' | sed 's/^[^=]*=//')"
-else
-  prod_urls="$pjw"
-fi
+[ -n "$pks" ] \
+  || fail "prod не объявляет адрес набора — без записи издателя край не поднимется"
+prod_urls="$(printf '%s' "$pks" | tr ',' '\n' | sed 's/^[^=]*=//')"
 
 seen_mirror=0
 while IFS= read -r u; do
@@ -242,20 +205,11 @@ EOF_URLS
 # читается как настроенная защита, ничего не проверяя.
 [[ "$PROD" == *'hydra-jwks-ca'* ]] \
   || fail "prod api-gateway pod carries no trust anchor for the JWKS hop — TLS whose certificate nobody checks leaves substitution open"
-# Издатель — та же история двух форм: либо прежняя одиночная ручка, либо
-# перечень принимаемых издателей. Публичный издатель обязан быть назван в той
-# форме, которая действует.
-pis="$(env_val KACHO_HYDRA_ISSUER "$PROD")"
+# Публичный издатель провайдера обязан быть назван перечнем принимаемых.
 pissuers="$(env_val KACHO_API_GATEWAY_TOKEN_ISSUERS "$PROD")"
-if [ -n "$pis" ]; then
-  [ "$pis" = "https://hydra.api.kacho.cloud" ] || fail "prod KACHO_HYDRA_ISSUER=$pis (want public issuer https://hydra.api.kacho.cloud)"
-elif [ -n "$pissuers" ]; then
-  case ",$pissuers," in
-    *,https://hydra.api.kacho.cloud,*) ;;
-    *) fail "prod перечень принимаемых издателей не называет публичного издателя https://hydra.api.kacho.cloud: $pissuers" ;;
-  esac
-else
-  fail "prod не объявляет издателя НИ ОДНОЙ формой — токен принимается без сверки того, кто его выпустил"
-fi; ok
+case ",$pissuers," in
+  *,https://hydra.api.kacho.cloud,*) ;;
+  *) fail "prod перечень принимаемых издателей не называет публичного издателя https://hydra.api.kacho.cloud: $pissuers" ;;
+esac; ok
 
 outcome_verdict "профилей прочитано: 2 (dev, prod) + чарт края отдельно"

@@ -38,9 +38,14 @@
 // пиненного модуля, по тому же правилу, что применяет сам страж: худший формат
 // перечня, память на его потолке. Разбор СТРУКТУРНЫЙ (go/ast), а не по образцу:
 // у записи есть и `Ceiling`, и `Floor`, оба несут тот же параметр, и текстовый
-// поиск взял бы не ту карту. Сменится форма таблицы — разбор не найдёт ничего и
-// ОТКАЖЕТ; молча устареть он не может, и это единственное, что отличает чтение
-// источника истины от его копии.
+// поиск взял бы не ту карту. У каждой записи ТРИ различимых исхода (kacho#2726):
+// потолок памяти argon2 прочитан · его ЗАКОННО нет (страж берёт постоянную
+// bcrypt) · форма не читается — и тогда разбор ОТКАЗЫВАЕТ с координатой и
+// причиной. Прежде третий исход сливался со вторым: потолок, записанный
+// выражением, давал «потолка нет», бюджет падал до постоянной bcrypt, и предел
+// 512Mi проходил зелёным. Имена поля, ключа и постоянной проба тоже не берёт на
+// веру — сверяет их с телом правила стража. Молча устареть разбор не может, и
+// это единственное, что отличает чтение источника истины от его копии.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ДВА ВОПРОСА, И ВТОРОЙ НЕ ВАКУУМЕН СЕГОДНЯ
@@ -70,6 +75,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"math"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -174,97 +180,243 @@ func memoryPerVerificationAtCeiling(t *testing.T, moduleDir string) uint64 {
 		t.Fatalf("таблица форматов пиненного модуля не разбирается (%s): %v.\n"+
 			"Это «не выполнилось», а не «бюджет сходится»: непрочитанное утверждением не является", path, err)
 	}
-
-	var bcryptBytes uint64
-	var worst uint64
-	records := 0
-
-	ast.Inspect(file, func(n ast.Node) bool {
-		vs, ok := n.(*ast.ValueSpec)
-		if !ok {
-			return true
-		}
-		for i, name := range vs.Names {
-			if name.Name == "bcryptMemoryPerVerificationBytes" && i < len(vs.Values) {
-				if lit, ok := vs.Values[i].(*ast.BasicLit); ok {
-					if v, err := strconv.ParseUint(lit.Value, 10, 64); err == nil {
-						bcryptBytes = v
-					}
-				}
-			}
-			if name.Name != "passwordHashFormats" || i >= len(vs.Values) {
-				continue
-			}
-			lit, ok := vs.Values[i].(*ast.CompositeLit)
-			if !ok {
-				continue
-			}
-			for _, elt := range lit.Elts {
-				rec, ok := elt.(*ast.CompositeLit)
-				if !ok {
-					continue
-				}
-				records++
-				// Берётся ИМЕННО `Ceiling`: у записи есть и `Floor` с тем же
-				// параметром, и текстовый поиск взял бы не ту карту.
-				if m, ok := argon2MemoryOf(rec, "Ceiling"); ok {
-					if b := m * 1024; b > worst {
-						worst = b
-					}
-				} else if bcryptBytes > worst {
-					worst = bcryptBytes
-				}
-			}
-		}
-		return true
-	})
-
-	if records == 0 || worst == 0 {
-		t.Fatalf("в таблице форматов пиненного модуля не разобрано НИ ОДНОЙ записи с потолком "+
-			"(%s: записей %d, худшее %d) — форма таблицы сменилась, и арифметику стража выводить "+
-			"больше нечем. Почини разбор, а не выписывай число рядом: выписанное разойдётся "+
-			"со стражем молча", path, records, worst)
+	reading, err := readFormatTable(file)
+	if err != nil {
+		t.Fatalf("%s: источник истины не прочитан — %v.\n"+
+			"Это «не выполнилось», а не «бюджет сходится»: подставить на место непрочитанного "+
+			"постоянную bcrypt значило бы уронить бюджет втрое и пропустить ровно тот предел, "+
+			"ради которого проба заведена. Почини разбор, а не выписывай число рядом", path, err)
 	}
-	return worst
+	t.Logf("перепись таблицы форматов: %s", reading)
+	return reading.PerCheck
 }
 
-// argon2MemoryOf — потолок памяти argon2 из названной карты записи.
-func argon2MemoryOf(rec *ast.CompositeLit, field string) (uint64, bool) {
+// formatTableReading — что прочитано в таблице форматов пина.
+type formatTableReading struct {
+	PerCheck uint64 // худшая память одной проверки на потолке, байт
+	Records  int    // записей перечня прочитано
+	Argon2   int    // из них с потолком памяти argon2
+	Bcrypt   int    // из них без него — ЗАКОННО: страж берёт постоянную bcrypt
+}
+
+func (r formatTableReading) String() string {
+	return fmt.Sprintf("записей %d · с потолком памяти argon2 %d · по постоянной bcrypt %d · "+
+		"худшее %d байт на проверку", r.Records, r.Argon2, r.Bcrypt, r.PerCheck)
+}
+
+// Имена, которыми правило стража (`MemoryPerVerificationAtCeilingBytes` у
+// записи перечня) читает потолок. Проба не берёт их на веру: readFormatTable
+// сверяет, что тело правила ссылается ровно на них, — переименуют поле или
+// ключ, и «у записи нет потолка argon2» станет неотличимо от «потолок назван
+// иначе», если модель здесь не устареет вслух.
+const (
+	guardRuleMethod    = "MemoryPerVerificationAtCeilingBytes"
+	guardCeilingField  = "Ceiling"
+	guardArgon2MemKey  = "CostParamArgon2Memory"
+	guardBcryptConst   = "bcryptMemoryPerVerificationBytes"
+	guardFormatsVar    = "passwordHashFormats"
+	argon2MemoryUnitKi = 1024 // потолок памяти argon2 записан в КиБ
+)
+
+// readFormatTable — чтение таблицы форматов с ТРЕМЯ различимыми исходами у
+// каждой записи: потолок памяти argon2 прочитан · его ЗАКОННО нет (карта
+// потолка литералом без этого ключа — страж берёт постоянную bcrypt) · форма
+// не читается (ошибка с координатой и причиной). Третий исход никогда не
+// сливается со вторым (kacho#2726): иначе смена формы литерала при подъёме
+// пина уронила бы бюджет до постоянной bcrypt молча.
+func readFormatTable(file *ast.File) (formatTableReading, error) {
+	var out formatTableReading
+	if err := guardRuleReadsTheModelledNames(file); err != nil {
+		return out, err
+	}
+
+	formats, ok := topLevelValue(file, guardFormatsVar)
+	if !ok {
+		return out, fmt.Errorf("перечень `%s` не найден", guardFormatsVar)
+	}
+	table, ok := formats.(*ast.CompositeLit)
+	if !ok {
+		return out, fmt.Errorf("`%s` объявлен не составным литералом (%T) — не прочитан", guardFormatsVar, formats)
+	}
+
+	for i, elt := range table.Elts {
+		// Элемент среза вправе нести индекс: `0: {…}` — та же запись.
+		if kv, ok := elt.(*ast.KeyValueExpr); ok {
+			elt = kv.Value
+		}
+		rec, ok := elt.(*ast.CompositeLit)
+		if !ok {
+			return out, fmt.Errorf("запись %d перечня не составной литерал (%T) — не прочитана", i, elt)
+		}
+		out.Records++
+		kib, present, err := argon2MemoryOf(rec, guardCeilingField)
+		if err != nil {
+			return out, fmt.Errorf("запись %d перечня: %w", i, err)
+		}
+		if !present {
+			out.Bcrypt++
+			continue
+		}
+		out.Argon2++
+		if b := kib * argon2MemoryUnitKi; b > out.PerCheck {
+			out.PerCheck = b
+		}
+	}
+	if out.Records == 0 {
+		return out, fmt.Errorf("перечень `%s` пуст — арифметику стража выводить не из чего", guardFormatsVar)
+	}
+
+	if out.Bcrypt > 0 {
+		// Постоянная нужна ровно тогда, когда есть запись без потолка argon2:
+		// читать её «на всякий случай» значило бы краснеть на пине, где bcrypt
+		// снят вместе с постоянной.
+		lit, ok := topLevelValue(file, guardBcryptConst)
+		if !ok {
+			return out, fmt.Errorf("записей без потолка памяти argon2 %d, а постоянной `%s` нет — "+
+				"бюджет таких записей не прочитан", out.Bcrypt, guardBcryptConst)
+		}
+		v, err := uintLiteral(lit)
+		if err != nil {
+			return out, fmt.Errorf("постоянная `%s`: %w", guardBcryptConst, err)
+		}
+		if v > out.PerCheck {
+			out.PerCheck = v
+		}
+	}
+	return out, nil
+}
+
+// argon2MemoryOf — потолок памяти argon2 (КиБ) из названной карты записи.
+//
+// present=false, err=nil — ЗАКОННО нет: карта потолка записана литералом, и
+// ключа памяти argon2 в ней нет. Всё, чего читатель не знает, — ошибка:
+// позиционная запись, записи без поля потолка, карта не литералом, ключ не
+// именем, значение не целым литералом.
+func argon2MemoryOf(rec *ast.CompositeLit, field string) (kib uint64, present bool, err error) {
+	var ceiling ast.Expr
 	for _, e := range rec.Elts {
 		kv, ok := e.(*ast.KeyValueExpr)
 		if !ok {
-			continue
+			return 0, false, fmt.Errorf("запись позиционная — поле `%s` не прочитано", field)
 		}
-		key, ok := kv.Key.(*ast.Ident)
-		if !ok || key.Name != field {
-			continue
+		if key, ok := kv.Key.(*ast.Ident); ok && key.Name == field {
+			ceiling = kv.Value
 		}
-		m, ok := kv.Value.(*ast.CompositeLit)
-		if !ok {
-			return 0, false
-		}
-		for _, me := range m.Elts {
-			mkv, ok := me.(*ast.KeyValueExpr)
-			if !ok {
-				continue
-			}
-			mk, ok := mkv.Key.(*ast.Ident)
-			if !ok || mk.Name != "CostParamArgon2Memory" {
-				continue
-			}
-			lit, ok := mkv.Value.(*ast.BasicLit)
-			if !ok {
-				return 0, false
-			}
-			v, err := strconv.ParseUint(lit.Value, 10, 64)
-			if err != nil {
-				return 0, false
-			}
-			return v, true
-		}
-		return 0, false
 	}
-	return 0, false
+	if ceiling == nil {
+		// Норма пина требует потолок у КАЖДОЙ записи (Validate: «ceiling …:
+		// required»), поэтому запись без поля — не «потолка argon2 нет», а
+		// форма, которой читатель не знает.
+		return 0, false, fmt.Errorf("у записи нет поля `%s` — потолок не прочитан", field)
+	}
+	m, ok := ceiling.(*ast.CompositeLit)
+	if !ok {
+		return 0, false, fmt.Errorf("поле `%s` не литерал карты (%T) — не прочитано", field, ceiling)
+	}
+	for _, me := range m.Elts {
+		mkv, ok := me.(*ast.KeyValueExpr)
+		if !ok {
+			return 0, false, fmt.Errorf("элемент карты `%s` без ключа — не прочитан", field)
+		}
+		mk, ok := mkv.Key.(*ast.Ident)
+		if !ok {
+			return 0, false, fmt.Errorf("ключ карты `%s` не именем постоянной (%T) — не прочитан: "+
+				"это может быть и `%s`", field, mkv.Key, guardArgon2MemKey)
+		}
+		if mk.Name != guardArgon2MemKey {
+			continue
+		}
+		v, err := uintLiteral(mkv.Value)
+		if err != nil {
+			return 0, false, fmt.Errorf("`%s.%s`: %w", field, guardArgon2MemKey, err)
+		}
+		return v, true, nil
+	}
+	return 0, false, nil
+}
+
+// uintLiteral — целый литерал в любой законной форме Go (десятичной,
+// шестнадцатеричной, восьмеричной, двоичной, с разделителями `_`). Выражение и
+// имя постоянной — не литерал: их величину знает компилятор, а не разбор, и
+// читатель отказывает, а не угадывает.
+func uintLiteral(e ast.Expr) (uint64, error) {
+	lit, ok := e.(*ast.BasicLit)
+	if !ok || lit.Kind != token.INT {
+		return 0, fmt.Errorf("значение не целый литерал, а %s — не прочитано", exprKind(e))
+	}
+	v, err := strconv.ParseUint(lit.Value, 0, 64)
+	if err != nil {
+		return 0, fmt.Errorf("литерал %s не читается как целое (%v) — не прочитан", lit.Value, err)
+	}
+	return v, nil
+}
+
+func exprKind(e ast.Expr) string {
+	switch v := e.(type) {
+	case *ast.BasicLit:
+		return "литерал " + v.Value
+	case *ast.Ident:
+		return "имя " + v.Name
+	case *ast.BinaryExpr:
+		return "выражение " + v.Op.String()
+	default:
+		return fmt.Sprintf("%T", e)
+	}
+}
+
+// topLevelValue — значение объявления верхнего уровня файла по имени.
+func topLevelValue(file *ast.File, name string) (ast.Expr, bool) {
+	for _, d := range file.Decls {
+		gd, ok := d.(*ast.GenDecl)
+		if !ok {
+			continue
+		}
+		for _, spec := range gd.Specs {
+			vs, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for i, n := range vs.Names {
+				if n.Name == name && i < len(vs.Values) {
+					return vs.Values[i], true
+				}
+			}
+		}
+	}
+	return nil, false
+}
+
+// guardRuleReadsTheModelledNames — ПРЕДПОСЫЛКА: правило стража у записи
+// перечня читает потолок тем полем и тем ключом, которые моделирует проба, и
+// падает на ту же постоянную bcrypt.
+func guardRuleReadsTheModelledNames(file *ast.File) error {
+	var body *ast.BlockStmt
+	for _, d := range file.Decls {
+		if fd, ok := d.(*ast.FuncDecl); ok && fd.Recv != nil && fd.Name.Name == guardRuleMethod {
+			body = fd.Body
+		}
+	}
+	if body == nil {
+		return fmt.Errorf("правило стража `%s` у записи перечня не найдено — модель пробы не с чем сверить",
+			guardRuleMethod)
+	}
+	seen := map[string]bool{}
+	ast.Inspect(body, func(n ast.Node) bool {
+		switch v := n.(type) {
+		case *ast.SelectorExpr:
+			seen[v.Sel.Name] = true
+		case *ast.Ident:
+			seen[v.Name] = true
+		}
+		return true
+	})
+	for _, name := range []string{guardCeilingField, guardArgon2MemKey, guardBcryptConst} {
+		if !seen[name] {
+			return fmt.Errorf("правило стража `%s` не ссылается на `%s` — модель пробы устарела, и "+
+				"«потолка argon2 нет» стало бы неотличимо от «потолок назван иначе»", guardRuleMethod, name)
+		}
+	}
+	return nil
 }
 
 // TestOwnLaneMemoryBudget_ProfilesDeclareALimitThatTheGuardAccepts — сверка по
@@ -326,15 +478,21 @@ func readLaneBudgetFacts(t *testing.T) []laneBudgetFacts {
 		if okCap && okRes {
 			f.Declared = true
 			f.Capacity = asInt64(t, name, "verifierCapacity", cap)
-			f.Reserve = uint64(maxInt64(asInt64(t, name, "memoryReserveBytes", res), 0))
+			reserve, err := declaredReserveBytes(res)
+			if err != nil {
+				t.Fatalf("стенд %s: `memoryReserveBytes` %v", name, err)
+			}
+			f.Reserve = reserve
 		}
 		if lim, ok := lookup(declared, "kaname", "resources", "limits", "memory"); ok {
-			// Величина читается КОЛИЧЕСТВОМ Kubernetes, а не строкой: «1280Mi»,
-			// «1342177280» и «1.28G» — одно и то же для среды и разное для глаза.
+			// Величина читается КОЛИЧЕСТВОМ Kubernetes, а не строкой: «1280Mi» и
+			// «1342177280» — одно и то же для среды и разное для глаза. Десятичной
+			// мантиссы («1.28G») разбор не знает и отказывает вслух.
 			bytes, err := parseMemoryQuantity(fmt.Sprint(lim))
 			if err != nil {
-				t.Fatalf("стенд %s: `kaname.resources.limits.memory` = %v не читается количеством "+
-					"Kubernetes (%v) — такой профиль отвергнет apiserver, а не только эта проба",
+				t.Fatalf("стенд %s: `kaname.resources.limits.memory` = %v не прочитан (%v): разбор знает "+
+					"целое число с суффиксом Ki|Mi|Gi|Ti|k|M|G|T. Это либо не количество Kubernetes, "+
+					"либо его форма, которой разбор не знает, — «не выполнилось», а не «предел мал»",
 					name, lim, err)
 			}
 			f.HasLimit = true
@@ -347,23 +505,52 @@ func readLaneBudgetFacts(t *testing.T) []laneBudgetFacts {
 
 func asInt64(t *testing.T, stack, key string, v any) int64 {
 	t.Helper()
+	n, err := declaredInt(v)
+	if err != nil {
+		t.Fatalf("стенд %s: `%s` %v", stack, key, err)
+	}
+	return n
+}
+
+// declaredInt — целое число значений YAML. Значение, которое не есть то целое,
+// что объявлено, — ошибка, а не усечённая величина.
+func declaredInt(v any) (int64, error) {
 	switch n := v.(type) {
 	case int:
-		return int64(n)
+		return int64(n), nil
 	case int64:
-		return n
+		return n, nil
 	case float64:
-		return int64(n)
+		// Дробное не усекается: усечённое, оно стало бы другим бюджетом, чем
+		// объявленный, а служба читает целое и такую величину отвергнет.
+		if n != math.Trunc(n) || n > math.MaxInt64 || n < math.MinInt64 {
+			return 0, fmt.Errorf("= %v не целое — не прочитано", n)
+		}
+		return int64(n), nil
 	case string:
 		parsed, err := strconv.ParseInt(strings.TrimSpace(n), 10, 64)
 		if err != nil {
-			t.Fatalf("стенд %s: `%s` = %q не число (%v)", stack, key, n, err)
+			return 0, fmt.Errorf("= %q не число (%v)", n, err)
 		}
-		return parsed
+		return parsed, nil
 	default:
-		t.Fatalf("стенд %s: `%s` = %v непонятного вида %T", stack, key, v, v)
-		return 0
+		return 0, fmt.Errorf("= %v непонятного вида %T", v, v)
 	}
+}
+
+// declaredReserveBytes — резерв памяти полосы в байтах. Отрицательный не
+// прижимается к нулю: прижатый, он дал бы бюджет МЕНЬШЕ объявленного —
+// «не прочитано» под видом числа.
+func declaredReserveBytes(v any) (uint64, error) {
+	n, err := declaredInt(v)
+	if err != nil {
+		return 0, err
+	}
+	if n < 0 {
+		return 0, fmt.Errorf("= %d отрицателен — байтами не читается, и служба такую величину не "+
+			"примет; сверять бюджет не с чем", n)
+	}
+	return uint64(n), nil
 }
 
 func maxInt64(a, b int64) int64 {
