@@ -142,7 +142,10 @@ func chainWithRelays(t *testing.T, own *fakeOwn, cut *fakeCut, target string) (h
 		set = append(set, relay)
 	}
 	mux := http.NewServeMux()
-	if _, err := handler.MountLoginLaneRoutes(mux, set...); err != nil {
+	// Под `/` здесь ничего нет — мультиплексор отвечает на чужой путь
+	// `http.NotFoundHandler()`; им же отвечает внутренний слушатель на запись,
+	// которой на нём нет.
+	if _, err := handler.MountLoginLaneRoutes(mux, http.NotFoundHandler(), set...); err != nil {
 		t.Fatalf("монтаж объявления: %v", err)
 	}
 	a := middleware.NewAuthInterceptor(middleware.AuthModeDev, "", nil, logger).

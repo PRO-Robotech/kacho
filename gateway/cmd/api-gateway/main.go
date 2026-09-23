@@ -1150,8 +1150,18 @@ func main() {
 	// `external` не заведена — пути перечня отвечают 404 краем. Пути — из того же
 	// объявления, что читают полоса и isPublicHTTPPath; сосед
 	// `/iam/v1/authorize:check` остаётся за транскодером под `/`.
+	//
+	// Координаты церемонии на граничном admin-REST слушателе НЕ
+	// ретранслируются (sec-issuance-path-not-elsewhere): там запрос получает
+	// ответ обработчика `/` — второй аргумент монтажа есть ТОТ ЖЕ обработчик,
+	// что смонтирован под `/` ниже (гейт корня судит одно имя), и «не найдено»
+	// побайтно то, что слушатель отвечает на путь, которого у него нет.
+	//
+	// АРЕНДАТОРСКОЕ УДОСТОВЕРЕНИЕ ЗА КРАЙ НЕ УЕЗЖАЕТ (приёмка KAN-AUTHN-1, ось 8):
+	// обёртка стоит ВПЛОТНУЮ к пересылающему обработчику — разбор у `/` ниже.
+	restRoot := principalmeta.StripCredentialBeforeForwarding(restHandler)
 	if identityLane == identityposture.Own {
-		mounted, mErr := handler.MountLoginLaneRoutes(httpMux, loginLaneRelay, issuanceRelay)
+		mounted, mErr := handler.MountLoginLaneRoutes(httpMux, restRoot, loginLaneRelay, issuanceRelay)
 		if mErr != nil {
 			log.Fatalf("login lane mount: %v", mErr)
 		}
@@ -1191,7 +1201,7 @@ func main() {
 	// сопоставителем нельзя — снимается сам заголовок запроса. Разбор и решения
 	// по конструкциям сборки помимо общего узла — в шапке
 	// gateway/internal/principalmeta/credential_strip.go.
-	httpMux.Handle("/", principalmeta.StripCredentialBeforeForwarding(restHandler))
+	httpMux.Handle("/", restRoot)
 
 	// Хранилище однократности `Idempotency-Key`.
 	//

@@ -22,7 +22,12 @@
 //   - предел ни у одной не переопределён (`Timeout:` не задан): предел
 //     наследуется у механизма — одна названная величина на обе цели (инв. 30);
 //   - монтаж объявления — ровно один вызов `MountLoginLaneRoutes`, под `own`:
-//     снятый монтаж оставлял бы все пробы зелёными, а пути — мёртвыми (инв. 33).
+//     снятый монтаж оставлял бы все пробы зелёными, а пути — мёртвыми (инв. 33);
+//   - ответ внутреннего слушателя на запись, которой на нём нет (второй
+//     аргумент монтажа), — ТОТ ЖЕ обработчик, что смонтирован под `/`: иначе
+//     координата церемонии на граничном admin-REST слушателе отвечала бы своим
+//     вторым производителем «не найдено», и форма ответа выдавала бы, что путь
+//     здесь всё-таки есть (sec-issuance-path-not-elsewhere; kacho#2817, M1).
 package main
 
 import (
@@ -30,6 +35,7 @@ import (
 	"go/parser"
 	"go/token"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -197,6 +203,66 @@ func TestRelayWiring_L13_TheDeclarationIsMountedOnceUnderOwn(t *testing.T) {
 		return true
 	})
 	t.Logf("перепись: вызовов монтажа %d (под own) · ручных циклов монтажа %d", len(mounts), loops)
+
+	for _, finding := range judgeMountNotHere(fset, f) {
+		t.Error(finding)
+	}
+}
+
+// judgeMountNotHere — второй аргумент монтажа объявления есть тот же
+// обработчик (одно имя), что смонтирован под `/`. Сличение по ИМЕНИ, а не по
+// тексту выражения: два одинаковых выражения строят два обработчика, и
+// «одинаковы сегодня» не держится ничем.
+func judgeMountNotHere(fset *token.FileSet, f *ast.File) []string {
+	var findings []string
+	var mountArgs []ast.Expr
+	var mountPos []string
+	var rootArgs []ast.Expr
+	var rootPos []string
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		switch sel.Sel.Name {
+		case "MountLoginLaneRoutes":
+			mountPos = append(mountPos, fset.Position(call.Pos()).String())
+			if len(call.Args) >= 2 {
+				mountArgs = append(mountArgs, call.Args[1])
+			} else {
+				mountArgs = append(mountArgs, nil)
+			}
+		case "Handle":
+			if len(call.Args) == 2 {
+				if lit, ok := call.Args[0].(*ast.BasicLit); ok && lit.Kind == token.STRING && lit.Value == `"/"` {
+					rootPos = append(rootPos, fset.Position(call.Pos()).String())
+					rootArgs = append(rootArgs, call.Args[1])
+				}
+			}
+		}
+		return true
+	})
+	if len(rootArgs) != 1 {
+		return append(findings, "обработчиков под `/` "+strconv.Itoa(len(rootArgs))+" ("+strings.Join(rootPos, ", ")+"), ожидался 1 — сличать ответ внутреннего слушателя не с чем")
+	}
+	root, ok := rootArgs[0].(*ast.Ident)
+	if !ok {
+		return append(findings, rootPos[0]+": под `/` смонтировано выражение, а не имя — второй аргумент монтажа объявления не может назвать тот же обработчик")
+	}
+	if len(mountArgs) == 0 {
+		return append(findings, "монтажа объявления нет — судить второй аргумент нечего")
+	}
+	for i, arg := range mountArgs {
+		id, ok := arg.(*ast.Ident)
+		if !ok || id.Name != root.Name {
+			findings = append(findings, mountPos[i]+": ответ внутреннего слушателя на запись, которой на нём нет, — не обработчик `/` ("+root.Name+"): второй производитель «не найдено»")
+		}
+	}
+	return findings
 }
 
 // parseSource — разбор синтетики под именем корня.
@@ -288,5 +354,46 @@ func TestRelayWiring_L13_Injection_AnEmptyTargetListIsNotSilentSuccess(t *testin
 	fset, f := parseSource(t, strings.Replace(strings.Replace(relayWiringFixture, "%s", "", 1), "%s", "", 1))
 	if got := judgeRelayWiring(fset, f, nil); len(got.findings) == 0 {
 		t.Fatal("пустой перечень целей дал зелёное")
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Второй аргумент монтажа — инъекции в обе стороны.
+
+const mountNotHereFixture = `package main
+func wire(mux *http.ServeMux, a, b *handler.LoginLaneRelay) {
+	rootHandler := principalmeta.StripCredentialBeforeForwarding(rest)
+	other := http.NotFoundHandler()
+	_ = other
+	handler.MountLoginLaneRoutes(mux, %s, a, b)
+	mux.Handle("/", rootHandler)
+}
+`
+
+func judgeMountNotHereFixture(t *testing.T, notHere string) []string {
+	t.Helper()
+	fset, f := parseSource(t, strings.Replace(mountNotHereFixture, "%s", notHere, 1))
+	return judgeMountNotHere(fset, f)
+}
+
+func TestRelayWiring_L13_Twin_TheRootHandlerAsNotHereIsSilent(t *testing.T) {
+	if got := judgeMountNotHereFixture(t, "rootHandler"); len(got) != 0 {
+		t.Fatalf("законный монтаж с обработчиком `/` дал находки: %v", got)
+	}
+}
+
+func TestRelayWiring_L13_Injection_ASecondNotFoundProducerIsFound(t *testing.T) {
+	for _, notHere := range []string{"other", "http.NotFoundHandler()", "principalmeta.StripCredentialBeforeForwarding(rest)"} {
+		got := judgeMountNotHereFixture(t, notHere)
+		if len(got) != 1 || !strings.Contains(got[0], "второй производитель") || !strings.HasPrefix(got[0], "main.go:6:") {
+			t.Errorf("второй аргумент монтажа %q не найден позицией: %v", notHere, got)
+		}
+	}
+	// Под `/` — выражение, а не имя: сличать не с чем, и это находка, а не зелёный.
+	src := strings.Replace(strings.Replace(mountNotHereFixture, "%s", "rootHandler", 1),
+		`mux.Handle("/", rootHandler)`, `mux.Handle("/", principalmeta.StripCredentialBeforeForwarding(rest))`, 1)
+	fset, f := parseSource(t, src)
+	if got := judgeMountNotHere(fset, f); len(got) != 1 || !strings.Contains(got[0], "выражение, а не имя") {
+		t.Errorf("выражение под `/` не найдено: %v", got)
 	}
 }

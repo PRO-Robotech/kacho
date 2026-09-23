@@ -77,7 +77,9 @@ func newEdgeUnderOwn(t *testing.T, issuance *formListenerStub, mount bool) *edge
 	}
 	e.mux = http.NewServeMux()
 	if mount {
-		_, err := handler.MountLoginLaneRoutes(e.mux, set...)
+		// Тот же обработчик, что стоит под `/`: им внутренний слушатель отвечает
+		// на запись, которой на нём нет (корень передаёт ровно так же).
+		_, err := handler.MountLoginLaneRoutes(e.mux, e.transcoder, set...)
 		require.NoError(t, err)
 	}
 	e.mux.Handle("/", e.transcoder)

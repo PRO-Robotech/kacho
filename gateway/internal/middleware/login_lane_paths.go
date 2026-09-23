@@ -127,6 +127,22 @@ func RelayTargets() []RelayTarget {
 	return []RelayTarget{RelayTargetForm, RelayTargetIssuance}
 }
 
+// ExternalListenersOnly — отвечают ли записи цели ТОЛЬКО на внешних слушателях
+// края. Один `http.Server` края обслуживает все его HTTP-слушатели, и граничный
+// admin-REST слушатель отличается от внешних лишь меткой происхождения
+// соединения (`listenerorigin`): запись, смонтированная без этого решения,
+// отвечала бы и там.
+//
+// Выдача — да: путь выдачи не отвечает на внутреннем слушателе
+// (sec-issuance-path-not-elsewhere; kacho#2817, возврат безопасности круга 1,
+// M1) — там координата церемонии получает ответ, которым слушатель отвечает на
+// путь, которого у него нет (`handler.MountLoginLaneRoutes`).
+//
+// Форма — нет: её записи отвечают на всех слушателях края, как до kacho#2817.
+// Это прежнее поведение, а не решение этой записи; нужен ли глаголам формы
+// внутренний слушатель — предмет kacho#2849.
+func (t RelayTarget) ExternalListenersOnly() bool { return t == RelayTargetIssuance }
+
 // Valid — принадлежит ли цель закрытому перечню.
 func (t RelayTarget) Valid() bool {
 	for _, known := range RelayTargets() {

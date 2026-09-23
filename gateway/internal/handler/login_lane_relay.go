@@ -69,6 +69,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 )
@@ -244,12 +245,24 @@ func LoginLaneRelaySnapshots(relays ...*LoginLaneRelay) []LoginLaneRelaySnapshot
 // на ретранслятор своей цели (замысел LINE-A-1 §7 инв. 33). Всё или ничего: при
 // любом отказе на мультиплексор не попадает ни одна запись.
 //
+// Запись цели, отвечающей только на внешних слушателях
+// (`RelayTarget.ExternalListenersOnly` — координаты церемонии), на внутреннем
+// admin-REST слушателе края НЕ ретранслируется: запрос отдаётся `notHere`.
+// Это обязан быть ТОТ ЖЕ обработчик, что смонтирован под `/` (так передаёт
+// корень, и это судит его гейт): тогда ответ побайтно равен ответу слушателя
+// на путь, которого у него нет, — ровно тому, что он отвечает на координату
+// под посадкой external, где объявление не смонтировано вовсе. Свой
+// производитель «не найдено» отличался бы телом и заголовками, и форма ответа
+// выдавала бы, что путь здесь всё-таки есть (тот же класс снят у Internal* на
+// внешнем слушателе — диспетчер `restmux`).
+//
 // Отказ — если мультиплексора нет, если ретрансляторов нет вовсе, если среди
 // них nil или два на одну цель («последний победил» было бы решением, которого
-// никто не принимал), и если у записи объявления нет ретранслятора её цели —
-// тогда отказ НАЗЫВАЕТ пути, которые остались бы мёртвыми. Возвращает число
-// смонтированных записей.
-func MountLoginLaneRoutes(mux *http.ServeMux, relays ...*LoginLaneRelay) (int, error) {
+// никто не принимал), если у записи объявления нет ретранслятора её цели —
+// тогда отказ НАЗЫВАЕТ пути, которые остались бы мёртвыми, — и если `notHere`
+// не передан, а записи, отвечающие только на внешних слушателях, есть: отказ
+// называет и их. Возвращает число смонтированных записей.
+func MountLoginLaneRoutes(mux *http.ServeMux, notHere http.Handler, relays ...*LoginLaneRelay) (int, error) {
 	if mux == nil {
 		return 0, errors.New("login lane mount: mux is nil")
 	}
@@ -276,8 +289,42 @@ func MountLoginLaneRoutes(mux *http.ServeMux, relays ...*LoginLaneRelay) (int, e
 	if len(orphan) > 0 {
 		return 0, fmt.Errorf("login lane mount: no relay for the target of %v — these records would answer 404", orphan)
 	}
+	if notHere == nil {
+		var scoped []string
+		for _, rt := range routes {
+			if rt.Target.ExternalListenersOnly() {
+				scoped = append(scoped, rt.Path+" ("+string(rt.Target)+")")
+			}
+		}
+		if len(scoped) > 0 {
+			return 0, fmt.Errorf("login lane mount: no answer for the internal listener on %v — "+
+				"these records answer on external listeners only; pass the handler mounted at \"/\"", scoped)
+		}
+	}
 	for _, rt := range routes {
-		mux.Handle(rt.Path, by[rt.Target])
+		var h http.Handler = by[rt.Target]
+		if rt.Target.ExternalListenersOnly() {
+			h = externalListenersOnly{relay: h, notHere: notHere}
+		}
+		mux.Handle(rt.Path, h)
 	}
 	return len(routes), nil
+}
+
+// externalListenersOnly — запись ретранслируется только с внешних слушателей;
+// с внутреннего admin-REST слушателя запрос получает ответ `notHere`. Метка
+// происхождения ставится на соединение (`listenerorigin.InternalConnContext`)
+// и умолчанием «внешний» закрыта на отказ: немеченое соединение
+// ретранслируется, меченое внутренним — нет.
+type externalListenersOnly struct {
+	relay   http.Handler
+	notHere http.Handler
+}
+
+func (h externalListenersOnly) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if !listenerorigin.IsExternal(req.Context()) {
+		h.notHere.ServeHTTP(w, req)
+		return
+	}
+	h.relay.ServeHTTP(w, req)
 }
