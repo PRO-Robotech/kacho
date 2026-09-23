@@ -22,6 +22,7 @@ func legalOwnStackFacts() ownStackFacts {
 		Stack: "own", IAMPosture: "own", EdgePosture: "own",
 		LanePort: "9100", LaneURL: "https://kaname-internal.kacho.svc:9100",
 		ServiceName: "kaname", AccessKeys: true,
+		IssuancePort: "9096", IssuanceURL: "https://kaname.kacho.svc:9096",
 	}
 }
 
@@ -119,6 +120,81 @@ func TestOwnStackJudgement_CanFailAndStaysSilent(t *testing.T) {
 			mutate: func(f *ownStackFacts) { f.AccessKeys = false },
 			want:   0,
 		},
+		// ── Вторая цель ретрансляции: слушатель выдачи (kacho#2817) ──────────
+		{
+			// Состояние дерева до этой задачи: адрес формы задан, адреса выдачи
+			// нет, и край под own не стартует.
+			name:    "адрес слушателя выдачи не объявлен — находка",
+			mutate:  func(f *ownStackFacts) { f.IssuanceURL = "" },
+			want:    1,
+			mustSay: "iamIssuanceUrl` не объявлен",
+		},
+		{
+			// Правдоподобная ошибка: церемонию направили в дверь полосы формы.
+			name:    "церемония ретранслируется на порт формы — находка",
+			mutate:  func(f *ownStackFacts) { f.IssuanceURL = "https://kaname.kacho.svc:9100" },
+			want:    1,
+			mustSay: "слушатель выдачи на \"9096\"",
+		},
+		{
+			name:    "служба переопределила порт выдачи, край на прежнем — находка",
+			mutate:  func(f *ownStackFacts) { f.IssuancePort = "9196" },
+			want:    1,
+			mustSay: "`ports.registryToken` = \"9196\"",
+		},
+		{
+			// Законный близнец случая выше: меняется один факт — порт адреса.
+			name: "служба переопределила порт выдачи, и край идёт на него — молчит",
+			mutate: func(f *ownStackFacts) {
+				f.IssuancePort = "9196"
+				f.IssuanceURL = "https://kaname.kacho.svc:9196"
+			},
+			want: 0,
+		},
+		{
+			// Профиль порт не объявил — Служба на умолчании шаблона, и край,
+			// идущий на него, прав.
+			name:   "порт выдачи не объявлен профилем — умолчание шаблона, молчит",
+			mutate: func(f *ownStackFacts) { f.IssuancePort = "" },
+			want:   0,
+		},
+		{
+			name:   "порт выдачи нулём — умолчание шаблона, молчит",
+			mutate: func(f *ownStackFacts) { f.IssuancePort = "0" },
+			want:   0,
+		},
+		{
+			// Без порта край набрал бы 443 — двери с таким номером у Службы нет.
+			name:    "адрес выдачи без порта — находка",
+			mutate:  func(f *ownStackFacts) { f.IssuanceURL = "https://kaname.kacho.svc" },
+			want:    1,
+			mustSay: "на порт \"\"",
+		},
+		{
+			name:    "адрес выдачи по открытому протоколу — находка",
+			mutate:  func(f *ownStackFacts) { f.IssuanceURL = "http://kaname.kacho.svc:9096" },
+			want:    1,
+			mustSay: "код авторизации",
+		},
+		{
+			name:    "адрес выдачи не абсолютный — находка",
+			mutate:  func(f *ownStackFacts) { f.IssuanceURL = "kaname.kacho.svc:9096" },
+			want:    1,
+			mustSay: "`iamIssuanceUrl` = \"kaname.kacho.svc:9096\" не абсолютный",
+		},
+		{
+			name:    "адрес выдачи ведёт на ВНУТРЕННИЙ Service — находка",
+			mutate:  func(f *ownStackFacts) { f.IssuanceURL = "https://kaname-internal.kacho.svc:9096" },
+			want:    1,
+			mustSay: "ПУБЛИЧНОМ Service",
+		},
+		{
+			// Голого имени службы серверный лист не предъявляет.
+			name:    "адрес выдачи голым именем службы — находка",
+			mutate:  func(f *ownStackFacts) { f.IssuanceURL = "https://kaname:9096" },
+			want:    1,
+			mustSay: "ПУБЛИЧНОМ Service",
+		},
 	}
 
 	for _, c := range cases {
@@ -144,6 +220,32 @@ func TestOwnStackJudgement_CanFailAndStaysSilent(t *testing.T) {
 				t.Errorf("перепись осмотренного %d, подано 2", census.Stacks)
 			}
 		})
+	}
+}
+
+// TestOwnStackJudgement_OneTargetDoesNotMaskTheOther — суждения о двух целях
+// независимы: незаданный адрес формы не снимает суждения о выдаче. Случай
+// складывается из двух одно-фактных случаев таблицы выше («адрес полосы не
+// объявлен», «адрес слушателя выдачи не объявлен») и требует обе их находки:
+// ранний выход на первой цели молча оставил бы вторую без суждения.
+func TestOwnStackJudgement_OneTargetDoesNotMaskTheOther(t *testing.T) {
+	f := legalOwnStackFacts()
+	f.LaneURL = ""
+	f.IssuanceURL = ""
+	findings, _ := judgeOwnStacks([]ownStackFacts{f}, false)
+	if len(findings) != 2 {
+		t.Fatalf("находок %d, ожидалось 2 (по одной на цель): %v", len(findings), findings)
+	}
+	for _, want := range []string{"iamLoginLaneUrl` не объявлен", "iamIssuanceUrl` не объявлен"} {
+		var said bool
+		for _, got := range findings {
+			if strings.Contains(got, want) {
+				said = true
+			}
+		}
+		if !said {
+			t.Errorf("ни одна находка не называет %q: %v", want, findings)
+		}
 	}
 }
 
@@ -231,6 +333,62 @@ func TestOwnStackServicePortModel_StaleTemplateIsSaid(t *testing.T) {
 				t.Fatalf("запись найдена=%v, ожидалось %v (условие %q, выражение %q)", ok, c.wantFound, cond, expr)
 			}
 			agree := cond == laneServicePortCondition && expr == laneServicePortExpression
+			if ok && agree != c.wantAgree {
+				t.Errorf("модель согласна=%v, ожидалось %v: условие %q, выражение %q", agree, c.wantAgree, cond, expr)
+			}
+		})
+	}
+}
+
+// TestOwnStackIssuancePortModel_StaleTemplateIsSaid — предпосылка суждения о
+// второй цели способна упасть: запись `registry-token`, выставленная под
+// условием, иным выражением или не выставленная вовсе, распознаётся, а
+// сегодняшняя форма — нет (kacho#2817).
+func TestOwnStackIssuancePortModel_StaleTemplateIsSaid(t *testing.T) {
+	const lawful = "      targetPort: grpc\n" +
+		"    # слушатель выдачи\n" +
+		"    - name: registry-token\n" +
+		"      port: {{ .Values.ports.registryToken | default 9096 }}\n" +
+		"      targetPort: registry-token\n"
+	cases := []struct {
+		name      string
+		tmpl      string
+		wantFound bool
+		wantAgree bool
+	}{
+		{name: "законный близнец: сегодняшняя форма шаблона — модель верна", tmpl: lawful, wantFound: true, wantAgree: true},
+		{
+			name:      "условие не над записью, а над соседней — запись без условия, модель верна",
+			tmpl:      "    {{- if .Values.ports.rest }}\n    - name: http-rest\n      port: 9098\n    {{- end }}\n" + lawful,
+			wantFound: true, wantAgree: true,
+		},
+		{
+			name:      "запись под условием — модель устарела",
+			tmpl:      strings.Replace(lawful, "    # слушатель", "    {{- if .Values.ports.registryToken }}\n    # слушатель", 1),
+			wantFound: true,
+		},
+		{
+			name:      "иное умолчание порта — модель устарела",
+			tmpl:      strings.Replace(lawful, "default 9096", "default 9196", 1),
+			wantFound: true,
+		},
+		{
+			name:      "порт переопределяется Службой — модель устарела",
+			tmpl:      strings.Replace(lawful, ".Values.ports.registryToken | default 9096", ".Values.service.public.registryTokenPort | default .Values.ports.registryToken", 1),
+			wantFound: true,
+		},
+		{
+			name: "записи слушателя выдачи нет — не найдена",
+			tmpl: strings.Replace(lawful, "registry-token\n      port", "http-other\n      port", 1),
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cond, expr, ok := issuanceServicePortTemplate(c.tmpl)
+			if ok != c.wantFound {
+				t.Fatalf("запись найдена=%v, ожидалось %v (условие %q, выражение %q)", ok, c.wantFound, cond, expr)
+			}
+			agree := cond == "" && expr == issuanceServicePortExpression
 			if ok && agree != c.wantAgree {
 				t.Errorf("модель согласна=%v, ожидалось %v: условие %q, выражение %q", agree, c.wantAgree, cond, expr)
 			}
