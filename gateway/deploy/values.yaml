@@ -329,6 +329,26 @@ authn:
   # с портом службы судит теперь проба, названная выше.
   iamLoginLaneUrl: ""
 
+  # ─── адрес слушателя выдачи службы доступа (LINE-A-1, kacho#2817) ──────────
+  # HTTPS-слушатель службы, на который край РЕТРАНСЛИРУЕТ обе координаты
+  # церемонии авторизации под посадкой `own`: навигацию `GET /iam/v1/authorize`
+  # и обмен кода `POST /iam/v1/token`. Цель своя, а не слушатель формы: церемония
+  # живёт целиком на слушателе выдачи. Слушатель ОДНОСТОРОННИЙ по TLS (режим
+  # `registryTokenClientAuthMode: server-tls-only` поставки службы): клиентской
+  # пары край ему не предъявляет, якорь (`mtls.*`) и имя сервера ребра iam — те
+  # же. Драйвит KACHO_API_GATEWAY_IAM_ISSUANCE_URL.
+  #
+  # ЧИТАЕТСЯ ТОЛЬКО ПОД `own`: пустое значение там — отказ старта с именем ручки
+  # (ретрансляция без цели отвечала бы 503 на каждом запросе всю жизнь); под
+  # `external` не читается вовсе. Базовый профиль объявляет `external`, поэтому
+  # здесь пусто; значение задаёт ПРОФИЛЬ рядом с посадкой. Из адреса соседа оно
+  # не выводится: адрес, решающий, куда едет носитель сессии человека, задаётся
+  # явно.
+  #
+  # Образец адреса: публичный Service службы и порт её слушателя выдачи
+  # (`kaname.ports.registryToken`), схема `https`.
+  iamIssuanceUrl: ""
+
 # Previous external OAuth server. The accepted issuers and their key sets are
 # declared by `tokenAcceptance` (platform-minted tokens included); the auth path
 # verifies each token against the key set of the issuer it names.

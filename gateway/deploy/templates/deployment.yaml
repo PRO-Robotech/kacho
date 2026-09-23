@@ -225,6 +225,16 @@ spec:
             - name: KACHO_API_GATEWAY_IAM_LOGIN_LANE_URL
               value: {{ . | quote }}
             {{- end }}
+            {{- /* АДРЕС СЛУШАТЕЛЯ ВЫДАЧИ службы доступа (замысел LINE-A-1
+                 §5.1б п. 2, kacho#2817): куда край ретранслирует обе координаты
+                 церемонии авторизации под посадкой `own`. Тот же порядок, что у
+                 адреса полосы формы: эмитится ТОЛЬКО при непустом значении, и
+                 оба исхода — «задано» и «отказ старта под own» — приходят от
+                 значения профиля, а не от шаблона. */}}
+            {{- with .Values.authn.iamIssuanceUrl }}
+            - name: KACHO_API_GATEWAY_IAM_ISSUANCE_URL
+              value: {{ . | quote }}
+            {{- end }}
             # There is deliberately NO way here to hand the gateway a shared signing
             # key. The chart used to offer one (inline and via a Secret reference) for
             # the local stand; both are gone, and this comment stands in their place so

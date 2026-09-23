@@ -45,6 +45,8 @@ import (
 //	KACHO_APP_ENV                            — deployment-env label (keys the prod authz guard)
 //	KACHO_API_GATEWAY_KRATOS_PUBLIC_URL      — Ory Kratos public API base ("disabled" turns it off); read under `external` only
 //	KACHO_API_GATEWAY_IAM_LOGIN_LANE_URL     — адрес HTTPS-слушателя полосы формы службы доступа (own only, required)
+//	KACHO_API_GATEWAY_IAM_ISSUANCE_URL       — адрес HTTPS-слушателя выдачи службы доступа: церемония
+//	                                           авторизации (own only, required)
 //	KACHO_API_GATEWAY_ADMISSION_PUBLIC_*     — потолок темпа/одновременности внешнего
 //	                                           слушателя (READ_PER_SEC, MUTATION_PER_SEC,
 //	                                           BURST_FACTOR, IN_FLIGHT; молчание — пол платформы)
@@ -283,6 +285,23 @@ type Config struct {
 	// ручки (ретрансляция без цели отвечала бы 503 на каждом запросе всю жизнь,
 	// неотличимо от «служба лежит»); под `external` ручка не читается.
 	LoginLaneURL string `envconfig:"KACHO_API_GATEWAY_IAM_LOGIN_LANE_URL" default:""`
+
+	// IAMIssuanceURL — адрес HTTPS-слушателя ВЫДАЧИ службы доступа, на который
+	// край ретранслирует обе координаты церемонии авторизации под посадкой `own`:
+	// навигацию `GET /iam/v1/authorize` и обмен кода `POST /iam/v1/token`
+	// (замысел LINE-A-1 §5.1б п. 2, kacho#2817). Цель своя, а не слушатель
+	// формы: церемония живёт целиком на слушателе выдачи, и тот же путь выдачи,
+	// отвечающий на втором слушателе, был бы вторым местом об одном предмете.
+	//
+	// Слушатель односторонний по TLS (режим предъявления `server-tls-only`,
+	// `registryTokenClientAuthMode` поставки службы: вызывающего на нём судит
+	// предъявленное в запросе, а не рукопожатие): клиентской пары край ему не
+	// предъявляет, якорь
+	// `KACHO_API_GATEWAY_MTLS_CA_FILE` и имя сервера
+	// `KACHO_API_GATEWAY_MTLS_IAM_SERVER_NAME` — те же, что у ребра к службе.
+	// УМОЛЧАНИЯ НЕТ и выводиться из адреса соседа он не вправе: под `own` пустое
+	// значение — отказ старта с именем ручки; под `external` ручка не читается.
+	IAMIssuanceURL string `envconfig:"KACHO_API_GATEWAY_IAM_ISSUANCE_URL" default:""`
 
 	// MetricsAddr — адрес cluster-internal ДИАГНОСТИЧЕСКОЙ поверхности края
 	// (`GET /metrics`).
@@ -817,6 +836,11 @@ const IdentityProviderKnob = "KACHO_API_GATEWAY_IDENTITY_PROVIDER"
 // LoginLaneURLKnob — имя ручки адреса полосы формы. Объявлено один раз: его
 // называют текст отказа старта, профиль и проба чарта.
 const LoginLaneURLKnob = "KACHO_API_GATEWAY_IAM_LOGIN_LANE_URL"
+
+// IssuanceURLKnob — имя ручки адреса слушателя выдачи службы (цель
+// ретрансляции церемонии авторизации). Объявлено один раз: его называют текст
+// отказа старта, профиль и проба чарта.
+const IssuanceURLKnob = "KACHO_API_GATEWAY_IAM_ISSUANCE_URL"
 
 // ResolvedIdentityProvider разбирает объявленную посадку личности.
 //

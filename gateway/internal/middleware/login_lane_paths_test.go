@@ -43,12 +43,22 @@ var loginLaneWant = map[string]string{
 // ретранслируемый, но не освобождённый, отвергался бы каталогом до службы.
 func TestLoginLanePaths_F3_51_OneDeclarationFeedsThePublicListAndTheLane(t *testing.T) {
 	routes := LoginLaneRoutes()
-	if len(routes) != len(loginLaneWant) {
-		t.Fatalf("глаголов формы объявлено %d, ожидалось %d (Р2 + Ф4 + Ф5 + Ф12)", len(routes), len(loginLaneWant))
+	if len(routes) != len(loginLaneWant)+len(ceremonyWant) {
+		t.Fatalf("записей объявления %d, ожидалось %d: глаголов формы %d (Р2 + Ф4 + Ф5 + Ф12) и координат церемонии %d (LINE-A-1 §5.1а)",
+			len(routes), len(loginLaneWant)+len(ceremonyWant), len(loginLaneWant), len(ceremonyWant))
 	}
 	for _, rt := range routes {
-		if loginLaneWant[rt.Verb] != rt.Path {
-			t.Errorf("глагол %q объявлен на пути %q, ожидалось %q", rt.Verb, rt.Path, loginLaneWant[rt.Verb])
+		want, form := loginLaneWant[rt.Verb]
+		if !form {
+			want = ceremonyWant[rt.Verb]
+		}
+		if want != rt.Path {
+			t.Errorf("запись %q объявлена на пути %q, ожидалось %q", rt.Verb, rt.Path, want)
+		}
+		// Цель ретрансляции — по роду записи: глагол формы уходит на слушатель
+		// формы, координата церемонии — на слушатель выдачи (§5.1б п. 2).
+		if wantTarget := map[bool]RelayTarget{true: RelayTargetForm, false: RelayTargetIssuance}[form]; rt.Target != wantTarget {
+			t.Errorf("запись %q ретранслируется на цель %q, ожидалось %q", rt.Verb, rt.Target, wantTarget)
 		}
 		if !IsLoginLanePath(rt.Path) {
 			t.Errorf("ветка полосы не узнаёт объявленный путь %q", rt.Path)
@@ -75,7 +85,8 @@ func TestLoginLanePaths_F3_51_OneDeclarationFeedsThePublicListAndTheLane(t *test
 			t.Errorf("путь %q признан глаголом формы или освобождённым — совпадение обязано быть точным", p)
 		}
 	}
-	t.Logf("перепись: глаголов формы %d · освобождённых путей всего %d", len(routes), 4+len(routes))
+	t.Logf("перепись: записей объявления %d (глаголов формы %d · координат церемонии %d) · освобождённых путей всего %d",
+		len(routes), len(loginLaneWant), len(ceremonyWant), 4+len(routes))
 }
 
 // TestLoginLanePaths_F4_F5_RegistrationAndRecoveryAreVerbsOfTheSameLane —
@@ -124,5 +135,5 @@ func TestLoginLanePaths_F4_F5_RegistrationAndRecoveryAreVerbsOfTheSameLane(t *te
 			t.Errorf("путь %q признан глаголом формы или освобождённым — совпадение обязано быть точным", p)
 		}
 	}
-	t.Logf("перепись: глаголов Ф4/Ф5 %d из %d объявленных", len(added), len(LoginLaneRoutes()))
+	t.Logf("перепись: глаголов Ф4/Ф5 %d из %d записей объявления", len(added), len(LoginLaneRoutes()))
 }

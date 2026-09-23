@@ -47,17 +47,28 @@ const (
 // forgedFormRequest — запрос клиента на глагол формы: наши печенья, чужая
 // цепочка адресов, удостоверение и заголовки принципала чужого субъекта в
 // голой и мостовой формах.
-func forgedFormRequest(rt middleware.LoginLaneRoute) (*http.Request, string) {
-	method, target, body := http.MethodPost, rt.Path, `{"csrfToken":"x"}`
+//
+// Координаты церемонии (замысел LINE-A-1 §5.1) — своей формой: навигация на
+// эндпоинт авторизации есть GET со строкой запроса, обмен кода — POST формой.
+func forgedFormRequest(rt middleware.LoginLaneRoute) (*http.Request, string, string) {
+	method, target, body, contentType := http.MethodPost, rt.Path, `{"csrfToken":"x"}`, "application/json"
 	switch rt.Path {
 	case middleware.LoginLanePathCSRF:
 		method, target, body = http.MethodGet, rt.Path+"?form=login", ""
 	case middleware.LoginLanePathSecondFactor:
 		method, body = http.MethodGet, ""
+	case middleware.CeremonyPathAuthorize:
+		method, target, body = http.MethodGet, rt.Path+"?"+ceremonyQuery, ""
+	case middleware.CeremonyPathToken:
+		body, contentType = "grant_type=authorization_code&code=c-1&code_verifier=v-1&client_id=console", "application/x-www-form-urlencoded"
 	}
 	req := httptest.NewRequest(method, target, strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
+	// Удостоверение — в ОБЕИХ формах имени: снятие ретранслятором безусловно, и
+	// на нём стоит освобождение координат церемонии от вопроса об отзыве
+	// (замысел LINE-A-1 §7 инв. 37, половина (а)).
 	req.Header.Set("Authorization", "Bearer must-not-cross")
+	req.Header.Set(principalmeta.BridgePrefix+"Authorization", "Bearer must-not-cross")
 	req.Header.Set("X-Forwarded-For", "203.0.113.9, 10.0.0.1")
 	for _, name := range []string{principalmeta.HeaderPrincipalType, principalmeta.HeaderPrincipalID, principalmeta.HeaderPrincipalDisplay} {
 		value := forgedSubject
@@ -70,8 +81,12 @@ func forgedFormRequest(rt middleware.LoginLaneRoute) (*http.Request, string) {
 	req.AddCookie(&http.Cookie{Name: middleware.OurSessionCarrierName, Value: "s2-live"})
 	req.AddCookie(&http.Cookie{Name: "kaname_form", Value: "ctx"})
 	req.RemoteAddr = relayedClientIP + ":4242"
-	return req, body
+	return req, body, contentType
 }
+
+// ceremonyQuery — законная строка запроса навигации на эндпоинт авторизации.
+const ceremonyQuery = "response_type=code&client_id=console&redirect_uri=https%3A%2F%2Fconsole.kacho.local%2Fcallback" +
+	"&state=st-0123456789abcdef&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256"
 
 func TestLoginLaneRelay_F12_38_EveryDeclaredVerbCarriesTheNamedCompositionOnly(t *testing.T) {
 	routes := middleware.LoginLaneRoutes()
@@ -89,12 +104,12 @@ func TestLoginLaneRelay_F12_38_EveryDeclaredVerbCarriesTheNamedCompositionOnly(t
 			stub := &formListenerStub{status: http.StatusOK, body: `{}`}
 			srv := httptest.NewServer(stub)
 			t.Cleanup(srv.Close)
-			chain, relay := chainWithRelay(t, carrier.own, &fakeCut{}, srv.URL)
+			chain, relays := chainWithRelays(t, carrier.own, &fakeCut{}, srv.URL)
 
 			var withCookie, oneForwardedFor, kachoLeft, credentialLeft, forgedLeft int
 			for _, rt := range routes {
 				before := stub.count()
-				req, body := forgedFormRequest(rt)
+				req, body, contentType := forgedFormRequest(rt)
 				rec := httptest.NewRecorder()
 				chain.ServeHTTP(rec, req)
 				if rec.Code != http.StatusOK || stub.count() != before+1 {
@@ -110,7 +125,10 @@ func TestLoginLaneRelay_F12_38_EveryDeclaredVerbCarriesTheNamedCompositionOnly(t
 				if rt.Path == middleware.LoginLanePathCSRF && got.query != "form=login" {
 					t.Errorf("%s: параметры пути не доехали: %q", rt.Verb, got.query)
 				}
-				if got.header.Get("Content-Type") != "application/json" {
+				if rt.Path == middleware.CeremonyPathAuthorize && got.query != ceremonyQuery {
+					t.Errorf("%s: строка запроса церемонии не доехала как есть: %q", rt.Verb, got.query)
+				}
+				if got.header.Get("Content-Type") != contentType {
 					t.Errorf("%s: Content-Type: %q", rt.Verb, got.header.Get("Content-Type"))
 				}
 
@@ -139,9 +157,9 @@ func TestLoginLaneRelay_F12_38_EveryDeclaredVerbCarriesTheNamedCompositionOnly(t
 				}
 
 				// Удостоверения нет.
-				if got.header.Get("Authorization") != "" {
+				if got.header.Get("Authorization") != "" || got.header.Get(principalmeta.BridgePrefix+"Authorization") != "" {
 					credentialLeft++
-					t.Errorf("%s: удостоверение уехало на слушатель формы", rt.Verb)
+					t.Errorf("%s: удостоверение уехало на слушатель цели %q", rt.Verb, rt.Target)
 				}
 
 				// Чужой субъект не доезжает ни под каким именем.
@@ -155,10 +173,9 @@ func TestLoginLaneRelay_F12_38_EveryDeclaredVerbCarriesTheNamedCompositionOnly(t
 				}
 			}
 
-			stats := relay.Stats()
 			for _, rt := range routes {
-				if stats.Relayed[rt.Verb] != 1 {
-					t.Errorf("клетка ретрансляции %q = %d, ожидалось 1", rt.Verb, stats.Relayed[rt.Verb])
+				if stats := relays[rt.Target].Stats(); stats.Relayed[rt.Verb] != 1 {
+					t.Errorf("клетка ретрансляции %q у цели %q = %d, ожидалось 1", rt.Verb, rt.Target, stats.Relayed[rt.Verb])
 				}
 			}
 			t.Logf("перепись: путей объявления %d · дошло до службы %d · с печеньями %d · с одним X-Forwarded-For %d · с x-kacho- %d · с Authorization %d · с чужим субъектом %d",

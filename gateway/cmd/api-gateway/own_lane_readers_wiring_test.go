@@ -28,7 +28,8 @@
 //     «одно из трёх мест не осмотрено»;
 //   - читатель НАШЕЙ сессии — вызов `WithHumanSession`: заведён под `external`,
 //     если не лежит в ветке с посадкой `own`. N ≥ 2 (полоса и «кто я»);
-//   - ретрансляция — вызов `NewLoginLaneRelay`: ровно 1, под `own`.
+//   - ретрансляция — вызов `NewLoginLaneRelay`: по провязке на КАЖДУЮ объявленную
+//     цель, под `own` (множество, а не константа — relay_wiring_test.go).
 //
 // Инъекция в обе стороны на синтетике: читатель без условия посадки — красное с
 // координатой; читатель под `external` — молчит.
@@ -40,6 +41,8 @@ import (
 	"go/token"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
 // postureBranchOf — самая внутренняя ветка `if`, охватывающая позицию, чьё
@@ -150,14 +153,15 @@ func TestOwnLane_F3_45_OurReaderAndTheRelayAreWiredUnderOwnOnly(t *testing.T) {
 			t.Errorf("читатель нашей сессии заведён вне ветки посадки own: %s (ветка: %q)", s.pos, s.posture)
 		}
 	}
-	relays := wiringSites(fset, f, "NewLoginLaneRelay")
-	if len(relays) != 1 {
-		t.Fatalf("ретрансляция глаголов формы заведена %d раз, ожидалось 1", len(relays))
+	// Ретрансляция судится МНОЖЕСТВОМ, а не константой (замысел LINE-A-1 §5.1б
+	// п. 2а, §7 инв. 36): провязок столько, сколько объявлено целей, каждая под
+	// `own`, ось различения — цель. Предмет и его инъекции — relay_wiring_test.go.
+	relays := judgeRelayWiring(fset, f, middleware.RelayTargets())
+	for _, finding := range relays.findings {
+		t.Error(finding)
 	}
-	if relays[0].posture != "Own" {
-		t.Errorf("ретрансляция заведена вне ветки посадки own: %s (ветка: %q) — под external глаголы формы обязаны отвечать 404", relays[0].pos, relays[0].posture)
-	}
-	t.Logf("перепись: читателей нашей сессии %d (под own %d) · ретрансляций %d", len(readers), len(readers), len(relays))
+	t.Logf("перепись: читателей нашей сессии %d (под own %d) · провязок ретранслятора %d · целей объявлено %d",
+		len(readers), len(readers), len(relays.sites), len(middleware.RelayTargets()))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -35,7 +35,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 )
 
-// unansweredPassVerbs — глаголы формы, на которых недоступность службы
+// unansweredPassVerbs — записи объявления, на которых недоступность службы
 // РЕТРАНСЛИРУЕТСЯ. Выписаны дословно из приёмок, а не прочитаны из объявления:
 // проба обязана краснеть на объявлении, которое решило иначе.
 //
@@ -45,7 +45,12 @@ import (
 //   - register, recovery, recovery-complete — носителя не читают: регистрация
 //     заводит новую личность, запрос кода и его предъявление ключуются адресом
 //     и кодом (Ф5 Р5 — «одно обращение … с email, code, newPassword»); критерий
-//     Ф3 Р7 «вход и признак носителя не читают» применён к ним без изменений.
+//     Ф3 Р7 «вход и признак носителя не читают» применён к ним без изменений;
+//   - authorize, token — две координаты церемонии авторизации (замысел LINE-A-1
+//     §5.1б п. 4, решение по КАЖДОЙ координате): навигация носителя не читает —
+//     вопрос о сессии решает сама церемония своим швом; обмен кода носителя не
+//     читает вовсе — решает по коду и удостоверению клиента. Отказ края на их
+//     месте был бы вторым решением о том же предмете.
 //
 // Смена пароля и шесть глаголов второго фактора в перечне отсутствуют: Ф3 Р7
 // (смена пароля — F4d-23) и Ф12 Р4 («недоступность службы и отсечка на всех
@@ -57,6 +62,8 @@ var unansweredPassVerbs = map[string]bool{
 	"register":          true,
 	"recovery":          true,
 	"recovery-complete": true,
+	"authorize":         true,
+	"token":             true,
 }
 
 // secondFactorPaths — шесть глаголов Ф12 Р4.
@@ -159,7 +166,7 @@ func formChain(t *testing.T, book *carrierBook, cut *cutoffBook) (http.Handler, 
 
 func formVerbRequest(path, carrier string, foreign bool) *http.Request {
 	method := http.MethodPost
-	if path == LoginLanePathSecondFactor || path == LoginLanePathCSRF {
+	if path == LoginLanePathSecondFactor || path == LoginLanePathCSRF || path == CeremonyPathAuthorize {
 		method = http.MethodGet
 	}
 	req := withOurCarrier(httptest.NewRequest(method, path, strings.NewReader(`{}`)), carrier)
