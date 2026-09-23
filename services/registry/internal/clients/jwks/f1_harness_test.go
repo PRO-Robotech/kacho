@@ -46,8 +46,16 @@ const (
 // keySet — источник набора проверочных ключей ОДНОГО издателя со всеми ручками,
 // которых требуют сценарии F1.
 type keySet struct {
-	srv     *httptest.Server
+	srv *httptest.Server
+	// path — объявленный адрес набора на порту сервера: случайный, чтобы его не
+	// знал никто, кроме записи, в которую его передали.
+	path string
+	// fetches — обращения ПО ОБЪЯВЛЕННОМУ адресу, то есть обращения проверяющего.
 	fetches atomic.Int32
+	// foreign — прибытия на порт мимо объявленного адреса. Порт петли — ресурс
+	// машины: его освобождает закрытый сервер соседней пробы, и тот, кто спрашивает
+	// прежний адрес, попадает сюда. Проверяющим такое обращение не является.
+	foreign atomic.Int32
 
 	rsaKeys map[string]*rsa.PrivateKey
 	ecKeys  map[string]*ecdsa.PrivateKey
@@ -70,11 +78,17 @@ type keySet struct {
 func newKeySet(t *testing.T) *keySet {
 	t.Helper()
 	ks := &keySet{
+		path:    "/keys-" + rand.Text(),
 		rsaKeys: map[string]*rsa.PrivateKey{},
 		ecKeys:  map[string]*ecdsa.PrivateKey{},
 		edKeys:  map[string]ed25519.PrivateKey{},
 	}
-	ks.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	ks.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != ks.path {
+			ks.foreign.Add(1)
+			http.NotFound(w, r)
+			return
+		}
 		ks.fetches.Add(1)
 		ct := ks.contentType
 		if ct == "" {
@@ -99,10 +113,16 @@ func newKeySet(t *testing.T) *keySet {
 		_ = json.NewEncoder(w).Encode(ks.doc())
 	}))
 	t.Cleanup(ks.srv.Close)
+	t.Cleanup(func() {
+		if n := ks.foreign.Load(); n > 0 {
+			t.Logf("источник %s: посторонних прибытий на порт %d — в счёт обращений не вошли", ks.srv.URL, n)
+		}
+	})
 	return ks
 }
 
-func (ks *keySet) url() string { return ks.srv.URL }
+// url — ОБЪЯВЛЕННЫЙ адрес набора: его и только его получает запись источника.
+func (ks *keySet) url() string { return ks.srv.URL + ks.path }
 
 // addRSA/addEC/addEd заводят ключ соответствующего вида под идентификатором kid.
 func (ks *keySet) addRSA(t *testing.T, kid string) {
