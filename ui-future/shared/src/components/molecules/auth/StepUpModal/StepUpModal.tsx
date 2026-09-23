@@ -28,8 +28,8 @@
 // (F8-36). Обещание запроса при этом не разрешается: fail-closed — разрешить его
 // значило бы пропустить действие, за которое никто не поручился.
 
-import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
-import { Button, Input, Modal, Radio, Typography } from "antd";
+import { useEffect, useId, useMemo, useState } from "react";
+import { Button, Form, Input, Modal, Radio, Typography } from "antd";
 import {
   FormTokenHolder,
   LANE_REASON,
@@ -40,6 +40,7 @@ import {
 import { setStepUpRequester } from "@shared/api/step-up";
 import { LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalAlert";
 import { EMPTY_PRESENTATION, SecondFactorCodeField } from "@shared/components/molecules/auth/SecondFactorCodeField";
+import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { useOptionalAuth } from "@shared/contexts/AuthContext";
 
 const { Paragraph } = Typography;
@@ -85,7 +86,7 @@ export function StepUpModal() {
     return () => setStepUpRequester(null);
   }, []);
 
-  const levelTwo = pending?.acr === LEVEL_TWO;
+  const passwordAllowed = pending?.acr !== LEVEL_TWO;
 
   const close = () => {
     setPending(null);
@@ -99,15 +100,16 @@ export function StepUpModal() {
     close();
   };
 
-  const confirm = async (e?: FormEvent) => {
-    e?.preventDefault();
+  const confirm = async () => {
     if (!pending || submitting) return;
     setSubmitting(true);
     setRefusal(null);
     try {
       await loginLane.stepUp(
         holder,
-        branch === "пароль" ? { method: "password", password } : { method: factor.method, code: factor.code },
+        branch === "пароль" && passwordAllowed
+          ? { method: "password", password }
+          : { method: factor.method, code: factor.code },
       );
       // Уровень после церемонии знает край по нашей сессии; консоли достаточно
       // перечитать личность и отпустить отвергнутый запрос на повтор.
@@ -139,15 +141,16 @@ export function StepUpModal() {
         </Button>,
       ]}
     >
-      <form onSubmit={(e) => void confirm(e)} noValidate>
+      <FormGrid label="Подтверждение действия" onSubmit={() => void confirm()}>
         <Paragraph>
-          {levelTwo
-            ? "Это действие подтверждается вторым фактором."
-            : "Это действие требует подтвердить личность ещё раз."}
+          {passwordAllowed
+            ? "Это действие требует подтвердить личность ещё раз."
+            : "Это действие подтверждается вторым фактором."}
         </Paragraph>
-        {!levelTwo && (
-          <div style={{ marginBottom: 12 }}>
+        {passwordAllowed && (
+          <Form.Item label="Способ">
             <Radio.Group
+              aria-label="Способ"
               value={branch}
               onChange={(ev) => setBranch(ev.target.value as Branch)}
               options={[
@@ -155,13 +158,10 @@ export function StepUpModal() {
                 { value: "второй фактор", label: "Вторым фактором" },
               ]}
             />
-          </div>
+          </Form.Item>
         )}
-        {branch === "пароль" ? (
-          <div style={{ marginBottom: 12 }}>
-            <label htmlFor={passwordId} style={{ display: "block", marginBottom: 4 }}>
-              Пароль
-            </label>
+        {branch === "пароль" && passwordAllowed ? (
+          <Form.Item label="Пароль" htmlFor={passwordId}>
             <Input
               id={passwordId}
               type="password"
@@ -169,15 +169,13 @@ export function StepUpModal() {
               value={password}
               onChange={(ev) => setPassword(ev.target.value)}
             />
-          </div>
+          </Form.Item>
         ) : (
-          <div style={{ marginBottom: 12 }}>
-            <SecondFactorCodeField
-              value={factor}
-              onChange={setFactor}
-              codeError={refusal?.field === "code" ? refusal.message : null}
-            />
-          </div>
+          <SecondFactorCodeField
+            value={factor}
+            onChange={setFactor}
+            codeError={refusal?.field === "code" ? refusal.message : null}
+          />
         )}
         {refusal && refusal.field !== "code" && (
           <div style={{ marginBottom: 12 }}>
@@ -196,7 +194,7 @@ export function StepUpModal() {
         )}
         {/* Отправка клавишей ввода из поля — та же, что кнопкой. */}
         <button type="submit" hidden aria-hidden tabIndex={-1} />
-      </form>
+      </FormGrid>
     </Modal>
   );
 }

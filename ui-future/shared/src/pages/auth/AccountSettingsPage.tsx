@@ -1,9 +1,9 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { useCallback, useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
 import { Link } from "react-router";
-import { Alert, Button, Input, Spin, Typography } from "antd";
+import { Alert, Button, Form, Input, Spin, Typography } from "antd";
 import {
   LANE_REASON,
   LaneRefusal,
@@ -20,6 +20,8 @@ import { LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalA
 import { EMPTY_PRESENTATION, SecondFactorCodeField } from "@shared/components/molecules/auth/SecondFactorCodeField";
 import { StepUpModal } from "@shared/components/molecules/auth/StepUpModal";
 import { PAGE_PADDING, PageHead } from "@shared/components/organisms/DetailShell/PageHead";
+import { FieldError, fieldErrorId } from "@shared/components/organisms/form/FieldError";
+import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { useFormToken } from "@shared/hooks/use-form-token";
 import { loginAddress } from "./ceremony-addresses";
 
@@ -72,34 +74,18 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-/** Строка формы: подпись слева, ввод справа (канон формы консоли). */
-function FieldRow({ id, label, error, children }: { id: string; label: string; error: string | null; children: ReactNode }) {
-  return (
-    <div style={{ display: "flex", gap: 16, alignItems: "flex-start", marginBottom: 12 }}>
-      <label htmlFor={id} style={{ flex: "0 0 200px", paddingTop: 5 }}>
-        {label}
-      </label>
-      <div style={{ flex: "1 1 auto", minWidth: 0 }}>
-        {children}
-        {error && (
-          <div id={`${id}-error`} style={{ color: "var(--kc-error)", marginTop: 4 }}>
-            {error}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+/**
+ * Отметка поля, названного отказом службы: ввод ссылается на сообщение у поля
+ * (`FieldError`) тем же именем, которым оно выведено из имени ввода.
+ */
+function markedBy(inputId: string, error: string | null) {
+  return error ? { "aria-invalid": true as const, "aria-describedby": fieldErrorId(inputId), status: "error" as const } : {};
 }
 
-/** Строка ФАКТА: подпись слева, значение справа; поля ввода нет — подпись не `<label>`. */
-function FactRow({ caption, children }: { caption: string; children: ReactNode }) {
-  return (
-    <div style={{ display: "flex", gap: 16, alignItems: "flex-start", marginBottom: 12 }}>
-      <div style={{ flex: "0 0 200px" }}>{caption}</div>
-      <div style={{ flex: "1 1 auto", minWidth: 0 }}>{children}</div>
-    </div>
-  );
-}
+// Геометрия формы здесь — ОБЩАЯ сетка (`FormGrid`: имя слева, ввод справа), а
+// отказ у поля — общий `FieldError`. Прежде страница выписывала обе копией:
+// свою колонку подписи с числом ширины и свою разметку отказа (#1274, круг 1
+// ревью).
 
 // ─── пароль ──────────────────────────────────────────────────────────────────
 
@@ -112,8 +98,7 @@ function PasswordSection() {
   const [refusal, setRefusal] = useState<LaneRefusal | null>(null);
   const [changed, setChanged] = useState(false);
 
-  const onSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const onSubmit = async () => {
     if (busy) return;
     setBusy(true);
     setRefusal(null);
@@ -130,34 +115,35 @@ function PasswordSection() {
   };
 
   const marked = refusal?.field === "currentPassword" || refusal?.field === "newPassword" ? refusal.field : null;
-  const describe = (f: "currentPassword" | "newPassword", inputId: string) =>
-    marked === f
-      ? { "aria-invalid": true as const, "aria-describedby": `${inputId}-error`, status: "error" as const }
-      : {};
+  const errorOf = (f: "currentPassword" | "newPassword") => (marked === f ? refusal!.message : null);
+  const currentId = `${id}-current`;
+  const nextId = `${id}-next`;
 
   return (
     <Section title="Пароль">
-      <form onSubmit={(e) => void onSubmit(e)} noValidate>
-        <FieldRow id={`${id}-current`} label="Текущий пароль" error={marked === "currentPassword" ? refusal!.message : null}>
+      <FormGrid onSubmit={() => void onSubmit()}>
+        <Form.Item label="Текущий пароль" htmlFor={currentId}>
           <Input
-            id={`${id}-current`}
+            id={currentId}
             type="password"
             autoComplete="current-password"
             value={current}
             onChange={(e) => setCurrent(e.target.value)}
-            {...describe("currentPassword", `${id}-current`)}
+            {...markedBy(currentId, errorOf("currentPassword"))}
           />
-        </FieldRow>
-        <FieldRow id={`${id}-next`} label="Новый пароль" error={marked === "newPassword" ? refusal!.message : null}>
+          <FieldError id={fieldErrorId(currentId)} message={errorOf("currentPassword") ?? undefined} />
+        </Form.Item>
+        <Form.Item label="Новый пароль" htmlFor={nextId}>
           <Input
-            id={`${id}-next`}
+            id={nextId}
             type="password"
             autoComplete="new-password"
             value={next}
             onChange={(e) => setNext(e.target.value)}
-            {...describe("newPassword", `${id}-next`)}
+            {...markedBy(nextId, errorOf("newPassword"))}
           />
-        </FieldRow>
+          <FieldError id={fieldErrorId(nextId)} message={errorOf("newPassword") ?? undefined} />
+        </Form.Item>
         {refusal && marked === null && (
           <div style={{ marginBottom: 12 }}>
             <LaneRefusalAlert refusal={refusal} />
@@ -171,7 +157,7 @@ function PasswordSection() {
         <Button type="primary" htmlType="submit" loading={busy}>
           Сменить пароль
         </Button>
-      </form>
+      </FormGrid>
     </Section>
   );
 }
@@ -273,46 +259,39 @@ function SecondFactorSection() {
   if (stage.kind === "заведение") {
     const firstCodeId = `${id}-first-code`;
     body = (
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void confirm(stage.code);
-        }}
-        noValidate
-      >
+      <FormGrid onSubmit={() => void confirm(stage.code)}>
         <Typography.Paragraph>
           Добавьте учётную запись в приложение-аутентификатор — секретом или адресом ниже, — и введите код, который оно
           покажет.
         </Typography.Paragraph>
-        <FactRow caption="Секрет">
+        <Form.Item label="Секрет">
           <Typography.Text code copyable>
             {stage.enrollment.secret}
           </Typography.Text>
-        </FactRow>
-        <FactRow caption="Адрес для приложения">
+        </Form.Item>
+        <Form.Item label="Адрес для приложения">
           <Typography.Text code copyable style={{ wordBreak: "break-all" }}>
             {stage.enrollment.otpauthUri}
           </Typography.Text>
-        </FactRow>
-        <FieldRow id={firstCodeId} label="Первый код из приложения" error={codeError}>
+        </Form.Item>
+        <Form.Item label="Первый код из приложения" htmlFor={firstCodeId}>
           <Input
             id={firstCodeId}
             value={stage.code}
             onChange={(e) => setStage({ ...stage, code: e.target.value })}
             autoComplete="one-time-code"
             inputMode="numeric"
-            {...(codeError
-              ? { "aria-invalid": true as const, "aria-describedby": `${firstCodeId}-error`, status: "error" as const }
-              : {})}
+            {...markedBy(firstCodeId, codeError)}
           />
-        </FieldRow>
+          <FieldError id={fieldErrorId(firstCodeId)} message={codeError ?? undefined} />
+        </Form.Item>
         <Button type="primary" htmlType="submit" loading={busy} style={{ marginRight: 8 }}>
           Подтвердить
         </Button>
         <Button onClick={() => setStage({ kind: "состояние" })} disabled={busy}>
           Отменить
         </Button>
-      </form>
+      </FormGrid>
     );
   } else if (stage.kind === "коды") {
     body = (
@@ -338,32 +317,24 @@ function SecondFactorSection() {
   } else if (stage.kind === "снятие" || stage.kind === "перечеканка") {
     const removing = stage.kind === "снятие";
     body = (
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void (removing ? remove(stage.factor) : regenerate(stage.factor));
-        }}
-        noValidate
-      >
+      <FormGrid onSubmit={() => void (removing ? remove(stage.factor) : regenerate(stage.factor))}>
         <Typography.Paragraph>
           {removing
             ? "Подтвердите снятие вторым фактором."
             : "Подтвердите выпуск новых запасных кодов вторым фактором — прежние перестанут действовать."}
         </Typography.Paragraph>
-        <div style={{ marginBottom: 12 }}>
-          <SecondFactorCodeField
-            value={stage.factor}
-            onChange={(factor) => setStage({ kind: stage.kind, factor })}
-            codeError={codeError}
-          />
-        </div>
+        <SecondFactorCodeField
+          value={stage.factor}
+          onChange={(factor) => setStage({ kind: stage.kind, factor })}
+          codeError={codeError}
+        />
         <Button type="primary" danger={removing} htmlType="submit" loading={busy} style={{ marginRight: 8 }}>
           {removing ? "Снять" : "Выпустить коды"}
         </Button>
         <Button onClick={() => setStage({ kind: "состояние" })} disabled={busy}>
           Отменить
         </Button>
-      </form>
+      </FormGrid>
     );
   } else if (state) {
     body = state.totp.enrolled ? (

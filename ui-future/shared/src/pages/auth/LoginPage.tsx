@@ -1,14 +1,16 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { useEffect, useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useState } from "react";
 import { Link } from "react-router";
-import { Button, Checkbox, Input, Spin } from "antd";
+import { Button, Checkbox, Form, Input, Spin } from "antd";
 import { LaneRefusal, loginLane, sessionIdentity, type SecondFactorPresentation } from "@shared/api/login-lane";
 import { LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalAlert";
 import { EMPTY_PRESENTATION, SecondFactorCodeField } from "@shared/components/molecules/auth/SecondFactorCodeField";
+import { FieldError, fieldErrorId } from "@shared/components/organisms/form/FieldError";
+import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { useFormToken } from "@shared/hooks/use-form-token";
-import { CeremonyField, CeremonyScreen } from "./CeremonyScreen";
+import { CeremonyScreen } from "./CeremonyScreen";
 import { useReturnTo } from "./use-return-to";
 
 // Экран входа — церемонию ведёт консоль своими глаголами (приёмка F8, S1).
@@ -89,8 +91,7 @@ export function LoginPage({ leave = leaveDocument }: { leave?: (to: string) => v
     return () => window.clearTimeout(t);
   }, [lockedFor]);
 
-  const onSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const onSubmit = async () => {
     if (busy || lockedFor !== null) return;
     setBusy(true);
     setRefusal(null);
@@ -115,10 +116,11 @@ export function LoginPage({ leave = leaveDocument }: { leave?: (to: string) => v
   }
 
   const marked = fieldOf(refusal);
+  const inputId = (f: Exclude<LoginField, "code">) => `${id}-${f}`;
   const fieldError = (f: LoginField) => (marked === f ? refusal!.message : null);
-  const described = (f: LoginField) =>
+  const described = (f: Exclude<LoginField, "code">) =>
     marked === f
-      ? { "aria-invalid": true as const, "aria-describedby": `${id}-${f}-error`, status: "error" as const }
+      ? { "aria-invalid": true as const, "aria-describedby": fieldErrorId(inputId(f)), status: "error" as const }
       : {};
 
   return (
@@ -130,36 +132,36 @@ export function LoginPage({ leave = leaveDocument }: { leave?: (to: string) => v
         </Link>
       }
     >
-      <form aria-label="Вход в консоль" onSubmit={(e) => void onSubmit(e)} noValidate>
-        <CeremonyField id={`${id}-email`} label="Адрес электронной почты" error={fieldError("email")}>
+      <FormGrid label="Вход в консоль" onSubmit={() => void onSubmit()}>
+        <Form.Item label="Адрес электронной почты" htmlFor={inputId("email")}>
           <Input
-            id={`${id}-email`}
+            id={inputId("email")}
             type="email"
             autoComplete="username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             {...described("email")}
           />
-        </CeremonyField>
-        <CeremonyField id={`${id}-password`} label="Пароль" error={fieldError("password")}>
+          <FieldError id={fieldErrorId(inputId("email"))} message={fieldError("email") ?? undefined} />
+        </Form.Item>
+        <Form.Item label="Пароль" htmlFor={inputId("password")}>
           <Input
-            id={`${id}-password`}
+            id={inputId("password")}
             type="password"
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             {...described("password")}
           />
-        </CeremonyField>
-        <div style={{ marginBottom: 16 }}>
+          <FieldError id={fieldErrorId(inputId("password"))} message={fieldError("password") ?? undefined} />
+        </Form.Item>
+        <Form.Item label="Второй фактор">
           <Checkbox checked={withFactor} onChange={(e) => setWithFactor(e.target.checked)}>
             Подтвердить вторым фактором
           </Checkbox>
-        </div>
+        </Form.Item>
         {withFactor && (
-          <div style={{ marginBottom: 16 }}>
-            <SecondFactorCodeField value={factor} onChange={setFactor} codeError={fieldError("code")} />
-          </div>
+          <SecondFactorCodeField value={factor} onChange={setFactor} codeError={fieldError("code")} />
         )}
         {refusal && marked === null && (
           <div style={{ marginBottom: 16 }}>
@@ -169,7 +171,7 @@ export function LoginPage({ leave = leaveDocument }: { leave?: (to: string) => v
         <Button type="primary" htmlType="submit" block loading={busy} disabled={lockedFor !== null}>
           Войти
         </Button>
-      </form>
+      </FormGrid>
     </CeremonyScreen>
   );
 }

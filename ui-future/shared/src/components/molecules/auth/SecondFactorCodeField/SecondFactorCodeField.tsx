@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { useId } from "react";
-import { Input, Radio } from "antd";
+import { Form, Input, Radio } from "antd";
 import type { CodeMethod, SecondFactorPresentation } from "@shared/api/login-lane";
+import { FieldError, fieldErrorId } from "@shared/components/organisms/form/FieldError";
 import { STEP_UP_METHODS } from "@shared/lib/step-up-methods";
 
 // Предъявление второго фактора — ОДНО поле на четыре формы: вход, повышение
@@ -17,6 +18,12 @@ import { STEP_UP_METHODS } from "@shared/lib/step-up-methods";
 // Правил кода здесь нет (Р2): шесть цифр у кода из приложения и десять знаков у
 // запасного судит служба и называет поле отказом. Подсказка формата ввода
 // (`inputMode`) — не правило, а клавиатура.
+//
+// ГЕОМЕТРИЯ — НЕ ЗДЕСЬ. Поле отдаёт две строки формы (`Form.Item`), а имя
+// слева и ввод справа им задаёт сетка той формы, в которую поле встало
+// (`FormGrid`): все четыре формы-хозяйки её несут. Своя раскладка «подпись над
+// вводом» здесь была копией канона формы, а отказ у поля — копией `FieldError`
+// (#1274, круг 1 ревью).
 
 /** Подпись способа. Тип ключа исчерпывающий: способ из перечня без подписи роняет сборку. */
 export const CODE_METHOD_LABEL: Record<CodeMethod, string> = {
@@ -37,24 +44,25 @@ interface Props {
 export function SecondFactorCodeField({ value, onChange, codeError = null, disabled }: Props) {
   const id = useId();
   const codeId = `${id}-code`;
-  const errorId = `${id}-code-error`;
+  const errorId = fieldErrorId(codeId);
   return (
-    <fieldset style={{ border: 0, margin: 0, padding: 0 }} disabled={disabled}>
-      <legend style={{ marginBottom: 8 }}>Способ подтверждения</legend>
-      <Radio.Group
-        value={value.method}
-        onChange={(e) => onChange({ method: e.target.value as CodeMethod, code: value.code })}
-        options={STEP_UP_METHODS.map((m) => ({
-          value: m,
-          label: CODE_METHOD_LABEL[m],
-        }))}
-      />
-      <div style={{ marginTop: 12 }}>
-        <label htmlFor={codeId} style={{ display: "block", marginBottom: 4 }}>
-          Код
-        </label>
+    <>
+      <Form.Item label="Способ подтверждения">
+        <Radio.Group
+          aria-label="Способ подтверждения"
+          disabled={disabled}
+          value={value.method}
+          onChange={(e) => onChange({ method: e.target.value as CodeMethod, code: value.code })}
+          options={STEP_UP_METHODS.map((m) => ({
+            value: m,
+            label: CODE_METHOD_LABEL[m],
+          }))}
+        />
+      </Form.Item>
+      <Form.Item label="Код" htmlFor={codeId}>
         <Input
           id={codeId}
+          disabled={disabled}
           value={value.code}
           onChange={(e) => onChange({ method: value.method, code: e.target.value })}
           autoComplete="one-time-code"
@@ -63,12 +71,8 @@ export function SecondFactorCodeField({ value, onChange, codeError = null, disab
           aria-describedby={codeError ? errorId : undefined}
           status={codeError ? "error" : undefined}
         />
-        {codeError && (
-          <div id={errorId} style={{ color: "var(--kc-error)", marginTop: 4 }}>
-            {codeError}
-          </div>
-        )}
-      </div>
-    </fieldset>
+        <FieldError id={errorId} message={codeError ?? undefined} />
+      </Form.Item>
+    </>
   );
 }

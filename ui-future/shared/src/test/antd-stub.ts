@@ -814,8 +814,20 @@ export function antdStub(): Record<string, unknown> {
   // Настоящий `Form.Item` ПОКАЗЫВАЕТ подпись поля; заменитель ронял её в
   // атрибут, поэтому «какие поля видит пользователь» было ненаблюдаемо, а
   // проба о составе формы утверждала бы форму дублёра.
-  const FormItem = ({ children, label }: { children?: React.ReactNode; label?: React.ReactNode }) =>
-    React.createElement("div", null, React.createElement("label", null, label), children);
+  //
+  // И СВЯЗЫВАЕТ её с вводом, когда задан `htmlFor`: настоящий кладёт его в
+  // `for` подписи. Заменитель, ронявший связь, был СТРОЖЕ настоящего — ввод под
+  // подписью оставался безымянным, и проба по доступному имени падала на
+  // исправной форме (#1274: экраны церемоний на общей сетке формы).
+  const FormItem = ({
+    children,
+    label,
+    htmlFor,
+  }: {
+    children?: React.ReactNode;
+    label?: React.ReactNode;
+    htmlFor?: string;
+  }) => React.createElement("div", null, React.createElement("label", htmlFor ? { htmlFor } : null, label), children);
   // Дескриптор формы несёт ТЕ ЖЕ методы, что настоящий. Пустой объект делал
   // заменитель СТРОЖЕ настоящего: вызывающий падал на `form.resetFields is not a
   // function` — то есть проба умирала на монтировании, не дойдя до поведения,

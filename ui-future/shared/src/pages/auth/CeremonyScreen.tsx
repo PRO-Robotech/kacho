@@ -3,10 +3,20 @@
 
 import type { ReactNode } from "react";
 import { Typography } from "antd";
+import { FORM_LABEL_WIDTH } from "@shared/components/organisms/form/FormGrid";
 
 // Рамка экранов церемонии: вход, регистрация, выход и страница неведомого
 // адреса. Экраны стоят ВНЕ каркаса консоли: у человека без сессии нет ни
 // проекта, ни разделов, и рейл с ними обещал бы то, чего он получить не может.
+//
+// Формы внутри рамки — ОБЩАЯ сетка формы консоли (`FormGrid`: имя слева, ввод
+// справа), а не своя «подпись над вводом» (#1274, круг 1 ревью). Поэтому ширина
+// карточки выводится из ширины колонки подписи: колонка плюс поле ввода,
+// в которое помещается адрес электронной почты, плюс поля карточки.
+
+/** Ширина поля ввода, в которое адрес электронной почты помещается целиком. */
+const INPUT_WIDTH = 300;
+const CARD_PADDING = 28;
 
 export function CeremonyScreen({
   title,
@@ -32,8 +42,8 @@ export function CeremonyScreen({
       <div
         style={{
           width: "100%",
-          maxWidth: 420,
-          padding: "28px 28px 24px",
+          maxWidth: FORM_LABEL_WIDTH + INPUT_WIDTH + 2 * CARD_PADDING,
+          padding: `${CARD_PADDING}px ${CARD_PADDING}px 24px`,
           background: "var(--kc-container)",
           border: "1px solid var(--kc-border)",
           borderRadius: 12,
@@ -48,32 +58,5 @@ export function CeremonyScreen({
         {footer !== undefined && <div style={{ marginTop: 20 }}>{footer}</div>}
       </div>
     </main>
-  );
-}
-
-/** Поле формы церемонии: подпись над вводом, отказ службы о поле — под ним. */
-export function CeremonyField({
-  id,
-  label,
-  error,
-  children,
-}: {
-  id: string;
-  label: string;
-  error: string | null;
-  children: ReactNode;
-}) {
-  return (
-    <div style={{ marginBottom: 16 }}>
-      <label htmlFor={id} style={{ display: "block", marginBottom: 4 }}>
-        {label}
-      </label>
-      {children}
-      {error && (
-        <div id={`${id}-error`} style={{ color: "var(--kc-error)", marginTop: 4 }}>
-          {error}
-        </div>
-      )}
-    </div>
   );
 }

@@ -1,13 +1,15 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { useId, useState, type FormEvent } from "react";
+import { useId, useState } from "react";
 import { Link } from "react-router";
-import { Button, Input } from "antd";
+import { Button, Form, Input } from "antd";
 import { LaneRefusal, loginLane } from "@shared/api/login-lane";
 import { LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalAlert";
+import { FieldError, fieldErrorId } from "@shared/components/organisms/form/FieldError";
+import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { useFormToken } from "@shared/hooks/use-form-token";
-import { CeremonyField, CeremonyScreen } from "./CeremonyScreen";
+import { CeremonyScreen } from "./CeremonyScreen";
 import { loginAddress } from "./ceremony-addresses";
 import { useReturnTo } from "./use-return-to";
 
@@ -41,8 +43,7 @@ export function RegistrationPage({ leave = leaveDocument }: { leave?: (to: strin
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<LaneRefusal | null>(null);
 
-  const onSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const onSubmit = async () => {
     if (busy) return;
     setBusy(true);
     setRefusal(null);
@@ -57,10 +58,11 @@ export function RegistrationPage({ leave = leaveDocument }: { leave?: (to: strin
   };
 
   const marked = fieldOf(refusal);
-  const fieldError = (f: RegistrationField) => (marked === f ? refusal!.message : null);
+  const inputId = (f: RegistrationField) => `${id}-${f}`;
+  const fieldError = (f: RegistrationField) => (marked === f ? refusal!.message : undefined);
   const described = (f: RegistrationField) =>
     marked === f
-      ? { "aria-invalid": true as const, "aria-describedby": `${id}-${f}-error`, status: "error" as const }
+      ? { "aria-invalid": true as const, "aria-describedby": fieldErrorId(inputId(f)), status: "error" as const }
       : {};
 
   return (
@@ -68,27 +70,29 @@ export function RegistrationPage({ leave = leaveDocument }: { leave?: (to: strin
       title="Новая учётная запись"
       footer={<Link to={loginAddress(returnTo !== "/" ? returnTo : undefined)}>Уже есть учётная запись — войти</Link>}
     >
-      <form aria-label="Новая учётная запись" onSubmit={(e) => void onSubmit(e)} noValidate>
-        <CeremonyField id={`${id}-email`} label="Адрес электронной почты" error={fieldError("email")}>
+      <FormGrid label="Новая учётная запись" onSubmit={() => void onSubmit()}>
+        <Form.Item label="Адрес электронной почты" htmlFor={inputId("email")}>
           <Input
-            id={`${id}-email`}
+            id={inputId("email")}
             type="email"
             autoComplete="username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             {...described("email")}
           />
-        </CeremonyField>
-        <CeremonyField id={`${id}-password`} label="Пароль" error={fieldError("password")}>
+          <FieldError id={fieldErrorId(inputId("email"))} message={fieldError("email")} />
+        </Form.Item>
+        <Form.Item label="Пароль" htmlFor={inputId("password")}>
           <Input
-            id={`${id}-password`}
+            id={inputId("password")}
             type="password"
             autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             {...described("password")}
           />
-        </CeremonyField>
+          <FieldError id={fieldErrorId(inputId("password"))} message={fieldError("password")} />
+        </Form.Item>
         {refusal && marked === null && (
           <div style={{ marginBottom: 16 }}>
             <LaneRefusalAlert refusal={refusal} />
@@ -97,7 +101,7 @@ export function RegistrationPage({ leave = leaveDocument }: { leave?: (to: strin
         <Button type="primary" htmlType="submit" block loading={busy}>
           Завести учётную запись
         </Button>
-      </form>
+      </FormGrid>
     </CeremonyScreen>
   );
 }
