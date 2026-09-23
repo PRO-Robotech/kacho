@@ -205,13 +205,81 @@ paired() {
 # самоотчёта при старте), а не настройки: чужой флаг подчарта признаком не
 # служит. Половины, назвавшие разное, — отказ: такой стенд решает о личности
 # двумя способами сразу.
+#
+# «НЕ ПРОЧИТАНО» — ОТДЕЛЬНЫЙ ИСХОД, А НЕ НОЛЬ. Сюда приходит то, что вернуло
+# чтение: число либо исход отказа (`unread-*`). Прежняя редакция сравнивала вход
+# с нулём, и нечисло проваливалось сквозь `[ -ne ]` (ошибка сравнения — ложь) в
+# `ok`: отказ сервера читался как «провайдера нет».
 own_absence_verdict() {
   local iam="$1" edge="$2" pods="$3" addrs="$4"
   if [ "$iam" != own ] && [ "$edge" != own ]; then echo not-own; return; fi
   if [ "$iam" != "$edge" ]; then echo halves-disagree; return; fi
+  case "$pods" in ''|*[!0-9]*) echo pods-unread; return ;; esac
   if [ "$pods" -ne 0 ]; then echo provider-present; return; fi
+  case "$addrs" in ''|*[!0-9]*) echo consumers-unread; return ;; esac
   if [ "$addrs" -ne 0 ]; then echo consumer-names-provider; return; fi
   echo ok
+}
+
+# provider_pod_census <код kubectl> <вывод `get pods -o name`> → число | исход отказа.
+#
+# КОД ЧТЕНИЯ БЕРЁТСЯ ОТДЕЛЬНО ОТ СЧЁТА СТРОК. Счёт строк конвейером
+# (`kubectl … 2>/dev/null | grep -c .`) отвечает «0» и на пустой список, и на
+# отказ сервера — отсутствие, которое гейт утверждает, становится неотличимым от
+# отсутствия чтения. Код ненулевой — не прочитано, даже если строки были
+# (частичный вывод числом не является). Строка не формы `pod/<имя>` — тоже не
+# прочитано: корзины «прочее» у разбора нет.
+provider_pod_census() {
+  local rc="$1" out="$2" n=0 line
+  if [ "$rc" != 0 ]; then echo unread-refused; return; fi
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    case "$line" in
+      pod/?*) n=$((n + 1)) ;;
+      *) echo unread-shape; return ;;
+    esac
+  done <<<"$out"
+  echo "$n"
+}
+
+# consumer_addr_census <код kubectl> <запрошено объектов> <«прочитано-объектов адресов»>
+#   → число адресов | исход отказа.
+#
+# Тот же класс у соседнего чтения. `get deploy A B` при одном отсутствующем
+# объекте печатает найденный И выходит ненулевым кодом; счёт адресов по
+# напечатанному дал бы «0 адресов» о потребителе, которого не прочитали. Поэтому:
+# код ненулевой — не прочитано; объектов меньше запрошенного — не прочитано;
+# разбор дал не два числа — не прочитано.
+consumer_addr_census() {
+  local rc="$1" want="$2" counts="$3" items="" addrs="" rest=""
+  if [ "$rc" != 0 ]; then echo unread-refused; return; fi
+  read -r items addrs rest <<<"$counts"
+  case "$items" in ''|*[!0-9]*) echo unread-shape; return ;; esac
+  case "$addrs" in ''|*[!0-9]*) echo unread-shape; return ;; esac
+  if [ -n "$rest" ]; then echo unread-shape; return; fi
+  if [ "$items" -ne "$want" ]; then echo unread-partial; return; fi
+  echo "$addrs"
+}
+
+# read_provider_pods — ЕДИНСТВЕННОЕ чтение подов провайдера: им пользуются и
+# кластерная половина, и самопроверка (с подменённым kubectl). Ставит
+# PODS_CENSUS (исход provider_pod_census) и PODS_REFUSAL (текст отказа kubectl,
+# чтобы «не прочитано» называло причину, а не только факт).
+read_provider_pods() {
+  local out rc errf
+  PODS_CENSUS=unread-refused
+  PODS_REFUSAL=""
+  if ! errf="$(mktemp "${TMPDIR:-/tmp}/admin-hop-pods.XXXXXX")"; then
+    PODS_REFUSAL="не удалось завести файл для текста отказа kubectl (mktemp)"
+    return
+  fi
+  out="$(kubectl -n "$NS" get pods -l 'app.kubernetes.io/name in (hydra,kratos)' -o name 2>"$errf")"
+  rc=$?
+  PODS_CENSUS="$(provider_pod_census "$rc" "$out")"
+  case "$PODS_CENSUS" in
+    unread-*) PODS_REFUSAL="код kubectl $rc: $(head -c 300 "$errf" | tr '\n' ' ')" ;;
+  esac
+  rm -f "$errf"
 }
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -354,6 +422,77 @@ http_code=400'
   expect_own "own, но потребитель называет адрес перехода" consumer-names-provider own own 0 1
   expect_own "половины назвали разное" halves-disagree own external 0 0
   expect_own "external — судит прежняя половина гейта" not-own external external 1 2
+  # «НЕ ПРОЧИТАНО» ≠ «НЕТ». Суждение получает от чтения не число, а исход отказа —
+  # и обязано отказать, а не провалиться сквозь сравнение с нулём в `ok`.
+  expect_own "подов не прочитано (отказ сервера)" pods-unread own own unread-refused 0
+  expect_own "подов не прочитано (пустое значение)" pods-unread own own "" 0
+  expect_own "окружение потребителей не прочитано" consumers-unread own own 0 unread-partial
+
+  echo
+  echo "-- счёт подов провайдера: код kubectl читается ОТДЕЛЬНО от счёта строк --"
+  expect_pods() { # <метка> <ожидаемо> <код kubectl> <вывод -o name>
+    local label="$1" want="$2" got
+    checked=$((checked + 1))
+    got="$(provider_pod_census "$3" "$4")"
+    if [ "$got" = "$want" ]; then echo "  ✓ $label → $got"
+    else echo "  ✗ $label → получено '$got', ожидалось '$want'"; rc=1; fi
+  }
+  expect_pods "список пуст, код 0 — провайдера нет (законный близнец)" 0 0 ""
+  expect_pods "два пода, код 0" 2 0 'pod/provider-admin-0
+pod/provider-session-0'
+  expect_pods "отказ сервера, вывода нет" unread-refused 1 ""
+  expect_pods "отказ после частичного вывода" unread-refused 1 "pod/provider-admin-0"
+  expect_pods "код 0, но строка — не имя пода" unread-shape 0 "No resources found in kacho namespace."
+
+  echo
+  echo "-- счёт адресов у потребителей: прочитаны ОБА названных объекта, иначе не прочитано --"
+  expect_consumers() { # <метка> <ожидаемо> <код kubectl> <запрошено объектов> <«объектов адресов»>
+    local label="$1" want="$2" got
+    checked=$((checked + 1))
+    got="$(consumer_addr_census "$3" "$4" "$5")"
+    if [ "$got" = "$want" ]; then echo "  ✓ $label → $got"
+    else echo "  ✗ $label → получено '$got', ожидалось '$want'"; rc=1; fi
+  }
+  expect_consumers "оба прочитаны, адресов нет (законный близнец)" 0 0 2 "2 0"
+  expect_consumers "оба прочитаны, адрес есть" 1 0 2 "2 1"
+  expect_consumers "отказ сервера, вывода нет" unread-refused 1 2 ""
+  expect_consumers "прочитан один из двух, второй NotFound" unread-refused 1 2 "1 0"
+  expect_consumers "код 0, но объектов меньше запрошенного" unread-partial 0 2 "1 0"
+  expect_consumers "разбор не дал чисел" unread-shape 0 2 ""
+  expect_consumers "разбор дал лишнее поле" unread-shape 0 2 "2 0 7"
+
+  echo
+  echo "-- путь чтения подов — ТОТ ЖЕ код, что у кластерной половины; kubectl подменён --"
+  # Подменяется ровно один факт — исход `get pods`; суждение берёт то, что
+  # вернуло чтение, и ничего сверх. Подмена — функцией в подоболочке: вызывается
+  # read_provider_pods кластерной половины, а не её копия.
+  expect_read() { # <метка> <режим get pods> <ожидаемое суждение> <подстрока причины | ->
+    local label="$1" mode="$2" want="$3" why="$4" got
+    checked=$((checked + 1))
+    got="$(
+      kubectl() {
+        case "$mode" in
+          empty)   return 0 ;;
+          present) echo 'pod/provider-admin-0'; return 0 ;;
+          refused) echo 'Unable to connect to the server: net/http: TLS handshake timeout' >&2; return 1 ;;
+        esac
+        return 97
+      }
+      read_provider_pods
+      printf '%s|%s' "$(own_absence_verdict own own "$PODS_CENSUS" 0)" "$PODS_REFUSAL"
+    )"
+    local verdict="${got%%|*}" refusal="${got#*|}"
+    if [ "$verdict" != "$want" ]; then
+      echo "  ✗ $label → суждение '$verdict', ожидалось '$want'"; rc=1; return
+    fi
+    if [ "$why" != - ] && ! grep -qF "$why" <<<"$refusal"; then
+      echo "  ✗ $label → суждение '$verdict', но причина отказа не названа (получено '$refusal')"; rc=1; return
+    fi
+    echo "  ✓ $label → $verdict${refusal:+ ($refusal)}"
+  }
+  expect_read "get pods пуст — провайдера нет (законный близнец)" empty ok -
+  expect_read "get pods отказал — НЕ зелёное, причина названа" refused pods-unread 'TLS handshake timeout'
+  expect_read "под провайдера есть (положительный контроль)" present provider-present -
 
   echo
   echo "синтетических наблюдений и законных входов проверено: $checked"
@@ -407,22 +546,32 @@ boot_identity_provider() { # <deployment>
 IAM_POSTURE="$(boot_identity_provider kaname)"
 EDGE_POSTURE="$(boot_identity_provider api-gateway)"
 if [ "$IAM_POSTURE" = own ] || [ "$EDGE_POSTURE" = own ]; then
-  PROVIDER_PODS="$(kubectl -n "$NS" get pods -l 'app.kubernetes.io/name in (hydra,kratos)' -o name 2>/dev/null | grep -c .)"
-  CONSUMER_ADDRS="$(kubectl -n "$NS" get deploy api-gateway kaname -o json 2>/dev/null | jq -r '
-    [ .items[].spec.template.spec.containers[].env[]?
+  # Оба чтения отдают КОД отдельно от счёта: «не прочитано» — отказ с причиной,
+  # а не «0» (kacho#2816, возврат ревью волны kacho#2795).
+  read_provider_pods
+  PROVIDER_PODS="$PODS_CENSUS"
+  CONSUMER_OBJECTS=(api-gateway kaname)
+  consumer_json="$(kubectl -n "$NS" get deploy "${CONSUMER_OBJECTS[@]}" -o json 2>/dev/null)"
+  consumer_rc=$?
+  consumer_counts="$(jq -r '
+    "\(.items | length) \([ .items[].spec.template.spec.containers[].env[]?
       | select(.name == "KACHO_HYDRA_INTROSPECTION_URL" or .name == "KACHO_HYDRA_ADMIN_URL"
                or .name == "KANAME_HYDRA_ADMIN_URL")
-      | select((.value // "") != "") ] | length' 2>/dev/null)"
-  CONSUMER_ADDRS="${CONSUMER_ADDRS:-x}"
-  if ! [ "$CONSUMER_ADDRS" -ge 0 ] 2>/dev/null; then
-    fail "окружение потребителей перехода (api-gateway, kaname) не прочитано — отсутствие адресов НЕ установлено"
-    exit 1
-  fi
+      | select((.value // "") != "") ] | length)"' <<<"$consumer_json" 2>/dev/null)"
+  CONSUMER_ADDRS="$(consumer_addr_census "$consumer_rc" "${#CONSUMER_OBJECTS[@]}" "$consumer_counts")"
   assertion
   case "$(own_absence_verdict "$IAM_POSTURE" "$EDGE_POSTURE" "$PROVIDER_PODS" "$CONSUMER_ADDRS")" in
     ok)
-      ok "посадка own (служба: $IAM_POSTURE, край: $EDGE_POSTURE): провайдера нет по объявлению — подов провайдера $PROVIDER_PODS, адресов административного перехода у потребителей $CONSUMER_ADDRS; переходу судить нечего"
+      ok "посадка own (служба: $IAM_POSTURE, край: $EDGE_POSTURE): провайдера нет по объявлению — подов провайдера $PROVIDER_PODS, адресов административного перехода у потребителей $CONSUMER_ADDRS (прочитано объектов ${#CONSUMER_OBJECTS[@]} из ${#CONSUMER_OBJECTS[@]}); переходу судить нечего"
       exit 0 ;;
+    pods-unread)
+      fail "поды провайдера НЕ ПРОЧИТАНЫ ($PROVIDER_PODS) — отсутствие провайдера НЕ установлено"
+      note "$PODS_REFUSAL"
+      note "«не прочитано» не равно «нет»: суждению о посадке own не на чем стоять."
+      exit 1 ;;
+    consumers-unread)
+      fail "окружение потребителей перехода (${CONSUMER_OBJECTS[*]}) НЕ ПРОЧИТАНО ($CONSUMER_ADDRS; код kubectl $consumer_rc, объектов и адресов: '${consumer_counts}') — отсутствие адресов НЕ установлено"
+      exit 1 ;;
     halves-disagree)
       fail "посадку половины назвали РАЗНУЮ: служба '$IAM_POSTURE', край '$EDGE_POSTURE'"; exit 1 ;;
     provider-present)
