@@ -6,7 +6,6 @@ import { raiseAssurance } from "./assurance";
 import {
   LANE,
   SEED_PASSWORD,
-  assertCeremonyLanding,
   SESSION_COOKIE,
   backupCodeOutside,
   newSeed,
@@ -49,10 +48,13 @@ import { ceremonyCensus, formatCall, register, test, watchRefusals, type Ceremon
  */
 
 // ─── условие прогона (приёмка F8, §4) ─────────────────────────────────────────
-
-test.beforeAll(async ({ playwright }, testInfo) => {
-  await assertCeremonyLanding(testInfo, playwright);
-});
+//
+// Условия здесь НЕТ, и это его место, а не пропуск. Эти сценарии исполнимы лишь
+// на посадке, где адреса церемоний отдаёт оболочка консоли; проверяет её СВОЙ
+// проект прогонщика (`preconditions/ceremony-landing.precondition.ts`), от
+// которого проект этого файла зависит (`playwright.config.ts`). Не создано
+// условие — сценарии не стартуют, и исход называется «не выполнилось» с числом
+// сценариев, а не красным о продукте.
 
 // ─── экраны: доступные имена, а не классы ─────────────────────────────────────
 
