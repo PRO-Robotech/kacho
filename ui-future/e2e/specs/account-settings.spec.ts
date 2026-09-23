@@ -5,7 +5,6 @@ import { expect, type BrowserContext, type Page, type Response, type TestInfo } 
 import {
   LANE,
   SESSION_COOKIE,
-  assertCeremonyLanding,
   codeOutsideWindow,
   lastIssued,
   newSeed,
@@ -33,11 +32,10 @@ import { ceremonyCensus, formatCall, test, type CeremonyCensus } from "./fixture
  * кода здесь нет.
  */
 
-// Условие прогона то же, что у экранов входа (приёмка F8, §4): без него исход —
-// «не выполнилось» с названной причиной, а не красное.
-test.beforeAll(async ({ playwright }, testInfo) => {
-  await assertCeremonyLanding(testInfo, playwright);
-});
+// Условие прогона то же, что у экранов входа (приёмка F8, §4), и живёт оно не
+// здесь: его проверяет свой проект прогонщика
+// (`preconditions/ceremony-landing.precondition.ts`), от которого зависит проект
+// этого файла. Не создано — сценарии не стартуют, исход «не выполнилось».
 
 // ─── экран ───────────────────────────────────────────────────────────────────
 

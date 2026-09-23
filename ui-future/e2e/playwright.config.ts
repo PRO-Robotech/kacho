@@ -32,9 +32,6 @@ import { remoteBrowserRefusal } from "./remote-browser-policy.ts";
  */
 const PRECONDITION_PROJECT = "precondition";
 
-/** Сценарии, исполнимые лишь на посадке приёмки F8 §4. */
-const CEREMONY_LANDING_SPECS = ["**/identity-ceremony.spec.ts"];
-
 const BASE = process.env.KACHO_CONSOLE_URL;
 if (!BASE) {
   throw new Error(
@@ -159,13 +156,16 @@ const config: PlaywrightTestConfig = {
   // Граница набора от этого не двоится: объявления условий гейт считает СВОИМ
   // каталогом и сверяет с записями проекта условий, объявления проб — прежним.
   //
-  // От условия зависит ровно тот файл, чьи сценарии его требуют. Остальной набор
-  // заводит арендатора фикстурой, которой условие не нужно, и исполняется
-  // независимо: вердикт о нём на любой посадке остаётся вердиктом.
+  // От условия зависит ВЕСЬ набор, и это следствие, а не размах. Общая фикстура
+  // заводит арендатора НАШИМ экраном регистрации (`specs/fixtures.ts`,
+  // `register`; приёмка F8, F8-20), поэтому на посадке, где адрес регистрации
+  // отдаёт чужой экран, не исполнима ни одна проба, что заводит арендатора.
+  // Выписать поимённо те немногие, кому арендатор не нужен, значило бы завести
+  // перечень, расходящийся с деревом молча; цена отказа от него — у них нет
+  // вердикта там, где его нет и у остального набора.
   projects: [
     { name: PRECONDITION_PROJECT, testDir: "./preconditions", testMatch: "*.precondition.ts" },
-    { name: "ceremony", testMatch: CEREMONY_LANDING_SPECS, dependencies: [PRECONDITION_PROJECT] },
-    { name: "probes", testIgnore: CEREMONY_LANDING_SPECS },
+    { name: "probes", dependencies: [PRECONDITION_PROJECT] },
   ],
   timeout: 90_000,
   expect: { timeout: 15_000 },
