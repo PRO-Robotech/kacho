@@ -312,6 +312,47 @@ if make_broken_lanes; then
     assert_verdict_lanes дефект-полос "$tmp/lanes-broken.n"; lanes_broken="$(cat "$tmp/lanes-broken.n")"
 fi
 
+# ПОСТУСЛОВИЕ ОТПРАВКИ (#2799). Код хука — исход ПРОВЕРОК, а не отправки: пакет
+# уходит после хука, и обрыв соединения там кодом хука не виден. Поэтому хук
+# обязан напечатать, чем отправка проверяется, — ссылку и отправленную sha. Дефект
+# своего свойства — снятый вызов печати.
+make_broken_postcondition() {
+    sed 's/^postcondition_note$/: postcondition_note снят/' "$HOOK" > "$tmp/hook-no-post"
+    grep -q '^: postcondition_note снят$' "$tmp/hook-no-post"
+}
+
+assert_postcondition() { # $1 — метка прогона, $2 — файл для числа провалов
+    local tag="$1" out="$2" f=0 r rc sha
+    pok()   { printf '  ok   [%s] %s\n' "$tag" "$1"; }
+    pfail() { printf '  FAIL [%s] %s\n' "$tag" "$1"; f=$((f + 1)); }
+    sha="$(g rev-parse off-main-server)"
+    r="$(hook_run off-main-server "$zero" KACHO_X=1)"; rc="$(rc_of "$r")"
+    if [ "$rc" = "0" ]; then pok "зелёная отправка проходит"; else pfail "зелёная отправка остановлена (rc=$rc)"; fi
+    case "$r" in
+        *"git ls-remote origin refs/heads/off-main-server   # ожидается $sha"*)
+            pok "хук печатает постусловие отправки: ссылку и отправленную sha" ;;
+        *) pfail "постусловия отправки (ссылка и sha) в выводе хука нет" ;;
+    esac
+    case "$r" in
+        *"исход ПРОВЕРОК, а не отправки"*) pok "хук называет свой код кодом проверок" ;;
+        *) pfail "хук не говорит, что его код — исход проверок, а не отправки" ;;
+    esac
+    printf '%s' "$f" > "$out"
+}
+
+echo
+echo "── постусловие отправки (ждём ноль провалов)"
+install_hooks "$([ -f "$RANGE" ] && echo "$RANGE" || echo -)"
+assert_postcondition настоящий "$tmp/post-real.n"; post_real="$(cat "$tmp/post-real.n")"
+
+post_broken="н/д"
+if make_broken_postcondition; then
+    echo
+    echo "── прогон против дефекта «постусловие не печатается» (ждём хотя бы один провал)"
+    install_hooks "$([ -f "$RANGE" ] && echo "$RANGE" || echo -)" "$tmp/hook-no-post"
+    assert_postcondition дефект-постусловия "$tmp/post-broken.n"; post_broken="$(cat "$tmp/post-broken.n")"
+fi
+
 # ─────────────────────────────────────────────────────────────────────────────
 # ПРЕДМЕТ ВЕРДИКТА: ТО, ЧТО УЕЗЖАЕТ, А НЕ ТО, НА ЧЁМ СТОИТ КОПИЯ (#2594)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -661,7 +702,7 @@ fi
 
 echo
 printf 'prepush-range-inject: утверждений на прогон — 6 (база диапазона) · 7 (полосы вердикта)\n'
-printf '                      · 6 (черновик по входу) · 14 (предмет вердикта)\n'
+printf '                      · 6 (черновик по входу) · 14 (предмет вердикта) · 3 (постусловие)\n'
 printf '  провалов у настоящего: %s (норма 0)\n' "$real_fails"
 printf '  провалов у дефекта базы: %s (норма ≥1 — иначе проба ничего не проверяет)\n' "$broken_fails"
 printf '  провалов у настоящего (полосы): %s (норма 0)\n' "$lanes_real"
@@ -672,6 +713,8 @@ printf '  провалов у настоящего (предмет вердик�
 printf '  провалов у дефекта предмета:               %s (норма ≥1)\n' "$subj_broken"
 printf '  провалов у дефекта сборщика остатков:      %s (норма ≥1)\n' "$reap_broken"
 printf '  провалов у дефекта ОБЛАСТИ сборщика:       %s (норма ≥1 — чужая копия рядом)\n' "$scope_broken"
+printf '  провалов у настоящего (постусловие):       %s (норма 0)\n' "$post_real"
+printf '  провалов у дефекта постусловия:            %s (норма ≥1)\n' "$post_broken"
 
 rc=0
 [ "$real_fails" = "0" ] || { echo "ОТКАЗ: настоящий хук не проходит собственных утверждений" >&2; rc=1; }
@@ -718,6 +761,14 @@ if [ "$subj_broken" = "н/д" ]; then
     rc=1
 elif [ "${subj_broken:-0}" -lt 1 ]; then
     echo "ОТКАЗ: проба ЗЕЛЁНАЯ на прогоне в рабочей копии — она не проверяет свой предмет" >&2
+    rc=1
+fi
+[ "$post_real" = "0" ] || { echo "ОТКАЗ: настоящий хук не печатает постусловие отправки" >&2; rc=1; }
+if [ "$post_broken" = "н/д" ]; then
+    echo "ОТКАЗ: дефект постусловия не воссоздан — форма вызова печати в хуке изменилась" >&2
+    rc=1
+elif [ "${post_broken:-0}" -lt 1 ]; then
+    echo "ОТКАЗ: проба ЗЕЛЁНАЯ на снятой печати — постусловие отправки не держится ничем" >&2
     rc=1
 fi
 exit "$rc"

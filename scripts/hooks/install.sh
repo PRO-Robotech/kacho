@@ -61,6 +61,88 @@ done < <(git -C "$root" ls-files scripts/hooks)
 
 marker="kacho-hook-stub v1"
 
+# ── KEEPALIVE НА ТРАНСПОРТЕ: настройка КЛОНА, а не одной отправки ────────────
+#
+# ПОЧЕМУ ЭТО ЗДЕСЬ, РЯДОМ С ХУКАМИ. Это ЦЕНА длинного хука, и платится она в том
+# же месте, где хук заводится. `git push` соединяется и выясняет ссылки ДО хука,
+# затем молчит всё время его работы и только потом шлёт пакет. Замер 2026-09-22:
+# хук отработал зелёным за 831 секунду, соединение оборвали по простою, пакет не
+# ушёл — а команда отчиталась `exit code 0`. Лечится трафиком (`ServerAliveInterval`),
+# а не обходом проверок: `--no-verify` без дословного разрешения владельца не
+# применяется.
+#
+# ОТКУДА 20 (величина названа замером, а не «поставил побольше»):
+#   · верхняя граница — самый короткий простойный таймаут на пути; измеренного
+#     значения у нас нет, известно лишь, что он МЕНЬШЕ 831 с. Самое короткое окно,
+#     которое обязаны пережить, принято равным 60 с — это ДОПУЩЕНИЕ про мобильный
+#     NAT, нашей машиной не измеренное, и названо допущением намеренно;
+#   · `ServerAliveCountMax` на машине замера равен 3 (`ssh -G github.com | grep -i
+#     serveralive`), три пакета обязаны уложиться в окно: 60/3 = 20;
+#   · нижняя граница — стоимость: при 20 с прогон наборов воркспейса даёт 6
+#     пакетов (115 с — замер 2026-09-22, `time bash scripts/hooks/pre-push
+#     < /dev/null`), хук продукта (831 с, замер оператора) — 41.
+#
+# ЛЕЧИЛИ ЭТО УЖЕ ОДИН РАЗ, И ЛЕЧЕНИЕ НЕ СОХРАНИЛОСЬ. Замер 2026-09-22 сразу после
+# починки: `ssh -G github.com` отвечает `serveraliveinterval 0`, в `~/.ssh/config`
+# строки нет, `core.sshCommand` не задан ни в одном клоне и глобально. То есть
+# лекарство прожило одну команду — ровно поэтому его место здесь, в провязке,
+# которую делают один раз на клон.
+#
+# ЧУЖУЮ НАСТРОЙКУ НЕ ПЕРЕБИВАЕМ — тот же принцип, что и с посторонним хуком: в
+# `core.sshCommand` может стоять ключ, порт или прокси, без которых отправка не
+# состоится вовсе. Тогда состояние НАЗЫВАЕТСЯ строкой, а решение остаётся за
+# человеком.
+ka_interval=20
+ka_count=3
+ka_want="ssh -o ServerAliveInterval=$ka_interval -o ServerAliveCountMax=$ka_count"
+
+# ka_state — печатает «<состояние>|<источник>|<значение>»: set (транспорт с
+# keepalive), foreign (чужой транспорт без keepalive), none (транспорта не задано).
+#
+# Источник выбирается в том же порядке старшинства, что у git (connect.c; замер
+# 2026-09-22, git 2.53): GIT_SSH_COMMAND сильнее core.sshCommand, а тот сильнее
+# GIT_SSH. Отсюда два следствия. При GIT_SSH_COMMAND настройка клона не действует,
+# и назвать её — значит солгать о транспорте. При GIT_SSH выставленный
+# core.sshCommand ПЕРЕБИЛ бы обёртку — ровно то, чего здесь не делают.
+ka_state() {
+    local cur src
+    if [ -n "${GIT_SSH_COMMAND:-}" ]; then
+        cur="$GIT_SSH_COMMAND" src="окружение GIT_SSH_COMMAND"
+    else
+        cur="$(git -C "$root" config --get core.sshCommand 2>/dev/null || true)"
+        src="core.sshCommand"
+        if [ -z "$cur" ] && [ -n "${GIT_SSH:-}" ]; then
+            cur="$GIT_SSH" src="окружение GIT_SSH"
+        fi
+    fi
+    if [ -z "$cur" ]; then
+        printf 'none||\n'
+    # Сравнение БЕЗ внешнего процесса: `printf | grep -q` под `pipefail` роняет
+    # писателя SIGPIPE'ом, и найденное объявляется ненайденным (класс держит
+    # TestPipefailVerdictNeverComesFromAPipe, #658 — он эту строку и нашёл).
+    elif [[ "${cur,,}" == *serveraliveinterval* ]]; then
+        printf 'set|%s|%s\n' "$src" "$cur"
+    else
+        printf 'foreign|%s|%s\n' "$src" "$cur"
+    fi
+}
+
+ka_report() {
+    local st rest src val
+    st="$(ka_state)"; rest="${st#*|}"; src="${rest%%|*}"; val="${rest#*|}"
+    case "${st%%|*}" in
+        set)
+            echo "keepalive транспорта: есть — $src = «$val»" ;;
+        foreign)
+            echo "keepalive транспорта: НЕТ — транспорт задан снаружи, $src = «$val»" >&2
+            echo "  Не перебиваем: там могут быть ключ, порт, прокси. Добавьте в него сами:" >&2
+            echo "    -o ServerAliveInterval=$ka_interval -o ServerAliveCountMax=$ka_count" >&2 ;;
+        *)
+            echo "keepalive транспорта: НЕ настроен — длинный хук молчит в соединении, и отправку рвёт по простою" >&2
+            echo "  Чинится провязкой: make install-hooks (ставит core.sshCommand = «$ka_want»)" >&2 ;;
+    esac
+}
+
 # ── 1. Куда git на самом деле смотрит ────────────────────────────────────────
 #
 # Выставленный `core.hooksPath` перебивает `.git/hooks` целиком. Молча
@@ -161,6 +243,7 @@ done
 
 report() {
     echo "хуки: провязано $wired из ${#hooks[@]} ($dst)"
+    ka_report
     [ "${#kept[@]}" -eq 0 ] ||
         printf 'посторонних хуков оставлено нетронутыми: %s\n' "${kept[*]}"
 }
@@ -211,6 +294,19 @@ for name in "${hooks[@]}"; do
     chmod +x "$target" || die "install-hooks: не сделать исполняемым $target"
     installed+=("$name")
 done
+
+# Keepalive выставляется ОДИН РАЗ на клон и наследуется всеми его worktree:
+# `core.sshCommand` живёт в общем каталоге репозитория. Выставляется только при
+# состоянии none: чужой транспорт — в настройке или в окружении — не трогается,
+# про него говорит `ka_report`.
+ka_now="$(ka_state)"
+if [ "${ka_now%%|*}" = none ]; then
+    if git -C "$root" config --local core.sshCommand "$ka_want"; then
+        echo "keepalive транспорта выставлен клону: core.sshCommand = «$ka_want»"
+    else
+        echo "ВНИМАНИЕ: core.sshCommand выставить не удалось — отправка останется без keepalive" >&2
+    fi
+fi
 
 wired=${#installed[@]}
 report

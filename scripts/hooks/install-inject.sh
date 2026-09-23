@@ -141,8 +141,49 @@ echo "── неизвестный режим — явный отказ, а н�
 check "$(rc_of "$c" ерунда)" 1 "неизвестный режим отвергнут"
 
 echo
+echo "── keepalive транспорта: ставится чистому клону, чужой транспорт не перебивается"
+# Старшинство то же, что у git (connect.c): GIT_SSH_COMMAND сильнее
+# core.sshCommand, а core.sshCommand сильнее GIT_SSH. Поэтому клону, у которого
+# транспорт задан окружением GIT_SSH, выставленный core.sshCommand ПЕРЕБИЛ бы его
+# (ключ, порт, прокси обёртки), а при GIT_SSH_COMMAND без keepalive настройка
+# клона не действует — и «есть» было бы ложью. Окружение и глобальный слой
+# пробе заданы явно: иначе вердикт — свойство машины, на которой её гоняют.
+ka_want="ssh -o ServerAliveInterval=20 -o ServerAliveCountMax=3"
+ka_run() {  # <клон> <режим> [ПЕРЕМЕННАЯ=значение …]; stdout+stderr
+    local d="$1" mode="$2"; shift 2
+    ( cd "$d" && env -u GIT_SSH -u GIT_SSH_COMMAND GIT_CONFIG_NOSYSTEM=1 \
+        GIT_CONFIG_GLOBAL=/dev/null "$@" bash scripts/hooks/install.sh "$mode" 2>&1 )
+}
+ka_cfg() { git -C "$1" config --local --get core.sshCommand 2>/dev/null || true; }
+
+k1="$(mkclone ka-clean pre-push)"
+ka_run "$k1" install >/dev/null
+check "$(ka_cfg "$k1")" "$ka_want" "чистому клону install ставит keepalive"
+case "$(ka_run "$k1" check)" in *"keepalive транспорта: есть"*) ok "check называет keepalive клона" ;;
+    *) bad "check не называет выставленный keepalive" ;; esac
+
+k2="$(mkclone ka-foreign pre-push)"
+git -C "$k2" config core.sshCommand "ssh -i /нет/ключа -p 2222"
+ka_run "$k2" install >/dev/null
+check "$(ka_cfg "$k2")" "ssh -i /нет/ключа -p 2222" "чужой core.sshCommand не перезаписан"
+
+k3="$(mkclone ka-git-ssh pre-push)"
+out="$(ka_run "$k3" install GIT_SSH=/нет/обёртки-ssh)"
+check "$(ka_cfg "$k3")" "" "при GIT_SSH клону core.sshCommand НЕ выставлен (он перебил бы обёртку)"
+case "$out" in *"GIT_SSH"*) ok "install называет транспорт из окружения GIT_SSH" ;;
+    *) bad "install молчит о GIT_SSH: $out" ;; esac
+
+out="$(ka_run "$k1" check GIT_SSH_COMMAND="ssh -i /нет/ключа")"
+case "$out" in *"keepalive транспорта: есть"*) bad "check назвал keepalive, хотя GIT_SSH_COMMAND без него сильнее клона" ;;
+    *"GIT_SSH_COMMAND"*) ok "при GIT_SSH_COMMAND без keepalive check говорит НЕТ и называет окружение" ;;
+    *) bad "check не называет GIT_SSH_COMMAND: $out" ;; esac
+out="$(ka_run "$k1" check GIT_SSH_COMMAND="ssh -o ServerAliveInterval=15")"
+case "$out" in *"keepalive транспорта: есть"*"GIT_SSH_COMMAND"*) ok "законный близнец: GIT_SSH_COMMAND с keepalive — есть" ;;
+    *) bad "GIT_SSH_COMMAND с keepalive не признан: $out" ;; esac
+
+echo
 printf 'install-inject: утверждений %s, провалов %s\n' "$asserts" "$fails"
-if [ "$asserts" -lt 15 ]; then
+if [ "$asserts" -lt 25 ]; then
     echo "ОТКАЗ: утверждений меньше, чем проба объявляет, — она сама не исполнилась целиком." >&2
     exit 1
 fi
