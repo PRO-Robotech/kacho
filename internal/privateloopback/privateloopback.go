@@ -86,8 +86,11 @@ func NewUnstartedServer(tb testing.TB, h http.Handler) *httptest.Server {
 	}
 	return &httptest.Server{
 		Listener: l,
-		Config:   &http.Server{Handler: h},
-		TLS:      &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
+		// Срок чтения заголовков не ставится, как и у httptest.NewUnstartedServer:
+		// это сервер пробы, а не поверхность продукта; пробе, которой срок нужен,
+		// он ставится в s.Config.
+		Config: &http.Server{Handler: h}, // #nosec G112 -- сервер пробы, литерал httptest
+		TLS:    &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
 	}
 }
 
