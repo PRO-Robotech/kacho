@@ -3,7 +3,6 @@
 
 import {
   expect,
-  type APIRequestContext,
   type BrowserContext,
   type Locator,
   type Page,
@@ -53,48 +52,13 @@ import { ceremonyCensus, formatCall, register, test, type CeremonyCensus } from 
  */
 
 // ─── условие прогона (приёмка F8, §4) ─────────────────────────────────────────
-
-/**
- * Посадка, на которой эти сценарии вообще исполнимы: край ретранслирует полосу
- * формы нашей службы, и адрес церемонии отдаёт ОБОЛОЧКА консоли, а не чужой
- * экран. Без этого исход — «не выполнилось», а не красное: сценарии судили бы
- * не консоль, а посадку.
- *
- * Документ `/login` сравнивается с документом `/dashboard`: оболочка отдаёт на
- * оба пути один и тот же документ, а чужой экран — свой.
- */
-async function assertCeremonyLanding(testInfo: TestInfo, newContext: () => Promise<APIRequestContext>) {
-  const api = await newContext();
-  try {
-    const csrf = await api.get(`${LANE.csrf}?form=login`, { headers: { Accept: "application/json" } });
-    const csrfText = await csrf.text();
-    if (csrf.status() !== 200 || !/"csrfToken"\s*:\s*"[^"]+"/.test(csrfText)) {
-      throw new Error(
-        `УСЛОВИЕ ПРОГОНА НЕ СОЗДАНО (приёмка F8, §4): край не ретранслирует полосу формы нашей службы — ` +
-          `${LANE.csrf}?form=login ответил ${csrf.status()} ${csrfText.slice(0, 200)}. ` +
-          `Вердикта о консоли такой прогон не даёт (${testInfo.project.use.baseURL})`,
-      );
-    }
-    const login = await (await api.get("/login", { headers: { Accept: "text/html" } })).text();
-    const shell = await (await api.get("/dashboard", { headers: { Accept: "text/html" } })).text();
-    if (login !== shell) {
-      throw new Error(
-        "УСЛОВИЕ ПРОГОНА НЕ СОЗДАНО (приёмка F8, §4): документ /login не совпадает с документом " +
-          "оболочки консоли — адрес церемонии отдаёт не консоль, а чужой экран. Посадки, где так, " +
-          "приёмка не поддерживает (Р1); вердикта о консоли такой прогон не даёт",
-      );
-    }
-  } finally {
-    await api.dispose();
-  }
-}
-
-test.beforeAll(async ({ playwright }, testInfo) => {
-  const use = testInfo.project.use;
-  await assertCeremonyLanding(testInfo, () =>
-    playwright.request.newContext({ baseURL: use.baseURL, ignoreHTTPSErrors: use.ignoreHTTPSErrors }),
-  );
-});
+//
+// Условия здесь НЕТ, и это его место, а не пропуск. Эти сценарии исполнимы лишь
+// на посадке, где адреса церемоний отдаёт оболочка консоли; проверяет её СВОЙ
+// проект прогонщика (`preconditions/ceremony-landing.precondition.ts`), от
+// которого проект этого файла зависит (`playwright.config.ts`). Не создано
+// условие — сценарии не стартуют, и исход называется «не выполнилось» с числом
+// сценариев, а не красным о продукте.
 
 // ─── экраны: доступные имена, а не классы ─────────────────────────────────────
 

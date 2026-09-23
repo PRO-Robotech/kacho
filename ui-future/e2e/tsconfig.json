@@ -67,9 +67,14 @@
   // `TestConsoleProbesAreReadByTheTypeChecker`: он требует читателя для КАЖДОГО
   // отслеживаемого `.ts` пакета, поэтому следующий каталог проб не окажется вне
   // разбора молча.
+  //
+  // Условия прогона (`preconditions/`, #2780) читаются наравне с пробами: их
+  // исход решает, какую из трёх категорий получит прогон, и опечатка в условии
+  // стоила бы полного прогона стенда ровно так же, как опечатка в пробе.
   "include": [
     "specs/**/*.ts",
     "specs-awaiting-journal-owner/**/*.ts",
+    "preconditions/**/*.ts",
     "scripts/**/*.ts",
     "playwright.config.ts",
     "remote-browser-policy.ts",
