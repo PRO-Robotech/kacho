@@ -182,6 +182,11 @@ cd "$ROOT"
 # читателя РАЗНОГО: первое законно и прогон остаётся действительным, второе делает
 # недействительным весь прогон, включая шаги, которые успели пройти.
 fails=(); skips=(); aborted=(); ran=0
+unexecuted=0; unstarted=0
+local_outcome_file="${KACHO_CI_OUTCOME_FILE:-}"
+local_invocation_id="${KACHO_CI_INVOCATION_ID:-}"
+unset KACHO_CI_OUTCOME_FILE KACHO_CI_INVOCATION_ID
+local_gate_record=""; local_gate_id=""; local_gate_unmet_name=""
 
 # ИСХОДОВ ТРИ, И ТРЕТИЙ НЕ ВЫЧИТАЕТСЯ ИЗ ВЕРДИКТА (#589). «Не выполнено» — это не
 # «прошло»: инструмента нет, зависимости не поставлены, у пакета нет предмета
@@ -192,6 +197,7 @@ fails=(); skips=(); aborted=(); ran=0
 skip() { # skip <имя> <причина>
     printf '\n== %s\n   ПРОПУСК: %s — НЕ выполнено\n' "$1" "$2"
     skips+=("$1 ($2)")
+    unstarted=$((unstarted + 1))
 }
 
 # ЗДЕСЬ СТОЯЛИ ДВА СУДЬИ, ЖИВШИЕ В ДЕРЕВЕ ВЫНЕСЕННОЙ СЛУЖБЫ — СНЯТЫ ВМЕСТЕ С НИМ.
@@ -264,8 +270,42 @@ run() { # run <имя> <команда...>
     # Код берётся СРАЗУ и в свою переменную: `if cmd; then …; fi` без `else`
     # возвращает НОЛЬ, когда условие ложно, поэтому `$?` после `fi` — это код
     # самого `if`, а не команды. Отказ печатался бы как «код 0».
-    local rc=0
-    "$@" > "$log" 2>&1 || rc=$?
+    local rc=0 outcome_dir="" status category child_unmet missing_pytest
+    if [ "${CI_OUTCOME_PRODUCER:-}" = gate-self-test ]; then
+        outcome_dir="$(mktemp -d "${TMPDIR:-/tmp}/ci-local-outcome.XXXXXXXX")" || {
+            fails+=("$name (каталог результата не создан)"); return; }
+        local_gate_id="${outcome_dir##*/}"
+        local_gate_record="$outcome_dir/outcome.json"
+        KACHO_CI_OUTCOME_FILE="$local_gate_record" KACHO_CI_INVOCATION_ID="$local_gate_id" \
+            "$@" > "$log" 2>&1 || rc=$?
+        if status="$(python3 "$ROOT/.github/scripts/ci_outcomes.py" read \
+                --outcome-file "$local_gate_record" --invocation-id "$local_gate_id" \
+                --producer gate-self-test --format status 2>>"$log")"; then
+            read -r category child_unmet missing_pytest <<<"$status"
+            if [ "$child_unmet" = 1 ]; then
+                local reason="условие не создано"
+                [ "$missing_pytest" != 1 ] || reason="нет pytest"
+                local_gate_unmet_name="$name ($reason)"
+                skips+=("$local_gate_unmet_name")
+                printf '   ПРОПУСК: %s — %s; прогон неполный
+' "$name" "$reason"
+            fi
+            # Make2 лишь транспортирует отказ. Только текущая unmet-запись
+            # объясняет его; GREEN prerequisite не прощает позднюю ошибку Make.
+            if [ "$category:$rc" = unmet:2 ]; then
+                unexecuted=$((unexecuted + 1))
+                return
+            fi
+            if [ "$category" != green ] || [ "$rc" -ne 0 ]; then
+                rc=1
+            fi
+        else
+            local_gate_record=""
+            rc=1
+        fi
+    else
+        "$@" > "$log" 2>&1 || rc=$?
+    fi
     if [ "$rc" -eq 0 ]; then
         echo "   ok"
         return
@@ -289,6 +329,7 @@ run() { # run <имя> <команда...>
         printf '   | вердикта нет ни одного: это не «находок нет» и не «находки есть»\n'
         printf '   | целиком: %s\n' "$log"
         skips+=("$name (занят соседним прогоном)")
+        unexecuted=$((unexecuted + 1))
         return
     fi
 
@@ -302,6 +343,7 @@ run() { # run <имя> <команда...>
         printf '   | находок не получено ни одной: инструмент не дошёл до предмета\n'
         printf '   | целиком: %s\n' "$log"
         skips+=("$name (ресурс исчерпан)")
+        unexecuted=$((unexecuted + 1))
         aborted+=("$name")
         return
     fi
@@ -868,7 +910,7 @@ helm_group() {
     # (классификацию отказов, круг отправителей, привязку пода к настройкам), а не
     # только рендер, поэтому краснеют на правках скриптов и профилей.
     if [ -f "$ROOT/deploy/Makefile" ]; then
-        run "манифест-проверки посадки (deploy/tests/helm)" bash -c "cd '$ROOT/deploy' && make helm-manifest-test"
+        CI_OUTCOME_PRODUCER=gate-self-test run "манифест-проверки посадки (deploy/tests/helm)" bash -c "cd '$ROOT/deploy' && make helm-manifest-test"
     fi
 }
 
@@ -997,6 +1039,10 @@ ui_group() {
     done
 }
 
+python_outcomes_group() {
+    run "Python outcomes: обязательная интеграционная полоса" bash "$ROOT/scripts/run-python-outcomes-integration.sh"
+}
+
 case "$GROUP" in
     proto)     proto_group ;;
     go)        go_group ;;
@@ -1004,7 +1050,8 @@ case "$GROUP" in
     helm)      helm_group ;;
     ui)        ui_group ;;
     ui-types)  ui_types_group ;;
-    all)       proto_group; go_group; terraform_group; helm_group; ui_group ;;
+    python-outcomes) python_outcomes_group ;;
+    all)       proto_group; go_group; terraform_group; helm_group; ui_group; python_outcomes_group ;;
     # Несколько групп через пробел: хук отправки гоняет быстрые, но не медленные.
     *)
         ok=1
@@ -1016,20 +1063,37 @@ case "$GROUP" in
                 helm)      helm_group ;;
                 ui)        ui_group ;;
                 ui-types)  ui_types_group ;;
-                *) echo "неизвестная группа: $g (proto|go|terraform|helm|ui|ui-types|all)" >&2; ok=0 ;;
+                python-outcomes) python_outcomes_group ;;
+                *) echo "неизвестная группа: $g (proto|go|terraform|helm|ui|ui-types|python-outcomes|all)" >&2; ok=0 ;;
             esac
         done
         [ "$ok" = "1" ] || exit 2
         ;;
 esac
 
+# Локальная политика допускает обычный unmet с rc0; JSON и текст не
+# называют такой прогон полным GREEN. Ресурсный abort сохраняет свой rc3 ниже.
+if [ -n "$local_outcome_file$local_invocation_id" ]; then
+    local_writer=(python3 "$ROOT/.github/scripts/ci_outcomes.py" write-shell
+        --producer ci-local --outcome-file "$local_outcome_file" --invocation-id "$local_invocation_id"
+        --files 0 --declarations "$((ran + unstarted))" --executed "$((ran - unexecuted))")
+    for item in "${fails[@]}"; do local_writer+=(--failure "$item"); done
+    for item in "${skips[@]}"; do local_writer+=(--unmet "$item"); done
+    if [ -n "$local_gate_record" ]; then
+        local_writer+=(--child-file "$local_gate_record" --child-id "$local_gate_id"
+            --child-producer gate-self-test --child-coordinate "$local_gate_unmet_name")
+    fi
+    "${local_writer[@]}" || { echo "ОТКАЗ: текущий локальный результат не записан"; exit 1; }
+fi
+
 printf '\n== итог: проверок исполнено %d, отказов %d, НЕ выполнено %d\n' \
-    "$ran" "${#fails[@]}" "${#skips[@]}"
+    "$((ran - unexecuted))" "${#fails[@]}" "${#skips[@]}"
+printf '   объявлено проверок: %d\n' "$((ran + unstarted))"
 if [ "${#skips[@]}" -gt 0 ]; then
     # Третье число печатается ВСЕГДА, когда оно ненулевое, и называет пропущенное
     # поимённо: две цифры вместо трёх не сообщали, что часть предметов никто не
     # смотрел, и «исполнено 24, отказов 0» читалось как полный зелёный.
-    printf '   не выполнено: %s\n' "${skips[*]}"
+    printf '   ПРОГОН НЕПОЛНЫЙ; не выполнено: %s\n' "${skips[*]}"
 fi
 # ПРОГОН, ОБОРВАННЫЙ ИСЧЕРПАНИЕМ, НЕ КРАСНЫЙ И НЕ ЗЕЛЁНЫЙ — ОН НЕДЕЙСТВИТЕЛЕН.
 # Код возврата ненулевой (третий исход не зачитывается в успех), но ОТДЕЛЬНЫЙ:
