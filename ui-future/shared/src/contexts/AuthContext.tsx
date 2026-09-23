@@ -20,7 +20,7 @@
 // держит браузер; консоль носитель не читает и не пишет.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { setStepUpRequester } from "@shared/api/step-up";
+import { setStepUpRequester, type StepUpRequester } from "@shared/api/step-up";
 import { authApi, hasPermission as checkPerm, type AuthUser, type WhoAmIResponse } from "@shared/api/auth";
 import { FormTokenHolder, loginLane, type LaneSession } from "@shared/api/login-lane";
 import { loginAddress } from "@shared/pages/auth/ceremony-addresses";
@@ -55,7 +55,7 @@ export interface AuthContextValue {
   /** Проверка permission (admin `*` wildcard). */
   hasPermission: (perm: string) => boolean;
   /** Зарегистрировать step-up handler — обычно StepUpModal. */
-  setStepUpHandler: (handler: ((acr?: string) => Promise<void>) | null) => void;
+  setStepUpHandler: (handler: StepUpRequester | null) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -159,7 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // открывалось никогда, то есть уровень из консоли поднять было нечем.
   // Ссылка снята вместе с дефектом — держать её рядом с работающим объявлением
   // значило бы завести два места об одном предмете, из которых читают одно.
-  const setStepUpHandler = useCallback((handler: ((acr?: string) => Promise<void>) | null) => {
+  const setStepUpHandler = useCallback((handler: StepUpRequester | null) => {
     setStepUpRequester(handler);
   }, []);
 

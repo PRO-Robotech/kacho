@@ -14,10 +14,12 @@
 // чужое приложение: церемония проходит, не покидая консоли, и отвергнутое
 // действие после неё повторяется (его повторяет клиент API, `requestStepUp`).
 //
-// Способ выбирает ЧЕЛОВЕК, и окно предлагает только те, что отвечают просьбе:
+// Способ выбирает ЧЕЛОВЕК, и окно предлагает только те, что отвечают просьбе
+// (`StepUpRequest`, @shared/api/step-up):
 //
-//   • край требует уровня «2» (вызов RFC 9470) — уровень поднимает только
-//     второй фактор, поэтому пароля в выборе нет;
+//   • вызов края RFC 9470 — уровень (`acr_values`) либо свежесть второго фактора
+//     (один `max_age`) закрывает только второй фактор, поэтому пароля в выборе
+//     нет — и тогда, когда уровень в вызове не назван;
 //   • служба требует свежести (`SESSION_NOT_FRESH`) — годится и пароль.
 //
 // ПОЧЕМУ «ВТОРОЙ ФАКТОР НЕ НАСТРОЕН» — НАЗВАННОЕ СОСТОЯНИЕ, А НЕ ПУСТОЕ ОКНО
@@ -37,7 +39,7 @@ import {
   loginLane,
   type SecondFactorPresentation,
 } from "@shared/api/login-lane";
-import { setStepUpRequester } from "@shared/api/step-up";
+import { setStepUpRequester, type StepUpRequest } from "@shared/api/step-up";
 import { LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalAlert";
 import { EMPTY_PRESENTATION, SecondFactorCodeField } from "@shared/components/molecules/auth/SecondFactorCodeField";
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";
@@ -45,14 +47,11 @@ import { useOptionalAuth } from "@shared/contexts/AuthContext";
 
 const { Paragraph } = Typography;
 
-/** Уровень, который поднимается только вторым фактором. */
-const LEVEL_TWO = "2";
-
 /** Экран, где заводят второй фактор, — параметры учётной записи консоли. */
 export const SECOND_FACTOR_ENROLLMENT_ADDRESS = "/settings";
 
 interface PendingRequest {
-  acr?: string;
+  request: StepUpRequest;
   resolve: () => void;
   reject: (e: Error) => void;
 }
@@ -74,19 +73,21 @@ export function StepUpModal() {
 
   // Обработчик ОБЪЯВЛЯЕТСЯ клиенту API — он и есть его читатель (#1213).
   useEffect(() => {
-    const handler = (acr?: string) =>
+    const handler = (request: StepUpRequest) =>
       new Promise<void>((resolve, reject) => {
-        setBranch(acr === LEVEL_TWO ? "второй фактор" : "пароль");
+        setBranch(request.cause === "freshness" ? "пароль" : "второй фактор");
         setPassword("");
         setFactor(EMPTY_PRESENTATION);
         setRefusal(null);
-        setPending({ acr, resolve, reject });
+        setPending({ request, resolve, reject });
       });
     setStepUpRequester(handler);
     return () => setStepUpRequester(null);
   }, []);
 
-  const passwordAllowed = pending?.acr !== LEVEL_TWO;
+  // Пароль предлагается ТОЛЬКО на просьбу свежести от службы: вызов края
+  // закрывает один второй фактор, назван в нём уровень или нет.
+  const passwordAllowed = pending?.request.cause === "freshness";
 
   const close = () => {
     setPending(null);

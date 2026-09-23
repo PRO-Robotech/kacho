@@ -27,8 +27,26 @@
 // в шум, а человеку предлагалось бы подтвердить личность, которой у него сейчас
 // нет вовсе.
 
+/**
+ * Просьба подтвердить личность — и ЧЕЙ это отказ.
+ *
+ * Два источника просьбы несут разные требования, и отличить их по одному
+ * необязательному уровню нельзя (#1274, круг 1 ревью):
+ *
+ *   • `floor` — вызов края RFC 9470. Край требует уровня (`acr_values`) либо
+ *     свежести второго фактора (один `max_age`). И то и другое закрывает ТОЛЬКО
+ *     второй фактор: пароль уровня не поднимает и свежим второй фактор не
+ *     делает, повтор действия получил бы тот же отказ;
+ *   • `freshness` — отказ службы `SESSION_NOT_FRESH` на глаголе параметров
+ *     учётной записи: годится любое предъявление, и пароль тоже.
+ *
+ * Прежде просьба была одним `acr?: string`, и его отсутствие значило обе вещи
+ * сразу: вызов края без уровня открывал ветвь пароля.
+ */
+export type StepUpRequest = { cause: "floor"; acr?: string } | { cause: "freshness" };
+
 /** Обработчик, поднимающий уровень. Отвергает обещание, если не удалось. */
-export type StepUpRequester = (acr?: string) => Promise<void>;
+export type StepUpRequester = (request: StepUpRequest) => Promise<void>;
 
 let requester: StepUpRequester | null = null;
 
@@ -80,10 +98,22 @@ export function acrFromChallenge(wwwAuthenticate: string | null): string | undef
  * означал бы повтор запроса, за который никто не поручился.
  */
 export async function requestStepUp(acr?: string): Promise<boolean> {
+  return ask({ cause: "floor", acr });
+}
+
+/**
+ * Попросить предъявить себя заново по отказу службы о свежести сессии.
+ * Возвращает то же, что `requestStepUp`, и по той же причине.
+ */
+export async function requestFreshPresentation(): Promise<boolean> {
+  return ask({ cause: "freshness" });
+}
+
+async function ask(request: StepUpRequest): Promise<boolean> {
   const fn = requester;
   if (!fn) return false;
   try {
-    await fn(acr);
+    await fn(request);
     return true;
   } catch {
     return false;

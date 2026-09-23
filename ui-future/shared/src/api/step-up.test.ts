@@ -16,7 +16,7 @@
 
 import { jest } from "@jest/globals";
 import { api, ApiError } from "./client";
-import { acrFromChallenge, challengeOf, isStepUpDenial, setStepUpRequester } from "./step-up";
+import { acrFromChallenge, challengeOf, isStepUpDenial, setStepUpRequester, type StepUpRequest } from "./step-up";
 
 const CHALLENGE =
   'Bearer error="insufficient_user_authentication", ' +
@@ -84,14 +84,14 @@ describe("клиент доводит отказ по полу до окна п�
       );
     }) as unknown as typeof fetch;
 
-    const asked: Array<string | undefined> = [];
-    setStepUpRequester((acr) => {
-      asked.push(acr);
+    const asked: StepUpRequest[] = [];
+    setStepUpRequester((request) => {
+      asked.push(request);
       return Promise.resolve();
     });
 
     await expect(api.get("/iam/v1/groups/grp-1")).resolves.toMatchObject({ id: "grp-1" });
-    expect(asked).toEqual(["2"]);
+    expect(asked).toEqual([{ cause: "floor", acr: "2" }]);
     expect(calls).toHaveLength(2);
   });
 

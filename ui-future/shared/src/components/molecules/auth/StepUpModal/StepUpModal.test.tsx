@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { requestStepUp } from "@shared/api/step-up";
+import { requestFreshPresentation, requestStepUp } from "@shared/api/step-up";
 import { installLane, refusal } from "@shared/test/lane-fake";
 
 // Окно повышения ведёт церемонию НАШИМ глаголом (`POST /iam/v1/auth/step-up`),
@@ -49,12 +49,30 @@ describe("окно повышения", () => {
     expect(lane.calls.every((c) => c.path.startsWith("/iam/v1/auth/"))).toBe(true);
   });
 
-  it("на просьбу свежести годится и пароль — ветвь пароля по умолчанию", async () => {
+  // Вызов края без `acr_values` — отказ по окну свежести второго фактора
+  // (`insufficient_user_authentication` с одним `max_age`). Пароль его не
+  // закрывает: повтор действия получил бы тот же отказ. Прежде окно на таком
+  // вызове подставляло уровень «2»; редакция S2 открывала на нём ветвь пароля
+  // (#1274, круг 1 ревью). Близнец — вызов с уровнем «2» выше: различие ровно в
+  // том, назван ли уровень.
+  it("по вызову края БЕЗ уровня тоже предлагает только второй фактор — пароль окно свежести не закрывает", async () => {
+    lane = installLane({ "POST /iam/v1/auth/step-up": CEREMONY });
+    render(<StepUpModal />);
+    act(() => {
+      void requestStepUp();
+    });
+    await screen.findByRole("dialog");
+    expect(screen.queryByLabelText("Паролем")).toBeNull();
+    expect(screen.queryByLabelText("Пароль")).toBeNull();
+    expect(screen.getByLabelText("Код")).toBeInTheDocument();
+  });
+
+  it("на просьбу свежести от службы годится и пароль — ветвь пароля по умолчанию", async () => {
     lane = installLane({ "POST /iam/v1/auth/step-up": CEREMONY });
     render(<StepUpModal />);
     let granted: boolean | null = null;
     act(() => {
-      void requestStepUp().then((ok) => {
+      void requestFreshPresentation().then((ok) => {
         granted = ok;
       });
     });

@@ -14,7 +14,7 @@ import {
   type SecondFactorState,
   type SessionIdentity,
 } from "@shared/api/login-lane";
-import { requestStepUp } from "@shared/api/step-up";
+import { requestFreshPresentation } from "@shared/api/step-up";
 import { BoolFact } from "@shared/components/atoms/BoolFact";
 import { LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalAlert";
 import { EMPTY_PRESENTATION, SecondFactorCodeField } from "@shared/components/molecules/auth/SecondFactorCodeField";
@@ -51,7 +51,7 @@ async function withFreshness<T>(step: () => Promise<T>): Promise<T> {
   try {
     return await step();
   } catch (e) {
-    if (e instanceof LaneRefusal && e.reason === LANE_REASON.sessionNotFresh && (await requestStepUp())) {
+    if (e instanceof LaneRefusal && e.reason === LANE_REASON.sessionNotFresh && (await requestFreshPresentation())) {
       return step();
     }
     throw e;
