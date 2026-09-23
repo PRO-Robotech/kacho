@@ -16,6 +16,7 @@ package deploy_test
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -344,6 +345,7 @@ func TestIdentitySecondFactorInjection_OwnConsoleDeclarationDecidesTheFloor(t *t
 	}
 	pin, root, assurance := readPinnedKaname(t)
 	vocab := assuranceVocabulary(assurance)
+	rule := mustOwnRule(t, assurance, vocab)
 	base := consoleWithoutOwnDeclaration(t)
 
 	// Предпосылка ровно того дефекта, ради которого задача заведена: перечень
@@ -356,7 +358,7 @@ func TestIdentitySecondFactorInjection_OwnConsoleDeclarationDecidesTheFloor(t *t
 	// ДЕФЕКТ: консоль нашей церемонии не ведёт — пол «2» на own недостижим, хотя
 	// перечень потока поставщика рядом стоит непустым. Прежняя редакция гейта
 	// судила own именно по нему и зеленела.
-	sides, err := ownSecondFactorSides(pin, root, vocab, base)
+	sides, err := ownSecondFactorSides(pin, root, vocab, rule, base)
 	if err != nil {
 		t.Fatalf("стороны own не прочитаны: %v", err)
 	}
@@ -366,7 +368,7 @@ func TestIdentitySecondFactorInjection_OwnConsoleDeclarationDecidesTheFloor(t *t
 	}
 
 	// ЗАКОННЫЙ БЛИЗНЕЦ (один факт — объявление нашей церемонии): пол достижим.
-	sides, err = ownSecondFactorSides(pin, root, vocab, base+ownDeclaration("totp", "lookup_secret"))
+	sides, err = ownSecondFactorSides(pin, root, vocab, rule, base+ownDeclaration("totp", "lookup_secret"))
 	if err != nil {
 		t.Fatalf("стороны own не прочитаны: %v", err)
 	}
@@ -376,7 +378,7 @@ func TestIdentitySecondFactorInjection_OwnConsoleDeclarationDecidesTheFloor(t *t
 
 	// ДЕФЕКТ: консоль ведёт способ, который уровня «2» не поднимает (код
 	// восстановления даёт «1» по правилу службы).
-	sides, err = ownSecondFactorSides(pin, root, vocab, base+ownDeclaration("recovery_code"))
+	sides, err = ownSecondFactorSides(pin, root, vocab, rule, base+ownDeclaration("recovery_code"))
 	if err != nil {
 		t.Fatalf("стороны own не прочитаны: %v", err)
 	}
@@ -403,6 +405,7 @@ func TestIdentitySecondFactorInjection_OwnServiceSideIsReadFromThePinnedRoot(t *
 	byFloor := readCatalogFloors(t)
 	pin, root, assurance := readPinnedKaname(t)
 	vocab := assuranceVocabulary(assurance)
+	rule := mustOwnRule(t, assurance, vocab)
 	console := consoleWithoutOwnDeclaration(t) + ownDeclaration("totp", "lookup_secret", "webauthn")
 
 	// Контроль предпосылки: разбор корня видит перечень, и второй фактор в нём есть.
@@ -410,8 +413,9 @@ func TestIdentitySecondFactorInjection_OwnServiceSideIsReadFromThePinnedRoot(t *
 	if err != nil || len(wired) == 0 {
 		t.Fatalf("перечень способов корня у пина %s не прочитан (%v, %v) — утверждения ниже вакуумны", pin, wired, err)
 	}
-	if len(ownSecondFactorMethods(wired)) == 0 {
-		t.Fatalf("у пина %s корень не провязывает второго фактора (%v) — инъекции ниже нечего снимать", pin, wired)
+	real, err := ownSecondFactorSides(pin, root, vocab, rule, console)
+	if err != nil || len(real.Second) == 0 {
+		t.Fatalf("у пина %s корень не провязывает второго фактора (%v, %v) — инъекции ниже нечего снимать", pin, wired, err)
 	}
 	rel := where[:strings.LastIndex(where, ":")]
 	body := readFileForTest(t, filepath.Join(root.dir, filepath.FromSlash(rel)))
@@ -424,11 +428,11 @@ func TestIdentitySecondFactorInjection_OwnServiceSideIsReadFromThePinnedRoot(t *
 	if onlyPassword == body {
 		t.Fatalf("инъекция не изменила %s — форма перечня сменилась", rel)
 	}
-	injected, err := root.with(rel, onlyPassword)
+	onlyPasswordRoot, err := root.with(rel, onlyPassword)
 	if err != nil {
 		t.Fatalf("инъекция не разобрана: %v", err)
 	}
-	sides, err := ownSecondFactorSides(pin, injected, vocab, console)
+	sides, err := ownSecondFactorSides(pin, onlyPasswordRoot, vocab, rule, console)
 	if err != nil {
 		t.Fatalf("стороны own после инъекции не прочитаны: %v", err)
 	}
@@ -438,7 +442,7 @@ func TestIdentitySecondFactorInjection_OwnServiceSideIsReadFromThePinnedRoot(t *
 	}
 
 	// ЗАКОННЫЙ БЛИЗНЕЦ: настоящий корень с той же консолью — пол достижим.
-	sides, err = ownSecondFactorSides(pin, root, vocab, console)
+	sides, err = ownSecondFactorSides(pin, root, vocab, rule, console)
 	if err != nil {
 		t.Fatalf("стороны own не прочитаны: %v", err)
 	}
@@ -461,11 +465,11 @@ func TestIdentitySecondFactorInjection_OwnServiceSideIsReadFromThePinnedRoot(t *
 	if err != nil {
 		t.Fatalf("инъекция не разобрана: %v", err)
 	}
-	if _, err := ownSecondFactorSides(pin, unfed, vocab, console); !errors.Is(err, errNoSignInList) {
+	if _, err := ownSecondFactorSides(pin, unfed, vocab, rule, console); !errors.Is(err, errNoSignInList) {
 		t.Fatalf("самоотчёту подан nil вместо перечня, а гейт ответил %v — «перечня нет» обязано быть "+
 			"отказом, иначе оно неотличимо от «служба не провязала ничего»", err)
 	}
-	t.Logf("перепись: пин %s · перечень корня %s: %v · вторым фактором %v", pin, where, wired, ownSecondFactorMethods(wired))
+	t.Logf("перепись: пин %s · перечень корня %s: %v · вторым фактором %v", pin, where, wired, real.Second)
 }
 
 func TestIdentitySecondFactorInjection_ExternalLandingKeepsItsOwnSides(t *testing.T) {
@@ -513,45 +517,6 @@ func TestIdentitySecondFactorInjection_ExternalLandingKeepsItsOwnSides(t *testin
 	}
 }
 
-func TestIdentitySecondFactorInjection_OwnRulePremiseFollowsThePin(t *testing.T) {
-	pin, _, assurance := readPinnedKaname(t)
-	rows, err := assuranceRuleRows(assurance)
-	if err != nil {
-		t.Fatalf("правило уровня у пина %s не прочитано: %v", pin, err)
-	}
-	// ЗАКОННЫЙ БЛИЗНЕЦ: правило пина совпадает с посылкой гейта.
-	for _, level := range []string{"1", "2"} {
-		if strings.Join(rows[level], " ") != strings.Join(ownRulePremise[level], " ") {
-			t.Fatalf("у пина %s строки «%s» %v, посылка %v — утверждать об инъекции нечего",
-				pin, level, rows[level], ownRulePremise[level])
-		}
-	}
-
-	// ДЕФЕКТ: строка «2» по ключу доступа переписана на код восстановления.
-	var rel, body string
-	for _, f := range assurance.sortedFiles() {
-		b := readFileForTest(t, filepath.Join(assurance.dir, filepath.FromSlash(f)))
-		if strings.Contains(b, "s.has(MethodWebAuthn) }") {
-			rel, body = f, b
-		}
-	}
-	if rel == "" {
-		t.Fatalf("строка правила по ключу доступа не найдена текстом у пина %s — форма сменилась", pin)
-	}
-	injected, err := assurance.with(rel, strings.Replace(body, "s.has(MethodWebAuthn) }", "s.has(MethodRecoveryCode) }", 1))
-	if err != nil {
-		t.Fatalf("инъекция не разобрана: %v", err)
-	}
-	changed, err := assuranceRuleRows(injected)
-	if err != nil {
-		t.Fatalf("правило после инъекции не прочитано: %v", err)
-	}
-	if strings.Join(changed["2"], " ") == strings.Join(ownRulePremise["2"], " ") {
-		t.Fatalf("сменённая строка «2» (%v) совпала с посылкой — сверка не читает строки правила", changed["2"])
-	}
-	t.Logf("перепись: у пина %s строк «2» %v · после инъекции %v", pin, rows["2"], changed["2"])
-}
-
 func TestIdentitySecondFactorInjection_OwnStackIsNotJudgedByProviderSettings(t *testing.T) {
 	for _, c := range []struct {
 		name    string
@@ -576,4 +541,293 @@ func TestIdentitySecondFactorInjection_OwnStackIsNotJudgedByProviderSettings(t *
 	}
 	t.Logf("перепись: стендов на external %d (%v) · на own %d (%v)",
 		len(landings[landingExternal]), landings[landingExternal], len(landings[landingOwn]), landings[landingOwn])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ПРАВИЛО УРОВНЯ НА own ТОЛКУЕТСЯ У ПИНА, А НЕ ПЕРЕПИСЫВАЕТСЯ ГЕЙТОМ (#2691, круг 2)
+//
+// Круг 1 показал два места, где гейт судил не правилом службы, а своим пересказом
+// его: классификатор способов был таблицей гейта (мутация, снявшая в ней
+// требование пароля, не роняла ни одной пробы), а сверка с пином сравнивала
+// НАБОРЫ ИМЁН строки, а не её логику. Пробы ниже подают правилу и корню пина
+// дефект одним фактом и утверждают, что вердикт меняется ровно вместе с ним.
+
+// Места пина, в которые пробы вносят дефект. Сменилась форма — инъекция не
+// меняет вход, и проба отказывает, а не зеленеет на неукушенном входе.
+const (
+	pinnedSignInList      = "assurance.MethodPassword, assurance.MethodTOTP, assurance.MethodLookupSecret"
+	pinnedSecondFactorRow = "s.has(MethodPassword) && (s.has(MethodTOTP) || s.has(MethodLookupSecret))"
+)
+
+// packageFileWith — единственный файл пакета, несущий текст needle, и его тело.
+func packageFileWith(t *testing.T, src goPackageSource, needle string) (rel, body string) {
+	t.Helper()
+	var found []string
+	for _, f := range src.sortedFiles() {
+		b := readFileForTest(t, filepath.Join(src.dir, filepath.FromSlash(f)))
+		if strings.Contains(b, needle) {
+			found = append(found, f)
+			rel, body = f, b
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("текст %q найден в %d файлах пакета (%v), ждали ровно один — форма пина сменилась, "+
+			"и инъекция перестала что-либо доказывать", needle, len(found), found)
+	}
+	return rel, body
+}
+
+// injectedPackage — копия пакета, в которой одно место заменено; настоящий разбор
+// не меняется.
+func injectedPackage(t *testing.T, src goPackageSource, old, repl string) goPackageSource {
+	t.Helper()
+	rel, body := packageFileWith(t, src, old)
+	out, err := src.with(rel, strings.Replace(body, old, repl, 1))
+	if err != nil {
+		t.Fatalf("инъекция в %s не разобрана: %v", rel, err)
+	}
+	return out
+}
+
+// mustOwnRule — правило уровня пакета, толкованное гейтом.
+func mustOwnRule(t *testing.T, assurance goPackageSource, vocab map[string]string) ownRule {
+	t.Helper()
+	rule, err := readOwnRule(assurance, vocab)
+	if err != nil {
+		t.Fatalf("правило уровня не толкуется: %v", err)
+	}
+	return rule
+}
+
+// ownFloorTwo — находки по полу «2» посадки own при названных корне, правиле и консоли.
+func ownFloorTwo(t *testing.T, pin string, root goPackageSource, vocab map[string]string, rule ownRule,
+	console string, byFloor map[string][]string,
+) ([]string, secondFactorSides) {
+	t.Helper()
+	sides, err := ownSecondFactorSides(pin, root, vocab, rule, console)
+	if err != nil {
+		t.Fatalf("стороны own не прочитаны: %v", err)
+	}
+	return floorTwoFindings(sides, byFloor), sides
+}
+
+// TestIdentitySecondFactorInjection_PasswordRequirementComesFromTheRule — ось
+// мутации M4 круга 1: код по времени поднимает уровень ТОЛЬКО вместе с паролем, и
+// знает это правило пина, а не таблица гейта.
+func TestIdentitySecondFactorInjection_PasswordRequirementComesFromTheRule(t *testing.T) {
+	byFloor := readCatalogFloors(t)
+	pin, root, assurance := readPinnedKaname(t)
+	vocab := assuranceVocabulary(assurance)
+	rule := mustOwnRule(t, assurance, vocab)
+	console := consoleWithoutOwnDeclaration(t) + ownDeclaration("totp")
+
+	// ДЕФЕКТ (вход круга 1): корень провязывает ключ доступа и код по времени, пароля
+	// нет; консоль ведёт только код по времени. Поднять уровень нечем: код без
+	// пароля «2» не даёт, а ключ доступа консоль на церемонии не ведёт.
+	noPassword := injectedPackage(t, root, pinnedSignInList, "assurance.MethodWebAuthn, assurance.MethodTOTP")
+	if got, sides := ownFloorTwo(t, pin, noPassword, vocab, rule, console, byFloor); len(got) != 1 {
+		t.Fatalf("корень [webauthn totp] без пароля, консоль ведёт [totp]: находок по полу «2» %d, ждали 1 — "+
+			"гейт засчитал код по времени без пароля (пригодны %v)", len(got), sides.Usable)
+	}
+
+	// ЗАКОННЫЙ БЛИЗНЕЦ (один факт — пароль вместо ключа): код по времени поднимает.
+	withPassword := injectedPackage(t, root, pinnedSignInList, "assurance.MethodPassword, assurance.MethodTOTP")
+	if got, _ := ownFloorTwo(t, pin, withPassword, vocab, rule, console, byFloor); len(got) != 0 {
+		t.Fatalf("корень [password totp], консоль ведёт [totp]: пол «2» объявлен недостижимым: %v", got)
+	}
+
+	// Пароль, который консоль ведёт на церемонии рядом с кодом, уровня не поднимает:
+	// без него подъём состоялся бы и так. Пригодным называется только минимальное.
+	if _, sides := ownFloorTwo(t, pin, withPassword, vocab, rule, consoleWithoutOwnDeclaration(t)+
+		ownDeclaration("password", "totp"), byFloor); strings.Join(sides.Usable, " ") != "totp" {
+		t.Fatalf("консоль ведёт [password totp]: пригодными названы %v, ждали [totp] — перепись приписала "+
+			"подъём способу, без которого он состоялся бы и так", sides.Usable)
+	}
+
+	// Требование пароля — у ПРАВИЛА: строка «2», в которой код по времени поднимает
+	// уровень сам, делает тот же корень без пароля достижимым. Гейт, судящий своей
+	// таблицей, этого перехода не увидел бы ни в одну сторону.
+	totpAlone := mustOwnRule(t, injectedPackage(t, assurance, pinnedSecondFactorRow, "s.has(MethodTOTP)"), vocab)
+	if got, _ := ownFloorTwo(t, pin, noPassword, vocab, totpAlone, console, byFloor); len(got) != 0 {
+		t.Fatalf("правило, где код по времени даёт «2» сам, а пол по-прежнему недостижим: %v — гейт "+
+			"классифицирует своей таблицей, а не правилом пина", got)
+	}
+}
+
+// ruleRowNames — имена способов в каждой строке правила (то, что сверяла прежняя
+// посылка): уровень → наборы имён.
+func ruleRowNames(rule ownRule) map[string][]string {
+	name := regexp.MustCompile(`\(([a-z_]+)\)`)
+	out := map[string][]string{}
+	for _, r := range rule.rows {
+		set := map[string]bool{}
+		for _, m := range name.FindAllStringSubmatch(r.cond.String(), -1) {
+			set[m[1]] = true
+		}
+		names := make([]string, 0, len(set))
+		for n := range set {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		out[r.level] = append(out[r.level], strings.Join(names, "+"))
+	}
+	for l := range out {
+		sort.Strings(out[l])
+	}
+	return out
+}
+
+// TestIdentitySecondFactorInjection_RuleLogicNotItsNamesDecidesTheFloor — ось
+// круга 1: правило читается ЛОГИКОЙ строки, а не набором имён в ней.
+func TestIdentitySecondFactorInjection_RuleLogicNotItsNamesDecidesTheFloor(t *testing.T) {
+	byFloor := readCatalogFloors(t)
+	pin, root, assurance := readPinnedKaname(t)
+	vocab := assuranceVocabulary(assurance)
+	rule := mustOwnRule(t, assurance, vocab)
+	base := consoleWithoutOwnDeclaration(t)
+
+	// ДЕФЕКТ (вход круга 1): «пароль и (код по времени или запасной код)» →
+	// «пароль и код по времени и запасной код». Набор имён в строке тот же — именно
+	// его сверяла прежняя посылка, и её проба оставалась зелёной.
+	allThree := mustOwnRule(t, injectedPackage(t, assurance, pinnedSecondFactorRow,
+		"s.has(MethodPassword) && s.has(MethodTOTP) && s.has(MethodLookupSecret)"), vocab)
+	if a, b := fmt.Sprint(ruleRowNames(rule)), fmt.Sprint(ruleRowNames(allThree)); a != b {
+		t.Fatalf("инъекция сменила НАБОР имён (%s → %s), а должна была сменить только логику — "+
+			"проба перестала воспроизводить вход круга 1", a, b)
+	}
+
+	// Консоль ведёт один код по времени: по правилу пина этого хватает, по
+	// переписанному — нет.
+	if got, _ := ownFloorTwo(t, pin, root, vocab, rule, base+ownDeclaration("totp"), byFloor); len(got) != 0 {
+		t.Fatalf("правило пина, консоль ведёт [totp]: пол «2» объявлен недостижимым: %v", got)
+	}
+	if got, sides := ownFloorTwo(t, pin, root, vocab, allThree, base+ownDeclaration("totp"), byFloor); len(got) != 1 {
+		t.Fatalf("правило «пароль и оба кода», консоль ведёт только [totp]: находок по полу «2» %d, ждали 1 "+
+			"(пригодны %v) — гейт читает имена строки, а не её логику", len(got), sides.Usable)
+	}
+
+	// ЗАКОННЫЙ БЛИЗНЕЦ переписанного правила: консоль ведёт оба кода — уровень
+	// поднимается двумя предъявлениями, и гейт обязан молчать. Иначе «читает логику»
+	// было бы неотличимо от «краснеет на любой смене строки».
+	if got, _ := ownFloorTwo(t, pin, root, vocab, allThree, base+ownDeclaration("totp", "lookup_secret"), byFloor); len(got) != 0 {
+		t.Fatalf("правило «пароль и оба кода», консоль ведёт оба: пол «2» объявлен недостижимым: %v", got)
+	}
+	t.Logf("перепись: у пина %s строк правила %d · строки «2» у пина %v · после инъекции %v",
+		pin, len(rule.rows), rowsOfLevel(rule, "2"), rowsOfLevel(allThree, "2"))
+}
+
+// rowsOfLevel — толкованные условия строк одного уровня, как их печатает гейт.
+func rowsOfLevel(rule ownRule, level string) []string {
+	var out []string
+	for _, r := range rule.rows {
+		if r.level == level {
+			out = append(out, r.cond.String())
+		}
+	}
+	return out
+}
+
+// TestIdentitySecondFactorInjection_RuleOutsideTheInterpretationIsARefusal —
+// строка, помощник или лестница, которых толкование не узнаёт, — отказ с
+// координатой, а не догадка и не пропуск строки.
+func TestIdentitySecondFactorInjection_RuleOutsideTheInterpretationIsARefusal(t *testing.T) {
+	pin, _, assurance := readPinnedKaname(t)
+	vocab := assuranceVocabulary(assurance)
+
+	// ЗАКОННЫЙ БЛИЗНЕЦ: правило пина толкуется целиком, обе ступени на месте.
+	rule := mustOwnRule(t, assurance, vocab)
+	if len(rowsOfLevel(rule, "1")) == 0 || len(rowsOfLevel(rule, "2")) == 0 {
+		t.Fatalf("у пина %s не толкованы строки «1» или «2» (%v) — утверждения ниже вакуумны", pin, rule.rows)
+	}
+
+	cases := []struct{ name, old, repl string }{
+		{"условие строки — не выражение над предъявленным", pinnedSecondFactorRow, "len(s) > 1"},
+		{"постоянная вне словаря службы", "s.has(MethodWebAuthn) }", "s.has(MethodPasskey) }"},
+		{"помощник, который не спрашивает способ", "p.method == MethodWebAuthn && p.userVerified", "p.userVerified"},
+		{"уровень считается не по этой таблице", "return levelOf(rows, presentations)", "return levelOf(nil, presentations)"},
+		{"лестница — не первая подошедшая строка", "if r.holds(s) {", "if !r.holds(s) {"},
+	}
+	refused := 0
+	for _, c := range cases {
+		_, err := readOwnRule(injectedPackage(t, assurance, c.old, c.repl), vocab)
+		if !errors.Is(err, errRuleNotInterpretable) {
+			t.Fatalf("%s: толкование ответило %v — неузнанная форма правила обязана быть отказом, иначе гейт "+
+				"судил бы по правилу, которого служба не исполняет", c.name, err)
+		}
+		refused++
+	}
+	t.Logf("перепись: у пина %s строк правила %d · инъекций %d · отказов толкования %d",
+		pin, len(rule.rows), len(cases), refused)
+}
+
+// TestIdentitySecondFactorInjection_SilentRootIsARefusal — корень, не подавший
+// самоотчёту перечня вовсе, — отказ, а не «служба не провязала ничего» (круг 1:
+// прежняя проба ловила только форму «nil вместо перечня»).
+func TestIdentitySecondFactorInjection_SilentRootIsARefusal(t *testing.T) {
+	pin, root, assurance := readPinnedKaname(t)
+	vocab := assuranceVocabulary(assurance)
+
+	// ЗАКОННЫЙ БЛИЗНЕЦ: настоящий корень даёт перечень.
+	if wired, _, err := ownWiredMethods(root, vocab); err != nil || len(wired) == 0 {
+		t.Fatalf("перечень корня у пина %s не прочитан (%v, %v) — утверждения ниже вакуумны", pin, wired, err)
+	}
+	for _, c := range []struct{ name, old, repl string }{
+		{"наблюдатель провязки не зовётся вовсе", laneWiringObserver + "(ctx, cfg,", "unobservedLaneWiring(ctx, cfg,"},
+		{"производитель не называет ни одной постоянной словаря", "[]assurance.Method{" + pinnedSignInList + "}", "nil"},
+	} {
+		if wired, _, err := ownWiredMethods(injectedPackage(t, root, c.old, c.repl), vocab); !errors.Is(err, errNoSignInList) {
+			t.Fatalf("%s: разбор корня ответил %v (%v) — «перечня нет» обязано быть отказом", c.name, wired, err)
+		}
+	}
+}
+
+// TestIdentitySecondFactorInjection_EmptyCatalogIsARefusal — каталог, в котором
+// судить нечего, — отказ, а не «записей 0 · находок 0» (круг 1: пустой каталог
+// давал код 0 без единой строки переписи).
+func TestIdentitySecondFactorInjection_EmptyCatalogIsARefusal(t *testing.T) {
+	// ЗАКОННЫЙ БЛИЗНЕЦ: настоящий каталог разбирается, и пол «2» в нём есть.
+	real, err := catalogFloorsFrom([]byte(readFileForTest(t, permissionCatalogEmbed)))
+	if err != nil || len(real["2"]) == 0 {
+		t.Fatalf("настоящий каталог не разобран либо без пола «2» (%v, %d)", err, len(real["2"]))
+	}
+	// Каждый отказ называет СВОЮ причину: отказ по чужой причине означал бы, что
+	// своя проверка мертва и держится соседней.
+	for _, c := range []struct{ name, body, reason string }{
+		{"пустой каталог", "[]", "записей 0"},
+		{"ни одна запись не объявляет пола", `[{"fqn":"kacho.cloud.vpc.v1.NetworkService/Get"}]`, "не объявляет required_acr_min"},
+		{"запись без имени метода", `[{"fqn":"kacho.cloud.vpc.v1.NetworkService/Get","required_acr_min":"2"},{"required_acr_min":"2"}]`, "без поля fqn"},
+		{"не JSON", "{", "не разобран"},
+	} {
+		got, err := catalogFloorsFrom([]byte(c.body))
+		if err == nil {
+			t.Fatalf("%s: каталог принят (%v) — «достижимых 0 из 0» неотличимо от непрочитанного", c.name, got)
+		}
+		if !strings.Contains(err.Error(), c.reason) {
+			t.Fatalf("%s: отказ по чужой причине (%v), ждали «%s»", c.name, err, c.reason)
+		}
+	}
+}
+
+// TestIdentitySecondFactorInjection_FlagQualifiedRungIsNotClaimed — ступень,
+// которую держат флаги предъявления (ключ с проверкой пользователя, не
+// допускающий резервного копирования), гейт достижимой НЕ называет: флаги ему
+// неизвестны, и «неизвестно» не превращается в «да».
+func TestIdentitySecondFactorInjection_FlagQualifiedRungIsNotClaimed(t *testing.T) {
+	pin, root, assurance := readPinnedKaname(t)
+	vocab := assuranceVocabulary(assurance)
+	rule := mustOwnRule(t, assurance, vocab)
+	keyRoot := injectedPackage(t, root, pinnedSignInList, "assurance.MethodPassword, assurance.MethodWebAuthn")
+	sides, err := ownSecondFactorSides(pin, keyRoot, vocab, rule, consoleWithoutOwnDeclaration(t)+ownDeclaration("webauthn"))
+	if err != nil {
+		t.Fatalf("стороны own не прочитаны: %v", err)
+	}
+	// ЗАКОННЫЙ БЛИЗНЕЦ: до «2» ключ доступа поднимает строкой без флагов.
+	if !sides.Floors["2"] {
+		t.Fatalf("ключ доступа провязан и ведётся церемонией, а пол «2» недостижим (%v)", sides.Floors)
+	}
+	// «3» держится флагами — достоверно его не достичь.
+	if sides.Floors["3"] {
+		t.Fatalf("ступень «3» объявлена достижимой (%v), хотя её держат флаги предъявления, которых гейт не знает",
+			sides.Floors)
+	}
 }

@@ -48,9 +48,15 @@
 // Правило уровня на `own` — правило службы (приёмка Ф11, Р2: «2» — утверждение
 // ключа доступа либо пароль вместе с одноразовым или запасным кодом). Пакет
 // правила внутренний и сюда не импортируется, поэтому его строки ЧИТАЮТСЯ у пина
-// (TestIdentity_OwnRulePremiseMatchesThePin): сменился набор способов в строках
-// «1» или «2» — гейт краснеет и просит перемерить свою классификацию, а не
-// продолжает судить по прежнему правилу.
+// и ИСПОЛНЯЮТСЯ здесь закрытым толкованием (readOwnRule): своей таблицы «какой
+// способ что поднимает» гейт не держит. Сменилась логика строки — сменился и
+// вердикт; строка вне толкования — отказ с координатой, а не догадка
+// (TestIdentity_OwnRuleIsReadFromThePin). Прежняя редакция держала свою таблицу и
+// сверяла с пином лишь наборы имён в строках — круг 1 показал, что снятое в
+// таблице требование пароля и «и» вместо «или» в строке правила она пропускала.
+//
+// Каталог, в котором судить нечего (записей нет, пол не объявлен ни у одной,
+// запись без имени метода), — отказ, а не «достижимых 0 из 0».
 //
 // # Почему перепись печатает ДВА числа
 //
@@ -81,7 +87,7 @@
 // поэтому проверка не умеет пропускаться. Сторону службы на `own` он читает
 // исходником пиненного модуля (go.mod даёт версию, GOMODCACHE — каталог; тот же
 // приём, что у own_ceilings_and_access_keys_umbrella_test.go): подняли пин —
-// гейт судит новый корень сам.
+// гейт судит новый корень и новое правило сам.
 package deploy_test
 
 import (
@@ -311,15 +317,48 @@ func readCatalogFloors(t *testing.T) map[string][]string {
 	if err != nil {
 		t.Fatalf("каталог прав не прочитан (%s): %v", permissionCatalogEmbed, err)
 	}
-	var entries []catalogEntry
-	if err := json.Unmarshal(raw, &entries); err != nil {
-		t.Fatalf("каталог прав не разобран (%s): %v", permissionCatalogEmbed, err)
-	}
-	byFloor := map[string][]string{}
-	for _, e := range entries {
-		byFloor[e.RequiredACRMin] = append(byFloor[e.RequiredACRMin], e.FQN)
+	byFloor, err := catalogFloorsFrom(raw)
+	if err != nil {
+		t.Fatalf("каталог прав (%s): %v", permissionCatalogEmbed, err)
 	}
 	return byFloor
+}
+
+// catalogFloorsFrom — записи каталога по полу уровня.
+//
+// Каталог, в котором судить нечего, — отказ, а не пустая перепись: «достижимых 0
+// из 0» неотличимо от «ничего не прочитано» (круг 1: пустой каталог давал код 0
+// без единой строки переписи). Нечего судить трижды: записей нет; ни одна запись
+// не объявляет пола (разбор перестал видеть поле либо поле переехало); у записи
+// нет имени метода (находка называла бы пустое место).
+func catalogFloorsFrom(raw []byte) (map[string][]string, error) {
+	var entries []catalogEntry
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		return nil, fmt.Errorf("не разобран: %w", err)
+	}
+	if len(entries) == 0 {
+		return nil, errors.New("записей 0 — судить достижимость полов не на чем")
+	}
+	byFloor := map[string][]string{}
+	nameless, floored := 0, 0
+	for _, e := range entries {
+		if e.FQN == "" {
+			nameless++
+		}
+		if e.RequiredACRMin != "" {
+			floored++
+		}
+		byFloor[e.RequiredACRMin] = append(byFloor[e.RequiredACRMin], e.FQN)
+	}
+	if nameless > 0 {
+		return nil, fmt.Errorf("записей без поля fqn %d из %d — разбор перестал видеть имя метода", nameless, len(entries))
+	}
+	if floored == 0 {
+		return nil, fmt.Errorf("ни одна из %d записей не объявляет required_acr_min — разбор перестал видеть "+
+			"поле пола либо оно переехало; «ни один пол не недостижим» здесь значило бы «ни одного не прочитано»",
+			len(entries))
+	}
+	return byFloor, nil
 }
 
 func readFileForTest(t *testing.T, path string) string {
@@ -561,6 +600,14 @@ func ownWiredMethods(root goPackageSource, vocab map[string]string) ([]string, s
 		return nil, where[0], fmt.Errorf("%w: %s называет постоянные вне словаря службы: %v",
 			errNoSignInList, where[0], unknown)
 	}
+	// Производитель, не назвавший ни одной постоянной, перечень собирает иначе —
+	// чтением настройки, помощником, — и разбор его не видит. Это отказ, а не
+	// «служба не провязала ничего»: ветка «полоса не поднята» возвращает nil
+	// рядом с перечнем, а не вместо него.
+	if len(seen) == 0 {
+		return nil, where[0], fmt.Errorf("%w: %s не называет ни одной постоянной словаря службы",
+			errNoSignInList, where[0])
+	}
 	out := make([]string, 0, len(seen))
 	for m := range seen {
 		out = append(out, m)
@@ -569,17 +616,550 @@ func ownWiredMethods(root goPackageSource, vocab map[string]string) ([]string, s
 	return out, where[0], nil
 }
 
-// ownRulePremise — строки правила уровня, по которым классифицирует этот гейт:
-// уровень → наборы постоянных словаря, названных в условии строки. Классификация
-// ownSecondFactorMethods/ownFirstFactorMethods верна ровно при этом правиле.
-var ownRulePremise = map[string][]string{
-	"1": {"MethodPassword", "MethodRecoveryCode"},
-	"2": {"MethodLookupSecret+MethodPassword+MethodTOTP", "MethodWebAuthn"},
+// ─────────────────────────────────────────────────────────────────────────────
+// ПРАВИЛО УРОВНЯ own ТОЛКУЕТСЯ У ПИНА, А НЕ ПЕРЕСКАЗЫВАЕТСЯ ГЕЙТОМ (#2691, круг 2)
+//
+// Классификатор способов на посадке own — не таблица гейта, а само правило
+// службы. Строки `rows` читаются разбором и исполняются здесь так же, как их
+// исполняет служба: первая строка лестницы с истинным условием даёт уровень.
+// Прежняя редакция держала рядом свою таблицу «какой способ что поднимает» и
+// сверяла с пином лишь НАБОРЫ ИМЁН в строках. Круг 1 показал цену этого:
+// мутация, снявшая в таблице требование пароля, не роняла ни одной пробы, а
+// переписанная логика строки («и» вместо «или») проходила сверку.
+//
+// Толкование ЗАКРЫТО. Узнаётся ровно следующее:
+//   - `s.has(MethodX)` — способ X предъявлен;
+//   - `s.<помощник>()` — метод множества вида «есть предъявление способа X с
+//     такими-то флагами». Флаги гейту неизвестны, поэтому значение «ложно», если X
+//     не предъявлен, и «неизвестно», если предъявлен;
+//   - `&&`, `||`, скобки.
+// Всё прочее — отказ errRuleNotInterpretable с координатой: судить правилом,
+// которого толкование не понимает, значило бы судить догадкой. Отрицания в
+// правиле пина нет, поэтому толкование его и не узнаёт: неисполненная ветвь
+// разбора была бы утверждением, которое ни одна проба не опровергает.
+//
+// «Неизвестно» исполняется трёхзначно. Вердикт «достижимо» выносится только на
+// достоверном значении, поэтому неизвестная строка может лишь отнять
+// достижимость, а добавить её не может.
+//
+// Что правило исполняет ИМЕННО эта таблица и ИМЕННО первой подошедшей строкой,
+// тоже читается у пина (ruleLadderIsTheEvaluator). Без этого толкование судило
+// бы таблицей, которую служба, может быть, уже не читает.
+
+// errRuleNotInterpretable — форма правила уровня вне закрытого толкования:
+// вердикта нет, а не «пол недостижим».
+var errRuleNotInterpretable = errors.New("правило уровня у пина не толкуется")
+
+// ruleValue — трёхзначное значение условия строки; порядок ложно < неизвестно <
+// истинно делает «и» минимумом, а «или» — максимумом.
+type ruleValue uint8
+
+const (
+	ruleFalse ruleValue = iota
+	ruleUnknown
+	ruleTrue
+)
+
+// ruleExpr — толкованное условие строки правила.
+type ruleExpr interface {
+	eval(presented map[string]bool) ruleValue
+	String() string
 }
 
-// assuranceRuleRows — строки правила уровня службы, прочитанные у пина: для
-// уровней «1» и «2» — какие постоянные словаря названы в условии каждой строки.
-func assuranceRuleRows(src goPackageSource) (map[string][]string, error) {
+// rulePresented — «способ предъявлен». qualified — имя помощника, который
+// требует от предъявления ещё и флагов; пусто — голое `has`.
+type rulePresented struct {
+	method    string
+	qualified string
+}
+
+func (e rulePresented) eval(presented map[string]bool) ruleValue {
+	switch {
+	case !presented[e.method]:
+		return ruleFalse
+	case e.qualified != "":
+		return ruleUnknown
+	default:
+		return ruleTrue
+	}
+}
+
+func (e rulePresented) String() string {
+	if e.qualified != "" {
+		return e.qualified + "(" + e.method + ")"
+	}
+	return "has(" + e.method + ")"
+}
+
+// ruleJoin — «и» (and) либо «или» двух условий.
+type ruleJoin struct {
+	and         bool
+	left, right ruleExpr
+}
+
+func (e ruleJoin) eval(presented map[string]bool) ruleValue {
+	l, r := e.left.eval(presented), e.right.eval(presented)
+	if e.and {
+		return min(l, r)
+	}
+	return max(l, r)
+}
+
+func (e ruleJoin) String() string {
+	op := " || "
+	if e.and {
+		op = " && "
+	}
+	return "(" + e.left.String() + op + e.right.String() + ")"
+}
+
+// ruleRow — строка правила: уровень (значение постоянной службы и его ранг на
+// лестнице), имя строки и толкованное условие.
+type ruleRow struct {
+	level string
+	rank  int
+	name  string
+	cond  ruleExpr
+}
+
+// ownRule — правило уровня пина в порядке лестницы и координата таблицы.
+type ownRule struct {
+	rows  []ruleRow
+	where string
+}
+
+// levelRange — уровень множества предъявленного так, как его даёт служба:
+// первая строка лестницы, чьё условие истинно. Строка со значением «неизвестно»
+// может дать свой уровень, а может пропустить ход дальше, поэтому ответ —
+// диапазон: lo — достоверный нижний уровень, hi — возможный верхний; 0 — «сессия
+// не выдаётся».
+func (r ownRule) levelRange(presented map[string]bool) (lo, hi int) {
+	lo = -1
+	note := func(n int) {
+		if lo < 0 || n < lo {
+			lo = n
+		}
+		hi = max(hi, n)
+	}
+	for _, row := range r.rows {
+		switch row.cond.eval(presented) {
+		case ruleTrue:
+			note(row.rank)
+			return lo, hi
+		case ruleUnknown:
+			note(row.rank)
+		case ruleFalse:
+		}
+	}
+	note(0)
+	return lo, hi
+}
+
+// signIn — провязанные способы, которыми сессия ВЫДАЁТСЯ: одного предъявления
+// способа правилу достоверно хватает на уровень.
+func (r ownRule) signIn(wired []string) []string {
+	var out []string
+	for _, m := range wired {
+		if lo, _ := r.levelRange(map[string]bool{m: true}); lo >= 1 {
+			out = append(out, m)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// lifting — способы, которыми церемония повышения поднимает сессию до пола floor.
+//
+// Сессия выдана входом одним способом f. Церемония предъявляет D — способы,
+// которые служба провязала И консоль на церемонии ведёт. Подъём состоялся, если
+// уровень f∪D достоверно не ниже пола, а уровень самого f достоверно ниже пола
+// (иначе поднимал не D, а вход, которого этот гейт не судит). Исключение — f,
+// который ведёт сама церемония. Берутся только МИНИМАЛЬНЫЕ D: способ, без
+// которого подъём состоялся бы и так, пригодным не называется.
+func (r ownRule) lifting(wired, drivable []string, floor int) []string {
+	var ceremony []string
+	for _, m := range wired {
+		if contains(drivable, m) {
+			ceremony = append(ceremony, m)
+		}
+	}
+	sort.Strings(ceremony)
+	subsets := nonEmptySubsets(ceremony)
+
+	used := map[string]bool{}
+	for _, f := range r.signIn(wired) {
+		_, loginHi := r.levelRange(map[string]bool{f: true})
+		var lifts [][]string
+		for _, d := range subsets {
+			if coversAny(d, lifts) {
+				continue
+			}
+			presented := map[string]bool{f: true}
+			for _, m := range d {
+				presented[m] = true
+			}
+			if lo, _ := r.levelRange(presented); lo >= floor && (loginHi < floor || contains(d, f)) {
+				lifts = append(lifts, d)
+			}
+		}
+		for _, d := range lifts {
+			for _, m := range d {
+				used[m] = true
+			}
+		}
+	}
+	out := make([]string, 0, len(used))
+	for m := range used {
+		out = append(out, m)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// floors — какие полы достижимы на посадке own: «1» — вход, ступени выше —
+// подъём церемонией (lifting).
+func (r ownRule) floors(wired, drivable []string) map[string]bool {
+	out := map[string]bool{"0": true, "1": len(r.signIn(wired)) > 0}
+	for _, row := range r.rows {
+		if row.rank >= 2 {
+			out[row.level] = len(r.lifting(wired, drivable, row.rank)) > 0
+		}
+	}
+	return out
+}
+
+// nonEmptySubsets — непустые подмножества перечня по возрастанию размера.
+func nonEmptySubsets(ms []string) [][]string {
+	var out [][]string
+	for mask := 1; mask < 1<<len(ms); mask++ {
+		var s []string
+		for i, m := range ms {
+			if mask&(1<<i) != 0 {
+				s = append(s, m)
+			}
+		}
+		out = append(out, s)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return len(out[i]) < len(out[j]) })
+	return out
+}
+
+// coversAny — содержит ли d целиком одно из уже найденных подмножеств.
+func coversAny(d []string, found [][]string) bool {
+	for _, f := range found {
+		all := true
+		for _, m := range f {
+			if !contains(d, m) {
+				all = false
+				break
+			}
+		}
+		if all {
+			return true
+		}
+	}
+	return false
+}
+
+// ── разбор правила у пина ────────────────────────────────────────────────────
+
+// notInterpretable — отказ толкования с координатой узла.
+func (s goPackageSource) notInterpretable(n ast.Node, format string, args ...any) error {
+	pos := s.fset.Position(n.Pos())
+	return fmt.Errorf("%w: %s:%d: %s", errRuleNotInterpretable, pos.Filename, pos.Line, fmt.Sprintf(format, args...))
+}
+
+// funcDecl — единственное объявление функции (recv == "") либо метода типа recv.
+func (s goPackageSource) funcDecl(recv, name string) (*ast.FuncDecl, error) {
+	var found []*ast.FuncDecl
+	for _, rel := range s.sortedFiles() {
+		for _, decl := range s.files[rel].Decls {
+			fd, ok := decl.(*ast.FuncDecl)
+			if !ok || fd.Name.Name != name || fd.Body == nil {
+				continue
+			}
+			if recvTypeName(fd) == recv {
+				found = append(found, fd)
+			}
+		}
+	}
+	if len(found) != 1 {
+		return nil, fmt.Errorf("%w: %s.%s объявлен %d раз", errRuleNotInterpretable, recv, name, len(found))
+	}
+	return found[0], nil
+}
+
+func recvTypeName(fd *ast.FuncDecl) string {
+	if fd.Recv == nil || len(fd.Recv.List) != 1 {
+		return ""
+	}
+	typ := fd.Recv.List[0].Type
+	if star, ok := typ.(*ast.StarExpr); ok {
+		typ = star.X
+	}
+	if id, ok := typ.(*ast.Ident); ok {
+		return id.Name
+	}
+	return ""
+}
+
+// paramNames — имена параметров функции по порядку.
+func paramNames(ft *ast.FuncType) []string {
+	var out []string
+	for _, f := range ft.Params.List {
+		for _, n := range f.Names {
+			out = append(out, n.Name)
+		}
+	}
+	return out
+}
+
+func isIdent(e ast.Expr, name string) bool {
+	id, ok := e.(*ast.Ident)
+	return ok && id.Name == name
+}
+
+// isSelector — `x.sel` при голом идентификаторе x.
+func isSelector(e ast.Expr, x, sel string) bool {
+	se, ok := e.(*ast.SelectorExpr)
+	return ok && isIdent(se.X, x) && se.Sel.Name == sel
+}
+
+// assuranceLevels — постоянные уровня службы: имя → значение и ранг.
+func assuranceLevels(src goPackageSource) (map[string]ruleRow, error) {
+	out := map[string]ruleRow{}
+	for _, rel := range src.sortedFiles() {
+		for _, decl := range src.files[rel].Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.CONST {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok || !isIdent(vs.Type, "Level") || len(vs.Names) != 1 || len(vs.Values) != 1 {
+					continue
+				}
+				bl, ok := vs.Values[0].(*ast.BasicLit)
+				if !ok || bl.Kind != token.STRING {
+					return nil, src.notInterpretable(vs, "уровень %s — не строковая постоянная", vs.Names[0].Name)
+				}
+				val, err := strconv.Unquote(bl.Value)
+				if err != nil {
+					return nil, src.notInterpretable(bl, "уровень %s: %v", vs.Names[0].Name, err)
+				}
+				rank, err := strconv.Atoi(val)
+				if err != nil || rank < 1 {
+					return nil, src.notInterpretable(bl, "уровень %s = %q — не ступень лестницы", vs.Names[0].Name, val)
+				}
+				out[vs.Names[0].Name] = ruleRow{level: val, rank: rank}
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("%w: постоянных уровня (тип Level) не найдено", errRuleNotInterpretable)
+	}
+	return out, nil
+}
+
+// ruleLadderIsTheEvaluator — правило служба исполняет ЭТОЙ таблицей и ПЕРВОЙ
+// подошедшей строкой: `LevelOf` зовёт исполнителя с таблицей `rows`, а
+// исполнитель обходит таблицу и возвращает уровень первой строки, чьё условие
+// истинно.
+func ruleLadderIsTheEvaluator(src goPackageSource) error {
+	entry, err := src.funcDecl("", "LevelOf")
+	if err != nil {
+		return err
+	}
+	var evaluator string
+	if len(entry.Body.List) == 1 {
+		if ret, ok := entry.Body.List[0].(*ast.ReturnStmt); ok && len(ret.Results) == 1 {
+			if call, ok := ret.Results[0].(*ast.CallExpr); ok && len(call.Args) == 2 && isIdent(call.Args[0], "rows") {
+				if fn, ok := call.Fun.(*ast.Ident); ok {
+					evaluator = fn.Name
+				}
+			}
+		}
+	}
+	if evaluator == "" {
+		return src.notInterpretable(entry, "`LevelOf` не считает уровень таблицей `rows` — толкование судило бы "+
+			"таблицей, которую служба не исполняет")
+	}
+	eval, err := src.funcDecl("", evaluator)
+	if err != nil {
+		return err
+	}
+	params := paramNames(eval.Type)
+	if len(params) == 0 {
+		return src.notInterpretable(eval, "исполнитель %s без параметра таблицы", evaluator)
+	}
+	ladders := 0
+	for _, st := range eval.Body.List {
+		switch st := st.(type) {
+		case *ast.AssignStmt, *ast.ReturnStmt:
+		case *ast.RangeStmt:
+			if !firstHoldingRowWins(st, params[0]) {
+				return src.notInterpretable(st, "исполнитель %s обходит таблицу не «первая строка с истинным "+
+					"условием даёт уровень»", evaluator)
+			}
+			ladders++
+		default:
+			return src.notInterpretable(st, "исполнитель %s несёт шаг вне лестницы", evaluator)
+		}
+	}
+	if ladders != 1 {
+		return src.notInterpretable(eval, "исполнитель %s: обходов таблицы %d, ждали один", evaluator, ladders)
+	}
+	return nil
+}
+
+// firstHoldingRowWins — `for _, r := range table { if r.holds(…) { return r.level, … } }`.
+func firstHoldingRowWins(st *ast.RangeStmt, table string) bool {
+	row, ok := st.Value.(*ast.Ident)
+	if !ok || !isIdent(st.X, table) || len(st.Body.List) != 1 {
+		return false
+	}
+	ifs, ok := st.Body.List[0].(*ast.IfStmt)
+	if !ok || ifs.Init != nil || ifs.Else != nil || len(ifs.Body.List) != 1 {
+		return false
+	}
+	call, ok := ifs.Cond.(*ast.CallExpr)
+	if !ok || !isSelector(call.Fun, row.Name, "holds") {
+		return false
+	}
+	ret, ok := ifs.Body.List[0].(*ast.ReturnStmt)
+	return ok && len(ret.Results) >= 1 && isSelector(ret.Results[0], row.Name, "level")
+}
+
+// presentedPredicate — толкованный метод множества предъявленного.
+type presentedPredicate struct {
+	byParam  bool   // способ подаётся аргументом (`has(m)`)
+	constant string // иначе — постоянная словаря в теле
+	flags    bool   // от предъявления требуются ещё и флаги
+}
+
+// readPresentedPredicate узнаёт ровно одну форму метода множества:
+//
+//	for _, p := range s { if p.method == <m | MethodX> [&& p.flag]… { return true } }
+//	return false
+//
+// Истинным такой метод бывает только при предъявленном способе, поэтому
+// толкование «ложно без способа, неизвестно со способом» верно при любых флагах.
+func readPresentedPredicate(src goPackageSource, recvType, name string, vocab map[string]string) (presentedPredicate, error) {
+	fd, err := src.funcDecl(recvType, name)
+	if err != nil {
+		return presentedPredicate{}, err
+	}
+	fail := func(n ast.Node) (presentedPredicate, error) {
+		return presentedPredicate{}, src.notInterpretable(n, "метод %s.%s не вида «есть предъявление способа "+
+			"с флагами»", recvType, name)
+	}
+	recv := fd.Recv.List[0].Names
+	params := paramNames(fd.Type)
+	if len(recv) != 1 || len(params) > 1 || len(fd.Body.List) != 2 {
+		return fail(fd)
+	}
+	loop, ok := fd.Body.List[0].(*ast.RangeStmt)
+	if !ok || !isIdent(loop.X, recv[0].Name) || len(loop.Body.List) != 1 {
+		return fail(fd)
+	}
+	if ret, ok := fd.Body.List[1].(*ast.ReturnStmt); !ok || len(ret.Results) != 1 || !isIdent(ret.Results[0], "false") {
+		return fail(fd)
+	}
+	item, ok := loop.Value.(*ast.Ident)
+	if !ok {
+		return fail(loop)
+	}
+	ifs, ok := loop.Body.List[0].(*ast.IfStmt)
+	if !ok || ifs.Init != nil || ifs.Else != nil || len(ifs.Body.List) != 1 {
+		return fail(loop)
+	}
+	if ret, ok := ifs.Body.List[0].(*ast.ReturnStmt); !ok || len(ret.Results) != 1 || !isIdent(ret.Results[0], "true") {
+		return fail(ifs)
+	}
+
+	var conj []ast.Expr
+	var flatten func(e ast.Expr)
+	flatten = func(e ast.Expr) {
+		if be, ok := e.(*ast.BinaryExpr); ok && be.Op == token.LAND {
+			flatten(be.X)
+			flatten(be.Y)
+			return
+		}
+		conj = append(conj, e)
+	}
+	flatten(ifs.Cond)
+
+	var pred presentedPredicate
+	methodTests := 0
+	for _, c := range conj {
+		if be, ok := c.(*ast.BinaryExpr); ok && be.Op == token.EQL {
+			other := be.Y
+			if !isSelector(be.X, item.Name, "method") {
+				other = be.X
+				if !isSelector(be.Y, item.Name, "method") {
+					return fail(c)
+				}
+			}
+			switch {
+			case len(params) == 1 && isIdent(other, params[0]):
+				pred.byParam = true
+			case len(params) == 0:
+				id, ok := other.(*ast.Ident)
+				if !ok || vocab[id.Name] == "" {
+					return fail(c)
+				}
+				pred.constant = id.Name
+			default:
+				return fail(c)
+			}
+			methodTests++
+			continue
+		}
+		flag := c
+		if ue, ok := c.(*ast.UnaryExpr); ok && ue.Op == token.NOT {
+			flag = ue.X
+		}
+		if se, ok := flag.(*ast.SelectorExpr); !ok || !isIdent(se.X, item.Name) || se.Sel.Name == "method" {
+			return fail(c)
+		}
+		pred.flags = true
+	}
+	if methodTests != 1 {
+		return fail(ifs)
+	}
+	return pred, nil
+}
+
+// readOwnRule — правило уровня пина, толкованное целиком.
+func readOwnRule(src goPackageSource, vocab map[string]string) (ownRule, error) {
+	levels, err := assuranceLevels(src)
+	if err != nil {
+		return ownRule{}, err
+	}
+	if err := ruleLadderIsTheEvaluator(src); err != nil {
+		return ownRule{}, err
+	}
+	table, fields, err := ruleTable(src)
+	if err != nil {
+		return ownRule{}, err
+	}
+	pos := src.fset.Position(table.Pos())
+	rule := ownRule{where: fmt.Sprintf("%s:%d", pos.Filename, pos.Line)}
+	for _, el := range table.Elts {
+		row, err := readRuleRow(src, el, fields, levels, vocab)
+		if err != nil {
+			return ownRule{}, err
+		}
+		rule.rows = append(rule.rows, row)
+	}
+	if len(rule.rows) == 0 {
+		return ownRule{}, src.notInterpretable(table, "таблица `rows` пуста")
+	}
+	return rule, nil
+}
+
+// ruleTable — литерал таблицы `rows` и имена полей её строки по порядку.
+func ruleTable(src goPackageSource) (*ast.CompositeLit, []string, error) {
 	for _, rel := range src.sortedFiles() {
 		for _, decl := range src.files[rel].Decls {
 			gd, ok := decl.(*ast.GenDecl)
@@ -593,80 +1173,162 @@ func assuranceRuleRows(src goPackageSource) (map[string][]string, error) {
 				}
 				table, ok := vs.Values[0].(*ast.CompositeLit)
 				if !ok {
-					return nil, fmt.Errorf("%s: `rows` — не литерал таблицы", rel)
+					return nil, nil, src.notInterpretable(vs, "`rows` — не литерал таблицы")
 				}
-				out := map[string][]string{}
-				for _, el := range table.Elts {
-					row, ok := el.(*ast.CompositeLit)
-					if !ok || len(row.Elts) == 0 {
-						continue
-					}
-					lvl, ok := row.Elts[0].(*ast.Ident)
-					if !ok || !strings.HasPrefix(lvl.Name, "Level") {
-						continue
-					}
-					level := strings.TrimPrefix(lvl.Name, "Level")
-					if level != "1" && level != "2" {
-						continue
-					}
-					names := map[string]bool{}
-					ast.Inspect(row, func(n ast.Node) bool {
-						if id, ok := n.(*ast.Ident); ok && strings.HasPrefix(id.Name, "Method") {
-							names[id.Name] = true
-						}
-						return true
-					})
-					set := make([]string, 0, len(names))
-					for n := range names {
-						set = append(set, n)
-					}
-					sort.Strings(set)
-					out[level] = append(out[level], strings.Join(set, "+"))
+				arr, ok := table.Type.(*ast.ArrayType)
+				if !ok {
+					return nil, nil, src.notInterpretable(table, "`rows` — не срез строк")
 				}
-				for l := range out {
-					sort.Strings(out[l])
+				elt, ok := arr.Elt.(*ast.Ident)
+				if !ok {
+					return nil, nil, src.notInterpretable(table, "`rows` — не срез именованных строк")
+				}
+				fields, err := structFields(src, elt.Name)
+				if err != nil {
+					return nil, nil, err
+				}
+				return table, fields, nil
+			}
+		}
+	}
+	return nil, nil, fmt.Errorf("%w: таблица строк правила `rows` не найдена", errRuleNotInterpretable)
+}
+
+// structFields — имена полей именованной структуры пакета по порядку.
+func structFields(src goPackageSource, name string) ([]string, error) {
+	for _, rel := range src.sortedFiles() {
+		for _, decl := range src.files[rel].Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.TYPE {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				ts, ok := spec.(*ast.TypeSpec)
+				if !ok || ts.Name.Name != name {
+					continue
+				}
+				st, ok := ts.Type.(*ast.StructType)
+				if !ok {
+					return nil, src.notInterpretable(ts, "строка правила %s — не структура", name)
+				}
+				var out []string
+				for _, f := range st.Fields.List {
+					for _, n := range f.Names {
+						out = append(out, n.Name)
+					}
 				}
 				return out, nil
 			}
 		}
 	}
-	return nil, errors.New("таблица строк правила `rows` не найдена")
+	return nil, fmt.Errorf("%w: тип строки правила %s не найден", errRuleNotInterpretable, name)
 }
 
-// ownSecondFactorMethods — провязанные способы, которыми сессия поднимается до
-// «2» (правило Р2 службы, сверенное с пином ownRulePremise): утверждение ключа
-// доступа — само; код по времени и запасной код — только вместе с паролем.
-func ownSecondFactorMethods(wired []string) []string {
-	has := map[string]bool{}
-	for _, m := range wired {
-		has[m] = true
+// readRuleRow — одна строка таблицы: уровень, имя и толкованное условие.
+func readRuleRow(src goPackageSource, el ast.Expr, fields []string, levels map[string]ruleRow,
+	vocab map[string]string,
+) (ruleRow, error) {
+	lit, ok := el.(*ast.CompositeLit)
+	if !ok {
+		return ruleRow{}, src.notInterpretable(el, "строка правила — не литерал")
 	}
-	var out []string
-	if has["webauthn"] {
-		out = append(out, "webauthn")
-	}
-	if has["password"] {
-		for _, m := range []string{"totp", "lookup_secret"} {
-			if has[m] {
-				out = append(out, m)
+	byField := map[string]ast.Expr{}
+	for i, e := range lit.Elts {
+		if kv, ok := e.(*ast.KeyValueExpr); ok {
+			if k, ok := kv.Key.(*ast.Ident); ok {
+				byField[k.Name] = kv.Value
 			}
+			continue
+		}
+		if i < len(fields) {
+			byField[fields[i]] = e
 		}
 	}
-	sort.Strings(out)
-	return out
+	lvl, ok := byField["level"].(*ast.Ident)
+	if !ok {
+		return ruleRow{}, src.notInterpretable(lit, "уровень строки — не постоянная")
+	}
+	row, ok := levels[lvl.Name]
+	if !ok {
+		return ruleRow{}, src.notInterpretable(lvl, "уровень %s вне постоянных службы", lvl.Name)
+	}
+	if bl, ok := byField["name"].(*ast.BasicLit); ok && bl.Kind == token.STRING {
+		row.name, _ = strconv.Unquote(bl.Value)
+	}
+	fn, ok := byField["holds"].(*ast.FuncLit)
+	if !ok {
+		return ruleRow{}, src.notInterpretable(lit, "условие строки — не литерал функции")
+	}
+	params := paramNames(fn.Type)
+	if len(params) != 1 || len(fn.Type.Params.List) != 1 || len(fn.Body.List) != 1 {
+		return ruleRow{}, src.notInterpretable(fn, "условие строки — не `func(s …) bool { return … }`")
+	}
+	recvType, ok := fn.Type.Params.List[0].Type.(*ast.Ident)
+	if !ok {
+		return ruleRow{}, src.notInterpretable(fn, "параметр условия — не именованный тип множества")
+	}
+	ret, ok := fn.Body.List[0].(*ast.ReturnStmt)
+	if !ok || len(ret.Results) != 1 {
+		return ruleRow{}, src.notInterpretable(fn, "условие строки — не единственный `return`")
+	}
+	cond, err := readRuleCond(src, ret.Results[0], params[0], recvType.Name, vocab)
+	if err != nil {
+		return ruleRow{}, err
+	}
+	row.cond = cond
+	return row, nil
 }
 
-// ownFirstFactorMethods — провязанные способы, которыми сессия выдаётся вообще.
-func ownFirstFactorMethods(wired []string) []string {
-	var out []string
-	for _, m := range wired {
-		switch m {
-		case "password", "recovery_code", "webauthn":
-			out = append(out, m)
+// readRuleCond — условие строки в закрытом толковании.
+func readRuleCond(src goPackageSource, e ast.Expr, set, setType string, vocab map[string]string) (ruleExpr, error) {
+	switch e := e.(type) {
+	case *ast.ParenExpr:
+		return readRuleCond(src, e.X, set, setType, vocab)
+	case *ast.BinaryExpr:
+		if e.Op != token.LAND && e.Op != token.LOR {
+			break
 		}
+		l, err := readRuleCond(src, e.X, set, setType, vocab)
+		if err != nil {
+			return nil, err
+		}
+		r, err := readRuleCond(src, e.Y, set, setType, vocab)
+		if err != nil {
+			return nil, err
+		}
+		return ruleJoin{and: e.Op == token.LAND, left: l, right: r}, nil
+	case *ast.CallExpr:
+		sel, ok := e.Fun.(*ast.SelectorExpr)
+		if !ok || !isIdent(sel.X, set) {
+			break
+		}
+		pred, err := readPresentedPredicate(src, setType, sel.Sel.Name, vocab)
+		if err != nil {
+			return nil, err
+		}
+		constant := pred.constant
+		switch {
+		case pred.byParam && len(e.Args) == 1:
+			id, ok := e.Args[0].(*ast.Ident)
+			if !ok {
+				return nil, src.notInterpretable(e, "способ в %s — не постоянная словаря", sel.Sel.Name)
+			}
+			constant = id.Name
+		case !pred.byParam && len(e.Args) == 0:
+		default:
+			return nil, src.notInterpretable(e, "вызов %s с %d аргументами", sel.Sel.Name, len(e.Args))
+		}
+		method, ok := vocab[constant]
+		if !ok {
+			return nil, src.notInterpretable(e, "постоянная %s вне словаря службы", constant)
+		}
+		out := rulePresented{method: method}
+		if pred.flags {
+			out.qualified = sel.Sel.Name
+		}
+		return out, nil
 	}
-	sort.Strings(out)
-	return out
+	return nil, src.notInterpretable(e, "условие %T вне толкования («has», помощник предъявления, «&&», «||», скобки)", e)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -680,6 +1342,12 @@ type secondFactorSides struct {
 	First       []string // способы, которыми сессия выдаётся
 	Second      []string // способы, поднимающие сессию до «2»
 	Drivable    []string // способы, которые консоль ведёт на этой посадке
+	// Floors и Usable — вердикт посадки: какие полы достижимы и какими способами
+	// до «2» поднимают обе стороны сразу. Считает его строитель сторон посадки —
+	// у каждой посадки своё правило (external — таблица поставщика, own — правило
+	// службы у пина).
+	Floors map[string]bool
+	Usable []string
 }
 
 // judgeSecondFactorReach — перепись каталога и находки ОДНОЙ посадки.
@@ -687,7 +1355,7 @@ type secondFactorSides struct {
 // Чистая: стороны подаются значением, поэтому инъекция подаёт ей и настоящие
 // стороны дерева, и стороны с возвращённым дефектом — не трогая ни дерева, ни пина.
 func judgeSecondFactorReach(s secondFactorSides, byFloor map[string][]string) (census, findings []string, usable []string) {
-	floors, usable := attainableFloors(s.Second, s.First, s.Drivable)
+	floors, usable := s.Floors, s.Usable
 	total := 0
 	floorNames := make([]string, 0, len(byFloor))
 	for f, v := range byFloor {
@@ -747,35 +1415,46 @@ func externalSecondFactorSides(settings, console string) (secondFactorSides, err
 		return secondFactorSides{}, fmt.Errorf("перечень STEP_UP_METHODS консоли пуст либо не разобран (%s) — "+
 			"вердикта нет: достижимость считалась бы по одной стороне из двух", stepUpMethodsDeclaration)
 	}
-	return secondFactorSides{
+	sides := secondFactorSides{
 		Landing:     landingExternal,
 		ServiceFrom: identityConfigTemplate,
 		ConsoleFrom: stepUpMethodsDeclaration + " STEP_UP_METHODS",
 		First:       firstFactorMethods(methods),
 		Second:      secondFactorMethods(methods),
 		Drivable:    drivable,
-	}, nil
+	}
+	sides.Floors, sides.Usable = attainableFloors(sides.Second, sides.First, sides.Drivable)
+	return sides, nil
 }
 
-// ownSecondFactorSides — посадка `own`: корень пиненной службы и перечень
-// нашей церемонии.
+// ownSecondFactorSides — посадка `own`: корень пиненной службы, правило уровня
+// пина и перечень нашей церемонии. Какие способы что поднимают, решает правило
+// (ownRule), а не таблица гейта.
 //
 // Пустой перечень консоли здесь — НЕ отсутствие вердикта, а сам предмет: консоль,
 // не объявившая способов нашей церемонии, поднимать уровень на этой посадке не
 // умеет, и это находка по полу, а не молчание. Отсутствие перечня службы —
 // наоборот, отказ: разбор корня обязан что-то увидеть.
-func ownSecondFactorSides(pin string, root goPackageSource, vocab map[string]string, console string) (secondFactorSides, error) {
+func ownSecondFactorSides(pin string, root goPackageSource, vocab map[string]string, rule ownRule,
+	console string,
+) (secondFactorSides, error) {
 	wired, where, err := ownWiredMethods(root, vocab)
 	if err != nil {
 		return secondFactorSides{}, fmt.Errorf("корень службы доступа у пина %s: %w", pin, err)
 	}
+	if len(rule.rows) == 0 {
+		return secondFactorSides{}, fmt.Errorf("%w: правило у пина %s не подано", errRuleNotInterpretable, pin)
+	}
+	drivable := parseOwnStepUpMethods(console)
 	return secondFactorSides{
 		Landing:     landingOwn,
-		ServiceFrom: fmt.Sprintf("%s@%s %s", productModuleprefix+kanameModulePart, pin, where),
+		ServiceFrom: fmt.Sprintf("%s@%s %s · правило %s", productModuleprefix+kanameModulePart, pin, where, rule.where),
 		ConsoleFrom: stepUpMethodsDeclaration + " OWN_STEP_UP_METHODS",
-		First:       ownFirstFactorMethods(wired),
-		Second:      ownSecondFactorMethods(wired),
-		Drivable:    parseOwnStepUpMethods(console),
+		First:       rule.signIn(wired),
+		Second:      rule.lifting(wired, wired, 2),
+		Drivable:    drivable,
+		Floors:      rule.floors(wired, drivable),
+		Usable:      rule.lifting(wired, drivable, 2),
 	}, nil
 }
 
@@ -806,7 +1485,12 @@ func sidesOfLanding(t *testing.T, landing, console string) (secondFactorSides, e
 		return externalSecondFactorSides(readFileForTest(t, identityConfigTemplate), console)
 	case landingOwn:
 		pin, root, assurance := readPinnedKaname(t)
-		return ownSecondFactorSides(pin, root, assuranceVocabulary(assurance), console)
+		vocab := assuranceVocabulary(assurance)
+		rule, err := readOwnRule(assurance, vocab)
+		if err != nil {
+			return secondFactorSides{}, fmt.Errorf("правило уровня у пина %s: %w", pin, err)
+		}
+		return ownSecondFactorSides(pin, root, vocab, rule, console)
 	default:
 		return secondFactorSides{}, fmt.Errorf("посадка %q: сторон достижимости у неё не объявлено — "+
 			"гейт не знает, кто на ней включает способы и какую церемонию ведёт консоль", landing)
@@ -881,34 +1565,40 @@ func TestIdentity_SecondFactorReachesTheBrowser(t *testing.T) {
 	}
 }
 
-// TestIdentity_OwnRulePremiseMatchesThePin — классификация посадки `own` верна
-// ровно при том правиле уровня, которое держит пин.
+// TestIdentity_OwnRuleIsReadFromThePin — посадку own гейт судит правилом уровня
+// пина, и правило это толкуется ЦЕЛИКОМ.
 //
-// Правило живёт во внутреннем пакете службы и сюда не импортируется; гейт
-// классифицирует способы своей таблицей. Таблица без сверки была бы вторым
-// правилом, расходящимся с первым молча, — поэтому строки «1» и «2» читаются у
-// пина и сравниваются с ownRulePremise.
-func TestIdentity_OwnRulePremiseMatchesThePin(t *testing.T) {
+// Правило живёт во внутреннем пакете службы и сюда не импортируется. Поэтому гейт
+// не заводит своей таблицы «способ → уровень»: он читает строки `rows` у пина и
+// исполняет их так же, как служба (readOwnRule, закрытое толкование). Строка вне
+// толкования — отказ с координатой: судить по ней догадкой значило бы вернуть
+// второе правило, расходящееся с первым молча.
+func TestIdentity_OwnRuleIsReadFromThePin(t *testing.T) {
 	pin, _, assurance := readPinnedKaname(t)
-	rows, err := assuranceRuleRows(assurance)
-	if err != nil {
-		t.Fatalf("правило уровня у пина %s не прочитано: %v — классификацию посадки own сверять не с чем", pin, err)
-	}
 	vocab := assuranceVocabulary(assurance)
-	t.Logf("перепись правила у пина %s: словарь %d способов · строк «1» %d (%s) · строк «2» %d (%s)",
-		pin, len(vocab), len(rows["1"]), strings.Join(rows["1"], " "), len(rows["2"]), strings.Join(rows["2"], " "))
-	for _, level := range []string{"1", "2"} {
-		if strings.Join(rows[level], " ") != strings.Join(ownRulePremise[level], " ") {
-			t.Errorf("правило уровня «%s» у пина %s: строки %v, гейт классифицирует по %v.\n"+
-				"Правило сменилось — ownSecondFactorMethods/ownFirstFactorMethods судят по прежнему. "+
-				"Перемерь классификацию вместе с ownRulePremise тем же изменением, что поднимает пин",
-				level, pin, rows[level], ownRulePremise[level])
-		}
+	if len(vocab) == 0 {
+		t.Fatalf("словарь способов у пина %s не разобран — толковать правило нечем", pin)
 	}
-	for _, name := range []string{"MethodPassword", "MethodTOTP", "MethodLookupSecret", "MethodWebAuthn", "MethodRecoveryCode"} {
-		if _, ok := vocab[name]; !ok {
-			t.Errorf("словарь службы у пина %s не называет %s — разбор перестал его видеть либо словарь "+
-				"сменился; классификация посадки own без него беспредметна", pin, name)
+	rule, err := readOwnRule(assurance, vocab)
+	if err != nil {
+		t.Fatalf("правило уровня у пина %s не толкуется: %v — посадку own судить нечем", pin, err)
+	}
+	rungs := map[string]int{}
+	for _, r := range rule.rows {
+		rungs[r.level]++
+		t.Logf("строка правила у пина %s: «%s» %s — %s", pin, r.level, r.cond, r.name)
+	}
+	t.Logf("перепись правила у пина %s (%s): словарь %d способов · строк %d · по ступеням %v "+
+		"(строка вне толкования — отказ, пропуска нет)", pin, rule.where, len(vocab), len(rule.rows), rungs)
+	// Каждый пол выше анонимного, который объявляет каталог, обязан быть ступенью
+	// правила: иначе служба его не выдаёт ни при каком предъявлении.
+	for floor := range readCatalogFloors(t) {
+		if floor == "" || floor == "0" {
+			continue
+		}
+		if rungs[floor] == 0 {
+			t.Errorf("каталог объявляет пол «%s», а у правила пина %s такой ступени нет (ступени %v) — "+
+				"служба этот уровень не выдаёт ни при каком предъявлении", floor, pin, rungs)
 		}
 	}
 }
