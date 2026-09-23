@@ -32,7 +32,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -50,6 +49,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 const (
@@ -73,7 +73,7 @@ func newF1bSigner(t *testing.T, issuer, kid string) *f1bSigner {
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 	s := &f1bSigner{issuer: issuer, kid: kid, priv: priv, hits: &atomic.Int64{}}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		s.hits.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]any{{
@@ -131,7 +131,7 @@ func newF1bAuthority(t *testing.T) *f1bAuthority {
 		asked: &atomic.Int64{}, revoked: &atomic.Bool{},
 		down: &atomic.Bool{}, notFound: &atomic.Bool{},
 	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		a.asked.Add(1)
 		switch {
 		case a.notFound.Load():
@@ -235,7 +235,7 @@ func newF1bStandWith(t *testing.T, acceptPlatform, requireBinding bool) *f1bStan
 		WithRequireMachineTokenBinding(requireBinding)
 
 	// REST — НАСТОЯЩИЙ сервер и настоящее соединение.
-	rest := httptest.NewServer(auth.HTTP(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	rest := privateloopback.NewServer(t, auth.HTTP(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		st.restHits.Add(1)
 		st.restPrincipal.Store(r.Header.Get(principalmeta.HeaderPrincipalType) + ":" +
 			r.Header.Get(principalmeta.HeaderPrincipalID))

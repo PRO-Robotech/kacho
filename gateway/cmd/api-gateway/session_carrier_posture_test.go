@@ -33,6 +33,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // countingOurSession — наш читатель сессии, считающий обращения. Отвечает
@@ -59,7 +60,7 @@ func (postureSubjects) LookupByExternalID(context.Context, string) (middleware.S
 // countingProvider — поставщик, считающий обращения и отвечающий живой сессией.
 func countingProvider(t *testing.T, asked *atomic.Int64) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		asked.Add(1)
 		w.WriteHeader(http.StatusOK)
 		_, _ = io.WriteString(w, `{"active":true,"authenticated_at":"2026-09-22T12:00:00Z",`+

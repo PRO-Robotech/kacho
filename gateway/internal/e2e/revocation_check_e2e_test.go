@@ -50,6 +50,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // revocationHarness wires the ALWAYS-MOUNTED authN layer over a stub identity
@@ -313,7 +314,7 @@ func TestE2E_Revocation_ProviderStalls_RequestStillAnswered(t *testing.T) {
 func TestE2E_Revocation_TokenWithoutIdentifier_IsReportedNotSilent(t *testing.T) {
 	hydra := newHydra(t)
 	defer hydra.close()
-	live := newLiveIntrospection()
+	live := newLiveIntrospection(t)
 	defer live.Close()
 
 	h := newRevocationHarness(t, hydra, live.URL, 0)
@@ -367,7 +368,7 @@ func TestE2E_Revocation_SoftFailReport_IsRateLimited(t *testing.T) {
 func TestE2E_Revocation_LiveToken_Served(t *testing.T) {
 	hydra := newHydra(t)
 	defer hydra.close()
-	live := newLiveIntrospection()
+	live := newLiveIntrospection(t)
 	defer live.Close()
 
 	h := newRevocationHarness(t, hydra, live.URL, 0)
@@ -392,7 +393,7 @@ func TestE2E_Revocation_ExemptPaths_StillServedWithRevokedToken(t *testing.T) {
 	hydra := newHydra(t)
 	defer hydra.close()
 	asked := int32(0)
-	revoked := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	revoked := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		atomic.AddInt32(&asked, 1)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"active": false})
@@ -427,9 +428,10 @@ func TestE2E_Revocation_LogoutSurvives_MisaddressedEndpoint(t *testing.T) {
 // ───────────────────────────── what it costs ─────────────────────────────
 
 // newLiveIntrospection answers "active" and counts how many times it was asked.
-func newLiveIntrospection() *countingServer {
+func newLiveIntrospection(t *testing.T) *countingServer {
+	t.Helper()
 	cs := &countingServer{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		atomic.AddInt32(&cs.hits, 1)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -454,7 +456,7 @@ type countingServer struct {
 func TestE2E_Revocation_CostIsPerTokenPerWindow(t *testing.T) {
 	hydra := newHydra(t)
 	defer hydra.close()
-	live := newLiveIntrospection()
+	live := newLiveIntrospection(t)
 	defer live.Close()
 
 	h := newRevocationHarness(t, hydra, live.URL, 0)
@@ -478,7 +480,7 @@ func TestE2E_Revocation_CostIsPerTokenPerWindow(t *testing.T) {
 func TestE2E_Revocation_ColdTokenFanOut_IsUnshared(t *testing.T) {
 	hydra := newHydra(t)
 	defer hydra.close()
-	live := newLiveIntrospection()
+	live := newLiveIntrospection(t)
 	defer live.Close()
 
 	h := newRevocationHarness(t, hydra, live.URL, 0)

@@ -20,11 +20,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
-func newIntrospectionServer(active bool, exp int64) (*httptest.Server, *atomic.Int32) {
+func newIntrospectionServer(t *testing.T, active bool, exp int64) (*httptest.Server, *atomic.Int32) {
+	t.Helper()
 	hits := &atomic.Int32{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
 		_ = r.ParseForm()
 		body := map[string]any{
@@ -39,7 +41,7 @@ func newIntrospectionServer(active bool, exp int64) (*httptest.Server, *atomic.I
 }
 
 func TestIntrospection_HappyPath_Caches(t *testing.T) {
-	srv, hits := newIntrospectionServer(true, time.Now().Add(15*time.Minute).Unix())
+	srv, hits := newIntrospectionServer(t, true, time.Now().Add(15*time.Minute).Unix())
 	defer srv.Close()
 
 	c, err := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
@@ -58,7 +60,7 @@ func TestIntrospection_HappyPath_Caches(t *testing.T) {
 }
 
 func TestIntrospection_InactiveCached_Negative(t *testing.T) {
-	srv, hits := newIntrospectionServer(false, 0)
+	srv, hits := newIntrospectionServer(t, false, 0)
 	defer srv.Close()
 	c, _ := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
 		HydraIntrospectionURL: srv.URL,
@@ -75,7 +77,7 @@ func TestIntrospection_InactiveCached_Negative(t *testing.T) {
 func TestIntrospection_ExpiredAlreadyAtFetch_TreatedAsInactive(t *testing.T) {
 	// Hydra returns active=true but exp is already in the past — defence: we
 	// must reject as inactive AND not cache the wrong positive result.
-	srv, hits := newIntrospectionServer(true, time.Now().Add(-time.Hour).Unix())
+	srv, hits := newIntrospectionServer(t, true, time.Now().Add(-time.Hour).Unix())
 	defer srv.Close()
 	c, _ := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
 		HydraIntrospectionURL: srv.URL,
@@ -101,7 +103,7 @@ func TestIntrospection_ShortExp_ClampsCacheTTL(t *testing.T) {
 	clock := func() time.Time { mu.Lock(); defer mu.Unlock(); return nowT }
 	advance := func(d time.Duration) { mu.Lock(); nowT = nowT.Add(d); mu.Unlock() }
 
-	srv, hits := newIntrospectionServer(true, base.Add(2*time.Second).Unix())
+	srv, hits := newIntrospectionServer(t, true, base.Add(2*time.Second).Unix())
 	defer srv.Close()
 	c, _ := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
 		HydraIntrospectionURL: srv.URL,
@@ -129,7 +131,7 @@ func TestIntrospection_ShortExp_ClampsCacheTTL(t *testing.T) {
 }
 
 func TestIntrospection_Invalidate(t *testing.T) {
-	srv, hits := newIntrospectionServer(true, time.Now().Add(15*time.Minute).Unix())
+	srv, hits := newIntrospectionServer(t, true, time.Now().Add(15*time.Minute).Unix())
 	defer srv.Close()
 	c, _ := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
 		HydraIntrospectionURL: srv.URL,
@@ -153,7 +155,7 @@ func TestIntrospection_Invalidate(t *testing.T) {
 func TestIntrospection_WriteAfterInvalidate_Dropped(t *testing.T) {
 	var c *middleware.IntrospectionCache
 	hits := &atomic.Int32{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		hits.Add(1)
 		// Revocation lands mid-introspection: invalidate before the caller stores
 		// the (now stale) positive result.

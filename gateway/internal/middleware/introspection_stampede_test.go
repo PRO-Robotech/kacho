@@ -24,7 +24,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -34,6 +33,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // burstSettle — how long the test waits for a burst that should NOT arrive.
@@ -49,7 +49,7 @@ func heldServer(t *testing.T, status int, body string) (url string, hits *atomic
 	t.Helper()
 	hits = &atomic.Int32{}
 	gate := make(chan struct{})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		hits.Add(1)
 		<-gate
 		w.Header().Set("Content-Type", "application/json")
@@ -260,7 +260,7 @@ func TestIntrospection_DistinctTokens_AreNotSerialised(t *testing.T) {
 	arrived.Add(n)
 	allArrived := make(chan struct{})
 	var once sync.Once
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		hits.Add(1)
 		arrived.Done()
 		// Hold until every sibling has arrived. Serialised callers never get here.
@@ -307,7 +307,7 @@ func TestIntrospection_LiveAnswer_SurvivesTheAddressGoingBad(t *testing.T) {
 		"exp": time.Now().Add(15 * time.Minute).Unix(),
 	})
 	hits := &atomic.Int32{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		if hits.Add(1) == 1 {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write(good)
@@ -340,7 +340,7 @@ func TestIntrospection_LiveAnswer_SurvivesTheAddressGoingBad(t *testing.T) {
 func failingServer(t *testing.T, status int) (url string, hits *atomic.Int32) {
 	t.Helper()
 	hits = &atomic.Int32{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		hits.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)

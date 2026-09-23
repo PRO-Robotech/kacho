@@ -6,58 +6,68 @@
 package jwks
 
 import (
-	"context"
+	"net"
 	"net/http"
 	"net/url"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
-// TestKeySetCountsOnlyArrivalsAtItsDeclaredAddress — счётчик обращений источника
-// приписывает проверяющему только то, что пришло по ОБЪЯВЛЕННОМУ адресу записи.
+// TestKeySetCountsEveryArrivalAtItsAddressAndNoStrangerReachesIt — счёт источника
+// полон и чист одновременно.
 //
-// Порт петли — ресурс машины, а не пробы. Закрытый сервер освобождает порт, ядро
-// отдаёт его следующему httptest.NewServer, и тот, кто продолжает спрашивать
-// прежний адрес (проба «источник недоступен» в соседнем процессе, клиент с
-// переподключением), попадает сюда. Счётчик, считающий всякое прибытие на порт,
-// записал бы такое обращение проверяющему, и проба покраснела бы на продукте,
-// который не ходил никуда.
+// Полон: каждое прибытие на адрес источника считается, какой бы путь оно ни
+// спрашивало. Обращение продукта к хосту источника по адресу, выведенному из
+// записи (стандартный путь набора) или из издателя, — тот самый дефект, который
+// утверждения «обращений ноль» обязаны видеть; счёт, отбирающий прибытия по пути,
+// вычитал бы его вместе с посторонними.
 //
-// Посторонний знает порт, но не объявленный адрес: он спрашивает корень либо
-// адрес СВОЕГО источника. Обе формы подаются ниже; законный близнец — обращение
-// проверяющего по объявленному адресу — обязан считаться.
-func TestKeySetCountsOnlyArrivalsAtItsDeclaredAddress(t *testing.T) {
+// Чист: посторонний до источника не доходит. Порт петли — ресурс машины: закрытый
+// сервер соседней пробы освобождает его, ядро отдаёт его следующему, и клиент,
+// переживший свой сервер, спрашивает 127.0.0.1:<порт>. Источник слушает
+// собственный адрес петли, поэтому такое обращение к нему не приходит — и в счёт
+// не попадает не потому, что его отбросили, а потому, что его нет.
+func TestKeySetCountsEveryArrivalAtItsAddressAndNoStrangerReachesIt(t *testing.T) {
 	ks := newKeySet(t)
 	ks.addRSA(t, "our-1")
-	neighbour := newKeySet(t)
-	neighbourURL, err := url.Parse(neighbour.url())
+	origin, err := url.Parse(ks.url())
 	require.NoError(t, err)
-
-	foreign := map[string]string{
-		"корень порта":                    ks.srv.URL + "/",
-		"адрес чужого источника на порту": ks.srv.URL + neighbourURL.EscapedPath(),
+	if runtime.GOOS == "linux" {
+		require.NotEqual(t, "127.0.0.1", origin.Hostname(),
+			"предпосылка: источник слушает собственный адрес петли, а не общий")
 	}
-	for name, target := range foreign {
-		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, target, nil)
-		require.NoError(t, err)
-		resp, err := http.DefaultClient.Do(req)
-		require.NoErrorf(t, err, "предпосылка (%s): порт источника принимает соединения", name)
+
+	stranger := &http.Client{Timeout: 2 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}
+	for _, path := range []string{"/", "/.well-known/jwks.json"} {
+		target := "http://" + net.JoinHostPort("127.0.0.1", origin.Port()) + path
+		req, rerr := http.NewRequestWithContext(t.Context(), http.MethodGet, target, nil)
+		require.NoError(t, rerr)
+		// Отказ соединения — законный исход: посторонний и должен не доходить.
+		if resp, derr := stranger.Do(req); derr == nil {
+			_ = resp.Body.Close()
+		}
+	}
+	require.Zero(t, ks.fetches.Load(),
+		"посторонний, знающий только порт источника, не доходит до источника")
+
+	for _, path := range []string{"/.well-known/jwks.json", "/kaname.kacho.local"} {
+		req, rerr := http.NewRequestWithContext(t.Context(), http.MethodGet, origin.Scheme+"://"+origin.Host+path, nil)
+		require.NoError(t, rerr)
+		resp, derr := ks.srv.Client().Do(req)
+		require.NoError(t, derr)
 		_ = resp.Body.Close()
 	}
-	// Не меньше, а не ровно: прибытия мимо объявленного адреса открыты всей машине,
-	// и в прогоне под нагрузкой к поданным здесь добавляются чужие.
-	require.GreaterOrEqual(t, ks.foreign.Load(), int32(len(foreign)),
-		"предпосылка: каждое постороннее прибытие дошло до этого источника")
-	require.Zero(t, ks.fetches.Load(),
-		"постороннее прибытие на порт источника не является обращением проверяющего")
+	require.Equal(t, int32(2), ks.fetches.Load(),
+		"прибытие на адрес источника по выведенному пути считается: иначе обращение продукта не туда выглядело бы как отсутствие обращения")
 
 	v := newVerifier(t, ourPair(ks))
-	sub, err := v.Verify(context.Background(),
+	sub, err := v.Verify(t.Context(),
 		ks.mintRS(t, "our-1", typAccessJWT, platformClaims("sva-1", time.Now(), time.Minute)))
 	require.NoError(t, err)
 	require.Equal(t, "sva-1", sub)
-	require.Equal(t, int32(1), ks.fetches.Load(),
+	require.Equal(t, int32(3), ks.fetches.Load(),
 		"обращение проверяющего по объявленному адресу считается")
 }
