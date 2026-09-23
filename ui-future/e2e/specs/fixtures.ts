@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { expect, test as base, type Page } from "@playwright/test";
+import { expect, test as base, type BrowserContext, type Page, type Request } from "@playwright/test";
 
 /**
  * ЗАПИСЬ ТРАССЫ ПРИНАДЛЕЖИТ НАБОРУ, А НЕ ШТАТНОМУ `use.trace` (#1242).
@@ -151,9 +151,7 @@ export function runTag(): string {
  * Вынесено из `registerAndSignIn` без изменения его поведения: проект арендатора
  * добывается двумя разными способами (см. `tenantWithProject`), а вход — один и
  * тот же, и второй его копии заводить незачем. */
-export async function register(page: Page): Promise<string> {
-  const email = `e2e-${runTag()}@kacho.local`;
-
+export async function register(page: Page, email = `e2e-${runTag()}@kacho.local`): Promise<string> {
   await page.goto("/registration", { waitUntil: "domcontentloaded" });
 
   // Шаг 1 — профиль. Пароля здесь НЕТ по построению провайдера.
@@ -455,6 +453,105 @@ export async function createdResourceId(
     .toBe(200);
 
   return id;
+}
+
+/**
+ * Перепись обращений консоли — прибор сценариев церемонии (приёмка F8, Р6).
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ЧЕМ ОНА ОТЛИЧАЕТСЯ ОТ `apiCalls` НИЖЕ, И ПОЧЕМУ ТОТ ЗДЕСЬ НЕ ГОДИТСЯ
+ *
+ * `apiCalls` пишет ОТВЕТЫ и только те, в чьём пути есть `/v1/`. У поставщика
+ * личности `/v1/` нет ни в одном адресе, поэтому отрицание «ни одного адреса
+ * поставщика» на нём тождественно истинно: оно не краснеет ни на переходе на его
+ * поток выхода, ни на запросе к нему, ни на чтении его сессии. Для отрицания
+ * такой прибор непригоден, а два прибора на одно наблюдение не заводятся.
+ *
+ * ЧТО ПИШЕТСЯ. Каждое обращение, которое ВЫПУСТИЛИ страницы контекста браузера,
+ * — в момент выпуска, без фильтра по пути: метод, происхождение, путь, строка
+ * запроса, вид (переход документа либо запрос страницы) и исход (код ответа
+ * либо «ответа нет»). Слушатель стоит на КОНТЕКСТЕ, а не на странице: окна,
+ * открытого страницей, слушатель страницы не видит, а шаг перенаправления и
+ * такое окно — тоже обращения консоли.
+ *
+ * ЧЕГО ОНА НЕ ВИДИТ — названо, чтобы «ноль» не читался шире сказанного.
+ * Обращения КОНТЕКСТА ЗАПРОСОВ (`page.request`, `context.request`,
+ * `request.newContext()`) событий страниц не порождают: посев «Дано», фикстура
+ * и оснастка ходят именно им, и отрицание о поставщике по ним держит не эта
+ * перепись, а статическая перепись набора. Значка вкладки браузер за собой
+ * тоже не записывает.
+ */
+export interface CeremonyCall {
+  method: string;
+  origin: string;
+  path: string;
+  /** Строка запроса с ведущим `?` либо пустая. */
+  query: string;
+  kind: "документ" | "запрос";
+  /** Код ответа; «ответа нет» — обращение не получило ответа вовсе; «ждём» — ещё идёт. */
+  outcome: number | "ответа нет" | "ждём";
+}
+
+/**
+ * Адрес поставщика личности — во ВСЕХ формах, в которых дерево консоли его
+ * выпускает (приёмка F8, Р6 п. 2): путь под `/.ory/` и под `/oauth2` на своём
+ * происхождении и поверхность потоков поставщика (`/self-service/…`,
+ * `/sessions/whoami`) при ЛЮБОЙ базе и на любом происхождении — база
+ * переопределяется при сборке, и распознаватель, знающий одну её запись,
+ * промолчал бы на другой.
+ */
+export const PROVIDER_ADDRESS = /^\/(\.ory|oauth2)(\/|$)|\/self-service\/|\/sessions\/whoami/;
+
+export interface CeremonyCensus {
+  readonly calls: readonly CeremonyCall[];
+  /** Обращения по методу, пути и (необязательно) строке запроса — в порядке выпуска. */
+  matching(method: string, path: string, query?: string): CeremonyCall[];
+  /** Обращения, распознанные как адрес поставщика личности. */
+  providerCalls(): CeremonyCall[];
+  /** Вся перепись строками — для текста падения. */
+  describe(): string;
+}
+
+export function formatCall(c: CeremonyCall): string {
+  return `${c.method} ${c.origin}${c.path}${c.query} [${c.kind} → ${c.outcome}]`;
+}
+
+export function ceremonyCensus(context: BrowserContext): CeremonyCensus {
+  const calls: CeremonyCall[] = [];
+  const byRequest = new Map<Request, CeremonyCall>();
+  context.on("request", (r) => {
+    let u: URL;
+    try {
+      u = new URL(r.url());
+    } catch {
+      return;
+    }
+    const call: CeremonyCall = {
+      method: r.method(),
+      origin: u.origin,
+      path: u.pathname,
+      query: u.search,
+      kind: r.isNavigationRequest() ? "документ" : "запрос",
+      outcome: "ждём",
+    };
+    calls.push(call);
+    byRequest.set(r, call);
+  });
+  context.on("response", (res) => {
+    const call = byRequest.get(res.request());
+    if (call) call.outcome = res.status();
+  });
+  context.on("requestfailed", (r) => {
+    const call = byRequest.get(r);
+    if (call) call.outcome = "ответа нет";
+  });
+  return {
+    calls,
+    matching: (method, path, query) =>
+      calls.filter((c) => c.method === method && c.path === path && (query === undefined || c.query === query)),
+    providerCalls: () => calls.filter((c) => PROVIDER_ADDRESS.test(c.path)),
+    describe: () => (calls.length === 0 ? "  (обращений нет)" : calls.map((c) => `  ${formatCall(c)}`).join("\n")),
+  };
 }
 
 /** apiCalls собирает коды ответов API, которые страница сделала сама. */
