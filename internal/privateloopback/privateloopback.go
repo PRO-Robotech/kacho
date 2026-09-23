@@ -20,13 +20,22 @@
 // 127.0.0.1. Посторонний знает порт, но не адрес, и до сервера не доходит; всякое
 // прибытие, которое доходит, пришло по адресу, выданному пробой, и считается целиком.
 //
+// # Формы
+//
+// NewServer и NewUnstartedServer — для сервера HTTP (как у httptest); Listen — для
+// всего прочего, что служит на слушателе TCP (сервер gRPC, свой http.Server).
+//
 // # Платформы
 //
 // На Linux петле принадлежит вся сеть 127.0.0.0/8, и отказ занять свой адрес там —
 // поломка окружения: пакет роняет пробу, а не откатывается молча на общий адрес.
 // Где петле принадлежит один адрес (macOS без псевдонимов), сервер слушает
-// 127.0.0.1 и печатает об этом строку: счёт при этом остаётся полным, поэтому
-// ошибиться проба может только в сторону лишнего красного, а не ложного зелёного.
+// 127.0.0.1 и печатает об этом строку. Свойства пакета на такой платформе НЕТ:
+// посторонний, знающий порт, до сервера доходит, и проба ошибается в обе стороны —
+// лишним красным (счёт вырос на чужое прибытие) и ложным зелёным (чужое прибытие
+// засчитано продукту: открыло ожидание первого обращения, перезаписало захваченный
+// последний запрос, дало обработчику «хотя бы одно» обращение). Судит свойство
+// конвейер: он идёт на Linux.
 package privateloopback
 
 import (
@@ -47,11 +56,6 @@ import (
 	"time"
 )
 
-// listenAttempts — сколько случайных адресов пробуется, прежде чем отказать.
-// Занятый адрес с портом «0» невозможен (ядро само выбирает свободный порт),
-// поэтому повтор нужен только на случай, который сам по себе редок.
-const listenAttempts = 8
-
 // NewServer — как httptest.NewServer, но сервер слушает свой адрес петли.
 // Закрывает сервер вызывающий, как и у httptest.
 func NewServer(tb testing.TB, h http.Handler) *httptest.Server {
@@ -68,19 +72,23 @@ func NewServer(tb testing.TB, h http.Handler) *httptest.Server {
 // httptest называет только 127.0.0.1 и example.com, и s.Client() такому серверу
 // не поверил бы. Вызывающий, заменивший s.TLS своим (свой удостоверяющий центр,
 // объявленное имя сервера), получает свой — как и у httptest.
+//
+// Сервер собирается тем же литералом, что и в httptest.NewUnstartedServer, но со
+// своим слушателем: httptest.NewUnstartedServer сам занял бы порт на общем адресе,
+// а закрытие этого слушателя отдало бы порт следующему.
 func NewUnstartedServer(tb testing.TB, h http.Handler) *httptest.Server {
 	tb.Helper()
-	s := httptest.NewUnstartedServer(h)
 	l := Listen(tb)
-	_ = s.Listener.Close()
-	s.Listener = l
 	cert, err := certificateFor(l.Addr())
 	if err != nil {
 		_ = l.Close()
 		tb.Fatalf("privateloopback: сертификат адреса %s не выпущен: %v", l.Addr(), err)
 	}
-	s.TLS = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
-	return s
+	return &httptest.Server{
+		Listener: l,
+		Config:   &http.Server{Handler: h},
+		TLS:      &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
+	}
 }
 
 // certificateFor — самоподписанный сертификат сервера на адрес слушателя. Он же
@@ -117,36 +125,33 @@ func certificateFor(addr net.Addr) (tls.Certificate, error) {
 
 // Listen — слушатель TCP на случайном адресе 127.x.y.z, где x ≠ 0: общий
 // 127.0.0.1 (и вся 127.0.0.0/16) исключены по построению.
+//
+// Попытка одна. Порт выбирает ядро, поэтому «адрес занят» здесь не случается;
+// отказ «адрес недоступен» значит, что платформа не отдаёт адресов петли, кроме
+// общего, — и тогда не отдаст ни одного, сколько ни пробуй.
 func Listen(tb testing.TB) net.Listener {
 	tb.Helper()
-	var last error
-	for range listenAttempts {
-		var b [3]byte
-		if _, err := crand.Read(b[:]); err != nil {
-			tb.Fatalf("privateloopback: случайный адрес петли не выбран: %v", err)
-		}
-		if b[0] == 0 {
-			b[0] = 1 // 127.0.0.0/16 — общий адрес и его соседи — исключены
-		}
-		if b[2] == 0 || b[2] == 255 {
-			b[2] = 1
-		}
-		ip := net.IPv4(127, b[0], b[1], b[2])
-		l, err := net.Listen("tcp4", net.JoinHostPort(ip.String(), "0"))
-		if err == nil {
-			return l
-		}
-		last = err
-		if !errors.Is(err, syscall.EADDRNOTAVAIL) {
-			break
-		}
+	var b [3]byte
+	if _, err := crand.Read(b[:]); err != nil {
+		tb.Fatalf("privateloopback: случайный адрес петли не выбран: %v", err)
 	}
-	if runtime.GOOS == "linux" || !errors.Is(last, syscall.EADDRNOTAVAIL) {
-		tb.Fatalf("privateloopback: собственный адрес петли не занят: %v", last)
+	if b[0] == 0 {
+		b[0] = 1 // 127.0.0.0/16 — общий адрес и его соседи — исключены
+	}
+	if b[2] == 0 || b[2] == 255 {
+		b[2] = 1
+	}
+	ip := net.IPv4(127, b[0], b[1], b[2])
+	l, err := net.Listen("tcp4", net.JoinHostPort(ip.String(), "0"))
+	if err == nil {
+		return l
+	}
+	if runtime.GOOS == "linux" || !errors.Is(err, syscall.EADDRNOTAVAIL) {
+		tb.Fatalf("privateloopback: собственный адрес петли %s не занят: %v", ip, err)
 	}
 	tb.Logf("privateloopback: платформа %s не отдаёт адресов петли, кроме общего (%v); "+
-		"сервер слушает 127.0.0.1 и доступен постороннему, знающему порт", runtime.GOOS, last)
-	l, err := net.Listen("tcp4", "127.0.0.1:0")
+		"сервер слушает 127.0.0.1 и доступен постороннему, знающему порт", runtime.GOOS, err)
+	l, err = net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		tb.Fatalf("privateloopback: общий адрес петли не занят: %v", err)
 	}

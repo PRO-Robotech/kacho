@@ -30,7 +30,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"sort"
 	"strings"
@@ -245,8 +244,7 @@ func newF1bStandWith(t *testing.T, acceptPlatform, requireBinding bool) *f1bStan
 	st.restURL = rest.URL
 
 	// Нативная gRPC — НАСТОЯЩИЙ слушатель TCP.
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
+	lis := privateloopback.Listen(t)
 	srv := grpc.NewServer(
 		grpc.UnaryInterceptor(auth.Unary()),
 		grpc.UnknownServiceHandler(func(_ any, stream grpc.ServerStream) error {

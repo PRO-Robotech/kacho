@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -79,22 +80,24 @@ func TestStrangerKnowingOnlyThePortDoesNotReachTheServer(t *testing.T) {
 	require.Positive(t, marked.Load(),
 		"предпосылка: посторонняя форма доходит до сервера на общем адресе петли")
 
-	for name, start := range map[string]func(http.Handler) *httptest.Server{
-		"NewServer": func(h http.Handler) *httptest.Server { return NewServer(t, h) },
-		"NewUnstartedServer+Start": func(h http.Handler) *httptest.Server {
-			s := NewUnstartedServer(t, h)
+	// Фабрика берёт t той подпробы, в которой зовётся: отказ подъёма обязан уронить
+	// её, а не родителя из чужой горутины.
+	for name, start := range map[string]func(testing.TB, http.Handler) *httptest.Server{
+		"NewServer": NewServer,
+		"NewUnstartedServer+Start": func(tb testing.TB, h http.Handler) *httptest.Server {
+			s := NewUnstartedServer(tb, h)
 			s.Start()
 			return s
 		},
-		"NewUnstartedServer+StartTLS": func(h http.Handler) *httptest.Server {
-			s := NewUnstartedServer(t, h)
+		"NewUnstartedServer+StartTLS": func(tb testing.TB, h http.Handler) *httptest.Server {
+			s := NewUnstartedServer(tb, h)
 			s.StartTLS()
 			return s
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			var n atomic.Int32
-			srv := start(countingHandler(&n))
+			srv := start(t, countingHandler(&n))
 			t.Cleanup(srv.Close)
 
 			askAsAStranger(t, sharedLoopbackTarget(t, srv, "/"))
@@ -114,6 +117,64 @@ func TestStrangerKnowingOnlyThePortDoesNotReachTheServer(t *testing.T) {
 				"каждое прибытие по адресу сервера доходит до обработчика и считается")
 		})
 	}
+}
+
+// TestStrangerKnowingOnlyThePortIsNotAcceptedByListen — то же свойство для
+// слушателя, на котором служит не httptest (сервер gRPC, свой http.Server):
+// соединение постороннего, знающего только порт, слушатель не принимает, соединение
+// по адресу слушателя целиком — принимает.
+//
+// Судится ПРИНЯТИЕ, а не исход набора номера: на общем адресе с тем же портом может
+// законно слушать кто-то ещё, и «соединился» тогда не говорило бы о нашем слушателе
+// ничего. Законный близнец формы постороннего — тот же набор номера к слушателю на
+// общем адресе: его соединение принимается.
+func TestStrangerKnowingOnlyThePortIsNotAcceptedByListen(t *testing.T) {
+	twin, err := net.Listen("tcp4", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = twin.Close() })
+	dialAsAStranger(t, twin.Addr())
+	require.True(t, acceptsWithin(t, twin, time.Second),
+		"предпосылка: посторонняя форма доходит до слушателя на общем адресе петли")
+
+	l := Listen(t)
+	t.Cleanup(func() { _ = l.Close() })
+	dialAsAStranger(t, l.Addr())
+	require.False(t, acceptsWithin(t, l, 200*time.Millisecond),
+		"посторонний, знающий только порт, не принят слушателем на своём адресе петли")
+
+	c, err := net.DialTimeout("tcp4", l.Addr().String(), time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = c.Close() })
+	require.True(t, acceptsWithin(t, l, time.Second),
+		"соединение по адресу слушателя целиком принимается")
+}
+
+// dialAsAStranger — набор номера по общему адресу петли и порту слушателя; отказ
+// соединения — законный исход, поэтому он не утверждается.
+func dialAsAStranger(t *testing.T, addr net.Addr) {
+	t.Helper()
+	_, port, err := net.SplitHostPort(addr.String())
+	require.NoError(t, err)
+	if c, derr := net.DialTimeout("tcp4", net.JoinHostPort("127.0.0.1", port), time.Second); derr == nil {
+		t.Cleanup(func() { _ = c.Close() })
+	}
+}
+
+// acceptsWithin — принял ли слушатель соединение за отведённое время.
+func acceptsWithin(t *testing.T, l net.Listener, d time.Duration) bool {
+	t.Helper()
+	tl, ok := l.(*net.TCPListener)
+	require.True(t, ok, "слушатель TCP: %T", l)
+	require.NoError(t, tl.SetDeadline(time.Now().Add(d)))
+	c, err := tl.Accept()
+	if err != nil {
+		var ne net.Error
+		require.ErrorAs(t, err, &ne, "отказ приёма — только по сроку: %v", err)
+		require.True(t, ne.Timeout(), "отказ приёма — только по сроку: %v", err)
+		return false
+	}
+	_ = c.Close()
+	return true
 }
 
 // TestServerAddressIsALoopbackAddressOtherThanTheShared — адрес сервера лежит в

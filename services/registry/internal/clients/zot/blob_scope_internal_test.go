@@ -144,7 +144,7 @@ func TestBlobInRepo_FoundSurvivesSiblingError(t *testing.T) {
 	const target = "sha256:hit"
 	goodServed := make(chan struct{})
 	var once sync.Once
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		switch {
 		case strings.HasSuffix(path, "/tags/list"):

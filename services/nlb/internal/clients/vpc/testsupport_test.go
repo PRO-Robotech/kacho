@@ -5,7 +5,6 @@ package vpc
 
 import (
 	"context"
-	"net"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -13,6 +12,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	operationpb "github.com/PRO-Robotech/corelib/api/corelib/operation"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 	vpcpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 )
 
@@ -27,8 +27,7 @@ func startFakeVPC(
 	ops operationpb.OperationServiceServer,
 ) *grpc.ClientConn {
 	t.Helper()
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
+	lis := privateloopback.Listen(t)
 	srv := grpc.NewServer()
 	if subnets != nil {
 		vpcpb.RegisterSubnetServiceServer(srv, subnets)

@@ -17,7 +17,6 @@ import (
 	"context"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -35,6 +34,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/clients"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 const authzCatalogJSON = `[
@@ -97,8 +97,7 @@ func (s *authzStub) Check(ctx context.Context, req *iamv1.AuthorizeCheckRequest)
 
 func startAuthzStub(t *testing.T) (*authzStub, string, func()) {
 	t.Helper()
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
+	lis := privateloopback.Listen(t)
 	srv := grpc.NewServer()
 	stub := &authzStub{}
 	iamv1.RegisterAuthorizeServiceServer(srv, stub)
