@@ -14,9 +14,11 @@ import {
   LANE,
   SEED_PASSWORD,
   SESSION_COOKIE,
+  backupCodeOutside,
   newSeed,
   seedAddress,
   seedHuman,
+  seedSecondFactor,
   transferSession,
   type SeededHuman,
 } from "./ceremony-seed";
@@ -733,4 +735,200 @@ test("F8-22 · церемония входа проходится с клави�
   expectContains(census, "GET", LANE.csrf, "?form=login");
   expectContains(census, "POST", LANE.login);
   expectNoProvider(census);
+});
+
+// ═══ S2 — группа I. Вход со вторым фактором и повышение уровня ════════════════
+//
+// Посев второго фактора предъявил код по времени ОДИН раз — на подтверждении;
+// дальше этот человек предъявляет второй фактор только ЗАПАСНЫМ кодом из ответа
+// того же подтверждения (Р9, ось 4). Ветвь «код из приложения» тех же форм держит
+// модульная проба формы предъявления кода.
+
+/** Человек сценария со вторым фактором; посев живёт до конца сценария. */
+async function withSecondFactor<T>(
+  testInfo: TestInfo,
+  scenario: string,
+  body: (human: SeededHuman, backupCodes: string[]) => Promise<T>,
+): Promise<T> {
+  const seed = await newSeed(testInfo);
+  try {
+    const human = await seedHuman(seed, seedAddress(scenario));
+    const factor = await seedSecondFactor(seed);
+    return await body(human, factor.backupCodes);
+  } finally {
+    await seed.dispose();
+  }
+}
+
+function secondFactorOnLogin(page: Page) {
+  return {
+    toggle: page.getByRole("checkbox", { name: "Подтвердить вторым фактором" }),
+    backup: page.getByRole("radio", { name: "Запасной код" }),
+    code: page.getByRole("textbox", { name: "Код", exact: true }),
+  };
+}
+
+test("F8-33 · вход человека с заведённым вторым фактором доходит до уровня 2", async ({ page }, testInfo) => {
+  // verifies #1274
+  await withSecondFactor(testInfo, "F8-33", async (human, codes) => {
+    await page.goto("/login?returnTo=/dashboard", { waitUntil: "domcontentloaded" });
+    const s = loginScreen(page);
+    await expectScreen(page, "/login", s.submit, "экран входа");
+    await s.email.fill(human.email);
+    await s.password.fill(human.password);
+    const f = secondFactorOnLogin(page);
+    await f.toggle.check();
+    await f.backup.check();
+    await f.code.fill(codes[0]);
+    const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
+    const sent = JSON.parse(res.request().postData() ?? "{}") as { secondFactor?: unknown };
+    expect(sent.secondFactor, "тело входа не несёт secondFactor запасным кодом").toEqual({
+      method: "lookup_secret",
+      code: codes[0],
+    });
+    expect(res.status(), `вход со вторым фактором не прошёл: ${await res.text()}`).toBe(200);
+    const body = (await res.json()) as { session?: { assuranceLevel?: unknown } };
+    expect(String(body.session?.assuranceLevel), "вход со вторым фактором не дал уровня 2").toBe("2");
+    expect(await sessionHeld(page.context()), "после входа у браузера нет носителя сессии").toBe(true);
+  });
+});
+
+test("F8-34 · неверный код второго фактора: тот же один текст отказа", async ({ page }, testInfo) => {
+  // verifies #1274 — близнец F8-33: изменено только значение запасного кода,
+  // форма та же; значение выбрано построением — проба знает весь набор.
+  await withSecondFactor(testInfo, "F8-34", async (human, codes) => {
+    await page.goto("/login", { waitUntil: "domcontentloaded" });
+    const s = loginScreen(page);
+    await expectScreen(page, "/login", s.submit, "экран входа");
+    await s.email.fill(human.email);
+    await s.password.fill(human.password);
+    const f = secondFactorOnLogin(page);
+    await f.toggle.check();
+    await f.backup.check();
+    await f.code.fill(backupCodeOutside(codes));
+    const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
+    // Экран не сообщает, какая из двух величин не подошла: отказ — тот же, что у
+    // неверного пароля, и экран — та же функция того же тела.
+    await expectAuthenticationFailedScreen(page, res, human.email);
+  });
+});
+
+/**
+ * Предмет повышения: группа, заведённая на ДОСТУПНОМ уровне, и её удаление,
+ * связанное полом «2», — действие консоли, на котором край требует повышения.
+ */
+async function ownGroup(page: Page): Promise<string> {
+  let accountId = "";
+  await expect
+    .poll(
+      async () => {
+        const res = await page.request.get("/iam/v1/accounts?pageSize=1000");
+        if (!res.ok()) return "";
+        accountId = ((await res.json()) as { accounts?: Array<{ id: string }> }).accounts?.[0]?.id ?? "";
+        return accountId;
+      },
+      { message: "аккаунт человека не появился — предмет повышения не собран", timeout: 60_000 },
+    )
+    .not.toBe("");
+  const created = await page.request.post("/iam/v1/groups", {
+    data: { accountId, name: `e2e-stepup-${Date.now().toString(36)}`, description: "предмет повышения F8" },
+  });
+  expect(created.status(), `заведение группы не удалось: ${await created.text()}`).toBe(200);
+  const groupId = ((await created.json()) as { metadata?: { groupId?: string } }).metadata?.groupId ?? "";
+  expect(groupId, "операция не назвала идентификатор группы").not.toBe("");
+  await expect
+    .poll(async () => (await page.request.get(`/iam/v1/groups/${groupId}`)).status(), {
+      message: "своя свежая группа не читается: право не материализовалось либо идентификатор — фантом",
+      timeout: 60_000,
+    })
+    .toBe(200);
+  return groupId;
+}
+
+/** Войти экраном ОДНИМ паролем — сессия уровня 1. */
+async function signInWithPasswordOnly(page: Page, human: SeededHuman) {
+  await page.goto("/login?returnTo=/dashboard", { waitUntil: "domcontentloaded" });
+  const s = loginScreen(page);
+  await expectScreen(page, "/login", s.submit, "экран входа");
+  await s.email.fill(human.email);
+  await s.password.fill(human.password);
+  const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
+  expect(res.status(), `вход паролем не прошёл: ${await res.text()}`).toBe(200);
+  expect(String(((await res.json()) as { session?: { assuranceLevel?: unknown } }).session?.assuranceLevel)).toBe("1");
+  await expectPath(page, "/dashboard", "после входа консоль не увела на адрес возврата");
+}
+
+/** Начать удаление группы с её карточки — действие, на котором край зовёт повышение. */
+async function startGroupDeletion(page: Page, groupId: string) {
+  await page.goto(`/iam/groups/${groupId}`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "Действия" }).first().click();
+  await page.getByRole("menuitem", { name: "Удалить" }).click();
+  const deletion = page.getByRole("dialog").filter({ has: page.getByRole("button", { name: "Удалить" }) });
+  const challenged = page.waitForResponse(
+    (r) => new URL(r.url()).pathname === `/iam/v1/groups/${groupId}` && r.request().method() === "DELETE",
+  );
+  await deletion.getByRole("button", { name: "Удалить" }).click();
+  const res = await challenged;
+  expect(res.status(), "край не потребовал повышения на удалении группы").toBe(401);
+  expect(res.headers()["www-authenticate"] ?? "").toContain("insufficient_user_authentication");
+}
+
+test("F8-35 · повышение уровня по вызову края идёт НАШИМ глаголом", async ({ page }, testInfo) => {
+  // verifies #1274
+  test.setTimeout(240_000);
+  await withSecondFactor(testInfo, "F8-35", async (human, codes) => {
+    await signInWithPasswordOnly(page, human);
+    const groupId = await ownGroup(page);
+    const census = ceremonyCensus(page.context());
+    await startGroupDeletion(page, groupId);
+
+    const dialog = page.getByRole("dialog", { name: "Подтверждение действия" });
+    await expect(dialog, "консоль не ответила на вызов края церемонией повышения").toBeVisible();
+    await dialog.getByRole("radio", { name: "Запасной код" }).check();
+    await dialog.getByRole("textbox", { name: "Код", exact: true }).fill(codes[0]);
+    const replayed = page.waitForResponse(
+      (r) =>
+        new URL(r.url()).pathname === `/iam/v1/groups/${groupId}` && r.request().method() === "DELETE" && r.status() !== 401,
+    );
+    const [raised] = await Promise.all([
+      lanePost(page, LANE.stepUp),
+      dialog.getByRole("button", { name: "Подтвердить" }).click(),
+    ]);
+    expect((JSON.parse(raised.request().postData() ?? "{}") as { method?: unknown }).method).toBe("lookup_secret");
+    expect(raised.status(), `повышение запасным кодом не прошло: ${await raised.text()}`).toBe(200);
+    expect((await replayed).status(), "исходное действие после повышения не повторено либо не прошло").toBe(200);
+    expectContains(census, "POST", LANE.stepUp);
+    expectNoProvider(census);
+    await expect
+      .poll(async () => (await page.request.get(`/iam/v1/groups/${groupId}`)).status(), {
+        message: "группа не удалена после повышения",
+        timeout: 60_000,
+      })
+      .toBe(404);
+  });
+});
+
+test("F8-36 · повышать нечем: назван отказ и путь, а не пустое окно", async ({ page }, testInfo) => {
+  // verifies #1274 — близнец F8-35: изменено только то, заведён ли второй фактор.
+  test.setTimeout(240_000);
+  const human = await seeded(testInfo, "F8-36");
+  await signInWithPasswordOnly(page, human);
+  const groupId = await ownGroup(page);
+  await startGroupDeletion(page, groupId);
+
+  const dialog = page.getByRole("dialog", { name: "Подтверждение действия" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("radio", { name: "Запасной код" }).check();
+  await dialog.getByRole("textbox", { name: "Код", exact: true }).fill("ABCDEFGHJK");
+  const [refused] = await Promise.all([
+    lanePost(page, LANE.stepUp),
+    dialog.getByRole("button", { name: "Подтвердить" }).click(),
+  ]);
+  expect(refused.status()).toBe(400);
+  const refusal = (await refused.json()) as { message: string; details: Array<{ reason?: string }> };
+  expect(refusal.details.map((d) => d.reason)).toContain("SECOND_FACTOR_NOT_ENROLLED");
+  await expect(dialog.getByRole("alert"), "окно не назвало отказ").toContainText(refusal.message);
+  await expect(dialog, "окно повышения закрылось молча").toBeVisible();
+  await dialog.getByRole("link", { name: "Настроить второй фактор" }).click();
+  await expectPath(page, "/settings", "путь на экран заведения второго фактора не привёл туда");
 });

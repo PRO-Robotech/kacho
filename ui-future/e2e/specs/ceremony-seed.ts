@@ -97,16 +97,23 @@ async function record(issued: IssuedCall[], method: "GET" | "POST", path: string
   issued.push({ method, path, status: res.status(), body });
 }
 
+/** Печенье в той форме, в какой его отдают и принимают контексты playwright. */
+export type Cookie = Awaited<ReturnType<BrowserContext["cookies"]>>[number];
+
 /**
  * Свой контекст запросов посева — к тому же стенду, с тем же отношением к
- * сертификату, что у браузера сценария, но со СВОЕЙ банкой печенья.
+ * сертификату, что у браузера сценария, но со СВОЕЙ банкой печенья. `carrying`
+ * — печенья, которые контекст получает явно (перенос носителя браузера).
  */
-export async function newSeed(testInfo: TestInfo): Promise<Seed> {
+export async function newSeed(testInfo: TestInfo, carrying: readonly Cookie[] = []): Promise<Seed> {
   const use = testInfo.project.use;
   const api = await request.newContext({
     baseURL: use.baseURL,
     ignoreHTTPSErrors: use.ignoreHTTPSErrors,
     extraHTTPHeaders: { Accept: "application/json" },
+    // Носитель, переданный ЯВНО: контекст начинает с тех печений, что названы, и
+    // ни с какими другими — общей банки с браузером у него нет.
+    storageState: { cookies: [...carrying], origins: [] },
   });
   const issued: IssuedCall[] = [];
   const seed: Seed = {
