@@ -1,8 +1,8 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { expect, type BrowserContext, type Locator, type Page, type Response, type TestInfo } from "@playwright/test";
-import { answerOnArrival, lanePostAnswer } from "./answer-on-arrival";
+import { expect, type BrowserContext, type Locator, type Page, type TestInfo } from "@playwright/test";
+import { LANE_VERBS, answerOnArrival, captureAnswers, lanePostAnswer, type LaneAnswer } from "./answer-on-arrival";
 import { raiseAssurance } from "./assurance";
 import {
   LANE,
@@ -115,7 +115,7 @@ async function expectPath(page: Page, path: string, why: string) {
 }
 
 /** Ответ глагола полосы — с телом, прочитанным по прибытии (`answer-on-arrival.ts`). */
-function lanePost(page: Page, path: string): Promise<Response> {
+function lanePost(page: Page, path: string): Promise<LaneAnswer> {
   return lanePostAnswer(page, path);
 }
 
@@ -161,7 +161,7 @@ const AUTHENTICATION_FAILED = { code: 16, message: "authentication failed", deta
  * неразличимости, а не удобство: экран — функция ТОЛЬКО тела ответа, тело
  * утверждается побайтово, значит и экраны побайтово равны.
  */
-async function expectAuthenticationFailedScreen(page: Page, res: Response, email: string) {
+async function expectAuthenticationFailedScreen(page: Page, res: LaneAnswer, email: string) {
   expect(res.status(), "отказ входа обязан быть 401").toBe(401);
   expect(await res.text(), "тело отказа входа — побайтово одно на все причины").toBe(
     JSON.stringify(AUTHENTICATION_FAILED),
@@ -173,6 +173,12 @@ async function expectAuthenticationFailedScreen(page: Page, res: Response, email
   expect(pathOf(page), "после отказа адрес страницы сменился").toBe("/login");
   expect(await sessionHeld(page.context()), "после отказа у браузера появился носитель сессии").toBe(false);
 }
+
+// Ответы глаголов полосы снимаются ДО страницы: за ними экран уходит
+// документом, и тело после ухода не читается (`answer-on-arrival.ts`).
+test.beforeEach(async ({ page }) => {
+  await captureAnswers(page, LANE_VERBS);
+});
 
 // ═══ S1 — группа A. Адрес церемонии принадлежит консоли ═══════════════════════
 
@@ -452,6 +458,7 @@ test("F8-13 · адрес возврата чужого происхождени
     const reading = watchRefusals(context, testInfo.testId);
     try {
       const page = await context.newPage();
+      await captureAnswers(page, LANE_VERBS);
       await page.goto(`/login?returnTo=${encodeURIComponent(returnTo)}`, { waitUntil: "domcontentloaded" });
       const s = loginScreen(page);
       await expectScreen(page, "/login", s.submit, "экран входа");
@@ -503,7 +510,9 @@ test("F8-13 · отскок живой сессии и возврат после
     const reading = watchRefusals(context, testInfo.testId);
     try {
       if (withSession) await seeded(testInfo, `F8-13-bounce-${runStamp()}`, context);
-      await body(await context.newPage());
+      const page = await context.newPage();
+      await captureAnswers(page, LANE_VERBS);
+      await body(page);
     } finally {
       await reading.settled();
       await context.close();

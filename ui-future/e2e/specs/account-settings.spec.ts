@@ -1,8 +1,8 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { expect, type BrowserContext, type Page, type Response, type TestInfo } from "@playwright/test";
-import { lanePostAnswer } from "./answer-on-arrival";
+import { expect, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
+import { LANE_VERBS, captureAnswers, lanePostAnswer, type LaneAnswer } from "./answer-on-arrival";
 import {
   LANE,
   SESSION_COOKIE,
@@ -86,7 +86,7 @@ async function openSettings(page: Page) {
 }
 
 /** Ответ глагола полосы — с телом, прочитанным по прибытии (`answer-on-arrival.ts`). */
-function lanePost(page: Page, path: string): Promise<Response> {
+function lanePost(page: Page, path: string): Promise<LaneAnswer> {
   return lanePostAnswer(page, path);
 }
 
@@ -109,7 +109,7 @@ function expectNoProvider(census: CeremonyCensus) {
 }
 
 /** Тело формы, отправленное страницей: какой способ она назвала. */
-function methodOf(res: Response): unknown {
+function methodOf(res: LaneAnswer): unknown {
   return (JSON.parse(res.request().postData() ?? "{}") as { method?: unknown }).method;
 }
 
@@ -145,6 +145,12 @@ async function loginStatus(testInfo: TestInfo, email: string, password: string):
     await probe.dispose();
   }
 }
+
+// Ответы глаголов полосы снимаются ДО страницы: за ними экран уходит
+// документом, и тело после ухода не читается (`answer-on-arrival.ts`).
+test.beforeEach(async ({ page }) => {
+  await captureAnswers(page, LANE_VERBS);
+});
 
 // ═══ S2 — группа G. Смена пароля ══════════════════════════════════════════════
 
