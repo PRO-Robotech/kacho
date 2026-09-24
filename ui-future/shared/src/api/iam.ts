@@ -178,7 +178,6 @@ export interface ServiceAccountList {
 export interface ServiceAccountOAuthClient {
   id: string; // soc_…
   sva_id?: string;
-  hydra_client_id?: string;
   description?: string;
   expires_at?: string;
   last_used_at?: string;
@@ -225,7 +224,6 @@ export function saKeysPath(serviceAccountId: string): string {
 export interface UserOAuthClient {
   id: string; // uoc_…
   user_id?: string;
-  hydra_client_id?: string;
   description?: string;
   expires_at?: string;
   last_used_at?: string;

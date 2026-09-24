@@ -48,17 +48,6 @@
 # On the insecure-dev stand both are optional secretKeyRefs (absent) → dev iam
 # boots without them; production iam MUST have them.
 
-# ─── provider ADMIN listener over TLS ───────────────────────────────────────
-# This stand runs the PRODUCTION posture, and both the gateway and iam refuse to
-# start on a plaintext or unanchored hop to the provider's admin API. dev leaves
-# that hop in the clear (it is dev-class and exempt); this overlay is where it
-# stops being exempt, so the certificate is issued here and the three consumers
-# below are pointed at it together.
-mtls:
-  hydraAdminTls:
-    enabled: true
-    secretName: kacho-umbrella-hydra-admin-tls
-
 # ─── api-gateway (edge) — production-strict authN ───────────────────────────
 api-gateway:
   # ПОСАДКА БЕЗОПАСНОСТИ — один адрес на весь флот (прежний: authn.mode).
@@ -70,25 +59,24 @@ api-gateway:
   authMode: production-strict
   # ─── Объявление приёма токена (Ф1б, задача #926) ──────────────────────
   #
-  # Издатель на крае — МНОЖЕСТВО: платформа чеканит свои токены сама (задача
-  # #897), а прежний издатель на переходе остаётся. У КАЖДОГО принимаемого
-  # издателя своя запись источника ключей: объединить наборы было бы дешевле и
-  # уничтожило бы ровно ту защиту, ради которой развязка делается — ключ одного
-  # издателя проверял бы токен, объявляющий другого.
+  # Издатель на крае — МНОЖЕСТВО по устройству (Ф1б, #926): у КАЖДОГО
+  # принимаемого издателя своя запись источника ключей, и ключ одного издателя
+  # не проверяет токен, объявляющий другого. Принимается РОВНО ОДИН — наш:
+  # прежний издатель ни на одном стенде не поднимается (#2735). Этот слой
+  # перекрывает первую фазу (values.dev.yaml) одним — переводит адреса набора
+  # и авторитета отзыва на https с якорем и клиентской парой.
   #
   # Значения — ТЕ ЖЕ, что у ПЕРВОЙ конфигурации проверяющего
   # (kacho-registry.tokenAcceptance ниже): одна платформа, один набор адресов.
   # Расхождение между ними было бы двумя местами об одном предмете.
   #
-  # ОТКАТ состоит в снятии platformIssuer и нашего издателя из issuers — не в
-  # перекатке образа.
   tokenAcceptance:
-    issuers: "https://kaname.kacho.local,https://localhost:28080/.ory/hydra/public"
+    issuers: "https://kaname.kacho.local"
     # Адрес ОБЪЯВЛЯЕТСЯ, а не выводится из издателя: издатель приходит от
     # предъявителя, и производный адрес получался бы у ВСЯКОГО издателя —
     # состояние «записи нет» не наступало бы никогда, а страж старта стал бы
     # тождественно истинным.
-    issuerKeySets: "https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json,https://localhost:28080/.ory/hydra/public=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
+    issuerKeySets: "https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
     # Наш издатель выбирает полосу приёма: строгий тип at+jwt и чтение отзыва на
     # предъявлении. Вне issuers — отказ в старте.
     platformIssuer: "https://kaname.kacho.local"
@@ -148,15 +136,9 @@ api-gateway:
   # UNIFICATION: verify tokens through the iam :9097 publisher, NOT the provider :4444
   # directly (iam is the single key-set facade; a direct-provider dial is forbidden).
   #
-  # ЗАПИСЕЙ У ПУБЛИКАТОРА ДВЕ, и на ЭТОМ профиле обе действуют: зеркало набора
-  # провайдера (байт-в-байт, короткий срок) и НАША запись — ниже в этом же файле
-  # объявлены `tokenSigning` и `clientToken.enabled: true`, то есть свой подписант
-  # здесь поднят.
-  #
-  # Здесь стояло «Hydra stays issuer/signer», и это противоречило самому профилю —
-  # два места об одном предмете в одном файле. Верно: провайдер остаётся издателем
-  # СВОЕЙ записи (интерактивный вход и удостоверения прежнего выпуска), наш
-  # подписант — своей. `tokenAcceptance.issuers` выше перечисляет обоих поимённо.
+  # Запись у публикатора на этом профиле ОДНА — наша: свой подписант поднят
+  # (`tokenSigning` ниже в этом же файле), а зеркало набора прежнего издателя
+  # служба под посадкой `own` не публикует (#2735).
   #
   # THE HOP IS TLS, AND IT IS VERIFIED. Over it travels the material the edge checks every
   # bearer's SIGNATURE with: whoever substitutes it substitutes the access decision, and
@@ -183,17 +165,6 @@ api-gateway:
     # and the whole surface answers 401.
     issuer: ""  # СНЯТ вместе с приходом tokenAcceptance выше: два объявления об одном
                 # предмете дают ОТКАЗ В СТАРТЕ, а не молчаливое старшинство.
-    # dev declares both admin-API addresses in the clear; this stand is
-    # production-class, so it addresses them over TLS with the anchor pinned.
-    # Introspection asks about a bearer by SENDING it, on every authenticated
-    # request that misses the cache — the wire carries a live end-user credential,
-    # not merely administrative calls.
-    introspectionUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445/admin/oauth2/introspect"
-    adminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445"
-    adminCa:
-      secretName: kacho-umbrella-hydra-admin-tls
-      key: ca.crt
-      mountPath: /etc/api-gateway/hydra-admin-ca
 
 # ─── kacho-vpc ──────────────────────────────────────────────────────────────
 vpc:
@@ -297,19 +268,6 @@ kaname:
   authMode: production-strict    # Bearer required + Config.Validate requires hook/jwks secrets
   config:
     authn:
-      # Hydra's advertised self.issuer on this kind stand is the localhost nodeport
-      # (hydra.config.urls.self.issuer = http://localhost:28080/.ory/hydra/public/), NOT
-      # the domain-derived https://hydra.api.kacho.cloud. Without this, the private_key_jwt
-      # client_assertion iam signs for the registry-token exchange carries
-      # aud=<derived>/oauth2/token → Hydra rejects it ("audience must match the token
-      # endpoint http://localhost:28080/.ory/hydra/public/oauth2/token", invalid_client).
-      # Set as a CONFIG value (ResolveHydraIssuer highest precedence) — the env passthrough
-      # KANAME_HYDRA_ISSUER collides with the chart's domain-derived env of the same name
-      # and k8s dedups to the first (external) → non-deterministic. Aligns iam with the
-      # gateway (gateway.hydra.issuer already = this localhost issuer); the in-cluster POST
-      # target stays hydraTokenURL. authn.go documents this override for non-derivable issuers.
-      # Same string the provider stamps (no trailing slash — see hydra.urls.self.issuer).
-      hydraIssuer: "https://localhost:28080/.ory/hydra/public"
       # ─── bootstrap-mint caller allow-list — REQUIRED to boot here (#58) ──────
       # This profile ENABLES the mint (kacho.iam.bootstrapToken.signingKeySecretName
       # below ⇒ the signing key is injected), and MintBootstrapToken issues a
@@ -528,24 +486,8 @@ kaname:
     loginLaneClientAuthMode: mutual
   platform:
     iam:
-      # Provider-ADMIN hop: declared (never derived) and over TLS with the anchor
-      # pinned — the internal-CA bundle already mounted for mTLS is the same CA
-      # that signs the provider's admin certificate. dev's plaintext value is
-      # deep-merged over here; leaving it would refuse the start on this stand.
-      hydraAdminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445"
-      hydraAdminCaFile: /etc/kaname/tls/server/ca.crt
-      hydraTokenURL: "http://kacho-umbrella-hydra-public.kacho.svc:4444/oauth2/token"
-      # UNIFICATION FIX (dev-masked): the iam :9097 JWKS proxy — the endpoint every
-      # service is supposed to verify RS256 tokens through (registry-iam-jwks-unify) —
-      # derives its upstream from KANAME_HYDRA_ISSUER = https://hydra.api.kacho.cloud,
-      # the EXTERNAL ingress host that is UNREACHABLE in-cluster → the proxy fail-closes
-      # 502 and NO service can verify through it (they silently fall back to Hydra-direct,
-      # defeating the unification). Point the upstream at the in-cluster Hydra PUBLIC
-      # Service (same fix api-gateway.hydra.jwksUrl already carries). ResolveHydraJWKSURL
-      # honours this explicit override ahead of the issuer-derived default.
-      hydraJwksUrl: "http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json"
       # Bootstrap-admin SA ES256 (P-256, PKCS#8) signing key — signs the
-      # private_key_jwt client_assertion the mint exchanges at Hydra. Empty ⇒ env
+      # private_key_jwt client_assertion the mint exchanges at OUR issuer. Empty ⇒ env
       # absent ⇒ MintBootstrapToken fails closed (UNAVAILABLE). Provisioned as a
       # LOCAL kind secret by scripts/dev-prod-secrets.sh (generated fresh, NOT
       # committed — a real cluster provisions it out-of-band / external-secrets).
@@ -592,13 +534,10 @@ registry:
   # DataplaneTLSAck — operator ack the plaintext data-plane sits behind external TLS.
   # The Docker data-plane itself is NOT exercised on kind (dataplaneLB off) — these are
   # config-level boot guards, no live fetch, so registry boots control-plane-only.
-  # Приём identity-JWT: издатель — МНОЖЕСТВО (F1, задача #897)
-  #
-  # Платформа чеканит свои токены сама, а прежний издатель на переходе остаётся,
-  # поэтому принимаемых издателей двое и у КАЖДОГО своя запись источника ключей.
-  # Объединять наборы в один документ дешевле и уничтожило бы ровно ту защиту,
-  # ради которой развязка заводится: ключ одного издателя проверял бы токен,
-  # объявляющий другого.
+  # Приём identity-JWT: издатель — МНОЖЕСТВО по устройству (F1, задача #897), у
+  # КАЖДОГО своя запись источника ключей. Принимается ровно один — наш, тем же
+  # перечнем, что у края выше: прежний издатель ни на одном стенде не
+  # поднимается (#2735).
   #
   # Прежние ручки `registry.iam.jwksUrl` и `registry.hydra.issuer` СНЯТЫ, а не
   # оставлены мостом: мост был бы вторым местом об одном предмете и обессмыслил
@@ -606,12 +545,12 @@ registry:
   # Профиль, задающий только снятые имена, принимает НОЛЬ издателей и не
   # поднимается.
   tokenAcceptance:
-    issuers: "https://kaname.kacho.local,https://localhost:28080/.ory/hydra/public"
+    issuers: "https://kaname.kacho.local"
     # Адрес ОБЪЯВЛЯЕТСЯ, а не выводится из издателя: издатель приходит от
     # предъявителя, и производный адрес получался бы у ВСЯКОГО издателя —
     # состояние «записи нет» не наступало бы никогда, а страж старта стал бы
     # тождественно истинным.
-    issuerKeySets: "https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json,https://localhost:28080/.ory/hydra/public=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
+    issuerKeySets: "https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
     # Наш издатель выбирает полосу приёма: тип at+jwt и чтение отзыва на
     # предъявлении. Вне issuers — отказ в старте.
     platformIssuer: "https://kaname.kacho.local"

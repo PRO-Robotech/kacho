@@ -18,7 +18,6 @@ let hostContext:
 
 const authValue = {
   user: null,
-  session: null,
   loading: false,
   accessToken: null,
   whoami: null,

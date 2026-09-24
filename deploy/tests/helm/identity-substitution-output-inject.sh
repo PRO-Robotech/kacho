@@ -76,6 +76,22 @@ mkdir -p "$TMP/synth/src" "$TMP/synth/rendered" "$TMP/real/src" "$TMP/real/rende
 ARGS="$(bash tests/helm/stacks.sh --args dev-prod ./helm/umbrella)" || {
   echo "ОТКАЗ: цепочка стенда не прочитана — helm без единого -f сел бы на умолчания чарта" >&2; exit 2; }
 
+# СЛУЖБА ЛИЧНОСТИ ПОСТАВЩИКА НА СТЕНДЕ НЕ ПОДНИМАЕТСЯ (база зонта, #2735), а шаг
+# подстановки, который здесь судится, живёт в её поде. Его объявление лежит в
+# профиле цепочки до физического снятия подчарта (#1276), поэтому служба
+# поднимается внутри рендера доказательства ОДНИМ фактом — и только поверх
+# цепочки, чей профиль её настройки объявляет.
+. "$INJECT_DIR/provider-up.sh" || { echo "ОТКАЗ: библиотека подъёма поставщика не подключилась" >&2; exit 2; }
+chain_paths=(./helm/umbrella/values.yaml)
+for a in $ARGS; do [ "$a" = "-f" ] || chain_paths+=("$a"); done
+provider_part_declared identity-store "${chain_paths[@]}" && declared_rc=0 || declared_rc=$?
+case "$declared_rc" in
+  0) ;;
+  1) echo "ОТКАЗ: цепочка dev-prod больше не объявляет настроек службы личности поставщика — доказательству судить нечего; снимите его вместе с предметом (#1276)" >&2; exit 1 ;;
+  *) echo "ОТКАЗ: профили цепочки не разобраны — объявлены ли настройки службы личности, судить не по чему" >&2; exit 2 ;;
+esac
+ARGS="$ARGS ${IDENTITY_STORE_UP_ARGS[*]}"
+
 # shellcheck disable=SC2086
 helm template kacho-umbrella ./helm/umbrella -n kacho \
   $ARGS > "$TMP/render.yaml" 2>"$TMP/err" || {

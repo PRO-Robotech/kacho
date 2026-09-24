@@ -1,9 +1,9 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// identity_serving_precedence_test.go — запрос к службе личности обязан прийти
-// К НЕЙ, а не в запасной путь статики; адрес потока личности обязан приходить в
-// полосу потоков, а не в заглушку одностраничного приложения.
+// identity_serving_precedence_test.go — адрес потока личности обязан приходить
+// в полосу потоков, а не в запасной путь статики и не в заглушку
+// одностраничного приложения.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ПРЕДМЕТ
@@ -13,23 +13,20 @@
 // регулярки в порядке объявления · запомненный префикс. Из этого следует то,
 // чего чтение сверху вниз не показывает:
 //
-//   - РЕГУЛЯРКА ПОБЕЖДАЕТ ОБЫЧНЫЙ ПРЕФИКС, где бы она ни стояла в файле.
-//     Значит блок, отдающий запросы службе личности по префиксу, проигрывает
-//     регулярке статики, объявленной НИЖЕ него, — и запрос уезжает не туда;
+//   - РЕГУЛЯРКА ПОБЕЖДАЕТ ОБЫЧНЫЙ ПРЕФИКС, где бы она ни стояла в файле;
 //   - победу префикса даёт только пометка `^~`: она прекращает разбор регулярок;
 //   - между собой регулярки решает ТЕКСТОВЫЙ порядок, и вот он читается сверху
-//     вниз.
+//     вниз. Полоса потоков и регулярка статики — обе регулярки, поэтому адрес
+//     под сегментом потока с расширением статики (`/login/…/x.js`) достаётся
+//     той, что объявлена ВЫШЕ.
 //
-// Цена измерена на настоящем nginx (сокращённая копия этой раздачи, образ
-// консоли, 2026-08-24): `/.ory/kratos/public/.well-known/ory/webauthn.js` —
-// вспомогательный сценарий беспарольного входа, который служба личности отдаёт
-// со своего публичного края, — доставался НЕ ей. Его забирала регулярка статики
-// (расширение `.js`), не находила файла в корне консоли и уводила запрос в
-// запасной путь, то есть в ДРУГУЮ службу — интерфейс самообслуживания, где
-// такого адреса нет. Беспарольный вход объявлен в настройках продукта
-// (`webauthn` среди методов), поэтому предмет не гипотетический.
+// Прежде проба судила и префиксный блок к публичному краю службы личности:
+// обычный префикс проигрывал регулярке статики, и вспомогательный сценарий
+// беспарольного входа уезжал в запасной путь (измерено на настоящем nginx
+// 2026-08-24). Блок снят из раздачи вместе со своим адресом (#2733) — ни одна
+// цепочка его не рендерила, — и половина пробы о нём снята вместе с предметом.
 //
-// Вторая половина — про заглушку. Адрес, не покрытый ни одной полосой, попадает
+// Заглушка. Адрес, не покрытый ни одной полосой, попадает
 // в `location /`, а та отдаёт `index.html` с кодом `200`. Отказ тогда выглядит
 // УСПЕХОМ: браузер получает двухсотый код и пустую оболочку, маршрутизатор
 // которой такого пути не знает и уводит на главную. Ни `404`, ни записи в
@@ -317,33 +314,31 @@ func servingTemplate(t *testing.T) ([]nginxServer, string) {
 	return parseServingTemplate(t, string(body)), path
 }
 
-// joinPath — адрес под префиксом блока.
-func joinPath(prefix, tail string) string {
-	if strings.HasSuffix(prefix, "/") {
-		return prefix + tail
-	}
-	return prefix + "/" + tail
-}
-
 // TestIdentityRequestReachesTheIdentityServiceNotTheFallback — предмет ПОРЯДКА.
 //
 // Утверждается не наличие блоков, а то, КАКОЙ из них выигрывает: наличие обоих
 // при неверном порядке даёт ровно тот дефект, ради которого проба заведена.
+//
+// Префиксного блока к службе личности в раздаче больше нет: полоса к публичному
+// краю поставщика (`/.ory/…`) не рендерилась ни на одной цепочке и снята из
+// чарта вместе со своим адресом (#2733). Вместе с ней снята и половина этой
+// пробы, судившая порядок «префикс службы против регулярки статики», — её
+// предмета не стало. Возврат такого блока ловят убывающий потолок привязок
+// (kacho#2730: строка с именем поставщика) и рендер-гейт посадки
+// (`deploy/tests/helm/console-serves-identity-flows-test.sh`: полоса `/.ory/…`
+// на посадке own — находка).
 func TestIdentityRequestReachesTheIdentityServiceNotTheFallback(t *testing.T) {
 	servers, path := servingTemplate(t)
 
-	locsTotal, idPrefixTotal, staticTotal, bandTotal, checks := 0, 0, 0, 0, 0
+	locsTotal, staticTotal, bandTotal, checks := 0, 0, 0, 0
 
 	for _, srv := range servers {
 		locsTotal += len(srv.locs)
 
-		var idPrefix, bands []int
+		var bands []int
 		exts := map[string]bool{}
 		for i, l := range srv.locs {
-			switch {
-			case (l.mod == "" || l.mod == "^~") && identityUpstreamRe.MatchString(l.body):
-				idPrefix = append(idPrefix, i)
-			case l.re != nil && identityUpstreamRe.MatchString(l.body):
+			if l.re != nil && identityUpstreamRe.MatchString(l.body) {
 				bands = append(bands, i)
 			}
 			if l.re != nil && namedFallbackRe.MatchString(l.body) {
@@ -357,35 +352,10 @@ func TestIdentityRequestReachesTheIdentityServiceNotTheFallback(t *testing.T) {
 				}
 			}
 		}
-		idPrefixTotal += len(idPrefix)
 		bandTotal += len(bands)
 		staticTotal += len(exts)
 
-		// Часть 1 — ресурс службы личности обязан прийти к ней.
-		for _, li := range idPrefix {
-			l := srv.locs[li]
-			for _, ext := range sortedKeys(exts) {
-				uri := joinPath(l.spec, "probe."+ext)
-				got, why := selectLocation(uri, srv.locs)
-				checks++
-				if got == li {
-					continue
-				}
-				winner := "никакой"
-				if got >= 0 {
-					winner = srv.locs[got].name()
-				}
-				t.Errorf("серверный блок со строки %d: запрос %q обязан достаться службе личности "+
-					"через %s, а достаётся %s (%s).\n"+
-					"Обычный префикс проигрывает регулярке, где бы та ни стояла в файле: победу "+
-					"префиксу даёт только пометка `^~`. Запрос уезжает в запасной путь статики, "+
-					"тот не находит файла в корне консоли и отдаёт его ДРУГОЙ службе — то есть "+
-					"ресурс службы личности до неё не доходит вовсе.",
-					srv.line, uri, l.name(), winner, why)
-			}
-		}
-
-		// Часть 2 — сегмент полосы потоков обязан прийти в полосу, а не в заглушку.
+		// Сегмент полосы потоков обязан прийти в полосу, а не в заглушку.
 		for _, bi := range bands {
 			segs, err := bandSegments(srv.locs[bi].spec)
 			if err != nil {
@@ -425,19 +395,15 @@ func TestIdentityRequestReachesTheIdentityServiceNotTheFallback(t *testing.T) {
 	}
 
 	t.Logf("осмотрено: %s; серверных блоков %d; блоков раздачи %d; из них отдают запросы службе "+
-		"личности по префиксу %d и регуляркой-полосой %d; расширений статики %d; "+
-		"проверено разрешений адреса %d",
-		path, len(servers), locsTotal, idPrefixTotal, bandTotal, staticTotal, checks)
+		"личности регуляркой-полосой %d; расширений статики %d; проверено разрешений адреса %d",
+		path, len(servers), locsTotal, bandTotal, staticTotal, checks)
 
 	switch {
 	case len(servers) == 0:
 		t.Fatal("в объявлении не найдено ни одного серверного блока — прочитано ноль, " +
 			"и молчание пробы не является утверждением о раздаче")
-	case idPrefixTotal == 0:
-		t.Fatal("ни один блок не отдаёт запросы службе личности по префиксу — предпосылка " +
-			"первой половины исчезла: проверять порядок не с чем")
 	case bandTotal == 0:
-		t.Fatal("не найдено полосы потоков личности — предпосылка второй половины исчезла")
+		t.Fatal("не найдено полосы потоков личности — предпосылка пробы исчезла")
 	case staticTotal == 0:
 		t.Fatal("не найдено регулярки статики с уходом в именованный блок — сталкивать " +
 			"порядок не с чем, и «всё сошлось» здесь означало бы «нечему было сходиться»")
@@ -458,7 +424,7 @@ func TestServingPrecedenceDiscriminatorCutsBothWays(t *testing.T) {
 	const prefixShape = `
 server {
     location %s /.ory/probe/public/ {
-        set $probe_upstream "${KACHO_UI_KRATOS_PUBLIC_UPSTREAM}";
+        set $probe_upstream "${KACHO_UI_KRATOS_UI_UPSTREAM}";
         proxy_pass http://$probe_upstream;
     }
 
@@ -682,4 +648,125 @@ func TestServingBandCoversEveryRouteTheConsoleSendsToTheIdentityService(t *testi
 			"в разработке и на стенде этот адрес обслуживается по-разному, и решал это никто. "+
 			"Объявлено в %v.", "/"+seg, sortedKeys(devProxy), declaredIn)
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// СНЯТАЯ СЛУЖБА ВЫДАЧИ ТОКЕНА (задача #2733)
+//
+// Служба выдачи токена прежнего поставщика личности снимается: в консоли её не
+// читает НИКТО — ни одного обращения к её краю из кода, ни одного читателя её
+// ручек. Осталась только проводка: восходящий узел в раздаче, полосы сборщика и
+// ручки их адресов. Проводка без читателя — не безвредный остаток: она
+// объявляет продукт зависящим от службы, которой у него нет, и первый же
+// заход по её адресу получает ответ от чужого края вместо отказа.
+//
+// Дом утверждения — ЭТОТ файл: он и так единственное место, которое читает обе
+// стороны проводки (объявление раздачи и объявления сборщика). Второе место об
+// этом предмете расходилось бы с ним молча.
+//
+// ПРИЗНАК — имя службы в адресе либо в имени ручки, без учёта регистра.
+// `hydrat` в признак НЕ входит, и это решение, а не упущение: `hydrate` —
+// собственное имя наполнения состояния в консоли (`contextApi.hydrate`) и часть
+// имени стороннего пакета (`@radix-ui/react-use-is-hydrated`). Ось по голому
+// `hydra` краснела бы на коде, к снимаемой службе отношения не имеющем.
+
+// retiredTokenIssuerMark — имя снятой службы выдачи токена (нижний регистр).
+const retiredTokenIssuerMark = "hydra"
+
+// retiredTokenIssuerFalseMark — приставка, которую признак НЕ засчитывает.
+const retiredTokenIssuerFalseMark = "hydrat"
+
+// namesRetiredTokenIssuer — несёт ли строка имя снятой службы. Строка обязана
+// быть уже в нижнем регистре.
+func namesRetiredTokenIssuer(lower string) bool {
+	return strings.Contains(strings.ReplaceAll(lower, retiredTokenIssuerFalseMark, ""), retiredTokenIssuerMark)
+}
+
+// TestConsoleNamesNoUpstreamOfTheRetiredTokenIssuer — ни объявление раздачи, ни
+// объявления сборщика не называют снятую службу выдачи токена.
+//
+// Корпус берётся из состава дерева, а не выписывается здесь: конфигурация,
+// заведённая завтра, попадает под суд сама. Пустой обход — отказ, а не зелёное.
+func TestConsoleNamesNoUpstreamOfTheRetiredTokenIssuer(t *testing.T) {
+	root := repoRootFromTest(t)
+
+	files, err := treecorpus.Under(filepath.Join(root, "ui-future"))
+	if err != nil {
+		t.Fatalf("состав ui-future: %v — без индекса «ноль находок» неотличимо от «ноль прочитанного»", err)
+	}
+
+	// Судятся ОБЪЯВЛЕНИЯ проводки: раздача консоли и конфигурации сборщика.
+	// Прочее дерево судит убывающий потолок привязок (kacho#2730); здесь его
+	// число не пересказывается.
+	judged, linesRead, findings := []string{}, 0, 0
+	for _, abs := range files {
+		base := filepath.Base(abs)
+		rel, _ := filepath.Rel(root, abs)
+		if base != "vite.config.ts" && filepath.ToSlash(rel) != filepath.ToSlash(servingTemplateRel) {
+			continue
+		}
+		body, rerr := os.ReadFile(abs) // #nosec G304 -- путь пришёл из индекса git этого дерева
+		if rerr != nil {
+			t.Fatalf("%s: %v — прочитать объявление не удалось, и проверка НЕ ИСПОЛНЯЛАСЬ", rel, rerr)
+		}
+		judged = append(judged, filepath.ToSlash(rel))
+		for i, line := range strings.Split(string(body), "\n") {
+			linesRead++
+			exec := executablePart(line)
+			if !namesRetiredTokenIssuer(strings.ToLower(exec)) {
+				continue
+			}
+			findings++
+			t.Errorf("%s:%d — объявление называет СНЯТУЮ службу выдачи токена: %q.\n"+
+				"В консоли её не читает никто: ни обращения к её краю, ни читателя её ручек. "+
+				"Оставленная проводка объявляет продукт зависящим от службы, которой у него "+
+				"нет, и первый же заход по её адресу получает ответ чужого края вместо отказа.",
+				filepath.ToSlash(rel), i+1, strings.TrimSpace(line))
+		}
+	}
+
+	t.Logf("осмотрено: путей в индексе ui-future %d, из них судимых объявлений %d %v, "+
+		"строк прочитано %d; найдено привязок к снятой службе выдачи токена %d",
+		len(files), len(judged), judged, linesRead, findings)
+
+	switch {
+	case len(files) == 0:
+		t.Fatal("индекс ui-future пуст — прочитано ноль, и молчание проверки не является " +
+			"утверждением о проводке")
+	case len(judged) == 0:
+		t.Fatal("не найдено ни одного судимого объявления (раздача, конфигурации сборщика) — " +
+			"судить не по чему")
+	case linesRead == 0:
+		t.Fatal("судимые объявления не дали ни одной строки")
+	}
+}
+
+// TestRetiredTokenIssuerMarkCutsBothWays — признак обязан ловить имя снятой
+// службы и МОЛЧАТЬ на законном близнеце, отличающемся одной буквой.
+//
+// Без второй половины признак «всё, где есть hydra» покраснел бы на
+// `contextApi.hydrate` и на `@radix-ui/react-use-is-hydrated` — то есть на коде,
+// к снимаемой службе отношения не имеющем, и его перестали бы читать.
+func TestRetiredTokenIssuerMarkCutsBothWays(t *testing.T) {
+	type probe struct {
+		line string
+		want bool
+	}
+	// Входы — настоящие строки из дерева этой ревизии, а не выдуманные.
+	cases := []probe{
+		{`const hydra = process.env.KACHO_HYDRA_BASE || "http://localhost:4444";`, true},
+		{`        location ^~ /.ory/hydra/public/ {`, true},
+		{`            set $hydra_public "${KACHO_UI_HYDRA_PUBLIC_UPSTREAM}";`, true},
+		{`      contextApi.hydrate({ account: context.account });`, false},
+		{`        "@radix-ui/react-use-is-hydrated": "0.1.3",`, false},
+		{`      "/.ory/kratos/public": {`, false},
+	}
+	for _, c := range cases {
+		got := namesRetiredTokenIssuer(strings.ToLower(c.line))
+		if got != c.want {
+			t.Errorf("признак снятой службы выдачи токена на строке %q дал %v, ожидалось %v",
+				c.line, got, c.want)
+		}
+	}
+	t.Logf("осмотрено: входов %d (из них положительных 3, законных близнецов 3)", len(cases))
 }

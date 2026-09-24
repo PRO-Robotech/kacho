@@ -7,10 +7,16 @@
 ─────────────────────────────────────────────────────────────────────────────
 ПРЕДМЕТ
 
-Край принимает двух издателей: нашего и прежнего. Требование держать второго
-записано пробой `TestF1b_OurIssuerIsADDEDToTheListNotSubstitutedForIt`
+Край принимал двух издателей: нашего и прежнего. Требование держать второго
+было записано пробой `TestF1b_OurIssuerIsADDEDToTheListNotSubstitutedForIt`
 (`gateway/deploy/f1b_token_acceptance_declared_test.go`), и довод у неё был
 ПРОЗОЙ: «предъявитель прежней полосы добывается интерактивным входом человека».
+
+Проба СНЯТА вместе с предметом (#2735): вход человека переехал на нашу полосу
+(#1122), край перестал принимать издателя поставщика (#1123), посадку `own`
+объявляют все стенды, и прежнего издателя в перечне приёма края нет ни в одном
+профиле. Этот гейт остаётся стражем ОБРАТНОГО хода: запись приёма прежнего
+издателя, вернувшаяся без живого производителя его предъявителя, — находка.
 
 Проза не исполняется, поэтому она не может покраснеть. Когда вход человека
 переедет на свою чеканку (задача #1122), контур исчезнет — а требование
@@ -119,6 +125,26 @@ REMOVAL_TASK = "#1123"
 
 class PremiseBroken(Exception):
     """Предпосылка гейта не выполняется: осматривать нечего."""
+
+
+def platform_issuers_of_tree(root: str) -> set[str]:
+    """Издатели, которых платформа хоть где-то объявляет СВОИМИ (`platformIssuer`).
+
+    «Наш» у слоя определялся его собственным `platformIssuer`, и это верно, пока
+    каждый перечень приёма — пара «наш + прежний». Слой, который называет нашего
+    издателя, но своей чеканки не несёт и потому `platformIssuer` законно держит
+    пустым (стенд разработки, #2735), читался бы при таком правиле как принимающий
+    ПРЕЖНЕГО. Издатель одной платформы — один, и имя, объявленное своим в одном
+    профиле, чужим в соседнем не становится.
+    """
+    out: set[str] = set()
+    paths = sorted(glob.glob(os.path.join(root, PROFILE_DIR, "values*.yaml")))
+    paths.append(os.path.join(root, EDGE_CHART_DEFAULTS))
+    for path in paths:
+        v = str(_acceptance_of(path).get("platformIssuer") or "").strip()
+        if v:
+            out.add(v)
+    return out
 
 
 def literal_strings(tree: ast.Module) -> list[tuple[int, str]]:
@@ -264,6 +290,7 @@ def edge_records_of_other_issuers(root: str) -> list[tuple[str, list[str]]]:
     вердикт о поднимаемости выносит настоящий читатель у пробы приёма.
     """
     out: list[tuple[str, list[str]]] = []
+    known = platform_issuers_of_tree(root)
     pattern = os.path.join(root, PROFILE_DIR, "values*.yaml")
     for path in sorted(glob.glob(pattern)):
         with open(path, encoding="utf-8") as fh:
@@ -285,7 +312,8 @@ def edge_records_of_other_issuers(root: str) -> list[tuple[str, list[str]]]:
             # «нашего» значило бы назвать нашего издателя чужим (задача #2816).
             ours = inherited_platform_issuer(root, os.path.basename(path))
         raw = str(acceptance.get("issuers") or "")
-        others = [i for i in (part.strip() for part in raw.split(",")) if i and i != ours]
+        others = [i for i in (part.strip() for part in raw.split(","))
+                  if i and i != ours and i not in known]
         if others:
             out.append((os.path.basename(path), others))
     return out
@@ -358,6 +386,7 @@ def chains_by_legacy_acceptance(root: str) -> tuple[list[str], list[str]] | None
     if rows is None:
         return None
     base = _acceptance_of(os.path.join(root, EDGE_CHART_DEFAULTS))
+    known = platform_issuers_of_tree(root)
     accepting: list[str] = []
     without: list[str] = []
     for name, layers in rows:
@@ -369,7 +398,8 @@ def chains_by_legacy_acceptance(root: str) -> tuple[list[str], list[str]] | None
                 issuers = str(acc.get("issuers") or "")
             if "platformIssuer" in acc:
                 ours = str(acc.get("platformIssuer") or "").strip()
-        others = [i for i in (part.strip() for part in issuers.split(",")) if i and i != ours]
+        others = [i for i in (part.strip() for part in issuers.split(","))
+                  if i and i != ours and i not in known]
         (accepting if others else without).append(name)
     return accepting, without
 
@@ -404,6 +434,14 @@ def evaluate(root: str) -> tuple[int, list[str], list[str]]:
     if producers:
         # Предмет жив. Требование держать прежнего издателя обосновано, и это
         # утверждение о дереве, а не о чьей-то памяти.
+        if not profiles:
+            # Обратный разрыв — НЕ предмет этого гейта, но и не молчание: посев
+            # обменивает у издателя, которого не принимает ни один край (#2735).
+            # Переезд обмена на наш эндпоинт — предмет владельца посева.
+            census.append(
+                f"приёма прежнего издателя нет ни в одном профиле, а посев обменивает у "
+                f"него в {len(producers)} мест(е/ах) — производитель пережил потребителя; "
+                f"снять обмен из посева — предмет его владельца, не этого гейта")
         return 0, findings, census
 
     if not profiles:
@@ -460,7 +498,7 @@ DICT_STUB = 'var ProviderSurfaces = []ProviderSurface{{{{Path: "{path}"}}}}\n'
 
 def _plant(root: str, *, seed_src: str, profile: str, presenters: str = '{"jwtHumanCeremony": "почему"}',
            dict_path: str = PROVIDER_TOKEN_ENDPOINT_PATH, docnote: str = "предмет",
-           drop_seed: bool = False) -> None:
+           drop_seed: bool = False, extra_profile: str = "") -> None:
     os.makedirs(os.path.join(root, "tests", "authz-fixtures"), exist_ok=True)
     os.makedirs(os.path.join(root, "internal", "repohygiene"), exist_ok=True)
     os.makedirs(os.path.join(root, PROFILE_DIR), exist_ok=True)
@@ -473,6 +511,9 @@ def _plant(root: str, *, seed_src: str, profile: str, presenters: str = '{"jwtHu
         fh.write(DICT_STUB.format(path=dict_path))
     with open(os.path.join(root, PROFILE_DIR, "values.probe.yaml"), "w", encoding="utf-8") as fh:
         fh.write(profile)
+    if extra_profile:
+        with open(os.path.join(root, PROFILE_DIR, "values.probe-dev.yaml"), "w", encoding="utf-8") as fh:
+            fh.write(extra_profile)
 
 
 TWO_ISSUERS = ("api-gateway:\n"
@@ -483,6 +524,18 @@ ONE_ISSUER = ("api-gateway:\n"
               "  tokenAcceptance:\n"
               "    issuers: \"https://kaname.kacho.local\"\n"
               "    platformIssuer: \"https://kaname.kacho.local\"\n")
+# Слой стенда разработки: называет НАШЕГО издателя, своей чеканки не несёт и
+# `platformIssuer` законно держит пустым (#2735). Прежним он не становится.
+OURS_WITHOUT_OWN_MINTING = ("api-gateway:\n"
+                            "  tokenAcceptance:\n"
+                            "    issuers: \"https://kaname.kacho.local\"\n"
+                            "    platformIssuer: \"\"\n")
+# Тот же слой, но называющий ПРЕЖНЕГО издателя, — законный близнец обратного
+# хода: одно имя сменено, и находка обязана вернуться.
+PROVIDER_WITHOUT_OWN_MINTING = ("api-gateway:\n"
+                                "  tokenAcceptance:\n"
+                                "    issuers: \"https://provider\"\n"
+                                "    platformIssuer: \"\"\n")
 # Близнец с ПОХОЖИМ именем ручки: предикат обязан читать имя целиком, а не
 # вхождением — иначе переименование остаётся незамеченным.
 LOOKALIKE_KNOB = ("api-gateway:\n"
@@ -508,6 +561,13 @@ def self_test() -> int:
          {"seed_src": SEED_WITHOUT_EXCHANGE, "profile": TWO_ISSUERS}, 1),
         ("предмета НЕТ + один издатель ⇒ ЗЕЛЕНО (цель достигнута, а не поломка)",
          {"seed_src": SEED_WITHOUT_EXCHANGE, "profile": ONE_ISSUER}, 0),
+        # ── ось «наш издатель без своей чеканки прежним не становится» ──────
+        ("предмета НЕТ + слой без platformIssuer называет нашего ⇒ ЗЕЛЕНО",
+         {"seed_src": SEED_WITHOUT_EXCHANGE, "profile": ONE_ISSUER,
+          "extra_profile": OURS_WITHOUT_OWN_MINTING}, 0),
+        ("предмета НЕТ + тот же слой называет прежнего ⇒ НАХОДКА (одно имя сменено)",
+         {"seed_src": SEED_WITHOUT_EXCHANGE, "profile": ONE_ISSUER,
+          "extra_profile": PROVIDER_WITHOUT_OWN_MINTING}, 1),
         # ── ось «граница имени» ─────────────────────────────────────────────
         ("предмета НЕТ + похожая ручка tokenAcceptanceLegacy ⇒ ЗЕЛЕНО (имя читается целиком)",
          {"seed_src": SEED_WITHOUT_EXCHANGE, "profile": LOOKALIKE_KNOB}, 0),
@@ -578,7 +638,10 @@ def main() -> int:
         for f in findings:
             print(f"НАХОДКА: {f}", file=sys.stderr)
         return code
-    print("приём прежнего издателя на крае имеет предмет — требование обосновано.")
+    if edge_records_of_other_issuers(args.root):
+        print("приём прежнего издателя на крае имеет предмет — требование обосновано.")
+    else:
+        print("приёма прежнего издателя на крае нет — основание судить не о чем; его возврат без производителя этот гейт поймает.")
     return code
 
 

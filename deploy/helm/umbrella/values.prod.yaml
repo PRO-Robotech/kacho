@@ -145,16 +145,6 @@ mtls:
     # pg-kratos/pg-hydra остаются вне пола: их DSN действительно принадлежат
     # чужим чартам, и это их собственный предмет.
     services: [vpc, compute, iam, geo, nlb, storage, registry]
-  # Serving certificate for the ADMIN hop — consumed by the TERMINATOR sidecar in
-  # the provider's pod, not by the provider itself (it does not read a
-  # per-listener TLS declaration; measured, see deploy/PROVIDER-LISTENER-PREMISE.md).
-  # LOAD-BEARING: this profile addresses the hop over https from both the gateway
-  # and iam, and BOTH refuse to start on a plaintext or unanchored hop — so the
-  # certificate, the terminator and the consumer addresses move together or not
-  # at all.
-  hydraAdminTls:
-    enabled: true
-    secretName: kacho-umbrella-hydra-admin-tls
 cert-manager:
   enabled: true
 
@@ -164,25 +154,24 @@ api-gateway:
   authMode: production-strict
   # ─── Объявление приёма токена (Ф1б, задача #926) ──────────────────────
   #
-  # Издатель на крае — МНОЖЕСТВО: платформа чеканит свои токены сама (задача
-  # #897), а прежний издатель на переходе остаётся. У КАЖДОГО принимаемого
-  # издателя своя запись источника ключей: объединить наборы было бы дешевле и
-  # уничтожило бы ровно ту защиту, ради которой развязка делается — ключ одного
-  # издателя проверял бы токен, объявляющий другого.
+  # Издатель на крае — МНОЖЕСТВО по устройству (Ф1б, #926): у КАЖДОГО
+  # принимаемого издателя своя запись источника ключей, и ключ одного издателя
+  # не проверяет токен, объявляющий другого. Принимается сегодня РОВНО ОДИН —
+  # наш: прежний издатель на этом стенде не поднимается (values.yaml, раздел
+  # «ЧУЖОЙ СТЕК ЛИЧНОСТИ НЕ ПОДНИМАЕТСЯ»), и принимать его токены значило бы
+  # принимать издателя, чей набор ключей никто не держит (#2735).
   #
   # Значения — ТЕ ЖЕ, что у ПЕРВОЙ конфигурации проверяющего
   # (kacho-registry.tokenAcceptance ниже): одна платформа, один набор адресов.
   # Расхождение между ними было бы двумя местами об одном предмете.
   #
-  # ОТКАТ состоит в снятии platformIssuer и нашего издателя из issuers — не в
-  # перекатке образа.
   tokenAcceptance:
-    issuers: "https://kaname.kacho.local,https://hydra.api.kacho.cloud"
+    issuers: "https://kaname.kacho.local"
     # Адрес ОБЪЯВЛЯЕТСЯ, а не выводится из издателя: издатель приходит от
     # предъявителя, и производный адрес получался бы у ВСЯКОГО издателя —
     # состояние «записи нет» не наступало бы никогда, а страж старта стал бы
     # тождественно истинным.
-    issuerKeySets: "https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json,https://hydra.api.kacho.cloud=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
+    issuerKeySets: "https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
     # Наш издатель выбирает полосу приёма: строгий тип at+jwt и чтение отзыва на
     # предъявлении. Вне issuers — отказ в старте.
     platformIssuer: "https://kaname.kacho.local"
@@ -256,9 +245,41 @@ api-gateway:
     # can quietly drop it, the same discipline the forwarder allow-list follows
     # below. Machine principals are exempt from the floor by the shared rule.
     enforceStepUp: true
-  # Hydra JWKS — the verifier fetches Hydra's JWKS from the cluster-internal
-  # Hydra PUBLIC Service (NOT the public ingress hairpin); `issuer` is the public
-  # OIDC issuer string the token `iss` claim must match (SEC-J exact-match).
+
+    # ─── АДРЕС ПОЛОСЫ ФОРМЫ СЛУЖБЫ ДОСТУПА (Ф3, kacho#1269; предпосылка #2735) ──
+    #
+    # ПОЧЕМУ ЗДЕСЬ, НА `external`. Тот же довод, что у `kaname.ports.loginLane`,
+    # `kaname.mtls.loginLane` и всего блока `kaname.config.authn.login` этого же
+    # профиля (приёмка Ф3, Р3, Р11, Ф3-42): величина полосы живёт в профиле, где
+    # её видит читающий, и перевод стенда на `own` НЕ ЗАВОДИТ ПОЛОСУ С НУЛЯ.
+    # Страж края `validateLoginLaneConfig` читает её ТОЛЬКО под `own`; под
+    # `external` она не читается вовсе, и эмиссия переменной ничего не включает —
+    # ретранслятор глаголов формы заводится посадкой, а не адресом.
+    #
+    # ЧЕМ ДЕРЖИТСЯ, ЧТО ЭТО НЕ ЗАГЛУШКА. Адрес не выдуман под ручку: это тот же
+    # внутренний Service службы, куда этот же профиль уже ходит за набором ключей
+    # и к авторитету отзыва (`kaname-internal.kacho.svc:9097` выше) и куда край
+    # дозванивается по gRPC (`backends.iamInternal`). Имя выводится из
+    # `kaname.name` (умолчание подчарта `kaname` → Service `kaname-internal`),
+    # пространство имён — то, в котором стенд ставится (`STACK_NAMESPACE`,
+    # `deploy/Makefile`), порт — `kaname.ports.loginLane` ЭТОГО ЖЕ профиля.
+    # Согласие порта адреса с портом слушателя судит `deploy/own_posture_stack_test.go`.
+    #
+    # Схема `https` обязательна: по ретрансляции едет печенье сессии человека, а
+    # слушатель полосы взаимный по TLS. Клиентская пара и якорь — те же `mtls.*`,
+    # что у gRPC-рёбер; второго объявления об одном предмете не заводится.
+    #
+    # НАСЛЕДУЮТ ЭТУ СТРОКУ стенды `prod`, `own` и `fe3455`; накладка посадки
+    # `values.own.yaml` её больше не перекрывает. Перепись объявивших печатает
+    # проба, а не этот комментарий.
+    iamLoginLaneUrl: https://kaname-internal.kacho.svc:9100
+
+    # Вторая половина той же посадки. Значение обязано СОВПАДАТЬ с объявленным
+    # службе выше: расхождение половин — стенд, у которого о личности решают
+    # по-разному.
+    identityProvider: own
+  # Узел носит имя прежнего поставщика по истории; живой в нём ровно один
+  # предмет — якорь хопа за набором ключей НАШЕГО издателя (`jwksCa`, ниже).
   hydra:
     # KEY-FETCH HOP — through the iam mirror, over TLS, VERIFIED.
     #
@@ -279,49 +300,14 @@ api-gateway:
     jwksUrl: ""  # СНЯТ: адрес набора теперь объявляется записью издателя
               # в tokenAcceptance.issuerKeySets выше.
     # Anchor for the hop above: the internal-CA bundle that signs iam's serving cert.
-    # Unreadable or certificate-less ⇒ REFUSES THE START, exactly like the admin hop —
-    # falling back to the system roots would read as configured and verify nothing.
+    # Unreadable or certificate-less ⇒ REFUSES THE START: falling back to the
+    # system roots would read as configured and verify nothing.
     jwksCa:
       secretName: kaname-server-tls
       key: ca.crt
       mountPath: /etc/api-gateway/hydra-jwks-ca
     issuer: ""  # СНЯТ вместе с приходом tokenAcceptance выше: два объявления об одном
                 # предмете дают ОТКАЗ В СТАРТЕ, а не молчаливое старшинство.
-    # ─── Revocation path (ADMIN API — not the public issuer above) ──────────
-    # A verified signature proves who minted the token and when it lapses. It
-    # cannot prove the token is still good: a sign-out, a revoked machine key
-    # or a back-channel logout all leave a valid signature behind. Only the
-    # provider knows, and only over its admin API — a separate Service and
-    # port, reachable only in-cluster, so neither address can be derived from
-    # anything else in this block.
-    #
-    # Both WERE derived from the issuer when unset, and no profile set either,
-    # so every stand pointed them at a server that serves neither. The gateway
-    # no longer derives them, and refuses to start production-class while
-    # either is unset — this profile is what keeps that start possible.
-    #
-    # The admin API has no authentication of its own; it is protected by not
-    # being routable. It must never be published outside the cluster.
-    #
-    # OVER TLS, AND ANCHORED. Since the revocation check moved onto the authN
-    # layer, this hop is taken on every authenticated request that misses the
-    # introspection cache — and introspection asks about a bearer by SENDING it.
-    # So the wire carries a live end-user credential, not merely administrative
-    # calls, and a bearer read off the wire is usable by whoever read it. The
-    # gateway REFUSES TO START production-class on a plaintext hop, and equally
-    # on an https one with no anchor: the provider's in-cluster certificate is
-    # issued by the internal CA, the process trusts the system roots, and the
-    # introspection layer treats an unknown authority as a permanent
-    # misconfiguration — after which it refuses every request.
-    introspectionUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445/admin/oauth2/introspect"
-    adminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445"
-    # ca.crt of the provider's admin serving secret (templates/hydra-admin-certificate.yaml)
-    # — the internal-CA bundle that signs it. Mounted as a volume and pointed at by
-    # KACHO_HYDRA_ADMIN_CA_FILE; an unreadable or certificate-less bundle refuses the start.
-    adminCa:
-      secretName: kacho-umbrella-hydra-admin-tls
-      key: ca.crt
-      mountPath: /etc/api-gateway/hydra-admin-ca
   # AuthZ: per-RPC IAM Check fan-out, fail-CLOSED on transient IAM errors.
   authz:
     enabled: true
@@ -671,49 +657,6 @@ kaname:
     metricsClientAuthMode: server-tls-only
   platform:
     iam:
-      # Route to the provider's ADMIN API. DECLARED, never derived: the fallback
-      # derivation yields the PUBLIC ingress hostname, which does not resolve
-      # in-cluster — and because a derivation is never empty, the facade read as
-      # configured on this profile, which never declared it at all. A
-      # production-class iam now refuses to start in that state.
-      #
-      # Over TLS with the anchor pinned, for the same reason the gateway's hop is:
-      # every OAuth2 client registration, trust grant and session teardown carries
-      # the administrative bearer here, and the admin API it opens authenticates
-      # nobody. The anchor is the internal-CA bundle already mounted for mTLS —
-      # the same CA that signs the provider's admin certificate.
-      hydraAdminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445"
-      hydraAdminCaFile: /etc/kaname/tls/server/ca.crt
-      # The two hops to the provider's PUBLIC listener, DECLARED for the same
-      # reason and by the same rule as the admin one above — and they were the
-      # half this profile still left to the derivation.
-      #
-      #   hydraJwksUrl  — the keyset iam mirrors on its cluster-internal :9097 is
-      #                   the data-plane's ONLY anchor for deciding whether a token
-      #                   was signed by the provider. Derived, it named the public
-      #                   ingress host: in-cluster that does not resolve, so the
-      #                   mirror fail-closes 502 and every docker pull is a 401 —
-      #                   with nothing at start-up saying why. The gateway's own
-      #                   copy of this address (api-gateway.hydra.jwksUrl, above in
-      #                   this file) has pointed at the in-cluster Service all
-      #                   along; this is the same address for the same reason, and
-      #                   it was simply missing here.
-      #   hydraTokenURL — the client_credentials exchange the `/iam/token` shim and
-      #                   the bootstrap mint post to. Derived, it named the public
-      #                   ingress host too.
-      #
-      # TRANSPORT: plain http, deliberately and temporarily. The provider serves
-      # its public listener without TLS on every profile, and giving it one is not
-      # a knob — the per-listener override was MEASURED absent on 2026-07-30 (see
-      # deploy/helm/umbrella/templates/hydra-admin-certificate.yaml), so the shared
-      # serve.tls must move, which moves the ingress, this mirror and the token
-      # endpoint together. That is its own change with its own acceptance. What is
-      # already in place for it: iam can now be given a pinned anchor for BOTH hops
-      # (hydraJwksCaFile / hydraTokenCaFile), and production REFUSES TO START if
-      # either address is https without one — so the flip cannot land half-done,
-      # verifying against the system roots.
-      hydraJwksUrl: "http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json"
-      hydraTokenURL: "http://kacho-umbrella-hydra-public.kacho.svc:4444/oauth2/token"
       # Machine-credential lifetime, production posture.
       #
       # accessTokenTtl pins `access_token_lifespan` ON EACH SA-key OAuth2 client
@@ -809,6 +752,45 @@ kaname:
         # справочника службы (3 за 1 ч): переносится, а не выбирается заново
         admissionsPerWindow: 3
         admissionWindow: 1h
+
+      # ─── ОКНО СВЕЖЕСТИ ПРАВКИ СВОИХ ДАННЫХ (Ф12, kacho#1281) ─────────────────
+      #
+      # `RequiredSetting` с `Lanes: [own]`: заведение и подтверждение второго
+      # фактора требуют предъявления не старше окна, и тем же окном ограничен
+      # срок неподтверждённого заведения. Умолчания нет ни у процесса, ни у
+      # чарта — под `own` незаданное окно есть отказ старта с именем ручки
+      # `authn.self-service-freshness` (KANAME_AUTHN__SELF_SERVICE_FRESHNESS).
+      #
+      # Стоит ЗДЕСЬ, в корне цепочки, а не в накладке посадки: под `external`
+      # страж её не читает, и объявление ничего не включает — ровно тот же довод,
+      # по которому в профилях живут величины полосы (приёмка Ф3, Р3, Р11,
+      # Ф3-42). Пока она стояла только в накладке `values.own.yaml`, перевод
+      # любого другого стенда на `own` ронял старт службы по имени этой ручки —
+      # шестым по счёту после величин полосы.
+      #
+      # 15 минут — перенос прежней величины (Ф1 §4.1), а не новый выбор.
+      selfServiceFreshness: 15m
+
+      # ─── ПОСАДКА ЛИЧНОСТИ: СВОЯ ПОЛОСА, А НЕ ВНЕШНИЙ ПОСТАВЩИК ───────────────
+      #
+      # Умолчания нет ни у процесса, ни у чарта края: профиль, посадку не
+      # объявивший, получает отказ старта с именем поля, а не тихо наследует
+      # чужой выбор. Объявлено ОБЕИМ половинам — службе здесь, краю ниже: две
+      # половины одного стенда, решившие о личности по-разному, есть
+      # расхождение, которого никто не решал (держит
+      # `deploy/helm/umbrella/identity_posture_profiles_test.go`).
+      #
+      # ПЕРЕВОД СТОИТ ЗДЕСЬ, В КОРНЕ ЦЕПОЧКИ, а не в накладке: накладка посадки
+      # переводила ровно один стенд из семи, а шесть оставшихся ждали внешнего
+      # поставщика, которого снимают. Предпосылки обеих половин заведены
+      # предыдущими коммитами этой ветки и доказаны настоящими стражами старта
+      # на разобранном окружении каждого стенда — перевод не заводит полосу с
+      # нуля и не оставляет ни одной ручки незаданной.
+      #
+      # ПОРЯДОК: стенды переходят на `own` ПЕРВЫМИ, и только затем край
+      # перестаёт принимать `external` — предмет отдельной полосы. Обратный
+      # порядок положил бы шесть стендов.
+      identityProvider: own
 
       # СВОЯ ЧЕКАНКА ТОКЕНОВ (F1, задача #897)
       #
@@ -1227,13 +1209,10 @@ registry:
   # сказано верное: издателей ДВОЕ, платформа чеканит свои токены сама. Два места
   # об одном предмете в семи строках друг от друга, из которых верно одно.
   # Проксированием описывается запись ЗЕРКАЛА и только она.
-  # Приём identity-JWT: издатель — МНОЖЕСТВО (F1, задача #897)
-  #
-  # Платформа чеканит свои токены сама, а прежний издатель на переходе остаётся,
-  # поэтому принимаемых издателей двое и у КАЖДОГО своя запись источника ключей.
-  # Объединять наборы в один документ дешевле и уничтожило бы ровно ту защиту,
-  # ради которой развязка заводится: ключ одного издателя проверял бы токен,
-  # объявляющий другого.
+  # Приём identity-JWT: издатель — МНОЖЕСТВО по устройству (F1, задача #897), у
+  # КАЖДОГО своя запись источника ключей. Принимается ровно один — наш, тем же
+  # перечнем, что у края выше: прежний издатель на этом стенде не поднимается
+  # (#2735).
   #
   # Прежние ручки `registry.iam.jwksUrl` и `registry.hydra.issuer` СНЯТЫ, а не
   # оставлены мостом: мост был бы вторым местом об одном предмете и обессмыслил
@@ -1241,12 +1220,12 @@ registry:
   # Профиль, задающий только снятые имена, принимает НОЛЬ издателей и не
   # поднимается.
   tokenAcceptance:
-    issuers: "https://kaname.kacho.local,https://hydra.api.kacho.cloud"
+    issuers: "https://kaname.kacho.local"
     # Адрес ОБЪЯВЛЯЕТСЯ, а не выводится из издателя: издатель приходит от
     # предъявителя, и производный адрес получался бы у ВСЯКОГО издателя —
     # состояние «записи нет» не наступало бы никогда, а страж старта стал бы
     # тождественно истинным.
-    issuerKeySets: "https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json,https://hydra.api.kacho.cloud=https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
+    issuerKeySets: "https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
     # Наш издатель выбирает полосу приёма: тип at+jwt и чтение отзыва на
     # предъявлении. Вне issuers — отказ в старте.
     platformIssuer: "https://kaname.kacho.local"
@@ -1573,7 +1552,8 @@ pg-registry:
       effective_cache_size = 1GB
       autovacuum_naptime = 5s
 pg-kratos:
-  enabled: true
+  # ВЫКЛЮЧЕН В БАЗЕ (values.yaml, раздел «ЧУЖОЙ СТЕК ЛИЧНОСТИ НЕ ПОДНИМАЕТСЯ»);
+  # настройки ниже не исполняются и снимаются вместе с подчартом (#1276).
   auth:
     username: kratos
     database: kratos
@@ -1587,7 +1567,8 @@ pg-kratos:
       requests: { cpu: 250m, memory: 512Mi }
       limits: { cpu: 1000m, memory: 1Gi }
 pg-hydra:
-  enabled: true
+  # ВЫКЛЮЧЕН В БАЗЕ (values.yaml, раздел «ЧУЖОЙ СТЕК ЛИЧНОСТИ НЕ ПОДНИМАЕТСЯ»);
+  # настройки ниже не исполняются и снимаются вместе с подчартом (#1276).
   auth:
     username: hydra
     database: hydra
@@ -1599,12 +1580,10 @@ pg-hydra:
       requests: { cpu: 250m, memory: 512Mi }
       limits: { cpu: 1000m, memory: 1Gi }
 
-# ─── Ory identity tier (Kratos + Hydra) — production authN flow ─────────────
-# Enabled so the production OIDC/JWT path the api-gateway verifier depends on is
-# present. Per-cluster URLs/issuers come from a per-cluster overlay layered on
-# top (the chart derives them from kacho.domain).
+# ─── Ory identity tier (Kratos + Hydra) ──────────────────────────────────────
 kratos:
-  enabled: true
+  # ВЫКЛЮЧЕН В БАЗЕ (values.yaml, раздел «ЧУЖОЙ СТЕК ЛИЧНОСТИ НЕ ПОДНИМАЕТСЯ»);
+  # настройки ниже не исполняются и снимаются вместе с подчартом (#1276).
   # ─── ДОВЕРИЕ К ВНУТРЕННЕМУ УДОСТОВЕРЯЮЩЕМУ — ЦЕНА ЗАЩИЩЁННОЙ ПОЛОСЫ ─────────
   #
   # Объявить полосу https мало: вызывающий обязан УМЕТЬ проверить сертификат
@@ -1837,7 +1816,8 @@ kratos:
         level: info
         format: json
 hydra:
-  enabled: true
+  # ВЫКЛЮЧЕН В БАЗЕ (values.yaml, раздел «ЧУЖОЙ СТЕК ЛИЧНОСТИ НЕ ПОДНИМАЕТСЯ»);
+  # настройки ниже не исполняются и снимаются вместе с подчартом (#1276).
   # Sub-phase 5.5 (kacho-iam#137) — prod transport hardening for the :9092 hooks
   # listener. The OAuth2 token/refresh webhooks now go over https://…:9092 (the
   # listener runs server-tls-only) and the Hydra pod mounts the SEC-F internal-CA
@@ -2158,8 +2138,9 @@ hydra:
         mountPath: /etc/kaname-ca
         readOnly: true
 kratos-selfservice-ui:
+  # ВЫКЛЮЧЕН В БАЗЕ (values.yaml, раздел «ЧУЖОЙ СТЕК ЛИЧНОСТИ НЕ ПОДНИМАЕТСЯ»);
+  # настройки ниже не исполняются и снимаются вместе с подчартом (#1276).
   kratosSelfServiceUI:
-    enabled: true
     # Session + CSRF cookie signing secret — operator-provisioned Secret
     # (mirrors the kaname hook-token pattern). There is NO committed default:
     # the sub-chart FAILS render if this is unset while enabled, so a bare prod
