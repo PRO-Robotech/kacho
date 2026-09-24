@@ -226,7 +226,7 @@ func main() {
 	// а не тихий откат к системным корням: край, который «настроен проверять» и не
 	// проверяет, — худшее из состояний, потому что снаружи неотличим от исправного.
 	jwksHopClient, jwksCAErr := newJWKSHopClient(
-		cfg.HydraJWKSCAFile, time.Duration(cfg.JWKSFetchTimeoutSeconds)*time.Second)
+		cfg.JWKSCAFile, time.Duration(cfg.JWKSFetchTimeoutSeconds)*time.Second)
 	if jwksCAErr != nil {
 		logger.Error("api-gateway refusing to start", "err", jwksCAErr)
 		os.Exit(1)

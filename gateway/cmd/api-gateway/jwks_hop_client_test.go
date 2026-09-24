@@ -16,9 +16,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
@@ -141,9 +143,15 @@ func TestJWKSHopClient_TrustBundleIsApplied(t *testing.T) {
 	})
 
 	t.Run("нечитаемая связка — ОТКАЗ, а не тихий откат к системным корням", func(t *testing.T) {
-		if _, err := newJWKSHopClient(filepath.Join(t.TempDir(), "нет-такого.pem"), time.Second); err == nil {
+		_, err := newJWKSHopClient(filepath.Join(t.TempDir(), "нет-такого.pem"), time.Second)
+		if err == nil {
 			t.Fatal("отсутствующая связка обязана отказывать: продолжить на системных " +
 				"корнях значит объявить проверку и не выполнять её")
+		}
+		// Отказ старта называет ТУ ручку, которую оператор задаёт окружением: иначе
+		// следующий шаг по тексту отказа не восстановить (kacho#2842).
+		if !strings.Contains(err.Error(), config.JWKSCAFileKnob) {
+			t.Errorf("отказ не называет ручку %s: %v", config.JWKSCAFileKnob, err)
 		}
 	})
 

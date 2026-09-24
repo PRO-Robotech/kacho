@@ -35,6 +35,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 )
 
 // adminHopCAEnv — the environment variable naming the trust anchor. Held as a
@@ -54,7 +56,10 @@ const adminHopCAEnv = "KACHO_HYDRA_ADMIN_CA_FILE"
 // способами, каждый из которых хуже проблемы: увести край НАПРЯМУЮ к провайдеру мимо
 // фасада (тот самый обход, который у края уже однажды находили и чинили) либо снять
 // проверку сертификата — то есть объявить защиту и не выполнять её.
-const jwksHopCAEnv = "KACHO_HYDRA_JWKS_CA_FILE"
+//
+// Имя ручки объявлено в конфигурации (`config.JWKSCAFileKnob`) и здесь
+// не повторяется: текст отказа обязан называть ровно то имя, которое читает поле.
+const jwksHopCAEnv = config.JWKSCAFileKnob
 
 // newAdminHopClient builds the client used for every call to the provider's
 // admin API, bounded by timeout.

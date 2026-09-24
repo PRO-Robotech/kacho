@@ -424,7 +424,10 @@ type Config struct {
 	// nothing.
 	HydraAdminCAFile string `envconfig:"KACHO_HYDRA_ADMIN_CA_FILE" default:""`
 
-	// HydraJWKSCAFile — то же для ХОПА ЗА КЛЮЧАМИ ВЕРИФИКАЦИИ.
+	// JWKSCAFile — то же для ХОПА ЗА НАБОРАМИ КЛЮЧЕЙ принимаемых издателей
+	// (адреса — `KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS`), в том числе нашего. Ручка
+	// транспорта хопа, в одном семействе с `KACHO_JWKS_FETCH_TIMEOUT_SECONDS`; имя —
+	// `JWKSCAFileKnob`.
 	//
 	// Зачем. По этому хопу едет материал, которым край проверяет ПОДПИСЬ каждого
 	// предъявителя. Подменивший его в пути подменяет и решение о доступе: дальше край
@@ -444,7 +447,7 @@ type Config struct {
 	// хопа, а нечитаемая связка или связка без сертификата ОТКАЗЫВАЮТ В СТАРТЕ
 	// (cmd/api-gateway/admin_hop_client.go): откат к системным корням читался бы как
 	// настроенная проверка, не проверяя при этом ничего.
-	HydraJWKSCAFile string `envconfig:"KACHO_HYDRA_JWKS_CA_FILE" default:""`
+	JWKSCAFile string `envconfig:"KACHO_API_GATEWAY_JWKS_CA_FILE" default:""`
 
 	// ─── Объявление приёма токена (Ф1б, задача #926) ──────────────────────
 	//
@@ -850,6 +853,19 @@ func (c Config) ResolvedHydraAdminURL() string {
 // семейства названы так же по той же причине. Переименование обратно вернёт
 // находку либо потребует подавления, у которого предмета нет.
 const AudienceKnob = "KACHO_API_GATEWAY_TOKEN_AUDIENCE"
+
+// JWKSCAFileKnob — имя ручки якоря доверия хопа за наборами ключей
+// принимаемых издателей. Объявлено один раз: его называют текст отказа старта
+// и проба чарта; тег поля пишет его литералом, потому что тег не умеет
+// ссылаться на постоянную, и расхождение двух написаний держит проба
+// конфигурации.
+//
+// Имя — ручка ТРАНСПОРТА хопа, а не записи объявления приёма: якорь один на
+// клиент, которым край забирает наборы ВСЕХ принимаемых издателей, как таймаут
+// `KACHO_JWKS_FETCH_TIMEOUT_SECONDS`. Переменные полосы объявления
+// (`KACHO_API_GATEWAY_TOKEN_ISSUER*`) обязаны брать значение из
+// `tokenAcceptance` профиля (TestChart_TokenLaneEnvIsWiredToItsOwnKnob).
+const JWKSCAFileKnob = "KACHO_API_GATEWAY_JWKS_CA_FILE"
 
 // DeclaredTokenAudience — адресат, ОБЪЯВЛЕННЫЙ оператором, и пустая строка,
 // когда он не объявлен. Ожидаемое `aud` при проверке токена.
