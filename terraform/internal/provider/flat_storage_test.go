@@ -23,6 +23,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
+
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // ---- поля, снятые с контракта ----------------------------------------------------------
@@ -604,7 +606,7 @@ func newEdge(t *testing.T) *edgeStub {
 	t.Helper()
 	e := &edgeStub{t: t, body: map[string]string{}, seen: map[string][]string{},
 		ops: map[string]bool{}, meta: map[string]map[string]any{}}
-	e.srv = httptest.NewServer(http.HandlerFunc(e.serve))
+	e.srv = privateloopback.NewServer(t, http.HandlerFunc(e.serve))
 	t.Cleanup(e.srv.Close)
 	return e
 }

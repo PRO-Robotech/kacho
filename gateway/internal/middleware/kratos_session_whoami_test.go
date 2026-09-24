@@ -7,9 +7,10 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // TestKratosClient_Whoami drives the session-cookie authN path against a stub
@@ -43,7 +44,7 @@ func TestKratosClient_Whoami(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var hits int32
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				atomic.AddInt32(&hits, 1)
 				if r.URL.Path != "/sessions/whoami" {
 					t.Errorf("unexpected path %q", r.URL.Path)
@@ -97,7 +98,7 @@ func TestKratosClient_Whoami(t *testing.T) {
 // configured BaseURL is empty.
 func TestKratosClient_Whoami_NoHTTPWhenNoInput(t *testing.T) {
 	var hits int32
-	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		atomic.AddInt32(&hits, 1)
 	}))
 	defer srv.Close()

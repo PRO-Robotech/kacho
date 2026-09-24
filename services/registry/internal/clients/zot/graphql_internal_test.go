@@ -8,13 +8,13 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
 )
@@ -31,7 +31,7 @@ import (
 func TestGqlQuery_DrainsBodyForKeepalive(t *testing.T) {
 	var newConns int64
 	trailing := strings.Repeat("\n", 256<<10) // 256 KiB хвоста после JSON-envelope
-	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := privateloopback.NewUnstartedServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":{"ImageList":{"Results":[{"Tag":"v1"}]}}}`))
 		_, _ = io.WriteString(w, trailing)
@@ -99,7 +99,7 @@ func TestDecodeGraphQL_ErrorsAndUnmarshal(t *testing.T) {
 // правах, с кодом, приглашающим повторить, хотя валидным он уже не станет.
 func TestListRepositories_AsksEngineForTheWindowOnly(t *testing.T) {
 	var gotQuery string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		if strings.Contains(string(body), "GlobalSearch") {
 			gotQuery = string(body)
