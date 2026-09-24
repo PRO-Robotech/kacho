@@ -4,6 +4,7 @@
 import { Link, useLocation } from "react-router";
 import { Typography } from "antd";
 import { CeremonyScreen } from "./CeremonyScreen";
+import { loginAddress } from "./ceremony-addresses";
 
 // Адрес церемонии, которого консоль на этой стадии не ведёт (приёмка F8, Р3).
 //
@@ -15,7 +16,7 @@ import { CeremonyScreen } from "./CeremonyScreen";
 export function CeremonyAddressNotServedPage() {
   const { pathname } = useLocation();
   return (
-    <CeremonyScreen title="Такого адреса здесь нет" footer={<Link to="/login">Перейти ко входу</Link>}>
+    <CeremonyScreen title="Такого адреса здесь нет" footer={<Link to={loginAddress()}>Перейти ко входу</Link>}>
       <Typography.Paragraph>
         Консоль не ведёт адрес <Typography.Text code>{pathname}</Typography.Text>.
       </Typography.Paragraph>

@@ -1,4 +1,5 @@
 import { useState, type FC } from "react";
+import { ACCOUNT_SETTINGS_ADDRESS } from "@shared/pages/auth/ceremony-addresses";
 import { Home, LogIn, Search, Settings, UserRound } from "lucide-react";
 import type { SessionAnswer } from "@shared/api/login-lane";
 import { KachoLogo, RailButton } from "../../atoms";
@@ -209,7 +210,7 @@ const HostRailView: FC<{
         )}
         {identity?.kind === "present" && (
           <RailButton
-            active={accountOpen || currentPath === "/settings"}
+            active={accountOpen || currentPath === ACCOUNT_SETTINGS_ADDRESS}
             label="Учётная запись"
             icon={<UserRound size={iconSize} />}
             onClick={() => setAccountOpen((open) => !open)}

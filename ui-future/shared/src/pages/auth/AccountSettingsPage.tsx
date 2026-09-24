@@ -22,7 +22,7 @@ import { PAGE_PADDING, PageHead } from "@shared/components/organisms/DetailShell
 import { FieldError, fieldErrorId } from "@shared/components/organisms/form/FieldError";
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { useFormToken } from "@shared/hooks/use-form-token";
-import { loginAddress } from "./ceremony-addresses";
+import { ACCOUNT_SETTINGS_ADDRESS, loginAddress } from "./ceremony-addresses";
 
 // Параметры учётной записи на `/settings` — смена пароля и второй фактор, не
 // покидая консоли (приёмка F8, S2).
@@ -407,7 +407,7 @@ export function AccountSettingsPage() {
       {who === undefined && <Spin />}
       {who?.kind === "absent" && (
         <Typography.Paragraph>
-          Параметры доступны после входа. <Link to={loginAddress("/settings")}>Войти</Link>
+          Параметры доступны после входа. <Link to={loginAddress(ACCOUNT_SETTINGS_ADDRESS)}>Войти</Link>
         </Typography.Paragraph>
       )}
       {who?.kind === "unknown" && (

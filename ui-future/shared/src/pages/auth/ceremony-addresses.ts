@@ -26,11 +26,35 @@ export const CEREMONY_ADDRESSES = [
 export type CeremonyAddress = (typeof CEREMONY_ADDRESSES)[number];
 
 /**
- * Адреса, которых консоль пока не ведёт: восстановление доступа и подтверждение
- * адреса ждут доставки письма (под-фаза S3). Обещать путь на них нельзя —
- * страница входа их не называет (Р4).
+ * Как консоль отвечает на каждый адрес церемонии — ОДНО решение, и его читает
+ * маршрутизатор оболочки (условие C1). Тип ключа исчерпывающий: адрес,
+ * добавленный в перечень выше и не решённый здесь, роняет сборку, а не уходит
+ * замыкающим правилом на панель.
+ *
+ *   • `screen`     — экран церемонии вне каркаса: у человека без сессии нет ни
+ *                    проекта, ни разделов;
+ *   • `in-shell`   — экран внутри каркаса: его открывает вошедший человек;
+ *   • `not-served` — названная страница «такого адреса здесь нет»:
+ *                    восстановление доступа и подтверждение адреса ждут
+ *                    доставки письма (под-фаза S3); обещать путь на них нельзя —
+ *                    страница входа их не называет (Р4).
  */
-export const NOT_SERVED_CEREMONY_ADDRESSES: readonly CeremonyAddress[] = ["/recovery", "/verification"];
+export type CeremonyServing =
+  | { kind: "screen"; screen: "login" | "registration" | "logout" }
+  | { kind: "in-shell"; screen: "account-settings" }
+  | { kind: "not-served" };
+
+export const CEREMONY_ROUTING: Readonly<Record<CeremonyAddress, CeremonyServing>> = {
+  "/login": { kind: "screen", screen: "login" },
+  "/registration": { kind: "screen", screen: "registration" },
+  "/logout": { kind: "screen", screen: "logout" },
+  "/settings": { kind: "in-shell", screen: "account-settings" },
+  "/recovery": { kind: "not-served" },
+  "/verification": { kind: "not-served" },
+};
+
+/** Экран параметров учётной записи — адрес из перечня, а не литерал у каждого читателя. */
+export const ACCOUNT_SETTINGS_ADDRESS: CeremonyAddress = "/settings";
 
 /** Куда уводит вход без адреса возврата и с отвергнутым: корень консоли. */
 export const CONSOLE_ROOT = "/";

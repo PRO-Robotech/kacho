@@ -45,11 +45,12 @@ import { LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalA
 import { EMPTY_PRESENTATION, SecondFactorCodeField } from "@shared/components/molecules/auth/SecondFactorCodeField";
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { useOptionalAuth } from "@shared/contexts/AuthContext";
+import { ACCOUNT_SETTINGS_ADDRESS } from "@shared/pages/auth/ceremony-addresses";
 
 const { Paragraph } = Typography;
 
 /** Экран, где заводят второй фактор, — параметры учётной записи консоли. */
-export const SECOND_FACTOR_ENROLLMENT_ADDRESS = "/settings";
+export const SECOND_FACTOR_ENROLLMENT_ADDRESS = ACCOUNT_SETTINGS_ADDRESS;
 
 interface PendingRequest {
   request: StepUpRequest;

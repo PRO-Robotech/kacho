@@ -9,7 +9,12 @@ import { CeremonyAddressNotServedPage } from "@shared/pages/auth/CeremonyAddress
 import { LoginPage } from "@shared/pages/auth/LoginPage";
 import { LogoutPage } from "@shared/pages/auth/LogoutPage";
 import { RegistrationPage } from "@shared/pages/auth/RegistrationPage";
-import { NOT_SERVED_CEREMONY_ADDRESSES } from "@shared/pages/auth/ceremony-addresses";
+import {
+  ACCOUNT_SETTINGS_ADDRESS,
+  CEREMONY_ADDRESSES,
+  CEREMONY_ROUTING,
+  type CeremonyServing,
+} from "@shared/pages/auth/ceremony-addresses";
 import { HostShell } from "./components";
 import { ModulePlaceholderPage, ReachabilityPage } from "./pages";
 import {
@@ -76,6 +81,28 @@ const App: FC = () => {
 };
 
 /**
+ * Экран церемонии вне каркаса — по имени экрана из перечня; `never` держит
+ * полноту: экран, добавленный в перечень и не поднятый здесь, роняет сборку.
+ * Экраны поднимаются узлами JSX — их видит рендерный гейт полосы личности.
+ */
+function ceremonyElement(serving: CeremonyServing) {
+  if (serving.kind !== "screen") return <CeremonyAddressNotServedPage />;
+  const screen = serving.screen;
+  switch (screen) {
+    case "login":
+      return <LoginPage />;
+    case "registration":
+      return <RegistrationPage />;
+    case "logout":
+      return <LogoutPage />;
+    default: {
+      const unhandled: never = screen;
+      throw new Error(`экран церемонии «${String(unhandled)}» не поднят маршрутизатором`);
+    }
+  }
+}
+
+/**
  * Маршруты консоли — два яруса.
  *
  * ЭКРАНЫ ЦЕРЕМОНИЙ стоят ВНЕ каркаса: у человека без сессии нет ни проекта, ни
@@ -94,11 +121,8 @@ const AppRoutes: FC<{
   setDark: Dispatch<SetStateAction<boolean>>;
 }> = ({ dark, setDark }) => (
   <Routes>
-    <Route path="/login" element={<LoginPage />} />
-    <Route path="/registration" element={<RegistrationPage />} />
-    <Route path="/logout" element={<LogoutPage />} />
-    {NOT_SERVED_CEREMONY_ADDRESSES.map((address) => (
-      <Route key={address} path={address} element={<CeremonyAddressNotServedPage />} />
+    {CEREMONY_ADDRESSES.filter((address) => CEREMONY_ROUTING[address].kind !== "in-shell").map((address) => (
+      <Route key={address} path={address} element={ceremonyElement(CEREMONY_ROUTING[address])} />
     ))}
     <Route path="*" element={<ShellRoutes dark={dark} setDark={setDark} />} />
   </Routes>
@@ -134,7 +158,7 @@ const ShellRoutes: FC<{
           <Route path="/projects/:projectId/:moduleKey/*" element={<ModulePlaceholderPage />} />
           <Route path="/iam/*" element={<IamRemote context={context} />} />
           <Route path="/system/*" element={<SystemRemote context={context} />} />
-          <Route path="/settings" element={<AccountSettingsPage />} />
+          <Route path={ACCOUNT_SETTINGS_ADDRESS} element={<AccountSettingsPage />} />
           <Route path="/dev/reachability" element={<ReachabilityPage />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

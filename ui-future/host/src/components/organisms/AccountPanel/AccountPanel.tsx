@@ -1,4 +1,5 @@
 import { useEffect, useRef, type FC } from "react";
+import { ACCOUNT_SETTINGS_ADDRESS } from "@shared/pages/auth/ceremony-addresses";
 import { Button, Typography } from "antd";
 import type { SessionIdentity } from "@shared/api/login-lane";
 import { BoolFact } from "@shared/components/atoms/BoolFact";
@@ -78,7 +79,7 @@ export const AccountPanel: FC<{
         <Button
           onClick={() => {
             onClose();
-            void navigate("/settings");
+            void navigate(ACCOUNT_SETTINGS_ADDRESS);
           }}
         >
           Параметры учётной записи

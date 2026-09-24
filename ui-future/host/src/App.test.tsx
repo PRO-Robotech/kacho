@@ -1,5 +1,9 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { render, screen } from "@testing-library/react";
 import { jest } from "@jest/globals";
+import ts from "typescript";
+import { CEREMONY_ADDRESSES, CEREMONY_ROUTING } from "@shared/pages/auth/ceremony-addresses";
 import App from "./App";
 
 const jsonResponse = (body: unknown) => {
@@ -108,22 +112,38 @@ describe("App", () => {
    * и ни один не уводится замыкающим правилом на панель. Радиус правки назван:
    * адрес вне шести (`/error`) по-прежнему уходит на панель.
    */
-  it.each([
-    ["/login", "Вход в консоль"],
-    ["/registration", "Новая учётная запись"],
-    ["/logout", "Выход из консоли"],
-    ["/recovery", "Такого адреса здесь нет"],
-    ["/verification", "Такого адреса здесь нет"],
-  ])("F8-01/F8-03 · адрес церемонии %s отвечает экраном консоли, а не переводом на панель", async (path, title) => {
-    window.history.pushState(null, "", path);
-
-    render(<App />);
-
-    expect(await screen.findByRole("heading", { name: title })).toBeInTheDocument();
-    expect(window.location.pathname).toBe(path);
-    // Экраны церемоний стоят вне каркаса: рейла с разделами у них нет.
-    expect(screen.queryByRole("navigation", { name: "Host navigation" })).toBeNull();
+  // Заголовок экрана по адресу — для ВСЕХ адресов перечня, который читает
+  // маршрутизатор (условие C1): адрес, добавленный в перечень без экрана,
+  // краснит эту пробу, а не уходит на панель молча.
+  const SCREEN_TITLE: Record<string, string> = {
+    login: "Вход в консоль",
+    registration: "Новая учётная запись",
+    logout: "Выход из консоли",
+  };
+  const outsideShell = CEREMONY_ADDRESSES.filter((a) => CEREMONY_ROUTING[a].kind !== "in-shell").map((a) => {
+    const serving = CEREMONY_ROUTING[a];
+    return [a, serving.kind === "screen" ? SCREEN_TITLE[serving.screen] : "Такого адреса здесь нет"];
   });
+
+  it("C1 · перечень адресов церемоний — шесть, без /error и /consent", () => {
+    expect([...CEREMONY_ADDRESSES].sort()).toEqual(
+      ["/login", "/logout", "/recovery", "/registration", "/settings", "/verification"].sort(),
+    );
+  });
+
+  it.each(outsideShell)(
+    "F8-01/F8-03 · адрес церемонии %s отвечает экраном консоли, а не переводом на панель",
+    async (path, title) => {
+      window.history.pushState(null, "", path);
+
+      render(<App />);
+
+      expect(await screen.findByRole("heading", { name: title })).toBeInTheDocument();
+      expect(window.location.pathname).toBe(path);
+      // Экраны церемоний стоят вне каркаса: рейла с разделами у них нет.
+      expect(screen.queryByRole("navigation", { name: "Host navigation" })).toBeNull();
+    },
+  );
 
   it("F8-01 · /settings — экран параметров учётной записи внутри каркаса", async () => {
     window.history.pushState(null, "", "/settings");
@@ -133,6 +153,25 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "Параметры учётной записи" })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/settings");
     expect(screen.getByRole("navigation", { name: "Host navigation" })).toBeInTheDocument();
+  });
+
+  it("C1 · маршрутизатор берёт адреса церемоний из ОДНОГО перечня, а не пишет их литералами", () => {
+    // Второй перечень тех же адресов разошёлся бы с первым молча: адрес,
+    // добавленный в перечень и забытый в маршрутизаторе, ушёл бы на панель.
+    const file = fileURLToPath(new URL("./App.tsx", import.meta.url));
+    const sf = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const literals: string[] = [];
+    const walk = (n: ts.Node) => {
+      if (
+        (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) &&
+        (CEREMONY_ADDRESSES as readonly string[]).includes(n.text)
+      ) {
+        literals.push(`${sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1}: ${n.text}`);
+      }
+      ts.forEachChild(n, walk);
+    };
+    walk(sf);
+    expect(literals).toEqual([]);
   });
 
   it("радиус правки: адрес вне шести церемоний по-прежнему уходит на панель", async () => {
