@@ -29,9 +29,13 @@
   2. СТВОЛ ПО `push`. `on.push.branches` равен {main}: вердикт посаженного
      состояния выносится на стволе, а вердикт линии даёт её ЗАПРОС. `push` с
      одними метками (`tags`) — законная форма: идёт только на метки;
-  3. ПУТИ НЕ СУЖАЮТ ЗАПРОС. Защита ствола требует контексты ПОИМЁННО, а
-     контекст, который не начался, остаётся «ожидается» — ни зелёного, ни
-     красного, и слияние стоит;
+  3. НИ ПУТИ, НИ ВИД СОБЫТИЯ НЕ СУЖАЮТ ЗАПРОС. Защита ствола требует контексты
+     ПОИМЁННО, а контекст, который не начался, остаётся «ожидается» — ни
+     зелёного, ни красного, и слияние стоит. `paths` и `paths-ignore` — находка
+     всегда; `types` — когда в нём нет хоть одного вида по умолчанию
+     (`opened`, `synchronize`, `reopened`): без `synchronize` новая голова
+     запроса не получает ни одного контекста этого файла. `types` шире
+     умолчания — законная форма;
   4. ЗАДАНИЕ НЕ РАЗЛИЧАЕТ БАЗУ. Условие `if:` задания или шага, читающее базу
      запроса, даёт запросу в линию ДРУГОЙ состав заданий при том же триггере —
      то, что запрещает ось 1, этажом ниже.
@@ -119,9 +123,6 @@ pull_request` (скаляр), `on: [push, pull_request]` (последовате
     печатает число `uses:` у заданий, чтобы появление первого было видно;
   * событие `pull_request_target` — это не событие запроса для этого гейта
     (другой контекст исполнения: права базы на чужой голове); `workflow_run`;
-  * вид события запроса (`pull_request.types`): его сужение, как и сужение по
-    путям, оставляло бы контекст новой головы «ожидается», но базы не
-    различает; на 2026-09-24 `types` нет ни у одного файла;
   * поведение гейтов, судящих ДЕЛЬТУ к стволу: на запросе в линию они судят
     дельту всей линии к `main`, а не дельту запроса (названо у триггера ci.yaml);
   * саму защиту ствола: объявление против защиты сверяет
@@ -187,6 +188,12 @@ LINE_PATTERN = "[0-9]+"
 REVIEW_BASES = (TRUNK, LINE_PATTERN)
 
 REVIEW_EVENT = "pull_request"
+
+# DEFAULT_REVIEW_TYPES — виды события запроса, на которых процесс идёт, когда
+# `types` не записан (документация провайдера, событие `pull_request`). Сужение
+# ниже них — находка оси 3; `types` шире — законная форма.
+DEFAULT_REVIEW_TYPES = ("opened", "synchronize", "reopened")
+
 WORKFLOWS_DIR = ".github/workflows"
 
 # SILENT_OWNERS — ЗАКРЫТЫЙ перечень объектов, у которых неизвестное звено
@@ -504,6 +511,7 @@ class EventFilter:
     bare: bool = False  # событие названо без тела (скаляром, в последовательности, `~`)
     keys: set[str] = field(default_factory=set)
     branches: list[str] = field(default_factory=list)
+    types: list[str] = field(default_factory=list)
 
 
 def _events_of(on: yaml.Node) -> dict[str, EventFilter]:
@@ -534,7 +542,7 @@ def _events_of(on: yaml.Node) -> dict[str, EventFilter]:
 
 
 def _names(event: str, key: str, v: yaml.Node) -> list[str]:
-    """Значения ключа фильтра (`branches`) в любой законной записи:
+    """Значения ключа фильтра (`branches`, `types`) в любой законной записи:
     одиночным скаляром или последовательностью скаляров, блоком или потоком."""
     if isinstance(v, yaml.ScalarNode):
         return [v.value]
@@ -562,6 +570,8 @@ def _filter_of(event: str, body: yaml.Node) -> EventFilter:
         f.keys.add(key)
         if key == "branches":
             f.branches = _names(event, key, v)
+        elif key == "types":
+            f.types = _names(event, key, v)
     return f
 
 
@@ -582,6 +592,12 @@ def _audit_review_filter(f: EventFilter) -> tuple[list[str], bool]:
         if k in f.keys:
             findings.append(f"ось 3: запрос сужен по путям (`{k}`): защита ствола требует контексты ПОИМЁННО, а "
                             "контекст, который не начался, остаётся «ожидается» — и слияние стоит")
+    if "types" in f.keys:
+        lost = set(DEFAULT_REVIEW_TYPES) - set(f.types)
+        if lost:
+            findings.append(f"ось 3: запрос сужен по виду события (`types` {_q(f.types)}): нет {_q(lost)} — голова, "
+                            "пришедшая таким событием, не получает ни одного контекста этого файла, и защита ствола "
+                            "ждёт их «ожидается»")
     if f.bare or "branches" not in f.keys:
         if "branches-ignore" not in f.keys:
             findings.append("ось 1: запрос не сужен по базе — файл идёт на запросе в ЛЮБУЮ ветку (полосы, ревью, "
@@ -694,6 +710,7 @@ class Census:
     files: int = 0
     on_review: int = 0
     review_at_line: int = 0
+    review_types: int = 0
     on_branch_push: int = 0
     conditions: int = 0
     condition_links: int = 0
@@ -705,7 +722,8 @@ class Census:
 
     def __str__(self) -> str:
         return (f"файлов процессов {self.files} · идут на запросе {self.on_review} · из них с базами "
-                f"{_bases()} {self.review_at_line} · идут по push в ветки {self.on_branch_push} · "
+                f"{_bases()} {self.review_at_line} · сужены по `types` {self.review_types} · идут по push в ветки "
+                f"{self.on_branch_push} · "
                 f"условий if: осмотрено {self.conditions} · звеньев в них прочитано {self.condition_links} · "
                 f"псевдонимов YAML разрешено {self.aliases} · заданий `uses:` {self.job_uses} · "
                 f"контекстов объявлено {self.declared}, сопоставлено {self.matched} · обязательных файлов "
@@ -788,6 +806,7 @@ def audit(corpus: dict[str, str], declared: list[str]) -> tuple[list[str], Censu
                 on_review.add(rel)
                 fs, at_line = _audit_review_filter(events[REVIEW_EVENT])
                 census.review_at_line += int(at_line)
+                census.review_types += int("types" in events[REVIEW_EVENT].keys)
                 per_file += fs
             if "push" in events:
                 fs, on_branches = _audit_push_filter(events["push"])
@@ -1080,6 +1099,22 @@ def self_test(root: Path) -> int:
     def _():
         got, _c = run(lambda r: _inject(r, REVIEW_BLOCK, REVIEW_BLOCK + "    paths:\n      - 'internal/**'\n"))
         _expect(len(got) == 1 and "ПОИМЁННО" in got[0], str(got))
+
+    @case("ось 3: запрос сужен по виду события — без обновления головы")
+    def _():
+        for form, lost in (("    types: [opened]\n", "нет {`reopened`, `synchronize`}"),
+                           ("    types: opened\n", "нет {`reopened`, `synchronize`}"),
+                           ("    types: [opened, reopened, labeled]\n", "нет {`synchronize`}")):
+            got, c = run(lambda r, f=form: _inject(r, REVIEW_BLOCK, REVIEW_BLOCK + f))
+            _expect(len(got) == 1 and INJECT_REL in got[0] and "ось 3" in got[0] and lost in got[0], f"{form!r}: {got}")
+            _expect(c.review_types == control.review_types + 1, f"перепись не назвала сужение по types: {form!r}")
+
+    @case("ось 3, близнец: types шире умолчания — законная форма")
+    def _():
+        got, c = run(lambda r: _inject(r, REVIEW_BLOCK, REVIEW_BLOCK
+                                       + "    types: [reopened, ready_for_review, synchronize, opened]\n"))
+        _expect(not got, f"types шире умолчания объявлен сужением: {got}")
+        _expect(c.review_types == control.review_types + 1, "перепись не назвала types")
 
     # ── ось 2 ──
     @case("ось 2: push расширен на ветки линии")
@@ -1409,6 +1444,8 @@ def self_test(root: Path) -> int:
          "event-body-not-mapping", "тело не отображение"),
         ("элемент branches не скаляр", "name: x\non:\n  pull_request:\n    branches: [[main]]\n" + jobs_tail,
          "filter-element-not-scalar", "элемент `branches` не скаляр"),
+        ("элемент types не скаляр", "name: x\non:\n  pull_request:\n    types: [[opened]]\n" + jobs_tail,
+         "filter-element-not-scalar", "элемент `types` не скаляр"),
         ("branches отображением", "name: x\non:\n  push:\n    branches: {main: x}\n" + jobs_tail,
          "filter-form-unknown", "`branches` записан формой"),
         ("jobs: не отображение", "name: x\non: workflow_dispatch\njobs: [a]\n", "jobs-not-mapping",
