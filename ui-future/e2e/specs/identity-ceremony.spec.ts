@@ -409,14 +409,27 @@ test("F8-12 · негодный носитель даёт форму, а не к
       sameSite: "Lax",
     },
   ]);
-  const navigations: string[] = [];
+  // ПЕРЕХОД АДРЕСА — СМЕНА АДРЕСА, а не событие навигации. Оболочка на первом
+  // рендере пишет своё состояние в текущую запись истории (`history.replaceState`
+  // маршрутизатора на ТОМ ЖЕ адресе), и событие навигации приходит второй раз с
+  // тем же адресом; счёт событий краснел бы на любой загрузке любого экрана
+  // (прогон на посадке `own` @9038186d0d5: «/login?returnTo=/dashboard →
+  // /login?returnTo=/dashboard»). Круг переадресаций меняет адрес — его видит
+  // перепись адресов; круг перезагрузок того же адреса адреса не меняет — его
+  // видит перепись загрузок документа.
+  const addresses: string[] = [];
+  const documents: string[] = [];
   page.on("framenavigated", (f) => {
-    if (f === page.mainFrame()) navigations.push(f.url());
+    if (f === page.mainFrame() && addresses.at(-1) !== f.url()) addresses.push(f.url());
+  });
+  page.on("request", (r) => {
+    if (r.isNavigationRequest() && r.frame() === page.mainFrame()) documents.push(r.url());
   });
   await page.goto("/login?returnTo=/dashboard", { waitUntil: "domcontentloaded" });
   const s = loginScreen(page);
   await expectScreen(page, "/login", s.submit, "экран входа");
-  expect(navigations, `адрес страницы менялся после загрузки экрана входа: ${navigations.join(" → ")}`).toHaveLength(1);
+  expect(addresses, `адрес страницы менялся после загрузки экрана входа: ${addresses.join(" → ")}`).toHaveLength(1);
+  expect(documents, `документ экрана входа загружался повторно: ${documents.join(" → ")}`).toHaveLength(1);
   // Чем именно носитель негоден, экран не различает и различать не вправе.
   await expect(s.refusal).toHaveCount(0);
 });
