@@ -71,11 +71,23 @@ import { LANE_UNAVAILABLE, LOGOUT_UNAVAILABLE, bodyOf, fulfillWith } from "./pro
 
 // ─── экраны: доступные имена, а не классы ─────────────────────────────────────
 
+// Кнопка отправки экрана церемонии — по форме и КОНЦУ имени, а не по имени
+// целиком. Значок ожидания кнопки уходит из разметки только по окончании своего
+// сворачивания, и когда ответ приходит раньше, чем значок развернулся (подставленный
+// отказ — за миллисекунды), сворачиваться ему нечему: он остаётся свёрнутым, и
+// доступное имя кнопки — «loading Войти» при кнопке, которая уже не ждёт и
+// открыта. Проба по имени целиком тогда не находила кнопки вовсе и называла её
+// закрытой (F8-10, посадка own @9038186d0d5: `ant-btn-loading` снят, значок —
+// в `motion-leave-active` пятнадцать секунд спустя).
+function submitOf(page: Page, form: string, label: string): Locator {
+  return page.getByRole("form", { name: form }).getByRole("button", { name: new RegExp(`${label}$`) });
+}
+
 function loginScreen(page: Page) {
   return {
     email: page.getByRole("textbox", { name: "Адрес электронной почты" }),
     password: page.getByLabel("Пароль", { exact: true }),
-    submit: page.getByRole("button", { name: "Войти", exact: true }),
+    submit: submitOf(page, "Вход в консоль", "Войти"),
     refusal: page.getByRole("alert"),
   };
 }
@@ -84,7 +96,7 @@ function registrationScreen(page: Page) {
   return {
     email: page.getByRole("textbox", { name: "Адрес электронной почты" }),
     password: page.getByLabel("Пароль", { exact: true }),
-    submit: page.getByRole("button", { name: "Завести учётную запись", exact: true }),
+    submit: submitOf(page, "Новая учётная запись", "Завести учётную запись"),
     refusal: page.getByRole("alert"),
   };
 }
