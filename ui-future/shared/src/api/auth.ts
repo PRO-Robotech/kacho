@@ -1,40 +1,19 @@
-// Auth API — ответ края о личности за браузерной сессией и bootstrap прав.
+// Auth API — bootstrap прав вызывающего (`GET /iam/v1/me`) и проверка права.
 //
-// Контракт:
-//   GET  /iam/v1/auth/me  → 200 {user, session} | 200 {user: null} без сессии
-//                           (край резолвит НАШУ сессию; `session` — срок, уровень
-//                           и подтверждённость адреса)
-//   GET  /iam/v1/me       → 200 WhoAmIResponse (KAC items 1-5):
-//                           subject + user_id + email + display_name +
-//                           system_admin + cluster_viewer + accounts[]
-//
-// Церемоний здесь нет: вход, регистрацию и выход консоль ведёт своими экранами
-// через клиент полосы формы (`@shared/api/login-lane`).
+// «Кто за браузерной сессией» здесь НЕ читается: читатель `GET /iam/v1/auth/me`
+// в консоли один — `sessionIdentity` клиента полосы формы
+// (`@shared/api/login-lane`, условия C6, C7, C9). Прежде здесь стоял второй
+// читатель того же ответа, и он объявлял человека в snake_case, тогда как край
+// пишет camelCase, — объявленные поля приходили пустыми, и второй тип того же
+// провода расходился с первым молча. Контекст личности берёт человека у
+// единственного читателя, в форме провода.
 
-import type { LaneSession } from "@shared/api/login-lane";
+import type { SessionUser } from "@shared/api/login-lane";
 import { camelToSnake } from "@shared/lib/case";
 import { displayText } from "@shared/lib/display-text";
 
-export type SubjectType = "user" | "service_account" | "system";
-
-export interface AuthUser {
-  /** Внутренний User.id (`usr-...`) либо ServiceAccount.id (`sva-...`). */
-  id: string;
-  /** Отображаемое имя от поставщика личности (email либо ФИО). */
-  display_name?: string;
-  email?: string;
-  subject_type: SubjectType;
-  /** Account.id (если default-account резолвится). E0 — может быть пусто. */
-  account_id?: string;
-  /** Effective permissions (E3 OpenFGA). E0 — может быть пусто или содержать `*` для admin. */
-  permissions?: string[];
-}
-
-export interface AuthMeResponse {
-  user: AuthUser;
-  /** Сессия по ответу края; нет — сессии нет. */
-  session?: LaneSession | null;
-}
+/** Человек за сессией — в форме провода ответа края (`/iam/v1/auth/me`). */
+export type AuthUser = SessionUser;
 
 // ====== WhoAmIResponse (KAC items 1-5) ======
 //
@@ -85,33 +64,6 @@ export interface DenyReason {
   resource?: string;
 }
 
-// Reads only. The auth surface has no request body, and the branch that used to
-// build one applied the RESPONSE transformer (camel→snake) to a request — the
-// direction is the opposite one (api/client.ts: request snake→camel), so it named
-// fields no message has. It had no caller, so nothing exercised the claim; it is
-// gone rather than corrected in place. A future body-carrying call goes through
-// api/client.ts, which converts in the right direction.
-async function fetchAuth<T>(method: string, path: string): Promise<T> {
-  const init: RequestInit = {
-    method,
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-  };
-  const res = await fetch(path, init);
-  if (!res.ok) {
-    // 401 — нормальный «не залогинен» сигнал, не Error.
-    const err = new Error(`${res.status} ${res.statusText}`) as Error & {
-      status: number;
-    };
-    err.status = res.status;
-    throw err;
-  }
-  if (res.status === 204) return undefined as T;
-  const text = await res.text();
-  if (!text) return undefined as T;
-  return JSON.parse(text) as T;
-}
-
 /** Универсальный fetch к /iam/v1/me с `camelToSnake` адаптацией ответа. */
 async function fetchWhoAmI(): Promise<WhoAmIResponse> {
   const res = await fetch("/iam/v1/me", {
@@ -155,11 +107,6 @@ async function fetchWhoAmI(): Promise<WhoAmIResponse> {
 }
 
 export const authApi = {
-  /** Получить текущего user'а. 401 → AuthContext выставит user=null. */
-  me(): Promise<AuthMeResponse> {
-    return fetchAuth<AuthMeResponse>("GET", "/iam/v1/auth/me");
-  },
-
   /**
    * GET /iam/v1/me — bootstrap-info для permission-gate'ов (KAC items 1-5).
    * 401/403 → throw {status} — AuthContext выставит whoami=null.

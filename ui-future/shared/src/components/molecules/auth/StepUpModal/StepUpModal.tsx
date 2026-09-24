@@ -36,6 +36,7 @@ import {
   FormTokenHolder,
   LANE_REASON,
   LaneRefusal,
+  laneRefusalOf,
   loginLane,
   type SecondFactorPresentation,
 } from "@shared/api/login-lane";
@@ -108,9 +109,7 @@ export function StepUpModal() {
     try {
       await loginLane.stepUp(
         holder,
-        branch === "пароль" && passwordAllowed
-          ? { method: "password", password }
-          : { method: factor.method, code: factor.code },
+        branch === "пароль" && passwordAllowed ? { method: "password", password } : factor,
       );
       // Уровень после церемонии знает край по нашей сессии; консоли достаточно
       // перечитать личность и отпустить отвергнутый запрос на повтор.
@@ -118,7 +117,7 @@ export function StepUpModal() {
       pending.resolve();
       close();
     } catch (err) {
-      setRefusal(err instanceof LaneRefusal ? err : new LaneRefusal(0, null, String(err), null, null, null));
+      setRefusal(laneRefusalOf(err));
     } finally {
       setSubmitting(false);
     }
@@ -176,9 +175,10 @@ export function StepUpModal() {
             value={factor}
             onChange={setFactor}
             codeError={refusal?.field === "code" ? refusal.message : null}
+            methodError={refusal?.field === "method" ? refusal.message : null}
           />
         )}
-        {refusal && refusal.field !== "code" && (
+        {refusal && refusal.field !== "code" && refusal.field !== "method" && (
           <div style={{ marginBottom: 12 }}>
             <LaneRefusalAlert refusal={refusal} />
             {notEnrolled && (

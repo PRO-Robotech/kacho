@@ -97,6 +97,8 @@ interface AlertProps {
   children?: React.ReactNode;
   message?: React.ReactNode;
   description?: React.ReactNode;
+  /** Действие рядом с текстом: настоящий компонент рисует его в своём блоке. */
+  action?: React.ReactNode;
 }
 
 interface ButtonProps {
@@ -280,6 +282,7 @@ interface RadioGroupProps {
   value?: unknown;
   onChange?: (e: { target: { value: unknown } }) => void;
   children?: React.ReactNode;
+  [key: string]: unknown;
 }
 
 /** Вариант переключателя. Настоящий принимает и объект, и голое значение. */
@@ -506,7 +509,10 @@ export function antdStub(): Record<string, unknown> {
       if (next.has(key)) next.delete(key);
       else next.add(key);
       const keys = [...next];
-      rowSelection?.onChange?.(keys, dataSource.filter((r, i) => next.has(String(keyOf(r, rowKey, i)))));
+      rowSelection?.onChange?.(
+        keys,
+        dataSource.filter((r, i) => next.has(String(keyOf(r, rowKey, i)))),
+      );
     };
     return React.createElement(
       "table",
@@ -979,12 +985,7 @@ export function antdStub(): Record<string, unknown> {
     return React.createElement("div", null, children, disabled ? null : overlay);
   };
 
-
-  const treeNodes = (
-    nodes: TreeNodeData[],
-    selected: Set<string>,
-    onSelect: TreeProps["onSelect"],
-  ): React.ReactNode =>
+  const treeNodes = (nodes: TreeNodeData[], selected: Set<string>, onSelect: TreeProps["onSelect"]): React.ReactNode =>
     nodes.map((n, i) =>
       React.createElement(
         "li",
@@ -1084,9 +1085,7 @@ export function antdStub(): Record<string, unknown> {
           ? locale?.emptyText === undefined
             ? null
             : React.createElement("li", null, locale.emptyText)
-          : (dataSource ?? []).map((it, i) =>
-              React.createElement(React.Fragment, { key: i }, renderItem?.(it, i)),
-            ),
+          : (dataSource ?? []).map((it, i) => React.createElement(React.Fragment, { key: i }, renderItem?.(it, i))),
       ),
       footer,
       children,
@@ -1152,8 +1151,7 @@ export function antdStub(): Record<string, unknown> {
   // Настоящая вертушка ПОКАЗЫВАЕТ свою подпись (`tip`) — «Загрузка…», «Выходим из
   // аккаунта …». Заменитель ронял её в атрибут, и состояние ожидания было
   // неотличимо от пустого экрана.
-  const Spin = ({ children, tip, ...rest }: SpinProps) =>
-    React.createElement("div", domAttrs(rest), tip, children);
+  const Spin = ({ children, tip, ...rest }: SpinProps) => React.createElement("div", domAttrs(rest), tip, children);
   const theme = {
     useToken: () => ({
       token: {
@@ -1172,8 +1170,10 @@ export function antdStub(): Record<string, unknown> {
     __esModule: true,
     // Настоящее уведомление показывает свои `message` и `description`;
     // заменитель ронял их в атрибуты, и текст предупреждения был ненаблюдаем.
-    Alert: ({ children, message, description }: AlertProps) =>
-      React.createElement("div", { role: "alert" }, message, description, children),
+    // Действие (`action`) настоящее уведомление рисует рядом с текстом; без него
+    // кнопка «проверить снова» у предупреждения была бы ненаблюдаема.
+    Alert: ({ children, message, description, action }: AlertProps) =>
+      React.createElement("div", { role: "alert" }, message, description, children, action),
     // Настоящий `App` несёт `useApp()` — через него компоненты берут `message`
     // и `notification`. Заменитель-компонент без него роняет КАЖДУЮ пробу, чей
     // граф доходит до такого потребителя, ещё до первого утверждения, то есть
@@ -1408,9 +1408,7 @@ export function antdStub(): Record<string, unknown> {
         "div",
         {
           ...domAttrs(rest),
-          className: ["ant-result", status ? `ant-result-${String(status)}` : ""]
-            .filter(Boolean)
-            .join(" "),
+          className: ["ant-result", status ? `ant-result-${String(status)}` : ""].filter(Boolean).join(" "),
         },
         React.createElement("div", null, title),
         React.createElement("div", null, subTitle),
@@ -1429,10 +1427,12 @@ export function antdStub(): Record<string, unknown> {
           children,
         ),
       {
-        Group: ({ children, options, value, onChange }: RadioGroupProps) =>
+        // Настоящая группа отдаёт корню `id` и атрибуты `aria-*` (`pickAttrs`):
+        // отметка отказа у переключателя без них была бы ненаблюдаема.
+        Group: ({ children, options, value, onChange, ...rest }: RadioGroupProps) =>
           React.createElement(
             "div",
-            { role: "radiogroup" },
+            { role: "radiogroup", ...domAttrs(rest) },
             (options ?? []).map((o) =>
               React.createElement(
                 "label",
@@ -1478,8 +1478,7 @@ export function antdStub(): Record<string, unknown> {
         "div",
         domAttrs(rest),
         (options ?? []).map((raw) => {
-          const o: SegmentedOption =
-            typeof raw === "object" && raw !== null ? raw : { value: raw, label: String(raw) };
+          const o: SegmentedOption = typeof raw === "object" && raw !== null ? raw : { value: raw, label: String(raw) };
           return React.createElement(
             "label",
             { key: String(o.value) },

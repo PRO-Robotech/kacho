@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { SessionIdentity } from "@shared/api/login-lane";
+import { LaneRefusal, type SessionAnswer, type SessionIdentity } from "@shared/api/login-lane";
 import { installLane, refusal } from "@shared/test/lane-fake";
 import { HostRail } from ".";
 
@@ -9,8 +9,14 @@ import { HostRail } from ".";
 // поставщику.
 
 const WHO: SessionIdentity = {
-  user: { id: "usr-1", email: "a@kacho.local", displayName: "a", permissions: [] },
+  kind: "present",
+  user: { id: "usr-1", email: "a@kacho.local", displayName: "a", subjectType: "user", permissions: [] },
   session: { expiresAt: "2026-09-24T00:00:00Z", assuranceLevel: "1", emailVerified: false },
+};
+
+const UNKNOWN_SESSION: SessionAnswer = {
+  kind: "unknown",
+  refusal: new LaneRefusal(503, 14, "unavailable", null, null, null),
 };
 
 let lane: ReturnType<typeof installLane> | null = null;
@@ -21,7 +27,7 @@ afterEach(() => {
 
 describe("учётная запись в рейле", () => {
   it("без сессии — «Войти», и ведёт она на экран входа консоли с адресом возврата", () => {
-    render(<HostRail showReachability={false} identity={null} currentPath="/iam/users" />);
+    render(<HostRail showReachability={false} identity={{ kind: "absent" }} currentPath="/iam/users" />);
     expect(screen.getByRole("button", { name: "Войти" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Учётная запись" })).toBeNull();
   });
@@ -30,6 +36,22 @@ describe("учётная запись в рейле", () => {
     render(<HostRail showReachability={false} identity={undefined} />);
     expect(screen.queryByRole("button", { name: "Войти" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Учётная запись" })).toBeNull();
+  });
+
+  it("C6 · край не ответил о сессии — рейл не говорит «вы вышли»: ни «Войти», ни учётной записи", () => {
+    render(<HostRail showReachability={false} identity={UNKNOWN_SESSION} />);
+    expect(screen.queryByRole("button", { name: "Войти" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Учётная запись" })).toBeNull();
+  });
+
+  it("C8 · поля подтверждённости в ответе нет — признака нет, «не подтверждён» не выдумывается", () => {
+    const withoutFlag: SessionIdentity = { ...WHO, session: { expiresAt: "t", assuranceLevel: "1" } };
+    render(<HostRail showReachability={false} identity={withoutFlag} />);
+    fireEvent.click(screen.getByRole("button", { name: "Учётная запись" }));
+    const panel = screen.getByRole("dialog", { name: "Учётная запись" });
+    expect(panel).toHaveTextContent("a@kacho.local");
+    expect(panel).not.toHaveTextContent("Адрес не подтверждён");
+    expect(panel).not.toHaveTextContent("Адрес подтверждён");
   });
 
   it("F8-17 · учётная запись: адрес и признак подтверждённости, действия «подтвердить» нет", () => {
@@ -59,6 +81,32 @@ describe("учётная запись в рейле", () => {
     render(<AccountPanel identity={WHO} onClose={() => undefined} navigate={() => undefined} leave={leave} />);
     fireEvent.click(screen.getByRole("button", { name: "Выйти" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("logout not performed; try again later");
+    expect(leave).not.toHaveBeenCalled();
+  });
+
+  it("C13 · C14 · после ПОДТВЕРЖДЁННОГО выхода чужие аккаунт и проект с именами сняты, тема осталась", async () => {
+    window.localStorage.setItem("kacho.context.v2", JSON.stringify({ account: { id: "acc-1", name: "Чужой" } }));
+    window.localStorage.setItem("kacho-theme", "light");
+    lane = installLane({ "POST /iam/v1/auth/logout": { status: 200, body: {} } });
+    const leave = jest.fn<(to: string) => void>();
+    const { AccountPanel } = await import("../AccountPanel");
+    render(<AccountPanel identity={WHO} onClose={() => undefined} navigate={() => undefined} leave={leave} />);
+    fireEvent.click(screen.getByRole("button", { name: "Выйти" }));
+    await waitFor(() => expect(leave).toHaveBeenCalledWith("/login"));
+    expect(window.localStorage.getItem("kacho.context.v2")).toBeNull();
+    expect(window.localStorage.getItem("kacho-theme")).toBe("light");
+  });
+
+  it("C13 · отказ выхода не снимает ничего: состояние и адрес на месте", async () => {
+    const context = JSON.stringify({ account: { id: "acc-1", name: "Свой" } });
+    window.localStorage.setItem("kacho.context.v2", context);
+    lane = installLane({ "POST /iam/v1/auth/logout": refusal(503, 14, "logout not performed; try again later") });
+    const leave = jest.fn<(to: string) => void>();
+    const { AccountPanel } = await import("../AccountPanel");
+    render(<AccountPanel identity={WHO} onClose={() => undefined} navigate={() => undefined} leave={leave} />);
+    fireEvent.click(screen.getByRole("button", { name: "Выйти" }));
+    await screen.findByRole("alert");
+    expect(window.localStorage.getItem("kacho.context.v2")).toBe(context);
     expect(leave).not.toHaveBeenCalled();
   });
 });

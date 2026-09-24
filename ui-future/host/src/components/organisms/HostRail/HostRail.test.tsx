@@ -1,8 +1,13 @@
 import { render, screen } from "@testing-library/react";
+import { installLane } from "@shared/test/lane-fake";
 import { HostRail } from ".";
 
 describe("HostRail", () => {
   it("matches the unauthenticated original rail surface", async () => {
+    // Край ответил «сессии нет» — `200 {"user":null}`, его настоящий ответ. Прежде
+    // проба держалась на обращении, которое не дошло вовсе, а это другой исход
+    // («спросить не удалось»), и «Войти» на нём не рисуется (условие C6).
+    const lane = installLane({});
     render(<HostRail showReachability={false} />);
 
     expect(screen.getByRole("button", { name: "Kacho" })).toBeInTheDocument();
@@ -16,6 +21,7 @@ describe("HostRail", () => {
     // «Войти» появляется, когда край ответил, что сессии нет, — не раньше.
     expect(await screen.findByRole("button", { name: "Войти" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Настройки" })).not.toBeInTheDocument();
+    lane.restore();
   });
 
   it("enables dashboard launchers when project context exists", async () => {

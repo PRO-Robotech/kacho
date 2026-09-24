@@ -7,6 +7,28 @@ jest.unstable_mockModule("./auth", () => ({
 }));
 
 const { apiGet } = await import("./api-client");
+const { noteBearerRotated } = await import("@shared/api/lane-epochs");
+const { setStepUpRequester } = await import("@shared/api/step-up");
+
+/** Ответ с заголовками — так, как его видит `fetch`. */
+const answered = (status: number, body: string, headers: Record<string, string> = {}) => {
+  const h = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
+  return Promise.resolve({
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: (n: string) => h[n.toLowerCase()] ?? null },
+    text: () => Promise.resolve(body),
+    statusText: String(status),
+  } as unknown as Response);
+};
+
+/** Вызов пола края RFC 9470 — тот же производитель, что у платформы (`authz.go`). */
+const FLOOR = {
+  "WWW-Authenticate":
+    'Bearer error="insufficient_user_authentication", error_description="Required ACR 2", acr_values="2"',
+};
+/** Край: носитель не находит записи (`writeHTTPUnauthorized`). */
+const ENDED = { "WWW-Authenticate": 'Bearer error="invalid_token", error_description="session ended; sign in again"' };
 
 const jsonResponse = (body: unknown) => {
   return Promise.resolve({
@@ -29,6 +51,58 @@ describe("api-client", () => {
   afterEach(() => {
     jest.restoreAllMocks();
     redirectToLogin.mockClear();
+    setStepUpRequester(null);
+  });
+
+  it("C15 · вызов пола — повышение и ОДИН повтор, а не переход на вход", async () => {
+    const asked = jest.fn(() => Promise.resolve());
+    setStepUpRequester(asked);
+    let n = 0;
+    jest
+      .spyOn(global, "fetch")
+      .mockImplementation(() =>
+        ++n === 1
+          ? answered(401, '{"code":16,"message":"insufficient_user_authentication"}', FLOOR)
+          : jsonResponse({ ok: 1 }),
+      );
+    await expect(apiGet("/iam/v1/accounts")).resolves.toEqual({ ok: 1 });
+    expect(asked).toHaveBeenCalledWith({ cause: "floor", acr: "2" });
+    expect(redirectToLogin).not.toHaveBeenCalled();
+  });
+
+  it("C15 · вызов пола, повышать некому — отказ назван, на вход не уводит", async () => {
+    jest
+      .spyOn(global, "fetch")
+      .mockImplementation(() => answered(401, '{"code":16,"message":"insufficient_user_authentication"}', FLOOR));
+    await expect(apiGet("/iam/v1/accounts")).rejects.toBeInstanceOf(Error);
+    expect(redirectToLogin).not.toHaveBeenCalled();
+  });
+
+  it("C18 · носитель перевыпущен ЭТОЙ вкладкой, пока запрос шёл: ОДИН повтор, на вход не уводит", async () => {
+    let n = 0;
+    jest.spyOn(global, "fetch").mockImplementation(() => {
+      n += 1;
+      if (n === 1) {
+        // Ответ приходит ПОСЛЕ перевыпуска: смена пароля в этой вкладке ответила раньше.
+        noteBearerRotated();
+        return answered(401, '{"code":16,"message":"session ended; sign in again"}', ENDED);
+      }
+      return jsonResponse({ ok: 2 });
+    });
+    await expect(apiGet("/iam/v1/accounts")).resolves.toEqual({ ok: 2 });
+    expect(n).toBe(2);
+    expect(redirectToLogin).not.toHaveBeenCalled();
+  });
+
+  it("C18 · тот же отказ без перевыпуска в этой вкладке — сессия кончилась: на вход, повтора нет", async () => {
+    let n = 0;
+    jest.spyOn(global, "fetch").mockImplementation(() => {
+      n += 1;
+      return answered(401, '{"code":16,"message":"session ended; sign in again"}', ENDED);
+    });
+    await expect(apiGet("/iam/v1/accounts")).rejects.toBeInstanceOf(Error);
+    expect(n).toBe(1);
+    expect(redirectToLogin).toHaveBeenCalledTimes(1);
   });
 
   it("includes browser credentials on API requests", async () => {

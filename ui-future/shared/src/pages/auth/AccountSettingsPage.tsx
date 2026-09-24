@@ -5,16 +5,15 @@ import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { Alert, Button, Form, Input, Spin, Typography } from "antd";
 import {
-  LANE_REASON,
   LaneRefusal,
+  laneRefusalOf,
   loginLane,
   sessionIdentity,
   type Enrollment,
   type SecondFactorPresentation,
   type SecondFactorState,
-  type SessionIdentity,
+  type SessionAnswer,
 } from "@shared/api/login-lane";
-import { requestFreshPresentation } from "@shared/api/step-up";
 import { BoolFact } from "@shared/components/atoms/BoolFact";
 import { LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalAlert";
 import { EMPTY_PRESENTATION, SecondFactorCodeField } from "@shared/components/molecules/auth/SecondFactorCodeField";
@@ -42,25 +41,16 @@ import { loginAddress } from "./ceremony-addresses";
 //     перечеканка — с подтверждением кодом (F8-26…F8-32).
 //
 // СВЕЖЕСТЬ. На глаголах, требующих свежего предъявления, служба отвечает
-// `SESSION_NOT_FRESH`. Экран открывает церемонию повышения и после неё
-// ПОВТОРЯЕТ тот же шаг: человек возвращается туда, откуда его остановили, а не
-// на панель (F8-29). Повтор один — второй отказ показывается как есть.
+// `SESSION_NOT_FRESH`. Клиент полосы открывает церемонию повышения и после неё
+// ПОВТОРЯЕТ тот же глагол (одно решение на отказ — `refusalActionOf`, условие
+// C2): человек возвращается туда, откуда его остановили, а не на панель
+// (F8-29). Повтор один — второй отказ показывается как есть.
+//
+// «СПРОСИТЬ НЕ УДАЛОСЬ» — НЕ «ВЫ НЕ ВОШЛИ» (условие C6). Край не ответил о сессии
+// по существу — экран называет это и даёт спросить снова, а не рисует «доступны
+// после входа»: человек с живой сессией иначе уходил бы входить заново.
 
-/** Выполнить шаг; на `SESSION_NOT_FRESH` — повышение и ОДИН повтор того же шага. */
-async function withFreshness<T>(step: () => Promise<T>): Promise<T> {
-  try {
-    return await step();
-  } catch (e) {
-    if (e instanceof LaneRefusal && e.reason === LANE_REASON.sessionNotFresh && (await requestFreshPresentation())) {
-      return step();
-    }
-    throw e;
-  }
-}
-
-function asRefusal(e: unknown): LaneRefusal {
-  return e instanceof LaneRefusal ? e : new LaneRefusal(0, null, String(e), null, null, null);
-}
+const asRefusal = laneRefusalOf;
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   const id = useId();
@@ -79,7 +69,9 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
  * (`FieldError`) тем же именем, которым оно выведено из имени ввода.
  */
 function markedBy(inputId: string, error: string | null) {
-  return error ? { "aria-invalid": true as const, "aria-describedby": fieldErrorId(inputId), status: "error" as const } : {};
+  return error
+    ? { "aria-invalid": true as const, "aria-describedby": fieldErrorId(inputId), status: "error" as const }
+    : {};
 }
 
 // Геометрия формы здесь — ОБЩАЯ сетка (`FormGrid`: имя слева, ввод справа), а
@@ -104,7 +96,7 @@ function PasswordSection() {
     setRefusal(null);
     setChanged(false);
     try {
-      await withFreshness(() => loginLane.changePassword(holder, { currentPassword: current, newPassword: next }));
+      await loginLane.changePassword(holder, { currentPassword: current, newPassword: next });
       setCurrent("");
       setNext("");
       setChanged(true);
@@ -221,7 +213,7 @@ function SecondFactorSection() {
     setBusy(true);
     setRefusal(null);
     try {
-      await withFreshness(step);
+      await step();
     } catch (e) {
       setRefusal(asRefusal(e));
     }
@@ -254,6 +246,7 @@ function SecondFactorSection() {
     });
 
   const codeError = refusal?.field === "code" ? refusal.message : null;
+  const methodError = refusal?.field === "method" ? refusal.message : null;
 
   let body: ReactNode = null;
   if (stage.kind === "заведение") {
@@ -327,6 +320,7 @@ function SecondFactorSection() {
           value={stage.factor}
           onChange={(factor) => setStage({ kind: stage.kind, factor })}
           codeError={codeError}
+          methodError={methodError}
         />
         <Button type="primary" danger={removing} htmlType="submit" loading={busy} style={{ marginRight: 8 }}>
           {removing ? "Снять" : "Выпустить коды"}
@@ -376,7 +370,7 @@ function SecondFactorSection() {
         </div>
       )}
       {state && <Typography.Paragraph>{stateLine(state)}</Typography.Paragraph>}
-      {refusal && codeError === null && (
+      {refusal && codeError === null && methodError === null && (
         <div style={{ marginBottom: 12 }}>
           <LaneRefusalAlert refusal={refusal} />
         </div>
@@ -389,16 +383,20 @@ function SecondFactorSection() {
 // ─── страница ────────────────────────────────────────────────────────────────
 
 export function AccountSettingsPage() {
-  const [who, setWho] = useState<SessionIdentity | null | undefined>(undefined);
+  const [who, setWho] = useState<SessionAnswer | undefined>(undefined);
+  const ask = useCallback((isCancelled: () => boolean = () => false) => {
+    setWho(undefined);
+    return sessionIdentity().then((w) => {
+      if (!isCancelled()) setWho(w);
+    });
+  }, []);
   useEffect(() => {
     let cancelled = false;
-    void sessionIdentity().then((w) => {
-      if (!cancelled) setWho(w);
-    });
+    void ask(() => cancelled);
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [ask]);
 
   return (
     <section className="workbench" style={{ padding: PAGE_PADDING }}>
@@ -407,16 +405,24 @@ export function AccountSettingsPage() {
       <StepUpModal />
       <PageHead title="Параметры учётной записи" />
       {who === undefined && <Spin />}
-      {who === null && (
+      {who?.kind === "absent" && (
         <Typography.Paragraph>
           Параметры доступны после входа. <Link to={loginAddress("/settings")}>Войти</Link>
         </Typography.Paragraph>
       )}
-      {who && (
+      {who?.kind === "unknown" && (
+        <div style={{ maxWidth: 720, marginBottom: 12 }}>
+          <LaneRefusalAlert refusal={who.refusal} />
+          <Button onClick={() => void ask()} style={{ marginTop: 8 }}>
+            Проверить снова
+          </Button>
+        </div>
+      )}
+      {who?.kind === "present" && (
         <>
           <Section title="Учётная запись">
             <Typography.Paragraph style={{ marginBottom: 4 }}>{who.user.email}</Typography.Paragraph>
-            {who.session && (
+            {typeof who.session?.emailVerified === "boolean" && (
               <BoolFact value={who.session.emailVerified} yes="Адрес подтверждён" no="Адрес не подтверждён" />
             )}
           </Section>

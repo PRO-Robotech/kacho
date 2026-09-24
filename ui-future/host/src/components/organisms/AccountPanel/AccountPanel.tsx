@@ -9,7 +9,9 @@ import { useLogout } from "@shared/pages/auth/use-logout";
  * Учётная запись человека в каркасе: кто вошёл, подтверждён ли адрес, путь к
  * параметрам и выход (приёмка F8, F8-17 и F8-18).
  *
- * Признак подтверждённости — из ответа края о сессии, а не догадка каркаса.
+ * Признак подтверждённости — из ответа края о сессии, а не догадка каркаса:
+ * поля нет в ответе — признака нет, «не подтверждён» по умолчанию не рисуется
+ * (условие C8).
  * Действия «подтвердить адрес» здесь нет: производителя письма на посадке нет,
  * и обещать действие без исполнения хуже, чем промолчать.
  *
@@ -62,7 +64,7 @@ export const AccountPanel: FC<{
       <Typography.Text strong style={{ display: "block", marginBottom: 4, wordBreak: "break-all" }}>
         {identity.user.email || identity.user.displayName}
       </Typography.Text>
-      {identity.session && (
+      {typeof identity.session?.emailVerified === "boolean" && (
         <div style={{ marginBottom: 12 }}>
           <BoolFact value={identity.session.emailVerified} yes="Адрес подтверждён" no="Адрес не подтверждён" />
         </div>

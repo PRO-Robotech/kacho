@@ -16,7 +16,10 @@
 //   POST   /<domain>/v1/<plural>/{id}:verb → Custom verb → Operation
 
 import { snakeToCamel, camelToSnake } from "@shared/lib/case";
-import { acrFromChallenge, challengeOf, isStepUpDenial, requestStepUp } from "./step-up";
+import { bearerEpoch } from "./lane-epochs";
+import { refusalActionOf } from "./refusal-action";
+import { parseRpcStatus, reasonOfDetails } from "./rpc-status";
+import { acrFromChallenge, challengeError, challengeOf, requestFreshPresentation, requestStepUp } from "./step-up";
 import type { Operation } from "./types";
 
 const API_BASE = ""; // относительный путь, ingress/proxy сделают остальное
@@ -112,15 +115,34 @@ async function fetchJson<T>(method: string, path: string, body?: unknown, replay
     // UI работает в snake_case; Kachō REST contract = camelCase. Convert на отправке.
     init.body = JSON.stringify(snakeToCamel(body));
   }
+  const issuedAt = bearerEpoch();
   const res = await fetch(url, init);
   const text = await res.text();
   if (!res.ok) {
-    // Край объявляет «поднимите уровень» вызовом RFC 9470, и это ЕДИНСТВЕННОЕ
-    // место консоли, где такой отказ доходит до окна подтверждения. Без него
-    // окно регистрировалось и не открывалось никогда (#1213).
+    // Действие на отказ — ОДНО решение консоли (`refusalActionOf`, приёмка F8,
+    // условие C2) по машинным признакам: причине `ErrorInfo` и значению
+    // `error=` вызова края. Вызов пола RFC 9470 доходит отсюда до окна
+    // подтверждения (#1213); свежесть службы — туда же, с паролем в выборе;
+    // `invalid_token` после перевыпуска носителя ЭТОЙ вкладкой, пока запрос
+    // шёл, — один повтор с текущим носителем (условие C18). На вход клиент
+    // модулей не уводит: «войдите» — решение страницы, а не клиента.
     const challenge = challengeOf(res);
-    if (!replayed && isStepUpDenial(res.status, challenge)) {
-      if (await requestStepUp(acrFromChallenge(challenge))) {
+    const status = parseRpcStatus(text);
+    const action = refusalActionOf(
+      {
+        status: res.status,
+        reason: status ? reasonOfDetails(status.details) : null,
+        challenge: challengeError(challenge),
+        rotatedSinceIssue: bearerEpoch() !== issuedAt,
+      },
+      "platform",
+    );
+    if (!replayed) {
+      if (action === "replay") return fetchJson<T>(method, path, body, true);
+      if (action === "step-up-floor" && (await requestStepUp(acrFromChallenge(challenge)))) {
+        return fetchJson<T>(method, path, body, true);
+      }
+      if (action === "step-up-freshness" && (await requestFreshPresentation())) {
         return fetchJson<T>(method, path, body, true);
       }
     }

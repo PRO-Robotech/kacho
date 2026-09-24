@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { useState } from "react";
-import { LaneRefusal, loginLane } from "@shared/api/login-lane";
+import { LaneRefusal, laneRefusalOf, loginLane } from "@shared/api/login-lane";
 import { useFormToken } from "@shared/hooks/use-form-token";
+import { forgetPrincipalState } from "@shared/lib/principal-state";
 import { loginAddress } from "./ceremony-addresses";
 
 /**
@@ -14,6 +15,11 @@ import { loginAddress } from "./ceremony-addresses";
  * на экране при живом носителе — человек уходит от чужого монитора уверенным,
  * что вышел. Поэтому на отказе адрес не меняется, и отказ назван; носитель
  * консоль не трогает — его гасит служба, и только она.
+ *
+ * Выход в консоли ОДИН (условие C13): контекст личности своего выхода не
+ * держит. После подтверждённого выхода снимается состояние браузера,
+ * привязанное к человеку (`forgetPrincipalState`, условие C14), — и только
+ * после него: отказ выхода не снимает ничего.
  */
 export function useLogout(leave: (to: string) => void = (to) => window.location.replace(to)) {
   const holder = useFormToken("logout");
@@ -25,10 +31,11 @@ export function useLogout(leave: (to: string) => void = (to) => window.location.
     setRefusal(null);
     try {
       await loginLane.logout(holder);
+      forgetPrincipalState();
       leave(loginAddress());
       return;
     } catch (err) {
-      setRefusal(err instanceof LaneRefusal ? err : new LaneRefusal(0, null, String(err), null, null, null));
+      setRefusal(laneRefusalOf(err));
     }
     setBusy(false);
   };

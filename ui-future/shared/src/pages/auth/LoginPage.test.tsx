@@ -132,12 +132,83 @@ describe("экран входа", () => {
   });
 
   it("F8-12 · негодный носитель — та же форма, что без сессии, и экран о причине молчит", async () => {
-    // Край отвечает на негодный носитель отказом; для экрана это «сессии нет».
-    lane = installLane({ "GET /iam/v1/auth/me": refusal(401, 16, "session ended; sign in again") });
+    // Край отвечает на негодный носитель ТЕМ ЖЕ, что на его отсутствие:
+    // `200 {"user":null}` (`session_identity_handler.go`, `meFromOwnSession`).
+    lane = installLane({ "GET /iam/v1/auth/me": { status: 200, body: { user: null } } });
     const leave = renderAt("/login?returnTo=/dashboard");
     await formShown();
     expect(leave).not.toHaveBeenCalled();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("C6 · край не ответил о сессии — форма есть, неответ назван, и экран никуда не уводит", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": (_c, nth) => (nth === 1 ? refusal(503, 14, "unavailable") : SIGNED_IN),
+    });
+    const leave = renderAt("/login?returnTo=/dashboard");
+    await formShown();
+    expect(leave).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent("unavailable");
+    // Спросить снова — и живая сессия уводит на адрес возврата.
+    fireEvent.click(screen.getByRole("button", { name: "Проверить снова" }));
+    await waitFor(() => expect(leave).toHaveBeenCalledWith("/dashboard"));
+  });
+
+  it("C10 · отскок живой сессии идёт через тот же валидатор: чужой адрес возврата — на корень", async () => {
+    for (const hostile of ["//evil.example/dashboard", "https://evil.example/x", "/\\evil.example/x"]) {
+      lane = installLane({ "GET /iam/v1/auth/me": SIGNED_IN });
+      const leave = jest.fn<(to: string) => void>();
+      const { unmount } = render(
+        <MemoryRouter initialEntries={[`/login?returnTo=${encodeURIComponent(hostile)}`]}>
+          <LoginPage leave={leave} />
+        </MemoryRouter>,
+      );
+      await waitFor(() => expect(leave).toHaveBeenCalled());
+      expect([hostile, leave.mock.calls[0][0]]).toEqual([hostile, "/"]);
+      unmount();
+      lane.restore();
+    }
+  });
+
+  it("C10 · путь на регистрацию несёт адрес возврата тем же именем параметра", async () => {
+    lane = installLane({});
+    renderAt("/login?returnTo=%2Fiam%2Fusers");
+    await formShown();
+    const link = screen.getByRole<HTMLAnchorElement>("link", { name: "Завести учётную запись" });
+    expect(new URL(link.href).pathname).toBe("/registration");
+    expect(new URL(link.href).searchParams.get("returnTo")).toBe("/iam/users");
+  });
+
+  it("C11 · отказ по частоте без Retry-After — срок не выдуман и отправка не закрыта", async () => {
+    lane = installLane({
+      "POST /iam/v1/auth/login": refusal(429, 8, "too many attempts; try again later", "TOO_MANY_ATTEMPTS"),
+    });
+    renderAt("/login");
+    await formShown();
+    fireEvent.click(submit());
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("too many attempts; try again later");
+    expect(alert).not.toHaveTextContent("Повторить можно через");
+    expect(submit()).toBeEnabled();
+  });
+
+  it("C26 · форма входа не уходит нативной отправкой: пароль в адрес не попадает", async () => {
+    lane = installLane({ "POST /iam/v1/auth/login": refusal(401, 16, "authentication failed") });
+    renderAt("/login");
+    await formShown();
+    fireEvent.change(password(), { target: { value: "секрет-пароль" } });
+    const form = screen.getByRole("form", { name: "Вход в консоль" });
+    const event = new Event("submit", { bubbles: true, cancelable: true });
+    act(() => {
+      form.dispatchEvent(event);
+    });
+    // Отправку ведёт обработчик консоли, а не браузер: у нативной отправки
+    // формы без метода значения полей уходят строкой запроса адреса.
+    expect(event.defaultPrevented).toBe(true);
+    // У полей нет имён — нативной отправке нечего было бы положить в адрес.
+    expect([...form.querySelectorAll("input")].filter((i) => i.name !== "")).toEqual([]);
+    await waitFor(() => expect(lane!.of("POST", "/iam/v1/auth/login")).toHaveLength(1));
+    expect(lane.calls.some((c) => c.query.includes("секрет-пароль") || c.path.includes("секрет-пароль"))).toBe(false);
   });
 
   it("F8-13 · чужой адрес возврата отвергнут во всех четырёх формах, свой — соблюдён", async () => {

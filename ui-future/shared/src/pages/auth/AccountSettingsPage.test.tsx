@@ -104,9 +104,12 @@ describe("параметры учётной записи", () => {
     for (const code of CODES) expect(list).toHaveTextContent(code);
     expect(factor).toHaveTextContent("показываются один раз");
     await waitFor(() => expect(factor).toHaveTextContent("Второй фактор настроен"));
+    // Признак — на ОДНУ отправку (условие C12): заведение унесло первый,
+    // подтверждение несёт второй, добытый за ответом заведения.
+    expect(lane.of("POST", "/iam/v1/auth/second-factor/enroll")[0].body).toEqual({ csrfToken: "tok-second-factor-1" });
     expect(lane.of("POST", "/iam/v1/auth/second-factor/confirm")[0].body).toEqual({
       code: "123456",
-      csrfToken: "tok-second-factor-1",
+      csrfToken: "tok-second-factor-2",
     });
   });
 
@@ -173,6 +176,60 @@ describe("параметры учётной записи", () => {
     fireEvent.change(within(factor).getByLabelText("Код"), { target: { value: "ABCDEFGHJK" } });
     fireEvent.click(within(factor).getByRole("button", { name: "Снять" }));
     expect(await within(factor).findByRole("alert")).toHaveTextContent("second factor is not enrolled");
+  });
+
+  it("C6 · край не ответил о сессии — экран называет это и даёт спросить снова, а не зовёт входить", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": (_c, nth) => (nth === 1 ? refusal(503, 14, "unavailable") : SIGNED_IN),
+    });
+    renderPage();
+    expect(await screen.findByRole("alert")).toHaveTextContent("unavailable");
+    expect(screen.queryByRole("link", { name: "Войти" })).toBeNull();
+    expect(screen.queryByText(/доступны после входа/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Проверить снова" }));
+    expect(await screen.findByRole("region", { name: "Учётная запись" })).toHaveTextContent("a@kacho.local");
+  });
+
+  it("C8 · поля подтверждённости в ответе края нет — признака нет, «не подтверждён» не выдумывается", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": {
+        status: 200,
+        body: { user: { id: "usr-1", email: "a@kacho.local", displayName: "a" }, session: { assuranceLevel: "1" } },
+      },
+      "GET /iam/v1/auth/second-factor": NOT_ENROLLED,
+    });
+    renderPage();
+    const account = await screen.findByRole("region", { name: "Учётная запись" });
+    expect(account).toHaveTextContent("a@kacho.local");
+    expect(account).not.toHaveTextContent("подтверждён");
+  });
+
+  it("C16 · способ не выбран — в теле его нет, и названное службой поле способа отмечено у переключателя", async () => {
+    lane = installLane({
+      "GET /iam/v1/auth/me": SIGNED_IN,
+      "GET /iam/v1/auth/second-factor": ENROLLED,
+      "POST /iam/v1/auth/second-factor/remove": refusal(400, 3, "Illegal argument method: required"),
+    });
+    renderPage();
+    const factor = await screen.findByRole("region", { name: "Второй фактор" });
+    fireEvent.click(await within(factor).findByRole("button", { name: "Снять второй фактор" }));
+    // Переключатель открыт БЕЗ выбора: ни один способ не отмечен.
+    for (const label of ["Код из приложения", "Запасной код"]) {
+      expect(within(factor).getByLabelText<HTMLInputElement>(label).checked).toBe(false);
+    }
+    fireEvent.change(within(factor).getByLabelText("Код"), { target: { value: "ABCDEFGHJK" } });
+    fireEvent.click(within(factor).getByRole("button", { name: "Снять" }));
+    await waitFor(() =>
+      expect(within(factor).getByRole("radiogroup", { name: "Способ подтверждения" })).toHaveAttribute(
+        "aria-invalid",
+        "true",
+      ),
+    );
+    expect(lane.of("POST", "/iam/v1/auth/second-factor/remove")[0].body).toEqual({
+      code: "ABCDEFGHJK",
+      csrfToken: "tok-second-factor-1",
+    });
+    expect(within(factor).getByText("Illegal argument method: required")).toBeInTheDocument();
   });
 
   it("без сессии — путь ко входу с возвратом сюда, и ни одной формы", async () => {

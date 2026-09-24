@@ -241,5 +241,15 @@ test.describe("отказ регистрации назван своим тек�
     expect(identityRefusalFromText("Сети · Ничего не найдено"), "проза отказом не является").toBe("");
     expect(identityRefusalFromText('{"message":"registration refused","details":[]}'), "без кода — не отказ").toBe("");
     expect(identityRefusalFromText('{"user":{},"session":{}}'), "ответ успеха — не отказ").toBe("");
+    // Отказ края на глаголе с носителем приходит БЕЗ `details` (F4d-23) — это тот
+    // же отказ, что с пустым `details` у службы (условие C3); `details` не
+    // массивом — не отказ.
+    expect(
+      identityRefusalFromText('{"code":16,"message":"session ended; sign in again"}'),
+      "отказ края без details — отказ",
+    ).toBe("16 · session ended; sign in again");
+    expect(identityRefusalFromText('{"code":16,"message":"x","details":{}}'), "details не массивом — не отказ").toBe(
+      "",
+    );
   });
 });

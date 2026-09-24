@@ -16,7 +16,7 @@
 
 import { jest } from "@jest/globals";
 import { api, ApiError } from "./client";
-import { acrFromChallenge, challengeOf, isStepUpDenial, setStepUpRequester, type StepUpRequest } from "./step-up";
+import { acrFromChallenge, challengeError, challengeOf, setStepUpRequester, type StepUpRequest } from "./step-up";
 
 const CHALLENGE =
   'Bearer error="insufficient_user_authentication", ' +
@@ -52,16 +52,19 @@ describe("чтение вызова повышения из ответа", () =>
 
 describe("разбор вызова повышения", () => {
   it("узнаёт отказ по полу и достаёт затребованный уровень", () => {
-    expect(isStepUpDenial(401, CHALLENGE)).toBe(true);
+    expect(challengeError(CHALLENGE)).toBe("insufficient_user_authentication");
     expect(acrFromChallenge(CHALLENGE)).toBe("2");
   });
 
   it("обычная неаутентифицированность отказом по полу НЕ является", () => {
     // Положительный контроль наоборот: без него предикат зеленел бы на всём
     // подряд и окно открывалось бы на каждом отказе.
-    expect(isStepUpDenial(401, 'Bearer realm="kacho", error="invalid_token"')).toBe(false);
-    expect(isStepUpDenial(401, null)).toBe(false);
-    expect(isStepUpDenial(403, CHALLENGE)).toBe(false);
+    expect(challengeError('Bearer realm="kacho", error="invalid_token"')).toBe("invalid_token");
+    expect(challengeError(null)).toBeNull();
+    // Признак — значение параметра `error`, а не слово где-нибудь в описании.
+    expect(challengeError('Bearer error="invalid_token", error_description="insufficient_user_authentication"')).toBe(
+      "invalid_token",
+    );
     expect(acrFromChallenge('Bearer error="invalid_token"')).toBeUndefined();
   });
 });

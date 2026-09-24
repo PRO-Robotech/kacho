@@ -1,15 +1,22 @@
 // AuthContext — централизованный auth state для kacho-ui (KAC-127 Phase 2).
 //
 // Что внутри:
-//   - user / session — из ответа края о сессии (`GET /iam/v1/auth/me`): кто за
-//     браузерной сессией и её срок, уровень и подтверждённость адреса;
+//   - user / session — из ответа края о сессии: кто за браузерной сессией и её
+//     срок, уровень и подтверждённость адреса. Читатель ответа ОДИН —
+//     `sessionIdentity` клиента полосы (условие C7), и человек здесь в форме
+//     его провода (условие C9);
 //   - whoami — bootstrap прав из `GET /iam/v1/me`;
-//   - login() / logout() / refresh() — высокоуровневые действия.
+//   - refresh() — перечитать личность и права.
 //
-// Церемонии входа и выхода ведёт КОНСОЛЬ своими экранами и глаголами нашей
-// службы (приёмка F8): `login()` уводит на экран входа консоли, `logout()` зовёт
-// глагол выхода. Чужой поставщик личности отсюда не зовётся ни одним путём — ни
-// переходом, ни запросом к его потоку, ни чтением его сессии.
+// Церемоний здесь НЕТ. Вход, регистрацию и выход ведёт КОНСОЛЬ своими экранами
+// (приёмка F8), и выход в консоли один — `useLogout` (условие C13): прежде
+// контекст держал второй выход, у которого не было ни одного вызывающего. Чужой
+// поставщик личности отсюда не зовётся ни одним путём — ни переходом, ни
+// запросом к его потоку, ни чтением его сессии.
+//
+// «Спросить не удалось» — не «сессии нет» (условие C6): на таком исходе
+// контекст держит то, что знал, и ничего не гасит. Сессию гасит только ответ
+// края «сессии нет».
 //
 // Уровня уверенности как РЕШЕНИЯ здесь нет (приёмка Ф11 §1.3 Ч8): по уровню
 // решает край (пол каталога прав, вызов RFC 9470), консоль отвечает на вызов
@@ -22,8 +29,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { setStepUpRequester, type StepUpRequester } from "@shared/api/step-up";
 import { authApi, hasPermission as checkPerm, type AuthUser, type WhoAmIResponse } from "@shared/api/auth";
-import { FormTokenHolder, loginLane, type LaneSession } from "@shared/api/login-lane";
-import { loginAddress } from "@shared/pages/auth/ceremony-addresses";
+import { sessionIdentity, type LaneSession } from "@shared/api/login-lane";
 
 /** Периодический whoami-refresh — каждые 5 минут (KAC items 1-5 Foundation). */
 const WHOAMI_REFETCH_MS = 5 * 60 * 1000;
@@ -39,13 +45,6 @@ export interface AuthContextValue {
    *  или при 401/403. */
   whoami: WhoAmIResponse | null;
 
-  /** Увести на экран входа консоли с адресом возврата. */
-  login: (returnTo?: string) => void;
-  /**
-   * Выход глаголом службы. Отказ ПРОБРАСЫВАЕТСЯ: экран не вправе показать
-   * «вышли», пока служба выхода не подтвердила (приёмка F8, F8-19).
-   */
-  logout: () => Promise<void>;
   /** Перезапросить /me + whoami. */
   refresh: () => Promise<void>;
   /** Перезапросить только whoami (например, после 403 — роль могла измениться). */
@@ -85,14 +84,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [meResp, whoamiIamResp] = await Promise.allSettled([authApi.me(), authApi.whoami()]);
-      if (meResp.status === "fulfilled") {
-        setUser(meResp.value.user ?? null);
-        setSession(meResp.value.session ?? null);
-      } else {
+      const [who, whoamiIamResp] = await Promise.all([
+        sessionIdentity(),
+        authApi.whoami().then(
+          (value) => ({ status: "fulfilled" as const, value }),
+          () => ({ status: "rejected" as const }),
+        ),
+      ]);
+      if (who.kind === "present") {
+        setUser(who.user);
+        setSession(who.session);
+      } else if (who.kind === "absent") {
         setUser(null);
         setSession(null);
       }
+      // `unknown` — спросить не удалось: состояние НЕ гасится (условие C6).
       if (whoamiIamResp.status === "fulfilled") {
         setWhoami(whoamiIamResp.value);
       } else {
@@ -130,21 +136,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(t);
   }, [user, refreshWhoAmI]);
 
-  const login = useCallback((returnTo?: string) => {
-    window.location.assign(loginAddress(returnTo));
-  }, []);
-
-  const logoutHolder = useMemo(() => new FormTokenHolder("logout"), []);
-  const logout = useCallback(async () => {
-    await loginLane.logout(logoutHolder);
-    setUser(null);
-    setSession(null);
-    setAccessTokenState(null);
-    tokenRef.current = null;
-    setWhoami(null);
-    window.location.replace(loginAddress());
-  }, [logoutHolder]);
-
   const setAccessToken = useCallback((token: string | null) => {
     setAccessTokenState(token);
     tokenRef.current = token;
@@ -170,8 +161,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       accessToken,
       whoami,
-      login,
-      logout,
       refresh,
       refreshWhoAmI,
       setAccessToken,
@@ -184,8 +173,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       accessToken,
       whoami,
-      login,
-      logout,
       refresh,
       refreshWhoAmI,
       setAccessToken,

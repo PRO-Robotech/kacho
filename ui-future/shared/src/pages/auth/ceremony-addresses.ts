@@ -35,7 +35,27 @@ export const NOT_SERVED_CEREMONY_ADDRESSES: readonly CeremonyAddress[] = ["/reco
 /** Куда уводит вход без адреса возврата и с отвергнутым: корень консоли. */
 export const CONSOLE_ROOT = "/";
 
+/**
+ * Имя параметра адреса возврата — ОДНО у всех производителей и у читателя
+ * (условие C10). Производители — кнопка «Войти» каркаса, переход на вход по
+ * отказу `401`, выход, путь со страницы параметров и ссылки между экранами
+ * входа и регистрации; читатель — `useReturnTo`. Второе написание имени
+ * (`return_to`) дало бы адрес, который читатель не видит, и вход уводил бы на
+ * корень молча.
+ */
+export const RETURN_TO_PARAM = "returnTo";
+
+function withReturnTo(address: CeremonyAddress, returnTo?: string): string {
+  if (!returnTo || returnTo === CONSOLE_ROOT) return address;
+  return `${address}?${new URLSearchParams({ [RETURN_TO_PARAM]: returnTo }).toString()}`;
+}
+
 /** Адрес экрана входа с адресом возврата — ЕДИНСТВЕННАЯ его сборка. */
 export function loginAddress(returnTo?: string): string {
-  return returnTo ? `/login?returnTo=${encodeURIComponent(returnTo)}` : "/login";
+  return withReturnTo("/login", returnTo);
+}
+
+/** Адрес экрана регистрации с адресом возврата — ЕДИНСТВЕННАЯ его сборка. */
+export function registrationAddress(returnTo?: string): string {
+  return withReturnTo("/registration", returnTo);
 }

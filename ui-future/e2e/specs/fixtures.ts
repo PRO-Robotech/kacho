@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { expect, test as base, type BrowserContext, type Page, type Request } from "@playwright/test";
+import { parseRpcStatus } from "../../shared/src/api/rpc-status";
 import { isProviderAddressText } from "../../shared/src/test/provider-address";
 import { BUDGET_ATTACHMENT, noteRefusal, recordableRefusal, takeRefusals } from "./ceremony-budget";
 
@@ -333,16 +334,12 @@ async function advanceOrNameRefusal(
  * не признаётся — иначе первая же страница со словом «error» стала бы «отказом».
  */
 export function identityRefusalFromText(text: string): string {
-  let body: unknown;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    return "";
-  }
-  if (!body || typeof body !== "object") return "";
-  const { code, message, details } = body as { code?: unknown; message?: unknown; details?: unknown };
-  if (typeof code !== "number" || typeof message !== "string" || !Array.isArray(details)) return "";
-  return `${code} · ${message}`;
+  // Разборщик ОДИН — тот же, что у экранов консоли (`shared/src/api/rpc-status`,
+  // условие C3): тело края без `details` и тело службы с пустым `details` —
+  // один и тот же отказ. Прежде распознаватель требовал `details` массивом и
+  // не узнавал отказ края вовсе.
+  const status = parseRpcStatus(text);
+  return status ? `${status.code} · ${status.message}` : "";
 }
 
 /**

@@ -1,6 +1,6 @@
 import { useState, type FC } from "react";
 import { Home, LogIn, Search, Settings, UserRound } from "lucide-react";
-import type { SessionIdentity } from "@shared/api/login-lane";
+import type { SessionAnswer } from "@shared/api/login-lane";
 import { KachoLogo, RailButton } from "../../atoms";
 import { AccountPanel } from "../AccountPanel";
 import { loginUrl } from "../../../utils/auth";
@@ -94,7 +94,7 @@ export const HostRail: FC<{
    * Кто за сессией. Существует ради пробы; умолчание — ответ края
    * (`useSessionIdentity`). `undefined` — ещё не известно.
    */
-  identity?: SessionIdentity | null;
+  identity?: SessionAnswer;
 }> = (props) => {
   const known = useSessionIdentity();
   return <HostRailView {...props} identity={"identity" in props ? props.identity : known} />;
@@ -106,7 +106,7 @@ const HostRailView: FC<{
   showReachability: boolean;
   navigate?: (path: string) => void | Promise<void>;
   loadNavigation?: (remote: string) => Promise<unknown>;
-  identity: SessionIdentity | null | undefined;
+  identity: SessionAnswer | undefined;
 }> = ({
   context,
   currentPath = window.location.pathname,
@@ -200,14 +200,14 @@ const HostRailView: FC<{
         />
         {/* Пока край не ответил, каркас не обещает ни входа, ни учётной записи:
             «Войти», мигнувшее у вошедшего, читалось бы как потерянная сессия. */}
-        {identity === null && (
+        {identity?.kind === "absent" && (
           <RailButton
             label="Войти"
             icon={<LogIn size={iconSize} />}
             onClick={() => window.location.assign(loginUrl())}
           />
         )}
-        {identity && (
+        {identity?.kind === "present" && (
           <RailButton
             active={accountOpen || currentPath === "/settings"}
             label="Учётная запись"
@@ -216,7 +216,7 @@ const HostRailView: FC<{
           />
         )}
       </div>
-      {identity && accountOpen && (
+      {identity?.kind === "present" && accountOpen && (
         <AccountPanel identity={identity} onClose={() => setAccountOpen(false)} navigate={navigate} />
       )}
     </nav>

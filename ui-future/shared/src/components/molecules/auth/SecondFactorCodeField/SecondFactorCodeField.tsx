@@ -5,7 +5,7 @@ import { useId } from "react";
 import { Form, Input, Radio } from "antd";
 import type { CodeMethod, SecondFactorPresentation } from "@shared/api/login-lane";
 import { FieldError, fieldErrorId } from "@shared/components/organisms/form/FieldError";
-import { STEP_UP_METHODS } from "@shared/lib/step-up-methods";
+import { OWN_STEP_UP_METHODS } from "@shared/lib/step-up-methods";
 
 // Предъявление второго фактора — ОДНО поле на четыре формы: вход, повышение
 // уровня, снятие фактора и перечеканку запасных кодов (приёмка F8, Р9).
@@ -14,6 +14,12 @@ import { STEP_UP_METHODS } from "@shared/lib/step-up-methods";
 // и по длине не гадает (Ф12 Р4). Поэтому выбор способа — явный переключатель, и
 // ровно он кладёт в тело `totp` либо `lookup_secret`. Разведи это поле по
 // четырём формам — и одна из них однажды отправит код без способа или с чужим.
+//
+// УМОЛЧАНИЯ НЕТ (условие C16). Переключатель открывается без выбора, и пока
+// человек способ не назвал, способа в теле нет вовсе: служба отвечает «способ
+// не назван», и отметка встаёт у переключателя. Предвыбранный «код из
+// приложения» отправлял бы запасной код способом `totp` у каждого, кто не
+// заметил переключателя, — и служба засчитывала бы это неверным предъявлением.
 //
 // Правил кода здесь нет (Р2): шесть цифр у кода из приложения и десять знаков у
 // запасного судит служба и называет поле отказом. Подсказка формата ввода
@@ -31,33 +37,42 @@ export const CODE_METHOD_LABEL: Record<CodeMethod, string> = {
   lookup_secret: "Запасной код",
 };
 
-export const EMPTY_PRESENTATION: SecondFactorPresentation = { method: "totp", code: "" };
+/** Пустое предъявление: способ НЕ выбран, кода нет. */
+export const EMPTY_PRESENTATION: SecondFactorPresentation = { method: null, code: "" };
 
 interface Props {
   value: SecondFactorPresentation;
   onChange: (next: SecondFactorPresentation) => void;
   /** Текст отказа о поле кода — дословно из ответа службы; `null` — отказа нет. */
   codeError?: string | null;
+  /** Текст отказа о способе — дословно из ответа службы; `null` — отказа нет. */
+  methodError?: string | null;
   disabled?: boolean;
 }
 
-export function SecondFactorCodeField({ value, onChange, codeError = null, disabled }: Props) {
+export function SecondFactorCodeField({ value, onChange, codeError = null, methodError = null, disabled }: Props) {
   const id = useId();
   const codeId = `${id}-code`;
+  const methodId = `${id}-method`;
   const errorId = fieldErrorId(codeId);
+  const methodErrorId = fieldErrorId(methodId);
   return (
     <>
       <Form.Item label="Способ подтверждения">
         <Radio.Group
+          id={methodId}
           aria-label="Способ подтверждения"
+          aria-invalid={methodError ? true : undefined}
+          aria-describedby={methodError ? methodErrorId : undefined}
           disabled={disabled}
-          value={value.method}
+          value={value.method ?? undefined}
           onChange={(e) => onChange({ method: e.target.value as CodeMethod, code: value.code })}
-          options={STEP_UP_METHODS.map((m) => ({
+          options={OWN_STEP_UP_METHODS.map((m) => ({
             value: m,
             label: CODE_METHOD_LABEL[m],
           }))}
         />
+        <FieldError id={methodErrorId} message={methodError ?? undefined} />
       </Form.Item>
       <Form.Item label="Код" htmlFor={codeId}>
         <Input

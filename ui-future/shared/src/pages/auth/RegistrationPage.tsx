@@ -4,7 +4,7 @@
 import { useId, useState } from "react";
 import { Link } from "react-router";
 import { Button, Form, Input } from "antd";
-import { LaneRefusal, loginLane } from "@shared/api/login-lane";
+import { LaneRefusal, laneRefusalOf, loginLane } from "@shared/api/login-lane";
 import { LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalAlert";
 import { FieldError, fieldErrorId } from "@shared/components/organisms/form/FieldError";
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";
@@ -52,7 +52,7 @@ export function RegistrationPage({ leave = leaveDocument }: { leave?: (to: strin
       leave(returnTo);
       return;
     } catch (err) {
-      setRefusal(err instanceof LaneRefusal ? err : new LaneRefusal(0, null, String(err), null, null, null));
+      setRefusal(laneRefusalOf(err));
     }
     setBusy(false);
   };
@@ -68,7 +68,7 @@ export function RegistrationPage({ leave = leaveDocument }: { leave?: (to: strin
   return (
     <CeremonyScreen
       title="Новая учётная запись"
-      footer={<Link to={loginAddress(returnTo !== "/" ? returnTo : undefined)}>Уже есть учётная запись — войти</Link>}
+      footer={<Link to={loginAddress(returnTo)}>Уже есть учётная запись — войти</Link>}
     >
       <FormGrid label="Новая учётная запись" onSubmit={() => void onSubmit()}>
         <Form.Item label="Адрес электронной почты" htmlFor={inputId("email")}>
