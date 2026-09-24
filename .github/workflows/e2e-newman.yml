@@ -68,8 +68,13 @@
 name: e2e-newman
 
 on:
+  # Базы запроса — те же, что у `ci.yaml` (довод и перепись веток — в шапке его
+  # `on:`): ствол и ветки линии, названные номером задачи. `push` — только
+  # ствол: вердикт ветки задачи, волны или эпика даёт её запрос.
   pull_request:
-    branches: [main]
+    branches:
+      - main
+      - '[0-9]+'
   push:
     branches: [main]
   workflow_dispatch:
