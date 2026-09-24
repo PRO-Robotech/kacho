@@ -42,6 +42,9 @@ set -uo pipefail
 # Состав стендов — из ЕДИНСТВЕННОЙ таблицы дерева (deploy/stacks.txt).
 # Своей копии цепочек здесь нет: копии разъезжались молча.
 . "$(dirname "$0")/stacks.sh"
+# Поставщик на стендах не поднимается (#2735): проба поднимает его сама, ОДНИМ
+# фактом поверх настоящей цепочки — там, где профиль объявляет соседа в его поде.
+. "$(dirname "$0")/provider-up.sh"
 
 SCRIPT="$(basename "$0")"
 DEPLOY_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -387,7 +390,7 @@ echo "  умолчание чарта: отладочный флаг = $DEV_DEFA
 echo
 
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
-stacks_total=0; stacks_with_policies=0; prodclass_total=0; prodclass_live=0; inert_policies=0
+stacks_total=0; stacks_with_policies=0; prodclass_total=0; prodclass_live=0; inert_policies=0; stacks_raised=0
 # Стенд поднимает ровно один стек — на нём и только на нём приём плейнтекста от
 # петли подтверждается ЖИВЫМ наблюдением.
 LIVE_STACK="${LIVE_STACK:-dev-prod}"
@@ -396,15 +399,26 @@ while IFS= read -r line; do
   [ -z "$line" ] && continue
   stack="${line%%:*}"; files="${line#*:}"
   stacks_total=$((stacks_total + 1))
-  args=""; vfiles=""
-  IFS=','; for f in $files; do args="$args -f $UMBRELLA/$f"; vfiles="$vfiles $UMBRELLA/$f"; done; unset IFS
+  args=""; vfiles=""; paths=()
+  IFS=','; for f in $files; do args="$args -f $UMBRELLA/$f"; vfiles="$vfiles $UMBRELLA/$f"; paths+=("$UMBRELLA/$f"); done; unset IFS
+
+  # Поставщик и сосед на стенде НЕ поднимаются (база зонта, #2735); объявленную
+  # профилем форму пода проба поднимает сама — только на цепочке, чей профиль
+  # соседа объявляет (#1276 снимает её вместе с подчартом).
+  up=()
+  provider_terminator_declared "$UMBRELLA/values.yaml" "${paths[@]}" && declared_rc=0 || declared_rc=$?
+  case "$declared_rc" in
+    0) up=("${PROVIDER_UP_ARGS[@]}"); stacks_raised=$((stacks_raised + 1)) ;;
+    1) ;;
+    *) fatal "стек $stack: профили цепочки не разобраны — объявлен ли сосед в поде поставщика, судить не по чему" ;;
+  esac
 
   render="$work/$stack.yaml"
   # Отказ рендера — УСЛОВИЕ прогона, а не свойство дерева: код 2 и текст самого helm.
   # Сломанный шаблон при этом не прячется — его ловит шаг «umbrella template — каждый
   # стек таблицы», идущий в той же джобе РАНЬШЕ этого.
   # shellcheck disable=SC2086
-  helm_try kacho-umbrella "$UMBRELLA" $args --namespace kacho
+  helm_try kacho-umbrella "$UMBRELLA" $args "${up[@]}" --namespace kacho
   render_or_fatal "стек $stack"
   printf '%s\n' "$HELM_OUT" >"$render"
 
@@ -481,7 +495,10 @@ print("unset" if dev is None else str(bool(dev)).lower())
   # ── SEC-HAT-22: боевой класс — петля в источниках терминации + заголовок ──
   if [ "$klass" = production ]; then
     prodclass_total=$((prodclass_total + 1))
-    [ "$stack" = "$LIVE_STACK" ] && prodclass_live=$((prodclass_live + 1))
+    # Живое подтверждение возможно лишь там, где поставщика поднимает САМ стенд,
+    # а не проба: поднятый внутри рендера пробы поставщик живым прогоном не
+    # наблюдается ни на одном стенде (#2735).
+    [ "$stack" = "$LIVE_STACK" ] && [ "${#up[@]}" -eq 0 ] && prodclass_live=$((prodclass_live + 1))
 
     # Утверждение имеет предмет ТОЛЬКО когда терминатор в профиле включён:
     # без соседа плейнтекст на листенер приходит не от петли.
@@ -546,6 +563,7 @@ done <<<"$STACKS"
 echo
 echo "── объём осмотренного ──"
 echo "  стеков отрендерено: $stacks_total; из них рендерят политики: $stacks_with_policies"
+echo "  поставщик поднят ПРОБОЙ (на стенде не поднимается, #2735): на $stacks_raised стеках"
 echo "  профилей боевого класса: $prodclass_total"
 echo
 echo "── открытый долг (НЕ зачитывается в зелёное) ──"
@@ -558,7 +576,12 @@ if [ "$inert_policies" -gt 0 ]; then
 fi
 debt=$((prodclass_total - prodclass_live))
 echo "  профилей боевого класса, чей приём плейнтекста от петли ЖИВЫМ прогоном НЕ подтверждён: $debt"
-echo "  (стенд поднимает «$LIVE_STACK»; остальные подтверждаются первой боевой посадкой)"
+if [ "$stacks_raised" -gt 0 ]; then
+  echo "  (поставщика не поднимает ни один стенд, #2735: живым прогоном подтверждать нечего;"
+  echo "   объявленная форма судится поднятием внутри рендера пробы и снимается с подчартом, #1276)"
+else
+  echo "  (стенд поднимает «$LIVE_STACK»; остальные подтверждаются первой боевой посадкой)"
+fi
 if [ "$prodclass_live" -eq 0 ]; then
   echo "  ВНИМАНИЕ: живого подтверждения нет НИ ОДНОГО — весь класс держится на объявлениях."
 fi

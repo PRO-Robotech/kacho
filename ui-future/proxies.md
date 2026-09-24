@@ -92,15 +92,18 @@ The host app uses relative browser URLs. `host/vite.config.ts` proxies them to t
 /iam/v1/*               -> http://localhost:8080
 /operations/*           -> http://localhost:8080
 /healthz, /readyz       -> http://localhost:8080
-/.ory/kratos/public/*   -> http://localhost:4433
-/self-service/*         -> http://localhost:4433
-/login, /registration,
-/recovery, /settings,
-/verification, /error,
-/consent, /logout       -> http://localhost:4300
-/.ory/hydra/public/*    -> http://localhost:4444
-/oauth2/*               -> http://localhost:4444
 ```
+
+The ceremony addresses (`/login`, `/registration`, `/recovery`, `/settings`,
+`/verification`, `/error`, `/consent`, `/logout`) stay with the console: Vite
+serves them the console shell, exactly as the serving chart does on a landing
+that declares no external sign-in screen (`host.upstreams.kratosUi` empty —
+every chain today). They are proxied away only when `KACHO_KRATOS_UI_BASE` is
+set, and then to that address; there is no default port, because nothing
+listens on one — the external identity provider and its sign-in screen are not
+deployed on any stand, and `proxies.sh` does not forward to them (#2733). The
+rule is held by `ui-future/deploy/identity_dev_ceremony_band_test.go`. There is
+no `/.ory/…` band any more — neither here nor in the serving chart.
 
 Frontend code should keep using relative paths:
 
@@ -114,13 +117,11 @@ fetch("/compute/v1/instances")
 
 If `/vpc/v1/*` or `/compute/v1/*` returns `401` or `403`, the proxy is still working. That response came from `api-gateway`; it means the request reached the backend but is missing the browser session / access token / permissions.
 
-The future host starts the Kratos browser login flow:
-
-```text
-/.ory/kratos/public/self-service/login/browser
-```
-
-After the real auth flow is wired into the new UI, protected API calls should use the same relative URLs and include the credentials/token expected by `api-gateway`.
+The console has no working sign-in ceremony on a local stand today: the link it
+builds still points at the external provider's browser flow, and that provider
+is not deployed anywhere. The console's own ceremony screens are acceptance F8
+(#1274). Protected API calls keep using the same relative URLs and the
+credentials expected by `api-gateway`.
 
 ## If Windows cannot reach WSL port-forwards
 
@@ -128,17 +129,11 @@ Usually `localhost:<port>` works from Windows to WSL. If it does not, bind port-
 
 ```bash
 kubectl -n kacho port-forward --address 0.0.0.0 svc/api-gateway 8080:8080
-kubectl -n kacho port-forward --address 0.0.0.0 svc/kacho-umbrella-kratos-public 4433:80
-kubectl -n kacho port-forward --address 0.0.0.0 svc/kratos-selfservice-ui 4300:3000
-kubectl -n kacho port-forward --address 0.0.0.0 svc/kacho-umbrella-hydra-public 4444:4444
 ```
 
 You can override proxy targets before starting Vite:
 
 ```powershell
 $env:KACHO_API_BASE="http://localhost:8080"
-$env:KACHO_KRATOS_BASE="http://localhost:4433"
-$env:KACHO_KRATOS_UI_BASE="http://localhost:4300"
-$env:KACHO_HYDRA_BASE="http://localhost:4444"
 npm run dev
 ```

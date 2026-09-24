@@ -38,7 +38,6 @@ jest.unstable_mockModule("@shared/lib/kratos", () => ({
     loginUrl: () => "#idp",
     settingsUrl: () => "#settings",
     initFlow: jest.fn(),
-    getFlow: jest.fn(),
     submitFlow: jest.fn(),
   },
   findNode: jest.fn(),

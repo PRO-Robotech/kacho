@@ -16,10 +16,11 @@ package deploy_test
 
 import (
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestIdentitySecondFactorInjection_ParserSeesTheRealDeclaration(t *testing.T) {
@@ -225,13 +226,23 @@ func TestIdentitySecondFactorInjection_ChainPredicatesReadBothSides(t *testing.T
 // четыре стража личности оставались зелёными — пустыми операциями ровно там, где
 // они нужны.
 //
-// Проба берёт НАСТОЯЩИЕ цепочки из таблицы стеков, выключает в их текстах чужие
-// флаги (в памяти — дерево не трогается) и утверждает ДВЕ вещи сразу:
+// С #2735 чужие флаги выключены НА ВСЕХ стендах самим деревом (база зонта), и
+// дефект, будь он жив, проявился бы на исправном дереве: под судом оказалось бы
+// ноль стендов. Поэтому ПЕРВОЕ утверждение пробы — на дереве как есть: наш
+// признак посадки судит КАЖДЫЙ стенд, хотя чужой подчарт не поднят ни на одном.
+//
+// Инъекция идёт теперь в ОБРАТНУЮ сторону — чужие флаги ВКЛЮЧАЮТСЯ (в памяти —
+// дерево не трогается), — и утверждает две вещи:
 //
 //   - инъекция ДЕЙСТВИТЕЛЬНО кусает: прежний признак («поднят чужой подчарт»)
-//     после неё находит меньше стендов, чем до. Без этого утверждения проба
+//     после неё находит больше стендов, чем до. Без этого утверждения проба
 //     зеленела бы на инъекции, которая ничего не изменила;
-//   - наш признак посадки после той же инъекции судит ТЕ ЖЕ стенды.
+//   - наш признак посадки после той же инъекции судит ТЕ ЖЕ стенды: он от
+//     чужого флага не зависит ни в одну сторону.
+//
+// Прежний признак читается РАЗБОРОМ, а не образцом строки: образец по тексту
+// брал за флаг включения любой вложенный `enabled: true` под узлом подчарта и
+// отвечал «поднят» стенду, где подчарт выключен.
 func TestIdentitySecondFactorInjection_ForeignFlagOffKeepsEveryStandUnderJudgement(t *testing.T) {
 	stacks := deployStacks(t)
 	names := make([]string, 0, len(stacks))
@@ -240,35 +251,41 @@ func TestIdentitySecondFactorInjection_ForeignFlagOffKeepsEveryStandUnderJudgeme
 	}
 	sort.Strings(names)
 
-	// Прежний признак, выписанный здесь ДОСЛОВНО: он больше не судит ничего,
-	// но доказывает, что инъекция кусает.
-	foreignChartRaised := regexp.MustCompile(`(?m)^kratos:\n(?:[ \t].*\n|\n)*?\s+enabled:\s*true`)
-	foreignOff := regexp.MustCompile(`(?m)^(kratos|hydra):\n(\s+)enabled: true$`)
+	base := readFileForTest(t, filepath.Join(umbrellaDir, "values.yaml"))
+	// Инъекция — ПОСЛЕДНИЙ слой цепочки, включающий оба чужих подчарта.
+	const foreignOn = "kratos:\n  enabled: true\nhydra:\n  enabled: true\n"
+
+	// Прежний признак: слитые значения (база зонта + цепочка) поднимают подчарт.
+	foreignChartRaised := func(texts []string) bool {
+		merged := map[string]any{}
+		for _, text := range append([]string{base}, texts...) {
+			var tree map[string]any
+			if err := yaml.Unmarshal([]byte(text), &tree); err != nil {
+				t.Fatalf("профиль цепочки не разбирается: %v", err)
+			}
+			merged = mergeValues(merged, tree)
+		}
+		for _, chart := range []string{"kratos", "hydra"} {
+			if on, ok := lookup(merged, chart, "enabled"); ok && on == true {
+				return true
+			}
+		}
+		return false
+	}
 
 	var judgedBefore, judgedAfter, foreignBefore, foreignAfter int
 	var lost []string
 	for _, name := range names {
-		texts := make([]string, 0, len(stacks[name]))
+		texts := make([]string, 0, len(stacks[name])+1)
 		for _, prof := range stacks[name] {
 			texts = append(texts, readFileForTest(t, filepath.Join(umbrellaDir, prof)))
 		}
-		injected := make([]string, 0, len(texts))
-		for _, text := range texts {
-			injected = append(injected, foreignOff.ReplaceAllString(text, "$1:\n${2}enabled: false"))
-		}
+		injected := append(append([]string{}, texts...), foreignOn)
 
-		raised := func(in []string) bool {
-			for _, text := range in {
-				if foreignChartRaised.MatchString(text) {
-					return true
-				}
-			}
-			return false
-		}
-		if raised(texts) {
+		if foreignChartRaised(texts) {
 			foreignBefore++
 		}
-		if raised(injected) {
+		if foreignChartRaised(injected) {
 			foreignAfter++
 		}
 		if identityChainLandsIdentity(t, texts) {
@@ -281,24 +298,24 @@ func TestIdentitySecondFactorInjection_ForeignFlagOffKeepsEveryStandUnderJudgeme
 		lost = append(lost, name)
 	}
 
-	t.Logf("перепись: стендов %d · под судом до инъекции %d · после %d · "+
-		"прежний признак (чужой подчарт поднят): до %d · после %d",
+	t.Logf("перепись: стендов %d · под судом на дереве %d · после инъекции %d · "+
+		"прежний признак (чужой подчарт поднят): на дереве %d · после инъекции %d",
 		len(names), judgedBefore, judgedAfter, foreignBefore, foreignAfter)
 
 	if judgedBefore != len(names) {
-		t.Fatalf("на исправном дереве под судом %d стендов из %d — предикат сузился "+
-			"сам по себе, и утверждать об инъекции нечего", judgedBefore, len(names))
+		t.Fatalf("на исправном дереве под судом %d стендов из %d, хотя чужой подчарт "+
+			"поднят на %d — предикат отбора снова зависит от чужого флага, и это ровно "+
+			"тот дефект, ради которого он переутверждён", judgedBefore, len(names), foreignBefore)
 	}
-	if foreignAfter >= foreignBefore {
-		t.Fatalf("инъекция не кусает: по прежнему признаку до неё %d стендов, после %d. "+
-			"Либо форма чужого флага в профилях сменилась, либо подстановка перестала "+
-			"его находить — и тогда зелёное этой пробы ничего не значит",
+	if foreignAfter <= foreignBefore {
+		t.Fatalf("инъекция не кусает: по прежнему признаку на дереве %d стендов, после "+
+			"инъекции %d. Либо форма чужого флага сменилась, либо слой инъекции перестал "+
+			"его включать — и тогда зелёное этой пробы ничего не значит",
 			foreignBefore, foreignAfter)
 	}
 	if len(lost) > 0 {
-		t.Fatalf("выключение ЧУЖИХ флагов увело из-под суда стенды %v: %d из %d. "+
-			"Это ровно тот дефект, ради которого предикат переутверждён — признак "+
-			"посадки снова взят у чужой службы, а не у нашей ручки identityProvider",
-			lost, len(lost), len(names))
+		t.Fatalf("включение ЧУЖИХ флагов увело из-под суда стенды %v: %d из %d. "+
+			"Признак посадки обязан браться у нашей ручки identityProvider, а не у "+
+			"чужой службы", lost, len(lost), len(names))
 	}
 }

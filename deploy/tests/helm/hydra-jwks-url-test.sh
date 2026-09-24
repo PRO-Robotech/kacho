@@ -21,8 +21,15 @@
 # профиль на этот маршрут уже переведён; прямой хоп к провайдеру там — обход
 # фасада, однажды уже найденный и починенный. Утверждение о боевом профиле
 # требует зеркало ИМЕННО по защищённому транспорту и ОТДЕЛЬНО запрещает адрес
-# провайдера в любом написании. Профиль dev остаётся на прямом внутрикластерном
-# адресе провайдера — это его текущее состояние.
+# провайдера в любом написании.
+#
+# ── ПРИНИМАЕТСЯ ТОЛЬКО НАШ ИЗДАТЕЛЬ (#2735) ─────────────────────────────────
+# Провайдер личности и его издатель не поднимаются ни на одном стенде (база
+# зонта, раздел «ЧУЖОЙ СТЕК ЛИЧНОСТИ НЕ ПОДНИМАЕТСЯ»), поэтому перечень
+# принимаемых издателей обоих профилей называет НАШЕГО издателя и не называет
+# издателя провайдера ни в одном написании. Прежнее утверждение («перечень
+# называет издателя провайдера») снято вместе со своим предметом и заменено
+# парой: наш издатель ЕСТЬ (положительная половина) — издателя провайдера НЕТ.
 #
 # This renders:
 #   (1) the api-gateway chart standalone (the source the umbrella vendors via
@@ -84,7 +91,27 @@ AGW="$MONOREPO/$AGW"
 # провайдеру (core #16), по защищённому транспорту с якорем доверия. Адрес пинится
 # здесь ЛИТЕРАЛОМ: вычитывать ожидание из того же профиля, который и рендерится,
 # значило бы сверять файл сам с собой.
-WANT_PROD="https://kaname-internal.kacho.svc:9097/.well-known/jwks.json"
+WANT_PROD="https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
+# Наш издатель — тот, чьи токены край принимает на обоих профилях.
+OUR_ISSUER="https://kaname.kacho.local"
+# Написания издателя ПРОВАЙДЕРА: прежний издатель стенда разработки (путь
+# полосы раздачи) и публичный издатель боевых профилей.
+PROVIDER_ISSUER_SPELLING='/\.ory/hydra/|hydra\.api\.'
+# issuer_set_is_ours <перечень> <профиль> — наш издатель назван, издатель
+# провайдера — нет. Две половины одного утверждения: без первой пустой перечень
+# прошёл бы вторую.
+issuer_set_is_ours() {
+  local e seen=0
+  while IFS= read -r e; do
+    [ -n "$e" ] || continue
+    if any_line_matches "$e" "$PROVIDER_ISSUER_SPELLING"; then
+      fail "$2 перечень принимаемых издателей называет издателя провайдера ($e): провайдер не поднимается ни на одном стенде, и его набор ключей никто не держит (#2735)"
+    fi
+    [ "$e" = "$OUR_ISSUER" ] && seen=1
+  done <<<"$(printf '%s' "$1" | tr ',' '\n')"
+  [ "$seen" -eq 1 ] \
+    || fail "$2 перечень принимаемых издателей не называет НАШЕГО издателя $OUR_ISSUER (перечень: $1)"
+}
 # Написания адреса ПРОВАЙДЕРА: любое из них в боевом профиле — обход фасада.
 PROVIDER_SPELLING='hydra-public|hydra\.api\.'
 # env_val <ENV_NAME> <render> — value of the named container env entry ("" if absent).
@@ -150,25 +177,16 @@ $dev_urls
 EOF_DEV_URLS
 ok
 
-# SEC-J: the verifier does an EXACT-match `iss` check, so the dev issuer record
-# MUST equal Hydra's dev self.issuer (values.dev.yaml hydra.config.urls.self.issuer
-# = http://localhost:28080/.ory/hydra/public/) — дословно, включая завершающий
-# слеш: `iss` сверяется целиком, и лишний символ здесь означает отказ каждому
-# живому токену.
-DEV_ISSUER="http://localhost:28080/.ory/hydra/public/"
+# Перечень принимаемых издателей dev: наш издатель назван, издателя
+# провайдера нет (#2735).
 dissuers="$(env_val KACHO_API_GATEWAY_TOKEN_ISSUERS "$DEV")"
-case ",$dissuers," in
-  *",$DEV_ISSUER,"*) ;;
-  *) fail "dev перечень принимаемых издателей не называет издателя провайдера (перечень: $dissuers) — токены его чеканки перестанут приниматься" ;;
-esac
+issuer_set_is_ours "$dissuers" "dev"
 ok
 
 # ── (3) umbrella + values.prod.yaml — production-strict makes the verifier
 #        mandatory, so the JWKS URL must be the in-cluster address of the iam
-#        MIRROR (core #16: iam is the only facade to the provider), over TLS —
+#        key-set publisher (core #16: iam is the only facade), over TLS —
 #        not the public ingress hairpin and not the provider's own Service.
-#        The expected `iss` stays the public issuer: the provider remains the
-#        SIGNER, only key distribution goes through iam.
 helm_try kacho-umbrella "$UMBRELLA" -f "$UMBRELLA/values.prod.yaml" \
          --show-only charts/api-gateway/templates/deployment.yaml
 render_or_fatal "умбрелла + values.prod.yaml, шаблон пода края"
@@ -205,11 +223,10 @@ EOF_URLS
 # читается как настроенная защита, ничего не проверяя.
 [[ "$PROD" == *'hydra-jwks-ca'* ]] \
   || fail "prod api-gateway pod carries no trust anchor for the JWKS hop — TLS whose certificate nobody checks leaves substitution open"
-# Публичный издатель провайдера обязан быть назван перечнем принимаемых.
+# Перечень принимаемых издателей prod: наш издатель назван, издателя
+# провайдера нет (#2735).
 pissuers="$(env_val KACHO_API_GATEWAY_TOKEN_ISSUERS "$PROD")"
-case ",$pissuers," in
-  *,https://hydra.api.kacho.cloud,*) ;;
-  *) fail "prod перечень принимаемых издателей не называет публичного издателя https://hydra.api.kacho.cloud: $pissuers" ;;
-esac; ok
+issuer_set_is_ours "$pissuers" "prod"
+ok
 
 outcome_verdict "профилей прочитано: 2 (dev, prod) + чарт края отдельно"
