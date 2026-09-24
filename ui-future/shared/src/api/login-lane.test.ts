@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { jest } from "@jest/globals";
+import { requestBody, requestUrl } from "@shared/test/fetch-capture";
 import { SIGNED_IN, installLane, refusal, type LaneAnswer } from "@shared/test/lane-fake";
 import { FormTokenHolder, LaneRefusal, loginLane, refusalOf, sessionIdentity } from "./login-lane";
 import { requestStepUp, setStepUpRequester, type StepUpRequest } from "./step-up";
@@ -41,6 +42,57 @@ const EDGE_FLOOR: LaneAnswer = {
 };
 
 const NOT_FRESH = refusal(403, 7, "re-authentication required: present a credential again", "SESSION_NOT_FRESH");
+
+/**
+ * Дублёр службы, держащий КОНТЕКСТ ФОРМЫ так, как его держит служба: один на
+ * браузер. Печенье уходит тем, что браузер держит В МОМЕНТ отправки, а ставится
+ * ответом — поэтому две выдачи, ушедшие до первого ответа, контекста не несут.
+ * Признак принадлежит контексту, в котором выдан; отправка с признаком не того
+ * контекста, что несёт печенье, — `403 FORM_TOKEN_REJECTED`, как у службы.
+ */
+function formContextLane() {
+  let cookie: number | null = null;
+  let minted = 0;
+  let issued = 0;
+  const tokenContext = new Map<string, number>();
+  const original = globalThis.fetch;
+  const reply = (status: number, body: unknown) =>
+    ({
+      ok: status >= 200 && status < 300,
+      status,
+      headers: { get: () => null },
+      text: () => Promise.resolve(JSON.stringify(body)),
+    }) as unknown as Response;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(requestUrl(input), "http://console.test");
+    const method = (init?.method ?? "GET").toUpperCase();
+    const sent = cookie;
+    const body = requestBody(init?.body);
+    // Ответ приходит ПОЗЖЕ отправки: печенье, поставленное ответом, уходит
+    // только с запросами, отправленными после него.
+    for (let i = 0; i < 3; i++) await Promise.resolve();
+    if (method === "GET" && url.pathname === "/iam/v1/auth/csrf") {
+      const context = sent ?? ++minted;
+      const token = `tok-${url.searchParams.get("form") ?? ""}-${++issued}`;
+      tokenContext.set(token, context);
+      cookie = context;
+      return reply(200, { csrfToken: token });
+    }
+    if (method === "POST") {
+      if (sent === null || tokenContext.get(String(body?.csrfToken)) !== sent) {
+        return reply(403, refusal(403, 7, "form token rejected", "FORM_TOKEN_REJECTED").body);
+      }
+      return reply(200, { session: {} });
+    }
+    return reply(404, refusal(404, 5, `дублёр: ${method} ${url.pathname} не объявлен пробой`).body);
+  }) as typeof fetch;
+  return {
+    contextsMinted: () => minted,
+    restore: () => {
+      globalThis.fetch = original;
+    },
+  };
+}
 
 let lane: ReturnType<typeof installLane> | null = null;
 afterEach(() => {
@@ -249,6 +301,30 @@ describe("признак формы добывается на КАЖДУЮ от�
     await loginLane.register(new FormTokenHolder("register"), { email: "a", password: "p" });
     await loginLane.logout(logout);
     expect(lane.of("POST", "/iam/v1/auth/logout")[0].body?.csrfToken).toBe("tok-logout-2");
+  });
+
+  it("C12 · формы разных видов, открытые одним экраном, получают признаки ОДНОГО контекста формы", async () => {
+    // Экран параметров открывает две формы сразу (пароль и второй фактор), и
+    // обе добывают признак при открытии. Контекст формы у службы ОДИН на браузер
+    // (печенье `kaname_form`): выдача без контекста заводит новый, выдача с ним —
+    // выдаёт признак в нём. Две выдачи, ушедшие рядом без контекста, заводят два,
+    // печенье остаётся от последнего ответа, и признак первого вида служба
+    // отвергает `FORM_TOKEN_REJECTED` (прогон F8 на посадке `own`, 19 красных,
+    // из них 6 — этот отказ на /settings).
+    const lane = formContextLane();
+    try {
+      const password = new FormTokenHolder("password");
+      const secondFactor = new FormTokenHolder("second-factor");
+      void password.get().catch(() => undefined);
+      void secondFactor.get().catch(() => undefined);
+      const changed = await loginLane
+        .changePassword(password, { currentPassword: "p", newPassword: "q" })
+        .then(() => "принято", (e: unknown) => (e instanceof LaneRefusal ? `${e.status} ${e.reason} ${e.message}` : String(e)));
+      expect(changed).toBe("принято");
+      expect(lane.contextsMinted()).toBe(1);
+    } finally {
+      lane.restore();
+    }
   });
 
   it("C12 · отвергнутый признак: ОДИН свежий добыт сразу, отправка не повторена сама", async () => {

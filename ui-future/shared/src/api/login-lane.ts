@@ -260,8 +260,48 @@ async function exchange<T>(method: "GET" | "POST", path: string, body?: unknown)
   return (text ? JSON.parse(text) : {}) as T;
 }
 
-/** Признак формы данного вида. */
-export async function formToken(kind: FormKind): Promise<string> {
+/**
+ * Очередь выдачи признаков — ОДНА на вкладку, для всех видов форм (условие C12).
+ *
+ * Контекст формы у службы один на браузер (печенье `kaname_form`): выдача без
+ * контекста заводит новый, выдача с контекстом выдаёт признак в нём. Печенье
+ * ставит ответ, а уходит оно с запросами, отправленными ПОСЛЕ него. Поэтому две
+ * выдачи, ушедшие рядом, пока контекста нет, заводят два контекста; печенье
+ * остаётся от последнего ответа, и признак другой формы служба отвергает
+ * `FORM_TOKEN_REJECTED`. Так падала отправка экрана параметров, чей признак
+ * выдан не последним ответом: экран открывает формы пароля и второго фактора
+ * сразу, и обе добывают признак при открытии (прогон F8 на посадке `own`
+ * @9038186d0d5: шесть проб экрана параметров упали этим отказом).
+ *
+ * Выдача следующего признака начинается за ответом предыдущей — любого вида, —
+ * и контекст заводит только первая. Лежит на `globalThis` по той же причине,
+ * что и эпохи (`lane-epochs.ts`): `@shared` собирается в каждый модуль своей
+ * копией, а окно повышения модуля и экраны каркаса делят одно печенье вкладки.
+ */
+const ISSUANCE_KEY = Symbol.for("kacho.console.form-token-issuance");
+
+function issuance(): { tail: Promise<unknown> } {
+  const g = globalThis as unknown as Record<symbol, { tail: Promise<unknown> } | undefined>;
+  let queue = g[ISSUANCE_KEY];
+  if (!queue) {
+    queue = { tail: Promise.resolve() };
+    g[ISSUANCE_KEY] = queue;
+  }
+  return queue;
+}
+
+/** Признак формы данного вида — в очереди выдачи вкладки. */
+export function formToken(kind: FormKind): Promise<string> {
+  const queue = issuance();
+  const issued = queue.tail.then(
+    () => issueFormToken(kind),
+    () => issueFormToken(kind),
+  );
+  queue.tail = issued.catch(() => undefined);
+  return issued;
+}
+
+async function issueFormToken(kind: FormKind): Promise<string> {
   const body = await exchange<{ csrfToken?: unknown }>("GET", `${LOGIN_LANE.csrf}?form=${encodeURIComponent(kind)}`);
   const token = displayText(body.csrfToken);
   if (token === "") {
