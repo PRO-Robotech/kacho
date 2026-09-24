@@ -17,8 +17,10 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -167,23 +169,73 @@ func buildE2E(t *testing.T, opts ...func(*middleware.AuthzMiddlewareConfig)) (*h
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
-	ts := httptest.NewServer(handler)
+	// Фронт — на своём адресе петли, как и дублёр за ним: каждый запрос с субъектом
+	// фронт превращает в Check, и посторонний, дошедший до фронта, засчитался бы
+	// дублёру (TestE2E_AuthZ_StrangerAtTheFrontPortIsNotCountedByTheStub).
+	ts := privateloopback.NewServer(t, handler)
 	t.Cleanup(ts.Close)
 	return ts, stub
 }
 
-func authedRequest(t *testing.T, ts *httptest.Server, method, path, acr string) (*http.Response, []byte) {
+// principalRequest — запрос субъекта usr_alice к base+path: та форма, на которую
+// фронт зовёт Check.
+func principalRequest(t *testing.T, base, method, path, acr string) *http.Request {
 	t.Helper()
-	req, err := http.NewRequest(method, ts.URL+path, nil)
+	req, err := http.NewRequest(method, base+path, nil)
 	require.NoError(t, err)
 	req.Header.Set("X-Kacho-Principal-Id", "usr_alice")
 	req.Header.Set("X-Kacho-Principal-Type", "user")
 	req.Header.Set("X-Kacho-Token-Acr", acr)
-	resp, err := http.DefaultClient.Do(req)
+	return req
+}
+
+func authedRequest(t *testing.T, ts *httptest.Server, method, path, acr string) (*http.Response, []byte) {
+	t.Helper()
+	resp, err := http.DefaultClient.Do(principalRequest(t, ts.URL, method, path, acr))
 	require.NoError(t, err)
 	body, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	return resp, body
+}
+
+// TestE2E_AuthZ_StrangerAtTheFrontPortIsNotCountedByTheStub — свойство стенда, на
+// котором держатся утверждения этого файла о числе обращений к IAM: ноль у обхода
+// здоровья и у override, «не больше одного» у кэша, «ровно два» по истечении срока,
+// «хотя бы одно» у разрешённого запроса.
+//
+// Дублёр AuthorizeService слушает свой адрес петли, но до его счётчика доходят и
+// через фронт: фронт — композиция промежуточного слоя, которая на каждый запрос с
+// субъектом зовёт Check. Порт петли — ресурс машины: клиент соседней пробы,
+// переживший свой закрытый сервер, спрашивает 127.0.0.1:<порт>. Фронт на общем
+// адресе принимал такого постороннего, и Check постороннего засчитывался дублёру:
+// «обращений ноль» краснело на исправном продукте, «хотя бы одно» зеленело на
+// неисправном. Фронт слушает собственный адрес петли, и посторонний до него не
+// доходит.
+//
+// Посторонний и законный звонящий задают ОДИН запрос — путь, заголовки субъекта,
+// уровень; различаются только адресом. Законный засчитан — значит запрос этой формы
+// доходит до Check, и «ноль» у постороннего означает «не дошёл до фронта», а не
+// «дошёл, но Check не позвал».
+func TestE2E_AuthZ_StrangerAtTheFrontPortIsNotCountedByTheStub(t *testing.T) {
+	ts, stub := buildE2E(t)
+	stub.allow.Store(true)
+	front, err := url.Parse(ts.URL)
+	require.NoError(t, err)
+
+	stranger := &http.Client{Timeout: 2 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}
+	req := principalRequest(t, "http://"+net.JoinHostPort("127.0.0.1", front.Port()),
+		http.MethodGet, "/vpc/v1/networks/enp_x", "2")
+	// Отказ соединения — законный исход: посторонний и должен не доходить.
+	if resp, derr := stranger.Do(req); derr == nil {
+		_ = resp.Body.Close()
+	}
+	require.Zero(t, stub.calls.Load(),
+		"посторонний, знающий только порт фронта, засчитан дублёру IAM через фронт")
+
+	resp, _ := authedRequest(t, ts, http.MethodGet, "/vpc/v1/networks/enp_x", "2")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, int64(1), stub.calls.Load(),
+		"запрос на адрес фронта доходит до Check и считается")
 }
 
 func TestE2E_AuthZ_AllowFlows(t *testing.T) {
