@@ -5,7 +5,6 @@ import { defineConfig } from "vite";
 
 const apiGateway = process.env.KACHO_API_BASE || "http://localhost:8080";
 const kratos = process.env.KACHO_KRATOS_BASE || "http://localhost:4433";
-const hydra = process.env.KACHO_HYDRA_BASE || "http://localhost:4444";
 
 export default defineConfig({
   base: process.env.KACHO_PUBLIC_BASE || "/",
@@ -66,11 +65,6 @@ export default defineConfig({
         target: kratos,
         changeOrigin: true,
         rewrite: (urlPath) => urlPath.replace(/^\/\.ory\/kratos\/public/, ""),
-      },
-      "/.ory/hydra/public": {
-        target: hydra,
-        changeOrigin: true,
-        rewrite: (urlPath) => urlPath.replace(/^\/\.ory\/hydra\/public/, ""),
       },
     },
   },

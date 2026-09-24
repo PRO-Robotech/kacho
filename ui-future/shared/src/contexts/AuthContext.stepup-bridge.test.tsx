@@ -28,7 +28,6 @@ jest.unstable_mockModule("@shared/api/auth", () => ({
 
 jest.unstable_mockModule("@shared/lib/kratos", () => ({
   kratos: {
-    whoami: jest.fn(() => Promise.resolve(null)),
     initLogout: jest.fn(() => Promise.resolve({ logout_token: "", logout_url: "" })),
     submitLogout: jest.fn(() => Promise.resolve()),
     loginUrl: () => "#idp",

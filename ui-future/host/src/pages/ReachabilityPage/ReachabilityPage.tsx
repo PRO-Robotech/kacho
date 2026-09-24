@@ -9,7 +9,6 @@ const probes = [
   { label: "Сети VPC", path: "/vpc/v1/networks" },
   { label: "Виртуальные машины", path: "/compute/v1/instances" },
   { label: "Kratos", path: "/.ory/kratos/public/health/ready" },
-  { label: "Hydra", path: "/.ory/hydra/public/health/ready" },
 ];
 
 type ProbeResult = {
