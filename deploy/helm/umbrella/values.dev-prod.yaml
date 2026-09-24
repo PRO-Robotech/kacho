@@ -56,7 +56,11 @@
 # below are pointed at it together.
 mtls:
   hydraAdminTls:
-    enabled: true
+    # Терминатор TLS перед административным слушателем чужого выдающего. Его
+    # объекты (Service, Certificate, карта настроек) открываются ОТДЕЛЬНЫМ
+    # ключом, а не `hydra.enabled`, — и при выключенной службе остались бы
+    # висеть сиротами: адрес, который резолвится в ничто.
+    enabled: false
     secretName: kacho-umbrella-hydra-admin-tls
 
 # ─── api-gateway (edge) — production-strict authN ───────────────────────────
