@@ -18,6 +18,7 @@ import {
   type SeededSecondFactor,
 } from "./ceremony-seed";
 import { ceremonyCensus, formatCall, test, type CeremonyCensus } from "./fixtures";
+import { EDGE_SESSION_ENDED, SESSION_NOT_FRESH, bodyOf, fulfillWith } from "./producer-answers";
 
 /**
  * Параметры учётной записи на `/settings` — смена пароля и второй фактор
@@ -166,6 +167,60 @@ test("F8-23 · смена пароля внутри сессии проходи�
   });
 });
 
+test("F8-23 · запрос каркаса, ушедший до перевыпуска носителя, не уводит человека на вход", async ({
+  page,
+}, testInfo) => {
+  // verifies #1274 — условие C18: смена пароля перевыпускает носитель, прежний
+  // дайджест перестаёт находить запись, и запрос ЭТОЙ вкладки, ушедший с
+  // прежним носителем, получает `invalid_token`. Это не конец сессии — её
+  // перевыпустили здесь же; человек остаётся на экране и при сессии.
+  test.setTimeout(120_000);
+  await withHuman(testInfo, "F8-23-inflight", page.context(), async (_seed, human) => {
+    // Список аккаунтов каркаса ЗАДЕРЖАН до ответа смены пароля: он ушёл с
+    // прежним носителем и доходит до края после перевыпуска.
+    let release: () => void = () => undefined;
+    const passwordAnswered = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const accountLists: number[] = [];
+    let held = false;
+    await page.route(
+      (u) => u.pathname === "/iam/v1/accounts",
+      async (route) => {
+        if (!held) {
+          held = true;
+          await passwordAnswered;
+        }
+        await route.continue();
+      },
+    );
+    page.on("response", (r) => {
+      if (new URL(r.url()).pathname === "/iam/v1/accounts") accountLists.push(r.status());
+    });
+    const s = await openSettings(page);
+    await expect.poll(() => held, { message: "каркас не спросил список аккаунтов", timeout: 30_000 }).toBe(true);
+    const before = await bearerOf(page.context());
+    await s.password.current.fill(human.password);
+    await s.password.next.fill(`${human.password}-nov`);
+    const [changed] = await Promise.all([lanePost(page, LANE.password), s.password.submit.click()]);
+    expect(changed.status(), `смена пароля не прошла: ${await changed.text()}`).toBe(200);
+    release();
+    await expect
+      .poll(() => accountLists.at(-1), { message: "задержанный список не завершился", timeout: 30_000 })
+      .toBeDefined();
+    expect(new URL(page.url()).pathname, "запрос с прежним носителем увёл человека на вход").toBe("/settings");
+    const after = await bearerOf(page.context());
+    expect(after, "носитель у браузера погашен ответом на запрос с прежним носителем").not.toBe("");
+    expect(after, "смена пароля не перевыпустила носитель").not.toBe(before);
+    await expect
+      .poll(() => accountLists.at(-1), {
+        message: `список аккаунтов после перевыпуска не прочитан: ответы ${accountLists.join(", ")}`,
+        timeout: 30_000,
+      })
+      .toBe(200);
+  });
+});
+
 test("F8-24 · текущий пароль неверен: отказ назван, сессия цела", async ({ page }, testInfo) => {
   // verifies #1274 — близнец F8-23: изменено только значение текущего пароля.
   await withHuman(testInfo, "F8-24", page.context(), async (_seed, human) => {
@@ -187,14 +242,13 @@ test("F8-25 · служба молчит на глаголе с носителе
   page,
 }, testInfo) => {
   // verifies #1274 — близнец F8-23: изменено только то, отвечает ли служба краю.
-  // Ответ края (F4d-23) подставляется побайтово: остановить службу проба не вправе.
-  const ended = { code: 16, message: "session ended; sign in again" };
+  // Ответ края (F4d-23) подставляется так, как его отдаёт производитель: тело
+  // без `details` и вызов `Bearer error="invalid_token"` (условие C20). Экран
+  // обязан назвать отказ, а не принять вызов края за «войдите».
+  const ended = bodyOf(EDGE_SESSION_ENDED);
   await page.route(
     (u) => u.pathname === LANE.password,
-    (route) =>
-      route.request().method() === "POST"
-        ? route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify(ended) })
-        : route.continue(),
+    (route) => (route.request().method() === "POST" ? fulfillWith(route, EDGE_SESSION_ENDED) : route.continue()),
   );
   await withHuman(testInfo, "F8-25", page.context(), async (_seed, human) => {
     const s = await openSettings(page);
@@ -285,20 +339,14 @@ test("F8-29 · сессия не свежа: консоль ведёт повы�
   // verifies #1274 — близнец F8-27: изменена только свежесть предъявления в
   // сессии. Окна свежести проба не пересиживает — ответ на ПЕРВОЕ заведение
   // подставляется побайтово (Р9, ось 3а); повышение и повтор идут по-настоящему.
-  const notFresh = {
-    code: 7,
-    message: "re-authentication required: present a credential again",
-    details: [
-      { "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "SESSION_NOT_FRESH", domain: "iam.kaname.cloud" },
-    ],
-  };
+  // Ответ производителя — телом и заголовками (`producer-answers.ts`, условие C20).
   let substituted = false;
   await page.route(
     (u) => u.pathname === LANE.enroll,
     async (route) => {
       if (route.request().method() !== "POST" || substituted) return route.continue();
       substituted = true;
-      await route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify(notFresh) });
+      await fulfillWith(route, SESSION_NOT_FRESH);
     },
   );
   await withHuman(testInfo, "F8-29", page.context(), async (_seed, human) => {

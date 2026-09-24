@@ -16,8 +16,11 @@
  *   • бюджета нет — отказ, а не «бюджет ноль»; отчёт без проб — отказ.
  */
 
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { judgeBudget, type RecordedRefusal, type ScenarioRefusals } from "../specs/ceremony-budget.ts";
-import { budgetFromEnv, scenarioRefusalsOf } from "./ceremony-budget.ts";
+import { NO_VERDICT, budgetFromEnv, run as guard, scenarioRefusalsOf } from "./ceremony-budget.ts";
 
 let failed = 0;
 function check(ok: boolean, what: string): void {
@@ -127,8 +130,32 @@ console.log("ПРОГОН 6 — запись читается из вложен�
   check(records.length === 1 && records[0].scenario === "F8-05 · неверный пароль", "запись пробы прочитана");
 }
 
+console.log("ПРОГОН 7 — три исхода сторожа разными кодами: в бюджете, превышен, вердикта нет");
+{
+  const dir = mkdtempSync(path.join(tmpdir(), "f8-41-"));
+  const reportOf = (refusals: RecordedRefusal[]) => {
+    const body = Buffer.from(JSON.stringify({ scenario: "F8-09 · потолок темпа", refusals })).toString("base64");
+    return JSON.stringify({
+      suites: [
+        { specs: [{ tests: [{ results: [{ attachments: [{ name: "f8-41-source-axis-refusals", body }] }] }] }] },
+      ],
+    });
+  };
+  const within = path.join(dir, "within.json");
+  const over = path.join(dir, "over.json");
+  writeFileSync(within, reportOf(Array(5).fill(failedLogin)));
+  writeFileSync(over, reportOf(Array(12).fill(failedLogin)));
+  check(guard([within], { KACHO_CEREMONY_FAILURE_BUDGET: "11" }) === 0, "в бюджете — 0");
+  check(guard([over], { KACHO_CEREMONY_FAILURE_BUDGET: "11" }) === 1, "превышен — 1");
+  // Величина не объявлена или не разобрана — не «превышен» и не умолчание 11.
+  check(guard([within], {}) === NO_VERDICT, "величины нет — вердикта нет (3), а не умолчание");
+  check(guard([within], { KACHO_CEREMONY_FAILURE_BUDGET: "одиннадцать" }) === NO_VERDICT, "величина не число — 3");
+  check(guard([path.join(dir, "нет.json")], { KACHO_CEREMONY_FAILURE_BUDGET: "11" }) === NO_VERDICT, "отчёта нет — 3");
+  check(guard([], { KACHO_CEREMONY_FAILURE_BUDGET: "11" }) === NO_VERDICT, "отчёт не назван — 3");
+}
+
 if (failed > 0) {
   console.error(`\nсамопроверка сторожа бюджета оси источника: провалов ${failed}`);
   process.exit(1);
 }
-console.log("\nсамопроверка сторожа бюджета оси источника: все утверждения прошли (прогонов 6)");
+console.log("\nсамопроверка сторожа бюджета оси источника: все утверждения прошли (прогонов 7)");

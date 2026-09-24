@@ -22,9 +22,14 @@ test("F8-45 · в наборе не осталось ожидания стенн
   // verifies #1274
   const root = path.dirname(test.info().project.testDir);
   const census = wallClockCensus(root);
+  // Обе группы — поимённо (условие C22): ожидания срока (находки) и паузы между
+  // опросами условия (не находки). Паузу, перешедшую из второй группы в первую,
+  // видно по координате, а не только по числу.
   console.log(
     `[перепись ожиданий] файлов прочитано ${census.filesRead} · ожиданий условия ${census.conditionWaits}` +
-      ` · пауз между опросами ${census.pollPauses} · находок ${census.findings.length}`,
+      ` · пауз между опросами ${census.pollPauses} · находок ${census.findings.length}\n` +
+      census.pauses.map((p) => `    пауза: ${p.file}:${p.line} ${p.what}\n`).join("") +
+      census.findings.map((f) => `    НАХОДКА: ${f.file}:${f.line} ${f.what}\n`).join(""),
   );
   expect(census.filesRead, "обход набора пуст — вердикта нет").toBeGreaterThan(0);
   // Положительная сторона: без неё «ноль» неотличим от предиката, не умеющего
@@ -62,4 +67,46 @@ test("F8-45 · инъекция: подсаженное ожидание кра�
 
   // Пустой обход — отказ, а не «0 находок».
   expect(() => wallClockCensusOf([])).toThrow(/0 файлов/);
+});
+
+test("F8-45 · пауза в цикле — пауза только при предметном выходе и длительности не от часов", () => {
+  // verifies #1274 — условие C22: «ожидание истечения срока» и «пауза между
+  // опросами условия» различаются по узлам. Близнецы — три законные паузы
+  // набора по форме: опрос с выходом `return` (фикстура проекта), переоткрытие
+  // потока с условием-вызовом (`while (!collected() …)`), подъём с `break`.
+  const twins: Array<[string, string]> = [
+    [
+      "fixture.ts",
+      "async function f() {\n  for (let i = 0; i < 8; i++) {\n    const id = await read();\n    if (id) return id;\n" +
+        "    await new Promise((r) => setTimeout(r, 2_000));\n  }\n}\n",
+    ],
+    [
+      "stream.ts",
+      "async function f() {\n  while (!collected() && Date.now() < until) {\n    await read();\n" +
+        "    await new Promise((resolve) => setTimeout(resolve, 250));\n  }\n}\n",
+    ],
+    [
+      "reach.mjs",
+      "for (let i = 1; i <= 5; i++) {\n  if (await reached()) break;\n  await new Promise((r) => setTimeout(r, 5_000));\n}\n",
+    ],
+  ];
+  for (const [file, text] of twins) {
+    const c = censusOfSource(file, text);
+    expect([file, describe(c.findings)]).toEqual([file, []]);
+    expect([file, c.pollPauses]).toEqual([file, 1]);
+  }
+
+  // Изменён ровно один факт против близнеца — и пауза становится находкой.
+  const noExit =
+    "async function f() {\n  for (let i = 0; i < 8; i++) {\n    await read();\n" +
+    "    await new Promise((r) => setTimeout(r, 2_000));\n  }\n}\n";
+  expect(describe(censusOfSource("count.ts", noExit).findings)).toEqual([
+    "count.ts:4 сон в цикле без предметного выхода",
+  ]);
+  const untilClock =
+    "async function f() {\n  for (let i = 0; i < 8; i++) {\n    const id = await read();\n    if (id) return id;\n" +
+    "    await new Promise((r) => setTimeout(r, nextWindow() - Date.now()));\n  }\n}\n";
+  expect(describe(censusOfSource("clock.ts", untilClock).findings)).toEqual([
+    "clock.ts:5 сон до момента стенных часов",
+  ]);
 });

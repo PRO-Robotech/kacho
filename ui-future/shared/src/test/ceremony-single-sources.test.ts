@@ -10,6 +10,7 @@ import {
   formatCensusFinding,
   functionParsesJsonItself,
   importsFrom,
+  laneCallsOutsideIssuer,
   sessionAddressReaders,
   sessionPredicateCallers,
   type Source,
@@ -114,6 +115,38 @@ describe("единственные источники церемоний лич�
     expect(functionParsesJsonItself(fixtures, "identityRefusalFromText")).toBe(false);
     const [lane] = product.filter((p) => p.file === SESSION_READER);
     expect(importsFrom(lane, "parseRpcStatus", "./rpc-status")).toBe(true);
+  });
+});
+
+describe("C21 · вход сторожа бюджета полон: глаголы полосы из набора зовёт только выпускающий", () => {
+  const suite = codeSources(uiRoot, (rel) => rel.startsWith("e2e/") && !rel.includes("node_modules"));
+  const outside = laneCallsOutsideIssuer(suite, "e2e/specs/ceremony-seed.ts");
+  process.stdout.write(
+    `\n[C21] файлов набора прочитано ${suite.length} · обращений мимо выпускающего ${outside.length}\n`,
+  );
+
+  it("C21 · знаменатель — код набора прочитан", () => {
+    expect(suite.length).toBeGreaterThan(20);
+  });
+
+  it("C21 · ни одного обращения к глаголу полосы контекстом запросов мимо записи выпускающего", () => {
+    expect(outside.map(formatCensusFinding)).toEqual([]);
+  });
+
+  it("C21 · инъекция: обращение мимо выпускающего находится; ответ края о сессии и сам выпускающий — нет", () => {
+    const found = laneCallsOutsideIssuer(
+      [
+        { file: "e2e/specs/planted.ts", text: 'await page.request.post("/iam/v1/auth/login", { data });' },
+        { file: "e2e/specs/planted2.ts", text: "await page.request.post(LANE.password, { data });" },
+        { file: "e2e/specs/twin.ts", text: 'await page.request.get("/iam/v1/auth/me");' },
+        { file: "e2e/specs/ceremony-seed.ts", text: "await api.post(LANE.login, { data });" },
+      ],
+      "e2e/specs/ceremony-seed.ts",
+    ).map(formatCensusFinding);
+    expect(found).toEqual([
+      "e2e/specs/planted.ts:1 глагол полосы мимо выпускающего: /iam/v1/auth/login",
+      "e2e/specs/planted2.ts:1 глагол полосы мимо выпускающего: LANE.password",
+    ]);
   });
 });
 

@@ -203,3 +203,51 @@ export function functionParsesJsonItself(src: Source, fn: string): boolean {
   });
   return parses;
 }
+
+// ─── C21 · глаголы полосы из кода набора зовёт только выпускающий с записью ───
+
+/** Методы контекста запросов playwright. */
+const REQUEST_METHODS = new Set(["get", "post", "put", "patch", "delete", "head", "fetch"]);
+
+/** Адрес — глагол полосы формы: путь `/iam/v1/auth/*`, кроме ответа края о сессии. */
+function isLaneVerbAddress(n: ts.Node): string | null {
+  const t = literalText(n);
+  if (t !== null) {
+    return t.startsWith("/iam/v1/auth/") && t !== SESSION_IDENTITY_ADDRESS ? t : null;
+  }
+  // `LANE.<глагол>` — перечень глаголов посева.
+  if (ts.isPropertyAccessExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === "LANE") {
+    return `LANE.${n.name.text}`;
+  }
+  if (ts.isTemplateExpression(n) && n.head.text.startsWith("/iam/v1/auth/")) return n.head.text;
+  return null;
+}
+
+/**
+ * Обращения КОНТЕКСТОМ ЗАПРОСОВ (`page.request`, `context.request`, контекст
+ * `request.newContext()`) к глаголам полосы мимо выпускающего `issuer`. Отказы
+ * таких обращений не видит ни перепись страниц (N16), ни запись выпускающего —
+ * значит сторож бюджета оси источника (F8-41) считал бы их меньше истинного
+ * (условие C21). Выпускающий — файл, пишущий свою запись (`ceremony-seed.ts`).
+ */
+export function laneCallsOutsideIssuer(sources: readonly Source[], issuer: string): Finding[] {
+  const out: Finding[] = [];
+  for (const src of sources) {
+    if (src.file === issuer) continue;
+    const sf = parse(src);
+    visit(sf, (n) => {
+      if (!ts.isCallExpression(n) || !ts.isPropertyAccessExpression(n.expression)) return;
+      if (!REQUEST_METHODS.has(n.expression.name.text)) return;
+      const owner = n.expression.expression;
+      // `x.request.<метод>(…)` либо контекст запросов под именем `api`/`request`.
+      const viaRequest =
+        (ts.isPropertyAccessExpression(owner) && owner.name.text === "request") ||
+        (ts.isIdentifier(owner) && ["request", "api"].includes(owner.text));
+      if (!viaRequest || n.arguments.length === 0) return;
+      const address = isLaneVerbAddress(n.arguments[0]);
+      if (address)
+        out.push({ file: src.file, line: lineOf(sf, n), what: `глагол полосы мимо выпускающего: ${address}` });
+    });
+  }
+  return out;
+}

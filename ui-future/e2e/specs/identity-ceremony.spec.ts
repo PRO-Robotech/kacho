@@ -15,7 +15,18 @@ import {
   transferSession,
   type SeededHuman,
 } from "./ceremony-seed";
-import { ceremonyCensus, formatCall, register, test, watchRefusals, type CeremonyCensus } from "./fixtures";
+import {
+  ceremonyCensus,
+  formatCall,
+  register,
+  runTag,
+  tenantWithProject,
+  test,
+  watchRefusals,
+  type CeremonyCall,
+  type CeremonyCensus,
+} from "./fixtures";
+import { LANE_UNAVAILABLE, LOGOUT_UNAVAILABLE, bodyOf, fulfillWith } from "./producer-answers";
 
 /**
  * Церемонии личности ведёт КОНСОЛЬ — вход, регистрация, выход (приёмка F8, S1).
@@ -133,6 +144,11 @@ async function seeded(testInfo: TestInfo, scenario: string, context?: BrowserCon
   } finally {
     await seed.dispose();
   }
+}
+
+/** Метка обращения внутри сценария: своя у каждого заведённого человека. */
+function runStamp(): string {
+  return runTag();
 }
 
 /** Тело отказа входа — ОДНО на все причины; служба собирает его одной функцией. */
@@ -345,16 +361,14 @@ test("F8-09 · потолок темпа: экран называет срок �
 
 test("F8-10 · служба не ответила: отказ назван, введённое цело", async ({ page }, testInfo) => {
   // verifies #2780 — близнец F8-04: изменено только то, отвечает ли служба краю.
-  // Условие создаётся подстановкой ответа, побайтово равного ответу полосы:
-  // остановить службу проба не вправе, а предмет сценария — что делает экран.
+  // Условие создаётся подстановкой ответа производителя — телом и заголовками
+  // (`producer-answers.ts`, условие C20): остановить службу проба не вправе, а
+  // предмет сценария — что делает экран.
   const human = await seeded(testInfo, "F8-10");
-  const unavailable = { code: 14, message: "request not performed; try again later", details: [] };
+  const unavailable = bodyOf(LANE_UNAVAILABLE);
   await page.route(
     (u) => u.pathname === LANE.login,
-    (route) =>
-      route.request().method() === "POST"
-        ? route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify(unavailable) })
-        : route.continue(),
+    (route) => (route.request().method() === "POST" ? fulfillWith(route, LANE_UNAVAILABLE) : route.continue()),
   );
   await page.goto("/login", { waitUntil: "domcontentloaded" });
   const s = loginScreen(page);
@@ -457,6 +471,59 @@ test("F8-13 · адрес возврата чужого происхождени
   // Положительный близнец: свой адрес возврата уводит ИМЕННО туда, со своей
   // строкой запроса, — отрицание не тождественно «всегда на корень».
   await landsAt("/dashboard?f8-13=kontrol", `${origin}/dashboard?f8-13=kontrol`);
+});
+
+test("F8-13 · отскок живой сессии и возврат после регистрации идут через тот же валидатор", async ({
+  browser,
+}, testInfo) => {
+  // verifies #2780 — условие C10: КАЖДАЯ навигация по адресу возврата — после
+  // входа, после регистрации и отскок человека с живой сессией с экрана входа —
+  // проходит один валидатор. Близнец положительный — свой адрес соблюдён.
+  test.setTimeout(180_000);
+  const use = testInfo.project.use;
+  const origin = new URL(use.baseURL ?? "").origin;
+
+  async function inFreshContext(body: (page: Page) => Promise<void>, withSession: boolean) {
+    const context = await browser.newContext({ baseURL: use.baseURL, ignoreHTTPSErrors: use.ignoreHTTPSErrors });
+    const reading = watchRefusals(context, testInfo.testId);
+    try {
+      if (withSession) await seeded(testInfo, `F8-13-bounce-${runStamp()}`, context);
+      await body(await context.newPage());
+    } finally {
+      await reading.settled();
+      await context.close();
+    }
+  }
+
+  const expectLanded = async (page: Page, returnTo: string, expected: string) => {
+    await expect
+      .poll(() => page.url(), { message: `returnTo=${returnTo}: консоль увела не туда`, timeout: 30_000 })
+      .toBe(expected);
+    expect(new URL(page.url()).origin, `returnTo=${returnTo}: происхождение страницы чужое`).toBe(origin);
+  };
+
+  for (const [returnTo, expected] of [
+    ["//evil.example/dashboard", `${origin}/dashboard`],
+    ["https://evil.example/dashboard", `${origin}/dashboard`],
+    ["/dashboard?f8-13=otskok", `${origin}/dashboard?f8-13=otskok`],
+  ] as const) {
+    // Отскок: у браузера живая сессия, экран входа уводит сразу.
+    await inFreshContext(async (page) => {
+      await page.goto(`/login?returnTo=${encodeURIComponent(returnTo)}`, { waitUntil: "domcontentloaded" });
+      await expectLanded(page, returnTo, expected);
+    }, true);
+    // После регистрации: адрес возврата несёт экран регистрации.
+    await inFreshContext(async (page) => {
+      await page.goto(`/registration?returnTo=${encodeURIComponent(returnTo)}`, { waitUntil: "domcontentloaded" });
+      const s = registrationScreen(page);
+      await expectScreen(page, "/registration", s.submit, "экран регистрации");
+      await s.email.fill(seedAddress(`F8-13-reg-${runStamp()}`));
+      await s.password.fill(SEED_PASSWORD);
+      const [res] = await Promise.all([lanePost(page, LANE.register), s.submit.click()]);
+      expect(res.status(), `регистрация не прошла: ${await res.text()}`).toBe(200);
+      await expectLanded(page, returnTo, expected);
+    }, false);
+  }
 });
 
 test("F8-39 · на экране входа нет пути на восстановление и подтверждение адреса", async ({ page }) => {
@@ -623,16 +690,71 @@ test("F8-18 · выход гасит носитель и возвращает н
     .toBe("ответа нет");
 });
 
+test("F8-18 · после выхода следующий человек в этом браузере не видит чужих аккаунта и проекта", async ({
+  page,
+}, testInfo) => {
+  // verifies #2780 — условие C14: выход снимает состояние браузера, привязанное
+  // к человеку (выбранные аккаунт и проект с их именами), и вход другим
+  // человеком его не применяет. Оставляемое (тема) — остаётся.
+  test.setTimeout(180_000);
+  const first = await tenantWithProject(page);
+  const accounts = (await (await page.request.get("/iam/v1/accounts?pageSize=1000")).json()) as {
+    accounts?: Array<{ id: string; name?: string }>;
+  };
+  const foreign = accounts.accounts?.[0];
+  expect(foreign?.id, "у первого человека нет аккаунта — условие сценария не создано").toBeTruthy();
+  await page.goto(`/projects/${first.projectId}/dashboard`, { waitUntil: "domcontentloaded" });
+  const stored = () =>
+    page.evaluate(() => {
+      try {
+        return window.localStorage.getItem("kacho.context.v2") ?? "";
+      } catch {
+        return "";
+      }
+    });
+  await expect
+    .poll(stored, { message: "каркас не запомнил выбранный аккаунт — нечего проверять после выхода", timeout: 30_000 })
+    .toContain(foreign!.id);
+  await page.evaluate(() => window.localStorage.setItem("kacho-theme", "light"));
+
+  await page.getByRole("button", { name: "Учётная запись" }).click();
+  const [out] = await Promise.all([
+    lanePost(page, LANE.logout),
+    page.getByRole("dialog", { name: "Учётная запись" }).getByRole("button", { name: "Выйти" }).click(),
+  ]);
+  expect(out.status(), `выход не прошёл: ${await out.text()}`).toBe(200);
+  await expectPath(page, "/login", "после выхода консоль не вернула на экран входа");
+  expect(await stored(), "после выхода в браузере остались чужие аккаунт и проект").not.toContain(foreign!.id);
+
+  // Второй человек входит в том же браузере.
+  const second = await seeded(testInfo, "F8-18-second");
+  const s = loginScreen(page);
+  await expectScreen(page, "/login", s.submit, "экран входа");
+  await s.email.fill(second.email);
+  await s.password.fill(second.password);
+  const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
+  expect(res.status(), `вход второго человека не прошёл: ${await res.text()}`).toBe(200);
+  // Вход без адреса возврата уводит на корень консоли, а корень — на панель.
+  await expectPath(page, "/dashboard", "после входа второго человека консоль не увела на панель");
+  await expect(page.getByRole("navigation", { name: "Host navigation" })).toBeVisible({ timeout: 30_000 });
+  expect(await stored(), "второму человеку применён чужой аккаунт").not.toContain(foreign!.id);
+  if (foreign!.name) {
+    await expect(
+      page.getByText(foreign!.name, { exact: true }),
+      "у второго человека видно имя чужого аккаунта",
+    ).toHaveCount(0);
+  }
+  // Оставляемое — осталось: тема не привязана к человеку.
+  expect(await page.evaluate(() => window.localStorage.getItem("kacho-theme"))).toBe("light");
+});
+
 test("F8-19 · служба не подтвердила выход: экран не делает вид, что вышли", async ({ page }, testInfo) => {
   // verifies #2780 — близнец F8-18: изменено только то, отвечает ли служба краю.
   await seeded(testInfo, "F8-19", page.context());
-  const unavailable = { code: 14, message: "logout not performed; try again later", details: [] };
+  const unavailable = bodyOf(LOGOUT_UNAVAILABLE);
   await page.route(
     (u) => u.pathname === LANE.logout,
-    (route) =>
-      route.request().method() === "POST"
-        ? route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify(unavailable) })
-        : route.continue(),
+    (route) => (route.request().method() === "POST" ? fulfillWith(route, LOGOUT_UNAVAILABLE) : route.continue()),
   );
   await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "Учётная запись" }).click();
@@ -699,6 +821,17 @@ test("F8-22 · церемония входа проходится с клави�
   expectContains(census, "GET", LANE.csrf, "?form=login");
   expectContains(census, "POST", LANE.login);
   expectNoProvider(census);
+  // Клавиша ввода не отправила форму нативно (условие C26): у нативной отправки
+  // формы без метода значения полей уходят строкой запроса адреса, и пароль
+  // оседал бы в истории браузера и в журналах раздачи.
+  const carriesPassword = (c: CeremonyCall) => {
+    const address = decodeURIComponent(`${c.path}${c.query}`);
+    return address.includes(human.password);
+  };
+  expect(
+    census.calls.filter(carriesPassword).map(formatCall),
+    `пароль ушёл в адресе обращения:\n${census.describe()}`,
+  ).toEqual([]);
 });
 
 // ═══ S2 — группа I. Вход со вторым фактором и повышение уровня ════════════════

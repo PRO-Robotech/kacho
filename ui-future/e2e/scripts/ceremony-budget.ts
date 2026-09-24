@@ -16,7 +16,10 @@
  * «бюджет ноль». Отчёта нет — тоже отказ: сторож, не прочитавший прогона,
  * зелёным не бывает.
  *
- * Коды: 0 — в бюджете; 1 — бюджет превышен либо вердикта нет (названо, почему).
+ * Коды — ТРИ исхода, а не два (условие C21): 0 — в бюджете; 1 — бюджет
+ * превышен (красное о прогоне); 3 — вердикта нет: величина не объявлена или
+ * не разобрана, отчёта нет, в отчёте ни одной пробы. «Не выполнилось» не
+ * сливается с «превышен» и не подменяется умолчанием величины.
  */
 
 import { readFileSync } from "node:fs";
@@ -65,10 +68,14 @@ export function budgetFromEnv(env: Record<string, string | undefined>): number {
   return Number(raw);
 }
 
-function main(argv: string[]): number {
+/** Вердикта нет — исход «не выполнилось» со своим кодом. */
+export const NO_VERDICT = 3;
+
+/** Исход сторожа по аргументам и окружению — код возврата. */
+export function run(argv: string[], env: Record<string, string | undefined>): number {
   const files = argv.filter((a) => !a.startsWith("--"));
   try {
-    const budget = budgetFromEnv(process.env);
+    const budget = budgetFromEnv(env);
     if (files.length === 0) throw new Error("не назван ни один отчёт прогона — вердикта о бюджете нет");
     const runs = files.map((file) => {
       let text: string;
@@ -86,11 +93,11 @@ function main(argv: string[]): number {
     for (const line of verdict.report) console.log(line);
     return verdict.ok ? 0 : 1;
   } catch (e) {
-    console.error(`[F8-41] ${(e as Error).message}`);
-    return 1;
+    console.error(`[F8-41] НЕ ВЫПОЛНИЛОСЬ: ${(e as Error).message}`);
+    return NO_VERDICT;
   }
 }
 
 if (process.argv[1] && process.argv[1].endsWith("ceremony-budget.ts")) {
-  process.exit(main(process.argv.slice(2)));
+  process.exit(run(process.argv.slice(2), process.env));
 }
