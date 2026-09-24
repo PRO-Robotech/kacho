@@ -40,6 +40,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/retiredknobs"
 )
 
 // readRepoFile reads a file addressed from the repository root. Like
@@ -215,29 +217,68 @@ func testStacksDeclareProviderRoad(t *testing.T, k providerRoadKnob, wantPath st
 // no template emitted it.
 func TestChart_EmitsRevocationEnv(t *testing.T) {
 	deployment := readRepoFile(t, "gateway", "deploy", "templates", "deployment.yaml")
-	// Пара клиентской личности стоит здесь по той же причине, что и адреса:
-	// профиль её ОБЪЯВЛЯЕТ (это утверждает соседний declared-тест), но пока
-	// шаблон её не эмитит, объявление ничего не меняет — ручка инертна, а
-	// контроль выглядит настроенным. Ровно этим и отличалось состояние, при
-	// котором каждый предъявитель нашей чеканки получал отказ.
-	// Ручки НАШЕЙ полосы (KACHO_API_GATEWAY_..._TOKEN_...) отсюда выведены и
-	// сверяются ВЫВОДИМО — TestChart_EmitsEveryDeclaredTokenAcceptanceKnob
-	// читает их перечень из объявления config. Выписанный список рядом с
-	// выводимым дал бы два места об одном предмете, и разошлись бы они молча:
-	// новая ручка попадала бы в одно и не попадала в другое.
-	for _, name := range []string{
-		"KACHO_HYDRA_INTROSPECTION_URL", "KACHO_HYDRA_ADMIN_URL",
-	} {
+	for _, f := range judgeRevocationEmission(revocationEmissionKnobs, deployment,
+		declaredEdgeKnobs(t), retiredknobs.Edge()) {
+		t.Error(f)
+	}
+}
+
+// revocationEmissionKnobs — имена, эмиссию которых требует проба выше.
+//
+// Пара клиентской личности стоит здесь по той же причине, что и адреса:
+// профиль её ОБЪЯВЛЯЕТ (это утверждает соседний declared-тест), но пока
+// шаблон её не эмитит, объявление ничего не меняет — ручка инертна, а
+// контроль выглядит настроенным. Ровно этим и отличалось состояние, при
+// котором каждый предъявитель нашей чеканки получал отказ.
+// Ручки НАШЕЙ полосы (KACHO_API_GATEWAY_..._TOKEN_...) отсюда выведены и
+// сверяются ВЫВОДИМО — TestChart_EmitsEveryDeclaredTokenAcceptanceKnob
+// читает их перечень из объявления config. Выписанный список рядом с
+// выводимым дал бы два места об одном предмете, и разошлись бы они молча:
+// новая ручка попадала бы в одно и не попадала в другое.
+var revocationEmissionKnobs = []string{
+	"KACHO_HYDRA_INTROSPECTION_URL", "KACHO_HYDRA_ADMIN_URL",
+}
+
+// judgeRevocationEmission — тело пробы выше, вынесенное, чтобы инъекция звала
+// ТО ЖЕ, что исполняется на дереве.
+//
+// # Требование ИСТЕКАЕТ вместе с читателем (#2778)
+//
+// «Эмитируй» верно, пока переменную читает процесс. Имя, которое ведомость
+// снятых ручек называет снятым, не требуется, а объявляется находкой ПРОБЫ:
+// перечень пережил свой предмет и снимается тем же изменением, что снимает
+// читателя. Иначе проба пришпиливала бы эмиссию, у которой читателя нет, и
+// краснела бы посреди изменения, обязанного её снять. Имя, которого процесс не
+// объявляет и ведомость не называет, — тоже находка: требование эмиссии ручки
+// без читателя ложно в обе стороны. Сама эмиссия снятого имени судится не здесь,
+// а двухколоночным гейтом (knob_producer_parity_test.go).
+func judgeRevocationEmission(names []string, deployment string,
+	declared map[string]bool, retired map[string]string) []string {
+	var out []string
+	for _, name := range names {
+		if why, gone := retired[name]; gone {
+			out = append(out, fmt.Sprintf("%s снята с процесса (%s) — перечень этой пробы "+
+				"пережил свой предмет: имя снимается из перечня тем же изменением, что "+
+				"снимает читателя, а проба без имён — вместе с последним", name, why))
+			continue
+		}
+		if !declared[name] {
+			out = append(out, fmt.Sprintf("%s — перечень пробы требует эмиссии, а процесс "+
+				"края такой ручки не объявляет и ведомость снятых её не называет: требование "+
+				"эмиссии ручки без читателя ложно в обе стороны", name))
+			continue
+		}
 		// Имя сверяется ДО КОНЦА СТРОКИ, а не вхождением: подстрока
 		// удовлетворяется и удлинённым именем, поэтому переименование
 		// `…_CERT_FILE` → `…_CERT_FILE_X` оставляло гейт зелёным. Найдено
 		// инъекцией при заведении второй пары — до неё гейт три имени из трёх
 		// «проверял» так же.
 		if !strings.Contains(deployment, "name: "+name+"\n") {
-			t.Errorf("the api-gateway template no longer emits %s — the values knob would be "+
-				"silently inert and the profiles above would assert nothing", name)
+			out = append(out, fmt.Sprintf("the api-gateway template no longer emits %s — the "+
+				"values knob would be silently inert and the profiles above would assert nothing", name))
 		}
 	}
+	return out
 }
 
 // checkAdminEndpoint mirrors the gateway's boot guard: an absolute in-cluster
