@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { expect, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
+import { expect, request, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
 import { LANE_VERBS, captureAnswers, lanePostAnswer, type LaneAnswer } from "./answer-on-arrival";
 import {
   LANE,
@@ -186,20 +186,43 @@ test("F8-23 · запрос каркаса, ушедший до перевыпу
   await withHuman(testInfo, "F8-23-inflight", page.context(), async (_seed, human) => {
     // Список аккаунтов каркаса ЗАДЕРЖАН до ответа смены пароля: он ушёл с
     // прежним носителем и доходит до края после перевыпуска.
+    //
+    // КАК ПОСТРОЕНО «УШЁЛ С ПРЕЖНИМ». Задержать запрос в браузере и отпустить
+    // его мало: печенья браузер кладёт в запрос, когда отпускает его, а не когда
+    // страница его выпустила, — и отпущенный после перевыпуска запрос уходит уже
+    // с НОВЫМ носителем. Так проба и зеленела, ни разу не построив своего «Дано»
+    // (посадка own @9038186d0d5, прогон @fc35fa9f651). Поэтому задержанный
+    // запрос отправляет КРАЮ проба — тем, чем его выпустила страница: тем же
+    // адресом и заголовками и носителем, который был у браузера в момент выпуска.
+    // Ответ края отдаётся странице как есть — телом, кодом и заголовками, включая
+    // печенья, которые он ставит или гасит, — и дальше их обрабатывает браузер.
     let release: () => void = () => undefined;
     const passwordAnswered = new Promise<void>((resolve) => {
       release = resolve;
     });
     const accountLists: number[] = [];
     let held = false;
+    let issuedWith = "";
+    const use = testInfo.project.use;
     await page.route(
       (u) => u.pathname === "/iam/v1/accounts",
       async (route) => {
-        if (!held) {
-          held = true;
-          await passwordAnswered;
+        if (held) return route.continue();
+        held = true;
+        issuedWith = await bearerOf(page.context());
+        await passwordAnswered;
+        const edge = await request.newContext({
+          baseURL: use.baseURL,
+          ignoreHTTPSErrors: use.ignoreHTTPSErrors,
+          storageState: { cookies: [], origins: [] },
+        });
+        try {
+          const headers = { ...route.request().headers(), cookie: `${SESSION_COOKIE}=${issuedWith}` };
+          const answer = await edge.fetch(route.request().url(), { method: route.request().method(), headers });
+          await route.fulfill({ response: answer });
+        } finally {
+          await edge.dispose();
         }
-        await route.continue();
       },
     );
     page.on("response", (r) => {
@@ -208,6 +231,8 @@ test("F8-23 · запрос каркаса, ушедший до перевыпу
     const s = await openSettings(page);
     await expect.poll(() => held, { message: "каркас не спросил список аккаунтов", timeout: 30_000 }).toBe(true);
     const before = await bearerOf(page.context());
+    expect(issuedWith, "задержанный запрос выпущен без носителя — «Дано» не построено").not.toBe("");
+    expect(issuedWith, "задержанный запрос выпущен не с тем носителем, что был у браузера").toBe(before);
     await s.password.current.fill(human.password);
     await s.password.next.fill(`${human.password}-nov`);
     const [changed] = await Promise.all([lanePost(page, LANE.password), s.password.submit.click()]);
@@ -216,10 +241,12 @@ test("F8-23 · запрос каркаса, ушедший до перевыпу
     await expect
       .poll(() => accountLists.at(-1), { message: "задержанный список не завершился", timeout: 30_000 })
       .toBeDefined();
-    expect(new URL(page.url()).pathname, "запрос с прежним носителем увёл человека на вход").toBe("/settings");
+    // Сперва — носитель: погашенный печеньем ответа край уводит на вход уже
+    // следствием, и отказ обязан назвать причину, а не следствие.
     const after = await bearerOf(page.context());
     expect(after, "носитель у браузера погашен ответом на запрос с прежним носителем").not.toBe("");
     expect(after, "смена пароля не перевыпустила носитель").not.toBe(before);
+    expect(new URL(page.url()).pathname, "запрос с прежним носителем увёл человека на вход").toBe("/settings");
     await expect
       .poll(() => accountLists.at(-1), {
         message: `список аккаунтов после перевыпуска не прочитан: ответы ${accountLists.join(", ")}`,
