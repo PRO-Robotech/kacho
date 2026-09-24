@@ -96,6 +96,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/parser"
+	"go/printer"
 	"go/token"
 	"os"
 	"path/filepath"
@@ -961,73 +962,265 @@ func assuranceLevels(src goPackageSource) (map[string]ruleRow, error) {
 	return out, nil
 }
 
-// ruleLadderIsTheEvaluator — правило служба исполняет ЭТОЙ таблицей и ПЕРВОЙ
-// подошедшей строкой: `LevelOf` зовёт исполнителя с таблицей `rows`, а
-// исполнитель обходит таблицу и возвращает уровень первой строки, чьё условие
-// истинно.
+// ruleLadderIsTheEvaluator — правило служба исполняет ЭТОЙ таблицей, над ВСЕМ
+// предъявленным и ПЕРВОЙ подошедшей строкой. Толкуется каждый узел исполнителя, а
+// не форма цикла (круг 2: оценщик пропускал любое присваивание и любой return, не
+// судил второй аргумент `LevelOf` и аргумент условия строки — таблица, обрезанная
+// до обхода, часть предъявленного и пустое множество толковались как правило пина):
+//
+//	func LevelOf(p []Presentation) (Level, bool) { return levelOf(rows, p) }
+//	func levelOf(table []row, p []Presentation) (Level, bool) {
+//		s := presented(p)                 // связывание необязательно: presented(p) можно подать прямо в условие
+//		for _, r := range table { if r.holds(s) { return r.level, true } }
+//		return "", false
+//	}
+//
+// Имена свободны, привязки — нет. Шаг вне этой формы — отказ с координатой узла:
+// судить по нему значило бы судить правилом, которое служба исполняет иначе.
 func ruleLadderIsTheEvaluator(src goPackageSource) error {
 	entry, err := src.funcDecl("", "LevelOf")
 	if err != nil {
 		return err
 	}
-	var evaluator string
-	if len(entry.Body.List) == 1 {
-		if ret, ok := entry.Body.List[0].(*ast.ReturnStmt); ok && len(ret.Results) == 1 {
-			if call, ok := ret.Results[0].(*ast.CallExpr); ok && len(call.Args) == 2 && isIdent(call.Args[0], "rows") {
-				if fn, ok := call.Fun.(*ast.Ident); ok {
-					evaluator = fn.Name
-				}
-			}
+	given := paramNames(entry.Type)
+	if len(given) != 1 {
+		return src.notInterpretable(entry, "`LevelOf` принимает %d параметров, ждали одно предъявленное", len(given))
+	}
+	switch len(entry.Body.List) {
+	case 0:
+		return src.notInterpretable(entry, "`LevelOf` с пустым телом")
+	case 1:
+	default:
+		return src.notInterpretable(entry.Body.List[0], "`LevelOf` несёт шаг помимо вызова исполнителя: `%s`",
+			src.text(entry.Body.List[0]))
+	}
+	var call *ast.CallExpr
+	var fn *ast.Ident
+	if ret, ok := entry.Body.List[0].(*ast.ReturnStmt); ok && len(ret.Results) == 1 {
+		if c, ok := ret.Results[0].(*ast.CallExpr); ok {
+			call = c
+			fn, _ = c.Fun.(*ast.Ident)
 		}
 	}
-	if evaluator == "" {
-		return src.notInterpretable(entry, "`LevelOf` не считает уровень таблицей `rows` — толкование судило бы "+
-			"таблицей, которую служба не исполняет")
+	if fn == nil || len(call.Args) != 2 {
+		return src.notInterpretable(entry.Body.List[0], "`LevelOf` не возвращает вызов исполнителя над таблицей "+
+			"и предъявленным: `%s`", src.text(entry.Body.List[0]))
 	}
-	eval, err := src.funcDecl("", evaluator)
+	if !isIdent(call.Args[0], "rows") {
+		return src.notInterpretable(call.Args[0], "`LevelOf` не считает уровень таблицей `rows` (подано `%s`) — "+
+			"толкование судило бы таблицей, которую служба не исполняет", src.text(call.Args[0]))
+	}
+	if !isIdent(call.Args[1], given[0]) {
+		return src.notInterpretable(call.Args[1], "`LevelOf` подаёт исполнителю не предъявленное целиком (`%s`), "+
+			"а `%s` — служба судила бы не всё, что предъявлено", given[0], src.text(call.Args[1]))
+	}
+	eval, err := src.funcDecl("", fn.Name)
 	if err != nil {
 		return err
 	}
-	params := paramNames(eval.Type)
-	if len(params) == 0 {
-		return src.notInterpretable(eval, "исполнитель %s без параметра таблицы", evaluator)
+	l, err := newRuleLadder(src, eval)
+	if err != nil {
+		return err
 	}
-	ladders := 0
-	for _, st := range eval.Body.List {
-		switch st := st.(type) {
-		case *ast.AssignStmt, *ast.ReturnStmt:
-		case *ast.RangeStmt:
-			if !firstHoldingRowWins(st, params[0]) {
-				return src.notInterpretable(st, "исполнитель %s обходит таблицу не «первая строка с истинным "+
-					"условием даёт уровень»", evaluator)
+	return l.walk(eval.Body.List)
+}
+
+// ruleLadder — исполнитель правила с привязками его узлов: имя таблицы, имя
+// предъявленного, тип множества, о котором спрашивают строки, и имя множества,
+// если оно связано до обхода.
+type ruleLadder struct {
+	src       goPackageSource
+	evaluator string
+	table     string
+	given     string
+	setType   string
+	set       string
+	at        ast.Node
+}
+
+// newRuleLadder — привязки параметров исполнителя: первый — таблица строк
+// `[]<строка>`, второй — предъявленное; тип множества берётся у поля `holds`
+// строки, то есть ровно тот, о котором спрашивают условия таблицы.
+func newRuleLadder(src goPackageSource, eval *ast.FuncDecl) (ruleLadder, error) {
+	l := ruleLadder{src: src, evaluator: eval.Name.Name, at: eval}
+	params := paramNames(eval.Type)
+	if len(params) != 2 || len(eval.Type.Params.List) != 2 {
+		return l, src.notInterpretable(eval, "исполнитель %s принимает не (таблица, предъявленное): параметров %d",
+			l.evaluator, len(params))
+	}
+	l.table, l.given = params[0], params[1]
+	arr, ok := eval.Type.Params.List[0].Type.(*ast.ArrayType)
+	var rowType *ast.Ident
+	if ok && arr.Len == nil {
+		rowType, _ = arr.Elt.(*ast.Ident)
+	}
+	if rowType == nil {
+		return l, src.notInterpretable(eval.Type.Params.List[0], "таблица исполнителя %s — не срез именованных строк",
+			l.evaluator)
+	}
+	setType, err := rowHoldsSetType(src, rowType.Name)
+	if err != nil {
+		return l, err
+	}
+	l.setType = setType
+	return l, nil
+}
+
+// rowHoldsSetType — тип множества, которое принимает условие строки:
+// `holds func(<тип>) bool` у структуры строки.
+func rowHoldsSetType(src goPackageSource, rowType string) (string, error) {
+	for _, rel := range src.sortedFiles() {
+		for _, decl := range src.files[rel].Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.TYPE {
+				continue
 			}
-			ladders++
-		default:
-			return src.notInterpretable(st, "исполнитель %s несёт шаг вне лестницы", evaluator)
+			for _, spec := range gd.Specs {
+				ts, ok := spec.(*ast.TypeSpec)
+				if !ok || ts.Name.Name != rowType {
+					continue
+				}
+				if st, ok := ts.Type.(*ast.StructType); ok {
+					for _, f := range st.Fields.List {
+						if len(f.Names) != 1 || f.Names[0].Name != "holds" {
+							continue
+						}
+						if ft, ok := f.Type.(*ast.FuncType); ok && len(ft.Params.List) == 1 && len(ft.Params.List[0].Names) <= 1 {
+							if id, ok := ft.Params.List[0].Type.(*ast.Ident); ok {
+								return id.Name, nil
+							}
+						}
+						return "", src.notInterpretable(f, "условие строки %s — не `holds func(<множество>) bool`", rowType)
+					}
+				}
+				return "", src.notInterpretable(ts, "строка %s без условия `holds`", rowType)
+			}
 		}
 	}
-	if ladders != 1 {
-		return src.notInterpretable(eval, "исполнитель %s: обходов таблицы %d, ждали один", evaluator, ladders)
+	return "", fmt.Errorf("%w: тип строки правила %s не найден", errRuleNotInterpretable, rowType)
+}
+
+// walk — тело исполнителя по шагам лестницы: [связывание множества], обход
+// таблицы, «сессия не выдаётся». Иной шаг, иной порядок или недостающий шаг —
+// отказ.
+func (l *ruleLadder) walk(body []ast.Stmt) error {
+	const (
+		beforeLadder = iota
+		afterLadder
+		done
+	)
+	stage := beforeLadder
+	for _, st := range body {
+		switch st := st.(type) {
+		case *ast.AssignStmt:
+			if stage != beforeLadder || l.set != "" || st.Tok != token.DEFINE || len(st.Lhs) != 1 || len(st.Rhs) != 1 ||
+				!l.isSetConversionCall(st.Rhs[0]) {
+				return l.src.notInterpretable(st, "исполнитель %s несёт шаг вне лестницы: `%s`", l.evaluator, l.src.text(st))
+			}
+			name, ok := st.Lhs[0].(*ast.Ident)
+			if !ok || name.Name == "_" || name.Name == l.table || name.Name == l.given {
+				return l.src.notInterpretable(st, "исполнитель %s связывает множество предъявленного не новым именем: `%s`",
+					l.evaluator, l.src.text(st))
+			}
+			if !l.isSetConversion(st.Rhs[0]) {
+				return l.src.notInterpretable(st.Rhs[0], "множество предъявленного собрано не из `%s` целиком: `%s`",
+					l.given, l.src.text(st.Rhs[0]))
+			}
+			l.set = name.Name
+		case *ast.RangeStmt:
+			if stage != beforeLadder {
+				return l.src.notInterpretable(st, "исполнитель %s несёт шаг вне лестницы: второй обход таблицы", l.evaluator)
+			}
+			if err := l.firstHoldingRowWins(st); err != nil {
+				return err
+			}
+			stage = afterLadder
+		case *ast.ReturnStmt:
+			if stage != afterLadder {
+				return l.src.notInterpretable(st, "исполнитель %s несёт шаг вне лестницы: `%s`", l.evaluator, l.src.text(st))
+			}
+			if len(st.Results) != 2 || !isEmptyString(st.Results[0]) || !isIdent(st.Results[1], "false") {
+				return l.src.notInterpretable(st, "исполнитель %s без подошедшей строки возвращает `%s`, ждали «сессия "+
+					"не выдаётся» (`\"\", false`)", l.evaluator, l.src.text(st))
+			}
+			stage = done
+		default:
+			return l.src.notInterpretable(st, "исполнитель %s несёт шаг вне лестницы: `%s`", l.evaluator, l.src.text(st))
+		}
+	}
+	if stage != done {
+		return l.src.notInterpretable(l.at, "исполнитель %s: лестница не завершена — ждали обход таблицы и после "+
+			"него «сессия не выдаётся»", l.evaluator)
 	}
 	return nil
 }
 
-// firstHoldingRowWins — `for _, r := range table { if r.holds(…) { return r.level, … } }`.
-func firstHoldingRowWins(st *ast.RangeStmt, table string) bool {
+// firstHoldingRowWins — `for _, r := range <таблица> { if r.holds(<множество>) { return r.level, true } }`.
+func (l *ruleLadder) firstHoldingRowWins(st *ast.RangeStmt) error {
+	notFirstWins := func(n ast.Node) error {
+		return l.src.notInterpretable(n, "исполнитель %s обходит таблицу не «первая строка с истинным условием даёт "+
+			"уровень»: `%s`", l.evaluator, l.src.text(n))
+	}
+	if !isIdent(st.X, l.table) {
+		return l.src.notInterpretable(st.X, "исполнитель %s обходит не таблицу `%s`, а `%s`", l.evaluator, l.table,
+			l.src.text(st.X))
+	}
 	row, ok := st.Value.(*ast.Ident)
-	if !ok || !isIdent(st.X, table) || len(st.Body.List) != 1 {
-		return false
+	if !ok || (st.Key != nil && !isIdent(st.Key, "_")) {
+		return notFirstWins(st)
+	}
+	if row.Name == l.set || row.Name == l.table || row.Name == l.given || row.Name == l.setType {
+		return l.src.notInterpretable(st.Value, "строка обхода `%s` затеняет привязку исполнителя %s", row.Name,
+			l.evaluator)
+	}
+	if len(st.Body.List) != 1 {
+		return notFirstWins(st)
 	}
 	ifs, ok := st.Body.List[0].(*ast.IfStmt)
 	if !ok || ifs.Init != nil || ifs.Else != nil || len(ifs.Body.List) != 1 {
-		return false
+		return notFirstWins(st.Body.List[0])
 	}
 	call, ok := ifs.Cond.(*ast.CallExpr)
 	if !ok || !isSelector(call.Fun, row.Name, "holds") {
-		return false
+		return notFirstWins(ifs.Cond)
+	}
+	if len(call.Args) != 1 || !(l.set != "" && isIdent(call.Args[0], l.set) || l.isSetConversion(call.Args[0])) {
+		return l.src.notInterpretable(call, "исполнитель %s спрашивает строку не о множестве предъявленного, а `%s`",
+			l.evaluator, l.src.text(call))
 	}
 	ret, ok := ifs.Body.List[0].(*ast.ReturnStmt)
-	return ok && len(ret.Results) >= 1 && isSelector(ret.Results[0], row.Name, "level")
+	if !ok || len(ret.Results) != 2 || !isSelector(ret.Results[0], row.Name, "level") || !isIdent(ret.Results[1], "true") {
+		return l.src.notInterpretable(ifs.Body.List[0], "исполнитель %s: подошедшая строка возвращает `%s`, ждали её "+
+			"уровень и выданную сессию (`%s.level, true`)", l.evaluator, l.src.text(ifs.Body.List[0]), row.Name)
+	}
+	return nil
+}
+
+// isSetConversionCall — `<тип множества>(…)`, с любым аргументом.
+func (l *ruleLadder) isSetConversionCall(e ast.Expr) bool {
+	call, ok := e.(*ast.CallExpr)
+	return ok && isIdent(call.Fun, l.setType)
+}
+
+// isSetConversion — `<тип множества>(<предъявленное>)`: множество всего предъявленного.
+func (l *ruleLadder) isSetConversion(e ast.Expr) bool {
+	call, ok := e.(*ast.CallExpr)
+	return ok && isIdent(call.Fun, l.setType) && len(call.Args) == 1 && isIdent(call.Args[0], l.given)
+}
+
+// isEmptyString — литерал `""`.
+func isEmptyString(e ast.Expr) bool {
+	bl, ok := e.(*ast.BasicLit)
+	return ok && bl.Kind == token.STRING && (bl.Value == `""` || bl.Value == "``")
+}
+
+// text — исходник узла одной строкой: отказ называет то, что увидел.
+func (s goPackageSource) text(n ast.Node) string {
+	var b strings.Builder
+	if err := printer.Fprint(&b, s.fset, n); err != nil {
+		return fmt.Sprintf("%T", n)
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
 }
 
 // presentedPredicate — толкованный метод множества предъявленного.

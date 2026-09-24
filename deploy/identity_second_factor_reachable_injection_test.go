@@ -727,9 +727,47 @@ func rowsOfLevel(rule ownRule, level string) []string {
 	return out
 }
 
+// injectedWithCoordinate — injectedPackage и координата внесённого узла: файл и
+// строка, на которую после замены ложится подстрока at текста repl. Замена обязана
+// попасть ровно в одно место файла: второе вхождение означало бы, что инъекция
+// бьёт не туда, куда названо.
+func injectedWithCoordinate(t *testing.T, src goPackageSource, old, repl, at string) (goPackageSource, string) {
+	t.Helper()
+	rel, body := packageFileWith(t, src, old)
+	if n := strings.Count(body, old); n != 1 {
+		t.Fatalf("текст %q в %s встречается %d раз, ждали один — инъекция неоднозначна", old, rel, n)
+	}
+	j := strings.Index(repl, at)
+	if j < 0 {
+		t.Fatalf("узел %q не входит во внесённый текст %q — координату ждать не на чем", at, repl)
+	}
+	line := 1 + strings.Count(body[:strings.Index(body, old)]+repl[:j], "\n")
+	out, err := src.with(rel, strings.Replace(body, old, repl, 1))
+	if err != nil {
+		t.Fatalf("инъекция в %s не разобрана: %v", rel, err)
+	}
+	return out, fmt.Sprintf("%s:%d", rel, line)
+}
+
+// Места исполнителя правила у пина, в которые пробы вносят дефект.
+const (
+	pinnedLevelOfCall  = "return levelOf(rows, presentations)"
+	pinnedSetBinding   = "s := presented(presentations)"
+	pinnedLadderHead   = "for _, r := range table {"
+	pinnedLadderCond   = "if r.holds(s) {"
+	pinnedLadderReturn = "return r.level, true"
+	pinnedLadderMiss   = `return "", false`
+)
+
 // TestIdentitySecondFactorInjection_RuleOutsideTheInterpretationIsARefusal —
 // строка, помощник или лестница, которых толкование не узнаёт, — отказ с
 // координатой, а не догадка и не пропуск строки.
+//
+// Судится ТЕКСТ отказа: причина и координата внесённого узла. Один errors.Is
+// не отличает отказ по своей причине от отказа соседней проверки — а своя
+// проверка, мёртвая за спиной соседней, и была дефектом круга 2: исполнитель
+// принимал любое присваивание и любой return, не судил второй аргумент `LevelOf`
+// и аргумент условия строки.
 func TestIdentitySecondFactorInjection_RuleOutsideTheInterpretationIsARefusal(t *testing.T) {
 	pin, _, assurance := readPinnedKaname(t)
 	vocab := assuranceVocabulary(assurance)
@@ -740,24 +778,113 @@ func TestIdentitySecondFactorInjection_RuleOutsideTheInterpretationIsARefusal(t 
 		t.Fatalf("у пина %s не толкованы строки «1» или «2» (%v) — утверждения ниже вакуумны", pin, rule.rows)
 	}
 
-	cases := []struct{ name, old, repl string }{
-		{"условие строки — не выражение над предъявленным", pinnedSecondFactorRow, "len(s) > 1"},
-		{"постоянная вне словаря службы", "s.has(MethodWebAuthn) }", "s.has(MethodPasskey) }"},
-		{"помощник, который не спрашивает способ", "p.method == MethodWebAuthn && p.userVerified", "p.userVerified"},
-		{"уровень считается не по этой таблице", "return levelOf(rows, presentations)", "return levelOf(nil, presentations)"},
-		{"лестница — не первая подошедшая строка", "if r.holds(s) {", "if !r.holds(s) {"},
+	// at — внесённый узел, на строку которого обязан указать отказ; пусто — вся замена.
+	cases := []struct{ name, old, repl, at, reason string }{
+		{"условие строки — не выражение над предъявленным", pinnedSecondFactorRow, "len(s) > 1", "",
+			"вне толкования"},
+		{"постоянная вне словаря службы", "s.has(MethodWebAuthn) }", "s.has(MethodPasskey) }", "",
+			"постоянная MethodPasskey вне словаря службы"},
+		{"помощник, который не спрашивает способ", "p.method == MethodWebAuthn && p.userVerified", "p.userVerified", "",
+			"не вида «есть предъявление способа с флагами»"},
+		{"уровень считается не по этой таблице", pinnedLevelOfCall, "return levelOf(nil, presentations)", "nil",
+			"не считает уровень таблицей `rows`"},
+		{"исполнителю подана часть предъявленного", pinnedLevelOfCall, "return levelOf(rows, presentations[:1])",
+			"presentations[:1]", "подаёт исполнителю не предъявленное целиком"},
+		{"`LevelOf` переназначает предъявленное до вызова", pinnedLevelOfCall,
+			"presentations = presentations[:1]\n\t" + pinnedLevelOfCall, "presentations = presentations[:1]",
+			"несёт шаг помимо вызова исполнителя"},
+		{"множество собрано не из предъявленного", pinnedSetBinding, "s := presented(nil)", "",
+			"множество предъявленного собрано не из `presentations` целиком"},
+		{"таблица переназначена до обхода", pinnedLadderHead, "table = table[3:]\n\t" + pinnedLadderHead,
+			"table = table[3:]", "шаг вне лестницы"},
+		{"уровень выдан до обхода", pinnedSetBinding, "return Level3, true\n\t" + pinnedSetBinding,
+			"return Level3, true", "шаг вне лестницы"},
+		{"обходится не таблица исполнителя", pinnedLadderHead, "for _, r := range rows {", "rows",
+			"обходит не таблицу `table`"},
+		{"лестница — не первая подошедшая строка", pinnedLadderCond, "if !r.holds(s) {", "",
+			"не «первая строка с истинным условием даёт уровень»"},
+		{"условие строки спрошено не о предъявленном", pinnedLadderCond, "if r.holds(nil) {", "nil",
+			"спрашивает строку не о множестве предъявленного"},
+		{"подошедшая строка не выдаёт сессию", pinnedLadderReturn, "return r.level, false", "",
+			"подошедшая строка возвращает"},
+		{"без подошедшей строки сессия выдаётся", pinnedLadderMiss, "return Level1, true", "",
+			"без подошедшей строки возвращает"},
 	}
 	refused := 0
 	for _, c := range cases {
-		_, err := readOwnRule(injectedPackage(t, assurance, c.old, c.repl), vocab)
+		at := c.at
+		if at == "" {
+			at = c.repl
+		}
+		src, where := injectedWithCoordinate(t, assurance, c.old, c.repl, at)
+		_, err := readOwnRule(src, vocab)
 		if !errors.Is(err, errRuleNotInterpretable) {
-			t.Fatalf("%s: толкование ответило %v — неузнанная форма правила обязана быть отказом, иначе гейт "+
+			t.Errorf("%s: толкование ответило %v — неузнанная форма правила обязана быть отказом, иначе гейт "+
 				"судил бы по правилу, которого служба не исполняет", c.name, err)
+			continue
+		}
+		// Отказ по чужой причине или на чужом узле означал бы, что своя проверка
+		// мертва и держится соседней.
+		if msg := err.Error(); !strings.Contains(msg, where+": ") || !strings.Contains(msg, c.reason) {
+			t.Errorf("%s: отказ %q — ждали координату %s и причину «%s»", c.name, msg, where, c.reason)
+			continue
 		}
 		refused++
 	}
-	t.Logf("перепись: у пина %s строк правила %d · инъекций %d · отказов толкования %d",
+	t.Logf("перепись: у пина %s строк правила %d · инъекций %d · отказов толкования с причиной и координатой %d",
 		pin, len(rule.rows), len(cases), refused)
+}
+
+// TestIdentitySecondFactorInjection_EvaluatorSpelledOtherwiseIsTheSameRule — ось,
+// на которой пин обязан МОЛЧАТЬ: исполнитель, записанный иначе, но исполняющий то
+// же правило, толкуется без отказа и даёт тот же вердикт. Каждый близнец отличается
+// от своей инъекции (соседняя проба) одним фактом — узел тот же, привязан он к
+// законному значению. Без них «толкует каждый узел» было бы неотличимо от
+// «отказывает на любой правке исполнителя».
+func TestIdentitySecondFactorInjection_EvaluatorSpelledOtherwiseIsTheSameRule(t *testing.T) {
+	byFloor := readCatalogFloors(t)
+	pin, root, assurance := readPinnedKaname(t)
+	vocab := assuranceVocabulary(assurance)
+	console := consoleWithoutOwnDeclaration(t) + ownDeclaration("totp")
+	_, want := ownFloorTwo(t, pin, root, vocab, mustOwnRule(t, assurance, vocab), console, byFloor)
+	if !want.Floors["2"] {
+		t.Fatalf("у пина %s с консолью [totp] пол «2» недостижим (%v) — близнецам не с чем совпадать", pin, want.Floors)
+	}
+
+	twins := []struct{ name, twinOf, old, repl string }{
+		{"предъявленное `LevelOf` под другим именем", "исполнителю подана часть предъявленного",
+			"func LevelOf(presentations []Presentation) (Level, bool) {\n\t" + pinnedLevelOfCall,
+			"func LevelOf(ps []Presentation) (Level, bool) {\n\treturn levelOf(rows, ps)"},
+		{"множество под другим именем", "множество собрано не из предъявленного",
+			pinnedSetBinding + "\n\t" + pinnedLadderHead + "\n\t\t" + pinnedLadderCond,
+			"set := presented(presentations)\n\t" + pinnedLadderHead + "\n\t\tif r.holds(set) {"},
+		{"таблица исполнителя под другим именем", "таблица переназначена до обхода",
+			"func levelOf(table []row, presentations []Presentation) (Level, bool) {\n\t" + pinnedSetBinding + "\n\t" +
+				pinnedLadderHead,
+			"func levelOf(ladder []row, presentations []Presentation) (Level, bool) {\n\t" + pinnedSetBinding +
+				"\n\tfor _, r := range ladder {"},
+		{"множество собрано прямо в условии", "условие строки спрошено не о предъявленном",
+			pinnedSetBinding + "\n\t" + pinnedLadderHead + "\n\t\t" + pinnedLadderCond,
+			pinnedLadderHead + "\n\t\tif r.holds(presented(presentations)) {"},
+		{"строка обхода под другим именем", "подошедшая строка не выдаёт сессию",
+			pinnedLadderHead + "\n\t\t" + pinnedLadderCond + "\n\t\t\t" + pinnedLadderReturn,
+			"for _, row := range table {\n\t\tif row.holds(s) {\n\t\t\treturn row.level, true"},
+	}
+	for _, c := range twins {
+		src, _ := injectedWithCoordinate(t, assurance, c.old, c.repl, c.repl)
+		rule, err := readOwnRule(src, vocab)
+		if err != nil {
+			t.Fatalf("%s (близнец «%s»): толкование отказало — %v; то же правило записано иначе, и отказ здесь "+
+				"значит, что проба краснеет на любой правке исполнителя", c.name, c.twinOf, err)
+		}
+		_, got := ownFloorTwo(t, pin, root, vocab, rule, console, byFloor)
+		if fmt.Sprint(got.Floors, got.Usable) != fmt.Sprint(want.Floors, want.Usable) {
+			t.Fatalf("%s: вердикт %v %v, у пина %v %v — близнец исполняет то же правило", c.name,
+				got.Floors, got.Usable, want.Floors, want.Usable)
+		}
+	}
+	t.Logf("перепись: у пина %s близнецов исполнителя %d · молчат с вердиктом пина %v %v", pin, len(twins),
+		want.Floors, want.Usable)
 }
 
 // TestIdentitySecondFactorInjection_SilentRootIsARefusal — корень, не подавший
