@@ -385,6 +385,27 @@ describe("«есть ли сессия» — три исхода по ТИПУ, 
     }
   });
 
+  it("F8-12 · край назвал носитель негодным и погасил его — сессии нет, а не «не спросили»", async () => {
+    // Край отвечает на негодный носитель у «кто я» НЕ `{"user":null}`, а отказом
+    // `invalid_token` — тем же текстом, что и на недоступность своего авторитета
+    // (F4d-23). Различаются они ПОВЕДЕНИЕМ: негодный носитель край гасит, при
+    // недоступности носитель цел. Второй вопрос уходит уже без погашенного
+    // носителя, и ответ на него решает.
+    lane = installLane({
+      "GET /iam/v1/auth/me": (_c, nth) => (nth === 1 ? EDGE_SESSION_ENDED : { status: 200, body: { user: null } }),
+    });
+    expect(await sessionIdentity()).toEqual({ kind: "absent" });
+    expect(lane.of("GET", "/iam/v1/auth/me")).toHaveLength(2);
+  });
+
+  it("F8-12 · край отвечает «сессия кончилась» и на второй вопрос — «не спросили», и третьего вопроса нет", async () => {
+    lane = installLane({ "GET /iam/v1/auth/me": EDGE_SESSION_ENDED });
+    const who = await sessionIdentity();
+    expect(who.kind).toBe("unknown");
+    expect(who.kind === "unknown" ? who.refusal.message : "").toBe("session ended; sign in again");
+    expect(lane.of("GET", "/iam/v1/auth/me")).toHaveLength(2);
+  });
+
   it("C8 · поля подтверждённости нет в ответе — признака нет, «не подтверждён» не выдумывается", async () => {
     lane = installLane({
       "GET /iam/v1/auth/me": {
