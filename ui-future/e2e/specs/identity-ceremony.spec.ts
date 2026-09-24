@@ -1,6 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
+import { createServer, type AddressInfo } from "node:net";
 import { expect, type BrowserContext, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { LANE_VERBS, answerOnArrival, captureAnswers, lanePostAnswer, type LaneAnswer } from "./answer-on-arrival";
 import { raiseAssurance } from "./assurance";
@@ -686,32 +687,50 @@ test("F8-18 · выход гасит носитель и возвращает н
   // По одному обращению на каждую форму адреса поставщика и на каждый вид
   // обращения. Перепись обязана назвать каждое методом и адресом; без подсадки
   // она выше была пуста — значит отрицание не тождественно.
-  await page.evaluate(async () => {
-    await fetch("/.ory/kratos/public/sessions/whoami").catch(() => undefined);
-    await fetch("/oauth2/auth").catch(() => undefined);
-    // Обращение БЕЗ ОТВЕТА, чужое происхождение, поверхность потоков поставщика.
-    await fetch("https://127.0.0.1:9/self-service/logout/browser", { mode: "no-cors" }).catch(() => undefined);
-  });
-  await page.evaluate(() => {
-    window.location.assign("/.ory/kratos/public/self-service/login/browser");
-  });
-  await expect
-    .poll(() => census.providerCalls().map((c) => `${c.method} ${c.origin}${c.path} ${c.kind}`), {
-      message: `перепись не назвала подсаженные обращения к поставщику:\n${census.describe()}`,
-      timeout: 15_000,
-    })
-    .toEqual([
-      `GET ${origin}/.ory/kratos/public/sessions/whoami запрос`,
-      `GET ${origin}/oauth2/auth запрос`,
-      "GET https://127.0.0.1:9/self-service/logout/browser запрос",
-      `GET ${origin}/.ory/kratos/public/self-service/login/browser документ`,
-    ]);
-  await expect
-    .poll(() => census.providerCalls().find((c) => c.origin === "https://127.0.0.1:9")?.outcome, {
-      message: "обращение без ответа не записано как «ответа нет»",
-      timeout: 15_000,
-    })
-    .toBe("ответа нет");
+  //
+  // Обращение БЕЗ ОТВЕТА — на чужое происхождение, поверхность потоков
+  // поставщика. Запросом страницы его не выпустить: политика консоли
+  // `connect-src 'self'` отвергает чужое происхождение ДО выпуска, и такого
+  // обращения нет ни у сервера, ни в переписи (посадка own @9038186d0d5: из
+  // четырёх подсаженных перепись назвала три). Поэтому оно — окно, открытое
+  // страницей: переход документа политика не закрывает, и окно — тоже
+  // обращение консоли (Р6 п. 1). Адрес — петлевой сервер пробы, который
+  // принимает соединение и рвёт его, не ответив: «ответа нет» здесь построено,
+  // а не зависит от того, свободен ли чей-то порт.
+  const silent = createServer((socket) => socket.destroy());
+  await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", resolve));
+  const silentOrigin = `http://127.0.0.1:${(silent.address() as AddressInfo).port}`;
+  try {
+    await page.evaluate(async (away) => {
+      await fetch("/.ory/kratos/public/sessions/whoami").catch(() => undefined);
+      await fetch("/oauth2/auth").catch(() => undefined);
+      window.open(`${away}/self-service/logout/browser`);
+    }, silentOrigin);
+    // Переход окна выпущен и остался без ответа — до ухода страницы: порядок
+    // переписи тогда тот, в каком подсажено.
+    await expect
+      .poll(() => census.providerCalls().find((c) => c.origin === silentOrigin)?.outcome, {
+        message: `обращение без ответа не записано как «ответа нет»:\n${census.describe()}`,
+        timeout: 15_000,
+      })
+      .toBe("ответа нет");
+    await page.evaluate(() => {
+      window.location.assign("/.ory/kratos/public/self-service/login/browser");
+    });
+    await expect
+      .poll(() => census.providerCalls().map((c) => `${c.method} ${c.origin}${c.path} ${c.kind}`), {
+        message: `перепись не назвала подсаженные обращения к поставщику:\n${census.describe()}`,
+        timeout: 15_000,
+      })
+      .toEqual([
+        `GET ${origin}/.ory/kratos/public/sessions/whoami запрос`,
+        `GET ${origin}/oauth2/auth запрос`,
+        `GET ${silentOrigin}/self-service/logout/browser документ`,
+        `GET ${origin}/.ory/kratos/public/self-service/login/browser документ`,
+      ]);
+  } finally {
+    await new Promise<void>((resolve) => silent.close(() => resolve()));
+  }
 });
 
 test("F8-18 · после выхода следующий человек в этом браузере не видит чужих аккаунта и проекта", async ({
