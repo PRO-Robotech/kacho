@@ -1,12 +1,18 @@
-const LOGIN_PATH = "/.ory/kratos/public/self-service/login/browser";
+import { CEREMONY_ADDRESSES, loginAddress } from "@shared/pages/auth/ceremony-addresses";
 
+/**
+ * Адрес экрана входа КОНСОЛИ с текущим адресом возврата.
+ *
+ * Вход ведёт консоль (приёмка F8): кнопка «Войти» и отказ `401` уводят на её
+ * экран, а не на поток чужого приложения. Сборка адреса — одна на консоль
+ * (`loginAddress`), здесь только текущий адрес возврата.
+ */
 export function loginUrl(returnTo = currentReturnTo()): string {
-  const qs = returnTo ? `?return_to=${encodeURIComponent(returnTo)}` : "";
-  return `${LOGIN_PATH}${qs}`;
+  return loginAddress(returnTo);
 }
 
 export function redirectToLogin(): void {
-  if (isAuthRoute(window.location.pathname)) {
+  if (isCeremonyRoute(window.location.pathname)) {
     return;
   }
   window.location.assign(loginUrl());
@@ -16,10 +22,7 @@ function currentReturnTo(): string {
   return `${window.location.pathname}${window.location.search}${window.location.hash}`;
 }
 
-function isAuthRoute(pathname: string): boolean {
-  return (
-    pathname.startsWith("/login") ||
-    pathname.startsWith("/.ory/kratos/public/self-service/") ||
-    pathname.startsWith("/auth/")
-  );
+/** На экране церемонии уводить на вход нечего: он и есть вход либо его соседи. */
+function isCeremonyRoute(pathname: string): boolean {
+  return CEREMONY_ADDRESSES.some((address) => pathname === address || pathname.startsWith(`${address}/`));
 }

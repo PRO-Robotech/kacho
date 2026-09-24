@@ -1,344 +1,202 @@
 // Повторное подтверждение личности — ОДНА реализация на продукт.
 //
-// Копий было две, в iam и в system, и различались они ровно одной строкой —
-// алиасом импорта страницы входа, — причём обе вели к одному и тому же файлу в
-// shared. То есть дублировались 368 строк ради разницы, которой по существу не
-// было. Сама та страница с тех пор снята (#1225): продукт её не монтировал ни
-// одним маршрутом, а адрес входа принадлежит поставщику личности. Кодировщик
-// двоичных полей, единственное, что окно оттуда брало, живёт своим модулем.
-//
 // Дом здесь потому, что подтверждение личности принадлежит не модулю, а
 // продукту: его просит любое действие, меняющее посадку безопасности, и просить
 // его двумя разными окнами значит показывать человеку два разных продукта в
 // момент, когда он и так насторожён.
 //
 // ─────────────────────────────────────────────────────────────────────────────
-// ЧТО ЭТО ОКНО ДЕЛАЕТ (#1213)
+// ЧТО ЭТО ОКНО ДЕЛАЕТ (#1213, приёмка F8 S2)
 //
-// Край объявляет части глаголов пол уровня уверенности «2» и спрашивает его на
-// браузерной полосе. Окно — единственное место консоли, где арендатор этот
-// уровень поднимает. Значит оно обязано вести ТОТ способ, который служба
-// личности действительно предлагает, а не тот, который однажды выбрал автор.
+// Окно — единственное место консоли, где человек поднимает уровень
+// уверенности или свежесть предъявления. Ведёт оно это НАШИМ глаголом —
+// `POST /iam/v1/auth/step-up` с признаком формы вида `step-up`, — а не уводит на
+// чужое приложение: церемония проходит, не покидая консоли, и отвергнутое
+// действие после неё повторяется (его повторяет клиент API, `requestStepUp`).
 //
-// Прежняя редакция вела РОВНО ОДИН способ — ключ доступа, — и объявляла его
-// единственным в тексте кнопки. Настройки же объявляют ключ доступа
-// БЕСПАРОЛЬНЫМ, то есть ПЕРВЫМ фактором: в потоке `aal=aal2` служба его не
-// предлагает вовсе. Две стороны об одном предмете, и неверна была их РАЗНИЦА:
-// 32 глагола каталога оказывались недостижимы из браузера ДЛЯ ВСЕХ.
+// Способ выбирает ЧЕЛОВЕК, и окно предлагает только те, что отвечают просьбе
+// (`StepUpRequest`, @shared/api/step-up):
 //
-// Поэтому способ теперь ВЫВОДИТСЯ ИЗ ПОТОКА, а не выбирается здесь: окно
-// спрашивает службу личности, что она предлагает, и ведёт первый способ, который
-// умеет (перечень — `@shared/lib/step-up-methods`, он же сторона консоли для
-// гейта дерева). Согласие двух сторон становится свойством построения, а не
-// совпадением двух объявлений.
+//   • вызов края RFC 9470 — уровень (`acr_values`) либо свежесть второго фактора
+//     (один `max_age`) закрывает только второй фактор, поэтому пароля в выборе
+//     нет — и тогда, когда уровень в вызове не назван;
+//   • служба требует свежести (`SESSION_NOT_FRESH`) — годится и пароль.
 //
-// ─────────────────────────────────────────────────────────────────────────────
-// ПОЧЕМУ ОТСУТСТВИЕ ВТОРОГО ФАКТОРА — НАЗВАННОЕ СОСТОЯНИЕ, А НЕ ОШИБКА
+// ПОЧЕМУ «ВТОРОЙ ФАКТОР НЕ НАСТРОЕН» — НАЗВАННОЕ СОСТОЯНИЕ, А НЕ ПУСТОЕ ОКНО
 //
-// У арендатора, заведённого паролем, второго фактора нет НИ ОДНОГО, пока он его
-// не настроит. Это не сбой и не отказ в правах: это отсутствующее предусловие,
-// и единственный полезный ответ — сказать, чего не хватает, и отвести туда, где
-// это заводят. Молчаливый отказ здесь читался бы как «действие вам запрещено»,
-// а его на самом деле просто нечем подтвердить.
-//
-// Обещание запроса при этом НЕ разрешается: fail-closed. Разрешить его значило
-// бы пропустить действие, за которое никто не поручился.
+// Окно не спрашивает заранее, заведён ли фактор: служба отвечает на
+// предъявление, и отказ `SECOND_FACTOR_NOT_ENROLLED` называет это сама. Окно
+// показывает её текст и путь туда, где фактор заводят, и НЕ закрывается молча
+// (F8-36). Обещание запроса при этом не разрешается: fail-closed — разрешить его
+// значило бы пропустить действие, за которое никто не поручился.
 
-import { useEffect, useState } from "react";
-import { Modal, Button, Alert, Space, Typography, Input } from "antd";
-import { SafetyOutlined, KeyOutlined, NumberOutlined, SettingOutlined } from "@ant-design/icons";
-import { useAuth } from "@shared/contexts/AuthContext";
-import { kratos, findNode, csrfToken, type SelfServiceFlow } from "@shared/lib/kratos";
-import { bufferToBase64Url } from "@shared/lib/webauthn";
-import { STEP_UP_METHODS, STEP_UP_METHOD_NODES, type StepUpMethod } from "@shared/lib/step-up-methods";
+import { useEffect, useId, useMemo, useState } from "react";
+import { Button, Form, Input, Modal, Radio, Typography } from "antd";
+import {
+  FormTokenHolder,
+  LANE_REASON,
+  LaneRefusal,
+  laneRefusalOf,
+  loginLane,
+  type SecondFactorPresentation,
+} from "@shared/api/login-lane";
+import { setStepUpRequester, type StepUpRequest } from "@shared/api/step-up";
+import { LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalAlert";
+import { EMPTY_PRESENTATION, SecondFactorCodeField } from "@shared/components/molecules/auth/SecondFactorCodeField";
+import { FormGrid } from "@shared/components/organisms/form/FormGrid";
+import { useOptionalAuth } from "@shared/contexts/AuthContext";
+import { ACCOUNT_SETTINGS_ADDRESS } from "@shared/pages/auth/ceremony-addresses";
 
-const { Paragraph, Text } = Typography;
+const { Paragraph } = Typography;
+
+/** Экран, где заводят второй фактор, — параметры учётной записи консоли. */
+export const SECOND_FACTOR_ENROLLMENT_ADDRESS = ACCOUNT_SETTINGS_ADDRESS;
 
 interface PendingRequest {
-  acr?: string;
+  request: StepUpRequest;
   resolve: () => void;
   reject: (e: Error) => void;
 }
 
-/** Способ, отправляемый КОДОМ, а не церемонией ключа доступа. */
-type CodeMethod = Exclude<StepUpMethod, "webauthn">;
-
-/**
- * Способы, отправляемые кодом.
- *
- * Тип ключа — исчерпывающий, а не строка: способ, добавленный в перечень и
- * забытый здесь, роняет СБОРКУ, а не даёт пустое окно у арендатора. Гейт
- * дерева про это ничего не знает — он читает перечень, а не таблицу.
- */
-const CODE_METHODS: Record<CodeMethod, { field: string; label: string; hint: string; placeholder: string }> = {
-  totp: {
-    field: "totp_code",
-    label: "Код из приложения-аутентификатора",
-    hint: "Введите шестизначный код, который показывает ваше приложение-аутентификатор.",
-    placeholder: "123456",
-  },
-  lookup_secret: {
-    field: "lookup_secret",
-    label: "Запасной код",
-    hint: "Введите один из запасных кодов, выданных при настройке второго фактора. Код одноразовый.",
-    placeholder: "xxxxxxxx",
-  },
-};
-
-/**
- * Адрес, по которому арендатор заводит второй фактор.
- *
- * Спрашивается у СЛУЖБЫ ЛИЧНОСТИ, а не выписывается здесь: путь раздела
- * параметров безопасности задаётся развёртыванием (`selfservice.flows.settings.
- * ui_url`), и константа в консоли разошлась бы с ним молча.
- *
- * Адрес возврата — АБСОЛЮТНЫЙ (`location.href`), а не путь: перечень
- * разрешённых возвратов службы объявлен полными адресами консоли, и
- * относительный путь она разрешала бы относительно СВОЕГО адреса, то есть
- * увела бы человека не туда либо отвергла возврат вовсе.
- */
-export function stepUpEnrollUrl(): string {
-  return kratos.settingsUrl(window.location.href);
-}
-
-/** Первый способ, который служба личности предложила И окно умеет вести. */
-export function offeredStepUpMethod(flow: SelfServiceFlow): StepUpMethod | null {
-  for (const m of STEP_UP_METHODS) {
-    if (findNode(flow.ui, STEP_UP_METHOD_NODES[m])) return m;
-  }
-  return null;
-}
+type Branch = "пароль" | "второй фактор";
 
 export function StepUpModal() {
-  const { setStepUpHandler, refresh } = useAuth();
+  const id = useId();
+  const auth = useOptionalAuth();
+  // Признак добывается при отправке, а не при монтировании: окно смонтировано
+  // на каждой странице модуля, а открывается редко.
+  const holder = useMemo(() => new FormTokenHolder("step-up"), []);
   const [pending, setPending] = useState<PendingRequest | null>(null);
-  const [flow, setFlow] = useState<SelfServiceFlow | null>(null);
-  const [method, setMethod] = useState<StepUpMethod | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [code, setCode] = useState("");
+  const [branch, setBranch] = useState<Branch>("второй фактор");
+  const [password, setPassword] = useState("");
+  const [factor, setFactor] = useState<SecondFactorPresentation>(EMPTY_PRESENTATION);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [refusal, setRefusal] = useState<LaneRefusal | null>(null);
 
-  // Регистрируем обработчик. Состояние «спрашиваем способ» выставляется ЗДЕСЬ,
-  // а не в эффекте ниже: эффект вправе трогать состояние только после ответа
-  // службы личности, иначе открытие окна давало бы каскад перерисовок.
+  // Обработчик ОБЪЯВЛЯЕТСЯ клиенту API — он и есть его читатель (#1213).
   useEffect(() => {
-    const handler = (acr?: string) =>
+    const handler = (request: StepUpRequest) =>
       new Promise<void>((resolve, reject) => {
-        setFlow(null);
-        setMethod(null);
-        setError(null);
-        setCode("");
-        setLoading(true);
-        setPending({ acr, resolve, reject });
+        setBranch(request.cause === "freshness" ? "пароль" : "второй фактор");
+        setPassword("");
+        setFactor(EMPTY_PRESENTATION);
+        setRefusal(null);
+        setPending({ request, resolve, reject });
       });
-    setStepUpHandler(handler);
-    return () => setStepUpHandler(null);
-  }, [setStepUpHandler]);
+    setStepUpRequester(handler);
+    return () => setStepUpRequester(null);
+  }, []);
 
-  // Поток поднимается СРАЗУ при открытии окна, а не по нажатию: способ выбирает
-  // служба личности, и до её ответа окно не знает, что предлагать человеку.
-  useEffect(() => {
-    if (!pending) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const f = await kratos.initFlow<SelfServiceFlow>("login", { refresh: "true", aal: "aal2" });
-        if (cancelled) return;
-        setFlow(f);
-        setMethod(offeredStepUpMethod(f));
-      } catch (e) {
-        if (cancelled) return;
-        setFlow(null);
-        setMethod(null);
-        setError((e as Error).message || "Не удалось начать повторное подтверждение");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [pending]);
+  // Пароль предлагается ТОЛЬКО на просьбу свежести от службы: вызов края
+  // закрывает один второй фактор, назван в нём уровень или нет.
+  const passwordAllowed = pending?.request.cause === "freshness";
+
+  const close = () => {
+    setPending(null);
+    setPassword("");
+    setFactor(EMPTY_PRESENTATION);
+    setRefusal(null);
+  };
 
   const cancel = () => {
-    if (pending) {
-      pending.reject(new Error("Step-up cancelled by user"));
-    }
-    setPending(null);
-    setFlow(null);
-    setMethod(null);
-    setError(null);
-    setCode("");
-  };
-
-  const enroll = () => {
-    // Обещание запроса отвергается ДО ухода со страницы: действие не выполнено
-    // и выполнено не будет. Оставить его висеть значило бы держать вызывающего
-    // в ожидании исхода, которого не наступит.
-    pending?.reject(new Error("Second factor is not enrolled"));
-    window.location.assign(stepUpEnrollUrl());
-  };
-
-  const done = async () => {
-    // Уровень после церемонии знает край по нашей сессии (Ф11 Р7); консоли
-    // достаточно перечитать личность и повторить отвергнутый запрос.
-    await refresh();
-    pending?.resolve();
-    setPending(null);
-    setFlow(null);
-    setMethod(null);
-    setCode("");
+    pending?.reject(new Error("повышение отменено человеком"));
+    close();
   };
 
   const confirm = async () => {
-    if (!pending || !flow || !method) return;
+    if (!pending || submitting) return;
     setSubmitting(true);
-    setError(null);
+    setRefusal(null);
     try {
-      if (method === "webauthn") {
-        const raw = findNode(flow.ui, STEP_UP_METHOD_NODES.webauthn)?.attributes?.value;
-        // Величина узла типизирована как неизвестная: приводить её к строке
-        // безусловно значит однажды отправить в разбор `[object Object]`.
-        if (typeof raw !== "string" || raw === "") {
-          throw new Error("служба личности не отдала вызов ключа доступа");
-        }
-        const opts = JSON.parse(raw) as { publicKey: PublicKeyCredentialRequestOptions };
-        const cred = (await navigator.credentials.get({
-          publicKey: { ...opts.publicKey, userVerification: "required" },
-        })) as PublicKeyCredential | null;
-        if (!cred) throw new Error("Ceremony отменена");
-        const response = cred.response as AuthenticatorAssertionResponse;
-        await kratos.submitFlow<SelfServiceFlow>("login", flow.id, {
-          csrf_token: csrfToken(flow.ui),
-          method: "webauthn",
-          webauthn_login: JSON.stringify({
-            id: cred.id,
-            rawId: bufferToBase64Url(cred.rawId),
-            type: cred.type,
-            response: {
-              authenticatorData: bufferToBase64Url(response.authenticatorData),
-              clientDataJSON: bufferToBase64Url(response.clientDataJSON),
-              signature: bufferToBase64Url(response.signature),
-              userHandle: response.userHandle ? bufferToBase64Url(response.userHandle) : null,
-            },
-          }),
-        });
-      } else {
-        const spec = CODE_METHODS[method];
-        const value = code.trim();
-        if (!value) throw new Error(`${spec.label} — обязательное поле`);
-        await kratos.submitFlow<SelfServiceFlow>("login", flow.id, {
-          csrf_token: csrfToken(flow.ui),
-          method,
-          [spec.field]: value,
-        });
-      }
-      await done();
-    } catch (e: unknown) {
-      const err = e as Error;
-      setError(err.message || "Step-up failed");
+      await loginLane.stepUp(
+        holder,
+        branch === "пароль" && passwordAllowed ? { method: "password", password } : factor,
+      );
+      // Уровень после церемонии знает край по нашей сессии; консоли достаточно
+      // перечитать личность и отпустить отвергнутый запрос на повтор.
+      await auth?.refresh();
+      pending.resolve();
+      close();
+    } catch (err) {
+      setRefusal(laneRefusalOf(err));
     } finally {
       setSubmitting(false);
     }
   };
 
-  const acr = pending?.acr ?? "2";
-  const codeSpec = method && method !== "webauthn" ? CODE_METHODS[method] : null;
-  // Второго фактора нет: поток поднялся, но ни один способ, который окно умеет
-  // вести, служба личности не предложила. Отличать это от «поток не поднялся»
-  // обязательно — исправления у них разные.
-  const noSecondFactor = !loading && !error && flow !== null && method === null;
-
-  const footer: React.ReactNode[] = [
-    <Button key="cancel" onClick={cancel} disabled={submitting}>
-      Отменить
-    </Button>,
-  ];
-  if (noSecondFactor) {
-    footer.push(
-      <Button key="enroll" type="primary" icon={<SettingOutlined />} onClick={enroll} data-testid="stepup-enroll">
-        Настроить второй фактор
-      </Button>,
-    );
-  } else if (method !== null) {
-    footer.push(
-      <Button
-        key="ok"
-        type="primary"
-        icon={method === "webauthn" ? <KeyOutlined /> : <NumberOutlined />}
-        loading={submitting}
-        onClick={confirm}
-        data-testid="stepup-confirm"
-      >
-        {method === "webauthn" ? "Подтвердить ключом доступа" : "Подтвердить"}
-      </Button>,
-    );
-  }
+  const notEnrolled = refusal?.reason === LANE_REASON.secondFactorNotEnrolled;
+  const passwordId = `${id}-password`;
 
   return (
     <Modal
       open={pending !== null}
-      title={
-        <Space>
-          <SafetyOutlined />
-          Подтверждение действия
-        </Space>
-      }
+      title="Подтверждение действия"
       onCancel={cancel}
       mask={{ closable: false }}
-      footer={footer}
-      data-testid="stepup-modal"
+      footer={[
+        <Button key="cancel" onClick={cancel} disabled={submitting}>
+          Отменить
+        </Button>,
+        <Button key="ok" type="primary" loading={submitting} onClick={() => void confirm()}>
+          Подтвердить
+        </Button>,
+      ]}
     >
-      <Paragraph>Эта операция требует дополнительной проверки безопасности (ACR={acr}).</Paragraph>
-
-      {loading && (
-        <Paragraph data-testid="stepup-loading">
-          <Text type="secondary">Спрашиваем, каким способом можно подтвердить…</Text>
-        </Paragraph>
-      )}
-
-      {method === "webauthn" && (
+      <FormGrid label="Подтверждение действия" onSubmit={() => void confirm()}>
         <Paragraph>
-          <Text type="secondary">
-            Подтвердите запрос вашим ключом доступа с биометрией (Touch&nbsp;ID / Windows&nbsp;Hello / аппаратный
-            ключ).
-          </Text>
+          {passwordAllowed
+            ? "Это действие требует подтвердить личность ещё раз."
+            : "Это действие подтверждается вторым фактором."}
         </Paragraph>
-      )}
-
-      {codeSpec && (
-        <>
-          <Paragraph>
-            <Text type="secondary">{codeSpec.hint}</Text>
-          </Paragraph>
-          <Input
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            placeholder={codeSpec.placeholder}
-            aria-label={codeSpec.label}
-            autoComplete="one-time-code"
-            data-testid="stepup-code"
+        {passwordAllowed && (
+          <Form.Item label="Способ">
+            <Radio.Group
+              aria-label="Способ"
+              value={branch}
+              onChange={(ev) => setBranch(ev.target.value as Branch)}
+              options={[
+                { value: "пароль", label: "Паролем" },
+                { value: "второй фактор", label: "Вторым фактором" },
+              ]}
+            />
+          </Form.Item>
+        )}
+        {branch === "пароль" && passwordAllowed ? (
+          <Form.Item label="Пароль" htmlFor={passwordId}>
+            <Input
+              id={passwordId}
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(ev) => setPassword(ev.target.value)}
+            />
+          </Form.Item>
+        ) : (
+          <SecondFactorCodeField
+            value={factor}
+            onChange={setFactor}
+            codeError={refusal?.field === "code" ? refusal.message : null}
+            methodError={refusal?.field === "method" ? refusal.message : null}
           />
-        </>
-      )}
-
-      {noSecondFactor && (
-        <Alert
-          type="warning"
-          showIcon
-          data-testid="stepup-no-second-factor"
-          message="Второй фактор не настроен"
-          description={
-            "Это действие подтверждается вторым фактором, а у вашей учётной записи его пока нет: " +
-            "вход выполнен только паролем. Настройте одноразовые коды в параметрах безопасности " +
-            "и повторите действие."
-          }
-          style={{ marginTop: 12 }}
-        />
-      )}
-
-      {error && <Alert type="error" showIcon message={error} data-testid="stepup-error" style={{ marginTop: 12 }} />}
+        )}
+        {refusal && refusal.field !== "code" && refusal.field !== "method" && (
+          <div style={{ marginBottom: 12 }}>
+            <LaneRefusalAlert refusal={refusal} />
+            {notEnrolled && (
+              <Paragraph style={{ marginTop: 8 }}>
+                <a
+                  href={SECOND_FACTOR_ENROLLMENT_ADDRESS}
+                  onClick={() => pending?.reject(new Error("второй фактор не настроен"))}
+                >
+                  Настроить второй фактор
+                </a>
+              </Paragraph>
+            )}
+          </div>
+        )}
+        {/* Отправка клавишей ввода из поля — та же, что кнопкой. */}
+        <button type="submit" hidden aria-hidden tabIndex={-1} />
+      </FormGrid>
     </Modal>
   );
 }

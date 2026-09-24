@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { walkCeremonyCarriers, PROVIDER_PROTOCOL } from "./identity-ceremony-carriers";
+import { walkCeremonyCarriers, CEREMONY_PROTOCOL } from "./identity-ceremony-carriers";
 
 /**
  * Способность гейта полосы личности УПАСТЬ — и промолчать там, где падать не на чем.
@@ -24,14 +24,14 @@ function put(rel: string, body: string): void {
   writeFileSync(full, body, "utf8");
 }
 
-/** Носитель церемонии: импортирует протокол поставщика и отдаёт компонент. */
+/** Носитель церемонии: импортирует дверь к глаголам церемонии и отдаёт компонент. */
 function seedCarrier(name: string): void {
   put(
     `shared/src/pages/${name}.tsx`,
     [
-      `import { kratos } from "${PROVIDER_PROTOCOL}";`,
+      `import { loginLane } from "${CEREMONY_PROTOCOL}";`,
       `export function ${name}() {`,
-      "  return <a href={kratos.loginUrl()}>вход</a>;",
+      "  return <button onClick={() => loginLane.logout()}>выйти</button>;",
       "}",
       "",
     ].join("\n"),
@@ -101,10 +101,10 @@ describe("гейт полосы личности способен упасть",
     put(
       "shared/src/pages/SecondDeadPage.tsx",
       [
-        `import { kratos } from "${PROVIDER_PROTOCOL}";`,
+        `import { loginLane } from "${CEREMONY_PROTOCOL}";`,
         'import { FirstDeadPage } from "./FirstDeadPage";',
         "export function SecondDeadPage() {",
-        "  return <FirstDeadPage href={kratos.loginUrl()} />;",
+        "  return <FirstDeadPage onLeave={() => loginLane.logout()} />;",
         "}",
         "",
       ].join("\n"),
@@ -119,7 +119,7 @@ describe("гейт полосы личности способен упасть",
     ]);
   });
 
-  it("файл БЕЗ протокола поставщика носителем не считается — даже лёжа рядом", () => {
+  it("файл БЕЗ двери к церемонии носителем не считается — даже лёжа рядом", () => {
     // Иначе гейт судил бы по каталогу, а не по существу, и всякая страница
     // рядом становилась бы его предметом.
     put(

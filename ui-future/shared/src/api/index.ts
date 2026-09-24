@@ -4,14 +4,7 @@ export * from "./resources";
 export * from "./tokens";
 export * from "./types";
 export { authApi, extractDenyReasons, hasPermission } from "./auth";
-export type {
-  AccountMembership,
-  AuthMeResponse,
-  AuthUser,
-  DenyReason,
-  SubjectType as AuthSubjectType,
-  WhoAmIResponse,
-} from "./auth";
+export type { AccountMembership, AuthUser, DenyReason, WhoAmIResponse } from "./auth";
 export { IAM, iamApi, PERMISSION_CATALOG_PATH, ruleArm } from "./iam";
 export type {
   AccessBinding,
