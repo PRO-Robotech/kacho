@@ -8,10 +8,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"sync"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/config"
 )
 
@@ -36,7 +36,7 @@ func TestDataplaneVerifier_FetchesEachIssuerKeySetFromItsDeclaredURL(t *testing.
 	var mu sync.Mutex
 	paths := map[string]int{}
 
-	iam := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	iam := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		paths[r.URL.Path]++
 		mu.Unlock()
@@ -96,7 +96,7 @@ func TestDataplaneVerifier_FetchesEachIssuerKeySetFromItsDeclaredURL(t *testing.
 func TestDataplaneVerifier_UndeclaredIssuerNeverReachesAnySource(t *testing.T) {
 	var mu sync.Mutex
 	hits := 0
-	iam := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	iam := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		mu.Lock()
 		hits++
 		mu.Unlock()

@@ -33,7 +33,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -43,6 +42,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // breakerTrip — how many consecutive unanswered questions the cache is expected
@@ -87,7 +87,7 @@ type flippableServer struct {
 func newFlippableServer(t *testing.T, status int, body string) *flippableServer {
 	t.Helper()
 	fs := &flippableServer{status: status, body: body}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		fs.hits.Add(1)
 		fs.mu.Lock()
 		status, body := fs.status, fs.body

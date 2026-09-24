@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"sort"
 	"strings"
 	"testing"
@@ -20,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 
 	"github.com/PRO-Robotech/corelib/ids"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 )
 
@@ -262,7 +262,7 @@ func TestCidrGroupReconcileAddsBeforeRemovingInOneCallPerVerb(t *testing.T) {
 		body map[string]any
 	}
 	var calls []call
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var body map[string]any
 		_ = json.NewDecoder(req.Body).Decode(&body)
 		switch {

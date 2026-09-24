@@ -148,6 +148,7 @@ deploy/scripts/gen-managed-image-pins.sh
 deploy/scripts/helm-umbrella-deps.sh
 deploy/scripts/own-rest-front-address.py
 deploy/scripts/remeasure-provider-listener-tls.sh
+deploy/scripts/repo_tree.py
 deploy/scripts/run-injection-proofs.sh
 deploy/scripts/stand-provenance.sh
 deploy/tests/helm/admin-hop-address-census-test.sh

@@ -51,9 +51,9 @@ from __future__ import annotations
 import argparse
 import os
 import re
-import subprocess
 import sys
-import tempfile
+
+import repo_tree
 
 EXTS = (".py", ".go", ".sh", ".bash", ".js", ".mjs", ".ts", ".jq")
 
@@ -105,18 +105,10 @@ def executable_lines(path: str) -> str:
 
 def tree_files(root: str) -> list[str]:
     """Состав дерева. В репозитории авторитет — версионный контроль (то же
-    множество, что увидит свежий checkout); в синтетическом дереве — обход."""
-    git = subprocess.run(["git", "-C", root, "ls-files", "-z"],
-                         capture_output=True, text=True)
-    if git.returncode == 0:
-        names = [n for n in git.stdout.split("\0") if n]
-    else:
-        names = []
-        for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = [d for d in dirnames if d not in (".git", "node_modules", "vendor")]
-            for fn in filenames:
-                names.append(os.path.relpath(os.path.join(dirpath, fn), root))
-    return sorted(n for n in names if n.endswith(EXTS))
+    множество, что увидит свежий checkout); в синтетическом дереве — обход диска.
+    Способ выбирает `repo_tree.tree_files`."""
+    return [n for n in repo_tree.tree_files(root, prune=("node_modules", "vendor"))
+            if n.endswith(EXTS)]
 
 
 def scan(root: str) -> tuple[list[str], list[str], int]:
@@ -147,7 +139,8 @@ def scan(root: str) -> tuple[list[str], list[str], int]:
 def run(root: str) -> int:
     readers, offenders, examined = scan(root)
     print("===== читатели массива исполнений newman =====")
-    print(f"осмотрено файлов: {examined}; читателей массива: {len(readers)}")
+    print(f"осмотрено файлов: {examined} ({repo_tree.tree_source(root)}); "
+          f"читателей массива: {len(readers)}")
     for r in readers:
         mark = "БЕЗ СВОДКИ" if r in offenders else "сверяется"
         print(f"  {mark:10s}  {r}")
@@ -177,7 +170,7 @@ def run(root: str) -> int:
 # ── самопроверка: инъекция в ОБЕ стороны на синтетическом дереве ─────────────
 def self_test() -> int:
     ok = True
-    with tempfile.TemporaryDirectory() as td:
+    with repo_tree.nested_fixture_root() as td:
         os.makedirs(os.path.join(td, "tools"))
 
         def w(rel: str, text: str):
@@ -241,7 +234,7 @@ def self_test() -> int:
         ok = False
 
     # Пустое дерево: предпосылки нет — обязан упасть, а не отчитаться «чисто».
-    with tempfile.TemporaryDirectory() as td2:
+    with repo_tree.nested_fixture_root() as td2:
         with open(os.path.join(td2, "empty.py"), "w", encoding="utf-8") as fh:
             fh.write("print(1)\n")
         if run(td2) != 1:

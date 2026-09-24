@@ -29,6 +29,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // f1bKeySet — источник набора проверочных ключей одного издателя.
@@ -52,7 +54,7 @@ type f1bKeySet struct {
 func newF1bKeySet(t *testing.T) *f1bKeySet {
 	t.Helper()
 	ks := &f1bKeySet{t: t, signer: map[string]any{}, alg: map[string]string{}}
-	ks.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	ks.srv = privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		ks.Requests++
 		ct := ks.ContentType
 		if ct == "" {
