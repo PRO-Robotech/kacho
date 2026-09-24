@@ -12,10 +12,12 @@ const jsonResponse = (body: unknown, status = 200) => {
   } as Response);
 };
 
-// Снятая служба выдачи токена. Названа здесь ОДНИМ признаком — приставкой её
-// публичного края: утверждение о подписи («Hydra») пережило бы переименование
-// подписи, а адрес — то, куда страница реально ходит.
-const RETIRED_TOKEN_ISSUER_PREFIX = "/.ory/hydra/";
+// Снятый поставщик личности — обе его службы, выдача токена и сессия. Назван
+// здесь ОДНИМ признаком — приставкой его публичного края, общей для обеих:
+// утверждение о подписи строки пережило бы переименование подписи, а адрес — то,
+// куда страница реально ходит. Приставка шире одной службы намеренно: служба,
+// снятая вчера, и служба, снятая сегодня, дают на странице один и тот же дефект.
+const RETIRED_IDENTITY_PROVIDER_EDGE = "/.ory/";
 
 describe("ReachabilityPage", () => {
   afterEach(() => {
@@ -38,18 +40,19 @@ describe("ReachabilityPage", () => {
     expect(await screen.findAllByText("ok 200")).toHaveLength(rows.length);
   });
 
-  // Снятие полосы к чужой службе выдачи токена (#2733). Утверждается
-  // НАБЛЮДАЕМОЕ: пользователь не видит на странице доступности строки этой
-  // службы, и «Проверить все» к ней не ходит. Утверждение о подписи строки
-  // пережило бы её переименование, поэтому судится адрес.
-  it("не предлагает проверку снятой службы выдачи токена", async () => {
+  // Снятие полос к чужому поставщику личности (#2733). Утверждается
+  // НАБЛЮДАЕМОЕ: пользователь не видит на странице доступности строки его
+  // служб, и «Проверить все» к ним не ходит. Поставщик не поднимается ни на
+  // одном стенде, и полосы к нему нет ни в раздаче, ни в сборщике: строка
+  // проверяла бы службу, которой нет, и её исход ничего не говорил бы о стенде.
+  it("не предлагает проверку служб снятого поставщика личности", async () => {
     const user = userEvent.setup();
     const fetchMock = jest.spyOn(global, "fetch").mockImplementation(() => jsonResponse({ message: "ready" }));
     render(<ReachabilityPage />);
 
     const shown = screen.getAllByText(/^\//).map((n) => n.textContent ?? "");
     expect(shown.length).toBeGreaterThan(0);
-    expect(shown.filter((p) => p.startsWith(RETIRED_TOKEN_ISSUER_PREFIX))).toEqual([]);
+    expect(shown.filter((p) => p.startsWith(RETIRED_IDENTITY_PROVIDER_EDGE))).toEqual([]);
 
     await user.click(screen.getByRole("button", { name: "Проверить все" }));
     await waitFor(() => {
@@ -62,6 +65,6 @@ describe("ReachabilityPage", () => {
       expect(typeof target).toBe("string");
       return target as string;
     });
-    expect(asked.filter((p) => p.startsWith(RETIRED_TOKEN_ISSUER_PREFIX))).toEqual([]);
+    expect(asked.filter((p) => p.startsWith(RETIRED_IDENTITY_PROVIDER_EDGE))).toEqual([]);
   });
 });

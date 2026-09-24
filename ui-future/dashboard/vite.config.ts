@@ -4,7 +4,6 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 const apiGateway = process.env.KACHO_API_BASE || "http://localhost:8080";
-const kratos = process.env.KACHO_KRATOS_BASE || "http://localhost:4433";
 const kratosUi = process.env.KACHO_KRATOS_UI_BASE || "http://localhost:4300";
 const kratosUiRoutes = [
   "/login",
@@ -69,11 +68,6 @@ export default defineConfig({
       "/readyz": {
         target: apiGateway,
         changeOrigin: true,
-      },
-      "/.ory/kratos/public": {
-        target: kratos,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/\.ory\/kratos\/public/, ""),
       },
       ...Object.fromEntries(
         kratosUiRoutes.map((route) => [

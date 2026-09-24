@@ -4,7 +4,6 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 const apiGateway = process.env.KACHO_API_BASE || "http://localhost:8080";
-const kratos = process.env.KACHO_KRATOS_BASE || "http://localhost:4433";
 
 export default defineConfig({
   base: process.env.KACHO_PUBLIC_BASE || "/",
@@ -68,11 +67,6 @@ export default defineConfig({
       "/operations": {
         target: apiGateway,
         changeOrigin: true,
-      },
-      "/.ory/kratos/public": {
-        target: kratos,
-        changeOrigin: true,
-        rewrite: (urlPath) => urlPath.replace(/^\/\.ory\/kratos\/public/, ""),
       },
     },
   },

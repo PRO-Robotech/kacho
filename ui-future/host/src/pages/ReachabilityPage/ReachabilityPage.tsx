@@ -8,7 +8,6 @@ const probes = [
   { label: "Начальная настройка IAM", path: "/iam/v1/me" },
   { label: "Сети VPC", path: "/vpc/v1/networks" },
   { label: "Виртуальные машины", path: "/compute/v1/instances" },
-  { label: "Kratos", path: "/.ory/kratos/public/health/ready" },
 ];
 
 type ProbeResult = {

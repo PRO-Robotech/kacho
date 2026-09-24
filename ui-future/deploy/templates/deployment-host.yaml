@@ -77,8 +77,6 @@ spec:
           env:
             - name: KACHO_UI_API_GATEWAY_UPSTREAM
               value: {{ .Values.host.upstreams.apiGateway | quote }}
-            - name: KACHO_UI_KRATOS_PUBLIC_UPSTREAM
-              value: {{ .Values.host.upstreams.kratosPublic | quote }}
             - name: KACHO_UI_KRATOS_UI_UPSTREAM
               value: {{ .Values.host.upstreams.kratosUi | quote }}
             - name: KACHO_UI_DASHBOARD_UPSTREAM

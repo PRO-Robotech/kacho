@@ -32,7 +32,7 @@ subscriptionStream:
 
 # Response security headers emitted by every nginx UI server (host + remotes).
 # Internal serving config only - no API/proto/wire contract surface.
-# Everything the console talks to (api-gateway, kratos) is reached
+# Everything the console talks to (the api-gateway) is reached
 # same-origin through the host nginx proxy, so a 'self'-based CSP is sufficient.
 #
 # style-src carries 'unsafe-inline' (script-src does NOT). antd v6 renders its
@@ -118,12 +118,17 @@ host:
   # ─── ПУСТОЙ АДРЕС ВНЕШНЕГО ПОСТАВЩИКА ЛИЧНОСТИ ОЗНАЧАЕТ «ЕГО НА ЭТОЙ ПОСАДКЕ
   #     НЕТ», И ЭТО РЕШЕНИЕ, А НЕ НЕДОСТАЧА ──────────────────────────────────
   #
-  # Два адреса ниже (`kratosPublic`, `kratosUi`) ведут к внешнему поставщику
-  # личности, и каждый из них ОДИН И ТОТ ЖЕ раз решает две вещи: куда
-  # проксировать и проксировать ли вообще. Пустая величина снимает
-  # соответствующий блок раздачи целиком (`templates/configmap-nginx.yaml`).
+  # Адрес ниже (`kratosUi`) ведёт к экрану входа внешнего поставщика личности,
+  # и он ОДИН И ТОТ ЖЕ раз решает две вещи: куда проксировать и проксировать ли
+  # вообще. Пустая величина снимает полосу потоков и её запасной путь целиком
+  # (`templates/configmap-nginx.yaml`).
   # Второй ручки «а обслуживать ли» здесь нет намеренно: две величины об одном
   # предмете разошлись бы молча, и раздача проксировала бы в пустоту.
+  #
+  # Адреса ПУБЛИЧНОГО КРАЯ поставщика у чарта нет вовсе. Полоса `/.ory/…` не
+  # рендерилась ни на одной цепочке и снята из раздачи вместе со своим адресом
+  # (#2733): держать ручку, которую не задаёт ни одна посадка, значило бы
+  # объявлять зависимость продукта от службы, которой у него нет.
   #
   # УМОЛЧАНИЕ — ПУСТО (#2777, #2735). Поставщик личности и его экран входа не
   # поднимаются ни на одном стенде (база зонта, deploy/helm/umbrella/values.yaml,
@@ -141,7 +146,6 @@ host:
   # deploy/identity_file_keys_survive_the_environment_test.go.
   upstreams:
     apiGateway: api-gateway.kacho.svc.cluster.local:8080
-    kratosPublic: ""
     kratosUi: ""
     dashboard: ""
     vpc: ""
