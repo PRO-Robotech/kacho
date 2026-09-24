@@ -982,8 +982,10 @@ async function signInWithPasswordOnly(page: Page, human: SeededHuman) {
 /** Начать удаление группы с её карточки — действие, на котором край зовёт повышение. */
 async function startGroupDeletion(page: Page, groupId: string) {
   await page.goto(`/iam/groups/${groupId}`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "Действия" }).first().click();
-  await page.getByRole("menuitem", { name: "Удалить" }).click();
+  // «Удалить» — видимая кнопка шапки карточки, а не пункт меню «Действия»
+  // (`DetailOverviewActions`): меню на карточке группы нет вовсе, и проба,
+  // искавшая его, ждала элемента, которого консоль не рисует.
+  await page.getByRole("button", { name: "Удалить" }).click();
   const deletion = page.getByRole("dialog").filter({ has: page.getByRole("button", { name: "Удалить" }) });
   const challenged = page.waitForResponse(
     (r) => new URL(r.url()).pathname === `/iam/v1/groups/${groupId}` && r.request().method() === "DELETE",
