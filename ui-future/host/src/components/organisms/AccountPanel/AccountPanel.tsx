@@ -1,4 +1,5 @@
 import { useEffect, useRef, type FC } from "react";
+import { createPortal } from "react-dom";
 import { ACCOUNT_SETTINGS_ADDRESS } from "@shared/pages/auth/ceremony-addresses";
 import { Button, Typography } from "antd";
 import type { SessionIdentity } from "@shared/api/login-lane";
@@ -18,6 +19,13 @@ import { useLogout } from "@shared/pages/auth/use-logout";
  *
  * Выход — на месте: на отказе службы панель показывает её текст, и адрес
  * страницы не меняется — экран не делает вид, что вышли (F8-19).
+ *
+ * Панель стоит поверх СТРАНИЦЫ, а не только поверх рейла, поэтому рисуется в
+ * `document.body`. Рейл — своя плоскость наложения (`position: sticky`), и
+ * `z-index` панели внутри него сравнивался бы только с соседями по рейлу:
+ * карточки страницы, стоящие в документе позже, ложились поверх панели, и
+ * «Выйти» на панели проекта не нажималось вовсе (F8-18, посадка own
+ * @9038186d0d5: `ant-card-body` перехватывал нажатие).
  */
 export const AccountPanel: FC<{
   identity: SessionIdentity;
@@ -43,7 +51,7 @@ export const AccountPanel: FC<{
     };
   }, [onClose]);
 
-  return (
+  return createPortal(
     <div
       ref={ref}
       role="dialog"
@@ -88,6 +96,7 @@ export const AccountPanel: FC<{
           Выйти
         </Button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };

@@ -1,7 +1,8 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { expect, type BrowserContext, type Page, type Response, type TestInfo } from "@playwright/test";
+import { expect, request, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
+import { LANE_VERBS, captureAnswers, lanePostAnswer, type LaneAnswer } from "./answer-on-arrival";
 import {
   LANE,
   SESSION_COOKIE,
@@ -84,8 +85,9 @@ async function openSettings(page: Page) {
   return s;
 }
 
-function lanePost(page: Page, path: string): Promise<Response> {
-  return page.waitForResponse((r) => new URL(r.url()).pathname === path && r.request().method() === "POST");
+/** Ответ глагола полосы — с телом, прочитанным по прибытии (`answer-on-arrival.ts`). */
+function lanePost(page: Page, path: string): Promise<LaneAnswer> {
+  return lanePostAnswer(page, path);
 }
 
 async function bearerOf(context: BrowserContext): Promise<string> {
@@ -107,7 +109,7 @@ function expectNoProvider(census: CeremonyCensus) {
 }
 
 /** Тело формы, отправленное страницей: какой способ она назвала. */
-function methodOf(res: Response): unknown {
+function methodOf(res: LaneAnswer): unknown {
   return (JSON.parse(res.request().postData() ?? "{}") as { method?: unknown }).method;
 }
 
@@ -144,6 +146,12 @@ async function loginStatus(testInfo: TestInfo, email: string, password: string):
   }
 }
 
+// Ответы глаголов полосы снимаются ДО страницы: за ними экран уходит
+// документом, и тело после ухода не читается (`answer-on-arrival.ts`).
+test.beforeEach(async ({ page }) => {
+  await captureAnswers(page, LANE_VERBS);
+});
+
 // ═══ S2 — группа G. Смена пароля ══════════════════════════════════════════════
 
 test("F8-23 · смена пароля внутри сессии проходит и перевыпускает носитель", async ({ page }, testInfo) => {
@@ -178,20 +186,43 @@ test("F8-23 · запрос каркаса, ушедший до перевыпу
   await withHuman(testInfo, "F8-23-inflight", page.context(), async (_seed, human) => {
     // Список аккаунтов каркаса ЗАДЕРЖАН до ответа смены пароля: он ушёл с
     // прежним носителем и доходит до края после перевыпуска.
+    //
+    // КАК ПОСТРОЕНО «УШЁЛ С ПРЕЖНИМ». Задержать запрос в браузере и отпустить
+    // его мало: печенья браузер кладёт в запрос, когда отпускает его, а не когда
+    // страница его выпустила, — и отпущенный после перевыпуска запрос уходит уже
+    // с НОВЫМ носителем. Так проба и зеленела, ни разу не построив своего «Дано»
+    // (посадка own @9038186d0d5, прогон @fc35fa9f651). Поэтому задержанный
+    // запрос отправляет КРАЮ проба — тем, чем его выпустила страница: тем же
+    // адресом и заголовками и носителем, который был у браузера в момент выпуска.
+    // Ответ края отдаётся странице как есть — телом, кодом и заголовками, включая
+    // печенья, которые он ставит или гасит, — и дальше их обрабатывает браузер.
     let release: () => void = () => undefined;
     const passwordAnswered = new Promise<void>((resolve) => {
       release = resolve;
     });
     const accountLists: number[] = [];
     let held = false;
+    let issuedWith = "";
+    const use = testInfo.project.use;
     await page.route(
       (u) => u.pathname === "/iam/v1/accounts",
       async (route) => {
-        if (!held) {
-          held = true;
-          await passwordAnswered;
+        if (held) return route.continue();
+        held = true;
+        issuedWith = await bearerOf(page.context());
+        await passwordAnswered;
+        const edge = await request.newContext({
+          baseURL: use.baseURL,
+          ignoreHTTPSErrors: use.ignoreHTTPSErrors,
+          storageState: { cookies: [], origins: [] },
+        });
+        try {
+          const headers = { ...route.request().headers(), cookie: `${SESSION_COOKIE}=${issuedWith}` };
+          const answer = await edge.fetch(route.request().url(), { method: route.request().method(), headers });
+          await route.fulfill({ response: answer });
+        } finally {
+          await edge.dispose();
         }
-        await route.continue();
       },
     );
     page.on("response", (r) => {
@@ -200,6 +231,8 @@ test("F8-23 · запрос каркаса, ушедший до перевыпу
     const s = await openSettings(page);
     await expect.poll(() => held, { message: "каркас не спросил список аккаунтов", timeout: 30_000 }).toBe(true);
     const before = await bearerOf(page.context());
+    expect(issuedWith, "задержанный запрос выпущен без носителя — «Дано» не построено").not.toBe("");
+    expect(issuedWith, "задержанный запрос выпущен не с тем носителем, что был у браузера").toBe(before);
     await s.password.current.fill(human.password);
     await s.password.next.fill(`${human.password}-nov`);
     const [changed] = await Promise.all([lanePost(page, LANE.password), s.password.submit.click()]);
@@ -208,10 +241,12 @@ test("F8-23 · запрос каркаса, ушедший до перевыпу
     await expect
       .poll(() => accountLists.at(-1), { message: "задержанный список не завершился", timeout: 30_000 })
       .toBeDefined();
-    expect(new URL(page.url()).pathname, "запрос с прежним носителем увёл человека на вход").toBe("/settings");
+    // Сперва — носитель: погашенный печеньем ответа край уводит на вход уже
+    // следствием, и отказ обязан назвать причину, а не следствие.
     const after = await bearerOf(page.context());
     expect(after, "носитель у браузера погашен ответом на запрос с прежним носителем").not.toBe("");
     expect(after, "смена пароля не перевыпустила носитель").not.toBe(before);
+    expect(new URL(page.url()).pathname, "запрос с прежним носителем увёл человека на вход").toBe("/settings");
     await expect
       .poll(() => accountLists.at(-1), {
         message: `список аккаунтов после перевыпуска не прочитан: ответы ${accountLists.join(", ")}`,
@@ -428,28 +463,29 @@ test("F8-31 · перечеканка запасных кодов", async ({ pag
 
 test("F8-32 · снятие того, чего нет: отказ назван", async ({ page }, testInfo) => {
   // verifies #1274 — близнец F8-30: изменено только то, заведён ли фактор к
-  // моменту отправки. Экран открыт при заведённом факторе; снимает его ДРУГАЯ
-  // сессия того же человека, и форма экрана уходит к уже снятому.
+  // моменту отправки. Экран открыт при заведённом факторе; снимает его ТА ЖЕ
+  // сессия вне экрана — посев, чей носитель у браузера, — и форма экрана уходит
+  // к уже снятому.
+  //
+  // Не другая сессия: снятие фактора гасит ВСЕ ПРОЧИЕ сессии человека (Ф12 Р9),
+  // и сессия экрана, будь она прочей, получила бы `401 authentication failed`
+  // вместо отказа о состоянии — так проба и падала на посадке own @9038186d0d5.
+  // Текущая сессия снятием жива, но носитель её перевыпущен, поэтому новый
+  // носитель переносится в браузер тем же способом, что и в «Дано».
   await withHuman(
     testInfo,
     "F8-32",
     page.context(),
-    async (_seed, human, factor) => {
+    async (seed, _human, factor) => {
       const s = await openSettings(page);
       await s.factor.remove.click();
 
-      const other = await newSeed(testInfo);
-      try {
-        const signedIn = await other.submit(LANE.login, "login", { email: human.email, password: human.password });
-        expect(signedIn.status(), `вход второй сессии не прошёл: ${await signedIn.text()}`).toBe(200);
-        const removed = await other.submit(LANE.remove, "second-factor", {
-          method: "lookup_secret",
-          code: factor!.backupCodes[0],
-        });
-        expect(removed.status(), `снятие второй сессией не прошло: ${await removed.text()}`).toBe(200);
-      } finally {
-        await other.dispose();
-      }
+      const removed = await seed.submit(LANE.remove, "second-factor", {
+        method: "lookup_secret",
+        code: factor!.backupCodes[0],
+      });
+      expect(removed.status(), `посев: снятие той же сессией не прошло: ${await removed.text()}`).toBe(200);
+      await transferSession(seed, page.context());
 
       await s.factor.backupMethod.check();
       await s.factor.code.fill(factor!.backupCodes[1]);

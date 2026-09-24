@@ -1,7 +1,9 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { expect, type BrowserContext, type Locator, type Page, type Response, type TestInfo } from "@playwright/test";
+import { createServer, type AddressInfo } from "node:net";
+import { expect, type BrowserContext, type Locator, type Page, type TestInfo } from "@playwright/test";
+import { LANE_VERBS, answerOnArrival, captureAnswers, lanePostAnswer, type LaneAnswer } from "./answer-on-arrival";
 import { raiseAssurance } from "./assurance";
 import {
   LANE,
@@ -69,11 +71,23 @@ import { LANE_UNAVAILABLE, LOGOUT_UNAVAILABLE, bodyOf, fulfillWith } from "./pro
 
 // ─── экраны: доступные имена, а не классы ─────────────────────────────────────
 
+// Кнопка отправки экрана церемонии — по форме и КОНЦУ имени, а не по имени
+// целиком. Значок ожидания кнопки уходит из разметки только по окончании своего
+// сворачивания, и когда ответ приходит раньше, чем значок развернулся (подставленный
+// отказ — за миллисекунды), сворачиваться ему нечему: он остаётся свёрнутым, и
+// доступное имя кнопки — «loading Войти» при кнопке, которая уже не ждёт и
+// открыта. Проба по имени целиком тогда не находила кнопки вовсе и называла её
+// закрытой (F8-10, посадка own @9038186d0d5: `ant-btn-loading` снят, значок —
+// в `motion-leave-active` пятнадцать секунд спустя).
+function submitOf(page: Page, form: string, label: string): Locator {
+  return page.getByRole("form", { name: form }).getByRole("button", { name: new RegExp(`${label}$`) });
+}
+
 function loginScreen(page: Page) {
   return {
     email: page.getByRole("textbox", { name: "Адрес электронной почты" }),
     password: page.getByLabel("Пароль", { exact: true }),
-    submit: page.getByRole("button", { name: "Войти", exact: true }),
+    submit: submitOf(page, "Вход в консоль", "Войти"),
     refusal: page.getByRole("alert"),
   };
 }
@@ -82,7 +96,7 @@ function registrationScreen(page: Page) {
   return {
     email: page.getByRole("textbox", { name: "Адрес электронной почты" }),
     password: page.getByLabel("Пароль", { exact: true }),
-    submit: page.getByRole("button", { name: "Завести учётную запись", exact: true }),
+    submit: submitOf(page, "Новая учётная запись", "Завести учётную запись"),
     refusal: page.getByRole("alert"),
   };
 }
@@ -113,8 +127,9 @@ async function expectPath(page: Page, path: string, why: string) {
   await expect.poll(() => pathOf(page), { message: why, timeout: 30_000 }).toBe(path);
 }
 
-function lanePost(page: Page, path: string): Promise<Response> {
-  return page.waitForResponse((r) => new URL(r.url()).pathname === path && r.request().method() === "POST");
+/** Ответ глагола полосы — с телом, прочитанным по прибытии (`answer-on-arrival.ts`). */
+function lanePost(page: Page, path: string): Promise<LaneAnswer> {
+  return lanePostAnswer(page, path);
 }
 
 async function sessionHeld(context: BrowserContext): Promise<boolean> {
@@ -159,7 +174,7 @@ const AUTHENTICATION_FAILED = { code: 16, message: "authentication failed", deta
  * неразличимости, а не удобство: экран — функция ТОЛЬКО тела ответа, тело
  * утверждается побайтово, значит и экраны побайтово равны.
  */
-async function expectAuthenticationFailedScreen(page: Page, res: Response, email: string) {
+async function expectAuthenticationFailedScreen(page: Page, res: LaneAnswer, email: string) {
   expect(res.status(), "отказ входа обязан быть 401").toBe(401);
   expect(await res.text(), "тело отказа входа — побайтово одно на все причины").toBe(
     JSON.stringify(AUTHENTICATION_FAILED),
@@ -171,6 +186,12 @@ async function expectAuthenticationFailedScreen(page: Page, res: Response, email
   expect(pathOf(page), "после отказа адрес страницы сменился").toBe("/login");
   expect(await sessionHeld(page.context()), "после отказа у браузера появился носитель сессии").toBe(false);
 }
+
+// Ответы глаголов полосы снимаются ДО страницы: за ними экран уходит
+// документом, и тело после ухода не читается (`answer-on-arrival.ts`).
+test.beforeEach(async ({ page }) => {
+  await captureAnswers(page, LANE_VERBS);
+});
 
 // ═══ S1 — группа A. Адрес церемонии принадлежит консоли ═══════════════════════
 
@@ -407,14 +428,27 @@ test("F8-12 · негодный носитель даёт форму, а не к
       sameSite: "Lax",
     },
   ]);
-  const navigations: string[] = [];
+  // ПЕРЕХОД АДРЕСА — СМЕНА АДРЕСА, а не событие навигации. Оболочка на первом
+  // рендере пишет своё состояние в текущую запись истории (`history.replaceState`
+  // маршрутизатора на ТОМ ЖЕ адресе), и событие навигации приходит второй раз с
+  // тем же адресом; счёт событий краснел бы на любой загрузке любого экрана
+  // (прогон на посадке `own` @9038186d0d5: «/login?returnTo=/dashboard →
+  // /login?returnTo=/dashboard»). Круг переадресаций меняет адрес — его видит
+  // перепись адресов; круг перезагрузок того же адреса адреса не меняет — его
+  // видит перепись загрузок документа.
+  const addresses: string[] = [];
+  const documents: string[] = [];
   page.on("framenavigated", (f) => {
-    if (f === page.mainFrame()) navigations.push(f.url());
+    if (f === page.mainFrame() && addresses.at(-1) !== f.url()) addresses.push(f.url());
+  });
+  page.on("request", (r) => {
+    if (r.isNavigationRequest() && r.frame() === page.mainFrame()) documents.push(r.url());
   });
   await page.goto("/login?returnTo=/dashboard", { waitUntil: "domcontentloaded" });
   const s = loginScreen(page);
   await expectScreen(page, "/login", s.submit, "экран входа");
-  expect(navigations, `адрес страницы менялся после загрузки экрана входа: ${navigations.join(" → ")}`).toHaveLength(1);
+  expect(addresses, `адрес страницы менялся после загрузки экрана входа: ${addresses.join(" → ")}`).toHaveLength(1);
+  expect(documents, `документ экрана входа загружался повторно: ${documents.join(" → ")}`).toHaveLength(1);
   // Чем именно носитель негоден, экран не различает и различать не вправе.
   await expect(s.refusal).toHaveCount(0);
 });
@@ -437,6 +471,7 @@ test("F8-13 · адрес возврата чужого происхождени
     const reading = watchRefusals(context, testInfo.testId);
     try {
       const page = await context.newPage();
+      await captureAnswers(page, LANE_VERBS);
       await page.goto(`/login?returnTo=${encodeURIComponent(returnTo)}`, { waitUntil: "domcontentloaded" });
       const s = loginScreen(page);
       await expectScreen(page, "/login", s.submit, "экран входа");
@@ -488,7 +523,9 @@ test("F8-13 · отскок живой сессии и возврат после
     const reading = watchRefusals(context, testInfo.testId);
     try {
       if (withSession) await seeded(testInfo, `F8-13-bounce-${runStamp()}`, context);
-      await body(await context.newPage());
+      const page = await context.newPage();
+      await captureAnswers(page, LANE_VERBS);
+      await body(page);
     } finally {
       await reading.settled();
       await context.close();
@@ -662,32 +699,50 @@ test("F8-18 · выход гасит носитель и возвращает н
   // По одному обращению на каждую форму адреса поставщика и на каждый вид
   // обращения. Перепись обязана назвать каждое методом и адресом; без подсадки
   // она выше была пуста — значит отрицание не тождественно.
-  await page.evaluate(async () => {
-    await fetch("/.ory/kratos/public/sessions/whoami").catch(() => undefined);
-    await fetch("/oauth2/auth").catch(() => undefined);
-    // Обращение БЕЗ ОТВЕТА, чужое происхождение, поверхность потоков поставщика.
-    await fetch("https://127.0.0.1:9/self-service/logout/browser", { mode: "no-cors" }).catch(() => undefined);
-  });
-  await page.evaluate(() => {
-    window.location.assign("/.ory/kratos/public/self-service/login/browser");
-  });
-  await expect
-    .poll(() => census.providerCalls().map((c) => `${c.method} ${c.origin}${c.path} ${c.kind}`), {
-      message: `перепись не назвала подсаженные обращения к поставщику:\n${census.describe()}`,
-      timeout: 15_000,
-    })
-    .toEqual([
-      `GET ${origin}/.ory/kratos/public/sessions/whoami запрос`,
-      `GET ${origin}/oauth2/auth запрос`,
-      "GET https://127.0.0.1:9/self-service/logout/browser запрос",
-      `GET ${origin}/.ory/kratos/public/self-service/login/browser документ`,
-    ]);
-  await expect
-    .poll(() => census.providerCalls().find((c) => c.origin === "https://127.0.0.1:9")?.outcome, {
-      message: "обращение без ответа не записано как «ответа нет»",
-      timeout: 15_000,
-    })
-    .toBe("ответа нет");
+  //
+  // Обращение БЕЗ ОТВЕТА — на чужое происхождение, поверхность потоков
+  // поставщика. Запросом страницы его не выпустить: политика консоли
+  // `connect-src 'self'` отвергает чужое происхождение ДО выпуска, и такого
+  // обращения нет ни у сервера, ни в переписи (посадка own @9038186d0d5: из
+  // четырёх подсаженных перепись назвала три). Поэтому оно — окно, открытое
+  // страницей: переход документа политика не закрывает, и окно — тоже
+  // обращение консоли (Р6 п. 1). Адрес — петлевой сервер пробы, который
+  // принимает соединение и рвёт его, не ответив: «ответа нет» здесь построено,
+  // а не зависит от того, свободен ли чей-то порт.
+  const silent = createServer((socket) => socket.destroy());
+  await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", resolve));
+  const silentOrigin = `http://127.0.0.1:${(silent.address() as AddressInfo).port}`;
+  try {
+    await page.evaluate(async (away) => {
+      await fetch("/.ory/kratos/public/sessions/whoami").catch(() => undefined);
+      await fetch("/oauth2/auth").catch(() => undefined);
+      window.open(`${away}/self-service/logout/browser`);
+    }, silentOrigin);
+    // Переход окна выпущен и остался без ответа — до ухода страницы: порядок
+    // переписи тогда тот, в каком подсажено.
+    await expect
+      .poll(() => census.providerCalls().find((c) => c.origin === silentOrigin)?.outcome, {
+        message: `обращение без ответа не записано как «ответа нет»:\n${census.describe()}`,
+        timeout: 15_000,
+      })
+      .toBe("ответа нет");
+    await page.evaluate(() => {
+      window.location.assign("/.ory/kratos/public/self-service/login/browser");
+    });
+    await expect
+      .poll(() => census.providerCalls().map((c) => `${c.method} ${c.origin}${c.path} ${c.kind}`), {
+        message: `перепись не назвала подсаженные обращения к поставщику:\n${census.describe()}`,
+        timeout: 15_000,
+      })
+      .toEqual([
+        `GET ${origin}/.ory/kratos/public/sessions/whoami запрос`,
+        `GET ${origin}/oauth2/auth запрос`,
+        `GET ${silentOrigin}/self-service/logout/browser документ`,
+        `GET ${origin}/.ory/kratos/public/self-service/login/browser документ`,
+      ]);
+  } finally {
+    await new Promise<void>((resolve) => silent.close(() => resolve()));
+  }
 });
 
 test("F8-18 · после выхода следующий человек в этом браузере не видит чужих аккаунта и проекта", async ({
@@ -718,9 +773,15 @@ test("F8-18 · после выхода следующий человек в эт
   await page.evaluate(() => window.localStorage.setItem("kacho-theme", "light"));
 
   await page.getByRole("button", { name: "Учётная запись" }).click();
+  // Нажатие ограничено сроком: на панели проекта «Выйти» может закрывать
+  // страница, и тогда отказ обязан назвать перехватчика нажатия, а не
+  // «ответа выхода не было» по сроку всего сценария.
   const [out] = await Promise.all([
     lanePost(page, LANE.logout),
-    page.getByRole("dialog", { name: "Учётная запись" }).getByRole("button", { name: "Выйти" }).click(),
+    page
+      .getByRole("dialog", { name: "Учётная запись" })
+      .getByRole("button", { name: "Выйти" })
+      .click({ timeout: 15_000 }),
   ]);
   expect(out.status(), `выход не прошёл: ${await out.text()}`).toBe(200);
   await expectPath(page, "/login", "после выхода консоль не вернула на экран входа");
@@ -958,8 +1019,10 @@ async function signInWithPasswordOnly(page: Page, human: SeededHuman) {
 /** Начать удаление группы с её карточки — действие, на котором край зовёт повышение. */
 async function startGroupDeletion(page: Page, groupId: string) {
   await page.goto(`/iam/groups/${groupId}`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "Действия" }).first().click();
-  await page.getByRole("menuitem", { name: "Удалить" }).click();
+  // «Удалить» — видимая кнопка шапки карточки, а не пункт меню «Действия»
+  // (`DetailOverviewActions`): меню на карточке группы нет вовсе, и проба,
+  // искавшая его, ждала элемента, которого консоль не рисует.
+  await page.getByRole("button", { name: "Удалить" }).click();
   const deletion = page.getByRole("dialog").filter({ has: page.getByRole("button", { name: "Удалить" }) });
   const challenged = page.waitForResponse(
     (r) => new URL(r.url()).pathname === `/iam/v1/groups/${groupId}` && r.request().method() === "DELETE",
@@ -1036,7 +1099,8 @@ test("F8-36 · повышать нечем: назван отказ и путь,
 
 test("F8-43 · оснастка поднимает уровень НАШИМИ глаголами, одним предъявлением кода", async ({ page }) => {
   // verifies #1274
-  const registered = page.waitForResponse(
+  const registered = answerOnArrival(
+    page,
     (r) => new URL(r.url()).pathname === LANE.register && r.request().method() === "POST",
   );
   await register(page);
