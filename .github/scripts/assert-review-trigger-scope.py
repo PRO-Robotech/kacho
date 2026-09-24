@@ -81,8 +81,9 @@ YAML: ПСЕВДОНИМ РАЗРЕШАЕТСЯ ДО СУЖДЕНИЯ, НЕДО�
 разворачивается, и имя подставляется значениями; матрица выражением
 (`fromJSON(needs.….outputs.matrix)`) в дереве не записана, и её вставка
 становится образцом `.+`. Совпадение буквальным именем побеждает совпадение
-образцом: иначе `build ${{ matrix.project }}` из ui.yml забрал бы себе
-`build · vet · gofmt` из ci.yaml. Имя длиннее 100 байт площадка обрезает до 97
+образцом: задание с матрицей выражением и именем `build ${{ … }}` в любом файле
+иначе забрало бы себе `build · vet · gofmt` из ci.yaml, и обязательным стал бы
+не тот файл. Имя длиннее 100 байт площадка обрезает до 97
 байт по границе знака и дописывает `...` — замер на защите ствола 2026-09-24:
 контекст `Postgres-пробы вне отбора интеграционной джобы (пропуск =...` ровно
 100 байт при имени задания 109 байт; буквальное имя приводится к той же форме.
@@ -141,6 +142,7 @@ pull_request` (скаляр), `on: [push, pull_request]` (последовате
 from __future__ import annotations
 
 import argparse
+import functools
 import importlib.util
 import itertools
 import re
@@ -408,7 +410,11 @@ class _CountingLoader(yaml.SafeLoader):
                 self._open_anchors.discard(anchor)
 
 
+@functools.lru_cache(maxsize=None)
 def _compose(raw: str) -> tuple[yaml.Node, int]:
+    """Узел документа и число псевдонимов. Запоминается по тексту: самопроверка
+    меняет по одному файлу за подпробу, а прочие разбирать заново незачем —
+    суждение узлов не меняет, и общий узел безопасен."""
     loader = _CountingLoader(raw)
     try:
         node = loader.get_single_node()
@@ -897,6 +903,7 @@ def self_test(root: Path) -> int:
 
     control_findings, control = audit(corpus0, declared0)
     cases: list[tuple[str, object]] = []
+    new_rel = f"{WORKFLOWS_DIR}/newflow.yml"
 
     def case(name: str):  # noqa: ANN202
         def deco(fn):  # noqa: ANN001, ANN202
@@ -1008,7 +1015,16 @@ def self_test(root: Path) -> int:
         got, _c = run(lambda r: _inject(r, "    name: golangci-lint\n", "    name: golangci-lint (новое имя)\n"))
         _expect(len(got) == 1 and "'golangci-lint'" in got[0], str(got))
 
-    @case("ось 0, близнец: контекст матрицы выражением сопоставлен образцом, буквальное имя побеждает образец")
+    @case("ось 0, близнец: образец из чужого файла не отнимает контекст у буквального имени")
+    def _():
+        rival = ("name: соперник\non: workflow_dispatch\njobs:\n  b:\n    name: build ${{ matrix.x }}\n"
+                 "    strategy:\n      matrix: ${{ fromJSON(inputs.m) }}\n    runs-on: ubuntu-latest\n"
+                 "    steps:\n      - run: echo ok\n")
+        got, c = run(extra={new_rel: rival})
+        _expect("build · vet · gofmt" in declared0, "контекста, на котором стоит проба, в объявлении нет")
+        _expect(not got and new_rel not in c.required_files, f"образец отнял контекст у буквального имени: {got}")
+
+    @case("ось 0, близнец: контекст матрицы выражением сопоставлен образцом")
     def _():
         name = "юниты какой-нибудь-шард"
         _got, c = run(declared=declared0 + [name])
@@ -1190,7 +1206,6 @@ def self_test(root: Path) -> int:
 
     # ── законные записи события ──
     jobs_tail = "jobs:\n  work:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n"
-    new_rel = f"{WORKFLOWS_DIR}/newflow.yml"
 
     @case("событие: on: pull_request скаляром — любая база")
     def _():
