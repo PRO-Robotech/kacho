@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { expect, type BrowserContext, type Page, type Response, type TestInfo } from "@playwright/test";
+import { lanePostAnswer } from "./answer-on-arrival";
 import {
   LANE,
   SESSION_COOKIE,
@@ -84,8 +85,9 @@ async function openSettings(page: Page) {
   return s;
 }
 
+/** Ответ глагола полосы — с телом, прочитанным по прибытии (`answer-on-arrival.ts`). */
 function lanePost(page: Page, path: string): Promise<Response> {
-  return page.waitForResponse((r) => new URL(r.url()).pathname === path && r.request().method() === "POST");
+  return lanePostAnswer(page, path);
 }
 
 async function bearerOf(context: BrowserContext): Promise<string> {

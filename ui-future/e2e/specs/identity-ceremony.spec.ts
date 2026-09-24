@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { expect, type BrowserContext, type Locator, type Page, type Response, type TestInfo } from "@playwright/test";
+import { answerOnArrival, lanePostAnswer } from "./answer-on-arrival";
 import { raiseAssurance } from "./assurance";
 import {
   LANE,
@@ -113,8 +114,9 @@ async function expectPath(page: Page, path: string, why: string) {
   await expect.poll(() => pathOf(page), { message: why, timeout: 30_000 }).toBe(path);
 }
 
+/** Ответ глагола полосы — с телом, прочитанным по прибытии (`answer-on-arrival.ts`). */
 function lanePost(page: Page, path: string): Promise<Response> {
-  return page.waitForResponse((r) => new URL(r.url()).pathname === path && r.request().method() === "POST");
+  return lanePostAnswer(page, path);
 }
 
 async function sessionHeld(context: BrowserContext): Promise<boolean> {
@@ -1036,7 +1038,8 @@ test("F8-36 · повышать нечем: назван отказ и путь,
 
 test("F8-43 · оснастка поднимает уровень НАШИМИ глаголами, одним предъявлением кода", async ({ page }) => {
   // verifies #1274
-  const registered = page.waitForResponse(
+  const registered = answerOnArrival(
+    page,
     (r) => new URL(r.url()).pathname === LANE.register && r.request().method() === "POST",
   );
   await register(page);
