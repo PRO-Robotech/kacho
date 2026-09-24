@@ -134,8 +134,19 @@ pull_request` (скаляр), `on: [push, pull_request]` (последовате
   1 — находки (каждая называет файл и ось);
   2 — ИЗМЕРЕНИЕ НЕ СДЕЛАНО: нет PyYAML, объявлений не прочитано, объявление не
       разобрано или записано формой, которой провайдер не принимает, на запросе
-      не идёт ни один файл, условий или звеньев прочитано ноль, объявление
-      контекстов пусто. Это НЕ «находок нет».
+      идёт меньше двух файлов, условий или звеньев прочитано ноль, объявление
+      контекстов пусто либо ни один его контекст не сопоставлен заданию. Это НЕ
+      «находок нет».
+
+У каждого отказа есть ИМЯ предпосылки — первый аргумент `Unmeasured`, — и
+самопроверка сверяет имя, а не факт отказа. Иначе отключённую предпосылку
+закрывала бы соседняя, а на входе, ради которого предпосылка заведена (один
+файл на запросе; условия без единого звена), исход 2 сменился бы на 0 молча:
+так в первом круге приёмки kacho#2807 выживали шесть мутаций из девяти.
+Перечень предпосылок самопроверка выводит РАЗБОРОМ собственного исходника, и
+предпосылка без подпробы, сверившей её отказ, — провал самопроверки. Вне
+перечня одна: нет PyYAML. Без него самопроверке идти не на чем; держит его шаг
+установки в конвейере.
 
 Запуск:
   python3 .github/scripts/assert-review-trigger-scope.py --self-test
@@ -145,6 +156,7 @@ pull_request` (скаляр), `on: [push, pull_request]` (последовате
 from __future__ import annotations
 
 import argparse
+import ast
 import functools
 import importlib.util
 import itertools
@@ -197,7 +209,21 @@ PROVIDER_CUT_TAIL = "..."
 
 
 class Unmeasured(Exception):
-    """Измерение не сделано. Отличается от «находок нет»."""
+    """Измерение не сделано. Отличается от «находок нет».
+
+    `premise` — имя отказавшей предпосылки, строковой константой на месте
+    отказа: самопроверка сверяет его и выводит перечень имён разбором этого
+    исходника (шапка, «ТРИ ИСХОДА»). `where` — файл, в котором отказ случился.
+    """
+
+    def __init__(self, premise: str, text: str) -> None:
+        super().__init__(text)
+        self.premise = premise
+        self.text = text
+        self.where = ""
+
+    def __str__(self) -> str:
+        return f"{self.where}: {self.text}" if self.where else self.text
 
 
 # ── РАЗБОР ВЫРАЖЕНИЯ УСЛОВИЯ ─────────────────────────────────────────────────
@@ -395,11 +421,13 @@ class _CountingLoader(yaml.SafeLoader):
             ev = self.peek_event()
             line = ev.start_mark.line + 1
             if isinstance(parent, yaml.MappingNode) and index is None:
-                raise Unmeasured(f"ключ отображения записан псевдонимом `*{ev.anchor}` (строка {line}): "
-                                 "провайдер ключа-псевдонима не разрешает, и разбор не знает, какой ключ судить")
+                raise Unmeasured("alias-as-key", f"ключ отображения записан псевдонимом `*{ev.anchor}` "
+                                 f"(строка {line}): провайдер ключа-псевдонима не разрешает, и разбор не знает, "
+                                 "какой ключ судить")
             if ev.anchor in self._open_anchors:
-                raise Unmeasured(f"псевдоним `*{ev.anchor}` (строка {line}) ведёт внутрь собственного якоря: "
-                                 "провайдер такое объявление не принимает, а разбор не судит бесконечный узел")
+                raise Unmeasured("alias-into-own-anchor", f"псевдоним `*{ev.anchor}` (строка {line}) ведёт внутрь "
+                                 "собственного якоря: провайдер такое объявление не принимает, а разбор не судит "
+                                 "бесконечный узел")
             self.aliases += 1
             return super().compose_node(parent, index)
         ev = self.peek_event()
@@ -422,11 +450,11 @@ def _compose(raw: str) -> tuple[yaml.Node, int]:
     try:
         node = loader.get_single_node()
     except yaml.YAMLError as exc:
-        raise Unmeasured(f"объявление не разобрано: {exc}") from exc
+        raise Unmeasured("yaml-unparsed", f"объявление не разобрано: {exc}") from exc
     finally:
         loader.dispose()
     if not isinstance(node, yaml.MappingNode):
-        raise Unmeasured("объявление не является отображением верхнего уровня")
+        raise Unmeasured("top-not-mapping", "объявление не является отображением верхнего уровня")
     _refuse_merge_and_duplicates(node, set())
     return node, loader.aliases
 
@@ -440,12 +468,12 @@ def _refuse_merge_and_duplicates(node: yaml.Node, seen: set[int]) -> None:
         for k, v in node.value:
             line = k.start_mark.line + 1
             if k.tag == "tag:yaml.org,2002:merge":
-                raise Unmeasured(f"ключ слияния `<<` (строка {line}): провайдер слияния не применяет и "
+                raise Unmeasured("merge-key", f"ключ слияния `<<` (строка {line}): провайдер слияния не применяет и "
                                  "объявление не принимает, а разбор не знает, чьи ключи судить")
             if isinstance(k, yaml.ScalarNode):
                 if k.value in keys:
-                    raise Unmeasured(f"ключ `{k.value}` повторён (строки {keys[k.value]} и {line}): какой из "
-                                     "двух победил бы, разбор не гадает")
+                    raise Unmeasured("duplicate-key", f"ключ `{k.value}` повторён (строки {keys[k.value]} и "
+                                     f"{line}): какой из двух победил бы, разбор не гадает")
                 keys[k.value] = line
             _refuse_merge_and_duplicates(k, seen)
             _refuse_merge_and_duplicates(v, seen)
@@ -480,23 +508,38 @@ class EventFilter:
 
 def _events_of(on: yaml.Node) -> dict[str, EventFilter]:
     out: dict[str, EventFilter] = {}
-    line = on.start_mark.line + 1
     if isinstance(on, yaml.ScalarNode):
         out[on.value] = EventFilter(bare=True)
     elif isinstance(on, yaml.SequenceNode):
         for n in on.value:
             if not isinstance(n, yaml.ScalarNode):
-                raise Unmeasured(f"элемент последовательности `on:` не скаляр (строка {n.start_mark.line + 1})")
+                raise Unmeasured("on-element-not-scalar", "элемент последовательности `on:` не скаляр "
+                                 f"(строка {n.start_mark.line + 1})")
             out[n.value] = EventFilter(bare=True)
-    elif isinstance(on, yaml.MappingNode):
+    else:  # отображение: других узлов составитель не строит
         for k, body in on.value:
             # Тело разбирается только у двух событий, которые гейт судит: у
             # `schedule` оно последовательность, у `workflow_run` — свои ключи, и
             # отказ на их форме был бы отказом не по предмету.
             name = _scalar(k)
             out[name] = _filter_of(name, body) if name in (REVIEW_EVENT, "push") else EventFilter()
-    else:
-        raise Unmeasured(f"`on:` записан формой, которую разбор не знает (строка {line})")
+    return out
+
+
+def _names(event: str, key: str, v: yaml.Node) -> list[str]:
+    """Значения ключа фильтра (`branches`) в любой законной записи:
+    одиночным скаляром или последовательностью скаляров, блоком или потоком."""
+    if isinstance(v, yaml.ScalarNode):
+        return [v.value]
+    if not isinstance(v, yaml.SequenceNode):
+        raise Unmeasured("filter-form-unknown", f"событие {event!r}: `{key}` записан формой, которую разбор не "
+                         f"знает (строка {v.start_mark.line + 1})")
+    out: list[str] = []
+    for b in v.value:
+        if not isinstance(b, yaml.ScalarNode):
+            raise Unmeasured("filter-element-not-scalar", f"событие {event!r}: элемент `{key}` не скаляр "
+                             f"(строка {b.start_mark.line + 1})")
+        out.append(b.value)
     return out
 
 
@@ -504,24 +547,14 @@ def _filter_of(event: str, body: yaml.Node) -> EventFilter:
     if _is_null(body):
         return EventFilter(bare=True)
     if not isinstance(body, yaml.MappingNode):
-        raise Unmeasured(f"событие {event!r}: тело не отображение (строка {body.start_mark.line + 1})")
+        raise Unmeasured("event-body-not-mapping", f"событие {event!r}: тело не отображение "
+                         f"(строка {body.start_mark.line + 1})")
     f = EventFilter()
     for k, v in body.value:
         key = _scalar(k)
         f.keys.add(key)
-        if key != "branches":
-            continue
-        if isinstance(v, yaml.ScalarNode):
-            f.branches = [v.value]
-        elif isinstance(v, yaml.SequenceNode):
-            for b in v.value:
-                if not isinstance(b, yaml.ScalarNode):
-                    raise Unmeasured(f"событие {event!r}: элемент `branches` не скаляр "
-                                     f"(строка {b.start_mark.line + 1})")
-                f.branches.append(b.value)
-        else:
-            raise Unmeasured(f"событие {event!r}: `branches` записан формой, которую разбор не знает "
-                             f"(строка {v.start_mark.line + 1})")
+        if key == "branches":
+            f.branches = _names(event, key, v)
     return f
 
 
@@ -676,13 +709,14 @@ def _audit_conditions(rel: str, jobs: yaml.Node | None, census: Census) -> list[
     if jobs is None:
         return []
     if not isinstance(jobs, yaml.MappingNode):
-        raise Unmeasured(f"`jobs:` не отображение (строка {jobs.start_mark.line + 1}): ось 4 не знает, где задания")
+        raise Unmeasured("jobs-not-mapping", f"`jobs:` не отображение (строка {jobs.start_mark.line + 1}): ось 4 не "
+                         "знает, где задания")
     findings: list[str] = []
 
     def judge(where: str, cond: yaml.Node) -> None:
         if not isinstance(cond, yaml.ScalarNode):
-            raise Unmeasured(f"{where}: условие `if:` не скаляр (строка {cond.start_mark.line + 1}) — провайдер "
-                             "такого не принимает, а разбор не знает, что судить")
+            raise Unmeasured("if-not-scalar", f"{where}: условие `if:` не скаляр (строка {cond.start_mark.line + 1}) "
+                             "— провайдер такого не принимает, а разбор не знает, что судить")
         census.conditions += 1
         readings, links = condition_reads_base(cond.value)
         census.condition_links += links
@@ -694,8 +728,8 @@ def _audit_conditions(rel: str, jobs: yaml.Node | None, census: Census) -> list[
     for k, job in jobs.value:
         where = f"задание {_scalar(k)}"
         if not isinstance(job, yaml.MappingNode):
-            raise Unmeasured(f"{where} не отображение (строка {job.start_mark.line + 1}): ось 4 не знает, где "
-                             "его условие")
+            raise Unmeasured("job-not-mapping", f"{where} не отображение (строка {job.start_mark.line + 1}): ось 4 не "
+                             "знает, где его условие")
         if _value(job, "uses") is not None:
             census.job_uses += 1
         cond = _value(job, "if")
@@ -705,13 +739,13 @@ def _audit_conditions(rel: str, jobs: yaml.Node | None, census: Census) -> list[
         if steps is None:
             continue
         if not isinstance(steps, yaml.SequenceNode):
-            raise Unmeasured(f"{where}: `steps` не последовательность (строка {steps.start_mark.line + 1}): ось 4 "
-                             "не знает, где условия шагов")
+            raise Unmeasured("steps-not-sequence", f"{where}: `steps` не последовательность "
+                             f"(строка {steps.start_mark.line + 1}): ось 4 не знает, где условия шагов")
         for si, st in enumerate(steps.value, start=1):
             step_where = f"{where}, шаг {si}"
             if not isinstance(st, yaml.MappingNode):
-                raise Unmeasured(f"{step_where} не отображение (строка {st.start_mark.line + 1}): ось 4 не знает, "
-                                 "где его условие")
+                raise Unmeasured("step-not-mapping", f"{step_where} не отображение (строка {st.start_mark.line + 1}): "
+                                 "ось 4 не знает, где его условие")
             cond = _value(st, "if")
             if cond is not None:
                 judge(step_where, cond)
@@ -723,9 +757,9 @@ def audit(corpus: dict[str, str], declared: list[str]) -> tuple[list[str], Censu
     упасть доказывалась подачей входа, а не правкой дерева."""
     census = Census(files=len(corpus), declared=len(declared))
     if not corpus:
-        raise Unmeasured("объявлений процессов прочитано ноль — вердикт беспредметен")
+        raise Unmeasured("corpus-empty", "объявлений процессов прочитано ноль — вердикт беспредметен")
     if not declared:
-        raise Unmeasured("объявление обязательных контекстов пусто — ось 0 судить не о чем")
+        raise Unmeasured("declared-empty", "объявление обязательных контекстов пусто — ось 0 судить не о чем")
 
     findings: list[str] = []
     on_review: set[str] = set()
@@ -738,8 +772,8 @@ def audit(corpus: dict[str, str], declared: list[str]) -> tuple[list[str], Censu
             census.aliases += aliases
             on = _value(doc, "on")
             if on is None:
-                raise Unmeasured("в объявлении нет `on:` — процесс не запускается ничем, и молчание разбора было "
-                                 "бы вердиктом о пустом")
+                raise Unmeasured("on-missing", "в объявлении нет `on:` — процесс не запускается ничем, и молчание "
+                                 "разбора было бы вердиктом о пустом")
             events = _events_of(on)
             per_file: list[str] = []
             if REVIEW_EVENT in events:
@@ -763,16 +797,20 @@ def audit(corpus: dict[str, str], declared: list[str]) -> tuple[list[str], Censu
                     pats += ps
             literal_by_file[rel], patterns_by_file[rel] = lits, pats
         except Unmeasured as exc:
-            raise Unmeasured(f"{rel}: {exc}") from exc
+            exc.where = rel  # имя предпосылки остаётся тем, что назвал отказ
+            raise
         findings += [f"{rel}: {f}" for f in per_file]
 
     if census.on_review < 2:
-        raise Unmeasured(f"файлов, идущих на запросе ({REVIEW_EVENT}), найдено {census.on_review}: на нуле детектор "
-                         "события молчит, на одном свойство «КАЖДЫЙ идёт на запросе в линию» проверяется вырожденно")
+        raise Unmeasured("review-files-few", f"файлов, идущих на запросе ({REVIEW_EVENT}), найдено {census.on_review}: "
+                         "на нуле детектор события молчит, на одном свойство «КАЖДЫЙ идёт на запросе в линию» "
+                         "проверяется вырожденно")
     if census.conditions == 0:
-        raise Unmeasured("условий `if:` осмотрено ноль — разбор не дошёл до заданий, и молчание оси 4 сказано ни о чём")
+        raise Unmeasured("conditions-none", "условий `if:` осмотрено ноль — разбор не дошёл до заданий, и молчание "
+                         "оси 4 сказано ни о чём")
     if census.condition_links == 0:
-        raise Unmeasured("условия `if:` осмотрены, а звеньев в них прочитано ноль — разбор лексем слеп")
+        raise Unmeasured("condition-links-none", f"условия `if:` осмотрены ({census.conditions}), а звеньев в них "
+                         "прочитано ноль — разбор лексем слеп")
 
     required: dict[str, list[str]] = {}
     unmatched: list[str] = []
@@ -797,7 +835,7 @@ def audit(corpus: dict[str, str], declared: list[str]) -> tuple[list[str], Censu
                             f"{', '.join(repr(x) for x in names[:3])}{' …' if len(names) > 3 else ''}), а на запросе "
                             "не идёт — запрос и в ствол, и в линию ждёт их вечно")
     if not census.required_files:
-        raise Unmeasured("ни один контекст не сопоставлен заданию — ось 0 судила бы пустое")
+        raise Unmeasured("contexts-unmatched", "ни один контекст не сопоставлен заданию — ось 0 судила бы пустое")
     return findings, census
 
 
@@ -808,21 +846,34 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def _load_declaration_parser():  # noqa: ANN202
-    here = Path(__file__).resolve().parent / "assert-required-contexts-match-jobs.py"
-    spec = importlib.util.spec_from_file_location("required_contexts_holder", here)
-    if spec is None or spec.loader is None:
-        raise Unmeasured(f"держатель объявления {here.name} не загружен — форму объявления разбирать нечем")
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = mod  # разбор аннотаций и dataclass ищут модуль здесь
-    spec.loader.exec_module(mod)
-    return mod.parse_declaration, mod.DECLARATION_PATH
+HOLDER_PATH = Path(__file__).resolve().parent / "assert-required-contexts-match-jobs.py"
+HOLDER_MODULE = "required_contexts_holder"
+
+
+def _load_declaration_parser(here: Path = HOLDER_PATH):  # noqa: ANN202
+    """`parse_declaration` и путь объявления из держателя объявления. Держатель,
+    который не загрузился (нет файла, не модуль, нет имени), — отказ, а не
+    трасса: трасса дала бы код 1, то есть «находки», о пустом."""
+    spec = importlib.util.spec_from_file_location(HOLDER_MODULE, here)
+    mod = None
+    try:
+        if spec is None or spec.loader is None:
+            raise ImportError("путь не опознан модулем Python")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[HOLDER_MODULE] = mod  # разбор аннотаций и dataclass ищут модуль здесь
+        spec.loader.exec_module(mod)
+        return mod.parse_declaration, mod.DECLARATION_PATH
+    except (ImportError, OSError, SyntaxError, AttributeError) as exc:
+        if mod is not None and sys.modules.get(HOLDER_MODULE) is mod:
+            del sys.modules[HOLDER_MODULE]
+        raise Unmeasured("holder-not-loaded", f"держатель объявления {here.name} не загружен ({exc}) — форму "
+                         "объявления разбирать нечем") from exc
 
 
 def _git(root: Path, *args: str) -> str:
     p = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True)
     if p.returncode != 0:
-        raise Unmeasured(f"git {' '.join(args)}: {p.stderr.strip() or 'код ' + str(p.returncode)}")
+        raise Unmeasured("git-failed", f"git {' '.join(args)}: {p.stderr.strip() or 'код ' + str(p.returncode)}")
     return p.stdout
 
 
@@ -851,6 +902,14 @@ def read_tree(root: Path, rev: str | None) -> tuple[dict[str, str], list[str]]:
 # котором гейт молчит; на дереве как есть находок ноль, и это утверждается
 # первым. Запись, которую инъекция меняет, обязана быть в файле: инъекция, не
 # нашедшая своей записи, — отказ самопроверки, а не её зелёное.
+#
+# Исход 2 доказывается так же, но вход у каждой предпосылки СВОЙ и нарушает
+# только её: один файл на запросе при прочем чистом, условия без звеньев при
+# двух файлах на запросе. Подпроба сверяет ИМЯ отказавшей предпосылки и текст
+# отказа; где вход собран, рядом стоит близнец, отличный одним фактом, и он
+# проходит без отказа. Вырожденный корпус так не собрать из дерева, поэтому эти
+# входы синтетические. Последняя подпроба выводит перечень предпосылок разбором
+# этого исходника и сверяет его с тем, что подпробы вызвали, в обе стороны.
 
 INJECT_REL = f"{WORKFLOWS_DIR}/ci.yaml"
 NOT_REQUIRED_REL = f"{WORKFLOWS_DIR}/production-posture.yml"
@@ -861,6 +920,53 @@ JOBS_ANCHOR = "\njobs:\n"
 
 class SelfTestFailure(Exception):
     pass
+
+
+def refusal_check(covered: set[str], expected: set[str]):  # noqa: ANN201
+    """Сверка подпробы исхода 2: отказ ИМЕННО этой предпосылки и с этим текстом.
+    Отказ соседней — провал: иначе отключённую предпосылку закрывала бы
+    соседняя. Какие предпосылки ждали и какие получили — в `expected` и
+    `covered`, для сверки с перечнем из исходника."""
+
+    def refused(fn, premise: str, *says: str) -> str:  # noqa: ANN001
+        expected.add(premise)
+        try:
+            fn()
+        except Unmeasured as exc:
+            msg = str(exc)
+            _expect(exc.premise == premise, f"ждали отказ {premise!r}, отказала {exc.premise!r}: {msg}")
+            for s in says:
+                _expect(s in msg, f"отказ {premise!r} не называет {s!r}: {msg}")
+            covered.add(premise)
+            return msg
+        raise SelfTestFailure(f"вход предпосылки {premise!r} принят за измеримый: отказа нет")
+
+    return refused
+
+
+def premise_sites(source: str) -> dict[str, int]:
+    """Имя предпосылки → строка её отказа, разбором исходника гейта. Отказы,
+    которые самопроверка строит сама как вход, в перечень не входят. Отказ, чьё
+    имя не строковая константа или повторено, — провал: подпроба такой отказ от
+    соседнего не отличит."""
+    tree = ast.parse(source)
+    probe = {id(n) for f in ast.walk(tree) if isinstance(f, ast.FunctionDef) and f.name == "self_test"
+             for n in ast.walk(f)}
+    sites: dict[str, int] = {}
+    for node in ast.walk(tree):
+        if id(node) in probe:
+            continue
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == Unmeasured.__name__):
+            continue
+        arg = node.args[0] if node.args else None
+        if not (isinstance(arg, ast.Constant) and isinstance(arg.value, str) and arg.value):
+            raise SelfTestFailure(f"отказ в строке {node.lineno}: имя предпосылки не строковая константа")
+        if arg.value in sites:
+            raise SelfTestFailure(f"предпосылка {arg.value!r} названа дважды (строки {sites[arg.value]} и "
+                                  f"{node.lineno}): подпроба одну от другой не отличит")
+        sites[arg.value] = node.lineno
+    return sites
 
 
 def _expect(cond: bool, what: str) -> None:
@@ -897,12 +1003,9 @@ def self_test(root: Path) -> int:
     def cond_step(cond: str):  # noqa: ANN202
         return with_job(f"  onlymain:\n    runs-on: ubuntu-latest\n    steps:\n      - if: {cond}\n        run: echo ok\n")
 
-    def refused(fn) -> str:  # noqa: ANN001
-        try:
-            fn()
-        except Unmeasured as exc:
-            return str(exc)
-        raise SelfTestFailure("форма, которой провайдер не принимает, прошла разбор молча")
+    covered: set[str] = set()   # предпосылки, чей отказ подпроба получила и сверила
+    expected: set[str] = set()  # предпосылки, которых подпробы ждут
+    refused = refusal_check(covered, expected)
 
     control_findings, control = audit(corpus0, declared0)
     cases: list[tuple[str, object]] = []
@@ -1183,29 +1286,29 @@ def self_test(root: Path) -> int:
     # ── отказ на записи, которой провайдер не принимает ──
     job = ("  onlymain: &job\n    runs-on: ubuntu-latest\n    if: ${{ github.head_ref == 'lane' }}\n"
            "    steps:\n      - run: echo ok\n")
-    for label, jobs, why in (
-        ("ключ слияния", job + "  onlymaincopy:\n    <<: *job\n", "ключ слияния `<<`"),
+    for label, jobs, premise, why in (
+        ("ключ слияния", job + "  onlymaincopy:\n    <<: *job\n", "merge-key", "ключ слияния `<<`"),
         ("ключ-псевдоним", "  onlymain:\n    runs-on: ubuntu-latest\n    env:\n      K: &ifkey if\n"
                            "    *ifkey : ${{ github.base_ref == 'main' }}\n    steps:\n      - run: echo ok\n",
-         "ключ отображения записан псевдонимом `*ifkey`"),
+         "alias-as-key", "ключ отображения записан псевдонимом `*ifkey`"),
         ("псевдоним внутрь собственного якоря",
          "  onlymain: &job\n    runs-on: ubuntu-latest\n    services: *job\n    steps:\n      - run: echo ok\n",
-         "ведёт внутрь собственного якоря"),
+         "alias-into-own-anchor", "ведёт внутрь собственного якоря"),
         ("повторённый ключ", "  onlymain:\n    runs-on: ubuntu-latest\n    if: ${{ github.head_ref == 'x' }}\n"
                              "    if: ${{ github.base_ref == 'main' }}\n    steps:\n      - run: echo ok\n",
-         "ключ `if` повторён"),
+         "duplicate-key", "ключ `if` повторён"),
         ("условие отображением", "  onlymain:\n    runs-on: ubuntu-latest\n    if: {base: main}\n"
-                                 "    steps:\n      - run: echo ok\n", "задание onlymain: условие `if:` не скаляр"),
-        ("задание скаляром", "  onlymain: echo\n", "задание onlymain не отображение"),
+                                 "    steps:\n      - run: echo ok\n",
+         "if-not-scalar", "задание onlymain: условие `if:` не скаляр"),
+        ("задание скаляром", "  onlymain: echo\n", "job-not-mapping", "задание onlymain не отображение"),
         ("steps скаляром", "  onlymain:\n    runs-on: ubuntu-latest\n    steps: echo\n",
-         "задание onlymain: `steps` не последовательность"),
+         "steps-not-sequence", "задание onlymain: `steps` не последовательность"),
         ("шаг скаляром", "  onlymain:\n    runs-on: ubuntu-latest\n    steps:\n      - echo\n",
-         "задание onlymain, шаг 1 не отображение"),
+         "step-not-mapping", "задание onlymain, шаг 1 не отображение"),
     ):
         @case(f"отказ: {label}")
-        def _(jobs=jobs, why=why):
-            msg = refused(lambda: with_job(jobs))
-            _expect(INJECT_REL in msg and why in msg, msg)
+        def _(jobs=jobs, premise=premise, why=why):
+            refused(lambda: with_job(jobs), premise, INJECT_REL, why)
 
     # ── законные записи события ──
     jobs_tail = "jobs:\n  work:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n"
@@ -1232,22 +1335,139 @@ def self_test(root: Path) -> int:
         got, c = run(extra={new_rel: "name: новый\non: workflow_dispatch\n" + jobs_tail})
         _expect(not got and c.files == control.files + 1 and c.on_review == control.on_review, f"{got}")
 
-    # ── беспредметный вход ──
-    @case("беспредметный вход — отказ, а не вердикт")
+    # ── исход 2: у каждой предпосылки свой вход, и отказать обязана ОНА ──
+    ci_ctx = "build · vet · gofmt"
+
+    def two_files(cond: str | None) -> dict[str, str]:
+        """Два файла на запросе с базами линии; условие — только у первого."""
+        def one(name: str, c: str | None) -> str:
+            return (f"name: {name}\non:\n  pull_request:\n    branches: [main, '[0-9]+']\njobs:\n  work:\n"
+                    f"    name: работа {name}\n" + (f"    if: {c}\n" if c is not None else "")
+                    + "    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n")
+        return {f"{WORKFLOWS_DIR}/a.yml": one("a", cond), f"{WORKFLOWS_DIR}/b.yml": one("b", None)}
+
+    two_ctx = ["работа a"]
+
+    @case("исход 2: корпус пуст")
     def _():
-        for label, fn in (
-            ("пустой корпус", lambda: audit({}, declared0)),
-            ("пустое объявление контекстов", lambda: audit(corpus0, [])),
-            ("неразобранное объявление", lambda: audit({**corpus0, new_rel: "{ обрезано"}, declared0)),
-            ("объявление без on:", lambda: audit({**corpus0, new_rel: "name: x\njobs: {}\n"}, declared0)),
-            ("ни одного файла на запросе", lambda: audit({new_rel: "name: x\non: workflow_dispatch\n" + jobs_tail},
-                                                         declared0)),
-        ):
+        refused(lambda: audit({}, declared0), "corpus-empty", "прочитано ноль")
+
+    @case("исход 2: объявление контекстов пусто; близнец — объявлен один контекст ci.yaml")
+    def _():
+        _expect(ci_ctx in declared0, f"контекста {ci_ctx!r}, на котором стоит проба, в объявлении нет")
+        refused(lambda: audit(corpus0, []), "declared-empty", "пусто")
+        got, c = audit(corpus0, [ci_ctx])
+        _expect(not got and c.required_files == [INJECT_REL], f"близнец не чист: {got} {c.required_files}")
+
+    @case("исход 2: ни один объявленный контекст не сопоставлен заданию")
+    def _():
+        refused(lambda: audit(corpus0, ["контекст без задания"]), "contexts-unmatched", "ни один контекст")
+
+    @case("исход 2: на запросе идёт один файл; близнец — два")
+    def _():
+        one = {INJECT_REL: corpus0[INJECT_REL]}
+        refused(lambda: audit(one, [ci_ctx]), "review-files-few", "найдено 1")
+        got, c = audit({**one, NOT_REQUIRED_REL: corpus0[NOT_REQUIRED_REL]}, [ci_ctx])
+        _expect(not got and c.on_review == 2, f"близнец не чист: {got}, на запросе {c.on_review}")
+
+    @case("исход 2: на запросе не идёт ни один файл")
+    def _():
+        refused(lambda: audit({new_rel: "name: x\non: workflow_dispatch\n" + jobs_tail}, declared0),
+                "review-files-few", "найдено 0")
+
+    @case("исход 2: условий if: ни одного; близнец — одно условие по голове")
+    def _():
+        refused(lambda: audit(two_files(None), two_ctx), "conditions-none", "осмотрено ноль")
+        got, c = audit(two_files("github.head_ref == 'lane'"), two_ctx)
+        _expect(not got and c.on_review == 2 and c.conditions == 1 and c.condition_links == 2,
+                f"близнец не чист: {got} {c}")
+
+    @case("исход 2: условия есть, а звеньев в них ноль")
+    def _():
+        for cond in ("1", "${{ 'lane' }}"):
+            refused(lambda cond=cond: audit(two_files(cond), two_ctx), "condition-links-none",
+                    "звеньев в них прочитано ноль")
+
+    for label, raw, premise, says in (
+        ("объявление не разобрано", "{ обрезано", "yaml-unparsed", "не разобрано"),
+        ("объявление — не отображение", "- a\n", "top-not-mapping", "верхнего уровня"),
+        ("в объявлении нет on:", "name: x\njobs: {}\n", "on-missing", "нет `on:`"),
+        ("элемент on: не скаляр", "name: x\non: [push, [pull_request]]\n" + jobs_tail, "on-element-not-scalar",
+         "не скаляр"),
+        ("тело запроса не отображение", "name: x\non:\n  pull_request: [main]\n" + jobs_tail,
+         "event-body-not-mapping", "тело не отображение"),
+        ("элемент branches не скаляр", "name: x\non:\n  pull_request:\n    branches: [[main]]\n" + jobs_tail,
+         "filter-element-not-scalar", "элемент `branches` не скаляр"),
+        ("branches отображением", "name: x\non:\n  push:\n    branches: {main: x}\n" + jobs_tail,
+         "filter-form-unknown", "`branches` записан формой"),
+        ("jobs: не отображение", "name: x\non: workflow_dispatch\njobs: [a]\n", "jobs-not-mapping",
+         "`jobs:` не отображение"),
+    ):
+        @case(f"исход 2: {label}")
+        def _(raw=raw, premise=premise, says=says):
+            refused(lambda: audit({**corpus0, new_rel: raw}, declared0), premise, new_rel, says)
+
+    @case("исход 2: держатель объявления не загружен; близнец — свой держатель")
+    def _():
+        refused(lambda: _load_declaration_parser(root / "нет-такого-держателя.py"), "holder-not-loaded",
+                "нет-такого-держателя.py")
+        parse, path = _load_declaration_parser()
+        _expect(callable(parse) and path, "свой держатель не загружен")
+
+    @case("исход 2: ревизии нет; близнец — ревизия HEAD")
+    def _():
+        refused(lambda: read_tree(root, "refs/heads/нет-такой-ревизии-2807"), "git-failed", "нет-такой-ревизии-2807")
+        corpus, _decl = read_tree(root, "HEAD")
+        _expect(INJECT_REL in corpus, "ревизия HEAD прочитана без ci.yaml")
+
+    # ПОСЛЕДНЕЙ: сверяет то, что вызвали подпробы выше.
+    census_line: list[str] = []
+
+    @case("перечень предпосылок выведен из исходника, и у каждой — подпроба со сверенным отказом")
+    def _():
+        sites = premise_sites(Path(__file__).read_text(encoding="utf-8"))
+        census_line.append(f"предпосылок отказа в исходнике {len(sites)} · сверено подпробами "
+                           f"{len(covered & set(sites))}")
+        _expect(sites, "в исходнике не найдено ни одного отказа — сверять не с чем")
+        lost = sorted(set(sites) - covered)
+        stale = sorted(expected - set(sites))
+        _expect(not lost, "предпосылки без подпробы, сверившей отказ: "
+                + ", ".join(f"{k} (строка {sites[k]})" for k in lost))
+        _expect(not stale, f"подпробы ждут предпосылок, которых в исходнике нет: {stale}")
+
+    @case("перечень предпосылок: имя выражением и повторённое имя — провал вывода")
+    def _():
+        for src, why in (("raise Unmeasured(name, 'x')\n", "не строковая константа"),
+                         ("raise Unmeasured('a', 'x')\nraise Unmeasured('a', 'y')\n", "названа дважды")):
             try:
-                fn()
-            except Unmeasured:
+                premise_sites(src)
+            except SelfTestFailure as exc:
+                _expect(why in str(exc), f"{src!r}: {exc}")
                 continue
-            raise SelfTestFailure(f"{label} принят за чистый")
+            raise SelfTestFailure(f"вывод перечня принял {src!r}")
+        _expect(premise_sites("raise Unmeasured('a', 'x')\nraise Unmeasured('b', 'y')\n") == {"a": 1, "b": 2},
+                "два имени — два места")
+        _expect(premise_sites("def self_test():\n    raise Unmeasured('a', 'x')\n") == {},
+                "вход самопроверки посчитан предпосылкой гейта")
+
+    @case("сверка отказа: соседняя предпосылка, чужой текст, отсутствие отказа — провал подпробы")
+    def _():
+        mine, want = set(), set()
+        check = refusal_check(mine, want)
+
+        def boom() -> None:
+            raise Unmeasured("probe-a", "текст отказа")
+
+        for label, fn, args in (("соседняя предпосылка", boom, ("probe-b",)),
+                                ("чужой текст", boom, ("probe-a", "другой текст")),
+                                ("отказа нет", lambda: None, ("probe-a",))):
+            try:
+                check(fn, *args)
+            except SelfTestFailure:
+                continue
+            raise SelfTestFailure(f"сверка отказа приняла вход «{label}»")
+        _expect(check(boom, "probe-a", "текст") == "текст отказа" and mine == {"probe-a"}
+                and want == {"probe-a", "probe-b"}, f"сверка отказа не записала исход: {mine} {want}")
 
     passed = 0
     failed: list[str] = []
@@ -1259,7 +1479,8 @@ def self_test(root: Path) -> int:
             failed.append(f"{name}: {exc}")
         except Exception:  # noqa: BLE001 - поломка пробы — тоже провал, с трассой
             failed.append(f"{name}: {traceback.format_exc()}")
-    print(f"самопроверка: подпроб {len(cases)} · прошли {passed} · провалились {len(failed)}")
+    print(f"самопроверка: подпроб {len(cases)} · прошли {passed} · провалились {len(failed)}"
+          + "".join(f" · {x}" for x in census_line))
     for f in failed:
         print(f"  ПРОВАЛ: {f}")
     if not cases:
