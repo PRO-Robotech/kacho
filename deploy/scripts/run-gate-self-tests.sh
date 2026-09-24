@@ -97,6 +97,8 @@ DECLARED="
 .github/scripts/assert-jobs-provide-python-modules.py
 .github/scripts/assert-jobs-provide-their-tools.py
 .github/scripts/assert-required-contexts-match-jobs.py
+.github/scripts/assert-review-text-carries-no-attribution.py
+.github/scripts/assert-review-trigger-scope.py
 .github/scripts/assert-unit-shard-wiring.py
 .github/scripts/check-newman-suite-gates.py
 .github/scripts/check-pinned-tools.sh
