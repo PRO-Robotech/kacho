@@ -5,7 +5,6 @@ package opsproxy_test
 
 import (
 	"context"
-	"net"
 	"sync/atomic"
 	"testing"
 
@@ -17,6 +16,7 @@ import (
 	operationpb "github.com/PRO-Robotech/corelib/api/corelib/operation"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/opsproxy"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // countingOperationServer — mock backend, который СЧИТАЕТ вызовы Cancel.
@@ -50,10 +50,7 @@ func (m *countingOperationServer) Cancel(_ context.Context, req *operationpb.Can
 
 func setupCountingBackend(t *testing.T, ops map[string]*operationpb.Operation) (*grpc.ClientConn, *countingOperationServer) {
 	t.Helper()
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen: %v", err)
-	}
+	lis := privateloopback.Listen(t)
 	impl := &countingOperationServer{ops: ops}
 	srv := grpc.NewServer()
 	operationpb.RegisterOperationServiceServer(srv, impl)

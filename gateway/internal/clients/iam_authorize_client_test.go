@@ -7,7 +7,6 @@ import (
 	"context"
 	"io"
 	"log/slog"
-	"net"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -24,6 +23,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/clients"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // stubAuthorizeServer — programmable AuthorizeService implementation for
@@ -65,8 +65,7 @@ func (s *stubAuthorizeServer) Check(ctx context.Context, req *iamv1.AuthorizeChe
 
 func startStubServer(t *testing.T, stub *stubAuthorizeServer) (addr string, cleanup func()) {
 	t.Helper()
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
+	lis := privateloopback.Listen(t)
 	srv := grpc.NewServer()
 	iamv1.RegisterAuthorizeServiceServer(srv, stub)
 	go func() { _ = srv.Serve(lis) }()
@@ -182,8 +181,7 @@ func TestIAMAuthorizeClient_Check_PermissionDeniedNotRetried(t *testing.T) {
 		calls atomic.Int32
 	}
 	d := &denyServer{}
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
+	lis := privateloopback.Listen(t)
 	srv := grpc.NewServer()
 	iamv1.RegisterAuthorizeServiceServer(srv, &denyAuthorizeWrapper{count: &d.calls})
 	go func() { _ = srv.Serve(lis) }()

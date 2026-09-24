@@ -35,6 +35,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/clients/jwks"
 )
 
@@ -107,7 +108,7 @@ func TestF1b13_RegistryDataPlaneAcceptsOurIssuerThroughARealConnection(t *testin
 	h := New(verifier, az, be, presenceFor(be), &fakeForwarder{status: 200}, &fakeRepoReg{},
 		nil, nil, nil, "https://api.kacho.local/iam/token", f1bServiceAud, nil)
 
-	srv := httptest.NewServer(h)
+	srv := privateloopback.NewServer(t, h)
 	t.Cleanup(srv.Close)
 
 	get := func(token string) int {

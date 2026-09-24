@@ -27,6 +27,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/handler"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // fakeOwn — дублёр `Resolve` на один вопрос.
@@ -156,7 +157,7 @@ func kachoHeaders(h http.Header) []string {
 func TestLoginLaneRelay_F3_51_RelayedRequestCarriesCookiesAndOneForwardedForAndNoIdentity(t *testing.T) {
 	stub := &formListenerStub{status: http.StatusOK, body: `{}`,
 		respHdr: http.Header{"Set-Cookie": {"kaname_session=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax"}}}
-	srv := httptest.NewServer(stub)
+	srv := privateloopback.NewServer(t, stub)
 	t.Cleanup(srv.Close)
 	// Живая сессия: полоса ВЫСТАВИТ личность перед ретрансляцией — и её обязан
 	// снять ретранслятор (§1.10: шесть заголовков принципала).
@@ -214,7 +215,7 @@ func TestLoginLaneRelay_F3_51_RelayedRequestCarriesCookiesAndOneForwardedForAndN
 func TestLoginLaneRelay_F3_17_ServiceRefusalIsRelayedAsIsAndUnreachableServiceIs503(t *testing.T) {
 	stub := &formListenerStub{status: http.StatusServiceUnavailable,
 		body: `{"code":14,"message":"logout not performed; try again later"}`}
-	srv := httptest.NewServer(stub)
+	srv := privateloopback.NewServer(t, stub)
 	t.Cleanup(srv.Close)
 	// Под `own` вопросы края и слушатель формы бьют в одно хранилище: Resolve
 	// отвечает UNAVAILABLE, слушатель — исходом Ф1-58.
@@ -279,7 +280,7 @@ func TestLoginLaneRelay_F3_17_ServiceRefusalIsRelayedAsIsAndUnreachableServiceIs
 func TestLoginLaneRelay_F3_51_ServiceResponsePassesThroughUnchanged(t *testing.T) {
 	stub := &formListenerStub{status: http.StatusOK, body: `{"session":{"expiresAt":"2026-09-17T12:00:00Z"}}`,
 		respHdr: http.Header{"Set-Cookie": {"kaname_session=new; Max-Age=86400; Path=/; HttpOnly; Secure; SameSite=Lax"}, "X-Service": {"kaname"}}}
-	srv := httptest.NewServer(stub)
+	srv := privateloopback.NewServer(t, stub)
 	t.Cleanup(srv.Close)
 	chain, _ := chainWithRelay(t, &fakeOwn{found: false}, &fakeCut{}, srv.URL)
 	rec := httptest.NewRecorder()

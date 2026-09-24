@@ -21,6 +21,8 @@ import (
 
 	"github.com/PRO-Robotech/corelib/authz"
 	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // authority — авторитет отзыва по форме RFC 7662 со всеми ручками, которых
@@ -40,7 +42,7 @@ type authority struct {
 func newAuthority(t *testing.T) *authority {
 	t.Helper()
 	a := &authority{revoked: map[string]bool{}}
-	a.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	a.srv = privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		a.asked.Add(1)
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)

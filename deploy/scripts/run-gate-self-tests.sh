@@ -97,6 +97,8 @@ DECLARED="
 .github/scripts/assert-jobs-provide-python-modules.py
 .github/scripts/assert-jobs-provide-their-tools.py
 .github/scripts/assert-required-contexts-match-jobs.py
+.github/scripts/assert-review-text-carries-no-attribution.py
+.github/scripts/assert-review-trigger-scope.py
 .github/scripts/assert-unit-shard-wiring.py
 .github/scripts/check-newman-suite-gates.py
 .github/scripts/check-pinned-tools.sh
@@ -148,6 +150,7 @@ deploy/scripts/gen-managed-image-pins.sh
 deploy/scripts/helm-umbrella-deps.sh
 deploy/scripts/own-rest-front-address.py
 deploy/scripts/remeasure-provider-listener-tls.sh
+deploy/scripts/repo_tree.py
 deploy/scripts/run-injection-proofs.sh
 deploy/scripts/stand-provenance.sh
 deploy/tests/helm/admin-hop-address-census-test.sh

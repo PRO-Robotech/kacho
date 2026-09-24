@@ -29,12 +29,13 @@ import (
 	"time"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // recordingProviderStub — чужая сторона, запоминающая КАЖДЫЙ полученный `Cookie`.
 func recordingProviderStub(t *testing.T, got *[]string, mu *sync.Mutex) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		*got = append(*got, r.Header.Get("Cookie"))
 		mu.Unlock()
@@ -186,7 +187,7 @@ const stepUpFloorPath = "/iam/v1/users/usr-abc/tokens"
 // mfaProviderStub — чужая сторона, называющая уровень `aal2`.
 func mfaProviderStub(t *testing.T, asked *atomic.Int64) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		asked.Add(1)
 		w.WriteHeader(http.StatusOK)
 		_, _ = io.WriteString(w, `{"active":true,"authenticated_at":"`+
