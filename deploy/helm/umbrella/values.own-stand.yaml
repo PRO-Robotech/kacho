@@ -207,6 +207,29 @@ storage:
   image:
     repository: docker.io/prorobotech/kacho-storage
     tag: main-4382f05c
+# КОНСОЛЬ — та же ревизия, ПОЛНОЙ формой тега: у образов консоли реестр несёт
+# теги только полной формы (замер 2026-09-24: 200 на `main-4382f05c0a3d17e0f69573f5a7a074804b5a2b49` у хозяина и у
+# каждого из восьми модулей). Включает консоль накладка стенда
+# (values.own.yaml), а не этот слой: здесь — только то, ЧЕМ она поднимается.
+uif:
+  image: docker.io/prorobotech/kacho-ui-future-host:main-4382f05c0a3d17e0f69573f5a7a074804b5a2b49
+  imagePullPolicy: IfNotPresent
+  dashboard:
+    image: docker.io/prorobotech/kacho-ui-future-dashboard:main-4382f05c0a3d17e0f69573f5a7a074804b5a2b49
+  vpc:
+    image: docker.io/prorobotech/kacho-ui-future-vpc:main-4382f05c0a3d17e0f69573f5a7a074804b5a2b49
+  compute:
+    image: docker.io/prorobotech/kacho-ui-future-compute:main-4382f05c0a3d17e0f69573f5a7a074804b5a2b49
+  storage:
+    image: docker.io/prorobotech/kacho-ui-future-storage:main-4382f05c0a3d17e0f69573f5a7a074804b5a2b49
+  nlb:
+    image: docker.io/prorobotech/kacho-ui-future-nlb:main-4382f05c0a3d17e0f69573f5a7a074804b5a2b49
+  registry:
+    image: docker.io/prorobotech/kacho-ui-future-registry:main-4382f05c0a3d17e0f69573f5a7a074804b5a2b49
+  iam:
+    image: docker.io/prorobotech/kacho-ui-future-iam:main-4382f05c0a3d17e0f69573f5a7a074804b5a2b49
+  system:
+    image: docker.io/prorobotech/kacho-ui-future-system:main-4382f05c0a3d17e0f69573f5a7a074804b5a2b49
 # ПРИЁМ ТОКЕНА ЗДЕСЬ НЕ ОБЪЯВЛЯЕТСЯ, И ЭТО СКАЗАНО, А НЕ УМОЛЧАНО.
 #
 # Этот файл — слой площадки: он называет образы и адреса, а посадку безопасности
@@ -221,7 +244,7 @@ storage:
 # Строка ниже машинная: проверка требует, чтобы названный слой действительно
 # объявлял приём и стоял в цепочке ПЕРЕД этим файлом. Отметка, потерявшая
 # предмет, роняет TestProfilesSilentAboutTokenAcceptanceSayWhyTheyAreSilent.
-# приём токена наследуется от: values.own.yaml
+# приём токена наследуется от: values.prod.yaml
 registry:
   image:
     repository: docker.io/prorobotech/kacho-registry
