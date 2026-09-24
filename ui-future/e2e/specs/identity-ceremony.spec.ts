@@ -773,9 +773,15 @@ test("F8-18 · после выхода следующий человек в эт
   await page.evaluate(() => window.localStorage.setItem("kacho-theme", "light"));
 
   await page.getByRole("button", { name: "Учётная запись" }).click();
+  // Нажатие ограничено сроком: на панели проекта «Выйти» может закрывать
+  // страница, и тогда отказ обязан назвать перехватчика нажатия, а не
+  // «ответа выхода не было» по сроку всего сценария.
   const [out] = await Promise.all([
     lanePost(page, LANE.logout),
-    page.getByRole("dialog", { name: "Учётная запись" }).getByRole("button", { name: "Выйти" }).click(),
+    page
+      .getByRole("dialog", { name: "Учётная запись" })
+      .getByRole("button", { name: "Выйти" })
+      .click({ timeout: 15_000 }),
   ]);
   expect(out.status(), `выход не прошёл: ${await out.text()}`).toBe(200);
   await expectPath(page, "/login", "после выхода консоль не вернула на экран входа");
