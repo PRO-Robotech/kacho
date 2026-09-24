@@ -61,12 +61,33 @@
     красного, а не слепоты.
 
 Строковый литерал вне `[ ]` звеном не является: `'pull_request.base'` — то, с
-чем сравнивают. Удвоенная кавычка литерал не закрывает. Слова-литералы `true`,
-`false` и `null` — значения, а не обращения, и звеньями не считаются: условию
-из одних литералов оси 4 судить нечего, и перепись звеньев его не засчитывает.
-Цена надаппроксимации — красное на имени, чьё слово `base` к базе запроса
-отношения не имеет (`BASE_IMAGE`); такое условие переписывается, либо объект
-входит в перечень со своей причиной: молчание дороже.
+чем сравнивают. Удвоенная кавычка литерал не закрывает. Цена надаппроксимации —
+красное на имени, чьё слово `base` к базе запроса отношения не имеет
+(`BASE_IMAGE`); такое условие переписывается, либо объект входит в перечень со
+своей причиной: молчание дороже.
+
+ЗНАЧЕНИЕ, А НЕ ОБРАЩЕНИЕ: ПЕРЕЧЕНЬ ВЫВЕДЕН ИЗ ПРОВАЙДЕРА
+------------------------------------------------------
+Условию из одних значений оси 4 судить нечего, и перепись звеньев его не
+засчитывает. Значение провайдер получает в двух местах (замер 2026-09-24 на
+@actions/workflow-parser 0.3.61 и его yaml 2.9.1, по одному написанию на
+условие):
+  * ЛЕКСЕР выражения (`@actions/expressions`, lexer.js, `consumeIdentifier`):
+    слова EXPR_LITERAL_WORDS — `true`, `false`, `null`, `NaN`, `Infinity`, С
+    РЕГИСТРОМ и не после точки. `True` внутри выражения — обращение: провайдер
+    отвечает «Unrecognized named-value: 'True'», и здесь это звено;
+  * ЧИТАТЕЛЬ YAML (workflow-parser, yaml-object-reader.js, `getLiteralToken`):
+    скаляр `if:` ЦЕЛИКОМ, который схема core YAML 1.2 читает не строкой,
+    становится значением раньше лексера — `True`, `FALSE`, `Null`, `NULL`, `~`,
+    пустой, числа (`.inf`, `0x1F`). Выражения схемы — YAML_CORE_NON_STRING, по
+    её файлам. Так читается простой скаляр без метки и скаляр с меткой
+    `!!null`, `!!bool`, `!!int`, `!!float` в любой записи, если значение
+    проходит проверку своей метки (`!!bool "True"`). Строка и потому вход
+    лексера — скаляр в кавычках или блоком без метки (`'True'` — звено),
+    скаляр с меткой `!!str`, `!` или чужой, и скаляр, не прошедший проверку
+    своей метки (`!!null github.base_ref` читает базу).
+Разрешитель PyYAML (YAML 1.1: `yes`, `on` — логические) не спрашивается: у
+провайдера `yes` — строка, а в выражении — обращение.
 
 YAML: ПСЕВДОНИМ РАЗРЕШАЕТСЯ ДО СУЖДЕНИЯ, НЕДОПУСТИМОЕ — ОТКАЗ
 -------------------------------------------------------------
@@ -277,7 +298,48 @@ def _owner_is_silent(on: Owner) -> bool:
 
 
 _DIGITS = "0123456789"
-_LITERAL_WORDS = frozenset({"true", "false", "null"})
+
+# EXPR_LITERAL_WORDS — слова, которые лексер провайдера делает значением, а не
+# обращением: @actions/expressions 0.3.61, lexer.js, `consumeIdentifier` —
+# `switch (lexeme)` с регистром, когда предыдущая лексема не точка (шапка,
+# «ЗНАЧЕНИЕ, А НЕ ОБРАЩЕНИЕ»).
+EXPR_LITERAL_WORDS = frozenset({"true", "false", "null", "NaN", "Infinity"})
+
+# YAML_CORE_NON_STRING — метка → проверки схемы core YAML 1.2 у yaml 2.9.1
+# (читатель workflow-parser 0.3.61): schema/common/null.js nullTag,
+# schema/core/bool.js boolTag, schema/core/int.js intOct · int · intHex,
+# schema/core/float.js floatNaN · floatExp · float. Скаляр, прошедший проверку,
+# провайдер читает значением этой метки, а не строкой.
+_YAML_TAG = "tag:yaml.org,2002:"
+YAML_CORE_NON_STRING: dict[str, tuple[re.Pattern[str], ...]] = {
+    _YAML_TAG + "null": (re.compile(r"(?:~|[Nn]ull|NULL)?"),),
+    _YAML_TAG + "bool": (re.compile(r"[Tt]rue|TRUE|[Ff]alse|FALSE"),),
+    _YAML_TAG + "int": (re.compile(r"0o[0-7]+"), re.compile(r"[-+]?[0-9]+"), re.compile(r"0x[0-9a-fA-F]+")),
+    _YAML_TAG + "float": (re.compile(r"[-+]?\.(?:inf|Inf|INF)|\.nan|\.NaN|\.NAN"),
+                          re.compile(r"[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)[eE][-+]?[0-9]+"),
+                          re.compile(r"[-+]?(?:\.[0-9]+|[0-9]+\.[0-9]*)")),
+}
+
+
+def yaml_value_tag(node: yaml.ScalarNode) -> str:
+    """Метка, значением которой провайдер читает скаляр, или "" — строка.
+
+    Повторяет yaml 2.9.1 compose/compose-scalar.js: у скаляра с меткой —
+    `findScalarTagByName` (`!` и метка без проверки дают строку; метка схемы —
+    своё значение, если его проверка прошла, иначе строку); у простого скаляра
+    без метки — `findScalarTagByTest`; в кавычках и блоком без метки — строка.
+    Метку, записанную в тексте, составитель кладёт в `explicit_tag`.
+    """
+    explicit = getattr(node, "explicit_tag", None)
+    if explicit is not None:
+        tests = YAML_CORE_NON_STRING.get(explicit, ())
+        return explicit if any(t.fullmatch(node.value) for t in tests) else ""
+    if node.style is not None:
+        return ""
+    for tag, tests in YAML_CORE_NON_STRING.items():
+        if any(t.fullmatch(node.value) for t in tests):
+            return tag
+    return ""
 
 
 def _is_ident_start(c: str) -> bool:
@@ -405,7 +467,7 @@ def condition_reads_base(expr: str) -> tuple[list[str], int]:
             if k < n and expr[k] == "(":
                 owner, access, i = Owner(), False, j  # имя функции звеном не является
                 continue
-            if expr[i:j] in _LITERAL_WORDS:
+            if expr[i:j] in EXPR_LITERAL_WORDS:
                 owner, access, i = Owner(), False, j  # значение, а не обращение (шапка, «ОСЬ 4»)
                 continue
             named(expr[i:j])
@@ -452,6 +514,15 @@ class _CountingLoader(yaml.SafeLoader):
         finally:
             if anchor:
                 self._open_anchors.discard(anchor)
+
+    def compose_scalar_node(self, anchor):  # noqa: ANN001, ANN201 - сигнатура PyYAML
+        # Метку, записанную в тексте, узел PyYAML не отличает от выведенной его
+        # разрешителем YAML 1.1, а значение `if:` у провайдера от неё зависит
+        # (`yaml_value_tag`). Псевдоним получает тот же узел, а с ним и метку.
+        tag = self.peek_event().tag
+        node = super().compose_scalar_node(anchor)
+        node.explicit_tag = tag
+        return node
 
 
 @functools.lru_cache(maxsize=None)
@@ -719,6 +790,7 @@ class Census:
     review_types: int = 0
     on_branch_push: int = 0
     conditions: int = 0
+    condition_values: int = 0
     condition_links: int = 0
     aliases: int = 0
     job_uses: int = 0
@@ -730,7 +802,8 @@ class Census:
         return (f"файлов процессов {self.files} · идут на запросе {self.on_review} · из них с базами "
                 f"{_bases()} {self.review_at_line} · сужены по `types` {self.review_types} · идут по push в ветки "
                 f"{self.on_branch_push} · "
-                f"условий if: осмотрено {self.conditions} · звеньев в них прочитано {self.condition_links} · "
+                f"условий if: осмотрено {self.conditions}, из них значением YAML {self.condition_values} · "
+                f"звеньев в них прочитано {self.condition_links} · "
                 f"псевдонимов YAML разрешено {self.aliases} · заданий `uses:` {self.job_uses} · "
                 f"контекстов объявлено {self.declared}, сопоставлено {self.matched} · обязательных файлов "
                 f"{len(self.required_files)} ({', '.join(self.required_files) or '—'})")
@@ -749,6 +822,9 @@ def _audit_conditions(rel: str, jobs: yaml.Node | None, census: Census) -> list[
             raise Unmeasured("if-not-scalar", f"{where}: условие `if:` не скаляр (строка {cond.start_mark.line + 1}) "
                              "— провайдер такого не принимает, а разбор не знает, что судить")
         census.conditions += 1
+        if yaml_value_tag(cond):
+            census.condition_values += 1  # значение YAML: лексеру не достаётся (шапка, «ЗНАЧЕНИЕ»)
+            return
         readings, links = condition_reads_base(cond.value)
         census.condition_links += links
         if readings:
@@ -1439,6 +1515,43 @@ def self_test(root: Path) -> int:
         for cond in ("1", "${{ 'lane' }}", "true", "${{ false }}", "${{ !(null) }}"):
             refused(lambda cond=cond: audit(two_files(cond), two_ctx), "condition-links-none",
                     "звеньев в них прочитано ноль")
+
+    # Написания — те, что провайдер читает значением (шапка, «ЗНАЧЕНИЕ»): по
+    # одному на каждое выражение схемы и на каждое слово лексера вне прежних трёх.
+    yaml_values = ("True", "FALSE", "Null", "NULL", "~", "", ".inf", "-.Inf", ".NaN", "0x1F", "0o17", "-12",
+                   "1.5e3", "!!bool \"True\"", "!!null ''", "!!int '7'")
+    expr_values = ("${{ NaN }}", "${{ Infinity }}", "${{ NaN || Infinity }}")
+
+    @case("исход 2: условие — значение YAML или слово-значение лексера, звеньев в нём ноль")
+    def _():
+        for cond in yaml_values + expr_values:
+            refused(lambda cond=cond: audit(two_files(cond), two_ctx), "condition-links-none",
+                    "звеньев в них прочитано ноль")
+
+    @case("значение YAML: перепись называет его отдельно, лексеру оно не достаётся")
+    def _():
+        for cond in yaml_values:
+            got, c = cond_job(cond)
+            _expect(not got and c.conditions == control.conditions + 1
+                    and c.condition_values == control.condition_values + 1
+                    and c.condition_links == control.condition_links, f"условие {cond!r}: {got} {c}")
+        for cond in expr_values:
+            _got, c = cond_job(cond)
+            _expect(c.condition_values == control.condition_values, f"выражение {cond!r} посчитано значением YAML")
+
+    @case("значение YAML, близнец: строка того же текста идёт лексеру и даёт звено")
+    def _():
+        # Провайдер на каждом отвечает «Unrecognized named-value»: слово —
+        # обращение, а не значение.
+        for cond in ("'True'", "\"FALSE\"", "!!str True", "! Null", "yes", "${{ True }}", "|\n      True\n"):
+            got, c = audit(two_files(cond), two_ctx)
+            _expect(not got and c.condition_values == 0 and c.condition_links == 1, f"условие {cond!r}: {got} {c}")
+
+    @case("ось 4: метка значения, не прошедшая проверку, оставляет строку — база читается")
+    def _():
+        for cond in ("!!null github.base_ref == 'main'", "!!bool github.base_ref", "!!int ${{ github.base_ref }}"):
+            got, _c = cond_job(cond)
+            _expect(len(got) == 1 and "читает БАЗУ" in got[0] and "звено `base_ref`" in got[0], f"{cond!r}: {got}")
 
     for label, raw, premise, says in (
         ("объявление не разобрано", "{ обрезано", "yaml-unparsed", "не разобрано"),
