@@ -4,7 +4,12 @@ import react from "@vitejs/plugin-react";
 import federation from "@originjs/vite-plugin-federation";
 
 const apiGateway = process.env.KACHO_API_BASE || "http://localhost:8080";
-const kratosUi = process.env.KACHO_KRATOS_UI_BASE || "http://localhost:4300";
+// Адреса церемоний входа уходят внешнему экрану ТОЛЬКО при объявленном адресе,
+// как и в раздаче стенда (`host.upstreams.kratosUi`): без него их обслуживает
+// консоль. Умолчания нет намеренно — на порту умолчания в разработке не слушает
+// никто, а полоса к нему делала экраны консоли на этих адресах недостижимыми.
+// Держит ui-future/deploy/identity_dev_ceremony_band_test.go.
+const kratosUi = process.env.KACHO_KRATOS_UI_BASE;
 const kratosUiRoutes = [
   "/login",
   "/registration",
@@ -88,15 +93,9 @@ export default defineConfig({
         target: apiGateway,
         changeOrigin: true,
       },
-      ...Object.fromEntries(
-        kratosUiRoutes.map((route) => [
-          route,
-          {
-            target: kratosUi,
-            changeOrigin: true,
-          },
-        ]),
-      ),
+      ...(kratosUi
+        ? Object.fromEntries(kratosUiRoutes.map((route) => [route, { target: kratosUi, changeOrigin: true }]))
+        : {}),
     },
   },
   build: {
