@@ -1498,9 +1498,31 @@ def self_test(root: Path) -> int:
         got, c = audit({**one, NOT_REQUIRED_REL: corpus0[NOT_REQUIRED_REL]}, [ci_ctx])
         _expect(not got and c.on_review == 2, f"близнец не чист: {got}, на запросе {c.on_review}")
 
-    @case("исход 2: на запросе не идёт ни один файл")
+    # Предпосылка считает файлы НА ЗАПРОСЕ, а не прочитанные и не те, что с
+    # базами линии. Корпус из одного файла эти три числа не различает: подмена
+    # счёта любым из соседних проходила самопроверку. Здесь файлов два всегда,
+    # и подпроба с близнецом расходятся ровно событием второго файла.
+    second = f"{WORKFLOWS_DIR}/second.yml"
+
+    def ci_and_second(on: str) -> dict[str, str]:
+        return {INJECT_REL: corpus0[INJECT_REL], second: f"name: второй\non:\n{on}" + jobs_tail}
+
+    @case("исход 2: из двух файлов на запросе идёт один; близнец — оба")
     def _():
-        refused(lambda: audit({new_rel: "name: x\non: workflow_dispatch\n" + jobs_tail}, declared0),
+        refused(lambda: audit(ci_and_second("  workflow_dispatch:\n"), [ci_ctx]), "review-files-few", "найдено 1")
+        got, c = audit(ci_and_second(f"  {REVIEW_EVENT}:\n    branches: [main, '[0-9]+']\n"), [ci_ctx])
+        _expect(not got and c.files == 2 and c.on_review == 2, f"близнец не чист: {got} {c}")
+
+    @case("не исход 2: на запросе два файла, базы линии у одного — находка оси 1, а не отказ")
+    def _():
+        got, c = audit(ci_and_second(f"  {REVIEW_EVENT}:\n"), [ci_ctx])
+        _expect(c.on_review == 2 and c.review_at_line == 1, f"перепись не та: {c}")
+        _expect(len(got) == 1 and second in got[0] and "в ЛЮБУЮ" in got[0], str(got))
+
+    @case("исход 2: из двух файлов на запросе не идёт ни один")
+    def _():
+        refused(lambda: audit({new_rel: "name: x\non: workflow_dispatch\n" + jobs_tail,
+                               second: "name: y\non: workflow_dispatch\n" + jobs_tail}, declared0),
                 "review-files-few", "найдено 0")
 
     @case("исход 2: условий if: ни одного; близнец — одно условие по голове")
