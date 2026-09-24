@@ -42,6 +42,13 @@
 #                с одной снятой строкой) → называет;
 #   8  близнец : посадка `own` — служба ключ требует → называет.
 #
+# НОСИТЕЛЬ ПОСАДКИ `external` — КОПИЯ ДЕРЕВА, А НЕ СТЕНД ТАБЛИЦЫ. Посадку `own`
+# объявляют все стенды deploy/stacks.txt (#2735), и стенда `external` в таблице
+# нет. Утверждения 6 и 7 поэтому идут по копии дерева, в которой у корня
+# цепочки `prod` сменён ровно один факт — посадка обеих половин (`own` →
+# `external`); всё остальное — рендер той же цепочки тем же helm. Утверждение 8
+# — на настоящем стенде `own`.
+#
 # КЛАСТЕРА ЗДЕСЬ НЕТ. `kubectl` и `kind` подменены двойниками в PATH: двойник
 # держит состояние объектов на диске (имя → resourceVersion) и отвечает ровно
 # теми текстами, которыми отвечает API-сервер (`Error from server (NotFound)`,
@@ -220,21 +227,32 @@ GET_MODE=refuse DEFAULT_PRESENT=0 stack own
 $OUT"
 ok
 
-# ── 6. НАХОДКА: external, optional-ссылка, секрета нет — не требуется ───────
-# Площадка НЕ локальная: предполёт только судит и называет недостающее.
-fresh
-PROBE_CONTEXT=managed-probe GET_MODE=ok DEFAULT_PRESENT=1 ABSENT="kaname-second-factor-enc-key" stack prod
-[ "$RC" -eq 0 ] && [[ "$OUT" != *"kaname-second-factor-enc-key"* ]] \
-  || fail "6: стек prod (посадка external): ключ второго фактора подключён optional: true и служба его не требует, а предполёт вышел $RC и назвал его. Вывод:
-$OUT"
-ok
-
-# ── 7. БЛИЗНЕЦ: та же посадка, ссылка БЕЗ optional — называет ──────────────
+# ── копия дерева с посадкой `external` у корня цепочки prod ────────────────
 MIRROR="$WORK/mirror"; mkdir -p "$MIRROR/scripts" "$MIRROR/tests/helm" "$MIRROR/helm"
 cp "$DEPLOY/stacks.txt" "$MIRROR/"
 cp "$DEPLOY/scripts/stack-secrets.sh" "$DEPLOY/scripts/dev-prod-secrets.sh" "$MIRROR/scripts/"
 cp "$DEPLOY/tests/helm/stacks.sh" "$MIRROR/tests/helm/"
 cp -r "$UMBRELLA" "$MIRROR/helm/umbrella"
+python3 - "$MIRROR/helm/umbrella/values.prod.yaml" <<'PY' || fatal "6: копия боевого профиля не переведена на посадку external — судить утверждения 6 и 7 не на чем"
+import re, sys
+p = sys.argv[1]; s = open(p).read()
+# Обе половины посадки объявлены в корне цепочки ровно по разу; иное число
+# значит, что профиль сменил форму, и копия утверждала бы не то.
+s2, n = re.subn(r"(?m)^(\s*identityProvider:\s*)own\s*$", r"\1external", s)
+assert n == 2, f"объявлений посадки own в корне prod найдено {n}, ожидалось 2"
+open(p, "w").write(s2)
+PY
+
+# ── 6. НАХОДКА: external, optional-ссылка, секрета нет — не требуется ───────
+# Площадка НЕ локальная: предполёт только судит и называет недостающее.
+fresh
+PROBE_CONTEXT=managed-probe GET_MODE=ok DEFAULT_PRESENT=1 ABSENT="kaname-second-factor-enc-key" stack prod "$MIRROR"
+[ "$RC" -eq 0 ] && [[ "$OUT" != *"kaname-second-factor-enc-key"* ]] \
+  || fail "6: стек prod в копии с посадкой external: ключ второго фактора подключён optional: true и служба его не требует, а предполёт вышел $RC и назвал его. Вывод:
+$OUT"
+ok
+
+# ── 7. БЛИЗНЕЦ: та же посадка, ссылка БЕЗ optional — называет ──────────────
 TPL="$MIRROR/helm/umbrella/charts/kaname/templates/deployment.yaml"
 python3 - "$TPL" <<'PY' || fatal "7: копия шаблона службы доступа не подготовлена — снимать optional не на чем"
 import sys
@@ -264,4 +282,4 @@ $OUT"
 ok
 
 [ "$N" -eq "$EXPECTED_ASSERTIONS" ] || fail "выполнено $N утверждений из $EXPECTED_ASSERTIONS"
-echo "PASS: $SCRIPT ($N assertions) — dev-prod-secrets.sh 4 мира, stack-secrets.sh 4 мира (own/prod/копия prod без optional)"
+echo "PASS: $SCRIPT ($N assertions) — dev-prod-secrets.sh 4 мира, stack-secrets.sh 4 мира (own/копия prod на external/она же без optional)"
