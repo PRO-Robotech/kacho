@@ -61,10 +61,12 @@
     красного, а не слепоты.
 
 Строковый литерал вне `[ ]` звеном не является: `'pull_request.base'` — то, с
-чем сравнивают. Удвоенная кавычка литерал не закрывает. Цена надаппроксимации —
-красное на имени, чьё слово `base` к базе запроса отношения не имеет
-(`BASE_IMAGE`); такое условие переписывается, либо объект входит в перечень со
-своей причиной: молчание дороже.
+чем сравнивают. Удвоенная кавычка литерал не закрывает. Слова-литералы `true`,
+`false` и `null` — значения, а не обращения, и звеньями не считаются: условию
+из одних литералов оси 4 судить нечего, и перепись звеньев его не засчитывает.
+Цена надаппроксимации — красное на имени, чьё слово `base` к базе запроса
+отношения не имеет (`BASE_IMAGE`); такое условие переписывается, либо объект
+входит в перечень со своей причиной: молчание дороже.
 
 YAML: ПСЕВДОНИМ РАЗРЕШАЕТСЯ ДО СУЖДЕНИЯ, НЕДОПУСТИМОЕ — ОТКАЗ
 -------------------------------------------------------------
@@ -275,6 +277,7 @@ def _owner_is_silent(on: Owner) -> bool:
 
 
 _DIGITS = "0123456789"
+_LITERAL_WORDS = frozenset({"true", "false", "null"})
 
 
 def _is_ident_start(c: str) -> bool:
@@ -401,6 +404,9 @@ def condition_reads_base(expr: str) -> tuple[list[str], int]:
             k = _skip_spaces(expr, j)
             if k < n and expr[k] == "(":
                 owner, access, i = Owner(), False, j  # имя функции звеном не является
+                continue
+            if expr[i:j] in _LITERAL_WORDS:
+                owner, access, i = Owner(), False, j  # значение, а не обращение (шапка, «ОСЬ 4»)
                 continue
             named(expr[i:j])
             owner, access, i = Owner(named=expr[i:j], root=True), True, j
@@ -836,7 +842,8 @@ def audit(corpus: dict[str, str], declared: list[str]) -> tuple[list[str], Censu
                          "оси 4 сказано ни о чём")
     if census.condition_links == 0:
         raise Unmeasured("condition-links-none", f"условия `if:` осмотрены ({census.conditions}), а звеньев в них "
-                         "прочитано ноль — разбор лексем слеп")
+                         "прочитано ноль — либо разбор лексем слеп, либо условия записаны одними литералами, и оси 4 "
+                         "судить нечего")
 
     required: dict[str, list[str]] = {}
     unmatched: list[str] = []
@@ -1230,6 +1237,9 @@ def self_test(root: Path) -> int:
         ("фильтр у события", "contains(github.event.*, 'refs/heads/main')", "неизвестное звено `*` у `event`"),
         ("`steps` полем, а не корнем", "contains(fromJSON(needs.prep.outputs.cfg).steps.*, 'main')",
          "неизвестное звено `*` у `steps`"),
+        ("литерал перед звеном", "true && github.base_ref == 'main'", "звено `base_ref`"),
+        ("литерал, затем индекс-выражение", "null || github.event.pull_request[matrix.k].ref == 'main'",
+         "неизвестное звено `[matrix.k]` у `pull_request`"),
     ]
     for label, cond, link in red_forms:
         @case(f"ось 4: {label}")
@@ -1426,7 +1436,7 @@ def self_test(root: Path) -> int:
 
     @case("исход 2: условия есть, а звеньев в них ноль")
     def _():
-        for cond in ("1", "${{ 'lane' }}"):
+        for cond in ("1", "${{ 'lane' }}", "true", "${{ false }}", "${{ !(null) }}"):
             refused(lambda cond=cond: audit(two_files(cond), two_ctx), "condition-links-none",
                     "звеньев в них прочитано ноль")
 
