@@ -436,28 +436,29 @@ test("F8-31 · перечеканка запасных кодов", async ({ pag
 
 test("F8-32 · снятие того, чего нет: отказ назван", async ({ page }, testInfo) => {
   // verifies #1274 — близнец F8-30: изменено только то, заведён ли фактор к
-  // моменту отправки. Экран открыт при заведённом факторе; снимает его ДРУГАЯ
-  // сессия того же человека, и форма экрана уходит к уже снятому.
+  // моменту отправки. Экран открыт при заведённом факторе; снимает его ТА ЖЕ
+  // сессия вне экрана — посев, чей носитель у браузера, — и форма экрана уходит
+  // к уже снятому.
+  //
+  // Не другая сессия: снятие фактора гасит ВСЕ ПРОЧИЕ сессии человека (Ф12 Р9),
+  // и сессия экрана, будь она прочей, получила бы `401 authentication failed`
+  // вместо отказа о состоянии — так проба и падала на посадке own @9038186d0d5.
+  // Текущая сессия снятием жива, но носитель её перевыпущен, поэтому новый
+  // носитель переносится в браузер тем же способом, что и в «Дано».
   await withHuman(
     testInfo,
     "F8-32",
     page.context(),
-    async (_seed, human, factor) => {
+    async (seed, _human, factor) => {
       const s = await openSettings(page);
       await s.factor.remove.click();
 
-      const other = await newSeed(testInfo);
-      try {
-        const signedIn = await other.submit(LANE.login, "login", { email: human.email, password: human.password });
-        expect(signedIn.status(), `вход второй сессии не прошёл: ${await signedIn.text()}`).toBe(200);
-        const removed = await other.submit(LANE.remove, "second-factor", {
-          method: "lookup_secret",
-          code: factor!.backupCodes[0],
-        });
-        expect(removed.status(), `снятие второй сессией не прошло: ${await removed.text()}`).toBe(200);
-      } finally {
-        await other.dispose();
-      }
+      const removed = await seed.submit(LANE.remove, "second-factor", {
+        method: "lookup_secret",
+        code: factor!.backupCodes[0],
+      });
+      expect(removed.status(), `посев: снятие той же сессией не прошло: ${await removed.text()}`).toBe(200);
+      await transferSession(seed, page.context());
 
       await s.factor.backupMethod.check();
       await s.factor.code.fill(factor!.backupCodes[1]);
