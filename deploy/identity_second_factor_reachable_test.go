@@ -55,6 +55,17 @@
 // сверяла с пином лишь наборы имён в строках — круг 1 показал, что снятое в
 // таблице требование пароля и «и» вместо «или» в строке правила она пропускала.
 //
+// Толкование читает ЛИТЕРАЛ, а служба исполняет ЗНАЧЕНИЕ собранной программы
+// (#2691, круг 3). Разрыв между ними закрыт в четырёх местах, и каждое — отказ с
+// координатой, а не догадка: пакет читается файлами, которые компилирует сборка
+// (goPackageSource), а не всем каталогом; таблица и словарь не пишутся нигде,
+// кроме своих объявлений, — ни в пакете, ни в пакетах модуля, его импортирующих
+// (ruleStateIsItsDeclaration); перечень корня — возвращаемое значение
+// производителя, а не постоянные в любом месте его тела (ownWiredMethods);
+// предъявление способа собирает конструктор этого способа
+// (presentationsCarryTheirMethod). Имена связываются областью видимости, как их
+// связывает компилятор, а не написанием.
+//
 // Каталог, в котором судить нечего (записей нет, пол не объявлен ни у одной,
 // запись без имени метода), — отказ, а не «достижимых 0 из 0».
 //
@@ -88,6 +99,23 @@
 // исходником пиненного модуля (go.mod даёт версию, GOMODCACHE — каталог; тот же
 // приём, что у own_ceilings_and_access_keys_umbrella_test.go): подняли пин —
 // гейт судит новый корень и новое правило сам.
+//
+// Какой конструктор предъявления служба зовёт на каком слове записи сессии,
+// решает её пакет сессий (`presentationsOf` в
+// `internal/apps/kaname/api/humansession`), и его гейт НЕ читает: он толкует
+// конструкторы и требует, чтобы каждый способ собирался ровно одним, но не то,
+// что слово `totp` уходит именно в конструктор кода. Держат это пробы службы у
+// пина: `internal/assurance/level_test.go` (TestLevelOf_WholeTableMatchesRuleR2 —
+// конструктор каждого способа по всей таблице правила) и
+// `internal/apps/kaname/api/humansession/second_factor_usecase_test.go` (уровень
+// «2» сессии после предъявления кода). Правя разбор сессий службы, правь и их.
+//
+// Состояние пакета правила пишется, по разбору этого гейта, только
+// объявлениями и пакетами своего модуля. Директива `//go:linkname` из
+// стороннего модуля и запись через `unsafe` по адресу, взятому не оператором `&`,
+// разбором не видны; у пина директив нет вовсе (`grep -rl go:linkname` по
+// каталогу модуля — 0 файлов @16b5cadead2a). Появятся — толкование обязано их
+// читать, а не подразумевать.
 package deploy_test
 
 import (
@@ -95,15 +123,21 @@ import (
 	"errors"
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/parser"
 	"go/printer"
 	"go/token"
+	"go/types"
+	"io"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -420,22 +454,60 @@ const (
 	laneWiringSignInArg = 3
 )
 
-// goPackageSource — разобранные файлы одного пакета (без проб `_test.go`).
+// goPackageSource — пакет чужого модуля В ТОМ ВИДЕ, В КАКОМ ЕГО КОМПИЛИРУЕТ
+// СБОРКА (#2691, круг 3).
+//
+// Разбор каталога целиком читал бы не то, что исполняет служба: файл под
+// ограничением сборки `ignore`, файл с префиксом «_» или файл чужой ОС лежат в
+// каталоге и в двоичный файл не входят. Круг 3 показал цену этого: такой файл нёс
+// прежнюю мягкую таблицу, гейт брал её вместо строгой, которую исполняет служба,
+// и зеленел. Поэтому файлы отбираются правилами сборки (go/build MatchFile) на
+// платформах образа, и пакет, которого сборка не собрала бы либо собрала бы по-
+// разному, — отказ errPackageNotAsBuilt, а не догадка:
+//
+//   - набор файлов зависит от архитектуры (гейт не знает, под какую собран образ);
+//   - сборка компилирует не-Go исходник (ассемблер, C) или файл cgo — они пишут
+//     состояние пакета мимо того, что читает разбор;
+//   - файлы объявляют разные пакеты либо одно имя уровня пакета дважды (прежняя
+//     редакция брала первое `rows` и давала позднему файлу перетереть словарь).
+//
+// Имена связываются ПО ОБЛАСТИ ВИДИМОСТИ, как их связывает компилятор (go/types),
+// а не по написанию: `true`, объявленное пакетом, — не предобъявленное `true`, а
+// параметр по имени rows — не таблица правила. Импорты при этом не читаются:
+// каждый подставляется пустым пакетом, и ошибки, которые это порождает (имя
+// импорта не найдено), к связыванию имён самого пакета отношения не имеют.
 type goPackageSource struct {
-	dir   string
-	fset  *token.FileSet
-	files map[string]*ast.File // путь от корня модуля → файл
+	dir      string // корень модуля
+	pkg      string // каталог пакета от корня модуля
+	path     string // путь импорта пакета
+	fset     *token.FileSet
+	bodies   map[string]string    // путь от корня модуля → текст каждого файла каталога, кроме проб `_test.go`
+	files    map[string]*ast.File // путь от корня модуля → файл Go, который компилирует сборка
+	excluded []string             // файлы Go каталога, которые сборка исключает
+	info     *types.Info          // идентификатор → объект, который он называет
+	scope    *types.Scope         // область уровня пакета
+	outside  *outsideState        // записи в состояние пакета из ДРУГИХ пакетов модуля
 }
 
-func parseGoPackage(moduleDir, pkg string) (goPackageSource, error) {
-	src := goPackageSource{dir: moduleDir, fset: token.NewFileSet(), files: map[string]*ast.File{}}
-	entries, err := os.ReadDir(filepath.Join(moduleDir, pkg))
+// errPackageNotAsBuilt — пакет у пина не читается так, как его компилирует сборка:
+// вердикта нет.
+var errPackageNotAsBuilt = errors.New("пакет у пина не читается так, как его компилирует сборка")
+
+// buildPlatforms — платформы образа службы: стенды поднимаются на linux, а
+// архитектуру образа гейт не знает, поэтому набор файлов пакета обязан быть
+// одним на обеих, иначе вердикт, верный на одной, был бы догадкой на другой.
+var buildPlatforms = []struct{ goos, goarch string }{{"linux", "amd64"}, {"linux", "arm64"}}
+
+func parseGoPackage(moduleDir, modulePath, pkg string) (goPackageSource, error) {
+	src := goPackageSource{dir: moduleDir, pkg: pkg, path: modulePath + "/" + pkg, fset: token.NewFileSet(),
+		bodies: map[string]string{}}
+	entries, err := os.ReadDir(filepath.Join(moduleDir, filepath.FromSlash(pkg)))
 	if err != nil {
 		return src, err
 	}
 	for _, e := range entries {
 		name := e.Name()
-		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+		if !e.Type().IsRegular() || strings.HasSuffix(name, "_test.go") {
 			continue
 		}
 		rel := pkg + "/" + name
@@ -443,34 +515,506 @@ func parseGoPackage(moduleDir, pkg string) (goPackageSource, error) {
 		if err != nil {
 			return src, err
 		}
-		if err := src.put(rel, string(body)); err != nil {
-			return src, err
-		}
+		src.bodies[rel] = string(body)
 	}
-	if len(src.files) == 0 {
-		return src, fmt.Errorf("в %s/%s нет ни одного файла Go", moduleDir, pkg)
-	}
-	return src, nil
+	return src, src.compile()
 }
 
-// put разбирает тело под путём — и настоящий файл, и инъекцию в него.
-func (s goPackageSource) put(rel, body string) error {
-	f, err := parser.ParseFile(s.fset, rel, body, 0)
+// with — копия пакета, в которой один файл заменён (либо добавлен) телом
+// инъекции; настоящий разбор при этом не меняется. Файлы отбираются и имена
+// связываются заново: инъекция проходит тот же путь, что и пин.
+func (s goPackageSource) with(rel, body string) (goPackageSource, error) {
+	out := s
+	out.bodies = make(map[string]string, len(s.bodies)+1)
+	for k, v := range s.bodies {
+		out.bodies[k] = v
+	}
+	out.bodies[rel] = body
+	return out, out.compile()
+}
+
+// compile — файлы, которые компилирует сборка, их разбор и связывание имён.
+func (s *goPackageSource) compile() error {
+	built, excluded, err := s.buildSelection()
 	if err != nil {
 		return err
 	}
-	s.files[rel] = f
+	s.files, s.excluded = map[string]*ast.File{}, excluded
+	files := make([]*ast.File, 0, len(built))
+	for _, rel := range built {
+		f, err := parser.ParseFile(s.fset, rel, s.bodies[rel], 0)
+		if err != nil {
+			return err
+		}
+		if len(files) > 0 && f.Name.Name != files[0].Name.Name {
+			return fmt.Errorf("%w: %s объявляет пакет %s, а %s — %s", errPackageNotAsBuilt, rel, f.Name.Name,
+				s.fset.Position(files[0].Package).Filename, files[0].Name.Name)
+		}
+		for _, imp := range f.Imports {
+			if imp.Path.Value == `"C"` {
+				return fmt.Errorf("%w: %s: файл cgo — код на C пишет состояние пакета мимо разбора", errPackageNotAsBuilt,
+					s.coordinate(imp))
+			}
+		}
+		s.files[rel] = f
+		files = append(files, f)
+	}
+	if len(files) == 0 {
+		return fmt.Errorf("в %s/%s сборка не компилирует ни одного файла Go", s.dir, s.pkg)
+	}
+	if err := s.namesDeclaredOnce(); err != nil {
+		return err
+	}
+	s.info = &types.Info{Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{}}
+	conf := types.Config{Importer: emptyImporter{}, Error: func(error) {}}
+	pkg, _ := conf.Check(s.path, s.fset, files, s.info)
+	s.scope = pkg.Scope()
 	return nil
 }
 
-// with — копия пакета, в которой один файл заменён телом инъекции; настоящий
-// разбор при этом не меняется.
-func (s goPackageSource) with(rel, body string) (goPackageSource, error) {
-	out := goPackageSource{dir: s.dir, fset: s.fset, files: make(map[string]*ast.File, len(s.files))}
-	for k, v := range s.files {
-		out.files[k] = v
+// buildSelection — какие файлы каталога компилирует сборка на платформах образа.
+func (s goPackageSource) buildSelection() (built, excluded []string, err error) {
+	rels := make([]string, 0, len(s.bodies))
+	for rel := range s.bodies {
+		rels = append(rels, rel)
 	}
-	return out, out.put(rel, body)
+	sort.Strings(rels)
+	var first map[string]bool
+	for i, pl := range buildPlatforms {
+		got, err := matchedOn(pl.goos, pl.goarch, filepath.Join(s.dir, filepath.FromSlash(s.pkg)), rels, s.bodies)
+		if err != nil {
+			return nil, nil, err
+		}
+		if i == 0 {
+			first = got
+			continue
+		}
+		for _, rel := range rels {
+			if got[rel] != first[rel] {
+				return nil, nil, fmt.Errorf("%w: набор файлов пакета зависит от архитектуры: %s компилируется на %s/%s "+
+					"(%t) и на %s/%s (%t)", errPackageNotAsBuilt, rel, buildPlatforms[0].goos, buildPlatforms[0].goarch,
+					first[rel], pl.goos, pl.goarch, got[rel])
+			}
+		}
+	}
+	for _, rel := range rels {
+		isGo := strings.HasSuffix(rel, ".go")
+		switch {
+		case first[rel] && isGo:
+			built = append(built, rel)
+		case first[rel]:
+			return nil, nil, fmt.Errorf("%w: %s: сборка компилирует не-Go исходник — он пишет состояние пакета мимо "+
+				"разбора", errPackageNotAsBuilt, rel)
+		case isGo:
+			excluded = append(excluded, rel)
+		}
+	}
+	return built, excluded, nil
+}
+
+// matchedOn — файлы, которые сборка на платформе goos/goarch включает в пакет
+// каталога dir; тела берутся из bodies (инъекция не пишет на диск).
+func matchedOn(goos, goarch, dir string, rels []string, bodies map[string]string) (map[string]bool, error) {
+	ctx := build.Default
+	ctx.GOOS, ctx.GOARCH, ctx.CgoEnabled = goos, goarch, false
+	byName := make(map[string]string, len(rels))
+	for _, rel := range rels {
+		byName[path.Base(rel)] = bodies[rel]
+	}
+	ctx.OpenFile = func(p string) (io.ReadCloser, error) {
+		body, ok := byName[filepath.Base(p)]
+		if !ok {
+			return nil, fs.ErrNotExist
+		}
+		return io.NopCloser(strings.NewReader(body)), nil
+	}
+	out := map[string]bool{}
+	for _, rel := range rels {
+		ok, err := ctx.MatchFile(dir, path.Base(rel))
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s: правила сборки не прочитаны: %v", errPackageNotAsBuilt, rel, err)
+		}
+		out[rel] = ok
+	}
+	return out, nil
+}
+
+// namesDeclaredOnce — каждое имя уровня пакета (и каждый метод типа) объявлено
+// компилируемыми файлами один раз. Пакет с повтором сборка не собирает, и
+// толкование одного из двух объявлений было бы выбором, которого служба не делает.
+func (s goPackageSource) namesDeclaredOnce() error {
+	at := map[string][]string{}
+	note := func(name string, n ast.Node) {
+		if name != "_" && name != "init" {
+			at[name] = append(at[name], s.coordinate(n))
+		}
+	}
+	for _, rel := range s.sortedFiles() {
+		for _, decl := range s.files[rel].Decls {
+			switch d := decl.(type) {
+			case *ast.FuncDecl:
+				if d.Recv == nil {
+					note(d.Name.Name, d.Name)
+				} else {
+					note(recvTypeName(d)+"."+d.Name.Name, d.Name)
+				}
+			case *ast.GenDecl:
+				for _, spec := range d.Specs {
+					switch sp := spec.(type) {
+					case *ast.TypeSpec:
+						note(sp.Name.Name, sp.Name)
+					case *ast.ValueSpec:
+						for _, n := range sp.Names {
+							note(n.Name, n)
+						}
+					}
+				}
+			}
+		}
+	}
+	names := make([]string, 0, len(at))
+	for n, where := range at {
+		if len(where) > 1 {
+			names = append(names, n)
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	sort.Strings(names)
+	return fmt.Errorf("%w: имя %s объявлено %d раза (%s) — такой пакет сборка не собирает", errPackageNotAsBuilt,
+		names[0], len(at[names[0]]), strings.Join(at[names[0]], ", "))
+}
+
+// emptyImporter — импорт, подставленный пустым пакетом: связыванию имён самого
+// пакета содержимое импортов не нужно.
+type emptyImporter struct{}
+
+func (emptyImporter) Import(p string) (*types.Package, error) {
+	pkg := types.NewPackage(p, path.Base(p))
+	pkg.MarkComplete()
+	return pkg, nil
+}
+
+// coordinate — `файл:строка` узла.
+func (s goPackageSource) coordinate(n ast.Node) string {
+	pos := s.fset.Position(n.Pos())
+	return fmt.Sprintf("%s:%d", pos.Filename, pos.Line)
+}
+
+// isPackageObject — выражение есть имя, которое называет объект УРОВНЯ ПАКЕТА с
+// этим именем (а не локальное, затеняющее его).
+func (s goPackageSource) isPackageObject(e ast.Expr, name string) bool {
+	id, ok := e.(*ast.Ident)
+	if !ok || id.Name != name {
+		return false
+	}
+	obj := s.scope.Lookup(name)
+	return obj != nil && s.info.Uses[id] == obj
+}
+
+// isPredeclared — выражение есть предобъявленное имя языка (`true`, `false`,
+// `nil`), а не одноимённое объявление пакета.
+func (s goPackageSource) isPredeclared(e ast.Expr, name string) bool {
+	id, ok := e.(*ast.Ident)
+	return ok && id.Name == name && s.info.Uses[id] == types.Universe.Lookup(name)
+}
+
+// importOf — выражение есть имя импорта пакета importPath.
+func (s goPackageSource) importOf(e ast.Expr, importPath string) bool {
+	id, ok := e.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	pn, ok := s.info.Uses[id].(*types.PkgName)
+	return ok && pn.Imported().Path() == importPath
+}
+
+// posNode — позиция объекта, которому нужен отказ с координатой, а узла под
+// рукой нет (объявление найдено областью видимости, а не обходом).
+type posNode token.Pos
+
+func (p posNode) Pos() token.Pos { return token.Pos(p) }
+func (p posNode) End() token.Pos { return token.Pos(p) }
+
+// writeTargets — выражения, в чьё хранилище пишет файл: левые части
+// присваиваний, операнды `++`/`--` и `&` (взятый адрес — запись, отложенная до
+// любого места, куда он уйдёт), переменные обхода `for k, v = range`.
+func writeTargets(f *ast.File) []ast.Expr {
+	var out []ast.Expr
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.AssignStmt:
+			out = append(out, n.Lhs...)
+		case *ast.IncDecStmt:
+			out = append(out, n.X)
+		case *ast.UnaryExpr:
+			if n.Op == token.AND {
+				out = append(out, n.X)
+			}
+		case *ast.RangeStmt:
+			if n.Tok == token.ASSIGN {
+				for _, e := range []ast.Expr{n.Key, n.Value} {
+					if e != nil {
+						out = append(out, e)
+					}
+				}
+			}
+		}
+		return true
+	})
+	return out
+}
+
+// accessRoot — идентификатор переменной, чьё хранилище называет выражение
+// `v`, `v.f`, `v[i]`, `*v.f`, `(v)`, и путь импорта, если переменная названа
+// через него (`pkg.v`, `pkg.v.f`). Выражение, не называющее переменную (вызов,
+// литерал), корня не имеет.
+func (s goPackageSource) accessRoot(e ast.Expr) (id *ast.Ident, importPath string) {
+	for {
+		switch x := e.(type) {
+		case *ast.ParenExpr:
+			e = x.X
+		case *ast.StarExpr:
+			e = x.X
+		case *ast.IndexExpr:
+			e = x.X
+		case *ast.IndexListExpr:
+			e = x.X
+		case *ast.SelectorExpr:
+			if q, ok := x.X.(*ast.Ident); ok {
+				if pn, ok := s.info.Uses[q].(*types.PkgName); ok {
+					return x.Sel, pn.Imported().Path()
+				}
+			}
+			e = x.X
+		case *ast.Ident:
+			return x, ""
+		default:
+			return nil, ""
+		}
+	}
+}
+
+// predeclaredStayTheLanguage — пакет не объявляет имён, которые толкование читает
+// как предобъявленные: `true`, объявленное пакетом, превратило бы «подошедшая
+// строка выдаёт сессию» в «выдаёт то, что пакет назвал true» (круг 3: `const true
+// = false` гейт читал выдачей, служба — отказом).
+func predeclaredStayTheLanguage(src goPackageSource, names ...string) error {
+	for _, name := range names {
+		if obj := src.scope.Lookup(name); obj != nil {
+			return src.notInterpretable(posNode(obj.Pos()), "пакет объявляет предобъявленное имя `%s` — толкование "+
+				"читало бы его языком, а служба исполняет объявление пакета", name)
+		}
+	}
+	return nil
+}
+
+// ruleStateIsItsDeclaration — значение, которое исполняет служба, есть ЛИТЕРАЛ
+// объявления, который толкует гейт (круг 3).
+//
+// Толкование читает литерал `rows` и литералы словаря, а служба исполняет их
+// ЗНАЧЕНИЯ после инициализации программы: таблица, переписанная в `init`, давала
+// гейту «30 достижимы» при правиле службы, по которому пароль с кодом — «1».
+// Поэтому отказ с координатой — всякая иная связь с этим состоянием:
+//
+//   - таблица `rows` употреблена где-либо, кроме своего объявления и аргумента
+//     `LevelOf` (запись, чтение с псевдонимом, адрес — всё одно: значение уходит
+//     туда, где толкование его не видит);
+//   - постоянная словаря переписана, у неё взят адрес — в этом пакете либо в
+//     любом пакете модуля, который его импортирует; пакет импортирован точкой
+//     (имена словаря тогда пишутся без квалификатора, и разбор чужого пакета их
+//     не свяжет);
+//   - у типа способа есть метод с получателем-указателем: вызов его на постоянной
+//     берёт адрес неявно.
+//
+// Чтение словаря — не отказ: значение от него не меняется. Имена связываются
+// областью видимости, поэтому параметр `rows` чужой функции таблицей не является.
+func ruleStateIsItsDeclaration(src goPackageSource, tableArg *ast.Ident, vocab map[string]string) error {
+	table := src.info.Uses[tableArg]
+	for _, rel := range src.sortedFiles() {
+		var at []*ast.Ident
+		ast.Inspect(src.files[rel], func(n ast.Node) bool {
+			if id, ok := n.(*ast.Ident); ok && id != tableArg && src.info.Uses[id] == table {
+				at = append(at, id)
+			}
+			return true
+		})
+		if len(at) > 0 {
+			return src.notInterpretable(at[0], "`%s` употреблена вне объявления и вызова исполнителя — служба "+
+				"исполняет её значение, а толкование читает литерал", tableArg.Name)
+		}
+	}
+
+	vocabVar := map[types.Object]string{}
+	var vocabType *types.TypeName
+	for c := range vocab {
+		obj, ok := src.scope.Lookup(c).(*types.Var)
+		if !ok {
+			return fmt.Errorf("%w: постоянная словаря %s — не переменная уровня пакета", errRuleNotInterpretable, c)
+		}
+		vocabVar[obj] = c
+		if named, ok := obj.Type().(*types.Named); ok {
+			vocabType = named.Obj()
+		}
+	}
+	for _, rel := range src.sortedFiles() {
+		for _, e := range writeTargets(src.files[rel]) {
+			if id, qual := src.accessRoot(e); id != nil && qual == "" && vocabVar[src.info.Uses[id]] != "" {
+				return src.notInterpretable(id, "постоянная словаря %s переписывается вне объявления: `%s`",
+					id.Name, src.text(e))
+			}
+		}
+		for _, decl := range src.files[rel].Decls {
+			fd, ok := decl.(*ast.FuncDecl)
+			if !ok || fd.Recv == nil || len(fd.Recv.List) != 1 {
+				continue
+			}
+			star, ok := fd.Recv.List[0].Type.(*ast.StarExpr)
+			if !ok {
+				continue
+			}
+			if id := typeNameIdent(star.X); id != nil && vocabType != nil && src.info.Uses[id] == vocabType {
+				return src.notInterpretable(fd, "у способа словаря метод с получателем-указателем `%s` — его вызов "+
+					"на постоянной переписывает её мимо объявления", fd.Name.Name)
+			}
+		}
+	}
+
+	if src.outside == nil || src.outside.walked == 0 || len(src.outside.importers) == 0 {
+		return fmt.Errorf("%w: пакеты модуля, импортирующие пакет правила, не осмотрены — запись в словарь "+
+			"снаружи не исключена", errRuleNotInterpretable)
+	}
+	for _, p := range src.outside.importers {
+		for _, rel := range p.sortedFiles() {
+			for _, imp := range p.files[rel].Imports {
+				if path, _ := strconv.Unquote(imp.Path.Value); path == src.path && imp.Name != nil && imp.Name.Name == "." {
+					return fmt.Errorf("%w: %s: пакет правила импортирован точкой — имена словаря там пишутся без "+
+						"квалификатора, и запись в них разбор не свяжет", errRuleNotInterpretable, p.coordinate(imp))
+				}
+			}
+			for _, e := range writeTargets(p.files[rel]) {
+				if id, qual := p.accessRoot(e); id != nil && qual == src.path && vocab[id.Name] != "" {
+					return fmt.Errorf("%w: %s: постоянная словаря %s переписывается вне объявления — пакетом %s: `%s`",
+						errRuleNotInterpretable, p.coordinate(id), id.Name, p.pkg, p.text(e))
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// typeNameIdent — имя типа в записи `T`, `T[P]`, `T[P, Q]`.
+func typeNameIdent(e ast.Expr) *ast.Ident {
+	switch x := e.(type) {
+	case *ast.Ident:
+		return x
+	case *ast.IndexExpr:
+		return typeNameIdent(x.X)
+	case *ast.IndexListExpr:
+		return typeNameIdent(x.X)
+	}
+	return nil
+}
+
+// outsideState — пакеты модуля, импортирующие пакет правила: только они могут
+// писать в его состояние снаружи. Пакет правила внутренний (`internal/`), и
+// импортировать его может лишь код своего модуля, поэтому обход модуля — полный
+// перечень таких писателей, а не выборка.
+type outsideState struct {
+	importers []goPackageSource // в том виде, в каком их компилирует сборка
+	walked    int               // файлов Go модуля (без проб) прочитано обходом
+}
+
+// withImporter — копия пакета правила, у которой пакет-импортёр заменён (либо
+// добавлен) инъекцией; настоящий обход при этом не меняется.
+func (s goPackageSource) withImporter(p goPackageSource) goPackageSource {
+	out := s
+	o := &outsideState{walked: s.outside.walked}
+	replaced := false
+	for _, q := range s.outside.importers {
+		if q.pkg == p.pkg {
+			q, replaced = p, true
+		}
+		o.importers = append(o.importers, q)
+	}
+	if !replaced {
+		o.importers = append(o.importers, p)
+	}
+	out.outside = o
+	return out
+}
+
+// outsideByModule — обход модуля один на каталог: он читает весь модуль, а
+// пробы пакета спрашивают его много раз об одном и том же пине.
+var outsideByModule sync.Map // каталог модуля и путь пакета правила → *outsideState
+
+// readOutside — пакеты модуля, импортирующие importPath, кроме самого пакета
+// skipPkg. Каталоги, которые сборка не читает (`testdata`, начинающиеся с «.» и
+// «_»), не обходятся; пакет-импортёр читается так же, как пакет правила, —
+// файлами, которые компилирует сборка.
+func readOutside(moduleDir, modulePath, importPath, skipPkg string) (*outsideState, error) {
+	key := moduleDir + "\x00" + importPath
+	if o, ok := outsideByModule.Load(key); ok {
+		return o.(*outsideState), nil
+	}
+	o := &outsideState{}
+	dirs := map[string]bool{}
+	err := filepath.WalkDir(moduleDir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		name := d.Name()
+		if d.IsDir() {
+			if p != moduleDir && (name == "testdata" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_")) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !d.Type().IsRegular() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			return nil
+		}
+		o.walked++
+		rel, err := filepath.Rel(moduleDir, filepath.Dir(p))
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if rel == skipPkg || dirs[rel] {
+			return nil
+		}
+		f, perr := parser.ParseFile(token.NewFileSet(), p, nil, parser.ImportsOnly)
+		if perr != nil {
+			// Файл, который не разбирается, решит сборка: пакет читается ниже
+			// её правилами, и компилируемый файл с ошибкой — отказ, а не пропуск.
+			dirs[rel] = true
+			return nil
+		}
+		for _, imp := range f.Imports {
+			if path, _ := strconv.Unquote(imp.Path.Value); path == importPath {
+				dirs[rel] = true
+				break
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(dirs))
+	for d := range dirs {
+		names = append(names, d)
+	}
+	sort.Strings(names)
+	for _, d := range names {
+		p, err := parseGoPackage(moduleDir, modulePath, d)
+		if err != nil {
+			return nil, fmt.Errorf("пакет-импортёр %s: %w", d, err)
+		}
+		o.importers = append(o.importers, p)
+	}
+	outsideByModule.Store(key, o)
+	return o, nil
 }
 
 // sortedFiles — файлы в устойчивом порядке: находка «два места» называет их
@@ -524,12 +1068,20 @@ func assuranceVocabulary(src goPackageSource) map[string]string {
 var errNoSignInList = errors.New("перечень способов входа корня не разобран")
 
 // ownWiredMethods — способы входа человека, которые корень службы подаёт
-// самоотчёту старта. Возвращает имена словаря и координату объявления.
+// самоотчёту старта. Возвращает имена словаря и координату перечня.
 //
 // Путь чтения — тот же, что у самой службы: вызов наблюдателя провязки →
-// аргумент способов → метод, который его производит → постоянные словаря в его
-// теле. Ветка `return nil` (полоса не поднята) способов не добавляет — это
-// посадка без полосы, а не другой перечень.
+// аргумент способов → метод, который его производит → ЗНАЧЕНИЕ, которое метод
+// возвращает. Толкуется каждый `return` производителя (кроме возвратов из
+// замыканий в его теле — это не его значение):
+//
+//	return nil                                   — полоса не поднята, способов нет;
+//	return []assurance.Method{assurance.MethodX, …} — голый литерал перечня, ровно один.
+//
+// Иное — отказ errNoSignInList с координатой возврата: перечень, собранный
+// помощником, срезом или переменной, — не тот, что написан в литерале (круг 3:
+// разбор собирал постоянные В ЛЮБОМ месте тела, и помощник, отдававший из
+// перечня первый способ, читался перечнем целиком).
 func ownWiredMethods(root goPackageSource, vocab map[string]string) ([]string, string, error) {
 	var producers []string
 	for _, rel := range root.sortedFiles() {
@@ -569,7 +1121,7 @@ func ownWiredMethods(root goPackageSource, vocab map[string]string) ([]string, s
 			fd, ok := decl.(*ast.FuncDecl)
 			if ok && fd.Recv != nil && fd.Name.Name == producer && fd.Body != nil {
 				found = append(found, fd)
-				where = append(where, fmt.Sprintf("%s:%d", rel, root.fset.Position(fd.Pos()).Line))
+				where = append(where, root.coordinate(fd))
 			}
 		}
 	}
@@ -577,44 +1129,88 @@ func ownWiredMethods(root goPackageSource, vocab map[string]string) ([]string, s
 		return nil, "", fmt.Errorf("%w: метод %s объявлен %d раз (%v)", errNoSignInList, producer, len(found), where)
 	}
 
+	assurancePath := productModuleprefix + kanameModulePart + "/" + kanameAssurancePackage
+	var lists []*ast.CompositeLit
+	var odd []*ast.ReturnStmt
+	ast.Inspect(found[0].Body, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.FuncLit:
+			return false
+		case *ast.ReturnStmt:
+			switch {
+			case len(n.Results) == 1 && root.isPredeclared(n.Results[0], "nil"):
+			case len(n.Results) == 1 && isMethodListLiteral(root, n.Results[0], assurancePath):
+				lists = append(lists, n.Results[0].(*ast.CompositeLit))
+			default:
+				odd = append(odd, n)
+			}
+		}
+		return true
+	})
+	if len(odd) > 0 {
+		return nil, "", fmt.Errorf("%w: %s: %s возвращает `%s` — не голый литерал `[]assurance.Method{…}` и не `nil`: "+
+			"самоотчёт получает значение, которое разбор литерала не видит", errNoSignInList, root.coordinate(odd[0]),
+			producer, root.text(odd[0]))
+	}
+	if len(lists) != 1 {
+		at := where[0]
+		var each []string
+		for _, l := range lists {
+			each = append(each, root.coordinate(l))
+		}
+		if len(each) > 0 {
+			at = each[0]
+		}
+		return nil, "", fmt.Errorf("%w: %s: %s возвращает перечней %d (%s), ждали ровно один — какой из них получает "+
+			"самоотчёт, решает ход исполнения, а не литерал", errNoSignInList, at, producer, len(lists),
+			strings.Join(each, ", "))
+	}
+	list := lists[0]
+	at := root.coordinate(list)
+
 	seen := map[string]bool{}
 	var unknown []string
-	ast.Inspect(found[0].Body, func(n ast.Node) bool {
-		// `assurance.Method` — имя ТИПА (перечень объявлен `[]assurance.Method`),
-		// способом он не является; постоянные словаря — `Method<Имя>`.
-		sel, ok := n.(*ast.SelectorExpr)
-		if !ok || !strings.HasPrefix(sel.Sel.Name, "Method") || sel.Sel.Name == "Method" {
-			return true
-		}
-		if pkg, ok := sel.X.(*ast.Ident); !ok || pkg.Name != "assurance" {
-			return true
+	for _, el := range list.Elts {
+		sel, ok := el.(*ast.SelectorExpr)
+		if !ok || !root.importOf(sel.X, assurancePath) {
+			return nil, at, fmt.Errorf("%w: %s: элемент перечня `%s` — не постоянная словаря службы", errNoSignInList,
+				root.coordinate(el), root.text(el))
 		}
 		name, ok := vocab[sel.Sel.Name]
 		if !ok {
 			unknown = append(unknown, sel.Sel.Name)
-			return true
+			continue
 		}
 		seen[name] = true
-		return true
-	})
-	if len(unknown) > 0 {
-		return nil, where[0], fmt.Errorf("%w: %s называет постоянные вне словаря службы: %v",
-			errNoSignInList, where[0], unknown)
 	}
-	// Производитель, не назвавший ни одной постоянной, перечень собирает иначе —
-	// чтением настройки, помощником, — и разбор его не видит. Это отказ, а не
-	// «служба не провязала ничего»: ветка «полоса не поднята» возвращает nil
-	// рядом с перечнем, а не вместо него.
+	if len(unknown) > 0 {
+		return nil, at, fmt.Errorf("%w: %s называет постоянные вне словаря службы: %v", errNoSignInList, at, unknown)
+	}
+	// Пустой литерал — не «служба не провязала ничего»: ветка «полоса не поднята»
+	// возвращает nil рядом с перечнем, а не вместо него.
 	if len(seen) == 0 {
-		return nil, where[0], fmt.Errorf("%w: %s не называет ни одной постоянной словаря службы",
-			errNoSignInList, where[0])
+		return nil, at, fmt.Errorf("%w: %s не называет ни одной постоянной словаря службы", errNoSignInList, at)
 	}
 	out := make([]string, 0, len(seen))
 	for m := range seen {
 		out = append(out, m)
 	}
 	sort.Strings(out)
-	return out, where[0], nil
+	return out, at, nil
+}
+
+// isMethodListLiteral — `[]<импорт пакета правила>.Method{…}`.
+func isMethodListLiteral(root goPackageSource, e ast.Expr, assurancePath string) bool {
+	lit, ok := e.(*ast.CompositeLit)
+	if !ok {
+		return false
+	}
+	arr, ok := lit.Type.(*ast.ArrayType)
+	if !ok || arr.Len != nil {
+		return false
+	}
+	sel, ok := arr.Elt.(*ast.SelectorExpr)
+	return ok && sel.Sel.Name == "Method" && root.importOf(sel.X, assurancePath)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -898,7 +1494,7 @@ func recvTypeName(fd *ast.FuncDecl) string {
 	if star, ok := typ.(*ast.StarExpr); ok {
 		typ = star.X
 	}
-	if id, ok := typ.(*ast.Ident); ok {
+	if id := typeNameIdent(typ); id != nil {
 		return id.Name
 	}
 	return ""
@@ -977,21 +1573,21 @@ func assuranceLevels(src goPackageSource) (map[string]ruleRow, error) {
 //
 // Имена свободны, привязки — нет. Шаг вне этой формы — отказ с координатой узла:
 // судить по нему значило бы судить правилом, которое служба исполняет иначе.
-func ruleLadderIsTheEvaluator(src goPackageSource) error {
+func ruleLadderIsTheEvaluator(src goPackageSource) (tableArg *ast.Ident, err error) {
 	entry, err := src.funcDecl("", "LevelOf")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	given := paramNames(entry.Type)
 	if len(given) != 1 {
-		return src.notInterpretable(entry, "`LevelOf` принимает %d параметров, ждали одно предъявленное", len(given))
+		return nil, src.notInterpretable(entry, "`LevelOf` принимает %d параметров, ждали одно предъявленное", len(given))
 	}
 	switch len(entry.Body.List) {
 	case 0:
-		return src.notInterpretable(entry, "`LevelOf` с пустым телом")
+		return nil, src.notInterpretable(entry, "`LevelOf` с пустым телом")
 	case 1:
 	default:
-		return src.notInterpretable(entry.Body.List[0], "`LevelOf` несёт шаг помимо вызова исполнителя: `%s`",
+		return nil, src.notInterpretable(entry.Body.List[0], "`LevelOf` несёт шаг помимо вызова исполнителя: `%s`",
 			src.text(entry.Body.List[0]))
 	}
 	var call *ast.CallExpr
@@ -1003,26 +1599,29 @@ func ruleLadderIsTheEvaluator(src goPackageSource) error {
 		}
 	}
 	if fn == nil || len(call.Args) != 2 {
-		return src.notInterpretable(entry.Body.List[0], "`LevelOf` не возвращает вызов исполнителя над таблицей "+
+		return nil, src.notInterpretable(entry.Body.List[0], "`LevelOf` не возвращает вызов исполнителя над таблицей "+
 			"и предъявленным: `%s`", src.text(entry.Body.List[0]))
 	}
-	if !isIdent(call.Args[0], "rows") {
-		return src.notInterpretable(call.Args[0], "`LevelOf` не считает уровень таблицей `rows` (подано `%s`) — "+
+	if !src.isPackageObject(call.Args[0], "rows") {
+		return nil, src.notInterpretable(call.Args[0], "`LevelOf` не считает уровень таблицей `rows` (подано `%s`) — "+
 			"толкование судило бы таблицей, которую служба не исполняет", src.text(call.Args[0]))
 	}
 	if !isIdent(call.Args[1], given[0]) {
-		return src.notInterpretable(call.Args[1], "`LevelOf` подаёт исполнителю не предъявленное целиком (`%s`), "+
+		return nil, src.notInterpretable(call.Args[1], "`LevelOf` подаёт исполнителю не предъявленное целиком (`%s`), "+
 			"а `%s` — служба судила бы не всё, что предъявлено", given[0], src.text(call.Args[1]))
 	}
 	eval, err := src.funcDecl("", fn.Name)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	l, err := newRuleLadder(src, eval)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return l.walk(eval.Body.List)
+	if err := l.walk(eval.Body.List); err != nil {
+		return nil, err
+	}
+	return call.Args[0].(*ast.Ident), nil
 }
 
 // ruleLadder — исполнитель правила с привязками его узлов: имя таблицы, имя
@@ -1139,7 +1738,7 @@ func (l *ruleLadder) walk(body []ast.Stmt) error {
 			if stage != afterLadder {
 				return l.src.notInterpretable(st, "исполнитель %s несёт шаг вне лестницы: `%s`", l.evaluator, l.src.text(st))
 			}
-			if len(st.Results) != 2 || !isEmptyString(st.Results[0]) || !isIdent(st.Results[1], "false") {
+			if len(st.Results) != 2 || !isEmptyString(st.Results[0]) || !l.src.isPredeclared(st.Results[1], "false") {
 				return l.src.notInterpretable(st, "исполнитель %s без подошедшей строки возвращает `%s`, ждали «сессия "+
 					"не выдаётся» (`\"\", false`)", l.evaluator, l.src.text(st))
 			}
@@ -1189,7 +1788,7 @@ func (l *ruleLadder) firstHoldingRowWins(st *ast.RangeStmt) error {
 			l.evaluator, l.src.text(call))
 	}
 	ret, ok := ifs.Body.List[0].(*ast.ReturnStmt)
-	if !ok || len(ret.Results) != 2 || !isSelector(ret.Results[0], row.Name, "level") || !isIdent(ret.Results[1], "true") {
+	if !ok || len(ret.Results) != 2 || !isSelector(ret.Results[0], row.Name, "level") || !l.src.isPredeclared(ret.Results[1], "true") {
 		return l.src.notInterpretable(ifs.Body.List[0], "исполнитель %s: подошедшая строка возвращает `%s`, ждали её "+
 			"уровень и выданную сессию (`%s.level, true`)", l.evaluator, l.src.text(ifs.Body.List[0]), row.Name)
 	}
@@ -1199,13 +1798,13 @@ func (l *ruleLadder) firstHoldingRowWins(st *ast.RangeStmt) error {
 // isSetConversionCall — `<тип множества>(…)`, с любым аргументом.
 func (l *ruleLadder) isSetConversionCall(e ast.Expr) bool {
 	call, ok := e.(*ast.CallExpr)
-	return ok && isIdent(call.Fun, l.setType)
+	return ok && l.src.isPackageObject(call.Fun, l.setType)
 }
 
 // isSetConversion — `<тип множества>(<предъявленное>)`: множество всего предъявленного.
 func (l *ruleLadder) isSetConversion(e ast.Expr) bool {
 	call, ok := e.(*ast.CallExpr)
-	return ok && isIdent(call.Fun, l.setType) && len(call.Args) == 1 && isIdent(call.Args[0], l.given)
+	return ok && l.src.isPackageObject(call.Fun, l.setType) && len(call.Args) == 1 && isIdent(call.Args[0], l.given)
 }
 
 // isEmptyString — литерал `""`.
@@ -1255,7 +1854,7 @@ func readPresentedPredicate(src goPackageSource, recvType, name string, vocab ma
 	if !ok || !isIdent(loop.X, recv[0].Name) || len(loop.Body.List) != 1 {
 		return fail(fd)
 	}
-	if ret, ok := fd.Body.List[1].(*ast.ReturnStmt); !ok || len(ret.Results) != 1 || !isIdent(ret.Results[0], "false") {
+	if ret, ok := fd.Body.List[1].(*ast.ReturnStmt); !ok || len(ret.Results) != 1 || !src.isPredeclared(ret.Results[0], "false") {
 		return fail(fd)
 	}
 	item, ok := loop.Value.(*ast.Ident)
@@ -1266,7 +1865,7 @@ func readPresentedPredicate(src goPackageSource, recvType, name string, vocab ma
 	if !ok || ifs.Init != nil || ifs.Else != nil || len(ifs.Body.List) != 1 {
 		return fail(loop)
 	}
-	if ret, ok := ifs.Body.List[0].(*ast.ReturnStmt); !ok || len(ret.Results) != 1 || !isIdent(ret.Results[0], "true") {
+	if ret, ok := ifs.Body.List[0].(*ast.ReturnStmt); !ok || len(ret.Results) != 1 || !src.isPredeclared(ret.Results[0], "true") {
 		return fail(ifs)
 	}
 
@@ -1298,7 +1897,7 @@ func readPresentedPredicate(src goPackageSource, recvType, name string, vocab ma
 				pred.byParam = true
 			case len(params) == 0:
 				id, ok := other.(*ast.Ident)
-				if !ok || vocab[id.Name] == "" {
+				if !ok || vocab[id.Name] == "" || !src.isPackageObject(id, id.Name) {
 					return fail(c)
 				}
 				pred.constant = id.Name
@@ -1323,13 +1922,160 @@ func readPresentedPredicate(src goPackageSource, recvType, name string, vocab ma
 	return pred, nil
 }
 
+// presentationsCarryTheirMethod — предъявление способа m несёт способ m (круг 3).
+//
+// Гейт считает предъявление провязанного способа предъявлением ЭТОГО способа:
+// множество {password, totp} он спрашивает у правила как has(password) и
+// has(totp). Служба же предъявление СОБИРАЕТ конструктором пакета правила, и
+// конструктор, собирающий под своим именем другой способ, дал бы службе иной
+// уровень, чем гейту (круг 3: конструктор кода по времени, собиравший код
+// восстановления, — гейт «30 достижимы», служба: пароль с кодом — «1»). Поэтому
+// толкуется каждый экспортированный конструктор типа предъявления:
+//
+//	func <Имя>(…) Presentation { return Presentation{method: MethodX, <флаги>…} }
+//
+// и каждый способ словаря обязан собираться ровно одним из них. Иная форма,
+// способ без конструктора либо с двумя — отказ с координатой. Какой конструктор
+// служба зовёт на каком слове записи, решает её пакет сессий, а не этот, —
+// названо посылкой в шапке файла.
+func presentationsCarryTheirMethod(src goPackageSource, vocab map[string]string) error {
+	entry, err := src.funcDecl("", "LevelOf")
+	if err != nil {
+		return err
+	}
+	var elt *ast.Ident
+	if arr, ok := entry.Type.Params.List[0].Type.(*ast.ArrayType); ok && arr.Len == nil {
+		elt, _ = arr.Elt.(*ast.Ident)
+	}
+	ptype, ok := src.info.Uses[elt].(*types.TypeName)
+	if elt == nil || !ok {
+		return src.notInterpretable(entry.Type, "`LevelOf` принимает не срез предъявлений пакета")
+	}
+	isPresentation := func(e ast.Expr) bool {
+		id, ok := e.(*ast.Ident)
+		return ok && src.info.Uses[id] == ptype
+	}
+
+	byMethod := map[string][]*ast.FuncDecl{}
+	constructors := 0
+	for _, rel := range src.sortedFiles() {
+		for _, decl := range src.files[rel].Decls {
+			fd, ok := decl.(*ast.FuncDecl)
+			if !ok || !fd.Name.IsExported() || fd.Type.Results == nil {
+				continue
+			}
+			mentions := false
+			ast.Inspect(fd.Type.Results, func(n ast.Node) bool {
+				if id, ok := n.(*ast.Ident); ok && src.info.Uses[id] == ptype {
+					mentions = true
+				}
+				return true
+			})
+			if !mentions {
+				continue
+			}
+			constructors++
+			res := fd.Type.Results.List
+			if len(res) != 1 || len(res[0].Names) > 1 || !isPresentation(res[0].Type) {
+				return src.notInterpretable(fd, "%s возвращает не одно предъявление: `%s` — толкование не знает, "+
+					"что в нём собрано", fd.Name.Name, src.text(fd.Type))
+			}
+			method, err := constructedMethod(src, fd, isPresentation, vocab)
+			if err != nil {
+				return err
+			}
+			byMethod[method] = append(byMethod[method], fd)
+		}
+	}
+	if constructors == 0 {
+		return src.notInterpretable(elt, "у типа предъявления %s нет ни одного экспортированного конструктора — "+
+			"толковать, что предъявляет служба, не на чем", elt.Name)
+	}
+	names := map[string]bool{}
+	for _, m := range vocab {
+		names[m] = true
+	}
+	methods := make([]string, 0, len(names))
+	for m := range names {
+		methods = append(methods, m)
+	}
+	sort.Strings(methods)
+	for _, m := range methods {
+		if n := len(byMethod[m]); n > 1 {
+			each := make([]string, 0, n)
+			for _, fd := range byMethod[m] {
+				each = append(each, src.coordinate(fd)+" "+fd.Name.Name)
+			}
+			return src.notInterpretable(byMethod[m][0], "способ %s собирают конструкторов %d (%s) — какой из них "+
+				"служба зовёт под каким именем, толкование не знает", m, n, strings.Join(each, ", "))
+		}
+	}
+	for _, m := range methods {
+		if len(byMethod[m]) == 0 {
+			return fmt.Errorf("%w: способ %s не собирает ни один конструктор предъявления (%s) — служба его не "+
+				"предъявляет, а гейт считал бы предъявленным", errRuleNotInterpretable, m, src.coordinate(elt))
+		}
+	}
+	return nil
+}
+
+// constructedMethod — способ, который собирает конструктор
+// `return <Предъявление>{method: MethodX, …}`.
+func constructedMethod(src goPackageSource, fd *ast.FuncDecl, isPresentation func(ast.Expr) bool,
+	vocab map[string]string,
+) (string, error) {
+	fail := func(n ast.Node) (string, error) {
+		return "", src.notInterpretable(n, "конструктор предъявления %s не вида `return %s{method: MethodX, …}`: "+
+			"толкование не знает, какой способ он собирает", fd.Name.Name, src.text(fd.Type.Results.List[0].Type))
+	}
+	if fd.Body == nil || len(fd.Body.List) != 1 {
+		return fail(fd)
+	}
+	ret, ok := fd.Body.List[0].(*ast.ReturnStmt)
+	if !ok || len(ret.Results) != 1 {
+		return fail(fd.Body.List[0])
+	}
+	lit, ok := ret.Results[0].(*ast.CompositeLit)
+	if !ok || !isPresentation(lit.Type) {
+		return fail(ret)
+	}
+	var method *ast.Ident
+	for _, el := range lit.Elts {
+		kv, ok := el.(*ast.KeyValueExpr)
+		if !ok {
+			return fail(el)
+		}
+		if isIdent(kv.Key, "method") {
+			id, ok := kv.Value.(*ast.Ident)
+			if !ok || vocab[id.Name] == "" || !src.isPackageObject(id, id.Name) {
+				return fail(kv)
+			}
+			method = id
+		}
+	}
+	if method == nil {
+		return fail(lit)
+	}
+	return vocab[method.Name], nil
+}
+
 // readOwnRule — правило уровня пина, толкованное целиком.
 func readOwnRule(src goPackageSource, vocab map[string]string) (ownRule, error) {
 	levels, err := assuranceLevels(src)
 	if err != nil {
 		return ownRule{}, err
 	}
-	if err := ruleLadderIsTheEvaluator(src); err != nil {
+	if err := predeclaredStayTheLanguage(src, "true", "false"); err != nil {
+		return ownRule{}, err
+	}
+	tableArg, err := ruleLadderIsTheEvaluator(src)
+	if err != nil {
+		return ownRule{}, err
+	}
+	if err := ruleStateIsItsDeclaration(src, tableArg, vocab); err != nil {
+		return ownRule{}, err
+	}
+	if err := presentationsCarryTheirMethod(src, vocab); err != nil {
 		return ownRule{}, err
 	}
 	table, fields, err := ruleTable(src)
@@ -1506,6 +2252,12 @@ func readRuleCond(src goPackageSource, e ast.Expr, set, setType string, vocab ma
 			if !ok {
 				return nil, src.notInterpretable(e, "способ в %s — не постоянная словаря", sel.Sel.Name)
 			}
+			// Имя словаря, связанное не с его объявлением, — не способ словаря;
+			// имя вне словаря называется отказом ниже, своей причиной.
+			if _, named := vocab[id.Name]; named && !src.isPackageObject(id, id.Name) {
+				return nil, src.notInterpretable(e, "способ `%s` в %s связан не с постоянной словаря пакета", id.Name,
+					sel.Sel.Name)
+			}
 			constant = id.Name
 		case !pred.byParam && len(e.Args) == 0:
 		default:
@@ -1655,13 +2407,17 @@ func ownSecondFactorSides(pin string, root goPackageSource, vocab map[string]str
 func readPinnedKaname(t *testing.T) (pin string, root, assurance goPackageSource) {
 	t.Helper()
 	moduleDir := kanameModuleDir(t, "..")
+	modulePath := productModuleprefix + kanameModulePart
 	pin = productModulePins(t, "..")[kanameModulePart]
 	var err error
-	if root, err = parseGoPackage(moduleDir, kanameMainPackage); err != nil {
+	if root, err = parseGoPackage(moduleDir, modulePath, kanameMainPackage); err != nil {
 		t.Fatalf("корень службы доступа у пина %s не разобран: %v", pin, err)
 	}
-	if assurance, err = parseGoPackage(moduleDir, kanameAssurancePackage); err != nil {
+	if assurance, err = parseGoPackage(moduleDir, modulePath, kanameAssurancePackage); err != nil {
 		t.Fatalf("пакет правила уровня у пина %s не разобран: %v", pin, err)
+	}
+	if assurance.outside, err = readOutside(moduleDir, modulePath, assurance.path, kanameAssurancePackage); err != nil {
+		t.Fatalf("пакеты модуля у пина %s, импортирующие пакет правила, не прочитаны: %v", pin, err)
 	}
 	return pin, root, assurance
 }
@@ -1783,6 +2539,12 @@ func TestIdentity_OwnRuleIsReadFromThePin(t *testing.T) {
 	}
 	t.Logf("перепись правила у пина %s (%s): словарь %d способов · строк %d · по ступеням %v "+
 		"(строка вне толкования — отказ, пропуска нет)", pin, rule.where, len(vocab), len(rule.rows), rungs)
+	// Объём прочитанного: какие файлы пакета толковались (их компилирует сборка),
+	// какие нет и почему, и сколько пакетов модуля судилось на запись в словарь.
+	t.Logf("перепись пакета правила у пина %s: файлов Go компилирует сборка %d (%s) · исключает %d (%s) · "+
+		"файлов Go модуля обойдено %d · пакетов-импортёров судится на запись в словарь %d", pin,
+		len(assurance.files), strings.Join(assurance.sortedFiles(), " "), len(assurance.excluded),
+		strings.Join(assurance.excluded, " "), assurance.outside.walked, len(assurance.outside.importers))
 	// Каждый пол выше анонимного, который объявляет каталог, обязан быть ступенью
 	// правила: иначе служба его не выдаёт ни при каком предъявлении.
 	for floor := range readCatalogFloors(t) {

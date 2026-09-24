@@ -559,12 +559,14 @@ const (
 	pinnedSecondFactorRow = "s.has(MethodPassword) && (s.has(MethodTOTP) || s.has(MethodLookupSecret))"
 )
 
-// packageFileWith — единственный файл пакета, несущий текст needle, и его тело.
+// packageFileWith — единственный компилируемый файл пакета, несущий текст needle,
+// и его тело. Тело берётся у пакета, а не с диска: инъекция поверх инъекции
+// обязана видеть первую.
 func packageFileWith(t *testing.T, src goPackageSource, needle string) (rel, body string) {
 	t.Helper()
 	var found []string
 	for _, f := range src.sortedFiles() {
-		b := readFileForTest(t, filepath.Join(src.dir, filepath.FromSlash(f)))
+		b := src.bodies[f]
 		if strings.Contains(b, needle) {
 			found = append(found, f)
 			rel, body = f, b
@@ -757,7 +759,15 @@ const (
 	pinnedLadderCond   = "if r.holds(s) {"
 	pinnedLadderReturn = "return r.level, true"
 	pinnedLadderMiss   = `return "", false`
+	// pinnedLevelOfDoc — первая строка шапки `LevelOf`: перед ней инъекция ставит
+	// объявление уровня пакета (init, постоянную, метод).
+	pinnedLevelOfDoc = "// LevelOf — уровень сессии по множеству предъявленного в ней."
+	// pinnedTOTPConstructor — конструктор предъявления кода по времени у пина.
+	pinnedTOTPConstructor = "func TOTPPresented() Presentation { return Presentation{method: MethodTOTP} }"
 )
+
+// beforeLevelOf — объявление уровня пакета, внесённое перед `LevelOf`.
+func beforeLevelOf(decl string) string { return decl + "\n\n" + pinnedLevelOfDoc }
 
 // TestIdentitySecondFactorInjection_RuleOutsideTheInterpretationIsARefusal —
 // строка, помощник или лестница, которых толкование не узнаёт, — отказ с
@@ -809,6 +819,37 @@ func TestIdentitySecondFactorInjection_RuleOutsideTheInterpretationIsARefusal(t 
 			"подошедшая строка возвращает"},
 		{"без подошедшей строки сессия выдаётся", pinnedLadderMiss, "return Level1, true", "",
 			"без подошедшей строки возвращает"},
+
+		// Круг 3: толкование читает ЛИТЕРАЛ объявления, служба исполняет ЗНАЧЕНИЕ
+		// после инициализации пакета. Значение обязано быть литералом: всякая иная
+		// запись в состояние, которое толкуется, — отказ на её узле.
+		{"таблица переписана в init", pinnedLevelOfDoc, beforeLevelOf("func init() { rows = append(rows[:2:2], rows[3:]...) }"),
+			"func init()", "`rows` употреблена вне объявления и вызова исполнителя"},
+		{"условие строки переписано в init", pinnedLevelOfDoc, beforeLevelOf("func init() { rows[2].holds = rows[4].holds }"),
+			"func init()", "`rows` употреблена вне объявления и вызова исполнителя"},
+		{"таблица прочитана вне исполнителя", pinnedLevelOfDoc, beforeLevelOf("func census() int { return len(rows) }"),
+			"func census()", "`rows` употреблена вне объявления и вызова исполнителя"},
+		{"постоянная словаря переписана в init", pinnedLevelOfDoc, beforeLevelOf("func init() { MethodTOTP = MethodRecoveryCode }"),
+			"func init()", "постоянная словаря MethodTOTP переписывается вне объявления"},
+		{"адрес постоянной словаря взят", pinnedLevelOfDoc, beforeLevelOf("var totpAddr = &MethodTOTP"),
+			"var totpAddr", "постоянная словаря MethodTOTP переписывается вне объявления"},
+		{"способ словаря меняется вызовом", pinnedLevelOfDoc, beforeLevelOf("func (m *Method) rename(n string) { m.name = n }"),
+			"func (m *Method)", "у способа словаря метод с получателем-указателем `rename`"},
+		{"предобъявленное имя затенено пакетом", pinnedLevelOfDoc, beforeLevelOf("const true = false"),
+			"const true", "пакет объявляет предобъявленное имя `true`"},
+
+		// Круг 3: предъявление способа собирает конструктор пакета, и гейт считает
+		// его предъявлением ЭТОГО способа — конструктор толкуется, а не
+		// подразумевается.
+		{"конструктор кода по времени собирает другой способ", pinnedTOTPConstructor,
+			"func TOTPPresented() Presentation { return Presentation{method: MethodRecoveryCode} }", "",
+			"способ recovery_code собирают конструкторов 2"},
+		{"конструктор собирает предъявление помощником", pinnedTOTPConstructor,
+			"func TOTPPresented() Presentation { return bestPresentation(MethodTOTP) }", "",
+			"конструктор предъявления TOTPPresented не вида"},
+		{"экспортированный перечень предъявлений", pinnedLevelOfDoc,
+			beforeLevelOf("func PasswordAndCode() []Presentation { return []Presentation{PasswordPresented()} }"),
+			"func PasswordAndCode()", "PasswordAndCode возвращает не одно предъявление"},
 	}
 	refused := 0
 	for _, c := range cases {
@@ -869,6 +910,28 @@ func TestIdentitySecondFactorInjection_EvaluatorSpelledOtherwiseIsTheSameRule(t 
 		{"строка обхода под другим именем", "подошедшая строка не выдаёт сессию",
 			pinnedLadderHead + "\n\t\t" + pinnedLadderCond + "\n\t\t\t" + pinnedLadderReturn,
 			"for _, row := range table {\n\t\tif row.holds(s) {\n\t\t\treturn row.level, true"},
+
+		// Круг 3: состояние пакета, которого толкование не читает, либо имя, которое
+		// только ПИШЕТСЯ так же, — не отказ. Связывание по области видимости, а не
+		// по написанию: иначе «значение = литерал» было бы неотличимо от «отказ на
+		// любом слове rows».
+		{"init, не трогающий таблицу", "таблица переписана в init", pinnedLevelOfDoc,
+			beforeLevelOf("func init() { sort.Strings(nil) }")},
+		{"параметр по имени rows в другой функции", "таблица прочитана вне исполнителя", pinnedLevelOfDoc,
+			beforeLevelOf("func census(rows []int) int { return len(rows) }")},
+		{"постоянная словаря прочитана в init", "постоянная словаря переписана в init", pinnedLevelOfDoc,
+			beforeLevelOf("func init() { m := MethodTOTP; _ = m }")},
+		{"адрес копии постоянной", "адрес постоянной словаря взят", pinnedLevelOfDoc,
+			beforeLevelOf("var totpCopy = MethodTOTP\n\nvar totpAddr = &totpCopy")},
+		{"метод способа с получателем-значением", "способ словаря меняется вызовом", pinnedLevelOfDoc,
+			beforeLevelOf("func (m Method) renamed(n string) Method { m.name = n; return m }")},
+		{"пакетное имя, похожее на предобъявленное", "предобъявленное имя затенено пакетом", pinnedLevelOfDoc,
+			beforeLevelOf("const truth = false")},
+		{"конструктор с флагом рядом со способом", "конструктор кода по времени собирает другой способ",
+			pinnedTOTPConstructor, "func TOTPPresented() Presentation { return Presentation{userVerified: false, " +
+				"method: MethodTOTP} }"},
+		{"неэкспортированный помощник, собирающий предъявление", "конструктор собирает предъявление помощником",
+			pinnedLevelOfDoc, beforeLevelOf("func codeOf(m Method) Presentation { return bestPresentation(m) }")},
 	}
 	for _, c := range twins {
 		src, _ := injectedWithCoordinate(t, assurance, c.old, c.repl, c.repl)
@@ -895,15 +958,66 @@ func TestIdentitySecondFactorInjection_SilentRootIsARefusal(t *testing.T) {
 	vocab := assuranceVocabulary(assurance)
 
 	// ЗАКОННЫЙ БЛИЗНЕЦ: настоящий корень даёт перечень.
-	if wired, _, err := ownWiredMethods(root, vocab); err != nil || len(wired) == 0 {
-		t.Fatalf("перечень корня у пина %s не прочитан (%v, %v) — утверждения ниже вакуумны", pin, wired, err)
+	want, _, err := ownWiredMethods(root, vocab)
+	if err != nil || len(want) == 0 {
+		t.Fatalf("перечень корня у пина %s не прочитан (%v, %v) — утверждения ниже вакуумны", pin, want, err)
 	}
-	for _, c := range []struct{ name, old, repl string }{
-		{"наблюдатель провязки не зовётся вовсе", laneWiringObserver + "(ctx, cfg,", "unobservedLaneWiring(ctx, cfg,"},
-		{"производитель не называет ни одной постоянной словаря", "[]assurance.Method{" + pinnedSignInList + "}", "nil"},
+	list := "return []assurance.Method{" + pinnedSignInList + "}"
+	// helper — помощник, отбирающий из перечня первый способ; ставится после
+	// производителя, замыкающую скобку даёт сам файл.
+	helper := "\n}\n\n// firstFactorOnly — только первый способ перечня.\n" +
+		"func firstFactorOnly(ms []assurance.Method) []assurance.Method { return ms[:1] "
+
+	// Судится текст отказа: причина и координата внесённого узла (круг 3: перечень
+	// читался по постоянным В ЛЮБОМ месте тела производителя, и помощник,
+	// отбиравший из него первый способ, читался перечнем целиком).
+	//
+	// at — внесённый узел, на строку которого обязан указать отказ; пусто — вся
+	// замена. absent — отказ об ОТСУТСТВИИ узла: указывать ему не на что.
+	for _, c := range []struct {
+		name, old, repl, at, reason string
+		absent                      bool
+	}{
+		{"наблюдатель провязки не зовётся вовсе", laneWiringObserver + "(ctx, cfg,", "unobservedLaneWiring(ctx, cfg,", "",
+			"вызовов " + laneWiringObserver, true},
+		{"производитель не называет ни одной постоянной словаря", list, "return nil", "",
+			"возвращает перечней 0", true},
+		{"перечень обёрнут помощником", list,
+			"return firstFactorOnly([]assurance.Method{" + pinnedSignInList + "})" + helper, "return firstFactorOnly",
+			"не голый литерал", false},
+		{"перечень собран до возврата", list, "ms := []assurance.Method{" + pinnedSignInList + "}\n\treturn ms[:1]",
+			"return ms[:1]", "не голый литерал", false},
+		{"два перечня в двух ветвях", list,
+			"if l.freshness > 0 {\n\t\treturn []assurance.Method{assurance.MethodPassword}\n\t}\n\t" + list,
+			"[]assurance.Method{assurance.MethodPassword}",
+			"возвращает перечней 2", false},
 	} {
-		if wired, _, err := ownWiredMethods(injectedPackage(t, root, c.old, c.repl), vocab); !errors.Is(err, errNoSignInList) {
-			t.Fatalf("%s: разбор корня ответил %v (%v) — «перечня нет» обязано быть отказом", c.name, wired, err)
+		at := c.at
+		if at == "" {
+			at = c.repl
+		}
+		src, where := injectedWithCoordinate(t, root, c.old, c.repl, at)
+		wired, _, err := ownWiredMethods(src, vocab)
+		if !errors.Is(err, errNoSignInList) {
+			t.Errorf("%s: разбор корня ответил %v (%v) — «перечня нет» обязано быть отказом", c.name, wired, err)
+			continue
+		}
+		if msg := err.Error(); !strings.Contains(msg, c.reason) || (!c.absent && !strings.Contains(msg, where+": ")) {
+			t.Errorf("%s: отказ %q — ждали координату %s и причину «%s»", c.name, msg, where, c.reason)
+		}
+	}
+
+	// ЗАКОННЫЕ БЛИЗНЕЦЫ (один факт против своей инъекции): тот же помощник объявлен,
+	// но перечень возвращается голым литералом; ветвь «полосы нет» переписана
+	// иначе. Перечень — тот же, что у пина.
+	for _, c := range []struct{ name, twinOf, old, repl string }{
+		{"помощник объявлен, перечень не обёрнут", "перечень обёрнут помощником", list, list + helper},
+		{"перечень возвращается из ветви «полоса есть»", "два перечня в двух ветвях",
+			"if !l.wired() {\n\t\treturn nil\n\t}\n\t" + list, "if l.wired() {\n\t\t" + list + "\n\t}\n\treturn nil"},
+	} {
+		got, _, err := ownWiredMethods(injectedPackage(t, root, c.old, c.repl), vocab)
+		if err != nil || strings.Join(got, " ") != strings.Join(want, " ") {
+			t.Errorf("%s (близнец «%s»): перечень %v, отказ %v — у пина %v", c.name, c.twinOf, got, err, want)
 		}
 	}
 }
@@ -956,5 +1070,172 @@ func TestIdentitySecondFactorInjection_FlagQualifiedRungIsNotClaimed(t *testing.
 	if sides.Floors["3"] {
 		t.Fatalf("ступень «3» объявлена достижимой (%v), хотя её держат флаги предъявления, которых гейт не знает",
 			sides.Floors)
+	}
+}
+
+// pinnedRowsLiteral — объявление таблицы `rows` пина текстом: инъекция кладёт его
+// во второй файл пакета.
+func pinnedRowsLiteral(t *testing.T, assurance goPackageSource) string {
+	t.Helper()
+	_, body := packageFileWith(t, assurance, "var rows = []row{")
+	from := strings.Index(body, "var rows = []row{")
+	to := strings.Index(body[from:], "\n}\n")
+	if to < 0 {
+		t.Fatal("конец объявления `rows` у пина не найден — форма таблицы сменилась")
+	}
+	return body[from : from+to+3]
+}
+
+// TestIdentitySecondFactorInjection_RuleIsReadAsTheBuildCompilesIt — правило
+// читается из тех файлов пакета, которые КОМПИЛИРУЕТ сборка, а не из всех,
+// лежащих в каталоге (круг 3: файл с ограничением сборки `ignore` и файл с
+// префиксом «_» несли прежнюю таблицу, и гейт брал её вместо той, что исполняет
+// служба; поздний файл перетирал словарь).
+//
+// Строгое правило пина — строка «2» без кода по времени — с консолью [totp] пол
+// «2» не поднимает. Рядом кладётся файл с мягкой таблицей, которую сборка
+// исключает: вердикт обязан остаться вердиктом строгого правила.
+func TestIdentitySecondFactorInjection_RuleIsReadAsTheBuildCompilesIt(t *testing.T) {
+	byFloor := readCatalogFloors(t)
+	pin, root, assurance := readPinnedKaname(t)
+	vocab := assuranceVocabulary(assurance)
+	console := consoleWithoutOwnDeclaration(t) + ownDeclaration("totp")
+	lenient := pinnedRowsLiteral(t, assurance)
+	strict := injectedPackage(t, assurance, pinnedSecondFactorRow, "s.has(MethodPassword) && s.has(MethodLookupSecret)")
+	strictRule := mustOwnRule(t, strict, vocab)
+	if _, sides := ownFloorTwo(t, pin, root, vocab, strictRule, console, byFloor); sides.Floors["2"] {
+		t.Fatalf("строгое правило с консолью [totp] поднимает пол «2» (%v) — утверждать об исключённом файле не "+
+			"на чем", sides.Floors)
+	}
+	dir := kanameAssurancePackage + "/"
+
+	// Файлы, которые сборка исключает: их объявления правилом не являются.
+	for _, c := range []struct{ name, file, body string }{
+		{"мягкая таблица под ограничением сборки ignore", "a_rows.go", "//go:build ignore\n\npackage assurance\n\n" + lenient},
+		{"мягкая таблица в файле с префиксом «_»", "_rows.go", "package assurance\n\n" + lenient},
+		{"мягкая таблица в файле другой ОС", "rows_windows.go", "package assurance\n\n" + lenient},
+		{"словарь, переназначенный исключённым файлом", "z_vocab.go",
+			"//go:build ignore\n\npackage assurance\n\nvar MethodLookupSecret = Method{\"totp\"}\n"},
+	} {
+		src, err := strict.with(dir+c.file, c.body)
+		if err != nil {
+			t.Errorf("%s: пакет с исключённым файлом не прочитан: %v", c.name, err)
+			continue
+		}
+		rule, err := readOwnRule(src, assuranceVocabulary(src))
+		if err != nil {
+			t.Errorf("%s: толкование отказало (%v) — исключённый файл не должен менять правило", c.name, err)
+			continue
+		}
+		if a, b := fmt.Sprint(rowsOfLevel(rule, "2")), fmt.Sprint(rowsOfLevel(strictRule, "2")); a != b {
+			t.Errorf("%s: строки «2» прочитаны как %s, служба исполняет %s — гейт читает файл, который сборка "+
+				"не компилирует", c.name, a, b)
+		}
+		if got, _ := ownFloorTwo(t, pin, root, vocab, rule, console, byFloor); len(got) != 1 {
+			t.Errorf("%s: находок по полу «2» %d, ждали 1 — вердикт взят у исключённого файла", c.name, len(got))
+		}
+	}
+
+	// ЗАКОННЫЙ БЛИЗНЕЦ: исключённый файл без объявлений правила рядом с правилом пина
+	// — вердикт пина.
+	_, want := ownFloorTwo(t, pin, root, vocab, mustOwnRule(t, assurance, vocab), console, byFloor)
+	gen, err := assurance.with(dir+"a_gen.go", "//go:build ignore\n\npackage assurance\n\nfunc generate() {}\n")
+	if err != nil {
+		t.Fatalf("пакет с исключённым файлом без объявлений правила не прочитан: %v", err)
+	}
+	if _, got := ownFloorTwo(t, pin, root, vocab, mustOwnRule(t, gen, vocab), console, byFloor); fmt.Sprint(got.Floors) != fmt.Sprint(want.Floors) {
+		t.Errorf("исключённый файл без объявлений сменил вердикт: %v, у пина %v", got.Floors, want.Floors)
+	}
+
+	// Пакет, которого сборка не собрала бы либо собрала бы иначе, — отказ с
+	// координатой: судить по нему значило бы судить не службу.
+	for _, c := range []struct{ name, file, body, reason string }{
+		{"вторая таблица в компилируемом файле", "a_rows.go", "package assurance\n\n" + lenient,
+			"имя rows объявлено 2 раза"},
+		{"второе объявление постоянной словаря", "z_vocab.go", "package assurance\n\nvar MethodTOTP = Method{\"x\"}\n",
+			"имя MethodTOTP объявлено 2 раза"},
+		{"файл одной архитектуры", "gen_arm64.go", "package assurance\n\nfunc generate() {}\n",
+			"набор файлов пакета зависит от архитектуры"},
+		{"исходник не на Go", "state.s", "// запись в состояние пакета мимо разбора\n",
+			"сборка компилирует не-Go исходник"},
+		{"cgo", "c.go", "package assurance\n\nimport \"C\"\n", "файл cgo"},
+	} {
+		_, err := assurance.with(dir+c.file, c.body)
+		if !errors.Is(err, errPackageNotAsBuilt) || !strings.Contains(err.Error(), c.reason) ||
+			!strings.Contains(err.Error(), dir+c.file) {
+			t.Errorf("%s: разбор пакета ответил %v — ждали отказ «%s» с координатой %s", c.name, err, c.reason, dir+c.file)
+		}
+	}
+}
+
+// TestIdentitySecondFactorInjection_VocabularyWrittenByAnotherPackageIsARefusal —
+// словарь правила экспортирован, и переписать его может любой пакет модуля,
+// который его импортирует (круг 3: толкование читает литерал объявления, служба
+// исполняет значение после инициализации ВСЕЙ программы). Пакет правила
+// внутренний, поэтому импортёры — только пакеты своего модуля, и обход модуля
+// перечисляет их всех.
+func TestIdentitySecondFactorInjection_VocabularyWrittenByAnotherPackageIsARefusal(t *testing.T) {
+	pin, root, assurance := readPinnedKaname(t)
+	vocab := assuranceVocabulary(assurance)
+	importers := make([]string, 0, len(assurance.outside.importers))
+	for _, p := range assurance.outside.importers {
+		importers = append(importers, p.pkg)
+	}
+	if assurance.outside.walked == 0 || !contains(importers, kanameMainPackage) {
+		t.Fatalf("обход модуля у пина %s: файлов %d, импортёры %v — корень %s, который пакет правила импортирует, "+
+			"не найден, и утверждения ниже вакуумны", pin, assurance.outside.walked, importers, kanameMainPackage)
+	}
+	t.Logf("перепись: у пина %s файлов Go модуля прочитано %d · пакетов-импортёров пакета правила %d (%s)", pin,
+		assurance.outside.walked, len(importers), strings.Join(importers, " "))
+
+	imp := "import \"" + assurance.path + "\"\n\n"
+	file := kanameMainPackage + "/zz_injected.go"
+	injected := func(body string) goPackageSource {
+		t.Helper()
+		r, err := root.with(file, "package main\n\n"+body)
+		if err != nil {
+			t.Fatalf("инъекция в корень не разобрана: %v", err)
+		}
+		return r
+	}
+
+	// Отказ с координатой записи: файл-инъекция, строка 5 (после пакета и импорта).
+	for _, c := range []struct{ name, body, reason string }{
+		{"корень переписывает постоянную словаря", imp + "func init() { assurance.MethodTOTP = assurance.MethodRecoveryCode }\n",
+			"постоянная словаря MethodTOTP переписывается вне объявления — пакетом " + kanameMainPackage},
+		{"корень берёт адрес постоянной словаря", imp + "var totpAddr = &assurance.MethodTOTP\n",
+			"постоянная словаря MethodTOTP переписывается вне объявления"},
+		{"пакет правила импортирован точкой", "import . \"" + assurance.path + "\"\n\nvar _ = MethodTOTP\n",
+			"пакет правила импортирован точкой"},
+	} {
+		_, err := readOwnRule(assurance.withImporter(injected(c.body)), vocab)
+		want := file + ":"
+		if !errors.Is(err, errRuleNotInterpretable) || !strings.Contains(err.Error(), c.reason) ||
+			!strings.Contains(err.Error(), want) {
+			t.Errorf("%s: толкование ответило %v — ждали отказ «%s» с координатой в %s", c.name, err, c.reason, file)
+		}
+	}
+
+	// ЗАКОННЫЕ БЛИЗНЕЦЫ: чтение словаря; локальная переменная с именем пакета —
+	// связывание по области видимости, а не по написанию.
+	for _, c := range []struct{ name, twinOf, body string }{
+		{"корень читает постоянную словаря", "корень переписывает постоянную словаря",
+			imp + "var totpCopy = assurance.MethodTOTP\n"},
+		{"запись в локальную переменную с именем пакета", "корень переписывает постоянную словаря",
+			imp + "var _ = assurance.MethodTOTP\n\nfunc shadow() {\n\tassurance := struct{ MethodTOTP int }{}\n" +
+				"\tassurance.MethodTOTP = 1\n\t_ = assurance\n}\n"},
+	} {
+		if _, err := readOwnRule(assurance.withImporter(injected(c.body)), vocab); err != nil {
+			t.Errorf("%s (близнец «%s»): толкование отказало — %v", c.name, c.twinOf, err)
+		}
+	}
+
+	// Обход, не нашедший ни одного импортёра, — не «снаружи никто не пишет», а
+	// «снаружи не смотрели».
+	blind := assurance
+	blind.outside = &outsideState{}
+	if _, err := readOwnRule(blind, vocab); !errors.Is(err, errRuleNotInterpretable) ||
+		!strings.Contains(err.Error(), "не осмотрены") {
+		t.Errorf("пустой обход модуля: толкование ответило %v — ждали отказ «не осмотрены»", err)
 	}
 }
