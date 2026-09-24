@@ -30,20 +30,28 @@
 // личности» ниже):
 //
 //	посадка    сторона 1 (включает способы)          сторона 2 (консоль ведёт)
-//	external   настройки поставщика личности          поток поставщика `aal=aal2` —
-//	           (identityConfigTemplate)               STEP_UP_METHODS
 //	own        корень композиции пиненной службы      НАША церемония повышения —
 //	           доступа: перечень, из которого         OWN_STEP_UP_METHODS
 //	           самоотчёт старта выводит
 //	           `lane_presentable_acrs`
 //
-// Прежняя редакция судила ВСЕ стенды по первой строке. На посадке `own`
-// настройка поставщика не включает ничего — компонента на стенде нет, — а консоль
-// не ведёт поток поставщика; поэтому гейт зеленел («30 из 30 достижимы») ровно
-// там, где пол «2» поднять было нечем. Судьёй стороны был компонент, которого на
-// стенде нет, — и с его снятием (Ф10, #1276) у гейта не осталось бы первой
-// стороны вовсе. Теперь стороны берутся у посадки, и снятие компонента снимает
-// ровно строку `external` вместе с её предметом.
+// Прежняя редакция судила ВСЕ стенды настройкой поставщика личности. На посадке
+// `own` настройка поставщика не включает ничего — компонента на стенде нет, — а
+// консоль не ведёт поток поставщика; поэтому гейт зеленел («30 из 30 достижимы»)
+// ровно там, где пол «2» поднять было нечем. Теперь стороны берутся у посадки.
+//
+// Строки `external` В ТАБЛИЦЕ НЕТ, и это снятие вместе с предметом, а не
+// пропуск (#2857). У строки было два предмета, и оба сняты в той же волне:
+// последний стенд посадки `external` ушёл на `own` (#2735), а консоль поток
+// поставщика `aal=aal2` больше не ведёт и его перечня не объявляет (приёмка F8,
+// Р1; #1274). Вместе со строкой сняты разбор настройки поставщика как стороны 1
+// и проверка, что стенд `external` доводит её до процесса: судить им стало
+// некого. Стенд, вновь объявивший `external`, — отказ с именем посадки
+// (sidesOfLanding), а не молчание: пол «2» на ней поднимать нечем. Компонент
+// поставщика в чарте остаётся до своего снятия (Ф10, #1276), и его настройку
+// читают три других стража личности (потоки доставки, зеркало требования
+// подтверждённого адреса, решённые замещения списков — раздел «Кого судят
+// четыре стража личности» ниже).
 //
 // Правило уровня на `own` — правило службы (приёмка Ф11, Р2: «2» — утверждение
 // ключа доступа либо пароль вместе с одноразовым или запасным кодом). Пакет
@@ -87,12 +95,11 @@
 //
 // Сторону КОНСОЛИ он читает объявлением (`step-up-methods.ts`), а не разбором
 // вёрстки. Значит объявление обязано быть кем-то опровергаемо, иначе гейт судил
-// бы по обещанию: держит его проба рядом с самим окном
-// (`StepUpModal.secondfactor.test.tsx`) — она прогоняет окно ПО КАЖДОМУ
-// названному способу. Правя одно, правь второе. Это относится к обоим перечням:
-// перечень нашей церемонии заводится вместе с церемонией (Ф8, #1274) и пробой,
-// прогоняющей окно по каждому его способу, — объявленный без неё, он был бы
-// обещанием, которое некому опровергнуть.
+// бы по обещанию. Опровергает его само поле предъявления: переключатель
+// способов `SecondFactorCodeField` строится ИЗ этого перечня
+// (`ui-future/shared/src/components/molecules/auth/SecondFactorCodeField/`), и
+// способ, объявленный здесь, — это ровно способ, который консоль кладёт в тело
+// нашего глагола, а не второе место о том же предмете.
 //
 // Читается ОБЪЯВЛЕНИЕ, а не рендер: ни helm, ни кластер, ни браузер не нужны,
 // поэтому проверка не умеет пропускаться. Сторону службы на `own` он читает
@@ -162,77 +169,6 @@ const (
 	identityRenderedConfigPath = "/etc/kaname-identity-rendered/kratos.yaml"
 )
 
-// identityMethodDecl — объявление одного метода службы личности.
-type identityMethodDecl struct {
-	Enabled bool
-	Config  map[string]string
-}
-
-// parseIdentityMethods разбирает блок `selfservice.methods` тела настроек службы
-// личности по отступам.
-//
-// Разбор строчный, а не через YAML-библиотеку, и это не лень: тело — Go-шаблон,
-// в котором величины стоят подстановками (`{{ $app }}`), поэтому валидным YAML
-// оно не является ни на одной ревизии. Тот же приём и у соседней проверки полос
-// регистрации.
-func parseIdentityMethods(body string) map[string]identityMethodDecl {
-	indentOf := func(s string) int { return len(s) - len(strings.TrimLeft(s, " ")) }
-	lines := strings.Split(body, "\n")
-
-	out := map[string]identityMethodDecl{}
-	inMethods := false
-	methodsIndent := -1
-	method := ""
-	inConfig := false
-
-	for _, ln := range lines {
-		trimmed := strings.TrimSpace(ln)
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "{{") {
-			continue
-		}
-		if !inMethods {
-			if trimmed == "methods:" {
-				inMethods, methodsIndent = true, indentOf(ln)
-			}
-			continue
-		}
-		ind := indentOf(ln)
-		if ind <= methodsIndent {
-			break // вышли из `methods:`
-		}
-		switch {
-		case ind == methodsIndent+2 && strings.HasSuffix(trimmed, ":"):
-			method = strings.TrimSuffix(trimmed, ":")
-			inConfig = false
-			if _, ok := out[method]; !ok {
-				out[method] = identityMethodDecl{Config: map[string]string{}}
-			}
-		case method == "":
-			// величина до первого имени метода — не наша
-		case ind == methodsIndent+4:
-			inConfig = false
-			key, val, ok := splitYAMLPair(trimmed)
-			if !ok {
-				continue
-			}
-			if key == "config" && val == "" {
-				inConfig = true
-				continue
-			}
-			if key == "enabled" {
-				d := out[method]
-				d.Enabled = val == "true"
-				out[method] = d
-			}
-		case inConfig && ind == methodsIndent+6:
-			if key, val, ok := splitYAMLPair(trimmed); ok {
-				out[method].Config[key] = val
-			}
-		}
-	}
-	return out
-}
-
 // splitYAMLPair режет `ключ: величина`, отбрасывая хвостовой комментарий.
 func splitYAMLPair(trimmed string) (key, val string, ok bool) {
 	idx := strings.Index(trimmed, ":")
@@ -247,88 +183,16 @@ func splitYAMLPair(trimmed string) (key, val string, ok bool) {
 	return key, val, key != ""
 }
 
-// secondFactorMethods отбирает из объявленных методов те, что дают ВТОРОЙ
-// фактор, то есть поднимают сессию до `aal2`.
-//
-// ПРЕДПОСЫЛКА, НАЗВАННАЯ ЯВНО (служба личности версии, объявленной в том же
-// теле — `version: v1.3.1`):
-//
-//	totp, lookup_secret          — второй фактор всегда;
-//	webauthn                     — второй фактор ТОЛЬКО когда `passwordless`
-//	                               не включён; в беспарольной посадке это
-//	                               ПЕРВЫЙ фактор (`aal1`), и в потоке
-//	                               `aal=aal2` служба его не предлагает вовсе;
-//	code                         — второй фактор только при `mfa_enabled`;
-//	passkey, password, oidc, …   — первый фактор by construction.
-//
-// Предпосылка проверяема: она привязана к объявленной версии службы, и её
-// смена обязана идти вместе с перемером этой функции.
-func secondFactorMethods(decls map[string]identityMethodDecl) []string {
-	var out []string
-	for name, d := range decls {
-		if !d.Enabled {
-			continue
-		}
-		switch name {
-		case "totp", "lookup_secret":
-			out = append(out, name)
-		case "webauthn":
-			if d.Config["passwordless"] != "true" {
-				out = append(out, name)
-			}
-		case "code":
-			if d.Config["mfa_enabled"] == "true" {
-				out = append(out, name)
-			}
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
-// firstFactorMethods — методы, которыми арендатор входит вообще (дают `aal1`).
-func firstFactorMethods(decls map[string]identityMethodDecl) []string {
-	var out []string
-	for name, d := range decls {
-		if !d.Enabled {
-			continue
-		}
-		switch name {
-		case "password", "passkey", "oidc":
-			out = append(out, name)
-		case "webauthn":
-			if d.Config["passwordless"] == "true" {
-				out = append(out, name)
-			}
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
-// Оба перечня консоли — в одном файле, и имя одного есть хвост имени другого:
-// без границы слова `STEP_UP_METHODS` узнавался бы и внутри
-// `OWN_STEP_UP_METHODS`, и перечень потока поставщика читался бы из объявления
-// нашей церемонии.
-var stepUpMethodsLiteral = regexp.MustCompile(`(?s)\bSTEP_UP_METHODS\s*=\s*\[(.*?)\]`)
+// ownStepUpMethodsLiteral — объявление перечня нашей церемонии. Граница слова
+// стоит перед именем: без неё перечень узнавался бы и внутри любого имени,
+// оканчивающегося на `OWN_STEP_UP_METHODS`.
 var ownStepUpMethodsLiteral = regexp.MustCompile(`(?s)\bOWN_STEP_UP_METHODS\s*=\s*\[(.*?)\]`)
 var quotedToken = regexp.MustCompile(`"([a-z_]+)"`)
-
-// parseStepUpMethods читает сторону КОНСОЛИ на посадке `external` — способы,
-// которые окно повторного подтверждения умеет довести до конца в потоке
-// поставщика.
-func parseStepUpMethods(src string) []string {
-	return parseDeclaredMethods(stepUpMethodsLiteral, src)
-}
 
 // parseOwnStepUpMethods читает сторону КОНСОЛИ на посадке `own` — способы,
 // которые окно умеет довести до конца в НАШЕЙ церемонии повышения.
 func parseOwnStepUpMethods(src string) []string {
-	return parseDeclaredMethods(ownStepUpMethodsLiteral, src)
-}
-
-func parseDeclaredMethods(literal *regexp.Regexp, src string) []string {
-	m := literal.FindStringSubmatch(src)
+	m := ownStepUpMethodsLiteral.FindStringSubmatch(src)
 	if m == nil {
 		return nil
 	}
@@ -403,34 +267,6 @@ func readFileForTest(t *testing.T, path string) string {
 		t.Fatalf("объявление не прочитано (%s): %v", path, err)
 	}
 	return string(raw)
-}
-
-// attainableFloors — какие полы уровня браузерная сессия способна предъявить.
-//
-// «Способна» означает пару: служба личности метод ВКЛЮЧАЕТ и консоль его ВЕДЁТ.
-// Включённый, но неведомый консоли метод достижимости не даёт — арендатору
-// нечем им воспользоваться; ведомый, но выключенный — тем более.
-func attainableFloors(secondFactor, firstFactor, drivable []string) (floors map[string]bool, usable []string) {
-	set := map[string]bool{}
-	for _, m := range drivable {
-		set[m] = true
-	}
-	for _, m := range secondFactor {
-		if set[m] {
-			usable = append(usable, m)
-		}
-	}
-	sort.Strings(usable)
-	return map[string]bool{
-		// «0» — анонимный пол: удовлетворяется любой живой сессией.
-		"0": true,
-		"1": len(firstFactor) > 0,
-		"2": len(usable) > 0,
-		// «3» — аппаратно-связанный уровень. Служба личности объявленной версии
-		// его не выдаёт вовсе, поэтому пол «3», появившись в каталоге, был бы
-		// недостижим by construction — и это находка, а не умолчание.
-		"3": false,
-	}, usable
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2288,9 +2124,8 @@ type secondFactorSides struct {
 	Second      []string // способы, поднимающие сессию до «2»
 	Drivable    []string // способы, которые консоль ведёт на этой посадке
 	// Floors и Usable — вердикт посадки: какие полы достижимы и какими способами
-	// до «2» поднимают обе стороны сразу. Считает его строитель сторон посадки —
-	// у каждой посадки своё правило (external — таблица поставщика, own — правило
-	// службы у пина).
+	// до «2» поднимают обе стороны сразу. Считает его строитель сторон посадки
+	// правилом этой посадки (own — правило службы у пина).
 	Floors map[string]bool
 	Usable []string
 }
@@ -2344,32 +2179,6 @@ func judgeSecondFactorReach(s secondFactorSides, byFloor map[string][]string) (c
 			s.Landing, f, n, reachable, s.ServiceFrom, s.Second, s.ConsoleFrom, s.Drivable, usable, sample))
 	}
 	return census, findings, usable
-}
-
-// externalSecondFactorSides — посадка `external`: настройки поставщика и
-// перечень потока поставщика.
-func externalSecondFactorSides(settings, console string) (secondFactorSides, error) {
-	methods := parseIdentityMethods(settings)
-	if len(methods) == 0 {
-		return secondFactorSides{}, fmt.Errorf("методов поставщика личности не разобрано ни одного (%s) — "+
-			"«ноль находок» здесь неотличимо от «ноль прочитанного». Либо блок `selfservice.methods` "+
-			"переехал, либо разбор перестал его видеть", identityConfigTemplate)
-	}
-	drivable := parseStepUpMethods(console)
-	if len(drivable) == 0 {
-		return secondFactorSides{}, fmt.Errorf("перечень STEP_UP_METHODS консоли пуст либо не разобран (%s) — "+
-			"вердикта нет: достижимость считалась бы по одной стороне из двух", stepUpMethodsDeclaration)
-	}
-	sides := secondFactorSides{
-		Landing:     landingExternal,
-		ServiceFrom: identityConfigTemplate,
-		ConsoleFrom: stepUpMethodsDeclaration + " STEP_UP_METHODS",
-		First:       firstFactorMethods(methods),
-		Second:      secondFactorMethods(methods),
-		Drivable:    drivable,
-	}
-	sides.Floors, sides.Usable = attainableFloors(sides.Second, sides.First, sides.Drivable)
-	return sides, nil
 }
 
 // ownSecondFactorSides — посадка `own`: корень пиненной службы, правило уровня
@@ -2426,12 +2235,15 @@ func readPinnedKaname(t *testing.T) (pin string, root, assurance goPackageSource
 //
 // Посадка вне таблицы — не «судить нечего», а отказ: гейт не знает, кто на ней
 // включает способы и какую церемонию ведёт консоль, и молчание на ней было бы
-// тем самым зелёным без предмета.
+// тем самым зелёным без предмета. Посадка `external` названа отдельно, потому что
+// её строка СНЯТА, а не забыта (шапка файла): отказ говорит, почему.
 func sidesOfLanding(t *testing.T, landing, console string) (secondFactorSides, error) {
 	t.Helper()
 	switch landing {
 	case landingExternal:
-		return externalSecondFactorSides(readFileForTest(t, identityConfigTemplate), console)
+		return secondFactorSides{}, fmt.Errorf("посадка %q: строка снята вместе с предметом — консоль поток "+
+			"поставщика `aal=aal2` не ведёт (приёмка F8, Р1), и пол «2» на этой посадке поднимать нечем. "+
+			"Вернуть посадку стенду — значит вернуть строку вместе с её сторонами", landing)
 	case landingOwn:
 		pin, root, assurance := readPinnedKaname(t)
 		vocab := assuranceVocabulary(assurance)
@@ -2702,117 +2514,4 @@ func identityLandingDefault(t *testing.T, path string, keys ...string) string {
 func identityChainLandsIdentity(t *testing.T, texts []string) bool {
 	t.Helper()
 	return identityLandingOfChain(t, texts).lands()
-}
-
-// shadowedSecondFactors — методы второго фактора, О КОТОРЫХ ПРОФИЛЬ ВЫСКАЗАЛСЯ
-// САМ, в обход единственного объявления.
-func shadowedSecondFactors(text string) []string {
-	var out []string
-	for _, m := range secondFactorKey.FindAllStringSubmatch(text, -1) {
-		out = append(out, m[1])
-	}
-	sort.Strings(out)
-	return out
-}
-
-// secondFactorKey — имена, высказывание о которых в профиле есть второе мнение
-// о втором факторе.
-//
-// `code` сюда НЕ входит намеренно: вторым фактором он становится только при
-// `mfa_enabled`, а само слово в профилях встречается в чужих значениях — гейт с
-// ним ловил бы форму, а не существо, и первый же ложный срабат его отключил бы.
-// Появится посадка, где `code` объявлен вторым фактором, — имя добавляется сюда
-// вместе с ней.
-var secondFactorKey = regexp.MustCompile(`(?m)^\s+(totp|lookup_secret|webauthn|passkey):`)
-
-// judgedByProviderSettings — судится ли стенд настройкой поставщика личности.
-//
-// Только посадка `external`: там способы второго фактора включает настройка
-// поставщика, и стенд, не доведший её до процесса, оставляет пол «2» без стороны
-// службы. На посадке `own` поставщика на стенде нет, и провязка его настройки ни
-// о чём не говорит: сторона службы там — корень композиции (стороны посадки выше).
-// Судить её здесь значило бы засчитывать строку профиля за провязку компонента,
-// которого нет, — ровно так прежняя редакция насчитывала стенд `own` среди
-// «доводящих настройки до процесса».
-func (l identityLanding) judgedByProviderSettings() bool { return l.side() == landingExternal }
-
-func TestIdentity_EveryStackDeclaresTheSecondFactor(t *testing.T) {
-	stacks := deployStacks(t)
-
-	raising, judged, mounting, clean := 0, 0, 0, 0
-	postures := map[string]int{}
-	names := make([]string, 0, len(stacks))
-	for n := range stacks {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-
-	for _, name := range names {
-		chain := stacks[name]
-		texts := make([]string, 0, len(chain))
-		for _, prof := range chain {
-			texts = append(texts, readFileForTest(t, filepath.Join(umbrellaDir, prof)))
-		}
-		landing := identityLandingOfChain(t, texts)
-		if !landing.lands() {
-			continue
-		}
-		raising++
-		postures[landing.posture()]++
-		if !landing.judgedByProviderSettings() {
-			continue
-		}
-		judged++
-
-		if !identityChainMountsOurConfig(texts) {
-			t.Errorf("стенд %q (%v) объявляет посадку личности и НЕ доводит до службы наши "+
-				"настройки (%s): процесс работает на умолчаниях подчарта поставщика, "+
-				"где метода второго фактора нет вовсе. Значит объявленный каталогом "+
-				"прав пол уровня «2» на этом стенде недостижим ДЛЯ ВСЕХ",
-				name, chain, identityRenderedConfigPath)
-			continue
-		}
-		mounting++
-
-		shadowed := map[string][]string{}
-		for i, prof := range chain {
-			if sh := shadowedSecondFactors(texts[i]); len(sh) > 0 {
-				shadowed[prof] = sh
-			}
-		}
-		if len(shadowed) == 0 {
-			clean++
-			continue
-		}
-		t.Errorf("стенд %q доводит наши настройки службы личности до процесса и ПРИ ЭТОМ "+
-			"его профили сами высказываются о методах второго фактора: %v.\n"+
-			"Процесс получает два источника настроек и сливает их по порядку — то есть "+
-			"какая из двух величин победит, решает порядок, которого никто не выбирал. "+
-			"Два места об одном предмете, из которых верно одно: метод объявляется "+
-			"ОДИН раз, в %s.\n"+
-			"Наблюдалось: профиль объявлял метод второго фактора выключенным рядом с "+
-			"включённым в единственном объявлении, и замер на стенде читал выключенным "+
-			"то, что дерево включает",
-			name, shadowed, identityConfigTemplate)
-	}
-
-	if raising == 0 {
-		t.Fatal("ни один стенд не объявляет посадку личности — ни цепочкой профилей, " +
-			"ни базами подчартов. Это не «личности на стендах нет», а исчезнувшая " +
-			"предпосылка: проверка беспредметна, и её зелёный ничего не значит")
-	}
-	if judged == 0 {
-		t.Fatalf("ни один стенд не на посадке %s — у проверки провязки настройки поставщика не "+
-			"осталось предмета. Это не «все стенды исправны»: снимите проверку вместе с компонентом "+
-			"(Ф10, #1276) и назовите это в шапке гейта", landingExternal)
-	}
-	shapes := make([]string, 0, len(postures))
-	for p, n := range postures {
-		shapes = append(shapes, fmt.Sprintf("%s %d", p, n))
-	}
-	sort.Strings(shapes)
-	t.Logf("перепись стендов: объявлено %d · объявляют посадку личности %d (%s) · "+
-		"судятся настройкой поставщика (посадка %s) %d · доводят её до процесса %d · "+
-		"не заводят второго мнения о втором факторе %d",
-		len(stacks), raising, strings.Join(shapes, " · "), landingExternal, judged, mounting, clean)
 }

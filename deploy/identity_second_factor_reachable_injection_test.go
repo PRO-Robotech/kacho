@@ -26,139 +26,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func TestIdentitySecondFactorInjection_ParserSeesTheRealDeclaration(t *testing.T) {
-	// Контроль предпосылки: разбор обязан узнавать объявление ДЕРЕВА. Пустой
-	// разбор сделал бы все утверждения ниже вакуумными.
-	got := parseIdentityMethods(readFileForTest(t, identityConfigTemplate))
-	if len(got) < 4 {
-		t.Fatalf("разбор увидел %d методов в %s — этого мало, чтобы утверждать что-либо: "+
-			"проверьте, не переехал ли блок `selfservice.methods`", len(got), identityConfigTemplate)
-	}
-	if _, ok := got["totp"]; !ok {
-		t.Fatalf("разбор не увидел метода одноразового кода в %s — предпосылка исчезла",
-			identityConfigTemplate)
-	}
-	t.Logf("перепись: методов разобрано %d", len(got))
-}
-
-func TestIdentitySecondFactorInjection_DisabledSecondFactorIsFound(t *testing.T) {
-	body := readFileForTest(t, identityConfigTemplate)
-
-	// ДЕФЕКТ, ВОЗВРАЩЁННЫЙ В НАСТОЯЩИЙ ВХОД: единственный включённый способ,
-	// который ведёт консоль, выключается.
-	broken := strings.Replace(body, "    totp:\n      enabled: true", "    totp:\n      enabled: false", 1)
-	if broken == body {
-		t.Fatal("инъекция не изменила вход — форма объявления сменилась, и это утверждение " +
-			"перестало что-либо доказывать")
-	}
-	brokenSecond := secondFactorMethods(parseIdentityMethods(broken))
-	for _, m := range brokenSecond {
-		if m == "totp" {
-			t.Fatal("выключенный одноразовый код всё ещё считается вторым фактором — " +
-				"разбор не читает `enabled`")
-		}
-	}
-
-	// ЗАКОННЫЙ БЛИЗНЕЦ: тот же вход без инъекции обязан молчать.
-	if !contains(secondFactorMethods(parseIdentityMethods(body)), "totp") {
-		t.Fatal("включённый одноразовый код не признан вторым фактором — гейт ловил бы " +
-			"форму, а не существо")
-	}
-	t.Logf("перепись: вторых факторов на дереве %d · после инъекции %d",
-		len(secondFactorMethods(parseIdentityMethods(body))), len(brokenSecond))
-}
-
-func TestIdentitySecondFactorInjection_PasswordlessKeyIsNotASecondFactor(t *testing.T) {
-	// Ось, ради которой гейт и заведён: ключ доступа в БЕСПАРОЛЬНОЙ посадке —
-	// первый фактор, и вторым он быть не вправе.
-	passwordless := map[string]identityMethodDecl{
-		"webauthn": {Enabled: true, Config: map[string]string{"passwordless": "true"}},
-	}
-	if contains(secondFactorMethods(passwordless), "webauthn") {
-		t.Fatal("беспарольный ключ доступа засчитан вторым фактором — гейт объявил бы " +
-			"достижимым уровень, которого этим способом не достичь")
-	}
-	if !contains(firstFactorMethods(passwordless), "webauthn") {
-		t.Fatal("беспарольный ключ доступа не засчитан ПЕРВЫМ фактором — тогда гейт " +
-			"объявил бы недостижимым и обычный вход")
-	}
-
-	// ЗАКОННЫЙ БЛИЗНЕЦ той же формы: тот же метод в НЕбеспарольной посадке —
-	// второй фактор, и молчать на нём обязательно.
-	twofactor := map[string]identityMethodDecl{
-		"webauthn": {Enabled: true, Config: map[string]string{"passwordless": "false"}},
-	}
-	if !contains(secondFactorMethods(twofactor), "webauthn") {
-		t.Fatal("ключ доступа вторым фактором не признан — гейт ловил бы имя метода, " +
-			"а не его посадку")
-	}
-}
-
-func TestIdentitySecondFactorInjection_EmptyConsoleDeclarationIsNotSilence(t *testing.T) {
-	real := parseStepUpMethods(readFileForTest(t, stepUpMethodsDeclaration))
-	if len(real) == 0 {
-		t.Fatalf("объявление способов консоли не разобрано (%s) — предпосылка исчезла",
-			stepUpMethodsDeclaration)
-	}
-	for _, src := range []string{
-		"",
-		"export const STEP_UP_METHODS = [] as const;",
-		"// STEP_UP_METHODS переименован",
-	} {
-		if got := parseStepUpMethods(src); len(got) != 0 {
-			t.Fatalf("на входе %q разбор вернул %v — пустая сторона консоли обязана быть "+
-				"отличима от непустой, иначе достижимость считалась бы по одной стороне", src, got)
-		}
-	}
-	t.Logf("перепись: способов у консоли %d (%s)", len(real), strings.Join(real, " "))
-}
-
-func TestIdentitySecondFactorInjection_FloorFollowsTheIntersection(t *testing.T) {
-	// Пусто с обеих сторон и вразнобой — пол «2» недостижим.
-	for _, c := range []struct {
-		name           string
-		second, drivab []string
-	}{
-		{"настройки молчат", nil, []string{"totp"}},
-		{"консоль молчит", []string{"totp"}, nil},
-		{"стороны говорят о разном", []string{"totp"}, []string{"webauthn"}},
-	} {
-		floors, usable := attainableFloors(c.second, []string{"password"}, c.drivab)
-		if floors["2"] || len(usable) != 0 {
-			t.Fatalf("%s: пол «2» объявлен достижимым (пригодны %v) — гейт не покраснел бы "+
-				"на том самом состоянии, ради которого заведён", c.name, usable)
-		}
-	}
-
-	// ЗАКОННЫЙ БЛИЗНЕЦ: стороны сошлись — пол достижим, и гейт обязан молчать.
-	floors, usable := attainableFloors([]string{"lookup_secret", "totp"}, []string{"password"},
-		[]string{"lookup_secret", "totp", "webauthn"})
-	if !floors["2"] || len(usable) != 2 {
-		t.Fatalf("сошедшиеся стороны объявлены недостижимыми (пригодны %v) — гейт краснел бы "+
-			"на исправном дереве и был бы снят первым же читателем", usable)
-	}
-	// Пол первого уровня не должен зависеть от второго фактора.
-	if !floors["1"] {
-		t.Fatal("пол «1» объявлен недостижимым при включённом входе паролем")
-	}
-}
-
-func TestIdentitySecondFactorInjection_ShadowDeclarationIsFound(t *testing.T) {
-	shadow := "kratos:\n  kratos:\n    config:\n      selfservice:\n        methods:\n" +
-		"          password: { enabled: true }\n          totp: { enabled: false }\n"
-	if got := shadowedSecondFactors(shadow); len(got) != 1 || got[0] != "totp" {
-		t.Fatalf("второе мнение о втором факторе не найдено: %v", got)
-	}
-
-	// ЗАКОННЫЙ БЛИЗНЕЦ: профиль, высказавшийся только о первом факторе, — не
-	// находка. Иначе гейт краснел бы на каждой накладке посадки.
-	clean := "kratos:\n  kratos:\n    config:\n      selfservice:\n        methods:\n" +
-		"          password: { enabled: true }\n"
-	if got := shadowedSecondFactors(clean); len(got) != 0 {
-		t.Fatalf("объявление только первого фактора принято за второе мнение: %v", got)
-	}
-}
-
 func TestIdentitySecondFactorInjection_ChainPredicatesReadBothSides(t *testing.T) {
 	mounted := []string{"a: 1\n", "extraArgs:\n  - --config\n  - " + identityRenderedConfigPath + "\n"}
 	if !identityChainMountsOurConfig(mounted) {
@@ -366,27 +233,23 @@ func TestIdentitySecondFactorInjection_OwnConsoleDeclarationDecidesTheFloor(t *t
 	rule := mustOwnRule(t, assurance, vocab)
 	base := consoleWithoutOwnDeclaration(t)
 
-	// Предпосылка ровно того дефекта, ради которого задача заведена: перечень
-	// ПОТОКА ПОСТАВЩИКА в файле есть и непуст.
-	if len(parseStepUpMethods(base)) == 0 {
-		t.Fatal("перечень STEP_UP_METHODS не разобран — случай «own судится перечнем поставщика» " +
-			"не воспроизводится, и утверждение ниже ничего не доказывает")
-	}
-
-	// ДЕФЕКТ: консоль нашей церемонии не ведёт — пол «2» на own недостижим, хотя
-	// перечень потока поставщика рядом стоит непустым. Прежняя редакция гейта
-	// судила own именно по нему и зеленела.
-	sides, err := ownSecondFactorSides(pin, root, vocab, rule, base)
+	// ДЕФЕКТ ПРЕЖНЕЙ РЕДАКЦИИ, ВОЗВРАЩЁННЫЙ ИНЪЕКЦИЕЙ: рядом стоит непустой
+	// перечень потока поставщика, а нашей церемонии консоль не ведёт. Прежняя
+	// редакция судила own именно по нему и зеленела. Перечень вносит проба:
+	// консоль его больше не объявляет (приёмка F8, Р1), и фикстура, привязанная
+	// к настоящему объявлению, истекла бы вместе с ним.
+	provider := base + "\nexport const STEP_UP_METHODS = [\"totp\", \"lookup_secret\"] as const;\n"
+	sides, err := ownSecondFactorSides(pin, root, vocab, rule, provider)
 	if err != nil {
 		t.Fatalf("стороны own не прочитаны: %v", err)
 	}
 	if got := floorTwoFindings(sides, byFloor); len(got) != 1 {
-		t.Fatalf("консоль без перечня нашей церемонии: находок по полу «2» %d, ждали 1 — гейт "+
-			"судил бы own перечнем потока поставщика (%v)", len(got), parseStepUpMethods(base))
+		t.Fatalf("консоль без перечня нашей церемонии рядом с перечнем поставщика: находок по полу «2» %d, "+
+			"ждали 1 — гейт судил бы own перечнем потока поставщика", len(got))
 	}
 
 	// ЗАКОННЫЙ БЛИЗНЕЦ (один факт — объявление нашей церемонии): пол достижим.
-	sides, err = ownSecondFactorSides(pin, root, vocab, rule, base+ownDeclaration("totp", "lookup_secret"))
+	sides, err = ownSecondFactorSides(pin, root, vocab, rule, provider+ownDeclaration("totp", "lookup_secret"))
 	if err != nil {
 		t.Fatalf("стороны own не прочитаны: %v", err)
 	}
@@ -404,19 +267,21 @@ func TestIdentitySecondFactorInjection_OwnConsoleDeclarationDecidesTheFloor(t *t
 		t.Fatalf("консоль ведёт только код восстановления, а пол «2» объявлен достижимым (находок %d)", len(got))
 	}
 
-	// ГРАНИЦА СЛОВА: объявление нашей церемонии не читается перечнем потока
-	// поставщика, и наоборот. Объявление ставится ПЕРЕД перечнем поставщика:
-	// разбор берёт первое совпадение, и стоящее после оно не укусило бы вовсе.
-	withOwn := ownDeclaration("totp") + base
-	if strings.Join(parseStepUpMethods(withOwn), " ") != strings.Join(parseStepUpMethods(base), " ") {
-		t.Fatalf("перечень потока поставщика прочитан из объявления нашей церемонии: %v против %v",
-			parseStepUpMethods(withOwn), parseStepUpMethods(base))
+	// ГРАНИЦА СЛОВА: перечень нашей церемонии не читается ни из перечня потока
+	// поставщика, ни изнутри более длинного имени; законный близнец — настоящее
+	// объявление консоли — читается.
+	for _, src := range []string{provider, "export const NOT_OWN_STEP_UP_METHODS = [\"totp\"] as const;"} {
+		if got := parseOwnStepUpMethods(src); len(got) != 0 {
+			t.Fatalf("перечень нашей церемонии прочитан из чужого объявления: %v", got)
+		}
 	}
-	if got := parseOwnStepUpMethods(base); len(got) != 0 {
-		t.Fatalf("перечень нашей церемонии прочитан из перечня потока поставщика: %v", got)
+	real := parseOwnStepUpMethods(readFileForTest(t, stepUpMethodsDeclaration))
+	if len(real) == 0 {
+		t.Fatalf("перечень нашей церемонии не прочитан из %s — граница слова отсекла бы и настоящее "+
+			"объявление", stepUpMethodsDeclaration)
 	}
-	t.Logf("перепись: записей с полом «2» %d · перечень поставщика %v · служба у пина %s ведёт вторым фактором %v",
-		len(byFloor["2"]), parseStepUpMethods(base), pin, sides.Second)
+	t.Logf("перепись: записей с полом «2» %d · консоль ведёт на own %v · служба у пина %s ведёт вторым фактором %v",
+		len(byFloor["2"]), real, pin, sides.Second)
 }
 
 func TestIdentitySecondFactorInjection_OwnServiceSideIsReadFromThePinnedRoot(t *testing.T) {
@@ -490,75 +355,46 @@ func TestIdentitySecondFactorInjection_OwnServiceSideIsReadFromThePinnedRoot(t *
 	t.Logf("перепись: пин %s · перечень корня %s: %v · вторым фактором %v", pin, where, wired, real.Second)
 }
 
-func TestIdentitySecondFactorInjection_ExternalLandingKeepsItsOwnSides(t *testing.T) {
-	byFloor := readCatalogFloors(t)
-	settings := readFileForTest(t, identityConfigTemplate)
-	console := consoleWithoutOwnDeclaration(t)
+// TestIdentitySecondFactorInjection_ExternalLandingIsARefusal — строки `external`
+// в таблице посадок нет (#2857), и стенд, вновь объявивший эту посадку, — отказ с
+// её именем и причиной, а не молчание и не вердикт.
+//
+// Утверждается в паре с законным близнецом: та же консоль на посадке `own`
+// читается и даёт вердикт. Без близнеца отказ на `external` был бы неотличим от
+// отказа, который гейт отдал бы на любой вход.
+func TestIdentitySecondFactorInjection_ExternalLandingIsARefusal(t *testing.T) {
+	console := readFileForTest(t, stepUpMethodsDeclaration)
 
-	// ЗАКОННЫЙ БЛИЗНЕЦ: настоящие стороны external — пол «2» достижим.
-	sides, err := externalSecondFactorSides(settings, console)
-	if err != nil {
-		t.Fatalf("стороны external не прочитаны: %v", err)
-	}
-	if got := floorTwoFindings(sides, byFloor); len(got) != 0 {
-		t.Fatalf("настоящие стороны external объявлены недостижимыми: %v", got)
-	}
-
-	// ДЕФЕКТ: оба кода второго фактора выключены в настройке поставщика.
-	off := strings.NewReplacer(
-		"    totp:\n      enabled: true", "    totp:\n      enabled: false",
-		"    lookup_secret:\n      enabled: true", "    lookup_secret:\n      enabled: false").Replace(settings)
-	if off == settings {
-		t.Fatal("инъекция не изменила настройку поставщика — форма объявления сменилась")
-	}
-	sides, err = externalSecondFactorSides(off, console)
-	if err != nil {
-		t.Fatalf("стороны external после инъекции не прочитаны: %v", err)
-	}
-	if got := floorTwoFindings(sides, byFloor); len(got) != 1 {
-		t.Fatalf("настройка без второго фактора: находок по полу «2» %d, ждали 1", len(got))
+	// ЗАКОННЫЙ БЛИЗНЕЦ: та же консоль на посадке own — вердикт есть.
+	if _, err := sidesOfLanding(t, landingOwn, console); err != nil {
+		t.Fatalf("посадка own с настоящей консолью не прочитана: %v — отказ ниже ничего не различал бы", err)
 	}
 
-	// Объявление нашей церемонии сторону external не трогает: её консоль — поток
-	// поставщика, и перечень own её пол не поднимает.
-	sides, err = externalSecondFactorSides(off, console+ownDeclaration("totp", "lookup_secret"))
-	if err != nil {
-		t.Fatalf("стороны external не прочитаны: %v", err)
+	// Посадка external — отказ, названный по имени и по причине.
+	_, err := sidesOfLanding(t, landingExternal, console)
+	if err == nil {
+		t.Fatal("посадка external дала вердикт — пол «2» на ней поднимать нечем, и вердикт здесь был бы " +
+			"вердиктом без предмета")
 	}
-	if got := floorTwoFindings(sides, byFloor); len(got) != 1 {
-		t.Fatalf("перечень нашей церемонии поднял пол на посадке external (находок %d)", len(got))
+	for _, want := range []string{`"` + landingExternal + `"`, "поток поставщика"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("отказ на посадке external не называет %s: %v", want, err)
+		}
+	}
+
+	// ВОЗВРАЩЁННЫЙ ПРЕДМЕТ СНЯТОЙ СТРОКИ: консоль снова объявляет перечень потока
+	// поставщика. Отказ обязан остаться — строка снята, а не выключена отсутствием
+	// перечня; вернуть посадку значит вернуть строку вместе с её сторонами.
+	withProvider := console + "\nexport const STEP_UP_METHODS = [\"totp\", \"lookup_secret\"] as const;\n"
+	if _, err := sidesOfLanding(t, landingExternal, withProvider); err == nil {
+		t.Fatal("перечень потока поставщика в консоли вернул посадке external вердикт — строка судилась бы " +
+			"сторонами, которых гейт больше не читает")
 	}
 
 	// Посадка вне таблицы — отказ с её именем, а не пропуск.
 	if _, err := sidesOfLanding(t, "federated", console); err == nil || !strings.Contains(err.Error(), "federated") {
 		t.Fatalf("посадка вне таблицы не названа отказом: %v", err)
 	}
-}
-
-func TestIdentitySecondFactorInjection_OwnStackIsNotJudgedByProviderSettings(t *testing.T) {
-	for _, c := range []struct {
-		name    string
-		landing identityLanding
-		judged  bool
-	}{
-		{"external у службы", identityLanding{IAM: landingExternal, Edge: landingExternal}, true},
-		{"own у службы", identityLanding{IAM: landingOwn, Edge: landingOwn}, false},
-		{"own только у края", identityLanding{Edge: landingOwn}, false},
-		{"служба решает при расхождении", identityLanding{IAM: landingExternal, Edge: landingOwn}, true},
-	} {
-		if got := c.landing.judgedByProviderSettings(); got != c.judged {
-			t.Fatalf("%s (%+v): судится настройкой поставщика = %v, ждали %v", c.name, c.landing, got, c.judged)
-		}
-	}
-
-	// На НАСТОЯЩЕЙ таблице стенд own из-под суда настройкой поставщика выведен, а
-	// остальные — нет.
-	landings := stacksByLanding(t)
-	if len(landings[landingOwn]) == 0 || len(landings[landingExternal]) == 0 {
-		t.Fatalf("в таблице стендов нет обеих посадок (%v) — различение нечем доказать", landings)
-	}
-	t.Logf("перепись: стендов на external %d (%v) · на own %d (%v)",
-		len(landings[landingExternal]), landings[landingExternal], len(landings[landingOwn]), landings[landingOwn])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
