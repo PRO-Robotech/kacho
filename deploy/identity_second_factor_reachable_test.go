@@ -61,6 +61,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Значения нашей ручки посадки личности (`identityProvider`).
+const (
+	landingExternal = "external"
+	landingOwn      = "own"
+)
+
 const (
 	// stepUpMethodsDeclaration — сторона КОНСОЛИ, объявленная одной строкой.
 	stepUpMethodsDeclaration = "../ui-future/shared/src/lib/step-up-methods.ts"

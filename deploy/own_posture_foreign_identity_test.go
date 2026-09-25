@@ -76,8 +76,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-
-	"gopkg.in/yaml.v3"
 )
 
 // foreignIdentityRepoMark — признак репозитория поставщика чужой службы личности.
@@ -196,14 +194,11 @@ func flagBearingTopLevelKey(t *testing.T, path string) string {
 	return found[0]
 }
 
-// standPosture — что стенд объявил каждой половине.
-type standPosture struct {
-	IAM  string
-	Edge string
-}
+// both — обе половины стенда стоят на посадке v.
+func (l identityLanding) both(v string) bool { return l.IAM == v && l.Edge == v }
 
-func (p standPosture) both(v string) bool { return p.IAM == v && p.Edge == v }
-func (p standPosture) any(v string) bool  { return p.IAM == v || p.Edge == v }
+// any — хотя бы одна половина стенда стоит на посадке v.
+func (l identityLanding) any(v string) bool { return l.IAM == v || l.Edge == v }
 
 // identityPostureFinding — находка о стенде.
 type identityPostureFinding struct {
@@ -239,7 +234,7 @@ var foreignIdentityRemainders = map[string][]identityRemainder{}
 // Стенд, половины которого разошлись, по второй стороне здесь НЕ судится: это
 // предмет соседа (helm/umbrella/identity_posture_profiles_test.go), и второй
 // вердикт об одном предмете разъехался бы с первым.
-func judgeStandIdentity(stack string, p standPosture, enabled []string, remainders []identityRemainder) []identityPostureFinding {
+func judgeStandIdentity(stack string, p identityLanding, enabled []string, remainders []identityRemainder) []identityPostureFinding {
 	onStand := map[string]bool{}
 	for _, c := range enabled {
 		onStand[c] = true
@@ -251,7 +246,7 @@ func judgeStandIdentity(stack string, p standPosture, enabled []string, remainde
 		// САМОИСТЕЧЕНИЕ. Запись об остатке, которого на стенде нет, — находка:
 		// либо компонент уже снят и ведомость пережила свой предмет, либо его
 		// переименовали и ведомость перестала его узнавать.
-		if !onStand[r.Component] || !p.any("own") {
+		if !onStand[r.Component] || !p.any(landingOwn) {
 			out = append(out, identityPostureFinding{
 				Stack:  stack,
 				Reason: remainderIsStale,
@@ -274,7 +269,7 @@ func judgeStandIdentity(stack string, p standPosture, enabled []string, remainde
 	}
 
 	switch {
-	case p.any("own") && len(undecided) > 0:
+	case p.any(landingOwn) && len(undecided) > 0:
 		out = append(out, identityPostureFinding{
 			Stack:  stack,
 			Reason: ownRaisesForeign,
@@ -288,7 +283,7 @@ func judgeStandIdentity(stack string, p standPosture, enabled []string, remainde
 				"предикатом снятия.\nРешённый остаток этого стенда: %s",
 				stack, p.IAM, p.Edge, strings.Join(undecided, ", "), joinOrNone(decidedComponentNames(decided))),
 		})
-	case p.both("external") && len(enabled) == 0:
+	case p.both(landingExternal) && len(enabled) == 0:
 		out = append(out, identityPostureFinding{
 			Stack:  stack,
 			Reason: externalRaisesNothing,
@@ -341,18 +336,7 @@ func (c standIdentityCensus) String() string {
 func TestOwnPostureRaisesNoForeignIdentityService(t *testing.T) {
 	stacks := deployStacks(t)
 	components := foreignIdentityComponents(t)
-
-	// Умолчания половин живут в профилях ПОДЧАРТОВ: стенд, посадку не
-	// объявивший, получает их, а не пустоту.
-	iamDefault := postureDefaultOf(t, filepath.Join(umbrellaDir, "charts", "kaname", "values.yaml"),
-		"config", "authn", "identityProvider")
-	edgeDefault := postureDefaultOf(t, filepath.Join("..", "gateway", "deploy", "values.yaml"),
-		"authn", "identityProvider")
-	if iamDefault == "" || edgeDefault == "" {
-		t.Fatalf("умолчание посадки не прочитано у одной из половин (iam=%q gateway=%q) — "+
-			"вердикт о стендах, посадку не объявивших, был бы вынесен неизвестно о чём",
-			iamDefault, edgeDefault)
-	}
+	umbrellaBase := readFileForTest(t, filepath.Join(umbrellaDir, "values.yaml"))
 
 	names := make([]string, 0, len(stacks))
 	for n := range stacks {
@@ -369,9 +353,21 @@ func TestOwnPostureRaisesNoForeignIdentityService(t *testing.T) {
 	for _, name := range names {
 		merged, _, _ := mergedValuesOfStack(t, stacks[name])
 
-		p := standPosture{
-			IAM:  stringAt(merged, iamDefault, "kaname", "config", "authn", "identityProvider"),
-			Edge: stringAt(merged, edgeDefault, "api-gateway", "authn", "identityProvider"),
+		// Посадку читает ЕДИНСТВЕННЫЙ читатель пакета (identityLandingOfChain) —
+		// тот же, что отбирает стенды для стражей личности, — из тех же слоёв,
+		// из которых выше сложены флаги: значения зонта, затем профили цепочки.
+		// Умолчание подчарта он подставляет, когда о посадке молчит вся цепочка,
+		// а не каждая половина порознь; для этого гейта это одно и то же, потому
+		// что объявить одну половину без второй профиль не может — это отказ
+		// TestIdentityPostureHalvesOfAProfileAgree (helm/umbrella).
+		texts := []string{umbrellaBase}
+		for _, prof := range stacks[name] {
+			texts = append(texts, readFileForTest(t, filepath.Join(umbrellaDir, prof)))
+		}
+		p := identityLandingOfChain(t, texts)
+		if !p.lands() {
+			t.Fatalf("стенд %q: посадка не прочитана ни у цепочки, ни у баз подчартов — вердикт о "+
+				"нём был бы вынесен неизвестно о чём", name)
 		}
 
 		var enabled []string
@@ -384,9 +380,9 @@ func TestOwnPostureRaisesNoForeignIdentityService(t *testing.T) {
 		}
 
 		switch {
-		case p.both("own"):
+		case p.both(landingOwn):
 			census.Own++
-		case p.both("external"):
+		case p.both(landingExternal):
 			census.External++
 		default:
 			census.Mixed++
@@ -435,36 +431,4 @@ func TestOwnPostureRaisesNoForeignIdentityService(t *testing.T) {
 	for _, f := range findings {
 		t.Errorf("%s: %s", f.Reason, f.Text)
 	}
-}
-
-// stringAt — строка по пути либо умолчание.
-func stringAt(tree map[string]any, def string, path ...string) string {
-	v, ok := lookup(tree, path...)
-	if !ok {
-		return def
-	}
-	s, ok := v.(string)
-	if !ok || strings.TrimSpace(s) == "" {
-		return def
-	}
-	return s
-}
-
-// postureDefaultOf — значение по пути в файле значений подчарта.
-func postureDefaultOf(t *testing.T, path string, keys ...string) string {
-	t.Helper()
-	raw, err := os.ReadFile(filepath.Clean(path)) // #nosec G304 -- путь собственного дерева
-	if err != nil {
-		t.Fatalf("профиль %s не читается: %v", path, err)
-	}
-	var tree map[string]any
-	if err := yaml.Unmarshal(raw, &tree); err != nil {
-		t.Fatalf("профиль %s не разбирается как YAML: %v", path, err)
-	}
-	v, ok := lookup(tree, keys...)
-	if !ok {
-		return ""
-	}
-	s, _ := v.(string)
-	return s
 }
