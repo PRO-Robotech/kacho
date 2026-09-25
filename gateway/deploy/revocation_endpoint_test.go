@@ -55,11 +55,17 @@ func readRepoFile(t *testing.T, parts ...string) string {
 	return string(raw)
 }
 
-// stacksTable — the ONE place in the tree where the `-f` chains are declared.
-// Read from here, from deploy/tests/helm/stacks.sh and from the deploy package;
-// nowhere else, and TestNoSecondCopyOfAStackChain (deploy/stack_table_test.go)
-// keeps it that way.
-const stacksTable = "../../deploy/stacks.txt"
+// stacksTableFromRoot — the ONE place in the tree where the `-f` chains are
+// declared, addressed from the repository root. TestNoSecondCopyOfAStackChain
+// (deploy/stack_table_test.go) keeps the chains themselves from being copied
+// anywhere else; it does not count readers. Inside this package the table has
+// exactly one reader, readStackTable, and so exactly one grammar: two readers
+// with two grammars would each honestly judge the stands its own grammar
+// recognised, and a line one of them skips would narrow only half the package.
+var stacksTableFromRoot = filepath.Join("deploy", "stacks.txt")
+
+// stacksTable — the same table addressed from this package.
+var stacksTable = filepath.Join("..", "..", stacksTableFromRoot)
 
 var stackTableLine = regexp.MustCompile(`^([a-z0-9][a-z0-9-]*):(values[^,\s]*(?:,values[^,\s]*)*)$`)
 
@@ -84,10 +90,18 @@ var stackTableLine = regexp.MustCompile(`^([a-z0-9][a-z0-9-]*):(values[^,\s]*(?:
 // appends it itself.
 func deployableStacks(t *testing.T) map[string][]string {
 	t.Helper()
-	raw, err := os.ReadFile(stacksTable)
+	return readStackTable(t, stacksTable)
+}
+
+// readStackTable — the table's only reader in this package. It takes the path
+// so that a check which derives the repository root on its own (see
+// lanePrereqRoot) reads the same lines through the same grammar.
+func readStackTable(t *testing.T, path string) map[string][]string {
+	t.Helper()
+	raw, err := os.ReadFile(path) // #nosec G304 -- the stack table of this tree
 	if err != nil {
 		t.Fatalf("stack table %s is unreadable (%v) — the premise of every check in this "+
-			"package is gone, which is not the same as a clean tree", stacksTable, err)
+			"package is gone, which is not the same as a clean tree", path, err)
 	}
 	out := map[string][]string{}
 	for _, line := range strings.Split(string(raw), "\n") {
@@ -99,13 +113,13 @@ func deployableStacks(t *testing.T) map[string][]string {
 		if m == nil {
 			// An unparsed line is NOT "fewer stacks", it is "the predicate stopped
 			// recognising them". Staying silent here narrows every check downstream.
-			t.Fatalf("stack table line not parsed: %q (%s)", line, stacksTable)
+			t.Fatalf("stack table line not parsed: %q (%s)", line, path)
 		}
 		out[m[1]] = strings.Split(m[2], ",")
 	}
 	if len(out) == 0 {
 		t.Fatalf("%s declares no stacks — this package is not entitled to conclude that "+
-			"none are left", stacksTable)
+			"none are left", path)
 	}
 	return out
 }
@@ -128,21 +142,48 @@ func sortedStackNames(stacks map[string][]string) []string {
 const introspectionAdminPath = "/admin/oauth2/introspect"
 
 // mergeInto overlays src onto dst the way helm merges values files: maps merge
-// key by key, anything else replaces wholesale.
+// key by key, anything else replaces wholesale. It is the package's only
+// overlay.
+//
+// A map taken from src is COPIED into dst, never shared. A shared one would let
+// the next overlay edit src in place: `mergeInto(mergeInto({}, base), late)`
+// used to leave `late`'s keys inside `base`, so one profile tree held by a
+// caller ended up carrying another profile's declarations.
 func mergeInto(dst, src map[string]any) map[string]any {
 	if dst == nil {
 		dst = map[string]any{}
 	}
 	for k, v := range src {
 		if sub, ok := v.(map[string]any); ok {
-			if cur, ok := dst[k].(map[string]any); ok {
-				dst[k] = mergeInto(cur, sub)
-				continue
-			}
+			cur, _ := dst[k].(map[string]any)
+			dst[k] = mergeInto(cur, sub)
+			continue
 		}
 		dst[k] = v
 	}
 	return dst
+}
+
+// TestMergeInto_LeavesItsSourceIntact — the overlay does not write THROUGH
+// itself into a source tree. The result carries both the layer and the overlay
+// (the lawful twin of the property), while the layer the caller still holds
+// stays exactly what was read from its file.
+func TestMergeInto_LeavesItsSourceIntact(t *testing.T) {
+	base := map[string]any{"kaname": map[string]any{"ports": map[string]any{"loginLane": 9100}}}
+	late := map[string]any{"kaname": map[string]any{"ports": map[string]any{"public": 9090}}}
+
+	merged := mergeInto(mergeInto(map[string]any{}, base), late)
+
+	if got := laneString(lookupLane(merged, "kaname", "ports", "public")); got != "9090" {
+		t.Fatalf("the overlay did not reach the result (kaname.ports.public = %q): %v", got, merged)
+	}
+	if got := laneString(lookupLane(merged, "kaname", "ports", "loginLane")); got != "9100" {
+		t.Fatalf("the overlay erased the layer under it (kaname.ports.loginLane = %q): %v", got, merged)
+	}
+	if v, leaked := lookupLane(base, "kaname", "ports", "public"); leaked {
+		t.Fatalf("the overlay wrote its key INTO THE SOURCE: base now carries kaname.ports.public = %v, "+
+			"a declaration its file never made: %v", v, base)
+	}
 }
 
 // resolveStack merges a stack's profiles in order and returns the gateway value
