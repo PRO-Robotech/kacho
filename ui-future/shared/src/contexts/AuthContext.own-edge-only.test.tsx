@@ -43,7 +43,7 @@ describe("подъём оболочки консоли", () => {
       // 401 — «не залогинен»: обычный исход подъёма без сессии, и он ни одну
       // ветку не глушит: провайдер разбирает отказ каждой из трёх ручек.
       return Promise.resolve(new Response("", { status: 401, statusText: "Unauthorized" }));
-    }) as unknown as typeof globalThis.fetch;
+    });
   });
 
   afterEach(() => {
@@ -51,12 +51,14 @@ describe("подъём оболочки консоли", () => {
   });
 
   it("не спрашивает чужую службу личности о печенье сессии", async () => {
-    await act(async () => {
+    // Колбэк отдаёт обещание: `act` дожидается и эффектов подъёма, и их продолжений.
+    await act(() => {
       render(
         <AuthProvider>
           <div />
         </AuthProvider>,
       );
+      return Promise.resolve();
     });
 
     // Находка печатается САМИМ РАЗЛИЧИЕМ: слева — адреса чужой службы, которые
@@ -67,12 +69,14 @@ describe("подъём оболочки консоли", () => {
   });
 
   it("спрашивает свой край — положительный контроль того же обхода", async () => {
-    await act(async () => {
+    // Колбэк отдаёт обещание: `act` дожидается и эффектов подъёма, и их продолжений.
+    await act(() => {
       render(
         <AuthProvider>
           <div />
         </AuthProvider>,
       );
+      return Promise.resolve();
     });
 
     expect(asked.length).toBeGreaterThan(0);
