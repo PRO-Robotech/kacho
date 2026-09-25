@@ -468,7 +468,7 @@ func matchedOn(goos, goarch, dir string, rels []string, bodies map[string]string
 	for _, rel := range rels {
 		ok, err := ctx.MatchFile(dir, path.Base(rel))
 		if err != nil {
-			return nil, fmt.Errorf("%w: %s: правила сборки не прочитаны: %v", errPackageNotAsBuilt, rel, err)
+			return nil, fmt.Errorf("%w: %s: правила сборки не прочитаны: %w", errPackageNotAsBuilt, rel, err)
 		}
 		out[rel] = ok
 	}

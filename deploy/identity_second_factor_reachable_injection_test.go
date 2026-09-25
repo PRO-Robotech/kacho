@@ -1020,6 +1020,48 @@ func TestIdentitySecondFactorInjection_RuleIsReadAsTheBuildCompilesIt(t *testing
 			t.Errorf("%s: разбор пакета ответил %v — ждали отказ «%s» с координатой %s", c.name, err, c.reason, dir+c.file)
 		}
 	}
+
+	// Ограничение сборки, которого сборка не разбирает, — отказ, и причина сборки
+	// лежит в его цепочке, а не только в тексте: вызывающий достаёт её
+	// errors.Is/As, как и сторожа. Близнец отличается одной скобкой и читается.
+	const buildLine, rest = "//go:build %slinux\n\n", "package assurance\n\nfunc generate() {}\n"
+	if _, err := assurance.with(dir+"a_linux.go", fmt.Sprintf(buildLine, "")+rest); err != nil {
+		t.Errorf("файл с разбираемым ограничением сборки не прочитан: %v", err)
+	}
+	_, err = assurance.with(dir+"a_linux.go", fmt.Sprintf(buildLine, "(")+rest)
+	if !errors.Is(err, errPackageNotAsBuilt) || !strings.Contains(err.Error(), "правила сборки не прочитаны") ||
+		!strings.Contains(err.Error(), dir+"a_linux.go") {
+		t.Errorf("неразбираемое ограничение сборки: разбор пакета ответил %v — ждали отказ с координатой %s", err,
+			dir+"a_linux.go")
+	}
+	if !causeInChain(err, "parsing //go:build line") {
+		t.Errorf("отказ %v несёт причину сборки только текстом — в цепочке её нет, и вызывающему её не достать", err)
+	}
+}
+
+// causeInChain — в цепочке err ниже корня есть ошибка с текстом, содержащим want:
+// причина обёрнута, а не пересказана.
+func causeInChain(err error, want string) bool {
+	below := func(e error) []error {
+		switch u := e.(type) {
+		case interface{ Unwrap() []error }:
+			return u.Unwrap()
+		case interface{ Unwrap() error }:
+			if next := u.Unwrap(); next != nil {
+				return []error{next}
+			}
+		}
+		return nil
+	}
+	queue := below(err)
+	for len(queue) > 0 {
+		e := queue[0]
+		queue = append(queue[1:], below(e)...)
+		if strings.Contains(e.Error(), want) {
+			return true
+		}
+	}
+	return false
 }
 
 // TestIdentitySecondFactorInjection_VocabularyWrittenByAnotherPackageIsARefusal —
