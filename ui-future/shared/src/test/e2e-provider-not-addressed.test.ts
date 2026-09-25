@@ -24,7 +24,9 @@ import {
  *
  * Отнесённое по референту одно: подсадка положительной стороны переписи
  * страниц в F8-18 — обращение к поставщику из кода страницы, ради которого та
- * перепись и обязана покраснеть. Оно разрешено только внутри теста F8-18.
+ * перепись и обязана покраснеть. Оно разрешено только внутри теста F8-18 и
+ * только своим перечнем (`covers`): прежде исключение по префиксу имени теста
+ * прощало и адрес, дописанный в соседний тест F8-18 (8 → 9 молча, F3).
  */
 
 const e2eRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../e2e");
@@ -34,6 +36,19 @@ export const SUITE_EXCUSES: readonly Excuse[] = [
     file: /^specs\/identity-ceremony\.spec\.ts$/,
     test: /^F8-18 /,
     reason: "подсадка положительной стороны переписи страниц (Р6 п. 3): обращение к поставщику из кода страницы",
+    // Четыре подсаженных обращения и четыре строки ожидаемой переписи — и ничего
+    // сверх: адрес поставщика, дописанный в другой тест F8-18, встал бы сверх
+    // перечня и краснит (F3), а не проходит по префиксу имени теста.
+    covers: [
+      "specs/identity-ceremony.spec.ts адрес поставщика «/.ory/kratos/public/sessions/whoami»",
+      "specs/identity-ceremony.spec.ts адрес поставщика «/oauth2/auth»",
+      "specs/identity-ceremony.spec.ts адрес поставщика в шаблоне «${…}/self-service/logout/browser»",
+      "specs/identity-ceremony.spec.ts адрес поставщика «/.ory/kratos/public/self-service/login/browser»",
+      "specs/identity-ceremony.spec.ts адрес поставщика в шаблоне «GET ${…}/.ory/kratos/public/sessions/whoami запрос»",
+      "specs/identity-ceremony.spec.ts адрес поставщика в шаблоне «GET ${…}/oauth2/auth запрос»",
+      "specs/identity-ceremony.spec.ts адрес поставщика в шаблоне «GET ${…}/self-service/logout/browser документ»",
+      "specs/identity-ceremony.spec.ts адрес поставщика в шаблоне «GET ${…}/.ory/kratos/public/self-service/login/browser документ»",
+    ],
   },
 ];
 
@@ -58,6 +73,10 @@ describe("F8-43 · код набора не обращается к постав
 
   it("F8-43 · исключение по референту чему-то служит", () => {
     expect(census.staleExcuses).toEqual([]);
+  });
+
+  it("F8-43 · исключение относит ровно свой перечень — ни сверх, ни меньше", () => {
+    expect(census.excuseDrift).toEqual([]);
   });
 
   it("F8-43 · подсаженная ссылка краснит с координатой, а ссылка на путь нашего глагола — нет", () => {

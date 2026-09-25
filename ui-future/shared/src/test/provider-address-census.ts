@@ -35,6 +35,14 @@ export { isProviderAddressText };
  * поимённо с основанием и находкой не считается — но ТОЛЬКО там, где названо.
  * Исключение, которому нечего исключать, — само находка: послабление не
  * переживает свой предмет.
+ *
+ * ПРЕДМЕТ ИСКЛЮЧЕНИЯ ЗАКРЕПЛЁН ПЕРЕЧНЕМ (F3 проверки круга 2). Исключение по
+ * файлу прощало ВСЁ, что в файле появится: обёртка построителя, заведённая в
+ * исключённом файле, и её вызов из прод-файла давали «обращений 0» — отнесённое
+ * по референту молча росло 8 → 10. Поэтому исключение называет, ЧТО именно оно
+ * относит (`covers`: файл и вид каждого найденного, без строки), и перепись
+ * судит точное совпадение: лишнее — новое обращение внутри исключённого, его
+ * судят как находку предмета; недостающее — запись шире своего предмета.
  */
 
 /** Построители адреса поставщика и ручки его базы — имена узлов. */
@@ -57,13 +65,39 @@ export interface ProviderCensus {
   excused: Array<ProviderFinding & { reason: string }>;
   /** Исключения, которым нечего исключать. */
   staleExcuses: string[];
+  /** Исключения, отнёсшие не ровно свой перечень: лишнее и недостающее поимённо. */
+  excuseDrift: string[];
 }
 
-/** Исключение по референту: файл (или его окончание пути), необязательно — тест внутри него. */
+/**
+ * Исключение по референту: файл (или его окончание пути), необязательно — тест
+ * внутри него, и ТОЧНЫЙ перечень того, что оно относит.
+ */
 export interface Excuse {
   file: RegExp;
   test?: RegExp;
   reason: string;
+  /** Что исключение относит: `«файл» «вид найденного»` на каждое место, без строки (`coverKey`). */
+  covers: readonly string[];
+}
+
+/** Ключ найденного в перечне исключения: файл и вид, без строки — перенос строки перечня не ломает. */
+export function coverKey(f: Pick<ProviderFinding, "file" | "what">): string {
+  return `${f.file} ${f.what}`;
+}
+
+/** Расхождение двух перечней как мультимножеств: что лишнее, чего недостаёт. */
+function multisetDrift(actual: readonly string[], declared: readonly string[]): { extra: string[]; missing: string[] } {
+  const left = new Map<string, number>();
+  for (const k of declared) left.set(k, (left.get(k) ?? 0) + 1);
+  const extra: string[] = [];
+  for (const k of actual) {
+    const n = left.get(k) ?? 0;
+    if (n > 0) left.set(k, n - 1);
+    else extra.push(k);
+  }
+  const missing = [...left.entries()].flatMap(([k, n]) => Array<string>(n).fill(k));
+  return { extra, missing };
 }
 
 function lineOf(source: ts.SourceFile, node: ts.Node): number {
@@ -135,22 +169,36 @@ export function providerCensusOf(
   excuses: readonly Excuse[],
 ): ProviderCensus {
   if (sources.length === 0) throw new Error("перепись обращений к поставщику прочитала 0 файлов — вердикта нет");
-  const census: ProviderCensus = { filesRead: sources.length, findings: [], excused: [], staleExcuses: [] };
-  const used = new Set<Excuse>();
+  const census: ProviderCensus = {
+    filesRead: sources.length,
+    findings: [],
+    excused: [],
+    staleExcuses: [],
+    excuseDrift: [],
+  };
+  const used = new Map<Excuse, string[]>();
   for (const { file, text } of sources) {
     for (const f of providerAddressesIn(file, text)) {
       const excuse = excuses.find((e) => e.file.test(f.file) && (e.test === undefined || e.test.test(f.test)));
       if (excuse) {
-        used.add(excuse);
+        used.set(excuse, [...(used.get(excuse) ?? []), coverKey(f)]);
         census.excused.push({ ...f, reason: excuse.reason });
       } else {
         census.findings.push(f);
       }
     }
   }
-  census.staleExcuses = excuses
-    .filter((e) => !used.has(e))
-    .map((e) => `${e.file.source}${e.test ? ` · ${e.test.source}` : ""} — ${e.reason}`);
+  const label = (e: Excuse) => `${e.file.source}${e.test ? ` · ${e.test.source}` : ""}`;
+  census.staleExcuses = excuses.filter((e) => !used.has(e)).map((e) => `${label(e)} — ${e.reason}`);
+  for (const [excuse, actual] of used) {
+    const { extra, missing } = multisetDrift(actual, excuse.covers);
+    if (extra.length === 0 && missing.length === 0) continue;
+    census.excuseDrift.push(
+      `${label(excuse)}: отнесено ${actual.length}, в перечне ${excuse.covers.length}` +
+        (extra.length > 0 ? ` · сверх перечня: ${extra.join("; ")}` : "") +
+        (missing.length > 0 ? ` · нет в дереве: ${missing.join("; ")}` : ""),
+    );
+  }
   return census;
 }
 
