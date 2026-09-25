@@ -5,6 +5,7 @@ import { defineConfig, type PlaywrightTestConfig } from "@playwright/test";
 
 import { installHostMapping } from "./host-mapping.ts";
 import { remoteBrowserRefusal } from "./remote-browser-policy.ts";
+import { standSecureOriginArgs } from "./stand-secure-origin.ts";
 
 /**
  * Сквозные пробы консоли.
@@ -119,6 +120,23 @@ const hostResolverArgs = (() => {
 })();
 
 /**
+ * ПРОИСХОЖДЕНИЕ СТЕНДА ПО HTTP — ЗАЩИЩЁННОЕ (#1274).
+ *
+ * Служба выдаёт печенье формы и носитель сессии с `Secure`, а стенд конвейера
+ * отдаёт консоль по http под своим именем: такое печенье браузер не принимает, и
+ * НИ ОДНА регистрация не доходит до сессии. Браузерная половина решения — флаг
+ * ниже, половина путей запроса — перенос печенья в `specs/fixtures.ts` и
+ * `specs/ceremony-seed.ts`. Решение, его границы и снятие — `stand-secure-origin.ts`;
+ * здесь они не пересказываются.
+ */
+const browserArgs = [...hostResolverArgs, ...standSecureOriginArgs(BASE)];
+if (browserArgs.length > hostResolverArgs.length) {
+  // ФАКТ ПЕЧАТАЕТСЯ: стенд по http без этой строки неотличим в логе от стенда, где
+  // решение не поставлено, — а различаются они тем, дойдёт ли регистрация до сессии.
+  console.log(`[конфиг проб] происхождение стенда ${new URL(BASE).origin} объявлено защищённым (стенд по http)`);
+}
+
+/**
  * УДАЛЁННЫЙ БРАУЗЕР ЗДЕСЬ НЕ ИСПОЛЬЗУЕТСЯ — РЕШЕНИЕМ, А НЕ ПО УМОЛЧАНИЮ (#1288).
  *
  * Объявление собирается в переменную и лишь потом уходит в `defineConfig`,
@@ -223,7 +241,7 @@ const config: PlaywrightTestConfig = {
       ...(process.env.KACHO_CHROMIUM
         ? { executablePath: process.env.KACHO_CHROMIUM }
         : {}),
-      ...(hostResolverArgs.length ? { args: hostResolverArgs } : {}),
+      ...(browserArgs.length ? { args: browserArgs } : {}),
     },
     // Проверить ФАКТ применения args из этого файла нечем: playwright не
     // отдаёт командную строку запущенного браузера. Поэтому печатается то,

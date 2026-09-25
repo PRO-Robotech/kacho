@@ -78,6 +78,7 @@
     "scripts/**/*.ts",
     "playwright.config.ts",
     "remote-browser-policy.ts",
-    "host-mapping.ts"
+    "host-mapping.ts",
+    "stand-secure-origin.ts"
   ]
 }
