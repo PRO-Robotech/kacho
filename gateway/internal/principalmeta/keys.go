@@ -152,7 +152,7 @@ const (
 // gateway itself produces after a validated credential and is therefore allowed
 // to forward to a backend:
 //
-//   - `x-kacho-principal-` (type / id / display-name) — set by the Bearer, Kratos,
+//   - `x-kacho-principal-` (type / id / display-name) — set by the Bearer, session,
 //     DPoP and mTLS auth paths (setPrincipalHeaders / injectVerifiedTokenHeaders).
 //   - `x-kacho-token-` (acr / jti / scope / exp / amr / mfa-at) — the validated
 //     credential's own context, consumed by the step-up gate, by the iam

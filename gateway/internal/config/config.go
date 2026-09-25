@@ -43,7 +43,6 @@ import (
 //	KACHO_API_GATEWAY_STORAGE_GRPC           — адрес backend kacho-storage (public, port 9090)
 //	KACHO_API_GATEWAY_STORAGE_INTERNAL_GRPC  — адрес backend kacho-storage internal-port (9091)
 //	KACHO_APP_ENV                            — deployment-env label (keys the prod authz guard)
-//	KACHO_API_GATEWAY_KRATOS_PUBLIC_URL      — Ory Kratos public API base ("disabled" turns it off); read under `external` only
 //	KACHO_API_GATEWAY_IAM_LOGIN_LANE_URL     — адрес HTTPS-слушателя полосы формы службы доступа (own only, required)
 //	KACHO_API_GATEWAY_ADMISSION_PUBLIC_*     — потолок темпа/одновременности внешнего
 //	                                           слушателя (READ_PER_SEC, MUTATION_PER_SEC,
@@ -262,14 +261,11 @@ type Config struct {
 	// via extraEnv.
 	AppEnv string `envconfig:"KACHO_APP_ENV" default:""`
 
-	// KratosPublicURL — base URL of the Ory Kratos public API (session /whoami).
-	// The sentinel "disabled" turns Kratos session-auth off entirely. Default is
-	// the cluster-internal kratos-public Service.
-	//
-	// Читается ТОЛЬКО под посадкой `external` (Ф3 Р15, Ф3-12): под `own` сессию
-	// человека читает наша служба, и читатель носителя поставщика не заводится
-	// вовсе — независимо от того, задан ли этот адрес.
-	KratosPublicURL string `envconfig:"KACHO_API_GATEWAY_KRATOS_PUBLIC_URL" default:"http://kacho-umbrella-kratos-public.kacho.svc:80"`
+	// АДРЕСА СЛУЖБЫ СЕССИЙ ПРЕЖНЕГО ПОСТАВЩИКА ЗДЕСЬ БОЛЬШЕ НЕТ (#2792). Его
+	// читал читатель чужого печенья сессии, снятый вместе с переходным режимом двух носителей:
+	// край читает только нашу сессию. Снятое имя записано в ведомости
+	// `internal/retiredknobs`, и возвращать его сюда «чтобы ручка заработала»
+	// нельзя — ведомость и рендерная проба цепочек это отвергают.
 
 	// LoginLaneURL — адрес HTTPS-слушателя ПОЛОСЫ ФОРМЫ службы доступа, на
 	// который край ретранслирует глаголы формы под посадкой `own` — все, что

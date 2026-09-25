@@ -22,6 +22,7 @@ import (
 	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/handler"
+	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
@@ -71,19 +72,27 @@ func TestLogout_ClearsCookies(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	cookies := rec.Result().Cookies()
-	var saw_retired, saw_kratos bool
+	var saw_retired, saw_ours bool
+	var ended []string
 	for _, c := range cookies {
 		if c.Name == "kacho_session" {
 			saw_retired = true
 		}
-		if c.Name == "ory_kratos_session" {
-			saw_kratos = true
+		if c.MaxAge < 0 {
+			ended = append(ended, c.Name)
+		}
+		if c.Name == middleware.OurSessionCarrierName {
+			saw_ours = true
 			assert.True(t, c.MaxAge < 0)
 		}
 	}
-	// Положительная половина: сессия развёрнутого провайдера действительно гасится.
-	// Без неё отрицание ниже зеленело бы и на мёртвом обработчике.
-	assert.True(t, saw_kratos, "logout must expire the deployed provider's session cookie")
+	// Положительная половина: НАША сессия действительно гасится. Без неё
+	// отрицание ниже зеленело бы и на мёртвом обработчике.
+	assert.True(t, saw_ours, "logout must expire our session carrier")
+	// Гасится ровно перечень носителей края — наш и только наш (#2792): имя без
+	// читателя, погашенное у клиента, есть печенье, стёртое без основания.
+	assert.ElementsMatch(t, middleware.SessionCarrierNames(), ended,
+		"logout ends exactly the edge's session carriers")
 	// Отрицательная половина: cookie снятой церемонии больше не упоминается.
 	// Её единственный производитель снят вместе с обработчиком, а читателя на пути
 	// аутентификации у неё нет — чистить стало нечего, и возврат этой строки

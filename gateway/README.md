@@ -18,7 +18,7 @@ public-vs-internal.
   источника ключей — ключ одного не проверяет токен, объявляющий другого. Отзыв
   наших токенов читается у нас на пути запроса, и недоступность авторитета там
   даёт отказ. Плюс sender-constrained токены
-  **DPoP** (RFC 9449) и mTLS-bound (`cnf.x5t#S256`); session-cookie Ory Kratos для SPA;
+  **DPoP** (RFC 9449) и mTLS-bound (`cnf.x5t#S256`); печенье НАШЕЙ сессии для SPA;
   HMAC-токены для локальной разработки. Невалидный токен → `401`, никогда не
   понижается до anonymous. В `production-strict` анонимный доступ запрещен.
 - **AuthZ.** Каждый RPC проходит per-RPC проверку прав (`AuthorizeService.Check`
@@ -136,7 +136,7 @@ DPoP-proof и REST-роутера.
 ```
 cmd/api-gateway/                 — composition root (wiring всех listener'ов и middleware)
 cmd/protoc-gen-kacho-permissions — генератор permission-каталога из proto доменов
-internal/middleware/             — AuthN (JWT/DPoP/mTLS/Kratos), AuthZ, кэши, OIDC, idempotency
+internal/middleware/             — AuthN (JWT/DPoP/mTLS/сессия), AuthZ, кэши, idempotency
 internal/proxy/                  — gRPC transparent-proxy (Resolver + allowlist routing)
 internal/restmux/                — grpc-gateway REST (public + internal split-mux)
 internal/opsproxy/               — OperationService fan-out по prefix

@@ -8,7 +8,7 @@
 //
 //	HTTPRequestID
 //	  HTTPRecovery
-//	    AuthInterceptor.HTTP  (dev HMAC + Kratos session)
+//	    AuthInterceptor.HTTP  (dev HMAC + our session)
 //	      DPoPMiddleware      ← THIS — production authN path
 //	        HTTPAccessLog
 //	          HTTPIdempotency

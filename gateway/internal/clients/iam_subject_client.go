@@ -21,8 +21,6 @@ import (
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
 
-	operationpb "github.com/PRO-Robotech/corelib/api/corelib/operation"
-
 	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/cache"
@@ -39,36 +37,18 @@ type subjectLookupStub interface {
 	Check(ctx context.Context, in *iamv1.CheckRequest, opts ...grpc.CallOption) (*iamv1.CheckResponse, error)
 }
 
-// userUpsertStub is the narrow subset of iamv1.InternalUserServiceClient used
-// for the lazy Kratos-identity User-mirror upsert. Same rationale as
-// subjectLookupStub.
-type userUpsertStub interface {
-	UpsertFromIdentity(ctx context.Context, in *iamv1.UpsertFromIdentityRequest, opts ...grpc.CallOption) (*operationpb.Operation, error)
-}
-
 type IAMSubjectClient struct {
-	conn     *grpc.ClientConn
-	stub     subjectLookupStub
-	userStub userUpsertStub // для lazy-upsert User mirror от Kratos
-	cache    *cache.SubjectCache
-	logger   *slog.Logger
+	conn   *grpc.ClientConn
+	stub   subjectLookupStub
+	cache  *cache.SubjectCache
+	logger *slog.Logger
 
 	// callTimeout is the single per-call deadline every sibling RPC of this
-	// client derives from (LookupSubject / UpsertFromIdentity / Check). One
+	// client derives from (LookupSubject / Check). One
 	// configured source keeps behaviour uniform under IAM latency — per
 	// architecture.md: "все sibling-методы клиента обязаны применять один и тот
 	// же configured-timeout (не «часть — да, часть — нет»)".
 	callTimeout time.Duration
-
-	// sleep is the retry-backoff sleeper for the lazy Kratos upsert loop.
-	// Injectable so unit tests drive the eventual-consistency retry
-	// deterministically instead of burning real wall-clock time (the rest of the
-	// codebase — lrucache / DPoPReplayCache — uses the same clock-seam pattern).
-	sleep func(time.Duration)
-	// upsertRetries / upsertBackoff — retry policy for the post-upsert
-	// lookup loop (async Operation may not be visible immediately).
-	upsertRetries int
-	upsertBackoff time.Duration
 }
 
 // NewIAMSubjectClient dials kaname:9091 for InternalIAMService.LookupSubject.
@@ -98,15 +78,11 @@ func NewIAMSubjectClient(addr string, logger *slog.Logger, transportCreds grpc.D
 		return nil, fmt.Errorf("dial iam internal %s: %w", addr, err)
 	}
 	return &IAMSubjectClient{
-		conn:          conn,
-		stub:          iamv1.NewInternalIAMServiceClient(conn),
-		userStub:      iamv1.NewInternalUserServiceClient(conn),
-		cache:         cache.NewSubjectCache(10_000, 30*time.Second, nil),
-		logger:        logger,
-		callTimeout:   5 * time.Second,
-		sleep:         time.Sleep,
-		upsertRetries: 5,
-		upsertBackoff: 200 * time.Millisecond,
+		conn:        conn,
+		stub:        iamv1.NewInternalIAMServiceClient(conn),
+		cache:       cache.NewSubjectCache(10_000, 30*time.Second, nil),
+		logger:      logger,
+		callTimeout: 5 * time.Second,
 	}, nil
 }
 
@@ -129,8 +105,9 @@ func (c *IAMSubjectClient) LookupByExternalID(ctx context.Context, externalID st
 		st, _ := status.FromError(err)
 		if st.Code() == codes.NotFound {
 			// Wrap the sentinel (%w) so errors.Is(err, errSubjectNotFound)
-			// matches regardless of the human-readable text — the classifier
-			// LookupOrUpsertFromKratos relies on must not be coupled to wording.
+			// matches regardless of the human-readable text: a caller that tells
+			// "no such subject" from "iam did not answer" must not be coupled to
+			// wording.
 			return middleware.Subject{}, fmt.Errorf("%w: %s", errSubjectNotFound, externalID)
 		}
 		c.logger.Warn("iam.LookupSubject failed",
@@ -159,57 +136,10 @@ func (c *IAMSubjectClient) LookupByExternalID(ctx context.Context, externalID st
 	return subj, nil
 }
 
-// LookupOrUpsertFromKratos — для Kratos session-flow. Если User mirror
-// еще не существует (NotFound), создает его через InternalUserService.UpsertFromIdentity
-// и retry'ит lookup. email обязателен.
-func (c *IAMSubjectClient) LookupOrUpsertFromKratos(ctx context.Context, identityID, email, displayName string) (middleware.Subject, error) {
-	subj, err := c.LookupByExternalID(ctx, identityID)
-	if err == nil {
-		return subj, nil
-	}
-	// Если ошибка — НЕ NotFound (network / other), не пытаемся upsert.
-	if !isErrSubjectNotFound(err) {
-		return middleware.Subject{}, err
-	}
-	if email == "" {
-		return middleware.Subject{}, fmt.Errorf("lazy-upsert: email is required (identity=%s)", identityID)
-	}
-	// Upsert (async — возвращает Operation, но операция выполняется быстро;
-	// для simplest path просто ждем короткий retry-loop).
-	upsertCtx, cancel := context.WithTimeout(ctx, c.callTimeout)
-	defer cancel()
-	_, uErr := c.userStub.UpsertFromIdentity(upsertCtx, &iamv1.UpsertFromIdentityRequest{
-		ExternalId:  identityID,
-		Email:       email,
-		DisplayName: displayName,
-	})
-	if uErr != nil {
-		c.logger.Warn("kratos lazy-upsert failed", "identity_id", identityID, "err", uErr.Error())
-		return middleware.Subject{}, fmt.Errorf("lazy-upsert: %w", uErr)
-	}
-	// Operation выполняется async; SubjectLookup может еще не видеть. Retry с
-	// инъектируемым sleeper'ом (детерминированно в тестах). Кэш НЕ сбрасываем:
-	// negative-cache не существует (LookupByExternalID кэширует только успех), а
-	// для только что созданного subject stale-записи быть не может — blanket-flush
-	// лишь выбил бы резолвы всех прочих пользователей на hot-path.
-	for i := 0; i < c.upsertRetries; i++ {
-		c.sleep(c.upsertBackoff)
-		if subj, err := c.LookupByExternalID(ctx, identityID); err == nil {
-			c.logger.Info("kratos lazy-upsert succeeded", "identity_id", identityID, "user_id", subj.ID, "retries", i+1)
-			return subj, nil
-		}
-	}
-	return middleware.Subject{}, fmt.Errorf("lazy-upsert: subject still not found after upsert (identity=%s)", identityID)
-}
-
-// errSubjectNotFound — sentinel, отличает «не найден» (приемлемо для upsert)
-// от других ошибок (network, panic, и т.п.). LookupByExternalID оборачивает его
-// через %w, поэтому классификация — чистый errors.Is (без text-matching).
+// errSubjectNotFound — sentinel, отличает «не найден» от других ошибок
+// (network, panic, и т.п.). LookupByExternalID оборачивает его через %w,
+// поэтому классификация — чистый errors.Is (без text-matching).
 var errSubjectNotFound = stderrors.New("subject not found")
-
-func isErrSubjectNotFound(err error) bool {
-	return stderrors.Is(err, errSubjectNotFound)
-}
 
 // IsSystemAdmin — проверка system-admin tuple через
 // InternalIAMService.Check(kacho_system:root#admin). Subject = "user:<id>" |

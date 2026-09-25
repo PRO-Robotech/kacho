@@ -155,20 +155,17 @@ func main() {
 		log.Fatalf("identity posture startup-validation: %v", ipErr)
 	}
 
-	// ЧИТАТЕЛЬ НОСИТЕЛЯ БРАУЗЕРНОЙ СЕССИИ ВЫБИРАЕТСЯ ПОСАДКОЙ (Ф3 Р15, Ф3-12,
-	// Ф3-45), и в процессе он ОДИН: под `own` — наша сессия по носителю
-	// kaname_session, под `external` — сессия поставщика по ory_kratos_session.
-	// Состояния «читаются оба» нет: оно существовало ради перевода стенда с
-	// живыми чужими сессиями, а стенда с людьми, чей вход надо беречь, нет.
-	// Гейт `own_lane_readers_wiring_test.go` требует у каждого читателя ветки
+	// ЧИТАТЕЛЬ НОСИТЕЛЯ БРАУЗЕРНОЙ СЕССИИ — ОДИН, НАШ (Ф3 Р15, #2792): под
+	// `own` край читает нашу сессию по носителю kaname_session. Читатель чужой
+	// сессии снят вместе с переходным режимом двух носителей: край читает только нашу
+	// сессию. Гейт `own_lane_readers_wiring_test.go` требует у читателя ветки
 	// посадки; проба `session_carrier_posture_test.go` наблюдает, чьё печенье
 	// край читает, на конфигурации, разобранной из окружения.
-	kratosURL := cfg.KratosPublicURL
 	var ourSessionReader middleware.HumanSessionReader
 	if iamConn := backends["iamInternal"]; iamConn != nil {
 		ourSessionReader = clients.NewSessionRevocationsAdapter(iamConn)
 	}
-	authInterceptor = wireLaneCarrierReader(authInterceptor, identityLane, kratosURL, ourSessionReader, logger)
+	authInterceptor = wireLaneCarrierReader(authInterceptor, identityLane, ourSessionReader, logger)
 
 	// РЕТРАНСЛЯЦИЯ ГЛАГОЛОВ ФОРМЫ — под `own`, как и наш читатель: форма входа
 	// принадлежит той чеканке, которая личность ВЫДАЁТ. Взаимный TLS
@@ -565,8 +562,8 @@ func main() {
 	// All wiring is feature-gated by KACHO_API_GATEWAY_AUTHN_ENABLE_DPOP.
 	// When disabled (default) the legacy auth-interceptor path remains the only
 	// authN code path. When enabled we add a second middleware after the legacy
-	// one — verified asymmetric tokens of accepted issuers flow through it; dev / Kratos / HMAC
-	// tokens pass through unchanged (they're not in JWT alg whitelist and the
+	// one — verified asymmetric tokens of accepted issuers flow through it; dev / session / HMAC
+	// credentials pass through unchanged (they're not in JWT alg whitelist and the
 	// JWT verifier rejects them gracefully → middleware passes through as
 	// anonymous when requireForAllRequests=false).
 	var dpopMiddleware *middleware.DPoPMiddleware
@@ -1124,7 +1121,7 @@ func main() {
 		middleware.NewSessionIdentityHandler(logger).
 			WithSessionCutoff(clients.NewSessionRevocationsAdapter(backends["iamInternal"])).
 			WithAdminChecker(iamSubjectClient), // permissions = ["*","admin"] для system-admin
-		identityLane, kratosURL, clients.NewSessionRevocationsAdapter(backends["iamInternal"]), iamSubjectClient)
+		identityLane, clients.NewSessionRevocationsAdapter(backends["iamInternal"]))
 	sessionIdentity.Register(httpMux)
 
 	// ГЛАГОЛЫ ПОЛОСЫ ФОРМЫ (Ф3 Р2; Ф4 регистрация, Ф5 восстановление) —
@@ -1182,8 +1179,8 @@ func main() {
 
 	// Build the HTTP chain. The DPoP middleware sits between the
 	// legacy auth-interceptor and the access-log: legacy fills principal
-	// from Kratos / dev-HMAC if present; DPoP middleware fills it from a
-	// verified Hydra JWT if present. Anonymous requests pass through both
+	// from our session / dev-HMAC if present; DPoP middleware fills it from a
+	// verified bearer JWT if present. Anonymous requests pass through both
 	// unless production-strict.
 	//
 	// AuthZ: the authz middleware mounts AFTER DPoP — by then
@@ -1432,28 +1429,17 @@ func main() {
 }
 
 // wireLaneCarrierReader заводит на ПОЛОСЕ ЛИЧНОСТИ читателя носителя
-// браузерной сессии — одного, и того, которого называет посадка.
+// браузерной сессии — НАШЕЙ, по носителю kaname_session: `Resolve` на внутреннем
+// слушателе службы, тем же соединением, что вопрос об отсечке; кэша нет (Р7).
 //
-// Под `external` — сессия поставщика (cookie ory_kratos_session), адрес
-// KACHO_API_GATEWAY_KRATOS_PUBLIC_URL; «disabled» выключает полосу. Под `own` —
-// НАША сессия по носителю kaname_session: `Resolve` на внутреннем слушателе
-// службы, тем же соединением, что вопрос об отсечке; кэша нет (Р7).
-//
-// Ветки спрашивают посадку, а не наличие адреса: до Ф3 читатель поставщика
-// заводился условием `kratosURL != "disabled"`, и под `own` печенье поставщика
-// становилось личностью на посадке, где сессию человека судит наша служба.
+// Ветка спрашивает посадку, а не наличие адреса: до Ф3 читатель чужой сессии
+// заводился условием на свой адрес, и под `own` печенье поставщика становилось
+// личностью на посадке, где сессию человека судит наша служба. Сам читатель
+// чужой сессии снят (#2792): край читает только нашу сессию.
 func wireLaneCarrierReader(
-	a *middleware.AuthInterceptor, lane identityposture.Provider, providerURL string,
+	a *middleware.AuthInterceptor, lane identityposture.Provider,
 	ours middleware.HumanSessionReader, logger *slog.Logger,
 ) *middleware.AuthInterceptor {
-	if lane == identityposture.External {
-		if providerURL != providerAddressDisabled {
-			a = a.WithKratos(middleware.NewKratosClient(providerURL))
-			logger.Info("provider session-auth wired", "kratos_url", providerURL, "identity_provider", lane.String())
-		} else {
-			logger.Info("provider session-auth disabled by env")
-		}
-	}
 	if lane == identityposture.Own && ours != nil {
 		a = a.WithHumanSession(ours)
 		logger.Info("own session-auth wired", "cache", "none")
@@ -1465,21 +1451,14 @@ func wireLaneCarrierReader(
 // читающие одну сессию, обязаны отвечать про неё одинаково, и читателя им
 // выбирает одна и та же посадка.
 func wireWhoAmICarrierReader(
-	who *middleware.SessionIdentityHandler, lane identityposture.Provider, providerURL string,
-	ours middleware.HumanSessionReader, subjects middleware.SubjectLookuper,
+	who *middleware.SessionIdentityHandler, lane identityposture.Provider,
+	ours middleware.HumanSessionReader,
 ) *middleware.SessionIdentityHandler {
-	if lane == identityposture.External && providerURL != providerAddressDisabled {
-		who = who.WithKratos(middleware.NewKratosClient(providerURL), subjects)
-	}
 	if lane == identityposture.Own {
 		who = who.WithHumanSession(ours)
 	}
 	return who
 }
-
-// providerAddressDisabled — значение ручки адреса поставщика, выключающее его
-// полосу.
-const providerAddressDisabled = "disabled"
 
 // authzReloader is the narrow reload port the SIGHUP handler drives.
 // *middleware.AuthzMiddleware satisfies it.
