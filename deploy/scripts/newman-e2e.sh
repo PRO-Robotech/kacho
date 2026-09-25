@@ -93,11 +93,24 @@ kubectl -n "$NS" port-forward svc/api-gateway "$GW_TLS_PORT:8443" >/tmp/e2e-pf-g
 PF_PIDS+=($!)
 kubectl -n "$NS" port-forward svc/kaname-internal "$IAM_INTERNAL_PORT:9091" >/tmp/e2e-pf-iam.log 2>&1 &
 PF_PIDS+=($!)
-# Hydra public — POST target of the OAuth2 client_credentials exchange that turns an
-# iam-issued SA key into the RS256 Bearer a production-posture stand accepts. ClusterIP
-# with no ingress route here. Unused in dev; required in production.
-kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-public "${HYDRA_PUBLIC_PORT:-14444}:4444" >/tmp/e2e-pf-hydra.log 2>&1 &
-PF_PIDS+=($!)
+# ─── ПРОБРОС К ПОСТАВЩИКУ ЛИЧНОСТИ — ПО ПОСАДКЕ ЦЕПОЧКИ, А НЕ ВСЕГДА (#2841) ──
+# Публичная поверхность поставщика: цель обмена ключа служебной учётки на
+# предъявителя, её читает providerPublicBaseUrl суит. На цепочке own поставщика
+# нет (#2735), и проброс к службе, которой нет, — транспорт в пустоту, а адрес
+# суитам — адрес без производителя. Решение то же и тем же помощником, что у
+# прогонщика шардов (newman-parallel.sh, там же довод): поставщика нет ровно
+# тогда, когда обе половины цепочки объявили own; иначе проброс открывается, как
+# прежде. Держит исходом deploy/scripts/assert-provider-forwards-follow-the-landing.sh.
+PROVIDER_ENV_ARGS=()
+PROVIDER_LANDING="$(python3 "$SCRIPT_DIR/identity-provider-landing.py" --namespace "$NS")" \
+  || PROVIDER_LANDING="present|помощник посадки отказал — отсутствие поставщика НЕ установлено, проброс обязателен"
+_pf_before="${#PF_PIDS[@]}"
+if [ "${PROVIDER_LANDING%%|*}" != absent ]; then
+  kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-public "${HYDRA_PUBLIC_PORT:-14444}:4444" >/tmp/e2e-pf-hydra.log 2>&1 &
+  PF_PIDS+=($!)
+  PROVIDER_ENV_ARGS=(--env-var "providerPublicBaseUrl=http://localhost:${HYDRA_PUBLIC_PORT:-14444}")
+fi
+echo "[e2e] пробросы к поставщику личности: открыто $(( ${#PF_PIDS[@]} - _pf_before )) — ${PROVIDER_LANDING#*|}"
 # Полоса фасада (#59): JWKS-прокси iam, ручка docker-токена iam и data-plane реестра.
 kubectl -n "$NS" port-forward svc/kaname-internal "$IAM_JWKS_PORT:9097" >/tmp/e2e-pf-iam-jwks.log 2>&1 &
 PF_PIDS+=($!)
@@ -267,7 +280,7 @@ if [ -n "$COLLECTION" ]; then
     --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
     --env-var "externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
     --env-var "iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT" \
-    --env-var "providerPublicBaseUrl=http://localhost:${HYDRA_PUBLIC_PORT:-14444}" \
+    ${PROVIDER_ENV_ARGS[@]+"${PROVIDER_ENV_ARGS[@]}"} \
     --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
     "${OWN_FRONT_ENV_ARGS[@]}" \
     ${OWN_FRONT_TLS_ARGS[@]+"${OWN_FRONT_TLS_ARGS[@]}"} \
@@ -285,7 +298,7 @@ else
     --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
     --env-var "externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
     --env-var "iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT" \
-    --env-var "providerPublicBaseUrl=http://localhost:${HYDRA_PUBLIC_PORT:-14444}" \
+    ${PROVIDER_ENV_ARGS[@]+"${PROVIDER_ENV_ARGS[@]}"} \
     --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
     "${OWN_FRONT_ENV_ARGS[@]}" \
     ${OWN_FRONT_TLS_ARGS[@]+"${OWN_FRONT_TLS_ARGS[@]}"} \
