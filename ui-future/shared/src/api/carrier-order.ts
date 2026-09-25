@@ -105,13 +105,16 @@ interface Order {
 }
 
 function order(): Order {
-  const g = globalThis as unknown as Record<symbol, Order | undefined>;
-  let o = g[KEY];
-  if (!o) {
-    o = { verb: null, waiting: [], flights: new Set(), streams: new Set() };
-    g[KEY] = o;
-  }
-  return o;
+  const g = globalThis as unknown as Record<symbol, Partial<Order> | undefined>;
+  const o = (g[KEY] ??= {});
+  // Состояние заводит та копия, что пришла первой, а модули выкатываются и
+  // загружаются порознь: копия, загруженная после выкатки, застаёт состояние,
+  // заведённое прежней, и достраивает недостающее поле, а не падает на нём.
+  o.verb ??= null;
+  o.waiting ??= [];
+  o.flights ??= new Set();
+  o.streams ??= new Set();
+  return o as Order;
 }
 
 /** Методы чтения: обращение без действия, его можно отменить и выпустить снова. */

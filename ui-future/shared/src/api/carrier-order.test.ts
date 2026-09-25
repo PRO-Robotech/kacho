@@ -462,6 +462,33 @@ describe("F8-46 · глаголы, ждущие исхода чужого гла
   });
 });
 
+describe("F8-46 · состояние упорядочения общее у копий @shared разных модулей вкладки", () => {
+  it("F8-46 · состояние, заведённое копией без очереди, достраивается: обращения выпускаются, глагол упорядочивает", async () => {
+    // Модули выкатываются и загружаются порознь: вкладка, открытая до выкатки,
+    // держит состояние, заведённое прежней копией, а модуль, загруженный после,
+    // приносит новую. Новая копия обязана достроить недостающее, а не упасть.
+    const key = Symbol.for("kacho.console.carrier-order");
+    const g = globalThis as unknown as Record<symbol, unknown>;
+    const saved = g[key];
+    g[key] = { verb: null, flights: new Set(), streams: new Set() };
+    const tape: Tape = [];
+    const net = installNet(tape);
+    try {
+      const read = orderedTransport.fetch("/vpc/v1/networks", { method: "GET" }).catch(() => undefined);
+      const verb = verbCall(VERB_A);
+      await until(tape, `выпуск ${VERB_A}`, () => issued(tape, VERB_A) > 0);
+      net.take(VERB_A).answer(200, {});
+      await until(tape, "повторный выпуск чтения", () => issued(tape, READ) === 2);
+      net.drain();
+      await Promise.all([read, verb]);
+      expect({ breaches: verbWindowBreaches(tape, [VERB_A]), tape }).toEqual({ breaches: [], tape });
+    } finally {
+      net.restore();
+      g[key] = saved;
+    }
+  });
+});
+
 describe("F8-46 · близнецы: глагол, носителя не ставящий, упорядочения не получает", () => {
   for (const outcome of OUTCOMES) {
     it(`F8-46 · заведение второго фактора, исход «${outcome}»: ничего не отменено, не закрыто и не задержано`, async () => {
