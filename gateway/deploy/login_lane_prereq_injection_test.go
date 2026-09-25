@@ -389,6 +389,61 @@ func TestLanePrereqInjection_TraceNumbersAndWiringAreJudged(t *testing.T) {
 	})
 }
 
+// TestLanePrereqInjection_SecondCarrierOfATraceIsFound — порт полосы, объявленный
+// манифестом ДВАЖДЫ, — находка, а не победа последнего носителя.
+//
+// Инъекция ставит лишний носитель ПЕРВЫМ, а законный манифест — после него:
+// разбор, оставляющий последнее совпадение, сверял бы законный след и молчал,
+// пока первый ведёт на другой порт. Законный близнец — тот же манифест без
+// лишнего носителя: он обязан молчать.
+func TestLanePrereqInjection_SecondCarrierOfATraceIsFound(t *testing.T) {
+	s := lawfulLaneStack()
+	strayService := `---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kaname-stray
+  namespace: kacho
+spec:
+  ports:
+    - name: http-login-lane
+      port: 9101
+      targetPort: http-login-lane
+`
+	strayContainer := `---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kaname-stray
+  namespace: kacho
+spec:
+  template:
+    spec:
+      containers:
+        - name: stray
+          ports:
+            - name: http-login-lane
+              containerPort: 9101
+`
+
+	t.Run("законный манифест — по носителю на след, молчит", func(t *testing.T) {
+		tr := laneTracesOf(t, lawfulLaneManifest(true, true))
+		if tr.ContainerCarriers != 1 || tr.ServiceCarriers != 1 {
+			t.Fatalf("законный манифест: носителей контейнера %d, Service %d — ожидалось по одному",
+				tr.ContainerCarriers, tr.ServiceCarriers)
+		}
+		mustBeSilentLane(t, judgeLaneTraces(s, tr))
+	})
+	t.Run("второй Service выставил полосу", func(t *testing.T) {
+		tr := laneTracesOf(t, strayService+lawfulLaneManifest(true, true))
+		mustSayLane(t, judgeLaneTraces(s, tr), "стенд prod", "СЛЕД 2 из 2", laneTraceName, "2 раз")
+	})
+	t.Run("второй контейнер поднял полосу", func(t *testing.T) {
+		tr := laneTracesOf(t, strayContainer+lawfulLaneManifest(true, true))
+		mustSayLane(t, judgeLaneTraces(s, tr), "стенд prod", "СЛЕД 1 из 2", laneTraceName, "2 раз")
+	})
+}
+
 // first — findings из пары (findings, census); перепись проверяется отдельно там,
 // где она предмет пробы.
 func first(findings []string, _ lanePrereqCensus) []string { return findings }

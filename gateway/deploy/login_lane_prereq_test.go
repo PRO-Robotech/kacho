@@ -364,11 +364,19 @@ func countDeclaredLanePort(stacks []lanePrereqStack) int {
 
 // laneTraces — оба следа ручки порта, снятые с ОТРЕНДЕРЕННОГО манифеста.
 // Пустое поле значит «следа в манифесте нет».
+//
+// Носители считаются отдельно от значений. Порт `http-login-lane`, объявленный
+// манифестом дважды, — не «след есть», а два кандидата, из которых разбор
+// молча оставил бы последний: сверка прошла бы по законному второму, пока
+// первый ведёт в другое место.
 type laneTraces struct {
 	ContainerPort string // containerPort порта контейнера `http-login-lane`
 	ServiceName   string // metadata.name Service, выставившего полосу
 	ServicePort   string // spec.ports[].port
 	ServiceTarget string // spec.ports[].targetPort
+
+	ContainerCarriers int // сколько портов контейнеров названо `http-login-lane`
+	ServiceCarriers   int // сколько портов Service названо `http-login-lane`
 }
 
 // judgeLaneTraces — находки по двум следам. Чистая: инъекция подаёт ей
@@ -376,6 +384,19 @@ type laneTraces struct {
 func judgeLaneTraces(s lanePrereqStack, tr laneTraces) []string {
 	var findings []string
 	port := strings.TrimSpace(s.LanePort)
+
+	if tr.ContainerCarriers > 1 {
+		findings = append(findings, fmt.Sprintf(
+			"стенд %s: СЛЕД 1 из 2 — порт `%s` объявлен контейнерами манифеста %d раз(а), а слушатель "+
+				"полосы один: какой из портов к нему ведёт, манифест не решает, и сверка по одному из них "+
+				"о другом не говорит ничего", s.Stack, laneTraceName, tr.ContainerCarriers))
+	}
+	if tr.ServiceCarriers > 1 {
+		findings = append(findings, fmt.Sprintf(
+			"стенд %s: СЛЕД 2 из 2 — порт `%s` выставлен Service'ами манифеста %d раз(а), а край "+
+				"набирает один адрес: какой из них настоящий, манифест не решает", s.Stack, laneTraceName,
+			tr.ServiceCarriers))
+	}
 
 	if tr.ContainerPort == "" {
 		findings = append(findings, fmt.Sprintf(
@@ -448,7 +469,8 @@ type renderedDoc struct {
 
 // readLaneTraces — оба следа из потока манифестов. Разбор, а не поиск подстроки:
 // имя `http-login-lane` встречается в манифесте и в комментариях шаблона, а
-// комментарий портом не является.
+// комментарий портом не является. Каждый носитель имени СЧИТАЕТСЯ: больше одного
+// — находка judgeLaneTraces, а не молчаливая победа последнего.
 func readLaneTraces(rendered string) (laneTraces, error) {
 	var tr laneTraces
 	dec := yaml.NewDecoder(strings.NewReader(rendered))
@@ -466,6 +488,7 @@ func readLaneTraces(rendered string) (laneTraces, error) {
 			for _, c := range doc.Spec.Template.Spec.Containers {
 				for _, p := range c.Ports {
 					if p.Name == laneTraceName {
+						tr.ContainerCarriers++
 						tr.ContainerPort = scalarText(p.ContainerPort)
 					}
 				}
@@ -473,6 +496,7 @@ func readLaneTraces(rendered string) (laneTraces, error) {
 		case "Service":
 			for _, p := range doc.Spec.Ports {
 				if p.Name == laneTraceName {
+					tr.ServiceCarriers++
 					tr.ServiceName = doc.Metadata.Name
 					tr.ServicePort = scalarText(p.Port)
 					tr.ServiceTarget = scalarText(p.TargetPort)
