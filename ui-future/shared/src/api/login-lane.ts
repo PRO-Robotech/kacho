@@ -585,7 +585,7 @@ async function askSession(): Promise<SessionAnswer> {
   if (!body || typeof body !== "object" || !("user" in body)) {
     return { kind: "unknown", refusal: new LaneRefusal(res.status, null, UNKNOWN_SESSION_TEXT, null, null, null) };
   }
-  const user = (body as { user: unknown }).user;
+  const user = body.user;
   if (user === null) return { kind: "absent" };
   if (typeof user !== "object" || Array.isArray(user)) {
     return { kind: "unknown", refusal: new LaneRefusal(res.status, null, UNKNOWN_SESSION_TEXT, null, null, null) };

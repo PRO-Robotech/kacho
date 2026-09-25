@@ -62,7 +62,7 @@ function installNet(tape: Tape, opts: { autoFormToken: boolean } = { autoFormTok
   const original = globalThis.fetch;
   const waiting: Wire[] = [];
   let tokens = 0;
-  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+  globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(requestUrl(input), "http://console.test");
     const label = `${(init?.method ?? "GET").toUpperCase()} ${url.pathname}`;
     tape.push(`выпуск ${label}`);
@@ -97,7 +97,7 @@ function installNet(tape: Tape, opts: { autoFormToken: boolean } = { autoFormTok
       }
       waiting.push(wire);
     });
-  }) as typeof fetch;
+  };
   return {
     /** Ждущее обращение по метке — первое выпущенное и ещё без исхода. */
     take(label: string): Wire {

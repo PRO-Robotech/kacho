@@ -4,7 +4,7 @@
 import { useId, useState } from "react";
 import { Link } from "react-router";
 import { Button, Form, Input } from "antd";
-import { LaneRefusal, laneRefusalOf, loginLane } from "@shared/api/login-lane";
+import { type LaneRefusal, laneRefusalOf, loginLane } from "@shared/api/login-lane";
 import { LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalAlert";
 import { FieldError, fieldErrorId } from "@shared/components/organisms/form/FieldError";
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";

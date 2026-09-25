@@ -198,10 +198,10 @@ describe("страница снимает опрос только на ДОКА�
 
     const original = globalThis.fetch;
     let answer: (r: Response) => void = () => undefined;
-    globalThis.fetch = (() =>
+    globalThis.fetch = () =>
       new Promise<Response>((resolve) => {
         answer = resolve;
-      })) as typeof fetch;
+      });
     try {
       let verb: Promise<Response> = Promise.resolve({} as Response);
       await act(async () => {
