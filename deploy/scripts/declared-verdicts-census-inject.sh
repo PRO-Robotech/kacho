@@ -99,10 +99,39 @@ run_body() { # <тело> <перепись> <отметка> <адрес вне
   printf '%s' "$?" > "$WORK/rc"
 }
 
-axis() { # <файл> <работа> <сколько объявлено> <id, который упадёт на третьем прогоне>
-  local wf="$1" job="$2" want_n="$3" red_step="$4"
+# gated_ids <перепись> — id шагов, получивших в переписи исход гасимых.
+gated_ids() {
+  python3 -c 'import json, sys
+for sid, st in json.loads(sys.argv[1]).items():
+    if st["outcome"] == "skipped":
+        print(sid)' "$1"
+}
+
+# СКОЛЬКО ОБЪЯВЛЕНО — ВЫВОДИТСЯ, А НЕ ВЫПИСЫВАЕТСЯ. Число вердиктных шагов
+# берётся из состава работы той же переписью, что подаётся телу шага: гасимые
+# шаги — те, чьё условие читает отметку. Выписанное число расходилось с
+# составом молча: ось консоли ждала 6 после того, как в работе появился седьмой
+# гасимый шаг, и краснела о своём литерале, а не о теле шага. Число здесь
+# судит одно — что тело шага читает ТУ работу, которую назвала ось.
+axis() { # <файл> <работа> <id, который упадёт на третьем прогоне>
+  local wf="$1" job="$2" red_step="$3"
   local b; b="$(body "$wf" "$job" verdict-census)" || { bad "$wf/$job: тело шага не извлечено"; return; }
   printf '\n=== ось: %s / работа «%s» ===\n' "$wf" "$job"
+
+  local gated ids want_n
+  gated="$(census_steps "$wf" "$job" skipped)"
+  ids="$(gated_ids "$gated")"
+  want_n="$(printf '%s\n' "$ids" | grep -c .)"
+  printf '  состав работы: гасимых шагов %s — %s\n' "$want_n" "$(printf '%s' "$ids" | tr '\n' ' ')"
+  if [ "$want_n" -eq 0 ]; then
+    bad "$wf/$job: гасимых шагов 0 — судить нечего, «исполнилось всё» было бы «ноль прочитанного»"
+    return
+  fi
+  # Близнец валит ГАСИМЫЙ шаг: негасимый в перепись вердиктных не входит, и его
+  # падение не проверило бы ничего — третий прогон молчал бы при любом теле.
+  if ! printf '%s\n' "$ids" | grep -qx -- "$red_step"; then
+    bad "$wf/$job: «$red_step» не среди гасимых шагов — законный близнец ничего бы не проверил"
+  fi
 
   # (1) КОНТРОЛЬ — без него всякое «нашёл» ниже ничего не значит.
   run_body "$b" "$(census_steps "$wf" "$job" success)" "" ""
@@ -114,7 +143,7 @@ axis() { # <файл> <работа> <сколько объявлено> <id, к
   fi
 
   # (2) ВНЕСЁН ДЕФЕКТ: отметка выставлена, гасимые шаги пропущены.
-  run_body "$b" "$(census_steps "$wf" "$job" skipped)" "1" ""
+  run_body "$b" "$gated" "1" ""
   if [ "$(cat "$WORK/rc")" = 1 ] \
      && grep -q 'УСЛОВИЕ НЕ СОЗДАНО' "$WORK/out" \
      && grep -q 'вердикта о продукте нет' "$WORK/out" \
@@ -136,8 +165,8 @@ axis() { # <файл> <работа> <сколько объявлено> <id, к
 }
 
 echo "=== declared-verdicts-census-inject.sh: настоящие тела шагов, по три прогона ==="
-axis .github/workflows/console-e2e.yml probes 6 probes
-axis .github/workflows/ci.yaml         helm   5 manifest-tests
+axis .github/workflows/console-e2e.yml probes probes
+axis .github/workflows/ci.yaml         helm   manifest-tests
 
 # ─── ЧЕТВЁРТЫЙ ПРОГОН ОДНОЙ ОСИ: ЗАКОННЫЙ ПРОПУСК, НАЗВАННЫЙ ВЫЗЫВАЮЩИМ ──────
 # Внешний стенд: два гасимых шага консоли несут ещё одну оговорку — «свой
