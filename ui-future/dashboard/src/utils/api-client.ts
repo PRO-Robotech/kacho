@@ -1,4 +1,4 @@
-import { bearerEpoch } from "@shared/api/lane-epochs";
+import { orderedTransport } from "@shared/api/carrier-order";
 import { refusalActionOf } from "@shared/api/refusal-action";
 import { parseRpcStatus, reasonOfDetails } from "@shared/api/rpc-status";
 import { acrFromChallenge, challengeError, challengeOf, requestStepUp } from "@shared/api/step-up";
@@ -10,22 +10,22 @@ export async function apiList<T>(path: string, query?: Record<string, string>): 
 }
 
 /**
- * Чтение каркаса. Отказ ведёт к действию ОДНОГО решения консоли
- * (`refusalActionOf`, приёмка F8, условия C2 и C15):
+ * Чтение каркаса. Выпускается упорядочением вкладки (приёмка F8, Р10): глагол,
+ * ставящий носитель, чтение в полёте отменяет и выпускает снова, поэтому ответа
+ * края на прежний носитель после перевыпуска это чтение не получает.
+ *
+ * Отказ ведёт к действию ОДНОГО решения консоли (`refusalActionOf`, приёмка
+ * F8, условия C2 и C15):
  *
  *   • вызов пола уровня — церемония повышения и ОДИН повтор; на вход не уводит:
  *     человек вошёл, ему не хватает уровня, а не сессии;
- *   • `invalid_token` после того, как ЭТА вкладка перевыпустила носитель, пока
- *     запрос шёл, — ОДИН повтор с текущим носителем (условие C18): сессия не
- *     кончилась, её перевыпустили здесь же;
  *   • прочий `401` — сессии нет: экран входа с адресом возврата;
  *   • остальное — отказ с текстом ответа.
  *
  * Статус здесь не выбирает действие сам: у `401` края три смысла.
  */
 export async function apiGet<T>(path: string, replayed = false): Promise<T> {
-  const issuedAt = bearerEpoch();
-  const res = await fetch(path, {
+  const res = await orderedTransport.fetch(path, {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
@@ -52,11 +52,9 @@ export async function apiGet<T>(path: string, replayed = false): Promise<T> {
         status: res.status,
         reason: status ? reasonOfDetails(status.details) : null,
         challenge: challengeError(www),
-        rotatedSinceIssue: bearerEpoch() !== issuedAt,
       },
       "platform",
     );
-    if (!replayed && action === "replay") return apiGet<T>(path, true);
     if (!replayed && action === "step-up-floor" && (await requestStepUp(acrFromChallenge(www)))) {
       return apiGet<T>(path, true);
     }

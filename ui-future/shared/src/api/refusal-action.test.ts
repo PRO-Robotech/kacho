@@ -82,14 +82,11 @@ const PRODUCERS: Record<string, Producer> = {
   noBody: { who: "раздача: ответ без тела отказа", status: 502, body: "<html>bad gateway</html>" },
 };
 
-function actionOf(p: Producer, surface: RefusalSurface, rotatedSinceIssue = false): RefusalAction {
+function actionOf(p: Producer, surface: RefusalSurface): RefusalAction {
   const h = Object.fromEntries(Object.entries(p.headers ?? {}).map(([k, v]) => [k.toLowerCase(), v]));
   const res = { status: p.status, headers: { get: (n: string) => h[n.toLowerCase()] ?? null } } as unknown as Response;
   const refusal = refusalOf(res, typeof p.body === "string" ? p.body : JSON.stringify(p.body));
-  return refusalActionOf(
-    { ...refusal, status: refusal.status, challenge: refusal.challenge, rotatedSinceIssue },
-    surface,
-  );
+  return refusalActionOf({ ...refusal, status: refusal.status, challenge: refusal.challenge }, surface);
 }
 
 describe("C2 · действие на отказ — по машинным признакам производителя", () => {
@@ -131,18 +128,15 @@ describe("C2 · действие на отказ — по машинным пр�
 
   it("C2 · один статус, разные признаки — разные действия: 403/7 и 401/16 судит не статус", () => {
     expect(new Set([actionOf(PRODUCERS.formToken, "ceremony"), actionOf(PRODUCERS.notFresh, "ceremony")]).size).toBe(2);
-    expect(
-      new Set([
-        actionOf(PRODUCERS.authFailed, "platform"),
-        actionOf(PRODUCERS.floor, "platform"),
-        actionOf(PRODUCERS.ended, "platform", true),
-      ]).size,
-    ).toBe(3);
+    expect(new Set([actionOf(PRODUCERS.authFailed, "platform"), actionOf(PRODUCERS.floor, "platform")]).size).toBe(2);
   });
 
-  it("C18 · повтор после перевыпуска — только у `invalid_token` платформы; экран церемонии не повторяет сам", () => {
-    expect(actionOf(PRODUCERS.ended, "platform", true)).toBe("replay");
-    expect(actionOf(PRODUCERS.ended, "ceremony", true)).toBe("show");
-    expect(actionOf(PRODUCERS.authFailed, "platform", true)).toBe("sign-in");
+  it("Р10 · «сессия кончилась» на платформе — «войдите»: повтора с текущим носителем нет", () => {
+    // Повтор (условие C18 редакции 6) невыполним: ответ края на прежний
+    // носитель гасит печенье, повторять нечем. Перевыпуск упорядочивает
+    // транспорт вкладки (`carrier-order.ts`), и такого ответа вкладке не
+    // приходит вовсе.
+    expect(actionOf(PRODUCERS.ended, "platform")).toBe("sign-in");
+    expect(actionOf(PRODUCERS.ended, "ceremony")).toBe("show");
   });
 });

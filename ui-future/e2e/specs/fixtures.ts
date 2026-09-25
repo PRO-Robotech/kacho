@@ -510,10 +510,24 @@ export async function createdResourceId(
  *
  * ЧТО ПИШЕТСЯ. Каждое обращение, которое ВЫПУСТИЛИ страницы контекста браузера,
  * — в момент выпуска, без фильтра по пути: метод, происхождение, путь, строка
- * запроса, вид (переход документа либо запрос страницы) и исход (код ответа
- * либо «ответа нет»). Слушатель стоит на КОНТЕКСТЕ, а не на странице: окна,
- * открытого страницей, слушатель страницы не видит, а шаг перенаправления и
- * такое окно — тоже обращения консоли.
+ * запроса, вид (переход документа либо запрос страницы) и исход. Слушатель
+ * стоит на КОНТЕКСТЕ, а не на странице: окна, открытого страницей, слушатель
+ * страницы не видит, а шаг перенаправления и такое окно — тоже обращения
+ * консоли.
+ *
+ * ИСХОД — ТОЛЬКО ИЗМЕРЕННОЕ (Р6 п. 1, N19). Исход — событие ответа, то есть
+ * заголовки: в этот момент браузер применяет печенья ответа; конец тела исходом
+ * не считается. Отказ различается на два исхода: «отменено страницей»
+ * (`net::ERR_ABORTED`) и «ответа нет» (обрыв и всякий другой отказ сети) —
+ * опыт различил их 100 из 100. Вызов края `WWW-Authenticate` пишется вместе с
+ * кодом: у `401` края три смысла, и текст вызова — единственное, чем они
+ * различимы в переписи.
+ *
+ * ПОРЯДОК ЗАПИСЕЙ — порядок событий слушателя, а не страницы. Выпуск двух
+ * обращений, второе из которых выпущено после ответа на первое, записан в
+ * порядке страницы (2000 из 2000). Исход одного обращения против выпуска
+ * другого — НЕТ (50 из 2000 инвертированы), и на нём не стоит ни одно
+ * утверждение.
  *
  * ЧЕГО ОНА НЕ ВИДИТ — названо, чтобы «ноль» не читался шире сказанного.
  * Обращения КОНТЕКСТА ЗАПРОСОВ (`page.request`, `context.request`,
@@ -529,9 +543,21 @@ export interface CeremonyCall {
   /** Строка запроса с ведущим `?` либо пустая. */
   query: string;
   kind: "документ" | "запрос";
-  /** Код ответа; «ответа нет» — обращение не получило ответа вовсе; «ждём» — ещё идёт. */
-  outcome: number | "ответа нет" | "ждём";
+  /**
+   * Код ответа; «отменено страницей» — страница сама отменила обращение
+   * (`net::ERR_ABORTED`); «ответа нет» — обращение не получило ответа по
+   * другой причине; «ждём» — исхода ещё нет.
+   */
+  outcome: number | typeof CANCELLED_BY_PAGE | "ответа нет" | "ждём";
+  /** Вызов `WWW-Authenticate` ответа; `null` — вызова нет либо ответа ещё нет. */
+  challenge: string | null;
 }
+
+/** Исход обращения, которое страница отменила сама (Р6 п. 1). */
+export const CANCELLED_BY_PAGE = "отменено страницей";
+
+/** Текст отказа сети, которым браузер называет отмену страницей. */
+const ABORTED_BY_PAGE = "net::ERR_ABORTED";
 
 /**
  * Адрес поставщика личности распознаётся ОДНИМ распознавателем на обе переписи
@@ -544,6 +570,8 @@ export interface CeremonyCensus {
   readonly calls: readonly CeremonyCall[];
   /** Обращения по методу, пути и (необязательно) строке запроса — в порядке выпуска. */
   matching(method: string, path: string, query?: string): CeremonyCall[];
+  /** Запись обращения, выпущенного страницей; `undefined` — перепись его не видела. */
+  of(request: Request): CeremonyCall | undefined;
   /** Обращения, распознанные как адрес поставщика личности. */
   providerCalls(): CeremonyCall[];
   /** Вся перепись строками — для текста падения. */
@@ -551,7 +579,8 @@ export interface CeremonyCensus {
 }
 
 export function formatCall(c: CeremonyCall): string {
-  return `${c.method} ${c.origin}${c.path}${c.query} [${c.kind} → ${c.outcome}]`;
+  const challenge = c.challenge === null ? "" : ` · ${c.challenge}`;
+  return `${c.method} ${c.origin}${c.path}${c.query} [${c.kind} → ${c.outcome}${challenge}]`;
 }
 
 export function ceremonyCensus(context: BrowserContext): CeremonyCensus {
@@ -571,22 +600,26 @@ export function ceremonyCensus(context: BrowserContext): CeremonyCensus {
       query: u.search,
       kind: r.isNavigationRequest() ? "документ" : "запрос",
       outcome: "ждём",
+      challenge: null,
     };
     calls.push(call);
     byRequest.set(r, call);
   });
   context.on("response", (res) => {
     const call = byRequest.get(res.request());
-    if (call) call.outcome = res.status();
+    if (!call) return;
+    call.outcome = res.status();
+    call.challenge = res.headers()["www-authenticate"] ?? null;
   });
   context.on("requestfailed", (r) => {
     const call = byRequest.get(r);
-    if (call) call.outcome = "ответа нет";
+    if (call) call.outcome = r.failure()?.errorText === ABORTED_BY_PAGE ? CANCELLED_BY_PAGE : "ответа нет";
   });
   return {
     calls,
     matching: (method, path, query) =>
       calls.filter((c) => c.method === method && c.path === path && (query === undefined || c.query === query)),
+    of: (request) => byRequest.get(request),
     providerCalls: () => calls.filter((c) => isProviderAddressText(c.path)),
     describe: () => (calls.length === 0 ? "  (обращений нет)" : calls.map((c) => `  ${formatCall(c)}`).join("\n")),
   };

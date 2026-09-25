@@ -16,7 +16,7 @@
 //   POST   /<domain>/v1/<plural>/{id}:verb → Custom verb → Operation
 
 import { snakeToCamel, camelToSnake } from "@shared/lib/case";
-import { bearerEpoch } from "./lane-epochs";
+import { orderedTransport } from "./carrier-order";
 import { refusalActionOf } from "./refusal-action";
 import { parseRpcStatus, reasonOfDetails } from "./rpc-status";
 import { acrFromChallenge, challengeError, challengeOf, requestFreshPresentation, requestStepUp } from "./step-up";
@@ -115,17 +115,19 @@ async function fetchJson<T>(method: string, path: string, body?: unknown, replay
     // UI работает в snake_case; Kachō REST contract = camelCase. Convert на отправке.
     init.body = JSON.stringify(snakeToCamel(body));
   }
-  const issuedAt = bearerEpoch();
-  const res = await fetch(url, init);
+  // Обращение выпускается упорядочением вкладки (приёмка F8, Р10): глагол,
+  // ставящий носитель, чтение в полёте отменяет и выпускает снова, мутации
+  // дожидается, а пока он идёт — обращение ждёт его исхода.
+  const res = await orderedTransport.fetch(url, init);
   const text = await res.text();
   if (!res.ok) {
     // Действие на отказ — ОДНО решение консоли (`refusalActionOf`, приёмка F8,
     // условие C2) по машинным признакам: причине `ErrorInfo` и значению
     // `error=` вызова края. Вызов пола RFC 9470 доходит отсюда до окна
-    // подтверждения (#1213); свежесть службы — туда же, с паролем в выборе;
-    // `invalid_token` после перевыпуска носителя ЭТОЙ вкладкой, пока запрос
-    // шёл, — один повтор с текущим носителем (условие C18). На вход клиент
-    // модулей не уводит: «войдите» — решение страницы, а не клиента.
+    // подтверждения (#1213); свежесть службы — туда же, с паролем в выборе.
+    // Повтор вызова после повышения — новое обращение: упорядочение выпускает
+    // его после исхода глагола повышения. На вход клиент модулей не уводит:
+    // «войдите» — решение страницы, а не клиента.
     const challenge = challengeOf(res);
     const status = parseRpcStatus(text);
     const action = refusalActionOf(
@@ -133,12 +135,10 @@ async function fetchJson<T>(method: string, path: string, body?: unknown, replay
         status: res.status,
         reason: status ? reasonOfDetails(status.details) : null,
         challenge: challengeError(challenge),
-        rotatedSinceIssue: bearerEpoch() !== issuedAt,
       },
       "platform",
     );
     if (!replayed) {
-      if (action === "replay") return fetchJson<T>(method, path, body, true);
       if (action === "step-up-floor" && (await requestStepUp(acrFromChallenge(challenge)))) {
         return fetchJson<T>(method, path, body, true);
       }
