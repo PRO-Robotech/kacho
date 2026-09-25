@@ -161,8 +161,7 @@ api-gateway:
   # THE HOP IS TLS, AND IT IS VERIFIED. Over it travels the material the edge checks every
   # bearer's SIGNATURE with: whoever substitutes it substitutes the access decision, and
   # the edge then believes its own answer. The certificate comes from the internal CA,
-  # which the process does not trust by default, so the anchor is configured — same shape
-  # as the admin hop right below.
+  # which the process does not trust by default, so the anchor is configured.
   #
   # This also settles a contradiction that lived in THIS FILE: registry has been fetching
   # from the same :9097 over https all along (see registry.tokenAcceptance.issuerKeySets),
@@ -183,17 +182,8 @@ api-gateway:
     # and the whole surface answers 401.
     issuer: ""  # СНЯТ вместе с приходом tokenAcceptance выше: два объявления об одном
                 # предмете дают ОТКАЗ В СТАРТЕ, а не молчаливое старшинство.
-    # dev declares both admin-API addresses in the clear; this stand is
-    # production-class, so it addresses them over TLS with the anchor pinned.
-    # Introspection asks about a bearer by SENDING it, on every authenticated
-    # request that misses the cache — the wire carries a live end-user credential,
-    # not merely administrative calls.
-    introspectionUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445/admin/oauth2/introspect"
-    adminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445"
-    adminCa:
-      secretName: kacho-umbrella-hydra-admin-tls
-      key: ca.crt
-      mountPath: /etc/api-gateway/hydra-admin-ca
+    # The provider's admin-API addresses and their anchor are not declared: the
+    # edge no longer reads them (#2734).
 
 # ─── kacho-vpc ──────────────────────────────────────────────────────────────
 vpc:

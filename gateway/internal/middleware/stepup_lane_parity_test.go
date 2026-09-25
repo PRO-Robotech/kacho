@@ -185,8 +185,8 @@ func laneDrivers() map[string]laneDriver {
 				r.Header.Set("Cookie", middleware.OurSessionCarrierName+"=opaque-own")
 			},
 		},
-		"tryHydraJWT": {
-			name:                        "подписанный предъявитель (Hydra JWT, acr=1)",
+		"tryBearerJWT": {
+			name:                        "подписанный предъявитель (bearer JWT, acr=1)",
 			carriesIdentityInProduction: true,
 			arrange: func(t *testing.T, rig *laneRig, r *http.Request) {
 				r.Header.Set("Authorization", "Bearer "+rig.jwks.sign(t, alwaysOnClaims("1")))

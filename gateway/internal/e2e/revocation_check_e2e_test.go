@@ -5,27 +5,31 @@
 // turned off, and when the check that would notice cannot do its job.
 //
 // The check exists so that a token which was signed correctly, and has not yet
-// expired, can still be turned off: a sign-out, a revoked machine key, a
-// back-channel logout. Whether it works is not visible from a successful
-// request — a request succeeds identically whether the check ran, or ran and was
-// answered by the wrong server, or was never mounted at all. So the observable
-// pinned here is the one that differs: does the request reach the backend.
+// expired, can still be turned off: a sign-out, a revoked machine key. Whether it
+// works is not visible from a successful request — a request succeeds identically
+// whether the check ran, or ran and was answered by the wrong server, or was
+// never mounted at all. So the observable pinned here is the one that differs:
+// does the request reach the backend.
 //
 // EVERY case below runs the chain the way a stand runs it: the authN layer that
-// is always mounted, with the sender-constrained-token feature OFF. That is the
-// point of this file. The check used to live inside the optional layer, which no
-// profile switches on, so it had never run on any stand — a control with tests,
-// a config guard, deploy wiring, and no reachable code path.
+// is always mounted, with the sender-constrained-token feature OFF. The check
+// used to live inside the optional layer, which no profile switches on, so it had
+// never run on any stand — a control with tests, a config guard, deploy wiring,
+// and no reachable code path.
 //
-// Two failure modes, two answers:
+// The lane exercised is the RECORD lane — a token of a record our minting did not
+// mark — with a real introspection cache as its source, so caching, the
+// per-call budget and the failure memory are exercised end to end. Every answer
+// that is not «live» refuses:
 //
 //   - the address does not serve introspection (404, wrong verb, HTML) — a
-//     permanent condition that no retry resolves. Requests are refused. This is
-//     the only honest response: the alternative is a gateway that reports every
-//     request as checked while checking nothing.
-//   - the provider is unreachable or unwell (5xx, timeout) — a passing condition.
-//     Requests continue, and the process says so on every window, because a
-//     control that fails open in silence is a control nobody knows they lost.
+//     permanent condition that no retry resolves;
+//   - the source is unreachable or unwell (5xx, timeout) — it passes on its own,
+//     but «could not establish» is not «live», and the source is ours: a soft
+//     pass would mean «we revoke and do not enforce our own revocation». The
+//     documented soft pass of this lane belonged to the previous identity
+//     provider, a third party whose availability was not ours to control; it was
+//     retired together with that provider (#2734).
 package e2e_test
 
 import (
@@ -69,17 +73,17 @@ type revocationHarness struct {
 	reached *atomic.Bool
 }
 
-func newRevocationHarness(t *testing.T, hydra *hydraFixture, introspectURL string, logInterval time.Duration) revocationHarness {
+func newRevocationHarness(t *testing.T, iss *issuerFixture, introspectURL string, logInterval time.Duration) revocationHarness {
 	t.Helper()
-	verifier, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: hydra.jwksURL, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+	verifier, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: iss.jwksURL, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
 
 		ExpectedAudience: testAudience,
 	})
 	require.NoError(t, err)
 	introspection, err := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: introspectURL,
-		TTL:                   time.Minute,
-		Timeout:               500 * time.Millisecond,
+		IntrospectionURL: introspectURL,
+		TTL:              time.Minute,
+		Timeout:          500 * time.Millisecond,
 	})
 	require.NoError(t, err)
 
@@ -104,7 +108,7 @@ func newRevocationHarness(t *testing.T, hydra *hydraFixture, introspectURL strin
 // plainBearer mints a valid, non-sender-constrained access token carrying the
 // principal claims the token hook adds in production, so the authN layer resolves
 // a principal without a subject-lookup round-trip.
-func plainBearer(t *testing.T, hydra *hydraFixture, jti string) string {
+func plainBearer(t *testing.T, iss *issuerFixture, jti string) string {
 	t.Helper()
 	now := time.Now().Unix()
 	tok := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
@@ -112,21 +116,21 @@ func plainBearer(t *testing.T, hydra *hydraFixture, jti string) string {
 		"iat": now, "exp": now + 900, "acr": "2", "jti": jti,
 		"kaname_principal_type": "user", "kaname_principal_id": "usr_alice_acc_a1b2",
 	})
-	tok.Header["kid"] = hydra.kid
-	signed, err := tok.SignedString(hydra.priv)
+	tok.Header["kid"] = iss.kid
+	signed, err := tok.SignedString(iss.priv)
 	require.NoError(t, err)
 	return signed
 }
 
-func (h revocationHarness) call(t *testing.T, hydra *hydraFixture, jti string) *httptest.ResponseRecorder {
+func (h revocationHarness) call(t *testing.T, iss *issuerFixture, jti string) *httptest.ResponseRecorder {
 	t.Helper()
-	return h.callPath(t, hydra, jti, "/iam/v1/users/me")
+	return h.callPath(t, iss, jti, "/iam/v1/users/me")
 }
 
-func (h revocationHarness) callPath(t *testing.T, hydra *hydraFixture, jti, path string) *httptest.ResponseRecorder {
+func (h revocationHarness) callPath(t *testing.T, iss *issuerFixture, jti, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "https://"+apiDomain+path, nil)
-	req.Header.Set("Authorization", "Bearer "+plainBearer(t, hydra, jti))
+	req.Header.Set("Authorization", "Bearer "+plainBearer(t, iss, jti))
 	rec := httptest.NewRecorder()
 	h.handler.ServeHTTP(rec, req)
 	return rec
@@ -138,16 +142,16 @@ func (h revocationHarness) callPath(t *testing.T, hydra *hydraFixture, jti, path
 // toggle OFF — which is every stand. Before the check was untied from that
 // toggle this request was served.
 func TestE2E_Revocation_RevokedToken_RejectedOnDefaultStand(t *testing.T) {
-	hydra := newHydra(t)
-	defer hydra.close()
+	iss := newIssuerFixture(t)
+	defer iss.close()
 	revoked := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"active": false})
 	}))
 	defer revoked.Close()
 
-	h := newRevocationHarness(t, hydra, revoked.URL, 0)
-	rec := h.call(t, hydra, "jti-revoked")
+	h := newRevocationHarness(t, iss, revoked.URL, 0)
+	rec := h.call(t, iss, "jti-revoked")
 
 	assert.False(t, h.reached.Load(),
 		"a token the provider reports as no longer live must not reach a backend")
@@ -158,26 +162,26 @@ func TestE2E_Revocation_RevokedToken_RejectedOnDefaultStand(t *testing.T) {
 // The same question on the gRPC surface. A gap on either surface makes the other
 // pointless: whoever holds the revoked credential simply uses the unguarded one.
 func TestE2E_Revocation_RevokedToken_RejectedOnGRPCSurface(t *testing.T) {
-	hydra := newHydra(t)
-	defer hydra.close()
+	iss := newIssuerFixture(t)
+	defer iss.close()
 	revoked := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"active": false})
 	}))
 	defer revoked.Close()
 
-	h := newRevocationHarness(t, hydra, revoked.URL, 0)
-	_, err := h.unary(t, hydra, "jti-revoked-grpc")
+	h := newRevocationHarness(t, iss, revoked.URL, 0)
+	_, err := h.unary(t, iss, "jti-revoked-grpc")
 
 	require.Error(t, err)
 	assert.Equal(t, codes.Unauthenticated, status.Code(err))
 }
 
 // unary drives the gRPC interceptor with the same credential.
-func (h revocationHarness) unary(t *testing.T, hydra *hydraFixture, jti string) (any, error) {
+func (h revocationHarness) unary(t *testing.T, iss *issuerFixture, jti string) (any, error) {
 	t.Helper()
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
-		"authorization", "Bearer "+plainBearer(t, hydra, jti)))
+		"authorization", "Bearer "+plainBearer(t, iss, jti)))
 	served := false
 	resp, err := h.auth.Unary()(ctx, nil,
 		&grpc.UnaryServerInfo{FullMethod: "/kaname.cloud.iam.v1.UserService/Get"},
@@ -194,13 +198,13 @@ func (h revocationHarness) unary(t *testing.T, hydra *hydraFixture, jti string) 
 // must NOT reach the backend: the gateway cannot say the token is still valid,
 // so it must not act as if it had.
 func TestE2E_Revocation_MisaddressedEndpoint_RefusesRequest(t *testing.T) {
-	hydra := newHydra(t)
-	defer hydra.close()
+	iss := newIssuerFixture(t)
+	defer iss.close()
 	notTheEndpoint := httptest.NewServer(http.NotFoundHandler())
 	defer notTheEndpoint.Close()
 
-	h := newRevocationHarness(t, hydra, notTheEndpoint.URL, 0)
-	rec := h.call(t, hydra, "jti-misaddressed")
+	h := newRevocationHarness(t, iss, notTheEndpoint.URL, 0)
+	rec := h.call(t, iss, "jti-misaddressed")
 
 	assert.False(t, h.reached.Load(),
 		"a request must not be served while the revocation check is aimed at an address "+
@@ -220,13 +224,13 @@ func TestE2E_Revocation_MisaddressedEndpoint_RefusesRequest(t *testing.T) {
 // Same fault, gRPC surface: unavailable, not unauthenticated — the caller's
 // credential is not what is broken.
 func TestE2E_Revocation_MisaddressedEndpoint_RefusesGRPCRequest(t *testing.T) {
-	hydra := newHydra(t)
-	defer hydra.close()
+	iss := newIssuerFixture(t)
+	defer iss.close()
 	notTheEndpoint := httptest.NewServer(http.NotFoundHandler())
 	defer notTheEndpoint.Close()
 
-	h := newRevocationHarness(t, hydra, notTheEndpoint.URL, 0)
-	_, err := h.unary(t, hydra, "jti-misaddressed-grpc")
+	h := newRevocationHarness(t, iss, notTheEndpoint.URL, 0)
+	_, err := h.unary(t, iss, "jti-misaddressed-grpc")
 
 	require.Error(t, err)
 	assert.False(t, h.reached.Load())
@@ -236,52 +240,52 @@ func TestE2E_Revocation_MisaddressedEndpoint_RefusesGRPCRequest(t *testing.T) {
 // An HTML page on the address is the same class — something answers, but it is
 // not the endpoint.
 func TestE2E_Revocation_HTMLOnEndpoint_RefusesRequest(t *testing.T) {
-	hydra := newHydra(t)
-	defer hydra.close()
+	iss := newIssuerFixture(t)
+	defer iss.close()
 	wrongServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		_, _ = w.Write([]byte("<!doctype html><html></html>"))
 	}))
 	defer wrongServer.Close()
 
-	h := newRevocationHarness(t, hydra, wrongServer.URL, 0)
-	rec := h.call(t, hydra, "jti-html")
+	h := newRevocationHarness(t, iss, wrongServer.URL, 0)
+	rec := h.call(t, iss, "jti-html")
 	assert.False(t, h.reached.Load())
 	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
 }
 
-// The provider is unwell. This one passes on its own, so the documented
-// soft-fail stands — but it is reported, every window, at ERROR.
-func TestE2E_Revocation_ProviderUnwell_PassesButIsReported(t *testing.T) {
-	hydra := newHydra(t)
-	defer hydra.close()
+// The source is unwell. That passes on its own — and the request is REFUSED
+// meanwhile, and the refusal is reported, every window, at ERROR.
+func TestE2E_Revocation_SourceUnwell_RefusesAndIsReported(t *testing.T) {
+	iss := newIssuerFixture(t)
+	defer iss.close()
 	unwell := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer unwell.Close()
 
-	h := newRevocationHarness(t, hydra, unwell.URL, 0)
-	rec := h.call(t, hydra, "jti-unwell")
+	h := newRevocationHarness(t, iss, unwell.URL, 0)
+	rec := h.call(t, iss, "jti-unwell")
 
-	assert.True(t, h.reached.Load(), "a passing provider outage keeps traffic flowing (documented soft-fail)")
-	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.False(t, h.reached.Load(), "a source that did not answer must not wave the token through")
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code,
+		"«could not establish» is a retry-later answer, not a re-authenticate one")
 
 	logged := h.logs.String()
-	assert.Contains(t, logged, "revocation check unavailable")
+	assert.Contains(t, logged, "our revocation record did not answer; refusing requests")
 	assert.Contains(t, logged, `"level":"ERROR"`,
-		"a control that is currently not enforcing is not a WARN — nobody greps for WARN")
-	assert.Contains(t, logged, "introspection_failures_total",
+		"a control that is refusing on an outage is not a WARN — nobody greps for WARN")
+	assert.Contains(t, logged, "revocation_failures_total",
 		"the report must carry a running count, or an intermittent outage is indistinguishable "+
 			"from a permanent one in the log")
 }
 
-// The provider accepts the connection and then says nothing. The per-call budget
+// The source accepts the connection and then says nothing. The per-call budget
 // is what keeps that from becoming the caller's problem: the request is answered,
-// not held, and it is answered by passing — an identity provider that stops
-// responding must not take the API down with it.
-func TestE2E_Revocation_ProviderStalls_RequestStillAnswered(t *testing.T) {
-	hydra := newHydra(t)
-	defer hydra.close()
+// not held — and it is answered by a refusal.
+func TestE2E_Revocation_SourceStalls_RequestAnsweredWithinBudget(t *testing.T) {
+	iss := newIssuerFixture(t)
+	defer iss.close()
 	// Stalls for several times the harness budget (500ms) — long enough that an
 	// unbounded wait would be unmistakable, short enough that the suite does not
 	// pay for it on teardown.
@@ -293,31 +297,29 @@ func TestE2E_Revocation_ProviderStalls_RequestStillAnswered(t *testing.T) {
 	}))
 	defer stalled.Close()
 
-	h := newRevocationHarness(t, hydra, stalled.URL, 0)
+	h := newRevocationHarness(t, iss, stalled.URL, 0)
 	started := time.Now()
-	rec := h.call(t, hydra, "jti-stalled")
+	rec := h.call(t, iss, "jti-stalled")
 	elapsed := time.Since(started)
 
-	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.True(t, h.reached.Load())
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	assert.False(t, h.reached.Load())
 	assert.Less(t, elapsed, 2*time.Second,
 		"the budget belongs to the check, not to the caller: %s is a request-handling "+
-			"goroutine pinned on a provider nobody is waiting for", elapsed)
-	assert.Contains(t, h.logs.String(), "revocation check unavailable")
+			"goroutine pinned on a source nobody is waiting for", elapsed)
+	assert.Contains(t, h.logs.String(), "our revocation record did not answer; refusing requests")
 }
 
-// A verified token with no identifier cannot be asked about — introspection is
-// keyed on the jti. Our provider mints JWT access tokens, which carry one, so
-// this is not reachable with a credential this platform issued; it is pinned
-// because if it ever became reachable the control would stop enforcing, and
-// "did not run" must never be indistinguishable from "passed".
-func TestE2E_Revocation_TokenWithoutIdentifier_IsReportedNotSilent(t *testing.T) {
-	hydra := newHydra(t)
-	defer hydra.close()
+// A verified token with no identifier cannot be asked about — the record is
+// keyed on the jti. Refused rather than waved through: "did not run" must never
+// be indistinguishable from "passed".
+func TestE2E_Revocation_TokenWithoutIdentifier_IsRefusedAndReported(t *testing.T) {
+	iss := newIssuerFixture(t)
+	defer iss.close()
 	live := newLiveIntrospection(t)
 	defer live.Close()
 
-	h := newRevocationHarness(t, hydra, live.URL, 0)
+	h := newRevocationHarness(t, iss, live.URL, 0)
 
 	now := time.Now().Unix()
 	tok := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
@@ -325,8 +327,8 @@ func TestE2E_Revocation_TokenWithoutIdentifier_IsReportedNotSilent(t *testing.T)
 		"iat": now, "exp": now + 900, "acr": "2",
 		"kaname_principal_type": "user", "kaname_principal_id": "usr_alice_acc_a1b2",
 	})
-	tok.Header["kid"] = hydra.kid
-	signed, err := tok.SignedString(hydra.priv)
+	tok.Header["kid"] = iss.kid
+	signed, err := tok.SignedString(iss.priv)
 	require.NoError(t, err)
 
 	req := httptest.NewRequest(http.MethodGet, "https://"+apiDomain+"/iam/v1/users/me", nil)
@@ -334,45 +336,46 @@ func TestE2E_Revocation_TokenWithoutIdentifier_IsReportedNotSilent(t *testing.T)
 	rec := httptest.NewRecorder()
 	h.handler.ServeHTTP(rec, req)
 
-	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	assert.False(t, h.reached.Load())
 	assert.Equal(t, int32(0), atomic.LoadInt32(&live.hits),
 		"there is nothing to ask about without an identifier")
 	logged := h.logs.String()
-	assert.Contains(t, logged, "revocation check skipped: token carries no identifier")
+	assert.Contains(t, logged, "revocation check impossible: token carries no identifier; refusing")
 	assert.Contains(t, logged, `"level":"ERROR"`)
 }
 
-// The report is rate-limited: a soft-fail happens per request, and an unbounded
+// The report is rate-limited: a refusal happens per request, and an unbounded
 // line per request buries the log it is supposed to make legible.
-func TestE2E_Revocation_SoftFailReport_IsRateLimited(t *testing.T) {
-	hydra := newHydra(t)
-	defer hydra.close()
+func TestE2E_Revocation_FailureReport_IsRateLimited(t *testing.T) {
+	iss := newIssuerFixture(t)
+	defer iss.close()
 	unwell := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer unwell.Close()
 
-	h := newRevocationHarness(t, hydra, unwell.URL, time.Hour)
+	h := newRevocationHarness(t, iss, unwell.URL, time.Hour)
 	for i := range 5 {
-		rec := h.call(t, hydra, "jti-burst-"+string(rune('a'+i)))
-		require.Equal(t, http.StatusOK, rec.Code)
+		rec := h.call(t, iss, "jti-burst-"+string(rune('a'+i)))
+		require.Equal(t, http.StatusServiceUnavailable, rec.Code)
 	}
-	require.True(t, h.reached.Load())
+	require.False(t, h.reached.Load())
 
-	got := strings.Count(h.logs.String(), "revocation check unavailable")
+	got := strings.Count(h.logs.String(), "our revocation record did not answer; refusing requests")
 	assert.Equal(t, 1, got, "expected exactly one report per window, got %d", got)
 }
 
 // And a live token is served — the fail-closed branch must not swallow the
 // happy path.
 func TestE2E_Revocation_LiveToken_Served(t *testing.T) {
-	hydra := newHydra(t)
-	defer hydra.close()
+	iss := newIssuerFixture(t)
+	defer iss.close()
 	live := newLiveIntrospection(t)
 	defer live.Close()
 
-	h := newRevocationHarness(t, hydra, live.URL, 0)
-	rec := h.call(t, hydra, "jti-live")
+	h := newRevocationHarness(t, iss, live.URL, 0)
+	rec := h.call(t, iss, "jti-live")
 	assert.True(t, h.reached.Load())
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
@@ -390,8 +393,8 @@ func TestE2E_Revocation_LiveToken_Served(t *testing.T) {
 // route that actually remains exempt. Probing the retired path would have proven
 // nothing about the exemption: it would have measured the catch-all.
 func TestE2E_Revocation_ExemptPaths_StillServedWithRevokedToken(t *testing.T) {
-	hydra := newHydra(t)
-	defer hydra.close()
+	iss := newIssuerFixture(t)
+	defer iss.close()
 	asked := int32(0)
 	revoked := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		atomic.AddInt32(&asked, 1)
@@ -401,8 +404,8 @@ func TestE2E_Revocation_ExemptPaths_StillServedWithRevokedToken(t *testing.T) {
 	defer revoked.Close()
 
 	for _, path := range []string{"/oauth/logout", "/healthz", "/readyz", "/iam/v1/auth/me"} {
-		h := newRevocationHarness(t, hydra, revoked.URL, 0)
-		rec := h.callPath(t, hydra, "jti-exempt", path)
+		h := newRevocationHarness(t, iss, revoked.URL, 0)
+		rec := h.callPath(t, iss, "jti-exempt", path)
 		assert.True(t, h.reached.Load(), "%s must stay reachable with a revoked credential", path)
 		assert.Equal(t, http.StatusOK, rec.Code, "path %s", path)
 	}
@@ -414,13 +417,13 @@ func TestE2E_Revocation_ExemptPaths_StillServedWithRevokedToken(t *testing.T) {
 // would otherwise take sign-out down with it, which is the one path that has to
 // survive a broken deployment.
 func TestE2E_Revocation_LogoutSurvives_MisaddressedEndpoint(t *testing.T) {
-	hydra := newHydra(t)
-	defer hydra.close()
+	iss := newIssuerFixture(t)
+	defer iss.close()
 	notTheEndpoint := httptest.NewServer(http.NotFoundHandler())
 	defer notTheEndpoint.Close()
 
-	h := newRevocationHarness(t, hydra, notTheEndpoint.URL, 0)
-	rec := h.callPath(t, hydra, "jti-logout-misaddressed", "/oauth/logout")
+	h := newRevocationHarness(t, iss, notTheEndpoint.URL, 0)
+	rec := h.callPath(t, iss, "jti-logout-misaddressed", "/oauth/logout")
 	assert.True(t, h.reached.Load())
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
@@ -454,22 +457,22 @@ type countingServer struct {
 // request. Pinned because a regression here (a key that varies per request, a
 // TTL that stops applying) turns a bounded cost into a per-request one.
 func TestE2E_Revocation_CostIsPerTokenPerWindow(t *testing.T) {
-	hydra := newHydra(t)
-	defer hydra.close()
+	iss := newIssuerFixture(t)
+	defer iss.close()
 	live := newLiveIntrospection(t)
 	defer live.Close()
 
-	h := newRevocationHarness(t, hydra, live.URL, 0)
+	h := newRevocationHarness(t, iss, live.URL, 0)
 	const requests = 50
 	for range requests {
-		require.Equal(t, http.StatusOK, h.call(t, hydra, "jti-hot").Code)
+		require.Equal(t, http.StatusOK, h.call(t, iss, "jti-hot").Code)
 	}
 	assert.Equal(t, int32(1), atomic.LoadInt32(&live.hits),
 		"%d requests on one live token must cost one round-trip while the entry is cached", requests)
 
 	// A second token is a second entry — the bound is per token, and the test
 	// says so rather than leaving "1" to be read as "one per process".
-	require.Equal(t, http.StatusOK, h.call(t, hydra, "jti-other").Code)
+	require.Equal(t, http.StatusOK, h.call(t, iss, "jti-other").Code)
 	assert.Equal(t, int32(2), atomic.LoadInt32(&live.hits))
 }
 
@@ -478,12 +481,12 @@ func TestE2E_Revocation_CostIsPerTokenPerWindow(t *testing.T) {
 // pinned so the number is known rather than assumed, and so that adding
 // single-flight later is a visible change.
 func TestE2E_Revocation_ColdTokenFanOut_IsUnshared(t *testing.T) {
-	hydra := newHydra(t)
-	defer hydra.close()
+	iss := newIssuerFixture(t)
+	defer iss.close()
 	live := newLiveIntrospection(t)
 	defer live.Close()
 
-	h := newRevocationHarness(t, hydra, live.URL, 0)
+	h := newRevocationHarness(t, iss, live.URL, 0)
 	const parallel = 8
 	start := make(chan struct{})
 	var wg sync.WaitGroup
@@ -492,7 +495,7 @@ func TestE2E_Revocation_ColdTokenFanOut_IsUnshared(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			h.call(t, hydra, "jti-cold")
+			h.call(t, iss, "jti-cold")
 		}()
 	}
 	close(start)
@@ -506,7 +509,7 @@ func TestE2E_Revocation_ColdTokenFanOut_IsUnshared(t *testing.T) {
 	// The claim worth locking is not the burst size — it is that the burst ENDS.
 	// A further request must be answered from the cache; if it is not, every
 	// request pays the provider forever and the measured cost above is fiction.
-	require.Equal(t, http.StatusOK, h.call(t, hydra, "jti-cold").Code)
+	require.Equal(t, http.StatusOK, h.call(t, iss, "jti-cold").Code)
 	assert.Equal(t, burst, atomic.LoadInt32(&live.hits),
 		"once the entry is written, a subsequent request must cost nothing")
 }

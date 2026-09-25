@@ -16,7 +16,7 @@
 //     или `ext_claims`), SubjectLookuper — fallback только при их отсутствии.
 //
 // ИЗДАТЕЛЬ У АСИММЕТРИЧНОЙ СТРАТЕГИИ НЕ ОДИН, и здесь стояло обратное
-// («единственная принятая стратегия — Hydra JWKS»). Край принимает ПЕРЕЧЕНЬ
+// («единственная принятая стратегия — набор ключей прежнего поставщика»). Край принимает ПЕРЕЧЕНЬ
 // издателей, у каждого своя запись источника ключей (`config/tokenissuers.go`,
 // `Config.TokenAcceptance`); на каждом стенде, объявившем свою чеканку, издателей
 // двое, и первый из них — наш. Строку читают при разборе 401, поэтому она
@@ -24,8 +24,8 @@
 //
 // Per-mode:
 //   - **dev** (default): backwards-compat. Без Bearer — pass-through anonymous
-//     (Principal{system, anonymous}). С Bearer — валидируется (HMAC-dev ИЛИ Hydra
-//     JWKS по alg); HMAC-subject (external_id) не найден в kaname → fallback на
+//     (Principal{system, anonymous}). С Bearer — валидируется (HMAC-dev ИЛИ набор
+//     ключей издателя по alg); HMAC-subject (external_id) не найден в kaname → fallback на
 //     anonymous, чтобы не ломать существующие newman-сценарии. Bad token (любая
 //     стратегия) → reject Unauthenticated, НИКОГДА anonymous.
 //   - **production**: Subject lookup → kaname; NotFound → reject.
@@ -140,9 +140,10 @@ type AuthInterceptor struct {
 	// (kaname_principal_type=service_account) must be sender-constrained (RFC
 	// 7800 `cnf`: DPoP jkt or mTLS x5t#S256). See machineBindingViolationFor.
 	requireMachineBinding bool
-	// revocation — asks the identity provider whether a verified token is still
-	// live (nil → unmounted). See auth_revocation.go for why the check lives on
-	// this always-running layer rather than behind a feature toggle.
+	// revocation — asks OUR revocation record whether a verified token of a record
+	// our minting did not mark is still live (nil → unmounted). See
+	// auth_revocation.go for why the check lives on this always-running layer
+	// rather than behind a feature toggle.
 	revocation TokenRevocationChecker
 	// revocationFailures rate-limits the report of a revocation check that is not
 	// answering, so an outage is visible without flooding the log.
@@ -153,16 +154,15 @@ type AuthInterceptor struct {
 	revocationSkips *introspectionFailureReporter
 	// platformRevocation — авторитет отзыва НАШИХ токенов.
 	//
-	// Полоса выбирается по ИЗДАТЕЛЮ, а не по настройке процесса: прежний
-	// провайдер о наших токенах не знает by construction, и его ответ на наш
-	// токен есть утверждение о чужом предмете, а не «действует» или «отозван».
+	// Полоса выбирается по ИЗДАТЕЛЮ, а не по настройке процесса: запись издателя,
+	// выбранная для проверки подписи, решает и то, у кого спрашивать об отзыве.
 	//
 	// На этой полосе «авторитет не ответил» означает ОТКАЗ — см.
-	// auth_revocation.go, где асимметрия двух полос объявлена и обоснована.
+	// auth_revocation.go.
 	platformRevocation TokenRevocationChecker
-	// platformRevocationFailures — свой счётчик и своё окно доклада: «наш
-	// авторитет молчит» и «чужой авторитет молчит» суть разные неисправности с
-	// разными исправлениями и разными читателями.
+	// platformRevocationFailures — свой счётчик и своё окно доклада: «авторитет
+	// молчит» и «запись молчит» суть разные неисправности с разными
+	// исправлениями и разными читателями.
 	platformRevocationFailures *introspectionFailureReporter
 	// sessionCutoff — НАШ авторитет отзыва, спрошенный про СУБЪЕКТА, на полосе
 	// браузерной сессии. У неё нет удостоверения, поэтому спрашивать про неё по
@@ -494,7 +494,7 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 					"method", fullMethod, "err", verr)
 				return nil, status.Error(codes.Unavailable, keySourceUnavailableReason)
 			}
-			a.logger.Warn("auth: Hydra JWT validation failed (JWKS)",
+			a.logger.Warn("auth: bearer JWT validation failed (JWKS)",
 				"method", fullMethod, "err", verr)
 			return nil, status.Error(codes.Unauthenticated, authFailedMsg)
 		}
@@ -561,7 +561,7 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 		return nil, status.Error(codes.Unauthenticated, "token missing subject")
 	}
 
-	// Service Account / API-token principals. A token minted by the Hydra
+	// Service Account / API-token principals. A token minted by an issuer's
 	// client_credentials flow (or a static API token) declares itself with
 	// `kaname_principal_type=service_account`, and the id it is resolved by is
 	// `kaname_principal_id` — the single shape every mint stamps. `sub` is not a
@@ -712,8 +712,8 @@ func isAsymmetricJWT(tokenStr string) bool {
 }
 
 // principalFromVerifiedToken derives the Kachō Principal from a JWKS-verified
-// Hydra token's `kaname_principal_*` claims. It reads each claim robustly
-// from EITHER the top level (Hydra allowed_top_level_claims promotion) OR the
+// bearer token's `kaname_principal_*` claims. It reads each claim robustly
+// from EITHER the top level (the issuer's top-level claim promotion) OR the
 // nested `ext_claims` map (token_hook session.access_token.ext_claims). Returns
 // an error when the principal claims are absent so the caller can fall back to
 // the SubjectLookuper. displayName comes from a present display claim, else
@@ -831,14 +831,14 @@ func (a *AuthInterceptor) validateJWT(tokenStr string) (jwt.MapClaims, error) {
 	// principal, and a `kaname_principal_type=service_account` claim is injected
 	// as a service_account with NO IAM lookup (symmetric-key principal forgery,
 	// CWE-347). The only accepted Bearer strategy in prod is the asymmetric JWKS
-	// (Hydra) verifier, which runs BEFORE this path for RS256/ES256/EdDSA tokens.
+	// verifier of a declared issuer, which runs BEFORE this path for RS256/ES256/EdDSA tokens.
 	// Fail closed regardless of whether a dev-secret happens to be configured
 	// (defense-in-depth alongside the fatal startup guard in cmd/api-gateway).
 	if a.mode != AuthModeDev {
 		return nil, fmt.Errorf("HMAC-dev token path disabled in %q mode", a.mode)
 	}
 	if len(a.devSecret) == 0 {
-		// HMAC-dev path requires a configured dev-secret. Hydra RS256 tokens are
+		// HMAC-dev path requires a configured dev-secret. Asymmetric (RS256/ES256/EdDSA) tokens are
 		// validated by the JWKS verifier branch BEFORE reaching here, so
 		// an empty dev-secret only disables the HS256-dev path.
 		return nil, fmt.Errorf("no signing key configured (dev secret empty)")
@@ -865,7 +865,7 @@ func (a *AuthInterceptor) validateJWT(tokenStr string) (jwt.MapClaims, error) {
 // setPrincipalHeaders writes the resolved principal onto the REST request in
 // both the plain form (read by restmux WithMetadata → outgoing gRPC metadata)
 // and the legacy grpc-gateway convention form (fallback path). Shared by the
-// Hydra-JWT branch with the SA-token path.
+// bearer-JWT branch with the SA-token path.
 // withBasicCredentialLevel кладёт уровень удостоверения во ВХОДЯЩИЕ метаданные —
 // туда же, откуда его читает страж повышения (`verifiedTokenFromCtxOrHTTP`).
 // Входящие уже очищены от подделываемых клиентом заголовков выше по цепочке,
@@ -947,7 +947,7 @@ func extractBearer(ctx context.Context) string {
 //
 //	tryOwnSession       — наша сессия (`kaname_session`, посадка `own`; Ф3 Р15);
 //	tryBasicCredential  — базовый секрет с нашей маркой в `Authorization`;
-//	tryHydraJWT         — подписанный предъявитель в `Authorization`.
+//	tryBearerJWT         — подписанный предъявитель в `Authorization`.
 //
 // Читатель браузерной сессии — ОДИН, наш: читатель чужой сессии снят вместе с
 // переходным режимом двух носителей (#2792). Полоса сессии терминальна.
@@ -993,7 +993,7 @@ func (a *AuthInterceptor) HTTP(next http.Handler) http.Handler {
 			if a.tryBasicCredential(w, r, next) {
 				return
 			}
-			if a.tryHydraJWT(w, r, next) {
+			if a.tryBearerJWT(w, r, next) {
 				return
 			}
 			if a.tryDevSecretJWT(w, r, next) {
@@ -1095,7 +1095,7 @@ func (a *AuthInterceptor) stripForgeableIdentityHeaders(r *http.Request) {
 	}
 }
 
-// tryHydraJWT validates an asymmetric (RS256/ES256/EdDSA) access JWT of an accepted
+// tryBearerJWT validates an asymmetric (RS256/ES256/EdDSA) access JWT of an accepted
 // issuer (the name keeps the lane's original issuer; the verifier is issuer-agnostic)
 // over REST via the JWKS verifier (parity with the gRPC interceptor path) and
 // derives the principal from the verified `kaname_principal_*` claims (top-level
@@ -1106,7 +1106,7 @@ func (a *AuthInterceptor) stripForgeableIdentityHeaders(r *http.Request) {
 // and `next` served) — i.e. the caller must return. Returns false when the path
 // does not apply (no verifier / not an asymmetric Bearer) so the next strategy
 // runs.
-func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, next http.Handler) bool {
+func (a *AuthInterceptor) tryBearerJWT(w http.ResponseWriter, r *http.Request, next http.Handler) bool {
 	if a.verifier == nil {
 		return false
 	}
@@ -1129,7 +1129,7 @@ func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, ne
 			writeHTTPServiceUnavailable(w, keySourceUnavailableReason)
 			return true
 		}
-		a.logger.Warn("auth.HTTP: Hydra JWT validate failed (JWKS)", "err", verr.Error())
+		a.logger.Warn("auth.HTTP: bearer JWT validate failed (JWKS)", "err", verr.Error())
 		writeHTTPUnauthorized(w, "token validation failed")
 		return true
 	}
@@ -1176,18 +1176,18 @@ func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, ne
 		setTokenContextHeaders(r, vt))
 	if pType, pID, display, perr := principalFromVerifiedToken(vt); perr == nil {
 		setPrincipalHeaders(r, pType, pID, display)
-		a.logger.Info("auth.HTTP: Principal injected (Hydra JWT)", "type", pType, "id", pID)
+		a.logger.Info("auth.HTTP: Principal injected (bearer JWT)", "type", pType, "id", pID)
 		next.ServeHTTP(w, r)
 		return true
 	}
 	// Claims absent → fall back to SubjectLookuper on the verified sub.
 	if vt.Subject == "" {
-		a.logger.Warn("auth.HTTP: Hydra JWT has empty sub and no kaname_principal_* claims")
+		a.logger.Warn("auth.HTTP: bearer JWT has empty sub and no kaname_principal_* claims")
 		writeHTTPUnauthorized(w, "token missing subject")
 		return true
 	}
 	if subj, lerr := a.subjectLookup.LookupByExternalID(r.Context(), vt.Subject); lerr != nil {
-		a.logger.Debug("auth.HTTP: SubjectLookup failed (Hydra JWT fallback)", "external_id", vt.Subject, "err", lerr.Error())
+		a.logger.Debug("auth.HTTP: SubjectLookup failed (bearer JWT fallback)", "external_id", vt.Subject, "err", lerr.Error())
 	} else if a.machineBindingViolationFor(vt, subj.Type) {
 		// The lookup resolved a MACHINE principal from a token that carried no
 		// kaname_principal_* claims. Same requirement, same rejection.
@@ -1197,7 +1197,7 @@ func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, ne
 		return true
 	} else {
 		setPrincipalHeaders(r, subj.Type, subj.ID, subj.DisplayName)
-		a.logger.Info("auth.HTTP: Principal injected (Hydra JWT fallback)", "type", subj.Type, "id", subj.ID)
+		a.logger.Info("auth.HTTP: Principal injected (bearer JWT fallback)", "type", subj.Type, "id", subj.ID)
 	}
 	next.ServeHTTP(w, r)
 	return true

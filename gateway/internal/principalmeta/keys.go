@@ -278,7 +278,7 @@ func IsGatewayProducedKey(name string) bool {
 // No client-supplied `X-Kacho-…` header is legitimate at the gateway edge: the
 // UI and the SDKs authenticate with `Authorization`/`Cookie`/`DPoP`, and the one
 // shared-secret Kachō header that does exist (`X-Kacho-Hook-Token`, the
-// Hydra→iam webhook) is served by iam's own HTTP listener, not by this gateway.
+// issuer→iam webhook) is served by iam's own HTTP listener, not by this gateway.
 // If that ever changes, add the key to an explicit allow-list here rather than
 // narrowing the namespace sweep.
 func IsClientForgeableKey(key string) bool {

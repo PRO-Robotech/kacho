@@ -5,9 +5,9 @@
 //
 // The api-gateway authz middleware needs an FGA-shaped subject id
 // ("user:<usr_xxx>" / "service_account:<sva_xxx>" / "workload:<wid_xxx>")
-// for every per-RPC Check. The verified token's `sub` claim is the external
-// Hydra subject; the `ext_claims.kaname_*` fields (filled by the Hydra
-// token_hook) carry the kacho-native principal id.
+// for every per-RPC Check. The verified token's `sub` claim is the issuer's
+// external subject; the `ext_claims.kaname_*` fields (filled by the
+// issuer's token hook) carry the kacho-native principal id.
 //
 // Resolution priority:
 //
@@ -24,7 +24,7 @@
 //     gets its turn — it is a positive identity assertion. Rule 3 does not:
 //     see below.
 //  2. `ext_claims.kaname_user_id` (User flow).
-//  3. Hydra `sub` claim as the final fallback when none of the above are
+//  3. The issuer's `sub` claim as the final fallback when none of the above are
 //     present — yields an `external:<sub>` subject for diagnostic purposes.
 //     Skipped when rule 1 stated a non-authenticable principal: this rule mints
 //     a subject out of a bare `sub`, and doing so there would overrule the
@@ -185,7 +185,7 @@ func (e *SubjectExtractor) Extract(t *VerifiedToken) (ResolvedSubject, bool) {
 		}
 	}
 
-	// 3. Hydra `sub` fallback — diagnostic only, and never over a token that
+	// 3. Issuer `sub` fallback — diagnostic only, and never over a token that
 	// already declared itself a non-tenant principal (see statedNonTenant).
 	if e.allowExternalFallback && !statedNonTenant && t.Subject != "" {
 		return ResolvedSubject{

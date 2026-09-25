@@ -22,7 +22,7 @@ title: Архитектура
   <thead><tr><th>Пакет</th><th>Ответственность</th></tr></thead>
   <tbody>
     <tr><td><code>cmd/api-gateway</code></td><td>Composition root: поднятие всех listener'ов и сборка middleware-цепочки</td></tr>
-    <tr><td><code>internal/middleware</code></td><td>AuthN (JWT / DPoP / mTLS / Kratos), AuthZ, кэши, OIDC, idempotency</td></tr>
+    <tr><td><code>internal/middleware</code></td><td>AuthN (JWT / DPoP / mTLS / сессия платформы), AuthZ, кэши, OIDC, idempotency</td></tr>
     <tr><td><code>internal/proxy</code></td><td>gRPC transparent-proxy: <code>Resolver</code> + allowlist-routing</td></tr>
     <tr><td><code>internal/restmux</code></td><td>grpc-gateway REST (split-mux: public + internal)</td></tr>
     <tr><td><code>internal/opsproxy</code></td><td><code>OperationService</code> fan-out по prefix id</td></tr>
@@ -70,7 +70,7 @@ flowchart TD
 REST-запрос проходит цепочку интерсепторов (снаружи внутрь):
 
 ```
-RequestID → Recovery → AuthN(dev-HMAC / Kratos) → DPoP/JWT(по издателю) →
+RequestID → Recovery → AuthN(dev-HMAC / сессия платформы) → DPoP/JWT(по издателю) →
 AuthZ(per-RPC Check) → AccessLog → Idempotency → REST-mux → backend
 ```
 

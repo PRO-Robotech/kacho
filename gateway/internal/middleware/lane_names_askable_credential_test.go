@@ -135,7 +135,7 @@ func laneQuestions() map[string]laneQuestion {
 		// ВМЕСТЕ с полосой: запись без полосы есть утверждение, пережившее свой
 		// предмет, и сверка с деревом ниже назвала бы её находкой.
 		"tryOwnSession":      questionSubjectCutoff,
-		"tryHydraJWT":        questionSessionRevocation,
+		"tryBearerJWT":       questionSessionRevocation,
 		"tryBasicCredential": questionBasicCredentialLiveness,
 	}
 }

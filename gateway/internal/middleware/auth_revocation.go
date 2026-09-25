@@ -1,8 +1,8 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// auth_revocation.go — asking the identity provider whether a presented token is
-// still live, on the authN layer that always runs.
+// auth_revocation.go — asking whether a presented token is still live, on the
+// authN layer that always runs.
 //
 // Why it lives HERE, next to the signature check, and not with the
 // sender-constrained-token machinery it used to sit inside:
@@ -12,32 +12,36 @@
 // questions, and tying the first to the second meant the first was never asked:
 // the binding machinery mounts behind a toggle that no profile sets, so the
 // revocation check had a config guard, deploy wiring, tests — and no reachable
-// code path on any stand. Turning that toggle on is not the fix, because it also
-// starts DEMANDING proof-of-possession, and machine credentials are not issued
-// bound yet (see AuthNRequireMachineTokenBinding: issuance first, enforcement
-// second). Enabling it before issuance lands refuses every service account —
-// an outage, not a hardening. So the check is untied instead.
+// code path on any stand. So the check is untied instead.
 //
 // The signature is verified exactly once, by the caller, and the verified token
 // is handed here: revocation must not pay for a second parse of the same bearer.
 //
+// # Two lanes, one authority, one semantics
+//
+// The lane is chosen by the ISSUER RECORD the verifier marked on the token
+// (`VerifiedToken.ReadRevocation`): a token of our own minting is asked of our
+// revocation authority; a token of any other accepted record is asked of our
+// revocation RECORD, by its identifier — the record the sign-out writes. Both
+// answer about something WE revoked, and on both an answer that is not «live»
+// refuses the request.
+//
+// The second lane used to ask the previous identity provider instead, and it
+// carried a documented soft pass: «the provider did not answer» let the request
+// through, because a third party's availability is not ours to control. The
+// provider is retired (#2734), and nobody is left to ask on that lane but us: a
+// soft pass there would mean «we revoke and do not enforce our own revocation»
+// — a control that holds at issuance and not at presentation.
+//
 // Scope, stated plainly: this asks about BEARER credentials. A service→service
 // caller authenticated by its client certificate presents no token at all, and a
-// browser is authenticated on the provider's session cookie instead — that lane
-// asks its OWN revocation question, in auth_session_cutoff.go.
+// browser is authenticated on our session cookie instead — that lane asks its
+// OWN revocation question, in auth_session_cutoff.go.
 //
-// ЗДЕСЬ СТОЯЛО, ЧТО БРАУЗЕРНОЙ ПОЛОСЕ ОТДЕЛЬНЫЙ ВОПРОС НЕ НУЖЕН, — и это было
-// неверно (#1122). Довод звучал: сессия перепроверяется у провайдера на каждом
-// запросе. Про отзывы САМОГО провайдера он верен. Про запись, которую делает наш
-// глагол выхода и административный принудительный выход, он неверен и не может
-// быть верным: тот, у кого спрашивают про сессию, о нашей записи не знает by
-// construction. Следствие было наблюдаемым — администратор получал успех, а
-// человек продолжал работать в консоли.
-//
-// Урок, ради которого абзац не удалён, а переписан: комментарий, объясняющий
-// ОТСУТСТВИЕ проверки, живёт дольше своего основания и читается как решение.
-// Свойство, обязательное для одной полосы, проверяется СРАВНЕНИЕМ полос
-// (session_lanes_agree_test.go), а не доводом в шапке.
+// Урок, ради которого абзац о браузерной полосе не удалён, а переписан:
+// комментарий, объясняющий ОТСУТСТВИЕ проверки, живёт дольше своего основания и
+// читается как решение. Свойство, обязательное для одной полосы, проверяется
+// СРАВНЕНИЕМ полос (session_lanes_agree_test.go), а не доводом в шапке.
 package middleware
 
 import (
@@ -50,38 +54,38 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
-// TokenRevocationChecker — port: does the identity provider still consider this
-// token live? Implemented by *IntrospectionCache, which bounds both the cost (one
-// round-trip per token per cache window) and the wait (a per-call budget).
+// TokenRevocationChecker — port: is this token still live? Implemented by
+// *IntrospectionCache over our revocation authority (which bounds both the cost —
+// one round-trip per token per cache window — and the wait) and by
+// *OwnRevocationSource over our revocation record.
 //
-// The three outcomes the caller must tell apart are carried by the error, not by
-// its text: nil / ErrTokenInactive / ErrIntrospectionMisconfigured, with anything
-// else meaning "the provider did not answer this time".
+// The outcomes the caller must tell apart are carried by the error, not by its
+// text: nil / ErrTokenInactive / ErrIntrospectionMisconfigured, with anything
+// else meaning "the source did not answer this time".
 type TokenRevocationChecker interface {
 	Introspect(ctx context.Context, jti, rawToken string) (IntrospectionResult, error)
 }
 
-// revocationVerdict — the five answers. Only two of them change what the caller
-// does; the other three all mean "carry on", and they are kept apart because they
-// mean different things to whoever reads the log: asked-and-fine, could-not-ask,
-// and asked-but-nobody-answered are three different states of the same control.
+// revocationVerdict — the four answers. Two of them change what the caller does;
+// the other two mean "carry on", and they are kept apart because they mean
+// different things to whoever reads the log: asked-and-fine and nothing-to-ask
+// are two different states of the same control.
 type revocationVerdict int
 
 const (
-	// revocationNotAsked — no checker wired, an exempt path, or a token with no
-	// identifier to ask about. The request proceeds unchecked.
+	// revocationNotAsked — no record reader wired: the in-process fixture shape.
+	// The composition root always wires it (the identity service's internal
+	// listener is critical: without it the edge serves nothing at all).
 	revocationNotAsked revocationVerdict = iota
-	// revocationLive — the provider says the token is still good.
+	// revocationLive — the source says the token is still good.
 	revocationLive
-	// revocationRevoked — the provider says it is not. Reject the credential.
+	// revocationRevoked — the source says it is not. Reject the credential.
 	revocationRevoked
-	// revocationUnanswerable — what answered is not an introspection endpoint.
-	// Permanent until someone changes configuration; refuse to serve.
+	// revocationUnanswerable — the question could not be answered: the source did
+	// not answer, answered with something that is not an answer, or the token
+	// carries nothing to ask about. Refuse to serve: «could not establish» is not
+	// «live».
 	revocationUnanswerable
-	// revocationUnanswered — the provider did not answer this time. Passes on its
-	// own, so the request continues and the process reports that it is not
-	// currently enforcing.
-	revocationUnanswered
 )
 
 // revocationDenyDescription — the client-visible reason on a revoked credential,
@@ -102,20 +106,20 @@ const revocationDenyDescription = "token revoked"
 // the operator's business, and it goes to the log, not to the wire.
 const revocationUnavailableReason = "revocation check unavailable"
 
-// WithRevocationCheck mounts the revocation check on this interceptor, for both
-// the REST and the gRPC surface. A nil checker leaves it unmounted (the dev-stand
-// shape: no provider admin API to ask). reportInterval bounds how often a
+// WithRevocationCheck mounts the RECORD lane of the revocation check — the
+// question asked about a token of any accepted record our own minting did not
+// mark — on both the REST and the gRPC surface. A nil checker leaves it
+// unmounted (the in-process fixture shape). reportInterval bounds how often a
 // continuing failure is re-stated; zero takes the default.
 //
-// Production deployments cannot leave it unmounted by accident: the composition
-// root refuses to start a production-class gateway whose introspection address is
-// unset or aimed at the public API (cmd/api-gateway/revocation_validation.go).
+// The composition root mounts it unconditionally, over our revocation record on
+// the identity service's internal listener (OwnRevocationSource).
 func (a *AuthInterceptor) WithRevocationCheck(c TokenRevocationChecker, reportInterval time.Duration) *AuthInterceptor {
 	if c == nil {
 		return a
 	}
 	a.revocation = c
-	// Two reporters, not one: "the provider is not answering" and "the token had
+	// Two reporters, not one: "the source is not answering" and "the token had
 	// nothing to ask about" are different faults with different remedies and
 	// different readers. Sharing a window would let a burst of one suppress the
 	// first report of the other, and sharing a counter would produce a number that
@@ -131,28 +135,18 @@ func (a *AuthInterceptor) WithRevocationCheck(c TokenRevocationChecker, reportIn
 // # Почему это ОТДЕЛЬНЫЙ читатель, а не тот же
 //
 // Полоса отзыва — свойство ЗАПИСИ издателя (token_acceptance.go), а не
-// настройки процесса. Прежний провайдер о наших токенах не знает by
-// construction: спрошенный про наш токен, он отвечает не «действует» и не
-// «отозван», а утверждение о предмете, которого у него нет. Отзыв нашего токена
-// знает только НАШ авторитет.
+// настройки процесса. Отзыв токена нашей чеканки знает наш авторитет, и
+// спрашивается он по своему протоколу, со своим якорем доверия и своим окном;
+// запись отзыва по идентификатору — другой источник с другим транспортом.
 //
-// # Почему на этой полосе «не ответил» означает ОТКАЗ
+// # «Не ответил» означает ОТКАЗ — на обеих полосах
 //
-// Асимметрия с полосой прежнего издателя объявлена, а не выведена, и основание
-// у неё — различие предмета, а не удобство:
-//
-//   - НАША полоса. Токен наш, отзыв наш, авторитет наш и живёт на том же
-//     внутреннем слушателе, к которому край обращается на каждом запросе. Если
-//     он молчит, край уже отказывает по правам. Мягкий проход означал бы:
-//     чеканим, отзываем и СВОЙ ЖЕ отзыв не исполняем — ровно тот класс, где
-//     контроль действует на выдаче и не действует на предъявлении;
-//   - полоса ПРЕЖНЕГО издателя. Авторитет — третья сторона, её доступностью мы
-//     не управляем. Мягкий проход там принят, задокументирован и несёт
-//     собственный страж: «ответило не то» остаётся постоянной неисправностью и
-//     даёт отказ. Менять его этой фазой значило бы завести новую поверхность
-//     отказа, которой фаза не предусматривала.
-//
-// ПРЕДИКАТ СНЯТИЯ асимметрии: она уходит вместе с полосой прежнего издателя.
+// Токен наш, отзыв наш, авторитет наш и живёт на том же внутреннем слушателе, к
+// которому край обращается на каждом запросе. Мягкий проход означал бы:
+// чеканим, отзываем и СВОЙ ЖЕ отзыв не исполняем — ровно тот класс, где
+// контроль действует на выдаче и не действует на предъявлении. Асимметрия с
+// полосой прежнего издателя, у которой мягкий проход был, снята вместе с ней
+// (#2734): её предикат снятия исполнился.
 //
 // A nil checker leaves it unmounted; в этом состоянии токен нашего издателя
 // отвергается на предъявлении — объявленный контроль без читателя не отказал бы
@@ -186,22 +180,19 @@ func (a *AuthInterceptor) revocationCheck(ctx context.Context, vt *VerifiedToken
 	if a.revocation == nil {
 		return revocationNotAsked
 	}
-	// A token with no identifier cannot be asked about: introspection is keyed on
-	// the jti. Our provider mints JWT access tokens, which always carry one (the
-	// profiles pin that strategy — see gateway/deploy/token_shape_test.go), and
-	// the platform already depends on it end to end: sign-out revokes BY jti and
-	// kaname refuses to refresh a token that has none. So this branch is not
-	// reachable with a credential this deployment issued — but it is not silent
-	// either, because "the control did not run" must never look like "the control
-	// passed".
+	// A token with no identifier cannot be asked about: our record is keyed on the
+	// jti — sign-out revokes BY jti, and the identity service refuses to refresh a
+	// token that has none. A token this edge cannot ask about is refused rather
+	// than waved through: «the control did not run» must never look like «the
+	// control passed».
 	if vt.JTI == "" {
 		if report, total, represents := a.revocationSkips.observe(); report {
-			a.logger.Error("revocation check skipped: token carries no identifier",
+			a.logger.Error("revocation check impossible: token carries no identifier; refusing",
 				"surface", surface, "route", route,
 				"tokens_without_identifier_total", total,
 				"occurrences_since_last_report", represents)
 		}
-		return revocationNotAsked
+		return revocationUnanswerable
 	}
 
 	_, err := a.revocation.Introspect(ctx, vt.JTI, vt.Raw)
@@ -213,31 +204,31 @@ func (a *AuthInterceptor) revocationCheck(ctx context.Context, vt *VerifiedToken
 		return revocationRevoked
 
 	case errors.Is(err, ErrIntrospectionMisconfigured):
-		// What answered is not an introspection endpoint. That does not heal, so
-		// continuing means every request from here on is served with the
-		// revocation check silently absent. Refuse instead: the gateway cannot
-		// establish that this token is still valid.
+		// Проверка собрана неполно. Это не лечится повтором, и продолжить значило
+		// бы обслуживать каждый следующий запрос с молча отсутствующей проверкой
+		// отзыва. Подсказка называет ЖИВУЮ причину: читатель на этом пути один
+		// (`OwnRevocationSource`), и этот признак он ставит ровно в одном случае —
+		// его собрали без источника.
 		if report, total, represents := a.revocationFailures.observe(); report {
 			a.logger.Error("revocation check misconfigured; refusing requests",
 				"err", err, "surface", surface, "route", route,
-				"introspection_failures_total", total,
+				"revocation_failures_total", total,
 				"occurrences_since_last_report", represents,
-				"hint", "KACHO_HYDRA_INTROSPECTION_URL must address the identity "+
-					"provider's admin API path /admin/oauth2/introspect")
+				"hint", "the revocation reader was assembled without a source: the "+
+					"composition root must build it over the identity service's internal listener")
 		}
 		return revocationUnanswerable
 
 	default:
-		// The provider did not answer this time. That passes on its own, so the
-		// request continues — and the process says so, because a control that
-		// stops enforcing in silence is one nobody knows they lost.
+		// Источник не ответил. Недоступность НАШЕЙ записи не есть разрешение
+		// пользоваться токеном, который мы, возможно, уже отозвали.
 		if report, total, represents := a.revocationFailures.observe(); report {
-			a.logger.Error("revocation check unavailable; requests continue unchecked",
+			a.logger.Error("our revocation record did not answer; refusing requests",
 				"err", err, "surface", surface, "route", route,
-				"introspection_failures_total", total,
+				"revocation_failures_total", total,
 				"occurrences_since_last_report", represents)
 		}
-		return revocationUnanswered
+		return revocationUnanswerable
 	}
 }
 
@@ -267,7 +258,7 @@ func writeHTTPServiceUnavailable(w http.ResponseWriter, reason string) {
 // platformRevocationCheck спрашивает НАШ авторитет о НАШЕМ токене, и на каждой
 // развилке выбирает отказ.
 //
-// Три отличия от полосы прежнего издателя, и все три намеренные:
+// Три развилки, и на каждой — отказ:
 //
 //  1. читателя нет ⇒ ОТКАЗ. Запись объявила чтение отзыва, а читателя не
 //     провязали — это контроль, который не отказал бы ни разу; здесь он
@@ -309,9 +300,8 @@ func (a *AuthInterceptor) platformRevocationCheck(ctx context.Context, vt *Verif
 		return revocationUnanswerable
 
 	default:
-		// Отличается от полосы прежнего издателя ровно здесь, и это решение, а
-		// не недосмотр: недоступность НАШЕГО сервиса не есть разрешение
-		// пользоваться токеном, который мы, возможно, уже отозвали.
+		// Недоступность НАШЕГО сервиса не есть разрешение пользоваться токеном,
+		// который мы, возможно, уже отозвали.
 		if report, total, represents := a.platformRevocationFailures.observe(); report {
 			a.logger.Error("our revocation authority did not answer; refusing requests",
 				"err", err, "surface", surface, "route", route,

@@ -15,7 +15,7 @@ import (
 func TestSubjectExtractor_UnifiedPrincipal_User(t *testing.T) {
 	e := middleware.NewSubjectExtractor(false)
 	tok := &middleware.VerifiedToken{
-		Subject: "hydra-sub-abc",
+		Subject: "ext-sub-abc",
 		ExtClaims: map[string]any{
 			"kaname_principal_type": "user",
 			"kaname_principal_id":   "usr_alice",
@@ -87,7 +87,7 @@ func TestSubjectExtractor_UnmintedIdClaimResolvesNothing(t *testing.T) {
 	e := middleware.NewSubjectExtractor(false)
 	for _, claim := range []string{"kaname_sa_id", "kaname_workload_id"} {
 		tok := &middleware.VerifiedToken{
-			Subject:   "hydra-sub-xyz",
+			Subject:   "ext-sub-xyz",
 			ExtClaims: map[string]any{claim: "sva_old"},
 		}
 		_, ok := e.Extract(tok)
@@ -108,17 +108,17 @@ func TestSubjectExtractor_UnmintedIdClaimResolvesNothing(t *testing.T) {
 
 func TestSubjectExtractor_NoFallback_NoExtClaims_Rejects(t *testing.T) {
 	e := middleware.NewSubjectExtractor(false)
-	tok := &middleware.VerifiedToken{Subject: "hydra-sub-xyz"}
+	tok := &middleware.VerifiedToken{Subject: "ext-sub-xyz"}
 	_, ok := e.Extract(tok)
 	assert.False(t, ok)
 }
 
 func TestSubjectExtractor_AllowFallback_NoExtClaims_External(t *testing.T) {
 	e := middleware.NewSubjectExtractor(true)
-	tok := &middleware.VerifiedToken{Subject: "hydra-sub-xyz"}
+	tok := &middleware.VerifiedToken{Subject: "ext-sub-xyz"}
 	r, ok := e.Extract(tok)
 	require.True(t, ok)
-	assert.Equal(t, "external:hydra-sub-xyz", r.FGA)
+	assert.Equal(t, "external:ext-sub-xyz", r.FGA)
 	assert.Equal(t, middleware.SubjectKindExternal, r.Kind)
 	assert.Equal(t, "jwt.sub", r.Source)
 }
@@ -184,7 +184,7 @@ func TestSubjectExtractor_EmptyPrincipalFields_FallsThrough(t *testing.T) {
 	e := middleware.NewSubjectExtractor(true)
 	// Both empty → should fall through to next rule (kaname_user_id) then sub fallback.
 	tok := &middleware.VerifiedToken{
-		Subject: "hydra-sub",
+		Subject: "ext-sub",
 		ExtClaims: map[string]any{
 			"kaname_principal_type": "",
 			"kaname_principal_id":   "",
@@ -192,5 +192,5 @@ func TestSubjectExtractor_EmptyPrincipalFields_FallsThrough(t *testing.T) {
 	}
 	r, ok := e.Extract(tok)
 	require.True(t, ok)
-	assert.Equal(t, "external:hydra-sub", r.FGA)
+	assert.Equal(t, "external:ext-sub", r.FGA)
 }

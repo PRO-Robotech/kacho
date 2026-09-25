@@ -69,9 +69,9 @@ func alwaysOnAuth(t *testing.T, fix *jwksFixture) *middleware.AuthInterceptor {
 		)
 }
 
-// alwaysOnClaims — a Hydra-shaped human token at the given assurance level.
+// alwaysOnClaims — an issuer-shaped human token at the given assurance level.
 func alwaysOnClaims(acr string) jwt.MapClaims {
-	c := hydraClaims("user", "usr_alice_acc_a1b2")
+	c := issuerClaims("user", "usr_alice_acc_a1b2")
 	c["acr"] = acr
 	return c
 }
@@ -146,7 +146,7 @@ func TestStepUpAlwaysOn_MachinePrincipal_Exempt(t *testing.T) {
 	fix := newJWKSFixture(t, "RS256")
 	auth := alwaysOnAuth(t, fix)
 
-	claims := hydraClaims("service_account", "sva_deployer_a1b2")
+	claims := issuerClaims("service_account", "sva_deployer_a1b2")
 	delete(claims, "acr")
 
 	rec, _, hit := serveREST(t, auth, http.MethodPost,

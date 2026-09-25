@@ -17,7 +17,7 @@
 // When `KACHO_API_GATEWAY_AUTHN_ENABLE_DPOP=true`, every request carrying an
 // `Authorization: Bearer|DPoP ...` header runs through:
 //
-//  1. JWT verifier (Hydra JWKS, alg whitelist, iss/aud/exp).
+//  1. JWT verifier (declared issuer's JWKS, alg whitelist, iss/aud/exp).
 //  2. If token.cnf.jkt set → DPoP header validation (htm/htu/iat/jti/jkt).
 //  3. If token.cnf.x5t#S256 set → mTLS-bound (client cert vs cnf).
 //  4. Step-up gate: required ACR / mfa_max_age from permission catalog.
@@ -31,10 +31,10 @@
 // nothing is forwarded. The principal headers (X-Kacho-Principal-*) are
 // then injected exactly as the legacy AuthInterceptor does, so backends see
 // a unified shape regardless of whether the token came from dev-HMAC or
-// from Hydra.
+// from a declared issuer.
 //
 // When disabled (default), this middleware is a no-op pass-through — the
-// behaviour for dev environments without Hydra.
+// behaviour for dev environments without sender-constrained tokens.
 package middleware
 
 import (
@@ -410,7 +410,7 @@ func (m *DPoPMiddleware) injectVerifiedTokenHeaders(r *http.Request, t *Verified
 		return
 	}
 	// WHO a token names is decided in exactly one place — the same one the
-	// legacy auth.HTTP Hydra path uses — so the two cannot disagree about
+	// legacy auth.HTTP bearer-JWT path uses — so the two cannot disagree about
 	// identity (CWE-287 / OWASP A07). They already had: this comment used to
 	// claim that parity while the code beneath it back-filled a missing
 	// identifier from the raw OIDC `sub`, which principalFromVerifiedToken
