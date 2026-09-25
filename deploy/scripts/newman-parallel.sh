@@ -82,7 +82,7 @@ GW_INTERNAL_PORT="${GW_INTERNAL_PORT:-18081}"
 # to find it — so it is forwarded here like the other two.
 GW_TLS_PORT="${GW_TLS_PORT:-18443}"
 IAM_INTERNAL_PORT="${IAM_INTERNAL_PORT:-19091}"
-HYDRA_PORT="${HYDRA_PUBLIC_PORT:-14444}"   # provider public: providerPublicBaseUrl of the suites + the ceremony
+HYDRA_PORT="${HYDRA_PUBLIC_PORT:-14444}"   # provider public: providerPublicBaseUrl of the suites
 # Адреса ПОЛОСЫ ФАСАДА (#59). Это не api-gateway: кейсы IBT-* обязаны спросить сами
 # слушатели, иначе «токен проверяется через фасад» останется утверждением о конфиге,
 # а не о поведении. Оба адресата — ЯДРО (iam), то есть есть на каждом стенде.
@@ -100,16 +100,10 @@ OWN_INTERNAL_REST_PORT="${OWN_INTERNAL_REST_PORT:-19099}" # собственны
 # а не ядро, и порт вместе с портовой ручкой живёт в deploy/e2e-shards.json
 # (`optional_transports`), откуда его читает цикл ниже. Объявлять его и здесь
 # значило бы завести два места об одном предмете с разными умолчаниями.
-# Transports of WAVE 4 (the ceremony). The wave turns itself on from a fact about the
-# tree — the ceremony seed exists — and the seed dials the identity provider and the
-# token issuer directly, because neither is routed through the gateway. Those dials had
-# no producer here: the runner opened five forwards and the seed needed four addresses
-# that were not among them. It worked only while a human held the forwards by hand, so
-# on a clean machine the wave could not pass ONCE, while everything about it — the
-# auto-enable, the log line, the derived collection set — read as working. Same class as
-# GW_TLS_PORT above: a probe whose transport nobody creates is a probe that never ran.
-# The addresses are passed to the wave explicitly (below) rather than left to the seed's
-# defaults, so the port that is opened and the port that is dialled cannot drift apart.
+# Local ports of the other three forwards of the identity-provider block below: the
+# login flow, identity admin and login-request accept. They were opened for WAVE 4
+# (the ceremony). That wave is removed — its runner is not in this tree, see where the
+# wave stood below — and no step of this runner dials these three ports any more.
 KRATOS_PUBLIC_PORT="${KRATOS_PUBLIC_PORT:-24433}"  # native login flow (password is checked HERE)
 KRATOS_ADMIN_PORT="${KRATOS_ADMIN_PORT:-24434}"    # identity create/lookup for the ceremony human
 HYDRA_ADMIN_PORT="${HYDRA_ADMIN_PORT:-24445}"      # login-request accept (TLS listener)
@@ -167,9 +161,10 @@ kubectl -n "$NS" port-forward svc/kaname-internal "$IAM_INTERNAL_PORT:9091" >/tm
 # ─── ПРОБРОСЫ К ПОСТАВЩИКУ ЛИЧНОСТИ — ПО ПОСАДКЕ ЦЕПОЧКИ, А НЕ ВСЕГДА (#2841) ──
 #
 # Четыре проброса ниже ведут к службам поставщика: его публичная поверхность
-# (обмен ключа служебной учётки на предъявителя; её же читают providerPublicBaseUrl
-# суит и посев церемонии) и транспорты волны церемонии — вход, заведение личности,
-# принятие запроса входа. Прежде они открывались безусловно, как пробросы к ядру.
+# (обмен ключа служебной учётки на предъявителя; её читает providerPublicBaseUrl
+# суит) и три транспорта снятой волны церемонии — вход, заведение личности,
+# принятие запроса входа (набирающего их шага в прогонщике не осталось, см.
+# объявление их портов выше). Прежде они открывались безусловно, как пробросы к ядру.
 # На цепочке own поставщика нет (#2735 выключил его в базе зонта для всех
 # стендов), проброс к службе, которой нет, завершается, и блок живости ниже
 # объявлял прогон недействительным: e2e-newman 36155834793 — 0 коллекций из 58
@@ -446,8 +441,8 @@ if [ "$SEED" = "true" ]; then
   # Переменная, которую никто не читает, читается следующим как действующая полоса,
   # поэтому снята вместе с ней. Посеву не передаётся и HYDRA_PUBLIC_PORT: его
   # проверка достижимости проброса снята вместе с предметом (задача #2685) — посев по
-  # этому пробросу не ходит ни одним шагом. Сам проброс остаётся: его читают
-  # providerPublicBaseUrl суит и посев церемонии (HYDRA_PUBLIC_URL ниже).
+  # этому пробросу не ходит ни одним шагом. Сам проброс остаётся: его читает
+  # providerPublicBaseUrl суит.
   # ПОСЕВ ШИРЕ, ЧЕМ НАБОР СУИТ, И ЭТО НЕ ОПЛОШНОСТЬ.
   #
   # Что посеять — вопрос про СТЕНД, а не про то, чьи кейсы мы сегодня гоняем.
@@ -684,88 +679,18 @@ fi
 # снятие этого блока сдвинуло её 228 -> 227. Достижимости такой путь НЕ создаёт:
 # файла нет, резолв до очереди не доходит — и ровно поэтому блок молчал.
 
-# ─── WAVE 4: волна, у которой вызывающий — ЧЕЛОВЕК ───────────────────────────
-# Часть набора описывает поведение, у которого вызывающий человек: аккаунт
-# принадлежит пользователю by construction, а уровень аутентификации поднимается
-# только церемонией входа. Машинный посев такого предъявителя не производит, и
-# отходных путей ровно два — волна, создающая условие, либо ОТКРЫТЫЙ ДОЛГ С
-# ЧИСЛОМ. Маска, список известных красных и «пока пропустим» в этот перечень не
-# входят (testing.md).
+# ─── ЗДЕСЬ СТОЯЛА ВОЛНА 4 — снята как мёртвая (#2735) ───────────────────────
 #
-# Набор волны НЕ выписан: он выводится из дерева единственным объявлением
-# (tests/authz-fixtures/ceremony_credentials.py) на каждом запуске.
-#
-# ВКЛЮЧАЕТСЯ ВНЕШНИМ ФАКТОМ, а не ручкой: волна идёт ровно тогда, когда посев
-# церемонии существует в дереве (артефакт стадии S2). Обе ветки достижимы и обе
-# проверены: без посева печатается долг с числами, с посевом волна обязана
-# отработать. Ручное `CEREMONY_WAVE=true` при отсутствии посева намеренно НЕ даёт
-# зелёного — прогонщик волны в этом случае падает и отчётов не оставляет, поэтому
-# гейт докладывает по её коллекциям `(no-report)`.
-CEREMONY_WAVE="${CEREMONY_WAVE:-auto}"
-CEREMONY_SH="$REPO_ROOT/services/iam/tests/newman/scripts/run-ceremony.sh"
-CEREMONY_DECL="$REPO_ROOT/tests/authz-fixtures/ceremony_credentials.py"
-if [[ " $SERVICES " == *" iam "* ]] && [ -f "$CEREMONY_SH" ] && [ -f "$CEREMONY_DECL" ]; then
-  if [ "$CEREMONY_WAVE" = "auto" ]; then
-    if python3 "$CEREMONY_DECL" --root "$REPO_ROOT" --seed-exists 2>/dev/null; then
-      CEREMONY_WAVE=true
-    else
-      CEREMONY_WAVE=false
-    fi
-  fi
-  if [ "$CEREMONY_WAVE" = "true" ]; then
-    echo
-    echo "[parallel] WAVE 4 церемония (условие создаётся посевом церемонии, затем её коллекции)"
-    # The seed's four addresses come from the ports opened above, not from its own
-    # defaults: the opener and the dialler must be one fact. BASE_URL/INTERNAL_BASE_URL
-    # are passed for the same reason.
-    #
-    # PUBLIC_BASE is the SAME address as BASE_URL under a second name: the expired-bearer
-    # stage this wave delegates to (tests/authz-fixtures/prodseed_expired_bearer.py) reads
-    # that name and no other. Passing only BASE_URL left it on its own default, so moving
-    # the gateway forward sent that stage to :18080 — whatever happens to be listening
-    # there, which on a shared machine is somebody else's forward rather than nothing.
-    # That failure mode is worse than a refusal: it answers. The duplicate name is carried
-    # here rather than renamed at the reader, because the reader is also driven standalone
-    # (services/iam/tests/newman/scripts/run-expired-bearer.sh) and renaming its knob from
-    # here would move the drift instead of removing it.
-    #
-    # IAM_INTERNAL_GRPC — ПЯТЫЙ адрес церемонии, и его отсутствие здесь стоило волне
-    # всех её коллекций. Стадия «2-администратор» чеканит предъявителя на внутреннем
-    # порту iam, а этот блок передавал только четыре адреса, поэтому набиралось
-    # умолчание `localhost:19091`. На стенде с перенесённым портом это отказ, и волна
-    # не заводила условие → девять коллекций iam остались без отчёта.
-    # Особенно наглядно то, что печатала при этом сама церемония: «1-преполёт: 4 из 4
-    # адресов отвечают» — преполёт проверяет ровно те адреса, которые ему ДАЛИ, и
-    # молчит про тот, которого не дали. Проверка достижимости не может обнаружить
-    # транспорт, о котором её не спросили.
-    # MTLS_ENV идёт следом по той же причине: внутренний порт требует клиентский
-    # сертификат в любой посадке, и чеканка — единственный SAN, который iam для неё
-    # допускает (см. сбор сертификатов выше).
-    if ( cd "$REPO_ROOT/services/iam/tests/newman" \
-          && env SETUP_NS="$NS" DELAY="$DELAY" \
-             BASE_URL="http://localhost:$GW_PORT" \
-             INTERNAL_BASE_URL="http://localhost:$GW_INTERNAL_PORT" \
-             PUBLIC_BASE="http://localhost:$GW_PORT" \
-             KRATOS_PUBLIC_URL="http://localhost:$KRATOS_PUBLIC_PORT" \
-             KRATOS_ADMIN_URL="http://localhost:$KRATOS_ADMIN_PORT" \
-             HYDRA_PUBLIC_URL="http://localhost:$HYDRA_PORT" \
-             HYDRA_ADMIN_URL="https://localhost:$HYDRA_ADMIN_PORT" \
-             IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" "${MTLS_ENV[@]}" \
-             EXTRA_NEWMAN_ARGS="--env-var baseUrl=http://localhost:$GW_PORT --env-var internalBaseUrl=http://localhost:$GW_INTERNAL_PORT --env-var externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT --env-var iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT --env-var providerPublicBaseUrl=http://localhost:$HYDRA_PORT --env-var iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT$OWN_FRONT_ENV_STR$OPT_ENV_ARGS" \
-             bash "$CEREMONY_SH" ); then
-      echo "===== [ceremony] GREEN ====="
-    else
-      echo "===== [ceremony] RED ====="
-      RC=1
-    fi
-  else
-    echo
-    echo "[parallel] WAVE 4 церемония НЕ ИДЁТ — условие создать нечем:"
-    python3 "$CEREMONY_DECL" --root "$REPO_ROOT" --debt
-    echo "[parallel] Это НЕ зачёт и не вычет: перечисленные шаги сейчас исполняются машинным"
-    echo "           принципалом, то есть отвечают не на тот вопрос, который кейс задаёт."
-  fi
-fi
+# Волна гоняла коллекции, у которых вызывающий — человек, и наводилась на своего
+# прогонщика в каталоге суиты службы доступа, под services/iam, — туда же, куда
+# снятая выше волна 3. Каталога в этом дереве нет, файла прогонщика волны нет
+# (`git ls-files` не находит его ни по одному пути), и условие на iam в SERVICES
+# ложно по умолчанию: блок не исполнялся НИ ПРИ КАКОМ входе. Нашёл его суд
+# прогонщика целиком (deploy/scripts/assert-provider-forwards-follow-the-landing.sh):
+# адреса поставщика блок передавал безусловно, мимо решения по посадке. Кода,
+# который он подпирал бы, нет, поэтому он снят, а не перенацелен и не обёрнут
+# условием. Имя его прогонщика здесь не пишется координатой — по той же причине,
+# что у волны 3.
 
 echo
 # ─── Verdict: RAW (what newman reported) + GATED (what CI grades) ────────────
