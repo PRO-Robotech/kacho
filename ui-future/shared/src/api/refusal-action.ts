@@ -42,8 +42,6 @@ export type RefusalAction =
   | "step-up-freshness"
   /** край требует уровня: повышение вторым фактором, пароля нет */
   | "step-up-floor"
-  /** носитель перевыпущен этой же вкладкой после выпуска запроса: ОДИН повтор */
-  | "replay"
   /** платформа: сессии нет — экран входа */
   | "sign-in"
   /** показать текст отказа дословно */
@@ -56,17 +54,16 @@ export interface RefusalSigns {
   reason: string | null;
   /** Значение `error=` заголовка `WWW-Authenticate`; `null` — вызова нет. */
   challenge: string | null;
-  /** Носитель перевыпущен этой вкладкой ПОСЛЕ выпуска запроса (условие C18). */
-  rotatedSinceIssue?: boolean;
 }
 
 export function refusalActionOf(signs: RefusalSigns, surface: RefusalSurface): RefusalAction {
   if (signs.reason === LANE_REASON.formTokenRejected) return surface === "ceremony" ? "fresh-form-token" : "show";
   if (signs.reason === LANE_REASON.sessionNotFresh) return "step-up-freshness";
   if (signs.challenge === "insufficient_user_authentication") return "step-up-floor";
-  if (surface === "platform" && signs.status === 401) {
-    if (signs.challenge === "invalid_token" && signs.rotatedSinceIssue) return "replay";
-    return "sign-in";
-  }
+  // `401` платформы без пола — сессии нет. Ответа на носитель, прежний после
+  // перевыпуска этой вкладкой, сюда не приходит: такое обращение к выпуску
+  // глагола уже имеет исход (`carrier-order.ts`, приёмка F8, Р10), и повтора
+  // «с текущим носителем» нет — после такого ответа носителя у браузера нет.
+  if (surface === "platform" && signs.status === 401) return "sign-in";
   return "show";
 }

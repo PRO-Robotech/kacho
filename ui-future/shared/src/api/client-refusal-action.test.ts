@@ -3,13 +3,11 @@
 
 import { jest } from "@jest/globals";
 import { api, ApiError } from "./client";
-import { noteBearerRotated } from "./lane-epochs";
 import { setStepUpRequester } from "./step-up";
 
 // Клиент API модулей отвечает на отказ ТЕМ ЖЕ решением, что каркас и экраны
-// церемоний (`refusalActionOf`, приёмка F8, условия C2 и C18). Статус выбора не
-// делает: у `401` края три смысла, и повтор после перевыпуска носителя этой же
-// вкладкой — не повышение и не «войдите».
+// церемоний (`refusalActionOf`, приёмка F8, условие C2). Статус выбора не
+// делает: у `401` края три смысла.
 
 function answered(status: number, body: string, headers: Record<string, string> = {}) {
   const h = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
@@ -32,21 +30,9 @@ describe("клиент API модулей: действие на отказ", ()
     setStepUpRequester(null);
   });
 
-  it("C18 · носитель перевыпущен этой вкладкой, пока запрос шёл: ОДИН повтор с текущим носителем", async () => {
-    let n = 0;
-    globalThis.fetch = (() => {
-      n += 1;
-      if (n === 1) {
-        noteBearerRotated();
-        return answered(401, ENDED_BODY, ENDED);
-      }
-      return answered(200, '{"networks":[]}');
-    }) as typeof fetch;
-    await expect(api.get("/vpc/v1/networks")).resolves.toEqual({ networks: [] });
-    expect(n).toBe(2);
-  });
-
-  it("C18 · без перевыпуска в этой вкладке — отказ как есть, повтора нет", async () => {
+  it("Р10 · «сессия кончилась» отдаётся как есть: повтора с текущим носителем нет", async () => {
+    // Повтор (условие C18 редакции 6) невыполним — ответ края гасит носитель.
+    // Перевыпуск упорядочивает транспорт вкладки (`carrier-order.ts`).
     let n = 0;
     globalThis.fetch = (() => {
       n += 1;
@@ -54,17 +40,6 @@ describe("клиент API модулей: действие на отказ", ()
     }) as typeof fetch;
     await expect(api.get("/vpc/v1/networks")).rejects.toBeInstanceOf(ApiError);
     expect(n).toBe(1);
-  });
-
-  it("C18 · повтор ОДИН: второй такой же отказ отдаётся как есть", async () => {
-    let n = 0;
-    globalThis.fetch = (() => {
-      n += 1;
-      noteBearerRotated();
-      return answered(401, ENDED_BODY, ENDED);
-    }) as typeof fetch;
-    await expect(api.get("/vpc/v1/networks")).rejects.toBeInstanceOf(ApiError);
-    expect(n).toBe(2);
   });
 
   it("C2 · свежесть службы на запросе платформы — повышение «свежесть», а не пол", async () => {

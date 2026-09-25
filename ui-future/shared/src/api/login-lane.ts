@@ -30,7 +30,8 @@
 
 import { displayText } from "@shared/lib/display-text";
 import type { SecondFactorMethod } from "@shared/lib/step-up-methods";
-import { formContextEpoch, noteBearerRotated, noteFormContextChanged } from "./lane-epochs";
+import { orderedTransport } from "./carrier-order";
+import { formContextEpoch, noteFormContextChanged } from "./lane-epochs";
 import { refusalActionOf, type RefusalSigns } from "./refusal-action";
 import { parseRpcStatus, reasonOfDetails } from "./rpc-status";
 import { acrFromChallenge, challengeError, requestFreshPresentation, requestStepUp } from "./step-up";
@@ -241,17 +242,24 @@ export function refusalOf(res: Response, text: string): LaneRefusal {
 }
 
 async function exchange<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+  // Глагол, ставящий носитель, выпускается упорядочением вокруг себя (Р10):
+  // обращения вкладки, выпущенные раньше, к его выпуску имеют исход, и новые
+  // ждут его исхода. Остальные обращения полосы — обычные обращения вкладки.
   let res: Response;
   try {
-    res = await fetch(path, {
-      method,
-      credentials: "same-origin",
-      headers:
-        body === undefined
-          ? { Accept: "application/json" }
-          : { Accept: "application/json", "Content-Type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    res = await orderedTransport.fetch(
+      path,
+      {
+        method,
+        credentials: "same-origin",
+        headers:
+          body === undefined
+            ? { Accept: "application/json" }
+            : { Accept: "application/json", "Content-Type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      },
+      { setsCarrier: method === "POST" && SETS_CARRIER.has(path) },
+    );
   } catch {
     throw new LaneRefusal(0, null, "Запрос не дошёл до службы: нет соединения", null, null, null);
   }
@@ -369,8 +377,17 @@ export class FormTokenHolder {
   }
 }
 
-/** Глаголы, перевыпускающие носитель (`SetCookie kaname_session` у службы). */
-const ROTATES_BEARER: ReadonlySet<string> = new Set([
+/**
+ * Глаголы, ставящие носитель (`SetCookie kaname_session` у службы), — перечень
+ * закрыт, восемь (приёмка F8, Р10, N17). Пять переписывают дайджест той же
+ * записи — прежний носитель с этого момента негоден; три заводят новую запись.
+ * Каждый выпускается упорядочением вокруг себя. Глаголы, носителя не ставящие
+ * (признак формы, чтение и заведение второго фактора, выход), упорядочения не
+ * получают: иначе «отменено перед глаголом» было бы неотличимо от «отменено при
+ * любой отправке». Новый глагол, начавший ставить носитель, входит в перечень
+ * тем же изменением, что его экран.
+ */
+export const SETS_CARRIER: ReadonlySet<string> = new Set([
   "/iam/v1/auth/login",
   "/iam/v1/auth/register",
   "/iam/v1/auth/password",
@@ -389,7 +406,6 @@ const CHANGES_FORM_CONTEXT: ReadonlySet<string> = new Set([
 ]);
 
 function noteAnswered(path: string) {
-  if (ROTATES_BEARER.has(path)) noteBearerRotated();
   if (CHANGES_FORM_CONTEXT.has(path)) noteFormContextChanged();
 }
 
@@ -523,8 +539,6 @@ export interface SessionIdentity {
  * `unknown`. Третьего вопроса нет. Прежде первый такой отказ читался как
  * `unknown`, и экран входа при подменённом носителе показывал отказ края и
  * «Проверить снова» вместо формы (прогон F8-12 на посадке `own` @9038186d0d5).
- * Второй вопрос закрывает и перевыпуск носителя этой вкладкой, пока шёл первый
- * (условие C18): он уходит с текущим носителем.
  */
 export type SessionAnswer = SessionIdentity | { kind: "absent" } | { kind: "unknown"; refusal: LaneRefusal };
 
@@ -553,7 +567,10 @@ export async function sessionIdentity(): Promise<SessionAnswer> {
 async function askSession(): Promise<SessionAnswer> {
   let res: Response;
   try {
-    res = await fetch(SESSION_IDENTITY_PATH, { credentials: "same-origin", headers: { Accept: "application/json" } });
+    res = await orderedTransport.fetch(SESSION_IDENTITY_PATH, {
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+    });
   } catch {
     return { kind: "unknown", refusal: new LaneRefusal(0, null, UNKNOWN_SESSION_TEXT, null, null, null) };
   }

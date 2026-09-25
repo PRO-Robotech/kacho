@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { orderedTransport } from "@shared/api/carrier-order";
 import { PageHead } from "@shared/components/organisms/DetailShell/PageHead";
 import type { FC } from "react";
 import { Button, Space, Tag, Typography } from "antd";
@@ -22,7 +23,8 @@ export const ReachabilityPage: FC = () => {
   const runProbe = async (path: string) => {
     setResults((prev) => ({ ...prev, [path]: { state: "loading" } }));
     try {
-      const res = await fetch(path, { credentials: "include" });
+      // Обращение к краю — упорядочением вкладки (приёмка F8, Р10), как всякое.
+      const res = await orderedTransport.fetch(path, { credentials: "include" });
       const text = await res.text();
       const detail = text ? summarizeBody(text) : res.statusText;
       const state = res.ok ? "ok" : res.status === 401 || res.status === 403 ? "auth" : "error";

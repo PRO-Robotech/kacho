@@ -7,7 +7,6 @@ jest.unstable_mockModule("./auth", () => ({
 }));
 
 const { apiGet } = await import("./api-client");
-const { noteBearerRotated } = await import("@shared/api/lane-epochs");
 const { setStepUpRequester } = await import("@shared/api/step-up");
 
 /** Ответ с заголовками — так, как его видит `fetch`. */
@@ -78,23 +77,10 @@ describe("api-client", () => {
     expect(redirectToLogin).not.toHaveBeenCalled();
   });
 
-  it("C18 · носитель перевыпущен ЭТОЙ вкладкой, пока запрос шёл: ОДИН повтор, на вход не уводит", async () => {
-    let n = 0;
-    jest.spyOn(global, "fetch").mockImplementation(() => {
-      n += 1;
-      if (n === 1) {
-        // Ответ приходит ПОСЛЕ перевыпуска: смена пароля в этой вкладке ответила раньше.
-        noteBearerRotated();
-        return answered(401, '{"code":16,"message":"session ended; sign in again"}', ENDED);
-      }
-      return jsonResponse({ ok: 2 });
-    });
-    await expect(apiGet("/vpc/v1/networks")).resolves.toEqual({ ok: 2 });
-    expect(n).toBe(2);
-    expect(redirectToLogin).not.toHaveBeenCalled();
-  });
-
-  it("C18 · тот же отказ без перевыпуска в этой вкладке — сессия кончилась: на вход, повтора нет", async () => {
+  it("Р10 · «сессия кончилась» — сессии нет: на вход, повтора с текущим носителем нет", async () => {
+    // Повтор (условие C18 редакции 6) невыполним: ответ края гасит носитель.
+    // Перевыпуск упорядочивает транспорт вкладки (`@shared/api/carrier-order`),
+    // и ответа на прежний носитель после перевыпуска это чтение не получает.
     let n = 0;
     jest.spyOn(global, "fetch").mockImplementation(() => {
       n += 1;

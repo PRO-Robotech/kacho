@@ -8,6 +8,7 @@
 // провода расходился с первым молча. Контекст личности берёт человека у
 // единственного читателя, в форме провода.
 
+import { orderedTransport } from "@shared/api/carrier-order";
 import type { SessionUser } from "@shared/api/login-lane";
 import { camelToSnake } from "@shared/lib/case";
 import { displayText } from "@shared/lib/display-text";
@@ -66,7 +67,7 @@ export interface DenyReason {
 
 /** Универсальный fetch к /iam/v1/me с `camelToSnake` адаптацией ответа. */
 async function fetchWhoAmI(): Promise<WhoAmIResponse> {
-  const res = await fetch("/iam/v1/me", {
+  const res = await orderedTransport.fetch("/iam/v1/me", {
     method: "GET",
     credentials: "include",
     headers: { Accept: "application/json" },
