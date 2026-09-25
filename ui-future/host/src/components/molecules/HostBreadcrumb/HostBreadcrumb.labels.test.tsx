@@ -16,6 +16,7 @@
 
 import { render, screen } from "@testing-library/react";
 import { jest } from "@jest/globals";
+import { stubNetwork } from "@shared/test/network-stub";
 import { HostBreadcrumb } from ".";
 import { MODULE_LABELS, RESOURCE_LABELS } from "./HostBreadcrumb";
 import type { HostContext } from "../../../utils";
@@ -52,7 +53,7 @@ describe("HostBreadcrumb — метки против поверхности ст
 
 describe("HostBreadcrumb — крошка на живых адресах", () => {
   beforeEach(() => {
-    jest.spyOn(global, "fetch").mockImplementation(() => jsonResponse({ accounts: [] }));
+    stubNetwork(() => jsonResponse({ accounts: [] }));
   });
 
   afterEach(() => {

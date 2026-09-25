@@ -15,9 +15,12 @@ import { test } from "./fixtures";
 const VERB = "/iam/v1/auth/login";
 const ANSWER = '{"session":{"assuranceLevel":"2"}}';
 
+// Экран подсажен пробой, и его обращение — обращение ПРОБЫ, а не консоли: оно
+// идёт транспортом пробы, а не `fetch` окна, который судит страж мест выпуска
+// (`issuance-guard.ts`).
 const LEAVING_PAGE = `<!doctype html><button id="go">go</button><script>
 document.getElementById("go").onclick = async () => {
-  const res = await fetch("${VERB}", { method: "POST", body: "{}" });
+  const res = await window[Symbol.for("kacho.probe.fetch")]("${VERB}", { method: "POST", body: "{}" });
   await res.text();
   window.location.replace("/next");
 };

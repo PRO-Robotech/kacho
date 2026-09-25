@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { render, screen } from "@testing-library/react";
 import { jest } from "@jest/globals";
+import { stubNetwork } from "@shared/test/network-stub";
 import ts from "typescript";
 import { CEREMONY_ADDRESSES, CEREMONY_ROUTING } from "@shared/pages/auth/ceremony-addresses";
 import App from "./App";
@@ -22,7 +23,7 @@ describe("App", () => {
     // держалось бы на соседе, а не на коде.
     delete document.documentElement.dataset.theme;
     window.history.pushState(null, "", "/");
-    jest.spyOn(global, "fetch").mockImplementation(() => jsonResponse({ accounts: [] }));
+    stubNetwork(() => jsonResponse({ accounts: [] }));
   });
 
   afterEach(() => {

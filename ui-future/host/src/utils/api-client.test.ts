@@ -1,4 +1,5 @@
 import { jest } from "@jest/globals";
+import { stubNetwork } from "@shared/test/network-stub";
 
 const redirectToLogin = jest.fn();
 jest.unstable_mockModule("./auth", () => ({
@@ -57,22 +58,18 @@ describe("api-client", () => {
     const asked = jest.fn(() => Promise.resolve());
     setStepUpRequester(asked);
     let n = 0;
-    jest
-      .spyOn(global, "fetch")
-      .mockImplementation(() =>
-        ++n === 1
-          ? answered(401, '{"code":16,"message":"insufficient_user_authentication"}', FLOOR)
-          : jsonResponse({ ok: 1 }),
-      );
+    stubNetwork(() =>
+      ++n === 1
+        ? answered(401, '{"code":16,"message":"insufficient_user_authentication"}', FLOOR)
+        : jsonResponse({ ok: 1 }),
+    );
     await expect(apiGet("/iam/v1/accounts")).resolves.toEqual({ ok: 1 });
     expect(asked).toHaveBeenCalledWith({ cause: "floor", acr: "2" });
     expect(redirectToLogin).not.toHaveBeenCalled();
   });
 
   it("C15 · вызов пола, повышать некому — отказ назван, на вход не уводит", async () => {
-    jest
-      .spyOn(global, "fetch")
-      .mockImplementation(() => answered(401, '{"code":16,"message":"insufficient_user_authentication"}', FLOOR));
+    stubNetwork(() => answered(401, '{"code":16,"message":"insufficient_user_authentication"}', FLOOR));
     await expect(apiGet("/iam/v1/accounts")).rejects.toBeInstanceOf(Error);
     expect(redirectToLogin).not.toHaveBeenCalled();
   });
@@ -82,7 +79,7 @@ describe("api-client", () => {
     // Перевыпуск упорядочивает транспорт вкладки (`@shared/api/carrier-order`),
     // и ответа на прежний носитель после перевыпуска это чтение не получает.
     let n = 0;
-    jest.spyOn(global, "fetch").mockImplementation(() => {
+    stubNetwork(() => {
       n += 1;
       return answered(401, '{"code":16,"message":"session ended; sign in again"}', ENDED);
     });
@@ -92,7 +89,7 @@ describe("api-client", () => {
   });
 
   it("includes browser credentials on API requests", async () => {
-    jest.spyOn(global, "fetch").mockImplementation(() => jsonResponse({ ok: true }));
+    stubNetwork(() => jsonResponse({ ok: true }));
 
     await apiGet("/iam/v1/accounts");
 
@@ -103,9 +100,7 @@ describe("api-client", () => {
   });
 
   it("redirects to login on a 401 with a non-JSON (HTML/plaintext) body", async () => {
-    jest
-      .spyOn(global, "fetch")
-      .mockImplementation(() => rawResponse(401, "<html><body>401 Unauthorized</body></html>"));
+    stubNetwork(() => rawResponse(401, "<html><body>401 Unauthorized</body></html>"));
 
     await expect(apiGet("/iam/v1/accounts")).rejects.toBeInstanceOf(Error);
 
@@ -114,7 +109,7 @@ describe("api-client", () => {
   });
 
   it("does not surface a JSON parse error on a non-JSON error body", async () => {
-    jest.spyOn(global, "fetch").mockImplementation(() => rawResponse(500, "upstream connect error"));
+    stubNetwork(() => rawResponse(500, "upstream connect error"));
 
     // The rejection must carry the HTTP-derived message, not an opaque SyntaxError.
     await expect(apiGet("/iam/v1/accounts")).rejects.not.toThrow(SyntaxError);

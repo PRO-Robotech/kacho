@@ -63,9 +63,12 @@
 //
 // ЧТО ДЕРЖИТ ЭТО ПРАВИЛО. Порядок — модульная проба `carrier-order.test.ts`
 // (по каждому глаголу, который консоль зовёт); то, что через этот транспорт идёт
-// КАЖДОЕ место выпуска консоли, — перепись мест выпуска
-// (`test/console-issuance-ordered.test.ts`); исход у страницы — браузерная пара
-// F8-46 и F8-47 (`e2e/specs/account-settings.spec.ts`).
+// КАЖДОЕ обращение консоли, — страж ИСПОЛНЕНИЯ (`test/issuance-guard.ts`): в
+// пробах jest и в каждом контексте браузера сквозных проб вызов `fetch` окна без
+// отметки выпуска (`issuing` ниже) до сети не доходит и роняет пробу. Там, куда
+// исполнение не дошло, — правило линта (`eslint-issuance-ordering.js`) и быстрая
+// подсказка переписи (`test/console-issuance-ordered.test.ts`). Исход у
+// страницы — браузерная пара F8-46 и F8-47 (`e2e/specs/account-settings.spec.ts`).
 
 const KEY = Symbol.for("kacho.console.carrier-order");
 
@@ -102,6 +105,13 @@ interface Order {
   waiting: Array<() => void>;
   flights: Set<Flight>;
   streams: Set<OrderedStream>;
+  /**
+   * Глубина синхронного выпуска: больше нуля ровно на время вызова `fetch`
+   * транспортом (`send`). По этой отметке страж исполнения в пробах отличает
+   * выпуск упорядочения от выпуска мимо него — какой бы формой записи тот ни
+   * добрался до `fetch` окна.
+   */
+  issuing: number;
 }
 
 function order(): Order {
@@ -114,7 +124,25 @@ function order(): Order {
   o.waiting ??= [];
   o.flights ??= new Set();
   o.streams ??= new Set();
+  o.issuing ??= 0;
   return o as Order;
+}
+
+/**
+ * Выпустить обращение транспортом браузера — ЕДИНСТВЕННЫЙ вызов `fetch` консоли.
+ *
+ * Отметка выпуска стоит только на время синхронного вызова и снимается в
+ * `finally`: ни одно продолжение (`await`, обработчик ответа) в неё не попадает,
+ * а аргументы вычислены до неё. Исход обращения отметки не касается — он
+ * принадлежит учёту обращений в полёте (`inFlight`).
+ */
+function send(o: Order, url: string, init: RequestInit): Promise<Response> {
+  o.issuing += 1;
+  try {
+    return globalThis.fetch(url, init);
+  } finally {
+    o.issuing -= 1;
+  }
 }
 
 /** Методы чтения: обращение без действия, его можно отменить и выпустить снова. */
@@ -226,7 +254,8 @@ async function issueRead(o: Order, url: string, init: RequestInit): Promise<Resp
       return await admit(o, () => {
         if (caller?.aborted) byCaller();
         else caller?.addEventListener("abort", byCaller, { once: true });
-        return inFlight(o, "read", globalThis.fetch(url, { ...init, signal: controller.signal }), () => {
+        const request = { ...init, signal: controller.signal };
+        return inFlight(o, "read", send(o, url, request), () => {
           byOrder = true;
           controller.abort();
         });
@@ -244,7 +273,7 @@ async function issueRead(o: Order, url: string, init: RequestInit): Promise<Resp
 
 function issueMutation(o: Order, url: string, init: RequestInit): Promise<Response> {
   // Мутация не отменяется: её дожидаются (п. 1).
-  return admit(o, () => inFlight(o, "mutation", globalThis.fetch(url, init), () => undefined));
+  return admit(o, () => inFlight(o, "mutation", send(o, url, init), () => undefined));
 }
 
 async function issueCarrierVerb(o: Order, url: string, init: RequestInit): Promise<Response> {
@@ -256,7 +285,7 @@ async function issueCarrierVerb(o: Order, url: string, init: RequestInit): Promi
     for (const flight of earlier) if (flight.kind === "read") flight.cancel();
     for (const stream of [...o.streams]) stream.suspend();
     await Promise.all(earlier.map((flight) => flight.settled));
-    return await globalThis.fetch(url, init);
+    return await send(o, url, init);
   } finally {
     release();
   }

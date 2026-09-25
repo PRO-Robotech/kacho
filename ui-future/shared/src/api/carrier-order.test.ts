@@ -62,7 +62,7 @@ function installNet(tape: Tape, opts: { autoFormToken: boolean } = { autoFormTok
   const original = globalThis.fetch;
   const waiting: Wire[] = [];
   let tokens = 0;
-  globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+  const network = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(requestUrl(input), "http://console.test");
     const label = `${(init?.method ?? "GET").toUpperCase()} ${url.pathname}`;
     tape.push(`выпуск ${label}`);
@@ -98,7 +98,15 @@ function installNet(tape: Tape, opts: { autoFormToken: boolean } = { autoFormTok
       waiting.push(wire);
     });
   };
+  // Сеть встаёт ПОД стражем исполнения (`test/issuance-guard.ts`): обращение,
+  // выпущенное мимо упорядочения через `fetch` окна, до неё не доходит.
+  globalThis.fetch = network;
   return {
+    /**
+     * Сеть напрямую — так выпускает консоль, в которой упорядочения нет вовсе:
+     * мимо транспорта и мимо `fetch` окна, которое в пробах судит страж.
+     */
+    raw: network,
     /** Ждущее обращение по метке — первое выпущенное и ещё без исхода. */
     take(label: string): Wire {
       const i = waiting.findIndex((w) => w.label === label);
@@ -180,14 +188,14 @@ const LATE = "GET /vpc/v1/addresses";
  * Сценарий не предполагает упорядочения: он годится и для обезвреженного —
  * глагол, выпущенный сразу, мутации не ждёт, и она получает ответ в конце.
  */
-async function scenario(verb: string, run: () => Promise<unknown>, outcome: Outcome): Promise<Tape> {
+async function scenario(verb: string, run: (raw: typeof fetch) => Promise<unknown>, outcome: Outcome): Promise<Tape> {
   const tape: Tape = [];
   const net = installNet(tape);
   const stream = streamOnTape(tape);
   try {
     const read = api.get("/vpc/v1/networks").catch(() => undefined);
     const mutation = api.create("/vpc/v1/subnets", { name: "s" }).catch(() => undefined);
-    const verbDone = run().catch(() => undefined);
+    const verbDone = run(net.raw).catch(() => undefined);
     await flush();
     if (issued(tape, verb) === 0) {
       net.take(MUTATION).answer(200, { operation: { id: "op-1" } });
@@ -524,11 +532,9 @@ describe("F8-46 · близнецы: глагол, носителя не ста�
 describe("F8-46 · держатель способен упасть: обе стороны краснеют на обезвреженном упорядочении", () => {
   it("F8-46 · консоль без упорядочения — смена пароля выпущена мимо него: нарушены все пункты", async () => {
     const verb = "POST /iam/v1/auth/password";
-    const tape = await scenario(
-      verb,
-      () => globalThis.fetch("/iam/v1/auth/password", { method: "POST", body: "{}" }),
-      "ответ",
-    );
+    // Глагол уходит в сеть напрямую: `fetch` окна в пробах судит страж
+    // исполнения, и его отказ сделал бы ленту немой, а не нарушенной.
+    const tape = await scenario(verb, (raw) => raw("/iam/v1/auth/password", { method: "POST", body: "{}" }), "ответ");
     expect(orderBreaches(tape, verb)).toEqual([
       "п. 1: чтение в полёте не отменено до выпуска глагола",
       "п. 1: мутация в полёте не дождалась исхода до выпуска глагола",

@@ -5,6 +5,7 @@ import { expect, test as base, type BrowserContext, type Page, type Request } fr
 import { parseRpcStatus } from "../../shared/src/api/rpc-status";
 import { isProviderAddressText } from "../../shared/src/test/provider-address";
 import { BUDGET_ATTACHMENT, noteRefusal, recordableRefusal, takeRefusals } from "./ceremony-budget";
+import { formatBreaches, guardBrowser, takeBreaches, takeStaleBreaches } from "./issuance-guard.ts";
 
 /**
  * ЗАПИСЬ ТРАССЫ ПРИНАДЛЕЖИТ НАБОРУ, А НЕ ШТАТНОМУ `use.trace` (#1242).
@@ -64,7 +65,29 @@ import { BUDGET_ATTACHMENT, noteRefusal, recordableRefusal, takeRefusals } from 
  * `@playwright/test` в пробах запрещён правилом линта — иначе проба тихо
  * останется без этой фикстуры.
  */
-export const test = base.extend<{ sourceAxisLedger: void }>({
+export const test = base.extend<{ sourceAxisLedger: void; issuanceLedger: void }, { issuanceGuardedBrowser: void }>({
+  // СТРАЖ ИСПОЛНЕНИЯ МЕСТ ВЫПУСКА (приёмка F8, Р10, F8-46) — в каждом контексте
+  // браузера, который заводит набор: штатном и заведённом пробой самой. Вызов
+  // `fetch` окна, выпущенный консолью мимо упорядочивающего транспорта, до сети
+  // не доходит, а находка роняет пробу при её разборе — даже если консоль
+  // проглотила отказ. Устройство — `specs/issuance-guard.ts`.
+  issuanceGuardedBrowser: [
+    async ({ browser }, use) => {
+      guardBrowser(browser);
+      await use();
+    },
+    { scope: "worker", auto: true },
+  ],
+  issuanceLedger: [
+    async ({ browser }, use) => {
+      // Пришедшее до начала пробы — не её, но потеряться не вправе: называется ею.
+      const stale = takeStaleBreaches().map((b) => `${b} (записано до начала этой пробы)`);
+      await use();
+      const breaches = [...stale, ...(await takeBreaches(browser))];
+      if (breaches.length > 0) throw new Error(formatBreaches(breaches));
+    },
+    { auto: true },
+  ],
   // Запись отказов полосы сдаётся В КАЖДОЙ пробе — и в той, что не берёт
   // `page`: её контексты и её посев тратят ту же ось (F8-41). Разбор идёт
   // последним, после разбора страницы, поэтому запись к нему полна.
