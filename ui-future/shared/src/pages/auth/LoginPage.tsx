@@ -5,7 +5,7 @@ import { useCallback, useEffect, useId, useState } from "react";
 import { Link } from "react-router";
 import { Alert, Button, Checkbox, Form, Input, Spin } from "antd";
 import {
-  LaneRefusal,
+  type LaneRefusal,
   laneRefusalOf,
   loginLane,
   sessionIdentity,

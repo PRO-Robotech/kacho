@@ -630,3 +630,84 @@ test("F8-32 · снятие того, чего нет: отказ назван",
     { secondFactor: true },
   );
 });
+
+// ═══ Прокрутка экрана ════════════════════════════════════════════════════════
+
+/**
+ * Полосы прокрутки, которые человек видит на странице: элемент, чьё содержимое
+ * выше его самого и чей переполненный остаток браузер даёт прокрутить. Окно
+ * документа судится по тому значению, которое до него доходит: у корня
+ * `visible` означает, что действует значение `body`.
+ */
+function visibleScrollAreas(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    let n = 0;
+    const root = document.documentElement;
+    const rootOverflow = getComputedStyle(root).overflowY;
+    const viewportOverflow = rootOverflow === "visible" ? getComputedStyle(document.body).overflowY : rootOverflow;
+    if (!/^(hidden|clip)$/.test(viewportOverflow) && root.scrollHeight > root.clientHeight) n += 1;
+    for (const el of Array.from(document.querySelectorAll("body *"))) {
+      if (!(el instanceof HTMLElement) || el.clientHeight === 0) continue;
+      if (/^(auto|scroll)$/.test(getComputedStyle(el).overflowY) && el.scrollHeight > el.clientHeight) n += 1;
+    }
+    return n;
+  });
+}
+
+test("параметры учётной записи · на экране 1280×720 кнопку подтверждения фактора доводит до вида колесо мыши, шапка стоит", async ({
+  page,
+}, testInfo) => {
+  // verifies #1274 — прокрутки у страницы не было: поле первого кода и кнопка
+  // «Подтвердить» стояли ниже края экрана, и колесо их не двигало. F8-27 этого не
+  // видит: щелчок пробы сам прокручивает контейнер скриптом, а человек так не может.
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await withHuman(testInfo, "F8-scroll", page.context(), async () => {
+    const s = await openSettings(page);
+    const [enrolled] = await Promise.all([lanePost(page, LANE.enroll), s.factor.enroll.click()]);
+    expect(enrolled.status(), `заведение не прошло: ${await enrolled.text()}`).toBe(200);
+    await expect(s.factor.firstCode, "стадия подтверждения не отрисована").toBeAttached();
+
+    const viewport = page.viewportSize() ?? { width: 1280, height: 720 };
+    const inView = async () => {
+      const box = await s.factor.confirm.boundingBox();
+      return box !== null && box.y >= 0 && box.y + box.height <= viewport.height;
+    };
+    expect(
+      await inView(),
+      "условие пробы не создано: кнопка «Подтвердить» видна без прокрутки — прокрутку этим экраном не проверить",
+    ).toBe(false);
+    const headBefore = await s.heading.boundingBox();
+
+    await page.mouse.move(viewport.width / 2, viewport.height / 2);
+    await page.mouse.wheel(0, 2000);
+    await expect
+      .poll(inView, { message: "колесо мыши не довело кнопку «Подтвердить» до вида", timeout: 10_000 })
+      .toBe(true);
+
+    const headAfter = await s.heading.boundingBox();
+    expect(headAfter?.y, "шапка страницы уехала вместе с содержимым").toBe(headBefore?.y);
+    expect(await visibleScrollAreas(page), "полос прокрутки у страницы не одна").toBe(1);
+  });
+});
+
+// ═══ Панель учётной записи ═══════════════════════════════════════════════════
+
+test("панель учётной записи · второе нажатие на пункт рейла закрывает панель, которую открыло первое", async ({
+  page,
+}, testInfo) => {
+  // verifies #1274 — второе нажатие закрывало панель по «нажатию вне её» и тут же
+  // открывало снова своим переключением: панель со страницы не уходила.
+  await withHuman(testInfo, "F8-panel", page.context(), async () => {
+    await openSettings(page);
+    const railItem = page.getByRole("button", { name: "Учётная запись", exact: true });
+    const panel = page.getByRole("dialog", { name: "Учётная запись" });
+    await railItem.click();
+    await expect(panel, "первое нажатие не открыло панель").toBeVisible();
+    await railItem.click();
+    await expect(panel, "второе нажатие не закрыло панель").toHaveCount(0);
+    // Положительный близнец: третье нажатие открывает снова — пункт переключает,
+    // а не только закрывает.
+    await railItem.click();
+    await expect(panel, "третье нажатие не открыло панель снова").toBeVisible();
+  });
+});

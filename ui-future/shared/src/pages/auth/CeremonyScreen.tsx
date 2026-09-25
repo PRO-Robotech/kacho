@@ -30,10 +30,12 @@ export function CeremonyScreen({
   return (
     <main
       style={{
-        minHeight: "100vh",
+        // Прокрутка у рамки своя и одна: документ консоли не прокручивается
+        // (`body` — `overflow: hidden`), и карточка выше экрана обрезалась бы
+        // снизу вместе с кнопкой отправки (#1274).
+        height: "100vh",
+        overflowY: "auto",
         display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
         padding: 16,
         background: "var(--kc-page)",
         boxSizing: "border-box",
@@ -41,6 +43,9 @@ export function CeremonyScreen({
     >
       <div
         style={{
+          // По центру — полями, а не выравниванием рамки: выравнивание уводило
+          // бы верх карточки, выше экрана, за край, до которого не прокрутить.
+          margin: "auto",
           width: "100%",
           maxWidth: FORM_LABEL_WIDTH + INPUT_WIDTH + 2 * CARD_PADDING,
           padding: `${CARD_PADDING}px ${CARD_PADDING}px 24px`,

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { Alert, Button, Form, Input, Spin, Typography } from "antd";
 import {
-  LaneRefusal,
+  type LaneRefusal,
   laneRefusalOf,
   loginLane,
   sessionIdentity,
@@ -18,7 +18,8 @@ import { BoolFact } from "@shared/components/atoms/BoolFact";
 import { LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalAlert";
 import { EMPTY_PRESENTATION, SecondFactorCodeField } from "@shared/components/molecules/auth/SecondFactorCodeField";
 import { StepUpModal } from "@shared/components/molecules/auth/StepUpModal";
-import { PAGE_PADDING, PageHead } from "@shared/components/organisms/DetailShell/PageHead";
+import { PageHead } from "@shared/components/organisms/DetailShell/PageHead";
+import { PageFrame } from "@shared/components/organisms/PageFrame";
 import { FieldError, fieldErrorId } from "@shared/components/organisms/form/FieldError";
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { useFormToken } from "@shared/hooks/use-form-token";
@@ -384,26 +385,31 @@ function SecondFactorSection() {
 
 export function AccountSettingsPage() {
   const [who, setWho] = useState<SessionAnswer | undefined>(undefined);
-  const ask = useCallback((isCancelled: () => boolean = () => false) => {
+  // Каждый вопрос «кто вошёл» — свой номер: эффект задаёт вопрос и принимает
+  // ответ только на него, а «Проверить снова» сбрасывает показанное и заводит
+  // следующий номер — в обработчике нажатия, а не в эффекте.
+  const [asked, setAsked] = useState(0);
+  const askAgain = () => {
     setWho(undefined);
-    return sessionIdentity().then((w) => {
-      if (!isCancelled()) setWho(w);
-    });
-  }, []);
+    setAsked((n) => n + 1);
+  };
   useEffect(() => {
     let cancelled = false;
-    void ask(() => cancelled);
+    void sessionIdentity().then((w) => {
+      if (!cancelled) setWho(w);
+    });
     return () => {
       cancelled = true;
     };
-  }, [ask]);
+  }, [asked]);
 
   return (
-    <section className="workbench" style={{ padding: PAGE_PADDING }}>
+    // Шапка стоит, содержимое прокручивается под ней — одной областью
+    // (`PageFrame`): рабочая область каркаса сама не прокручивается.
+    <PageFrame head={<PageHead title="Параметры учётной записи" />}>
       {/* Окно повышения живёт рядом с экраном, который его спрашивает: шаги
           свежести зовут его отсюда (`requestStepUp`). */}
       <StepUpModal />
-      <PageHead title="Параметры учётной записи" />
       {who === undefined && <Spin />}
       {who?.kind === "absent" && (
         <Typography.Paragraph>
@@ -413,7 +419,7 @@ export function AccountSettingsPage() {
       {who?.kind === "unknown" && (
         <div style={{ maxWidth: 720, marginBottom: 12 }}>
           <LaneRefusalAlert refusal={who.refusal} />
-          <Button onClick={() => void ask()} style={{ marginTop: 8 }}>
+          <Button onClick={askAgain} style={{ marginTop: 8 }}>
             Проверить снова
           </Button>
         </div>
@@ -430,7 +436,7 @@ export function AccountSettingsPage() {
           <SecondFactorSection />
         </>
       )}
-    </section>
+    </PageFrame>
   );
 }
 

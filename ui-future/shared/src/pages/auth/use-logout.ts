@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { useState } from "react";
-import { LaneRefusal, laneRefusalOf, loginLane } from "@shared/api/login-lane";
+import { type LaneRefusal, laneRefusalOf, loginLane } from "@shared/api/login-lane";
 import { useFormToken } from "@shared/hooks/use-form-token";
 import { forgetPrincipalState } from "@shared/lib/principal-state";
 import { loginAddress } from "./ceremony-addresses";

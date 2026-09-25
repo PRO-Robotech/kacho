@@ -35,7 +35,7 @@ import { Button, Form, Input, Modal, Radio, Typography } from "antd";
 import {
   FormTokenHolder,
   LANE_REASON,
-  LaneRefusal,
+  type LaneRefusal,
   laneRefusalOf,
   loginLane,
   type SecondFactorPresentation,

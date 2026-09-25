@@ -1,4 +1,4 @@
-import { useEffect, useRef, type FC } from "react";
+import { useEffect, useRef, type FC, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { ACCOUNT_SETTINGS_ADDRESS } from "@shared/pages/auth/ceremony-addresses";
 import { Button, Typography } from "antd";
@@ -32,7 +32,13 @@ export const AccountPanel: FC<{
   onClose: () => void;
   navigate: (path: string) => void | Promise<void>;
   leave?: (to: string) => void;
-}> = ({ identity, onClose, navigate, leave }) => {
+  /**
+   * То, чем панель открыта. Нажатие на него — не «нажатие вне панели»: его
+   * обрабатывает сам открывающий (переключает), и закрытие здесь следом за ним
+   * открывало бы панель снова.
+   */
+  opener?: RefObject<HTMLElement | null>;
+}> = ({ identity, onClose, navigate, leave, opener }) => {
   const { logout, busy, refusal } = useLogout(leave);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -41,7 +47,9 @@ export const AccountPanel: FC<{
       if (e.key === "Escape") onClose();
     };
     const onPointer = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+      const target = e.target as Node;
+      if (opener?.current?.contains(target)) return;
+      if (ref.current && !ref.current.contains(target)) onClose();
     };
     document.addEventListener("keydown", onKey);
     document.addEventListener("mousedown", onPointer);
@@ -49,7 +57,7 @@ export const AccountPanel: FC<{
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("mousedown", onPointer);
     };
-  }, [onClose]);
+  }, [onClose, opener]);
 
   return createPortal(
     <div

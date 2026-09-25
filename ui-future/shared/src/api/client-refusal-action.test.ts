@@ -34,10 +34,10 @@ describe("клиент API модулей: действие на отказ", ()
     // Повтор (условие C18 редакции 6) невыполним — ответ края гасит носитель.
     // Перевыпуск упорядочивает транспорт вкладки (`carrier-order.ts`).
     let n = 0;
-    globalThis.fetch = (() => {
+    globalThis.fetch = () => {
       n += 1;
       return answered(401, ENDED_BODY, ENDED);
-    }) as typeof fetch;
+    };
     await expect(api.get("/vpc/v1/networks")).rejects.toBeInstanceOf(ApiError);
     expect(n).toBe(1);
   });
@@ -46,7 +46,7 @@ describe("клиент API модулей: действие на отказ", ()
     const asked = jest.fn(() => Promise.resolve());
     setStepUpRequester(asked);
     let n = 0;
-    globalThis.fetch = (() => {
+    globalThis.fetch = () => {
       n += 1;
       return n === 1
         ? answered(
@@ -58,7 +58,7 @@ describe("клиент API модулей: действие на отказ", ()
             }),
           )
         : answered(200, "{}");
-    }) as typeof fetch;
+    };
     await api.post("/iam/v1/something:verb", {});
     expect(asked).toHaveBeenCalledWith({ cause: "freshness" });
     expect(n).toBe(2);

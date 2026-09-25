@@ -63,7 +63,7 @@ function formContextLane() {
       headers: { get: () => null },
       text: () => Promise.resolve(JSON.stringify(body)),
     }) as unknown as Response;
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(requestUrl(input), "http://console.test");
     const method = (init?.method ?? "GET").toUpperCase();
     const sent = cookie;
@@ -85,7 +85,7 @@ function formContextLane() {
       return reply(200, { session: {} });
     }
     return reply(404, refusal(404, 5, `дублёр: ${method} ${url.pathname} не объявлен пробой`).body);
-  }) as typeof fetch;
+  };
   return {
     contextsMinted: () => minted,
     restore: () => {
@@ -264,8 +264,8 @@ describe("признак формы добывается на КАЖДУЮ от�
     const original = globalThis.fetch;
     lane = installLane({ "POST /iam/v1/auth/login": refusal(401, 16, "authentication failed") });
     const fake = globalThis.fetch;
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const isCsrf = String(input).startsWith("/iam/v1/auth/csrf");
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const isCsrf = requestUrl(input).startsWith("/iam/v1/auth/csrf");
       if (isCsrf) {
         inFlight += 1;
         if (inFlight > 1) overlapped = true;
@@ -275,7 +275,7 @@ describe("признак формы добывается на КАЖДУЮ от�
       } finally {
         if (isCsrf) inFlight -= 1;
       }
-    }) as typeof fetch;
+    };
     try {
       const holder = new FormTokenHolder("login");
       void holder.get();
@@ -377,7 +377,7 @@ describe("«есть ли сессия» — три исхода по ТИПУ, 
       lane.restore();
     }
     const original = globalThis.fetch;
-    globalThis.fetch = (() => Promise.reject(new TypeError("Failed to fetch"))) as typeof fetch;
+    globalThis.fetch = () => Promise.reject(new TypeError("Failed to fetch"));
     try {
       expect((await sessionIdentity()).kind).toBe("unknown");
     } finally {

@@ -94,18 +94,27 @@ export interface OrderedStream {
 interface Order {
   /** Исход глагола, ставящего носитель, которого ждёт вкладка; `null` — глагола нет. */
   verb: Promise<void> | null;
+  /**
+   * Обращения, ждущие исхода глагола, — в порядке поступления. Каждое — действие,
+   * которое СИНХРОННО выпускает обращение и ставит его на учёт (глагол ставит
+   * `verb`). Непусто только при идущем глаголе.
+   */
+  waiting: Array<() => void>;
   flights: Set<Flight>;
   streams: Set<OrderedStream>;
 }
 
 function order(): Order {
-  const g = globalThis as unknown as Record<symbol, Order | undefined>;
-  let o = g[KEY];
-  if (!o) {
-    o = { verb: null, flights: new Set(), streams: new Set() };
-    g[KEY] = o;
-  }
-  return o;
+  const g = globalThis as unknown as Record<symbol, Partial<Order> | undefined>;
+  const o = (g[KEY] ??= {});
+  // Состояние заводит та копия, что пришла первой, а модули выкатываются и
+  // загружаются порознь: копия, загруженная после выкатки, застаёт состояние,
+  // заведённое прежней, и достраивает недостающее поле, а не падает на нём.
+  o.verb ??= null;
+  o.waiting ??= [];
+  o.flights ??= new Set();
+  o.streams ??= new Set();
+  return o as Order;
 }
 
 /** Методы чтения: обращение без действия, его можно отменить и выпустить снова. */
@@ -119,9 +128,55 @@ class CancelledByOrder extends Error {
   }
 }
 
-/** Дождаться исхода идущего глагола — и следующего, если он встал следом. */
-async function afterVerbs(o: Order): Promise<void> {
-  while (o.verb) await o.verb;
+/**
+ * Допустить обращение: `act` выпускает его и ставит на учёт, и исполняется оно
+ * в ТОМ ЖЕ синхронном отрезке, в котором проверено, что глагола нет.
+ *
+ * Проверка и действие не разделены ни одним `await`. Разделённые, они пускали
+ * между собой всех, кто ждал того же исхода: второй глагол ставился поверх
+ * первого, а чтение выпускалось уже после того, как глагол собрал обращения в
+ * полёте, — и не отменялось им. Очередь одна и идёт по порядку поступления:
+ * исход глагола отпускает ждущих по одному, пока очередной из них не окажется
+ * глаголом и не встанет сам (`drain`).
+ */
+function admit<T>(o: Order, act: () => T | PromiseLike<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    o.waiting.push(() => {
+      try {
+        resolve(act());
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error(String(e)));
+      }
+    });
+    drain(o);
+  });
+}
+
+/** Отпустить ждущих по порядку поступления — пока не встанет следующий глагол. */
+function drain(o: Order): void {
+  while (o.verb === null && o.waiting.length > 0) o.waiting.shift()?.();
+}
+
+/**
+ * Встать глаголом: с этого отрезка вкладка не допускает ничего до исхода.
+ * Возвращает отпускание — снятие глагола, выпуск ждущих и, если следующим не
+ * встал новый глагол, открытие потоков.
+ */
+function holdTab(o: Order): () => void {
+  let release: () => void = () => undefined;
+  const verb = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  o.verb = verb;
+  return () => {
+    if (o.verb === verb) o.verb = null;
+    release();
+    drain(o);
+    // Открываются ВСЕ потоки вкладки, а не только закрытые: поток, которому
+    // открыться выпало на время глагола, ждал этого исхода (п. 2). Встал
+    // следующий глагол — потоки откроет его исход.
+    if (o.verb === null) for (const stream of [...o.streams]) stream.resume();
+  };
 }
 
 /** Поставить обращение на учёт: у упорядочения есть чем его отменить и чего ждать. */
@@ -163,17 +218,18 @@ function inFlight(o: Order, kind: FlightKind, answer: Promise<Response>, abort: 
 
 async function issueRead(o: Order, url: string, init: RequestInit): Promise<Response> {
   for (;;) {
-    if (o.verb) await afterVerbs(o);
     const controller = new AbortController();
     const caller = init.signal ?? null;
     const byCaller = () => controller.abort(caller?.reason);
-    if (caller?.aborted) byCaller();
-    else caller?.addEventListener("abort", byCaller, { once: true });
     let byOrder = false;
     try {
-      return await inFlight(o, "read", globalThis.fetch(url, { ...init, signal: controller.signal }), () => {
-        byOrder = true;
-        controller.abort();
+      return await admit(o, () => {
+        if (caller?.aborted) byCaller();
+        else caller?.addEventListener("abort", byCaller, { once: true });
+        return inFlight(o, "read", globalThis.fetch(url, { ...init, signal: controller.signal }), () => {
+          byOrder = true;
+          controller.abort();
+        });
       });
     } catch (e) {
       // Отменённое упорядочением выпускается снова после исхода глагола (п. 3);
@@ -186,30 +242,23 @@ async function issueRead(o: Order, url: string, init: RequestInit): Promise<Resp
   }
 }
 
-async function issueMutation(o: Order, url: string, init: RequestInit): Promise<Response> {
-  if (o.verb) await afterVerbs(o);
+function issueMutation(o: Order, url: string, init: RequestInit): Promise<Response> {
   // Мутация не отменяется: её дожидаются (п. 1).
-  return inFlight(o, "mutation", globalThis.fetch(url, init), () => undefined);
+  return admit(o, () => inFlight(o, "mutation", globalThis.fetch(url, init), () => undefined));
 }
 
 async function issueCarrierVerb(o: Order, url: string, init: RequestInit): Promise<Response> {
-  if (o.verb) await afterVerbs(o);
-  let release: () => void = () => undefined;
-  o.verb = new Promise<void>((resolve) => {
-    release = resolve;
-  });
+  const release = await admit(o, () => holdTab(o));
   try {
+    // Учёт обращений в полёте с этого отрезка не пополняется: всякое новое
+    // обращение ждёт в очереди (`admit`).
     const earlier = [...o.flights];
     for (const flight of earlier) if (flight.kind === "read") flight.cancel();
     for (const stream of [...o.streams]) stream.suspend();
     await Promise.all(earlier.map((flight) => flight.settled));
     return await globalThis.fetch(url, init);
   } finally {
-    o.verb = null;
     release();
-    // Открываются ВСЕ потоки вкладки, а не только закрытые: поток, которому
-    // открыться выпало на время глагола, ждал этого исхода (п. 2).
-    for (const stream of [...o.streams]) stream.resume();
   }
 }
 

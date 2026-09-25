@@ -62,7 +62,7 @@ function installNet(tape: Tape, opts: { autoFormToken: boolean } = { autoFormTok
   const original = globalThis.fetch;
   const waiting: Wire[] = [];
   let tokens = 0;
-  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+  globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(requestUrl(input), "http://console.test");
     const label = `${(init?.method ?? "GET").toUpperCase()} ${url.pathname}`;
     tape.push(`выпуск ${label}`);
@@ -97,7 +97,7 @@ function installNet(tape: Tape, opts: { autoFormToken: boolean } = { autoFormTok
       }
       waiting.push(wire);
     });
-  }) as typeof fetch;
+  };
   return {
     /** Ждущее обращение по метке — первое выпущенное и ещё без исхода. */
     take(label: string): Wire {
@@ -362,6 +362,129 @@ describe("F8-46 · упорядочение вокруг глагола, ста�
       await verb;
     } finally {
       net.restore();
+    }
+  });
+});
+
+/**
+ * Нарушения Р10 пп. 1–2 по каждому из названных глаголов: к его выпуску у
+ * каждого обращения вкладки, выпущенного раньше, есть исход; между его выпуском
+ * и исходом не выпущено ничего и не открыт ни один поток. Пусто — порядок
+ * соблюдён.
+ */
+function verbWindowBreaches(tape: Tape, verbs: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const verb of verbs) {
+    const issue = at(tape, `выпуск ${verb}`);
+    const done = outcomeOf(tape, verb, issue);
+    if (issue < 0 || done < 0) {
+      out.push(`глагол ${verb} не выпущен либо без исхода`);
+      continue;
+    }
+    const open = new Map<string, number>();
+    for (const e of tape.slice(0, issue)) {
+      const m = /^(выпуск|исход|отмена) (\S+ \S+)/.exec(e);
+      if (m) open.set(m[2], (open.get(m[2]) ?? 0) + (m[1] === "выпуск" ? 1 : -1));
+    }
+    const flying = [...open].filter(([, n]) => n > 0).map(([label]) => label);
+    if (flying.length > 0) out.push(`п. 1: к выпуску ${verb} в полёте: ${flying.join("; ")}`);
+    const between = tape.slice(issue + 1, done).filter((e) => e.startsWith("выпуск ") || e.startsWith("поток открыт"));
+    if (between.length > 0) out.push(`п. 2: между выпуском и исходом ${verb}: ${between.join("; ")}`);
+  }
+  return out;
+}
+
+const VERB_A = "POST /iam/v1/auth/password";
+const VERB_B = "POST /iam/v1/auth/second-factor/confirm";
+const VERB_C = "POST /iam/v1/auth/step-up";
+const verbCall = (label: string) =>
+  orderedTransport.fetch(label.slice("POST ".length), { method: "POST" }, { setsCarrier: true }).catch(() => undefined);
+
+describe("F8-46 · глаголы, ждущие исхода чужого глагола, выпускаются по одному и по порядку поступления", () => {
+  it("F8-46 · идёт A, ждут глагол B и следом чтение R: R не летит во время B", async () => {
+    const tape: Tape = [];
+    const net = installNet(tape);
+    try {
+      const a = verbCall(VERB_A);
+      await until(tape, `выпуск ${VERB_A}`, () => issued(tape, VERB_A) > 0);
+      const b = verbCall(VERB_B);
+      const r = orderedTransport.fetch("/vpc/v1/networks", { method: "GET" }).catch(() => undefined);
+      await flush();
+      net.take(VERB_A).answer(200, {});
+      await until(tape, `выпуск ${VERB_B}`, () => issued(tape, VERB_B) > 0);
+      await flush();
+      net.take(VERB_B).answer(200, {});
+      await flush();
+      net.drain();
+      await flush();
+      net.drain();
+      await Promise.all([a, b, r]);
+      expect({ breaches: verbWindowBreaches(tape, [VERB_A, VERB_B]), tape }).toEqual({ breaches: [], tape });
+    } finally {
+      net.restore();
+    }
+  });
+
+  it("F8-46 · идёт A, ждут глаголы B и C: в полёте один глагол, B раньше C, во время C не выпущено и не открыто ничего", async () => {
+    const tape: Tape = [];
+    const net = installNet(tape);
+    const stream = streamOnTape(tape);
+    try {
+      const a = verbCall(VERB_A);
+      await until(tape, `выпуск ${VERB_A}`, () => issued(tape, VERB_A) > 0);
+      const b = verbCall(VERB_B);
+      const c = verbCall(VERB_C);
+      await flush();
+      net.take(VERB_A).answer(200, {});
+      await until(tape, `выпуск ${VERB_B}`, () => issued(tape, VERB_B) > 0);
+      await flush();
+      net.take(VERB_B).answer(200, {});
+      await until(tape, `выпуск ${VERB_C}`, () => issued(tape, VERB_C) > 0);
+      await flush();
+      const late = orderedTransport.fetch("/vpc/v1/addresses", { method: "GET" }).catch(() => undefined);
+      await flush();
+      net.take(VERB_C).answer(200, {});
+      await flush();
+      net.drain();
+      await flush();
+      net.drain();
+      await Promise.all([a, b, c, late]);
+      const snapshot = [...tape];
+      expect({
+        breaches: verbWindowBreaches(snapshot, [VERB_A, VERB_B, VERB_C]),
+        bBeforeC: at(snapshot, `выпуск ${VERB_B}`) < at(snapshot, `выпуск ${VERB_C}`),
+        tape: snapshot,
+      }).toEqual({ breaches: [], bBeforeC: true, tape: snapshot });
+    } finally {
+      stream.off();
+      net.restore();
+    }
+  });
+});
+
+describe("F8-46 · состояние упорядочения общее у копий @shared разных модулей вкладки", () => {
+  it("F8-46 · состояние, заведённое копией без очереди, достраивается: обращения выпускаются, глагол упорядочивает", async () => {
+    // Модули выкатываются и загружаются порознь: вкладка, открытая до выкатки,
+    // держит состояние, заведённое прежней копией, а модуль, загруженный после,
+    // приносит новую. Новая копия обязана достроить недостающее, а не упасть.
+    const key = Symbol.for("kacho.console.carrier-order");
+    const g = globalThis as unknown as Record<symbol, unknown>;
+    const saved = g[key];
+    g[key] = { verb: null, flights: new Set(), streams: new Set() };
+    const tape: Tape = [];
+    const net = installNet(tape);
+    try {
+      const read = orderedTransport.fetch("/vpc/v1/networks", { method: "GET" }).catch(() => undefined);
+      const verb = verbCall(VERB_A);
+      await until(tape, `выпуск ${VERB_A}`, () => issued(tape, VERB_A) > 0);
+      net.take(VERB_A).answer(200, {});
+      await until(tape, "повторный выпуск чтения", () => issued(tape, READ) === 2);
+      net.drain();
+      await Promise.all([read, verb]);
+      expect({ breaches: verbWindowBreaches(tape, [VERB_A]), tape }).toEqual({ breaches: [], tape });
+    } finally {
+      net.restore();
+      g[key] = saved;
     }
   });
 });
