@@ -66,7 +66,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"sort"
 	"strings"
 	"testing"
 
@@ -296,7 +295,7 @@ func TestLoginLanePrereq_DeclaredPortReachesBothOfItsTraces(t *testing.T) {
 
 	root := lanePrereqRoot(t)
 	stacks := readLanePrereqStacks(t, root)
-	chart := filepath.Join(root, "deploy", "helm", "umbrella", "charts", "kaname")
+	chart := filepath.Join(root, umbrellaFromRoot, "charts", "kaname")
 
 	if _, err := os.Stat(filepath.Join(chart, "Chart.yaml")); err != nil {
 		t.Fatalf("каталог подчарта службы %s не найден (%v) — предпосылка проверки исчезла, "+
@@ -365,11 +364,19 @@ func countDeclaredLanePort(stacks []lanePrereqStack) int {
 
 // laneTraces — оба следа ручки порта, снятые с ОТРЕНДЕРЕННОГО манифеста.
 // Пустое поле значит «следа в манифесте нет».
+//
+// Носители считаются отдельно от значений. Порт `http-login-lane`, объявленный
+// манифестом дважды, — не «след есть», а два кандидата, из которых разбор
+// молча оставил бы последний: сверка прошла бы по законному второму, пока
+// первый ведёт в другое место.
 type laneTraces struct {
 	ContainerPort string // containerPort порта контейнера `http-login-lane`
 	ServiceName   string // metadata.name Service, выставившего полосу
 	ServicePort   string // spec.ports[].port
 	ServiceTarget string // spec.ports[].targetPort
+
+	ContainerCarriers int // сколько портов контейнеров названо `http-login-lane`
+	ServiceCarriers   int // сколько портов Service названо `http-login-lane`
 }
 
 // judgeLaneTraces — находки по двум следам. Чистая: инъекция подаёт ей
@@ -377,6 +384,19 @@ type laneTraces struct {
 func judgeLaneTraces(s lanePrereqStack, tr laneTraces) []string {
 	var findings []string
 	port := strings.TrimSpace(s.LanePort)
+
+	if tr.ContainerCarriers > 1 {
+		findings = append(findings, fmt.Sprintf(
+			"стенд %s: СЛЕД 1 из 2 — порт `%s` объявлен контейнерами манифеста %d раз(а), а слушатель "+
+				"полосы один: какой из портов к нему ведёт, манифест не решает, и сверка по одному из них "+
+				"о другом не говорит ничего", s.Stack, laneTraceName, tr.ContainerCarriers))
+	}
+	if tr.ServiceCarriers > 1 {
+		findings = append(findings, fmt.Sprintf(
+			"стенд %s: СЛЕД 2 из 2 — порт `%s` выставлен Service'ами манифеста %d раз(а), а край "+
+				"набирает один адрес: какой из них настоящий, манифест не решает", s.Stack, laneTraceName,
+			tr.ServiceCarriers))
+	}
 
 	if tr.ContainerPort == "" {
 		findings = append(findings, fmt.Sprintf(
@@ -449,7 +469,8 @@ type renderedDoc struct {
 
 // readLaneTraces — оба следа из потока манифестов. Разбор, а не поиск подстроки:
 // имя `http-login-lane` встречается в манифесте и в комментариях шаблона, а
-// комментарий портом не является.
+// комментарий портом не является. Каждый носитель имени СЧИТАЕТСЯ: больше одного
+// — находка judgeLaneTraces, а не молчаливая победа последнего.
 func readLaneTraces(rendered string) (laneTraces, error) {
 	var tr laneTraces
 	dec := yaml.NewDecoder(strings.NewReader(rendered))
@@ -467,6 +488,7 @@ func readLaneTraces(rendered string) (laneTraces, error) {
 			for _, c := range doc.Spec.Template.Spec.Containers {
 				for _, p := range c.Ports {
 					if p.Name == laneTraceName {
+						tr.ContainerCarriers++
 						tr.ContainerPort = scalarText(p.ContainerPort)
 					}
 				}
@@ -474,6 +496,7 @@ func readLaneTraces(rendered string) (laneTraces, error) {
 		case "Service":
 			for _, p := range doc.Spec.Ports {
 				if p.Name == laneTraceName {
+					tr.ServiceCarriers++
 					tr.ServiceName = doc.Metadata.Name
 					tr.ServicePort = scalarText(p.Port)
 					tr.ServiceTarget = scalarText(p.TargetPort)
@@ -531,9 +554,9 @@ func lanePrereqRoot(t *testing.T) string {
 	// обязаны лежать на своих местах. Не нашлись — проверка отказывает, а не
 	// объявляет дерево чистым.
 	for _, must := range []string{
-		filepath.Join("deploy", "stacks.txt"),
+		stacksTableFromRoot,
 		filepath.Join("deploy", "Makefile"),
-		filepath.Join("deploy", "helm", "umbrella"),
+		umbrellaFromRoot,
 		filepath.Join("gateway", "deploy", "values.yaml"),
 	} {
 		if _, err := os.Stat(filepath.Join(root, must)); err != nil {
@@ -543,50 +566,25 @@ func lanePrereqRoot(t *testing.T) string {
 	return root
 }
 
-var lanePrereqStackLine = regexp.MustCompile(`^([A-Za-z0-9_.-]+):(.+)$`)
-
 // readLanePrereqStacks — факты каждого стенда: цепочка накладывается слева
 // направо поверх умолчаний подчартов, ровно как её получает helm.
+//
+// Таблица читается ЕДИНСТВЕННЫМ читателем пакета (readStackTable), только путь
+// ему подаётся от корня этой проверки: вторая грамматика той же таблицы судила
+// бы стенды, которые узнаёт она, а не те, что узнают соседи по пакету.
 func readLanePrereqStacks(t *testing.T, root string) []lanePrereqStack {
 	t.Helper()
-	umbrella := filepath.Join(root, "deploy", "helm", "umbrella")
-	table := filepath.Join(root, "deploy", "stacks.txt")
+	umbrella := filepath.Join(root, umbrellaFromRoot)
 	ns := readStackNamespace(t, root)
 
-	rawTable, err := os.ReadFile(table)
-	if err != nil {
-		t.Fatalf("таблица стендов %s не читается (%v) — предпосылка проверки исчезла, а не дерево стало чистым",
-			table, err)
-	}
-	chains := map[string][]string{}
-	for _, line := range strings.Split(string(rawTable), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		m := lanePrereqStackLine.FindStringSubmatch(line)
-		if m == nil {
-			// Нераспознанная строка — это НЕ «стендов меньше», это «предикат
-			// перестал их узнавать». Молчание здесь сузило бы обход.
-			t.Fatalf("строка таблицы стендов не разобрана: %q (%s)", line, table)
-		}
-		chains[m[1]] = strings.Split(m[2], ",")
-	}
-	if len(chains) == 0 {
-		t.Fatalf("в %s нет ни одной строки стенда — проверка не вправе считать, что стендов не осталось", table)
-	}
-
-	names := make([]string, 0, len(chains))
-	for n := range chains {
-		names = append(names, n)
-	}
-	sort.Strings(names)
+	chains := readStackTable(t, filepath.Join(root, stacksTableFromRoot))
+	names := sortedStackNames(chains)
 
 	out := make([]lanePrereqStack, 0, len(names))
 	for _, name := range names {
 		// Умолчания подчартов читаются ЗАНОВО на каждый стенд: наложение правит
-		// карту на месте, и одна общая карта протекала бы из стенда в стенд,
-		// приписывая одному профилю объявления другого.
+		// ПРИЁМНИК на месте, и одна общая карта-приёмник протекала бы из стенда в
+		// стенд, приписывая одному профилю объявления другого.
 		declared := map[string]any{
 			"kaname":      readLaneYAML(t, filepath.Join(umbrella, "charts", "kaname", "values.yaml")),
 			"api-gateway": readLaneYAML(t, filepath.Join(root, "gateway", "deploy", "values.yaml")),
@@ -596,7 +594,7 @@ func readLanePrereqStacks(t *testing.T, root string) []lanePrereqStack {
 			if _, err := os.Stat(path); err != nil {
 				t.Fatalf("стенд %q называет профиль %s, которого нет: %v", name, p, err)
 			}
-			declared = mergeLaneValues(declared, readLaneYAML(t, path))
+			declared = mergeInto(declared, readLaneYAML(t, path))
 		}
 		kaname, _ := declared["kaname"].(map[string]any)
 		out = append(out, lanePrereqStack{
@@ -641,26 +639,6 @@ func readLaneYAML(t *testing.T, path string) map[string]any {
 		t.Fatalf("%s не разбирается: %v", path, err)
 	}
 	return out
-}
-
-// mergeLaneValues накладывает src на dst так же, как helm накладывает файлы
-// значений: карты сливаются по ключам, всё остальное замещается целиком.
-func mergeLaneValues(dst, src map[string]any) map[string]any {
-	if dst == nil {
-		dst = map[string]any{}
-	}
-	for k, v := range src {
-		if sub, ok := v.(map[string]any); ok {
-			if cur, ok := dst[k].(map[string]any); ok {
-				dst[k] = mergeLaneValues(cur, sub)
-				continue
-			}
-			dst[k] = mergeLaneValues(map[string]any{}, sub)
-			continue
-		}
-		dst[k] = v
-	}
-	return dst
 }
 
 func lookupLane(tree map[string]any, path ...string) (any, bool) {

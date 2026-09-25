@@ -19,15 +19,35 @@
 // оболочке, которая не спрашивает вообще ничего.
 
 import { jest } from "@jest/globals";
-import { act, render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 
-const { AuthProvider } = await import("./AuthContext");
+const { AuthProvider, useAuth } = await import("./AuthContext");
 
 /** Признак адреса ЧУЖОЙ службы личности: её публичный край и её потоки. */
 const FOREIGN_IDENTITY = [/\/\.ory\//, /\/self-service\//, /\/sessions\/whoami/];
 
 function isForeign(url: string): boolean {
   return FOREIGN_IDENTITY.some((re) => re.test(url));
+}
+
+/** Метка конца подъёма: провайдер снимает `loading`, разобрав ответы ВСЕХ ручек подъёма. */
+function MountDone() {
+  const { loading } = useAuth();
+  return loading ? null : <div data-testid="shell-mount-done" />;
+}
+
+/**
+ * Поднять оболочку и дождаться КОНЦА подъёма, а не одного оборота очереди.
+ * Множество запрошенных адресов судится только после того, как провайдер разобрал
+ * все ответы: иначе запрос, ушедший позже первого оборота, не попал бы в обход.
+ */
+async function mountShell(): Promise<void> {
+  render(
+    <AuthProvider>
+      <MountDone />
+    </AuthProvider>,
+  );
+  await screen.findByTestId("shell-mount-done");
 }
 
 describe("подъём оболочки консоли", () => {
@@ -41,8 +61,18 @@ describe("подъём оболочки консоли", () => {
       const url = typeof input === "string" ? input : String((input as { url?: string })?.url ?? input);
       asked.push(url);
       // 401 — «не залогинен»: обычный исход подъёма без сессии, и он ни одну
-      // ветку не глушит: провайдер разбирает отказ каждой из трёх ручек.
-      return Promise.resolve(new Response("", { status: 401, statusText: "Unauthorized" }));
+      // ветку не глушит: провайдер разбирает отказ каждой из своих ручек.
+      //
+      // Ответ собран вручную: у jsdom нет глобального `Response`, и `new Response`
+      // здесь бросал `ReferenceError` — клиент глотал его как отказ сети, и 401
+      // не наступал вовсе. Заменитель отдаёт всё, что читает клиент края.
+      return Promise.resolve({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        headers: { get: () => null },
+        text: () => Promise.resolve(""),
+      });
     }) as unknown as typeof globalThis.fetch;
   });
 
@@ -51,13 +81,7 @@ describe("подъём оболочки консоли", () => {
   });
 
   it("не спрашивает чужую службу личности о печенье сессии", async () => {
-    await act(async () => {
-      render(
-        <AuthProvider>
-          <div />
-        </AuthProvider>,
-      );
-    });
+    await mountShell();
 
     // Находка печатается САМИМ РАЗЛИЧИЕМ: слева — адреса чужой службы, которые
     // подъём запросил, справа — пусто. Имя упавшего шага при этом не нужно
@@ -67,13 +91,7 @@ describe("подъём оболочки консоли", () => {
   });
 
   it("спрашивает свой край — положительный контроль того же обхода", async () => {
-    await act(async () => {
-      render(
-        <AuthProvider>
-          <div />
-        </AuthProvider>,
-      );
-    });
+    await mountShell();
 
     expect(asked.length).toBeGreaterThan(0);
     expect(asked.some((u) => u.includes("/iam/v1/auth/me"))).toBe(true);

@@ -76,11 +76,11 @@ func TestLanePrereqInjection_MissingAddressIsFoundAndNamesTheStack(t *testing.T)
 		t.Run(name, func(t *testing.T) {
 			twin := lawfulLaneStack()
 			twin.Stack = name
-			mustBeSilentLane(t, first(judgeLanePrereq([]lanePrereqStack{twin})))
+			mustBeSilentLane(t, lanePrereqFindingsOnly(judgeLanePrereq([]lanePrereqStack{twin})))
 
 			injected := twin
 			injected.LaneURL = "" // РОВНО ОДИН факт против близнеца
-			mustSayLane(t, first(judgeLanePrereq([]lanePrereqStack{injected})),
+			mustSayLane(t, lanePrereqFindingsOnly(judgeLanePrereq([]lanePrereqStack{injected})),
 				"стенд "+name, "iamLoginLaneUrl", "не объявлен")
 		})
 	}
@@ -94,7 +94,7 @@ func TestLanePrereqInjection_MissingPortIsFoundAndNamesTheStack(t *testing.T) {
 			injected := lawfulLaneStack()
 			injected.Stack = name
 			injected.LanePort = ""
-			mustSayLane(t, first(judgeLanePrereq([]lanePrereqStack{injected})),
+			mustSayLane(t, lanePrereqFindingsOnly(judgeLanePrereq([]lanePrereqStack{injected})),
 				"стенд "+name, "kaname.ports.loginLane", "не объявлен")
 		})
 	}
@@ -119,13 +119,13 @@ func TestLanePrereqInjection_EmptyAndRelativeAddressesDoNotPassAsDeclared(t *tes
 		t.Run(c.name, func(t *testing.T) {
 			injected := lawfulLaneStack()
 			injected.LaneURL = c.url
-			mustSayLane(t, first(judgeLanePrereq([]lanePrereqStack{injected})), append([]string{"стенд prod"}, c.must...)...)
+			mustSayLane(t, lanePrereqFindingsOnly(judgeLanePrereq([]lanePrereqStack{injected})), append([]string{"стенд prod"}, c.must...)...)
 		})
 	}
 
 	// Законный близнец в том же прогоне: адрес, отличающийся от негодных ровно
 	// тем, ради чего проверка заведена, обязан молчать.
-	mustBeSilentLane(t, first(judgeLanePrereq([]lanePrereqStack{lawfulLaneStack()})))
+	mustBeSilentLane(t, lanePrereqFindingsOnly(judgeLanePrereq([]lanePrereqStack{lawfulLaneStack()})))
 }
 
 // TestLanePrereqInjection_AddressAndListenerPortsAreComparedNotAsserted —
@@ -136,7 +136,7 @@ func TestLanePrereqInjection_EmptyAndRelativeAddressesDoNotPassAsDeclared(t *tes
 func TestLanePrereqInjection_AddressAndListenerPortsAreComparedNotAsserted(t *testing.T) {
 	injected := lawfulLaneStack()
 	injected.LanePort = "9101" // дверь переехала, адрес остался
-	mustSayLane(t, first(judgeLanePrereq([]lanePrereqStack{injected})),
+	mustSayLane(t, lanePrereqFindingsOnly(judgeLanePrereq([]lanePrereqStack{injected})),
 		"стенд prod", "РАЗНЫЕ двери", "9100", "9101")
 
 	// Внутренний Service вправе выставить СВОЙ номер — тогда сверять адрес надо с
@@ -144,7 +144,7 @@ func TestLanePrereqInjection_AddressAndListenerPortsAreComparedNotAsserted(t *te
 	own := lawfulLaneStack()
 	own.LanePort = "9101"
 	own.ServicePort = "9100"
-	mustBeSilentLane(t, first(judgeLanePrereq([]lanePrereqStack{own})))
+	mustBeSilentLane(t, lanePrereqFindingsOnly(judgeLanePrereq([]lanePrereqStack{own})))
 }
 
 // TestLanePrereqInjection_HostIsDerivedFromTheTreeNotFromALiteral — хост
@@ -158,7 +158,7 @@ func TestLanePrereqInjection_HostIsDerivedFromTheTreeNotFromALiteral(t *testing.
 		t.Run(c.name, func(t *testing.T) {
 			injected := lawfulLaneStack()
 			injected.LaneURL = c.url
-			mustSayLane(t, first(judgeLanePrereq([]lanePrereqStack{injected})),
+			mustSayLane(t, lanePrereqFindingsOnly(judgeLanePrereq([]lanePrereqStack{injected})),
 				"стенд prod", "kaname-internal.kacho.svc")
 		})
 	}
@@ -167,7 +167,7 @@ func TestLanePrereqInjection_HostIsDerivedFromTheTreeNotFromALiteral(t *testing.
 	renamed := lawfulLaneStack()
 	renamed.ServiceName = "kaname-alt"
 	renamed.LaneURL = "https://kaname-alt-internal.kacho.svc:9100"
-	mustBeSilentLane(t, first(judgeLanePrereq([]lanePrereqStack{renamed})))
+	mustBeSilentLane(t, lanePrereqFindingsOnly(judgeLanePrereq([]lanePrereqStack{renamed})))
 }
 
 // TestLanePrereqInjection_EighthStackWithoutTheKnobIsFound — ПРЕДИКАТ 3: число
@@ -389,6 +389,61 @@ func TestLanePrereqInjection_TraceNumbersAndWiringAreJudged(t *testing.T) {
 	})
 }
 
-// first — findings из пары (findings, census); перепись проверяется отдельно там,
-// где она предмет пробы.
-func first(findings []string, _ lanePrereqCensus) []string { return findings }
+// TestLanePrereqInjection_SecondCarrierOfATraceIsFound — порт полосы, объявленный
+// манифестом ДВАЖДЫ, — находка, а не победа последнего носителя.
+//
+// Инъекция ставит лишний носитель ПЕРВЫМ, а законный манифест — после него:
+// разбор, оставляющий последнее совпадение, сверял бы законный след и молчал,
+// пока первый ведёт на другой порт. Законный близнец — тот же манифест без
+// лишнего носителя: он обязан молчать.
+func TestLanePrereqInjection_SecondCarrierOfATraceIsFound(t *testing.T) {
+	s := lawfulLaneStack()
+	strayService := `---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kaname-stray
+  namespace: kacho
+spec:
+  ports:
+    - name: http-login-lane
+      port: 9101
+      targetPort: http-login-lane
+`
+	strayContainer := `---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kaname-stray
+  namespace: kacho
+spec:
+  template:
+    spec:
+      containers:
+        - name: stray
+          ports:
+            - name: http-login-lane
+              containerPort: 9101
+`
+
+	t.Run("законный манифест — по носителю на след, молчит", func(t *testing.T) {
+		tr := laneTracesOf(t, lawfulLaneManifest(true, true))
+		if tr.ContainerCarriers != 1 || tr.ServiceCarriers != 1 {
+			t.Fatalf("законный манифест: носителей контейнера %d, Service %d — ожидалось по одному",
+				tr.ContainerCarriers, tr.ServiceCarriers)
+		}
+		mustBeSilentLane(t, judgeLaneTraces(s, tr))
+	})
+	t.Run("второй Service выставил полосу", func(t *testing.T) {
+		tr := laneTracesOf(t, strayService+lawfulLaneManifest(true, true))
+		mustSayLane(t, judgeLaneTraces(s, tr), "стенд prod", "СЛЕД 2 из 2", laneTraceName, "2 раз")
+	})
+	t.Run("второй контейнер поднял полосу", func(t *testing.T) {
+		tr := laneTracesOf(t, strayContainer+lawfulLaneManifest(true, true))
+		mustSayLane(t, judgeLaneTraces(s, tr), "стенд prod", "СЛЕД 1 из 2", laneTraceName, "2 раз")
+	})
+}
+
+// lanePrereqFindingsOnly — находки из пары (находки, перепись) judgeLanePrereq;
+// перепись проверяется отдельно там, где она предмет пробы.
+func lanePrereqFindingsOnly(findings []string, _ lanePrereqCensus) []string { return findings }

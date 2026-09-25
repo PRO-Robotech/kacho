@@ -63,6 +63,7 @@
 package deploy_test
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -274,17 +275,17 @@ func readDevCeremonyBand(src string) (devBand, error) {
 	callOpen := strings.LastIndex(code[:maps[0][0]], "(")
 	callClose := matchingParen(code, callOpen)
 	if callClose < 0 {
-		return b, fmt.Errorf("у `Object.fromEntries(` нет закрывающей скобки")
+		return b, errors.New("у `Object.fromEntries(` нет закрывающей скобки")
 	}
 	b.callSpan = [2]int{callAt[0], callClose + 1}
 	b.mountLine = lineOf(code, callAt[0])
 
 	// Условие монтирования — текст между `...` и вызовом.
 	before := code[:callAt[0]]
-	t := regexp.QuoteMeta(b.target)
+	quotedTarget := regexp.QuoteMeta(b.target)
 	bareRe := regexp.MustCompile(`\.\.\.\s*$`)
-	ternRe := regexp.MustCompile(`\.\.\.\s*(\()\s*` + t + `\s*\?\s*$`)
-	andRe := regexp.MustCompile(`\.\.\.\s*(\()\s*` + t + `\s*&&\s*$`)
+	ternRe := regexp.MustCompile(`\.\.\.\s*(\()\s*` + quotedTarget + `\s*\?\s*$`)
+	andRe := regexp.MustCompile(`\.\.\.\s*(\()\s*` + quotedTarget + `\s*&&\s*$`)
 	after := code[b.callSpan[1]:]
 	switch {
 	case bareRe.MatchString(before):
@@ -313,17 +314,17 @@ func readDevCeremonyBand(src string) (devBand, error) {
 	}
 
 	// Объявление адресата: единственное, одной строкой, из переменной окружения.
-	declRe := regexp.MustCompile(`(?m)^[ \t]*(?:const|let|var)[ \t]+` + t + `[ \t]*=[ \t]*([^;\n]*?)[ \t]*;?[ \t]*$`)
+	declRe := regexp.MustCompile(`(?m)^[ \t]*(?:const|let|var)[ \t]+` + quotedTarget + `[ \t]*=[ \t]*([^;\n]*?)[ \t]*;?[ \t]*$`)
 	decls := declRe.FindAllStringSubmatchIndex(code, -1)
 	if len(decls) != 1 {
 		return b, fmt.Errorf("адресат полосы %q объявлен %d раз(а) одной строкой, ожидалось одно объявление", b.target, len(decls))
 	}
 	b.initSpan = [2]int{decls[0][2], decls[0][3]}
 	b.declLine = lineOf(code, decls[0][0])
-	init := code[b.initSpan[0]:b.initSpan[1]]
-	env := devEnvInitRe.FindStringSubmatch(init)
+	initText := code[b.initSpan[0]:b.initSpan[1]]
+	env := devEnvInitRe.FindStringSubmatch(initText)
 	if env == nil {
-		return b, fmt.Errorf("адресат полосы %q берётся не из переменной окружения (`%s`) — форма разбору неизвестна", b.target, init)
+		return b, fmt.Errorf("адресат полосы %q берётся не из переменной окружения (`%s`) — форма разбору неизвестна", b.target, initText)
 	}
 	b.knob = env[1]
 	if env[2] != "" && !devEmptyLiteralRe.MatchString(env[3]) {

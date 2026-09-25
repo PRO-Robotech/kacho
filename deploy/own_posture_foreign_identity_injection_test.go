@@ -27,7 +27,7 @@ func reasons(fs []identityPostureFinding) []string {
 }
 
 func TestOwnPostureForeignIdentityGate_FindsTheInheritedFlag(t *testing.T) {
-	own := standPosture{IAM: "own", Edge: "own"}
+	own := identityLanding{IAM: landingOwn, Edge: landingOwn}
 
 	// ДЕФЕКТ: посадка своя, чужая служба унаследована включённой снизу, и в
 	// ведомости остатка о ней не решал никто.
@@ -68,7 +68,7 @@ func TestOwnPostureForeignIdentityGate_FindsTheInheritedFlag(t *testing.T) {
 // Запись ведомости, чей компонент на стенде уже выключен, — НАХОДКА. Без этой
 // оси послабление пережило бы свой предмет и укрывало бы вернувшийся дефект.
 func TestOwnPostureForeignIdentityGate_RefusesARemainderThatOutlivedItsSubject(t *testing.T) {
-	own := standPosture{IAM: "own", Edge: "own"}
+	own := identityLanding{IAM: landingOwn, Edge: landingOwn}
 
 	got := judgeStandIdentity("own", own, nil, []identityRemainder{{Component: "kratos", Reason: "экран входа"}})
 	if len(got) != 1 || got[0].Reason != remainderIsStale {
@@ -86,7 +86,7 @@ func TestOwnPostureForeignIdentityGate_RefusesARemainderThatOutlivedItsSubject(t
 
 	// Ведомость на стенде, который на `own` не стоит, — тоже находка: остаток
 	// объявлен там, где посадку никто не переводил.
-	external := standPosture{IAM: "external", Edge: "external"}
+	external := identityLanding{IAM: landingExternal, Edge: landingExternal}
 	if f := judgeStandIdentity("prod", external, []string{"kratos"},
 		[]identityRemainder{{Component: "kratos", Reason: "экран входа"}}); len(f) != 1 ||
 		f[0].Reason != remainderIsStale {
@@ -95,7 +95,7 @@ func TestOwnPostureForeignIdentityGate_RefusesARemainderThatOutlivedItsSubject(t
 }
 
 func TestOwnPostureForeignIdentityGate_FindsTheStandWithNoProviderAtAll(t *testing.T) {
-	external := standPosture{IAM: "external", Edge: "external"}
+	external := identityLanding{IAM: landingExternal, Edge: landingExternal}
 
 	// ДЕФЕКТ ВТОРОЙ СТОРОНЫ: флаги сняли, посадку перевести забыли — стенду
 	// проверять человека нечем.
@@ -115,7 +115,7 @@ func TestOwnPostureForeignIdentityGate_FindsTheStandWithNoProviderAtAll(t *testi
 // соседа (helm/umbrella/identity_posture_profiles_test.go). Ось держит границу —
 // без неё два гейта вынесли бы два вердикта об одном предмете и разъехались.
 func TestOwnPostureForeignIdentityGate_LeavesDisagreeingHalvesToItsNeighbour(t *testing.T) {
-	mixed := standPosture{IAM: "own", Edge: "external"}
+	mixed := identityLanding{IAM: landingOwn, Edge: landingExternal}
 	if f := judgeStandIdentity("mixed", mixed, nil, nil); len(f) != 0 {
 		t.Errorf("гейт высказался о стенде с разошедшимися половинами: %v", reasons(f))
 	}
