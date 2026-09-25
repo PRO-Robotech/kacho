@@ -1142,18 +1142,19 @@ test("F8-43 · оснастка поднимает уровень НАШИМИ �
 
 // ═══ Прокрутка экрана церемонии ══════════════════════════════════════════════
 
-test("вход · на экране высотой 480 кнопку входа доводит до вида колесо мыши, а заголовок — обратное колесо", async ({
+test("вход · на экране телефона в альбомной ориентации кнопку входа доводит до вида колесо мыши, а заголовок — обратное", async ({
   page,
 }) => {
   // verifies #1274 — у рамки церемоний не было прокрутки: карточка выше экрана
-  // обрезалась снизу, и кнопка входа оставалась за краем. 480 точек — экран
-  // 1280×720 при увеличении 150 %.
-  await page.setViewportSize({ width: 1280, height: 480 });
+  // обрезалась снизу, и кнопка входа оставалась за краем. 740×300 — телефон в
+  // альбомной ориентации за вычетом строки адреса браузера; на 1280×480 карточка
+  // входа ещё помещается (замер красного прогона), и прокрутку там не проверить.
+  await page.setViewportSize({ width: 740, height: 300 });
   await page.goto("/login", { waitUntil: "domcontentloaded" });
   const s = loginScreen(page);
   await expectScreen(page, "/login", s.submit, "экран входа");
   const title = page.getByRole("heading", { name: "Вход в консоль", level: 1 });
-  const viewport = page.viewportSize() ?? { width: 1280, height: 480 };
+  const viewport = page.viewportSize() ?? { width: 740, height: 300 };
   const inView = (target: Locator) => async () => {
     const box = await target.boundingBox();
     return box !== null && box.y >= 0 && box.y + box.height <= viewport.height;
