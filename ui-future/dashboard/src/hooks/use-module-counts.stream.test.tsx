@@ -84,7 +84,7 @@ beforeEach(() => {
   jest.useFakeTimers();
   listCalls = 0;
   itemsPerList = 1;
-  globalThis.fetch = ((input: unknown) => {
+  globalThis.fetch = (input: unknown) => {
     const path = String(input);
     listCalls += 1;
     const stat =
@@ -97,7 +97,7 @@ beforeEach(() => {
       statusText: "OK",
       text: () => Promise.resolve(JSON.stringify(body)),
     } as Response);
-  }) as typeof fetch;
+  };
 });
 
 afterEach(() => {
