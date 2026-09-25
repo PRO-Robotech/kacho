@@ -61,7 +61,9 @@ function registrationScreen(extra = ""): string {
   <script>
     document.getElementById("f").addEventListener("submit", async (ev) => {
       ev.preventDefault();
-      const res = await fetch("/iam/v1/auth/register", { method: "POST", body: "{}" });
+      // Экран подсажен пробой: его обращение идёт транспортом пробы, а не
+      // \`fetch\` окна, который судит страж мест выпуска (\`issuance-guard.ts\`).
+      const res = await window[Symbol.for("kacho.probe.fetch")]("/iam/v1/auth/register", { method: "POST", body: "{}" });
       if (!res.ok) {
         const body = await res.json();
         const a = document.createElement("div");

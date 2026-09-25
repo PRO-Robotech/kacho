@@ -28,6 +28,7 @@ import {
   type CeremonyCall,
   type CeremonyCensus,
 } from "./fixtures";
+import { PROBE_FETCH } from "./issuance-guard.ts";
 import { LANE_UNAVAILABLE, LOGOUT_UNAVAILABLE, bodyOf, fulfillWith } from "./producer-answers";
 
 /**
@@ -734,11 +735,17 @@ test("F8-18 · выход гасит носитель и возвращает н
   await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", resolve));
   const silentOrigin = `http://127.0.0.1:${(silent.address() as AddressInfo).port}`;
   try {
-    await page.evaluate(async (away) => {
-      await fetch("/.ory/kratos/public/sessions/whoami").catch(() => undefined);
-      await fetch("/oauth2/auth").catch(() => undefined);
-      window.open(`${away}/self-service/logout/browser`);
-    }, silentOrigin);
+    // Подсадка — обращения ПРОБЫ, а не консоли: они идут транспортом пробы, а не
+    // `fetch` окна, который судит страж мест выпуска (`issuance-guard.ts`).
+    await page.evaluate(
+      async ({ away, probeKey }) => {
+        const probeFetch = (window as unknown as Record<symbol, typeof fetch>)[Symbol.for(probeKey)];
+        await probeFetch("/.ory/kratos/public/sessions/whoami").catch(() => undefined);
+        await probeFetch("/oauth2/auth").catch(() => undefined);
+        window.open(`${away}/self-service/logout/browser`);
+      },
+      { away: silentOrigin, probeKey: PROBE_FETCH },
+    );
     // Переход окна выпущен и остался без ответа — до ухода страницы: порядок
     // переписи тогда тот, в каком подсажено.
     await expect

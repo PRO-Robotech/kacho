@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jest } from "@jest/globals";
+import { stubNetwork } from "@shared/test/network-stub";
 import { ReachabilityPage } from ".";
 
 const jsonResponse = (body: unknown, status = 200) => {
@@ -26,7 +27,7 @@ describe("ReachabilityPage", () => {
 
   it("runs all probes", async () => {
     const user = userEvent.setup();
-    const fetchMock = jest.spyOn(global, "fetch").mockImplementation(() => jsonResponse({ message: "ready" }));
+    const fetchMock = stubNetwork(() => jsonResponse({ message: "ready" }));
     render(<ReachabilityPage />);
 
     await user.click(screen.getByRole("button", { name: "Проверить все" }));
@@ -47,7 +48,7 @@ describe("ReachabilityPage", () => {
   // проверяла бы службу, которой нет, и её исход ничего не говорил бы о стенде.
   it("не предлагает проверку служб снятого поставщика личности", async () => {
     const user = userEvent.setup();
-    const fetchMock = jest.spyOn(global, "fetch").mockImplementation(() => jsonResponse({ message: "ready" }));
+    const fetchMock = stubNetwork(() => jsonResponse({ message: "ready" }));
     render(<ReachabilityPage />);
 
     const shown = screen.getAllByText(/^\//).map((n) => n.textContent ?? "");

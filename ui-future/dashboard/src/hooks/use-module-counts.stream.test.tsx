@@ -84,25 +84,20 @@ beforeEach(() => {
   jest.useFakeTimers();
   listCalls = 0;
   itemsPerList = 1;
-  Object.defineProperty(global, "fetch", {
-    writable: true,
-    value: (input: unknown) => {
-      const path = String(input);
-      listCalls += 1;
-      const stat =
-        vpcModule.stats.find((s) => path.startsWith(s.listPath)) ??
-        journallessModule.stats.find((s) => path.startsWith(s.listPath));
-      const body = stat
-        ? { [stat.payloadKey]: Array.from({ length: itemsPerList }, (_, i) => ({ id: `x-${i}` })) }
-        : {};
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        text: () => Promise.resolve(JSON.stringify(body)),
-      } as Response);
-    },
-  });
+  globalThis.fetch = ((input: unknown) => {
+    const path = String(input);
+    listCalls += 1;
+    const stat =
+      vpcModule.stats.find((s) => path.startsWith(s.listPath)) ??
+      journallessModule.stats.find((s) => path.startsWith(s.listPath));
+    const body = stat ? { [stat.payloadKey]: Array.from({ length: itemsPerList }, (_, i) => ({ id: `x-${i}` })) } : {};
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      text: () => Promise.resolve(JSON.stringify(body)),
+    } as Response);
+  }) as typeof fetch;
 });
 
 afterEach(() => {

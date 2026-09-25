@@ -253,7 +253,11 @@ async function installStreamReader(page: Page): Promise<void> {
         const controller = new AbortController();
         const deadline = setTimeout(() => controller.abort(), Math.max(1, until - Date.now()));
         try {
-          const res = await fetch(url, {
+          // Читатель потока — оснастка ПРОБЫ, а не консоли: его запрос идёт
+          // транспортом пробы, а не `fetch` окна, который судит страж мест
+          // выпуска (`issuance-guard.ts`).
+          const probeFetch = (window as unknown as Record<symbol, typeof fetch>)[Symbol.for("kacho.probe.fetch")];
+          const res = await probeFetch(url, {
             headers: { "Last-Event-ID": position },
             signal: controller.signal,
           });
