@@ -24,18 +24,29 @@
  * Изменён ровно один факт: через что выпущено обращение. Стенд не нужен; нужен
  * браузер — тот же, что у набора (`KACHO_CHROMIUM` либо установленный playwright).
  *
+ *   • ФИКСТУРА НАБОРА — находки выше забирает `takeBreaches` напрямую, мимо
+ *     фикстуры, поэтому снятый отказ в `issuanceLedger` (`specs/fixtures.ts`) их
+ *     не менял (опыт E3 проверки: 40 из 40 зелёных). Судится и он: отдельный
+ *     процесс прогонщика исполняет канарейку `issuance-canary/fixtures.canary.ts`,
+ *     взявшую `test` у настоящей фикстуры набора, и её исход сверяется по отчёту:
+ *     проглоченный обход — проба УПАЛА текстом фикстуры, близнец упорядочивающим
+ *     транспортом — прошёл, до сервера дошёл только близнец.
+ *
  * Запуск: node scripts/issuance-guard-selftest.ts
  */
 
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import { stripTypeScriptTypes } from "node:module";
+import { createRequire, stripTypeScriptTypes } from "node:module";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Page } from "@playwright/test";
 
 import { PROBE_FETCH, guardBrowser, takeBreaches } from "../specs/issuance-guard.ts";
+import { CANARY_ORIGIN_ENV, CANARY_OUT_ENV, FIXTURE_CANARY, FIXTURE_REFUSAL } from "./issuance-canary/names.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const senderSource = fs.readFileSync(path.join(here, "../../shared/src/api/carrier-order.ts"), "utf8");
@@ -169,6 +180,77 @@ async function run(page: Page, code: string, at: string): Promise<string> {
   );
 }
 
+/** Единица отчёта прогонщика: заголовок, исход и тексты отказов. */
+type CanaryUnit = { title: string; status: string; errors: string };
+
+/** Все единицы отчёта json прогонщика — обходом вложенных наборов. */
+function canaryUnits(suites: unknown): CanaryUnit[] {
+  type Spec = {
+    title: string;
+    tests: Array<{ results: Array<{ status: string; errors?: Array<{ message?: string }> }> }>;
+  };
+  type Suite = { specs?: Spec[]; suites?: Suite[] };
+  const out: CanaryUnit[] = [];
+  const walk = (list: Suite[] | undefined): void => {
+    for (const suite of list ?? []) {
+      for (const spec of suite.specs ?? []) {
+        const results = spec.tests.flatMap((t) => t.results);
+        out.push({
+          title: spec.title,
+          status: results.map((r) => r.status).join(",") || "не исполнена",
+          errors: results.flatMap((r) => (r.errors ?? []).map((e) => e.message ?? "")).join("\n"),
+        });
+      }
+      walk(suite.suites);
+    }
+  };
+  walk(suites as Suite[] | undefined);
+  return out;
+}
+
+/**
+ * Исполнить канарейку фикстуры набора отдельным процессом прогонщика против
+ * сервера петли `origin`. Процесс, не оставивший отчёта, — «не выполнилось».
+ */
+async function runFixtureCanary(
+  origin: string,
+): Promise<{ code: number | null; units: CanaryUnit[] | null; tail: string }> {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "kacho-fixture-canary-"));
+  try {
+    const cli = createRequire(import.meta.url).resolve("@playwright/test/cli");
+    const config = path.join(here, "issuance-canary", "canary.playwright.config.ts");
+    const { code, tail } = await new Promise<{ code: number | null; tail: string }>((resolve, reject) => {
+      const child = spawn(process.execPath, [cli, "test", "--config", config], {
+        cwd: path.join(here, ".."),
+        env: { ...process.env, [CANARY_ORIGIN_ENV]: origin, [CANARY_OUT_ENV]: out },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let text = "";
+      const keep = (chunk: Buffer) => {
+        text = (text + chunk.toString("utf8")).slice(-4000);
+      };
+      child.stdout.on("data", keep);
+      child.stderr.on("data", keep);
+      const timer = setTimeout(() => child.kill("SIGKILL"), 180_000);
+      child.on("error", (e) => {
+        clearTimeout(timer);
+        reject(e);
+      });
+      child.on("close", (c) => {
+        clearTimeout(timer);
+        resolve({ code: c, tail: text });
+      });
+    });
+    const reportFile = path.join(out, "report.json");
+    const units = fs.existsSync(reportFile)
+      ? canaryUnits((JSON.parse(fs.readFileSync(reportFile, "utf8")) as { suites?: unknown }).suites)
+      : null;
+    return { code, units, tail };
+  } finally {
+    fs.rmSync(out, { recursive: true, force: true });
+  }
+}
+
 async function main(): Promise<void> {
   const origin = await start();
   const browser: Browser = await chromium.launch(
@@ -262,6 +344,39 @@ async function main(): Promise<void> {
         `контекст мимо набора назван: ${breaches.join(" | ") || "—"}`,
       );
       await bare.close();
+    }
+
+    console.log("ФИКСТУРА НАБОРА — проглоченный обход роняет пробу, взявшую test у specs/fixtures.ts");
+    {
+      const { code, units, tail } = await runFixtureCanary(origin);
+      if (units === null) {
+        check(false, `процесс канарейки не оставил отчёта (код ${code}) — «не выполнилось»:\n${tail}`);
+      } else {
+        const swallowed = units.find((u) => u.title === FIXTURE_CANARY.swallowed.title);
+        const twin = units.find((u) => u.title === FIXTURE_CANARY.twin.title);
+        check(
+          units.length === 2 && swallowed !== undefined && twin !== undefined,
+          `единиц канарейки исполнено ${units.length}: ${units.map((u) => `«${u.title}» ${u.status}`).join(", ") || "—"}`,
+        );
+        check(
+          swallowed?.status === "failed" &&
+            swallowed.errors.includes(FIXTURE_REFUSAL) &&
+            swallowed.errors.includes(FIXTURE_CANARY.swallowed.path),
+          `проглоченный обход ${FIXTURE_CANARY.swallowed.path} — проба ${swallowed?.status ?? "не исполнена"}, ` +
+            `отказ фикстуры ${swallowed?.errors.includes(FIXTURE_REFUSAL) ? "назван" : "НЕ назван"} ` +
+            "(разбор issuanceLedger в specs/fixtures.ts)",
+        );
+        check(
+          twin?.status === "passed",
+          `близнец упорядочивающим транспортом — проба ${twin?.status ?? "не исполнена"}${twin?.errors ? ` · ${twin.errors.slice(0, 200)}` : ""}`,
+        );
+        check(code === 1, `процесс канарейки вышел с кодом ${code}, ожидался 1 — ровно одна проба красная`);
+      }
+      check(
+        !reached.some((r) => r.endsWith(` ${FIXTURE_CANARY.swallowed.path}`)) &&
+          reached.includes(`GET ${FIXTURE_CANARY.twin.path}`),
+        `до сервера дошёл близнец и не дошёл обход: ${reached.filter((r) => r.includes("fixture-canary")).join(", ") || "—"}`,
+      );
     }
     await context.close();
   } finally {
