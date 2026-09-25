@@ -158,27 +158,51 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "[parallel] port-forward api-gateway :$GW_PORT/:$GW_INTERNAL_PORT/:$GW_TLS_PORT + iam-internal :$IAM_INTERNAL_PORT + hydra :$HYDRA_PORT + ceremony (kratos :$KRATOS_PUBLIC_PORT/:$KRATOS_ADMIN_PORT, hydra-admin :$HYDRA_ADMIN_PORT)"
+echo "[parallel] port-forward api-gateway :$GW_PORT/:$GW_INTERNAL_PORT/:$GW_TLS_PORT + iam-internal :$IAM_INTERNAL_PORT (к поставщику личности — по посадке цепочки, ниже)"
 kubectl -n "$NS" port-forward svc/api-gateway "$GW_PORT:8080" >/tmp/e2e-pp-gw.log 2>&1 &            PF_PIDS+=($!); PF_WHAT+=("$GW_PORT|api-gateway public (:8080)|/tmp/e2e-pp-gw.log")
 kubectl -n "$NS" port-forward svc/api-gateway "$GW_INTERNAL_PORT:8081" >/tmp/e2e-pp-gwint.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$GW_INTERNAL_PORT|api-gateway internal (:8081)|/tmp/e2e-pp-gwint.log")
 kubectl -n "$NS" port-forward svc/api-gateway "$GW_TLS_PORT:8443" >/tmp/e2e-pp-gwtls.log 2>&1 &     PF_PIDS+=($!); PF_WHAT+=("$GW_TLS_PORT|api-gateway external TLS (:8443)|/tmp/e2e-pp-gwtls.log")
 kubectl -n "$NS" port-forward svc/kaname-internal "$IAM_INTERNAL_PORT:9091" >/tmp/e2e-pp-iam.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$IAM_INTERNAL_PORT|iam internal gRPC (:9091)|/tmp/e2e-pp-iam.log")
-# Hydra public — the POST target of the OAuth2 client_credentials exchange that turns an
-# iam-issued SA key into the RS256 Bearer a production-posture stand accepts. ClusterIP
-# with no ingress route here, so the exchange needs this forward. Harmless in dev (the
-# seed never dials it); required in production, and setting it HERE means the seed does
-# not have to open one per invocation.
-kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-public "$HYDRA_PORT:4444" >/tmp/e2e-pp-hydra.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$HYDRA_PORT|hydra public token endpoint (:4444)|/tmp/e2e-pp-hydra.log")
-# Ceremony transports (WAVE 4). Opened unconditionally, next to the other five, and torn
-# down by the same trap. Deliberately NOT guarded by "skip the wave if the service is
-# absent": a missing transport must surface as the ceremony refusing to seed — which
-# leaves no reports, so assert-suites-green.sh reports every collection of the wave as
-# (no-report) and the run is RED. "Could not reach it" is a finding, not a pass.
-# hydra-public is not re-forwarded: the exchange forward above already serves that
-# address, and one service reachable at two ports is two facts that can disagree.
-kubectl -n "$NS" port-forward svc/kacho-umbrella-kratos-public "$KRATOS_PUBLIC_PORT:80" >/tmp/e2e-pp-kratos-pub.log 2>&1 &  PF_PIDS+=($!); PF_WHAT+=("$KRATOS_PUBLIC_PORT|kratos public (:80)|/tmp/e2e-pp-kratos-pub.log")
-kubectl -n "$NS" port-forward svc/kacho-umbrella-kratos-admin "$KRATOS_ADMIN_PORT:80" >/tmp/e2e-pp-kratos-adm.log 2>&1 &    PF_PIDS+=($!); PF_WHAT+=("$KRATOS_ADMIN_PORT|kratos admin (:80)|/tmp/e2e-pp-kratos-adm.log")
-kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-admin-tls "$HYDRA_ADMIN_PORT:4445" >/tmp/e2e-pp-hydra-adm.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$HYDRA_ADMIN_PORT|hydra admin TLS (:4445)|/tmp/e2e-pp-hydra-adm.log")
+
+# ─── ПРОБРОСЫ К ПОСТАВЩИКУ ЛИЧНОСТИ — ПО ПОСАДКЕ ЦЕПОЧКИ, А НЕ ВСЕГДА (#2841) ──
+#
+# Четыре проброса ниже ведут к службам поставщика: его публичная поверхность
+# (обмен ключа служебной учётки на предъявителя; её же читают providerPublicBaseUrl
+# суит и посев церемонии) и транспорты волны церемонии — вход, заведение личности,
+# принятие запроса входа. Прежде они открывались безусловно, как пробросы к ядру.
+# На цепочке own поставщика нет (#2735 выключил его в базе зонта для всех
+# стендов), проброс к службе, которой нет, завершается, и блок живости ниже
+# объявлял прогон недействительным: e2e-newman 36155834793 — 0 коллекций из 58
+# во всех четырёх шардах.
+#
+# ПОЧЕМУ ПОСАДКА, А НЕ «СЛУЖБА ЕСТЬ». Прежняя запись здесь намеренно не
+# ставила условия «пропусти, если службы нет», и довод её в силе: на стенде,
+# которому поставщик НУЖЕН, недостающий транспорт обязан остановить прогон, а
+# не превратиться в тихий пропуск. Поэтому условие — не наличие службы, а
+# посадка цепочки, которую объявляют сами процессы: поставщика нет ровно
+# тогда, когда ОБЕ половины (служба доступа и край) стартовали с own
+# (deploy/scripts/identity-provider-landing.py — то же чтение, что у гейта
+# административного перехода). Во всех остальных случаях — половина назвала
+# поставщика, посадка не прочитана, помощник отказал — пробросы открываются
+# все и на прежних условиях: каждый в PF_WHAT, не вставший останавливает прогон.
+#
+# Адрес публичной поверхности суитам инъектируется только вместе с пробросом:
+# адрес без производителя — вердикт о продукте на предмете, которого харнесс не
+# создал. Перепись печатается всегда: «не нужно» отличимо от «не прочитано».
+# Держит это исходом на четырёх посадках
+# deploy/scripts/assert-provider-forwards-follow-the-landing.sh.
+PROVIDER_ENV_ARGS=()
+PROVIDER_LANDING="$(python3 "$SCRIPT_DIR/identity-provider-landing.py" --namespace "$NS")" \
+  || PROVIDER_LANDING="present|помощник посадки отказал — отсутствие поставщика НЕ установлено, пробросы обязательны"
+_pf_before="${#PF_PIDS[@]}"
+if [ "${PROVIDER_LANDING%%|*}" != absent ]; then
+  kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-public "$HYDRA_PORT:4444" >/tmp/e2e-pp-hydra.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$HYDRA_PORT|hydra public token endpoint (:4444)|/tmp/e2e-pp-hydra.log")
+  kubectl -n "$NS" port-forward svc/kacho-umbrella-kratos-public "$KRATOS_PUBLIC_PORT:80" >/tmp/e2e-pp-kratos-pub.log 2>&1 &  PF_PIDS+=($!); PF_WHAT+=("$KRATOS_PUBLIC_PORT|kratos public (:80)|/tmp/e2e-pp-kratos-pub.log")
+  kubectl -n "$NS" port-forward svc/kacho-umbrella-kratos-admin "$KRATOS_ADMIN_PORT:80" >/tmp/e2e-pp-kratos-adm.log 2>&1 &    PF_PIDS+=($!); PF_WHAT+=("$KRATOS_ADMIN_PORT|kratos admin (:80)|/tmp/e2e-pp-kratos-adm.log")
+  kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-admin-tls "$HYDRA_ADMIN_PORT:4445" >/tmp/e2e-pp-hydra-adm.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$HYDRA_ADMIN_PORT|hydra admin TLS (:4445)|/tmp/e2e-pp-hydra-adm.log")
+  PROVIDER_ENV_ARGS=(--env-var "providerPublicBaseUrl=http://localhost:$HYDRA_PORT")
+fi
+echo "[parallel] пробросы к поставщику личности: открыто $(( ${#PF_PIDS[@]} - _pf_before )) — ${PROVIDER_LANDING#*|}"
 # Полоса фасада (#59). Каждый проброс попадает в PF_WHAT, поэтому не вставший
 # проброс останавливает прогон тем же блоком ниже, а не отдаёт «кейс не смог».
 kubectl -n "$NS" port-forward svc/kaname-internal "$IAM_JWKS_PORT:9097" >/tmp/e2e-pp-iam-jwks.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$IAM_JWKS_PORT|iam JWKS-proxy (:9097)|/tmp/e2e-pp-iam-jwks.log")
@@ -585,7 +609,7 @@ launch_wave() {  # $@ = суиты волны; одновременно испо
         --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
         --env-var "externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
         --env-var "iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT" \
-        --env-var "providerPublicBaseUrl=http://localhost:$HYDRA_PORT" \
+        ${PROVIDER_ENV_ARGS[@]+"${PROVIDER_ENV_ARGS[@]}"} \
         --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
         "${OWN_FRONT_ENV_ARGS[@]}" \
         ${OWN_FRONT_TLS_ARGS[@]+"${OWN_FRONT_TLS_ARGS[@]}"} \
