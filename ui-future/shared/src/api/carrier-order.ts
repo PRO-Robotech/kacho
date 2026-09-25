@@ -66,8 +66,8 @@
 // КАЖДОЕ обращение консоли, — страж ИСПОЛНЕНИЯ (`test/issuance-guard.ts`): в
 // пробах jest и в каждом контексте браузера сквозных проб вызов `fetch` окна без
 // отметки выпуска (`issuing` ниже) до сети не доходит и роняет пробу. Там, куда
-// исполнение не дошло, — правило линта (`eslint-issuance-ordering.js`) и быстрая
-// подсказка переписи (`test/console-issuance-ordered.test.ts`). Исход у
+// исполнение не дошло, — правило линта (`ui-future/shared/issuance-ordering.eslint.config.js`)
+// и быстрая подсказка переписи (`test/console-issuance-ordered.test.ts`). Исход у
 // страницы — браузерная пара F8-46 и F8-47 (`e2e/specs/account-settings.spec.ts`).
 
 const KEY = Symbol.for("kacho.console.carrier-order");

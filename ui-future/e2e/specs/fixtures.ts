@@ -6,6 +6,7 @@ import { parseRpcStatus } from "../../shared/src/api/rpc-status";
 import { isProviderAddressText } from "../../shared/src/test/provider-address";
 import { BUDGET_ATTACHMENT, noteRefusal, recordableRefusal, takeRefusals } from "./ceremony-budget";
 import { formatBreaches, guardBrowser, takeBreaches, takeStaleBreaches } from "./issuance-guard.ts";
+import { carryStandCookiesInBrowser } from "../stand-secure-origin.ts";
 
 /**
  * ЗАПИСЬ ТРАССЫ ПРИНАДЛЕЖИТ НАБОРУ, А НЕ ШТАТНОМУ `use.trace` (#1242).
@@ -65,7 +66,22 @@ import { formatBreaches, guardBrowser, takeBreaches, takeStaleBreaches } from ".
  * `@playwright/test` в пробах запрещён правилом линта — иначе проба тихо
  * останется без этой фикстуры.
  */
-export const test = base.extend<{ sourceAxisLedger: void; issuanceLedger: void }, { issuanceGuardedBrowser: void }>({
+export const test = base.extend<
+  { sourceAxisLedger: void; issuanceLedger: void },
+  { issuanceGuardedBrowser: void; standCookieCarrier: void }
+>({
+  // ПЕЧЕНЬЕ СТЕНДА ПО HTTP (#1274) — в каждом контексте браузера, который заводит
+  // набор: `page.request` контекста носит Secure-печенье службы в происхождение
+  // стенда. Без этого на стенде по http обращения `page.request` уходят без
+  // носителя сессии, хотя у браузера он есть. Устройство и снятие —
+  // `stand-secure-origin.ts`.
+  standCookieCarrier: [
+    async ({ browser }, use, workerInfo) => {
+      carryStandCookiesInBrowser(browser, workerInfo.project.use.baseURL);
+      await use();
+    },
+    { scope: "worker", auto: true },
+  ],
   // СТРАЖ ИСПОЛНЕНИЯ МЕСТ ВЫПУСКА (приёмка F8, Р10, F8-46) — в каждом контексте
   // браузера, который заводит набор: штатном и заведённом пробой самой. Вызов
   // `fetch` окна, выпущенный консолью мимо упорядочивающего транспорта, до сети

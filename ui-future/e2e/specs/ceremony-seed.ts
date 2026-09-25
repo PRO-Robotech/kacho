@@ -13,6 +13,7 @@ import {
 } from "@playwright/test";
 import { noteRefusal, recordableRefusal } from "./ceremony-budget";
 import { E2E_PASSWORD, SESSION_COOKIE, runTag } from "./fixtures";
+import { carryStandCookies } from "../stand-secure-origin.ts";
 
 /**
  * Посев «Дано» сценариев церемонии — глаголами НАШЕЙ службы, отдельным
@@ -114,8 +115,18 @@ export type Cookie = Awaited<ReturnType<BrowserContext["cookies"]>>[number];
 
 /**
  * Свой контекст запросов посева — к тому же стенду, с тем же отношением к
- * сертификату, что у браузера сценария, но со СВОЕЙ банкой печенья. `carrying`
- * — печенья, которые контекст получает явно (перенос носителя браузера).
+ * сертификату и к происхождению стенда, что у браузера сценария, но со СВОЕЙ
+ * банкой печенья. `carrying` — печенья, которые контекст получает явно (перенос
+ * носителя браузера).
+ *
+ * ПЕЧЕНЬЕ ФОРМЫ НА СТЕНДЕ ПО HTTP (#1274). Признак формы служба сверяет с
+ * печеньем контекста формы (`kaname_form`), выданным вместе с ним и помеченным
+ * `Secure`. Хранилище playwright такое печенье по http к имени стенда не
+ * отправляет, и регистрация посева получала `403 FORM_TOKEN_REJECTED` — на
+ * прогоне 36189499133 так не исполнились 144 пробы из 149. Перенос
+ * (`carryStandCookies`) отдаёт печенье стенда в происхождение стенда; атрибуты
+ * печенья остаются такими, какими их выдала служба, поэтому `transferSession`
+ * по-прежнему переносит носитель как выдан.
  */
 export async function newSeed(testInfo: TestInfo, carrying: readonly Cookie[] = []): Promise<Seed> {
   const use = testInfo.project.use;
@@ -127,6 +138,7 @@ export async function newSeed(testInfo: TestInfo, carrying: readonly Cookie[] = 
     // ни с какими другими — общей банки с браузером у него нет.
     storageState: { cookies: [...carrying], origins: [] },
   });
+  carryStandCookies(api, async () => (await api.storageState()).cookies, use.baseURL);
   const issued: IssuedCall[] = [];
   const seed: Seed = {
     api,
