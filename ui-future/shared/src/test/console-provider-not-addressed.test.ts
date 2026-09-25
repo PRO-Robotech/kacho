@@ -38,10 +38,7 @@ export const CONSOLE_EXCUSES: readonly Excuse[] = [
   {
     file: /(^|\/)vite\.config\.ts$/,
     reason: "прокси сервера разработки: в браузер не попадает; снимается вместе с ручками (#2733)",
-    covers: [
-      "dashboard/vite.config.ts ручка базы поставщика KACHO_KRATOS_UI_BASE",
-      "host/vite.config.ts ручка базы поставщика KACHO_KRATOS_UI_BASE",
-    ],
+    covers: ["dashboard/vite.config.ts ручка базы поставщика", "host/vite.config.ts ручка базы поставщика"],
   },
   {
     file: /^shared\/src\/lib\/config\.ts$/,
@@ -49,12 +46,9 @@ export const CONSOLE_EXCUSES: readonly Excuse[] = [
     // Поле ручки, её значение по умолчанию и построитель — и ничего сверх: обёртка
     // построителя, заведённая здесь, встала бы сверх перечня и краснит (F3).
     covers: [
-      "shared/src/lib/config.ts построитель адреса поставщика kratosUrl",
-      "shared/src/lib/config.ts построитель адреса поставщика kratosUrl",
-      "shared/src/lib/config.ts ручка базы поставщика VITE_KRATOS_URL",
-      "shared/src/lib/config.ts адрес поставщика «/.ory/kratos/public»",
-      "shared/src/lib/config.ts построитель адреса поставщика kratosUrl",
-      "shared/src/lib/config.ts построитель адреса поставщика kratosUrl",
+      ...Array<string>(4).fill("shared/src/lib/config.ts построитель адреса поставщика"),
+      "shared/src/lib/config.ts ручка базы поставщика",
+      "shared/src/lib/config.ts адрес поставщика",
     ],
   },
 ];

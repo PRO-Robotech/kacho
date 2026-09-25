@@ -104,26 +104,20 @@ describe("F8-38 · перепись обращений к поставщику �
     }
   });
 
-  // F3 проверки круга 2: обёртка построителя в исключённом `config.ts` и её вызов
-  // из прод-файла. Изменён ровно один факт против близнеца — есть ли обёртка.
+  // F3 проверки круга 2: новая выдача адреса поставщика в исключённом `config.ts`
+  // и её вызов из прод-файла. Изменён ровно один факт против близнеца — есть ли
+  // выдача. Адреса — поверхность потоков (`/self-service/…`, `/sessions/whoami`):
+  // её распознаватель знает без имени издателя.
   const CONFIG_EXCUSE = {
     file: /^shared\/src\/lib\/config\.ts$/,
     reason: "ручки базы поставщика и их построители",
-    covers: [
-      "shared/src/lib/config.ts построитель адреса поставщика kratosUrl",
-      "shared/src/lib/config.ts построитель адреса поставщика kratosUrl",
-    ],
+    covers: ["shared/src/lib/config.ts адрес поставщика", "shared/src/lib/config.ts адрес поставщика"],
   };
-  const CONFIG = lines(
-    "export function kratosUrl(path: string): string {",
-    "  return `${base}${path}`;",
-    "}",
-    "const base = kratosUrl.name;",
-  );
-  const WRAPPER = lines(CONFIG, 'export const loginFlowUrl = () => kratosUrl("/self-service/login/browser");');
+  const CONFIG = lines('export const flows = "/self-service/";', 'export const session = "/sessions/whoami";');
+  const WRAPPER = lines(CONFIG, 'export const loginFlowUrl = () => "/self-service/login/browser";');
   const CALLER = lines('import { loginFlowUrl } from "@shared/lib/config";', "window.location.assign(loginFlowUrl());");
 
-  it("F8-38 · обёртка построителя в исключённом файле и её вызов извне — сверх перечня, красное с именем", () => {
+  it("F8-38 · новая выдача адреса в исключённом файле и её вызов извне — сверх перечня, красное с именем", () => {
     const census = providerCensusOf(
       [
         { file: "shared/src/lib/config.ts", text: WRAPPER },
@@ -133,13 +127,11 @@ describe("F8-38 · перепись обращений к поставщику �
     );
     expect(census.findings).toEqual([]);
     expect(census.excuseDrift).toEqual([
-      "^shared\\/src\\/lib\\/config\\.ts$: отнесено 4, в перечне 2 · сверх перечня: " +
-        "shared/src/lib/config.ts построитель адреса поставщика kratosUrl; " +
-        "shared/src/lib/config.ts адрес поставщика «/self-service/login/browser»",
+      "^shared\\/src\\/lib\\/config\\.ts$: отнесено 3, в перечне 2 · сверх перечня: shared/src/lib/config.ts адрес поставщика",
     ]);
   });
 
-  it("F8-38 · близнец: тот же вызывающий без обёртки — перечень совпал, расхождения нет", () => {
+  it("F8-38 · близнец: тот же вызывающий без новой выдачи — перечень совпал, расхождения нет", () => {
     const census = providerCensusOf(
       [
         { file: "shared/src/lib/config.ts", text: CONFIG },
@@ -155,19 +147,16 @@ describe("F8-38 · перепись обращений к поставщику �
     expect(census.excuseDrift).toEqual([]);
   });
 
-  it("F8-38 · построитель, позванный прямо из прод-файла, — находка с координатой, а не отнесённое", () => {
+  it("F8-38 · тот же адрес, выданный прямо из прод-файла, — находка с координатой, а не отнесённое", () => {
     const census = providerCensusOf(
       [
         { file: "shared/src/lib/config.ts", text: CONFIG },
-        {
-          file: "host/src/utils/auth.ts",
-          text: lines('import { kratosUrl } from "@shared/lib/config";', 'window.location.assign(kratosUrl("/x"));'),
-        },
+        { file: "host/src/utils/auth.ts", text: 'window.location.assign("/self-service/login/browser");' },
       ],
       [CONFIG_EXCUSE],
     );
     expect(census.findings.map(formatFinding)).toEqual([
-      "host/src/utils/auth.ts:2 построитель адреса поставщика kratosUrl",
+      "host/src/utils/auth.ts:1 адрес поставщика «/self-service/login/browser»",
     ]);
     expect(census.excuseDrift).toEqual([]);
   });
@@ -175,17 +164,11 @@ describe("F8-38 · перепись обращений к поставщику �
   it("F8-38 · перечень шире предмета — недостающее названо", () => {
     const census = providerCensusOf(
       [{ file: "shared/src/lib/config.ts", text: CONFIG }],
-      [
-        {
-          ...CONFIG_EXCUSE,
-          covers: [...CONFIG_EXCUSE.covers, "shared/src/lib/config.ts ручка базы поставщика VITE_KRATOS_URL"],
-        },
-      ],
+      [{ ...CONFIG_EXCUSE, covers: [...CONFIG_EXCUSE.covers, "shared/src/lib/config.ts ручка базы поставщика"] }],
     );
-    expect(census.excuseDrift).toHaveLength(1);
-    expect(census.excuseDrift[0]).toMatch(
-      /нет в дереве: shared\/src\/lib\/config\.ts ручка базы поставщика VITE_KRATOS_URL$/,
-    );
+    expect(census.excuseDrift).toEqual([
+      "^shared\\/src\\/lib\\/config\\.ts$: отнесено 2, в перечне 3 · нет в дереве: shared/src/lib/config.ts ручка базы поставщика",
+    ]);
   });
 
   it("F8-38 · исключение, которому нечего исключать, — само находка; пустой обход — отказ", () => {

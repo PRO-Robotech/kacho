@@ -40,9 +40,13 @@ export { isProviderAddressText };
  * файлу прощало ВСЁ, что в файле появится: обёртка построителя, заведённая в
  * исключённом файле, и её вызов из прод-файла давали «обращений 0» — отнесённое
  * по референту молча росло 8 → 10. Поэтому исключение называет, ЧТО именно оно
- * относит (`covers`: файл и вид каждого найденного, без строки), и перепись
- * судит точное совпадение: лишнее — новое обращение внутри исключённого, его
- * судят как находку предмета; недостающее — запись шире своего предмета.
+ * относит (`covers`: файл и ВИД каждого найденного — без строки и без
+ * значения), и перепись судит точное совпадение перечня: лишнее — новое
+ * обращение внутри исключённого; недостающее — запись шире своего предмета.
+ * Значения в перечне нет намеренно: оно несёт имя снимаемого издателя, чьи
+ * привязки держит убывающий потолок (#2730), а перечень его не наращивает.
+ * Цена названа: замена одного значения другим того же вида в исключённом
+ * файле перечня не меняет — её судит прочтение исключённого файла на ревью.
  */
 
 /** Построители адреса поставщика и ручки его базы — имена узлов. */
@@ -53,6 +57,8 @@ const PROVIDER_MODULE = /(^|\/)lib\/kratos$|^@ory\//;
 export interface ProviderFinding {
   file: string;
   line: number;
+  /** Вид найденного без значения: «адрес поставщика», «построитель адреса поставщика», … */
+  kind: string;
   what: string;
   /** Имя теста набора, внутри которого стоит узел; пусто — вне теста. */
   test: string;
@@ -77,13 +83,13 @@ export interface Excuse {
   file: RegExp;
   test?: RegExp;
   reason: string;
-  /** Что исключение относит: `«файл» «вид найденного»` на каждое место, без строки (`coverKey`). */
+  /** Что исключение относит: `«файл» «вид найденного»` на каждое место (`coverKey`). */
   covers: readonly string[];
 }
 
-/** Ключ найденного в перечне исключения: файл и вид, без строки — перенос строки перечня не ломает. */
-export function coverKey(f: Pick<ProviderFinding, "file" | "what">): string {
-  return `${f.file} ${f.what}`;
+/** Ключ найденного в перечне исключения: файл и вид — без строки и без значения. */
+export function coverKey(f: Pick<ProviderFinding, "file" | "kind">): string {
+  return `${f.file} ${f.kind}`;
 }
 
 /** Расхождение двух перечней как мультимножеств: что лишнее, чего недостаёт. */
@@ -125,30 +131,31 @@ export function providerAddressesIn(file: string, text: string): ProviderFinding
   const kind = /\.tsx$/.test(file) ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, kind);
   const found: ProviderFinding[] = [];
-  const push = (node: ts.Node, what: string) =>
-    found.push({ file, line: lineOf(source, node), what, test: enclosingTest(node) });
+  const push = (node: ts.Node, kind: string, value: string) =>
+    found.push({ file, line: lineOf(source, node), kind, what: `${kind} ${value}`, test: enclosingTest(node) });
   const visit = (node: ts.Node) => {
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
       if (PROVIDER_MODULE.test(node.moduleSpecifier.text))
-        push(node, `импорт клиента поставщика ${node.moduleSpecifier.text}`);
+        push(node, "импорт клиента поставщика", node.moduleSpecifier.text);
       return; // путь импорта — не адрес обращения
     }
     if (
       (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) &&
       !ts.isImportDeclaration(node.parent)
     ) {
-      if (isProviderAddressText(node.text)) push(node, `адрес поставщика «${node.text}»`);
-      else if (PROVIDER_KNOBS.test(node.text)) push(node, `ручка базы поставщика ${node.text}`);
+      if (isProviderAddressText(node.text)) push(node, "адрес поставщика", `«${node.text}»`);
+      else if (PROVIDER_KNOBS.test(node.text)) push(node, "ручка базы поставщика", node.text);
     }
     if (ts.isTemplateExpression(node)) {
       const parts = [node.head.text, ...node.templateSpans.map((s) => s.literal.text)];
-      if (parts.some((p) => isProviderAddressText(p))) push(node, `адрес поставщика в шаблоне «${parts.join("${…}")}»`);
+      if (parts.some((p) => isProviderAddressText(p)))
+        push(node, "адрес поставщика в шаблоне", `«${parts.join("${…}")}»`);
     }
     if (ts.isIdentifier(node) && PROVIDER_BUILDERS.has(node.text)) {
-      push(node, `построитель адреса поставщика ${node.text}`);
+      push(node, "построитель адреса поставщика", node.text);
     }
     if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.name) && PROVIDER_KNOBS.test(node.name.text)) {
-      push(node, `ручка базы поставщика ${node.name.text}`);
+      push(node, "ручка базы поставщика", node.name.text);
     }
     ts.forEachChild(node, visit);
   };

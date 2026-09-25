@@ -40,14 +40,8 @@ export const SUITE_EXCUSES: readonly Excuse[] = [
     // сверх: адрес поставщика, дописанный в другой тест F8-18, встал бы сверх
     // перечня и краснит (F3), а не проходит по префиксу имени теста.
     covers: [
-      "specs/identity-ceremony.spec.ts адрес поставщика «/.ory/kratos/public/sessions/whoami»",
-      "specs/identity-ceremony.spec.ts адрес поставщика «/oauth2/auth»",
-      "specs/identity-ceremony.spec.ts адрес поставщика в шаблоне «${…}/self-service/logout/browser»",
-      "specs/identity-ceremony.spec.ts адрес поставщика «/.ory/kratos/public/self-service/login/browser»",
-      "specs/identity-ceremony.spec.ts адрес поставщика в шаблоне «GET ${…}/.ory/kratos/public/sessions/whoami запрос»",
-      "specs/identity-ceremony.spec.ts адрес поставщика в шаблоне «GET ${…}/oauth2/auth запрос»",
-      "specs/identity-ceremony.spec.ts адрес поставщика в шаблоне «GET ${…}/self-service/logout/browser документ»",
-      "specs/identity-ceremony.spec.ts адрес поставщика в шаблоне «GET ${…}/.ory/kratos/public/self-service/login/browser документ»",
+      ...Array<string>(3).fill("specs/identity-ceremony.spec.ts адрес поставщика"),
+      ...Array<string>(5).fill("specs/identity-ceremony.spec.ts адрес поставщика в шаблоне"),
     ],
   },
 ];
