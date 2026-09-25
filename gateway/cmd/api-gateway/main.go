@@ -170,38 +170,55 @@ func main() {
 	}
 	authInterceptor = wireLaneCarrierReader(authInterceptor, identityLane, kratosURL, ourSessionReader, logger)
 
-	// РЕТРАНСЛЯЦИЯ ГЛАГОЛОВ ФОРМЫ — под `own`, как и наш читатель: форма входа
-	// принадлежит той чеканке, которая личность ВЫДАЁТ. Взаимный TLS
-	// клиентской парой края, адрес — своя ручка, страж старта ниже отказывает
-	// без неё.
-	var loginLaneRelay *handler.LoginLaneRelay
+	// РЕТРАНСЛЯЦИЯ НА СЛУЖБУ ДОСТУПА — под `own`, как и наш читатель: форма
+	// входа и церемония авторизации принадлежат той чеканке, которая личность
+	// ВЫДАЁТ. Целей две, и у каждой СВОЙ ретранслятор со своей парой «адрес
+	// плюс удостоверение» под стражем старта (замысел LINE-A-1 §5.1б п. 2а,
+	// §7 инв. 36): слушатель формы — взаимный TLS клиентской парой края;
+	// слушатель выдачи, где целиком живёт церемония, — односторонний, пары ему
+	// край не предъявляет. Набор осей стража выводится из режима цели, и
+	// неприменимая ось называется в самоотчёте, а не опускается. Предел одной
+	// ретрансляции — названная величина механизма, общая для обеих целей
+	// (`handler.LoginLaneRelayTimeout`, инв. 30): здесь он не задаётся.
+	var loginLaneRelay, issuanceRelay *handler.LoginLaneRelay
 	if identityLane == identityposture.Own {
-		if llErr := validateLoginLaneConfig(identityLane, LoginLaneConfig{
-			URL:            cfg.LoginLaneURL,
-			ClientCertFile: cfg.MTLSClientCertFile,
-			ClientKeyFile:  cfg.MTLSClientKeyFile,
-			CAFile:         cfg.MTLSCAFile,
-		}); llErr != nil {
-			log.Fatalf("login lane startup-validation: %v", llErr)
-		}
-		loginLaneTransport, ltErr := newLoginLaneTransport(cfg)
-		if ltErr != nil {
-			log.Fatalf("login lane transport: %v", ltErr)
+		// ТОТ ЖЕ оператор чтения цепочки, что кормит условие client_ip модели
+		// прав: справа по числу доверенных прыжков (Ф3 Р2).
+		clientIP := newClientAddressOperator(cfg).ClientIP
+
+		formTransport, formTarget, ftErr := prepareRelayTarget(identityLane, cfg, middleware.RelayTargetForm, cfg.LoginLaneURL)
+		if ftErr != nil {
+			log.Fatalf("login lane startup-validation: %v", ftErr)
 		}
 		relay, rErr := handler.NewLoginLaneRelay(handler.LoginLaneRelayConfig{
 			Logger:    logger,
+			Serves:    middleware.RelayTargetForm,
 			Target:    cfg.LoginLaneURL,
-			Transport: loginLaneTransport,
-			// ТОТ ЖЕ оператор чтения цепочки, что кормит условие client_ip модели
-			// прав: справа по числу доверенных прыжков (Ф3 Р2).
-			ClientIP: newClientAddressOperator(cfg).ClientIP,
+			Transport: formTransport,
+			ClientIP:  clientIP,
 		})
 		if rErr != nil {
 			log.Fatalf("login lane relay: %v", rErr)
 		}
 		loginLaneRelay = relay
-		logger.Info("login lane relay wired", "target", cfg.LoginLaneURL,
-			"verbs", len(middleware.LoginLaneRoutes()), "strips", "authorization + x-kacho-* (both forms)")
+		logRelayWired(logger, relay, formTarget, cfg.LoginLaneURL)
+
+		issuanceTransport, issuanceTarget, itErr := prepareRelayTarget(identityLane, cfg, middleware.RelayTargetIssuance, cfg.IAMIssuanceURL)
+		if itErr != nil {
+			log.Fatalf("authorization ceremony relay startup-validation: %v", itErr)
+		}
+		ceremony, cErr := handler.NewLoginLaneRelay(handler.LoginLaneRelayConfig{
+			Logger:    logger,
+			Serves:    middleware.RelayTargetIssuance,
+			Target:    cfg.IAMIssuanceURL,
+			Transport: issuanceTransport,
+			ClientIP:  clientIP,
+		})
+		if cErr != nil {
+			log.Fatalf("authorization ceremony relay: %v", cErr)
+		}
+		issuanceRelay = ceremony
+		logRelayWired(logger, ceremony, issuanceTarget, cfg.IAMIssuanceURL)
 	}
 
 	// --- JWKS verifier wired into the principal-setting path ---
@@ -870,12 +887,8 @@ func main() {
 	// клетки стоят нулями — отличимо от «ретрансляций не было» по посадке в
 	// самоотчёте, а не по этим нулям.
 	diagMetrics.RegisterSessionLane(func() gwmetrics.SessionLaneSnapshot {
-		snap := gwmetrics.SessionLaneSnapshot{Lane: authInterceptor.SessionLane().Snapshot(),
-			Relay: handler.LoginLaneRelaySnapshot{Relayed: map[string]uint64{}}}
-		if loginLaneRelay != nil {
-			snap.Relay = loginLaneRelay.Stats()
-		}
-		return snap
+		return gwmetrics.SessionLaneSnapshot{Lane: authInterceptor.SessionLane().Snapshot(),
+			Relays: handler.LoginLaneRelaySnapshots(loginLaneRelay, issuanceRelay)}
 	})
 	diagDesc, diagDescErr := describeDiagnosticSurface(
 		cfg.MetricsAddr, diagMetrics, posture.Spec().Mode, logger)
@@ -1127,15 +1140,32 @@ func main() {
 		identityLane, kratosURL, clients.NewSessionRevocationsAdapter(backends["iamInternal"]), iamSubjectClient)
 	sessionIdentity.Register(httpMux)
 
-	// ГЛАГОЛЫ ПОЛОСЫ ФОРМЫ (Ф3 Р2; Ф4 регистрация, Ф5 восстановление) —
-	// ретрансляция на слушатель службы, ЗА полосой личности (как «кто я»):
-	// носитель отсечённой сессии до службы не доходит (Ф3-51). Под `external`
-	// не заведена — пути перечня отвечают 404 краем. Пути — из того же
-	// объявления, что читают полоса и isPublicHTTPPath.
-	if loginLaneRelay != nil {
-		for _, rt := range middleware.LoginLaneRoutes() {
-			httpMux.Handle(rt.Path, loginLaneRelay)
+	// ЗАПИСИ ОБЪЯВЛЕНИЯ — глаголы полосы формы (Ф3 Р2; Ф4 регистрация, Ф5
+	// восстановление, Ф12 второй фактор) и две координаты церемонии авторизации
+	// (замысел LINE-A-1 §5.1: `GET /iam/v1/authorize`, `POST /iam/v1/token`) —
+	// ретрансляция на слушатели службы, ЗА полосой личности (как «кто я»):
+	// носитель отсечённой сессии до службы не доходит (Ф3-51). Каждая запись
+	// крепится ТОЧНЫМ путём на ретранслятор своей цели одной функцией монтажа
+	// (инв. 33): её исход судит проба пакета, её вызов здесь — гейт корня. Под
+	// `external` не заведена — пути перечня отвечают 404 краем. Пути — из того же
+	// объявления, что читают полоса и isPublicHTTPPath; сосед
+	// `/iam/v1/authorize:check` остаётся за транскодером под `/`.
+	//
+	// Координаты церемонии на граничном admin-REST слушателе НЕ
+	// ретранслируются (sec-issuance-path-not-elsewhere): там запрос получает
+	// ответ обработчика `/` — второй аргумент монтажа есть ТОТ ЖЕ обработчик,
+	// что смонтирован под `/` ниже (гейт корня судит одно имя), и «не найдено»
+	// побайтно то, что слушатель отвечает на путь, которого у него нет.
+	//
+	// АРЕНДАТОРСКОЕ УДОСТОВЕРЕНИЕ ЗА КРАЙ НЕ УЕЗЖАЕТ (приёмка KAN-AUTHN-1, ось 8):
+	// обёртка стоит ВПЛОТНУЮ к пересылающему обработчику — разбор у `/` ниже.
+	restRoot := principalmeta.StripCredentialBeforeForwarding(restHandler)
+	if identityLane == identityposture.Own {
+		mounted, mErr := handler.MountLoginLaneRoutes(httpMux, restRoot, loginLaneRelay, issuanceRelay)
+		if mErr != nil {
+			log.Fatalf("login lane mount: %v", mErr)
 		}
+		logger.Info("relayed records mounted", "records", mounted)
 	}
 
 	// POST /oauth/logout — RFC 7009 token revocation +
@@ -1171,7 +1201,7 @@ func main() {
 	// сопоставителем нельзя — снимается сам заголовок запроса. Разбор и решения
 	// по конструкциям сборки помимо общего узла — в шапке
 	// gateway/internal/principalmeta/credential_strip.go.
-	httpMux.Handle("/", principalmeta.StripCredentialBeforeForwarding(restHandler))
+	httpMux.Handle("/", restRoot)
 
 	// Хранилище однократности `Idempotency-Key`.
 	//

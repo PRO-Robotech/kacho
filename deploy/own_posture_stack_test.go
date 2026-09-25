@@ -45,6 +45,24 @@
 // TestOwnPostureStack_ServicePortModelIsTheTemplateExpression.
 //
 // ─────────────────────────────────────────────────────────────────────────────
+// ЦЕЛЕЙ РЕТРАНСЛЯЦИИ ДВЕ, И СУДИТСЯ КАЖДАЯ (kacho#2817)
+//
+// Вторая цель — слушатель выдачи: на него край ретранслирует обе координаты
+// церемонии авторизации (`GET /iam/v1/authorize`, `POST /iam/v1/token`) по
+// адресу `api-gateway.authn.iamIssuanceUrl`. Страж старта края судит каждую
+// цель, и незаданный адрес второй — такой же отказ старта, как первой. Перепись,
+// судившая одну цель, оставалась зелёной на стеке, край которого не поднимается.
+//
+// Согласие половин здесь о другой двери: слушатель выдачи выставлен ПУБЛИЧНЫМ
+// Service службы (запись `registry-token`), у внутреннего этого порта нет, и
+// порт Службы переопределению не подлежит — это `ports.registryToken` с
+// умолчанием шаблона. Выражение сверяет с шаблоном
+// TestOwnPostureStack_IssuancePortModelIsTheTemplateExpression.
+//
+// Находки одной цели не маскируют другую: незаданный адрес формы не снимает
+// суждения о выдаче, и обратно.
+//
+// ─────────────────────────────────────────────────────────────────────────────
 // СТЕК ОБЯЗАН СУЩЕСТВОВАТЬ, А НЕ «ЕСЛИ ЕСТЬ»
 //
 // Проверка, судящая стеки на `own` и молчащая, когда их ноль, не поймала бы
@@ -71,8 +89,11 @@ type ownStackFacts struct {
 	LanePort    string // kaname.ports.loginLane — порт слушателя в поде
 	ServicePort string // kaname.service.internal.loginLanePort — переопределение порта Службы
 	LaneURL     string // api-gateway.authn.iamLoginLaneUrl
-	ServiceName string // kaname.name — из него выводится имя внутреннего Service
+	ServiceName string // kaname.name — из него выводятся имена обоих Service
 	AccessKeys  bool   // объявлены ли все три величины привязки ключей доступа
+
+	IssuancePort string // kaname.ports.registryToken — порт слушателя выдачи и его записи на публичном Service
+	IssuanceURL  string // api-gateway.authn.iamIssuanceUrl — вторая цель ретрансляции края
 }
 
 // ownStackCensus — объём осмотренного.
@@ -110,53 +131,8 @@ func judgeOwnStacks(facts []ownStackFacts, pinNeedsBinding bool) ([]string, ownS
 				f.Stack, f.IAMPosture, f.EdgePosture))
 			continue
 		}
-		if strings.TrimSpace(f.LanePort) == "" {
-			findings = append(findings, fmt.Sprintf(
-				"стек %s на посадке own: `kaname.ports.loginLane` не объявлен — слушатель формы не "+
-					"поднимается, и служба откажет в старте с именем ручки", f.Stack))
-		}
-		raw := strings.TrimSpace(f.LaneURL)
-		if raw == "" {
-			findings = append(findings, fmt.Sprintf(
-				"стек %s на посадке own: `api-gateway.authn.iamLoginLaneUrl` не объявлен — край "+
-					"откажет в старте: ретрансляция без цели отвечала бы 503 на каждом запросе всю "+
-					"жизнь, неотличимо от «служба лежит»", f.Stack))
-			continue
-		}
-		u, err := url.Parse(raw)
-		if err != nil || u.Scheme == "" || u.Host == "" {
-			findings = append(findings, fmt.Sprintf(
-				"стек %s: `iamLoginLaneUrl` = %q не абсолютный адрес со схемой и хостом — край "+
-					"отказывает в старте", f.Stack, raw))
-			continue
-		}
-		if u.Scheme != "https" {
-			findings = append(findings, fmt.Sprintf(
-				"стек %s: `iamLoginLaneUrl` = %q не https — ретранслируемый запрос несёт печенье "+
-					"сессии человека, и открытый участок нёс бы его в чистом виде; слушатель полосы "+
-					"взаимный по TLS", f.Stack, raw))
-		}
-		// СОГЛАСИЕ ДВУХ ПОЛОВИН ОБ ОДНОМ ЧИСЛЕ — предмет этой пробы. Край набирает
-		// порт СЛУЖБЫ, а не слушателя: Служба ведёт на слушатель по ИМЕНИ порта
-		// (`targetPort: http-login-lane`), и потому со слушателем она согласна
-		// всегда, а с адресом края — только если её порт и есть порт адреса.
-		if port, svcPort := u.Port(), laneServicePort(f); port != svcPort {
-			findings = append(findings, fmt.Sprintf(
-				"стек %s: край ретранслирует на порт %q, а внутренняя Служба выставляет полосе %q "+
-					"(`service.internal.loginLanePort` = %q, по умолчанию `ports.loginLane` = %q) — "+
-					"половины называют РАЗНЫЕ двери. Обе исправны по отдельности, и ни одна проба "+
-					"половины этого не увидит: край постучится в порт, которого у Службы нет, и "+
-					"ответит 503 на каждом запросе",
-				f.Stack, port, svcPort, f.ServicePort, f.LanePort))
-		}
-		if svc := strings.TrimSpace(f.ServiceName); svc != "" {
-			if host := u.Hostname(); !strings.HasPrefix(host, svc+"-internal") {
-				findings = append(findings, fmt.Sprintf(
-					"стек %s: `iamLoginLaneUrl` ведёт на хост %q, а слушатель формы выставлен на "+
-						"ВНУТРЕННЕМ Service службы (`%s-internal`) — публичного пути к полосе нет "+
-						"by construction", f.Stack, host, svc))
-			}
-		}
+		findings = append(findings, judgeFormTarget(f)...)
+		findings = append(findings, judgeIssuanceTarget(f)...)
 		// Ручки привязки требуются ровно тогда, когда их требует ПИН. Условие
 		// вооружается само: поднимут пин — проверка начнёт требовать, и краснота
 		// придёт до подъёма стенда, а не отказом пода после.
@@ -177,6 +153,104 @@ func judgeOwnStacks(facts []ownStackFacts, pinNeedsBinding bool) ([]string, ownS
 	return findings, census
 }
 
+// judgeFormTarget — первая цель ретрансляции: слушатель полосы формы на
+// ВНУТРЕННЕМ Service службы.
+func judgeFormTarget(f ownStackFacts) []string {
+	var findings []string
+	if strings.TrimSpace(f.LanePort) == "" {
+		findings = append(findings, fmt.Sprintf(
+			"стек %s на посадке own: `kaname.ports.loginLane` не объявлен — слушатель формы не "+
+				"поднимается, и служба откажет в старте с именем ручки", f.Stack))
+	}
+	raw := strings.TrimSpace(f.LaneURL)
+	if raw == "" {
+		return append(findings, fmt.Sprintf(
+			"стек %s на посадке own: `api-gateway.authn.iamLoginLaneUrl` не объявлен — край "+
+				"откажет в старте: ретрансляция без цели отвечала бы 503 на каждом запросе всю "+
+				"жизнь, неотличимо от «служба лежит»", f.Stack))
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return append(findings, fmt.Sprintf(
+			"стек %s: `iamLoginLaneUrl` = %q не абсолютный адрес со схемой и хостом — край "+
+				"отказывает в старте", f.Stack, raw))
+	}
+	if u.Scheme != "https" {
+		findings = append(findings, fmt.Sprintf(
+			"стек %s: `iamLoginLaneUrl` = %q не https — ретранслируемый запрос несёт печенье "+
+				"сессии человека, и открытый участок нёс бы его в чистом виде; слушатель полосы "+
+				"взаимный по TLS", f.Stack, raw))
+	}
+	// СОГЛАСИЕ ДВУХ ПОЛОВИН ОБ ОДНОМ ЧИСЛЕ — предмет этой пробы. Край набирает
+	// порт СЛУЖБЫ, а не слушателя: Служба ведёт на слушатель по ИМЕНИ порта
+	// (`targetPort: http-login-lane`), и потому со слушателем она согласна
+	// всегда, а с адресом края — только если её порт и есть порт адреса.
+	if port, svcPort := u.Port(), laneServicePort(f); port != svcPort {
+		findings = append(findings, fmt.Sprintf(
+			"стек %s: край ретранслирует на порт %q, а внутренняя Служба выставляет полосе %q "+
+				"(`service.internal.loginLanePort` = %q, по умолчанию `ports.loginLane` = %q) — "+
+				"половины называют РАЗНЫЕ двери. Обе исправны по отдельности, и ни одна проба "+
+				"половины этого не увидит: край постучится в порт, которого у Службы нет, и "+
+				"ответит 503 на каждом запросе",
+			f.Stack, port, svcPort, f.ServicePort, f.LanePort))
+	}
+	if svc := strings.TrimSpace(f.ServiceName); svc != "" {
+		if host := u.Hostname(); !strings.HasPrefix(host, svc+"-internal") {
+			findings = append(findings, fmt.Sprintf(
+				"стек %s: `iamLoginLaneUrl` ведёт на хост %q, а слушатель формы выставлен на "+
+					"ВНУТРЕННЕМ Service службы (`%s-internal`) — публичного пути к полосе нет "+
+					"by construction", f.Stack, host, svc))
+		}
+	}
+	return findings
+}
+
+// judgeIssuanceTarget — вторая цель ретрансляции: слушатель выдачи на
+// ПУБЛИЧНОМ Service службы (kacho#2817). Оси те же, что у страж-записи цели на
+// крае (адрес задан, абсолютный `https`), плюс согласие половин о двери.
+func judgeIssuanceTarget(f ownStackFacts) []string {
+	raw := strings.TrimSpace(f.IssuanceURL)
+	if raw == "" {
+		return []string{fmt.Sprintf(
+			"стек %s на посадке own: `api-gateway.authn.iamIssuanceUrl` не объявлен — край "+
+				"откажет в старте: страж судит КАЖДУЮ цель ретрансляции, и церемония авторизации "+
+				"без цели отвечала бы 503 на каждом запросе всю жизнь", f.Stack)}
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return []string{fmt.Sprintf(
+			"стек %s: `iamIssuanceUrl` = %q не абсолютный адрес со схемой и хостом — край "+
+				"отказывает в старте", f.Stack, raw)}
+	}
+	var findings []string
+	if u.Scheme != "https" {
+		findings = append(findings, fmt.Sprintf(
+			"стек %s: `iamIssuanceUrl` = %q не https — край отказывает в старте: по церемонии "+
+				"едут печенье сессии человека и код авторизации", f.Stack, raw))
+	}
+	// Служба ведёт на слушатель по ИМЕНИ порта (`targetPort: registry-token`), и
+	// край набирает порт Службы — тот, что выводит шаблон.
+	if port, svcPort := u.Port(), issuanceServicePort(f); port != svcPort {
+		findings = append(findings, fmt.Sprintf(
+			"стек %s: край ретранслирует церемонию на порт %q, а публичная Служба выставляет "+
+				"слушатель выдачи на %q (`ports.registryToken` = %q, умолчание шаблона %s) — "+
+				"половины называют РАЗНЫЕ двери, и край ответит 503 на каждом запросе церемонии",
+			f.Stack, port, svcPort, f.IssuancePort, issuanceServicePortDefault))
+	}
+	// Имя — `<служба>.<ns>…`: запись порта есть только у публичного Service, а
+	// голое имя службы серверный лист не предъявляет (SAN несёт формы с
+	// пространством имён), и сверка имени на рукопожатии не сошлась бы.
+	if svc := strings.TrimSpace(f.ServiceName); svc != "" {
+		if host := u.Hostname(); !strings.HasPrefix(host, svc+".") {
+			findings = append(findings, fmt.Sprintf(
+				"стек %s: `iamIssuanceUrl` ведёт на хост %q, а слушатель выдачи выставлен на "+
+					"ПУБЛИЧНОМ Service службы (`%s.<ns>.svc`) — у внутреннего Service этого порта "+
+					"нет", f.Stack, host, svc))
+		}
+	}
+	return findings
+}
+
 // TestOwnPostureStack_ExistsAndBothHalvesNameOneListener — сверка по дереву.
 func TestOwnPostureStack_ExistsAndBothHalvesNameOneListener(t *testing.T) {
 	pinNeedsBinding := len(accessKeyKnobsOfPin(t, kanameModuleDir(t, ".."))) > 0
@@ -192,8 +266,9 @@ func TestOwnPostureStack_ExistsAndBothHalvesNameOneListener(t *testing.T) {
 		if f.IAMPosture != "own" && f.EdgePosture != "own" {
 			continue
 		}
-		t.Logf("  %s: служба=%s край=%s слушатель=%s порт Службы=%s адрес=%s привязка=%v",
-			f.Stack, f.IAMPosture, f.EdgePosture, f.LanePort, laneServicePort(f), f.LaneURL, f.AccessKeys)
+		t.Logf("  %s: служба=%s край=%s слушатель=%s порт Службы=%s адрес=%s · выдача: порт Службы=%s адрес=%s · привязка=%v",
+			f.Stack, f.IAMPosture, f.EdgePosture, f.LanePort, laneServicePort(f), f.LaneURL,
+			issuanceServicePort(f), f.IssuanceURL, f.AccessKeys)
 	}
 	for _, f := range findings {
 		t.Error(f)
@@ -230,6 +305,8 @@ func readOwnStackFacts(t *testing.T) []ownStackFacts {
 		f.ServicePort = declaredString(lookup(declared, "kaname", "service", "internal", "loginLanePort"))
 		f.LaneURL = declaredString(lookup(declared, "api-gateway", "authn", "iamLoginLaneUrl"))
 		f.ServiceName = declaredString(lookup(declared, "kaname", "name"))
+		f.IssuancePort = declaredString(lookup(declared, "kaname", "ports", "registryToken"))
+		f.IssuanceURL = declaredString(lookup(declared, "api-gateway", "authn", "iamIssuanceUrl"))
 
 		binding, ok := lookup(declared, "kaname", "config", "authn", "accessKeys")
 		if m, isMap := binding.(map[string]any); ok && isMap {
@@ -310,6 +387,62 @@ func TestOwnPostureStack_ServicePortModelIsTheTemplateExpression(t *testing.T) {
 			"воспроизводит %q и %q — модель порта Службы устарела, и согласие половин "+
 			"судится не о той двери (kacho#2725)",
 			path, cond, expr, laneServicePortCondition, laneServicePortExpression)
+	}
+}
+
+// issuanceServicePortDefault и issuanceServicePortExpression — выражение записи
+// `registry-token` публичного Service (charts/kaname/templates/
+// service-public.yaml), которое issuanceServicePort воспроизводит. Записи без
+// условия: слушатель выдачи Служба выставляет всегда. Умолчание — часть
+// выражения, а не второе число рядом: разойтись им нечем.
+const issuanceServicePortDefault = "9096"
+
+const issuanceServicePortExpression = `.Values.ports.registryToken | default ` + issuanceServicePortDefault
+
+// issuanceServicePort — порт, который публичный Service выставляет слушателю
+// выдачи: `ports.registryToken`, при пустоте по правилам `default` — умолчание
+// шаблона.
+func issuanceServicePort(f ownStackFacts) string {
+	if helmEmpty(f.IssuancePort) {
+		return issuanceServicePortDefault
+	}
+	return f.IssuancePort
+}
+
+// issuanceServicePortTemplate — условие записи `registry-token` (пусто, если
+// записи ничто не предшествует, кроме комментариев) и выражение её порта;
+// ok=false, если записи нет.
+func issuanceServicePortTemplate(tmpl string) (condition, expression string, ok bool) {
+	m := issuanceServicePortEntryRe.FindStringSubmatch(tmpl)
+	if m == nil {
+		return "", "", false
+	}
+	return strings.TrimSpace(m[1]), strings.TrimSpace(m[2]), true
+}
+
+// issuanceServicePortEntryRe — необязательное `{{- if <условие> }}`, затем
+// только строки-комментарии, затем запись `registry-token` и её
+// `port: {{ <выражение> }}`. Самое левое совпадение начинается с условия, если
+// оно стоит прямо над записью: иначе условие принадлежало бы другой записи.
+var issuanceServicePortEntryRe = regexp.MustCompile(
+	`(?:\{\{-?\s*if\s+([^}]+?)\s*-?\}\}[ \t]*\n)?(?:[ \t]*#[^\n]*\n)*[ \t]*- name:[ \t]*registry-token[ \t]*\n[ \t]*port:[ \t]*\{\{-?\s*([^}]+?)\s*-?\}\}`)
+
+// TestOwnPostureStack_IssuancePortModelIsTheTemplateExpression — предпосылка
+// суждения о второй цели: публичный Service выставляет порт слушателя выдачи
+// без условия и тем выражением, которое воспроизводит issuanceServicePort.
+func TestOwnPostureStack_IssuancePortModelIsTheTemplateExpression(t *testing.T) {
+	path := filepath.Join(kanameSubchart(t), "templates", "service-public.yaml")
+	cond, expr, ok := issuanceServicePortTemplate(readChartText(t, path))
+	if !ok {
+		t.Fatalf("%s: записи `registry-token` не найдено — проба сверяет адрес церемонии с "+
+			"портом, выставление которого больше не читается", path)
+	}
+	t.Logf("перепись: %s · условие записи %q · выражение порта %q", path, cond, expr)
+	if cond != "" || expr != issuanceServicePortExpression {
+		t.Errorf("%s: запись `registry-token` выставляется условием %q и портом %q, а проба "+
+			"воспроизводит запись без условия и порт %q — модель порта слушателя выдачи "+
+			"устарела, и согласие половин судится не о той двери (kacho#2817)",
+			path, cond, expr, issuanceServicePortExpression)
 	}
 }
 
