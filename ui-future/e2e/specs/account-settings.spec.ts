@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { expect, request, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
+import { expect, request, type BrowserContext, type Page, type Request, type TestInfo } from "@playwright/test";
 import { LANE_VERBS, captureAnswers, lanePostAnswer, type LaneAnswer } from "./answer-on-arrival";
 import {
   LANE,
@@ -18,7 +18,7 @@ import {
   type SeededHuman,
   type SeededSecondFactor,
 } from "./ceremony-seed";
-import { ceremonyCensus, formatCall, test, type CeremonyCensus } from "./fixtures";
+import { CANCELLED_BY_PAGE, ceremonyCensus, formatCall, test, type CeremonyCall, type CeremonyCensus } from "./fixtures";
 import { EDGE_SESSION_ENDED, SESSION_NOT_FRESH, bodyOf, fulfillWith } from "./producer-answers";
 
 /**
@@ -146,6 +146,145 @@ async function loginStatus(testInfo: TestInfo, email: string, password: string):
   }
 }
 
+/** Текст вызова края, гасящего носитель, не нашедший записи (F4d-22, §1.9). */
+const SESSION_ENDED_TEXT = bodyOf(EDGE_SESSION_ENDED).message;
+
+/** Ответ края `401` «сессия кончилась» — тот, что гасит носитель у браузера. */
+function endedSession(call: CeremonyCall): boolean {
+  return call.outcome === 401 && (call.challenge ?? "").includes(SESSION_ENDED_TEXT);
+}
+
+/** Путь платформы, на котором край носитель, не нашедший записи, гасит (§1.9). */
+const HELD_READ = "/iam/v1/accounts";
+
+/**
+ * «Дано» F8-46 и F8-47: первое чтение страницы по пути платформы ЗАДЕРЖАНО и
+ * отпускается правилом без времени, у которого ветвей две.
+ *
+ *   • страница задержанное ОТМЕНИЛА — к краю не уходит ничего;
+ *   • страница выпустила глагол сценария, пока исхода у задержанного нет, —
+ *     проба дожидается ответа глагола и только после него отправляет
+ *     задержанное краю САМА: отдельным контекстом запросов, не делящим банку
+ *     печенья с браузером, и с носителем момента выпуска. Ответ края —
+ *     настоящий — отдаётся странице как есть: код, тело, заголовки, включая
+ *     печенья, которые он ставит или гасит.
+ *
+ * Отпустить задержанное браузером мало: печенья браузер кладёт в запрос, когда
+ * отпускает его, а не когда страница его выпустила, и обращение ушло бы с новым
+ * носителем — так проба прежде и зеленела, ни разу не построив «Дано».
+ *
+ * Ветвь выбирается порядком событий слушателя, а он порядком страницы не
+ * является (Р6 п. 1, N19): у исправной консоли вторая ветвь срабатывает в части
+ * исполнений. Поэтому ветвь — СВЕДЕНИЕ, которое проба печатает, а не
+ * утверждение: ответ, отданный обращению, которое страница уже отменила, до
+ * браузера не доходит (N19: 550 из 550), и «Тогда» верно при любой ветви.
+ */
+async function holdFirstPlatformRead(page: Page, testInfo: TestInfo, verb: string) {
+  const context = page.context();
+  const use = testInfo.project.use;
+  let heldRequest: Request | null = null;
+  let issuedWith = "";
+  let branch = "не выбрана: задержанного нет";
+  let released = false;
+  let settled!: (r: Request) => void;
+  const heldIssued = new Promise<Request>((resolve) => {
+    settled = resolve;
+  });
+  await page.route(
+    (u) => u.pathname === HELD_READ,
+    async (route) => {
+      if (heldRequest !== null) return route.continue();
+      const held = route.request();
+      heldRequest = held;
+      // Слушатели ветвей — ДО первого ожидания: отмена, случившаяся раньше, чем
+      // их поставили, выбрала бы вторую ветвь на отменённом обращении.
+      const cancelled = new Promise<"отменено">((resolve) => {
+        context.on("requestfailed", (r) => {
+          if (r === held) resolve("отменено");
+        });
+      });
+      const verbIssued = new Promise<Request>((resolve) => {
+        context.on("request", (r) => {
+          if (r.method() === "POST" && new URL(r.url()).pathname === verb) resolve(r);
+        });
+      });
+      try {
+        issuedWith = await bearerOf(context);
+        settled(held);
+        const first = await Promise.race([cancelled, verbIssued]);
+        if (first === "отменено") {
+          branch = "первая: страница отменила задержанное, к краю не ушло ничего";
+          return;
+        }
+        await first.response();
+        const edge = await request.newContext({
+          baseURL: use.baseURL,
+          ignoreHTTPSErrors: use.ignoreHTTPSErrors,
+          storageState: { cookies: [], origins: [] },
+        });
+        try {
+          const answer = await edge.fetch(held.url(), {
+            method: held.method(),
+            headers: { ...held.headers(), cookie: `${SESSION_COOKIE}=${issuedWith}` },
+          });
+          const fulfilled = await route.fulfill({ response: answer }).then(
+            () => "отдан",
+            (e: unknown) => `не отдан: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}`,
+          );
+          branch = `вторая: ответ края ${answer.status()} на носитель момента выпуска ${fulfilled} странице`;
+        } finally {
+          await edge.dispose();
+        }
+      } finally {
+        released = true;
+      }
+    },
+  );
+  return {
+    /**
+     * «Дано» построено до отправки формы — утверждается, а не предполагается:
+     * задержанное есть и выпущено с тем носителем, который у браузера.
+     */
+    async built(ctx: BrowserContext): Promise<string> {
+      await expect
+        .poll(() => heldRequest !== null, { message: `«Дано» не построено: страница не прочитала ${HELD_READ}`, timeout: 30_000 })
+        .toBe(true);
+      await heldIssued;
+      const now = await bearerOf(ctx);
+      expect(issuedWith, "«Дано» не построено: задержанное выпущено без носителя").not.toBe("");
+      expect(issuedWith, "«Дано» не построено: задержанное выпущено не с тем носителем, что у браузера").toBe(now);
+      return now;
+    },
+    /** Исход задержанного в переписи — ждётся условием, а не временем. */
+    async outcome(census: CeremonyCensus): Promise<CeremonyCall> {
+      const held = await heldIssued;
+      await expect
+        .poll(
+          () => {
+            const outcome = census.of(held)?.outcome;
+            return outcome === undefined || outcome === "ждём" ? "исхода нет" : "исход есть";
+          },
+          { message: `у задержанного обращения нет исхода:\n${census.describe()}`, timeout: 30_000 },
+        )
+        .toBe("исход есть");
+      return census.of(held) as CeremonyCall;
+    },
+    /** Прочие обращения страницы к тому же чтению — выпущенные снова. */
+    others(census: CeremonyCensus): CeremonyCall[] {
+      const held = heldRequest === null ? undefined : census.of(heldRequest);
+      return census.matching("GET", HELD_READ).filter((c) => c !== held);
+    },
+    /** Сработавшая ветвь — сведением, не утверждением. */
+    async report(): Promise<void> {
+      await expect
+        .poll(() => released, { message: `правило отпускания не завершилось: ${branch}`, timeout: 30_000 })
+        .toBe(true);
+      testInfo.annotations.push({ type: "ветвь правила отпускания", description: branch });
+      console.log(`[${testInfo.title}] ветвь правила отпускания — ${branch}`);
+    },
+  };
+}
+
 // Ответы глаголов полосы снимаются ДО страницы: за ними экран уходит
 // документом, и тело после ухода не читается (`answer-on-arrival.ts`).
 test.beforeEach(async ({ page }) => {
@@ -175,84 +314,75 @@ test("F8-23 · смена пароля внутри сессии проходи�
   });
 });
 
-test("F8-23 · запрос каркаса, ушедший до перевыпуска носителя, не уводит человека на вход", async ({
+test("F8-46 · чтение, бывшее в полёте при смене пароля, не гасит перевыпущенный носитель", async ({
   page,
 }, testInfo) => {
-  // verifies #1274 — условие C18: смена пароля перевыпускает носитель, прежний
-  // дайджест перестаёт находить запись, и запрос ЭТОЙ вкладки, ушедший с
-  // прежним носителем, получает `invalid_token`. Это не конец сессии — её
-  // перевыпустили здесь же; человек остаётся на экране и при сессии.
+  // verifies #1274 — близнец F8-47: изменено только то, ставит ли глагол носитель.
   test.setTimeout(120_000);
-  await withHuman(testInfo, "F8-23-inflight", page.context(), async (_seed, human) => {
-    // Список аккаунтов каркаса ЗАДЕРЖАН до ответа смены пароля: он ушёл с
-    // прежним носителем и доходит до края после перевыпуска.
-    //
-    // КАК ПОСТРОЕНО «УШЁЛ С ПРЕЖНИМ». Задержать запрос в браузере и отпустить
-    // его мало: печенья браузер кладёт в запрос, когда отпускает его, а не когда
-    // страница его выпустила, — и отпущенный после перевыпуска запрос уходит уже
-    // с НОВЫМ носителем. Так проба и зеленела, ни разу не построив своего «Дано»
-    // (посадка own @9038186d0d5, прогон @fc35fa9f651). Поэтому задержанный
-    // запрос отправляет КРАЮ проба — тем, чем его выпустила страница: тем же
-    // адресом и заголовками и носителем, который был у браузера в момент выпуска.
-    // Ответ края отдаётся странице как есть — телом, кодом и заголовками, включая
-    // печенья, которые он ставит или гасит, — и дальше их обрабатывает браузер.
-    let release: () => void = () => undefined;
-    const passwordAnswered = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const accountLists: number[] = [];
-    let held = false;
-    let issuedWith = "";
-    const use = testInfo.project.use;
-    await page.route(
-      (u) => u.pathname === "/iam/v1/accounts",
-      async (route) => {
-        if (held) return route.continue();
-        held = true;
-        issuedWith = await bearerOf(page.context());
-        await passwordAnswered;
-        const edge = await request.newContext({
-          baseURL: use.baseURL,
-          ignoreHTTPSErrors: use.ignoreHTTPSErrors,
-          storageState: { cookies: [], origins: [] },
-        });
-        try {
-          const headers = { ...route.request().headers(), cookie: `${SESSION_COOKIE}=${issuedWith}` };
-          const answer = await edge.fetch(route.request().url(), { method: route.request().method(), headers });
-          await route.fulfill({ response: answer });
-        } finally {
-          await edge.dispose();
-        }
-      },
-    );
-    page.on("response", (r) => {
-      if (new URL(r.url()).pathname === "/iam/v1/accounts") accountLists.push(r.status());
-    });
+  await withHuman(testInfo, "F8-46", page.context(), async (_seed, human) => {
+    const census = ceremonyCensus(page.context());
+    const held = await holdFirstPlatformRead(page, testInfo, LANE.password);
     const s = await openSettings(page);
-    await expect.poll(() => held, { message: "каркас не спросил список аккаунтов", timeout: 30_000 }).toBe(true);
-    const before = await bearerOf(page.context());
-    expect(issuedWith, "задержанный запрос выпущен без носителя — «Дано» не построено").not.toBe("");
-    expect(issuedWith, "задержанный запрос выпущен не с тем носителем, что был у браузера").toBe(before);
+    const before = await held.built(page.context());
+
     await s.password.current.fill(human.password);
     await s.password.next.fill(`${human.password}-nov`);
     const [changed] = await Promise.all([lanePost(page, LANE.password), s.password.submit.click()]);
+    const outcome = await held.outcome(census);
+    await held.report();
+
+    // Сперва — ПРИЧИНА, названная по исходу задержанного: у консоли без
+    // упорядочения ответ края на него гасит носитель, который смена пароля
+    // только что поставила, и всё дальнейшее — следствие.
+    expect(
+      endedSession(outcome),
+      `носитель погашен ответом на обращение с прежним носителем: ${formatCall(outcome)}\n${census.describe()}`,
+    ).toBe(false);
+    expect(outcome.outcome, `задержанное чтение не отменено страницей:\n${census.describe()}`).toBe(CANCELLED_BY_PAGE);
+
     expect(changed.status(), `смена пароля не прошла: ${await changed.text()}`).toBe(200);
-    release();
-    await expect
-      .poll(() => accountLists.at(-1), { message: "задержанный список не завершился", timeout: 30_000 })
-      .toBeDefined();
-    // Сперва — носитель: погашенный печеньем ответа край уводит на вход уже
-    // следствием, и отказ обязан назвать причину, а не следствие.
+    expect(((await changed.json()) as { session?: unknown }).session, "ответ смены пароля без session").toBeTruthy();
     const after = await bearerOf(page.context());
-    expect(after, "носитель у браузера погашен ответом на запрос с прежним носителем").not.toBe("");
+    expect(after, "носитель у браузера пуст после смены пароля").not.toBe("");
     expect(after, "смена пароля не перевыпустила носитель").not.toBe(before);
-    expect(new URL(page.url()).pathname, "запрос с прежним носителем увёл человека на вход").toBe("/settings");
+
     await expect
-      .poll(() => accountLists.at(-1), {
-        message: `список аккаунтов после перевыпуска не прочитан: ответы ${accountLists.join(", ")}`,
+      .poll(() => held.others(census).some((c) => c.outcome === 200), {
+        message: `отменённое чтение не выпущено снова с ответом 200:\n${census.describe()}`,
         timeout: 30_000,
       })
-      .toBe(200);
+      .toBe(true);
+    expect(new URL(page.url()).pathname, "страница уведена со своего адреса").toBe("/settings");
+    expect(
+      census.calls.filter(endedSession).map(formatCall),
+      `обращение страницы получило ответ «${SESSION_ENDED_TEXT}»`,
+    ).toEqual([]);
+  });
+});
+
+test("F8-47 · глагол, не ставящий носитель, чтения в полёте не отменяет, и отпущенное после него проходит", async ({
+  page,
+}, testInfo) => {
+  // verifies #1274 — положительный близнец F8-46: изменено только то, ставит
+  // ли глагол носитель.
+  test.setTimeout(120_000);
+  await withHuman(testInfo, "F8-47", page.context(), async () => {
+    const census = ceremonyCensus(page.context());
+    const held = await holdFirstPlatformRead(page, testInfo, LANE.enroll);
+    const s = await openSettings(page);
+    const before = await held.built(page.context());
+
+    const [enrolled] = await Promise.all([lanePost(page, LANE.enroll), s.factor.enroll.click()]);
+    const outcome = await held.outcome(census);
+    await held.report();
+
+    expect(
+      outcome.outcome,
+      `чтение, бывшее в полёте при глаголе без носителя, не получило ответа края 200:\n${census.describe()}`,
+    ).toBe(200);
+    expect(enrolled.status(), `заведение не прошло: ${await enrolled.text()}`).toBe(200);
+    expect(await bearerOf(page.context()), "заведение второго фактора сменило носитель").toBe(before);
+    expect(new URL(page.url()).pathname, "страница уведена со своего адреса").toBe("/settings");
   });
 });
 
