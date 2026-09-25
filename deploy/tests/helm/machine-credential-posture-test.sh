@@ -42,8 +42,9 @@
 # WHY SECTION 6 EXISTS AND WHY SECTION 4 WAS NOT ENOUGH. Section 4 judges the
 # pair «enforcement ⇒ issuance», and while BOTH halves are off it passes without
 # examining anything: two disabled sides prove nothing about a control. Section 6
-# judges a pair that IS satisfiable today — three profiles in this tree translate
-# the contour — so it has real inputs and can actually refuse. Both sections
+# judges a pair that IS satisfiable today — profiles in this tree translate the
+# contour (section 4 prints how many) — so it has real inputs and can actually
+# refuse. Both sections
 # print what they read, because «0 findings» must be distinguishable from
 # «0 profiles read».
 #
