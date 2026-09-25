@@ -18,7 +18,8 @@ import { BoolFact } from "@shared/components/atoms/BoolFact";
 import { LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalAlert";
 import { EMPTY_PRESENTATION, SecondFactorCodeField } from "@shared/components/molecules/auth/SecondFactorCodeField";
 import { StepUpModal } from "@shared/components/molecules/auth/StepUpModal";
-import { PAGE_PADDING, PageHead } from "@shared/components/organisms/DetailShell/PageHead";
+import { PageHead } from "@shared/components/organisms/DetailShell/PageHead";
+import { PageFrame } from "@shared/components/organisms/PageFrame";
 import { FieldError, fieldErrorId } from "@shared/components/organisms/form/FieldError";
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { useFormToken } from "@shared/hooks/use-form-token";
@@ -403,11 +404,12 @@ export function AccountSettingsPage() {
   }, [asked]);
 
   return (
-    <section className="workbench" style={{ padding: PAGE_PADDING }}>
+    // Шапка стоит, содержимое прокручивается под ней — одной областью
+    // (`PageFrame`): рабочая область каркаса сама не прокручивается.
+    <PageFrame head={<PageHead title="Параметры учётной записи" />}>
       {/* Окно повышения живёт рядом с экраном, который его спрашивает: шаги
           свежести зовут его отсюда (`requestStepUp`). */}
       <StepUpModal />
-      <PageHead title="Параметры учётной записи" />
       {who === undefined && <Spin />}
       {who?.kind === "absent" && (
         <Typography.Paragraph>
@@ -434,7 +436,7 @@ export function AccountSettingsPage() {
           <SecondFactorSection />
         </>
       )}
-    </section>
+    </PageFrame>
   );
 }
 

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { orderedTransport } from "@shared/api/carrier-order";
 import { PageHead } from "@shared/components/organisms/DetailShell/PageHead";
+import { PageFrame } from "@shared/components/organisms/PageFrame";
 import type { FC } from "react";
 import { Button, Space, Tag, Typography } from "antd";
 
@@ -34,27 +35,31 @@ export const ReachabilityPage: FC = () => {
     }
   };
 
+  // Шапка с действием стоит, строки проб прокручиваются под ней одной
+  // областью (`PageFrame`): рабочая область каркаса сама не прокручивается.
   return (
-    <section className="workbench">
-      <div className="panel-heading">
-        <div>
-          {/* Заголовок — общей конструкцией: см. `PageHead`. */}
-          <PageHead title="Доступность API" />
-          <Typography.Text type="secondary">
-            Запросы идут по относительным адресам; Vite проксирует их на локальный кластер.
-          </Typography.Text>
+    <PageFrame
+      head={
+        <div className="workbench panel-heading">
+          <div>
+            {/* Заголовок — общей конструкцией: см. `PageHead`. */}
+            <PageHead title="Доступность API" />
+            <Typography.Text type="secondary">
+              Запросы идут по относительным адресам; Vite проксирует их на локальный кластер.
+            </Typography.Text>
+          </div>
+          <Button
+            type="primary"
+            onClick={() => {
+              void Promise.all(probes.map((p) => runProbe(p.path)));
+            }}
+          >
+            Проверить все
+          </Button>
         </div>
-        <Button
-          type="primary"
-          onClick={() => {
-            void Promise.all(probes.map((p) => runProbe(p.path)));
-          }}
-        >
-          Проверить все
-        </Button>
-      </div>
-
-      <div className="probe-grid">
+      }
+    >
+      <div className="workbench probe-grid">
         {probes.map((probe) => {
           const result = results[probe.path] ?? { state: "idle" };
           return (
@@ -76,7 +81,7 @@ export const ReachabilityPage: FC = () => {
           );
         })}
       </div>
-    </section>
+    </PageFrame>
   );
 };
 
