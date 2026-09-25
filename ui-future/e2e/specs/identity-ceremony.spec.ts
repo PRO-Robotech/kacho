@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { createServer, type AddressInfo } from "node:net";
-import { expect, type BrowserContext, type Locator, type Page, type TestInfo } from "@playwright/test";
+import { expect, type Browser, type BrowserContext, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { LANE_VERBS, answerOnArrival, captureAnswers, lanePostAnswer, type LaneAnswer } from "./answer-on-arrival";
 import { raiseAssurance } from "./assurance";
 import {
@@ -453,44 +453,52 @@ test("F8-12 · негодный носитель даёт форму, а не к
   await expect(s.refusal).toHaveCount(0);
 });
 
+/**
+ * Войти с данным адресом возврата и дождаться, куда консоль увела страницу.
+ * Ждётся условие — ожидаемый адрес; не дождались — падение называет адрес, на
+ * котором страница оказалась (в том числе чужой).
+ */
+async function loginLandsAt(
+  browser: Browser,
+  testInfo: TestInfo,
+  human: SeededHuman,
+  returnTo: string,
+  expected: string,
+): Promise<void> {
+  const use = testInfo.project.use;
+  const origin = new URL(use.baseURL ?? "").origin;
+  const context = await browser.newContext({ baseURL: use.baseURL, ignoreHTTPSErrors: use.ignoreHTTPSErrors });
+  // Контекст заведён пробой сама — его отказы полосы пишет она же (F8-41).
+  const reading = watchRefusals(context, testInfo.testId);
+  try {
+    const page = await context.newPage();
+    await captureAnswers(page, LANE_VERBS);
+    await page.goto(`/login?returnTo=${encodeURIComponent(returnTo)}`, { waitUntil: "domcontentloaded" });
+    const s = loginScreen(page);
+    await expectScreen(page, "/login", s.submit, "экран входа");
+    await s.email.fill(human.email);
+    await s.password.fill(human.password);
+    const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
+    expect(res.status(), `вход не прошёл: ${await res.text()}`).toBe(200);
+    await expect
+      .poll(() => page.url(), {
+        message: `returnTo=${returnTo}: после входа консоль увела не туда`,
+        timeout: 30_000,
+      })
+      .toBe(expected);
+    expect(new URL(page.url()).origin, `returnTo=${returnTo}: происхождение страницы после входа чужое`).toBe(origin);
+  } finally {
+    await reading.settled();
+    await context.close();
+  }
+}
+
 test("F8-13 · адрес возврата чужого происхождения отвергнут во всех четырёх формах", async ({ browser }, testInfo) => {
   // verifies #2780 — близнец F8-04: изменено только значение `returnTo`.
   test.setTimeout(180_000);
   const human = await seeded(testInfo, "F8-13");
-  const use = testInfo.project.use;
-  const origin = new URL(use.baseURL ?? "").origin;
-
-  /**
-   * Войти с данным адресом возврата и дождаться, куда консоль увела страницу.
-   * Ждётся условие — ожидаемый адрес; не дождались — падение называет адрес, на
-   * котором страница оказалась (в том числе чужой).
-   */
-  async function landsAt(returnTo: string, expected: string) {
-    const context = await browser.newContext({ baseURL: use.baseURL, ignoreHTTPSErrors: use.ignoreHTTPSErrors });
-    // Контекст заведён пробой сама — его отказы полосы пишет она же (F8-41).
-    const reading = watchRefusals(context, testInfo.testId);
-    try {
-      const page = await context.newPage();
-      await captureAnswers(page, LANE_VERBS);
-      await page.goto(`/login?returnTo=${encodeURIComponent(returnTo)}`, { waitUntil: "domcontentloaded" });
-      const s = loginScreen(page);
-      await expectScreen(page, "/login", s.submit, "экран входа");
-      await s.email.fill(human.email);
-      await s.password.fill(human.password);
-      const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
-      expect(res.status(), `вход не прошёл: ${await res.text()}`).toBe(200);
-      await expect
-        .poll(() => page.url(), {
-          message: `returnTo=${returnTo}: после входа консоль увела не туда`,
-          timeout: 30_000,
-        })
-        .toBe(expected);
-      expect(new URL(page.url()).origin, `returnTo=${returnTo}: происхождение страницы после входа чужое`).toBe(origin);
-    } finally {
-      await reading.settled();
-      await context.close();
-    }
-  }
+  const origin = new URL(testInfo.project.use.baseURL ?? "").origin;
+  const landsAt = (returnTo: string, expected: string) => loginLandsAt(browser, testInfo, human, returnTo, expected);
 
   // Корень консоли уводит на панель (`index` оболочки), поэтому отвергнутый
   // адрес возврата оканчивается ровно на `/dashboard` без строки запроса.
@@ -506,6 +514,19 @@ test("F8-13 · адрес возврата чужого происхождени
   // Положительный близнец: свой адрес возврата уводит ИМЕННО туда, со своей
   // строкой запроса, — отрицание не тождественно «всегда на корень».
   await landsAt("/dashboard?f8-13=kontrol", `${origin}/dashboard?f8-13=kontrol`);
+});
+
+test("F8-13 · адрес возврата, который нормализация сводит к протокол-относительному, отвергнут", async ({
+  browser,
+}, testInfo) => {
+  // verifies #1274 — судится адрес, по которому консоль уходит, а не принятое
+  // значение: переход разбирает возвращённый путь заново. Близнец положительный —
+  // тот же точечный сегмент без удвоенной косой уводит на свой адрес.
+  test.setTimeout(120_000);
+  const human = await seeded(testInfo, "F8-13-dot");
+  const origin = new URL(testInfo.project.use.baseURL ?? "").origin;
+  await loginLandsAt(browser, testInfo, human, "/.//evil.example/dashboard", `${origin}/dashboard`);
+  await loginLandsAt(browser, testInfo, human, "/./dashboard?f8-13=kontrol", `${origin}/dashboard?f8-13=kontrol`);
 });
 
 test("F8-13 · отскок живой сессии и возврат после регистрации идут через тот же валидатор", async ({
