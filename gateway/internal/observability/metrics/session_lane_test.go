@@ -85,6 +85,8 @@ func TestSessionLane_L13_UnreachableIsCountedPerTargetAndCeremonyVerbsHaveCells(
 	require.Contains(t, body, `kacho_api_gateway_login_lane_unreachable_total{target="form"} 0`)
 	require.Contains(t, body, `kacho_api_gateway_login_lane_relayed_total{verb="authorize"} 3`)
 	require.Contains(t, body, `kacho_api_gateway_login_lane_relayed_total{verb="token"} 0`)
+	require.Contains(t, body, `kacho_api_gateway_login_lane_relayed_total{verb="discovery"} 0`,
+		"клетка метаданных обнаружения обязана стоять с нулём с первой секунды процесса")
 }
 
 // zeroRelaySnapshots — снимки ретрансляторов только что поднятого процесса: по

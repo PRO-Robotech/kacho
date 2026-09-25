@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // ceremony_coordinates_test.go — краевая половина разводки координаты
-// `/iam/v1/authorize` (замысел LINE-A-1 §5.1–§5.2, полоса L13; kacho#2817).
+// `/iam/v1/authorize` (замысел LINE-A-1 §5.1–§5.2, полоса L13; kacho#2817) и
+// публикация обнаружения (полоса L8, kacho#2721).
 //
-// Две координаты церемонии авторизации объявляются на крае ТЕМ ЖЕ родом, что
+// Три координаты церемонии авторизации объявляются на крае ТЕМ ЖЕ родом, что
 // глаголы полосы формы (род I, §5.1а): запись в объявлении путей, точным
 // совпадением, — и ни одной записи в сгенерированной таблице маршрутов прав и в
 // `rest_route_edge.go`. Сосед по имени — четыре глагола проверки доступа
@@ -18,13 +19,15 @@ import (
 	"testing"
 )
 
-// ceremonyWant — координаты церемонии на крае, выписанные ДОСЛОВНО из замысла
-// (§5.1: «координат церемонии на крае — две, не три»): навигация на эндпоинт
-// авторизации и обмен кода. Обнаружение (`/.well-known/oauth-authorization-server`)
-// в A-1 на крае НЕ публикуется (§5.1б п. 5) — его отсутствие утверждается ниже.
+// ceremonyWant — координаты церемонии на крае, выписанные ДОСЛОВНО: навигация на
+// эндпоинт авторизации и обмен кода (замысел §5.1, полоса L13) и метаданные
+// обнаружения (RFC 8414 §3). Обнаружение замысел оставил полосе L8 «своей
+// записью того же рода и своим решением» (§5.1б п. 5); решение принято
+// kacho#2721 — запись объявления называет его довод.
 var ceremonyWant = map[string]string{
 	"authorize": "/iam/v1/authorize",
 	"token":     "/iam/v1/token",
+	"discovery": "/.well-known/oauth-authorization-server",
 }
 
 // authorizeNeighbours — четыре глагола проверки доступа, делящие с церемонией
@@ -123,13 +126,17 @@ func TestCeremonyCoordinates_L13_NoSecondRecordInTheRouteTables(t *testing.T) {
 
 // TestCeremonyCoordinates_L13_ExactMatchNotPrefix — отрицательные близнецы оси
 // 1 (§5.2): запись объявлена ТОЧНЫМ совпадением. Путь, отличающийся одним
-// символом, не освобождён и не ретранслируется; обнаружение в A-1 наружу не
-// публикуется (§5.1б п. 5).
+// символом, не освобождён и не ретранслируется. У обнаружения соседи — его
+// подпути (RFC 8414 §3 вставляет путь издателя ПОСЛЕ имени документа; у нашего
+// издателя пути нет, и подпуть — чужой документ) и соседние документы
+// `/.well-known/`: освобождение на них не протекает.
 func TestCeremonyCoordinates_L13_ExactMatchNotPrefix(t *testing.T) {
 	near := []string{
 		"/iam/v1/authorize/", "/iam/v1/authorizex", "/iam/v1/authorize/x", "/iam/v1/authoriz",
 		"/iam/v1/token/", "/iam/v1/tokens", "/iam/v1/token:introspect", "/iam/v1/token/x",
-		"/.well-known/oauth-authorization-server",
+		"/.well-known/oauth-authorization-server/", "/.well-known/oauth-authorization-serverx",
+		"/.well-known/oauth-authorization-server/iam", "/.well-known/oauth-authorization-serve",
+		"/.well-known/", "/.well-known/openid-configuration", "/.well-known/jwks.json",
 	}
 	for _, p := range near {
 		if IsLoginLanePath(p) || isPublicHTTPPath(p) {
@@ -200,6 +207,12 @@ func TestCeremonyCoordinates_L13_SessionLaneRelaysNoSessionAndStillRefusesTheCut
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			return req
 		},
+		"discovery": func(c string) *http.Request {
+			return withOurCarrier(httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", nil), c)
+		},
+	}
+	if len(requests) != len(ceremonyWant) {
+		t.Fatalf("запросов пробы %d, координат церемонии %d — координата без пробы полосы сессии", len(requests), len(ceremonyWant))
 	}
 	for verb, build := range requests {
 		// Сессии нет — ретранслируется, носитель не гасится.

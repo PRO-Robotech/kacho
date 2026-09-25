@@ -93,7 +93,7 @@ func TestMountLoginLaneRoutes_L13_Injection_ATargetWithoutARelayNamesItsPaths(t 
 	mux := http.NewServeMux()
 	_, err := handler.MountLoginLaneRoutes(mux, http.NotFoundHandler(), relayFor(t, middleware.RelayTargetForm))
 	require.Error(t, err)
-	for _, p := range []string{middleware.CeremonyPathAuthorize, middleware.CeremonyPathToken} {
+	for _, p := range []string{middleware.CeremonyPathAuthorize, middleware.CeremonyPathToken, middleware.CeremonyPathDiscovery} {
 		require.Contains(t, err.Error(), p, "отказ монтажа обязан назвать путь без ретранслятора")
 	}
 	_, pattern := mux.Handler(httptest.NewRequest(http.MethodPost, middleware.LoginLanePathLogin, nil))

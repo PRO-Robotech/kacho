@@ -50,7 +50,8 @@ const (
 // голой и мостовой формах.
 //
 // Координаты церемонии (замысел LINE-A-1 §5.1) — своей формой: навигация на
-// эндпоинт авторизации есть GET со строкой запроса, обмен кода — POST формой.
+// эндпоинт авторизации есть GET со строкой запроса, обмен кода — POST формой,
+// чтение метаданных обнаружения — GET без тела.
 func forgedFormRequest(rt middleware.LoginLaneRoute) (*http.Request, string, string) {
 	method, target, body, contentType := http.MethodPost, rt.Path, `{"csrfToken":"x"}`, "application/json"
 	switch rt.Path {
@@ -62,6 +63,8 @@ func forgedFormRequest(rt middleware.LoginLaneRoute) (*http.Request, string, str
 		method, target, body = http.MethodGet, rt.Path+"?"+ceremonyQuery, ""
 	case middleware.CeremonyPathToken:
 		body, contentType = "grant_type=authorization_code&code=c-1&code_verifier=v-1&client_id=console", "application/x-www-form-urlencoded"
+	case middleware.CeremonyPathDiscovery:
+		method, body = http.MethodGet, ""
 	}
 	req := httptest.NewRequest(method, target, strings.NewReader(body))
 	req.Header.Set("Content-Type", contentType)

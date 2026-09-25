@@ -147,11 +147,28 @@ func TestCeremonyListenerWiring_L13_TheInternalAdminListener404sTheCeremonyAndTh
 	bareMux.Handle("/", rootHandler)
 	bare := serveEdge(t, bareMux)
 
-	coordinates := []struct {
-		verb, method, target, contentType, body string
-	}{
-		{"authorize", http.MethodGet, middleware.CeremonyPathAuthorize + "?response_type=code&client_id=console&state=st-1", "", ""},
-		{"token", http.MethodPost, middleware.CeremonyPathToken, "application/x-www-form-urlencoded", "grant_type=authorization_code&code=ac-1&code_verifier=v&client_id=console"},
+	// Запрос пробы — на КАЖДУЮ запись объявления, отвечающую только на внешних
+	// слушателях: перечень выводится из объявления, и запись, дописанная без
+	// своего запроса, краснит пробу, а не остаётся непроверенной.
+	requestOf := map[string]struct{ method, target, contentType, body string }{
+		middleware.CeremonyPathAuthorize: {http.MethodGet, middleware.CeremonyPathAuthorize + "?response_type=code&client_id=console&state=st-1", "", ""},
+		middleware.CeremonyPathToken:     {http.MethodPost, middleware.CeremonyPathToken, "application/x-www-form-urlencoded", "grant_type=authorization_code&code=ac-1&code_verifier=v&client_id=console"},
+		middleware.CeremonyPathDiscovery: {http.MethodGet, middleware.CeremonyPathDiscovery, "", ""},
+	}
+	type coordinate struct{ verb, method, target, contentType, body string }
+	var coordinates []coordinate
+	for _, rt := range middleware.LoginLaneRoutes() {
+		if !rt.Target.ExternalListenersOnly() {
+			continue
+		}
+		r, ok := requestOf[rt.Path]
+		if !ok {
+			t.Fatalf("запись %q (%s) отвечает только на внешних слушателях, а запроса пробы у неё нет", rt.Verb, rt.Path)
+		}
+		coordinates = append(coordinates, coordinate{rt.Verb, r.method, r.target, r.contentType, r.body})
+	}
+	if len(coordinates) != len(requestOf) {
+		t.Fatalf("записей только-внешних слушателей %d, запросов пробы %d — запрос без записи судит путь, которого край не объявляет", len(coordinates), len(requestOf))
 	}
 	for _, c := range coordinates {
 		// (1) Внутренний слушатель: «не найдено» — тем же ответом, что на

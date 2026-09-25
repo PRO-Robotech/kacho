@@ -49,10 +49,12 @@ const (
 	loginLaneVerbSecondFactorRemove      = "second-factor-remove"
 	loginLaneVerbSecondFactorBackupCodes = "second-factor-backup-codes"
 	loginLaneVerbStepUp                  = "step-up"
-	// Координаты церемонии авторизации (замысел LINE-A-1 §5.1): ретранслируются
-	// на слушатель выдачи, клетки — те же.
+	// Координаты церемонии авторизации (замысел LINE-A-1 §5.1) и метаданные
+	// обнаружения (kacho#2721): ретранслируются на слушатель выдачи, клетки —
+	// те же.
 	loginLaneVerbAuthorize = "authorize"
 	loginLaneVerbToken     = "token"
+	loginLaneVerbDiscovery = "discovery"
 )
 
 // Цели ретрансляции — закрытый словарь меток `target` клетки недостижимости:
@@ -71,7 +73,7 @@ func LoginLaneVerbLabels() []string {
 		loginLaneVerbRegister, loginLaneVerbRecovery, loginLaneVerbRecoveryComplete,
 		loginLaneVerbSecondFactorStatus, loginLaneVerbSecondFactorEnroll, loginLaneVerbSecondFactorConfirm,
 		loginLaneVerbSecondFactorRemove, loginLaneVerbSecondFactorBackupCodes, loginLaneVerbStepUp,
-		loginLaneVerbAuthorize, loginLaneVerbToken,
+		loginLaneVerbAuthorize, loginLaneVerbToken, loginLaneVerbDiscovery,
 	}
 }
 
@@ -114,7 +116,7 @@ var (
 	loginLaneRelayedDesc = prometheus.NewDesc(
 		"kacho_api_gateway_login_lane_relayed_total",
 		"Requests relayed to the identity service, by declared record (verb): form-lane verbs go to the "+
-			"form listener, the authorization ceremony's navigation and code exchange to the issuance listener.",
+			"form listener, the authorization ceremony's navigation, code exchange and discovery metadata to the issuance listener.",
 		[]string{"verb"}, nil)
 	loginLaneUnreachableDesc = prometheus.NewDesc(
 		"kacho_api_gateway_login_lane_unreachable_total",
@@ -190,6 +192,7 @@ func (c *sessionLaneCollector) Collect(ch chan<- prometheus.Metric) {
 		loginLaneVerbStepUp:                  relayed[loginLaneVerbStepUp],
 		loginLaneVerbAuthorize:               relayed[loginLaneVerbAuthorize],
 		loginLaneVerbToken:                   relayed[loginLaneVerbToken],
+		loginLaneVerbDiscovery:               relayed[loginLaneVerbDiscovery],
 	} {
 		ch <- prometheus.MustNewConstMetric(loginLaneRelayedDesc, prometheus.CounterValue, float64(value), verb)
 	}

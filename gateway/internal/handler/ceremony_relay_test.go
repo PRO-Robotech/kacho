@@ -168,6 +168,37 @@ func TestCeremonyRelay_L13_BarePathReachesTheIssuanceListenerAndTheAnswerPassesA
 	require.Equal(t, uint64(1), stats.Relayed["token"])
 }
 
+// Метаданные обнаружения (RFC 8414 §3; приёмка LINE-A-1-22, kacho#2721) —
+// публичное чтение: запрос БЕЗ носителя и без удостоверения проходит край с
+// пустым каталогом и доходит до слушателя выдачи — туда же, куда навигация и
+// обмен, а не на слушатель формы и не в транскодер. Документ уходит клиенту как
+// есть. Отрицательный близнец в одном факте — соседний документ `/.well-known/`
+// вне объявления: его полоса прав отвергает до всякого слушателя.
+func TestCeremonyRelay_Discovery_AnonymousReadReachesTheIssuanceListenerAndPassesAsIs(t *testing.T) {
+	const document = `{"issuer":"https://kaname.kacho.local","authorization_endpoint":"https://kaname.kacho.local/iam/v1/authorize"}`
+	issuance := &formListenerStub{status: http.StatusOK, body: document}
+	e := newEdgeUnderOwn(t, issuance, true)
+
+	rec := e.serve(httptest.NewRequest(http.MethodGet, middleware.CeremonyPathDiscovery, nil))
+	require.Equal(t, http.StatusOK, rec.Code, "чтение метаданных обнаружения обязано дойти до службы: %s", rec.Body.String())
+	require.Equal(t, document, rec.Body.String(), "документ обнаружения переписан краем")
+	require.Empty(t, rec.Result().Header["Set-Cookie"], "край добавил Set-Cookie к публичному документу")
+	require.Equal(t, 1, issuance.count(), "чтение метаданных не дошло до слушателя выдачи")
+	got := issuance.last()
+	require.Equal(t, http.MethodGet, got.method)
+	require.Equal(t, middleware.CeremonyPathDiscovery, got.path)
+	require.Zero(t, e.form.count(), "метаданные обнаружения ушли на слушатель формы")
+	require.Zero(t, e.transcoder.served.Load(), "метаданные обнаружения ушли в транскодер")
+	require.Equal(t, uint64(1), e.relays[middleware.RelayTargetIssuance].Stats().Relayed["discovery"])
+
+	for _, neighbour := range []string{"/.well-known/openid-configuration", middleware.CeremonyPathDiscovery + "/iam"} {
+		rec = e.serve(httptest.NewRequest(http.MethodGet, neighbour, nil))
+		require.NotEqual(t, http.StatusOK, rec.Code, "%s прошёл полосу прав с пустым каталогом — освобождение протекло на соседа", neighbour)
+	}
+	require.Equal(t, 1, issuance.count(), "соседний документ /.well-known/ дошёл до слушателя выдачи")
+	require.Zero(t, e.transcoder.served.Load(), "соседний документ /.well-known/ дошёл до транскодера мимо каталога")
+}
+
 // §5.2 ось 1: сосед `:check` НЕ перехвачен — ретранслятор его не видит, до
 // слушателей он не доходит, а освобождение церемонии на него не протекает:
 // с пустым каталогом полоса прав его отвергает (запись каталога у него есть

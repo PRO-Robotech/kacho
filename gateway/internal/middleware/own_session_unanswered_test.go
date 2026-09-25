@@ -50,7 +50,10 @@ import (
 //     §5.1б п. 4, решение по КАЖДОЙ координате): навигация носителя не читает —
 //     вопрос о сессии решает сама церемония своим швом; обмен кода носителя не
 //     читает вовсе — решает по коду и удостоверению клиента. Отказ края на их
-//     месте был бы вторым решением о том же предмете.
+//     месте был бы вторым решением о том же предмете;
+//   - discovery — метаданные обнаружения (kacho#2721): публичный документ, ни
+//     носителя, ни удостоверения не читает; недоступность службы отвечает её
+//     своим 503, как у двух соседних координат.
 //
 // Смена пароля и шесть глаголов второго фактора в перечне отсутствуют: Ф3 Р7
 // (смена пароля — F4d-23) и Ф12 Р4 («недоступность службы и отсечка на всех
@@ -64,6 +67,7 @@ var unansweredPassVerbs = map[string]bool{
 	"recovery-complete": true,
 	"authorize":         true,
 	"token":             true,
+	"discovery":         true,
 }
 
 // secondFactorPaths — шесть глаголов Ф12 Р4.
@@ -166,7 +170,7 @@ func formChain(t *testing.T, book *carrierBook, cut *cutoffBook) (http.Handler, 
 
 func formVerbRequest(path, carrier string, foreign bool) *http.Request {
 	method := http.MethodPost
-	if path == LoginLanePathSecondFactor || path == LoginLanePathCSRF || path == CeremonyPathAuthorize {
+	if path == LoginLanePathSecondFactor || path == LoginLanePathCSRF || path == CeremonyPathAuthorize || path == CeremonyPathDiscovery {
 		method = http.MethodGet
 	}
 	req := withOurCarrier(httptest.NewRequest(method, path, strings.NewReader(`{}`)), carrier)
