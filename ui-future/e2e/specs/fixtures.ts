@@ -72,8 +72,9 @@ export const test = base.extend<
 >({
   // ПЕЧЕНЬЕ СТЕНДА ПО HTTP (#1274) — в каждом контексте браузера, который заводит
   // набор: `page.request` контекста носит Secure-печенье службы в происхождение
-  // стенда. Без этого на стенде по http ни одна проба не доходит до сессии.
-  // Устройство и снятие — `stand-secure-origin.ts`.
+  // стенда. Без этого на стенде по http обращения `page.request` уходят без
+  // носителя сессии, хотя у браузера он есть. Устройство и снятие —
+  // `stand-secure-origin.ts`.
   standCookieCarrier: [
     async ({ browser }, use, workerInfo) => {
       carryStandCookiesInBrowser(browser, workerInfo.project.use.baseURL);
