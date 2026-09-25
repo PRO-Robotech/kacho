@@ -1,4 +1,4 @@
-import { useState, type FC } from "react";
+import { useRef, useState, type FC } from "react";
 import { ACCOUNT_SETTINGS_ADDRESS } from "@shared/pages/auth/ceremony-addresses";
 import { Home, LogIn, Search, Settings, UserRound } from "lucide-react";
 import type { SessionAnswer } from "@shared/api/login-lane";
@@ -117,6 +117,7 @@ const HostRailView: FC<{
   identity,
 }) => {
   const [accountOpen, setAccountOpen] = useState(false);
+  const accountOpener = useRef<HTMLDivElement>(null);
   const projectId = context?.project?.id ?? null;
   const sections = useModuleSections(loadNavigation);
   const current = activeSection(sections, currentPath);
@@ -209,16 +210,26 @@ const HostRailView: FC<{
           />
         )}
         {identity?.kind === "present" && (
-          <RailButton
-            active={accountOpen || currentPath === ACCOUNT_SETTINGS_ADDRESS}
-            label="Учётная запись"
-            icon={<UserRound size={iconSize} />}
-            onClick={() => setAccountOpen((open) => !open)}
-          />
+          // Обёртка без своей коробки — только чтобы панель узнала, чем она
+          // открыта: нажатие на пункт переключает панель, а не закрывает её как
+          // «нажатие вне» и тут же открывает снова.
+          <div ref={accountOpener} style={{ display: "contents" }}>
+            <RailButton
+              active={accountOpen || currentPath === ACCOUNT_SETTINGS_ADDRESS}
+              label="Учётная запись"
+              icon={<UserRound size={iconSize} />}
+              onClick={() => setAccountOpen((open) => !open)}
+            />
+          </div>
         )}
       </div>
       {identity?.kind === "present" && accountOpen && (
-        <AccountPanel identity={identity} onClose={() => setAccountOpen(false)} navigate={navigate} />
+        <AccountPanel
+          identity={identity}
+          onClose={() => setAccountOpen(false)}
+          navigate={navigate}
+          opener={accountOpener}
+        />
       )}
     </nav>
   );

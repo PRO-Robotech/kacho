@@ -689,3 +689,25 @@ test("параметры учётной записи · на экране 1280×
     expect(await visibleScrollAreas(page), "полос прокрутки у страницы не одна").toBe(1);
   });
 });
+
+// ═══ Панель учётной записи ═══════════════════════════════════════════════════
+
+test("панель учётной записи · второе нажатие на пункт рейла закрывает панель, которую открыло первое", async ({
+  page,
+}, testInfo) => {
+  // verifies #1274 — второе нажатие закрывало панель по «нажатию вне её» и тут же
+  // открывало снова своим переключением: панель со страницы не уходила.
+  await withHuman(testInfo, "F8-panel", page.context(), async () => {
+    await openSettings(page);
+    const railItem = page.getByRole("button", { name: "Учётная запись", exact: true });
+    const panel = page.getByRole("dialog", { name: "Учётная запись" });
+    await railItem.click();
+    await expect(panel, "первое нажатие не открыло панель").toBeVisible();
+    await railItem.click();
+    await expect(panel, "второе нажатие не закрыло панель").toHaveCount(0);
+    // Положительный близнец: третье нажатие открывает снова — пункт переключает,
+    // а не только закрывает.
+    await railItem.click();
+    await expect(panel, "третье нажатие не открыло панель снова").toBeVisible();
+  });
+});

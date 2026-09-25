@@ -63,6 +63,30 @@ describe("учётная запись в рейле", () => {
     expect(within(panel).queryByRole("button", { name: /подтвердить/i })).toBeNull();
   });
 
+  it("второе нажатие на пункт рейла закрывает панель, а третье открывает снова", () => {
+    render(<HostRail showReachability={false} identity={WHO} />);
+    const item = screen.getByRole("button", { name: "Учётная запись" });
+    // Нажатие — как у человека: сначала «кнопка мыши опущена», потом щелчок.
+    const press = () => {
+      fireEvent.mouseDown(item);
+      fireEvent.click(item);
+    };
+    press();
+    expect(screen.getByRole("dialog", { name: "Учётная запись" })).toBeInTheDocument();
+    press();
+    expect(screen.queryByRole("dialog", { name: "Учётная запись" })).toBeNull();
+    press();
+    expect(screen.getByRole("dialog", { name: "Учётная запись" })).toBeInTheDocument();
+  });
+
+  it("нажатие вне панели и вне пункта рейла закрывает панель", () => {
+    render(<HostRail showReachability={false} identity={WHO} />);
+    fireEvent.click(screen.getByRole("button", { name: "Учётная запись" }));
+    expect(screen.getByRole("dialog", { name: "Учётная запись" })).toBeInTheDocument();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole("dialog", { name: "Учётная запись" })).toBeNull();
+  });
+
   it("F8-18 · «Выйти» зовёт глагол выхода с признаком своего вида и уводит на экран входа", async () => {
     lane = installLane({ "POST /iam/v1/auth/logout": { status: 200, body: {} } });
     const leave = jest.fn<(to: string) => void>();
