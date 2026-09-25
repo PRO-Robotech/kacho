@@ -29,12 +29,35 @@
 # отвечает строкой посадки каждой половины и записывает каждый запрошенный
 # проброс. Число пробросов блока берётся из самого блока, а не выписывается.
 #
-# «НОЛЬ НАХОДОК» ОТЛИЧИМО ОТ «НОЛЬ ПРОЧИТАННОГО»: перепись печатается всегда,
-# прогонщик без вырезаемого блока — находка, пустой обход — отказ.
+# СУДИТСЯ ВЕСЬ ФАЙЛ, А НЕ ОДИН БЛОК. Исход блока ничего не говорит о строке вне
+# его: безусловный проброс к службе поставщика ниже строки переписи или адрес
+# суитам, переданный прежней формой при запуске волны, блока не меняют — и проба,
+# гонявшая только блок, отдавала на обоих код 0 (#2735). Поэтому каждая
+# НЕкомментарная строка прогонщика ВНЕ блока судится ещё и статически, и
+# находка — любое из четырёх:
+#   проброс к службе, которую блок называет службой поставщика (продолжение
+#   строки обратной косой чертой склеивается: команда судится целиком);
+#   ключ адреса, который блок кладёт в PROVIDER_ENV_ARGS;
+#   ручка порта проброса к поставщику ($ИМЯ, ${ИМЯ…}) — кроме её объявления
+#   `ИМЯ="${ДРУГОЕ:-число}"`: оно связывает число, а не набирает адрес;
+#   номер такого порта в адресе localhost / 127.0.0.1.
+# Поставщик опознаётся по САМИМ блокам всех прогонщиков дерева — службы их
+# пробросов, ручки портов вместе с цепочкой объявлений, ключи массива адреса, — а
+# не выписывается здесь: перечень рядом с блоком разошёлся бы с ним молча. Ни
+# одной службы или ни одного ключа не опознано — находка: суд вне блока
+# беспредметен.
+# ЧЕГО СУД ВНЕ БЛОКА НЕ ВИДИТ: службу поставщика, которую не называет ни один
+# блок, и адрес, собранный при исполнении из частей, не несущих ни ключа, ни
+# ручки, ни номера порта. Комментарий не судится: он ничего не открывает.
+#
+# «НОЛЬ НАХОДОК» ОТЛИЧИМО ОТ «НОЛЬ ПРОЧИТАННОГО»: перепись печатается всегда
+# (прогонщики, блоки, посадки и строки, осмотренные вне блока), прогонщик без
+# вырезаемого блока — находка, пустой обход — отказ.
 #
 # Самопроверка: `--self-test` (прогонщик прежней формы — пробросы безусловно —
-# обязан быть найден; проброс вне проверки живости — тоже; синтетический
-# законный близнец, отличающийся от каждой инъекции одним фактом, обязан молчать).
+# обязан быть найден; проброс вне проверки живости — тоже; каждая из четырёх
+# находок вне блока — тоже; синтетический законный близнец, отличающийся от
+# каждой инъекции одним фактом, обязан молчать).
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -58,6 +81,10 @@ RUNNERS_SEEN=0
 BLOCKS_CUT=0
 LANDINGS_RUN=0
 FINDINGS=()
+# «<отн. путь>|<абс. путь>|<первая строка блока>|<последняя>»; 0|0 — блок не
+# вырезался, и вне блока тогда весь файл.
+RUNNER_ROWS=()
+OUTSIDE_CENSUS="не исполнялся"
 
 # ─── ПОДСТАВНОЙ kubectl ──────────────────────────────────────────────────────
 # Посадка задаётся двумя значениями, по одному на половину; «-» — строки посадки
@@ -89,11 +116,14 @@ write_stub_kubectl() {  # <служба> <край>
 # прогон на этой машине. Вырезанная копия переводится в свой каталог: проба не
 # вправе затирать журнал чужого идущего прогона. Больше в блоке не меняется
 # ничего.
+# Границы блока (номера первой и последней строки) остаются в CUT_RANGE: по ним
+# суд вне блока знает, что уже судит исход.
 cut_block() {  # <файл прогонщика> <куда>
   mkdir -p "$WORK/tmp"
-  awk '/^PROVIDER_ENV_ARGS=\(\)/{f=1} f{print} f && /пробросы к поставщику личности: открыто/{exit}' "$1" \
-    | sed "s#/tmp/#$WORK/tmp/#g" > "$2"
-  grep -q 'port-forward' "$2" && grep -q 'пробросы к поставщику личности: открыто' "$2"
+  CUT_RANGE="$(awk '/^PROVIDER_ENV_ARGS=\(\)/ && !s {s=NR} s && /пробросы к поставщику личности: открыто/ {print s, NR; exit}' "$1")"
+  [ -n "$CUT_RANGE" ] || return 1
+  sed -n "${CUT_RANGE% *},${CUT_RANGE#* }p" "$1" | sed "s#/tmp/#$WORK/tmp/#g" > "$2"
+  grep -q 'port-forward' "$2"
 }
 
 # ─── ОДНА ПОСАДКА ────────────────────────────────────────────────────────────
@@ -128,9 +158,11 @@ audit_runner() {  # <относительный путь> <абсолютный 
   local rel="$1" abs="$2" helper="$3" blk="$WORK/blk.sh"
   RUNNERS_SEEN=$((RUNNERS_SEEN + 1))
   if ! cut_block "$abs" "$blk"; then
+    RUNNER_ROWS+=("$rel|$abs|0|0")
     FINDINGS+=("$rel: блок пробросов к поставщику не вырезался — форма записи пробе НЕИЗВЕСТНА, и решение о пробросах стоит вне наблюдения")
     return
   fi
+  RUNNER_ROWS+=("$rel|$abs|${CUT_RANGE% *}|${CUT_RANGE#* }")
   BLOCKS_CUT=$((BLOCKS_CUT + 1))
   local n liveness=0
   # Пробросы блока — его НЕкомментарные строки с вызовом проброса.
@@ -155,6 +187,153 @@ audit_runner() {  # <относительный путь> <абсолютный 
   done
 }
 
+# ─── СУД ВНЕ БЛОКА ───────────────────────────────────────────────────────────
+# Один проход по всем прогонщикам сразу: поставщик опознаётся по блокам ВСЕХ
+# прогонщиков (у одного блок может называть не все службы, что называет другой),
+# затем каждая НЕкомментарная строка вне своего блока сверяется с опознанным.
+# Вывод: «F|<находка>» и одна строка «C|<перепись>». Ненулевой код разборщика —
+# находка: суд, который не исполнился, зелёным не считается.
+audit_outside() {
+  [ "${#RUNNER_ROWS[@]}" -gt 0 ] || return 0
+  local out rc line
+  out="$(python3 - "${RUNNER_ROWS[@]}" <<'PY'
+import re
+import sys
+
+TARGET = re.compile(r'(?<![\w$/-])(?:svc|service|services|deploy|deployment|deployments|pod|pods|po)/([A-Za-z0-9][A-Za-z0-9.-]*)')
+PORTSPEC = re.compile(r'"?(?:\$\{([A-Za-z_]\w*)(?::-([0-9]+))?\}|\$([A-Za-z_]\w*)|([0-9]+)):')
+KEY = re.compile(r'--env-var[\s=]+"?([A-Za-z_]\w*)=')
+KNOB = re.compile(r'^\s*([A-Za-z_]\w*)="\$\{([A-Za-z_]\w*):-([0-9]+)\}"\s*$')
+
+
+def code_of(line):
+    """Строка без shell-комментария; кавычки и экранирование учитываются."""
+    quote, esc = None, False
+    for i, ch in enumerate(line):
+        if esc:
+            esc = False
+            continue
+        if ch == "\\" and quote != "'":
+            esc = True
+            continue
+        if quote:
+            if ch == quote:
+                quote = None
+            continue
+        if ch in "'\"":
+            quote = ch
+            continue
+        if ch == "#" and (i == 0 or line[i - 1] in " \t;&|()"):
+            return line[:i]
+    return line
+
+
+def commands(numbered):
+    """Команды из строк (номер, код): продолжение `\\` склеивается."""
+    group = []
+    for no, code in numbered:
+        group.append((no, code))
+        if not code.rstrip().endswith("\\"):
+            yield group
+            group = []
+    if group:
+        yield group
+
+
+runners = []
+for row in sys.argv[1:]:
+    rel, path, first, last = row.split("|", 3)
+    with open(path, encoding="utf-8") as fh:
+        lines = fh.read().split("\n")
+    code = [(n, code_of(t)) for n, t in enumerate(lines, 1)]
+    runners.append((rel, int(first), int(last), code))
+
+services, knobs, ports, keys = set(), set(), set(), set()
+for rel, first, last, code in runners:
+    if not first:
+        continue
+    block = [(n, c) for n, c in code if first <= n <= last]
+    for cmd in commands(block):
+        text = " ".join(c for _, c in cmd)
+        for c in (c for _, c in cmd):
+            keys.update(KEY.findall(c))
+        if "port-forward" not in text:
+            continue
+        for m in TARGET.finditer(text):
+            services.add(m.group(1))
+            p = PORTSPEC.match(text[m.end():].lstrip())
+            if p:
+                var = p.group(1) or p.group(3)
+                if var:
+                    knobs.add(var)
+                for num in (p.group(2), p.group(4)):
+                    if num:
+                        ports.add(num)
+
+# Цепочка объявлений ручек: `A="${B:-N}"` связывает A, B и N — во всех прогонщиках.
+decls = [m.groups() for _, _, _, code in runners for _, c in code for m in [KNOB.match(c)] if m]
+grew = True
+while grew:
+    grew = False
+    for a, b, num in decls:
+        if (a in knobs or b in knobs) and not {a, b, num} <= knobs | ports:
+            knobs.update((a, b))
+            ports.add(num)
+            grew = True
+
+findings, judged = [], 0
+if not services or not keys:
+    findings.append(
+        f"поставщик не опознан ни по одному блоку (служб {len(services)}, ключей адреса "
+        f"{len(keys)}) — суд вне блока беспредметен")
+knob_re = [(k, re.compile(r"\$\{?" + re.escape(k) + r"(?!\w)")) for k in sorted(knobs)]
+port_re = [(p, re.compile(r"(?:localhost|127\.0\.0\.1):" + re.escape(p) + r"(?![0-9])")) for p in sorted(ports)]
+key_re = [(k, re.compile(r"(?<![\w-])" + re.escape(k) + r"=")) for k in sorted(keys)]
+for rel, first, last, code in runners:
+    outside = [(n, c) for n, c in code if not (first and first <= n <= last)]
+    judged += sum(1 for _, c in outside if c.strip())
+    why = {}
+    for cmd in commands(outside):
+        if "port-forward" not in " ".join(c for _, c in cmd):
+            continue
+        for n, c in cmd:
+            for m in TARGET.finditer(c):
+                if m.group(1) in services:
+                    why.setdefault(n, []).append(f"проброс к службе поставщика {m.group(1)}")
+    for n, c in outside:
+        for k, rx in key_re:
+            if rx.search(c):
+                why.setdefault(n, []).append(f"ключ адреса поставщика {k}")
+        if not KNOB.match(c):
+            for k, rx in knob_re:
+                if rx.search(c):
+                    why.setdefault(n, []).append(f"ручка порта поставщика {k}")
+        for p, rx in port_re:
+            if rx.search(c):
+                why.setdefault(n, []).append(f"порт поставщика {p}")
+    for n in sorted(why):
+        findings.append(
+            f"{rel}:{n} · вне блока: {', '.join(why[n])} — к поставщику здесь обращаются "
+            f"мимо решения по посадке: на цепочке own его нет, и строка ведёт в пустоту")
+
+for f in findings:
+    print("F|" + f)
+print(f"C|вне блока строк осмотрено {judged} · опознано по блокам: служб поставщика "
+      f"{len(services)}, ручек порта {len(knobs)}, портов {len(ports)}, ключей адреса {len(keys)}")
+PY
+)"; rc=$?
+  if [ "$rc" != 0 ]; then
+    FINDINGS+=("суд вне блока НЕ ИСПОЛНИЛСЯ (код разборщика $rc): $out")
+    return
+  fi
+  while IFS= read -r line; do
+    case "$line" in
+      F\|*) FINDINGS+=("${line#F|}") ;;
+      C\|*) OUTSIDE_CENSUS="${line#C|}" ;;
+    esac
+  done <<<"$out"
+}
+
 # ─── САМОПРОВЕРКА ────────────────────────────────────────────────────────────
 self_test() {
   local fails=0 tmp="$WORK/st" ; mkdir -p "$tmp/deploy/scripts"
@@ -167,32 +346,59 @@ self_test() {
   # краснота на регрессии прогонщика читалась бы как поломка пробы.
   #
   # ЗАКОННЫЙ БЛИЗНЕЦ: решение по посадке, оба проброса под проверкой живости.
+  # Вне блока — то, что там законно: объявления ручек портов, упоминание
+  # поставщика в комментарии, проброс к ядру и передача адреса суитам массивом.
   cat > "$tmp/deploy/scripts/newman-twin.sh" <<'TWIN'
+PA_PORT="${PA_PORT:-14001}"   # объявление ручки связывает число, а не набирает адрес
+PB_PORT="${PB_PORT:-14002}"
+# Комментарий не судится: svc/provider-a, providerPublicBaseUrl=, $PA_PORT, localhost:14001
 PF_PIDS=()
 PF_WHAT=()
 PROVIDER_ENV_ARGS=()
 landing="$(python3 "$SCRIPT_DIR/identity-provider-landing.py" --namespace "$NS")" || landing="present|отказ"
 if [ "${landing%%|*}" != absent ]; then
-  kubectl -n "$NS" port-forward svc/provider-a "1:1" >/dev/null 2>&1 & PF_PIDS+=($!); PF_WHAT+=("1|a|/dev/null")
-  kubectl -n "$NS" port-forward svc/provider-b "2:2" >/dev/null 2>&1 & PF_PIDS+=($!); PF_WHAT+=("2|b|/dev/null")
-  PROVIDER_ENV_ARGS=(--env-var "providerPublicBaseUrl=http://localhost:1")
+  kubectl -n "$NS" port-forward svc/provider-a "$PA_PORT:1" >/dev/null 2>&1 & PF_PIDS+=($!); PF_WHAT+=("1|a|/dev/null")
+  kubectl -n "$NS" port-forward svc/provider-b "${PB_PORT}:2" >/dev/null 2>&1 & PF_PIDS+=($!); PF_WHAT+=("2|b|/dev/null")
+  PROVIDER_ENV_ARGS=(--env-var "providerPublicBaseUrl=http://localhost:$PA_PORT")
 fi
 echo "[x] пробросы к поставщику личности: открыто ${#PF_PIDS[@]} — ${landing#*|}"
+kubectl -n "$NS" port-forward svc/core "3:3" >/dev/null 2>&1 & PF_PIDS+=($!)   # к ядру вне блока — законно
+run --env-var "coreBaseUrl=http://localhost:3" ${PROVIDER_ENV_ARGS[@]+"${PROVIDER_ENV_ARGS[@]}"}
 TWIN
+  local d="$tmp/deploy/scripts"
   # ИНЪЕКЦИЯ 1: прежняя форма — пробросы открываются безусловно (снято условие).
-  grep -v -e '^landing=' -e '^if ' -e '^fi$' "$tmp/deploy/scripts/newman-twin.sh" \
-    > "$tmp/deploy/scripts/newman-old.sh"
+  grep -v -e '^landing=' -e '^if ' -e '^fi$' "$d/newman-twin.sh" > "$d/newman-old.sh"
   # ИНЪЕКЦИЯ 2: решение верное, но второй проброс не поставлен под проверку
   # живости (снята одна запись PF_WHAT).
-  sed 's#; PF_WHAT+=("2|b|/dev/null")##' "$tmp/deploy/scripts/newman-twin.sh" \
-    > "$tmp/deploy/scripts/newman-unwatched.sh"
+  sed 's#; PF_WHAT+=("2|b|/dev/null")##' "$d/newman-twin.sh" > "$d/newman-unwatched.sh"
   # СЛЕПОТА: прогонщик без блока вовсе.
-  echo '# прогонщик без пробросов к поставщику' > "$tmp/deploy/scripts/newman-blind.sh"
+  echo '# прогонщик без пробросов к поставщику' > "$d/newman-blind.sh"
+  # ИНЪЕКЦИИ ВНЕ БЛОКА — блок у каждой тот же, что у близнеца; изменён один факт
+  # вне его, и каждая задевает ровно одно правило из четырёх.
+  #   проброс к службе поставщика ниже строки переписи, безусловно (форма #2841);
+  { cat "$d/newman-twin.sh"
+    echo 'kubectl -n "$NS" port-forward svc/provider-a "5:1" >/dev/null 2>&1 & PF_PIDS+=($!)'
+  } > "$d/newman-out-forward.sh"
+  #   то же, команда продолжена на следующую строку;
+  { cat "$d/newman-twin.sh"
+    printf '%s\n' 'kubectl -n "$NS" port-forward \' '  svc/provider-b "6:2" >/dev/null 2>&1 &'
+  } > "$d/newman-out-continued.sh"
+  #   адрес суитам в прежней форме — ключом, а не массивом блока;
+  sed 's#\${PROVIDER_ENV_ARGS\[@\]+"\${PROVIDER_ENV_ARGS\[@\]}"}#--env-var "providerPublicBaseUrl=http://localhost:3"#' \
+    "$d/newman-twin.sh" > "$d/newman-out-key.sh"
+  #   адрес, набранный ручкой порта поставщика;
+  { cat "$d/newman-twin.sh"; echo 'HOOK_URL="http://localhost:$PB_PORT"'; } > "$d/newman-out-knob.sh"
+  #   адрес, набранный номером этого порта.
+  { cat "$d/newman-twin.sh"; echo 'HOOK_URL="http://127.0.0.1:14002"'; } > "$d/newman-out-port.sh"
 
   local out rc
   # Строки «ok» называют и законных близнецов — находками считается остальное.
   out="$("$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")" --root "$tmp" 2>&1 | grep -v '^  ok   ')"; rc=${PIPESTATUS[0]}
   _st() { if [ "$2" = 1 ]; then echo "  ok   $1"; else echo "  FAIL $1: $3"; fails=$((fails + 1)); fi; }
+  # Инъекция вне блока даёт ровно одну находку, и она называет своё правило.
+  _one() {  # <файл> <текст правила>
+    [ "$(grep -c "$1" <<<"$out")" = 1 ] && grep -q "$1:[0-9]* · вне блока: $2" <<<"$out" && echo 1 || echo 0
+  }
 
   echo "ось 1 — прежняя форма (безусловные пробросы) находится на цепочке own"
   _st "инъекция даёт находку и называет посадку" \
@@ -208,12 +414,14 @@ TWIN
       "$(grep -q 'newman-unwatched.sh · цепочка own' <<<"$out" && echo 0 || echo 1)" "$out"
 
   echo "ось 3 — законный близнец МОЛЧИТ, и инъекции действительно от него отличаются"
-  _st "о близнеце находок нет" \
+  _st "о близнеце находок нет — ни в блоке, ни вне его" \
       "$(grep -q 'newman-twin.sh' <<<"$out" && echo 0 || echo 1)" "$out"
-  _st "инъекции построены (каждая отличается от близнеца)" \
-      "$(! cmp -s "$tmp/deploy/scripts/newman-twin.sh" "$tmp/deploy/scripts/newman-old.sh" \
-         && ! cmp -s "$tmp/deploy/scripts/newman-twin.sh" "$tmp/deploy/scripts/newman-unwatched.sh" \
-         && echo 1 || echo 0)" "инъекция совпала с близнецом — её правка не применилась"
+  local inj built=1
+  for inj in old unwatched out-forward out-continued out-key out-knob out-port; do
+    cmp -s "$d/newman-twin.sh" "$d/newman-$inj.sh" && built=0
+  done
+  _st "инъекции построены (каждая отличается от близнеца)" "$built" \
+      "инъекция совпала с близнецом — её правка не применилась"
 
   echo "ось 4 — слепота пробы объявляется находкой, а не молчанием"
   _st "прогонщик без блока — находка" \
@@ -221,18 +429,41 @@ TWIN
 
   echo "ось 5 — перепись печатается"
   _st "объём осмотренного назван" \
-      "$(grep -q 'перепись: прогонщиков осмотрено 4 · блоков вырезано 3' <<<"$out" && echo 1 || echo 0)" "$out"
+      "$(grep -q 'перепись: прогонщиков осмотрено 9 · блоков вырезано 8' <<<"$out" && echo 1 || echo 0)" "$out"
+  _st "и объём осмотренного вне блока — тоже" \
+      "$(grep -q 'вне блока строк осмотрено [1-9][0-9]* · опознано по блокам: служб поставщика 2, ручек порта 2, портов 2, ключей адреса 1' <<<"$out" && echo 1 || echo 0)" "$out"
 
-  echo "ось 6 — на дереве без прогонщиков вердикт БЕСПРЕДМЕТЕН, а не зелен"
+  echo "ось 6 — весь файл: каждая находка вне блока находится своим правилом"
+  _st "проброс к службе поставщика ниже строки переписи" \
+      "$(_one newman-out-forward.sh 'проброс к службе поставщика provider-a')" "$out"
+  _st "он же, команда продолжена на следующую строку" \
+      "$(_one newman-out-continued.sh 'проброс к службе поставщика provider-b')" "$out"
+  _st "адрес суитам ключом, а не массивом блока" \
+      "$(_one newman-out-key.sh 'ключ адреса поставщика providerPublicBaseUrl')" "$out"
+  _st "адрес, набранный ручкой порта поставщика" \
+      "$(_one newman-out-knob.sh 'ручка порта поставщика PB_PORT')" "$out"
+  _st "адрес, набранный номером порта поставщика" \
+      "$(_one newman-out-port.sh 'порт поставщика 14002')" "$out"
+
+  echo "ось 7 — поставщик, не опознанный ни по одному блоку, — находка, а не пустой суд"
+  mkdir -p "$WORK/noident/deploy/scripts"
+  cp "$ROOT_DEFAULT/deploy/scripts/identity-provider-landing.py" "$WORK/noident/deploy/scripts/"
+  sed -e 's#svc/provider-a "\$PA_PORT:1"#"svc/$PROVIDER_SVC" "$PA_PORT:1"#' -e '/svc\/provider-b/d' \
+    "$d/newman-twin.sh" > "$WORK/noident/deploy/scripts/newman-noident.sh"
+  out="$("$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")" --root "$WORK/noident" 2>&1)"; rc=$?
+  _st "служба поставщика не названа литералом — отказ суда вне блока" \
+      "$([ "$rc" != 0 ] && grep -q 'поставщик не опознан ни по одному блоку (служб 0' <<<"$out" && echo 1 || echo 0)" "rc=$rc / $out"
+
+  echo "ось 8 — на дереве без прогонщиков вердикт БЕСПРЕДМЕТЕН, а не зелен"
   mkdir -p "$WORK/empty/deploy/scripts"
   out="$("$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")" --root "$WORK/empty" 2>&1)"; rc=$?
   _st "пустой обход — отказ" "$([ "$rc" != 0 ] && echo 1 || echo 0)" "rc=$rc / $out"
 
   echo
   if [ "$fails" -gt 0 ]; then
-    echo "ОТКАЗ: провалено утверждений $fails из 10" >&2; return 1
+    echo "ОТКАЗ: провалено утверждений $fails из 18" >&2; return 1
   fi
-  echo "ЧИСТО: 10 утверждений — проба способна упасть на прежней форме и на пробросе вне живости, смолчать на дереве и объявить свою слепоту"
+  echo "ЧИСТО: 18 утверждений — проба способна упасть на прежней форме, на пробросе вне живости и на каждой из четырёх находок вне блока, смолчать на законном близнеце и объявить свою слепоту"
   return 0
 }
 
@@ -243,7 +474,9 @@ for f in "$ROOT"/deploy/scripts/newman-*.sh; do
   audit_runner "deploy/scripts/$(basename "$f")" "$f" "$ROOT/deploy/scripts"
 done
 
-echo "перепись: прогонщиков осмотрено $RUNNERS_SEEN · блоков вырезано $BLOCKS_CUT · посадок прогнано $LANDINGS_RUN"
+audit_outside
+
+echo "перепись: прогонщиков осмотрено $RUNNERS_SEEN · блоков вырезано $BLOCKS_CUT · посадок прогнано $LANDINGS_RUN · $OUTSIDE_CENSUS"
 if [ "$RUNNERS_SEEN" -eq 0 ]; then
   echo "ОТКАЗ: прогонщиков не прочитано — вердикт беспредметен" >&2; exit 1
 fi
@@ -252,4 +485,4 @@ if [ "${#FINDINGS[@]}" -gt 0 ]; then
   for x in "${FINDINGS[@]}"; do echo "  $x" >&2; done
   exit 1
 fi
-echo "ЧИСТО: пробросы к поставщику следуют посадке на каждой из ${#LANDINGS[@]} посадок у каждого прогонщика"
+echo "ЧИСТО: пробросы к поставщику следуют посадке на каждой из ${#LANDINGS[@]} посадок у каждого прогонщика, и вне блока их нет"
