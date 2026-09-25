@@ -2435,20 +2435,6 @@ type identityLanding struct {
 // lands — стенд решает о личности человека, то есть подлежит суду стражей.
 func (l identityLanding) lands() bool { return l.IAM != "" || l.Edge != "" }
 
-// posture — значение посадки для переписи. Половины, разошедшиеся о посадке,
-// судит отдельная проба зонта (identity_posture_profiles_test.go), поэтому
-// здесь расхождение печатается, а не замалчивается.
-func (l identityLanding) posture() string {
-	switch {
-	case l.IAM != "" && l.Edge != "" && l.IAM != l.Edge:
-		return "iam=" + l.IAM + "/gateway=" + l.Edge
-	case l.IAM != "":
-		return l.IAM
-	default:
-		return l.Edge
-	}
-}
-
 // identityLandingOfProfile — что ОДИН профиль объявил половинам.
 //
 // Профиль, который не разбирается как YAML, значения не даёт: его форму судит
