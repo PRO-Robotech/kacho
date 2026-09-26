@@ -52,11 +52,43 @@ import (
 	"github.com/PRO-Robotech/kacho/internal/retiredknobs"
 )
 
-// knobEnvDecl — ОБЪЯВЛЕНИЕ переменной в шаблоне: элемент списка `env:` вида
-// `- name: KACHO_…`. Строка, начинающаяся с решётки, отбрасывается выше по
-// обходу: комментарий не исполняется, а шаблон полон прозы, объясняющей в том
-// числе СНЯТЫЕ переменные.
-var knobEnvDecl = regexp.MustCompile(`^\s*-\s*name:\s*([A-Z][A-Z0-9_]+)\s*$`)
+// ОБЪЯВЛЕНИЕ переменной в шаблоне — ключ `name` элемента списка `env:`. Законных
+// форм записи у него несколько, и распознаватель обязан знать КАЖДУЮ: форма, которой
+// он не знает, — не «эмиссии нет», а слепая зона, где ручка-сирота не краснеет ни
+// в одной колонке. Формы выведены из грамматики элемента, а не из того, что
+// сегодня встречается в чарте, и каждая доказана инъекцией
+// (knob_producer_parity_injection_test.go, knobEmissionForms):
+//
+//   - блочная: `- name: X` и `name: X` не первым ключом элемента; ключ голый или
+//     в кавычках, значение голое, в двойных или в одинарных кавычках, после него —
+//     хвостовой комментарий или ничего;
+//   - потоковая: `{name: X, value: …}` — ключ `name` в любом месте отображения.
+//
+// Всякое иное имя продукта на исполняемой строке — находка «форма не распознана»
+// (judgeUnrecognizedForms), а не молчание. Неисполняемое — строка-комментарий,
+// хвостовой комментарий YAML, комментарий шаблона `{{/* … */}}` на одной и на
+// нескольких строках — отбрасывается до распознавания: шаблон полон прозы,
+// объясняющей в том числе СНЯТЫЕ переменные.
+const knobNameKey = `(?:name|"name"|'name')`
+
+const knobNameValue = `(?:"([A-Z][A-Z0-9_]+)"|'([A-Z][A-Z0-9_]+)'|([A-Z][A-Z0-9_]+))`
+
+// knobEnvDeclBlock — блочная форма: строка целиком, комментарий уже снят.
+var knobEnvDeclBlock = regexp.MustCompile(`^\s*(?:-\s+)?` + knobNameKey + `\s*:\s*` + knobNameValue + `\s*$`)
+
+// knobEnvDeclFlow — потоковая форма: ключ `name` внутри `{…}`, после `{` или `,`.
+var knobEnvDeclFlow = regexp.MustCompile(`[{,]\s*` + knobNameKey + `\s*:\s*` + knobNameValue + `\s*[,}]`)
+
+// knobProductToken — слово с приставкой продукта на исполняемой части строки:
+// предмет переписи форм.
+var knobProductToken = regexp.MustCompile(`[A-Za-z0-9_]+`)
+
+// knobTemplateCommentOpen / Close — границы комментария шаблона Go (`{{/*`, `{{- /*`
+// и `*/}}`, `*/ -}}`).
+var (
+	knobTemplateCommentOpen  = regexp.MustCompile(`\{\{-?\s*/\*`)
+	knobTemplateCommentClose = regexp.MustCompile(`\*/\s*-?\}\}`)
+)
 
 // knobProductPrefixes — приставки имён окружения ЭТОГО продукта.
 //
@@ -84,12 +116,19 @@ type knobColumns struct {
 	// TemplateFiles / TemplateLines — сколько прочитано.
 	TemplateFiles int
 	TemplateLines int
+	// NamedLines — исполняемых строк шаблонов, несущих имя продукта.
+	NamedLines int
+	// Unrecognized — такие строки в форме, которой распознаватель эмиссии не
+	// знает: координата и строка.
+	Unrecognized []string
 }
 
 func (c knobColumns) String() string {
 	return fmt.Sprintf("перепись: ОБЪЯВЛЕНО процессом края %d · ЭМИТИРУЕТ чарт края %d; "+
-		"прочитано файлов шаблонов края %d, строк %d",
-		len(c.Declared), len(c.Emitted), c.TemplateFiles, c.TemplateLines)
+		"прочитано файлов шаблонов края %d, строк %d; исполняемых строк с именем продукта %d, "+
+		"из них формой не распознано %d",
+		len(c.Declared), len(c.Emitted), c.TemplateFiles, c.TemplateLines,
+		c.NamedLines, len(c.Unrecognized))
 }
 
 // declaredEdgeKnobs — имена, которые РЕАЛЬНО консультирует загрузчик.
@@ -115,15 +154,16 @@ func declaredEdgeKnobs(t *testing.T) map[string]bool {
 	return out
 }
 
-// emittedEdgeKnobs обходит шаблоны чарта края и собирает эмитируемые имена.
-func emittedEdgeKnobs(t *testing.T, dir string) (emitted map[string][]string, files, lines int) {
+// emittedEdgeKnobs обходит шаблоны чарта края и собирает эмитируемые имена и
+// перепись форм.
+func emittedEdgeKnobs(t *testing.T, dir string) (scan templateScan, files, lines int) {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("каталог шаблонов края %s не читается (%v) — посылка проверки исчезла, "+
 			"а это НЕ то же самое, что «находок ноль»", dir, err)
 	}
-	emitted = map[string][]string{}
+	scan = templateScan{Emitted: map[string][]string{}}
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -139,27 +179,132 @@ func emittedEdgeKnobs(t *testing.T, dir string) (emitted map[string][]string, fi
 			t.Fatalf("шаблон %s не читается: %v", path, readErr)
 		}
 		files++
-		emitted = mergeEmissions(emitted, templateEmissions(filepath.ToSlash(path), string(raw)))
+		one := scanTemplate(filepath.ToSlash(path), string(raw))
+		scan.Emitted = mergeEmissions(scan.Emitted, one.Emitted)
+		scan.NamedLines += one.NamedLines
+		scan.Unrecognized = append(scan.Unrecognized, one.Unrecognized...)
 		lines += strings.Count(string(raw), "\n")
 	}
-	return emitted, files, lines
+	return scan, files, lines
 }
 
-// templateEmissions — эмиссии одного шаблона: имя → координаты. Комментарий
-// (строка, начинающаяся решёткой) не исполняется и в перепись не попадает.
+// templateScan — что шаблон эмитирует и какие его строки несут имя продукта в
+// форме, которой распознаватель не знает.
+type templateScan struct {
+	Emitted      map[string][]string
+	NamedLines   int
+	Unrecognized []string
+}
+
+// templateEmissions — эмиссии одного шаблона: имя → координаты.
 func templateEmissions(path, body string) map[string][]string {
-	out := map[string][]string{}
-	for i, line := range strings.Split(body, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+	return scanTemplate(path, body).Emitted
+}
+
+// scanTemplate — эмиссии одного шаблона и перепись форм. Неисполняемое
+// (комментарии YAML и шаблона) снимается до распознавания и в перепись не
+// попадает; каждое имя продукта на исполняемой части строки либо объяснено
+// распознанной эмиссией, либо попадает в Unrecognized со своей координатой.
+func scanTemplate(path, body string) templateScan {
+	out := templateScan{Emitted: map[string][]string{}}
+	inComment := false
+	for i, raw := range strings.Split(body, "\n") {
+		var line string
+		line, inComment = knobStripTemplateComments(raw, inComment)
+		line = knobStripYAMLComment(line)
+		var named []string
+		for _, w := range knobProductToken.FindAllString(line, -1) {
+			if knobIsProductName(w) {
+				named = append(named, w)
+			}
+		}
+		if len(named) == 0 {
 			continue
 		}
-		m := knobEnvDecl.FindStringSubmatch(line)
-		if m == nil || !knobIsProductName(m[1]) {
-			continue
+		out.NamedLines++
+		where := fmt.Sprintf("%s:%d", path, i+1)
+		explained := map[string]int{}
+		for _, name := range knobEmittedNames(line) {
+			if knobIsProductName(name) {
+				out.Emitted[name] = append(out.Emitted[name], where)
+				explained[name]++
+			}
 		}
-		out[m[1]] = append(out[m[1]], fmt.Sprintf("%s:%d", path, i+1))
+		for _, w := range named {
+			if explained[w] > 0 {
+				explained[w]--
+				continue
+			}
+			out.Unrecognized = append(out.Unrecognized, fmt.Sprintf("%s · %s", where, strings.TrimSpace(raw)))
+			break
+		}
 	}
 	return out
+}
+
+// knobEmittedNames — имена, которые строка объявляет ключом `name` в блочной или
+// потоковой форме.
+func knobEmittedNames(line string) []string {
+	pick := func(m []string) string {
+		for _, g := range m[1:] {
+			if g != "" {
+				return g
+			}
+		}
+		return ""
+	}
+	if m := knobEnvDeclBlock.FindStringSubmatch(line); m != nil {
+		return []string{pick(m)}
+	}
+	var out []string
+	for _, m := range knobEnvDeclFlow.FindAllStringSubmatch(line, -1) {
+		out = append(out, pick(m))
+	}
+	return out
+}
+
+// knobStripTemplateComments — строка без комментариев шаблона Go и признак того,
+// что строка кончилась внутри незакрытого комментария.
+func knobStripTemplateComments(line string, inComment bool) (string, bool) {
+	var b strings.Builder
+	for line != "" {
+		if inComment {
+			loc := knobTemplateCommentClose.FindStringIndex(line)
+			if loc == nil {
+				return b.String(), true
+			}
+			line, inComment = line[loc[1]:], false
+			continue
+		}
+		loc := knobTemplateCommentOpen.FindStringIndex(line)
+		if loc == nil {
+			b.WriteString(line)
+			break
+		}
+		b.WriteString(line[:loc[0]])
+		line, inComment = line[loc[1]:], true
+	}
+	return b.String(), inComment
+}
+
+// knobStripYAMLComment — строка без комментария YAML: решётка в начале строки
+// либо после пробела, вне кавычек. Решётка внутри слова (`a#b`) и внутри кавычек
+// комментарием не является.
+func knobStripYAMLComment(line string) string {
+	var quote rune
+	for i, r := range line {
+		switch {
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			}
+		case r == '"' || r == '\'':
+			quote = r
+		case r == '#' && (i == 0 || line[i-1] == ' ' || line[i-1] == '\t'):
+			return line[:i]
+		}
+	}
+	return line
 }
 
 func mergeEmissions(dst, src map[string][]string) map[string][]string {
@@ -173,7 +318,9 @@ func mergeEmissions(dst, src map[string][]string) map[string][]string {
 func readKnobColumns(t *testing.T) knobColumns {
 	t.Helper()
 	cols := knobColumns{Declared: declaredEdgeKnobs(t)}
-	cols.Emitted, cols.TemplateFiles, cols.TemplateLines = emittedEdgeKnobs(t, "templates")
+	var scan templateScan
+	scan, cols.TemplateFiles, cols.TemplateLines = emittedEdgeKnobs(t, "templates")
+	cols.Emitted, cols.NamedLines, cols.Unrecognized = scan.Emitted, scan.NamedLines, scan.Unrecognized
 	return cols
 }
 
@@ -254,9 +401,32 @@ func TestEdgeChartEmitsNoKnobTheProcessNeverReads(t *testing.T) {
 		t.Fatal("чарт края не эмитирует ни одного имени с приставкой продукта — обход " +
 			"прочитал не то, и «находок ноль» означало бы «прочитано ноль»")
 	}
+	if cols.NamedLines < len(cols.Emitted) {
+		t.Fatalf("перепись форм насчитала исполняемых строк с именем продукта %d при %d "+
+			"эмитируемых именах — она читает не то, и «не распознано 0» означало бы «прочитано 0»",
+			cols.NamedLines, len(cols.Emitted))
+	}
 	for _, f := range judgeEmittedWithoutReader(cols) {
 		t.Error(f)
 	}
+	for _, f := range judgeUnrecognizedForms(cols) {
+		t.Error(f)
+	}
+}
+
+// judgeUnrecognizedForms — строка шаблона несёт имя продукта в форме, которой
+// распознаватель эмиссии не знает. Такая строка ни красна, ни зелена для обеих
+// колонок: ручка-сирота в ней не видна ни «назад», ни «снятому». Поэтому она —
+// находка сама по себе, с координатой.
+func judgeUnrecognizedForms(cols knobColumns) []string {
+	out := make([]string, 0, len(cols.Unrecognized))
+	for _, u := range cols.Unrecognized {
+		out = append(out, fmt.Sprintf("%s — строка шаблона края несёт имя продукта в форме, "+
+			"которой распознаватель эмиссии не знает: ни одна из колонок её не видит. Научите "+
+			"распознаватель этой форме и докажите инъекцией (knob_producer_parity_injection_test.go) "+
+			"либо запишите строку знакомой формой", u))
+	}
+	return out
 }
 
 // TestEdgeRetiredKnobsStayRetiredOnBothSides — СНЯТОЕ по дереву.
