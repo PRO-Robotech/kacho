@@ -33,7 +33,9 @@ package repohygiene
 //     встречает первой. Базой служит `merge-base HEAD <ссылка>`. При равенстве —
 //     ссылка с НОВЕЙШЕЙ точкой слияния: ветка, влившая вершину своей линии, судится
 //     против этой вершины, а не против старого ответвления, иначе снятое линией
-//     засчиталось бы ветке.
+//     засчиталось бы ветке. Сбой git на любом из этих вопросов — ОТКАЗ: у ссылки,
+//     чья цепь пересеклась с цепью HEAD, ответ есть, и без него база молча
+//     уехала бы на соседнюю ссылку.
 //
 // Что это даёт на каждом месте прогона:
 //
@@ -114,7 +116,20 @@ var retiredVendorLineRef = regexp.MustCompile(`^refs/(remotes/origin|heads)/(mai
 // она получена: перепись обязана называть, с чем сравнивали, иначе «не выросло»
 // неотличимо от «сравнивали не с тем».
 func retiredVendorBaseRev(root string) (rev, how string, err error) {
-	out, err := gitenv.Command(root, "rev-list", "--first-parent", "HEAD").Output()
+	return retiredVendorBaseRevBy(func(args ...string) *exec.Cmd { return gitenv.Command(root, args...) })
+}
+
+// vendorGitCmd — как выбор базы спрашивает git: команда git с этими
+// аргументами в корне дерева.
+//
+// Шов существует ради ИНЪЕКЦИИ сбоя, и подменяется им ровно одно — исход
+// отдельного вопроса к git. Выбор, правило и отказы остаются те же, поэтому
+// проба сбоя гоняет ту же функцию, что гейт по дереву, а не её копию.
+type vendorGitCmd func(args ...string) *exec.Cmd
+
+// retiredVendorBaseRevBy — [retiredVendorBaseRev] над поданным git.
+func retiredVendorBaseRevBy(git vendorGitCmd) (rev, how string, err error) {
+	out, err := git("rev-list", "--first-parent", "HEAD").Output()
 	if err != nil {
 		return "", "", fmt.Errorf("%w: первородительская цепь HEAD не читается: %w", errVendorBase, err)
 	}
@@ -123,7 +138,7 @@ func retiredVendorBaseRev(root string) (rev, how string, err error) {
 		return "", "", fmt.Errorf("%w: первородительская цепь HEAD пуста", errVendorBase)
 	}
 
-	out, err = gitenv.Command(root, "for-each-ref", "--format=%(refname)",
+	out, err = git("for-each-ref", "--format=%(refname)",
 		"refs/remotes/origin", "refs/heads").Output()
 	if err != nil {
 		return "", "", fmt.Errorf("%w: ссылки клона не перечисляются: %w", errVendorBase, err)
@@ -156,7 +171,7 @@ func retiredVendorBaseRev(root string) (rev, how string, err error) {
 	var best *pick
 	trunk := ""
 	for _, ref := range candidates {
-		cnt, e := gitenv.Command(root, "rev-list", "--first-parent", "--count", "HEAD", "^"+ref).Output()
+		cnt, e := git("rev-list", "--first-parent", "--count", "HEAD", "^"+ref).Output()
 		if e != nil {
 			return "", "", fmt.Errorf("%w: цепь HEAD против %s не считается: %w", errVendorBase, ref, e)
 		}
@@ -175,24 +190,38 @@ func retiredVendorBaseRev(root string) (rev, how string, err error) {
 		if ahead >= len(chain) {
 			continue // с цепью HEAD эта ссылка не пересекается
 		}
-		out, e := gitenv.Command(root, "merge-base", "HEAD", ref).Output()
+		// Цепь HEAD с этой ссылкой пересеклась, значит точка слияния у них ЕСТЬ.
+		// Сбой здесь — не «ссылка не годится», а незнание: снять ссылку с выбора
+		// значило бы молча увести базу на соседнюю.
+		out, e := git("merge-base", "HEAD", ref).Output()
 		if e != nil {
-			continue
+			return "", "", fmt.Errorf("%w: точка слияния HEAD с %s не прочитана, хотя цепи "+
+				"пересеклись (коммитов цепи вне линии %d из %d): %w",
+				errVendorBase, ref, ahead, len(chain), e)
 		}
 		p := pick{ref: ref, mb: strings.TrimSpace(string(out)), ahead: ahead}
-		switch {
-		case best == nil, p.ahead < best.ahead:
+		if best == nil || p.ahead < best.ahead {
 			best = &p
-		case p.ahead == best.ahead && p.mb != best.mb &&
-			gitenv.Command(root, "merge-base", "--is-ancestor", best.mb, p.mb).Run() == nil:
-			// Равное расстояние по цепи, но точка слияния НОВЕЕ: линия, чья
-			// вершина уже влита в изменение, — база именно она, а не старое
-			// ответвление, иначе снятое ею засчиталось бы изменению.
+			continue
+		}
+		if p.ahead != best.ahead || p.mb == best.mb {
+			continue
+		}
+		// Равное расстояние по цепи: базой служит ссылка с НОВЕЙШЕЙ точкой
+		// слияния — линия, чья вершина уже влита в изменение, а не старое
+		// ответвление, иначе снятое ею засчиталось бы изменению.
+		newer, e := vendorIsAncestor(git, best.mb, p.mb)
+		if e != nil {
+			return "", "", fmt.Errorf("%w: какая из точек слияния новее — %s (%s) или %s (%s) — "+
+				"не установлено: %w", errVendorBase, vendorShort(best.mb), best.ref,
+				vendorShort(p.mb), p.ref, e)
+		}
+		if newer {
 			best = &p
 		}
 	}
 
-	parents, err := gitenv.Command(root, "rev-list", "--parents", "-n", "1", "HEAD").Output()
+	parents, err := git("rev-list", "--parents", "-n", "1", "HEAD").Output()
 	if err != nil {
 		return "", "", fmt.Errorf("%w: родители HEAD не читаются: %w", errVendorBase, err)
 	}
@@ -217,7 +246,31 @@ func retiredVendorBaseRev(root string) (rev, how string, err error) {
 		"цепи HEAD вне линии %d)", vendorShort(best.mb), best.ref, best.ahead), nil
 }
 
-func vendorShort(sha string) string { return sha[:min(len(sha), 11)] }
+// vendorIsAncestor — лежит ли older в истории newer. У `merge-base
+// --is-ancestor` ответов два — код 0 «да» и код 1 «нет»; всякий иной исход (код
+// 128 на негодном имени, прерванный процесс) ответом не является и возвращается
+// ошибкой, а не читается как «нет».
+func vendorIsAncestor(git vendorGitCmd, older, newer string) (bool, error) {
+	err := git("merge-base", "--is-ancestor", older, newer).Run()
+	var exit *exec.ExitError
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.As(err, &exit) && exit.ExitCode() == 1:
+		return false, nil
+	}
+	return false, fmt.Errorf("сверка предка %s → %s не исполнилась: %w",
+		vendorShort(older), vendorShort(newer), err)
+}
+
+// vendorShortLen — длина имени коммита в переписи и находках. Это форма, которой
+// коммиты называют задачи и отчёты полос, и до неё же сокращает имя сам git на
+// дереве этого размера (предикат — `git rev-parse --short HEAD`): имя из переписи
+// ищется в них как есть. Число фиксировано, а не берётся у git, чтобы строка
+// переписи не менялась от того, в каком клоне её напечатали.
+const vendorShortLen = 11
+
+func vendorShort(sha string) string { return sha[:min(len(sha), vendorShortLen)] }
 
 // vendorRawChange — одна запись `git diff --raw`: путь и его вид на базе.
 type vendorRawChange struct {
@@ -258,7 +311,7 @@ func vendorReadBlobs(root string, shas []string) (map[string][]byte, error) {
 	cmd.Stderr = &stderr
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: вывод cat-file не открыт: %w", errVendorBase, err)
 	}
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("%w: cat-file не запущен: %w", errVendorBase, err)

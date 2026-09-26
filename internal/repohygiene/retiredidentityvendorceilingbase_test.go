@@ -295,25 +295,114 @@ func TestRetiredVendorCeiling_MergeHeadIsJudgedAgainstItsFirstParent(t *testing.
 // Линия сняла строку; ветка влила её и добавила строку издателя. Против старой
 // точки ответвления итог был бы нулём (−1 +1) — снятое линией простило бы рост
 // ветки. Против влитой вершины это +1, и гейт краснеет.
+//
+// Выбор между линией и СОПЕРНИКОМ — ссылкой на старой точке ответвления на ТОМ
+// ЖЕ расстоянии по цепи — решает правило новейшей точки слияния, и только оно.
+// Ссылки перебираются в порядке имён, поэтому соперник ставится по ОБЕ стороны
+// от линии: `main` идёт после `100`, номер `1` — до неё. Второй мир — это форма
+// настоящего дерева: ссылка эпика стоит на точке ответвления волны (origin/2564
+// рядом с origin/2797). Пока соперник был только после линии, правило можно было
+// выключить, и проба оставалась зелёной: первой по имени бралась нужная ссылка
+// сама.
 func TestRetiredVendorCeiling_BranchThatMergedItsLineIsJudgedAgainstTheLineTip(t *testing.T) {
 	t.Parallel()
-	root, _ := vendorProbeWorld(t)
+	for _, rival := range []string{"", "1"} {
+		root, fork, tip := vendorBranchThatMergedItsLine(t, rival)
 
+		v := vendorProbeVerdict(t, root)
+		if v.Rev != tip {
+			t.Fatalf("соперник %q (%s): база ветки, влившей линию, обязана быть влитой вершиной %s, "+
+				"выведено %s (%s)", rival, vendorShort(fork), vendorShort(tip), vendorShort(v.Rev), v.How)
+		}
+		if len(v.Findings) != 1 {
+			t.Fatalf("соперник %q: рост ветки не прощается снятым линией — ждали одну находку: %v",
+				rival, v.Findings)
+		}
+	}
+}
+
+// vendorBranchThatMergedItsLine — мир ветки `9005`, влившей вершину линии `100`
+// и добавившей строку издателя; rival, если не пуст, — ссылка-номер на точке
+// ответвления. Возвращает корень, точку ответвления и влитую вершину линии.
+func vendorBranchThatMergedItsLine(t *testing.T, rival string) (root, fork, tip string) {
+	t.Helper()
+	root, fork = vendorProbeWorld(t)
+	if rival != "" {
+		vendorGit(t, root, "branch", rival, fork)
+	}
 	vendorGit(t, root, "switch", "--quiet", "-c", "9005", "100")
 	vendorGit(t, root, "switch", "--quiet", "100")
 	vendorCommitFile(t, root, "deploy/b.yaml", vendorProbeFile("b", 2), "линия сняла строку")
-	tip := vendorGit(t, root, "rev-parse", "HEAD")
+	tip = vendorGit(t, root, "rev-parse", "HEAD")
 	vendorGit(t, root, "switch", "--quiet", "9005")
 	vendorGit(t, root, "merge", "--no-ff", "--quiet", "-m", "ветка влила линию", "100")
 	vendorCommitFile(t, root, "deploy/a.yaml", vendorProbeFile("a", 2)+vendorProbeLine+"\n", "ветка добавила строку")
+	return root, fork, tip
+}
 
-	v := vendorProbeVerdict(t, root)
-	if v.Rev != tip {
-		t.Fatalf("база ветки, влившей линию, обязана быть влитой вершиной %s, выведено %s (%s)",
-			vendorShort(tip), vendorShort(v.Rev), v.How)
+// TestRetiredVendorCeiling_GitFaultInBaseSelectionIsARefusal — СБОЙ git при
+// выборе базы: ОТКАЗ, а не другая база.
+//
+// Оба вопроса задаются ссылке, чья цепь с цепью HEAD уже пересеклась, так что
+// ответ у git ЕСТЬ, и его отсутствие ненормально. Проглоченный сбой уводил базу
+// молча: точка слияния линии не прочитана — ссылка снималась с выбора и базой
+// становилась старая точка ответвления; сверка предка упала — это читалось как
+// «не предок», с тем же исходом. Оба раза гейт судил бы не то изменение и
+// называл бы это «не выросло».
+//
+// Сбой — настоящий отказ git (код 128 на несуществующем имени), поданный вместо
+// ОДНОГО вопроса; прочие вопросы идут в git как есть. Близнец — тот же мир без
+// подмены: база выводится, и это та же база, что у гейта по дереву. Сверка
+// предка в близнеце отвечает и законным «не предок» (код 1): соперник `main`
+// идёт после линии, и его точка ответвления старше.
+func TestRetiredVendorCeiling_GitFaultInBaseSelectionIsARefusal(t *testing.T) {
+	t.Parallel()
+	root, _, tip := vendorBranchThatMergedItsLine(t, "1")
+	asIs := func(args ...string) *exec.Cmd { return gitenv.Command(root, args...) }
+
+	rev, how, err := retiredVendorBaseRevBy(asIs)
+	if err != nil || rev != tip {
+		t.Fatalf("близнец без подмены: база обязана быть вершиной линии %s, выведено %s (%s), отказ: %v",
+			vendorShort(tip), vendorShort(rev), how, err)
 	}
-	if len(v.Findings) != 1 {
-		t.Fatalf("рост ветки не прощается снятым линией — ждали одну находку: %v", v.Findings)
+
+	faults := []struct {
+		name  string
+		asked func(args []string) bool
+		fault []string
+	}{
+		{
+			name: "точка слияния линии не прочитана",
+			asked: func(a []string) bool {
+				return len(a) == 3 && a[0] == "merge-base" && a[1] == "HEAD" && a[2] == "refs/heads/100"
+			},
+			fault: []string{"merge-base", "HEAD", "refs/heads/нет-такой-линии"},
+		},
+		{
+			name:  "сверка предка не исполнилась",
+			asked: func(a []string) bool { return len(a) == 4 && a[0] == "merge-base" && a[1] == "--is-ancestor" },
+			fault: []string{"merge-base", "--is-ancestor", "refs/heads/нет-такой-линии", "HEAD"},
+		},
+	}
+	for _, f := range faults {
+		hit := 0
+		git := func(args ...string) *exec.Cmd {
+			if f.asked(args) {
+				hit++
+				return gitenv.Command(root, f.fault...)
+			}
+			return asIs(args...)
+		}
+		rev, how, err := retiredVendorBaseRevBy(git)
+		switch {
+		case hit == 0:
+			t.Errorf("%s: подменяемый вопрос не задавался ни разу — проба не о том выборе", f.name)
+		case !errors.Is(err, errVendorBase):
+			t.Errorf("%s: сбой git обязан быть отказом базы, а выведена база %s (%s), ошибка: %v",
+				f.name, vendorShort(rev), how, err)
+		default:
+			t.Logf("%s: отказ %v", f.name, err)
+		}
 	}
 }
 
