@@ -20,6 +20,9 @@
 // законного значения) — и единственный оставшийся выход есть режим
 // разработчика, то есть посадка, запрещённая ban #16.
 //
+// Ось поставщика с тех пор снята целиком (#2734): край не читает ни одного его
+// адреса, и требовать их страж больше не может ни под одной посадкой.
+//
 // ─────────────────────────────────────────────────────────────────────────────
 // ПОЛОСА ЗАМЕЩАЕТ ТРЕБОВАНИЕ, А НЕ СНИМАЕТ ЕГО
 //
@@ -73,57 +76,6 @@ func ownLane() RevocationConfig {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Ось ПОСТАВЩИКА: требуется под `external`, не требуется под `own`.
-
-// Под `own` край стартует БЕЗ адреса интроспекции внешнего поставщика.
-// Это тот самый вход, у которого сегодня нет законного значения.
-func TestOwnLaneStartsWithoutTheProviderIntrospectionAddress(t *testing.T) {
-	cfg := ownLane()
-	cfg.IntrospectionURL = ""
-	if err := validateProductionRevocationConfig("production", cfg); err != nil {
-		t.Fatalf("под own адрес интроспекции внешнего поставщика не требуется, получено: %v", err)
-	}
-}
-
-// ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ той же оси: под `external` требование остаётся.
-// Без него случай выше зеленел бы на страже, снявшем проверку у всех.
-func TestExternalLaneStillDemandsTheProviderIntrospectionAddress(t *testing.T) {
-	err := validateProductionRevocationConfig("production", RevocationConfig{
-		IdentityProvider: identityposture.External,
-		IntrospectionURL: "",
-		AdminURL:         tlsAdminURL,
-		AdminCAFile:      testAdminCA,
-	})
-	if err == nil {
-		t.Fatal("под external незаданный адрес интроспекции обязан отвергать старт")
-	}
-	if !strings.Contains(err.Error(), "KACHO_HYDRA_INTROSPECTION_URL is empty") {
-		t.Fatalf("отказ обязан называть ручку поставщика, получено: %q", err.Error())
-	}
-}
-
-// Полосность снимает требование НАЛИЧИЯ, а не правила транспорта: адрес
-// поставщика, объявленный под `own`, судится теми же правилами.
-func TestADeclaredProviderIntrospectionIsJudgedTheSameOnBothLanes(t *testing.T) {
-	for _, lane := range identityposture.Values() {
-		t.Run(lane.String(), func(t *testing.T) {
-			cfg := ownLane()
-			cfg.IdentityProvider = lane
-			cfg.AdminURL = tlsAdminURL
-			cfg.AdminCAFile = testAdminCA
-			cfg.IntrospectionURL = "http://provider-admin.kacho.svc:4445/admin/oauth2/introspect"
-			err := validateProductionRevocationConfig("production", cfg)
-			if err == nil {
-				t.Fatal("незашифрованный адрес интроспекции обязан отвергаться на любой полосе")
-			}
-			if !strings.Contains(err.Error(), "KACHO_HYDRA_INTROSPECTION_URL is plaintext") {
-				t.Fatalf("отказ обязан называть ручку и предмет, получено: %q", err.Error())
-			}
-		})
-	}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Ось НАШЕГО авторитета: требуется под `own`; заданная — судится на любой полосе.
 
 // Под `own` край обязан требовать НАШЕГО авторитета отзыва. Иначе смена посадки
@@ -145,14 +97,13 @@ func TestOwnLaneDemandsOurOwnRevocationAuthority(t *testing.T) {
 }
 
 // ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ той же оси: под `external` наш авторитет обязателен НЕ
-// БЫВАЕТ — там отзыв читает поставщик. Без этого случая ось выше зеленела бы на
-// страже, требующем нашего авторитета всегда.
+// БЫВАЕТ — там наша чеканка краем не принимается, пока её не объявит перечень
+// издателей, а объявленный наш издатель без авторитета отвергается разбором
+// приёма. Без этого случая ось выше зеленела бы на страже, требующем нашего
+// авторитета всегда.
 func TestExternalLaneNeedsNoAuthorityOfOurOwn(t *testing.T) {
 	err := validateProductionRevocationConfig("production", RevocationConfig{
 		IdentityProvider: identityposture.External,
-		IntrospectionURL: tlsIntrospectURL,
-		AdminURL:         tlsAdminURL,
-		AdminCAFile:      testAdminCA,
 	})
 	if err != nil {
 		t.Fatalf("под external наш авторитет отзыва не требуется, получено: %v", err)
@@ -230,9 +181,6 @@ func TestOurAuthorityHopRefusesHalfAnIdentity(t *testing.T) {
 func TestADeclaredAuthorityOfOursIsJudgedOnTheExternalLaneToo(t *testing.T) {
 	cfg := ourAuthorityWired()
 	cfg.IdentityProvider = identityposture.External
-	cfg.IntrospectionURL = tlsIntrospectURL
-	cfg.AdminURL = tlsAdminURL
-	cfg.AdminCAFile = testAdminCA
 	cfg.PlatformRevocationCAFile = ""
 	err := validateProductionRevocationConfig("production", cfg)
 	if err == nil {
@@ -240,20 +188,6 @@ func TestADeclaredAuthorityOfOursIsJudgedOnTheExternalLaneToo(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_CA_FILE") {
 		t.Fatalf("отказ обязан называть ручку якоря, получено: %q", err.Error())
-	}
-}
-
-// Незаданный НАШ авторитет под `external` находкой не является — там его
-// предмета нет. Законный близнец случая выше.
-func TestAnUnsetAuthorityOfOursIsSilentOnTheExternalLane(t *testing.T) {
-	err := validateProductionRevocationConfig("production", RevocationConfig{
-		IdentityProvider: identityposture.External,
-		IntrospectionURL: tlsIntrospectURL,
-		AdminURL:         tlsAdminURL,
-		AdminCAFile:      testAdminCA,
-	})
-	if err != nil {
-		t.Fatalf("незаданный наш авторитет под external находкой не является, получено: %v", err)
 	}
 }
 
@@ -275,7 +209,7 @@ func TestDevClassEnvironmentIsUntouchedByTheLane(t *testing.T) {
 // `RevocationConfig` без них, оставил бы их нулевыми — и страж отвечал бы
 // «нашего авторитета нет» ПРИ ЛЮБОЙ настройке: чарт задал бы ручки, секрет был
 // бы смонтирован, а старт отвергался. Ровно этот класс уже стоил выкатки на
-// соседней оси (`admin_hop_wiring_test.go`), поэтому провязка утверждается
+// соседней, ныне снятой оси якоря административного хопа, поэтому провязка утверждается
 // отдельно от поведения.
 //
 // main() из пробы не исполним (он дозванивается до бэкендов и занимает порты),

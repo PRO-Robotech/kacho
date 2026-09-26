@@ -7,17 +7,15 @@
 //
 // # Предмет
 //
-// Четыре пробы стеков (revocation_endpoint_test.go, admin_hop_transport_test.go)
-// требовали адресов административного API поставщика от КАЖДОЙ цепочки: адреса
+// Четыре пробы стеков (gateway/deploy/revocation_endpoint_test.go и
+// admin_hop_transport_test.go) требовали адресов административного API поставщика от КАЖДОЙ цепочки: адреса
 // интроспекции и снятия сессии у края, административной дороги у службы
-// доступа. Требование было верно, пока поставщик стоял на каждом стенде.
+// доступа. Дороги края с тех пор сняты целиком (#2734) — край их не читает ни
+// под одной посадкой, и три пробы о них ушли вместе с ручками; осталась дорога
+// службы доступа. Требование было верно, пока поставщик стоял на каждом стенде.
 // Цепочка `own` его больше не поднимает, и пробы краснели на стенде, который
 // поднимается: сами процессы этих адресов под `own` не требуют.
 //
-//   - край: validateProductionRevocationConfig
-//     (gateway/cmd/api-gateway/revocation_validation.go) требует обоих адресов
-//     только под `external`; под `own` ось поставщика замещается осью нашего
-//     авторитета отзыва;
 //   - служба доступа: строки authn.hydra-admin-url и authn.hydra-admin-ca-file
 //     её таблицы требований объявлены с полосой `external`
 //     (kaname, internal/apps/kaname/config/required_settings.go).
@@ -27,8 +25,8 @@
 // Посадка читается так, как её получит страж старта ЭТОЙ половины: объявление
 // слитой цепочки, а у молчащей цепочки — умолчание собственного чарта половины
 // (helm кладёт его под каждый `-f`, и слоем цепочки оно не значится). Значение
-// разбирает тот же словарь, что и процесс (corelib/identityposture; у края —
-// через его config.Config). Второго словаря здесь нет.
+// разбирает тот же словарь, что и процесс (corelib/identityposture). Второго
+// словаря здесь нет.
 //
 //   - `external` — как прежде: адрес обязан быть объявлен;
 //   - `own` — адреса НЕТ, и это утверждается, а не пропускается. Отсутствие
@@ -49,7 +47,17 @@
 // Согласие посадок двух половин одного стенда — предмет
 // deploy/helm/umbrella/identity_posture_profiles_test.go; здесь каждая половина
 // судится своей посадкой, и второго суждения о согласии не заводится.
-package deploy_test
+//
+// # Где живёт (#2734)
+//
+// Судимая дорога — служебная: ручка службы доступа и её посадка, обе в значениях
+// зонта. Проба жила в gateway/deploy и переехала к чарту зонта без смены входа и
+// вердикта. Половины края здесь больше нет: дорог края к поставщику не осталось
+// (#2734), ни одна ручка этой пробы посадкой края не судилась, и половина
+// держалась только двумя пробами чтения посадки. Те теперь читают посадку
+// службы доступа — единственной половины, у которой дорога есть; разборщик тот
+// же общий словарь, край зовёт его через свой config.Config.
+package umbrella_test
 
 import (
 	"fmt"
@@ -58,8 +66,6 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/corelib/identityposture"
-
-	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 )
 
 // postureHalf — ОДНА половина стенда: где цепочка объявляет её посадку, откуда
@@ -77,37 +83,24 @@ type postureHalf struct {
 	parse func(raw string) (identityposture.Provider, error)
 }
 
-var (
-	// edgePostureHalf — край. Ручку разбирает его же config.Config, то есть
-	// ровно тот код, что исполняет композиционный корень при старте.
-	edgePostureHalf = postureHalf{
-		who:           "края",
-		path:          []string{"api-gateway", "authn", "identityProvider"},
-		chartPath:     []string{"authn", "identityProvider"},
-		chartDefaults: gatewayChartValues,
-		parse: func(raw string) (identityposture.Provider, error) {
-			return config.Config{IdentityProvider: raw}.ResolvedIdentityProvider()
-		},
-	}
-	// iamPostureHalf — служба доступа. Её разборщик — общий словарь
-	// corelib/identityposture; пустое значение служба читает как «не задано»,
-	// и так же читает его здесь.
-	iamPostureHalf = postureHalf{
-		who:       "службы доступа",
-		path:      []string{"kaname", "config", "authn", "identityProvider"},
-		chartPath: []string{"config", "authn", "identityProvider"},
-		chartDefaults: func(t *testing.T) map[string]any {
-			t.Helper()
-			return umbrellaValues(t, filepath.Join("charts", "kaname", "values.yaml"))
-		},
-		parse: func(raw string) (identityposture.Provider, error) {
-			if strings.TrimSpace(raw) == "" {
-				return identityposture.Unset, nil
-			}
-			return identityposture.Parse("kaname.config.authn.identityProvider", raw)
-		},
-	}
-)
+// iamPostureHalf — служба доступа. Её разборщик — общий словарь
+// corelib/identityposture; пустое значение служба читает как «не задано»,
+// и так же читает его здесь.
+var iamPostureHalf = postureHalf{
+	who:       "службы доступа",
+	path:      []string{"kaname", "config", "authn", "identityProvider"},
+	chartPath: []string{"config", "authn", "identityProvider"},
+	chartDefaults: func(t *testing.T) map[string]any {
+		t.Helper()
+		return umbrellaValues(t, filepath.Join("charts", "kaname", "values.yaml"))
+	},
+	parse: func(raw string) (identityposture.Provider, error) {
+		if strings.TrimSpace(raw) == "" {
+			return identityposture.Unset, nil
+		}
+		return identityposture.Parse("kaname.config.authn.identityProvider", raw)
+	},
+}
 
 // postureReading — посадка одной половины, какой её получит страж старта.
 type postureReading struct {
@@ -170,12 +163,6 @@ func foldStack(t *testing.T, stack []string) map[string]any {
 	return merged
 }
 
-// stackPosture — посадка половины на слитой цепочке дерева.
-func stackPosture(t *testing.T, stack []string, half postureHalf) postureReading {
-	t.Helper()
-	return readPosture(half, foldStack(t, stack), half.chartDefaults(t))
-}
-
 // providerRoadRequired — требует ли страж старта половины дорогу к поставщику
 // при этой посадке. Ошибка означает, что по посадке судить нельзя, и это
 // находка сама по себе.
@@ -212,23 +199,6 @@ type providerRoadKnob struct {
 }
 
 var (
-	introspectionRoad = providerRoadKnob{
-		label: "api-gateway.hydra.introspectionUrl",
-		half:  edgePostureHalf,
-		path:  []string{"api-gateway", "hydra", "introspectionUrl"},
-		missing: "the revocation check has nowhere to ask, so every token stays good until " +
-			"it expires no matter what is revoked",
-		present: "край провязывает заданный адрес в проверку отзыва и спрашивает его на каждом " +
-			"промахе кэша — у процесса, которого на этой посадке нет",
-	}
-	adminRoad = providerRoadKnob{
-		label:   "api-gateway.hydra.adminUrl",
-		half:    edgePostureHalf,
-		path:    []string{"api-gateway", "hydra", "adminUrl"},
-		missing: "signing out then leaves the session alive at the identity provider",
-		present: "выход человека шлёт снятие сессии процессу, которого на этой посадке нет, — " +
-			"сессии у поставщика под `own` не существует",
-	}
 	iamAdminRoad = providerRoadKnob{
 		label: "kaname.platform.iam.hydraAdminUrl",
 		half:  iamPostureHalf,

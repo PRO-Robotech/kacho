@@ -66,8 +66,13 @@
 // ЧЕГО ПРОБА НЕ УТВЕРЖДАЕТ
 //
 // Она не утверждает, что предел ДОСТАТОЧЕН процессу под нагрузкой: это свойство
-// прогона, и его судит замер. Она утверждает, что страж старта примет этот вход,
-// — то есть что профиль и страж говорят об одном числе.
+// прогона, и его судит замер. Она утверждает, что правило бюджета стража старта
+// (`ValidateMemoryBudget` вместе с `ValidateCapacity`, которое оно зовёт первым)
+// примет три числа профиля — ёмкость, резерв и предел, — то есть что профиль и
+// страж говорят об одном числе. Отказы ДО арифметики (ёмкость непозитивна,
+// резерв нулевой) проба моделирует у себя и потому сверяет модель с телом
+// правила у пина (guardCapacityRuleIsModelled). Прочие ручки полосы (параметры
+// формата записи пароля) она не судит.
 package deploy_test
 
 import (
@@ -137,6 +142,24 @@ func judgeLaneMemoryBudget(facts []laneBudgetFacts, perCheck uint64) ([]string, 
 					"сверять бюджет, и служба откажет в старте", f.Stack))
 			continue
 		}
+		// Отказы ДО арифметики — в том же порядке, что у стража: правило бюджета
+		// первым зовёт правило ёмкости, и оно отвергает обе величины, каждую своим
+		// текстом. Предел судится и при них: оператору нужен весь перечень правок,
+		// а не первая.
+		rejected := false
+		if f.Capacity <= 0 {
+			findings = append(findings, fmt.Sprintf(
+				"стенд %s: ёмкость проверяющего объявлена непозитивной (%d) — страж отвергает такую "+
+					"величину до всякой арифметики", f.Stack, f.Capacity))
+			rejected = true
+		}
+		if f.Reserve == 0 {
+			findings = append(findings, fmt.Sprintf(
+				"стенд %s: резерв нулевой — страж отвергает его до всякой арифметики "+
+					"(«memory-reserve-bytes не задан»): резерв памяти процесса сверх проверок — "+
+					"положительное число байт, даже когда предел покрывает бюджет и без него", f.Stack))
+			rejected = true
+		}
 		if !f.HasLimit {
 			findings = append(findings, fmt.Sprintf(
 				"стенд %s: `kaname.resources.limits.memory` не объявлен, а ёмкость (%d) и резерв (%d) "+
@@ -146,10 +169,7 @@ func judgeLaneMemoryBudget(facts []laneBudgetFacts, perCheck uint64) ([]string, 
 				f.Stack, f.Capacity, f.Reserve))
 			continue
 		}
-		if f.Capacity <= 0 {
-			findings = append(findings, fmt.Sprintf(
-				"стенд %s: ёмкость проверяющего объявлена непозитивной (%d) — страж отвергает такую "+
-					"величину до всякой арифметики", f.Stack, f.Capacity))
+		if rejected {
 			continue
 		}
 		need := uint64(f.Capacity)*perCheck + f.Reserve
@@ -419,10 +439,106 @@ func guardRuleReadsTheModelledNames(file *ast.File) error {
 	return nil
 }
 
+// Имена, которыми правило стража судит числа полосы ДО арифметики. Проба их не
+// берёт на веру: guardCapacityRuleIsModelled сверяет модель judgeLaneMemoryBudget
+// с телом правила у пина.
+const (
+	guardCapacityMethod = "ValidateCapacity"
+	guardBudgetMethod   = "ValidateMemoryBudget"
+	guardCapacityField  = "VerifierCapacity"
+	guardReserveField   = "MemoryReserveBytes"
+)
+
+// guardCapacityRuleIsModelled — ПРЕДПОСЫЛКА модели отказов до арифметики:
+// правило бюджета зовёт правило ёмкости, а оно отвергает ёмкость `<= 0` и
+// резерв `== 0` — ровно то, что моделирует judgeLaneMemoryBudget. Порог вместо
+// нуля, иной знак или правило, которое больше не зовут, — отказ с именем
+// расхождения: модель, разошедшаяся со стражем, судила бы не его.
+func guardCapacityRuleIsModelled(file *ast.File) error {
+	bodies := map[string]*ast.BlockStmt{}
+	for _, d := range file.Decls {
+		if fd, ok := d.(*ast.FuncDecl); ok && fd.Recv != nil && fd.Body != nil {
+			bodies[fd.Name.Name] = fd.Body
+		}
+	}
+	capacity, ok := bodies[guardCapacityMethod]
+	if !ok {
+		return fmt.Errorf("правило стража `%s` не найдено — отказы до арифметики сверять не с чем",
+			guardCapacityMethod)
+	}
+	budget, ok := bodies[guardBudgetMethod]
+	if !ok {
+		return fmt.Errorf("правило бюджета стража `%s` не найдено — сверять не с чем", guardBudgetMethod)
+	}
+	if !callsMethod(budget, guardCapacityMethod) {
+		return fmt.Errorf("`%s` не зовёт `%s` — отказы до арифметики, которые моделирует проба, "+
+			"стражем бюджета не исполняются", guardBudgetMethod, guardCapacityMethod)
+	}
+	for _, rule := range []struct {
+		field string
+		op    token.Token
+	}{{guardCapacityField, token.LEQ}, {guardReserveField, token.EQL}} {
+		if !comparesFieldWithZero(capacity, rule.field, rule.op) {
+			return fmt.Errorf("правило стража `%s` не судит `%s %s 0` — модель пробы устарела, и её "+
+				"отказ до арифметики разошёлся бы с отказом стража", guardCapacityMethod, rule.field, rule.op)
+		}
+	}
+	return nil
+}
+
+// callsMethod — есть ли в теле вызов `<x>.<name>(…)`.
+func callsMethod(body *ast.BlockStmt, name string) bool {
+	found := false
+	ast.Inspect(body, func(n ast.Node) bool {
+		if call, ok := n.(*ast.CallExpr); ok {
+			if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == name {
+				found = true
+			}
+		}
+		return !found
+	})
+	return found
+}
+
+// comparesFieldWithZero — есть ли в теле сравнение `<x>.<field> <op> 0`.
+func comparesFieldWithZero(body *ast.BlockStmt, field string, op token.Token) bool {
+	found := false
+	ast.Inspect(body, func(n ast.Node) bool {
+		be, ok := n.(*ast.BinaryExpr)
+		if !ok || be.Op != op {
+			return !found
+		}
+		sel, okX := be.X.(*ast.SelectorExpr)
+		lit, okY := be.Y.(*ast.BasicLit)
+		if okX && okY && sel.Sel.Name == field && lit.Kind == token.INT && lit.Value == "0" {
+			found = true
+		}
+		return !found
+	})
+	return found
+}
+
+// capacityRuleOfTheGuard — сверка модели отказов до арифметики с правилом у пина.
+func capacityRuleOfTheGuard(t *testing.T, moduleDir string) {
+	t.Helper()
+	path := filepath.Join(moduleDir, "internal", "apps", "kaname", "config", "login_lane.go")
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+	if err != nil {
+		t.Fatalf("правило стража пиненного модуля не разбирается (%s): %v.\n"+
+			"Это «не выполнилось», а не «бюджет сходится»", path, err)
+	}
+	if err := guardCapacityRuleIsModelled(file); err != nil {
+		t.Fatalf("%s: %v.\nЭто «не выполнилось», а не «бюджет сходится»: почини модель пробы "+
+			"по правилу стража, а не наоборот", path, err)
+	}
+}
+
 // TestOwnLaneMemoryBudget_ProfilesDeclareALimitThatTheGuardAccepts — сверка по
 // дереву: перечень стендов из единственной таблицы, потолок формата из пина.
 func TestOwnLaneMemoryBudget_ProfilesDeclareALimitThatTheGuardAccepts(t *testing.T) {
-	perCheck := memoryPerVerificationAtCeiling(t, kanameModuleDir(t, ".."))
+	moduleDir := kanameModuleDir(t, "..")
+	perCheck := memoryPerVerificationAtCeiling(t, moduleDir)
+	capacityRuleOfTheGuard(t, moduleDir)
 	facts := readLaneBudgetFacts(t)
 	if len(facts) == 0 {
 		t.Fatal("таблица стендов пуста: обход беспредметен, и «находок нет» здесь означало бы " +

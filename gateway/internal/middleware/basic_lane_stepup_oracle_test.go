@@ -104,8 +104,8 @@ func TestBasicLaneStepUp_FloorRefusalIsIndistinguishableFromCredentialRefusal_RE
 func TestBasicLaneStepUp_TheComparisonCanSeeADifference(t *testing.T) {
 	rig := newLaneRig(t)
 
-	bearerByFloor := driveLane(t, rig, http.MethodPost, "tryHydraJWT", elevatedRoute,
-		laneDrivers()["tryHydraJWT"])
+	bearerByFloor := driveLane(t, rig, http.MethodPost, "tryBearerJWT", elevatedRoute,
+		laneDrivers()["tryBearerJWT"])
 	basicBySecret := driveBasicREST(t, rig, elevatedRoute, spoiledSecret(rig.basicSecret))
 
 	require.Equal(t, http.StatusUnauthorized, bearerByFloor.status)

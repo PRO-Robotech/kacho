@@ -169,18 +169,6 @@ spec:
               value: {{ .Values.subscriptionStream.maxStreams | quote }}
             - name: KACHO_API_GATEWAY_SUBSCRIPTION_MAX_STREAMS_PER_SUBJECT
               value: {{ .Values.subscriptionStream.maxStreamsPerSubject | quote }}
-            # Адрес провайдера личности для сессии SPA. Объявляется ВСЕГДА, и
-            # умолчание выводится из ИМЕНИ РЕЛИЗА и ПРОСТРАНСТВА ИМЁН, а не
-            # вписывается литералом: Service провайдера называется
-            # `<релиз>-kratos-public`, поэтому литерал держался бы совпадением
-            # имени релиза с тем, что кто-то однажды набрал, и ломался бы молча
-            # при установке под другим именем. Значение `disabled` выключает
-            # сессионную аутентификацию целиком (сигнальное значение config.go).
-            # ЧИТАЕТСЯ ТОЛЬКО ПОД ПОСАДКОЙ `external` (Ф3, kacho#1269): под `own`
-            # сессию человека читает служба доступа, и адрес поставщика краем не
-            # читается вовсе — читатель его носителя под `own` не заводится.
-            - name: KACHO_API_GATEWAY_KRATOS_PUBLIC_URL
-              value: {{ .Values.kratosPublicUrl | default (printf "http://%s-kratos-public.%s.svc:80" .Release.Name .Release.Namespace) | quote }}
             {{- if .Values.tls.enabled }}
             - name: KACHO_API_GATEWAY_TLS_LISTEN_ADDR
               value: ":{{ .Values.tlsPort }}"
@@ -331,45 +319,19 @@ spec:
             {{- end }}
             {{- end }}
             {{- if .Values.hydra }}
-            # Revocation path. A verified signature says who minted the token and
-            # when it lapses; it cannot say whether the token has since been
-            # turned off. Only the provider knows that, over its ADMIN API —
-            # a different Service and port from the public issuer, so neither
-            # address is derivable and both must be stated here.
-            #
-            # introspectionUrl is asked per request (through a short-TTL cache)
-            # before a request is let through; adminUrl is how the logout handler
-            # ends the provider-side session. Unset, each control is simply off,
-            # and a production-class gateway now refuses to start rather than run
-            # that way. Guarded by gateway/deploy/revocation_endpoint_test.go,
-            # which reads the profiles rather than a render, so it cannot skip.
-            {{- if .Values.hydra.introspectionUrl }}
-            - name: KACHO_HYDRA_INTROSPECTION_URL
-              value: {{ .Values.hydra.introspectionUrl | quote }}
-            {{- end }}
-            {{- if .Values.hydra.adminUrl }}
-            - name: KACHO_HYDRA_ADMIN_URL
-              value: {{ .Values.hydra.adminUrl | quote }}
-            {{- end }}
-            # Trust anchor for the admin hop. Since the revocation check moved
-            # onto the authN layer, that hop carries the caller's LIVE bearer on
-            # every introspection cache miss — not just administrative calls.
-            # Moving it to https only helps if the certificate is VERIFIED, and
-            # an in-cluster provider certificate comes from the internal CA,
-            # which the gateway does not trust by default. Set together with an
-            # https address; a bundle that cannot be read or holds no
-            # certificate REFUSES THE START rather than quietly reverting to the
-            # system root store.
-            {{- if .Values.hydra.adminCa.secretName }}
-            - name: KACHO_HYDRA_ADMIN_CA_FILE
-              value: {{ printf "%s/%s" (trimSuffix "/" .Values.hydra.adminCa.mountPath) .Values.hydra.adminCa.key | quote }}
-            {{- end }}
+            # The previous identity provider's admin-API addresses (introspection,
+            # session kill) and their trust anchor are NOT emitted: the edge no
+            # longer reads them (#2734), and a variable nobody reads is a value the
+            # operator sets, sees in the pod and gets the default behaviour for.
+            # Held by the two-column gate gateway/deploy/knob_producer_parity_test.go
+            # and by the per-stack render probe deploy/edge_retired_knobs_render_test.go.
             {{- if (.Values.hydra.jwksCa | default dict).secretName }}
             # Trust anchor for the KEY-FETCH hop. Over this hop travels the material
             # the edge verifies every bearer's SIGNATURE with, so whoever substitutes
-            # it substitutes the access decision itself. Same requirement as the admin
-            # hop, separate knob because it is a different peer.
-            - name: KACHO_HYDRA_JWKS_CA_FILE
+            # it substitutes the access decision itself. The name is the one the edge
+            # reads (config.JWKSCAFileKnob): the hop fetches the key sets of every
+            # accepted issuer, ours included.
+            - name: KACHO_API_GATEWAY_JWKS_CA_FILE
               value: {{ printf "%s/%s" (trimSuffix "/" .Values.hydra.jwksCa.mountPath) .Values.hydra.jwksCa.key | quote }}
             {{- end }}
             {{- end }}
@@ -506,16 +468,6 @@ spec:
               mountPath: {{ .Values.mtls.mountPath | quote }}
               readOnly: true
             {{- end }}
-            {{- if .Values.hydra.adminCa.secretName }}
-            # Trust anchor for the identity provider's ADMIN API (see the
-            # KACHO_HYDRA_ADMIN_CA_FILE env above). Its own mount rather than a
-            # reuse of the mTLS bundle: the hop is one-way server-TLS to a
-            # different peer, and tying it to the backend-dial client-cert would
-            # make it impossible to configure the two independently.
-            - name: hydra-admin-ca
-              mountPath: {{ .Values.hydra.adminCa.mountPath | quote }}
-              readOnly: true
-            {{- end }}
             {{- if (.Values.hydra.jwksCa | default dict).secretName }}
             - name: hydra-jwks-ca
               mountPath: {{ .Values.hydra.jwksCa.mountPath | quote }}
@@ -573,14 +525,6 @@ spec:
         - name: mtls-client
           secret:
             secretName: {{ .Values.mtls.clientSecretName | quote }}
-        {{- end }}
-        {{- if .Values.hydra.adminCa.secretName }}
-        - name: hydra-admin-ca
-          secret:
-            secretName: {{ .Values.hydra.adminCa.secretName | quote }}
-            items:
-              - key: {{ .Values.hydra.adminCa.key | quote }}
-                path: {{ .Values.hydra.adminCa.key | quote }}
         {{- end }}
         {{- if (.Values.hydra.jwksCa | default dict).secretName }}
         - name: hydra-jwks-ca

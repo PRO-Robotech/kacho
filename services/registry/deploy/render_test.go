@@ -9,7 +9,7 @@
 //   - ДЕКЛАРАЦИЯ (umbrellaValues) — читает файлы значений профилей и потому НЕ
 //     МОЖЕТ пропуститься на машине без helm/без `helm dep build`. Значение,
 //     отсутствие которого молчаливо, проверяется только так (эталон —
-//     gateway/deploy/token_shape_test.go).
+//     deploy/helm/umbrella/token_shape_test.go).
 package deploy_test
 
 import (

@@ -18,17 +18,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The admin hop carries a LIVE end-user bearer, on every introspection cache
-// miss — before the revocation check moved onto the authN layer only
-// administrative calls went that way. Moving the hop to TLS therefore needs a
-// client that trusts the internal CA, and until this file existed there was no
-// way to give it one: the HTTPClient field of the introspection cache's config
-// was never filled at the composition root, so the hop always ran on a client
-// that trusts the system roots only.
-//
+// testHopCAEnv — имя ручки в текстах отказа, поданное общей реализации в пробе.
+// Пробы судят ОДНУ реализацию, которой пользуются все хопы края
+// (`newPinnedHopClient`); имя ручки у неё параметр.
+const testHopCAEnv = "KACHO_TEST_HOP_CA_FILE"
+
 // These tests pin the capability at the level an operator experiences it:
 //   - no trust anchor configured → the caller still gets a bounded client, and
-//     one with no custom transport (today's behaviour, unchanged);
+//     one with no custom transport;
 //   - trust anchor configured → a handshake against a server holding a leaf
 //     from THAT CA succeeds, and one from a different CA still fails. Asserting
 //     only the first half would pass equally for a client that verifies nothing;
@@ -37,19 +34,19 @@ import (
 //     is verified against the internal CA while it is not, and nothing shows it
 //     until a certificate rotates.
 
-func TestAdminHopClient_NoTrustAnchor_StaysOnThePlainBoundedClient(t *testing.T) {
-	c, err := newAdminHopClient("", 1500*time.Millisecond)
-	require.NoError(t, err, "no trust anchor configured is not an error — a stand may legitimately have a plaintext in-cluster admin hop")
+func TestPinnedHopClient_NoTrustAnchor_StaysOnThePlainBoundedClient(t *testing.T) {
+	c, err := newPinnedHopClient(testHopCAEnv, "", 1500*time.Millisecond)
+	require.NoError(t, err, "no trust anchor configured is not an error — a stand may legitimately have a plaintext in-cluster hop")
 	require.NotNil(t, c, "the client must never be nil: a nil client sends the hop through http.DefaultClient, which has no timeout at all")
 	require.Equal(t, 1500*time.Millisecond, c.Timeout, "per-call budget must be applied")
 	require.Nil(t, c.Transport, "without a trust anchor no custom transport may be installed")
 }
 
-func TestAdminHopClient_TrustAnchor_VerifiesThatCAAndRejectsAnother(t *testing.T) {
+func TestPinnedHopClient_TrustAnchor_VerifiesThatCAAndRejectsAnother(t *testing.T) {
 	caA := newTestCA(t, "internal-ca-A")
 	caB := newTestCA(t, "internal-ca-B")
 
-	c, err := newAdminHopClient(caA.caFile(t), time.Second)
+	c, err := newPinnedHopClient(testHopCAEnv, caA.caFile(t), time.Second)
 	require.NoError(t, err)
 
 	srvA := tlsServerSignedBy(t, caA)
@@ -70,28 +67,28 @@ func TestAdminHopClient_TrustAnchor_VerifiesThatCAAndRejectsAnother(t *testing.T
 		"expected a certificate-verification failure, got %v", err)
 }
 
-func TestAdminHopClient_UnreadableAnchor_RefusesToStart(t *testing.T) {
-	_, err := newAdminHopClient(filepath.Join(t.TempDir(), "absent.crt"), time.Second)
+func TestPinnedHopClient_UnreadableAnchor_RefusesToStart(t *testing.T) {
+	_, err := newPinnedHopClient(testHopCAEnv, filepath.Join(t.TempDir(), "absent.crt"), time.Second)
 	require.Error(t, err, "a trust anchor that cannot be read must refuse to start rather than fall back to the system roots")
-	require.Contains(t, err.Error(), adminHopCAEnv,
+	require.Contains(t, err.Error(), testHopCAEnv,
 		"the refusal must name the knob, so the stand can be fixed without reading the source")
 }
 
-func TestAdminHopClient_FileHoldingNoCertificate_RefusesToStart(t *testing.T) {
+func TestPinnedHopClient_FileHoldingNoCertificate_RefusesToStart(t *testing.T) {
 	junk := filepath.Join(t.TempDir(), "ca.crt")
 	require.NoError(t, os.WriteFile(junk, []byte("this is not a PEM bundle\n"), 0o600))
 
-	_, err := newAdminHopClient(junk, time.Second)
+	_, err := newPinnedHopClient(testHopCAEnv, junk, time.Second)
 	require.Error(t, err, "a file holding no certificate must refuse to start: AppendCertsFromPEM reports failure by returning false, and the resulting empty pool trusts NOTHING while looking configured")
-	require.Contains(t, err.Error(), adminHopCAEnv, "the refusal must name the knob")
+	require.Contains(t, err.Error(), testHopCAEnv, "the refusal must name the knob")
 }
 
 // tlsServerSignedBy starts an HTTPS test server whose leaf is signed by ca.
 func tlsServerSignedBy(t *testing.T, ca *testCA) *httptest.Server {
 	t.Helper()
 	certFile, keyFile := ca.issueLeaf(t, leafOpts{
-		commonName:  "hydra-admin.kacho.svc",
-		dnsNames:    []string{"hydra-admin.kacho.svc"},
+		commonName:  "authority.kacho.svc",
+		dnsNames:    []string{"authority.kacho.svc"},
 		ipAddresses: []net.IP{net.ParseIP("127.0.0.1")},
 		isServer:    true,
 	})

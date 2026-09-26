@@ -85,7 +85,7 @@ grpc-gateway-проекция proto-полей (`snake_case` в `.proto`). Enum 
 
 ## Аутентификация
 
-Внешние запросы несут `Authorization: Bearer <token>` (или session-cookie Kratos для SPA).
+Внешние запросы несут `Authorization: Bearer <token>` (или session-cookie платформы для SPA).
 Гейтвей проверяет токен **до** маршрутизации в домен; отсутствующий/невалидный → `UNAUTHENTICATED`
 (HTTP `401`). Транспорт service→service — mTLS. Детали — [Аутентификация](/architecture/authn).
 

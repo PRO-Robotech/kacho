@@ -23,7 +23,7 @@
 //  7. Assert `|now - iat| ≤ freshness` (default 60s).
 //  8. Assert `jti` not in replay cache; insert.
 //  9. If access token has `ath` claim (RFC 9449 §4.3-h), require DPoP `ath`
-//     to equal `base64url(SHA-256(accessToken.Raw))`. Hydra emits `ath` for
+//     to equal `base64url(SHA-256(accessToken.Raw))`. An issuer emits `ath` for
 //     DPoP-protected resources; absence is permitted (legacy clients).
 //
 // Errors are mapped to RFC 6750 challenge headers by the calling middleware:

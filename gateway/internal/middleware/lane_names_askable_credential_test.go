@@ -128,12 +128,14 @@ var (
 // конце пробы, а не принимается на веру.
 func laneQuestions() map[string]laneQuestion {
 	return map[string]laneQuestion{
-		// Наша сессия — та же пара (человек, момент): перепрос на открытом
-		// соединении задаёт про неё тот же вопрос об отсечке, что и про сессию
-		// поставщика (Ф3 Р7: читатель отсечки один).
+		// Наша сессия — пара (человек, момент): перепрос на открытом соединении
+		// задаёт про неё вопрос об отсечке (Ф3 Р7: читатель отсечки один).
+		//
+		// Рядом стояла запись полосы чужой сессии с тем же вопросом. Она снята
+		// ВМЕСТЕ с полосой: запись без полосы есть утверждение, пережившее свой
+		// предмет, и сверка с деревом ниже назвала бы её находкой.
 		"tryOwnSession":      questionSubjectCutoff,
-		"tryKratosSession":   questionSubjectCutoff,
-		"tryHydraJWT":        questionSessionRevocation,
+		"tryBearerJWT":       questionSessionRevocation,
 		"tryBasicCredential": questionBasicCredentialLiveness,
 	}
 }

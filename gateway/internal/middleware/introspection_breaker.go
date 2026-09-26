@@ -1,8 +1,8 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// introspection_breaker.go — the service-wide half of "how often do we ask a
-// provider that is not answering".
+// introspection_breaker.go — the service-wide half of "how often do we ask an
+// authority that is not answering".
 //
 // WHY THIS IS NOT MORE OF THE SAME. The two mechanisms already in
 // introspection_cache.go — a briefly remembered non-answer, and an in-flight
@@ -19,34 +19,35 @@
 // WHAT IT CHANGES, STATED PLAINLY. This does not merely ask less often; it
 // changes WHOM we stop asking. A remembered non-answer withholds the question
 // only from the token that actually failed. A breaker withholds it from tokens
-// that were never tried — and since the unanswered verdict PASSES the request,
-// that is a widening of the soft pass, not a cost optimisation. It is therefore
-// a deliberate decision rather than a side effect of tuning, and it is defensible
-// on three specific grounds:
+// that were never tried — and since the unanswered verdict REFUSES the request
+// (auth_revocation.go: «could not establish» is not «live»), a token withheld
+// from the question is refused without being asked about. That is a widening of
+// the refusal, not a pure cost optimisation, and it is defensible on three
+// specific grounds:
 //
-//   - The fault is a property of the PROVIDER, not of a credential. "Nothing
+//   - The fault is a property of the AUTHORITY, not of a credential. "Nothing
 //     answered" says nothing about which token was offered, so a token never
-//     tried would have received the same non-answer. This is exactly the argument
-//     rememberMisconfigured makes for holding the wrong-address verdict
-//     process-wide — with the important difference that that verdict refuses and
-//     this one passes, which is why this one needs evidence and a short leash.
+//     tried would have received the same non-answer — and the same refusal, one
+//     per-call budget later. This is exactly the argument rememberMisconfigured
+//     makes for holding the wrong-address verdict process-wide.
 //   - It requires EVIDENCE, and consecutive evidence at that. The breaker opens
-//     only after a run of questions that nobody answered, so a provider that is
+//     only after a run of questions that nobody answered, so an authority that is
 //     merely unwell — answering some, failing others — keeps being asked. The
-//     answers it does give are the control still working, and stopping on the
-//     strength of intermittent noise would give the widening away for free.
+//     answers it does give are requests the check still serves, and refusing them
+//     on the strength of intermittent noise would turn a degraded authority into
+//     an outage of this API.
 //   - It is BOUNDED IN TIME and re-established by asking, not by a restart. One
-//     probe per cooldown, and a single answer closes it. The window in which we
-//     are not asking is therefore never longer than the cooldown past the moment
-//     the provider recovered.
+//     probe per cooldown, and a single answer closes it. A token refused unasked
+//     after the authority recovered is therefore refused no longer than the
+//     cooldown past the moment of recovery.
 //
 // The alternative — keep asking per token — is not "safer". It buys no verdict
-// (the provider is not answering; there is nothing to learn), and it spends the
-// gateway's own capacity to buy that nothing, converting a provider brown-out
-// into an outage of this API. A control that cannot enforce should say so and
-// stand aside cheaply, which is what this does; what it must not do is stand
-// aside QUIETLY, which is why the reporting in auth_revocation.go keeps counting
-// every request served without a check, breaker open or not.
+// (the authority is not answering; there is nothing to learn), and it holds a
+// request-handling goroutine and a connection for the whole per-call budget only
+// to refuse at its end, converting an authority brown-out into an exhaustion of
+// this API's own capacity. What the breaker must not do is refuse QUIETLY, which
+// is why the reporting in auth_revocation.go keeps counting every request refused
+// for want of an answer, breaker open or not.
 //
 // WHAT IT DELIBERATELY DOES NOT TOUCH. The wrong-address verdict
 // (ErrIntrospectionMisconfigured) refuses service and is checked in Introspect
@@ -64,41 +65,42 @@ import (
 )
 
 // introspectionBreakerThreshold — how many CONSECUTIVE unanswered questions
-// establish that the provider is answering nobody, rather than that one question
+// establish that the authority is answering nobody, rather than that one question
 // was unlucky.
 //
 // Consecutive is the load-bearing word: any answer at all resets the count, so
-// this cannot be reached by a provider that is merely degraded. Five is chosen to
+// this cannot be reached by an authority that is merely degraded. Five is chosen to
 // be unmistakable rather than sensitive — a run of five with no answer in between
 // is not noise — while still being reached almost immediately at any real request
 // rate, which is when the cost being avoided is actually being paid.
 const introspectionBreakerThreshold = 5
 
 // introspectionBreakerCooldown — how long the breaker stays open before letting
-// ONE question through to see whether the provider came back.
+// ONE question through to see whether the authority came back.
 //
-// This is the bound on how late a recovery can be noticed, so it is short: a
-// provider that recovers is asked again within a second of doing so, and the
+// This is the bound on how late a recovery can be noticed, so it is short: an
+// authority that recovers is asked again within a second of doing so, and the
 // service-wide pause never outlives the fault by more than that. It is the same
 // order as the per-token failure window and the per-call budget on purpose —
-// while the breaker is open the control is not enforcing, and every part of this
-// file treats that state as something to leave quickly, not to settle into.
+// while the breaker is open every token of this lane but the one probe is
+// refused unasked, and every part of this file treats that state as something to
+// leave quickly, not to settle into.
 const introspectionBreakerCooldown = time.Second
 
 // errIntrospectionCircuitOpen marks the answer a caller gets when the breaker
 // chose not to ask.
 //
 // It is wrapped around the last real failure rather than replacing it, so the
-// log line in auth_revocation.go still shows WHAT the provider was doing when we
+// log line in auth_revocation.go still shows WHAT the authority was doing when we
 // stopped asking — "circuit open" alone would tell an operator that we are not
 // asking without telling them why we stopped.
 //
 // Unexported on purpose: it must be indistinguishable from any other non-answer
 // to the code that decides what happens to the request. The verdict is "the
-// provider did not answer", the request passes, and giving callers a way to
-// branch on this specific reason would invite exactly the special-casing that
-// turns a soft pass into a second, undocumented policy.
-var errIntrospectionCircuitOpen = errors.New("introspection circuit open: provider is not answering")
+// authority did not answer", the request is refused, and giving callers a way to
+// branch on this specific reason would invite a second, undocumented policy for
+// one kind of non-answer.
+var errIntrospectionCircuitOpen = errors.New("introspection circuit open: authority is not answering")
 
 // introspectionBreaker is a three-state breaker (closed → open → half-open),
 // held once for the process by IntrospectionCache.
@@ -123,7 +125,7 @@ type introspectionBreaker struct {
 	// probing — a probe has been claimed and its outcome is not in yet. Guards
 	// the half-open state against releasing the whole backlog at once.
 	probing bool
-	// lastErr — what the provider was doing when we stopped asking, so the
+	// lastErr — what the authority was doing when we stopped asking, so the
 	// verdict handed to callers still describes the fault.
 	lastErr error
 }
@@ -141,7 +143,7 @@ func newIntrospectionBreaker(threshold int, cooldown time.Duration, now func() t
 	return &introspectionBreaker{now: now, threshold: threshold, cooldown: cooldown}
 }
 
-// allow reports whether this question may reach the provider, and if not, the
+// allow reports whether this question may reach the authority, and if not, the
 // verdict to hand back.
 //
 // A caller that receives permit==true MUST report the outcome through
@@ -176,7 +178,7 @@ func (b *introspectionBreaker) verdictLocked() error {
 // recordAnswered files that something answered, and closes the breaker.
 //
 // "Answered" is broader than "the token is live": an `active=false` verdict and a
-// wrong-address answer both mean the round-trip completed and the provider (or
+// wrong-address answer both mean the round-trip completed and the authority (or
 // whatever holds that address) is reachable, which is the only question this
 // breaker asks. Counting the wrong-address case here is also what keeps the two
 // mechanisms from deadlocking each other — that verdict has its own process-wide
@@ -195,7 +197,7 @@ func (b *introspectionBreaker) recordAnswered() {
 //
 // From half-open this re-opens with a FRESH cooldown rather than counting toward
 // the threshold again: the probe already carried the whole question, and a
-// provider that failed its probe has told us to wait another window, not to send
+// authority that failed its probe has told us to wait another window, not to send
 // four more.
 func (b *introspectionBreaker) recordUnanswered(err error) {
 	b.mu.Lock()

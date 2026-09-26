@@ -49,7 +49,7 @@ import (
 )
 
 const (
-	fuzzJWTIssuer   = "https://hydra.kacho.local/"
+	fuzzJWTIssuer   = "https://issuer.kacho.local/"
 	fuzzJWTAudience = "kacho-api-gateway"
 	fuzzJWTKid      = "fuzz-key-1"
 )

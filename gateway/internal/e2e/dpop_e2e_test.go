@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// Package e2e — end-to-end test: wires the DPoPMiddleware against a fake Hydra
+// Package e2e — end-to-end test: wires the DPoPMiddleware against a fake issuer
 // (JWKS + introspection) and exercises the full chain: JWT verify → DPoP
 // validate → step-up gate → principal injection.
 //
@@ -35,13 +35,13 @@ import (
 )
 
 const (
-	testIssuer   = "https://hydra.api.kacho.cloud"
+	testIssuer   = "https://iss.api.kacho.cloud"
 	testAudience = "https://api.kacho.cloud"
 	apiDomain    = "api.kacho.cloud"
 )
 
-// hydraFixture — fake Hydra serving JWKS + (optionally) introspection.
-type hydraFixture struct {
+// issuerFixture — fake issuer serving JWKS + (optionally) introspection.
+type issuerFixture struct {
 	jwksURL     string
 	priv        *ecdsa.PrivateKey
 	kid         string
@@ -50,11 +50,11 @@ type hydraFixture struct {
 	closer      func()
 }
 
-func newHydra(t *testing.T) *hydraFixture {
+func newIssuerFixture(t *testing.T) *issuerFixture {
 	t.Helper()
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
-	kid := "hydra-es256-test"
+	kid := "iss-es256-test"
 
 	x := priv.PublicKey.X.Bytes()
 	y := priv.PublicKey.Y.Bytes()
@@ -70,7 +70,7 @@ func newHydra(t *testing.T) *hydraFixture {
 	set := middleware.JWKSet{Keys: []middleware.JWK{jwk}}
 	jwksBody, _ := json.Marshal(set)
 
-	fix := &hydraFixture{priv: priv, kid: kid, revokedJTIs: map[string]bool{}}
+	fix := &issuerFixture{priv: priv, kid: kid, revokedJTIs: map[string]bool{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/jwks.json", func(w http.ResponseWriter, _ *http.Request) {
 		fix.jwksHits++
@@ -79,7 +79,7 @@ func newHydra(t *testing.T) *hydraFixture {
 	})
 	mux.HandleFunc("/oauth2/introspect", func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
-		// Real Hydra introspects via raw token; we cheat for tests — decode the
+		// A real authority introspects via raw token; we cheat for tests — decode the
 		// token's JTI from claims to look up revocation state.
 		token := r.Form.Get("token")
 		jti := jtiOf(token)
@@ -98,10 +98,10 @@ func newHydra(t *testing.T) *hydraFixture {
 	return fix
 }
 
-func (h *hydraFixture) close() { h.closer() }
+func (h *issuerFixture) close() { h.closer() }
 
 // issueDPoPBoundToken — mint an access token bound to a fresh DPoP keypair.
-func (h *hydraFixture) issueDPoPBoundToken(t *testing.T) (rawToken string, dpopPriv any, jkt string) {
+func (h *issuerFixture) issueDPoPBoundToken(t *testing.T) (rawToken string, dpopPriv any, jkt string) {
 	t.Helper()
 	dpopPriv2, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
@@ -200,9 +200,9 @@ func jtiOf(token string) string {
 	return s
 }
 
-func buildMiddleware(t *testing.T, hydra *hydraFixture) http.Handler {
+func buildMiddleware(t *testing.T, iss *issuerFixture) http.Handler {
 	t.Helper()
-	verifier, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: hydra.jwksURL, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+	verifier, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: iss.jwksURL, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
 
 		ExpectedAudience: testAudience,
 	})
@@ -238,11 +238,11 @@ func buildMiddleware(t *testing.T, hydra *hydraFixture) http.Handler {
 // --- Scenarios ------------------------------------------------------------
 
 func TestE2E_DPoPBoundRequest_HappyPath(t *testing.T) {
-	hydra := newHydra(t)
-	defer hydra.close()
-	handler := buildMiddleware(t, hydra)
+	iss := newIssuerFixture(t)
+	defer iss.close()
+	handler := buildMiddleware(t, iss)
 
-	rawTok, dpopPriv, _ := hydra.issueDPoPBoundToken(t)
+	rawTok, dpopPriv, _ := iss.issueDPoPBoundToken(t)
 	htu := "https://" + apiDomain + "/iam/v1/users/me"
 	dpop := signDPoPHeader(t, dpopPriv.(*ecdsa.PrivateKey), "POST", htu, "e2e-jti-1", time.Now(), "")
 
@@ -260,11 +260,11 @@ func TestE2E_DPoPBoundRequest_HappyPath(t *testing.T) {
 }
 
 func TestE2E_DPoPRequiredButMissing(t *testing.T) {
-	hydra := newHydra(t)
-	defer hydra.close()
-	handler := buildMiddleware(t, hydra)
+	iss := newIssuerFixture(t)
+	defer iss.close()
+	handler := buildMiddleware(t, iss)
 
-	rawTok, _, _ := hydra.issueDPoPBoundToken(t)
+	rawTok, _, _ := iss.issueDPoPBoundToken(t)
 	htu := "https://" + apiDomain + "/iam/v1/users/me"
 	req := httptest.NewRequest(http.MethodPost, htu, nil)
 	req.Header.Set("Authorization", "DPoP "+rawTok)
@@ -277,11 +277,11 @@ func TestE2E_DPoPRequiredButMissing(t *testing.T) {
 }
 
 func TestE2E_DPoPReplayRejected(t *testing.T) {
-	hydra := newHydra(t)
-	defer hydra.close()
-	handler := buildMiddleware(t, hydra)
+	iss := newIssuerFixture(t)
+	defer iss.close()
+	handler := buildMiddleware(t, iss)
 
-	rawTok, dpopPriv, _ := hydra.issueDPoPBoundToken(t)
+	rawTok, dpopPriv, _ := iss.issueDPoPBoundToken(t)
 	htu := "https://" + apiDomain + "/iam/v1/users/me"
 	dpop := signDPoPHeader(t, dpopPriv.(*ecdsa.PrivateKey), "POST", htu, "replay-jti", time.Now(), "")
 
@@ -304,9 +304,9 @@ func TestE2E_DPoPReplayRejected(t *testing.T) {
 
 func TestE2E_NoAuthorizationHeader_PassesThrough(t *testing.T) {
 	// requireForAllRequests=false → no auth header is fine (anonymous).
-	hydra := newHydra(t)
-	defer hydra.close()
-	handler := buildMiddleware(t, hydra)
+	iss := newIssuerFixture(t)
+	defer iss.close()
+	handler := buildMiddleware(t, iss)
 	req := httptest.NewRequest(http.MethodGet, "https://"+apiDomain+"/iam/v1/users/me", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -316,18 +316,18 @@ func TestE2E_NoAuthorizationHeader_PassesThrough(t *testing.T) {
 }
 
 func TestE2E_InvalidTokenSignature(t *testing.T) {
-	hydra := newHydra(t)
-	defer hydra.close()
-	handler := buildMiddleware(t, hydra)
+	iss := newIssuerFixture(t)
+	defer iss.close()
+	handler := buildMiddleware(t, iss)
 
-	// Sign with a stranger key — kid still hydra's, but signature won't verify.
+	// Sign with a stranger key — kid still iss's, but signature won't verify.
 	other, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	now := time.Now().Unix()
 	tok := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
 		"iss": testIssuer, "aud": []any{testAudience}, "sub": "usr",
 		"iat": now, "exp": now + 900, "acr": "2",
 	})
-	tok.Header["kid"] = hydra.kid
+	tok.Header["kid"] = iss.kid
 	bad, _ := tok.SignedString(other)
 
 	req := httptest.NewRequest(http.MethodGet, "https://"+apiDomain+"/iam/v1/users/me", nil)
@@ -339,17 +339,17 @@ func TestE2E_InvalidTokenSignature(t *testing.T) {
 }
 
 func TestE2E_BearerToken_NoCnf_Accepted(t *testing.T) {
-	hydra := newHydra(t)
-	defer hydra.close()
-	handler := buildMiddleware(t, hydra)
+	iss := newIssuerFixture(t)
+	defer iss.close()
+	handler := buildMiddleware(t, iss)
 	// Issue a plain bearer (no cnf).
 	now := time.Now().Unix()
 	tok := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
 		"iss": testIssuer, "aud": []any{testAudience}, "sub": "usr_bearer",
 		"iat": now, "exp": now + 900, "acr": "2",
 	})
-	tok.Header["kid"] = hydra.kid
-	bearer, err := tok.SignedString(hydra.priv)
+	tok.Header["kid"] = iss.kid
+	bearer, err := tok.SignedString(iss.priv)
 	require.NoError(t, err)
 	req := httptest.NewRequest(http.MethodGet, "https://"+apiDomain+"/iam/v1/users/me", nil)
 	req.Header.Set("Authorization", "Bearer "+bearer)
@@ -370,9 +370,9 @@ func TestE2E_BearerToken_NoCnf_Accepted(t *testing.T) {
 }
 
 func TestE2E_HealthEndpoint_BypassesAuth(t *testing.T) {
-	hydra := newHydra(t)
-	defer hydra.close()
-	verifier, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: hydra.jwksURL, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+	iss := newIssuerFixture(t)
+	defer iss.close()
+	verifier, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: iss.jwksURL, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
 
 		ExpectedAudience: testAudience,
 	})
@@ -398,9 +398,9 @@ func TestE2E_HealthEndpoint_BypassesAuth(t *testing.T) {
 }
 
 func TestE2E_ProductionStrict_RejectsAnonymous(t *testing.T) {
-	hydra := newHydra(t)
-	defer hydra.close()
-	verifier, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: hydra.jwksURL, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+	iss := newIssuerFixture(t)
+	defer iss.close()
+	verifier, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: iss.jwksURL, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
 
 		ExpectedAudience: testAudience,
 	})
@@ -432,9 +432,9 @@ type fixedPermLookup struct {
 func (f fixedPermLookup) Lookup(_ string) middleware.PermissionRequirement { return f.req }
 
 func TestE2E_StepUpRequired_Challenge(t *testing.T) {
-	hydra := newHydra(t)
-	defer hydra.close()
-	verifier, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: hydra.jwksURL, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+	iss := newIssuerFixture(t)
+	defer iss.close()
+	verifier, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: iss.jwksURL, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
 
 		ExpectedAudience: testAudience,
 	})
@@ -453,7 +453,7 @@ func TestE2E_StepUpRequired_Challenge(t *testing.T) {
 	})
 	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
 
-	rawTok, dpopPriv, _ := hydra.issueDPoPBoundToken(t)
+	rawTok, dpopPriv, _ := iss.issueDPoPBoundToken(t)
 	htu := "https://" + apiDomain + "/iam/v1/admin/grant"
 	dpop := signDPoPHeader(t, dpopPriv.(*ecdsa.PrivateKey), "POST", htu, "stepup-jti", time.Now(), "")
 	req := httptest.NewRequest(http.MethodPost, htu, nil)

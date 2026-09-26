@@ -9,7 +9,7 @@ package middleware_test
 //
 // Why this file exists, stated plainly so nobody deletes it as noise: our own
 // token hook emits the level as `kaname_acr` INSIDE the enrichment map, while the
-// verifier used to read only the standard top-level `acr`. Hydra promotes to the
+// verifier used to read only the standard top-level `acr`. The legacy issuer promotes to the
 // top level only what `oauth2.allowed_top_level_claims` whitelists, and neither
 // `acr` nor `kaname_acr` is on that list on any deployed profile — so the level
 // arrived at the edge, in the signed token, and was dropped on the floor. The
@@ -25,7 +25,7 @@ package middleware_test
 // Ground truth for the two wire shapes:
 //   - the hook returns `session.access_token = {"ext_claims": {...}}`
 //     (services/iam token_hook_handler);
-//   - Hydra whitelists `ext_claims` on the dev profile ⇒ the map is ALSO
+//   - the legacy issuer whitelists `ext_claims` on the dev profile ⇒ the map is ALSO
 //     mirrored to the top level (deploy/helm/umbrella/values.dev.yaml);
 //   - the prod profile whitelists nothing ⇒ the map stays under the provider's
 //     own `ext` wrapper. `services/registry/.../jwks/verifier.go` decodes
@@ -56,7 +56,7 @@ func ceremonyEnrichment(acr string) map[string]any {
 
 // promotedCeremonyClaims — the dev-profile wire shape, verbatim as observed on
 // the stand: the enrichment map mirrored to the top level, and NO top-level
-// `acr` (Hydra does not promote it).
+// `acr` (the legacy issuer does not promote it).
 func promotedCeremonyClaims(acr string) jwt.MapClaims {
 	c := standardClaims()
 	delete(c, "acr")
@@ -95,7 +95,7 @@ func TestVerifiedTokenACR_ReadsPromotedEnrichmentMap(t *testing.T) {
 	assert.Equal(t, "2", vt.ACR,
 		"the level our own token hook emits (kaname_acr, inside the enrichment map) "+
 			"must reach the step-up gate; reading only the standard top-level `acr` "+
-			"discards it, because Hydra promotes neither `acr` nor `kaname_acr`")
+			"discards it, because the legacy issuer promotes neither `acr` nor `kaname_acr`")
 }
 
 // --- 2. prod profile: enrichment map NOT promoted, nested under `ext` -------

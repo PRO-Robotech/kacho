@@ -92,6 +92,10 @@ func ownWhoAmI(t *testing.T, mux *http.ServeMux, reader HumanSessionReader, cut 
 	h.Register(mux)
 }
 
+// foreignSessionCarrierName — имя печенья сессии, которого край НЕ читает: у
+// края носитель один, наш (#2792), и всякое другое печенье — не носитель.
+const foreignSessionCarrierName = "foreign_session"
+
 func withOurCarrier(req *http.Request, bearer string) *http.Request {
 	req.AddCookie(&http.Cookie{Name: OurSessionCarrierName, Value: bearer})
 	return req
@@ -181,8 +185,8 @@ func TestOwnSessionLane_F3_10_NoSessionIsOneRefusalThatEndsTheCarrier(t *testing
 	}
 }
 
-// Запрос БЕЗ нашего носителя полосу не занимает — анонимен, как сегодня; печенье
-// поставщика без нашего под `own` — тоже не носитель (Ф1-52).
+// Запрос БЕЗ нашего носителя полосу не занимает — анонимен, как сегодня; чужое
+// печенье сессии без нашего — тоже не носитель (Ф1-52).
 func TestOwnSessionLane_F3_10_ARequestWithoutOurCarrierStaysAnonymous(t *testing.T) {
 	reader := &fakeHumanSession{found: true, sess: liveOwnSession()}
 	a := ownLane(t, reader, &fakeCutoff{})
@@ -191,7 +195,7 @@ func TestOwnSessionLane_F3_10_ARequestWithoutOurCarrierStaysAnonymous(t *testing
 
 	serve(chain, httptest.NewRequest(http.MethodGet, platformPath, nil))
 	req := httptest.NewRequest(http.MethodGet, platformPath, nil)
-	req.AddCookie(&http.Cookie{Name: providerSessionCarrierName, Value: "provider-only"})
+	req.AddCookie(&http.Cookie{Name: foreignSessionCarrierName, Value: "foreign-only"})
 	serve(chain, req)
 
 	if next.served != 2 {
@@ -266,12 +270,10 @@ func TestOwnSessionLane_F3_13_CutoffUnsupportedPassesLoudlyWithACounter(t *testi
 	}
 }
 
-// Д3 и на полосе `external`: недоступность отсечки отвечает тем же текстом, что
-// отказ по отсечке.
-func TestExternalSessionLane_F3_13_UnavailableTextEqualsTheDenyText(t *testing.T) {
-	url := kratosStub(t, ownAuthAt).URL
-	deny, _ := runCookieLane(t, url, &fakeCutoff{found: true, cutoff: ownAuthAt.Add(time.Hour)})
-	unavailable, _ := runCookieLane(t, url, &fakeCutoff{err: errors.New("unreachable")})
+// Д3: недоступность отсечки отвечает тем же текстом, что отказ по отсечке.
+func TestSessionLane_F3_13_UnavailableTextEqualsTheDenyText(t *testing.T) {
+	deny, _ := runCookieLane(t, ownAuthAt, &fakeCutoff{found: true, cutoff: ownAuthAt.Add(time.Hour)})
+	unavailable, _ := runCookieLane(t, ownAuthAt, &fakeCutoff{err: errors.New("unreachable")})
 	if deny.StatusCode != http.StatusUnauthorized || unavailable.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("оба исхода обязаны быть 401: %d / %d", deny.StatusCode, unavailable.StatusCode)
 	}
@@ -327,16 +329,16 @@ func TestOwnSessionLane_F3_14_WhoAmIAnswersFromOurSessionThroughTheChain(t *test
 		t.Errorf("session несёт снятое поле passwordChangeRequired: %v", body.Session)
 	}
 
-	// Без носителя и с печеньем поставщика без нашего — `{"user":null}` побайтово.
+	// Без носителя и с чужим печеньем сессии без нашего — `{"user":null}` побайтово.
 	anon := serve(chain, httptest.NewRequest(http.MethodGet, "/iam/v1/auth/me", nil))
 	req := httptest.NewRequest(http.MethodGet, "/iam/v1/auth/me", nil)
-	req.AddCookie(&http.Cookie{Name: providerSessionCarrierName, Value: "provider-only"})
-	provider := serve(chain, req)
+	req.AddCookie(&http.Cookie{Name: foreignSessionCarrierName, Value: "foreign-only"})
+	foreign := serve(chain, req)
 	if anon.Code != http.StatusOK || anon.Body.String() != `{"user":null}` {
 		t.Fatalf("без носителя: %d %q", anon.Code, anon.Body.String())
 	}
-	if provider.Body.String() != anon.Body.String() || provider.Code != anon.Code {
-		t.Fatalf("печенье поставщика без нашего отвечает иначе, чем отсутствие носителя: %q против %q", provider.Body.String(), anon.Body.String())
+	if foreign.Body.String() != anon.Body.String() || foreign.Code != anon.Code {
+		t.Fatalf("чужое печенье без нашего отвечает иначе, чем отсутствие носителя: %q против %q", foreign.Body.String(), anon.Body.String())
 	}
 
 	// С отвергнутым носителем — 401 от ПОЛОСЫ с гашением, а не `{"user":null}`.

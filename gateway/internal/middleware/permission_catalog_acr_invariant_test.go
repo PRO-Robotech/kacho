@@ -451,7 +451,7 @@ func TestPermissionCatalog_ACR_Counts(t *testing.T) {
 	// compute.v1 + vpc.v1 InternalResourceLifecycleService/Subscribe (the live
 	// lifecycle feed is loadbalancer.v1's), vpc.v1 InternalWatchService/Watch (the live
 	// event stream is compute.v1's), and iam.v1 InternalIamHooksService/{TokenHook,
-	// RefreshTokenHook} (Hydra's hooks are served over HTTP with their own
+	// RefreshTokenHook} (the issuer's hooks are served over HTTP with their own
 	// request-body structs — these proto types were read by no non-generated line).
 	// IAM-INT-1 then ADDED the five InternalInteractiveClientService entries:
 	// Create/Update/Delete are sensitive (category I — they decide where an

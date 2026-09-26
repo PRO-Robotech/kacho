@@ -323,10 +323,12 @@ func servingTemplate(t *testing.T) ([]nginxServer, string) {
 // краю поставщика (`/.ory/…`) не рендерилась ни на одной цепочке и снята из
 // чарта вместе со своим адресом (#2733). Вместе с ней снята и половина этой
 // пробы, судившая порядок «префикс службы против регулярки статики», — её
-// предмета не стало. Возврат такого блока ловят убывающий потолок привязок
-// (kacho#2730: строка с именем поставщика) и рендер-гейт посадки
-// (`deploy/tests/helm/console-serves-identity-flows-test.sh`: полоса `/.ory/…`
-// на посадке own — находка).
+// предмета не стало. Возврат такого блока ловят суд соседей раздачи
+// (`console_serving_neighbours_test.go`: сосед, который не край, не модуль и не
+// экран входа полосы церемоний, — находка, как бы он ни назывался), убывающий
+// потолок привязок (kacho#2730: строка с именем поставщика) и рендер-гейт
+// посадки (`deploy/tests/helm/console-serves-identity-flows-test.sh`: полоса
+// `/.ory/…` на посадке own — находка).
 func TestIdentityRequestReachesTheIdentityServiceNotTheFallback(t *testing.T) {
 	servers, path := servingTemplate(t)
 
@@ -648,125 +650,4 @@ func TestServingBandCoversEveryRouteTheConsoleSendsToTheIdentityService(t *testi
 			"в разработке и на стенде этот адрес обслуживается по-разному, и решал это никто. "+
 			"Объявлено в %v.", "/"+seg, sortedKeys(devProxy), declaredIn)
 	}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// СНЯТАЯ СЛУЖБА ВЫДАЧИ ТОКЕНА (задача #2733)
-//
-// Служба выдачи токена прежнего поставщика личности снимается: в консоли её не
-// читает НИКТО — ни одного обращения к её краю из кода, ни одного читателя её
-// ручек. Осталась только проводка: восходящий узел в раздаче, полосы сборщика и
-// ручки их адресов. Проводка без читателя — не безвредный остаток: она
-// объявляет продукт зависящим от службы, которой у него нет, и первый же
-// заход по её адресу получает ответ от чужого края вместо отказа.
-//
-// Дом утверждения — ЭТОТ файл: он и так единственное место, которое читает обе
-// стороны проводки (объявление раздачи и объявления сборщика). Второе место об
-// этом предмете расходилось бы с ним молча.
-//
-// ПРИЗНАК — имя службы в адресе либо в имени ручки, без учёта регистра.
-// `hydrat` в признак НЕ входит, и это решение, а не упущение: `hydrate` —
-// собственное имя наполнения состояния в консоли (`contextApi.hydrate`) и часть
-// имени стороннего пакета (`@radix-ui/react-use-is-hydrated`). Ось по голому
-// `hydra` краснела бы на коде, к снимаемой службе отношения не имеющем.
-
-// retiredTokenIssuerMark — имя снятой службы выдачи токена (нижний регистр).
-const retiredTokenIssuerMark = "hydra"
-
-// retiredTokenIssuerFalseMark — приставка, которую признак НЕ засчитывает.
-const retiredTokenIssuerFalseMark = "hydrat"
-
-// namesRetiredTokenIssuer — несёт ли строка имя снятой службы. Строка обязана
-// быть уже в нижнем регистре.
-func namesRetiredTokenIssuer(lower string) bool {
-	return strings.Contains(strings.ReplaceAll(lower, retiredTokenIssuerFalseMark, ""), retiredTokenIssuerMark)
-}
-
-// TestConsoleNamesNoUpstreamOfTheRetiredTokenIssuer — ни объявление раздачи, ни
-// объявления сборщика не называют снятую службу выдачи токена.
-//
-// Корпус берётся из состава дерева, а не выписывается здесь: конфигурация,
-// заведённая завтра, попадает под суд сама. Пустой обход — отказ, а не зелёное.
-func TestConsoleNamesNoUpstreamOfTheRetiredTokenIssuer(t *testing.T) {
-	root := repoRootFromTest(t)
-
-	files, err := treecorpus.Under(filepath.Join(root, "ui-future"))
-	if err != nil {
-		t.Fatalf("состав ui-future: %v — без индекса «ноль находок» неотличимо от «ноль прочитанного»", err)
-	}
-
-	// Судятся ОБЪЯВЛЕНИЯ проводки: раздача консоли и конфигурации сборщика.
-	// Прочее дерево судит убывающий потолок привязок (kacho#2730); здесь его
-	// число не пересказывается.
-	judged, linesRead, findings := []string{}, 0, 0
-	for _, abs := range files {
-		base := filepath.Base(abs)
-		rel, _ := filepath.Rel(root, abs)
-		if base != "vite.config.ts" && filepath.ToSlash(rel) != filepath.ToSlash(servingTemplateRel) {
-			continue
-		}
-		body, rerr := os.ReadFile(abs) // #nosec G304 -- путь пришёл из индекса git этого дерева
-		if rerr != nil {
-			t.Fatalf("%s: %v — прочитать объявление не удалось, и проверка НЕ ИСПОЛНЯЛАСЬ", rel, rerr)
-		}
-		judged = append(judged, filepath.ToSlash(rel))
-		for i, line := range strings.Split(string(body), "\n") {
-			linesRead++
-			exec := executablePart(line)
-			if !namesRetiredTokenIssuer(strings.ToLower(exec)) {
-				continue
-			}
-			findings++
-			t.Errorf("%s:%d — объявление называет СНЯТУЮ службу выдачи токена: %q.\n"+
-				"В консоли её не читает никто: ни обращения к её краю, ни читателя её ручек. "+
-				"Оставленная проводка объявляет продукт зависящим от службы, которой у него "+
-				"нет, и первый же заход по её адресу получает ответ чужого края вместо отказа.",
-				filepath.ToSlash(rel), i+1, strings.TrimSpace(line))
-		}
-	}
-
-	t.Logf("осмотрено: путей в индексе ui-future %d, из них судимых объявлений %d %v, "+
-		"строк прочитано %d; найдено привязок к снятой службе выдачи токена %d",
-		len(files), len(judged), judged, linesRead, findings)
-
-	switch {
-	case len(files) == 0:
-		t.Fatal("индекс ui-future пуст — прочитано ноль, и молчание проверки не является " +
-			"утверждением о проводке")
-	case len(judged) == 0:
-		t.Fatal("не найдено ни одного судимого объявления (раздача, конфигурации сборщика) — " +
-			"судить не по чему")
-	case linesRead == 0:
-		t.Fatal("судимые объявления не дали ни одной строки")
-	}
-}
-
-// TestRetiredTokenIssuerMarkCutsBothWays — признак обязан ловить имя снятой
-// службы и МОЛЧАТЬ на законном близнеце, отличающемся одной буквой.
-//
-// Без второй половины признак «всё, где есть hydra» покраснел бы на
-// `contextApi.hydrate` и на `@radix-ui/react-use-is-hydrated` — то есть на коде,
-// к снимаемой службе отношения не имеющем, и его перестали бы читать.
-func TestRetiredTokenIssuerMarkCutsBothWays(t *testing.T) {
-	type probe struct {
-		line string
-		want bool
-	}
-	// Входы — настоящие строки из дерева этой ревизии, а не выдуманные.
-	cases := []probe{
-		{`const hydra = process.env.KACHO_HYDRA_BASE || "http://localhost:4444";`, true},
-		{`        location ^~ /.ory/hydra/public/ {`, true},
-		{`            set $hydra_public "${KACHO_UI_HYDRA_PUBLIC_UPSTREAM}";`, true},
-		{`      contextApi.hydrate({ account: context.account });`, false},
-		{`        "@radix-ui/react-use-is-hydrated": "0.1.3",`, false},
-		{`      "/.ory/kratos/public": {`, false},
-	}
-	for _, c := range cases {
-		got := namesRetiredTokenIssuer(strings.ToLower(c.line))
-		if got != c.want {
-			t.Errorf("признак снятой службы выдачи токена на строке %q дал %v, ожидалось %v",
-				c.line, got, c.want)
-		}
-	}
-	t.Logf("осмотрено: входов %d (из них положительных 3, законных близнецов 3)", len(cases))
 }

@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // Package handler — HTTP handlers owned by api-gateway directly (not proxied
-// to a backend): the OAuth2 logout endpoint and supporting back-channel logout
-// propagation utilities.
+// to a backend): the logout endpoint and the relay of the sign-in form's verbs.
 package handler
 
 import (
@@ -11,10 +10,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -73,37 +70,35 @@ type CallerVerifier interface {
 //     cannot be abused to revoke another user's sessions.
 //  4. Call kaname `InternalSessionRevocationsService.Revoke` for the caller's
 //     own identity — revoke_all_user_tokens=false (single jti) or true (full).
-//  5. Call Hydra admin `DELETE /admin/oauth2/auth/sessions/login?subject=...`
-//     with the caller's own subject to invalidate the upstream SSO session —
-//     Hydra then fans out back-channel logout notifications (RFC 8254).
-//  6. Issue an ending for every browser session carrier name
+//     This writes OUR revocation record, the one the edge's revocation lane
+//     reads on every presentation.
+//  5. Issue an ending for every browser session carrier name
 //     (`middleware.EndSessionCarriers`). The ending carries no `Domain`, so it
 //     matches only a cookie that was issued without one; the precondition this
 //     implies is stated in the header of `middleware/session_carrier_names.go`.
-//  7. Respond `200 {}`.
+//  6. Respond `200 {}`.
 //
-// All Hydra/IAM calls are best-effort relative to issuing the carrier ending —
-// the user MUST see a successful logout from their side even if Hydra is
-// momentarily unreachable. Failures are logged + included in the response
-// `errors` array for debugging but do not surface as HTTP 5xx (that would
-// leave the client uncertain whether to retry).
+// There is no provider-side session to end any more (#2734): the previous
+// identity provider's session kill — the handler's only outbound call — was
+// retired together with the provider, so the handler talks to our identity
+// service and to nobody else.
+//
+// The revocation call is best-effort relative to issuing the carrier ending —
+// the user MUST see a successful logout from their side even if the identity
+// service is momentarily unreachable. Failures are logged + included in the
+// response `warnings` array for debugging but do not surface as HTTP 5xx (that
+// would leave the client uncertain whether to retry).
 type LogoutHandler struct {
-	logger          *slog.Logger
-	verifier        CallerVerifier
-	revocations     SessionRevocationsClient
-	hydraAdminURL   string
-	httpClient      *http.Client
-	hookSharedToken string
+	logger      *slog.Logger
+	verifier    CallerVerifier
+	revocations SessionRevocationsClient
 }
 
 // LogoutHandlerConfig — DI bag.
 type LogoutHandlerConfig struct {
-	Logger          *slog.Logger
-	Verifier        CallerVerifier           // validates the caller's access token; nil ⇒ revocation fails closed (401)
-	Revocations     SessionRevocationsClient // optional — nil disables revocation
-	HydraAdminURL   string                   // base URL of Hydra admin API; empty disables session-kill
-	HTTPClient      *http.Client
-	HookSharedToken string // bearer for Hydra admin endpoint (if Hydra requires)
+	Logger      *slog.Logger
+	Verifier    CallerVerifier           // validates the caller's access token; nil ⇒ revocation fails closed (401)
+	Revocations SessionRevocationsClient // optional — nil disables revocation
 }
 
 // NewLogoutHandler constructs the handler. Logger is required (we never want
@@ -112,17 +107,10 @@ func NewLogoutHandler(cfg LogoutHandlerConfig) (*LogoutHandler, error) {
 	if cfg.Logger == nil {
 		return nil, errors.New("logout handler: logger is required")
 	}
-	hc := cfg.HTTPClient
-	if hc == nil {
-		hc = &http.Client{Timeout: 5 * time.Second}
-	}
 	return &LogoutHandler{
-		logger:          cfg.Logger,
-		verifier:        cfg.Verifier,
-		revocations:     cfg.Revocations,
-		hydraAdminURL:   strings.TrimRight(cfg.HydraAdminURL, "/"),
-		httpClient:      hc,
-		hookSharedToken: cfg.HookSharedToken,
+		logger:      cfg.Logger,
+		verifier:    cfg.Verifier,
+		revocations: cfg.Revocations,
 	}, nil
 }
 
@@ -143,7 +131,7 @@ func (h *LogoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// A "server-side revoke" is any request that asks the gateway to invalidate
-	// sessions/tokens in iam/Hydra (as opposed to merely clearing the caller's
+	// sessions/tokens in iam (as opposed to merely clearing the caller's
 	// own browser cookies). Historically the target subject/jti were read from
 	// the request body, which let an unauthenticated caller revoke ANY user.
 	// These client-supplied targets are no longer trusted — the identity is
@@ -197,18 +185,7 @@ func (h *LogoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		cancel()
 	}
 
-	// 5. Best-effort Hydra session kill — for the authenticated caller's own
-	//    subject only.
-	if caller != nil && h.hydraAdminURL != "" && caller.Subject != "" {
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-		if err := h.killHydraSession(ctx, caller.Subject); err != nil {
-			h.logger.Warn("logout: hydra admin session-kill failed", "err", err, "subject", caller.Subject)
-			revocErrs = append(revocErrs, fmt.Sprintf("hydra: %v", err))
-		}
-		cancel()
-	}
-
-	// 6. Issue the ending of every browser session carrier name. Always done,
+	// 5. Issue the ending of every browser session carrier name. Always done,
 	//    even for a token-less request, so a user can drop their browser session.
 	//    The NAMES live in ONE declaration (`middleware.EndSessionCarriers`,
 	//    F4d-26): this handler and the refusal path of the identity lane issue the
@@ -229,37 +206,6 @@ func (h *LogoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		out["note"] = "no access_token presented; session carrier endings issued"
 	}
 	writeJSON(w, http.StatusOK, out)
-}
-
-// killHydraSession invokes `DELETE /admin/oauth2/auth/sessions/login?subject={sub}`.
-//
-// Hydra returns 204 on success or 404 if no session existed — both are
-// non-fatal from the logout's perspective.
-func (h *LogoutHandler) killHydraSession(ctx context.Context, subject string) error {
-	u, err := url.Parse(h.hydraAdminURL + "/admin/oauth2/auth/sessions/login")
-	if err != nil {
-		return fmt.Errorf("parse url: %w", err)
-	}
-	q := u.Query()
-	q.Set("subject", subject)
-	u.RawQuery = q.Encode()
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, u.String(), nil)
-	if err != nil {
-		return fmt.Errorf("build req: %w", err)
-	}
-	if h.hookSharedToken != "" {
-		req.Header.Set("Authorization", "Bearer "+h.hookSharedToken)
-	}
-	resp, err := h.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("hydra delete: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNotFound {
-		return nil
-	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-	return fmt.Errorf("hydra unexpected status=%d body=%q", resp.StatusCode, string(body))
 }
 
 // extractAccessToken pulls the bearer/DPoP token from the Authorization header.
