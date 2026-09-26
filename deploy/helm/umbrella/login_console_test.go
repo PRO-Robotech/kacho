@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-package deploy_test
+package umbrella_test
 
 import (
 	"fmt"
@@ -35,6 +35,12 @@ import (
 // So this gate folds. And because "the merge is additive" is the premise the
 // whole answer rests on, the premise is asserted here too rather than assumed:
 // see TestLoginConsole_PremiseLateSilenceDoesNotClearAnEarlierKey.
+//
+// WHERE THIS LIVES (#2734). Every key the gate reads is the umbrella's: the
+// provider's sign-in console subchart, the service's lane port and the edge's
+// relay address under the umbrella's `api-gateway` key. The gate lived in
+// gateway/deploy and moved to the umbrella chart unchanged, next to its
+// neighbour identity_posture_profiles_test.go that judges the posture agreement.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧЕМ ИМЕННО ЧЕЛОВЕК ВХОДИТ — РЕШАЕТ ПОСАДКА, А НЕ АДРЕС, ВЫПИСАННЫЙ ЗДЕСЬ
@@ -436,7 +442,7 @@ func TestLoginConsole_PremiseLateSilenceDoesNotClearAnEarlierKey(t *testing.T) {
 // subject and this fails, which is the same discipline every other known-gap list
 // in this repository is held to.
 func TestLoginConsole_GitignoredStackMemberExclusionStillHasASubject(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", ".gitignore"))
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", ".gitignore"))
 	if err != nil {
 		t.Fatalf("read .gitignore: %v", err)
 	}

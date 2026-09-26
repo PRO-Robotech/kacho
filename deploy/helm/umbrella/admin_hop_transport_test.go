@@ -14,9 +14,16 @@
 // provider-side session there. Both calls are retired together with their knobs,
 // and so are the cases that judged the edge's side of the hop.
 //
-// WHY THIS READS DECLARATIONS. Same reason as its neighbours token_shape_test.go
-// and revocation_endpoint_test.go: the contract is what the profiles DECLARE, it
-// needs no chart dependencies, and it therefore can never skip. The umbrella's
+// WHERE THIS LIVES (#2734). Both ends of the hop are the umbrella's: iam's side
+// is declared under the umbrella's `kaname` key, the listener's TLS switch at the
+// umbrella root. The edge takes no part in either, so the probe lives with the
+// umbrella chart rather than in gateway/deploy, where it used to sit. It moved
+// unchanged: same stacks, same findings.
+//
+// WHY THIS READS DECLARATIONS. Same reason as its neighbour token_shape_test.go
+// and as gateway/deploy/revocation_endpoint_test.go: the contract is what the
+// profiles DECLARE, it needs no chart dependencies, and it therefore can never
+// skip. The umbrella's
 // dependencies are not vendored, so a render-based check here would be skipped on
 // every machine that has not run `helm dep build` — which is exactly when it
 // would be needed.
@@ -26,7 +33,7 @@
 // iam's authn mode), not from a hard-coded list of names here. A hard-coded list
 // goes stale silently the moment a stand changes posture, and the stale entry
 // then exempts the very stack that just started needing the check.
-package deploy_test
+package umbrella_test
 
 import (
 	"fmt"

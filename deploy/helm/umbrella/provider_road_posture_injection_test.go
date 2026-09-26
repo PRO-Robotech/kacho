@@ -6,13 +6,14 @@
 // каждой посадке, и молчат на её законном близнеце.
 //
 // Дорог КРАЯ к поставщику больше нет (#2734): их случаи сняты вместе с
-// ручками, которые они судили.
+// ручками, которые они судили, а пробы переехали к чарту зонта вместе с
+// судимыми ими пробами.
 //
 // Зачем синтетика. Стек на посадке `own` в дереве сегодня один, и он полон:
 // ветка `own` исполняется на нём, ничего не находя, и «зелено» о ней означало
 // бы «условие не создано». Поэтому каждый исход доказан на входе, где он
 // ЕСТЬ, — и на близнеце, отличающемся ровно одним фактом.
-package deploy_test
+package umbrella_test
 
 import (
 	"strings"
@@ -41,19 +42,23 @@ func requireNamed(t *testing.T, finding string, parts ...string) {
 }
 
 // ─── чтение посадки ─────────────────────────────────────────────────────────
+//
+// Две пробы ниже читали посадку края. Дорог края к поставщику нет (#2734), и
+// половина края снята: судить ею нечего. Чтение посадки — одна функция на обе
+// половины, поэтому пробы спрашивают её о половине, у которой дорога есть.
 
 func TestProviderRoadPosture_SilentChainInheritsTheChartDefault(t *testing.T) {
-	chart := map[string]any{"authn": map[string]any{"identityProvider": "external"}}
-	r := readPosture(edgePostureHalf, map[string]any{"api-gateway": map[string]any{}}, chart)
+	chart := map[string]any{"config": map[string]any{"authn": map[string]any{"identityProvider": "external"}}}
+	r := readPosture(iamPostureHalf, map[string]any{"kaname": map[string]any{}}, chart)
 	if r.Err != nil || r.Provider != identityposture.External || !r.Inherited {
 		t.Fatalf("молчащая цепочка обязана получить умолчание чарта external, получено %+v", r)
 	}
 }
 
 func TestProviderRoadPosture_DeclaredPostureOutranksTheChartDefault(t *testing.T) {
-	chart := map[string]any{"authn": map[string]any{"identityProvider": "external"}}
-	merged := map[string]any{"api-gateway": map[string]any{"authn": map[string]any{"identityProvider": "own"}}}
-	r := readPosture(edgePostureHalf, merged, chart)
+	chart := map[string]any{"config": map[string]any{"authn": map[string]any{"identityProvider": "external"}}}
+	merged := map[string]any{"kaname": map[string]any{"config": map[string]any{"authn": map[string]any{"identityProvider": "own"}}}}
+	r := readPosture(iamPostureHalf, merged, chart)
 	if r.Err != nil || r.Provider != identityposture.Own || r.Inherited {
 		t.Fatalf("объявленная посадка own обязана перекрыть умолчание чарта, получено %+v", r)
 	}

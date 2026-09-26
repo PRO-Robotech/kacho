@@ -13,9 +13,9 @@
 // authenticates nobody.
 //
 // (This header used to say the handle is "verifiable only by introspecting it,
-// which the gateway does not do". The gateway DOES introspect — per request,
-// for REVOCATION, after the signature has been verified; see
-// revocation_endpoint_test.go next door. That is a different question from
+// which the gateway does not do". The gateway DOES ask about revocation — per
+// request, after the signature has been verified; see
+// gateway/deploy/revocation_endpoint_test.go. That is a different question from
 // whether the token can be read at all, and it does not rescue an opaque one.)
 //
 // values.dev.yaml declared the strategy; values.prod.yaml did not. The profiles
@@ -31,37 +31,18 @@
 // Related: the production-posture workflow proves every service BOOTS under this
 // profile, and says in its own header that it does not prove tokens work. This
 // is the gap it names.
-package deploy_test
+//
+// WHERE THIS LIVES (#2734). The values it reads belong to the umbrella's
+// provider tier and are declared by the umbrella's profiles; the edge chart
+// declares none of them. So the probe lives with the umbrella chart, next to what
+// it judges, and not in gateway/deploy, from where it used to reach here by a
+// relative path. It moved unchanged: same inputs, same verdicts.
+package umbrella_test
 
 import (
-	"os"
-	"path/filepath"
 	"sort"
 	"testing"
-
-	"gopkg.in/yaml.v3"
 )
-
-// umbrellaDir — каталог чарта-зонта, адресованный от этого пакета. Единственное
-// место пакета, где путь выписан: копия в каждом файле разошлась бы с деревом на
-// той, которую забыли поправить при переезде каталога, — и такая проба читала
-// бы «профилей нет» вместо того, чтобы упасть.
-var umbrellaDir = filepath.Join("..", "..", "deploy", "helm", "umbrella")
-
-// umbrellaValues loads one umbrella profile as a generic tree.
-func umbrellaValues(t *testing.T, profile string) map[string]any {
-	t.Helper()
-	path := filepath.Join(umbrellaDir, profile)
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
-	}
-	var tree map[string]any
-	if err := yaml.Unmarshal(raw, &tree); err != nil {
-		t.Fatalf("parse %s: %v", path, err)
-	}
-	return tree
-}
 
 // baseProfiles — профили, стоящие ПЕРВЫМИ в цепочках стендов, без повторов и в
 // устойчивом порядке. Выводятся из таблицы стеков, а не выписываются: здесь
