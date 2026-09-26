@@ -594,8 +594,8 @@ CASES.append(Case(
 #    subject matching `^usr[0-9a-hjkmnp-tv-z]{17}$`, so the caller must itself be a
 #    USER principal holding cluster system_admin. Under the production posture this
 #    suite targets, every harness principal is a ServiceAccount: prodseed_all.py
-#    states it outright — "A human User principal with an `acr` requires the
-#    interactive Kratos→Hydra login, which a machine harness cannot drive" — and
+#    states it outright: a human User principal with an `acr` requires the
+#    interactive browser sign-in, which a machine harness cannot drive. And
 #    `jwtBootstrap` is minted for the bootstrap SA (bootstrap_token/mint.go). An SA
 #    principal id can never equal a `usr…` subject, so the self-revoke branch cannot
 #    be entered. A case that cannot enter its branch would either be permanently red

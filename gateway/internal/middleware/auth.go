@@ -571,8 +571,9 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 	// Здесь читалось ещё `kaname_sa_id` — с откатом на `sub`, если его нет. Имя
 	// не чеканит ни одна полоса выпуска, поэтому читатель брал откат ВСЕГДА. А
 	// откат называет машину не тем идентификатором, каким её знает модель прав:
-	// выпуск кладёт `sub` в `kaname_hydra_client_id`, то есть это субъект
-	// провайдера, тогда как принципал стоит в `kaname_principal_id` (`sva_…`).
+	// `sub` машинного токена — идентификатор её OAuth-клиента (выпуск кладёт его
+	// же в `kaname_external_id`), тогда как принципал стоит в
+	// `kaname_principal_id` (`sva_…`).
 	if pt, _ := claims["kaname_principal_type"].(string); pt == "service_account" {
 		saID, _ := claims["kaname_principal_id"].(string)
 		if saID == "" {
