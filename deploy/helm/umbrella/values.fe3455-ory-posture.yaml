@@ -57,7 +57,8 @@ global:
           url: "base64://eyIkaWQiOiJodHRwczovL3NjaGVtYXMua2FjaG8ubG9jYWwvaWRlbnRpdHkvdjEuMC4wL2RlZmF1bHQuanNvbiIsIiRzY2hlbWEiOiJodHRwOi8vanNvbi1zY2hlbWEub3JnL2RyYWZ0LTA3L3NjaGVtYSMiLCJ0aXRsZSI6IlBlcnNvbiIsInR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7InRyYWl0cyI6eyJ0eXBlIjoib2JqZWN0IiwicHJvcGVydGllcyI6eyJlbWFpbCI6eyJ0eXBlIjoic3RyaW5nIiwiZm9ybWF0IjoiZW1haWwiLCJ0aXRsZSI6IkUtTWFpbCIsIm9yeS5zaC9rcmF0b3MiOnsiY3JlZGVudGlhbHMiOnsicGFzc3dvcmQiOnsiaWRlbnRpZmllciI6dHJ1ZX19LCJyZWNvdmVyeSI6eyJ2aWEiOiJlbWFpbCJ9LCJ2ZXJpZmljYXRpb24iOnsidmlhIjoiZW1haWwifX19LCJuYW1lIjp7InR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7ImZpcnN0Ijp7InR5cGUiOiJzdHJpbmciLCJ0aXRsZSI6IkZpcnN0IE5hbWUifSwibGFzdCI6eyJ0eXBlIjoic3RyaW5nIiwidGl0bGUiOiJMYXN0IE5hbWUifX19fSwicmVxdWlyZWQiOlsiZW1haWwiXSwiYWRkaXRpb25hbFByb3BlcnRpZXMiOmZhbHNlfX19"
 
 hydra:
-  enabled: true
+  # ВЫКЛЮЧЕН В БАЗЕ (values.yaml, раздел «ЧУЖОЙ СТЕК ЛИЧНОСТИ НЕ ПОДНИМАЕТСЯ»);
+  # настройки ниже не исполняются и снимаются вместе с подчартом (#1276).
   hydra:
     automigration: { enabled: true, type: initContainer }
     # Боевая посадка: провайдер требует https у собственного issuer.
@@ -92,7 +93,8 @@ hydra:
         pkce: { enforced: true, enforced_for_public_clients: true }
 
 kratos:
-  enabled: true
+  # ВЫКЛЮЧЕН В БАЗЕ (values.yaml, раздел «ЧУЖОЙ СТЕК ЛИЧНОСТИ НЕ ПОДНИМАЕТСЯ»);
+  # настройки ниже не исполняются и снимаются вместе с подчартом (#1276).
   kratos:
     # ПОСЛАБЛЕНИЕ, ЗАПИСАННОЕ И ПРОВЕРЯЕМОЕ.
     #
@@ -108,14 +110,14 @@ kratos:
     # mTLS между сервисами, per-RPC authZ через модель прав, sslmode=require на
     # пяти базах сервисов.
     #
-    # Условие снятия: появление HTTPS у площадки. Тогда здесь ставится false, а
-    # запись `fe3455/kratos.kratos.development` в
-    # deploy/identity_dev_flag_declaration_test.go обязана уйти вместе с ней —
-    # проверка TestRecordedIdentityDevConcessions_StillHaveASubject покраснеет,
-    # если её забыть.
-    #
-    # Значение стоит ЗДЕСЬ, а не в слое кредов, именно чтобы эта строка была
-    # видна в ревью и читалась гейтами.
+    # ЗАПИСЬ ПОСЛАБЛЕНИЯ ИСТЕКЛА ВМЕСТЕ С ВКЛЮЧЁННЫМ ПОДЧАРТОМ (#2735). Служба
+    # личности поставщика на этой площадке больше не поднимается (база зонта),
+    # и у выключенного подчарта ручка не значит ничего: запись
+    # `fe3455/kratos.kratos.development` снята из
+    # deploy/identity_dev_flag_declaration_test.go — ровно так, как её и
+    # снимала бы проверка TestRecordedIdentityDevConcessions_StillHaveASubject.
+    # Значение ниже инертно и уходит вместе с подчартом (#1276); вернуть подчарт
+    # на боевую площадку с ним — значит вернуть и запись с причиной.
     development: true
     automigration: { enabled: true, type: initContainer }
     config:

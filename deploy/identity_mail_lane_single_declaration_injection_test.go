@@ -176,8 +176,8 @@ func TestMailLaneGateFailsOnAReturnedDefect(t *testing.T) {
 	t.Run("ось3 инъекция: второй перечень разделов в прозе", func(t *testing.T) {
 		f := newMailLaneFixture(t)
 		f.edit(t, filepath.Join(f.root, "values.dev.yaml"),
-			"\nkratos:\n  # KAC-127: Phase 2",
-			"\n# За подчартом поставщика остаются `courier` и `serve`.\nkratos:\n  # KAC-127: Phase 2")
+			"\nkratos:\n",
+			"\n# За подчартом поставщика остаются `courier` и `serve`.\nkratos:\n")
 		if found := f.run(t); len(found) == 0 {
 			t.Errorf("рукописный перечень разделов гейтом не найден — второе место об " +
 				"одном предмете переживает правку шаблона молча, а гейт это удостоверяет")
@@ -189,8 +189,8 @@ func TestMailLaneGateFailsOnAReturnedDefect(t *testing.T) {
 		// в том числе там, где это единственный способ объяснить решение.
 		f := newMailLaneFixture(t)
 		f.edit(t, filepath.Join(f.root, "values.dev.yaml"),
-			"\nkratos:\n  # KAC-127: Phase 2",
-			"\n# Раздел `courier` объявлен нашей конфигурацией личности.\nkratos:\n  # KAC-127: Phase 2")
+			"\nkratos:\n",
+			"\n# Раздел `courier` объявлен нашей конфигурацией личности.\nkratos:\n")
 		if found := f.run(t); len(found) > 0 {
 			t.Errorf("гейт покраснел на блоке, называющем ОДИН раздел, — он запрещает "+
 				"называть раздел вовсе, тогда как его предмет — рукописный ПЕРЕЧЕНЬ:\n%s", strings.Join(found, "\n"))

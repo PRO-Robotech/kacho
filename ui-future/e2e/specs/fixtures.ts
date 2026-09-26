@@ -1,7 +1,12 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { expect, test as base, type Page } from "@playwright/test";
+import { expect, test as base, type BrowserContext, type Page, type Request } from "@playwright/test";
+import { parseRpcStatus } from "../../shared/src/api/rpc-status";
+import { isProviderAddressText } from "../../shared/src/test/provider-address";
+import { BUDGET_ATTACHMENT, noteRefusal, recordableRefusal, takeRefusals } from "./ceremony-budget";
+import { formatBreaches, guardBrowser, takeBreaches, takeStaleBreaches } from "./issuance-guard.ts";
+import { carryStandCookiesInBrowser } from "../stand-secure-origin.ts";
 
 /**
  * ЗАПИСЬ ТРАССЫ ПРИНАДЛЕЖИТ НАБОРУ, А НЕ ШТАТНОМУ `use.trace` (#1242).
@@ -61,7 +66,60 @@ import { expect, test as base, type Page } from "@playwright/test";
  * `@playwright/test` в пробах запрещён правилом линта — иначе проба тихо
  * останется без этой фикстуры.
  */
-export const test = base.extend({
+export const test = base.extend<
+  { sourceAxisLedger: void; issuanceLedger: void },
+  { issuanceGuardedBrowser: void; standCookieCarrier: void }
+>({
+  // ПЕЧЕНЬЕ СТЕНДА ПО HTTP (#1274) — в каждом контексте браузера, который заводит
+  // набор: `page.request` контекста носит Secure-печенье службы в происхождение
+  // стенда. Без этого на стенде по http обращения `page.request` уходят без
+  // носителя сессии, хотя у браузера он есть. Устройство и снятие —
+  // `stand-secure-origin.ts`.
+  standCookieCarrier: [
+    async ({ browser }, use, workerInfo) => {
+      carryStandCookiesInBrowser(browser, workerInfo.project.use.baseURL);
+      await use();
+    },
+    { scope: "worker", auto: true },
+  ],
+  // СТРАЖ ИСПОЛНЕНИЯ МЕСТ ВЫПУСКА (приёмка F8, Р10, F8-46) — в каждом контексте
+  // браузера, который заводит набор: штатном и заведённом пробой самой. Вызов
+  // `fetch` окна, выпущенный консолью мимо упорядочивающего транспорта, до сети
+  // не доходит, а находка роняет пробу при её разборе — даже если консоль
+  // проглотила отказ. Устройство — `specs/issuance-guard.ts`.
+  issuanceGuardedBrowser: [
+    async ({ browser }, use) => {
+      guardBrowser(browser);
+      await use();
+    },
+    { scope: "worker", auto: true },
+  ],
+  issuanceLedger: [
+    async ({ browser }, use) => {
+      // Пришедшее до начала пробы — не её, но потеряться не вправе: называется ею.
+      const stale = takeStaleBreaches().map((b) => `${b} (записано до начала этой пробы)`);
+      await use();
+      const breaches = [...stale, ...(await takeBreaches(browser))];
+      if (breaches.length > 0) throw new Error(formatBreaches(breaches));
+    },
+    { auto: true },
+  ],
+  // Запись отказов полосы сдаётся В КАЖДОЙ пробе — и в той, что не берёт
+  // `page`: её контексты и её посев тратят ту же ось (F8-41). Разбор идёт
+  // последним, после разбора страницы, поэтому запись к нему полна.
+  sourceAxisLedger: [
+    async ({ browserName: _browser }, use, testInfo) => {
+      await use();
+      const refusals = takeRefusals(testInfo.testId);
+      if (refusals.length > 0) {
+        await testInfo.attach(BUDGET_ATTACHMENT, {
+          body: JSON.stringify({ scenario: testInfo.title, refusals }),
+          contentType: "application/json",
+        });
+      }
+    },
+    { auto: true },
+  ],
   page: async ({ page }, use, testInfo) => {
     const declaredTraceMode = testInfo.project.use.trace;
     const traceMode = typeof declaredTraceMode === "string" ? declaredTraceMode : declaredTraceMode?.mode;
@@ -69,14 +127,19 @@ export const test = base.extend({
       throw new Error(
         `use.trace = ${JSON.stringify(traceMode)}, а трассу пишет набор (см. комментарий в specs/fixtures.ts). ` +
           "Две записи разом возвращают слияние архивов прогонщиком — этап обрывается по бюджету, " +
-          "файл трассы остаётся без центрального каталога и не открывается. Ожидается use.trace: \"off\".",
+          'файл трассы остаётся без центрального каталога и не открывается. Ожидается use.trace: "off".',
       );
     }
 
     const tracing = page.context().tracing;
     await tracing.start({ screenshots: true, snapshots: true, sources: true, title: testInfo.title });
 
+    // Запись отказов полосы — вход сторожа бюджета оси источника (F8-41).
+    const reading = watchRefusals(page.context(), testInfo.testId);
+
     await use(page);
+
+    await reading.settled();
 
     // Держим трассу ровно на том же условии, что и штатный `retain-on-failure`:
     // проба прошла — архив не нужен и не пишется.
@@ -91,6 +154,31 @@ export const test = base.extend({
 });
 
 /**
+ * Записывать отказы `401` полосы формы, полученные страницами контекста, за
+ * пробой `testId` (приёмка F8, F8-41). Контекст страницы пробы записывает
+ * фикстура; контекст, заведённый пробой самой, пишет она же этим вызовом —
+ * иначе его отказы потратили бы ось мимо сторожа.
+ */
+export function watchRefusals(context: BrowserContext, testId: string) {
+  const pending: Array<Promise<void>> = [];
+  context.on("response", (res) => {
+    if (res.status() !== 401) return;
+    const path = new URL(res.url()).pathname;
+    if (!path.startsWith("/iam/v1/auth/")) return;
+    pending.push(
+      res
+        .text()
+        .catch(() => "")
+        .then((text) => {
+          const r = recordableRefusal(path, res.status(), text);
+          if (r) noteRefusal(testId, r);
+        }),
+    );
+  });
+  return { settled: () => Promise.allSettled(pending).then(() => undefined) };
+}
+
+/**
  * Общая фикстура проб консоли: завести арендатора и войти под ним.
  *
  * ─────────────────────────────────────────────────────────────────────────────
@@ -101,12 +189,12 @@ export const test = base.extend({
  * зависимости от порядка запуска. Своё имя на каждый прогон делает пробы
  * независимыми и позволяет гонять их параллельно, когда это понадобится.
  *
- * ПОЧЕМУ РЕГИСТРАЦИЯ ДВУХШАГОВАЯ И ЭТО НЕ ОБХОД
+ * ПОЧЕМУ РЕГИСТРАЦИЯ ИДЁТ ЭКРАНОМ КОНСОЛИ (приёмка F8, F8-20)
  *
- * Провайдер личности отдаёт сначала форму профиля, и только на втором шаге —
- * выбор способа входа с полем пароля. Проба, ожидающая пароль на первом шаге,
- * падает на ИСПРАВНОМ продукте: она описывает поток, которого нет. Здесь оба
- * шага пройдены явно, и каждый утверждает своё.
+ * «Дано» набора строится НАШИМ экраном регистрации и НАШИМ глаголом: адрес и
+ * пароль одной формой, сессия — печеньем службы. Прежде фикстура вела
+ * двухшаговый поток чужого поставщика, и снятие чужого экрана убило бы весь
+ * набор разом; теперь набор зависит от того экрана, который консоль и ведёт.
  */
 export interface Tenant {
   email: string;
@@ -139,7 +227,11 @@ export interface Tenant {
  */
 export const STREAM_PATH = "/subscription/v1/events";
 
-const PASSWORD = "Kacho-E2E-2026!x";
+/** Пароль арендатора набора; тот же у посева «Дано» (`ceremony-seed.ts`). */
+export const E2E_PASSWORD = "Kacho-E2E-2026!x";
+
+/** Имя носителя сессии нашей службы — то, что браузер держит после входа. */
+export const SESSION_COOKIE = "kaname_session";
 
 /** уникальное имя прогона — из времени; коллизия по UNIQUE(name) иначе даёт 409 */
 export function runTag(): string {
@@ -150,107 +242,110 @@ export function runTag(): string {
  *
  * Вынесено из `registerAndSignIn` без изменения его поведения: проект арендатора
  * добывается двумя разными способами (см. `tenantWithProject`), а вход — один и
- * тот же, и второй его копии заводить незачем. */
-export async function register(page: Page): Promise<string> {
-  const email = `e2e-${runTag()}@kacho.local`;
-
+ * тот же, и второй его копии заводить незачем.
+ *
+ * Ожиданий три, и каждое утверждает своё: экран регистрации отрисован консолью ·
+ * после отправки у браузера есть носитель сессии · на успешном ответе экран увёл
+ * документ. Отказ представим на двух первых, и там отказ, показанный экраном,
+ * называется ЕГО текстом — а не симптомом «поля нет» либо «печенья нет». Третье
+ * ждётся только на успешном ответе: отказу там взяться неоткуда.
+ */
+export async function register(page: Page, email = `e2e-${runTag()}@kacho.local`): Promise<string> {
   await page.goto("/registration", { waitUntil: "domcontentloaded" });
 
-  // Шаг 1 — профиль. Пароля здесь НЕТ по построению провайдера.
-  await page.fill('input[name="traits.email"]', email);
-  // Имя — ОДНО поле `display_name`, а не пара «первое/последнее». Схема
-  // личности продукта (`kacho_user_v2`) объявляет ровно `email` +
-  // `display_name` и несёт `additionalProperties: false`, поэтому полей
-  // `traits.name.*` под ней не бывает ни при каком вводе. Пара жила здесь
-  // потому, что до провязки настроек в процесс служба личности работала на
-  // схеме подчарта поставщика; проба закрепляла её, а не контракт продукта.
-  await page.fill('input[name="traits.display_name"]', "E2E Probe");
-  await page.click('button[type="submit"]');
-
-  // Шаг 2 — способ входа. Ждём ПОЛЕ, а не время: ожидание временем даёт
-  // «красное» на медленном стенде и зелёное на быстром при одном и том же коде.
-  const password = page.locator('input[type="password"]');
+  const address = page.getByRole("textbox", { name: "Адрес электронной почты" });
   await advanceOrNameRefusal(page, {
-    advanced: () => password.first().isVisible(),
-    where: "на шаге профиля",
+    advanced: () => address.isVisible(),
+    where: "на шаге экрана регистрации",
     symptom:
-      "второй шаг регистрации не предложил пароль, и страницы отказа тоже нет — " +
-      "поток входа неполон, и без него арендатор не заводится вовсе",
+      "экран регистрации консоли не отрисован на /registration, и отказа на экране тоже нет — " +
+      "без него арендатор не заводится вовсе",
     tail:
-      "Поля пароля нет не потому, что шаг опоздал, — поток до него не дошёл. " +
-      "Разбирать надо названный отказ, а не неполноту потока",
+      "Формы нет не потому, что она опоздала, — экран показал отказ. " +
+      "Разбирать надо названный отказ, а не отсутствие формы",
   });
-  await password.first().fill(PASSWORD);
-  await page.click('button[type="submit"]');
+  await address.fill(email);
+  await page.getByLabel("Пароль", { exact: true }).fill(E2E_PASSWORD);
+  const answered = page
+    .waitForResponse((r) => new URL(r.url()).pathname === REGISTER_PATH && r.request().method() === "POST", {
+      timeout: 30_000,
+    })
+    .catch(() => null);
+  await page.getByRole("button", { name: "Завести учётную запись", exact: true }).click();
 
   // Сессия обязана быть установлена, иначе всё дальнейшее меряет не то.
   //
-  // ИСХОДОВ ЗДЕСЬ ТРИ, А НЕ ДВА (задача #1740). Регистрация оканчивается одним
-  // из трёх наблюдаемых состояний: печенье сессии выдано · служба личности
-  // ОТВЕРГЛА поток и напечатала свой разбор · ещё не готово. Прежде проба
-  // различала два — «печенье есть» и «печенья нет», — поэтому отказ читался как
-  // «не готово»: она ждала полный срок и сообщала про отсутствующее печенье,
-  // тогда как причина стояла НА ТОМ ЖЕ ЭКРАНЕ.
-  //
-  // Цена измерена: в прогоне 33352816209 пять падений пришли одним текстом про
-  // печенье, а в снимке каждой из пяти страниц лежало `webhook failed with
-  // status code 401` — поток был отвергнут на обратном вызове и до выдачи
-  // сессии не доходил вовсе. Диагноз по имени падения увёл на две ложные
-  // гипотезы, обе опровергнуты замером. Это класс `testing.md` §«Диагноз
-  // ставится по ТЕКСТУ отказа, а не по имени упавшего шага».
+  // ИСХОДОВ ЗДЕСЬ ТРИ, А НЕ ДВА (задача #1740): печенье сессии выдано · служба
+  // ОТВЕРГЛА регистрацию и экран назвал отказ · ещё не готово. Прежде проба
+  // различала два, и отказ читался как «не готово»: она ждала полный срок и
+  // сообщала про отсутствующее печенье, тогда как причина стояла НА ТОМ ЖЕ
+  // ЭКРАНЕ. Это класс `testing.md` §«Диагноз ставится по ТЕКСТУ отказа, а не по
+  // имени упавшего шага».
   await advanceOrNameRefusal(page, {
-    advanced: async () =>
-      (await page.context().cookies()).some((c) => /session/i.test(c.name)),
+    advanced: async () => (await page.context().cookies()).some((c) => c.name === SESSION_COOKIE && c.value !== ""),
     where: "на шаге выдачи сессии",
     symptom:
-      "печенье сессии не установлено после регистрации, и страницы отказа тоже " +
-      "нет — дальше проверялся бы неаутентифицированный доступ под видом " +
-      "аутентифицированного",
+      "печенье сессии не установлено после регистрации, и отказа на экране тоже нет — " +
+      "дальше проверялся бы неаутентифицированный доступ под видом аутентифицированного",
     tail:
-      "Печенья сессии нет не потому, что оно опоздало, — поток до выдачи не дошёл. " +
+      "Печенья сессии нет не потому, что оно опоздало, — регистрация отвергнута. " +
       "Разбирать надо названный отказ, а не ожидание печенья",
+    answered,
   });
+
+  // РЕГИСТРАЦИЯ КОНЧАЕТСЯ ТАМ, КУДА ЭКРАН УВОДИТ ДОКУМЕНТ, а не печеньем (#1274).
+  // Печенье ставит ответ глагола, а документ экран уводит ЗА ним — после чтения
+  // тела. Фикстура, отдавшая управление на печенье, оставляла вызывающему
+  // страницу, чей собственный переход ещё впереди: следующий `page.goto` мог
+  // быть им прерван, а носитель, сменённый мимо вкладки, — погашен ответом на
+  // чтение, выпущенное уходящим экраном. Ждётся производимый признак — документ
+  // сменился; дальше документов консоль сама не меняет (корень уводит на панель
+  // маршрутизатором, без загрузки). Ответ без успеха ухода не производит, и
+  // ждать его там нечего.
+  const answer = await answered;
+  if (answer?.ok()) {
+    await expect
+      .poll(() => (new URL(page.url()).pathname === "/registration" ? "экран регистрации не ушёл" : "ушёл"), {
+        message: "регистрация прошла, а экран регистрации не увёл документ на корень консоли",
+        timeout: 30_000,
+      })
+      .toBe("ушёл");
+  }
 
   return email;
 }
 
+/** Путь глагола регистрации — ответ на него фикстура читает, когда экран назвал отказ. */
+const REGISTER_PATH = "/iam/v1/auth/register";
+
 /**
- * advanceOrNameRefusal — ждёт признак ПРОДВИЖЕНИЯ потока входа, а если поток был
- * отвергнут службой личности, падает ЕЁ текстом, а не нашим симптомом.
+ * advanceOrNameRefusal — ждёт признак ПРОДВИЖЕНИЯ, а если экран показал отказ,
+ * падает ЕГО текстом, а не нашим симптомом.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * ИСХОДОВ НА КАЖДОМ ШАГЕ ТРИ, А НЕ ДВА (задача #1740)
  *
- * Шаг потока входа оканчивается одним из трёх наблюдаемых состояний: поток
- * продвинулся · служба личности ОТВЕРГЛА его и напечатала свой разбор · ещё не
- * готово. Прежде ожидание различало два — «продвинулся» и «нет», — поэтому отказ
- * читался как «не готово»: проба ждала полный срок и сообщала про недостающий
- * признак, тогда как причина стояла НА ТОМ ЖЕ ЭКРАНЕ.
+ * Шаг оканчивается одним из трёх наблюдаемых состояний: продвинулись · служба
+ * ОТВЕРГЛА форму и экран назвал отказ · ещё не готово. Прежде ожидание различало
+ * два — «продвинулся» и «нет», — поэтому отказ читался как «не готово»: проба
+ * ждала полный срок и сообщала про недостающий признак, тогда как причина
+ * стояла НА ТОМ ЖЕ ЭКРАНЕ.
  *
- * Цена измерена: в прогоне 33352816209 пять падений пришли одним текстом про
- * печенье, а в снимке каждой из пяти страниц лежало `webhook failed with status
- * code 401` — поток был отвергнут на обратном вызове и до выдачи сессии не
- * доходил вовсе. Диагноз по имени падения увёл на две ложные гипотезы, обе
- * опровергнуты замером. Это класс `testing.md` §«Диагноз ставится по ТЕКСТУ
- * отказа, а не по имени упавшего шага».
+ * ПОЧЕМУ ОЖИДАНИЕ ОДНО НА ОБА ШАГА С ОТКАЗОМ, А НЕ ДВА ПОХОЖИХ
  *
- * ПОЧЕМУ ОЖИДАНИЕ ОДНО НА ОБА ШАГА, А НЕ ДВА ПОХОЖИХ
- *
- * Ожиданий в потоке входа два — поле пароля и печенье сессии, — и отказ
- * представим на каждом. Первая редакция фикса научила говорить причину ТОЛЬКО
- * второе, и отказ на шаге профиля по-прежнему выходил симптомом «второй шаг не
- * предложил пароль» через полные 30 секунд. Обе полосы по отдельности были
- * защитимы; неверна была их РАЗНИЦА — ровно класс `architecture.md`
- * §«Параллельные полосы одного механизма обязаны сверяться МЕЖДУ СОБОЙ».
- * Здесь полоса ОДНА, поэтому разойтись им нечем by construction.
+ * Из трёх ожиданий `register` отказ представим на двух — экран и сессия, — и оба
+ * идут здесь. Разведи полосы — и одна научится называть
+ * причину, а другая нет: обе по отдельности защитимы, неверна их РАЗНИЦА
+ * (`architecture.md` §«Параллельные полосы одного механизма обязаны сверяться
+ * МЕЖДУ СОБОЙ»). Полоса одна — разойтись им нечем by construction.
  *
  * ПОЧЕМУ ПРИЗНАК ПРОДВИЖЕНИЯ СПРАШИВАЕТСЯ ПЕРВЫМ
  *
  * Распознаватель отказа встаёт на путь КАЖДОГО входа, поэтому его ложное
- * срабатывание остановило бы весь набор. Продвижение решает раньше: страница
- * вправе нести и признак продвижения, и прозу, похожую на разбор отказа, — и
- * тогда верен первый. Перестановка порядка роняет парные пробы
- * `registration-refusal-named.spec.ts`, и это их предмет.
+ * срабатывание остановило бы весь набор. Продвижение решает раньше: экран вправе
+ * нести и признак продвижения, и прошлый отказ — и тогда верен первый.
+ * Перестановка порядка роняет парные пробы `registration-refusal-named.spec.ts`,
+ * и это их предмет.
  */
 async function advanceOrNameRefusal(
   page: Page,
@@ -259,6 +354,8 @@ async function advanceOrNameRefusal(
     where: string;
     symptom: string;
     tail: string;
+    /** Ответ глагола этого шага, если он был, — из него берётся код отказа. */
+    answered?: Promise<{ text(): Promise<string> } | null>;
   },
 ): Promise<void> {
   let refusal = "";
@@ -274,49 +371,52 @@ async function advanceOrNameRefusal(
     .not.toBe("ждём");
 
   if (refusal !== "") {
+    const response = step.answered ? await step.answered : null;
+    const parsed = response ? identityRefusalFromText(await response.text().catch(() => "")) : "";
     throw new Error(
-      `регистрация ОТВЕРГНУТА службой личности ${step.where}: ${refusal}. ${step.tail}`,
+      `регистрация ОТВЕРГНУТА службой ${step.where}: ${refusal}` +
+        `${parsed ? ` (ответ глагола: ${parsed})` : ""}. ${step.tail}`,
     );
   }
 }
 
 /**
- * identityRefusalFromText — разбор отказа службы личности из ТЕКСТА страницы.
+ * identityRefusalFromText — разбор отказа НАШЕЙ службы из ТЕКСТА её ответа.
  *
- * Возвращает «<код> <состояние> · <сообщение>» либо пустую строку, если текст
- * отказом не является.
+ * Форма — `google.rpc.Status` `{code, message, details}`, которую полоса формы
+ * отдаёт на каждый отказ. Возвращает «<код> · <сообщение>» либо пустую строку,
+ * если текст отказом не является.
  *
- * ПОЧЕМУ ПО ТЕКСТУ, А НЕ ПО РАЗМЕТКЕ. Форма страницы отказа принадлежит
- * провайдеру и меняется с его версией; разбор внутри неё — часть контракта
- * отказа, и именно он нужен читателю вердикта. Привязка к разметке пережила бы
- * свой предмет при первом же обновлении провайдера и молча перестала бы узнавать
- * отказы — то есть вернула бы ровно тот дефект, ради которого функция заведена.
+ * ПОЧЕМУ ПО ТЕКСТУ. Разбор судит величины ответа, а не его вид: код и сообщение
+ * — контракт отказа, а разметка вокруг — нет.
  *
  * ПОЧЕМУ ТРЕБУЮТСЯ ОБЕ ВЕЛИЧИНЫ. Код без сообщения не говорит, что случилось;
- * сообщение без кода не говорит, чей это отказ. Разбор, у которого нет обеих,
- * отказом не признаётся — иначе первая же страница со словом «error» стала бы
- * «отказом», и проба останавливала бы исправный вход.
+ * сообщение без кода не говорит, что это отказ службы. Разбор без обеих отказом
+ * не признаётся — иначе первая же страница со словом «error» стала бы «отказом».
  */
 export function identityRefusalFromText(text: string): string {
-  const at = text.indexOf('"error"');
-  if (at < 0) return "";
-  const tail = text.slice(at);
-  const code = /"code"\s*:\s*(\d{3})/.exec(tail);
-  const message = /"message"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(tail);
-  if (code === null || message === null) return "";
-  const status = /"status"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(tail);
-  return status === null
-    ? `${code[1]} · ${message[1]}`
-    : `${code[1]} ${status[1]} · ${message[1]}`;
+  // Разборщик ОДИН — тот же, что у экранов консоли (`shared/src/api/rpc-status`,
+  // условие C3): тело края без `details` и тело службы с пустым `details` —
+  // один и тот же отказ. Прежде распознаватель требовал `details` массивом и
+  // не узнавал отказ края вовсе.
+  const status = parseRpcStatus(text);
+  return status ? `${status.code} · ${status.message}` : "";
 }
 
-/** identityRefusalOnPage — тот же разбор, снятый с открытой страницы. */
+/**
+ * identityRefusalOnPage — отказ, СНЯТЫЙ С ЭКРАНА: текст предупреждения, которым
+ * экран церемонии называет отказ службы дословно. Пустая строка — отказа на
+ * экране нет.
+ */
 export async function identityRefusalOnPage(page: Page): Promise<string> {
-  const text = await page
-    .locator("body")
-    .innerText({ timeout: 2_000 })
-    .catch(() => "");
-  return identityRefusalFromText(text);
+  const alerts = page.getByRole("alert");
+  if ((await alerts.count().catch(() => 0)) === 0) return "";
+  return (
+    await alerts
+      .first()
+      .innerText({ timeout: 2_000 })
+      .catch(() => "")
+  ).trim();
 }
 
 /** registerAndSignIn проводит регистрацию до рабочей сессии и отдаёт проект арендатора. */
@@ -324,13 +424,20 @@ export async function registerAndSignIn(page: Page): Promise<Tenant> {
   const email = await register(page);
 
   // Проект арендатора заводится сам; без него адресовать модули нечем.
-  const projectId = await expect
+  //
+  // Идентификатор берётся ИЗ ТОГО ЖЕ ЧТЕНИЯ, на котором опрос сошёлся:
+  // `expect.poll` значения не возвращает, а второе чтение после опроса — снова
+  // первая страница курсорного списка, отфильтрованная по правам постранично, и
+  // обещания непустоты у него нет (см. `tenantWithProject`).
+  let projectId = "";
+  await expect
     .poll(
       async () => {
         const res = await page.request.get("/iam/v1/projects");
         if (!res.ok()) return "";
         const body = (await res.json()) as { projects?: Array<{ id: string }> };
-        return body.projects?.[0]?.id ?? "";
+        projectId = body.projects?.[0]?.id ?? "";
+        return projectId;
       },
       {
         message:
@@ -341,10 +448,7 @@ export async function registerAndSignIn(page: Page): Promise<Tenant> {
     )
     .not.toBe("");
 
-  const res = await page.request.get("/iam/v1/projects");
-  const body = (await res.json()) as { projects: Array<{ id: string }> };
-  void projectId;
-  return { email, projectId: body.projects[0].id };
+  return { email, projectId };
 }
 
 /**
@@ -455,6 +559,135 @@ export async function createdResourceId(
     .toBe(200);
 
   return id;
+}
+
+/**
+ * Перепись обращений консоли — прибор сценариев церемонии (приёмка F8, Р6).
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ЧЕМ ОНА ОТЛИЧАЕТСЯ ОТ `apiCalls` НИЖЕ, И ПОЧЕМУ ТОТ ЗДЕСЬ НЕ ГОДИТСЯ
+ *
+ * `apiCalls` пишет ОТВЕТЫ и только те, в чьём пути есть `/v1/`. У поставщика
+ * личности `/v1/` нет ни в одном адресе, поэтому отрицание «ни одного адреса
+ * поставщика» на нём тождественно истинно: оно не краснеет ни на переходе на его
+ * поток выхода, ни на запросе к нему, ни на чтении его сессии. Для отрицания
+ * такой прибор непригоден, а два прибора на одно наблюдение не заводятся.
+ *
+ * ЧТО ПИШЕТСЯ. Каждое обращение, которое ВЫПУСТИЛИ страницы контекста браузера,
+ * — в момент выпуска, без фильтра по пути: метод, происхождение, путь, строка
+ * запроса, вид (переход документа либо запрос страницы) и исход. Слушатель
+ * стоит на КОНТЕКСТЕ, а не на странице: окна, открытого страницей, слушатель
+ * страницы не видит, а шаг перенаправления и такое окно — тоже обращения
+ * консоли.
+ *
+ * ИСХОД — ТОЛЬКО ИЗМЕРЕННОЕ (Р6 п. 1, N19). Исход — событие ответа, то есть
+ * заголовки: в этот момент браузер применяет печенья ответа; конец тела исходом
+ * не считается. Отказ различается на два исхода: «отменено страницей»
+ * (`net::ERR_ABORTED`) и «ответа нет» (обрыв и всякий другой отказ сети) —
+ * опыт различил их 100 из 100. Вызов края `WWW-Authenticate` пишется вместе с
+ * кодом: у `401` края три смысла, и текст вызова — единственное, чем они
+ * различимы в переписи.
+ *
+ * ПОРЯДОК ЗАПИСЕЙ — порядок событий слушателя, а не страницы. Выпуск двух
+ * обращений, второе из которых выпущено после ответа на первое, записан в
+ * порядке страницы (2000 из 2000). Исход одного обращения против выпуска
+ * другого — НЕТ (50 из 2000 инвертированы), и на нём не стоит ни одно
+ * утверждение.
+ *
+ * ЧЕГО ОНА НЕ ВИДИТ — названо, чтобы «ноль» не читался шире сказанного.
+ * Обращения КОНТЕКСТА ЗАПРОСОВ (`page.request`, `context.request`,
+ * `request.newContext()`) событий страниц не порождают: посев «Дано», фикстура
+ * и оснастка ходят именно им, и отрицание о поставщике по ним держит не эта
+ * перепись, а статическая перепись набора. Значка вкладки браузер за собой
+ * тоже не записывает.
+ */
+export interface CeremonyCall {
+  method: string;
+  origin: string;
+  path: string;
+  /** Строка запроса с ведущим `?` либо пустая. */
+  query: string;
+  kind: "документ" | "запрос";
+  /**
+   * Код ответа; «отменено страницей» — страница сама отменила обращение
+   * (`net::ERR_ABORTED`); «ответа нет» — обращение не получило ответа по
+   * другой причине; «ждём» — исхода ещё нет.
+   */
+  outcome: number | typeof CANCELLED_BY_PAGE | "ответа нет" | "ждём";
+  /** Вызов `WWW-Authenticate` ответа; `null` — вызова нет либо ответа ещё нет. */
+  challenge: string | null;
+}
+
+/** Исход обращения, которое страница отменила сама (Р6 п. 1). */
+export const CANCELLED_BY_PAGE = "отменено страницей";
+
+/** Текст отказа сети, которым браузер называет отмену страницей. */
+const ABORTED_BY_PAGE = "net::ERR_ABORTED";
+
+/**
+ * Адрес поставщика личности распознаётся ОДНИМ распознавателем на обе переписи
+ * приёмки F8 — эту и статическую (`shared/src/test/provider-address.ts`): все
+ * формы, в которых дерево консоли этот адрес выпускало (Р6 п. 2).
+ */
+export { isProviderAddressText };
+
+export interface CeremonyCensus {
+  readonly calls: readonly CeremonyCall[];
+  /** Обращения по методу, пути и (необязательно) строке запроса — в порядке выпуска. */
+  matching(method: string, path: string, query?: string): CeremonyCall[];
+  /** Запись обращения, выпущенного страницей; `undefined` — перепись его не видела. */
+  of(request: Request): CeremonyCall | undefined;
+  /** Обращения, распознанные как адрес поставщика личности. */
+  providerCalls(): CeremonyCall[];
+  /** Вся перепись строками — для текста падения. */
+  describe(): string;
+}
+
+export function formatCall(c: CeremonyCall): string {
+  const challenge = c.challenge === null ? "" : ` · ${c.challenge}`;
+  return `${c.method} ${c.origin}${c.path}${c.query} [${c.kind} → ${c.outcome}${challenge}]`;
+}
+
+export function ceremonyCensus(context: BrowserContext): CeremonyCensus {
+  const calls: CeremonyCall[] = [];
+  const byRequest = new Map<Request, CeremonyCall>();
+  context.on("request", (r) => {
+    let u: URL;
+    try {
+      u = new URL(r.url());
+    } catch {
+      return;
+    }
+    const call: CeremonyCall = {
+      method: r.method(),
+      origin: u.origin,
+      path: u.pathname,
+      query: u.search,
+      kind: r.isNavigationRequest() ? "документ" : "запрос",
+      outcome: "ждём",
+      challenge: null,
+    };
+    calls.push(call);
+    byRequest.set(r, call);
+  });
+  context.on("response", (res) => {
+    const call = byRequest.get(res.request());
+    if (!call) return;
+    call.outcome = res.status();
+    call.challenge = res.headers()["www-authenticate"] ?? null;
+  });
+  context.on("requestfailed", (r) => {
+    const call = byRequest.get(r);
+    if (call) call.outcome = r.failure()?.errorText === ABORTED_BY_PAGE ? CANCELLED_BY_PAGE : "ответа нет";
+  });
+  return {
+    calls,
+    matching: (method, path, query) =>
+      calls.filter((c) => c.method === method && c.path === path && (query === undefined || c.query === query)),
+    of: (request) => byRequest.get(request),
+    providerCalls: () => calls.filter((c) => isProviderAddressText(c.path)),
+    describe: () => (calls.length === 0 ? "  (обращений нет)" : calls.map((c) => `  ${formatCall(c)}`).join("\n")),
+  };
 }
 
 /** apiCalls собирает коды ответов API, которые страница сделала сама. */

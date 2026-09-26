@@ -1,4 +1,6 @@
-// Direction lock for the auth client's case conversion.
+// Direction lock for the auth client's case conversion. The session read
+// (`/iam/v1/auth/me`) is not here: its one reader is `sessionIdentity` in the
+// login-lane client, and its probe lives next to it.
 //
 // The transport contract is asymmetric and easy to get backwards: the Kachō REST
 // surface speaks camelCase, the UI speaks snake_case. So a REQUEST body is
@@ -28,20 +30,6 @@ describe("authApi", () => {
   const originalFetch = globalThis.fetch;
   afterEach(() => {
     globalThis.fetch = originalFetch;
-  });
-
-  it("reads the session without sending a body", () => {
-    // These are reads. No request body exists on this surface, so no request-side
-    // conversion may be configured for one either — a body branch with no caller
-    // is an untested claim about the wire.
-    const { calls } = captureFetch({ user: { id: "usr-1", subject_type: "user" } });
-    return authApi.me().then(() => {
-      expect(calls).toHaveLength(1);
-      expect(calls[0].url).toBe("/iam/v1/auth/me");
-      expect(calls[0].init.method).toBe("GET");
-      expect(calls[0].init.body).toBeUndefined();
-      expect(calls[0].init.credentials).toBe("include");
-    });
   });
 
   it("adapts the whoami response camelCase → snake_case", () => {

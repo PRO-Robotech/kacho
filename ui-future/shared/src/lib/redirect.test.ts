@@ -50,6 +50,27 @@ describe("safeInternalPath", () => {
     // never a cross-origin redirect — returning it is safe.
     expect(safeInternalPath("evil.example")).toBe("/evil.example");
   });
+
+  // Судится значение, которое получит переход, а не входное: переход разбирает
+  // ВОЗВРАЩЁННОЕ значение заново, и путь, начавшийся после нормализации с «//»,
+  // он читает протокол-относительным адресом.
+  const DOT_SEGMENT_FORMS = ["/.//evil.example", "/..//evil.example", "/%2e//evil.example", "/./\\evil.example"];
+
+  it.each(DOT_SEGMENT_FORMS)(
+    "falls back for a dot-segment form that normalises to a protocol-relative path: %s",
+    (raw) => {
+      expect(safeInternalPath(raw)).toBe("/");
+    },
+  );
+
+  it.each(DOT_SEGMENT_FORMS)("what it returns for %s resolves back onto our own origin", (raw) => {
+    expect(new URL(safeInternalPath(raw), window.location.origin).origin).toBe(window.location.origin);
+  });
+
+  it("keeps a dot-segment form that normalises to an in-app path (twin: only the doubled slash differs)", () => {
+    expect(safeInternalPath("/./vpc/networks")).toBe("/vpc/networks");
+    expect(safeInternalPath("/iam/../vpc/networks?x=1")).toBe("/vpc/networks?x=1");
+  });
 });
 
 describe("resolvePostAuthTarget", () => {

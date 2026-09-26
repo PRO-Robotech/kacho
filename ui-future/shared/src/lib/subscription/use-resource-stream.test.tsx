@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { orderedTransport } from "@shared/api/carrier-order";
 import { SubscriptionHub, type EventSourceLike } from "./hub";
 import { useResourceStream } from "./use-resource-stream";
 
@@ -183,5 +184,45 @@ describe("страница снимает опрос только на ДОКА�
     act(() => sources[0].emit("opened", opened(["vpc_network"])));
     view.unmount();
     expect(sources[0].readyState).toBe(2);
+  });
+
+  it("Р10 · поток, закрытый вокруг глагола, ставящего носитель, открыт после исхода — список перечитан ОДИН раз", async () => {
+    // Пока потока нет, событий не приходит, а новый приёмник позиции прежнего не
+    // несёт: без перечитывания изменение, случившееся в промежутке, до страницы
+    // не дошло бы. Первое покрытие перечитывания не стоит — положительная и
+    // отрицательная стороны в одной пробе.
+    const { sources, invalidated, read } = setup("networks");
+    act(() => sources[0].emit("opened", opened(["vpc_network"])));
+    expect(read()).toBe(true);
+    expect(invalidated).toEqual([]);
+
+    const original = globalThis.fetch;
+    let answer: (r: Response) => void = () => undefined;
+    globalThis.fetch = () =>
+      new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+    try {
+      let verb: Promise<Response> = Promise.resolve({} as Response);
+      await act(async () => {
+        verb = orderedTransport.fetch("/iam/v1/auth/password", { method: "POST" }, { setsCarrier: true });
+        await Promise.resolve();
+      });
+      // До выпуска глагола поток закрыт, покрытия нет — список на опросе.
+      expect(sources[0].readyState).toBe(2);
+      expect(read()).toBe(false);
+      expect(sources).toHaveLength(1);
+      await act(async () => {
+        answer({ ok: true, status: 200 } as Response);
+        await verb;
+      });
+      // После исхода поток открыт снова; покрытие вернулось — одно перечитывание.
+      expect(sources).toHaveLength(2);
+      act(() => sources[1].emit("opened", opened(["vpc_network"])));
+      expect(read()).toBe(true);
+      expect(invalidated).toEqual([["networks", "list"]]);
+    } finally {
+      globalThis.fetch = original;
+    }
   });
 });

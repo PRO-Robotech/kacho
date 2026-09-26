@@ -163,6 +163,16 @@ kaname:
     hooks:
       tokenHookSecretName: kaname-hook-token
       tokenHookSecretKey: token
+  # Наши карты настроек поставщика личности (`kaname-kratos-config`,
+  # `kaname-kratos-hooks`, `kaname-kratos-identity-schema`): монтировать их
+  # некому — поставщик не поднимается ни на одном стенде (раздел «ЧУЖОЙ СТЕК
+  # ЛИЧНОСТИ НЕ ПОДНИМАЕТСЯ» ниже). Карта без читателя — объявление, которое не
+  # исполняется.
+  kratos:
+    config:
+      enabled: false
+    identitySchema:
+      enabled: false
 
 # ─── Per-datastore Postgres ingress allowlist (templates/networkpolicy-datastore) ─
 # Each backing Postgres StatefulSet (bitnami sub-chart, pod label
@@ -686,6 +696,13 @@ kacho-geo:
 api-gateway:
   image: docker.io/prorobotech/kacho-api-gateway:main-d941344b
   imagePullPolicy: IfNotPresent
+  # Публичный адрес поставщика личности — `disabled`, то самое слово, которым
+  # край выключает полосу чтения его сессии. Пустое значение здесь НЕ годится:
+  # шаблон чарта края выводит из пустого адрес по имени выпуска, и под объявлял
+  # бы адрес службы, которой ни на одном стенде нет. Читателя сессии поставщика
+  # край под посадкой `own` не заводит и так (множество носителей выводится из
+  # посадки); саму ручку снимает вместе с читателем волна-3 (#2797).
+  kratosPublicUrl: disabled
   # INFRA sec-hardening r3 — the sub-chart's own ingress backends the plaintext
   # `cmux` port, which is the CLUSTER-INTERNAL (unmarked) listener and therefore
   # serves Internal* REST to any external caller. Disable it and let the umbrella
@@ -710,28 +727,32 @@ apiGatewayIngress:
 uif:
   enabled: false
 
-# ─── Ory Hydra sub-chart — базовые значения умбреллы ───────────────────────
+# ─── ЧУЖОЙ СТЕК ЛИЧНОСТИ НЕ ПОДНИМАЕТСЯ НИ НА ОДНОМ СТЕНДЕ (#2735, #2777) ────
+#
+# Человека на каждом стенде таблицы (deploy/stacks.txt) проверяет НАША полоса:
+# посадку `own` обеим половинам объявляют корни цепочек (values.dev.yaml,
+# values.prod.yaml). Поставщик личности, его издатель, их базы и чужой экран
+# входа рядом с нашей полосой были бы второй действующей дверью в ту же
+# систему, о которой никто не решал.
+#
+# ПОЧЕМУ ЗДЕСЬ, В БАЗЕ, А НЕ В КАЖДОМ ПРОФИЛЕ. Выключение объявлено ОДИН раз, и
+# ни один профиль его не перекрывает: пока флаги жили по профилям, накладка
+# стенда `own` гасила их у одного стенда из семи, а шесть поднимали их молча.
+# Флаг обязан стоять ЗДЕСЬ, а не отсутствовать: условие зависимости, чей путь
+# в значениях не найден, helm читает как «включено».
+#
+# Держит согласие посадки и флагов deploy/own_posture_foreign_identity_test.go,
+# отсутствие объектов и адресов поставщика в рендере каждой цепочки —
+# deploy/identity_file_keys_survive_the_environment_test.go (посадка own).
+# Физическое снятие подчартов, их баз и шаблонов — предмет #1276.
+kratos:
+  enabled: false
+pg-kratos:
+  enabled: false
 hydra:
-  # РЕКОНСАЙЛЕР КЛИЕНТОВ ПРОВАЙДЕРА СНЯТ — У НЕГО НЕТ ПРЕДМЕТА.
-  #
-  # Умолчание чарта-зависимости — `true`, и ни один профиль его не переопределял,
-  # поэтому нагрузка разворачивалась ВЕЗДЕ. Померено по дереву и по кластеру:
-  # ресурсов того типа, который он реконсайлит (`OAuth2Client`), НЕТ НИ ОДНОГО —
-  # ни в дереве, ни в живом кластере. То есть он ничего не делал.
-  #
-  # При этом он — потребитель административного API, невидимый переписи по
-  # объявлениям (его адрес приходит умолчанием зависимости), и у него НЕТ НИ ОДНОЙ
-  # ПРОБЫ. При смене адреса он не покраснел бы, а тихо перестал разрешать имя, и
-  # заметить это было бы нечем.
-  #
-  # Возврат — вместе с первым ресурсом его типа, и тогда же: адрес объявить
-  # значением, внести в реестр потребителей, снабдить пробой.
-  maester:
-    enabled: false
-
-# ─── Ory Kratos self-service UI sub-chart ──────────────────────────────────
-# Disabled in base; values.dev.yaml enables it. Service name `kratos-selfservice-ui`
-# must stay stable (kacho-ui nginx proxies to it by name).
+  enabled: false
+pg-hydra:
+  enabled: false
 kratos-selfservice-ui:
   kratosSelfServiceUI:
     enabled: false

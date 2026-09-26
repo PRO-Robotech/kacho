@@ -13,6 +13,11 @@ const DEFAULT_FALLBACK = "/";
  * current origin over http(s); otherwise returns `fallback` (default "/").
  * This rejects absolute cross-origin URLs, protocol-relative "//host",
  * backslash-obfuscated "/\\host", and non-http schemes such as "javascript:".
+ *
+ * The verdict is taken on the value the navigation receives, not on `raw`: the
+ * navigation resolves the RETURNED path once more, and a normalised pathname
+ * may begin with "//", which a second resolution reads as protocol-relative.
+ * So the returned path is resolved again and must land on the same origin.
  */
 export function safeInternalPath(raw: string | null | undefined, fallback: string = DEFAULT_FALLBACK): string {
   if (!raw) return fallback;
@@ -26,7 +31,8 @@ export function safeInternalPath(raw: string | null | undefined, fallback: strin
   if (url.origin !== origin) return fallback;
   if (url.protocol !== "http:" && url.protocol !== "https:") return fallback;
   const path = `${url.pathname}${url.search}${url.hash}`;
-  return path.startsWith("/") ? path : fallback;
+  if (!path.startsWith("/") || path.startsWith("//") || path.startsWith("/\\")) return fallback;
+  return new URL(path, origin).origin === origin ? path : fallback;
 }
 
 /**

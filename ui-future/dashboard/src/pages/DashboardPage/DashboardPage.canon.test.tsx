@@ -12,6 +12,7 @@
 
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { jest } from "@jest/globals";
+import { stubNetwork } from "@shared/test/network-stub";
 
 import { DashboardPage } from ".";
 import { SERVICE_MODULES } from "../../lib/service-modules";
@@ -52,8 +53,7 @@ function answerFor(path: string): Record<string, unknown> {
 }
 
 function mockFetch(impl: (path: string) => Promise<Response>) {
-  global.fetch = jest.fn<typeof fetch>();
-  jest.spyOn(global, "fetch").mockImplementation((input) => impl(pathOf(input)));
+  stubNetwork((input) => impl(pathOf(input)));
 }
 
 describe("главная против канона консоли", () => {

@@ -34,11 +34,14 @@ import dns from "node:dns";
  * нужен корень, а след переживает прогон. Подмена резолвера живёт ровно столько,
  * сколько процесс, и видна только ему.
  *
- * ПОЧЕМУ ИМЕННО `dns.lookup`, А НЕ `dns.resolve`. Клиент Node (`http`/`https`,
- * через `net.Socket.connect`) разрешает имя `dns.lookup` — это единственная
- * точка, через которую проходит путь запроса. `dns.resolve*` ходит к серверу имён
- * напрямую и `/etc/hosts` не читает вовсе, поэтому подменять его значило бы
- * подменять то, чем никто здесь не пользуется.
+ * ПОЧЕМУ `dns.lookup` И `dns.promises.lookup`, А НЕ `dns.resolve`. Точек, через
+ * которые путь запроса разрешает имя, ДВЕ: клиент Node (`http`/`https`, `fetch`)
+ * зовёт `dns.lookup`, а `APIRequestContext` playwright — `dns.promises.lookup`
+ * (его «happy eyeballs», см. подмену ниже). Это разные функции, и подмена одной
+ * другую не трогает: прежняя редакция называла точку единственной, и условие
+ * прогона умерло на `ENOTFOUND` при отображении, объявленном обеим половинам.
+ * `dns.resolve*` ходит к серверу имён напрямую и `/etc/hosts` не читает вовсе,
+ * поэтому подменять его значило бы подменять то, чем никто здесь не пользуется.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * СУЖЕНИЕ — ЧАСТЬ СВОЙСТВА, А НЕ ОСТОРОЖНОСТЬ
@@ -127,9 +130,29 @@ export function installHostMapping(host: string, ip: string | undefined): HostMa
     );
   }) as Lookup & { [INSTALLED]?: HostMapping[] };
 
+  // ОБЕЩАНИЯ — ОТДЕЛЬНАЯ ФУНКЦИЯ, И ИМЕННО ЕЁ ЗОВЁТ `APIRequestContext`.
+  // Сокет пути запроса playwright ставит его «happy eyeballs»
+  // (`playwright-core/lib/server/utils/happyEyeballs.js`, `lookupAddresses`):
+  // `dns.promises.lookup(host, { all: true, family: 0, verbatim: true })`.
+  // Подмена одного `dns.lookup` её не трогает, и прежняя редакция здесь
+  // утверждала обратное — условие прогона умирало на `ENOTFOUND` (2026-09-25).
+  // Таблица у обеих подмен ОДНА: разведи их — и дописанное имя дойдёт до одной.
+  const originalPromises = dns.promises.lookup;
+  const patchedPromises = ((hostname: string, options?: unknown) => {
+    const entry = mapped.find((e) => e.host === hostname);
+    if (!entry) {
+      return (originalPromises as unknown as (...a: unknown[]) => Promise<unknown>)(hostname, options);
+    }
+    const family = entry.ip.includes(":") ? 6 : 4;
+    const all =
+      typeof options === "object" && options !== null && (options as { all?: boolean }).all;
+    // Та же форма ответа, что у обратного вызова: `all: true` — массив записей,
+    // иначе одна запись `{ address, family }`.
+    return Promise.resolve(all ? [{ address: entry.ip, family }] : { address: entry.ip, family });
+  }) as typeof dns.promises.lookup;
+
   patched[INSTALLED] = mapped;
-  // `dns.promises.lookup` — отдельная реализация, и путь запроса Node её не
-  // зовёт; подменяется ровно то, через что путь проходит.
   (dns as unknown as { lookup: Lookup }).lookup = patched;
+  (dns.promises as unknown as { lookup: typeof dns.promises.lookup }).lookup = patchedPromises;
   return { host, ip };
 }
