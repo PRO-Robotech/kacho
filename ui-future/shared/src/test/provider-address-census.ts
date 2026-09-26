@@ -63,8 +63,12 @@ export { isProviderAddressText };
  * Ручки базы поставщика — имена узлов. Ось держит ручку прокси сервера разработки
  * к внешнему экрану входа (исключение в `console-provider-not-addressed.test.ts`)
  * и снимается одним изменением с ней (остаток #2874).
+ *
+ * Имя поставщика судится СЛОВОМ ручки — между `_` и краями, — а не буквами
+ * внутри чужого слова: `KACHO_MEMORY_LIMIT` и `KACHO_UI_HISTORY_DEPTH` несут те же
+ * три буквы, что имя поставщика, и прежний образец называл их ручками поставщика.
  */
-const PROVIDER_KNOBS = /^VITE_(KRATOS|HYDRA)_URL$|^KACHO_[A-Z_]*(KRATOS|HYDRA|ORY)[A-Z_]*$/;
+const PROVIDER_KNOBS = /^VITE_(KRATOS|HYDRA)_URL$|^KACHO_(?:[A-Z0-9]+_)*(?:KRATOS|HYDRA|ORY)(?:_[A-Z0-9]+)*$/;
 /** Пакеты пространства имён поставщика. */
 const PROVIDER_MODULE = /^@ory\//;
 
