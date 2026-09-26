@@ -60,20 +60,50 @@ func sortedStackNames(stacks map[string][]string) []string {
 
 // mergeInto overlays src onto dst the way helm merges values files: maps merge
 // key by key, anything else replaces wholesale.
+//
+// A map taken from src is COPIED into dst, never shared: a shared one would let
+// the next overlay edit src in place (TestMergeInto_LeavesItsSourceIntact).
 func mergeInto(dst, src map[string]any) map[string]any {
 	if dst == nil {
 		dst = map[string]any{}
 	}
 	for k, v := range src {
 		if sub, ok := v.(map[string]any); ok {
-			if cur, ok := dst[k].(map[string]any); ok {
-				dst[k] = mergeInto(cur, sub)
-				continue
-			}
+			cur, _ := dst[k].(map[string]any)
+			dst[k] = mergeInto(cur, sub)
+			continue
 		}
 		dst[k] = v
 	}
 	return dst
+}
+
+// TestMergeInto_LeavesItsSourceIntact — наложение не пишет СКВОЗЬ себя в
+// дерево-источник. Результат несёт и слой, и накладку (законный близнец
+// свойства), а слой, который вызывающий держит у себя, остаётся ровно тем, что
+// прочитано из его файла.
+//
+// Дефект найден и снят у копии края (#2735): общая с источником карта давала
+// следующей накладке править источник на месте, и дерево одного профиля
+// начинало нести объявления другого. Копия здесь заведена переездом проб
+// (#2734) и несёт ту же поправку с той же пробой — иначе переезд перенёс бы
+// снятый дефект.
+func TestMergeInto_LeavesItsSourceIntact(t *testing.T) {
+	base := map[string]any{"kaname": map[string]any{"ports": map[string]any{"loginLane": 9100}}}
+	late := map[string]any{"kaname": map[string]any{"ports": map[string]any{"public": 9090}}}
+
+	merged := mergeInto(mergeInto(map[string]any{}, base), late)
+
+	if v, ok := lookup(merged, "kaname", "ports", "public"); !ok || v != any(9090) {
+		t.Fatalf("накладка не дошла до результата (kaname.ports.public = %v): %v", v, merged)
+	}
+	if v, ok := lookup(merged, "kaname", "ports", "loginLane"); !ok || v != any(9100) {
+		t.Fatalf("накладка стёрла слой под собой (kaname.ports.loginLane = %v): %v", v, merged)
+	}
+	if v, leaked := lookup(base, "kaname", "ports", "public"); leaked {
+		t.Fatalf("накладка записала свой ключ В ИСТОЧНИК: base несёт kaname.ports.public = %v, "+
+			"объявление, которого его файл не делал: %v", v, base)
+	}
 }
 
 // resolveStack merges a stack's profiles in order and returns the gateway value

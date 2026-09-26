@@ -26,8 +26,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-
-	"gopkg.in/yaml.v3"
 )
 
 // readRepoFile reads a file addressed from the repository root. Like
@@ -41,30 +39,6 @@ func readRepoFile(t *testing.T, parts ...string) string {
 		t.Fatalf("read %s: %v", path, err)
 	}
 	return string(raw)
-}
-
-// umbrellaDir — каталог чарта-зонта, адресованный от этого пакета. Единственное
-// место пакета, где путь выписан: копия в каждом файле разошлась бы с деревом на
-// той, которую забыли поправить при переезде каталога, — и такая проба читала
-// бы «профилей нет» вместо того, чтобы упасть.
-//
-// Жил в token_shape_test.go; та проба судит ярус поставщика и переехала к чарту
-// зонта (#2734), а читатель профилей остался здесь — им пользуются пробы края.
-var umbrellaDir = filepath.Join("..", "..", "deploy", "helm", "umbrella")
-
-// umbrellaValues loads one umbrella profile as a generic tree.
-func umbrellaValues(t *testing.T, profile string) map[string]any {
-	t.Helper()
-	path := filepath.Join(umbrellaDir, profile)
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
-	}
-	var tree map[string]any
-	if err := yaml.Unmarshal(raw, &tree); err != nil {
-		t.Fatalf("parse %s: %v", path, err)
-	}
-	return tree
 }
 
 // stacksTable — the ONE place in the tree where the `-f` chains are declared.
@@ -150,6 +124,28 @@ func mergeInto(dst, src map[string]any) map[string]any {
 		dst[k] = v
 	}
 	return dst
+}
+
+// resolveStack merges a stack's profiles in order and returns the gateway value
+// at the given path, or ("", false) when the stack never declares it.
+func resolveStack(t *testing.T, stack []string, path ...string) (string, bool) {
+	t.Helper()
+	merged := map[string]any{}
+	for _, profile := range stack {
+		merged = mergeInto(merged, umbrellaValues(t, profile))
+	}
+	var cur any = merged
+	for _, key := range append([]string{"api-gateway"}, path...) {
+		m, ok := cur.(map[string]any)
+		if !ok {
+			return "", false
+		}
+		if cur, ok = m[key]; !ok {
+			return "", false
+		}
+	}
+	s, ok := cur.(string)
+	return s, ok && strings.TrimSpace(s) != ""
 }
 
 // ЗДЕСЬ СТОЯЛИ ТРИ ПРОБЫ О ДОРОГЕ КРАЯ К ПРЕЖНЕМУ ПОСТАВЩИКУ — и сняты вместе с ней
