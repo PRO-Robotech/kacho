@@ -339,6 +339,7 @@ func main() {
 	// уже стоивший выкатки на соседней оси якоря доверия.
 	if rvErr := validateProductionRevocationConfig(cfg.AppEnv, RevocationConfig{
 		IdentityProvider:           identityLane,
+		PlatformTokenIssuer:        cfg.PlatformTokenIssuer,
 		PlatformRevocationURL:      cfg.PlatformTokenRevocationURL,
 		PlatformRevocationCAFile:   cfg.PlatformTokenRevocationCAFile,
 		PlatformRevocationCertFile: cfg.PlatformTokenRevocationCertFile,

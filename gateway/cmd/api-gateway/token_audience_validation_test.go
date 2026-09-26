@@ -122,6 +122,7 @@ type identityLane struct {
 func goodRevocation(p identityposture.Provider) RevocationConfig {
 	cfg := RevocationConfig{IdentityProvider: p}
 	if p == identityposture.Own {
+		cfg.PlatformTokenIssuer = ourPlatformIssuer
 		cfg.PlatformRevocationURL = ourAuthorityURL
 		cfg.PlatformRevocationCAFile = "/etc/api-gateway/platform-revocation-ca/ca.crt"
 		cfg.PlatformRevocationCertFile = "/etc/api-gateway/mtls/tls.crt"

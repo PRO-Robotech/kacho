@@ -51,15 +51,17 @@ import (
 // Фикстура НАШЕГО авторитета отзыва: годная во всех четырёх осях. Случаи ниже
 // портят РОВНО ОДНУ.
 const (
-	ourAuthorityURL  = "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
-	ourAuthorityCA   = "/etc/api-gateway/platform-revocation-ca/ca.crt"
-	ourAuthorityCert = "/etc/api-gateway/platform-revocation-identity/tls.crt"
-	ourAuthorityKey  = "/etc/api-gateway/platform-revocation-identity/tls.key"
+	ourPlatformIssuer = "https://kaname.kacho.test"
+	ourAuthorityURL   = "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
+	ourAuthorityCA    = "/etc/api-gateway/platform-revocation-ca/ca.crt"
+	ourAuthorityCert  = "/etc/api-gateway/platform-revocation-identity/tls.crt"
+	ourAuthorityKey   = "/etc/api-gateway/platform-revocation-identity/tls.key"
 )
 
 // ourAuthorityWired — годная полоса нашего авторитета целиком.
 func ourAuthorityWired() RevocationConfig {
 	return RevocationConfig{
+		PlatformTokenIssuer:        ourPlatformIssuer,
 		PlatformRevocationURL:      ourAuthorityURL,
 		PlatformRevocationCAFile:   ourAuthorityCA,
 		PlatformRevocationCertFile: ourAuthorityCert,
@@ -93,6 +95,36 @@ func TestOwnLaneDemandsOurOwnRevocationAuthority(t *testing.T) {
 	}
 	if !strings.Contains(msg, config.IdentityProviderKnob+"=own") {
 		t.Fatalf("отказ обязан назвать полосу, по которой требование действует, получено: %q", msg)
+	}
+}
+
+// Под `own` страж судит ОБЪЯВЛЕННОГО нашего издателя. Авторитет отзыва
+// спрашивается только о токене той записи приёма, которую объявил наш издатель;
+// без объявления токены нашей чеканки принимались бы записью без этого вопроса,
+// и требование адреса выше держалось бы на том, что издателя объявил кто-то ещё.
+func TestOwnLaneDemandsOurPlatformIssuerDeclared(t *testing.T) {
+	for _, declared := range []string{"", " \t "} {
+		cfg := ownLane()
+		cfg.PlatformTokenIssuer = declared
+		err := validateProductionRevocationConfig("production", cfg)
+		if err == nil {
+			t.Fatalf("под own необъявленный наш издатель (%q) обязан отвергать старт", declared)
+		}
+		msg := err.Error()
+		if !strings.Contains(msg, "KACHO_API_GATEWAY_PLATFORM_TOKEN_ISSUER is empty") {
+			t.Fatalf("отказ обязан называть ручку нашего издателя, получено: %q", msg)
+		}
+		if !strings.Contains(msg, config.IdentityProviderKnob+"=own") {
+			t.Fatalf("отказ обязан назвать полосу, по которой требование действует, получено: %q", msg)
+		}
+	}
+}
+
+// Законный близнец: объявленный наш издатель — единственное отличие от случая
+// выше, и старт проходит.
+func TestOwnLaneWithOurPlatformIssuerDeclaredStarts(t *testing.T) {
+	if err := validateProductionRevocationConfig("production", ownLane()); err != nil {
+		t.Fatalf("под own с объявленным нашим издателем и авторитетом старт обязан проходить: %v", err)
 	}
 }
 
@@ -220,6 +252,7 @@ func TestDevClassEnvironmentIsUntouchedByTheLane(t *testing.T) {
 func TestCompositionRoot_ShowsOurRevocationAuthorityToTheGuard(t *testing.T) {
 	src := compositionRoot(t)
 	for _, want := range []struct{ field, source string }{
+		{"PlatformTokenIssuer", `cfg\.PlatformTokenIssuer`},
 		{"PlatformRevocationURL", `cfg\.PlatformTokenRevocationURL`},
 		{"PlatformRevocationCAFile", `cfg\.PlatformTokenRevocationCAFile`},
 		{"PlatformRevocationCertFile", `cfg\.PlatformTokenRevocationCertFile`},
