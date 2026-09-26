@@ -183,6 +183,16 @@ func TestRetiredVendorCeiling_TwoRemovingBranchesMergeWithoutTouchingTheGate(t *
 		t.Fatalf("сведение тронуло файлы гейта: %s", touched)
 	}
 
+	// Вершина волны — слияние второй ветки: судится то, что оно внесло в волну,
+	// то есть ровно две снятые строки второй ветки, против первого родителя.
+	tip := vendorProbeVerdict(t, root)
+	if !strings.Contains(tip.How, "HEAD^") || len(tip.Findings) != 0 {
+		t.Fatalf("вершина-слияние судится против первого родителя и молчит: %s · %v", tip.How, tip.Findings)
+	}
+	if d := tip.Deltas[vendorTreePlatform]; len(d.Removed) != 2 || len(d.Added) != 0 {
+		t.Fatalf("вклад последнего слияния — убыль 2, получено убыль %d · прирост %d", len(d.Removed), len(d.Added))
+	}
+
 	// Суд сведения — так, как его видит конвейер на запросе волны в её линию
 	// `99`: голова запроса — слияние, первым родителем у которого база запроса.
 	vendorGit(t, root, "branch", "99", fork)
