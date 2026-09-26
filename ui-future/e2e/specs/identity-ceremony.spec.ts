@@ -385,16 +385,21 @@ test("F8-09 · потолок темпа: экран называет срок �
   await expect(s.submit, "до истечения срока кнопка отправки доступна").toBeDisabled();
 
   // Отправка клавишей ввода — тот же путь, что у кнопки, и он тоже закрыт.
-  const before = census.matching("POST", LANE.login).length;
+  //
+  // Считается ПЕРВОЕ обращение пути отправки, а не глагол: признак формы экран
+  // держит только добытый при открытии (`use-form-token.ts`), каждая отправка
+  // его забирает, и открытая отправка начинается с выдачи нового. Глагол входа
+  // уходит лишь за ответом на неё — после барьера ниже, — и отрицание по одному
+  // глаголу было бы истинно и на экране, отправляющем форму.
+  const submitActs = () =>
+    census.matching("GET", LANE.csrf, "?form=login").length + census.matching("POST", LANE.login).length;
+  const before = submitActs();
   await s.password.press("Enter");
   // Барьер порядка, а не пауза: ответ на вычисление в странице приходит ПОСЛЕ
-  // событий, выпущенных её кодом раньше, — обращение, начатое обработчиком
-  // отправки, было бы уже записано.
+  // событий, выпущенных её кодом раньше, — выдача признака, начатая
+  // обработчиком отправки, была бы уже записана.
   await page.evaluate(() => undefined);
-  expect(
-    census.matching("POST", LANE.login).length,
-    `после отказа по частоте экран отправил форму снова:\n${census.describe()}`,
-  ).toBe(before);
+  expect(submitActs(), `после отказа по частоте экран начал отправку снова:\n${census.describe()}`).toBe(before);
 });
 
 test("F8-10 · служба не ответила: отказ назван, введённое цело", async ({ page }, testInfo) => {
@@ -797,11 +802,22 @@ test("F8-18 · после выхода следующий человек в эт
   // человеком его не применяет. Оставляемое (тема) — остаётся.
   test.setTimeout(180_000);
   const first = await tenantWithProject(page);
-  const accounts = (await (await page.request.get("/iam/v1/accounts?pageSize=1000")).json()) as {
-    accounts?: Array<{ id: string; name?: string }>;
-  };
-  const foreign = accounts.accounts?.[0];
-  expect(foreign?.id, "у первого человека нет аккаунта — условие сценария не создано").toBeTruthy();
+  // Аккаунт первого человека читается в окне материализации его прав: то, что
+  // проект уже читается, строки аккаунта в списке не обещает, и единственное
+  // чтение списка сразу за посевом называло «аккаунта нет» там, где он ещё не
+  // материализовался.
+  let foreign: { id: string; name?: string } | undefined;
+  await expect
+    .poll(
+      async () => {
+        const res = await page.request.get("/iam/v1/accounts?pageSize=1000");
+        if (!res.ok()) return "";
+        foreign = ((await res.json()) as { accounts?: Array<{ id: string; name?: string }> }).accounts?.[0];
+        return foreign?.id ?? "";
+      },
+      { message: "у первого человека не появился аккаунт — условие сценария не создано", timeout: 60_000 },
+    )
+    .not.toBe("");
   await page.goto(`/projects/${first.projectId}/dashboard`, { waitUntil: "domcontentloaded" });
   const stored = () =>
     page.evaluate(() => {

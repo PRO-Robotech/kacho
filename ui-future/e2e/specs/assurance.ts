@@ -57,6 +57,14 @@ export async function assuranceLevel(page: Page): Promise<string> {
  * отвергнутый глагол — виновником называется невиновный.
  */
 export async function raiseAssurance(page: Page): Promise<IssuedCall[]> {
+  // Носитель меняется МИМО вкладки, и её упорядочение (`api/carrier-order.ts`)
+  // этого не видит. Чтение страницы, выпущенное с прежним носителем и
+  // отвеченное после подтверждения, получает «сессия кончилась», а ответ такой
+  // гасит печенье — уже перевыпущенное. Поэтому страница уводится на пустой
+  // документ ДО подъёма: переход завершён — обращений прежнего документа больше
+  // нет. После подъёма страница стоит на пустом документе; экран, если он
+  // нужен, вызывающий открывает сам.
+  await page.goto("about:blank");
   const browserContext = page.context();
   const own = (await browserContext.cookies()).find((c) => c.name === SESSION_COOKIE);
   expect(own, "у браузера нет носителя сессии — поднимать нечего").toBeTruthy();

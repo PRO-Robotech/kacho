@@ -291,6 +291,25 @@ export async function register(page: Page, email = `e2e-${runTag()}@kacho.local`
     answered,
   });
 
+  // РЕГИСТРАЦИЯ КОНЧАЕТСЯ ТАМ, КУДА ЭКРАН УВОДИТ ДОКУМЕНТ, а не печеньем (#1274).
+  // Печенье ставит ответ глагола, а документ экран уводит ЗА ним — после чтения
+  // тела. Фикстура, отдавшая управление на печенье, оставляла вызывающему
+  // страницу, чей собственный переход ещё впереди: следующий `page.goto` мог
+  // быть им прерван, а носитель, сменённый мимо вкладки, — погашен ответом на
+  // чтение, выпущенное уходящим экраном. Ждётся производимый признак — документ
+  // сменился; дальше документов консоль сама не меняет (корень уводит на панель
+  // маршрутизатором, без загрузки). Ответ без успеха ухода не производит, и
+  // ждать его там нечего.
+  const answer = await answered;
+  if (answer?.ok()) {
+    await expect
+      .poll(() => (new URL(page.url()).pathname === "/registration" ? "экран регистрации не ушёл" : "ушёл"), {
+        message: "регистрация прошла, а экран регистрации не увёл документ на корень консоли",
+        timeout: 30_000,
+      })
+      .toBe("ушёл");
+  }
+
   return email;
 }
 
@@ -402,13 +421,20 @@ export async function registerAndSignIn(page: Page): Promise<Tenant> {
   const email = await register(page);
 
   // Проект арендатора заводится сам; без него адресовать модули нечем.
-  const projectId = await expect
+  //
+  // Идентификатор берётся ИЗ ТОГО ЖЕ ЧТЕНИЯ, на котором опрос сошёлся:
+  // `expect.poll` значения не возвращает, а второе чтение после опроса — снова
+  // первая страница курсорного списка, отфильтрованная по правам постранично, и
+  // обещания непустоты у него нет (см. `tenantWithProject`).
+  let projectId = "";
+  await expect
     .poll(
       async () => {
         const res = await page.request.get("/iam/v1/projects");
         if (!res.ok()) return "";
         const body = (await res.json()) as { projects?: Array<{ id: string }> };
-        return body.projects?.[0]?.id ?? "";
+        projectId = body.projects?.[0]?.id ?? "";
+        return projectId;
       },
       {
         message:
@@ -419,10 +445,7 @@ export async function registerAndSignIn(page: Page): Promise<Tenant> {
     )
     .not.toBe("");
 
-  const res = await page.request.get("/iam/v1/projects");
-  const body = (await res.json()) as { projects: Array<{ id: string }> };
-  void projectId;
-  return { email, projectId: body.projects[0].id };
+  return { email, projectId };
 }
 
 /**

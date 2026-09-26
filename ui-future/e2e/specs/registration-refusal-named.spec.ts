@@ -46,7 +46,8 @@ const REFUSAL = {
 /**
  * Экран регистрации — в той форме, какую видит человек: подписи полей, кнопка,
  * отказ предупреждением. Отправка идёт глаголом и показывает `message` ответа
- * дословно, как это делает экран консоли.
+ * дословно, как это делает экран консоли; на успехе уводит документ на корень,
+ * как уводит экран консоли, — фикстура ждёт этого ухода (`register`).
  */
 function registrationScreen(extra = ""): string {
   return `
@@ -64,13 +65,15 @@ function registrationScreen(extra = ""): string {
       // Экран подсажен пробой: его обращение идёт транспортом пробы, а не
       // \`fetch\` окна, который судит страж мест выпуска (\`issuance-guard.ts\`).
       const res = await window[Symbol.for("kacho.probe.fetch")]("/iam/v1/auth/register", { method: "POST", body: "{}" });
-      if (!res.ok) {
-        const body = await res.json();
-        const a = document.createElement("div");
-        a.setAttribute("role", "alert");
-        a.textContent = body.message;
-        document.getElementById("out").appendChild(a);
+      if (res.ok) {
+        location.replace("/");
+        return;
       }
+      const body = await res.json();
+      const a = document.createElement("div");
+      a.setAttribute("role", "alert");
+      a.textContent = body.message;
+      document.getElementById("out").appendChild(a);
     });
   </script>
 </main>`;

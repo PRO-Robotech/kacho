@@ -308,7 +308,18 @@ test("F8-23 · смена пароля внутри сессии проходи�
     expectContains(census, "GET", LANE.csrf, "?form=password");
     expectContains(census, "POST", LANE.password);
     expectNoProvider(census);
-    await expect.poll(() => bearerOf(page.context()), { message: "носитель сессии не перевыпущен" }).not.toBe(before);
+    // Исход шага — НОВЫЙ носитель, а не «не прежний»: погашенный носитель тоже
+    // не равен прежнему, и отрицание принимало бы ровно тот дефект, который
+    // держат F8-46 и F8-47.
+    await expect
+      .poll(
+        async () => {
+          const now = await bearerOf(page.context());
+          return now === "" ? "носителя нет" : now === before ? "прежний" : "перевыпущен";
+        },
+        { message: "носитель сессии не перевыпущен" },
+      )
+      .toBe("перевыпущен");
     expect(await loginStatus(testInfo, human.email, human.password), "прежний пароль всё ещё входит").toBe(401);
     expect(await loginStatus(testInfo, human.email, next), "новый пароль не входит").toBe(200);
   });
