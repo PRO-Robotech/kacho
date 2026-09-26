@@ -5,7 +5,6 @@ package repohygiene
 
 import (
 	"fmt"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,36 +20,10 @@ import (
 //
 //	go test ./internal/repohygiene/ -run TestRetiredIdentityVendorBindingsStayUnderTheirCeiling -count=1 -v
 //
-// Печатает перепись по каждому дереву (разбиение обхода по четырём категориям ·
-// строк прочитано · привязки с разбивкой по шести осям · потолок) и итог с
-// ЕДИНИЦЕЙ СЧЁТА.
-
-// vendorWalkModuleDir — пути модуля из кэша: пин go.mod читается целиком.
-func vendorWalkModuleDir(t *testing.T, root string) []string {
-	t.Helper()
-	var rels []string
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if d.Name() == ".git" {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		rel, err := filepath.Rel(root, p)
-		if err != nil {
-			return err
-		}
-		rels = append(rels, filepath.ToSlash(rel))
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("обход %s: %v — проверка НЕ ИСПОЛНЯЛАСЬ", root, err)
-	}
-	return rels
-}
+// Печатает базу (ревизию и то, как она выведена), перепись по каждому дереву
+// (разбиение обхода по четырём категориям · строк прочитано · привязки с
+// разбивкой по шести осям · число базы), разность с базой по каждому дереву и
+// итог с ЕДИНИЦЕЙ СЧЁТА.
 
 // vendorModuleDir — каталог модуля по ПИНУ из go.mod текущего дерева.
 //
@@ -73,8 +46,9 @@ func vendorModuleDir(t *testing.T, repo, module string) string {
 }
 
 // TestRetiredIdentityVendorBindingsStayUnderTheirCeiling — гейт убывающего
-// потолка: привязок к снимаемому издателю личности в трёх деревьях продукта не
-// больше записанного, а меньше — повод переписать запись.
+// потолка: привязок к снимаемому издателю личности в каждом из трёх деревьев
+// продукта не больше, чем в том же дереве на БАЗЕ изменения. Числа в дереве нет:
+// потолок — число базы, посчитанное тем же прибором.
 func TestRetiredIdentityVendorBindingsStayUnderTheirCeiling(t *testing.T) {
 	t.Parallel()
 
@@ -84,44 +58,47 @@ func TestRetiredIdentityVendorBindingsStayUnderTheirCeiling(t *testing.T) {
 		t.Fatalf("состав дерева не установлен: %v — «ноль находок» означало бы "+
 			"«ноль прочитанного»", err)
 	}
-
-	corpora := map[string]vendorTreeCorpus{
-		vendorTreePlatform: vendorCorpusFromPaths(repo, tree.SortedFiles()),
-	}
+	pinned := map[string]vendorTreeCorpus{}
 	for name, module := range retiredVendorTreeModules {
-		dir := vendorModuleDir(t, repo, module)
-		corpora[name] = vendorCorpusFromPaths(dir, vendorWalkModuleDir(t, dir))
+		c, err := vendorModuleCorpus(vendorModuleDir(t, repo, module))
+		if err != nil {
+			t.Fatalf("проверка НЕ ИСПОЛНЯЛАСЬ: %v", err)
+		}
+		pinned[name] = c
 	}
 
-	findings, census, bindings, err := judgeRetiredVendorCeiling(corpora, retiredVendorCeilings)
+	v, err := vendorVerdictAt(repo, tree.SortedFiles(), pinned)
 	if err != nil {
 		t.Fatalf("проверка НЕ ИСПОЛНЯЛАСЬ: %v", err)
 	}
+	t.Logf("база %s; выведена так: %s; деревья базы: %s", v.Rev, v.How, strings.Join(v.BaseHows, " · "))
 
 	// Адреса печатаются по КАЖДОМУ дереву, а не только по красному: из них полоса
 	// волны снятия берёт число своей области, если её область уже первого
-	// сегмента пути. У красного дерева адреса уже стоят в находке, и второй раз
-	// их не печатают.
+	// сегмента пути. У красного дерева строки прироста уже стоят в находке.
 	red := map[string]bool{}
-	for _, f := range findings {
+	for _, f := range v.Findings {
 		red[f.Tree] = true
 	}
 	for _, name := range retiredVendorTrees {
-		t.Logf("перепись %s: %s", name, census[name])
-		if coords := vendorCoords(bindings, name); !red[name] && len(coords) > 0 {
+		d := v.Deltas[name]
+		t.Logf("перепись %s: %s", name, v.Census[name])
+		t.Logf("разность %s с базой: на базе %d · в изменении %d · прирост %d · убыль %d",
+			name, d.Base, d.Head, len(d.Added), len(d.Removed))
+		if coords := vendorCoords(v.Bindings, name); !red[name] && len(coords) > 0 {
 			t.Logf("адреса %s (строк · файл), все %d, по пути:\n  %s",
 				name, len(coords), strings.Join(coords, "\n  "))
 		}
 	}
-	line, total, ceiling, walked := vendorTotal(census)
+	line, total, _, walked := vendorTotal(v.Census)
 	t.Log(line)
 
-	if total == 0 && ceiling == 0 {
+	if total == 0 {
 		t.Logf("предмет снят целиком: в трёх деревьях (путей обойдено %d) нет ни строки, "+
 			"ни пути, ни архива, ни двоичного файла, несущих имя издателя — снимите этот "+
 			"гейт вместе с предметом, он больше не стережёт ничего", walked)
 	}
-	for _, f := range findings {
+	for _, f := range v.Findings {
 		t.Error(f)
 	}
 }
@@ -174,17 +151,26 @@ func TestRetiredVendorCeilingLedgerCoversEveryTreeOfTheBuildGraph(t *testing.T) 
 		t.Errorf("деревьев под судом %d, а граф сборки даёт %d (платформа + рёбер %d): %v",
 			len(retiredVendorTrees), want, len(found), retiredVendorTrees)
 	}
-	if len(retiredVendorCeilings) != len(retiredVendorTrees) {
-		t.Errorf("строк ведомости %d при %d деревьях: ведомость сузилась",
-			len(retiredVendorCeilings), len(retiredVendorTrees))
-	}
+	// Всякое дерево, кроме рабочего, читается по пину — и на изменении, и на
+	// базе. Дерево без модуля не имело бы числа базы: судья отказал бы, но
+	// предпосылка обязана быть видна здесь, до прогона.
+	pinnedTrees := 0
 	for _, tree := range retiredVendorTrees {
-		if _, ok := retiredVendorCeilings[tree]; !ok {
-			t.Errorf("у дерева %q нет строки ведомости", tree)
+		if tree == vendorTreePlatform {
+			continue
+		}
+		pinnedTrees++
+		if _, ok := retiredVendorTreeModules[tree]; !ok {
+			t.Errorf("у дерева %q нет модуля: его не прочитать ни в изменении, ни на базе", tree)
 		}
 	}
+	if pinnedTrees != len(retiredVendorTreeModules) {
+		t.Errorf("деревьев по пину %d, модулей в ведомости %d: ведомость разошлась с перечнем",
+			pinnedTrees, len(retiredVendorTreeModules))
+	}
 	t.Logf("перепись предпосылки: внутренних рёбер go.mod %d · деревьев под судом %d · "+
-		"строк ведомости %d", len(found), len(retiredVendorTrees), len(retiredVendorCeilings))
+		"деревьев по пину %d · модулей ведомости %d", len(found), len(retiredVendorTrees),
+		pinnedTrees, len(retiredVendorTreeModules))
 }
 
 // vendorSourceArm — одно ИМЕННОЕ плечо предиката-источника: та форма записи, в
