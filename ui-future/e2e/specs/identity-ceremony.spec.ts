@@ -871,6 +871,112 @@ test("F8-18 · после выхода следующий человек в эт
   expect(await page.evaluate(() => window.localStorage.getItem("kacho-theme"))).toBe("light");
 });
 
+/**
+ * Первый ответ глагола `POST <path>` ДЕРЖИТСЯ у браузера: служба его дала, страница — ещё нет.
+ *
+ * Держится на стадии ОТВЕТА (`Fetch.requestPaused`, `requestStage: "Response"`) —
+ * той же, на которой тела снимает `answer-on-arrival.ts`: глагол дошёл до службы и
+ * исполнен ею (выход погасил сессию), а вкладка об этом ещё не знает. Так строится
+ * выход в полёте, каким его застаёт человек при медленном ответе. Держать ЗАПРОС
+ * (`page.route`) значило бы строить другое условие: сессия у службы жива, и второй
+ * выход, дойди он до неё, ею бы и кончился — отказа, снимавшего метку первого, не
+ * было бы вовсе.
+ *
+ * Остальные ответы пути отпускаются сразу и неизменными. Отпустить держимый, когда
+ * документ уже ушёл, нечего — запрос отменён уходом, и отказ протокола здесь не
+ * исход пробы.
+ */
+async function holdFirstAnswer(page: Page, path: string) {
+  const cdp = await page.context().newCDPSession(page);
+  let held: string | null = null;
+  let first: number | string = "ждём";
+  const pass = async (requestId: string) => {
+    try {
+      await cdp.send("Fetch.continueResponse", { requestId });
+    } catch {
+      // Ответа нет (обрыв) — стадия ответа не наступила, отпускается запрос.
+      await cdp.send("Fetch.continueRequest", { requestId }).catch(() => undefined);
+    }
+  };
+  cdp.on("Fetch.requestPaused", (event) => {
+    if (held === null && event.request.method === "POST") {
+      held = event.requestId;
+      first = event.responseStatusCode ?? `ответа нет: ${event.responseErrorReason ?? "причина не названа"}`;
+      return;
+    }
+    void pass(event.requestId);
+  });
+  await cdp.send("Fetch.enable", { patterns: [{ urlPattern: `*${path}`, requestStage: "Response" }] });
+  return {
+    /** Ответ службы первому глаголу: код, «ответа нет» либо «ждём», пока глагола не было. */
+    first: () => first,
+    release: async () => {
+      if (held !== null) await pass(held);
+    },
+  };
+}
+
+test("F8-18 · панель закрыта и открыта заново в полёте выхода: второе «Выйти» не начинает второго выхода", async ({
+  page,
+}, testInfo) => {
+  // verifies #2857 — находка круга 9 (system-design): панель учётной записи
+  // закрывается и в полёте выхода, а открытая заново несла СВОЙ выход. Второй
+  // уходил на службу рядом с подтверждённым первым, и его отказ — сессию уже
+  // погасил первый — снимал метку вкладки: следующий 401 чтения прежней страницы
+  // уводил на вход с её адресом возврата, отменяя переход выхода (исход F8-18).
+  //
+  // Второй глагол на службе — механизм, и он утверждается напрямую: исполнен ли
+  // переход по 401 раньше перехода выхода, решает порядок ответов, которого проба
+  // не строит, а число выходов от него не зависит. Адрес — исход у человека.
+  await seeded(testInfo, "F8-18-twice", page.context());
+  const census = ceremonyCensus(page.context());
+  const exit = await holdFirstAnswer(page, LANE.logout);
+  await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
+  const opener = page.getByRole("button", { name: "Учётная запись" });
+  const account = page.getByRole("dialog", { name: "Учётная запись" });
+  // Имя кнопки — по КОНЦУ: пока выход идёт, у неё значок ожидания (как `submitOf`).
+  const exitButton = account.getByRole("button", { name: /Выйти$/ });
+  const logoutForms = () => census.matching("GET", LANE.csrf, "?form=logout");
+
+  await opener.click();
+  await exitButton.click();
+  await expect
+    .poll(exit.first, {
+      message: "служба не подтвердила первый выход — условие сценария не создано",
+      timeout: 15_000,
+    })
+    .toBe(200);
+
+  // Выход в полёте: сессию служба погасила, ответа вкладка ещё не получила.
+  // Человек закрывает панель и открывает её снова.
+  await page.keyboard.press("Escape");
+  await expect(account, "Escape не закрыл панель учётной записи в полёте выхода").toHaveCount(0);
+  await opener.click();
+  await expect(account, "панель учётной записи не открылась снова").toBeVisible();
+  // Открытая заново панель добывает свой признак формы выхода. Нажатие ждёт его
+  // исхода: без признака второй выход, будь он начат, ждал бы выдачи и мог не
+  // успеть уйти на службу до ответа первому — и проба не увидела бы его.
+  await expect
+    .poll(() => logoutForms().filter((c) => c.outcome !== "ждём").length, {
+      message: "открытая заново панель не получила исхода выдачи признака формы выхода",
+      timeout: 15_000,
+    })
+    .toBe(2);
+  expect(
+    logoutForms().map((c) => c.outcome),
+    `признак формы выхода не выдан — условие сценария не создано:\n${census.describe()}`,
+  ).toEqual([200, 200]);
+  await exitButton.click();
+
+  await exit.release();
+  await expectAddress(page, "/login", "после выхода консоль не вернула на экран входа без адреса возврата");
+  expect(
+    census.matching("POST", LANE.logout).map(formatCall),
+    `второе «Выйти» открытой заново панели начало второй выход рядом с подтверждённым первым:\n${census.describe()}`,
+  ).toHaveLength(1);
+  expect(await sessionHeld(page.context()), "после выхода носитель сессии у браузера остался").toBe(false);
+});
+
 test("F8-19 · служба не подтвердила выход: экран не делает вид, что вышли", async ({ page }, testInfo) => {
   // verifies #2780 — близнец F8-18: изменено только то, отвечает ли служба краю.
   await seeded(testInfo, "F8-19", page.context());
