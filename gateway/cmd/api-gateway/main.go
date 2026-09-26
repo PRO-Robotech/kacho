@@ -204,20 +204,19 @@ func main() {
 	// --- JWKS verifier wired into the principal-setting path ---
 	//
 	// The same JWTVerifier is the authoritative validator for asymmetric access
-	// JWTs of every accepted issuer (platform-minted and, while the transition
-	// window is open, the previous external OAuth server). It is constructed here (independent of the DPoP
-	// feature flag) and wired into the AuthInterceptor so a real login token
-	// authenticates on the principal path.
+	// JWTs of every DECLARED accepted issuer. It is constructed here (independent
+	// of the DPoP feature flag) and wired into the AuthInterceptor so a real login
+	// token authenticates on the principal path.
 	// The DPoP middleware (below) reuses the SAME instance when enabled.
 	//
-	// Construction failure (e.g. empty resolved JWKS URL) is a MISCONFIGURATION,
-	// not an outage: the constructor reads configuration and makes no network
-	// call, so the same start can never succeed until the address and issuer are
-	// set. It is therefore judged by a guard — fatal in a production-class env,
-	// the previous warn-and-continue only under an explicit dev-class label.
-	// Absorbed unconditionally, as it was, it made a permanent misconfiguration
-	// the normal running mode: the edge reported itself as configured and
-	// refused nothing for as long as it lived (security.md §8).
+	// МЯГКИЙ ПРОХОД ОДИН, И У НЕГО ОДИН ПРОИЗВОДИТЕЛЬ — незаявленный адресат.
+	// Дойти до него может только класс разработки: в боевом классе раньше
+	// отказывает страж адресата. Отказ самого конструктора — НАСТРОЙКА, а не
+	// сбой (конструктор читает конфигурацию и к сети не ходит), и он роняет
+	// старт в любом классе. Все записи, на которых конструктор отказал бы,
+	// раньше отвергает объявление приёма, поэтому сегодня эта ветка входа не
+	// получает; она стоит затем, чтобы новый отказ конструктора, не повторённый
+	// разбором, не стал мягким проходом (kacho#2827, security.md §8).
 	// Хоп за ключами получает СВОЙ якорь доверия, ровно как административный. Пусто ⇒
 	// транспорт по умолчанию (прежнее поведение); нечитаемая связка ⇒ ОТКАЗ В СТАРТЕ,
 	// а не тихий откат к системным корням: край, который «настроен проверять» и не
@@ -271,21 +270,25 @@ func main() {
 		platformAccepted = platformAccepted || b.ReadRevocation
 	}
 
-	jwtVerifier, jverr := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		Issuers:          issuerRecords,
-		JWKSCacheTTL:     time.Duration(cfg.JWKSCacheTTLSeconds) * time.Second,
-		JWKSFetchTimeout: time.Duration(cfg.JWKSFetchTimeoutSeconds) * time.Second,
-		HTTPClient:       jwksHopClient,
-		ExpectedAudience: cfg.DeclaredTokenAudience(),
-		ClockSkew:        time.Duration(cfg.JWTClockSkewSeconds) * time.Second,
-	})
-	if tvErr := validateProductionTokenVerifierConfig(cfg.AppEnv, jverr); tvErr != nil {
-		log.Fatalf("token verifier startup-validation: %v", tvErr)
-	}
-	if jverr != nil {
+	// jwtVerifier == nil ⇔ проверяющий подпись не провязан (мягкий проход ниже).
+	var jwtVerifier *middleware.JWTVerifier
+	if cfg.DeclaredTokenAudience() == "" {
 		logger.Warn("jwks verifier not wired into principal path (HMAC-dev only)",
-			"err", jverr, "accepted_issuers", acceptedIssuers)
+			"reason", config.AudienceKnob+" is not declared", "accepted_issuers", acceptedIssuers)
 	} else {
+		verifier, verifierErr := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
+			Issuers:          issuerRecords,
+			JWKSCacheTTL:     time.Duration(cfg.JWKSCacheTTLSeconds) * time.Second,
+			JWKSFetchTimeout: time.Duration(cfg.JWKSFetchTimeoutSeconds) * time.Second,
+			HTTPClient:       jwksHopClient,
+			ExpectedAudience: cfg.DeclaredTokenAudience(),
+			ClockSkew:        time.Duration(cfg.JWTClockSkewSeconds) * time.Second,
+		})
+		if verifierErr != nil {
+			logger.Error("api-gateway refusing to start: token verifier", "err", verifierErr)
+			os.Exit(1)
+		}
+		jwtVerifier = verifier
 		authInterceptor = authInterceptor.WithVerifier(jwtVerifier)
 		logger.Info("token verifier wired into principal path",
 			"accepted_issuers", acceptedIssuers,
@@ -321,7 +324,7 @@ func main() {
 		"mode", cfg.AuthNMode,
 		"iam_internal_addr", cfg.IAMInternalAddr,
 		"dev_secret_set", cfg.AuthNDevSecret != "",
-		"jwks_verifier_set", jverr == nil)
+		"jwks_verifier_set", jwtVerifier != nil)
 
 	// --- Revocation path: refuse to boot production without its authority ---
 	//
@@ -469,7 +472,7 @@ func main() {
 		stepUpFloors = countDeclaredACRFloors(stepUpCatalog)
 	}
 	stepUpMounted := false
-	if cfg.AuthNEnforceStepUp && scErr == nil && jverr == nil && jwtVerifier != nil {
+	if cfg.AuthNEnforceStepUp && scErr == nil && jwtVerifier != nil {
 		authInterceptor = authInterceptor.WithStepUp(
 			middleware.NewStepUpGate(time.Now),
 			middleware.NewCatalogPermissionLookup(stepUpCatalog),
@@ -529,10 +532,10 @@ func main() {
 	if cfg.AuthNEnableDPoP {
 		var verifierErr error
 		// Reuse the SAME verifier instance already wired into the
-		// AuthInterceptor (single JWKS cache, one source of truth). If its
-		// construction failed above, DPoP cannot run either — fail-fast.
-		if jverr != nil {
-			log.Fatalf("jwt verifier (required by DPoP): %v", jverr)
+		// AuthInterceptor (single JWKS cache, one source of truth). If it was
+		// not wired above, DPoP cannot run either — fail-fast.
+		if jwtVerifier == nil {
+			log.Fatalf("jwt verifier (required by DPoP) is not wired: %s is not declared", config.AudienceKnob)
 		}
 		verifier := jwtVerifier
 		// ОДНОКРАТНОСТЬ ПРЕДЪЯВЛЕНИЯ — свойство ФЛОТА, а не процесса.
@@ -625,10 +628,10 @@ func main() {
 	// authenticate the caller before any server-side revocation: it verifies the
 	// presented access token via the SAME JWKS verifier used on the principal
 	// path and revokes ONLY the caller's own subject. Without a wired verifier
-	// (jverr != nil, e.g. empty JWKS URL) revocation fails closed (401); only
-	// cookie clearing remains.
+	// (the dev-class soft pass above: the token audience is not declared)
+	// revocation fails closed (401); only cookie clearing remains.
 	var logoutVerifier handler.CallerVerifier
-	if jverr == nil {
+	if jwtVerifier != nil {
 		logoutVerifier = logoutVerifierAdapter{v: jwtVerifier}
 	}
 	// Выход пишет отзыв в НАШУ запись — ту, что читает полоса отзыва выше.
