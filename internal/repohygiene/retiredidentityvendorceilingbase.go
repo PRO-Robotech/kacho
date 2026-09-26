@@ -114,7 +114,7 @@ var retiredVendorLineRef = regexp.MustCompile(`^refs/(remotes/origin|heads)/(mai
 func retiredVendorBaseRev(root string) (rev, how string, err error) {
 	out, err := gitenv.Command(root, "rev-list", "--first-parent", "HEAD").Output()
 	if err != nil {
-		return "", "", fmt.Errorf("%w: первородительская цепь HEAD не читается: %v", errVendorBase, err)
+		return "", "", fmt.Errorf("%w: первородительская цепь HEAD не читается: %w", errVendorBase, err)
 	}
 	chain := strings.Fields(string(out))
 	if len(chain) == 0 {
@@ -124,7 +124,7 @@ func retiredVendorBaseRev(root string) (rev, how string, err error) {
 	out, err = gitenv.Command(root, "for-each-ref", "--format=%(refname)",
 		"refs/remotes/origin", "refs/heads").Output()
 	if err != nil {
-		return "", "", fmt.Errorf("%w: ссылки клона не перечисляются: %v", errVendorBase, err)
+		return "", "", fmt.Errorf("%w: ссылки клона не перечисляются: %w", errVendorBase, err)
 	}
 	all := strings.Fields(string(out))
 	var origin, local []string
@@ -156,7 +156,7 @@ func retiredVendorBaseRev(root string) (rev, how string, err error) {
 	for _, ref := range candidates {
 		cnt, e := gitenv.Command(root, "rev-list", "--first-parent", "--count", "HEAD", "^"+ref).Output()
 		if e != nil {
-			return "", "", fmt.Errorf("%w: цепь HEAD против %s не считается: %v", errVendorBase, ref, e)
+			return "", "", fmt.Errorf("%w: цепь HEAD против %s не считается: %w", errVendorBase, ref, e)
 		}
 		ahead, e := strconv.Atoi(strings.TrimSpace(string(cnt)))
 		if e != nil {
@@ -193,7 +193,7 @@ func retiredVendorBaseRev(root string) (rev, how string, err error) {
 
 	parents, err := gitenv.Command(root, "rev-list", "--parents", "-n", "1", "HEAD").Output()
 	if err != nil {
-		return "", "", fmt.Errorf("%w: родители HEAD не читаются: %v", errVendorBase, err)
+		return "", "", fmt.Errorf("%w: родители HEAD не читаются: %w", errVendorBase, err)
 	}
 	merge := len(strings.Fields(string(parents))) > 2
 	switch {
@@ -231,7 +231,7 @@ func vendorRawChanges(root, rev string) ([]vendorRawChange, error) {
 	out, err := gitenv.Command(root, "diff", "--raw", "-z", "--no-renames", "--no-abbrev",
 		"--no-ext-diff", rev, "--").Output()
 	if err != nil {
-		return nil, fmt.Errorf("%w: разность с %s не читается: %v", errVendorBase, rev, err)
+		return nil, fmt.Errorf("%w: разность с %s не читается: %w", errVendorBase, rev, err)
 	}
 	fields := strings.Split(string(out), "\x00")
 	var changes []vendorRawChange
@@ -261,14 +261,14 @@ func vendorReadBlobs(root string, shas []string) (map[string][]byte, error) {
 		return nil, err
 	}
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("%w: cat-file не запущен: %v", errVendorBase, err)
+		return nil, fmt.Errorf("%w: cat-file не запущен: %w", errVendorBase, err)
 	}
 	r := bufio.NewReader(stdout)
 	var readErr error
 	for range shas {
 		header, err := r.ReadString('\n')
 		if err != nil {
-			readErr = fmt.Errorf("%w: ответ cat-file оборван: %v", errVendorBase, err)
+			readErr = fmt.Errorf("%w: ответ cat-file оборван: %w", errVendorBase, err)
 			break
 		}
 		f := strings.Fields(header)
@@ -283,14 +283,14 @@ func vendorReadBlobs(root string, shas []string) (map[string][]byte, error) {
 		}
 		data := make([]byte, size+1) // содержимое и завершающий перевод строки
 		if _, err := io.ReadFull(r, data); err != nil {
-			readErr = fmt.Errorf("%w: объект %s оборван: %v", errVendorBase, f[0], err)
+			readErr = fmt.Errorf("%w: объект %s оборван: %w", errVendorBase, f[0], err)
 			break
 		}
 		got[f[0]] = data[:size]
 	}
 	_, _ = io.Copy(io.Discard, r)
 	if err := cmd.Wait(); err != nil && readErr == nil {
-		readErr = fmt.Errorf("%w: cat-file: %v: %s", errVendorBase, err, strings.TrimSpace(stderr.String()))
+		readErr = fmt.Errorf("%w: cat-file: %w: %s", errVendorBase, err, strings.TrimSpace(stderr.String()))
 	}
 	return got, readErr
 }
@@ -422,8 +422,11 @@ func vendorModuleDirAt(root, module, version string) (string, error) {
 	out, err := cmd.Output()
 	var got struct{ Dir, Error string }
 	_ = json.Unmarshal(out, &got)
-	if err != nil || got.Dir == "" {
-		return "", fmt.Errorf("%w: модуль %s@%s не получен: %v %s", errVendorBase, module, version, err, got.Error)
+	if err != nil {
+		return "", fmt.Errorf("%w: модуль %s@%s не получен: %w (%s)", errVendorBase, module, version, err, got.Error)
+	}
+	if got.Dir == "" {
+		return "", fmt.Errorf("%w: модуль %s@%s получен без каталога (%s)", errVendorBase, module, version, got.Error)
 	}
 	return got.Dir, nil
 }
@@ -468,15 +471,15 @@ func retiredVendorBaseCorpora(
 
 	baseGoMod, err := gitenv.Command(root, "show", rev+":go.mod").Output()
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: go.mod базы не читается: %v", errVendorBase, err)
+		return nil, nil, fmt.Errorf("%w: go.mod базы не читается: %w", errVendorBase, err)
 	}
 	basePins, err := vendorGoModPins(baseGoMod)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: %v", errVendorBase, err)
+		return nil, nil, fmt.Errorf("%w: %w", errVendorBase, err)
 	}
 	headPins, err := vendorGoModPins(headGoMod)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: %v", errVendorBase, err)
+		return nil, nil, fmt.Errorf("%w: %w", errVendorBase, err)
 	}
 	for _, tree := range retiredVendorTrees {
 		module, ok := retiredVendorTreeModules[tree]
@@ -498,7 +501,7 @@ func retiredVendorBaseCorpora(
 			}
 			c, err := vendorModuleCorpus(dir)
 			if err != nil {
-				return nil, nil, fmt.Errorf("%w: %v", errVendorBase, err)
+				return nil, nil, fmt.Errorf("%w: %w", errVendorBase, err)
 			}
 			base[tree] = c
 			hows = append(hows, fmt.Sprintf("%s: пин базы %s, изменения %s", tree, was, now))
@@ -533,7 +536,7 @@ func vendorVerdictAt(root string, rels []string, pinned map[string]vendorTreeCor
 	}
 	gomod, err := os.ReadFile(filepath.Join(root, "go.mod")) // #nosec G304 -- корень дерева под судом
 	if err != nil {
-		return v, fmt.Errorf("%w: go.mod изменения не читается: %v", errVendorBase, err)
+		return v, fmt.Errorf("%w: go.mod изменения не читается: %w", errVendorBase, err)
 	}
 	base, hows, err := retiredVendorBaseCorpora(root, v.Rev, head, gomod)
 	if err != nil {

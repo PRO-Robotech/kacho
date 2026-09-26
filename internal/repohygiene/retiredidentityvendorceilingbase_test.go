@@ -338,11 +338,11 @@ func TestRetiredVendorCeiling_NoLineRefIsARefusal(t *testing.T) {
 	// Близнец: та же история и ОДНА ссылка линии — база выводится.
 	vendorGit(t, root, "branch", "100")
 	vendorGit(t, root, "commit", "--quiet", "--allow-empty", "-m", "ветка")
-	if _, how, err := retiredVendorBaseRev(root); err != nil {
+	_, how, err := retiredVendorBaseRev(root)
+	if err != nil {
 		t.Fatalf("со ссылкой линии база обязана выводиться: %v", err)
-	} else {
-		t.Logf("база близнеца: %s", how)
 	}
+	t.Logf("база близнеца: %s", how)
 }
 
 // TestRetiredVendorCeiling_BaseSymlinkIsARefusal — символическая ссылка на базе

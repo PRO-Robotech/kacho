@@ -1276,12 +1276,12 @@ func vendorBaseBindings(
 			same[rel] = true
 			continue
 		}
-		switch {
-		case e.kind == "body":
+		switch e.kind {
+		case "body":
 			differing.Bodies[rel] = e.text
-		case e.kind == "blob":
+		case "blob":
 			differing.Blobs[rel] = e.text
-		case e.kind == "prose":
+		case "prose":
 			differing.Prose = append(differing.Prose, rel)
 		}
 	}
