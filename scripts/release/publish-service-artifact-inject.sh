@@ -21,8 +21,10 @@
 #   · условие, которого проба не создала, — «НЕ ВЫПОЛНИЛОСЬ», а не находка о
 #     производителе.
 #
-# Исходы: 0 — доказано; 1 — провалено утверждение; 2 — испытуемого нет;
-# 3 — вердикта нет (go недоступен, условие случая не создано, утверждений ноль).
+# Исходы — по контракту доказательств дерева (`deploy/tests/helm/README.md`
+# §«Три исхода»): 0 — доказано; 1 — провалено утверждение; 2 — условие не
+# создано (испытуемого нет, go недоступен, условие случая не создано,
+# утверждений ноль). Коды производителя 0–3 внутри — его контракт, не этот.
 set -uo pipefail
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
       GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX
@@ -36,16 +38,21 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
 # объявляла его правоту дефектом («код 0, ожидался 3») — и хук отправки краснел
 # на содержимом ствола у каждого, у кого корневая личность есть.
 #
-# Закрыты все пять форм, которыми вызывающий передаёт настройку: корневой файл и
-# файл XDG (оба снимает `GIT_CONFIG_GLOBAL`), системный файл, переменные
+# Закрыты все шесть форм, которыми вызывающий передаёт настройку: корневой файл
+# и файл XDG (оба снимает `GIT_CONFIG_GLOBAL`), системный файл, переменные
 # `GIT_CONFIG_COUNT/KEY/VALUE` и `GIT_CONFIG_PARAMETERS` — так доезжает `git -c`,
-# в том числе до хука. Что изоляция держит каждую форму, а снятая изоляция даёт
-# «НЕ ВЫПОЛНИЛОСЬ», а не находку, доказывает
-# publish-service-artifact-probe-hermetic-inject.sh. Он снимает две строки ниже,
+# в том числе до хука, — и каталог шаблонов `GIT_TEMPLATE_DIR` (#2823). Шестая
+# форма обходит первые пять: `git init` и `git clone` копируют из шаблона `config`
+# (и хуки) в КАЖДЫЙ новый репозиторий пробы, то есть настройка вызывающего
+# доезжает ЛОКАЛЬНОЙ, когда корневая и системная уже сняты. Пустое значение —
+# «шаблонов нет»: git не копирует ничего. Что изоляция держит каждую форму, а
+# снятая изоляция даёт «НЕ ВЫПОЛНИЛОСЬ», а не находку, доказывает
+# publish-service-artifact-probe-hermetic-inject.sh. Он снимает три строки ниже,
 # сличая их ДОСЛОВНО: правка их формы без правки доказательства даст там
 # «дефект не внесён», а не молчаливое зелёное.
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYSTEM=1
 unset GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT
+export GIT_TEMPLATE_DIR=
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SUT="$HERE/publish-service-artifact.sh"
@@ -138,15 +145,19 @@ EOF
       && git add -A && git commit --quiet -m t ) >/dev/null 2>&1
 }
 
+# Номер задачи РЕПОЗИТОРИЯ АРТЕФАКТА — обязательный вход производителя (#2819):
+# им названы ветка, первая строка коммита, заголовок запроса и коммит слияния.
+# Номер синтетический и нарочно не похож ни на одну координату фикстуры.
+ISSUE_N=42
 run_sut() {  # run_sut <каталог> [доп. ключи...]
     local d="$1"; shift
     ( cd "$d" && KACHO_ARTIFACT_HOST=example.test \
-        "$SUT" probe owner/probe --confirm owner/probe "$@" 2>&1 )
+        "$SUT" probe owner/probe --confirm owner/probe --issue "$ISSUE_N" "$@" 2>&1 )
 }
 
 SCRATCH="$(mktemp -d)" || exit 2
 trap 'rm -rf "$SCRATCH"' EXIT
-command -v go >/dev/null 2>&1 || { echo "нет go — доказать нечем" >&2; exit 3; }
+command -v go >/dev/null 2>&1 || { echo "нет go — доказать нечем" >&2; exit 2; }
 
 echo "── A. контроль: дерево цело"
 make_tree "$SCRATCH/a" "example.test/owner/probe" pass
@@ -194,7 +205,7 @@ echo "── C'. отказ ОКРУЖЕНИЯ у держателя — тре�
 make_tree "$SCRATCH/c3" "example.test/owner/probe" pass
 printf 'это файл, а не каталог\n' > "$SCRATCH/badcache"
 OUT="$( cd "$SCRATCH/c3" && GOCACHE="$SCRATCH/badcache" KACHO_ARTIFACT_HOST=example.test \
-        "$SUT" probe owner/probe --confirm owner/probe 2>&1 )"; RC=$?
+        "$SUT" probe owner/probe --confirm owner/probe --issue "$ISSUE_N" 2>&1 )"; RC=$?
 say "C5 непригодный кэш сборки — НЕ ВЫПОЛНИЛОСЬ, а не находка" 3 "НЕ ВЫПОЛНИЛОСЬ" "$OUT" "$RC"
 say "C6 та же полоса названа непрошенной" 3 "не спрошено: самодостаточность модуля" "$OUT" "$RC"
 say "C7 третья категория не выдаётся за вердикт" 3 "ВЕРДИКТА НЕТ" "$OUT" "$RC"
@@ -269,11 +280,22 @@ say "E1 находка + непрошенное разом → код наход
 echo "── F. позван неверно — необратимого шага нет"
 make_tree "$SCRATCH/f" "example.test/owner/probe" pass
 OUT="$( cd "$SCRATCH/f" && KACHO_ARTIFACT_HOST=example.test \
-        "$SUT" probe owner/probe --confirm owner/WRONG 2>&1 )"; RC=$?
+        "$SUT" probe owner/probe --confirm owner/WRONG --issue "$ISSUE_N" 2>&1 )"; RC=$?
 say "F1 подтверждение не совпало" 2 "Ничего не отправлено" "$OUT" "$RC"
 OUT="$( cd "$SCRATCH/f" && KACHO_ARTIFACT_HOST=example.test \
-        "$SUT" nosuch owner/probe --confirm owner/probe 2>&1 )"; RC=$?
+        "$SUT" nosuch owner/probe --confirm owner/probe --issue "$ISSUE_N" 2>&1 )"; RC=$?
 say "F2 службы нет в ревизии" 2 "нет каталога services/nosuch" "$OUT" "$RC"
+# Номер задачи не передан — позван неверно, ДО первой отправки. Адрес указывает в
+# несуществующее место: дойди исполнение до клона, исход был бы третьим (клон не
+# удался). Код 2 доказывает, что до клона не дошло (#2819).
+OUT="$( cd "$SCRATCH/f" && KACHO_ARTIFACT_HOST=example.test \
+        KACHO_ARTIFACT_URL="$SCRATCH/does-not-exist.git" \
+        "$SUT" probe owner/probe --confirm owner/probe --publish --via-pull-request 2>&1 )"; RC=$?
+say "F3 номер задачи не передан — позван неверно, до клона" 2 "номер задачи репозитория артефакта не передан" "$OUT" "$RC"
+OUT="$( cd "$SCRATCH/f" && KACHO_ARTIFACT_HOST=example.test \
+        KACHO_ARTIFACT_URL="$SCRATCH/does-not-exist.git" \
+        "$SUT" probe owner/probe --confirm owner/probe --issue "issue-$ISSUE_N" --publish 2>&1 )"; RC=$?
+say "F4 номер задачи не номер — позван неверно" 2 "Ничего не отправлено" "$OUT" "$RC"
 
 echo "── G. КРАСНЫЙ прогон с --publish не отправляет ничего"
 # Адрес указывает в несуществующее место: дойди исполнение до клона, исход был
@@ -281,7 +303,7 @@ echo "── G. КРАСНЫЙ прогон с --publish не отправляе
 make_tree "$SCRATCH/g" "example.test/owner/probe-old" pass
 OUT="$( cd "$SCRATCH/g" && KACHO_ARTIFACT_HOST=example.test \
         KACHO_ARTIFACT_URL="$SCRATCH/does-not-exist.git" \
-        "$SUT" probe owner/probe --confirm owner/probe --publish 2>&1 )"; RC=$?
+        "$SUT" probe owner/probe --confirm owner/probe --issue "$ISSUE_N" --publish 2>&1 )"; RC=$?
 say "G1 красное с --publish → код находки, не клона" 1 "ВЫКЛАДКА НЕ ОТКРЫТА" "$OUT" "$RC"
 say "G2 клона не было" 1 "-" "$(printf '%s' "$OUT" | grep -c 'клон артефакта' | sed 's/^0$/нет клона/')" "$RC"
 
@@ -305,10 +327,18 @@ printf 'module example.test/owner/probe\n' > "$SEED/go.mod"
 BEFORE="$( cd "$SCRATCH/h" && git status --porcelain | sort )"
 OUT="$( cd "$SCRATCH/h" && KACHO_ARTIFACT_HOST=example.test \
         KACHO_ARTIFACT_URL="$BARE" \
-        "$SUT" probe owner/probe --confirm owner/probe --publish 2>&1 )"; RC=$?
+        "$SUT" probe owner/probe --confirm owner/probe --issue "$ISSUE_N" --publish 2>&1 )"; RC=$?
 AFTER="$( cd "$SCRATCH/h" && git status --porcelain | sort )"
 say "H1 выкладка проходит" 0 "Выложено" "$OUT" "$RC"
 say "H2 набор равен дереву службы" 0 "набор равен дереву службы" "$OUT" "$RC"
+# Первая строка выложенного коммита — `#<N> ` задачи репозитория артефакта:
+# сверяется объект на удалённом, а не вывод производителя (#2819).
+H_SUBJ="$(git --git-dir="$BARE" log -1 --format=%s main 2>/dev/null)"
+if [[ "$H_SUBJ" == "#$ISSUE_N "* ]]; then
+    ok "H2a первая строка коммита — «#$ISSUE_N …»"
+else
+    bad "H2a первая строка коммита — «#$ISSUE_N …»" "первая строка: '$H_SUBJ'"
+fi
 
 if [ "$BEFORE" = "$AFTER" ]; then
     ok "H3 рабочая копия вызывающего НЕ тронута"
@@ -338,7 +368,7 @@ fi
 # Второй вызов на том же дереве отправлять нечего: производитель идемпотентен.
 OUT="$( cd "$SCRATCH/h" && KACHO_ARTIFACT_HOST=example.test \
         KACHO_ARTIFACT_URL="$BARE" \
-        "$SUT" probe owner/probe --confirm owner/probe --publish 2>&1 )"; RC=$?
+        "$SUT" probe owner/probe --confirm owner/probe --issue "$ISSUE_N" --publish 2>&1 )"; RC=$?
 say "H6 повторная выкладка — отправлять нечего" 0 "уже совпадает с монорепо" "$OUT" "$RC"
 
 echo "── I. личность коммитящего не установлена — отказ, а не чужая подпись"
@@ -357,9 +387,77 @@ if [ -n "$SEEN" ]; then
 else
     OUT="$( cd "$SCRATCH/i" && KACHO_ARTIFACT_HOST=example.test \
             KACHO_ARTIFACT_URL="$BARE" \
-            "$SUT" probe owner/probe --confirm owner/probe --publish 2>&1 )"; RC=$?
+            "$SUT" probe owner/probe --confirm owner/probe --issue "$ISSUE_N" --publish 2>&1 )"; RC=$?
     say "I1 без личности — не выполнилось" 3 "личность коммитящего не установлена" "$OUT" "$RC"
     say "I2 и ничего не отправлено" 3 "ничего не отправлено" "$OUT" "$RC"
+fi
+
+echo "── I'. личность ТОЛЬКО в корневой настройке — ею и подписан коммит артефакта"
+# Положительная половина случая I (#2822). Решение владельца 2026-09-22: подпись
+# — только личностью из корневой настройки. Случай I держит отказ, когда её нет,
+# но не то, ОТКУДА она взята: фикстуры несут локальную личность `probe`, и
+# производитель, задающий себе личность сам (`git config --local user.*` во
+# временном клоне), проходил все прочие утверждения — подделка совпадала с
+# фикстурой. Здесь личность лежит только в корневой настройке ИЗОЛИРОВАННОГО дома
+# пробы (свой файл, не вызывающего), локальной у источника нет, и автор и
+# коммиттер коммита артефакта обязаны быть ею.
+#
+# Переменные личности коммита (GIT_AUTHOR_*, GIT_COMMITTER_*, EMAIL) сняты в самом
+# случае: они сильнее любой настройки, и значение вызывающего в них подписало бы
+# коммит мимо производителя — случай судил бы окружение, а не производителя.
+# Что это снятие держит, доказывает прогон 6 доказательства герметичности
+# (publish-service-artifact-probe-hermetic-inject.sh, #2832): он снимает строку
+# `unset` ниже, сличая её ДОСЛОВНО, — правка её формы без правки доказательства
+# даст там «дефект не внесён», а не молчаливое зелёное.
+RHOME="$SCRATCH/root-home"; mkdir -p "$RHOME"
+printf '[user]\n\tname = root-only\n\temail = root-only@invalid\n' > "$RHOME/.gitconfig"
+root_only() {  # root_only <команда...> — корневая настройка случая, без переменных личности
+    ( unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL EMAIL
+      export GIT_CONFIG_GLOBAL="$RHOME/.gitconfig"; "$@" )
+}
+make_tree "$SCRATCH/i3" "example.test/owner/probe" pass
+( cd "$SCRATCH/i3" && git config --unset user.name; git config --unset user.email ) >/dev/null 2>&1
+RBARE="$SCRATCH/bare-root.git"
+git init --quiet --bare -b main "$RBARE"
+RSEED="$SCRATCH/seed-root"; mkdir -p "$RSEED"
+printf 'прежнее дерево\n' > "$RSEED/OLD-ROOT-FILE"
+( cd "$RSEED" && git init --quiet -b main \
+  && git -c user.name=p -c user.email=p@invalid add -A \
+  && git -c user.name=p -c user.email=p@invalid commit --quiet -m seed \
+  && git push --quiet "$RBARE" main ) >/dev/null 2>&1
+# ПРЕДПОСЫЛКА СПРАШИВАЕТСЯ У GIT В ТОМ ЖЕ ОКРУЖЕНИИ, в котором позван
+# производитель: личность видна ровно одна и ровно из корневого файла случая.
+# Иначе (утечка настройки вызывающего, лишний уровень) условие не создано, и это
+# «НЕ ВЫПОЛНИЛОСЬ» с названным источником, а не находка о производителе.
+SEEN="$( cd "$SCRATCH/i3" && root_only sh -c \
+    'git config --show-origin --get-all user.name; git config --show-origin --get-all user.email' 2>/dev/null )"
+WANT="file:$RHOME/.gitconfig	root-only
+file:$RHOME/.gitconfig	root-only@invalid"
+# И какой подписью git подписал бы коммит в этом окружении: переменные личности
+# сильнее настройки, и настройка без них ещё не всё окружение.
+IDENT="$( cd "$SCRATCH/i3" && root_only sh -c 'git var GIT_AUTHOR_IDENT; git var GIT_COMMITTER_IDENT' 2>/dev/null \
+          | sed -E 's/ [0-9]+ [+-][0-9]{4}$//' )"
+WANT_IDENT="root-only <root-only@invalid>
+root-only <root-only@invalid>"
+if [ "$SEEN" != "$WANT" ] || [ "$IDENT" != "$WANT_IDENT" ]; then
+    notrun 3 "I3, I4, I5" "условие «личность только в корневой настройке» не создано — git видит: $(printf '%s' "$SEEN" | tr '\t\n' ' ;'); подписал бы: $(printf '%s' "$IDENT" | tr '\n' ';')"
+else
+    OUT="$(KACHO_ARTIFACT_URL="$RBARE" root_only run_sut "$SCRATCH/i3" --publish)"; RC=$?
+    say "I3 личность только корневая — выложено" 0 "Выложено" "$OUT" "$RC"
+    # Сверяется КОММИТ на удалённом, а не вывод производителя: подпись — свойство
+    # выложенного объекта, и пересказ её в выводе ничего о нём не утверждает.
+    GOT_AUTHOR="$(git --git-dir="$RBARE" log -1 --format='%an <%ae>' main 2>/dev/null)"
+    GOT_COMMITTER="$(git --git-dir="$RBARE" log -1 --format='%cn <%ce>' main 2>/dev/null)"
+    if [ "$GOT_AUTHOR" = "root-only <root-only@invalid>" ]; then
+        ok "I4 автор коммита артефакта — личность корневой настройки"
+    else
+        bad "I4 автор коммита артефакта — личность корневой настройки" "автор: '$GOT_AUTHOR'"
+    fi
+    if [ "$GOT_COMMITTER" = "root-only <root-only@invalid>" ]; then
+        ok "I5 коммиттер коммита артефакта — личность корневой настройки"
+    else
+        bad "I5 коммиттер коммита артефакта — личность корневой настройки" "коммиттер: '$GOT_COMMITTER'"
+    fi
 fi
 
 echo "── J. транспорт наследуется у источника, а не назначается"
@@ -376,7 +474,7 @@ echo "── K. отказ отправки — ТРЕТЬЯ категория,
 make_tree "$SCRATCH/k" "example.test/owner/probe" pass
 OUT="$( cd "$SCRATCH/k" && KACHO_ARTIFACT_HOST=example.test \
         KACHO_ARTIFACT_URL="$SCRATCH/bare.git" \
-        "$SUT" probe owner/probe --confirm owner/probe --branch nosuchbranch --publish 2>&1 )"; RC=$?
+        "$SUT" probe owner/probe --confirm owner/probe --issue "$ISSUE_N" --branch nosuchbranch --publish 2>&1 )"; RC=$?
 say "K1 ствола нет у артефакта — не выполнилось" 3 "клон не удался" "$OUT" "$RC"
 
 echo "── M. условие транспорта: объявление конвейера и полномочие OAuth"
@@ -470,7 +568,7 @@ printf 'прежнее дерево\n' > "$LSEED/OLD-ROOT-FILE"
 TRUNK0="$(bare_trunk "$LBARE")"
 
 make_tree "$SCRATCH/l" "example.test/owner/probe" pass
-WB="publish/probe-$( cd "$SCRATCH/l" && git rev-parse HEAD | cut -c1-12 )"
+WB="$ISSUE_N"
 
 run_pr() {  # run_pr <mode> <forge> [доп. ключи]
     local mode="$1" forge="$2"; shift 2
@@ -478,12 +576,12 @@ run_pr() {  # run_pr <mode> <forge> [доп. ключи]
     ( cd "$SCRATCH/l" && KACHO_ARTIFACT_HOST=example.test \
         KACHO_ARTIFACT_URL="$LBARE" KACHO_FORGE_CMD="$forge" \
         STUB_STATE="$SCRATCH/stub" \
-        "$SUT" probe owner/probe --confirm owner/probe --publish --via-pull-request "$@" 2>&1 )
+        "$SUT" probe owner/probe --confirm owner/probe --issue "$ISSUE_N" --publish --via-pull-request "$@" 2>&1 )
 }
 
 # L1 — холостой прогон называет полосу, которой позван.
 OUT="$( cd "$SCRATCH/l" && KACHO_ARTIFACT_HOST=example.test \
-        "$SUT" probe owner/probe --confirm owner/probe --via-pull-request 2>&1 )"; RC=$?
+        "$SUT" probe owner/probe --confirm owner/probe --issue "$ISSUE_N" --via-pull-request 2>&1 )"; RC=$?
 say "L1 холостой прогон называет полосу" 0 "ЧЕРЕЗ ЗАПРОС НА СЛИЯНИЕ" "$OUT" "$RC"
 say "L2 подсказка несёт тот же ключ" 0 "--publish --via-pull-request" "$OUT" "$RC"
 
@@ -500,6 +598,27 @@ if [ "$(bare_trunk "$LBARE")" = "$TRUNK0" ]; then
 else
     bad "L5 ствол НЕ тронут" "ствол сдвинулся: $TRUNK0 → $(bare_trunk "$LBARE")"
 fi
+# Ветка — номер задачи, и ни одной ветки иного имени производитель не заводит:
+# спрашивается перечень веток удалённого, а не значение, которое проба сама
+# назвала (#2819). Ствол — единственное законное имя-не-номер.
+L_HEADS="$(git --git-dir="$LBARE" for-each-ref --format='%(refname:short)' refs/heads/ 2>/dev/null)"
+L_ODD=""
+while IFS= read -r h; do
+    [ -n "$h" ] || continue
+    [ "$h" = main ] && continue
+    [[ "$h" =~ ^[0-9]+$ ]] || L_ODD="$L_ODD $h"
+done <<< "$L_HEADS"
+if [ -z "$L_ODD" ] && [[ $'\n'"$L_HEADS"$'\n' == *$'\n'"$ISSUE_N"$'\n'* ]]; then
+    ok "L5a ветка — номер задачи ($ISSUE_N), веток иного имени нет"
+else
+    bad "L5a ветка — номер задачи ($ISSUE_N), веток иного имени нет" "ветки: $(printf '%s' "$L_HEADS" | tr '\n' ' ')"
+fi
+L_SUBJ="$(git --git-dir="$LBARE" log -1 --format=%s "refs/heads/$WB" 2>/dev/null)"
+if [[ "$L_SUBJ" == "#$ISSUE_N "* ]]; then
+    ok "L5b первая строка коммита ветки — «#$ISSUE_N …»"
+else
+    bad "L5b первая строка коммита ветки — «#$ISSUE_N …»" "первая строка: '$L_SUBJ'"
+fi
 
 # L6 — красная обязательная проверка: НАХОДКА о дереве, а не третья категория.
 OUT="$(run_pr red "$STUB")"; RC=$?
@@ -508,6 +627,13 @@ if grep -q '^pr create' "$SCRATCH/stub/log"; then
     ok "L6a запрос на слияние заведён"
 else
     bad "L6a запрос на слияние заведён" "журнал: $(tr '\n' '|' < "$SCRATCH/stub/log")"
+fi
+# Заголовок запроса начинается с `#<N> ` — журнал форжа несёт доводы вызова как
+# есть, и заголовок в нём стоит сразу за ключом (#2819).
+if grep -q -- "^pr create .*--title #$ISSUE_N " "$SCRATCH/stub/log"; then
+    ok "L6b заголовок запроса — «#$ISSUE_N …»"
+else
+    bad "L6b заголовок запроса — «#$ISSUE_N …»" "журнал: $(tr '\n' '|' < "$SCRATCH/stub/log")"
 fi
 say "L7 находка называет проверку" 1 "гейт-б" "$OUT" "$RC"
 if ! grep -q '^pr merge' "$SCRATCH/stub/log"; then
@@ -534,9 +660,22 @@ else
     bad "L13 вливание позвано с номером запроса" "журнал: $(tr '\n' '|' < "$SCRATCH/stub/log")"
 fi
 if grep -q '^pr merge 77 .*--body-file' "$SCRATCH/stub/log"; then
-    ok "L13a тело схлопнутого коммита задано ЯВНО, а не умолчанием форжа"
+    ok "L13a тело коммита слияния задано ЯВНО, а не умолчанием форжа"
 else
-    bad "L13a тело схлопнутого коммита задано ЯВНО, а не умолчанием форжа" "журнал: $(tr '\n' '|' < "$SCRATCH/stub/log")"
+    bad "L13a тело коммита слияния задано ЯВНО, а не умолчанием форжа" "журнал: $(tr '\n' '|' < "$SCRATCH/stub/log")"
+fi
+# Вливание — коммитом слияния, без схлопывания и rebase, и его первая строка —
+# `#<N> merge #<N>: …`, а не умолчание форжа «Merge pull request #…» (#2819).
+if grep -q -- '^pr merge 77 .*--merge' "$SCRATCH/stub/log" &&
+    ! grep -q -E -- '^pr merge 77 .*--(squash|rebase)' "$SCRATCH/stub/log"; then
+    ok "L13b вливание — коммитом слияния (--merge), без схлопывания и rebase"
+else
+    bad "L13b вливание — коммитом слияния (--merge), без схлопывания и rebase" "журнал: $(tr '\n' '|' < "$SCRATCH/stub/log")"
+fi
+if grep -q -- "^pr merge 77 .*--subject #$ISSUE_N merge #$ISSUE_N: " "$SCRATCH/stub/log"; then
+    ok "L13c первая строка коммита слияния — «#$ISSUE_N merge #$ISSUE_N: …»"
+else
+    bad "L13c первая строка коммита слияния — «#$ISSUE_N merge #$ISSUE_N: …»" "журнал: $(tr '\n' '|' < "$SCRATCH/stub/log")"
 fi
 if [ "$(bare_trunk "$LBARE")" = "$TRUNK0" ]; then
     ok "L14 ствол двигает ФОРЖ, а не производитель"
@@ -563,10 +702,10 @@ fi
 echo
 printf 'перепись доказательства: утверждений %d, прошло %d, провалено %d, не выполнено %d\n' \
     "$((PASS+FAIL))" "$PASS" "$FAIL" "$NOTRUN"
-[ "$((PASS+FAIL))" -gt 0 ] || { echo "утверждений ноль — доказательство беспредметно" >&2; exit 3; }
+[ "$((PASS+FAIL))" -gt 0 ] || { echo "утверждений ноль — доказательство беспредметно" >&2; exit 2; }
 # Находка объявляется ПЕРВОЙ: не созданное условие соседнего случая её не маскирует.
 [ "$FAIL" = "0" ] || exit 1
 [ "$NOTRUN" = "0" ] || {
     echo "ВЕРДИКТА НЕТ по $NOTRUN утверждениям: условие не создано — это не «доказано» и не находка о производителе" >&2
-    exit 3; }
+    exit 2; }
 exit 0

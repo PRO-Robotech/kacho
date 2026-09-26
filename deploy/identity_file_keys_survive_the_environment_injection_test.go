@@ -59,7 +59,13 @@ func scanRenderedStack(t *testing.T, sets ...string) (declared int, findings []o
 		t.Fatalf("в таблице стеков нет %q — предпосылка инъекции исчезла, а не дефект перестал вноситься",
 			injectionStack)
 	}
-	rendered, err := renderStack(t, chain, sets...)
+	// Поставщик на стенде не поднимается (#2735): его поднимает проба, тем же
+	// фактом, что у гейта, и только поверх цепочки, объявляющей его настройки.
+	if !chainDeclaresIdentityStore(t, chain) {
+		t.Fatalf("стек %q больше не объявляет настроек службы личности поставщика — оси файла "+
+			"настроек судить нечего; снимите её вместе с предметом (#1276)", injectionStack)
+	}
+	rendered, err := renderStack(t, chain, append(append([]string{}, providerRaisedByProbe...), sets...)...)
 	if err != nil {
 		t.Fatalf("рендер стека %q с инъекцией %v не удался (%v) — вердикта нет:\n%s",
 			injectionStack, sets, err, rendered)
@@ -158,6 +164,66 @@ func TestFileKeyOverrideInjection_RealKnobRedsAndLegalTwinIsSilent(t *testing.T)
 			"перепись объявила бы «ни один ключ не перебивается», не имея возможности это измерить: " +
 			"имён ключей чужого секрета в рендере нет by construction")
 	}
+
+	// ── ОСЬ ОБЪЯВЛЕННОГО ОТСУТСТВИЯ (задача #2816) ────────────────────────
+	//
+	// Стек посадки own: контроль молчит, а КАЖДАЯ одно-фактная инъекция чужой
+	// нагрузки настоящей ручкой чарта краснеет, называя внесённое. Инъекции идут
+	// по одной: доказательство на одном месте за всех не засчитывается.
+	t.Run("own: контроль молчит, одна чужая нагрузка краснеет", func(t *testing.T) {
+		posture, control := judgeOwnStack(t)
+		if posture != "own" {
+			t.Fatalf("стек %q объявляет посадку %q, а не own — предмет оси исчез", ownInjectionStack, posture)
+		}
+		t.Logf("контроль own: находок %d", len(control))
+		if len(control) != 0 {
+			t.Fatalf("контроль: на целом стеке own уже %d находок (%v) — фон непуст, и покраснение "+
+				"инъекции не будет доказательством", len(control), control)
+		}
+		for _, inj := range []struct{ set, mustName string }{
+			{"kratos.enabled=true", "Deployment/kacho-umbrella-kratos"},
+			{"hydra.enabled=true", "Deployment/kacho-umbrella-hydra"},
+			{"pg-hydra.enabled=true", "StatefulSet/kacho-umbrella-pg-hydra"},
+			{"kaname.kratos.config.enabled=true", "ConfigMap/kaname-kratos-config"},
+			{"api-gateway.tokenAcceptance.issuers=https://kaname.kacho.local\\,https://hydra.api.kacho.cloud",
+				"KACHO_API_GATEWAY_TOKEN_ISSUERS"},
+		} {
+			_, got := judgeOwnStack(t, inj.set)
+			named := false
+			for _, f := range got {
+				if strings.Contains(f, inj.mustName) {
+					named = true
+				}
+			}
+			t.Logf("инъекция %s: находок %d, внесённое названо: %v", inj.set, len(got), named)
+			if !named {
+				t.Errorf("инъекция `%s` в стек own НЕ дала находки, называющей %s (находок %d: %v) — "+
+					"объявленное отсутствие поставщика неотличимо от поднятого поставщика",
+					inj.set, inj.mustName, len(got), got)
+			}
+		}
+	})
+}
+
+// ownInjectionStack — стек посадки own, на котором ведётся ось объявленного
+// отсутствия. Отдельная константа: у оси файла настроек стек свой (`prod`).
+const ownInjectionStack = "own"
+
+// judgeOwnStack — то же суждение, что у гейта для стека посадки own, на рендере
+// с инъекцией.
+func judgeOwnStack(t *testing.T, sets ...string) (posture string, findings []string) {
+	t.Helper()
+	chain, ok := deployStacks(t)[ownInjectionStack]
+	if !ok {
+		t.Fatalf("в таблице стеков нет %q — предпосылка оси исчезла", ownInjectionStack)
+	}
+	rendered, err := renderStack(t, chain, sets...)
+	if err != nil {
+		t.Fatalf("рендер стека %q с инъекцией %v не удался (%v) — вердикта нет:\n%s",
+			ownInjectionStack, sets, err, rendered)
+	}
+	docs := decodeRender(t, rendered)
+	return identityPostureOf(docs), judgeDeclaredAbsence(ownInjectionStack, providerResidueOf(docs))
 }
 
 // TestFileKeyOverrideInjection_ExistingControlStillReds — ПРОГОН 3.
@@ -173,7 +239,8 @@ func TestFileKeyOverrideInjection_RealKnobRedsAndLegalTwinIsSilent(t *testing.T)
 func TestFileKeyOverrideInjection_ExistingControlStillReds(t *testing.T) {
 	configArgsOf := func(sets ...string) map[string][]string {
 		stacks := deployStacks(t)
-		rendered, err := renderStack(t, stacks[injectionStack], sets...)
+		rendered, err := renderStack(t, stacks[injectionStack],
+			append(append([]string{}, providerRaisedByProbe...), sets...)...)
 		if err != nil {
 			t.Fatalf("рендер %q (%v): %v\n%s", injectionStack, sets, err, rendered)
 		}

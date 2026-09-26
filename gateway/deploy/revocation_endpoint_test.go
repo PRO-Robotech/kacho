@@ -4,7 +4,15 @@
 // revocation_endpoint_test.go — every deployed stand must tell the gateway where
 // to ask whether a token has been revoked.
 //
-// The gateway cannot work this address out. Introspection is served by the
+// WHICH AUTHORITY depends on the edge's identity posture. On `external` it is the
+// identity provider's admin API, and the two addresses below are required. On
+// `own` the provider is not on the stand and our own revocation authority takes
+// its place (TestStacks_AcceptingOurIssuerNameTheRevocationAuthority below), so
+// the provider's addresses are required to be ABSENT — see
+// provider_road_posture_test.go for how the posture is read and why absence is
+// asserted rather than skipped.
+//
+// The gateway cannot work the provider's address out. Introspection is served by the
 // identity provider's ADMIN API, on a Service and port distinct from the public
 // issuer, and reachable only inside the cluster — so a profile that leaves it
 // out does not fall back to something workable, it leaves the check with nowhere
@@ -47,11 +55,17 @@ func readRepoFile(t *testing.T, parts ...string) string {
 	return string(raw)
 }
 
-// stacksTable — the ONE place in the tree where the `-f` chains are declared.
-// Read from here, from deploy/tests/helm/stacks.sh and from the deploy package;
-// nowhere else, and TestNoSecondCopyOfAStackChain (deploy/stack_table_test.go)
-// keeps it that way.
-const stacksTable = "../../deploy/stacks.txt"
+// stacksTableFromRoot — the ONE place in the tree where the `-f` chains are
+// declared, addressed from the repository root. TestNoSecondCopyOfAStackChain
+// (deploy/stack_table_test.go) keeps the chains themselves from being copied
+// anywhere else; it does not count readers. Inside this package the table has
+// exactly one reader, readStackTable, and so exactly one grammar: two readers
+// with two grammars would each honestly judge the stands its own grammar
+// recognised, and a line one of them skips would narrow only half the package.
+var stacksTableFromRoot = filepath.Join("deploy", "stacks.txt")
+
+// stacksTable — the same table addressed from this package.
+var stacksTable = filepath.Join("..", "..", stacksTableFromRoot)
 
 var stackTableLine = regexp.MustCompile(`^([a-z0-9][a-z0-9-]*):(values[^,\s]*(?:,values[^,\s]*)*)$`)
 
@@ -76,10 +90,18 @@ var stackTableLine = regexp.MustCompile(`^([a-z0-9][a-z0-9-]*):(values[^,\s]*(?:
 // appends it itself.
 func deployableStacks(t *testing.T) map[string][]string {
 	t.Helper()
-	raw, err := os.ReadFile(stacksTable)
+	return readStackTable(t, stacksTable)
+}
+
+// readStackTable — the table's only reader in this package. It takes the path
+// so that a check which derives the repository root on its own (see
+// lanePrereqRoot) reads the same lines through the same grammar.
+func readStackTable(t *testing.T, path string) map[string][]string {
+	t.Helper()
+	raw, err := os.ReadFile(path) // #nosec G304 -- the stack table of this tree
 	if err != nil {
 		t.Fatalf("stack table %s is unreadable (%v) — the premise of every check in this "+
-			"package is gone, which is not the same as a clean tree", stacksTable, err)
+			"package is gone, which is not the same as a clean tree", path, err)
 	}
 	out := map[string][]string{}
 	for _, line := range strings.Split(string(raw), "\n") {
@@ -91,15 +113,27 @@ func deployableStacks(t *testing.T) map[string][]string {
 		if m == nil {
 			// An unparsed line is NOT "fewer stacks", it is "the predicate stopped
 			// recognising them". Staying silent here narrows every check downstream.
-			t.Fatalf("stack table line not parsed: %q (%s)", line, stacksTable)
+			t.Fatalf("stack table line not parsed: %q (%s)", line, path)
 		}
 		out[m[1]] = strings.Split(m[2], ",")
 	}
 	if len(out) == 0 {
 		t.Fatalf("%s declares no stacks — this package is not entitled to conclude that "+
-			"none are left", stacksTable)
+			"none are left", path)
 	}
 	return out
+}
+
+// sortedStackNames — имена цепочек таблицы в устойчивом порядке. Обход карты
+// давал бы подпробы и находки в порядке, разном от прогона к прогону, и два
+// прогона одного дерева нельзя было бы сравнить построчно.
+func sortedStackNames(stacks map[string][]string) []string {
+	names := make([]string, 0, len(stacks))
+	for name := range stacks {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // introspectionAdminPath — the path the provider's admin API serves token
@@ -108,21 +142,48 @@ func deployableStacks(t *testing.T) map[string][]string {
 const introspectionAdminPath = "/admin/oauth2/introspect"
 
 // mergeInto overlays src onto dst the way helm merges values files: maps merge
-// key by key, anything else replaces wholesale.
+// key by key, anything else replaces wholesale. It is the package's only
+// overlay.
+//
+// A map taken from src is COPIED into dst, never shared. A shared one would let
+// the next overlay edit src in place: `mergeInto(mergeInto({}, base), late)`
+// used to leave `late`'s keys inside `base`, so one profile tree held by a
+// caller ended up carrying another profile's declarations.
 func mergeInto(dst, src map[string]any) map[string]any {
 	if dst == nil {
 		dst = map[string]any{}
 	}
 	for k, v := range src {
 		if sub, ok := v.(map[string]any); ok {
-			if cur, ok := dst[k].(map[string]any); ok {
-				dst[k] = mergeInto(cur, sub)
-				continue
-			}
+			cur, _ := dst[k].(map[string]any)
+			dst[k] = mergeInto(cur, sub)
+			continue
 		}
 		dst[k] = v
 	}
 	return dst
+}
+
+// TestMergeInto_LeavesItsSourceIntact — the overlay does not write THROUGH
+// itself into a source tree. The result carries both the layer and the overlay
+// (the lawful twin of the property), while the layer the caller still holds
+// stays exactly what was read from its file.
+func TestMergeInto_LeavesItsSourceIntact(t *testing.T) {
+	base := map[string]any{"kaname": map[string]any{"ports": map[string]any{"loginLane": 9100}}}
+	late := map[string]any{"kaname": map[string]any{"ports": map[string]any{"public": 9090}}}
+
+	merged := mergeInto(mergeInto(map[string]any{}, base), late)
+
+	if got := laneString(lookupLane(merged, "kaname", "ports", "public")); got != "9090" {
+		t.Fatalf("the overlay did not reach the result (kaname.ports.public = %q): %v", got, merged)
+	}
+	if got := laneString(lookupLane(merged, "kaname", "ports", "loginLane")); got != "9100" {
+		t.Fatalf("the overlay erased the layer under it (kaname.ports.loginLane = %q): %v", got, merged)
+	}
+	if v, leaked := lookupLane(base, "kaname", "ports", "public"); leaked {
+		t.Fatalf("the overlay wrote its key INTO THE SOURCE: base now carries kaname.ports.public = %v, "+
+			"a declaration its file never made: %v", v, base)
+	}
 }
 
 // resolveStack merges a stack's profiles in order and returns the gateway value
@@ -147,42 +208,46 @@ func resolveStack(t *testing.T, stack []string, path ...string) (string, bool) {
 	return s, ok && strings.TrimSpace(s) != ""
 }
 
-// Every stack that deploys the gateway must name the introspection endpoint, and
-// it must be the admin path — pointing it at the public API is exactly the state
-// this contract exists to prevent.
+// Every stack whose edge posture is `external` must name the introspection
+// endpoint, and it must be the admin path — pointing it at the public API is
+// exactly the state this contract exists to prevent. A stack on `own` must name
+// none: the edge's boot guard does not require it there, and a named address is
+// still wired (provider_road_posture_test.go).
 func TestStacks_DeclareIntrospectionEndpoint(t *testing.T) {
-	for name, stack := range deployableStacks(t) {
-		t.Run(name, func(t *testing.T) {
-			got, ok := resolveStack(t, stack, "hydra", "introspectionUrl")
-			if !ok {
-				t.Fatalf("%s (%s): api-gateway.hydra.introspectionUrl is not declared — the "+
-					"revocation check has nowhere to ask, so every token stays good until it "+
-					"expires no matter what is revoked",
-					name, strings.Join(stack, " + "))
-			}
-			if err := checkAdminEndpoint(got, introspectionAdminPath); err != nil {
-				t.Errorf("%s: api-gateway.hydra.introspectionUrl %v", name, err)
-			}
-		})
-	}
+	testStacksDeclareProviderRoad(t, introspectionRoad, introspectionAdminPath)
 }
 
 // And the admin base the logout handler needs to end the provider-side session.
-// Unset, the session kill is skipped and signing out leaves the session alive.
+// Unset on `external`, the session kill is skipped and signing out leaves the
+// session alive; on `own` there is no provider-side session to end.
 func TestStacks_DeclareAdminEndpoint(t *testing.T) {
-	for name, stack := range deployableStacks(t) {
+	testStacksDeclareProviderRoad(t, adminRoad, "")
+}
+
+// testStacksDeclareProviderRoad — общее тело двух проб выше: наличие адреса
+// судится посадкой края, форма объявленного — одинаково на обеих посадках.
+func testStacksDeclareProviderRoad(t *testing.T, k providerRoadKnob, wantPath string) {
+	t.Helper()
+	stacks := deployableStacks(t)
+	census := postureCensus{}
+	for _, name := range sortedStackNames(stacks) {
+		stack := stacks[name]
+		posture := stackPosture(t, stack, k.half)
+		census.add(posture)
 		t.Run(name, func(t *testing.T) {
-			got, ok := resolveStack(t, stack, "hydra", "adminUrl")
-			if !ok {
-				t.Fatalf("%s (%s): api-gateway.hydra.adminUrl is not declared — signing out "+
-					"then leaves the session alive at the identity provider",
-					name, strings.Join(stack, " + "))
+			got, _ := scalarAt(foldStack(t, stack), k.path...)
+			if f := roadPresenceFinding(name, k, posture, got); f != "" {
+				t.Fatalf("%s (%s)", f, strings.Join(stack, " + "))
 			}
-			if err := checkAdminEndpoint(got, ""); err != nil {
-				t.Errorf("%s: api-gateway.hydra.adminUrl %v", name, err)
+			if strings.TrimSpace(got) == "" {
+				return
+			}
+			if err := checkAdminEndpoint(got, wantPath); err != nil {
+				t.Errorf("%s: %s %v", name, k.label, err)
 			}
 		})
 	}
+	t.Logf("перепись %s по посадке %s: %s", k.label, k.half.who, census)
 }
 
 // The chart must still emit the environment variables these values drive. A

@@ -1,0 +1,110 @@
+import { useEffect, useRef, type FC, type RefObject } from "react";
+import { createPortal } from "react-dom";
+import { ACCOUNT_SETTINGS_ADDRESS } from "@shared/pages/auth/ceremony-addresses";
+import { Button, Typography } from "antd";
+import type { SessionIdentity } from "@shared/api/login-lane";
+import { BoolFact } from "@shared/components/atoms/BoolFact";
+import { LaneRefusalAlert } from "@shared/components/molecules/auth/LaneRefusalAlert";
+import { useLogout } from "@shared/pages/auth/use-logout";
+
+/**
+ * Учётная запись человека в каркасе: кто вошёл, подтверждён ли адрес, путь к
+ * параметрам и выход (приёмка F8, F8-17 и F8-18).
+ *
+ * Признак подтверждённости — из ответа края о сессии, а не догадка каркаса:
+ * поля нет в ответе — признака нет, «не подтверждён» по умолчанию не рисуется
+ * (условие C8).
+ * Действия «подтвердить адрес» здесь нет: производителя письма на посадке нет,
+ * и обещать действие без исполнения хуже, чем промолчать.
+ *
+ * Выход — на месте: на отказе службы панель показывает её текст, и адрес
+ * страницы не меняется — экран не делает вид, что вышли (F8-19).
+ *
+ * Панель стоит поверх СТРАНИЦЫ, а не только поверх рейла, поэтому рисуется в
+ * `document.body`. Рейл — своя плоскость наложения (`position: sticky`), и
+ * `z-index` панели внутри него сравнивался бы только с соседями по рейлу:
+ * карточки страницы, стоящие в документе позже, ложились поверх панели, и
+ * «Выйти» на панели проекта не нажималось вовсе (F8-18, посадка own
+ * @9038186d0d5: `ant-card-body` перехватывал нажатие).
+ */
+export const AccountPanel: FC<{
+  identity: SessionIdentity;
+  onClose: () => void;
+  navigate: (path: string) => void | Promise<void>;
+  leave?: (to: string) => void;
+  /**
+   * То, чем панель открыта. Нажатие на него — не «нажатие вне панели»: его
+   * обрабатывает сам открывающий (переключает), и закрытие здесь следом за ним
+   * открывало бы панель снова.
+   */
+  opener?: RefObject<HTMLElement | null>;
+}> = ({ identity, onClose, navigate, leave, opener }) => {
+  const { logout, busy, refusal } = useLogout(leave);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    const onPointer = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (opener?.current?.contains(target)) return;
+      if (ref.current && !ref.current.contains(target)) onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onPointer);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onPointer);
+    };
+  }, [onClose, opener]);
+
+  return createPortal(
+    <div
+      ref={ref}
+      role="dialog"
+      aria-label="Учётная запись"
+      className="account-panel"
+      style={{
+        position: "fixed",
+        left: 70,
+        bottom: 12,
+        zIndex: 1050,
+        width: 300,
+        padding: 16,
+        background: "var(--kc-elevated)",
+        border: "1px solid var(--kc-border)",
+        borderRadius: 10,
+        boxShadow: "var(--kc-shadow-lg)",
+      }}
+    >
+      <Typography.Text strong style={{ display: "block", marginBottom: 4, wordBreak: "break-all" }}>
+        {identity.user.email || identity.user.displayName}
+      </Typography.Text>
+      {typeof identity.session?.emailVerified === "boolean" && (
+        <div style={{ marginBottom: 12 }}>
+          <BoolFact value={identity.session.emailVerified} yes="Адрес подтверждён" no="Адрес не подтверждён" />
+        </div>
+      )}
+      {refusal && (
+        <div style={{ marginBottom: 12 }}>
+          <LaneRefusalAlert refusal={refusal} />
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 8 }}>
+        <Button
+          onClick={() => {
+            onClose();
+            void navigate(ACCOUNT_SETTINGS_ADDRESS);
+          }}
+        >
+          Параметры учётной записи
+        </Button>
+        <Button danger loading={busy} onClick={() => void logout()}>
+          Выйти
+        </Button>
+      </div>
+    </div>,
+    document.body,
+  );
+};

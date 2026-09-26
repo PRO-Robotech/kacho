@@ -17,6 +17,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 	"github.com/PRO-Robotech/kacho/gateway/internal/subscriptionstream"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // wire_test.go — то, чего запись ответа в память доказать НЕ МОЖЕТ.
@@ -30,7 +31,7 @@ import (
 func liveEdge(t *testing.T, owner *ownerStub, tune ...func(*subscriptionstream.Config)) *httptest.Server {
 	t.Helper()
 	h := newHandler(t, owner, tune...)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Личность ставит полоса аутентификации; здесь она подставлена так же,
 		// как её увидит ручка в бою.
 		r.Header.Set(principalmeta.HeaderPrincipalType, "user")
@@ -220,7 +221,7 @@ func TestClientGoingAwayReleasesTheStream(t *testing.T) {
 		c.StreamBudget = 30 * time.Second
 		c.Heartbeat = 10 * time.Second
 	})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Header.Set(principalmeta.HeaderPrincipalType, "user")
 		r.Header.Set(principalmeta.HeaderPrincipalID, "usr-probe")
 		h.ServeHTTP(w, r)

@@ -66,22 +66,23 @@ type CallerVerifier interface {
 //     `token` parameter (RFC 7009 section 2.1).
 //  2. Authenticate the caller by verifying that token (JWKS signature, issuer,
 //     audience, expiry). A presented-but-invalid token is a hard 401; the
-//     subject/jti are taken ONLY from the validated token. A request that asks
-//     to revoke sessions (subject/token_jti/revoke_all) but presents no valid
-//     token is refused with 401 — the endpoint never trusts a client-supplied
-//     subject, so it cannot be abused to revoke another user's sessions.
-//  3. Call kaname `InternalSessionRevocationsService.Revoke` for the caller's
+//     subject/jti are taken ONLY from the validated token.
+//  3. Fail closed: a request that asks to revoke sessions
+//     (subject/token_jti/revoke_all) but presents no valid token is refused
+//     with 401 — the endpoint never trusts a client-supplied subject, so it
+//     cannot be abused to revoke another user's sessions.
+//  4. Call kaname `InternalSessionRevocationsService.Revoke` for the caller's
 //     own identity — revoke_all_user_tokens=false (single jti) or true (full).
-//  4. Call Hydra admin `DELETE /admin/oauth2/auth/sessions/login?subject=...`
+//  5. Call Hydra admin `DELETE /admin/oauth2/auth/sessions/login?subject=...`
 //     with the caller's own subject to invalidate the upstream SSO session —
 //     Hydra then fans out back-channel logout notifications (RFC 8254).
-//  5. Issue an ending for every browser session carrier name
+//  6. Issue an ending for every browser session carrier name
 //     (`middleware.EndSessionCarriers`). The ending carries no `Domain`, so it
 //     matches only a cookie that was issued without one; the precondition this
 //     implies is stated in the header of `middleware/session_carrier_names.go`.
-//  6. Respond `200 {}`.
+//  7. Respond `200 {}`.
 //
-// All Hydra/IAM calls are best-effort relative to clearing the user cookie —
+// All Hydra/IAM calls are best-effort relative to issuing the carrier ending —
 // the user MUST see a successful logout from their side even if Hydra is
 // momentarily unreachable. Failures are logged + included in the response
 // `errors` array for debugging but do not surface as HTTP 5xx (that would
@@ -207,13 +208,16 @@ func (h *LogoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		cancel()
 	}
 
-	// 6. Clear the browser session carriers. Always done, even for a token-less
-	//    request, so a user can drop their browser session. The NAMES live in ONE
-	//    declaration (`middleware.EndSessionCarriers`, F4d-26): this handler and
-	//    the refusal path of the identity lane end the same carriers the same
-	//    way, otherwise "logout" and "refusal" would leave the same browser in
-	//    different states. A second list here is what the gate
-	//    `session_carrier_names_gate_test.go` calls a finding.
+	// 6. Issue the ending of every browser session carrier name. Always done,
+	//    even for a token-less request, so a user can drop their browser session.
+	//    The NAMES live in ONE declaration (`middleware.EndSessionCarriers`,
+	//    F4d-26): this handler and the refusal path of the identity lane issue the
+	//    same endings the same way, otherwise "logout" and "refusal" would leave
+	//    the same browser in different states. A second list here is what the
+	//    gate `session_carrier_names_gate_test.go` calls a finding. Issuing an
+	//    ending is not the same as removing the cookie: the ending carries no
+	//    `Domain`, and the precondition that follows is stated in the header of
+	//    `middleware/session_carrier_names.go`.
 	middleware.EndSessionCarriers(w)
 
 	out := map[string]any{"ok": true}
@@ -222,7 +226,7 @@ func (h *LogoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		out["warnings"] = revocErrs
 	}
 	if rawToken == "" {
-		out["note"] = "no access_token presented; cookies cleared"
+		out["note"] = "no access_token presented; session carrier endings issued"
 	}
 	writeJSON(w, http.StatusOK, out)
 }

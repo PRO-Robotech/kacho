@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"net"
 	"sync"
 	"testing"
 
@@ -19,6 +18,7 @@ import (
 
 	"github.com/PRO-Robotech/corelib/grpcsrv"
 	"github.com/PRO-Robotech/corelib/operations"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // TestCompute_PublicChain_ExtractsPrincipalFromMD — integration-проверка
@@ -61,8 +61,7 @@ func TestCompute_PublicChain_ExtractsPrincipalFromMD(t *testing.T) {
 	healthpb.RegisterHealthServer(srv, health.NewServer()) // лёгкий handler для probe-вызова
 	t.Cleanup(srv.GracefulStop)
 
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
+	lis := privateloopback.Listen(t)
 	go func() { _ = srv.Serve(lis) }()
 
 	conn, err := grpc.NewClient(lis.Addr().String(),
@@ -116,8 +115,7 @@ func TestCompute_PublicChain_FallsBackToSystem_WhenNoMD(t *testing.T) {
 	healthpb.RegisterHealthServer(srv, health.NewServer())
 	t.Cleanup(srv.GracefulStop)
 
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
+	lis := privateloopback.Listen(t)
 	go func() { _ = srv.Serve(lis) }()
 
 	conn, err := grpc.NewClient(lis.Addr().String(),

@@ -124,7 +124,22 @@ export function useResourceStream(
     };
 
     const off = hub.subscribe(target, handle);
-    const note = (): void => setCoveredKey(hub.covers(target) ? targetKey : null);
+    // Покрытие, ВЕРНУВШЕЕСЯ после потери, — одно перечитывание. Пока потока не
+    // было, событий не приходило, а новый приёмник позиции прежнего не несёт:
+    // изменения, случившиеся в промежутке, иначе не дошли бы до страницы. Так
+    // бывает и после отказа потока, и после закрытия его вокруг глагола,
+    // ставящего носитель (приёмка F8, Р10). Первое покрытие перечитывания не
+    // стоит: страница только что прочитала список сама.
+    let held = false;
+    let lost = false;
+    const note = (): void => {
+      const covered = hub.covers(target);
+      if (covered && lost) void queryClient.invalidateQueries({ queryKey: invalidateRef.current as unknown[] });
+      if (covered) lost = false;
+      else if (held) lost = true;
+      held = covered;
+      setCoveredKey(covered ? targetKey : null);
+    };
     const offCoverage = hub.onCoverageChange(note);
     // Спросить СРАЗУ: канал этого владельца мог быть открыт соседним списком, и
     // тогда объявления покрытия уже не будет — оно прозвучало до подписки.

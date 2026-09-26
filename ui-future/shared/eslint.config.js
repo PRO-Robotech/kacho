@@ -15,10 +15,11 @@
 // НЕ перенесён блок из семи остальных приложений, гасящий 27 правил для своего `src/**`, —
 // иначе включение линта на shared было бы включением его имени, а не его предмета.
 //
-// Отличия от host/dashboard — ровно три, и все про состав пакета, а не про строгость:
+// Отличия от host/dashboard — ровно четыре, и все про состав пакета, а не про строгость:
 //   • добавлен блок `**/*.cjs` (оснастка тестов на CommonJS, вне tsconfig → без type-aware);
 //   • тестовому блоку добавлены node-глобали (тесты пакета читают дерево через node:fs/path/url);
-//   • нет блока `vite.config.ts` — shared не собирается своим vite, такого файла у него нет.
+//   • нет блока `vite.config.ts` — shared не собирается своим vite, такого файла у него нет;
+//   • правилу мест выпуска названы дома транспортов — они лежат здесь, а не в приложениях.
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,6 +31,7 @@ import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 import tseslint from "typescript-eslint";
+import { issuanceOrdering } from "./issuance-ordering.eslint.config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -151,5 +153,7 @@ export default tseslint.config(
       },
     },
   },
+  // Места выпуска обращений к сети (приёмка F8, Р10, F8-46): дома транспортов — здесь.
+  ...issuanceOrdering({ sender: ["src/api/carrier-order.ts"], stream: ["src/lib/subscription/hub.ts"] }),
   prettier,
 );

@@ -24,10 +24,14 @@
 # словами, проверяла бы свою копию, а не предмет.
 #
 # ПРОБА ДОКАЗЫВАЕТ СВОЮ СПОСОБНОСТЬ УПАСТЬ САМА. Один и тот же набор утверждений
-# гоняется трижды: против настоящего прогонщика (ждём ноль провалов) и против
-# ДВУХ воссозданных дефектов — «признак снят» и «признак расширен до любого
-# отказа». Своё свойство — свой дефект: на первом дефекте утверждения про
-# законных близнецов проехали бы, потому что он никого не глотает.
+# гоняется девять раз: против настоящего прогонщика (ждём ноль провалов) и против
+# ВОСЬМИ воссозданных дефектов — «признак снят», «признак расширен до любого
+# отказа», три дефекта чтения доказательства по контракту (#2821): «контракт не
+# читается», «предпосылка разбора снята», «контракт расширен на всякий шаг», — и
+# три дефекта перевода обрыва errexit в отказ (#2831): «перевод не подключён»,
+# «перевод без errtrace», «предпосылка перевода снята».
+# Своё свойство — свой дефект: на первом дефекте утверждения про законных
+# близнецов проехали бы, потому что он никого не глотает.
 set -uo pipefail
 
 # Окружение git обрывается по общей причине (см. prepush-groups-inject.sh):
@@ -39,42 +43,23 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SUBJECT="$HERE/ci-local.sh"
 [ -r "$SUBJECT" ] || { echo "предмета нет: $SUBJECT" >&2; exit 2; }
+CI_LOCAL_SUBJECT="$SUBJECT"
+# shellcheck source=scripts/ci-local-copy.sh
+. "$HERE/ci-local-copy.sh" || { echo "способа копирования нет: $HERE/ci-local-copy.sh" >&2; exit 2; }
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Копии прогонщика: настоящая и две дефектные
+# Копии прогонщика: настоящая и дефектные
 # ─────────────────────────────────────────────────────────────────────────────
-# Блок выбора группы заменяется синтетическим — от `case "$GROUP" in` до `esac`
-# в нулевой колонке. Всё остальное, включая классификацию исхода, берётся
-# ДОСЛОВНО: подмена обязана быть узкой, иначе проба судит уже не тот код.
+# Блок выбора группы заменяется синтетическим, всё остальное, включая
+# классификацию исхода, берётся ДОСЛОВНО — одним определением на все пробы
+# прогонщика (`scripts/ci-local-copy.sh`). Там же требование, что дефект
+# воссоздан, а не «применён»: первая редакция этой пробы судила копию, побайтово
+# равную настоящей.
 make_copy() { # make_copy <куда> [sed-выражение дефекта]
-    local dest="$1" defect="${2:-}"
-    mkdir -p "$(dirname "$dest")"
-    awk '
-        /^case "\$GROUP" in$/ { skip = 1 }
-        skip && /^esac$/      { skip = 0
-                                print "case \"$GROUP\" in"
-                                print "    synth) . \"$CI_LOCAL_SYNTH_FILE\" ;;"
-                                print "    *) echo \"копия принимает только группу synth\" >&2; exit 2 ;;"
-                                print "esac"
-                                next }
-        !skip { print }
-    ' "$SUBJECT" > "$dest"
-    grep -q 'CI_LOCAL_SYNTH_FILE' "$dest" || {
-        echo "подмена блока выбора группы не сработала — форма выбора группы изменилась" >&2; exit 2; }
-    if [ -n "$defect" ]; then
-        sed -i "$defect" "$dest"
-        # ДЕФЕКТ ОБЯЗАН БЫТЬ ВОССОЗДАН, а не «применён»: `sed`, ничего не нашедший,
-        # выходит успехом, и тогда «дефектная» копия побайтово равна настоящей —
-        # проба краснела бы на обеих одинаково и ничего бы не доказывала. Первая
-        # редакция этой пробы была именно такой.
-        cmp -s "$dest" "$REAL" && {
-            echo "дефект не воссоздан: копия $dest равна настоящей — форма кода изменилась" >&2
-            exit 2; }
-    fi
-    chmod +x "$dest"
+    ci_local_copy "$1" "${2:-}" "$REAL"
 }
 
 REAL="$tmp/real/scripts/ci-local.sh"
@@ -89,6 +74,48 @@ make_copy "$BROKEN_BLIND" 's/^    if step_aborted_by_exhaustion "$log"; then$/  
 # стоят законные близнецы: защита от ложного красного, доведённая до маски.
 BROKEN_WIDE="$tmp/wide/scripts/ci-local.sh"
 make_copy "$BROKEN_WIDE" 's/^    if step_aborted_by_exhaustion "$log"; then$/    if true; then/'
+
+# Три дефекта ЧТЕНИЯ ДОКАЗАТЕЛЬСТВА ПО КОНТРАКТУ (#2821) — у каждого свойства свой.
+# Дефект 3 — КОНТРАКТ НЕ ЧИТАЕТСЯ: ровно та форма, что стояла до #2821, — код 2
+# доказательства («условие не создано») уходит в «красное».
+BROKEN_CONTRACT="$tmp/contract/scripts/ci-local.sh"
+make_copy "$BROKEN_CONTRACT" 's/^    local unmet_rc=2$/    local unmet_rc=""/'
+# Дефект 4 — ПРЕДПОСЫЛКА РАЗБОРА СНЯТА: двойку от синтаксической ошибки bash
+# засчитывают «условием не создано», и сломанное доказательство перестаёт краснеть.
+BROKEN_PARSE="$tmp/parse/scripts/ci-local.sh"
+make_copy "$BROKEN_PARSE" 's/^    bash -n "$2" > \/dev\/null 2>&1 || unmet_rc=""$/    true || unmet_rc=""/'
+# Дефект 5 — КОНТРАКТ РАСШИРЕН НА ВСЯКИЙ ШАГ: двойка любой команды (`go vet`,
+# линтер) читается «условием не создано» — защита от ложного красного стала маской.
+BROKEN_ANYSTEP="$tmp/anystep/scripts/ci-local.sh"
+make_copy "$BROKEN_ANYSTEP" 's/^    if \[ -n "${unmet_rc:-}" \] \&\& \[ "$rc" = "$unmet_rc" \]; then$/    if [ "$rc" = 2 ]; then/'
+
+# Три дефекта ПЕРЕВОДА errexit В ОТКАЗ (#2831). Под `set -e` двойкой выходит и
+# само доказательство, когда оборвалась его команда (`grep` по отсутствующему
+# файлу), и такую двойку читатель обязан показать отказом.
+# Дефект 6 — ПЕРЕВОД НЕ ПОДКЛЮЧЁН: доказательство зовётся голым `bash`, ровно как
+# до #2831.
+BROKEN_NOENV="$tmp/noenv/scripts/ci-local.sh"
+make_copy "$BROKEN_NOENV" 's/^    run "$1" env BASH_ENV="$errexit_env" bash "$2"$/    run "$1" bash "$2"/'
+# Дефект 7 — ПЕРЕВОД БЕЗ errtrace: ловушка ERR не наследуется функциями, и grep
+# внутри функции доказательства уходит мимо неё. Правится КОПИЯ перевода рядом с
+# копией прогонщика, и что она изменилась — сверяется, как у всякого дефекта.
+BROKEN_NOTRACE="$tmp/notrace/scripts/ci-local.sh"
+make_copy "$BROKEN_NOTRACE"
+sed -i 's/^set -E$/: errtrace снят/' "$tmp/notrace/scripts/proof-errexit-env.sh"
+cmp -s "$tmp/notrace/scripts/proof-errexit-env.sh" "$tmp/real/scripts/proof-errexit-env.sh" && {
+    echo "дефект не воссоздан: перевод без errtrace равен настоящему — форма перевода изменилась" >&2; exit 2; }
+# Дефект 8 — ПРЕДПОСЫЛКА ПЕРЕВОДА СНЯТА: перевода нет рядом, а двойку всё равно
+# засчитывают «условием не создано» — то есть верят коду, который некому было
+# отличить от оборванной команды.
+BROKEN_NOPREMISE="$tmp/nopremise/scripts/ci-local.sh"
+make_copy "$BROKEN_NOPREMISE" 's/^    if \[ ! -r "$errexit_env" \]; then$/    if false; then/'
+
+# Копии БЕЗ ПЕРЕВОДА рядом — у каждой копии своя: сценарий предпосылки судит ту
+# же редакцию прогонщика, у которой просто нет файла перевода.
+for c in real blind wide contract parse anystep noenv notrace nopremise; do
+    mkdir -p "$tmp/$c-nolib/scripts"
+    cp "$tmp/$c/scripts/ci-local.sh" "$tmp/$c-nolib/scripts/ci-local.sh"
+done
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Сценарии: синтетические шаги, чьи ТЕКСТЫ взяты у настоящих инструментов
@@ -177,6 +204,42 @@ mk plain-skip "$(printf 'skip "ui shared: build" "скрипта нет в packa
 # ВСЁ ЗЕЛЁНОЕ — идеал не превращён в поломку.
 mk all-green "$(emit 'go build' 0)"
 
+# ДОКАЗАТЕЛЬСТВА ИНЪЕКЦИЕЙ ПО СВОЕМУ КОНТРАКТУ (#2821): 0 · 1 · 2 = доказано ·
+# провалено · условие не создано. Доказательство — настоящий файл, и зовётся он
+# тем же `proof`, что в go_group: синтаксис разбирает сам bash, а не проба.
+mkdir -p "$tmp/proofs"
+printf '#!/usr/bin/env bash\necho "доказано"\nexit 0\n' > "$tmp/proofs/zz-ok-inject.sh"
+printf '#!/usr/bin/env bash\necho "инструмента нет: go" >&2\nexit 2\n' > "$tmp/proofs/zz-unmet-inject.sh"
+printf '#!/usr/bin/env bash\necho "  FAIL A1 гейт не покраснел на внесённом дефекте"\nexit 1\n' > "$tmp/proofs/zz-red-inject.sh"
+# Прежний код «вердикта нет» у пяти доказательств. Контракта он не несёт, и
+# читатель обязан показать его отказом, а не угадать смысл.
+printf '#!/usr/bin/env bash\necho "нет go — доказать нечем" >&2\nexit 3\n' > "$tmp/proofs/zz-code3-inject.sh"
+# Одно-фактный близнец `unmet`: код тот же (2), но дал его bash на разборе.
+printf '#!/usr/bin/env bash\necho "до разбора"\nif then\n' > "$tmp/proofs/zz-unparsed-inject.sh"
+mk proof-green    "proof 'доказательство: зелёное' \"$tmp/proofs/zz-ok-inject.sh\""
+mk proof-unmet    "proof 'доказательство: условие не создано' \"$tmp/proofs/zz-unmet-inject.sh\""
+mk proof-red      "proof 'доказательство: провалено' \"$tmp/proofs/zz-red-inject.sh\""
+mk proof-code3    "proof 'доказательство: код вне контракта' \"$tmp/proofs/zz-code3-inject.sh\""
+mk proof-unparsed "proof 'доказательство: не разбирается' \"$tmp/proofs/zz-unparsed-inject.sh\""
+# ДОКАЗАТЕЛЬСТВА ПОД errexit (#2831) — форма пяти доказательств дерева: `set -euo
+# pipefail` в начале. Двойку отдаёт `grep` по отсутствующему файлу, и errexit
+# выносит её наружу как есть. Два места обрыва: верхний уровень и функция — у
+# второго ловушка без errtrace не срабатывает.
+printf '#!/usr/bin/env bash\nset -euo pipefail\ngrep -q доказательство "%s"\necho доказано\n' \
+    "$tmp/proofs/нет-такого-файла" > "$tmp/proofs/zz-errexit-grep-inject.sh"
+printf '#!/usr/bin/env bash\nset -euo pipefail\ncheck() { grep -q доказательство "%s"; }\ncheck\necho доказано\n' \
+    "$tmp/proofs/нет-такого-файла" > "$tmp/proofs/zz-errexit-func-inject.sh"
+# Законный близнец: та же форма, двойку ОБЪЯВИЛО само доказательство — явным
+# выходом из функции предпосылки, как `premise.sh`.
+printf '#!/usr/bin/env bash\nset -euo pipefail\npremise() { echo "SKIP: инструмента нет — НЕ ВЫПОЛНЕНО" >&2; exit 2; }\npremise\necho доказано\n' \
+    > "$tmp/proofs/zz-errexit-unmet-inject.sh"
+mk proof-errexit-grep  "proof 'доказательство: grep оборвал errexit' \"$tmp/proofs/zz-errexit-grep-inject.sh\""
+mk proof-errexit-func  "proof 'доказательство: grep оборвал errexit в функции' \"$tmp/proofs/zz-errexit-func-inject.sh\""
+mk proof-errexit-unmet "proof 'доказательство под errexit: условие не создано' \"$tmp/proofs/zz-errexit-unmet-inject.sh\""
+# Законный близнец контракта: та же двойка у ОБЫЧНОГО шага остаётся отказом —
+# у `go vet` и линтера она значит своё, и контракт доказательства их не касается.
+mk run-code2      "$(emit 'go vet' 2 'vet: internal/repohygiene/foo.go:3:1: expected declaration')"
+
 # СМЕШАННЫЙ: настоящая находка рядом с оборванным шагом.
 mk mixed "$(printf '%s\n%s\n' \
     "$(emit 'golangci-lint' 1 'internal/repohygiene/foo.go:12:3: ineffectual assignment to err (ineffassign)')" \
@@ -188,6 +251,7 @@ mk mixed "$(printf '%s\n%s\n' \
 ASSERTS=0
 
 # want <копия> <метка> <сценарий> <ожидаемый код> <есть-подстрока…|!отсутствует-подстрока…>
+# Копия с суффиксом `+nolib` — та же редакция без перевода errexit рядом.
 #
 # Прогон делается ЗДЕСЬ, а не в отдельной функции: код возврата, выставленный
 # внутри подстановки команд, до вызывающего не доходит — переменная живёт в
@@ -195,6 +259,7 @@ ASSERTS=0
 want() {
     local copy="$1" tag="$2" scen="$3" want_rc="$4"; shift 4
     local out rc bad=0 need why=""
+    case "$copy" in *+nolib) copy="${copy%+nolib}"; copy="${copy%/scripts/ci-local.sh}-nolib/scripts/ci-local.sh" ;; esac
     ASSERTS=$((ASSERTS + 1))
     out="$(CI=1 CI_LOCAL_WORK="$tmp/work-$scen-$RANDOM" CI_LOCAL_SYNTH_FILE="$tmp/scen-$scen.sh" \
            bash "$copy" synth 2>&1)"
@@ -256,6 +321,25 @@ assert_all() { # assert_all <копия> <метка> <файл для числ�
     # сказано, что прочие шаги вердикта не дали.
     want "$copy" "$tag" mixed 1 'отказов 1' 'НЕ выполнено 1' "$NEDEYST" 'красное:'
 
+    # Доказательство по контракту: «условие не создано» — третий исход, код
+    # прогона не меняется (как у обычного пропуска), в «красное» не попадает.
+    want "$copy" "$tag" proof-unmet 0 'НЕ выполнено 1' 'отказов 0' 'условие не создано' "!красное:" "!$NEDEYST"
+    want "$copy" "$tag" proof-green 0 'отказов 0' 'НЕ выполнено 0'
+    # Близнецы с внесённым красным — по-прежнему отказ.
+    want "$copy" "$tag" proof-red      1 'отказов 1' 'НЕ выполнено 0' 'красное:'
+    want "$copy" "$tag" proof-code3    1 'отказов 1' 'НЕ выполнено 0' 'красное:'
+    want "$copy" "$tag" proof-unparsed 1 'отказов 1' 'НЕ выполнено 0' 'красное:'
+    want "$copy" "$tag" run-code2      1 'отказов 1' 'НЕ выполнено 0' 'красное:'
+
+    # Под errexit (#2831): двойка оборванной команды — отказ, и отказ называет,
+    # что оборвалось; объявленная двойка — по-прежнему «условие не создано».
+    want "$copy" "$tag" proof-errexit-grep  1 'отказов 1' 'НЕ выполнено 0' 'красное:' 'оборвано errexit'
+    want "$copy" "$tag" proof-errexit-func  1 'отказов 1' 'НЕ выполнено 0' 'красное:' 'оборвано errexit'
+    want "$copy" "$tag" proof-errexit-unmet 0 'НЕ выполнено 1' 'отказов 0' 'условие не создано' "!красное:"
+    # Предпосылка: перевода рядом нет — двойку некому отличить от оборванной
+    # команды, и засчитать её «условием не создано» нельзя ни у кого.
+    want "$copy+nolib" "$tag" proof-unmet 1 'отказов 1' 'красное:' 'перевода errexit нет' '!условие не создано ('
+
     printf '%s' "$FAILS" > "$out"
 }
 
@@ -267,6 +351,24 @@ assert_all "$BROKEN_BLIND" снят "$tmp/blind.n"; blind_fails="$(cat "$tmp/bli
 echo
 echo "── прогон против дефекта «признак расширен до любого отказа» (ждём хотя бы один провал)"
 assert_all "$BROKEN_WIDE" расширен "$tmp/wide.n"; wide_fails="$(cat "$tmp/wide.n")"
+echo
+echo "── прогон против дефекта «контракт доказательства не читается» (ждём хотя бы один провал)"
+assert_all "$BROKEN_CONTRACT" контракт "$tmp/contract.n"; contract_fails="$(cat "$tmp/contract.n")"
+echo
+echo "── прогон против дефекта «предпосылка разбора снята» (ждём хотя бы один провал)"
+assert_all "$BROKEN_PARSE" разбор "$tmp/parse.n"; parse_fails="$(cat "$tmp/parse.n")"
+echo
+echo "── прогон против дефекта «контракт расширен на всякий шаг» (ждём хотя бы один провал)"
+assert_all "$BROKEN_ANYSTEP" всякий-шаг "$tmp/anystep.n"; anystep_fails="$(cat "$tmp/anystep.n")"
+echo
+echo "── прогон против дефекта «перевод errexit не подключён» (ждём хотя бы один провал)"
+assert_all "$BROKEN_NOENV" без-перевода "$tmp/noenv.n"; noenv_fails="$(cat "$tmp/noenv.n")"
+echo
+echo "── прогон против дефекта «перевод без errtrace» (ждём хотя бы один провал)"
+assert_all "$BROKEN_NOTRACE" без-errtrace "$tmp/notrace.n"; notrace_fails="$(cat "$tmp/notrace.n")"
+echo
+echo "── прогон против дефекта «предпосылка перевода снята» (ждём хотя бы один провал)"
+assert_all "$BROKEN_NOPREMISE" без-предпосылки "$tmp/nopremise.n"; nopremise_fails="$(cat "$tmp/nopremise.n")"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Проверка ПРЕДПОСЫЛКИ: у каждого объявленного признака есть производитель
@@ -349,18 +451,30 @@ echo
 # Перепись — отдельное утверждение: «ноль провалов» обязано быть отличимо от
 # «ноль прогнанного». Числа СЧИТАЮТСЯ, а не выписываются: выписанное разошлось бы
 # с набором молча при первом же добавленном сценарии.
-printf 'ci-local-outcome-inject: утверждений на прогон %d, прогонов 3; сценариев %d\n' \
+printf 'ci-local-outcome-inject: утверждений на прогон %d, прогонов 9; сценариев %d\n' \
     "$ASSERTS" "$(find "$tmp" -maxdepth 1 -name 'scen-*.sh' | wc -l)"
 printf '  признаков прочитано: %s, сообщений в корпусе: %s\n' \
     "$sigs_read" "$(wc -l < "$corpus")"
 printf '  провалов у настоящего:            %s (норма 0)\n' "$real_fails"
 printf '  провалов у дефекта «признак снят»: %s (норма ≥1 — иначе проба ничего не проверяет)\n' "$blind_fails"
 printf '  провалов у дефекта «расширен»:     %s (норма ≥1 — своё свойство, свой дефект)\n' "$wide_fails"
+printf '  провалов у дефекта «контракт»:     %s (норма ≥1 — код 2 доказательства ушёл бы в красное)\n' "$contract_fails"
+printf '  провалов у дефекта «разбор»:       %s (норма ≥1 — сломанное доказательство сошло бы за «не создано»)\n' "$parse_fails"
+printf '  провалов у дефекта «всякий шаг»:   %s (норма ≥1 — двойка go vet сошла бы за «не создано»)\n' "$anystep_fails"
+printf '  провалов у дефекта «без перевода»: %s (норма ≥1 — двойка grep под errexit сошла бы за «не создано»)\n' "$noenv_fails"
+printf '  провалов у дефекта «без errtrace»: %s (норма ≥1 — двойка grep в функции сошла бы за «не создано»)\n' "$notrace_fails"
+printf '  провалов у дефекта «без предпосылки»: %s (норма ≥1 — двойке поверили бы без перевода)\n' "$nopremise_fails"
 printf '  провалов предпосылки:              %s (норма 0)\n' "$sig_fails"
 
 rc=0
 [ "$real_fails" = "0" ] || { echo "ОТКАЗ: настоящий прогонщик не проходит собственных утверждений" >&2; rc=1; }
 [ "${blind_fails:-0}" -ge 1 ] || { echo "ОТКАЗ: проба ЗЕЛЁНАЯ на снятом признаке — она не проверяет свой предмет" >&2; rc=1; }
 [ "${wide_fails:-0}" -ge 1 ] || { echo "ОТКАЗ: проба ЗЕЛЁНАЯ на расширенном признаке — законные близнецы ничего не держат" >&2; rc=1; }
+[ "${contract_fails:-0}" -ge 1 ] || { echo "ОТКАЗ: проба ЗЕЛЁНАЯ без чтения контракта доказательства — «условие не создано» не держится" >&2; rc=1; }
+[ "${parse_fails:-0}" -ge 1 ] || { echo "ОТКАЗ: проба ЗЕЛЁНАЯ без предпосылки разбора — сломанное доказательство не держится" >&2; rc=1; }
+[ "${anystep_fails:-0}" -ge 1 ] || { echo "ОТКАЗ: проба ЗЕЛЁНАЯ на контракте, расширенном на всякий шаг — законный близнец ничего не держит" >&2; rc=1; }
+[ "${noenv_fails:-0}" -ge 1 ] || { echo "ОТКАЗ: проба ЗЕЛЁНАЯ без перевода errexit — двойка оборванной команды не держится" >&2; rc=1; }
+[ "${notrace_fails:-0}" -ge 1 ] || { echo "ОТКАЗ: проба ЗЕЛЁНАЯ на переводе без errtrace — обрыв в функции не держится" >&2; rc=1; }
+[ "${nopremise_fails:-0}" -ge 1 ] || { echo "ОТКАЗ: проба ЗЕЛЁНАЯ без предпосылки перевода — двойка без перевода не держится" >&2; rc=1; }
 [ "$sig_fails" = "0" ] || { echo "ОТКАЗ: объявление признаков разошлось с текстами инструментов" >&2; rc=1; }
 exit "$rc"

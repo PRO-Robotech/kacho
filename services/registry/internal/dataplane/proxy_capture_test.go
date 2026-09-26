@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // proxy_capture_test.go — TEST-ONLY (ban #13): ForwardCapture-путь реального
@@ -23,7 +25,7 @@ import (
 // в bufferingRecorder (ничего не стримим). Caller Authorization не доходит до zot.
 func TestDataplane_ZotForwardCapture_BuffersStatusHeadersBody(t *testing.T) {
 	var gotPath, gotMethod, gotAuth string
-	zot := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	zot := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath, gotMethod = r.URL.Path, r.Method
 		gotAuth = r.Header.Get("Authorization")
 		w.Header().Set("Location", "/v2/reg-A/app/blobs/sha256:cap")

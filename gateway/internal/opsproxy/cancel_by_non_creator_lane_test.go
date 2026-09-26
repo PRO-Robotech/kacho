@@ -6,7 +6,6 @@ package opsproxy_test
 import (
 	"context"
 	"errors"
-	"net"
 	"sync/atomic"
 	"testing"
 
@@ -25,6 +24,7 @@ import (
 	"github.com/PRO-Robotech/corelib/operations/operationspb"
 	"github.com/PRO-Robotech/kacho/gateway/internal/opsproxy"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // Какой исход даёт полоса «отмена ЧУЖОЙ операции» — установлено ОПЫТОМ.
@@ -168,10 +168,7 @@ func principalFromMetadata(
 
 func setupOwnedBackend(t *testing.T, repo *ownedOpsRepo) *grpc.ClientConn {
 	t.Helper()
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen: %v", err)
-	}
+	lis := privateloopback.Listen(t)
 	srv := grpc.NewServer(grpc.UnaryInterceptor(principalFromMetadata))
 	operationpb.RegisterOperationServiceServer(srv, operationspb.NewHandler(repo))
 	go func() { _ = srv.Serve(lis) }()

@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 	"github.com/PRO-Robotech/kacho/terraform/internal/client"
 )
 
@@ -119,7 +120,7 @@ func dsNum(n int64) tftypes.Value  { return tftypes.NewValue(tftypes.Number, n) 
 func dsFakeEdge(t *testing.T, routes map[string]string) *httptest.Server {
 	t.Helper()
 	seen := map[string]int{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := r.URL.Path
 		if q := r.URL.RawQuery; q != "" {
 			key += "?" + q

@@ -6,7 +6,6 @@ package loadbalancer
 import (
 	"context"
 	"log/slog"
-	"net"
 	"sync"
 	"testing"
 
@@ -18,6 +17,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	operationpb "github.com/PRO-Robotech/corelib/api/corelib/operation"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	vpcpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 
@@ -208,8 +208,7 @@ func (f *leaseLedgerVPC) stillHeld(addressID string) bool {
 // как он читает ответ владельца.
 func (f *leaseLedgerVPC) client(t *testing.T) InternalAddressClient {
 	t.Helper()
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
+	lis := privateloopback.Listen(t)
 	srv := grpc.NewServer()
 	vpcpb.RegisterInternalAddressServiceServer(srv, f)
 	vpcpb.RegisterAddressServiceServer(srv, f)

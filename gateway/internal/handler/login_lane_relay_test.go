@@ -27,6 +27,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/handler"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // fakeOwn — дублёр `Resolve` на один вопрос.
@@ -156,7 +157,7 @@ func kachoHeaders(h http.Header) []string {
 func TestLoginLaneRelay_F3_51_RelayedRequestCarriesCookiesAndOneForwardedForAndNoIdentity(t *testing.T) {
 	stub := &formListenerStub{status: http.StatusOK, body: `{}`,
 		respHdr: http.Header{"Set-Cookie": {"kaname_session=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax"}}}
-	srv := httptest.NewServer(stub)
+	srv := privateloopback.NewServer(t, stub)
 	t.Cleanup(srv.Close)
 	// Живая сессия: полоса ВЫСТАВИТ личность перед ретрансляцией — и её обязан
 	// снять ретранслятор (§1.10: шесть заголовков принципала).
@@ -187,32 +188,9 @@ func TestLoginLaneRelay_F3_51_RelayedRequestCarriesCookiesAndOneForwardedForAndN
 	if len(xff) != 1 || xff[0] != "10.0.0.1" {
 		t.Fatalf("X-Forwarded-For обязан быть РОВНО ОДНИМ адресом, выведенным оператором цепочки (справа по числу прыжков): %v", xff)
 	}
-	// Ответ службы уходит клиенту как есть — включая её Set-Cookie. На
-	// ВЫПОЛНЕННОМ выходе край ДОПОЛНЯЕТ его гашением имён, которых служба не
-	// знает: имён носителя два, своё у неё одно, а чужое принадлежит стороне,
-	// которой она не управляет. Проверяются обе половины — доехавшее от службы
-	// и дополненное краем, — потому что «как есть» здесь означает «не изменено»,
-	// а не «ничего не добавлено».
-	sc := rec.Result().Header["Set-Cookie"]
-	fromService := 0
-	ended := map[string]bool{}
-	for _, h := range sc {
-		if strings.HasPrefix(h, "kaname_session=; Max-Age=0") {
-			fromService++
-		}
-		for _, name := range middleware.SessionCarrierNames() {
-			if strings.HasPrefix(h, name+"=;") {
-				ended[name] = true
-			}
-		}
-	}
-	if fromService != 1 {
-		t.Fatalf("Set-Cookie службы не доехал до клиента неизменным: %v", sc)
-	}
-	for _, name := range middleware.SessionCarrierNames() {
-		if !ended[name] {
-			t.Fatalf("выполненный выход не погасил имя %q: %v", name, sc)
-		}
+	// Ответ службы уходит клиенту как есть — включая Set-Cookie.
+	if sc := rec.Result().Header["Set-Cookie"]; len(sc) != 1 || !strings.HasPrefix(sc[0], "kaname_session=; Max-Age=0") {
+		t.Fatalf("Set-Cookie службы не доехал до клиента: %v", sc)
 	}
 	if rec.Body.String() != `{}` {
 		t.Fatalf("тело ответа изменено: %q", rec.Body.String())
@@ -237,7 +215,7 @@ func TestLoginLaneRelay_F3_51_RelayedRequestCarriesCookiesAndOneForwardedForAndN
 func TestLoginLaneRelay_F3_17_ServiceRefusalIsRelayedAsIsAndUnreachableServiceIs503(t *testing.T) {
 	stub := &formListenerStub{status: http.StatusServiceUnavailable,
 		body: `{"code":14,"message":"logout not performed; try again later"}`}
-	srv := httptest.NewServer(stub)
+	srv := privateloopback.NewServer(t, stub)
 	t.Cleanup(srv.Close)
 	// Под `own` вопросы края и слушатель формы бьют в одно хранилище: Resolve
 	// отвечает UNAVAILABLE, слушатель — исходом Ф1-58.
@@ -302,7 +280,7 @@ func TestLoginLaneRelay_F3_17_ServiceRefusalIsRelayedAsIsAndUnreachableServiceIs
 func TestLoginLaneRelay_F3_51_ServiceResponsePassesThroughUnchanged(t *testing.T) {
 	stub := &formListenerStub{status: http.StatusOK, body: `{"session":{"expiresAt":"2026-09-17T12:00:00Z"}}`,
 		respHdr: http.Header{"Set-Cookie": {"kaname_session=new; Max-Age=86400; Path=/; HttpOnly; Secure; SameSite=Lax"}, "X-Service": {"kaname"}}}
-	srv := httptest.NewServer(stub)
+	srv := privateloopback.NewServer(t, stub)
 	t.Cleanup(srv.Close)
 	chain, _ := chainWithRelay(t, &fakeOwn{found: false}, &fakeCut{}, srv.URL)
 	rec := httptest.NewRecorder()

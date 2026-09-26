@@ -22,6 +22,7 @@ import (
 	iamv1 "github.com/PRO-Robotech/kaname/pkg/api/kaname/cloud/iam/v1"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/handler"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 type recordingRevocations struct {
@@ -161,7 +162,7 @@ func TestLogout_RevocationFailure_DoesNotFailRequest(t *testing.T) {
 
 func TestLogout_HydraSessionKill(t *testing.T) {
 	var hydraCalls atomic.Int32
-	hydra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	hydra := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hydraCalls.Add(1)
 		assert.Equal(t, http.MethodDelete, r.Method)
 		assert.Contains(t, r.URL.Path, "/admin/oauth2/auth/sessions/login")
@@ -228,7 +229,7 @@ func TestLogout_Construction_RequiresLogger(t *testing.T) {
 func TestLogout_UnauthenticatedRevokeRejected(t *testing.T) {
 	rev := &recordingRevocations{}
 	var hydraCalls atomic.Int32
-	hydra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	hydra := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		hydraCalls.Add(1)
 		w.WriteHeader(http.StatusNoContent)
 	}))

@@ -297,22 +297,46 @@ grep -qF "скана: $REALMOD" "$WORK/gate.txt" && ok "отказ называ�
 # Подставной `go build` кладёт на место гейта заглушку, выходящую заданным кодом.
 # Проверяется, что вызывающий различает 0 · 1 · 2 и не засчитывает неожиданный
 # код в успех.
+#
+# ПРОБА НЕ ПИШЕТ ВНЕ СВОЕЙ ПЕСОЧНИЦЫ (#2847). Подставной `go build` кладёт
+# заглушку туда, куда велит вызывающий, — а шаг конвейера велит в общий /tmp
+# машины: параллельные прогоны пробы писали бы одну заглушку, и вердикт одного
+# доставался бы другому. Шаг конвейера при этом не меняется: на раннере /tmp
+# свой у каждого задания. Поэтому вызов исполняется с /tmp, ПЕРЕНАПРАВЛЕННЫМ в
+# песочницу, — абсолютный путь `/tmp/…` в начале слова становится `<песочница>/tmp/…`,
+# и `TMPDIR`/`RUNNER_TEMP` указывают туда же. Что перенаправление не пропустило
+# ничего, держат два утверждения: исполняемый блок больше не называет /tmp
+# машины, а заглушка ОТКАЗЫВАЕТСЯ писать вне песочницы и называет путь — такой
+# случай провал утверждения, а не молчаливая запись.
 probe_caller() {
     local name="$1" block="$2" want="$3" expect="$4"
     local box; box=$(mktemp -d)
-    mkdir -p "$box/binpath" "$box/root"
+    mkdir -p "$box/binpath" "$box/root" "$box/tmp"
+    # Сверка «не называет /tmp машины» идёт ДО подстановки песочницы: сама
+    # песочница обычно лежит в том же /tmp, и после подстановки её путь был бы
+    # неотличим от пропущенного.
+    local leaked
+    block="$(printf '%s\n' "$block" | sed -E "s#(^|[[:space:]\"'=:(])/tmp/#\\1@SANDBOX_TMP@/#g")"
+    leaked="$(printf '%s\n' "$block" | grep -nE "(^|[[:space:]\"'=:(])/tmp(/|[[:space:]\"']|\$)" || true)"
+    block="${block//@SANDBOX_TMP@/$box/tmp}"
     cat > "$box/binpath/go" <<GOSTUB
 #!/usr/bin/env bash
 if [ "\$1" = build ]; then
     out=""; prev=""
     for a in "\$@"; do [ "\$prev" = "-o" ] && out="\$a"; prev="\$a"; done
+    case "\$out" in /*) ;; *) out="\$PWD/\$out" ;; esac
+    case "\$out" in
+        "$box"/*) ;;
+        *) printf 'ВНЕ ПЕСОЧНИЦЫ %s\n' "\$out" >> "$box/go-build-refused"
+           echo "go-заглушка: путь сборки вне песочницы пробы: \$out" >&2; exit 97 ;;
+    esac
     printf '#!/usr/bin/env bash\nexit %s\n' "$want" > "\$out"; chmod +x "\$out"; exit 0
 fi
 exit 0
 GOSTUB
     chmod +x "$box/binpath/go"
     local out rc=0
-    out=$(cd "$box/root" && PATH="$box/binpath:$PATH" bash -c "
+    out=$(cd "$box/root" && PATH="$box/binpath:$PATH" TMPDIR="$box/tmp" RUNNER_TEMP="$box/tmp" bash -c "
         set -uo pipefail
         ROOT='$box/root'; WORK='$box'; fails=()
         probe() {
@@ -325,7 +349,11 @@ $block
     # ложное «не найдено» — grep выходит на первом совпадении, писатель слева
     # получает SIGPIPE, и pipefail поднимает это до статуса конвейера. Гейт
     # дерева ловит этот класс отдельно (#658).
-    if [[ "$out" == *"$expect"* ]]; then
+    if [ -n "$leaked" ]; then
+        bad "$name: код $want — исполняемый блок называет /tmp машины после перенаправления: ${leaked//$'\n'/|}"
+    elif [ -s "$box/go-build-refused" ]; then
+        bad "$name: код $want — вызывающий собирает гейт вне песочницы пробы: $(tr '\n' ' ' < "$box/go-build-refused")"
+    elif [[ "$out" == *"$expect"* ]]; then
         ok "$name: код $want → $expect"
     else
         bad "$name: код $want не дал «$expect»: ${out//$'\n'/|}"
