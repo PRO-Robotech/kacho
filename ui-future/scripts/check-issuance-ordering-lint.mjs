@@ -10,16 +10,25 @@
  * конфигураций. Подключение, снятое в одной из них, не видно ни по одному зелёному
  * `eslint .`: он честно молчит о правиле, которого нет. Поэтому по КАЖДОМУ пакету:
  *
- *   1. подключение — действующая конфигурация файла пакета несёт правило;
+ *   1. подключение — действующая конфигурация файла пакета несёт правило: запрет
+ *      транспортов и правило перехода документа (`kacho-issuance/document-navigation`);
  *   2. инъекция — каждая подсаженная форма выпуска мимо упорядочивающего
- *      транспорта даёт находку ЭТОГО правила;
+ *      транспорта даёт находку ЭТОГО правила; переход документа на путь края
+ *      (`<a href>`, `<form action>`, `href` и `click()` и их варианты) — находку
+ *      правила перехода, а не соседнего;
  *   3. близнецы — законный выпуск (`orderedTransport.fetch`), комментарий, текст,
- *      чужой член с похожим именем — молчание;
+ *      чужой член с похожим именем, те же переходы на путь консоли и на адрес
+ *      объекта — молчание;
  *   4. дома — транспорт законен только в своём доме (`shared`: упорядочивающий
  *      транспорт для `fetch`, приёмник потока для `EventSource`); тот же путь в
  *      приложении домом не является;
  *   5. дерево — прод-файлы пакета (без проб и их оснастки) находок правила не
  *      дают; число прочитанных печатается, пустой обход — отказ.
+ *
+ * Сверх того, один раз на прогон: путь края у правила перехода и у переписи мест
+ * выпуска (`shared/src/test/issuance-census.ts`) — ОДНО выражение. Сверяются узлы
+ * разбора переписи, а не текст: два определения одного предмета, разошедшиеся молча,
+ * дали бы держателю и подсказке разный путь края.
  *
  * Пакет судится отдельным процессом собственным ESLint (тем, что запускает
  * `npm run lint:js`), — по той же причине и тем же порядком, что
@@ -36,10 +45,20 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const RULES = new Set(["no-restricted-globals", "no-restricted-properties", "no-restricted-syntax"]);
-const PLANT = "src/__issuance_probe__.tsx";
+import * as ordering from "../shared/issuance-ordering.eslint.config.js";
 
-/** Формы выпуска мимо упорядочивающего транспорта: каждая обязана дать находку. */
+/** Правило перехода документа на путь края — из того же набора, что запрет транспортов. */
+const NAV_RULE = "kacho-issuance/document-navigation";
+const RULES = new Set(["no-restricted-globals", "no-restricted-properties", "no-restricted-syntax", NAV_RULE]);
+const PLANT = "src/__issuance_probe__.tsx";
+/** Перепись мест выпуска — второе определение пути края; сверяется с правилом. */
+const CENSUS = "shared/src/test/issuance-census.ts";
+
+/**
+ * Формы выпуска мимо упорядочивающего транспорта: каждая обязана дать находку.
+ * Третий член — правило, чья находка обязательна: переход документа судит своё
+ * правило, и находка соседнего его слепоты не прикрывает.
+ */
 const RED = [
   ["голый fetch", 'fetch("/iam/v1/me");'],
   ["window.fetch", 'window.fetch("/iam/v1/me");'],
@@ -58,6 +77,45 @@ const RED = [
   ["EventSource вне приёмника потока", 'export const s = new EventSource("/subscription/v1/events");'],
   ["window.EventSource", "export const S = window.EventSource;"],
   ["транспорт пробы в продукте", 'export const k = Symbol.for("kacho.probe.fetch");'],
+  // Переход документа на путь края: три формы находки #2872 и их варианты записи.
+  ["<a href> на путь края", 'export const A = () => <a href="/iam/v1/me">x</a>;', NAV_RULE],
+  ["<form action> на путь края", 'export const F = () => <form action="/iam/v1/sessions" method="post" />;', NAV_RULE],
+  [
+    "href и click() на путь края",
+    'const a = document.createElement("a");\na.href = "/iam/v1/me";\na.click();',
+    NAV_RULE,
+  ],
+  [
+    "голова шаблона на путь края",
+    "declare const id: string;\nexport const A = () => <a href={`/vpc/v1/networks/${id}`}>x</a>;",
+    NAV_RULE,
+  ],
+  ["путь края с происхождением", 'export const A = () => <a href="https://console.test/iam/v1/me">x</a>;', NAV_RULE],
+  [
+    "происхождение окна и путь края",
+    "export const A = () => <a href={`${window.location.origin}/iam/v1/me`}>x</a>;",
+    NAV_RULE,
+  ],
+  [
+    "постоянная файла на путь края",
+    'const EDGE = "/iam/v1/me";\nexport const A = () => <a href={EDGE}>x</a>;',
+    NAV_RULE,
+  ],
+  [
+    "formAction кнопки на путь края",
+    'export const B = () => <button formAction="/iam/v1/sessions">x</button>;',
+    NAV_RULE,
+  ],
+  ["setAttribute href на путь края", 'document.createElement("a").setAttribute("href", "/iam/v1/me");', NAV_RULE],
+  [
+    "action формы присвоением на путь края",
+    'const f = document.createElement("form");\nf.action = "/iam/v1/sessions";\nf.submit();',
+    NAV_RULE,
+  ],
+  ["location.assign на путь края", 'window.location.assign("/iam/v1/me");', NAV_RULE],
+  ["псевдоним location на путь края", 'const loc = window.location;\nloc.replace("/iam/v1/auth/logout");', NAV_RULE],
+  ["присвоение location.href на путь края", 'window.location.href = "/operations/op-1";', NAV_RULE],
+  ["open() на путь края", 'void window.open("/iam/v1/me");', NAV_RULE],
 ];
 
 /** Законное и не-транспорт: каждое обязано молчать. */
@@ -70,6 +128,20 @@ const TWINS = [
   ["текст", 'export const hint = "fetch(/iam/v1/me) не зовётся";'],
   ["чужой член с похожим именем", "declare const q: { fetchQuery(): void };\nq.fetchQuery();"],
   ["ключ объекта", "export const o = { fetch: 1 };"],
+  // Те же переходы, меняющие ровно один факт — адрес: путь консоли либо адрес объекта;
+  // путь края вне места перехода; проп `action` компонента со значением-не-адресом.
+  ["<a href> на путь консоли", 'export const A = () => <a href="/iam/users">x</a>;'],
+  ["<form action> на путь консоли", 'export const F = () => <form action="/settings" method="post" />;'],
+  ["href и click() на путь консоли", 'const a = document.createElement("a");\na.href = "/iam/users";\na.click();'],
+  [
+    "href и click() на адрес объекта",
+    'declare const blob: Blob;\nconst a = document.createElement("a");\na.href = URL.createObjectURL(blob);\na.click();',
+  ],
+  ["путь края текстом, не адресом перехода", 'export const endpoint = "/iam/v1/me";'],
+  [
+    "action не формы",
+    'declare const Shell: (p: { action: string }) => null;\nexport const S = () => <Shell action="edit" />;',
+  ],
 ];
 
 /** Дома транспортов: путь, законное там и то, что незаконно и там. */
@@ -119,15 +191,21 @@ async function judgePackage(uiRoot, pkg) {
   // 1. Подключение.
   const cfg = await eslint.calculateConfigForFile(path.join(pkgDir, PLANT));
   const globalsRule = cfg?.rules?.["no-restricted-globals"];
-  const wired = Array.isArray(globalsRule) && globalsRule.slice(1).some((o) => o?.name === "fetch");
-  if (!wired)
+  const transports = Array.isArray(globalsRule) && globalsRule.slice(1).some((o) => o?.name === "fetch");
+  if (!transports)
     findings.push(`${pkg}: правило мест выпуска НЕ подключено — действующая конфигурация ${PLANT} не запрещает fetch`);
+  const navRule = cfg?.rules?.[NAV_RULE];
+  const navigation = [2, "error"].includes(Array.isArray(navRule) ? navRule[0] : navRule);
+  if (!navigation)
+    findings.push(`${pkg}: правило перехода документа НЕ подключено — ${NAV_RULE} в конфигурации ${PLANT} не судит`);
+  const wired = transports && navigation;
 
   // 2. Инъекция.
   let red = 0;
-  for (const [name, code] of RED) {
-    const got = await ours(code, PLANT);
-    if (got.length === 0) findings.push(`${pkg}: подсаженная форма «${name}» находки не дала — правило слепо к ней`);
+  for (const [name, code, rule] of RED) {
+    const got = (await ours(code, PLANT)).filter((m) => rule === undefined || m.ruleId === rule);
+    if (got.length === 0)
+      findings.push(`${pkg}: подсаженная форма «${name}» находки ${rule ?? "правила"} не дала — правило слепо к ней`);
     else red += 1;
   }
   // 3. Близнецы.
@@ -182,6 +260,73 @@ async function judgePackage(uiRoot, pkg) {
     pkg,
     findings,
     line: `  ${pkg}: подключено ${wired ? "да" : "НЕТ"} · инъекций красных ${red}/${RED.length} · близнецов ${TWINS.length} · домов ${homes} · прод-файлов ${files.length}, находок ${inTree}`,
+  };
+}
+
+/**
+ * Путь края — ОДНО выражение у правила перехода и у переписи мест выпуска: экспорт
+ * правила (`EDGE_PATH`, `EDGE_ORIGIN`) против узлов разбора переписи — постоянной
+ * `EDGE_PATH` и выражения происхождения в теле `isEdgePathText`.
+ */
+function edgePathAgreement(uiRoot) {
+  const edge = ordering.EDGE_PATH;
+  const origin = ordering.EDGE_ORIGIN;
+  if (!(edge instanceof RegExp) || !(origin instanceof RegExp)) {
+    return {
+      findings: ["правило перехода не отдаёт пути края (EDGE_PATH, EDGE_ORIGIN) — сверять перепись не с чем"],
+      line: "[F8-46] путь края: ОТКАЗ",
+    };
+  }
+  let ts;
+  let source;
+  try {
+    ts = createRequire(path.join(uiRoot, "shared", "package.json"))("typescript");
+    const file = path.join(uiRoot, CENSUS);
+    source = ts.createSourceFile(file, fs.readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  } catch (e) {
+    return {
+      findings: [`${CENSUS}: перепись не разобрана — ${String(e?.message ?? e).split("\n")[0]}`],
+      line: "[F8-46] путь края: ОТКАЗ",
+    };
+  }
+  const lineOf = (node) => source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
+  const regexIn = (node, into) => {
+    if (node.kind === ts.SyntaxKind.RegularExpressionLiteral) into.push({ text: node.text, line: lineOf(node) });
+    ts.forEachChild(node, (child) => regexIn(child, into));
+  };
+  const paths = [];
+  const origins = [];
+  const visit = (node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === "EDGE_PATH" &&
+      node.initializer
+    )
+      regexIn(node.initializer, paths);
+    if (ts.isFunctionDeclaration(node) && node.name?.text === "isEdgePathText" && node.body)
+      regexIn(node.body, origins);
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  const findings = [];
+  const agree = (what, found, own) => {
+    if (found.length !== 1) {
+      findings.push(`${CENSUS}: ${what} — выражений ${found.length}, ожидалось одно: сверять правило не с чем`);
+      return false;
+    }
+    if (found[0].text !== String(own)) {
+      findings.push(
+        `${CENSUS}:${found[0].line} ${what} ${found[0].text} расходится с правилом перехода ${String(own)}`,
+      );
+      return false;
+    }
+    return true;
+  };
+  const same = [agree("путь края EDGE_PATH", paths, edge), agree("происхождение в isEdgePathText", origins, origin)];
+  return {
+    findings,
+    line: `[F8-46] путь края: правило перехода и перепись — ${same.every(Boolean) ? "одно выражение" : "РАСХОДЯТСЯ"} (${String(edge)})`,
   };
 }
 
@@ -245,11 +390,17 @@ for (const pkg of packages) {
   findings.push(...res.findings);
 }
 
+const agreement = edgePathAgreement(uiRoot);
+findings.push(...agreement.findings);
+
 console.log(`[F8-46] правило линта мест выпуска: пакетов консоли ${packages.length}`);
 for (const l of lines) console.log(l);
+console.log(agreement.line);
 if (packages.length === 0) findings.push("пакетов консоли 0 — обход не того корня");
 if (findings.length > 0) {
   for (const f of findings) console.error(`::error::${f}`);
   process.exit(1);
 }
-console.log("находок 0: правило подключено в каждом пакете, подсадки краснеют, близнецы молчат, дерево чисто");
+console.log(
+  "находок 0: правило подключено в каждом пакете, подсадки краснеют, близнецы молчат, дерево чисто, путь края один",
+);
