@@ -71,7 +71,7 @@ type RevocationConfig struct {
 // исходник (одно из трёх мест, выведенных из-под запрета на публичный разбор,
 // `security.md` §«Публичные артефакты»).
 const (
-	platformTokenIssuerKnob    = "KACHO_API_GATEWAY_PLATFORM_TOKEN_ISSUER"
+	platformIssuerKnob         = "KACHO_API_GATEWAY_PLATFORM_TOKEN_ISSUER"
 	platformRevocationURLKnob  = "KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL"
 	platformRevocationCAKnob   = "KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_CA_FILE"
 	platformRevocationCertKnob = "KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_CERT_FILE"
@@ -119,7 +119,7 @@ func judgeOurRevocationAuthority(cfg RevocationConfig) []string {
 	var problems []string
 	if strings.TrimSpace(cfg.PlatformTokenIssuer) == "" {
 		problems = append(problems,
-			platformTokenIssuerKnob+" is empty — on this posture we mint the tokens, and our "+
+			platformIssuerKnob+" is empty — on this posture we mint the tokens, and our "+
 				"revocation authority is asked about a token only through the acceptance record of "+
 				"our declared issuer; declare the issuer this installation mints under, the same "+
 				"value the identity service issues with [required because "+posture+"]")
