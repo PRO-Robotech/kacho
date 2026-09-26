@@ -6,6 +6,7 @@ import { type LaneRefusal, laneRefusalOf, loginLane } from "@shared/api/login-la
 import { useFormToken } from "@shared/hooks/use-form-token";
 import { forgetPrincipalState } from "@shared/lib/principal-state";
 import { loginAddress } from "./ceremony-addresses";
+import { abandonTabExit, beginTabExit } from "./tab-exit";
 
 /**
  * Выход — ОДНО действие на консоль: кнопка каркаса и экран `/logout` зовут его
@@ -20,6 +21,11 @@ import { loginAddress } from "./ceremony-addresses";
  * держит. После подтверждённого выхода снимается состояние браузера,
  * привязанное к человеку (`forgetPrincipalState`, условие C14), — и только
  * после него: отказ выхода не снимает ничего.
+ *
+ * С начала выхода и до ухода документа вкладку на вход уводит ТОЛЬКО выход
+ * (`tab-exit.ts`): переход по отказу `401` чтения, выпущенного прежней
+ * страницей, нёс бы её адрес возврата и отменял бы переход выхода. Отказ выхода
+ * это снимает — экран остаётся.
  */
 export function useLogout(leave: (to: string) => void = (to) => window.location.replace(to)) {
   const holder = useFormToken("logout");
@@ -29,12 +35,14 @@ export function useLogout(leave: (to: string) => void = (to) => window.location.
     if (busy) return;
     setBusy(true);
     setRefusal(null);
+    beginTabExit();
     try {
       await loginLane.logout(holder);
       forgetPrincipalState();
       leave(loginAddress());
       return;
     } catch (err) {
+      abandonTabExit();
       setRefusal(laneRefusalOf(err));
     }
     setBusy(false);

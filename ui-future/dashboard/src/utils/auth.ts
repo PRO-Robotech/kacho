@@ -1,4 +1,5 @@
 import { CEREMONY_ADDRESSES, loginAddress } from "@shared/pages/auth/ceremony-addresses";
+import { tabExiting } from "@shared/pages/auth/tab-exit";
 
 /**
  * Адрес экрана входа КОНСОЛИ с текущим адресом возврата.
@@ -11,11 +12,22 @@ export function loginUrl(returnTo = currentReturnTo()): string {
   return loginAddress(returnTo);
 }
 
-export function redirectToLogin(): void {
-  if (isCeremonyRoute(window.location.pathname)) {
+/**
+ * Увести вкладку на экран входа по отказу `401` — с адресом возврата.
+ *
+ * Не уводит, пока вкладка уходит выходом (`tab-exit.ts`, условие C14): после
+ * гашения сессии `401` получает каждое чтение прежней страницы, и переход по
+ * нему нёс бы её адрес возврата — следующий человек входом попадал бы на неё, —
+ * а браузер, исполняя последний переход, отменил бы переход выхода.
+ *
+ * `go` — переход документа; пробы подставляют свой, потому что переход окна
+ * тестовое окружение не исполняет.
+ */
+export function redirectToLogin(go: (to: string) => void = (to) => window.location.assign(to)): void {
+  if (isCeremonyRoute(window.location.pathname) || tabExiting()) {
     return;
   }
-  window.location.assign(loginUrl());
+  go(loginUrl());
 }
 
 function currentReturnTo(): string {

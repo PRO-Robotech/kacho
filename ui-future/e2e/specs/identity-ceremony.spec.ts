@@ -124,8 +124,24 @@ async function expectScreen(page: Page, path: string, marker: Locator, what: str
     .toBe("отрисован");
 }
 
-async function expectPath(page: Page, path: string, why: string) {
-  await expect.poll(() => pathOf(page), { message: why, timeout: 30_000 }).toBe(path);
+/** Адрес страницы, как его видит человек: путь и строка запроса. */
+function addressOf(page: Page): string {
+  const u = new URL(page.url());
+  return `${u.pathname}${u.search}`;
+}
+
+/**
+ * Страница пришла на АДРЕС, который производит шаг, — путь И строка запроса.
+ *
+ * Сверка одного пути принимала и чужой исход шага: выход, уведённый переходом
+ * по отказу `401` на `/login?returnTo=<страница прежнего человека>`, проходил
+ * за «вернул на экран входа», и дефект всплывал шагом позже — входом второго
+ * человека на чужой проект (F8-18, прогон 36208863788). Адрес, на котором шаг
+ * кончается, у каждого вызова выписан целиком: строки запроса там, куда
+ * консоль уводит, нет.
+ */
+async function expectAddress(page: Page, address: string, why: string) {
+  await expect.poll(() => addressOf(page), { message: why, timeout: 30_000 }).toBe(address);
 }
 
 /** Ответ глагола полосы — с телом, прочитанным по прибытии (`answer-on-arrival.ts`). */
@@ -216,7 +232,7 @@ test("F8-03 · адрес, которого консоль не ведёт, от
   expect(pathOf(page), "перевода на панель быть не должно").toBe("/verification");
   // Путь наружу — действие, а не надпись: переход обязан привести ко входу.
   await page.getByRole("link", { name: "Перейти ко входу" }).click();
-  await expectPath(page, "/login", "путь наружу со страницы неведомого адреса не привёл ко входу");
+  await expectAddress(page, "/login", "путь наружу со страницы неведомого адреса не привёл ко входу");
 });
 
 // ═══ S1 — группа B. Вход ══════════════════════════════════════════════════════
@@ -232,7 +248,7 @@ test("F8-04 · вход паролем проходит целиком и уво
   await s.password.fill(human.password);
   const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
   expect(res.status(), `вход не прошёл: ${await res.text()}`).toBe(200);
-  await expectPath(page, "/dashboard", "после входа консоль не увела на адрес возврата");
+  await expectAddress(page, "/dashboard", "после входа консоль не увела на адрес возврата");
   expectContains(census, "GET", LANE.csrf, "?form=login");
   expectContains(census, "POST", LANE.login);
   expectNoProvider(census);
@@ -334,7 +350,7 @@ test("F8-08 · признак формы чужого вида отвергну�
 
   const [accepted] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
   expect(accepted.status(), `повторная отправка со свежим признаком не прошла: ${await accepted.text()}`).toBe(200);
-  await expectPath(page, "/dashboard", "повторная отправка прошла, а перехода нет");
+  await expectAddress(page, "/dashboard", "повторная отправка прошла, а перехода нет");
 });
 
 test("F8-09 · потолок темпа: экран называет срок и не даёт бить в стену", async ({ page }, testInfo) => {
@@ -410,7 +426,7 @@ test("F8-11 · человек с живой сессией формы входа
   // verifies #2780
   await seeded(testInfo, "F8-11", page.context());
   await page.goto("/login?returnTo=/dashboard", { waitUntil: "domcontentloaded" });
-  await expectPath(page, "/dashboard", "человек с живой сессией не уведён с экрана входа на адрес возврата");
+  await expectAddress(page, "/dashboard", "человек с живой сессией не уведён с экрана входа на адрес возврата");
   await expect(loginScreen(page).email, "форма входа показана человеку с живой сессией").toHaveCount(0);
 });
 
@@ -626,7 +642,7 @@ test("F8-14 · регистрация заводит человека и сра�
   await s.password.fill(SEED_PASSWORD);
   const [res] = await Promise.all([lanePost(page, LANE.register), s.submit.click()]);
   expect(res.status(), `регистрация не прошла: ${await res.text()}`).toBe(200);
-  await expectPath(page, "/dashboard", "после регистрации консоль не увела на панель");
+  await expectAddress(page, "/dashboard", "после регистрации консоль не увела на панель");
   expectContains(census, "GET", LANE.csrf, "?form=register");
   expectContains(census, "POST", LANE.register);
   expectNoProvider(census);
@@ -678,7 +694,7 @@ test("F8-17 · признак подтверждённости адреса по
   await s.email.fill(email);
   await s.password.fill(SEED_PASSWORD);
   await Promise.all([lanePost(page, LANE.register), s.submit.click()]);
-  await expectPath(page, "/dashboard", "после регистрации консоль не увела на панель");
+  await expectAddress(page, "/dashboard", "после регистрации консоль не увела на панель");
 
   // Состояние учётной записи — из ответа края о сессии, а не из догадки экрана.
   const me = page.waitForResponse((r) => new URL(r.url()).pathname === "/iam/v1/auth/me");
@@ -710,7 +726,7 @@ test("F8-18 · выход гасит носитель и возвращает н
     page.getByRole("dialog", { name: "Учётная запись" }).getByRole("button", { name: "Выйти" }).click(),
   ]);
   expect(res.status(), `выход не прошёл: ${await res.text()}`).toBe(200);
-  await expectPath(page, "/login", "после выхода консоль не вернула на экран входа");
+  await expectAddress(page, "/login", "после выхода консоль не вернула на экран входа без адреса возврата");
   expectContains(census, "GET", LANE.csrf, "?form=logout");
   expectContains(census, "POST", LANE.logout);
   expectNoProvider(census);
@@ -812,7 +828,9 @@ test("F8-18 · после выхода следующий человек в эт
       .click({ timeout: 15_000 }),
   ]);
   expect(out.status(), `выход не прошёл: ${await out.text()}`).toBe(200);
-  await expectPath(page, "/login", "после выхода консоль не вернула на экран входа");
+  // Адрес — целиком: вход с адресом возврата прежнего человека увёл бы второго
+  // на его проект (условие C14).
+  await expectAddress(page, "/login", "после выхода консоль не вернула на экран входа без адреса возврата");
   expect(await stored(), "после выхода в браузере остались чужие аккаунт и проект").not.toContain(foreign!.id);
 
   // Второй человек входит в том же браузере.
@@ -824,7 +842,7 @@ test("F8-18 · после выхода следующий человек в эт
   const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
   expect(res.status(), `вход второго человека не прошёл: ${await res.text()}`).toBe(200);
   // Вход без адреса возврата уводит на корень консоли, а корень — на панель.
-  await expectPath(page, "/dashboard", "после входа второго человека консоль не увела на панель");
+  await expectAddress(page, "/dashboard", "после входа второго человека консоль не увела на панель");
   await expect(page.getByRole("navigation", { name: "Host navigation" })).toBeVisible({ timeout: 30_000 });
   expect(await stored(), "второму человеку применён чужой аккаунт").not.toContain(foreign!.id);
   if (foreign!.name) {
@@ -906,7 +924,7 @@ test("F8-22 · церемония входа проходится с клави�
   await tabTo(s.submit, "кнопка отправки");
   const [res] = await Promise.all([lanePost(page, LANE.login), page.keyboard.press("Enter")]);
   expect(res.status(), `вход с клавиатуры не прошёл: ${await res.text()}`).toBe(200);
-  await expectPath(page, "/dashboard", "вход с клавиатуры прошёл, а перехода нет");
+  await expectAddress(page, "/dashboard", "вход с клавиатуры прошёл, а перехода нет");
   expectContains(census, "GET", LANE.csrf, "?form=login");
   expectContains(census, "POST", LANE.login);
   expectNoProvider(census);
@@ -1041,7 +1059,7 @@ async function signInWithPasswordOnly(page: Page, human: SeededHuman) {
   const [res] = await Promise.all([lanePost(page, LANE.login), s.submit.click()]);
   expect(res.status(), `вход паролем не прошёл: ${await res.text()}`).toBe(200);
   expect(String(((await res.json()) as { session?: { assuranceLevel?: unknown } }).session?.assuranceLevel)).toBe("1");
-  await expectPath(page, "/dashboard", "после входа консоль не увела на адрес возврата");
+  await expectAddress(page, "/dashboard", "после входа консоль не увела на адрес возврата");
 }
 
 /** Начать удаление группы с её карточки — действие, на котором край зовёт повышение. */
@@ -1120,7 +1138,7 @@ test("F8-36 · повышать нечем: назван отказ и путь,
   await expect(dialog.getByRole("alert"), "окно не назвало отказ").toContainText(refusal.message);
   await expect(dialog, "окно повышения закрылось молча").toBeVisible();
   await dialog.getByRole("link", { name: "Настроить второй фактор" }).click();
-  await expectPath(page, "/settings", "путь на экран заведения второго фактора не привёл туда");
+  await expectAddress(page, "/settings", "путь на экран заведения второго фактора не привёл туда");
 });
 
 // ═══ S2 — второй путь посева переезжает на наши глаголы ═══════════════════════
