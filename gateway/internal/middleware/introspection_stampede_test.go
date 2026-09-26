@@ -126,7 +126,7 @@ func TestIntrospection_FailingProvider_SecondQuestionInWindowCostsNothing(t *tes
 	require.Equal(t, int32(1), hits.Load())
 
 	_, err2 := c.Introspect(context.Background(), "jti-poll", "raw-token")
-	require.Error(t, err2, "the verdict must not change: an unanswered question still passes on its own")
+	require.Error(t, err2, "the verdict must not change: a remembered non-answer is still a non-answer, never «live»")
 	assert.NotErrorIs(t, err2, middleware.ErrTokenInactive)
 	assert.NotErrorIs(t, err2, middleware.ErrIntrospectionMisconfigured)
 	assert.Equal(t, int32(1), hits.Load(),
@@ -166,10 +166,10 @@ func TestIntrospection_ColdStart_ConcurrentBurstIsOneRoundTrip(t *testing.T) {
 }
 
 // A remembered failure must expire. The window exists to stop a stampede, not to
-// stop asking: it is time the control is not enforcing, so it must be materially
-// shorter than the window we accept for an answer the provider actually gave.
-// Two seconds on the injected clock, against a positive TTL of an hour, is the
-// observable form of "separate, and shorter".
+// stop asking: inside it the token is refused without being asked about, live or
+// not, so it must be materially shorter than the window we accept for an answer
+// the provider actually gave. Two seconds on the injected clock, against a
+// positive TTL of an hour, is the observable form of "separate, and shorter".
 func TestIntrospection_RememberedFailure_Expires(t *testing.T) {
 	srv, hits := failingServer(t, http.StatusBadGateway)
 
@@ -197,8 +197,8 @@ func TestIntrospection_RememberedFailure_Expires(t *testing.T) {
 	_, e3 := c.Introspect(context.Background(), "jti-window", "raw-token")
 	require.Error(t, e3)
 	assert.Equal(t, int32(2), hits.Load(),
-		"after the window the question must be asked again; a failure that never expires is a "+
-			"revocation check switched off for as long as the process lives")
+		"after the window the question must be asked again; a failure that never expires "+
+			"refuses a live token for as long as the process lives")
 }
 
 // A wrong address is not a fact about a token. Asking again with a DIFFERENT

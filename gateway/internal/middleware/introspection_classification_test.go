@@ -72,7 +72,7 @@ func TestIntrospection_MethodNotAllowed_IsMisconfiguration(t *testing.T) {
 }
 
 // The authority is reached but refuses us. If it wants credentials we do not
-// send, that is our configuration to fix — not a reason to let requests past.
+// send, that is our configuration to fix — not an outage to wait out.
 func TestIntrospection_Unauthorized_IsMisconfiguration(t *testing.T) {
 	srv := newStatusServer(http.StatusUnauthorized, "application/json", `{"error":"unauthorized"}`)
 	defer srv.Close()
@@ -176,7 +176,8 @@ func TestIntrospection_TLSTrustFailure_IsMisconfiguration(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, middleware.ErrIntrospectionMisconfigured,
 		"an untrusted certificate answers every retry identically — treating it as a "+
-			"passing hiccup means hardening the address silently disables the check")
+			"passing hiccup reports a configuration fault as an outage, and every presenter "+
+			"is refused while the operator waits for a recovery that is not coming")
 }
 
 // The mirror image: TLS spoken at a plaintext listener. Same class, same answer.

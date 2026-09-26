@@ -54,7 +54,7 @@ func newIntrospectionFailureReporter(interval time.Duration, now func() time.Tim
 // observe records one failure and reports whether this one should be logged,
 // along with the running total and the number of failures the line stands for
 // (itself included). The first failure always reports — an operator must not
-// wait a window to learn the control stopped enforcing.
+// wait a window to learn that a check stopped answering.
 func (r *introspectionFailureReporter) observe() (report bool, total, represents int64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

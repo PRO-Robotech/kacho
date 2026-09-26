@@ -339,8 +339,9 @@ func (c *IntrospectionCache) fetchAndRecord(ctx context.Context, jti, rawToken s
 	// force-logout revocation that calls Invalidate(jti) while this introspection
 	// is in flight bumps them, and the generation-checked stores below are
 	// dropped — so neither a positive result computed against pre-revocation
-	// state, nor a remembered non-answer that would let the next request past
-	// unasked, can re-populate the just-flushed jti and survive its window
+	// state, nor a remembered non-answer that would answer the next request
+	// «unavailable» unasked where the authority would now say «revoked», can
+	// re-populate the just-flushed jti and survive its window
 	// (write-after-invalidate guard; CWE-362 + CWE-613). Mirrors the sibling
 	// decision cache (authz_cache.go putIfGen).
 	gen := c.cache.Generation()
@@ -435,9 +436,10 @@ func (c *IntrospectionCache) misconfiguredVerdict() (error, bool) {
 // positive result for jti is dropped by the PutIfGenWithTTL guard in Introspect.
 // InvalidateWhere bumps the generation even when zero entries match.
 //
-// A remembered non-answer for the same jti is dropped too: it would let the next
-// request past without asking, which is precisely what a force-logout must not
-// permit.
+// A remembered non-answer for the same jti is dropped too: it would refuse the
+// next request as «check unavailable» without asking, where a force-logout wants
+// the authority's fresh «revoked» — a retry-later answer in place of a
+// re-authenticate one.
 func (c *IntrospectionCache) Invalidate(jti string) {
 	c.cache.InvalidateWhere(func(k string) bool { return k == jti })
 	c.failures.InvalidateWhere(func(k string) bool { return k == jti })

@@ -53,8 +53,12 @@
 // (ErrIntrospectionMisconfigured) refuses service and is checked in Introspect
 // BEFORE this breaker is consulted. Silences must never accumulate into that
 // verdict — no number of unanswered questions is evidence about the address — and
-// this breaker must never soften it into a pass. The two live in separate
-// branches with separate memories and separate log lines, and stay that way.
+// this breaker must never recast it as a non-answer. Both refuse the request;
+// they differ in what the process remembers and what the operator reads: a wrong
+// address is held for the process and reported with the setting to fix, a
+// non-answer is held per token and reported as an outage to wait out. The two
+// live in separate branches with separate memories and separate log lines, and
+// stay that way.
 package middleware
 
 import (
@@ -82,9 +86,11 @@ const introspectionBreakerThreshold = 5
 // authority that recovers is asked again within a second of doing so, and the
 // service-wide pause never outlives the fault by more than that. It is the same
 // order as the per-token failure window and the per-call budget on purpose —
-// while the breaker is open every token of this lane but the one probe is
-// refused unasked, and every part of this file treats that state as something to
-// leave quickly, not to settle into.
+// while the breaker is open every token of this lane that has no answer already
+// held, the one probe aside, is refused unasked (a token whose answer is still
+// inside its window is served that answer first: Introspect, step 1), and every
+// part of this file treats that state as something to leave quickly, not to
+// settle into.
 const introspectionBreakerCooldown = time.Second
 
 // errIntrospectionCircuitOpen marks the answer a caller gets when the breaker
