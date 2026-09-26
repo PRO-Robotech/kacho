@@ -764,7 +764,7 @@ test("F8-18 · выход гасит носитель и возвращает н
     await page.evaluate(
       async ({ away, probeKey }) => {
         const probeFetch = (window as unknown as Record<symbol, typeof fetch>)[Symbol.for(probeKey)];
-        await probeFetch("/.ory/kratos/public/sessions/whoami").catch(() => undefined);
+        await probeFetch("/.ory/idp/public/sessions/whoami").catch(() => undefined);
         await probeFetch("/oauth2/auth").catch(() => undefined);
         window.open(`${away}/self-service/logout/browser`);
       },
@@ -779,7 +779,7 @@ test("F8-18 · выход гасит носитель и возвращает н
       })
       .toBe("ответа нет");
     await page.evaluate(() => {
-      window.location.assign("/.ory/kratos/public/self-service/login/browser");
+      window.location.assign("/.ory/idp/public/self-service/login/browser");
     });
     await expect
       .poll(() => census.providerCalls().map((c) => `${c.method} ${c.origin}${c.path} ${c.kind}`), {
@@ -787,10 +787,10 @@ test("F8-18 · выход гасит носитель и возвращает н
         timeout: 15_000,
       })
       .toEqual([
-        `GET ${origin}/.ory/kratos/public/sessions/whoami запрос`,
+        `GET ${origin}/.ory/idp/public/sessions/whoami запрос`,
         `GET ${origin}/oauth2/auth запрос`,
         `GET ${silentOrigin}/self-service/logout/browser документ`,
-        `GET ${origin}/.ory/kratos/public/self-service/login/browser документ`,
+        `GET ${origin}/.ory/idp/public/self-service/login/browser документ`,
       ]);
   } finally {
     await new Promise<void>((resolve) => silent.close(() => resolve()));

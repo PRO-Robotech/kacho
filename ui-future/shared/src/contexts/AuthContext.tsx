@@ -49,7 +49,7 @@ export interface AuthContextValue {
   refresh: () => Promise<void>;
   /** Перезапросить только whoami (например, после 403 — роль могла измениться). */
   refreshWhoAmI: () => Promise<void>;
-  /** Установить access-token (после Hydra token-exchange). */
+  /** Установить access-token (после обмена на токен). */
   setAccessToken: (token: string | null) => void;
   /** Проверка permission (admin `*` wildcard). */
   hasPermission: (perm: string) => boolean;

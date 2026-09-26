@@ -78,9 +78,9 @@ export function GrantAdminModal({ open, onClose }: Props) {
       .listUsers({ pageSize: "20", ...USERS_SCOPE.query(debounced) })
       .then((data) => {
         if (cancelled) return;
-        // KAC-196 follow-up: filter out PENDING (invited but not registered via
-        // Kratos yet) and BLOCKED users. Granting cluster-admin к PENDING-user'у
-        // бессмысленно — у него нет Kratos identity, он физически не сможет
+        // KAC-196 follow-up: filter out PENDING (invited but not registered
+        // yet) and BLOCKED users. Granting cluster-admin к PENDING-user'у
+        // бессмысленно — у него нет учётной записи входа, он физически не сможет
         // авторизоваться. KAC-125 multi-account users могут иметь дубликаты email
         // (один человек invited в N accounts) — каждый row имеет unique user.id,
         // но email duplicates захламляют AutoComplete. ACTIVE-only фильтр чистит
