@@ -25,6 +25,8 @@ import (
 
 	"github.com/PRO-Robotech/corelib/tokenpolicy"
 	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 const (
@@ -83,7 +85,7 @@ func newJWKSServer(t *testing.T, rsaKids ...string) *jwksServer {
 		js.rsaKeys[kid] = key
 	}
 	js.docFor = js.defaultDoc
-	js.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	js.srv = privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		js.fetch.Add(1)
 		cc := js.cacheControl
 		if cc == "" {

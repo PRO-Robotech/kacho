@@ -32,6 +32,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 const (
@@ -87,7 +88,7 @@ func TestLoginLaneRelay_F12_38_EveryDeclaredVerbCarriesTheNamedCompositionOnly(t
 	} {
 		t.Run(carrier.name, func(t *testing.T) {
 			stub := &formListenerStub{status: http.StatusOK, body: `{}`}
-			srv := httptest.NewServer(stub)
+			srv := privateloopback.NewServer(t, stub)
 			t.Cleanup(srv.Close)
 			chain, relay := chainWithRelay(t, carrier.own, &fakeCut{}, srv.URL)
 

@@ -31,6 +31,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 const (
@@ -91,7 +92,7 @@ func newHydra(t *testing.T) *hydraFixture {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(body)
 	})
-	srv := httptest.NewServer(mux)
+	srv := privateloopback.NewServer(t, mux)
 	fix.jwksURL = srv.URL + "/.well-known/jwks.json"
 	fix.closer = srv.Close
 	return fix

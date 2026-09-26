@@ -100,11 +100,17 @@ assert "остаток судится по имени" RED "$TMP/values.inject-b
 
 # (5) законный близнец второго рода: профиль БЕЗ службы личности — не находка,
 #     а отсутствие предмета. Проба обязана пройти, сказав об этом.
+#
+#     Службу личности на стендах не поднимает ни один профиль (база зонта,
+#     #2735): проба поднимает её сама там, где профиль объявляет её настройки.
+#     Поэтому «службы нет» строится снятием ОБЪЯВЛЕНИЯ — узла `kratos` профиля
+#     целиком, — а не флага: флаг, выставленный профилем, проба перекрыла бы.
 python3 - "$CHART/values.dev.yaml" "$TMP/values.inject-nokratos.yaml" <<'PY'
 import io,sys,re
 s=io.open(sys.argv[1],encoding="utf-8").read()
-s=re.sub(r"(?m)^(kratos:\n(?:  #[^\n]*\n)*  )enabled: true", r"\1enabled: false", s, count=1)
-io.open(sys.argv[2],"w",encoding="utf-8").write(s)
+s2,n=re.subn(r"(?ms)^kratos:\n.*?(?=^[^\s#])", "", s, count=1)
+assert n==1, "узел kratos профиля не найден — близнецу нечего снимать"
+io.open(sys.argv[2],"w",encoding="utf-8").write(s2)
 PY
 assert "службы личности нет" GREEN "$TMP/values.inject-nokratos.yaml"
 

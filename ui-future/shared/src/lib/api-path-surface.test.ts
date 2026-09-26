@@ -155,7 +155,26 @@ const gatewayNative = [
   ),
 ].filter((p) => API_PREFIX.test(p));
 
-const SURFACE = [...protoPaths, ...gatewayNative].map(protoSegments);
+// Полоса формы службы доступа (`/iam/v1/auth/*`): край её не регистрирует
+// маршрутом по пути, а РЕТРАНСЛИРУЕТ по одному объявлению — перечню
+// `loginLaneRoutes` (`gateway/internal/middleware/login_lane_paths.go`), который
+// читают и полоса сессии, и ретранслятор. Читаем тот же перечень: путь в нём —
+// поверхность края; путь, которого в нём нет, — нет. Константы пути
+// разрешаются в том же файле, где объявлены.
+const LOGIN_LANE_FILE = join(GATEWAY_DIR, "internal", "middleware", "login_lane_paths.go");
+const loginLaneSource = readFileSync(LOGIN_LANE_FILE, "utf8");
+const loginLaneConsts = new Map(
+  [...loginLaneSource.matchAll(/\b(LoginLanePath\w+)\s*=\s*"([^"]+)"/g)].map((m) => [m[1], m[2]]),
+);
+const gatewayRelayed = [
+  ...new Set(
+    [...loginLaneSource.matchAll(/Path:\s*(LoginLanePath\w+)/g)]
+      .map((m) => loginLaneConsts.get(m[1]) ?? "")
+      .filter((p) => p !== ""),
+  ),
+];
+
+const SURFACE = [...protoPaths, ...gatewayNative, ...gatewayRelayed].map(protoSegments);
 
 function belongs(path: string): boolean {
   const segs = segments(path);
@@ -192,6 +211,18 @@ describe("объём осмотренного — «ноль находок» о
     // Ровно один такой маршрут лежит под доменным префиксом (`/iam/v1/auth/me`);
     // `/healthz`, `/readyz`, `/oauth/logout` под предикат API не попадают вовсе.
     expect(gatewayNative.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("прочитал перечень ретрансляции полосы формы и разрешил каждый его путь", () => {
+    // Тринадцать глаголов объявлены одним перечнем; путь, чья константа не
+    // разрешилась, выпал бы из поверхности молча — поэтому число сверяется.
+    const routes = [...loginLaneSource.matchAll(/Path:\s*(LoginLanePath\w+)/g)].length;
+    expect(routes).toBeGreaterThanOrEqual(13);
+    expect(gatewayRelayed).toHaveLength(routes);
+    expect(gatewayRelayed).toContain("/iam/v1/auth/login");
+    // Контроль в обе стороны: выдуманный глагол полосы поверхностью не является.
+    expect(belongs("/iam/v1/auth/login")).toBe(true);
+    expect(belongs("/iam/v1/auth/no-such-verb")).toBe(false);
   });
 
   it("прочитал прод-исходники shared и нашёл в них API-пути", () => {

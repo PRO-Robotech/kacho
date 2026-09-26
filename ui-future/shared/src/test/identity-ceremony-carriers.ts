@@ -22,15 +22,21 @@ import { isTestFile } from "./module-reachability";
 const NOT_SOURCE = new Set(["node_modules", "deploy", "docs", "scripts", ".git", "e2e"]);
 
 /**
- * Чем опознаётся носитель церемонии: импорт библиотеки ПРОТОКОЛА поставщика
- * личности — единственной двери к его потокам в дереве.
+ * Чем опознаётся носитель церемонии: импорт клиента глаголов церемоний —
+ * ЕДИНСТВЕННОЙ двери консоли к ним (`@shared/api/login-lane`, приёмка F8).
  *
- * Почему протокол, а не обращения к ручкам поставщика: последние берут и те,
- * кто церемонию не ведёт вовсе (гейты прав читают ими состав доступа). Широкий
- * предикат давал ложную находку на таком гейте — а гейт, у которого находки
- * ложные, перестают читать.
+ * Прежде дверью был клиент протокола чужого поставщика; его сняли вместе с
+ * последним обращением к поставщику, и носителем стало то, что ведёт
+ * церемонию нашими глаголами: экраны входа, регистрации, параметров учётной
+ * записи, окно повышения и контекст личности. Предикат остался тем же по
+ * существу — «импортирует дверь к церемонии и отдаёт компонент», — сменилась
+ * только дверь.
+ *
+ * Почему дверь, а не обращения к ручкам: последние берут и те, кто церемонию не
+ * ведёт вовсе. Широкий предикат давал ложную находку — а гейт, у которого
+ * находки ложные, перестают читать.
  */
-export const PROVIDER_PROTOCOL = "@shared/lib/kratos";
+export const CEREMONY_PROTOCOL = "@shared/api/login-lane";
 
 export interface CeremonyCarrier {
   file: string;
@@ -81,7 +87,7 @@ export function walkCeremonyCarriers(uiRoot: string): CeremonyCensus {
   const carriers: CeremonyCarrier[] = [];
   for (const file of sourceFiles(sharedSrc)) {
     const text = readFileSync(file, "utf8");
-    if (!text.includes(`"${PROVIDER_PROTOCOL}"`)) continue;
+    if (!text.includes(`"${CEREMONY_PROTOCOL}"`)) continue;
     const components = exportedComponents(text);
     if (components.length === 0) continue;
     carriers.push({ file, rel: path.relative(uiRoot, file), components });

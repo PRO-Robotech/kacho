@@ -22,10 +22,26 @@ export const FORM_LABEL_WIDTH = 200;
 
 interface Props {
   children: ReactNode;
+  /**
+   * Отправка формы — кнопкой отправки и клавишей ввода из поля. Задана — сетка
+   * встаёт внутрь СВОЕГО элемента формы, а у формы библиотеки элемента нет: две
+   * вложенные формы недопустимы, а отправка через проверку полей библиотеки
+   * добавила бы отложенный шаг, которого у формы без названных полей нет.
+   * Своего суждения о содержимом полей форма не выносит (`noValidate`): отказ
+   * называет служба.
+   */
+  onSubmit?: () => void;
+  /** Доступное имя формы с отправкой: по нему её находят читающий с экрана и проба. */
+  label?: string;
+  /**
+   * Сетка без своего элемента формы — раздел внутри ЧУЖОЙ формы (составное поле
+   * тела ресурса). Геометрия та же; прежде такой раздел выписывал её копией.
+   */
+  embedded?: boolean;
 }
 
-export function FormGrid({ children }: Props) {
-  return (
+export function FormGrid({ children, onSubmit, label, embedded }: Props) {
+  const grid = (
     <Form
       layout="horizontal"
       labelCol={{ flex: `${FORM_LABEL_WIDTH}px` }}
@@ -33,8 +49,22 @@ export function FormGrid({ children }: Props) {
       labelAlign="left"
       colon={false}
       size="middle"
+      {...(onSubmit || embedded ? { component: false as const } : {})}
     >
       {children}
     </Form>
+  );
+  if (!onSubmit) return grid;
+  return (
+    <form
+      aria-label={label}
+      noValidate
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit();
+      }}
+    >
+      {grid}
+    </form>
   );
 }

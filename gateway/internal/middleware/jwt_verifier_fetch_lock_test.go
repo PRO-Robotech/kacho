@@ -7,10 +7,11 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // TestJWKSCache_RefreshDoesNotBlockReadersDuringFetch pins the concurrency
@@ -24,7 +25,7 @@ func TestJWKSCache_RefreshDoesNotBlockReadersDuringFetch(t *testing.T) {
 	started := make(chan struct{})
 	var once sync.Once
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := privateloopback.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		once.Do(func() { close(started) })
 		<-release // hold the response open — simulate a slow JWKS endpoint
 		w.Header().Set("Content-Type", "application/json")

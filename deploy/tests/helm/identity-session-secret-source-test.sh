@@ -66,6 +66,20 @@ SECRET_TPL="charts/kratos/templates/secrets.yaml"
 . "$(dirname "$0")/outcome.sh"
 # shellcheck source=deploy/tests/helm/stacks.sh
 . "$(dirname "$0")/stacks.sh"
+# shellcheck source=deploy/tests/helm/provider-up.sh
+. "$(dirname "$0")/provider-up.sh"
+
+# ── ПОСТАВЩИК И ПОСАДКА `external` ПОДНИМАЮТСЯ ВНУТРИ РЕНДЕРА ПРОБЫ ─────────
+#
+# На стендах таблицы служба личности поставщика не поднимается (база зонта,
+# #2735), а посадку `own` объявляют корни всех цепочек. Полоса стража,
+# которую судят утверждения 1–8, — величины сессии ПОСТАВЩИКА под посадкой
+# `external`; её носителя среди стендов больше нет. Поэтому оба факта
+# поднимаются здесь, поверх настоящей цепочки, а всё остальное — её
+# собственные профили. Утверждение 9 поднимает поставщика тоже: молчание
+# стража под `own` обязано следовать из ПОСАДКИ, а не из выключенного флага
+# подчарта (#2732), — иначе граница была бы неотличима от «шаблон не рендерится».
+EXTERNAL_WITH_STORE=("${EXTERNAL_POSTURE_ARGS[@]}" "${IDENTITY_STORE_UP_ARGS[@]}")
 
 # ── ЦЕПОЧКИ БЕРУТСЯ ИЗ ТАБЛИЦЫ, А НЕ ВЫПИСЫВАЮТСЯ ───────────────────────────
 #
@@ -143,7 +157,7 @@ secret_keys() {
 UPGRADE_FIXTURE=(--is-upgrade --set-string global.postgresql.auth.password=render-fixture-not-a-secret)
 
 # shellcheck disable=SC2086  # цепочка `-f a -f b` обязана разбиться на слова
-render_prod() { helm_try kacho-umbrella "$UMBRELLA" $PROD_ARGS "$@"; }
+render_prod() { helm_try kacho-umbrella "$UMBRELLA" $PROD_ARGS "${EXTERNAL_WITH_STORE[@]}" "$@"; }
 
 # ── 1. Положительный контроль: боевой профиль рендерится как УСТАНОВКА ───────
 #
@@ -190,7 +204,7 @@ ok
 # кого. Полосы одного механизма обязаны сверяться МЕЖДУ СОБОЙ — без этого
 # утверждения страж был бы неотличим от «отказывать всякому обновлению».
 # shellcheck disable=SC2086  # то же: цепочка стенда разбивается на слова
-helm_try kacho-umbrella "$UMBRELLA" $DEV_ARGS "${UPGRADE_FIXTURE[@]}" --show-only "$SECRET_TPL"
+helm_try kacho-umbrella "$UMBRELLA" $DEV_ARGS "${EXTERNAL_WITH_STORE[@]}" "${UPGRADE_FIXTURE[@]}" --show-only "$SECRET_TPL"
 render_or_fatal "стенд dev как обновление"
 render_nonempty_or_fatal "стенд dev как обновление"
 ok
@@ -239,11 +253,11 @@ ok
 # То, что под `own` он при этом судит нашу ключницу, утверждает
 # identity-guards-on-our-own-posture-test.sh.
 # shellcheck disable=SC2086  # цепочка стенда разбивается на слова
-helm_try kacho-umbrella "$UMBRELLA" $OWN_ARGS "${UPGRADE_FIXTURE[@]}"
+helm_try kacho-umbrella "$UMBRELLA" $OWN_ARGS "${IDENTITY_STORE_UP_ARGS[@]}" "${UPGRADE_FIXTURE[@]}"
 render_or_fatal "стенд own как обновление (посадка own)"
 render_nonempty_or_fatal "стенд own как обновление (посадка own)"
 ok
 
 findings_verdict "стендов прочитано из stacks.txt: 3 (prod, dev, own); \
-рендеров как обновление: 6"
+рендеров как обновление: 6; поставщик поднят пробой на всех трёх, посадка external — на prod и dev"
 exit 0

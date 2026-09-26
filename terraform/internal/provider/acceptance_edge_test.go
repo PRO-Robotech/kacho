@@ -79,6 +79,8 @@ import (
 	"time"
 
 	"github.com/PRO-Robotech/corelib/ids"
+
+	"github.com/PRO-Robotech/kacho/internal/privateloopback"
 )
 
 // edgeOpPollsBeforeDone — на каком по счёту опросе операция объявляется завершённой.
@@ -258,7 +260,7 @@ func newFakeEdge(t *testing.T, kinds ...*edgeKind) *fakeEdge {
 			e.rows[id] = &edgeRow{kind: k, base: k.Path, id: id, seq: e.seq, obj: seed}
 		}
 	}
-	e.srv = httptest.NewServer(http.HandlerFunc(e.handle))
+	e.srv = privateloopback.NewServer(t, http.HandlerFunc(e.handle))
 	t.Cleanup(e.srv.Close)
 	return e
 }
