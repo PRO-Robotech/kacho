@@ -456,10 +456,30 @@ func vendorModuleCorpus(dir string) (vendorTreeCorpus, error) {
 	return vendorCorpusFromPaths(dir, rels), nil
 }
 
+// vendorModuleFetch — дерево модуля указанной версии.
+type vendorModuleFetch func(module, version string) (vendorTreeCorpus, error)
+
+// vendorModuleFromCache — дерево модуля указанной версии из кэша модулей
+// (`go mod download`). Производственный способ получить дерево по пину базы.
+func vendorModuleFromCache(root string) vendorModuleFetch {
+	return func(module, version string) (vendorTreeCorpus, error) {
+		dir, err := vendorModuleDirAt(root, module, version)
+		if err != nil {
+			return vendorTreeCorpus{}, err
+		}
+		c, err := vendorModuleCorpus(dir)
+		if err != nil {
+			return vendorTreeCorpus{}, fmt.Errorf("%w: %w", errVendorBase, err)
+		}
+		return c, nil
+	}
+}
+
 // retiredVendorBaseCorpora — три дерева на базе и по строке о каждом: как оно
-// получено. head — деревья изменения, headGoMod — `go.mod` изменения.
+// получено. head — деревья изменения, headGoMod — `go.mod` изменения, fetch —
+// чем получить дерево модуля, когда пин на базе другой.
 func retiredVendorBaseCorpora(
-	root, rev string, head map[string]vendorTreeCorpus, headGoMod []byte,
+	root, rev string, head map[string]vendorTreeCorpus, headGoMod []byte, fetch vendorModuleFetch,
 ) (map[string]vendorTreeCorpus, []string, error) {
 	platform, changed, err := retiredVendorPlatformBase(root, rev, head[vendorTreePlatform])
 	if err != nil {
@@ -486,21 +506,17 @@ func retiredVendorBaseCorpora(
 			continue
 		}
 		was, now := basePins[module], headPins[module]
-		switch {
-		case was == "":
+		switch was {
+		case "":
 			return nil, nil, fmt.Errorf("%w: на базе ребра %s нет — дерево %s сравнить не с чем",
 				errVendorBase, module, tree)
-		case was == now:
+		case now:
 			base[tree] = head[tree]
 			hows = append(hows, fmt.Sprintf("%s: пин тот же %s", tree, now))
 		default:
-			dir, err := vendorModuleDirAt(root, module, was)
+			c, err := fetch(module, was)
 			if err != nil {
 				return nil, nil, err
-			}
-			c, err := vendorModuleCorpus(dir)
-			if err != nil {
-				return nil, nil, fmt.Errorf("%w: %w", errVendorBase, err)
 			}
 			base[tree] = c
 			hows = append(hows, fmt.Sprintf("%s: пин базы %s, изменения %s", tree, was, now))
@@ -537,7 +553,7 @@ func vendorVerdictAt(root string, rels []string, pinned map[string]vendorTreeCor
 	if err != nil {
 		return v, fmt.Errorf("%w: go.mod изменения не читается: %w", errVendorBase, err)
 	}
-	base, hows, err := retiredVendorBaseCorpora(root, v.Rev, head, gomod)
+	base, hows, err := retiredVendorBaseCorpora(root, v.Rev, head, gomod, vendorModuleFromCache(root))
 	if err != nil {
 		return v, err
 	}

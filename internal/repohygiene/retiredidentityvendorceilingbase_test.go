@@ -395,21 +395,20 @@ func TestRetiredVendorCeiling_BaseSymlinkIsARefusal(t *testing.T) {
 }
 
 // TestRetiredVendorCeiling_ShiftedPinIsNotTheSameTree — пин службы доступа на
-// базе ДРУГОЙ: её дерево на базе читается по пину базы, а не берётся с
-// изменения. Модуль такой версии получить нечем — и это ОТКАЗ базы, а не
-// «пин тот же». Близнец — тот же пин: дерево то же, суд исполняется.
+// базе ДРУГОЙ: её дерево на базе берётся по пину БАЗЫ, а не с изменения. Один
+// факт пары — сдвинут ли пин; близнец с тем же пином дерево получать не ходит и
+// берёт дерево изменения.
 func TestRetiredVendorCeiling_ShiftedPinIsNotTheSameTree(t *testing.T) {
-	// Модуль не получается НИОТКУДА: ни через прокси, ни мимо него.
-	for k, v := range map[string]string{"GOPROXY": "off", "GOPRIVATE": "", "GONOPROXY": "",
-		"GONOSUMDB": "", "GOFLAGS": ""} {
-		t.Setenv(k, v)
-	}
+	t.Parallel()
 
 	head := map[string]vendorTreeCorpus{vendorTreePlatform: vendorCorpusOf(
 		map[string]string{"go.mod": "module synthetic\n"}, nil, nil, nil, 1)}
 	for tree, c := range vendorProbePinned() {
 		head[tree] = c
 	}
+	atBasePin := vendorCorpusOf(map[string]string{"base-pin.go": "package x\n"}, nil, nil, nil, 1)
+	const headPin = "v0.0.0-20000101000000-0000000000aa"
+
 	for _, shifted := range []bool{true, false} {
 		root, fork := vendorProbeWorld(t)
 		gomod, err := os.ReadFile(filepath.Join(root, "go.mod"))
@@ -420,19 +419,24 @@ func TestRetiredVendorCeiling_ShiftedPinIsNotTheSameTree(t *testing.T) {
 		if shifted {
 			headGoMod = []byte(strings.Replace(string(gomod),
 				retiredVendorTreeModules[vendorTreeAccess]+" "+vendorProbePin,
-				retiredVendorTreeModules[vendorTreeAccess]+" v0.0.0-20000101000000-0000000000aa", 1))
+				retiredVendorTreeModules[vendorTreeAccess]+" "+headPin, 1))
 		}
-		_, hows, err := retiredVendorBaseCorpora(root, fork, head, headGoMod)
-		switch {
-		case shifted && !errors.Is(err, errVendorBase):
-			t.Fatalf("сдвинутый пин обязан читать дерево по пину базы, а модуль этой версии "+
-				"получить нечем — ждали отказ базы, получено %v (%v)", err, hows)
-		case shifted && !strings.Contains(err.Error(), vendorProbePin):
-			t.Fatalf("отказ обязан называть пин базы %s: %v", vendorProbePin, err)
-		case !shifted && err != nil:
-			t.Fatalf("тот же пин обязан давать то же дерево: %v", err)
-		case !shifted:
-			t.Logf("пин тот же: %s", strings.Join(hows, " · "))
+		var asked []string
+		fetch := func(module, version string) (vendorTreeCorpus, error) {
+			asked = append(asked, module+"@"+version)
+			return atBasePin, nil
+		}
+		base, hows, err := retiredVendorBaseCorpora(root, fork, head, headGoMod, fetch)
+		if err != nil {
+			t.Fatalf("сдвинут=%t: дерево базы не собрано: %v", shifted, err)
+		}
+		t.Logf("сдвинут=%t: %s · запрошено %v", shifted, strings.Join(hows, " · "), asked)
+		_, fromBasePin := base[vendorTreeAccess].Bodies["base-pin.go"]
+		switch want := retiredVendorTreeModules[vendorTreeAccess] + "@" + vendorProbePin; {
+		case shifted && (len(asked) != 1 || asked[0] != want || !fromBasePin):
+			t.Fatalf("сдвинутый пин обязан дать дерево по пину БАЗЫ %s, запрошено %v", want, asked)
+		case !shifted && (len(asked) != 0 || fromBasePin):
+			t.Fatalf("тот же пин обязан дать дерево изменения, не запрашивая модуль: %v", asked)
 		}
 	}
 }
