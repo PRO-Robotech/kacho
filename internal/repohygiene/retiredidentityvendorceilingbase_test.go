@@ -4,10 +4,13 @@
 package repohygiene
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -438,5 +441,72 @@ func TestRetiredVendorCeiling_ShiftedPinIsNotTheSameTree(t *testing.T) {
 		case !shifted && (len(asked) != 0 || fromBasePin):
 			t.Fatalf("тот же пин обязан дать дерево изменения, не запрашивая модуль: %v", asked)
 		}
+	}
+}
+
+// TestRetiredVendorGoModPinsAreTheGoToolReading — пины разбираются в памяти, и
+// ответ обязан совпасть с тем, что про тот же файл говорит сама команда go
+// (`go mod edit -json`): два независимых чтения одного go.mod этого дерева.
+// Разойдутся — суд базы сравнивал бы деревья не по тем пинам, по которым
+// собирается продукт.
+//
+// Предпосылка — непустой перечень, несущий каждое ребро ведомости: иначе
+// «совпало» означало бы «оба прочли пустое». Близнец — файл, который команда go
+// отвергает: он обязан дать отказ, а не пустой перечень.
+func TestRetiredVendorGoModPinsAreTheGoToolReading(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(repoRoot(t), "go.mod")
+	gomod, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("проверка НЕ ИСПОЛНЯЛАСЬ: %v", err)
+	}
+	got, err := vendorGoModPins(gomod)
+	if err != nil {
+		t.Fatalf("go.mod дерева не разобран: %v", err)
+	}
+
+	out, err := exec.Command("go", "mod", "edit", "-json", path).Output()
+	if err != nil {
+		t.Fatalf("проверка НЕ ИСПОЛНЯЛАСЬ: команда go не прочла %s: %v", path, err)
+	}
+	var tool struct {
+		Require []struct{ Path, Version string }
+	}
+	if err := json.Unmarshal(out, &tool); err != nil {
+		t.Fatalf("проверка НЕ ИСПОЛНЯЛАСЬ: ответ команды go не разобран: %v", err)
+	}
+	want := make(map[string]string, len(tool.Require))
+	for _, r := range tool.Require {
+		want[r.Path] = r.Version
+	}
+	for tree, module := range retiredVendorTreeModules {
+		if want[module] == "" {
+			t.Fatalf("предпосылка не выполнена: у go.mod дерева нет ребра %s (дерево %s) — "+
+				"сверка пинов шла бы не о тех модулях", module, tree)
+		}
+	}
+	t.Logf("требований: по команде go %d, по разбору в памяти %d", len(want), len(got))
+
+	var diff []string
+	for module, version := range want {
+		if got[module] != version {
+			diff = append(diff, fmt.Sprintf("%s: команда go %q, в памяти %q", module, version, got[module]))
+		}
+	}
+	for module, version := range got {
+		if _, ok := want[module]; !ok {
+			diff = append(diff, fmt.Sprintf("%s: команда go —, в памяти %q", module, version))
+		}
+	}
+	if len(diff) > 0 {
+		sort.Strings(diff)
+		t.Fatalf("разбор в памяти расходится с командой go по %d требованиям:\n  %s",
+			len(diff), strings.Join(diff, "\n  "))
+	}
+
+	broken := []byte("module x\n\nrequire (\n\tbroken\n)\n")
+	if pins, err := vendorGoModPins(broken); err == nil {
+		t.Fatalf("go.mod, который команда go отвергает, обязан дать отказ, а дал перечень %v", pins)
 	}
 }

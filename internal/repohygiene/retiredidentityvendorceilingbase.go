@@ -95,6 +95,7 @@ import (
 	"strings"
 
 	"github.com/PRO-Robotech/corelib/gitenv"
+	"golang.org/x/mod/modfile"
 )
 
 // errVendorBase — базу вывести или прочитать нечем. Третья категория: не
@@ -385,31 +386,20 @@ func retiredVendorPlatformBase(root, rev string, head vendorTreeCorpus) (vendorT
 	return base, len(changes), nil
 }
 
-// vendorGoModPins — версии требований модуля, разобранные самим инструментом
-// (`go mod edit -json`), а не выражением по тексту.
+// vendorGoModPins — версии требований модуля, разобранные парсером самой
+// команды go, а не выражением по тексту: `golang.org/x/mod/modfile` — тот
+// разбор, которым `go mod edit -json` читает файл, и перечень требований у них
+// один. Разбор идёт в памяти: байты go.mod не становятся файлом и не уходят в
+// дочерний процесс, поэтому ни временного каталога, ни `go` в PATH здесь не
+// нужно.
 func vendorGoModPins(gomod []byte) (map[string]string, error) {
-	dir, err := os.MkdirTemp("", "vendor-gomod-")
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = os.RemoveAll(dir) }()
-	path := filepath.Join(dir, "go.mod")
-	if err := os.WriteFile(path, gomod, 0o600); err != nil {
-		return nil, err
-	}
-	out, err := exec.Command("go", "mod", "edit", "-json", path).Output() // #nosec G204 -- путь создан здесь
+	f, err := modfile.Parse("go.mod", gomod, nil)
 	if err != nil {
 		return nil, fmt.Errorf("разбор go.mod: %w", err)
 	}
-	var parsed struct {
-		Require []struct{ Path, Version string }
-	}
-	if err := json.Unmarshal(out, &parsed); err != nil {
-		return nil, fmt.Errorf("разбор go.mod: %w", err)
-	}
-	pins := make(map[string]string, len(parsed.Require))
-	for _, r := range parsed.Require {
-		pins[r.Path] = r.Version
+	pins := make(map[string]string, len(f.Require))
+	for _, r := range f.Require {
+		pins[r.Mod.Path] = r.Mod.Version
 	}
 	return pins, nil
 }
