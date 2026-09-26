@@ -7,7 +7,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # ПОЧЕМУ ОБХОД, А НЕ РЕЕСТР
 #
-# Реестр `adminHopConsumers` (gateway/deploy/admin_hop_transport_test.go)
+# Реестр `adminHopConsumers` (deploy/helm/umbrella/admin_hop_transport_test.go)
 # резолвит ПУТИ В ФАЙЛАХ ЗНАЧЕНИЙ и потому BY CONSTRUCTION не видит потребителя,
 # чей адрес приезжает умолчанием чарта-зависимости либо зашит в шаблон. Его число
 # («4/4 проверено») читается как полнота, которой нет.
@@ -61,7 +61,7 @@ SCRIPT="$(basename "$0")"
 DEPLOY_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 REPO_ROOT="$(cd "$DEPLOY_ROOT/.." && pwd)"
 UMBRELLA="$DEPLOY_ROOT/helm/umbrella"
-REGISTRY_GO="$REPO_ROOT/gateway/deploy/admin_hop_transport_test.go"
+REGISTRY_GO="$UMBRELLA/admin_hop_transport_test.go"
 
 # ── Три исхода — ОБЩЕЙ реализацией каталога, а не своей копией ───────────────
 #
@@ -176,7 +176,6 @@ ALLOWED_TREE=(
   "deploy/helm/umbrella/templates/hydra-admin-certificate.yaml|SAN сертификата терминатора"
   "deploy/helm/umbrella/templates/hydra-admin-tls-configmap.yaml|конфигурация терминатора: адрес апстрима и есть её предмет"
   "deploy/helm/umbrella/templates/hydra-admin-tls-service.yaml|Service терминатора: его имя и есть адрес"
-  "deploy/tests/helm/admin-hop-transport-test.sh|гейт транспорта: адрес — его предмет"
   "deploy/tests/helm/admin-hop-address-census-test.sh|эта перепись"
   "deploy/scripts/assert-admin-hop-transport.sh|живой гейт перехода: пробник обращается по обоим адресам"
   "deploy/scripts/remeasure-provider-listener-tls.sh|перемер предпосылки"

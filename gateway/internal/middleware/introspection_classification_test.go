@@ -1,15 +1,17 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// introspection_classification_test.go — "the provider did not answer" and "the
+// introspection_classification_test.go — "the authority did not answer" and "the
 // address does not serve this" are different facts and must not share a branch.
 //
-// A server that is down comes back. An address that does not serve introspection
-// never will: every request pays the round-trip, gets the same non-answer, and —
-// if the two are merged — is waved through on the strength of a failure that is
-// permanent. That is how a revocation check ends up switched off while looking
-// switched on, so the classification is pinned here rather than left to the
-// caller's reading of an error string.
+// Both refuse the request: every revocation lane is fail-closed. What the
+// classification decides is what happens NEXT. A server that is down comes back:
+// the breaker sheds load from it and the short failure memory lets a later window
+// ask again. An address that does not serve introspection never will: it is
+// remembered as a wrong address and reported with the knob to fix. Merged, a
+// permanent misconfiguration reads as a flapping neighbour and the operator waits
+// for a recovery no retry brings, so the classification is pinned here rather
+// than left to the caller's reading of an error string.
 package middleware_test
 
 import (
@@ -42,8 +44,8 @@ func newStatusServer(status int, contentType, body string) *httptest.Server {
 func introspectAgainst(t *testing.T, url string) error {
 	t.Helper()
 	c, err := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: url,
-		TTL:                   time.Minute,
+		IntrospectionURL: url,
+		TTL:              time.Minute,
 	})
 	require.NoError(t, err)
 	_, ierr := c.Introspect(context.Background(), "jti-x", "raw-token")
@@ -69,7 +71,7 @@ func TestIntrospection_MethodNotAllowed_IsMisconfiguration(t *testing.T) {
 	assert.ErrorIs(t, introspectAgainst(t, srv.URL), middleware.ErrIntrospectionMisconfigured)
 }
 
-// The admin API is reached but refuses us. If it wants credentials we do not
+// The authority is reached but refuses us. If it wants credentials we do not
 // send, that is our configuration to fix — not a reason to let requests past.
 func TestIntrospection_Unauthorized_IsMisconfiguration(t *testing.T) {
 	srv := newStatusServer(http.StatusUnauthorized, "application/json", `{"error":"unauthorized"}`)
@@ -85,19 +87,19 @@ func TestIntrospection_HTMLBody_IsMisconfiguration(t *testing.T) {
 	assert.ErrorIs(t, introspectAgainst(t, srv.URL), middleware.ErrIntrospectionMisconfigured)
 }
 
-// The provider is up but unwell. This one genuinely passes, so it keeps the
-// documented soft-fail — and must NOT be classified as configuration.
+// The authority is up but unwell. It recovers on its own, so it stays on the
+// transient branch — and must NOT be classified as configuration.
 func TestIntrospection_ServerError_IsTransient(t *testing.T) {
 	srv := newStatusServer(http.StatusBadGateway, "text/plain", "bad gateway")
 	defer srv.Close()
 	err := introspectAgainst(t, srv.URL)
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, middleware.ErrIntrospectionMisconfigured,
-		"an unwell provider recovers; treating it as configuration would refuse traffic on a hiccup")
+		"an unwell authority recovers; treating it as configuration would pin a wrong-address verdict on a hiccup")
 	assert.NotErrorIs(t, err, middleware.ErrTokenInactive)
 }
 
-// Rate limiting is the provider pushing back, not a wrong address.
+// Rate limiting is the authority pushing back, not a wrong address.
 func TestIntrospection_TooManyRequests_IsTransient(t *testing.T) {
 	srv := newStatusServer(http.StatusTooManyRequests, "application/json", `{"error":"slow down"}`)
 	defer srv.Close()
@@ -124,7 +126,7 @@ func TestIntrospection_ProperAnswer_IsUnaffected(t *testing.T) {
 }
 
 // The per-call budget is the caller's, not a constant buried in the transport:
-// a provider that never answers must not pin a request-handling goroutine for
+// an authority that never answers must not pin a request-handling goroutine for
 // longer than the configured budget.
 func TestIntrospection_HonoursConfiguredTimeout(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -134,9 +136,9 @@ func TestIntrospection_HonoursConfiguredTimeout(t *testing.T) {
 	defer srv.Close()
 
 	c, err := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: srv.URL,
-		TTL:                   time.Minute,
-		Timeout:               100 * time.Millisecond,
+		IntrospectionURL: srv.URL,
+		TTL:              time.Minute,
+		Timeout:          100 * time.Millisecond,
 	})
 	require.NoError(t, err)
 
@@ -147,21 +149,20 @@ func TestIntrospection_HonoursConfiguredTimeout(t *testing.T) {
 	require.Error(t, ierr)
 	assert.NotErrorIs(t, ierr, middleware.ErrIntrospectionMisconfigured)
 	assert.Less(t, elapsed, time.Second,
-		"the configured budget must bound the wait; a stalled provider cannot hold the request")
+		"the configured budget must bound the wait; a stalled authority cannot hold the request")
 	// Deadline overruns are the one failure a caller must never read as an answer.
 	assert.True(t, errors.Is(ierr, context.DeadlineExceeded) || elapsed < time.Second)
 }
 
 // The transport cannot establish trust with what answered. This is the shape of
-// an operator HARDENING the address — moving it from plaintext to TLS — against a
-// provider whose certificate this process has no reason to trust.
+// an operator HARDENING the address — moving it from plaintext to TLS — against an
+// authority whose certificate this process has no reason to trust.
 //
-// It must be classified as configuration, and here is why that is not a matter of
-// taste: on the "provider did not answer" branch the request PASSES. If a failed
-// handshake landed there, the act of hardening the address would switch the
-// revocation check off across the fleet, and the only trace would be one log line
-// per window while every request sailed through unchecked. A permanent condition
-// that no retry resolves belongs on the branch that refuses.
+// It must be classified as configuration: no retry resolves it. On the "did not
+// answer" branch it would read as a neighbour that is down, the report would say
+// "wait", and the fleet would keep refusing every presenter while the operator
+// waited for a recovery that is not coming. A permanent condition belongs on the
+// branch that names the knob to fix.
 func TestIntrospection_TLSTrustFailure_IsMisconfiguration(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -190,13 +191,13 @@ func TestIntrospection_TLSAgainstPlaintextEndpoint_IsMisconfiguration(t *testing
 
 // A scheme no HTTP transport can speak is configuration too — it never resolves.
 func TestIntrospection_UnsupportedScheme_IsMisconfiguration(t *testing.T) {
-	err := introspectAgainst(t, "ftp://provider.invalid/admin/oauth2/introspect")
+	err := introspectAgainst(t, "ftp://authority.invalid/internal/tokens/introspect")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, middleware.ErrIntrospectionMisconfigured)
 }
 
 // And the boundary the classification must NOT cross: nothing listening is a
-// passing condition — a provider restarting comes back on its own.
+// transient condition — an authority restarting comes back on its own.
 func TestIntrospection_ConnectionRefused_StaysTransient(t *testing.T) {
 	srv := newStatusServer(http.StatusOK, "application/json", `{"active":true}`)
 	url := srv.URL
@@ -205,6 +206,6 @@ func TestIntrospection_ConnectionRefused_StaysTransient(t *testing.T) {
 	err := introspectAgainst(t, url)
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, middleware.ErrIntrospectionMisconfigured,
-		"a provider that is down comes back; refusing traffic for the duration would "+
-			"take the API down with it")
+		"an authority that is down comes back; remembering it as a wrong address "+
+			"would keep refusing after it recovered")
 }

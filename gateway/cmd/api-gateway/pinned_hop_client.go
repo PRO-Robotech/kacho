@@ -1,20 +1,23 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// admin_hop_client.go — the HTTP client for the identity provider's ADMIN API.
+// pinned_hop_client.go — HTTP clients for the hops the edge makes on its own
+// behalf: to the key set its verifier trusts, and to our revocation authority.
 //
-// WHAT GOES OVER THIS HOP. Two calls share it: the logout handler's
-// provider-side session kill, and — since the revocation check moved onto the
-// authN layer — token introspection, which runs on EVERY authenticated request
-// that misses the short-TTL cache. That second one changed the nature of the
-// hop: it no longer carries only administrative calls, it carries the caller's
-// LIVE bearer. A bearer is a bearer: whoever reads it off the wire can use it.
+// WHAT GOES OVER THESE HOPS. The key-set hop carries the material the edge
+// verifies EVERY bearer's signature with; whoever substitutes it in transit
+// substitutes the access decision. The revocation hop carries the caller's LIVE
+// bearer on every cache miss — introspection asks about a token by sending it —
+// and a bearer is a bearer: whoever reads it off the wire can use it.
 //
-// WHY THE TRUST ANCHOR IS A KNOB AND NOT A DERIVATION. Moving the hop to TLS
-// only helps if the certificate is VERIFIED, and the provider's certificate on
-// an in-cluster address comes from the internal CA — which the process does not
-// trust by default, because its default pool is the system roots. The bundle
-// path is therefore configuration, exactly like the addresses themselves.
+// The hop to the previous identity provider's ADMIN API is gone (#2734), and so
+// is its client: the edge no longer asks that provider anything.
+//
+// WHY THE TRUST ANCHOR IS A KNOB AND NOT A DERIVATION. Moving a hop to TLS only
+// helps if the certificate is VERIFIED, and a certificate on an in-cluster
+// address comes from the internal CA — which the process does not trust by
+// default, because its default pool is the system roots. The bundle path is
+// therefore configuration, exactly like the addresses themselves.
 //
 // WHY AN UNUSABLE ANCHOR REFUSES TO START. The tempting fallback — "cannot read
 // the bundle, carry on with the system roots" — produces the one state nobody
@@ -23,8 +26,8 @@
 // rotates. Worse, the failure mode when it finally bites is fleet-wide: the
 // introspection layer classifies an unknown-authority handshake as a PERMANENT
 // misconfiguration (see permanentTransportFailure in the middleware) and then
-// refuses every request rather than waving them through. Refusing at boot puts
-// that in the operator's hands, at the one moment they are looking.
+// refuses every request. Refusing at boot puts that in the operator's hands, at
+// the one moment they are looking.
 package main
 
 import (
@@ -37,17 +40,12 @@ import (
 	"time"
 )
 
-// adminHopCAEnv — the environment variable naming the trust anchor. Held as a
-// constant so the refuse-to-start message and the config field cannot drift
-// apart: an operator reading the refusal must be able to act on it without
-// reading this file.
-const adminHopCAEnv = "KACHO_HYDRA_ADMIN_CA_FILE"
-
-// jwksHopCAEnv — то же для ХОПА ЗА КЛЮЧАМИ ВЕРИФИКАЦИИ.
+// jwksHopCAEnv — ручка якоря доверия ХОПА ЗА КЛЮЧАМИ ВЕРИФИКАЦИИ. Держится
+// константой, чтобы текст отказа старта и поле настроек не разошлись: оператор,
+// читающий отказ, обязан узнать, что править, не открывая этот файл.
 //
-// Хоп другой, а требование ровно то же: по нему едет материал, которым край
-// проверяет ПОДПИСЬ каждого предъявителя, и подменивший его в пути подменяет решение
-// о доступе. Сертификат на внутрикластерном адресе выписан внутренним центром, в
+// По этому хопу едет материал, которым край проверяет ПОДПИСЬ каждого
+// предъявителя, и подменивший его в пути подменяет решение о доступе. Сертификат на внутрикластерном адресе выписан внутренним центром, в
 // корнях процесса его нет — значит связка задаётся настройкой, как и адрес.
 //
 // БЕЗ ЭТОЙ РУЧКИ ЗАЩИЩЁННЫЙ ТРАНСПОРТ БЫЛ НЕДОСТИЖИМ, и обходили это двумя
@@ -56,27 +54,17 @@ const adminHopCAEnv = "KACHO_HYDRA_ADMIN_CA_FILE"
 // проверку сертификата — то есть объявить защиту и не выполнять её.
 const jwksHopCAEnv = "KACHO_HYDRA_JWKS_CA_FILE"
 
-// newAdminHopClient builds the client used for every call to the provider's
-// admin API, bounded by timeout.
+// newJWKSHopClient строит клиент хопа за ключами верификации, ограниченный
+// timeout.
 //
-// caFile empty ⇒ no trust anchor is configured and the default transport is
-// used unchanged. That is not an oversight: an in-cluster admin API served over
-// plaintext http needs no anchor, and inventing one would refuse a stand that
-// is deliberately configured that way.
+// caFile пуст ⇒ якоря нет и транспорт по умолчанию не трогается: незащищённый
+// внутрикластерный адрес якоря не требует, и выдуманный якорь отказал бы стенду,
+// настроенному так намеренно. caFile задан ⇒ клиент проверяет собеседника ТОЛЬКО
+// этой связкой — не «вдобавок к системным корням»: хопу к внутреннему центру
+// незачем принимать публично выписанный сертификат на то же имя.
 //
-// caFile set ⇒ the returned client verifies the peer against THAT bundle and
-// nothing else. Not "in addition to the system roots": an internal-CA hop has
-// no business accepting a publicly-issued certificate for the same name, and
-// narrowing the anchor is the whole point of pinning it.
-func newAdminHopClient(caFile string, timeout time.Duration) (*http.Client, error) {
-	return newPinnedHopClient(adminHopCAEnv, caFile, timeout)
-}
-
-// newJWKSHopClient — тот же клиент для хопа за ключами верификации.
-//
-// Отдельное имя, ОДНА реализация: два экземпляра одного кода разъезжаются, и
-// разъезжается ровно тот, где дефект ещё не нашли. Разница между хопами — только имя
-// ручки в тексте отказа, и она параметр.
+// Отдельное имя, ОДНА реализация (`newPinnedHopClient`): два экземпляра одного
+// кода разъезжаются, и разъезжается ровно тот, где дефект ещё не нашли.
 func newJWKSHopClient(caFile string, timeout time.Duration) (*http.Client, error) {
 	return newPinnedHopClient(jwksHopCAEnv, caFile, timeout)
 }
@@ -87,11 +75,11 @@ const platformRevocationCAEnv = "KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_CA_
 // platformRevocationCertEnv / platformRevocationKeyEnv — ручки КЛИЕНТСКОЙ пары
 // этого хопа.
 //
-// ПОЧЕМУ ЗДЕСЬ ОНА НУЖНА, А НА ДВУХ СОСЕДНИХ ХОПАХ НЕТ. Авторитет отзыва —
-// НАШ, он живёт на внутреннем слушателе и спрашивающего опознаёт: слушатель
-// запрашивает сертификат, а сам авторитет отвечает опознавательным словом
-// тому, кто проверенной цепочки не предъявил. Соседние хопы идут к внешнему
-// поставщику, который нас так не спрашивает.
+// ПОЧЕМУ ЗДЕСЬ ОНА НУЖНА, А НА СОСЕДНЕМ ХОПЕ НЕТ. Авторитет отзыва — НАШ, он
+// живёт на внутреннем слушателе и спрашивающего опознаёт: слушатель запрашивает
+// сертификат, а сам авторитет отвечает опознавательным словом тому, кто
+// проверенной цепочки не предъявил. Хоп за набором ключей раздаёт открытый
+// материал и спрашивающего не опознаёт.
 //
 // ПОЧЕМУ РУЧКА, А НЕ ВЫВОД ИЗ УЖЕ НАСТРОЕННОЙ ЛИЧНОСТИ. Выведенная пара всегда
 // непуста — значит контроль выглядел бы настроенным в любом профиле, включая
@@ -106,10 +94,9 @@ const (
 // newPlatformRevocationHopClient — тот же клиент для хопа к нашему авторитету
 // отзыва, но ПРЕДЪЯВЛЯЮЩИЙ клиентскую пару, когда она задана.
 //
-// По этому хопу едет ПРЕДЪЯВЛЕННЫЙ токен, а не только административный вызов:
-// авторитет спрашивают, посылая ему само удостоверение. Значит требование к
-// транспорту здесь то же, что у административного хопа, и по той же причине —
-// прочитанное с провода удостоверение пригодно тому, кто его прочитал.
+// По этому хопу едет ПРЕДЪЯВЛЕННЫЙ токен: авторитет спрашивают, посылая ему
+// само удостоверение, — а прочитанное с провода удостоверение пригодно тому, кто
+// его прочитал.
 //
 // Пара пуста ⇒ хоп идёт без сертификата: профиль, где авторитет его не
 // спрашивает, законен и отказывать ему нечем. Пара задана НАПОЛОВИНУ ⇒ отказ в

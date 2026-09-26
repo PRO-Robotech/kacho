@@ -308,6 +308,9 @@ api-gateway:
       mountPath: /etc/api-gateway/hydra-jwks-ca
     issuer: ""  # СНЯТ вместе с приходом tokenAcceptance выше: два объявления об одном
                 # предмете дают ОТКАЗ В СТАРТЕ, а не молчаливое старшинство.
+    # The provider's admin-API addresses and their anchor are not declared: the
+    # edge no longer reads them (#2734) — revocation is asked of our authority or
+    # our record, and the logout writes our record.
   # AuthZ: per-RPC IAM Check fan-out, fail-CLOSED on transient IAM errors.
   authz:
     enabled: true
@@ -1852,7 +1855,7 @@ hydra:
       # scopes as a list, and the provider's default string encoding would
       # verify fine and then authorize wrongly — worse than failing shut.
       #
-      # Guarded by gateway/deploy/token_shape_test.go, which reads the
+      # Guarded by deploy/helm/umbrella/token_shape_test.go, which reads the
       # declaration rather than a rendered template, so it can never skip.
       strategies:
         access_token: jwt

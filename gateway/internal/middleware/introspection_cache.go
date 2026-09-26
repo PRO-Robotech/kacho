@@ -1,26 +1,25 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// introspection_cache.go — provider-backed token introspection with negative-TTL
-// LRU cache.
+// introspection_cache.go — RFC 7662 token introspection against OUR revocation
+// authority, with a negative-TTL LRU cache.
 //
 // Purpose: even when the access token's signature + claims pass local
 // verification, the token may have been revoked server-side (admin logout,
-// CAEP push, back-channel logout). The identity provider's introspection
-// endpoint is the authoritative answer, but asking on every request costs a
-// round-trip, so a tiny LRU with TTL = min(5s, exp-now) means a fresh access
-// token round-trips at most every 5s.
+// sign-out, key revocation). Our revocation authority is the authoritative
+// answer, but asking on every request costs a round-trip, so a tiny LRU with
+// TTL = min(5s, exp-now) means a fresh access token round-trips at most every 5s.
 //
-// The endpoint lives on the provider's ADMIN API (`/admin/oauth2/introspect`),
-// not on the public OAuth2 API — a distinct Service and port. Its address is
-// configuration and is never derived; see config.ResolvedHydraIntrospectionURL
-// and the boot guard in cmd/api-gateway/revocation_validation.go.
+// The authority lives on the identity service's cluster-internal listener. Its
+// address is configuration and is never derived; see
+// KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL and the boot guard in
+// cmd/api-gateway/revocation_validation.go.
 //
 // Negative caching: when introspection returns `active=false`, we still cache
 // the result (under the same TTL) — repeated requests from a compromised
-// client shouldn't hammer Hydra.
+// client shouldn't hammer the authority.
 //
-// What a FAILING provider costs. Since the check moved onto the authN layer, it
+// What a FAILING authority costs. Since the check moved onto the authN layer, it
 // runs on every authenticated request, so "how often do we ask" stopped being
 // free. An answer is amortised by the cache above, but a non-answer was not
 // cached and concurrent questions about one token were not shared — so an
@@ -122,8 +121,8 @@ const defaultIntrospectionTimeout = time.Second
 // of doing so.
 const introspectionFailureWindow = time.Second
 
-// IntrospectionResult — minimal RFC 7662 section 2.2 response shape. Hydra returns
-// many more fields; we keep only what downstream needs.
+// IntrospectionResult — minimal RFC 7662 section 2.2 response shape. An authority
+// may return many more fields; we keep only what downstream needs.
 type IntrospectionResult struct {
 	Active   bool   `json:"active"`
 	Subject  string `json:"sub,omitempty"`
@@ -143,24 +142,23 @@ type IntrospectionCache struct {
 	timeout    time.Duration
 	now        func() time.Time
 
-	// HTTP basic auth for the admin introspection endpoint, for a provider
-	// deployment that fronts its admin API with one. Ory Hydra's own admin API
-	// carries no authentication — it is protected by not being routable — so this
-	// stays empty in this platform's profiles.
+	// HTTP basic auth for the introspection endpoint, for an authority deployment
+	// that fronts it with one. Our authority authenticates the edge by its client
+	// certificate instead, so this stays empty in this platform's profiles.
 	basicUser string
 	basicPass string
 
 	cache *lrucache.Cache[string, IntrospectionResult]
 
-	// failures — questions the provider did not answer, remembered briefly and
+	// failures — questions the authority did not answer, remembered briefly and
 	// PER TOKEN. Kept in its own cache rather than as a marker value in the one
 	// above: an answer and the absence of one expire on different clocks, and
 	// Len() must keep meaning "answers held" for the callers that read it.
 	//
-	// Per token, not per process, because this verdict PASSES the request.
-	// Widening it beyond the token that actually failed would stop the check
-	// asking about tokens it never tried — that is the opposite of what a
-	// stampede guard is for.
+	// Per token, not per process: widening a remembered non-answer beyond the
+	// token that actually failed would decide about tokens the check never tried —
+	// that is the opposite of what a stampede guard is for. The service-wide shape
+	// is the breaker's, and it is argued in its own file.
 	failures *lrucache.Cache[string, error]
 
 	// flight collapses concurrent questions about the SAME token into a single
@@ -187,10 +185,10 @@ type IntrospectionCache struct {
 
 // IntrospectionCacheConfig — construction parameters.
 type IntrospectionCacheConfig struct {
-	HydraIntrospectionURL string
-	HTTPClient            *http.Client
-	MaxEntries            int
-	TTL                   time.Duration
+	IntrospectionURL string
+	HTTPClient       *http.Client
+	MaxEntries       int
+	TTL              time.Duration
 	// Timeout bounds one round-trip to the provider. Zero → defaultIntrospectionTimeout.
 	Timeout       time.Duration
 	Now           func() time.Time
@@ -200,8 +198,8 @@ type IntrospectionCacheConfig struct {
 
 // NewIntrospectionCache constructs a cache. Returns error on empty URL.
 func NewIntrospectionCache(cfg IntrospectionCacheConfig) (*IntrospectionCache, error) {
-	if cfg.HydraIntrospectionURL == "" {
-		return nil, errors.New("introspection cache: HydraIntrospectionURL is required")
+	if cfg.IntrospectionURL == "" {
+		return nil, errors.New("introspection cache: IntrospectionURL is required")
 	}
 	if cfg.MaxEntries <= 0 {
 		cfg.MaxEntries = 10000
@@ -224,7 +222,7 @@ func NewIntrospectionCache(cfg IntrospectionCacheConfig) (*IntrospectionCache, e
 		hc = &http.Client{Timeout: cfg.Timeout}
 	}
 	return &IntrospectionCache{
-		url:        cfg.HydraIntrospectionURL,
+		url:        cfg.IntrospectionURL,
 		httpClient: hc,
 		ttl:        cfg.TTL,
 		timeout:    cfg.Timeout,
@@ -246,7 +244,9 @@ func NewIntrospectionCache(cfg IntrospectionCacheConfig) (*IntrospectionCache, e
 //   - ErrIntrospectionMisconfigured — what answered is not an introspection
 //     endpoint. This never resolves by itself, so it must not be waved through.
 //
-// Any other error means the provider did not answer this time, which passes.
+// Any other error means the provider did not answer this time. The cache does
+// not decide what that means for the request; the revocation layer does, and on
+// every lane it wires today a non-answer refuses (auth_revocation.go).
 //
 // Key is the access-token JTI — small, opaque, never logged. We never pass
 // the raw token through the cache map (defence-in-depth against memory dump
@@ -318,7 +318,7 @@ func (c *IntrospectionCache) ask(ctx context.Context, jti, rawToken string) (Int
 		// start it must not be able to cancel the answer everyone else is waiting
 		// for by walking away, so its cancellation is dropped here — the values
 		// (request-scoped correlation) are kept. It still cannot run long:
-		// fetchHydra applies the configured per-call budget on top.
+		// fetchIntrospection applies the configured per-call budget on top.
 		return c.fetchAndRecord(context.WithoutCancel(ctx), jti, rawToken)
 	})
 
@@ -336,7 +336,7 @@ func (c *IntrospectionCache) ask(ctx context.Context, jti, rawToken string) (Int
 
 // fetchAndRecord asks the provider once and files what came back.
 func (c *IntrospectionCache) fetchAndRecord(ctx context.Context, jti, rawToken string) (IntrospectionResult, error) {
-	// Snapshot the invalidation generations BEFORE the (slow) Hydra fetch. A
+	// Snapshot the invalidation generations BEFORE the (slow) fetch. A
 	// force-logout revocation that calls Invalidate(jti) while this introspection
 	// is in flight bumps them, and the generation-checked stores below are
 	// dropped — so neither a positive result computed against pre-revocation
@@ -347,7 +347,7 @@ func (c *IntrospectionCache) fetchAndRecord(ctx context.Context, jti, rawToken s
 	gen := c.cache.Generation()
 	failGen := c.failures.Generation()
 
-	res, err := c.fetchHydra(ctx, rawToken)
+	res, err := c.fetchIntrospection(ctx, rawToken)
 	if err != nil {
 		if errors.Is(err, ErrIntrospectionMisconfigured) {
 			// Something answered — it just was not an introspection endpoint. That
@@ -370,7 +370,7 @@ func (c *IntrospectionCache) fetchAndRecord(ctx context.Context, jti, rawToken s
 	// If exp is already in the past we treat the token as inactive and skip
 	// caching the (stale) positive result. Defense: an attacker may not race
 	// past the introspection result before exp slips by; we re-introspect on
-	// next call so Hydra's fresh `active=false` is reflected immediately.
+	// next call so the authority's fresh `active=false` is reflected immediately.
 	ttl := c.ttl
 	if res.ExpiryAt > 0 {
 		// Route the exp clamp through the injectable clock (c.now), not the real
@@ -399,15 +399,13 @@ func (c *IntrospectionCache) fetchAndRecord(ctx context.Context, jti, rawToken s
 // Not per token, because it is not a fact about a token. The address is the same
 // address whichever credential is offered, so asking again with a different one
 // cannot produce a different answer — a per-token memory would make every token
-// pay to learn the same thing. Holding it process-wide is safe in a way the
-// unanswered case is not: this verdict only ever REFUSES (the caller answers
-// Unavailable and serves nothing), so widening it can never let a request past
-// unchecked. Widening the unanswered verdict the same way would do exactly that,
-// which is why the two are remembered differently.
+// pay to learn the same thing. Holding it process-wide is safe: this verdict only
+// ever REFUSES (the caller answers Unavailable and serves nothing), so widening it
+// can never let a request past unchecked.
 //
 // With an expiry, because "does not heal by itself" means nobody here can heal
 // it — not that nothing can. A certificate rotated or a path restored on the
-// provider's side is a repair made without touching this process, and a refusal
+// authority's side is a repair made without touching this process, and a refusal
 // that outlived it would be an outage of our own making. So the verdict lapses
 // and is re-established by one question, rather than sticking until a restart.
 func (c *IntrospectionCache) rememberMisconfigured(err error) {
@@ -449,7 +447,7 @@ func (c *IntrospectionCache) Invalidate(jti string) {
 // Len returns current cache size; used by tests / observability.
 func (c *IntrospectionCache) Len() int { return c.cache.Len() }
 
-func (c *IntrospectionCache) fetchHydra(ctx context.Context, rawToken string) (IntrospectionResult, error) {
+func (c *IntrospectionCache) fetchIntrospection(ctx context.Context, rawToken string) (IntrospectionResult, error) {
 	// The budget belongs to this call, not to the inbound request: a caller that
 	// arrives with a generous deadline must not be able to hold a gateway
 	// goroutine on a stalled provider for longer than the configured wait.
@@ -458,7 +456,7 @@ func (c *IntrospectionCache) fetchHydra(ctx context.Context, rawToken string) (I
 
 	form := url.Values{}
 	form.Set("token", rawToken)
-	// #nosec G704 -- адрес берётся из настроек процесса (cfg.HydraIntrospectionURL,
+	// #nosec G704 -- адрес берётся из настроек процесса (cfg.IntrospectionURL,
 	// проверяется при старте и не может быть пустым), а не из запроса: подставить его
 	// вызывающему нечем. Правило видит "переменная в адресе" и не различает источник.
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url, strings.NewReader(form.Encode()))
@@ -506,20 +504,18 @@ func (c *IntrospectionCache) fetchHydra(ctx context.Context, rawToken string) (I
 // the ADDRESS rather than the moment — i.e. one that answers every retry
 // identically until somebody changes configuration.
 //
-// This distinction is load-bearing in an unobvious direction. The "did not
-// answer" branch PASSES the request, so a permanent failure filed there switches
-// the revocation check off for as long as it lasts, which is forever. The case
-// that made it worth naming: an operator moves the address from plaintext to TLS
-// — the correct instinct — and the handshake fails because this process trusts
-// system roots and the provider's certificate comes from an internal CA. Filed as
-// a hiccup, that hardening step would silently disable the control across the
-// fleet, visible only as one log line per window. Filed here, it refuses loudly
-// and gets fixed.
+// Both branches refuse the request today, so the distinction no longer decides
+// WHETHER a request passes; it decides what the process remembers and what the
+// operator reads. A permanent failure filed as a hiccup is re-asked per token and
+// reported as an outage — the case that made it worth naming: an operator moves
+// the address from plaintext to TLS, the correct instinct, and the handshake
+// fails because this process trusts system roots and the authority's
+// certificate comes from an internal CA. Filed here, it is held process-wide and
+// reported as the configuration it is, and it gets fixed.
 //
-// Deliberately NOT included: refused connections, DNS misses, timeouts. A
-// provider that is restarting, or a name that has not propagated yet, comes back
-// on its own; refusing traffic for the duration would take the API down with the
-// identity provider.
+// Deliberately NOT included: refused connections, DNS misses, timeouts. An
+// authority that is restarting, or a name that has not propagated yet, comes back
+// on its own; they are the breaker's business, not a statement about the address.
 func permanentTransportFailure(err error) bool {
 	var (
 		unknownAuthority x509.UnknownAuthorityError
@@ -546,10 +542,10 @@ func permanentTransportFailure(err error) bool {
 }
 
 // transientStatus reports whether a non-200 status describes a passing condition
-// of a provider that IS the introspection endpoint, rather than an address that
-// is not one. Only these recover without anyone changing configuration:
-// server-side faults, the provider asking us to slow down, and a request the
-// provider timed out on its own side.
+// of an authority that IS the introspection endpoint, rather than an address
+// that is not one. Only these recover without anyone changing configuration:
+// server-side faults, the authority asking us to slow down, and a request the
+// authority timed out on its own side.
 func transientStatus(code int) bool {
 	switch code {
 	case http.StatusRequestTimeout, http.StatusTooManyRequests:

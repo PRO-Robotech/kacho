@@ -179,7 +179,7 @@ func TestF2_35_ClientAssertionIsNotAnAccessTokenOnTheGRPCEdge(t *testing.T) {
 	// Положительный контроль ЭТОЙ поверхности. Без него всё выше зелено на
 	// крае, отвергающем любой вход, — включая законный.
 	t.Run("законный токен доступа принимается", func(t *testing.T) {
-		reached, err := call(t, fix.sign(t, hydraClaims("user", "usr_alice_acc_a1b2")))
+		reached, err := call(t, fix.sign(t, issuerClaims("user", "usr_alice_acc_a1b2")))
 		require.NoError(t, err)
 		require.True(t, reached, "положительный контроль: законный токен доводит вызов до обработчика")
 	})
@@ -217,7 +217,7 @@ func TestF2_35_ClientAssertionIsNotAnAccessTokenOnTheRESTEdge(t *testing.T) {
 	}
 
 	t.Run("законный токен доступа принимается", func(t *testing.T) {
-		reached, code := call(t, fix.sign(t, hydraClaims("user", "usr_alice_acc_a1b2")))
+		reached, code := call(t, fix.sign(t, issuerClaims("user", "usr_alice_acc_a1b2")))
 		require.Equal(t, http.StatusOK, code)
 		require.True(t, reached, "положительный контроль: законный токен доводит запрос до обработчика")
 	})

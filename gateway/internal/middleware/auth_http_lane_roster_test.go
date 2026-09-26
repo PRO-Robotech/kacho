@@ -182,22 +182,26 @@ func allReceiverMethodNames(t *testing.T) []string {
 // TestHTTPHeaderRosterPredicateCanFail — инъекция по КАЖДОЙ стороне, с законным
 // близнецом. Предикат, не краснеющий на дефекте, не удерживает ничего.
 func TestHTTPHeaderRosterPredicateCanFail(t *testing.T) {
-	wired := []string{"tryKratosSession", "tryBasicCredential", "tryHydraJWT"}
+	// Синтетика, а не живой перечень полос: опирайся инъекция на дерево,
+	// доказательство менялось бы вместе с ним — и исчезло бы ровно тогда, когда
+	// полосу снимают. Здесь снятие чужого поставщика этот файл уже задело:
+	// прежняя синтетика называла полосу его сессии (#2792).
+	wired := []string{"tryOwnSession", "tryBasicCredential", "tryBearerJWT"}
 	known := map[string]bool{
-		"tryKratosSession": true, "tryBasicCredential": true, "tryHydraJWT": true,
+		"tryOwnSession": true, "tryBasicCredential": true, "tryBearerJWT": true,
 		"tryDevSecretJWT": true,
 	}
 
 	t.Run("законная шапка — молчание", func(t *testing.T) {
-		doc := "Носителей ТРИ: tryKratosSession, tryBasicCredential, tryHydraJWT. " +
+		doc := "Носителей ТРИ: tryOwnSession, tryBasicCredential, tryBearerJWT. " +
 			"tryDevSecretJWT носителем сверх них не является."
 		require.Empty(t, laneRosterFindings(doc, wired, known),
 			"законная шапка объявлена находкой — предикат ловит форму, а не существо")
 	})
 
 	t.Run("провязана и не названа — тот самый дефект kacho#2663", func(t *testing.T) {
-		doc := "Носителей личности на этом пути ДВА: сессия развёрнутого провайдера " +
-			"(tryKratosSession) и подписанный предъявитель (tryHydraJWT)."
+		doc := "Носителей личности на этом пути ДВА: наша сессия " +
+			"(tryOwnSession) и подписанный предъявитель (tryBearerJWT)."
 		f := laneRosterFindings(doc, wired, known)
 		require.Len(t, f, 1, "умолчание о провязанной полосе находкой не стало: %v", f)
 		require.Contains(t, f[0], "tryBasicCredential",
@@ -205,7 +209,7 @@ func TestHTTPHeaderRosterPredicateCanFail(t *testing.T) {
 	})
 
 	t.Run("названа и не существует — обратная сторона", func(t *testing.T) {
-		doc := "Носителей ТРИ: tryKratosSession, tryBasicCredential, tryHydraJWT, " +
+		doc := "Носителей ТРИ: tryOwnSession, tryBasicCredential, tryBearerJWT, " +
 			"а также снятая tryCookieRewrite."
 		f := laneRosterFindings(doc, wired, known)
 		require.Len(t, f, 1, "имя снятой полосы находкой не стало: %v", f)
@@ -214,7 +218,7 @@ func TestHTTPHeaderRosterPredicateCanFail(t *testing.T) {
 	})
 
 	t.Run("метод получателя, полосой не являющийся, находкой не становится", func(t *testing.T) {
-		doc := "Полосы: tryKratosSession, tryBasicCredential, tryHydraJWT. " +
+		doc := "Полосы: tryOwnSession, tryBasicCredential, tryBearerJWT. " +
 			"tryDevSecretJWT читает тот же заголовок и носителем сверх них не является."
 		require.Empty(t, laneRosterFindings(doc, wired, known),
 			"упоминание существующего метода, не входящего в перечень полос, объявлено "+
