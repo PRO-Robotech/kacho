@@ -551,32 +551,39 @@ func TestRetiredVendorCeiling_FoundationIsWalked(t *testing.T) {
 	}
 }
 
-// TestRetiredVendorCeiling_ShrunkLedgerIsAFinding — ОДИН ФАКТ: записанное число.
+// TestRetiredVendorCeiling_ShrinkBelowTheBaseIsSilent — ОДИН ФАКТ: число на
+// базе.
 //
-// Дерево у обеих половин одно и то же; меняется только запись потолка. Потолок
-// УБЫВАЮЩИЙ: число под записью — находка «перепишите запись», иначе потолок
-// прощал бы возврат ровно настолько, насколько успели снять.
-func TestRetiredVendorCeiling_ShrunkLedgerIsAFinding(t *testing.T) {
+// Дерево у обеих половин одно и то же; меняется только число, с которым его
+// сравнивают. Снимающая ветка стоит НИЖЕ базы, и это законное состояние, а не
+// находка: прежняя форма краснела здесь и требовала переписать запись, и
+// именно эта правка одной строки каждой снимающей веткой давала конфликт
+// сведения (#2864). Число ниже базы не прощает возврата: база сдвигается сама,
+// когда снятие вливается, и следующая ветка сравнивается уже с ней.
+func TestRetiredVendorCeiling_ShrinkBelowTheBaseIsSilent(t *testing.T) {
 	t.Parallel()
 
 	corpora := vendorFixture(map[string]string{
-		"deploy/helm/umbrella/values.y.yaml": "image: oryd/hydra:v2.2.0\n"}, nil)
+		"deploy/helm/umbrella/values.y.yaml": vendorProbeLine + "\n"}, nil)
 
-	stale := map[string]int{vendorTreePlatform: 2, vendorTreeAccess: 0, vendorTreeFoundation: 0}
-	f, _, _, err := judgeRetiredVendorCeiling(corpora, stale)
+	below := map[string]int{vendorTreePlatform: 2, vendorTreeAccess: 0, vendorTreeFoundation: 0}
+	f, census, _, err := judgeRetiredVendorCeiling(corpora, below)
 	if err != nil {
 		t.Fatalf("фикстура обязана судиться: %v", err)
 	}
-	if len(f) != 1 || f[0].Kind != vendorFindingShrunk {
-		t.Fatalf("убывание обязано быть находкой: %+v", f)
+	if census[vendorTreePlatform].Bindings != 1 {
+		t.Fatalf("фикстура несёт одну привязку, прочитано %d", census[vendorTreePlatform].Bindings)
 	}
-	if !strings.Contains(f[0].String(), "Перепишите потолок на 1") {
-		t.Fatalf("находка обязана называть новое число: %s", f[0])
+	if len(f) != 0 {
+		t.Fatalf("число ниже базы обязано молчать — ветка, снявшая строку, не правит "+
+			"ничего в гейте, получено: %v", f)
 	}
 
-	exact := map[string]int{vendorTreePlatform: 1, vendorTreeAccess: 0, vendorTreeFoundation: 0}
-	if g, _, _, err := judgeRetiredVendorCeiling(corpora, exact); err != nil || len(g) != 0 {
-		t.Fatalf("точная запись обязана молчать: %+v (%v)", g, err)
+	// Законный близнец: то же дерево при базе НИЖЕ числа — рост, и он краснеет.
+	above := map[string]int{vendorTreePlatform: 0, vendorTreeAccess: 0, vendorTreeFoundation: 0}
+	g, _, _, err := judgeRetiredVendorCeiling(corpora, above)
+	if err != nil || len(g) != 1 || g[0].Kind != vendorFindingGrown {
+		t.Fatalf("число над базой обязано быть находкой роста: %+v (%v)", g, err)
 	}
 }
 
