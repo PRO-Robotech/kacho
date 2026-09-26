@@ -285,8 +285,11 @@ async function holdFirstPlatformRead(page: Page, testInfo: TestInfo, verb: strin
   };
 }
 
-// Ответы глаголов полосы снимаются ДО страницы: за ними экран уходит
-// документом, и тело после ухода не читается (`answer-on-arrival.ts`).
+// Ответы глаголов полосы читаются тем же путём, что у экранов входа
+// (`answer-on-arrival.ts`), хотя за ответами своих глаголов экран параметров
+// документом не уходит — адрес остаётся `/settings`: чтение ответа у набора одно,
+// и без перехвата, поставленного до отправки, `lanePostAnswer` падает с названной
+// причиной.
 test.beforeEach(async ({ page }) => {
   await captureAnswers(page, LANE_VERBS);
 });
