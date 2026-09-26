@@ -8,7 +8,8 @@
 // службы. Ретранслятор без цели — контроль, отказывающий на каждом запросе всю
 // свою жизнь по одной и той же причине, и снаружи это неотличимо от «служба
 // лежит»; поэтому пустой адрес под `own` — отказ старта с именем ручки, а не
-// умолчание. Под `external` полосы формы нет, и ручка не читается.
+// умолчание. Страж зовётся из ветки посадки `own` композиционного корня — той
+// же, что заводит ретрансляцию; своей ветки по посадке у него нет.
 //
 // Адрес судится теми же правилами, что хопы к нашему авторитету отзыва: по
 // ретрансляции едет носитель сессии человека, и незашифрованный адрес нёс бы его
@@ -22,7 +23,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/PRO-Robotech/corelib/identityposture"
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 )
 
@@ -42,14 +42,11 @@ type LoginLaneConfig struct {
 	CAFile         string
 }
 
-// validateLoginLaneConfig отказывает в старте под `own` без годной полосы формы.
+// validateLoginLaneConfig отказывает в старте без годной полосы формы.
 //
 // Метка окружения здесь НЕ читается намеренно: ретрансляция без цели негодна на
 // любом стенде, а dev-посадка на поднятом стенде запрещена (ban #16).
-func validateLoginLaneConfig(provider identityposture.Provider, cfg LoginLaneConfig) error {
-	if provider != identityposture.Own {
-		return nil
-	}
+func validateLoginLaneConfig(cfg LoginLaneConfig) error {
 	raw := strings.TrimSpace(cfg.URL)
 	if raw == "" {
 		return fmt.Errorf("%s is empty — on posture %s=own the edge relays sign-in, sign-out, "+

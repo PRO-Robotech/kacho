@@ -97,11 +97,13 @@ const (
 // профиль. Поэтому под `own` необъявленный издатель — отказ старта с именем
 // ручки, рядом с отказом по адресу.
 //
-// # Требование НАЛИЧИЯ разведено посадкой, требования ТРАНСПОРТА — нет
+// # Ветки по посадке нет
 //
-// Наличие адреса требуется под `own`. Заданный адрес судится теми же правилами
-// на ЛЮБОЙ посадке: край, объявивший наш авторитет, его и спрашивает, и
-// негодный хоп нерабочий везде одинаково.
+// Сюда доходит только ОБЪЯВЛЕННАЯ посадка: незаданная отвергнута раньше, в
+// validateProductionRevocationConfig. Второе значение посадки фундамент снял
+// (corelib#26), и ветвь по нему снята вместе с её пробами (#2873): требования
+// издателя, адреса, транспорта и пары предъявляются всякой объявленной
+// посадке, а отказ называет ту, что объявлена.
 //
 // # Пара предъявления обязательна вместе с адресом
 //
@@ -112,29 +114,22 @@ const (
 // пары отвергается отдельно: она хуже отсутствия обеих, потому что выглядит
 // настроенной.
 func judgeOurRevocationAuthority(cfg RevocationConfig) []string {
+	posture := config.IdentityProviderKnob + "=" + cfg.IdentityProvider.String()
 	var problems []string
-	if cfg.IdentityProvider == identityposture.Own && strings.TrimSpace(cfg.PlatformTokenIssuer) == "" {
+	if strings.TrimSpace(cfg.PlatformTokenIssuer) == "" {
 		problems = append(problems,
 			platformTokenIssuerKnob+" is empty — on this posture we mint the tokens, and our "+
 				"revocation authority is asked about a token only through the acceptance record of "+
 				"our declared issuer; declare the issuer this installation mints under, the same "+
-				"value the identity service issues with [required because "+
-				config.IdentityProviderKnob+"=own]")
+				"value the identity service issues with [required because "+posture+"]")
 	}
 
 	addr := strings.TrimSpace(cfg.PlatformRevocationURL)
 	if addr == "" {
-		if cfg.IdentityProvider != identityposture.Own {
-			// Вне `own` наша чеканка краем не принимается, пока её не объявит
-			// перечень издателей, — а объявленный наш издатель без авторитета
-			// отзыва отвергается раньше, разбором приёма (`TokenAcceptance`).
-			return problems
-		}
 		return append(problems,
 			platformRevocationURLKnob+" is empty — on this posture we mint the tokens and "+
 				"nobody else can be asked whether one was revoked, so a revoked token would "+
-				"keep working until it expires on its own [required because "+
-				config.IdentityProviderKnob+"=own]")
+				"keep working until it expires on its own [required because "+posture+"]")
 	}
 
 	if err := validateEndpoint(addr); err != nil {

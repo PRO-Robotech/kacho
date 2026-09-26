@@ -57,7 +57,7 @@ func postureBranchOf(f *ast.File, pos token.Pos) string {
 		}
 		if pos <= ifs.Body.Lbrace || pos >= ifs.Body.Rbrace {
 			// Ветка else не считается веткой посадки: else «не own» есть
-			// «external или не задано», и это не решение.
+			// «не задано», и это не решение.
 			return true
 		}
 		if p := postureNamedIn(ifs.Cond); p != "" {
@@ -69,8 +69,9 @@ func postureBranchOf(f *ast.File, pos token.Pos) string {
 }
 
 // postureNamedIn — какую посадку называет условие: селектор
-// `identityposture.Own` / `identityposture.External`, единственный законный
-// способ назвать её в дереве (`corelib/identityposture`).
+// `identityposture.Own`, единственный законный способ назвать её в дереве
+// (`corelib/identityposture`). Второе значение фундамент снял (corelib#26), и
+// ветка, названная им, посадкой не считается.
 func postureNamedIn(cond ast.Expr) string {
 	found := ""
 	ast.Inspect(cond, func(n ast.Node) bool {
@@ -79,8 +80,7 @@ func postureNamedIn(cond ast.Expr) string {
 			return true
 		}
 		if id, ok := sel.X.(*ast.Ident); ok && id.Name == "identityposture" {
-			switch sel.Sel.Name {
-			case "Own", "External":
+			if sel.Sel.Name == "Own" {
 				found = sel.Sel.Name
 			}
 		}
@@ -92,7 +92,7 @@ func postureNamedIn(cond ast.Expr) string {
 // wiringSite — одно место провязки читателя.
 type wiringSite struct {
 	pos     string
-	posture string // "Own" | "External" | ""
+	posture string // "Own" | ""
 }
 
 // wiringSites — места вызова названного метода/функции и посадка каждого.
@@ -101,6 +101,23 @@ func wiringSites(fset *token.FileSet, f *ast.File, callee string) []wiringSite {
 	for _, pos := range f1bFindCall(f, callee) {
 		out = append(out, wiringSite{pos: fset.Position(pos).String(), posture: postureBranchOf(f, pos)})
 	}
+	return out
+}
+
+// plainCallSites — места вызова функции пакета по голому имени и посадка
+// каждого (f1bFindCall видит только вызовы через селектор).
+func plainCallSites(fset *token.FileSet, f *ast.File, callee string) []wiringSite {
+	var out []wiringSite
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if id, ok := call.Fun.(*ast.Ident); ok && id.Name == callee {
+			out = append(out, wiringSite{pos: fset.Position(call.Pos()).String(), posture: postureBranchOf(f, call.Pos())})
+		}
+		return true
+	})
 	return out
 }
 
@@ -123,8 +140,10 @@ func parseMain(t *testing.T) (*token.FileSet, *ast.File) {
 // снять проверку предпосылки; второе дало бы гейт, зелёный на пустом обходе.
 
 // TestOwnLane_F3_45_OurReaderAndTheRelayAreWiredUnderOwnOnly — наш читатель
-// (полоса и «кто я») и ретрансляция заведены под `own` и не заведены под
-// `external`.
+// (полоса и «кто я»), ретрансляция и страж её адреса заведены под `own` и не
+// заведены вне этой ветки. Своей ветки по посадке у стража адреса нет: он
+// отвергает незаданный адрес всегда, и отличает `own` от прочего ровно место
+// вызова.
 func TestOwnLane_F3_45_OurReaderAndTheRelayAreWiredUnderOwnOnly(t *testing.T) {
 	fset, f := parseMain(t)
 	readers := wiringSites(fset, f, "WithHumanSession")
@@ -141,9 +160,18 @@ func TestOwnLane_F3_45_OurReaderAndTheRelayAreWiredUnderOwnOnly(t *testing.T) {
 		t.Fatalf("ретрансляция глаголов формы заведена %d раз, ожидалось 1", len(relays))
 	}
 	if relays[0].posture != "Own" {
-		t.Errorf("ретрансляция заведена вне ветки посадки own: %s (ветка: %q) — под external глаголы формы обязаны отвечать 404", relays[0].pos, relays[0].posture)
+		t.Errorf("ретрансляция заведена вне ветки посадки own: %s (ветка: %q) — вне own глаголы формы обязаны отвечать 404", relays[0].pos, relays[0].posture)
 	}
-	t.Logf("перепись: читателей нашей сессии %d (под own %d) · ретрансляций %d", len(readers), len(readers), len(relays))
+	laneGuards := plainCallSites(fset, f, "validateLoginLaneConfig")
+	if len(laneGuards) != 1 {
+		t.Fatalf("страж адреса полосы формы позван %d раз, ожидалось 1", len(laneGuards))
+	}
+	if laneGuards[0].posture != "Own" {
+		t.Errorf("страж адреса полосы формы позван вне ветки посадки own: %s (ветка: %q) — вне own он "+
+			"отверг бы старт края, которому полоса не нужна", laneGuards[0].pos, laneGuards[0].posture)
+	}
+	t.Logf("перепись: читателей нашей сессии %d (под own %d) · ретрансляций %d · стражей адреса полосы %d",
+		len(readers), len(readers), len(relays), len(laneGuards))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -200,8 +228,8 @@ func TestOwnLaneGate_Twin_AReaderUnderTheNamedPostureIsSilent(t *testing.T) {
 			t.Fatalf("законный читатель под own объявлен заведённым без посадки: %+v", s)
 		}
 	}
-	// Читатель в ветке `else` посадки own — НЕ под own: «не own» есть «external
-	// или не задано», и это не решение о посадке.
+	// Читатель в ветке `else` посадки own — НЕ под own: «не own» есть «не
+	// задано», и это не решение о посадке.
 	fset, f = judgeWiringFixture(t, "\tif lane == identityposture.Own { _ = 1 } else { auth = auth.WithHumanSession(ad) }")
 	sites := wiringSites(fset, f, "WithHumanSession")
 	if sites[len(sites)-1].posture != "" {

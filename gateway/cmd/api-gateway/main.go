@@ -173,7 +173,7 @@ func main() {
 	// без неё.
 	var loginLaneRelay *handler.LoginLaneRelay
 	if identityLane == identityposture.Own {
-		if llErr := validateLoginLaneConfig(identityLane, LoginLaneConfig{
+		if llErr := validateLoginLaneConfig(LoginLaneConfig{
 			URL:            cfg.LoginLaneURL,
 			ClientCertFile: cfg.MTLSClientCertFile,
 			ClientKeyFile:  cfg.MTLSClientKeyFile,
@@ -440,10 +440,10 @@ func main() {
 	// край не обслуживает ни одного запроса, потому что она фронтит и личность, и
 	// права. Ветка была бы веткой, в которой край всё равно не работает.
 	//
-	// Читатель отсечки — НА ОБЕИХ посадках (Ф3 Р7): под `own` наша сессия
-	// сравнивается с отсечкой тем же читателем, что сессия поставщика под
-	// `external`. Прежнее условие «адрес поставщика задан» снято: оно заводило
-	// читатель отсечки только вместе с поставщиком.
+	// Читатель отсечки заводится БЕЗ условия посадки (Ф3 Р7): наша сессия
+	// сравнивается с отсечкой одним читателем. Прежнее условие «адрес
+	// поставщика задан» снято: оно заводило читатель отсечки только вместе с
+	// поставщиком.
 	if iamConn := backends["iamInternal"]; iamConn != nil {
 		authInterceptor = authInterceptor.WithSessionCutoffCheck(
 			clients.NewSessionRevocationsAdapter(iamConn), 0)
@@ -799,7 +799,7 @@ func main() {
 		return snap
 	})
 	// Клетки полосы сессии и ретрансляции полосы формы (Ф3-48): существуют с
-	// нулём с первой секунды; ретранслятор под `external` не заведён, и его
+	// нулём с первой секунды; ретранслятор вне `own` не заведён, и его
 	// клетки стоят нулями — отличимо от «ретрансляций не было» по посадке в
 	// самоотчёте, а не по этим нулям.
 	diagMetrics.RegisterSessionLane(func() gwmetrics.SessionLaneSnapshot {
@@ -1062,7 +1062,7 @@ func main() {
 
 	// ГЛАГОЛЫ ПОЛОСЫ ФОРМЫ (Ф3 Р2; Ф4 регистрация, Ф5 восстановление) —
 	// ретрансляция на слушатель службы, ЗА полосой личности (как «кто я»):
-	// носитель отсечённой сессии до службы не доходит (Ф3-51). Под `external`
+	// носитель отсечённой сессии до службы не доходит (Ф3-51). Вне `own`
 	// не заведена — пути перечня отвечают 404 краем. Пути — из того же
 	// объявления, что читают полоса и isPublicHTTPPath.
 	if loginLaneRelay != nil {

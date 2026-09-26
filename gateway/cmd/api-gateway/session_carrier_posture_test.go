@@ -17,7 +17,8 @@
 // только его: запрос с одним лишь чужим печеньем сессии не доходит ни до кого.
 // Законный близнец меняет ОДИН факт — посадку в окружении: вне `own` не
 // читается и наш носитель, потому что читателя под другой посадкой не
-// заводится. Путей два — полоса личности и маршрут «кто я», — потому что читают
+// заводится. Вне `own` — это незаданная посадка: второе значение фундамент
+// снял (corelib#26), и близнец по нему снят вместе с ним (#2873). Путей два — полоса личности и маршрут «кто я», — потому что читают
 // сессию обе.
 package main
 
@@ -66,12 +67,12 @@ func TestSessionCarrierReader_FollowsThePostureParsedFromTheEnvironment(t *testi
 		wantOurs bool
 	}{
 		{posture: "own", wantOurs: true},
-		{posture: "external", wantOurs: false},
+		{posture: "", wantOurs: false},
 	}
 	paths := []string{"/vpc/v1/networks", "/iam/v1/auth/me"}
 
 	for _, tc := range cases {
-		t.Run(tc.posture, func(t *testing.T) {
+		t.Run("posture="+tc.posture, func(t *testing.T) {
 			t.Setenv("KACHO_API_GATEWAY_IDENTITY_PROVIDER", tc.posture)
 
 			cfg, err := config.Load()

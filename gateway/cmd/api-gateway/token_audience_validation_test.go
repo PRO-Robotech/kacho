@@ -140,7 +140,7 @@ func tokenIdentityLanes() []identityLane {
 		{
 			knob:    config.AudienceKnob,
 			field:   "TokenAudience",
-			posture: identityposture.External,
+			posture: identityposture.Own,
 			refuseWhenUnset: func() error {
 				return validateProductionTokenAudience("production", "")
 			},

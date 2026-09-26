@@ -9,6 +9,11 @@
 // ручками, которые они судили, а пробы переехали к чарту зонта вместе с
 // судимыми ими пробами.
 //
+// Посадку `external` фундамент снял (corelib#26): её случаи — «адреса нет,
+// а он требуется», «адрес есть, и это законно», транспорт объявленной дороги
+// на боевом стенде — сняты вместе с ветвью пробы по ней (#2873). Стек,
+// объявивший снятое значение, получает находку «посадка не известна».
+//
 // Зачем синтетика. Стек на посадке `own` в дереве сегодня один, и он полон:
 // ветка `own` исполняется на нём, ничего не находя, и «зелено» о ней означало
 // бы «условие не создано». Поэтому каждый исход доказан на входе, где он
@@ -48,15 +53,18 @@ func requireNamed(t *testing.T, finding string, parts ...string) {
 // половины, поэтому пробы спрашивают её о половине, у которой дорога есть.
 
 func TestProviderRoadPosture_SilentChainInheritsTheChartDefault(t *testing.T) {
-	chart := map[string]any{"config": map[string]any{"authn": map[string]any{"identityProvider": "external"}}}
+	chart := map[string]any{"config": map[string]any{"authn": map[string]any{"identityProvider": "own"}}}
 	r := readPosture(iamPostureHalf, map[string]any{"kaname": map[string]any{}}, chart)
-	if r.Err != nil || r.Provider != identityposture.External || !r.Inherited {
-		t.Fatalf("молчащая цепочка обязана получить умолчание чарта external, получено %+v", r)
+	if r.Err != nil || r.Provider != identityposture.Own || !r.Inherited {
+		t.Fatalf("молчащая цепочка обязана получить умолчание чарта own, получено %+v", r)
 	}
 }
 
+// Умолчание чарта здесь намеренно НЕ разбирается словарём процесса: будь оно
+// прочитано, проба покраснела бы на разборе, а не на том, что объявленное
+// значение цепочки перекрывает умолчание.
 func TestProviderRoadPosture_DeclaredPostureOutranksTheChartDefault(t *testing.T) {
-	chart := map[string]any{"config": map[string]any{"authn": map[string]any{"identityProvider": "external"}}}
+	chart := map[string]any{"config": map[string]any{"authn": map[string]any{"identityProvider": "Own"}}}
 	merged := map[string]any{"kaname": map[string]any{"config": map[string]any{"authn": map[string]any{"identityProvider": "own"}}}}
 	r := readPosture(iamPostureHalf, merged, chart)
 	if r.Err != nil || r.Provider != identityposture.Own || r.Inherited {
@@ -67,7 +75,7 @@ func TestProviderRoadPosture_DeclaredPostureOutranksTheChartDefault(t *testing.T
 // Ключ, заданный пустым, ГАСИТ умолчание (шаблон с `with` ничего не
 // выставляет): посадка не объявлена, и это находка, а не наследование.
 func TestProviderRoadPosture_BlankedPostureIsNotInheritedAndIsAFinding(t *testing.T) {
-	chart := map[string]any{"config": map[string]any{"authn": map[string]any{"identityProvider": "external"}}}
+	chart := map[string]any{"config": map[string]any{"authn": map[string]any{"identityProvider": "own"}}}
 	merged := map[string]any{"kaname": map[string]any{"config": map[string]any{"authn": map[string]any{"identityProvider": ""}}}}
 	r := readPosture(iamPostureHalf, merged, chart)
 	if r.Inherited || r.Provider.IsSet() {
@@ -87,6 +95,19 @@ func TestProviderRoadPosture_UnparsablePostureIsAFinding(t *testing.T) {
 	}
 	requireNamed(t, roadPresenceFinding("synthetic", iamAdminRoad, r, ""),
 		"synthetic", "kaname.platform.iam.hydraAdminUrl", "не разбирается")
+}
+
+// Снятое фундаментом значение посадки — находка, а не молчание: при любом пине
+// фундамента оно либо не разбирается, либо этой пробе не известно, и стек,
+// объявивший его, судить по посадке нельзя.
+func TestProviderRoadPosture_RetiredPostureIsAFinding(t *testing.T) {
+	merged := map[string]any{"kaname": map[string]any{"config": map[string]any{"authn": map[string]any{"identityProvider": "external"}}}}
+	r := readPosture(iamPostureHalf, merged, map[string]any{})
+	requireNamed(t, roadPresenceFinding("synthetic", iamAdminRoad, r, syntheticAdmin),
+		"synthetic", "kaname.platform.iam.hydraAdminUrl", "посадка")
+	if f := roadPresenceFinding("synthetic", iamAdminRoad, r, ""); f == "" {
+		t.Fatal("снятое значение посадки без адреса прочитано законным состоянием")
+	}
 }
 
 // ─── наличие адреса дороги службы доступа ───────────────────────────────────
@@ -111,26 +132,6 @@ func TestProviderRoadPresence_Twin_OwnWithoutTheProviderIsSilent(t *testing.T) {
 	}
 }
 
-func TestProviderRoadPresence_Injection_ExternalWithoutTheProviderIsFound(t *testing.T) {
-	for _, k := range []providerRoadKnob{iamAdminRoad} {
-		requireNamed(t, roadPresenceFinding("synthetic", k, onPosture(identityposture.External), ""),
-			"synthetic", k.label, "is not declared", k.missing)
-	}
-}
-
-func TestProviderRoadPresence_Twin_ExternalNamingTheProviderIsSilent(t *testing.T) {
-	for _, c := range []struct {
-		knob providerRoadKnob
-		addr string
-	}{
-		{iamAdminRoad, syntheticAdmin},
-	} {
-		if f := roadPresenceFinding("synthetic", c.knob, onPosture(identityposture.External), c.addr); f != "" {
-			t.Errorf("посадка external с адресом %s — законное состояние, а проба нашла:\n%s", c.knob.label, f)
-		}
-	}
-}
-
 // ─── дорога службы доступа: TestStacks_IAMProviderAdminHopIsDeclaredAndNotInTheClear ─
 
 func TestIAMProviderHop_Twin_OwnWithoutARoadIsSilent(t *testing.T) {
@@ -148,34 +149,4 @@ func TestIAMProviderHop_Injection_OwnNamingTheRoadIsFound(t *testing.T) {
 		t.Fatalf("ожидалась ОДНА находка о дороге, получено %d:\n%s", len(got), strings.Join(got, "\n"))
 	}
 	requireNamed(t, got[0], "synthetic", "kaname.platform.iam.hydraAdminUrl", "own", syntheticAdmin)
-}
-
-func TestIAMProviderHop_Injection_ExternalWithoutARoadIsFound(t *testing.T) {
-	got := judgeIAMProviderHop(iamHopFacts{Stack: "synthetic", Posture: onPosture(identityposture.External)})
-	if len(got) != 1 {
-		t.Fatalf("ожидалась ОДНА находка, получено %d:\n%s", len(got), strings.Join(got, "\n"))
-	}
-	requireNamed(t, got[0], "synthetic", "kaname.platform.iam.hydraAdminUrl is not declared")
-}
-
-func TestIAMProviderHop_Twin_ExternalProductionRoadOverTLSIsSilent(t *testing.T) {
-	got := judgeIAMProviderHop(iamHopFacts{
-		Stack: "synthetic", Posture: onPosture(identityposture.External), Production: true,
-		AdminURL: syntheticAdmin, CAFile: "/etc/kaname/tls/server/ca.crt",
-	})
-	if len(got) != 0 {
-		t.Errorf("дорога по https с якорем на боевом external — законное состояние, а проба нашла:\n%s",
-			strings.Join(got, "\n"))
-	}
-}
-
-func TestIAMProviderHop_Injection_ExternalProductionPlaintextRoadIsFound(t *testing.T) {
-	got := judgeIAMProviderHop(iamHopFacts{
-		Stack: "synthetic", Posture: onPosture(identityposture.External), Production: true,
-		AdminURL: "http://provider-admin.kacho.test:4445", CAFile: "/etc/kaname/tls/server/ca.crt",
-	})
-	if len(got) != 1 {
-		t.Fatalf("ожидалась ОДНА находка транспорта, получено %d:\n%s", len(got), strings.Join(got, "\n"))
-	}
-	requireNamed(t, got[0], "synthetic", "hydraAdminUrl", "http://provider-admin.kacho.test:4445")
 }
