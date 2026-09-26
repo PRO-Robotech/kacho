@@ -33,12 +33,12 @@ import (
 	"fmt"
 )
 
-// ErrOwnRevocationSourceSilent — наша запись отзыва не ответила.
+// errOwnRevocationSourceSilent — наша запись отзыва не ответила.
 //
 // Признак ТИПИЗИРОВАН и ставится тем, кто знает, чей источник молчит, — этим
 // читателем. Сравнивать текст ошибки нельзя: его пишет сосед, и он меняется от
 // его версии.
-var ErrOwnRevocationSourceSilent = errors.New("наш источник отзыва не ответил")
+var errOwnRevocationSourceSilent = errors.New("наш источник отзыва не ответил")
 
 // OwnRevocationCallBudget — бюджет ОДНОГО вопроса нашей записи отзыва.
 //
@@ -103,7 +103,7 @@ func (c *OwnRevocationSource) Introspect(
 	switch {
 	case err != nil:
 		// Признак молчания несётся типом, причина — цепочкой.
-		return IntrospectionResult{}, fmt.Errorf("%w: %w", ErrOwnRevocationSourceSilent, err)
+		return IntrospectionResult{}, fmt.Errorf("%w: %w", errOwnRevocationSourceSilent, err)
 	case revoked:
 		return IntrospectionResult{}, ErrTokenInactive
 	}

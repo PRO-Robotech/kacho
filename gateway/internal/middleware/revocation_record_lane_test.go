@@ -19,12 +19,15 @@ package middleware
 // край.
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -35,7 +38,11 @@ import (
 
 // recordLaneVerifier — проверяющий, признающий предъявленное подписанным
 // токеном издателя БЕЗ пометки «наш»: вопрос об отзыве уходит на полосу записи.
-type recordLaneVerifier struct{ jti string }
+// ours ставит пометку — и вопрос уходит нашему авторитету.
+type recordLaneVerifier struct {
+	jti  string
+	ours bool
+}
 
 func (v recordLaneVerifier) Verify(context.Context, string) (*VerifiedToken, error) {
 	return &VerifiedToken{
@@ -46,7 +53,7 @@ func (v recordLaneVerifier) Verify(context.Context, string) (*VerifiedToken, err
 			"kaname_principal_type": "user",
 			"kaname_principal_id":   "usr-record-1",
 		},
-		ReadRevocation: false,
+		ReadRevocation: v.ours,
 	}, nil
 }
 
@@ -77,6 +84,12 @@ func recordLaneAuth(jti string, checker TokenRevocationChecker) *AuthInterceptor
 
 // recordLaneREST — код ответа и признак «дошёл до следующего звена».
 func recordLaneREST(a *AuthInterceptor) (int, bool) {
+	code, served, _ := recordLaneRESTBody(a)
+	return code, served
+}
+
+// recordLaneRESTBody — то же и поле `message` тела отказа.
+func recordLaneRESTBody(a *AuthInterceptor) (int, bool, string) {
 	served := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		served = true
@@ -86,15 +99,49 @@ func recordLaneREST(a *AuthInterceptor) (int, bool) {
 	req.Header.Set("Authorization", "Bearer "+recordLaneBearer)
 	rec := httptest.NewRecorder()
 	a.HTTP(next).ServeHTTP(rec, req)
-	return rec.Code, served
+	var body struct {
+		Message string `json:"message"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	return rec.Code, served, body.Message
 }
 
 // recordLaneGRPC — код нативной поверхности.
 func recordLaneGRPC(a *AuthInterceptor) codes.Code {
+	return status.Code(recordLaneGRPCErr(a))
+}
+
+// recordLaneGRPCErr — ответ нативной поверхности целиком.
+func recordLaneGRPCErr(a *AuthInterceptor) error {
 	ctx := metadata.NewIncomingContext(context.Background(),
 		metadata.Pairs("authorization", "Bearer "+recordLaneBearer))
 	_, err := a.authorize(ctx, "/kacho.cloud.vpc.v1.NetworkService/List")
-	return status.Code(err)
+	return err
+}
+
+// recordLaneRefusalText — отказ «спросить не удалось» несёт ПОСТОЯННЫЙ текст на
+// обеих поверхностях, и поданного источником текста в нём нет: причину знает
+// журнал, провод получает одно и то же. Утверждается наблюдаемое — тело REST и
+// сообщение статуса, — а не только код: эхо чужого текста в отказ код не меняет.
+func recordLaneRefusalText(t *testing.T, a *AuthInterceptor, fed string) {
+	t.Helper()
+	_, _, msg := recordLaneRESTBody(a)
+	if msg != revocationUnavailableReason {
+		t.Fatalf("тело отказа REST: %q, ожидался постоянный текст %q", msg, revocationUnavailableReason)
+	}
+	grpcMsg := status.Convert(recordLaneGRPCErr(a)).Message()
+	if grpcMsg != revocationUnavailableReason {
+		t.Fatalf("сообщение отказа нативной поверхности: %q, ожидался постоянный текст %q",
+			grpcMsg, revocationUnavailableReason)
+	}
+	if fed == "" {
+		return
+	}
+	for surface, got := range map[string]string{"REST": msg, "gRPC": grpcMsg} {
+		if strings.Contains(got, fed) {
+			t.Fatalf("%s: в отказ ушёл текст, поданный источником (%q): %q", surface, fed, got)
+		}
+	}
 }
 
 // Законный близнец: запись ответила «не отозван» — запрос проходит на обеих
@@ -126,7 +173,8 @@ func TestRecordLane_RevokedTokenIsRefused(t *testing.T) {
 
 // СУТЬ: источник записи не ответил — ОТКАЗ, а не мягкий проход.
 func TestRecordLane_SilentSourceRefusesInsteadOfPassing(t *testing.T) {
-	a := recordLaneAuth("jti-silent", &recordLaneChecker{err: errors.New("сосед не ответил")})
+	const fed = "сосед не ответил: 10.0.0.7:9091 connection refused"
+	a := recordLaneAuth("jti-silent", &recordLaneChecker{err: errors.New(fed)})
 	code, served := recordLaneREST(a)
 	if served {
 		t.Fatalf("запрос прошёл при неотвеченном вопросе об отзыве (код %d): отозванный токен "+
@@ -138,6 +186,7 @@ func TestRecordLane_SilentSourceRefusesInsteadOfPassing(t *testing.T) {
 	if c := recordLaneGRPC(a); c != codes.Unavailable {
 		t.Fatalf("молчание источника на нативной поверхности: %v, ожидалось Unavailable", c)
 	}
+	recordLaneRefusalText(t, a, fed)
 }
 
 // Токен без идентификатора спросить о записи нечем — ОТКАЗ, а не «проверять
@@ -153,5 +202,55 @@ func TestRecordLane_TokenWithoutIdentifierIsRefused(t *testing.T) {
 	}
 	if checker.asked != 0 {
 		t.Fatalf("источник спрошен %d раз о токене без идентификатора", checker.asked)
+	}
+	recordLaneRefusalText(t, a, "")
+}
+
+// Журнал отказа по отзыву называет ТОТ источник, который ответил «отозван»:
+// нашу запись на полосе записи и наш авторитет на полосе нашей чеканки. Прежний
+// поставщик снят (#2734), и строка, называющая ответившим его, посылала бы
+// оператора разбираться с тем, чего у края нет. Источник выводится тем же
+// признаком записи издателя, которым выбрана полоса, — разойтись им нечем.
+func TestRevocationRefusalLogNamesTheSourceThatAnswered(t *testing.T) {
+	for _, lane := range []struct {
+		ours bool
+		want string
+	}{
+		{ours: false, want: revocationSourceRecord},
+		{ours: true, want: revocationSourceAuthority},
+	} {
+		var logs bytes.Buffer
+		a := NewAuthInterceptor(AuthModeProduction, "", cutoffLookup{},
+			slog.New(slog.NewTextHandler(&logs, nil))).
+			WithVerifier(recordLaneVerifier{jti: "jti-revoked", ours: lane.ours})
+		checker := &recordLaneChecker{err: ErrTokenInactive}
+		if lane.ours {
+			a = a.WithPlatformRevocationCheck(checker, time.Hour)
+		} else {
+			a = a.WithRevocationCheck(checker, time.Hour)
+		}
+		if code, served := recordLaneREST(a); code != http.StatusUnauthorized || served {
+			t.Fatalf("наш=%t: отозванный токен: код %d, дошёл=%v", lane.ours, code, served)
+		}
+		if c := recordLaneGRPC(a); c != codes.Unauthenticated {
+			t.Fatalf("наш=%t: отозванный токен на нативной поверхности: %v", lane.ours, c)
+		}
+		if checker.asked != 2 {
+			t.Fatalf("наш=%t: источник спрошен %d раз, ожидалось 2", lane.ours, checker.asked)
+		}
+
+		var named int
+		for _, line := range strings.Split(strings.TrimSpace(logs.String()), "\n") {
+			if strings.Contains(strings.ToLower(line), "provider") {
+				t.Fatalf("наш=%t: журнал называет ответившим поставщика: %s", lane.ours, line)
+			}
+			if strings.Contains(line, `source="`+lane.want+`"`) {
+				named++
+			}
+		}
+		if named != 2 {
+			t.Fatalf("наш=%t: строк отказа, называющих источником %q, %d, ожидалось 2 (по одной на "+
+				"поверхность); журнал:\n%s", lane.ours, lane.want, named, logs.String())
+		}
 	}
 }

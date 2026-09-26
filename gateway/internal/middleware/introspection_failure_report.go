@@ -1,16 +1,16 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// introspection_failure_report.go — making a control that is not currently
-// enforcing visible, without drowning the log that is supposed to show it.
+// introspection_failure_report.go — making a check that cannot currently answer
+// visible, without drowning the log that is supposed to show it.
 //
-// When the provider cannot be reached, the request is let through: an outage of
-// the identity provider must not take the whole API down with it. That decision
-// is defensible only while somebody can see it happening. The failure is
-// per-request, so a line per occurrence buries everything else in the log during
-// an outage — and a single line at the start of a ten-minute outage says nothing
-// about how long it lasted. Hence: one line per window, carrying the running
-// total and how many occurrences it stands for.
+// When a revocation source cannot be reached, or a token carries nothing to ask
+// by, the request is refused (auth_revocation.go: «could not establish» is not
+// «live»). The refusal is per-request, and so is its cause, so a line per
+// occurrence buries everything else in the log during an outage — and a single
+// line at the start of a ten-minute outage says nothing about how long it
+// lasted. Hence: one line per window, carrying the running total and how many
+// occurrences it stands for.
 //
 // The counters are reported through the log rather than through a metric family
 // because this process exposes no metrics endpoint (see the note in

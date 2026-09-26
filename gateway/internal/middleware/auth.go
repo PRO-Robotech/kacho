@@ -508,20 +508,27 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 		}
 		// A verified signature says who minted the token and when it expires. It
 		// does not say the token is still good — a sign-out or a revoked key
-		// leaves a valid signature behind. Only the provider knows, and it is
+		// leaves a valid signature behind. Only the revocation source knows, and
+		// both sources are ours: our revocation authority for a token of our own
+		// minting, our revocation record for any other accepted record. It is
 		// asked here, on the layer that always runs, using the token this branch
 		// has ALREADY verified (no second parse of the same bearer).
 		switch a.revocationCheck(ctx, vt, "grpc", fullMethod) {
 		case revocationRevoked:
 			// The credential is dead, which is an authN failure like any other and
 			// carries the same constant message (no varying text to read state off).
-			a.logger.Warn("auth: token reported not live by the provider; rejected",
-				"method", fullMethod)
+			a.logger.Warn("auth: token revoked per our revocation source; rejected",
+				"method", fullMethod, "source", revocationSourceOf(vt))
 			return nil, status.Error(codes.Unauthenticated, authFailedMsg)
 		case revocationUnanswerable:
-			// The fault is this deployment's configuration, not the caller's
-			// credential: Unavailable, so a client retries instead of pointlessly
-			// re-authenticating.
+			// The question went unanswered, and «could not establish» is not
+			// «live». Three causes lead here, and the log in revocationCheck names
+			// which one: our source was silent, the check is assembled without its
+			// source, or the token carries no identifier to ask by. None of them is
+			// a verdict on the credential, so the answer is Unavailable and one
+			// constant text, not a sign-in challenge; a retry clears the first
+			// cause and not the other two — the same code the authority lane gives
+			// for the same three facts.
 			return nil, status.Error(codes.Unavailable, revocationUnavailableReason)
 		}
 		// Same floor, same reason, on the native surface — where the method is
@@ -948,7 +955,7 @@ func extractBearer(ctx context.Context) string {
 //
 //	tryOwnSession       — наша сессия (`kaname_session`, посадка `own`; Ф3 Р15);
 //	tryBasicCredential  — базовый секрет с нашей маркой в `Authorization`;
-//	tryBearerJWT         — подписанный предъявитель в `Authorization`.
+//	tryBearerJWT        — подписанный предъявитель в `Authorization`.
 //
 // Читатель браузерной сессии — ОДИН, наш: читатель чужой сессии снят вместе с
 // переходным режимом двух носителей (#2792). Полоса сессии терминальна.
@@ -1097,8 +1104,7 @@ func (a *AuthInterceptor) stripForgeableIdentityHeaders(r *http.Request) {
 }
 
 // tryBearerJWT validates an asymmetric (RS256/ES256/EdDSA) access JWT of an accepted
-// issuer (the name keeps the lane's original issuer; the verifier is issuer-agnostic)
-// over REST via the JWKS verifier (parity with the gRPC interceptor path) and
+// issuer over REST via the JWKS verifier (parity with the gRPC interceptor path) and
 // derives the principal from the verified `kaname_principal_*` claims (top-level
 // or ext_claims), falling back to SubjectLookuper on the verified sub. A
 // present-but-bad token → 401 fail-closed, never anonymous; a key set that could
@@ -1142,9 +1148,10 @@ func (a *AuthInterceptor) tryBearerJWT(w http.ResponseWriter, r *http.Request, n
 		writeHTTPUnauthorized(w, "sender-constrained token required")
 		return true
 	}
-	// Is the token still live? The signature cannot answer that; the provider can.
-	// Asked on the token this branch has already verified — never by parsing the
-	// bearer a second time.
+	// Is the token still live? The signature cannot answer that; our revocation
+	// source can — our authority for a token of our own minting, our record for
+	// any other accepted record. Asked on the token this branch has already
+	// verified — never by parsing the bearer a second time.
 	//
 	// The pre-auth allow-list is exempt, and sign-out is why: a user whose session
 	// was revoked elsewhere must still be able to complete a sign-out and clear
@@ -1155,11 +1162,14 @@ func (a *AuthInterceptor) tryBearerJWT(w http.ResponseWriter, r *http.Request, n
 	if !isPublicHTTPPath(r.URL.Path) {
 		switch a.revocationCheck(r.Context(), vt, "rest", r.URL.Path) {
 		case revocationRevoked:
-			a.logger.Warn("auth.HTTP: token reported not live by the provider; rejected",
-				"path", r.URL.Path)
+			a.logger.Warn("auth.HTTP: token revoked per our revocation source; rejected",
+				"path", r.URL.Path, "source", revocationSourceOf(vt))
 			writeHTTPUnauthorized(w, revocationDenyDescription)
 			return true
 		case revocationUnanswerable:
+			// Our source was silent, the check has no source, or the token has no
+			// identifier to ask by — the same three causes, the same refusal and the
+			// same constant text as on the native surface above.
 			writeHTTPServiceUnavailable(w, revocationUnavailableReason)
 			return true
 		}

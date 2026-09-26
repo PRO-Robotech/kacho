@@ -23,7 +23,7 @@
 // runs on every authenticated request, so "how often do we ask" stopped being
 // free. An answer is amortised by the cache above, but a non-answer was not
 // cached and concurrent questions about one token were not shared — so an
-// unwell provider was asked once per request, each question holding a
+// unwell authority was asked once per request, each question holding a
 // request-handling goroutine and a connection for the whole per-call budget,
 // all of it aimed at something already struggling. Three mechanisms, because the
 // shapes fail differently and none of them covers the others:
@@ -40,7 +40,7 @@
 //     of the three that changes WHOM we stop asking rather than how often, which
 //     is why the reasoning for it is written out at length in its own file.
 //
-// A wrong ADDRESS is remembered differently from an unreachable provider, and
+// A wrong ADDRESS is remembered differently from an unreachable authority, and
 // deliberately so; see rememberMisconfigured.
 //
 // Invalidation: the TTL is what bounds how long a revocation goes unnoticed —
@@ -77,7 +77,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/lrucache"
 )
 
-// ErrTokenInactive — the provider reported `active=false`; bubble up to caller
+// ErrTokenInactive — the authority reported `active=false`; bubble up to caller
 // and terminate request with 401.
 var ErrTokenInactive = errors.New("token is not active (revoked or expired upstream)")
 
@@ -85,8 +85,8 @@ var ErrTokenInactive = errors.New("token is not active (revoked or expired upstr
 // an introspection endpoint: the path is absent, the verb is refused, we are not
 // authorised to ask, or the body is not an introspection response.
 //
-// This is deliberately a SEPARATE fact from "the provider did not answer". An
-// unwell provider recovers on its own; a wrong address does not, so every
+// This is deliberately a SEPARATE fact from "the authority did not answer". An
+// unwell authority recovers on its own; a wrong address does not, so every
 // request pays the round-trip and receives the same non-answer forever. Merged
 // into one branch and waved through, that is a revocation check which reports as
 // present and enforces nothing — the caller of Introspect must be able to tell
@@ -97,28 +97,27 @@ var ErrIntrospectionMisconfigured = errors.New("introspection endpoint is miscon
 // defaultIntrospectionTimeout bounds one introspection round-trip.
 //
 // This is a blocking step on the request path, so the budget is what an unwell
-// provider can cost a request-handling goroutine. Introspection is a single
+// authority can cost a request-handling goroutine. Introspection is a single
 // intra-cluster POST backed by one indexed lookup — tens of milliseconds when
 // healthy — and the cache means a given token pays it at most once per TTL.
 // A second is roughly ten times the healthy case: ample for a cold connection or
-// a stalled lookup, and short enough that a provider brown-out cannot pin the
+// a stalled lookup, and short enough that an authority brown-out cannot pin the
 // gateway's capacity waiting on answers no caller is still there to receive.
 const defaultIntrospectionTimeout = time.Second
 
-// introspectionFailureWindow — how long a question the provider did not answer
+// introspectionFailureWindow — how long a question the authority did not answer
 // is remembered, so the next one is answered without another round-trip.
 //
-// It is a SEPARATE window from the one for an answer the provider gave (5s by
+// It is a SEPARATE window from the one for an answer the authority gave (5s by
 // default), and much shorter, because the two buy different things. The positive
 // window amortises a round-trip over a verdict we actually hold. This one holds
-// no verdict at all: every moment of it is a moment the check is not asking, laid
-// on top of a control that is already not enforcing, so it is kept to the least
-// that still removes the stampede.
+// no verdict at all: every moment of it refuses the token without asking about
+// it, so it is kept to the least that still removes the stampede.
 //
-// One second is the same order as the per-call budget: a stalled provider costs a
-// given token at most one held round-trip per second instead of one per request —
-// at any request rate — and a provider that comes back is noticed within a second
-// of doing so.
+// One second is the same order as the per-call budget: a stalled authority costs
+// a given token at most one held round-trip per second instead of one per request
+// — at any request rate — and an authority that comes back is noticed within a
+// second of doing so.
 const introspectionFailureWindow = time.Second
 
 // IntrospectionResult — minimal RFC 7662 section 2.2 response shape. An authority
@@ -175,7 +174,7 @@ type IntrospectionCache struct {
 	misErr   error
 	misUntil time.Time
 
-	// breaker — the service-wide bound on questions to a provider that is
+	// breaker — the service-wide bound on questions to an authority that is
 	// answering nobody. The two caches above are per token and cannot see that
 	// shape; this one can, at the price of withholding the question from tokens
 	// it never tried. That price and why it is worth paying are argued in
@@ -189,7 +188,7 @@ type IntrospectionCacheConfig struct {
 	HTTPClient       *http.Client
 	MaxEntries       int
 	TTL              time.Duration
-	// Timeout bounds one round-trip to the provider. Zero → defaultIntrospectionTimeout.
+	// Timeout bounds one round-trip to the authority. Zero → defaultIntrospectionTimeout.
 	Timeout       time.Duration
 	Now           func() time.Time
 	BasicAuthUser string
@@ -239,12 +238,12 @@ func NewIntrospectionCache(cfg IntrospectionCacheConfig) (*IntrospectionCache, e
 // Introspect returns the cached or freshly-fetched introspection result.
 //
 // Three outcomes the caller must distinguish:
-//   - nil — the provider says the token is live.
-//   - ErrTokenInactive — the provider says it is not. Reject the request.
+//   - nil — the authority says the token is live.
+//   - ErrTokenInactive — the authority says it is not. Reject the request.
 //   - ErrIntrospectionMisconfigured — what answered is not an introspection
 //     endpoint. This never resolves by itself, so it must not be waved through.
 //
-// Any other error means the provider did not answer this time. The cache does
+// Any other error means the authority did not answer this time. The cache does
 // not decide what that means for the request; the revocation layer does, and on
 // every lane it wires today a non-answer refuses (auth_revocation.go).
 //
@@ -268,7 +267,7 @@ func (c *IntrospectionCache) Introspect(ctx context.Context, jti, rawToken strin
 	}
 
 	// 2. The address itself is known to be wrong. Checked AFTER the answer cache
-	// on purpose: an answer the provider gave is still a genuine answer inside
+	// on purpose: an answer the authority gave is still a genuine answer inside
 	// its own window, and refusing it would widen a configuration fault into an
 	// outage larger than the fault. Checked BEFORE asking, because asking again
 	// cannot change it — see rememberMisconfigured.
@@ -276,7 +275,7 @@ func (c *IntrospectionCache) Introspect(ctx context.Context, jti, rawToken strin
 		return IntrospectionResult{}, err
 	}
 
-	// 3. This token asked a moment ago and the provider did not answer. Same
+	// 3. This token asked a moment ago and the authority did not answer. Same
 	// verdict, no second round-trip to something already unwell.
 	if err, ok := c.failures.Get(jti); ok {
 		return IntrospectionResult{}, err
@@ -301,9 +300,9 @@ func (c *IntrospectionCache) ask(ctx context.Context, jti, rawToken string) (Int
 		return IntrospectionResult{}, err
 	}
 
-	// 5. The provider is answering nobody. Withholding the question here — rather
+	// 5. The authority is answering nobody. Withholding the question here — rather
 	// than per token, as everything above does — is what bounds the cost of an
-	// outage; it passes the request exactly as a real non-answer would.
+	// outage; the caller refuses the request exactly as on a real non-answer.
 	//
 	// The permit is taken immediately before the round-trip that reports its
 	// outcome: fetchAndRecord runs under a context stripped of cancellation and
@@ -334,7 +333,7 @@ func (c *IntrospectionCache) ask(ctx context.Context, jti, rawToken string) (Int
 	}
 }
 
-// fetchAndRecord asks the provider once and files what came back.
+// fetchAndRecord asks the authority once and files what came back.
 func (c *IntrospectionCache) fetchAndRecord(ctx context.Context, jti, rawToken string) (IntrospectionResult, error) {
 	// Snapshot the invalidation generations BEFORE the (slow) fetch. A
 	// force-logout revocation that calls Invalidate(jti) while this introspection
@@ -362,7 +361,7 @@ func (c *IntrospectionCache) fetchAndRecord(ctx context.Context, jti, rawToken s
 		c.failures.PutIfGenWithTTL(jti, err, introspectionFailureWindow, failGen)
 		return IntrospectionResult{}, err
 	}
-	// The provider answered. Whether it called the token live or dead, it is
+	// The authority answered. Whether it called the token live or dead, it is
 	// reachable, so any breaker state established by earlier silences is stale.
 	c.breaker.recordAnswered()
 
@@ -450,7 +449,7 @@ func (c *IntrospectionCache) Len() int { return c.cache.Len() }
 func (c *IntrospectionCache) fetchIntrospection(ctx context.Context, rawToken string) (IntrospectionResult, error) {
 	// The budget belongs to this call, not to the inbound request: a caller that
 	// arrives with a generous deadline must not be able to hold a gateway
-	// goroutine on a stalled provider for longer than the configured wait.
+	// goroutine on a stalled authority for longer than the configured wait.
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 

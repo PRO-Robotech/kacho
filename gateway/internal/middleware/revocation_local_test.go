@@ -75,7 +75,7 @@ func TestOwnRevocationSource_SilenceIsTypedAndIsNotAnAnswer(t *testing.T) {
 	if errors.Is(err, ErrTokenInactive) {
 		t.Fatalf("недоступность подана как отзыв: %v — разные исходы лечатся противоположно", err)
 	}
-	if !errors.Is(err, ErrOwnRevocationSourceSilent) || !errors.Is(err, boom) {
+	if !errors.Is(err, errOwnRevocationSourceSilent) || !errors.Is(err, boom) {
 		t.Fatalf("молчание не несёт своего признака и причины: %v", err)
 	}
 }

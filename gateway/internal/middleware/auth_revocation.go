@@ -101,6 +101,24 @@ const (
 // contract change, not a message tweak.
 const revocationDenyDescription = "token revoked"
 
+// revocationSourceAuthority / revocationSourceRecord — which of OUR two sources
+// gave the answer, as the refusal log names it. The lane is chosen by the issuer
+// record the verifier marked on the token (revocationSourceOf), and the log names
+// the source by that same mark.
+const (
+	revocationSourceAuthority = "our revocation authority"
+	revocationSourceRecord    = "our revocation record"
+)
+
+// revocationSourceOf — which of our sources revocationCheck asks about vt, by the
+// same mark it chooses the lane by.
+func revocationSourceOf(vt *VerifiedToken) string {
+	if vt != nil && vt.ReadRevocation {
+		return revocationSourceAuthority
+	}
+	return revocationSourceRecord
+}
+
 // revocationUnavailableReason — what a caller is told when the check cannot
 // answer. Deliberately thin: which of this deployment's addresses is wrong is
 // the operator's business, and it goes to the log, not to the wire.
@@ -232,10 +250,11 @@ func (a *AuthInterceptor) revocationCheck(ctx context.Context, vt *VerifiedToken
 	}
 }
 
-// writeHTTPServiceUnavailable answers a request the gateway cannot serve because
-// of its OWN configuration. No WWW-Authenticate header: this is not an
-// authentication challenge, and offering one would invite the caller to
-// re-authenticate against a fault no credential of theirs can clear.
+// writeHTTPServiceUnavailable answers a request the gateway cannot serve because a
+// check it must run could not be answered — the token key set was not fetched,
+// or the revocation question went unanswered (see revocationUnanswerable). No
+// WWW-Authenticate header: this is not an authentication challenge, and the
+// refusal is not a verdict on the credential's signature or lifetime.
 //
 // Поле `code` — код gRPC (`google.rpc.Status.code`), а НЕ номер HTTP-статуса:
 // клиент ключуется машинно именно на него, и оба числа тут разные по смыслу.
