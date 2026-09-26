@@ -1,6 +1,6 @@
 // Same-origin redirect guard for auth hand-off targets (return_to /
 // post_logout_redirect_uri). These arrive from the query string and are fed to
-// react-router navigate() / Kratos loginUrl(); an unvalidated value is an
+// react-router navigate() / the sign-in address; an unvalidated value is an
 // open-redirect / re-phishing surface (CWE-601). We only ever navigate to a
 // destination that resolves onto our own origin.
 
@@ -36,7 +36,7 @@ export function safeInternalPath(raw: string | null | undefined, fallback: strin
 }
 
 /**
- * Resolve the post-auth navigation target after a Kratos login/registration flow.
+ * Resolve the post-auth navigation target after a login/registration flow.
  *
  * Both `flowReturnTo` (from the flow response) and `queryReturnTo` (from the
  * `?return_to=` query param) are caller-supplied, so each is constrained to a

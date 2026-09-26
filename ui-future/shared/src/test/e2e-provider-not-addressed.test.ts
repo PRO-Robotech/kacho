@@ -77,10 +77,10 @@ describe("F8-43 · код набора не обращается к постав
     // Изменён ровно один факт — чей это адрес.
     const planted = providerAddressesIn(
       "specs/fixtures.ts",
-      'export const s = (page) => page.request.get("/.ory/kratos/public/sessions/whoami");',
+      'export const s = (page) => page.request.get("/.ory/idp/public/sessions/whoami");',
     );
     expect(planted.map(formatFinding)).toEqual([
-      "specs/fixtures.ts:1 адрес поставщика «/.ory/kratos/public/sessions/whoami»",
+      "specs/fixtures.ts:1 адрес поставщика «/.ory/idp/public/sessions/whoami»",
     ]);
     const twin = providerAddressesIn(
       "specs/fixtures.ts",
@@ -89,7 +89,7 @@ describe("F8-43 · код набора не обращается к постав
     expect(twin).toEqual([]);
     // Ручка базы поставщика в окружении — тоже обращение к нему.
     expect(
-      providerAddressesIn("specs/x.ts", "export const b = process.env.KACHO_KRATOS_PUBLIC;").map((f) => f.what),
-    ).toEqual(["ручка базы поставщика KACHO_KRATOS_PUBLIC"]);
+      providerAddressesIn("specs/x.ts", "export const b = process.env.KACHO_ORY_PUBLIC;").map((f) => f.what),
+    ).toEqual(["ручка базы поставщика KACHO_ORY_PUBLIC"]);
   });
 });

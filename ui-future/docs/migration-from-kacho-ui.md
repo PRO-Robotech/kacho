@@ -12,8 +12,9 @@ Address.used_by, single-overview / кастомные detail). Шаблон дл
 - **MF-инфраструктура** host + remotes vpc/iam/dashboard, shared-singleton, lazy+Suspense,
   HostContext-prop, navigation-контракт, dev-federation.ps1, nginx-proxy, K8s-deploy.
 - **Рукописный api-слой** (`vpc/src/api/*`) с case-конверсией, `ApiError`, DPoP
-  (`lib/dpop.ts`), 401/step-up обработка (`lib/api-client.ts`), Kratos (`lib/kratos.ts`),
-  context-store, WhoAmI-bootstrap.
+  (`lib/dpop.ts`), 401/step-up обработка (`lib/api-client.ts`),
+  context-store, WhoAmI-bootstrap. Клиента потоков прежнего поставщика личности
+  здесь больше нет: церемонии ведёт консоль своими экранами (приёмка F8).
 - **resource-registry-движок**: FormField-union, RefField/ArrayField/CustomField,
   sanitize/hydrate, `GlobalResourceFormModal`/`ResourceFormModal`/`InlineResourceForm`,
   `ResourceListPage`/`ResourceDetailPage`/`ResourceCreatePage`, FormShell/ResourceFormBody.
@@ -186,7 +187,7 @@ fetch-mock). Особо защитить (mirror + фиксы):
 placement) независима от NLB — можно вести параллельно. Критический путь: 0→1→2→3→4→5→7→8.
 
 **Файлы-шаблоны из vpc-remote:** `vite.config.ts`, `jest.config.cjs`, `eslint.config.js`,
-`src/test/setup.ts`, `src/api/{client,auth,iam}.ts`, `lib/{dpop,api-client,kratos,
+`src/test/setup.ts`, `src/api/{client,auth,iam}.ts`, `lib/{dpop,api-client,
 context-store,use-operation,use-resource-list}.ts`, `resource-registry.tsx`,
 `components/organisms/{form/*,ResourceListPage,ResourceDetailPage,ResourceCreatePage,
 GlobalResourceFormModal,InlineResourceForm}`, `host/src/remotes/VpcRemote.tsx`+`vpc.d.ts`.
