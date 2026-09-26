@@ -23,6 +23,10 @@ let lane: ReturnType<typeof installLane> | null = null;
 afterEach(() => {
   lane?.restore();
   jest.restoreAllMocks();
+  // Подтверждённый выход держит метку вкладки до ухода документа, и второй
+  // выход при ней не начинается (`tab-exit.ts`). Здесь документ остаётся, и
+  // следующая проба начинает вкладку заново.
+  delete (globalThis as unknown as Record<symbol, unknown>)[Symbol.for("kacho.console.tab-exit")];
 });
 
 describe("учётная запись в рейле", () => {

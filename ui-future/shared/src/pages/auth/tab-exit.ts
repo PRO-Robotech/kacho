@@ -28,6 +28,19 @@
 // уводит как обычно. Подтверждённый выход её не снимает: документ уходит, и
 // новая страница начинает без неё.
 //
+// ВЫХОД ВКЛАДКИ ОДИН, И МЕТКА ПРИНАДЛЕЖИТ ЕМУ. Кнопок выхода во вкладке больше
+// одной, и каждая — свой экземпляр: панель учётной записи закрывается и в полёте
+// выхода (`AccountPanel.tsx`), а открытая заново несёт новый хук. Защита на
+// экземпляр пропускала второй выход рядом с первым, и отказ второго — сессию уже
+// погасил первый — снимал метку подтверждённого первого: следующий `401` уводил
+// на вход с адресом прежнего человека (ревью system-design, круг 9). Поэтому:
+//
+//   • пока метка стоит, второй выход НЕ начинается — защита одна на вкладку, а
+//     не на экземпляр кнопки (`beginTabExit` отдаёт `null`);
+//   • снять метку может только тот выход, что её поставил, и только своим
+//     отказом (`TabExit.abandon`); подтверждённый выход её не снимает, и снять её
+//     больше некому.
+//
 // ПОЧЕМУ С НАЧАЛА, А НЕ С ОТВЕТА. Чтение, дошедшее до края после того, как
 // служба погасила сессию, получает `401`, и его ответ вправе прийти к странице
 // раньше ответа выхода: метка, поставленная по ответу, такой `401` не застала бы.
@@ -39,25 +52,78 @@
 //
 // ЧТО ДЕРЖИТ. Модульные пробы переходов по `401` каркаса и панели
 // (`host/src/utils/auth.test.ts`, `dashboard/src/utils/auth.test.ts`) — исход
-// выхода подтверждён, в полёте, отвергнут; исход у страницы — браузерная проба
-// F8-18 (`e2e/specs/identity-ceremony.spec.ts`).
+// выхода подтверждён, в полёте, отвергнут; второй выход той же вкладки в обоих
+// порядках отказа и близнец «после отказа новое нажатие выходит»; владение
+// меткой — `tab-exit.test.ts`; исход у страницы — браузерная проба F8-18
+// (`e2e/specs/identity-ceremony.spec.ts`).
 
 const KEY = Symbol.for("kacho.console.tab-exit");
 
-/** Выход начат: с этого отрезка вкладку на вход уводит только он. */
-export function beginTabExit(): void {
-  const g = globalThis as unknown as Record<symbol, boolean | undefined>;
-  g[KEY] = true;
+/** Выход, начатый вкладкой. Метка — его, и снять её может только он. */
+export interface TabExit {
+  /** Выход отвергнут: метка снимается, если она всё ещё этого выхода. */
+  abandon(): void;
 }
 
-/** Выход отвергнут: вкладка остаётся, и отказ `401` снова уводит на вход. */
-export function abandonTabExit(): void {
-  const g = globalThis as unknown as Record<symbol, boolean | undefined>;
-  delete g[KEY];
+/** Метка вкладки: общая у копий `@shared`, поэтому целиком на `globalThis`. */
+interface TabExitMark {
+  /** Выход, чья метка стоит; `null` — вкладка не уходит. */
+  exit: TabExit | null;
+  /** Следящие за меткой — кнопки выхода любой копии `@shared`. */
+  listeners: Set<() => void>;
+}
+
+/** Метка, поставленная копией без владения меткой (`true`): снять её некому. */
+const UNOWNED: TabExit = { abandon() {} };
+
+function tabMark(): TabExitMark {
+  const g = globalThis as unknown as Record<symbol, unknown>;
+  // Метку заводит та копия, что пришла первой; копия, загруженная позже, застаёт
+  // её и достраивает недостающее, а не падает на нём (как `carrier-order.ts`).
+  // Копия прежней формы ставила `true` — это выход без владельца.
+  const found = g[KEY];
+  const m: Partial<TabExitMark> =
+    typeof found === "object" && found !== null ? found : { exit: found === true ? UNOWNED : null };
+  g[KEY] = m;
+  m.exit ??= null;
+  m.listeners ??= new Set();
+  return m as TabExitMark;
+}
+
+function changed(m: TabExitMark): void {
+  for (const listener of [...m.listeners]) listener();
+}
+
+/**
+ * Начать выход вкладки. `null` — выход уже идёт либо подтверждён: второй не
+ * начинается, и снять чужую метку ему нечем.
+ */
+export function beginTabExit(): TabExit | null {
+  const m = tabMark();
+  if (m.exit !== null) return null;
+  const exit: TabExit = {
+    abandon() {
+      const current = tabMark();
+      if (current.exit !== exit) return;
+      current.exit = null;
+      changed(current);
+    },
+  };
+  m.exit = exit;
+  changed(m);
+  return exit;
 }
 
 /** Уходит ли вкладка выходом — тогда переход на вход по отказу `401` не производится. */
 export function tabExiting(): boolean {
-  const g = globalThis as unknown as Record<symbol, boolean | undefined>;
-  return g[KEY] === true;
+  return tabMark().exit !== null;
+}
+
+/** Следить за меткой вкладки (`useSyncExternalStore`); возвращает снятие. */
+export function subscribeTabExit(listener: () => void): () => void {
+  const m = tabMark();
+  m.listeners.add(listener);
+  return () => {
+    m.listeners.delete(listener);
+  };
 }

@@ -128,3 +128,148 @@ describe("C14 · уход на вход по отказу 401 и выход вк
     expect(go.mock.calls).toEqual([[WITH_PREVIOUS_RETURN]]);
   });
 });
+
+// ─── C14 · второй выход той же вкладки ───────────────────────────────────────
+//
+// Панель учётной записи закрывается нажатием вне её и клавишей Escape и тогда,
+// когда выход в полёте (`AccountPanel.tsx`), а смонтирована она условно: открытая
+// заново, она несёт НОВЫЙ хук выхода. Нажатие «Выйти» на ней — второй выход той
+// же вкладки рядом с первым. Второму служба отказывает (сессию погасил первый),
+// и отказ второго не вправе снять выход первого: иначе следующий `401` чтения
+// прежней страницы уводит на вход с её адресом возврата и отменяет переход
+// выхода — тот же исход F8-18, что без метки вовсе.
+
+const SECOND_AFTER_FIRST = "отказ второму приходит после подтверждения первого";
+const SECOND_WHILE_FIRST = "отказ второму приходит, пока первый в полёте";
+
+/** Сеть двух выходов: первый держится до `releaseFirst`, второй отвергается по `secondRefused`. */
+function twoExitsNetwork(secondRefused: Promise<void>) {
+  const original = globalThis.fetch;
+  let releaseFirst: () => void = () => undefined;
+  const firstAnswered = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+  let logoutVerbs = 0;
+  let issued = 0;
+  globalThis.fetch = (input: RequestInfo | URL) => {
+    const path = new URL(requestUrl(input), "http://console.test").pathname;
+    if (path === "/iam/v1/auth/csrf") return Promise.resolve(answered(200, { csrfToken: `tok-logout-${++issued}` }));
+    if (path === "/iam/v1/auth/logout") {
+      logoutVerbs += 1;
+      if (logoutVerbs === 1) return firstAnswered.then(() => answered(200, {}));
+      // Сессию погасил первый выход — у второго её нет.
+      return secondRefused.then(() =>
+        answered(401, { code: 16, message: "session ended; sign in again", details: [] }),
+      );
+    }
+    return Promise.resolve(answered(404, { code: 5, message: `дублёр: ${path} не объявлен пробой`, details: [] }));
+  };
+  return {
+    releaseFirst,
+    logoutVerbs: () => logoutVerbs,
+    restore: () => {
+      globalThis.fetch = original;
+    },
+  };
+}
+
+describe("C14 · второй выход той же вкладки не отменяет первого", () => {
+  beforeEach(() => {
+    window.history.pushState(null, "", PREVIOUS_PAGE);
+  });
+  afterEach(() => {
+    delete (globalThis as unknown as Record<symbol, unknown>)[TAB_EXIT_KEY];
+  });
+
+  for (const order of [SECOND_AFTER_FIRST, SECOND_WHILE_FIRST] as const) {
+    it(`F8-18 · панель закрыта и открыта заново в полёте выхода и нажата снова, ${order}: отказ 401 не уводит на вход с адресом прежнего человека`, async () => {
+      let firstLeft: () => void = () => undefined;
+      const left = new Promise<void>((resolve) => {
+        firstLeft = resolve;
+      });
+      const net = twoExitsNetwork(order === SECOND_AFTER_FIRST ? left : Promise.resolve());
+      try {
+        const leaveFirst = jest.fn<(to: string) => void>(() => firstLeft());
+        const leaveSecond = jest.fn<(to: string) => void>();
+        const first = renderHook(() => useLogout(leaveFirst));
+        let firstDone: Promise<void> = Promise.resolve();
+        act(() => {
+          firstDone = first.result.current.logout();
+        });
+        await waitFor(() => expect(net.logoutVerbs()).toBe(1));
+
+        // Панель закрыта в полёте выхода и открыта снова — с новым хуком.
+        first.unmount();
+        const second = renderHook(() => useLogout(leaveSecond));
+        const reopenedBusy = second.result.current.busy;
+        let secondDone: Promise<void> = Promise.resolve();
+        act(() => {
+          secondDone = second.result.current.logout();
+        });
+        if (order === SECOND_WHILE_FIRST) await act(() => secondDone);
+
+        net.releaseFirst();
+        await act(() => firstDone);
+        expect(leaveFirst.mock.calls).toEqual([["/login"]]);
+        // Исход второго нажатия — какой бы он ни был — уже есть.
+        await act(() => secondDone);
+
+        const go = jest.fn<(to: string) => void>();
+        redirectToLogin(go);
+        expect({
+          // Переход по 401 отменил бы переход выхода и увёл бы на страницу прежнего.
+          navigatedTo: go.mock.calls,
+          // Выход вкладки один: второй на службу не уходит, пока идёт первый.
+          logoutVerbs: net.logoutVerbs(),
+          // Открытая заново панель показывает, что выход идёт.
+          reopenedBusy,
+          secondLeft: leaveSecond.mock.calls,
+        }).toEqual({ navigatedTo: [], logoutVerbs: 1, reopenedBusy: true, secondLeft: [] });
+      } finally {
+        net.restore();
+      }
+    });
+  }
+
+  it("после отказа выхода новое нажатие выходит: защиту вкладки отказ снимает", async () => {
+    // Близнец: без него защита, не отпускающая вкладку никогда, была бы зелёной выше.
+    const original = globalThis.fetch;
+    let logoutVerbs = 0;
+    let issued = 0;
+    globalThis.fetch = (input: RequestInfo | URL) => {
+      const path = new URL(requestUrl(input), "http://console.test").pathname;
+      if (path === "/iam/v1/auth/csrf") return Promise.resolve(answered(200, { csrfToken: `tok-logout-${++issued}` }));
+      if (path === "/iam/v1/auth/logout") {
+        logoutVerbs += 1;
+        return Promise.resolve(
+          logoutVerbs === 1
+            ? answered(503, { code: 14, message: "logout not performed; try again later", details: [] })
+            : answered(200, {}),
+        );
+      }
+      return Promise.resolve(answered(404, { code: 5, message: `дублёр: ${path} не объявлен пробой`, details: [] }));
+    };
+    try {
+      const leaveFirst = jest.fn<(to: string) => void>();
+      const first = renderHook(() => useLogout(leaveFirst));
+      await act(() => first.result.current.logout());
+      expect(first.result.current.refusal?.message).toBe("logout not performed; try again later");
+      first.unmount();
+
+      const leaveSecond = jest.fn<(to: string) => void>();
+      const second = renderHook(() => useLogout(leaveSecond));
+      await act(() => second.result.current.logout());
+
+      const go = jest.fn<(to: string) => void>();
+      redirectToLogin(go);
+      expect({
+        logoutVerbs,
+        firstLeft: leaveFirst.mock.calls,
+        secondLeft: leaveSecond.mock.calls,
+        navigatedTo: go.mock.calls,
+      }).toEqual({ logoutVerbs: 2, firstLeft: [], secondLeft: [["/login"]], navigatedTo: [] });
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+});
