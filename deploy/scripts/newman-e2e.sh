@@ -32,8 +32,9 @@ GW_INTERNAL_PORT="${GW_INTERNAL_PORT:-18081}"   # api-gateway internal-rest :808
 # api-gateway EXTERNAL TLS listener :8443 (advertised as api.kacho.local:443). The ban-#6
 # negatives address it here rather than by its advertised hostname: that name does not
 # resolve on a developer box, adding it needs root, kind publishes only node:80, and the
-# Ingress in front of it speaks GRPCS so every REST path through it answers 502. Ban #6 is
-# about which routes the LISTENER serves, not about the name used to find it.
+# Ingress in front of it speaks GRPCS so every REST path through it answers 502 — every path
+# but the three exact ceremony coordinates, which it forwards over HTTPS (kacho#2860). Ban #6
+# is about which routes the LISTENER serves, not about the name used to find it.
 GW_TLS_PORT="${GW_TLS_PORT:-18443}"
 IAM_INTERNAL_PORT="${IAM_INTERNAL_PORT:-19091}"
 # Адреса ПОЛОСЫ ФАСАДА (#59, iam-token-facade-conformance). Кейсы IBT-* спрашивают

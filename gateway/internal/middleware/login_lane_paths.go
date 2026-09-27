@@ -1,36 +1,84 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// login_lane_paths.go — ЕДИНСТВЕННОЕ объявление глаголов полосы формы
-// (приёмка Ф3 Р2, §8 инв. 7): четыре глагола Ф3, регистрация Ф4 (kacho#2699),
-// два глагола восстановления доступа Ф5 (kacho#2701) и шесть глаголов второго
-// фактора Ф12 (приёмка Ф12 Р4, kacho#1281) — тринадцать путей, тот же
-// перечень, что служба объявляет у своего слушателя (`loginlanehttp.Paths()`).
+// login_lane_paths.go — ЕДИНСТВЕННОЕ объявление путей, которые край
+// РЕТРАНСЛИРУЕТ службе доступа сырым HTTP (род I краевой записи — замысел
+// LINE-A-1 §5.1а). Записей два вида, и у каждой своя цель ретрансляции:
+//
+//   - глаголы полосы формы (приёмка Ф3 Р2, §8 инв. 7): четыре глагола Ф3,
+//     регистрация Ф4 (kacho#2699), два глагола восстановления доступа Ф5
+//     (kacho#2701) и шесть глаголов второго фактора Ф12 (приёмка Ф12 Р4,
+//     kacho#1281) — тринадцать путей, тот же перечень, что служба объявляет у
+//     своего слушателя формы (`loginlanehttp.Paths()`); цель — слушатель формы;
+//   - координаты церемонии авторизации (замысел LINE-A-1 §5.1, полоса L13,
+//     kacho#2817; обнаружение — полоса L8, kacho#2721): навигация на эндпоинт
+//     авторизации, обмен кода и метаданные обнаружения — три записи; цель —
+//     слушатель выдачи службы, ОДНА на все три: церемония целиком живёт на
+//     одном слушателе (§5.1б п. 2), и документ обнаружения служба монтирует
+//     рядом с двумя другими.
 //
 // # Кто это читает — трое, и второго объявления нет
 //
-//   - перечень путей без записи каталога (`isPublicHTTPPath`, Р8): глагол формы
-//     освобождён от решения по каталогу прав, от пола уверенности и от полосы
-//     привязки предъявителя — но НЕ от полосы сессии (§1.8);
+//   - перечень путей без записи каталога (`isPublicHTTPPath`, Р8): запись
+//     освобождена от решения по каталогу прав, от пола уверенности, от полосы
+//     привязки предъявителя и от вопроса об отзыве — но НЕ от полосы сессии
+//     (§1.8);
 //   - ветка полосы сессии (`tryOwnSession`, Р7): на этих путях «сессии нет»
 //     РЕТРАНСЛИРУЕТСЯ службе, а не отвергается; отсечка отвергается как всюду;
-//     недоступность службы ретранслируется ровно на глаголах, чья запись это
-//     разрешает (`relayWhenUnanswered`), на остальных — F4d-23;
-//   - регистрация ретрансляции в композиционном корне: обработчик крепится на
-//     каждый путь перечня под посадкой `own`.
+//     недоступность службы ретранслируется ровно на записях, которые это
+//     разрешают (`relayWhenUnanswered`), на остальных — F4d-23;
+//   - монтаж в композиционном корне (`handler.MountLoginLaneRoutes`): на каждый
+//     путь перечня крепится ретранслятор ЕГО цели под посадкой `own`.
 //
 // Второе объявление тех же путей разошлось бы молча: путь, освобождённый и не
 // ретранслируемый, отвечал бы 404 краем; ретранслируемый и не освобождённый —
 // отказом каталога до службы. Ровно так три глагола Ф4/Ф5 и выглядели до
 // расширения: служба их обслуживала, край отвечал 404 (kacho#2699, kacho#2701).
 //
+// # Координатам церемонии здесь место, а не в таблицах маршрутов прав
+//
+// Сгенерированная таблица маршрутов прав выводится из аннотаций контракта и
+// помечена «не править», а контракта церемония не заводит (З1): вписанная руками
+// строка исчезла бы при следующей генерации молча и по чужому поводу. Таблица
+// собственных ручек края (`rest_route_edge.go`) переводит путь в ИМЯ МЕТОДА,
+// чтобы полоса прав нашла запись каталога; имени метода у церемонии нет, и
+// промах мимо каталога есть отказ — путь был бы не открытым, а мёртвым.
+//
+// # Состав освобождения координат церемонии — РЕШЕНИЕ, а не побочный эффект
+//
+// Членство в перечне снимает четыре вещи (§5.1б п. 3), и для церемонии каждая
+// снята потому, что на ней нечего решать: записи каталога нет и не будет (имени
+// метода нет); шаг вверх обслуживает сама церемония (второе решение о том же
+// полу разошлось бы с первым); предъявителя на этих путях нет — навигация несёт
+// сессию, обмен — код и удостоверение клиента, чтение обнаружения — ничего
+// (публичный документ, Р11); вопрос об отзыве задаётся о
+// предъявителе, которого ни одна из трёх записей не читает, и отказ по нему был
+// бы отказом по случайности. Радиус освобождения ограничен снятием
+// `Authorization` в обеих формах имени ретранслятором (`login_lane_relay.go`):
+// неспрошенный предъявитель до службы не доезжает и полномочием ниже по течению
+// не становится. ЭТО ПАРА (§7 инв. 37): исключение в составе ретранслированного
+// запроса, проносящее `Authorization` на координату обмена, переоткрывает
+// освобождение от вопроса об отзыве — оно принимается заново, а не наследуется.
+//
+// Исключение ОДНО, и освобождение под ним принято заново (kacho#2721): на
+// записи обмена ретранслятор оставляет удостоверение КЛИЕНТА базовой схемой
+// (`CarriesClientBasic`) — служба на обмене и обновлении принимает клиента
+// только так (RFC 6749 §2.3.1). Вопрос об отзыве задаётся о предъявителе, а
+// базовая схема предъявителем края не является: ни одна полоса края её не
+// читает (все ждут `Bearer `), вердикта о ней край не выносит, и судит её
+// служба секретом клиента на каждом обмене. Предъявитель на этой записи
+// по-прежнему снимается, и освобождение от вопроса об отзыве остаётся верным.
+//
 // # Совпадение ТОЧНОЕ
 //
 // Не приставка: `/iam/v1/auth/` уже однажды была приставкой, и всякий новый
 // маршрут под ней наследовал освобождение, никем не решённое (`authz_util.go`).
-// Параметры запроса (`?form=<вид>`) к пути не относятся. Путь завершения
-// восстановления — подпуть пути запроса кода, и точное совпадение здесь несущее:
-// приставочное не различало бы два глагола.
+// Параметры запроса (`?form=<вид>`, строка запроса церемонии) к пути не
+// относятся. Путь завершения восстановления — подпуть пути запроса кода, и
+// точное совпадение здесь несущее: приставочное не различало бы два глагола. У
+// навигации церемонии соседи по имени — четыре глагола проверки доступа
+// `/iam/v1/authorize:*`: суффикс `:verb` образует другой путь, и его обслуживает
+// транскодер REST→gRPC.
 package middleware
 
 // Пути глаголов. Написание подпутём, а не суффиксом `:verb`, взято у
@@ -61,20 +109,92 @@ const (
 	LoginLanePathStepUp                  = "/iam/v1/auth/step-up"
 )
 
-// LoginLaneRoute — глагол формы: имя для счётчиков и путь на адресе консоли.
+// Координаты церемонии авторизации (замысел LINE-A-1 §5.1). Навигация — бэрый
+// путь без суффикса: его сосед `/iam/v1/authorize:check` принадлежит проверке
+// доступа. Обмен кода — путь существующего токен-эндпоинта службы: ветви
+// церемонии ложатся в его же обработчик, второго пути не заводится.
+//
+// Метаданные обнаружения (приёмка LINE-A-1 Р11 и 22) — путь документа по RFC
+// 8414 §3 для издателя без пути. Замысел оставил их публикацию наружу полосе L8
+// «своей записью того же рода и своим решением» (§5.1б п. 5); решение kacho#2721
+// — ПУБЛИКОВАТЬ, и довод у него один: единственный внешний вход установки —
+// край (§5.0), у слушателя выдачи внешнего адреса нет, и документ, называющий
+// адреса двух опубликованных координат, без записи здесь снаружи недостижим —
+// «полный OAuth 2.1» без него неполон. Совпадение точное: подпуть документа
+// (путь издателя по RFC 8414 вставляется после имени) и соседние документы
+// `/.well-known/` освобождения не получают.
+const (
+	CeremonyPathAuthorize = "/iam/v1/authorize"
+	CeremonyPathToken     = "/iam/v1/token" // #nosec G101 -- путь эндпоинта обмена, а не удостоверение
+	CeremonyPathDiscovery = "/.well-known/oauth-authorization-server"
+)
+
+// RelayTarget — слушатель службы доступа, на который край ретранслирует запись
+// объявления. Закрытый перечень: нулевое значение и чужое слово целью не
+// являются, и запись, дописанная без решения о цели, не ретранслируется никуда.
+//
+// Целей две и сводимы они не к одной (замысел LINE-A-1 §5.1б п. 2а): у них
+// разные ручки адреса, разные порты и разный режим предъявления клиента.
+type RelayTarget string
+
+const (
+	// RelayTargetForm — слушатель полосы формы: взаимный TLS, допускает ровно край.
+	RelayTargetForm RelayTarget = "form"
+	// RelayTargetIssuance — слушатель выдачи: на нём церемония живёт целиком.
+	RelayTargetIssuance RelayTarget = "issuance"
+)
+
+// RelayTargets — закрытый перечень целей в порядке объявления.
+func RelayTargets() []RelayTarget {
+	return []RelayTarget{RelayTargetForm, RelayTargetIssuance}
+}
+
+// ExternalListenersOnly — отвечают ли записи цели ТОЛЬКО на внешних слушателях
+// края. Один `http.Server` края обслуживает все его HTTP-слушатели, и граничный
+// admin-REST слушатель отличается от внешних лишь меткой происхождения
+// соединения (`listenerorigin`): запись, смонтированная без этого решения,
+// отвечала бы и там.
+//
+// Выдача — да: путь выдачи не отвечает на внутреннем слушателе
+// (sec-issuance-path-not-elsewhere; kacho#2817, возврат безопасности круга 1,
+// M1) — там координата церемонии получает ответ, которым слушатель отвечает на
+// путь, которого у него нет (`handler.MountLoginLaneRoutes`).
+//
+// Форма — нет: её записи отвечают на всех слушателях края, как до kacho#2817.
+// Это прежнее поведение, а не решение этой записи; нужен ли глаголам формы
+// внутренний слушатель — предмет kacho#2849.
+func (t RelayTarget) ExternalListenersOnly() bool { return t == RelayTargetIssuance }
+
+// Valid — принадлежит ли цель закрытому перечню.
+func (t RelayTarget) Valid() bool {
+	for _, known := range RelayTargets() {
+		if t == known {
+			return true
+		}
+	}
+	return false
+}
+
+// LoginLaneRoute — запись объявления: имя для счётчиков, путь на адресе
+// консоли и цель ретрансляции.
 type LoginLaneRoute struct {
-	// Verb — закрытое имя глагола; значение метки ретрансляции (Ф3-48).
+	// Verb — закрытое имя записи; значение метки ретрансляции (Ф3-48).
 	Verb string
 	// Path — точный путь на origin консоли.
 	Path string
+	// Target — слушатель службы, на который запись ретранслируется.
+	Target RelayTarget
 	// relayWhenUnanswered — что полоса сессии делает на этом глаголе, когда
 	// служба не ответила краю (`Resolve` не ответил либо отсечку установить не
 	// удалось). Критерий один — читает ли глагол носитель:
 	//
 	//   - true — ретранслировать, служба ответит своим 503. Глагол носителя не
 	//     читает (вход, признак формы — Ф3 Р7; регистрация; запрос и предъявление
-	//     кода восстановления ключуются адресом и кодом) либо сессию оканчивает
-	//     (выход — Ф3-17);
+	//     кода восстановления ключуются адресом и кодом; навигация церемонии —
+	//     вопрос о сессии решает сама церемония своим швом; обмен кода — решает
+	//     по коду и удостоверению клиента, замысел LINE-A-1 §5.1б п. 4; чтение
+	//     обнаружения — публичный документ, не читающий ничего) либо
+	//     сессию оканчивает (выход — Ф3-17);
 	//   - нулевое значение — отказ F4d-23 на крае, носитель цел. Глагол читает
 	//     сессию носителя (смена пароля — Ф3-20 «д»; шесть глаголов второго
 	//     фактора, включая чтение состояния, — Ф12 Р4), и запрос с носителем,
@@ -84,42 +204,63 @@ type LoginLaneRoute struct {
 	// Поле не экспортируется: решение принадлежит полосе сессии, и прочие
 	// читатели объявления его не видят.
 	relayWhenUnanswered bool
+	// carriesClientBasic — служба на этой записи аутентифицирует КЛИЕНТА
+	// базовой схемой (RFC 6749 §2.3.1), и ретранслятор оставляет ей
+	// удостоверение клиента этой схемы (`CarriesClientBasic`). Умолчание —
+	// снятие: запись, дописанная без решения, `Authorization` не несёт.
+	carriesClientBasic bool
 }
 
-// loginLaneRoutes — сам перечень. Порядок — порядок Р2, затем Ф4, Ф5 и Ф12;
-// читатели по нему не ветвятся.
+// CarriesClientBasic — оставляет ли ретранслятор на этой записи удостоверение
+// клиента базовой схемой. Истина ровно у обмена кода: обработчик выдачи на
+// обмене и обновлении принимает клиента только так, и снятое удостоверение
+// делало каждый обмен через край отказом `invalid_client` (kacho#2721).
+// Предъявитель снимается и здесь (`principalmeta` —
+// `StripCredentialAndIdentityHeadersKeepingClientBasic`).
+func (rt LoginLaneRoute) CarriesClientBasic() bool { return rt.carriesClientBasic }
+
+// loginLaneRoutes — сам перечень. Порядок — порядок Р2, затем Ф4, Ф5, Ф12 и
+// координаты церемонии; читатели по нему не ветвятся.
 var loginLaneRoutes = []LoginLaneRoute{
-	{Verb: "login", Path: LoginLanePathLogin, relayWhenUnanswered: true},
-	{Verb: "logout", Path: LoginLanePathLogout, relayWhenUnanswered: true},
-	{Verb: "password", Path: LoginLanePathPassword},
-	{Verb: "csrf", Path: LoginLanePathCSRF, relayWhenUnanswered: true},
-	{Verb: "register", Path: LoginLanePathRegister, relayWhenUnanswered: true},
-	{Verb: "recovery", Path: LoginLanePathRecovery, relayWhenUnanswered: true},
-	{Verb: "recovery-complete", Path: LoginLanePathRecoveryComplete, relayWhenUnanswered: true},
-	{Verb: "second-factor-status", Path: LoginLanePathSecondFactor},
-	{Verb: "second-factor-enroll", Path: LoginLanePathSecondFactorEnroll},
-	{Verb: "second-factor-confirm", Path: LoginLanePathSecondFactorConfirm},
-	{Verb: "second-factor-remove", Path: LoginLanePathSecondFactorRemove},
-	{Verb: "second-factor-backup-codes", Path: LoginLanePathSecondFactorBackupCodes},
-	{Verb: "step-up", Path: LoginLanePathStepUp},
+	{Verb: "login", Path: LoginLanePathLogin, Target: RelayTargetForm, relayWhenUnanswered: true},
+	{Verb: "logout", Path: LoginLanePathLogout, Target: RelayTargetForm, relayWhenUnanswered: true},
+	{Verb: "password", Path: LoginLanePathPassword, Target: RelayTargetForm},
+	{Verb: "csrf", Path: LoginLanePathCSRF, Target: RelayTargetForm, relayWhenUnanswered: true},
+	{Verb: "register", Path: LoginLanePathRegister, Target: RelayTargetForm, relayWhenUnanswered: true},
+	{Verb: "recovery", Path: LoginLanePathRecovery, Target: RelayTargetForm, relayWhenUnanswered: true},
+	{Verb: "recovery-complete", Path: LoginLanePathRecoveryComplete, Target: RelayTargetForm, relayWhenUnanswered: true},
+	{Verb: "second-factor-status", Path: LoginLanePathSecondFactor, Target: RelayTargetForm},
+	{Verb: "second-factor-enroll", Path: LoginLanePathSecondFactorEnroll, Target: RelayTargetForm},
+	{Verb: "second-factor-confirm", Path: LoginLanePathSecondFactorConfirm, Target: RelayTargetForm},
+	{Verb: "second-factor-remove", Path: LoginLanePathSecondFactorRemove, Target: RelayTargetForm},
+	{Verb: "second-factor-backup-codes", Path: LoginLanePathSecondFactorBackupCodes, Target: RelayTargetForm},
+	{Verb: "step-up", Path: LoginLanePathStepUp, Target: RelayTargetForm},
+	{Verb: "authorize", Path: CeremonyPathAuthorize, Target: RelayTargetIssuance, relayWhenUnanswered: true},
+	{Verb: "token", Path: CeremonyPathToken, Target: RelayTargetIssuance, relayWhenUnanswered: true, carriesClientBasic: true},
+	{Verb: "discovery", Path: CeremonyPathDiscovery, Target: RelayTargetIssuance, relayWhenUnanswered: true},
 }
 
-// LoginLaneRoutes отдаёт КОПИЮ перечня глаголов формы.
+// LoginLaneRoutes отдаёт КОПИЮ перечня записей объявления.
 func LoginLaneRoutes() []LoginLaneRoute {
 	out := make([]LoginLaneRoute, len(loginLaneRoutes))
 	copy(out, loginLaneRoutes)
 	return out
 }
 
-// IsLoginLanePath — принадлежит ли путь перечню глаголов формы (точное
-// совпадение).
+// IsLoginLanePath — принадлежит ли путь объявлению (точное совпадение).
 func IsLoginLanePath(path string) bool {
+	_, ok := LoginLaneRouteFor(path)
+	return ok
+}
+
+// LoginLaneRouteFor — запись объявления по пути (точное совпадение).
+func LoginLaneRouteFor(path string) (LoginLaneRoute, bool) {
 	for _, rt := range loginLaneRoutes {
 		if rt.Path == path {
-			return true
+			return rt, true
 		}
 	}
-	return false
+	return LoginLaneRoute{}, false
 }
 
 // loginLaneRelaysWhenUnanswered — ретранслирует ли полоса сессии запрос на этот
@@ -134,7 +275,7 @@ func loginLaneRelaysWhenUnanswered(path string) bool {
 	return false
 }
 
-// LoginLaneVerb — имя глагола по пути; пустая строка, если путь не из перечня.
+// LoginLaneVerb — имя записи по пути; пустая строка, если путь не из перечня.
 // Читатель — счётчик ретрансляции: значение метки берётся из объявления, а не
 // выводится из строки пути.
 func LoginLaneVerb(path string) string {

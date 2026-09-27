@@ -158,6 +158,7 @@ deploy/scripts/stand-provenance.sh
 deploy/tests/helm/admin-hop-address-census-test.sh
 deploy/tests/helm/admin-hop-pod-shape-test.sh
 deploy/tests/helm/admin-hop-port-policy-test.sh
+deploy/tests/helm/ceremony-ingress-audit.py
 deploy/tests/helm/config-rollout-binding-test.sh
 deploy/tests/helm/console-serves-identity-flows-test.sh
 deploy/tests/helm/geo-authz-edge-armed-test.sh
