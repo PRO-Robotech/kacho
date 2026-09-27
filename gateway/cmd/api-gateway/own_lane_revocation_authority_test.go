@@ -40,7 +40,8 @@
 package main
 
 import (
-	"regexp"
+	"go/ast"
+	"go/types"
 	"strings"
 	"testing"
 
@@ -285,22 +286,49 @@ func TestDevClassEnvironmentIsUntouchedByTheLane(t *testing.T) {
 // main() из пробы не исполним (он дозванивается до бэкендов и занимает порты),
 // поэтому провязка утверждается ТАМ, ГДЕ ОНА ЖИВЁТ — в исходнике корня. Чтение
 // исходника слабее исполнения и применяется намеренно ровно к тому свойству,
-// которого «оно собирается» показать не может.
+// которого «оно собирается» показать не может. Читается ДЕРЕВО разбора, а не
+// текст: поле, закомментированное в литерале, в дереве отсутствует, а
+// выражение текстом совпало бы и в комментарии.
 
 func TestCompositionRoot_ShowsOurRevocationAuthorityToTheGuard(t *testing.T) {
-	src := compositionRoot(t)
-	for _, want := range []struct{ field, source string }{
-		{"PlatformTokenIssuer", `cfg\.PlatformTokenIssuer`},
-		{"PlatformRevocationURL", `cfg\.PlatformTokenRevocationURL`},
-		{"PlatformRevocationCAFile", `cfg\.PlatformTokenRevocationCAFile`},
-		{"PlatformRevocationCertFile", `cfg\.PlatformTokenRevocationCertFile`},
-		{"PlatformRevocationKeyFile", `cfg\.PlatformTokenRevocationKeyFile`},
-	} {
-		re := regexp.MustCompile(`RevocationConfig\{(?s:.*?)` + want.field + `:\s*` + want.source)
-		if !re.MatchString(src) {
-			t.Errorf("страж не видит %s: композиционный корень обязан подать его из %s, иначе "+
-				"величина остаётся нулевой и вердикт не зависит от настройки вовсе",
-				want.field, want.source)
+	fset, f := parseMain(t)
+	var lits []*ast.CompositeLit
+	ast.Inspect(f, func(n ast.Node) bool {
+		if lit, ok := n.(*ast.CompositeLit); ok {
+			if id, ok := lit.Type.(*ast.Ident); ok && id.Name == "RevocationConfig" {
+				lits = append(lits, lit)
+			}
+		}
+		return true
+	})
+	if len(lits) != 1 {
+		t.Fatalf("корень собирает RevocationConfig %d раз, ожидался ровно 1 — ни одного значит «страж "+
+			"не позван», два — два ответа об одной настройке", len(lits))
+	}
+	fed := map[string]string{}
+	for _, el := range lits[0].Elts {
+		kv, ok := el.(*ast.KeyValueExpr)
+		if !ok {
+			t.Fatalf("литерал RevocationConfig у %s собран без имён полей — провязку по полю не прочесть",
+				fset.Position(lits[0].Pos()))
+		}
+		if key, ok := kv.Key.(*ast.Ident); ok {
+			fed[key.Name] = types.ExprString(kv.Value)
 		}
 	}
+	for _, want := range []struct{ field, source string }{
+		{"IdentityProvider", "identityLane"},
+		{"PlatformTokenIssuer", "cfg.PlatformTokenIssuer"},
+		{"PlatformRevocationURL", "cfg.PlatformTokenRevocationURL"},
+		{"PlatformRevocationCAFile", "cfg.PlatformTokenRevocationCAFile"},
+		{"PlatformRevocationCertFile", "cfg.PlatformTokenRevocationCertFile"},
+		{"PlatformRevocationKeyFile", "cfg.PlatformTokenRevocationKeyFile"},
+	} {
+		if got := fed[want.field]; got != want.source {
+			t.Errorf("страж не видит %s: композиционный корень обязан подать его из %s (подано: %q), иначе "+
+				"величина остаётся нулевой и вердикт не зависит от настройки вовсе",
+				want.field, want.source, got)
+		}
+	}
+	t.Logf("ОСМОТРЕНО: литералов RevocationConfig 1 у %s · полей подано %d", fset.Position(lits[0].Pos()), len(fed))
 }
