@@ -134,16 +134,32 @@ describe("C14 · уход на вход по отказу 401 и выход вк
 // Панель учётной записи закрывается нажатием вне её и клавишей Escape и тогда,
 // когда выход в полёте (`AccountPanel.tsx`), а смонтирована она условно: открытая
 // заново, она несёт НОВЫЙ хук выхода. Нажатие «Выйти» на ней — второй выход той
-// же вкладки рядом с первым. Второму служба отказывает (сессию погасил первый),
-// и отказ второго не вправе снять выход первого: иначе следующий `401` чтения
-// прежней страницы уводит на вход с её адресом возврата и отменяет переход
-// выхода — тот же исход F8-18, что без метки вовсе.
+// же вкладки рядом с первым.
+//
+// Служба отвечает второму выходу тем же `200`, что первому: выход у неё
+// идемпотентен — по носителю погашенной сессии (Ф1-18) и без носителя (Ф3-18),
+// приёмка службы доступа `login-lane-issues-our-session-and-logout-ends-it-server-side.md`;
+// так же ответил стенд браузерной пробе F8-18 (`e2e/specs/identity-ceremony.spec.ts`).
+// Отказывает служба выходу, который не выполнила: не ответило хранилище (`503`,
+// сцена F8-19). Такой отказ второго не вправе снять выход первого: иначе
+// следующий `401` чтения прежней страницы уводит на вход с её адресом возврата
+// и отменяет переход выхода — тот же исход F8-18, что без метки вовсе. Поэтому
+// дублёр отвечает второму выходу обоими ответами службы и ни одним, которого
+// служба не даёт, — и второй выход не начинается ни при одном из них.
 
-const SECOND_AFTER_FIRST = "отказ второму приходит после подтверждения первого";
-const SECOND_WHILE_FIRST = "отказ второму приходит, пока первый в полёте";
+/** Отказ выхода, который служба действительно даёт: выход не выполнен (сцена F8-19). */
+const LOGOUT_NOT_PERFORMED = { code: 14, message: "logout not performed; try again later", details: [] };
 
-/** Сеть двух выходов: первый держится до `releaseFirst`, второй отвергается по `secondRefused`. */
-function twoExitsNetwork(secondRefused: Promise<void>) {
+/** Ответы службы второму выходу — оба, какие она даёт. */
+const SECOND_ANSWERS = [
+  { name: "служба отвечает второму тем же 200 (Ф1-18, Ф3-18)", status: 200, body: {} },
+  { name: "служба второй выход не выполнила (F8-19)", status: 503, body: LOGOUT_NOT_PERFORMED },
+] as const;
+const SECOND_AFTER_FIRST = "ответ второму приходит после подтверждения первого";
+const SECOND_WHILE_FIRST = "ответ второму приходит, пока первый в полёте";
+
+/** Сеть двух выходов: первый держится до `releaseFirst`, второй получает `second` по `secondAnswers`. */
+function twoExitsNetwork(second: { status: number; body: unknown }, secondAnswers: Promise<void>) {
   const original = globalThis.fetch;
   let releaseFirst: () => void = () => undefined;
   const firstAnswered = new Promise<void>((resolve) => {
@@ -157,10 +173,7 @@ function twoExitsNetwork(secondRefused: Promise<void>) {
     if (path === "/iam/v1/auth/logout") {
       logoutVerbs += 1;
       if (logoutVerbs === 1) return firstAnswered.then(() => answered(200, {}));
-      // Сессию погасил первый выход — у второго её нет.
-      return secondRefused.then(() =>
-        answered(401, { code: 16, message: "session ended; sign in again", details: [] }),
-      );
+      return secondAnswers.then(() => answered(second.status, second.body));
     }
     return Promise.resolve(answered(404, { code: 5, message: `дублёр: ${path} не объявлен пробой`, details: [] }));
   };
@@ -181,54 +194,56 @@ describe("C14 · второй выход той же вкладки не отм�
     delete (globalThis as unknown as Record<symbol, unknown>)[TAB_EXIT_KEY];
   });
 
-  for (const order of [SECOND_AFTER_FIRST, SECOND_WHILE_FIRST] as const) {
-    it(`F8-18 · панель закрыта и открыта заново в полёте выхода и нажата снова, ${order}: отказ 401 не уводит на вход с адресом прежнего человека`, async () => {
-      let firstLeft: () => void = () => undefined;
-      const left = new Promise<void>((resolve) => {
-        firstLeft = resolve;
+  for (const answer of SECOND_ANSWERS) {
+    for (const order of [SECOND_AFTER_FIRST, SECOND_WHILE_FIRST] as const) {
+      it(`F8-18 · панель закрыта и открыта заново в полёте выхода и нажата снова, ${answer.name}, ${order}: второй выход не начинается, и отказ 401 не уводит на вход с адресом прежнего человека`, async () => {
+        let firstLeft: () => void = () => undefined;
+        const left = new Promise<void>((resolve) => {
+          firstLeft = resolve;
+        });
+        const net = twoExitsNetwork(answer, order === SECOND_AFTER_FIRST ? left : Promise.resolve());
+        try {
+          const leaveFirst = jest.fn<(to: string) => void>(() => firstLeft());
+          const leaveSecond = jest.fn<(to: string) => void>();
+          const first = renderHook(() => useLogout(leaveFirst));
+          let firstDone: Promise<void> = Promise.resolve();
+          act(() => {
+            firstDone = first.result.current.logout();
+          });
+          await waitFor(() => expect(net.logoutVerbs()).toBe(1));
+
+          // Панель закрыта в полёте выхода и открыта снова — с новым хуком.
+          first.unmount();
+          const second = renderHook(() => useLogout(leaveSecond));
+          const reopenedBusy = second.result.current.busy;
+          let secondDone: Promise<void> = Promise.resolve();
+          act(() => {
+            secondDone = second.result.current.logout();
+          });
+          if (order === SECOND_WHILE_FIRST) await act(() => secondDone);
+
+          net.releaseFirst();
+          await act(() => firstDone);
+          expect(leaveFirst.mock.calls).toEqual([["/login"]]);
+          // Исход второго нажатия — какой бы он ни был — уже есть.
+          await act(() => secondDone);
+
+          const go = jest.fn<(to: string) => void>();
+          redirectToLogin(go);
+          expect({
+            // Переход по 401 отменил бы переход выхода и увёл бы на страницу прежнего.
+            navigatedTo: go.mock.calls,
+            // Выход вкладки один: второй на службу не уходит, пока идёт первый.
+            logoutVerbs: net.logoutVerbs(),
+            // Открытая заново панель показывает, что выход идёт.
+            reopenedBusy,
+            secondLeft: leaveSecond.mock.calls,
+          }).toEqual({ navigatedTo: [], logoutVerbs: 1, reopenedBusy: true, secondLeft: [] });
+        } finally {
+          net.restore();
+        }
       });
-      const net = twoExitsNetwork(order === SECOND_AFTER_FIRST ? left : Promise.resolve());
-      try {
-        const leaveFirst = jest.fn<(to: string) => void>(() => firstLeft());
-        const leaveSecond = jest.fn<(to: string) => void>();
-        const first = renderHook(() => useLogout(leaveFirst));
-        let firstDone: Promise<void> = Promise.resolve();
-        act(() => {
-          firstDone = first.result.current.logout();
-        });
-        await waitFor(() => expect(net.logoutVerbs()).toBe(1));
-
-        // Панель закрыта в полёте выхода и открыта снова — с новым хуком.
-        first.unmount();
-        const second = renderHook(() => useLogout(leaveSecond));
-        const reopenedBusy = second.result.current.busy;
-        let secondDone: Promise<void> = Promise.resolve();
-        act(() => {
-          secondDone = second.result.current.logout();
-        });
-        if (order === SECOND_WHILE_FIRST) await act(() => secondDone);
-
-        net.releaseFirst();
-        await act(() => firstDone);
-        expect(leaveFirst.mock.calls).toEqual([["/login"]]);
-        // Исход второго нажатия — какой бы он ни был — уже есть.
-        await act(() => secondDone);
-
-        const go = jest.fn<(to: string) => void>();
-        redirectToLogin(go);
-        expect({
-          // Переход по 401 отменил бы переход выхода и увёл бы на страницу прежнего.
-          navigatedTo: go.mock.calls,
-          // Выход вкладки один: второй на службу не уходит, пока идёт первый.
-          logoutVerbs: net.logoutVerbs(),
-          // Открытая заново панель показывает, что выход идёт.
-          reopenedBusy,
-          secondLeft: leaveSecond.mock.calls,
-        }).toEqual({ navigatedTo: [], logoutVerbs: 1, reopenedBusy: true, secondLeft: [] });
-      } finally {
-        net.restore();
-      }
-    });
+    }
   }
 
   it("после отказа выхода новое нажатие выходит: защиту вкладки отказ снимает", async () => {
@@ -241,11 +256,7 @@ describe("C14 · второй выход той же вкладки не отм�
       if (path === "/iam/v1/auth/csrf") return Promise.resolve(answered(200, { csrfToken: `tok-logout-${++issued}` }));
       if (path === "/iam/v1/auth/logout") {
         logoutVerbs += 1;
-        return Promise.resolve(
-          logoutVerbs === 1
-            ? answered(503, { code: 14, message: "logout not performed; try again later", details: [] })
-            : answered(200, {}),
-        );
+        return Promise.resolve(logoutVerbs === 1 ? answered(503, LOGOUT_NOT_PERFORMED) : answered(200, {}));
       }
       return Promise.resolve(answered(404, { code: 5, message: `дублёр: ${path} не объявлен пробой`, details: [] }));
     };
