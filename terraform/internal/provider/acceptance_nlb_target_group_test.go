@@ -379,7 +379,7 @@ func TestAcceptanceNLBTargetGroup_Lifecycle(t *testing.T) {
 	var tgID string
 	readsBefore := 0
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		CheckDestroy: func(*tfstate.State) error {
 			if n := e.CountOf(targetGroupsPath); n != 0 {
@@ -469,7 +469,7 @@ func TestAcceptanceNLBTargetGroup_EdgeRefusalOnImmutableReachesTheUser(t *testin
 		FieldWhy: "must be within 1..65535",
 	})
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		Steps: []resource.TestStep{{
 			Config:      accTGConfig(e, "acc-tg-bad", accTGTargetsTwo),
@@ -500,7 +500,7 @@ resource "kacho_nlb_target_group" "t" {
 }
 `, accTGProject)
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		Steps: []resource.TestStep{{
 			Config:      cfg,

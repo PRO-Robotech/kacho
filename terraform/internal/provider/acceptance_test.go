@@ -153,6 +153,7 @@ provider %q {
 // для отказа, — то есть не измеряла ничего. Нашлось это не чтением, а инъекцией дефекта;
 // потому здесь и стоит явный порядок «отказ → отсутствие», а не два одинаковых чтения.
 func TestAcceptanceFakeEdgeHidesAbsenceIdenticallyToDenial(t *testing.T) {
+	accTrack(t)
 	e := newFakeEdge(t, edgeKindNetwork())
 	c := mustProviderClient(t, e.URL())
 	ctx := t.Context()
@@ -192,6 +193,7 @@ func TestAcceptanceFakeEdgeHidesAbsenceIdenticallyToDenial(t *testing.T) {
 
 // Тот же ключ повторной подачи — та же операция и НИ ОДНОГО нового объекта.
 func TestAcceptanceFakeEdgeHonoursIdempotencyKey(t *testing.T) {
+	accTrack(t)
 	e := newFakeEdge(t, edgeKindNetwork())
 	c := mustProviderClient(t, e.URL())
 	ctx := t.Context()
@@ -225,6 +227,7 @@ func TestAcceptanceFakeEdgeHonoursIdempotencyKey(t *testing.T) {
 
 // Операция завершается НЕ на первом опросе — и всё-таки завершается.
 func TestAcceptanceFakeEdgeOperationIsNotDoneOnFirstPoll(t *testing.T) {
+	accTrack(t)
 	e := newFakeEdge(t, edgeKindNetwork())
 	c := mustProviderClient(t, e.URL())
 	ctx := t.Context()
@@ -263,6 +266,7 @@ func TestAcceptanceFakeEdgeOperationIsNotDoneOnFirstPoll(t *testing.T) {
 
 // Незаданные поля приезжают нулями, 64-разрядные целые — строкой, 32-разрядные — числом.
 func TestAcceptanceFakeEdgeSpeaksProtojson(t *testing.T) {
+	accTrack(t)
 	e := newFakeEdge(t, edgeKindTargetGroup())
 	c := mustProviderClient(t, e.URL())
 	ctx := t.Context()

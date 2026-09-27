@@ -103,7 +103,7 @@ resource "kaname_account" "t" {
 func TestAcceptanceIAMAccount_CreatedWithoutNamingTheOwner(t *testing.T) {
 	e := newFakeEdge(t, edgeKindAccount())
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		CheckDestroy: func(*tfstate.State) error {
 			if n := e.CountOf(accountsCollection); n != 0 {
@@ -133,7 +133,7 @@ func TestAcceptanceIAMAccount_CreatedWithoutNamingTheOwner(t *testing.T) {
 func TestAcceptanceIAMAccount_NamingTheOwnerIsRefusedAtPlan(t *testing.T) {
 	e := newFakeEdge(t, edgeKindAccount())
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		Steps: []resource.TestStep{{
 			Config: accAccountConfig(e, "acc-probe-owned", accAccountOwner),
@@ -152,6 +152,7 @@ func TestAcceptanceIAMAccount_NamingTheOwnerIsRefusedAtPlan(t *testing.T) {
 // тот же запрос БЕЗ владельца проходит, иначе «край отвергает всё» выглядело бы как
 // соблюдение контракта.
 func TestAcceptanceFakeEdgeRefusesASuppliedAccountOwner(t *testing.T) {
+	accTrack(t)
 	e := newFakeEdge(t, edgeKindAccount())
 	c := mustProviderClient(t, e.URL())
 	ctx := t.Context()

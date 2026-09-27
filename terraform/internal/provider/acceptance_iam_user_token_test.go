@@ -308,7 +308,7 @@ func TestAcceptanceIAMUserToken_DeniedIssueNamesTheRealCauses(t *testing.T) {
 		HTTP: 403, Code: 7, Message: "permission denied on iam.issue_user_tokens.issue",
 	})
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		ErrorCheck:               accTokenDenialTextIsHonest,
 		Steps: []resource.TestStep{{
@@ -334,7 +334,7 @@ func TestAcceptanceIAMUserToken_DeniedIssueNamesTheRealCauses(t *testing.T) {
 func TestAcceptanceIAMUserToken_FailedRevokeNamesTheRealCauses(t *testing.T) {
 	e := newFakeEdge(t, edgeKindUserToken())
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		ErrorCheck:               accTokenDenialTextIsHonest,
 		CheckDestroy: func(*tfstate.State) error {
@@ -372,7 +372,7 @@ func TestAcceptanceIAMUserToken_FailedRevokeNamesTheRealCauses(t *testing.T) {
 func TestAcceptanceIAMUserToken_MachineCallerIssuesWithoutNamingTheIssuer(t *testing.T) {
 	e := newFakeEdge(t, edgeKindUserTokenMachineCaller())
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		CheckDestroy: func(*tfstate.State) error {
 			if n := e.CountOf(userTokensCollection); n != 0 {
@@ -402,7 +402,7 @@ func TestAcceptanceIAMUserToken_MachineCallerIssuesWithoutNamingTheIssuer(t *tes
 func TestAcceptanceIAMUserToken_HumanCallerNamingSomeoneElseIsRefused(t *testing.T) {
 	e := newFakeEdge(t, edgeKindUserToken())
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		Steps: []resource.TestStep{{
 			Config:      accTokenConfigIssuedBy(e, "acc-token-foreign", 3600, accTokenStranger),
@@ -422,7 +422,7 @@ func TestAcceptanceIAMUserToken_SecretSurvivesRefresh(t *testing.T) {
 	e := newFakeEdge(t, edgeKindUserToken())
 	var tokenID, secret string
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		CheckDestroy: func(*tfstate.State) error {
 			if n := e.CountOf(userTokensCollection); n != 0 {
@@ -485,7 +485,7 @@ func TestAcceptanceIAMUserToken_RevokedOutsideIsDroppedFromState(t *testing.T) {
 	e := newFakeEdge(t, edgeKindUserToken())
 	var tokenID string
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		Steps: []resource.TestStep{
 			{
@@ -517,6 +517,7 @@ func TestAcceptanceIAMUserToken_RevokedOutsideIsDroppedFromState(t *testing.T) {
 // Исполнителя цикла terraform проба не требует: она разговаривает с провайдером
 // напрямую и потому остаётся полезной и под `-short`.
 func TestAcceptanceIAMUserTokenSchemaSaysTheSameAsItsRefusals(t *testing.T) {
+	accTrack(t)
 	srv, err := providerserver.NewProtocol6WithError(New())()
 	if err != nil {
 		t.Fatalf("провайдер не поднялся: %v", err)
@@ -544,6 +545,7 @@ func TestAcceptanceIAMUserTokenSchemaSaysTheSameAsItsRefusals(t *testing.T) {
 // Рядом — зеркальная сторона: в ответе операции материал ЕСТЬ, иначе «в списке его нет»
 // выглядело бы как соблюдение контракта у края, который его вовсе не чеканит.
 func TestAcceptanceFakeEdgeKeepsUserTokenSecretOutOfTheList(t *testing.T) {
+	accTrack(t)
 	e := newFakeEdge(t, edgeKindUserToken())
 	c := mustProviderClient(t, e.URL())
 	ctx := t.Context()

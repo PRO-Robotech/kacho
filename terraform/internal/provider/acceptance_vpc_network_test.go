@@ -180,7 +180,7 @@ func TestAcceptanceVPCNetwork_Lifecycle(t *testing.T) {
 	e := newFakeEdge(t, edgeKindNetwork())
 	var netID string
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		CheckDestroy: func(*tfstate.State) error {
 			if n := e.CountOf(networksPath); n != 0 {
@@ -268,7 +268,7 @@ func TestAcceptanceVPCNetwork_EdgeRejectionNamesTheField(t *testing.T) {
 		FieldWhy: "10.10.0.0/33 is not a valid CIDR block",
 	})
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		Steps: []resource.TestStep{{
 			Config:      accNetworkConfig(e, "acc-net-bad", "негодная", `["10.10.0.0/33"]`, `[]`),
@@ -286,7 +286,7 @@ func TestAcceptanceVPCNetwork_SingleNotFoundKeepsTheResource(t *testing.T) {
 	e := newFakeEdge(t, edgeKindNetwork())
 	var netID string
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		Steps: []resource.TestStep{
 			{
@@ -331,7 +331,7 @@ resource "kacho_vpc_network" "neighbour" {
 `, accNetworkProject)
 	}
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		Steps: []resource.TestStep{
 			{
@@ -375,7 +375,7 @@ func TestAcceptanceVPCNetwork_DeniedListStopsInsteadOfRecreating(t *testing.T) {
 	e := newFakeEdge(t, edgeKindNetwork())
 	var netID string
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		Steps: []resource.TestStep{
 			{
@@ -414,7 +414,7 @@ func TestAcceptanceVPCNetwork_UnconfirmedAbsenceStops(t *testing.T) {
 	e := newFakeEdge(t, edgeKindNetwork())
 	var netID string
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		Steps: []resource.TestStep{
 			{
@@ -447,6 +447,7 @@ func TestAcceptanceVPCNetwork_UnconfirmedAbsenceStops(t *testing.T) {
 // Утверждение парное: одностороннее «импорта нет» зеленело бы и на ресурсе, у которого
 // его просто забыли.
 func TestAcceptanceImportSurfaceIsDeliberate(t *testing.T) {
+	accTrack(t)
 	accCheckImportable(t, "kacho_vpc_network", NewNetworkResource(), true)
 	accCheckImportable(t, "kacho_nlb_target_group", NewNLBTargetGroupResource(), true)
 	accCheckImportable(t, "kaname_service_account_key", NewIAMSAKeyResource(), false)

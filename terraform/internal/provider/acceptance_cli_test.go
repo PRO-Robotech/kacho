@@ -34,6 +34,7 @@ package provider
 // разойдутся, держит TestAcceptanceProviderNamespaceMatchesTheTree ниже.
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -77,7 +78,19 @@ func TestMain(m *testing.M) {
 		}
 	}
 
+	// Каталог сокетов go-plugin выбирается ДО прогона: путь сокета, не поместившийся в
+	// предел ядра, роняет запуск провайдера, и проба отказывала бы не о поведении, а о
+	// длине TMPDIR машины (kacho#2771).
+	cleanupSockets := accPrepareSockets()
+
 	code := m.Run()
+	cleanupSockets()
+
+	// Строка итога различает категории: «провайдер не поднялся» — не красное.
+	if line, ok := accSummary(); ok {
+		fmt.Println(line)
+	}
+	code = accExitCode(code, accSelectedAllTracked())
 
 	// Каталог собранного провайдера живёт дольше отдельной пробы (сборка одна на прогон
 	// пакета), поэтому убирается здесь, а не через t.Cleanup.
@@ -104,6 +117,7 @@ func accRequireCLI(t *testing.T) {
 	// целиком СВОИМ прогоном, где условие для неё создано, — джобой `terraform`
 	// конвейера и группой `scripts/ci-local.sh terraform`. Обе гоняют её БЕЗ `-short`,
 	// поэтому отсутствие исполнителя там остаётся отказом, а не пропуском.
+	accTrack(t)
 	if testing.Short() {
 		t.Skip("приёмка провайдера исполняет цикл terraform и под -short не гоняется; " +
 			"её прогон — `scripts/ci-local.sh terraform` и джоба terraform конвейера")
@@ -118,6 +132,15 @@ func accRequireCLI(t *testing.T) {
 			"Конвейер судит OpenTofu запинённой версии — тем же обязан судить и локальный прогон:\n" +
 			"    scripts/ci-local.sh terraform   # ставит tofu той же версии и гоняет всё\n" +
 			"Готовый исполнитель указывается переменной TF_ACC_TERRAFORM_PATH.")
+	}
+
+	// Каталог сокетов не выбран — провайдер не поднимется ни в одной пробе. Это
+	// «не выполнилось», а не красное: о провайдере такой прогон не скажет ничего.
+	if accSocketErr != nil {
+		accMarkNotExecuted(t.Name())
+		t.Fatalf("%s: каталог unix-сокетов go-plugin не выбран — %v.\n"+
+			"Задайте %s короткому каталогу либо укоротите TMPDIR.",
+			accNotExecutedLabel, accSocketErr, accPluginSocketEnv)
 	}
 }
 
@@ -141,6 +164,7 @@ var accSourceRe = regexp.MustCompile(`source\s*=\s*"([^"/]+)/kacho"`)
 // вердикт свойством чужого рабочего каталога, а не коммита, — и в обе стороны: красным на
 // файле, которого в репозитории нет, и молчанием в свежем клоне.
 func TestAcceptanceProviderNamespaceMatchesTheTree(t *testing.T) {
+	accTrack(t)
 	root := terraformTreeRoot(t)
 
 	files, err := treecorpus.UnderWithSuffix(root, ".tf")

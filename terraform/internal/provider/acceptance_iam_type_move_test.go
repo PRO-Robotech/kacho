@@ -71,19 +71,42 @@ func accProviderPluginDir(t *testing.T) string {
 		// Корень дерева назван относительным путём — так же, как его называет соседняя
 		// проба страницы провайдера: у пакета нет другой опоры, а рабочий каталог
 		// прогона всегда каталог пакета.
-		build := exec.Command("go", "build",
-			"-o", filepath.Join(dir, "terraform-provider-kacho"),
-			"./terraform/cmd/terraform-provider-kacho")
-		build.Dir = accTreeRoot
-		out, err := build.CombinedOutput()
-		if err != nil {
-			accPluginErr = fmt.Errorf("сборка провайдера: %w\n%s", err, out)
-		}
+		accPluginErr = accBuildProvider(dir, accProviderPkg)
 	})
-	if accPluginErr != nil {
-		t.Fatalf("провайдер для прямого цикла не собран: %v", accPluginErr)
-	}
+	accPluginBuilt(t, accPluginErr)
 	return accPluginDir
+}
+
+// accProviderPkg — пакет двоичного файла провайдера относительно корня дерева.
+const accProviderPkg = "./terraform/cmd/terraform-provider-kacho"
+
+// accBuildProvider собирает двоичный файл провайдера из пакета pkg дерева в каталог dir.
+func accBuildProvider(dir, pkg string) error {
+	return accBuildProviderAt(dir, accTreeRoot, pkg, nil)
+}
+
+// accBuildProviderAt — то же из произвольного рабочего каталога и с добавочным
+// окружением: самопроверка собирает синтетический модуль вне дерева.
+func accBuildProviderAt(dir, workDir, pkg string, env []string) error {
+	build := exec.Command("go", "build", "-o", filepath.Join(dir, "terraform-provider-kacho"), pkg)
+	build.Dir = workDir
+	if env != nil {
+		build.Env = append(os.Environ(), env...)
+	}
+	if out, err := build.CombinedOutput(); err != nil {
+		return fmt.Errorf("сборка провайдера: %w\n%s", err, out)
+	}
+	return nil
+}
+
+// accPluginBuilt — несобираемый провайдер есть «не выполнилось»: о его поведении
+// прогон не сказал ничего (kacho#2771).
+func accPluginBuilt(t accFataler, err error) {
+	t.Helper()
+	if err != nil {
+		accMarkNotExecuted(t.Name())
+		t.Fatalf("%s: провайдер для прямого цикла не собран: %v", accNotExecutedLabel, err)
+	}
 }
 
 // accTofuWorkdir — временный каталог с настройкой CLI, нацеленной на собранный провайдер.
@@ -125,6 +148,19 @@ func accWriteConfig(t *testing.T, dir, body string) {
 // в своём сценарии законен. Проба, роняющая себя на любом ненулевом, не смогла бы
 // утверждать ни про пустой план, ни про отказ бездействующего оператора.
 func accTofu(t *testing.T, dir string, args ...string) (string, int) {
+	t.Helper()
+	out, code := accTofuRun(t, dir, args...)
+	// Провайдер, не прошедший рукопожатие, — «не выполнилось», какой бы код ни ждала
+	// проба: отказ, которого она ждёт, поднятый провайдер дать не успел.
+	if code != 0 && accIsStartupFailure(out) {
+		accStartupFailed(t, fmt.Sprintf("исполнитель цикла не поднял провайдера (%s, код %d)",
+			strings.Join(args, " "), code), out)
+	}
+	return out, code
+}
+
+// accTofuRun исполняет команду цикла без суждения о запуске провайдера.
+func accTofuRun(t *testing.T, dir string, args ...string) (string, int) {
 	t.Helper()
 	cmd := exec.Command(accCLIPath, args...)
 	cmd.Dir = dir

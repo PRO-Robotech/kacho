@@ -213,7 +213,7 @@ func TestAcceptanceIAMServiceAccountKey_SecretSurvivesRefreshAndDiesWithTheKey(t
 	e := newFakeEdge(t, edgeKindSAKey())
 	var keyID, secret string
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		CheckDestroy: func(*tfstate.State) error {
 			if n := e.CountOf(saKeysCollection); n != 0 {
@@ -302,7 +302,7 @@ func TestAcceptanceIAMServiceAccountKey_DeniedIssueExplainsBothCauses(t *testing
 		HTTP: 403, Code: 7, Message: "permission denied on iam.serviceAccountKey.create",
 	})
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		Steps: []resource.TestStep{{
 			Config: accSAKeyConfig(e, "acc-key-denied", 3600),
@@ -324,7 +324,7 @@ func TestAcceptanceIAMServiceAccountKey_RevokedOutsideIsDroppedFromState(t *test
 	e := newFakeEdge(t, edgeKindSAKey())
 	var keyID string
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		Steps: []resource.TestStep{
 			{
@@ -350,7 +350,7 @@ func TestAcceptanceIAMServiceAccountKey_RevokedOutsideIsDroppedFromState(t *test
 func TestAcceptanceIAMServiceAccountKey_StateHoldsTheAddressableID(t *testing.T) {
 	e := newFakeEdge(t, edgeKindSAKey())
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		CheckDestroy: func(*tfstate.State) error {
 			// Вторая сторона утверждения: отзыв ДОЕХАЛ. Без неё проба зеленела бы и на
@@ -388,7 +388,7 @@ func TestAcceptanceIAMServiceAccountKey_StateHoldsTheAddressableID(t *testing.T)
 func TestAcceptanceIAMServiceAccountKey_MachineCallerIssuesWithoutNamingTheIssuer(t *testing.T) {
 	e := newFakeEdge(t, edgeKindSAKeyMachineCaller())
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		CheckDestroy: func(*tfstate.State) error {
 			if n := e.CountOf(saKeysCollection); n != 0 {
@@ -421,7 +421,7 @@ func TestAcceptanceIAMServiceAccountKey_MachineCallerIssuesWithoutNamingTheIssue
 func TestAcceptanceIAMServiceAccountKey_MachineCallerNamingTheIssuerIsRefused(t *testing.T) {
 	e := newFakeEdge(t, edgeKindSAKeyMachineCaller())
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		Steps: []resource.TestStep{{
 			Config: accSAKeyConfigIssuedBy(e, "acc-key-machine-named", 3600, accSAKeyPrincipal),
@@ -441,7 +441,7 @@ func TestAcceptanceIAMServiceAccountKey_MachineCallerNamingTheIssuerIsRefused(t 
 func TestAcceptanceIAMServiceAccountKey_HumanCallerNamingSomeoneElseIsRefused(t *testing.T) {
 	e := newFakeEdge(t, edgeKindSAKey())
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		Steps: []resource.TestStep{{
 			Config: accSAKeyConfigIssuedBy(e, "acc-key-foreign", 3600, "usr-someone000000001"),
@@ -461,7 +461,7 @@ func TestAcceptanceIAMServiceAccountKey_HumanCallerNamingSomeoneElseIsRefused(t 
 func TestAcceptanceIAMServiceAccountKey_EmptyIssuerIsRefusedAtPlan(t *testing.T) {
 	e := newFakeEdge(t, edgeKindSAKey())
 
-	resource.UnitTest(t, resource.TestCase{
+	accUnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: accProviderFactories(t),
 		Steps: []resource.TestStep{{
 			Config: accProvider(e) + fmt.Sprintf(`
