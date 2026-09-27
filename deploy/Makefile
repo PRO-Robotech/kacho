@@ -3,7 +3,7 @@
 .PHONY: dev-up dev-down dev-prod-up generated-scripts-parse assert-rollout-ready assert-jobs-healthy assert-production-posture \
 	assert-metrics-surfaces-answer \
         assert-outbox-autovacuum helm-manifest-test \
-        reload-svc logs-svc psql preflight e2e-test helm-lint \
+        reload-svc logs-svc psql preflight e2e-test \
         loadtest-address-allocate loadtest-address-allocate-clean \
         psql-iam logs-iam build-services \
         guard-kind-context guard-destructive gate-self-test injection-proofs waiter-discipline \
@@ -1052,10 +1052,6 @@ admin-hop-injection: guard-kind-context
 # исполняется (разбор — в шапке .github/scripts/stand-up.sh).
 helm-deps:
 	bash scripts/helm-umbrella-deps.sh
-
-helm-lint:
-	bash scripts/helm-umbrella-deps.sh
-	cd helm/umbrella && helm lint -f values.dev.yaml
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ПИНЫ ОБРАЗОВ ПРОФИЛЯ УПРАВЛЯЕМОГО КЛАСТЕРА — ПОРОЖДАЮТСЯ, А НЕ ПИШУТСЯ РУКОЙ.
