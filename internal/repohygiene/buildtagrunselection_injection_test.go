@@ -47,6 +47,20 @@ const synthSelectModule = "synthselect"
 // признак сборки и ЛЮБОЕ сужение.
 func synthSelectTree(t *testing.T, runFlag string, pkg string, names []string) string {
 	t.Helper()
+	return synthSelectTreeWithDecl(t, ".github/workflows/ci.yaml",
+		"jobs:\n  probe:\n    steps:\n"+
+			"      # Проза о прогоне: `go test -tags=synthtag ./"+pkg+"/ -run 'TestProse'`\n"+
+			"      - name: прогон\n"+
+			"        run: go test -tags=synthtag ./"+pkg+"/ "+runFlag+" -count=1\n",
+		pkg, names)
+}
+
+// synthSelectTreeWithDecl — то же дерево, но объявление прогона задаёт проба:
+// путь (от него зависит, каким видом файла судья его читает) и текст целиком.
+// Нужен пробам ФОРМЫ записи вызова — перенос строки, свёрнутый скаляр, — где
+// предмет и есть устройство объявления.
+func synthSelectTreeWithDecl(t *testing.T, declRel, decl, pkg string, names []string) string {
+	t.Helper()
 	root := t.TempDir()
 
 	body := "//go:build synthtag\n\npackage " + filepath.Base(pkg) + "\n\nimport \"testing\"\n"
@@ -63,11 +77,8 @@ func synthSelectTree(t *testing.T, runFlag string, pkg string, names []string) s
 		"\nvar synthLiteral = \"func TestOnlyInALiteral(t *testing.T) {}\"\n"
 
 	files := map[string]string{
-		"go.mod": "module " + synthSelectModule + "\n\ngo 1.24\n",
-		".github/workflows/ci.yaml": "jobs:\n  probe:\n    steps:\n" +
-			"      # Проза о прогоне: `go test -tags=synthtag ./" + pkg + "/ -run 'TestProse'`\n" +
-			"      - name: прогон\n" +
-			"        run: go test -tags=synthtag ./" + pkg + "/ " + runFlag + " -count=1\n",
+		"go.mod":               "module " + synthSelectModule + "\n\ngo 1.24\n",
+		declRel:                decl,
 		pkg + "/probe_test.go": body,
 	}
 	for rel, content := range files {
