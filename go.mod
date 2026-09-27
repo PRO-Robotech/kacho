@@ -122,7 +122,7 @@ require (
 )
 
 require (
-	github.com/PRO-Robotech/corelib v1.10.0-rc.3
+	github.com/PRO-Robotech/corelib v1.10.0-rc.4
 	github.com/PRO-Robotech/kaname v0.4.1-0.20260927174302-90a25be643b4
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
