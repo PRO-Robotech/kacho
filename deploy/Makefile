@@ -1106,6 +1106,11 @@ managed-image-pins-check:
 #    прежде подкачку звали шесть мест в дереве, за прогон job'а она уходила в
 #    сеть до десяти раз, и отказ ЛЮБОГО из походов красил весь прогон.
 #
+# Отсутствие инструмента — «условие не создано» (код 2), а не находка (код 1):
+# та же категория, что у самих проверок каталога (`require_mikefarah_yq`). Цель
+# валидации политик, чья форма `command -v X && X … || echo` глушила отказ
+# самого инструмента, снята (#2038); форму держит tests/helm/makefile-soft-pass-test.sh.
+#
 # 2. Проверяет, что `yq` — тот самый. В PATH бывают две разные программы с этим
 #    именем: mikefarah yq (v4, YAML) и python-yq (обёртка над jq). Фильтры
 #    проверок написаны под первую; вторая на них молча отдаёт ПУСТО, и
@@ -1314,14 +1319,14 @@ dialled-transport-discipline:
 helm-manifest-test: gate-self-test
 	@set -e; \
 	if ! command -v yq >/dev/null 2>&1; then \
-	  echo "ERROR: нужен yq (mikefarah v4) — фильтры проверок написаны под него."; \
-	  echo "       https://github.com/mikefarah/yq/releases"; exit 1; \
+	  echo "!!! helm-manifest-test: УСЛОВИЕ НЕ СОЗДАНО — нужен yq (mikefarah v4), фильтры проверок написаны под него."; \
+	  echo "       https://github.com/mikefarah/yq/releases"; exit 2; \
 	fi; \
 	if ! grep -qE 'mikefarah|version v?4' <<<"$$(yq --version 2>&1)"; then \
-	  echo "ERROR: в PATH не тот yq: $$(command -v yq) → $$(yq --version 2>&1)"; \
+	  echo "!!! helm-manifest-test: УСЛОВИЕ НЕ СОЗДАНО — в PATH не тот yq: $$(command -v yq) → $$(yq --version 2>&1)"; \
 	  echo "       Нужен mikefarah yq v4. python-yq (обёртка над jq) на этих"; \
 	  echo "       фильтрах молча отдаёт ПУСТО — утверждения пройдут, ничего не сверив."; \
-	  exit 1; \
+	  exit 2; \
 	fi; \
 	echo "=== зависимости умбреллы (проверки рендерят её; charts/*.tgz не в git) ==="; \
 	bash scripts/helm-umbrella-deps.sh; \
@@ -1677,18 +1682,6 @@ spire-rotate-trust-domain:
 	  WHAT="перезапуск SPIRE Server — весь материал корня доверия аннулируется, все выданные SVID перестают быть действительными"
 	@kubectl -n spire-system delete pod -l app.kubernetes.io/name=spire-server
 	@echo "✓ SPIRE Server pods restarting; new root CA will be issued."
-
-# Dry-run Cilium policies — render и валидация без apply.
-cilium-policy-dry-run:
-	@echo "Phase 10: rendering CiliumNetworkPolicy manifests..."
-	@helm template kacho-umbrella ./helm/umbrella -f ./helm/umbrella/values.prod.yaml \
-		--set cilium.enabled=true \
-		--show-only charts/cilium/templates/network-policies.yaml \
-		--show-only charts/cilium/templates/cilium-mtls-enforce.yaml > /tmp/cilium-policies.yaml
-	@echo "✓ Rendered to /tmp/cilium-policies.yaml ($$(wc -l < /tmp/cilium-policies.yaml) lines)"
-	@command -v kubeconform > /dev/null && \
-		kubeconform -skip CiliumNetworkPolicy,CiliumClusterwideNetworkPolicy /tmp/cilium-policies.yaml \
-		|| echo "(kubeconform not installed; install via: brew install kubeconform)"
 
 # Lint все Phase 10 charts.
 spire-lint:
