@@ -88,8 +88,30 @@ const (
 	// сверяется с общим пакетом премисой ниже: без литерала отрицательная
 	// половина не увидела бы чтения, записанного литералом, а без сверки
 	// литерал пережил бы переименование.
-	migratorDSNEnvName = "KACHO_MIGRATOR_DSN"
+	migratorDSNEnvName = "MIGRATOR_DSN"
+
+	// migratorDSNLegacyEnvConst / migratorDSNLegacyEnvName — прежнее написание,
+	// которое общий пакет принимает ОКНОМ перехода (corelib v1.9.0). Пока окно
+	// открыто, чтение прежнего имени — то же второе объявление порядка, и
+	// отрицательная половина обязана его видеть. Закроет окно общий пакет —
+	// премиса ниже покраснеет и назовёт эту пару: снимается она тем же
+	// изменением, что подъём пина, а не молча.
+	migratorDSNLegacyEnvConst = "LegacyEnvDSN"
+	migratorDSNLegacyEnvName  = "KACHO_MIGRATOR_DSN"
 )
+
+// migratorDSNIsEnvName — литерал называет переменную DSN любым из двух
+// написаний, которые общий пакет сегодня читает.
+func migratorDSNIsEnvName(s string) bool {
+	return s == migratorDSNEnvName || s == migratorDSNLegacyEnvName
+}
+
+// isSharedEnvSelector — обращение к любой из двух констант имени переменной
+// общего пакета.
+func isSharedEnvSelector(sel *ast.SelectorExpr, qualifiers map[string]bool) bool {
+	return isSharedSelector(sel, qualifiers, migratorDSNEnvConst) ||
+		isSharedSelector(sel, qualifiers, migratorDSNLegacyEnvConst)
+}
 
 // migratorDSNFinding — одна находка с координатой.
 type migratorDSNFinding struct {
@@ -100,25 +122,27 @@ type migratorDSNFinding struct {
 // migratorDSNCensus — объём осмотренного. Отдельное утверждение: «ноль находок»
 // обязано быть отличимо от «ноль прочитанного».
 type migratorDSNCensus struct {
-	FilesRead      int
-	SharedFiles    int
-	TractFiles     int
-	EntryPoints    int
-	Delegating     int
-	OwnEnvReads    int
-	PremiseResolve bool
-	PremiseEnv     bool
+	FilesRead        int
+	SharedFiles      int
+	TractFiles       int
+	EntryPoints      int
+	Delegating       int
+	OwnEnvReads      int
+	PremiseResolve   bool
+	PremiseEnv       bool
+	PremiseLegacyEnv bool
 }
 
 func (c migratorDSNCensus) String() string {
 	return fmt.Sprintf(
 		"перепись: прочитано файлов %d (общий пакет %d · тракт %d) · "+
 			"точек наката %d · зовут общий резолв %d · своих чтений переменной DSN %d · "+
-			"предпосылка: %s объявлен %t, %s объявлена %t",
+			"предпосылка: %s объявлен %t, %s объявлена %t, %s объявлена %t",
 		c.FilesRead, c.SharedFiles, c.TractFiles,
 		c.EntryPoints, c.Delegating, c.OwnEnvReads,
 		migratorDSNResolveFunc, c.PremiseResolve,
-		migratorDSNEnvConst, c.PremiseEnv)
+		migratorDSNEnvConst, c.PremiseEnv,
+		migratorDSNLegacyEnvConst, c.PremiseLegacyEnv)
 }
 
 // migratorDSNFacts — что файл делает с DSN. Одна структура на обе половины:
@@ -133,6 +157,9 @@ type migratorDSNFacts struct {
 	DeclaresResolve  bool
 	DeclaresEnvName  bool
 	DeclaredEnvValue string
+	// DeclaresLegacyEnvName — то же для константы прежнего написания.
+	DeclaresLegacyEnvName  bool
+	DeclaredLegacyEnvValue string
 }
 
 // migratorDSNFactsOf разбирает ОДИН файл. Вынесено из обхода, чтобы инъекция
@@ -190,15 +217,19 @@ func migratorDSNFactsOf(rel, src string) (migratorDSNFacts, error) {
 					if uerr != nil {
 						continue
 					}
-					if unq == migratorDSNEnvName {
+					if migratorDSNIsEnvName(unq) {
 						envAliases[name.Name] = true
 					}
-					if name.Name == migratorDSNEnvConst {
+					switch name.Name {
+					case migratorDSNEnvConst:
 						facts.DeclaresEnvName = true
 						facts.DeclaredEnvValue = unq
+					case migratorDSNLegacyEnvConst:
+						facts.DeclaresLegacyEnvName = true
+						facts.DeclaredLegacyEnvValue = unq
 					}
 				case *ast.SelectorExpr:
-					if isSharedSelector(v, sharedQualifiers, migratorDSNEnvConst) {
+					if isSharedEnvSelector(v, sharedQualifiers) {
 						envAliases[name.Name] = true
 					}
 				}
@@ -260,7 +291,7 @@ func migratorDSNArgNamesEnv(arg ast.Expr, qualifiers, aliases map[string]bool) (
 			return "", false
 		}
 		unq, err := strconv.Unquote(v.Value)
-		if err != nil || unq != migratorDSNEnvName {
+		if err != nil || !migratorDSNIsEnvName(unq) {
 			return "", false
 		}
 		return strconv.Quote(unq) + " (литерал)", true
@@ -270,7 +301,7 @@ func migratorDSNArgNamesEnv(arg ast.Expr, qualifiers, aliases map[string]bool) (
 		}
 		return v.Name + " (местная константа-псевдоним)", true
 	case *ast.SelectorExpr:
-		if !isSharedSelector(v, qualifiers, migratorDSNEnvConst) {
+		if !isSharedEnvSelector(v, qualifiers) {
 			return "", false
 		}
 		id, _ := v.X.(*ast.Ident)

@@ -56,6 +56,13 @@ func TestMigratorEntryPointsDoNotResolveDSNThemselves(t *testing.T) {
 			"половина ослепла бы на чтении, записанном литералом",
 			migratorDSNSharedImport, migratorDSNEnvConst, migratorDSNEnvName)
 	}
+	if !census.PremiseLegacyEnv {
+		t.Fatalf("общий пакет %s не объявляет %s со значением %q: окно прежнего "+
+			"написания закрыто либо переименовано — сними пару прежнего написания "+
+			"из гейта тем же изменением, что подъём пина, а не жди, пока "+
+			"отрицательная половина ослепнет на литерале",
+			migratorDSNSharedImport, migratorDSNLegacyEnvConst, migratorDSNLegacyEnvName)
+	}
 
 	// ПОЛОЖИТЕЛЬНАЯ половина: каждая точка наката делегирует.
 	if len(notDelegating) > 0 {
@@ -102,6 +109,9 @@ func auditMigratorDSNResolve(t *testing.T, root string) (migratorDSNCensus, []mi
 		if facts.DeclaresEnvName && facts.DeclaredEnvValue == migratorDSNEnvName {
 			census.PremiseEnv = true
 		}
+		if facts.DeclaresLegacyEnvName && facts.DeclaredLegacyEnvValue == migratorDSNLegacyEnvName {
+			census.PremiseLegacyEnv = true
+		}
 	}
 
 	for _, dir := range []string{"pkg", "services"} {
@@ -144,6 +154,9 @@ func auditMigratorDSNResolve(t *testing.T, root string) (migratorDSNCensus, []mi
 				}
 				if facts.DeclaresEnvName && facts.DeclaredEnvValue == migratorDSNEnvName {
 					census.PremiseEnv = true
+				}
+				if facts.DeclaresLegacyEnvName && facts.DeclaredLegacyEnvValue == migratorDSNLegacyEnvName {
+					census.PremiseLegacyEnv = true
 				}
 				continue
 			}

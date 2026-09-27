@@ -99,10 +99,16 @@ var foundationClasses = map[string]foundationClass{
 	// импортируют `pkg/api/kaname/cloud/iam/v1` (класс службы), поэтому их переезд
 	// завёл бы ребро `corelib -> kaname` — ровно то, что запрещает
 	// forbiddenDirections. Предикат снятия внешний: класс стабов контракта доступа.
-	"credsecret":      classCorelib,
-	"db":              classCorelib,
-	"dbready":         classCorelib,
-	"dropguard":       classCorelib,
+	"credsecret": classCorelib,
+	"db":         classCorelib,
+	"dbready":    classCorelib,
+	"dropguard":  classCorelib,
+	// envknob — чтение ручки окружения под новым именем с окном прежнего
+	// написания (corelib v1.9.0). Правило приёмки K3-1 §3 решает на
+	// «Ограничении»: каталог импортируют пакеты фундамента (migratorcli,
+	// grpcsrv, observability, validate, dropguard), а ребро фундамента наверх
+	// запрещено, — значит класс фундамента, другого исхода нет.
+	"envknob":         classCorelib,
 	"errors":          classCorelib,
 	"filter":          classCorelib,
 	"gitenv":          classToolchain,

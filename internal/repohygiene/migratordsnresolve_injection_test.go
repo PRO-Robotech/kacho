@@ -82,6 +82,21 @@ func buildRunner(flagDSN string) (string, error) {
 	if flagDSN != "" {
 		return flagDSN, nil
 	}
+	return os.Getenv("MIGRATOR_DSN"), nil
+}`
+
+	// srcDSNOwnChainLegacyLiteral — литерал ПРЕЖНЕГО написания. Общий пакет
+	// принимает его окном перехода (corelib v1.9.0, LegacyEnvDSN), значит своя
+	// цепочка на нём — то же второе объявление порядка, а распознаватель,
+	// знающий только новое имя, ослеп бы на всех прежних точках разом.
+	srcDSNOwnChainLegacyLiteral = `package main
+
+import "os"
+
+func buildRunner(flagDSN string) (string, error) {
+	if flagDSN != "" {
+		return flagDSN, nil
+	}
 	return os.Getenv("KACHO_MIGRATOR_DSN"), nil
 }`
 
@@ -100,6 +115,23 @@ func buildRunner(flagDSN string) (string, error) {
 		return flagDSN, nil
 	}
 	return os.Getenv(migratorcli.EnvDSN), nil
+}`
+
+	// srcDSNOwnChainLegacySelector — обращение к константе ПРЕЖНЕГО написания
+	// общего пакета: четвёртое законное написание, пока окно перехода открыто.
+	srcDSNOwnChainLegacySelector = `package main
+
+import (
+	"os"
+
+	"github.com/PRO-Robotech/corelib/migratorcli"
+)
+
+func buildRunner(flagDSN string) (string, error) {
+	if flagDSN != "" {
+		return flagDSN, nil
+	}
+	return os.Getenv(migratorcli.LegacyEnvDSN), nil
 }`
 
 	// srcDSNRenamedImport — сведённая форма с ПЕРЕИМЕНОВАННЫМ импортом. Законная
@@ -188,6 +220,12 @@ func TestDSNResolveInjectionRunTwo_NewPropertyOnly(t *testing.T) {
 		{
 			name:      "литерал",
 			src:       srcDSNOwnChainLiteral,
+			naming:    `"MIGRATOR_DSN" (литерал)`,
+			delegates: false,
+		},
+		{
+			name:      "литерал прежнего написания",
+			src:       srcDSNOwnChainLegacyLiteral,
 			naming:    `"KACHO_MIGRATOR_DSN" (литерал)`,
 			delegates: false,
 		},
@@ -195,6 +233,12 @@ func TestDSNResolveInjectionRunTwo_NewPropertyOnly(t *testing.T) {
 			name:      "константа общего пакета",
 			src:       srcDSNOwnChainSelector,
 			naming:    "migratorcli.EnvDSN (константа общего пакета)",
+			delegates: false,
+		},
+		{
+			name:      "константа прежнего написания общего пакета",
+			src:       srcDSNOwnChainLegacySelector,
+			naming:    "migratorcli.LegacyEnvDSN (константа общего пакета)",
 			delegates: false,
 		},
 	}
@@ -297,7 +341,9 @@ func TestDSNResolveGateIsSilentOnLegalTwins(t *testing.T) {
 	t.Run("предпосылка читается у общего пакета", func(t *testing.T) {
 		facts, err := migratorDSNFactsOf("pkg/migratorcli/parse.go", `package migratorcli
 
-const EnvDSN = "KACHO_MIGRATOR_DSN"
+const EnvDSN = "MIGRATOR_DSN"
+
+const LegacyEnvDSN = "KACHO_MIGRATOR_DSN"
 
 func ResolveDSN(flagDSN string, fromConfig func() (string, error)) (string, error) {
 	return flagDSN, nil
@@ -311,6 +357,10 @@ func ResolveDSN(flagDSN string, fromConfig func() (string, error)) (string, erro
 		if !facts.DeclaresEnvName || facts.DeclaredEnvValue != migratorDSNEnvName {
 			t.Errorf("объявление имени переменной не опознано: %t %q",
 				facts.DeclaresEnvName, facts.DeclaredEnvValue)
+		}
+		if !facts.DeclaresLegacyEnvName || facts.DeclaredLegacyEnvValue != migratorDSNLegacyEnvName {
+			t.Errorf("объявление прежнего написания не опознано: %t %q",
+				facts.DeclaresLegacyEnvName, facts.DeclaredLegacyEnvValue)
 		}
 	})
 }
