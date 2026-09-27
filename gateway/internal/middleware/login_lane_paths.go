@@ -171,9 +171,10 @@ func RelayTargets() []RelayTarget {
 // не шлют; тенантская консоль и её пробы ходят на внешний слушатель.
 //
 // Решение истекает вместе с потребителем: когда у профиля консоли появляется
-// своя дверь к admin-плоскости (`adminPlane`, kacho#2694), операторская
-// раздача шлёт полосу формы на внешний слушатель, и форма получает решение
-// выдачи. Держит это gateway/internal/middleware/relay_target_form_consumer_test.go —
+// своя дверь к admin-плоскости (непустой `adminPlane.upstream`, kacho#2694
+// п. 1; пустое умолчание — двери нет), операторская раздача шлёт полосу формы
+// на внешний слушатель, и форма получает решение выдачи. Держит это
+// gateway/internal/middleware/relay_target_form_consumer_test.go —
 // в обе стороны: исключение без потребителя и снятие при живом потребителе.
 func (t RelayTarget) ExternalListenersOnly() bool { return t == RelayTargetIssuance }
 
