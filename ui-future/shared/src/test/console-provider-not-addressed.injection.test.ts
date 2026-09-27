@@ -8,6 +8,11 @@ import { formatFinding, isProviderAddressText, providerAddressesIn, providerCens
  * по одному каждого вида, и хотя бы одно — через построитель, а не литералом;
  * на снятой подсадке — снова ноль. Рядом законные близнецы: путь НАШЕГО
  * глагола и комментарий о поставщике находками не являются.
+ *
+ * Имени поставщика во входах нет намеренно: распознаватель читает ФОРМУ адреса
+ * (приставку `/.ory/`, `/oauth2`, поверхность потоков), а сегмент службы под
+ * приставкой не читает, поэтому подставной сегмент `idp` проверяет ту же ветку,
+ * что прежнее имя службы (#2874).
  */
 
 const lines = (...xs: string[]) => xs.join("\n");
@@ -16,14 +21,10 @@ describe("F8-38 · перепись обращений к поставщику �
   it("F8-38 · переход на адрес потока поставщика — находка с координатой", () => {
     const f = providerAddressesIn(
       "host/src/Planted.tsx",
-      lines(
-        "export function go() {",
-        '  window.location.assign("/.ory/kratos/public/self-service/login/browser");',
-        "}",
-      ),
+      lines("export function go() {", '  window.location.assign("/.ory/idp/public/self-service/login/browser");', "}"),
     );
     expect(f.map(formatFinding)).toEqual([
-      "host/src/Planted.tsx:2 адрес поставщика «/.ory/kratos/public/self-service/login/browser»",
+      "host/src/Planted.tsx:2 адрес поставщика «/.ory/idp/public/self-service/login/browser»",
     ]);
   });
 
@@ -43,27 +44,53 @@ describe("F8-38 · перепись обращений к поставщику �
     expect(f).toHaveLength(1);
   });
 
-  it("F8-38 · обращение ЧЕРЕЗ ПОСТРОИТЕЛЬ адреса, без литерала — находка", () => {
-    const f = providerAddressesIn(
-      "shared/src/planted.ts",
-      lines('import { kratosUrl } from "@shared/lib/config";', "export const s = (p: string) => fetch(kratosUrl(p));"),
+  // Вызывающий зовёт построитель и литерала не несёт; находка — в месте, где
+  // построитель берёт адрес, с координатой этого места. Изменён ровно один факт
+  // против близнеца — чью базу построитель собирает.
+  const BUILDER = (base: string) =>
+    lines(`const base = "${base}";`, "export const flowUrl = (p: string) => `${base}${p}`;");
+  const BUILDER_CALLER = lines(
+    'import { flowUrl } from "@shared/lib/flows";',
+    'export const s = () => fetch(flowUrl("/sessions"));',
+  );
+
+  it("F8-38 · обращение ЧЕРЕЗ ПОСТРОИТЕЛЬ адреса, без литерала у вызывающего — находка в месте адреса", () => {
+    const census = providerCensusOf(
+      [
+        { file: "shared/src/lib/flows.ts", text: BUILDER("/.ory/idp/public") },
+        { file: "host/src/utils/session.ts", text: BUILDER_CALLER },
+      ],
+      [],
     );
-    expect(f.map(formatFinding)).toContain("shared/src/planted.ts:2 построитель адреса поставщика kratosUrl");
+    expect(census.findings.map(formatFinding)).toEqual([
+      "shared/src/lib/flows.ts:1 адрес поставщика «/.ory/idp/public»",
+    ]);
+  });
+
+  it("F8-38 · близнец: тот же построитель над базой нашего края — не находка", () => {
+    const census = providerCensusOf(
+      [
+        { file: "shared/src/lib/flows.ts", text: BUILDER("/iam/v1/auth") },
+        { file: "host/src/utils/session.ts", text: BUILDER_CALLER },
+      ],
+      [],
+    );
+    expect(census.findings).toEqual([]);
   });
 
   it("F8-38 · импорт клиента поставщика — находка", () => {
     const f = providerAddressesIn(
       "shared/src/planted.ts",
-      'import { kratos } from "@shared/lib/kratos";\nexport default kratos;',
+      'import { FrontendApi } from "@ory/client";\nexport default FrontendApi;',
     );
-    expect(f.map((x) => x.what)).toContain("импорт клиента поставщика @shared/lib/kratos");
+    expect(f.map((x) => x.what)).toContain("импорт клиента поставщика @ory/client");
   });
 
   it("F8-38 · близнецы: путь нашего глагола и комментарий о поставщике — не находки", () => {
     const f = providerAddressesIn(
       "shared/src/twin.ts",
       lines(
-        "// прежде здесь был переход на /.ory/kratos/public/self-service/logout/browser",
+        "// прежде здесь был переход на /.ory/idp/public/self-service/logout/browser",
         'export const out = () => fetch("/iam/v1/auth/logout", { method: "POST" });',
         'export const me = () => fetch("/iam/v1/auth/me");',
       ),
@@ -71,15 +98,34 @@ describe("F8-38 · перепись обращений к поставщику �
     expect(f).toEqual([]);
   });
 
+  // Ручка поставщика узнаётся по СЛОВУ её имени, а не по буквам внутри чужого
+  // слова: `MEMORY` и `HISTORY` несут те же три буквы, что имя поставщика, и
+  // ручку нашей службы с ними ось прежде называла ручкой поставщика. Изменён
+  // ровно один факт против положительной стороны — стоит ли имя отдельным словом.
+  it("F8-38 · ручка поставщика — находка, а ручка, где его буквы внутри слова, — нет", () => {
+    const knobs = (text: string) => providerAddressesIn("shared/src/planted.ts", text).map((x) => x.what);
+    expect(knobs("export const b = process.env.KACHO_ORY_PUBLIC;")).toEqual(["ручка базы поставщика KACHO_ORY_PUBLIC"]);
+    expect(
+      knobs(
+        lines(
+          "export const m = process.env.KACHO_MEMORY_LIMIT;",
+          'export const h = import.meta.env["KACHO_UI_HISTORY_DEPTH"];',
+        ),
+      ),
+    ).toEqual([]);
+  });
+
   it("F8-38 · распознаватель знает все формы адреса поставщика и не узнаёт путей полосы", () => {
-    // Контроль в обе стороны на входах дерева (приёмка F8, Р6 п. 2).
+    // Контроль в обе стороны на формах, в которых дерево выпускало адрес (приёмка
+    // F8, Р6 п. 2): две базы двух служб под приставкой, их поверхность потоков и
+    // пути нашего края.
     for (const provider of [
-      "/.ory/kratos/public",
-      "/.ory/hydra/public",
+      "/.ory/idp/public",
+      "/.ory/issuer/public",
       "/oauth2",
       "/oauth2/auth",
-      "/.ory/kratos/public/self-service/login/browser",
-      "/.ory/kratos/public/sessions/whoami",
+      "/.ory/idp/public/self-service/login/browser",
+      "/.ory/idp/public/sessions/whoami",
       "https://idp.example/self-service/settings/browser",
       "/sessions/whoami",
     ]) {

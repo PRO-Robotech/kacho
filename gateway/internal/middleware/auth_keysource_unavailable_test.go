@@ -117,7 +117,7 @@ func TestKeySourceUnanswerableIsUnavailableNotUnauthenticated(t *testing.T) {
 	// ── ПОЛОВИНА ПЕРВАЯ: источник ключей не ответил ─────────────────────────
 	t.Run("grpc: источник ключей недостижим", func(t *testing.T) {
 		fix := newJWKSFixture(t, "RS256")
-		token := fix.sign(t, hydraClaims("user", "usr_alice_acc_a1b2"))
+		token := fix.sign(t, issuerClaims("user", "usr_alice_acc_a1b2"))
 		auth := middleware.NewAuthInterceptor(middleware.AuthModeDev, "", &countingLookup{}, authTestLogger()).
 			WithVerifier(deadKeySetVerifier(t))
 
@@ -129,7 +129,7 @@ func TestKeySourceUnanswerableIsUnavailableNotUnauthenticated(t *testing.T) {
 
 	t.Run("grpc: источник ответил, но не набором", func(t *testing.T) {
 		fix := newJWKSFixture(t, "RS256")
-		token := fix.sign(t, hydraClaims("user", "usr_alice_acc_a1b2"))
+		token := fix.sign(t, issuerClaims("user", "usr_alice_acc_a1b2"))
 		refusingKeySet(fix)
 		auth := middleware.NewAuthInterceptor(middleware.AuthModeDev, "", &countingLookup{}, authTestLogger()).
 			WithVerifier(rs256Verifier(t, fix))
@@ -141,7 +141,7 @@ func TestKeySourceUnanswerableIsUnavailableNotUnauthenticated(t *testing.T) {
 
 	t.Run("rest: источник ключей недостижим", func(t *testing.T) {
 		fix := newJWKSFixture(t, "RS256")
-		token := fix.sign(t, hydraClaims("user", "usr_alice_acc_a1b2"))
+		token := fix.sign(t, issuerClaims("user", "usr_alice_acc_a1b2"))
 		auth := middleware.NewAuthInterceptor(middleware.AuthModeDev, "", &countingLookup{}, authTestLogger()).
 			WithVerifier(deadKeySetVerifier(t))
 
@@ -155,7 +155,7 @@ func TestKeySourceUnanswerableIsUnavailableNotUnauthenticated(t *testing.T) {
 
 	t.Run("rest: источник ответил, но не набором", func(t *testing.T) {
 		fix := newJWKSFixture(t, "RS256")
-		token := fix.sign(t, hydraClaims("user", "usr_alice_acc_a1b2"))
+		token := fix.sign(t, issuerClaims("user", "usr_alice_acc_a1b2"))
 		refusingKeySet(fix)
 		auth := middleware.NewAuthInterceptor(middleware.AuthModeDev, "", &countingLookup{}, authTestLogger()).
 			WithVerifier(rs256Verifier(t, fix))
@@ -173,7 +173,7 @@ func TestKeySourceUnanswerableIsUnavailableNotUnauthenticated(t *testing.T) {
 		fix := newJWKSFixture(t, "RS256")
 		other := newJWKSFixture(t, "RS256")
 		other.kid = fix.kid // тот же kid, ЧУЖОЙ ключ → подпись не сходится
-		token := other.sign(t, hydraClaims("user", "usr_evil"))
+		token := other.sign(t, issuerClaims("user", "usr_evil"))
 		auth := middleware.NewAuthInterceptor(middleware.AuthModeDev, "", &countingLookup{}, authTestLogger()).
 			WithVerifier(rs256Verifier(t, fix))
 
@@ -184,7 +184,7 @@ func TestKeySourceUnanswerableIsUnavailableNotUnauthenticated(t *testing.T) {
 
 	t.Run("rest: истёкший токен остаётся 401/16", func(t *testing.T) {
 		fix := newJWKSFixture(t, "RS256")
-		claims := hydraClaims("user", "usr_alice_acc_a1b2")
+		claims := issuerClaims("user", "usr_alice_acc_a1b2")
 		claims["exp"] = time.Now().Add(-time.Hour).Unix()
 		claims["iat"] = time.Now().Add(-2 * time.Hour).Unix()
 		token := fix.sign(t, claims)
@@ -206,7 +206,7 @@ func TestKeySourceUnanswerableIsUnavailableNotUnauthenticated(t *testing.T) {
 		fix := newJWKSFixture(t, "RS256")
 		other := newJWKSFixture(t, "RS256")
 		other.kid = "test-kid-nobody-publishes"
-		token := other.sign(t, hydraClaims("user", "usr_evil"))
+		token := other.sign(t, issuerClaims("user", "usr_evil"))
 		auth := middleware.NewAuthInterceptor(middleware.AuthModeDev, "", &countingLookup{}, authTestLogger()).
 			WithVerifier(rs256Verifier(t, fix))
 

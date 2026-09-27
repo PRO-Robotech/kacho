@@ -44,11 +44,13 @@
 package repohygiene
 
 import (
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/build/constraint"
 	"go/parser"
 	"go/token"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -502,6 +504,228 @@ type runDeclScan struct {
 	StepsWithEnvTag  int
 }
 
+// ── вызов, записанный несколькими строками ──────────────────────────────────
+
+// declBlock — строки объявления В ТОМ ВИДЕ, в каком их получит исполнитель.
+//
+// Физическая строка файла и строка команды — не одно и то же, и различие
+// несущее (#2883). Шаг рабочего процесса, записанный свёрнутым скаляром
+// `run: >-`, отдаёт оболочке ОДНУ строку, сложенную из нескольких физических:
+// судья, читавший физические строки, видел `go test -tags helmcharts ./deploy/`
+// без `-run`, стоявшего строкой ниже, читал отбор как «все» — и две пробы тега
+// не исполнялись ни разу при переписи «отбирается 30 из 30».
+//
+// Поэтому у процесса строки берутся из РАЗОБРАННОГО скаляра: YAML сам знает все
+// свои формы записи — свёрнутые и буквальные блоки, многострочные простые и
+// кавычечные скаляры, — и распознавателю не нужно знать ни одной из них. У
+// Makefile и скрипта строки физические, а перенос обратной косой дочитывает
+// `invocationText`: он общий для всех трёх видов, потому что и буквальный блок
+// процесса отдаёт оболочке строки с тем же переносом.
+type declBlock struct {
+	Texts []string // строки текста, как их получит исполнитель
+	Lines []int    // координата каждой строки: физическая строка файла, с 1
+	// EnvLine — строка узла скаляра: по ней ищется шаг процесса, чьё окружение
+	// действует на вызов. Ноль — окружения у вида файла нет.
+	EnvLine int
+}
+
+func (b declBlock) envLine(i int) int {
+	if b.EnvLine != 0 {
+		return b.EnvLine
+	}
+	return b.Lines[i]
+}
+
+// declarationBlocks — строки объявления по виду файла.
+func declarationBlocks(raw []byte, kind declarationKind) ([]declBlock, error) {
+	if kind == kindYAML {
+		return workflowScalarBlocks(raw)
+	}
+	texts := strings.Split(string(raw), "\n")
+	lines := make([]int, len(texts))
+	for i := range lines {
+		lines[i] = i + 1
+	}
+	return []declBlock{{Texts: texts, Lines: lines}}, nil
+}
+
+// workflowScalarBlocks — скаляры процесса, несущие вызов `go test`, каждый
+// своим блоком.
+//
+// Блок — один скаляр, и это граница окна `feedingSelection`: `go list` соседнего
+// шага кормить `xargs` этого шага не может, поэтому искать питающий отбор за
+// пределами скаляра значило бы засчитывать чужую область.
+//
+// Неразбираемый процесс — ОТКАЗ, а не «прогонов нет»: исполнитель его не
+// запустит, но судья, молча пропустивший файл, объявлял бы непокрытым пакет,
+// который покрывает исправный соседний шаг, — либо, хуже, зеленел бы, не
+// прочитав ничего.
+//
+// Комментарий YAML в дерево узлов не попадает — прогоном является объявление,
+// а не проза о нём. Комментарий ОБОЛОЧКИ внутри буквального блока — часть
+// значения, его снимает `stripComment` так же, как у скрипта.
+func workflowScalarBlocks(raw []byte) ([]declBlock, error) {
+	phys := strings.Split(string(raw), "\n")
+	dec := yaml.NewDecoder(strings.NewReader(string(raw)))
+	var blocks []declBlock
+	for {
+		var doc yaml.Node
+		err := dec.Decode(&doc)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("процесс не разбирается как YAML — прогонов из него не вычитать: %w", err)
+		}
+		var walk func(n *yaml.Node)
+		walk = func(n *yaml.Node) {
+			if n.Kind == yaml.AliasNode {
+				return // узел под якорем уже обойдён там, где объявлен
+			}
+			if n.Kind == yaml.ScalarNode && reGoTest.MatchString(n.Value) {
+				blocks = append(blocks, scalarBlock(n, phys))
+			}
+			for _, c := range n.Content {
+				walk(c)
+			}
+		}
+		walk(&doc)
+	}
+	return blocks, nil
+}
+
+// scalarBlock — строки значения скаляра и координата каждой.
+//
+// Координата ищется, а не вычисляется смещением: свёрнутый блок складывает
+// несколько физических строк в одну, и смещение разошлось бы с файлом.
+// Строка значения начинается с текста своей первой физической строки, поэтому
+// ищется первая непустая физическая строка, которой строка значения
+// начинается. Не нашлась (скаляр в кавычках с экранированием) — координатой
+// остаётся строка узла: она указывает на тот же скаляр.
+func scalarBlock(n *yaml.Node, phys []string) declBlock {
+	texts := strings.Split(n.Value, "\n")
+	b := declBlock{Texts: texts, Lines: make([]int, len(texts)), EnvLine: n.Line}
+	block := n.Style&(yaml.LiteralStyle|yaml.FoldedStyle) != 0
+	cursor := n.Line // индекс первой строки содержимого блока (с 0) = строка индикатора
+	for i, text := range texts {
+		b.Lines[i] = n.Line
+		want := strings.TrimSpace(text)
+		if !block || want == "" {
+			continue
+		}
+		for p := cursor; p < len(phys); p++ {
+			got := strings.TrimSpace(phys[p])
+			if got != "" && strings.HasPrefix(want, got) {
+				b.Lines[i] = p + 1
+				cursor = p + 1
+				break
+			}
+		}
+	}
+	return b
+}
+
+// invocationText — текст вызова, начинающегося с байта `at` строки `lines[i]`:
+// часть строки ДО вызова и сама команда — до её конца, через переносы.
+//
+// Перенос обратной косой продолжает команду на следующей строке. Конец же
+// команды — конвейер, `;`, `&&`/`||`, фоновый `&`, закрытие подстановки `)` и
+// комментарий: всё, что стоит после, принадлежит ДРУГОЙ программе, и `-run`
+// там сужает не `go test`. Внутри кавычек и подстановок `$( … )` эти знаки
+// команду не кончают; перенаправления `2>&1` и `&>` — тоже. Выражение
+// `${{ … }}` рабочего процесса подставляется до оболочки и оболочкой не
+// читается — его `||` командой не является.
+//
+// Граница названа, а не спрятана: состояние кавычек считается С НАЧАЛА ВЫЗОВА.
+// Слова `go test` внутри строки сообщения (`echo "… go test …"`) читаются как
+// вызов — так же, как читались и прежде; признака у такого «вызова» нет, если
+// его не задаёт окружение шага, а области нет вовсе, поэтому покрытия он не
+// добавляет ни одному пакету.
+func invocationText(lines []string, i, at int) string {
+	var out strings.Builder
+	out.WriteString(lines[i][:at])
+	var inSingle, inDouble bool
+	depth := 0
+	for j := i; j < len(lines); j++ {
+		s := lines[j]
+		start := 0
+		if j == i {
+			start = at
+		}
+		end, cont := len(s), false
+	scan:
+		for k := start; k < len(s); k++ {
+			if strings.HasPrefix(s[k:], "${{") {
+				if e := strings.Index(s[k:], "}}"); e >= 0 {
+					k += e + 1
+					continue
+				}
+			}
+			c := s[k]
+			switch {
+			case inSingle:
+				if c == '\'' {
+					inSingle = false
+				}
+			case inDouble:
+				switch c {
+				case '\\':
+					if k+1 == len(s) {
+						end, cont = k, true
+						break scan
+					}
+					k++
+				case '"':
+					inDouble = false
+				}
+			default:
+				switch c {
+				case '\\':
+					if k+1 == len(s) {
+						end, cont = k, true
+						break scan
+					}
+					k++
+				case '\'':
+					inSingle = true
+				case '"':
+					inDouble = true
+				case '(':
+					depth++
+				case ')':
+					if depth == 0 {
+						end = k
+						break scan
+					}
+					depth--
+				case '|', ';':
+					if depth == 0 {
+						end = k
+						break scan
+					}
+				case '&':
+					redirect := (k > 0 && (s[k-1] == '>' || s[k-1] == '<')) ||
+						(k+1 < len(s) && s[k+1] == '>')
+					if depth == 0 && !redirect {
+						end = k
+						break scan
+					}
+				case '#':
+					if depth == 0 && (k == 0 || s[k-1] == ' ' || s[k-1] == '\t') {
+						end = k
+						break scan
+					}
+				}
+			}
+		}
+		out.WriteString(s[start:end])
+		if !cont {
+			break
+		}
+	}
+	return out.String()
+}
+
 // extractTaggedRuns — читает объявления и достаёт из них прогоны с признаком.
 func extractTaggedRuns(root string) (runDeclScan, error) {
 	files, err := declarationFiles(root)
@@ -522,7 +746,10 @@ func extractTaggedRuns(root string) (runDeclScan, error) {
 			return runDeclScan{}, fmt.Errorf("чтение %s: %w", rel, err)
 		}
 		kind := kindOf(rel)
-		lines := strings.Split(string(raw), "\n")
+		blocks, err := declarationBlocks(raw, kind)
+		if err != nil {
+			return runDeclScan{}, fmt.Errorf("разбор %s: %w", rel, err)
+		}
 
 		var envScopes []envTagScope
 		if kind == kindYAML {
@@ -535,52 +762,61 @@ func extractTaggedRuns(root string) (runDeclScan, error) {
 			}
 		}
 
-		for i, rawLine := range lines {
-			line := stripComment(rawLine)
-			if line == "" || !reGoTest.MatchString(line) {
-				continue
-			}
-			// Признак приходит ДВУМЯ законными формами. Флаг строки вызова
-			// сильнее: `go test -tags=X` при `GOFLAGS=-tags=Y` идёт под X.
-			tags := envTagsAt(envScopes, i+1)
-			if reGoflagsAssign.MatchString(line) {
-				tags = nil // строка задала GOFLAGS сама — окружение шага перебито
-			}
-			if m := reTagFlag.FindStringSubmatch(line); m != nil {
-				// `-tags=a,b` — прогон передаёт оба.
-				tags = strings.Split(m[1], ",")
-			}
-			if len(tags) == 0 {
-				continue
-			}
-			for _, tag := range tags {
-				tag = strings.TrimSpace(tag)
-				if tag == "" {
+		for _, b := range blocks {
+			for i, rawLine := range b.Texts {
+				line := stripComment(rawLine)
+				if line == "" {
 					continue
 				}
-				run := taggedRun{
-					Source: fmt.Sprintf("%s:%d", rel, i+1),
-					Tag:    tag,
-					Scopes: operandsOf(line, kind),
+				at := reGoTest.FindStringIndex(line)
+				if at == nil {
+					continue
 				}
-				if pat := lastFlagValue(reRunFlag, line); pat != "" {
-					run.RunPattern = pat
-					if re, err := regexp.Compile(topLevelPattern(pat)); err == nil {
-						run.Select = re
+				// Вызов читается ЦЕЛИКОМ, как его получит исполнитель: со строками
+				// переноса и до конца команды, а не до конца физической строки.
+				call := invocationText(b.Texts, i, at[0])
+				// Признак приходит ДВУМЯ законными формами. Флаг строки вызова
+				// сильнее: `go test -tags=X` при `GOFLAGS=-tags=Y` идёт под X.
+				tags := envTagsAt(envScopes, b.envLine(i))
+				if reGoflagsAssign.MatchString(call) {
+					tags = nil // строка задала GOFLAGS сама — окружение шага перебито
+				}
+				if m := reTagFlag.FindStringSubmatch(call); m != nil {
+					// `-tags=a,b` — прогон передаёт оба.
+					tags = strings.Split(m[1], ",")
+				}
+				if len(tags) == 0 {
+					continue
+				}
+				for _, tag := range tags {
+					tag = strings.TrimSpace(tag)
+					if tag == "" {
+						continue
 					}
-				}
-				if pat := lastFlagValue(reSkipFlag, line); pat != "" {
-					run.SkipPattern = pat
-					if re, err := regexp.Compile(topLevelPattern(pat)); err == nil {
-						run.Skip = re
+					run := taggedRun{
+						Source: fmt.Sprintf("%s:%d", rel, b.Lines[i]),
+						Tag:    tag,
+						Scopes: operandsOf(call, kind),
 					}
+					if pat := lastFlagValue(reRunFlag, call); pat != "" {
+						run.RunPattern = pat
+						if re, err := regexp.Compile(topLevelPattern(pat)); err == nil {
+							run.Select = re
+						}
+					}
+					if pat := lastFlagValue(reSkipFlag, call); pat != "" {
+						run.SkipPattern = pat
+						if re, err := regexp.Compile(topLevelPattern(pat)); err == nil {
+							run.Skip = re
+						}
+					}
+					// Вызов без своих операндов питается конвейером: область и отбор
+					// стоят выше, в той же рецептуре.
+					if len(run.Scopes) == 0 {
+						run.Scopes, run.Filters = feedingSelection(b.Texts, i, kind)
+					}
+					scan.Runs = append(scan.Runs, run)
 				}
-				// Вызов без своих операндов питается конвейером: область и отбор
-				// стоят выше, в той же рецептуре.
-				if len(run.Scopes) == 0 {
-					run.Scopes, run.Filters = feedingSelection(lines, i, kind)
-				}
-				scan.Runs = append(scan.Runs, run)
 			}
 		}
 	}

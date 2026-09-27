@@ -12,7 +12,7 @@
 //
 // Used by:
 //   - Backend M2M clients (service accounts) provisioned with a static client
-//     certificate + Hydra client_credentials grant; Hydra binds the issued
+//     certificate + a client_credentials grant; the issuer binds the issued
 //     token to the cert thumbprint.
 //
 // SPIFFE SVID is the long-term replacement; both shapes are supported via the
@@ -86,7 +86,7 @@ func resolveClientCert(connState *tls.ConnectionState, explicit *x509.Certificat
 }
 
 // certThumbprint computes base64url-no-pad SHA-256 of the raw DER bytes —
-// the same definition Hydra uses when injecting cnf.x5t#S256 (RFC 8705 §3.1).
+// the same definition an issuer uses when injecting cnf.x5t#S256 (RFC 8705 §3.1).
 func certThumbprint(cert *x509.Certificate) string {
 	sum := sha256.Sum256(cert.Raw)
 	return base64.RawURLEncoding.EncodeToString(sum[:])

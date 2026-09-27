@@ -7,8 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -39,8 +37,8 @@ import (
 // цепочку недостижима. Вердикт «назвал ли человека» читается из тела: 401 тела
 // с `user` не несёт.
 //
-// Посадок ДВЕ (`external` — сессия поставщика; `own` — наша, Ф3), и полосы
-// обязаны сходиться на каждой: под `own` читатель другой, а свойство то же.
+// Читатель сессии у края один — наш (#2792): читатель чужой сессии снят вместе
+// с переходным режимом двух носителей, и полосы сравниваются на нашей сессии.
 
 // cookieSafeName — имя пробы, приведённое к байтам, КОТОРЫЕ БРАУЗЕР МОЖЕТ
 // ПРОВЕСТИ в значении печенья (RFC 6265).
@@ -72,48 +70,6 @@ type laneVerdict struct {
 	signed bool
 }
 
-// askIdentityLane — вердикт полосы личности: дошёл ли запрос до backend.
-func askIdentityLane(t *testing.T, kratosURL string, cut SessionCutoffReader) laneVerdict {
-	t.Helper()
-	served := false
-	next := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { served = true })
-	a := NewAuthInterceptor(AuthModeDev, "",
-		cutoffLookup{subj: Subject{Type: "user", ID: "usr-1", DisplayName: "A"}},
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-	).WithKratos(NewKratosClient(kratosURL))
-	if cut != nil {
-		a = a.WithSessionCutoffCheck(cut, time.Hour)
-	}
-	req := httptest.NewRequest(http.MethodGet, "/vpc/v1/networks", nil)
-	req.Header.Set("Cookie", "ory_kratos_session="+cookieSafeName(t)+"-identity")
-	rec := httptest.NewRecorder()
-	a.HTTP(next).ServeHTTP(rec, req)
-	return laneVerdict{name: "полоса личности на пути запроса", signed: served}
-}
-
-// askWhoAmILane — вердикт маршрута «кто я» ЧЕРЕЗ ЦЕПОЧКУ: назвал ли ответ
-// человека. Полоса личности стоит перед маршрутом, как в боевой провязке.
-func askWhoAmILane(t *testing.T, kratosURL string, cut SessionCutoffReader) laneVerdict {
-	t.Helper()
-	lookup := cutoffLookup{subj: Subject{Type: "user", ID: "usr-1", DisplayName: "A"}}
-	a := NewAuthInterceptor(AuthModeDev, "", lookup,
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-	).WithKratos(NewKratosClient(kratosURL))
-	h := NewSessionIdentityHandler(slog.New(slog.NewTextHandler(io.Discard, nil))).
-		WithKratos(NewKratosClient(kratosURL), lookup)
-	if cut != nil {
-		a = a.WithSessionCutoffCheck(cut, time.Hour)
-		h = h.WithSessionCutoff(cut)
-	}
-	mux := http.NewServeMux()
-	h.Register(mux)
-	req := httptest.NewRequest(http.MethodGet, "/iam/v1/auth/me", nil)
-	req.Header.Set("Cookie", "ory_kratos_session="+cookieSafeName(t)+"-whoami")
-	rec := httptest.NewRecorder()
-	a.HTTP(mux).ServeHTTP(rec, req)
-	return laneVerdict{name: "маршрут «кто я»", signed: whoAmINamedAPerson(rec)}
-}
-
 // whoAmINamedAPerson читает вердикт «кто я» из ответа цепочки: только 200 с
 // непустым `user` называет человека; 401 полосы — нет.
 func whoAmINamedAPerson(rec *httptest.ResponseRecorder) bool {
@@ -127,7 +83,7 @@ func whoAmINamedAPerson(rec *httptest.ResponseRecorder) bool {
 	return body.User != nil
 }
 
-// askOwnIdentityLane / askOwnWhoAmILane — те же две полосы под посадкой `own`:
+// askOwnIdentityLane / askOwnWhoAmILane — две полосы, читающие одну сессию:
 // читатель — НАША сессия (Ф3 Р7), носитель — наше печенье.
 func askOwnIdentityLane(t *testing.T, sess HumanSession, cut SessionCutoffReader) laneVerdict {
 	t.Helper()
@@ -136,7 +92,7 @@ func askOwnIdentityLane(t *testing.T, sess HumanSession, cut SessionCutoffReader
 	a := ownLane(t, &fakeHumanSession{found: true, sess: sess}, cut)
 	req := httptest.NewRequest(http.MethodGet, "/vpc/v1/networks", nil)
 	rec := httptest.NewRecorder()
-	a.HTTP(next).ServeHTTP(rec, withOurCarrier(req, t.Name()+"-own-identity"))
+	a.HTTP(next).ServeHTTP(rec, withOurCarrier(req, cookieSafeName(t)+"-own-identity"))
 	return laneVerdict{name: "полоса личности на пути запроса (own)", signed: served}
 }
 
@@ -148,7 +104,7 @@ func askOwnWhoAmILane(t *testing.T, sess HumanSession, cut SessionCutoffReader) 
 	ownWhoAmI(t, mux, reader, cut, nil)
 	req := httptest.NewRequest(http.MethodGet, "/iam/v1/auth/me", nil)
 	rec := httptest.NewRecorder()
-	a.HTTP(mux).ServeHTTP(rec, withOurCarrier(req, t.Name()+"-own-whoami"))
+	a.HTTP(mux).ServeHTTP(rec, withOurCarrier(req, cookieSafeName(t)+"-own-whoami"))
 	return laneVerdict{name: "маршрут «кто я» (own)", signed: whoAmINamedAPerson(rec)}
 }
 
@@ -213,13 +169,10 @@ func TestBrowserSessionLanesAgree(t *testing.T) {
 			if tc.name == "сессия без момента аутентификации при живой отсечке" {
 				at = time.Time{}
 			}
-			url := kratosStub(t, at).URL
 			own := liveOwnSession()
 			own.AuthenticatedAt = at
 
 			verdicts := []laneVerdict{
-				askIdentityLane(t, url, tc.cut),
-				askWhoAmILane(t, url, tc.cut),
 				askOwnIdentityLane(t, own, tc.cut),
 				askOwnWhoAmILane(t, own, tc.cut),
 			}
@@ -248,10 +201,8 @@ func TestBrowserSessionLanesAgree(t *testing.T) {
 // одинаково на обеих. Иначе «одна полоса спрашивает, вторая нет» вернулось бы
 // через непровязку.
 func TestBrowserSessionLanesAgree_UnmountedReaderIsAlsoSymmetric(t *testing.T) {
-	url := kratosStub(t, time.Now()).URL
 	own := liveOwnSession()
 	for _, v := range []laneVerdict{
-		askIdentityLane(t, url, nil), askWhoAmILane(t, url, nil),
 		askOwnIdentityLane(t, own, nil), askOwnWhoAmILane(t, own, nil),
 	} {
 		if !v.signed {

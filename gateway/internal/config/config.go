@@ -43,7 +43,6 @@ import (
 //	KACHO_API_GATEWAY_STORAGE_GRPC           — адрес backend kacho-storage (public, port 9090)
 //	KACHO_API_GATEWAY_STORAGE_INTERNAL_GRPC  — адрес backend kacho-storage internal-port (9091)
 //	KACHO_APP_ENV                            — deployment-env label (keys the prod authz guard)
-//	KACHO_API_GATEWAY_KRATOS_PUBLIC_URL      — Ory Kratos public API base ("disabled" turns it off); read under `external` only
 //	KACHO_API_GATEWAY_IAM_LOGIN_LANE_URL     — адрес HTTPS-слушателя полосы формы службы доступа (own only, required)
 //	KACHO_API_GATEWAY_ADMISSION_PUBLIC_*     — потолок темпа/одновременности внешнего
 //	                                           слушателя (READ_PER_SEC, MUTATION_PER_SEC,
@@ -246,7 +245,8 @@ type Config struct {
 
 	// AuthNDevSecret — HMAC-secret для подписи dev-JWT (mode=dev).
 	// Если пуст — Bearer-токены в dev-режиме игнорируются (всегда anonymous).
-	// Production / production-strict — нужен Hydra JWKS.
+	// Production / production-strict — только асимметричная проверка по наборам
+	// ключей объявленных издателей.
 	AuthNDevSecret string `envconfig:"KACHO_API_GATEWAY_AUTHN_DEV_SECRET" default:""`
 
 	// --- composition-root settings (previously read via ad-hoc os.Getenv in
@@ -262,14 +262,11 @@ type Config struct {
 	// via extraEnv.
 	AppEnv string `envconfig:"KACHO_APP_ENV" default:""`
 
-	// KratosPublicURL — base URL of the Ory Kratos public API (session /whoami).
-	// The sentinel "disabled" turns Kratos session-auth off entirely. Default is
-	// the cluster-internal kratos-public Service.
-	//
-	// Читается ТОЛЬКО под посадкой `external` (Ф3 Р15, Ф3-12): под `own` сессию
-	// человека читает наша служба, и читатель носителя поставщика не заводится
-	// вовсе — независимо от того, задан ли этот адрес.
-	KratosPublicURL string `envconfig:"KACHO_API_GATEWAY_KRATOS_PUBLIC_URL" default:"http://kacho-umbrella-kratos-public.kacho.svc:80"`
+	// АДРЕСА СЛУЖБЫ СЕССИЙ ПРЕЖНЕГО ПОСТАВЩИКА ЗДЕСЬ БОЛЬШЕ НЕТ (#2792). Его
+	// читал читатель чужого печенья сессии, снятый вместе с переходным режимом двух носителей:
+	// край читает только нашу сессию. Снятое имя записано в ведомости
+	// `internal/retiredknobs`, и возвращать его сюда «чтобы ручка заработала»
+	// нельзя — ведомость и рендерная проба цепочек это отвергают.
 
 	// LoginLaneURL — адрес HTTPS-слушателя ПОЛОСЫ ФОРМЫ службы доступа, на
 	// который край ретранслирует глаголы формы под посадкой `own` — все, что
@@ -383,54 +380,24 @@ type Config struct {
 	// старта (`validateProductionTokenAudience` в композиционном корне).
 	TokenAudience string `envconfig:"KACHO_API_GATEWAY_TOKEN_AUDIENCE" default:""`
 
-	// HydraIntrospectionURL — token-introspection endpoint on the identity
-	// provider's ADMIN API (`{admin}/admin/oauth2/introspect`). Never derived:
-	// the admin API is a different Service and port from the public issuer, so
-	// there is nothing to derive it from. Empty ⇒ the revocation check is not
-	// configured, and a production-class gateway refuses to start (see the boot
-	// guard in cmd/api-gateway/revocation_validation.go).
-	HydraIntrospectionURL string `envconfig:"KACHO_HYDRA_INTROSPECTION_URL" default:""`
+	// АДРЕСОВ ПРЕЖНЕГО ПОСТАВЩИКА ЛИЧНОСТИ ЗДЕСЬ БОЛЬШЕ НЕТ (#2734). Интроспекцию
+	// его административного пути читала полоса отзыва его токенов, адрес его
+	// административного API — выход человека, снимавший сессию на его стороне,
+	// якорь доверия — хоп к обоим. Край стал чистым проверяющим: отзыв
+	// предъявленного он спрашивает у нашего авторитета либо у нашей записи
+	// отзыва, а выход пишет отзыв в нашу запись. Снятые имена записаны в
+	// ведомости `internal/retiredknobs`, и возвращать их сюда нельзя —
+	// ведомость, проба загрузки и рендерная проба цепочек это отвергают.
 
-	// HydraAdminURL — base URL of the identity provider's ADMIN API, used by the
-	// logout handler to kill the provider-side session
-	// (`DELETE /admin/oauth2/auth/sessions/login`). Never derived, same reason.
-	// Empty ⇒ the session kill is disabled, and a production-class gateway
-	// refuses to start.
-	//
-	// THE ADMIN API AUTHENTICATES NOBODY. Ory Hydra's admin API has no
-	// authentication of its own — anyone who can reach it can mint clients, read
-	// sessions and introspect tokens. Its only protection is that it is not
-	// routable, so the two addresses above must always name a cluster-internal
-	// Service and that Service must never be published (no ingress, no
-	// LoadBalancer, no NodePort). Enforced offline by
-	// deploy/tests/helm/admin-hop-transport-test.sh.
-	HydraAdminURL string `envconfig:"KACHO_HYDRA_ADMIN_URL" default:""`
-
-	// HydraAdminCAFile — path to the PEM bundle the gateway verifies the ADMIN
-	// API's certificate against, when that hop is served over TLS.
-	//
-	// Why it exists: since the revocation check moved onto the authN layer, the
-	// admin hop carries the caller's LIVE bearer on every introspection cache
-	// miss, not just administrative calls. Over plaintext that bearer is
-	// readable by anything on the path. Moving the hop to https only helps if
-	// the certificate is VERIFIED, and an in-cluster provider certificate comes
-	// from the internal CA — which this process does not trust by default (its
-	// default pool is the system roots).
-	//
-	// Empty ⇒ no anchor, default transport. Set ⇒ the bundle becomes the ONLY
-	// trust anchor for the hop, and a bundle that cannot be read or holds no
-	// certificate REFUSES THE START (cmd/api-gateway/admin_hop_client.go):
-	// falling back to the system roots would read as configured while verifying
-	// nothing.
-	HydraAdminCAFile string `envconfig:"KACHO_HYDRA_ADMIN_CA_FILE" default:""`
-
-	// HydraJWKSCAFile — то же для ХОПА ЗА КЛЮЧАМИ ВЕРИФИКАЦИИ.
+	// JWKSCAFile — якорь доверия ХОПА ЗА НАБОРАМИ КЛЮЧЕЙ принимаемых издателей
+	// (адреса — `KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS`), в том числе нашего. Ручка
+	// транспорта хопа, в одном семействе с `KACHO_JWKS_FETCH_TIMEOUT_SECONDS`; имя —
+	// `JWKSCAFileKnob`.
 	//
 	// Зачем. По этому хопу едет материал, которым край проверяет ПОДПИСЬ каждого
 	// предъявителя. Подменивший его в пути подменяет и решение о доступе: дальше край
-	// добросовестно верит собственному ответу. Требование то же, что у
-	// административного хопа, и по той же причине — сертификат внутрикластерного
-	// адреса выписан внутренним центром, которого в корнях процесса по умолчанию нет.
+	// добросовестно верит собственному ответу. Сертификат внутрикластерного адреса
+	// выписан внутренним центром, которого в корнях процесса по умолчанию нет.
 	//
 	// ЧЕГО НЕ БЫЛО. Ручка АДРЕСА у этого хопа существовала, ручки ДОВЕРИЯ — нет,
 	// поэтому «перевести хоп на защищённый транспорт» было недостижимо: клиент шёл
@@ -442,9 +409,9 @@ type Config struct {
 	// Пусто ⇒ якоря нет, транспорт по умолчанию (незащищённый внутрикластерный адрес
 	// связки не требует). Задано ⇒ связка становится ЕДИНСТВЕННЫМ якорем доверия
 	// хопа, а нечитаемая связка или связка без сертификата ОТКАЗЫВАЮТ В СТАРТЕ
-	// (cmd/api-gateway/admin_hop_client.go): откат к системным корням читался бы как
+	// (cmd/api-gateway/pinned_hop_client.go): откат к системным корням читался бы как
 	// настроенная проверка, не проверяя при этом ничего.
-	HydraJWKSCAFile string `envconfig:"KACHO_HYDRA_JWKS_CA_FILE" default:""`
+	JWKSCAFile string `envconfig:"KACHO_API_GATEWAY_JWKS_CA_FILE" default:""`
 
 	// ─── Объявление приёма токена (Ф1б, задача #926) ──────────────────────
 	//
@@ -484,18 +451,15 @@ type Config struct {
 
 	// PlatformTokenRevocationURL — НАШ авторитет отзыва (RFC 7662).
 	//
-	// Обязателен, когда наш издатель принимается: прежний провайдер о наших
-	// токенах не знает by construction, и его ответ на наш токен есть
-	// утверждение о чужом предмете. Задаётся явно, никогда не выводится.
+	// Обязателен, когда наш издатель принимается: об отзыве нашего токена знает
+	// только наш авторитет. Задаётся явно, никогда не выводится.
 	//
 	// ИСХОД при незаданном названо здесь, чтобы его не приходилось выводить:
 	// наш издатель принимается, адрес пуст ⇒ ОТКАЗ В СТАРТЕ (TokenAcceptance →
 	// requirePlatformRevocationAuthority → os.Exit в композиционном корне).
-	// МЯГКОГО ПРОХОДА на этой полосе нет и не было НИ РАЗУ — в отличие от полосы
-	// прежнего провайдера, где пустой адрес даёт предупреждение и неподключённое
-	// чтение. Разница намеренная: там отзывы чужие и провайдер их проверяет сам,
-	// здесь производитель отзыва МЫ, и «спросить некого» означало бы «выпустили
-	// то, что не умеем отозвать».
+	// Мягкого прохода нет ни на этой полосе, ни на полосе записи отзыва (#2734):
+	// производитель отзыва на обеих — МЫ, и «спросить некого» означало бы
+	// «выпустили то, что не умеем отозвать».
 	PlatformTokenRevocationURL string `envconfig:"KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL" default:""`
 
 	// PlatformTokenRevocationCAFile — якорь доверия хопа к нашему авторитету
@@ -583,10 +547,6 @@ type Config struct {
 	// cannot pin the gateway's capacity waiting on answers no caller is still
 	// there to receive.
 	IntrospectionTimeoutMs int `envconfig:"KACHO_INTROSPECTION_TIMEOUT_MS" default:"1000"`
-
-	// HookSharedSecret — shared secret для Hydra→kaname back-channel logout
-	// (RFC 8254). Также используется как HMAC для CAEP push payload integrity.
-	HookSharedSecret string `envconfig:"KANAME_HOOK_TOKEN" default:""`
 
 	// AuthNEnableDPoP — feature toggle; true → требовать DPoP/mTLS-bound для
 	// tokens с `cnf` claim, валидировать. False → skip DPoP проверки (legacy
@@ -793,22 +753,6 @@ func (c Config) ExternalListenerClientAuth(base *tls.Config) (*tls.Config, error
 	return base, nil
 }
 
-// ResolvedHydraIntrospectionURL returns the token-introspection endpoint, or the
-// empty string when none is configured.
-//
-// It is deliberately NOT derived from the issuer. Introspection is served by the
-// identity provider's ADMIN API — a different Service and port from the public
-// issuer, reachable only inside the cluster — so an issuer-derived address names
-// a server that does not serve this endpoint. Aiming a revocation check at a
-// guessed address is worse than having none: the check runs, never gets an
-// answer, and the caller cannot distinguish that from "the token is fine".
-//
-// Empty means the revocation check is not configured. The composition root
-// refuses to start a production-class gateway in that state.
-func (c Config) ResolvedHydraIntrospectionURL() string {
-	return strings.TrimSpace(c.HydraIntrospectionURL)
-}
-
 // IdentityProviderKnob — имя ручки посадки личности НА КРАЕ. Объявлено один
 // раз: его называют текст отказа старта и документация профиля; две копии
 // разошлись бы на той, которую забыли поправить.
@@ -831,14 +775,6 @@ func (c Config) ResolvedIdentityProvider() (identityposture.Provider, error) {
 	return identityposture.Parse(IdentityProviderKnob, raw)
 }
 
-// ResolvedHydraAdminURL returns the admin API base, or the empty string when
-// none is configured. Same rule and same reason as the introspection endpoint
-// above: the admin API is not the issuer, and a guessed base sends the logout
-// handler's provider-side session kill to whatever answers on the issuer host.
-func (c Config) ResolvedHydraAdminURL() string {
-	return strings.TrimSpace(c.HydraAdminURL)
-}
-
 // AudienceKnob — имя ручки АДРЕСАТА. Объявлено один раз: его называют текст
 // отказа старта, профиль и документация. Две копии разошлись бы на той,
 // которую забыли поправить.
@@ -851,6 +787,19 @@ func (c Config) ResolvedHydraAdminURL() string {
 // находку либо потребует подавления, у которого предмета нет.
 const AudienceKnob = "KACHO_API_GATEWAY_TOKEN_AUDIENCE"
 
+// JWKSCAFileKnob — имя ручки якоря доверия хопа за наборами ключей
+// принимаемых издателей. Объявлено один раз: его называют текст отказа старта
+// и проба чарта; тег поля пишет его литералом, потому что тег не умеет
+// ссылаться на постоянную, и расхождение двух написаний держит проба
+// конфигурации.
+//
+// Имя — ручка ТРАНСПОРТА хопа, а не записи объявления приёма: якорь один на
+// клиент, которым край забирает наборы ВСЕХ принимаемых издателей, как таймаут
+// `KACHO_JWKS_FETCH_TIMEOUT_SECONDS`. Переменные полосы объявления
+// (`KACHO_API_GATEWAY_TOKEN_ISSUER*`) обязаны брать значение из
+// `tokenAcceptance` профиля (TestChart_TokenLaneEnvIsWiredToItsOwnKnob).
+const JWKSCAFileKnob = "KACHO_API_GATEWAY_JWKS_CA_FILE"
+
 // DeclaredTokenAudience — адресат, ОБЪЯВЛЕННЫЙ оператором, и пустая строка,
 // когда он не объявлен. Ожидаемое `aud` при проверке токена.
 //
@@ -858,8 +807,7 @@ const AudienceKnob = "KACHO_API_GATEWAY_TOKEN_AUDIENCE"
 // производной формы, и вызывающий обязан видеть в самом имени, что пустое
 // значение здесь возможно и означает «не объявлено». Прежняя `ExpectedAudience`
 // возвращала «https://» + APIDomain и пустой не бывала никогда, поэтому
-// «объявлено» и «подставлено построением» на месте вызова не различались — тот
-// же разрыв, ради которого у службы доступа заведена `DeclaredHydraAdminURL`.
+// «объявлено» и «подставлено построением» на месте вызова не различались.
 func (c Config) DeclaredTokenAudience() string {
 	return strings.TrimSpace(c.TokenAudience)
 }

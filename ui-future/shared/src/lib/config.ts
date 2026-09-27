@@ -14,6 +14,12 @@
 // служба ей отдаёт (`StepUpModal.tsx`, узел `webauthn`), — не из ручки. Ручка,
 // объявленная без читателя, заставляет развёртывание ЗАДАВАТЬ значение, от
 // которого не зависит ни одна ветка (#2733).
+//
+// По той же причине здесь нет и ручки базы потоков прежнего поставщика личности
+// (поле, умолчание под `/.ory/…` и построитель адреса над ним): вызывающих вне
+// файла не было ни одного, а церемонии консоль ведёт своими экранами и глаголами
+// нашей службы (приёмка F8). Возврат такой ручки краснит перепись обращений
+// к поставщику (`test/console-provider-not-addressed.test.ts`, F8-37) (#2874).
 
 interface AppConfig {
   /** Базовый origin для api-gateway REST. Пусто = same-origin (prod через ingress). */
@@ -22,8 +28,6 @@ interface AppConfig {
   apiDomain: string;
   /** Application origin (используется как audience для DPoP htu — full URL). */
   appDomain: string;
-  /** Kratos public base path (browser-flows). Default `/.ory/kratos/public`. */
-  kratosUrl: string;
   /** Допустимый clock-skew для DPoP nonce/iat (секунды). */
   dpopClockSkewSec: number;
   /** Recovery magic-link TTL (минуты) — для UI hint. */
@@ -54,17 +58,9 @@ export const config: AppConfig = {
   apiBase: envStr("VITE_KACHO_API_BASE", ""),
   apiDomain: envStr("VITE_KACHO_API_DOMAIN", DEFAULT_API_DOMAIN),
   appDomain: envStr("VITE_APP_DOMAIN", DEFAULT_APP_DOMAIN),
-  kratosUrl: envStr("VITE_KRATOS_URL", "/.ory/kratos/public"),
   dpopClockSkewSec: envNum("VITE_DPOP_CLOCK_SKEW_SEC", 30),
   recoveryLinkTtlMin: envNum("VITE_RECOVERY_LINK_TTL_MIN", 5),
 };
-
-/** Полный URL для Kratos endpoint. */
-export function kratosUrl(path: string): string {
-  const base = config.kratosUrl.replace(/\/$/, "");
-  const p = path.startsWith("/") ? path : `/${path}`;
-  return `${base}${p}`;
-}
 
 /** Origin для DPoP htu (full URL: scheme + host + path). */
 export function appOrigin(): string {

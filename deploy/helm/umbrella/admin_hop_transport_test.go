@@ -5,18 +5,25 @@
 // the identity provider's ADMIN API in the clear, and none may carry it over TLS
 // with nothing to verify the peer against.
 //
-// WHAT RIDES THIS HOP. Since the revocation check moved onto the authN layer,
-// introspection runs on every authenticated request that misses the short-TTL
-// cache — and it asks about a bearer by SENDING it. So the wire carries a LIVE
-// END-USER credential, not merely administrative calls, and a bearer read off the
-// wire is usable by whoever read it until it expires. On the same host, iam's
-// facade carries the administrative bearer for every OAuth2 client registration,
-// trust grant and session teardown. The admin API authenticates nobody: reaching
-// it IS the authorization.
+// WHAT RIDES THIS HOP. iam's facade carries the administrative bearer for every
+// OAuth2 client registration, trust grant and session teardown. The admin API
+// authenticates nobody: reaching it IS the authorization.
 //
-// WHY THIS READS DECLARATIONS. Same reason as its neighbours token_shape_test.go
-// and revocation_endpoint_test.go: the contract is what the profiles DECLARE, it
-// needs no chart dependencies, and it therefore can never skip. The umbrella's
+// THE EDGE NO LONGER TAKES THIS HOP (#2734). It used to: introspection asked
+// about a bearer by SENDING it on every cache miss, and the logout ended the
+// provider-side session there. Both calls are retired together with their knobs,
+// and so are the cases that judged the edge's side of the hop.
+//
+// WHERE THIS LIVES (#2734). Both ends of the hop are the umbrella's: iam's side
+// is declared under the umbrella's `kaname` key, the listener's TLS switch at the
+// umbrella root. The edge takes no part in either, so the probe lives with the
+// umbrella chart rather than in gateway/deploy, where it used to sit. It moved
+// unchanged: same stacks, same findings.
+//
+// WHY THIS READS DECLARATIONS. Same reason as its neighbour token_shape_test.go
+// and as gateway/deploy/revocation_endpoint_test.go: the contract is what the
+// profiles DECLARE, it needs no chart dependencies, and it therefore can never
+// skip. The umbrella's
 // dependencies are not vendored, so a render-based check here would be skipped on
 // every machine that has not run `helm dep build` — which is exactly when it
 // would be needed.
@@ -26,7 +33,7 @@
 // iam's authn mode), not from a hard-coded list of names here. A hard-coded list
 // goes stale silently the moment a stand changes posture, and the stale entry
 // then exempts the very stack that just started needing the check.
-package deploy_test
+package umbrella_test
 
 import (
 	"fmt"
@@ -94,99 +101,7 @@ func stackIsProductionClass(t *testing.T, stack []string) bool {
 	return ok && strings.HasPrefix(strings.TrimSpace(mode), "production")
 }
 
-// Every production-class stack must address the gateway's two admin-API endpoints
-// over TLS. A plaintext address here is refused at start by the gateway's boot
-// guard — this gate is what keeps that refusal from being discovered on a stand.
-//
-// Whether the endpoints must EXIST is the edge posture's question, read the way
-// its boot guard reads it (provider_road_posture_test.go): required on
-// `external`, absent on `own`. A DECLARED address is judged for transport on
-// both postures, exactly as the guard judges it.
-func TestStacks_GatewayAdminHopIsNotInTheClear(t *testing.T) {
-	stacks := deployableStacks(t)
-	census := postureCensus{}
-	for _, name := range sortedStackNames(stacks) {
-		stack := stacks[name]
-		t.Run(name, func(t *testing.T) {
-			if !stackIsProductionClass(t, stack) {
-				t.Skipf("%s is dev-class by its own declaration — the transport requirement "+
-					"rides the same exemption as the gateway's boot guard", name)
-			}
-			merged := foldStack(t, stack)
-			facts := gatewayHopFacts{
-				Stack:   name,
-				Posture: readPosture(edgePostureHalf, merged, edgePostureHalf.chartDefaults(t)),
-			}
-			facts.Introspection, _ = scalarAt(merged, introspectionRoad.path...)
-			facts.Admin, _ = scalarAt(merged, adminRoad.path...)
-			facts.AdminCASecret, _ = scalarAt(merged, "api-gateway", "hydra", "adminCa", "secretName")
-			census.add(facts.Posture)
-			for _, f := range judgeGatewayAdminHop(facts) {
-				t.Error(f)
-			}
-		})
-	}
-	t.Logf("перепись боевых стеков по посадке края: %s", census)
-}
-
-// gatewayHopFacts — что слитая цепочка объявляет о переходе края к
-// административному API поставщика.
-type gatewayHopFacts struct {
-	Stack         string
-	Posture       postureReading
-	Introspection string
-	Admin         string
-	AdminCASecret string
-}
-
-// judgeGatewayAdminHop — чистая: находки о переходе края боевой цепочки.
-// Вход ей подаёт и дерево, и инъекция.
-func judgeGatewayAdminHop(f gatewayHopFacts) []string {
-	required, err := providerRoadRequired(edgePostureHalf.who, f.Posture)
-	if err != nil {
-		return []string{fmt.Sprintf("%s: %v", f.Stack, err)}
-	}
-	var out []string
-	hop := false
-	for _, knob := range []struct{ name, value string }{
-		{"introspectionUrl", f.Introspection}, {"adminUrl", f.Admin},
-	} {
-		got := strings.TrimSpace(knob.value)
-		if got == "" {
-			if required {
-				out = append(out, fmt.Sprintf("%s: api-gateway.hydra.%s is not declared", f.Stack, knob.name))
-			}
-			continue
-		}
-		hop = true
-		if err := requireTLSHop(got); err != nil {
-			out = append(out, fmt.Sprintf("%s: api-gateway.hydra.%s %v", f.Stack, knob.name, err))
-		}
-	}
-	anchored := strings.TrimSpace(f.AdminCASecret) != ""
-	switch {
-	case (required || hop) && !anchored:
-		// TLS without an anchor is not a partial improvement: the provider's
-		// in-cluster certificate is internal-CA issued, the gateway trusts the
-		// system roots, and the introspection layer files an unknown authority
-		// as a PERMANENT misconfiguration — after which it refuses every request.
-		out = append(out, fmt.Sprintf("%s: api-gateway.hydra.adminCa.secretName is not declared "+
-			"while the hop is https — the gateway would verify against the system roots, which "+
-			"an internal-CA certificate never chains to, and then refuse every request", f.Stack))
-	case !required && !hop && anchored:
-		// Якорь без перехода. Он называет секрет сертификата административного
-		// слушателя поставщика, а шаблон края монтирует его томом без
-		// `optional`: на посадке без поставщика секрет выпускать некому, и под
-		// края с таким монтированием не стартует.
-		out = append(out, fmt.Sprintf("%s: посадка края — %s, адресов перехода к поставщику нет, "+
-			"а api-gateway.hydra.adminCa.secretName объявлен (%q): якорь проверяет переход, "+
-			"которого нет, и называет секрет сертификата слушателя, которого нет, — том с ним "+
-			"не смонтируется, и под края не стартует", f.Stack, f.Posture.Provider, f.AdminCASecret))
-	}
-	return out
-}
-
-// And the same for iam, the platform's sole facade to the provider. Its hop must
+// iam is the platform's sole facade to the provider. Its hop must
 // additionally be DECLARED rather than derived: the derivation is never empty, so
 // a profile that never named the address still read as configured — while
 // addressing the public ingress hostname, which does not resolve in-cluster.
@@ -295,8 +210,6 @@ func requireTLSHop(raw string) error {
 // finding. Pairing a declaration-built registry with a mechanical walk is the
 // general rule, not a fix for this hop — see that gate's header.
 var adminHopConsumers = map[string][]string{
-	"api-gateway.hydra.introspectionUrl":  {"api-gateway", "hydra", "introspectionUrl"},
-	"api-gateway.hydra.adminUrl":          {"api-gateway", "hydra", "adminUrl"},
 	"kaname.platform.iam.hydraAdminUrl":   {"kaname", "platform", "iam", "hydraAdminUrl"},
 	"kratos-selfservice-ui…hydraAdminUrl": {"kratos-selfservice-ui", "kratosSelfServiceUI", "hydraAdminUrl"},
 }

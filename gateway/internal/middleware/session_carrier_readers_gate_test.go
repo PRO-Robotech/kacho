@@ -192,8 +192,8 @@ func TestSessionCarrierReaders_OnePredicatePerSideAndItLivesInOneFile(t *testing
 	sort.Strings(strays)
 	for _, s := range strays {
 		t.Errorf("носитель читается вне %s: %s. Предикат объявлен ОДНИМ на сторону, и копия его "+
-			"расходится молча: в состоянии, где живы оба читателя, разные ответы на «наш ли это "+
-			"запрос» означают, что действующая личность зависит от задетой полосы",
+			"расходится молча: разные ответы на «наш ли это запрос» означают, что действующая "+
+			"личность зависит от задетой полосы",
 			carrierReadersHome, s)
 	}
 	t.Logf("перепись: ОБЛАСТЬ — пакет полос (internal/middleware); непроверочных файлов "+
@@ -214,7 +214,7 @@ func judgeCarrierReadFixture(t *testing.T, src string) map[string][]string {
 		t.Fatalf("синтетика не разбирается: %v", err)
 	}
 	return carrierReadSites(fset, map[string]*ast.File{"elsewhere.go": f},
-		[]string{"OurSessionCarrierName", "providerSessionCarrierName"})
+		[]string{"OurSessionCarrierName"})
 }
 
 // Дефект: вторая копия чтения вне дома предикатов — красное с координатой.
@@ -250,7 +250,6 @@ func me(r *http.Request) {
 	if bearer, ours := ourSessionCarrierOf(r); ours {
 		_ = bearer
 	}
-	_ = providerSessionCarrierPresented(r)
 }
 `)
 	if len(got) != 0 {

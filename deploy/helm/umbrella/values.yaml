@@ -696,13 +696,6 @@ kacho-geo:
 api-gateway:
   image: docker.io/prorobotech/kacho-api-gateway:main-d941344b
   imagePullPolicy: IfNotPresent
-  # Публичный адрес поставщика личности — `disabled`, то самое слово, которым
-  # край выключает полосу чтения его сессии. Пустое значение здесь НЕ годится:
-  # шаблон чарта края выводит из пустого адрес по имени выпуска, и под объявлял
-  # бы адрес службы, которой ни на одном стенде нет. Читателя сессии поставщика
-  # край под посадкой `own` не заводит и так (множество носителей выводится из
-  # посадки); саму ручку снимает вместе с читателем волна-3 (#2797).
-  kratosPublicUrl: disabled
   # INFRA sec-hardening r3 — the sub-chart's own ingress backends the plaintext
   # `cmux` port, which is the CLUSTER-INTERNAL (unmarked) listener and therefore
   # serves Internal* REST to any external caller. Disable it and let the umbrella
