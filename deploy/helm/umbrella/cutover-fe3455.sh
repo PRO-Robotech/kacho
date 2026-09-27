@@ -249,8 +249,10 @@ helm dependency build . >/dev/null \
 # ТРЕБУЕМОЕ МНОЖЕСТВО ВЫВОДИТСЯ, А НЕ ВЫПИСЫВАЕТСЯ. Три источника, и каждый
 # закрывает то, чего не видят два других:
 #
-#   (а) ОБЯЗАТЕЛЬНЫЕ `secretKeyRef` отрендеренного стека — их kubelet не
-#       подставит вовсе, контейнер не стартует;
+#   (а) ОБЯЗАТЕЛЬНЫЕ ссылки отрендеренного стека (`secretKeyRef`, `envFrom`,
+#       том, том `projected`) — их kubelet не подставит вовсе, контейнер не
+#       стартует. Выводит их ЕДИНСТВЕННАЯ производная дерева
+#       (deploy/scripts/required-secrets.py), та же, что у `make stack-up`;
 #   (б) секреты, которые заводит ПОСЕВ СТЕНДА: на боевой площадке он не зовётся,
 #       а ссылки на них НЕОБЯЗАТЕЛЬНЫ — то есть под поднимется и откажет позже,
 #       уже своим стражем старта. Рендер про них молчит by construction;
@@ -278,31 +280,21 @@ RENDER="$(helm template "$RELEASE" . -n "$NS" "${FE_ARGS[@]}" --set uif.enabled=
 SEED_SH="$CHART_DIR/../../scripts/dev-prod-secrets.sh"
 [ -f "$SEED_SH" ] || die "скрипт посева $SEED_SH не найден — вторую половину требуемого множества вывести не из чего."
 
+# Код производной ПОТРЕБОВАН отдельным присваиванием: внутри группы ниже статус
+# группы — статус её последней команды, и отказ производной терялся бы молча.
+RENDER_NEED="$(printf '%s\n' "$RENDER" | python3 "$CHART_DIR/../../scripts/required-secrets.py")" \
+  || die "производная требуемых секретов отказала (её текст выше) — предполёт отказывается судить по неполному списку."
 REQUIRED="$(
   {
-    # (а) обязательные ссылки отрендеренных подов, за вычетом секретов, которые
-    #     создаёт сам рендер.
-    printf '%s\n' "$RENDER" | python3 -c '
-import sys, yaml
-docs=[d for d in yaml.safe_load_all(sys.stdin) if isinstance(d, dict)]
-own={d["metadata"]["name"] for d in docs if d.get("kind")=="Secret"}
-need=set()
-for d in docs:
-    spec=d.get("spec") or {}
-    tpl=spec.get("template") or ((spec.get("jobTemplate") or {}).get("spec") or {}).get("template")
-    if not tpl: continue
-    pod=tpl.get("spec") or {}
-    for c in (pod.get("containers") or [])+(pod.get("initContainers") or []):
-        for e in c.get("env") or []:
-            r=(e.get("valueFrom") or {}).get("secretKeyRef")
-            if r and not r.get("optional", False) and r["name"] not in own:
-                need.add(r["name"])
-    for v in pod.get("volumes") or []:
-        s=v.get("secret")
-        if s and not s.get("optional", False) and s.get("secretName") and s["secretName"] not in own:
-            need.add(s["secretName"])
-print("\n".join(sorted(need)))
-'
+    # (а) обязательные ссылки отрендеренных подов, за вычетом того, что
+    #     производит само это применение, — ЕДИНСТВЕННОЙ производной дерева
+    #     (задача #891). Здесь стояла встроенная копия, и она разошлась с
+    #     копией `make stack-up`: не читала `envFrom` (учётные данные объектного
+    #     хранилища держала только таблица ниже) и требовала до применения 25
+    #     секретов, которые чеканит cert-manager ИЗ ЭТОГО ЖЕ применения, — на
+    #     свежем кластере предполёт отказал бы на законной первой установке.
+    #     Формы ссылок, вычитаемое и исходы — в шапке required-secrets.py.
+    printf '%s\n' "$RENDER_NEED"
     # (б) секреты, которые на стенде заводит посев: здесь его никто не зовёт.
     grep -oE 'create secret generic [a-z0-9][a-z0-9-]*' "$SEED_SH" | awk '{print $4}'
     # (в) те, что заводит только человек.

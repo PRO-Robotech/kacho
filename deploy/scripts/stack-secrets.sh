@@ -48,7 +48,9 @@
 # Три источника, и каждый закрывает то, чего не видят два других:
 #
 #   (а) ОБЯЗАТЕЛЬНЫЕ ссылки отрендеренного стенда (`secretKeyRef`, `envFrom`,
-#       том): их kubelet не подставит вовсе, контейнер не стартует;
+#       том, том `projected`): их kubelet не подставит вовсе, контейнер не
+#       стартует. Выводит их ЕДИНСТВЕННАЯ производная дерева —
+#       `required-secrets.py`; её же зовёт рецепт боевой раскатки;
 #   (б) секреты, которые заводит ПОСЕВ: ссылки на них НЕОБЯЗАТЕЛЬНЫ, под
 #       поднимется и откажет позже уже стражем старта службы — рендер про них
 #       молчит by construction;
@@ -58,6 +60,10 @@
 # Из (а) ВЫЧИТАЕТСЯ то, что производит сам выкат: `kind: Secret` рендера и
 # `spec.secretName` каждого `Certificate` — их чеканит cert-manager из того же
 # применения, требовать их ДО него значило бы требовать невозможного.
+#
+# Что каждое объявление `existingSecret` в цепочке стенда попадает в (а) либо
+# производится самим рендером, а этот шаг стоит в рецепте РАНЬШЕ применения,
+# держит гейт дерева tests/helm/declared-secret-refused-before-apply-test.sh.
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # ВЕЛИЧИНА ПОРОЖДАЕТСЯ ОДНАЖДЫ И ПЕРЕИСПОЛЬЗУЕТСЯ
@@ -92,6 +98,39 @@ log()  { printf '=== stack-secrets: %s\n' "$1"; }
 warn() { printf 'stack-secrets: %s\n' "$1" >&2; }
 die()  { printf 'ABORT: stack-secrets — %s\n' "$1" >&2; exit "${2:-1}"; }
 
+# ── ВЕДОМОСТЬ ПРОИЗВОДИТЕЛЕЙ ────────────────────────────────────────────────
+# Строка объясняет, КТО заводит секрет на управляемой площадке; функция `produce`
+# ниже умеет завести его на локальном стенде. Секрет без строки — находка, а не
+# «наверное, появится»: отказ назовёт его отдельно.
+#
+# Стоит ВЫШЕ проверок инструментов и кластера намеренно: её же спрашивает гейт
+# дерева (`--producer-of`, ниже), и вопрос «кто производитель у этого имени» не
+# должен требовать ни кластера, ни рендера. Вторая копия ведомости в гейте
+# разошлась бы с этой молча — ровно там, где отказ называет производителя.
+producer_of() {
+  case "$1" in
+    kaname-hook-token)        echo "посев dev-prod-secrets.sh · на площадке — оператор: общий секрет обратных вызовов, ключ token" ;;
+    kaname-jwks-enc-key)      echo "посев dev-prod-secrets.sh · на площадке — оператор: ключ обёртки подписного ключа, ключ enc_key" ;;
+    kaname-second-factor-enc-key) echo "посев dev-prod-secrets.sh · на площадке — оператор: ключ обёртки секретов второго фактора, ключ enc_key" ;;
+    kaname-bootstrap-sa-key)  echo "посев dev-prod-secrets.sh · на площадке — оператор: ключ ES256 учётки первичной чеканки, ключ private_key_pem" ;;
+    "$RELEASE"-pg-*)          echo "учётные данные базы (ключи password + postgres-password) — профиль объявляет их existingSecret, на площадке заводит оператор" ;;
+    zot-auth)                 echo "учётные данные хранилища слоёв (username + password + htpasswd, bcrypt того же пароля) — на площадке заводит оператор" ;;
+    kratos-selfservice-ui-cookie-secret) echo "подписной секрет печенья консоли входа (ключ cookieSecret, 32 знака) — на площадке заводит оператор" ;;
+    "$RELEASE"-hydra-stand|"$RELEASE"-kratos-stand) echo "секрет поставщика ВНЕ helm (ключи dsn + величины сессий) — вторая законная форма из identity-session-secret-guard; на площадке заводит слой площадки" ;;
+    *)                        echo "" ;;
+  esac
+}
+
+# --producer-of ИМЯ… — «имя<TAB>производитель» по строке на имя; пустой
+# производитель печатается пустым полем, а не пропускается. Ни кластера, ни
+# рендера не требует: это вопрос к ведомости, а не к стенду.
+if [ "${1:-}" = "--producer-of" ]; then
+  shift
+  [ "$#" -gt 0 ] || die "--producer-of без имён — спрашивать не о чем" 2
+  for n in "$@"; do printf '%s\t%s\n' "$n" "$(producer_of "$n")"; done
+  exit 0
+fi
+
 STACK="${1:-}"
 [ -n "$STACK" ] || die "имя стенда не задано. Умолчания здесь быть не может: скрипт
        смотрит на кластер активного контекста, а «наверное, dev» — не выбор стенда." 2
@@ -115,54 +154,37 @@ kubectl -n "$NS" get namespace "$NS" >/dev/null 2>&1 \
   || die "кластер не отвечает: ни прочитать, ни завести namespace '$NS'" 2
 
 # ── Рендер ТОЙ ЖЕ цепочки, которой пойдёт выкатка ───────────────────────────
+# stderr helm — ОТДЕЛЬНО от рендера. Прежде он уезжал в ту же переменную
+# (`2>&1`), и предупреждение инструмента становилось первым «документом» потока,
+# который дальше разбирается как YAML: разбор мог упасть не по вине стенда, а
+# строка соединения базы собиралась бы из того же смешанного текста.
+render_err="$(mktemp)"
 # shellcheck disable=SC2086  # $ARGS — намеренно раскрываемый набор -f
-RENDER="$(helm template "$RELEASE" "$UMBRELLA" -n "$NS" $ARGS "$@" 2>&1)" || {
-  printf '%s\n' "$RENDER" >&2
+RENDER="$(helm template "$RELEASE" "$UMBRELLA" -n "$NS" $ARGS "$@" 2>"$render_err")" || {
+  cat "$render_err" >&2; rm -f "$render_err"
   die "helm template цепочки '$STACK' отказал (его текст выше) — вывести требуемое не из чего.
        Это отказ, а не пустой успех: предполёт, который ничего не прочитал, неотличим
        от предполёта, которому нечего сказать." 2
 }
+rm -f "$render_err"
 
+# ОБЯЗАТЕЛЬНЫЕ ССЫЛКИ РЕНДЕРА — ЕДИНСТВЕННОЙ ПРОИЗВОДНОЙ ДЕРЕВА (задача #891).
+# Здесь стояла встроенная копия; её близнец в рецепте боевой раскатки разошёлся
+# с ней в обе стороны (не читал `envFrom`, требовал секреты, которые чеканит
+# cert-manager того же применения), а тома `projected` не читал ни один. Формы
+# ссылок, вычитаемое и исходы — в шапке `required-secrets.py`.
+#
+# КОД ПРОИЗВОДНОЙ ПОТРЕБОВАН ОТДЕЛЬНЫМ ПРИСВАИВАНИЕМ, а не оставлен внутри группы
+# ниже: у `{ …; } | sort` статус группы — статус её ПОСЛЕДНЕЙ команды, и отказ
+# производной (рендер не разобран, прочитано ноль) терялся бы молча — предполёт
+# шёл бы дальше с перечнем, в котором нет половины.
+RENDER_NEED="$(printf '%s\n' "$RENDER" | python3 "$HERE/required-secrets.py")" \
+  || die "производная требуемых секретов отказала (её текст выше) — судить по неполному
+       перечню значило бы пропустить выкатку, которой секрета не хватит" 2
 seed_verb='create secret'
 REQUIRED="$(
   {
-    printf '%s\n' "$RENDER" | python3 -c '
-import sys, yaml
-docs=[d for d in yaml.safe_load_all(sys.stdin) if isinstance(d, dict)]
-# Производит сам выкат: Secret рендера и то, что чеканит cert-manager по Certificate.
-made={d["metadata"]["name"] for d in docs if d.get("kind")=="Secret"}
-made|={(d.get("spec") or {}).get("secretName") for d in docs if d.get("kind")=="Certificate"}
-made.discard(None)
-# Имя, названное в аргументах задания (Job) ТОГО ЖЕ применения, этим
-# применением и заводится (напр. `--secret-name=…` у создателя удостоверения
-# вебхука допуска). Требовать его ДО применения значит требовать невозможного.
-for d in docs:
-    if d.get("kind")!="Job": continue
-    pod=((d.get("spec") or {}).get("template") or {}).get("spec") or {}
-    for c in (pod.get("containers") or [])+(pod.get("initContainers") or []):
-        for a in (c.get("command") or [])+(c.get("args") or []):
-            for part in str(a).replace("="," ").split():
-                made.add(part)
-need=set()
-def scan(pod):
-    for c in (pod.get("containers") or [])+(pod.get("initContainers") or []):
-        for e in c.get("env") or []:
-            r=(e.get("valueFrom") or {}).get("secretKeyRef")
-            if r and not r.get("optional", False): need.add(r["name"])
-        for ef in c.get("envFrom") or []:
-            r=ef.get("secretRef")
-            if r and not r.get("optional", False): need.add(r["name"])
-    for v in pod.get("volumes") or []:
-        s=v.get("secret")
-        if s and s.get("secretName") and not s.get("optional", False): need.add(s["secretName"])
-for d in docs:
-    spec=d.get("spec") or {}
-    if d.get("kind")=="Pod":
-        scan(spec); continue
-    tpl=spec.get("template") or ((spec.get("jobTemplate") or {}).get("spec") or {}).get("template")
-    if tpl: scan(tpl.get("spec") or {})
-print("\n".join(sorted(n for n in need if n not in made)))
-'
+    printf '%s\n' "$RENDER_NEED"
     # ОБРАЗЕЦ ПОИСКА ПО ЧУЖОМУ ФАЙЛУ, А НЕ ЗАВЕДЕНИЕ СЕКРЕТА, и глагол собран из
     # двух частей именно поэтому. Гейт дисциплины ключевого материала
     # (tests/helm/secret-material-survives-recreation-test.sh) разбирает КАЖДЫЙ
@@ -201,23 +223,8 @@ is_local_stand() {
   [ -n "$want" ] && [ "$want" = "$have" ]
 }
 
-# ── ВЕДОМОСТЬ ПРОИЗВОДИТЕЛЕЙ ────────────────────────────────────────────────
-# Строка объясняет, КТО заводит секрет на управляемой площадке; функция ниже
-# умеет завести его на локальном стенде. Секрет без строки — находка, а не
-# «наверное, появится»: отказ назовёт его отдельно.
-producer_of() {
-  case "$1" in
-    kaname-hook-token)        echo "посев dev-prod-secrets.sh · на площадке — оператор: общий секрет обратных вызовов, ключ token" ;;
-    kaname-jwks-enc-key)      echo "посев dev-prod-secrets.sh · на площадке — оператор: ключ обёртки подписного ключа, ключ enc_key" ;;
-    kaname-second-factor-enc-key) echo "посев dev-prod-secrets.sh · на площадке — оператор: ключ обёртки секретов второго фактора, ключ enc_key" ;;
-    kaname-bootstrap-sa-key)  echo "посев dev-prod-secrets.sh · на площадке — оператор: ключ ES256 учётки первичной чеканки, ключ private_key_pem" ;;
-    "$RELEASE"-pg-*)          echo "учётные данные базы (ключи password + postgres-password) — профиль объявляет их existingSecret, на площадке заводит оператор" ;;
-    zot-auth)                 echo "учётные данные хранилища слоёв (username + password + htpasswd, bcrypt того же пароля) — на площадке заводит оператор" ;;
-    kratos-selfservice-ui-cookie-secret) echo "подписной секрет печенья консоли входа (ключ cookieSecret, 32 знака) — на площадке заводит оператор" ;;
-    "$RELEASE"-hydra-stand|"$RELEASE"-kratos-stand) echo "секрет поставщика ВНЕ helm (ключи dsn + величины сессий) — вторая законная форма из identity-session-secret-guard; на площадке заводит слой площадки" ;;
-    *)                        echo "" ;;
-  esac
-}
+# Ведомость производителей (`producer_of`) стоит в начале файла — её спрашивает и
+# гейт дерева, без кластера.
 
 # create_generic <имя> <ключ=значение>… — чеканит ОДИН раз; уже существующий
 # объект не трогает вовсе.

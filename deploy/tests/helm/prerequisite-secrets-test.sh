@@ -25,7 +25,8 @@
 # меняется только то, что теперь под ней два профиля, а не один.
 #
 # ЧТО ИМЕННО УТВЕРЖДАЕТСЯ (для каждого разворачиваемого профиля):
-#   для КАЖДОЙ обязательной secretKeyRef-ссылки в отрендеренных подах —
+#   для КАЖДОЙ обязательной ссылки на секрет в отрендеренных подах (любой из
+#   четырёх форм, которые знает scripts/required-secrets.py) —
 #   имя секрета либо встречается среди Secret'ов самого рендера, либо создаётся
 #   скриптом, который ЗОВЁТ цель Makefile, разворачивающая этот профиль.
 # Второе условие проверяется по ОБОИМ файлам сразу: скрипт заводит секрет И цель
@@ -99,31 +100,24 @@ provisioned_by() {
 }
 
 # unmet <render-файл> <список-заводимых-секретов> → строки «<секрет> <потребитель>»
+#
+# ОБЯЗАТЕЛЬНЫЕ ССЫЛКИ — ОТ ЕДИНСТВЕННОЙ ПРОИЗВОДНОЙ ДЕРЕВА (задача #891). Здесь
+# стояла третья копия, и она читала ОДНУ форму из четырёх (`secretKeyRef`): под,
+# которому секрет нужен томом или `envFrom`, проходил эту проверку молча, хотя
+# kubelet его так же не запустит. Та же производная стоит в обоих рецептах
+# раската; формы, вычитаемое и исходы — в шапке scripts/required-secrets.py.
+#
+# Код производной ТРЕБУЕТСЯ: пустой вывод при её отказе читался бы как «всё
+# обеспечено». Вызывающий обязан потребовать код этой функции.
+DERIVE="$REPO_ROOT/scripts/required-secrets.py"
 unmet() {
-  python3 - "$1" "$2" <<'PY'
-import sys, yaml
-provisioned = set(sys.argv[2].split())
-docs = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
-provided = {d['metadata']['name'] for d in docs if d.get('kind') == 'Secret'}
-seen = set()
-for d in docs:
-    spec = d.get('spec') or {}
-    tpl = spec.get('template') or (spec.get('jobTemplate') or {}).get('spec', {}).get('template')
-    if not tpl:
-        continue
-    pod = tpl.get('spec', {})
-    for c in pod.get('containers', []) + pod.get('initContainers', []):
-        for e in c.get('env', []):
-            r = (e.get('valueFrom') or {}).get('secretKeyRef')
-            if r and not r.get('optional', False):
-                name = r['name']
-                if name in provided or name in provisioned:
-                    continue
-                key = (name, d['metadata']['name'])
-                if key not in seen:
-                    seen.add(key)
-                    print(f"{name} {d['metadata']['name']}")
-PY
+  local need prov
+  need="$(python3 "$DERIVE" --explain <"$1")" || return 2
+  # Ведомость заводимых приходит строками (так её печатает `provisioned_by`), а
+  # сопоставление идёт по словам — разделитель приводится к одному.
+  prov=" $(printf '%s' "$2" | tr '\n' ' ') "
+  printf '%s\n' "$need" | awk -F'\t' -v prov="$prov" '
+    NF >= 3 && index(prov, " " $1 " ") == 0 { n = split($3, o, "/"); print $1, o[n] }' | sort -u
 }
 
 self_test() {
@@ -139,10 +133,13 @@ self_test() {
   printf '%s\n' "$HELM_OUT" > "$render"
   prov="$(provisioned_by dev-prod-up)"
 
-  echo "  (0) дерево как есть                    → $( [ -z "$(unmet "$render" "$prov")" ] && echo МОЛЧИТ || { echo "красный:"; unmet "$render" "$prov"; rc=1; } )"
+  local zero
+  zero="$(unmet "$render" "$prov")" || { echo "  (0) производная отказала на рендере — самопроверка не выполнена"; return 2; }
+  if [ -z "$zero" ]; then echo "  (0) дерево как есть                    → МОЛЧИТ"
+  else echo "  (0) дерево как есть                    → красный: $(printf '%s' "$zero" | tr '\n' ';')"; rc=1; fi
 
   # (A) ИНЪЕКЦИЯ: цель перестала звать скрипт секретов (ровно исходный дефект)
-  local out; out="$(unmet "$render" "")"
+  local out; out="$(unmet "$render" "")" || { echo "  (A) производная отказала на рендере — самопроверка не выполнена"; return 2; }
   if [[ "$out" == *'kaname-hook-token'* ]]; then
     echo "  (A) цель не зовёт scripts/dev-prod-secrets.sh → КРАСНЫЙ с координатой: $(printf '%s' "$out" | tr '\n' ';')"
   else
@@ -236,7 +233,8 @@ for entry in "${PROFILES[@]}"; do
   render_or_fatal "профиль цели $target"
   printf '%s\n' "$HELM_OUT" > "$render"
   prov="$(provisioned_by "$target")"
-  out="$(unmet "$render" "$prov")"
+  out="$(unmet "$render" "$prov")" \
+    || fatal "производная требуемых секретов отказала на рендере цели $target — судить не о чем"
   if [ -n "$out" ]; then
     rm -f "$render"
     printf '%s\n' "$out" | while read -r s c; do
