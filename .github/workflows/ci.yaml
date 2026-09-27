@@ -2066,6 +2066,15 @@ jobs:
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310  # v5
         with:
           version: v4.2.4
+      # kubectl — БИНАРЬ, кластера это задание не видит. Он нужен пробе порядка
+      # cert-manager (deploy/tests/helm/cert-manager-release-before-product-test.sh,
+      # kacho#2840): её подставной kubectl сперва отдаёт флаги каждого вызова
+      # настоящему (`<args> --help`), чтобы не быть снисходительнее его. Без
+      # kubectl проба отвечает «условие не создано» (код 2), и манифест-проверки
+      # выходят тем же кодом — на пуле, где kubectl в образе нет. Проба
+      # исполняется циклом по каталогу, поэтому нужду видит гейт
+      # assert-jobs-provide-their-tools.py только с разбором такого цикла.
+      - uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d  # v5
 
       # Go нужен ровно одному шагу — пробам под тегом `helmcharts`, которые
       # РЕНДЕРЯТ умбреллу: их условие создаёт `helm dependency build` (локальные
@@ -2101,12 +2110,24 @@ jobs:
       # читается как «продукт сломан» и тратит круг на разбор, которого нет.
       # Код возврата берётся как ДАННЫЕ: под `bash -e` шелл оборвался бы до
       # развилки (`git-issues-ci-runs.md` §«Шаг конвейера исполняется под bash -e»).
-      - name: условие прогона — yq (mikefarah v4) и jq
+      #
+      # openssl и make — та же ось. Их отказывающиеся предусловия стоят в пробах
+      # каталога deploy/tests/helm (посев чеканит величины openssl; проба порядка
+      # cert-manager исполняет цель make), а каталог исполняется циклом, и до
+      # разбора цикла гейт этих нужд не видел. Пакеты ставятся одной командой и
+      # только когда хоть одного инструмента нет: на пуле, где они в образе,
+      # шаг не трогает apt вовсе.
+      - name: условие прогона — yq (mikefarah v4), jq, openssl, make
         run: |
           rc=0
           go install github.com/mikefarah/yq/v4@v4.53.6 || rc=$?
-          if [ "$rc" -eq 0 ] && ! command -v jq >/dev/null 2>&1; then
-            sudo apt-get install -y -qq jq || rc=$?
+          missing=""
+          for t in jq openssl make; do
+            command -v "$t" >/dev/null 2>&1 || missing="$missing $t"
+          done
+          if [ "$rc" -eq 0 ] && [ -n "$missing" ]; then
+            echo "нет в образе:$missing — ставятся"
+            sudo apt-get install -y -qq jq openssl make || rc=$?
           fi
           if [ "$rc" -ne 0 ]; then
             echo "::error title=условие не создано::инструмент не установился (код $rc). Это НЕ ВЫПОЛНИЛОСЬ, а не красный вердикт о продукте: о дереве этот прогон не сказал ничего."
@@ -2114,6 +2135,8 @@ jobs:
           fi
           yq --version
           jq --version
+          openssl version
+          command -v make
 
       # Оба гейта ниже СУЩЕСТВОВАЛИ и не вызывались ниоткуда: единственным их
       # упоминанием был прогонщик самопроверок, а он запускает гейт против
