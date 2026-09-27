@@ -78,13 +78,15 @@ const (
 )
 
 // runServe — composition root: единственное место wiring, без глобальных синглтонов.
-func runServe(cfg config.Config) error {
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-	defer cancel()
-
-	logger := observability.NewSlogger(os.Stdout)
-	slog.SetDefault(logger)
-
+// startGuards — стражи старта, судящие ТОЛЬКО величины конфигурации: всё, что
+// корень отвергает до первого побочного действия (пула, хранилища слоёв,
+// слушателей).
+//
+// Одна функция, а не россыпь вызовов в runServe, потому что у этих стражей ДВА
+// потребителя: процесс на старте и проба развёртываемых стендов
+// (`stack_start_guards_test.go`, kacho#941), которая подаёт им окружение каждой
+// цепочки профилей. Второй перечень стражей в пробе разошёлся бы с этим молча.
+func startGuards(cfg config.Config, logger *slog.Logger) error {
 	if err := validateAuthMode(cfg, logger); err != nil {
 		return err
 	}
@@ -102,6 +104,28 @@ func runServe(cfg config.Config) error {
 	// Хранилище слоёв аутентифицирует всех: без учётных данных сервис не смог бы в
 	// него ходить — а значит хранилище открыто любому в сети подов.
 	if err := requireZotCredentials(cfg.Posture(), cfg.ZotAddr, cfg.ZotUsername, cfg.ZotPassword); err != nil {
+		return err
+	}
+	// Plaintext data-plane обязан стоять за внешней TLS-терминацией: условие то же,
+	// при котором корень поднимает плоскость данных (непустой адрес). Страж стоял
+	// внутри сборки обработчика плоскости — то есть отказывал ПОСЛЕ открытия пула —
+	// и был вне досягаемости пробы стендов.
+	if cfg.DataplaneAddr != "" {
+		if err := requireDataplaneTLSAck(cfg.Posture(), cfg.DataplaneTLSTerminatedExternally); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func runServe(cfg config.Config) error {
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer cancel()
+
+	logger := observability.NewSlogger(os.Stdout)
+	slog.SetDefault(logger)
+
+	if err := startGuards(cfg, logger); err != nil {
 		return err
 	}
 	// Самоотчёт о security-posture: ПОСЛЕ boot-guard'ов (validateAuthMode +
@@ -738,10 +762,8 @@ func buildDataplaneHandler(cfg config.Config, authzConn *grpc.ClientConn, repoRe
 	// Plaintext data-plane обязан стоять за внешней TLS-терминацией (bearer
 	// identity-JWT не должны транзитить открытым текстом). В проде — явный ack
 	// оператора; проверяется независимо от breakglass (риск открытого сокета
-	// ортогонален обходу authz).
-	if err := requireDataplaneTLSAck(cfg.Posture(), cfg.DataplaneTLSTerminatedExternally); err != nil {
-		return nil, err
-	}
+	// ортогонален обходу authz). Страж исполняется в startGuards — до первого
+	// побочного действия корня, при том же условии (непустой адрес плоскости).
 
 	forwarder, err := dataplane.NewZotForwarder(cfg.ZotAddr, logger,
 		dataplane.WithZotBasicAuth(cfg.ZotUsername, cfg.ZotPassword))

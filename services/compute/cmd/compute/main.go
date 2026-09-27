@@ -121,6 +121,23 @@ type services struct {
 	quota *handler.QuotaHandler
 }
 
+// startGuards — стражи старта, судящие ТОЛЬКО величины конфигурации: всё, что
+// корень отвергает до первого побочного действия (пула, соседей, слушателей).
+//
+// Одна функция, а не россыпь вызовов в runServe, потому что у этих стражей ДВА
+// потребителя: процесс на старте и проба развёртываемых стендов
+// (`stack_start_guards_test.go`, kacho#941), которая подаёт им окружение каждой
+// цепочки профилей. Второй перечень стражей в пробе разошёлся бы с этим молча.
+func startGuards(cfg config.Config, logger *slog.Logger) (productionMode bool, err error) {
+	// Стража круга отправителей живёт рядом с конфигурацией и срабатывает на ЛЮБОМ
+	// non-breakglass старте — поэтому зовётся здесь, до разбора режима, а не
+	// внутри его боевых веток.
+	if verr := cfg.Validate(); verr != nil {
+		return false, verr
+	}
+	return validateAuthMode(cfg, logger)
+}
+
 func runServe(cfg config.Config) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
@@ -128,14 +145,7 @@ func runServe(cfg config.Config) error {
 	logger := observability.NewSlogger(os.Stdout)
 	slog.SetDefault(logger)
 
-	// Стража круга отправителей живёт рядом с конфигурацией и срабатывает на ЛЮБОМ
-	// non-breakglass старте — поэтому зовётся здесь, до разбора режима, а не
-	// внутри его боевых веток.
-	if verr := cfg.Validate(); verr != nil {
-		return verr
-	}
-
-	productionMode, err := validateAuthMode(cfg, logger)
+	productionMode, err := startGuards(cfg, logger)
 	if err != nil {
 		return err
 	}
