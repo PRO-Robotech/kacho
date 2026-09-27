@@ -26,6 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/handler"
+	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
@@ -105,10 +106,15 @@ func newEdgeUnderOwn(t *testing.T, issuance *formListenerStub, mount bool) *edge
 	return e
 }
 
+// serve — запрос так, как его видит цепочка в корне, где обёрнут каждый
+// слушатель: соединение с меткой внутреннего слушателя остаётся внутренним,
+// любое другое принято внешним слушателем (`onExternalListener`). Соединение
+// без метки — `serveUnmarked`.
 func (e *edgeUnderOwn) serve(req *http.Request) *httptest.ResponseRecorder {
-	rec := httptest.NewRecorder()
-	e.chain.ServeHTTP(rec, req)
-	return rec
+	if listenerorigin.IsExternal(req.Context()) {
+		req = onExternalListener(req)
+	}
+	return e.serveUnmarked(req)
 }
 
 // refusingChecker — модель прав, отказывающая всем: до неё доходит лишь то, у
@@ -372,4 +378,12 @@ func TestCeremonyRelay_L13_TheEdgeLogCarriesNeitherTheQueryNorTheCode(t *testing
 	for _, secret := range []string{"st-0123456789abcdef", "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", "ac-SECRET-0001", "code_challenge", "redirect_uri"} {
 		require.NotContains(t, log, secret, "журнал края несёт часть строки запроса либо код авторизации")
 	}
+}
+
+// serveUnmarked — запрос с соединения, которое не пометила ни одна обёртка
+// слушателя: контекст запроса передаётся цепочке как есть.
+func (e *edgeUnderOwn) serveUnmarked(req *http.Request) *httptest.ResponseRecorder {
+	rec := httptest.NewRecorder()
+	e.chain.ServeHTTP(rec, req)
+	return rec
 }

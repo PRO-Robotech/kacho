@@ -117,7 +117,7 @@ func TestLoginLaneRelay_F12_38_EveryDeclaredVerbCarriesTheNamedCompositionOnly(t
 				before := stub.count()
 				req, body, contentType := forgedFormRequest(rt)
 				rec := httptest.NewRecorder()
-				chain.ServeHTTP(rec, req)
+				chain.ServeHTTP(rec, onExternalListener(req))
 				if rec.Code != http.StatusOK || stub.count() != before+1 {
 					t.Errorf("%s: глагол обязан ретранслироваться; получено %d, дошло до службы %d", rt.Verb, rec.Code, stub.count()-before)
 					continue

@@ -171,7 +171,7 @@ func TestLoginLaneRelay_2721_TokenRecordCarriesClientBasicToIssuance(t *testing.
 				req.AddCookie(&http.Cookie{Name: middleware.OurSessionCarrierName, Value: "s2-live"})
 
 				rec := httptest.NewRecorder()
-				e.chain.ServeHTTP(rec, req)
+				e.chain.ServeHTTP(rec, onExternalListener(req))
 				if rec.Code != http.StatusOK || e.listener.count() != 1 {
 					t.Fatalf("обмен кода обязан дойти до слушателя выдачи: код %d, дошло %d, тело %s",
 						rec.Code, e.listener.count(), rec.Body.String())
@@ -216,7 +216,7 @@ func TestLoginLaneRelay_2721_TokenRecordStillStripsBearer(t *testing.T) {
 			req.AddCookie(&http.Cookie{Name: middleware.OurSessionCarrierName, Value: "s2-live"})
 
 			rec := httptest.NewRecorder()
-			e.chain.ServeHTTP(rec, req)
+			e.chain.ServeHTTP(rec, onExternalListener(req))
 			if rec.Code != http.StatusOK || e.listener.count() != 1 {
 				t.Fatalf("обмен кода обязан дойти до слушателя выдачи: код %d, дошло %d", rec.Code, e.listener.count())
 			}
@@ -244,7 +244,7 @@ func TestLoginLaneRelay_2721_ClientBasicIsStrippedOnEveryOtherRecord(t *testing.
 			req.Header.Del(principalmeta.BridgePrefix + "Authorization")
 
 			rec := httptest.NewRecorder()
-			e.chain.ServeHTTP(rec, req)
+			e.chain.ServeHTTP(rec, onExternalListener(req))
 			if rec.Code != http.StatusOK || e.listener.count() != 1 {
 				t.Fatalf("запись %q обязана ретранслироваться: код %d, дошло %d", rt.Verb, rec.Code, e.listener.count())
 			}
@@ -268,7 +268,7 @@ func TestLoginLaneRelay_2721_BridgedClientBasicIsStripped(t *testing.T) {
 	req.Header.Set(principalmeta.BridgePrefix+"Authorization", clientBasic("Basic", "console", "s3cret"))
 
 	rec := httptest.NewRecorder()
-	e.chain.ServeHTTP(rec, req)
+	e.chain.ServeHTTP(rec, onExternalListener(req))
 	if rec.Code != http.StatusOK || e.listener.count() != 1 {
 		t.Fatalf("обмен кода обязан дойти до слушателя выдачи: код %d, дошло %d", rec.Code, e.listener.count())
 	}
@@ -292,7 +292,7 @@ func TestLoginLaneRelay_2721_TwoAuthorizationValuesAreBothStripped(t *testing.T)
 	req.Header.Add("Authorization", "Bearer must-not-cross")
 
 	rec := httptest.NewRecorder()
-	e.chain.ServeHTTP(rec, req)
+	e.chain.ServeHTTP(rec, onExternalListener(req))
 	if rec.Code != http.StatusOK || e.listener.count() != 1 {
 		t.Fatalf("обмен кода обязан дойти до слушателя выдачи: код %d, дошло %d", rec.Code, e.listener.count())
 	}

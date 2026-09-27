@@ -73,12 +73,12 @@ func wiringMuxAddrs() map[string]string {
 // listener regardless of TLS, while remaining reachable on the dedicated
 // cluster-internal admin listener.
 //
-// One shared *http.Server (ConnContext = listenerorigin.InternalConnContext)
+// One shared *http.Server (ConnContext = listenerorigin.ConnContext)
 // fronts THREE listeners, exactly as main() does after the r3 inversion:
 //
 //   - plaintext cmux listener        (Service `cmux` :8080 — what the ingress
-//     targets)                         → UNwrapped → external → Internal* 404
-//   - external TLS + cmux listener   (:8443)  → UNwrapped → external → Internal* 404
+//     targets)                         → ExternalListener → external → Internal* 404
+//   - external TLS + cmux listener   (:8443)  → ExternalListener → external → Internal* 404
 //   - InternalListener-wrapped plain (:8081 admin)  → internal → Internal* served
 //
 // The plaintext-listener assertion is the regression guard for the HIGH finding:
@@ -93,8 +93,9 @@ func TestExternalIsolationWiring_EndToEnd(t *testing.T) {
 	httpSrv := &http.Server{
 		Handler:     dispatcher,
 		ReadTimeout: 5 * time.Second,
-		// The single production ConnContext: marks ONLY InternalListener conns.
-		ConnContext: listenerorigin.InternalConnContext,
+		// The single production ConnContext: marks InternalListener conns
+		// internal and ExternalListener conns external.
+		ConnContext: listenerorigin.ConnContext,
 	}
 	_ = http2.ConfigureServer(httpSrv, &http2.Server{})
 
@@ -106,7 +107,7 @@ func TestExternalIsolationWiring_EndToEnd(t *testing.T) {
 	defer plainLn.Close()
 	plainCmux := cmux.New(plainLn)
 	plainHTTPL := plainCmux.Match(cmux.Any())
-	go func() { _ = httpSrv.Serve(plainHTTPL) }()
+	go func() { _ = httpSrv.Serve(listenerorigin.ExternalListener(plainHTTPL)) }()
 	go func() { _ = plainCmux.Serve() }()
 
 	// --- dedicated internal admin listener (InternalListener-wrapped → internal) ---
@@ -117,7 +118,7 @@ func TestExternalIsolationWiring_EndToEnd(t *testing.T) {
 	defer adminLn.Close()
 	go func() { _ = httpSrv.Serve(listenerorigin.InternalListener(adminLn)) }()
 
-	// --- external TLS + cmux listener (UNwrapped → external) ---
+	// --- external TLS + cmux listener (ExternalListener → external) ---
 	cert := selfSignedCert(t)
 	tlsCfg := &tls.Config{
 		Certificates: []tls.Certificate{cert},
@@ -131,7 +132,7 @@ func TestExternalIsolationWiring_EndToEnd(t *testing.T) {
 	defer rawTLS.Close()
 	tlsCmux := cmux.New(rawTLS)
 	tlsHTTPL := tlsCmux.Match(cmux.Any())
-	go func() { _ = httpSrv.Serve(tlsHTTPL) }()
+	go func() { _ = httpSrv.Serve(listenerorigin.ExternalListener(tlsHTTPL)) }()
 	go func() { _ = tlsCmux.Serve() }()
 
 	tlsClient := &http.Client{
