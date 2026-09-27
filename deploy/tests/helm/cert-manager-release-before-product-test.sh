@@ -155,10 +155,21 @@ case "$(field STACKUP)" in
 esac
 
 # ─── Часть Б: поведение цели против подставных kubectl и helm ───────────────
+# Подставные kubectl и helm НЕ снисходительнее настоящих и в разборе ФЛАГОВ:
+# каждый вызов сперва проходит разбор настоящего инструмента (`<args> --help`
+# разбирает флаги и ничего не делает), и незнакомый ему флаг — отказ с его же
+# текстом. Без этого подставной helm принимал `list -a`, которого у helm v4 нет,
+# и ветка «наш релиз» зеленела здесь, отказывая на живом кластере.
+REAL_KUBECTL="$(command -v kubectl)" || fatal "нет kubectl — разбирать его флаги нечем"
 mkdir -p "$TMP/bin"
-cat >"$TMP/bin/kubectl" <<'STUB'
+cat >"$TMP/bin/kubectl" <<STUB
 #!/usr/bin/env bash
-echo "kubectl $*" >>"$STUB_LOG"
+echo "kubectl \$*" >>"\$STUB_LOG"
+if ! err="\$("$REAL_KUBECTL" "\$@" --help 2>&1 >/dev/null)"; then echo "\$err" >&2; exit 1; fi
+exec "$TMP/bin/kubectl-answer" "\$@"
+STUB
+cat >"$TMP/bin/kubectl-answer" <<'STUB'
+#!/usr/bin/env bash
 args="$*"
 case "$args" in
   "config current-context") echo "kind-stub"; exit 0 ;;
@@ -188,6 +199,7 @@ STUB
 cat >"$TMP/bin/helm" <<STUB
 #!/usr/bin/env bash
 echo "helm \$*" >>"\$STUB_LOG"
+if ! err="\$("$REAL_HELM" "\$@" --help 2>&1 >/dev/null)"; then echo "\$err" >&2; exit 1; fi
 case "\$1" in
   show) exec "$REAL_HELM" "\$@" ;;
   list)
@@ -200,7 +212,7 @@ case "\$1" in
 esac
 exit 0
 STUB
-chmod +x "$TMP/bin/kubectl" "$TMP/bin/helm"
+chmod +x "$TMP/bin/kubectl" "$TMP/bin/kubectl-answer" "$TMP/bin/helm"
 
 run_mode() { # <режим> → код возврата цели; вывод и журнал вызовов — в $TMP
   local mode="$1"

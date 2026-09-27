@@ -588,7 +588,9 @@ UMBRELLA_OPTS := --set cert-manager.enabled=false
 #   • CRD нет — релиз ставится, вебхук ждётся;
 #   • CRD наш (этот релиз в этом ns): релиз `deployed` той же версии чарта — НЕ
 #     переставляется, вебхук ждётся; иначе (другая версия, сорванная установка)
-#     — `helm upgrade --install` доводит его до объявленного;
+#     — `helm upgrade --install` доводит его до объявленного. Состояние релиза
+#     спрашивается `helm list` БЕЗ `-a`: у helm v4 этого флага нет (список и так
+#     несёт все состояния), и с ним ветка отказывала на живом кластере;
 #   • CRD чужой (оператор площадки держит свой, как на a8f60d в ns
 #     beget-cert-manager) — не ставится и не ждётся: второй экземпляр упёрся бы во
 #     владение CRD, а вебхук чужого экземпляра — предмет его владельца;
@@ -620,7 +622,7 @@ cert-manager-up: guard-declared-context
 	case "$$owner" in \
 	  absent) why="CRD cert-manager в кластере нет" ;; \
 	  "$$rel|$$ns") \
-	    rows="$$(timeout 60 helm list -n "$$ns" -a --filter "^$$rel\$$" -o json)" || { \
+	    rows="$$(timeout 60 helm list -n "$$ns" --filter "^$$rel\$$" -o json)" || { \
 	      echo "ABORT: состояние релиза $$rel в ns $$ns НЕ ПРОЧИТАНО — helm не ответил за 60 с (текст выше)."; \
 	      exit 1; }; \
 	    have="$$(printf '%s' "$$rows" | python3 -c 'import json,sys; r=json.load(sys.stdin); print(r[0]["status"]+"|"+r[0]["chart"] if r else "")')" || { \
