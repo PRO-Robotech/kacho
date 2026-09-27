@@ -126,7 +126,7 @@ func plainCallSites(fset *token.FileSet, f *ast.File, callee string) []wiringSit
 func parseMain(t *testing.T) (*token.FileSet, *ast.File) {
 	t.Helper()
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, "main.go", nil, 0)
+	f, err := parser.ParseFile(fset, "main.go", nil, parser.SkipObjectResolution)
 	if err != nil {
 		t.Fatalf("композиционный корень не разбирается: %v", err)
 	}

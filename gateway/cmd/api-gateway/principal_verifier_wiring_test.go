@@ -26,9 +26,19 @@
 //
 // main() из пробы не исполнить (он дозванивается до соседей и занимает
 // порты), поэтому провязка судится разбором исходника корня — узлами, а не
-// текстом, как у соседних гейтов этого пакета. Разбор `parseMain` разрешает
-// объекты, поэтому чтение ошибки конструктора отличается от одноимённого
-// идентификатора другой области видимости.
+// текстом, как у соседних гейтов этого пакета. Чтения ошибки конструктора
+// находятся по позиции её объявления и лексической области (блок, в котором
+// она объявлена), без устаревшего разрешения объектов go/ast: одноимённый
+// идентификатор другой области не засчитывается, а переобъявление имени внутри
+// области — отказ пробы, потому что без разрешения типов его не различить.
+//
+// # Выход БЕЗУСЛОВЕН — это часть предмета
+//
+// «Ветка отказа содержит выход» проходима при выходе, поставленном под класс
+// окружения: в классе разработки отказ конструктора снова стал бы мягким
+// проходом. Поэтому тело ветки отказа — прямолинейно (только вызовы) и
+// кончается выходом, сама ветка — прямой оператор блока, в котором строится
+// проверяющий, а блок — ветка «адресат объявлен» и никакая другая.
 package main
 
 import (
@@ -48,26 +58,24 @@ import (
 // мягкий проход. По ней проба находит ветку, а оператор — причину.
 const principalVerifierSoftPassMsg = "jwks verifier not wired into principal path (HMAC-dev only)"
 
-// constructorErrorIdent — идентификатор ошибки, которую корень получает от
-// NewJWTVerifier. Ровно одно такое присваивание.
-func constructorErrorIdent(t *testing.T, f *ast.File) *ast.Ident {
+// constructorAssign — присваивание `v, err := middleware.NewJWTVerifier(...)`.
+// Ровно одно.
+func constructorAssign(t *testing.T, f *ast.File) *ast.AssignStmt {
 	t.Helper()
-	var found []*ast.Ident
+	var found []*ast.AssignStmt
 	ast.Inspect(f, func(n ast.Node) bool {
 		as, ok := n.(*ast.AssignStmt)
-		if !ok || len(as.Rhs) != 1 || len(as.Lhs) != 2 {
+		if !ok || len(as.Rhs) != 1 || len(as.Lhs) != 2 || as.Tok != token.DEFINE {
 			return true
 		}
 		call, ok := as.Rhs[0].(*ast.CallExpr)
 		if !ok {
 			return true
 		}
-		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok || sel.Sel.Name != "NewJWTVerifier" {
-			return true
-		}
-		if id, ok := as.Lhs[1].(*ast.Ident); ok {
-			found = append(found, id)
+		if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "NewJWTVerifier" {
+			if _, ok := as.Lhs[1].(*ast.Ident); ok {
+				found = append(found, as)
+			}
 		}
 		return true
 	})
@@ -76,36 +84,116 @@ func constructorErrorIdent(t *testing.T, f *ast.File) *ast.Ident {
 	return found[0]
 }
 
-// exitsTheProcess — содержит ли тело вызов, завершающий процесс.
-func exitsTheProcess(body *ast.BlockStmt) bool {
-	exits := false
-	ast.Inspect(body, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
+// innermostBlock — наименьший блок, охватывающий позицию: лексическая область
+// переменной, объявленной в этой позиции.
+func innermostBlock(f *ast.File, pos token.Pos) *ast.BlockStmt {
+	var best *ast.BlockStmt
+	ast.Inspect(f, func(n ast.Node) bool {
+		b, ok := n.(*ast.BlockStmt)
 		if !ok {
 			return true
 		}
-		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok {
-			return true
-		}
-		pkg, ok := sel.X.(*ast.Ident)
-		if !ok {
-			return true
-		}
-		if (pkg.Name == "os" && sel.Sel.Name == "Exit") ||
-			(pkg.Name == "log" && strings.HasPrefix(sel.Sel.Name, "Fatal")) {
-			exits = true
+		if pos > b.Lbrace && pos < b.Rbrace && (best == nil || b.Lbrace >= best.Lbrace) {
+			best = b
 		}
 		return true
 	})
-	return exits
+	return best
 }
 
-// refusalGuards — ветки `if <err> != nil { … завершить процесс … }` по ошибке
-// конструктора.
-func refusalGuards(f *ast.File, errIdent *ast.Ident) []*ast.IfStmt {
+// scopedVar — переменная, опознанная по позиции объявления и своей области.
+type scopedVar struct {
+	decl  *ast.Ident
+	scope *ast.BlockStmt
+}
+
+// uses — идентификаторы переменной в её области после объявления (селекторы
+// полей не в счёт) и переобъявления того же имени там же.
+func (v scopedVar) uses() (reads []*ast.Ident, redeclared []token.Pos) {
+	selectorNames := map[*ast.Ident]bool{}
+	ast.Inspect(v.scope, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.SelectorExpr:
+			selectorNames[x.Sel] = true
+		case *ast.AssignStmt:
+			if x.Tok == token.DEFINE {
+				for _, l := range x.Lhs {
+					if id, ok := l.(*ast.Ident); ok && id != v.decl && id.Name == v.decl.Name {
+						redeclared = append(redeclared, id.Pos())
+					}
+				}
+			}
+		case *ast.ValueSpec:
+			for _, id := range x.Names {
+				if id.Name == v.decl.Name {
+					redeclared = append(redeclared, id.Pos())
+				}
+			}
+		case *ast.Field:
+			for _, id := range x.Names {
+				if id.Name == v.decl.Name {
+					redeclared = append(redeclared, id.Pos())
+				}
+			}
+		}
+		return true
+	})
+	ast.Inspect(v.scope, func(n ast.Node) bool {
+		id, ok := n.(*ast.Ident)
+		if !ok || id == v.decl || id.Name != v.decl.Name || id.Pos() < v.decl.End() || selectorNames[id] {
+			return true
+		}
+		reads = append(reads, id)
+		return true
+	})
+	return reads, redeclared
+}
+
+// isExitCall — вызов, завершающий процесс.
+func isExitCall(e ast.Expr) bool {
+	call, ok := e.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	return (pkg.Name == "os" && sel.Sel.Name == "Exit") ||
+		(pkg.Name == "log" && strings.HasPrefix(sel.Sel.Name, "Fatal"))
+}
+
+// unconditionalExit — пусто, если тело прямолинейно (только вызовы) и кончается
+// выходом; иначе — чем выход условен.
+func unconditionalExit(fset *token.FileSet, body *ast.BlockStmt) string {
+	if len(body.List) == 0 {
+		return "тело пусто — выхода нет"
+	}
+	for _, st := range body.List {
+		es, ok := st.(*ast.ExprStmt)
+		if !ok {
+			return "в теле стоит не вызов, а оператор управления у " + fset.Position(st.Pos()).String() +
+				" — выход условен"
+		}
+		if _, ok := es.X.(*ast.CallExpr); !ok {
+			return "в теле стоит не вызов у " + fset.Position(st.Pos()).String()
+		}
+	}
+	last := body.List[len(body.List)-1].(*ast.ExprStmt)
+	if !isExitCall(last.X) {
+		return "последний оператор тела у " + fset.Position(last.Pos()).String() + " процесс не завершает"
+	}
+	return ""
+}
+
+// nilGuardsOf — ветки `if <имя> != nil` в области переменной.
+func nilGuardsOf(v scopedVar) []*ast.IfStmt {
 	var out []*ast.IfStmt
-	ast.Inspect(f, func(n ast.Node) bool {
+	ast.Inspect(v.scope, func(n ast.Node) bool {
 		ifs, ok := n.(*ast.IfStmt)
 		if !ok {
 			return true
@@ -115,13 +203,34 @@ func refusalGuards(f *ast.File, errIdent *ast.Ident) []*ast.IfStmt {
 			return true
 		}
 		id, ok := bin.X.(*ast.Ident)
-		if !ok || id.Obj == nil || id.Obj != errIdent.Obj {
+		if !ok || id.Name != v.decl.Name || id.Pos() < v.decl.End() {
 			return true
 		}
-		if nilID, ok := bin.Y.(*ast.Ident); !ok || nilID.Name != "nil" {
+		if nilID, ok := bin.Y.(*ast.Ident); ok && nilID.Name == "nil" {
+			out = append(out, ifs)
+		}
+		return true
+	})
+	return out
+}
+
+// isDirectStmt — стоит ли оператор прямо в блоке, а не во вложенной ветке.
+func isDirectStmt(block *ast.BlockStmt, st ast.Stmt) bool {
+	for _, s := range block.List {
+		if s == st {
 			return true
 		}
-		if exitsTheProcess(ifs.Body) {
+	}
+	return false
+}
+
+// thenBodiesEnclosing — ветки `if`, чьё тело THEN охватывает позицию. Ветка
+// else не засчитывается: условие называет то, что верно в then.
+func thenBodiesEnclosing(f *ast.File, pos token.Pos) []*ast.IfStmt {
+	var out []*ast.IfStmt
+	ast.Inspect(f, func(n ast.Node) bool {
+		ifs, ok := n.(*ast.IfStmt)
+		if ok && pos > ifs.Body.Lbrace && pos < ifs.Body.Rbrace {
 			out = append(out, ifs)
 		}
 		return true
@@ -131,32 +240,53 @@ func refusalGuards(f *ast.File, errIdent *ast.Ident) []*ast.IfStmt {
 
 // Отказ конструктора роняет старт в ЛЮБОМ классе окружения: ошибка
 // конструктора читается только условием ветки, завершающей процесс, и её
-// телом. Ни в стража по классу окружения, ни в признак «провязан ли
-// проверяющий» ниже по корню она не уходит — признак провязки несёт сам
-// проверяющий.
+// телом; выход в этой ветке безусловен; сама ветка — прямой оператор блока,
+// где строится проверяющий, а блок — ветка «адресат объявлен». Ни в стража по
+// классу окружения, ни в признак «провязан ли проверяющий» ниже по корню она
+// не уходит — признак провязки несёт сам проверяющий.
 func TestPrincipalVerifier_ConstructorRefusalRefusesStartInEveryClass(t *testing.T) {
 	fset, f := parseMain(t)
-	errIdent := constructorErrorIdent(t, f)
-	guards := refusalGuards(f, errIdent)
+	assign := constructorAssign(t, f)
+	block := innermostBlock(f, assign.Pos())
+	require.NotNil(t, block, "присваивание конструктора вне блока — проба не нашла своей области")
+	errVar := scopedVar{decl: assign.Lhs[1].(*ast.Ident), scope: block}
+
+	// Проверяющий строится в ветке «адресат объявлен» и ни в какой другой: в
+	// ветке по классу окружения он не строился бы вовсе в соседнем классе.
+	for _, ifs := range enclosingIfBodies(f, assign.Pos()) {
+		inElse := ifs.Else != nil && assign.Pos() > ifs.Else.Pos() && assign.Pos() < ifs.Else.End()
+		require.True(t, inElse && namesUndeclaredAudience(ifs.Cond),
+			"проверяющий строится внутри ветки у %s, а не в ветке «адресат объявлен»: в другой ветке "+
+				"этого условия он не строится вовсе", fset.Position(ifs.Pos()))
+	}
+
+	reads, redeclared := errVar.uses()
+	require.Empty(t, redeclared,
+		"имя %s переобъявлено в области ошибки конструктора (%v) — по позиции его не различить",
+		errVar.decl.Name, redeclared)
+
+	guards := nilGuardsOf(errVar)
 	require.Len(t, guards, 1,
 		"ошибка конструктора обязана читаться ровно одной веткой `if %s != nil { … завершить процесс … }`",
-		errIdent.Name)
+		errVar.decl.Name)
 	guard := guards[0]
+	require.True(t, isDirectStmt(block, guard),
+		"ветка отказа конструктора у %s стоит внутри другой ветки — в соседней ветке отказ старт не роняет",
+		fset.Position(guard.Pos()))
+	if why := unconditionalExit(fset, guard.Body); why != "" {
+		t.Fatalf("ветка отказа конструктора у %s не завершает процесс безусловно: %s — в каком-то "+
+			"классе окружения отказ конструктора стал бы мягким проходом", fset.Position(guard.Pos()), why)
+	}
 
-	refs, stray := 0, []string{}
-	ast.Inspect(f, func(n ast.Node) bool {
-		id, ok := n.(*ast.Ident)
-		if !ok || id == errIdent || id.Obj == nil || id.Obj != errIdent.Obj {
-			return true
-		}
-		refs++
+	var stray []string
+	for _, id := range reads {
 		if id.Pos() < guard.Pos() || id.Pos() >= guard.End() {
 			stray = append(stray, fset.Position(id.Pos()).String())
 		}
-		return true
-	})
-	t.Logf("ОСМОТРЕНО: чтений ошибки конструктора %d · вне ветки отказа старта %d", refs, len(stray))
-	require.NotZero(t, refs, "ошибка конструктора не читается вовсе — проба не нашла своего предмета")
+	}
+	t.Logf("ОСМОТРЕНО: чтений ошибки конструктора %d · вне ветки отказа старта %d · операторов в ветке отказа %d",
+		len(reads), len(stray), len(guard.Body.List))
+	require.NotEmpty(t, reads, "ошибка конструктора не читается вовсе — проба не нашла своего предмета")
 	require.Empty(t, stray,
 		"ошибка конструктора читается вне ветки отказа старта: %s — там она решает класс окружения "+
 			"или провязку, а должна только ронять старт", strings.Join(stray, ", "))
@@ -211,14 +341,99 @@ func TestPrincipalVerifier_SoftPassIsKeyedOnTheUndeclaredAudience(t *testing.T) 
 	site := sites[0]
 
 	keyed := false
-	for _, ifs := range enclosingIfBodies(f, site.Pos()) {
+	for _, ifs := range thenBodiesEnclosing(f, site.Pos()) {
 		if namesUndeclaredAudience(ifs.Cond) {
 			keyed = true
 		}
 	}
 	require.True(t, keyed,
-		"мягкий проход %s лежит вне ветки `if cfg.DeclaredTokenAudience() == \"\"` — он ключуется не "+
-			"своим производителем", fset.Position(site.Pos()))
+		"мягкий проход %s лежит вне ветки THEN условия `if cfg.DeclaredTokenAudience() == \"\"` — он "+
+			"ключуется не своим производителем", fset.Position(site.Pos()))
+}
+
+// undeclaredAudienceIf — ветка мягкого прохода на верхнем уровне корня.
+func undeclaredAudienceIf(t *testing.T, body *ast.BlockStmt) *ast.IfStmt {
+	t.Helper()
+	var out []*ast.IfStmt
+	for _, st := range body.List {
+		if ifs, ok := st.(*ast.IfStmt); ok && namesUndeclaredAudience(ifs.Cond) {
+			out = append(out, ifs)
+		}
+	}
+	require.Len(t, out, 1, "корень обязан ветвиться по незаявленному адресату ровно одной веткой верхнего уровня")
+	return out[0]
+}
+
+// mainBody — тело функции main корня.
+func mainBody(t *testing.T, f *ast.File) *ast.BlockStmt {
+	t.Helper()
+	for _, d := range f.Decls {
+		if fd, ok := d.(*ast.FuncDecl); ok && fd.Recv == nil && fd.Name.Name == "main" {
+			return fd.Body
+		}
+	}
+	t.Fatal("в корне нет функции main — проба не нашла своего предмета")
+	return nil
+}
+
+// Боевой класс не доходит до мягкого прохода только потому, что РАНЬШЕ его
+// незаявленного адресата отвергает страж адресата. Поэтому держится и сам
+// вызов стража: он стоит условием ветки отказа на верхнем уровне корня (ни
+// одна ветка его не охватывает), выход в ней безусловен, судит он ту же
+// величину, по которой ветвится мягкий проход, и стоит ДО этой ветки. Снятый
+// или переставленный ниже страж открывал бы мягкий проход боевому классу.
+func TestPrincipalVerifier_AudienceGuardRefusesBeforeTheSoftPass(t *testing.T) {
+	fset, f := parseMain(t)
+	body := mainBody(t, f)
+
+	var calls []*ast.CallExpr
+	ast.Inspect(f, func(n ast.Node) bool {
+		if call, ok := n.(*ast.CallExpr); ok {
+			if id, ok := call.Fun.(*ast.Ident); ok && id.Name == "validateProductionTokenAudience" {
+				calls = append(calls, call)
+			}
+		}
+		return true
+	})
+	require.Len(t, calls, 1, "страж адресата обязан зваться корнем ровно один раз")
+	call := calls[0]
+
+	var guard *ast.IfStmt
+	for _, st := range body.List {
+		ifs, ok := st.(*ast.IfStmt)
+		if !ok {
+			continue
+		}
+		init, ok := ifs.Init.(*ast.AssignStmt)
+		if ok && len(init.Rhs) == 1 && init.Rhs[0] == call {
+			guard = ifs
+		}
+	}
+	require.NotNil(t, guard,
+		"страж адресата у %s позван не в условии ветки отказа верхнего уровня корня — его может охватить "+
+			"ветка, в соседней стороне которой он не зовётся", fset.Position(call.Pos()))
+	errName := guard.Init.(*ast.AssignStmt).Lhs[0].(*ast.Ident).Name
+	bin, ok := guard.Cond.(*ast.BinaryExpr)
+	require.True(t, ok && bin.Op == token.NEQ, "условие ветки стража адресата — не `%s != nil`", errName)
+	x, ok := bin.X.(*ast.Ident)
+	require.True(t, ok && x.Name == errName, "условие ветки стража адресата читает не его ошибку")
+	if why := unconditionalExit(fset, guard.Body); why != "" {
+		t.Fatalf("ветка отказа стража адресата у %s не завершает процесс безусловно: %s",
+			fset.Position(guard.Pos()), why)
+	}
+
+	require.Len(t, call.Args, 2, "страж адресата принимает класс окружения и адресата")
+	judged, ok := call.Args[1].(*ast.CallExpr)
+	sel, selOK := judged.Fun.(*ast.SelectorExpr)
+	require.True(t, ok && selOK && sel.Sel.Name == "DeclaredTokenAudience",
+		"страж адресата судит не ту величину, по которой ветвится мягкий проход (cfg.DeclaredTokenAudience())")
+
+	soft := undeclaredAudienceIf(t, body)
+	require.Less(t, guard.End(), soft.Pos(),
+		"страж адресата у %s стоит после ветки мягкого прохода у %s — боевой класс дошёл бы до мягкого прохода",
+		fset.Position(guard.Pos()), fset.Position(soft.Pos()))
+	t.Logf("ОСМОТРЕНО: вызовов стража адресата %d · ветка отказа у %s · ветка мягкого прохода у %s",
+		len(calls), fset.Position(guard.Pos()), fset.Position(soft.Pos()))
 }
 
 // acceptanceRecords — записи приёма так, как их собирает корень.
