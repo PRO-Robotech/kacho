@@ -330,6 +330,7 @@ def _job_names(where: str, job_id: str, job: object) -> tuple[list[_Name], list[
         and all(isinstance(matrix[d], list) and matrix[d]
                 and all(not isinstance(v, (dict, list)) for v in matrix[d]) for d in dims)
         and all(_BARE_MATRIX_REF.match(e) for e in exprs)
+        and refs <= set(dims)
     )
     if not literal:
         return pattern, []

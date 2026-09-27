@@ -439,6 +439,16 @@ def test_a_matrix_dimension_missing_from_the_name_breaks_the_premise() -> None:
     assert premise(twin).breaches == (), premise(twin).breaches
 
 
+def test_a_reference_to_an_undeclared_matrix_key_is_judged_not_crashed() -> None:
+    """Ссылка на ключ, которого у матрицы нет, раскрывается провайдером в пустую
+    строку. Обход судит такое имя как образец, а не падает на нём: иначе
+    предикат дерева краснел бы трассой, а не нарушением. Образец `unit (…, …)`
+    ни с одним именем дерева не совпадает, поэтому исход — ноль нарушений."""
+    wf = tree_workflows()
+    wf[UI]["jobs"]["test"]["name"] = "unit (${{ matrix.pkg }}, ${{ matrix.typo }})"
+    assert premise(wf).breaches == (), premise(wf).breaches
+
+
 def test_a_literal_name_equal_to_a_matrix_leg_breaks_the_premise() -> None:
     """Литеральное имя, совпавшее с ногой раскрытой матрицы другого процесса:
     `unit (host)` — нога `ui.yml` `unit (${{ matrix.pkg }})`. Близнец — имя,
