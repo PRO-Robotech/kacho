@@ -22,25 +22,51 @@
 #    посева обещает, что такой стенд поднимается и без него, а предполёт
 #    отказывал.
 #
+# 3. ПРОБА НЕ ВИДЕЛА СНЯТИЯ СВОЕГО ПРЕДМЕТА (задача #2844). Прежде отказ
+#    сервера отказывал на `get` ВСЕХ секретов сразу, и утверждение требовало
+#    лишь «шаг не вышел нулём и объект цел». Сними различение из посева — и
+#    красное приходило от СОСЕДНЕГО секрета: dev-prod-secrets.sh с отказом по
+#    ключу обёртки, прочитанным как NotFound, выходил 1 на следующем ключе;
+#    stack-secrets.sh, читающий любой отказ как «нет», заводил семь секретов
+#    баз и выходил 1 на проверке после посева. Объект оставался цел только
+#    благодаря атомарному `create`, а его держит утверждение 5. Проба печатала
+#    PASS (8 assertions) на обоих посевах без различения.
+#    Теперь сервер отказывает на `get` ОДНОГО секрета, и мир судит, что шаг
+#    остановился ИМЕННО на нём: после отказа не было ни одного обращения,
+#    отказ назвал этот секрет, объект цел, код — по контракту посева. А то, что
+#    миры различают, проба доказывает сама: близнецы 9–11 снимают различение из
+#    копии посева, и мир обязан покраснеть, назвав посев и мир.
+#
 # ─────────────────────────────────────────────────────────────────────────────
 # ЧТО ИМЕННО УТВЕРЖДАЕТСЯ — ПАРАМИ, У КАЖДОГО ОТРИЦАНИЯ ЕСТЬ БЛИЗНЕЦ
 #
-#   1  находка : секрет существует, `get` отвечает отказом НЕ NotFound →
-#                dev-prod-secrets.sh отказывает, resourceVersion не сдвинулся;
-#   2  близнец : секретов нет (`get` → NotFound) → посев заводит все четыре;
-#   3  близнец : секрет существует и `get` его видит → переиспользуется,
+#   1  находка : (×4, по секрету посева) секрет K существует, `get` K отвечает
+#                отказом НЕ NotFound, прочие — NotFound → dev-prod-secrets.sh
+#                отказывает, после `get` K не обращается ни к чему, отказ
+#                называет K, resourceVersion K не сдвинулся;
+#   2  находка : то же для stack-secrets.sh — требуемый секрет базы
+#                существует, `get` его отвечает отказом → код 2 (контракт
+#                посева), после отказа ни одного обращения (ничего не
+#                заведено), отказ называет секрет, объект не тронут;
+#   3  близнец : секретов нет (`get` → NotFound) → посев заводит все четыре;
+#   4  близнец : секрет существует и `get` его видит → переиспользуется,
 #                resourceVersion не сдвинулся;
-#   4  гонка   : `get` сказал NotFound, а объект уже заведён (между проверкой и
+#   5  гонка   : `get` сказал NotFound, а объект уже заведён (между проверкой и
 #                заведением) → создание отвечает AlreadyExists, посев
 #                переиспользует, resourceVersion не сдвинулся;
-#   5  находка : то же для stack-secrets.sh — требуемый секрет существует,
-#                `get` отвечает отказом → шаг отказывает, объект не тронут;
 #   6  находка : рендер `external`, ключ второго фактора подключён
 #                `optional: true` и отсутствует → stack-secrets.sh его
 #                отсутствующим НЕ называет;
 #   7  близнец : тот же ключ, та же посадка, ссылка БЕЗ `optional` (копия чарта
 #                с одной снятой строкой) → называет;
-#   8  близнец : посадка `own` — служба ключ требует → называет.
+#   8  близнец : посадка `own` — служба ключ требует → называет;
+#   9  близнец : (×4) копия dev-prod-secrets.sh, где отказ `get` K читается как
+#                NotFound → мир 1 для K краснеет и называет посев и секрет;
+#  10  близнец : копия stack-secrets.sh, где secret_state читает любой отказ
+#                как «нет» → мир 2 краснеет и называет посев;
+#  11  близнец : оба посева без различения → находки называют ОБА посева.
+# Миры 1 и 2 и близнецы 9–11 копят находки, а не обрываются на первой:
+# посев, у которого различение снято в двух местах, называется весь.
 #
 # НОСИТЕЛЬ ПОСАДКИ `external` — КОПИЯ ДЕРЕВА, А НЕ СТЕНД ТАБЛИЦЫ. Посадку `own`
 # объявляют все стенды deploy/stacks.txt (#2735), и стенда `external` в таблице
@@ -63,7 +89,7 @@ UMBRELLA="$DEPLOY/helm/umbrella"
 
 # shellcheck source=deploy/tests/helm/outcome.sh
 . "$HERE/outcome.sh"
-EXPECTED_ASSERTIONS=8
+EXPECTED_ASSERTIONS=17
 
 require_helm
 require_python_yaml
@@ -92,10 +118,12 @@ BIN="$WORK/bin"; mkdir -p "$BIN"
 # ── ДВОЙНИК kubectl ─────────────────────────────────────────────────────────
 # Состояние: $STATE/<имя>.rv — объект есть, внутри его resourceVersion.
 # Режим get — $GET_MODE:
-#   ok       — отвечает по состоянию (есть → 0; нет → NotFound);
-#   refuse   — любой `get secret` отказывает так, как отказывает сеть;
-#   notfound — `get secret` всегда отвечает NotFound (даже на существующий):
-#              так выглядит гонка «проверили — и тут его завели».
+#   ok         — отвечает по состоянию (есть → 0; нет → NotFound);
+#   refuse-one — `get secret $REFUSE_NAME` отказывает так, как отказывает
+#                сеть; прочие отвечают по состоянию. Отказ ОДНОГО секрета — чтобы
+#                красное не могло прийти от соседнего;
+#   notfound   — `get secret` всегда отвечает NotFound (даже на существующий):
+#                так выглядит гонка «проверили — и тут его завели».
 # $DEFAULT_PRESENT=1 — всякий секрет, кроме перечисленных в $ABSENT, считается
 # существующим без файла состояния (для суждения о требуемом множестве).
 cat > "$BIN/kubectl" <<'KUBECTL'
@@ -126,7 +154,10 @@ case "$1 ${2:-}" in
     name="$3"
     echo "get secret $name" >> "$STATE/.calls"
     case "${GET_MODE:-ok}" in
-      refuse) echo "Unable to connect to the server: net/http: TLS handshake timeout" >&2; exit 1 ;;
+      refuse-one)
+        if [ "$name" = "${REFUSE_NAME:-}" ]; then
+          echo "Unable to connect to the server: net/http: TLS handshake timeout" >&2; exit 1
+        fi ;;
       notfound) echo "Error from server (NotFound): secrets \"$name\" not found" >&2; exit 1 ;;
     esac
     if present "$name"; then
@@ -174,8 +205,9 @@ fresh() {
 }
 rv() { cat "$STATE/$1.rv" 2>/dev/null || echo "нет"; }
 
-seed() {  # dev-prod-secrets.sh в подменённом мире
-  OUT="$(env PATH="$BIN:$PATH" KACHO_NAMESPACE=kacho bash "$DEPLOY/scripts/dev-prod-secrets.sh" 2>&1)"; RC=$?
+seed() {  # dev-prod-secrets.sh [каталог deploy] в подменённом мире
+  local root="${1:-$DEPLOY}"
+  OUT="$(env PATH="$BIN:$PATH" KACHO_NAMESPACE=kacho bash "$root/scripts/dev-prod-secrets.sh" 2>&1)"; RC=$?
 }
 stack() {  # stack-secrets.sh <стек> [каталог deploy] в подменённом мире
   local root="${2:-$DEPLOY}"
@@ -184,46 +216,80 @@ stack() {  # stack-secrets.sh <стек> [каталог deploy] в подмен
 }
 
 SEED_FOUR="kaname-jwks-enc-key kaname-second-factor-enc-key kaname-hook-token kaname-bootstrap-sa-key"
+# Секрет базы, требуемый стендом own: на нём мир 2 судит stack-secrets.sh.
+STACK_REFUSED=kacho-umbrella-pg-iam
 export PROBE_CONTEXT=kind-probe
 
-# ── 1. НАХОДКА: get отказал не NotFound — посев отказывает, объект цел ──────
-fresh kaname-jwks-enc-key
-GET_MODE=refuse DEFAULT_PRESENT=0 seed
-[ "$RC" -ne 0 ] && [ "$(rv kaname-jwks-enc-key)" = 7 ] \
-  || fail "1: dev-prod-secrets.sh при отказе get (не NotFound) вышел $RC, resourceVersion ключа обёртки 7 → $(rv kaname-jwks-enc-key). Отказ API-сервера прочитан как «секрета нет», величина перечеканена поверх существующей. Вывод:
-$OUT"
-ok
+# last_call — последнее обращение к API-серверу в мире («нет» — не было ни одного).
+last_call() { tail -n 1 "$STATE/.calls" 2>/dev/null | grep . || echo "нет"; }
 
-# ── 2. БЛИЗНЕЦ: секретов нет — посев заводит все четыре ────────────────────
+# ── МИРЫ «СЕРВЕР ОТКАЗАЛ НА get ОДНОГО СЕКРЕТА» ─────────────────────────────
+# refusal_worlds <каталог deploy> <dev-prod|stack|all> [секрет] — по строке на
+# мир (секрет сужает миры dev-prod-secrets.sh до одного):
+#   ok|<посев>|<мир>            — шаг остановился на отказе, как обещает посев;
+#   red|<посев>|<мир>|<что не так>.
+# Мир судит ВСЁ, что делает отказ отказом шага, а не одно «вышел не нулём»:
+# без различения посев тоже выходит не нулём — на соседнем секрете.
+refusal_worlds() {
+  local root="$1" which="$2" only="${3:-}" k why
+  if [ "$which" != stack ]; then
+    for k in ${only:-$SEED_FOUR}; do
+      fresh "$k"
+      GET_MODE=refuse-one REFUSE_NAME="$k" DEFAULT_PRESENT=0 seed "$root"
+      why=""
+      [ "$RC" -ne 0 ] || why="$why; вышел 0"
+      [ "$(last_call)" = "get secret $k" ] || why="$why; после отказа по $k шаг продолжился (последнее обращение: $(last_call))"
+      [[ "$OUT" == *"секрет $k"*"НЕ УСТАНОВЛЕНО"* ]] || why="$why; отказ не назвал $k как секрет, чьё присутствие не установлено"
+      [ "$(rv "$k")" = 7 ] || why="$why; resourceVersion $k 7 → $(rv "$k")"
+      if [ -n "$why" ]; then echo "red|dev-prod-secrets.sh|сервер отказал на get $k|${why#; } (код $RC)"
+      else echo "ok|dev-prod-secrets.sh|сервер отказал на get $k"; fi
+    done
+  fi
+  if [ "$which" != dev-prod ]; then
+    fresh "$STACK_REFUSED"
+    GET_MODE=refuse-one REFUSE_NAME="$STACK_REFUSED" DEFAULT_PRESENT=0 stack own "$root"
+    why=""
+    [ "$RC" -eq 2 ] || why="$why; код $RC, а контракт посева для отказа сервера — 2"
+    [ "$(last_call)" = "get secret $STACK_REFUSED" ] || why="$why; после отказа по $STACK_REFUSED шаг продолжился (последнее обращение: $(last_call); заведений $(grep -cE '^(create|apply) ' "$STATE/.calls"))"
+    [[ "$OUT" == *"секрет $STACK_REFUSED"*"НЕ УСТАНОВЛЕНО"* ]] || why="$why; отказ не назвал $STACK_REFUSED как секрет, чьё присутствие не установлено"
+    [ "$(rv "$STACK_REFUSED")" = 7 ] || why="$why; resourceVersion $STACK_REFUSED 7 → $(rv "$STACK_REFUSED")"
+    if [ -n "$why" ]; then echo "red|stack-secrets.sh|сервер отказал на get $STACK_REFUSED (стенд own)|${why#; }"
+    else echo "ok|stack-secrets.sh|сервер отказал на get $STACK_REFUSED (стенд own)"; fi
+  fi
+}
+
+# ── 1–2. НАХОДКА: отказ get — отказ шага, на ТОМ ЖЕ секрете, объект цел ────
+WORLDS="$(refusal_worlds "$DEPLOY" all)"
+[ "$(printf '%s\n' "$WORLDS" | grep -c '^\(ok\|red\)|')" -eq 5 ] \
+  || fail "1–2: миров отказа исполнено не 5 (четыре у dev-prod-secrets.sh, один у stack-secrets.sh). Вывод:
+$WORLDS"
+while IFS='|' read -r verdict seedname world what; do
+  [ "$verdict" = red ] && violation "1–2: посев $seedname · мир «$world»: $what — отказ API-сервера прочитан как «секрета нет»"
+  ok
+done <<<"$WORLDS"
+
+# ── 3. БЛИЗНЕЦ: секретов нет — посев заводит все четыре ────────────────────
 fresh
 GET_MODE=ok DEFAULT_PRESENT=0 seed
 missing=""; for n in $SEED_FOUR; do [ "$(rv "$n")" = 1 ] || missing="$missing $n"; done
 [ "$RC" -eq 0 ] && [ -z "$missing" ] \
-  || fail "2: на пустом кластере посев вышел $RC, не заведены:${missing:- —}. Вывод:
+  || fail "3: на пустом кластере посев вышел $RC, не заведены:${missing:- —}. Вывод:
 $OUT"
 ok
 
-# ── 3. БЛИЗНЕЦ: секрет есть и виден — переиспользуется ─────────────────────
+# ── 4. БЛИЗНЕЦ: секрет есть и виден — переиспользуется ─────────────────────
 fresh kaname-jwks-enc-key
 GET_MODE=ok DEFAULT_PRESENT=0 seed
 [ "$RC" -eq 0 ] && [ "$(rv kaname-jwks-enc-key)" = 7 ] \
-  || fail "3: существующий ключ обёртки не переиспользован: код $RC, resourceVersion 7 → $(rv kaname-jwks-enc-key). Вывод:
+  || fail "4: существующий ключ обёртки не переиспользован: код $RC, resourceVersion 7 → $(rv kaname-jwks-enc-key). Вывод:
 $OUT"
 ok
 
-# ── 4. ГОНКА: get сказал NotFound, объект уже есть — AlreadyExists = переиспользовать
+# ── 5. ГОНКА: get сказал NotFound, объект уже есть — AlreadyExists = переиспользовать
 fresh kaname-jwks-enc-key
 GET_MODE=notfound DEFAULT_PRESENT=0 seed
 [ "$RC" -eq 0 ] && [ "$(rv kaname-jwks-enc-key)" = 7 ] \
-  || fail "4: объект, заведённый между проверкой и заведением, перезаписан либо посев отказал: код $RC, resourceVersion 7 → $(rv kaname-jwks-enc-key). Заведение обязано быть атомарным на сервере (create, а не apply). Вывод:
-$OUT"
-ok
-
-# ── 5. НАХОДКА: stack-secrets.sh при отказе get — отказ шага, объект цел ────
-fresh kacho-umbrella-pg-iam
-GET_MODE=refuse DEFAULT_PRESENT=0 stack own
-[ "$RC" -ne 0 ] && [ "$(rv kacho-umbrella-pg-iam)" = 7 ] \
-  || fail "5: stack-secrets.sh при отказе get вышел $RC, resourceVersion секрета базы 7 → $(rv kacho-umbrella-pg-iam). Вывод:
+  || fail "5: объект, заведённый между проверкой и заведением, перезаписан либо посев отказал: код $RC, resourceVersion 7 → $(rv kaname-jwks-enc-key). Заведение обязано быть атомарным на сервере (create, а не apply). Вывод:
 $OUT"
 ok
 
@@ -281,5 +347,88 @@ PROBE_CONTEXT=managed-probe GET_MODE=ok DEFAULT_PRESENT=1 ABSENT="kaname-second-
 $OUT"
 ok
 
-[ "$N" -eq "$EXPECTED_ASSERTIONS" ] || fail "выполнено $N утверждений из $EXPECTED_ASSERTIONS"
-echo "PASS: $SCRIPT ($N assertions) — dev-prod-secrets.sh 4 мира, stack-secrets.sh 4 мира (own/копия prod на external/она же без optional)"
+# ── БЛИЗНЕЦЫ СНЯТОГО ПРЕДМЕТА: миры 1–2 обязаны его видеть ─────────────────
+# Копия посевов рядом с настоящими чартами и таблицей стендов; в копии снято
+# различение «сервер отказал» / «секрета нет» — ровно одним фактом, форма
+# снятия та же, что у находки ревью волны-1: отказ уходит в ветку NotFound.
+# Не нашлось места снятия — форма посева сменилась, и близнец утверждал бы не
+# то: это находка о пробе, а не молчание.
+twin_tree() {  # <имя> — печатает путь копии
+  local t="$WORK/twin-$1"
+  mkdir -p "$t/scripts" "$t/tests/helm"
+  cp "$DEPLOY/scripts/dev-prod-secrets.sh" "$DEPLOY/scripts/stack-secrets.sh" "$t/scripts/"
+  cp "$DEPLOY/tests/helm/stacks.sh" "$t/tests/helm/"
+  ln -s "$DEPLOY/stacks.txt" "$t/stacks.txt"
+  ln -s "$DEPLOY/helm" "$t/helm"
+  printf '%s\n' "$t"
+}
+# unseparate_devprod <файл> <секрет | all> — отказ get секрета читается как NotFound.
+unseparate_devprod() {
+  python3 - "$1" "$2" "$SEED_FOUR" <<'PY2'
+import re
+import sys
+path, which, four = sys.argv[1], sys.argv[2], sys.argv[3].split()
+lines = open(path, encoding="utf-8").read().split("\n")
+anchor = 'elif [[ "$out" == *"(NotFound)"* ]]; then'
+get = re.compile(r"get secret ([a-z0-9][a-z0-9-]*) -o name")
+last, seen = None, []
+for i, line in enumerate(lines):
+    m = get.search(line)
+    if m:
+        last = m.group(1)
+    if line.strip() == anchor:
+        seen.append((i, last))
+if sorted(n for _, n in seen) != sorted(four):
+    sys.exit(f"ветки NotFound посева называют {[n for _, n in seen]}, проба знает {four}")
+for i, n in seen:
+    if which in ("all", n):
+        lines[i] = lines[i].replace(anchor, "elif true; then")
+open(path, "w", encoding="utf-8").write("\n".join(lines))
+PY2
+}
+# unseparate_stack <файл> — secret_state читает любой отказ как «нет».
+unseparate_stack() {
+  python3 - "$1" <<'PY2'
+import sys
+path = sys.argv[1]
+s = open(path, encoding="utf-8").read()
+anchor = '  case "$out" in *"(NotFound)"*) echo absent; return 0 ;; esac\n'
+if s.count(anchor) != 1:
+    sys.exit(f"различение в secret_state не найдено (строк {s.count(anchor)})")
+open(path, "w", encoding="utf-8").write(s.replace(anchor, "  echo absent; return 0\n"))
+PY2
+}
+
+# ── 9. БЛИЗНЕЦ (×4): dev-prod-secrets.sh без различения в ветке K ──────────
+for k in $SEED_FOUR; do
+  t="$(twin_tree "devprod-$k")"
+  msg="$(unseparate_devprod "$t/scripts/dev-prod-secrets.sh" "$k" 2>&1)" \
+    || fail "9: копия dev-prod-secrets.sh без различения по $k не построена — $msg"
+  got="$(refusal_worlds "$t" dev-prod "$k")"
+  red="$(printf '%s\n' "$got" | grep '^red|' | cut -d'|' -f2,3)"
+  [ "$red" = "dev-prod-secrets.sh|сервер отказал на get $k" ] \
+    || violation "9: в копии dev-prod-secrets.sh отказ get $k читается как NotFound — ждали красным мир «сервер отказал на get $k» с именем посева, получили: ${got:-пусто}"
+  ok
+done
+
+# ── 10. БЛИЗНЕЦ: stack-secrets.sh, secret_state без различения ─────────────
+t="$(twin_tree stack)"
+msg="$(unseparate_stack "$t/scripts/stack-secrets.sh" 2>&1)" \
+  || fail "10: копия stack-secrets.sh без различения не построена — $msg"
+got="$(refusal_worlds "$t" stack)"
+red="$(printf '%s\n' "$got" | grep '^red|' | cut -d'|' -f2)"
+[ "$red" = "stack-secrets.sh" ] \
+  || violation "10: в копии stack-secrets.sh secret_state читает любой отказ как «нет» — мир отказа обязан покраснеть с именем посева, получили: ${got:-пусто}"
+ok
+
+# ── 11. БЛИЗНЕЦ: оба посева без различения — находки называют оба ──────────
+t="$(twin_tree both)"
+msg="$(unseparate_devprod "$t/scripts/dev-prod-secrets.sh" all 2>&1 && unseparate_stack "$t/scripts/stack-secrets.sh" 2>&1)" \
+  || fail "11: копия обоих посевов без различения не построена — $msg"
+got="$(refusal_worlds "$t" all)"
+named="$(printf '%s\n' "$got" | grep '^red|' | cut -d'|' -f2 | sort | uniq -c | awk '{print $2 "×" $1}' | paste -sd' ')"
+[ "$named" = "dev-prod-secrets.sh×4 stack-secrets.sh×1" ] \
+  || violation "11: оба посева без различения — ждали красными все пять миров (dev-prod-secrets.sh×4 stack-secrets.sh×1), получили: ${named:-ни одного}"
+ok
+
+outcome_verdict "миров отказа 5 (dev-prod-secrets.sh 4, stack-secrets.sh 1) + близнецов снятого различения 6; прочих миров 6"
