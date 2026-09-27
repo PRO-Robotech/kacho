@@ -34,35 +34,26 @@ func newClientAddressOperator(cfg config.Config) *middleware.ContextExtractor {
 
 // newLoginLaneTransport — транспорт к слушателю цели ретрансляции: якорь
 // внутреннего CA, имя сервера для SNI (ручка KACHO_API_GATEWAY_MTLS_IAM_SERVER_NAME,
-// как у gRPC-ребра к службе; пустая → хост адреса) и — ТОЛЬКО если режим
-// предъявления цели его спрашивает — клиентская пара края. Тот же клиент, что у
-// хопов к нашему авторитету отзыва, — одна реализация на все хопы; здесь
-// добавлено только имя сервера, которого у тех хопов нет: их адрес и есть имя.
-//
-// Удостоверение выводится из режима цели тем же предикатом, что набор осей
-// стража (`presentsClientPair`): страж, объявивший ось пары неприменимой, и
-// транспорт, всё-таки предъявляющий пару, говорили бы о разном.
+// как у gRPC-ребра к службе; пустая → хост адреса) и клиентская пара края —
+// у КАЖДОЙ цели: оба слушателя службы узнают край только по ней (страж судит ту
+// же ось, `relayGuardAxes`). Тот же клиент, что у хопов к нашему авторитету
+// отзыва, — одна реализация на все хопы; здесь добавлено только имя сервера,
+// которого у тех хопов нет: их адрес и есть имя.
 //
 // Страж старта уже отверг пустой адрес, незашифрованную схему и неполную
 // пару; здесь пара ЧИТАЕТСЯ, и нечитаемая — тоже отказ старта: продолжить без
 // сертификата значило бы объявить личность на хопе и не предъявлять её.
 func newLoginLaneTransport(cfg config.Config, target relayTargetDecl, rawURL string) (http.RoundTripper, error) {
-	presents, err := target.Mode.presentsClientPair()
+	cost, err := target.Mode.withoutPair()
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w — отказ в старте", target.URLKnob, err)
 	}
-	var client *http.Client
-	if presents {
-		pair, perr := tls.LoadX509KeyPair(strings.TrimSpace(cfg.MTLSClientCertFile), strings.TrimSpace(cfg.MTLSClientKeyFile))
-		if perr != nil {
-			return nil, fmt.Errorf("%s / %s не читаются как пара (%v) — отказ в старте: слушатель "+
-				"за %s допускает ровно край по клиентскому сертификату, и хоп без пары отвергался "+
-				"бы на каждом рукопожатии", mtlsClientCertKnob, mtlsClientKeyKnob, perr, target.URLKnob)
-		}
-		client, err = newPinnedHopClientWithIdentity(mtlsCAKnob, cfg.MTLSCAFile, &pair, handler.LoginLaneRelayTimeout)
-	} else {
-		client, err = newPinnedHopClient(mtlsCAKnob, cfg.MTLSCAFile, handler.LoginLaneRelayTimeout)
+	pair, err := tls.LoadX509KeyPair(strings.TrimSpace(cfg.MTLSClientCertFile), strings.TrimSpace(cfg.MTLSClientKeyFile))
+	if err != nil {
+		return nil, fmt.Errorf("%s / %s не читаются как пара (%v) — отказ в старте: слушатель за %s "+
+			"(режим %s) %s", mtlsClientCertKnob, mtlsClientKeyKnob, err, target.URLKnob, target.Mode, cost)
 	}
+	client, err := newPinnedHopClientWithIdentity(mtlsCAKnob, cfg.MTLSCAFile, &pair, handler.LoginLaneRelayTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -106,22 +97,8 @@ func prepareRelayTarget(provider identityposture.Provider, cfg config.Config, se
 	return tr, target, nil
 }
 
-// relayGuardSummary — оси стража цели одной строкой для самоотчёта старта:
-// неприменимая названа с причиной, а не опущена.
-func relayGuardSummary(target relayTargetDecl) string {
-	parts := make([]string, 0, 4)
-	for _, a := range relayGuardAxes(target) {
-		if a.Applies {
-			parts = append(parts, a.Name)
-			continue
-		}
-		parts = append(parts, a.Name+" — "+a.Reason)
-	}
-	return strings.Join(parts, "; ")
-}
-
 // logRelayWired — самоотчёт провязки ретранслятора: цель, ручка адреса, режим
-// предъявления, оси стража (неприменимая — с причиной), предел и число записей.
+// слушателя цели, оси стража, предел и число записей.
 func logRelayWired(logger *slog.Logger, relay *handler.LoginLaneRelay, target relayTargetDecl, rawURL string) {
 	records := 0
 	for _, rt := range middleware.LoginLaneRoutes() {
@@ -131,7 +108,7 @@ func logRelayWired(logger *slog.Logger, relay *handler.LoginLaneRelay, target re
 	}
 	logger.Info("relay to the identity service wired",
 		"target", string(relay.Serves()), "knob", target.URLKnob, "url", rawURL,
-		"client_auth", string(target.Mode), "guard", relayGuardSummary(target),
+		"client_auth", string(target.Mode), "guard", strings.Join(relayGuardAxes(), "; "),
 		"limit", relay.Limit().String(), "records", records,
 		"strips", "authorization + x-kacho-* (both forms)")
 }

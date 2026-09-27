@@ -293,12 +293,13 @@ type Config struct {
 	// формы: церемония живёт целиком на слушателе выдачи, и тот же путь выдачи,
 	// отвечающий на втором слушателе, был бы вторым местом об одном предмете.
 	//
-	// Слушатель односторонний по TLS (режим предъявления `server-tls-only`,
-	// `registryTokenClientAuthMode` поставки службы: вызывающего на нём судит
-	// предъявленное в запросе, а не рукопожатие): клиентской пары край ему не
-	// предъявляет, якорь
-	// `KACHO_API_GATEWAY_MTLS_CA_FILE` и имя сервера
-	// `KACHO_API_GATEWAY_MTLS_IAM_SERVER_NAME` — те же, что у ребра к службе.
+	// Слушатель запрашивающий (`optional-mutual`, ручка службы
+	// `KANAME_REGISTRYTOKEN_SERVER_MTLS_CLIENTAUTHMODE`): вызывающего без
+	// сертификата допускает, а край узнаёт только по сертификату и лишь тогда
+	// берёт адрес источника из `X-Forwarded-For`. Край предъявляет ему ту же
+	// клиентскую пару `KACHO_API_GATEWAY_MTLS_CLIENT_{CERT,KEY}_FILE`, что всем
+	// рёбрам к службе; якорь `KACHO_API_GATEWAY_MTLS_CA_FILE` и имя сервера
+	// `KACHO_API_GATEWAY_MTLS_IAM_SERVER_NAME` — тоже те же.
 	// УМОЛЧАНИЯ НЕТ и выводиться из адреса соседа он не вправе: под `own` пустое
 	// значение — отказ старта с именем ручки; под `external` ручка не читается.
 	IAMIssuanceURL string `envconfig:"KACHO_API_GATEWAY_IAM_ISSUANCE_URL" default:""`

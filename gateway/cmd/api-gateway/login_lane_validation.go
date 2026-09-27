@@ -18,17 +18,22 @@
 // без стража — и именно её ось «абсолютный https» охраняет носитель сессии
 // человека на прыжке.
 //
-// # Набор осей выводится из РЕЖИМА ПРЕДЪЯВЛЕНИЯ цели, а не из дословного паритета
+// # Четыре оси у КАЖДОЙ цели; режим цели называет цену отсутствия пары
 //
-// Три оси действуют при любом режиме: адрес непуст; адрес — абсолютный `https`
-// (по ретрансляции едет носитель сессии человека, и незашифрованный прыжок нёс
-// бы его в открытом виде); корень пришпилен. Четвёртая — пара «сертификат и
-// ключ» — судится тогда и только тогда, когда цель требует предъявления
-// клиента (`mutual`), и при `server-tls-only` объявляется НЕПРИМЕНИМОЙ ЯВНО, с
-// названным режимом: ось, которой нечего судить, наблюдаемо неотличима от
-// исправной — страж стартует, печатает зелёное, и читатель считает пару
-// закрытой по четырём осям, тогда как закрыта она по трём. Смена режима цели на
-// `mutual` включает ось обратно — это одна правка записи цели ниже.
+// Оси: адрес непуст; адрес — абсолютный `https` (по ретрансляции едет носитель
+// сессии человека, и незашифрованный прыжок нёс бы его в открытом виде); корень
+// пришпилен; пара «сертификат и ключ» края. Пара судится у обеих целей: оба
+// слушателя службы узнают край ТОЛЬКО по его сертификату. Режим цели решает,
+// чем кончается прыжок без пары, и это называет текст отказа:
+//
+//   - `mutual` (слушатель формы) — отказом на каждом рукопожатии;
+//   - `optional-mutual` (слушатель выдачи) — молча: вызывающего без сертификата
+//     слушатель допускает, но адрес источника берёт из `X-Forwarded-For` только
+//     у пира с проверенным сертификатом края, у прочих — адрес соединения, то
+//     есть самого края. Все люди за краем делили бы один предел навигаций
+//     `authorize` и одно окно отказов обмена кода (приёмка темпа службы
+//     `ceremony-pace-is-named-by-number.md`, Р7 п. 2–3, стадия S2 п. 1). Страж
+//     старта службы этого не видит — поэтому его видит страж края.
 package main
 
 import (
@@ -57,21 +62,27 @@ const (
 	// relayClientAuthMutual — слушатель требует клиентский сертификат и
 	// допускает по нему ровно край.
 	relayClientAuthMutual relayClientAuth = "mutual"
-	// relayClientAuthServerTLSOnly — шифрование и аутентификация СЕРВЕРА;
-	// клиентского сертификата слушатель не спрашивает.
-	relayClientAuthServerTLSOnly relayClientAuth = "server-tls-only"
+	// relayClientAuthOptionalMutual — слушатель запрашивает клиентский
+	// сертификат и проверяет предъявленный; вызывающего без него допускает, но
+	// край узнаёт только по сертификату.
+	relayClientAuthOptionalMutual relayClientAuth = "optional-mutual"
 )
 
-// presentsClientPair — предъявляет ли край клиентскую пару цели этого режима.
-func (m relayClientAuth) presentsClientPair() (bool, error) {
+// withoutPair — чем для слушателя этого режима кончается прыжок края без
+// клиентской пары: продолжение текста отказа старта. Ошибка — режим вне
+// закрытого перечня.
+func (m relayClientAuth) withoutPair() (string, error) {
 	switch m {
 	case relayClientAuthMutual:
-		return true, nil
-	case relayClientAuthServerTLSOnly:
-		return false, nil
+		return "asks the caller for a client certificate and admits exactly the edge by it; " +
+			"a hop with nothing to present is refused on every handshake", nil
+	case relayClientAuthOptionalMutual:
+		return "asks the caller for a client certificate and recognises the edge by it alone; " +
+			"a relayed request without the edge's pair is admitted but keyed by the peer address — " +
+			"the edge's own — so every person behind the edge would share one pace limit", nil
 	}
-	return false, fmt.Errorf("client-auth mode %q of the relay target is not one of %q, %q",
-		m, relayClientAuthMutual, relayClientAuthServerTLSOnly)
+	return "", fmt.Errorf("client-auth mode %q of the relay target is not one of %q, %q",
+		m, relayClientAuthMutual, relayClientAuthOptionalMutual)
 }
 
 // relayTargetDecl — цель ретрансляции края: ручка адреса и режим предъявления
@@ -88,9 +99,9 @@ type relayTargetDecl struct {
 // `middleware.RelayTargets()`; сходимость держит проба.
 //
 // Режимы — те, что объявляет поставка службы у своих слушателей: слушатель
-// формы взаимный по решению приёмки Ф3 (Р16), слушатель выдачи — односторонний
-// (`registryTokenClientAuthMode: server-tls-only`: взаимный потребовал бы
-// клиентского сертификата у вызывающих, которые его не носят).
+// формы взаимный по решению приёмки Ф3 (Р16), слушатель выдачи — запрашивающий
+// (`KANAME_REGISTRYTOKEN_SERVER_MTLS_CLIENTAUTHMODE=optional-mutual`, приёмка
+// темпа службы Р7 п. 1, п. 5: взаимный отверг бы вызывающих без сертификата).
 func relayTargetDecls() []relayTargetDecl {
 	return []relayTargetDecl{
 		{
@@ -98,7 +109,7 @@ func relayTargetDecls() []relayTargetDecl {
 			Subject: "the form-lane verbs (sign-in, sign-out, password change, the form token, registration, recovery, second factor)",
 		},
 		{
-			Serves: middleware.RelayTargetIssuance, URLKnob: config.IssuanceURLKnob, Mode: relayClientAuthServerTLSOnly,
+			Serves: middleware.RelayTargetIssuance, URLKnob: config.IssuanceURLKnob, Mode: relayClientAuthOptionalMutual,
 			Subject: "the authorization ceremony (the authorize navigation and the code exchange)",
 		},
 	}
@@ -124,35 +135,9 @@ func mustRelayTargetDecl(tg middleware.RelayTarget) relayTargetDecl {
 	return d
 }
 
-// Имена осей стража.
-const (
-	relayAxisAddress      = "address set"
-	relayAxisHTTPS        = "absolute https address"
-	relayAxisRootPinned   = "root pinned"
-	relayAxisClientPair   = "client certificate and key as a pair"
-	relayAxisInapplicable = "not applicable: the target's client-auth mode is %s — it asks for no client certificate"
-)
-
-// relayGuardAxis — одна ось стража цели; неприменимая несёт причину словами.
-type relayGuardAxis struct {
-	Name    string
-	Applies bool
-	Reason  string
-}
-
-// relayGuardAxes — набор осей стража цели, выведенный из её режима. Один
-// предикат на двух читателей: страж и самоотчёт старта.
-func relayGuardAxes(d relayTargetDecl) []relayGuardAxis {
-	axes := []relayGuardAxis{
-		{Name: relayAxisAddress, Applies: true},
-		{Name: relayAxisHTTPS, Applies: true},
-		{Name: relayAxisRootPinned, Applies: true},
-	}
-	pair := relayGuardAxis{Name: relayAxisClientPair, Applies: true}
-	if presents, err := d.Mode.presentsClientPair(); err == nil && !presents {
-		pair.Applies, pair.Reason = false, fmt.Sprintf(relayAxisInapplicable, d.Mode)
-	}
-	return append(axes, pair)
+// relayGuardAxes — оси стража, одни у каждой цели; читатель — самоотчёт старта.
+func relayGuardAxes() []string {
+	return []string{"address set", "absolute https address", "root pinned", "client certificate and key as a pair"}
 }
 
 // LoginLaneConfig — срез настройки ОДНОЙ цели, который читает страж.
@@ -177,7 +162,7 @@ func validateLoginLaneConfig(provider identityposture.Provider, cfg LoginLaneCon
 		return fmt.Errorf("relay target %q is not declared with its address knob — a relay whose target the guard "+
 			"cannot name would carry its pair unguarded (refuse to start)", d.Serves)
 	}
-	presents, err := d.Mode.presentsClientPair()
+	cost, err := d.Mode.withoutPair()
 	if err != nil {
 		return fmt.Errorf("%s: %w (refuse to start)", d.URLKnob, err)
 	}
@@ -197,20 +182,17 @@ func validateLoginLaneConfig(provider identityposture.Provider, cfg LoginLaneCon
 			"cookie, and a plaintext hop would carry it in the clear (refuse to start)", d.URLKnob, raw)
 	}
 	cert, key, ca := strings.TrimSpace(cfg.ClientCertFile), strings.TrimSpace(cfg.ClientKeyFile), strings.TrimSpace(cfg.CAFile)
-	if presents {
-		switch {
-		case cert == "" && key == "":
-			return fmt.Errorf("%s and %s are both empty — the listener behind %s asks the caller for a "+
-				"client certificate (mode %s) and admits exactly the edge by it; a hop with nothing to present is "+
-				"refused on every handshake; declare the pair together with %s (refuse to start)",
-				mtlsClientCertKnob, mtlsClientKeyKnob, d.URLKnob, d.Mode, d.URLKnob)
-		case key == "":
-			return fmt.Errorf("%s is set without %s — half a pair presents nothing (refuse to start)",
-				mtlsClientCertKnob, mtlsClientKeyKnob)
-		case cert == "":
-			return fmt.Errorf("%s is set without %s — a key with no certificate has nothing to present (refuse to start)",
-				mtlsClientKeyKnob, mtlsClientCertKnob)
-		}
+	switch {
+	case cert == "" && key == "":
+		return fmt.Errorf("%s and %s are both empty — the listener behind %s (mode %s) %s; "+
+			"declare the pair together with %s (refuse to start)",
+			mtlsClientCertKnob, mtlsClientKeyKnob, d.URLKnob, d.Mode, cost, d.URLKnob)
+	case key == "":
+		return fmt.Errorf("%s is set without %s — half a pair presents nothing (refuse to start)",
+			mtlsClientCertKnob, mtlsClientKeyKnob)
+	case cert == "":
+		return fmt.Errorf("%s is set without %s — a key with no certificate has nothing to present (refuse to start)",
+			mtlsClientKeyKnob, mtlsClientCertKnob)
 	}
 	if ca == "" {
 		return fmt.Errorf("%s is empty — the certificate of the listener behind %s is issued by the internal CA "+
