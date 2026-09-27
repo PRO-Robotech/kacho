@@ -1505,8 +1505,8 @@ psql-iam: guard-kind-context
 # те же самые, поэтому промах контекстом здесь стоит не утечки диагностики, а
 # безвозвратного сноса аккаунтов, проектов, пользователей и привязок.
 #
-# guard-destructive — подтверждение вводом, как у spire-rotate-trust-domain (та
-# ничего не рушит безвозвратно, а подтверждение требует). И оно НАЗЫВАЕТ ЦЕЛЬ:
+# guard-destructive — подтверждение вводом, та же форма, что у stack-up. И оно
+# НАЗЫВАЕТ ЦЕЛЬ:
 # прежняя строка печатала значение KUBECONFIG, пустое при дефолтном ~/.kube/config,
 # то есть предупреждала, не сказав о чём.
 wipe-iam-db: guard-kind-context
@@ -1642,55 +1642,6 @@ logs-iam:
 #
 # Побайтовое равенство двух копий — предмет репозитория службы: обе стороны
 # равенства обязаны лежать в одном дереве, а здесь нет ни одной из них.
-
-# ─── KAC-127 Phase 10 — SPIRE / Cilium mesh / cosign ─────────────────────
-# Targets для bootstrap, dry-run проверки, и emergency operations.
-
-# Bootstrap SPIRE Server + Agent + регистрация всех Kachō SPIFFE-IDs.
-# Применяется только когда umbrella values имеет spire-server.enabled=true.
-#
-# guard-destructive, а НЕ guard-kind-context: цель по замыслу исполняется и на
-# настоящем кластере (values.prod.yaml прямо в рецепте), поэтому запрещать чужой
-# контекст нельзя — можно и нужно требовать, чтобы человек увидел названную цель
-# и подтвердил её. Создание пространства имён и применение манифестов PKI в чужой
-# кластер — не то, что делают по опечатке в KUBECONFIG.
-spire-bootstrap:
-	@$(MAKE) --no-print-directory guard-destructive OP=spire-bootstrap TOKEN=BOOTSTRAP \
-	  WHAT="создание namespace spire-system и применение манифестов SPIRE Server/Agent (корень доверия mesh)"
-	@echo "Phase 10: bootstrapping SPIRE Server + Agent..."
-	@kubectl create namespace spire-system --dry-run=client -o yaml | kubectl apply -f -
-	@helm template kacho-umbrella ./helm/umbrella -f ./helm/umbrella/values.prod.yaml \
-		--set spire-server.enabled=true \
-		--set spire-agent.enabled=true \
-		--show-only charts/spire-server/templates/* \
-		--show-only charts/spire-agent/templates/* | \
-		kubectl apply -n spire-system -f -
-	@echo "Waiting for SPIRE Server replicas to be ready..."
-	@kubectl -n spire-system rollout status statefulset/kacho-umbrella-spire-server --timeout=600s
-	@kubectl -n spire-system rollout status daemonset/kacho-umbrella-spire-agent --timeout=600s
-	@echo "✓ SPIRE bootstrap complete. Registration entries applied via post-install Job."
-
-# Rotate trust domain — emergency runbook operation (P10-D19).
-# Invalidates entire trust domain key material.
-#
-# Подтверждение здесь было и раньше — но оно не называло, КУДА поедет операция.
-# Теперь его выдаёт guard-destructive, который разрешает контекст/кластер/apiserver
-# живым kubectl и печатает их. guard-kind-context намеренно НЕ ставится: аварийная
-# ротация по замыслу исполняется на настоящем кластере.
-spire-rotate-trust-domain:
-	@$(MAKE) --no-print-directory guard-destructive OP=spire-rotate-trust-domain TOKEN=ROTATE \
-	  WHAT="перезапуск SPIRE Server — весь материал корня доверия аннулируется, все выданные SVID перестают быть действительными"
-	@kubectl -n spire-system delete pod -l app.kubernetes.io/name=spire-server
-	@echo "✓ SPIRE Server pods restarting; new root CA will be issued."
-
-# Lint все Phase 10 charts.
-spire-lint:
-	helm lint ./helm/umbrella/charts/spire-server
-	helm lint ./helm/umbrella/charts/spire-agent
-	helm lint ./helm/umbrella/charts/cilium
-	helm lint ./helm/umbrella/charts/cosign-policy-controller
-	helm lint ./helm/umbrella/charts/spiffe-csi-driver
-	@echo "✓ All Phase 10 charts lint clean"
 
 # ─── KAC-NLB: kacho-nlb (L4 NLB control-plane) ─────────────────────────
 #
