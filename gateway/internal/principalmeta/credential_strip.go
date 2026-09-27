@@ -177,7 +177,7 @@ func StripCredentialAndIdentityHeadersKeepingClientBasic(h http.Header) {
 	basic, ok := soleClientBasic(h)
 	StripCredentialAndIdentityHeaders(h)
 	if ok {
-		h.Set(http.CanonicalHeaderKey(MetaPresentedCredential), basic)
+		h.Set(MetaPresentedCredential, basic)
 	}
 }
 
