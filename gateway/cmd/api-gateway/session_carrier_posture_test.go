@@ -17,10 +17,10 @@
 // только его: запрос с одним лишь чужим печеньем сессии не доходит ни до кого.
 // Законный близнец меняет ОДИН факт — посадку в окружении: вне `own` не
 // читается и наш носитель, потому что читателя под другой посадкой не
-// заводится. Вне `own` — это `external`, которую пин фундамента v1.8.0 ещё
-// разбирает (снятие — corelib#26, подъём пина — #2862), и незаданная
-// посадка. Путей два — полоса личности и маршрут «кто я», — потому что читают
-// сессию обе.
+// заводится. Вне `own` разбор производит одно значение — незаданную посадку:
+// `external` снята фундаментом (corelib#30, выпуск v1.10.0-rc.3; пин поднят
+// #2862), разбор её отвергает, и случай о ней ушёл тем же изменением. Путей
+// два — полоса личности и маршрут «кто я», — потому что читают сессию обе.
 package main
 
 import (
@@ -68,7 +68,6 @@ func TestSessionCarrierReader_FollowsThePostureParsedFromTheEnvironment(t *testi
 		wantOurs bool
 	}{
 		{posture: "own", wantOurs: true},
-		{posture: "external", wantOurs: false},
 		{posture: "", wantOurs: false},
 	}
 	paths := []string{"/vpc/v1/networks", "/iam/v1/auth/me"}
@@ -82,9 +81,6 @@ func TestSessionCarrierReader_FollowsThePostureParsedFromTheEnvironment(t *testi
 				t.Fatalf("конфигурация края не разобралась: %v", err)
 			}
 			lane, err := cfg.ResolvedIdentityProvider()
-			if err != nil && tc.posture == "external" {
-				t.Fatalf("%s", retiredExternalFinding(err))
-			}
 			if err != nil {
 				t.Fatalf("посадка %q не разобралась: %v", tc.posture, err)
 			}

@@ -20,7 +20,7 @@
 // stepup_verdict_parity_test.go drives THIS entrypoint — machine token included
 // — against the shared rule.
 //
-// ACR ordering (grpcsrv.ACRRank):
+// ACR ordering (acrlevel.Rank):
 //
 //	"0" (anonymous) < "1" (password-only) < "2" (Passkey/UV-preferred) <
 //	"3" (Passkey/UV-required, hardware-bound)
@@ -48,7 +48,7 @@ var (
 // permission catalog.
 //
 // An empty RequiredACRMin means NO step-up requirement: Check fails OPEN on it
-// (grpcsrv.ACRSatisfies treats ""/"0" as no floor). This is
+// (acrlevel.Satisfies treats ""/"0" as no floor). This is
 // intentional — catalog COMPLETENESS (every RPC has an entry) and the catalog's
 // per-RPC authz Check are enforced upstream by the authz middleware
 // ("no entry for method" → AUTHZ_DENIED), so the step-up layer need not
