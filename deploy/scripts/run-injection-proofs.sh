@@ -54,7 +54,8 @@
 # ДОМОВ У ДОКАЗАТЕЛЬСТВА ДВА, И ВТОРОЙ ОБЪЯВЛЯЕТСЯ ЗДЕСЬ ЖЕ
 #
 # Этот обход живёт в задании `helm lint · template`, а там из инструментов только
-# helm, go, python3 и git — замерено по объявлению задания, не по памяти.
+# то, что ставит само задание, — helm, kubectl, go, python3, yq, jq, openssl, make
+# и git; перечень читается из его шагов посадки, не по памяти.
 # Доказательству, которому нужен buf, trivy или сканер со своим окружением, здесь
 # остаётся ровно один исход — «условие не создано», и он повторяется КАЖДЫЙ
 # прогон. Такое доказательство существует как текст: ровно то, против чего оно
@@ -114,6 +115,7 @@ deploy/load-tests/restart-verdict-inject.sh
 deploy/scripts/admin-hop-cluster-half-inject.sh
 deploy/scripts/declared-verdicts-census-inject.sh
 deploy/scripts/deps-failure-class-inject.sh
+deploy/tests/helm/cert-manager-release-before-product-inject.sh
 deploy/tests/helm/identity-guards-on-our-own-posture-inject.sh
 deploy/tests/helm/identity-hook-credential-provenance-inject.sh
 deploy/tests/helm/identity-hook-credential-source-inject.sh
