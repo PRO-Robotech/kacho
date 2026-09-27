@@ -15,8 +15,9 @@ Ingress одного рендера решает, какое правило вы
 заданного пути на хосте края, — тем же порядком, что у ingress-nginx: точное
 совпадение (`pathType: Exact`) раньше приставки, среди приставок — самая
 длинная, приставка совпадает по границе элемента пути (`/a` покрывает `/a` и
-`/a/b`, но не `/ab`). Правило чужого объекта на том же хосте участвует наравне:
-угнать координату может и вход консоли, объявленный на хост края.
+`/a/b`, но не `/ab`). Правило чужого объекта того же класса на том же хосте
+участвует наравне: угнать координату может и вход консоли, объявленный на хост
+края.
 
 Утверждения (печатаются находками, по одной на нарушение):
 
@@ -54,10 +55,10 @@ PRIOR_PROTOCOL = "GRPCS"
 CEREMONY_PROTOCOL = "HTTPS"
 BACKEND_PROTOCOL = "nginx.ingress.kubernetes.io/backend-protocol"
 
-# Координаты церемонии. Второе объявление тех же строк, что край держит в
-# `gateway/internal/middleware/login_lane_paths.go` (CeremonyPath*): сверка с
-# ним — отдельный предмет, до которого этот разбор не дотягивается (край ветки
-# волны этих констант ещё не несёт).
+# Координаты церемонии. Те же строки объявляет край — CeremonyPath* в
+# `gateway/internal/middleware/login_lane_paths.go` (вносит kacho#2721). Сверки
+# двух объявлений этот разбор НЕ делает: он судит только маршрутизацию входа, и
+# расхождение с краем ему не видно.
 CEREMONY_COORDINATES = (
     "/iam/v1/authorize",
     "/iam/v1/token",
@@ -187,9 +188,12 @@ def audit(docs):
         tls_hosts = {h for t in ((i.get("spec") or {}).get("tls") or []) for h in (t.get("hosts") or [])}
         if not set(hosts) <= tls_hosts:
             findings.append(f"объект {name_of(i)} не объявляет TLS на хосте края {hosts}")
-    if len(hosts) != 1:
+    if len(hosts) != 1 or len(classes) != 1:
         return findings, (0, 0, 0), None
     host = hosts[0]
+    # Состязаются правила одного посредника: объект другого класса обслуживает
+    # другой контроллер и маршрут этого не угоняет.
+    ings = [i for i in ings if str((i.get("spec") or {}).get("ingressClassName")) == classes[0]]
 
     # 4. Прежнее правило — то, что выигрывает `/`.
     prior = route(ings, host, "/", findings)

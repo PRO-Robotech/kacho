@@ -707,7 +707,8 @@ api-gateway:
 
 # INFRA sec-hardening r3 — umbrella-owned public ingress for api-gateway. Replaces
 # the sub-chart ingress (disabled above). Routes the external edge through the
-# api-gateway pod's EXTERNAL-marked TLS listener (Service port `tls`, GRPCS) so
+# api-gateway pod's EXTERNAL-marked TLS listener (Service port `tls`, GRPCS; the
+# three ceremony coordinates ride HTTPS to the same listener by exact match) so
 # Internal* REST is never served on the public endpoint. host / tls.secretName /
 # proxyReadTimeout are inherited from the api-gateway sub-chart values.
 apiGatewayIngress:
