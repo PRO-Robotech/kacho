@@ -11,9 +11,13 @@
 
 from __future__ import annotations
 
+import copy
+import functools
 import importlib.util
 import sys
 from pathlib import Path
+
+import yaml
 
 _spec = importlib.util.spec_from_file_location(
     "pr_verdict", Path(__file__).with_name("pr-verdict.py")
@@ -30,12 +34,14 @@ decide, render, GREEN, RED, NOT_READY = (
 
 
 def run(name: str, status: str, conclusion: str | None = None,
-        run_id: int | None = None, app: str | None = None) -> dict:
+        run_id: object = None, app: str | None = None, suite: object = None) -> dict:
     r: dict = {"name": name, "status": status, "conclusion": conclusion}
     if run_id is not None:
         r["id"] = run_id
     if app is not None:
         r["app"] = {"slug": app}
+    if suite is not None:
+        r["check_suite"] = {"id": suite}
     return r
 
 
@@ -131,20 +137,24 @@ def test_garbage_input_is_not_read_as_green() -> None:
         raise AssertionError(f"мусор {junk!r} не отвергнут — вердикт был бы о неизвестно чём")
 
 
-# ── Повторный прогон того же имени на той же sha (#2865) ─────────────────────
+# ── Повторный прогон той же проверки на той же sha (#2865) ──────────────────
 #
 # Check-runs одной sha приходят из РАЗНЫХ наборов: событие `edited` запускает
 # процесс заново, `cancel-in-progress` снимает прежний прогон. Отменённый
 # остаётся на sha навсегда, и перезапуск свода давал бы то же красное.
+#
+# Номера наборов и прогонов ниже — с живой sha 9672c86fac5 (PR #2861), где
+# отменённый прогон и его замена лежат в разных наборах.
+OLD_SUITE, NEW_SUITE = 98030781046, 98030864187
 
 
 def test_cancelled_with_a_later_success_of_the_same_name_is_green() -> None:
-    """Предикат снятия #2865: отменённый прогон, заменённый более поздним
-    успехом того же имени, вердикта не красит."""
+    """Предикат снятия #2865: отменённый прогон, заменённый успехом того же
+    имени в более позднем наборе, вердикта не красит."""
     v = decide([
-        run("ci", "completed", "success", run_id=10),
-        run(TITLE, "completed", "cancelled", run_id=108278452901),
-        run(TITLE, "completed", "success", run_id=108278551222),
+        run("ci", "completed", "success", run_id=10, suite=1),
+        run(TITLE, "completed", "cancelled", run_id=108278452901, suite=OLD_SUITE),
+        run(TITLE, "completed", "success", run_id=108278551222, suite=NEW_SUITE),
     ])
     assert v.state == GREEN, v
     assert (v.total, v.green, v.blocking) == (3, 2, 0), v
@@ -155,37 +165,66 @@ def test_cancelled_without_a_replacement_is_red_and_named() -> None:
     """Близнец предыдущей: та же отмена без замены — красно, нарушитель назван.
     Меняется ровно один факт — нет более позднего прогона того же имени."""
     v = decide([
-        run("ci", "completed", "success", run_id=10),
-        run(TITLE, "completed", "cancelled", run_id=108278452901),
+        run("ci", "completed", "success", run_id=10, suite=1),
+        run(TITLE, "completed", "cancelled", run_id=108278452901, suite=OLD_SUITE),
     ])
     assert v.state == RED, v
     assert v.offenders == (TITLE,), v
     assert v.superseded == (), v
 
 
-def test_the_later_run_is_the_larger_id_not_the_later_position() -> None:
-    """«Позднее» — по id, а не по порядку во входе: API порядка не обещает.
-    Тот же набор в обратном порядке судится одинаково, а поздняя отмена после
-    раннего успеха — красна."""
+def test_the_later_run_is_ordered_by_suite_then_id_not_by_position() -> None:
+    """«Позднее» — по паре (набор, id), а не по порядку во входе: API порядка
+    не обещает. Тот же набор в обратном порядке судится одинаково, а поздняя
+    отмена после раннего успеха — красна."""
     replaced = [
-        run(TITLE, "completed", "success", run_id=200),
-        run(TITLE, "completed", "cancelled", run_id=100),
+        run(TITLE, "completed", "success", run_id=200, suite=NEW_SUITE),
+        run(TITLE, "completed", "cancelled", run_id=100, suite=OLD_SUITE),
     ]
     assert decide(replaced).state == GREEN, decide(replaced)
     cancelled_last = [
-        run(TITLE, "completed", "success", run_id=100),
-        run(TITLE, "completed", "cancelled", run_id=200),
+        run(TITLE, "completed", "success", run_id=100, suite=OLD_SUITE),
+        run(TITLE, "completed", "cancelled", run_id=200, suite=NEW_SUITE),
     ]
     v = decide(cancelled_last)
     assert v.state == RED, v
     assert v.offenders == (TITLE,), v
 
 
+def test_a_rerun_of_an_older_suite_does_not_supersede_a_fresher_failure() -> None:
+    """Повтор попытки СТАРОГО набора получает больший id, но судит старый
+    контекст: `review-text` читает текст из полезной нагрузки события, и повтор
+    набора первого события судит ПРЕЖНИЙ текст. Свежий отказ он не отставляет.
+
+    Замер: ui.yml, прогон 35183091753 — у попытки 2 тот же набор 95281882850,
+    что у попытки 1, а id прогонов больше."""
+    v = decide([
+        run(TITLE, "completed", "success", run_id=100, suite=OLD_SUITE),
+        run(TITLE, "completed", "failure", run_id=200, suite=NEW_SUITE),
+        run(TITLE, "completed", "success", run_id=300, suite=OLD_SUITE),
+    ])
+    assert v.state == RED, v
+    assert v.offenders == (TITLE,), v
+    assert len(v.superseded) == 2, v
+
+
+def test_a_rerun_within_the_freshest_suite_supersedes_its_failure() -> None:
+    """Законный близнец предыдущей: меняется ровно один факт — повтор идёт в
+    СВЕЖЕМ наборе. Повтор того же контекста заменяет его отказ."""
+    v = decide([
+        run(TITLE, "completed", "success", run_id=100, suite=OLD_SUITE),
+        run(TITLE, "completed", "failure", run_id=200, suite=NEW_SUITE),
+        run(TITLE, "completed", "success", run_id=300, suite=NEW_SUITE),
+    ])
+    assert v.state == GREEN, v
+    assert len(v.superseded) == 2, v
+
+
 def test_a_failure_replaced_by_a_later_success_is_green() -> None:
     """Исправленный заголовок: прогон на `edited` заменяет прежний отказ."""
     v = decide([
-        run(TITLE, "completed", "failure", run_id=100),
-        run(TITLE, "completed", "success", run_id=200),
+        run(TITLE, "completed", "failure", run_id=100, suite=OLD_SUITE),
+        run(TITLE, "completed", "success", run_id=200, suite=NEW_SUITE),
     ])
     assert v.state == GREEN, v
 
@@ -194,9 +233,9 @@ def test_a_cancelled_run_whose_replacement_still_runs_is_not_ready() -> None:
     """Замена ещё идёт — вердикта нет, ждать. Красное здесь обрывало бы ожидание
     на первом заходе, хотя замена ещё скажет своё."""
     v = decide([
-        run("ci", "completed", "success", run_id=10),
-        run(TITLE, "completed", "cancelled", run_id=100),
-        run(TITLE, "in_progress", run_id=200),
+        run("ci", "completed", "success", run_id=10, suite=1),
+        run(TITLE, "completed", "cancelled", run_id=100, suite=OLD_SUITE),
+        run(TITLE, "in_progress", run_id=200, suite=NEW_SUITE),
     ])
     assert v.state == NOT_READY, v
     assert v.offenders == (TITLE,), v
@@ -206,9 +245,9 @@ def test_a_later_skip_does_not_erase_an_earlier_failure() -> None:
     """Пропуск ничего не осмотрел — он не замена. Иначе отказ превращался бы в
     «нейтральное», и соседняя зелёная проверка давала бы «зелено»."""
     v = decide([
-        run("ci", "completed", "success", run_id=10),
-        run(TITLE, "completed", "failure", run_id=100),
-        run(TITLE, "completed", "skipped", run_id=200),
+        run("ci", "completed", "success", run_id=10, suite=1),
+        run(TITLE, "completed", "failure", run_id=100, suite=OLD_SUITE),
+        run(TITLE, "completed", "skipped", run_id=200, suite=NEW_SUITE),
     ])
     assert v.state == RED, v
     assert v.offenders == (TITLE,), v
@@ -218,8 +257,8 @@ def test_a_later_skip_after_a_success_keeps_the_success() -> None:
     """Парный контроль к предыдущей: поздний пропуск при состоявшемся успехе
     вердикта не портит — судится прогон, несущий исход."""
     v = decide([
-        run(TITLE, "completed", "success", run_id=100),
-        run(TITLE, "completed", "skipped", run_id=200),
+        run(TITLE, "completed", "success", run_id=100, suite=OLD_SUITE),
+        run(TITLE, "completed", "skipped", run_id=200, suite=NEW_SUITE),
     ])
     assert v.state == GREEN, v
     assert (v.green, v.neutralish) == (1, 0), v
@@ -229,8 +268,10 @@ def test_same_name_from_another_app_is_not_a_replacement() -> None:
     """Имя проверки не принадлежит одному поставщику: одноимённый прогон
     ДРУГОГО приложения — отдельная проверка, а не замена."""
     v = decide([
-        run("CodeQL", "completed", "failure", run_id=100, app="github-advanced-security"),
-        run("CodeQL", "completed", "success", run_id=200, app="github-actions"),
+        run("CodeQL", "completed", "failure", run_id=100, app="github-advanced-security",
+            suite=OLD_SUITE),
+        run("CodeQL", "completed", "success", run_id=200, app="github-actions",
+            suite=NEW_SUITE),
     ])
     assert v.state == RED, v
     assert v.offenders == ("CodeQL",), v
@@ -240,18 +281,240 @@ def test_without_ids_no_replacement_is_assumed() -> None:
     """Порядка нет — замены не доказать: одноимённые прогоны без id судятся все,
     и отмена по-прежнему красит."""
     v = decide([
-        run(TITLE, "completed", "cancelled"),
-        run(TITLE, "completed", "success"),
+        run(TITLE, "completed", "cancelled", suite=OLD_SUITE),
+        run(TITLE, "completed", "success", suite=NEW_SUITE),
     ])
     assert v.state == RED, v
     assert v.superseded == (), v
 
 
-def test_the_report_names_what_was_set_aside() -> None:
-    """Отставленный прогон не исчезает молча: сводка называет его и его id."""
-    text = render(decide([
+def test_without_a_suite_no_replacement_is_assumed() -> None:
+    """Номер набора — половина порядка. Без него повтор старого контекста не
+    отличить от замены, поэтому прогоны без набора судятся все — как без id.
+    Близнец — первая проба раздела: те же прогоны С наборами зелены."""
+    v = decide([
         run(TITLE, "completed", "cancelled", run_id=108278452901),
         run(TITLE, "completed", "success", run_id=108278551222),
+    ])
+    assert v.state == RED, v
+    assert v.superseded == (), v
+
+
+def test_a_boolean_is_not_an_order() -> None:
+    """`True` в JSON — не число, хотя в python `bool` — подкласс `int`. Прогон с
+    таким id или номером набора упорядочить нельзя, и замена не предполагается.
+    Близнец в каждой паре меняет ровно один факт — `True` на целое 1."""
+    for bad, good in (
+        (dict(run_id=True, suite=OLD_SUITE), dict(run_id=1, suite=OLD_SUITE)),
+        (dict(run_id=100, suite=True), dict(run_id=100, suite=1)),
+    ):
+        with_bool = decide([
+            run(TITLE, "completed", "cancelled", **bad),
+            run(TITLE, "completed", "success", run_id=200, suite=NEW_SUITE),
+        ])
+        assert with_bool.state == RED, (bad, with_bool)
+        assert with_bool.superseded == (), (bad, with_bool)
+        with_int = decide([
+            run(TITLE, "completed", "cancelled", **good),
+            run(TITLE, "completed", "success", run_id=200, suite=NEW_SUITE),
+        ])
+        assert with_int.state == GREEN, (good, with_int)
+
+
+def test_the_report_names_what_was_set_aside() -> None:
+    """Отставленный прогон не исчезает молча: сводка называет его, его id и
+    его набор."""
+    text = render(decide([
+        run(TITLE, "completed", "cancelled", run_id=108278452901, suite=OLD_SUITE),
+        run(TITLE, "completed", "success", run_id=108278551222, suite=NEW_SUITE),
     ]))
     assert "отставлено 1" in text, text
     assert "108278452901" in text and "cancelled" in text, text
+    assert str(OLD_SUITE) in text, text
+
+
+# ── Предпосылка ключа: имя проверки однозначно в процессах запроса ────────────
+#
+# В ответе check-runs нет ни процесса, ни события, из которых прогон пришёл.
+# Ключ (приложение, имя) поэтому держится предпосылкой: одно имя производит
+# ровно одна джоба процессов, запускаемых запросом на слияние. Иначе отказ одной
+# джобы отставлялся бы успехом другой — одноимённой. Пробы ниже инъецируют
+# нарушение в НАСТОЯЩЕЕ дерево процессов и держат рядом законного близнеца.
+
+def premise(workflows: dict[str, object]):
+    return pr_verdict.premise(workflows)
+
+
+WORKFLOWS = Path(__file__).resolve().parents[1] / "workflows"
+REVIEW, UI, CI = (f".github/workflows/{n}" for n in ("review-text.yml", "ui.yml", "ci.yaml"))
+FUZZ = ".github/workflows/continuous-fuzz.yml"
+
+
+@functools.cache
+def _parsed_tree() -> dict[str, object]:
+    files = sorted({*WORKFLOWS.glob("*.yml"), *WORKFLOWS.glob("*.yaml")})
+    return {f".github/workflows/{f.name}": yaml.safe_load(f.read_text(encoding="utf-8"))
+            for f in files}
+
+
+def tree_workflows() -> dict[str, object]:
+    """Разобранное дерево процессов; каждой пробе — своя копия для инъекции."""
+    return copy.deepcopy(_parsed_tree())
+
+
+def _pr_jobs_declared(workflows: dict[str, object]) -> int:
+    """Знаменатель обхода, посчитанный независимо от гейта."""
+    n = 0
+    for doc in workflows.values():
+        on = doc.get("on", doc.get(True))
+        triggers = [on] if isinstance(on, str) else list(on or [])
+        if {"pull_request", "pull_request_target"} & set(triggers):
+            n += len(doc["jobs"])
+    return n
+
+
+def test_the_tree_holds_the_check_name_premise() -> None:
+    """Предикат предпосылки: в процессах запроса имя каждой джобы однозначно, и
+    осмотрены ВСЕ их джобы, а не часть."""
+    wf = tree_workflows()
+    p = premise(wf)
+    print(f"предпосылка ключа: осмотрено джоб {p.examined}, имён {p.names}, "
+          f"нарушений {len(p.breaches)}")
+    assert p.breaches == (), "\n".join(p.breaches)
+    assert p.examined == _pr_jobs_declared(wf) > 0, p
+    assert p.names >= p.examined, p
+
+
+def test_a_same_named_job_in_another_pr_workflow_breaks_the_premise() -> None:
+    """Инъекция: джоба `review-text.yml` скопирована в `ui.yml`. Её отказ в одном
+    процессе отставлялся бы успехом в другом. Близнец — та же копия в процессе,
+    который запрос не запускает: его прогонов на голове запроса нет."""
+    job = tree_workflows()[REVIEW]["jobs"]["attribution"]
+    wf = tree_workflows()
+    wf[UI]["jobs"]["attribution-copy"] = copy.deepcopy(job)
+    breaches = premise(wf).breaches
+    assert any(TITLE in b and "ui.yml" in b and "review-text.yml" in b for b in breaches), breaches
+    twin = tree_workflows()
+    twin[FUZZ]["jobs"]["attribution-copy"] = copy.deepcopy(job)
+    assert premise(twin).breaches == (), premise(twin).breaches
+
+
+def test_a_same_named_job_in_the_same_workflow_breaks_the_premise() -> None:
+    """Инъекция внутри одного процесса: вторая джоба под именем `golangci-lint`.
+    Близнец — то же тело под другим именем."""
+    wf = tree_workflows()
+    wf[CI]["jobs"]["lint-twin"] = copy.deepcopy(wf[CI]["jobs"]["lint"])
+    breaches = premise(wf).breaches
+    assert any("golangci-lint" in b and "lint-twin" in b for b in breaches), breaches
+    twin = tree_workflows()
+    twin[CI]["jobs"]["lint-twin"] = copy.deepcopy(twin[CI]["jobs"]["lint"])
+    twin[CI]["jobs"]["lint-twin"]["name"] = "golangci-lint второй проход"
+    assert premise(twin).breaches == (), premise(twin).breaches
+
+
+def test_a_matrix_name_without_an_expression_breaks_the_premise() -> None:
+    """Имя матричной джобы без выражения даёт ногам одно имя — отказ одной ноги
+    отставлялся бы успехом другой. Близнец — настоящее имя из дерева."""
+    wf = tree_workflows()
+    wf[UI]["jobs"]["build"]["name"] = "build"
+    breaches = premise(wf).breaches
+    assert any("ui.yml" in b and "jobs.build" in b and "project" in b for b in breaches), breaches
+    wf = tree_workflows()
+    wf[CI]["jobs"]["unit-shard"]["name"] = "юниты"
+    breaches = premise(wf).breaches
+    assert any("jobs.unit-shard" in b for b in breaches), breaches
+    assert premise(tree_workflows()).breaches == ()
+
+
+def test_a_matrix_dimension_missing_from_the_name_breaks_the_premise() -> None:
+    """Измерение матрицы, которого имя не называет, склеивает ноги по нему.
+    Близнец меняет один факт — имя называет и это измерение."""
+    wf = tree_workflows()
+    wf[UI]["jobs"]["test"]["strategy"]["matrix"]["node"] = [20, 22]
+    breaches = premise(wf).breaches
+    assert any("jobs.test" in b and "node" in b for b in breaches), breaches
+    twin = tree_workflows()
+    twin[UI]["jobs"]["test"]["strategy"]["matrix"]["node"] = [20, 22]
+    twin[UI]["jobs"]["test"]["name"] = "unit (${{ matrix.pkg }}, ${{ matrix.node }})"
+    assert premise(twin).breaches == (), premise(twin).breaches
+
+
+def test_a_literal_name_equal_to_a_matrix_leg_breaks_the_premise() -> None:
+    """Литеральное имя, совпавшее с ногой раскрытой матрицы другого процесса:
+    `unit (host)` — нога `ui.yml` `unit (${{ matrix.pkg }})`. Близнец — имя,
+    которого ни одна нога не даёт."""
+    wf = tree_workflows()
+    wf[CI]["jobs"]["extra"] = {"name": "unit (host)", "runs-on": "ubuntu-latest", "steps": []}
+    breaches = premise(wf).breaches
+    assert any("unit (host)" in b and "ui.yml" in b and "jobs.extra" in b for b in breaches), breaches
+    twin = tree_workflows()
+    twin[CI]["jobs"]["extra"] = {"name": "unit host", "runs-on": "ubuntu-latest", "steps": []}
+    assert premise(twin).breaches == (), premise(twin).breaches
+
+
+def test_a_literal_name_within_a_dynamic_matrix_breaks_the_premise() -> None:
+    """Матрица из выражения не раскрывается: её имя — образец. Литерал, который
+    ему отвечает, — возможное совпадение. Литерал стоит и после образца
+    (`ui.yml` против `ci.yaml`), и перед ним (`ci.yaml` против `e2e-newman.yml`):
+    порядок обхода не решает. Близнец — литерал, который образцу не отвечает."""
+    cases = (
+        (UI, "юниты 07", "юнит 07", "unit-shard"),
+        (CI, "e2e 01 (vpc)", "e2e 01 [vpc]", "e2e-newman.yml: jobs.shard"),
+    )
+    for where, hit, miss, owner in cases:
+        wf = tree_workflows()
+        wf[where]["jobs"]["extra"] = {"name": hit, "runs-on": "ubuntu-latest", "steps": []}
+        breaches = premise(wf).breaches
+        assert any(hit in b and owner in b for b in breaches), (hit, breaches)
+        twin = tree_workflows()
+        twin[where]["jobs"]["extra"] = {"name": miss, "runs-on": "ubuntu-latest", "steps": []}
+        assert premise(twin).breaches == (), (miss, premise(twin).breaches)
+
+
+def test_a_matrix_include_key_missing_from_the_name_breaks_the_premise() -> None:
+    """Ключ из `include` — тоже измерение: две ноги, различимые только им,
+    получили бы одно имя `unit (host)`. Близнец называет и этот ключ."""
+    legs = {"include": [{"pkg": "host", "node": 20}, {"pkg": "host", "node": 22}]}
+    wf = tree_workflows()
+    wf[UI]["jobs"]["test"]["strategy"]["matrix"] = copy.deepcopy(legs)
+    breaches = premise(wf).breaches
+    assert any("jobs.test" in b and "node" in b for b in breaches), breaches
+    twin = tree_workflows()
+    twin[UI]["jobs"]["test"]["strategy"]["matrix"] = copy.deepcopy(legs)
+    twin[UI]["jobs"]["test"]["name"] = "unit (${{ matrix.pkg }}, ${{ matrix.node }})"
+    assert premise(twin).breaches == (), premise(twin).breaches
+
+
+def test_two_dynamic_matrix_names_with_compatible_ends_break_the_premise() -> None:
+    """Два образца: совпасть могут, только если совместимы и начало, и конец.
+    `юниты ${{ matrix.shard.id }}` во втором процессе совпадёт с джобой
+    `unit-shard`. Близнецы меняют по одному концу: другое начало, другой конец."""
+    def dynamic(name: str) -> dict:
+        return {"name": name, "runs-on": "ubuntu-latest", "steps": [],
+                "strategy": {"matrix": "${{ fromJSON(needs.plan.outputs.matrix) }}"}}
+    wf = tree_workflows()
+    wf[UI]["jobs"]["extra"] = dynamic("юниты ${{ matrix.shard.id }}")
+    breaches = premise(wf).breaches
+    assert any("jobs.extra" in b and "unit-shard" in b for b in breaches), breaches
+    for other in ("юнит-шард ${{ matrix.shard.id }}",
+                  "e2e ${{ matrix.shard.id }} [${{ matrix.shard.suites }}]"):
+        twin = tree_workflows()
+        twin[UI]["jobs"]["extra"] = dynamic(other)
+        assert premise(twin).breaches == (), (other, premise(twin).breaches)
+
+
+def test_a_reusable_workflow_call_is_not_read_as_unique() -> None:
+    """Вызов переиспользуемого процесса даёт имена `вызывающий / вызванный`,
+    которых этот обход не вычисляет. Невычисленное не считается однозначным."""
+    wf = tree_workflows()
+    wf[UI]["jobs"]["called"] = {"uses": "./.github/workflows/ui.yml"}
+    breaches = premise(wf).breaches
+    assert any("jobs.called" in b for b in breaches), breaches
+
+
+def test_an_empty_traversal_is_a_breach_not_a_pass() -> None:
+    """Ноль осмотренных джоб — не «нарушений нет», а «никто не смотрел». Близнец —
+    одно дерево без процессов запроса, другое пустое: оба красны."""
+    assert premise({}).breaches, premise({})
+    only_schedule = {FUZZ: tree_workflows()[FUZZ]}
+    assert premise(only_schedule).breaches, premise(only_schedule)
