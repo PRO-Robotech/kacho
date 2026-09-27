@@ -3,7 +3,7 @@
 
 package middleware_test
 
-// auth_jwks_test.go — AuthInterceptor validates real Hydra RS256 access
+// auth_jwks_test.go — AuthInterceptor validates real issuer-signed RS256 access
 // JWTs through the JWKS verifier (a second strategy alongside the HMAC-dev
 // path) and derives the Kachō Principal from the verified `kaname_principal_*`
 // claims (top-level OR ext_claims), falling back to SubjectLookuper only when
@@ -53,7 +53,7 @@ func (c *countingLookup) LookupByExternalID(_ context.Context, _ string) (middle
 // rs256Verifier builds a JWTVerifier wired to the fixture's JWKS server with
 // the fixture issuer/audience.
 //
-// Прежде здесь стояло `AllowMissingAudience: true` с доводом «Hydra dev может
+// Прежде здесь стояло `AllowMissingAudience: true` с доводом «dev-издатель может
 // ещё не ставить адресат края». Ручка снята вместе с полосой (задача #2567):
 // она отменяла сужение по адресату на ЛЮБОМ расхождении, а не только на
 // отсутствующем `aud`, то есть была вторым выключателем той же проверки.
@@ -70,9 +70,9 @@ func rs256Verifier(t *testing.T, fix *jwksFixture) *middleware.JWTVerifier {
 	return v
 }
 
-// hydraClaims returns a Hydra-shaped RS256 claim set with the kacho principal
-// claims at the TOP LEVEL (Hydra allowed_top_level_claims promotion).
-func hydraClaims(pType, pID string) jwt.MapClaims {
+// issuerClaims returns an issuer-shaped RS256 claim set with the kacho principal
+// claims at the TOP LEVEL (the issuer's top-level claim promotion).
+func issuerClaims(pType, pID string) jwt.MapClaims {
 	c := standardClaims()
 	c["sub"] = pID
 	c["kaname_principal_type"] = pType
@@ -88,7 +88,7 @@ func TestAuthJWKS_RS256_PrincipalFromClaims_NoLookup(t *testing.T) {
 	auth := middleware.NewAuthInterceptor(middleware.AuthModeDev, "", lookup, authTestLogger()).
 		WithVerifier(rs256Verifier(t, fix))
 
-	token := fix.sign(t, hydraClaims("user", "usr_alice_acc_a1b2"))
+	token := fix.sign(t, issuerClaims("user", "usr_alice_acc_a1b2"))
 	ctx := metadata.NewIncomingContext(context.Background(),
 		metadata.Pairs("authorization", "Bearer "+token))
 
@@ -105,7 +105,7 @@ func TestAuthJWKS_RS256_PrincipalFromClaims_NoLookup(t *testing.T) {
 	}
 	_, err := auth.Unary()(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/iam/WhoAmI"}, handler)
 	require.NoError(t, err)
-	assert.True(t, called, "handler must run for a valid Hydra token")
+	assert.True(t, called, "handler must run for a valid issuer token")
 	assert.Equal(t, 0, lookup.called, "verified kaname_principal_* claims must NOT trigger a SubjectLookuper round-trip")
 }
 
@@ -116,7 +116,7 @@ func TestAuthJWKS_RS256_ServiceAccountPrincipal(t *testing.T) {
 	auth := middleware.NewAuthInterceptor(middleware.AuthModeDev, "", lookup, authTestLogger()).
 		WithVerifier(rs256Verifier(t, fix))
 
-	token := fix.sign(t, hydraClaims("service_account", "sva_robot_acc_a1b2"))
+	token := fix.sign(t, issuerClaims("service_account", "sva_robot_acc_a1b2"))
 	ctx := metadata.NewIncomingContext(context.Background(),
 		metadata.Pairs("authorization", "Bearer "+token))
 
@@ -219,16 +219,16 @@ func TestAuthJWKS_BadToken_RejectedNeverAnonymous(t *testing.T) {
 	// by a DIFFERENT key advertising the same kid).
 	otherFix := newJWKSFixture(t, "RS256")
 	otherFix.kid = fix.kid // collide kid so resolution hits fix's key, sig fails
-	d1 := otherFix.sign(t, hydraClaims("user", "usr_evil"))
+	d1 := otherFix.sign(t, issuerClaims("user", "usr_evil"))
 
 	// d3: expired RS256 token.
-	expClaims := hydraClaims("user", "usr_alice_acc_a1b2")
+	expClaims := issuerClaims("user", "usr_alice_acc_a1b2")
 	expClaims["exp"] = time.Now().Add(-1 * time.Hour).Unix()
 	expClaims["iat"] = time.Now().Add(-2 * time.Hour).Unix()
 	d3 := fix.sign(t, expClaims)
 
 	// d4: wrong issuer.
-	issClaims := hydraClaims("user", "usr_alice_acc_a1b2")
+	issClaims := issuerClaims("user", "usr_alice_acc_a1b2")
 	issClaims["iss"] = "https://evil.example.com"
 	d4 := fix.sign(t, issClaims)
 
@@ -275,14 +275,14 @@ func TestAuthJWKS_DisallowedAlg_Rejected(t *testing.T) {
 	fix := newJWKSFixture(t, "RS256")
 
 	// alg=none.
-	noneTok := jwt.NewWithClaims(jwt.SigningMethodNone, hydraClaims("user", "usr_evil"))
+	noneTok := jwt.NewWithClaims(jwt.SigningMethodNone, issuerClaims("user", "usr_evil"))
 	noneTok.Header["kid"] = fix.kid
 	noneStr, err := noneTok.SignedString(jwt.UnsafeAllowNoneSignatureType)
 	require.NoError(t, err)
 
 	// HS256 NOT signed with the dev secret (devSecret deliberately empty so the
 	// HMAC branch cannot accept it either).
-	hsTok := jwt.NewWithClaims(jwt.SigningMethodHS256, hydraClaims("user", "usr_evil"))
+	hsTok := jwt.NewWithClaims(jwt.SigningMethodHS256, issuerClaims("user", "usr_evil"))
 	hsTok.Header["kid"] = fix.kid
 	hsStr, err := hsTok.SignedString([]byte("attacker-secret"))
 	require.NoError(t, err)
@@ -316,7 +316,7 @@ func TestAuthJWKS_DisallowedAlg_Rejected(t *testing.T) {
 
 func TestAuthJWKS_JWKSUnreachable_FailClosed(t *testing.T) {
 	fix := newJWKSFixture(t, "RS256")
-	token := fix.sign(t, hydraClaims("user", "usr_alice_acc_a1b2"))
+	token := fix.sign(t, issuerClaims("user", "usr_alice_acc_a1b2"))
 
 	// Verifier points at a dead endpoint; cache is empty → fail-closed.
 	v, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: "http://127.0.0.1:1/.well-known/jwks.json", TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
@@ -348,7 +348,7 @@ func TestAuthJWKS_REST_RS256_PrincipalFromClaims(t *testing.T) {
 	auth := middleware.NewAuthInterceptor(middleware.AuthModeDev, "", lookup, authTestLogger()).
 		WithVerifier(rs256Verifier(t, fix))
 
-	token := fix.sign(t, hydraClaims("user", "usr_alice_acc_a1b2"))
+	token := fix.sign(t, issuerClaims("user", "usr_alice_acc_a1b2"))
 
 	var gotType, gotID string
 	next := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -372,7 +372,7 @@ func TestAuthJWKS_REST_BadToken_Rejected401(t *testing.T) {
 	fix := newJWKSFixture(t, "RS256")
 	other := newJWKSFixture(t, "RS256")
 	other.kid = fix.kid
-	token := other.sign(t, hydraClaims("user", "usr_evil")) // bad signature
+	token := other.sign(t, issuerClaims("user", "usr_evil")) // bad signature
 
 	auth := middleware.NewAuthInterceptor(middleware.AuthModeDev, "", &countingLookup{}, authTestLogger()).
 		WithVerifier(rs256Verifier(t, fix))

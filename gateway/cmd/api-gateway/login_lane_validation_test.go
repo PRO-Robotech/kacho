@@ -1,17 +1,17 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// login_lane_validation_test.go — страж старта адреса полосы формы (приёмка
-// Ф3 Р2, Ф3-45): под посадкой `own` ручка обязательна, под `external` — не
-// читается. Каждый отрицательный случай стоит рядом с положительным близнецом,
-// и различие одно.
+// login_lane_validation_test.go — страж старта целей ретрансляции края:
+// слушателя полосы формы (приёмка Ф3 Р2, Ф3-45) и слушателя выдачи (LINE-A-1,
+// kacho#2817). Ручка адреса каждой цели обязательна. Страж зовётся из ветки
+// посадки `own` корня, её держит own_lane_readers_wiring_test.go. Каждый
+// отрицательный случай стоит рядом с положительным близнецом, и различие одно.
 package main
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/corelib/identityposture"
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
@@ -28,7 +28,7 @@ func loginLaneWired() LoginLaneConfig {
 }
 
 func TestLoginLaneGuard_F3_45_OwnLaneStartsWithTheLaneWired(t *testing.T) {
-	if err := validateLoginLaneConfig(identityposture.Own, loginLaneWired()); err != nil {
+	if err := validateLoginLaneConfig(loginLaneWired()); err != nil {
 		t.Fatalf("годная полоса формы под own обязана проходить: %v", err)
 	}
 }
@@ -36,22 +36,12 @@ func TestLoginLaneGuard_F3_45_OwnLaneStartsWithTheLaneWired(t *testing.T) {
 func TestLoginLaneGuard_F3_45_OwnLaneRefusesToStartWithoutTheLaneAddress(t *testing.T) {
 	cfg := loginLaneWired()
 	cfg.URL = ""
-	err := validateLoginLaneConfig(identityposture.Own, cfg)
+	err := validateLoginLaneConfig(cfg)
 	if err == nil {
 		t.Fatal("под own незаданный адрес полосы формы обязан отвергать старт: ретрансляция без цели отвечала бы 503 на каждом запросе всю жизнь")
 	}
 	if !strings.Contains(err.Error(), config.LoginLaneURLKnob) {
 		t.Fatalf("отказ обязан называть ручку %s, получено: %q", config.LoginLaneURLKnob, err.Error())
-	}
-}
-
-// Под `external` ручка не читается: полосы формы там нет, и требовать адрес
-// значило бы не пускать в старт край, которому он не нужен ни для чего.
-func TestLoginLaneGuard_F3_45_ExternalLaneDoesNotReadTheKnob(t *testing.T) {
-	for _, cfg := range []LoginLaneConfig{{}, {URL: "http://plaintext.invalid"}, {Target: mustRelayTargetDecl(middleware.RelayTargetIssuance)}} {
-		if err := validateLoginLaneConfig(identityposture.External, cfg); err != nil {
-			t.Fatalf("под external ручка не читается, получено: %v", err)
-		}
 	}
 }
 
@@ -61,7 +51,7 @@ func TestLoginLaneGuard_F3_45_PlaintextAndMalformedAddressesAreRefused(t *testin
 	for _, raw := range []string{"http://kaname-internal.kacho.svc:9098", "kaname-internal:9098", "://x"} {
 		cfg := loginLaneWired()
 		cfg.URL = raw
-		err := validateLoginLaneConfig(identityposture.Own, cfg)
+		err := validateLoginLaneConfig(cfg)
 		if err == nil {
 			t.Fatalf("адрес %q обязан отвергаться", raw)
 		}
@@ -84,7 +74,7 @@ func TestLoginLaneGuard_F3_45_ClientCertificatePairIsRequiredWithTheAddress(t *t
 	for name, mutate := range cases {
 		cfg := loginLaneWired()
 		mutate(&cfg)
-		err := validateLoginLaneConfig(identityposture.Own, cfg)
+		err := validateLoginLaneConfig(cfg)
 		if err == nil {
 			t.Fatalf("%s: обязан отвергаться", name)
 		}
@@ -111,7 +101,7 @@ func issuanceWired() LoginLaneConfig {
 }
 
 func TestIssuanceRelayGuard_L13_OwnStartsWithTheIssuanceTargetWired(t *testing.T) {
-	if err := validateLoginLaneConfig(identityposture.Own, issuanceWired()); err != nil {
+	if err := validateLoginLaneConfig(issuanceWired()); err != nil {
 		t.Fatalf("годная цель выдачи под own обязана проходить: %v", err)
 	}
 }
@@ -131,7 +121,7 @@ func TestIssuanceRelayGuard_L13_TheThreeModeIndependentAxesRefuseAndNameTheTarge
 	for name, mutate := range cases {
 		cfg := issuanceWired()
 		mutate(&cfg)
-		err := validateLoginLaneConfig(identityposture.Own, cfg)
+		err := validateLoginLaneConfig(cfg)
 		if err == nil {
 			t.Fatalf("%s: обязан отвергать старт", name)
 		}
@@ -142,7 +132,7 @@ func TestIssuanceRelayGuard_L13_TheThreeModeIndependentAxesRefuseAndNameTheTarge
 	for _, name := range []string{"адрес пуст", "адрес не https", "адрес не абсолютный"} {
 		cfg := issuanceWired()
 		cases[name](&cfg)
-		if err := validateLoginLaneConfig(identityposture.Own, cfg); !strings.Contains(err.Error(), config.IssuanceURLKnob) {
+		if err := validateLoginLaneConfig(cfg); !strings.Contains(err.Error(), config.IssuanceURLKnob) {
 			t.Fatalf("%s: отказ обязан называть ручку %s: %q", name, config.IssuanceURLKnob, err.Error())
 		}
 	}
@@ -160,12 +150,12 @@ func TestIssuanceRelayGuard_L13_ClientPairAxisIsDeclaredInapplicableUnderServerT
 	} {
 		issuance := issuanceWired()
 		mutate(&issuance)
-		if err := validateLoginLaneConfig(identityposture.Own, issuance); err != nil {
+		if err := validateLoginLaneConfig(issuance); err != nil {
 			t.Errorf("%s у цели выдачи (server-tls-only): страж судит пару, которой цель не спрашивает: %v", name, err)
 		}
 		form := loginLaneWired()
 		mutate(&form)
-		if err := validateLoginLaneConfig(identityposture.Own, form); err == nil {
+		if err := validateLoginLaneConfig(form); err == nil {
 			t.Errorf("%s у цели формы (mutual): обязан отвергать старт", name)
 		}
 	}

@@ -2,6 +2,7 @@ import React, { type ReactNode } from "react";
 import { render, screen } from "@testing-library/react";
 import { jest } from "@jest/globals";
 import { MemoryRouter, Route, Routes } from "react-router";
+import { orderedTransport } from "@shared/api/carrier-order";
 import { contextApi, type AccountRef, type ProjectRef } from "@shared/lib/context-store";
 import type { ResourceSpec } from "@shared/lib/resource-registry";
 import type { IamPage as IamPageExport } from "./IamPage";
@@ -18,7 +19,6 @@ let hostContext:
 
 const authValue = {
   user: null,
-  session: null,
   loading: false,
   accessToken: null,
   whoami: null,
@@ -139,7 +139,9 @@ jest.unstable_mockModule("@/pages/iam/AccessBindingsPage", () => ({
   AccessBindingsPage: () => {
     React.useEffect(() => {
       if (hostContext?.account) {
-        void fetch(`/iam/v1/accounts/${hostContext.account.id}/accessBindings`, {});
+        // Заменитель страницы выпускает так же, как консоль, — упорядочивающим
+        // транспортом: `fetch` окна в пробах судит страж мест выпуска (F8-46).
+        void orderedTransport.fetch(`/iam/v1/accounts/${hostContext.account.id}/accessBindings`, {});
       }
     }, []);
 

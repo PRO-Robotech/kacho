@@ -102,7 +102,7 @@ func TestStepUp_ServiceAccountPrincipal_ExemptFromACRFloor(t *testing.T) {
 	assert.NoError(t, g.Check(tok, middleware.PermissionRequirement{RequiredACRMin: "2", MFAMaxAge: time.Hour}))
 }
 
-// Exemption reads the top-level claim too (Hydra allowed_top_level_claims promotion).
+// Exemption reads the top-level claim too (the issuer's top-level claim promotion).
 func TestStepUp_ServiceAccountPrincipal_TopLevelClaim_Exempt(t *testing.T) {
 	g := middleware.NewStepUpGate(nil)
 	tok := &middleware.VerifiedToken{

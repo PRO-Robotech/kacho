@@ -13,11 +13,12 @@
 //
 // # Что здесь утверждается сверх «токен принят»
 //
-// Полоса отзыва выбирается ПО ИЗДАТЕЛЮ, и на двух полосах «авторитет не
-// ответил» значит разное: на нашей — отказ, на полосе прежнего издателя
-// сохраняется задокументированный мягкий проход. Обе половины предъявлены, и
-// рядом с каждым отрицанием стоит положительный контроль: без него читатель
-// отзыва, ВСЕГДА отвечающий отказом, прошёл бы пробу целиком.
+// Полоса отзыва выбирается ПО ИЗДАТЕЛЮ: токен нашей чеканки спрашивается у
+// нашего авторитета, токен другой записи — у нашей записи отзыва. На обеих
+// полосах «источник не ответил» означает ОТКАЗ: мягкий проход второй полосы был
+// объявлен ради третьей стороны — прежнего поставщика — и снят вместе с ним
+// (#2734). Рядом с каждым отрицанием стоит положительный контроль: без него
+// читатель отзыва, ВСЕГДА отвечающий отказом, прошёл бы пробу целиком.
 package e2e_test
 
 import (
@@ -53,7 +54,7 @@ import (
 
 const (
 	f1bPlatformIssuer = "https://kaname.kacho.local"
-	f1bLegacyIssuer   = "https://hydra.api.kacho.cloud"
+	f1bLegacyIssuer   = "https://legacy.api.kacho.cloud"
 )
 
 // f1bSigner — источник набора проверочных ключей ОДНОГО издателя плюс его
@@ -214,13 +215,13 @@ func newF1bStandWith(t *testing.T, acceptPlatform, requireBinding bool) *f1bStan
 	require.NoError(t, err)
 
 	legacyIntrospection, err := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: st.oldAuth.url,
-		TTL:                   time.Millisecond, Timeout: 500 * time.Millisecond,
+		IntrospectionURL: st.oldAuth.url,
+		TTL:              time.Millisecond, Timeout: 500 * time.Millisecond,
 	})
 	require.NoError(t, err)
 	platformIntrospection, err := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-		HydraIntrospectionURL: st.ourAuth.url,
-		TTL:                   time.Millisecond, Timeout: 500 * time.Millisecond,
+		IntrospectionURL: st.ourAuth.url,
+		TTL:              time.Millisecond, Timeout: 500 * time.Millisecond,
 	})
 	require.NoError(t, err)
 
@@ -454,27 +455,39 @@ func TestF1b09_OurTokenRevocationIsAskedOfOurAuthorityAndFailsClosed(t *testing.
 	}
 }
 
-// TestF1b09_LegacyLaneKeepsItsDocumentedSoftPass — размен назван вслух и
-// ПРЕДЪЯВЛЕН: полоса прежнего издателя своего поведения не меняет.
-func TestF1b09_LegacyLaneKeepsItsDocumentedSoftPass(t *testing.T) {
+// TestF1b09_SecondRecordLaneFailsClosedToo — полоса записи, которую наша
+// чеканка не пометила, на молчании источника ОТКАЗЫВАЕТ, как и наша (#2734).
+//
+// Прежде здесь предъявлялся размен: на этой полосе «авторитет не ответил»
+// пропускало токен — авторитетом была третья сторона. Третьей стороны больше
+// нет, источник наш, и мягкий проход означал бы «отзываем и свой же отзыв не
+// исполняем».
+func TestF1b09_SecondRecordLaneFailsClosedToo(t *testing.T) {
 	st := newF1bStand(t, true)
 
 	st.oldAuth.down.Store(true)
 	tok := st.legacy.mint(t, middleware.LegacyTokenType, "jti-legacy-down", nil)
-	if got := st.callREST(t, tok); got != http.StatusOK {
-		t.Fatalf("авторитет ПРЕЖНЕГО издателя недоступен, и его токен отвергнут (%d) — "+
-			"фаза меняет поведение полосы, которого менять не собиралась: авторитет там "+
-			"третья сторона, её доступностью мы не управляем", got)
+	if got := st.callREST(t, tok); got != http.StatusServiceUnavailable {
+		t.Fatalf("источник отзыва второй записи недоступен, а токен получил %d — ожидался "+
+			"отказ 503: «не знаю» не есть «не отозван»", got)
+	}
+	if got := st.callGRPC(t, tok); got != codes.Unavailable {
+		t.Fatalf("то же на нативной поверхности: %v, ожидалось Unavailable", got)
 	}
 
-	// Отзыв на той полосе по-прежнему исполняется — мягкий проход относится к
-	// НЕДОСТУПНОСТИ, а не к отказу.
+	// Положительный контроль: ответивший источник пропускает живой токен —
+	// отказ выше не есть «полоса отвергает всё».
 	st.oldAuth.down.Store(false)
+	live := st.legacy.mint(t, middleware.LegacyTokenType, "jti-legacy-live", nil)
+	if got := st.callREST(t, live); got != http.StatusOK {
+		t.Fatalf("живой токен второй записи при ответившем источнике отвергнут: %d", got)
+	}
+
+	// И отзыв на этой полосе исполняется.
 	st.oldAuth.revoked.Store(true)
 	revoked := st.legacy.mint(t, middleware.LegacyTokenType, "jti-legacy-revoked", nil)
 	if got := st.callREST(t, revoked); got == http.StatusOK {
-		t.Fatalf("отозванный токен прежнего издателя принят — мягкий проход подменил собой " +
-			"весь контроль")
+		t.Fatalf("отозванный токен второй записи принят")
 	}
 }
 

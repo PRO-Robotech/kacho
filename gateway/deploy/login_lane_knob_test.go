@@ -64,7 +64,8 @@ func TestLoginLaneKnob_F3_45_IsDeclaredByTheChartAndRenderedFromOneKey(t *testin
 // `authn.iamIssuanceUrl` объявлен базовым профилем пустым (базовый профиль —
 // посадка external, где ретрансляции нет), шаблон эмитит переменную РОВНО из
 // этого ключа и только при непустом значении. Под `own` незаданная ручка —
-// отказ старта края с её именем; значение задаёт профиль посадки.
+// отказ старта края с её именем; значение задают корни цепочек стендов
+// (values.prod.yaml, values.dev.yaml зонта) рядом с адресом полосы формы.
 func TestIssuanceKnob_L13_IsDeclaredByTheChartAndRenderedFromOneKey(t *testing.T) {
 	raw, err := os.ReadFile("values.yaml")
 	if err != nil {

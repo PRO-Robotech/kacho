@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	testIssuer   = "https://hydra.api.kacho.cloud"
+	testIssuer   = "https://issuer.api.kacho.test"
 	testAudience = "https://api.kacho.cloud"
 )
 

@@ -16,7 +16,10 @@
 //   POST   /<domain>/v1/<plural>/{id}:verb → Custom verb → Operation
 
 import { snakeToCamel, camelToSnake } from "@shared/lib/case";
-import { acrFromChallenge, challengeOf, isStepUpDenial, requestStepUp } from "./step-up";
+import { orderedTransport } from "./carrier-order";
+import { refusalActionOf } from "./refusal-action";
+import { parseRpcStatus, reasonOfDetails } from "./rpc-status";
+import { acrFromChallenge, challengeError, challengeOf, requestFreshPresentation, requestStepUp } from "./step-up";
 import type { Operation } from "./types";
 
 const API_BASE = ""; // относительный путь, ingress/proxy сделают остальное
@@ -112,15 +115,34 @@ async function fetchJson<T>(method: string, path: string, body?: unknown, replay
     // UI работает в snake_case; Kachō REST contract = camelCase. Convert на отправке.
     init.body = JSON.stringify(snakeToCamel(body));
   }
-  const res = await fetch(url, init);
+  // Обращение выпускается упорядочением вкладки (приёмка F8, Р10): глагол,
+  // ставящий носитель, чтение в полёте отменяет и выпускает снова, мутации
+  // дожидается, а пока он идёт — обращение ждёт его исхода.
+  const res = await orderedTransport.fetch(url, init);
   const text = await res.text();
   if (!res.ok) {
-    // Край объявляет «поднимите уровень» вызовом RFC 9470, и это ЕДИНСТВЕННОЕ
-    // место консоли, где такой отказ доходит до окна подтверждения. Без него
-    // окно регистрировалось и не открывалось никогда (#1213).
+    // Действие на отказ — ОДНО решение консоли (`refusalActionOf`, приёмка F8,
+    // условие C2) по машинным признакам: причине `ErrorInfo` и значению
+    // `error=` вызова края. Вызов пола RFC 9470 доходит отсюда до окна
+    // подтверждения (#1213); свежесть службы — туда же, с паролем в выборе.
+    // Повтор вызова после повышения — новое обращение: упорядочение выпускает
+    // его после исхода глагола повышения. На вход клиент модулей не уводит:
+    // «войдите» — решение страницы, а не клиента.
     const challenge = challengeOf(res);
-    if (!replayed && isStepUpDenial(res.status, challenge)) {
-      if (await requestStepUp(acrFromChallenge(challenge))) {
+    const status = parseRpcStatus(text);
+    const action = refusalActionOf(
+      {
+        status: res.status,
+        reason: status ? reasonOfDetails(status.details) : null,
+        challenge: challengeError(challenge),
+      },
+      "platform",
+    );
+    if (!replayed) {
+      if (action === "step-up-floor" && (await requestStepUp(acrFromChallenge(challenge)))) {
+        return fetchJson<T>(method, path, body, true);
+      }
+      if (action === "step-up-freshness" && (await requestFreshPresentation())) {
         return fetchJson<T>(method, path, body, true);
       }
     }

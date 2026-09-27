@@ -5,7 +5,7 @@
 //
 // Route:
 //
-//	GET /iam/v1/auth/me → the caller behind the current identity-provider session,
+//	GET /iam/v1/auth/me → the caller behind the current browser session (ours),
 //	                      or {"user":null} when there is none.
 //
 // WHY THIS FILE HOLDS ONE ROUTE AND NOT FOUR. It used to register four: a
@@ -33,12 +33,14 @@
 // the edge. Producer, carrier, reader and its logout-time cleanup were retired
 // together, so no reader is left addressing an input nobody can emit.
 //
-// WHAT SURVIVED, AND WHY IT IS NOT PART OF THAT CEREMONY. `/iam/v1/auth/me`
-// reads the session of the provider the platform ACTUALLY deploys and is called
-// by four consoles plus the shared console library. It never took part in the
-// retired flow: it resolves a live session cookie to a Kachō principal. The
-// consoles' own sign-in already goes to the deployed provider's self-service
-// flow, so nothing here is the entry point of a ceremony.
+// WHAT SURVIVED, AND WHY IT IS NOT PART OF THAT CEREMONY. `/iam/v1/auth/me` is
+// called by four consoles plus the shared console library. It never took part in
+// the retired flow: it resolves a live session cookie to a Kachō principal.
+//
+// The cookie it reads is OURS — the session our identity service issues on the
+// `own` posture. The second reader it once had, for the previous provider's
+// session cookie, was retired together with the two-carrier transitional mode (#2792):
+// the edge reads only our session, on this route and on the identity lane alike.
 package middleware
 
 import (
@@ -57,29 +59,17 @@ type AdminChecker interface {
 
 // SessionIdentityHandler serves the edge's single session-identity route.
 type SessionIdentityHandler struct {
-	logger *slog.Logger
-	// kratos resolves the deployed identity provider's session cookie. When nil
-	// the route answers anonymous — it never falls back to another carrier.
-	kratos        *KratosClient
-	subjectLookup SubjectLookuper // resolves identity.id → User/SA mirror in kaname
-	adminCheck    AdminChecker    // optional admin-tuple lookup
+	logger     *slog.Logger
+	adminCheck AdminChecker // optional admin-tuple lookup
 	// sessionCutoff — НАШ авторитет отзыва. См. WithSessionCutoff.
 	sessionCutoff SessionCutoffReader
-	// humanSession — читатель НАШЕЙ сессии (посадка `own`, Ф3 Р7). Провязывается
-	// ВМЕСТО `kratos`, никогда рядом с ним: композиционный корень выбирает
-	// читателя по посадке.
+	// humanSession — читатель НАШЕЙ сессии (посадка `own`, Ф3 Р7). nil → маршрут
+	// отвечает анонимом и не ищет другого носителя.
 	humanSession HumanSessionReader
 }
 
 func NewSessionIdentityHandler(logger *slog.Logger) *SessionIdentityHandler {
 	return &SessionIdentityHandler{logger: logger}
-}
-
-// WithKratos — подключает session client + SubjectLookup для /me.
-func (h *SessionIdentityHandler) WithKratos(c *KratosClient, lookup SubjectLookuper) *SessionIdentityHandler {
-	h.kratos = c
-	h.subjectLookup = lookup
-	return h
 }
 
 // WithSessionCutoff — подключает читателя НАШЕЙ отсечки отзыва.
@@ -124,73 +114,17 @@ func (h *SessionIdentityHandler) Register(mux *http.ServeMux) {
 }
 
 // Me — UI hook /me. Возвращает либо `{"user":null}` если не залогинен,
-// либо `{"user":{...}}` с userinfo из сессии провайдера личности.
+// либо `{"user":{...}}` с userinfo из НАШЕЙ сессии.
 func (h *SessionIdentityHandler) Me(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	// Полос, читающих одну и ту же браузерную сессию, две, и отвечать про неё
 	// они обязаны одинаково (`session_lanes_agree_test.go`): предикат носителя
-	// ОБЩИЙ с полосой (`ourSessionCarrierOf`). Читатель провязан один — его
-	// выбирает посадка.
+	// ОБЩИЙ с полосой (`ourSessionCarrierOf`).
 	if h.humanSession != nil {
 		if bearer, ours := ourSessionCarrierOf(r); ours {
 			h.meFromOwnSession(w, r, bearer)
 			return
-		}
-	}
-
-	if h.kratos != nil {
-		// Та же сборка заголовка, что на полосе: чужой стороне уходит ровно её
-		// печенье. Две полосы, спрашивающие одного соседа, обязаны спрашивать
-		// его одним и тем же.
-		if cookieHdr := ProviderSessionCarrierHeader(r); cookieHdr != "" {
-			res := h.kratos.Whoami(r.Context(), cookieHdr)
-			if res.Active && res.IdentityID != "" {
-				userObj := map[string]any{
-					"id":          res.IdentityID,
-					"email":       res.Email,
-					"displayName": res.DisplayName,
-					"subjectType": "user",
-					"permissions": []string{},
-				}
-				// Если есть SubjectLookup — резолвим в Kachō User id (mirror).
-				// Если lookuper поддерживает lazy-upsert — используем (new identity → Upsert).
-				if h.subjectLookup != nil {
-					var subj Subject
-					var lerr error
-					if kl, ok := h.subjectLookup.(KratosSubjectLookuper); ok {
-						subj, lerr = kl.LookupOrUpsertFromKratos(r.Context(), res.IdentityID, res.Email, res.DisplayName)
-					} else {
-						subj, lerr = h.subjectLookup.LookupByExternalID(r.Context(), res.IdentityID)
-					}
-					if lerr == nil {
-						// Отозванная сессия — не «вошедший без прав», а НЕ
-						// вошедший: анонимный ответ здесь и отказ на пути
-						// запроса суть одно состояние, названное двумя полосами
-						// одинаково.
-						if h.sessionRevoked(r.Context(), subj, res.AuthenticatedAt) {
-							_, _ = w.Write([]byte(`{"user":null}`))
-							return
-						}
-						userObj["id"] = subj.ID
-						userObj["subjectType"] = subj.Type
-						if subj.DisplayName != "" {
-							userObj["displayName"] = subj.DisplayName
-						}
-						// Проверка system-admin через AdminChecker.
-						// Если subject имеет admin-tuple → permissions = ["*","admin"].
-						// UI ServiceSidebar показывает "Администрирование" tab по hasPermission("admin").
-						if h.adminCheck != nil {
-							ok, _ := h.adminCheck.IsSystemAdmin(r.Context(), subj.Type+":"+subj.ID)
-							if ok {
-								userObj["permissions"] = []string{"*", "admin"}
-							}
-						}
-					}
-				}
-				_ = json.NewEncoder(w).Encode(map[string]any{"user": userObj})
-				return
-			}
 		}
 	}
 

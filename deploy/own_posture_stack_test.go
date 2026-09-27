@@ -94,6 +94,7 @@ type ownStackFacts struct {
 
 	IssuancePort string // kaname.ports.registryToken — порт слушателя выдачи и его записи на публичном Service
 	IssuanceURL  string // api-gateway.authn.iamIssuanceUrl — вторая цель ретрансляции края
+	IssuanceTLS  bool   // поднимает ли Служба слушатель выдачи под TLS — модель условия шаблона, issuanceListenerServesTLS
 }
 
 // ownStackCensus — объём осмотренного.
@@ -228,6 +229,18 @@ func judgeIssuanceTarget(f ownStackFacts) []string {
 			"стек %s: `iamIssuanceUrl` = %q не https — край отказывает в старте: по церемонии "+
 				"едут печенье сессии человека и код авторизации", f.Stack, raw))
 	}
+	// Край предъявляет TLS, и Служба обязана поднимать слушатель выдачи под TLS:
+	// иначе рукопожатие не сходится ни на одном запросе церемонии, а страж старта
+	// края этого не видит — он судит адрес, а не собеседника. Стенд, чья Служба
+	// держит слушатель открытым, стартует исправным по обе стороны и отвечает
+	// отказом на каждом запросе.
+	if u.Scheme == "https" && !f.IssuanceTLS {
+		findings = append(findings, fmt.Sprintf(
+			"стек %s: край ретранслирует церемонию по https, а Служба поднимает слушатель выдачи "+
+				"открытым текстом (`kaname.mtls.enable` и `kaname.mtls.registryToken`, при его "+
+				"отсутствии — `kaname.mtls.httpListeners`) — рукопожатие не сойдётся ни на одном "+
+				"запросе церемонии", f.Stack))
+	}
 	// Служба ведёт на слушатель по ИМЕНИ порта (`targetPort: registry-token`), и
 	// край набирает порт Службы — тот, что выводит шаблон.
 	if port, svcPort := u.Port(), issuanceServicePort(f); port != svcPort {
@@ -307,6 +320,7 @@ func readOwnStackFacts(t *testing.T) []ownStackFacts {
 		f.ServiceName = declaredString(lookup(declared, "kaname", "name"))
 		f.IssuancePort = declaredString(lookup(declared, "kaname", "ports", "registryToken"))
 		f.IssuanceURL = declaredString(lookup(declared, "api-gateway", "authn", "iamIssuanceUrl"))
+		f.IssuanceTLS = issuanceListenerServesTLS(declared)
 
 		binding, ok := lookup(declared, "kaname", "config", "authn", "accessKeys")
 		if m, isMap := binding.(map[string]any); ok && isMap {
@@ -443,6 +457,64 @@ func TestOwnPostureStack_IssuancePortModelIsTheTemplateExpression(t *testing.T) 
 			"воспроизводит запись без условия и порт %q — модель порта слушателя выдачи "+
 			"устарела, и согласие половин судится не о той двери (kacho#2817)",
 			path, cond, expr, issuanceServicePortExpression)
+	}
+}
+
+// issuanceListenerServesTLS — поднимает ли Служба слушатель выдачи под TLS.
+// Воспроизводит условие шаблона charts/kaname/templates/deployment.yaml: блок
+// `if .Values.mtls.enable`, внутри него `dig "registryToken"
+// .Values.mtls.httpListeners .Values.mtls` — своя ручка слушателя, а при её
+// отсутствии общая. Сверку модели с шаблоном держит
+// TestOwnPostureStack_IssuanceTLSModelIsTheTemplateCondition.
+func issuanceListenerServesTLS(declared map[string]any) bool {
+	if !helmTruthy(lookup(declared, "kaname", "mtls", "enable")) {
+		return false
+	}
+	if v, ok := lookup(declared, "kaname", "mtls", "registryToken"); ok {
+		return helmTruthy(v, true)
+	}
+	return helmTruthy(lookup(declared, "kaname", "mtls", "httpListeners"))
+}
+
+// helmTruthy — истинность величины по правилам шаблона для булевых ручек:
+// отсутствие, пустота, ноль и false ложны.
+func helmTruthy(v any, ok bool) bool {
+	return !helmEmpty(declaredString(v, ok))
+}
+
+// issuanceTLSTemplateCondition — условие, под которым шаблон Службы включает
+// TLS слушателя выдачи; issuanceListenerServesTLS воспроизводит именно его.
+const issuanceTLSTemplateCondition = `(dig "registryToken" .Values.mtls.httpListeners .Values.mtls)`
+
+// issuanceTLSTemplate — стоит ли в тексте шаблона включение TLS слушателя выдачи
+// в той форме, которую воспроизводит модель: условие issuanceTLSTemplateCondition
+// внутри блока `if .Values.mtls.enable`, и под условием выставляется
+// `KANAME_REGISTRYTOKEN_SERVER_MTLS_ENABLE`. ok=false — модель устарела.
+func issuanceTLSTemplate(tmpl string) bool {
+	m := issuanceTLSEntryRe.FindStringIndex(tmpl)
+	if m == nil {
+		return false
+	}
+	return issuanceTLSEnableRe.MatchString(tmpl[:m[0]])
+}
+
+var (
+	issuanceTLSEntryRe = regexp.MustCompile(`\{\{-?\s*if\s+` + regexp.QuoteMeta(issuanceTLSTemplateCondition) +
+		`\s*-?\}\}[ \t]*\n(?:[ \t]*#[^\n]*\n)*[ \t]*- name:[ \t]*KANAME_REGISTRYTOKEN_SERVER_MTLS_ENABLE[ \t]*\n`)
+	issuanceTLSEnableRe = regexp.MustCompile(`\{\{-?\s*if\s+\.Values\.mtls\.enable\s*-?\}\}`)
+)
+
+// TestOwnPostureStack_IssuanceTLSModelIsTheTemplateCondition — предпосылка
+// суждения о TLS слушателя выдачи: шаблон Службы включает его тем условием,
+// которое воспроизводит issuanceListenerServesTLS.
+func TestOwnPostureStack_IssuanceTLSModelIsTheTemplateCondition(t *testing.T) {
+	path := filepath.Join(kanameSubchart(t), "templates", "deployment.yaml")
+	tmpl := readChartText(t, path)
+	t.Logf("перепись: %s · строк %d · условие модели %q", path, strings.Count(tmpl, "\n"), issuanceTLSTemplateCondition)
+	if !issuanceTLSTemplate(tmpl) {
+		t.Errorf("%s: TLS слушателя выдачи включается не условием %q внутри `if .Values.mtls.enable` — "+
+			"модель issuanceListenerServesTLS устарела, и согласие половин о TLS судится не о том условии (kacho#2721)",
+			path, issuanceTLSTemplateCondition)
 	}
 }
 

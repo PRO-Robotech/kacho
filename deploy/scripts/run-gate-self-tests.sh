@@ -134,6 +134,7 @@ deploy/scripts/assert-outbox-autovacuum.sh
 deploy/scripts/assert-own-front-address-is-read.py
 deploy/scripts/assert-own-front-leaf-decision.sh
 deploy/scripts/assert-posture-branches-can-be-taken.py
+deploy/scripts/assert-provider-forwards-follow-the-landing.sh
 deploy/scripts/assert-refusal-lane-has-a-reader.py
 deploy/scripts/assert-report-readers-use-the-summary.py
 deploy/scripts/assert-shard-coverage.py
@@ -148,6 +149,7 @@ deploy/scripts/classify-integration-outcome.sh
 deploy/scripts/classify-pg-outside-selection.sh
 deploy/scripts/gen-managed-image-pins.sh
 deploy/scripts/helm-umbrella-deps.sh
+deploy/scripts/identity-provider-landing.py
 deploy/scripts/own-rest-front-address.py
 deploy/scripts/remeasure-provider-listener-tls.sh
 deploy/scripts/repo_tree.py
@@ -156,7 +158,6 @@ deploy/scripts/stand-provenance.sh
 deploy/tests/helm/admin-hop-address-census-test.sh
 deploy/tests/helm/admin-hop-pod-shape-test.sh
 deploy/tests/helm/admin-hop-port-policy-test.sh
-deploy/tests/helm/admin-hop-transport-test.sh
 deploy/tests/helm/config-rollout-binding-test.sh
 deploy/tests/helm/console-serves-identity-flows-test.sh
 deploy/tests/helm/geo-authz-edge-armed-test.sh

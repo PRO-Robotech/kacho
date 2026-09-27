@@ -2066,6 +2066,15 @@ jobs:
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310  # v5
         with:
           version: v4.2.4
+      # kubectl — БИНАРЬ, кластера это задание не видит. Он нужен пробе порядка
+      # cert-manager (deploy/tests/helm/cert-manager-release-before-product-test.sh,
+      # kacho#2840): её подставной kubectl сперва отдаёт флаги каждого вызова
+      # настоящему (`<args> --help`), чтобы не быть снисходительнее его. Без
+      # kubectl проба отвечает «условие не создано» (код 2), и манифест-проверки
+      # выходят тем же кодом — на пуле, где kubectl в образе нет. Проба
+      # исполняется циклом по каталогу, поэтому нужду видит гейт
+      # assert-jobs-provide-their-tools.py только с разбором такого цикла.
+      - uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d  # v5
 
       # Go нужен ровно одному шагу — пробам под тегом `helmcharts`, которые
       # РЕНДЕРЯТ умбреллу: их условие создаёт `helm dependency build` (локальные
@@ -2101,12 +2110,24 @@ jobs:
       # читается как «продукт сломан» и тратит круг на разбор, которого нет.
       # Код возврата берётся как ДАННЫЕ: под `bash -e` шелл оборвался бы до
       # развилки (`git-issues-ci-runs.md` §«Шаг конвейера исполняется под bash -e»).
-      - name: условие прогона — yq (mikefarah v4) и jq
+      #
+      # openssl и make — та же ось. Их отказывающиеся предусловия стоят в пробах
+      # каталога deploy/tests/helm (посев чеканит величины openssl; проба порядка
+      # cert-manager исполняет цель make), а каталог исполняется циклом, и до
+      # разбора цикла гейт этих нужд не видел. Пакеты ставятся одной командой и
+      # только когда хоть одного инструмента нет: на пуле, где они в образе,
+      # шаг не трогает apt вовсе.
+      - name: условие прогона — yq (mikefarah v4), jq, openssl, make
         run: |
           rc=0
           go install github.com/mikefarah/yq/v4@v4.53.6 || rc=$?
-          if [ "$rc" -eq 0 ] && ! command -v jq >/dev/null 2>&1; then
-            sudo apt-get install -y -qq jq || rc=$?
+          missing=""
+          for t in jq openssl make; do
+            command -v "$t" >/dev/null 2>&1 || missing="$missing $t"
+          done
+          if [ "$rc" -eq 0 ] && [ -n "$missing" ]; then
+            echo "нет в образе:$missing — ставятся"
+            sudo apt-get install -y -qq jq openssl make || rc=$?
           fi
           if [ "$rc" -ne 0 ]; then
             echo "::error title=условие не создано::инструмент не установился (код $rc). Это НЕ ВЫПОЛНИЛОСЬ, а не красный вердикт о продукте: о дереве этот прогон не сказал ничего."
@@ -2114,6 +2135,8 @@ jobs:
           fi
           yq --version
           jq --version
+          openssl version
+          command -v make
 
       # Оба гейта ниже СУЩЕСТВОВАЛИ и не вызывались ниоткуда: единственным их
       # упоминанием был прогонщик самопроверок, а он запускает гейт против
@@ -2525,6 +2548,13 @@ jobs:
       # объявленных под признаком в дереве. Следующая проба под тем же тегом
       # уронит unit-прогон, пока её имя не появится здесь.
       #
+      # Гейт читает вызов так, как его получит оболочка, — свёрнутым скаляром
+      # ниже, где `-run` стоит строкой переноса (#2883). Пока он читал ФИЗИЧЕСКУЮ
+      # строку, `-run` для него не существовал: перепись печатала «отбирается 30
+      # из 30», а две пробы снятых ручек края (#2778) не исполнились ни разу ни в
+      # одном прогоне конвейера. Форма записи вызова делала сужение невидимым, и
+      # держатель свойства числился держателем без единого исполнения.
+      #
       # Урок, из-за которого перечень не выписывают на память (#1678): пока имя
       # стояло ОДНО, вторая тогдашняя проба тега не исполнялась ни разу за свою
       # жизнь — пакет в область попадал, поэтому гейт достижимости молчал, а
@@ -2534,17 +2564,19 @@ jobs:
       # внешних архивов и живёт в общем прогоне; здесь она названа как урок, а
       # не как участник перечня.
       #
-      # Перечень — имена проб, рендерящих УМБРЕЛЛУ (#1733): их условие создаёт
-      # ровно шаг материализации выше, потому что рендер требует ЛОКАЛЬНЫХ
-      # сабчартов, а те из исходников дерева и не вендорятся.
-      - name: ключ нашего файла не перебивается переменной (рендер умбреллы)
+      # Перечень — пробы, рендерящие УМБРЕЛЛУ (#1733), и инъекции их судей: условие
+      # рендера создаёт ровно шаг материализации выше, потому что рендер требует
+      # ЛОКАЛЬНЫХ сабчартов, а те из исходников дерева и не вендорятся. Под тегом
+      # два предмета: ключ файла службы личности не перебивается переменной и
+      # снятая с края ручка не приезжает в его под ни на одной цепочке.
+      - name: пробы тега helmcharts — ключ файла и снятые ручки края (рендер умбреллы)
         # `id` обязателен: без него шаг не попадает в контекст `steps`, и перепись
         # исходов (последний шаг работы) не может отличить «исполнился» от «пропущен».
         id: umbrella-env-key
         if: ${{ env.STAND_PRECONDITION_UNMET != '1' }}
         run: >-
           go test -tags helmcharts ./deploy/
-          -run 'TestIdentityFileKeysAreNotOverriddenByTheEnvironment|TestEnvNamesForCoversPathAndItsPrefixes|TestFileKeyOverrideInjection_RealKnobRedsAndLegalTwinIsSilent|TestFileKeyOverrideInjection_ExistingControlStillReds'
+          -run 'TestIdentityFileKeysAreNotOverriddenByTheEnvironment|TestEnvNamesForCoversPathAndItsPrefixes|TestFileKeyOverrideInjection_RealKnobRedsAndLegalTwinIsSilent|TestFileKeyOverrideInjection_ExistingControlStillReds|TestNoStackRendersARetiredEdgeKnob|TestEdgeRetiredKnobsRenderJudgeFiresAndStaysSilent'
           -count=1 -v
 
       - name: umbrella template — каждый стек таблицы

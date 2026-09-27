@@ -18,7 +18,7 @@
 // вернёт 403/FailedPrecondition — вызывающий показывает friendly step-up сообщение.
 //
 // Wire-format: api/client.ts конвертирует camelCase ↔ snake_case на границе, поэтому
-// здесь поля snake_case (как в proto). Auth — ambient httpOnly Kratos session cookie
+// здесь поля snake_case (как в proto). Auth — ambient httpOnly печенье сессии
 // (same-origin fetch; api/client.ts не выставляет credentials, дефолт same-origin
 // уже шлёт cookie).
 
@@ -32,7 +32,6 @@ export interface SAKey {
   id: string;
   /** ServiceAccount.id владельца. */
   sva_id: string;
-  hydra_client_id: string;
   description?: string;
   expires_at?: string;
   last_used_at?: string;
@@ -47,7 +46,6 @@ export interface UserToken {
   /** `uoc_<...>` */
   id: string;
   user_id: string;
-  hydra_client_id: string;
   description?: string;
   expires_at?: string;
   last_used_at?: string;

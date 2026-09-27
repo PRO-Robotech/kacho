@@ -59,7 +59,13 @@ func scanRenderedStack(t *testing.T, sets ...string) (declared int, findings []o
 		t.Fatalf("в таблице стеков нет %q — предпосылка инъекции исчезла, а не дефект перестал вноситься",
 			injectionStack)
 	}
-	rendered, err := renderStack(t, chain, sets...)
+	// Поставщик на стенде не поднимается (#2735): его поднимает проба, тем же
+	// фактом, что у гейта, и только поверх цепочки, объявляющей его настройки.
+	if !chainDeclaresIdentityStore(t, chain) {
+		t.Fatalf("стек %q больше не объявляет настроек службы личности поставщика — оси файла "+
+			"настроек судить нечего; снимите её вместе с предметом (#1276)", injectionStack)
+	}
+	rendered, err := renderStack(t, chain, append(append([]string{}, providerRaisedByProbe...), sets...)...)
 	if err != nil {
 		t.Fatalf("рендер стека %q с инъекцией %v не удался (%v) — вердикта нет:\n%s",
 			injectionStack, sets, err, rendered)
@@ -233,7 +239,8 @@ func judgeOwnStack(t *testing.T, sets ...string) (posture string, findings []str
 func TestFileKeyOverrideInjection_ExistingControlStillReds(t *testing.T) {
 	configArgsOf := func(sets ...string) map[string][]string {
 		stacks := deployStacks(t)
-		rendered, err := renderStack(t, stacks[injectionStack], sets...)
+		rendered, err := renderStack(t, stacks[injectionStack],
+			append(append([]string{}, providerRaisedByProbe...), sets...)...)
 		if err != nil {
 			t.Fatalf("рендер %q (%v): %v\n%s", injectionStack, sets, err, rendered)
 		}

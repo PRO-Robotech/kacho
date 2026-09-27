@@ -50,6 +50,24 @@
 # ВМЕСТЕ. Шесть-десять объявленных адресов без обслуживания — хуже отсутствия
 # объявления, потому что каждый из них выглядит работающим.
 #
+# ── ПОСАДКА `own`: АДРЕСА ЦЕРЕМОНИЙ ОТДАЁТ ОБОЛОЧКА (#2777, приёмка F8 §4) ──
+#
+# Третье утверждение — о ПОСАДКЕ, и оно читается из РЕНДЕРА той же цепочки:
+# посадку службы доступа объявляет её карта настроек (`kaname-config`,
+# `authn.identity-provider`), посадку края — переменная его пода
+# (`KACHO_API_GATEWAY_IDENTITY_PROVIDER`). На цепочке, где ОБЕ половины стоят на
+# `own`, человека проверяет наша полоса, а экраны церемоний рисует консоль
+# (приёмка F8, Р1): полоса к чужому экрану (`location ~ ^/(login|…)`) и полоса к
+# публичному слушателю поставщика (`location ^~ /.ory/…`) там — вторая дверь в
+# ту же систему, ведущая к соседу, которого посадка не поднимает. Любая из них
+# на такой цепочке — находка с именем цепочки.
+#
+# И ЗНАМЕНАТЕЛЬ: цепочек, где консоль развёрнута И обе половины на `own`,
+# обязано быть не меньше одной. Иначе предусловие прогона сценариев F8 (§4:
+# цепочка, которая разворачивает консоль и не отдаёт адреса церемоний чужому
+# экрану) не создано нигде, и «на own полос ноль» было бы истинно и
+# бессодержательно — ровно так, как §1.7 приёмки измерил его до этой правки.
+#
 # Перечень обслуживаемых сегментов здесь НЕ выписан: он выводится из самой
 # полосы рендера. Расширение раздачи гейта не касается, сужение немедленно
 # делает его строже.
@@ -120,6 +138,7 @@ adjudicate_chain() {
   local chain="$1" full="$2" conf="$3" console="$4"
   CHAIN="$chain" FULL="$full" CONF="$conf" CONSOLE="$console" python3 - <<'PY'
 import os, re, sys
+import yaml
 
 chain   = os.environ["CHAIN"]
 console = os.environ["CONSOLE"] == "yes"
@@ -213,6 +232,10 @@ def strip_comments(conf):
     return None if quote else "".join(out)
 # Переадресация в теле блока. Без неё блок не обслуживает ничего.
 PROXY = re.compile(r"(?m)^[ \t]*proxy_pass\s")
+# Полоса к публичному слушателю поставщика — префиксная, `^~ /.ory/…`. Те же три
+# признака, что у полосы потоков: с начала строки, после снятия комментариев, с
+# переадресацией в теле.
+ORY_BAND = re.compile(r"(?m)^[ \t]*location\s+\^~\s+(/\.ory/[^\s{]*)\s*\{")
 
 
 def block_body(s, open_idx):
@@ -243,6 +266,43 @@ def served_segments(conf):
         segs |= {x.strip() for x in m.group(1).split("|") if x.strip()}
     return segs, without_proxy, None
 
+def ory_lanes(conf):
+    """Префиксы полос `/.ory/…`, которые ПЕРЕАДРЕСУЮТ (после снятия комментариев)."""
+    clean = strip_comments(conf)
+    if clean is None:
+        return []
+    out = []
+    for m in ORY_BAND.finditer(clean):
+        body = block_body(clean, clean.rindex("{", 0, m.end()))
+        if body is not None and PROXY.search(body):
+            out.append(m.group(1))
+    return out
+
+
+def posture_of(text):
+    """(посадка службы доступа, посадка края) по рендеру; "" — не прочитана."""
+    iam = edge = ""
+    try:
+        docs = [d for d in yaml.safe_load_all(text) if isinstance(d, dict)]
+    except yaml.YAMLError:
+        return "", ""
+    for d in docs:
+        meta = d.get("metadata") or {}
+        if d.get("kind") == "ConfigMap" and meta.get("name") == "kaname-config":
+            try:
+                cfg = yaml.safe_load((d.get("data") or {}).get("config.yaml") or "") or {}
+            except yaml.YAMLError:
+                cfg = {}
+            iam = str(((cfg.get("authn") or {}) if isinstance(cfg, dict) else {}).get("identity-provider") or "").strip()
+        if d.get("kind") == "Deployment":
+            pod = (((d.get("spec") or {}).get("template") or {}).get("spec") or {})
+            for c in pod.get("containers") or []:
+                for e in c.get("env") or []:
+                    if e.get("name") == "KACHO_API_GATEWAY_IDENTITY_PROVIDER":
+                        edge = str(e.get("value") or "").strip()
+    return iam, edge
+
+
 def first_segment(raw):
     """(сегмент, None) либо (None, причина-отказа-разбора)."""
     v = raw.strip().strip('"').strip("'")
@@ -266,8 +326,13 @@ decls = [m.group(1) for m in UI_URL.finditer(full)]
 # необслуживаемым адрес, который обслуживает соседняя.
 segs, bands_without_proxy, unreadable = (served_segments(conf) if console else (set(), 0, None))
 
+iam_posture, edge_posture = posture_of(full)
+ory = ory_lanes(conf) if console else []
+
 print("DECLS %d" % len(decls))
 print("BAND %s" % (" ".join(sorted(segs)) if segs else "-"))
+print("POSTURE %s/%s" % (iam_posture or "?", edge_posture or "?"))
+print("ORY %s" % (" ".join(sorted(ory)) if ory else "-"))
 
 if not console:
     sys.exit(0)
@@ -275,6 +340,21 @@ if not console:
 if unreadable:
     print("VIOLATION цепочка %s: раздача консоли не читается — %s." % (chain, unreadable))
     sys.exit(0)
+
+# ── ПОСАДКА own: ни полосы к чужому экрану, ни полосы к слушателю поставщика ──
+if iam_posture == "own" and edge_posture == "own":
+    print("OWNCONSOLE")
+    if segs:
+        print("VIOLATION цепочка %s: обе половины на посадке own, а раздача консоли "
+              "отдаёт адреса церемоний [%s] чужому экрану — полоса обслуживания ведёт "
+              "к соседу, которого посадка не поднимает. Под own церемонию рисует консоль "
+              "(приёмка F8, Р1): опустошите host.upstreams.kratosUi на этой цепочке."
+              % (chain, " ".join(sorted(segs))))
+    if ory:
+        print("VIOLATION цепочка %s: обе половины на посадке own, а раздача консоли "
+              "проксирует [%s] к публичному слушателю поставщика — дорога к службе, "
+              "которой посадка не поднимает. Опустошите host.upstreams.kratosPublic на "
+              "этой цепочке." % (chain, " ".join(sorted(ory))))
 
 if decls and not segs:
     why = ("полосы обслуживания в РЕНДЕРЕ её раздачи нет ни одной"
@@ -309,6 +389,7 @@ PY
 run_checks() {
   local names chain args full conf out line
   local chains=0 console_chains=0 band_chains=0 decls_total=0 served_renders=0
+  local own_console_chains=0
 
   names="$(stacks_names)" || return $?
   [ -n "$names" ] || fail "состав стендов пуст — обходить нечего"
@@ -352,20 +433,23 @@ run_checks() {
     fi
 
     out="$(adjudicate_chain "$chain" "$full" "$conf" "$console")"
-    local d="-" b="-"
+    local d="-" b="-" pst="?/?" ory="-"
     while IFS= read -r line; do
       case "$line" in
         DECLS\ *)     d="${line#DECLS }"; decls_total=$((decls_total + d)) ;;
         BAND\ -)      b="-" ;;
         BAND\ *)      b="${line#BAND }"; band_chains=$((band_chains + 1)) ;;
+        POSTURE\ *)   pst="${line#POSTURE }" ;;
+        ORY\ *)       ory="${line#ORY }" ;;
+        OWNCONSOLE)   own_console_chains=$((own_console_chains + 1)) ;;
         VIOLATION\ *) violation "${line#VIOLATION }" ;;
       esac
     done <<<"$out"
 
     if [ "$console" = yes ]; then
-      echo "  цепочка $chain: консоль развёрнута; объявлений $d; полоса обслуживания [$b]"
+      echo "  цепочка $chain: посадка $pst; консоль развёрнута; объявлений $d; полоса обслуживания [$b]; полосы /.ory/ [$ory]"
     else
-      echo "  цепочка $chain: консоль НЕ разворачивается (обслуживать эти адреса обязана не она); объявлений $d"
+      echo "  цепочка $chain: посадка $pst; консоль НЕ разворачивается (обслуживать эти адреса обязана не она); объявлений $d"
     fi
     ok
   done
@@ -381,8 +465,19 @@ run_checks() {
 прочиталась как «консоли здесь нет» на каждой цепочке, а гейт не осмотрел ничего"
   fi
 
+  # ── ЗНАМЕНАТЕЛЬ ПОСАДКИ own (приёмка F8 §4) ─────────────────────────────
+  # Раздача отрендерилась, но ни на одной цепочке с консолью обе половины не
+  # стоят на own: предусловие прогона сценариев F8 не создано нигде, и ноль
+  # полос к чужому экрану на own был бы нулём без предмета.
+  if [ "$served_renders" -gt 0 ] && [ "$own_console_chains" -eq 0 ]; then
+    violation "ни на одной из $console_chains цепочек, где консоль развёрнута, обе половины \
+не стоят на посадке own — цепочки, которая разворачивает консоль и отдаёт адреса церемоний \
+оболочке, нет ни одной (предусловие прогона приёмки F8, §4)"
+  fi
+
   findings_verdict "цепочек $chains (с консолью $console_chains, из них с полосой обслуживания \
-$band_chains); объявлений браузерного адреса всего $decls_total"
+$band_chains, на посадке own обеими половинами $own_console_chains); объявлений браузерного \
+адреса всего $decls_total"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -462,10 +557,101 @@ if [ "${1:-}" = "--self-test" ]; then
   echo "-- законный вход: копия дерева как есть --"
   st_probe "дерево как есть → зелёное" 0 "PASS:"
 
+  # ── ВНЕШНИЙ МИР — ВТОРОЙ ЗАКОННЫЙ ВХОД, А НЕ СОСТОЯНИЕ ДЕРЕВА ─────────────
+  #
+  # На дереве посадку own объявляют все цепочки, объявлений браузерного адреса
+  # поставщика нет ни одного и полосы к чужому экрану не рендерится ни на одной
+  # (#2735, #2777). Оси, которые судят ФОРМУ полосы (переадресация, комментарий,
+  # скобка), на таком дереве не на чем исполнить. Поэтому им строится законный
+  # «внешний мир»: слой поверх корня dev-цепочек, где обе половины на посадке
+  # external, наша карта настроек поставщика рендерится (объявления есть) и
+  # раздача объявляет интерфейс поставщика (полоса есть). Цепочки боевого корня
+  # (prod, own, fe3455) слой не получают и остаются на own без полос — поэтому
+  # знаменатель own с консолью в этом мире не пуст, и мир зелёный.
+  world_external() { # <имя слоя> <yaml> — слой поверх корня dev-цепочек копии
+    printf '%s\n' "$2" >"$WORK/deploy/helm/umbrella/$1"
+    python3 - "$DEPLOY_ROOT/stacks.txt" "$WORK/deploy/stacks.txt" "$1" <<'WORLD'
+import io, re, sys
+src, dst, layer = sys.argv[1:4]
+out, n = [], 0
+for line in io.open(src, encoding="utf-8").read().splitlines():
+    if re.match(r"^[a-z0-9][a-z0-9-]*:values\.dev\.yaml(,|$)", line):
+        line += "," + layer
+        n += 1
+    out.append(line)
+assert n > 0, "ни одной цепочки на корне values.dev.yaml — внешнему миру не на что лечь"
+io.open(dst, "w", encoding="utf-8").write("\n".join(out) + "\n")
+WORLD
+  }
+  world_reset() {
+    rm -f "$WORK/deploy/helm/umbrella"/values.zz-self-test-*.yaml
+    cp "$DEPLOY_ROOT/stacks.txt" "$WORK/deploy/stacks.txt"
+  }
+  POSTURE_EXTERNAL='kaname:
+  config:
+    authn:
+      identityProvider: external
+api-gateway:
+  authn:
+    identityProvider: external'
+  DECLS_ON='kaname:
+  kratos:
+    config:
+      enabled: true'
+  BAND_ON='uif:
+  host:
+    upstreams:
+      kratosUi: kratos-selfservice-ui.kacho.svc.cluster.local:3000'
+  # Внешний мир целиком — три факта одним слоем (слияние узлов `kaname` —
+  # руками: два одноимённых ключа верхнего уровня в одном файле helm отвергает).
+  WORLD='kaname:
+  config:
+    authn:
+      identityProvider: external
+  kratos:
+    config:
+      enabled: true
+api-gateway:
+  authn:
+    identityProvider: external
+uif:
+  host:
+    upstreams:
+      kratosUi: kratos-selfservice-ui.kacho.svc.cluster.local:3000'
+
   echo
-  echo "-- инъекция 1 (ОДИН факт): полоса обслуживания снята из раздачи БЕЗУСЛОВНО --"
-  # Ровно то, что сделала ветка снятия чужого поставщика личности: полоса
-  # вырезана из шаблона целиком, объявления адресов остались на месте.
+  echo "-- законный вход второго рода: внешний мир (посадка external, объявления и полоса есть) --"
+  world_external values.zz-self-test-world.yaml "$WORLD"
+  st_probe "внешний мир → зелёное" 0 "PASS:"
+  world_reset
+
+  echo
+  echo "-- инъекция A (ОДИН факт против дерева): объявления вернулись, полосы нет --"
+  # Ровно тот класс, против которого гейт заведён: служба личности объявляет
+  # браузерные адреса потоков, а раздача их не обслуживает.
+  world_external values.zz-self-test-decls.yaml "$DECLS_ON"
+  st_probe "объявления без полосы → находка о дереве" 1 "полосы обслуживания в РЕНДЕРЕ"
+  world_reset
+
+  echo
+  echo "-- инъекция B (ОДИН факт против дерева): полоса к чужому экрану на посадке own --"
+  world_external values.zz-self-test-band.yaml "$BAND_ON"
+  st_probe "полоса на own → находка о дереве" 1 "обе половины на посадке own"
+  world_reset
+
+  echo
+  echo "-- законный близнец B (ОДИН факт): та же полоса на посадке external --"
+  world_external values.zz-self-test-band-ext.yaml "$POSTURE_EXTERNAL
+uif:
+  host:
+    upstreams:
+      kratosUi: kratos-selfservice-ui.kacho.svc.cluster.local:3000"
+  st_probe "полоса на external без объявлений → зелёное" 0 "PASS:"
+  world_reset
+
+  echo
+  echo "-- инъекция 1 (ОДИН факт против внешнего мира): полоса снята из раздачи БЕЗУСЛОВНО --"
+  world_external values.zz-self-test-world.yaml "$WORLD"
   python3 - "$COPY_SRC/templates/configmap-nginx.yaml" <<'INJ1'
 import io, re, sys
 p = sys.argv[1]
@@ -479,65 +665,11 @@ INJ1
   restore_src
 
   echo
-  echo "-- инъекция 2 (ОДИН факт): посадка сняла поставщика, ОБЪЯВЛЕНИЯ остались --"
-  # Ось, которую чтение шаблона увидеть не может by construction: шаблон не
-  # тронут, полоса в нём есть, но условие посадки ложно — и в рендере полосы нет.
-  python3 - "$COPY_SRC/values.yaml" <<'INJ2'
-import io, re, sys
-p = sys.argv[1]
-s = io.open(p, encoding="utf-8").read()
-s2, n = re.subn(r"(?m)^(    kratosUi:).*$", r'\1 ""', s)
-assert n == 1, "инъекция не внесена: ручка адреса интерфейса поставщика не найдена (совпадений %d)" % n
-io.open(p, "w", encoding="utf-8").write(s2)
-INJ2
-  repack
-  st_probe "условие ложно, объявления стоят → находка о дереве" 1 "полосы обслуживания в РЕНДЕРЕ"
-
-  echo
-  echo "-- законный близнец: та же посадка, но объявления сняты вместе с церемонией --"
-  # Отличие от инъекции 2 — РОВНО ОДИН факт: объявлений браузерного адреса в
-  # цепочках больше нет. Без этого близнеца гейт был бы неотличим от проверки
-  # «ручка адреса обязана быть непустой», а он утверждает не это.
-  python3 - "$WORK/deploy/helm/umbrella" <<'TWIN'
-import io, os, re, sys
-
-# Объявления снимаются ТАМ, ГДЕ ПОРОЖДАЮТСЯ. Половина их приезжает не из
-# профиля, а из шаблона подчарта: правка одних профилей оставила бы шесть
-# объявлений на цепочку, и «близнец» отличался бы от инъекции НЕ одним фактом,
-# а половиной факта — то есть не был бы близнецом вовсе.
-root = sys.argv[1]
-n = 0
-for dirpath, _, files in os.walk(root):
-    for f in sorted(files):
-        if not (f.endswith(".yaml") or f.endswith(".tpl")):
-            continue
-        p = os.path.join(dirpath, f)
-        s = io.open(p, encoding="utf-8").read()
-        # Форм записи две, и обе есть в дереве: объявление целой строкой и
-        # объявление внутри однострочного отображения (`login: { ui_url: "/login" }`).
-        # Снятие одной формы оставило бы вторую, и «близнец» отличался бы от
-        # инъекции не одним фактом, а половиной факта.
-        s2, k1 = re.subn(r"(?m)^\s*ui_url:.*$\n", "", s)
-        s2, k2 = re.subn(r"""\bui_url:\s*("[^"]*"|'[^']*')\s*""", "", s2)
-        if k1 or k2:
-            io.open(p, "w", encoding="utf-8").write(s2)
-            n += k1 + k2
-assert n > 0, "близнец не построен — объявлений в копии не нашлось, сравнивать нечего"
-TWIN
-  st_probe "условие ложно И объявлений нет → зелёное" 0 "PASS:"
-  # Умбрелла копии переписана целиком: снятие объявлений шло и по шаблонам
-  # подчартов, поэтому возврат — тоже целиком, а не одними профилями.
-  rm -rf "$WORK/deploy/helm"
-  cp -r "$DEPLOY_ROOT/helm" "$WORK/deploy/helm"
-  restore_src
-
-  echo
-  echo "-- инъекция 3 (ОДИН факт): полоса снята, КОММЕНТАРИЙ о ней остался --"
+  echo "-- инъекция 3 (ОДИН факт против внешнего мира): полоса снята, КОММЕНТАРИЙ о ней остался --"
   # Ось заведена по измеренному ложному зелёному (2026-09-22): образец шёл
   # поиском по подстроке, и упоминание снятой полосы в комментарии читалось как
-  # обслуживание. Перепись при этом совпадала с переписью здорового дерева
-  # ДОСЛОВНО — то есть довод «числа до и после сошлись» такого зелёного не ловит.
-  # Комментарий, называющий снятое, — первое, что пишет полоса снятия.
+  # обслуживание. Комментарий, называющий снятое, — первое, что пишет полоса
+  # снятия.
   python3 - "$COPY_SRC/templates/configmap-nginx.yaml" <<'INJ3'
 import io, re, sys
 p = sys.argv[1]
@@ -555,7 +687,7 @@ INJ3
   restore_src
 
   echo
-  echo "-- инъекция 4 (ОДИН факт): полоса объявлена, но НЕ переадресует --"
+  echo "-- инъекция 4 (ОДИН факт против внешнего мира): полоса объявлена, но НЕ переадресует --"
   # Полоса без `proxy_pass` не обслуживает ничего: запрос доходит до раздачи и
   # уходит в общий `location /`. Объявление живо, исполнения нет — тот же класс
   # с третьей стороны.
@@ -572,7 +704,7 @@ INJ4
   restore_src
 
   echo
-  echo "-- законный близнец (ОДИН факт): хвостовой комментарий со \`}\` в теле РАБОЧЕЙ полосы --"
+  echo "-- законный близнец (ОДИН факт против внешнего мира): хвостовой комментарий со \`}\` в теле РАБОЧЕЙ полосы --"
   # Ось держит КОПИЮ лексического прохода на Python (kacho#2781, kacho#2810 п. 2):
   # Go-проба судит свою копию, а эту — только рендер. Снятие целых строк
   # оставляло хвостовой комментарий, его `}` обрывала тело до переадресации, и
@@ -590,6 +722,7 @@ INJ5
   repack
   st_probe "хвостовой комментарий со скобкой в рабочей полосе → зелёное, а не отказ" 0 "PASS:"
   restore_src
+  world_reset
 
   echo
   echo "-- пустой обход: состав стендов не называет ни одной цепочки с консолью --"
@@ -600,9 +733,28 @@ INJ5
   # Здесь снимается ровно тот факт, который делает обход пустым: цепочки, где
   # консоль разворачивается, из состава стендов убраны. Гейту нечего осматривать,
   # и зелёное стало бы свойством обхода, а не дерева.
-  grep -E '^(prod|own):' "$DEPLOY_ROOT/stacks.txt" >"$WORK/deploy/stacks.txt"
+  grep -E '^prod:' "$DEPLOY_ROOT/stacks.txt" >"$WORK/deploy/stacks.txt"
   st_probe "консоли нет ни на одной цепочке состава → находка, а не зелёное" 1 "НИ НА ОДНОЙ"
-  cp "$DEPLOY_ROOT/stacks.txt" "$WORK/deploy/stacks.txt"
+  world_reset
+
+  echo
+  echo "-- знаменатель own (ОДИН факт): консоль есть, но ни одна цепочка с ней не на own --"
+  # Приёмка F8 §4: без цепочки, которая разворачивает консоль И стоит на own,
+  # ни одному сценарию церемонии негде исполниться. Состав сужен до prod (консоли
+  # нет) и dev (консоль есть); у dev сменена ровно посадка.
+  printf '%s\n' "$POSTURE_EXTERNAL" >"$WORK/deploy/helm/umbrella/values.zz-self-test-posture.yaml"
+  { grep -E '^prod:' "$DEPLOY_ROOT/stacks.txt"
+    grep -E '^dev:' "$DEPLOY_ROOT/stacks.txt" | sed 's/$/,values.zz-self-test-posture.yaml/'
+  } >"$WORK/deploy/stacks.txt"
+  st_probe "консоль только на external → находка, а не зелёное" 1 "предусловие прогона приёмки F8"
+
+  echo
+  echo "-- законный близнец знаменателя (ОДИН факт): тот же состав, dev на own --"
+  { grep -E '^prod:' "$DEPLOY_ROOT/stacks.txt"
+    grep -E '^dev:' "$DEPLOY_ROOT/stacks.txt"
+  } >"$WORK/deploy/stacks.txt"
+  st_probe "консоль на own → зелёное" 0 "PASS:"
+  world_reset
 
   echo
   if [ "$st_rc" -eq 0 ]; then

@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PRO-Robotech/corelib/identityposture"
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 	"github.com/PRO-Robotech/kacho/gateway/internal/handler"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
@@ -85,12 +84,16 @@ func newLoginLaneTransport(cfg config.Config, target relayTargetDecl, rawURL str
 // prepareRelayTarget — страж и транспорт одной цели ретрансляции: одно место
 // для обеих провязок композиционного корня, чтобы вторая цель не получила
 // половину пары молча. Возвращает транспорт и запись цели для самоотчёта.
-func prepareRelayTarget(provider identityposture.Provider, cfg config.Config, serves middleware.RelayTarget, rawURL string) (http.RoundTripper, relayTargetDecl, error) {
+//
+// Посадку не читает ни он, ни страж внутри (#2873): оба судят цель всегда, а
+// отличие `own` от прочего даёт место вызова — ветка посадки `own` корня; его
+// держит own_lane_readers_wiring_test.go.
+func prepareRelayTarget(cfg config.Config, serves middleware.RelayTarget, rawURL string) (http.RoundTripper, relayTargetDecl, error) {
 	target, ok := relayTargetDeclFor(serves)
 	if !ok {
 		return nil, relayTargetDecl{}, fmt.Errorf("relay target %q has no guard declaration (refuse to start)", serves)
 	}
-	if err := validateLoginLaneConfig(provider, LoginLaneConfig{
+	if err := validateLoginLaneConfig(LoginLaneConfig{
 		Target:         target,
 		URL:            rawURL,
 		ClientCertFile: cfg.MTLSClientCertFile,

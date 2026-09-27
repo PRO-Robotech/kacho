@@ -94,6 +94,19 @@ func TestLaneMemoryBudgetJudgement_CanFailAndStaysSilent(t *testing.T) {
 			want:    1,
 			mustSay: "непозитивной",
 		},
+		{
+			// Предел (1000) покрывает бюджет и без резерва (800): арифметика молчит,
+			// а страж старта отвергает нулевой резерв до неё (kacho#2829).
+			name:    "нулевой резерв — находка ДО арифметики, хотя предел покрывает бюджет",
+			mutate:  func(f *laneBudgetFacts) { f.Reserve = 0 },
+			want:    1,
+			mustSay: "резерв нулевой — страж отвергает",
+		},
+		{
+			name:   "резерв в один байт — НЕ находка: законный близнец нулевого",
+			mutate: func(f *laneBudgetFacts) { f.Reserve = 1 },
+			want:   0,
+		},
 	}
 
 	for _, c := range cases {
@@ -301,6 +314,96 @@ func TestLaneBudgetCeilingReader_UnreadIsNotAbsent(t *testing.T) {
 			// нет» у bcrypt посчитан отдельно от прочитанного потолка argon2.
 			if reading.Records != 2 || reading.Argon2 != 1 || reading.Bcrypt != 1 {
 				t.Errorf("перепись %s, ожидалось записей 2 · argon2 1 · bcrypt 1", reading)
+			}
+		})
+	}
+}
+
+// lawfulCapacityRule — законный близнец правила ёмкости и резерва у стража
+// старта: та же форма, что у пиненного `internal/apps/kaname/config/login_lane.go`,
+// урезанная до того, что сверяет проба.
+const lawfulCapacityRule = `package config
+
+func (l LoginLaneConfig) ValidateCapacity() error {
+	var errs error
+	if l.VerifierCapacity <= 0 {
+		errs = multierr.Append(errs, loginLaneMissing("verifier-capacity", "ёмкость"))
+	}
+	if l.MemoryReserveBytes == 0 {
+		errs = multierr.Append(errs, loginLaneMissing("memory-reserve-bytes", "резерв"))
+	}
+	return errs
+}
+
+func (l LoginLaneConfig) ValidateMemoryBudget(limitBytes uint64, limited bool) error {
+	if err := l.ValidateCapacity(); err != nil {
+		return err
+	}
+	return nil
+}
+`
+
+// TestLaneBudgetCapacityRule_ModelIsTheGuards — отказы ДО арифметики (ёмкость
+// непозитивна, резерв нулевой) проба моделирует у себя, поэтому сверяет модель с
+// телом правила стража у пина (kacho#2829): страж, начавший отвергать резерв
+// ниже порога или принимать нулевой, сделал бы модель ложной молча.
+func TestLaneBudgetCapacityRule_ModelIsTheGuards(t *testing.T) {
+	cases := []struct {
+		name     string
+		from, to string // одна подмена в законном близнеце; пусто — без подмены
+		wantErr  string // пусто — модель совпадает
+	}{
+		{name: "законный близнец: оба условия той же формы — модель совпадает"},
+		{
+			name:    "резерв судится порогом, а не нулём — модель устарела",
+			from:    "l.MemoryReserveBytes == 0",
+			to:      "l.MemoryReserveBytes < 1024",
+			wantErr: "MemoryReserveBytes == 0",
+		},
+		{
+			name:    "ёмкость судится иначе — модель устарела",
+			from:    "l.VerifierCapacity <= 0",
+			to:      "l.VerifierCapacity < 2",
+			wantErr: "VerifierCapacity <= 0",
+		},
+		{
+			name:    "правило бюджета больше не зовёт правило ёмкости — отказы до арифметики не исполняются",
+			from:    "if err := l.ValidateCapacity(); err != nil {\n\t\treturn err\n\t}\n",
+			to:      "",
+			wantErr: "ValidateMemoryBudget",
+		},
+		{
+			name:    "правила ёмкости нет — сверять не с чем",
+			from:    "func (l LoginLaneConfig) ValidateCapacity() error {",
+			to:      "func (l LoginLaneConfig) validateCapacityRenamed() error {",
+			wantErr: "ValidateCapacity",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			src := lawfulCapacityRule
+			if c.from != "" {
+				if n := strings.Count(src, c.from); n != 1 {
+					t.Fatalf("фикстура: подменяемое место встречается %d раз, ожидалось 1: %q", n, c.from)
+				}
+				src = strings.Replace(src, c.from, c.to, 1)
+			}
+			file, err := parser.ParseFile(token.NewFileSet(), "login_lane.go", src, 0)
+			if err != nil {
+				t.Fatalf("фикстура не разбирается как Go: %v", err)
+			}
+			err = guardCapacityRuleIsModelled(file)
+			if c.wantErr == "" {
+				if err != nil {
+					t.Fatalf("законная форма отвергнута: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("модель пробы разошлась со стражем, а сверка промолчала")
+			}
+			if !strings.Contains(err.Error(), c.wantErr) {
+				t.Errorf("отказ не называет %q: %v", c.wantErr, err)
 			}
 		})
 	}

@@ -20,6 +20,9 @@
 // законного значения) — и единственный оставшийся выход есть режим
 // разработчика, то есть посадка, запрещённая ban #16.
 //
+// Ось поставщика с тех пор снята целиком (#2734): край не читает ни одного его
+// адреса, и требовать их страж больше не может ни под одной посадкой.
+//
 // ─────────────────────────────────────────────────────────────────────────────
 // ПОЛОСА ЗАМЕЩАЕТ ТРЕБОВАНИЕ, А НЕ СНИМАЕТ ЕГО
 //
@@ -37,7 +40,8 @@
 package main
 
 import (
-	"regexp"
+	"go/ast"
+	"go/types"
 	"strings"
 	"testing"
 
@@ -48,15 +52,17 @@ import (
 // Фикстура НАШЕГО авторитета отзыва: годная во всех четырёх осях. Случаи ниже
 // портят РОВНО ОДНУ.
 const (
-	ourAuthorityURL  = "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
-	ourAuthorityCA   = "/etc/api-gateway/platform-revocation-ca/ca.crt"
-	ourAuthorityCert = "/etc/api-gateway/platform-revocation-identity/tls.crt"
-	ourAuthorityKey  = "/etc/api-gateway/platform-revocation-identity/tls.key"
+	ourPlatformIssuer = "https://kaname.kacho.test"
+	ourAuthorityURL   = "https://kaname-internal.kacho.svc:9097/internal/tokens/introspect"
+	ourAuthorityCA    = "/etc/api-gateway/platform-revocation-ca/ca.crt"
+	ourAuthorityCert  = "/etc/api-gateway/platform-revocation-identity/tls.crt"
+	ourAuthorityKey   = "/etc/api-gateway/platform-revocation-identity/tls.key"
 )
 
 // ourAuthorityWired — годная полоса нашего авторитета целиком.
 func ourAuthorityWired() RevocationConfig {
 	return RevocationConfig{
+		PlatformTokenIssuer:        ourPlatformIssuer,
 		PlatformRevocationURL:      ourAuthorityURL,
 		PlatformRevocationCAFile:   ourAuthorityCA,
 		PlatformRevocationCertFile: ourAuthorityCert,
@@ -72,59 +78,41 @@ func ownLane() RevocationConfig {
 	return c
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Ось ПОСТАВЩИКА: требуется под `external`, не требуется под `own`.
-
-// Под `own` край стартует БЕЗ адреса интроспекции внешнего поставщика.
-// Это тот самый вход, у которого сегодня нет законного значения.
-func TestOwnLaneStartsWithoutTheProviderIntrospectionAddress(t *testing.T) {
-	cfg := ownLane()
-	cfg.IntrospectionURL = ""
-	if err := validateProductionRevocationConfig("production", cfg); err != nil {
-		t.Fatalf("под own адрес интроспекции внешнего поставщика не требуется, получено: %v", err)
+// externalFromConfig — посадка `external` так, как её производит КОНФИГУРАЦИЯ
+// края: тем же разбором ручки, что у процесса (`ResolvedIdentityProvider`), а
+// не именем значения в коде. Пин фундамента v1.8.0 это значение ещё разбирает,
+// и чарт края объявляет его умолчанием (gateway/deploy/values.yaml,
+// authn.identityProvider), поэтому поведение стража на нём наблюдаемо и
+// держится пробами ниже.
+//
+// САМОИСТЕЧЕНИЕ. Фундамент снимает значение в выпуске v1.10.0-rc.3
+// (corelib#26), подъём пина — #2862. Когда разбор откажет, ветвь «вне `own`» в
+// judgeOurRevocationAuthority лишится производителя входа: проба краснеет и
+// называет, что снимается тем же изменением, вместо того чтобы зеленеть над
+// ветвью, в которую больше никто не приходит.
+func externalFromConfig(t *testing.T) identityposture.Provider {
+	t.Helper()
+	p, err := config.Config{IdentityProvider: "external"}.ResolvedIdentityProvider()
+	if err != nil {
+		t.Fatalf("%s", retiredExternalFinding(err))
 	}
+	if !p.IsSet() || p == identityposture.Own {
+		t.Fatalf("разбор external дал %v — проба судит не ту посадку", p)
+	}
+	return p
 }
 
-// ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ той же оси: под `external` требование остаётся.
-// Без него случай выше зеленел бы на страже, снявшем проверку у всех.
-func TestExternalLaneStillDemandsTheProviderIntrospectionAddress(t *testing.T) {
-	err := validateProductionRevocationConfig("production", RevocationConfig{
-		IdentityProvider: identityposture.External,
-		IntrospectionURL: "",
-		AdminURL:         tlsAdminURL,
-		AdminCAFile:      testAdminCA,
-	})
-	if err == nil {
-		t.Fatal("под external незаданный адрес интроспекции обязан отвергать старт")
-	}
-	if !strings.Contains(err.Error(), "KACHO_HYDRA_INTROSPECTION_URL is empty") {
-		t.Fatalf("отказ обязан называть ручку поставщика, получено: %q", err.Error())
-	}
-}
-
-// Полосность снимает требование НАЛИЧИЯ, а не правила транспорта: адрес
-// поставщика, объявленный под `own`, судится теми же правилами.
-func TestADeclaredProviderIntrospectionIsJudgedTheSameOnBothLanes(t *testing.T) {
-	for _, lane := range identityposture.Values() {
-		t.Run(lane.String(), func(t *testing.T) {
-			cfg := ownLane()
-			cfg.IdentityProvider = lane
-			cfg.AdminURL = tlsAdminURL
-			cfg.AdminCAFile = testAdminCA
-			cfg.IntrospectionURL = "http://provider-admin.kacho.svc:4445/admin/oauth2/introspect"
-			err := validateProductionRevocationConfig("production", cfg)
-			if err == nil {
-				t.Fatal("незашифрованный адрес интроспекции обязан отвергаться на любой полосе")
-			}
-			if !strings.Contains(err.Error(), "KACHO_HYDRA_INTROSPECTION_URL is plaintext") {
-				t.Fatalf("отказ обязан называть ручку и предмет, получено: %q", err.Error())
-			}
-		})
-	}
+// retiredExternalFinding — текст находки, когда пин фундамента перестал
+// разбирать `external`. Один на все пробы этой посадки.
+func retiredExternalFinding(err error) string {
+	return "пин фундамента больше не разбирает посадку external (" + err.Error() + "): ветвь «вне own» " +
+		"в judgeOurRevocationAuthority и пробы на этой посадке лишились производителя входа и " +
+		"снимаются тем же изменением, что поднял пин (#2862)"
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Ось НАШЕГО авторитета: требуется под `own`; заданная — судится на любой полосе.
+// Ось НАШЕГО авторитета: НАЛИЧИЕ требуется под `own` вместе с нашим издателем;
+// заданный авторитет судится на любой посадке.
 
 // Под `own` край обязан требовать НАШЕГО авторитета отзыва. Иначе смена посадки
 // стала бы способом выключить чтение отзыва на предъявлении.
@@ -144,18 +132,48 @@ func TestOwnLaneDemandsOurOwnRevocationAuthority(t *testing.T) {
 	}
 }
 
-// ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ той же оси: под `external` наш авторитет обязателен НЕ
-// БЫВАЕТ — там отзыв читает поставщик. Без этого случая ось выше зеленела бы на
-// страже, требующем нашего авторитета всегда.
+// Под `own` страж судит ОБЪЯВЛЕННОГО нашего издателя. Авторитет отзыва
+// спрашивается только о токене той записи приёма, которую объявил наш издатель;
+// без объявления токены нашей чеканки принимались бы записью без этого вопроса,
+// и требование адреса выше держалось бы на том, что издателя объявил кто-то ещё.
+func TestOwnLaneDemandsOurPlatformIssuerDeclared(t *testing.T) {
+	for _, declared := range []string{"", " \t "} {
+		cfg := ownLane()
+		cfg.PlatformTokenIssuer = declared
+		err := validateProductionRevocationConfig("production", cfg)
+		if err == nil {
+			t.Fatalf("под own необъявленный наш издатель (%q) обязан отвергать старт", declared)
+		}
+		msg := err.Error()
+		if !strings.Contains(msg, "KACHO_API_GATEWAY_PLATFORM_TOKEN_ISSUER is empty") {
+			t.Fatalf("отказ обязан называть ручку нашего издателя, получено: %q", msg)
+		}
+		if !strings.Contains(msg, config.IdentityProviderKnob+"=own") {
+			t.Fatalf("отказ обязан назвать полосу, по которой требование действует, получено: %q", msg)
+		}
+	}
+}
+
+// Законный близнец: объявленный наш издатель — единственное отличие от случая
+// выше, и старт проходит.
+func TestOwnLaneWithOurPlatformIssuerDeclaredStarts(t *testing.T) {
+	if err := validateProductionRevocationConfig("production", ownLane()); err != nil {
+		t.Fatalf("под own с объявленным нашим издателем и авторитетом старт обязан проходить: %v", err)
+	}
+}
+
+// ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ той же оси: вне `own` наличие нашего авторитета и
+// издателя не требуется — там наша чеканка краем не принимается, пока её не
+// объявит перечень издателей, а объявленный наш издатель без авторитета
+// отвергается раньше, разбором приёма. Без этого случая ось выше зеленела бы
+// на страже, требующем нашего авторитета всегда, а отказ называл бы посадкой,
+// на которой «чеканим мы», ту, на которой мы не чеканим.
 func TestExternalLaneNeedsNoAuthorityOfOurOwn(t *testing.T) {
 	err := validateProductionRevocationConfig("production", RevocationConfig{
-		IdentityProvider: identityposture.External,
-		IntrospectionURL: tlsIntrospectURL,
-		AdminURL:         tlsAdminURL,
-		AdminCAFile:      testAdminCA,
+		IdentityProvider: externalFromConfig(t),
 	})
 	if err != nil {
-		t.Fatalf("под external наш авторитет отзыва не требуется, получено: %v", err)
+		t.Fatalf("под external наш авторитет отзыва и наш издатель не требуются, получено: %v", err)
 	}
 }
 
@@ -225,14 +243,15 @@ func TestOurAuthorityHopRefusesHalfAnIdentity(t *testing.T) {
 	})
 }
 
-// Заданный НАШ авторитет судится теми же правилами и под `external`: ось
-// проверки транспорта полосой не разводится.
+// Заданный НАШ авторитет судится теми же правилами и вне `own`: посадка снимает
+// требование НАЛИЧИЯ, а не правила транспорта. Близнец случая выше — различие
+// одно: адрес объявлен.
 func TestADeclaredAuthorityOfOursIsJudgedOnTheExternalLaneToo(t *testing.T) {
 	cfg := ourAuthorityWired()
-	cfg.IdentityProvider = identityposture.External
-	cfg.IntrospectionURL = tlsIntrospectURL
-	cfg.AdminURL = tlsAdminURL
-	cfg.AdminCAFile = testAdminCA
+	cfg.IdentityProvider = externalFromConfig(t)
+	if err := validateProductionRevocationConfig("production", cfg); err != nil {
+		t.Fatalf("годный наш авторитет под external обязан проходить, получено: %v", err)
+	}
 	cfg.PlatformRevocationCAFile = ""
 	err := validateProductionRevocationConfig("production", cfg)
 	if err == nil {
@@ -240,20 +259,6 @@ func TestADeclaredAuthorityOfOursIsJudgedOnTheExternalLaneToo(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_CA_FILE") {
 		t.Fatalf("отказ обязан называть ручку якоря, получено: %q", err.Error())
-	}
-}
-
-// Незаданный НАШ авторитет под `external` находкой не является — там его
-// предмета нет. Законный близнец случая выше.
-func TestAnUnsetAuthorityOfOursIsSilentOnTheExternalLane(t *testing.T) {
-	err := validateProductionRevocationConfig("production", RevocationConfig{
-		IdentityProvider: identityposture.External,
-		IntrospectionURL: tlsIntrospectURL,
-		AdminURL:         tlsAdminURL,
-		AdminCAFile:      testAdminCA,
-	})
-	if err != nil {
-		t.Fatalf("незаданный наш авторитет под external находкой не является, получено: %v", err)
 	}
 }
 
@@ -275,27 +280,55 @@ func TestDevClassEnvironmentIsUntouchedByTheLane(t *testing.T) {
 // `RevocationConfig` без них, оставил бы их нулевыми — и страж отвечал бы
 // «нашего авторитета нет» ПРИ ЛЮБОЙ настройке: чарт задал бы ручки, секрет был
 // бы смонтирован, а старт отвергался. Ровно этот класс уже стоил выкатки на
-// соседней оси (`admin_hop_wiring_test.go`), поэтому провязка утверждается
+// соседней, ныне снятой оси якоря административного хопа, поэтому провязка утверждается
 // отдельно от поведения.
 //
 // main() из пробы не исполним (он дозванивается до бэкендов и занимает порты),
 // поэтому провязка утверждается ТАМ, ГДЕ ОНА ЖИВЁТ — в исходнике корня. Чтение
 // исходника слабее исполнения и применяется намеренно ровно к тому свойству,
-// которого «оно собирается» показать не может.
+// которого «оно собирается» показать не может. Читается ДЕРЕВО разбора, а не
+// текст: поле, закомментированное в литерале, в дереве отсутствует, а
+// выражение текстом совпало бы и в комментарии.
 
 func TestCompositionRoot_ShowsOurRevocationAuthorityToTheGuard(t *testing.T) {
-	src := compositionRoot(t)
-	for _, want := range []struct{ field, source string }{
-		{"PlatformRevocationURL", `cfg\.PlatformTokenRevocationURL`},
-		{"PlatformRevocationCAFile", `cfg\.PlatformTokenRevocationCAFile`},
-		{"PlatformRevocationCertFile", `cfg\.PlatformTokenRevocationCertFile`},
-		{"PlatformRevocationKeyFile", `cfg\.PlatformTokenRevocationKeyFile`},
-	} {
-		re := regexp.MustCompile(`RevocationConfig\{(?s:.*?)` + want.field + `:\s*` + want.source)
-		if !re.MatchString(src) {
-			t.Errorf("страж не видит %s: композиционный корень обязан подать его из %s, иначе "+
-				"величина остаётся нулевой и вердикт не зависит от настройки вовсе",
-				want.field, want.source)
+	fset, f := parseMain(t)
+	var lits []*ast.CompositeLit
+	ast.Inspect(f, func(n ast.Node) bool {
+		if lit, ok := n.(*ast.CompositeLit); ok {
+			if id, ok := lit.Type.(*ast.Ident); ok && id.Name == "RevocationConfig" {
+				lits = append(lits, lit)
+			}
+		}
+		return true
+	})
+	if len(lits) != 1 {
+		t.Fatalf("корень собирает RevocationConfig %d раз, ожидался ровно 1 — ни одного значит «страж "+
+			"не позван», два — два ответа об одной настройке", len(lits))
+	}
+	fed := map[string]string{}
+	for _, el := range lits[0].Elts {
+		kv, ok := el.(*ast.KeyValueExpr)
+		if !ok {
+			t.Fatalf("литерал RevocationConfig у %s собран без имён полей — провязку по полю не прочесть",
+				fset.Position(lits[0].Pos()))
+		}
+		if key, ok := kv.Key.(*ast.Ident); ok {
+			fed[key.Name] = types.ExprString(kv.Value)
 		}
 	}
+	for _, want := range []struct{ field, source string }{
+		{"IdentityProvider", "identityLane"},
+		{"PlatformTokenIssuer", "cfg.PlatformTokenIssuer"},
+		{"PlatformRevocationURL", "cfg.PlatformTokenRevocationURL"},
+		{"PlatformRevocationCAFile", "cfg.PlatformTokenRevocationCAFile"},
+		{"PlatformRevocationCertFile", "cfg.PlatformTokenRevocationCertFile"},
+		{"PlatformRevocationKeyFile", "cfg.PlatformTokenRevocationKeyFile"},
+	} {
+		if got := fed[want.field]; got != want.source {
+			t.Errorf("страж не видит %s: композиционный корень обязан подать его из %s (подано: %q), иначе "+
+				"величина остаётся нулевой и вердикт не зависит от настройки вовсе",
+				want.field, want.source, got)
+		}
+	}
+	t.Logf("ОСМОТРЕНО: литералов RevocationConfig 1 у %s · полей подано %d", fset.Position(lits[0].Pos()), len(fed))
 }

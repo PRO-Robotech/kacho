@@ -119,6 +119,21 @@
 // бы на одной: иначе «на own ноль» неотличимо от переписи, которая не видит
 // поставщика нигде.
 //
+// ─────────────────────────────────────────────────────────────────────────────
+// ПОСАДКУ own ОБЪЯВЛЯЮТ ВСЕ ЦЕПОЧКИ (#2735) — И ДВЕ ПОЛОВИНЫ ГЕЙТА РАСХОДЯТСЯ
+//
+// Цепочек на external в таблице больше нет, поставщик выключен в базе зонта на
+// всех. Половина own судит НАСТОЯЩИЙ рендер каждой цепочки — отсутствие
+// поставщика там и есть предмет. Половина external (наш файл не перебивается
+// окружением его процесса) без носителя осталась бы беспредметной, а контроль
+// переписи («объектов поставщика больше нуля хоть где-то») — невыполнимым.
+//
+// Поэтому вторая половина судит ту же цепочку, в которой поставщик ПОДНЯТ
+// ПРОБОЙ одним фактом (`providerRaisedByProbe`) — и только там, где профиль
+// цепочки его настройки объявляет (они лежат в дереве до физического снятия
+// подчарта, #1276). Перепись печатает, на скольких цепочках поставщик поднят
+// пробой, чтобы вердикт о файле настроек не читался как вердикт о стенде.
+//
 // Способность упасть и смолчать доказана инъекцией НАСТОЯЩИМ входом через
 // настоящие ручки чарта — identity_file_keys_survive_the_environment_injection_test.go.
 package deploy_test
@@ -167,6 +182,21 @@ func renderStack(t *testing.T, chain []string, sets ...string) (string, error) {
 	}
 	out, err := exec.Command("helm", args...).CombinedOutput() // #nosec G204 -- фиксированный бинарь, аргументы из дерева
 	return string(out), err
+}
+
+// chainDeclaresIdentityStore — объявляет ли цепочка (база зонта + профили)
+// настройки службы личности поставщика: `kratos.kratos.config` — непустое
+// отображение. Только такую цепочку проба вправе поднимать: иначе она судила бы
+// конфигурацию, которую не объявлял никто.
+func chainDeclaresIdentityStore(t *testing.T, chain []string) bool {
+	t.Helper()
+	merged := readYAML(t, filepath.Join(umbrellaDir, "values.yaml"))
+	for _, p := range chain {
+		merged = mergeValues(merged, readYAML(t, filepath.Join(umbrellaDir, p)))
+	}
+	cfg, ok := lookup(merged, "kratos", "kratos", "config")
+	m, isMap := cfg.(map[string]any)
+	return ok && isMap && len(m) > 0
 }
 
 // renderedDoc — один документ рендера, разобранный настолько, насколько нужен
@@ -558,7 +588,8 @@ func TestIdentityFileKeysAreNotOverriddenByTheEnvironment(t *testing.T) {
 		subjectsSum  int
 		bodiesSum    int
 		ownDeclared  int // стеков, объявивших посадку own
-		providerSeen int // объектов поставщика на стеках external — контроль переписи
+		providerSeen int // объектов поставщика там, где он поднят, — контроль переписи
+		raisedByTest int // стеков, где поставщика подняла проба
 	)
 	for _, name := range names {
 		rendered, err := renderStack(t, stacks[name])
@@ -581,7 +612,18 @@ func TestIdentityFileKeysAreNotOverriddenByTheEnvironment(t *testing.T) {
 				t.Error(f)
 			}
 			ownDeclared++
-			continue
+			// Вторая половина — на той же цепочке с поставщиком, поднятым пробой.
+			if !chainDeclaresIdentityStore(t, stacks[name]) {
+				continue
+			}
+			raised, err := renderStack(t, stacks[name], providerRaisedByProbe...)
+			if err != nil {
+				t.Fatalf("стек %q с поставщиком, поднятым пробой, не рендерится (%v) — вердикта о "+
+					"файле настроек НЕТ. Вывод helm:\n%s", name, err, raised)
+			}
+			raisedByTest++
+			docs = decodeRender(t, raised)
+			providerSeen += len(providerResidueOf(docs).Objects)
 		case "external":
 			providerSeen += len(residue.Objects)
 		default:
@@ -632,16 +674,17 @@ func TestIdentityFileKeysAreNotOverriddenByTheEnvironment(t *testing.T) {
 		allFindings = append(allFindings, findings...)
 	}
 
-	t.Logf("итого осмотрено: стеков %d (из них объявили посадку own %d) · наших карт настроек %d · "+
-		"процессов-читателей %d · B(всего) %d · объектов поставщика на external %d",
-		len(names), ownDeclared, bodiesSum, subjectsSum, len(allFindings), providerSeen)
+	t.Logf("итого осмотрено: стеков %d (из них объявили посадку own %d) · поставщик поднят ПРОБОЙ на %d "+
+		"(на стенде не поднимается, #2735) · наших карт настроек %d · процессов-читателей %d · "+
+		"B(всего) %d · объектов поставщика там, где он поднят, %d",
+		len(names), ownDeclared, raisedByTest, bodiesSum, subjectsSum, len(allFindings), providerSeen)
 
 	if bodiesSum == 0 || subjectsSum == 0 {
 		t.Fatalf("обход пуст (карт %d, читателей %d) — вердикт беспредметен", bodiesSum, subjectsSum)
 	}
 	if providerSeen == 0 {
-		t.Fatalf("на стеках external перепись поставщика нашла НОЛЬ объектов — перепись слепа, и «на own " +
-			"ноль» ничего не доказывает")
+		t.Fatalf("там, где поставщик поднят, перепись поставщика нашла НОЛЬ объектов — перепись слепа, " +
+			"и «на own ноль» ничего не доказывает")
 	}
 
 	for _, f := range allFindings {

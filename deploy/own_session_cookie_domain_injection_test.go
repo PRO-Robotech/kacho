@@ -66,26 +66,25 @@ func TestOwnCookieDomainJudgement_CanFailAndStaysSilent(t *testing.T) {
 // TestOwnCookieDomain_TreeInjectionNamesTheChainAndTheKey — НАСТОЯЩИЙ вход:
 // цепочки дерева, в одну из которых внесён `cookieDomain` ≠ `none`.
 // Инъекция в цепочку на `own` краснеет и называет цепочку и ключ; та же правка
-// в цепочке без посадки `own` молчит.
+// в той же цепочке, переведённой в памяти на посадку `external`, молчит.
 func TestOwnCookieDomain_TreeInjectionNamesTheChainAndTheKey(t *testing.T) {
-	// Близнец — цепочка не на `own`, у которой ручка ОБЪЯВЛЕНА: правка там
-	// меняет ту же величину, а не заводит блок, которого у цепочки нет, — и
-	// отличается от инъекции ровно посадкой.
+	// Близнец — ТА ЖЕ цепочка с той же правкой, у которой в памяти сменена
+	// ровно посадка. Прежде близнецом служила другая цепочка дерева не на
+	// `own`, но таких больше нет: посадку `own` объявляют все стенды (#2735).
+	// Близнец на той же цепочке строже прежнего — он отличается от инъекции
+	// одним фактом, а не всем составом другой цепочки.
 	base := readCookieDomainFacts(t, nil)
-	var own, other string
+	var own string
 	for _, f := range base {
-		if f.Posture == "own" && own == "" {
+		if f.Posture == "own" && f.Declared && own == "" {
 			own = f.Stack
 		}
-		if f.Posture != "own" && f.Declared && other == "" {
-			other = f.Stack
-		}
 	}
-	if own == "" || other == "" {
-		t.Fatalf("в дереве нет пары цепочек (на own %q, не на own с объявленной ручкой %q) — "+
-			"инъекции некуда попасть", own, other)
+	if own == "" {
+		t.Fatalf("в дереве нет цепочки на own с объявленной ручкой — инъекции некуда попасть")
 	}
-	inject := func(target string) func(string, map[string]any) {
+	other := own
+	inject := func(target string, posture string) func(string, map[string]any) {
 		return func(stack string, declared map[string]any) {
 			if stack != target {
 				return
@@ -96,10 +95,19 @@ func TestOwnCookieDomain_TreeInjectionNamesTheChainAndTheKey(t *testing.T) {
 				t.Fatalf("цепочка %s: блока `kaname.config.authn.login` нет — инъекция не внесена", stack)
 			}
 			m["cookieDomain"] = "console.example"
+			if posture == "" {
+				return
+			}
+			authn, ok := lookup(declared, "kaname", "config", "authn")
+			am, isMap := authn.(map[string]any)
+			if !ok || !isMap {
+				t.Fatalf("цепочка %s: блока `kaname.config.authn` нет — посадку сменить нечем", stack)
+			}
+			am["identityProvider"] = posture
 		}
 	}
 
-	red, census := judgeOwnCookieDomain(readCookieDomainFacts(t, inject(own)))
+	red, census := judgeOwnCookieDomain(readCookieDomainFacts(t, inject(own, "")))
 	t.Logf("инъекция в цепочку %s (own): находок %d · %s", own, len(red), census)
 	if len(red) != 1 {
 		t.Fatalf("инъекция в цепочку на own дала %d находок, ожидалась 1: %v", len(red), red)
@@ -110,8 +118,9 @@ func TestOwnCookieDomain_TreeInjectionNamesTheChainAndTheKey(t *testing.T) {
 		}
 	}
 
-	silent, census := judgeOwnCookieDomain(readCookieDomainFacts(t, inject(other)))
-	t.Logf("близнец — та же правка в цепочке %s (не own): находок %d · %s", other, len(silent), census)
+	silent, census := judgeOwnCookieDomain(readCookieDomainFacts(t, inject(other, "external")))
+	t.Logf("близнец — та же правка в цепочке %s, посадка в памяти external: находок %d · %s",
+		other, len(silent), census)
 	if len(silent) != 0 {
 		t.Errorf("правка в цепочке без посадки own дала находки: %v", silent)
 	}

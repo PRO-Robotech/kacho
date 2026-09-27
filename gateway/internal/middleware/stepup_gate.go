@@ -120,7 +120,7 @@ type StepUpAssurance struct {
 
 // assuranceFromVerifiedToken извлекает вход пола из подписанного предъявителя.
 // Размещение claim'а (верхний уровень против вложенного `ext_claims`) — забота
-// края и Hydra, поэтому разбор остаётся здесь; вердикт по нему — нет.
+// края и издателя, поэтому разбор остаётся здесь; вердикт по нему — нет.
 func assuranceFromVerifiedToken(token *VerifiedToken) StepUpAssurance {
 	return StepUpAssurance{
 		PrincipalType: verifiedClaim(token, "kaname_principal_type"),

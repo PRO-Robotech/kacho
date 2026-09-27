@@ -22,7 +22,7 @@ func legalOwnStackFacts() ownStackFacts {
 		Stack: "own", IAMPosture: "own", EdgePosture: "own",
 		LanePort: "9100", LaneURL: "https://kaname-internal.kacho.svc:9100",
 		ServiceName: "kaname", AccessKeys: true,
-		IssuancePort: "9096", IssuanceURL: "https://kaname.kacho.svc:9096",
+		IssuancePort: "9096", IssuanceURL: "https://kaname.kacho.svc:9096", IssuanceTLS: true,
 	}
 }
 
@@ -175,6 +175,15 @@ func TestOwnStackJudgement_CanFailAndStaysSilent(t *testing.T) {
 			mutate:  func(f *ownStackFacts) { f.IssuanceURL = "http://kaname.kacho.svc:9096" },
 			want:    1,
 			mustSay: "код авторизации",
+		},
+		{
+			// Стенд разработчика до этой правки: край идёт по https, а Служба
+			// держит слушатель выдачи открытым текстом. Законный близнец — базовый
+			// случай таблицы, где различие ровно в этом факте.
+			name:    "Служба держит слушатель выдачи открытым текстом — находка",
+			mutate:  func(f *ownStackFacts) { f.IssuanceTLS = false },
+			want:    1,
+			mustSay: "слушатель выдачи открытым текстом",
 		},
 		{
 			name:    "адрес выдачи не абсолютный — находка",
@@ -391,6 +400,35 @@ func TestOwnStackIssuancePortModel_StaleTemplateIsSaid(t *testing.T) {
 			agree := cond == "" && expr == issuanceServicePortExpression
 			if ok && agree != c.wantAgree {
 				t.Errorf("модель согласна=%v, ожидалось %v: условие %q, выражение %q", agree, c.wantAgree, cond, expr)
+			}
+		})
+	}
+}
+
+// TestOwnStackIssuanceTLSModel_StaleTemplateIsSaid — предпосылка суждения о TLS
+// слушателя выдачи способна упасть: включение под иным условием, вне блока
+// `mtls.enable` или без переменной включения распознаётся как устаревшая модель,
+// а сегодняшняя форма — нет (kacho#2721).
+func TestOwnStackIssuanceTLSModel_StaleTemplateIsSaid(t *testing.T) {
+	const lawful = "            {{- if .Values.mtls.enable }}\n" +
+		"            {{- if (dig \"registryToken\" .Values.mtls.httpListeners .Values.mtls) }}\n" +
+		"            # docker-token listener\n" +
+		"            - name: KANAME_REGISTRYTOKEN_SERVER_MTLS_ENABLE\n" +
+		"              value: \"true\"\n"
+	cases := []struct {
+		name string
+		tmpl string
+		want bool
+	}{
+		{name: "законный близнец: сегодняшняя форма шаблона — модель верна", tmpl: lawful, want: true},
+		{name: "иное условие — модель устарела", tmpl: strings.Replace(lawful, "mtls.httpListeners", "mtls.enable", 1)},
+		{name: "вне блока mtls.enable — модель устарела", tmpl: strings.Replace(lawful, "{{- if .Values.mtls.enable }}\n", "", 1)},
+		{name: "переменной включения нет — модель устарела", tmpl: strings.Replace(lawful, "SERVER_MTLS_ENABLE", "SERVER_MTLS_CERTFILE", 1)},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := issuanceTLSTemplate(c.tmpl); got != c.want {
+				t.Fatalf("модель распознана=%v, ожидалось %v", got, c.want)
 			}
 		})
 	}
