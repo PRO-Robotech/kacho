@@ -316,11 +316,15 @@ api-gateway:
     enabled: true
     failOpen: false
   # mTLS: external listener server cert + backend-dial client cert, every edge on.
-  # `hybridExternal: false` → external listener is strict (browser clients reach
-  # the gateway through the ingress TLS terminator, not this listener directly).
+  # `hybridExternal` — client-certificate verification on the external listener
+  # (semantics: `mtls.hybridExternal` in gateway/deploy/values.yaml). The landing
+  # gate (deploy/scripts/assert-production-posture.sh) accepts the edge's
+  # public_mtls only as true. What the process will report is judged on the
+  # RENDER of each production chain, not on this line:
+  # edge_public_listener_mtls_test.go.
   mtls:
     enable: true
-    hybridExternal: false
+    hybridExternal: true
     serverSecretName: api-gateway-tls
     edges:
       vpc: true

@@ -173,7 +173,7 @@ func main() {
 	// без неё.
 	var loginLaneRelay *handler.LoginLaneRelay
 	if identityLane == identityposture.Own {
-		if llErr := validateLoginLaneConfig(identityLane, LoginLaneConfig{
+		if llErr := validateLoginLaneConfig(LoginLaneConfig{
 			URL:            cfg.LoginLaneURL,
 			ClientCertFile: cfg.MTLSClientCertFile,
 			ClientKeyFile:  cfg.MTLSClientKeyFile,
@@ -204,20 +204,11 @@ func main() {
 	// --- JWKS verifier wired into the principal-setting path ---
 	//
 	// The same JWTVerifier is the authoritative validator for asymmetric access
-	// JWTs of every accepted issuer (platform-minted and, while the transition
-	// window is open, the previous external OAuth server). It is constructed here (independent of the DPoP
-	// feature flag) and wired into the AuthInterceptor so a real login token
-	// authenticates on the principal path.
+	// JWTs of every DECLARED accepted issuer. It is constructed here (independent
+	// of the DPoP feature flag) and wired into the AuthInterceptor so a real login
+	// token authenticates on the principal path.
 	// The DPoP middleware (below) reuses the SAME instance when enabled.
 	//
-	// Construction failure (e.g. empty resolved JWKS URL) is a MISCONFIGURATION,
-	// not an outage: the constructor reads configuration and makes no network
-	// call, so the same start can never succeed until the address and issuer are
-	// set. It is therefore judged by a guard — fatal in a production-class env,
-	// the previous warn-and-continue only under an explicit dev-class label.
-	// Absorbed unconditionally, as it was, it made a permanent misconfiguration
-	// the normal running mode: the edge reported itself as configured and
-	// refused nothing for as long as it lived (security.md §8).
 	// Хоп за ключами получает СВОЙ якорь доверия, ровно как административный. Пусто ⇒
 	// транспорт по умолчанию (прежнее поведение); нечитаемая связка ⇒ ОТКАЗ В СТАРТЕ,
 	// а не тихий откат к системным корням: край, который «настроен проверять» и не
@@ -246,12 +237,12 @@ func main() {
 		logger.Error("api-gateway refusing to start: token acceptance declaration", "err", accErr)
 		os.Exit(1)
 	}
-	// АДРЕСАТ — судится ДО построения проверяющего, чтобы отказ назвал РУЧКУ.
-	//
-	// Конструктор ниже тоже откажет на незаявленном адресате, и это не второе
-	// место об одном предмете: он судит своё ПОЛЕ и пишет о нём, а оператору
-	// нужно имя переменной окружения. Порядок поэтому несущий — первым говорит
-	// тот, чей текст даёт следующий шаг.
+	// АДРЕСАТ — судится ДО ветки мягкого прохода ниже, и порядок несущий. В
+	// боевом классе незаявленный адресат отвергается здесь, с именем ручки, и до
+	// мягкого прохода боевой класс не доходит; конструктор проверяющего зовётся
+	// только с ОБЪЯВЛЕННЫМ адресатом. Страж, снятый или переставленный ниже
+	// ветки, открыл бы мягкий проход боевому классу — вызов, его выход и место
+	// держит TestPrincipalVerifier_AudienceGuardRefusesBeforeTheSoftPass.
 	if audErr := validateProductionTokenAudience(cfg.AppEnv, cfg.DeclaredTokenAudience()); audErr != nil {
 		logger.Error("api-gateway refusing to start", "err", audErr)
 		os.Exit(1)
@@ -271,21 +262,36 @@ func main() {
 		platformAccepted = platformAccepted || b.ReadRevocation
 	}
 
-	jwtVerifier, jverr := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		Issuers:          issuerRecords,
-		JWKSCacheTTL:     time.Duration(cfg.JWKSCacheTTLSeconds) * time.Second,
-		JWKSFetchTimeout: time.Duration(cfg.JWKSFetchTimeoutSeconds) * time.Second,
-		HTTPClient:       jwksHopClient,
-		ExpectedAudience: cfg.DeclaredTokenAudience(),
-		ClockSkew:        time.Duration(cfg.JWTClockSkewSeconds) * time.Second,
-	})
-	if tvErr := validateProductionTokenVerifierConfig(cfg.AppEnv, jverr); tvErr != nil {
-		log.Fatalf("token verifier startup-validation: %v", tvErr)
-	}
-	if jverr != nil {
+	// МЯГКИЙ ПРОХОД ОДИН, И У НЕГО ОДИН ПРОИЗВОДИТЕЛЬ — незаявленный адресат
+	// (ветка then ниже). Дойти до него может только класс разработки: в боевом
+	// классе раньше отказывает страж адресата выше. Отказ самого конструктора —
+	// НАСТРОЙКА, а не сбой (конструктор читает конфигурацию и к сети не ходит),
+	// и он роняет старт в любом классе безусловным выходом. Все записи, на
+	// которых конструктор отказал бы, раньше отвергает объявление приёма,
+	// поэтому сегодня ветка отказа входа не получает; она стоит затем, чтобы
+	// новый отказ конструктора, не повторённый разбором, не стал мягким проходом
+	// (kacho#2827, security.md §8). Держат это пробы
+	// principal_verifier_wiring_test.go.
+	//
+	// jwtVerifier == nil ⇔ проверяющий подпись не провязан (мягкий проход).
+	var jwtVerifier *middleware.JWTVerifier
+	if cfg.DeclaredTokenAudience() == "" {
 		logger.Warn("jwks verifier not wired into principal path (HMAC-dev only)",
-			"err", jverr, "accepted_issuers", acceptedIssuers)
+			"reason", config.AudienceKnob+" is not declared", "accepted_issuers", acceptedIssuers)
 	} else {
+		verifier, verifierErr := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
+			Issuers:          issuerRecords,
+			JWKSCacheTTL:     time.Duration(cfg.JWKSCacheTTLSeconds) * time.Second,
+			JWKSFetchTimeout: time.Duration(cfg.JWKSFetchTimeoutSeconds) * time.Second,
+			HTTPClient:       jwksHopClient,
+			ExpectedAudience: cfg.DeclaredTokenAudience(),
+			ClockSkew:        time.Duration(cfg.JWTClockSkewSeconds) * time.Second,
+		})
+		if verifierErr != nil {
+			logger.Error("api-gateway refusing to start: token verifier", "err", verifierErr)
+			os.Exit(1)
+		}
+		jwtVerifier = verifier
 		authInterceptor = authInterceptor.WithVerifier(jwtVerifier)
 		logger.Info("token verifier wired into principal path",
 			"accepted_issuers", acceptedIssuers,
@@ -321,7 +327,7 @@ func main() {
 		"mode", cfg.AuthNMode,
 		"iam_internal_addr", cfg.IAMInternalAddr,
 		"dev_secret_set", cfg.AuthNDevSecret != "",
-		"jwks_verifier_set", jverr == nil)
+		"jwks_verifier_set", jwtVerifier != nil)
 
 	// --- Revocation path: refuse to boot production without its authority ---
 	//
@@ -339,6 +345,7 @@ func main() {
 	// уже стоивший выкатки на соседней оси якоря доверия.
 	if rvErr := validateProductionRevocationConfig(cfg.AppEnv, RevocationConfig{
 		IdentityProvider:           identityLane,
+		PlatformTokenIssuer:        cfg.PlatformTokenIssuer,
 		PlatformRevocationURL:      cfg.PlatformTokenRevocationURL,
 		PlatformRevocationCAFile:   cfg.PlatformTokenRevocationCAFile,
 		PlatformRevocationCertFile: cfg.PlatformTokenRevocationCertFile,
@@ -436,10 +443,10 @@ func main() {
 	// край не обслуживает ни одного запроса, потому что она фронтит и личность, и
 	// права. Ветка была бы веткой, в которой край всё равно не работает.
 	//
-	// Читатель отсечки — НА ОБЕИХ посадках (Ф3 Р7): под `own` наша сессия
-	// сравнивается с отсечкой тем же читателем, что сессия поставщика под
-	// `external`. Прежнее условие «адрес поставщика задан» снято: оно заводило
-	// читатель отсечки только вместе с поставщиком.
+	// Читатель отсечки заводится БЕЗ условия посадки (Ф3 Р7): наша сессия
+	// сравнивается с отсечкой одним читателем. Прежнее условие «адрес
+	// поставщика задан» снято: оно заводило читатель отсечки только вместе с
+	// поставщиком.
 	if iamConn := backends["iamInternal"]; iamConn != nil {
 		authInterceptor = authInterceptor.WithSessionCutoffCheck(
 			clients.NewSessionRevocationsAdapter(iamConn), 0)
@@ -468,7 +475,7 @@ func main() {
 		stepUpFloors = countDeclaredACRFloors(stepUpCatalog)
 	}
 	stepUpMounted := false
-	if cfg.AuthNEnforceStepUp && scErr == nil && jverr == nil && jwtVerifier != nil {
+	if cfg.AuthNEnforceStepUp && scErr == nil && jwtVerifier != nil {
 		authInterceptor = authInterceptor.WithStepUp(
 			middleware.NewStepUpGate(time.Now),
 			middleware.NewCatalogPermissionLookup(stepUpCatalog),
@@ -528,10 +535,10 @@ func main() {
 	if cfg.AuthNEnableDPoP {
 		var verifierErr error
 		// Reuse the SAME verifier instance already wired into the
-		// AuthInterceptor (single JWKS cache, one source of truth). If its
-		// construction failed above, DPoP cannot run either — fail-fast.
-		if jverr != nil {
-			log.Fatalf("jwt verifier (required by DPoP): %v", jverr)
+		// AuthInterceptor (single JWKS cache, one source of truth). If it was
+		// not wired above, DPoP cannot run either — fail-fast.
+		if jwtVerifier == nil {
+			log.Fatalf("jwt verifier (required by DPoP) is not wired: %s is not declared", config.AudienceKnob)
 		}
 		verifier := jwtVerifier
 		// ОДНОКРАТНОСТЬ ПРЕДЪЯВЛЕНИЯ — свойство ФЛОТА, а не процесса.
@@ -624,10 +631,10 @@ func main() {
 	// authenticate the caller before any server-side revocation: it verifies the
 	// presented access token via the SAME JWKS verifier used on the principal
 	// path and revokes ONLY the caller's own subject. Without a wired verifier
-	// (jverr != nil, e.g. empty JWKS URL) revocation fails closed (401); only
-	// cookie clearing remains.
+	// (the dev-class soft pass above: the token audience is not declared)
+	// revocation fails closed (401); only cookie clearing remains.
 	var logoutVerifier handler.CallerVerifier
-	if jverr == nil {
+	if jwtVerifier != nil {
 		logoutVerifier = logoutVerifierAdapter{v: jwtVerifier}
 	}
 	// Выход пишет отзыв в НАШУ запись — ту, что читает полоса отзыва выше.
@@ -795,7 +802,7 @@ func main() {
 		return snap
 	})
 	// Клетки полосы сессии и ретрансляции полосы формы (Ф3-48): существуют с
-	// нулём с первой секунды; ретранслятор под `external` не заведён, и его
+	// нулём с первой секунды; ретранслятор вне `own` не заведён, и его
 	// клетки стоят нулями — отличимо от «ретрансляций не было» по посадке в
 	// самоотчёте, а не по этим нулям.
 	diagMetrics.RegisterSessionLane(func() gwmetrics.SessionLaneSnapshot {
@@ -1058,7 +1065,7 @@ func main() {
 
 	// ГЛАГОЛЫ ПОЛОСЫ ФОРМЫ (Ф3 Р2; Ф4 регистрация, Ф5 восстановление) —
 	// ретрансляция на слушатель службы, ЗА полосой личности (как «кто я»):
-	// носитель отсечённой сессии до службы не доходит (Ф3-51). Под `external`
+	// носитель отсечённой сессии до службы не доходит (Ф3-51). Вне `own`
 	// не заведена — пути перечня отвечают 404 краем. Пути — из того же
 	// объявления, что читают полоса и isPublicHTTPPath.
 	if loginLaneRelay != nil {

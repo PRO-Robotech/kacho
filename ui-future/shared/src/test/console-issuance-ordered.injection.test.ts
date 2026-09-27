@@ -104,10 +104,17 @@ describe("F8-46 · перепись мест выпуска способна у�
   });
 
   it("F8-46 · распознаватель пути края: пути доменов и операций — да, пути консоли — нет", () => {
-    for (const edge of ["/iam/v1/me", "/vpc/v1/networks", "/operations/op-1", "https://console.test/iam/v1/accounts"]) {
+    for (const edge of [
+      "/iam/v1/me",
+      "/vpc/v1/networks",
+      "/operations/op-1",
+      "https://console.test/iam/v1/accounts",
+      // Происхождение без схемы — то же происхождение перед путём края (#2872).
+      "//console.test/iam/v1/accounts",
+    ]) {
       expect([edge, isEdgePathText(edge)]).toEqual([edge, true]);
     }
-    for (const own of ["/settings", "/login", "/vpc/networks", "/kacho-logo.svg"]) {
+    for (const own of ["/settings", "/login", "/vpc/networks", "/kacho-logo.svg", "//console.test/iam/users"]) {
       expect([own, isEdgePathText(own)]).toEqual([own, false]);
     }
   });

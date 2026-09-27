@@ -123,7 +123,8 @@ export async function answerOnArrival(page: Page, matches: (r: Response) => bool
   if (!captured) {
     throw new Error(
       "ответы глаголов этой страницы не перехватываются: captureAnswers(page, …) не позван до отправки — " +
-        "тело ответа, за которым экран уходит документом, было бы потеряно",
+        "тело ответа снимается только перехватом: за ответом входа, регистрации и выхода экран уходит " +
+        "документом и тело теряет, а ответы повышения и параметров читаются тем же путём",
     );
   }
   const res = await page.waitForResponse(matches);

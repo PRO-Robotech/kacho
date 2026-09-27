@@ -69,7 +69,7 @@ func liveOwnSession() HumanSession {
 }
 
 // ownLane — полоса личности под `own`: наш читатель сессии + наш читатель
-// отсечки; поставщик НЕ провязан.
+// отсечки.
 func ownLane(t *testing.T, reader HumanSessionReader, cut SessionCutoffReader) *AuthInterceptor {
 	t.Helper()
 	a := NewAuthInterceptor(AuthModeDev, "", cutoffLookup{}, slog.New(slog.NewTextHandler(io.Discard, nil))).
@@ -385,7 +385,7 @@ func TestOwnSessionLane_F5_24_RecoveryIssuedSessionIsJudgedByTheCatalogLikeAnyLo
 	if next.served != 1 {
 		t.Fatalf("полоса личности обязана ПРОПУСТИТЬ запрос — решение принадлежит каталогу прав")
 	}
-	// Личность и уровень выставлены — по тем же именам, что у полосы поставщика.
+	// Личность и уровень выставлены — по тем же именам, что у полос предъявителя.
 	if got := next.lastReq.Header.Get(principalmeta.HeaderPrincipalID); got != "usr-own-1" {
 		t.Fatalf("личность: %q", got)
 	}

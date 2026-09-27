@@ -33,7 +33,10 @@
 
 Находка — когда такое предусловие ДОСТИЖИМО из шагов задания, а задание
 инструмент НЕ СТАВИТ. Достижимость считается транзитивно: шаг → `make <цель>`
-(её предпосылки и рецепт) → скрипт → скрипт.
+(её предпосылки и рецепт) → скрипт → скрипт. Скриптом, который вызван, считается
+и тот, что исполняет цикл по образцу пути (`for t in dir/*-test.sh; do bash "$t"`):
+так исполняется каталог манифест-проверок, и до разбора цикла нужды его проб
+обходу видны не были (kacho#2840: kubectl, make и openssl задания чартов).
 
 ЧЕГО ГЕЙТ НЕ ЛОВИТ — сказано прямо, потому что молчание тут неотличимо от
 чистоты:
@@ -94,6 +97,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import fnmatch
 import os
 import re
 import subprocess
@@ -189,6 +193,21 @@ SCRIPT_CALL = re.compile(
     r"(?P<viadot>\./(?:[\w.-]+/)*[\w.-]+\.(?:sh|bash|py))"
     r")(?![\w/-])",
     re.MULTILINE,
+)
+
+# Цикл по образцу пути: `for <пер> in <образец…>; do <тело> done`. Тело берётся
+# до ПЕРВОГО `done` — вложенный цикл его укорачивает, и исполнение переменной,
+# стоящее после вложенного цикла, обходу не видно. Названо, а не умолчано.
+GLOB_LOOP = re.compile(
+    r"(?<![\w-])for\s+(?P<var>[A-Za-z_]\w*)\s+in\s+(?P<words>[^;\n]*?)\s*(?:;|\n)\s*(?:\\\s*)?"
+    r"do(?![\w-])(?P<body>.*?)(?<![\w-])done(?![\w-])",
+    re.DOTALL,
+)
+# Позиция команды для исполнения переменной цикла: та же, что у SCRIPT_CALL,
+# с необязательным интерпретатором (`bash "$t"` и `"$t"`).
+VAR_CALL_PREFIX = (
+    r"(?:^|[\n;|&{}@]|\$\(|&&|\|\||(?<![\w-])(?:then|else|elif|do|exec|sudo|time|source)(?![\w-]))"
+    r"\s*(?:[-+@]\s*)?(?:(?:/usr/bin/env\s+)?(?:bash|sh|zsh|python3?)\s+(?:-[A-Za-z]+\s+)*)?"
 )
 
 # СТРОКОВЫЙ ЛИТЕРАЛ PYTHON — НЕ КОД, и снимается РАЗБОРОМ, а не образцом.
@@ -424,13 +443,45 @@ class Resolver:
                     continue
                 self._make_target(d, tgt, out, seen_s, seen_t, depth)
 
+        called = []
         for m in SCRIPT_CALL.finditer(code):
             rel = self._resolve(m.group("viainterp") or m.group("viadot"), wd)
-            if not rel or rel in seen_s:
+            if rel:
+                called.append(rel)
+        called.extend(self._glob_loop_calls(code, wd))
+        for rel in called:
+            if rel in seen_s:
                 continue
             seen_s.add(rel)
             self.scripts_total.add(rel)
             self._walk(self._read(rel), os.path.dirname(rel), rel, out, seen_s, seen_t, depth + 1)
+
+    def _glob_loop_calls(self, code: str, wd: str) -> List[str]:
+        """Скрипты, которые исполняет цикл по образцу пути.
+
+        `for t in tests/helm/*-test.sh; do bash "$$t"; done` — вызов, хотя имени
+        скрипта в тексте нет. Засчитывается только ИСПОЛНЕНИЕ переменной цикла
+        (интерпретатором либо в позиции команды); цикл, который пути печатает или
+        передаёт чужому инструменту, вызовом не считается. Образец разворачивается
+        по индексу дерева, и `*` не переходит через `/` — как у оболочки.
+        """
+        found: List[str] = []
+        for m in GLOB_LOOP.finditer(code):
+            var = re.escape(m.group("var"))
+            ref = r"\"?\$\$?(?:\{" + var + r"\}|" + var + r"(?![\w]))\"?"
+            if not re.search(VAR_CALL_PREFIX + ref, m.group("body"), re.MULTILINE):
+                continue
+            for word in m.group("words").split():
+                word = word.strip("\"'")
+                if not any(ch in word for ch in "*?[") or not word.endswith((".sh", ".bash", ".py")):
+                    continue
+                pat = os.path.normpath(os.path.join(wd, word)) if wd else os.path.normpath(word)
+                pat = pat.lstrip("./") if pat.startswith("./") else pat
+                depth_sep = pat.count("/")
+                for rel in sorted(self.file_set):
+                    if rel.count("/") == depth_sep and fnmatch.fnmatchcase(rel, pat):
+                        found.append(rel)
+        return found
 
     def _make_target(self, d, tgt, out, seen_s, seen_t, depth) -> None:
         key = (d, tgt)
@@ -836,6 +887,53 @@ print(FIXTURE)
             print("ПРОВАЛ (з2): настоящее предусловие в .sh перестало находиться.")
         else:
             print("(з2) то же имя, но предусловие в исполняемом .sh: НАХОДКА")
+
+        # (и) ЦИКЛ ПО ОБРАЗЦУ ПУТИ — вызов. Так цель `helm-manifest-test`
+        # исполняет каталог проб (`for t in tests/helm/*-test.sh; do bash
+        # "$$t"`), и предусловие пробы из этого каталога обязано доезжать до
+        # задания. Замер, из-за которого случай заведён: проба порядка
+        # cert-manager (kacho#2840) отказывает без kubectl, а задание чартов
+        # kubectl не ставило — гейт молчал, потому что имени пробы в рецепте нет.
+        def _glob_tree(body: str) -> str:
+            root = tempfile.mkdtemp(dir=tmp)
+            os.makedirs(os.path.join(root, ".github", "workflows"))
+            os.makedirs(os.path.join(root, "d", "tests"))
+            open(os.path.join(root, "d", "tests", "one-test.sh"), "w").write(
+                SH_REFUSING.format(tool="kubectl")
+            )
+            open(os.path.join(root, "d", "Makefile"), "w").write(
+                "cel:\n\t@for t in tests/*-test.sh; do \\\n\t  " + body + " \\\n\tdone\n"
+            )
+            open(os.path.join(root, ".github", "workflows", "probe.yml"), "w").write(
+                "name: p\non: [push]\njobs:\n  p:\n    runs-on: ubuntu-latest\n    steps:\n"
+                "      - name: r\n        working-directory: d\n        run: make cel\n"
+            )
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+            return root
+
+        r = analyse(_glob_tree('bash "$$t" || exit 1;'))
+        n += 1
+        hit = [f for f in r["findings"] if f[2] == "kubectl"]
+        if not hit:
+            ok = False
+            print("ПРОВАЛ (и): скрипт, исполняемый циклом по образцу пути, обходу не виден.")
+        elif "one-test.sh" not in hit[0][3]:
+            ok = False
+            print(f"ПРОВАЛ (и): находка не называет координату отказа: {hit[0][3]}")
+        else:
+            print(f"(и) цикл по образцу пути исполняет скрипт: НАХОДКА — {hit[0][3]}")
+
+        # (и2) ЗАКОННЫЙ БЛИЗНЕЦ к (и): тот же цикл, но переменная ПЕЧАТАЕТСЯ, а не
+        # исполняется. Перечень файлов — не вызов, и втянуть его значило бы
+        # приписать заданию нужды каждого перечисленного.
+        r = analyse(_glob_tree('echo "$$t";'))
+        n += 1
+        if [f for f in r["findings"] if f[2] == "kubectl"]:
+            ok = False
+            print("ПРОВАЛ (и2): цикл, который только печатает пути, засчитан вызовом.")
+        else:
+            print("(и2) цикл по образцу пути печатает, не исполняет: МОЛЧИТ")
 
         # (ж) ПУСТОЙ ОБХОД — ОТКАЗ, а не чистота.
         empty = tempfile.mkdtemp(dir=tmp)
