@@ -78,26 +78,24 @@ cpu_usec() {
 # Вердикт о перезапуске/смене состава — общий с прибором проверки доступа.
 # shellcheck source=lib/restart-verdict.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/restart-verdict.sh"
+# Съём величин — адресом из ОБЪЯВЛЕНИЯ СБОРА пода (порт, схема, путь) и своим
+# пробником, а не выписанным `http://127.0.0.1:9095` в образе службы: слушатель
+# под TLS на боевых профилях так недоступен вовсе (#2171). Разбор — в шапке
+# библиотеки.
+# shellcheck source=lib/surface-counters.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/surface-counters.sh"
 
 pod_of() { k get pod -l "$1" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true; }
 iam_pods() { k get pod -l app.kubernetes.io/name=kaname -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'; }
 vpc_pods() { k get pod -l app=vpc -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'; }
 
 # authz_counters — ПРИБОР РАЗЛОЖЕНИЯ ЦЕНЫ. Суммарно по всем репликам iam.
+# Непрочитанная реплика делает суммы NA, а перепись `surfaces_read=r/t` и
+# причину — видимыми: «не измерено» отличимо от «не потратило».
 authz_counters() {
-  local p total_c total_s
-  total_c=0; total_s=0
-  for p in $(iam_pods); do
-    local m
-    m=$(k exec "$p" -c kaname -- sh -c 'wget -qO- http://127.0.0.1:9095/metrics 2>/dev/null' 2>/dev/null) || m=""
-    if [ -z "$m" ]; then echo "checks=NA sum=NA"; return 0; fi
-    local c s
-    c=$(echo "$m" | awk '/^kaname_authz_check_duration_seconds_count/{t+=$2} END{printf "%.0f", t+0}')
-    s=$(echo "$m" | awk '/^kaname_authz_check_duration_seconds_sum/{t+=$2}   END{printf "%.6f", t+0}')
-    total_c=$(awk -v a="$total_c" -v b="$c" 'BEGIN{printf "%.0f", a+b}')
-    total_s=$(awk -v a="$total_s" -v b="$s" 'BEGIN{printf "%.6f", a+b}')
-  done
-  echo "checks=$total_c sum=$total_s"
+  counters "$NS" "$(iam_pods)" \
+    checks='^kaname_authz_check_duration_seconds_count' \
+    sum='^kaname_authz_check_duration_seconds_sum:%.6f'
 }
 
 # edge_authz_counters — ВТОРАЯ ПОЛОВИНА той же цены (#772).
@@ -116,29 +114,17 @@ authz_counters() {
 # вопрос настройки, а не построения, и жёсткое «первый под» разошлось бы с
 # деревом молча.
 edge_authz_counters() {
-  local p total_d total_h total_m
-  total_d=0; total_h=0; total_m=0
-  for p in $(k get pod -l app=api-gateway -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
-    local m
-    m=$(k exec "$p" -- sh -c 'wget -qO- http://127.0.0.1:9095/metrics 2>/dev/null' 2>/dev/null) || m=""
-    if [ -z "$m" ]; then echo "edge_decisions=NA edge_hit=NA edge_miss=NA"; return 0; fi
-    local d h ms
-    d=$(echo "$m"  | awk '/^kacho_api_gateway_authz_check_decisions_total/{t+=$2} END{printf "%.0f", t+0}')
-    h=$(echo "$m"  | awk '/^kacho_api_gateway_authz_cache_total\{result="hit"\}/{t+=$2} END{printf "%.0f", t+0}')
-    ms=$(echo "$m" | awk '/^kacho_api_gateway_authz_cache_total\{result="miss"\}/{t+=$2} END{printf "%.0f", t+0}')
-    total_d=$(awk -v a="$total_d" -v b="$d"  'BEGIN{printf "%.0f", a+b}')
-    total_h=$(awk -v a="$total_h" -v b="$h"  'BEGIN{printf "%.0f", a+b}')
-    total_m=$(awk -v a="$total_m" -v b="$ms" 'BEGIN{printf "%.0f", a+b}')
-  done
-  echo "edge_decisions=$total_d edge_hit=$total_h edge_miss=$total_m"
+  counters "$NS" "$(k get pod -l app=api-gateway -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null)" \
+    edge_decisions='^kacho_api_gateway_authz_check_decisions_total' \
+    edge_hit='^kacho_api_gateway_authz_cache_total[{]result="hit"[}]' \
+    edge_miss='^kacho_api_gateway_authz_cache_total[{]result="miss"[}]'
 }
 
+# pool_stats — строки пула соединений со всех реплик iam. Непрочитанная реплика
+# называется строкой-причиной, в конце — перепись: прежде отказ глушился целиком,
+# и снимок пула просто исчезал из разложения цены.
 pool_stats() {
-  local p
-  for p in $(iam_pods); do
-    k exec "$p" -c kaname -- sh -c \
-      'wget -qO- http://127.0.0.1:9095/metrics 2>/dev/null | grep -E "^kaname_db_pool_" || true' 2>/dev/null | sed "s|^|$p |"
-  done
+  series_lines "$NS" "$(iam_pods)" '^kaname_db_pool_'
 }
 
 # Внешнего движка отношений и его базы в снимке больше нет: они сняты вместе с
@@ -168,12 +154,24 @@ restarts() {
     | grep -E 'kaname|pg-iam|pg-vpc|^vpc-|api-gateway' || true
 }
 
+# Пробник съёма величин — один на прогон. Срок жизни — предел на случай, если
+# уборка не сработает; прогон длиннее — задайте PROBE_LIFE. Не поднялся — прогон
+# идёт дальше (задержку он мерит без него), но каждая строка съёма скажет
+# `surfaces_read=0/N` с причиной, а meta.txt — что величин не будет.
+PROBE_LIFE="${PROBE_LIFE:-7200}"
+if scrape_probe_start "$NS" "$PROBE_LIFE"; then
+  trap scrape_probe_stop EXIT
+else
+  echo "!! под-пробник съёма величин не поднялся в ns=$NS — величины службы и края НЕ будут прочитаны (surfaces_read=0/N)"
+fi
+
 VPC_REPL=$(k get deploy vpc -o jsonpath='{.spec.replicas}')
 IAM_REPL=$(k get deploy kaname -o jsonpath='{.spec.replicas}')
 echo "=== прогон '$LABEL' · полоса=$OP · vpc реплик=$VPC_REPL · iam реплик=$IAM_REPL · ступени=$STEPS · $DUR ==="
 {
   echo "label=$LABEL op=$OP steps=$STEPS duration=$DUR token_key=$TOKEN_KEY"
   echo "vpc_replicas=$VPC_REPL iam_replicas=$IAM_REPL"
+  echo "surface_probe=${SCRAPE_PROBE_POD:-НЕ ПОДНЯТ}"
   k get pod -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.containerStatuses[0].imageID}{"\n"}{end}' 2>/dev/null | grep -E 'kaname|^vpc-|api-gateway' || true
 } > "$OUT/meta.txt"
 

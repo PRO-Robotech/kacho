@@ -111,6 +111,7 @@ REPO_ROOT="$(cd "$DEPLOY_ROOT/.." && pwd)"
 # ниже — расхождение в любую сторону роняет проверку.
 DECLARED="
 deploy/load-tests/restart-verdict-inject.sh
+deploy/load-tests/surface-counters-inject.sh
 deploy/scripts/declared-verdicts-census-inject.sh
 deploy/scripts/deps-failure-class-inject.sh
 deploy/tests/helm/identity-hook-credential-provenance-inject.sh

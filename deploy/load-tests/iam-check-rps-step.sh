@@ -70,13 +70,13 @@ snapshot() {
 }
 
 # pool_stats — показатели пула соединений службы прав, со ВСЕХ реплик.
-# Читаются с внутреннего порта метрик, суммарно по репликам.
+# Адрес — из ОБЪЯВЛЕНИЯ СБОРА каждого пода (порт, схема, путь), опрос — своим
+# пробником (#2171). Непрочитанная реплика называется строкой-причиной, в конце —
+# перепись: прежде отказ глушился `|| true`, и снимок пула не печатал НИЧЕГО.
+# shellcheck source=lib/surface-counters.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/surface-counters.sh"
 pool_stats() {
-  for p in $(iam_pods); do
-    k exec "$p" -c kaname -- sh -c \
-      'wget -qO- http://127.0.0.1:9095/metrics 2>/dev/null | grep -E "^kaname_db_pool_|^kaname_authz_check_duration_seconds_count|^kaname_shadow" || true' \
-      2>/dev/null | sed "s|^|$p |"
-  done
+  series_lines "$NS" "$(iam_pods)" '^kaname_db_pool_|^kaname_authz_check_duration_seconds_count|^kaname_shadow'
 }
 
 # restarts — счётчики перезапусков участников пути. Ступень, на которой хоть
@@ -104,10 +104,22 @@ pg_conns() {
      \"select count(*), count(*) filter (where state='active'), count(*) filter (where wait_event_type='Lock') from pg_stat_activity where datname='kaname';\"" 2>/dev/null || echo "NA"
 }
 
+# Пробник съёма величин — один на прогон (см. crud-rps-step.sh). Не поднялся —
+# прогон идёт, но снимок пула скажет «прочитано 0 из N» с причиной.
+PROBE_LIFE="${PROBE_LIFE:-7200}"
+if scrape_probe_start "$NS" "$PROBE_LIFE"; then
+  trap scrape_probe_stop EXIT
+else
+  echo "!! под-пробник съёма величин не поднялся в ns=$NS — пул службы прав НЕ будет прочитан"
+fi
+
 REPLICAS=$(k get deploy kaname -o jsonpath='{.spec.replicas}')
 echo "=== прогон '$LABEL': реплик службы прав=$REPLICAS · ступени=$STEPS · длительность=$DUR · повторов=$REPEATS ==="
-echo "replicas=$REPLICAS" > "$OUT/meta.txt"
-echo "steps=$STEPS duration=$DUR repeats=$REPEATS allow_ratio=$ALLOW_RATIO" >> "$OUT/meta.txt"
+{
+  echo "replicas=$REPLICAS"
+  echo "surface_probe=${SCRAPE_PROBE_POD:-НЕ ПОДНЯТ}"
+  echo "steps=$STEPS duration=$DUR repeats=$REPEATS allow_ratio=$ALLOW_RATIO"
+} > "$OUT/meta.txt"
 k get pod -l app.kubernetes.io/name=kaname -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.containerStatuses[0].imageID}{"\n"}{end}' >> "$OUT/meta.txt"
 
 # ПРОГРЕВ, РЕЗУЛЬТАТ КОТОРОГО ВЫБРАСЫВАЕТСЯ. Первая ступень после переката или
