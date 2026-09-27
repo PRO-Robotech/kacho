@@ -23,7 +23,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/corelib/acrlevel"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
@@ -42,7 +42,7 @@ func countDeclaredACRFloors(catalog *middleware.PermissionCatalog) int {
 		if !ok {
 			continue
 		}
-		if grpcsrv.ACRRank(e.RequiredACRMin) > 0 {
+		if acrlevel.Rank(e.RequiredACRMin) > 0 {
 			n++
 		}
 	}

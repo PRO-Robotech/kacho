@@ -81,10 +81,10 @@ func postureBranchOf(f *ast.File, pos token.Pos) string {
 
 // postureNamedIn — какую посадку называет условие: селектор
 // `identityposture.Own`, единственный законный способ назвать её в дереве
-// (`corelib/identityposture`). Второе значение, `external`, пин фундамента
-// v1.8.0 ещё разбирает, но его имени край не читает (#2873): вне `own` корень
-// ветвится сравнением с `own`, и ветка, названная вторым значением, посадкой
-// не считается.
+// (`corelib/identityposture`). Второго законного значения в словаре фундамента
+// нет: `external` снята выпуском v1.10.0-rc.3 (corelib#30), и её имени край не
+// читает (#2873). Вне `own` корень ветвится сравнением с `own`, и ветка,
+// названная иным значением, посадкой не считается.
 func postureNamedIn(cond ast.Expr) string {
 	found := ""
 	ast.Inspect(cond, func(n ast.Node) bool {
