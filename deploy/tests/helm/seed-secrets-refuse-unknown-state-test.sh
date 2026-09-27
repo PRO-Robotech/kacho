@@ -605,7 +605,7 @@ if ! msg="$(delete_after_refusal_stack "$t/scripts/stack-secrets.sh" 2>&1)"; the
 else
   got="$(refusal_worlds "$t" stack "" timeout)"
   [ "$(reds "$got")" = "$(expect_reds stack-secrets.sh timeout "$STACK_REFUSED")" ] \
-    && printf '%s\n' "$got" | grep -q '^red|.*последнее обращение: delete secret ' \
+    && [[ $'\n'"$got" == *$'\n'"red|"*"последнее обращение: delete secret "* ]] \
     || violation "15: в копии stack-secrets.sh отказ шага стирает секрет (delete) — ждали красным мир с обращением delete после отказа, получили: ${got:-пусто}"
   ok
 fi
