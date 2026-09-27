@@ -13,12 +13,16 @@
  *   1. подключение — действующая конфигурация файла пакета несёт правило: запрет
  *      транспортов и правило перехода документа (`kacho-issuance/document-navigation`);
  *   2. инъекция — каждая подсаженная форма выпуска мимо упорядочивающего
- *      транспорта даёт находку ЭТОГО правила; переход документа на путь края
- *      (`<a href>`, `<form action>`, `href` и `click()` и их варианты) — находку
- *      правила перехода, а не соседнего;
- *   3. близнецы — законный выпуск (`orderedTransport.fetch`), комментарий, текст,
- *      чужой член с похожим именем, те же переходы на путь консоли и на адрес
- *      объекта — молчание;
+ *      транспорта даёт находку ЭТОГО правила; переход документа на путь края —
+ *      КАЖДАЯ форма, названная в шапке правила, и каждая форма записи адреса —
+ *      находку правила перехода, а не соседнего;
+ *   3. близнецы — у каждой формы перехода близнец из ТОЙ ЖЕ записи, где подставлен
+ *      путь консоли вместо пути края: один факт, и отличие проверяется тем же
+ *      выражением пути края. Мутант, судящий форму без адреса, краснеет близнецом,
+ *      слепой к форме — подсадкой; дерево для этого не нужно. Сверх того молчат
+ *      законный выпуск (`orderedTransport.fetch`), комментарий, текст, чужой член
+ *      с похожим именем, адрес объекта, `open()` хранилища. Граница «чужое
+ *      происхождение с путём формы края судится краем» закреплена такой же парой;
  *   4. дома — транспорт законен только в своём доме (`shared`: упорядочивающий
  *      транспорт для `fetch`, приёмник потока для `EventSource`); тот же путь в
  *      приложении домом не является;
@@ -54,11 +58,7 @@ const PLANT = "src/__issuance_probe__.tsx";
 /** Перепись мест выпуска — второе определение пути края; сверяется с правилом. */
 const CENSUS = "shared/src/test/issuance-census.ts";
 
-/**
- * Формы выпуска мимо упорядочивающего транспорта: каждая обязана дать находку.
- * Третий член — правило, чья находка обязательна: переход документа судит своё
- * правило, и находка соседнего его слепоты не прикрывает.
- */
+/** Формы выпуска мимо упорядочивающего транспорта: каждая обязана дать находку. */
 const RED = [
   ["голый fetch", 'fetch("/iam/v1/me");'],
   ["window.fetch", 'window.fetch("/iam/v1/me");'],
@@ -77,45 +77,86 @@ const RED = [
   ["EventSource вне приёмника потока", 'export const s = new EventSource("/subscription/v1/events");'],
   ["window.EventSource", "export const S = window.EventSource;"],
   ["транспорт пробы в продукте", 'export const k = Symbol.for("kacho.probe.fetch");'],
-  // Переход документа на путь края: три формы находки #2872 и их варианты записи.
-  ["<a href> на путь края", 'export const A = () => <a href="/iam/v1/me">x</a>;', NAV_RULE],
-  ["<form action> на путь края", 'export const F = () => <form action="/iam/v1/sessions" method="post" />;', NAV_RULE],
+];
+
+/** Путь края и путь консоли — единственный факт, которым подсадка перехода отличается от близнеца. */
+const EDGE = ["/iam/v1/me", "/iam/users"];
+const TMPL = "`";
+const SUBST = "$" + "{";
+
+/**
+ * Переход документа на путь края: каждая форма — ПАРА. Запись одна, адрес подставляется:
+ * путь края — подсадка, обязана дать находку правила перехода (находка соседнего правила
+ * его слепоты не прикрывает); путь консоли — близнец, обязан молчать. Близнец меняет
+ * ровно один факт — адрес — by construction: мутант, судящий форму без адреса, краснеет
+ * близнецом, мутант, слепой к форме, — подсадкой. Третий член — пара адресов, если
+ * форма требует своих.
+ */
+const NAV = [
+  // Атрибут элемента.
+  ["<a href>", (a) => `export const A = () => <a href="${a}">x</a>;`],
+  ["<form action>", (a) => `export const F = () => <form action="${a}" method="post" />;`, ["/iam/v1/sessions", "/settings"]],
+  ["<button formAction>", (a) => `export const B = () => <button formAction="${a}">x</button>;`],
+  ["<a xlinkHref> в svg", (a) => `export const U = () => <svg><a xlinkHref="${a}">x</a></svg>;`],
+  // Вложенный документ и загрузка по адресу.
+  ["<iframe src>", (a) => `export const I = () => <iframe src="${a}" title="x" />;`],
+  ["<object data>", (a) => `export const O = () => <object data="${a}" />;`],
+  ["<img src>", (a) => `export const P = () => <img src="${a}" alt="" />;`],
+  // Присвоение члену.
+  ["href и click()", (a) => `const a = document.createElement("a");\na.href = "${a}";\na.click();`],
+  ["action формы и submit()", (a) => `const f = document.createElement("form");\nf.action = "${a}";\nf.submit();`, ["/iam/v1/sessions", "/settings"]],
+  ["formAction кнопки присвоением", (a) => `const b = document.createElement("button");\nb.formAction = "${a}";\nb.click();`],
+  ["src кадра присвоением", (a) => `const i = document.createElement("iframe");\ni.src = "${a}";\ndocument.body.append(i);`],
+  ["data объекта присвоением", (a) => `const o = document.createElement("object");\no.data = "${a}";\ndocument.body.append(o);`],
+  // setAttribute.
+  ["setAttribute href", (a) => `document.createElement("a").setAttribute("href", "${a}");`],
+  ["setAttribute src кадра", (a) => `document.createElement("iframe").setAttribute("src", "${a}");`],
   [
-    "href и click() на путь края",
-    'const a = document.createElement("a");\na.href = "/iam/v1/me";\na.click();',
-    NAV_RULE,
+    "setAttributeNS xlink:href",
+    (a) => `document.createElementNS("http://www.w3.org/2000/svg", "a").setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", "${a}");`,
   ],
+  ["setAttribute.call", (a) => `const a = document.createElement("a");\na.setAttribute.call(a, "href", "${a}");`],
+  // location.
+  ["location.assign", (a) => `window.location.assign("${a}");`],
+  ["псевдоним location и replace", (a) => `const loc = window.location;\nloc.replace("${a}");`],
+  ["псевдоним location.assign", (a) => `const go = window.location.assign;\ngo("${a}");`],
+  ["присвоение location.href", (a) => `window.location.href = "${a}";`, ["/operations/op-1", "/vpc/operations"]],
+  ["присвоение location", (a) => `window.location = "${a}";`],
+  ["присвоение location.pathname", (a) => `window.location.pathname = "${a}";`],
+  // open.
+  ["open()", (a) => `void window.open("${a}");`],
+  ["псевдоним open", (a) => `const o = window.open;\nvoid o("${a}");`],
+  ["open.call", (a) => `void window.open.call(window, "${a}");`],
+  ["open.apply", (a) => `void window.open.apply(window, ["${a}"]);`],
+  // Запись адреса: на `<a href>` как носителе.
   [
-    "голова шаблона на путь края",
-    "declare const id: string;\nexport const A = () => <a href={`/vpc/v1/networks/${id}`}>x</a>;",
-    NAV_RULE,
+    "голова шаблона",
+    (a) => `declare const id: string;\nexport const A = () => <a href={${TMPL}${a}${SUBST}id}${TMPL}}>x</a>;`,
+    ["/vpc/v1/networks/", "/vpc/networks/"],
   ],
-  ["путь края с происхождением", 'export const A = () => <a href="https://console.test/iam/v1/me">x</a>;', NAV_RULE],
+  ["постоянная файла", (a) => `const P = "${a}";\nexport const A = () => <a href={P}>x</a>;`],
   [
-    "происхождение окна и путь края",
-    "export const A = () => <a href={`${window.location.origin}/iam/v1/me`}>x</a>;",
-    NAV_RULE,
+    "левое плечо сцепления",
+    (a) => `declare const id: string;\nexport const A = () => <a href={"${a}" + id}>x</a>;`,
+    ["/vpc/v1/networks/", "/vpc/networks/"],
   ],
+  ["ветвь ?:", (a) => `declare const c: boolean;\nexport const A = () => <a href={c ? "/settings" : "${a}"}>x</a>;`],
+  ["правое плечо ??", (a) => `declare const h: string | undefined;\nexport const A = () => <a href={h ?? "${a}"}>x</a>;`],
   [
-    "постоянная файла на путь края",
-    'const EDGE = "/iam/v1/me";\nexport const A = () => <a href={EDGE}>x</a>;',
-    NAV_RULE,
+    "происхождение окна в шаблоне",
+    (a) => `export const A = () => <a href={${TMPL}${SUBST}window.location.origin}${a}${TMPL}}>x</a>;`,
   ],
+  ["происхождение окна сцеплением", (a) => `export const A = () => <a href={window.location.origin + "${a}"}>x</a>;`],
+  ["записанное происхождение", (a) => `export const A = () => <a href="https://console.test${a}">x</a>;`],
+  ["происхождение без схемы", (a) => `export const A = () => <a href="//console.test${a}">x</a>;`],
+  // ГРАНИЦА, названная в шапке правила: судится форма пути после ЛЮБОГО происхождения,
+  // своё происхождение консоли по записи не известно. Пара закрепляет это: чужое
+  // происхождение с путём формы края краснеет, с путём другой формы — молчит.
   [
-    "formAction кнопки на путь края",
-    'export const B = () => <button formAction="/iam/v1/sessions">x</button>;',
-    NAV_RULE,
+    "чужое происхождение, путь формы края (граница)",
+    (a) => `export const A = () => <a href="https://kubernetes.io${a}">x</a>;`,
+    ["/docs/v1/", "/docs/"],
   ],
-  ["setAttribute href на путь края", 'document.createElement("a").setAttribute("href", "/iam/v1/me");', NAV_RULE],
-  [
-    "action формы присвоением на путь края",
-    'const f = document.createElement("form");\nf.action = "/iam/v1/sessions";\nf.submit();',
-    NAV_RULE,
-  ],
-  ["location.assign на путь края", 'window.location.assign("/iam/v1/me");', NAV_RULE],
-  ["псевдоним location на путь края", 'const loc = window.location;\nloc.replace("/iam/v1/auth/logout");', NAV_RULE],
-  ["присвоение location.href на путь края", 'window.location.href = "/operations/op-1";', NAV_RULE],
-  ["open() на путь края", 'void window.open("/iam/v1/me");', NAV_RULE],
 ];
 
 /** Законное и не-транспорт: каждое обязано молчать. */
@@ -128,11 +169,7 @@ const TWINS = [
   ["текст", 'export const hint = "fetch(/iam/v1/me) не зовётся";'],
   ["чужой член с похожим именем", "declare const q: { fetchQuery(): void };\nq.fetchQuery();"],
   ["ключ объекта", "export const o = { fetch: 1 };"],
-  // Те же переходы, меняющие ровно один факт — адрес: путь консоли либо адрес объекта;
-  // путь края вне места перехода; проп `action` компонента со значением-не-адресом.
-  ["<a href> на путь консоли", 'export const A = () => <a href="/iam/users">x</a>;'],
-  ["<form action> на путь консоли", 'export const F = () => <form action="/settings" method="post" />;'],
-  ["href и click() на путь консоли", 'const a = document.createElement("a");\na.href = "/iam/users";\na.click();'],
+  // Не-адрес в месте перехода и путь края вне места перехода; близнецы путём консоли — в NAV.
   [
     "href и click() на адрес объекта",
     'declare const blob: Blob;\nconst a = document.createElement("a");\na.href = URL.createObjectURL(blob);\na.click();',
@@ -142,6 +179,7 @@ const TWINS = [
     "action не формы",
     'declare const Shell: (p: { action: string }) => null;\nexport const S = () => <Shell action="edit" />;',
   ],
+  ["open() хранилища, не окна", 'export const db = indexedDB.open("kacho-dpop", 1);'],
 ];
 
 /** Дома транспортов: путь, законное там и то, что незаконно и там. */
@@ -202,11 +240,23 @@ async function judgePackage(uiRoot, pkg) {
 
   // 2. Инъекция.
   let red = 0;
-  for (const [name, code, rule] of RED) {
-    const got = (await ours(code, PLANT)).filter((m) => rule === undefined || m.ruleId === rule);
-    if (got.length === 0)
-      findings.push(`${pkg}: подсаженная форма «${name}» находки ${rule ?? "правила"} не дала — правило слепо к ней`);
+  for (const [name, code] of RED) {
+    const got = await ours(code, PLANT);
+    if (got.length === 0) findings.push(`${pkg}: подсаженная форма «${name}» находки правила не дала — правило слепо к ней`);
     else red += 1;
+  }
+  // 2а. Переход документа: подсадка на путь края и близнец на путь консоли — одна запись.
+  let navRed = 0;
+  for (const [name, form, [edge, own] = EDGE] of NAV) {
+    const planted = await ours(form(edge), PLANT);
+    if (!planted.some((m) => m.ruleId === NAV_RULE))
+      findings.push(`${pkg}: подсаженная форма «${name}» на путь края находки ${NAV_RULE} не дала — правило слепо к ней`);
+    else navRed += 1;
+    const twin = await ours(form(own), PLANT);
+    if (twin.length > 0)
+      findings.push(
+        `${pkg}: законный близнец «${name}» на путь консоли дал находку: ${twin.map((m) => m.message.slice(0, 60)).join("; ")}`,
+      );
   }
   // 3. Близнецы.
   for (const [name, code] of TWINS) {
@@ -259,7 +309,7 @@ async function judgePackage(uiRoot, pkg) {
   return {
     pkg,
     findings,
-    line: `  ${pkg}: подключено ${wired ? "да" : "НЕТ"} · инъекций красных ${red}/${RED.length} · близнецов ${TWINS.length} · домов ${homes} · прод-файлов ${files.length}, находок ${inTree}`,
+    line: `  ${pkg}: подключено ${wired ? "да" : "НЕТ"} · инъекций красных ${red}/${RED.length} · переходов красных ${navRed}/${NAV.length}, их близнецов ${NAV.length} · прочих близнецов ${TWINS.length} · домов ${homes} · прод-файлов ${files.length}, находок ${inTree}`,
   };
 }
 
@@ -392,6 +442,14 @@ for (const pkg of packages) {
 
 const agreement = edgePathAgreement(uiRoot);
 findings.push(...agreement.findings);
+
+// Пара перехода различает ровно факт адреса: первый — путь края, второй — нет, тем же
+// выражением, что у правила. Пара, где оба адреса одной стороны, близнецом не служит.
+const edgeText = (t) => ordering.EDGE_PATH.test(t.replace(ordering.EDGE_ORIGIN, ""));
+for (const [name, form, [edge, own] = EDGE] of NAV) {
+  if (!edgeText(edge) || edgeText(own) || form(edge) === form(own))
+    findings.push(`пара «${name}»: «${edge}» и «${own}» не различают путь края и путь консоли — близнецом не служит`);
+}
 
 console.log(`[F8-46] правило линта мест выпуска: пакетов консоли ${packages.length}`);
 for (const l of lines) console.log(l);

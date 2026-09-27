@@ -14,7 +14,8 @@
 //
 // ПЕРЕХОД ДОКУМЕНТА на путь края — тоже обращение к краю мимо упорядочивающего
 // транспорта, но страж исполнения его не видит: он стоит на `fetch`, а переход идёт
-// навигацией документа. Держит его это правило (`kacho-issuance/document-navigation`):
+// навигацией документа. То же — вложенный документ (кадр, объект) и загрузка по адресу
+// атрибута. Держит их это правило (`kacho-issuance/document-navigation`):
 // исполнения у перехода нет, а перепись о части тех же форм лишь подсказывает. Судит
 // правило по записи адреса — см. ниже.
 //
@@ -27,11 +28,14 @@
 //   • `XMLHttpRequest`, `WebSocket`, `sendBeacon` — дома у них нет вовсе;
 //   • ключ собственного транспорта ПРОБЫ (`kacho.probe.fetch`): в продукте его нет;
 //   • переход документа на путь края — дома у него нет. Формы: атрибут JSX `href`,
-//     `xlinkHref`, `action`, `formAction` любого элемента (`<a href>`, `<form action>`,
-//     `<button formAction>`); присвоение члену `href`/`action`/`formAction`
-//     (`a.href = …; a.click()`, `location.href = …`) и `location`; `setAttribute` тех же
-//     имён; `location.assign/replace(…)`, в том числе через постоянную-псевдоним
-//     (`const loc = window.location`); `open(…)` под любым именем.
+//     `xlinkHref`, `action`, `formAction`, `src`, `data` любого элемента (`<a href>`,
+//     `<form action>`, `<button formAction>`, `<iframe src>`, `<object data>`, `<img src>`);
+//     присвоение члену тех же имён (`a.href = …; a.click()`, `frame.src = …`,
+//     `location.href = …`), `location` и `location.pathname`; `setAttribute` и
+//     `setAttributeNS` тех же имён; `location.assign/replace(…)`; `open(…)` под любым
+//     именем. Вызов судится и через постоянную-псевдоним файла (`const loc =
+//     window.location`, `const o = window.open`), и через `call`/`apply`
+//     (`window.open.call(window, …)`).
 //
 // Путь края — `EDGE_PATH` ниже, тем же выражением, что у переписи мест выпуска
 // (`src/test/issuance-census.ts`); одно ли оно, сверяет гейт
@@ -39,9 +43,25 @@
 // судится по ЗАПИСИ: строка, шаблон (его голова до первой подстановки; подстановка
 // происхождения — `….origin` либо имя `origin` — пропускается), левое плечо сцепления `+`
 // (правое, если левое — происхождение), обе ветви
-// `?:` и `??`/`||`, постоянная `const` того же файла. Адрес, собранный вне записи, —
-// импортированная постоянная, возврат функции, `new URL(…)`, путь из данных, — правилу не
-// виден, и держателя у такого перехода нет: это граница, а не покрытие.
+// `?:` и `??`/`||`, постоянная `const` того же файла. Происхождение перед путём — любое
+// записанное, со схемой (`https://host`) и без (`//host`).
+//
+// ГРАНИЦЫ — не покрытие; держателя у таких мест нет, и сказано это здесь, а не умолчанием:
+//   • адрес, собранный вне записи: импортированная постоянная, возврат функции,
+//     `new URL(…)`, путь из данных, происхождение, собранное из частей
+//     (`${location.protocol}//${location.host}`);
+//   • относительный адрес без ведущей косой (`iam/v1/me`, `./…`, `../…`): куда он ведёт,
+//     решает адрес страницы, а не запись;
+//   • ЧУЖОЕ происхождение с путём формы края (`https://kubernetes.io/docs/v1/`) правило
+//     судит как край: своё происхождение консоли по записи не известно, судится форма пути
+//     после любого происхождения. Такая находка ложна; гейт закрепляет это парой;
+//   • прочие атрибуты-адреса (`srcSet`, `poster`, `ping`, `<meta http-equiv="refresh">`) и
+//     части адреса не у `location` (`url.pathname`, `a.search`);
+//   • загрузка и переход без атрибута и члена-адреса: конструкторы (`new Worker(…)`,
+//     `new Audio(…)`), `import(…)`, `url(…)` стиля, `serviceWorker.register(…)`,
+//     `navigation.navigate(…)`;
+//   • вызов через `bind`, `Reflect.apply`, вычисленное имя метода, псевдоним глубже
+//     четырёх постоянных.
 //
 // Пробы и их оснастка (`*.test.*`, `src/test/**`) из области правила выведены: они
 // подставляют сеть (`globalThis.fetch = …`) под стражем исполнения, который их и судит.
@@ -57,8 +77,12 @@ const WHY =
 
 /** Путь края: API доменов (`/<домен>/v<N>/…`), операции, проверка живости края. */
 export const EDGE_PATH = /^\/(?:[a-z][a-z0-9-]*\/v\d+(?:[/?]|$)|operations(?:[/?]|$)|healthz$)/;
-/** Происхождение перед путём: `https://console.test/iam/v1/…` — тоже путь края. */
-export const EDGE_ORIGIN = /^[a-z][a-z0-9+.-]*:\/\/[^/]+/i;
+/**
+ * Происхождение перед путём — со схемой (`https://console.test/iam/v1/…`) либо без неё
+ * (`//console.test/iam/v1/…`): путь после него судится как путь края. ЛЮБОЕ: своё
+ * происхождение консоли по записи не известно (см. границы в шапке).
+ */
+export const EDGE_ORIGIN = /^(?:[a-z][a-z0-9+.-]*:)?\/\/[^/]+/i;
 
 /** Адрес — путь края, в том числе с происхождением перед ним. */
 function isEdgePath(text) {
@@ -66,14 +90,19 @@ function isEdgePath(text) {
 }
 
 const NAVIGATION_WHY =
-  "переход документа на путь края — обращение к краю мимо упорядочивающего транспорта; " +
+  "переход документа, вложенного документа либо загрузка по адресу на путь края — обращение к краю мимо " +
+  "упорядочивающего транспорта; " +
   "ответ края берётся orderedTransport, а документу отдаётся результат (Blob, адрес объекта): " +
   "ответ края на прежний носитель гасит перевыпущенный (приёмка F8, Р10, F8-46)";
 
-/** Атрибут JSX, уводящий документ по адресу: имя в нижнем регистре. */
-const NAVIGATION_ATTRIBUTES = new Set(["href", "xlinkhref", "action", "formaction"]);
-/** Член, присвоение которому уводит документ (`a.href`, `form.action`, `location.href`). */
-const NAVIGATION_MEMBERS = new Set(["href", "action", "formaction"]);
+/**
+ * Атрибут JSX, по чьему адресу документ уходит, открывает вложенный документ (кадр,
+ * объект) либо загружает: имя в нижнем регистре, у ЛЮБОГО элемента — `src` у `iframe`
+ * это вложенный документ, у `img` — загрузка, и то и другое обращение к краю.
+ */
+const NAVIGATION_ATTRIBUTES = new Set(["href", "xlinkhref", "action", "formaction", "src", "data"]);
+/** Член, присвоение которому уводит документ либо загружает (`a.href`, `form.action`, `frame.src`, `object.data`). */
+const NAVIGATION_MEMBERS = new Set(["href", "action", "formaction", "src", "data"]);
 /** Обёртки выражения TypeScript, не меняющие значения. */
 const TS_WRAPPERS = new Set(["TSAsExpression", "TSNonNullExpression", "TSSatisfiesExpression", "TSTypeAssertion"]);
 /** Глубина раскрытия постоянных: `const A = B; const B = "…"`. */
@@ -112,6 +141,40 @@ function constInit(identifier, sourceCode) {
     return declarator?.parent?.kind === "const" && declarator.id.type === "Identifier" ? declarator.init : null;
   }
   return null;
+}
+
+/**
+ * Вызываемое: имя метода и его объект. `x.m(…)`, `m(…)`, постоянная-псевдоним файла
+ * (`const o = window.open`, `const go = location.assign`); иначе `null`.
+ */
+function calleeOf(node, sourceCode, depth = 0) {
+  if (!node || depth > CONST_DEPTH) return null;
+  if (TS_WRAPPERS.has(node.type) || node.type === "ChainExpression")
+    return calleeOf(node.expression, sourceCode, depth);
+  if (node.type === "Identifier") {
+    const alias = calleeOf(constInit(node, sourceCode), sourceCode, depth + 1);
+    return alias ?? { method: node.name, object: null };
+  }
+  const method = memberName(node);
+  return method === null ? null : { method, object: node.object };
+}
+
+/**
+ * Вызов с его доводами: `m.call(это, …)` и `m.apply(это, [ … ])` — тот же вызов `m`
+ * со сдвинутыми доводами (`window.open.call(window, адрес)`).
+ */
+function invocationOf(node, sourceCode) {
+  const callee = calleeOf(node.callee, sourceCode);
+  if (callee && (callee.method === "call" || callee.method === "apply") && callee.object) {
+    const inner = calleeOf(callee.object, sourceCode);
+    if (inner) {
+      const list = node.arguments[1];
+      const args =
+        callee.method === "call" ? node.arguments.slice(1) : list?.type === "ArrayExpression" ? list.elements : [];
+      return { ...inner, args };
+    }
+  }
+  return callee && { ...callee, args: node.arguments };
 }
 
 /**
@@ -177,18 +240,21 @@ const documentNavigation = {
         const member = memberName(node.left);
         if (member !== null && NAVIGATION_MEMBERS.has(member.toLowerCase()))
           judge(node, `присвоение .${member}`, node.right);
+        else if (member === "pathname" && isLocation(node.left.object, sourceCode))
+          judge(node, "присвоение location.pathname", node.right);
         else if (isLocation(node.left, sourceCode)) judge(node, "присвоение location", node.right);
       },
       CallExpression(node) {
-        const callee = node.callee.type === "ChainExpression" ? node.callee.expression : node.callee;
-        const method = callee.type === "Identifier" ? callee.name : memberName(callee);
-        const [first, second] = node.arguments;
+        const call = invocationOf(node, sourceCode);
+        if (!call) return;
+        const { method, object, args } = call;
+        const [first, second, third] = args;
         if (method === "setAttribute" || method === "setAttributeNS") {
-          const [name, value] = method === "setAttribute" ? [first, second] : [second, node.arguments[2]];
+          const [name, value] = method === "setAttribute" ? [first, second] : [second, third];
           const attr =
             name?.type === "Literal" && typeof name.value === "string" ? name.value.replace(/^xlink:/i, "") : "";
           if (NAVIGATION_MEMBERS.has(attr.toLowerCase())) judge(node, `${method}("${name.value}")`, value);
-        } else if ((method === "assign" || method === "replace") && isLocation(callee.object, sourceCode)) {
+        } else if ((method === "assign" || method === "replace") && isLocation(object, sourceCode)) {
           judge(node, `location.${method}(…)`, first);
         } else if (method === "open") {
           judge(node, "open(…)", first);
