@@ -95,6 +95,10 @@ NS="${KACHO_NS:-kacho}"
 # раз (load_product_names ниже) и читается формами метки и приставкой рядов.
 # shellcheck source=deploy/scripts/lib/product-names.sh
 . "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/product-names.sh"
+# Адрес поверхности (порт, схема, путь) из объявления сбора пода и опрос своим
+# пробником — ОДНОЙ реализацией на дерево: её же читают приборы нагрузки (#2171).
+# shellcheck source=deploy/scripts/lib/scrape-surface.sh
+. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/scrape-surface.sh"
 declare -A PRODUCT_NAME=()
 
 # load_product_names ПРОЦЕСС… — спросить у источника имя каждого процесса.
@@ -134,11 +138,13 @@ load_product_names() {
 # Случай 2 — тот самый дефект: без него самопроверка зеленела бы и на прежнем
 # селекторе, то есть не доказывала бы ничего.
 #
-# ОСЬ СХЕМЫ — случаи 7–9, и они устроены как ОДНО-ФАКТНАЯ тройка вокруг одного
-# и того же пода с ЖИВЫМ слушателем под TLS:
+# ОСЬ СХЕМЫ — случаи 7–10, и они устроены как ОДНО-ФАКТНЫЕ варианты вокруг
+# одного и того же пода с ЖИВЫМ слушателем под TLS:
 #   7. объявлено `https`, слушатель под TLS → зелёный (законный близнец);
 #   8. объявление снято, слушатель тот же   → КРАСНОЕ с именем процесса;
-#   9. объявлена схема вне пары http|https  → КРАСНОЕ с именем процесса.
+#   9. объявлено `http`, слушатель тот же   → КРАСНОЕ с именем процесса
+#      (дословная форма предиката #2165 — «подмена схемы на http»);
+#  10. объявлена схема вне пары http|https  → КРАСНОЕ с именем процесса.
 # Между 7 и 8 различие РОВНО ОДНО — что объявляет аннотация; транспорт слушателя
 # в обоих случаях TLS. Без 7 красное восьмёрки не доказывало бы ничего:
 # покраснеть могло бы от чего угодно в опросе. Без 8 зелёное семёрки не
@@ -146,15 +152,15 @@ load_product_names() {
 # текстом, дал бы то же зелёное. Поверхность открытым текстом остаётся
 # опознанной случаем 1, где схему не объявляет никто.
 #
-# ОСЬ ПЕРЕЧНЯ — случаи 10–14, и первый из них законный близнец остальных четырёх:
-#  10. подставной источник имён без инъекции   → зелёный, опрошены ВСЕ восемь;
-#  11. ведомость частей отказала кодом         → отказ ПО ЭТОЙ причине;
-#  12. перечень частей пуст при коде 0         → отказ, а не пустой успех;
-#  13. ни один чарт не объявляет сбор          → отказ, а не «беспредметно»;
-#  14. ни один корень не служит величины       → отказ первого слагаемого слышен.
-# Каждый из 11–14 привязан к СВОЕМУ стражу: снятие одного стража роняет РОВНО
+# ОСЬ ПЕРЕЧНЯ — случаи 11–15, и первый из них законный близнец остальных четырёх:
+#  11. подставной источник имён без инъекции   → зелёный, опрошены ВСЕ восемь;
+#  12. ведомость частей отказала кодом         → отказ ПО ЭТОЙ причине;
+#  13. перечень частей пуст при коде 0         → отказ, а не пустой успех;
+#  14. ни один чарт не объявляет сбор          → отказ, а не «беспредметно»;
+#  15. ни один корень не служит величины       → отказ первого слагаемого слышен.
+# Каждый из 12–15 привязан к СВОЕМУ стражу: снятие одного стража роняет РОВНО
 # одно утверждение (проверено пятью инъекциями по одному стражу за раз). Без
-# случая 10 красное четырёх могло бы приходить от самой посадки, а не от дефекта.
+# случая 11 красное четырёх могло бы приходить от самой посадки, а не от дефекта.
 self_test() {
   local root tmp rc out fails=0 asserted=0
   root="$(repo_root)"
@@ -316,6 +322,12 @@ STUB
   run_case "тот же слушатель под TLS, объявление снято → красное с именем процесса" \
            1 "iam: ответ 000 вместо 200 по адресу http://" \
            STUB_MODE=live STUB_LISTENER_KANAME=tls
+  # Дословная форма предиката #2165: схема ПОДМЕНЕНА на `http`, а не снята. От
+  # случая выше отличается ровно тем, что объявление ЕСТЬ: умолчание объявления
+  # и явное `http` обязаны читаться одинаково — адресом, который объявлен.
+  run_case "тот же слушатель под TLS, схема подменена на http → красное с именем процесса" \
+           1 "iam: ответ 000 вместо 200 по адресу http://" \
+           STUB_MODE=live STUB_LISTENER_KANAME=tls STUB_SCHEME_KANAME=http
   run_case "схема вне пары http|https → красное с именем процесса" \
            1 "iam: объявление сбора называет схему 'ftp'" \
            STUB_MODE=live STUB_SCHEME_KANAME=ftp
@@ -622,8 +634,9 @@ series_prefix() {
   printf '%s_' "${PRODUCT_NAME[$1]//-/_}"
 }
 
-# resolve_pod <процесс> — печатает «селектор<TAB>имя<TAB>ip<TAB>порт<TAB>схема»
-# у первой формы, которая дала под. Пусто — ни одна форма не резолвится.
+# resolve_pod <процесс> — печатает «селектор<TAB>имя<TAB>ip<TAB>порт<TAB>схема<TAB>путь»
+# у первой формы, которая дала под. Пусто — ни одна форма не резолвится. Поля
+# объявления читает общая реализация (lib/scrape-surface.sh).
 #
 # Все поля берутся ОДНИМ обращением на форму: спрашивать их по отдельности
 # значит допустить, что между запросами под сменится, и получить ip одного
@@ -635,16 +648,13 @@ series_prefix() {
 # СЛЕДУЮЩЕГО поля молча занимает место предыдущего — незаданный порт при
 # заданной схеме дал бы «порт = https». Пустое поле обязано означать «пусто».
 resolve_pod() {
-  local process="$1" sel line
+  local process="$1" sel
   while read -r sel; do
     [[ -n "$sel" ]] || continue
-    line="$(kubectl -n "$NS" get pods -l "$sel" \
-      -o jsonpath='{.items[0].metadata.name}|{.items[0].status.podIP}|{.items[0].metadata.annotations.prometheus\.io/port}|{.items[0].metadata.annotations.prometheus\.io/scheme}' \
-      2>/dev/null || true)"
-    local name ip port scheme
-    IFS='|' read -r name ip port scheme <<<"$line"
-    if [[ -n "${name:-}" && -n "${ip:-}" ]]; then
-      printf '%s\t%s\t%s\t%s\t%s\n' "$sel" "$name" "$ip" "${port:-}" "${scheme:-}"
+    scrape_decl_selector "$NS" "$sel"
+    if [[ -n "${SCRAPE_POD:-}" && -n "${SCRAPE_IP:-}" ]]; then
+      printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$sel" "$SCRAPE_POD" "$SCRAPE_IP" "${SCRAPE_PORT:-}" \
+        "${SCRAPE_SCHEME_DECL:-}" "${SCRAPE_PATH_DECL:-}"
       return 0
     fi
   done < <(selector_candidates "$process")
@@ -662,11 +672,9 @@ scheme_defaulted=0
 not_run=0
 declare -a red=() unknown=()
 
-PROBE_IMAGE="${PROBE_IMAGE:-docker.io/alpine/k8s:1.36.2}"
-PROBE_POD="kacho-metrics-probe-$$"
+PROBE_IMAGE="${PROBE_IMAGE:-$SCRAPE_PROBE_IMAGE}"
 
 probe_pod=""
-probe_ready=0
 
 # start_probe — поднять СВОЙ под с инструментом опроса.
 #
@@ -685,20 +693,14 @@ probe_ready=0
 #
 # Опрос по-прежнему ИЗНУТРИ кластера: поверхность выставлена только внутрь, и
 # снаружи её не должно быть видно by construction.
+#
+# Подъём и уборка пробника — общей реализацией (lib/scrape-surface.sh): её же
+# зовут приборы нагрузки, и второй копии «как опрашивать» в дереве нет.
 start_probe() {
-  kubectl -n "$NS" run "$PROBE_POD" \
-    --image="$PROBE_IMAGE" --restart=Never --command -- sleep 600 >/dev/null 2>&1 || true
-  if kubectl -n "$NS" wait --for=condition=Ready "pod/$PROBE_POD" --timeout=90s >/dev/null 2>&1; then
-    probe_pod="$PROBE_POD"
-    probe_ready=1
-  fi
+  if scrape_probe_start "$NS"; then probe_pod="$SCRAPE_PROBE_POD"; fi
+  return 0
 }
-
-stop_probe() {
-  [[ "$probe_ready" == 1 ]] || return 0
-  kubectl -n "$NS" delete pod "$PROBE_POD" --wait=false >/dev/null 2>&1 || true
-}
-trap stop_probe EXIT
+trap scrape_probe_stop EXIT
 
 if [[ "${1:-}" == "--self-test" ]]; then
   self_test
@@ -744,9 +746,11 @@ while read -r process; do
   # тот адрес, по которому придёт агент, а не тот, который мы предполагаем.
   row="$(resolve_pod "$process")"
   sel="$(printf '%s' "$row" | cut -f1)"
-  pod_ip="$(printf '%s' "$row" | cut -f3)"
-  port="$(printf '%s' "$row" | cut -f4)"
-  declared_scheme="$(printf '%s' "$row" | cut -f5)"
+  SCRAPE_IP="$(printf '%s' "$row" | cut -f3)"
+  SCRAPE_PORT="$(printf '%s' "$row" | cut -f4)"
+  SCRAPE_SCHEME_DECL="$(printf '%s' "$row" | cut -f5)"
+  SCRAPE_PATH_DECL="$(printf '%s' "$row" | cut -f6)"
+  pod_ip="$SCRAPE_IP"; port="$SCRAPE_PORT"
   if [[ -z "$pod_ip" || -z "$port" ]]; then
     not_run=$((not_run + 1))
     unknown+=("$process (под не найден либо объявления сбора у него нет: ip='$pod_ip' port='$port')")
@@ -759,39 +763,34 @@ while read -r process; do
   #
   # Третьего значения у схемы обращения не бывает, и «прочее» здесь не корзина:
   # по адресу, которого не существует, не придёт и агент — это вердикт о поде.
-  case "$declared_scheme" in
-    "")
-      scheme=http; scheme_source="умолчание объявления сбора"
-      scheme_defaulted=$((scheme_defaulted + 1)) ;;
-    http|https)
-      scheme="$declared_scheme"; scheme_source="объявлена" ;;
-    *)
-      failed=$((failed + 1))
-      red+=("$process: объявление сбора называет схему '$declared_scheme' — обращения такой схемой не бывает, по этому адресу не придёт и агент")
-      continue ;;
-  esac
-  if [[ "$scheme" == https ]]; then
-    by_https=$((by_https + 1))
-    # `--insecure` — ОБЪЯВЛЕННОЕ ослабление, разобранное в шапке (раздел «СХЕМА»):
-    # корней доверия внутреннего центра в своём поде-пробнике не смонтировано, а
-    # предмет этого гейта — «поверхность отвечает», не «цепочка верна». Перепись
-    # называет ослабление в каждом прогоне, где оно применялось.
-    body="$(kubectl -n "$NS" exec "$probe_pod" -- \
-      curl -s --max-time 5 --insecure -w '\n%{http_code}' "https://$pod_ip:$port/metrics" 2>/dev/null || true)"
-  else
-    by_http=$((by_http + 1))
-    body="$(kubectl -n "$NS" exec "$probe_pod" -- \
-      curl -s --max-time 5 -w '\n%{http_code}' "http://$pod_ip:$port/metrics" 2>/dev/null || true)"
+  # Решение о схеме — общей реализацией: там же и умолчание объявления сбора,
+  # и отказ на схеме вне пары http|https (вердикт о поде: по такому адресу не
+  # придёт и агент).
+  if ! scrape_resolve; then
+    failed=$((failed + 1))
+    red+=("$process: $SCRAPE_REFUSAL")
+    continue
   fi
-  if [[ -z "$body" ]]; then
+  scheme="$SCRAPE_SCHEME"; scheme_source="$SCRAPE_SCHEME_SOURCE"
+  [[ "$scheme_source" == "умолчание объявления сбора" ]] && scheme_defaulted=$((scheme_defaulted + 1))
+  if [[ "$scheme" == https ]]; then by_https=$((by_https + 1)); else by_http=$((by_http + 1)); fi
+  # `--insecure` по https — ОБЪЯВЛЕННОЕ ослабление, разобранное в шапке (раздел
+  # «СХЕМА») и в общей реализации; перепись ниже называет его в каждом прогоне,
+  # где оно применялось.
+  scrape_fetch
+  if [[ "$SCRAPE_SILENT" == 1 ]]; then
     not_run=$((not_run + 1))
     unknown+=("$process (запрос не выполнился: нечем или некуда)")
     continue
   fi
-  code="$(printf '%s' "$body" | tail -n1)"
+  # SCRAPE_BODY / SCRAPE_CODE назначает scrape_fetch (lib/scrape-surface.sh).
+  # shellcheck disable=SC2153
+  body="$SCRAPE_BODY"
+  # shellcheck disable=SC2153
+  code="$SCRAPE_CODE"
   if [[ "$code" != "200" ]]; then
     failed=$((failed + 1))
-    red+=("$process: ответ $code вместо 200 по адресу $scheme://$pod_ip:$port (схема — $scheme_source)")
+    red+=("$process: ответ $code вместо 200 по адресу $SCRAPE_URL (схема — $scheme_source)")
     continue
   fi
   prefix="$(series_prefix "$process")"
@@ -804,7 +803,7 @@ while read -r process; do
   # Селектор и СХЕМА печатаются ВСЕГДА: селектор — то место, где расхождение
   # меток чартов становится видимым, схема — то, где становится видимым
   # расхождение объявления сбора с транспортом слушателя.
-  echo "  OK  $process → $scheme://$pod_ip:$port  (по метке $sel; схема — $scheme_source)"
+  echo "  OK  $process → $SCRAPE_URL  (по метке $sel; схема — $scheme_source)"
 done < <(printf '%s\n' "$PROCESSES")
 
 echo
