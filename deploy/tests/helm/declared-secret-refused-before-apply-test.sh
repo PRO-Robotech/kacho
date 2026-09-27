@@ -218,8 +218,13 @@ check_stack() {
   helm_try kacho-umbrella "$UMBRELLA" -n kacho $args
   render_or_fatal "стенд $stack"
   render="$(mktemp)"; printf '%s\n' "$HELM_OUT" >"$render"
-  local profiles=()
-  for prof in $(stacks_chain "$stack"); do profiles+=("$UMBRELLA/$prof"); done
+  # КОД ЧИТАТЕЛЯ ПЕРЕЧНЯ ПОТРЕБОВАН ПРИСВАИВАНИЕМ, а не списком `for`: подстановка
+  # в списке `for` теряет код всегда, и отказ таблицы дал бы суд над НУЛЁМ
+  # профилей — «объявлений ноль» вместо «таблица не прочиталась».
+  local profiles=() chain
+  chain="$(stacks_chain "$stack")" \
+    || fatal "стенд $stack: состав цепочки не прочитан из stacks.txt — судить объявления не о чем"
+  for prof in $chain; do profiles+=("$UMBRELLA/$prof"); done
   out="$(judge "$render" "${profiles[@]}")" \
     || { rm -f "$render"; fatal "стенд $stack: разбор объявлений сорвался — судить не о чем"; }
   rm -f "$render"
