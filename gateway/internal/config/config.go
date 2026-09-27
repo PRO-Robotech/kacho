@@ -300,7 +300,7 @@ type Config struct {
 	// `KACHO_API_GATEWAY_MTLS_CA_FILE` и имя сервера
 	// `KACHO_API_GATEWAY_MTLS_IAM_SERVER_NAME` — те же, что у ребра к службе.
 	// УМОЛЧАНИЯ НЕТ и выводиться из адреса соседа он не вправе: под `own` пустое
-	// значение — отказ старта с именем ручки; под `external` ручка не читается.
+	// значение — отказ старта с именем ручки; вне `own` ручка не читается.
 	IAMIssuanceURL string `envconfig:"KACHO_API_GATEWAY_IAM_ISSUANCE_URL" default:""`
 
 	// MetricsAddr — адрес cluster-internal ДИАГНОСТИЧЕСКОЙ поверхности края

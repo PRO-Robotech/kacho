@@ -139,7 +139,7 @@ func judgeRelayWiring(fset *token.FileSet, f *ast.File, targets []middleware.Rel
 			servedBy[s.serves] = s.pos
 		}
 		if s.posture != "Own" {
-			out.findings = append(out.findings, s.pos+": ретранслятор заведён вне ветки посадки own (ветка: \""+s.posture+"\") — под external пути объявления обязаны отвечать 404")
+			out.findings = append(out.findings, s.pos+": ретранслятор заведён вне ветки посадки own (ветка: \""+s.posture+"\") — вне own пути объявления обязаны отвечать 404")
 		}
 		if s.target == "" {
 			out.findings = append(out.findings, s.pos+": адрес ретранслятора не взят из ручки конфигурации (`Target: cfg.<Поле>`)")
