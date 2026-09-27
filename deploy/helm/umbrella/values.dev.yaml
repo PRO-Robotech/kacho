@@ -414,6 +414,14 @@ compute:
   authMode: dev
   image: kacho-compute:dev
   imagePullPolicy: IfNotPresent
+  # Круг отправителей выводится из ГРАФА ВЫЗОВОВ, а не «наверное, только шлюз»
+  # (задача #924): кроме шлюза compute зовёт nlb — InstanceService.Get на резолве
+  # таргетов TargetGroup, с переданной личностью инициатора. Умолчание чарта
+  # называет один шлюз; отправитель вне круга не «ходит под своим сертификатом» —
+  # его личность снимается, и отказ nlb разворачивает в «инстанса нет». Состав
+  # сверяет tests/helm/trusted-forwarder-profiles-test.sh против deploy/forwardersenders.
+  auth:
+    trustedForwarderSANs: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway,spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb"
   # Dev/newman profile deploys iam+vpc+geo but NOT kacho-storage (storage.enabled=false,
   # SERVICES в deploy/Makefile = iam vpc compute api-gateway nlb). Компьют-конфиг
   # ДЕФОЛТИТ KACHO_COMPUTE_STORAGE_INTERNAL_GRPC_ADDR на `kacho-storage…:9091`

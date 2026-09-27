@@ -251,10 +251,15 @@ vpc:
       # компонент — запись вернётся вместе с его кодом (решение владельца 2026-08-09).
 compute:
   image: docker.io/prorobotech/kacho-compute:main-b622b388
-  # Same forwarder-trust as vpc — pin the allow-list to the api-gateway SA SPIFFE
-  # (chart default, restated so a values.prod override can't drop it).
+  # Пин круга отправителей restated, чтобы правка values.prod его не потеряла.
+  # Круг выводится из ГРАФА ВЫЗОВОВ, а не «наверное, только шлюз» (задача #924):
+  # кроме шлюза compute зовёт nlb — InstanceService.Get на резолве таргетов
+  # TargetGroup, с переданной личностью инициатора. Отправитель вне круга не
+  # «ходит под своим сертификатом»: его личность снимается, и отказ nlb
+  # разворачивает в «инстанса нет». Состав сверяет
+  # tests/helm/trusted-forwarder-profiles-test.sh против deploy/forwardersenders.
   auth:
-    trustedForwarderSANs: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
+    trustedForwarderSANs: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway,spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb"
   mtls:
     edges:
       # Домена величин в этой установке НЕТ (`quota.authority: not-deployed` в чарте

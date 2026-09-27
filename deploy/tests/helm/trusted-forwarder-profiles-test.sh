@@ -41,6 +41,7 @@ SCRIPT="$(basename "$0")"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 DEPLOY_ROOT="$(cd "$HERE/../.." && pwd)"
 UMBRELLA="$DEPLOY_ROOT/helm/umbrella"
+REPO_ROOT="$(cd "$DEPLOY_ROOT/.." && pwd)"
 
 # Три исхода — ОДНОЙ реализацией на весь каталог. Свой `fatal` здесь уже был, а
 # `fail` НАКАПЛИВАЛ нарушения и потому выходил кодом 1 в самом конце — вместе с
@@ -112,7 +113,8 @@ fi
 render() {
   local args=() f
   local IFS=,
-  for f in $1; do args+=(-f "$UMBRELLA/$f"); done
+  # Слой с абсолютным путём — накладка самопроверки; прочие — профили умбреллы.
+  for f in $1; do case "$f" in /*) args+=(-f "$f") ;; *) args+=(-f "$UMBRELLA/$f") ;; esac; done
   unset IFS
   helm_try kacho-umbrella "$UMBRELLA" "${args[@]}"
   render_or_fatal "профиль $2"
@@ -125,8 +127,10 @@ render() {
 # дефект: массовый импорт `envFrom` был слепым пятном гейта посадки, и сервис,
 # получавший настройки только так, не осматривался вовсе.
 #
-# Печатает по строке `<service> <кол-во-непустых-записей>`; `-1` = локатор не
-# разрешился (объект есть, ручки нет), пустая строка = объекта нет в рендере.
+# Печатает по строке `<service> <кол-во-непустых-записей> <записи через запятую | ->`;
+# `-1` = локатор не разрешился (объект есть, ручки нет), пустое второе поле =
+# объекта нет в рендере. Записи нужны целиком: состав круга сверяется с графом
+# вызовов (задача #924), а не только его непустота.
 # ─────────────────────────────────────────────────────────────────────────────
 extract() {
   MEASURED="$MEASURED" python3 - "$1" <<'PY'
@@ -159,28 +163,25 @@ def env_of(dep):
     return out
 
 
-def nonempty(entries):
-    return len([s for s in entries if str(s).strip() != ""])
-
-
 for row in os.environ["MEASURED"].split():
     dep_name, svc, locator = row.split("|", 2)
     dep = deps.get(dep_name)
     if dep is None:
-        print(svc, "")            # сервис не разворачивается этим профилем
+        print(svc, "", "-")       # сервис не разворачивается этим профилем
         continue
     kind, rest = locator.split(":", 1)
     if kind == "env":
         env = env_of(dep)
         if rest not in env:
-            print(svc, -1)
+            print(svc, -1, "-")
             continue
-        print(svc, nonempty(env[rest].split(",")))
+        entries = [s.strip() for s in env[rest].split(",") if s.strip()]
+        print(svc, len(entries), ",".join(entries) or "-")
     else:
         cm_name, path = rest.split(":", 1)
         data = cms.get(cm_name)
         if data is None or "config.yaml" not in data:
-            print(svc, -1)
+            print(svc, -1, "-")
             continue
         node = yaml.safe_load(data["config.yaml"])
         for part in path.split("."):
@@ -189,9 +190,10 @@ for row in os.environ["MEASURED"].split():
                 break
             node = node[part]
         if node is None:
-            print(svc, -1)
+            print(svc, -1, "-")
             continue
-        print(svc, nonempty(node if isinstance(node, list) else str(node).split(",")))
+        entries = [str(s).strip() for s in (node if isinstance(node, list) else str(node).split(",")) if str(s).strip()]
+        print(svc, len(entries), ",".join(entries) or "-")
 PY
 }
 
@@ -221,6 +223,123 @@ PY
 # ─────────────────────────────────────────────────────────────────────────────
 count_rows() { printf '%s\n' $1 | grep -c . ; }
 
+# ─────────────────────────────────────────────────────────────────────────────
+# СОСТАВ КРУГА — ПРОТИВ ГРАФА ВЫЗОВОВ (задача #924)
+#
+# Непустой круг ещё не верный круг. Список из одного шлюза сужен идеально и при
+# этом неверен: у geo так и было — справочник читали на пути запроса ещё пять
+# сервисов, их переданная личность снималась, и чтение отвечало как
+# неаутентифицированное, а наружу выходило «зоны нет».
+#
+# Фактические отправители ВЫВОДЯТСЯ из дерева разбором Go — это делает проба
+# deploy/forwardersenders (кто строит типизированного клиента стабов сервиса, кто
+# проксирует на него REST, кто импортирует посредника, строящего клиента). Здесь
+# второй копии предиката нет: вывод приходит файлом от той же пробы, что гоняет
+# `go test ./...`.
+#
+# Сверяется В ОБЕ СТОРОНЫ, по каждому стенду и сервису:
+#   • недостача — отправитель, которого нет в круге: молчаливый отказ на живом пути;
+#   • запись СВЕРХ графа — право говорить за пользователя тому, кто за ним не
+#     звонит. Обоснованное исключение объявляется в EXCESS_EXCEPTIONS с причиной;
+#     исключение, которому ни на одном стенде нечего исключать, — само находка.
+#
+# SAN записи круга сопоставляется с компонентом по хвосту `…/sa/kacho-<имя>`
+# (сегмент пространства имён у частей разный, хвост — нет). Запись иной формы
+# компонента не называет и потому идёт в «сверх графа».
+#
+# Слепая зона вывода названа числом: пакеты стабов, чей сервер регистрируют
+# несколько компонентов (ход операций, поток изменений), адресата по типу не
+# имеют — его решает соединение. Перепись печатает их число.
+EXCESS_EXCEPTIONS=""   # строки `<адресат>|<отправитель>|<причина>`
+EXC_USED=""
+SENDERS=""             # строки `<адресат> <отправитель,…>`
+EVIDENCE=""            # строки `<адресат> <отправитель> <улика>`
+BLIND_ZONE=0
+SENDERS_CHECKED=0
+SENDERS_TEST='^TestForwarderSendersAreDerivedFromTheCallGraph$'
+
+load_senders() {
+  command -v go >/dev/null 2>&1 \
+    || fatal "нет go — вывести отправителей из графа вызовов нечем (разбор — проба deploy/forwardersenders)"
+  local out log rc parsed
+  out="$(mktemp)"; log="$(mktemp)"
+  (cd "$REPO_ROOT" && KACHO_FORWARDER_SENDERS_OUT="$out" \
+     go test ./deploy/forwardersenders/ -run "$SENDERS_TEST" -count=1 >"$log" 2>&1) && rc=0 || rc=$?
+  if [ "$rc" -ne 0 ] || [ ! -s "$out" ]; then
+    sed 's/^/    /' "$log" >&2
+    rm -f "$out" "$log"
+    fatal "вывод отправителей не состоялся (go test, код $rc; текст выше) — сверять состав кругов не с чем. Вердикт о самом выводе выносит go test ./deploy/forwardersenders/"
+  fi
+  parsed="$(python3 - "$out" <<'PYJ'
+import json, sys
+r = json.load(open(sys.argv[1]))
+for recv, s in sorted(r["senders"].items()):
+    print("S", recv, ",".join(sorted(s)))
+    for snd, evs in sorted(s.items()):
+        print("E", recv, snd, evs[0])
+print("B", len(r.get("ambiguous") or []))
+PYJ
+)" || { rm -f "$out" "$log"; fatal "вывод отправителей не разобран — сверять не с чем"; }
+  rm -f "$out" "$log"
+  SENDERS="$(awk '$1=="S"{print $2, $3}' <<<"$parsed")"
+  EVIDENCE="$(awk '$1=="E"{sub(/^E /, ""); print}' <<<"$parsed")"
+  BLIND_ZONE="$(awk '$1=="B"{print $2}' <<<"$parsed")"
+  [ -n "$SENDERS" ] || fatal "вывод отправителей пуст — «никто не звонит» и «ничего не прочитано» неразличимы"
+}
+
+senders_of() { awk -v r="$1" '$1==r{print $2}' <<<"$SENDERS"; }
+evidence_of() { awk -v r="$1" -v s="$2" '$1==r && $2==s {$1=""; $2=""; sub(/^  /, ""); print; exit}' <<<"$EVIDENCE"; }
+exception_for() {
+  local r snd
+  while IFS='|' read -r r snd _; do
+    [ "$r" = "$1" ] && [ "$snd" = "$2" ] && return 0
+  done <<<"$EXCESS_EXCEPTIONS"
+  return 1
+}
+
+# compose <стенд> <сервис> <записи через запятую> — сверка состава, п.2–п.3 #924.
+compose() {
+  local stack="$1" svc="$2" sans="$3" want have key san s missing="" extra="" ev
+  [ -n "$SENDERS" ] || load_senders
+  want=" $(senders_of "$svc" | tr ',' ' ') "
+  [ -n "${want// /}" ] || { violation "$stack/$svc: у сервиса НЕ выведено ни одного отправителя, а круг объявлен — либо вывод ослеп, либо ребро снято (тогда снимается и круг)"; return; }
+  have=" "
+  local IFS=,
+  for san in $sans; do
+    case "$san" in
+      */sa/kacho-*) key="${san##*/sa/kacho-}" ;;
+      *)            key="?$san" ;;
+    esac
+    have="$have$key "
+  done
+  unset IFS
+  for s in $want; do [[ "$have" == *" $s "* ]] || missing="$missing $s"; done
+  for s in $have; do
+    [[ "$want" == *" $s "* ]] && continue
+    if exception_for "$svc" "$s"; then EXC_USED="$EXC_USED $svc|$s"; continue; fi
+    extra="$extra $s"
+  done
+  SENDERS_CHECKED=$((SENDERS_CHECKED + $(wc -w <<<"$want")))
+  for s in $missing; do
+    ev="$(evidence_of "$svc" "$s")"
+    violation "$stack/$svc: круг НЕ НЕСЁТ фактического отправителя $s (улика: $ev) — его переданная личность будет снята, и вызов ответит как неаутентифицированный"
+  done
+  if [ -n "$extra" ]; then
+    violation "$stack/$svc: запись СВЕРХ графа вызовов:$extra — право говорить за пользователя выдано тому, кто за ним не звонит; обоснованное исключение объявляется в EXCESS_EXCEPTIONS с причиной"
+  fi
+  if [ -z "$missing$extra" ]; then ok; echo "  ✓ $stack/$svc: состав совпал с графом вызовов ($(wc -w <<<"$want") отправител.)"; fi
+}
+
+# check_exceptions — исключение, которому ни на одном стенде нечего исключать, находка.
+check_exceptions() {
+  local r snd why
+  while IFS='|' read -r r snd why; do
+    [ -n "$r" ] || continue
+    [[ " $EXC_USED " == *" $r|$snd "* ]] \
+      || violation "исключение EXCESS_EXCEPTIONS «$r|$snd» ($why) не исключает НИЧЕГО ни на одном стенде — запись без предмета"
+  done <<<"$EXCESS_EXCEPTIONS"
+}
+
 # verify_all <подпись> — прогоняет все профили из PROFILES по карте MEASURED.
 # Читает и меняет N/FAILURES. Вынесено в функцию, чтобы самопроверка
 # могла прогнать ТОТ ЖЕ путь на подменённой карте: инъекция обязана проверять
@@ -246,13 +365,14 @@ verify_all() {
     fi
     rm -f "$tmp"
 
-    while read -r svc count; do
+    while read -r svc count sans; do
       [ -z "$svc" ] && continue
       case "$count" in
         "")  violation "$name/$svc: объекта развёртывания НЕТ в рендере профиля — сервис выпал из-под гейта, хотя переданную личность он принимать не перестал. Либо объект переименован (тогда карта измерения в $SCRIPT устарела), либо профиль его действительно не разворачивает — и тогда это надо объявить здесь с причиной, а не пропускать молча." ;;
         -1)  violation "$name/$svc: ручка круга отправителей НЕ НАЙДЕНА в рендере — карта измерения в $SCRIPT устарела, и «не нашли» здесь означает «не проверили», а не «всё хорошо»" ;;
         0)   violation "$name/$svc: круг отправителей ПУСТ — переданную личность примет ЛЮБОЙ пир с сертификатом внутреннего CA. Профиль обязан объявить круг по фактическим отправителям сервиса." ;;
-        *)   ok; echo "  ✓ $name/$svc: круг сужен ($count записей)" ;;
+        *)   ok; echo "  ✓ $name/$svc: круг сужен ($count записей)"
+             compose "$name" "$svc" "$sans" ;;
       esac
     done <<EOF
 $measured
@@ -350,7 +470,7 @@ compute|compute|env:KACHO_COMPUTE_AUTHZ_TRUSTED_FORWARDER_SANS
 "
   N=0; FAILURES=0
   verify_all >"$log" 2>&1
-  want=$(( $(count_rows "$PROFILES") * $(count_rows "$MEASURED") ))
+  want=$(( 2 * $(count_rows "$PROFILES") * $(count_rows "$MEASURED") ))
   if [ "$FAILURES" -eq 0 ] && [ "$N" -eq "$want" ]; then
     echo "  ОК     карта без призрака → молчание, утверждений $N из $want"
   else
@@ -359,10 +479,55 @@ compute|compute|env:KACHO_COMPUTE_AUTHZ_TRUSTED_FORWARDER_SANS
     rc=1
   fi
 
+  # ── СОСТАВ КРУГА ПРОТИВ ГРАФА ВЫЗОВОВ (#924): инъекции в обе стороны на одном
+  #    стенде. Покрытие стендов доказано инъекцией выше; рендер умбреллы дорог.
+  echo "=== self-test: состав круга сверяется с графом вызовов в обе стороны ==="
+  narrow="$(mktemp)"; extra="$(mktemp)"
+  trap 'rm -f "$inj" "$log" "$narrow" "$extra"' EXIT
+  # Дефект #916 дословно: круг geo сужен до шлюза.
+  cat >"$narrow" <<'EOF'
+kacho-geo:
+  env:
+    KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
+EOF
+  # Запись сверх графа: реестр в круге nlb — реестр nlb не зовёт.
+  cat >"$extra" <<'EOF'
+kacho-nlb:
+  config:
+    authz:
+      trustedForwarderSANs:
+        - spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
+        - spiffe://kacho.cloud/ns/kacho/sa/kacho-registry
+EOF
+  MEASURED="$SAVED_MEASURED"
+  compose_case() { # compose_case <метка> <профили> <ожидать находку? yes|no> <подстрока>
+    PROFILES="$2"; N=0; FAILURES=0; EXC_USED=""
+    verify_all >"$log" 2>&1
+    check_exceptions >>"$log" 2>&1
+    if [ "$3" = yes ]; then
+      if [ "$FAILURES" -ge 1 ] && grep -qF -- "$4" "$log"; then echo "  ОК     $1 → находка («$4»)"
+      else echo "  ПРОВАЛ $1 → находки «$4» нет (нарушений $FAILURES)"; sed 's/^/         /' "$log" | grep -E '✗|FAIL' | head -5; rc=1; fi
+    else
+      local wantn=$(( 2 * $(count_rows "$MEASURED") ))
+      if [ "$FAILURES" -eq 0 ] && [ "$N" -eq "$wantn" ]; then echo "  ОК     $1 → молчание, утверждений $N из $wantn"
+      else echo "  ПРОВАЛ $1 → нарушений $FAILURES, утверждений $N из $wantn"; sed 's/^/         /' "$log" | grep -E '✗|FAIL' | head -5; rc=1; fi
+    fi
+  }
+  compose_case "круг geo сужен до шлюза" "dev|values.dev.yaml,$narrow" yes \
+    "dev/geo: круг НЕ НЕСЁТ фактического отправителя compute (улика:"
+  compose_case "законный круг дерева" "dev|values.dev.yaml" no ""
+  compose_case "реестр в круге nlb" "dev|values.dev.yaml,$extra" yes \
+    "dev/nlb: запись СВЕРХ графа вызовов: registry"
+  EXCESS_EXCEPTIONS="nlb|registry|синтетика самопроверки"
+  compose_case "та же запись под объявленным исключением" "dev|values.dev.yaml,$extra" no ""
+  compose_case "исключение на законном круге" "dev|values.dev.yaml" yes \
+    "не исключает НИЧЕГО ни на одном стенде"
+  EXCESS_EXCEPTIONS=""
+
   # ── ПРЕДПОСЫЛКА СЧЁТА: ожидаемое число обязано ЗАВИСЕТЬ от карты и профилей.
   #    Константа пережила бы удаление сервиса из карты молча.
   MEASURED="$SAVED_MEASURED"; PROFILES="$SAVED_PROFILES"
-  full=$(( $(count_rows "$PROFILES") * $(count_rows "$MEASURED") ))
+  full=$(( 2 * $(count_rows "$PROFILES") * $(count_rows "$MEASURED") ))
   if [ "$full" -gt "$want" ]; then
     echo "  ОК     ожидаемое число выводится из карты и профилей ($full против $want на урезанной)"
   else
@@ -384,14 +549,18 @@ echo "=== круг отправителей чужой личности: по п
 
 PROFILE_COUNT="$(count_rows "$PROFILES")"
 SERVICE_COUNT="$(count_rows "$MEASURED")"
-EXPECTED=$((PROFILE_COUNT * SERVICE_COUNT))
+# Два утверждения на пару «стенд × сервис»: круг непуст и его состав совпал с
+# графом вызовов.
+EXPECTED=$((2 * PROFILE_COUNT * SERVICE_COUNT))
 EXPECTED_ASSERTIONS="$EXPECTED"
 [ "$EXPECTED" -ge 1 ] || fatal "профилей $PROFILE_COUNT × сервисов $SERVICE_COUNT = 0 — измерять нечего"
 
 verify_all
+check_exceptions
 
 echo
-echo "осмотрено: профилей $PROFILE_COUNT, сервисов $SERVICE_COUNT, ожидалось утверждений $EXPECTED"
+echo "осмотрено: профилей $PROFILE_COUNT, сервисов $SERVICE_COUNT, отправителей сверено $SENDERS_CHECKED (сумма по стендам), ожидалось утверждений $EXPECTED"
+echo "  слепая зона вывода отправителей: рёбер $BLIND_ZONE (адресат по типу не единственный — ход операций, поток изменений)"
 [ "$FAILURES" -eq 0 ] \
   || fail "$SCRIPT — $FAILURES нарушений (утверждений выполнено $N из $EXPECTED)"
 
@@ -402,9 +571,9 @@ echo "осмотрено: профилей $PROFILE_COUNT, сервисов $SER
 # (профилей × сервисов), которого общая реализация знать не может.
 if [ "$N" -ne "$EXPECTED" ]; then
   {
-    echo "        (профилей $PROFILE_COUNT × сервисов $SERVICE_COUNT). Нарушений нет, но"
+    echo "        (2 × профилей $PROFILE_COUNT × сервисов $SERVICE_COUNT). Нарушений нет, но"
     echo "        осмотрено НЕ ВСЁ — а это не то же самое, что «всё хорошо»."
   } >&2
   fail "$SCRIPT — утверждений выполнено $N, ожидалось $EXPECTED"
 fi
-outcome_verdict "профилей $PROFILE_COUNT × сервисов $SERVICE_COUNT"
+outcome_verdict "профилей $PROFILE_COUNT × сервисов $SERVICE_COUNT; отправителей сверено $SENDERS_CHECKED"

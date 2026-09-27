@@ -448,8 +448,14 @@ compute:
   # that no future edit to this profile can silently drop it: empty ⇒ ANY
   # mTLS-verified peer may forge the forwarded end-user principal
   # (confused-deputy / tenant crossing), and production refuses to boot on it.
+  # Круг выводится из ГРАФА ВЫЗОВОВ, а не «наверное, только шлюз» (задача #924):
+  # кроме шлюза compute зовёт nlb — InstanceService.Get на резолве таргетов
+  # TargetGroup, с переданной личностью инициатора. Отправитель вне круга не
+  # «ходит под своим сертификатом»: его личность снимается, и отказ nlb
+  # разворачивает в «инстанса нет». Состав сверяет
+  # tests/helm/trusted-forwarder-profiles-test.sh против deploy/forwardersenders.
   auth:
-    trustedForwarderSANs: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
+    trustedForwarderSANs: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway,spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb"
   authzIam:
     grpcAddr: kaname-internal.kacho.svc:9091
   listFilter:
