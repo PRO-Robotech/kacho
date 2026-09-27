@@ -363,7 +363,7 @@ type AuthzConfig struct {
 	// форвардер (паритет с insecure dev back-compat и kaname internal); задаётся в
 	// production для defense-in-depth против confused-deputy (внутренний сервис со
 	// своим валидным cert'ом не может выдать себя за пользователя). ENV
-	// `KACHO_NLB_AUTHZ__TRUSTED_FORWARDER_SANS` (comma-separated).
+	// `KACHO_NLB_AUTHZ__TRUSTED-FORWARDER-SANS` (comma-separated; дефисы — часть имени: viper заменяет на `__` только точку).
 	TrustedForwarderSANs []string `mapstructure:"trusted-forwarder-sans"`
 
 	// TrustAnyForwarder — ЯВНЫЙ опт-ин «круг не сужаем», действующий ТОЛЬКО вне

@@ -24,7 +24,10 @@ func TestEveryKnobTheProbesSetReachesTheLoader(t *testing.T) {
 	knobreach.Gate(t, knobreach.Package{
 		Service: "compute",
 		Dir:     ".",
-		Base:    map[string]string{"KACHO_COMPUTE_DB_PASSWORD": "x"},
-		Load:    func() (any, error) { return config.Load() },
+		// Тексты процесса и его конфигурации: имя, которое они называют
+		// оператору, обязано читаться тем же загрузчиком (kacho#2739).
+		ProseDirs: []string{".", "../../internal/config"},
+		Base:      map[string]string{"KACHO_COMPUTE_DB_PASSWORD": "x"},
+		Load:      func() (any, error) { return config.Load() },
 	})
 }

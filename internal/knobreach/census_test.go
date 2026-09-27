@@ -161,6 +161,10 @@ func TestEveryCmdPackageWhoseProbesSetKnobsCallsTheGate(t *testing.T) {
 		t.Errorf("%s: пробы пакета задают имена ручек, а гейт knobreach.Gate не зовётся — имя, "+
 			"которого загрузчик не читает, здесь не краснеет ничем", rel(d))
 	}
+	for _, d := range c.noProse {
+		t.Errorf("%s: гейт зовётся без ProseDirs — имена, которые тексты процесса называют "+
+			"оператору, не судятся", rel(d))
+	}
 }
 
 // Самопроверка переписи: пакет, задающий имена без вызова гейта, — находка;

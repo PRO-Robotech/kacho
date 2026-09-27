@@ -23,6 +23,9 @@ func TestEveryKnobTheProbesSetReachesTheLoader(t *testing.T) {
 	knobreach.Gate(t, knobreach.Package{
 		Service: "vpc (точка наката)",
 		Dir:     ".",
+		// Тексты процесса и его конфигурации: имя, которое они называют
+		// оператору, обязано читаться тем же загрузчиком (kacho#2739).
+		ProseDirs: []string{"."},
 		Load: func() (any, error) {
 			return buildRunner(&rootOptions{dialect: "postgres"}, fstest.MapFS{})
 		},

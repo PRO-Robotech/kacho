@@ -159,7 +159,7 @@ func describeDiagnosticSurface(endpoint string, m *vpcmetrics.Metrics, agg *heal
 	addr := servicecontract.Value(endpoint)
 	if endpoint == "" {
 		addr = servicecontract.NotApplicable[string](
-			"KACHO_VPC_METRICS_ENDPOINT не задан профилем развёртывания: ни скрейпа, ни проб " +
+			"metrics.endpoint (env KACHO_VPC_METRICS__ENDPOINT) не задан профилем развёртывания: ни скрейпа, ни проб " +
 				"живости и готовности на этой посадке нет — kubelet не узнает о неготовности " +
 				"зависимостей ничего")
 	}

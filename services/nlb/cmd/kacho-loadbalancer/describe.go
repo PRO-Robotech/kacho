@@ -121,7 +121,7 @@ func describe(
 
 		Forwarders: servicecontract.Value(cfg.TrustedForwarders()),
 		ForwarderKnobs: servicecontract.ForwarderKnobs{
-			SANs:     "authz.trusted-forwarder-sans (env KACHO_NLB_AUTHZ__TRUSTED_FORWARDER_SANS)",
+			SANs:     "authz.trusted-forwarder-sans (env KACHO_NLB_AUTHZ__TRUSTED-FORWARDER-SANS)",
 			TrustAny: "authz.trust-any-forwarder (env KACHO_NLB_AUTHZ__TRUST_ANY_FORWARDER)",
 			OptIn:    cfg.Authz.TrustAnyForwarder,
 		},

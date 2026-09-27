@@ -108,7 +108,7 @@ func RegisterDefaults(v *viper.Viper) {
 	// RBAC (issue): per-object filtered List. Default ON
 	// («применяется во всех доменах»); fail-closed (security.md). Endpoint —
 	// iam.AuthorizeService (reuse iam conn; mTLS via mtls.iam-register).
-	// ENV: KACHO_NLB_AUTHZ__LIST_FILTER__ENABLED / __TIMEOUT / __CACHE_TTL / etc.
+	// ENV: KACHO_NLB_AUTHZ__LIST-FILTER__ENABLED / __TIMEOUT / __CACHE-TTL / etc.
 	v.SetDefault("authz.list-filter.enabled", true)
 	// timeout — per-call дедлайн ОДНОГО BatchCheck, НЕ бюджет всей фильтрации
 	// (бюджет операции выводится в authzfilter.NewFGAFilter). 1s, а не прежние
@@ -129,7 +129,7 @@ func RegisterDefaults(v *viper.Viper) {
 	// разрешено передавать личность конечного пользователя (api-gateway).
 	// Умолчание пусто, и это НЕ «доверяем любому»: на пустом круге старт
 	// отказывает (Validate), пока не задан явный опт-ин ниже.
-	// ENV KACHO_NLB_AUTHZ__TRUSTED_FORWARDER_SANS (comma-separated).
+	// ENV KACHO_NLB_AUTHZ__TRUSTED-FORWARDER-SANS (comma-separated; дефисы — часть имени).
 	v.SetDefault("authz.trusted-forwarder-sans", []string{})
 	// trust-any-forwarder: явный опт-ин «круг не сужаем» для локальных
 	// in-process фикстур. Вне боевого режима — единственный способ поднять

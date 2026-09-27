@@ -25,8 +25,11 @@ func TestEveryKnobTheProbesSetReachesTheLoader(t *testing.T) {
 	knobreach.Gate(t, knobreach.Package{
 		Service: "vpc",
 		Dir:     ".",
-		Base:    nil,
-		Load:    func() (any, error) { return loadAsMainDoes() },
+		// Тексты процесса и его конфигурации: имя, которое они называют
+		// оператору, обязано читаться тем же загрузчиком (kacho#2739).
+		ProseDirs: []string{".", "../../internal/apps/kacho/config"},
+		Base:      nil,
+		Load:      func() (any, error) { return loadAsMainDoes() },
 	})
 }
 

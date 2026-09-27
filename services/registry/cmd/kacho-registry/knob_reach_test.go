@@ -24,7 +24,10 @@ func TestEveryKnobTheProbesSetReachesTheLoader(t *testing.T) {
 	knobreach.Gate(t, knobreach.Package{
 		Service: "registry",
 		Dir:     ".",
-		Base:    probeBaseEnv(),
-		Load:    func() (any, error) { return config.Load() },
+		// Тексты процесса и его конфигурации: имя, которое они называют
+		// оператору, обязано читаться тем же загрузчиком (kacho#2739).
+		ProseDirs: []string{".", "../../internal/apps/kacho/config"},
+		Base:      probeBaseEnv(),
+		Load:      func() (any, error) { return config.Load() },
 	})
 }

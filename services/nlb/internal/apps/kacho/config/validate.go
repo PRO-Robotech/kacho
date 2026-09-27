@@ -119,7 +119,7 @@ func (c Config) Validate() error {
 	errs = multierr.Append(errs, c.TrustedForwarders().Require(grpcsrv.ForwarderGate{
 		Production:   c.Mode().IsProduction(),
 		DevTrustAny:  c.Authz.TrustAnyForwarder,
-		SANsKnob:     "authz.trusted-forwarder-sans (env KACHO_NLB_AUTHZ__TRUSTED_FORWARDER_SANS)",
+		SANsKnob:     "authz.trusted-forwarder-sans (env KACHO_NLB_AUTHZ__TRUSTED-FORWARDER-SANS)",
 		TrustAnyKnob: "authz.trust-any-forwarder (env KACHO_NLB_AUTHZ__TRUST_ANY_FORWARDER)",
 	}))
 

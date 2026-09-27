@@ -161,6 +161,13 @@ func RegisterDefaults(v *viper.Viper) {
 	// ни в одном написании, и имя переменной в тексте отказа было бы обещанием
 	// возможности, которой нет.
 	v.SetDefault("authz.trust-domain", "")
+	// trust-any-forwarder — явный опт-ин «круг не сужаем», действующий ТОЛЬКО вне
+	// боевого режима (страж круга в Validate). Умолчание false. Ключ объявлен ради
+	// ПРИВЯЗКИ, по той же причине, что trust-domain выше: без этой строки
+	// `KACHO_VPC_AUTHZ__TRUST_ANY_FORWARDER`, которое текст отказа круга называет
+	// оператору, не доезжало ни в одном написании (kacho#2739; держит гейт имён
+	// ручек `cmd/vpc/knob_reach_test.go`).
+	v.SetDefault("authz.trust-any-forwarder", false)
 
 	// per-object list-filter (per-page BatchCheck-filtered List).
 	// Default enabled=true: List<Resource> возвращает только доступные объекты
