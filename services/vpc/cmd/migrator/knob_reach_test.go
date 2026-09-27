@@ -1,0 +1,30 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+package main
+
+// knob_reach_test.go — каждое имя ручки, которое задают пробы точки наката,
+// ДОЕЗЖАЕТ до того, что эта точка читает (kacho#2737).
+//
+// Читатель здесь — не загрузчик службы целиком, а СБОРКА НАКАТА
+// (`buildRunner`): точка наката спрашивает у конфигурации только адрес своей
+// базы, и имя, которое читает служба, но не накат, для этого двоичного файла
+// не значит ничего. Спрашивается ровно тот путь, которым процесс строит накат.
+// Устройство вопроса и перепись — `internal/knobreach`.
+
+import (
+	"testing"
+	"testing/fstest"
+
+	"github.com/PRO-Robotech/kacho/internal/knobreach"
+)
+
+func TestEveryKnobTheProbesSetReachesTheLoader(t *testing.T) {
+	knobreach.Gate(t, knobreach.Package{
+		Service: "vpc (точка наката)",
+		Dir:     ".",
+		Load: func() (any, error) {
+			return buildRunner(&rootOptions{dialect: "postgres"}, fstest.MapFS{})
+		},
+	})
+}

@@ -57,16 +57,12 @@ import (
 	"github.com/PRO-Robotech/kacho/services/registry/internal/repo/kacho/pg"
 )
 
-// bootConfig — конфигурация, загруженная ТЕМ ЖЕ вызовом, что и на старте
-// (`config.Load` из переменных окружения).
-//
-// Литерал `config.Config{…}` здесь был бы ДРУГОЙ величиной: он обошёл бы
-// умолчания, а половина полей дескриптора приезжает именно из них (граница
-// обработки, бюджет отказов, окно кэша) — и проба утверждала бы про
-// конфигурацию, которой не бывает ни на одной посадке.
-func bootConfig(t *testing.T, env map[string]string) config.Config {
-	t.Helper()
-	base := map[string]string{
+// probeBaseEnv — окружение, без которого загрузчик не строит конфигурацию
+// вовсе. Одно на пакет: его выставляет `bootConfig`, и его же получает гейт
+// имён ручек (knob_reach_test.go) — вопрос к загрузчику задаётся на той же
+// конфигурации, с которой проба поднимает процесс.
+func probeBaseEnv() map[string]string {
+	return map[string]string{
 		"KACHO_REGISTRY_DB_PASSWORD":                  "secret",
 		"KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR":          "kaname-internal.kacho.svc:9091",
 		"KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS": gatewaySAN,
@@ -81,6 +77,18 @@ func bootConfig(t *testing.T, env map[string]string) config.Config {
 		// ЛЮБОМ режиме — `validateSecurityConfig` в serve_test.go.
 		"KACHO_REGISTRY_AUTH_MODE": "dev",
 	}
+}
+
+// bootConfig — конфигурация, загруженная ТЕМ ЖЕ вызовом, что и на старте
+// (`config.Load` из переменных окружения).
+//
+// Литерал `config.Config{…}` здесь был бы ДРУГОЙ величиной: он обошёл бы
+// умолчания, а половина полей дескриптора приезжает именно из них (граница
+// обработки, бюджет отказов, окно кэша) — и проба утверждала бы про
+// конфигурацию, которой не бывает ни на одной посадке.
+func bootConfig(t *testing.T, env map[string]string) config.Config {
+	t.Helper()
+	base := probeBaseEnv()
 	for k, v := range env {
 		base[k] = v
 	}

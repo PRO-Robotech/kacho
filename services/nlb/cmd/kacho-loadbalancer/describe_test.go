@@ -44,16 +44,11 @@ import (
 
 const probeGatewaySAN = "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
 
-// bootConfig — конфигурация, загруженная ТЕМ ЖЕ вызовом, что и на старте
-// (`config.Load` из переменных окружения; путь к файлу пуст — ConfigMap'а в
-// прогоне нет).
-//
-// Литерал `config.Config{…}` здесь был бы ДРУГОЙ величиной: он обошёл бы
-// умолчания, а половина полей дескриптора приезжает именно из них — и проба
-// утверждала бы про конфигурацию, которой не бывает ни на одной посадке. Ровно
-// так пропала бы, например, величина бюджета отказов: она приезжает умолчанием.
-func bootConfig(t *testing.T, env map[string]string) *config.Config {
-	t.Helper()
+// probeBaseEnv — окружение, без которого загрузчик не строит конфигурацию
+// вовсе. Одно на пакет: его выставляет `bootConfig`, и его же получает гейт
+// имён ручек (knob_reach_test.go) — вопрос к загрузчику задаётся на той же
+// конфигурации, с которой проба поднимает процесс.
+func probeBaseEnv() map[string]string {
 	// ДЕФИСЫ В ИМЕНАХ — НЕ ОПИСКА, И ЭТО ПРАВИЛО О КЛАССЕ КЛЮЧЕЙ, А НЕ ОБ ОДНОМ.
 	//
 	// viper заменяет на `__` ТОЛЬКО точку; дефис в имени ключа доезжает до имени
@@ -67,7 +62,7 @@ func bootConfig(t *testing.T, env map[string]string) *config.Config {
 	// подчёркиванием уходит в пустоту молча — ни отказа, ни предупреждения,
 	// величина остаётся умолчанием. Так проба зеленела бы на конфигурации,
 	// которой процесс не получал.
-	base := map[string]string{
+	return map[string]string{
 		"KACHO_NLB_MODE":                          "dev",
 		"KACHO_NLB_REPOSITORY__POSTGRES__URL":     "postgres://u:p@pg-nlb:5432/kacho_nlb?sslmode=require",
 		"KACHO_NLB_EXTAPI__IAM__INTERNAL-ADDR":    "kaname-internal:9091",
@@ -82,6 +77,19 @@ func bootConfig(t *testing.T, env map[string]string) *config.Config {
 		// законных значения, и незаданное среди них не значится.
 		"KACHO_NLB_QUOTA__AUTHORITY": "not-deployed",
 	}
+}
+
+// bootConfig — конфигурация, загруженная ТЕМ ЖЕ вызовом, что и на старте
+// (`config.Load` из переменных окружения; путь к файлу пуст — ConfigMap'а в
+// прогоне нет).
+//
+// Литерал `config.Config{…}` здесь был бы ДРУГОЙ величиной: он обошёл бы
+// умолчания, а половина полей дескриптора приезжает именно из них — и проба
+// утверждала бы про конфигурацию, которой не бывает ни на одной посадке. Ровно
+// так пропала бы, например, величина бюджета отказов: она приезжает умолчанием.
+func bootConfig(t *testing.T, env map[string]string) *config.Config {
+	t.Helper()
+	base := probeBaseEnv()
 	for k, v := range env {
 		base[k] = v
 	}

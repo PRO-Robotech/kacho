@@ -68,6 +68,22 @@ import (
 // зависит от вывода.
 func discard() *slog.Logger { return slog.New(slog.NewTextHandler(&strings.Builder{}, nil)) }
 
+// probeBaseEnv — окружение, без которого загрузчик не строит конфигурацию
+// вовсе. Одно на пакет: его выставляет `bootConfig`, и его же получает гейт
+// имён ручек (knob_reach_test.go) — вопрос к загрузчику задаётся на той же
+// конфигурации, с которой проба поднимает процесс.
+func probeBaseEnv() map[string]string {
+	return map[string]string{
+		"KACHO_STORAGE_DB_PASSWORD":                  "secret",
+		"KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR":          "kaname-internal:9091",
+		"KACHO_STORAGE_AUTHZ_TRUSTED_FORWARDER_SANS": gatewaySAN + "," + computeSAN,
+		// Домен доверия — величина установки: без неё дескриптор не принимается,
+		// потому что процесс, не назвавший домена, своим не признаёт никого.
+		"KACHO_STORAGE_AUTHZ_TRUST_DOMAIN": "kacho.cloud",
+		"KACHO_STORAGE_AUTH_MODE":          "dev",
+	}
+}
+
 // bootConfig — конфигурация, загруженная ТЕМ ЖЕ вызовом, что и на старте
 // (`config.Load` из переменных окружения).
 //
@@ -77,15 +93,7 @@ func discard() *slog.Logger { return slog.New(slog.NewTextHandler(&strings.Build
 // про конфигурацию, которой не бывает ни на одной посадке.
 func bootConfig(t *testing.T, env map[string]string) config.Config {
 	t.Helper()
-	base := map[string]string{
-		"KACHO_STORAGE_DB_PASSWORD":                  "secret",
-		"KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR":          "kaname-internal:9091",
-		"KACHO_STORAGE_AUTHZ_TRUSTED_FORWARDER_SANS": gatewaySAN + "," + computeSAN,
-		// Домен доверия — величина установки: без неё дескриптор не принимается,
-		// потому что процесс, не назвавший домена, своим не признаёт никого.
-		"KACHO_STORAGE_AUTHZ_TRUST_DOMAIN": "kacho.cloud",
-		"KACHO_STORAGE_AUTH_MODE":          "dev",
-	}
+	base := probeBaseEnv()
 	for k, v := range env {
 		base[k] = v
 	}
