@@ -12,7 +12,7 @@
         dialled-transport-discipline delete-step-discipline \
         helm-deps reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo seed-storage seed-vpc-pools \
         seed-vpc-pools-check e2e-newman stand-provenance stand-provenance-self-test \
-        managed-image-pins managed-image-pins-check stack-up
+        managed-image-pins managed-image-pins-check stack-up cert-manager-up
 
 SHELL := bash
 
@@ -571,6 +571,86 @@ UMBRELLA_OPTS := --set cert-manager.enabled=false
 # подстановки, а гейт `check-mtls-off-complete` защищал полноту списка для фазы,
 # которой нет. Исключение живёт, пока у него есть предмет.
 
+# cert-manager-up — cert-manager ОТДЕЛЬНЫМ релизом до продукта: ОДНО место на все
+# пути подъёма (kacho#2840).
+#
+# ПОЧЕМУ ЦЕЛЬ, А НЕ ШАГ РЕЦЕПТА. Порядок «cert-manager → его вебхук → продукт»
+# жил строками внутри `dev-up`, а `stack-up` применял ту же умбреллу с
+# `cert-manager.enabled=false` (UMBRELLA_OPTS) и релиза не ставил вовсе. На чистом
+# кластере первое же применение цепочки упиралось в отсутствие CRD Certificate/
+# Issuer. Копия порядка во втором рецепте разъехалась бы с первой так же, как
+# разъехалось его отсутствие, поэтому порядок записан здесь ОДИН раз, и оба пути
+# его зовут. Что второй копии нет и что оба пути зовут цель РАНЬШЕ продукта,
+# держит tests/helm/cert-manager-release-before-product-test.sh.
+#
+# ИСХОДОВ ЧЕТЫРЕ, и различаются они по владельцу CRD `certificates.cert-manager.io`,
+# а не по его наличию:
+#   • CRD нет — релиз ставится, вебхук ждётся;
+#   • CRD наш (этот релиз в этом ns): релиз `deployed` той же версии чарта — НЕ
+#     переставляется, вебхук ждётся; иначе (другая версия, сорванная установка)
+#     — `helm upgrade --install` доводит его до объявленного;
+#   • CRD чужой (оператор площадки держит свой, как на a8f60d в ns
+#     beget-cert-manager) — не ставится и не ждётся: второй экземпляр упёрся бы во
+#     владение CRD, а вебхук чужого экземпляра — предмет его владельца;
+#   • наличие НЕ ПРОЧИТАНО (API не ответил, ответ не разобран) — отказ. «Не
+#     прочитано» не значит «нет»: поставить второй cert-manager туда, где первый
+#     уже стоит, нельзя оттого, что спросить не удалось.
+#
+# СТРАЖ — guard-declared-context: цель пишет в кластер активного контекста и
+# зовётся из путей, которые свою цель уже подтвердили (`dev-up` — guard-kind-
+# context, `stack-up` — guard-destructive). Пространство имён умолчания не имеет по
+# тому же доводу, по которому его не имеет STACK: его называет путь подъёма.
+cert-manager-up: guard-declared-context
+	@[ -n "$(CERT_MANAGER_NAMESPACE)" ] || { \
+	  echo "ABORT: CERT_MANAGER_NAMESPACE не задан — ставить cert-manager некуда."; \
+	  echo "       Умолчания здесь быть не может: пространство имён называет путь"; \
+	  echo "       подъёма (dev-up / stack-up), а «наверное, kacho» — не выбор."; \
+	  exit 2; }
+	@set -e; ns="$(CERT_MANAGER_NAMESPACE)"; rel="$(CERT_MANAGER_RELEASE)"; \
+	crd="$$(kubectl get crd certificates.cert-manager.io --request-timeout=30s --ignore-not-found -o json)" || { \
+	  echo "ABORT: наличие cert-manager НЕ ПРОЧИТАНО — kubectl не ответил за 30 с (текст выше)."; \
+	  echo "       «Не прочитано» не значит «нет»: второй cert-manager поверх первого"; \
+	  echo "       не ставится оттого, что спросить не удалось."; \
+	  exit 1; }; \
+	owner="$$(printf '%s' "$$crd" | python3 -c 'import json,sys; s=sys.stdin.read().strip(); d=json.loads(s) if s else None; d=(d.get("items") or [None])[0] if d and d.get("kind")=="List" else d; a=None if d is None else (d.get("metadata",{}).get("annotations") or {}); print("absent" if a is None else a.get("meta.helm.sh/release-name","")+"|"+a.get("meta.helm.sh/release-namespace",""))')" || { \
+	  echo "ABORT: ответ kubectl о CRD cert-manager НЕ ПРОЧИТАНО как JSON — владельца не установить."; \
+	  exit 1; }; \
+	chart="$$(helm show chart $(CERT_MANAGER_CHART))"; \
+	want="$$(sed -n 's/^name: *//p' <<<"$$chart")-$$(sed -n 's/^version: *//p' <<<"$$chart")"; \
+	case "$$owner" in \
+	  absent) why="CRD cert-manager в кластере нет" ;; \
+	  "$$rel|$$ns") \
+	    rows="$$(timeout 60 helm list -n "$$ns" -a --filter "^$$rel\$$" -o json)" || { \
+	      echo "ABORT: состояние релиза $$rel в ns $$ns НЕ ПРОЧИТАНО — helm не ответил за 60 с (текст выше)."; \
+	      exit 1; }; \
+	    have="$$(printf '%s' "$$rows" | python3 -c 'import json,sys; r=json.load(sys.stdin); print(r[0]["status"]+"|"+r[0]["chart"] if r else "")')" || { \
+	      echo "ABORT: ответ helm о релизе $$rel НЕ ПРОЧИТАН как JSON."; \
+	      exit 1; }; \
+	    if [ "$$have" = "deployed|$$want" ]; then \
+	      echo "=== cert-manager: релиз $$rel ($$want) уже стоит в ns $$ns — НЕ переставляется ==="; \
+	      why=""; \
+	    else \
+	      why="релиз $$rel в ns $$ns: $${have:-записи нет}, объявлен $$want"; \
+	    fi ;; \
+	  "|") \
+	    echo "=== cert-manager: уже стоит, и он НЕ наш — у CRD нет записи владельца helm (поставлен не helm) ==="; \
+	    echo "    Не ставится и не ждётся: второй экземпляр упёрся бы во владение CRD."; \
+	    exit 0 ;; \
+	  *) \
+	    echo "=== cert-manager: уже стоит, и он НЕ наш — владелец CRD: релиз '$${owner%%|*}' в ns '$${owner#*|}' ==="; \
+	    echo "    Не ставится и не ждётся: второй экземпляр упёрся бы во владение CRD, а"; \
+	    echo "    вебхук чужого экземпляра — предмет его владельца."; \
+	    exit 0 ;; \
+	esac; \
+	if [ -n "$$why" ]; then \
+	  echo "=== cert-manager: ОТДЕЛЬНЫЙ релиз, до продукта ($$why) ==="; \
+	  helm upgrade --install $(CERT_MANAGER_RELEASE) $(CERT_MANAGER_CHART) -n "$$ns" --create-namespace \
+	    --set crds.enabled=true \
+	    --wait --timeout 5m; \
+	fi; \
+	echo "=== ждём вебхук cert-manager (до применения Issuer/Certificate) ==="; \
+	kubectl -n "$$ns" rollout status deploy/$(CERT_MANAGER_RELEASE)-webhook --timeout=180s
+
 # `set -e` — ОБЯЗАТЕЛЕН, а не косметика. Рецепт — одна `; \`-цепочка, т.е. упавшая
 # команда НЕ прерывает цель: следующая просто выполняется. Реально наблюдалось
 # 2026-07-16 в CI — `helm phase 2` упал с UPGRADE FAILED, а цель дошла до конца и
@@ -616,12 +696,8 @@ dev-up: preflight
 	fi; \
 	./scripts/gen-tls-cert.sh; \
 	bash scripts/helm-umbrella-deps.sh; \
-	echo "=== cert-manager: ОТДЕЛЬНЫЙ релиз, до продукта ==="; \
-	helm upgrade --install $(CERT_MANAGER_RELEASE) $(CERT_MANAGER_CHART) -n kacho --create-namespace \
-	  --set crds.enabled=true \
-	  --wait --timeout 5m; \
-	echo "=== ждём вебхук cert-manager (до применения Issuer/Certificate) ==="; \
-	kubectl -n kacho rollout status deploy/$(CERT_MANAGER_RELEASE)-webhook --timeout=180s; \
+	$(MAKE) --no-print-directory cert-manager-up CERT_MANAGER_NAMESPACE=kacho \
+	  EXPECT_CONTEXT=kind-$(CLUSTER_NAME); \
 	echo "=== предусловные секреты: ПЕРЕД первым прогоном helm, а не между прогонами ==="; \
 	echo "    Общий секрет обратных вызовов провайдер берёт ОБЯЗАТЕЛЬНОЙ ссылкой уже в"; \
 	echo "    базовом профиле: необязательная ссылка на отсутствующий секрет дала бы"; \
@@ -787,6 +863,13 @@ dev-prod-up: dev-up
 # управляемом кластере он только судит и отказывает, называя производителя —
 # ключевой материал там приходит вне дерева. Разбор — в шапке самого скрипта.
 #
+# CERT-MANAGER — ТЕМ ЖЕ МЕСТОМ, ЧТО У `dev-up` (kacho#2840). Умбрелла здесь
+# применяется с `cert-manager.enabled=false` (UMBRELLA_OPTS), и до этой правки
+# отдельного релиза цель не ставила: на чистом кластере цепочка упиралась в
+# отсутствие CRD Certificate/Issuer. Теперь первым шагом зовётся `cert-manager-up`
+# — та же цель, что у `dev-up`; на кластере, где cert-manager уже стоит (свой той
+# же версии либо чужой, как у оператора a8f60d), она его не переставляет.
+#
 #   make -C deploy stack-up STACK=a8f60d
 #   make -C deploy stack-up STACK=prod STACK_EXTRA_ARGS='-f ./helm/umbrella/values.digests.yaml'
 stack-up:
@@ -829,6 +912,8 @@ stack-up:
 	echo "=== стенд $(STACK): цепочка ПРОЧИТАНА из stacks.txt ==="; \
 	printf '  %s\n' $$args; \
 	ctx="$$(kubectl config current-context 2>/dev/null || true)"; \
+	$(MAKE) --no-print-directory cert-manager-up CERT_MANAGER_NAMESPACE=$(STACK_NAMESPACE) \
+	  EXPECT_CONTEXT="$$ctx"; \
 	$(MAKE) --no-print-directory module-manifests-configmap \
 	  MODULE_MANIFESTS_STACK=$(STACK) STACK_NAMESPACE=$(STACK_NAMESPACE) \
 	  EXPECT_CONTEXT="$$ctx"; \
