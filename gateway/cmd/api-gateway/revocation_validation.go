@@ -39,11 +39,12 @@ import (
 type RevocationConfig struct {
 	// IdentityProvider — ПОСАДКА ЛИЧНОСТИ, объявленная профилем (задача #1125).
 	//
-	// Незаданная посадка — отказ старта первым и в одиночку: пока она
-	// неизвестна, неизвестно и то, что требовать. Объявленная требований не
-	// разводит (ветки по снятому значению нет, #2873) и называется в отказе:
-	// под `own` токены чеканим мы, и спросить, отозван ли токен, можно только у
-	// нас.
+	// Разводит требование НАШЕГО авторитета отзыва: под `own` токены чеканим мы,
+	// и спросить, отозван ли токен, можно только у нас. Незаданная посадка —
+	// отказ старта первым и в одиночку: пока она неизвестна, неизвестно и то, что
+	// требовать. Вне `own` пин фундамента v1.8.0 производит ещё одно значение,
+	// `external`; его снятие — выпуск v1.10.0-rc.3 (corelib#26), подъём пина —
+	// #2862.
 	IdentityProvider identityposture.Provider
 
 	// PlatformTokenIssuer — издатель НАШЕЙ чеканки, объявленный профилем
@@ -98,13 +99,18 @@ const (
 // профиль. Поэтому под `own` необъявленный издатель — отказ старта с именем
 // ручки, рядом с отказом по адресу.
 //
-// # Ветки по посадке нет
+// # Требование НАЛИЧИЯ разведено посадкой, требования ТРАНСПОРТА — нет
 //
-// Сюда доходит только ОБЪЯВЛЕННАЯ посадка: незаданная отвергнута раньше, в
-// validateProductionRevocationConfig. Второе значение посадки фундамент снял
-// (corelib#26), и ветвь по нему снята вместе с её пробами (#2873): требования
-// издателя, адреса, транспорта и пары предъявляются всякой объявленной
-// посадке, а отказ называет ту, что объявлена.
+// Наличие издателя и адреса требуется под `own`. Заданный адрес судится теми же
+// правилами на ЛЮБОЙ посадке: край, объявивший наш авторитет, его и
+// спрашивает, и негодный хоп нерабочий везде одинаково.
+//
+// Ветвь «вне `own`» читает посадку сравнением с `own`, а не именем второго
+// значения: пин фундамента v1.8.0 ещё производит `external` из конфигурации
+// (умолчание чарта края — оно), и край на нём стартует без нашего авторитета,
+// как стартовал. Держат это пробы на посадке, полученной разбором ручки
+// (externalFromConfig); когда поднятый пин (#2862) перестанет её разбирать,
+// пробы покраснеют и назовут ветвь, которая снимается тем же изменением.
 //
 // # Пара предъявления обязательна вместе с адресом
 //
@@ -115,22 +121,29 @@ const (
 // пары отвергается отдельно: она хуже отсутствия обеих, потому что выглядит
 // настроенной.
 func judgeOurRevocationAuthority(cfg RevocationConfig) []string {
-	posture := config.IdentityProviderKnob + "=" + cfg.IdentityProvider.String()
 	var problems []string
-	if strings.TrimSpace(cfg.PlatformTokenIssuer) == "" {
+	if cfg.IdentityProvider == identityposture.Own && strings.TrimSpace(cfg.PlatformTokenIssuer) == "" {
 		problems = append(problems,
 			platformIssuerKnob+" is empty — on this posture we mint the tokens, and our "+
 				"revocation authority is asked about a token only through the acceptance record of "+
 				"our declared issuer; declare the issuer this installation mints under, the same "+
-				"value the identity service issues with [required because "+posture+"]")
+				"value the identity service issues with [required because "+
+				config.IdentityProviderKnob+"=own]")
 	}
 
 	addr := strings.TrimSpace(cfg.PlatformRevocationURL)
 	if addr == "" {
+		if cfg.IdentityProvider != identityposture.Own {
+			// Вне `own` наша чеканка краем не принимается, пока её не объявит
+			// перечень издателей, — а объявленный наш издатель без авторитета
+			// отзыва отвергается раньше, разбором приёма (`TokenAcceptance`).
+			return problems
+		}
 		return append(problems,
 			platformRevocationURLKnob+" is empty — on this posture we mint the tokens and "+
 				"nobody else can be asked whether one was revoked, so a revoked token would "+
-				"keep working until it expires on its own [required because "+posture+"]")
+				"keep working until it expires on its own [required because "+
+				config.IdentityProviderKnob+"=own]")
 	}
 
 	if err := validateEndpoint(addr); err != nil {

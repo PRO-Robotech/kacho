@@ -31,9 +31,10 @@ import (
 //   - authz_check   — whether the per-RPC authz middleware enforces. With
 //     KACHO_API_GATEWAY_AUTHZ_ENABLED=false it mounts as a pass-through, i.e. no
 //     per-RPC Check happens at all.
-//   - identity_provider — the identity posture the process accepted (`own` —
-//     a person is checked by our own minting). Read by the posture gate off
-//     the LIVE process, because the
+//   - identity_provider — the identity posture the process accepted, as the
+//     pinned foundation spells it: `own` (a person is checked by our own
+//     minting) or, while pin v1.8.0 still parses it, the transitional
+//     `external`. Read by the posture gate off the LIVE process, because the
 //     posture decides which start-up demands apply and a values map answers that
 //     question with intent: its knobs arrive through envFrom and are read once at
 //     start-up, so editing the map changes the map, not the process.

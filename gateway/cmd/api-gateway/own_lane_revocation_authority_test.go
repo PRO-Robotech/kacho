@@ -77,13 +77,41 @@ func ownLane() RevocationConfig {
 	return c
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Ось НАШЕГО авторитета: требуется под `own` вместе с нашим издателем.
+// externalFromConfig — посадка `external` так, как её производит КОНФИГУРАЦИЯ
+// края: тем же разбором ручки, что у процесса (`ResolvedIdentityProvider`), а
+// не именем значения в коде. Пин фундамента v1.8.0 это значение ещё разбирает,
+// и чарт края объявляет его умолчанием (gateway/deploy/values.yaml,
+// authn.identityProvider), поэтому поведение стража на нём наблюдаемо и
+// держится пробами ниже.
 //
-// Случаи «под external наш авторитет не требуется» и «заданный авторитет
-// судится и под external» сняты вместе с ветвью по этой посадке (#2873):
-// фундамент снял значение (corelib#26), и полосы, которой они противопоставляли
-// `own`, у края больше нет.
+// САМОИСТЕЧЕНИЕ. Фундамент снимает значение в выпуске v1.10.0-rc.3
+// (corelib#26), подъём пина — #2862. Когда разбор откажет, ветвь «вне `own`» в
+// judgeOurRevocationAuthority лишится производителя входа: проба краснеет и
+// называет, что снимается тем же изменением, вместо того чтобы зеленеть над
+// ветвью, в которую больше никто не приходит.
+func externalFromConfig(t *testing.T) identityposture.Provider {
+	t.Helper()
+	p, err := config.Config{IdentityProvider: "external"}.ResolvedIdentityProvider()
+	if err != nil {
+		t.Fatalf("%s", retiredExternalFinding(err))
+	}
+	if !p.IsSet() || p == identityposture.Own {
+		t.Fatalf("разбор external дал %v — проба судит не ту посадку", p)
+	}
+	return p
+}
+
+// retiredExternalFinding — текст находки, когда пин фундамента перестал
+// разбирать `external`. Один на все пробы этой посадки.
+func retiredExternalFinding(err error) string {
+	return "пин фундамента больше не разбирает посадку external (" + err.Error() + "): ветвь «вне own» " +
+		"в judgeOurRevocationAuthority и пробы на этой посадке лишились производителя входа и " +
+		"снимаются тем же изменением, что поднял пин (#2862)"
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ось НАШЕГО авторитета: НАЛИЧИЕ требуется под `own` вместе с нашим издателем;
+// заданный авторитет судится на любой посадке.
 
 // Под `own` край обязан требовать НАШЕГО авторитета отзыва. Иначе смена посадки
 // стала бы способом выключить чтение отзыва на предъявлении.
@@ -130,6 +158,21 @@ func TestOwnLaneDemandsOurPlatformIssuerDeclared(t *testing.T) {
 func TestOwnLaneWithOurPlatformIssuerDeclaredStarts(t *testing.T) {
 	if err := validateProductionRevocationConfig("production", ownLane()); err != nil {
 		t.Fatalf("под own с объявленным нашим издателем и авторитетом старт обязан проходить: %v", err)
+	}
+}
+
+// ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ той же оси: вне `own` наличие нашего авторитета и
+// издателя не требуется — там наша чеканка краем не принимается, пока её не
+// объявит перечень издателей, а объявленный наш издатель без авторитета
+// отвергается раньше, разбором приёма. Без этого случая ось выше зеленела бы
+// на страже, требующем нашего авторитета всегда, а отказ называл бы посадкой,
+// на которой «чеканим мы», ту, на которой мы не чеканим.
+func TestExternalLaneNeedsNoAuthorityOfOurOwn(t *testing.T) {
+	err := validateProductionRevocationConfig("production", RevocationConfig{
+		IdentityProvider: externalFromConfig(t),
+	})
+	if err != nil {
+		t.Fatalf("под external наш авторитет отзыва и наш издатель не требуются, получено: %v", err)
 	}
 }
 
@@ -197,6 +240,25 @@ func TestOurAuthorityHopRefusesHalfAnIdentity(t *testing.T) {
 			t.Fatalf("отказ обязан называть недостающую половину, получено: %v", err)
 		}
 	})
+}
+
+// Заданный НАШ авторитет судится теми же правилами и вне `own`: посадка снимает
+// требование НАЛИЧИЯ, а не правила транспорта. Близнец случая выше — различие
+// одно: адрес объявлен.
+func TestADeclaredAuthorityOfOursIsJudgedOnTheExternalLaneToo(t *testing.T) {
+	cfg := ourAuthorityWired()
+	cfg.IdentityProvider = externalFromConfig(t)
+	if err := validateProductionRevocationConfig("production", cfg); err != nil {
+		t.Fatalf("годный наш авторитет под external обязан проходить, получено: %v", err)
+	}
+	cfg.PlatformRevocationCAFile = ""
+	err := validateProductionRevocationConfig("production", cfg)
+	if err == nil {
+		t.Fatal("наш авторитет без якоря обязан отвергаться и под external")
+	}
+	if !strings.Contains(err.Error(), "KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_CA_FILE") {
+		t.Fatalf("отказ обязан называть ручку якоря, получено: %q", err.Error())
+	}
 }
 
 // Дев-послабление соседа полосой не трогается: класс окружения решает раньше.

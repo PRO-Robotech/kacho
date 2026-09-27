@@ -57,7 +57,7 @@ func postureBranchOf(f *ast.File, pos token.Pos) string {
 		}
 		if pos <= ifs.Body.Lbrace || pos >= ifs.Body.Rbrace {
 			// Ветка else не считается веткой посадки: else «не own» есть
-			// «не задано», и это не решение.
+			// «external или не задано», и это не решение.
 			return true
 		}
 		if p := postureNamedIn(ifs.Cond); p != "" {
@@ -70,8 +70,10 @@ func postureBranchOf(f *ast.File, pos token.Pos) string {
 
 // postureNamedIn — какую посадку называет условие: селектор
 // `identityposture.Own`, единственный законный способ назвать её в дереве
-// (`corelib/identityposture`). Второе значение фундамент снял (corelib#26), и
-// ветка, названная им, посадкой не считается.
+// (`corelib/identityposture`). Второе значение, `external`, пин фундамента
+// v1.8.0 ещё разбирает, но его имени край не читает (#2873): вне `own` корень
+// ветвится сравнением с `own`, и ветка, названная вторым значением, посадкой
+// не считается.
 func postureNamedIn(cond ast.Expr) string {
 	found := ""
 	ast.Inspect(cond, func(n ast.Node) bool {
@@ -228,8 +230,8 @@ func TestOwnLaneGate_Twin_AReaderUnderTheNamedPostureIsSilent(t *testing.T) {
 			t.Fatalf("законный читатель под own объявлен заведённым без посадки: %+v", s)
 		}
 	}
-	// Читатель в ветке `else` посадки own — НЕ под own: «не own» есть «не
-	// задано», и это не решение о посадке.
+	// Читатель в ветке `else` посадки own — НЕ под own: «не own» есть
+	// «external или не задано», и это не решение о посадке.
 	fset, f = judgeWiringFixture(t, "\tif lane == identityposture.Own { _ = 1 } else { auth = auth.WithHumanSession(ad) }")
 	sites := wiringSites(fset, f, "WithHumanSession")
 	if sites[len(sites)-1].posture != "" {
