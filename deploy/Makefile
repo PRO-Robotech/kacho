@@ -1116,6 +1116,12 @@ managed-image-pins-check:
 # 3. Прогоняет ВСЕ и печатает сводку. Прежний `|| exit 1` обрывался на первой
 #    же красной, и правка вслепую превращалась в серию прогонов по одной находке.
 #
+# КОДЫ ПРОВЕРОК РАЗВЕДЕНЫ НА ТРИ СПИСКА (#2782): 0 — прошло; 2 — «условие не
+# создано» (владелец предпосылки подтвердил, что условия нет — см. render_or_fatal
+# в outcome.sh); иное — провалено. Код 2 при этом умеет выдать и сам bash — на
+# синтаксической ошибке скрипта, — поэтому скрипт сперва РАЗБИРАЕТСЯ (`bash -n`),
+# и неразбираемый идёт в провал отдельной строкой, а не в «условие не создано».
+#
 # gate-self-test — самопроверки гейтов ОБЯЗАНЫ исполняться.
 #
 # Самопроверка (`--self-test`) — это доказательство, что гейт умеет краснеть на
@@ -1327,10 +1333,11 @@ helm-manifest-test: gate-self-test
 	echo "=== зависимости умбреллы (проверки рендерят её; charts/*.tgz не в git) ==="; \
 	bash scripts/helm-umbrella-deps.sh; \
 	rm -rf helm/umbrella/tmpcharts-*; \
-	failed=""; unmet=""; total=0; \
+	failed=""; unmet=""; broken=""; total=0; \
 	for t in tests/helm/*-test.sh; do \
 	  total=$$((total+1)); \
 	  echo "=== $$t ==="; \
+	  if ! bash -n "$$t"; then broken="$$broken $$(basename $$t)"; continue; fi; \
 	  bash "$$t" && rc=0 || rc=$$?; \
 	  case "$$rc" in \
 	    0) ;; \
@@ -1345,8 +1352,13 @@ helm-manifest-test: gate-self-test
 	  echo "    нет инструмента, не собраны зависимости умбреллы, нет профиля на диске."; \
 	  echo "    В зачёт «прошло» это не идёт и находкой не является."; \
 	fi; \
-	if [ -n "$$failed" ]; then \
-	  echo; echo "!!! helm-manifest-test: провалено$$failed (из $$total)"; exit 1; \
+	if [ -n "$$broken" ]; then \
+	  echo; echo "!!! helm-manifest-test: СКРИПТ ПРОВЕРКИ НЕ РАЗБИРАЕТСЯ$$broken"; \
+	  echo "    Отдельно от «условия не создано»: bash на синтаксической ошибке выходит"; \
+	  echo "    кодом 2 — тем же, которым проверка объявляет несозданное условие."; \
+	fi; \
+	if [ -n "$$failed$$broken" ]; then \
+	  echo; echo "!!! helm-manifest-test: провалено$$failed$$broken (из $$total)"; exit 1; \
 	fi; \
 	if [ -n "$$unmet" ]; then exit 2; fi; \
 	echo; echo "helm-manifest-test: all green ($$total проверок)"

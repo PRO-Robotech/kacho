@@ -228,7 +228,9 @@ check_stack() {
   out="$(judge "$render" "${profiles[@]}")" \
     || { rm -f "$render"; fatal "стенд $stack: разбор объявлений сорвался — судить не о чем"; }
   rm -f "$render"
-  case "$out" in *NORENDER*) fatal "стенд $stack: в рендере ноль шаблонов пода — прочитано ноль, а не требуется ноль" ;; esac
+  # Рендер УДАЛСЯ (render_or_fatal выше), а шаблонов пода в нём ноль — при
+  # созданном условии это свойство дерева, а не «не выполнилось» (#2782).
+  case "$out" in *NORENDER*) fail "стенд $stack: в успешном рендере ноль шаблонов пода — прочитано ноль, а не требуется ноль" ;; esac
   local decl=0 line kind name rest req=""
   while IFS= read -r line; do
     kind="${line%% *}"; rest="${line#* }"; name="${rest%% *}"

@@ -112,14 +112,15 @@ STACKS="$(stacks_names)" \
 for stack in $STACKS; do
   args="$(stacks_args "$stack" "$UMBRELLA")" \
     || fatal "стек $stack: цепочка стенда не прочитана — helm без единого -f сел бы на умолчания чарта"
+  # Рендер — через общую реализацию исходов: отказ helm бывает УСЛОВИЕМ прогона
+  # (зависимости не собраны) либо СВОЙСТВОМ дерева (шаблон снят, не разбирается),
+  # и различает их ответ владельца предпосылки, а не этот гейт своим словом
+  # (#2782). Прежде любой отказ здесь уходил кодом 2 — и дефект дерева читался
+  # как «не выполнилось».
   # shellcheck disable=SC2086
-  helm template kacho-umbrella "$UMBRELLA" $args \
-      --namespace kacho >"$TMP/$stack.yaml" 2>"$TMP/$stack.err" \
-    || fatal "рендер стека «$stack» не удался — судить нечего:
-$(sed 's/^/       /' "$TMP/$stack.err")"
-  RENDERS=$((RENDERS + 1))
-  # Рендер удался и ПУСТ — это «условие не создано», а не чистое дерево.
-  [ -s "$TMP/$stack.yaml" ] || fatal "рендер стека «$stack» пуст — судить нечего"
+  helm_try kacho-umbrella "$UMBRELLA" $args --namespace kacho
+  render_nonempty_or_fatal "стек $stack"
+  printf '%s\n' "$HELM_OUT" >"$TMP/$stack.yaml"
 
   out="$(audit_render "$TMP/$stack.yaml" "$stack")" \
     || fatal "разбор рендера «$stack» отказал — это НЕ находка о дереве"

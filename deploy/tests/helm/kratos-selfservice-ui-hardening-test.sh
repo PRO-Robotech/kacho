@@ -245,9 +245,10 @@ fi
 #
 # Отказ здесь — исход «условие не создано» (код 2), а не находка о дереве.
 render "$DEV" "$UI_TMPL"
-render_or_fatal "values.dev.yaml → $UI_TMPL (положительный контроль)"
+# Пустой успешный рендер — та же развилка, что и отказ: классифицирует общая
+# реализация по ответу владельца предпосылки (#2782), а не этот гейт своим словом.
+render_nonempty_or_fatal "values.dev.yaml → $UI_TMPL (положительный контроль)"
 UI_DEV="$HELM_OUT"
-[ -n "$UI_DEV" ] || fatal "рендер values.dev.yaml → $UI_TMPL ПУСТ — подчарт kratos-selfservice-ui выключен на этом профиле, проверять нечего"
 
 # ── 1a. cookieSecret unset (enabled, no source) → render MUST fail ────────────
 # Layer an explicitly-empty cookieSecret over the otherwise-complete dev profile
@@ -274,9 +275,8 @@ ok
 
 # ── 1b. prod profile wires COOKIE_SECRET + CSRF_COOKIE_SECRET via secretKeyRef ─
 render "$PROD" "$UI_TMPL"
-render_or_fatal "values.prod.yaml → $UI_TMPL"
+render_nonempty_or_fatal "values.prod.yaml → $UI_TMPL"
 UI_PROD="$HELM_OUT"
-[ -n "$UI_PROD" ] || fatal "kratos-ui: prod profile rendered empty (sub-chart disabled?)"
 CS_REF=$(env_secret_ref "$UI_PROD" ui COOKIE_SECRET)
 CSRF_REF=$(env_secret_ref "$UI_PROD" ui CSRF_COOKIE_SECRET)
 [ -n "$CS_REF" ] && [ "$CS_REF" != "null" ] || fail "kratos-ui/prod: COOKIE_SECRET not via secretKeyRef"
