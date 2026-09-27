@@ -640,6 +640,13 @@ kaname:
     hooks: true
     metrics: true
     registryToken: true
+    # Режим слушателя выдачи — запрашивающий (`optional-mutual`): край
+    # предъявляет ему свою клиентскую пару на ретрансляции церемонии, и служба
+    # берёт адрес источника из `X-Forwarded-For` только у пира с проверенным
+    # сертификатом края (приёмка темпа службы доступа, Р7 п. 1, стадия S2 п. 2).
+    # Вызывающий без сертификата допускается. Согласие с целью края судит
+    # deploy/own_posture_stack_test.go.
+    registryTokenClientAuthMode: optional-mutual
     jwksProxy: true
     publicRest: true
     internalRest: true
