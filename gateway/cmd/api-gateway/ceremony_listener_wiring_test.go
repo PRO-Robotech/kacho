@@ -7,8 +7,10 @@
 // по kacho#2817, находка M1).
 //
 // Топология — та же, что в `main()`: ОДИН `http.Server` с
-// `listenerorigin.InternalConnContext` обслуживает и внешний слушатель, и
-// обёрнутый `listenerorigin.InternalListener` внутренний. Под `/` — настоящий
+// `listenerorigin.ConnContext` обслуживает и внешний слушатель, обёрнутый
+// `listenerorigin.ExternalListener`, и внутренний, обёрнутый
+// `listenerorigin.InternalListener`. Третий слушатель — без обёртки: на нём
+// координата церемонии отказывает так же, как на внутреннем. Под `/` — настоящий
 // диспетчер REST (`restmux.NewMux`) за снятием удостоверения, как в корне;
 // объявление смонтировано `handler.MountLoginLaneRoutes` с тем же обработчиком
 // `/` вторым аргументом.
@@ -57,24 +59,31 @@ func (s *countingListener) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(s.status)
 }
 
-// edgeListeners — внешний и внутренний слушатели одного `http.Server`.
-type edgeListeners struct{ external, internal string }
+// edgeListeners — слушатели одного `http.Server`: внешний и внутренний — с
+// обёртками, как в корне; третий — без обёртки, каким стал бы слушатель,
+// потерявший свою.
+type edgeListeners struct{ external, internal, unmarked string }
 
 func serveEdge(t *testing.T, h http.Handler) edgeListeners {
 	t.Helper()
-	srv := &http.Server{Handler: h, ReadHeaderTimeout: 5 * time.Second, ConnContext: listenerorigin.InternalConnContext}
-	extLn, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("внешний слушатель: %v", err)
+	srv := &http.Server{Handler: h, ReadHeaderTimeout: 5 * time.Second, ConnContext: listenerorigin.ConnContext}
+	listen := func(what string) net.Listener {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("%s слушатель: %v", what, err)
+		}
+		return ln
 	}
-	intLn, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("внутренний слушатель: %v", err)
-	}
-	go func() { _ = srv.Serve(extLn) }()
+	extLn, intLn, bareLn := listen("внешний"), listen("внутренний"), listen("немеченый")
+	go func() { _ = srv.Serve(listenerorigin.ExternalListener(extLn)) }()
 	go func() { _ = srv.Serve(listenerorigin.InternalListener(intLn)) }()
+	go func() { _ = srv.Serve(bareLn) }()
 	t.Cleanup(func() { _ = srv.Close() })
-	return edgeListeners{external: "http://" + extLn.Addr().String(), internal: "http://" + intLn.Addr().String()}
+	return edgeListeners{
+		external: "http://" + extLn.Addr().String(),
+		internal: "http://" + intLn.Addr().String(),
+		unmarked: "http://" + bareLn.Addr().String(),
+	}
 }
 
 // edgeAnswer — то, чем ответ различим снаружи: код, тело и заголовки без
@@ -193,9 +202,21 @@ func TestCeremonyListenerWiring_L13_TheInternalAdminListener404sTheCeremonyAndTh
 			t.Errorf("%s с внутреннего слушателя дошёл до слушателя выдачи", c.verb)
 		}
 
+		// (1а) Слушатель без обёртки: отказ по умолчанию — тот же ответ, что у
+		// несмонтированного пути. Метку «внешний» ставит только обёртка.
+		bareGot := ask(t, own.unmarked, c.method, c.target, c.contentType, c.body)
+		if bareGot.status != want.status || bareGot.body != want.body {
+			t.Errorf("%s на слушателе без обёртки: ответ {%d %q}, у несмонтированного пути {%d %q}",
+				c.verb, bareGot.status, bareGot.body, want.status, want.body)
+		}
+		if issuance.hits.Load() != before {
+			t.Errorf("%s со слушателя без обёртки дошёл до слушателя выдачи", c.verb)
+		}
+
 		// (2) Близнец — тот же край, тот же запрос, ВНЕШНИЙ слушатель: ретрансляция.
+		beforeExt := issuance.hits.Load()
 		ext := ask(t, own.external, c.method, c.target, c.contentType, c.body)
-		if issuance.hits.Load() != before+1 {
+		if issuance.hits.Load() != beforeExt+1 {
 			t.Errorf("%s на внешнем слушателе не дошёл до слушателя выдачи (код %d)", c.verb, ext.status)
 		}
 		if ext.status != http.StatusFound || ext.header.Get("Location") != ceremonyCallback {

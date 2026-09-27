@@ -95,6 +95,7 @@ type ownStackFacts struct {
 	IssuancePort string // kaname.ports.registryToken — порт слушателя выдачи и его записи на публичном Service
 	IssuanceURL  string // api-gateway.authn.iamIssuanceUrl — вторая цель ретрансляции края
 	IssuanceTLS  bool   // поднимает ли Служба слушатель выдачи под TLS — модель условия шаблона, issuanceListenerServesTLS
+	IssuanceMode string // режим слушателя выдачи — модель выражения шаблона, issuanceListenerMode
 }
 
 // ownStackCensus — объём осмотренного.
@@ -241,6 +242,19 @@ func judgeIssuanceTarget(f ownStackFacts) []string {
 				"отсутствии — `kaname.mtls.httpListeners`) — рукопожатие не сойдётся ни на одном "+
 				"запросе церемонии", f.Stack))
 	}
+	// Режим слушателя выдачи — тот, который край объявляет цели «выдача»
+	// (`relayClientAuthOptionalMutual`, gateway/cmd/api-gateway/login_lane_validation.go):
+	// слушатель запрашивает сертификат и проверяет предъявленный, и край
+	// предъявляет на рукопожатии свою пару (приёмка темпа службы доступа, Р7 п. 1,
+	// стадия S2 п. 2). Слушатель, сертификата не запрашивающий, пары края не
+	// получает; `mutual` отверг бы вызывающих без сертификата.
+	if u.Scheme == "https" && f.IssuanceTLS && f.IssuanceMode != issuanceListenerModeWanted {
+		findings = append(findings, fmt.Sprintf(
+			"стек %s: слушатель выдачи в режиме %q (`kaname.mtls.registryTokenClientAuthMode`, "+
+				"умолчание шаблона %s), а цель ретрансляции «выдача» объявлена краем %q — "+
+				"половины называют РАЗНЫЕ режимы рукопожатия", f.Stack, f.IssuanceMode,
+			issuanceListenerModeDefault, issuanceListenerModeWanted))
+	}
 	// Служба ведёт на слушатель по ИМЕНИ порта (`targetPort: registry-token`), и
 	// край набирает порт Службы — тот, что выводит шаблон.
 	if port, svcPort := u.Port(), issuanceServicePort(f); port != svcPort {
@@ -279,9 +293,9 @@ func TestOwnPostureStack_ExistsAndBothHalvesNameOneListener(t *testing.T) {
 		if f.IAMPosture != "own" && f.EdgePosture != "own" {
 			continue
 		}
-		t.Logf("  %s: служба=%s край=%s слушатель=%s порт Службы=%s адрес=%s · выдача: порт Службы=%s адрес=%s · привязка=%v",
+		t.Logf("  %s: служба=%s край=%s слушатель=%s порт Службы=%s адрес=%s · выдача: порт Службы=%s адрес=%s режим=%s · привязка=%v",
 			f.Stack, f.IAMPosture, f.EdgePosture, f.LanePort, laneServicePort(f), f.LaneURL,
-			issuanceServicePort(f), f.IssuanceURL, f.AccessKeys)
+			issuanceServicePort(f), f.IssuanceURL, f.IssuanceMode, f.AccessKeys)
 	}
 	for _, f := range findings {
 		t.Error(f)
@@ -321,6 +335,7 @@ func readOwnStackFacts(t *testing.T) []ownStackFacts {
 		f.IssuancePort = declaredString(lookup(declared, "kaname", "ports", "registryToken"))
 		f.IssuanceURL = declaredString(lookup(declared, "api-gateway", "authn", "iamIssuanceUrl"))
 		f.IssuanceTLS = issuanceListenerServesTLS(declared)
+		f.IssuanceMode = issuanceListenerMode(declared)
 
 		binding, ok := lookup(declared, "kaname", "config", "authn", "accessKeys")
 		if m, isMap := binding.(map[string]any); ok && isMap {
@@ -515,6 +530,51 @@ func TestOwnPostureStack_IssuanceTLSModelIsTheTemplateCondition(t *testing.T) {
 		t.Errorf("%s: TLS слушателя выдачи включается не условием %q внутри `if .Values.mtls.enable` — "+
 			"модель issuanceListenerServesTLS устарела, и согласие половин о TLS судится не о том условии (kacho#2721)",
 			path, issuanceTLSTemplateCondition)
+	}
+}
+
+// issuanceListenerModeWanted — режим цели «выдача» на крае
+// (`relayClientAuthOptionalMutual`); issuanceListenerModeDefault — умолчание
+// выражения шаблона Службы.
+const (
+	issuanceListenerModeWanted  = "optional-mutual"
+	issuanceListenerModeDefault = "server-tls-only"
+)
+
+// issuanceListenerModeExpression — выражение режима слушателя выдачи в шаблоне
+// Службы; issuanceListenerMode воспроизводит его. Сверку держит
+// TestOwnPostureStack_IssuanceModeModelIsTheTemplateExpression.
+const issuanceListenerModeExpression = `.Values.mtls.registryTokenClientAuthMode | default "` + issuanceListenerModeDefault + `"`
+
+// issuanceListenerMode — режим, который шаблон выставляет слушателю выдачи:
+// `mtls.registryTokenClientAuthMode`, при пустоте — умолчание шаблона.
+func issuanceListenerMode(declared map[string]any) string {
+	if v := declaredString(lookup(declared, "kaname", "mtls", "registryTokenClientAuthMode")); !helmEmpty(v) {
+		return v
+	}
+	return issuanceListenerModeDefault
+}
+
+// issuanceModeTemplate — выставляет ли шаблон режим слушателя выдачи тем
+// выражением, которое воспроизводит модель.
+func issuanceModeTemplate(tmpl string) bool {
+	return issuanceModeRe.MatchString(tmpl)
+}
+
+var issuanceModeRe = regexp.MustCompile(`- name:[ \t]*KANAME_REGISTRYTOKEN_SERVER_MTLS_CLIENTAUTHMODE[ \t]*\n[ \t]*value:[ \t]*\{\{\s*` +
+	regexp.QuoteMeta(issuanceListenerModeExpression) + `\s*\|\s*quote\s*\}\}`)
+
+// TestOwnPostureStack_IssuanceModeModelIsTheTemplateExpression — предпосылка
+// суждения о режиме слушателя выдачи: шаблон Службы выставляет его тем
+// выражением, которое воспроизводит issuanceListenerMode.
+func TestOwnPostureStack_IssuanceModeModelIsTheTemplateExpression(t *testing.T) {
+	path := filepath.Join(kanameSubchart(t), "templates", "deployment.yaml")
+	tmpl := readChartText(t, path)
+	t.Logf("перепись: %s · строк %d · выражение модели %q", path, strings.Count(tmpl, "\n"), issuanceListenerModeExpression)
+	if !issuanceModeTemplate(tmpl) {
+		t.Errorf("%s: режим слушателя выдачи выставляется не выражением %q — модель issuanceListenerMode "+
+			"устарела, и согласие половин о режиме судится не о том выражении (kacho#2817)",
+			path, issuanceListenerModeExpression)
 	}
 }
 

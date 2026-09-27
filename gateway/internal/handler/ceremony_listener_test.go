@@ -32,7 +32,7 @@ import (
 )
 
 // onInternalListener — запрос так, как его видит обработчик, когда соединение
-// принял внутренний admin-REST слушатель (`listenerorigin.InternalConnContext`).
+// принял внутренний admin-REST слушатель (`listenerorigin.ConnContext`).
 func onInternalListener(req *http.Request) *http.Request {
 	return req.WithContext(listenerorigin.WithInternal(req.Context()))
 }

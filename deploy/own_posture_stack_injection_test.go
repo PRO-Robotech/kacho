@@ -23,6 +23,7 @@ func legalOwnStackFacts() ownStackFacts {
 		LanePort: "9100", LaneURL: "https://kaname-internal.kacho.svc:9100",
 		ServiceName: "kaname", AccessKeys: true,
 		IssuancePort: "9096", IssuanceURL: "https://kaname.kacho.svc:9096", IssuanceTLS: true,
+		IssuanceMode: "optional-mutual",
 	}
 }
 
@@ -76,6 +77,28 @@ func TestOwnStackJudgement_CanFailAndStaysSilent(t *testing.T) {
 			name:   "переопределение нулём — умолчание шаблона, молчит",
 			mutate: func(f *ownStackFacts) { f.ServicePort = "0" },
 			want:   0,
+		},
+		{
+			// Стадия S2 п. 2 приёмки темпа службы доступа: слушатель выдачи
+			// запрашивает сертификат, край предъявляет пару.
+			name:    "слушатель выдачи в режиме умолчания шаблона — находка",
+			mutate:  func(f *ownStackFacts) { f.IssuanceMode = "server-tls-only" },
+			want:    1,
+			mustSay: "registryTokenClientAuthMode",
+		},
+		{
+			name:    "слушатель выдачи требует сертификат — находка",
+			mutate:  func(f *ownStackFacts) { f.IssuanceMode = "mutual" },
+			want:    1,
+			mustSay: "РАЗНЫЕ режимы рукопожатия",
+		},
+		{
+			// Законный близнец по оси режима: слушатель открытым текстом судит
+			// ось TLS, а не режим — одна находка, не две.
+			name:    "слушатель выдачи открытым текстом — находка оси TLS, режим не судится",
+			mutate:  func(f *ownStackFacts) { f.IssuanceTLS = false; f.IssuanceMode = "server-tls-only" },
+			want:    1,
+			mustSay: "открытым текстом",
 		},
 		{
 			name:    "адрес полосы не объявлен — находка",
@@ -428,6 +451,32 @@ func TestOwnStackIssuanceTLSModel_StaleTemplateIsSaid(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			if got := issuanceTLSTemplate(c.tmpl); got != c.want {
+				t.Fatalf("модель распознана=%v, ожидалось %v", got, c.want)
+			}
+		})
+	}
+}
+
+// TestOwnStackIssuanceModeModel_StaleTemplateIsSaid — предпосылка суждения о
+// режиме слушателя выдачи способна упасть: иная ручка, иное умолчание или иная
+// переменная распознаются как устаревшая модель, сегодняшняя форма — нет
+// (kacho#2817).
+func TestOwnStackIssuanceModeModel_StaleTemplateIsSaid(t *testing.T) {
+	const lawful = "            - name: KANAME_REGISTRYTOKEN_SERVER_MTLS_CLIENTAUTHMODE\n" +
+		"              value: {{ .Values.mtls.registryTokenClientAuthMode | default \"server-tls-only\" | quote }}\n"
+	cases := []struct {
+		name string
+		tmpl string
+		want bool
+	}{
+		{name: "законный близнец: сегодняшняя форма шаблона — модель верна", tmpl: lawful, want: true},
+		{name: "иная ручка — модель устарела", tmpl: strings.Replace(lawful, "registryTokenClientAuthMode", "jwksProxyClientAuthMode", 1)},
+		{name: "иное умолчание — модель устарела", tmpl: strings.Replace(lawful, "server-tls-only", "optional-mutual", 1)},
+		{name: "иная переменная — модель устарела", tmpl: strings.Replace(lawful, "REGISTRYTOKEN", "JWKSPROXY", 1)},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := issuanceModeTemplate(c.tmpl); got != c.want {
 				t.Fatalf("модель распознана=%v, ожидалось %v", got, c.want)
 			}
 		})

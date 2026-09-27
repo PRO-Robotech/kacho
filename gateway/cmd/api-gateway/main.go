@@ -171,10 +171,11 @@ func main() {
 	// входа и церемония авторизации принадлежат той чеканке, которая личность
 	// ВЫДАЁТ. Целей две, и у каждой СВОЙ ретранслятор со своей парой «адрес
 	// плюс удостоверение» под стражем старта (замысел LINE-A-1 §5.1б п. 2а,
-	// §7 инв. 36): слушатель формы — взаимный TLS клиентской парой края;
-	// слушатель выдачи, где целиком живёт церемония, — односторонний, пары ему
-	// край не предъявляет. Набор осей стража выводится из режима цели, и
-	// неприменимая ось называется в самоотчёте, а не опускается. Предел одной
+	// §7 инв. 36). Клиентскую пару края предъявляют ОБЕ: слушатель формы
+	// взаимный и без пары отвергает рукопожатие; слушатель выдачи, где целиком
+	// живёт церемония, запрашивающий (`optional-mutual`) — без пары он допустил
+	// бы прыжок, но узнал бы в нём не край, и все люди за краем делили бы один
+	// предел темпа (приёмка темпа службы, Р7, стадия S2 п. 1). Предел одной
 	// ретрансляции — названная величина механизма, общая для обеих целей
 	// (`handler.LoginLaneRelayTimeout`, инв. 30): здесь он не задаётся.
 	var loginLaneRelay, issuanceRelay *handler.LoginLaneRelay
@@ -1194,15 +1195,16 @@ func main() {
 		// SECURITY (fail-closed): the SAME httpSrv serves every HTTP listener —
 		// the plaintext cmux listener the ingress targets, the advertised
 		// external TLS listener, AND the dedicated cluster-internal admin REST
-		// listener. ConnContext tags ONLY the internal admin listener's
-		// connections (wrapped with listenerorigin.InternalListener below);
-		// every other listener stays unmarked → external (the fail-closed
-		// default), so the REST dispatcher / authz middleware 404 Internal*
-		// paths regardless of which edge listener the request hit. This
-		// inverts the earlier model, which marked only the TLS
-		// listener external and left the ingress-facing plaintext listener
-		// trusted → Internal* REST reachable from the edge.
-		ConnContext: listenerorigin.InternalConnContext,
+		// listener. ConnContext tags the internal admin listener's connections
+		// (wrapped with listenerorigin.InternalListener below) internal and the
+		// two external HTTP listeners' connections (wrapped with
+		// listenerorigin.ExternalListener below) external. Each reader refuses
+		// by default: the REST dispatcher / authz middleware 404 Internal*
+		// paths on every connection without the internal mark, and the
+		// ceremony records (handler.MountLoginLaneRoutes) relay only on
+		// connections with the external mark. A listener that lost its wrapper
+		// serves neither. listener_origin_wiring_test.go holds the wrappers.
+		ConnContext: listenerorigin.ConnContext,
 	}
 
 	// ВНУТРЕННЕГО gRPC-СЛУШАТЕЛЯ У КРАЯ НЕТ — он снят вместе со своей
@@ -1247,7 +1249,7 @@ func main() {
 	}()
 
 	go func() {
-		serveErr := httpSrv.Serve(httpL)
+		serveErr := httpSrv.Serve(listenerorigin.ExternalListener(httpL))
 		if serveErr != nil && serveErr != http.ErrServerClosed && ctx.Err() == nil {
 			logger.Error("http listener died; shutting down", "error", serveErr)
 			cancel()
@@ -1261,8 +1263,8 @@ func main() {
 	// the REST dispatcher serves Internal* paths (/vpc/v1/addressPools,
 	// `:internal` infra-sensitive projections, InternalRegistry/Cluster/
 	// Operations admin). Every other listener — the plaintext cmux listener the
-	// ingress targets and the external TLS listener — is external (unmarked)
-	// and 404s Internal* REST. The ingress MUST NOT target this port; admin-UI /
+	// ingress targets and the external TLS listener, both ExternalListener-
+	// wrapped — is external and 404s Internal* REST. The ingress MUST NOT target this port; admin-UI /
 	// port-forward / cluster-internal tooling reach it via the `internal-rest`
 	// Service port. It serves plain HTTP/1.1 REST (Internal* gRPC is blocked on
 	// EVERY listener by the proxy's HasInternalSuffix router), so no cmux split
@@ -1338,13 +1340,13 @@ func main() {
 				cancel()
 			}
 		}()
-		// SECURITY (fail-closed): the external TLS HTTP sub-listener is left
-		// UNWRAPPED — its connections carry no internal-origin marker, so they
-		// are external (the default) and the REST dispatcher 404s Internal*
-		// paths arriving here. Internal* REST is served ONLY on the dedicated
-		// cluster-internal admin listener (InternalListener-wrapped, below).
+		// SECURITY (fail-closed): the external TLS HTTP sub-listener carries
+		// listenerorigin.ExternalListener — its connections are external, so
+		// the REST dispatcher 404s Internal* paths arriving here and the
+		// ceremony records relay. Internal* REST is served ONLY on the dedicated
+		// cluster-internal admin listener (InternalListener-wrapped, above).
 		go func() {
-			serveErr := httpSrv.Serve(tlsHTTPL)
+			serveErr := httpSrv.Serve(listenerorigin.ExternalListener(tlsHTTPL))
 			if serveErr != nil && serveErr != http.ErrServerClosed && ctx.Err() == nil {
 				logger.Error("tls http listener died; shutting down", "error", serveErr)
 				cancel()

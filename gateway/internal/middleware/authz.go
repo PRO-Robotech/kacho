@@ -627,9 +627,9 @@ func (d decision) requiredACRMin() string {
 
 // isExternalRequest reports whether the request must be treated as arriving
 // from the external edge (fail-closed default). For the HTTP path the origin
-// marker lives in the request context (set per-listener by
-// listenerorigin.InternalConnContext, which marks ONLY the dedicated
-// cluster-internal admin listener). For the gRPC path there is no HTTP request
+// marker lives in the request context (set per-connection by
+// listenerorigin.ConnContext; only the dedicated cluster-internal admin
+// listener carries the internal mark). For the gRPC path there is no HTTP request
 // and Internal* RPCs never reach this
 // middleware via the gateway (the proxy routing blocks them), so we fail closed —
 // treat an unknown origin as external, meaning the internal-origin gate does NOT

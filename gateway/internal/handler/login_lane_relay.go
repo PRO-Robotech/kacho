@@ -261,8 +261,9 @@ func LoginLaneRelaySnapshots(relays ...*LoginLaneRelay) []LoginLaneRelaySnapshot
 // любом отказе на мультиплексор не попадает ни одна запись.
 //
 // Запись цели, отвечающей только на внешних слушателях
-// (`RelayTarget.ExternalListenersOnly` — координаты церемонии), на внутреннем
-// admin-REST слушателе края НЕ ретранслируется: запрос отдаётся `notHere`.
+// (`RelayTarget.ExternalListenersOnly` — координаты церемонии), ретранслируется
+// лишь с соединения, помеченного обёрткой внешнего слушателя; на внутреннем
+// admin-REST слушателе края и на слушателе без обёртки запрос отдаётся `notHere`.
 // Это обязан быть ТОТ ЖЕ обработчик, что смонтирован под `/` (так передаёт
 // корень, и это судит его гейт): тогда ответ побайтно равен ответу слушателя
 // на путь, которого у него нет, — ровно тому, что он отвечает на координату
@@ -326,18 +327,20 @@ func MountLoginLaneRoutes(mux *http.ServeMux, notHere http.Handler, relays ...*L
 	return len(routes), nil
 }
 
-// externalListenersOnly — запись ретранслируется только с внешних слушателей;
-// с внутреннего admin-REST слушателя запрос получает ответ `notHere`. Метка
-// происхождения ставится на соединение (`listenerorigin.InternalConnContext`)
-// и умолчанием «внешний» закрыта на отказ: немеченое соединение
-// ретранслируется, меченое внутренним — нет.
+// externalListenersOnly — запись ретранслируется только тогда, когда
+// соединение принял слушатель, обёрнутый `listenerorigin.ExternalListener`
+// (`listenerorigin.OnExternalListener`). Любое другое соединение — с
+// внутреннего admin-REST слушателя, со слушателя без обёртки, с обеими
+// обёртками — получает ответ `notHere`. Умолчание — отказ: метку «внешний»
+// ставит только обёртка внешнего слушателя, и слушатель, её потерявший,
+// церемонию не ретранслирует.
 type externalListenersOnly struct {
 	relay   http.Handler
 	notHere http.Handler
 }
 
 func (h externalListenersOnly) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	if !listenerorigin.IsExternal(req.Context()) {
+	if !listenerorigin.OnExternalListener(req.Context()) {
 		h.notHere.ServeHTTP(w, req)
 		return
 	}
