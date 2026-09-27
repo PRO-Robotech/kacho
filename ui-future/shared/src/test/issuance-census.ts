@@ -88,9 +88,9 @@ export const ORDERING_TRANSPORT = "shared/src/api/carrier-order.ts";
 /** Путь края: API доменов (`/<домен>/v<N>/…`), операции, проверка живости края. */
 const EDGE_PATH = /^\/(?:[a-z][a-z0-9-]*\/v\d+(?:[/?]|$)|operations(?:[/?]|$)|healthz$)/;
 
-/** Адрес — путь края, в том числе с происхождением перед ним. */
+/** Адрес — путь края, в том числе с происхождением перед ним (со схемой либо без: `//host`). */
 export function isEdgePathText(text: string): boolean {
-  return EDGE_PATH.test(text.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]+/i, ""));
+  return EDGE_PATH.test(text.replace(/^(?:[a-z][a-z0-9+.-]*:)?\/\/[^/]+/i, ""));
 }
 
 /** Транспорт, живущий на глобальном объекте и под голым именем. */
