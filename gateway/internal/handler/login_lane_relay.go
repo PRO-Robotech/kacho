@@ -40,6 +40,14 @@
 // (`principalmeta.StripCredentialAndIdentityHeaders`), включая шесть заголовков
 // принципала, которые полоса личности пишет в запрос до продолжения.
 //
+// Исключение одно и названо записью объявления: на обмене кода
+// (`LoginLaneRoute.CarriesClientBasic`) переживает снятие удостоверение КЛИЕНТА
+// базовой схемой под голым именем, одним значением
+// (`principalmeta.StripCredentialAndIdentityHeadersKeepingClientBasic`) — служба
+// принимает клиента на обмене и обновлении только так (RFC 6749 §2.3.1), и
+// без него каждый обмен через край был бы `invalid_client` (kacho#2721).
+// Предъявитель на этой записи снимается так же, как на прочих.
+//
 // # Полоса сессии стоит ПЕРЕД ретранслятором, и это несущее (Ф3-51)
 //
 // Обработчик крепится в `httpMux` за `authInterceptor.HTTP` — как «кто я».
@@ -171,7 +179,14 @@ func NewLoginLaneRelay(cfg LoginLaneRelayConfig) (*LoginLaneRelay, error) {
 			// Библиотека уже сняла клиентские заголовки пересылки
 			// (`Forwarded`, `X-Forwarded-*`) до Rewrite; SetXForwarded НЕ зовётся
 			// — он приписал бы цепочку, а служба читает ОДИН адрес.
-			principalmeta.StripCredentialAndIdentityHeaders(pr.Out.Header)
+			//
+			// Запись берётся из объявления: ServeHTTP уже пропустил сюда
+			// только путь своей цели. Не найденная запись снимает всё.
+			if rt, ok := middleware.LoginLaneRouteFor(pr.In.URL.Path); ok && rt.CarriesClientBasic() {
+				principalmeta.StripCredentialAndIdentityHeadersKeepingClientBasic(pr.Out.Header)
+			} else {
+				principalmeta.StripCredentialAndIdentityHeaders(pr.Out.Header)
+			}
 			if ip := clientIP(pr.In); ip != "" {
 				pr.Out.Header.Set("X-Forwarded-For", ip)
 			}

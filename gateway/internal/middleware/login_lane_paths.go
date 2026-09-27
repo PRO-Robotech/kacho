@@ -53,12 +53,21 @@
 // сессию, обмен — код и удостоверение клиента, чтение обнаружения — ничего
 // (публичный документ, Р11); вопрос об отзыве задаётся о
 // предъявителе, которого ни одна из трёх записей не читает, и отказ по нему был
-// бы отказом по случайности. Радиус освобождения ограничен безусловным снятием
+// бы отказом по случайности. Радиус освобождения ограничен снятием
 // `Authorization` в обеих формах имени ретранслятором (`login_lane_relay.go`):
 // неспрошенный предъявитель до службы не доезжает и полномочием ниже по течению
 // не становится. ЭТО ПАРА (§7 инв. 37): исключение в составе ретранслированного
 // запроса, проносящее `Authorization` на координату обмена, переоткрывает
 // освобождение от вопроса об отзыве — оно принимается заново, а не наследуется.
+//
+// Исключение ОДНО, и освобождение под ним принято заново (kacho#2721): на
+// записи обмена ретранслятор оставляет удостоверение КЛИЕНТА базовой схемой
+// (`CarriesClientBasic`) — служба на обмене и обновлении принимает клиента
+// только так (RFC 6749 §2.3.1). Вопрос об отзыве задаётся о предъявителе, а
+// базовая схема предъявителем края не является: ни одна полоса края её не
+// читает (все ждут `Bearer `), вердикта о ней край не выносит, и судит её
+// служба секретом клиента на каждом обмене. Предъявитель на этой записи
+// по-прежнему снимается, и освобождение от вопроса об отзыве остаётся верным.
 //
 // # Совпадение ТОЧНОЕ
 //
@@ -195,7 +204,20 @@ type LoginLaneRoute struct {
 	// Поле не экспортируется: решение принадлежит полосе сессии, и прочие
 	// читатели объявления его не видят.
 	relayWhenUnanswered bool
+	// carriesClientBasic — служба на этой записи аутентифицирует КЛИЕНТА
+	// базовой схемой (RFC 6749 §2.3.1), и ретранслятор оставляет ей
+	// удостоверение клиента этой схемы (`CarriesClientBasic`). Умолчание —
+	// снятие: запись, дописанная без решения, `Authorization` не несёт.
+	carriesClientBasic bool
 }
+
+// CarriesClientBasic — оставляет ли ретранслятор на этой записи удостоверение
+// клиента базовой схемой. Истина ровно у обмена кода: обработчик выдачи на
+// обмене и обновлении принимает клиента только так, и снятое удостоверение
+// делало каждый обмен через край отказом `invalid_client` (kacho#2721).
+// Предъявитель снимается и здесь (`principalmeta` —
+// `StripCredentialAndIdentityHeadersKeepingClientBasic`).
+func (rt LoginLaneRoute) CarriesClientBasic() bool { return rt.carriesClientBasic }
 
 // loginLaneRoutes — сам перечень. Порядок — порядок Р2, затем Ф4, Ф5, Ф12 и
 // координаты церемонии; читатели по нему не ветвятся.
@@ -214,7 +236,7 @@ var loginLaneRoutes = []LoginLaneRoute{
 	{Verb: "second-factor-backup-codes", Path: LoginLanePathSecondFactorBackupCodes, Target: RelayTargetForm},
 	{Verb: "step-up", Path: LoginLanePathStepUp, Target: RelayTargetForm},
 	{Verb: "authorize", Path: CeremonyPathAuthorize, Target: RelayTargetIssuance, relayWhenUnanswered: true},
-	{Verb: "token", Path: CeremonyPathToken, Target: RelayTargetIssuance, relayWhenUnanswered: true},
+	{Verb: "token", Path: CeremonyPathToken, Target: RelayTargetIssuance, relayWhenUnanswered: true, carriesClientBasic: true},
 	{Verb: "discovery", Path: CeremonyPathDiscovery, Target: RelayTargetIssuance, relayWhenUnanswered: true},
 }
 

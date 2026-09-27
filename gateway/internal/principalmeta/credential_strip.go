@@ -157,6 +157,52 @@ func StripCredentialAndIdentityHeaders(h http.Header) {
 	})
 }
 
+// StripCredentialAndIdentityHeadersKeepingClientBasic — ТОТ ЖЕ оператор для
+// записи, на которой служба аутентифицирует КЛИЕНТА базовой схемой (RFC 6749
+// §2.3.1): обмен кода и обновление на слушателе выдачи. Снимается всё то же, и
+// переживает снятие ровно одно — удостоверение клиента базовой схемой под
+// голым именем, одним значением.
+//
+// Почему это не предъявитель. Ни одна полоса края базовую схему не читает —
+// все ждут `Bearer ` (полоса базового секрета с нашей маркой — тоже), — значит,
+// край о ней ничего не решал и полномочием она ниже по течению не становится:
+// её судит служба, секретом клиента, на каждом обмене. Предъявитель (`Bearer`,
+// `DPoP` и всякая иная схема) снимается и здесь.
+//
+// Мостовая форма имени снимается всегда: служба читает голое. Два значения —
+// снимаются оба: какое из них служба обязана проверять, запрос не говорит (один
+// способ аутентификации на запрос, RFC 6749 §2.3), и выбор края был бы решением,
+// которого никто не принимал.
+func StripCredentialAndIdentityHeadersKeepingClientBasic(h http.Header) {
+	basic, ok := soleClientBasic(h)
+	StripCredentialAndIdentityHeaders(h)
+	if ok {
+		h.Set(http.CanonicalHeaderKey(MetaPresentedCredential), basic)
+	}
+}
+
+// soleClientBasic — единственное значение голого имени удостоверения, если оно
+// базовой схемы. Имя схемы судится без учёта регистра (RFC 9110 §11.1) — так
+// же его читает `http.Request.BasicAuth` у службы; разбор полезной части —
+// дело службы.
+func soleClientBasic(h http.Header) (string, bool) {
+	var values []string
+	for name, vs := range h {
+		if strings.ToLower(name) == MetaPresentedCredential {
+			values = append(values, vs...)
+		}
+	}
+	if len(values) != 1 {
+		return "", false
+	}
+	const scheme = "basic "
+	v := values[0]
+	if len(v) <= len(scheme) || !strings.EqualFold(v[:len(scheme)], scheme) {
+		return "", false
+	}
+	return v, true
+}
+
 // isCredentialHeader — обе формы имени удостоверения.
 func isCredentialHeader(lower string) bool {
 	for _, want := range credentialHeaderNames {

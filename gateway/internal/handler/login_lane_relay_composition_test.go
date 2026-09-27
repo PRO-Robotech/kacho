@@ -68,9 +68,11 @@ func forgedFormRequest(rt middleware.LoginLaneRoute) (*http.Request, string, str
 	}
 	req := httptest.NewRequest(method, target, strings.NewReader(body))
 	req.Header.Set("Content-Type", contentType)
-	// Удостоверение — в ОБЕИХ формах имени: снятие ретранслятором безусловно, и
-	// на нём стоит освобождение координат церемонии от вопроса об отзыве
-	// (замысел LINE-A-1 §7 инв. 37, половина (а)).
+	// Предъявитель — в ОБЕИХ формах имени: его снятие ретранслятором безусловно
+	// на каждой записи, и на нём стоит освобождение координат церемонии от
+	// вопроса об отзыве (замысел LINE-A-1 §7 инв. 37, половина (а)).
+	// Удостоверение клиента базовой схемой на записи обмена — своя проба
+	// (login_lane_relay_client_basic_test.go).
 	req.Header.Set("Authorization", "Bearer must-not-cross")
 	req.Header.Set(principalmeta.BridgePrefix+"Authorization", "Bearer must-not-cross")
 	req.Header.Set("X-Forwarded-For", "203.0.113.9, 10.0.0.1")
