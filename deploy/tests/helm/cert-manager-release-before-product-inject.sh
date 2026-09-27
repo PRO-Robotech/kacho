@@ -28,6 +28,14 @@ INJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROBE="$INJECT_DIR/cert-manager-release-before-product-test.sh"
 MAKEFILE="$INJECT_DIR/../../Makefile"
 
+# ПРЕДПОСЫЛКА: ЗАВИСИМОСТИ УМБРЕЛЛЫ МАТЕРИАЛИЗОВАНЫ. Проба берёт версию из
+# архива чарта cert-manager (CERT_MANAGER_CHART лежит в helm/umbrella/charts/,
+# которого нет в git), и без него ответила бы кодом 2 на дереве и на каждом
+# мутанте. Вопрос задаётся общей библиотекой каталога — довод в шапке premise.sh.
+# shellcheck source=tests/helm/premise.sh
+. "$INJECT_DIR/premise.sh" || { echo "ОТКАЗ: библиотека предпосылки не подключилась — молчаливый пропуск предпосылки хуже её отсутствия"; exit 1; }
+premise_chart_deps
+
 [ -f "$PROBE" ] || { echo "ОТКАЗ: нет пробы $PROBE — доказывать нечего"; exit 2; }
 [ -f "$MAKEFILE" ] || { echo "ОТКАЗ: нет Makefile $MAKEFILE — мутировать нечего"; exit 2; }
 command -v python3 >/dev/null 2>&1 || { echo "ОТКАЗ: нет python3 — мутанты порождать нечем"; exit 2; }
