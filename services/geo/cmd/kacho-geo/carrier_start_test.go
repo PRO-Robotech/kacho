@@ -35,6 +35,8 @@ import (
 
 	"github.com/PRO-Robotech/corelib/authz"
 	"github.com/PRO-Robotech/corelib/servicehost"
+
+	"github.com/PRO-Robotech/kacho/internal/carrierprobe"
 )
 
 // TestCarrierRaisesGeoWithoutAStartRefusal — исход: носитель поднимает geo и не
@@ -42,7 +44,9 @@ import (
 //
 // Контекст отменён ЗАРАНЕЕ: предмет пробы — отказы, которые носитель считает ДО
 // первого соединения. Отменённый контекст гасит слушатели сразу после того, как
-// отказы отработали, поэтому проба не держит сокета и не ждёт сети.
+// отказы отработали: проба держит только сокеты на портах, назначенных ядром,
+// и лишь до гашения, а сети не ждёт. Что порты эфемерны, утверждает страж
+// `carrierprobe.RequireKernelAssigned`, а не этот комментарий.
 func TestCarrierRaisesGeoWithoutAStartRefusal(t *testing.T) {
 	cfg := bootConfig(t, map[string]string{
 		"KACHO_GEO_GRPC_PORT":     "0",
@@ -65,6 +69,10 @@ func TestCarrierRaisesGeoWithoutAStartRefusal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут конструктором — процесс не поднялся бы:\n%v", err)
 	}
+	// Страж предусловия — ДО носителя и по адресам ДЕСКРИПТОРА, то есть ровно
+	// по тому, что получит net.Listen: ручка, не доехавшая до разбора,
+	// краснит здесь текстом «условие не создано», а не соседним стендом.
+	carrierprobe.RequireKernelAssigned(t, desc.Spec(), "KACHO_GEO_GRPC_PORT", "KACHO_GEO_INTERNAL_PORT")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -78,15 +86,11 @@ func TestCarrierRaisesGeoWithoutAStartRefusal(t *testing.T) {
 		func(reg grpc.ServiceRegistrar) { registerPublic(reg, nil, nil, nil) },
 		func(reg grpc.ServiceRegistrar) { registerInternal(reg, nil, nil, nil) },
 	)
-	if serveErr != nil && strings.Contains(serveErr.Error(), "не поднимается") {
-		t.Fatalf("носитель ОТКАЗАЛ geo в старте — на стенде процесс не поднялся бы:\n%v", serveErr)
-	}
-	// «сервер остановлен» — законный исход ОТМЕНЁННОГО контекста, а не отказ.
-	// Различать обязательно: приняв любую ошибку за норму, проба перестала бы
-	// отличать «отказов нет» от «подъём вообще не состоялся».
-	if serveErr != nil && !strings.Contains(serveErr.Error(), "server has been stopped") {
-		t.Fatalf("носитель вернул ошибку подъёма: %v", serveErr)
-	}
+	// Исход подъёма судит общий пакет: отказ носителя — красное, слушатель,
+	// не поднявшийся на порту, — «условие не создано», прочее — красное с
+	// текстом. Три исхода различимы, и различие не зависит от того, какую
+	// строку вернул носитель на штатном гашении.
+	carrierprobe.RequireRaised(t, "geo", serveErr)
 
 	// Величины кеша вердиктов вышли из процесса: без этого доля попаданий не
 	// наблюдается, и «кеш не попадает ни разу» снаружи неотличимо от «кеш

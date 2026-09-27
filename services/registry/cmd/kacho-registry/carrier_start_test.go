@@ -38,6 +38,8 @@ import (
 	"github.com/PRO-Robotech/corelib/servicecontract"
 	"github.com/PRO-Robotech/corelib/servicehost"
 
+	"github.com/PRO-Robotech/kacho/internal/carrierprobe"
+
 	"github.com/PRO-Robotech/corelib/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/handler"
 )
@@ -77,6 +79,10 @@ func TestCarrierRaisesRegistryWithoutAStartRefusal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут конструктором — процесс не поднялся бы:\n%v", err)
 	}
+	// Страж предусловия — ДО носителя и по адресам ДЕСКРИПТОРА, то есть ровно
+	// по тому, что получит net.Listen: ручка, не доехавшая до разбора,
+	// краснит здесь текстом «условие не создано», а не соседним стендом.
+	carrierprobe.RequireKernelAssigned(t, desc.Spec(), "KACHO_REGISTRY_GRPC_PORT", "KACHO_REGISTRY_INTERNAL_PORT")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -93,18 +99,11 @@ func TestCarrierRaisesRegistryWithoutAStartRefusal(t *testing.T) {
 			registerInternal(reg, internalHandler, opHandler, stubSubscriptionServer{})
 		},
 	)
-	if serveErr != nil && strings.Contains(serveErr.Error(), "не поднимается") {
-		t.Fatalf("носитель ОТКАЗАЛ реестру в старте — на стенде процесс не поднялся бы:\n%v", serveErr)
-	}
-	// «сервер остановлен» — законный исход ОТМЕНЁННОГО контекста, а не отказ:
-	// носитель успел собрать оба сервера и погасить их. Что именно вернётся —
-	// nil или это сообщение — решает планировщик, поэтому проба, принимавшая
-	// только nil, зеленела НЕДЕТЕРМИНИРОВАННО и краснела под -race, где порядок
-	// другой. Предмет пробы — отказы, которые считаются ДО первого соединения;
-	// прочие ошибки остаются настоящими.
-	if serveErr != nil && !strings.Contains(serveErr.Error(), "server has been stopped") {
-		t.Fatalf("носитель вернул ошибку подъёма: %v", serveErr)
-	}
+	// Исход подъёма судит общий пакет: отказ носителя — красное, слушатель,
+	// не поднявшийся на порту, — «условие не создано», прочее — красное с
+	// текстом. Три исхода различимы, и различие не зависит от того, какую
+	// строку вернул носитель на штатном гашении.
+	carrierprobe.RequireRaised(t, "registry", serveErr)
 
 	// Предпосылка: отказы что-то осмотрели. Ноль осмотренных методов означал бы,
 	// что «расхождений нет» получено на пустом наборе.

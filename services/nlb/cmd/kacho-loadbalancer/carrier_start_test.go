@@ -24,7 +24,7 @@ package main
 // сделал бы её заложницей занятости машины прогона. Само по себе объявление
 // эфемерного порта этого не даёт — доехать до разбора конфигурации обязано ИМЯ
 // ручки, и что оно доехало, утверждает страж предусловия
-// (`requireEphemeralListeners`), а не комментарий.
+// (`carrierprobe.RequireKernelAssigned`), а не комментарий.
 
 import (
 	"context"
@@ -37,6 +37,8 @@ import (
 
 	"github.com/PRO-Robotech/corelib/authz"
 	"github.com/PRO-Robotech/corelib/servicehost"
+
+	"github.com/PRO-Robotech/kacho/internal/carrierprobe"
 )
 
 // TestCarrierRaisesNlbWithoutAStartRefusal — исход: носитель поднимает nlb и не
@@ -44,7 +46,9 @@ import (
 //
 // Контекст отменён ЗАРАНЕЕ: предмет пробы — отказы, которые носитель считает ДО
 // первого соединения. Отменённый контекст гасит слушатели сразу после того, как
-// отказы отработали, поэтому проба не держит сокета и не ждёт сети.
+// отказы отработали: проба держит только сокеты на портах, назначенных ядром,
+// и лишь до гашения, а сети не ждёт. Что порты эфемерны, утверждает страж
+// `carrierprobe.RequireKernelAssigned`, а не этот комментарий.
 func TestCarrierRaisesNlbWithoutAStartRefusal(t *testing.T) {
 	// Имена ручек — с ДЕФИСАМИ, по тому же правилу, что разобрано у `bootConfig`:
 	// ключи конфигурации зовутся `api-server.endpoint` и
@@ -57,7 +61,6 @@ func TestCarrierRaisesNlbWithoutAStartRefusal(t *testing.T) {
 		"KACHO_NLB_API-SERVER__ENDPOINT":          "tcp://127.0.0.1:0",
 		"KACHO_NLB_API-SERVER__INTERNAL-ENDPOINT": "tcp://127.0.0.1:0",
 	})
-	requireEphemeralListeners(t, cfg)
 
 	// Журнал носителя читается, а не выбрасывается: перепись осмотренного он
 	// печатает ВСЕГДА, и без неё «отказов нет» неотличимо от «ничего не осмотрено».
@@ -75,6 +78,10 @@ func TestCarrierRaisesNlbWithoutAStartRefusal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут конструктором — процесс не поднялся бы:\n%v", err)
 	}
+	// Страж предусловия — ДО носителя и по адресам ДЕСКРИПТОРА, то есть ровно
+	// по тому, что получит net.Listen: ручка, не доехавшая до разбора,
+	// краснит здесь текстом «условие не создано», а не соседним стендом.
+	carrierprobe.RequireKernelAssigned(t, desc.Spec(), "KACHO_NLB_API-SERVER__ENDPOINT", "KACHO_NLB_API-SERVER__INTERNAL-ENDPOINT")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -91,15 +98,11 @@ func TestCarrierRaisesNlbWithoutAStartRefusal(t *testing.T) {
 		func(reg grpc.ServiceRegistrar) { registerPublic(reg, w) },
 		func(reg grpc.ServiceRegistrar) { registerInternal(reg, w) },
 	)
-	if serveErr != nil && strings.Contains(serveErr.Error(), "не поднимается") {
-		t.Fatalf("носитель ОТКАЗАЛ nlb в старте — на стенде процесс не поднялся бы:\n%v", serveErr)
-	}
-	// «сервер остановлен» — законный исход ОТМЕНЁННОГО контекста, а не отказ.
-	// Различать обязательно: приняв любую ошибку за норму, проба перестала бы
-	// отличать «отказов нет» от «подъём вообще не состоялся».
-	if serveErr != nil && !strings.Contains(serveErr.Error(), "server has been stopped") {
-		t.Fatalf("носитель вернул ошибку подъёма: %v", serveErr)
-	}
+	// Исход подъёма судит общий пакет: отказ носителя — красное, слушатель,
+	// не поднявшийся на порту, — «условие не создано», прочее — красное с
+	// текстом. Три исхода различимы, и различие не зависит от того, какую
+	// строку вернул носитель на штатном гашении.
+	carrierprobe.RequireRaised(t, "nlb", serveErr)
 
 	// Величины кеша вердиктов вышли из процесса: без этого доля попаданий не
 	// наблюдается, и «кеш не попадает ни разу» снаружи неотличимо от «кеш

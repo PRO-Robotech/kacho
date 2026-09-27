@@ -49,6 +49,8 @@ import (
 	"github.com/PRO-Robotech/corelib/outbox/bootgate"
 	"github.com/PRO-Robotech/corelib/servicehost"
 
+	"github.com/PRO-Robotech/kacho/internal/carrierprobe"
+
 	addressapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/address"
 	addresspoolapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/addresspool"
 	gatewayapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/gateway"
@@ -95,10 +97,13 @@ func emptyServices() *services {
 //
 // Контекст отменён ЗАРАНЕЕ: предмет пробы — отказы, которые носитель считает ДО
 // первого соединения. Отменённый контекст гасит слушатели сразу после того, как
-// отказы отработали, поэтому проба не держит сокета и не ждёт сети.
+// отказы отработали: проба держит только сокеты на портах, назначенных ядром,
+// и лишь до гашения, а сети не ждёт. Что порты эфемерны, утверждает страж
+// `carrierprobe.RequireKernelAssigned`, а не этот комментарий.
 func TestCarrierRaisesVPCWithoutAStartRefusal(t *testing.T) {
 	cfg, mtls := describeCfg(t)
-	// Эфемерные порты: слушатели поднимутся и тут же погаснут.
+	// Эфемерные порты: слушатели поднимутся и тут же погаснут. Проба строит
+	// конфигурацию литералом, поэтому «ручка» здесь — поле литерала.
 	cfg.APIServer.Endpoint = "tcp://127.0.0.1:0"
 	cfg.APIServer.InternalEndpoint = "tcp://127.0.0.1:0"
 
@@ -120,6 +125,10 @@ func TestCarrierRaisesVPCWithoutAStartRefusal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут конструктором — процесс не поднялся бы:\n%v", err)
 	}
+	// Страж предусловия — ДО носителя и по адресам ДЕСКРИПТОРА, то есть ровно
+	// по тому, что получит net.Listen: ручка, не доехавшая до разбора,
+	// краснит здесь текстом «условие не создано», а не соседним стендом.
+	carrierprobe.RequireKernelAssigned(t, desc.Spec(), "config.APIServer.Endpoint", "config.APIServer.InternalEndpoint")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -134,19 +143,11 @@ func TestCarrierRaisesVPCWithoutAStartRefusal(t *testing.T) {
 		func(reg grpc.ServiceRegistrar) { registerPublicServices(reg, svcs, opsRepo) },
 		func(reg grpc.ServiceRegistrar) { registerInternalServices(reg, svcs, subscribe) },
 	)
-	if serveErr != nil && strings.Contains(serveErr.Error(), "не поднимается") {
-		t.Fatalf("носитель ОТКАЗАЛ vpc в старте — на стенде процесс не поднялся бы:\n%v", serveErr)
-	}
-	// «сервер остановлен» — законный исход ОТМЕНЁННОГО контекста, а не отказ.
-	// Носитель успел собрать оба сервера и погасить их; предмет пробы — отказы,
-	// которые считаются ДО этого, и они не сработали. Прочие ошибки — настоящие.
-	//
-	// Различать обязательно: приняв любую ошибку за норму, проба перестала бы
-	// отличать «отказов нет» от «подъём вообще не состоялся», а именно это она и
-	// проверяет.
-	if serveErr != nil && !strings.Contains(serveErr.Error(), "server has been stopped") {
-		t.Fatalf("носитель вернул ошибку подъёма: %v", serveErr)
-	}
+	// Исход подъёма судит общий пакет: отказ носителя — красное, слушатель,
+	// не поднявшийся на порту, — «условие не создано», прочее — красное с
+	// текстом. Три исхода различимы, и различие не зависит от того, какую
+	// строку вернул носитель на штатном гашении.
+	carrierprobe.RequireRaised(t, "vpc", serveErr)
 
 	// Величины кеша вердиктов вышли из процесса: без этого доля попаданий не
 	// наблюдается, и «кеш не попадает ни разу» снаружи неотличимо от «кеш

@@ -26,11 +26,12 @@ package main
 // сделал бы её заложницей занятости машины прогона. Само по себе объявление
 // эфемерного порта этого не даёт — доехать до разбора конфигурации обязано ИМЯ
 // ручки, и что оно доехало, утверждает страж предусловия
-// (`requireEphemeralListeners`), а не комментарий.
+// (`carrierprobe.RequireKernelAssigned`), а не комментарий.
 
 import (
 	"context"
 	"log/slog"
+	"net"
 	"strings"
 	"testing"
 
@@ -38,6 +39,8 @@ import (
 
 	"github.com/PRO-Robotech/corelib/authz"
 	"github.com/PRO-Robotech/corelib/servicehost"
+
+	"github.com/PRO-Robotech/kacho/internal/carrierprobe"
 )
 
 // TestCarrierRaisesStorageWithoutAStartRefusal — исход: носитель поднимает
@@ -45,7 +48,9 @@ import (
 //
 // Контекст отменён ЗАРАНЕЕ: предмет пробы — отказы, которые носитель считает ДО
 // первого соединения. Отменённый контекст гасит слушатели сразу после того, как
-// отказы отработали, поэтому проба не держит сокета и не ждёт сети.
+// отказы отработали: проба держит только сокеты на портах, назначенных ядром,
+// и лишь до гашения, а сети не ждёт. Что порты эфемерны, утверждает страж
+// `carrierprobe.RequireKernelAssigned`, а не этот комментарий.
 func TestCarrierRaisesStorageWithoutAStartRefusal(t *testing.T) {
 	cfg := bootConfig(t, map[string]string{
 		"KACHO_STORAGE_GRPC_PORT": "0",
@@ -55,7 +60,6 @@ func TestCarrierRaisesStorageWithoutAStartRefusal(t *testing.T) {
 		// читаемое ничем, — и внутренний слушатель молча оставался на 9091 (#2678).
 		"KACHO_STORAGE_INTERNAL_PORT": "0",
 	})
-	requireEphemeralListeners(t, cfg)
 
 	// Журнал носителя читается, а не выбрасывается: перепись осмотренного он
 	// печатает ВСЕГДА, и без неё «отказов нет» неотличимо от «ничего не осмотрено».
@@ -73,25 +77,21 @@ func TestCarrierRaisesStorageWithoutAStartRefusal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут конструктором — процесс не поднялся бы:\n%v", err)
 	}
+	// Страж предусловия — ДО носителя и по адресам ДЕСКРИПТОРА, то есть ровно
+	// по тому, что получит net.Listen: ручка, не доехавшая до разбора,
+	// краснит здесь текстом «условие не создано», а не соседним стендом.
+	carrierprobe.RequireKernelAssigned(t, desc.Spec(), "KACHO_STORAGE_GRPC_PORT", "KACHO_STORAGE_INTERNAL_PORT")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
 	regs := registrarsOfBothListeners(t)
 	serveErr := servicehost.Serve(ctx, desc, regs[0], regs[1])
-	if serveErr != nil && strings.Contains(serveErr.Error(), "не поднимается") {
-		t.Fatalf("носитель ОТКАЗАЛ storage в старте — на стенде процесс не поднялся бы:\n%v", serveErr)
-	}
-	// «сервер остановлен» — законный исход ОТМЕНЁННОГО контекста, а не отказ.
-	// Носитель успел собрать оба сервера и погасить их; предмет пробы — отказы,
-	// которые считаются ДО этого, и они не сработали. Прочие ошибки — настоящие.
-	//
-	// Различать обязательно: приняв любую ошибку за норму, проба перестала бы
-	// отличать «отказов нет» от «подъём вообще не состоялся», а именно это она и
-	// проверяет.
-	if serveErr != nil && !strings.Contains(serveErr.Error(), "server has been stopped") {
-		t.Fatalf("носитель вернул ошибку подъёма: %v", serveErr)
-	}
+	// Исход подъёма судит общий пакет: отказ носителя — красное, слушатель,
+	// не поднявшийся на порту, — «условие не создано», прочее — красное с
+	// текстом. Три исхода различимы, и различие не зависит от того, какую
+	// строку вернул носитель на штатном гашении.
+	carrierprobe.RequireRaised(t, "storage", serveErr)
 
 	// Величины кеша вердиктов вышли из процесса: без этого доля попаданий не
 	// наблюдается, и «кеш не попадает ни разу» снаружи неотличимо от «кеш
@@ -113,4 +113,53 @@ func TestCarrierRaisesStorageWithoutAStartRefusal(t *testing.T) {
 		t.Fatalf("отказы старта осмотрели НОЛЬ методов — вердикт получен на пустом наборе:\n%s", census)
 	}
 	t.Logf("перепись носителя: %s", strings.TrimSpace(census))
+}
+
+// TestCarrierOnAnOccupiedPortSaysConditionNotCreated — занятый порт есть ТРЕТЬЯ
+// категория исхода, а не отказ носителя (kacho#2680).
+//
+// Прежде проба на занятом порту печатала «носитель вернул ошибку подъёма … bind:
+// address already in use», и отличить это от настоящей находки можно было только
+// прочитав текст отказа. Здесь занятость создаётся САМОЙ пробой — соседом на
+// эфемерном порту, который выбрало ядро, — и порт этого соседа отдаётся ручке
+// публичного слушателя: вход настоящий, от ядра, и от машины прогона не зависит.
+//
+// Обе половины утверждены: страж предусловия называет ручку с фиксированным
+// портом, а исход подъёма на ней — «условие не создано», не красное.
+func TestCarrierOnAnOccupiedPortSaysConditionNotCreated(t *testing.T) {
+	occupant, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatalf("предпосылка не создана: сосед на эфемерном порту не поднялся: %v", err)
+	}
+	defer occupant.Close()
+	_, port, err := net.SplitHostPort(occupant.Addr().String())
+	if err != nil {
+		t.Fatalf("адрес соседа не разобран: %v", err)
+	}
+
+	cfg := bootConfig(t, map[string]string{
+		"KACHO_STORAGE_GRPC_PORT":     port,
+		"KACHO_STORAGE_INTERNAL_PORT": "0",
+	})
+	desc, err := describeWith(t, cfg)
+	if err != nil {
+		t.Fatalf("дескриптор отвергнут конструктором — процесс не поднялся бы:\n%v", err)
+	}
+
+	refusal := carrierprobe.Refusal(carrierprobe.Listeners(desc.Spec(), "KACHO_STORAGE_GRPC_PORT", "KACHO_STORAGE_INTERNAL_PORT")...)
+	if refusal == nil || !strings.Contains(refusal.Error(), "KACHO_STORAGE_GRPC_PORT") {
+		t.Fatalf("страж предусловия не назвал ручку с фиксированным портом %s: %v", port, refusal)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	regs := registrarsOfBothListeners(t)
+	serveErr := servicehost.Serve(ctx, desc, regs[0], regs[1])
+	if got := carrierprobe.Classify(serveErr); got != carrierprobe.NotCreated {
+		t.Fatalf("подъём на занятом порту классифицирован как %v, а не «условие не создано»; ошибка носителя: %v",
+			got, serveErr)
+	}
+	if v := carrierprobe.Verdict("storage", serveErr); !strings.Contains(v, "УСЛОВИЕ НЕ СОЗДАНО") {
+		t.Fatalf("текст исхода не называет третью категорию:\n%s", v)
+	}
 }

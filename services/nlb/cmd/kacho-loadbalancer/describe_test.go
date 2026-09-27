@@ -24,8 +24,6 @@ package main
 
 import (
 	"context"
-	"net"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -35,6 +33,8 @@ import (
 	"github.com/PRO-Robotech/corelib/operations"
 	"github.com/PRO-Robotech/corelib/outbox/bootgate"
 	"github.com/PRO-Robotech/corelib/servicehost"
+
+	"github.com/PRO-Robotech/kacho/internal/carrierprobe"
 
 	"github.com/PRO-Robotech/corelib/authz"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
@@ -101,66 +101,6 @@ func bootConfig(t *testing.T, env map[string]string) *config.Config {
 		t.Fatalf("конфигурация не загрузилась: %v", err)
 	}
 	return c
-}
-
-// requireEphemeralListeners — СТРАЖ ПРЕДУСЛОВИЯ проб носителя: слушатели процесса
-// подняты на порту, который назначит ЯДРО, а не на умолчании конфигурации.
-//
-// Он стоит ДО вызова носителя, и это не перестраховка. Имя ручки, которого разбор
-// конфигурации не знает, не отказывает и не предупреждает: величина остаётся
-// умолчанием, носитель занимает 9090/9091, а проба падает не на своём предмете, а
-// на том, что ещё поднято на машине прогона, — и падает чужим текстом («bind:
-// address already in use»), уводящим читателя к соседнему стенду (#2678).
-//
-// Страж превращает это в отказ, называющий РУЧКУ. Утверждается ключ конфигурации,
-// а не имя переменной окружения: имя переменной — способ доставки, а предмет здесь
-// — доехала подстановка или нет.
-func requireEphemeralListeners(t *testing.T, cfg *config.Config) {
-	t.Helper()
-	for _, l := range []struct{ key, endpoint string }{
-		{"api-server.endpoint", cfg.APIServer.Endpoint},
-		{"api-server.internal-endpoint", cfg.APIServer.InternalEndpoint},
-	} {
-		if !endpointIsKernelAssigned(l.endpoint) {
-			t.Fatalf("слушатель %q объявлен как %q — это не порт, назначенный ядром: "+
-				"подстановка ручки не доехала до разбора конфигурации, и вердикт пробы "+
-				"стал функцией того, что ещё поднято на машине прогона", l.key, l.endpoint)
-		}
-	}
-}
-
-// endpointIsKernelAssigned — просит ли эндпойнт порт, который назначит ЯДРО.
-//
-// Распознаватель знает все ЧИСЛОВЫЕ написания своего предмета и расходится с
-// настоящим слушателем на ПУСТОМ — намеренно. Мера та же, что в заголовке пробы
-// рядом (`ephemeralport_test.go`): утверждать «знает ВСЕ законные написания»
-// нельзя, это замером опровергнуто.
-//
-// Ядру порт отдаёт не строка «0», а ЧИСЛО ноль: `net.Listen` поднимает эфемерный
-// слушатель и на `:0`, и на `:00`, и на `:0000` (замерено). Сравнение строкой
-// краснело бы на законном входе — ложная тревога, которая дороже пропуска:
-// читатель идёт чинить исправное.
-//
-// На пустом написании слушатель тоже поднялся бы, а распознаватель отвечает «нет»:
-// он судит не то, что сделает ядро, а доехала ли ручка. Разбор — в заголовке пробы.
-func endpointIsKernelAssigned(endpoint string) bool {
-	_, port, err := net.SplitHostPort(hostPort(endpoint))
-	if err != nil {
-		return false
-	}
-	return portIsKernelAssigned(port)
-}
-
-// portIsKernelAssigned — порт числом, а не строкой.
-//
-// Разбор — `strconv.Atoi`, и он выбран замером, а не на вкус: его область приёма
-// совпадает с областью приёма `net.Listen` на всех восьми написаниях, которые
-// проверялись («0», «00», «0000», «+0», «-0», « 0», «0x0», «9090»). `ParseUint`
-// отверг бы «+0» и «-0», которые продукт принимает, — то есть страж краснел бы на
-// входе, на котором слушатель законно поднимается.
-func portIsKernelAssigned(port string) bool {
-	n, err := strconv.Atoi(port)
-	return err == nil && n == 0
 }
 
 // probeNarrower / probeGate — то, что композиционный корень приносит дескриптору
@@ -244,8 +184,10 @@ func TestDescribeProbeCanFail(t *testing.T) {
 	// Имя внутреннего адреса — с ДЕФИСОМ: ключ зовётся `extapi.iam.internal-addr`,
 	// а viper заменяет на `__` только точки. Форма с подчёркиванием, стоявшая
 	// здесь, не доезжала никуда — и обнулялся ОДИН адрес из двух. Отрицание
-	// проходило потому, что второго и не было: умолчания у ключа нет. Сам этот
-	// дефект и обнаружил, что предпосылку надо проверять, а не подразумевать.
+	// проходило потому, что второго и не было: умолчание ключа — пустая строка
+	// (`defaults.go`), и незаданная переменная давала тот же пустой адрес, что и
+	// подстановка. Сам этот дефект и обнаружил, что предпосылку надо проверять, а
+	// не подразумевать.
 	cfg := bootConfig(t, map[string]string{
 		"KACHO_NLB_EXTAPI__IAM__INTERNAL-ADDR": "",
 		"KACHO_NLB_EXTAPI__IAM__ADDR":          "",
@@ -343,11 +285,11 @@ func TestCarrierRaisesTheService(t *testing.T) {
 		"KACHO_NLB_API-SERVER__ENDPOINT":          "tcp://127.0.0.1:0",
 		"KACHO_NLB_API-SERVER__INTERNAL-ENDPOINT": "tcp://127.0.0.1:0",
 	})
-	requireEphemeralListeners(t, cfg)
 	desc, err := describe(cfg, quietLogger(), probeNarrower(), probeGate(), probeExistence{}, probeAuthzObserve, prometheus.NewRegistry())
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут: %v", err)
 	}
+	carrierprobe.RequireKernelAssigned(t, desc.Spec(), "KACHO_NLB_API-SERVER__ENDPOINT", "KACHO_NLB_API-SERVER__INTERNAL-ENDPOINT")
 
 	// Обработчики строятся с ПУСТЫМИ зависимостями: предмет пробы — НАБОР
 	// служимых методов и его сходимость с каталогом прав, а не поведение
@@ -364,13 +306,14 @@ func TestCarrierRaisesTheService(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	if serr := servicehost.Serve(ctx, desc,
+	// Исход судит общий пакет: носитель, не поднявший kacho-nlb по его
+	// собственному дескриптору и регистраторам, — красное (перевод не завершён,
+	// каким бы зелёным ни было всё остальное), занятый слушатель — «условие не
+	// создано».
+	carrierprobe.RequireRaised(t, "nlb", servicehost.Serve(ctx, desc,
 		func(reg grpc.ServiceRegistrar) { registerPublic(reg, w) },
 		func(reg grpc.ServiceRegistrar) { registerInternal(reg, w) },
-	); serr != nil {
-		t.Fatalf("носитель не поднимает kacho-nlb по его собственному дескриптору и регистраторам "+
-			"— то есть перевод не завершён, каким бы зелёным ни был всё остальное:\n%v", serr)
-	}
+	))
 }
 
 // probeExistence — порт сверки существования для проб композиционного корня.
