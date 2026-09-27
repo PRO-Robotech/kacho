@@ -79,15 +79,23 @@ func (s *formListenerStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	b, _ := io.ReadAll(r.Body)
 	s.mu.Lock()
 	s.requests = append(s.requests, seen{method: r.Method, path: r.URL.Path, query: r.URL.RawQuery, header: r.Header.Clone(), body: string(b)})
+	status, respHdr, body := s.status, s.respHdr, s.body
 	s.mu.Unlock()
-	for k, vs := range s.respHdr {
+	for k, vs := range respHdr {
 		for _, v := range vs {
 			w.Header().Add(k, v)
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(s.status)
-	_, _ = io.WriteString(w, s.body)
+	w.WriteHeader(status)
+	_, _ = io.WriteString(w, body)
+}
+
+// answer — сменить ответ дублёра между запросами.
+func (s *formListenerStub) answer(status int, respHdr http.Header, body string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.status, s.respHdr, s.body = status, respHdr, body
 }
 
 func (s *formListenerStub) count() int {
@@ -102,30 +110,49 @@ func (s *formListenerStub) last() seen {
 	return s.requests[len(s.requests)-1]
 }
 
-// chainWithRelay — край под `own`: полоса личности + ретранслятор на путях
-// путях, цель — `target`.
+// chainWithRelay — край под `own`: полоса личности + ретрансляторы на путях
+// объявления, цель ОБОИХ — `target`; возвращает ретранслятор полосы формы.
 func chainWithRelay(t *testing.T, own *fakeOwn, cut *fakeCut, target string) (http.Handler, *handler.LoginLaneRelay) {
 	t.Helper()
+	chain, relays := chainWithRelays(t, own, cut, target)
+	return chain, relays[middleware.RelayTargetForm]
+}
+
+// chainWithRelays — край под `own`: по ретранслятору на КАЖДУЮ цель закрытого
+// перечня, все — на один дублёр `target`, смонтированы ТЕМ ЖЕ монтажом, что в
+// композиционном корне (`handler.MountLoginLaneRoutes`).
+func chainWithRelays(t *testing.T, own *fakeOwn, cut *fakeCut, target string) (http.Handler, map[middleware.RelayTarget]*handler.LoginLaneRelay) {
+	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	relay, err := handler.NewLoginLaneRelay(handler.LoginLaneRelayConfig{
-		Logger: logger,
-		Target: target,
-		// Оператор чтения цепочки — тот же, что у решения о доступе: один
-		// доверенный прыжок, адрес берётся справа.
-		ClientIP: middleware.NewContextExtractor(time.Now, true, middleware.WithTrustedProxyHops(1)).ClientIP,
-		Timeout:  2 * time.Second,
-	})
-	if err != nil {
-		t.Fatalf("ретранслятор не собрался: %v", err)
+	relays := map[middleware.RelayTarget]*handler.LoginLaneRelay{}
+	var set []*handler.LoginLaneRelay
+	for _, tg := range middleware.RelayTargets() {
+		relay, err := handler.NewLoginLaneRelay(handler.LoginLaneRelayConfig{
+			Logger: logger,
+			Serves: tg,
+			Target: target,
+			// Оператор чтения цепочки — тот же, что у решения о доступе: один
+			// доверенный прыжок, адрес берётся справа.
+			ClientIP: middleware.NewContextExtractor(time.Now, true, middleware.WithTrustedProxyHops(1)).ClientIP,
+			Timeout:  2 * time.Second,
+		})
+		if err != nil {
+			t.Fatalf("ретранслятор цели %q не собрался: %v", tg, err)
+		}
+		relays[tg] = relay
+		set = append(set, relay)
 	}
 	mux := http.NewServeMux()
-	for _, rt := range middleware.LoginLaneRoutes() {
-		mux.Handle(rt.Path, relay)
+	// Под `/` здесь ничего нет — мультиплексор отвечает на чужой путь
+	// `http.NotFoundHandler()`; им же отвечает внутренний слушатель на запись,
+	// которой на нём нет.
+	if _, err := handler.MountLoginLaneRoutes(mux, http.NotFoundHandler(), set...); err != nil {
+		t.Fatalf("монтаж объявления: %v", err)
 	}
 	a := middleware.NewAuthInterceptor(middleware.AuthModeDev, "", nil, logger).
 		WithHumanSession(own).
 		WithSessionCutoffCheck(cut, time.Hour)
-	return a.HTTP(mux), relay
+	return a.HTTP(mux), relays
 }
 
 func formRequest(method, path, body string) *http.Request {
@@ -267,7 +294,7 @@ func TestLoginLaneRelay_F3_17_ServiceRefusalIsRelayedAsIsAndUnreachableServiceIs
 			t.Fatalf("%s: Set-Cookie на недостижимой службе", p)
 		}
 	}
-	if relay2.Stats().Unreachable != 3 {
+	if relay2.Stats().Unreachable != 3 || relay2.Stats().Target != middleware.RelayTargetForm {
 		t.Fatalf("клетка «служба недостижима» = %d, ожидалось 3", relay2.Stats().Unreachable)
 	}
 	if s := relay.Stats(); s.Relayed["logout"] != 1 || s.Relayed["login"] != 1 || s.Relayed["csrf"] != 1 || s.Relayed["password"] != 0 || s.Unreachable != 0 {
