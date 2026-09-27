@@ -134,11 +134,11 @@ func TestRelayTargetForm_L13_InternalListenerAnswerFollowsItsConsumer(t *testing
 // Инъекция настоящими формами профиля — синтетика, а не живая запись: гейт
 // обязан краснеть в обе стороны и молчать на двух законных близнецах.
 func TestRelayTargetForm_L13_Injection_DecisionAndConsumerMustAgree(t *testing.T) {
-	const noDoor = "host:\n  upstreams:\n    apiGateway: api-gateway.kacho.svc.cluster.local:8080\n    kratosUi: \"\"\n"
+	const noDoor = "host:\n  upstreams:\n    apiGateway: api-gateway.kacho.svc.cluster.local:8080\n    dashboard: \"\"\n"
 	const topDoor = noDoor + "adminPlane:\n  upstream: api-gateway.kacho.svc.cluster.local:8081\n"
 	const nestedDoor = "host:\n  adminPlane:\n    upstream: api-gateway.kacho.svc.cluster.local:8081\n  upstreams:\n    apiGateway: api-gateway.kacho.svc.cluster.local:8080\n"
 	const doorInComment = noDoor + "# adminPlane: upstream появится с kacho#2694\n"
-	const noEdge = "host:\n  upstreams:\n    kratosUi: \"\"\n"
+	const noEdge = "host:\n  upstreams:\n    dashboard: \"\"\n"
 
 	for _, tc := range []struct {
 		name             string
