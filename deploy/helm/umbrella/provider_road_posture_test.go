@@ -28,7 +28,6 @@
 // разбирает тот же словарь, что и процесс (corelib/identityposture). Второго
 // словаря здесь нет.
 //
-//   - `external` — как прежде: адрес обязан быть объявлен;
 //   - `own` — адреса НЕТ, и это утверждается, а не пропускается. Отсутствие
 //     обязано быть настоящим: процесс, получивший адрес, провязывает его, даже
 //     когда не требует, — край спрашивал бы интроспекцию на каждом промахе кэша
@@ -36,11 +35,14 @@
 //     утверждает секция D deploy/scripts/assert-admin-hop-transport.sh (исход
 //     consumer-names-provider); здесь — её половина по объявлению;
 //   - посадка не разбирается словарём процесса либо не объявлена ни цепочкой,
-//     ни чартом — находка: какие адреса требуются, не решено.
+//     ни чартом — находка: какие адреса требуются, не решено;
+//   - всякое другое значение — находка: этой пробе оно не известно.
 //
-// Форму и транспорт ОБЪЯВЛЕННОГО адреса пробы судят одинаково на обеих
-// посадках — как страж края: посадка снимает требование НАЛИЧИЯ, а не правила
-// формы.
+// Посадку `external`, под которой адрес требовался, пин фундамента v1.8.0 ещё
+// разбирает (снятие — выпуск v1.10.0-rc.3, corelib#26; подъём пина — #2862),
+// но ветви пробы по ней нет (#2873): стек, объявивший её, получает находку
+// «посадка не известна» при любом пине, а не молчание. Сколько стеков на ней
+// стоит, печатает перепись посадок — в дереве их ноль.
 //
 // # Чего здесь НЕ утверждается
 //
@@ -171,8 +173,6 @@ func providerRoadRequired(who string, r postureReading) (bool, error) {
 	case r.Err != nil:
 		return false, fmt.Errorf("посадка %s не разбирается словарём процесса (%v) — процесс "+
 			"не поднимется, и требовать с цепочки адрес не о чем", who, r.Err)
-	case r.Provider == identityposture.External:
-		return true, nil
 	case r.Provider == identityposture.Own:
 		return false, nil
 	case !r.Provider.IsSet():
@@ -192,7 +192,8 @@ type providerRoadKnob struct {
 	half postureHalf
 	// path — абсолютный путь в слитой цепочке.
 	path []string
-	// missing — чем отсутствие под `external` оборачивается для процесса.
+	// missing — чем отсутствие оборачивается для процесса на посадке, где
+	// адрес требуется.
 	missing string
 	// present — чем присутствие под `own` оборачивается для процесса.
 	present string
@@ -233,27 +234,23 @@ func roadPresenceFinding(stack string, k providerRoadKnob, r postureReading, dec
 // postureCensus — ОБЪЁМ ОСМОТРЕННОГО по посадкам одной половины. «Находок
 // ноль» обязано быть отличимо от «ни одного стека на этой посадке не было».
 type postureCensus struct {
-	Stacks, External, Inherited, Own, Unjudged int
+	Stacks, Own, Inherited, Unjudged int
 }
 
 func (c *postureCensus) add(r postureReading) {
 	c.Stacks++
 	switch {
-	case r.Err != nil || !r.Provider.IsSet():
-		c.Unjudged++
-	case r.Provider == identityposture.External:
-		c.External++
+	case r.Err == nil && r.Provider == identityposture.Own:
+		c.Own++
 		if r.Inherited {
 			c.Inherited++
 		}
-	case r.Provider == identityposture.Own:
-		c.Own++
 	default:
 		c.Unjudged++
 	}
 }
 
 func (c postureCensus) String() string {
-	return fmt.Sprintf("стеков %d · посадка external %d (из них наследуют умолчание чарта %d) · "+
-		"own %d · посадку судить нельзя %d", c.Stacks, c.External, c.Inherited, c.Own, c.Unjudged)
+	return fmt.Sprintf("стеков %d · посадка own %d (из них наследуют умолчание чарта %d) · "+
+		"посадку судить нельзя %d", c.Stacks, c.Own, c.Inherited, c.Unjudged)
 }

@@ -2,16 +2,15 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // login_lane_validation_test.go — страж старта адреса полосы формы (приёмка
-// Ф3 Р2, Ф3-45): под посадкой `own` ручка обязательна, под `external` — не
-// читается. Каждый отрицательный случай стоит рядом с положительным близнецом,
-// и различие одно.
+// Ф3 Р2, Ф3-45): под посадкой `own` ручка обязательна. Страж зовётся из ветки
+// посадки `own` корня, её держит own_lane_readers_wiring_test.go. Каждый
+// отрицательный случай стоит рядом с положительным близнецом, и различие одно.
 package main
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/corelib/identityposture"
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 )
 
@@ -26,7 +25,7 @@ func loginLaneWired() LoginLaneConfig {
 }
 
 func TestLoginLaneGuard_F3_45_OwnLaneStartsWithTheLaneWired(t *testing.T) {
-	if err := validateLoginLaneConfig(identityposture.Own, loginLaneWired()); err != nil {
+	if err := validateLoginLaneConfig(loginLaneWired()); err != nil {
 		t.Fatalf("годная полоса формы под own обязана проходить: %v", err)
 	}
 }
@@ -34,22 +33,12 @@ func TestLoginLaneGuard_F3_45_OwnLaneStartsWithTheLaneWired(t *testing.T) {
 func TestLoginLaneGuard_F3_45_OwnLaneRefusesToStartWithoutTheLaneAddress(t *testing.T) {
 	cfg := loginLaneWired()
 	cfg.URL = ""
-	err := validateLoginLaneConfig(identityposture.Own, cfg)
+	err := validateLoginLaneConfig(cfg)
 	if err == nil {
 		t.Fatal("под own незаданный адрес полосы формы обязан отвергать старт: ретрансляция без цели отвечала бы 503 на каждом запросе всю жизнь")
 	}
 	if !strings.Contains(err.Error(), config.LoginLaneURLKnob) {
 		t.Fatalf("отказ обязан называть ручку %s, получено: %q", config.LoginLaneURLKnob, err.Error())
-	}
-}
-
-// Под `external` ручка не читается: полосы формы там нет, и требовать адрес
-// значило бы не пускать в старт край, которому он не нужен ни для чего.
-func TestLoginLaneGuard_F3_45_ExternalLaneDoesNotReadTheKnob(t *testing.T) {
-	for _, cfg := range []LoginLaneConfig{{}, {URL: "http://plaintext.invalid"}} {
-		if err := validateLoginLaneConfig(identityposture.External, cfg); err != nil {
-			t.Fatalf("под external ручка не читается, получено: %v", err)
-		}
 	}
 }
 
@@ -59,7 +48,7 @@ func TestLoginLaneGuard_F3_45_PlaintextAndMalformedAddressesAreRefused(t *testin
 	for _, raw := range []string{"http://kaname-internal.kacho.svc:9098", "kaname-internal:9098", "://x"} {
 		cfg := loginLaneWired()
 		cfg.URL = raw
-		err := validateLoginLaneConfig(identityposture.Own, cfg)
+		err := validateLoginLaneConfig(cfg)
 		if err == nil {
 			t.Fatalf("адрес %q обязан отвергаться", raw)
 		}
@@ -82,7 +71,7 @@ func TestLoginLaneGuard_F3_45_ClientCertificatePairIsRequiredWithTheAddress(t *t
 	for name, mutate := range cases {
 		cfg := loginLaneWired()
 		mutate(&cfg)
-		err := validateLoginLaneConfig(identityposture.Own, cfg)
+		err := validateLoginLaneConfig(cfg)
 		if err == nil {
 			t.Fatalf("%s: обязан отвергаться", name)
 		}
