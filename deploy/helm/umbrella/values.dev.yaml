@@ -1827,6 +1827,21 @@ kaname:
         defaultAudience: "registry.in-cloud.io"
         tokenTtl: "15m"
         bodyCeiling: 65536
+        # ТЕМП ПОВЕРХНОСТИ ВЫДАЧИ (kaname#315) — умолчаний нет, незаданная
+        # величина есть отказ старта с именем ручки. Числа — §3 приёмки службы
+        # ceremony-pace-is-named-by-number.md, кроме двух потолков.
+        #
+        # ПОТОЛКИ ЗДЕСЬ НЕ РАВНЫ БОЕВЫМ, И ЭТО ВЫВЕДЕНО, А НЕ «ПОМЕНЬШЕ». Приёмка
+        # берёт 32 + 32 из пула по умолчанию (80): потолки вместе ниже пула, и
+        # 16 соединений остаются gRPC-поверхности и фоновым циклам. Пул этого
+        # слоя — 40 (`repository.postgres.maxConns` выше), значит та же
+        # арифметика даёт (40 − 16) / 2 = 12 на каждый потолок.
+        inFlightCeiling: 12
+        exchangesPerClientPerSec: 5
+        failedProofsPerSource: 50
+        failedProofWindow: 15m
+        authorizePerSourcePerSec: 10
+        authorizeInFlightCeiling: 12
 
       # ─── ВЕЛИЧИНЫ ПОЛОСЫ ВХОДА ПАРОЛЕМ (Ф3, kacho#1269) И РЕГИСТРАЦИИ
       #     (Ф4, kacho#2699) · СРОК КОДА ВОССТАНОВЛЕНИЯ (Ф5, kacho#2701) ──────
