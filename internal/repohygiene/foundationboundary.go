@@ -74,6 +74,22 @@ const (
 // Каталог `pkg/*`, которого здесь нет, — находка, а не умолчание: 52-й каталог
 // обязан быть классифицирован ПРАВИЛОМ приёмки (§3), а не молчанием карты.
 var foundationClasses = map[string]foundationClass{
+	// acrlevel, docs, envknob, oauthceremony, scripts приехали с `corelib
+	// v1.10.0-rc.3` (пин поднят kacho#2862) и классифицированы правилом K3-1 §3
+	// по порядку Ограничение → В1 → В2 → В3 → В4:
+	//   - acrlevel, envknob — ОГРАНИЧЕНИЕ: от них зависит прод-код фундамента вне
+	//     их самих (`grpcsrv/acr.go` — от ранга уровня; `migratorcli`,
+	//     `observability`, `validate`, `dropguard`, `grpcsrv`, `pgtest` — от
+	//     чтения ручки), поэтому класс — фундамент, и спорить не о чем;
+	//   - scripts — В1: хуки git фундамента, их вход — индекс, сообщение коммита и
+	//     дерево исходников; Go в каталоге нет, в замыкание двоичного он не попадает;
+	//   - oauthceremony — В4: вход — запрос протокола, не дерево (В1 нет); не
+	//     перечень (В2 не задаётся); меняется с протоколом OAuth 2.0, а не с
+	//     глаголом, типом модели или политикой токена доступа (В3 нет — политика
+	//     живёт в tokenpolicy); смысл церемонии не зависит от того, какой продукт
+	//     её исполняет;
+	//   - docs — В4: записки фундамента о его же изменениях, кода в каталоге нет.
+	"acrlevel":     classCorelib,
 	"api":          classKacho,
 	"audit":        classCorelib,
 	"auth":         classCorelib,
@@ -102,7 +118,9 @@ var foundationClasses = map[string]foundationClass{
 	"credsecret":      classCorelib,
 	"db":              classCorelib,
 	"dbready":         classCorelib,
+	"docs":            classCorelib,
 	"dropguard":       classCorelib,
+	"envknob":         classCorelib,
 	"errors":          classCorelib,
 	"filter":          classCorelib,
 	"gitenv":          classToolchain,
@@ -140,6 +158,7 @@ var foundationClasses = map[string]foundationClass{
 	// каталог общий, а не kaname и не kacho.
 	"moduleselfgating": classCorelib,
 	"nameformdb":       classToolchain,
+	"oauthceremony":    classCorelib,
 	"observability":    classCorelib,
 	"operations":       classCorelib,
 	"option":           classCorelib,
@@ -182,6 +201,7 @@ var foundationClasses = map[string]foundationClass{
 	"retry":           classCorelib,
 	"safeconv":        classCorelib,
 	"schemaguard":     classCorelib,
+	"scripts":         classToolchain,
 	"servicecontract": classCorelib,
 	"servicehost":     classCorelib,
 	"shutdown":        classCorelib,

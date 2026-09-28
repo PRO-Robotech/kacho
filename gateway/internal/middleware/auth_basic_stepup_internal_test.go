@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/corelib/grpcsrv"
+	"github.com/PRO-Robotech/corelib/acrlevel"
 )
 
 func TestAcrFromCredentialLevel_OffAxisIsRefused_OnAxisPasses(t *testing.T) {
@@ -30,7 +30,7 @@ func TestAcrFromCredentialLevel_OffAxisIsRefused_OnAxisPasses(t *testing.T) {
 		acr, ok := acrFromCredentialLevel(v)
 		require.True(t, ok, "положительный контроль: %q стоит на оси каталога", v)
 		require.Equal(t, v, acr)
-		require.Equal(t, grpcsrv.ACRRank(v), grpcsrv.ACRRank(acr),
+		require.Equal(t, acrlevel.Rank(v), acrlevel.Rank(acr),
 			"отображение обязано сохранять ранг общей лестницы, а не заводить свою")
 		recognized++
 	}
@@ -40,7 +40,7 @@ func TestAcrFromCredentialLevel_OffAxisIsRefused_OnAxisPasses(t *testing.T) {
 		assert.False(t, ok, "величина %q оси не принадлежит и распознанной быть не может", v)
 		assert.Equal(t, "", acr, "нераспознанное обязано приезжать пустым — общее правило "+
 			"ранжирует пустое нулём, то есть отказ, а не проход")
-		assert.Equal(t, 0, grpcsrv.ACRRank(acr))
+		assert.Equal(t, 0, acrlevel.Rank(acr))
 		refused++
 	}
 	t.Logf("перепись: величин на оси %d (все распознаны) · вне оси %d (все отвергнуты)",
@@ -77,7 +77,7 @@ func TestBasicCredentialAssurance_OffAxisLevelFailsClosedAndIsLoud(t *testing.T)
 	bad := a.basicCredentialAssurance(BasicVerifiedCredential{
 		PrincipalType: "user", AuthenticationLevel: "aal1"}, "/iam/v1/users/usr-abc/tokens")
 	assert.Equal(t, "", bad.ACR, "съехавшая с оси величина обязана приезжать пустой")
-	assert.Equal(t, 0, grpcsrv.ACRRank(bad.ACR),
+	assert.Equal(t, 0, acrlevel.Rank(bad.ACR),
 		"пустое ранжируется нулём: положительного пола не удовлетворяет")
 	assert.Contains(t, buf.String(), "basic_assurance_unknown_total",
 		"состояние обязано быть громким и со счётчиком — иначе оно не исчезает и не видно")

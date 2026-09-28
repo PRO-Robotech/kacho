@@ -52,9 +52,11 @@ func TestMigratorEntryPointsDoNotResolveDSNThemselves(t *testing.T) {
 			migratorDSNSharedImport, migratorDSNResolveFunc)
 	}
 	if !census.PremiseEnv {
-		t.Fatalf("общий пакет %s не объявляет %s со значением %q: отрицательная "+
-			"половина ослепла бы на чтении, записанном литералом",
-			migratorDSNSharedImport, migratorDSNEnvConst, migratorDSNEnvName)
+		t.Fatalf("общий пакет %s объявляет имена переменной DSN не так, как их числит "+
+			"гейт (ждали %v, объявлено %v): отрицательная половина ослепла бы на "+
+			"чтении, записанном литералом, — поправь перечень migratorDSNEnvNames по "+
+			"общему пакету, а не перечень нарушителей",
+			migratorDSNSharedImport, migratorDSNEnvNames, census.DeclaredEnv)
 	}
 
 	// ПОЛОЖИТЕЛЬНАЯ половина: каждая точка наката делегирует.
@@ -65,7 +67,7 @@ func TestMigratorEntryPointsDoNotResolveDSNThemselves(t *testing.T) {
 				"(--dsn > %s > конфигурация сервиса); запасная конфигурация сервиса "+
 				"передаётся замыканием и остаётся законной (%s)",
 				dir, migratorDSNSharedImport, migratorDSNResolveFunc,
-				migratorDSNEnvName, migratorTractDecisionDoc)
+				migratorDSNEnvDescription(), migratorTractDecisionDoc)
 		}
 	}
 
@@ -99,8 +101,11 @@ func auditMigratorDSNResolve(t *testing.T, root string) (migratorDSNCensus, []mi
 		if facts.DeclaresResolve {
 			census.PremiseResolve = true
 		}
-		if facts.DeclaresEnvName && facts.DeclaredEnvValue == migratorDSNEnvName {
-			census.PremiseEnv = true
+		for c, v := range facts.DeclaredEnv {
+			if census.DeclaredEnv == nil {
+				census.DeclaredEnv = map[string]string{}
+			}
+			census.DeclaredEnv[c] = v
 		}
 	}
 
@@ -142,8 +147,11 @@ func auditMigratorDSNResolve(t *testing.T, root string) (migratorDSNCensus, []mi
 				if facts.DeclaresResolve {
 					census.PremiseResolve = true
 				}
-				if facts.DeclaresEnvName && facts.DeclaredEnvValue == migratorDSNEnvName {
-					census.PremiseEnv = true
+				for c, v := range facts.DeclaredEnv {
+					if census.DeclaredEnv == nil {
+						census.DeclaredEnv = map[string]string{}
+					}
+					census.DeclaredEnv[c] = v
 				}
 				continue
 			}
@@ -164,6 +172,7 @@ func auditMigratorDSNResolve(t *testing.T, root string) (migratorDSNCensus, []mi
 
 	census.EntryPoints = len(entryDirs)
 	census.Delegating = len(delegating)
+	census.PremiseEnv = migratorDSNPremiseEnvHolds(census.DeclaredEnv)
 
 	// Перечень неделегирующих собирается ЗДЕСЬ, из того же обхода: второй проход
 	// по диску брал бы состав мимо индекса — под services/ на всякой машине, где

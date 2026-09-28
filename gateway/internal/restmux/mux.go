@@ -792,6 +792,14 @@ func NewMux(
 			if err := iampb.RegisterUserTokenServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
 				return nil, fmt.Errorf("register iam UserTokenService: %w", err)
 			}
+			// AccessKeyService (ключи доступа человека, Ф7, kacho#2718). Public под
+			// /iam/v1/users/{user_id}/accessKeys (регистрация, перечень, снятие) и
+			// /iam/v1/accessKeys:beginAssertion|:finishAssertion (утверждение
+			// ключом вызывающего). Без этой регистрации все шесть REST-путей
+			// отвечают 404, неотличимым от скрытой admin-поверхности.
+			if err := iampb.RegisterAccessKeyServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+				return nil, fmt.Errorf("register iam AccessKeyService: %w", err)
+			}
 			// AuthorizeService — tenant FGA check (POST /iam/v1/authorize:check).
 			if err := iampb.RegisterAuthorizeServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
 				return nil, fmt.Errorf("register iam AuthorizeService: %w", err)
