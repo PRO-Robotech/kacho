@@ -429,9 +429,35 @@ data:
       # ПУСТОЙ список — законная величина «никого» (служба стартует и отвергает
       # всякий ключ, Ф7-44/Ф7-10), а `with` считает пустой список пустым и
       # выбросил бы объявленное — незаданное и «никого» перестали бы различаться.
+      #
+      # ИМЯ ДОВЕРЯЮЩЕЙ СТОРОНЫ БЛОК НЕ НЕСЁТ (kacho#2905): оно берётся из узла
+      # `identity` раздела `global` — `webauthnRpId`, а пусто — `domain`, — тем же
+      # шаблоном, что у настроек службы личности. Ключ браузер привязывает к
+      # этому имени, и второе объявление рядом с общим расходилось бы с ним
+      # молча. Пустой узел даёт незаданное имя, и оно доезжает до стража
+      # незаданным. Объявленный в профиле `rpId` не выбрасывается молча, а
+      # роняет рендер с именем ключа.
+      #
+      # ПРОИСХОЖДЕНИЕ КОНСОЛИ — тоже из общего узла, когда профиль объявил
+      # `originFromConsole: true`: `appBaseURL`, а пусто — `https://<appSubdomain>.<domain>`.
+      # Это решение, а не умолчание: без него перечень берётся из `origins`, и
+      # незаданный перечень по-прежнему доезжает до стража незаданным. Обе ручки
+      # сразу — два объявления одного перечня, и рендер отказывает.
+      {{- $id := $.Values.global.kacho.identity }}
+      {{- if and (hasKey . "rpId") (not (kindIs "invalid" .rpId)) }}
+      {{- fail "kaname: config.authn.accessKeys.rpId снят (kacho#2905) — имя доверяющей стороны ключей доступа берётся из узла identity раздела global (webauthnRpId, а пусто — domain), тем же шаблоном, что у настроек службы личности. Объявите имя там либо снимите ключ из профиля" }}
+      {{- end }}
+      {{- $fromConsole := .originFromConsole | default false }}
+      {{- if and $fromConsole (hasKey . "origins") (not (kindIs "invalid" .origins)) }}
+      {{- fail "kaname: config.authn.accessKeys объявляет перечень происхождений дважды — originFromConsole=true и origins. Оставьте одно: originFromConsole берёт происхождение консоли из узла identity раздела global, origins — перечень профиля" }}
+      {{- end }}
       access-keys:
-        {{- with .rpId }}
+        {{- with include "kaname.identity.webauthnRpId" $id }}
         rp-id: {{ . | quote }}
+        {{- end }}
+        {{- if $fromConsole }}
+        origins:
+          - {{ include "kaname.identity.consoleOrigin" $id | quote }}
         {{- end }}
         # Ключ с ПУСТЫМ значением (`origins` без списка, `--set …=null`) — не
         # объявление. `hasKey` на нём истинен, поэтому вид проверяется отдельно,

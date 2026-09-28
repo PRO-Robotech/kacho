@@ -318,9 +318,14 @@ func readOwnStackFacts(t *testing.T) []ownStackFacts {
 		// Умолчания подчартов читаются ЗАНОВО на каждый стенд: `mergeValues`
 		// правит карту на месте, и одна общая карта протекала бы из стенда в
 		// стенд, приписывая одному профилю объявления другого.
+		//
+		// `global` берётся у базы зонта: из общего узла личности чарт выводит имя
+		// доверяющей стороны ключей доступа (kacho#2905), и без базы цепочка,
+		// ничего не переопределившая, выглядела бы не объявившей его.
 		declared := map[string]any{
 			"kaname":      readYAML(t, filepath.Join(kanameSubchart(t), "values.yaml")),
 			"api-gateway": readYAML(t, filepath.Join("..", "gateway", "deploy", "values.yaml")),
+			"global":      readYAML(t, filepath.Join(umbrellaDir, "values.yaml"))["global"],
 		}
 		for _, p := range stacksTbl[name] {
 			declared = mergeValues(declared, readYAML(t, filepath.Join(umbrellaDir, p)))
@@ -337,12 +342,19 @@ func readOwnStackFacts(t *testing.T) []ownStackFacts {
 		f.IssuanceTLS = issuanceListenerServesTLS(declared)
 		f.IssuanceMode = issuanceListenerMode(declared)
 
+		// Имя доверяющей стороны — из общего узла личности (`webauthnRpId`, а
+		// пусто — `domain`), тем же выражением, что у шаблона; перечень
+		// происхождений — объявленный `origins` либо `originFromConsole: true`.
 		binding, ok := lookup(declared, "kaname", "config", "authn", "accessKeys")
 		if m, isMap := binding.(map[string]any); ok && isMap {
-			_, rp := m["rpId"]
+			rpName := declaredString(lookup(declared, "global", "kacho", "identity", "webauthnRpId"))
+			if rpName == "" {
+				rpName = declaredString(lookup(declared, "global", "kacho", "identity", "domain"))
+			}
 			_, or := m["origins"]
+			fromConsole, _ := m["originFromConsole"].(bool)
 			_, al := m["algorithms"]
-			f.AccessKeys = rp && or && al
+			f.AccessKeys = rpName != "" && (or || fromConsole) && al
 		}
 		out = append(out, f)
 	}
