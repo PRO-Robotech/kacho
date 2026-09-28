@@ -210,9 +210,14 @@ func credentialRecheckInterval(cfg config.Config) time.Duration {
 // потому что сквозные пробы зовут конструктор напрямую и продовую точку сборки
 // минуют. Вынесенная функция даёт пробе тот самый вход, который исполняется в
 // бою.
+//
+// ourTokens — ТОТ ЖЕ читатель сверки токенов нашей чеканки, что стоит на пути
+// запроса (kacho#2900): отметку адреса владельца такого токена называет только
+// он. Ноль — наш издатель не принят, и токенов нашей чеканки край не пропускает.
 func buildStreamRevocationSweeper(
 	cfg config.Config,
 	iamInternal *grpc.ClientConn,
+	ourTokens middleware.TokenRevocationChecker,
 	streams *subscriptionstream.Handler,
 	logger *slog.Logger,
 ) (*streamrevocation.Sweeper, error) {
@@ -271,6 +276,7 @@ func buildStreamRevocationSweeper(
 	return streamrevocation.New(streamrevocation.Config{
 		Streams:    streams,
 		Authority:  clients.NewSessionRevocationsAdapter(iamInternal),
+		OurTokens:  ourTokens,
 		Interval:   interval,
 		StaleAfter: staleAfter,
 		Logger:     logger,

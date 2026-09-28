@@ -65,6 +65,8 @@ package middleware
 import (
 	"errors"
 	"net/http"
+
+	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 )
 
 // tryOwnSession — полоса нашей сессии. Возвращает запрос, с которым цепочка
@@ -157,6 +159,10 @@ func (a *AuthInterceptor) tryOwnSession(w http.ResponseWriter, r *http.Request) 
 	// `mfa_fresh` о ВИДЕ способа отсутствует, о свежести — момент аутентификации.
 	setSessionAssuranceHeaders(r, assurance, nil)
 	setPrincipalHeaders(r, subj.Type, subj.ID, subj.DisplayName)
+	// Носитель — для ТОГО ЖЕ вопроса с открытого соединения (kacho#2900): отметку
+	// адреса служба называет только в ответе о сессии по носителю, и перепрос
+	// потоков спрашивает её им же. Записывается после всех вердиктов полосы.
+	r = r.WithContext(principalmeta.WithPresented(r.Context(), principalmeta.PresentedSession(bearer)))
 	a.logger.Info("auth.HTTP: Principal injected (own session)", "type", subj.Type, "id", subj.ID)
 	return r, true, false
 }

@@ -182,7 +182,7 @@ func TestCompositionRootWiresTheStreamRegistryIntoTheCredentialRecheck(t *testin
 		iamv1.RegisterInternalSessionRevocationsServiceServer(s, revokingAuthority{})
 	})
 
-	sweeper, err := buildStreamRevocationSweeper(recheckProbeConfig(), iamConn, projection, quietLog())
+	sweeper, err := buildStreamRevocationSweeper(recheckProbeConfig(), iamConn, nil, projection, quietLog())
 	if err != nil {
 		t.Fatalf("сборка перепроса: %v", err)
 	}
@@ -191,6 +191,11 @@ func TestCompositionRootWiresTheStreamRegistryIntoTheCredentialRecheck(t *testin
 	r.Header.Set(principalmeta.HeaderPrincipalType, "user")
 	r.Header.Set(principalmeta.HeaderPrincipalID, "usr00000000000000007")
 	r.Header.Set(principalmeta.HeaderTokenJti, "jti-wiring")
+	// Токен иной записи издателя — как его записала бы полоса предъявителя: без
+	// записи поток закрылся бы как «спросить нечем», и проба зеленела бы не на
+	// своём предмете.
+	r = r.WithContext(principalmeta.WithPresented(r.Context(),
+		principalmeta.PresentedToken("raw-jti-wiring", false)))
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -246,7 +251,7 @@ func TestCredentialRecheckStaleBudgetFollowsTheWindow(t *testing.T) {
 	iamConn := bufconnDial(t, func(s *grpc.Server) {
 		iamv1.RegisterInternalSessionRevocationsServiceServer(s, revokingAuthority{})
 	})
-	sweeper, err := buildStreamRevocationSweeper(recheckProbeConfig(), iamConn, probeProjection(t), quietLog())
+	sweeper, err := buildStreamRevocationSweeper(recheckProbeConfig(), iamConn, nil, probeProjection(t), quietLog())
 	if err != nil {
 		t.Fatalf("сборка перепроса: %v", err)
 	}
@@ -309,7 +314,7 @@ func TestCredentialRecheckIsRefusedAtStartupWhenItCannotWork(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if _, err := buildStreamRevocationSweeper(c.cfg, c.conn, c.proj, quietLog()); err == nil {
+			if _, err := buildStreamRevocationSweeper(c.cfg, c.conn, nil, c.proj, quietLog()); err == nil {
 				t.Fatal("точка сборки приняла посадку, при которой перепрос не отказал бы НИ РАЗУ")
 			}
 		})
@@ -328,7 +333,7 @@ func TestShippedPostureAssemblesTheCredentialRecheck(t *testing.T) {
 	iamConn := bufconnDial(t, func(s *grpc.Server) {
 		iamv1.RegisterInternalSessionRevocationsServiceServer(s, revokingAuthority{})
 	})
-	if _, err := buildStreamRevocationSweeper(cfg, iamConn, probeProjection(t), quietLog()); err != nil {
+	if _, err := buildStreamRevocationSweeper(cfg, iamConn, nil, probeProjection(t), quietLog()); err != nil {
 		t.Fatalf("объявленная посадка не собирает перепрос: %v — тогда край не поднялся бы вовсе", err)
 	}
 }
@@ -365,7 +370,7 @@ func TestRecheckWindowHonoursEveryLaneItSpeaksFor(t *testing.T) {
 		IntrospectionCacheTTLSeconds: int(middleware.BasicCredentialVerdictWindow/time.Second) + 5,
 		SubscriptionStreamBudget:     10 * time.Minute,
 	}
-	if _, err := buildStreamRevocationSweeper(wide, iamConn, probeProjection(t), quietLog()); err == nil {
+	if _, err := buildStreamRevocationSweeper(wide, iamConn, nil, probeProjection(t), quietLog()); err == nil {
 		t.Fatal("точка сборки приняла окно шире границы, объявленной полосой базового секрета: " +
 			"обещание «отозванное отвергается не позже N» перестало бы действовать на открытых " +
 			"соединениях, оставаясь верным на пути запроса")
@@ -377,7 +382,7 @@ func TestRecheckWindowHonoursEveryLaneItSpeaksFor(t *testing.T) {
 		IntrospectionCacheTTLSeconds: int(middleware.BasicCredentialVerdictWindow / time.Second),
 		SubscriptionStreamBudget:     10 * time.Minute,
 	}
-	if _, err := buildStreamRevocationSweeper(exact, iamConn, probeProjection(t), quietLog()); err != nil {
+	if _, err := buildStreamRevocationSweeper(exact, iamConn, nil, probeProjection(t), quietLog()); err != nil {
 		t.Fatalf("окно, РАВНОЕ объявленной границе, отвергнуто: %v — тогда объявленная "+
 			"посадка не собралась бы вовсе", err)
 	}
@@ -468,5 +473,69 @@ func TestWiringStreamArrivalIsSignalledPerStreamNotBroadcast(t *testing.T) {
 			"условие, истинное независимо от предмета, условием не является",
 			owner.servedStreams())
 	default:
+	}
+}
+
+// answeringOurTokens — сверка наших токенов, отвечающая «действует» и помнящая,
+// что у неё спросили.
+type answeringOurTokens struct {
+	mu    sync.Mutex
+	asked []string
+}
+
+func (a *answeringOurTokens) Introspect(
+	_ context.Context, jti, _ string,
+) (middleware.IntrospectionResult, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.asked = append(a.asked, jti)
+	return middleware.IntrospectionResult{Active: true}, nil
+}
+
+// TestCompositionRootHandsTheOurTokenReaderToTheCredentialRecheck — точка сборки
+// передаёт перепросу читателя сверки наших токенов (kacho#2900).
+//
+// Различие наблюдаемо только на ЖИВОМ токене: без читателя поток нашего токена
+// закрывается как «спросить нечем», с читателем — остаётся открыт, и читателя
+// спросили. Отозванный токен дал бы «закрыт» в обоих случаях, и проба зеленела
+// бы на несделанной провязке.
+func TestCompositionRootHandsTheOurTokenReaderToTheCredentialRecheck(t *testing.T) {
+	owner, projection := newHeldStreamStand(t)
+	iamConn := bufconnDial(t, func(s *grpc.Server) {
+		iamv1.RegisterInternalSessionRevocationsServiceServer(s, revokingAuthority{})
+	})
+	ours := &answeringOurTokens{}
+
+	sweeper, err := buildStreamRevocationSweeper(recheckProbeConfig(), iamConn, ours, projection, quietLog())
+	if err != nil {
+		t.Fatalf("сборка перепроса: %v", err)
+	}
+
+	r := httptest.NewRequest(http.MethodGet, subscriptionstream.Path+"?owner=probe", nil)
+	r.Header.Set(principalmeta.HeaderPrincipalType, "user")
+	r.Header.Set(principalmeta.HeaderPrincipalID, "usr00000000000000008")
+	r.Header.Set(principalmeta.HeaderTokenJti, "jti-ours-wiring")
+	r = r.WithContext(principalmeta.WithPresented(r.Context(),
+		principalmeta.PresentedToken("raw-ours-wiring", true)))
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		projection.ServeHTTP(httptest.NewRecorder(), r)
+	}()
+	owner.awaitStreams(t, 1)
+	defer func() { projection.CloseAll(); <-done }()
+
+	sweeper.Sweep(context.Background())
+	select {
+	case <-done:
+		t.Fatal("поток живого токена нашей чеканки закрыт — точка сборки не передала перепросу " +
+			"читателя сверки, и отметку адреса о таком токене спросить нечем")
+	case <-time.After(300 * time.Millisecond):
+	}
+	ours.mu.Lock()
+	asked := append([]string(nil), ours.asked...)
+	ours.mu.Unlock()
+	if len(asked) != 1 || asked[0] != "jti-ours-wiring" {
+		t.Fatalf("у читателя сверки спрошено %v, ждали ровно jti-ours-wiring", asked)
 	}
 }

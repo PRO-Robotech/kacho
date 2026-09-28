@@ -1185,6 +1185,12 @@ func (a *AuthInterceptor) tryBearerJWT(w http.ResponseWriter, r *http.Request, n
 	// the person, and the cluster-internal floor decides on the acr it finds here.
 	reportUnusableAuthMethods(a.logger, a.authMethodsUnusable, stepUpLaneBearer, r.URL.Path,
 		setTokenContextHeaders(r, vt))
+	// Токен и его полоса отзыва — для ТОГО ЖЕ вопроса с открытого соединения
+	// (kacho#2900): о токене нашей чеканки отметку адреса называет только сверка
+	// по самому токену. Полоса — та же пометка записи издателя, по которой
+	// revocationCheck выбрал вопрос выше.
+	r = r.WithContext(principalmeta.WithPresented(r.Context(),
+		principalmeta.PresentedToken(vt.Raw, vt.ReadRevocation)))
 	if pType, pID, display, perr := principalFromVerifiedToken(vt); perr == nil {
 		setPrincipalHeaders(r, pType, pID, display)
 		a.logger.Info("auth.HTTP: Principal injected (bearer JWT)", "type", pType, "id", pID)

@@ -94,7 +94,7 @@ func TestLiveCredentialLeavesTheStreamOpen(t *testing.T) {
 		principalmeta.HeaderPrincipalType: "user",
 		principalmeta.HeaderPrincipalID:   "usr00000000000000002",
 		principalmeta.HeaderTokenJti:      "jti-live",
-	})
+	}, recordLaneToken("jti-live"))
 
 	runCtx, stop := context.WithCancel(context.Background())
 	defer stop()
@@ -119,6 +119,8 @@ func TestLiveCredentialLeavesTheStreamOpen(t *testing.T) {
 // проекции — без отзыва целиком.
 func TestSessionCutoffClosesTheBrowserStream(t *testing.T) {
 	s := newStand(t, nil)
+	// Сессия жива и адрес подтверждён: предмет пробы — отсечка, а не отметка.
+	s.human.put("brw-cutoff", "usr00000000000000003", true)
 
 	authAt := time.Now().Add(-time.Hour).Truncate(time.Second)
 	done := s.openStream(t, map[string]string{
@@ -126,7 +128,7 @@ func TestSessionCutoffClosesTheBrowserStream(t *testing.T) {
 		principalmeta.HeaderPrincipalID:   "usr00000000000000003",
 		// `jti` НЕ ставится: браузерная сессия его не несёт.
 		principalmeta.HeaderTokenMfaAt: itoa(authAt.Unix()),
-	})
+	}, principalmeta.PresentedSession("brw-cutoff"))
 
 	runCtx, stop := context.WithCancel(context.Background())
 	defer stop()
@@ -166,7 +168,7 @@ func TestUnansweredAuthorityClosesEveryStreamOnlyAfterTheDeclaredWindow(t *testi
 		principalmeta.HeaderPrincipalType: "user",
 		principalmeta.HeaderPrincipalID:   "usr00000000000000004",
 		principalmeta.HeaderTokenJti:      "jti-stale",
-	})
+	}, recordLaneToken("jti-stale"))
 
 	ctx := context.Background()
 	s.authority.goSilent()
@@ -203,7 +205,7 @@ func TestAnsweringAuthorityNeverTripsFailClosed(t *testing.T) {
 		principalmeta.HeaderPrincipalType: "user",
 		principalmeta.HeaderPrincipalID:   "usr00000000000000005",
 		principalmeta.HeaderTokenJti:      "jti-answered",
-	})
+	}, recordLaneToken("jti-answered"))
 
 	ctx := context.Background()
 	for i := 0; i < 5; i++ {
@@ -266,12 +268,14 @@ func TestRolloutSkewPassesLoudlyAndNeverTripsFailClosed(t *testing.T) {
 	s.authority.mu.Lock()
 	s.authority.unsupported = true
 	s.authority.mu.Unlock()
+	// Окно раската — у вопроса ОБ ОТСЕЧКЕ; сессия жива и адрес подтверждён.
+	s.human.put("brw-skew", "usr00000000000000006", true)
 
 	done := s.openStream(t, map[string]string{
 		principalmeta.HeaderPrincipalType: "user",
 		principalmeta.HeaderPrincipalID:   "usr00000000000000006",
 		principalmeta.HeaderTokenMfaAt:    itoa(time.Now().Add(-time.Hour).Unix()),
-	})
+	}, principalmeta.PresentedSession("brw-skew"))
 	defer func() { s.projection.CloseAll(); <-done }()
 
 	ctx := context.Background()
