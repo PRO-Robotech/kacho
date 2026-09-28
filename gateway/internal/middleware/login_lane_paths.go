@@ -3,9 +3,10 @@
 
 // login_lane_paths.go — ЕДИНСТВЕННОЕ объявление глаголов полосы формы
 // (приёмка Ф3 Р2, §8 инв. 7): четыре глагола Ф3, регистрация Ф4 (kacho#2699),
-// два глагола восстановления доступа Ф5 (kacho#2701) и шесть глаголов второго
-// фактора Ф12 (приёмка Ф12 Р4, kacho#1281) — тринадцать путей, тот же
-// перечень, что служба объявляет у своего слушателя (`loginlanehttp.Paths()`).
+// два глагола восстановления доступа Ф5 (kacho#2701), шесть глаголов второго
+// фактора Ф12 (приёмка Ф12 Р4, kacho#1281) и два глагола подтверждения адреса
+// почты (приёмка F6b Р5, kacho#2900) — пятнадцать путей, тот же перечень, что
+// служба объявляет у своего слушателя (`loginlanehttp.Paths()`).
 //
 // # Кто это читает — трое, и второго объявления нет
 //
@@ -15,7 +16,10 @@
 //   - ветка полосы сессии (`tryOwnSession`, Р7): на этих путях «сессии нет»
 //     РЕТРАНСЛИРУЕТСЯ службе, а не отвергается; отсечка отвергается как всюду;
 //     недоступность службы ретранслируется ровно на глаголах, чья запись это
-//     разрешает (`relayWhenUnanswered`), на остальных — F4d-23;
+//     разрешает (`relayWhenUnanswered`), на остальных — F4d-23; сессия с
+//     неподтверждённым адресом почты доходит ровно до глаголов, чья запись это
+//     объявила (`openBeforeAddressConfirmation`, приёмка F6b Р5), на остальных —
+//     отказ адреса;
 //   - регистрация ретрансляции в композиционном корне: обработчик крепится на
 //     каждый путь перечня под посадкой `own`.
 //
@@ -59,6 +63,11 @@ const (
 	LoginLanePathSecondFactorRemove      = "/iam/v1/auth/second-factor/remove"
 	LoginLanePathSecondFactorBackupCodes = "/iam/v1/auth/second-factor/backup-codes"
 	LoginLanePathStepUp                  = "/iam/v1/auth/step-up"
+	// Подтверждение адреса почты (приёмка F6b Р5; Р6 службы): запрос письма с
+	// кодом и предъявление кода — два глагола под сессией человека, оба доступны
+	// до подтверждения, оба читают носитель.
+	LoginLanePathVerifyEmail        = "/iam/v1/auth/verify-email"
+	LoginLanePathVerifyEmailConfirm = "/iam/v1/auth/verify-email/confirm"
 )
 
 // LoginLaneRoute — глагол формы: имя для счётчиков и путь на адресе консоли.
@@ -77,23 +86,39 @@ type LoginLaneRoute struct {
 	//     (выход — Ф3-17);
 	//   - нулевое значение — отказ F4d-23 на крае, носитель цел. Глагол читает
 	//     сессию носителя (смена пароля — Ф3-20 «д»; шесть глаголов второго
-	//     фактора, включая чтение состояния, — Ф12 Р4), и запрос с носителем,
-	//     чью отсечку установить не удалось, до него не доходит.
+	//     фактора, включая чтение состояния, — Ф12 Р4; два глагола
+	//     подтверждения адреса — Р6 службы), и запрос с носителем, чью отсечку
+	//     установить не удалось, до него не доходит.
 	//
 	// Отказ — умолчание: глагол, дописанный без решения, получает F4d-23.
 	// Поле не экспортируется: решение принадлежит полосе сессии, и прочие
 	// читатели объявления его не видят.
 	relayWhenUnanswered bool
+	// openBeforeAddressConfirmation — доходит ли до глагола сессия, чей адрес
+	// почты не подтверждён (приёмка F6b Р5). Доступных шесть: признак формы,
+	// вход, выход, регистрация и оба глагола подтверждения — то, что нужно
+	// человеку, чтобы войти, подтвердить адрес и выйти. Прочим сессия с
+	// неподтверждённым адресом получает отказ адреса (Р3) и до службы не
+	// доходит; без носителя сессии решение не действует вовсе — анонимный вызов
+	// судится как прежде.
+	//
+	// Восстановление доступа закрыто здесь СТРОЖЕ службы и намеренно (Р5): оно
+	// сессии не требует, код восстановления служба чеканит только подтверждённому
+	// адресу, и человек с неподтверждённой сессией к нему не зовётся.
+	//
+	// Отказ — умолчание, как у `relayWhenUnanswered`: глагол, дописанный без
+	// решения, до подтверждения адреса недоступен.
+	openBeforeAddressConfirmation bool
 }
 
-// loginLaneRoutes — сам перечень. Порядок — порядок Р2, затем Ф4, Ф5 и Ф12;
-// читатели по нему не ветвятся.
+// loginLaneRoutes — сам перечень. Порядок — порядок Р2, затем Ф4, Ф5, Ф12 и
+// F6b; читатели по нему не ветвятся.
 var loginLaneRoutes = []LoginLaneRoute{
-	{Verb: "login", Path: LoginLanePathLogin, relayWhenUnanswered: true},
-	{Verb: "logout", Path: LoginLanePathLogout, relayWhenUnanswered: true},
+	{Verb: "login", Path: LoginLanePathLogin, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
+	{Verb: "logout", Path: LoginLanePathLogout, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
 	{Verb: "password", Path: LoginLanePathPassword},
-	{Verb: "csrf", Path: LoginLanePathCSRF, relayWhenUnanswered: true},
-	{Verb: "register", Path: LoginLanePathRegister, relayWhenUnanswered: true},
+	{Verb: "csrf", Path: LoginLanePathCSRF, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
+	{Verb: "register", Path: LoginLanePathRegister, relayWhenUnanswered: true, openBeforeAddressConfirmation: true},
 	{Verb: "recovery", Path: LoginLanePathRecovery, relayWhenUnanswered: true},
 	{Verb: "recovery-complete", Path: LoginLanePathRecoveryComplete, relayWhenUnanswered: true},
 	{Verb: "second-factor-status", Path: LoginLanePathSecondFactor},
@@ -102,6 +127,8 @@ var loginLaneRoutes = []LoginLaneRoute{
 	{Verb: "second-factor-remove", Path: LoginLanePathSecondFactorRemove},
 	{Verb: "second-factor-backup-codes", Path: LoginLanePathSecondFactorBackupCodes},
 	{Verb: "step-up", Path: LoginLanePathStepUp},
+	{Verb: "verify-email", Path: LoginLanePathVerifyEmail, openBeforeAddressConfirmation: true},
+	{Verb: "verify-email-confirm", Path: LoginLanePathVerifyEmailConfirm, openBeforeAddressConfirmation: true},
 }
 
 // LoginLaneRoutes отдаёт КОПИЮ перечня глаголов формы.
@@ -129,6 +156,18 @@ func loginLaneRelaysWhenUnanswered(path string) bool {
 	for _, rt := range loginLaneRoutes {
 		if rt.Path == path {
 			return rt.relayWhenUnanswered
+		}
+	}
+	return false
+}
+
+// loginLaneOpenBeforeAddressConfirmation — доходит ли до этого глагола сессия с
+// неподтверждённым адресом почты (приёмка F6b Р5). Путь вне перечня — false:
+// решение не наследуется ни приставкой, ни соседом.
+func loginLaneOpenBeforeAddressConfirmation(path string) bool {
+	for _, rt := range loginLaneRoutes {
+		if rt.Path == path {
+			return rt.openBeforeAddressConfirmation
 		}
 	}
 	return false

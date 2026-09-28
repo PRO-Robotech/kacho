@@ -8,10 +8,11 @@ import (
 )
 
 // loginLaneWant — перечень глаголов формы, как его объявляет служба
-// (`loginlanehttp.Paths()` в дереве службы — тринадцать путей одним объявлением):
+// (`loginlanehttp.Paths()` в дереве службы — пятнадцать путей одним объявлением):
 // четыре глагола Ф3 (Р2), регистрация Ф4 (kacho#2699), два глагола
-// восстановления Ф5 (kacho#2701) и шесть глаголов второго фактора Ф12 (Р4,
-// kacho#1281). Перечень выписан здесь ДОСЛОВНО, а не прочитан
+// восстановления Ф5 (kacho#2701), шесть глаголов второго фактора Ф12 (Р4,
+// kacho#1281) и два глагола подтверждения адреса почты (приёмка F6b, Р5; Р6
+// службы). Перечень выписан здесь ДОСЛОВНО, а не прочитан
 // из модуля службы: у края СВОЁ объявление (§8 инв. 7 Ф3), и проба сверяет его с
 // тем, что обязано быть верно по приёмке, — иначе она зеленела бы на любом
 // перечне, который край взял бы у службы как есть.
@@ -31,6 +32,23 @@ var loginLaneWant = map[string]string{
 	"second-factor-remove":       "/iam/v1/auth/second-factor/remove",
 	"second-factor-backup-codes": "/iam/v1/auth/second-factor/backup-codes",
 	"step-up":                    "/iam/v1/auth/step-up",
+	// Подтверждение адреса почты (приёмка F6b, Р5): запрос письма и предъявление
+	// кода, оба под сессией человека.
+	"verify-email":         "/iam/v1/auth/verify-email",
+	"verify-email-confirm": "/iam/v1/auth/verify-email/confirm",
+}
+
+// openBeforeAddressConfirmationWant — глаголы, доступные до подтверждения адреса
+// почты (приёмка F6b, Р5): ровно шесть. Прочие девять неподтверждённой сессии
+// край отвергает значением Р3. Выписано ДОСЛОВНО по приёмке — проба сверяет
+// объявление с решением, а не с самим объявлением.
+var openBeforeAddressConfirmationWant = map[string]bool{
+	"csrf":                 true,
+	"login":                true,
+	"logout":               true,
+	"register":             true,
+	"verify-email":         true,
+	"verify-email-confirm": true,
 }
 
 // TestLoginLanePaths_F3_51_OneDeclarationFeedsThePublicListAndTheLane — глаголы
@@ -44,7 +62,7 @@ var loginLaneWant = map[string]string{
 func TestLoginLanePaths_F3_51_OneDeclarationFeedsThePublicListAndTheLane(t *testing.T) {
 	routes := LoginLaneRoutes()
 	if len(routes) != len(loginLaneWant) {
-		t.Fatalf("глаголов формы объявлено %d, ожидалось %d (Р2 + Ф4 + Ф5 + Ф12)", len(routes), len(loginLaneWant))
+		t.Fatalf("глаголов формы объявлено %d, ожидалось %d (Р2 + Ф4 + Ф5 + Ф12 + F6b)", len(routes), len(loginLaneWant))
 	}
 	for _, rt := range routes {
 		if loginLaneWant[rt.Verb] != rt.Path {
@@ -125,4 +143,51 @@ func TestLoginLanePaths_F4_F5_RegistrationAndRecoveryAreVerbsOfTheSameLane(t *te
 		}
 	}
 	t.Logf("перепись: глаголов Ф4/Ф5 %d из %d объявленных", len(added), len(LoginLaneRoutes()))
+}
+
+// TestLoginLanePaths_F6b_11_FifteenVerbsAndSixOpenBeforeAddressConfirmation —
+// объявление глаголов формы несёт 15 путей, у каждого — решение «доступен до
+// подтверждения адреса», и доступных ровно шесть (приёмка F6b, Р5, F6b-11).
+//
+// Нулевое значение решения — ОТКАЗ: глагол, дописанный без решения, до
+// подтверждения недоступен. Оба глагола подтверждения носитель читают (Р6
+// службы: «под сессией человека»), поэтому при службе, не ответившей о сессии,
+// край отвечает F4d-23, а не ретранслирует: `relayWhenUnanswered` у них нулевой.
+func TestLoginLanePaths_F6b_11_FifteenVerbsAndSixOpenBeforeAddressConfirmation(t *testing.T) {
+	routes := LoginLaneRoutes()
+	if len(routes) != 15 || len(loginLaneWant) != 15 {
+		t.Fatalf("глаголов формы объявлено %d, по приёмке — 15 (%d выписано)", len(routes), len(loginLaneWant))
+	}
+	open := 0
+	for _, rt := range routes {
+		want := openBeforeAddressConfirmationWant[rt.Verb]
+		if got := loginLaneOpenBeforeAddressConfirmation(rt.Path); got != want {
+			t.Errorf("глагол %q: доступен до подтверждения адреса = %v, по приёмке — %v", rt.Verb, got, want)
+		}
+		if loginLaneOpenBeforeAddressConfirmation(rt.Path) {
+			open++
+		}
+	}
+	if open != 6 {
+		t.Fatalf("доступных до подтверждения адреса глаголов %d, по приёмке — 6", open)
+	}
+	for _, p := range []string{LoginLanePathVerifyEmail, LoginLanePathVerifyEmailConfirm} {
+		if loginLaneRelaysWhenUnanswered(p) {
+			t.Errorf("%q читает носитель — при службе, не ответившей о сессии, край обязан отвечать F4d-23, а не ретранслировать", p)
+		}
+		if !IsLoginLanePath(p) || !isPublicHTTPPath(p) {
+			t.Errorf("%q не объявлен глаголом формы — ретрансляция и освобождение от каталога его не видят", p)
+		}
+	}
+	// Близнец: регистрация носителя не читает и ретранслируется при неответе.
+	if !loginLaneRelaysWhenUnanswered(LoginLanePathRegister) {
+		t.Error("регистрация носителя не читает и обязана ретранслироваться при неответе службы")
+	}
+	// Путь вне перечня — не открыт: решение не наследуется ни приставкой, ни соседом.
+	for _, p := range []string{"/iam/v1/auth/verify-email/", "/iam/v1/auth/verify-emailx", "/iam/v1/auth/verify-email/confirm/x", "/vpc/v1/networks"} {
+		if loginLaneOpenBeforeAddressConfirmation(p) {
+			t.Errorf("путь %q признан доступным до подтверждения — совпадение обязано быть точным", p)
+		}
+	}
+	t.Logf("перепись: глаголов формы %d · доступных до подтверждения адреса %d", len(routes), open)
 }

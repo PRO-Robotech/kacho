@@ -39,6 +39,9 @@ func TestSessionLane_F3_48_EveryCellExistsWithZeroBeforeTheFirstEvent(t *testing
 		`kacho_api_gateway_session_lane_refusals_total{outcome="cutoff_denied"} 0`,
 		`kacho_api_gateway_session_lane_refusals_total{outcome="no_session"} 0`,
 		`kacho_api_gateway_session_lane_refusals_total{outcome="unavailable"} 0`,
+		// Отказ адреса (приёмка F6b, Р12): своя клетка той же полосы, с нулём до
+		// первого отказа.
+		`kacho_api_gateway_session_lane_refusals_total{outcome="email_not_verified"} 0`,
 		`kacho_api_gateway_session_lane_rollout_window_total 0`,
 		`kacho_api_gateway_login_lane_relayed_total{verb="login"} 0`,
 		`kacho_api_gateway_login_lane_relayed_total{verb="logout"} 0`,
@@ -47,6 +50,8 @@ func TestSessionLane_F3_48_EveryCellExistsWithZeroBeforeTheFirstEvent(t *testing
 		`kacho_api_gateway_login_lane_relayed_total{verb="register"} 0`,
 		`kacho_api_gateway_login_lane_relayed_total{verb="recovery"} 0`,
 		`kacho_api_gateway_login_lane_relayed_total{verb="recovery-complete"} 0`,
+		`kacho_api_gateway_login_lane_relayed_total{verb="verify-email"} 0`,
+		`kacho_api_gateway_login_lane_relayed_total{verb="verify-email-confirm"} 0`,
 		`kacho_api_gateway_login_lane_unreachable_total 0`,
 	}
 	for _, line := range zeroes {
@@ -102,6 +107,25 @@ func TestSessionLane_PasswordChangeRequiredCellIsGoneWithItsSubject(t *testing.T
 	require.NotContains(t, out, `decision="password_change_required"`)
 	// Положительный контроль: семейство решений живо — соседняя клетка на месте.
 	require.Contains(t, out, `kacho_api_gateway_authz_check_decisions_total{decision="scope_filtered"} 0`)
+}
+
+// Клетка отказа адреса (приёмка F6b, Р12): существует с нулём до первого
+// отказа, растёт на число отказов и не трогает соседние клетки полосы.
+func TestSessionLane_F6b_R12_AddressRefusalCellExistsWithZeroAndGrows(t *testing.T) {
+	lane := middleware.SessionLaneSnapshot{}
+	relay := handler.LoginLaneRelaySnapshot{Relayed: map[string]uint64{}}
+	m := gwmetrics.New("test", "deadbeef")
+	m.RegisterSessionLane(func() gwmetrics.SessionLaneSnapshot {
+		return gwmetrics.SessionLaneSnapshot{Lane: lane, Relay: relay}
+	})
+	require.Contains(t, expose(t, m), `kacho_api_gateway_session_lane_refusals_total{outcome="email_not_verified"} 0`)
+	lane.AddressNotVerified = 4
+	body := expose(t, m)
+	require.Contains(t, body, `kacho_api_gateway_session_lane_refusals_total{outcome="email_not_verified"} 4`)
+	for _, neighbour := range []string{"cutoff_denied", "no_session", "unavailable"} {
+		require.Contains(t, body, `kacho_api_gateway_session_lane_refusals_total{outcome="`+neighbour+`"} 0`,
+			"соседняя клетка не должна была вырасти")
+	}
 }
 
 // Клетка «уровень вне оси сессии» (Ф11-19): существует с нулём до первого

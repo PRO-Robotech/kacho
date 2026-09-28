@@ -53,9 +53,11 @@ func (f *fakeCut) SessionCutoffOf(context.Context, string) (time.Time, bool, err
 
 var authAt = time.Date(2026, 9, 16, 12, 0, 0, 123456000, time.UTC)
 
+// Адрес подтверждён: проба о другом предмете (ретрансляция глаголов формы);
+// рубеж адреса держит own_session_address_gate_test.go (приёмка F6b, DoD п. 2).
 func liveSession() middleware.HumanSession {
 	return middleware.HumanSession{UserID: "usr-1", Email: "a@example.com", DisplayName: "A",
-		AuthenticatedAt: authAt, ExpiresAt: authAt.Add(24 * time.Hour), AssuranceLevel: "1"}
+		AuthenticatedAt: authAt, ExpiresAt: authAt.Add(24 * time.Hour), AssuranceLevel: "1", EmailVerified: true}
 }
 
 // seen — один запрос, дошедший до дублёра слушателя формы.

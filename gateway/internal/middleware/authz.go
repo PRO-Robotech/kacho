@@ -393,6 +393,10 @@ func (m *AuthzMiddleware) Unary() grpc.UnaryServerInterceptor {
 		case outcomeNotFound:
 			// Hide existence: read-deny on a verb-bearing IAM read → NotFound(5).
 			return nil, decision.gRPCStatus().Err()
+		case outcomeAddressNotVerified:
+			// Отказ адреса (приёмка F6b, Р3а): значение службы, раньше скрытия
+			// существования.
+			return nil, decision.gRPCStatus().Err()
 		case outcomeError:
 			if m.cfg.FailOpen {
 				m.metrics.RecordErrorPassed()
@@ -441,6 +445,9 @@ func (m *AuthzMiddleware) Stream() grpc.StreamServerInterceptor {
 			return decision.gRPCStatus().Err()
 		case outcomeNotFound:
 			// Hide existence: read-deny on a verb-bearing IAM read → NotFound(5).
+			return decision.gRPCStatus().Err()
+		case outcomeAddressNotVerified:
+			// Отказ адреса (приёмка F6b, Р3а).
 			return decision.gRPCStatus().Err()
 		case outcomeError:
 			if m.cfg.FailOpen {
@@ -518,6 +525,10 @@ func (m *AuthzMiddleware) HTTP(next http.Handler) http.Handler {
 		case outcomeNotFound:
 			// Hide existence: read-deny on a verb-bearing IAM read → 404, no reasons.
 			writeHTTPNotFound(w, decision.descriptor)
+		case outcomeAddressNotVerified:
+			// Отказ адреса (приёмка F6b, Р3а): тот же ответ, что у рубежа полосы
+			// сессии, побайтово.
+			writeHTTPAddressRefusal(w)
 		case outcomeError:
 			if m.cfg.FailOpen {
 				m.metrics.RecordErrorPassed()
@@ -590,6 +601,19 @@ const (
 	// A well-formed-but-nonexistent id and an existing-but-denied id both yield the
 	// same FGA deny → the same NotFound → no enumeration leak.
 	outcomeNotFound
+	// outcomeAddressNotVerified — the owner answered the Check `allowed = false`
+	// with the deny reason `email_not_verified` (приёмка F6b, Р3а; Р4а службы):
+	// the caller is a person whose email address is not verified, and the owner
+	// says so about EVERY object, before evaluating any relation. Rendered as the
+	// owner's own refusal value — HTTP 403 / gRPC PermissionDenied, text
+	// `email address is not verified`, ErrorInfo EMAIL_NOT_VERIFIED — the same
+	// bytes the session lane's address gate writes (address_refusal.go).
+	//
+	// It takes precedence over hide-existence ON PURPOSE: the reason is about the
+	// caller, not the object, and the owner gives it for existing and
+	// nonexistent objects alike, so the answer is identical for both and is no
+	// existence oracle. Any other reason keeps the regular deny path unchanged.
+	outcomeAddressNotVerified
 )
 
 type decision struct {
@@ -612,6 +636,8 @@ func (d decision) gRPCStatus() *status.Status {
 		return buildGRPCInvalidArgStatus(d.invalidArgMessage)
 	case outcomeNotFound:
 		return buildGRPCNotFoundStatus(d.descriptor)
+	case outcomeAddressNotVerified:
+		return addressRefusalStatus()
 	default:
 		return buildGRPCDenyStatus(d.descriptor, d.reasons)
 	}
@@ -1258,6 +1284,11 @@ func (m *AuthzMiddleware) phaseCheck(
 		"reasons", reasons,
 		"hide_existence", entry.HidesExistenceOnDeny(dr.FQN),
 	)
+	// Причина адреса (приёмка F6b, Р3а) решается РАНЬШЕ скрытия существования:
+	// она говорит о вызывающем, а не об объекте.
+	if denyReasonsNameUnverifiedAddress(reasons) {
+		return decision{outcome: outcomeAddressNotVerified, descriptor: descriptor, entry: entry}
+	}
 	return denyDecision(dr.FQN, entry, descriptor, reasons)
 }
 
