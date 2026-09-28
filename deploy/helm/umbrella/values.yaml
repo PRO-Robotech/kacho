@@ -123,7 +123,7 @@ kaname:
   # после неё честно назовётся расхождением — это верно, а не досадно.
   image:
     repository: docker.io/prorobotech/kaname
-    tag: 366-2e1d01af
+    tag: 366-85485318
     pullPolicy: IfNotPresent
   platform:
     domain: api.kacho.cloud
