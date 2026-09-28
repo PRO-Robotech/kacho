@@ -229,10 +229,13 @@ test("F8-01 · экран входа отдаёт консоль, и чужой 
 
 test("F8-03 · адрес, которого консоль не ведёт, отвечает названной страницей", async ({ page }) => {
   // verifies #2780 — близнец F8-01: изменён только открытый адрес церемонии.
-  await page.goto("/verification", { waitUntil: "domcontentloaded" });
+  // Адрес — `/recovery`: `/verification` стал экраном подтверждения адреса
+  // почты (приёмка F6b, §3.3 — сценарий на названную страницу остаётся за
+  // восстановлением доступа).
+  await page.goto("/recovery", { waitUntil: "domcontentloaded" });
   const heading = page.getByRole("heading", { name: "Такого адреса здесь нет" });
-  await expectScreen(page, "/verification", heading, "страница «такого адреса здесь нет»");
-  expect(pathOf(page), "перевода на панель быть не должно").toBe("/verification");
+  await expectScreen(page, "/recovery", heading, "страница «такого адреса здесь нет»");
+  expect(pathOf(page), "перевода на панель быть не должно").toBe("/recovery");
   // Путь наружу — действие, а не надпись: переход обязан привести ко входу.
   await page.getByRole("link", { name: "Перейти ко входу" }).click();
   await expectAddress(page, "/login", "путь наружу со страницы неведомого адреса не привёл ко входу");

@@ -2,6 +2,7 @@ import { orderedTransport } from "@shared/api/carrier-order";
 import { refusalActionOf } from "@shared/api/refusal-action";
 import { parseRpcStatus, reasonOfDetails } from "@shared/api/rpc-status";
 import { acrFromChallenge, challengeError, challengeOf, requestStepUp } from "@shared/api/step-up";
+import { leaveToAddressConfirmation } from "@shared/pages/auth/address-confirmation-exit";
 import { redirectToLogin } from "./auth";
 
 export async function apiList<T>(path: string, query?: Record<string, string>): Promise<T> {
@@ -20,6 +21,9 @@ export async function apiList<T>(path: string, query?: Record<string, string>): 
  *   • вызов пола уровня — церемония повышения и ОДИН повтор; на вход не уводит:
  *     человек вошёл, ему не хватает уровня, а не сессии;
  *   • прочий `401` — сессии нет: экран входа с адресом возврата;
+ *   • отказ края `EMAIL_NOT_VERIFIED` — адрес почты не подтверждён: экран
+ *     подтверждения с адресом возврата (приёмка F6b, F6b-25); сессия цела, и
+ *     вход здесь увёл бы в круг;
  *   • остальное — отказ с текстом ответа.
  *
  * Статус здесь не выбирает действие сам: у `401` края три смысла.
@@ -59,6 +63,7 @@ export async function apiGet<T>(path: string, replayed = false): Promise<T> {
       return apiGet<T>(path, true);
     }
     if (action === "sign-in") redirectToLogin();
+    if (action === "confirm-address") leaveToAddressConfirmation();
     const err = (parsed ?? {}) as { message?: string };
     throw new Error(err.message ?? res.statusText);
   }
