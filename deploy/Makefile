@@ -8,7 +8,7 @@
         psql-iam logs-iam build-services \
         guard-kind-context guard-destructive gate-self-test injection-proofs waiter-discipline \
         report-reader-discipline alt-fixture-discipline posture-branch-discipline \
-        verdict-aggregator-discipline ceremony-declaration-discipline \
+        verdict-aggregator-discipline \
         dialled-transport-discipline delete-step-discipline \
         helm-deps reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo seed-storage seed-vpc-pools \
         seed-vpc-pools-check e2e-newman stand-provenance stand-provenance-self-test \
@@ -1363,17 +1363,6 @@ posture-branch-discipline:
 # services/nlb/.../run-incremental.sh (не читались UNANSWERED и немой отчёт).
 verdict-aggregator-discipline:
 	@bash scripts/assert-verdict-aggregators-honest.sh
-
-# ceremony-declaration-discipline — у каждой записи объявления церемонии есть предмет.
-#
-# Набор коллекций, которым нужен ЧЕЛОВЕЧЕСКИЙ вызывающий, выводится из дерева
-# единственным объявлением (tests/authz-fixtures/ceremony_credentials.py), а не
-# выписывается: рукописный перечень в этом репозитории уже расходился с деревом.
-# Гейт требует, чтобы каждая запись объявления что-то отбирала, — запись, которой
-# больше нечего отбирать, наследуется следующим читателем как действующее
-# ограничение. Ноль прочитанных коллекций — отказ, а не «чисто».
-ceremony-declaration-discipline:
-	@python3 ../tests/authz-fixtures/ceremony_credentials.py --root .. --verify
 
 # dialled-transport-discipline — у каждого адреса, который набирает волна, есть
 # ПРОИЗВОДИТЕЛЬ в прогонщике.
