@@ -1366,6 +1366,11 @@ jobs:
           # одиннадцать утверждений о вердикте не исполнялись ни разу.
           python3 -m pytest -q .github/scripts/pr_verdict_test.py
 
+          # Решение шага `gate` в ui.yml о публикации образов консоли — исходом на
+          # каждом событии, а не текстом шага (kacho#2881). Зовётся здесь, а не в
+          # ui.yml: модули pyyaml и pytest ставит это задание.
+          python3 -m pytest -q .github/scripts/console_image_publication_test.py
+
       # Сетевая поверхность сборки образа равна её графу импортов.
       #
       # `go mod download` без аргументов тянет ОБЪЯВЛЕННЫЙ граф модуля (142), а не
