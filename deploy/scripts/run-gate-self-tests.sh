@@ -125,9 +125,6 @@ deploy/scripts/assert-delete-steps-are-asserted.py
 deploy/scripts/assert-dialled-transports-have-a-producer.py
 deploy/scripts/assert-fixture-role-verbs-exist.py
 deploy/scripts/assert-generated-scripts-parse.js
-deploy/scripts/assert-identity-account-peak-under-ceiling.py
-deploy/scripts/assert-identity-admission-rate-headroom.py
-deploy/scripts/assert-legacy-issuer-acceptance-has-a-subject.py
 deploy/scripts/assert-machine-minter-has-no-dead-exchange-lane.py
 deploy/scripts/assert-metrics-surfaces-answer.sh
 deploy/scripts/assert-outbox-autovacuum.sh
@@ -139,7 +136,6 @@ deploy/scripts/assert-refusal-lane-has-a-reader.py
 deploy/scripts/assert-report-readers-use-the-summary.py
 deploy/scripts/assert-shard-coverage.py
 deploy/scripts/assert-stand-precondition-wiring.py
-deploy/scripts/assert-step-up-bearer-matches-catalog.py
 deploy/scripts/assert-teardown-frees-parent.py
 deploy/scripts/assert-vendored-external-charts.py
 deploy/scripts/assert-verdict-aggregators-honest.sh
@@ -177,9 +173,7 @@ gateway/tests/newman/scripts/selftest_tamper_mutation.py
 services/compute/tests/newman/scripts/validate-cases.py
 tests/newman/scripts/case_home_test.py
 tests/newman/scripts/exec-coverage.py
-tests/authz-fixtures/ceremony_credentials.py
 tests/authz-fixtures/prodseed_all.py
-tests/authz-fixtures/prodseed_ceremony.py
 tools/mixedoutcomeaudit/mixed_outcome_audit.py
 tools/unreadfieldaudit/unread_field_audit.py
 "

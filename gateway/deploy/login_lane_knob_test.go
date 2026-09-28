@@ -39,7 +39,7 @@ func TestLoginLaneKnob_F3_45_IsDeclaredByTheChartAndRenderedFromOneKey(t *testin
 		t.Fatal("ключ authn.iamLoginLaneUrl не объявлен в базовом профиле — ручку адреса полосы формы нечем задать ни одному профилю")
 	}
 	if s, _ := v.(string); s != "" {
-		t.Fatalf("базовый профиль объявляет посадку external и обязан оставить адрес полосы формы пустым, получено %q", s)
+		t.Fatalf("адрес полосы формы — величина стенда (имя Service службы), и базовый профиль обязан оставить его пустым, получено %q", s)
 	}
 
 	tpl, err := os.ReadFile("templates/deployment.yaml")

@@ -39,11 +39,22 @@
 // Имя переменной окружения DSN встречается в этом же дереве в тексте подсказки
 // флага и в прозе шапок — в том числе в ЭТОЙ шапке. Гейт по подстроке краснел
 // бы на собственном объяснении, а на настоящем чтении — молчал бы ровно так же.
-// Поэтому чтение ищется УЗЛОМ ВЫЗОВА `os.Getenv`, а не словом, и аргумент
-// разрешается по трём законным написаниям сразу: литерал, местная константа-
-// псевдоним и обращение к константе общего пакета. Написание, о котором
-// распознаватель не знает, — не редкость, а слепая зона (testing.md §«Гейт на
-// класс», п.7), поэтому все три названы и доказаны инъекцией порознь.
+// Поэтому чтение ищется УЗЛОМ ВЫЗОВА, а не словом, и аргумент разрешается по
+// трём законным написаниям сразу: литерал, местная константа-псевдоним и
+// обращение к константе общего пакета. Написание, о котором распознаватель не
+// знает, — не редкость, а слепая зона (testing.md §«Гейт на класс», п.7),
+// поэтому все три названы и доказаны инъекцией порознь.
+//
+// # У переменной ДВА имени, и читающих вызовов тоже не один
+//
+// С `corelib v1.10.0-rc.3` (пин поднят kacho#2862) общий пакет объявляет имя
+// НЕЙТРАЛЬНЫМ — `EnvDSN` = `MIGRATOR_DSN` — и принимает окном перехода прежнее
+// написание — `LegacyEnvDSN` = `KACHO_MIGRATOR_DSN` (corelib#11). Своё чтение
+// ЛЮБОГО из двух имён — то же второе объявление приоритета, поэтому судятся
+// оба. И читает их фундамент уже не `os.Getenv`, а `envknob.Get` с окном на
+// прежнее имя: точка наката, повторившая этот вызов у себя, держала бы ту же
+// свою цепочку. Поэтому узлы вызова, читающие значение переменной, — четыре:
+// `os.Getenv`, `os.LookupEnv`, `envknob.Get`, `envknob.Lookup`.
 //
 // # Проверка собственной предпосылки
 //
@@ -81,15 +92,61 @@ const (
 	// migratorDSNResolveFunc — общий резолв приоритета источников.
 	migratorDSNResolveFunc = "ResolveDSN"
 
-	// migratorDSNEnvConst — константа общего пакета с именем переменной.
+	// migratorDSNEnvConst — константа общего пакета с НЕЙТРАЛЬНЫМ именем
+	// переменной.
 	migratorDSNEnvConst = "EnvDSN"
 
-	// migratorDSNEnvName — само имя переменной. Дублируется здесь НАМЕРЕННО и
-	// сверяется с общим пакетом премисой ниже: без литерала отрицательная
-	// половина не увидела бы чтения, записанного литералом, а без сверки
-	// литерал пережил бы переименование.
-	migratorDSNEnvName = "KACHO_MIGRATOR_DSN"
+	// migratorDSNLegacyEnvConst — константа общего пакета с ПРЕЖНИМ написанием,
+	// которое общий резолв принимает окном перехода.
+	migratorDSNLegacyEnvConst = "LegacyEnvDSN"
+
+	// migratorDSNEnvName / migratorDSNLegacyEnvName — сами имена переменной.
+	// Дублируются здесь НАМЕРЕННО и сверяются с общим пакетом премисой ниже: без
+	// литерала отрицательная половина не увидела бы чтения, записанного
+	// литералом, а без сверки литерал пережил бы переименование. Снимет общий
+	// пакет прежнее написание — премиса покраснеет и назовёт константу, которую
+	// тогда снимают и здесь.
+	migratorDSNEnvName       = "MIGRATOR_DSN"
+	migratorDSNLegacyEnvName = "KACHO_MIGRATOR_DSN"
+
+	// migratorEnvKnobImport — пакет фундамента, которым общий резолв читает
+	// переменную с окном на прежнее имя.
+	migratorEnvKnobImport = "github.com/PRO-Robotech/corelib/envknob"
 )
+
+// migratorDSNEnvNames — константа общего пакета → имя переменной, которое она
+// обязана нести. Единственный перечень обоих имён: премиса, псевдонимы и
+// разбор аргумента читают его, а не свои копии.
+var migratorDSNEnvNames = map[string]string{
+	migratorDSNEnvConst:       migratorDSNEnvName,
+	migratorDSNLegacyEnvConst: migratorDSNLegacyEnvName,
+}
+
+// isMigratorDSNName — строка есть одно из имён переменной DSN.
+func isMigratorDSNName(v string) bool {
+	for _, name := range migratorDSNEnvNames {
+		if v == name {
+			return true
+		}
+	}
+	return false
+}
+
+// migratorDSNPremiseEnvHolds — общий пакет объявил КАЖДУЮ константу перечня с
+// тем именем, которое перечень за ней числит.
+func migratorDSNPremiseEnvHolds(declared map[string]string) bool {
+	for c, name := range migratorDSNEnvNames {
+		if declared[c] != name {
+			return false
+		}
+	}
+	return true
+}
+
+// migratorDSNEnvDescription — оба имени одной строкой, для текстов отказа.
+func migratorDSNEnvDescription() string {
+	return migratorDSNEnvName + " (прежнее написание " + migratorDSNLegacyEnvName + ")"
+}
 
 // migratorDSNFinding — одна находка с координатой.
 type migratorDSNFinding struct {
@@ -107,18 +164,22 @@ type migratorDSNCensus struct {
 	Delegating     int
 	OwnEnvReads    int
 	PremiseResolve bool
-	PremiseEnv     bool
+	// PremiseEnv — общий пакет объявил обе константы имён с ожидаемыми
+	// значениями; DeclaredEnv — что он объявил на самом деле, для текста отказа.
+	PremiseEnv  bool
+	DeclaredEnv map[string]string
 }
 
 func (c migratorDSNCensus) String() string {
 	return fmt.Sprintf(
 		"перепись: прочитано файлов %d (общий пакет %d · тракт %d) · "+
 			"точек наката %d · зовут общий резолв %d · своих чтений переменной DSN %d · "+
-			"предпосылка: %s объявлен %t, %s объявлена %t",
+			"предпосылка: %s объявлен %t, %s=%q и %s=%q объявлены %t",
 		c.FilesRead, c.SharedFiles, c.TractFiles,
 		c.EntryPoints, c.Delegating, c.OwnEnvReads,
 		migratorDSNResolveFunc, c.PremiseResolve,
-		migratorDSNEnvConst, c.PremiseEnv)
+		migratorDSNEnvConst, migratorDSNEnvName,
+		migratorDSNLegacyEnvConst, migratorDSNLegacyEnvName, c.PremiseEnv)
 }
 
 // migratorDSNFacts — что файл делает с DSN. Одна структура на обе половины:
@@ -129,10 +190,10 @@ type migratorDSNFacts struct {
 	// OwnEnvReads — чтения переменной окружения DSN этим файлом, каждое с
 	// объяснением, каким написанием оно найдено.
 	OwnEnvReads []string
-	// DeclaresResolve / DeclaresEnvName — предпосылка, если файл общего пакета.
-	DeclaresResolve  bool
-	DeclaresEnvName  bool
-	DeclaredEnvValue string
+	// DeclaresResolve / DeclaredEnv — предпосылка, если файл общего пакета:
+	// объявлен ли резолв и какие имена несут константы перечня имён.
+	DeclaresResolve bool
+	DeclaredEnv     map[string]string
 }
 
 // migratorDSNFactsOf разбирает ОДИН файл. Вынесено из обхода, чтобы инъекция
@@ -151,18 +212,8 @@ func migratorDSNFactsOf(rel, src string) (migratorDSNFacts, error) {
 	// Псевдонимы импорта общего пакета. Квалификатор берётся у ОБЪЯВЛЕНИЯ, а не
 	// предполагается равным последнему сегменту пути: переименованный импорт —
 	// законная запись, и распознаватель, её не знающий, ослеп бы молча.
-	sharedQualifiers := map[string]bool{}
-	for _, spec := range file.Imports {
-		p, uerr := strconv.Unquote(spec.Path.Value)
-		if uerr != nil || p != migratorDSNSharedImport {
-			continue
-		}
-		if spec.Name != nil {
-			sharedQualifiers[spec.Name.Name] = true
-			continue
-		}
-		sharedQualifiers[path.Base(p)] = true
-	}
+	sharedQualifiers := importQualifiers(file, migratorDSNSharedImport)
+	knobQualifiers := importQualifiers(file, migratorEnvKnobImport)
 
 	// Местные константы-псевдонимы имени переменной. Обе законные формы:
 	// присвоение литерала и присвоение константы общего пакета.
@@ -190,15 +241,17 @@ func migratorDSNFactsOf(rel, src string) (migratorDSNFacts, error) {
 					if uerr != nil {
 						continue
 					}
-					if unq == migratorDSNEnvName {
+					if isMigratorDSNName(unq) {
 						envAliases[name.Name] = true
 					}
-					if name.Name == migratorDSNEnvConst {
-						facts.DeclaresEnvName = true
-						facts.DeclaredEnvValue = unq
+					if _, listed := migratorDSNEnvNames[name.Name]; listed {
+						if facts.DeclaredEnv == nil {
+							facts.DeclaredEnv = map[string]string{}
+						}
+						facts.DeclaredEnv[name.Name] = unq
 					}
 				case *ast.SelectorExpr:
-					if isSharedSelector(v, sharedQualifiers, migratorDSNEnvConst) {
+					if isSharedDSNConst(v, sharedQualifiers) {
 						envAliases[name.Name] = true
 					}
 				}
@@ -226,14 +279,17 @@ func migratorDSNFactsOf(rel, src string) (migratorDSNFacts, error) {
 			facts.CallsSharedResolve = true
 			return true
 		}
-		pkg, ok := sel.X.(*ast.Ident)
-		if !ok || pkg.Name != "os" || sel.Sel.Name != "Getenv" || len(call.Args) != 1 {
+		reader, ok := migratorEnvReader(sel, knobQualifiers)
+		if !ok {
 			return true
 		}
-		if how, named := migratorDSNArgNamesEnv(call.Args[0], sharedQualifiers, envAliases); named {
-			facts.OwnEnvReads = append(facts.OwnEnvReads,
-				fmt.Sprintf("%s: читает переменную окружения DSN сам — os.Getenv(%s)",
-					fset.Position(call.Pos()), how))
+		for _, arg := range call.Args {
+			if how, named := migratorDSNArgNamesEnv(arg, sharedQualifiers, envAliases); named {
+				facts.OwnEnvReads = append(facts.OwnEnvReads,
+					fmt.Sprintf("%s: читает переменную окружения DSN сам — %s(%s)",
+						fset.Position(call.Pos()), reader, how))
+				break
+			}
 		}
 		return true
 	})
@@ -247,10 +303,55 @@ func isSharedSelector(sel *ast.SelectorExpr, qualifiers map[string]bool, name st
 	return ok && qualifiers[id.Name] && sel.Sel.Name == name
 }
 
+// isSharedDSNConst — обращение к одной из констант перечня имён общего пакета.
+func isSharedDSNConst(sel *ast.SelectorExpr, qualifiers map[string]bool) bool {
+	_, listed := migratorDSNEnvNames[sel.Sel.Name]
+	return listed && isSharedSelector(sel, qualifiers, sel.Sel.Name)
+}
+
+// importQualifiers — псевдонимы, под которыми файл импортирует пакет importPath.
+// Квалификатор берётся у ОБЪЯВЛЕНИЯ, а не предполагается равным последнему
+// сегменту пути: переименованный импорт — законная запись, и распознаватель, её
+// не знающий, ослеп бы молча.
+func importQualifiers(file *ast.File, importPath string) map[string]bool {
+	out := map[string]bool{}
+	for _, spec := range file.Imports {
+		p, err := strconv.Unquote(spec.Path.Value)
+		if err != nil || p != importPath {
+			continue
+		}
+		if spec.Name != nil {
+			out[spec.Name.Name] = true
+			continue
+		}
+		out[path.Base(p)] = true
+	}
+	return out
+}
+
+// migratorEnvReader — узел вызова читает ЗНАЧЕНИЕ переменной окружения: четыре
+// формы, две стандартной библиотеки и две пакета фундамента, которым читает сам
+// общий резолв. Возвращается имя вызова так, как оно записано, — находка
+// называет форму, которой найдена.
+func migratorEnvReader(sel *ast.SelectorExpr, knobQualifiers map[string]bool) (string, bool) {
+	id, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return "", false
+	}
+	switch {
+	case id.Name == "os" && (sel.Sel.Name == "Getenv" || sel.Sel.Name == "LookupEnv"):
+	case knobQualifiers[id.Name] && (sel.Sel.Name == "Get" || sel.Sel.Name == "Lookup"):
+	default:
+		return "", false
+	}
+	return id.Name + "." + sel.Sel.Name, true
+}
+
 // migratorDSNArgNamesEnv — аргумент os.Getenv называет переменную DSN.
 //
 // Три законных написания, и все три судятся: голый литерал, местная
-// константа-псевдоним и обращение к константе общего пакета. Возвращается ещё и
+// константа-псевдоним и обращение к константе общего пакета — каждое по обоим
+// именам переменной. Возвращается ещё и
 // то, КАКИМ написанием найдено, — находка обязана называть причину, а не
 // симптом, иначе на неё потратят прогон и снимут гейт как непонятный.
 func migratorDSNArgNamesEnv(arg ast.Expr, qualifiers, aliases map[string]bool) (string, bool) {
@@ -260,7 +361,7 @@ func migratorDSNArgNamesEnv(arg ast.Expr, qualifiers, aliases map[string]bool) (
 			return "", false
 		}
 		unq, err := strconv.Unquote(v.Value)
-		if err != nil || unq != migratorDSNEnvName {
+		if err != nil || !isMigratorDSNName(unq) {
 			return "", false
 		}
 		return strconv.Quote(unq) + " (литерал)", true
@@ -270,7 +371,7 @@ func migratorDSNArgNamesEnv(arg ast.Expr, qualifiers, aliases map[string]bool) (
 		}
 		return v.Name + " (местная константа-псевдоним)", true
 	case *ast.SelectorExpr:
-		if !isSharedSelector(v, qualifiers, migratorDSNEnvConst) {
+		if !isSharedDSNConst(v, qualifiers) {
 			return "", false
 		}
 		id, _ := v.X.(*ast.Ident)
@@ -301,7 +402,7 @@ func migratorDSNFindingText(f migratorDSNFinding) string {
 	return fmt.Sprintf("%s: %s. Приоритет источников DSN (--dsn > %s > конфигурация "+
 		"сервиса) объявлен в %s.%s — делегируй туда, передав запасную конфигурацию "+
 		"замыканием, а не заводи второе объявление порядка (%s)",
-		f.Rel, f.What, migratorDSNEnvName,
+		f.Rel, f.What, migratorDSNEnvDescription(),
 		migratorDSNSharedImport, migratorDSNResolveFunc, migratorTractDecisionDoc)
 }
 

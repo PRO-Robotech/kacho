@@ -367,6 +367,16 @@ kaname:
         defaultAudience: "registry.in-cloud.io"
         tokenTtl: "15m"
         bodyCeiling: 65536
+        # ТЕМП ПОВЕРХНОСТИ ВЫДАЧИ (kaname#315) — те же величины, что у слоя
+        # values.dev.yaml под этим, и по тем же доводам (там разобрана каждая):
+        # пул службы этот слой наследует оттуда же (40), поэтому потолки — 12,
+        # а не боевые 32.
+        inFlightCeiling: 12
+        exchangesPerClientPerSec: 5
+        failedProofsPerSource: 50
+        failedProofWindow: 15m
+        authorizePerSourcePerSec: 10
+        authorizeInFlightCeiling: 12
     repository:
       postgres:
         sslMode: require         # production-strict enforces ssl-mode ∈ {require,verify-ca,verify-full}

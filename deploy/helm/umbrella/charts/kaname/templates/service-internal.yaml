@@ -21,9 +21,15 @@ spec:
       targetPort: grpc-internal
     # KAC-127 deploy#39 — HTTP hooks listener (Hydra token/refresh webhooks +
     # приём событий). Cluster-internal-only (запрет #6).
+    #
+    # ТОЛЬКО там, где процесс этот слушатель поднимает (`kaname.hooksLaneRaised`,
+    # kacho#2871): под посадкой `own` поставщика нет, слушатель не строится, и
+    # маршрут вёл бы в дверь, за которой никого нет.
+    {{- if include "kaname.hooksLaneRaised" . }}
     - name: http-hooks
       port: {{ .Values.service.internal.hooksHttpPort | default 9092 }}
       targetPort: http-hooks
+    {{- end }}
     # registry-iam-jwks-unify — cluster-INTERNAL Hydra-JWKS proxy listener
     # (GET /.well-known/jwks.json, one-way server-TLS). The registry data-plane
     # fetches its docker-Bearer verification keys here instead of dialing Hydra

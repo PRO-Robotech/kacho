@@ -39,12 +39,12 @@ import (
 type RevocationConfig struct {
 	// IdentityProvider — ПОСАДКА ЛИЧНОСТИ, объявленная профилем (задача #1125).
 	//
-	// Разводит требование НАШЕГО авторитета отзыва: под `own` токены чеканим мы,
-	// и спросить, отозван ли токен, можно только у нас. Незаданная посадка —
-	// отказ старта первым и в одиночку: пока она неизвестна, неизвестно и то, что
-	// требовать. Вне `own` пин фундамента v1.8.0 производит ещё одно значение,
-	// `external`; его снятие — выпуск v1.10.0-rc.3 (corelib#26), подъём пина —
-	// #2862.
+	// Судится проверкой старта фундамента (Provider.Validate) первой и в
+	// одиночку: незаданная посадка и число вне словаря — отказ старта раньше
+	// любых требований, потому что по незаконной посадке требовать нечего.
+	// Законная посадка в словаре фундамента одна — `own` (снятие `external` —
+	// corelib#30, выпуск v1.10.0-rc.3, пин поднят #2862), и под ней токены
+	// чеканим мы: спросить, отозван ли токен, можно только у нас.
 	IdentityProvider identityposture.Provider
 
 	// PlatformTokenIssuer — издатель НАШЕЙ чеканки, объявленный профилем
@@ -79,9 +79,10 @@ const (
 	platformRevocationKeyKnob  = "KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_KEY_FILE"
 )
 
-// judgeOurRevocationAuthority — ось НАШЕГО авторитета отзыва.
+// judgeOurRevocationAuthority — ось НАШЕГО авторитета отзыва. Зовётся на
+// посадке, которую проверка старта фундамента уже назвала законной.
 //
-// # Почему требуется под `own`
+// # Почему требуется
 //
 // Отзыв, действующий на выдаче и не действующий на предъявлении, отзывом не
 // является: предъявленное продолжает проходить до истечения срока, и это
@@ -89,28 +90,26 @@ const (
 // но не на ПРЕДЪЯВЛЕНИИ»). Под `own` токены чеканим мы, и кроме нас спросить,
 // отозван ли токен, некого.
 //
-// # Под `own` судится и ОБЪЯВЛЕННЫЙ наш издатель
+// # Судится и ОБЪЯВЛЕННЫЙ наш издатель
 //
 // Наш авторитет спрашивается о токене по ЗАПИСИ приёма нашего издателя
 // (`VerifiedToken.ReadRevocation`), а запись эту заводит только объявленный
 // издатель нашей чеканки. Требовать адрес авторитета и не требовать издателя
 // значило бы судить то, что посадка объявила, по значению, которое объявил
 // кто-то другой: страж проходил бы лишь потому, что издателя задал базовый
-// профиль. Поэтому под `own` необъявленный издатель — отказ старта с именем
-// ручки, рядом с отказом по адресу.
+// профиль. Поэтому необъявленный издатель — отказ старта с именем ручки, рядом
+// с отказом по адресу.
 //
-// # Требование НАЛИЧИЯ разведено посадкой, требования ТРАНСПОРТА — нет
+// # Требования посадкой НЕ разводятся
 //
-// Наличие издателя и адреса требуется под `own`. Заданный адрес судится теми же
-// правилами на ЛЮБОЙ посадке: край, объявивший наш авторитет, его и
-// спрашивает, и негодный хоп нерабочий везде одинаково.
-//
-// Ветвь «вне `own`» читает посадку сравнением с `own`, а не именем второго
-// значения: пин фундамента v1.8.0 ещё производит `external` из конфигурации
-// (умолчание чарта края — оно), и край на нём стартует без нашего авторитета,
-// как стартовал. Держат это пробы на посадке, полученной разбором ручки
-// (externalFromConfig); когда поднятый пин (#2862) перестанет её разбирать,
-// пробы покраснеют и назовут ветвь, которая снимается тем же изменением.
+// Ветви «вне `own`», снимавшей требование наличия, здесь больше нет: вне `own`
+// законных посадок не осталось, а значение вне словаря отвергнуто раньше,
+// проверкой старта. Ветвь, читавшая посадку сравнением с `own`, пропускала
+// всякое иное объявленное число без нашего авторитета — ровно то, что
+// Validate теперь отвергает. Появись в словаре фундамента второе законное
+// значение, оно получит здесь те же требования, что `own`, то есть в сторону
+// отказа, пока край не решит о нём отдельно. Текст отказа называет посадку, по
+// которой требование действует, её каноническим именем.
 //
 // # Пара предъявления обязательна вместе с адресом
 //
@@ -122,28 +121,21 @@ const (
 // настроенной.
 func judgeOurRevocationAuthority(cfg RevocationConfig) []string {
 	var problems []string
-	if cfg.IdentityProvider == identityposture.Own && strings.TrimSpace(cfg.PlatformTokenIssuer) == "" {
+	because := " [required because " + config.IdentityProviderKnob + "=" + cfg.IdentityProvider.String() + "]"
+	if strings.TrimSpace(cfg.PlatformTokenIssuer) == "" {
 		problems = append(problems,
 			platformIssuerKnob+" is empty — on this posture we mint the tokens, and our "+
 				"revocation authority is asked about a token only through the acceptance record of "+
 				"our declared issuer; declare the issuer this installation mints under, the same "+
-				"value the identity service issues with [required because "+
-				config.IdentityProviderKnob+"=own]")
+				"value the identity service issues with"+because)
 	}
 
 	addr := strings.TrimSpace(cfg.PlatformRevocationURL)
 	if addr == "" {
-		if cfg.IdentityProvider != identityposture.Own {
-			// Вне `own` наша чеканка краем не принимается, пока её не объявит
-			// перечень издателей, — а объявленный наш издатель без авторитета
-			// отзыва отвергается раньше, разбором приёма (`TokenAcceptance`).
-			return problems
-		}
 		return append(problems,
 			platformRevocationURLKnob+" is empty — on this posture we mint the tokens and "+
 				"nobody else can be asked whether one was revoked, so a revoked token would "+
-				"keep working until it expires on its own [required because "+
-				config.IdentityProviderKnob+"=own]")
+				"keep working until it expires on its own"+because)
 	}
 
 	if err := validateEndpoint(addr); err != nil {
@@ -234,17 +226,16 @@ func validateProductionRevocationConfig(env string, cfg RevocationConfig) error 
 		return nil
 	}
 
-	var problems []string
-	// Посадка личности обязана быть ОБЪЯВЛЕНА прежде, чем по ней что-то
-	// требовать: пока она неизвестна, неизвестно и то, нужен ли краю наш
-	// авторитет отзыва. Отказ производится первым и в одиночку.
-	if !cfg.IdentityProvider.IsSet() {
-		return fmt.Errorf(
-			"revocation path invalid in %q env: %v (refuse to start)",
-			env, identityposture.NotDeclared(config.IdentityProviderKnob))
+	// Посадка личности обязана быть ОБЪЯВЛЕНА и ЗАКОННА прежде, чем по ней что-то
+	// требовать: пока она неизвестна либо стоит вне словаря, неизвестно и то,
+	// нужен ли краю наш авторитет отзыва. Судит проверка старта фундамента — у
+	// неё свой текст на каждый из двух отказов (не объявлено · число вне
+	// словаря), и текст этот принадлежит фундаменту, а не краю. Отказ
+	// производится первым и в одиночку.
+	if err := cfg.IdentityProvider.Validate(config.IdentityProviderKnob); err != nil {
+		return fmt.Errorf("revocation path invalid in %q env: %w (refuse to start)", env, err)
 	}
-	problems = append(problems, judgeOurRevocationAuthority(cfg)...)
-
+	problems := judgeOurRevocationAuthority(cfg)
 	if len(problems) == 0 {
 		return nil
 	}

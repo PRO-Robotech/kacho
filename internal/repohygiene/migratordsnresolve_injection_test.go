@@ -102,6 +102,66 @@ func buildRunner(flagDSN string) (string, error) {
 	return os.Getenv(migratorcli.EnvDSN), nil
 }`
 
+	// srcDSNOwnChainNeutralLiteral — литерал НЕЙТРАЛЬНОГО имени. С corelib
+	// v1.10.0-rc.3 у переменной два имени, и своё чтение любого из них — та же
+	// своя цепочка.
+	srcDSNOwnChainNeutralLiteral = `package main
+
+import "os"
+
+func buildRunner(flagDSN string) (string, error) {
+	if flagDSN != "" {
+		return flagDSN, nil
+	}
+	return os.Getenv("MIGRATOR_DSN"), nil
+}`
+
+	// srcDSNOwnChainLegacySelector — константа ПРЕЖНЕГО написания общего пакета.
+	srcDSNOwnChainLegacySelector = `package main
+
+import (
+	"os"
+
+	"github.com/PRO-Robotech/corelib/migratorcli"
+)
+
+func buildRunner(flagDSN string) (string, error) {
+	if v, ok := os.LookupEnv(migratorcli.LegacyEnvDSN); ok {
+		return v, nil
+	}
+	return flagDSN, nil
+}`
+
+	// srcDSNOwnChainEnvKnob — своя цепочка тем же вызовом, которым читает сам
+	// общий резолв: пакет фундамента с окном на прежнее имя, импорт переименован.
+	srcDSNOwnChainEnvKnob = `package main
+
+import (
+	knob "github.com/PRO-Robotech/corelib/envknob"
+	"github.com/PRO-Robotech/corelib/migratorcli"
+)
+
+func buildRunner(flagDSN string) (string, error) {
+	if flagDSN != "" {
+		return flagDSN, nil
+	}
+	return knob.Get(migratorcli.EnvDSN, migratorcli.LegacyEnvDSN), nil
+}`
+
+	// srcDSNEnvKnobForeignKnob — ЗАКОННЫЙ БЛИЗНЕЦ формы выше: тот же вызов
+	// пакета фундамента читает ЧУЖУЮ ручку, а DSN выбирает общий резолв.
+	srcDSNEnvKnobForeignKnob = `package main
+
+import (
+	"github.com/PRO-Robotech/corelib/envknob"
+	"github.com/PRO-Robotech/corelib/migratorcli"
+)
+
+func buildRunner(flagDSN string) (string, error) {
+	_ = envknob.Get("SVC_CONFIG_PATH", "KACHO_SVC_CONFIG_PATH")
+	return migratorcli.ResolveDSN(flagDSN, nil)
+}`
+
 	// srcDSNRenamedImport — сведённая форма с ПЕРЕИМЕНОВАННЫМ импортом. Законная
 	// запись Go; распознаватель, предполагающий квалификатор равным последнему
 	// сегменту пути, объявил бы её недéлегирующей.
@@ -197,6 +257,24 @@ func TestDSNResolveInjectionRunTwo_NewPropertyOnly(t *testing.T) {
 			naming:    "migratorcli.EnvDSN (константа общего пакета)",
 			delegates: false,
 		},
+		{
+			name:      "литерал нейтрального имени",
+			src:       srcDSNOwnChainNeutralLiteral,
+			naming:    `os.Getenv("MIGRATOR_DSN" (литерал))`,
+			delegates: false,
+		},
+		{
+			name:      "константа прежнего написания через LookupEnv",
+			src:       srcDSNOwnChainLegacySelector,
+			naming:    "os.LookupEnv(migratorcli.LegacyEnvDSN (константа общего пакета))",
+			delegates: false,
+		},
+		{
+			name:      "вызов пакета фундамента под псевдонимом импорта",
+			src:       srcDSNOwnChainEnvKnob,
+			naming:    "knob.Get(migratorcli.EnvDSN (константа общего пакета))",
+			delegates: false,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -273,6 +351,16 @@ func TestDSNResolveGateIsSilentOnLegalTwins(t *testing.T) {
 		}
 	})
 
+	t.Run("вызов пакета фундамента читает чужую ручку", func(t *testing.T) {
+		delegates, got := auditDSNSource(t, relDSNEntry, srcDSNEnvKnobForeignKnob)
+		if !delegates {
+			t.Error("точка наката, зовущая общий резолв, не опознана делегирующей")
+		}
+		if len(got) != 0 {
+			t.Errorf("гейт краснеет на чтении чужой ручки тем же вызовом фундамента: %v", got)
+		}
+	})
+
 	t.Run("переименованный импорт общего пакета", func(t *testing.T) {
 		delegates, got := auditDSNSource(t, relDSNEntry, srcDSNRenamedImport)
 		if !delegates {
@@ -297,7 +385,9 @@ func TestDSNResolveGateIsSilentOnLegalTwins(t *testing.T) {
 	t.Run("предпосылка читается у общего пакета", func(t *testing.T) {
 		facts, err := migratorDSNFactsOf("pkg/migratorcli/parse.go", `package migratorcli
 
-const EnvDSN = "KACHO_MIGRATOR_DSN"
+const EnvDSN = "MIGRATOR_DSN"
+
+const LegacyEnvDSN = "KACHO_MIGRATOR_DSN"
 
 func ResolveDSN(flagDSN string, fromConfig func() (string, error)) (string, error) {
 	return flagDSN, nil
@@ -308,9 +398,24 @@ func ResolveDSN(flagDSN string, fromConfig func() (string, error)) (string, erro
 		if !facts.DeclaresResolve {
 			t.Error("объявление общего резолва не опознано — премиса гейта не проверяется")
 		}
-		if !facts.DeclaresEnvName || facts.DeclaredEnvValue != migratorDSNEnvName {
-			t.Errorf("объявление имени переменной не опознано: %t %q",
-				facts.DeclaresEnvName, facts.DeclaredEnvValue)
+		if !migratorDSNPremiseEnvHolds(facts.DeclaredEnv) {
+			t.Errorf("объявление обоих имён переменной не опознано: %v", facts.DeclaredEnv)
+		}
+	})
+
+	t.Run("предпосылка отказывает на общем пакете прежней редакции", func(t *testing.T) {
+		// Прежняя редакция общего пакета: одно имя, и оно прежнее. Премиса
+		// обязана отказать — иначе гейт судил бы нейтральное имя, которого общий
+		// пакет не читает, а прежнее — как единственное.
+		facts, err := migratorDSNFactsOf("pkg/migratorcli/parse.go", `package migratorcli
+
+const EnvDSN = "KACHO_MIGRATOR_DSN"
+`)
+		if err != nil {
+			t.Fatalf("разбор синтетики не удался: %v", err)
+		}
+		if migratorDSNPremiseEnvHolds(facts.DeclaredEnv) {
+			t.Errorf("премиса приняла общий пакет прежней редакции: %v", facts.DeclaredEnv)
 		}
 	})
 }
