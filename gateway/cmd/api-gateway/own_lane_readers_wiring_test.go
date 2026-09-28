@@ -28,8 +28,9 @@
 // # Что судится — вложенность узлов, не текст
 //
 //   - читатель НАШЕЙ сессии — вызов `WithHumanSession`: обязан лежать внутри
-//     ветки `if`, чьё условие называет посадку `own`. N ≥ 2 (полоса личности и
-//     маршрут «кто я»);
+//     ветки `if` или `case`, чьё условие утверждает посадку `own`, и никакое
+//     замыкание не отделяет его от этой ветки (postureBranchOf). N ≥ 2 (полоса
+//     личности и маршрут «кто я»);
 //   - ретрансляция — вызов `NewLoginLaneRelay`: по провязке на КАЖДУЮ объявленную
 //     цель, под `own` (множество, а не константа — relay_wiring_test.go);
 //   - страж адреса цели — вызов `validateLoginLaneConfig`: во всём пакете ровно
@@ -45,6 +46,7 @@
 package main
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -57,80 +59,108 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// postureBranchOf — самая внутренняя ветка `if`, охватывающая позицию, чьё
-// условие называет посадку `identityposture.<Name>`; "" если такой ветки нет.
-func postureBranchOf(f *ast.File, pos token.Pos) string {
-	posture := ""
-	ast.Inspect(f, func(n ast.Node) bool {
-		ifs, ok := n.(*ast.IfStmt)
-		if !ok {
-			return true
+// postureBranchOf — посадка, под которой стоит позиция: на пути к ней есть
+// решение own — тело ветки `if` или ветка `case`, чьё условие УТВЕРЖДАЕТ own, —
+// и между этим решением и позицией нет замыкания. Замыкание решение снимает:
+// где его позовут, судья не прослеживает. Иначе posture пуст, а why называет
+// увиденное с координатой (kacho#2890).
+func postureBranchOf(fset *token.FileSet, f *ast.File, pos token.Pos) (posture, why string) {
+	at := fset.Position(pos).String()
+	path := enclosingNodes(f, pos)
+	decided := -1
+	var decision ast.Node
+	for i, n := range path {
+		if decidesOwn(path, i, pos) {
+			decided, decision = i, n
 		}
-		if pos <= ifs.Body.Lbrace || pos >= ifs.Body.Rbrace {
-			// Ветка else не считается веткой посадки: else «не own» есть
-			// «external или не задано», и это не решение.
-			return true
+	}
+	if decided < 0 {
+		forms := executionForms(fset, path, pos)
+		if len(forms) == 0 {
+			forms = []string{"ни одной формы ветвления"}
 		}
-		if p := postureNamedIn(ifs.Cond); p != "" {
-			posture = p
+		return "", "ни одна ветка if или case, утверждающая посадку own, не охватывает " + at +
+			"; на пути: " + strings.Join(forms, " → ")
+	}
+	for _, n := range path[decided+1:] {
+		if lit, ok := n.(*ast.FuncLit); ok {
+			return "", fmt.Sprintf("замыкание %T у %s отделяет %s от решения own у %s — где его позовут, судья не "+
+				"прослеживает", lit, fset.Position(lit.Pos()), at, fset.Position(decision.Pos()))
 		}
-		return true
-	})
-	return posture
+	}
+	return "Own", ""
 }
 
-// postureNamedIn — какую посадку называет условие: селектор
-// `identityposture.Own`, единственный законный способ назвать её в дереве
-// (`corelib/identityposture`). Второго законного значения в словаре фундамента
-// нет: `external` снята выпуском v1.10.0-rc.3 (corelib#30), и её имени край не
-// читает (#2873). Вне `own` корень ветвится сравнением с `own`, и ветка,
-// названная иным значением, посадкой не считается.
-func postureNamedIn(cond ast.Expr) string {
-	found := ""
-	ast.Inspect(cond, func(n ast.Node) bool {
-		sel, ok := n.(*ast.SelectorExpr)
+// decidesOwn — решает ли path[i] посадку own для позиции: тело ветки if с
+// условием, утверждающим own, либо тело ветки case, чей единственный вариант —
+// own у switch по значению или утверждение own у switch без тега. Ветка else и
+// ветка default решением не считаются: «не own» — не решение о посадке.
+func decidesOwn(path []ast.Node, i int, pos token.Pos) bool {
+	switch x := path[i].(type) {
+	case *ast.IfStmt:
+		return within(x.Body, pos) && assertsOwn(x.Cond)
+	case *ast.CaseClause:
+		if pos <= x.Colon || len(x.List) != 1 || i < 2 {
+			return false
+		}
+		sw, ok := path[i-2].(*ast.SwitchStmt)
 		if !ok {
-			return true
+			return false
 		}
-		if id, ok := sel.X.(*ast.Ident); ok && id.Name == "identityposture" {
-			if sel.Sel.Name == "Own" {
-				found = sel.Sel.Name
-			}
+		if sw.Tag == nil {
+			return assertsOwn(x.List[0])
 		}
-		return true
-	})
-	return found
+		return isOwnSelector(x.List[0])
+	}
+	return false
+}
+
+// assertsOwn — условие истинно только под посадкой own: сравнение `==` с
+// `identityposture.Own` либо конъюнкция, один из членов которой его утверждает.
+// Отрицание, `!=` и дизъюнкция own не утверждают.
+func assertsOwn(cond ast.Expr) bool {
+	switch x := cond.(type) {
+	case *ast.ParenExpr:
+		return assertsOwn(x.X)
+	case *ast.BinaryExpr:
+		switch x.Op {
+		case token.EQL:
+			return isOwnSelector(x.X) || isOwnSelector(x.Y)
+		case token.LAND:
+			return assertsOwn(x.X) || assertsOwn(x.Y)
+		}
+	}
+	return false
+}
+
+// isOwnSelector — селектор `identityposture.Own`, единственный законный способ
+// назвать посадку в дереве (`corelib/identityposture`). Второго законного
+// значения в словаре фундамента нет: `external` снята выпуском v1.10.0-rc.3
+// (corelib#30), и её имени край не читает (#2873). Вне `own` корень ветвится
+// сравнением с `own`, и ветка, названная иным значением, посадкой не считается.
+func isOwnSelector(e ast.Expr) bool {
+	sel, ok := e.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != "Own" {
+		return false
+	}
+	id, ok := sel.X.(*ast.Ident)
+	return ok && id.Name == "identityposture"
 }
 
 // wiringSite — одно место провязки читателя.
 type wiringSite struct {
 	pos     string
 	posture string // "Own" | ""
+	why     string // чем посадка own не доказана; "" при "Own"
 }
 
 // wiringSites — места вызова названного метода/функции и посадка каждого.
 func wiringSites(fset *token.FileSet, f *ast.File, callee string) []wiringSite {
 	var out []wiringSite
 	for _, pos := range f1bFindCall(f, callee) {
-		out = append(out, wiringSite{pos: fset.Position(pos).String(), posture: postureBranchOf(f, pos)})
+		posture, why := postureBranchOf(fset, f, pos)
+		out = append(out, wiringSite{pos: fset.Position(pos).String(), posture: posture, why: why})
 	}
-	return out
-}
-
-// plainCallSites — места вызова функции пакета по голому имени и посадка
-// каждого (f1bFindCall видит только вызовы через селектор).
-func plainCallSites(fset *token.FileSet, f *ast.File, callee string) []wiringSite {
-	var out []wiringSite
-	ast.Inspect(f, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-		if id, ok := call.Fun.(*ast.Ident); ok && id.Name == callee {
-			out = append(out, wiringSite{pos: fset.Position(call.Pos()).String(), posture: postureBranchOf(f, call.Pos())})
-		}
-		return true
-	})
 	return out
 }
 
@@ -165,7 +195,7 @@ func TestOwnLane_F3_45_OurReaderAndTheRelayAreWiredUnderOwnOnly(t *testing.T) {
 	}
 	for _, s := range readers {
 		if s.posture != "Own" {
-			t.Errorf("читатель нашей сессии заведён вне ветки посадки own: %s (ветка: %q)", s.pos, s.posture)
+			t.Errorf("читатель нашей сессии заведён вне ветки посадки own: %s (%s)", s.pos, s.why)
 		}
 	}
 	// Ретрансляция судится МНОЖЕСТВОМ, а не константой (замысел LINE-A-1 §5.1б
@@ -199,6 +229,7 @@ type guardSite struct {
 type prepareSite struct {
 	pos     string
 	posture string
+	why     string // чем посадка own не доказана; "" при "Own"
 	serves  string // имя селектора цели (`RelayTargetForm`), "" если не названа
 }
 
@@ -284,7 +315,8 @@ func judgeRelayGuardPath(fset *token.FileSet, root *ast.File, pkg []*ast.File, t
 	}
 	seen := map[string]string{}
 	for _, call := range plainCalls(root, "prepareRelayTarget") {
-		s := prepareSite{pos: fset.Position(call.Pos()).String(), posture: postureBranchOf(root, call.Pos())}
+		posture, why := postureBranchOf(fset, root, call.Pos())
+		s := prepareSite{pos: fset.Position(call.Pos()).String(), posture: posture, why: why}
 		if len(call.Args) >= 2 {
 			if sel, ok := call.Args[1].(*ast.SelectorExpr); ok {
 				s.serves = sel.Sel.Name
@@ -302,7 +334,7 @@ func judgeRelayGuardPath(fset *token.FileSet, root *ast.File, pkg []*ast.File, t
 			seen[s.serves] = s.pos
 		}
 		if s.posture != "Own" {
-			out.findings = append(out.findings, s.pos+": страж цели позван вне ветки посадки own (ветка: "+strconv.Quote(s.posture)+
+			out.findings = append(out.findings, s.pos+": страж цели позван вне ветки посадки own ("+s.why+
 				") — вне own он отверг бы старт края, которому ретрансляция не нужна")
 		}
 	}
@@ -413,6 +445,71 @@ func TestOwnLaneGate_Twin_AReaderUnderTheNamedPostureIsSilent(t *testing.T) {
 	sites := wiringSites(fset, f, "WithHumanSession")
 	if sites[len(sites)-1].posture != "" {
 		t.Fatalf("читатель в ветке else признан заведённым под посадкой: %+v", sites[len(sites)-1])
+	}
+}
+
+// postureFixture — синтетика судьи посадки: одно тело функции, в нём одно
+// место провязки читателя под одной формой ветвления.
+const postureFixture = `package main
+import "github.com/PRO-Robotech/corelib/identityposture"
+func wire(lane identityposture.Provider) {
+%s
+}
+`
+
+// Судья посадки видит решение own в `if` И в ветке `case`, а замыкание между
+// решением и местом провязки решение снимает: где его позовут, судья не
+// прослеживает. Условие обязано УТВЕРЖДАТЬ own, а не называть: отрицание и
+// дизъюнкция own не утверждают. Каждая строка — один факт против близнеца
+// `if lane == identityposture.Own { … }`.
+func TestOwnLaneGate_PostureIsSeenInEveryBranchForm(t *testing.T) {
+	const call = "auth = auth.WithHumanSession(ad)"
+	judged, underOwn := 0, 0
+	defer func() {
+		t.Logf("перепись: форм судимо %d · под own %d · вне own %d", judged, underOwn, judged-underOwn)
+	}()
+	for _, tc := range []struct {
+		name, body, posture, why string
+	}{
+		{"близнец: ветка if", "if lane == identityposture.Own {\n" + call + "\n}", "Own", ""},
+		{"близнец: own справа", "if identityposture.Own == lane {\n" + call + "\n}", "Own", ""},
+		{"близнец: конъюнкция", "if lane == identityposture.Own && ours != nil {\n" + call + "\n}", "Own", ""},
+		{"близнец: ветка case у switch по посадке", "switch lane {\ncase identityposture.Own:\n" + call + "\n}", "Own", ""},
+		{"близнец: ветка case у switch без тега", "switch {\ncase lane == identityposture.Own:\n" + call + "\n}", "Own", ""},
+		{"близнец: замыкание охватывает решение", "wireOwn := func() {\nif lane == identityposture.Own {\n" + call + "\n}\n}\n_ = wireOwn", "Own", ""},
+		{"замыкание между решением и местом", "if lane == identityposture.Own {\nwireReader = func() {\n" + call + "\n}\n}", "", "*ast.FuncLit"},
+		{"отрицание own", "if lane != identityposture.Own {\n" + call + "\n}", "", "ни одна ветка"},
+		{"отрицание own унарным !", "if !(lane == identityposture.Own) {\n" + call + "\n}", "", "ни одна ветка"},
+		{"дизъюнкция с own", "if lane == identityposture.Own || legacy {\n" + call + "\n}", "", "ни одна ветка"},
+		{"ветка else", "if lane == identityposture.Own {\n} else {\n" + call + "\n}", "", "ни одна ветка"},
+		{"ветка default", "switch lane {\ncase identityposture.Own:\ndefault:\n" + call + "\n}", "", "ни одна ветка"},
+		{"ветка case на два значения", "switch lane {\ncase identityposture.Own, other:\n" + call + "\n}", "", "ни одна ветка"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fset := token.NewFileSet()
+			f, err := parser.ParseFile(fset, "main.go", strings.Replace(postureFixture, "%s", tc.body, 1), 0)
+			if err != nil {
+				t.Fatalf("синтетика не разбирается: %v", err)
+			}
+			sites := wiringSites(fset, f, "WithHumanSession")
+			if len(sites) != 1 {
+				t.Fatalf("мест %d, ожидалось 1", len(sites))
+			}
+			s := sites[0]
+			judged++
+			if s.posture == "Own" {
+				underOwn++
+			}
+			if s.posture != tc.posture {
+				t.Fatalf("посадка места %s — %q, ожидалась %q (%s)", s.pos, s.posture, tc.posture, s.why)
+			}
+			if tc.posture == "" && (!strings.Contains(s.why, tc.why) || !strings.Contains(s.why, s.pos)) {
+				t.Fatalf("находка не называет %q и координату %s: %s", tc.why, s.pos, s.why)
+			}
+			if tc.posture != "" && s.why != "" {
+				t.Fatalf("под own находки быть не должно: %s", s.why)
+			}
+		})
 	}
 }
 

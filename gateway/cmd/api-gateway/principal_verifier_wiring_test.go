@@ -49,14 +49,28 @@
 // остальные его пробы не исполнились бы вовсе.
 //
 // Страж адресата судит ОДНУ форму аргумента — вызов
-// `<x>.DeclaredTokenAudience()`, тот же, по которому ветвится мягкий проход:
-// обе стороны судит один предикат isDeclaredAudienceCall. Переменная,
-// выведенная из этого вызова (`aud := cfg.DeclaredTokenAudience()`), признанной
-// формой НЕ считается и даёт находку. Довод: без разрешения типов судья не
-// докажет, что между объявлением переменной и стражем её не переприсвоили и не
-// затенили, — признание формы открыло бы ровно ту дыру, которую страж
-// закрывает. Производителя этой формы в дереве нет, а цена отказа — одна
-// строка у автора, которому находка называет, что писать.
+// `<имя>.DeclaredTokenAudience()`, тот же, по которому ветвится мягкий проход:
+// обе стороны судит один предикат isDeclaredAudienceCall. Форма вызова — только
+// половина: страж обязан спрашивать адресата у ТОГО ЖЕ получателя, что мягкий
+// проход, — одно голое имя у обеих сторон, — и между стражем и веткой мягкого
+// прохода, включая её инициализацию, это имя не упоминается вовсе. Без
+// разрешения типов судья не отличит чтение получателя от записи, поэтому
+// находка — любое упоминание. Алиас, заведённый раньше стража (указатель на
+// получателя, замыкание над ним), — это два факта, а не один, и этот судья его
+// не видит.
+//
+// Переменная, выведенная из этого вызова (`aud := cfg.DeclaredTokenAudience()`),
+// признанной формой НЕ считается и даёт находку. Довод тот же: без разрешения
+// типов судья не докажет, что между объявлением переменной и стражем её не
+// переприсвоили и не затенили, — признание формы открыло бы ровно ту дыру,
+// которую страж закрывает. Производителя этой формы в дереве нет, а цена отказа
+// — одна строка у автора, которому находка называет, что писать.
+//
+// Мягкий проход лежит в ветке THEN той же единственной ветки верхнего уровня, и
+// замыкание между ними — находка: лексически мягкий проход остался бы в ветке,
+// а исполнялся бы там, где замыкание позовут. Формы на пути к нему судит
+// executionForms из f1b_revocation_wiring_test.go — один разбор на все пробы
+// провязки корня.
 //
 // Построение проверяющего — прямой оператор блока else ветки мягкого прохода
 // верхнего уровня. Прежнее требование «ни одна ветка `if`, кроме этой,
@@ -252,20 +266,6 @@ func isDirectStmt(block *ast.BlockStmt, st ast.Stmt) bool {
 	return false
 }
 
-// thenBodiesEnclosing — ветки `if`, чьё тело THEN охватывает позицию. Ветка
-// else не засчитывается: условие называет то, что верно в then.
-func thenBodiesEnclosing(f *ast.File, pos token.Pos) []*ast.IfStmt {
-	var out []*ast.IfStmt
-	ast.Inspect(f, func(n ast.Node) bool {
-		ifs, ok := n.(*ast.IfStmt)
-		if ok && pos > ifs.Body.Lbrace && pos < ifs.Body.Rbrace {
-			out = append(out, ifs)
-		}
-		return true
-	})
-	return out
-}
-
 // Отказ конструктора роняет старт в ЛЮБОМ классе окружения: ошибка
 // конструктора читается только условием ветки, завершающей процесс, и её
 // телом; выход в этой ветке безусловен; сама ветка — прямой оператор блока,
@@ -340,13 +340,20 @@ func softPassSites(f *ast.File) []*ast.CallExpr {
 // isDeclaredAudienceCall — выражение есть вызов `<x>.DeclaredTokenAudience()`:
 // единственная форма объявленного адресата, которую судят и мягкий проход, и
 // страж адресата.
-func isDeclaredAudienceCall(e ast.Expr) bool {
+func isDeclaredAudienceCall(e ast.Expr) bool { return declaredAudienceReceiver(e) != nil }
+
+// declaredAudienceReceiver — получатель вызова `<x>.DeclaredTokenAudience()`:
+// то, у кого вызов спрашивает адресата; nil, если выражение не этот вызов.
+func declaredAudienceReceiver(e ast.Expr) ast.Expr {
 	call, ok := e.(*ast.CallExpr)
 	if !ok || len(call.Args) != 0 {
-		return false
+		return nil
 	}
 	sel, ok := call.Fun.(*ast.SelectorExpr)
-	return ok && sel.Sel.Name == "DeclaredTokenAudience"
+	if !ok || sel.Sel.Name != "DeclaredTokenAudience" {
+		return nil
+	}
+	return sel.X
 }
 
 // namesUndeclaredAudience — условие `cfg.DeclaredTokenAudience() == ""`.
@@ -364,20 +371,47 @@ func namesUndeclaredAudience(cond ast.Expr) bool {
 // повторённый разбором конфигурации, проходил бы мягко.
 func TestPrincipalVerifier_SoftPassIsKeyedOnTheUndeclaredAudience(t *testing.T) {
 	fset, f := parseMain(t)
-	sites := softPassSites(f)
-	require.Len(t, sites, 1, "корень обязан объявлять мягкий проход ровно одной строкой журнала %q",
-		principalVerifierSoftPassMsg)
-	site := sites[0]
+	finding, census := softPassFinding(fset, f)
+	require.Empty(t, finding)
+	t.Log(census)
+}
 
-	keyed := false
-	for _, ifs := range thenBodiesEnclosing(f, site.Pos()) {
-		if namesUndeclaredAudience(ifs.Cond) {
-			keyed = true
+// softPassFinding — пусто, если мягкий проход объявлен ровно одной строкой
+// журнала, лежит в ветке THEN единственной ветки верхнего уровня
+// `if cfg.DeclaredTokenAudience() == ""` и замыкание его от неё не отделяет;
+// census называет осмотренное.
+func softPassFinding(fset *token.FileSet, f *ast.File) (finding, census string) {
+	sites := softPassSites(f)
+	if len(sites) != 1 {
+		return fmt.Sprintf("корень обязан объявлять мягкий проход ровно одной строкой журнала %q, а объявляет %d",
+			principalVerifierSoftPassMsg, len(sites)), ""
+	}
+	site := sites[0]
+	at := fset.Position(site.Pos())
+	path := enclosingNodes(f, site.Pos())
+	var softs []*ast.IfStmt
+	if fn := mainFunc(f); fn != nil {
+		softs = undeclaredAudienceIfs(fn.Body)
+	}
+	if len(softs) != 1 || !within(softs[0].Body, site.Pos()) {
+		forms := executionForms(fset, path, site.Pos())
+		if len(forms) == 0 {
+			forms = []string{"ни одной формы ветвления"}
+		}
+		return fmt.Sprintf("мягкий проход у %s лежит вне ветки THEN единственной ветки верхнего уровня "+
+			"`if cfg.DeclaredTokenAudience() == \"\"` (таких веток %d) — он ключуется не своим производителем; "+
+			"на пути: %s", at, len(softs), strings.Join(forms, " → ")), ""
+	}
+	soft := softs[0]
+	for _, n := range path {
+		if lit, ok := n.(*ast.FuncLit); ok && within(soft.Body, lit.Pos()) {
+			return fmt.Sprintf("мягкий проход у %s отделён от ветки THEN у %s замыканием %T у %s — исполняется он "+
+				"там, где замыкание позовут, и ключ не доказан", at, fset.Position(soft.Pos()), lit,
+				fset.Position(lit.Pos())), ""
 		}
 	}
-	require.True(t, keyed,
-		"мягкий проход %s лежит вне ветки THEN условия `if cfg.DeclaredTokenAudience() == \"\"` — он "+
-			"ключуется не своим производителем", fset.Position(site.Pos()))
+	return "", fmt.Sprintf("ОСМОТРЕНО: строк мягкого прохода %d · у %s · в ветке THEN у %s · замыканий между ними 0",
+		len(sites), at, fset.Position(soft.Pos()))
 }
 
 // verifierPlacementFinding — пусто, если присваивание конструктора — прямой
@@ -509,7 +543,8 @@ func audienceGuardIf(body *ast.BlockStmt, call *ast.CallExpr) *ast.IfStmt {
 
 // audienceGuardFinding — пусто, если страж адресата стоит условием ветки
 // отказа верхнего уровня, выход в ней безусловен, судит он величину мягкого
-// прохода и стоит до его ветки; тогда census называет осмотренное.
+// прохода — тот же вызов у того же получателя, не упомянутого между ними, — и
+// стоит до его ветки; тогда census называет осмотренное.
 func audienceGuardFinding(fset *token.FileSet, f *ast.File) (finding, census string) {
 	fn := mainFunc(f)
 	if fn == nil {
@@ -566,16 +601,74 @@ func audienceGuardFinding(fset *token.FileSet, f *ast.File) (finding, census str
 		return fmt.Sprintf("страж адресата у %s стоит после ветки мягкого прохода у %s — боевой класс дошёл бы "+
 			"до мягкого прохода", fset.Position(guard.Pos()), fset.Position(soft.Pos())), ""
 	}
-	return "", fmt.Sprintf("ОСМОТРЕНО: вызовов стража адресата %d · ветка отказа у %s · ветка мягкого прохода у %s",
-		len(calls), fset.Position(guard.Pos()), fset.Position(soft.Pos()))
+
+	// Один получатель: голое имя, одно у обеих сторон.
+	guardRecv := declaredAudienceReceiver(call.Args[1])
+	softRecv := declaredAudienceReceiver(soft.Cond.(*ast.BinaryExpr).X)
+	g, gok := guardRecv.(*ast.Ident)
+	sv, sok := softRecv.(*ast.Ident)
+	if !gok || !sok || g.Name != sv.Name {
+		return fmt.Sprintf("страж адресата у %s спрашивает адресата у получателя %s (форма %T), а мягкий проход у %s — "+
+			"у получателя %s (форма %T): страж судил бы не ту величину, по которой ветвится проход; признан один "+
+			"получатель, названный одним голым именем у обеих сторон", fset.Position(guardRecv.Pos()),
+			types.ExprString(guardRecv), guardRecv, fset.Position(softRecv.Pos()), types.ExprString(softRecv),
+			softRecv), ""
+	}
+	between := stmtsBetween(body, guard.End(), soft.Pos())
+	if soft.Init != nil {
+		between = append(between, soft.Init)
+	}
+	if mentions := nameMentions(fset, between, g.Name); len(mentions) > 0 {
+		return fmt.Sprintf("между стражем адресата у %s и веткой мягкого прохода у %s получатель %s упомянут у %s — "+
+			"без разрешения типов судья не отличит чтение от записи, и страж судил бы не ту величину, по которой "+
+			"ветвится проход", fset.Position(guard.Pos()), fset.Position(soft.Pos()), g.Name,
+			strings.Join(mentions, ", ")), ""
+	}
+	return "", fmt.Sprintf("ОСМОТРЕНО: вызовов стража адресата %d · ветка отказа у %s · ветка мягкого прохода у %s · "+
+		"получатель адресата %s у обеих сторон · операторов между ними %d, упоминаний получателя 0",
+		len(calls), fset.Position(guard.Pos()), fset.Position(soft.Pos()), g.Name, len(between))
+}
+
+// stmtsBetween — операторы блока, лежащие целиком между позициями.
+func stmtsBetween(block *ast.BlockStmt, from, to token.Pos) []ast.Node {
+	var out []ast.Node
+	for _, st := range block.List {
+		if st.Pos() >= from && st.End() <= to {
+			out = append(out, st)
+		}
+	}
+	return out
+}
+
+// nameMentions — координаты идентификаторов с этим именем в узлах; имя поля в
+// селекторе (`x.<имя>`) упоминанием не считается.
+func nameMentions(fset *token.FileSet, nodes []ast.Node, name string) []string {
+	var out []string
+	for _, root := range nodes {
+		fields := map[*ast.Ident]bool{}
+		ast.Inspect(root, func(n ast.Node) bool {
+			if sel, ok := n.(*ast.SelectorExpr); ok {
+				fields[sel.Sel] = true
+			}
+			return true
+		})
+		ast.Inspect(root, func(n ast.Node) bool {
+			if id, ok := n.(*ast.Ident); ok && id.Name == name && !fields[id] {
+				out = append(out, fset.Position(id.Pos()).String())
+			}
+			return true
+		})
+	}
+	return out
 }
 
 // Боевой класс не доходит до мягкого прохода только потому, что РАНЬШЕ его
 // незаявленного адресата отвергает страж адресата. Поэтому держится и сам
 // вызов стража: он стоит условием ветки отказа на верхнем уровне корня (ни
 // одна ветка его не охватывает), выход в ней безусловен, судит он ту же
-// величину, по которой ветвится мягкий проход, и стоит ДО этой ветки. Снятый
-// или переставленный ниже страж открывал бы мягкий проход боевому классу.
+// величину, по которой ветвится мягкий проход, — тот же вызов у того же
+// получателя, — и стоит ДО этой ветки. Снятый или переставленный ниже страж
+// открывал бы мягкий проход боевому классу.
 func TestPrincipalVerifier_AudienceGuardRefusesBeforeTheSoftPass(t *testing.T) {
 	fset, f := parseMain(t)
 	finding, census := audienceGuardFinding(fset, f)

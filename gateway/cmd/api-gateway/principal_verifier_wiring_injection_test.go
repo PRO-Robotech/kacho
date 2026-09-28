@@ -177,3 +177,103 @@ func TestPrincipalVerifierInjection_ConstructionInASwitchCaseBlockIsNamed(t *tes
 		"}\n\t\t}\n\t")
 	requirePlacementFinding(t, fset, f, "*ast.CaseClause")
 }
+
+// softPassBranch — ветка мягкого прохода верхнего уровня в корне как он есть.
+func softPassBranch(t *testing.T, f *ast.File) *ast.IfStmt {
+	t.Helper()
+	fn := mainFunc(f)
+	require.NotNil(t, fn, "предпосылка инъекции: в корне есть main")
+	softs := undeclaredAudienceIfs(fn.Body)
+	require.Len(t, softs, 1, "предпосылка инъекции: одна ветка мягкого прохода верхнего уровня")
+	return softs[0]
+}
+
+// audienceReceiverOf — получатель вызова `<x>.DeclaredTokenAudience()`.
+func audienceReceiverOf(t *testing.T, e ast.Expr) ast.Expr {
+	t.Helper()
+	call, ok := e.(*ast.CallExpr)
+	require.True(t, ok, "предпосылка инъекции: адресат взят вызовом")
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	require.True(t, ok, "предпосылка инъекции: вызов адресата — селектор")
+	return sel.X
+}
+
+// ПОЛУЧАТЕЛЬ: страж и мягкий проход обязаны спрашивать адресата у ОДНОГО
+// получателя. Каждая строка меняет ровно один факт о получателе; законный
+// близнец — корень как он есть (audienceGuardSite утверждает его молчание).
+func TestPrincipalVerifierInjection_GuardAndSoftPassAskOneReceiver(t *testing.T) {
+	src, fset, call, _ := audienceGuardSite(t)
+	_, _, f := rootSource(t)
+	soft := softPassBranch(t, f)
+	guardRecv := audienceReceiverOf(t, call.Args[1])
+	softRecv := audienceReceiverOf(t, soft.Cond.(*ast.BinaryExpr).X)
+	softAt := fset.Position(soft.Pos())
+	initAt := softAt
+	initAt.Column += len("if ")
+
+	for _, tc := range []struct {
+		name  string
+		edits []rootEdit
+		names []string
+	}{
+		{"страж спрашивает другого получателя",
+			[]rootEdit{{offset(fset, guardRecv.Pos()), offset(fset, guardRecv.End()), "devCfg"}},
+			[]string{"devCfg", "cfg", "получател"}},
+		{"мягкий проход спрашивает другого получателя",
+			[]rootEdit{{offset(fset, softRecv.Pos()), offset(fset, softRecv.End()), "devCfg"}},
+			[]string{"devCfg", "cfg", "получател"}},
+		{"получатель переписан между стражем и мягким проходом",
+			[]rootEdit{{offset(fset, soft.Pos()), offset(fset, soft.Pos()), "cfg.TokenAudience = \"\"\n\t"}},
+			[]string{softAt.String(), "cfg"}},
+		{"получатель переписан в инициализации ветки мягкого прохода",
+			[]rootEdit{{offset(fset, soft.Pos()) + len("if "), offset(fset, soft.Pos()) + len("if "), "cfg = devCfg; "}},
+			[]string{initAt.String(), "cfg"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mfset, mf := mutateRoot(t, src, tc.edits...)
+			finding, _ := audienceGuardFinding(mfset, mf)
+			requireNamedFinding(t, finding, tc.names...)
+		})
+	}
+}
+
+// Мягкий проход, завёрнутый в замыкание внутри своей ветки THEN, лексически
+// лежит в ней, а исполняется там, где замыкание позовут: ключ не доказан.
+// Законный близнец — корень как он есть; второй близнец — ветка switch внутри
+// THEN: мягкий проход по-прежнему ключуется незаявленным адресатом.
+func TestPrincipalVerifierInjection_SoftPassOutsideItsKeyIsNamed(t *testing.T) {
+	src, fset, f := rootSource(t)
+	finding, census := softPassFinding(fset, f)
+	require.Empty(t, finding, "законный близнец — корень как он есть — обязан молчать")
+	t.Log("близнец: " + census)
+	soft := softPassBranch(t, f)
+	require.NotEmpty(t, soft.Body.List, "предпосылка инъекции: у ветки мягкого прохода есть тело")
+	st := soft.Body.List[0]
+	from, to := offset(fset, st.Pos()), offset(fset, st.End())
+
+	t.Run("замыкание внутри THEN", func(t *testing.T) {
+		mfset, mf := mutateRoot(t, src,
+			rootEdit{from, from, "warnSoft := func() {\n\t\t"},
+			rootEdit{to, to, "\n\t\t}\n\t\t_ = warnSoft"})
+		finding, _ := softPassFinding(mfset, mf)
+		requireNamedFinding(t, finding, "*ast.FuncLit", mfset.Position(softPassSites(mf)[0].Pos()).String())
+	})
+	t.Run("ветка switch вместо if мягкого прохода", func(t *testing.T) {
+		els, ok := soft.Else.(*ast.BlockStmt)
+		require.True(t, ok, "предпосылка инъекции: у ветки мягкого прохода есть блок else")
+		mfset, mf := mutateRoot(t, src,
+			rootEdit{offset(fset, soft.Pos()), offset(fset, soft.Body.Lbrace) + 1,
+				"switch {\n\tcase cfg.DeclaredTokenAudience() == \"\":"},
+			rootEdit{offset(fset, soft.Body.Rbrace), offset(fset, els.Lbrace) + 1, "default:"})
+		finding, _ := softPassFinding(mfset, mf)
+		requireNamedFinding(t, finding, "*ast.CaseClause", mfset.Position(softPassSites(mf)[0].Pos()).String())
+	})
+	t.Run("близнец: switch внутри THEN", func(t *testing.T) {
+		mfset, mf := mutateRoot(t, src,
+			rootEdit{from, from, "switch cfg.AppEnv {\n\t\tdefault:\n\t\t"},
+			rootEdit{to, to, "\n\t\t}"})
+		finding, census := softPassFinding(mfset, mf)
+		require.Empty(t, finding, "мягкий проход под switch внутри своей ветки THEN ключуется тем же адресатом")
+		t.Log("близнец: " + census)
+	})
+}
