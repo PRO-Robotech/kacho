@@ -271,6 +271,11 @@ global:
         credentialSecret:
           name: ""
           key: ""
+        # Якорь проверки сертификата узла — тоже источник (секрет и ключ), а не
+        # величина. Разбор — в умбрелле.
+        trustAnchorSecret:
+          name: ""
+          key: ""
 
 # Phase 2 (KAC-127) — Kratos identity schema + config ConfigMaps. Управляются
 # флагами; в Phase 2 поднимаются вместе с kaname (один namespace, один Helm

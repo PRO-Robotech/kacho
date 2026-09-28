@@ -467,7 +467,6 @@ data:
       # Это решение, а не умолчание: без него перечень берётся из `origins`, и
       # незаданный перечень по-прежнему доезжает до стража незаданным. Обе ручки
       # сразу — два объявления одного перечня, и рендер отказывает.
-      {{- $id := $.Values.global.kacho.identity }}
       {{- if and (hasKey . "rpId") (not (kindIs "invalid" .rpId)) }}
       {{- fail "kaname: config.authn.accessKeys.rpId снят (kacho#2905) — имя доверяющей стороны ключей доступа берётся из узла identity раздела global (webauthnRpId, а пусто — domain), тем же шаблоном, что у настроек службы личности. Объявите имя там либо снимите ключ из профиля" }}
       {{- end }}
@@ -476,12 +475,12 @@ data:
       {{- fail "kaname: config.authn.accessKeys объявляет перечень происхождений дважды — originFromConsole=true и origins. Оставьте одно: originFromConsole берёт происхождение консоли из узла identity раздела global, origins — перечень профиля" }}
       {{- end }}
       access-keys:
-        {{- with include "kaname.identity.webauthnRpId" $id }}
+        {{- with include "kaname.identity.derived" (list $ "rpId") }}
         rp-id: {{ . | quote }}
         {{- end }}
         {{- if $fromConsole }}
         origins:
-          - {{ include "kaname.identity.consoleOrigin" $id | quote }}
+          - {{ include "kaname.identity.derived" (list $ "consoleOrigin") | quote }}
         {{- end }}
         # Ключ с ПУСТЫМ значением (`origins` без списка, `--set …=null`) — не
         # объявление. `hasKey` на нём истинен, поэтому вид проверяется отдельно,
@@ -670,4 +669,13 @@ data:
       username-env: "KANAME_INVITE_MAIL_USERNAME"
       password-env: "KANAME_INVITE_MAIL_PASSWORD"
       {{- end }}
+      {{- /* ЯКОРЬ УЗЛА (kacho#2901, F6b-56): путь, по которому рабочему
+      объекту смонтирован ключ объявленного секрета. Не объявлен — ключа нет, и
+      процесс проверяет узел системными корнями (верно для публичного
+      ретранслятора). Путь — шаблона (`kaname.mailAnchor.file`), тот же, что у
+      тома в deployment.yaml. */}}
+      {{- if include "kaname.mailAnchor.declared" $mailNode }}
+      ca-bundle-file: {{ include "kaname.mailAnchor.file" $ | quote }}
+      {{- end }}
+      login-url: {{ include "kaname.identity.derived" (list $ "loginURL") | quote }}
     {{- end }}

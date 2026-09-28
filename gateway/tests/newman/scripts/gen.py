@@ -364,6 +364,32 @@ def require_env_url(var: str, path: str, why: str = "") -> List[str]:
     ]
 
 
+def require_env_slot(var: str, why: str = "") -> List[str]:
+    """Pre-request block: the step needs the SEED slot {{<var>}}; FAIL (marked), then skip, if unset.
+
+    Та же форма, что у `require_env_url` и стража субъекта в `_auth_pre_script`, но о
+    СЛОТЕ ПОСЕВА, который подставляется в путь или тело шага (kacho#2901, приёмка F6b,
+    F6b-55). Без стража шаг ушёл бы с пустым идентификатором, и отказ продукта на
+    пустом пути читался бы находкой о нём — тогда как предмет шага не создал посев.
+    Поэтому утверждение с МЕТКОЙ третьего исхода и пропуск: вердиктный гейт наборов
+    относит набор к «не выполнилось», а не к красным и не к зелёным.
+    """
+    reason = f" — {why}" if why else ""
+    return [
+        f"// SEED-SLOT GUARD — {js_comment(var)} is written by the authz-fixture seed.",
+        "// Missing value = the seed did not create this step's subject: FAIL (marked), then skip.",
+        f"if (!(pm.environment.get({js_str(var)}) || pm.variables.get({js_str(var)}))) {{",
+        f"  pm.test({js_str(f'{PRECONDITION_MARK} harness config: {var} is set (seed slot){reason}')}, () => {{",
+        "    pm.expect.fail(" + js_str(
+            f"{var} is not set — the authz-fixture seed (tests/authz-fixtures/prodseed_matrix.py) "
+            "did not provide this slot. The step would run with an empty identifier and its "
+            "refusal would read as a finding about the product.") + ");",
+        "  });",
+        "  pm.execution.skipRequest();",
+        "}",
+    ]
+
+
 def poll_operation(op_var: str = "opId", auth: str = "jwtBootstrap",
                    name: str = "poll-op") -> Step:
     """Poll /operations/{{<op_var>}} until done, with a REAL inter-poll delay.
@@ -489,6 +515,7 @@ _INJECTED = {
     "save_from_response": save_from_response,
     "assert_iam_operation_envelope": assert_iam_operation_envelope,
     "require_env_url": require_env_url,
+    "require_env_slot": require_env_slot,
     "poll_operation": poll_operation,
     "POLL_CAP": POLL_CAP,
     "POLL_DELAY_MS": POLL_DELAY_MS,

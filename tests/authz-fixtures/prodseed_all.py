@@ -89,7 +89,8 @@ def ensure_certs() -> None:
         fronts tenant traffic, so "is the api-gateway" must never be a licence to mint
         a cluster admin.
       * `api-gateway-client-tls` — the identity for the ordinary internal RPCs the seed
-        drives (InternalUserService.UpsertFromIdentity, InternalIAMService.LookupSubject).
+        drives (InternalIAMService.LookupSubject). People are NOT created over it: the
+        seed enrolls them by registration at the edge (kacho#2901).
 
     Material is copied out of the cluster's own Secrets to 0600 files under /tmp for the
     duration of the run. Nothing is generated, nothing is written into the repository,
@@ -531,7 +532,19 @@ def main() -> int:
     import prodseed_matrix as pm
 
     log("minting the matrix (iam MintBootstrapToken → SAKeyService.Issue → OAuth2)")
-    fixtures = pm.seed()
+    # Исходов посева людей два, и они не сводятся (приёмка F6b, Р17): «условие не
+    # создано» (письма нет в срок, приёмник не читается) — код 75, наборы «не
+    # выполнились»; находка о продукте (отказ на годном входе, перепись людей) —
+    # код 1. Трассировка вместо текста назвала бы виновником строку посева.
+    import verified_human as vh
+    try:
+        fixtures = pm.seed()
+    except vh.Unmet as e:
+        log(str(e))
+        return vh.RC_UNMET
+    except vh.Finding as e:
+        log(f"НАХОДКА: {e}")
+        return vh.RC_FINDING
     boot = fixtures["jwtBootstrap"]
     out_dir = pathlib.Path(os.environ.get("OUT_DIR", str(HERE / "out")))
     out_dir.mkdir(parents=True, exist_ok=True)
