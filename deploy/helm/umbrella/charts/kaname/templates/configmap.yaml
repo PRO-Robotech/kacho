@@ -263,12 +263,26 @@ data:
       # либо описывают наш расход, и профиль, забывший ручку, выглядел бы
       # настроенным. Пустое доезжает до стража, и он отказывает в старте,
       # называя настройку.
+      #
+      # Темп поверхности выдачи (kaname#315) — шесть величин той же
+      # дисциплины: ноль означал бы «без ограничения», и умолчания нет ни у
+      # процесса, ни здесь. Первые четыре страж требует при включённом
+      # эндпоинте, две величины точки авторизации (`authorize-*`) — при
+      # собранной церемонии (посадка `own` и включённый эндпоинт). Все величины
+      # — НА РЕПЛИКУ: счёт живёт в памяти процесса. Полноту перечня против пина
+      # службы держит deploy/client_token_knobs_of_the_pin_test.go.
       client-token:
         enabled: true
         allowed-audiences: {{ $ct.allowedAudiences | quote }}
         default-audience: {{ $ct.defaultAudience | quote }}
         token-ttl: {{ $ct.tokenTtl | quote }}
         body-ceiling: {{ $ct.bodyCeiling }}
+        in-flight-ceiling: {{ $ct.inFlightCeiling }}
+        exchanges-per-client-per-sec: {{ $ct.exchangesPerClientPerSec }}
+        failed-proofs-per-source: {{ $ct.failedProofsPerSource }}
+        failed-proof-window: {{ $ct.failedProofWindow | quote }}
+        authorize-per-source-per-sec: {{ $ct.authorizePerSourcePerSec }}
+        authorize-in-flight-ceiling: {{ $ct.authorizeInFlightCeiling }}
       {{- end }}
       {{- $bm := .Values.config.authn.bootstrapMint | default dict }}
       # bootstrap-mint — caller gate for InternalBootstrapTokenService/

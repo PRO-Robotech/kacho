@@ -8,10 +8,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ПРЕДМЕТ
 //
-// У эндпоинта четыре величины, и каждая невидима на положительном пути: перечень
-// адресатов платформы, адресат по умолчанию, срок выпускаемого токена и потолок
-// тела запроса. Пустой перечень означает «выдаём токен, адресованный чему
-// угодно»; нулевой потолок — «читаем сколько прислали». Ни одно из этих
+// Каждая величина эндпоинта невидима на положительном пути: перечень адресатов
+// платформы, адресат по умолчанию, срок выпускаемого токена, потолок тела
+// запроса и шесть величин темпа поверхности выдачи (kaname#315). Пустой перечень
+// означает «выдаём токен, адресованный чему угодно»; нулевой потолок — «читаем
+// сколько прислали»; нулевой темп — «без ограничения». Ни одно из этих
 // состояний не проявляется отказом: запрос проходит, токен выдаётся.
 //
 // Страж старта отказывает в пуске на любой из них — но только если величина
@@ -37,7 +38,13 @@
 //   - проверяется ОБЪЯВЛЕННОСТЬ и непустота, а не содержание: какой именно
 //     адресат у стенда — решение профиля, и здесь принимается любой непустой;
 //   - перечень профилей берётся КАТАЛОГОМ: новый профиль приходит под проверку
-//     без правки этого файла.
+//     без правки этого файла;
+//   - перечень ВЕЛИЧИН берётся у ПИНЕННОЙ СЛУЖБЫ (client_token_knobs_of_the_pin_test.go):
+//     новая величина процесса приходит под проверку без правки этого файла.
+//     Требуются все величины структуры, и две величины точки авторизации тоже:
+//     они нужны только собранной церемонии (`own`), но стоят в профиле по тому
+//     же доводу, что прочие величины полосы `own`, — перевод стенда на `own` не
+//     роняет старт по имени незаданной ручки.
 package deploy_test
 
 import (
@@ -47,13 +54,25 @@ import (
 	"testing"
 )
 
-// clientTokenKnobs — величины эндпоинта, которые профиль обязан объявить сам.
+// clientTokenDeclarationKnobs — величины эндпоинта, которые профиль обязан
+// объявить сам: имена в значениях чарта для каждой величины пиненной службы.
 //
-// Перечень выписан здесь намеренно и это единственное выписанное место: он есть
-// КОНТРАКТ фазы, а не свойство дерева. Ручка, добавленная в чарт и забытая
-// здесь, обязана быть замечена человеком — вывод её из чарта сделал бы проверку
-// тождественно истинной.
-var clientTokenKnobs = []string{"allowedAudiences", "defaultAudience", "tokenTtl", "bodyCeiling"}
+// Прежде перечень был выписан здесь четырьмя именами как «контракт фазы» — и
+// разошёлся с процессом ровно на подъёме пина: служба `2e1d01af171d` требует
+// десять, профили объявляли четыре, стенды не стартовали (kacho#2896). Вывод из
+// ЧАРТА по-прежнему был бы тождественно истинным; вывод из ПРОЦЕССА — нет.
+func clientTokenDeclarationKnobs(t *testing.T) []string {
+	t.Helper()
+	pinned := clientTokenKnobsOfPin(t, kanameModuleDir(t, ".."))
+	knobs := make([]string, 0, len(pinned))
+	for _, k := range pinned {
+		knobs = append(knobs, k.valueKey())
+	}
+	return knobs
+}
+
+// syntheticClientTokenKnobs — перечень самопроверки: синтетика не читает пин.
+var syntheticClientTokenKnobs = []string{"allowedAudiences", "defaultAudience", "tokenTtl", "bodyCeiling"}
 
 // clientTokenFinding — одна находка с координатой, по которой её чинят.
 type clientTokenFinding struct {
@@ -68,7 +87,7 @@ func (f clientTokenFinding) String() string { return f.profile + ": " + f.what }
 //
 // Возвращает находки И число осмотренных профилей: «ноль находок» обязано быть
 // отличимо от «ноль прочитанного».
-func scanClientTokenDeclarations(profiles map[string]map[string]any) (findings []clientTokenFinding, enabled int) {
+func scanClientTokenDeclarations(profiles map[string]map[string]any, knobs []string) (findings []clientTokenFinding, enabled int) {
 	names := make([]string, 0, len(profiles))
 	for n := range profiles {
 		names = append(names, n)
@@ -100,7 +119,7 @@ func scanClientTokenDeclarations(profiles map[string]map[string]any) (findings [
 			findings = append(findings, clientTokenFinding{name, "эндпоинт включён при выключенной своей чеканке"})
 		}
 
-		for _, knob := range clientTokenKnobs {
+		for _, knob := range knobs {
 			v, present := m[knob]
 			switch {
 			case !present:
@@ -159,8 +178,10 @@ func TestClientTokenValuesAreDeclaredByEveryProfileThatServesIt(t *testing.T) {
 		profiles[f] = readYAML(t, f)
 	}
 
-	findings, enabled := scanClientTokenDeclarations(profiles)
-	t.Logf("осмотрено профилей: %d, из них поднимают токен-эндпоинт: %d", len(files), enabled)
+	knobs := clientTokenDeclarationKnobs(t)
+	findings, enabled := scanClientTokenDeclarations(profiles, knobs)
+	t.Logf("осмотрено профилей: %d, из них поднимают токен-эндпоинт: %d, величин пина: %d",
+		len(files), enabled, len(knobs))
 
 	if enabled == 0 {
 		// Предпосылка проверки: она обоснована тем, что эндпоинт где-то поднят.
@@ -194,7 +215,7 @@ func TestClientTokenDeclarationScannerSeesTheOmissionAndIsSilentOnTheDeclared(t 
 	}
 
 	// (а) законный близнец — молчание.
-	got, enabled := scanClientTokenDeclarations(map[string]map[string]any{"profile.yaml": full(nil)})
+	got, enabled := scanClientTokenDeclarations(map[string]map[string]any{"profile.yaml": full(nil)}, syntheticClientTokenKnobs)
 	if len(got) != 0 || enabled != 1 {
 		t.Fatalf("на полном объявлении сканер обязан молчать, получено %v (поднимающих %d)", got, enabled)
 	}
@@ -202,16 +223,16 @@ func TestClientTokenDeclarationScannerSeesTheOmissionAndIsSilentOnTheDeclared(t 
 	// (б) выключенный эндпоинт — тоже молчание и НЕ считается поднимающим.
 	got, enabled = scanClientTokenDeclarations(map[string]map[string]any{
 		"off.yaml": full(func(m map[string]any) { m["enabled"] = false }),
-	})
+	}, syntheticClientTokenKnobs)
 	if len(got) != 0 || enabled != 0 {
 		t.Fatalf("выключенный эндпоинт не обязан ничего объявлять, получено %v (поднимающих %d)", got, enabled)
 	}
 
 	// (в) каждая пропущенная величина — находка, называющая себя.
-	for _, knob := range clientTokenKnobs {
+	for _, knob := range syntheticClientTokenKnobs {
 		got, _ := scanClientTokenDeclarations(map[string]map[string]any{
 			"gap.yaml": full(func(m map[string]any) { delete(m, knob) }),
-		})
+		}, syntheticClientTokenKnobs)
 		if len(got) != 1 || !strings.Contains(got[0].what, knob) {
 			t.Errorf("пропущенная величина %s обязана быть находкой с именем, получено %v", knob, got)
 		}
@@ -228,7 +249,7 @@ func TestClientTokenDeclarationScannerSeesTheOmissionAndIsSilentOnTheDeclared(t 
 	} {
 		got, _ := scanClientTokenDeclarations(map[string]map[string]any{
 			"degenerate.yaml": full(func(m map[string]any) { m[tc.knob] = tc.value }),
-		})
+		}, syntheticClientTokenKnobs)
 		if len(got) != 1 || !strings.Contains(got[0].what, tc.knob) {
 			t.Errorf("вырожденная величина %s=%v обязана быть находкой, получено %v", tc.knob, tc.value, got)
 		}
@@ -243,7 +264,7 @@ func TestClientTokenDeclarationScannerSeesTheOmissionAndIsSilentOnTheDeclared(t 
 				"tokenTtl": "15m", "bodyCeiling": 65536,
 			},
 		}}}},
-	})
+	}, syntheticClientTokenKnobs)
 	if len(got) != 1 || !strings.Contains(got[0].what, "чеканке") {
 		t.Errorf("эндпоинт при выключенной чеканке обязан быть находкой, получено %v", got)
 	}
