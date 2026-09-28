@@ -596,6 +596,14 @@ config:
     #     memoryReserveBytes: 268435456 # резерв памяти процесса сверх проверяющего
     #     recoveryCodeTtl: 5m           # срок кода восстановления доступа (Ф5,
     #                                   # kacho#2701; KANAME_AUTHN__LOGIN__RECOVERY_CODE_TTL)
+    #     # подтверждение адреса (kaname#456, Р7, Р9) — пять величин без умолчания,
+    #     # KANAME_AUTHN__LOGIN__VERIFICATION_{CODE_TTL,CODE_ATTEMPTS,RESEND_INTERVAL,
+    #     # RESEND_LIMIT,RESEND_WINDOW}; величины профиля продукта:
+    #     verificationCodeTtl: 30m        # срок кода подтверждения от выдачи письма
+    #     verificationCodeAttempts: 5     # неподошедших предъявлений на код
+    #     verificationResendInterval: 60s # промежуток между письмами одному человеку
+    #     verificationResendLimit: 5      # писем одному человеку за окно
+    #     verificationResendWindow: 24h   # скользящее окно счёта писем
     # ─── регистрация нашей полосой (Ф4, kacho#2699) — ТОЛЬКО под `own` ────────
     # Рендерится в config.yaml как authn.registration.* (env-override:
     # KANAME_AUTHN__REGISTRATION__<KEY>). Обе величины — условие старта под
