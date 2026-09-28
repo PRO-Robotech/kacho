@@ -1172,8 +1172,9 @@ managed-image-pins-check:
 	@bash scripts/gen-managed-image-pins.sh --profile $(PROFILE) --check
 
 # Offline helm manifest-assertion suite (tests/helm/). Asserts kept-stack wiring
-# against the rendered umbrella — e.g. hydra-jwks-url-test.sh checks that
-# api-gateway points at the in-cluster Hydra JWKS endpoint. No kind cluster needed.
+# against the rendered umbrella — e.g. edge-keyset-hop-test.sh checks that
+# api-gateway fetches every key set from the in-cluster iam mirror over TLS with a
+# trust anchor. No kind cluster needed.
 #
 # ЦЕЛЬ ВЫЗЫВАЕТСЯ ИЗ CI (.github/workflows/ci.yaml, job `helm`). До этого её не
 # звал никто — ни один workflow, ни одна другая цель: полтора десятка проверок и

@@ -219,10 +219,13 @@ $prod_urls
 EOF_URLS
 [ "$seen_mirror" -eq 1 ] \
   || fail "prod: ни один адрес набора не ведёт на зеркало iam (ждали адреса вида ${WANT_PROD%/.well-known/*}/…), объявлено: $prod_urls"
-# Якорь доверия обязан быть смонтирован: TLS без проверки сертификата на этом хопе
-# читается как настроенная защита, ничего не проверяя.
-[[ "$PROD" == *'hydra-jwks-ca'* ]] \
-  || fail "prod api-gateway pod carries no trust anchor for the JWKS hop — TLS whose certificate nobody checks leaves substitution open"
+# Якорь доверия обязан доехать до процесса: TLS без проверки сертификата на этом
+# хопе читается как настроенная защита, ничего не проверяя. Судится переменная,
+# которую процесс ЧИТАЕТ (объявление — `tokenAcceptance.issuerKeySetsCa`), а не имя
+# тома: том переименовывается, переменная — это контракт с процессом. Что путь в
+# ней ведёт в смонтированную связку, судит gateway/deploy/jwks_ca_render_test.go.
+[ -n "$(env_val KACHO_API_GATEWAY_JWKS_CA_FILE "$PROD")" ] \
+  || fail "prod api-gateway pod carries no trust anchor for the JWKS hop (KACHO_API_GATEWAY_JWKS_CA_FILE) — TLS whose certificate nobody checks leaves substitution open"
 # Перечень принимаемых издателей prod: наш издатель назван, издателя
 # провайдера нет (#2735).
 pissuers="$(env_val KACHO_API_GATEWAY_TOKEN_ISSUERS "$PROD")"

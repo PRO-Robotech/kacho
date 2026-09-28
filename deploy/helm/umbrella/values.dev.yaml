@@ -202,7 +202,7 @@ api-gateway:
   # токенов, и слушатель, сертификата не запрашивающий, служба тоже не
   # поднимает. Открытый http к TLS-слушателю не получил бы набора ни разу.
   #
-  # Скалярный пин прежнего издателя снят (`hydra.issuer` / `hydra.jwksUrl`): два
+  # Скалярный пин прежнего издателя снят вместе со своим корнем (#2734): два
   # объявления об одном предмете дают ОТКАЗ В СТАРТЕ, а не молчаливое
   # старшинство.
   tokenAcceptance:
@@ -212,6 +212,14 @@ api-gateway:
     # состояние «записи нет» не наступало бы никогда, а страж старта стал бы
     # тождественно истинным.
     issuerKeySets: "https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
+    # Якорь доверия хопа ЗА НАБОРОМ КЛЮЧЕЙ выше. По нему приезжает материал,
+    # которым край проверяет подпись КАЖДОГО предъявителя; лист слушателя
+    # выпущен внутренним CA, которому процесс по умолчанию не доверяет. Своего
+    # якоря боевой слой values.dev-prod.yaml не объявляет и наследует этот; путь
+    # монтирования — умолчание чарта края.
+    issuerKeySetsCa:
+      secretName: kacho-internal-ca-root
+      key: tls.crt
     # Наш издатель выбирает полосу приёма: строгий тип at+jwt и чтение отзыва на
     # предъявлении. Вне issuers — отказ в старте.
     platformIssuer: "https://kaname.kacho.local"
@@ -230,15 +238,6 @@ api-gateway:
     revocationClientCert:
       certFile: /etc/api-gateway/mtls/tls.crt
       keyFile: /etc/api-gateway/mtls/tls.key
-  # Якорь доверия хопа ЗА НАБОРОМ КЛЮЧЕЙ. По нему приезжает материал, которым
-  # край проверяет подпись КАЖДОГО предъявителя; лист слушателя выпущен
-  # внутренним CA, которому процесс по умолчанию не доверяет. Имя узла ручки —
-  # наследие чарта края (поставщик тут ни при чём); это та же ручка, что у
-  # боевого слоя values.dev-prod.yaml.
-  hydra:
-    jwksCa:
-      secretName: kacho-internal-ca-root
-      key: tls.crt
   advertisedEndpoint: localhost:18443
   image: kacho-api-gateway:dev
   imagePullPolicy: IfNotPresent
