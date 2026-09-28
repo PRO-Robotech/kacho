@@ -28,9 +28,10 @@
 // # Что судится — вложенность узлов, не текст
 //
 //   - читатель НАШЕЙ сессии — вызов `WithHumanSession`: обязан лежать внутри
-//     ветки `if` или `case`, чьё условие утверждает посадку `own`, и никакое
-//     замыкание не отделяет его от этой ветки (postureBranchOf). N ≥ 2 (полоса
-//     личности и маршрут «кто я»);
+//     ветки `if` или `case`, чьё условие утверждает посадку `own`, в ветку
+//     `case` не проходит предыдущая оператором fallthrough, и никакое замыкание
+//     не отделяет его от этой ветки (postureBranchOf). N ≥ 2 (полоса личности и
+//     маршрут «кто я»);
 //   - ретрансляция — вызов `NewLoginLaneRelay`: по провязке на КАЖДУЮ объявленную
 //     цель, под `own` (множество, а не константа — relay_wiring_test.go);
 //   - страж адреса цели — вызов `validateLoginLaneConfig`: во всём пакете ровно
@@ -60,10 +61,11 @@ import (
 )
 
 // postureBranchOf — посадка, под которой стоит позиция: на пути к ней есть
-// решение own — тело ветки `if` или ветка `case`, чьё условие УТВЕРЖДАЕТ own, —
-// и между этим решением и позицией нет замыкания. Замыкание решение снимает:
-// где его позовут, судья не прослеживает. Иначе posture пуст, а why называет
-// увиденное с координатой (kacho#2890).
+// решение own — тело ветки `if` или ветка `case`, чьё условие УТВЕРЖДАЕТ own и в
+// которую не проходит предыдущая ветка оператором fallthrough, — и между этим
+// решением и позицией нет замыкания. Замыкание решение снимает: где его
+// позовут, судья не прослеживает. Иначе posture пуст, а why называет увиденное
+// с координатой, в том числе оператор fallthrough (kacho#2890).
 func postureBranchOf(fset *token.FileSet, f *ast.File, pos token.Pos) (posture, why string) {
 	at := fset.Position(pos).String()
 	path := enclosingNodes(f, pos)
@@ -79,8 +81,21 @@ func postureBranchOf(fset *token.FileSet, f *ast.File, pos token.Pos) (posture, 
 		if len(forms) == 0 {
 			forms = []string{"ни одной формы ветвления"}
 		}
-		return "", "ни одна ветка if или case, утверждающая посадку own, не охватывает " + at +
+		why = "ни одна ветка if или case, утверждающая посадку own, не охватывает " + at +
 			"; на пути: " + strings.Join(forms, " → ")
+		for i, n := range path {
+			cc, ok := n.(*ast.CaseClause)
+			if !ok || i < 2 || pos <= cc.Colon {
+				continue
+			}
+			if sw, ok := path[i-2].(*ast.SwitchStmt); ok {
+				if br := fallthroughInto(sw, cc); br != nil {
+					why += fmt.Sprintf("; в ветку %T у %s проходит предыдущая ветка — %T %s у %s, и условие ветки посадку "+
+						"не решает", cc, fset.Position(cc.Pos()), br, br.Tok, fset.Position(br.Pos()))
+				}
+			}
+		}
+		return "", why
 	}
 	for _, n := range path[decided+1:] {
 		if lit, ok := n.(*ast.FuncLit); ok {
@@ -94,7 +109,9 @@ func postureBranchOf(fset *token.FileSet, f *ast.File, pos token.Pos) (posture, 
 // decidesOwn — решает ли path[i] посадку own для позиции: тело ветки if с
 // условием, утверждающим own, либо тело ветки case, чей единственный вариант —
 // own у switch по значению или утверждение own у switch без тега. Ветка else и
-// ветка default решением не считаются: «не own» — не решение о посадке.
+// ветка default решением не считаются: «не own» — не решение о посадке. Ветка
+// case, в которую проходит предыдущая ветка оператором fallthrough, решением не
+// считается тоже: её тело исполняется и под условием предыдущей (kacho#2890).
 func decidesOwn(path []ast.Node, i int, pos token.Pos) bool {
 	switch x := path[i].(type) {
 	case *ast.IfStmt:
@@ -104,7 +121,7 @@ func decidesOwn(path []ast.Node, i int, pos token.Pos) bool {
 			return false
 		}
 		sw, ok := path[i-2].(*ast.SwitchStmt)
-		if !ok {
+		if !ok || fallthroughInto(sw, x) != nil {
 			return false
 		}
 		if sw.Tag == nil {
@@ -113,6 +130,50 @@ func decidesOwn(path []ast.Node, i int, pos token.Pos) bool {
 		return isOwnSelector(x.List[0])
 	}
 	return false
+}
+
+// fallthroughInto — оператор fallthrough, которым в ветку cc проходит
+// предыдущая ветка того же switch; nil, если предыдущей ветки нет или она им не
+// кончается. Спецификация языка допускает fallthrough только последним
+// непустым оператором ветки, и законных форм записи у него три: голый, под
+// меткой (`L: fallthrough`) и с пустыми операторами за ним (`fallthrough;;`).
+// Другого входа в ветку, кроме совпадения и fallthrough, нет: переход goto
+// внутрь блока ветки извне запрещён языком.
+func fallthroughInto(sw *ast.SwitchStmt, cc *ast.CaseClause) *ast.BranchStmt {
+	var prev *ast.CaseClause
+	found := false
+	for _, st := range sw.Body.List {
+		c, ok := st.(*ast.CaseClause)
+		if !ok {
+			continue
+		}
+		if c == cc {
+			found = true
+			break
+		}
+		prev = c
+	}
+	if !found || prev == nil {
+		return nil
+	}
+	for i := len(prev.Body) - 1; i >= 0; i-- {
+		st := prev.Body[i]
+		if _, empty := st.(*ast.EmptyStmt); empty {
+			continue
+		}
+		for {
+			labeled, ok := st.(*ast.LabeledStmt)
+			if !ok {
+				break
+			}
+			st = labeled.Stmt
+		}
+		if br, ok := st.(*ast.BranchStmt); ok && br.Tok == token.FALLTHROUGH {
+			return br
+		}
+		return nil
+	}
+	return nil
 }
 
 // assertsOwn — условие истинно только под посадкой own: сравнение `==` с
@@ -460,8 +521,9 @@ func wire(lane identityposture.Provider) {
 // Судья посадки видит решение own в `if` И в ветке `case`, а замыкание между
 // решением и местом провязки решение снимает: где его позовут, судья не
 // прослеживает. Условие обязано УТВЕРЖДАТЬ own, а не называть: отрицание и
-// дизъюнкция own не утверждают. Каждая строка — один факт против близнеца
-// `if lane == identityposture.Own { … }`.
+// дизъюнкция own не утверждают. Ветка `case`, в которую проходит предыдущая
+// оператором fallthrough, own не решает ни в одной из трёх его законных форм
+// записи. Каждая строка — один факт против своего близнеца.
 func TestOwnLaneGate_PostureIsSeenInEveryBranchForm(t *testing.T) {
 	const call = "auth = auth.WithHumanSession(ad)"
 	judged, underOwn := 0, 0
@@ -484,6 +546,20 @@ func TestOwnLaneGate_PostureIsSeenInEveryBranchForm(t *testing.T) {
 		{"ветка else", "if lane == identityposture.Own {\n} else {\n" + call + "\n}", "", "ни одна ветка"},
 		{"ветка default", "switch lane {\ncase identityposture.Own:\ndefault:\n" + call + "\n}", "", "ни одна ветка"},
 		{"ветка case на два значения", "switch lane {\ncase identityposture.Own, other:\n" + call + "\n}", "", "ни одна ветка"},
+		// Ветка case, в которую ПРОХОДИТ предыдущая ветка оператором fallthrough,
+		// исполняется и под условием предыдущей: own её условие не решает. Близнец
+		// каждой строки — та же предыдущая ветка без fallthrough.
+		{"близнец: предыдущая ветка default без fallthrough", "switch lane {\ndefault:\ncase identityposture.Own:\n" + call + "\n}", "Own", ""},
+		{"близнец: предыдущая ветка case без fallthrough", "switch lane {\ncase other:\n_ = 1\ncase identityposture.Own:\n" + call + "\n}", "Own", ""},
+		{"близнец: предыдущая ветка без fallthrough у switch без тега", "switch {\ncase legacy:\n_ = 1\ncase lane == identityposture.Own:\n" + call + "\n}", "Own", ""},
+		{"близнец: метка на другом операторе", "switch lane {\ndefault:\nL: _ = 1\ncase identityposture.Own:\n" + call + "\n}", "Own", ""},
+		{"близнец: пустой оператор за другим оператором", "switch lane {\ndefault:\n_ = 1\n;\ncase identityposture.Own:\n" + call + "\n}", "Own", ""},
+		{"близнец: fallthrough из ветки own в следующую", "switch lane {\ncase identityposture.Own:\n" + call + "\nfallthrough\ndefault:\n}", "Own", ""},
+		{"ветка case, в которую проходит default", "switch lane {\ndefault:\nfallthrough\ncase identityposture.Own:\n" + call + "\n}", "", "*ast.BranchStmt fallthrough у main.go:6:1"},
+		{"ветка case, в которую проходит case", "switch lane {\ncase other:\nfallthrough\ncase identityposture.Own:\n" + call + "\n}", "", "*ast.BranchStmt fallthrough у main.go:6:1"},
+		{"ветка case у switch без тега, в которую проходит case", "switch {\ncase legacy:\nfallthrough\ncase lane == identityposture.Own:\n" + call + "\n}", "", "*ast.BranchStmt fallthrough у main.go:6:1"},
+		{"fallthrough под меткой", "switch lane {\ndefault:\nL: fallthrough\ncase identityposture.Own:\n" + call + "\n}", "", "*ast.BranchStmt fallthrough у main.go:6:4"},
+		{"fallthrough и пустой оператор за ним", "switch lane {\ndefault:\nfallthrough\n;\ncase identityposture.Own:\n" + call + "\n}", "", "*ast.BranchStmt fallthrough у main.go:6:1"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fset := token.NewFileSet()
