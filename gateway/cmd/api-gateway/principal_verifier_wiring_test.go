@@ -39,11 +39,39 @@
 // проходом. Поэтому тело ветки отказа — прямолинейно (только вызовы) и
 // кончается выходом, сама ветка — прямой оператор блока, в котором строится
 // проверяющий, а блок — ветка «адресат объявлен» и никакая другая.
+//
+// # Незнакомая форма — находка с её именем, а не паника (kacho#2890)
+//
+// Судьи проб возвращают находку, а не зовут require: инъекции в
+// principal_verifier_wiring_injection_test.go кормят их настоящим корнем,
+// изменённым ровно в одном факте. Форма, которой судья не знает, называется в
+// находке типом узла и текстом выражения. Паника уронила бы весь пакет, и
+// остальные его пробы не исполнились бы вовсе.
+//
+// Страж адресата судит ОДНУ форму аргумента — вызов
+// `<x>.DeclaredTokenAudience()`, тот же, по которому ветвится мягкий проход:
+// обе стороны судит один предикат isDeclaredAudienceCall. Переменная,
+// выведенная из этого вызова (`aud := cfg.DeclaredTokenAudience()`), признанной
+// формой НЕ считается и даёт находку. Довод: без разрешения типов судья не
+// докажет, что между объявлением переменной и стражем её не переприсвоили и не
+// затенили, — признание формы открыло бы ровно ту дыру, которую страж
+// закрывает. Производителя этой формы в дереве нет, а цена отказа — одна
+// строка у автора, которому находка называет, что писать.
+//
+// Построение проверяющего — прямой оператор блока else ветки мягкого прохода
+// верхнего уровня. Прежнее требование «ни одна ветка `if`, кроме этой,
+// построение не охватывает» было слепо к другим формам ветвления: к замыканию,
+// которое зовётся под классом окружения, и к ветке switch. Положительное
+// требование закрывает их разом, а находка перечисляет формы, отделяющие
+// построение от блока else.
 package main
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
+	"go/types"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -253,11 +281,8 @@ func TestPrincipalVerifier_ConstructorRefusalRefusesStartInEveryClass(t *testing
 
 	// Проверяющий строится в ветке «адресат объявлен» и ни в какой другой: в
 	// ветке по классу окружения он не строился бы вовсе в соседнем классе.
-	for _, ifs := range enclosingIfBodies(f, assign.Pos()) {
-		inElse := ifs.Else != nil && assign.Pos() > ifs.Else.Pos() && assign.Pos() < ifs.Else.End()
-		require.True(t, inElse && namesUndeclaredAudience(ifs.Cond),
-			"проверяющий строится внутри ветки у %s, а не в ветке «адресат объявлен»: в другой ветке "+
-				"этого условия он не строится вовсе", fset.Position(ifs.Pos()))
+	if why := verifierPlacementFinding(fset, f, assign); why != "" {
+		t.Fatal(why)
 	}
 
 	reads, redeclared := errVar.uses()
@@ -312,18 +337,22 @@ func softPassSites(f *ast.File) []*ast.CallExpr {
 	return out
 }
 
-// namesUndeclaredAudience — условие `cfg.DeclaredTokenAudience() == ""`.
-func namesUndeclaredAudience(cond ast.Expr) bool {
-	bin, ok := cond.(*ast.BinaryExpr)
-	if !ok || bin.Op != token.EQL {
-		return false
-	}
-	call, ok := bin.X.(*ast.CallExpr)
-	if !ok {
+// isDeclaredAudienceCall — выражение есть вызов `<x>.DeclaredTokenAudience()`:
+// единственная форма объявленного адресата, которую судят и мягкий проход, и
+// страж адресата.
+func isDeclaredAudienceCall(e ast.Expr) bool {
+	call, ok := e.(*ast.CallExpr)
+	if !ok || len(call.Args) != 0 {
 		return false
 	}
 	sel, ok := call.Fun.(*ast.SelectorExpr)
-	if !ok || sel.Sel.Name != "DeclaredTokenAudience" {
+	return ok && sel.Sel.Name == "DeclaredTokenAudience"
+}
+
+// namesUndeclaredAudience — условие `cfg.DeclaredTokenAudience() == ""`.
+func namesUndeclaredAudience(cond ast.Expr) bool {
+	bin, ok := cond.(*ast.BinaryExpr)
+	if !ok || bin.Op != token.EQL || !isDeclaredAudienceCall(bin.X) {
 		return false
 	}
 	lit, ok := bin.Y.(*ast.BasicLit)
@@ -351,41 +380,104 @@ func TestPrincipalVerifier_SoftPassIsKeyedOnTheUndeclaredAudience(t *testing.T) 
 			"ключуется не своим производителем", fset.Position(site.Pos()))
 }
 
-// undeclaredAudienceIf — ветка мягкого прохода на верхнем уровне корня.
-func undeclaredAudienceIf(t *testing.T, body *ast.BlockStmt) *ast.IfStmt {
-	t.Helper()
+// verifierPlacementFinding — пусто, если присваивание конструктора — прямой
+// оператор блока else единственной ветки мягкого прохода верхнего уровня
+// (ветка «адресат объявлен»); иначе — находка с координатой построения.
+func verifierPlacementFinding(fset *token.FileSet, f *ast.File, assign *ast.AssignStmt) string {
+	at := fset.Position(assign.Pos())
+	fn := mainFunc(f)
+	if fn == nil {
+		return fmt.Sprintf("в корне нет функции main — построение проверяющего у %s не с чем сверить", at)
+	}
+	softs := undeclaredAudienceIfs(fn.Body)
+	if len(softs) != 1 {
+		return fmt.Sprintf("веток мягкого прохода верхнего уровня %d, а не одна — построение проверяющего у %s "+
+			"не с чем сверить", len(softs), at)
+	}
+	els, ok := softs[0].Else.(*ast.BlockStmt)
+	if !ok {
+		return fmt.Sprintf("у ветки мягкого прохода у %s нет блока else (форма %T) — построение проверяющего у %s "+
+			"стоит не в ветке «адресат объявлен»", fset.Position(softs[0].Pos()), softs[0].Else, at)
+	}
+	if isDirectStmt(els, assign) {
+		return ""
+	}
+	return fmt.Sprintf("построение проверяющего у %s — не прямой оператор блока else ветки мягкого прохода у %s; "+
+		"охватывают его: %s — в соседней стороне этих форм проверяющий не строится",
+		at, fset.Position(els.Pos()), nestingForms(fset, f, assign, fn, softs[0]))
+}
+
+// nestingForms — формы, охватывающие узел, кроме пропущенных: функция,
+// замыкание, ветвление, ветка case, цикл, вложенный блок. Тело формы
+// отдельной формой не считается.
+func nestingForms(fset *token.FileSet, f *ast.File, target ast.Node, skip ...ast.Node) string {
+	var stack, path []ast.Node
+	ast.Inspect(f, func(n ast.Node) bool {
+		if n == nil {
+			stack = stack[:len(stack)-1]
+			return false
+		}
+		if n.Pos() > target.Pos() || n.End() < target.End() {
+			return false
+		}
+		if n == target {
+			path = slices.Clone(stack)
+			return false
+		}
+		stack = append(stack, n)
+		return true
+	})
+	var forms []string
+	for i, n := range path {
+		if slices.Contains(skip, n) {
+			continue
+		}
+		switch n.(type) {
+		case *ast.FuncDecl, *ast.FuncLit, *ast.IfStmt, *ast.SwitchStmt, *ast.TypeSwitchStmt, *ast.SelectStmt,
+			*ast.CaseClause, *ast.CommClause, *ast.ForStmt, *ast.RangeStmt:
+		case *ast.BlockStmt:
+			if i == 0 {
+				continue
+			}
+			switch path[i-1].(type) {
+			case *ast.BlockStmt, *ast.CaseClause, *ast.CommClause, *ast.LabeledStmt:
+			default:
+				continue
+			}
+		default:
+			continue
+		}
+		forms = append(forms, fmt.Sprintf("%T у %s", n, fset.Position(n.Pos())))
+	}
+	if len(forms) == 0 {
+		return "ни одна форма ветвления, кроме самой ветки мягкого прохода, — построение стоит вне её блока else"
+	}
+	return strings.Join(forms, " → ")
+}
+
+// undeclaredAudienceIfs — ветки мягкого прохода на верхнем уровне корня.
+func undeclaredAudienceIfs(body *ast.BlockStmt) []*ast.IfStmt {
 	var out []*ast.IfStmt
 	for _, st := range body.List {
 		if ifs, ok := st.(*ast.IfStmt); ok && namesUndeclaredAudience(ifs.Cond) {
 			out = append(out, ifs)
 		}
 	}
-	require.Len(t, out, 1, "корень обязан ветвиться по незаявленному адресату ровно одной веткой верхнего уровня")
-	return out[0]
+	return out
 }
 
-// mainBody — тело функции main корня.
-func mainBody(t *testing.T, f *ast.File) *ast.BlockStmt {
-	t.Helper()
+// mainFunc — функция main корня; nil, если её нет.
+func mainFunc(f *ast.File) *ast.FuncDecl {
 	for _, d := range f.Decls {
-		if fd, ok := d.(*ast.FuncDecl); ok && fd.Recv == nil && fd.Name.Name == "main" {
-			return fd.Body
+		if fd, ok := d.(*ast.FuncDecl); ok && fd.Recv == nil && fd.Name.Name == "main" && fd.Body != nil {
+			return fd
 		}
 	}
-	t.Fatal("в корне нет функции main — проба не нашла своего предмета")
 	return nil
 }
 
-// Боевой класс не доходит до мягкого прохода только потому, что РАНЬШЕ его
-// незаявленного адресата отвергает страж адресата. Поэтому держится и сам
-// вызов стража: он стоит условием ветки отказа на верхнем уровне корня (ни
-// одна ветка его не охватывает), выход в ней безусловен, судит он ту же
-// величину, по которой ветвится мягкий проход, и стоит ДО этой ветки. Снятый
-// или переставленный ниже страж открывал бы мягкий проход боевому классу.
-func TestPrincipalVerifier_AudienceGuardRefusesBeforeTheSoftPass(t *testing.T) {
-	fset, f := parseMain(t)
-	body := mainBody(t, f)
-
+// audienceGuardCalls — вызовы стража адресата в корне.
+func audienceGuardCalls(f *ast.File) []*ast.CallExpr {
 	var calls []*ast.CallExpr
 	ast.Inspect(f, func(n ast.Node) bool {
 		if call, ok := n.(*ast.CallExpr); ok {
@@ -395,9 +487,12 @@ func TestPrincipalVerifier_AudienceGuardRefusesBeforeTheSoftPass(t *testing.T) {
 		}
 		return true
 	})
-	require.Len(t, calls, 1, "страж адресата обязан зваться корнем ровно один раз")
-	call := calls[0]
+	return calls
+}
 
+// audienceGuardIf — ветка верхнего уровня корня, в условии которой позван
+// страж; nil, если такой нет.
+func audienceGuardIf(body *ast.BlockStmt, call *ast.CallExpr) *ast.IfStmt {
 	var guard *ast.IfStmt
 	for _, st := range body.List {
 		ifs, ok := st.(*ast.IfStmt)
@@ -409,31 +504,83 @@ func TestPrincipalVerifier_AudienceGuardRefusesBeforeTheSoftPass(t *testing.T) {
 			guard = ifs
 		}
 	}
-	require.NotNil(t, guard,
-		"страж адресата у %s позван не в условии ветки отказа верхнего уровня корня — его может охватить "+
-			"ветка, в соседней стороне которой он не зовётся", fset.Position(call.Pos()))
-	errName := guard.Init.(*ast.AssignStmt).Lhs[0].(*ast.Ident).Name
+	return guard
+}
+
+// audienceGuardFinding — пусто, если страж адресата стоит условием ветки
+// отказа верхнего уровня, выход в ней безусловен, судит он величину мягкого
+// прохода и стоит до его ветки; тогда census называет осмотренное.
+func audienceGuardFinding(fset *token.FileSet, f *ast.File) (finding, census string) {
+	fn := mainFunc(f)
+	if fn == nil {
+		return "в корне нет функции main — проба не нашла своего предмета", ""
+	}
+	body := fn.Body
+	calls := audienceGuardCalls(f)
+	if len(calls) != 1 {
+		return fmt.Sprintf("страж адресата обязан зваться корнем ровно один раз, а зовётся %d", len(calls)), ""
+	}
+	call := calls[0]
+	guard := audienceGuardIf(body, call)
+	if guard == nil {
+		return fmt.Sprintf("страж адресата у %s позван не в условии ветки отказа верхнего уровня корня — его "+
+			"может охватить ветка, в соседней стороне которой он не зовётся", fset.Position(call.Pos())), ""
+	}
+	lhs := guard.Init.(*ast.AssignStmt).Lhs[0]
+	errID, ok := lhs.(*ast.Ident)
+	if !ok {
+		return fmt.Sprintf("ошибка стража адресата у %s присвоена %s (форма %T), а не объявлена именем — без "+
+			"разрешения типов судья не проследит её до условия ветки", fset.Position(lhs.Pos()),
+			types.ExprString(lhs), lhs), ""
+	}
+	errName := errID.Name
 	bin, ok := guard.Cond.(*ast.BinaryExpr)
-	require.True(t, ok && bin.Op == token.NEQ, "условие ветки стража адресата — не `%s != nil`", errName)
-	x, ok := bin.X.(*ast.Ident)
-	require.True(t, ok && x.Name == errName, "условие ветки стража адресата читает не его ошибку")
+	if !ok || bin.Op != token.NEQ {
+		return fmt.Sprintf("условие ветки стража адресата — не `%s != nil`", errName), ""
+	}
+	if x, ok := bin.X.(*ast.Ident); !ok || x.Name != errName {
+		return "условие ветки стража адресата читает не его ошибку", ""
+	}
 	if why := unconditionalExit(fset, guard.Body); why != "" {
-		t.Fatalf("ветка отказа стража адресата у %s не завершает процесс безусловно: %s",
-			fset.Position(guard.Pos()), why)
+		return fmt.Sprintf("ветка отказа стража адресата у %s не завершает процесс безусловно: %s",
+			fset.Position(guard.Pos()), why), ""
 	}
 
-	require.Len(t, call.Args, 2, "страж адресата принимает класс окружения и адресата")
-	judged, ok := call.Args[1].(*ast.CallExpr)
-	sel, selOK := judged.Fun.(*ast.SelectorExpr)
-	require.True(t, ok && selOK && sel.Sel.Name == "DeclaredTokenAudience",
-		"страж адресата судит не ту величину, по которой ветвится мягкий проход (cfg.DeclaredTokenAudience())")
+	if len(call.Args) != 2 {
+		return fmt.Sprintf("страж адресата принимает класс окружения и адресата, а позван с %d аргументами",
+			len(call.Args)), ""
+	}
+	if judged := call.Args[1]; !isDeclaredAudienceCall(judged) {
+		return fmt.Sprintf("страж адресата у %s судит %s (форма %T), а не вызов DeclaredTokenAudience() — величину, "+
+			"по которой ветвится мягкий проход; признана одна форма, довод — в шапке пробы",
+			fset.Position(judged.Pos()), types.ExprString(judged), judged), ""
+	}
 
-	soft := undeclaredAudienceIf(t, body)
-	require.Less(t, guard.End(), soft.Pos(),
-		"страж адресата у %s стоит после ветки мягкого прохода у %s — боевой класс дошёл бы до мягкого прохода",
-		fset.Position(guard.Pos()), fset.Position(soft.Pos()))
-	t.Logf("ОСМОТРЕНО: вызовов стража адресата %d · ветка отказа у %s · ветка мягкого прохода у %s",
+	softs := undeclaredAudienceIfs(body)
+	if len(softs) != 1 {
+		return fmt.Sprintf("корень обязан ветвиться по незаявленному адресату ровно одной веткой верхнего "+
+			"уровня, а ветвится %d", len(softs)), ""
+	}
+	soft := softs[0]
+	if guard.End() >= soft.Pos() {
+		return fmt.Sprintf("страж адресата у %s стоит после ветки мягкого прохода у %s — боевой класс дошёл бы "+
+			"до мягкого прохода", fset.Position(guard.Pos()), fset.Position(soft.Pos())), ""
+	}
+	return "", fmt.Sprintf("ОСМОТРЕНО: вызовов стража адресата %d · ветка отказа у %s · ветка мягкого прохода у %s",
 		len(calls), fset.Position(guard.Pos()), fset.Position(soft.Pos()))
+}
+
+// Боевой класс не доходит до мягкого прохода только потому, что РАНЬШЕ его
+// незаявленного адресата отвергает страж адресата. Поэтому держится и сам
+// вызов стража: он стоит условием ветки отказа на верхнем уровне корня (ни
+// одна ветка его не охватывает), выход в ней безусловен, судит он ту же
+// величину, по которой ветвится мягкий проход, и стоит ДО этой ветки. Снятый
+// или переставленный ниже страж открывал бы мягкий проход боевому классу.
+func TestPrincipalVerifier_AudienceGuardRefusesBeforeTheSoftPass(t *testing.T) {
+	fset, f := parseMain(t)
+	finding, census := audienceGuardFinding(fset, f)
+	require.Empty(t, finding)
+	t.Log(census)
 }
 
 // acceptanceRecords — записи приёма так, как их собирает корень.
