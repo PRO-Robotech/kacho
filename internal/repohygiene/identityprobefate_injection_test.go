@@ -108,6 +108,7 @@ func probeFateOneFinding(t *testing.T, found []string, want ...string) {
 }
 
 func TestIdentityProbeFateInjection_LawfulLedgerIsSilent(t *testing.T) {
+	t.Parallel()
 	found, c := probeFateJudge(t, probeFateDoc(probeFateLawfulRows(), nil, ""), probeFateLawfulTree())
 	if len(found) != 0 {
 		t.Fatalf("законная ведомость дала находки:\n%s", strings.Join(found, "\n"))
@@ -123,6 +124,7 @@ func TestIdentityProbeFateInjection_LawfulLedgerIsSilent(t *testing.T) {
 }
 
 func TestIdentityProbeFateInjection_ProbeWithoutARowIsAFinding(t *testing.T) {
+	t.Parallel()
 	rows := probeFateLawfulRows()
 	tree := probeFateTree("identity_alpha_test.go", "identity_beta_test.go", "identity_gamma_test.go", "identity_delta_test.go")
 	// Разбивка верна для трёх строк, итог — четыре файла: меняется ровно один
@@ -133,6 +135,7 @@ func TestIdentityProbeFateInjection_ProbeWithoutARowIsAFinding(t *testing.T) {
 }
 
 func TestIdentityProbeFateInjection_RowWithoutAProbeIsAFinding(t *testing.T) {
+	t.Parallel()
 	rows := append(probeFateLawfulRows(), probeFateRow{"identity_retired_test.go", identityFateRemove, "`:1`"})
 	doc := probeFateDoc(rows, map[string]string{identityFateRemove: "2", identityFateKeep: "1", identityFateRewrite: "1"}, "3")
 	found, _ := probeFateJudge(t, doc, probeFateLawfulTree())
@@ -155,6 +158,7 @@ func TestIdentityProbeFateInjection_RowWithoutAProbeIsAFinding(t *testing.T) {
 }
 
 func TestIdentityProbeFateInjection_GroupRowIsAFinding(t *testing.T) {
+	t.Parallel()
 	for _, group := range []string{"identity_*_test.go", "identity_alpha_test.go, identity_beta_test.go", "deploy/identity_alpha_test.go"} {
 		rows := probeFateLawfulRows()
 		rows[0].file = group
@@ -172,6 +176,7 @@ func TestIdentityProbeFateInjection_GroupRowIsAFinding(t *testing.T) {
 }
 
 func TestIdentityProbeFateInjection_DuplicateRowIsAFinding(t *testing.T) {
+	t.Parallel()
 	rows := append(probeFateLawfulRows(), probeFateRow{"identity_alpha_test.go", identityFateKeep, "`:2`"})
 	doc := probeFateDoc(rows, map[string]string{identityFateRemove: "1", identityFateKeep: "1", identityFateRewrite: "1"}, "3")
 	found, _ := probeFateJudge(t, doc, probeFateLawfulTree())
@@ -179,6 +184,7 @@ func TestIdentityProbeFateInjection_DuplicateRowIsAFinding(t *testing.T) {
 }
 
 func TestIdentityProbeFateInjection_FateOutsideTheDictionaryIsAFinding(t *testing.T) {
+	t.Parallel()
 	for _, fate := range []string{"перевести", "прочее", "снять вместе с предметом", ""} {
 		rows := probeFateLawfulRows()
 		rows[0].fate = fate
@@ -189,6 +195,7 @@ func TestIdentityProbeFateInjection_FateOutsideTheDictionaryIsAFinding(t *testin
 }
 
 func TestIdentityProbeFateInjection_RowWithoutACoordinateIsAFinding(t *testing.T) {
+	t.Parallel()
 	rows := probeFateLawfulRows()
 	rows[0].coords = "довод словами, без координаты"
 	found, _ := probeFateJudge(t, probeFateDoc(rows, nil, ""), probeFateLawfulTree())
@@ -196,6 +203,7 @@ func TestIdentityProbeFateInjection_RowWithoutACoordinateIsAFinding(t *testing.T
 }
 
 func TestIdentityProbeFateInjection_CoordinateOnlyElsewhereIsAFinding(t *testing.T) {
+	t.Parallel()
 	rows := probeFateLawfulRows()
 	rows[0].coords = "`deploy/helm/umbrella/values.yaml:12`"
 	found, _ := probeFateJudge(t, probeFateDoc(rows, nil, ""), probeFateLawfulTree())
@@ -203,6 +211,7 @@ func TestIdentityProbeFateInjection_CoordinateOnlyElsewhereIsAFinding(t *testing
 }
 
 func TestIdentityProbeFateInjection_CoordinatePastTheEndIsAFinding(t *testing.T) {
+	t.Parallel()
 	for _, coord := range []string{"`:101`", "`:90-101`", "`:0`", "`:20-10`"} {
 		rows := probeFateLawfulRows()
 		rows[0].coords = "`:10` · " + coord
@@ -212,6 +221,7 @@ func TestIdentityProbeFateInjection_CoordinatePastTheEndIsAFinding(t *testing.T)
 }
 
 func TestIdentityProbeFateInjection_CoordinateIntoAnUntrackedFileIsAFinding(t *testing.T) {
+	t.Parallel()
 	// Путь, записанный от каталога проб, а не от корня: та же форма, другой
 	// файл. Разбор обязан назвать его, а не молча отбросить.
 	rows := probeFateLawfulRows()
@@ -221,6 +231,7 @@ func TestIdentityProbeFateInjection_CoordinateIntoAnUntrackedFileIsAFinding(t *t
 }
 
 func TestIdentityProbeFateInjection_TotalsThatDisagreeAreAFinding(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name   string
 		totals map[string]string
@@ -247,6 +258,7 @@ func TestIdentityProbeFateInjection_TotalsThatDisagreeAreAFinding(t *testing.T) 
 }
 
 func TestIdentityProbeFateInjection_UnrecognisedFormIsARefusal(t *testing.T) {
+	t.Parallel()
 	lawful := probeFateDoc(probeFateLawfulRows(), nil, "")
 	header := "| " + strings.Join(identityProbeFateHeader, " | ") + " |"
 	cases := []struct {
@@ -268,6 +280,7 @@ func TestIdentityProbeFateInjection_UnrecognisedFormIsARefusal(t *testing.T) {
 }
 
 func TestIdentityProbeFateInjection_MalformedRowIsAFinding(t *testing.T) {
+	t.Parallel()
 	doc := strings.Replace(probeFateDoc(probeFateLawfulRows(), nil, ""), "| 1 | `identity_alpha_test.go` | утверждение | наша полоса |",
 		"| 1 | `identity_alpha_test.go` | утверждение |", 1)
 	found, _ := probeFateJudge(t, doc, probeFateLawfulTree())
@@ -283,6 +296,7 @@ func TestIdentityProbeFateInjection_MalformedRowIsAFinding(t *testing.T) {
 
 // Пустая ведомость при пустом каталоге — цель снятия, а не поломка.
 func TestIdentityProbeFateInjection_EmptyLedgerIsTheGoalNotAFailure(t *testing.T) {
+	t.Parallel()
 	found, c := probeFateJudge(t, probeFateDoc(nil, nil, ""), probeFateTree())
 	if len(found) != 0 {
 		t.Fatalf("пустая ведомость при нуле проб дала находки:\n%s", strings.Join(found, "\n"))

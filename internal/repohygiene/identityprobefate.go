@@ -109,9 +109,6 @@ const identityProbeFateTotalRow = "итого"
 // проба строки) и строка либо диапазон строк.
 var identityProbeCoord = regexp.MustCompile("`([A-Za-z0-9_./-]*):([0-9]+)(?:-([0-9]+))?`")
 
-// identityProbeCodeSpan — фрагмент в обратных кавычках.
-var identityProbeCodeSpan = regexp.MustCompile("`([^`]*)`")
-
 // Отказы разбора: там, где судить не по чему. Третья категория не растворяется
 // в зелёном.
 var (

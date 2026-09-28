@@ -67,6 +67,7 @@ func identityProbeLineCount(s string) int {
 
 // TestIdentityProbeFateLedgerNamesEveryProbe — сам гейт.
 func TestIdentityProbeFateLedgerNamesEveryProbe(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 
