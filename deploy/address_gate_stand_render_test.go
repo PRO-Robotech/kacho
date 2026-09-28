@@ -325,7 +325,7 @@ func TestF6b56_StandMailLaneVerifiesTheReceiverByItsOwnAnchor(t *testing.T) {
 	lane := inviteMailOf(cfg)
 	t.Logf("F6b-56 (б): стек %s — осмотрено ключей блока invite-mail: %d", stand.name, len(lane.block))
 	if len(lane.block) == 0 {
-		t.Fatalf("F6b-56 (б): у стенда блока invite-mail в настройках службы нет — осмотрено 0; "+
+		t.Fatalf("F6b-56 (б): у стенда блока invite-mail в настройках службы нет — осмотрено 0; " +
 			"проба не вправе считать это отсутствием находок")
 	}
 	if want := receiverSvc + ":" + smtpPort; lane.relay != want {
