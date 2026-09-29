@@ -366,8 +366,19 @@ const VERIFY_EMAIL_CONFIRM_PATH = "/iam/v1/auth/verify-email/confirm";
  *     экрана и ответом глагола: код взят из письма, значит отказ — о продукте;
  *   · ответ края о сессии браузера — адрес подтверждён. Без этого всё
  *     дальнейшее мерило бы отказ рубежа адреса, а не предмет пробы.
+ *
+ * Отдельно её зовут пробы, которые проводят регистрацию экраном сами и судят
+ * адрес, на котором она кончается (F8-13, F8-17 в `identity-ceremony.spec.ts`):
+ * регистрация отдаёт неподтверждённого человека, и её исход дальше экрана
+ * подтверждения наблюдается только после кода из письма (приёмка F6b, §3.3).
+ * Путь подтверждения у них тот же, что у фикстуры, — второй его копии нет.
  */
-async function confirmAddressFromLetter(page: Page, mailbox: Mailbox, email: string, before: ReadonlySet<string>) {
+export async function confirmAddressFromLetter(
+  page: Page,
+  mailbox: Mailbox,
+  email: string,
+  before: ReadonlySet<string>,
+) {
   await expect
     .poll(() => new URL(page.url()).pathname, {
       message:
