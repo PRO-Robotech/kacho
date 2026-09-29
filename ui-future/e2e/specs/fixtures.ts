@@ -7,6 +7,7 @@ import { isProviderAddressText } from "../../shared/src/test/provider-address";
 import { BUDGET_ATTACHMENT, noteRefusal, recordableRefusal, takeRefusals } from "./ceremony-budget";
 import { formatBreaches, guardBrowser, takeBreaches, takeStaleBreaches } from "./issuance-guard.ts";
 import { carryStandCookiesInBrowser } from "../stand-secure-origin.ts";
+import { awaitLetter, stationMailbox, type Mailbox } from "./mail-receiver";
 
 /**
  * ЗАПИСЬ ТРАССЫ ПРИНАДЛЕЖИТ НАБОРУ, А НЕ ШТАТНОМУ `use.trace` (#1242).
@@ -195,6 +196,19 @@ export function watchRefusals(context: BrowserContext, testId: string) {
  * пароль одной формой, сессия — печеньем службы. Прежде фикстура вела
  * двухшаговый поток чужого поставщика, и снятие чужого экрана убило бы весь
  * набор разом; теперь набор зависит от того экрана, который консоль и ведёт.
+ *
+ * ПОЧЕМУ АРЕНДАТОР ПОДТВЕРЖДАЕТ АДРЕС ПИСЬМОМ (приёмка F6b, Р13, F6b-32)
+ *
+ * Дальше экранов регистрации и входа проходит только человек с подтверждённым
+ * адресом почты: край отвечает неподтверждённой сессии отказом на каждом пути
+ * платформы. Арендатор без подтверждения не прочитал бы ни одного проекта, и
+ * почти весь набор падал бы ОДНИМ текстом по причине, к предмету проб отношения
+ * не имеющей (`e2e-flow.md` §11). Поэтому фикстура доводит человека до
+ * подтверждённого адреса тем путём, что человек: регистрация → экран
+ * подтверждения → письмо, принятое приёмником стенда после регистрации и без
+ * единого нажатия → код из письма в поле → «Подтвердить». Обхода нет ни одного:
+ * письма фикстура не просит (первое ставит регистрация), отметку не пишет, код
+ * берёт из письма, а не из хранилища.
  */
 export interface Tenant {
   email: string;
@@ -238,19 +252,41 @@ export function runTag(): string {
   return Date.now().toString(36) + Math.trunc(performance.now()).toString(36);
 }
 
-/** register проводит регистрацию до РАБОЧЕЙ СЕССИИ и отдаёт почту арендатора.
+/** register проводит регистрацию до РАБОЧЕЙ СЕССИИ с подтверждённым адресом и
+ * отдаёт почту арендатора.
  *
  * Вынесено из `registerAndSignIn` без изменения его поведения: проект арендатора
  * добывается двумя разными способами (см. `tenantWithProject`), а вход — один и
  * тот же, и второй его копии заводить незачем.
+ *
+ * Половины две: регистрация экраном до сессии (`registerThroughScreen`) и
+ * подтверждение адреса кодом из письма (`confirmAddressFromLetter`).
+ */
+export async function register(page: Page, email = `e2e-${runTag()}@kacho.local`): Promise<string> {
+  // Приёмник спрашивается ДО регистрации: письма, лежавшие на этот адрес до
+  // неё, — не её письма, и код берётся только из письма, принятого после.
+  const mailbox = stationMailbox();
+  const before = new Set((await mailbox.letters(email)).map((l) => l.id));
+  await registerThroughScreen(page, email);
+  await confirmAddressFromLetter(page, mailbox, email, before);
+  return email;
+}
+
+/**
+ * registerThroughScreen — первая половина `register`: регистрация экраном
+ * консоли до рабочей сессии, без подтверждения адреса.
  *
  * Ожиданий три, и каждое утверждает своё: экран регистрации отрисован консолью ·
  * после отправки у браузера есть носитель сессии · на успешном ответе экран увёл
  * документ. Отказ представим на двух первых, и там отказ, показанный экраном,
  * называется ЕГО текстом — а не симптомом «поля нет» либо «печенья нет». Третье
  * ждётся только на успешном ответе: отказу там взяться неоткуда.
+ *
+ * Отдельно она зовётся пробами порядка этих ожиданий
+ * (`registration-refusal-named.spec.ts`): их экран подан перехватом, и письма
+ * на нём не бывает — подтверждения там судить не о чем.
  */
-export async function register(page: Page, email = `e2e-${runTag()}@kacho.local`): Promise<string> {
+export async function registerThroughScreen(page: Page, email = `e2e-${runTag()}@kacho.local`): Promise<void> {
   await page.goto("/registration", { waitUntil: "domcontentloaded" });
 
   const address = page.getByRole("textbox", { name: "Адрес электронной почты" });
@@ -299,9 +335,7 @@ export async function register(page: Page, email = `e2e-${runTag()}@kacho.local`
   // страницу, чей собственный переход ещё впереди: следующий `page.goto` мог
   // быть им прерван, а носитель, сменённый мимо вкладки, — погашен ответом на
   // чтение, выпущенное уходящим экраном. Ждётся производимый признак — документ
-  // сменился; дальше документов консоль сама не меняет (корень уводит на панель
-  // маршрутизатором, без загрузки). Ответ без успеха ухода не производит, и
-  // ждать его там нечего.
+  // сменился. Ответ без успеха ухода не производит, и ждать его там нечего.
   const answer = await answered;
   if (answer?.ok()) {
     await expect
@@ -311,8 +345,74 @@ export async function register(page: Page, email = `e2e-${runTag()}@kacho.local`
       })
       .toBe("ушёл");
   }
+}
 
-  return email;
+/** Путь глагола подтверждения адреса — ответ на него фикстура читает, когда экран назвал отказ. */
+const VERIFY_EMAIL_CONFIRM_PATH = "/iam/v1/auth/verify-email/confirm";
+
+/**
+ * confirmAddressFromLetter — подтвердить адрес арендатора тем путём, что человек
+ * (приёмка F6b, Р13, F6b-32): экран подтверждения → код из письма → «Подтвердить».
+ *
+ * Ожиданий четыре, и каждое утверждает своё:
+ *   · после регистрации консоль привела на экран подтверждения — страж каркаса
+ *     не пускает неподтверждённую сессию дальше него (Р7);
+ *   · письмо, принятое приёмником ПОСЛЕ регистрации, пришло без единого
+ *     нажатия — его ставит регистрация (Р15 службы). Нет в срок — «условие не
+ *     создано», и проба уходит в «не выполнилось», а не в красное
+ *     (`mail-receiver.ts`, `awaitLetter`);
+ *   · код из письма, введённый как написан, служба приняла, и экран увёл
+ *     документ — новой загрузкой, с новым носителем. Отказ назван текстом
+ *     экрана и ответом глагола: код взят из письма, значит отказ — о продукте;
+ *   · ответ края о сессии браузера — адрес подтверждён. Без этого всё
+ *     дальнейшее мерило бы отказ рубежа адреса, а не предмет пробы.
+ */
+async function confirmAddressFromLetter(page: Page, mailbox: Mailbox, email: string, before: ReadonlySet<string>) {
+  await expect
+    .poll(() => new URL(page.url()).pathname, {
+      message:
+        "регистрация прошла, а консоль не привела на экран подтверждения адреса (/verification) — " +
+        "без подтверждения арендатор дальше экрана не пройдёт",
+      timeout: 30_000,
+    })
+    .toBe("/verification");
+  const code = page.getByRole("textbox", { name: "Код из письма" });
+  await expect(code, "экран подтверждения адреса не отрисовал поле «Код из письма»").toBeVisible({
+    timeout: 30_000,
+  });
+
+  const letter = await awaitLetter(mailbox, email, before);
+
+  await code.fill(letter.code);
+  const answered = page
+    .waitForResponse(
+      (r) => new URL(r.url()).pathname === VERIFY_EMAIL_CONFIRM_PATH && r.request().method() === "POST",
+      { timeout: 30_000 },
+    )
+    .catch(() => null);
+  await page.getByRole("button", { name: /Подтвердить$/ }).click();
+  const answer = await answered;
+  if (!answer?.ok()) {
+    const screen = await identityRefusalOnPage(page);
+    const verb = answer ? identityRefusalFromText(await answer.text().catch(() => "")) : "";
+    throw new Error(
+      `подтверждение адреса ОТВЕРГНУТО службой на коде из письма ${letter.id}: ` +
+        `${answer ? `ответ ${answer.status()}` : "ответа на отправку нет за 30 с"}` +
+        `${verb ? ` (${verb})` : ""}${screen ? `; экран: ${screen}` : ""}. Код взят из письма, принятого ` +
+        "приёмником после регистрации, — это отказ продукта, а не фикстуры",
+    );
+  }
+
+  // Экран уводит документ на адрес возврата НОВОЙ загрузкой (Р9): следующий
+  // `page.goto` вызывающего не вправе её прервать.
+  await page.waitForURL((u) => u.pathname !== "/verification", { waitUntil: "domcontentloaded", timeout: 30_000 });
+
+  const me = await page.request.get("/iam/v1/auth/me");
+  const view = (await me.json().catch(() => null)) as { session?: { emailVerified?: unknown } } | null;
+  expect(
+    { status: me.status(), emailVerified: view?.session?.emailVerified },
+    `код из письма принят, а ответ края о сессии браузера не называет адрес подтверждённым: ${JSON.stringify(view)}`,
+  ).toEqual({ status: 200, emailVerified: true });
 }
 
 /** Путь глагола регистрации — ответ на него фикстура читает, когда экран назвал отказ. */

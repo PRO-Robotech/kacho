@@ -18,10 +18,12 @@ import {
 import {
   ceremonyCensus,
   formatCall,
+  register,
   test,
   type CeremonyCall,
   type CeremonyCensus,
 } from "./fixtures";
+import { stationMailbox } from "./mail-receiver";
 
 /**
  * Дальше входа — только с подтверждённым адресом почты: консоль (приёмка F6b, S2).
@@ -43,11 +45,12 @@ import {
  *
  * Сценарии с ПОДТВЕРЖДЁННЫМ человеком (посев П-п) и с письмом требуют глагола
  * подтверждения у службы, письма регистрации и чтения приёмника писем прогоном
- * (приёмка F6b, §3.4). Их условие заводит набор (S3, консольная часть
- * `kacho#2901`: посев П-п, фикстура регистрации, предусловие приёмника); пока
- * его нет, такой сценарий был бы «не выполнилось», а не вердиктом о консоли.
- * Здесь — сценарии, «Дано» которых строится посевом П-н: регистрацией глаголом
- * службы, без предъявления кода.
+ * (приёмка F6b, §3.4). Чтение приёмника прогоном и фикстура регистрации,
+ * проходящая подтверждение экраном, заведены набором (S3, консольная часть
+ * `kacho#2901`: `mail-receiver.ts`, условие `mail-receiver-reads.precondition.ts`,
+ * `register` в `fixtures.ts`) — их держат F6b-32, F6b-33 и F6b-34 ниже. Посева
+ * П-п и сценариев на нём здесь ещё нет. Прочие сценарии строят «Дано» посевом
+ * П-н: регистрацией глаголом службы, без предъявления кода.
  */
 
 // ─── перечень Р6: что консоль вправе звать до подтверждения ───────────────────
@@ -411,4 +414,127 @@ test("F6b-22 · выход с экрана подтверждения", async ({
     "/login",
     "открытие /verification без сессии не увело на вход",
   );
+});
+
+// ═══ S3 — набор ═══════════════════════════════════════════════════════════════
+
+/** Код из тела отправки формы подтверждения — как его выпустила страница. */
+function codeSent(body: string | null): string {
+  try {
+    const parsed = JSON.parse(body ?? "") as { code?: unknown };
+    return typeof parsed.code === "string" ? parsed.code : "(код не строкой)";
+  } catch (_notJson) {
+    return `(тело не JSON: ${String(body).slice(0, 80)})`;
+  }
+}
+
+test("F6b-32 · фикстура регистрации отдаёт человека с подтверждённым адресом тем же путём, что человек", async ({
+  page,
+}) => {
+  // verifies #2901 — фикстура регистрации отдавала неподтверждённого человека, и набор падал одним текстом.
+  const mailbox = stationMailbox();
+  const email = seedAddress("F6b-32");
+  // Письма, лежавшие у приёмника на этот адрес ДО регистрации, — не её письма.
+  const before = new Set((await mailbox.letters(email)).map((l) => l.id));
+  const census = ceremonyCensus(page.context());
+  const sentCodes: string[] = [];
+  page.context().on("request", (r) => {
+    if (r.method() === "POST" && new URL(r.url()).pathname === VERIFY_EMAIL_CONFIRM) {
+      sentCodes.push(codeSent(r.postData()));
+    }
+  });
+  const visited: string[] = [];
+  page.on("framenavigated", (f) => {
+    if (f === page.mainFrame()) visited.push(new URL(f.url()).pathname);
+  });
+
+  await register(page, email);
+
+  expect(
+    census.matching("POST", LANE.register).length,
+    `перепись фикстуры не содержит POST ${LANE.register}:\n${census.describe()}`,
+  ).toBe(1);
+  expect(
+    visited,
+    `вкладка фикстуры не побывала на экране подтверждения; адреса документа по порядку: ${visited.join(" → ")}`,
+  ).toContain("/verification");
+  const letters = (await mailbox.letters(email)).filter((l) => !before.has(l.id));
+  expect(
+    letters.map((l) => `${l.id} · ${l.created}`),
+    `у приёмника на ${email} после регистрации ждали ровно одно письмо`,
+  ).toHaveLength(1);
+  expect(
+    sentCodes,
+    `фикстура предъявила не код письма, принятого после регистрации:\n${census.describe()}`,
+  ).toEqual([letters[0].code]);
+  expectNotCalled(
+    census,
+    "POST",
+    VERIFY_EMAIL,
+    "фикстура регистрации: первое письмо ставит регистрация, письма фикстура не просит",
+  );
+
+  const me = await page.request.get(SESSION_IDENTITY);
+  const body = (await me.json().catch(() => null)) as {
+    session?: { emailVerified?: unknown };
+  } | null;
+  expect(
+    { status: me.status(), emailVerified: body?.session?.emailVerified },
+    `ответ края о сессии браузера после фикстуры: ${JSON.stringify(body)}`,
+  ).toEqual({ status: 200, emailVerified: true });
+});
+
+test("F6b-33 · посев П-н оставляет адрес неподтверждённым, и край отвечает ему отказом Р3", async ({
+  browserName: _browser,
+}, testInfo) => {
+  // verifies #2901 — посев П-н не утверждал, что адрес остался неподтверждённым.
+  const seed = await newSeed(testInfo);
+  try {
+    await seedHuman(seed, seedAddress("F6b-33"));
+    const me = await seed.read(SESSION_IDENTITY);
+    const meBody = (await me.json().catch(() => null)) as {
+      session?: { emailVerified?: unknown };
+    } | null;
+    expect(
+      { status: me.status(), emailVerified: meBody?.session?.emailVerified },
+      `ответ края о сессии посева П-н: ${JSON.stringify(meBody)}`,
+    ).toEqual({ status: 200, emailVerified: false });
+
+    const refused = await seed.read("/iam/v1/projects");
+    const text = await refused.text();
+    const refusal = (() => {
+      try {
+        return JSON.parse(text) as {
+          code?: unknown;
+          message?: unknown;
+          details?: Array<{ reason?: unknown; domain?: unknown }>;
+        };
+      } catch (_notJson) {
+        return null;
+      }
+    })();
+    const headers = refused.headersArray().map((h) => h.name.toLowerCase());
+    expect(
+      {
+        status: refused.status(),
+        code: refusal?.code,
+        message: refusal?.message,
+        reason: refusal?.details?.[0]?.reason,
+        domain: refusal?.details?.[0]?.domain,
+        challenge: headers.includes("www-authenticate"),
+        setsCookie: headers.includes("set-cookie"),
+      },
+      `ответ края на GET /iam/v1/projects носителем П-н: ${refused.status()} ${text.slice(0, 300)}`,
+    ).toEqual({
+      status: 403,
+      code: 7,
+      message: "email address is not verified",
+      reason: "EMAIL_NOT_VERIFIED",
+      domain: "iam.kaname.cloud",
+      challenge: false,
+      setsCookie: false,
+    });
+  } finally {
+    await seed.dispose();
+  }
 });
