@@ -40,6 +40,17 @@ import { expect, test } from "@playwright/test";
  * относит пробу к «не выполнилось»; одного признака ему мало, и проба, упавшая
  * по существу, пометки не получает никогда — её ставит только этот модуль.
  *
+ * Пометку ставит ТОТ, КТО ПРОИЗВОДИТ отказ, а не тот, кто его ждёт: получить
+ * `ConditionNotCreated` иначе, чем через `conditionNotCreated`, нельзя —
+ * конструктор закрыт, и `new ConditionNotCreated(…)` вне класса не проходит
+ * проверку типов. Прежде помечал только ожидающий (`awaitLetter`, условие
+ * прогона), и одиночное чтение — снимок писем до регистрации — отказывало тем же
+ * текстом БЕЗ пометки: гейт подавал несозданное условие красным о продукте
+ * (kacho#2901, возврат проверки опытом H5). Пометка преходящего чтения, после
+ * которого проба упала по существу, красного не извиняет: её текста нет в
+ * отказе, а гейту нужны оба признака. Держит самопроверка
+ * `scripts/mail-receiver-marks-selftest.ts` — исполнением каждой формы чтения.
+ *
  * Отказ продукта там, где набор получил всё, чего требует контракт, — находка:
  * два письма там, где регистрация ставит одно, и письмо без кода. Такой отказ
  * пометки не несёт и остаётся красным.
@@ -78,20 +89,35 @@ const CODE_LINE = "Код подтверждения:";
 /** Алфавит кода — Крокфорд, 10 значащих знаков (Р7 службы); дефисы и пробелы не значимы. */
 const CODE_SIGNIFICANT = /^[0-9A-HJKMNP-TV-Z]{10}$/i;
 
-/** Отказ «условие не создано» — несёт пометку, по которой его узнаёт гейт вердикта. */
-export class ConditionNotCreated extends Error {}
-
 /**
- * Пометить текущую пробу несозданным условием и отказать тем же текстом. Вне
- * пробы помечать нечего — тогда остаётся только отказ.
+ * Отказ «условие не создано» — несёт пометку, по которой его узнаёт гейт вердикта.
+ *
+ * Конструктор закрыт: отказ без пометки непредставим. Единственный путь к нему —
+ * `ConditionNotCreated.raise` (он же `conditionNotCreated`), который сперва
+ * помечает пробу.
  */
-export function conditionNotCreated(text: string): never {
-  try {
-    test.info().annotations.push({ type: CONDITION_NOT_CREATED, description: text });
-  } catch (_outsideTest) {
-    // `test.info()` вне пробы бросает — пометке там не к чему крепиться.
+export class ConditionNotCreated extends Error {
+  private constructor(text: string) {
+    super(text);
   }
-  throw new ConditionNotCreated(text);
+
+  /**
+   * Пометить текущую пробу несозданным условием и отказать тем же текстом. Вне
+   * пробы помечать нечего — тогда остаётся только отказ.
+   */
+  static raise(text: string): never {
+    try {
+      test.info().annotations.push({ type: CONDITION_NOT_CREATED, description: text });
+    } catch (_outsideTest) {
+      // `test.info()` вне пробы бросает — пометке там не к чему крепиться.
+    }
+    throw new ConditionNotCreated(text);
+  }
+}
+
+/** Пометить текущую пробу несозданным условием и отказать тем же текстом. */
+export function conditionNotCreated(text: string): never {
+  return ConditionNotCreated.raise(text);
 }
 
 /** Письмо приёмника: идентификатор, момент приёма, текст тела и код, как он написан в письме. */
@@ -116,12 +142,14 @@ export function codeOf(text: string): string {
 }
 
 /**
- * Поверхность не прочиталась. Пометки здесь нет: отдельное чтение бывает и
- * преходящим, и помечает пробу тот, кто исчерпал своё ожидание и сдаётся, —
- * `awaitLetter` либо условие прогона.
+ * Поверхность не прочиталась — несозданное условие, и проба помечается ЗДЕСЬ,
+ * при любом чтении: снимке писем до регистрации, числе писем, ожидании письма.
+ * Чтение, которое вызывающий перехватил и повторил (условие прогона), оставляет
+ * пометку преходящего отказа — и она безвредна: гейт засчитывает «не
+ * выполнилось», только если тот же текст стоит в отказе пробы.
  */
 function unreadable(base: string, detail: string): never {
-  throw new ConditionNotCreated(`${UNMET_MAILBOX}: ${base} — ${detail}`);
+  return conditionNotCreated(`${UNMET_MAILBOX}: ${base} — ${detail}`);
 }
 
 export class Mailbox {
@@ -226,7 +254,8 @@ export async function awaitLetter(
   } catch (_budgetSpent) {
     arrived = false;
   }
-  if (last.failure instanceof ConditionNotCreated) return conditionNotCreated(last.failure.message);
+  // Отказ чтения уже помечен тем, кто его произвёл (`unreadable`), — и
+  // пробрасывается как есть; любой иной отказ пометки не несёт и остаётся красным.
   if (last.failure !== null) throw last.failure;
   if (!arrived) {
     return conditionNotCreated(
