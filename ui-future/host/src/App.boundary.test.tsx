@@ -25,19 +25,37 @@ jest.unstable_mockModule("./components", () => ({
 }));
 
 const { default: App } = await import("./App");
+const { stubNetwork } = await import("@shared/test/network-stub");
 
 beforeEach(() => {
   jest.spyOn(console, "error").mockImplementation(() => undefined);
+  // Каркас монтируется только на «адрес подтверждён» (приёмка F6b, Р7): без
+  // такого ответа края бросающему каркасу было бы не с чего начать.
+  stubNetwork(() =>
+    Promise.resolve({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: { get: () => null },
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({
+            user: { id: "usr-1", email: "a@kacho.local", displayName: "a", subjectType: "user", permissions: [] },
+            session: { expiresAt: "2026-09-24T00:00:00Z", assuranceLevel: "1", emailVerified: true },
+          }),
+        ),
+    } as unknown as Response),
+  );
 });
 afterEach(() => {
   jest.restoreAllMocks();
 });
 
 describe("корневая граница отказа консоли", () => {
-  it("отказ каркаса пойман границей App, а не снёс экран", () => {
+  it("отказ каркаса пойман границей App, а не снёс экран", async () => {
     render(<App />);
 
-    expect(screen.getByTestId("module-unavailable")).toHaveAttribute("data-module-label", "Консоль Kachō");
+    expect(await screen.findByTestId("module-unavailable")).toHaveAttribute("data-module-label", "Консоль Kachō");
   });
 
   it("граница ловит отказ и называет модуль", () => {
