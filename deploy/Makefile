@@ -8,7 +8,7 @@
         psql-iam logs-iam build-services \
         guard-kind-context guard-destructive gate-self-test injection-proofs waiter-discipline \
         report-reader-discipline alt-fixture-discipline posture-branch-discipline \
-        verdict-aggregator-discipline ceremony-declaration-discipline \
+        verdict-aggregator-discipline \
         dialled-transport-discipline delete-step-discipline \
         helm-deps reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo seed-storage seed-vpc-pools \
         seed-vpc-pools-check e2e-newman stand-provenance stand-provenance-self-test \
@@ -360,7 +360,7 @@ preflight:
 	@command -v kubectl >/dev/null || { echo "ERROR: kubectl not installed"; exit 1; }
 	@command -v helm >/dev/null || { echo "ERROR: helm not installed"; exit 1; }
 	@docker info >/dev/null 2>&1 || { echo "ERROR: docker daemon is not running"; exit 1; }
-	@grep -q "api.kacho.local" /etc/hosts || echo "note: 'api.kacho.local' is not in /etc/hosts. Nothing in the test path needs it — the e2e harness reaches every listener over kubectl port-forward, including the advertised external TLS one (:8443 -> localhost:18443). The entry is only useful for driving the Ingress by hand, and even then: kind publishes node:80 -> host:28080 (443 is not published at all) and that Ingress is backend-protocol GRPCS, so REST through it answers 502."
+	@grep -q "api.kacho.local" /etc/hosts || echo "note: 'api.kacho.local' is not in /etc/hosts. Nothing in the test path needs it — the e2e harness reaches every listener over kubectl port-forward, including the advertised external TLS one (:8443 -> localhost:18443). The entry is only useful for driving the Ingress by hand, and even then: kind publishes node:80 -> host:28080 (443 is not published at all) and that Ingress is backend-protocol GRPCS, so REST through it answers 502 — except the three ceremony coordinates (/iam/v1/authorize, /iam/v1/token, /.well-known/oauth-authorization-server), which ride HTTPS to the same listener."
 	@echo "preflight OK"
 
 # guard-kind-context — АВАРИЙНЫЙ СТОП, если активный контекст ведёт НЕ в наш kind-кластер.
@@ -766,7 +766,7 @@ dev-up: preflight
 	echo "API endpoint:"; \
 	echo "  REST   http://localhost:18080         (kubectl port-forward svc/api-gateway 18080:8080)"; \
 	echo "  TLS    https://localhost:18443        (kubectl port-forward svc/api-gateway 18443:8443 — the advertised external listener)"; \
-	echo "  Ingress http://api.kacho.local:28080  (needs '127.0.0.1 api.kacho.local' in /etc/hosts; gRPC only — backend-protocol is GRPCS, REST answers 502, and 443 is not published by kind)"
+	echo "  Ingress http://api.kacho.local:28080  (needs '127.0.0.1 api.kacho.local' in /etc/hosts; gRPC only — backend-protocol is GRPCS, REST answers 502 except the three ceremony coordinates on HTTPS, and 443 is not published by kind)"
 
 dev-down:
 	kind delete cluster --name $(CLUSTER_NAME) || true
@@ -1363,17 +1363,6 @@ posture-branch-discipline:
 # services/nlb/.../run-incremental.sh (не читались UNANSWERED и немой отчёт).
 verdict-aggregator-discipline:
 	@bash scripts/assert-verdict-aggregators-honest.sh
-
-# ceremony-declaration-discipline — у каждой записи объявления церемонии есть предмет.
-#
-# Набор коллекций, которым нужен ЧЕЛОВЕЧЕСКИЙ вызывающий, выводится из дерева
-# единственным объявлением (tests/authz-fixtures/ceremony_credentials.py), а не
-# выписывается: рукописный перечень в этом репозитории уже расходился с деревом.
-# Гейт требует, чтобы каждая запись объявления что-то отбирала, — запись, которой
-# больше нечего отбирать, наследуется следующим читателем как действующее
-# ограничение. Ноль прочитанных коллекций — отказ, а не «чисто».
-ceremony-declaration-discipline:
-	@python3 ../tests/authz-fixtures/ceremony_credentials.py --root .. --verify
 
 # dialled-transport-discipline — у каждого адреса, который набирает волна, есть
 # ПРОИЗВОДИТЕЛЬ в прогонщике.

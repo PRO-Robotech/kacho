@@ -30,7 +30,13 @@
 //   - читатель НАШЕЙ сессии — вызов `WithHumanSession`: обязан лежать внутри
 //     ветки `if`, чьё условие называет посадку `own`. N ≥ 2 (полоса личности и
 //     маршрут «кто я»);
-//   - ретрансляция — вызов `NewLoginLaneRelay`: ровно 1, под `own`.
+//   - ретрансляция — вызов `NewLoginLaneRelay`: по провязке на КАЖДУЮ объявленную
+//     цель, под `own` (множество, а не константа — relay_wiring_test.go);
+//   - страж адреса цели — вызов `validateLoginLaneConfig`: во всём пакете ровно
+//     один, внутри `prepareRelayTarget`; а `prepareRelayTarget` позван только
+//     корнем, по вызову на каждую объявленную цель, и каждый под `own`. Своей
+//     ветки по посадке у стража нет (#2873), поэтому путь к нему и есть то, что
+//     отличает `own` от прочего.
 //
 // Инъекция в обе стороны на синтетике: читатель без условия посадки — красное с
 // координатой; читатель под названной посадкой — молчит. Синтетика намеренно
@@ -42,8 +48,13 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
 // postureBranchOf — самая внутренняя ветка `if`, охватывающая позицию, чьё
@@ -70,10 +81,10 @@ func postureBranchOf(f *ast.File, pos token.Pos) string {
 
 // postureNamedIn — какую посадку называет условие: селектор
 // `identityposture.Own`, единственный законный способ назвать её в дереве
-// (`corelib/identityposture`). Второе значение, `external`, пин фундамента
-// v1.8.0 ещё разбирает, но его имени край не читает (#2873): вне `own` корень
-// ветвится сравнением с `own`, и ветка, названная вторым значением, посадкой
-// не считается.
+// (`corelib/identityposture`). Второго законного значения в словаре фундамента
+// нет: `external` снята выпуском v1.10.0-rc.3 (corelib#30), и её имени край не
+// читает (#2873). Вне `own` корень ветвится сравнением с `own`, и ветка,
+// названная иным значением, посадкой не считается.
 func postureNamedIn(cond ast.Expr) string {
 	found := ""
 	ast.Inspect(cond, func(n ast.Node) bool {
@@ -157,23 +168,189 @@ func TestOwnLane_F3_45_OurReaderAndTheRelayAreWiredUnderOwnOnly(t *testing.T) {
 			t.Errorf("читатель нашей сессии заведён вне ветки посадки own: %s (ветка: %q)", s.pos, s.posture)
 		}
 	}
-	relays := wiringSites(fset, f, "NewLoginLaneRelay")
-	if len(relays) != 1 {
-		t.Fatalf("ретрансляция глаголов формы заведена %d раз, ожидалось 1", len(relays))
+	// Ретрансляция судится МНОЖЕСТВОМ, а не константой (замысел LINE-A-1 §5.1б
+	// п. 2а, §7 инв. 36): провязок столько, сколько объявлено целей, каждая под
+	// `own`, ось различения — цель. Предмет и его инъекции — relay_wiring_test.go.
+	relays := judgeRelayWiring(fset, f, middleware.RelayTargets())
+	for _, finding := range relays.findings {
+		t.Error(finding)
 	}
-	if relays[0].posture != "Own" {
-		t.Errorf("ретрансляция заведена вне ветки посадки own: %s (ветка: %q) — вне own глаголы формы обязаны отвечать 404", relays[0].pos, relays[0].posture)
+	// Страж адреса цели своей ветки по посадке не имеет (#2873): `own` от
+	// прочего отличает МЕСТО вызова. Целей две, и страж зовётся не из корня
+	// напрямую, а из prepareRelayTarget — по вызову на цель; судится весь путь.
+	pkg := parsePackage(t, fset)
+	guards := judgeRelayGuardPath(fset, rootOf(t, fset, pkg), pkg, middleware.RelayTargets())
+	for _, finding := range guards.findings {
+		t.Error(finding)
 	}
-	laneGuards := plainCallSites(fset, f, "validateLoginLaneConfig")
-	if len(laneGuards) != 1 {
-		t.Fatalf("страж адреса полосы формы позван %d раз, ожидалось 1", len(laneGuards))
+	t.Logf("перепись: читателей нашей сессии %d (под own %d) · провязок ретранслятора %d · целей объявлено %d · "+
+		"файлов пакета прочитано %d · вызовов стража %d · подготовок цели в корне %d",
+		len(readers), len(readers), len(relays.sites), len(middleware.RelayTargets()),
+		guards.files, len(guards.guards), len(guards.prepares))
+}
+
+// guardSite — вызов стража цели и функция пакета, в теле которой он стоит.
+type guardSite struct {
+	pos string
+	fn  string
+}
+
+// prepareSite — вызов подготовки цели в корне: посадка ветки и названная цель.
+type prepareSite struct {
+	pos     string
+	posture string
+	serves  string // имя селектора цели (`RelayTargetForm`), "" если не названа
+}
+
+// relayGuardPath — вердикт о пути к стражу целей ретрансляции.
+type relayGuardPath struct {
+	files    int
+	guards   []guardSite
+	prepares []prepareSite
+	findings []string
+}
+
+// enclosingFunc — имя объявления функции, в теле которого стоит позиция.
+func enclosingFunc(f *ast.File, pos token.Pos) string {
+	for _, d := range f.Decls {
+		if fd, ok := d.(*ast.FuncDecl); ok && fd.Body != nil && pos > fd.Body.Lbrace && pos < fd.Body.Rbrace {
+			return fd.Name.Name
+		}
 	}
-	if laneGuards[0].posture != "Own" {
-		t.Errorf("страж адреса полосы формы позван вне ветки посадки own: %s (ветка: %q) — вне own он "+
-			"отверг бы старт края, которому полоса не нужна", laneGuards[0].pos, laneGuards[0].posture)
+	return ""
+}
+
+// plainCalls — вызовы функции пакета по голому имени.
+func plainCalls(f *ast.File, callee string) []*ast.CallExpr {
+	var out []*ast.CallExpr
+	ast.Inspect(f, func(n ast.Node) bool {
+		if call, ok := n.(*ast.CallExpr); ok {
+			if id, ok := call.Fun.(*ast.Ident); ok && id.Name == callee {
+				out = append(out, call)
+			}
+		}
+		return true
+	})
+	return out
+}
+
+// judgeRelayGuardPath — страж позван ровно раз и только из prepareRelayTarget;
+// prepareRelayTarget позван только корнем, по вызову на цель закрытого перечня,
+// каждый под `own`. Пустой перечень файлов пакета — находка, а не молчание.
+func judgeRelayGuardPath(fset *token.FileSet, root *ast.File, pkg []*ast.File, targets []middleware.RelayTarget) relayGuardPath {
+	var out relayGuardPath
+	out.files = len(pkg)
+	if len(pkg) == 0 {
+		out.findings = append(out.findings, "файлов пакета не прочитано — путь к стражу судить не по чему, и это не зелёный")
+		return out
 	}
-	t.Logf("перепись: читателей нашей сессии %d (под own %d) · ретрансляций %d · стражей адреса полосы %d",
-		len(readers), len(readers), len(relays), len(laneGuards))
+	for _, f := range pkg {
+		for _, call := range plainCalls(f, "validateLoginLaneConfig") {
+			out.guards = append(out.guards, guardSite{pos: fset.Position(call.Pos()).String(), fn: enclosingFunc(f, call.Pos())})
+		}
+		if f == root {
+			continue
+		}
+		for _, call := range plainCalls(f, "prepareRelayTarget") {
+			out.findings = append(out.findings, fset.Position(call.Pos()).String()+
+				": подготовка цели позвана мимо корня — ветка посадки own её места не накрывает")
+		}
+	}
+	inPrepare := 0
+	for _, g := range out.guards {
+		if g.fn != "prepareRelayTarget" {
+			out.findings = append(out.findings, g.pos+": страж цели позван мимо prepareRelayTarget (в "+strconv.Quote(g.fn)+
+				") — его место вызова ветка посадки own не судит")
+			continue
+		}
+		inPrepare++
+	}
+	switch {
+	case len(out.guards) == 0:
+		out.findings = append(out.findings, "страж цели не позван ни разу — адрес ни одной цели при старте не судится")
+	case inPrepare > 1:
+		out.findings = append(out.findings, "страж цели позван в prepareRelayTarget "+strconv.Itoa(inPrepare)+" раз, ожидался 1")
+	}
+
+	want := map[string]bool{}
+	for _, tg := range targets {
+		if name := relayTargetSelector(tg); name != "" {
+			want[name] = true
+		}
+	}
+	if len(want) == 0 {
+		out.findings = append(out.findings, "закрытый перечень целей пуст — судить нечего, и это не зелёный")
+		return out
+	}
+	seen := map[string]string{}
+	for _, call := range plainCalls(root, "prepareRelayTarget") {
+		s := prepareSite{pos: fset.Position(call.Pos()).String(), posture: postureBranchOf(root, call.Pos())}
+		if len(call.Args) >= 2 {
+			if sel, ok := call.Args[1].(*ast.SelectorExpr); ok {
+				s.serves = sel.Sel.Name
+			}
+		}
+		out.prepares = append(out.prepares, s)
+		switch {
+		case s.serves == "":
+			out.findings = append(out.findings, s.pos+": подготовка цели без названной цели — ось различения потеряна")
+		case !want[s.serves]:
+			out.findings = append(out.findings, s.pos+": подготовка цели "+s.serves+", которой нет в закрытом перечне")
+		case seen[s.serves] != "":
+			out.findings = append(out.findings, s.pos+": лишняя подготовка цели "+s.serves+" — первая стоит в "+seen[s.serves])
+		default:
+			seen[s.serves] = s.pos
+		}
+		if s.posture != "Own" {
+			out.findings = append(out.findings, s.pos+": страж цели позван вне ветки посадки own (ветка: "+strconv.Quote(s.posture)+
+				") — вне own он отверг бы старт края, которому ретрансляция не нужна")
+		}
+	}
+	missing := []string{}
+	for name := range want {
+		if seen[name] == "" {
+			missing = append(missing, name)
+		}
+	}
+	sort.Strings(missing)
+	for _, name := range missing {
+		out.findings = append(out.findings, "объявленная цель "+name+" не подготовлена корнем — её адрес при старте не судится")
+	}
+	return out
+}
+
+// rootOf — композиционный корень среди разобранных файлов пакета.
+func rootOf(t *testing.T, fset *token.FileSet, pkg []*ast.File) *ast.File {
+	t.Helper()
+	for _, f := range pkg {
+		if filepath.Base(fset.Position(f.Pos()).Filename) == "main.go" {
+			return f
+		}
+	}
+	t.Fatal("среди файлов пакета нет main.go — корень судить не по чему")
+	return nil
+}
+
+// parsePackage — не-тестовые файлы пакета корня, разобранные в тот же набор
+// позиций, что и корень.
+func parsePackage(t *testing.T, fset *token.FileSet) []*ast.File {
+	t.Helper()
+	names, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatalf("файлы пакета не перечисляются: %v", err)
+	}
+	var out []*ast.File
+	for _, name := range names {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		f, perr := parser.ParseFile(fset, name, nil, parser.SkipObjectResolution)
+		if perr != nil {
+			t.Fatalf("%s не разбирается: %v", name, perr)
+		}
+		out = append(out, f)
+	}
+	return out
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -236,5 +413,116 @@ func TestOwnLaneGate_Twin_AReaderUnderTheNamedPostureIsSilent(t *testing.T) {
 	sites := wiringSites(fset, f, "WithHumanSession")
 	if sites[len(sites)-1].posture != "" {
 		t.Fatalf("читатель в ветке else признан заведённым под посадкой: %+v", sites[len(sites)-1])
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Путь к стражу целей — инъекция в обе стороны на синтетике.
+
+const guardPathRoot = `package main
+import "github.com/PRO-Robotech/corelib/identityposture"
+func main() {
+	if lane == identityposture.Own {
+		a, _, _ := prepareRelayTarget(cfg, middleware.RelayTargetForm, cfg.LoginLaneURL)
+		b, _, _ := prepareRelayTarget(cfg, middleware.RelayTargetIssuance, cfg.IAMIssuanceURL)
+%s
+	}
+%s
+}
+`
+
+const guardPathHelper = `package main
+func prepareRelayTarget(cfg config.Config, serves middleware.RelayTarget, raw string) (int, int, error) {
+	if err := validateLoginLaneConfig(LoginLaneConfig{URL: raw}); err != nil {
+		return 0, 0, err
+	}
+	return 0, 0, nil
+}
+%s
+`
+
+func judgeGuardPathFixture(t *testing.T, inside, outside, helper string) relayGuardPath {
+	t.Helper()
+	fset := token.NewFileSet()
+	root, err := parser.ParseFile(fset, "main.go", strings.Replace(strings.Replace(guardPathRoot, "%s", inside, 1), "%s", outside, 1), 0)
+	if err != nil {
+		t.Fatalf("синтетика корня не разбирается: %v", err)
+	}
+	h, err := parser.ParseFile(fset, "login_lane_transport.go", strings.Replace(guardPathHelper, "%s", helper, 1), 0)
+	if err != nil {
+		t.Fatalf("синтетика помощника не разбирается: %v", err)
+	}
+	return judgeRelayGuardPath(fset, root, []*ast.File{root, h}, middleware.RelayTargets())
+}
+
+func TestRelayGuardPath_Twin_EachTargetPreparedOnceUnderOwnIsSilent(t *testing.T) {
+	got := judgeGuardPathFixture(t, "", "", "")
+	if len(got.findings) != 0 {
+		t.Fatalf("законный путь к стражу дал находки: %v", got.findings)
+	}
+	if len(got.guards) != 1 || len(got.prepares) != 2 {
+		t.Fatalf("перепись законного пути: стражей %d (ожидался 1), подготовок %d (ожидалось 2)", len(got.guards), len(got.prepares))
+	}
+}
+
+// Прямой вызов стража в корне, пусть и под own, — находка с координатой:
+// ровно та форма, которую прежний гейт считал законной при одной цели.
+func TestRelayGuardPath_Injection_ADirectGuardCallIsNamed(t *testing.T) {
+	got := judgeGuardPathFixture(t, "\t\t_ = validateLoginLaneConfig(LoginLaneConfig{})", "", "")
+	if len(got.findings) != 1 || !strings.HasPrefix(got.findings[0], "main.go:7:") || !strings.Contains(got.findings[0], "мимо prepareRelayTarget") {
+		t.Fatalf("прямой вызов стража не назван координатой: %v", got.findings)
+	}
+}
+
+func TestRelayGuardPath_Injection_APreparationOutsideOwnIsNamed(t *testing.T) {
+	got := judgeGuardPathFixture(t, "", "\tc, _, _ := prepareRelayTarget(cfg, middleware.RelayTargetForm, cfg.Other)", "")
+	var outside, extra bool
+	for _, f := range got.findings {
+		outside = outside || (strings.HasPrefix(f, "main.go:9:") && strings.Contains(f, "вне ветки посадки own"))
+		extra = extra || strings.Contains(f, "лишняя подготовка цели RelayTargetForm")
+	}
+	if !outside || !extra || len(got.findings) != 2 {
+		t.Fatalf("подготовка вне own не названа координатой: %v", got.findings)
+	}
+}
+
+func TestRelayGuardPath_Injection_AMissingTargetAndAHelperCallerAreFound(t *testing.T) {
+	src := strings.Replace(guardPathRoot, "\t\tb, _, _ := prepareRelayTarget(cfg, middleware.RelayTargetIssuance, cfg.IAMIssuanceURL)\n", "", 1)
+	fset := token.NewFileSet()
+	root, err := parser.ParseFile(fset, "main.go", strings.Replace(strings.Replace(src, "%s", "", 1), "%s", "", 1), 0)
+	if err != nil {
+		t.Fatalf("синтетика не разбирается: %v", err)
+	}
+	h, err := parser.ParseFile(fset, "login_lane_transport.go", strings.Replace(guardPathHelper, "%s",
+		"func other() { _, _, _ = prepareRelayTarget(cfg, middleware.RelayTargetIssuance, x) }", 1), 0)
+	if err != nil {
+		t.Fatalf("синтетика помощника не разбирается: %v", err)
+	}
+	got := judgeRelayGuardPath(fset, root, []*ast.File{root, h}, middleware.RelayTargets())
+	var missing, bypass bool
+	for _, f := range got.findings {
+		missing = missing || strings.Contains(f, "цель RelayTargetIssuance не подготовлена корнем")
+		bypass = bypass || (strings.HasPrefix(f, "login_lane_transport.go:8:") && strings.Contains(f, "мимо корня"))
+	}
+	if !missing || !bypass {
+		t.Fatalf("недостающая цель либо вызов подготовки мимо корня не найдены: %v", got.findings)
+	}
+}
+
+func TestRelayGuardPath_Injection_NoGuardAndNoFilesAreNotSilent(t *testing.T) {
+	got := judgeRelayGuardPath(token.NewFileSet(), nil, nil, middleware.RelayTargets())
+	if len(got.findings) != 1 || !strings.Contains(got.findings[0], "файлов пакета не прочитано") {
+		t.Fatalf("пустой обход пакета молчит: %v", got.findings)
+	}
+	fset := token.NewFileSet()
+	root, _ := parser.ParseFile(fset, "main.go", strings.Replace(strings.Replace(guardPathRoot, "%s", "", 1), "%s", "", 1), 0)
+	h, _ := parser.ParseFile(fset, "login_lane_transport.go", "package main\nfunc prepareRelayTarget() {}\n", 0)
+	got = judgeRelayGuardPath(fset, root, []*ast.File{root, h}, middleware.RelayTargets())
+	var none bool
+	for _, f := range got.findings {
+		none = none || strings.Contains(f, "страж цели не позван ни разу")
+	}
+	if !none {
+		t.Fatalf("снятый вызов стража не найден: %v", got.findings)
 	}
 }

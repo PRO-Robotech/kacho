@@ -169,3 +169,23 @@ deploy/own_lane_memory_budget_test.go.
 {{- end -}}
 {{- toYaml $res -}}
 {{- end -}}
+
+{{/*
+kaname.hooksLaneRaised — ПОДНИМАЕТ ЛИ ПРОЦЕСС СЛУШАТЕЛЬ ВЕБХУКОВ ПОСТАВЩИКА
+ЛИЧНОСТИ при посадке этого профиля (kacho#2871, служба — kaname#360). Отдаёт
+`true` либо пусто.
+
+ЗЕРКАЛО ПРЕДИКАТА ПРОЦЕССА, а не своё решение: служба снимает слушатель ровно
+ОДНИМ объявленным значением — `own` (`AuthNConfig.HasExternalIdentityProvider`,
+«не own»). Поэтому здесь «не own», а не «== external»: незаявленная посадка
+слушатель СОХРАНЯЕТ, и чарт, сузивший условие, снял бы порт там, где процесс
+дверь поднимает.
+
+Читателей два — порт пода и порт внутреннего Service, — и порознь они разошлись
+бы молча. Согласие с процессом на каждом стенде держит
+`deploy/kaname_hooks_port_follows_posture_test.go`.
+*/}}
+{{- define "kaname.hooksLaneRaised" -}}
+{{- $authn := (.Values.config | default dict).authn | default dict -}}
+{{- if ne (toString ($authn.identityProvider | default "")) "own" -}}true{{- end -}}
+{{- end -}}

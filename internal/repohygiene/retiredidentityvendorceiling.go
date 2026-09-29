@@ -205,6 +205,15 @@ package repohygiene
 //     перечисляет ВСЕ строки прироста (мультимножеством: файл · ось · текст без
 //     номера строки) и число убыли. Та же граница была у записи числа: она
 //     сравнивала итог, а не строки.
+//  8. ПУТЬ API СЕРЕДИНОЙ БОЛЕЕ ДЛИННОГО ПУТИ (#2896). Путь из словаря
+//     поверхностей, перед которым стоит сегмент пути, а после — ещё один
+//     сегмент (путь импорта `…/internal/oauth2/token/jwt`), привязкой не
+//     засчитывается: это адрес пакета, а не разговор. Решение и его цена —
+//     `vendorSurfaceNested`; перепись печатает число строк и РАЗНЫЕ пути.
+//  9. СТРОКА, КОТОРУЮ КУСОК ЕДИНОГО ДИФФА УДАЛЯЕТ (#2896). Её нет в дереве, в
+//     которое дифф накладывается: это запись снятия, как надгробие п. 1.
+//     Контекст и добавляемые строки судятся как любые. Решение и его цена —
+//     `vendorDiffRemovedLines`; перепись печатает число строк и файлов.
 
 import (
 	"archive/zip"
@@ -357,6 +366,18 @@ type vendorTreeCensus struct {
 	UpperKept int
 	// UpperWords — РАЗНЫЕ слова, составившие предыдущее число.
 	UpperWords []string
+	// SurfaceNested — строк, где путь API издателя стоит СЕРЕДИНОЙ более
+	// длинного пути (сегмент до и сегмент после) и потому привязкой НЕ
+	// засчитан: адрес пакета, а не разговор. Цена решения, названная числом.
+	SurfaceNested int
+	// SurfaceNestedPaths — РАЗНЫЕ пути, составившие предыдущее число: сегмент
+	// до, путь API, сегмент после. Новый путь здесь — находка к разбору.
+	SurfaceNestedPaths []string
+	// DiffRemoved — строк, которые кусок единого диффа УДАЛЯЕТ и которые без
+	// этого решения были бы привязками: запись снятия, а не текст дерева.
+	DiffRemoved int
+	// DiffRemovedFiles — в скольких файлах лежат предыдущие строки.
+	DiffRemovedFiles int
 
 	Bindings  int
 	ByPath    int
@@ -405,11 +426,14 @@ func (c vendorTreeCensus) String() string {
 		"привязок %d строк (по пути %d · по имени %d · склейкой %d · по пути API %d · "+
 		"двоичных %d · архивов %d) · потолок (число базы) %d · отброшено границей слова %d строк "+
 		"(разных слов %d: %s) · засчитано именем ПРОПИСНЫМИ с прописной следом %d строк "+
-		"(разных слов %d: %s) · по областям (первый сегмент пути): %s",
+		"(разных слов %d: %s) · отброшено путём API серединой пути %d строк (разных путей %d: %s) · "+
+		"отброшено записью снятия диффа %d строк (файлов %d) · по областям (первый сегмент пути): %s",
 		c.Walked, c.Files, c.Blobs, c.Archives, c.Sealed, c.Prose, c.Lines,
 		c.Bindings, c.ByPath, c.ByName, c.ByGlue, c.BySurface, c.ByBinary, c.ByArchive,
 		c.Ceiling, c.BoundaryDropped, len(c.BoundaryWords), strings.Join(c.BoundaryWords, ", "),
 		c.UpperKept, len(c.UpperWords), strings.Join(c.UpperWords, ", "),
+		c.SurfaceNested, len(c.SurfaceNestedPaths), strings.Join(c.SurfaceNestedPaths, ", "),
+		c.DiffRemoved, c.DiffRemovedFiles,
 		vendorAreasText(c.Areas))
 }
 
@@ -893,13 +917,196 @@ func vendorLineAxis(line string) string {
 	}
 	// Безымянная поверхность берётся у единственного дома — словаря путей
 	// поставщика. Своего перечня здесь нет.
-	lower := vendorASCIILower(line)
-	for _, s := range ProviderSurfaces {
-		if strings.Contains(lower, vendorASCIILower(s.Path)) {
-			return vendorAxisSurface
-		}
+	if vendorSurfaceStandsIn(line) {
+		return vendorAxisSurface
 	}
 	return ""
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// РЕШЕНИЕ: ПУТЬ API, СТОЯЩИЙ СЕРЕДИНОЙ БОЛЕЕ ДЛИННОГО ПУТИ, — НЕ ПУТЬ API (#2896)
+//
+// Путь API издателя — начало пути ЗАПРОСА: он стоит сразу за адресом узла
+// (`https://узел:порт/oauth2/…`), за базовым адресом в другом литерале
+// (`base + "/admin/clients"`), за подстановкой (`{{baseUrl}}/…`, `$ADMIN/…`,
+// `%s/…`) или в начале литерала. После него законно стоит идентификатор
+// (`/admin/clients/` + id) — словарь поверхностей объявляет эту форму прямо.
+//
+// Не путь API — то же сочетание букв, стоящее СЕРЕДИНОЙ более длинного пути:
+// перед ним СЕГМЕНТ пути (`…/internal/oauth2/token`), а не адрес узла, и после
+// него ещё один сегмент (`…/token/jwt`). Так пишется путь импорта пакета:
+// `github.com/PRO-Robotech/corelib/internal/oauth2/token/jwt`. Замер на пине
+// фундамента v1.10.0-rc.3: 44 строки путей импорта двух пакетов вложенного
+// движка засчитывались осью пути API и одни составляли 44 из 52 строк прироста
+// дерева фундамента.
+//
+// Решение — КОНЪЮНКЦИЯ двух сторон, и это сделано намеренно: каждая сторона по
+// отдельности сносила бы законную форму разговора. Одна правая сторона снесла бы
+// `/admin/clients/cli-1` (идентификатор литералом), одна левая — путь издателя
+// за префиксом прокси (`https://узел/префикс/oauth2/token`). Вместе они сносят
+// только то, где путь API не стоит ни началом, ни концом пути.
+//
+// ЦЕНА названа переписью: число таких строк и РАЗНЫЕ пути, их составившие
+// (`SurfaceNested`, `SurfaceNestedPaths`). Настоящий разговор с издателем за
+// префиксом И с сегментом после (`https://узел/префикс/admin/clients/cli-1`)
+// решением отбрасывается — и встаёт в этот перечень новым путём, а не
+// пропадает молча.
+
+// vendorSegmentByte — байт сегмента пути: то, что стоит между двумя `/`. Точка,
+// дефис, тильда и знак процента входят: `iam.example.net`, `v1-beta`, `%2F`.
+// Двоеточие НЕ входит: оно отделяет порт, и `узел:8443` — адрес, а не сегмент.
+func vendorSegmentByte(b byte) bool {
+	return vendorWordByte(b) || b == '.' || b == '-' || b == '~' || b == '%'
+}
+
+// vendorSurfaceNested — вхождение пути API [at, end) в строке стоит СЕРЕДИНОЙ
+// более длинного пути; lo и hi — границы этого пути (сегмент до · путь API ·
+// сегмент после). Строка — в нижнем регистре ASCII: длина та же, что у
+// исходной, и границы годятся для неё.
+func vendorSurfaceNested(lower string, at, end int) (lo, hi int, nested bool) {
+	// Слева — сегмент пути, перед которым ОДИНОЧНАЯ косая черта. Двойная
+	// открывает адрес узла (`//узел`), и тогда перед путём API стоит адрес.
+	lo = at
+	for lo > 0 && vendorSegmentByte(lower[lo-1]) {
+		lo--
+	}
+	if lo == at || lo == 0 || lower[lo-1] != '/' || (lo >= 2 && lower[lo-2] == '/') {
+		return 0, 0, false
+	}
+	// Справа — ещё один сегмент: косая черта и байт слова. Косая черта с
+	// кавычкой, подстановкой (`{`, `%`, `$`, `:`) или концом строки следом —
+	// это путь API с идентификатором, приставляемым отдельно.
+	if end+1 >= len(lower) || lower[end] != '/' || !vendorWordByte(lower[end+1]) {
+		return 0, 0, false
+	}
+	hi = end + 1
+	for hi < len(lower) && vendorSegmentByte(lower[hi]) {
+		hi++
+	}
+	return lo, hi, true
+}
+
+// vendorSurfaceStandsIn — строка несёт путь API издателя, стоящий НЕ серединой
+// более длинного пути, хотя бы одним вхождением.
+func vendorSurfaceStandsIn(line string) bool {
+	lower := vendorASCIILower(line)
+	for _, s := range ProviderSurfaces {
+		p := vendorASCIILower(s.Path)
+		for idx := 0; ; {
+			k := strings.Index(lower[idx:], p)
+			if k < 0 {
+				break
+			}
+			at := idx + k
+			idx = at + len(p)
+			if _, _, nested := vendorSurfaceNested(lower, at, idx); !nested {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// vendorCarriesSurface — текст несёт путь API издателя ГДЕ-НИБУДЬ, без решения
+// о вложенности. ПРЕ-ФИЛЬТР и знаменатель переписи вложенных, как
+// [vendorCarriesMark] для границы слова. Текст — в нижнем регистре.
+func vendorCarriesSurface(lower string) bool {
+	for _, s := range ProviderSurfaces {
+		if strings.Contains(lower, vendorASCIILower(s.Path)) {
+			return true
+		}
+	}
+	return false
+}
+
+// vendorSurfaceNestedPathsIn — РАЗНЫЕ пути, в которых путь API стоит серединой,
+// в исходном написании.
+func vendorSurfaceNestedPathsIn(line string, into map[string]struct{}) {
+	lower := vendorASCIILower(line)
+	for _, s := range ProviderSurfaces {
+		p := vendorASCIILower(s.Path)
+		for idx := 0; ; {
+			k := strings.Index(lower[idx:], p)
+			if k < 0 {
+				break
+			}
+			at := idx + k
+			idx = at + len(p)
+			if lo, hi, nested := vendorSurfaceNested(lower, at, idx); nested {
+				into[line[lo:hi]] = struct{}{}
+			}
+		}
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// РЕШЕНИЕ: СТРОКА, КОТОРУЮ КУСОК ЕДИНОГО ДИФФА УДАЛЯЕТ, — ЗАПИСЬ СНЯТИЯ (#2896)
+//
+// Файл правки несёт три вида строк куска: контекст (` `), добавляемые (`+`) и
+// удаляемые (`-`). Контекст и добавляемые есть в дереве, В КОТОРОЕ дифф
+// накладывается, — они судятся как любая строка. Удаляемой строки в этом дереве
+// НЕТ: она — запись того, что снято, то есть надгробие (шапка, границы, п. 1).
+//
+// Без этого решения снятие имени из чужого кода, внесённого поддеревом с файлом
+// правки (фундамент, `internal/oauth2/PROVENANCE.patch`), числа не снимало бы:
+// правка фикстуры переносила бы строку с именем из файла в удалённую строку
+// файла правки, один в один.
+//
+// Удаляемой строка признаётся ТОЛЬКО внутри куска, открытого заголовком
+// `@@ -a[,b] +c[,d] @@`, и только пока число его строк не исчерпано. Строка,
+// начинающаяся минусом, вне куска — это элемент списка YAML или флаг, и она
+// судится как прежде.
+//
+// ЦЕНА названа переписью: число строк, которые без решения были бы привязками,
+// и число файлов, где они лежат (`DiffRemoved`, `DiffRemovedFiles`).
+
+// vendorHunkHeader — заголовок куска единого диффа. Число строк стороны
+// опускается, когда оно равно единице.
+var vendorHunkHeader = regexp.MustCompile(`^@@ -[0-9]+(?:,([0-9]+))? \+[0-9]+(?:,([0-9]+))? @@`)
+
+// vendorDiffRemovedLines — номера (с нуля) строк, которые куски единого диффа
+// удаляют. nil — кусков нет.
+func vendorDiffRemovedLines(lines []string) map[int]bool {
+	count := func(s string) int {
+		if s == "" {
+			return 1
+		}
+		n := 0
+		for i := 0; i < len(s); i++ {
+			n = n*10 + int(s[i]-'0')
+		}
+		return n
+	}
+	var removed map[int]bool
+	oldLeft, newLeft := 0, 0
+	for i, line := range lines {
+		if oldLeft > 0 || newLeft > 0 {
+			switch {
+			case strings.HasPrefix(line, "-") && oldLeft > 0:
+				oldLeft--
+				if removed == nil {
+					removed = map[int]bool{}
+				}
+				removed[i] = true
+				continue
+			case strings.HasPrefix(line, "+") && newLeft > 0:
+				newLeft--
+				continue
+			case strings.HasPrefix(line, " ") && oldLeft > 0 && newLeft > 0:
+				oldLeft--
+				newLeft--
+				continue
+			case strings.HasPrefix(line, "\\"):
+				continue // «\ No newline at end of file»
+			}
+			// Строка не того вида — кусок оборван: дальше судится как обычно.
+			oldLeft, newLeft = 0, 0
+		}
+		if m := vendorHunkHeader.FindStringSubmatch(line); m != nil {
+			oldLeft, newLeft = count(m[1]), count(m[2])
+		}
+	}
+	return removed
 }
 
 // vendorCommentLine — строка НАЧИНАЕТСЯ маркером комментария.
@@ -1063,6 +1270,7 @@ func vendorTreeBindings(tree string, corpus vendorTreeCorpus) (vendorTreeCensus,
 	var bindings []vendorBinding
 	boundaryWords := map[string]struct{}{}
 	upperWords := map[string]struct{}{}
+	nestedPaths := map[string]struct{}{}
 	c := vendorTreeCensus{
 		Walked:   corpus.Walked,
 		Blobs:    len(corpus.Blobs),
@@ -1099,16 +1307,38 @@ func vendorTreeBindings(tree string, corpus vendorTreeCorpus) (vendorTreeCensus,
 		// вовсе, дальше не читается, а файл, где оно втекло в другое слово,
 		// читается — иначе счётчик отброшенных границей был бы слеп ровно
 		// на свой предмет.
-		if !vendorCarriesMark(lowerBody) && vendorLineAxis(body) == "" {
+		// Путь API, стоящий серединой, проверяется ПРЕ-ФИЛЬТРОМ без решения о
+		// вложенности по той же причине: иначе перепись вложенных была бы слепа
+		// ровно на свой предмет.
+		if !vendorCarriesMark(lowerBody) && !vendorCarriesSurface(lowerBody) &&
+			vendorLineAxis(body) == "" {
 			continue
 		}
 		lines := strings.Split(body, "\n")
 		lowerLines := strings.Split(lowerBody, "\n")
+		removed := vendorDiffRemovedLines(lines)
+		removedHere := 0
 		for i, line := range lines {
+			if removed[i] {
+				// Запись снятия: судится, была бы ли она привязкой без решения,
+				// и только ради переписи — в число она не входит.
+				if !vendorCommentLine(line) && vendorLineAxis(line) != "" {
+					c.DiffRemoved++
+					removedHere++
+				}
+				continue
+			}
 			if vendorCommentLine(line) {
 				continue
 			}
 			axis := vendorLineAxis(line)
+			if axis == "" && vendorCarriesSurface(lowerLines[i]) {
+				// Путь API в строке есть, но стоит серединой более длинного
+				// пути: строка отброшена РЕШЕНИЕМ о вложенности. Цена — число
+				// и пути.
+				c.SurfaceNested++
+				vendorSurfaceNestedPathsIn(line, nestedPaths)
+			}
 			if axis != vendorAxisName && axis != vendorAxisGlued &&
 				vendorCarriesMark(lowerLines[i]) {
 				// Имя в строке есть, но отдельным словом не стоит: строка
@@ -1137,6 +1367,9 @@ func vendorTreeBindings(tree string, corpus vendorTreeCorpus) (vendorTreeCensus,
 				continue
 			}
 			add(rel, i+1, axis, strings.TrimSpace(line))
+		}
+		if removedHere > 0 {
+			c.DiffRemovedFiles++
 		}
 	}
 
@@ -1178,6 +1411,10 @@ func vendorTreeBindings(tree string, corpus vendorTreeCorpus) (vendorTreeCensus,
 		c.UpperWords = append(c.UpperWords, w)
 	}
 	sort.Strings(c.UpperWords)
+	for p := range nestedPaths {
+		c.SurfaceNestedPaths = append(c.SurfaceNestedPaths, p)
+	}
+	sort.Strings(c.SurfaceNestedPaths)
 	c.Bindings = c.ByPath + c.ByName + c.ByGlue + c.BySurface + c.ByBinary + c.ByArchive
 	c.Areas = map[string]int{}
 	for _, b := range bindings {

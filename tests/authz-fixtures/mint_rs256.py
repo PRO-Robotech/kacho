@@ -30,10 +30,9 @@ uses, no dev-bypass, no direct Hydra-admin:
 бесполезно — его там нет; смотреть надо издателя токена (`iss`) и наш набор
 проверочных ключей.
 
-Живой контур прежнего издателя в дереве ОСТАЛСЯ, и он не здесь: интерактивный вход
-человека (`authorization_code` + PKCE, посев церемонии). Он и есть предмет
-требования держать прежнего издателя принятым на крае — см.
-`deploy/scripts/assert-legacy-issuer-acceptance-has-a-subject.py`.
+Живого контура прежнего издателя в дереве больше нет и здесь: интерактивный вход
+человека (`authorization_code` + PKCE, посев церемонии) уехал в дерево службы
+вместе с её набором (#2858, парная PRO-Robotech/kaname#398).
 
 Requires PyJWT + cryptography (ES256 signing). Usable as a library (import) or a CLI.
 

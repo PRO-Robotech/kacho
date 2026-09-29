@@ -52,8 +52,10 @@
 держались на передачах, которые стояли в прогонщике текстом. Так было с посевом волны
 церемонии: волну снял #2735 как мёртвую (её прогонщика в дереве нет), и вместе с ней
 ушли передачи, которые засчитывались посеву, ни разу его не запустив. Такой модуль
-объявлен в `NOT_LAUNCHED` — поимённо и с причиной, — и его адреса не судятся, ПОКА его
-никто не запускает. Запись истекает сама и тогда становится находкой: модуль больше не
+объявляется в `NOT_LAUNCHED` — поимённо и с причиной, — и его адреса не судятся, ПОКА
+его никто не запускает. (Посев церемонии и его стадия просроченного предъявителя
+стояли там до #2858: они уехали в дерево службы вместе с её набором, и перечень пуст.)
+Запись истекает сама и тогда становится находкой: модуль больше не
 достижим, адресов больше не набирает или его ЗАПУСКАЕТ достижимый модуль, сам не
 объявленный незапускаемым (вызов интерпретатора с путём к нему — прямо или через
 переменную, которой присвоен путь, — либо импорт). Запуск через путь, собранный при
@@ -88,12 +90,10 @@ RUNNER = "deploy/scripts/newman-parallel.sh"
 # достижимый модуль больше не читает, — находка, а не безобидный остаток. Иначе
 # следующий читатель унаследует её как действующее послабление и спрячет за ней
 # настоящий транспорт без производителя.
-NOT_A_TRANSPORT: dict[str, str] = {
-    "HYDRA_ISSUER_PREFIX": (
-        "объявленная издателем приставка. Значение только ищется и ЗАМЕНЯЕТСЯ на "
-        "адрес, по которому издатель реально отвечает; сокет по нему не открывается."
-    ),
-}
+#
+# Перечень пуст с #2858: единственную запись (приставку издателя поставщика) читал
+# посев церемонии, а он уехал в дерево службы вместе с её набором.
+NOT_A_TRANSPORT: dict[str, str] = {}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Модуль, который ДОСТИЖИМ, но НЕ ЗАПУСКАЕТСЯ ни одним шагом прогонщика
@@ -101,18 +101,7 @@ NOT_A_TRANSPORT: dict[str, str] = {
 # Ключ — путь от корня дерева. Запись обязана нести ПРИЧИНУ и истекает сама (см.
 # `_not_launched_findings`): модуль недостижим, адресов не набирает либо его
 # запускает достижимый модуль, которого в этом перечне нет.
-NOT_LAUNCHED: dict[str, str] = {
-    "tests/authz-fixtures/prodseed_ceremony.py": (
-        "посев волны церемонии. Его запускал только прогонщик волны 4, а того в дереве "
-        "нет: волна снята как мёртвая (#2735). Достижим он ссылками — перечнем "
-        "самопроверок и объявлением набора волны, — но не запуском."
-    ),
-    "tests/authz-fixtures/prodseed_expired_bearer.py": (
-        "стадия просроченного предъявителя той же волны: её запускает посев волны "
-        "церемонии (он сам в этом перечне) и отдельный прогонщик суиты службы доступа, "
-        "которого в дереве тоже нет."
-    ),
-}
+NOT_LAUNCHED: dict[str, str] = {}
 
 # Запуск модуля: интерпретатор или source с путём, где стоит имя файла.
 _LAUNCHER = r'(?:^|[\s;&|(`])(?:python3?|bash|sh|source|exec|\.)\s+(?:-\S+\s+)*'
@@ -345,7 +334,11 @@ def _not_launched_findings(root: str, paths: list[str], addrs, not_launched: dic
     return findings, held
 
 
-def check(root: str, not_launched: dict[str, str] | None = None) -> tuple[int, list[str], dict]:
+def check(root: str, not_launched: dict[str, str] | None = None,
+          not_a_transport: dict[str, str] | None = None) -> tuple[int, list[str], dict]:
+    # Перечень идентичностей передаётся так же, как NOT_LAUNCHED: самопроверка судит
+    # механизм на СВОЁМ перечне и не зависит от того, пуст ли перечень дерева.
+    exempt = NOT_A_TRANSPORT if not_a_transport is None else not_a_transport
     runner = parse_runner(root)
     paths, unresolved = reachable(root, runner["path"])
     if len(paths) < 2:
@@ -355,13 +348,13 @@ def check(root: str, not_launched: dict[str, str] | None = None) -> tuple[int, l
     addrs = dialled(paths, root)
     findings, held = _not_launched_findings(root, paths, addrs, not_launched or {})
     named = {name for _, name, _ in addrs}
-    for exc, why in sorted(NOT_A_TRANSPORT.items()):
+    for exc, why in sorted(exempt.items()):
         if exc not in named:
             findings.append(
                 f"послаблению «{exc}» больше нечего исключать — ни один достижимый "
                 f"модуль его не читает. Причина записи: {why} Снять запись.")
     for rel, name, port in sorted(set(addrs)):
-        if name in NOT_A_TRANSPORT or rel in held:
+        if name in exempt or rel in held:
             continue
         if name in runner["passed"]:
             if runner["passed"][name] in runner["forwarded"]:
@@ -385,7 +378,7 @@ def check(root: str, not_launched: dict[str, str] | None = None) -> tuple[int, l
             f"и порт :{port} не пробрасывает; набирать некуда")
     scope = {"scripts": len(paths), "addresses": len(set(addrs)),
              "forwarded": len(runner["forwarded"]), "passed": len(runner["passed"]),
-             "unresolved": len(unresolved), "exempt": len(NOT_A_TRANSPORT),
+             "unresolved": len(unresolved), "exempt": len(exempt),
              "held": len(held), "held_addresses": len({a for a in set(addrs) if a[0] in held})}
     return len(findings), findings, scope
 
@@ -415,8 +408,14 @@ _FAKE_MOD = ('import os\n'
 # Второй модуль даёт ПРЕДМЕТ объявленным идентичностям: без него каждая проверка
 # ниже краснела бы по ветке самоистечения, и три случая из четырёх измеряли бы не то,
 # ради чего написаны.
+#
+# Перечень идентичностей самопроверки — СВОЙ, а не перечень дерева: тот пуст с #2858,
+# и на пустом перечне случаи (в2) и (г) не могли бы покраснеть ни на каком входе.
+_FAKE_EXEMPT: dict[str, str] = {
+    "FAKE_ISSUER_PREFIX": "синтетика самопроверки: объявленная издателем приставка",
+}
 _FAKE_IDENT = ('import os\n' + "".join(
-    f'{n} = os.environ.get("{n}", "https://localhost:28080/x")\n' for n in sorted(NOT_A_TRANSPORT)))
+    f'{n} = os.environ.get("{n}", "https://localhost:28080/x")\n' for n in sorted(_FAKE_EXEMPT)))
 
 
 def _self_test() -> int:
@@ -440,7 +439,7 @@ def _self_test() -> int:
     # (а) настоящий дефект — проброса нет: гейт обязан покраснеть И НАЗВАТЬ адрес.
     with tempfile.TemporaryDirectory() as tmp:
         build(tmp, with_forward=False)
-        n, f, _ = check(tmp)
+        n, f, _ = check(tmp, None, _FAKE_EXEMPT)
         hit = n == 1 and "EXTRA_URL" in f[0] and "24433" in f[0]
         print(f"  {'ОК ' if hit else 'ПРОВАЛ'} инъекция: адрес без производителя — красный и назван")
         ok &= hit
@@ -451,7 +450,7 @@ def _self_test() -> int:
     #     находок значило бы принять за успех молчание по чужой причине.
     with tempfile.TemporaryDirectory() as tmp:
         build(tmp, with_forward=True)
-        n, f, _ = check(tmp)
+        n, f, _ = check(tmp, None, _FAKE_EXEMPT)
         hit = not any("GOOD_URL" in x or "LIT_URL" in x for x in f)
         print(f"  {'ОК ' if hit else 'ПРОВАЛ'} законные близнецы (передан явно / литеральный "
               f"проброс) — молчит" + ("" if hit else f" ({f})"))
@@ -463,7 +462,7 @@ def _self_test() -> int:
     #     и закрывает её как ложную.
     with tempfile.TemporaryDirectory() as tmp:
         build(tmp, with_forward=True)
-        n, f, _ = check(tmp)
+        n, f, _ = check(tmp, None, _FAKE_EXEMPT)
         hit = any("EXTRA_URL" in x and "EXTRA_PORT" in x for x in f)
         print(f"  {'ОК ' if hit else 'ПРОВАЛ'} совпадение умолчаний: проброс двигается ручкой, "
               f"адрес — нет — красный, названы адрес и ручка")
@@ -475,7 +474,7 @@ def _self_test() -> int:
         with open(os.path.join(tmp, RUNNER), "w", encoding="utf-8") as fh:
             fh.write("#!/usr/bin/env bash\necho no forwards here\n")
         try:
-            check(tmp)
+            check(tmp, None, _FAKE_EXEMPT)
             hit = False
         except PremiseError:
             hit = True
@@ -488,7 +487,7 @@ def _self_test() -> int:
         build(tmp, with_forward=False)
         with open(os.path.join(tmp, "tests/fake/ident.py"), "a", encoding="utf-8") as fh:
             fh.write('C = os.environ.get("REAL_URL", "https://localhost:28080/x")\n')
-        n, f, _ = check(tmp)
+        n, f, _ = check(tmp, None, _FAKE_EXEMPT)
         hit = any("REAL_URL" in x for x in f)
         print(f"  {'ОК ' if hit else 'ПРОВАЛ'} послабление именное: тот же порт под другим именем — находка")
         ok &= hit
@@ -496,13 +495,13 @@ def _self_test() -> int:
     # (г) послабление, которому нечего исключать, — САМО находка (самоистечение).
     with tempfile.TemporaryDirectory() as tmp:
         build(tmp, with_forward=True, with_ident=False)
-        n, f, _ = check(tmp)
+        n, f, _ = check(tmp, None, _FAKE_EXEMPT)
         # Считаем находки ПРО ПОСЛАБЛЕНИЯ, а не все подряд: на этом же дереве законно
         # краснеет совпадение умолчаний (случай «е»), и общий счёт мерил бы уже не
         # самоистечение.
-        about_exempt = [x for x in f if any(name in x for name in NOT_A_TRANSPORT)]
-        hit = len(about_exempt) == len(NOT_A_TRANSPORT) and all(
-            any(name in x for x in about_exempt) for name in NOT_A_TRANSPORT)
+        about_exempt = [x for x in f if any(name in x for name in _FAKE_EXEMPT)]
+        hit = len(about_exempt) == len(_FAKE_EXEMPT) > 0 and all(
+            any(name in x for x in about_exempt) for name in _FAKE_EXEMPT)
         print(f"  {'ОК ' if hit else 'ПРОВАЛ'} самоистечение: послабление без предмета — находка")
         ok &= hit
 
@@ -525,11 +524,11 @@ def _self_test() -> int:
 
     with tempfile.TemporaryDirectory() as tmp:
         build_orphan(tmp)
-        _, f, _ = check(tmp)
+        _, f, _ = check(tmp, None, _FAKE_EXEMPT)
         hit = len(about(f, "ORPHAN_URL")) == 1
         print(f"  {'ОК ' if hit else 'ПРОВАЛ'} (ж) без записи адрес незапускаемого модуля судится — находка")
         ok &= hit
-        _, f, scope = check(tmp, orphan)
+        _, f, scope = check(tmp, orphan, _FAKE_EXEMPT)
         hit = not about(f, "ORPHAN_URL") and not about(f, orphan_rel) and scope["held"] == 1
         print(f"  {'ОК ' if hit else 'ПРОВАЛ'} (з) с записью и без запуска — молчит, в переписи назван"
               + ("" if hit else f" ({f}, {scope})"))
@@ -542,7 +541,7 @@ def _self_test() -> int:
     for label, launcher in launchers.items():
         with tempfile.TemporaryDirectory() as tmp:
             build_orphan(tmp, launcher)
-            _, f, _ = check(tmp, orphan)
+            _, f, _ = check(tmp, orphan, _FAKE_EXEMPT)
             hit = len(about(f, "ЗАПУСКАЕТСЯ")) == 1 and len(about(f, "ORPHAN_URL")) == 1
             print(f"  {'ОК ' if hit else 'ПРОВАЛ'} {label} — запись истекла, адрес снова судится"
                   + ("" if hit else f" ({f})"))
@@ -552,19 +551,19 @@ def _self_test() -> int:
         build_orphan(tmp)
         with open(os.path.join(tmp, "tests/fake/mod.py"), "a", encoding="utf-8") as fh:
             fh.write("import orphan  # noqa\n")
-        _, f, _ = check(tmp, orphan)
+        _, f, _ = check(tmp, orphan, _FAKE_EXEMPT)
         hit = len(about(f, "ЗАПУСКАЕТСЯ")) == 1
         print(f"  {'ОК ' if hit else 'ПРОВАЛ'} (л) импорт достижимым модулем — запись истекла")
         ok &= hit
 
     with tempfile.TemporaryDirectory() as tmp:
         build(tmp, with_forward=True)
-        _, f, _ = check(tmp, orphan)
+        _, f, _ = check(tmp, orphan, _FAKE_EXEMPT)
         hit = len(about(f, "не достижим")) == 1
         print(f"  {'ОК ' if hit else 'ПРОВАЛ'} (м) запись о недостижимом модуле — нечего исключать")
         ok &= hit
         build_orphan(tmp, body="import os\n")
-        _, f, _ = check(tmp, orphan)
+        _, f, _ = check(tmp, orphan, _FAKE_EXEMPT)
         hit = len(about(f, "не набирает ни одного адреса")) == 1
         print(f"  {'ОК ' if hit else 'ПРОВАЛ'} (н) запись о модуле без адресов — нечего исключать")
         ok &= hit
@@ -572,7 +571,7 @@ def _self_test() -> int:
     # (д) предпосылка: прогонщика нет вовсе — ГРОМКИЙ отказ.
     with tempfile.TemporaryDirectory() as tmp:
         try:
-            check(tmp)
+            check(tmp, None, _FAKE_EXEMPT)
             hit = False
         except PremiseError:
             hit = True

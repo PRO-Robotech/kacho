@@ -33,11 +33,12 @@ import (
 //     per-RPC Check happens at all.
 //   - identity_provider — the identity posture the process accepted, as the
 //     pinned foundation spells it: `own` (a person is checked by our own
-//     minting) or, while pin v1.8.0 still parses it, the transitional
-//     `external`. Read by the posture gate off the LIVE process, because the
-//     posture decides which start-up demands apply and a values map answers that
-//     question with intent: its knobs arrive through envFrom and are read once at
-//     start-up, so editing the map changes the map, not the process.
+//     minting), the one value its dictionary holds since v1.10.0-rc.3 withdrew
+//     `external` (corelib#30). Read by the posture gate off the LIVE process,
+//     because the posture decides which start-up demands apply and a values map
+//     answers that question with intent: its knobs arrive through envFrom and
+//     are read once at start-up, so editing the map changes the map, not the
+//     process.
 func bootPosture(cfg config.Config, lane identityposture.Provider) observability.BootPosture {
 	return observability.BootPosture{
 		Service:      "api-gateway",

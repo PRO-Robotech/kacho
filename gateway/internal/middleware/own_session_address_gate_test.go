@@ -72,8 +72,29 @@ type addressRig struct {
 	admin   *countingAdmin
 	next    *countingNext
 	reached map[string]int
+	// relayed — обращения, дошедшие до дублёра ретрансляции, по его цели:
+	// слушатель формы и слушатель выдачи считаются порознь.
+	relayed map[RelayTarget]int
 	chain   http.Handler
 	log     *bytes.Buffer
+}
+
+// issuanceDoubleAnswer — ответ дублёра слушателя выдачи на координату
+// церемонии.
+type issuanceDoubleAnswer struct {
+	status        int
+	header, value string
+	body          string
+}
+
+// issuanceDoubleAnswers — так служба отвечает неподтверждённой сессии на три
+// координаты церемонии (приёмка F6b-04; Р5 и Р5б службы, EV-67, EV-77):
+// навигация — перенаправление с `error=access_denied` без `code`, обмен —
+// `400 {"error":"invalid_grant"}`, документ обнаружения — `200`.
+var issuanceDoubleAnswers = map[string]issuanceDoubleAnswer{
+	CeremonyPathAuthorize: {http.StatusFound, "Location", "https://console.example/auth/callback?error=access_denied&state=s-0123456789abcdef", ""},
+	CeremonyPathToken:     {http.StatusBadRequest, "Content-Type", "application/json", `{"error":"invalid_grant"}`},
+	CeremonyPathDiscovery: {http.StatusOK, "Content-Type", "application/json", `{"issuer":"https://console.example"}`},
 }
 
 func newAddressRig(t *testing.T, sess HumanSession) *addressRig {
@@ -92,25 +113,60 @@ func newAddressRig(t *testing.T, sess HumanSession) *addressRig {
 		WithAdminChecker(admin)
 	h.Register(mux)
 	reached := map[string]int{}
+	relayed := map[RelayTarget]int{}
 	counted := func(path string) {
 		mux.HandleFunc(path, func(w http.ResponseWriter, _ *http.Request) {
 			reached[path]++
 			w.WriteHeader(http.StatusOK)
 		})
 	}
+	// Дублёры ретрансляции — по одному на запись объявления, каждый считает
+	// обращения своей цели; координату церемонии дублёр выдачи отвечает так,
+	// как служба отвечает неподтверждённому.
 	for _, rt := range LoginLaneRoutes() {
-		counted(rt.Path)
+		mux.HandleFunc(rt.Path, func(w http.ResponseWriter, _ *http.Request) {
+			reached[rt.Path]++
+			relayed[rt.Target]++
+			ans, ceremony := issuanceDoubleAnswers[rt.Path]
+			if !ceremony {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.Header().Set(ans.header, ans.value)
+			w.WriteHeader(ans.status)
+			_, _ = io.WriteString(w, ans.body)
+		})
 	}
 	for _, p := range []string{"/oauth/logout", "/healthz", "/readyz"} {
 		counted(p)
 	}
 	next := &countingNext{}
 	mux.Handle("/", next)
-	return &addressRig{a: a, reader: reader, cut: cut, admin: admin, next: next, reached: reached, chain: a.HTTP(mux), log: log}
+	return &addressRig{a: a, reader: reader, cut: cut, admin: admin, next: next, reached: reached, relayed: relayed, chain: a.HTTP(mux), log: log}
 }
 
 func (r *addressRig) present(method, target string, carrier bool) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, target, nil)
+	if carrier {
+		req = withOurCarrier(req, "opaque-own")
+	}
+	return serve(r.chain, req)
+}
+
+// presentCeremony — обращение клиента протокола к координате церемонии:
+// навигация с годными параметрами, обмен кода телом формы, чтение обнаружения.
+func (r *addressRig) presentCeremony(path string, carrier bool) *httptest.ResponseRecorder {
+	var req *http.Request
+	switch path {
+	case CeremonyPathAuthorize:
+		req = httptest.NewRequest(http.MethodGet, path+
+			"?response_type=code&client_id=console&state=s-0123456789abcdef&code_challenge=x&code_challenge_method=S256", nil)
+	case CeremonyPathToken:
+		req = httptest.NewRequest(http.MethodPost, path, strings.NewReader("grant_type=authorization_code&code=c&code_verifier=v"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	default:
+		req = httptest.NewRequest(http.MethodGet, path, nil)
+	}
 	if carrier {
 		req = withOurCarrier(req, "opaque-own")
 	}
@@ -261,20 +317,25 @@ func responseShot(rec *httptest.ResponseRecorder) string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// F6b-04 — перечень прохода: шесть глаголов и четыре пути без записи каталога.
+// F6b-04 — перечень прохода: шесть глаголов формы, три координаты церемонии и
+// четыре пути без записи каталога.
 
-func TestOwnSessionAddressGate_F6b_04_OpenListIsSixVerbsAndFourPaths(t *testing.T) {
+func TestOwnSessionAddressGate_F6b_04_OpenListIsSixVerbsThreeCeremonyCoordinatesAndFourPaths(t *testing.T) {
 	rig := newAddressRig(t, unverifiedOwnSession())
-	var openVerbs, closedVerbs []string
+	var openVerbs, closedVerbs, ceremony []string
 	for _, rt := range LoginLaneRoutes() {
-		if openBeforeAddressConfirmationWant[rt.Verb] {
+		switch {
+		case rt.Target == RelayTargetIssuance:
+			ceremony = append(ceremony, rt.Path)
+		case openBeforeAddressConfirmationWant[rt.Verb]:
 			openVerbs = append(openVerbs, rt.Path)
-		} else {
+		default:
 			closedVerbs = append(closedVerbs, rt.Path)
 		}
 	}
-	if len(openVerbs) != 6 || len(closedVerbs) != 9 {
-		t.Fatalf("предпосылка: открытых глаголов %d (ожидалось 6), закрытых %d (ожидалось 9)", len(openVerbs), len(closedVerbs))
+	if len(openVerbs) != 6 || len(closedVerbs) != 9 || len(ceremony) != 3 {
+		t.Fatalf("предпосылка: открытых глаголов %d (ожидалось 6), закрытых %d (ожидалось 9), координат церемонии %d (ожидалось 3)",
+			len(openVerbs), len(closedVerbs), len(ceremony))
 	}
 	for _, p := range append(append([]string{}, openNonVerbPaths...), openVerbs...) {
 		method := http.MethodPost
@@ -291,6 +352,26 @@ func TestOwnSessionAddressGate_F6b_04_OpenListIsSixVerbsAndFourPaths(t *testing.
 			t.Fatalf("глагол %s ретранслирован %d раз, ожидался 1", p, rig.reached[p])
 		}
 	}
+	// Координаты церемонии: ответ — ответ дублёра выдачи побайтово, значения Р3
+	// край на них не произносит (Р5).
+	for _, p := range ceremony {
+		rec := rig.presentCeremony(p, true)
+		want := issuanceDoubleAnswers[p]
+		if !notAddressRefusal(rec) {
+			t.Fatalf("%s: координата церемонии получила отказ адреса вместо ответа службы: %s", p, rec.Body.String())
+		}
+		if rec.Code != want.status || rec.Body.String() != want.body || rec.Header().Get(want.header) != want.value {
+			t.Fatalf("%s: ответ не ответ дублёра выдачи побайтово: %d %q %s=%q, ожидалось %d %q %s=%q",
+				p, rec.Code, rec.Body.String(), want.header, rec.Header().Get(want.header), want.status, want.body, want.header, want.value)
+		}
+		if rig.reached[p] != 1 {
+			t.Fatalf("координата %s ретранслирована %d раз, ожидался 1", p, rig.reached[p])
+		}
+	}
+	if rig.relayed[RelayTargetForm] != len(openVerbs) || rig.relayed[RelayTargetIssuance] != len(ceremony) {
+		t.Fatalf("дублёры ретрансляции насчитали: формы %d (ожидалось %d), выдачи %d (ожидалось %d)",
+			rig.relayed[RelayTargetForm], len(openVerbs), rig.relayed[RelayTargetIssuance], len(ceremony))
+	}
 	for _, p := range closedVerbs {
 		requireAddressRefusal(t, p, rig.present(http.MethodPost, p, true))
 		if rig.reached[p] != 0 {
@@ -304,7 +385,8 @@ func TestOwnSessionAddressGate_F6b_04_OpenListIsSixVerbsAndFourPaths(t *testing.
 			t.Fatalf("%s без носителя: ответ %d %s, ретранслирован %d раз — ожидался 1", p, rec.Code, rec.Body.String(), rig.reached[p])
 		}
 	}
-	t.Logf("перепись: открытых путей %d (глаголов %d), закрытых глаголов %d", len(openNonVerbPaths)+len(openVerbs), len(openVerbs), len(closedVerbs))
+	t.Logf("перепись: открытых путей %d (глаголов формы %d · координат церемонии %d), закрытых глаголов %d",
+		len(openNonVerbPaths)+len(openVerbs)+len(ceremony), len(openVerbs), len(ceremony), len(closedVerbs))
 }
 
 // Условие ревью безопасности: разрешённый путь, записанный иначе (хвостовая

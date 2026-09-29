@@ -44,6 +44,8 @@ import (
 //	KACHO_API_GATEWAY_STORAGE_INTERNAL_GRPC  — адрес backend kacho-storage internal-port (9091)
 //	KACHO_APP_ENV                            — deployment-env label (keys the prod authz guard)
 //	KACHO_API_GATEWAY_IAM_LOGIN_LANE_URL     — адрес HTTPS-слушателя полосы формы службы доступа (own only, required)
+//	KACHO_API_GATEWAY_IAM_ISSUANCE_URL       — адрес HTTPS-слушателя выдачи службы доступа: церемония
+//	                                           авторизации (own only, required)
 //	KACHO_API_GATEWAY_ADMISSION_PUBLIC_*     — потолок темпа/одновременности внешнего
 //	                                           слушателя (READ_PER_SEC, MUTATION_PER_SEC,
 //	                                           BURST_FACTOR, IN_FLIGHT; молчание — пол платформы)
@@ -212,12 +214,11 @@ type Config struct {
 	AuthNMode string `envconfig:"KACHO_API_GATEWAY_AUTHN_MODE" default:"production"`
 
 	// IdentityProvider — ПОСАДКА ЛИЧНОСТИ, объявленная профилем (задача #1125).
-	// Законные значения — те, что разбирает пин фундамента: на v1.8.0 это `own`
-	// (человека проверяет наша чеканка) и переходное `external`, у которого край
-	// не читает ни одного адреса поставщика (#2734). Снятие `external` — выпуск
-	// фундамента v1.10.0-rc.3 (corelib#26), подъём пина — #2862. Имени
-	// второго значения край не читает (#2873): вне `own` он ветвится
-	// сравнением с `own`.
+	// Законные значения — те, что разбирает пин фундамента: с выпуска
+	// v1.10.0-rc.3 это одно `own` (человека проверяет наша чеканка). Переходное
+	// `external` фундамент снял (corelib#30, пин поднят #2862): разбор его
+	// отвергает с именем ручки, и край на нём не стартует. Имени снятого
+	// значения край не читает (#2873): вне `own` он ветвится сравнением с `own`.
 	//
 	// УМОЛЧАНИЯ НЕТ НАМЕРЕННО, и это отличает поле от всех соседних: умолчание
 	// `own` МОЛЧА назначило бы посадку профилю, который её не объявил, и страж
@@ -283,6 +284,24 @@ type Config struct {
 	// ручки (ретрансляция без цели отвечала бы 503 на каждом запросе всю жизнь,
 	// неотличимо от «служба лежит»); вне `own` ручка не читается.
 	LoginLaneURL string `envconfig:"KACHO_API_GATEWAY_IAM_LOGIN_LANE_URL" default:""`
+
+	// IAMIssuanceURL — адрес HTTPS-слушателя ВЫДАЧИ службы доступа, на который
+	// край ретранслирует обе координаты церемонии авторизации под посадкой `own`:
+	// навигацию `GET /iam/v1/authorize` и обмен кода `POST /iam/v1/token`
+	// (замысел LINE-A-1 §5.1б п. 2, kacho#2817). Цель своя, а не слушатель
+	// формы: церемония живёт целиком на слушателе выдачи, и тот же путь выдачи,
+	// отвечающий на втором слушателе, был бы вторым местом об одном предмете.
+	//
+	// Слушатель запрашивающий (`optional-mutual`, ручка службы
+	// `KANAME_REGISTRYTOKEN_SERVER_MTLS_CLIENTAUTHMODE`): вызывающего без
+	// сертификата допускает, а край узнаёт только по сертификату и лишь тогда
+	// берёт адрес источника из `X-Forwarded-For`. Край предъявляет ему ту же
+	// клиентскую пару `KACHO_API_GATEWAY_MTLS_CLIENT_{CERT,KEY}_FILE`, что всем
+	// рёбрам к службе; якорь `KACHO_API_GATEWAY_MTLS_CA_FILE` и имя сервера
+	// `KACHO_API_GATEWAY_MTLS_IAM_SERVER_NAME` — тоже те же.
+	// УМОЛЧАНИЯ НЕТ и выводиться из адреса соседа он не вправе: под `own` пустое
+	// значение — отказ старта с именем ручки; вне `own` ручка не читается.
+	IAMIssuanceURL string `envconfig:"KACHO_API_GATEWAY_IAM_ISSUANCE_URL" default:""`
 
 	// MetricsAddr — адрес cluster-internal ДИАГНОСТИЧЕСКОЙ поверхности края
 	// (`GET /metrics`).
@@ -764,6 +783,11 @@ const IdentityProviderKnob = "KACHO_API_GATEWAY_IDENTITY_PROVIDER"
 // LoginLaneURLKnob — имя ручки адреса полосы формы. Объявлено один раз: его
 // называют текст отказа старта, профиль и проба чарта.
 const LoginLaneURLKnob = "KACHO_API_GATEWAY_IAM_LOGIN_LANE_URL"
+
+// IssuanceURLKnob — имя ручки адреса слушателя выдачи службы (цель
+// ретрансляции церемонии авторизации). Объявлено один раз: его называют текст
+// отказа старта, профиль и проба чарта.
+const IssuanceURLKnob = "KACHO_API_GATEWAY_IAM_ISSUANCE_URL"
 
 // ResolvedIdentityProvider разбирает объявленную посадку личности.
 //

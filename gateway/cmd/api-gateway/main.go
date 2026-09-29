@@ -167,38 +167,56 @@ func main() {
 	}
 	authInterceptor = wireLaneCarrierReader(authInterceptor, identityLane, ourSessionReader, logger)
 
-	// РЕТРАНСЛЯЦИЯ ГЛАГОЛОВ ФОРМЫ — под `own`, как и наш читатель: форма входа
-	// принадлежит той чеканке, которая личность ВЫДАЁТ. Взаимный TLS
-	// клиентской парой края, адрес — своя ручка, страж старта ниже отказывает
-	// без неё.
-	var loginLaneRelay *handler.LoginLaneRelay
+	// РЕТРАНСЛЯЦИЯ НА СЛУЖБУ ДОСТУПА — под `own`, как и наш читатель: форма
+	// входа и церемония авторизации принадлежат той чеканке, которая личность
+	// ВЫДАЁТ. Целей две, и у каждой СВОЙ ретранслятор со своей парой «адрес
+	// плюс удостоверение» под стражем старта (замысел LINE-A-1 §5.1б п. 2а,
+	// §7 инв. 36). Клиентскую пару края предъявляют ОБЕ: слушатель формы
+	// взаимный и без пары отвергает рукопожатие; слушатель выдачи, где целиком
+	// живёт церемония, запрашивающий (`optional-mutual`) — без пары он допустил
+	// бы прыжок, но узнал бы в нём не край, и все люди за краем делили бы один
+	// предел темпа (приёмка темпа службы, Р7, стадия S2 п. 1). Предел одной
+	// ретрансляции — названная величина механизма, общая для обеих целей
+	// (`handler.LoginLaneRelayTimeout`, инв. 30): здесь он не задаётся.
+	var loginLaneRelay, issuanceRelay *handler.LoginLaneRelay
 	if identityLane == identityposture.Own {
-		if llErr := validateLoginLaneConfig(LoginLaneConfig{
-			URL:            cfg.LoginLaneURL,
-			ClientCertFile: cfg.MTLSClientCertFile,
-			ClientKeyFile:  cfg.MTLSClientKeyFile,
-			CAFile:         cfg.MTLSCAFile,
-		}); llErr != nil {
-			log.Fatalf("login lane startup-validation: %v", llErr)
-		}
-		loginLaneTransport, ltErr := newLoginLaneTransport(cfg)
-		if ltErr != nil {
-			log.Fatalf("login lane transport: %v", ltErr)
+		// ТОТ ЖЕ оператор чтения цепочки, что кормит условие client_ip модели
+		// прав: справа по числу доверенных прыжков (Ф3 Р2).
+		clientIP := newClientAddressOperator(cfg).ClientIP
+
+		formTransport, formTarget, ftErr := prepareRelayTarget(cfg, middleware.RelayTargetForm, cfg.LoginLaneURL)
+		if ftErr != nil {
+			log.Fatalf("login lane startup-validation: %v", ftErr)
 		}
 		relay, rErr := handler.NewLoginLaneRelay(handler.LoginLaneRelayConfig{
 			Logger:    logger,
+			Serves:    middleware.RelayTargetForm,
 			Target:    cfg.LoginLaneURL,
-			Transport: loginLaneTransport,
-			// ТОТ ЖЕ оператор чтения цепочки, что кормит условие client_ip модели
-			// прав: справа по числу доверенных прыжков (Ф3 Р2).
-			ClientIP: newClientAddressOperator(cfg).ClientIP,
+			Transport: formTransport,
+			ClientIP:  clientIP,
 		})
 		if rErr != nil {
 			log.Fatalf("login lane relay: %v", rErr)
 		}
 		loginLaneRelay = relay
-		logger.Info("login lane relay wired", "target", cfg.LoginLaneURL,
-			"verbs", len(middleware.LoginLaneRoutes()), "strips", "authorization + x-kacho-* (both forms)")
+		logRelayWired(logger, relay, formTarget, cfg.LoginLaneURL)
+
+		issuanceTransport, issuanceTarget, itErr := prepareRelayTarget(cfg, middleware.RelayTargetIssuance, cfg.IAMIssuanceURL)
+		if itErr != nil {
+			log.Fatalf("authorization ceremony relay startup-validation: %v", itErr)
+		}
+		ceremony, cErr := handler.NewLoginLaneRelay(handler.LoginLaneRelayConfig{
+			Logger:    logger,
+			Serves:    middleware.RelayTargetIssuance,
+			Target:    cfg.IAMIssuanceURL,
+			Transport: issuanceTransport,
+			ClientIP:  clientIP,
+		})
+		if cErr != nil {
+			log.Fatalf("authorization ceremony relay: %v", cErr)
+		}
+		issuanceRelay = ceremony
+		logRelayWired(logger, ceremony, issuanceTarget, cfg.IAMIssuanceURL)
 	}
 
 	// --- JWKS verifier wired into the principal-setting path ---
@@ -810,12 +828,8 @@ func main() {
 	// клетки стоят нулями — отличимо от «ретрансляций не было» по посадке в
 	// самоотчёте, а не по этим нулям.
 	diagMetrics.RegisterSessionLane(func() gwmetrics.SessionLaneSnapshot {
-		snap := gwmetrics.SessionLaneSnapshot{Lane: authInterceptor.SessionLane().Snapshot(),
-			Relay: handler.LoginLaneRelaySnapshot{Relayed: map[string]uint64{}}}
-		if loginLaneRelay != nil {
-			snap.Relay = loginLaneRelay.Stats()
-		}
-		return snap
+		return gwmetrics.SessionLaneSnapshot{Lane: authInterceptor.SessionLane().Snapshot(),
+			Relays: handler.LoginLaneRelaySnapshots(loginLaneRelay, issuanceRelay)}
 	})
 	diagDesc, diagDescErr := describeDiagnosticSurface(
 		cfg.MetricsAddr, diagMetrics, posture.Spec().Mode, logger)
@@ -1067,15 +1081,34 @@ func main() {
 		identityLane, clients.NewSessionRevocationsAdapter(backends["iamInternal"]))
 	sessionIdentity.Register(httpMux)
 
-	// ГЛАГОЛЫ ПОЛОСЫ ФОРМЫ (Ф3 Р2; Ф4 регистрация, Ф5 восстановление) —
-	// ретрансляция на слушатель службы, ЗА полосой личности (как «кто я»):
-	// носитель отсечённой сессии до службы не доходит (Ф3-51). Вне `own`
-	// не заведена — пути перечня отвечают 404 краем. Пути — из того же
-	// объявления, что читают полоса и isPublicHTTPPath.
-	if loginLaneRelay != nil {
-		for _, rt := range middleware.LoginLaneRoutes() {
-			httpMux.Handle(rt.Path, loginLaneRelay)
+	// ЗАПИСИ ОБЪЯВЛЕНИЯ — глаголы полосы формы (Ф3 Р2; Ф4 регистрация, Ф5
+	// восстановление, Ф12 второй фактор) и две координаты церемонии авторизации
+	// (замысел LINE-A-1 §5.1: `GET /iam/v1/authorize`, `POST /iam/v1/token`) —
+	// ретрансляция на слушатели службы, ЗА полосой личности (как «кто я»):
+	// носитель отсечённой сессии до службы не доходит (Ф3-51). Каждая запись
+	// крепится ТОЧНЫМ путём на ретранслятор своей цели одной функцией монтажа
+	// (инв. 33): её исход судит проба пакета, её вызов здесь — гейт корня. Вне
+	// `own` не заведена — пути перечня отвечают 404 краем. Пути — из того же
+	// объявления, что читают полоса и isPublicHTTPPath; сосед
+	// `/iam/v1/authorize:check` остаётся за транскодером под `/`.
+	//
+	// Координаты церемонии на граничном admin-REST слушателе НЕ
+	// ретранслируются (sec-issuance-path-not-elsewhere): там запрос получает
+	// ответ обработчика `/` — второй аргумент монтажа есть ТОТ ЖЕ обработчик,
+	// что смонтирован под `/` ниже (гейт корня судит одно имя), и «не найдено»
+	// побайтно то, что слушатель отвечает на путь, которого у него нет. Глаголы
+	// формы ретранслируются и там — у них есть потребитель, операторская
+	// консоль (решение kacho#2849, `RelayTarget.ExternalListenersOnly`).
+	//
+	// АРЕНДАТОРСКОЕ УДОСТОВЕРЕНИЕ ЗА КРАЙ НЕ УЕЗЖАЕТ (приёмка KAN-AUTHN-1, ось 8):
+	// обёртка стоит ВПЛОТНУЮ к пересылающему обработчику — разбор у `/` ниже.
+	restRoot := principalmeta.StripCredentialBeforeForwarding(restHandler)
+	if identityLane == identityposture.Own {
+		mounted, mErr := handler.MountLoginLaneRoutes(httpMux, restRoot, loginLaneRelay, issuanceRelay)
+		if mErr != nil {
+			log.Fatalf("login lane mount: %v", mErr)
 		}
+		logger.Info("relayed records mounted", "records", mounted)
 	}
 
 	// POST /oauth/logout — revocation of the caller's own token(s) in our record
@@ -1110,7 +1143,7 @@ func main() {
 	// сопоставителем нельзя — снимается сам заголовок запроса. Разбор и решения
 	// по конструкциям сборки помимо общего узла — в шапке
 	// gateway/internal/principalmeta/credential_strip.go.
-	httpMux.Handle("/", principalmeta.StripCredentialBeforeForwarding(restHandler))
+	httpMux.Handle("/", restRoot)
 
 	// Хранилище однократности `Idempotency-Key`.
 	//
@@ -1168,15 +1201,16 @@ func main() {
 		// SECURITY (fail-closed): the SAME httpSrv serves every HTTP listener —
 		// the plaintext cmux listener the ingress targets, the advertised
 		// external TLS listener, AND the dedicated cluster-internal admin REST
-		// listener. ConnContext tags ONLY the internal admin listener's
-		// connections (wrapped with listenerorigin.InternalListener below);
-		// every other listener stays unmarked → external (the fail-closed
-		// default), so the REST dispatcher / authz middleware 404 Internal*
-		// paths regardless of which edge listener the request hit. This
-		// inverts the earlier model, which marked only the TLS
-		// listener external and left the ingress-facing plaintext listener
-		// trusted → Internal* REST reachable from the edge.
-		ConnContext: listenerorigin.InternalConnContext,
+		// listener. ConnContext tags the internal admin listener's connections
+		// (wrapped with listenerorigin.InternalListener below) internal and the
+		// two external HTTP listeners' connections (wrapped with
+		// listenerorigin.ExternalListener below) external. Each reader refuses
+		// by default: the REST dispatcher / authz middleware 404 Internal*
+		// paths on every connection without the internal mark, and the
+		// ceremony records (handler.MountLoginLaneRoutes) relay only on
+		// connections with the external mark. A listener that lost its wrapper
+		// serves neither. listener_origin_wiring_test.go holds the wrappers.
+		ConnContext: listenerorigin.ConnContext,
 	}
 
 	// ВНУТРЕННЕГО gRPC-СЛУШАТЕЛЯ У КРАЯ НЕТ — он снят вместе со своей
@@ -1221,7 +1255,7 @@ func main() {
 	}()
 
 	go func() {
-		serveErr := httpSrv.Serve(httpL)
+		serveErr := httpSrv.Serve(listenerorigin.ExternalListener(httpL))
 		if serveErr != nil && serveErr != http.ErrServerClosed && ctx.Err() == nil {
 			logger.Error("http listener died; shutting down", "error", serveErr)
 			cancel()
@@ -1235,8 +1269,8 @@ func main() {
 	// the REST dispatcher serves Internal* paths (/vpc/v1/addressPools,
 	// `:internal` infra-sensitive projections, InternalRegistry/Cluster/
 	// Operations admin). Every other listener — the plaintext cmux listener the
-	// ingress targets and the external TLS listener — is external (unmarked)
-	// and 404s Internal* REST. The ingress MUST NOT target this port; admin-UI /
+	// ingress targets and the external TLS listener, both ExternalListener-
+	// wrapped — is external and 404s Internal* REST. The ingress MUST NOT target this port; admin-UI /
 	// port-forward / cluster-internal tooling reach it via the `internal-rest`
 	// Service port. It serves plain HTTP/1.1 REST (Internal* gRPC is blocked on
 	// EVERY listener by the proxy's HasInternalSuffix router), so no cmux split
@@ -1312,13 +1346,13 @@ func main() {
 				cancel()
 			}
 		}()
-		// SECURITY (fail-closed): the external TLS HTTP sub-listener is left
-		// UNWRAPPED — its connections carry no internal-origin marker, so they
-		// are external (the default) and the REST dispatcher 404s Internal*
-		// paths arriving here. Internal* REST is served ONLY on the dedicated
-		// cluster-internal admin listener (InternalListener-wrapped, below).
+		// SECURITY (fail-closed): the external TLS HTTP sub-listener carries
+		// listenerorigin.ExternalListener — its connections are external, so
+		// the REST dispatcher 404s Internal* paths arriving here and the
+		// ceremony records relay. Internal* REST is served ONLY on the dedicated
+		// cluster-internal admin listener (InternalListener-wrapped, above).
 		go func() {
-			serveErr := httpSrv.Serve(tlsHTTPL)
+			serveErr := httpSrv.Serve(listenerorigin.ExternalListener(tlsHTTPL))
 			if serveErr != nil && serveErr != http.ErrServerClosed && ctx.Err() == nil {
 				logger.Error("tls http listener died; shutting down", "error", serveErr)
 				cancel()
