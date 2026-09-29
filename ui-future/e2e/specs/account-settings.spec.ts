@@ -10,7 +10,7 @@ import {
   lastIssued,
   newSeed,
   seedAddress,
-  seedHuman,
+  seedConfirmedHuman,
   seedSecondFactor,
   totpCode,
   transferSession,
@@ -126,7 +126,10 @@ async function withHuman<T>(
 ): Promise<T> {
   const seed = await newSeed(testInfo);
   try {
-    const human = await seedHuman(seed, seedAddress(scenario));
+    // Посев П-п (приёмка F6b, Р13, §3.3 — «Дано» F8-23 … F8-36): экран параметров
+    // учётной записи неподтверждённому недоступен, и сценарий о нём не дошёл бы
+    // дальше экрана подтверждения.
+    const human = await seedConfirmedHuman(seed, seedAddress(scenario));
     // Подтверждение перевыпускает носитель, поэтому перенос — ПОСЛЕ посева фактора.
     const factor = opts.secondFactor ? await seedSecondFactor(seed) : null;
     await transferSession(seed, context);

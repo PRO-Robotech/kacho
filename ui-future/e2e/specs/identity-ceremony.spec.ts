@@ -12,7 +12,7 @@ import {
   backupCodeOutside,
   newSeed,
   seedAddress,
-  seedHuman,
+  seedConfirmedHuman,
   seedSecondFactor,
   transferSession,
   type SeededHuman,
@@ -169,10 +169,16 @@ function expectContains(census: CeremonyCensus, method: string, path: string, qu
   ).toBeGreaterThan(0);
 }
 
+/**
+ * Человек сценария — посевом П-п (приёмка F6b, Р13): дальше экрана подтверждения
+ * проходит только подтверждённый адрес, и церемонии этого набора судят человека,
+ * который до них дошёл. Неподтверждённого заводит посев П-н там, где сценарий
+ * судит именно его (`address-confirmation.spec.ts`).
+ */
 async function seeded(testInfo: TestInfo, scenario: string, context?: BrowserContext): Promise<SeededHuman> {
   const seed = await newSeed(testInfo);
   try {
-    const human = await seedHuman(seed, seedAddress(scenario));
+    const human = await seedConfirmedHuman(seed, seedAddress(scenario));
     if (context) await transferSession(seed, context);
     return human;
   } finally {
@@ -1100,7 +1106,8 @@ async function withSecondFactor<T>(
 ): Promise<T> {
   const seed = await newSeed(testInfo);
   try {
-    const human = await seedHuman(seed, seedAddress(scenario));
+    // Посев П-п: второй фактор неподтверждённому не заводится (приёмка F6b, §3.3).
+    const human = await seedConfirmedHuman(seed, seedAddress(scenario));
     const factor = await seedSecondFactor(seed);
     return await body(human, factor.backupCodes);
   } finally {
