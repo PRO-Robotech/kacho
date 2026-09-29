@@ -174,6 +174,7 @@ services/compute/tests/newman/scripts/validate-cases.py
 tests/newman/scripts/case_home_test.py
 tests/newman/scripts/exec-coverage.py
 tests/authz-fixtures/prodseed_all.py
+tests/authz-fixtures/verified_human.py
 tools/mixedoutcomeaudit/mixed_outcome_audit.py
 tools/unreadfieldaudit/unread_field_audit.py
 "
