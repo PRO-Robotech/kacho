@@ -64,8 +64,9 @@ if [ -z "${IAM_INTERNAL_GRPC_MTLS_CERT:-}" ] && [ -z "${IAM_INTERNAL_GRPC_MTLS_K
   fi
 fi
 
-# require grpcurl — им ходит prodseed_matrix.py / prodseed_network.py на iam :9091
-# (у InternalUserService.UpsertFromIdentity нет REST-маппинга, KAC-125). Проверка
+# require grpcurl — им чеканит первичное удостоверение mint_rs256.py на iam :9091
+# (у чеканки нет REST-маршрута). Людей посев grpcurl больше не заводит: они
+# заводятся регистрацией через край (kacho#2901). Проверка
 # стоит ЗДЕСЬ, до опознания посадки: отсутствующий инструмент — это отказ входа, а не
 # отказ посева, и путать их незачем.
 if ! command -v grpcurl >/dev/null 2>&1; then
