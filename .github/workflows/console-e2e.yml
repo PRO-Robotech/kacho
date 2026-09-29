@@ -811,6 +811,49 @@ jobs:
           KACHO_CONSOLE_HOST_IP: ${{ steps.console.outputs.host_ip }}
         run: node scripts/browser-reach.mjs
 
+      # ─── ПРИЁМНИК ПИСЕМ СТЕНДА ОТКРЫТ ПРОГОНУ (приёмка F6b, F6b-34; kacho#2901) ───
+      #
+      # Фикстура регистрации набора подтверждает адрес арендатора тем путём, что
+      # человек: код берётся из письма, которое служба поставила регистрацией
+      # (`ui-future/e2e/specs/fixtures.ts`, `register`). Письмо принимает приёмник
+      # писем стенда, и читается оно его HTTP-слушателем — внутри кластера, без
+      # входа ingress. Шаг открывает этот слушатель пробросом на ранер и отдаёт
+      # адрес прогону проб выходом `url` (переменная `KACHO_CONSOLE_MAILBOX_URL`).
+      #
+      # Проброс живёт до конца работы: процесс, запущенный шагом в фоне, ранер
+      # снимает при завершении работы, а не шага. Здесь ждётся ОТВЕТ поверхности,
+      # а не время; не ответила — «условие не создано» своим сообщением, и прогон
+      # проб не начинается: его вердикт был бы не о консоли. Внутри прогона то же
+      # условие спрашивает `ui-future/e2e/preconditions/mail-receiver-reads.precondition.ts`
+      # — и печатает адрес и число писем.
+      #
+      # Только при СВОЁМ стенде: у внешнего (`console_url`) кластера у ранера нет, и
+      # поверхности чтения его приёмника отсюда не открыть. Тогда переменная пуста,
+      # условие прогона не создаётся, и набор — «не выполнилось», а не красное.
+      - name: приёмник писем стенда открыт прогону
+        id: mailbox
+        if: ${{ (github.event_name != 'workflow_dispatch' || inputs.console_url == '') && env.STAND_PRECONDITION_UNMET != '1' }}
+        timeout-minutes: 3
+        env:
+          MAILBOX_SVC: kacho-umbrella-mailpit
+          MAILBOX_PORT: '18025'
+        run: |
+          log="${RUNNER_TEMP:-/tmp}/mailbox-port-forward.log"
+          nohup kubectl -n kacho port-forward "svc/$MAILBOX_SVC" "$MAILBOX_PORT:8025" > "$log" 2>&1 &
+          url="http://127.0.0.1:$MAILBOX_PORT"
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "$url/api/v1/messages?limit=1" || true)
+            if [ "$code" = "200" ]; then
+              echo "url=$url" >> "$GITHUB_OUTPUT"
+              echo "✓ поверхность чтения приёмника писем отвечает на $url (попытка $i)"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "--- журнал проброса:"; cat "$log" || true
+          echo "::error title=Условие не создано::поверхность чтения приёмника писем (svc/$MAILBOX_SVC:8025 → $url) не ответила за 60 с. Это НЕ вердикт проб: фикстура регистрации без неё не подтвердит адрес ни одного арендатора, и пробы не начинались."
+          exit 1
+
       # ПРЕДЕЛ ВРЕМЕНИ РАЗМЕРЯЕТСЯ ПО ЧИСЛУ ПРОБ, А НЕ ПО ПРИВЫЧКЕ.
       #
       # Было 20 минут при 31 пробе. Набор вырос до 65 (канон консоли, #925), и
@@ -838,6 +881,7 @@ jobs:
         env:
           KACHO_CONSOLE_URL: ${{ steps.console.outputs.url }}
           KACHO_CONSOLE_HOST_IP: ${{ steps.console.outputs.host_ip }}
+          KACHO_CONSOLE_MAILBOX_URL: ${{ steps.mailbox.outputs.url }}
         run: npx playwright test
 
       # ВЕРДИКТ ВТОРОЙ — по СОДЕРЖИМОМУ отчёта. Код возврата говорит «упало ли
