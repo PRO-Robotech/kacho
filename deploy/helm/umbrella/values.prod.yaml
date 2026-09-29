@@ -172,6 +172,22 @@ api-gateway:
     # состояние «записи нет» не наступало бы никогда, а страж старта стал бы
     # тождественно истинным.
     issuerKeySets: "https://kaname.kacho.local=https://kaname-internal.kacho.svc:9097/.well-known/kaname/jwks.json"
+    # KEY-FETCH HOP — through the iam mirror, over TLS, VERIFIED.
+    #
+    # Over this hop travels the material the edge verifies every bearer's
+    # SIGNATURE with, so the certificate of the mirror is checked against the
+    # anchor below and nothing else. registry fetches from this same :9097 over
+    # https (registry.tokenAcceptance.issuerKeySets below) — one port, one
+    # transport.
+    #
+    # The bundle is the internal CA that signs iam's serving cert. Unreadable or
+    # certificate-less ⇒ REFUSES THE START: falling back to the system roots would
+    # read as configured and verify nothing. The provider-named root that used to
+    # carry this anchor, together with its retired keys, is gone (#2734).
+    issuerKeySetsCa:
+      secretName: kaname-server-tls
+      key: ca.crt
+      mountPath: /etc/api-gateway/issuer-keysets-ca
     # Наш издатель выбирает полосу приёма: строгий тип at+jwt и чтение отзыва на
     # предъявлении. Вне issuers — отказ в старте.
     platformIssuer: "https://kaname.kacho.local"
@@ -302,39 +318,6 @@ api-gateway:
     # службе выше: расхождение половин — стенд, у которого о личности решают
     # по-разному.
     identityProvider: own
-  # Узел носит имя прежнего поставщика по истории; живой в нём ровно один
-  # предмет — якорь хопа за набором ключей НАШЕГО издателя (`jwksCa`, ниже).
-  hydra:
-    # KEY-FETCH HOP — through the iam mirror, over TLS, VERIFIED.
-    #
-    # THIS LINE USED TO POINT STRAIGHT AT THE PROVIDER, and that was the facade bypass
-    # this edge had already been caught at once and fixed. It came back because the
-    # correct route was unreachable: an address knob existed for this hop, a trust knob
-    # did not, so "fetch from the internal mirror over TLS" could not be configured and
-    # going around the facade looked like the pragmatic choice. It is not a choice any
-    # more — the anchor below makes the right route configurable.
-    #
-    # Why it matters more than tidiness: over this hop travels the material the edge
-    # verifies every bearer's SIGNATURE with. Substituting it substitutes the access
-    # decision, and the edge then believes its own answer. Plaintext, or TLS whose
-    # certificate nobody checks, both leave that open. registry already fetches from
-    # this same :9097 over https (see registry.tokenAcceptance.issuerKeySets below) — one
-    # port, one
-    # transport.
-    jwksUrl: ""  # СНЯТ: адрес набора теперь объявляется записью издателя
-              # в tokenAcceptance.issuerKeySets выше.
-    # Anchor for the hop above: the internal-CA bundle that signs iam's serving cert.
-    # Unreadable or certificate-less ⇒ REFUSES THE START: falling back to the
-    # system roots would read as configured and verify nothing.
-    jwksCa:
-      secretName: kaname-server-tls
-      key: ca.crt
-      mountPath: /etc/api-gateway/hydra-jwks-ca
-    issuer: ""  # СНЯТ вместе с приходом tokenAcceptance выше: два объявления об одном
-                # предмете дают ОТКАЗ В СТАРТЕ, а не молчаливое старшинство.
-    # The provider's admin-API addresses and their anchor are not declared: the
-    # edge no longer reads them (#2734) — revocation is asked of our authority or
-    # our record, and the logout writes our record.
   # AuthZ: per-RPC IAM Check fan-out, fail-CLOSED on transient IAM errors.
   authz:
     enabled: true
