@@ -56,7 +56,7 @@ STATUS (Phase C, #59) — UNBLOCKED + PROVEN end-to-end:
     достижимым на ручках с acr=1. Блокер `created_by` (#60) для служебных ключей
     закрыт: вызывающий-машина записывает `created_by` = владелец аккаунта целевой
     учётки (см. обработчик/use-case sa_keys). Коллекция vpc `network` проходит
-    ЗЕЛЕНО на машинном посеве под production-strict (см. prodseed_network.py).
+    ЗЕЛЕНО на машинном посеве под production-strict.
   - `user_platform_token` (per-subject USER) — персональный токен пользователя,
     обменянный у НАШЕГО издателя. Прежний помощник той же роли обменивал его у
     внешнего поставщика и СНЯТ вместе со своим предметом: выпуск персонального
@@ -108,7 +108,7 @@ BOOTSTRAP_MINT_MTLS_KEY = os.environ.get(
 # ── gateway-identity client cert (gateway-fronted internal RPCs) ────────────
 # A SECOND, DIFFERENT identity from the bootstrap-operator above. kaname :9091
 # admits the gateway SAN for the ordinary internal RPCs the seed drives through
-# grpcurl (InternalUserService.UpsertFromIdentity, InternalIAMService.LookupSubject)
+# grpcurl (InternalIAMService.LookupSubject)
 # but deliberately NOT for the bootstrap-token mint. Keep the two apart: pointing
 # the mint at this cert is the exact "fix" the #58 hardening exists to prevent.
 GATEWAY_CLIENT_SECRET = os.environ.get("GATEWAY_CLIENT_SECRET", "api-gateway-client-tls")

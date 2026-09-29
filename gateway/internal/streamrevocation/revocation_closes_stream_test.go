@@ -206,6 +206,75 @@ func (b *basicStub) CheckBasicCredentialLive(
 	return &iamv1.CheckBasicCredentialLiveResponse{}, nil
 }
 
+// humanStub — НАСТОЯЩИЙ внутренний глагол iam о НАШЕЙ сессии по носителю
+// (`InternalHumanSessionService.Resolve`) — тот вопрос, которым полоса сессии
+// спрашивает службу на пути запроса и которым перепрос спрашивает отметку адреса
+// (kacho#2900).
+//
+// Умолчание — «сессии нет»: носитель, которого проба не завела, не предмет, и
+// ответ «есть» на него был бы снисходительнее службы.
+type humanStub struct {
+	iamv1.UnimplementedInternalHumanSessionServiceServer
+
+	mu       sync.Mutex
+	sessions map[string]*iamv1.HumanSession
+	fail     bool
+	// asked — какими носителями РЕАЛЬНО спросили. Без этого «поток жив»
+	// неотличимо от «про отметку не спрашивали вовсе».
+	asked []string
+}
+
+func newHumanStub() *humanStub { return &humanStub{sessions: map[string]*iamv1.HumanSession{}} }
+
+// put заводит живую сессию человека за носителем.
+func (h *humanStub) put(bearer, userID string, verified bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.sessions[bearer] = &iamv1.HumanSession{
+		UserId:          userID,
+		AuthenticatedAt: timestamppb.New(time.Now().Add(-time.Hour)),
+		ExpiresAt:       timestamppb.New(time.Now().Add(time.Hour)),
+		AssuranceLevel:  "1",
+		EmailVerified:   verified,
+	}
+}
+
+// unverify снимает отметку адреса у сессии за носителем.
+func (h *humanStub) unverify(bearer string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.sessions[bearer].EmailVerified = false
+}
+
+// end оканчивает сессию: носитель больше ни на что не указывает.
+func (h *humanStub) end(bearer string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.sessions, bearer)
+}
+
+func (h *humanStub) askedBearers() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]string(nil), h.asked...)
+}
+
+func (h *humanStub) Resolve(
+	_ context.Context, in *iamv1.ResolveHumanSessionRequest,
+) (*iamv1.ResolveHumanSessionResponse, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.asked = append(h.asked, in.GetBearer())
+	if h.fail {
+		return nil, status.Error(codes.Unavailable, "authority is down")
+	}
+	sess, ok := h.sessions[in.GetBearer()]
+	if !ok {
+		return &iamv1.ResolveHumanSessionResponse{Found: false}, nil
+	}
+	return &iamv1.ResolveHumanSessionResponse{Found: true, Session: sess}, nil
+}
+
 // journalOwnerStub — владелец журнала подписки: открывает поток и держит его.
 type journalOwnerStub struct {
 	subscriptionv1.UnimplementedInternalSubscriptionServiceServer
@@ -324,6 +393,7 @@ type stand struct {
 	owner      *journalOwnerStub
 	authority  *authorityStub
 	basic      *basicStub
+	human      *humanStub
 }
 
 func newStand(t *testing.T, tune func(*streamrevocation.Config)) *stand {
@@ -352,6 +422,7 @@ func newStand(t *testing.T, tune func(*streamrevocation.Config)) *stand {
 
 	authority := newAuthorityStub()
 	basic := newBasicStub()
+	human := newHumanStub()
 	// ОБЕ службы — на одном соединении, ровно как в бою: спрашивающий один,
 	// сосед один, соединение одно. Разведи их по двум стендам — и проба
 	// перестала бы утверждать то единственное, ради чего адаптер держит оба
@@ -359,6 +430,7 @@ func newStand(t *testing.T, tune func(*streamrevocation.Config)) *stand {
 	iamConn := dial(t, func(s *grpc.Server) {
 		iamv1.RegisterInternalSessionRevocationsServiceServer(s, authority)
 		iamv1.RegisterInternalIAMServiceServer(s, basic)
+		iamv1.RegisterInternalHumanSessionServiceServer(s, human)
 	})
 
 	cfg := streamrevocation.Config{
@@ -380,16 +452,25 @@ func newStand(t *testing.T, tune func(*streamrevocation.Config)) *stand {
 	if err != nil {
 		t.Fatalf("сборка сметателя: %v", err)
 	}
-	return &stand{projection: projection, sweeper: sweeper, owner: owner, authority: authority, basic: basic}
+	return &stand{projection: projection, sweeper: sweeper, owner: owner, authority: authority,
+		basic: basic, human: human}
 }
 
 // openStream открывает поток названного предъявителя и ждёт, пока владелец его
 // примет. Возвращает канал, закрывающийся вместе с потоком.
-func (s *stand) openStream(t *testing.T, headers map[string]string) <-chan struct{} {
+//
+// presented — то, что записала бы полоса приёма, пропустившая этот запрос
+// (kacho#2900). Не задано — полоса не записала ничего.
+func (s *stand) openStream(
+	t *testing.T, headers map[string]string, presented ...principalmeta.Presented,
+) <-chan struct{} {
 	t.Helper()
 	r := httptest.NewRequest(http.MethodGet, subscriptionstream.Path+"?owner=probe", nil)
 	for k, v := range headers {
 		r.Header.Set(k, v)
+	}
+	for _, p := range presented {
+		r = r.WithContext(principalmeta.WithPresented(r.Context(), p))
 	}
 	done := make(chan struct{})
 	go func() {
@@ -413,7 +494,7 @@ func TestRevokedCredentialClosesTheOpenStreamEndToEnd(t *testing.T) {
 		principalmeta.HeaderPrincipalType: "user",
 		principalmeta.HeaderPrincipalID:   "usr00000000000000001",
 		principalmeta.HeaderTokenJti:      "jti-open-stream",
-	})
+	}, recordLaneToken("jti-open-stream"))
 
 	runCtx, stop := context.WithCancel(context.Background())
 	defer stop()
@@ -438,6 +519,12 @@ func TestRevokedCredentialClosesTheOpenStreamEndToEnd(t *testing.T) {
 	}
 }
 
+// recordLaneToken — что записывает полоса предъявителя о токене записи издателя,
+// которая не наша: путь запроса спрашивает о нём запись отзыва по идентификатору.
+func recordLaneToken(jti string) principalmeta.Presented {
+	return principalmeta.PresentedToken("raw-"+jti, false)
+}
+
 // itoa — секунды эпохи заголовком момента подтверждения.
 func itoa(v int64) string { return strconv.FormatInt(v, 10) }
 
@@ -460,7 +547,7 @@ func TestStreamArrivalIsSignalledPerStreamNotBroadcast(t *testing.T) {
 		principalmeta.HeaderPrincipalType: "user",
 		principalmeta.HeaderPrincipalID:   "usr00000000000000001",
 		principalmeta.HeaderTokenJti:      "jti-only-stream",
-	})
+	}, recordLaneToken("jti-only-stream"))
 
 	select {
 	case <-s.owner.started:
@@ -487,12 +574,12 @@ func TestStandOpensTwoStreamsInSequence(t *testing.T) {
 		principalmeta.HeaderPrincipalType: "user",
 		principalmeta.HeaderPrincipalID:   "usr00000000000000001",
 		principalmeta.HeaderTokenJti:      "jti-first-stream",
-	})
+	}, recordLaneToken("jti-first-stream"))
 	second := s.openStream(t, map[string]string{
 		principalmeta.HeaderPrincipalType: "user",
 		principalmeta.HeaderPrincipalID:   "usr00000000000000002",
 		principalmeta.HeaderTokenJti:      "jti-second-stream",
-	})
+	}, recordLaneToken("jti-second-stream"))
 
 	if got := s.owner.servedStreams(); got != 2 {
 		t.Fatalf("стенд обслужил потоков %d, ожидалось 2 — возврат из ожидания "+

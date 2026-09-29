@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // session_lane.go — клетки полосы сессии человека и ретрансляции полосы формы
-// (приёмка Ф3, Ф3-48) и клетка уровня вне оси сессии (приёмка Ф11, Ф11-19).
+// (приёмка Ф3, Ф3-48), клетка уровня вне оси сессии (приёмка Ф11, Ф11-19) и
+// клетка отказа адреса почты (приёмка F6b, Р12).
 //
 // Клетки существуют с нулём с первой секунды жизни процесса — «отказов по
 // отсечке не было» и «полосы нет» обязаны различаться без единого запроса.
@@ -23,6 +24,9 @@ const (
 	sessionOutcomeCutoffDenied = "cutoff_denied"
 	sessionOutcomeNoSession    = "no_session"
 	sessionOutcomeUnavailable  = "unavailable"
+	// sessionOutcomeEmailNotVerified — отказ адреса (приёмка F6b, Р12): живая
+	// сессия с неподтверждённым адресом почты на пути вне перечня прохода.
+	sessionOutcomeEmailNotVerified = "email_not_verified"
 )
 
 // Глаголы формы — закрытый словарь МЕТОК. Это словарь поверхности, а не второе
@@ -49,6 +53,9 @@ const (
 	loginLaneVerbSecondFactorRemove      = "second-factor-remove"
 	loginLaneVerbSecondFactorBackupCodes = "second-factor-backup-codes"
 	loginLaneVerbStepUp                  = "step-up"
+	// Подтверждение адреса почты (приёмка F6b, Р5): два глагола той же полосы.
+	loginLaneVerbVerifyEmail        = "verify-email"
+	loginLaneVerbVerifyEmailConfirm = "verify-email-confirm"
 	// Координаты церемонии авторизации (замысел LINE-A-1 §5.1) и метаданные
 	// обнаружения (kacho#2721): ретранслируются на слушатель выдачи, клетки —
 	// те же.
@@ -73,6 +80,7 @@ func LoginLaneVerbLabels() []string {
 		loginLaneVerbRegister, loginLaneVerbRecovery, loginLaneVerbRecoveryComplete,
 		loginLaneVerbSecondFactorStatus, loginLaneVerbSecondFactorEnroll, loginLaneVerbSecondFactorConfirm,
 		loginLaneVerbSecondFactorRemove, loginLaneVerbSecondFactorBackupCodes, loginLaneVerbStepUp,
+		loginLaneVerbVerifyEmail, loginLaneVerbVerifyEmailConfirm,
 		loginLaneVerbAuthorize, loginLaneVerbToken, loginLaneVerbDiscovery,
 	}
 }
@@ -99,7 +107,8 @@ var (
 		"Browser-session refusals at the edge, by outcome: cutoff_denied (ended by our revocation, "+
 			"carrier ended), no_session (a carrier the service does not know: unknown, logged out, "+
 			"expired or blocked — one answer, carrier ended), unavailable (the service did not answer; "+
-			"carrier intact).",
+			"carrier intact), email_not_verified (a live session whose email address is not verified, "+
+			"outside the pass list; carrier intact).",
 		[]string{"outcome"}, nil)
 	sessionRolloutWindowDesc = prometheus.NewDesc(
 		"kacho_api_gateway_session_lane_rollout_window_total",
@@ -152,9 +161,10 @@ func (c *sessionLaneCollector) Describe(ch chan<- *prometheus.Desc) {
 func (c *sessionLaneCollector) Collect(ch chan<- prometheus.Metric) {
 	s := c.read()
 	for outcome, value := range map[string]uint64{
-		sessionOutcomeCutoffDenied: s.Lane.CutoffDenied,
-		sessionOutcomeNoSession:    s.Lane.NoSession,
-		sessionOutcomeUnavailable:  s.Lane.Unavailable,
+		sessionOutcomeCutoffDenied:     s.Lane.CutoffDenied,
+		sessionOutcomeNoSession:        s.Lane.NoSession,
+		sessionOutcomeUnavailable:      s.Lane.Unavailable,
+		sessionOutcomeEmailNotVerified: s.Lane.AddressNotVerified,
 	} {
 		ch <- prometheus.MustNewConstMetric(sessionRefusalsDesc, prometheus.CounterValue, float64(value), outcome)
 	}
@@ -190,6 +200,8 @@ func (c *sessionLaneCollector) Collect(ch chan<- prometheus.Metric) {
 		loginLaneVerbSecondFactorRemove:      relayed[loginLaneVerbSecondFactorRemove],
 		loginLaneVerbSecondFactorBackupCodes: relayed[loginLaneVerbSecondFactorBackupCodes],
 		loginLaneVerbStepUp:                  relayed[loginLaneVerbStepUp],
+		loginLaneVerbVerifyEmail:             relayed[loginLaneVerbVerifyEmail],
+		loginLaneVerbVerifyEmailConfirm:      relayed[loginLaneVerbVerifyEmailConfirm],
 		loginLaneVerbAuthorize:               relayed[loginLaneVerbAuthorize],
 		loginLaneVerbToken:                   relayed[loginLaneVerbToken],
 		loginLaneVerbDiscovery:               relayed[loginLaneVerbDiscovery],

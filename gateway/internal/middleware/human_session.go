@@ -55,7 +55,10 @@ type HumanSession struct {
 	// AssuranceLevel — уровень уверенности НА ОСИ КАТАЛОГА («1» — пароль): наша
 	// сессия объявляет его сама (Ф11), перевода со словаря поставщика здесь нет.
 	AssuranceLevel string
-	// EmailVerified — подтверждён ли ТЕКУЩИЙ адрес (Ф2 П1).
+	// EmailVerified — подтверждён ли ТЕКУЩИЙ адрес (Ф2 П1). По нему полоса
+	// сессии решает рубеж адреса (приёмка F6b, Р4), а «кто я» — спрашивать ли о
+	// правах (Р10). Значение, которого в ответе службы нет, — «не подтверждён»:
+	// нулевое значение закрывает, а не открывает.
 	EmailVerified bool
 }
 
@@ -100,15 +103,21 @@ type SessionLaneSnapshot struct {
 	// (нет, «0», словарь поставщика — Ф11-19). Не исход отказа: на глаголе без
 	// пола такой ответ проходит, а состояние докладывается само по себе.
 	AssuranceOffAxis uint64
+	// AddressNotVerified — отказов адреса (приёмка F6b, Р3, Р12): живая сессия,
+	// чей адрес почты не подтверждён, на пути вне перечня прохода. Носитель
+	// цел. Отказ решения с причиной службы (Р3а) здесь не считается: его
+	// произносит решение, а не полоса.
+	AddressNotVerified uint64
 }
 
 // SessionLaneCounts — накопитель клеток полосы сессии на горячем пути.
 type SessionLaneCounts struct {
-	cutoffDenied     atomic.Uint64
-	noSession        atomic.Uint64
-	unavailable      atomic.Uint64
-	rolloutWindow    atomic.Uint64
-	assuranceOffAxis atomic.Uint64
+	cutoffDenied      atomic.Uint64
+	noSession         atomic.Uint64
+	unavailable       atomic.Uint64
+	rolloutWindow     atomic.Uint64
+	assuranceOffAxis  atomic.Uint64
+	addressUnverified atomic.Uint64
 }
 
 // Snapshot — слепок клеток для коллектора.
@@ -117,11 +126,12 @@ func (c *SessionLaneCounts) Snapshot() SessionLaneSnapshot {
 		return SessionLaneSnapshot{}
 	}
 	return SessionLaneSnapshot{
-		CutoffDenied:     c.cutoffDenied.Load(),
-		NoSession:        c.noSession.Load(),
-		Unavailable:      c.unavailable.Load(),
-		RolloutWindow:    c.rolloutWindow.Load(),
-		AssuranceOffAxis: c.assuranceOffAxis.Load(),
+		CutoffDenied:       c.cutoffDenied.Load(),
+		NoSession:          c.noSession.Load(),
+		Unavailable:        c.unavailable.Load(),
+		RolloutWindow:      c.rolloutWindow.Load(),
+		AssuranceOffAxis:   c.assuranceOffAxis.Load(),
+		AddressNotVerified: c.addressUnverified.Load(),
 	}
 }
 
@@ -154,5 +164,11 @@ func (c *SessionLaneCounts) recordRolloutWindow() {
 func (c *SessionLaneCounts) recordAssuranceOffAxis() {
 	if c != nil {
 		c.assuranceOffAxis.Add(1)
+	}
+}
+
+func (c *SessionLaneCounts) recordAddressNotVerified() {
+	if c != nil {
+		c.addressUnverified.Add(1)
 	}
 }

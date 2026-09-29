@@ -411,6 +411,9 @@ func main() {
 	//
 	// Читатели независимы, потому что независимы их предметы: у каждого свой
 	// источник, свой транспорт, свой счётчик и своё окно доклада.
+	// ourTokenRevocation — читатель сверки наших токенов; тот же экземпляр
+	// получает перепрос открытых потоков (kacho#2900). Ноль — издатель не принят.
+	var ourTokenRevocation middleware.TokenRevocationChecker
 	if platformAccepted {
 		platformHopClient, phErr := newPlatformRevocationHopClient(
 			cfg.PlatformTokenRevocationCAFile,
@@ -434,6 +437,7 @@ func main() {
 			log.Fatalf("platform revocation check: %v", pcErr)
 		}
 		authInterceptor = authInterceptor.WithPlatformRevocationCheck(platformCache, 0)
+		ourTokenRevocation = platformCache
 		logger.Info("revocation of OUR OWN tokens is read on presentation",
 			"authority_pinned", strings.TrimSpace(cfg.PlatformTokenRevocationCAFile) != "",
 			// Личность на хопе — в самоотчёте, а не только в настройках:
@@ -910,7 +914,7 @@ func main() {
 	// механизма разошлись бы молча — и разошлись бы именно там, где расхождение
 	// не видно.
 	credentialSweeper, csErr := buildStreamRevocationSweeper(
-		cfg, backends["iamInternal"], subscriptionStream, logger)
+		cfg, backends["iamInternal"], ourTokenRevocation, subscriptionStream, logger)
 	if csErr != nil {
 		log.Fatalf("subscription credential recheck: %v", csErr)
 	}

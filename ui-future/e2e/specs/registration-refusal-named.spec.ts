@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { expect, type Route } from "@playwright/test";
-import { identityRefusalFromText, identityRefusalOnPage, register, test } from "./fixtures";
+import { identityRefusalFromText, identityRefusalOnPage, register, registerThroughScreen, test } from "./fixtures";
 
 /**
  * ОТКАЗ РЕГИСТРАЦИИ НАЗЫВАЕТСЯ СВОИМ ТЕКСТОМ, А НЕ НАШИМ СИМПТОМОМ.
@@ -176,7 +176,10 @@ test.describe("отказ регистрации назван своим тек�
       serve(route, registrationScreen(), { status: 400, body: REFUSAL, cookie: true }),
     );
 
-    const failure = await register(page).then(
+    // Судится половина регистрации (`registerThroughScreen`): порядок её
+    // ожиданий — предмет этой пары. Подтверждения адреса на экране, поданном
+    // перехватом, не бывает: письма ему никто не шлёт.
+    const failure = await registerThroughScreen(page).then(
       () => "",
       (e: unknown) => (e instanceof Error ? e.message : String(e)),
     );
@@ -225,7 +228,8 @@ test.describe("отказ регистрации назван своим тек�
       }),
     );
 
-    const failure = await register(page).then(
+    // Судится половина регистрации — довод тот же, что у пары выше.
+    const failure = await registerThroughScreen(page).then(
       () => "",
       (e: unknown) => (e instanceof Error ? e.message : String(e)),
     );

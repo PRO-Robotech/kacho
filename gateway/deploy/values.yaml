@@ -428,6 +428,27 @@ tokenAcceptance:
   # Производственная посадка требует https:// у каждого адреса: набор ключей
   # есть единственный якорь доверия проверки подписи.
   issuerKeySets: ""
+  # issuerKeySetsCa — якорь доверия ХОПА за наборами ключей, адреса которых
+  # объявляет issuerKeySets. По этому хопу приезжает материал, которым край
+  # проверяет ПОДПИСЬ каждого предъявителя: подменивший его в пути подменяет
+  # решение о доступе. Лист слушателя на внутрикластерном имени выписан
+  # внутренним центром, которого в корнях процесса нет, поэтому связка задаётся
+  # настройкой, как и адрес. Якорь один на клиент, которым край забирает наборы
+  # ВСЕХ принимаемых издателей. Драйвит KACHO_API_GATEWAY_JWKS_CA_FILE.
+  #
+  # Пусто ⇒ volume/mount/env не рендерятся, транспорт по умолчанию
+  # (внутрикластерный адрес без TLS якоря не требует). Задано ⇒ связка —
+  # ЕДИНСТВЕННЫЙ якорь хопа, а нечитаемая связка ОТКАЗЫВАЕТ В СТАРТЕ.
+  # Стенд, чей набор тянется по TLS с внутрикластерного имени, обязан его
+  # объявить: gateway/deploy/jwks_ca_render_test.go
+  # (TestStacks_InClusterKeySetHopCarriesItsAnchor).
+  #
+  # Прежний корень этого якоря носил имя снятого поставщика вместе с его
+  # адресами и снят целиком (#2734); ключ не переиспользуется.
+  issuerKeySetsCa:
+    secretName: ""
+    key: ca.crt
+    mountPath: /etc/api-gateway/issuer-keysets-ca
   # PLATFORM_TOKEN_ISSUER — издатель, под которым чеканит НАША платформа. Он же
   # выбирает полосу приёма: строгий тип at+jwt (RFC 9068) и чтение отзыва на
   # предъявлении. Пусто ⇒ наша чеканка краем не принимается. Непусто, но вне
@@ -462,25 +483,6 @@ tokenAcceptance:
   revocationClientCert:
     certFile: ""
     keyFile: ""
-
-hydra:
-  # The previous identity provider's admin-API addresses (introspectionUrl,
-  # adminUrl) and their trust anchor (adminCa) are gone (#2734): the edge no
-  # longer reads them, and a key a profile sets with no reader is a value that
-  # changes nothing.
-  #
-  # jwksCa — trust anchor for the KEY-FETCH hop (the JWKS mirror of iam). An
-  # address knob existed here and a trust knob did not, so "serve the mirror over
-  # TLS" had no reachable configuration and was worked around by sending the edge
-  # straight to the provider instead, past the facade.
-  #
-  # Empty ⇒ default transport (an in-cluster plaintext mirror needs no anchor).
-  # Set ⇒ that bundle is the ONLY anchor for the hop, and an unreadable one
-  # REFUSES THE START.
-  jwksCa:
-    secretName: ""
-    key: ca.crt
-    mountPath: /etc/api-gateway/hydra-jwks-ca
 
 # AuthZ — per-RPC authorization middleware.
 #   enabled: when true, every authenticated request is gated by a
