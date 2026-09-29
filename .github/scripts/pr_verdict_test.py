@@ -596,9 +596,6 @@ VERDICT = "сводный вердикт (все проверки заверши
 # Имя check-run на dfbbdbc474c (2026-09-29): джоба `pg-outside-selection`, 109 байт
 # в объявлении, площадка показывает 100.
 PG_CUT = "Postgres-пробы вне отбора интеграционной джобы (пропуск =..."
-REQUEST_WORKFLOWS = (CI, UI, REVIEW, *(f".github/workflows/{n}" for n in (
-    "console-e2e.yml", "e2e-newman.yml", "production-posture.yml",
-    "required-verdict.yml", "security-scan.yml")))
 
 # check-runs dfbbdbc474c на 2026-09-29T14:34:52Z: ответ
 # `repos/PRO-Robotech/kacho/commits/dfbbdbc474c1e9044937b645483ab08a42da1c7d/check-runs`
@@ -630,6 +627,18 @@ def all_green(decl) -> list[dict]:
 def _request_filter(doc: dict) -> dict:
     on = doc["on"] if "on" in doc else doc[True]
     return on["pull_request"]
+
+
+def _request_workflows_independently(workflows: dict[str, object]) -> int:
+    """Процессов на запросе, посчитанных мимо `declare`: `on` называет
+    `pull_request`. Фильтр ветки в дереве у всех один — {main, [0-9]+}, его
+    держит `assert-review-trigger-scope.py`, ось 1."""
+    n = 0
+    for doc in workflows.values():
+        on = doc.get("on", doc.get(True))
+        triggers = [on] if isinstance(on, str) else list(on or [])
+        n += "pull_request" in triggers
+    return n
 
 
 def _checks_declared_independently(workflows: dict[str, object]) -> int:
@@ -666,7 +675,7 @@ def test_the_tree_declares_every_job_the_request_starts() -> None:
           f"образцов {len(patterns)})")
     assert d.breaches == (), "\n".join(d.breaches)
     assert len(d.checks) == _checks_declared_independently(wf) > 0, d
-    assert d.on_request == len(REQUEST_WORKFLOWS), d
+    assert d.on_request == _request_workflows_independently(wf) > 1, d
     assert VERDICT not in literals, "свод объявил сам себя — ждал бы собственного завершения"
     assert PG_CUT in literals, "длинное имя объявлено не в показе площадки — его прогон " \
                                "не нашёлся бы никогда"
@@ -949,7 +958,8 @@ def test_the_script_derives_the_declaration_from_the_tree() -> None:
     args = ("--self-name", VERDICT, "--workflows", str(WORKFLOWS), "--base", LINE_BASE)
     code, out = cli(all_green(d), *args)
     assert code == 0 and f"объявлено проверок {len(d.checks)}" in out, (code, out)
-    assert f"идут на запросе в «{LINE_BASE}» {len(REQUEST_WORKFLOWS)}" in out, out
+    on_request = _request_workflows_independently(tree_workflows())
+    assert f"идут на запросе в «{LINE_BASE}» {on_request}" in out, out
     code, out = cli(list(OBSERVED_2908), *args)
     assert code == 3 and "осмотрено проверок 1" in out, (code, out)
     red = all_green(d)
