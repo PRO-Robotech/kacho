@@ -33,8 +33,11 @@
 # Использование — как библиотека:  . "$(dirname "$0")/provider-up.sh"
 #   ISSUER_UP_ARGS          → аргументы helm, поднимающие издателя поставщика
 #   PROVIDER_UP_ARGS        → издателя И соседа-терминатора его слушателя
-#   IDENTITY_STORE_UP_ARGS  → службу личности поставщика и наши карты её настроек
-#   EXTERNAL_POSTURE_ARGS   → посадку `external` обеим половинам (служба и край)
+#
+#   Службу личности поставщика поднять уже нельзя: её настройки в профилях
+#   ссылаются на шаблоны подчарта службы доступа, снятые kacho#2818; посадку
+#   `external` службе объявить нельзя — ключа посадки у неё нет (kaname#363).
+#   Массивы, это делавшие, сняты вместе с ними.
 #   provider_part_declared <часть> <профиль>… — объявляет ли цепочка настройки
 #       части стека; <часть>: terminator | issuer | identity-store.
 #       Код 0 — объявляет; 1 — не объявляет; 2 — профили не разобраны.
@@ -49,13 +52,6 @@
 ISSUER_UP_ARGS=(--set hydra.enabled=true)
 # shellcheck disable=SC2034
 PROVIDER_UP_ARGS=("${ISSUER_UP_ARGS[@]}" --set mtls.hydraAdminTls.enabled=true)
-# shellcheck disable=SC2034
-IDENTITY_STORE_UP_ARGS=(--set kratos.enabled=true
-                        --set kaname.kratos.config.enabled=true
-                        --set kaname.kratos.identitySchema.enabled=true)
-# shellcheck disable=SC2034
-EXTERNAL_POSTURE_ARGS=(--set kaname.config.authn.identityProvider=external
-                       --set api-gateway.authn.identityProvider=external)
 
 # provider_part_declared <часть> <профиль>… — слияние профилей слева направо,
 # как у helm, и вопрос к ПОБЕДИВШЕМУ значению:

@@ -27,30 +27,20 @@ import (
 )
 
 func TestIdentitySecondFactorInjection_ChainPredicatesReadBothSides(t *testing.T) {
-	mounted := []string{"a: 1\n", "extraArgs:\n  - --config\n  - " + identityRenderedConfigPath + "\n"}
-	if !identityChainMountsOurConfig(mounted) {
-		t.Fatal("провязка настроек в цепочке не найдена — гейт объявил бы стенд " +
-			"работающим на умолчаниях поставщика при живой провязке")
-	}
-	if identityChainMountsOurConfig([]string{"a: 1\n", "b: 2\n"}) {
-		t.Fatal("провязка найдена там, где её нет — гейт молчал бы на стенде без настроек")
-	}
-
-	// НАША посадка личности читается у обеих половин по отдельности: профиль
-	// вправе назвать любую одну, и стенд от этого под судом не перестаёт быть.
+	// Читается посадка КРАЯ; половина службы — одна (kanameLanding, kaname#363) и
+	// не читается вовсе: снятый ключ службы в профиле посадкой не считается —
+	// его отвергает рендер подчарта (kacho#2818).
 	for _, c := range []struct {
-		name, text, iam, edge string
+		name, text, edge string
 	}{
 		{"обе половины", "kaname:\n  config:\n    authn:\n      identityProvider: own\n" +
-			"api-gateway:\n  authn:\n    identityProvider: own\n", "own", "own"},
-		{"только служба", "kaname:\n  config:\n    authn:\n      identityProvider: external\n", "external", ""},
-		{"только край", "api-gateway:\n  authn:\n    identityProvider: own\n", "", "own"},
+			"api-gateway:\n  authn:\n    identityProvider: own\n", "own"},
+		{"только снятый ключ службы", "kaname:\n  config:\n    authn:\n      identityProvider: external\n", ""},
+		{"только край", "api-gateway:\n  authn:\n    identityProvider: own\n", "own"},
 	} {
-		iam, edge := identityLandingOfProfile(c.text)
-		if iam != c.iam || edge != c.edge {
-			t.Fatalf("%s: посадка прочитана как iam=%q gateway=%q, объявлено iam=%q gateway=%q — "+
-				"разбор перестал узнавать НАШУ ручку, и стражи отбирали бы стенды вслепую",
-				c.name, iam, edge, c.iam, c.edge)
+		if edge := identityLandingOfProfile(c.text); edge != c.edge {
+			t.Fatalf("%s: посадка края прочитана как %q, объявлено %q — разбор перестал "+
+				"узнавать НАШУ ручку, и стражи отбирали бы стенды вслепую", c.name, edge, c.edge)
 		}
 	}
 
@@ -62,19 +52,18 @@ func TestIdentitySecondFactorInjection_ChainPredicatesReadBothSides(t *testing.T
 		"hydra:\n  enabled: true\n",
 		"kratos:\n  enabled: false\n",
 	} {
-		if iam, edge := identityLandingOfProfile(foreign); iam != "" || edge != "" {
-			t.Fatalf("чужой флаг %q прочитан как объявление посадки (iam=%q gateway=%q)",
-				foreign, iam, edge)
+		if edge := identityLandingOfProfile(foreign); edge != "" {
+			t.Fatalf("чужой флаг %q прочитан как объявление посадки края (%q)", foreign, edge)
 		}
 	}
 
 	// Цепочка накладывается слева направо, как её накладывает helm: побеждает
-	// последнее непустое объявление, а не первое.
+	// последнее непустое объявление, а не первое. Половина службы — одна.
 	l := identityLandingOfChain(t, []string{
-		"kaname:\n  config:\n    authn:\n      identityProvider: external\n",
-		"kaname:\n  config:\n    authn:\n      identityProvider: own\n",
+		"api-gateway:\n  authn:\n    identityProvider: external\n",
+		"api-gateway:\n  authn:\n    identityProvider: own\n",
 	})
-	if !l.lands() || l.IAM != "own" || l.Base {
+	if !l.lands() || l.Edge != "own" || l.IAM != kanameLanding || l.Base {
 		t.Fatalf("накладка посадки не победила слой под собой: %+v", l)
 	}
 
@@ -832,8 +821,12 @@ func TestIdentitySecondFactorInjection_SilentRootIsARefusal(t *testing.T) {
 		name, old, repl, at, reason string
 		absent                      bool
 	}{
-		{"наблюдатель провязки не зовётся вовсе", laneWiringObserver + "(ctx, cfg,", "unobservedLaneWiring(ctx, cfg,", "",
+		{"наблюдатель провязки не зовётся вовсе", laneWiringObserver + "(ctx, tokenSigner,", "unobservedLaneWiring(ctx, tokenSigner,", "",
 			"вызовов " + laneWiringObserver, true},
+		// Позиция аргумента способов — у ОБЪЯВЛЕНИЯ наблюдателя (kacho#2818): параметр
+		// другого типа — отказ, а не чтение соседнего аргумента.
+		{"наблюдатель не принимает способов входа", "signIn []assurance.Method,", "signIn []string,", "",
+			"параметров []assurance.Method 0", true},
 		{"производитель не называет ни одной постоянной словаря", list, "return nil", "",
 			"возвращает перечней 0", true},
 		{"перечень обёрнут помощником", list,

@@ -106,9 +106,9 @@
 # содержимого, без которого правка карты не перекатывает под). Общими для обоих
 # являются только `.Values.global` и `.Release`.
 #
-# Согласие полосы со слушателем держит deploy/identity_callback_transport_test.go:
-# он выводит перечень полос из конфигурации и краснеет и на открытой полосе при
-# слушателе под TLS, и на обратном — https к открытому слушателю.
+# Слушателя обратных вызовов у службы больше нет (kaname#363); проба согласия
+# полосы со слушателем снята вместе с ним (kacho#2818), а узел уходит с
+# подчартом поставщика (#1276).
 global:
   kacho:
     identity:
@@ -314,9 +314,9 @@ api-gateway:
     # НАСЛЕДУЮТ ЭТУ СТРОКУ те же стенды, что строку выше.
     iamIssuanceUrl: https://kaname.kacho.svc:9096
 
-    # Вторая половина той же посадки. Значение обязано СОВПАДАТЬ с объявленным
-    # службе выше: расхождение половин — стенд, у которого о личности решают
-    # по-разному.
+    # Посадка края. У службы доступа она одна и ключа не имеет (kaname#363);
+    # край объявляет свою, и она обязана быть своей полосой — край и служба
+    # решают о личности одинаково.
     identityProvider: own
   # AuthZ: per-RPC IAM Check fan-out, fail-CLOSED on transient IAM errors.
   authz:
@@ -541,10 +541,8 @@ kaname:
   ports:
     rest: 9098
     internalRest: 9099
-    # Слушатель полосы входа паролем (Ф3, kacho#1269). Поднимается ПОСАДКОЙ
-    # `config.authn.identityProvider: own`, а не адресом: на посадке `external`
-    # этого профиля процесс адрес читает, объявляет поверхность выключенной с
-    # причиной и слушателя не поднимает. Величина стоит здесь по приёмке Ф3 (Р3,
+    # Слушатель полосы входа паролем (Ф3, kacho#1269). Величина стоит здесь по
+    # приёмке Ф3 (Р3,
     # Р11, Ф3-42): дословный перенос живёт в ПРОФИЛЯХ обоих чартов, где его видит
     # читающий, а не в построении, где его не видит никто; перевод стенда на
     # `own` не заводит полосу с нуля. Порт свой — от фронтов (9098/9099) отличен.
@@ -599,28 +597,17 @@ kaname:
     # режим сам по себе ничего не сужает.
     jwksProxyClientAuthMode: optional-mutual
     enable: true
-    # Server-side TLS for the HTTP hooks (:9092) + /metrics (:9095) listeners is
-    # ON in prod (kacho-iam#137, supersedes the OFF-gate #122/#136), reusing the
-    # SEC-F server cert — no new PKI.
-    #
-    # WHY ON in server-tls-only mode: the hooks edge carries FOUR HMAC-authed Ory
-    # webhook endpoints (Hydra token/refresh + Kratos provision/recovery); every
-    # caller is an HTTP client that presents NO transport client-cert (Ory webhooks
-    # cannot). A single server-tls-only mode on :9092 covers all four — it
-    # encrypts the transport + authenticates the server, while HMAC
-    # (X-Kacho-Hook-Token) remains the caller-auth (defense-in-depth). The metrics
-    # edge has no scrape client cert wired → server-tls-only too. mutual
-    # (RequireAndVerifyClientCert) stays available per edge via {hooks,metrics}
-    # ClientAuthMode when a client cert is provisioned. The prod Hydra OAuth2
-    # token/refresh webhook URLs are flipped to https://…:9092 and the Hydra pod
-    # mounts the internal-CA bundle so it trusts the kaname server cert (below).
+    # Server-side TLS for the HTTP listeners is ON in prod (kacho-iam#137),
+    # reusing the SEC-F server cert — no new PKI. The metrics edge has no scrape
+    # client cert wired → server-tls-only; mutual (RequireAndVerifyClientCert)
+    # stays available via metricsClientAuthMode when a client cert is provisioned.
     httpListeners: true
-    # ВСЕ ШЕСТЬ СЛУШАТЕЛЕЙ ОБЪЯВЛЕНЫ ЯВНО, по одной ручке на слушателя. Общая ручка
+    # ВСЕ СЛУШАТЕЛИ ОБЪЯВЛЕНЫ ЯВНО, по одной ручке на слушателя. Общая ручка
     # выше остаётся объявленной, но профиль на неё НЕ ОПИРАЕТСЯ: величина, которую
     # построение подставляет само, предметом стража быть не может — он зелен при
     # любом входе. Прежде здесь стояла только она, и о четырёх слушателях профиль не
-    # говорил ничего.
-    hooks: true
+    # говорил ничего. Слушателя обратных вызовов прежнего поставщика у службы
+    # нет (kaname#363), и ручки у него тоже нет (kacho#2818).
     metrics: true
     registryToken: true
     # Режим слушателя выдачи — запрашивающий (`optional-mutual`): край
@@ -634,9 +621,7 @@ kaname:
     publicRest: true
     internalRest: true
     # :9100 — слушатель полосы входа паролем (Ф3, kacho#1269): по нему едут
-    # носитель сессии человека и его пароль. Транспорт ВЗАИМНЫЙ (режим ниже);
-    # на посадке `external` этого профиля слушатель не поднимается, и ручка
-    # объявлена по той же причине, что блок `config.authn.login`.
+    # носитель сессии человека и его пароль. Транспорт ВЗАИМНЫЙ (режим ниже).
     loginLane: true
     # РЕЖИМ ПРОВЕРКИ КЛИЕНТА У ЭТОГО РЕБРА — ВЗАИМНЫЙ, и объявлен он ЯВНО.
     #
@@ -667,14 +652,7 @@ kaname:
     # construction. Объявлен явно, хотя это единственное годное значение: под
     # `own` иной режим — отказ старта (requireLoginLaneTLS).
     loginLaneClientAuthMode: mutual
-    # Объявленных исключений на этом стенде НЕТ: обратные вызовы службы личности
-    # идут сюда по https (см. схему в шапке профиля), и открытому тексту на :9092
-    # основания нет. Ключ объявлен явно, чтобы «исключения нет» было решением, а не
-    # умолчанием, которого никто не читал.
-    plaintextExceptions:
-      hooks: false
-    # Both HTTP edges run server-tls-only (default; restated here for prod clarity).
-    hooksClientAuthMode: server-tls-only
+    # The metrics edge runs server-tls-only (default; restated for prod clarity).
     metricsClientAuthMode: server-tls-only
   platform:
     iam:
@@ -829,26 +807,12 @@ kaname:
         originFromConsole: true
         algorithms: [-7, -8, -257]
 
-      # ─── ПОСАДКА ЛИЧНОСТИ: СВОЯ ПОЛОСА, А НЕ ВНЕШНИЙ ПОСТАВЩИК ───────────────
+      # ─── КЛЮЧА ПОСАДКИ ЛИЧНОСТИ У СЛУЖБЫ НЕТ (kacho#2818) ──────────────────
       #
-      # Умолчания нет ни у процесса, ни у чарта края: профиль, посадку не
-      # объявивший, получает отказ старта с именем поля, а не тихо наследует
-      # чужой выбор. Объявлено ОБЕИМ половинам — службе здесь, краю ниже: две
-      # половины одного стенда, решившие о личности по-разному, есть
-      # расхождение, которого никто не решал (держит
-      # `deploy/helm/umbrella/identity_posture_profiles_test.go`).
-      #
-      # ПЕРЕВОД СТОИТ ЗДЕСЬ, В КОРНЕ ЦЕПОЧКИ, а не в накладке: накладка посадки
-      # переводила ровно один стенд из семи, а шесть оставшихся ждали внешнего
-      # поставщика, которого снимают. Предпосылки обеих половин заведены
-      # предыдущими коммитами этой ветки и доказаны настоящими стражами старта
-      # на разобранном окружении каждого стенда — перевод не заводит полосу с
-      # нуля и не оставляет ни одной ручки незаданной.
-      #
-      # ПОРЯДОК: стенды переходят на `own` ПЕРВЫМИ, и только затем край
-      # перестаёт принимать `external` — предмет отдельной полосы. Обратный
-      # порядок положил бы шесть стендов.
-      identityProvider: own
+      # Посадка у службы одна — своя полоса (kaname#363), и ключ посадки она
+      # отвергает при любом значении. Ручка снята с подчарта вместе с читателем;
+      # профиль, всё ещё её объявляющий, получает отказ рендера. Посадку края
+      # объявляет его собственная ручка (`api-gateway.authn.identityProvider`).
 
       # СВОЯ ЧЕКАНКА ТОКЕНОВ (F1, задача #897)
       #
@@ -1825,9 +1789,9 @@ kratos:
   # письма продолжают уходить.
   #
   # Путь тот же, что у основного процесса, и это обязано остаться так: файл
-  # один. Согласие двух ручек держит
-  # deploy/identity_courier_reads_what_it_mounts_test.go, а не внимание;
-  # предпосылку о чужом чарте перемеряет deploy/identity_courier_arg_premise_test.go.
+  # один. Проба согласия двух ручек снята вместе с картами поставщика подчарта
+  # службы (kacho#2818); предпосылку о чужом чарте перемеряет
+  # deploy/identity_courier_arg_premise_test.go до снятия подчарта (#1276).
   statefulSet:
     extraArgs:
       - --config
