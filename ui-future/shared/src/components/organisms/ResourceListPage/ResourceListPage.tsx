@@ -1,6 +1,6 @@
 // ResourceListPage — generic страница списка ресурсов на antd.
 //
-// Polling 3 сек (через useResourceList).
+// Polling 3 сек (через useResourceList) — пока строки не приходят извне (`source`).
 
 import { useMemo, useState } from "react";
 import { Link, useParams, useLocation, useNavigate } from "react-router";
@@ -31,6 +31,44 @@ import { searchFilterExpression } from "@shared/lib/list-search-filter";
 import { labelFilterActive, parseLabelQuery, rowMatchesLabels } from "@shared/lib/list-label-filter";
 import { clientScope, scopeSuffix, type NarrowingScope } from "@shared/lib/list-scope";
 
+/**
+ * Строки списка, прочитанные НЕ этим компонентом (kacho#2925, замысел NTF-6 З13).
+ *
+ * Экран, который читает ленту сам и вычисляет строки и их пометки из ОДНОГО
+ * снимка (центр уведомлений), не может стоять на компоненте, который читает,
+ * опрашивает и дочитывает тот же список своим чтением: строки из опроса
+ * компонента и пометки из снимка экрана были бы двумя источниками одного
+ * экрана и разошлись бы молча. Поэтому источник заменяет чтение ЦЕЛИКОМ —
+ * строки, состояние экрана и дочитывание приходят отсюда, а своё чтение
+ * компонента выключено вместе с опросом и потоком изменений.
+ */
+export interface ResourceListSource {
+  rows: Record<string, unknown>[];
+  isLoading: boolean;
+  /** Отказ чтения источника; `null` — отказа нет. */
+  error: unknown;
+  /** Есть ли у источника следующая страница. */
+  hasMore: boolean;
+  /** Дочитать следующую страницу — зовётся ровно раз на нажатие «Показать ещё». */
+  loadMore(): void;
+  /** «Показать ещё» недоступна: источник занят и второе дочитывание не примет. */
+  loadMoreDisabled: boolean;
+  isFetchingMore: boolean;
+}
+
+/** Текст отказа отрисовки: серверное сужение спеки при источнике извне. */
+export const SOURCE_EXCLUDES_SERVER_NARROWING =
+  "ResourceListPage: source excludes server-side narrowing (listFilters, search.serverTerm, serverSearchField)";
+
+/**
+ * Сужает ли спека список НА СЕРВЕРЕ — запросом, который при источнике извне не
+ * уходит вовсе. Нарисованная при этом ручка была бы проигнорирована: фильтр
+ * «работает», а строки те же.
+ */
+function specNarrowsOnServer(spec: ResourceSpec): boolean {
+  return (spec.listFilters?.length ?? 0) > 0 || Boolean(spec.search?.serverTerm) || Boolean(spec.serverSearchField);
+}
+
 interface Props {
   spec: ResourceSpec;
   parentField?: string;
@@ -58,6 +96,12 @@ interface Props {
    *  `${basePath}/${id}` detail, а не на childRoute). Projects внутри IAM-секции
    *  открывают IAM-деталь проекта, а не project-dashboard. */
   disableChildRoute?: boolean;
+  /**
+   * Строки извне — вместо своего чтения (см. `ResourceListSource`). Заданный
+   * источник выключает у компонента запрос, опрос и поток изменений; спека со
+   * серверным сужением вместе с ним не принимается — отказ отрисовки.
+   */
+  source?: ResourceListSource;
 }
 
 export function ResourceListPage({
@@ -68,6 +112,7 @@ export function ResourceListPage({
   pageSize,
   panelForms,
   disableChildRoute = false,
+  source,
 }: Props) {
   const params = useParams();
   const location = useLocation();
@@ -120,13 +165,18 @@ export function ResourceListPage({
     () => (searchExpr ? { ...serverFilters, filter: searchExpr } : serverFilters),
     [serverFilters, searchExpr],
   );
-  const { data, isLoading, isError, error, hasMore, fetchMore, isFetchingMore } = useResourceList(
-    spec,
-    parentField ?? null,
-    filterValue,
-    pageSize,
-    listQuery,
-  );
+  // Хук зовётся ВСЕГДА, и при источнике тоже — порядок хуков не зависит от
+  // того, откуда строки. Источник его только выключает: ни запроса, ни опроса,
+  // ни потока (`enabled: false`).
+  const own = useResourceList(spec, parentField ?? null, filterValue, pageSize, listQuery, { enabled: !source });
+  const isLoading = source ? source.isLoading : own.isLoading;
+  const error: unknown = source ? source.error : own.isError ? (own.error ?? new Error("list failed")) : null;
+  const hasMore = source ? source.hasMore : own.hasMore;
+  const isFetchingMore = source ? source.isFetchingMore : own.isFetchingMore;
+  const loadMore = (): void => {
+    if (source) source.loadMore();
+    else void own.fetchMore();
+  };
   // Область, о которой судит строка поиска. Три состояния, не два: сужал сервер
   // (`server`) · сужает браузер над дочитанным списком (`whole`) · сужает
   // браузер над прочитанной частью (`loaded`). Подписи ко всем трём живут в
@@ -187,7 +237,7 @@ export function ResourceListPage({
 
   const basePath = location.pathname.endsWith("/") ? location.pathname.slice(0, -1) : location.pathname;
 
-  const items = data?.[spec.payloadKey] ?? [];
+  const items = source ? source.rows : (own.data?.[spec.payloadKey] ?? []);
 
 
   // Дополнительный фильтр "Зона доступности" — для ресурсов, у которых есть
@@ -317,6 +367,11 @@ export function ResourceListPage({
   // между двумя рендерами одного и того же компонента, — React такой рендер
   // отвергает целиком, и пользователь получает пустой экран вместо списка.
   // Проба: ResourceListPage.hookorder.test.tsx.
+  // Источник извне и серверное сужение спеки несовместимы: запрос, в который
+  // сужение уезжает, при источнике не уходит. Отказ — ЗДЕСЬ, ниже всех хуков, по
+  // той же причине, по какой ниже них стоит заглушка следующей строкой.
+  if (source && specNarrowsOnServer(spec)) throw new Error(SOURCE_EXCLUDES_SERVER_NARROWING);
+
   if (parentField && !filterValue) return <ProjectRequiredEmpty resource={spec.plural} />;
 
   // params.projectId доступен для project-scoped listов (/projects/:projectId/...);
@@ -371,7 +426,7 @@ export function ResourceListPage({
     Object.keys(serverFilters).length > 0;
   const view = listViewState({
     isLoading,
-    error: isError ? (error ?? new Error("list failed")) : null,
+    error,
     rowCount: filteredItems.length,
     filtered: anyFilterActive,
     canCreate: spec.ops.create,
@@ -721,7 +776,7 @@ export function ResourceListPage({
             borderTop: "1px solid var(--kc-border)",
           }}
         >
-          <Button loading={isFetchingMore} onClick={() => void fetchMore()}>
+          <Button loading={isFetchingMore} disabled={source?.loadMoreDisabled} onClick={loadMore}>
             Показать ещё
           </Button>
         </div>

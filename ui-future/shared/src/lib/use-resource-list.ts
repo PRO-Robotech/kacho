@@ -152,6 +152,17 @@ export async function readAllPages(
 export interface UseResourceListOptions {
   pathParams?: PathParams;
   loadAllPages?: boolean;
+  /**
+   * Читать ли вообще. Незаданное значение читается как «да».
+   *
+   * `false` — у хука нет НИ запроса, НИ опроса, НИ потока изменений: строки
+   * экрана приходят извне (`ResourceListPage` со свойством `source`), и своё
+   * чтение было бы вторым источником одного экрана. Гасится ОБА механизма —
+   * поток открывается здесь же (`useResourceStream` ниже), и выключенный
+   * только запрос оставлял бы открытым поток, по которому перечитывать нечего
+   * (kacho#2925, замысел NTF-6 З13, M32).
+   */
+  enabled?: boolean;
 }
 
 export function useResourceList<T = Record<string, unknown>>(
@@ -167,6 +178,7 @@ export function useResourceList<T = Record<string, unknown>>(
   const extraKey = extraQuery && Object.keys(extraQuery).length > 0 ? JSON.stringify(extraQuery) : null;
   const target = resolveListPath(spec.apiPath, filterField, filterValue, opts?.pathParams);
   const readAll = opts?.loadAllPages === true;
+  const reads = opts?.enabled !== false;
 
   // ПОТОК ВМЕСТО ОПРОСА — ТАМ, ГДЕ ВЛАДЕЛЕЦ САМ НАЗВАЛ ЭТОТ ВИД (#1021).
   //
@@ -184,8 +196,9 @@ export function useResourceList<T = Record<string, unknown>>(
     projectId: filterField === "project_id" ? filterValue : null,
     invalidate: [spec.id, "list"],
     // Пока путь несёт незаполненную подстановку, чтения нет вовсе — значит и
-    // перечитывать нечего, и поток открывать не за чем.
-    enabled: target.resolved,
+    // перечитывать нечего, и поток открывать не за чем. То же, когда чтение
+    // выключено вызывающим (`enabled: false`).
+    enabled: reads && target.resolved,
   });
 
   const query = useInfiniteQuery({
@@ -208,7 +221,7 @@ export function useResourceList<T = Record<string, unknown>>(
     refetchInterval: streamed ? false : 3_000,
     // An unfilled path placeholder means the parent is not known yet; issuing
     // the request would spend every poll on an InvalidArgument.
-    enabled: (!filterField || !!filterValue) && target.resolved,
+    enabled: reads && (!filterField || !!filterValue) && target.resolved,
     staleTime: 0,
   });
 
