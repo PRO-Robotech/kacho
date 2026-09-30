@@ -18,8 +18,8 @@ import "regexp"
 
 // identityConfigTemplate — объявление настроек службы личности. Содержимое
 // карты настроек рендерится из именованного шаблона этого файла, поэтому
-// судить надо его, а не карту-обёртку (см. _kratos-identity.tpl).
-const identityConfigTemplate = "helm/umbrella/charts/kaname/templates/_kratos-identity.tpl"
+// судить надо его, а не карту-обёртку (см. _identity-provider.tpl).
+const identityConfigTemplate = "helm/umbrella/charts/kaname/templates/_identity-provider.tpl"
 
 // defaultSchemaIDDecl — строка `default_schema_id` в объявлении настроек:
 // имя схемы личности, которую чарт объявляет действующей по умолчанию.

@@ -33,7 +33,7 @@ when .Values.image.digest is set; otherwise falls back to repository:tag.
 {{- end -}}
 
 {{/*
-Помощник адреса слушателя хуков ПЕРЕЕХАЛ в _kratos-identity.tpl под именем
+Помощник адреса слушателя хуков ПЕРЕЕХАЛ в _identity-provider.tpl под именем
 `kacho.identity.hooksAuthority`.
 
 Причина не косметическая: адрес входит в содержимое настроек службы личности, а
@@ -215,7 +215,7 @@ kaname.hooksLaneRaised — ПОДНИМАЕТ ЛИ ПРОЦЕСС СЛУШАТЕ
 
 Аргумент — `(list $ "<величина>")`. Узел личности раздела `global` подчарт читает
 для своих выводимых величин здесь, в одном месте; сами выражения — у шаблонов
-`kaname.identity.webauthnRpId` и `kaname.identity.consoleOrigin` (_kratos-identity.tpl),
+`kaname.identity.webauthnRpId` и `kaname.identity.consoleOrigin` (_identity-provider.tpl),
 общих с настройками службы личности:
 
   · `rpId`          — имя доверяющей стороны ключей доступа;

@@ -253,7 +253,7 @@ func TestLoginLanePrereq_EveryStackDeclaresTheLaneWhateverItsPosture(t *testing.
 // же»: подчарту подаётся поддерево `kaname:` профилей БЕЗ `global:` зонта (его
 // объявляют шесть профилей: `values.dev.yaml`, `values.prod.yaml`,
 // `values.a8f60d.yaml`, `values.prorobotech.yaml`, `values.fe3455-prod.yaml`,
-// `values.fe3455-ory-posture.yaml`) и с ИНЫМ именем релиза. Оба различия
+// `values.fe3455-identity-posture.yaml`) и с ИНЫМ именем релиза. Оба различия
 // наблюдаемы. Замер на цепочке `prod`, единица счёта — СТРОКА МАНИФЕСТА,
 // изменившаяся между рендерами (`diff rA rB | grep -cE '^<'`):
 //

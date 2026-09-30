@@ -219,7 +219,7 @@ probe "чарт провайдера не материализован → ус�
 # ДЕФЕКТ: сосед перестал объявлять схему исходного запроса. Провайдер за ним
 # начал бы считать переход открытым, и координата — стек.
 M="$(mirror pol-defect)"
-python3 - "$M/deploy/helm/umbrella/templates/_hydra-admin-tls.tpl" <<'PY'
+python3 - "$M/deploy/helm/umbrella/templates/_admin-hop-tls.tpl" <<'PY'
 import io,sys
 p=sys.argv[1]; s=io.open(p,encoding='utf-8').read()
 old="    proxy_set_header X-Forwarded-Proto https;\n"

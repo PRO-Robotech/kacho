@@ -66,7 +66,7 @@ func TestStepExpansionGateFailsOnAReturnedDefect(t *testing.T) {
 			t.Fatalf("гейт МОЛЧИТ на возвращённом дефекте — он не способен упасть")
 		}
 		joined := strings.Join(got, "\n")
-		if !strings.Contains(joined, "_kratos-identity.tpl") {
+		if !strings.Contains(joined, "_identity-provider.tpl") {
 			t.Errorf("находка не называет КООРДИНАТУ: %v", got)
 		}
 		if !strings.Contains(joined, "identity-config-render") {

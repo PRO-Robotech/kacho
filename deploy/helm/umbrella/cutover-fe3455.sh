@@ -176,7 +176,7 @@ log "all $(printf '%s\n' $FE_LAYERS | grep -c .) overlay value files present."
 # gitignored file, so the PRODUCTION POSTURE of the identity providers (kratos
 # development mode, hydra issuer/PKCE/TTL) was invisible to git, to review and to
 # every gate — their "no findings" over that layer meant "nothing read". Posture
-# now lives in the tracked values.fe3455-ory-posture.yaml.
+# now lives in the tracked values.fe3455-identity-posture.yaml.
 #
 # A convention alone would not hold that split: the easiest way to change the
 # live cluster is still to edit the file nobody sees. So the split is CHECKED
@@ -194,7 +194,7 @@ log "all $(printf '%s\n' $FE_LAYERS | grep -c .) overlay value files present."
 # extending it. An operator who put the real relay where this script sent them
 # got a green cutover, running pods and mail going nowhere — with no signal at
 # all. The single declaration is `global.kacho.identity.smtp.*`
-# (_kratos-identity.tpl); the credentials layer is applied LAST in the chain, so
+# (_identity-provider.tpl); the credentials layer is applied LAST in the chain, so
 # a value set there wins over every profile. Held by MAIL-54
 # (deploy/identity_mail_lane_single_declaration_test.go), which fails when this
 # list and that declaration name different coordinates.
@@ -224,7 +224,7 @@ PY
 if [ -n "$stray" ]; then
   warn "values.fe3455-ory.yaml declares coordinates that are NOT credentials:"
   printf '  %s\n' $stray >&2
-  die "posture must live in the TRACKED values.fe3455-ory-posture.yaml, where review and the
+  die "posture must live in the TRACKED values.fe3455-identity-posture.yaml, where review and the
        gates can see it. Move the coordinates above there (or, if they really are credentials,
        add them to ORY_CRED_PATHS in this script with a reason). Refusing to deploy a posture
        that no gate has read."

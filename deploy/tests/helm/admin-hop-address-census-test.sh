@@ -173,9 +173,9 @@ provider_spelling() {
 # без предмета — находка (проверка D ниже), поэтому «объявлю заранее» здесь
 # обошлось бы дороже, чем внести строку в том же изменении, что создаёт файл.
 ALLOWED_TREE=(
-  "deploy/helm/umbrella/templates/hydra-admin-certificate.yaml|SAN сертификата терминатора"
-  "deploy/helm/umbrella/templates/hydra-admin-tls-configmap.yaml|конфигурация терминатора: адрес апстрима и есть её предмет"
-  "deploy/helm/umbrella/templates/hydra-admin-tls-service.yaml|Service терминатора: его имя и есть адрес"
+  "deploy/helm/umbrella/templates/admin-hop-certificate.yaml|SAN сертификата терминатора"
+  "deploy/helm/umbrella/templates/admin-hop-tls-configmap.yaml|конфигурация терминатора: адрес апстрима и есть её предмет"
+  "deploy/helm/umbrella/templates/admin-hop-tls-service.yaml|Service терминатора: его имя и есть адрес"
   "deploy/tests/helm/admin-hop-address-census-test.sh|эта перепись"
   "deploy/scripts/assert-admin-hop-transport.sh|живой гейт перехода: пробник обращается по обоим адресам"
   "deploy/scripts/remeasure-provider-listener-tls.sh|перемер предпосылки"

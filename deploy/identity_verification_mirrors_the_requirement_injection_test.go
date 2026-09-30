@@ -107,16 +107,16 @@ func TestVerificationMirrorGateFailsOnAReturnedDefect(t *testing.T) {
 
 	t.Run("инъекция: ПОТОЧНАЯ форма возвращает выключение в профиль боевой посадки", func(t *testing.T) {
 		f := newVerificationMirrorFixture(t)
-		f.replace(t, "values.fe3455-ory-posture.yaml", oryFlowsAnchor,
+		f.replace(t, "values.fe3455-identity-posture.yaml", oryFlowsAnchor,
 			oryFlowsAnchor+"          verification: { enabled: false }\n")
-		mustName(t, f.run(t), "fe3455", "values.fe3455-ory-posture.yaml")
+		mustName(t, f.run(t), "fe3455", "values.fe3455-identity-posture.yaml")
 	})
 
 	t.Run("инъекция: поточная форма С НЕСКОЛЬКИМИ ключами", func(t *testing.T) {
 		// Форма, о которой распознаватель не знает, — не край: всё записанное в
 		// ней оказывается ВНЕ наблюдения, то есть ни находкой, ни молчанием.
 		f := newVerificationMirrorFixture(t)
-		f.replace(t, "values.fe3455-ory-posture.yaml", oryFlowsAnchor,
+		f.replace(t, "values.fe3455-identity-posture.yaml", oryFlowsAnchor,
 			oryFlowsAnchor+"          verification: { enabled: false, ui_url: \"/verification\" }\n")
 		mustName(t, f.run(t), "fe3455")
 	})
@@ -142,7 +142,7 @@ func TestVerificationMirrorGateFailsOnAReturnedDefect(t *testing.T) {
 		// нём, гейт стал бы красным там, где решения о выключении восстановления
 		// приняты осознанно, — а такой снимают первым.
 		f := newVerificationMirrorFixture(t)
-		f.replace(t, "values.fe3455-ory-posture.yaml", oryFlowsAnchor,
+		f.replace(t, "values.fe3455-identity-posture.yaml", oryFlowsAnchor,
 			oryFlowsAnchor+"          recovery: { enabled: false }\n")
 		if found := f.run(t); len(found) > 0 {
 			t.Errorf("гейт покраснел на потоке, зеркалом требования НЕ являющемся, — он "+
