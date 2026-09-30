@@ -46,6 +46,7 @@ import (
 type relaySite struct {
 	pos     string
 	posture string
+	why     string // чем посадка own не доказана; "" при "Own"
 	serves  string // имя селектора цели (`RelayTargetForm`), "" если не названа
 	target  string // поле конфигурации адреса (`LoginLaneURL`), "" если не cfg.<Поле>
 	timeout bool   // задан ли `Timeout:`
@@ -79,7 +80,8 @@ func judgeRelayWiring(fset *token.FileSet, f *ast.File, targets []middleware.Rel
 		if !ok || sel.Sel.Name != "NewLoginLaneRelay" {
 			return true
 		}
-		s := relaySite{pos: fset.Position(call.Pos()).String(), posture: postureBranchOf(f, call.Pos())}
+		posture, why := postureBranchOf(fset, f, call.Pos())
+		s := relaySite{pos: fset.Position(call.Pos()).String(), posture: posture, why: why}
 		if len(call.Args) == 1 {
 			if lit, ok := call.Args[0].(*ast.CompositeLit); ok {
 				for _, el := range lit.Elts {
@@ -139,7 +141,7 @@ func judgeRelayWiring(fset *token.FileSet, f *ast.File, targets []middleware.Rel
 			servedBy[s.serves] = s.pos
 		}
 		if s.posture != "Own" {
-			out.findings = append(out.findings, s.pos+": ретранслятор заведён вне ветки посадки own (ветка: \""+s.posture+"\") — вне own пути объявления обязаны отвечать 404")
+			out.findings = append(out.findings, s.pos+": ретранслятор заведён вне ветки посадки own ("+s.why+") — вне own пути объявления обязаны отвечать 404")
 		}
 		if s.target == "" {
 			out.findings = append(out.findings, s.pos+": адрес ретранслятора не взят из ручки конфигурации (`Target: cfg.<Поле>`)")
@@ -186,7 +188,7 @@ func TestRelayWiring_L13_TheDeclarationIsMountedOnceUnderOwn(t *testing.T) {
 		t.Fatalf("монтаж объявления вызван %d раз, ожидался 1: без него пути объявления отвечают «не найдено», и ни одна проба пакета этого не видит", len(mounts))
 	}
 	if mounts[0].posture != "Own" {
-		t.Fatalf("монтаж объявления стоит вне ветки посадки own: %s (ветка %q)", mounts[0].pos, mounts[0].posture)
+		t.Fatalf("монтаж объявления стоит вне ветки посадки own: %s (%s)", mounts[0].pos, mounts[0].why)
 	}
 	// Второго, ручного монтажа путей объявления нет: цикл по перечню с
 	// `Handle` мимо функции монтажа разошёлся бы с ней молча.

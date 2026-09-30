@@ -547,22 +547,30 @@ def test_a_matrix_include_key_missing_from_the_name_breaks_the_premise() -> None
     assert premise(twin).breaches == (), premise(twin).breaches
 
 
-def test_two_dynamic_matrix_names_with_compatible_ends_break_the_premise() -> None:
-    """Два образца: совпасть могут, только если совместимы и начало, и конец.
-    `юниты ${{ matrix.shard.id }}` во втором процессе совпадёт с джобой
-    `unit-shard`. Близнецы меняют по одному концу: другое начало, другой конец."""
-    def dynamic(name: str) -> dict:
-        return {"name": name, "runs-on": "ubuntu-latest", "steps": [],
-                "strategy": {"matrix": "${{ fromJSON(needs.plan.outputs.matrix) }}"}}
+def _dynamic(name: str) -> dict:
+    return {"name": name, "runs-on": "ubuntu-latest", "steps": [],
+            "strategy": {"matrix": "${{ fromJSON(needs.plan.outputs.matrix) }}"}}
+
+
+def test_two_dynamic_matrix_names_with_a_compatible_head_break_the_premise() -> None:
+    """Два образца. Как есть они совпадают, только если совместимы и начало, и
+    конец: `юниты ${{ matrix.shard.id }}` во втором процессе совпадёт с джобой
+    `unit-shard`. Но выражение бывает любой длины, и длинное имя GitHub
+    обрезает до 97 байт — конец в показе не участвует. Поэтому совместимого
+    начала довольно: `e2e … [ … ]` против `e2e … ( … )` из `e2e-newman.yml`.
+    Близнец меняет один факт — начало."""
     wf = tree_workflows()
-    wf[UI]["jobs"]["extra"] = dynamic("юниты ${{ matrix.shard.id }}")
+    wf[UI]["jobs"]["extra"] = _dynamic("юниты ${{ matrix.shard.id }}")
     breaches = premise(wf).breaches
     assert any("jobs.extra" in b and "unit-shard" in b for b in breaches), breaches
-    for other in ("юнит-шард ${{ matrix.shard.id }}",
-                  "e2e ${{ matrix.shard.id }} [${{ matrix.shard.suites }}]"):
-        twin = tree_workflows()
-        twin[UI]["jobs"]["extra"] = dynamic(other)
-        assert premise(twin).breaches == (), (other, premise(twin).breaches)
+    wf = tree_workflows()
+    wf[UI]["jobs"]["extra"] = _dynamic("e2e ${{ matrix.shard.id }} [${{ matrix.shard.suites }}]")
+    breaches = premise(wf).breaches
+    assert any("jobs.extra" in b and "e2e-newman.yml: jobs.shard" in b and "97 байт" in b
+               for b in breaches), breaches
+    twin = tree_workflows()
+    twin[UI]["jobs"]["extra"] = _dynamic("юнит-шард ${{ matrix.shard.id }}")
+    assert premise(twin).breaches == (), premise(twin).breaches
 
 
 def test_a_reusable_workflow_call_is_not_read_as_unique() -> None:
@@ -1015,3 +1023,182 @@ def test_the_wait_passes_the_tree_and_the_base_to_the_decider(tmp_path: Path) ->
     assert code == 1 and "не завершились" in out and "golangci-lint" in out, (code, out)
     code, out = _wait(tmp_path, {"total_count": len(d.checks), "check_runs": all_green(d)}, None)
     assert code == 1 and "вердикт не вынесен (код 2)" in out, (code, out)
+
+
+# ── Показ GitHub: имя длиннее 100 байт обрезается до 97 байт и многоточия ─────
+#
+# `decide` ключуется именем прогона, а не строкой YAML. Имя длиннее 100 байт
+# GitHub показывает первыми 97 байтами и `...`: `ci.yaml`, джоба
+# `pg-outside-selection` — 109 байт в YAML, 100 в прогоне. Имена, различные в
+# YAML, но равные в показе, — одна проверка для `decide`.
+
+PG = "pg-outside-selection"
+# Измерено на прогоне, а не взято из кода под пробой: мутант константы там
+# должен краснеть здесь.
+LIMIT, KEPT = 100, 97
+
+
+def _pg_name() -> str:
+    return tree_workflows()[CI]["jobs"][PG]["name"]
+
+
+def _with_job(where: str, job_id: str, name: str) -> dict[str, object]:
+    wf = tree_workflows()
+    wf[where]["jobs"][job_id] = {"name": name, "runs-on": "ubuntu-latest", "steps": []}
+    return wf
+
+
+def _at_byte(name: str, index: int, char: str) -> str:
+    """Имя, у которого байт `index` заменён однобайтным `char`."""
+    raw = name.encode()
+    assert raw[index:index + 1].isascii(), (name, index)
+    return (raw[:index] + char.encode() + raw[index + 1:]).decode()
+
+
+def test_the_tree_holds_a_name_longer_than_the_limit() -> None:
+    """Предпосылка проб ниже: в дереве есть имя длиннее 100 байт, и его 97-й
+    байт — граница символа. Пропадёт — пробы поменяют предмет молча."""
+    raw = _pg_name().encode()
+    assert len(raw) > LIMIT, (len(raw), _pg_name())
+    assert raw[:KEPT].decode("utf-8", "ignore").encode() == raw[:KEPT], raw[:KEPT]
+    assert raw[KEPT - 1:KEPT] == b"=" and raw[KEPT:KEPT + 1] == b" ", raw[KEPT - 3:KEPT + 3]
+
+
+def test_k1_names_equal_in_the_first_97_bytes_break_the_premise() -> None:
+    """K1: джоба другого процесса, чьё имя совпадает с именем
+    `pg-outside-selection` в первых 97 байтах и расходится в 98-м. В YAML имена
+    различны, в показе — одно: её отказ отставлялся бы успехом той. Близнец
+    меняет 97-й байт — последний, который GitHub оставляет."""
+    hit = _at_byte(_pg_name(), KEPT, "_")
+    breaches = premise(_with_job(UI, "k1", hit)).breaches
+    assert any(f"{CI}: jobs.{PG}" in b and f"{UI}: jobs.k1" in b and hit in b
+               and _pg_name() in b and "97 байт" in b for b in breaches), breaches
+    twin = _at_byte(_pg_name(), KEPT - 1, "_")
+    assert premise(_with_job(UI, "k1", twin)).breaches == (), premise(_with_job(UI, "k1", twin))
+
+
+def test_a_name_of_100_bytes_is_shown_whole() -> None:
+    """Граница обрезки — «длиннее 100 байт». Два имени по 100 байт, равные в
+    первых 97, показываются целиком и различны. Близнец — те же имена на байт
+    длиннее: оба обрезаются, и показ у них один."""
+    stem = "x" * 97
+    a, b = stem + "abc", stem + "abd"
+    wf = _with_job(UI, "a", a)
+    wf[CI]["jobs"]["b"] = {"name": b, "runs-on": "ubuntu-latest", "steps": []}
+    assert premise(wf).breaches == (), premise(wf).breaches
+    wf = _with_job(UI, "a", a + "e")
+    wf[CI]["jobs"]["b"] = {"name": b + "e", "runs-on": "ubuntu-latest", "steps": []}
+    assert any("jobs.a" in x and "jobs.b" in x for x in premise(wf).breaches), premise(wf)
+
+
+def test_a_literal_equal_to_the_shown_form_of_a_long_name_breaks_the_premise() -> None:
+    """Имя не длиннее 100 байт, которое дословно равно показу длинного: GitHub
+    покажет их одинаково. Близнец — то же имя без последней точки."""
+    shown = _pg_name().encode()[:KEPT].decode() + "..."
+    assert len(shown.encode()) == LIMIT, shown
+    breaches = premise(_with_job(UI, "same", shown)).breaches
+    assert any(f"jobs.{PG}" in b and "jobs.same" in b for b in breaches), breaches
+    twin = shown[:-1]
+    assert premise(_with_job(UI, "same", twin)).breaches == (), premise(_with_job(UI, "same", twin))
+
+
+def test_a_cut_through_a_multibyte_character_backs_off_to_its_boundary() -> None:
+    """Разрез посреди многобайтного символа не измерен. Обход отступает к
+    границе символа: два длинных имени, равные до неё и различные лишь в
+    разрезанном символе, считаются возможным совпадением — грубее истины, но
+    не пропускает. Близнец расходится до границы."""
+    stem = "y" * 96
+    a, b = stem + "ж" + "z" * 8, stem + "ш" + "z" * 8
+    assert a.encode()[:97] != b.encode()[:97], (a, b)
+    wf = _with_job(UI, "a", a)
+    wf[CI]["jobs"]["b"] = {"name": b, "runs-on": "ubuntu-latest", "steps": []}
+    assert any("jobs.a" in x and "jobs.b" in x for x in premise(wf).breaches), premise(wf)
+    wf = _with_job(UI, "a", "w" + a[1:])
+    wf[CI]["jobs"]["b"] = {"name": b, "runs-on": "ubuntu-latest", "steps": []}
+    assert premise(wf).breaches == (), premise(wf).breaches
+
+
+def test_a_dynamic_name_is_compared_in_its_shown_form_too() -> None:
+    """Имя из выражения бывает любой длины — значит, и обрезанным. Образец,
+    чьё начало совместимо с показом длинного литерала, может с ним совпасть,
+    даже если как есть не совпадает (другой конец). Начало длиннее 97 байт
+    показывается само по себе. Близнецы расходятся в первых 97 байтах."""
+    pg = _pg_name()
+    head = pg.split(" (")[0] + " "
+    assert pg.startswith(head) and len(head.encode()) < KEPT, head
+    cases = (
+        (head + "${{ matrix.x }} [другой конец]",
+         "Z" + head[1:] + "${{ matrix.x }} [другой конец]"),
+        (pg + " (${{ matrix.x }})", _at_byte(pg, KEPT - 1, "_") + " (${{ matrix.x }})"),
+    )
+    for hit, miss in cases:
+        wf = tree_workflows()
+        wf[UI]["jobs"]["extra"] = _dynamic(hit)
+        breaches = premise(wf).breaches
+        assert any(f"jobs.{PG}" in b and "jobs.extra" in b and "97 байт" in b
+                   for b in breaches), (hit, breaches)
+        twin = tree_workflows()
+        twin[UI]["jobs"]["extra"] = _dynamic(miss)
+        assert premise(twin).breaches == (), (miss, premise(twin).breaches)
+
+
+# ── Ветви обхода, которых не держала ни одна проба (#2891, P3 P16 P17 P18) ────
+
+def test_a_pull_request_target_workflow_is_examined() -> None:
+    """Процесс, запускаемый только `pull_request_target`, — тоже процесс
+    запроса. Копия джобы `review-text.yml` в нём — нарушение. Близнец — та же
+    копия, пока процесс запускается только по расписанию."""
+    job = tree_workflows()[REVIEW]["jobs"]["attribution"]
+    wf = tree_workflows()
+    assert True in wf[FUZZ], "YAML 1.1 читает голый ключ `on` как True"
+    wf[FUZZ][True] = {"pull_request_target": {"branches": ["main"]}}
+    wf[FUZZ]["jobs"]["attribution-copy"] = copy.deepcopy(job)
+    p = premise(wf)
+    assert any(TITLE in b and "continuous-fuzz.yml" in b and "review-text.yml" in b
+               for b in p.breaches), p.breaches
+    assert p.examined == _pr_jobs_declared(wf), p
+    twin = tree_workflows()
+    twin[FUZZ]["jobs"]["attribution-copy"] = copy.deepcopy(job)
+    assert premise(twin).breaches == (), premise(twin).breaches
+
+
+def test_a_workflow_not_parsed_as_an_object_is_a_breach() -> None:
+    """Файл процесса, разобранный не объектом (пустой, список, строка), не
+    осмотрен — и это нарушение с его путём, а не пропуск. Близнец — тот же
+    путь с разобранным процессом по расписанию."""
+    extra = ".github/workflows/extra.yml"
+    for doc in (None, [], "on: pull_request"):
+        wf = tree_workflows()
+        wf[extra] = doc
+        assert any(extra in b and "не разобран" in b for b in premise(wf).breaches), \
+            (doc, premise(wf))
+    twin = tree_workflows()
+    twin[extra] = copy.deepcopy(twin[FUZZ])
+    assert premise(twin).breaches == (), premise(twin).breaches
+
+
+def test_a_pr_workflow_without_parsed_jobs_is_a_breach() -> None:
+    """Процесс запроса, у которого `jobs` не объект, не осмотрен — нарушение.
+    Близнец — то же у процесса по расписанию: запрос его не запускает."""
+    for jobs in (None, [], "build"):
+        wf = tree_workflows()
+        wf[UI]["jobs"] = jobs
+        assert any("ui.yml" in b and "нет разобранных джоб" in b for b in premise(wf).breaches), \
+            (jobs, premise(wf))
+    twin = tree_workflows()
+    twin[FUZZ]["jobs"] = []
+    assert premise(twin).breaches == (), premise(twin).breaches
+
+
+def test_a_matrix_without_dimensions_is_a_breach() -> None:
+    """Матрица без единого измерения ног не вычисляет — нарушение, а не
+    «имя однозначно». Близнец — та же джоба с одним измерением, которое имя
+    называет."""
+    for matrix in ({}, {"include": []}, {"exclude": [{"pkg": "host"}]}):
+        wf = tree_workflows()
+        wf[UI]["jobs"]["test"]["strategy"]["matrix"] = copy.deepcopy(matrix)
+        assert any("jobs.test" in b and "нет ни одного измерения" in b
+                   for b in premise(wf).breaches), (matrix, premise(wf))
+    twin = tree_workflows()
+    twin[UI]["jobs"]["test"]["strategy"]["matrix"] = {"pkg": ["host"]}
+    assert premise(twin).breaches == (), premise(twin).breaches

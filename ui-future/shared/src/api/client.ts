@@ -16,6 +16,7 @@
 //   POST   /<domain>/v1/<plural>/{id}:verb → Custom verb → Operation
 
 import { snakeToCamel, camelToSnake } from "@shared/lib/case";
+import { leaveToAddressConfirmation } from "@shared/pages/auth/address-confirmation-exit";
 import { orderedTransport } from "./carrier-order";
 import { refusalActionOf } from "./refusal-action";
 import { parseRpcStatus, reasonOfDetails } from "./rpc-status";
@@ -138,6 +139,11 @@ async function fetchJson<T>(method: string, path: string, body?: unknown, replay
       },
       "platform",
     );
+    // Отказ края `EMAIL_NOT_VERIFIED` — адрес почты не подтверждён (приёмка F6b,
+    // F6b-25): вкладка уходит на экран подтверждения. Это не «войдите», которое
+    // клиент модулей решением страницы оставляет ей: сессия цела, и решение одно
+    // на всех читателей поверхности платформы.
+    if (action === "confirm-address") leaveToAddressConfirmation();
     if (!replayed) {
       if (action === "step-up-floor" && (await requestStepUp(acrFromChallenge(challenge)))) {
         return fetchJson<T>(method, path, body, true);

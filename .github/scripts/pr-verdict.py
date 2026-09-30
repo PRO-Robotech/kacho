@@ -89,10 +89,11 @@ Check-runs одной sha приходят из разных наборов: с�
 Поэтому прогоны одной проверки сводятся к одному:
 
 * «позднее» — пара (`check_suite.id`, `id`), а не один `id`. Набор заводится
-  на событие, и повтор попытки его СОХРАНЯЕТ: ui.yml, прогон 35183091753 —
-  попытки 1 и 2 в одном наборе 95281882850, а id прогона у попытки 2 больше
-  (105079283520 против 105082053758). Один `id` поставил бы повтор старого
-  набора позже свежего события, а повтор судит СТАРЫЙ контекст:
+  на событие, и повтор попытки его СОХРАНЯЕТ: ui.yml, прогон 35183091753,
+  проверка `build compute` — попытки 1 и 2 в одном наборе 95281882850, а id
+  прогона у попытки 2 больше (105079283820 против 105082053758). Один `id`
+  поставил бы повтор старого набора позже свежего события, а повтор судит
+  СТАРЫЙ контекст:
   `review-text` читает текст из полезной нагрузки события. Номер набора
   растёт с событием: на 9672c86fac5 отменённый 108278452901 в наборе
   98030781046, замена 108278551222 в наборе 98030864187. `completed_at` у
@@ -123,8 +124,18 @@ Check-runs одной sha приходят из разных наборов: с�
 * вызов переиспользуемого процесса не вычисляется и однозначным не считается;
 * ноль осмотренных джоб — нарушение, а не «нарушений нет».
 
+Имена сравниваются в ПОКАЗЕ GitHub, потому что им ключуется `decide`: имя
+длиннее 100 байт GitHub показывает первыми 97 байтами и многоточием `...`
+(`ci.yaml`, `pg-outside-selection`: 109 байт в YAML, 100 в прогоне на
+b7608fe9750; 98-байтное имя `terraform` на 1ad671ef764 показано целиком).
+Два имени, равные в первых 97 байтах, — одна проверка. Форма показа та же, что у
+объявления, — `provider_cut` держателя. Разрез посреди многобайтного символа не
+измерен: держатель отбрасывает разрезанный символ, и имена, равные до его
+границы, считаются совпадением. Имя из выражения бывает любой длины, поэтому
+образец сравнивается и обрезанным: для совпадения довольно совместимого начала.
+
 Предикат — `test_the_tree_holds_the_check_name_premise` в `pr_verdict_test.py`;
-на 3407caf6e95 осмотрено джоб 29, имён 50, нарушений 0. Свод на запуске судит
+на b7608fe9750 осмотрено джоб 29, имён 50, нарушений 0. Свод на запуске судит
 ту же предпосылку над процессами запроса: нарушение — вердикт не вынесен (код 2).
 
 Граница предпосылки — чего этот обход НЕ стережёт (измерено 2026-09-27):
@@ -192,6 +203,8 @@ except (ImportError, OSError, SyntaxError) as _exc:
 provider_cut = _trigger_scope.provider_cut
 PROVIDER_CUT_BYTES: int = _trigger_scope.PROVIDER_CUT_BYTES
 PROVIDER_CUT_TAIL: str = _trigger_scope.PROVIDER_CUT_TAIL
+# Бюджет основы в показе: сколько байт имени площадка оставляет перед многоточием.
+PROVIDER_CUT_KEPT = PROVIDER_CUT_BYTES - len(PROVIDER_CUT_TAIL.encode("utf-8"))
 DEFAULT_REQUEST_TYPES: frozenset[str] = frozenset(_trigger_scope.DEFAULT_REVIEW_TYPES)
 
 # Приложение, от имени которого площадка заводит check-run джобы процесса.
@@ -470,6 +483,21 @@ def _job_names(where: str, job_id: str, job: object) -> tuple[list[JobName], lis
     return legs, []
 
 
+def _shown(n: JobName) -> tuple[JobName, ...]:
+    """Формы, в которых площадка может показать имя (см. шапку). Форму обрезки
+    даёт её держатель, `provider_cut`. Литерал — одна форма. Имя из выражения
+    бывает любой длины, поэтому у образца две: как есть и обрезанная — начало
+    образца, что угодно и многоточие. Начало длиннее бюджета основы обрезается
+    само: показ любого имени с таким началом, длиннее предела, определён одним
+    началом, и держатель даёт его на начале с хвостом — оно уже длиннее предела."""
+    if n.parts is None:
+        return (JobName(n.where, provider_cut(n.text), None),)
+    head = n.parts[0]
+    if len(head.encode("utf-8")) > PROVIDER_CUT_KEPT:
+        return n, JobName(n.where, provider_cut(head + PROVIDER_CUT_TAIL), None)
+    return n, JobName(n.where, head + "${{ … }}" + PROVIDER_CUT_TAIL, (head, PROVIDER_CUT_TAIL))
+
+
 def _fits(text: str, parts: tuple[str, ...]) -> bool:
     return re.fullmatch(".*".join(re.escape(p) for p in parts), text, re.S) is not None
 
@@ -512,9 +540,16 @@ def premise(workflows: dict[str, object]) -> Premise:
         breaches.append("осмотрено ноль джоб процессов запроса — это не «нарушений нет», "
                         "а «никто не смотрел»")
     for a, b in itertools.combinations(names, 2):
-        if _may_equal(a, b):
-            breaches.append(f"имена «{a.text}» ({a.where}) и «{b.text}» ({b.where}) могут "
-                            f"совпасть — успех одной джобы отставил бы отказ другой")
+        hit = next(((x, y) for x in _shown(a) for y in _shown(b) if _may_equal(x, y)), None)
+        if hit is None:
+            continue
+        x, y = hit
+        shown = ("" if (x, y) == (a, b) else
+                 f" в показе GitHub «{x.text}» и «{y.text}» (имя длиннее "
+                 f"{PROVIDER_CUT_BYTES} байт обрезается до {PROVIDER_CUT_KEPT} байт и "
+                 f"многоточия)")
+        breaches.append(f"имена «{a.text}» ({a.where}) и «{b.text}» ({b.where}) могут "
+                        f"совпасть{shown} — успех одной джобы отставил бы отказ другой")
     return Premise(examined=examined, names=len(names), breaches=tuple(breaches))
 
 
@@ -679,9 +714,8 @@ def _is_cut(name: str) -> bool:
     знак (до четырёх байт) уже не вошёл, и дописано многоточие."""
     if not name.endswith(PROVIDER_CUT_TAIL):
         return False
-    budget = PROVIDER_CUT_BYTES - len(PROVIDER_CUT_TAIL)
     stem = len(name[: -len(PROVIDER_CUT_TAIL)].encode("utf-8"))
-    return budget - 4 < stem <= budget
+    return PROVIDER_CUT_KEPT - 4 < stem <= PROVIDER_CUT_KEPT
 
 
 def _proves(check: JobName, r: dict) -> bool:
