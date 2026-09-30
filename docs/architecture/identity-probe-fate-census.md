@@ -308,7 +308,7 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 |---:|---|---|---|---|---|
 | 1 | `deploy/browser_facing_url_test.go` | снять | да | — | браузерный адрес потока поставщика; снята с объявлениями `ui_url` и полосой раздачи консоли к его экрану — #1276 (`3af063bd6f3`) |
 | 2 | `deploy/chart_values_keys_carry_their_own_product_prefix_injection_test.go` | переписать | да | — | синтетика ключей значений на нашем носителе — #2818 (`92097320166`) |
-| 3 | `deploy/db_footprint_declaration_test.go` | переписать | нет | `Хранилища Ory и OpenFGA настраивают свои` | отрицательный контроль «чужое хранилище не признано нашим» судит `pg-hydra`, `pg-kratos`, `pg-openfga`, которых в зонте нет; переписать на синтетике — #1276 |
+| 3 | `deploy/db_footprint_declaration_test.go` | переписать | да | — | отрицательный контроль «чужое хранилище не признано нашим» судил три снятых хранилища по именам (0 из 3 в зонте); признак вынесен в чистую функцию и отрицание судится на синтетике с близнецом (`TestOursByDBHost_ForeignStoreIsNotOurs`) — #1276, часть 2 |
 | 4 | `deploy/dbhba_tls_required_test.go` | оставить | — | `включая хранилища Ory` | судит `pg_hba` наших баз; поставщик назван прозой границы — проза настоящего времени о снятых хранилищах, правка — #1276 |
 | 5 | `deploy/dbtls_declaration_test.go` | оставить | — | `Хранилища Ory держат свою строку соединения сами` | судит `sslmode` наших клиентов; поставщик назван прозой границы, правка — #1276 |
 | 6 | `deploy/helm/umbrella/admin_hop_transport_test.go` | снять | да | — | транспорт административного слушателя издателя; снята с его терминатором — #1276 (`3af063bd6f3`), классификация стека переехала в `deploy/helm/umbrella/stack_production_class_test.go` |
@@ -416,8 +416,8 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 |---|---|---:|
 | снять | да | 23 |
 | снять | нет | 1 |
-| переписать | да | 9 |
-| переписать | нет | 4 |
+| переписать | да | 10 |
+| переписать | нет | 3 |
 | оставить | — | 68 |
 | **итого** | — | **105** |
 
