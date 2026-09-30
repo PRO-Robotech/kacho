@@ -62,14 +62,15 @@
 // ГРАНИЦА ПРЕДМЕТА (названа, чтобы «зелено» не читалось шире, чем есть)
 //
 //   - Проверяются ТОЛЬКО стеки, ОБЪЯВИВШИЕ боевую посадку — предикат
-//     declaresProduction из identity_dev_flag_declaration_test.go, тот же самый,
-//     без своей копии. Стенд разработки волен не выбирать ничего.
+//     declaresProduction ниже в этом файле (переехал сюда из пробы, снятой с
+//     предметом, #1276). Стенд разработки волен не выбирать ничего.
 //   - ПОТОЛОК требуется от КАЖДОГО инстанса Postgres умбреллы: под без предела
 //     памяти уносит узел независимо от того, чьи данные он держит.
 //   - ТРАТА требуется только от баз НАШИХ служб — тех, чьё имя названо в
 //     `db.host` какого-то нашего подчарта (тот же признак, что у соседнего
-//     pool_fits_database_test.go). Хранилища Ory и OpenFGA настраивают свои
-//     чарты, и решать за них здесь нечего.
+//     pool_fits_database_test.go). Инстанс, которого своим хостом не называет
+//     ни один наш подчарт, — чужое хранилище: его настраивает свой чарт, и
+//     решать за него здесь нечего.
 //   - Проверка НЕ судит, ВЕРНЫ ли выбранные числа. Она судит, выбраны ли они и
 //     сходятся ли между собой. «Мало памяти» — вопрос замера, а не объявления.
 //   - Отношение «пул службы ↔ предел базы» здесь НЕ проверяется: им владеет
@@ -208,21 +209,27 @@ func dbFootprintFactsFor(t *testing.T, name string, chain []string) dbFootprintF
 	// Кто чью базу называет своим хостом — по ПОЛНОМУ дереву значений (с
 	// умолчаниями подчартов): боевые профили службу не переобъявляют вовсе, её
 	// `db.host` живёт только в её собственном values.yaml.
-	full := valuesWithSubchartDefaults(t, chain)
-	var pgs []string
+	pgs, ours := oursByDBHost(valuesWithSubchartDefaults(t, chain))
+
+	return dbFootprintFacts{
+		stack: name, production: prod, prodWhy: why,
+		aliases: pgs, ours: ours, declared: declared,
+	}
+}
+
+// oursByDBHost — инстансы Postgres дерева значений и те из них, что НАШ подчарт
+// называет своим `db.host`: алиас → подчарт. Инстанс, которого не называет
+// никто, — чужое хранилище. Чистая функция: её судят и дерево, и синтетика.
+func oursByDBHost(full map[string]any) ([]string, map[string]string) {
+	var pgs, subs []string
 	for a := range full {
 		if strings.HasPrefix(a, "pg-") {
 			pgs = append(pgs, a)
-		}
-	}
-	sort.Strings(pgs)
-
-	subs := make([]string, 0, len(full))
-	for a := range full {
-		if !strings.HasPrefix(a, "pg-") {
+		} else {
 			subs = append(subs, a)
 		}
 	}
+	sort.Strings(pgs)
 	sort.Strings(subs)
 
 	ours := map[string]string{}
@@ -241,11 +248,7 @@ func dbFootprintFactsFor(t *testing.T, name string, chain []string) dbFootprintF
 			}
 		}
 	}
-
-	return dbFootprintFacts{
-		stack: name, production: prod, prodWhy: why,
-		aliases: pgs, ours: ours, declared: declared,
-	}
+	return pgs, ours
 }
 
 func allDBFootprintFacts(t *testing.T) []dbFootprintFacts {
@@ -731,16 +734,14 @@ func TestFootprintPredicates_RecogniseTheRealTree(t *testing.T) {
 	}
 
 	// (3) «Наши» базы отделены от чужих хранилищ по db.host, а не по списку имён.
+	//     Здесь — положительная половина, на дереве. Отрицательная (чужое
+	//     хранилище нашим не признаётся) судится на синтетике в
+	//     TestOursByDBHost_ForeignStoreIsNotOurs: чужих хранилищ в зонте сегодня
+	//     нет, и отрицание, привязанное к их именам, истекло вместе с ними (#1276).
 	ours := byName["prod"].ours
 	for _, a := range []string{"pg-iam", "pg-vpc", "pg-compute", "pg-geo", "pg-nlb", "pg-registry", "pg-storage"} {
 		if _, ok := ours[a]; !ok {
 			t.Errorf("база %s не признана базой нашей службы — признак db.host перестал её узнавать", a)
-		}
-	}
-	for _, a := range []string{"pg-hydra", "pg-kratos", "pg-openfga"} {
-		if sub, ok := ours[a]; ok {
-			t.Errorf("чужое хранилище %s признано нашим (через %s) — тогда проверка начнёт "+
-				"требовать настройки от чарта, который мы не сопровождаем", a, sub)
 		}
 	}
 
@@ -755,4 +756,119 @@ func TestFootprintPredicates_RecogniseTheRealTree(t *testing.T) {
 	}
 	t.Logf("осмотрено: стеков=%d, инстансов Postgres у prod=%d, из них баз наших служб=%d",
 		len(facts), len(got), len(ours))
+}
+
+// TestOursByDBHost_ForeignStoreIsNotOurs — отрицательная половина признака
+// «база нашей службы»: инстанс, которого своим хостом не называет ни один наш
+// подчарт, нашим не признаётся, и признаётся ровно тогда, когда его назвали.
+//
+// Прежде это отрицание стояло на дереве и судило хранилища прежнего поставщика
+// и движка прав по именам; оба сняты с зонта, и отрицание на отсутствующих
+// именах не проверяло ничего (краснело предпосылкой «такого инстанса у стека
+// нет» на всех трёх). Синтетика предмета не теряет: она не привязана к
+// хранилищу, которое однажды снимут.
+func TestOursByDBHost_ForeignStoreIsNotOurs(t *testing.T) {
+	full := map[string]any{
+		"pg-iam":     map[string]any{},
+		"pg-foreign": map[string]any{},
+		"kaname":     map[string]any{"db": map[string]any{"host": "kacho-umbrella-pg-iam"}},
+		"console":    map[string]any{"image": "x"},
+	}
+	pgs, ours := oursByDBHost(full)
+	if strings.Join(pgs, " ") != "pg-foreign pg-iam" {
+		t.Fatalf("инстансы Postgres узнаны не все: %v", pgs)
+	}
+	if ours["pg-iam"] != "kaname" {
+		t.Fatalf("база, названная хостом нашего подчарта, не признана нашей: %v", ours)
+	}
+	if sub, ok := ours["pg-foreign"]; ok {
+		t.Fatalf("чужое хранилище признано нашим (через %s) — проверка начала бы требовать "+
+			"настройки от чарта, который мы не сопровождаем", sub)
+	}
+
+	// Законный близнец: тот же инстанс, названный хостом нашего подчарта, — наш.
+	full["other"] = map[string]any{"db": map[string]any{"host": "kacho-umbrella-pg-foreign"}}
+	if _, ours = oursByDBHost(full); ours["pg-foreign"] != "other" {
+		t.Fatalf("инстанс, названный хостом нашего подчарта, не признан нашим: %v", ours)
+	}
+}
+
+// declaresProduction — стек объявил боевую посадку, если среди его
+// `mode`/`authMode` есть хотя бы одно production* и НЕ ОСТАЛОСЬ ни одного
+// `dev`.
+//
+// Первая редакция предиката спрашивала только «есть ли хоть одно production*»
+// — и подвела под правило стенд разработки: values.dev.yaml объявляет
+// `api-gateway.authn.mode=production-strict` (край обязан требовать Bearer
+// даже на ноутбуке), оставляя семь других координат в `dev`. Ошибку поймал
+// контроль TestDeclaresProduction_RecognisesTheRealTree, а не чтение — потому
+// он и написан парой к находке. Предикат и контроль переехали сюда из пробы
+// режима разработки поставщика личности, снятой вместе с поставщиком (#1276):
+// читатель у предиката остался один — этот файл.
+//
+// Предикат выведен из того, как посадку объявляют сами профили: стенд, у
+// которого хоть один компонент остался в режиме разработки, боевым не
+// считается. Новый боевой профиль приходит под проверку без правки этого
+// файла.
+func declaresProduction(declared map[string]any) (bool, string) {
+	var found []struct {
+		Path  []string
+		Value any
+	}
+	walkStrings(declared, nil, func(k string) bool {
+		return strings.EqualFold(k, "mode") || strings.EqualFold(k, "authMode")
+	}, &found)
+
+	var prod, dev []string
+	for _, f := range found {
+		s, ok := f.Value.(string)
+		if !ok {
+			continue
+		}
+		coord := strings.Join(f.Path, ".") + "=" + s
+		switch v := strings.ToLower(strings.TrimSpace(s)); {
+		case strings.HasPrefix(v, "production"):
+			prod = append(prod, coord)
+		case v == "dev":
+			dev = append(dev, coord)
+		}
+	}
+	if len(prod) == 0 {
+		return false, "боевых объявлений нет"
+	}
+	if len(dev) > 0 {
+		return false, fmt.Sprintf("боевых объявлений %d, но %d осталось в dev: %s",
+			len(prod), len(dev), strings.Join(dev, ", "))
+	}
+	return true, fmt.Sprintf("боевых объявлений %d, ни одного dev", len(prod))
+}
+
+// TestDeclaresProduction_RecognisesTheRealTree — предикат боевой посадки узнаёт
+// настоящие стеки таблицы в обе стороны.
+func TestDeclaresProduction_RecognisesTheRealTree(t *testing.T) {
+	stacks := deployStacks(t)
+	for _, want := range []string{"prod", "own", "fe3455", "dev-prod", "prorobotech", "a8f60d"} {
+		chain, ok := stacks[want]
+		if !ok {
+			t.Errorf("стек %q не выведен из таблицы стеков", want)
+			continue
+		}
+		if f := dbFootprintFactsFor(t, want, chain); !f.production {
+			t.Errorf("стек %q не опознан как объявивший боевую посадку (%s) — предикат перестал "+
+				"узнавать `mode`/`authMode`", want, f.prodWhy)
+		}
+	}
+	// Отрицание — только в паре с положительным выше: предикат, признающий
+	// боевым всё подряд, зеленит первую половину этой проверки.
+	for _, want := range []string{"dev"} {
+		chain, ok := stacks[want]
+		if !ok {
+			t.Errorf("стек %q не выведен из таблицы стеков", want)
+			continue
+		}
+		if f := dbFootprintFactsFor(t, want, chain); f.production {
+			t.Errorf("стек %q опознан боевым (%s) — предикат стал слишком широким и "+
+				"подведёт под правило стенд разработки", want, f.prodWhy)
+		}
+	}
 }

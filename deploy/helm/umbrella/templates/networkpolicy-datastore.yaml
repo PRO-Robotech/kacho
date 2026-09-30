@@ -19,9 +19,8 @@ verify they cover every legitimate consumer (service pod + init-migrator + rotat
 Jobs) for your cluster before enabling. The kaname consumer label `app: kaname`
 covers its Deployment and the `migrate` init-container (both
 carry it); the compute→geo `geo-data-migration` Job selector is included on pg-compute
-(source) and pg-geo (target). Third-party auth-tier stores (pg-kratos / pg-hydra) are
-left to the Ory sub-charts' own NetworkPolicy support; add entries here per cluster if
-you prefer umbrella-owned policies (data-driven — no template change needed).
+(source) and pg-geo (target). Add entries here per cluster for any further store
+(data-driven — no template change needed).
 
 Disabled by default: the dev target (kind + kindnet) does not enforce NetworkPolicy and
 :5432 port-forward debugging would break. Enable on a NetworkPolicy-enforcing CNI:

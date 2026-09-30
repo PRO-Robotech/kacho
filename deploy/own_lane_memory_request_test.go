@@ -255,9 +255,8 @@ func renderOwnLaneRequestFacts(t *testing.T, set []string) ([]laneRequestFacts, 
 		for _, p := range stacksTbl[name] {
 			declared = mergeValues(declared, readYAML(t, filepath.Join(umbrellaDir, p)))
 		}
-		if declaredString(lookup(declared, "kaname", "config", "authn", "identityProvider")) != "own" {
-			continue
-		}
+		// Посадка службы одна на каждом стенде (kanameLanding, kaname#363):
+		// судится каждый.
 		census.Own++
 
 		sub, _ := declared["kaname"].(map[string]any)
