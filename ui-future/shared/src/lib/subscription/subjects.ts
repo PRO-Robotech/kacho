@@ -185,7 +185,72 @@ export const STREAM_SUBJECTS: Readonly<Record<string, StreamSubject>> = {
  * из возможных исходов, потому что выглядел бы он как «изменений не было».
  */
 export function streamSubject(specId: string): StreamSubject | null {
-  return STREAM_SUBJECTS[specId] ?? null;
+  // Только СОБСТВЕННЫЙ ключ карты: литерал объекта наследует `toString`,
+  // `constructor` и прочие имена прототипа, и чтение без этой проверки отдало бы
+  // на них функцию вместо `null`.
+  return Object.hasOwn(STREAM_SUBJECTS, specId) ? STREAM_SUBJECTS[specId] : null;
+}
+
+/**
+ * Владелец журнала → ключ модуля каталога `notify` (NTF-6 Р10а).
+ *
+ * ЭТО ДРУГОЙ СЛОВАРЬ, ЧЕМ ВЛАДЕЛЕЦ. Владелец — домен контракта; ключ модуля
+ * каталога — имя источника уведомлений (`GET /notify/v1/catalog`, `modules[].key`).
+ * У четырёх владельцев из шести написания совпадают, у двух — нет:
+ * `loadbalancer` → `nlb`, `iam` → `kaname`. Поиск модуля каталога по `owner`
+ * промахивался бы ровно на спеках балансировщика и службы доступа, и действие
+ * подписки на их карточках молча исчезало бы.
+ *
+ * Выводить ключ из написания — приставки вида, сегмента REST-пути, имени каталога
+ * сервиса — нельзя: у балансировщика вид `nlb_*` совпал бы с ключом случайно, у
+ * службы доступа (`account`, `iam_user`) — нет.
+ *
+ * Отображение ИСЧЕРПЫВАЮЩЕЕ по типу: `Record` по объединению `JournalOwner`, и
+ * новый владелец без записи здесь — ошибка проверки типов, а не молчаливый
+ * промах. Запись по владельцу, а не по спеке: принадлежность журнала модулю —
+ * свойство владельца, и запись на спеку повторила бы один факт по разу на запись
+ * `STREAM_SUBJECTS`.
+ *
+ * Согласие с деревом (журнал какой службы объявляет виды владельца; для владельца
+ * с журналом в другом репозитории — ведомость `journalsOutsideThisTree`) держит
+ * гейт `ui-future/deploy/console_notify_source_key_test.go`.
+ */
+export const NOTIFY_SOURCE_BY_OWNER: Readonly<Record<JournalOwner, string>> = {
+  compute: "compute",
+  iam: "kaname",
+  loadbalancer: "nlb",
+  registry: "registry",
+  storage: "storage",
+  vpc: "vpc",
+};
+
+/**
+ * Ключ модуля каталога `notify` для спеки — либо `null`, если спека вне
+ * `STREAM_SUBJECTS`. Единственный читатель `NOTIFY_SOURCE_BY_OWNER`.
+ *
+ * `null` — законное «модуля нет»: у спеки без журнала предмета подписки нет, и
+ * догадка по домену дала бы действие, которое владелец отвергнет.
+ */
+export function notifyModuleOf(specId: string): string | null {
+  const subject = streamSubject(specId);
+  return subject === null ? null : NOTIFY_SOURCE_BY_OWNER[subject.owner];
+}
+
+/**
+ * Тип объекта модели прав → спека консоли — либо `null` для вида, которого
+ * консоль не называет.
+ *
+ * Обратный поиск по той же карте `STREAM_SUBJECTS`: одно место и для строки ленты
+ * уведомлений, и для строки подписки, второго словаря типов нет. Однозначность
+ * (каждый вид назван ровно одной спекой) держит проба «вид назван один раз» в
+ * `subjects.test.ts`. Вид приходит от сервера, поэтому неизвестный — не
+ * исключение, а `null`: вызывающий показывает его текстом без ссылки.
+ */
+export function specOfKind(kind: string): string | null {
+  for (const [specId, subject] of Object.entries(STREAM_SUBJECTS)) {
+    if (subject.kind === kind) return specId;
+  }
+  return null;
 }
 
 /**
