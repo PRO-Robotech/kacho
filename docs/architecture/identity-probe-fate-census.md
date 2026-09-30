@@ -23,7 +23,8 @@
 
 Записана первой задачей #2731; вторым снимающим изменением правлена задачей
 kacho#2818 (раздел «Снятие kacho#2818» ниже), третьим — задачей kacho#1276
-(разделы «Снятие kacho#1276» и «Снятие kacho#1276, часть 2»).
+(разделы «Снятие kacho#1276», «Снятие kacho#1276, часть 2» и «Снятие kacho#1276,
+часть 3»).
 
 ## Предмет снятия
 
@@ -76,8 +77,9 @@ deploy/helm/umbrella/charts/kaname/templates/identity-provider-schema-configmap.
   прибита якорем (раздел «Якоря координат»), и гейт сверяет его со строкой;
   якорь первой строки не единственный в файле у 8;
 - файлов в предмете на записи #2731: **51**; после снятия kacho#2818 — **24**,
-  строк **9350**; после снятия kacho#1276 — **15**
-  (`git ls-files 'deploy/identity_*_test.go' | wc -l`), строк **6073**; по каждому прочитаны шапка-объявление предмета, источники входа
+  строк **9350**; после снятия kacho#1276 — **15**, строк **6073**; после его
+  третьей части — **14**
+  (`git ls-files 'deploy/identity_*_test.go' | wc -l`), строк **5845**; по каждому прочитаны шапка-объявление предмета, источники входа
   (что читается с диска и из какого узла значений) и условие вердикта;
 - чтобы установить носитель после снятия, прочитаны: `charts/kaname/templates/configmap.yaml`,
   `charts/kaname/values.yaml`, `values.yaml` зонта, `values.own.yaml`, `deploy/stacks.txt`,
@@ -101,7 +103,6 @@ deploy/helm/umbrella/charts/kaname/templates/identity-provider-schema-configmap.
 | 16 | `identity_domainless_landing_injection_test.go` | гейт выразимости посадки без имени падает на печенье с доменом и на происхождении ключей на IP-литерале и молчит на близнеце | наша полоса | оставить | вход — рендер нашей службы цепочкой a8f60d `:31-39`; вердикт — адъюдикатор гейта строки 17 `:41-64` |
 | 17 | `identity_domainless_landing_is_expressible_test.go` | посадка без доменного имени выразима нашей полосой: печенье host-only и ни одного происхождения ключей доступа на IP-литерале | наша полоса | оставить | адъюдикатор `:116-138`; печенье нашей сессии объявляет наш шаблон `deploy/helm/umbrella/charts/kaname/templates/configmap.yaml:315`. Помощник рендера `:60` зовут живые пробы (`deploy/client_token_knobs_of_the_pin_test.go:229`) |
 | 22 | `identity_global_defaults_agree_test.go` | копия `global.kacho.identity` в подчарте совпадает с зонтом | наша полоса | оставить | согласие двух объявлений `:59-116` судит наш узел, который читает наш отправитель `deploy/helm/umbrella/charts/kaname/templates/configmap.yaml:612`; проверка адреса хуков снята вместе с предметом (kacho#2818) |
-| 23 | `identity_hook_provenance_reaches_every_stand_test.go` | работа, поднимающая стенд, собирает отчёт о происхождении величины обратного вызова | чужая служба | снять | отчёт `:57` снимает отпечатки у отправителя-поставщика и проверяющей стороны `deploy/scripts/identity-hook-credential-provenance.sh:5-8`; отправителя не станет |
 | 26 | `identity_mail_defaults_are_empty_injection_test.go` | гейт MAIL-12 падает и молчит на синтетическом слое | наша полоса | оставить | синтетика строится вокруг нашего узла `:26-35` и зовёт вердикт гейта строки 27 `:51-56`, `:81` |
 | 27 | `identity_mail_defaults_are_empty_test.go` | у пяти почтовых величин `global.kacho.identity.smtp` нет встроенного умолчания ни в одном слое | наша полоса | оставить | перечень ручек нашего узла `:66-72`, обход слоёв умолчаний `:104-107`, `:188-215`; узел читает наш отправитель `deploy/helm/umbrella/charts/kaname/templates/configmap.yaml:612`. Поставщик назван только в границе `:44-45` |
 | 28 | `identity_mail_lane_feeds_both_senders_injection_test.go` | MAIL-48 падает на отправителе, питаемом чужим узлом целиком и частично, и на снятом разделе, молчит на законной копии | наша полоса | оставить | копия НАШЕГО шаблона `:21-38`; инъекции `:71-94`, `:100-111` |
@@ -115,28 +116,28 @@ deploy/helm/umbrella/charts/kaname/templates/identity-provider-schema-configmap.
 
 | исход | файлов |
 |---|---:|
-| снять | 1 |
+| снять | 0 |
 | оставить | 14 |
 | переписать | 0 |
-| **итого** | **15** |
+| **итого** | **14** |
 
 Сумма равна числу файлов; файлов без исхода нет, исходов вне словаря нет. Сверка
 имён ведомости с деревом, исходов, координат и их якорей — прогоном гейта:
 
 ```sh
 go test ./internal/repohygiene/ -run 'TestIdentityProbeFate' -count=1 -v
-# перепись: строк ведомости 15 · файлов в дереве 15 · снять 1 · оставить 14 · переписать 0 · …
+# перепись: строк ведомости 14 · файлов в дереве 14 · снять 0 · оставить 14 · переписать 0 · …
 ```
 
 ## Снимаемое, на котором держится живое
 
-Проба с исходом «снять» объявляет помощники, которые читают ЖИВЫЕ пробы вне этой
-ведомости. Снять файл целиком нельзя: помощник обязан переехать к читателю тем
-же изменением, иначе пакет не соберётся.
-
-| снимаемая проба | помощник | живой читатель |
-|---|---|---|
-| `identity_hook_provenance_reaches_every_stand_test.go` | `provWorkflow`, `provStandRecipes` | `deploy/stand_verdict_carries_provenance_test.go:130`, `deploy/stand_verdict_carries_provenance_test.go:147` |
+Проба с исходом «снять» могла объявлять помощники, которые читают ЖИВЫЕ пробы
+вне этой ведомости. Снять файл целиком тогда нельзя: помощник обязан переехать к
+читателю тем же изменением, иначе пакет не соберётся. Проб с исходом «снять» в
+ведомости не осталось; последняя (прежняя строка 23) унесла признак подъёма
+стенда и форму разбора объявления конвейера к единственному читателю —
+`deploy/stand_verdict_carries_provenance_test.go` (`standRecipes`,
+`standWorkflow`) — третьей частью kacho#1276.
 
 Снятые задачей kacho#1276 пробы унесли своих помощников к читателям тем же
 изменением: `declaresProduction` — вместе со своим контролем
@@ -218,10 +219,10 @@ kacho#2818 пробы унесли своих помощников к читат
   `deploy/stack_render_carries_no_vendor_residue_test.go`, возврат полосы к
   чужому экрану на цепочке посадки own — находка
   `deploy/tests/helm/console-serves-identity-flows-test.sh`;
-- строка 23 остаётся с исходом **снять**, но в этом изменении не снята: её
+- строка 23 осталась с исходом **снять**, но в этом изменении не снята: её
   предмет — отчёт о происхождении величины обратного вызова, который зовут
   рабочие потоки конвейера (`.github/workflows/*`), — снимается вместе с его
-  вызовами, а не раньше них.
+  вызовами, а не раньше них. Снята третьей частью (раздел ниже).
 
 ## Снятие kacho#1276, часть 2: гейты признака и пробы вне ведомости
 
@@ -427,6 +428,28 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 привязка к нему; предикат «упоминаний в Go и в развёртывании — 0» с закрытым
 перечнем исключений — отдельный держатель, эта запись его не заменяет.
 
+## Снятие kacho#1276, часть 3: отчёт о происхождении величины обратного вызова
+
+Строка 23 ведомости (`identity_hook_provenance_reaches_every_stand_test.go`)
+снята вместе с предметом, который она держала: работа, поднимающая стенд, звала
+отчёт о происхождении величины обратного вызова. Величину держали две стороны —
+отправитель-поставщик и проверяющая служба; отправителя в зонте нет (подчарты
+сняты первой частью), слушателя хуков у пина службы нет (kacho#2818), и сверять
+отпечатки больше не у кого. Порядок снятия — три изменения, каждое зелёное:
+проба (эта строка), затем вызовы отчёта в трёх рабочих потоках конвейера, затем
+сам отчёт и его инъекция (строка 36 записи Б). Отчёт не уходит раньше своих
+вызовов: между вторым и третьим изменением он лежит в дереве незваным, а не
+зовётся в пустоту.
+
+Класс отказа строки — «величина, живущая только в памяти двух контейнеров,
+расходится между сторонами, и после прогона спросить её негде» — под нашей
+посадкой **невоспроизводим**: второй стороны нет, величины обратного вызова не
+держит никто (порт хуков у службы запрещён безусловно, см. запись А, строка 1).
+Признак подъёма стенда (`standRecipes`) и форма разбора объявления конвейера
+(`standWorkflow`) переехали к единственному оставшемуся читателю —
+`deploy/stand_verdict_carries_provenance_test.go`, гейту вопроса «какое дерево
+исполняет стенд», — и объявлены там одним местом.
+
 ## Что эта ведомость НЕ утверждает
 
 - что свойства проб «снять» держатся где-то ещё. Там, где носитель переехал в
@@ -471,8 +494,6 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 | `deploy/client_token_knobs_of_the_pin_test.go:229` | `rendered, err := renderIdentitySubchart(t, nil, sets...)` | — |
 | `deploy/identity_global_defaults_agree_test.go:59-116` | `func TestIdentityGlobalDefaultsOfTheSubchartAgreeWithTheUmbrella(t *testing.T) {` | `}` |
 | `deploy/helm/umbrella/charts/kaname/templates/configmap.yaml:612` | `{{- $mailNode := (((.Values.global).kacho).identity).smtp` | — |
-| `deploy/identity_hook_provenance_reaches_every_stand_test.go:57` | `const provReportScript = "scripts/identity-hook-credential-provenance.sh"` | — |
-| `deploy/scripts/identity-hook-credential-provenance.sh:5-8` | `# identity-hook-credential-provenance.sh — ТРИ ОТПЕЧАТКА ОДНОЙ ВЕЛИЧИНЫ, снятые` | `# прав). Расхождение любых двух — находка.` |
 | `deploy/identity_mail_defaults_are_empty_injection_test.go:26-35` | `func syntheticLayer(smtp map[string]any, hooksScheme string) map[string]any {` | `"smtp":  smtp,` |
 | `deploy/identity_mail_defaults_are_empty_injection_test.go:51-56` | `func TestMailDefaultsGateCanStaySilent(t *testing.T) {` | `findings, c := scanMailDefaults(layers)` |
 | `deploy/identity_mail_defaults_are_empty_injection_test.go:81` | `func TestMailDefaultsGateCanFail(t *testing.T) {` | — |
@@ -498,8 +519,6 @@ go test ./internal/repohygiene/ -run 'TestIdentityProbeFateLedger(DecidesEverySi
 | `deploy/identity_second_factor_reachable_test.go:26-41` | `// # Стороны 1 и 2 — СВОИ У КАЖДОЙ ПОСАДКИ (#2691)` | `// ровно там, где пол «2» поднять было нечем. Теперь стороны берутся у посадки.` |
 | `deploy/identity_second_factor_reachable_test.go:2282-2296` | `func sidesOfLanding(t *testing.T, landing, console string) (secondFactorSides, error) {` | `return ownSecondFactorSides(pin, root, vocab, rule, console)` |
 | `deploy/identity_second_factor_reachable_test.go:2332` | `func TestIdentity_SecondFactorReachesTheBrowser(t *testing.T) {` | — |
-| `deploy/stand_verdict_carries_provenance_test.go:130` | `var wf provWorkflow` | — |
-| `deploy/stand_verdict_carries_provenance_test.go:147` | `for _, recipe := range provStandRecipes {` | — |
 | `deploy/kaname_subchart_retired_identity_wiring_test.go:95` | `var hooksLaneEnvPrefixes = []string{` | — |
 | `deploy/own_posture_foreign_identity_test.go:237` | `func judgeForeignIdentityInTree(components []foreignIdentityComponent) []identityPostureFinding {` | — |
 | `deploy/helm/umbrella/charts/kaname/templates/deployment.yaml:90` | `kacho.cloud/config-checksum: {{ include (print $.Template.BasePath "/configmap.yaml") .` | — |
