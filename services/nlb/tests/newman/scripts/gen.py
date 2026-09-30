@@ -149,6 +149,11 @@ class Step:
     #   "anonymous"       — strip Authorization header before request
     #   "<envVarName>"    — Authorization: Bearer {{envVarName}} (resolved from env)
     auth: Optional[str] = None
+    # internal=True — запрос идёт на cluster-internal REST listener края
+    # ({{internalBaseUrl}}, :8081), где живут Internal*-методы (ban #6: на публичном
+    # {{baseUrl}} их нет by design). Предмет поля — проба видимости кейса
+    # `label-revoke-nlb` (`InternalIAMService.Check`); форма та же, что у vpc и storage.
+    internal: bool = False
 
 
 @dataclass
@@ -1310,9 +1315,9 @@ _EMIT = Emit(
     pre_global=lambda key: PRE_GLOBAL,
     steps_of=_case_steps,
     auth_pre=_auth_pre_script,
-    # Своего признака слушателя у шага этого набора НЕТ: Internal*-поверхности он
-    # не трогает, и все шаги идут на публичный адрес. Поле не заводится, пока нет
-    # предмета, — ручка «на будущее» есть то же обещание без держателя.
+    # Internal*-шаги идут на cluster-internal REST listener — на публичном их нет
+    # by design (запрет №6). См. `Step.internal`.
+    host_var=lambda step: "internalBaseUrl" if step.internal else "baseUrl",
 )
 
 # Помощники, доезжающие до модуля кейсов. Перечень — СЛОВАРЬ: он объявлен один
