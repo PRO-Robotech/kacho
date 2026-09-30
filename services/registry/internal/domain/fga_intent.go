@@ -302,8 +302,8 @@ func FGASubjectFromID(principalID string) string {
 // happens to equal the anon id resolves as an ordinary principal, never silently
 // gaining the wildcard. The anon principal id is deployment-configured (kaname
 // AnonymousClientID); deploy MUST keep it reserved (no real principal shares it), since
-// then the only producer of a token with sub==anonPrincipalID is the anonymous flow of
-// the /iam/token shim, which mints it with the access service's own signer.
+// then the access service mints a token with sub==anonPrincipalID only on the anonymous
+// flow of its /iam/token shim.
 func FGASubjectForPrincipalID(principalID, anonPrincipalID string) string {
 	if anonPrincipalID != "" && principalID == anonPrincipalID {
 		return FGASubjectPublicWildcard
