@@ -8,6 +8,7 @@ import { BUDGET_ATTACHMENT, noteRefusal, recordableRefusal, takeRefusals } from 
 import { formatBreaches, guardBrowser, takeBreaches, takeStaleBreaches } from "./issuance-guard.ts";
 import { carryStandCookiesInBrowser } from "../stand-secure-origin.ts";
 import { awaitLetter, stationMailbox, type Mailbox } from "./mail-receiver";
+import { assuranceLevel, raiseAssurance } from "./assurance";
 
 /**
  * ЗАПИСЬ ТРАССЫ ПРИНАДЛЕЖИТ НАБОРУ, А НЕ ШТАТНОМУ `use.trace` (#1242).
@@ -971,14 +972,18 @@ export async function ownUserId(page: Page, email: string): Promise<string> {
  * `PENDING` означал бы, что заведено не то, что предполагает сценарий.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * ПОЧЕМУ `./assurance` ГРУЗИТСЯ ПРИ ВЫЗОВЕ, А НЕ ИМПОРТОМ В ШАПКЕ
+ * `./assurance` — ИМПОРТОМ В ШАПКЕ, И КОЛЬЦО ЭТО ПЕРЕНОСИТ
  *
- * `./assurance` и его `./ceremony-seed` сами импортируют этот модуль, а
- * `ceremony-seed` читает его константу при загрузке
- * (`SEED_PASSWORD = E2E_PASSWORD`). Импорт в шапке замкнул бы кольцо: пробе,
- * загружающей `fixtures` первой, `ceremony-seed` достался бы недогруженный
- * модуль, и пароль посева стал бы `undefined` — отказ входа, названный дефектом
- * продукта. К моменту вызова этот модуль загружен целиком, и кольца нет.
+ * `./assurance` и его `./ceremony-seed` сами импортируют этот модуль, то есть
+ * кольцо есть. Оно безвредно, пока ни один из них не читает значение отсюда ПРИ
+ * ЗАГРУЗКЕ: пробе, загружающей `fixtures` первой, они достаются недогруженным
+ * модулем. Пароль посева поэтому не копируется в свою константу, а
+ * переэкспортируется (`ceremony-seed`, `SEED_PASSWORD`) — связь живая и читается
+ * при вызове.
+ *
+ * Загрузка при вызове (`await import("./assurance")`) здесь стояла и уронила
+ * пробу на стенде: `SyntaxError: Cannot use import statement outside a module` —
+ * динамический импорт уходит загрузчику Node мимо преобразования прогонщика.
  */
 export async function inviteIntoAccount(
   inviterPage: Page,
@@ -989,7 +994,6 @@ export async function inviteIntoAccount(
   expect(invitee.userId, `у приглашаемого ${invitee.email} нет идентификатора — ` +
     `его членство не с чем будет сверить`).not.toBe("");
 
-  const { assuranceLevel, raiseAssurance } = await import("./assurance");
   // Без подъёма край отвергнет приглашение `401`-м, и виновником выглядел бы продукт.
   if (Number(await assuranceLevel(inviterPage)) < 2) {
     await raiseAssurance(inviterPage);
