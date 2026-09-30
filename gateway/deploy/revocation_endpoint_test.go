@@ -11,7 +11,7 @@
 // longer asks that provider anything, and the probes that demanded its addresses
 // were retired together with them (the tombstone below says which and why).
 //
-// This guard reads the DECLARATIONS, like deploy/helm/umbrella/token_shape_test.go:
+// This guard reads the DECLARATIONS, like deploy/posture_parity_test.go:
 // the contract is what the profiles declare, it needs no chart dependencies, and it
 // therefore can never skip. It merges each stack the way helm does, because the
 // profiles are layered — the base carries the address and an overlay may correct

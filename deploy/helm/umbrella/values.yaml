@@ -7,19 +7,17 @@
 # `values.prorobotech.yaml` image-tag overlay.
 #
 # Домен Kachō — configurable через `kacho.domain`; все Phase 2 template'ы
-# (Kratos/Hydra config, api-gateway ingress, kacho-ui BFF, security.txt) обязаны
+# (api-gateway ingress, kacho-ui BFF, security.txt) обязаны
 # использовать `{{ .Values.kacho.domain }}` вместо хардкода. Это позволяет
 # деплоить один chart на разные домены без правки template'ов.
 #
 # Поддоменная схема (производные от `kacho.domain`):
 #   - https://<domain>        — публичный API (api-gateway TLS endpoint)
 #   - https://app.<domain>    — UI / BFF (kacho-ui)
-#   - https://hydra.<domain>  — Hydra public OIDC issuer
-#   - https://kratos.<domain> — Kratos public selfservice
 #
 # Sub-chart propagation: Helm пропагирует автоматически только `global.*`. Для
 # sub-chart'ов, которым нужны umbrella-значения, дублируем структуру в namespace'е
-# sub-chart'а (`kaname.*`, `kratos-selfservice-ui.*`).
+# sub-chart'а (`kaname.*`).
 
 # INFRA sec-hardening — optional Helm-owned Namespace carrying Pod Security
 # Admission labels (restricted, warn+audit). Default FALSE: the dev/CI flow
@@ -235,36 +233,6 @@ mtls:
     caNamespace: ""
     caDuration: "87600h"      # 10y root
     caRenewBefore: "720h"     # 30d
-  # ─── provider ADMIN listener server-TLS (templates/admin-hop-certificate.yaml) ─
-  # The admin listener (:4445) carries the CALLER'S LIVE BEARER on every
-  # authenticated request that misses the introspection cache (introspection asks
-  # about a token by SENDING it), and the administrative bearer on every OAuth2
-  # client registration, trust grant and session teardown iam performs. The admin
-  # API authenticates nobody — reaching it IS the authorization — so in the clear
-  # all of that is readable, and reusable, by anything on the path.
-  #
-  # Enabling this issues the serving cert AND places the TERMINATOR that uses it:
-  # an nginx sidecar inside the provider's own pod (templates/admin-hop-tls-*),
-  # plus its own ClusterIP Service. The profile must ALSO point the consumers at
-  # that Service over https with the matching trust anchor. A production-class
-  # gateway and iam both REFUSE TO START on a plaintext or unanchored hop, so the
-  # pieces move together by construction.
-  #
-  # WHY A TERMINATOR AND NOT THE PROVIDER'S OWN KNOB. The deployed version does
-  # NOT read a PER-LISTENER TLS declaration — MEASURED, not inferred from docs;
-  # the coordinate and the one-command re-measurement live in
-  # deploy/PROVIDER-LISTENER-PREMISE.md, and the posture gate reddens on any
-  # version change and names that command. Do not write here again that the
-  # provider resolves TLS per listener without re-measuring it: that claim stood
-  # in this very file, was wrong, and had itself replaced a correct note.
-  #
-  # Only the ADMIN hop moves. The public OIDC listener the ingress and JWKS
-  # readers use over plain http is untouched.
-  hydraAdminTls:
-    enabled: false
-    # Secret carrying tls.crt/tls.key for the provider and ca.crt for consumers.
-    # Empty → "<release>-hydra-admin-tls".
-    secretName: ""
   # ─── bootstrap-operator identity (templates/bootstrap-operator-certificate.yaml) ─
   # A client-auth-ONLY internal-CA leaf whose sole purpose is to call
   # iam.v1.InternalBootstrapTokenService/MintBootstrapToken on kaname :9091
@@ -418,72 +386,29 @@ global:
     # одного профиля не меняется.
     registry:
       serviceAud: "registry.in-cloud.io"
-    # ─── административный переход: ЕДИНСТВЕННОЕ объявление формирующих значений ─
-    #
-    # Живёт в `global`, потому что читается из ДВУХ контекстов: шаблонами умбреллы
-    # (объект настроек соседа, его Service) и строкой `hydra.deployment.extraContainers`,
-    # которую разворачивает `tpl` уже в контексте САБЧАРТА провайдера — там
-    # `.Values.mtls` не существует, а `.Values.global` одинаков в обоих.
-    #
-    # ЗАЧЕМ ОДНО ОБЪЯВЛЕНИЕ. Эти числа обязаны совпадать попарно (порт соседа — в
-    # поде, в его конфигурации, в пробах и в Service; апстрим соседа — с листенером
-    # провайдера). Прежде каждое было отдельным литералом в двух профилях, и смена
-    # одного НЕ ПЕРЕКАТЫВАЛА ПОД: настройки приезжают томом, читаются один раз при
-    # старте, поэтому дерево и работающая система разошлись бы молча — до следующего
-    # несвязанного рестарта, который уносит конечные точки обоих сервисов.
-    # Совпадение сверяет deploy/tests/helm/admin-hop-pod-shape-test.sh.
-    #
-    # Включение самого перехода — по-прежнему `mtls.hydraAdminTls.enabled`: здесь
-    # только ЧИСЛА, а не переключатель.
     # ─── служба личности: ЕДИНСТВЕННОЕ объявление формирующих значений ─────────
     #
-    # Живёт в `global` по той же причине, что и блок ниже: читается из ДВУХ
-    # контекстов. Из нашего подчарта — когда рендерится карта настроек; из
-    # подчарта провайдера — когда в шаблон пода кладётся ОТПЕЧАТОК её
-    # содержимого (`kratos.deployment.extraEnv`). Общими для обоих контекстов
-    # являются только `.Values.global` и `.Release`.
+    # Живёт в `global`: узел читают ДВА контекста — подчарт службы доступа
+    # (почтовая полоса, адреса консоли, печенье сессии, `rp.id` ключей доступа) и
+    # стражи рендера зонта (templates/identity-mail-lane-guard.yaml). Общими для
+    # обоих являются только `.Values.global` и `.Release`.
     #
-    # ЗАЧЕМ ОТПЕЧАТОК. Настройки приезжают томом и читаются процессом один раз —
-    # на старте. Правка карты не меняет шаблон пода, под не перекатывается, и
-    # процесс живёт со старым содержимым, пока его не перезапустит что-нибудь
-    # постороннее. Ручка провайдера, проходящая через шаблонизацию, ровно одна —
-    # `extraEnv`; в аннотации sha256 вычислить не из чего.
-    #
-    # Содержимое собиралось из этих значений ОДНИМ объявлением — шаблоном
-    # поставщика в подчарте службы. Шаблон снят вместе с провязкой поставщика
-    # (kacho#2818): узел, кроме почтовой полосы и адресов консоли, читать
-    # теперь некому, и его ключи поставщика уходят с подчартом (#1276).
+    # Ключи поставщика личности (адрес его публичного края, его поддомен, префикс
+    # путей потоков его экрана) узел больше не несёт: их читал шаблон поставщика,
+    # снятый kacho#2818, и они сняты вместе с подчартами поставщика (#1276).
     identity:
       # Корневой домен платформы. Отсюда собираются адреса службы личности и
       # `rp.id` ключей доступа, поэтому пустым он быть не может — рендер
       # отказывает и называет ручку.
       domain: api.kacho.cloud
       appSubdomain: app
-      kratosSubdomain: kratos
-      # ─── браузерные адреса: ПУСТО ⇒ вывести из `domain` ──────────────────
-      # Та же идиома, что у `hooks.host`/`hooks.port`. Объявлены затем, чтобы
-      # посадка, где консоль стоит не на `https://<app>.<domain>`, была
-      # ВЫРАЗИМА: стенд разработки раздаёт её по `http://console.kacho.local:28080`
-      # (kind отображает 80 → 28080, слушателя на 443 нет), а потоки — в корне.
+      # ─── браузерный адрес консоли: ПУСТО ⇒ вывести из `domain` ───────────
+      # Объявлен затем, чтобы посадка, где консоль стоит не на
+      # `https://<app>.<domain>`, была ВЫРАЗИМА: стенд разработки раздаёт её по
+      # `http://console.kacho.local:28080` (kind отображает 80 → 28080, слушателя
+      # на 443 нет). Читает его помощник `kaname.identity.consoleOrigin` подчарта
+      # службы доступа (charts/kaname/templates/_helpers.tpl).
       appBaseURL: ""
-      kratosPublicBaseURL: ""
-      # ─── префикс путей потоков: ПУСТО, то есть КОРЕНЬ ───────────────────
-      # Пустая строка здесь — не «ручка не настроена», а РЕШЕНИЕ, и принято оно
-      # замером на стенде (#1048), а не вкусом. Раздача консоли обслуживает
-      # потоки в КОРНЕ — `^/(login|registration|…)(/|$)` в
-      # ui-future/deploy/templates/configmap-nginx.yaml — и проксирует их службе
-      # Ory. Путь с лишним сегментом в эту регулярку не попадает и уезжает в
-      # SPA-заглушку `location /`, которая отвечает `200` с оболочкой консоли:
-      # отказ выглядит УСПЕХОМ. Ни `404`, ни записи в журнале — только «вход не
-      # открывается», и искать причину неоткуда.
-      #
-      # Почему корень, а не `/auth`. Прежде здесь стояло `/auth`, и ни один
-      # профиль этого не переопределял, кроме стенда разработки. Боевой не
-      # переопределяет и сейчас — значит величина, стоящая ЗДЕСЬ, и есть
-      # величина боя. Возвращать `/auth` можно только вместе с полосой в
-      # раздаче: два места об одном предмете, и их согласие держит
-      # deploy/identity_flow_path_is_served_test.go, а не внимание.
-      flowPathPrefix: ""
       # Домен cookie сессии и `rp.id` ключей доступа. Пусто ⇒ `domain`.
       # Cookie с чужим доменом браузер отвергает целиком, поэтому величина
       # обязана быть родительской для хоста консоли.
@@ -594,28 +519,9 @@ global:
         # ретранслятора им не проверится. Оба направления держит страж рендера
         # templates/identity-mail-lane-guard.yaml; исход рендера —
         # deploy/address_gate_stand_render_test.go (F6b-56).
-        #
-        # Поставщику личности якорь приезжает иначе — переменной `SSL_CERT_FILE`
-        # его рабочего объекта; этот узел его не питает.
         trustAnchorSecret:
           name: ""
           key: ""
-    hydraAdminTls:
-      # Порт СОСЕДА внутри пода. Инверсия с портом провайдера обязательна — см.
-      # `providerListenerPort` ниже.
-      terminatorPort: 4445
-      # Порт административного листенера ПРОВАЙДЕРА (он слушает только петлю).
-      # Значение обязано совпадать с `hydra.hydra.config.serve.admin.port` профиля:
-      # эта ручка чарта провайдера через шаблонизацию не проходит, поэтому свести
-      # их одним объявлением нельзя, и совпадение проверяет гейт формы пода.
-      providerListenerPort: 4455
-      # Бюджет запроса принадлежит владельцу запроса: не короче самого длинного
-      # per-call дедлайна потребителя.
-      upstreamTimeout: "30s"
-      image: nginxinc/nginx-unprivileged:1.31-alpine
-      # Окно между сигналом остановки и уходом процесса — чтобы снятие конечных
-      # точек успело распространиться.
-      preStopSeconds: 5
   # ЭТИ ДВЕ РУЧКИ ОБЪЯВЛЕНЫ И НЕ ЧИТАЮТСЯ НИ ОДНИМ ШАБЛОНОМ. Замер, а не
   # впечатление: поиск `imageTag` по шаблонам и файлам значений дерева даёт
   # объявление здесь и прозу о нём — читателя нет ни у одной. Помощник образа
@@ -721,39 +627,6 @@ apiGatewayIngress:
 # set `uif.enabled: true` and reproduce the host/remote images below.
 uif:
   enabled: false
-
-# ─── ЧУЖОЙ СТЕК ЛИЧНОСТИ НЕ ПОДНИМАЕТСЯ НИ НА ОДНОМ СТЕНДЕ (#2735, #2777) ────
-#
-# Человека на каждом стенде таблицы (deploy/stacks.txt) проверяет НАША полоса:
-# посадку `own` обеим половинам объявляют корни цепочек (values.dev.yaml,
-# values.prod.yaml). Поставщик личности, его издатель, их базы и чужой экран
-# входа рядом с нашей полосой были бы второй действующей дверью в ту же
-# систему, о которой никто не решал.
-#
-# ПОЧЕМУ ЗДЕСЬ, В БАЗЕ, А НЕ В КАЖДОМ ПРОФИЛЕ. Выключение объявлено ОДИН раз, и
-# ни один профиль его не перекрывает: пока флаги жили по профилям, накладка
-# стенда `own` гасила их у одного стенда из семи, а шесть поднимали их молча.
-# Флаг обязан стоять ЗДЕСЬ, а не отсутствовать: условие зависимости, чей путь
-# в значениях не найден, helm читает как «включено».
-#
-# Держит согласие посадки и флагов deploy/own_posture_foreign_identity_test.go,
-# отсутствие объектов и адресов поставщика в рендере каждой цепочки —
-# deploy/stack_render_carries_no_vendor_residue_test.go.
-# Подчарт службы личности поставщика поднять уже НЕЛЬЗЯ: его настройки в
-# профилях ссылаются на шаблоны подчарта службы доступа, снятые kacho#2818, и
-# рендер с `kratos.enabled: true` отказывает. Физическое снятие подчартов, их
-# баз и настроек — предмет #1276.
-kratos:
-  enabled: false
-pg-kratos:
-  enabled: false
-hydra:
-  enabled: false
-pg-hydra:
-  enabled: false
-kratos-selfservice-ui:
-  kratosSelfServiceUI:
-    enabled: false
 
 # ─── kacho-nlb — disabled in base values ───────────────────────────────────
 # Both the kacho-nlb sub-chart and its backing Postgres are condition-gated.
@@ -861,7 +734,7 @@ security:
 # inside one: these are database-per-service instances, so the line on pg-iam
 # reaches iam's tables and nothing else. Deliberately NOT listed: pg-geo (its
 # geo_outbox is a sequence-cursor audit feed with no `sent_at` claim and no
-# drainer), pg-kratos, pg-hydra (third-party stores, no Kacho queue).
+# drainer).
 #
 # WHY 5s. The launcher has to stop being the binding term: 5 s sits below the
 # ~5.4 s it takes to accumulate the per-table threshold of 1000 modifications at

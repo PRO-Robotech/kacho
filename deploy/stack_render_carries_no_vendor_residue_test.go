@@ -28,14 +28,17 @@
 // снята вместе с ней. Эта половина переехала сюда без смены вердикта.
 //
 // ─────────────────────────────────────────────────────────────────────────────
-// КОНТРОЛЬ ПЕРЕПИСИ — ПОСТАВЩИК, ПОДНЯТЫЙ ПРОБОЙ
+// КОНТРОЛЬ ПЕРЕПИСИ — СЛЕД ПОСТАВЩИКА, ВНЕСЁННЫЙ В НАСТОЯЩИЙ РЕНДЕР
 //
 // «Следа ноль» на всех цепочках неотличимо от переписи, которая не видит
-// поставщика нигде. Поэтому та же цепочка рендерится с поставщиком выдачи
-// токенов, поднятым ОДНИМ фактом (`hydra.enabled=true`, подчарт лежит в дереве
-// до физического снятия, #1276), и перепись обязана найти в нём объекты. Когда
-// подчарт уйдёт, контроль станет невыполнимым и покраснеет — и тогда перепись
-// переедет на синтетику, а не молча потеряет контроль.
+// поставщика нигде. Прежде контроль поднимал подчарт поставщика одним фактом
+// (`hydra.enabled=true`); подчарт снят физически (kacho#1276), и поднимать
+// стало нечего — поэтому контроль переехал на синтетику, а не молча потерял
+// силу. Каждая цепочка рендерится НАСТОЯЩИМ helm, и к её документам дописываются
+// ровно те формы следа, которые перепись обязана находить: рабочий объект с
+// образом поставщика, объект с именем поставщика без образа и карта настроек с
+// адресом поставщика. Перепись обязана найти каждую — на КАЖДОЙ цепочке, а не в
+// сумме: сумма скрыла бы цепочку, на которой разбор ослеп.
 package deploy_test
 
 import (
@@ -56,8 +59,24 @@ var vendorResidueWord = regexp.MustCompile(`(?i)kratos|hydra|oryd|\bory\b`)
 // переписью отдельно.
 var vendorResidueAddress = regexp.MustCompile(`(?i)https?://[^\s,"']*(kratos|hydra)`)
 
-// vendorRaisedByProbe — один факт, поднимающий подчарт поставщика для контроля.
-var vendorRaisedByProbe = []string{"hydra.enabled=true"}
+// vendorInjectedResidue — след поставщика, дописываемый к настоящему рендеру
+// цепочки для контроля переписи: объекты (рабочий с образом поставщика и
+// объект с именем поставщика) и адрес поставщика в карте настроек нашей формы.
+func vendorInjectedResidue() []renderedDoc {
+	return []renderedDoc{
+		{"kind": "Deployment", "metadata": map[string]any{"name": "probe-issuer"},
+			"spec": map[string]any{"template": map[string]any{"spec": map[string]any{
+				"containers": []any{map[string]any{"name": "issuer", "image": "docker.io/oryd/hydra:v26.2.0"}},
+			}}}},
+		{"kind": "Service", "metadata": map[string]any{"name": "probe-kratos-public"}},
+		{"kind": "ConfigMap", "metadata": map[string]any{"name": "probe-config"},
+			"data": map[string]any{"config.yaml": "issuer: https://hydra.api.kacho.cloud/\n"}},
+	}
+}
+
+// vendorInjectedWant — сколько следа перепись обязана найти в
+// vendorInjectedResidue: объектов и адресов.
+const vendorInjectedObjects, vendorInjectedAddresses = 2, 1
 
 // vendorResidue — след стека поставщика в рендере.
 type vendorResidue struct {
@@ -193,18 +212,21 @@ func TestNoStackRenderCarriesAVendorResidue(t *testing.T) {
 			t.Error(f)
 		}
 
-		raised, err := renderStack(t, stacks[name], vendorRaisedByProbe...)
-		if err != nil {
-			t.Fatalf("стек %q с поставщиком, поднятым пробой (%v), не рендерится (%v) — контроля "+
-				"переписи НЕТ. Вывод helm:\n%s", name, vendorRaisedByProbe, err, raised)
+		ctl := vendorResidueOf(append(append([]renderedDoc{}, docs...), vendorInjectedResidue()...))
+		gotObj, gotAddr := len(ctl.Objects)-len(r.Objects), len(ctl.Addresses)-len(r.Addresses)
+		if gotObj != vendorInjectedObjects || gotAddr != vendorInjectedAddresses {
+			t.Errorf("стек %q: в рендер внесено объектов поставщика %d и адресов %d, а перепись "+
+				"нашла %d и %d — перепись слепа на этой цепочке, и её «следа ноль» ничего не доказывает",
+				name, vendorInjectedObjects, vendorInjectedAddresses, gotObj, gotAddr)
 		}
-		controlSeen += len(vendorResidueOf(decodeRender(t, raised)).Objects)
+		controlSeen += gotObj + gotAddr
 	}
-	t.Logf("итого: стеков %d · документов %d · объектов поставщика там, где он поднят пробой, %d",
-		len(names), docsSum, controlSeen)
+	t.Logf("итого: стеков %d · документов %d · следа поставщика, найденного переписью в "+
+		"настоящем рендере с внесённым следом, %d (внесено по %d на стек)",
+		len(names), docsSum, controlSeen, vendorInjectedObjects+vendorInjectedAddresses)
 	if controlSeen == 0 {
-		t.Fatalf("там, где поставщик поднят пробой (%v), перепись нашла НОЛЬ объектов — перепись "+
-			"слепа, и «следа ноль» ничего не доказывает", vendorRaisedByProbe)
+		t.Fatalf("в настоящем рендере с внесённым следом перепись нашла НОЛЬ — перепись " +
+			"слепа, и «следа ноль» ничего не доказывает")
 	}
 }
 

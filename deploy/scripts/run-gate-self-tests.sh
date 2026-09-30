@@ -151,15 +151,10 @@ deploy/scripts/remeasure-provider-listener-tls.sh
 deploy/scripts/repo_tree.py
 deploy/scripts/run-injection-proofs.sh
 deploy/scripts/stand-provenance.sh
-deploy/tests/helm/admin-hop-address-census-test.sh
-deploy/tests/helm/admin-hop-pod-shape-test.sh
-deploy/tests/helm/admin-hop-port-policy-test.sh
 deploy/tests/helm/ceremony-ingress-audit.py
 deploy/tests/helm/config-rollout-binding-test.sh
 deploy/tests/helm/console-serves-identity-flows-test.sh
 deploy/tests/helm/geo-authz-edge-armed-test.sh
-deploy/tests/helm/identity-callback-credential-source-test.sh
-deploy/tests/helm/identity-selfservice-ui-hardening-test.sh
 deploy/tests/helm/image-rollout-binding-test.sh
 deploy/tests/helm/makefile-destructive-guarded-test.sh
 deploy/tests/helm/neighbour-address-form-test.sh

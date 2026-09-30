@@ -745,8 +745,7 @@ fi
 # отсутствие ничего не говорит о том, читает ли её версия.
 assertion
 # Подстановкой, а не конвейером в `grep -q`: с `pipefail` совпадение роняет
-# статус конвейера через SIGPIPE у писателя слева (см. тот же разбор в
-# deploy/tests/helm/admin-hop-address-census-test.sh).
+# статус конвейера через SIGPIPE у писателя слева.
 mounts="$(kubectl -n "$NS" get pod "$HYDRA_POD" -o jsonpath='{.spec.containers[?(@.name=="hydra")].volumeMounts[*].mountPath}' 2>/dev/null | tr ' ' '\n')"
 if grep -q 'hydra-admin-tls' <<<"$mounts"; then
   fail "своя конфигурация (НЕ предпосылка): секрет TLS снова смонтирован в контейнер провайдера"

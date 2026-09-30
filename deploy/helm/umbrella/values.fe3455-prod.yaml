@@ -3,9 +3,9 @@
 # values.fe3455-prod.yaml — fe3455 PRODUCTION cutover overlay (greenfield stand).
 #
 # Layer order (production, no dev-auth) — the chain cutover-fe3455.sh actually runs.
-# Keep it in step with that script and with the fe3455 row of the stacks table in
-# deploy/tests/helm/admin-hop-address-census-test.sh; three hand-written copies of
-# one list is exactly how they drift apart.
+# The chain is declared ONCE, by the fe3455 row of deploy/stacks.txt, and the
+# script reads it from there; hand-written copies of one list is exactly how they
+# drift apart.
 #
 # Until 2026-08-11 this block named `values.fe3455-base.yaml` as its first layer.
 # NO SUCH FILE EXISTS in the tree — the statement had outlived its subject, and it
@@ -15,24 +15,21 @@
 #   helm upgrade --install kacho-umbrella ./helm/umbrella -n kacho \
 #     -f values.prod.yaml         # production AUTH flip (correct chart paths):
 #                                 #   authn.mode=production/production-strict,
-#                                 #   sslmode=require, mTLS on, Hydra JWKS/issuer,
+#                                 #   sslmode=require, mTLS on, JWKS/issuer,
 #                                 #   fail-closed authz, datastore NP.
 #     -f values.fe3455-prod.yaml  # THIS: revert values.prod's operator-provisioned
 #                                 #   assumptions (existingSecret) back to greenfield
 #                                 #   self-provisioning, add cert-manager PG server
 #                                 #   TLS, current-main hardened images, api-gateway
 #                                 #   internal-:9091 mTLS, geo forwarder SAN.
-#     -f values.fe3455-identity-posture.yaml
-#                                 # identity-provider POSTURE (tracked): hydra dev
-#                                 #   flag/issuer/PKCE/TTL, kratos development flag
-#                                 #   and cookie transport. Tracked on purpose — it
-#                                 #   used to live inside the gitignored creds file,
-#                                 #   where no review and no gate could read it.
-#     -f values.fe3455-ory.yaml   # identity-provider CREDENTIALS (gitignored):
-#                                 #   Ory DSNs + system/cookie/cipher secrets, and
-#                                 #   nothing else. Last, so credentials cannot be
+#     -f values.fe3455-ory.yaml   # stand CREDENTIALS (gitignored): the mail relay
+#                                 #   address of our identity lane, and nothing
+#                                 #   else. Last, so credentials cannot be
 #                                 #   overridden by posture. cutover-fe3455.sh
-#                                 #   refuses to deploy if a posture key appears here.
+#                                 #   refuses to deploy if any other coordinate
+#                                 #   appears here. The identity-provider posture
+#                                 #   layer and the provider's own credentials are
+#                                 #   gone with the provider (#1276).
 #
 # ── SECURITY POSTURE (what "production" means here) ──
 #   authN  : asymmetric JWT of an accepted issuer verified at the edge — the platform's
@@ -46,10 +43,7 @@
 #            server certs (templates/pg-certificates.yaml).
 #
 # ── KNOWN, DOCUMENTED greenfield concessions (follow-ups, not dev-mode) ──
-#   1. kratos/hydra backing Postgres keep their Ory-managed DSN (sslmode=disable,
-#      in-cluster) — those DSNs belong to their own charts, and hardening them is
-#      their own subject.
-#   2. PG credentials inherit the base-chart values (k8s Secret material, never
+#   1. PG credentials inherit the base-chart values (k8s Secret material, never
 #      exposed on the wire). A cosmetic rotation away from the changeme-* default
 #      is a clean follow-up once the stack is green — orthogonal to auth posture.
 
@@ -186,19 +180,8 @@ pg-nlb:
     certificatesSecret: kacho-umbrella-pg-nlb-server-tls
     certFilename: tls.crt
     certKeyFilename: tls.key
-
-# ── infra PGs (kratos/hydra): bitnamilegacy image + operator secret;
-#    DSN stays Ory-managed (sslmode=disable) per concession #1. ──
   primary:
     pgHbaConfiguration: *pgHbaTLSRequired
-pg-kratos:
-  image: { registry: docker.io, repository: bitnamilegacy/postgresql }
-  volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
-  auth: { existingSecret: kacho-umbrella-pg-kratos, username: kratos, database: kratos }
-pg-hydra:
-  image: { registry: docker.io, repository: bitnamilegacy/postgresql, tag: 16.4.0-debian-12-r0 }
-  volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
-  auth: { existingSecret: kacho-umbrella-pg-hydra, username: hydra, database: hydra }
 networkPolicy:
   datastore:
     enabled: false           # pg-<svc>-ingress-allowlist (all 6)

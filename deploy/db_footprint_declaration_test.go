@@ -756,3 +756,83 @@ func TestFootprintPredicates_RecogniseTheRealTree(t *testing.T) {
 	t.Logf("осмотрено: стеков=%d, инстансов Postgres у prod=%d, из них баз наших служб=%d",
 		len(facts), len(got), len(ours))
 }
+
+// declaresProduction — стек объявил боевую посадку, если среди его
+// `mode`/`authMode` есть хотя бы одно production* и НЕ ОСТАЛОСЬ ни одного
+// `dev`.
+//
+// Первая редакция предиката спрашивала только «есть ли хоть одно production*»
+// — и подвела под правило стенд разработки: values.dev.yaml объявляет
+// `api-gateway.authn.mode=production-strict` (край обязан требовать Bearer
+// даже на ноутбуке), оставляя семь других координат в `dev`. Ошибку поймал
+// контроль TestDeclaresProduction_RecognisesTheRealTree, а не чтение — потому
+// он и написан парой к находке. Предикат и контроль переехали сюда из пробы
+// режима разработки поставщика личности, снятой вместе с поставщиком (#1276):
+// читатель у предиката остался один — этот файл.
+//
+// Предикат выведен из того, как посадку объявляют сами профили: стенд, у
+// которого хоть один компонент остался в режиме разработки, боевым не
+// считается. Новый боевой профиль приходит под проверку без правки этого
+// файла.
+func declaresProduction(declared map[string]any) (bool, string) {
+	var found []struct {
+		Path  []string
+		Value any
+	}
+	walkStrings(declared, nil, func(k string) bool {
+		return strings.EqualFold(k, "mode") || strings.EqualFold(k, "authMode")
+	}, &found)
+
+	var prod, dev []string
+	for _, f := range found {
+		s, ok := f.Value.(string)
+		if !ok {
+			continue
+		}
+		coord := strings.Join(f.Path, ".") + "=" + s
+		switch v := strings.ToLower(strings.TrimSpace(s)); {
+		case strings.HasPrefix(v, "production"):
+			prod = append(prod, coord)
+		case v == "dev":
+			dev = append(dev, coord)
+		}
+	}
+	if len(prod) == 0 {
+		return false, "боевых объявлений нет"
+	}
+	if len(dev) > 0 {
+		return false, fmt.Sprintf("боевых объявлений %d, но %d осталось в dev: %s",
+			len(prod), len(dev), strings.Join(dev, ", "))
+	}
+	return true, fmt.Sprintf("боевых объявлений %d, ни одного dev", len(prod))
+}
+
+// TestDeclaresProduction_RecognisesTheRealTree — предикат боевой посадки узнаёт
+// настоящие стеки таблицы в обе стороны.
+func TestDeclaresProduction_RecognisesTheRealTree(t *testing.T) {
+	stacks := deployStacks(t)
+	for _, want := range []string{"prod", "own", "fe3455", "dev-prod", "prorobotech", "a8f60d"} {
+		chain, ok := stacks[want]
+		if !ok {
+			t.Errorf("стек %q не выведен из таблицы стеков", want)
+			continue
+		}
+		if f := dbFootprintFactsFor(t, want, chain); !f.production {
+			t.Errorf("стек %q не опознан как объявивший боевую посадку (%s) — предикат перестал "+
+				"узнавать `mode`/`authMode`", want, f.prodWhy)
+		}
+	}
+	// Отрицание — только в паре с положительным выше: предикат, признающий
+	// боевым всё подряд, зеленит первую половину этой проверки.
+	for _, want := range []string{"dev"} {
+		chain, ok := stacks[want]
+		if !ok {
+			t.Errorf("стек %q не выведен из таблицы стеков", want)
+			continue
+		}
+		if f := dbFootprintFactsFor(t, want, chain); f.production {
+			t.Errorf("стек %q опознан боевым (%s) — предикат стал слишком широким и "+
+				"подведёт под правило стенд разработки", want, f.prodWhy)
+		}
+	}
+}

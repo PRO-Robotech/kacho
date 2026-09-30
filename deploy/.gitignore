@@ -18,7 +18,7 @@ helm/umbrella/charts/*.tgz
 # вердикта, но и зелёным прогон не делает.
 #
 # Цена измерена, а не предположена: 310 КБ однажды. postgresql лежит ОДИН на
-# девять объявлений — helm дедуплицирует по имени и версии.
+# все свои объявления — helm дедуплицирует по имени и версии.
 #
 # ЛОКАЛЬНЫЕ САБЧАРТЫ (`file://…`) СЮДА НЕ ПОПАДАЮТ И НЕ ДОЛЖНЫ: они собираются
 # ИЗ ИСХОДНИКОВ этого же дерева, и вендоренная копия означала бы «правка есть в
@@ -30,9 +30,7 @@ helm/umbrella/charts/*.tgz
 # суммы — находка, запись суммы без архива — тоже находка (послабление обязано
 # истекать само). Там же процедура бампа.
 !helm/umbrella/charts/cert-manager-*.tgz
-!helm/umbrella/charts/hydra-*.tgz
 !helm/umbrella/charts/ingress-nginx-*.tgz
-!helm/umbrella/charts/kratos-[0-9]*.tgz
 !helm/umbrella/charts/postgresql-*.tgz
 helm/umbrella/charts/ingress-nginx/
 helm/umbrella/charts/postgresql/

@@ -21,9 +21,10 @@ import (
 //
 //   - resolveStackAt / mergeInto / deployableStacks — "what does the RELEASE get",
 //     i.e. helm's own left-to-right overlay of every `-f` in the chain;
-//   - token_shape_test.go — "does this profile declare its own", which is right
-//     for ITS question, because `dev` and `prod` there are alternatives rather
-//     than layers, and it says so itself.
+//   - reading ONE profile file — "does this profile declare its own", which is
+//     right only where `dev` and `prod` are alternatives rather than layers (the
+//     retired token_shape_test.go asked exactly that about the removed identity
+//     provider's tier, #1276).
 //
 // Picking the wrong one silently answers the other question. An earlier draft of
 // the IAM-INT-1 acceptance did exactly that: it grepped ONE overlay, found the
